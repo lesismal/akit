@@ -39,6 +39,8 @@ pub struct Seen {
     pub leaf: Vec<u8>,
     /// The status line.
     pub status: String,
+    /// The `Alt-Svc` field, if any.
+    pub alt_svc: Option<String>,
     /// The body.
     pub body: String,
 }
@@ -76,10 +78,16 @@ pub fn get_h1(
     let Some((head, body)) = resp.split_once("\r\n\r\n") else {
         return Err(std::io::Error::other(format!("no response: {resp:?}")));
     };
+    let alt_svc = head.lines().find_map(|l| {
+        let (k, v) = l.split_once(':')?;
+        k.eq_ignore_ascii_case("alt-svc")
+            .then(|| v.trim().to_owned())
+    });
     Ok(Seen {
         alpn,
         leaf,
         status: head.lines().next().unwrap().to_owned(),
+        alt_svc,
         body: body.to_owned(),
     })
 }
@@ -91,6 +99,16 @@ pub fn get_h2(
     server_name: &str,
     path: &str,
 ) -> Result<(u16, String), String> {
+    get_h2_alt_svc(addr, cfg, server_name, path).map(|(s, b, _)| (s, b))
+}
+
+/// [`get_h2`], with the response's `Alt-Svc` field, if any.
+pub fn get_h2_alt_svc(
+    addr: SocketAddr,
+    cfg: &ClientConfig,
+    server_name: &str,
+    path: &str,
+) -> Result<(u16, String, Option<String>), String> {
     let client = Engine::builder()
         .client_threads(1)
         .config({
@@ -116,7 +134,8 @@ pub fn get_h2(
             )
             .wait()
             .map_err(|e| e.to_string())?;
-        Ok((r.status, String::from_utf8(r.body).unwrap()))
+        let alt_svc = r.headers.get("alt-svc").map(str::to_owned);
+        Ok((r.status, String::from_utf8(r.body).unwrap(), alt_svc))
     })();
     client.shutdown();
     client.wait();

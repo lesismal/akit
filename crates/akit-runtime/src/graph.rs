@@ -56,8 +56,8 @@ pub struct Graph {
     /// Per listener, in the order of `listeners`: its routes' router, to indices of `routes`.
     routers: Vec<akit_router::Router<usize>>,
     /// Per listener, in the order of `listeners`: its TLS, loaded from its files, when it has
-    /// `tls`.
-    tls: Vec<Option<akio::tls::ServerConfig>>,
+    /// `tls`: over TCP, and over QUIC when it serves `h3`.
+    tls: Vec<Option<akit_tls::ServerConfigs>>,
     /// The upstreams' pools, in the config's order.
     upstreams: Vec<Pool>,
     /// Taken (and so cleaned up) once, by [`Graph::retire`] or on drop.
@@ -81,7 +81,14 @@ impl Graph {
     /// its certificates loaded when the graph was compiled; `None` for one in the clear.
     #[must_use]
     pub fn tls(&self, listener: usize) -> Option<&akio::tls::ServerConfig> {
-        self.tls.get(listener)?.as_ref()
+        self.tls.get(listener)?.as_ref().map(|c| &c.tcp)
+    }
+
+    /// The TLS the HTTP/3 connections of the listener at `listener` serve (ALPN `h3`, TLS 1.3),
+    /// from the same certificates as [`tls`](Self::tls); `None` for one that does not serve `h3`.
+    #[must_use]
+    pub fn h3_tls(&self, listener: usize) -> Option<&akio::tls::ServerConfig> {
+        self.tls.get(listener)?.as_ref()?.h3.as_ref()
     }
 
     /// The routes, in the config's order.
@@ -234,7 +241,7 @@ pub fn compile(
     let mut tls = Vec::with_capacity(config.listeners.len());
     for (i, l) in config.listeners.iter().enumerate() {
         tls.push(l.tls.as_ref().and_then(|t| {
-            akit_tls::server_config(t, &l.protocols)
+            akit_tls::server_configs(t, &l.protocols)
                 .map_err(|e| {
                     let mut path = format!("listeners[{i}].tls");
                     if !e.path.is_empty() {

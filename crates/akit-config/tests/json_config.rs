@@ -99,7 +99,6 @@ fn not_supported_yet_is_not_wrong() {
     assert_eq!(
         paths,
         [
-            "listeners[0].protocols[2]",
             "listeners[0].tls",
             "routes[0].handler.module",
             "routes[0].middleware",
@@ -108,11 +107,7 @@ fn not_supported_yet_is_not_wrong() {
         ]
     );
     assert_eq!(
-        e.as_slice()[0].msg,
-        "not supported yet: the \"h3\" protocol"
-    );
-    assert_eq!(
-        e.as_slice()[2].msg,
+        e.as_slice()[1].msg,
         "not supported yet: the \"proxy\" handler"
     );
 }
@@ -163,6 +158,21 @@ fn tls_reads() {
         ClientAuthMode::Require
     );
     assert_eq!(t.max_version, TlsVersion::Tls13);
+    // h3 (I10), beside TCP's protocols or alone.
+    for (protocols, want) in [
+        (
+            r#""http/1.1", "h2", "h3""#,
+            &[Protocol::Http11, Protocol::H2, Protocol::H3][..],
+        ),
+        (r#""h3""#, &[Protocol::H3][..]),
+    ] {
+        let c = ok(&format!(
+            r#"{{"listeners": [{{"name": "s", "address": ":443", "protocols": [{protocols}], "tls": {{
+            "certificates": [{{"cert_file": "a.pem", "key_file": "a.key"}}]}}}}]}}"#
+        ));
+        assert_eq!(c.listeners[0].protocols, want);
+        assert_eq!(Protocol::H3.as_str(), "h3");
+    }
     // Without tls, the default stays HTTP/1.1 alone.
     let c = ok(r#"{"listeners": [{"name": "w", "address": ":80"}]}"#);
     assert_eq!(c.listeners[0].protocols, [Protocol::Http11]);
@@ -176,6 +186,18 @@ fn tls_problems_as_fit_reports_them() {
     assert_eq!(
         lines(r#"{"listeners": [{"name": "web", "address": ":80", "protocols": ["h2"]}]}"#),
         ["1:64: listeners[0].protocols[0]: h2 needs tls; h2c is HTTP/2 in the clear"]
+    );
+    assert_eq!(
+        lines(
+            r#"{"listeners": [{"name": "web", "address": ":80", "protocols": ["http/1.1", "h3"]}]}"#
+        ),
+        ["1:76: listeners[0].protocols[1]: h3 needs tls"]
+    );
+    assert_eq!(
+        lines(&format!(
+            r#"{{"listeners": [{{"name": "web", "address": ":443", "protocols": ["h3", "h3"], "tls": {{{CERT}}}}}]}}"#
+        )),
+        [r#"1:71: listeners[0].protocols[1]: "h3" is listed twice"#]
     );
     assert_eq!(
         lines(&format!(

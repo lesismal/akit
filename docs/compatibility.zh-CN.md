@@ -90,8 +90,8 @@ make compat-bless
 
 ```text
 examples/hello: valid
-examples/http3: not supported yet: listeners[].protocols: the "h3" protocol
-examples/http3: not supported yet: listeners[].tls
+examples/http3: not supported yet: listeners[].tls.acme
+examples/l4-udp: not supported yet: listeners[].protocols: the "udp" protocol
 examples/https: skipped: its certificate and key files are the user's own
 templates/conf/fit.conf: not supported yet: upstreams
 templates/yaml/conf.d: not supported yet: upstreams
@@ -101,8 +101,8 @@ templates/yaml/conf.d: not supported yet: upstreams
 差异写作 `- <行>`（只在入库报告中）和 `+ <行>`（只在本次运行中）。akit 给出的路径按字段清单的写法记录：
 数组下标（`routes[0]`）和映射键（`log.loggers.engine`）分别对应 `[]` 和 `*`；akit 还没有的 handler
 模块在 `routes[0].handler.module` 处被拒绝，记为 `routes[].handler<proxy>`。akit 读取的字段中它尚不
-支持的某个值，写在字段之后：`listeners[0].protocols[1]`（即 `h3` 协议）记为
-`listeners[].protocols: the "h3" protocol`；没有监听器的配置（fit 默认以 HTTPS 提供服务）记为
+支持的某个值，写在字段之后：`listeners[0].protocols[0]`（即 `udp` 协议）记为
+`listeners[].protocols: the "udp" protocol`；没有监听器的配置（fit 默认以 HTTPS 提供服务）记为
 `listeners: a config with no listeners, ... (auto_https)`。这样的行不是整个字段被拒绝：该字段仍是
 已支持的，门禁"已支持字段不得被拒绝"的检查只看整体被拒绝的字段。
 

@@ -257,8 +257,11 @@ fn run(args: &[String]) -> ExitCode {
     }
     // Upstream connections are dialed on the listeners' threads.
     slot.set(Arc::clone(&engine));
-    for (l, addr) in config.listeners.iter().zip(engine.local_addrs()) {
+    let addrs = akit_listener::addrs(&config.listeners, &engine);
+    for (l, a) in config.listeners.iter().zip(addrs) {
         let protocols: Vec<&str> = l.protocols.iter().map(|p| p.as_str()).collect();
+        // HTTP/3 listens on the port TCP has; one serving it alone, on its UDP address.
+        let Some(addr) = a.addr() else { continue };
         println!(
             "akit: listener {:?} on {addr} ({})",
             l.name,

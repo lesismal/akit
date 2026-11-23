@@ -18,6 +18,8 @@
 //! - **Versions and cipher suites** as fit's: TLS 1.2 and 1.3, with only ECDHE and AEAD suites
 //!   (AES-GCM, ChaCha20-Poly1305) for 1.2: akio-tls has no other.
 //! - Session resumption by tickets, on as in Go's TLS servers, and by akio's session cache.
+//! - **HTTP/3** (I10): a listener serving `h3` gets a second configuration from the same files
+//!   ([`server_configs`]), with ALPN `h3` and TLS 1.3 alone, for its QUIC connections.
 //!
 //! Loading reads files, which blocks: this is control plane code, run when a config is compiled,
 //! never on an I/O thread (rules.md rule 1).
@@ -77,14 +79,37 @@ pub fn alpn(protocols: &[Protocol]) -> Vec<&'static str> {
     }
 }
 
-/// Loads `tls` from its files into the configuration a listener serving `protocols` serves.
+/// A TLS listener's configurations, from one read of its files: the same certificates, chosen by
+/// SNI the same way, and the same client authentication over TCP and over QUIC.
+#[derive(Debug, Clone)]
+pub struct ServerConfigs {
+    /// What its TCP connections serve: ALPN from its protocols ([`alpn`]), TLS 1.2 and 1.3.
+    pub tcp: ServerConfig,
+    /// What its HTTP/3 connections serve, for a listener whose protocols include `h3`: TLS 1.3
+    /// alone, which QUIC is built on, and ALPN `h3` (fib's `http3.ConfigureTLS` keeps TCP's
+    /// protocols after it, which no HTTP/3 client asks for).
+    pub h3: Option<ServerConfig>,
+}
+
+/// Loads `tls` from its files into the configuration a listener serving `protocols` serves over
+/// TCP: [`server_configs`]'s `tcp`.
+///
+/// # Errors
+///
+/// As [`server_configs`].
+pub fn server_config(tls: &Tls, protocols: &[Protocol]) -> Result<ServerConfig, Error> {
+    server_configs(tls, protocols).map(|c| c.tcp)
+}
+
+/// Loads `tls` from its files, once, into the configurations a listener serving `protocols`
+/// serves: over TCP, and over QUIC when it serves `h3`.
 ///
 /// # Errors
 ///
 /// The first problem found: a file that cannot be read or is too large, PEM with no certificate
 /// or key, a key that does not match its certificate, an authority file with no certificate, or
 /// a wildcard name akit cannot pick its certificate by yet.
-pub fn server_config(tls: &Tls, protocols: &[Protocol]) -> Result<ServerConfig, Error> {
+pub fn server_configs(tls: &Tls, protocols: &[Protocol]) -> Result<ServerConfigs, Error> {
     let mut certs: Vec<(Vec<Certificate>, PrivateKey, Vec<String>)> = Vec::new();
     for (i, c) in tls.certificates.iter().enumerate() {
         let at = format!("certificates[{i}]");
@@ -99,40 +124,57 @@ pub fn server_config(tls: &Tls, protocols: &[Protocol]) -> Result<ServerConfig, 
                 ),
             )
         })?;
-    let mut it = certs.iter();
-    let Some((chain, key, _)) = it.next() else {
+    let Some((chain, key, _)) = certs.first() else {
         // akit-config refuses a tls without certificates (ACME obtains them in fit).
         return Err(Error::new(
             "certificates",
             format!("{NOT_SUPPORTED_YET}: a tls without certificates"),
         ));
     };
-    let mut b = ServerConfig::builder(chain.clone(), key.clone())
-        .alpn(alpn(protocols))
-        .session_tickets(true);
-    for (name, i) in &picks {
-        if let Some((chain, key, _)) = certs.get(*i) {
-            b = b.sni_cert(name.clone(), chain.clone(), key.clone());
-        }
-    }
+    let mut roots = None;
     if let Some(ca) = &tls.client_auth {
-        let mut roots = RootCerts::empty();
+        let mut r = RootCerts::empty();
         for (i, path) in ca.ca_files.iter().enumerate() {
             let at = format!("client_auth.ca_files[{i}]");
             let pem = read(path).map_err(|msg| Error::new(&at, msg))?;
-            match roots.add_pem(&pem) {
+            match r.add_pem(&pem) {
                 Ok(0) => return Err(Error::new(at, format!("{path}: no PEM certificate found"))),
                 Ok(_) => {}
                 Err(e) => return Err(Error::new(at, format!("{path}: {e}"))),
             }
         }
-        b = match ca.mode {
-            ClientAuthMode::Require => b.client_auth_required(roots),
-            ClientAuthMode::VerifyIfGiven => b.client_auth_optional(roots),
-        };
+        roots = Some((r, ca.mode));
     }
-    // max_version 1.2 is refused by akit-config (akio API request A9): 1.3 is the default.
-    b.build().map_err(|e| Error::new("", e.to_string()))
+    // One builder per configuration, from what was read once.
+    let build = |alpn: Vec<&str>, tls13_only: bool| {
+        let mut b = ServerConfig::builder(chain.clone(), key.clone())
+            .alpn(alpn)
+            .session_tickets(true);
+        if tls13_only {
+            b = b.tls13_only(true);
+        }
+        for (name, i) in &picks {
+            if let Some((chain, key, _)) = certs.get(*i) {
+                b = b.sni_cert(name.clone(), chain.clone(), key.clone());
+            }
+        }
+        if let Some((roots, mode)) = &roots {
+            b = match mode {
+                ClientAuthMode::Require => b.client_auth_required(roots.clone()),
+                ClientAuthMode::VerifyIfGiven => b.client_auth_optional(roots.clone()),
+            };
+        }
+        // max_version 1.2 is refused by akit-config (akio API request A9): 1.3 is the default.
+        b.build().map_err(|e| Error::new("", e.to_string()))
+    };
+    let tcp = build(alpn(protocols), false)?;
+    // QUIC is TLS 1.3 alone, whatever max_version caps TCP at (fit's http3Config).
+    let h3 = if protocols.contains(&Protocol::H3) {
+        Some(build(vec!["h3"], true)?)
+    } else {
+        None
+    };
+    Ok(ServerConfigs { tcp, h3 })
 }
 
 /// A certificate's chain, its key, checked to match, and the names it is for (lower case).

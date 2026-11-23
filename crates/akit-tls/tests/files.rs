@@ -51,6 +51,30 @@ fn loads_certificates_and_client_authorities() {
     assert_eq!(cfg.alpn_protocols(), [b"h2".to_vec(), b"http/1.1".to_vec()]);
 }
 
+/// A listener serving h3 gets a second configuration from the same files: ALPN h3 alone (I10).
+#[test]
+fn h3_gets_its_own_alpn_from_the_same_files() {
+    let d = dir("h3");
+    let ca = Ca::new("test ca");
+    let (a, ak) = ca.leaf(&d, "a", &["a.example"]);
+    let t = tls(vec![cert(&a, &ak)], None);
+    let c = akit_tls::server_configs(&t, &[Protocol::Http11, Protocol::H2, Protocol::H3]).unwrap();
+    assert_eq!(
+        c.tcp.alpn_protocols(),
+        [b"h2".to_vec(), b"http/1.1".to_vec()]
+    );
+    assert_eq!(c.h3.unwrap().alpn_protocols(), [b"h3".to_vec()]);
+    // h3 alone: TCP's would offer HTTP/1.1, and is not served.
+    let c = akit_tls::server_configs(&t, &[Protocol::H3]).unwrap();
+    assert_eq!(c.h3.unwrap().alpn_protocols(), [b"h3".to_vec()]);
+    // Without h3, none.
+    assert!(akit_tls::server_configs(&t, H1_H2).unwrap().h3.is_none());
+    // Problems are the same either way.
+    let bad = tls(vec![cert(&a, &d.join("missing.key"))], None);
+    let e = akit_tls::server_configs(&bad, &[Protocol::H3]).unwrap_err();
+    assert_eq!(e.path, "certificates[0]");
+}
+
 #[test]
 fn problems_name_the_certificate_or_file() {
     let d = dir("problems");
