@@ -19,6 +19,68 @@
 
 ## 日志
 
+### 2026-11-24：I15，反向代理 I：请求与头处理（doing：等待 akio A11）
+
+- 状态为 `doing` 而非 `done`：代理已实现，fit 的头处理测试已移植，但其中三个（上游看到的 `Host`，以及不凭空添加
+  `User-Agent`）只有在 akio 的 A11 上才能通过，而 A11 在 akio 的独立分支上，尚未合并：akio `claude/i15-proxy-699f18`，
+  提交 `552fe283`（`ClientRequest::headers` 自带的 `Host` 代替 URL 的发出；空的 `User-Agent` 表示不发送）。在锁定的
+  akio（`50a82315`）上，akio 的客户端丢弃请求自带的 `Host`（改发上游的地址），并把空的 `User-Agent` 原样发出；这三个
+  测试标为 `#[ignore]`，注明 A11。A11 进入 akio 的 `main`、锁定版本移过去、这三个测试不再忽略之后，I15 即为 `done`。
+- `akit_config::Proxy`：`proxy` handler 的参数，检查和消息与 fit 相同：`upstream`；`trusted_proxies`，地址和网段按
+  fit 的 `parsePrefix` 解析（`akit_config::Network`：单个地址是只含它的网段，IPv4 映射地址按 IPv4 处理，清除主机位，
+  前缀长度按 Go 的语法），错误为 `trusted_proxies[i]` 处的 `"nope" is not an IP address or a network, ...`；
+  `host_header`，`"a b" is not a host`；两者都没写时为 `upstream or upstreams is needed`。`upstream` 是否指向配置中的
+  某个上游在 handler 准备时检查（`params.upstream` 处的 `there is no upstream named "nope"`），此时各文件的上游已合并，
+  与 fit 的检查时机相同。`upstreams`、`failover`、`mirror`、`retry`、`timeout`、`tunnel_idle_timeout` 和
+  `splice_uploads` 报为暂不支持。
+- `akit-proxy`（`MODULES`，`http.handlers.proxy`，已加入 `akit` 的注册表）：每个请求在 I/O 线程上构造发给上游的请求
+  （方法、目标、字段、请求体），分离上下文，把请求交给上游的连接池（I14）；连接池的完成回调通过分离的上下文作答。
+  全程不阻塞（规则 1–3）；已退役图的连接池会排空进行中的请求，因此不需要持有图。失败按 fit 的 `statusOf` 作答：
+  连接池已满或已关闭为 `503 Service Unavailable`，超时为 `504 Gateway Timeout`，其他为 `502 Bad Gateway`；字段名
+  不是 token 时为 400。
+- 字段处理（`headers.rs`），对应 fit 的 `outgoingFramed` 和 `responseBlock`：请求字段按到达时的顺序和大小写转发，
+  `Host` 在最前（客户端的，或 `host_header`）；去掉逐跳字段（`Connection` 及其列出的字段、`Keep-Alive`、
+  `Proxy-Connection`、`Proxy-Authenticate`、`Proxy-Authorization`、`TE`、`Trailer`、`Transfer-Encoding`、
+  `Upgrade`）、`Content-Length` 和 `Expect`（由 akio 为请求体分帧）以及伪字段；`X-Forwarded-For`、
+  `X-Forwarded-Proto`、`X-Forwarded-Host` 和 `Forwarded`（RFC 7239）由代理自己设置，放在客户端字段之后；若客户端
+  地址在 `trusted_proxies` 中，则把它追加到其发来的 `X-Forwarded-For` 和 `Forwarded`，并保留其
+  `X-Forwarded-Proto` 和 `-Host`。客户端没有发送的 `User-Agent` 不会被添加。响应字段按上游的顺序和大小写返回，去掉
+  逐跳字段、其 `Connection` 列出的字段和 `Content-Length`（由 akio 重新分帧），HEAD 的响应除外，保留上游的
+  `Content-Length`。
+- 发出的目标是路由匹配时的规范化路径（akit-listener 的 `CANONICAL_PATH`，现定义在 akit-runtime）加上原样的查询串，
+  这样为绕过路由而拼写的路径以路由看到的形式到达上游；绝对形式的目标以 origin 形式发出。TLS 监听器上的请求
+  `X-Forwarded-Proto` 为 `https`：akit-listener 的分发器为这类请求设置上下文本地值 `akit_runtime::TLS`（akio 的上下文
+  尚不提供请求是否经 TLS 到达）。
+- 测试：移植了 fit 的头处理测试（`akit-proxy/tests/proxy.rs`，经 HTTP/1.1 和 h2c 到一个基于 std 套接字、按到达原样
+  报告请求头的 HTTP/1.1 上游）：`TestForwarding`、`TestHopByHopRequest`、`TestHopByHopResponse`、
+  `TestForwardedUntrusted`、`TestForwardedTrusted`、`TestHostHeader` 与 `TestFramedHostHeader`、`TestBadGateway`、
+  `TestManyRequests`（同时 64 个）、`TestHead`、`TestConfigErrors`、`TestFramedRequestHeader`、
+  `TestFramedResponseHeader`、`TestFramedResponseConnectionFields`，以及发出的规范化路径；单元测试（`headers.rs`）：
+  `TestFramedFieldNames`、`TestForwardedElement`、`TestRefusedHeaderName`，以及各类请求的字段；`tests/tls.rs`：TLS
+  监听器后的 `https`；`akit-config/tests/proxy.rs`：参数、fit 的消息、暂不支持的字段、网段。未移植：
+  `TestFramedRequestReadAgain` 和 `TestFramedRequestHeaderMiddleware`（fit 用 map 构造的请求和中间件，akit 还没有：
+  I40），`TestForwardedNotIP`（akit 的对端总是 IP 地址；`forwarded_element` 覆盖了 `for=unknown`）。
+- 兼容性门禁：支持 5 个代理字段（共 42 个）；8 个夹具有效（新增三个 `conf.d` 模板），71 个只因暂不支持被拒绝
+  （`make compat-bless`，已审阅其差异）。报告中有一行是代理的 `timeout` 被记为
+  `examples/load-balancing: ... handler<fastcgi>.params.timeout`：akit-config 的错误路径与 fit 一样不写模块名，门禁
+  把 fastcgi 和 proxy 都有的参数映射到第一个；门禁判断该夹具只因暂不支持被拒绝，这一点是对的。
+- 基准配置（`bench/configs/akit/fit.json`、`bench/fitbench/akit.go`）：fit 的 `proxy` 路由（`/proxy`、`/proxy/*`、
+  `/api/*`）指向 fitbench 的后端，连接池设置与 fit 相同，并加入 `proxy` 场景；fit 的 `timeout 60s` 和 `max_fails 0`
+  akit 还没有（I17、I20）。未运行基准测试（规则 30）。
+- 已检查：macOS 上锁定的 akio 下的 `make check`（三个 A11 测试被忽略）；通过命令行给出的 `[patch]`（从不提交）对 akio
+  的 A11 分支运行 akit-proxy 的测试，包括被忽略的；Linux（基准主机）上 epoll 和 io_uring：A11 分支上 akio-http 的
+  测试，以及基于它的 akit-config、akit-runtime、akit-listener、akit-handler、akit-proxy、akit 和 akit-compat 的
+  测试，包括被忽略的。
+- 与计划的不同：
+  - 请求体整体传递（akio 的缓冲请求体，复制进发给上游的请求）：流式传输是 I16。fit 的 64KB 阈值、splice 上传和
+    trailer 属于 I16 和 I17。
+  - `User-Agent` 规则同样需要 A11（空的 `User-Agent` 表示不发送）：并入 A11，而不是另提需求。
+  - 已知的偶发失败，与 I15 无关：在负载较高的 `make check` 中，`akit-upstream` 的 `max_conns_and_max_pending`
+    有时看到 `in_flight() == 1`，因为连接池先调用请求的回调、再把它计为完成；该测试应等待计数归零（或连接池先计数）。
+- 基准任务应测量的内容：A11 进入锁定版本后，HTTP/1.1、h2c、HTTPS/1.1 和 h2 上的 `proxy` 场景（fitbench
+  `-scenarios proxy`），与 fit、nginx、Caddy 和 Traefik 对比；代理对每个请求新建字段列表、复制请求体和响应字段，
+  TLS 请求还会设置一个上下文本地值（一次分配）：与 fit 写入池化缓冲区的 `outgoingFramed` 对比做性能剖析。
+
 ### 2026-11-24：I19，负载均衡 v1
 
 - 配置：读取 `upstreams[].weights`（每个 1 到 1000，每个地址一个）和 `upstreams[].load_balancing`

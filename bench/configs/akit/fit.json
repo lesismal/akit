@@ -5,11 +5,17 @@
 // h2c alone; akit's takes HTTP/1.1 too, since akio's server always does, which no run on 8081
 // uses. Port 8443 serves HTTP/1.1 over TLS and 8445 h2 over TLS, as fit's, with fitbench's
 // certificate mounted at /certs (I09). The static and site routes serve fitbench's files, mounted
-// at /srv/www as for fit (I12). HTTP/3 (8444), the proxy and the cache come with the iterations
-// that build them (I10, I15, I69).
+// at /srv/www as for fit (I12). The proxy (I15) serves /proxy, /proxy/* and /api/* from
+// fitbench's backend, as fit's does. HTTP/3 (8444) and the cache come with the iterations that
+// build them (I10, I69).
 //
-// fit's aligned settings (engine.backlog, limits.max_conns, the pool) are not settings akit has
-// yet: akio's defaults apply (bench/README.md says which).
+// The backend's pool is fit's ("def pool" in fit.conf): {{BACKEND_CONNS}} connections at most, as
+// many requests waiting and as many idle, an idle one closed after 60s, a 5s connect timeout.
+// fit's max_fails 0 and its route's timeout 60s are not settings akit has yet (I20, I17): akit's
+// pool keeps its only backend in rotation anyway, and bounds an exchange by 1h.
+//
+// fit's other aligned settings (engine.backlog, limits.max_conns) are not settings akit has yet:
+// akio's defaults apply (bench/README.md says which).
 {
   "listeners": [
     {"name": "h1", "address": ":8080", "protocols": ["http/1.1"]},
@@ -19,7 +25,17 @@
     {"name": "h2", "address": ":8445", "protocols": ["h2"],
      "tls": {"certificates": [{"cert_file": "/certs/cert.pem", "key_file": "/certs/key.pem"}]}}
   ],
+  "upstreams": [
+    {"name": "backend", "addresses": ["{{BACKEND}}"],
+     "max_conns": {{BACKEND_CONNS}}, "max_pending": {{BACKEND_CONNS}}, "max_idle_conns": {{BACKEND_CONNS}},
+     "idle_timeout": "60s", "connect_timeout": "5s"}
+  ],
   "routes": [
+    {
+      "name": "proxy",
+      "match": {"path": ["/proxy", "/proxy/*", "/api/*"]},
+      "handler": {"module": "proxy", "params": {"upstream": "backend"}}
+    },
     {
       "name": "fixed",
       "match": {"path": ["/fixed"]},

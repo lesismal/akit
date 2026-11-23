@@ -36,10 +36,10 @@ bench/run.sh main
 （`http/1.1,h2c,https/1.1,h2`）、`-idle`（`http1,tls`），以及用于其他 fitbench 参数的 `-args`，例如
 `-args '-duration 15s -warmup 5s'`。
 
-默认值是 akit 目前能提供的：HTTP/1.1、h2c、HTTPS/1.1 和 h2（TLS 自 I09 起）上的 fixed 和 static 场景（static 自
-I12 起，与 fit 一样从挂载在 `/srv/www` 的 fitbench 文件提供），以及空闲的 HTTP/1.1 和 TLS 连接。其他服务器运行它们能
-提供的所有场景；akit 的其他场景在实现它们的迭代之前记为跳过（"akit cannot serve it"）：代理在 I15，HTTP/3 在 I10，
-缓存在 I69。每个迭代把它新提供的内容加到 `fitbench/akit.go` 和 `configs/akit/fit.json`，并把
+默认值是 akit 目前能提供的：HTTP/1.1、h2c、HTTPS/1.1 和 h2（TLS 自 I09 起）上的 fixed、static 和 proxy 场景（static
+自 I12 起，与 fit 一样从挂载在 `/srv/www` 的 fitbench 文件提供；proxy 自 I15 起，转发到 fitbench 的后端），以及空闲的
+HTTP/1.1 和 TLS 连接。其他服务器运行它们能提供的所有场景；akit 的其他场景在实现它们的迭代之前记为跳过
+（"akit cannot serve it"）：HTTP/3 在 I10，缓存在 I69。每个迭代把它新提供的内容加到 `fitbench/akit.go` 和 `configs/akit/fit.json`，并把
 协议加入默认值。
 
 ## 对比两个构建

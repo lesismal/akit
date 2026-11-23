@@ -28,5 +28,15 @@ pub use traits::{
     Handler, HandlerService, Listener, Matcher, Middleware, Router, Service, Upstream,
 };
 
+/// The [`akio_http::Context::local`] that holds a request's canonical path, escaped, when it
+/// differs from the path sent (dot or empty segments were removed): what the routes matched, and
+/// what handlers go by (akio's request target cannot be rewritten). akit-listener sets it; it is
+/// unset for nearly every request, whose path is canonical already.
+pub const CANONICAL_PATH: &str = "akit.canonical_path";
+
+/// The [`akio_http::Context::local`] set (to `""`) on a request that came over TLS, by
+/// akit-listener; unset in the clear. akio's context does not say yet.
+pub const TLS: &str = "akit.tls";
+
 /// The akio commit akit is built against (rule 22: akio is pinned by commit hash).
 pub const AKIO_REV: &str = "50a823155a067ce60cfc424490548f0c318d4c09";

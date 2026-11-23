@@ -29,7 +29,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | A8 | TUN devices | in progress, akio branch | — | VPN |
 | A9 | A TLS server capped at TLS 1.2 (public `ServerConfigBuilder` API) | requested (I09) | 17 | I09 |
 | A10 | Closing an HTTP client's idle connections now | requested (I14) | 10, 11 | I14, I22 |
-| A11 | An HTTP/1 client request that keeps its own `Host` field | requested (I14) | — | I15 |
+| A11 | An HTTP/1 client request that keeps its own `Host` field (and sends no `User-Agent` when given an empty one) | done on akio branch `claude/i15-proxy-699f18` (`552fe283`), not merged | — | I15 |
 | A12 | The HTTP client's connect timeout for a lone address too | requested (I14) | 10 | I14 |
 | A13 | `Files` serving a path the caller names | requested (I12) | 19 | I12 |
 | A14 | `Files` answering as a gateway's static handler does | requested (I12) | 19 | I12, I13 |
@@ -160,6 +160,14 @@ URL (the URL still says where to connect), or a `ClientRequest::host(name)` sett
 
 **How akit uses it.** I15's proxy sends the client's `Host`, or the one its params set, through
 the upstream pool.
+
+**Done (I15).** On akio branch `claude/i15-proxy-699f18`, commit `552fe283`, not merged: a `Host`
+field in `ClientRequest::headers` is sent in place of the URL's (the URL still says where to
+connect and which name TLS asks for), kept on a redirect to the same origin and dropped on one
+to another. With it, for fit's proxy, which sends no `User-Agent` its client did not send: an
+empty `User-Agent` field sends none, and akio's default (`akio-http`) is not added, as Go's
+client takes it. akio-http's tests pass on macOS and on Linux (epoll and io_uring). akit's I15
+uses both; its tests of them are ignored until akit's pin moves to an akio commit with A11.
 
 ## A12 The HTTP client's connect timeout for every connect
 

@@ -92,11 +92,11 @@ fn defaults() {
 
 #[test]
 fn not_supported_yet_is_not_wrong() {
-    // fit's JSON template, as written out: an upstream akit cannot proxy to yet.
+    // fit's JSON template, as written out, with a proxy param akit does not read yet.
     let e = errs(
         r#"{"schema_version": 1,
             "listeners": [{"name": "web", "address": ":8080", "protocols": ["http/1.1", "h2", "h3"], "tls": {}}],
-            "routes": [{"name": "hello", "middleware": [], "handler": {"module": "proxy", "params": {"upstream": "app"}}},
+            "routes": [{"name": "hello", "middleware": [], "handler": {"module": "proxy", "params": {"upstream": "app", "timeout": "60s"}}},
                        {"match": {"method": ["GET"]}, "handler": {"module": "respond"}}],
             "upstreams": [{"name": "app", "addresses": ["127.0.0.1:9000"], "load_balancing": "p2c"}]}"#,
     );
@@ -107,7 +107,7 @@ fn not_supported_yet_is_not_wrong() {
         [
             "listeners[0].protocols[2]",
             "listeners[0].tls",
-            "routes[0].handler.module",
+            "routes[0].handler.params.timeout",
             "routes[0].middleware",
             "routes[1].match.method",
             "upstreams[0].load_balancing",
@@ -117,10 +117,7 @@ fn not_supported_yet_is_not_wrong() {
         e.as_slice()[0].msg,
         "not supported yet: the \"h3\" protocol"
     );
-    assert_eq!(
-        e.as_slice()[2].msg,
-        "not supported yet: the \"proxy\" handler"
-    );
+    assert_eq!(e.as_slice()[2].msg, "not supported yet");
 }
 
 #[test]

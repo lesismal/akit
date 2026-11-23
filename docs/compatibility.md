@@ -175,7 +175,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 45 supported.
+3821 fields in 121 sections, at fit `7daee573`; 52 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -195,7 +195,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`http.handlers/httpflv`](#fields-http-handlers-httpflv) | 6 | 0 | 6 |
 | [`http.handlers/media_pages`](#fields-http-handlers-media-pages) | 29 | 0 | 29 |
 | [`http.handlers/media_tokens`](#fields-http-handlers-media-tokens) | 11 | 0 | 11 |
-| [`http.handlers/proxy`](#fields-http-handlers-proxy) | 20 | 0 | 20 |
+| [`http.handlers/proxy`](#fields-http-handlers-proxy) | 20 | 5 | 15 |
 | [`http.handlers/respond`](#fields-http-handlers-respond) | 5 | 5 | 0 |
 | [`http.handlers/static`](#fields-http-handlers-static) | 16 | 8 | 8 |
 | [`http.handlers/stream_whep`](#fields-http-handlers-stream-whep) | 5 | 0 | 5 |
@@ -298,9 +298,9 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`sync.transforms/wasm`](#fields-sync-transforms-wasm) | 9 | 0 | 9 |
 | [`telemetry`](#fields-telemetry) | 14 | 0 | 14 |
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
-| [`upstreams`](#fields-upstreams) | 38 | 9 | 29 |
+| [`upstreams`](#fields-upstreams) | 38 | 11 | 27 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 45 | 3776 |
+| **Total** | 3821 | 52 | 3769 |
 
 <a id="fields-access"></a>
 
@@ -866,10 +866,10 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `routes[].handler<proxy>` | `module` | not supported yet |
-| `routes[].handler<proxy>.params` | `object` | not supported yet |
+| `routes[].handler<proxy>` | `module` | supported |
+| `routes[].handler<proxy>.params` | `object` | supported |
 | `routes[].handler<proxy>.params.failover` | `string` | not supported yet |
-| `routes[].handler<proxy>.params.host_header` | `string` | not supported yet |
+| `routes[].handler<proxy>.params.host_header` | `string` | supported |
 | `routes[].handler<proxy>.params.mirror` | `object` | not supported yet |
 | `routes[].handler<proxy>.params.mirror.percent` | `number` | not supported yet |
 | `routes[].handler<proxy>.params.mirror.upstream` | `string, required` | not supported yet |
@@ -880,9 +880,9 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `routes[].handler<proxy>.params.retry.statuses` | `array<integer>` | not supported yet |
 | `routes[].handler<proxy>.params.splice_uploads` | `boolean` | not supported yet |
 | `routes[].handler<proxy>.params.timeout` | `duration` | not supported yet |
-| `routes[].handler<proxy>.params.trusted_proxies` | `array<string>` | not supported yet |
+| `routes[].handler<proxy>.params.trusted_proxies` | `array<string>` | supported |
 | `routes[].handler<proxy>.params.tunnel_idle_timeout` | `duration` | not supported yet |
-| `routes[].handler<proxy>.params.upstream` | `string` | not supported yet |
+| `routes[].handler<proxy>.params.upstream` | `string` | supported |
 | `routes[].handler<proxy>.params.upstreams` | `array<object>` | not supported yet |
 | `routes[].handler<proxy>.params.upstreams[].upstream` | `string, required` | not supported yet |
 | `routes[].handler<proxy>.params.upstreams[].weight` | `integer, required` | not supported yet |
@@ -4866,7 +4866,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `upstreams[].health_check.timeout` | `duration` | not supported yet |
 | `upstreams[].health_check.type` | `enum(http\|tcp)` | not supported yet |
 | `upstreams[].idle_timeout` | `duration` | supported |
-| `upstreams[].load_balancing` | `enum(round_robin\|weighted_round_robin\|least_conn\|random\|p2c\|ip_hash\|uri_hash\|header_hash\|cookie_hash)` | not supported yet |
+| `upstreams[].load_balancing` | `enum(round_robin\|weighted_round_robin\|least_conn\|random\|p2c\|ip_hash\|uri_hash\|header_hash\|cookie_hash)` | supported |
 | `upstreams[].max_conns` | `integer` | supported |
 | `upstreams[].max_fails` | `integer` | not supported yet |
 | `upstreams[].max_idle_conns` | `integer` | supported |
@@ -4885,7 +4885,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `upstreams[].tls_cert_file` | `string` | not supported yet |
 | `upstreams[].tls_key_file` | `string` | not supported yet |
 | `upstreams[].tls_server_name` | `string` | not supported yet |
-| `upstreams[].weights` | `array<integer>` | not supported yet |
+| `upstreams[].weights` | `array<integer>` | supported |
 
 <a id="fields-webrtc"></a>
 

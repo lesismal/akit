@@ -196,6 +196,7 @@ dependencies = [
  "akit-config",
  "akit-handler",
  "akit-listener",
+ "akit-proxy",
  "akit-runtime",
 ]
 
@@ -266,6 +267,16 @@ version = "0.0.1"
 [[package]]
 name = "akit-proxy"
 version = "0.0.1"
+dependencies = [
+ "akio",
+ "akio-crypto",
+ "akio-http",
+ "akio-x509",
+ "akit-config",
+ "akit-handler",
+ "akit-listener",
+ "akit-runtime",
+]
 
 [[package]]
 name = "akit-router"
