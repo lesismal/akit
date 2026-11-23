@@ -11,14 +11,54 @@ done and where the work differs from the plan.
 | | |
 | --- | --- |
 | Last updated | 2026-11-23 |
-| Milestone | M0, foundations: I01, I02, I03 and I07a done. |
+| Milestone | M0, foundations: I01, I02, I03, I07a and I07b done. |
 | akio | `50a82315` on akio's `main` (`1.0.0-rc.1`), pinned by `rev` in `Cargo.toml` |
 | fit | the specification; read at `7daee573` for this plan |
-| What works | the workspace builds and passes `make check`; `akit version` and `akit help`; `akit_config::from_json` reads fit's listeners, routes and the `respond` handler, and refuses the rest of fit's config by name as not supported yet; the module registry and the data-plane traits (`akit-runtime`) |
-| Next | I04, which joins I02's config model to I03's registry; I07b, the compatibility gate wired to `validate`. |
+| What works | the workspace builds and passes `make check`; `akit version` and `akit help`; `akit_config::from_json` reads fit's listeners, routes and the `respond` handler, and refuses the rest of fit's config by name as not supported yet; the module registry and the data-plane traits (`akit-runtime`); the compatibility gate runs every fit fixture through akit-config in `make check` and CI |
+| Next | I04, which joins I02's config model to I03's registry. |
 | akio requests | A1–A8 all being added to akio now, each on its own akio branch ([akio API requests](akio-api-requests.md)) |
 
 ## Log
+
+### 2026-11-23: I07b, the compatibility gate wired to akit-config
+
+- The gate is always on: the `compat-gate` feature is gone, akit-config is a dev-dependency of
+  `akit-compat`, and `gate_through_akit_config` is an ordinary test that `make check` and CI's
+  `cargo test --workspace` (Linux epoll and io_uring, macOS) run. One configuration, so the gate
+  cannot be left out by a missing flag. `make compat-gate` runs it alone and prints the report.
+- Formats akit has no reader for are an outcome of their own, "format not supported yet": the
+  .conf files and `conf.d` directories until I23, the YAML template until I24. Every outcome is a
+  line of the checked-in `tests/compat/gate-report.txt` (one line a field for a fixture refused
+  as not supported yet), and the gate fails when a run differs from it either way;
+  `make compat-bless` rewrites it from a passing run. JSON fixtures must read with only
+  "not supported yet"; anything else, or "format not supported yet" beside other findings, fails.
+- Outcome now, at fit `7daee573` and fit-examples `9659d7e4`: 80 fixtures; 0 valid; 1 refused
+  only as not supported yet (`templates/json/fit.json`: `upstreams`; the rest of the template is
+  commented out); 78 in a format not supported yet (74 examples and `templates/conf/fit.conf`,
+  .conf; `templates/yaml/fit.yaml`, YAML; three `conf.d` directories); 1 skipped
+  (`examples/https`); 0 failed.
+- The hook names akit-config's problems by their path, written as the inventory writes it: a
+  handler module akit lacks, refused at `routes[0].handler.module`, is `routes[].handler<proxy>`;
+  a refused value of an array of values (`listeners[0].protocols[0]`, `h3`) is the array.
+  `akit_compat::inventory_path` does the matching.
+- `tests/compat/supported.txt` marks the 20 fields I02 reads: `schema_version`; `listeners` and
+  their `name`, `address`, `protocols` (`http/1.1` and `h2c`; fit's other protocols are refused);
+  `routes` and their `name`, `listeners`, `priority`, `match`, `match.host`, `match.path`,
+  `handler`, `handler.module`, `handler.params`; `handler<respond>`, its `params` and their
+  `status`, `headers`, `body`. `docs/compatibility.md` regenerated: 20 of 3,821 supported.
+- New tests hold the marks to the code: `supported_fields_are_read` reads a config with each
+  marked field and checks the value; `akit_config_lists_match_the_inventory` reads akit-config's
+  lists in `model.rs` from the source and checks every entry is an inventory field, that they
+  cover each object's fields in fit, that the refused handlers and protocols are fit's, and that
+  what akit-config reads is exactly `supported.txt`. All of them pass: no typo in I02's lists.
+- No change to akit-config: its lists are read from the source text, so no accessor was needed.
+- Differs from the plan: what validation opens for the examples (files and WebAssembly plugins
+  they name, the stand-in secrets) moves to I23, the first iteration that reads them; the gate
+  does not need the secrets until akit expands variables.
+- Found, not fixed (akit-config is I02's and I04's): akit-config's default listener protocols are
+  `http/1.1` and `h2c` (`DEFAULT_PROTOCOLS`), while fit's are `http/1.1` alone without TLS
+  (fit `config/config.go`, the `protocols` field's doc). Neither the gate nor the inventory can see
+  a default; it needs a fix and a test in akit-config.
 
 ### 2026-11-23: I07a, compatibility gate I: fixtures, inventory, harness
 

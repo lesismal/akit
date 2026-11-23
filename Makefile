@@ -1,4 +1,4 @@
-.PHONY: all build check test test-changed lint fmt fmt-check clippy deny docs-check compat-check compat-gate
+.PHONY: all build check test test-changed lint fmt fmt-check clippy deny docs-check compat-check compat-gate compat-bless
 
 CARGO ?= cargo
 BASE ?= origin/main
@@ -40,11 +40,18 @@ docs-check:
 compat-check:
 	python3 -I tools/compat-inventory.py --check
 
-# The gate through akit_config::from_json_file (I07b), with the examples' secrets set to stand-ins as
-# fit-examples' own test sets them.
+# The gate (I07b) runs in `make test` and CI with every other test; this runs it alone and prints
+# its report. The examples' secrets are set to stand-ins as fit-examples' own test sets them, for
+# when akit reads the examples (I23).
 COMPAT_SECRETS = ES_PASSWORD KAFKA_PASSWORD MYSQL_PASSWORD PG_PASSWORD RABBITMQ_PASSWORD \
 	NATS_PASSWORD PULSAR_TOKEN MQTT_PASSWORD INFLUX_TOKEN TD_PASSWORD MSSQL_PASSWORD \
 	DORIS_PASSWORD OPENAI_API_KEY QDRANT_API_KEY MILVUS_TOKEN
 compat-gate:
 	env $(foreach v,$(COMPAT_SECRETS),$(v)=example-password) \
-		$(CARGO) test -p akit-compat --features compat-gate -- --nocapture
+		$(CARGO) test -p akit-compat --test gate gate_through_akit_config -- --nocapture
+
+# Rewrites tests/compat/gate-report.txt from a passing run of the gate: for the commit that
+# changes an outcome (a field supported, a reader added). Refuses while any fixture fails.
+compat-bless:
+	env AKIT_COMPAT_BLESS=1 $(foreach v,$(COMPAT_SECRETS),$(v)=example-password) \
+		$(CARGO) test -p akit-compat --test gate gate_through_akit_config -- --nocapture

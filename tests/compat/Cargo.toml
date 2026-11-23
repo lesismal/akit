@@ -8,13 +8,11 @@ repository.workspace = true
 rust-version.workspace = true
 publish = false
 
-[features]
-# Runs the gate through akit_config::from_json_file. Off until I07b wires it: akit-config's API is
-# being written in I02, and this crate must build on main without it.
-compat-gate = ["dep:akit-config"]
-
-[dependencies]
-akit-config = { workspace = true, optional = true }
+# The harness (src) depends on nothing; the gate (tests/gate.rs) runs it through akit-config.
+# No feature gates it (I07b): `cargo test --workspace`, and so `make check` and CI on every OS,
+# runs the gate.
+[dev-dependencies]
+akit-config = { workspace = true }
 
 [lints]
 workspace = true

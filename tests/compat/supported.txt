@@ -2,4 +2,28 @@
 # An iteration that makes akit read a field (and act on it: a field read and then ignored fails
 # the gate) adds its path here in the same commit, then reruns python3 tools/compat-inventory.py,
 # which checks every path is one fit accepts and regenerates docs/compatibility.md.
-# Empty until I02: akit reads no field yet.
+# The gate's tests check that akit-config reads each field listed here (supported_fields_are_read)
+# and that these are exactly the fields its model reads (akit_config_lists_match_the_inventory).
+#
+# I02: the top level, listeners, routes and the respond handler. listeners[].protocols takes
+# "http/1.1" and "h2c"; fit's other protocols are refused as not supported yet.
+schema_version
+listeners
+listeners[].name
+listeners[].address
+listeners[].protocols
+routes
+routes[].name
+routes[].listeners
+routes[].priority
+routes[].match
+routes[].match.host
+routes[].match.path
+routes[].handler
+routes[].handler.module
+routes[].handler.params
+routes[].handler<respond>
+routes[].handler<respond>.params
+routes[].handler<respond>.params.status
+routes[].handler<respond>.params.headers
+routes[].handler<respond>.params.body

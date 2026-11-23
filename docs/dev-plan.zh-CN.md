@@ -95,7 +95,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I05 | `akit run`：监听器与 `respond` | I04 | todo |
 | I06 | CLI、信号与优雅关闭 | I05 | todo |
 | I07a | 兼容性门禁 I：固定夹具、字段清单、测试框架 | I01 | done |
-| I07b | 兼容性门禁接入 validate | I02, I07a | todo |
+| I07b | 兼容性门禁接入 validate | I02, I07a | done |
 | I08 | 基准框架与基线 | I05 | todo |
 | **M1** | | | |
 | I09 | 从文件加载证书的 TLS 入口 | I05 | todo |
@@ -258,6 +258,11 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
   `tests/compat/supported.txt`。
 - **涉及**：`tests/compat`、`akit-config`（如需调整错误路径）、CI。
 - **fit**：`cli`（`validate`）、fit-examples 的 `examples_test.go`。
+- **实际做法**：不用 feature：门禁是普通测试，`make check` 和 CI 的 `cargo test --workspace` 都会运行。
+  akit 还没有读取器的格式的夹具（.conf 和 `conf.d` 直到 I23，YAML 直到 I24）结果为 "format not supported
+  yet"；每个结果都是入库的 `tests/compat/gate-report.txt` 中的一行，每次运行都必须与之一致（用
+  `make compat-bless` 重写）。校验会为示例打开哪些文件，移到第一个读取示例的迭代 I23 决定。见
+  [进展](progress.zh-CN.md)。
 
 ### I08 基准框架与基线
 
@@ -374,9 +379,11 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 
 ### I23 .conf 读取器
 
-- **做什么**：把 fit 的 .conf 格式读入同一模型，错误带行号和列号；按 fit 的合并方式处理拆分的文件和目录。
+- **做什么**：把 fit 的 .conf 格式读入同一模型，错误带行号和列号；按 fit 的合并方式处理拆分的文件和目录；兼容性
+  门禁的钩子用它读取 .conf 文件和 `conf.d` 目录，并确定校验会为示例打开哪些文件（示例引用的文件和 WebAssembly
+  插件，相对于 fit-examples 根目录，以及替身密钥），这一项从 I07b 移到这里。
 - **完成标准**：fit 模板和 fit-examples 中的每个 .conf 读入的模型与对应的 JSON 版相同。
-- **涉及**：`akit-config`。
+- **涉及**：`akit-config`、`tests/compat`。
 - **fit**：`docs/reference/fit.md`、`config`（.conf 解析器），决定 021。
 
 ### I24 YAML 读取器
