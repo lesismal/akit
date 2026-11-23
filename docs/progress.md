@@ -11,16 +11,16 @@ done and where the work differs from the plan.
 | | |
 | --- | --- |
 | Last updated | 2026-11-23 |
-| Milestone | M0, foundations: I01–I06, I07a and I07b done. |
+| Milestone | M0, foundations, done (I01–I08); M1, the proxy core, next. |
 | akio | `50a82315` on akio's `main` (`1.0.0-rc.1`), pinned by `rev` in `Cargo.toml` |
 | fit | the specification; read at `7daee573` for this plan |
 | What works | `akit run` and `akit validate` with fit's flags and exit codes (`-c` repeated, files and directories, merged), and a graceful shutdown on SIGINT and SIGTERM; `akit run` serves HTTP/1.1 and h2c listeners with `respond` routes, by fit's host and path rules, 404 when nothing matches; `akit version` and `akit help`; the workspace builds and passes `make check`; `akit_config::from_json` reads fit's listeners, routes and the `respond` handler, and refuses the rest of fit's config by name as not supported yet; the module registry and the data-plane traits (`akit-runtime`); `compile` turns a config into a `Graph` and `GraphCell` publishes, reads and retires graphs; the compatibility gate runs every fit fixture through akit-config in `make check` and CI |
-| Next | I08's baselines, from the benchmark host, which end M0; then I09 (TLS). |
+| Next | M1: I09 (TLS), I11 (router v1), I14 (upstream pools), I23 (.conf) and I24 (YAML) are on branches of their own, to merge; then I10, I12, I15 onwards. |
 | akio requests | A1–A8 all being added to akio now, each on its own akio branch ([akio API requests](akio-api-requests.md)) |
 
 ## Log
 
-### 2026-11-24: I08, benchmark harness (baselines pending)
+### 2026-11-24: I08, benchmark harness and baselines
 
 - akit is measured with fit's harness, not a copy of it (`bench/`, [bench/README.md](../bench/README.md)):
   `bench/fitbench/akit.go`, copied into fit's `bench/cmd/fitbench`, adds akit to fitbench's
@@ -38,11 +38,19 @@ done and where the work differs from the plan.
   them to the overlay and the config. Where akit's config differs from fit's (port 8081 also
   takes HTTP/1.1, no backlog or connection limit settings yet, akio's I/O threads per listener)
   is in the bench README.
-- Not done yet: the baselines. The first five-server run, of akit at `main` (`1e45124`), is staged
-  on the benchmark host and waits for its lock, held by other sessions' benchmarks; I08 stays
-  `doing` until its results are checked in under `bench/results/`.
-- Checked: `make check` on macOS (the bench README in both languages); the scripts upload fit's
-  tree and build fit's harness on the host. Neither script has finished a run yet.
+- The baseline, `bench/results/run-20261124-012812` (results, fit's benchreport tables, params and
+  the akit commit): akit at `7c835ad`, fit `7daee573`, nginx 1.31.4, Caddy 2.10.2 and Traefik
+  3.5.0 on the benchmark host (AMD Ryzen 7 7800X3D, 8 cores, 16 threads, Linux 7.0), fitbench's
+  defaults (30s runs after 5s, 256 wrk connections, h2load 64 × 32), the fixed, static and proxy
+  scenarios over HTTP/1.1 and h2c, and idle HTTP/1.1 connections; no errors.
+- Where akit stands (rule 28), in what it serves so far: first in fixed over HTTP/1.1, 825,563
+  requests a second at p99 0.32 ms and 2 MiB, nginx 99% of it, fit 92%, Caddy 41%; first in
+  fixed over h2c, 6,029,715 a second at 3 MiB, fit 74%, nginx 10%, Caddy 3%; second in memory per
+  idle HTTP/1.1 connection, 1,068 bytes, after nginx's 548 (fit 1,522). Static and proxy are not
+  run for akit (I12, I15); Traefik serves only the proxy.
+- Checked: `make check` on macOS; `bench/run.sh` end to end on the benchmark host (the first try
+  failed when the host's disk was full, before measuring). `bench/ab.sh` has not finished a
+  comparison: under rule 30 (added meanwhile), feature tasks run none.
 
 ### 2026-11-23: I06, CLI, signals and graceful shutdown
 

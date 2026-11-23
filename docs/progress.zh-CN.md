@@ -10,16 +10,16 @@
 | | |
 | --- | --- |
 | 最后更新 | 2026-11-23 |
-| 里程碑 | M0 基础：I01–I06、I07a、I07b 已完成。 |
+| 里程碑 | M0 基础已完成（I01–I08）；接下来是 M1，代理核心。 |
 | akio | akio `main` 上的 `50a82315`（`1.0.0-rc.1`），在 `Cargo.toml` 中按 `rev` 锁定 |
 | fit | 作为规格；本计划基于 `7daee573` 阅读 |
 | 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码（`-c` 可重复，文件和目录合并），SIGINT 和 SIGTERM 时优雅关闭；`akit run` 按 fit 的 host 与 path 规则提供 HTTP/1.1 和 h2c 监听器上的 `respond` 路由，没有匹配时返回 404；`akit version` 和 `akit help`；工作区能构建并通过 `make check`；`akit_config::from_json` 能读取 fit 的监听器、路由和 `respond` handler，fit 配置的其余部分按名字报为暂不支持；模块注册表和数据面 trait（`akit-runtime`）；`compile` 把配置编译成 `Graph`，`GraphCell` 负责发布、读取和退役图；兼容性门禁在 `make check` 和 CI 中把 fit 的每个夹具交给 akit-config |
-| 下一步 | I08 的基线（来自基准测试主机），M0 的最后一项；然后是 I09（TLS）。 |
+| 下一步 | M1：I09（TLS）、I11（路由器 v1）、I14（上游连接池）、I23（.conf）和 I24（YAML）已在各自的分支上，待合并；然后是 I10、I12、I15 及之后。 |
 | akio 需求 | A1–A8 现在全部加进 akio，各在 akio 的独立分支上进行（[akio API 需求](akio-api-requests.zh-CN.md)） |
 
 ## 日志
 
-### 2026-11-24：I08，基准测试框架（基线待完成）
+### 2026-11-24：I08，基准测试框架与基线
 
 - akit 用 fit 的框架测量，而不是它的副本（`bench/`，[bench/README.zh-CN.md](../bench/README.zh-CN.md)）：
   `bench/fitbench/akit.go` 复制到 fit 的 `bench/cmd/fitbench` 后把 akit 加入 fitbench 的服务器列表（fit 的服务器
@@ -33,10 +33,16 @@
 - akit 的运行是 HTTP/1.1 和 h2c 上的 fixed 场景，以及空闲 HTTP/1.1 连接；它的其他场景在实现它们的迭代之前记为跳过，
   每个迭代把它们加入 overlay 和配置。akit 的配置与 fit 的不同之处（8081 也接受 HTTP/1.1、还没有 backlog 和连接数
   限制设置、akio 按监听器的 I/O 线程）见 bench README。
-- 尚未完成：基线。第一次五个服务器的运行（akit 在 `main`，`1e45124`）已部署到基准测试主机，正在等待被其他会话的
-  基准测试占用的锁；在结果入库到 `bench/results/` 之前，I08 保持 `doing`。
-- 已验证：macOS 上的 `make check`（两种语言的 bench README）；脚本能上传 fit 的源码树并在主机上构建 fit 的框架。两个
-  脚本都还没有完成过一次运行。
+- 基线 `bench/results/run-20261124-012812`（结果、fit 的 benchreport 表格、参数和 akit 提交）：akit `7c835ad`、fit
+  `7daee573`、nginx 1.31.4、Caddy 2.10.2 和 Traefik 3.5.0，在基准测试主机上（AMD Ryzen 7 7800X3D，8 核 16 线程，
+  Linux 7.0），fitbench 的默认设置（预热 5s 后测 30s、wrk 256 个连接、h2load 64 × 32），HTTP/1.1 和 h2c 上的 fixed、
+  static 和 proxy 场景，以及空闲 HTTP/1.1 连接；没有错误。
+- akit 所处的位置（规则 28），就它目前能提供的而言：HTTP/1.1 上的 fixed 第一，每秒 825,563 个请求，p99 0.32 ms，
+  2 MiB，nginx 是它的 99%，fit 92%，Caddy 41%；h2c 上的 fixed 第一，每秒 6,029,715 个，3 MiB，fit 74%，nginx 10%，
+  Caddy 3%；每个空闲 HTTP/1.1 连接的内存第二，1,068 字节，次于 nginx 的 548（fit 1,522）。akit 没有运行 static 和
+  proxy（I12、I15）；Traefik 只提供代理。
+- 已验证：macOS 上的 `make check`；`bench/run.sh` 在基准测试主机上端到端运行（第一次尝试因主机磁盘写满在测量前失败）。
+  `bench/ab.sh` 还没有完成过一次对比：按其间新增的规则 30，功能任务不运行它。
 
 ### 2026-11-23：I06，命令行、信号与优雅关闭
 

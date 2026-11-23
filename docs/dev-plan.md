@@ -103,7 +103,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I06 | CLI, signals and graceful shutdown | I05 | done |
 | I07a | Compatibility gate I: pinned fixtures, field inventory, harness | I01 | done |
 | I07b | Compatibility gate wired to validate | I02, I07a | done |
-| I08 | Benchmark harness and baselines | I05 | doing |
+| I08 | Benchmark harness and baselines | I05 | done |
 | **M1** | | | |
 | I09 | TLS entry points from files | I05 | todo |
 | I10 | HTTP/3 entry point | I09 | todo |
