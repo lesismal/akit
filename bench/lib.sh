@@ -58,7 +58,10 @@ stage_akit() {
 			$BENCH_SSH "tar xf - -C $src"
 	else
 		desc="$ref ($(git -C "$root" rev-parse --short "$ref"))"
-		git -C "$root" archive --format=tar "$ref" | $BENCH_SSH "tar xf - -C $src"
+		# Extracted with the current time (m): git archive stamps files with the commit's time, and
+		# every build shares one target directory, so files older than the last build's outputs
+		# would let cargo reuse what another ref compiled.
+		git -C "$root" archive --format=tar "$ref" | $BENCH_SSH "tar xmf - -C $src"
 	fi
 	echo "bench: building akit $desc on the host" >&2
 	# One target directory for every build, so a build reuses what the last compiled.
