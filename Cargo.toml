@@ -36,6 +36,8 @@ rust-version = "1.85"
 akio = { git = "https://github.com/lesismal/akio", rev = "50a823155a067ce60cfc424490548f0c318d4c09" }
 # The same akio commit: every akio crate moves with `akio` (rule 22).
 akio-http = { git = "https://github.com/lesismal/akio", rev = "50a823155a067ce60cfc424490548f0c318d4c09" }
+# Signals (`process::signal_pipe`): its `unsafe` stays in akio (rule 14).
+akio-sys = { git = "https://github.com/lesismal/akio", rev = "50a823155a067ce60cfc424490548f0c318d4c09" }
 
 akit-config = { path = "crates/akit-config" }
 akit-runtime = { path = "crates/akit-runtime" }

@@ -276,8 +276,22 @@ fn report_file(report: &Report) -> String {
 /// the iteration that brings the reader.
 fn validate_with_akit_config(path: &Path) -> Result<(), Vec<Finding>> {
     if path.is_dir() {
-        // fit merges a conf.d directory's files into one config; I23 brings the merge.
-        return Err(vec![Finding::NoReader("conf.d directories (I23)".into())]);
+        // A directory's files, merged as fit merges them (I06), when akit reads their format.
+        let files = akit_config::config_files(&[path])
+            .map_err(|errs| errs.as_slice().iter().map(finding).collect::<Vec<_>>())?;
+        let ext = |f: &Path| f.extension().and_then(|e| e.to_str()).map(str::to_owned);
+        if files.iter().any(|f| ext(f).as_deref() == Some("conf")) {
+            return Err(vec![Finding::NoReader(".conf (I23)".into())]);
+        }
+        if files
+            .iter()
+            .any(|f| matches!(ext(f).as_deref(), Some("yaml" | "yml")))
+        {
+            return Err(vec![Finding::NoReader("YAML (I24)".into())]);
+        }
+        return akit_config::from_files(&[path])
+            .map(|_| ())
+            .map_err(|errs| errs.as_slice().iter().map(finding).collect());
     }
     match path.extension().and_then(|e| e.to_str()) {
         Some("json") => akit_config::from_json_file(path)

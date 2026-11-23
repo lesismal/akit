@@ -100,7 +100,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I03 | Core traits and the module registry | I01 | done |
 | I04 | The runtime graph and its swap | I02, I03 | done |
 | I05 | `akit run`: listeners and `respond` | I04 | done |
-| I06 | CLI, signals and graceful shutdown | I05 | todo |
+| I06 | CLI, signals and graceful shutdown | I05 | done |
 | I07a | Compatibility gate I: pinned fixtures, field inventory, harness | I01 | done |
 | I07b | Compatibility gate wired to validate | I02, I07a | done |
 | I08 | Benchmark harness and baselines | I05 | todo |

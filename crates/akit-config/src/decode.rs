@@ -24,6 +24,11 @@ impl<'s> Decoder<'s> {
         }
     }
 
+    /// The file named in its problems.
+    pub(crate) fn file(&self) -> Option<&str> {
+        self.file.as_deref()
+    }
+
     /// Records a problem at byte `off`, for the value at `path`.
     pub(crate) fn error(&mut self, off: usize, path: &str, msg: impl Into<String>) {
         let (line, col) = position(self.src, off);

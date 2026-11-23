@@ -1,13 +1,23 @@
 #![forbid(unsafe_code)]
-//! The `akit` command: `run` (I05), `version` and `help`. `validate`, several `-c`, directories,
-//! signals and a graceful shutdown come with I06, with fit's flags.
+//! The `akit` command, with fit's commands, flags and exit codes: 0 when it worked, 1 when it did
+//! not (a config with errors, a shutdown that ran out of time), 2 when it was used wrongly.
+//!
+//! - `run`: reads the config (`-c`, repeated, files and directories, merged), compiles it,
+//!   serves it, and on SIGINT or SIGTERM shuts down gracefully, waiting up to
+//!   `-shutdown-timeout` for requests in flight; a second signal exits at once.
+//! - `validate`: reads and compiles the config, as `run` would, and says whether it is valid.
+//! - `version`, `help`.
 
-use std::path::Path;
+mod flags;
+
+use std::io::Read;
 use std::process::ExitCode;
+use std::sync::mpsc;
+use std::time::Duration;
 
-use akio::Backend;
-use akit_config::Errors;
-use akit_runtime::{Env, GraphCell, HandlerParams, Registry, compile};
+use akit_config::{Config, Errors};
+use akit_runtime::{Env, Graph, GraphCell, HandlerParams, Registry, compile};
+use flags::{Spec, Usage};
 
 const USAGE: &str = "\
 akit: a reverse proxy, load balancer and API gateway on akio
@@ -16,101 +26,219 @@ Usage:
   akit <command> [flags]
 
 Commands:
-  run        run a config: akit run [-c fit.json]
+  run        run a config
+  validate   check a config, without running it
   version    print akit's version and the akio commit it is built on
   help       print this help
 
-Flags:
-  -h, --help       print this help
-  -V, --version    print the version
+Run akit <command> -h for a command's flags.
 ";
+
+const CONFIG_USAGE: &str = "a config file, or a directory of them, to use; give -c again for more, which are merged (fit.json when none is given). A file is JSON (comments and trailing commas allowed); fit's .conf format and YAML come later; a directory's files are those, in its subdirectories too";
+
+const RUN_FLAGS: &[Spec] = &[
+    Spec {
+        name: "c",
+        bool: false,
+        usage: CONFIG_USAGE,
+    },
+    Spec {
+        name: "shutdown-timeout",
+        bool: false,
+        usage: "how long shutdown waits for requests in flight before closing their connections (default 30s)",
+    },
+    // fit's, not supported yet: refused when given.
+    Spec {
+        name: "watch",
+        bool: true,
+        usage: "not supported yet (I22, I29)",
+    },
+    Spec {
+        name: "watch-interval",
+        bool: false,
+        usage: "not supported yet (I22, I29)",
+    },
+    Spec {
+        name: "watch-certs",
+        bool: true,
+        usage: "not supported yet (I30)",
+    },
+    Spec {
+        name: "admin",
+        bool: true,
+        usage: "not supported yet (the Admin API, I26)",
+    },
+    Spec {
+        name: "timeout",
+        bool: false,
+        usage: "not supported yet (the Admin API, I26)",
+    },
+];
+
+const VALIDATE_FLAGS: &[Spec] = &[Spec {
+    name: "c",
+    bool: false,
+    usage: CONFIG_USAGE,
+}];
 
 fn version() -> String {
     format!(
-        "akit {} (akio {})",
+        "akit {}\nakio {}\n{}/{}",
         env!("CARGO_PKG_VERSION"),
         akit_runtime::AKIO_REV
             .get(..12)
-            .unwrap_or(akit_runtime::AKIO_REV)
+            .unwrap_or(akit_runtime::AKIO_REV),
+        std::env::consts::OS,
+        std::env::consts::ARCH,
     )
 }
 
-/// Prints a config's errors as fit does: each with its file.
-fn print_errors(file: &str, errs: &Errors) {
+/// Prints a config's errors as fit does: each with its file, or with `name`, the files' names,
+/// when it has none.
+fn print_errors(name: &str, errs: &Errors) {
     for e in errs.as_slice() {
         if e.file.is_some() {
             eprintln!("{e}");
         } else {
-            eprintln!("{file}: {e}");
+            eprintln!("{name}: {e}");
         }
     }
 }
 
-/// The config files `run`'s flags name: `-c PATH` or `-c=PATH`; `fit.json` when none is given,
-/// as fit's. Err is the exit code, the message printed.
-fn config_paths(args: impl Iterator<Item = String>) -> Result<Vec<String>, ExitCode> {
-    let mut paths = Vec::new();
-    let mut args = args.peekable();
-    while let Some(a) = args.next() {
-        let flag = a.strip_prefix("--").or_else(|| a.strip_prefix('-'));
-        match flag {
-            Some("c") => match args.next() {
-                Some(p) => paths.push(p),
-                None => {
-                    eprintln!("akit run: flag needs an argument: -c");
-                    return Err(ExitCode::from(2));
-                }
-            },
-            Some(f) if f.starts_with("c=") => paths.push(f.get(2..).unwrap_or("").to_owned()),
-            Some(f) => {
-                eprintln!("akit run: flag provided but not defined: -{f}");
-                return Err(ExitCode::from(2));
-            }
-            None => {
-                eprintln!("akit run: unexpected argument {a:?}");
-                return Err(ExitCode::from(2));
-            }
-        }
-    }
+/// The config files the flags name, `fit.json` when none.
+fn config_paths(flags: &[(&str, String)]) -> Vec<String> {
+    let paths: Vec<String> = flags
+        .iter()
+        .filter(|(n, _)| *n == "c")
+        .map(|(_, v)| v.clone())
+        .collect();
     if paths.is_empty() {
-        paths.push("fit.json".to_owned());
+        vec!["fit.json".to_owned()]
+    } else {
+        paths
     }
-    Ok(paths)
 }
 
-/// `akit run`: reads the config, compiles it, and serves it until the process is stopped.
-fn run(args: impl Iterator<Item = String>) -> ExitCode {
-    let paths = match config_paths(args) {
-        Ok(p) => p,
-        Err(code) => return code,
-    };
-    let [path] = paths.as_slice() else {
-        eprintln!("akit run: not supported yet: more than one -c (I06)");
-        return ExitCode::from(2);
-    };
-    let config = match akit_config::from_json_file(Path::new(path)) {
+/// Reads and compiles the config at `paths`; the errors are printed, as fit prints them.
+fn load(paths: &[String]) -> Option<(Config, Graph)> {
+    let name = paths.join(", ");
+    let config = match akit_config::from_files(paths) {
         Ok(c) => c,
         Err(errs) => {
-            print_errors(path, &errs);
-            return ExitCode::FAILURE;
+            print_errors(&name, &errs);
+            return None;
         }
     };
     let registry: Registry<HandlerParams> = match Registry::new(&[akit_handler::MODULES]) {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("akit run: {e}");
-            return ExitCode::FAILURE;
+            eprintln!("akit: {e}");
+            return None;
         }
     };
-    let graph = match compile(&config, &registry, &Env::default()) {
-        Ok(g) => g,
+    match compile(&config, &registry, &Env::default()) {
+        Ok(g) => Some((config, g)),
         Err(errs) => {
-            print_errors(path, &errs);
+            print_errors(&name, &errs);
+            None
+        }
+    }
+}
+
+fn usage_error(u: &Usage) -> ExitCode {
+    eprintln!("{}", u.0);
+    ExitCode::from(2)
+}
+
+/// `akit validate`: the config is read and compiled (every module provisioned, which checks its
+/// params) and released.
+fn validate(args: &[String]) -> ExitCode {
+    let flags = match flags::parse("validate", args, VALIDATE_FLAGS) {
+        Ok(f) => f,
+        Err(u) => return usage_error(&u),
+    };
+    let paths = config_paths(&flags);
+    match load(&paths) {
+        Some(_) => {
+            println!("{}: valid", paths.join(", "));
+            ExitCode::SUCCESS
+        }
+        None => ExitCode::FAILURE,
+    }
+}
+
+/// What the signal thread passes on.
+enum Signal {
+    Stop,
+    Hangup,
+}
+
+/// Delivers SIGINT, SIGTERM and SIGHUP on a channel, read from akio's signal pipe by a thread
+/// of its own (the handlers only write a byte).
+fn signals() -> std::io::Result<mpsc::Receiver<Signal>> {
+    use akio_sys::process::{SIGHUP, SIGINT, SIGTERM, signal_pipe};
+    let mut pipe = signal_pipe(&[SIGINT, SIGTERM, SIGHUP])?;
+    let (tx, rx) = mpsc::channel();
+    std::thread::Builder::new()
+        .name("akit-signals".into())
+        .spawn(move || {
+            let mut b = [0u8; 1];
+            while pipe.read_exact(&mut b).is_ok() {
+                let sig = i32::from(b[0]);
+                let s = if sig == SIGHUP {
+                    Signal::Hangup
+                } else {
+                    Signal::Stop
+                };
+                if tx.send(s).is_err() {
+                    break;
+                }
+            }
+        })?;
+    Ok(rx)
+}
+
+/// `akit run`.
+fn run(args: &[String]) -> ExitCode {
+    let flags = match flags::parse("run", args, RUN_FLAGS) {
+        Ok(f) => f,
+        Err(u) => return usage_error(&u),
+    };
+    let mut grace = Duration::from_secs(30);
+    for (name, value) in &flags {
+        match *name {
+            "c" => {}
+            "shutdown-timeout" => match flags::parse_duration(value) {
+                Some(d) => grace = d,
+                None => {
+                    return usage_error(&Usage(format!(
+                        "invalid value {value:?} for flag -shutdown-timeout: parse error\n{}",
+                        flags::usage("run", RUN_FLAGS)
+                    )));
+                }
+            },
+            other => {
+                eprintln!("akit run: not supported yet: -{other}");
+                return ExitCode::from(2);
+            }
+        }
+    }
+    let paths = config_paths(&flags);
+    let Some((config, graph)) = load(&paths) else {
+        return ExitCode::FAILURE;
+    };
+    // Before the listeners: a signal from then on shuts down gracefully.
+    let signals = match signals() {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("akit run: signals: {e}");
             return ExitCode::FAILURE;
         }
     };
     let cell = GraphCell::new(graph);
-    let engine = match akit_listener::engine(&cell, &Backend::default()) {
+    let mut opts = akit_listener::Options::default();
+    opts.shutdown_timeout = grace;
+    let engine = match akit_listener::engine(&cell, &opts) {
         Ok(e) => e,
         Err(e) => {
             eprintln!("akit run: {e}");
@@ -129,24 +257,59 @@ fn run(args: impl Iterator<Item = String>) -> ExitCode {
             protocols.join(", ")
         );
     }
-    engine.wait();
+    loop {
+        match signals.recv() {
+            Ok(Signal::Stop) | Err(_) => break,
+            Ok(Signal::Hangup) => {
+                eprintln!("akit: SIGHUP: reloading the config is not supported yet (I22)");
+            }
+        }
+    }
+    // A second SIGINT or SIGTERM does not wait for the shutdown, as fit's.
+    std::thread::spawn(move || {
+        while let Ok(s) = signals.recv() {
+            if let Signal::Stop = s {
+                eprintln!("akit run: stopped by a second signal");
+                std::process::exit(1);
+            }
+        }
+    });
+    println!("akit: shutting down");
+    if !akit_listener::shutdown(&engine, grace) {
+        eprintln!(
+            "akit run: shutdown took longer than {}; connections still open were closed",
+            flags::format_duration(grace)
+        );
+        return ExitCode::FAILURE;
+    }
+    drop(engine);
+    drop(cell);
+    println!("akit: stopped");
     ExitCode::SUCCESS
 }
 
 fn main() -> ExitCode {
-    let mut args = std::env::args().skip(1);
-    match args.next().as_deref() {
-        Some("run") => run(args),
-        Some("version" | "-V" | "--version") => {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let Some((cmd, rest)) = args.split_first() else {
+        eprint!("{USAGE}");
+        return ExitCode::from(2);
+    };
+    match cmd.as_str() {
+        "run" => run(rest),
+        "validate" => validate(rest),
+        "version" | "-V" | "--version" => {
+            if let Err(u) = flags::parse("version", rest, &[]) {
+                return usage_error(&u);
+            }
             println!("{}", version());
             ExitCode::SUCCESS
         }
-        Some("help" | "-h" | "--help") | None => {
+        "help" | "-h" | "-help" | "--help" => {
             print!("{USAGE}");
             ExitCode::SUCCESS
         }
-        Some(other) => {
-            eprintln!("akit: unknown command {other:?}\n\n{USAGE}");
+        other => {
+            eprint!("akit: unknown command {other:?}\n\n{USAGE}");
             ExitCode::from(2)
         }
     }
@@ -155,9 +318,14 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn version_names_akit_and_akio() {
+    fn version_names_akit_akio_and_the_platform() {
         let v = super::version();
-        assert!(v.starts_with("akit "));
-        assert!(v.contains("(akio 50a823155a06)"));
+        let lines: Vec<&str> = v.lines().collect();
+        assert!(lines[0].starts_with("akit "));
+        assert_eq!(lines[1], "akio 50a823155a06");
+        assert_eq!(
+            lines[2],
+            format!("{}/{}", std::env::consts::OS, std::env::consts::ARCH)
+        );
     }
 }

@@ -174,58 +174,127 @@ const FIT_HANDLERS: &[&str] = &[
 ];
 const RESPOND_FIELDS: &[&str] = &["status", "headers", "body"];
 
-pub(crate) fn config(d: &mut Decoder<'_>, n: &Node) -> Option<Config> {
+/// One file's part of a config, before the parts are merged.
+pub(crate) struct Part {
+    /// `schema_version`, with its position, when the file gives it.
+    schema_version: Option<(i64, usize)>,
+    listeners: Vec<At<Listener>>,
+    routes: Vec<At<Route>>,
+    /// The position of the file's top object.
+    doc_off: usize,
+}
+
+/// Decodes one file's config; `file` is its index among the files merged.
+pub(crate) fn part(d: &mut Decoder<'_>, n: &Node, file: usize) -> Option<Part> {
     let mut o = d.object(n, "")?;
-    let schema_version = match o.take("schema_version") {
-        Some(v) => d.int(v, "schema_version", SCHEMA_VERSION, SCHEMA_VERSION)?,
-        None => SCHEMA_VERSION,
-    };
-    // Each element keeps its path and position for the checks across elements below.
+    let schema_version = o.take("schema_version").and_then(|v| {
+        d.int(v, "schema_version", SCHEMA_VERSION, SCHEMA_VERSION)
+            .map(|s| (s, v.off))
+    });
+    // Each element keeps its file, path and position for the checks across elements.
     let listeners = o
         .take("listeners")
         .map(|v| {
             d.array(v, "listeners", |d, n, p| {
-                Some(At::new(p, n, listener(d, n, p)?))
+                Some(At::new(file, p, n, listener(d, n, p)?))
             })
         })
         .unwrap_or_default();
     let routes = o
         .take("routes")
-        .map(|v| d.array(v, "routes", |d, n, p| Some(At::new(p, n, route(d, n, p)?))))
+        .map(|v| {
+            d.array(v, "routes", |d, n, p| {
+                Some(At::new(file, p, n, route(d, n, p)?))
+            })
+        })
         .unwrap_or_default();
     let doc_off = o.off;
     o.finish(d, CONFIG_FIELDS, CONFIG_FIT_ONLY);
-
-    check_listeners(d, &listeners);
-    if listeners.is_empty() && !routes.is_empty() {
-        // fit serves such a config over HTTPS by default, with certificates from ACME.
-        d.not_yet(
-            doc_off,
-            "listeners",
-            "a config with no listeners, served over HTTPS by default (auto_https)",
-        );
-    }
-    check_routes(d, &routes, &listeners);
-    Some(Config {
+    Some(Part {
         schema_version,
-        listeners: listeners.into_iter().map(|a| a.v).collect(),
-        routes: routes.into_iter().map(|a| a.v).collect(),
+        listeners,
+        routes,
+        doc_off,
     })
 }
 
-/// A decoded element with its path and the position of its node.
+/// Merges the files' parts, `ds` their decoders in the same order, as fit merges a config's
+/// files: the lists at the top (`listeners`, `routes`) are joined in the files' order, and
+/// `schema_version` may be given by each file if they agree. The checks across elements (names
+/// unique, routes naming listeners that exist) run on the merged lists; each problem is reported
+/// in the file and at the position of the element it is about, with the element's path in that
+/// file.
+pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
+    let mut schema: Option<(i64, usize)> = None;
+    let mut listeners = Vec::new();
+    let mut routes = Vec::new();
+    let mut first_doc: Option<(usize, usize)> = None;
+    for (file, p) in parts.into_iter().enumerate() {
+        first_doc.get_or_insert((file, p.doc_off));
+        if let Some((v, off)) = p.schema_version {
+            match schema {
+                Some((first, first_file)) if first != v => {
+                    let name = ds
+                        .get(first_file)
+                        .and_then(Decoder::file)
+                        .unwrap_or_default()
+                        .to_owned();
+                    if let Some(d) = ds.get_mut(file) {
+                        d.error(
+                            off,
+                            "schema_version",
+                            format!("differs from the one in {name}"),
+                        );
+                    }
+                }
+                Some(_) => {}
+                None => schema = Some((v, file)),
+            }
+        }
+        listeners.extend(p.listeners);
+        routes.extend(p.routes);
+    }
+    check_listeners(ds, &listeners);
+    if listeners.is_empty() && !routes.is_empty() {
+        if let Some(d) = first_doc.and_then(|(f, off)| ds.get_mut(f).map(|d| (d, off))) {
+            // fit serves such a config over HTTPS by default, with certificates from ACME.
+            d.0.not_yet(
+                d.1,
+                "listeners",
+                "a config with no listeners, served over HTTPS by default (auto_https)",
+            );
+        }
+    }
+    check_routes(ds, &routes, &listeners);
+    Config {
+        schema_version: schema.map_or(SCHEMA_VERSION, |(v, _)| v),
+        listeners: listeners.into_iter().map(|a| a.v).collect(),
+        routes: routes.into_iter().map(|a| a.v).collect(),
+    }
+}
+
+/// A decoded element with its file, path and the position of its node.
 struct At<T> {
+    file: usize,
     path: String,
     off: usize,
     v: T,
 }
 
 impl<T> At<T> {
-    fn new(path: &str, n: &Node, v: T) -> At<T> {
+    fn new(file: usize, path: &str, n: &Node, v: T) -> At<T> {
         At {
+            file,
             path: path.to_owned(),
             off: n.off,
             v,
+        }
+    }
+
+    /// Records a problem about this element, in its file.
+    fn error(&self, ds: &mut [Decoder<'_>], path: &str, msg: String) {
+        if let Some(d) = ds.get_mut(self.file) {
+            d.error(self.off, path, msg);
         }
     }
 }
@@ -430,15 +499,15 @@ fn respond(d: &mut Decoder<'_>, params: Option<&Node>, path: &str) -> Option<Res
     Some(r)
 }
 
-fn check_listeners(d: &mut Decoder<'_>, listeners: &[At<Listener>]) {
+fn check_listeners(ds: &mut [Decoder<'_>], listeners: &[At<Listener>]) {
     let mut seen: Vec<&str> = Vec::new();
     for l in listeners {
         let path = crate::error::join_field(&l.path, "name");
         if !valid_name(&l.v.name) {
-            d.error(l.off, &path, bad_name(&l.v.name));
+            l.error(ds, &path, bad_name(&l.v.name));
         } else if seen.contains(&l.v.name.as_str()) {
-            d.error(
-                l.off,
+            l.error(
+                ds,
                 &path,
                 format!("another listener is already named {:?}", l.v.name),
             );
@@ -447,16 +516,16 @@ fn check_listeners(d: &mut Decoder<'_>, listeners: &[At<Listener>]) {
     }
 }
 
-fn check_routes(d: &mut Decoder<'_>, routes: &[At<Route>], listeners: &[At<Listener>]) {
+fn check_routes(ds: &mut [Decoder<'_>], routes: &[At<Route>], listeners: &[At<Listener>]) {
     let mut seen: Vec<&str> = Vec::new();
     for r in routes {
         if let Some(name) = r.v.name.as_deref().filter(|s| !s.is_empty()) {
             let path = crate::error::join_field(&r.path, "name");
             if !valid_name(name) {
-                d.error(r.off, &path, bad_name(name));
+                r.error(ds, &path, bad_name(name));
             } else if seen.contains(&name) {
-                d.error(
-                    r.off,
+                r.error(
+                    ds,
                     &path,
                     format!("another route is already named {name:?}"),
                 );
@@ -467,7 +536,7 @@ fn check_routes(d: &mut Decoder<'_>, routes: &[At<Route>], listeners: &[At<Liste
             if !listeners.iter().any(|x| &x.v.name == l) {
                 let path =
                     crate::error::join_index(&crate::error::join_field(&r.path, "listeners"), j);
-                d.error(r.off, &path, format!("there is no listener named {l:?}"));
+                r.error(ds, &path, format!("there is no listener named {l:?}"));
             }
         }
     }

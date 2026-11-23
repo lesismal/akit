@@ -13,8 +13,9 @@
 use std::fmt;
 use std::io;
 use std::net::{Ipv6Addr, SocketAddr, ToSocketAddrs};
+use std::time::{Duration, Instant};
 
-use akio::{Backend, Engine, Listener as EngineListener};
+use akio::{Backend, Config as EngineConfig, Engine, Listener as EngineListener};
 use akio_http::{Context, HttpConfig};
 use akit_config::{Listener, Protocol};
 use akit_runtime::GraphCell;
@@ -152,29 +153,70 @@ fn http_config(l: &Listener) -> Result<HttpConfig, Error> {
     Ok(cfg)
 }
 
+/// How the listeners are served.
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct Options {
+    /// The akio backend of every listener (epoll, kqueue on macOS, by default).
+    pub backend: Backend,
+    /// How long [`shutdown`] waits for requests in flight before closing their connections:
+    /// fit's `-shutdown-timeout`, 30 s by default.
+    pub shutdown_timeout: Duration,
+}
+
+impl Default for Options {
+    fn default() -> Options {
+        Options {
+            backend: Backend::default(),
+            shutdown_timeout: Duration::from_secs(30),
+        }
+    }
+}
+
 /// An akio engine serving every listener of the cell's current graph, each with its own
-/// [`Dispatcher`], on `backend`; built, not started. [`Engine::local_addrs`] gives where each
-/// listens, in the graph's order.
+/// [`Dispatcher`]; built, not started. [`Engine::local_addrs`] gives where each listens, in the
+/// graph's order.
 ///
 /// # Errors
 ///
 /// When an address does not resolve, a listener asks for what akit does not support yet, or akio
 /// cannot build the engine (an address in use).
-pub fn engine(cell: &GraphCell, backend: &Backend) -> Result<Engine, Error> {
+pub fn engine(cell: &GraphCell, opts: &Options) -> Result<Engine, Error> {
     let listeners: Vec<Listener> = cell.with(|g| g.listeners().to_vec());
-    let mut b = Engine::builder();
+    let mut cfg = EngineConfig::default();
+    cfg.shutdown_timeout = opts.shutdown_timeout;
+    let mut b = Engine::builder().config(cfg);
     for l in &listeners {
         let addr = resolve(&l.address).map_err(|error| Error::Address {
             listener: l.name.clone(),
             address: l.address.clone(),
             error,
         })?;
-        let cfg = http_config(l)?;
-        b = b.listen(EngineListener::tcp(addr).backend(backend.clone()).serve(
-            akio_http::serve_with(cfg, Dispatcher::new(cell.clone(), l.name.clone())),
-        ));
+        let http = http_config(l)?;
+        b = b.listen(
+            EngineListener::tcp(addr)
+                .backend(opts.backend.clone())
+                .serve(akio_http::serve_with(
+                    http,
+                    Dispatcher::new(cell.clone(), l.name.clone()),
+                )),
+        );
     }
     b.build().map_err(Error::Engine)
+}
+
+/// Shuts `engine` down gracefully and waits until it has: the listeners stop accepting, idle
+/// connections are closed, and a connection with requests in flight is closed once their
+/// responses are sent (an HTTP/2 one gets `GOAWAY`), or when the engine's shutdown timeout
+/// ([`Options::shutdown_timeout`], `timeout` here) passes. Returns false when it passed with
+/// connections still open, which akio then closed.
+pub fn shutdown(engine: &Engine, timeout: Duration) -> bool {
+    let open = engine.telemetry().open_connections();
+    let start = Instant::now();
+    engine.shutdown();
+    engine.wait();
+    // akio waits as long as the timeout only for connections it then closes.
+    open == 0 || start.elapsed() < timeout
 }
 
 #[cfg(test)]

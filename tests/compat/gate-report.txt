@@ -1,7 +1,7 @@
 # The compatibility gate's report (docs/compatibility.md), written by make compat-bless;
 # do not edit. The gate fails when a run's outcomes differ from these lines.
 # fit 7daee573, fit-examples 9659d7e4.
-# 80 fixtures: 0 valid, 1 refused only as not supported yet (fields refused: 1), 78 in a format not supported yet, 1 skipped, 0 failed.
+# 80 fixtures: 0 valid, 2 refused only as not supported yet (fields refused: 2), 77 in a format not supported yet, 1 skipped, 0 failed.
 examples/acme-on-demand: format not supported yet: .conf (I23)
 examples/acme-shared-storage: format not supported yet: .conf (I23)
 examples/admin: format not supported yet: .conf (I23)
@@ -76,9 +76,10 @@ examples/wasm: format not supported yet: .conf (I23)
 examples/webrtc-proxy: format not supported yet: .conf (I23)
 examples/webrtc-turn: format not supported yet: .conf (I23)
 examples/whip-whep: format not supported yet: .conf (I23)
-templates/conf/conf.d: format not supported yet: conf.d directories (I23)
+templates/conf/conf.d: format not supported yet: .conf (I23)
 templates/conf/fit.conf: format not supported yet: .conf (I23)
-templates/json/conf.d: format not supported yet: conf.d directories (I23)
+templates/json/conf.d: not supported yet: routes[].handler<proxy>
+templates/json/conf.d: not supported yet: upstreams
 templates/json/fit.json: not supported yet: upstreams
-templates/yaml/conf.d: format not supported yet: conf.d directories (I23)
+templates/yaml/conf.d: format not supported yet: YAML (I24)
 templates/yaml/fit.yaml: format not supported yet: YAML (I24)
