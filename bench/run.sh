@@ -11,8 +11,8 @@
 #
 #   -servers LIST     nginx,caddy,traefik,fit,akit       (default: those five)
 #   -scenarios LIST   fixed,static,proxy                 (default: those three)
-#   -protocols LIST   http/1.1,h2c                       (default: what akit serves so far)
-#   -idle LIST        http1                              (default: what akit holds so far)
+#   -protocols LIST   http/1.1,h2c,https/1.1,h2          (default: what akit serves so far)
+#   -idle LIST        http1,tls                          (default: what akit holds so far)
 #   -args FLAGS       more fitbench flags, as '-duration 15s -warmup 5s'
 #
 # The run waits on the host for /root/bench.lock alone (quiet.sh), so it measures a quiet host.
@@ -48,8 +48,8 @@ esac
 
 servers=nginx,caddy,traefik,fit,akit
 scenarios=fixed,static,proxy
-protocols=http/1.1,h2c
-idle=http1
+protocols=http/1.1,h2c,https/1.1,h2
+idle=http1,tls
 args=
 while [ $# -gt 1 ] || { [ $# -eq 1 ] && case "$1" in -*) true ;; *) false ;; esac; }; do
 	case "$1" in

@@ -148,7 +148,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 20 supported.
+3821 fields in 121 sections, at fit `7daee573`; 28 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -194,7 +194,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`http.middleware/rewrite`](#fields-http-middleware-rewrite) | 6 | 0 | 6 |
 | [`http.middleware/wasm`](#fields-http-middleware-wasm) | 18 | 0 | 18 |
 | [`limits`](#fields-limits) | 7 | 0 | 7 |
-| [`listeners`](#fields-listeners) | 30 | 4 | 26 |
+| [`listeners`](#fields-listeners) | 30 | 12 | 18 |
 | [`llm`](#fields-llm) | 218 | 0 | 218 |
 | [`log`](#fields-log) | 24 | 0 | 24 |
 | [`media_auth`](#fields-media-auth) | 34 | 0 | 34 |
@@ -273,7 +273,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 0 | 38 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 20 | 3801 |
+| **Total** | 3821 | 28 | 3793 |
 
 <a id="fields-access"></a>
 
@@ -1269,16 +1269,16 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `listeners[].socks.deny` | `array<string>` | not supported yet |
 | `listeners[].socks.idle_timeout` | `duration` | not supported yet |
 | `listeners[].socks.ports` | `array<integer>` | not supported yet |
-| `listeners[].tls` | `object` | not supported yet |
+| `listeners[].tls` | `object` | supported |
 | `listeners[].tls.acme` | `array<string>` | not supported yet |
-| `listeners[].tls.certificates` | `array<object>` | not supported yet |
-| `listeners[].tls.certificates[].cert_file` | `string, required` | not supported yet |
-| `listeners[].tls.certificates[].key_file` | `string, required` | not supported yet |
-| `listeners[].tls.client_auth` | `object` | not supported yet |
-| `listeners[].tls.client_auth.ca_files` | `array<string>, required` | not supported yet |
-| `listeners[].tls.client_auth.mode` | `enum(require\|verify_if_given)` | not supported yet |
+| `listeners[].tls.certificates` | `array<object>` | supported |
+| `listeners[].tls.certificates[].cert_file` | `string, required` | supported |
+| `listeners[].tls.certificates[].key_file` | `string, required` | supported |
+| `listeners[].tls.client_auth` | `object` | supported |
+| `listeners[].tls.client_auth.ca_files` | `array<string>, required` | supported |
+| `listeners[].tls.client_auth.mode` | `enum(require\|verify_if_given)` | supported |
 | `listeners[].tls.kernel_tls_offload` | `boolean` | not supported yet |
-| `listeners[].tls.max_version` | `enum(1.2\|1.3)` | not supported yet |
+| `listeners[].tls.max_version` | `enum(1.2\|1.3)` | supported |
 | `listeners[].tls.on_demand` | `boolean` | not supported yet |
 
 <a id="fields-llm"></a>

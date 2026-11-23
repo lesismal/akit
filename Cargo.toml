@@ -38,6 +38,10 @@ akio = { git = "https://github.com/lesismal/akio", rev = "50a823155a067ce60cfc42
 akio-http = { git = "https://github.com/lesismal/akio", rev = "50a823155a067ce60cfc424490548f0c318d4c09" }
 # Signals (`process::signal_pipe`): its `unsafe` stays in akio (rule 14).
 akio-sys = { git = "https://github.com/lesismal/akio", rev = "50a823155a067ce60cfc424490548f0c318d4c09" }
+# Certificates: the names a certificate is for, which pick it by SNI (akit-tls); in tests, to
+# make certificates and keys.
+akio-x509 = { git = "https://github.com/lesismal/akio", rev = "50a823155a067ce60cfc424490548f0c318d4c09" }
+akio-crypto = { git = "https://github.com/lesismal/akio", rev = "50a823155a067ce60cfc424490548f0c318d4c09" }
 
 akit-config = { path = "crates/akit-config" }
 akit-runtime = { path = "crates/akit-runtime" }

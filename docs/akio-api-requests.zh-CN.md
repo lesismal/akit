@@ -26,6 +26,7 @@
 | A6 | `akio-x509` 中生成 CSR（以及 `akio-crypto` 中的 JWS 辅助函数） | 已在 akio 分支 `claude/x509-csr`（`7ea64069`）完成，未合并 | 15 | I31 |
 | A7 | 不转码即可切分文件的 MP4（ISO BMFF）读取器 | 进行中，akio 分支 | — | 媒体库 |
 | A8 | TUN 设备 | 进行中，akio 分支 | — | VPN |
+| A9 | 把 TLS 服务端限制在 TLS 1.2（`ServerConfigBuilder` 的公开 API） | 已提出（I09） | 17 | I09 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -51,7 +52,9 @@ accept 线程把流交给 `adopt_tcp`，并在 progress 中记录。
 **建议的 API。** 服务端配置上的解析器 `fn resolve(&self, hello: &ClientHello, done:
 CertDone)`，`done` 可以稍后从其他线程以证书或告警完成；握手等待期间不占用线程。缓存命中的证书走同步快速路径。
 
-**akit 的用法。** I30 从它的证书管理器提供证书；I34 按需签发。
+**akit 的用法。** I30 从它的证书管理器提供证书；I34 按需签发。I09 用 `sni_cert` 从文件中选证书，它按名字精确
+查找：第一个证书（即默认证书）以外的证书中的通配符名字（`*.example.com`）会被拒绝为尚不支持，直到解析器（其
+`CertStore` 接受 `*.` 名字）进入 akio 的 `main`。
 
 ## A3 过滤已接受的连接
 
@@ -89,3 +92,17 @@ ClientHello 中读出，并且不终结 TLS。
 ## A8 TUN 设备
 
 **问题。** fit 的 VPN 路线在引擎上运行 TUN 接口。等这条路线在 akit 中开始时需要，在 fit 之后。
+
+## A9 限制在 TLS 1.2 的 TLS 服务端
+
+**问题。** fit 的 `listeners[].tls.max_version` 接受 `1.2`，用于只卸载 TLS 1.2 的网卡（Go 的
+`tls.Config.MaxVersion`）。akio-tls 的 `ServerConfigBuilder` 有 `tls13_only`，但只能用 `__tls12_only` 把服务端限制在
+TLS 1.2，而它是隐藏的，标明只供测试和互通工具使用。
+
+**证据。** `50a82315` 的 `crates/akio-tls/src/config.rs`：`ServerConfigBuilder::tls13_only`、
+`ServerConfigBuilder::__tls12_only`（`#[doc(hidden)]`）。
+
+**建议的 API。** `ServerConfigBuilder::max_version(TlsVersion)`（以及 `min_version`），或公开的
+`tls12_only(bool)`；`ClientConfigBuilder` 上也一样。
+
+**akit 的用法。** I09 读取 `max_version`，把 `1.2` 拒绝为尚不支持；有了这个 API，akit-tls 按监听器的 `tls` 设置它。

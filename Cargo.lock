@@ -189,8 +189,10 @@ name = "akit"
 version = "0.0.1"
 dependencies = [
  "akio",
+ "akio-crypto",
  "akio-http",
  "akio-sys",
+ "akio-x509",
  "akit-config",
  "akit-handler",
  "akit-listener",
@@ -234,7 +236,9 @@ name = "akit-listener"
 version = "0.0.1"
 dependencies = [
  "akio",
+ "akio-crypto",
  "akio-http",
+ "akio-x509",
  "akit-config",
  "akit-handler",
  "akit-runtime",
@@ -272,11 +276,18 @@ dependencies = [
  "akio-http",
  "akit-config",
  "akit-router",
+ "akit-tls",
 ]
 
 [[package]]
 name = "akit-tls"
 version = "0.0.1"
+dependencies = [
+ "akio",
+ "akio-crypto",
+ "akio-x509",
+ "akit-config",
+]
 
 [[package]]
 name = "akit-upstream"
