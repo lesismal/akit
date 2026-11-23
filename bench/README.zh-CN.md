@@ -33,12 +33,12 @@ bench/run.sh main
 启动一次运行：`main` 处的 akit（git ref，或代表工作区的 `work`），以及 nginx、Caddy、Traefik 和 fit，并返回其 id。
 `bench/run.sh -report ID` 把它取回到 `bench/results/ID` 并打印 fit 的 benchreport 表格；`-wait ID` 先等它结束。选项
 传给 fitbench：`-servers`（`nginx,caddy,traefik,fit,akit`）、`-scenarios`（`fixed,static,proxy`）、`-protocols`
-（`http/1.1,h2c`）、`-idle`（`http1`），以及用于其他 fitbench 参数的 `-args`，例如
+（`http/1.1,h2c,https/1.1,h2`）、`-idle`（`http1,tls`），以及用于其他 fitbench 参数的 `-args`，例如
 `-args '-duration 15s -warmup 5s'`。
 
-默认值是 akit 目前能提供的：HTTP/1.1 和 h2c 上的 fixed 场景，以及空闲 HTTP/1.1 连接。其他服务器运行它们能提供的所有
-场景；akit 的其他场景在实现它们的迭代之前记为跳过（"akit cannot serve it"）：TLS 和 h2 在 I09，静态文件在 I12，代理
-在 I15，HTTP/3 在 M3，缓存在 I69。每个迭代把它新提供的内容加到 `fitbench/akit.go` 和 `configs/akit/fit.json`，并把
+默认值是 akit 目前能提供的：HTTP/1.1、h2c、HTTPS/1.1 和 h2（TLS 自 I09 起）上的 fixed 场景，以及空闲的 HTTP/1.1 和
+TLS 连接。其他服务器运行它们能提供的所有场景；akit 的其他场景在实现它们的迭代之前记为跳过（"akit cannot serve it"）：
+静态文件在 I12，代理在 I15，HTTP/3 在 I10，缓存在 I69。每个迭代把它新提供的内容加到 `fitbench/akit.go` 和 `configs/akit/fit.json`，并把
 协议加入默认值。
 
 ## 对比两个构建

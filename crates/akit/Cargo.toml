@@ -22,7 +22,9 @@ akit-listener = { workspace = true }
 akit-runtime = { workspace = true }
 
 [dev-dependencies]
+akio-crypto = { workspace = true }
 akio-http = { workspace = true }
+akio-x509 = { workspace = true }
 
 [lints]
 workspace = true

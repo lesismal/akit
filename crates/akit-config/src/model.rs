@@ -28,8 +28,60 @@ pub struct Listener {
     pub name: String,
     /// `address`, a host and port as in `":8080"` or `"127.0.0.1:8080"`.
     pub address: String,
-    /// `protocols`; fit's default, HTTP/1.1 alone, when left out.
+    /// `protocols`; fit's default when left out: HTTP/1.1 alone, or HTTP/1.1 and h2 with `tls`.
     pub protocols: Vec<Protocol>,
+    /// `tls`: the listener serves HTTPS, with these certificates.
+    pub tls: Option<Tls>,
+}
+
+/// A listener's TLS: its certificates from files, chosen by the name a client asks for (SNI),
+/// and how it authenticates clients. As fit's, it allows TLS 1.2 and 1.3, with only AEAD cipher
+/// suites with forward secrecy for 1.2 (ECDHE with AES-GCM or ChaCha20-Poly1305).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Tls {
+    /// `certificates`: a client is given the first whose names match the one it asks for, or the
+    /// first of all when none does or it asks for none.
+    pub certificates: Vec<Certificate>,
+    /// `client_auth`: ask clients for certificates and verify them (mutual TLS).
+    pub client_auth: Option<ClientAuth>,
+    /// `max_version`: the newest TLS version allowed; 1.3 when left out.
+    pub max_version: TlsVersion,
+}
+
+/// A certificate and its key, from PEM files.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Certificate {
+    /// `cert_file`: the certificate, followed by any intermediates.
+    pub cert_file: String,
+    /// `key_file`: its private key.
+    pub key_file: String,
+}
+
+/// How a TLS listener authenticates its clients by their certificates.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClientAuth {
+    /// `ca_files`: PEM files of the authorities a client's certificate must chain to.
+    pub ca_files: Vec<String>,
+    /// `mode`: `require` when left out.
+    pub mode: ClientAuthMode,
+}
+
+/// `client_auth.mode`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClientAuthMode {
+    /// `require`: a client without a valid certificate is refused in the handshake.
+    Require,
+    /// `verify_if_given`: a client may send none, but one it sends must be valid.
+    VerifyIfGiven,
+}
+
+/// A TLS version, as `max_version` names it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TlsVersion {
+    /// `1.2`.
+    Tls12,
+    /// `1.3`.
+    Tls13,
 }
 
 /// A protocol a listener serves.
@@ -39,6 +91,8 @@ pub enum Protocol {
     Http11,
     /// `h2c`, HTTP/2 in the clear.
     H2c,
+    /// `h2`, HTTP/2 over TLS, chosen through ALPN; needs `tls`.
+    H2,
 }
 
 impl Protocol {
@@ -48,6 +102,7 @@ impl Protocol {
         match self {
             Protocol::Http11 => "http/1.1",
             Protocol::H2c => "h2c",
+            Protocol::H2 => "h2",
         }
     }
 }
@@ -55,6 +110,10 @@ impl Protocol {
 /// fit's default protocols for a listener without TLS: HTTP/1.1 alone (fit's
 /// `config.DefaultProtocols`).
 pub const DEFAULT_PROTOCOLS: [Protocol; 1] = [Protocol::Http11];
+
+/// fit's default protocols for a listener with TLS: HTTP/1.1 and h2 (fit's
+/// `config.DefaultTLSProtocols`).
+pub const DEFAULT_TLS_PROTOCOLS: [Protocol; 2] = [Protocol::Http11, Protocol::H2];
 
 /// One route.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -135,9 +194,14 @@ const CONFIG_FIT_ONLY: &[&str] = &[
     "bittorrent",
     "providers",
 ];
-const LISTENER_FIELDS: &[&str] = &["name", "address", "protocols"];
-const LISTENER_FIT_ONLY: &[&str] = &["mptcp", "tls", "socks", "access", "proxy_protocol"];
-const FIT_PROTOCOLS: &[&str] = &["h2", "h3", "tcp", "udp", "socks"];
+const LISTENER_FIELDS: &[&str] = &["name", "address", "protocols", "tls"];
+const LISTENER_FIT_ONLY: &[&str] = &["mptcp", "socks", "access", "proxy_protocol"];
+const FIT_PROTOCOLS: &[&str] = &["h3", "tcp", "udp", "socks"];
+const TLS_FIELDS: &[&str] = &["certificates", "client_auth", "max_version"];
+// acme and on_demand come with I31 and I34; kernel_tls_offload with engine's.
+const TLS_FIT_ONLY: &[&str] = &["acme", "on_demand", "kernel_tls_offload"];
+const CERTIFICATE_FIELDS: &[&str] = &["cert_file", "key_file"];
+const CLIENT_AUTH_FIELDS: &[&str] = &["ca_files", "mode"];
 const ROUTE_FIELDS: &[&str] = &["name", "listeners", "priority", "match", "handler"];
 const ROUTE_FIT_ONLY: &[&str] = &["access", "middleware"];
 const MATCH_FIELDS: &[&str] = &["host", "path"];
@@ -312,7 +376,8 @@ fn listener(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Listener> {
         }
         Some(a)
     });
-    let mut protocols = Vec::new();
+    // Each protocol with its position and path, checked against tls once it is read.
+    let mut protocols: Vec<(usize, String, Protocol)> = Vec::new();
     if let Some(v) = o.take("protocols") {
         let p = o.at("protocols");
         for (i, (off, s)) in d.strings(v, &p).into_iter().enumerate() {
@@ -320,6 +385,7 @@ fn listener(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Listener> {
             let proto = match s.as_str() {
                 "http/1.1" => Protocol::Http11,
                 "h2c" => Protocol::H2c,
+                "h2" => Protocol::H2,
                 other if FIT_PROTOCOLS.contains(&other) => {
                     d.not_yet(off, &at, &format!("the {other:?} protocol"));
                     continue;
@@ -335,22 +401,157 @@ fn listener(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Listener> {
                     continue;
                 }
             };
-            if protocols.contains(&proto) {
+            if protocols.iter().any(|(_, _, q)| *q == proto) {
                 d.error(off, &at, format!("{s:?} is listed twice"));
                 continue;
             }
-            protocols.push(proto);
+            protocols.push((off, at, proto));
         }
     }
+    let tls = o.take("tls").and_then(|v| tls(d, v, &o.at("tls")));
     o.finish(d, LISTENER_FIELDS, LISTENER_FIT_ONLY);
+    for (off, at, proto) in &protocols {
+        match proto {
+            Protocol::H2 if tls.is_none() => {
+                d.error(*off, at, "h2 needs tls; h2c is HTTP/2 in the clear");
+            }
+            Protocol::H2c if tls.is_some() => d.error(
+                *off,
+                at,
+                "h2c is HTTP/2 in the clear, which a listener with tls does not serve; use h2",
+            ),
+            _ => {}
+        }
+    }
+    let mut protocols: Vec<Protocol> = protocols.into_iter().map(|(_, _, p)| p).collect();
     if protocols.is_empty() {
-        protocols = DEFAULT_PROTOCOLS.to_vec();
+        protocols = if tls.is_some() {
+            DEFAULT_TLS_PROTOCOLS.to_vec()
+        } else {
+            DEFAULT_PROTOCOLS.to_vec()
+        };
     }
     Some(Listener {
         name: name?,
         address: address?,
         protocols,
+        tls,
     })
+}
+
+fn tls(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Tls> {
+    let mut o = d.object(n, path)?;
+    let certs_node = o.take("certificates");
+    // Whether any is written, read or not: one with a problem is not missing.
+    let some_certs =
+        certs_node.is_some_and(|v| !matches!(&v.kind, crate::json::Kind::Array(a) if a.is_empty()));
+    let certificates = certs_node
+        .map(|v| d.array(v, &o.at("certificates"), certificate))
+        .unwrap_or_default();
+    let client_auth = o
+        .take("client_auth")
+        .and_then(|v| client_auth(d, v, &o.at("client_auth")));
+    let max_version = match o.take("max_version") {
+        Some(v) => tls_version(d, v, &o.at("max_version")),
+        None => TlsVersion::Tls13,
+    };
+    let off = o.off;
+    // Not taken: finish refuses them as not supported yet.
+    let has_acme = o.has("acme") || o.has("on_demand");
+    o.finish(d, TLS_FIELDS, TLS_FIT_ONLY);
+    if !some_certs && !has_acme {
+        // fit obtains certificates for the listener's routes' host names with ACME then
+        // (auto_https), or refuses a listener whose routes match none.
+        d.not_yet(
+            off,
+            path,
+            "a tls without certificates, whose certificates are obtained with ACME for its routes' host names (auto_https)",
+        );
+    }
+    Some(Tls {
+        certificates,
+        client_auth,
+        max_version,
+    })
+}
+
+fn certificate(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Certificate> {
+    let mut o = d.object(n, path)?;
+    let cert_file = o
+        .require(d, "cert_file")
+        .and_then(|v| d.string(v, &o.at("cert_file")));
+    let key_file = o
+        .require(d, "key_file")
+        .and_then(|v| d.string(v, &o.at("key_file")));
+    o.finish(d, CERTIFICATE_FIELDS, &[]);
+    Some(Certificate {
+        cert_file: cert_file?,
+        key_file: key_file?,
+    })
+}
+
+fn client_auth(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<ClientAuth> {
+    let mut o = d.object(n, path)?;
+    let ca_files = o.require(d, "ca_files").map(|v| {
+        let p = o.at("ca_files");
+        let files: Vec<String> = d.strings(v, &p).into_iter().map(|(_, s)| s).collect();
+        if files.is_empty() && matches!(v.kind, crate::json::Kind::Array(_)) {
+            d.error(v.off, &p, "at least one file is needed");
+        }
+        files
+    });
+    let mode = match o.take("mode") {
+        Some(v) => match d.string(v, &o.at("mode")).as_deref() {
+            Some("require") | None => ClientAuthMode::Require,
+            Some("verify_if_given") => ClientAuthMode::VerifyIfGiven,
+            Some(other) => {
+                d.error(
+                    v.off,
+                    &o.at("mode"),
+                    format!("{other:?} is not one of \"require\", \"verify_if_given\""),
+                );
+                ClientAuthMode::Require
+            }
+        },
+        None => ClientAuthMode::Require,
+    };
+    o.finish(d, CLIENT_AUTH_FIELDS, &[]);
+    Some(ClientAuth {
+        ca_files: ca_files?,
+        mode,
+    })
+}
+
+/// `max_version`: "1.2" or "1.3", quoted or bare, as fit takes it.
+fn tls_version(d: &mut Decoder<'_>, n: &Node, path: &str) -> TlsVersion {
+    use crate::json::Kind;
+    let raw = match &n.kind {
+        Kind::Str(s) | Kind::Number(s) => s.as_str(),
+        _ => {
+            d.error(
+                n.off,
+                path,
+                format!("expected a string, got {}", n.kind.name()),
+            );
+            return TlsVersion::Tls13;
+        }
+    };
+    match raw {
+        "1.3" => TlsVersion::Tls13,
+        "1.2" => {
+            // akio-tls has no public way to cap a server at TLS 1.2 (akio API request A9).
+            d.not_yet(n.off, path, "max_version 1.2 (TLS 1.2 alone)");
+            TlsVersion::Tls12
+        }
+        other => {
+            d.error(
+                n.off,
+                path,
+                format!("{other:?} is not one of \"1.2\", \"1.3\""),
+            );
+            TlsVersion::Tls13
+        }
+    }
 }
 
 fn route(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Route> {

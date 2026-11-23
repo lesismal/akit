@@ -470,10 +470,20 @@ fn positions() {
         .unwrap_err()
         .to_string();
     assert_eq!(e, "1:1: upstreams: not supported yet");
-    let e = crate::from_conf("listener web :1 { tls c.pem k.pem }\n", None)
-        .unwrap_err()
-        .to_string();
-    assert_eq!(e, "1:19: listeners[0].tls: not supported yet");
+    // `tls <cert> <key>`, the shorthand, read since I09: TLS listeners default to HTTP/1.1 and h2.
+    let c = crate::from_conf("listener web :1 { tls c.pem k.pem }\n", None).unwrap();
+    let tls = c.listeners[0].tls.as_ref().unwrap();
+    assert_eq!(
+        (
+            tls.certificates[0].cert_file.as_str(),
+            tls.certificates[0].key_file.as_str()
+        ),
+        ("c.pem", "k.pem")
+    );
+    assert_eq!(
+        c.listeners[0].protocols,
+        [crate::Protocol::Http11, crate::Protocol::H2]
+    );
     let e = crate::from_conf("route {\n\thandler static { root /srv }\n}\n", None)
         .unwrap_err()
         .0[0]

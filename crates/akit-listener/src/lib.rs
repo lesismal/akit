@@ -5,7 +5,9 @@
 //!
 //! So far (I05): HTTP/1.1 and h2c listeners from the graph's config, each an akio TCP listener
 //! serving a [`Dispatcher`], which routes every request through the current graph of a
-//! [`GraphCell`] and answers 404 when no route matches.
+//! [`GraphCell`] and answers 404 when no route matches. I09: a listener with `tls` serves HTTPS,
+//! its HTTP acceptor wrapped in akio-tls with the configuration the graph loaded (certificates
+//! by SNI, ALPN choosing h2 or http/1.1, client authentication).
 //!
 //! Part of [akit](https://github.com/lesismal/akit); see `docs/dev-plan.md` for the iterations that
 //! fill this crate in.
@@ -15,6 +17,7 @@ use std::io;
 use std::net::{Ipv6Addr, SocketAddr, ToSocketAddrs};
 use std::time::{Duration, Instant};
 
+use akio::tls::Tls;
 use akio::{Backend, Config as EngineConfig, Engine, Listener as EngineListener};
 use akio_http::{Context, HttpConfig};
 use akit_config::{Listener, Protocol};
@@ -139,6 +142,10 @@ pub fn resolve(address: &str) -> io::Result<SocketAddr> {
 fn http_config(l: &Listener) -> Result<HttpConfig, Error> {
     let h1 = l.protocols.contains(&Protocol::Http11);
     let h2c = l.protocols.contains(&Protocol::H2c);
+    // Over TLS, ALPN picks h2 (akit_tls::alpn): a client that negotiates it sends HTTP/2's
+    // preface. One that offers no ALPN is served HTTP/1.1 even by an h2-only listener, as Go's
+    // server serves it.
+    let h2 = l.protocols.contains(&Protocol::H2);
     if h2c && !h1 {
         // fit serves HTTP/2 alone then; akio's server always takes HTTP/1 as well.
         return Err(Error::NotSupportedYet {
@@ -147,7 +154,7 @@ fn http_config(l: &Listener) -> Result<HttpConfig, Error> {
         });
     }
     let mut cfg = HttpConfig::default();
-    if !h2c {
+    if !h2c && !h2 {
         cfg.h2 = None;
     }
     Ok(cfg)
@@ -182,25 +189,36 @@ impl Default for Options {
 /// When an address does not resolve, a listener asks for what akit does not support yet, or akio
 /// cannot build the engine (an address in use).
 pub fn engine(cell: &GraphCell, opts: &Options) -> Result<Engine, Error> {
-    let listeners: Vec<Listener> = cell.with(|g| g.listeners().to_vec());
+    let (listeners, tls): (Vec<Listener>, Vec<_>) = cell.with(|g| {
+        let ls = g.listeners().to_vec();
+        let tls = (0..ls.len()).map(|i| g.tls(i).cloned()).collect();
+        (ls, tls)
+    });
     let mut cfg = EngineConfig::default();
     cfg.shutdown_timeout = opts.shutdown_timeout;
     let mut b = Engine::builder().config(cfg);
-    for l in &listeners {
+    for (l, tls) in listeners.iter().zip(tls) {
         let addr = resolve(&l.address).map_err(|error| Error::Address {
             listener: l.name.clone(),
             address: l.address.clone(),
             error,
         })?;
-        let http = http_config(l)?;
-        b = b.listen(
-            EngineListener::tcp(addr)
-                .backend(opts.backend.clone())
-                .serve(akio_http::serve_with(
-                    http,
-                    Dispatcher::new(cell.clone(), l.name.clone()),
-                )),
+        let http = akio_http::serve_with(
+            http_config(l)?,
+            Dispatcher::new(cell.clone(), l.name.clone()),
         );
+        let listener = EngineListener::tcp(addr).backend(opts.backend.clone());
+        b = b.listen(match (&l.tls, tls) {
+            (None, _) => listener.serve(http),
+            (Some(_), Some(cfg)) => listener.serve(Tls::server(cfg, http)),
+            // The graph loads every listener's tls, or is not compiled.
+            (Some(_), None) => {
+                return Err(Error::Engine(io::Error::other(format!(
+                    "listener {}: its tls was not loaded",
+                    l.name
+                ))));
+            }
+        });
     }
     b.build().map_err(Error::Engine)
 }

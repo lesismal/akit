@@ -10,7 +10,7 @@
 # A and B are git refs of akit (main, HEAD, a commit) or "work", the working tree. Options:
 #
 #   -scenarios LIST   fixed                         (default: fixed)
-#   -protocols LIST   http/1.1,h2c                  (default: both)
+#   -protocols LIST   http/1.1,h2c,https/1.1,h2     (default: all four)
 #   -rounds N         rounds of A then B            (default: 3)
 #   -duration D       each measured run             (default: 10s)
 #   -warmup D         unmeasured load before each   (default: 2s)
@@ -45,7 +45,7 @@ case "${1:-}" in
 esac
 
 scenarios=fixed
-protocols=http/1.1,h2c
+protocols=http/1.1,h2c,https/1.1,h2
 rounds=3
 duration=10s
 warmup=2s

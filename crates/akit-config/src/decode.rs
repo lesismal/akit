@@ -175,6 +175,11 @@ impl<'n> Obj<'n> {
         self.members.get(i).map(|m| &m.value)
     }
 
+    /// Whether there is a member named `key`; it does not count as read.
+    pub(crate) fn has(&self, key: &str) -> bool {
+        self.members.iter().any(|m| m.key == key)
+    }
+
     /// The member named `key`, or a "missing required field" problem.
     pub(crate) fn require(&mut self, d: &mut Decoder<'_>, key: &str) -> Option<&'n Node> {
         let v = self.take(key);

@@ -105,7 +105,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I07b | Compatibility gate wired to validate | I02, I07a | done |
 | I08 | Benchmark harness and baselines | I05 | done |
 | **M1** | | | |
-| I09 | TLS entry points from files | I05 | todo |
+| I09 | TLS entry points from files | I05 | done |
 | I10 | HTTP/3 entry point | I09 | todo |
 | I11 | Router v1: host and path | I04 | todo |
 | I12 | Static files I | I11 | todo |

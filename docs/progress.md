@@ -20,6 +20,55 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-24: I09, TLS entry points from files
+
+- `akit-config` reads a listener's `tls` and the `h2` protocol, with fit's fields, defaults and
+  errors: `tls.certificates[]` (`cert_file`, `key_file`, both required), `tls.client_auth`
+  (`ca_files`, required, at least one; `mode`, `require` by default or `verify_if_given`) and
+  `tls.max_version` (`"1.3"`, quoted or bare). A listener with `tls` and no `protocols` serves
+  fit's `DefaultTLSProtocols`, `http/1.1` and `h2`. fit's checks: `h2` needs `tls`, `h2c` is
+  refused on a listener with `tls`, `mode` is one of its two values. Refused as not supported yet:
+  `tls.acme`, `tls.on_demand`, `tls.kernel_tls_offload`, `max_version` `1.2`, and a `tls` without
+  certificates (fit obtains them with ACME for the routes' host names).
+- `akit-tls` (`server_config`) loads a listener's `tls` into an akio-tls `ServerConfig`, as fit's
+  `tlsmgr.LoadStatic` and `LoadClientAuth` do: PEM files of at most 1 MiB, each key checked
+  against its certificate, each problem at `listeners[i].tls.certificates[j]` or
+  `.client_auth.ca_files[j]` with the file's path. Certificates are picked by SNI by fit's rule:
+  the first certificate whose subjectAltName names (DNS, IP) hold the name, exactly or by its
+  first certificate's `*.` wildcard, else the first. ALPN from the protocols as fit's
+  `tlsmgr.ServerConfig`: `h2, http/1.1`, `h2` or `http/1.1`. Client authentication with
+  `client_auth_required` or `client_auth_optional`. Session tickets on, as Go's servers have them.
+- Versions and cipher suites need no setting: akio-tls serves TLS 1.2 and 1.3, and for 1.2 only
+  the six ECDHE AEAD suites fit allows (AES-GCM and ChaCha20-Poly1305).
+- The graph (`akit_runtime::compile`) loads every TLS listener's files, as fit's graph does, so
+  `akit validate` checks them too; `Graph::tls(i)` gives the configuration. `akit_listener::engine`
+  wraps a TLS listener's HTTP acceptor in `akio::tls::Tls::server`; akio-http's server takes HTTP/2
+  when ALPN chose h2. An `h2`-only listener refuses a client offering only `http/1.1` in the
+  handshake and serves HTTP/1.1 to one offering no ALPN, as Go's server does.
+- Bench: `bench/configs/akit/fit.json` serves HTTPS/1.1 on 8443 and h2 on 8445 with fitbench's
+  certificate at `/certs`, as fit's; `bench/fitbench/akit.go` mounts it and holds idle TLS
+  connections; `run.sh` and `ab.sh` run `https/1.1` and `h2` by default. Not benchmarked.
+- akio: `akio-x509` (the names in a certificate) is a new workspace dependency at the pinned
+  commit, `akio-crypto` a test one; akio-tls is used through `akio::tls`. New request A9: a public
+  way to cap a TLS server at 1.2 ([akio API requests](akio-api-requests.md)); A2 notes that
+  wildcard certificates past the first wait for its resolver.
+- The compatibility gate marks the eight `listeners[].tls` fields akit reads (`supported.txt`, 28
+  fields); its report is unchanged (the fixtures that use `tls` are `.conf` and YAML files).
+- Tests: `akit-config` (3: reading, fit's problems with their positions, the fields not supported
+  yet); `akit-tls` (3 unit: SNI picks, ALPN, IP names; 3 on files: loading, each problem's path, a
+  wildcard past the first certificate); `akit-listener/tests/tls.rs` (5: HTTPS/1.1 and h2 by ALPN
+  and with no ALPN, ALPN following the protocols, SNI picking the certificate, client
+  authentication required and if given, a client cut mid-handshake and a client speaking plain
+  HTTP not disturbing others); `akit/tests/https.rs` (2, end to end with `akit run`: a route over
+  HTTPS with HTTP/1.1, HTTP/2 and by SNI; `validate` and `run` refusing a missing certificate
+  file with its path). Certificates are made by the tests with `akio-x509`.
+- Where it differs from the plan: `max_version` `1.2` waits for akio (A9); a wildcard name in a
+  certificate other than the first is refused (akio-tls looks names up exactly, A2); when two
+  certificates hold the same name akit serves the first, where fit serves the first the client
+  supports (RSA or ECDSA); the handshake timeout is akio's 10 s default, not tested at its limit
+  here (akio tests it).
+- Checked: `make check` on macOS; the touched crates (akit-config, akit-tls, akit-runtime, akit-listener, akit, akit-compat) on Linux (gpu51), epoll and io_uring, all passing.
+
 ### 2026-11-24: I24, the YAML reader
 
 - [Decision 005](decisions/005-yaml-reader.md): YAML is read by a reader of akit's own, not a

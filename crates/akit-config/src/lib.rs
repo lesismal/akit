@@ -28,7 +28,8 @@ use std::path::{Path, PathBuf};
 pub use error::{Error, Errors, NOT_SUPPORTED_YET};
 pub use json::MAX_DEPTH;
 pub use model::{
-    Config, DEFAULT_PROTOCOLS, Handler, Listener, Match, Protocol, Respond, Route, SCHEMA_VERSION,
+    Certificate, ClientAuth, ClientAuthMode, Config, DEFAULT_PROTOCOLS, DEFAULT_TLS_PROTOCOLS,
+    Handler, Listener, Match, Protocol, Respond, Route, SCHEMA_VERSION, Tls, TlsVersion,
 };
 
 /// The largest config document read, in bytes: fit's own configs are kilobytes; this bounds

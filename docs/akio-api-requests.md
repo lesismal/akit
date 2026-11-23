@@ -27,6 +27,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | A6 | CSR generation in `akio-x509` (and JWS helpers in `akio-crypto`) | done on akio branch `claude/x509-csr` (`7ea64069`), not merged | 15 | I31 |
 | A7 | An MP4 (ISO BMFF) reader for segmenting files without transcoding | in progress, akio branch | — | media library |
 | A8 | TUN devices | in progress, akio branch | — | VPN |
+| A9 | A TLS server capped at TLS 1.2 (public `ServerConfigBuilder` API) | requested (I09) | 17 | I09 |
 
 ## A1 TCP listeners on a running engine
 
@@ -56,7 +57,10 @@ without blocking the I/O thread.
 CertDone)`, where `done` may be completed later from another thread with a certificate or an alert;
 the handshake waits without holding the thread. A synchronous fast path for a cached certificate.
 
-**How akit uses it.** I30 serves certificates from its manager; I34 issues on demand.
+**How akit uses it.** I30 serves certificates from its manager; I34 issues on demand. I09 picks
+certificates from files with `sni_cert`, which looks a name up exactly: a wildcard name
+(`*.example.com`) in a certificate other than the first, the default, is refused as not supported
+yet until the resolver (whose `CertStore` takes `*.` names) is on akio's `main`.
 
 ## A3 A filter on accepted connections
 
@@ -100,3 +104,18 @@ A64). Needed when the media library track starts.
 
 **Problem.** fit's VPN track runs TUN interfaces on the engine. Needed when that track starts in
 akit, after fit's.
+
+## A9 A TLS server capped at TLS 1.2
+
+**Problem.** fit's `listeners[].tls.max_version` takes `1.2`, for network cards that offload TLS
+1.2 alone (Go's `tls.Config.MaxVersion`). akio-tls's `ServerConfigBuilder` has `tls13_only`, but
+caps a server at TLS 1.2 only with `__tls12_only`, hidden and marked for tests and interop tools.
+
+**Evidence.** `crates/akio-tls/src/config.rs` at `50a82315`: `ServerConfigBuilder::tls13_only`,
+`ServerConfigBuilder::__tls12_only` (`#[doc(hidden)]`).
+
+**Suggested API.** `ServerConfigBuilder::max_version(TlsVersion)` (and `min_version`), or a public
+`tls12_only(bool)`; the same on `ClientConfigBuilder`.
+
+**How akit uses it.** I09 reads `max_version` and refuses `1.2` as not supported yet; with the API,
+akit-tls sets it from the listener's `tls`.

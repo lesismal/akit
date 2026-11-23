@@ -54,6 +54,9 @@ pub struct Graph {
     routes: Vec<CompiledRoute>,
     /// Per listener, in the order of `listeners`: its routes' router, to indices of `routes`.
     routers: Vec<akit_router::Router<usize>>,
+    /// Per listener, in the order of `listeners`: its TLS, loaded from its files, when it has
+    /// `tls`.
+    tls: Vec<Option<akio::tls::ServerConfig>>,
     /// Taken (and so cleaned up) once, by [`Graph::retire`] or on drop.
     modules: Mutex<Option<Modules>>,
     /// Requests and connections that keep this graph past their handler's call
@@ -69,6 +72,13 @@ impl Graph {
     #[must_use]
     pub fn listeners(&self) -> &[Listener] {
         &self.listeners
+    }
+
+    /// The TLS the listener at `listener` ([`listener_index`](Self::listener_index)) serves,
+    /// its certificates loaded when the graph was compiled; `None` for one in the clear.
+    #[must_use]
+    pub fn tls(&self, listener: usize) -> Option<&akio::tls::ServerConfig> {
+        self.tls.get(listener)?.as_ref()
     }
 
     /// The routes, in the config's order.
@@ -178,6 +188,28 @@ pub fn compile(
             handler,
         });
     }
+    // Each TLS listener's certificates, read from their files, as fit's graph loads them: a
+    // config whose files do not load fails here, `validate` included.
+    let mut tls = Vec::with_capacity(config.listeners.len());
+    for (i, l) in config.listeners.iter().enumerate() {
+        tls.push(l.tls.as_ref().and_then(|t| {
+            akit_tls::server_config(t, &l.protocols)
+                .map_err(|e| {
+                    let mut path = format!("listeners[{i}].tls");
+                    if !e.path.is_empty() {
+                        path = format!("{path}.{}", e.path);
+                    }
+                    errors.push(Error {
+                        file: None,
+                        path,
+                        line: 0,
+                        col: 0,
+                        msg: e.msg,
+                    });
+                })
+                .ok()
+        }));
+    }
     if !errors.is_empty() {
         // `modules` drops here, cleaning up what was provisioned.
         return Err(Errors(errors));
@@ -206,6 +238,7 @@ pub fn compile(
         listeners: config.listeners.clone(),
         routes,
         routers,
+        tls,
         modules: Mutex::new(Some(modules)),
         holds: AtomicUsize::new(0),
         orphaned: AtomicBool::new(false),

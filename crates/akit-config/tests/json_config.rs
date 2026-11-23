@@ -9,7 +9,10 @@
     clippy::indexing_slicing
 )]
 
-use akit_config::{Config, Errors, Handler, Protocol, from_json};
+use akit_config::{
+    Certificate, ClientAuth, ClientAuthMode, Config, Errors, Handler, Protocol, TlsVersion,
+    from_json,
+};
 
 fn ok(src: &str) -> Config {
     match from_json(src, Some("t.json")) {
@@ -86,7 +89,7 @@ fn not_supported_yet_is_not_wrong() {
     // fit's JSON template, as written out: an upstream akit cannot proxy to yet.
     let e = errs(
         r#"{"schema_version": 1,
-            "listeners": [{"name": "web", "address": ":8080", "protocols": ["http/1.1", "h2c", "h3"], "tls": {}}],
+            "listeners": [{"name": "web", "address": ":8080", "protocols": ["http/1.1", "h2", "h3"], "tls": {}}],
             "routes": [{"name": "hello", "middleware": [], "handler": {"module": "proxy", "params": {"upstream": "app"}}},
                        {"match": {"method": ["GET"]}, "handler": {"module": "respond"}}],
             "upstreams": [{"name": "app", "addresses": ["127.0.0.1:9000"]}]}"#,
@@ -112,6 +115,137 @@ fn not_supported_yet_is_not_wrong() {
         e.as_slice()[2].msg,
         "not supported yet: the \"proxy\" handler"
     );
+}
+
+#[test]
+fn tls_reads() {
+    let c = ok(r#"{"listeners": [{"name": "s", "address": ":443", "tls": {
+        "certificates": [{"cert_file": "a.pem", "key_file": "a.key"},
+                         {"cert_file": "b.pem", "key_file": "b.key"}],
+        "client_auth": {"ca_files": ["ca.pem"], "mode": "verify_if_given"},
+        "max_version": "1.3"}}]}"#);
+    let l = &c.listeners[0];
+    // fit's default protocols with tls.
+    assert_eq!(l.protocols, [Protocol::Http11, Protocol::H2]);
+    let t = l.tls.as_ref().unwrap();
+    assert_eq!(
+        t.certificates,
+        [
+            Certificate {
+                cert_file: "a.pem".into(),
+                key_file: "a.key".into()
+            },
+            Certificate {
+                cert_file: "b.pem".into(),
+                key_file: "b.key".into()
+            }
+        ]
+    );
+    assert_eq!(
+        t.client_auth,
+        Some(ClientAuth {
+            ca_files: vec!["ca.pem".into()],
+            mode: ClientAuthMode::VerifyIfGiven
+        })
+    );
+    assert_eq!(t.max_version, TlsVersion::Tls13);
+
+    // Defaults: client_auth's mode require, max_version 1.3 (bare, as YAML writes it).
+    let c = ok(
+        r#"{"listeners": [{"name": "s", "address": ":443", "protocols": ["h2"], "tls": {
+        "certificates": [{"cert_file": "a.pem", "key_file": "a.key"}],
+        "client_auth": {"ca_files": ["ca.pem"]}, "max_version": 1.3}}]}"#,
+    );
+    let t = c.listeners[0].tls.as_ref().unwrap();
+    assert_eq!(c.listeners[0].protocols, [Protocol::H2]);
+    assert_eq!(
+        t.client_auth.as_ref().unwrap().mode,
+        ClientAuthMode::Require
+    );
+    assert_eq!(t.max_version, TlsVersion::Tls13);
+    // Without tls, the default stays HTTP/1.1 alone.
+    let c = ok(r#"{"listeners": [{"name": "w", "address": ":80"}]}"#);
+    assert_eq!(c.listeners[0].protocols, [Protocol::Http11]);
+    assert_eq!(c.listeners[0].tls, None);
+}
+
+#[test]
+fn tls_problems_as_fit_reports_them() {
+    const CERT: &str = r#""certificates": [{"cert_file": "a.pem", "key_file": "a.key"}]"#;
+    // fit's config_test cases, with a certificate where fit's have ACME names.
+    assert_eq!(
+        lines(r#"{"listeners": [{"name": "web", "address": ":80", "protocols": ["h2"]}]}"#),
+        ["1:64: listeners[0].protocols[0]: h2 needs tls; h2c is HTTP/2 in the clear"]
+    );
+    assert_eq!(
+        lines(&format!(
+            r#"{{"listeners": [{{"name": "web", "address": ":443", "protocols": ["h2c"], "tls": {{{CERT}}}}}]}}"#
+        )),
+        [
+            "1:65: listeners[0].protocols[0]: h2c is HTTP/2 in the clear, which a listener with tls does not serve; use h2"
+        ]
+    );
+    let with_tls = |tls: &str| {
+        lines(&format!(
+            r#"{{"listeners": [{{"name": "web", "address": ":443", "tls": {{{CERT}, {tls}}}}}]}}"#
+        ))
+    };
+    assert_eq!(
+        with_tls(r#""client_auth": {"ca_files": ["ca.pem"], "mode": "maybe"}"#),
+        [
+            r#"1:170: listeners[0].tls.client_auth.mode: "maybe" is not one of "require", "verify_if_given""#
+        ]
+    );
+    assert_eq!(
+        with_tls(r#""client_auth": {"ca_files": []}"#),
+        ["1:150: listeners[0].tls.client_auth.ca_files: at least one file is needed"]
+    );
+    assert_eq!(
+        with_tls(r#""client_auth": {}"#),
+        ["1:137: listeners[0].tls.client_auth.ca_files: missing required field"]
+    );
+    for v in [r#""1.1""#, "1.1", "1", "12", "true", r#""tls1.2""#] {
+        let e = with_tls(&format!(r#""max_version": {v}"#));
+        assert_eq!(e.len(), 1, "{v}: {e:?}");
+        assert!(
+            e[0].contains("listeners[0].tls.max_version: "),
+            "{v}: {e:?}"
+        );
+        assert!(!e[0].contains("not supported yet"), "{v}: {e:?}");
+    }
+    let e = lines(
+        r#"{"listeners": [{"name": "web", "address": ":443", "tls": {"certificates": [{"cert_file": "a.pem"}]}}]}"#,
+    );
+    assert_eq!(
+        e,
+        ["1:76: listeners[0].tls.certificates[0].key_file: missing required field"]
+    );
+}
+
+#[test]
+fn tls_fields_akit_lacks_are_not_supported_yet() {
+    const CERT: &str = r#""certificates": [{"cert_file": "a.pem", "key_file": "a.key"}]"#;
+    for (tls, path) in [
+        (r#""acme": ["a.example"]"#, "listeners[0].tls.acme"),
+        (r#""on_demand": true"#, "listeners[0].tls.on_demand"),
+        (
+            &format!(r#"{CERT}, "kernel_tls_offload": true"#) as &str,
+            "listeners[0].tls.kernel_tls_offload",
+        ),
+        (
+            &format!(r#"{CERT}, "max_version": "1.2""#),
+            "listeners[0].tls.max_version",
+        ),
+        // No certificates: fit obtains them with ACME for the routes' names.
+        ("", "listeners[0].tls"),
+    ] {
+        let e = errs(&format!(
+            r#"{{"listeners": [{{"name": "web", "address": ":443", "tls": {{{tls}}}}}]}}"#
+        ));
+        assert!(e.only_not_supported_yet(), "{tls}: {e}");
+        let paths: Vec<&str> = e.as_slice().iter().map(|e| e.path.as_str()).collect();
+        assert_eq!(paths, [path], "{tls}");
+    }
 }
 
 #[test]

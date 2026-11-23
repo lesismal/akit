@@ -152,7 +152,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 20 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 28 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -198,7 +198,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`http.middleware/rewrite`](#fields-http-middleware-rewrite) | 6 | 0 | 6 |
 | [`http.middleware/wasm`](#fields-http-middleware-wasm) | 18 | 0 | 18 |
 | [`limits`](#fields-limits) | 7 | 0 | 7 |
-| [`listeners`](#fields-listeners) | 30 | 4 | 26 |
+| [`listeners`](#fields-listeners) | 30 | 12 | 18 |
 | [`llm`](#fields-llm) | 218 | 0 | 218 |
 | [`log`](#fields-log) | 24 | 0 | 24 |
 | [`media_auth`](#fields-media-auth) | 34 | 0 | 34 |
@@ -277,7 +277,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 0 | 38 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **合计** | 3821 | 20 | 3801 |
+| **合计** | 3821 | 28 | 3793 |
 
 <a id="fields-access"></a>
 
@@ -1273,16 +1273,16 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `listeners[].socks.deny` | `array<string>` | 尚不支持（not supported yet） |
 | `listeners[].socks.idle_timeout` | `duration` | 尚不支持（not supported yet） |
 | `listeners[].socks.ports` | `array<integer>` | 尚不支持（not supported yet） |
-| `listeners[].tls` | `object` | 尚不支持（not supported yet） |
+| `listeners[].tls` | `object` | 已支持 |
 | `listeners[].tls.acme` | `array<string>` | 尚不支持（not supported yet） |
-| `listeners[].tls.certificates` | `array<object>` | 尚不支持（not supported yet） |
-| `listeners[].tls.certificates[].cert_file` | `string, required` | 尚不支持（not supported yet） |
-| `listeners[].tls.certificates[].key_file` | `string, required` | 尚不支持（not supported yet） |
-| `listeners[].tls.client_auth` | `object` | 尚不支持（not supported yet） |
-| `listeners[].tls.client_auth.ca_files` | `array<string>, required` | 尚不支持（not supported yet） |
-| `listeners[].tls.client_auth.mode` | `enum(require\|verify_if_given)` | 尚不支持（not supported yet） |
+| `listeners[].tls.certificates` | `array<object>` | 已支持 |
+| `listeners[].tls.certificates[].cert_file` | `string, required` | 已支持 |
+| `listeners[].tls.certificates[].key_file` | `string, required` | 已支持 |
+| `listeners[].tls.client_auth` | `object` | 已支持 |
+| `listeners[].tls.client_auth.ca_files` | `array<string>, required` | 已支持 |
+| `listeners[].tls.client_auth.mode` | `enum(require\|verify_if_given)` | 已支持 |
 | `listeners[].tls.kernel_tls_offload` | `boolean` | 尚不支持（not supported yet） |
-| `listeners[].tls.max_version` | `enum(1.2\|1.3)` | 尚不支持（not supported yet） |
+| `listeners[].tls.max_version` | `enum(1.2\|1.3)` | 已支持 |
 | `listeners[].tls.on_demand` | `boolean` | 尚不支持（not supported yet） |
 
 <a id="fields-llm"></a>

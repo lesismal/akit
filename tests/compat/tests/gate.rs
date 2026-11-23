@@ -345,6 +345,11 @@ fn supported_fields_are_read() {
     let route = |fields: &str| {
         format!(r#"{{{L}, "routes": [{{{fields}, "handler": {{"module": "respond"}}}}]}}"#)
     };
+    let tls = |more: &str| {
+        format!(
+            r#"{{"listeners": [{{"name": "s", "address": ":443", "tls": {{"certificates": [{{"cert_file": "a.pem", "key_file": "a.key"}}]{more}}}}}]}}"#
+        )
+    };
     let samples: Vec<(&str, String, Check)> = vec![
         ("schema_version", r#"{"schema_version": 1}"#.into(), |c| {
             c.schema_version == 1
@@ -360,6 +365,57 @@ fn supported_fields_are_read() {
             "listeners[].protocols",
             r#"{"listeners": [{"name": "w", "address": ":1", "protocols": ["h2c"]}]}"#.into(),
             |c| c.listeners[0].protocols == [Protocol::H2c],
+        ),
+        ("listeners[].tls", tls(""), |c| c.listeners[0].tls.is_some()),
+        ("listeners[].tls.certificates", tls(""), |c| {
+            c.listeners[0].tls.as_ref().unwrap().certificates.len() == 1
+        }),
+        ("listeners[].tls.certificates[].cert_file", tls(""), |c| {
+            c.listeners[0].tls.as_ref().unwrap().certificates[0].cert_file == "a.pem"
+        }),
+        ("listeners[].tls.certificates[].key_file", tls(""), |c| {
+            c.listeners[0].tls.as_ref().unwrap().certificates[0].key_file == "a.key"
+        }),
+        (
+            "listeners[].tls.client_auth",
+            tls(r#", "client_auth": {"ca_files": ["ca.pem"]}"#),
+            |c| c.listeners[0].tls.as_ref().unwrap().client_auth.is_some(),
+        ),
+        (
+            "listeners[].tls.client_auth.ca_files",
+            tls(r#", "client_auth": {"ca_files": ["ca.pem"]}"#),
+            |c| {
+                c.listeners[0]
+                    .tls
+                    .as_ref()
+                    .unwrap()
+                    .client_auth
+                    .as_ref()
+                    .unwrap()
+                    .ca_files
+                    == ["ca.pem"]
+            },
+        ),
+        (
+            "listeners[].tls.client_auth.mode",
+            tls(r#", "client_auth": {"ca_files": ["ca.pem"], "mode": "verify_if_given"}"#),
+            |c| {
+                c.listeners[0]
+                    .tls
+                    .as_ref()
+                    .unwrap()
+                    .client_auth
+                    .as_ref()
+                    .unwrap()
+                    .mode
+                    == akit_config::ClientAuthMode::VerifyIfGiven
+            },
+        ),
+        // 1.3, the default; 1.2 is refused as not supported yet (akio API request A9).
+        (
+            "listeners[].tls.max_version",
+            tls(r#", "max_version": "1.3""#),
+            |c| c.listeners[0].tls.as_ref().unwrap().max_version == akit_config::TlsVersion::Tls13,
         ),
         ("routes", respond(""), |c| c.routes.len() == 1),
         ("routes[].name", route(r#""name": "r1""#), |c| {
@@ -462,9 +518,12 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 6] = [
+    let objects: [(&str, &str, Option<&str>); 9] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         ("listeners[]", "LISTENER_FIELDS", Some("LISTENER_FIT_ONLY")),
+        ("listeners[].tls", "TLS_FIELDS", Some("TLS_FIT_ONLY")),
+        ("listeners[].tls.certificates[]", "CERTIFICATE_FIELDS", None),
+        ("listeners[].tls.client_auth", "CLIENT_AUTH_FIELDS", None),
         ("routes[]", "ROUTE_FIELDS", Some("ROUTE_FIT_ONLY")),
         ("routes[].match", "MATCH_FIELDS", Some("MATCH_FIT_ONLY")),
         ("routes[].handler", "MODULE_FIELDS", None),
@@ -537,9 +596,9 @@ fn akit_config_lists_match_the_inventory() {
     );
     read.insert("routes[].handler<respond>".to_owned());
     read.insert("routes[].handler<respond>.params".to_owned());
-    // Protocols: the two akit serves and FIT_PROTOCOLS.
+    // Protocols: the three akit serves and FIT_PROTOCOLS.
     let mut protocols: BTreeSet<String> = list("FIT_PROTOCOLS").iter().cloned().collect();
-    for p in [Protocol::Http11, Protocol::H2c] {
+    for p in [Protocol::Http11, Protocol::H2c, Protocol::H2] {
         assert!(
             protocols.insert(p.as_str().to_owned()),
             "FIT_PROTOCOLS lists {p:?}"

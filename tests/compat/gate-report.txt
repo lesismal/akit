@@ -3,12 +3,11 @@
 # fit 7daee573, fit-examples 9659d7e4.
 # 80 fixtures: 2 valid, 77 refused only as not supported yet (fields refused: 52), 0 in a format not supported yet, 1 skipped, 0 failed.
 examples/acme-on-demand: not supported yet: acme
-examples/acme-on-demand: not supported yet: listeners[].protocols: the "h2" protocol
-examples/acme-on-demand: not supported yet: listeners[].tls
+examples/acme-on-demand: not supported yet: listeners[].tls.acme
+examples/acme-on-demand: not supported yet: listeners[].tls.on_demand
 examples/acme-on-demand: not supported yet: routes[].middleware
 examples/acme-shared-storage: not supported yet: acme
-examples/acme-shared-storage: not supported yet: listeners[].protocols: the "h2" protocol
-examples/acme-shared-storage: not supported yet: listeners[].tls
+examples/acme-shared-storage: not supported yet: listeners[].tls.acme
 examples/acme-shared-storage: not supported yet: routes[].middleware
 examples/admin: not supported yet: admin
 examples/auto-https: not supported yet: acme
@@ -35,8 +34,7 @@ examples/circuit-breaker: not supported yet: routes[].handler<proxy>
 examples/circuit-breaker: not supported yet: routes[].middleware
 examples/circuit-breaker: not supported yet: upstreams
 examples/client-cert: not supported yet: acme
-examples/client-cert: not supported yet: listeners[].protocols: the "h2" protocol
-examples/client-cert: not supported yet: listeners[].tls
+examples/client-cert: not supported yet: listeners[].tls.acme
 examples/client-cert: not supported yet: routes[].handler<proxy>
 examples/client-cert: not supported yet: routes[].middleware
 examples/client-cert: not supported yet: upstreams
@@ -61,9 +59,8 @@ examples/headers: not supported yet: routes[].middleware
 examples/headers: not supported yet: upstreams
 examples/hello: valid
 examples/http3: not supported yet: acme
-examples/http3: not supported yet: listeners[].protocols: the "h2" protocol
 examples/http3: not supported yet: listeners[].protocols: the "h3" protocol
-examples/http3: not supported yet: listeners[].tls
+examples/http3: not supported yet: listeners[].tls.acme
 examples/http3: not supported yet: routes[].handler<proxy>
 examples/http3: not supported yet: routes[].middleware
 examples/http3: not supported yet: upstreams
@@ -94,8 +91,7 @@ examples/media-pages: not supported yet: webrtc
 examples/metrics: not supported yet: admin
 examples/metrics: not supported yet: metrics
 examples/mtls: not supported yet: acme
-examples/mtls: not supported yet: listeners[].protocols: the "h2" protocol
-examples/mtls: not supported yet: listeners[].tls
+examples/mtls: not supported yet: listeners[].tls.acme
 examples/mtls: not supported yet: routes[].handler<proxy>
 examples/mtls: not supported yet: routes[].middleware
 examples/mtls: not supported yet: upstreams
