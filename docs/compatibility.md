@@ -175,7 +175,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 28 supported.
+3821 fields in 121 sections, at fit `7daee573`; 37 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -298,9 +298,9 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`sync.transforms/wasm`](#fields-sync-transforms-wasm) | 9 | 0 | 9 |
 | [`telemetry`](#fields-telemetry) | 14 | 0 | 14 |
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
-| [`upstreams`](#fields-upstreams) | 38 | 0 | 38 |
+| [`upstreams`](#fields-upstreams) | 38 | 9 | 29 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 28 | 3793 |
+| **Total** | 3821 | 37 | 3784 |
 
 <a id="fields-access"></a>
 
@@ -4848,9 +4848,9 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `upstreams` | `array<object>` | not supported yet |
-| `upstreams[].addresses` | `array<string>, required` | not supported yet |
-| `upstreams[].connect_timeout` | `duration` | not supported yet |
+| `upstreams` | `array<object>` | supported |
+| `upstreams[].addresses` | `array<string>, required` | supported |
+| `upstreams[].connect_timeout` | `duration` | supported |
 | `upstreams[].deny_internal` | `boolean` | not supported yet |
 | `upstreams[].fail_timeout` | `duration` | not supported yet |
 | `upstreams[].hash_key` | `string` | not supported yet |
@@ -4865,14 +4865,14 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `upstreams[].health_check.port` | `integer` | not supported yet |
 | `upstreams[].health_check.timeout` | `duration` | not supported yet |
 | `upstreams[].health_check.type` | `enum(http\|tcp)` | not supported yet |
-| `upstreams[].idle_timeout` | `duration` | not supported yet |
+| `upstreams[].idle_timeout` | `duration` | supported |
 | `upstreams[].load_balancing` | `enum(round_robin\|weighted_round_robin\|least_conn\|random\|p2c\|ip_hash\|uri_hash\|header_hash\|cookie_hash)` | not supported yet |
-| `upstreams[].max_conns` | `integer` | not supported yet |
+| `upstreams[].max_conns` | `integer` | supported |
 | `upstreams[].max_fails` | `integer` | not supported yet |
-| `upstreams[].max_idle_conns` | `integer` | not supported yet |
-| `upstreams[].max_pending` | `integer` | not supported yet |
-| `upstreams[].name` | `string, required` | not supported yet |
-| `upstreams[].protocol` | `enum(http/1.1\|h2c\|h2)` | not supported yet |
+| `upstreams[].max_idle_conns` | `integer` | supported |
+| `upstreams[].max_pending` | `integer` | supported |
+| `upstreams[].name` | `string, required` | supported |
+| `upstreams[].protocol` | `enum(http/1.1\|h2c\|h2)` | supported |
 | `upstreams[].response_header_timeout` | `duration` | not supported yet |
 | `upstreams[].response_idle_timeout` | `duration` | not supported yet |
 | `upstreams[].response_timeout` | `duration` | not supported yet |

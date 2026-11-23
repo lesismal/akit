@@ -111,6 +111,27 @@ impl<'s> Decoder<'s> {
         Some(v)
     }
 
+    /// A duration, written as a string Go's `time.ParseDuration` takes (`"10s"`, `"1m30s"`,
+    /// `"250ms"`), not negative: fit's `config.Duration`.
+    pub(crate) fn duration(&mut self, n: &Node, path: &str) -> Option<std::time::Duration> {
+        let s = self.string(n, path)?;
+        match crate::duration::parse(&s) {
+            Some(Ok(d)) => Some(d),
+            Some(Err(())) => {
+                self.error(n.off, path, format!("{s:?} is negative"));
+                None
+            }
+            None => {
+                self.error(
+                    n.off,
+                    path,
+                    format!("{s:?} is not a duration, such as \"10s\" or \"1m30s\""),
+                );
+                None
+            }
+        }
+    }
+
     /// An array, each element read by `f` with its index's path.
     pub(crate) fn array<T>(
         &mut self,

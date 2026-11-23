@@ -466,10 +466,10 @@ fn positions() {
         e,
         "2:11: routes[0].priority: expected an integer, got a string"
     );
-    let e = crate::from_conf("upstream app 127.0.0.1:1\n", None)
-        .unwrap_err()
-        .to_string();
-    assert_eq!(e, "1:1: upstreams: not supported yet");
+    // An upstream's shorthand, its addresses after its name, read since I14.
+    let c = crate::from_conf("upstream app 127.0.0.1:1\n", None).unwrap();
+    assert_eq!(c.upstreams[0].name, "app");
+    assert_eq!(c.upstreams[0].addresses, ["127.0.0.1:1"]);
     // `tls <cert> <key>`, the shorthand, read since I09: TLS listeners default to HTTP/1.1 and h2.
     let c = crate::from_conf("listener web :1 { tls c.pem k.pem }\n", None).unwrap();
     let tls = c.listeners[0].tls.as_ref().unwrap();

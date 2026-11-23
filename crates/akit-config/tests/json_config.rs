@@ -92,7 +92,7 @@ fn not_supported_yet_is_not_wrong() {
             "listeners": [{"name": "web", "address": ":8080", "protocols": ["http/1.1", "h2", "h3"], "tls": {}}],
             "routes": [{"name": "hello", "middleware": [], "handler": {"module": "proxy", "params": {"upstream": "app"}}},
                        {"match": {"method": ["GET"]}, "handler": {"module": "respond"}}],
-            "upstreams": [{"name": "app", "addresses": ["127.0.0.1:9000"]}]}"#,
+            "upstreams": [{"name": "app", "addresses": ["127.0.0.1:9000"], "load_balancing": "p2c"}]}"#,
     );
     assert!(e.only_not_supported_yet(), "{e}");
     let paths: Vec<&str> = e.as_slice().iter().map(|e| e.path.as_str()).collect();
@@ -104,7 +104,7 @@ fn not_supported_yet_is_not_wrong() {
             "routes[0].handler.module",
             "routes[0].middleware",
             "routes[1].match.method",
-            "upstreams",
+            "upstreams[0].load_balancing",
         ]
     );
     assert_eq!(
@@ -385,6 +385,8 @@ fn fit_template_if_present() {
         eprintln!("skipped: no fit template at {}", path.display());
         return;
     };
-    let e = from_json(&src, Some("fit.json")).expect_err("the template has upstreams");
-    assert!(e.only_not_supported_yet(), "{e}");
+    // Valid since I14 read its upstreams; a later fit may add fields akit refuses by name.
+    if let Err(e) = from_json(&src, Some("fit.json")) {
+        assert!(e.only_not_supported_yet(), "{e}");
+    }
 }

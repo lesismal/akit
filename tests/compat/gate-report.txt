@@ -1,7 +1,7 @@
 # The compatibility gate's report (docs/compatibility.md), written by make compat-bless;
 # do not edit. The gate fails when a run's outcomes differ from these lines.
 # fit 7daee573, fit-examples 9659d7e4.
-# 80 fixtures: 2 valid, 77 refused only as not supported yet (fields refused: 52), 0 in a format not supported yet, 1 skipped, 0 failed.
+# 80 fixtures: 5 valid, 74 refused only as not supported yet (fields refused: 61), 0 in a format not supported yet, 1 skipped, 0 failed.
 examples/acme-on-demand: not supported yet: acme
 examples/acme-on-demand: not supported yet: listeners[].tls.acme
 examples/acme-on-demand: not supported yet: listeners[].tls.on_demand
@@ -25,62 +25,61 @@ examples/body-limit: not supported yet: limits
 examples/body-limit: not supported yet: routes[].handler<proxy>
 examples/body-limit: not supported yet: routes[].match.method
 examples/body-limit: not supported yet: routes[].middleware
-examples/body-limit: not supported yet: upstreams
 examples/cache: not supported yet: routes[].handler<proxy>
 examples/cache: not supported yet: routes[].match.method
 examples/cache: not supported yet: routes[].middleware
-examples/cache: not supported yet: upstreams
 examples/circuit-breaker: not supported yet: routes[].handler<proxy>
 examples/circuit-breaker: not supported yet: routes[].middleware
-examples/circuit-breaker: not supported yet: upstreams
 examples/client-cert: not supported yet: acme
 examples/client-cert: not supported yet: listeners[].tls.acme
 examples/client-cert: not supported yet: routes[].handler<proxy>
 examples/client-cert: not supported yet: routes[].middleware
-examples/client-cert: not supported yet: upstreams
 examples/compress: not supported yet: routes[].handler<proxy>
 examples/compress: not supported yet: routes[].middleware
-examples/compress: not supported yet: upstreams
 examples/concurrency-limit: not supported yet: routes[].handler<proxy>
 examples/concurrency-limit: not supported yet: routes[].middleware
-examples/concurrency-limit: not supported yet: upstreams
+examples/concurrency-limit: not supported yet: upstreams[].response_timeout
 examples/console: not supported yet: admin
 examples/docker-compose: not supported yet: providers
 examples/fastcgi: not supported yet: routes[].handler<fastcgi>
 examples/forward-auth: not supported yet: routes[].handler<proxy>
 examples/forward-auth: not supported yet: routes[].middleware
-examples/forward-auth: not supported yet: upstreams
 examples/forward-proxy: not supported yet: routes[].handler<forward_proxy>
 examples/forward-proxy: not supported yet: routes[].match.method
 examples/grpc: not supported yet: routes[].handler<proxy>
-examples/grpc: not supported yet: upstreams
+examples/grpc: not supported yet: upstreams[].health_check
+examples/grpc: not supported yet: upstreams[].protocol: the "h2c" protocol for upstreams
+examples/grpc: not supported yet: upstreams[].response_idle_timeout
+examples/grpc: not supported yet: upstreams[].response_timeout
 examples/headers: not supported yet: routes[].handler<proxy>
 examples/headers: not supported yet: routes[].middleware
-examples/headers: not supported yet: upstreams
 examples/hello: valid
 examples/http3: not supported yet: acme
 examples/http3: not supported yet: listeners[].protocols: the "h3" protocol
 examples/http3: not supported yet: listeners[].tls.acme
 examples/http3: not supported yet: routes[].handler<proxy>
 examples/http3: not supported yet: routes[].middleware
-examples/http3: not supported yet: upstreams
 examples/https: skipped: its certificate and key files are the user's own
 examples/jwt: not supported yet: routes[].handler<proxy>
 examples/jwt: not supported yet: routes[].middleware
-examples/jwt: not supported yet: upstreams
 examples/l4-tcp: not supported yet: listeners[].protocols: the "tcp" protocol
 examples/l4-tcp: not supported yet: services
-examples/l4-tcp: not supported yet: upstreams
+examples/l4-tcp: not supported yet: upstreams[].health_check
 examples/l4-udp: not supported yet: listeners[].protocols: the "udp" protocol
 examples/l4-udp: not supported yet: services
-examples/l4-udp: not supported yet: upstreams
+examples/l4-udp: not supported yet: upstreams[].load_balancing
 examples/limits: not supported yet: engine
 examples/limits: not supported yet: limits
 examples/llm-hub: not supported yet: llm
 examples/llm-node: not supported yet: llm
 examples/llm-proxy: not supported yet: llm
 examples/load-balancing: not supported yet: routes[].handler<proxy>
-examples/load-balancing: not supported yet: upstreams
+examples/load-balancing: not supported yet: upstreams[].fail_timeout
+examples/load-balancing: not supported yet: upstreams[].health_check
+examples/load-balancing: not supported yet: upstreams[].load_balancing
+examples/load-balancing: not supported yet: upstreams[].max_fails
+examples/load-balancing: not supported yet: upstreams[].sticky_cookie
+examples/load-balancing: not supported yet: upstreams[].weights
 examples/logging: not supported yet: access_log
 examples/logging: not supported yet: log
 examples/media-pages: not supported yet: media_auth
@@ -94,7 +93,6 @@ examples/mtls: not supported yet: acme
 examples/mtls: not supported yet: listeners[].tls.acme
 examples/mtls: not supported yet: routes[].handler<proxy>
 examples/mtls: not supported yet: routes[].middleware
-examples/mtls: not supported yet: upstreams
 examples/provider-consul: not supported yet: providers
 examples/provider-consul-kv: not supported yet: providers
 examples/provider-docker: not supported yet: providers
@@ -103,16 +101,19 @@ examples/provider-kubernetes: not supported yet: providers
 examples/proxy: not supported yet: admin
 examples/proxy: not supported yet: limits
 examples/proxy: not supported yet: routes[].handler<proxy>
-examples/proxy: not supported yet: upstreams
+examples/proxy: not supported yet: upstreams[].fail_timeout
+examples/proxy: not supported yet: upstreams[].health_check
+examples/proxy: not supported yet: upstreams[].max_fails
+examples/proxy: not supported yet: upstreams[].response_header_timeout
+examples/proxy: not supported yet: upstreams[].response_idle_timeout
+examples/proxy: not supported yet: upstreams[].response_timeout
 examples/proxy-protocol: not supported yet: listeners[].proxy_protocol
 examples/proxy-protocol: not supported yet: routes[].middleware
 examples/rate-limit: not supported yet: routes[].handler<proxy>
 examples/rate-limit: not supported yet: routes[].middleware
-examples/rate-limit: not supported yet: upstreams
 examples/redirect: not supported yet: routes[].middleware
 examples/rewrite: not supported yet: routes[].handler<proxy>
 examples/rewrite: not supported yet: routes[].middleware
-examples/rewrite: not supported yet: upstreams
 examples/routing: not supported yet: routes[].match.expr
 examples/routing: not supported yet: routes[].match.header
 examples/routing: not supported yet: routes[].match.method
@@ -161,7 +162,6 @@ examples/sync-wasm-source: not supported yet: sync
 examples/sync-wasm-transform: not supported yet: sync
 examples/telemetry: not supported yet: routes[].handler<proxy>
 examples/telemetry: not supported yet: telemetry
-examples/telemetry: not supported yet: upstreams
 examples/tunnel-hub: not supported yet: tunnel
 examples/tunnel-node: not supported yet: tunnel
 examples/tunnel-proxy: not supported yet: tunnel
@@ -176,11 +176,10 @@ examples/video-site: not supported yet: routes[].handler<vod>
 examples/video-site: not supported yet: routes[].match.remote_ip
 examples/video-site: not supported yet: routes[].middleware
 examples/video-site: not supported yet: streaming
-examples/video-site: not supported yet: upstreams
 examples/virtual-hosts: valid
 examples/wasm: not supported yet: routes[].middleware
 examples/webrtc-proxy: not supported yet: routes[].handler<webrtc_proxy>
-examples/webrtc-proxy: not supported yet: upstreams
+examples/webrtc-proxy: not supported yet: upstreams[].health_check
 examples/webrtc-proxy: not supported yet: webrtc
 examples/webrtc-turn: not supported yet: webrtc
 examples/whip-whep: not supported yet: routes[].handler<whep>
@@ -188,11 +187,8 @@ examples/whip-whep: not supported yet: routes[].handler<whip>
 examples/whip-whep: not supported yet: routes[].middleware
 examples/whip-whep: not supported yet: webrtc
 templates/conf/conf.d: not supported yet: routes[].handler<proxy>
-templates/conf/conf.d: not supported yet: upstreams
-templates/conf/fit.conf: not supported yet: upstreams
+templates/conf/fit.conf: valid
 templates/json/conf.d: not supported yet: routes[].handler<proxy>
-templates/json/conf.d: not supported yet: upstreams
-templates/json/fit.json: not supported yet: upstreams
+templates/json/fit.json: valid
 templates/yaml/conf.d: not supported yet: routes[].handler<proxy>
-templates/yaml/conf.d: not supported yet: upstreams
-templates/yaml/fit.yaml: not supported yet: upstreams
+templates/yaml/fit.yaml: valid

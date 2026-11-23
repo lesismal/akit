@@ -342,6 +342,9 @@ fn supported_fields_are_read() {
             r#"{{{L}, "routes": [{{"handler": {{"module": "respond", "params": {{{params}}}}}}}]}}"#
         )
     };
+    let upstream = |fields: &str| {
+        format!(r#"{{"upstreams": [{{"name": "app", "addresses": ["127.0.0.1:9000"]{fields}}}]}}"#)
+    };
     let route = |fields: &str| {
         format!(r#"{{{L}, "routes": [{{{fields}, "handler": {{"module": "respond"}}}}]}}"#)
     };
@@ -476,6 +479,50 @@ fn supported_fields_are_read() {
             respond(r#""body": "hi""#),
             |c| respond_of(c).body == "hi",
         ),
+        ("upstreams", upstream(""), |c| c.upstreams.len() == 1),
+        ("upstreams[].name", upstream(""), |c| {
+            c.upstreams[0].name == "app"
+        }),
+        ("upstreams[].addresses", upstream(""), |c| {
+            c.upstreams[0].addresses == ["127.0.0.1:9000"]
+        }),
+        // Its one value akit takes is the default, so it reads it by refusing the others.
+        (
+            "upstreams[].protocol",
+            upstream(r#", "protocol": "http/1.1""#),
+            |_| {
+                akit_config::from_json(
+                    r#"{"upstreams": [{"name": "a", "addresses": ["a:1"], "protocol": "h2c"}]}"#,
+                    None,
+                )
+                .is_err_and(|e| e.only_not_supported_yet())
+            },
+        ),
+        (
+            "upstreams[].max_conns",
+            upstream(r#", "max_conns": 7"#),
+            |c| c.upstreams[0].max_conns == 7,
+        ),
+        (
+            "upstreams[].max_pending",
+            upstream(r#", "max_pending": 8"#),
+            |c| c.upstreams[0].max_pending == 8,
+        ),
+        (
+            "upstreams[].max_idle_conns",
+            upstream(r#", "max_idle_conns": 0"#),
+            |c| c.upstreams[0].max_idle_conns == 0,
+        ),
+        (
+            "upstreams[].idle_timeout",
+            upstream(r#", "idle_timeout": "5s""#),
+            |c| c.upstreams[0].idle_timeout == std::time::Duration::from_secs(5),
+        ),
+        (
+            "upstreams[].connect_timeout",
+            upstream(r#", "connect_timeout": "1500ms""#),
+            |c| c.upstreams[0].connect_timeout == std::time::Duration::from_millis(1500),
+        ),
     ];
     let marked = supported().unwrap();
     let sampled: BTreeSet<String> = samples.iter().map(|(p, ..)| (*p).to_owned()).collect();
@@ -518,7 +565,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 9] = [
+    let objects: [(&str, &str, Option<&str>); 10] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         ("listeners[]", "LISTENER_FIELDS", Some("LISTENER_FIT_ONLY")),
         ("listeners[].tls", "TLS_FIELDS", Some("TLS_FIT_ONLY")),
@@ -528,6 +575,7 @@ fn akit_config_lists_match_the_inventory() {
         ("routes[].match", "MATCH_FIELDS", Some("MATCH_FIT_ONLY")),
         ("routes[].handler", "MODULE_FIELDS", None),
         ("routes[].handler<respond>.params", "RESPOND_FIELDS", None),
+        ("upstreams[]", "UPSTREAM_FIELDS", Some("UPSTREAM_FIT_ONLY")),
     ];
     let mapped: BTreeSet<&str> = objects
         .iter()

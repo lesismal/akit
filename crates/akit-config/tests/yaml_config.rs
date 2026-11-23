@@ -31,10 +31,9 @@ fn templates_read_as_their_json_twins() {
     ] {
         let y = outcome(from_files(&[t.join(yaml)]));
         let j = outcome(from_files(&[t.join(json)]));
+        // The same config when both read (the single-file templates since I14), the same
+        // problems when both are refused.
         assert_eq!(y, j, "{yaml} and {json}");
-        // Both are refused, as not supported yet only (I07b's gate report), so the comparison
-        // above compares every problem.
-        assert!(y.is_err(), "{yaml}");
     }
 }
 

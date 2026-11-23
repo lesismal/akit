@@ -277,6 +277,7 @@ dependencies = [
  "akit-config",
  "akit-router",
  "akit-tls",
+ "akit-upstream",
 ]
 
 [[package]]
@@ -292,6 +293,11 @@ dependencies = [
 [[package]]
 name = "akit-upstream"
 version = "0.0.1"
+dependencies = [
+ "akio",
+ "akio-http",
+ "akit-config",
+]
 
 [[package]]
 name = "cc"
