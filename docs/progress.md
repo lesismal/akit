@@ -16,7 +16,7 @@ done and where the work differs from the plan.
 | fit | the specification; read at `7daee573` for this plan |
 | What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept, added and removed, those it started with only once akio's A1 is pinned); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths; the `respond`, `static` (conditional and range requests, files opened on akio's pool) and `proxy` handlers (fit's forwarding fields, trusted proxies; the client's `Host` once A11 is pinned); upstream pools with round robin, weighted round robin and least connections; the compatibility gate: 80 fixtures, 8 valid, 71 refused only as not supported yet, 1 skipped, none failed |
 | Next | Move the akio pin to akio's main with A1–A8 and A11, then I15 done (its `Host` tests) and I22 on A1; then I13, I16, I17, I20, I21 |
-| akio requests | A1–A8 merged into akio's main (2026-11-24); A11 on akio branch `claude/i15-proxy-699f18`; A9, A10, A12–A18 requested ([akio API requests](akio-api-requests.md)) |
+| akio requests | A1–A8 merged into akio's main (2026-11-24); A11 on akio branch `claude/i15-proxy-699f18`; A13 and A16–A18 on akio branch `claude/i13-static2-b61107`; A9, A10, A12, A14 and A15 requested ([akio API requests](akio-api-requests.md)) |
 
 ## Log
 
@@ -44,6 +44,15 @@ done and where the work differs from the plan.
   `compress` stays refused (I47's compression).
 - Requested: A16 (a twin chosen by q values among the encodings configured), A17 (`try_files` on
   `Files`), A18 (directory listings on `Files`), in [akio API requests](akio-api-requests.md).
+  A13, A16, A17 and A18 are built on akio branch `claude/i13-static2-b61107` (`3209255c`,
+  ADR-100, its akio-http tests passing on macOS; the Linux run (epoll, io_uring) did not get the test host's lock and is still to do), not merged.
+  Left for when akit's akio pin moves to an akio main with it: the `static` handler calls
+  `Files::serve` with the canonical path minus `strip_prefix`, sets `twins` from `precompressed`
+  (none when left out), `try_paths` and `hide` (fit's dotfile check) from `try_files`, and
+  `list_directories` from `browse` and `browse_max_entries`; akit-config stops refusing
+  `try_files` and `browse` `true`; the ported tests' A16 cases take fit's answers, and fit's
+  TestTryFiles, TestBrowse, TestBrowseMaxEntries and TestBrowseOrder are ported; then I13 is
+  `done`.
 - The compatibility gate: 11 static fields supported (55 in all); fit's `examples/static` is now
   refused only for `browse`, `max_cache_bytes` and `middleware` (`make compat-bless`).
 - No benchmark scenario added: fit's harness has none for twins, `try_files` or listings (its

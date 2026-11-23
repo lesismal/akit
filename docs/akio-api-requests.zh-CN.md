@@ -30,12 +30,12 @@
 | A10 | 立即关闭 HTTP 客户端的空闲连接 | 已提出（I14） | 10、11 | I14、I22 |
 | A11 | HTTP/1 客户端请求保留自己的 `Host` 字段（给定空 `User-Agent` 时不发送 `User-Agent`） | 已在 akio 分支 `claude/i15-proxy-699f18`（`552fe283`）完成，未合并 | — | I15 |
 | A12 | HTTP 客户端的连接超时也作用于单个地址 | 已提出（I14） | 10 | I14 |
-| A13 | `Files` 服务调用者给出的路径 | 已提出（I12） | 19 | I12 |
+| A13 | `Files` 服务调用者给出的路径 | 已在 akio 分支 `claude/i13-static2-b61107` (`3209255c`) 完成，未合并 | 19 | I12、I13 |
 | A14 | `Files` 像网关的静态文件 handler 那样应答 | 已提出（I12） | 19 | I12、I13 |
 | A15 | `Files` 的内存有界，磁盘池有超时 | 已提出（I12） | 4、11 | I12 |
-| A16 | `Files` 在配置的编码中按客户端的 q 值选择压缩副本 | 已提出（I13） | 19 | I13 |
-| A17 | `Files` 依次尝试候选路径（`try_files`） | 已提出（I13） | 19 | I13 |
-| A18 | `Files` 列出没有索引文件的目录 | 已提出（I13） | 4、11、19 | I13 |
+| A16 | `Files` 在配置的编码中按客户端的 q 值选择压缩副本 | 已在 akio 分支 `claude/i13-static2-b61107` (`3209255c`) 完成，未合并 | 19 | I13 |
+| A17 | `Files` 依次尝试候选路径（`try_files`） | 已在 akio 分支 `claude/i13-static2-b61107` (`3209255c`) 完成，未合并 | 19 | I13 |
+| A18 | `Files` 列出没有索引文件的目录 | 已在 akio 分支 `claude/i13-static2-b61107` (`3209255c`) 完成，未合并 | 4、11、19 | I13 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -183,6 +183,11 @@ io_uring）上通过。akit 的 I15 用到这两点；相关测试在 akit 的�
 而带有 `..` 段但仍在根目录内的路径（`/x/../ok.txt`）——监听器按 `/ok.txt` 路由、fit 的整套服务会提供它——由 handler
 答 400，与 fit 的 handler 单独时的回答相同。
 
+**已完成**：akio 分支 `claude/i13-static2-b61107`（`3209255c`，ADR-100，未合并）：A13 为
+`Files::serve(ctx, path)`；A16 为 `Files::twins(&[&str])` 和按 q 值选择副本；A17 为 `Files::try_paths(&[&str])`，
+配合用于 fit 的 dotfiles 的 `Files::hide(f)`；A18 为 `Files::list_directories(max_entries)`，页面与 fit 的逐字节相同。
+akit 的 `static` handler 在 akit 的 akio 锁定移到合并了该分支的 akio main 之后使用它们。
+
 ## A14 `Files` 像网关的静态文件 handler 那样应答
 
 **问题。** fit 的 `static` handler（akit 移植它的测试，规则 19）对一些请求的回答与 `Files` 不同，而 `Files` 没有
@@ -291,3 +296,8 @@ UTC 修改时间），最多读取 `browse_max_entries` 项（默认 10000；还
 
 **akit 的用法。** `static` handler 为 `browse` 和 `browse_max_entries` 打开它。在此之前 `browse` 为 `true` 时被拒绝
 为尚不支持并注明本请求；`browse` 为 `false`（fit 的默认值）和 `browse_max_entries` 被接受。
+
+**已完成**：akio 分支 `claude/i13-static2-b61107`（`3209255c`，ADR-100，未合并）：A13 为
+`Files::serve(ctx, path)`；A16 为 `Files::twins(&[&str])` 和按 q 值选择副本；A17 为 `Files::try_paths(&[&str])`，
+配合用于 fit 的 dotfiles 的 `Files::hide(f)`；A18 为 `Files::list_directories(max_entries)`，页面与 fit 的逐字节相同。
+akit 的 `static` handler 在 akit 的 akio 锁定移到合并了该分支的 akio main 之后使用它们。

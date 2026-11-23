@@ -15,7 +15,7 @@
 | fit | 作为规格；本计划基于 `7daee573` 阅读 |
 | 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；监听器保留、增加和移除，启动时的监听器要等锁定到带 A1 的 akio）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开）和 `proxy` handler（fit 的转发字段、可信代理；锁定到 A11 后传客户端的 `Host`）；上游连接池，轮询、加权轮询和最少连接；兼容性门禁：80 个夹具，8 个有效，71 个只因暂不支持被拒绝，1 个跳过，没有失败 |
 | 下一步 | 把 akio 锁定到带 A1–A8 和 A11 的 akio main，然后 I15 完成（其 `Host` 测试）、I22 改用 A1；再是 I13、I16、I17、I20、I21 |
-| akio 需求 | A1–A8 已合并进 akio 的 main（2026-11-24）；A11 在 akio 分支 `claude/i15-proxy-699f18` 上；A9、A10、A12–A18 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
+| akio 需求 | A1–A8 已合并进 akio 的 main（2026-11-24）；A11 在 akio 分支 `claude/i15-proxy-699f18` 上；A13 和 A16–A18 在 akio 分支 `claude/i13-static2-b61107` 上；A9、A10、A12、A14 和 A15 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
 
 ## 日志
 
@@ -36,7 +36,13 @@
   的目录答 404，akit 无法在那里列出目录。`browse_max_entries` 被接受（不小于 0 的整数；只限制目录列表）。
   `compress` 仍被拒绝（I47 的压缩）。
 - 已提出：A16（在配置的编码中按 q 值选择副本）、A17（`Files` 上的 `try_files`）、A18（`Files` 上的目录列表），见
-  [akio API 需求](akio-api-requests.zh-CN.md)。
+  [akio API 需求](akio-api-requests.zh-CN.md)。A13、A16、A17 和 A18 已在 akio 分支 `claude/i13-static2-b61107`
+  （`3209255c`，ADR-100，其 akio-http 测试在 macOS 上通过；Linux（epoll、io_uring）因测试机的锁一直被占用尚未跑，待补）实现，未合并。等 akit
+  的 akio 锁定移到包含它的 akio main 之后要做的：`static` handler 用规范路径去掉 `strip_prefix` 后调用
+  `Files::serve`，按 `precompressed` 设置 `twins`（未写时为空），按 `try_files` 设置 `try_paths` 和 `hide`（fit 的
+  点文件检查），按 `browse` 和 `browse_max_entries` 设置 `list_directories`；akit-config 不再拒绝 `try_files` 和
+  `browse` 为 `true`；移植测试中 A16 的情况改为 fit 的应答，并移植 fit 的 TestTryFiles、TestBrowse、
+  TestBrowseMaxEntries 和 TestBrowseOrder；然后 I13 为 `done`。
 - 兼容性门禁：支持 11 个 static 字段（共 55 个）；fit 的 `examples/static` 现在只因 `browse`、`max_cache_bytes` 和
   `middleware` 被拒绝（`make compat-bless`）。
 - 没有添加基准场景：fit 的测试框架没有针对副本、`try_files` 或目录列表的场景（它的配置不提供任何预压缩内容，见基准

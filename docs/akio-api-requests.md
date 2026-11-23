@@ -31,12 +31,12 @@ first; its status here records the branch, then the akio commit akit pins.
 | A10 | Closing an HTTP client's idle connections now | requested (I14) | 10, 11 | I14, I22 |
 | A11 | An HTTP/1 client request that keeps its own `Host` field (and sends no `User-Agent` when given an empty one) | done on akio branch `claude/i15-proxy-699f18` (`552fe283`), not merged | — | I15 |
 | A12 | The HTTP client's connect timeout for a lone address too | requested (I14) | 10 | I14 |
-| A13 | `Files` serving a path the caller names | requested (I12) | 19 | I12 |
+| A13 | `Files` serving a path the caller names | done on akio branch `claude/i13-static2-b61107` (`3209255c`), not merged | 19 | I12, I13 |
 | A14 | `Files` answering as a gateway's static handler does | requested (I12) | 19 | I12, I13 |
 | A15 | `Files` bounded in memory, its disk pool with a timeout | requested (I12) | 4, 11 | I12 |
-| A16 | `Files` choosing a compressed twin by the client's q values, among the encodings configured | requested (I13) | 19 | I13 |
-| A17 | `Files` trying candidate paths in turn (`try_files`) | requested (I13) | 19 | I13 |
-| A18 | `Files` listing a directory that has no index file | requested (I13) | 4, 11, 19 | I13 |
+| A16 | `Files` choosing a compressed twin by the client's q values, among the encodings configured | done on akio branch `claude/i13-static2-b61107` (`3209255c`), not merged | 19 | I13 |
+| A17 | `Files` trying candidate paths in turn (`try_files`) | done on akio branch `claude/i13-static2-b61107` (`3209255c`), not merged | 19 | I13 |
+| A18 | `Files` listing a directory that has no index file | done on akio branch `claude/i13-static2-b61107` (`3209255c`), not merged | 4, 11, 19 | I13 |
 
 ## A1 TCP listeners on a running engine
 
@@ -212,6 +212,12 @@ then `strip_prefix` is refused as not supported yet, and a path with a `..` segm
 inside the root (`/x/../ok.txt`), which the listener routes as `/ok.txt` and fit's stack serves, is
 answered 400 by the handler, as fit's handler alone answers it.
 
+**Done** on akio branch `claude/i13-static2-b61107` (`3209255c`, ADR-100, not merged): A13 as
+`Files::serve(ctx, path)`; A16 as `Files::twins(&[&str])` and a twin picked by q value; A17 as
+`Files::try_paths(&[&str])` with `Files::hide(f)` for fit's dotfiles; A18 as
+`Files::list_directories(max_entries)`, fit's page byte for byte. akit's `static` handler uses
+them once akit's akio pin moves to an akio main with that branch merged.
+
 ## A14 `Files` answering as a gateway's static handler does
 
 **Problem.** fit's `static` handler (whose tests akit ports, rule 19) answers some requests
@@ -347,3 +353,9 @@ index file, for the caller to build the page.
 **How akit uses it.** The `static` handler turns it on for `browse` with `browse_max_entries`.
 Until then `browse` `true` is refused as not supported yet naming this request; `browse` `false`,
 fit's default, and `browse_max_entries` are taken.
+
+**Done** on akio branch `claude/i13-static2-b61107` (`3209255c`, ADR-100, not merged): A13 as
+`Files::serve(ctx, path)`; A16 as `Files::twins(&[&str])` and a twin picked by q value; A17 as
+`Files::try_paths(&[&str])` with `Files::hide(f)` for fit's dotfiles; A18 as
+`Files::list_directories(max_entries)`, fit's page byte for byte. akit's `static` handler uses
+them once akit's akio pin moves to an akio main with that branch merged.
