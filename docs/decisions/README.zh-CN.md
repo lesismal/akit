@@ -12,3 +12,4 @@
 | --- | --- | --- |
 | [001](001-dependency-policy.zh-CN.md) | 依赖：akio、标准库，以及少数其他 | 已采纳 |
 | [002](002-config-compatibility.zh-CN.md) | akit 读取 fit 的配置 | 已采纳 |
+| [003](003-module-registry-and-traits.zh-CN.md) | 模块注册表与数据面 trait | 已采纳 |

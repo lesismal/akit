@@ -89,7 +89,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | **M0** | | | |
 | I01 | 工作区骨架与 CI | — | done |
 | I02 | 配置模型 v0 与严格的 JSON 读取器 | I01 | done |
-| I03 | 核心 trait 与模块注册表 | I01 | todo |
+| I03 | 核心 trait 与模块注册表 | I01 | done |
 | I04 | 运行时图及其替换 | I02, I03 | todo |
 | I05 | `akit run`：监听器与 `respond` | I04 | todo |
 | I06 | CLI、信号与优雅关闭 | I05 | todo |

@@ -11,14 +11,42 @@ done and where the work differs from the plan.
 | | |
 | --- | --- |
 | Last updated | 2026-11-23 |
-| Milestone | M0, foundations: I01 and I02 done. |
+| Milestone | M0, foundations: I01, I02 and I03 done. |
 | akio | `50a82315` on akio's `main` (`1.0.0-rc.1`), pinned by `rev` in `Cargo.toml` |
 | fit | the specification; read at `7daee573` for this plan |
-| What works | the workspace builds and passes `make check`; `akit version` and `akit help`; `akit_config::from_json` reads fit's listeners, routes and the `respond` handler, and refuses the rest of fit's config by name as not supported yet |
-| Next | I02, I03 and I07, which can run in parallel. |
+| What works | the workspace builds and passes `make check`; `akit version` and `akit help`; `akit_config::from_json` reads fit's listeners, routes and the `respond` handler, and refuses the rest of fit's config by name as not supported yet; the module registry and the data-plane traits (`akit-runtime`) |
+| Next | I04, which joins I02's config model to I03's registry; I07b, the compatibility gate wired to `validate`. |
 | akio requests | A1–A8 all being added to akio now, each on its own akio branch ([akio API requests](akio-api-requests.md)) |
 
 ## Log
+
+### 2026-11-23: I03, core traits and the module registry
+
+- `akit_runtime::traits`, on akio's callback model: `Handler` (an akio-http `Service`: inline on the
+  I/O thread, responds or detaches), `HandlerService` (a handler as akio's `Service`), `Middleware`
+  (`wrap(next)` once at compile time, as fit's) with `chain` and `AkioMiddleware` (akio's
+  per-request middleware as akit's), `Matcher`, `Router`, `Service` (fit's: picks an `Upstream`),
+  `Upstream` and `Listener` (a name and an akio `AnyAcceptor`); the last three provisional, as in fit.
+- `akit_runtime::module`: `Info` (ID, doc, typed `Constructor`), `Registry::new` from crates'
+  `static` lists (no global state; malformed, duplicate or misplaced IDs are a `RegistryError`),
+  `lookup`, `namespace`, `handler` and `middleware` loading by config name with `Provision` (params
+  of a generic type `P`, `Env`); `Provisioned::on_cleanup`; `Modules` running cleanups last
+  provisioned first, once, on `release` or drop. Errors keep fit's wording: `there is no module
+  "nope" in http.handlers (it has "echo", "respond")`; `ProvisionError` carries a message and maybe
+  a field for I04 to place at the params' path.
+- [Decision 003](decisions/003-module-registry-and-traits.md) records the design later iterations
+  follow.
+- Checked: `make check` on macOS (fmt, clippy `-D warnings`, tests, cargo-deny, docs);
+  `RUSTDOCFLAGS=-D warnings cargo doc -p akit-runtime`. Tests (`crates/akit-runtime/tests/modules.rs`):
+  a test module registers, provisions from params and is cleaned up on release and on drop; unknown
+  names are errors naming them; a failure midway (a constructor error or an unknown name) cleans up
+  what was provisioned, in reverse; registry mistakes; and a provisioned middleware + handler chain
+  answers a real request on akio (epoll/kqueue; `AKIO_TEST_BACKEND=uring` on Linux). Not run on
+  Linux in this session. No benchmark (control plane).
+- Differs from the plan: akit-runtime now depends on `akio-http` (same akio `rev`) for `Service`,
+  `Context` and `Middleware`. The params type is generic, not akit-config's, since I02 was being
+  written in parallel: I04 sets it. `Env` is empty until I04. fit's optional interfaces (`Drainer`,
+  `Inline`, `Unwrapped`, `NeedsAuthentication`, `Holder`) are left to the iterations that need them.
 
 ### 2026-11-23: I02, config model v0 and the strict JSON reader
 

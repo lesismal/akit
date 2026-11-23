@@ -86,6 +86,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "akio-http"
+version = "1.0.0-rc.1"
+source = "git+https://github.com/lesismal/akio?rev=50a823155a067ce60cfc424490548f0c318d4c09#50a823155a067ce60cfc424490548f0c318d4c09"
+dependencies = [
+ "akio",
+ "akio-brotli",
+ "akio-buf",
+ "akio-core",
+ "akio-crypto",
+ "akio-deflate",
+ "akio-log",
+ "akio-regex",
+ "akio-sys",
+ "akio-ws",
+ "akio-zstd",
+]
+
+[[package]]
 name = "akio-log"
 version = "1.0.0-rc.1"
 source = "git+https://github.com/lesismal/akio?rev=50a823155a067ce60cfc424490548f0c318d4c09#50a823155a067ce60cfc424490548f0c318d4c09"
@@ -139,6 +157,18 @@ dependencies = [
  "akio-log",
  "akio-sys",
  "akio-timer",
+]
+
+[[package]]
+name = "akio-ws"
+version = "1.0.0-rc.1"
+source = "git+https://github.com/lesismal/akio?rev=50a823155a067ce60cfc424490548f0c318d4c09#50a823155a067ce60cfc424490548f0c318d4c09"
+dependencies = [
+ "akio",
+ "akio-buf",
+ "akio-core",
+ "akio-crypto",
+ "akio-deflate",
 ]
 
 [[package]]
@@ -214,6 +244,7 @@ name = "akit-runtime"
 version = "0.0.1"
 dependencies = [
  "akio",
+ "akio-http",
 ]
 
 [[package]]

@@ -15,3 +15,4 @@ says whether akit follows it.
 | --- | --- | --- |
 | [001](001-dependency-policy.md) | Dependencies: akio, the standard library, and few others | accepted |
 | [002](002-config-compatibility.md) | akit reads fit's config | accepted |
+| [003](003-module-registry-and-traits.md) | The module registry and the data-plane traits | accepted |
