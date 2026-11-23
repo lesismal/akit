@@ -155,4 +155,8 @@ for the Go gateway and for the engine underneath akit.
     (HTTPArena and the like); a feature task that loads the host wastes it and skews or delays those
     runs. Where another rule asks for a measurement, the feature task leaves it to such a benchmark
     task and says in its report what should be measured. A feature task runs a benchmark only when
-    the user asks for one in that task.
+    the user asks for one in that task. A feature task whose iteration needs a benchmark (rule 24)
+    adds or keeps its row in the dev plan's
+    [benchmark and optimization status](dev-plan.md#benchmark-and-optimization-status) table,
+    marked not benchmarked and not optimized, naming what should be measured; the benchmark task
+    that measures or optimizes it updates the row with the date, commit and result.

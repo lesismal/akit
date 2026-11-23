@@ -9,6 +9,7 @@ touches, its docs and its tests fit in one context.
 - [How to work an iteration](#how-to-work-an-iteration)
 - [Workspace layout](#workspace-layout)
 - [Index](#index)
+- [Benchmark and optimization status](#benchmark-and-optimization-status)
 - [M0, foundations](#m0-foundations)
 - [M1, the proxy core](#m1-the-proxy-core)
 - [M2, dynamic config and TLS](#m2-dynamic-config-and-tls)
@@ -182,6 +183,39 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I78 | Config reference and guides | I76 | todo |
 | I79 | v1 freeze and compatibility | I78 | todo |
 | I80 | Security review readiness | I77, I79 | todo |
+
+## Benchmark and optimization status
+
+Every feature that [rule 24](rules.md) gives a benchmark (the hot path: same-run A/B; the data
+plane off the hot path: micro-benchmarks of the crate) has a row here; the control plane (config
+readers, CLI, Admin API, certificates, providers) has none. **Benchmarked** means akit's numbers
+for it are measured and checked in; **Optimized** means work aimed at its cost was done and
+measured, so appearing in a baseline alone is "benchmarked", not "optimized". A row not "yes" in
+both columns is an open item for the benchmark tasks ([rule 30](rules.md)). A feature task adds
+its iteration's row as "no" and names what to measure; a benchmark task updates it with the date,
+commit and result.
+
+| Feature | Iteration | Benchmarked | Optimized | Evidence or what is left |
+| --- | --- | --- | --- | --- |
+| Graph read per request | I04 | yes (2026-11-24, `c9d490a`, `crates/akit-runtime/benches/graph_read.rs`, numbers in [progress](progress.md)) | partial | The per-thread cached read was chosen by measuring it against an `Arc` clone and a mutex (4.06 ns on 1 thread, 8.78 ns on 16); no profile or tuning pass since. |
+| Listeners and `respond`, HTTP/1.1 and h2c; idle connections | I05 | yes (2026-11-24, `7c835ad`, `bench/results/baseline-2026-11-24`) | no | In the first baseline only: first in fixed over HTTP/1.1 and h2c. Left: a profile of both; memory per idle HTTP/1.1 connection (1,068 bytes, nginx 548); idle connections over h2c, and at 100k (I25). |
+| TLS entry points (HTTP/1.1 and h2 over TLS) | I09 | no | no (built, not measured) | Handshakes a second and fixed over TLS against fit and nginx. |
+| HTTP/3 entry point | I10 | no | no (not built yet) | Fixed over h3 against fit and Caddy. |
+| Router v1: host and path lookup | I11 | no | no (built, not measured) | A micro-benchmark of the lookup (no allocation) and same-run A/B of fixed against I05's scan, with many routes. |
+| Static files | I12, I13 | no | no (not built yet) | The static scenario, HTTP/1.1 and h2c (skipped for akit in the baseline); precompressed twins and `sendfile` for large files. |
+| Upstream pools | I14 | no | no (built, not measured) | Through the proxy scenario: connection reuse, waiting for a connection under a limit. |
+| Reverse proxy: HTTP/1.1, streamed bodies, h2 and h2c upstreams | I15–I18 | no | no (not built yet) | The proxy scenario, HTTP/1.1 and h2c (skipped for akit in the baseline); large bodies both ways; h2 upstreams. |
+| Load balancing v1 and v2 | I19, I36 | no | no (not built yet) | A micro-benchmark of each policy's pick, 1 and 16 threads; proxy A/B against a single server. |
+| Passive health checks | I20 | no | no (not built yet) | A micro-benchmark of recording a result on the request path. |
+| Access logs | I21 | no | no (not built yet) | Same-run A/B of fixed and proxy with logs on and off; lines dropped at full load. |
+| Prometheus metrics | I37 | no | no (not built yet) | Same-run A/B with metrics on and off. |
+| Matchers v2 and expressions | I39 | no | no (not built yet) | A micro-benchmark of matching; A/B against router v1. |
+| Middlewares (rewrites, headers, limits, auth, retries and the rest) | I40–I48 | no | no (not built yet) | I56 benchmarks every middleware; same-run A/B of each on the proxy scenario. |
+| Compression | I47 | no | no (not built yet) | Against fit, each encoding, as I47 asks. |
+| WebSocket and gRPC proxying | I49, I50 | no | no (not built yet) | Messages a second and memory per connection against fit. |
+| TCP and UDP proxying, SNI routing, many protocols on one port | I51–I53 | no | no (not built yet) | Against fit and nginx's `stream`, as I51 asks; the cost of sniffing on a shared port. |
+| Response cache | I67, I68 | no | no (not built yet) | Hits from memory and disk against fit. |
+| WASM plugins | I71, I72 | no | no (not built yet) | A/B of a no-op plugin against none. |
 
 ## M0, foundations
 
