@@ -14,7 +14,14 @@ name = "akit"
 path = "src/main.rs"
 
 [dependencies]
+akio = { workspace = true }
+akit-config = { workspace = true }
+akit-handler = { workspace = true }
+akit-listener = { workspace = true }
 akit-runtime = { workspace = true }
+
+[dev-dependencies]
+akio-http = { workspace = true }
 
 [lints]
 workspace = true

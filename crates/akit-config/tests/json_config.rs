@@ -72,6 +72,8 @@ fn defaults() {
     let c = ok(r#"{"listeners": [{"name": "a", "address": "127.0.0.1:0"}],
                    "routes": [{"handler": {"module": "respond"}}]}"#);
     assert_eq!(c.listeners[0].protocols, akit_config::DEFAULT_PROTOCOLS);
+    // fit's default without TLS is HTTP/1.1 alone (fit `config.DefaultProtocols`).
+    assert_eq!(c.listeners[0].protocols, [Protocol::Http11]);
     let r = &c.routes[0];
     assert!(r.name.is_none() && r.listeners.is_empty() && r.matcher.is_none());
     let Handler::Respond(h) = &r.handler;
