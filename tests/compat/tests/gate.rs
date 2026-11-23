@@ -274,41 +274,47 @@ fn report_file(report: &Report) -> String {
 /// The one hook into akit-config: read the config with the reader of its format, and turn each
 /// problem into a finding. A format akit has no reader for yet is [`Finding::NoReader`], with
 /// the iteration that brings the reader.
+///
+/// What validation opens (I23): the config's own files only. The files a config names (TLS
+/// certificates, the examples' WebAssembly plugins, static roots) are named by fields akit-config
+/// refuses as not supported yet, so it opens none of them, and the examples are read from where
+/// they are pinned, not from fit-examples' root; the stand-in secrets `make compat-gate` sets are
+/// read by no field akit supports either. When a field naming a file is supported, its check
+/// decides whether validation opens the file, relative to the directory fit-examples runs from.
 fn validate_with_akit_config(path: &Path) -> Result<(), Vec<Finding>> {
+    let ext = |f: &Path| f.extension().and_then(|e| e.to_str()).map(str::to_owned);
     if path.is_dir() {
         // A directory's files, merged as fit merges them (I06), when akit reads their format.
         let files = akit_config::config_files(&[path])
             .map_err(|errs| errs.as_slice().iter().map(finding).collect::<Vec<_>>())?;
-        let ext = |f: &Path| f.extension().and_then(|e| e.to_str()).map(str::to_owned);
-        if files.iter().any(|f| ext(f).as_deref() == Some("conf")) {
-            return Err(vec![Finding::NoReader(".conf (I23)".into())]);
-        }
         if files
             .iter()
             .any(|f| matches!(ext(f).as_deref(), Some("yaml" | "yml")))
         {
             return Err(vec![Finding::NoReader("YAML (I24)".into())]);
         }
-        return akit_config::from_files(&[path])
-            .map(|_| ())
-            .map_err(|errs| errs.as_slice().iter().map(finding).collect());
+    } else {
+        match ext(path).as_deref() {
+            Some("json" | "conf") => {}
+            Some("yaml" | "yml") => return Err(vec![Finding::NoReader("YAML (I24)".into())]),
+            _ => {
+                return Err(vec![Finding::Error(format!(
+                    "{}: not a config file fit reads",
+                    path.display()
+                ))]);
+            }
+        }
     }
-    match path.extension().and_then(|e| e.to_str()) {
-        Some("json") => akit_config::from_json_file(path)
-            .map(|_| ())
-            .map_err(|errs| errs.as_slice().iter().map(finding).collect()),
-        Some("conf") => Err(vec![Finding::NoReader(".conf (I23)".into())]),
-        Some("yaml" | "yml") => Err(vec![Finding::NoReader("YAML (I24)".into())]),
-        _ => Err(vec![Finding::Error(format!(
-            "{}: not a config file fit reads",
-            path.display()
-        ))]),
-    }
+    akit_config::from_files(&[path])
+        .map(|_| ())
+        .map_err(|errs| errs.as_slice().iter().map(finding).collect())
 }
 
 /// An akit-config problem as a finding. "not supported yet" names its field by the problem's
 /// path; a handler module akit does not have is refused at `<handler>.module` as
-/// `the "<module>" handler`, which the inventory writes `<handler><<module>>`.
+/// `the "<module>" handler`, which the inventory writes `<handler><<module>>`; any other
+/// "not supported yet: <what>" is a value of the field at the path (a protocol), or what its
+/// absence asks for, reported with `what`.
 fn finding(e: &akit_config::Error) -> Finding {
     if !e.is_not_supported_yet() {
         return Finding::Error(e.to_string());
@@ -318,8 +324,18 @@ fn finding(e: &akit_config::Error) -> Finding {
         .strip_prefix(akit_config::NOT_SUPPORTED_YET)
         .and_then(|r| r.strip_prefix(": the \""))
         .and_then(|r| r.strip_suffix("\" handler"));
-    match (e.path.strip_suffix(".module"), module) {
-        (Some(handler), Some(m)) => Finding::Unsupported(format!("{handler}<{m}>")),
+    let what = e
+        .msg
+        .strip_prefix(akit_config::NOT_SUPPORTED_YET)
+        .and_then(|r| r.strip_prefix(": "))
+        .filter(|w| !w.is_empty());
+    match (e.path.strip_suffix(".module"), module, what) {
+        (Some(handler), Some(m), _) => Finding::Unsupported(format!("{handler}<{m}>")),
+        // A value of a field akit reads, or what the field's absence asks of fit.
+        (_, _, Some(what)) => Finding::UnsupportedValue {
+            path: e.path.clone(),
+            what: what.to_owned(),
+        },
         _ => Finding::Unsupported(e.path.clone()),
     }
 }
@@ -641,7 +657,7 @@ fn findings_from_akit_config_errors() {
         .map(|e| finding(e).to_string())
         .collect();
     let want: BTreeSet<String> = [
-        "listeners[0].protocols[0]",
+        "listeners[0].protocols[0]: the \"h3\" protocol",
         "listeners[0].mptcp",
         "routes[0].handler<proxy>",
         "acme",
@@ -653,6 +669,29 @@ fn findings_from_akit_config_errors() {
     // Anything else is an error.
     let errs = akit_config::from_json(r#"{"listener": []}"#, None).unwrap_err();
     assert!(matches!(finding(&errs.as_slice()[0]), Finding::Error(_)));
+    // A value refused is reported with the value, under its field's inventory path, and is not
+    // the field refused: listeners[].protocols stays supported.
+    let fixtures = fixtures().unwrap();
+    let report = run_gate(&fixtures[..1], &fields().unwrap(), |_| {
+        Err(vec![Finding::UnsupportedValue {
+            path: "listeners[1].protocols[2]".into(),
+            what: "the \"h3\" protocol".into(),
+        }])
+    });
+    let line = format!(
+        "{}: not supported yet: listeners[].protocols: the \"h3\" protocol",
+        fixtures[0].name
+    );
+    assert_eq!(report.render(), std::slice::from_ref(&line));
+    assert!(!report.unsupported().contains("listeners[].protocols"));
+    // At a path that is not fit's, it fails.
+    let report = run_gate(&fixtures[..1], &fields().unwrap(), |_| {
+        Err(vec![Finding::UnsupportedValue {
+            path: "nope".into(),
+            what: "x".into(),
+        }])
+    });
+    assert_eq!(report.failures().len(), 1);
 }
 
 #[test]

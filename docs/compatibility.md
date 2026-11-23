@@ -44,7 +44,7 @@ The parts, and where they stand:
 | The harness: enumerate, judge, report | `tests/compat/src/lib.rs`, `tests/compat/tests/gate.rs` | done (I07a) |
 | The gate through akit-config, its report checked in | `gate_through_akit_config` in `tests/compat/tests/gate.rs`, `tests/compat/gate-report.txt` | done (I07b) |
 | The supported fields read, akit-config's lists checked against the inventory | `supported_fields_are_read`, `akit_config_lists_match_the_inventory` in the same file | done (I07b) |
-| The .conf fixtures and `conf.d` directories read | akit-config's .conf reader and merge | I23 |
+| The .conf fixtures and `conf.d` directories read | akit-config's .conf reader (`crates/akit-config/src/conf`) and merge | done (I23) |
 | The YAML fixtures read | akit-config's YAML reader | I24 |
 
 The gate is an ordinary test of the workspace, with no feature and nothing ignored: `make test`,
@@ -55,12 +55,32 @@ when `fit-fields.txt` or the tables below are out of date.
 
 ### Formats akit cannot read yet
 
-akit-config reads JSON so far. A fixture in a format it has no reader for, the .conf files
-(every example, until I23), the YAML template (until I24), and the three `conf.d` directories
-(fit merges a directory's files into one config; I23 brings the merge), is neither passed nor
-failed silently: its outcome is "format not supported yet", written in the gate's report like
-every other outcome. A JSON fixture must read with only "not supported yet" findings; any other
-error fails the gate, and so does a "format not supported yet" beside other findings.
+akit-config reads JSON and fit's own `.conf` format (I23), and merges a directory's files, as
+fit does: every example, the `.conf` and JSON templates and their `conf.d` directories go through
+it. A fixture in a format it has no reader for yet, the YAML template and its `conf.d` directory
+(until I24), is neither passed nor failed silently: its outcome is "format not supported yet",
+written in the gate's report like every other outcome. A fixture akit reads must read with only
+"not supported yet" findings; any other error fails the gate, and so does a "format not
+supported yet" beside other findings.
+
+The `.conf` reader types each directive by its field in fit's own types, which it takes from the
+inventory (`fit-fields.txt`, built into akit-config): a `.conf` file converts into the tree its
+JSON twin parses to, member for member, and the one decoder reads both. A test
+(`templates_match_their_json_twins` in `crates/akit-config/src/conf/tests.rs`) holds every `.conf`
+template of the pin to its JSON twin. Refreshing the fixtures refreshes the reader's types with
+the inventory.
+
+### What validation opens
+
+Validation reads the config's own files, and nothing they name: the files a config names (TLS
+certificates and keys, the examples' WebAssembly plugins, static roots, `password_file`) and the
+secrets it names by environment variable (`password_env`) belong to fields akit-config refuses
+as not supported yet, so the examples are validated where they are pinned and need neither
+fit-examples' root as the working directory nor real secrets. `make compat-gate` still sets the
+stand-in secrets fit-examples' own test sets, for when such a field is supported; whether
+validation then opens what it names, relative to the directory fit-examples runs from, is that
+field's iteration's decision. `examples/https` stays skipped: its certificate files are the
+user's own.
 
 ### The checked-in report
 
@@ -82,9 +102,11 @@ also fails when a field it sees refused as not supported yet is one `supported.t
 one a fixture, or one a field for a fixture refused as not supported yet.
 
 ```text
-examples/hello: format not supported yet: .conf (I23)
+examples/hello: valid
+examples/http3: not supported yet: listeners[].protocols: the "h3" protocol
+examples/http3: not supported yet: listeners[].tls
 examples/https: skipped: its certificate and key files are the user's own
-templates/json/fit.json: not supported yet: upstreams
+templates/conf/fit.conf: not supported yet: upstreams
 templates/yaml/conf.d: format not supported yet: YAML (I24)
 ```
 
@@ -93,8 +115,12 @@ allowed "not supported yet", and a difference from the checked-in report as `- <
 in the checked-in report) and `+ <line>` (only in this run). Paths akit names are written as the
 inventory writes them: array indices (`routes[0]`) and map keys (`log.loggers.engine`) stand
 for `[]` and `*`; a handler module akit does not have, refused at `routes[0].handler.module`, is
-`routes[].handler<proxy>`; and a value of an array of values (`listeners[0].protocols[1]`, the
-`h3` protocol) is the array, `listeners[].protocols`.
+`routes[].handler<proxy>`. A value akit does not support yet, of a field it reads, is written
+with the value after the field: `listeners[0].protocols[1]`, the `h3` protocol, is
+`listeners[].protocols: the "h3" protocol`, and a config with no listeners, which fit serves
+over HTTPS by default, is `listeners: a config with no listeners, ... (auto_https)`. Such a line
+is not the field refused: the field stays supported, and the gate's check that no supported
+field is refused looks at fields refused whole.
 
 ## Refreshing the fixtures
 

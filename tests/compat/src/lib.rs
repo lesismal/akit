@@ -318,11 +318,20 @@ fn field_path<'a>(inventory: &'a [Field], named: &str) -> Option<&'a str> {
 pub enum Finding {
     /// "not supported yet: `<path>`": a field akit does not support yet.
     Unsupported(String),
+    /// A value akit does not support yet, of a field it reads (one of fit's protocols in
+    /// `listeners[].protocols`), or a behaviour of fit's that the field's absence asks for (no
+    /// `listeners`, which fit serves over HTTPS by default): `what` says which. Reported as
+    /// `<field>: <what>`, so that it is not taken for the field itself being refused.
+    UnsupportedValue {
+        /// Where, as the validator names it.
+        path: String,
+        /// What is not supported yet.
+        what: String,
+    },
     /// Any other error.
     Error(String),
-    /// The config is in a format akit has no reader for yet: the .conf format until I23, YAML
-    /// until I24, a `conf.d` directory until I23 merges them. Neither a pass nor a failure by
-    /// itself: the gate's checked-in report ([`REPORT`]) lists each such fixture, so a fixture
+    /// The config is in a format akit has no reader for yet: YAML until I24 (the .conf format
+    /// and `conf.d` directories are read since I23). Neither a pass nor a failure by itself: the gate's checked-in report ([`REPORT`]) lists each such fixture, so a fixture
     /// that starts being read, or stops, changes the report.
     NoReader(String),
 }
@@ -348,6 +357,9 @@ impl fmt::Display for Finding {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Unsupported(path) => write!(f, "{NOT_SUPPORTED_YET}{path}"),
+            Self::UnsupportedValue { path, what } => {
+                write!(f, "{NOT_SUPPORTED_YET}{path}: {what}")
+            }
             Self::Error(msg) => f.write_str(msg),
             Self::NoReader(what) => write!(f, "{FORMAT_NOT_SUPPORTED_YET}{what}"),
         }
@@ -517,6 +529,14 @@ fn judge(findings: Vec<Finding>, inventory: &[Field]) -> Outcome {
                     paths.insert(i.to_owned());
                 }
                 None => why.push(format!("{NOT_SUPPORTED_YET}{p}: not a field fit accepts")),
+            },
+            Finding::UnsupportedValue { path, what } => match inventory_path(inventory, &path) {
+                Some(i) => {
+                    paths.insert(format!("{i}: {what}"));
+                }
+                None => why.push(format!(
+                    "{NOT_SUPPORTED_YET}{path}: {what}: not a field fit accepts"
+                )),
             },
             Finding::Error(e) => why.push(e),
             Finding::NoReader(what) => no_reader = Some(what),
