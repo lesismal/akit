@@ -77,10 +77,13 @@ done and where the work differs from the plan.
   v1 costs about the same at 10 routes as at 1000; v0 grows with the routes. Before small maps
   were scanned rather than hashed, v1 was slower than v0 on the one-route config (15.7 against
   12.6 ns); the scan made it 7.7.
-- A/B: `bench/ab.sh main work` was started as `ab-20261124-010304` and failed: every round's
-  fitbench image build failed in `apt-get` because the benchmark host's disk is full (`/` 100%,
-  0 bytes free, mostly other sessions' build directories). It is to be run again once the host
-  has room; the micro-benchmark above ran.
+- A/B, same run (`bench/ab.sh 8a7a8b8 ebcfe02`, `ab-20261124-015157`: I11's base against I11, the
+  fixed scenario, 3 rounds of 10 s): HTTP/1.1 825k against 824k requests a second (-0.1%), h2c
+  5979k against 5927k (-0.9%), CPU per request within 3%, p99 the same: within noise, as expected for one
+  route with no host, which is a few nanoseconds of a request's microseconds. The first attempt
+  (`ab-20261124-010304`) failed because the benchmark host's disk was full; a second found that
+  `bench/ab.sh` could build B with A's crates (git archive's commit-time mtimes and a shared
+  target directory), fixed in `bench/lib.sh` by extracting with the current time.
 - Checked: `make check` on macOS; `cargo test -p akit-router -p akit-runtime -p akit-listener` on
   Linux (epoll) and `AKIO_TEST_BACKEND=uring cargo test -p akit-listener`, on the benchmark host.
 - Differs from the plan and from fit: no matchers (I39). A malformed escape (`%zz`) is answered

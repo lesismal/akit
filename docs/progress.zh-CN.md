@@ -66,9 +66,11 @@
 
   v1 在 10 条路由和 1000 条路由时开销差不多；v0 随路由数增长。在小表改为扫描而不是哈希之前，v1 在单路由配置上
   比 v0 慢（15.7 对 12.6 ns）；改为扫描后是 7.7。
-- A/B：`bench/ab.sh main work` 已以 `ab-20261124-010304` 启动，但失败了：每一轮构建 fitbench 镜像时
-  `apt-get` 都失败，因为基准测试主机的磁盘已满（`/` 100%，剩余 0 字节，主要是其他会话的构建目录）。主机有
-  空间后需要重跑；上面的微基准已经跑完。
+- 同一轮 A/B（`bench/ab.sh 8a7a8b8 ebcfe02`，`ab-20261124-015157`：I11 的基点对比 I11，fixed 场景，3 轮、
+  每轮 10 秒）：HTTP/1.1 每秒 825k 对 824k 请求（-0.1%），h2c 5979k 对 5927k（-0.9%），每请求 CPU 相差 3% 以内，p99 相同：
+  都在噪声范围内，符合预期，因为单条无 host 路由的查找只占请求耗时（微秒级）中的几纳秒。第一次尝试
+  （`ab-20261124-010304`）因基准测试主机磁盘已满而失败；第二次发现 `bench/ab.sh` 可能用 A 的 crate 构建 B
+  （git archive 的提交时间 mtime 加上共享的 target 目录），已在 `bench/lib.sh` 中改为以当前时间解包修复。
 - 已检查：macOS 上的 `make check`；基准测试主机上 Linux（epoll）的
   `cargo test -p akit-router -p akit-runtime -p akit-listener`，以及 `AKIO_TEST_BACKEND=uring cargo test -p akit-listener`。
 - 与计划和 fit 的不同：没有 matcher（I39）。错误的转义（`%zz`）回答 `400 bad request path`；fit 的 Go 服务器
