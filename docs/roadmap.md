@@ -343,8 +343,8 @@ fit at the same commit as their baselines.
   accept thread of akit's own as a recorded stopgap.
 - **Parsing the config formats without serde.** The lean-dependency rule argues for akit's own JSON,
   YAML-subset and .conf readers; serde would be faster to write. Settled in
-  [decision 001](decisions/001-dependency-policy.md): own readers for .conf and JSON, YAML decided in
-  M1's iteration that adds it.
+  [decision 001](decisions/001-dependency-policy.md): own readers for .conf and JSON; YAML too, as
+  [decision 005](decisions/005-yaml-reader.md) decided in I24.
 - **ACME.** Written in akit on `akio-crypto` and `akio-x509` (JWS, CSR), as fit does on
   `x/crypto/acme`; akio may need CSR generation (to confirm in M2).
 - **WASM runtime.** wasmtime is fast but large and needs `unsafe` and a JIT; wasmi is a pure-Rust

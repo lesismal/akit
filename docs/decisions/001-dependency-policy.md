@@ -23,7 +23,7 @@ ring is stronger.
   part of their protocols akit uses.
 - **Config readers are akit's own for JSON and .conf**, strict by construction and fuzzed. YAML is
   decided in I24, between a reader of akit's own for the subset fit accepts and a crate, by size,
-  `unsafe` and strictness.
+  `unsafe` and strictness: a reader of akit's own ([decision 005](005-yaml-reader.md)).
 - **Exceptions** are allowed where writing our own would be much worse (the WASM runtime is the
   expected one), behind a trait of akit's own, each with a decision note giving the crate, its
   `unsafe` and dependency count, and how it is kept off the I/O threads if it blocks.

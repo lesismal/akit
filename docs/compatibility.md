@@ -45,7 +45,7 @@ The parts, and where they stand:
 | The gate through akit-config, its report checked in | `gate_through_akit_config` in `tests/compat/tests/gate.rs`, `tests/compat/gate-report.txt` | done (I07b) |
 | The supported fields read, akit-config's lists checked against the inventory | `supported_fields_are_read`, `akit_config_lists_match_the_inventory` in the same file | done (I07b) |
 | The .conf fixtures and `conf.d` directories read | akit-config's .conf reader and merge | I23 |
-| The YAML fixtures read | akit-config's YAML reader | I24 |
+| The YAML fixtures read | akit-config's YAML reader ([decision 005](decisions/005-yaml-reader.md)) | done (I24) |
 
 The gate is an ordinary test of the workspace, with no feature and nothing ignored: `make test`,
 and so `make check`, runs it, and so does CI's `cargo test --workspace` on Linux (epoll,
@@ -55,12 +55,13 @@ when `fit-fields.txt` or the tables below are out of date.
 
 ### Formats akit cannot read yet
 
-akit-config reads JSON so far. A fixture in a format it has no reader for, the .conf files
-(every example, until I23), the YAML template (until I24), and the three `conf.d` directories
-(fit merges a directory's files into one config; I23 brings the merge), is neither passed nor
-failed silently: its outcome is "format not supported yet", written in the gate's report like
-every other outcome. A JSON fixture must read with only "not supported yet" findings; any other
-error fails the gate, and so does a "format not supported yet" beside other findings.
+akit-config reads JSON and, since I24, YAML ([decision 005](decisions/005-yaml-reader.md)): the
+YAML templates, the file and the `conf.d` directory, read into the same model as their JSON
+twins, with the same outcomes. A fixture in a format it has no reader for, the .conf files (every
+example, until I23) and the .conf `conf.d` directory, is neither passed nor failed silently: its
+outcome is "format not supported yet", written in the gate's report like every other outcome. A
+JSON or YAML fixture must read with only "not supported yet" findings; any other error fails the
+gate, and so does a "format not supported yet" beside other findings.
 
 ### The checked-in report
 
@@ -85,7 +86,7 @@ one a fixture, or one a field for a fixture refused as not supported yet.
 examples/hello: format not supported yet: .conf (I23)
 examples/https: skipped: its certificate and key files are the user's own
 templates/json/fit.json: not supported yet: upstreams
-templates/yaml/conf.d: format not supported yet: YAML (I24)
+templates/yaml/conf.d: not supported yet: upstreams
 ```
 
 A fixture that fails is written `<fixture>: FAILED: <why>`, a line for each finding that is not an

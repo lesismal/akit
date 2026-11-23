@@ -283,22 +283,15 @@ fn validate_with_akit_config(path: &Path) -> Result<(), Vec<Finding>> {
         if files.iter().any(|f| ext(f).as_deref() == Some("conf")) {
             return Err(vec![Finding::NoReader(".conf (I23)".into())]);
         }
-        if files
-            .iter()
-            .any(|f| matches!(ext(f).as_deref(), Some("yaml" | "yml")))
-        {
-            return Err(vec![Finding::NoReader("YAML (I24)".into())]);
-        }
         return akit_config::from_files(&[path])
             .map(|_| ())
             .map_err(|errs| errs.as_slice().iter().map(finding).collect());
     }
     match path.extension().and_then(|e| e.to_str()) {
-        Some("json") => akit_config::from_json_file(path)
+        Some("json" | "yaml" | "yml") => akit_config::from_files(&[path])
             .map(|_| ())
             .map_err(|errs| errs.as_slice().iter().map(finding).collect()),
         Some("conf") => Err(vec![Finding::NoReader(".conf (I23)".into())]),
-        Some("yaml" | "yml") => Err(vec![Finding::NoReader("YAML (I24)".into())]),
         _ => Err(vec![Finding::Error(format!(
             "{}: not a config file fit reads",
             path.display()

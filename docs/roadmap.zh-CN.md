@@ -309,8 +309,8 @@ akio 目前是否已具备该功能所需的能力：✓ 表示就绪，或填�
 - **akio 的缺口。** 代理到 M2 时需要运行时监听器（A1）和异步证书选择（A2）。这些先在 akio 中提出；落地之前，
   M1 可以用 `Engine::adopt_tcp` 加 akit 自己的 accept 线程作为有记录的临时方案。
 - **不用 serde 解析配置格式。** 依赖精简的规则倾向于 akit 自己写 JSON、YAML 子集和 .conf 读取器；用 serde
-  写起来更快。已在 [决定 001](decisions/001-dependency-policy.zh-CN.md) 中定下：.conf 和 JSON 自己写，YAML
-  在 M1 加入它的那个迭代中决定。
+  写起来更快。已在 [决定 001](decisions/001-dependency-policy.zh-CN.md) 中定下：.conf 和 JSON 自己写；YAML
+  也自己写，由 [决定 005](decisions/005-yaml-reader.zh-CN.md) 在 I24 中决定。
 - **ACME。** 在 akit 中基于 `akio-crypto` 和 `akio-x509`（JWS、CSR）实现，如同 fit 基于
   `x/crypto/acme`；akio 可能需要提供 CSR 生成（在 M2 中确认）。
 - **WASM 运行时。** wasmtime 快，但体积大，需要 `unsafe` 和 JIT；wasmi 是纯 Rust 的解释器。在 M5 中决定，

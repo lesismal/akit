@@ -122,11 +122,13 @@ fn other_formats_are_not_supported_yet() {
     let errs = errors(from_files(&[&conf, &yaml]));
     assert_eq!(
         errs,
-        [
-            format!("{}: not supported yet: .conf files (I23)", conf.display()),
-            format!("{}: not supported yet: YAML files (I24)", yaml.display()),
-        ]
+        [format!(
+            "{}: not supported yet: .conf files (I23)",
+            conf.display()
+        )]
     );
+    // YAML is read (I24).
+    assert!(from_files(&[&yaml]).is_ok());
     // A file named with any other extension is JSON, as in fit.
     let other = write(&d, "fit.cfg", LISTENER);
     assert_eq!(from_files(&[&other]).unwrap().listeners.len(), 1);

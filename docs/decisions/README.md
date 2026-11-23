@@ -17,3 +17,4 @@ says whether akit follows it.
 | [002](002-config-compatibility.md) | akit reads fit's config | accepted |
 | [003](003-module-registry-and-traits.md) | The module registry and the data-plane traits | accepted |
 | [004](004-graph-publication-and-retirement.md) | Publishing graphs, reading them per request, retiring them from the control plane | accepted |
+| [005](005-yaml-reader.md) | YAML is read by a reader of akit's own | accepted |

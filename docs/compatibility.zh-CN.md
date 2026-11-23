@@ -41,7 +41,7 @@ akit 读取 fit 的配置（[决策 002](decisions/002-config-compatibility.zh-C
 | 经由 akit-config 的门禁，报告入库 | `tests/compat/tests/gate.rs` 中的 `gate_through_akit_config`，`tests/compat/gate-report.txt` | 完成（I07b） |
 | 已支持字段确实被读取，akit-config 的列表对照字段清单检查 | 同一文件中的 `supported_fields_are_read`、`akit_config_lists_match_the_inventory` | 完成（I07b） |
 | 读取 .conf 夹具和 `conf.d` 目录 | akit-config 的 .conf 读取器与合并 | I23 |
-| 读取 YAML 夹具 | akit-config 的 YAML 读取器 | I24 |
+| 读取 YAML 夹具 | akit-config 的 YAML 读取器（[决定 005](decisions/005-yaml-reader.zh-CN.md)） | 已完成（I24） |
 
 门禁是工作区里的普通测试，没有 feature，也没有 ignore：`make test`（因而 `make check`）会运行它，
 CI 在 Linux（epoll、io_uring）和 macOS 上的 `cargo test --workspace` 也会运行它。只有一种构建配置，
@@ -50,11 +50,12 @@ CI 在 Linux（epoll、io_uring）和 macOS 上的 `cargo test --workspace` 也�
 
 ### akit 还不能读取的格式
 
-akit-config 目前只读 JSON。它还没有读取器的格式的夹具——.conf 文件（所有示例，直到 I23）、YAML 模板
-（直到 I24）以及三个 `conf.d` 目录（fit 把目录中的文件合并成一份配置；合并由 I23 实现）——既不会被
-悄悄判为通过，也不会被悄悄判为失败：它的结果是 "format not supported yet"（格式尚不支持），和其他
-结果一样写进门禁的报告。JSON 夹具读取时只能出现 "not supported yet" 的发现；其他任何错误都不能通过
-门禁，"format not supported yet" 与其他发现同时出现也不能通过。
+akit-config 读取 JSON，自 I24 起也读取 YAML（[决定 005](decisions/005-yaml-reader.zh-CN.md)）：YAML 模板
+（单文件和 `conf.d` 目录）读入的模型与对应的 JSON 版相同，结果也相同。它还没有读取器的格式的夹具——.conf
+文件（所有示例，直到 I23）以及 .conf 的 `conf.d` 目录——既不会被悄悄判为通过，也不会被悄悄判为失败：它的
+结果是 "format not supported yet"（格式尚不支持），和其他结果一样写进门禁的报告。JSON 或 YAML 夹具读取时
+只能出现 "not supported yet" 的发现；其他任何错误都不能通过门禁，"format not supported yet" 与其他发现同时
+出现也不能通过。
 
 ### 入库的报告
 
@@ -78,7 +79,7 @@ make compat-bless
 examples/hello: format not supported yet: .conf (I23)
 examples/https: skipped: its certificate and key files are the user's own
 templates/json/fit.json: not supported yet: upstreams
-templates/yaml/conf.d: format not supported yet: YAML (I24)
+templates/yaml/conf.d: not supported yet: upstreams
 ```
 
 失败的夹具写作 `<夹具>: FAILED: <原因>`，每条不属于允许的 "not supported yet" 的发现一行；与入库报告的

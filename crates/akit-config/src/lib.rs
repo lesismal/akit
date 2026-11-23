@@ -7,7 +7,11 @@
 //! handler) and the JSON reader: JSON with `//` and `/* */` comments and trailing commas, as fit
 //! reads it; an unknown field, a key given twice or a wrong type is an error. A field fit reads
 //! and akit does not support yet is refused as "not supported yet", never read and ignored
-//! ([`Error::is_not_supported_yet`]). The YAML and .conf readers come with I24 and I23.
+//! ([`Error::is_not_supported_yet`]).
+//!
+//! I24 adds the YAML reader (decision 005): YAML read as fit reads it (fit's decision 019), into
+//! the same tree as JSON, so the model reads both alike and problems point at the YAML. The
+//! .conf reader comes with I23.
 //!
 //! Reading a file blocks: this is control plane code, never called on an I/O thread
 //! (rules.md rule 1).
@@ -16,6 +20,7 @@ mod decode;
 mod error;
 mod json;
 mod model;
+mod yaml;
 
 use std::path::{Path, PathBuf};
 
@@ -32,24 +37,62 @@ pub const MAX_CONFIG_BYTES: usize = 64 << 20;
 /// The most files a config is read from, as fit's.
 pub const MAX_CONFIG_FILES: usize = 10_000;
 
-/// One config file: the name its problems give, and what it holds.
+/// One config file: the name its problems give, its format and what it holds.
 #[derive(Debug, Clone, Copy)]
 pub struct Source<'a> {
     /// The file's name, named in every problem found in it.
     pub name: Option<&'a str>,
+    /// Its format.
+    pub format: Format,
     /// Its text.
     pub src: &'a str,
 }
 
-/// Reads a config written in JSON. `file`, when given, is named in every problem.
-pub fn from_json(src: &str, file: Option<&str>) -> Result<Config, Errors> {
-    from_sources(&[Source { name: file, src }])
+/// The format a config file is written in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
+pub enum Format {
+    /// JSON, with comments and trailing commas as fit reads it.
+    #[default]
+    Json,
+    /// YAML, as fit reads it (decision 005).
+    Yaml,
 }
 
-/// Reads a config from several JSON files, merged as fit merges a config's files: the lists at
-/// the top (`listeners`, `routes`) are joined in the files' order, `schema_version` may be given
-/// by each if they agree, and the checks across elements (unique names, routes naming listeners
-/// that exist) run on the whole. Every problem names the file it is in, with its line, column and
+impl Format {
+    /// The format a file's extension says, as fit picks it: `.yaml` and `.yml` are YAML, any
+    /// other file JSON; `None` for `.conf`, which akit has no reader for yet (I23).
+    pub fn of(path: &Path) -> Option<Format> {
+        match extension(path).as_deref() {
+            Some("yaml" | "yml") => Some(Format::Yaml),
+            Some("conf") => None,
+            _ => Some(Format::Json),
+        }
+    }
+}
+
+/// Reads a config written in JSON. `file`, when given, is named in every problem.
+pub fn from_json(src: &str, file: Option<&str>) -> Result<Config, Errors> {
+    from_sources(&[Source {
+        name: file,
+        format: Format::Json,
+        src,
+    }])
+}
+
+/// Reads a config written in YAML. `file`, when given, is named in every problem.
+pub fn from_yaml(src: &str, file: Option<&str>) -> Result<Config, Errors> {
+    from_sources(&[Source {
+        name: file,
+        format: Format::Yaml,
+        src,
+    }])
+}
+
+/// Reads a config from several files, each in its format, merged as fit merges a config's files:
+/// the lists at the top (`listeners`, `routes`) are joined in the files' order, `schema_version`
+/// may be given by each if they agree, and the checks across elements (unique names, routes
+/// naming listeners that exist) run on the whole. Every problem names the file it is in, with its line, column and
 /// its path in that file.
 pub fn from_sources(srcs: &[Source<'_>]) -> Result<Config, Errors> {
     let mut ds: Vec<decode::Decoder<'_>> = srcs
@@ -70,7 +113,11 @@ pub fn from_sources(srcs: &[Source<'_>]) -> Result<Config, Errors> {
     }
     let mut parts = Vec::with_capacity(srcs.len());
     for (i, (s, d)) in srcs.iter().zip(ds.iter_mut()).enumerate() {
-        match json::parse(s.src) {
+        let parsed = match s.format {
+            Format::Json => json::parse(s.src),
+            Format::Yaml => yaml::parse(s.src),
+        };
+        match parsed {
             Ok(node) => match model::part(d, &node, i) {
                 Some(p) => parts.push(p),
                 None => {
@@ -209,8 +256,9 @@ fn file_error(p: &Path, msg: &str) -> Errors {
 }
 
 /// Reads the config `paths` name ([`config_files`]), merged ([`from_sources`]); at most
-/// [`MAX_CONFIG_BYTES`] in all. A file is read as JSON unless it ends in `.conf`, `.yaml` or
-/// `.yml`, which are refused as not supported yet until their readers come (I23, I24).
+/// [`MAX_CONFIG_BYTES`] in all. A file is read as YAML when it ends in `.yaml` or `.yml`, and as
+/// JSON otherwise, unless it ends in `.conf`, which is refused as not supported yet until its
+/// reader comes (I23).
 ///
 /// # Errors
 ///
@@ -221,28 +269,22 @@ pub fn from_files<P: AsRef<Path>>(paths: &[P]) -> Result<Config, Errors> {
     let mut total: usize = 0;
     let mut errs = Vec::new();
     for f in &files {
-        match extension(f).as_deref() {
-            Some("conf") => {
-                errs.extend(file_error(f, &format!("{NOT_SUPPORTED_YET}: .conf files (I23)")).0);
-                continue;
-            }
-            Some("yaml" | "yml") => {
-                errs.extend(file_error(f, &format!("{NOT_SUPPORTED_YET}: YAML files (I24)")).0);
-                continue;
-            }
-            _ => {}
-        }
+        let Some(format) = Format::of(f) else {
+            errs.extend(file_error(f, &format!("{NOT_SUPPORTED_YET}: .conf files (I23)")).0);
+            continue;
+        };
         let text = read_limited(f, MAX_CONFIG_BYTES.saturating_sub(total), files.len() > 1)?;
         total = total.saturating_add(text.len());
-        texts.push((f.display().to_string(), text));
+        texts.push((f.display().to_string(), format, text));
     }
     if !errs.is_empty() {
         return Err(Errors(errs));
     }
     let srcs: Vec<Source<'_>> = texts
         .iter()
-        .map(|(name, src)| Source {
+        .map(|(name, format, src)| Source {
             name: Some(name),
+            format: *format,
             src,
         })
         .collect();
