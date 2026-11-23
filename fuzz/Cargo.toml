@@ -22,3 +22,10 @@ path = "fuzz_targets/config_json.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "config_conf"
+path = "fuzz_targets/config_conf.rs"
+test = false
+doc = false
+bench = false

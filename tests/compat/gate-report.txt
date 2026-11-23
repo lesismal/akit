@@ -1,83 +1,199 @@
 # The compatibility gate's report (docs/compatibility.md), written by make compat-bless;
 # do not edit. The gate fails when a run's outcomes differ from these lines.
 # fit 7daee573, fit-examples 9659d7e4.
-# 80 fixtures: 0 valid, 2 refused only as not supported yet (fields refused: 2), 77 in a format not supported yet, 1 skipped, 0 failed.
-examples/acme-on-demand: format not supported yet: .conf (I23)
-examples/acme-shared-storage: format not supported yet: .conf (I23)
-examples/admin: format not supported yet: .conf (I23)
-examples/auto-https: format not supported yet: .conf (I23)
-examples/basic-auth: format not supported yet: .conf (I23)
-examples/bittorrent: format not supported yet: .conf (I23)
-examples/body-limit: format not supported yet: .conf (I23)
-examples/cache: format not supported yet: .conf (I23)
-examples/circuit-breaker: format not supported yet: .conf (I23)
-examples/client-cert: format not supported yet: .conf (I23)
-examples/compress: format not supported yet: .conf (I23)
-examples/concurrency-limit: format not supported yet: .conf (I23)
-examples/console: format not supported yet: .conf (I23)
-examples/docker-compose: format not supported yet: .conf (I23)
-examples/fastcgi: format not supported yet: .conf (I23)
-examples/forward-auth: format not supported yet: .conf (I23)
-examples/forward-proxy: format not supported yet: .conf (I23)
-examples/grpc: format not supported yet: .conf (I23)
-examples/headers: format not supported yet: .conf (I23)
-examples/hello: format not supported yet: .conf (I23)
-examples/http3: format not supported yet: .conf (I23)
+# 80 fixtures: 2 valid, 75 refused only as not supported yet (fields refused: 52), 2 in a format not supported yet, 1 skipped, 0 failed.
+examples/acme-on-demand: not supported yet: acme
+examples/acme-on-demand: not supported yet: listeners[].protocols: the "h2" protocol
+examples/acme-on-demand: not supported yet: listeners[].tls
+examples/acme-on-demand: not supported yet: routes[].middleware
+examples/acme-shared-storage: not supported yet: acme
+examples/acme-shared-storage: not supported yet: listeners[].protocols: the "h2" protocol
+examples/acme-shared-storage: not supported yet: listeners[].tls
+examples/acme-shared-storage: not supported yet: routes[].middleware
+examples/admin: not supported yet: admin
+examples/auto-https: not supported yet: acme
+examples/auto-https: not supported yet: listeners: a config with no listeners, served over HTTPS by default (auto_https)
+examples/basic-auth: not supported yet: routes[].middleware
+examples/bittorrent: not supported yet: admin
+examples/bittorrent: not supported yet: bittorrent
+examples/bittorrent: not supported yet: media_auth
+examples/bittorrent: not supported yet: media_library
+examples/bittorrent: not supported yet: routes[].handler<bt_publish>
+examples/bittorrent: not supported yet: routes[].handler<bt_stream>
+examples/bittorrent: not supported yet: routes[].handler<bt_tracker>
+examples/bittorrent: not supported yet: routes[].handler<static>
+examples/body-limit: not supported yet: limits
+examples/body-limit: not supported yet: routes[].handler<proxy>
+examples/body-limit: not supported yet: routes[].match.method
+examples/body-limit: not supported yet: routes[].middleware
+examples/body-limit: not supported yet: upstreams
+examples/cache: not supported yet: routes[].handler<proxy>
+examples/cache: not supported yet: routes[].match.method
+examples/cache: not supported yet: routes[].middleware
+examples/cache: not supported yet: upstreams
+examples/circuit-breaker: not supported yet: routes[].handler<proxy>
+examples/circuit-breaker: not supported yet: routes[].middleware
+examples/circuit-breaker: not supported yet: upstreams
+examples/client-cert: not supported yet: acme
+examples/client-cert: not supported yet: listeners[].protocols: the "h2" protocol
+examples/client-cert: not supported yet: listeners[].tls
+examples/client-cert: not supported yet: routes[].handler<proxy>
+examples/client-cert: not supported yet: routes[].middleware
+examples/client-cert: not supported yet: upstreams
+examples/compress: not supported yet: routes[].handler<proxy>
+examples/compress: not supported yet: routes[].middleware
+examples/compress: not supported yet: upstreams
+examples/concurrency-limit: not supported yet: routes[].handler<proxy>
+examples/concurrency-limit: not supported yet: routes[].middleware
+examples/concurrency-limit: not supported yet: upstreams
+examples/console: not supported yet: admin
+examples/docker-compose: not supported yet: providers
+examples/fastcgi: not supported yet: routes[].handler<fastcgi>
+examples/forward-auth: not supported yet: routes[].handler<proxy>
+examples/forward-auth: not supported yet: routes[].middleware
+examples/forward-auth: not supported yet: upstreams
+examples/forward-proxy: not supported yet: routes[].handler<forward_proxy>
+examples/forward-proxy: not supported yet: routes[].match.method
+examples/grpc: not supported yet: routes[].handler<proxy>
+examples/grpc: not supported yet: upstreams
+examples/headers: not supported yet: routes[].handler<proxy>
+examples/headers: not supported yet: routes[].middleware
+examples/headers: not supported yet: upstreams
+examples/hello: valid
+examples/http3: not supported yet: acme
+examples/http3: not supported yet: listeners[].protocols: the "h2" protocol
+examples/http3: not supported yet: listeners[].protocols: the "h3" protocol
+examples/http3: not supported yet: listeners[].tls
+examples/http3: not supported yet: routes[].handler<proxy>
+examples/http3: not supported yet: routes[].middleware
+examples/http3: not supported yet: upstreams
 examples/https: skipped: its certificate and key files are the user's own
-examples/jwt: format not supported yet: .conf (I23)
-examples/l4-tcp: format not supported yet: .conf (I23)
-examples/l4-udp: format not supported yet: .conf (I23)
-examples/limits: format not supported yet: .conf (I23)
-examples/llm-hub: format not supported yet: .conf (I23)
-examples/llm-node: format not supported yet: .conf (I23)
-examples/llm-proxy: format not supported yet: .conf (I23)
-examples/load-balancing: format not supported yet: .conf (I23)
-examples/logging: format not supported yet: .conf (I23)
-examples/media-pages: format not supported yet: .conf (I23)
-examples/metrics: format not supported yet: .conf (I23)
-examples/mtls: format not supported yet: .conf (I23)
-examples/provider-consul: format not supported yet: .conf (I23)
-examples/provider-consul-kv: format not supported yet: .conf (I23)
-examples/provider-docker: format not supported yet: .conf (I23)
-examples/provider-etcd: format not supported yet: .conf (I23)
-examples/provider-kubernetes: format not supported yet: .conf (I23)
-examples/proxy: format not supported yet: .conf (I23)
-examples/proxy-protocol: format not supported yet: .conf (I23)
-examples/rate-limit: format not supported yet: .conf (I23)
-examples/redirect: format not supported yet: .conf (I23)
-examples/rewrite: format not supported yet: .conf (I23)
-examples/routing: format not supported yet: .conf (I23)
-examples/socks: format not supported yet: .conf (I23)
-examples/static: format not supported yet: .conf (I23)
-examples/streaming: format not supported yet: .conf (I23)
-examples/sync-files-to-elasticsearch: format not supported yet: .conf (I23)
-examples/sync-files-to-loki: format not supported yet: .conf (I23)
-examples/sync-mqtt-to-influxdb: format not supported yet: .conf (I23)
-examples/sync-mqtt-to-tdengine: format not supported yet: .conf (I23)
-examples/sync-mssql-to-kafka: format not supported yet: .conf (I23)
-examples/sync-mysql-to-doris: format not supported yet: .conf (I23)
-examples/sync-mysql-to-postgres: format not supported yet: .conf (I23)
-examples/sync-postgres-to-kafka: format not supported yet: .conf (I23)
-examples/sync-postgres-to-nats: format not supported yet: .conf (I23)
-examples/sync-postgres-to-vectors: format not supported yet: .conf (I23)
-examples/sync-pulsar-to-elasticsearch: format not supported yet: .conf (I23)
-examples/sync-rabbitmq-to-kafka: format not supported yet: .conf (I23)
-examples/sync-wasm-codec: format not supported yet: .conf (I23)
-examples/sync-wasm-sink: format not supported yet: .conf (I23)
-examples/sync-wasm-source: format not supported yet: .conf (I23)
-examples/sync-wasm-transform: format not supported yet: .conf (I23)
-examples/telemetry: format not supported yet: .conf (I23)
-examples/tunnel-hub: format not supported yet: .conf (I23)
-examples/tunnel-node: format not supported yet: .conf (I23)
-examples/tunnel-proxy: format not supported yet: .conf (I23)
-examples/video-site: format not supported yet: .conf (I23)
-examples/virtual-hosts: format not supported yet: .conf (I23)
-examples/wasm: format not supported yet: .conf (I23)
-examples/webrtc-proxy: format not supported yet: .conf (I23)
-examples/webrtc-turn: format not supported yet: .conf (I23)
-examples/whip-whep: format not supported yet: .conf (I23)
-templates/conf/conf.d: format not supported yet: .conf (I23)
-templates/conf/fit.conf: format not supported yet: .conf (I23)
+examples/jwt: not supported yet: routes[].handler<proxy>
+examples/jwt: not supported yet: routes[].middleware
+examples/jwt: not supported yet: upstreams
+examples/l4-tcp: not supported yet: listeners[].protocols: the "tcp" protocol
+examples/l4-tcp: not supported yet: services
+examples/l4-tcp: not supported yet: upstreams
+examples/l4-udp: not supported yet: listeners[].protocols: the "udp" protocol
+examples/l4-udp: not supported yet: services
+examples/l4-udp: not supported yet: upstreams
+examples/limits: not supported yet: engine
+examples/limits: not supported yet: limits
+examples/llm-hub: not supported yet: llm
+examples/llm-node: not supported yet: llm
+examples/llm-proxy: not supported yet: llm
+examples/load-balancing: not supported yet: routes[].handler<proxy>
+examples/load-balancing: not supported yet: upstreams
+examples/logging: not supported yet: access_log
+examples/logging: not supported yet: log
+examples/media-pages: not supported yet: media_auth
+examples/media-pages: not supported yet: routes[].handler<media_pages>
+examples/media-pages: not supported yet: routes[].handler<whep>
+examples/media-pages: not supported yet: routes[].handler<whip>
+examples/media-pages: not supported yet: webrtc
+examples/metrics: not supported yet: admin
+examples/metrics: not supported yet: metrics
+examples/mtls: not supported yet: acme
+examples/mtls: not supported yet: listeners[].protocols: the "h2" protocol
+examples/mtls: not supported yet: listeners[].tls
+examples/mtls: not supported yet: routes[].handler<proxy>
+examples/mtls: not supported yet: routes[].middleware
+examples/mtls: not supported yet: upstreams
+examples/provider-consul: not supported yet: providers
+examples/provider-consul-kv: not supported yet: providers
+examples/provider-docker: not supported yet: providers
+examples/provider-etcd: not supported yet: providers
+examples/provider-kubernetes: not supported yet: providers
+examples/proxy: not supported yet: admin
+examples/proxy: not supported yet: limits
+examples/proxy: not supported yet: routes[].handler<proxy>
+examples/proxy: not supported yet: upstreams
+examples/proxy-protocol: not supported yet: listeners[].proxy_protocol
+examples/proxy-protocol: not supported yet: routes[].middleware
+examples/rate-limit: not supported yet: routes[].handler<proxy>
+examples/rate-limit: not supported yet: routes[].middleware
+examples/rate-limit: not supported yet: upstreams
+examples/redirect: not supported yet: routes[].middleware
+examples/rewrite: not supported yet: routes[].handler<proxy>
+examples/rewrite: not supported yet: routes[].middleware
+examples/rewrite: not supported yet: upstreams
+examples/routing: not supported yet: routes[].match.expr
+examples/routing: not supported yet: routes[].match.header
+examples/routing: not supported yet: routes[].match.method
+examples/routing: not supported yet: routes[].match.path_regexp
+examples/routing: not supported yet: routes[].match.query
+examples/routing: not supported yet: routes[].match.remote_ip
+examples/socks: not supported yet: listeners[].protocols: the "socks" protocol
+examples/socks: not supported yet: listeners[].socks
+examples/static: not supported yet: routes[].handler<static>
+examples/static: not supported yet: routes[].middleware
+examples/streaming: not supported yet: media_auth
+examples/streaming: not supported yet: routes[].handler<hls>
+examples/streaming: not supported yet: routes[].handler<httpflv>
+examples/streaming: not supported yet: routes[].handler<stream_whep>
+examples/streaming: not supported yet: routes[].handler<stream_whip>
+examples/streaming: not supported yet: streaming
+examples/sync-files-to-elasticsearch: not supported yet: admin
+examples/sync-files-to-elasticsearch: not supported yet: sync
+examples/sync-files-to-loki: not supported yet: admin
+examples/sync-files-to-loki: not supported yet: sync
+examples/sync-mqtt-to-influxdb: not supported yet: admin
+examples/sync-mqtt-to-influxdb: not supported yet: sync
+examples/sync-mqtt-to-tdengine: not supported yet: admin
+examples/sync-mqtt-to-tdengine: not supported yet: sync
+examples/sync-mssql-to-kafka: not supported yet: admin
+examples/sync-mssql-to-kafka: not supported yet: sync
+examples/sync-mysql-to-doris: not supported yet: admin
+examples/sync-mysql-to-doris: not supported yet: sync
+examples/sync-mysql-to-postgres: not supported yet: admin
+examples/sync-mysql-to-postgres: not supported yet: sync
+examples/sync-postgres-to-kafka: not supported yet: admin
+examples/sync-postgres-to-kafka: not supported yet: sync
+examples/sync-postgres-to-nats: not supported yet: admin
+examples/sync-postgres-to-nats: not supported yet: sync
+examples/sync-postgres-to-vectors: not supported yet: admin
+examples/sync-postgres-to-vectors: not supported yet: sync
+examples/sync-pulsar-to-elasticsearch: not supported yet: admin
+examples/sync-pulsar-to-elasticsearch: not supported yet: sync
+examples/sync-rabbitmq-to-kafka: not supported yet: admin
+examples/sync-rabbitmq-to-kafka: not supported yet: sync
+examples/sync-wasm-codec: not supported yet: sync
+examples/sync-wasm-sink: not supported yet: routes[].match.method
+examples/sync-wasm-sink: not supported yet: sync
+examples/sync-wasm-source: not supported yet: routes[].handler<static>
+examples/sync-wasm-source: not supported yet: sync
+examples/sync-wasm-transform: not supported yet: sync
+examples/telemetry: not supported yet: routes[].handler<proxy>
+examples/telemetry: not supported yet: telemetry
+examples/telemetry: not supported yet: upstreams
+examples/tunnel-hub: not supported yet: tunnel
+examples/tunnel-node: not supported yet: tunnel
+examples/tunnel-proxy: not supported yet: tunnel
+examples/video-site: not supported yet: media_auth
+examples/video-site: not supported yet: media_library
+examples/video-site: not supported yet: routes[].handler<hls>
+examples/video-site: not supported yet: routes[].handler<media_pages>
+examples/video-site: not supported yet: routes[].handler<media_tokens>
+examples/video-site: not supported yet: routes[].handler<proxy>
+examples/video-site: not supported yet: routes[].handler<static>
+examples/video-site: not supported yet: routes[].handler<vod>
+examples/video-site: not supported yet: routes[].match.remote_ip
+examples/video-site: not supported yet: routes[].middleware
+examples/video-site: not supported yet: streaming
+examples/video-site: not supported yet: upstreams
+examples/virtual-hosts: valid
+examples/wasm: not supported yet: routes[].middleware
+examples/webrtc-proxy: not supported yet: routes[].handler<webrtc_proxy>
+examples/webrtc-proxy: not supported yet: upstreams
+examples/webrtc-proxy: not supported yet: webrtc
+examples/webrtc-turn: not supported yet: webrtc
+examples/whip-whep: not supported yet: routes[].handler<whep>
+examples/whip-whep: not supported yet: routes[].handler<whip>
+examples/whip-whep: not supported yet: routes[].middleware
+examples/whip-whep: not supported yet: webrtc
+templates/conf/conf.d: not supported yet: routes[].handler<proxy>
+templates/conf/conf.d: not supported yet: upstreams
+templates/conf/fit.conf: not supported yet: upstreams
 templates/json/conf.d: not supported yet: routes[].handler<proxy>
 templates/json/conf.d: not supported yet: upstreams
 templates/json/fit.json: not supported yet: upstreams

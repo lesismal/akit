@@ -91,13 +91,26 @@ fn validate_merges_files_and_reports_errors() {
             .starts_with("fit.json: ")
     );
 
-    // fit's .conf is not read yet.
-    let conf = write(&d, "fit.conf", "listener web { address :8080 }");
+    // fit's own .conf format (I23), its problems at their line and column.
+    let conf = write(
+        &d,
+        "fit.conf",
+        "listener web :8080\nroute { handler respond { status 204 } }\n",
+    );
     let out = akit(&["validate", "-c", s(&conf)]);
-    assert_eq!(out.status.code(), Some(1));
     assert_eq!(
-        String::from_utf8(out.stderr).unwrap(),
-        format!("{}: not supported yet: .conf files (I23)\n", conf.display())
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let bad = write(&d, "bad.conf", "listener web {\n\taddress nowhere\n}\n");
+    let out = akit(&["validate", "-c", s(&bad)]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(
+        String::from_utf8(out.stderr)
+            .unwrap()
+            .starts_with(&format!("{}:2:10: listeners[0].address: ", bad.display()))
     );
 }
 

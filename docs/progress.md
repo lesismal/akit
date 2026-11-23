@@ -10,15 +10,61 @@ done and where the work differs from the plan.
 
 | | |
 | --- | --- |
-| Last updated | 2026-11-23 |
+| Last updated | 2026-11-24 |
 | Milestone | M0, foundations: I01–I06, I07a and I07b done. |
 | akio | `50a82315` on akio's `main` (`1.0.0-rc.1`), pinned by `rev` in `Cargo.toml` |
 | fit | the specification; read at `7daee573` for this plan |
-| What works | `akit run` and `akit validate` with fit's flags and exit codes (`-c` repeated, files and directories, merged), and a graceful shutdown on SIGINT and SIGTERM; `akit run` serves HTTP/1.1 and h2c listeners with `respond` routes, by fit's host and path rules, 404 when nothing matches; `akit version` and `akit help`; the workspace builds and passes `make check`; `akit_config::from_json` reads fit's listeners, routes and the `respond` handler, and refuses the rest of fit's config by name as not supported yet; the module registry and the data-plane traits (`akit-runtime`); `compile` turns a config into a `Graph` and `GraphCell` publishes, reads and retires graphs; the compatibility gate runs every fit fixture through akit-config in `make check` and CI |
+| What works | `akit run` and `akit validate` with fit's flags and exit codes (`-c` repeated, files and directories, merged), and a graceful shutdown on SIGINT and SIGTERM; `akit run` serves HTTP/1.1 and h2c listeners with `respond` routes, by fit's host and path rules, 404 when nothing matches; `akit version` and `akit help`; the workspace builds and passes `make check`; `akit_config::from_json` reads fit's listeners, routes and the `respond` handler, and refuses the rest of fit's config by name as not supported yet; `akit_config::from_conf` reads fit's own `.conf` format into the same model (I23); the module registry and the data-plane traits (`akit-runtime`); `compile` turns a config into a `Graph` and `GraphCell` publishes, reads and retires graphs; the compatibility gate runs every fit fixture through akit-config in `make check` and CI |
 | Next | I08's baselines, from the benchmark host, which end M0; then I09 (TLS). |
 | akio requests | A1–A8 all being added to akio now, each on its own akio branch ([akio API requests](akio-api-requests.md)) |
 
 ## Log
+
+### 2026-11-24: I23, the .conf reader
+
+- fit's own format, `.conf`, read by akit-config (`crates/akit-config/src/conf`):
+  `akit_config::from_conf`, and `from_files` reads a file ending in `.conf`, given or found in a
+  directory, merged with JSON files as fit merges them. The lexer and parser are fit's
+  (`adapter/fitconf`): comments, double quotes with their escapes, backquotes, `;`, `{}`,
+  `{$NAME}` and `{$NAME:default}`, bounded at 2^20 words and 64 levels of blocks. Then `def` and
+  `use`, `site` (and `site *`) expanded into routes, the top-level lists in the singular with the
+  name as the argument, the shorthands (a listener's address and protocols, an upstream's
+  addresses, `tls <cert> <key>`, numbers of bytes in units), modules as their name and a block of
+  params, and every mistake fit reports while converting, with its message, at its line and
+  column.
+- How: the reader converts a `.conf` file into the same tree the JSON reader parses, as fit
+  converts it into JSON, each node keeping its offset in the `.conf` text, and the one decoder
+  reads both. A reader of its own feeding the decoder directly was the other choice; converting
+  keeps one decoder, so a field akit supports in a later iteration (I09, I14) is read from `.conf`
+  with no change here, and the decoder's problems point into the `.conf` file. Like fit's, the
+  conversion is typed by the config's fields: their types come from fit's field inventory,
+  `tests/compat/fit-fields.txt` (fit's JSON Schema at the pinned commit), built into akit-config,
+  so every field fit has converts as fit converts it, whether akit reads it yet or not, and is
+  then read or refused by name. A directive no field takes is converted as written and refused
+  as an unknown field, as in fit.
+- Not supported yet, and refused as such at their place: `include` and `import`, which read
+  other files from a `.conf` file (no fixture uses them; files are named with `-c` instead).
+  fit's old, renamed field names are not read, in `.conf` as in JSON.
+- The compatibility gate reads `.conf` files and `conf.d` directories through `from_files`. What
+  validation opens for the examples is settled: nothing but the config's own files, since every
+  field naming a file or a secret is refused as not supported yet ([compatibility](compatibility.md#what-validation-opens)).
+  A value refused of a field akit reads is now reported with the value
+  (`listeners[].protocols: the "h3" protocol`, `listeners: a config with no listeners, ...
+  (auto_https)`) and is not counted as the field refused: the gate's check that no supported
+  field is refused had flagged `listeners[].protocols` and `listeners`, which akit reads.
+- The gate's counts, at fit `7daee573` and fit-examples `9659d7e4`: 80 fixtures; 2 valid
+  (`hello`, `virtual-hosts`); 75 refused only as not supported yet (52 fields or values refused);
+  2 in a format not supported yet (the YAML template and its `conf.d`, I24); 1 skipped (`https`);
+  0 failed. Before: 0 valid, 2 refused, 77 not read. `templates/conf/*` refuse exactly what their
+  JSON twins refuse.
+- Tests: `conf/tests.rs` (fit's conversion, shorthand and error tables, ported: 21 configs and 60
+  errors with their line and column; the bounds; positions of the decoder's problems in the
+  `.conf` file; a `.conf` config and its JSON read into the same `Config`; every `.conf` template
+  converts into the same tree as its JSON twin; every example converts), `conf/convert.rs`
+  (numbers, bytes, the inventory's types), `files.rs` (`.conf` and JSON files merged from a
+  directory, problems at their place), `akit/tests/cli.rs` (`akit validate` of a `.conf` file), the gate (value refusals). Fuzz target `config_conf` with
+  a corpus of examples, fuzzed for a minute in CI beside `config_json`.
+- Checked: `make check` on macOS; `config_conf` fuzzed for 60 s locally.
 
 ### 2026-11-24: I08, benchmark harness (baselines pending)
 

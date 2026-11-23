@@ -70,8 +70,11 @@ jobs:
 
   fuzz:
     # Each reader fuzzed for a minute (dev-plan I02: "fuzzed for a minute in CI").
-    name: fuzz (config_json, 60s)
+    name: fuzz (${{ matrix.target }}, 60s)
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [config_json, config_conf]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
@@ -79,4 +82,4 @@ jobs:
         with:
           workspaces: fuzz
       - run: cargo install cargo-fuzz --locked
-      - run: cargo +nightly fuzz run config_json -- -max_total_time=60
+      - run: cargo +nightly fuzz run ${{ matrix.target }} -- -max_total_time=60

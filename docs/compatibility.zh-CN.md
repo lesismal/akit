@@ -40,7 +40,7 @@ akit 读取 fit 的配置（[决策 002](decisions/002-config-compatibility.zh-C
 | 测试框架：枚举、判定、报告 | `tests/compat/src/lib.rs`、`tests/compat/tests/gate.rs` | 完成（I07a） |
 | 经由 akit-config 的门禁，报告入库 | `tests/compat/tests/gate.rs` 中的 `gate_through_akit_config`，`tests/compat/gate-report.txt` | 完成（I07b） |
 | 已支持字段确实被读取，akit-config 的列表对照字段清单检查 | 同一文件中的 `supported_fields_are_read`、`akit_config_lists_match_the_inventory` | 完成（I07b） |
-| 读取 .conf 夹具和 `conf.d` 目录 | akit-config 的 .conf 读取器与合并 | I23 |
+| 读取 .conf 夹具和 `conf.d` 目录 | akit-config 的 .conf 读取器（`crates/akit-config/src/conf`）与合并 | 完成（I23） |
 | 读取 YAML 夹具 | akit-config 的 YAML 读取器 | I24 |
 
 门禁是工作区里的普通测试，没有 feature，也没有 ignore：`make test`（因而 `make check`）会运行它，
@@ -50,11 +50,26 @@ CI 在 Linux（epoll、io_uring）和 macOS 上的 `cargo test --workspace` 也�
 
 ### akit 还不能读取的格式
 
-akit-config 目前只读 JSON。它还没有读取器的格式的夹具——.conf 文件（所有示例，直到 I23）、YAML 模板
-（直到 I24）以及三个 `conf.d` 目录（fit 把目录中的文件合并成一份配置；合并由 I23 实现）——既不会被
-悄悄判为通过，也不会被悄悄判为失败：它的结果是 "format not supported yet"（格式尚不支持），和其他
-结果一样写进门禁的报告。JSON 夹具读取时只能出现 "not supported yet" 的发现；其他任何错误都不能通过
-门禁，"format not supported yet" 与其他发现同时出现也不能通过。
+akit-config 读取 JSON 和 fit 自己的 `.conf` 格式（I23），并像 fit 那样合并目录中的文件：所有示例、
+`.conf` 和 JSON 模板及其 `conf.d` 目录都经由它读取。它还没有读取器的格式的夹具——YAML 模板及其
+`conf.d` 目录（直到 I24）——既不会被悄悄判为通过，也不会被悄悄判为失败：它的结果是
+"format not supported yet"（格式尚不支持），和其他结果一样写进门禁的报告。akit 能读取的夹具读取时
+只能出现 "not supported yet" 的发现；其他任何错误都不能通过门禁，"format not supported yet" 与其他
+发现同时出现也不能通过。
+
+`.conf` 读取器按 fit 自己的类型给每条指令定型，类型取自字段清单（`fit-fields.txt`，编译进
+akit-config）：`.conf` 文件转换成的树与它的 JSON 孪生文件解析出的树逐个成员相同，由同一个解码器读取。
+一个测试（`crates/akit-config/src/conf/tests.rs` 中的 `templates_match_their_json_twins`）要求固定
+提交下的每个 `.conf` 模板与其 JSON 孪生文件一致。刷新夹具时，读取器的类型随字段清单一起刷新。
+
+### 校验会打开什么
+
+校验只读取配置自身的文件，不打开配置中提到的任何东西：配置提到的文件（TLS 证书和私钥、示例的
+WebAssembly 插件、静态文件根目录、`password_file`）以及按环境变量名提到的密钥（`password_env`）都属于
+akit-config 以 "not supported yet" 拒绝的字段，所以示例就在固定的位置上校验，既不需要以 fit-examples
+的根目录为工作目录，也不需要真实的密钥。`make compat-gate` 仍会设置 fit-examples 自己的测试所设置的
+替身密钥，以备这类字段得到支持；届时校验是否打开它们（相对于 fit-examples 运行时所在的目录），由支持
+该字段的迭代决定。`examples/https` 仍然跳过：它的证书文件属于用户自己。
 
 ### 入库的报告
 
@@ -75,17 +90,22 @@ make compat-bless
 "not supported yet" 被拒绝的夹具则每个字段一行。
 
 ```text
-examples/hello: format not supported yet: .conf (I23)
+examples/hello: valid
+examples/http3: not supported yet: listeners[].protocols: the "h3" protocol
+examples/http3: not supported yet: listeners[].tls
 examples/https: skipped: its certificate and key files are the user's own
-templates/json/fit.json: not supported yet: upstreams
+templates/conf/fit.conf: not supported yet: upstreams
 templates/yaml/conf.d: format not supported yet: YAML (I24)
 ```
 
 失败的夹具写作 `<夹具>: FAILED: <原因>`，每条不属于允许的 "not supported yet" 的发现一行；与入库报告的
 差异写作 `- <行>`（只在入库报告中）和 `+ <行>`（只在本次运行中）。akit 给出的路径按字段清单的写法记录：
 数组下标（`routes[0]`）和映射键（`log.loggers.engine`）分别对应 `[]` 和 `*`；akit 还没有的 handler
-模块在 `routes[0].handler.module` 处被拒绝，记为 `routes[].handler<proxy>`；值数组中的某个值
-（`listeners[0].protocols[1]`，即 `h3` 协议）记为该数组 `listeners[].protocols`。
+模块在 `routes[0].handler.module` 处被拒绝，记为 `routes[].handler<proxy>`。akit 读取的字段中它尚不
+支持的某个值，写在字段之后：`listeners[0].protocols[1]`（即 `h3` 协议）记为
+`listeners[].protocols: the "h3" protocol`；没有监听器的配置（fit 默认以 HTTPS 提供服务）记为
+`listeners: a config with no listeners, ... (auto_https)`。这样的行不是整个字段被拒绝：该字段仍是
+已支持的，门禁"已支持字段不得被拒绝"的检查只看整体被拒绝的字段。
 
 ## 刷新夹具
 

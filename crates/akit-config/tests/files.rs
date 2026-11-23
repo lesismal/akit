@@ -115,17 +115,65 @@ fn directories_in_lexical_order_without_dotfiles() {
 }
 
 #[test]
-fn other_formats_are_not_supported_yet() {
-    let d = dir("formats");
-    let conf = write(&d, "fit.conf", "listener web { address :8080 }");
-    let yaml = write(&d, "fit.yaml", "listeners: []");
-    let errs = errors(from_files(&[&conf, &yaml]));
+fn conf_files_merge_with_json_files() {
+    let d = dir("conf");
+    write(&d, "10-listeners.conf", "listener web :8080 http/1.1 h2c\n");
+    write(
+        &d,
+        "20-routes.json",
+        r#"{"routes": [{"name": "a", "listeners": ["web"], "handler": {"module": "respond"}}]}"#,
+    );
+    write(
+        &d,
+        "sites/b.conf",
+        "site b.example {\n\tlisteners web\n\troute /b { name b; handler respond { status 204 } }\n}\n",
+    );
+    let c = from_files(&[&d]).unwrap();
+    assert_eq!(c.listeners.len(), 1);
+    let names: Vec<_> = c.routes.iter().map(|r| r.name.as_deref()).collect();
+    assert_eq!(names, [Some("a"), Some("b")]);
+    // A problem in a .conf file names it, with the line and column and the path in that file;
+    // the checks across files run on the merged lists, each reported at its element.
+    let bad = write(
+        &d,
+        "sites/c.conf",
+        "route c {\n\tlisteners web other\n\thandler respond { status 99 }\n}\n",
+    );
+    let errs = errors(from_files(&[&d]));
     assert_eq!(
         errs,
         [
-            format!("{}: not supported yet: .conf files (I23)", conf.display()),
-            format!("{}: not supported yet: YAML files (I24)", yaml.display()),
+            format!(
+                "{}:3:27: routes[0].handler.params.status: 99 is less than the minimum 100",
+                bad.display()
+            ),
+            format!(
+                "{}:1:1: routes[0].listeners[1]: there is no listener named \"other\"",
+                bad.display()
+            ),
         ]
+    );
+    // A .conf file that does not parse is reported at its place, and the rest still read.
+    fs::remove_file(&bad).unwrap();
+    let broken = write(&d, "sites/d.conf", "route d {\n\thandler respond\n");
+    let errs = errors(from_files(&[&d]));
+    assert_eq!(
+        errs,
+        [format!("{}:1:9: this {{ is not closed", broken.display())]
+    );
+}
+
+#[test]
+fn yaml_is_not_supported_yet() {
+    let d = dir("formats");
+    let yaml = write(&d, "fit.yaml", "listeners: []");
+    let errs = errors(from_files(&[&yaml]));
+    assert_eq!(
+        errs,
+        [format!(
+            "{}: not supported yet: YAML files (I24)",
+            yaml.display()
+        )]
     );
     // A file named with any other extension is JSON, as in fit.
     let other = write(&d, "fit.cfg", LISTENER);
