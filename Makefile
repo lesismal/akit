@@ -40,7 +40,7 @@ docs-check:
 compat-check:
 	python3 -I tools/compat-inventory.py --check
 
-# The gate through akit_config::validate_file (I07b), with the examples' secrets set to stand-ins as
+# The gate through akit_config::from_json_file (I07b), with the examples' secrets set to stand-ins as
 # fit-examples' own test sets them.
 COMPAT_SECRETS = ES_PASSWORD KAFKA_PASSWORD MYSQL_PASSWORD PG_PASSWORD RABBITMQ_PASSWORD \
 	NATS_PASSWORD PULSAR_TOKEN MQTT_PASSWORD INFLUX_TOKEN TD_PASSWORD MSSQL_PASSWORD \

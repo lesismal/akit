@@ -10,7 +10,7 @@
 //!
 //! This crate enumerates the fixtures and judges the outcomes; the validation itself is a
 //! function handed to [`run_gate`]. The `compat-gate` feature hands it
-//! `akit_config::validate_file` (iteration I07b, once I02's akit-config has it).
+//! `akit_config::from_json_file` (iteration I07b, once I02's akit-config has it).
 //!
 //! [decision 002]: https://github.com/lesismal/akit/blob/main/docs/decisions/002-config-compatibility.md
 

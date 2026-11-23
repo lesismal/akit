@@ -9,7 +9,7 @@ rust-version.workspace = true
 publish = false
 
 [features]
-# Runs the gate through akit_config::validate_file. Off until I07b wires it: akit-config's API is
+# Runs the gate through akit_config::from_json_file. Off until I07b wires it: akit-config's API is
 # being written in I02, and this crate must build on main without it.
 compat-gate = ["dep:akit-config"]
 

@@ -23,7 +23,7 @@ done and where the work differs from the plan.
 ### 2026-11-23: I07a, compatibility gate I: fixtures, inventory, harness
 
 - I07 is split: I07a, done here, needs no config model; I07b wires the gate to
-  `akit_config::validate_file` once I02 is merged ([dev plan](dev-plan.md#i07b-compatibility-gate-wired-to-validate)).
+  `akit_config::from_json_file` once I02 is merged ([dev plan](dev-plan.md#i07b-compatibility-gate-wired-to-validate)).
 - Pinned fixtures in `tests/compat/fixtures/`: fit `7daee573` (`templates/`, 30 files: each of
   the three formats as one file and as a `conf.d` directory of 9 files; `schema/fit.schema.json`)
   and fit-examples `9659d7e4` (74 `*/fit.conf`), with both Apache-2.0 licences,

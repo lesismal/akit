@@ -269,8 +269,9 @@ Split from I07 so that the half that needs no config model runs beside I02.
 ### I07b Compatibility gate wired to validate
 
 - **Do**: turn on the `compat-gate` feature of `akit-compat`: its test calls
-  `akit_config::validate_file` (a file or a `conf.d` directory, as `akit validate -c` takes it) on
-  every fixture; akit-config's errors name paths the harness matches against the inventory; each
+  `akit_config::from_json_file` on
+  every fixture (`validate_with_akit_config` in `gate.rs`, extended to `conf.d` directories, and to
+  .conf and YAML as I23 and I24 land); akit-config's errors name paths the harness matches against the inventory; each
   fixture either passes or fails only with "not supported yet: <field>"; settle what validation
   opens (the files and WebAssembly plugins examples name, relative to fit-examples' root) and the
   `https` example fit only adapts. A field read and then ignored fails the gate.

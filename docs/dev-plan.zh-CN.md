@@ -249,7 +249,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 
 ### I07b 兼容性门禁接入 validate
 
-- **做什么**：打开 `akit-compat` 的 `compat-gate` feature：其测试对每个夹具调用 `akit_config::validate_file`
+- **做什么**：打开 `akit-compat` 的 `compat-gate` feature：其测试对每个夹具调用 `akit_config::from_json_file`（`gate.rs` 中的 `validate_with_akit_config`，随 I23、I24 扩展到 `conf.d` 目录、.conf 和 YAML）
   （文件或 `conf.d` 目录，与 `akit validate -c` 的参数相同）；akit-config 的错误给出路径，由测试框架与字段清单
   匹配；每个夹具要么通过，要么只因 "not supported yet: <field>" 失败；确定校验会打开哪些文件（示例引用的
   文件和 WebAssembly 插件，相对于 fit-examples 根目录），以及 fit 只做 adapt 的 `https` 示例如何处理。读取后

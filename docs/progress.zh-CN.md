@@ -21,7 +21,7 @@
 
 ### 2026-11-23：I07a，兼容性门禁 I：夹具、字段清单、测试框架
 
-- I07 拆分：本次完成的 I07a 不需要配置模型；I07b 在 I02 合并后把门禁接入 `akit_config::validate_file`
+- I07 拆分：本次完成的 I07a 不需要配置模型；I07b 在 I02 合并后把门禁接入 `akit_config::from_json_file`
   （[开发计划](dev-plan.zh-CN.md#i07b-兼容性门禁接入-validate)）。
 - `tests/compat/fixtures/` 中的固定夹具：fit `7daee573`（`templates/` 共 30 个文件：三种格式各有单文件和含 9 个
   文件的 `conf.d` 目录；`schema/fit.schema.json`）和 fit-examples `9659d7e4`（74 个 `*/fit.conf`），附两份

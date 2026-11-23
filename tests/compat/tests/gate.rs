@@ -1,6 +1,6 @@
 //! The compatibility gate (docs/compatibility.md): the pinned fixtures and the field inventory
 //! are sound, the harness judges outcomes as decision 002 says, and, with the `compat-gate`
-//! feature (I07b), every fixture passes through `akit_config::validate_file`.
+//! feature (I07b), every fixture passes through `akit_config::from_json_file`.
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -204,13 +204,11 @@ fn gate_through_akit_config() {
             "{name} is not set: run make compat-gate"
         );
     }
-    let report = run_gate(&fixtures().unwrap(), &fields().unwrap(), |path| {
-        akit_config::validate_file(path).map_err(|errs| {
-            errs.iter()
-                .map(|e| Finding::from_message(&e.to_string()))
-                .collect()
-        })
-    });
+    let report = run_gate(
+        &fixtures().unwrap(),
+        &fields().unwrap(),
+        validate_with_akit_config,
+    );
     println!("{report}");
     let failures = report.failures();
     assert!(
@@ -220,9 +218,38 @@ fn gate_through_akit_config() {
     );
 }
 
+/// The one hook into akit-config (I02's API): read the config, and turn each error into a
+/// finding, "not supported yet" by `Error::is_not_supported_yet` (message prefix
+/// `akit_config::NOT_SUPPORTED_YET`). I07b extends it to directories and, as I23 and I24 land,
+/// to .conf and YAML; until then those fixtures are findings the gate reports.
+#[cfg(feature = "compat-gate")]
+fn validate_with_akit_config(path: &std::path::Path) -> Result<(), Vec<Finding>> {
+    let is_json = path.extension().is_some_and(|e| e == "json");
+    if !is_json {
+        return Err(vec![Finding::Error(format!(
+            "{}: akit-config reads JSON files only so far (I07b, I23, I24)",
+            path.display()
+        ))]);
+    }
+    akit_config::from_json_file(path)
+        .map(|_| ())
+        .map_err(|errs| {
+            errs.iter()
+                .map(|e| {
+                    let msg = e.to_string();
+                    if e.is_not_supported_yet() {
+                        Finding::from_message(&msg)
+                    } else {
+                        Finding::Error(msg)
+                    }
+                })
+                .collect()
+        })
+}
+
 #[cfg(not(feature = "compat-gate"))]
 #[test]
-#[ignore = "I07b: needs akit_config::validate_file (I02); run with --features compat-gate"]
+#[ignore = "I07b: needs akit_config::from_json_file (I02); run with --features compat-gate"]
 fn gate_through_akit_config() {
     assert_eq!(EXAMPLE_SECRETS.len(), 15);
 }

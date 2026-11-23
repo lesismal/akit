@@ -38,7 +38,7 @@ akit 读取 fit 的配置（[决策 002](decisions/002-config-compatibility.zh-C
 | 固定的夹具及其许可证 | `tests/compat/fixtures/`、`tests/compat/SOURCE.md` | 完成（I07a） |
 | 字段清单 | `tests/compat/fit-fields.txt`，由 `tools/compat-inventory.py` 生成 | 完成（I07a） |
 | 测试框架：枚举、判定、报告 | `tests/compat/src/lib.rs`、`tests/compat/tests/gate.rs` | 完成（I07a），用替身校验函数测试 |
-| 经由 `akit_config::validate_file` 的门禁 | `compat-gate` feature，`make compat-gate` | I07b，在 I02 之后 |
+| 经由 `akit_config::from_json_file` 的门禁 | `compat-gate` feature，`make compat-gate` | I07b，在 I02 之后 |
 | CI 中运行门禁，报告入库 | `.github/workflows/ci.yml` | I07b |
 
 `make check` 运行测试框架自身的测试（夹具完整、字段清单正确且与固定提交一致、结果按上述规则判定），
