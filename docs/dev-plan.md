@@ -99,7 +99,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I02 | Config model v0 and the strict JSON reader | I01 | done |
 | I03 | Core traits and the module registry | I01 | done |
 | I04 | The runtime graph and its swap | I02, I03 | done |
-| I05 | `akit run`: listeners and `respond` | I04 | todo |
+| I05 | `akit run`: listeners and `respond` | I04 | done |
 | I06 | CLI, signals and graceful shutdown | I05 | todo |
 | I07a | Compatibility gate I: pinned fixtures, field inventory, harness | I01 | done |
 | I07b | Compatibility gate wired to validate | I02, I07a | done |
@@ -317,8 +317,12 @@ Split from I07 so that the half that needs no config model runs beside I02.
 ### I11 Router v1: host and path
 
 - **Do**: routes with host (exact, wildcard) and path (exact, prefix) matchers; explicit priority,
-  then most specific first, as fit orders them; 404 when nothing matches.
-- **Done when**: fit's router table tests, ported, pass; a lookup does not allocate.
+  then most specific first, as fit orders them; 404 when nothing matches. I05's router v0 has
+  fit's rules by a scan of the routes: replace the scan with lookups by host and path. Paths are
+  canonicalized first, as fit's listener does (dot segments and empty segments removed, a path
+  that climbs above the root or hides a separator in an escape answered 400).
+- **Done when**: fit's router table tests, ported, pass; a lookup does not allocate; fit's path
+  canonicalization tests, ported, pass.
 - **Touches**: `akit-router`.
 - **fit**: `router`.
 

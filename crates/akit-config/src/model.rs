@@ -28,7 +28,7 @@ pub struct Listener {
     pub name: String,
     /// `address`, a host and port as in `":8080"` or `"127.0.0.1:8080"`.
     pub address: String,
-    /// `protocols`; fit's default, HTTP/1.1 and h2c, when left out.
+    /// `protocols`; fit's default, HTTP/1.1 alone, when left out.
     pub protocols: Vec<Protocol>,
 }
 
@@ -52,8 +52,9 @@ impl Protocol {
     }
 }
 
-/// fit's default protocols for a listener without TLS.
-pub const DEFAULT_PROTOCOLS: [Protocol; 2] = [Protocol::Http11, Protocol::H2c];
+/// fit's default protocols for a listener without TLS: HTTP/1.1 alone (fit's
+/// `config.DefaultProtocols`).
+pub const DEFAULT_PROTOCOLS: [Protocol; 1] = [Protocol::Http11];
 
 /// One route.
 #[derive(Debug, Clone, PartialEq, Eq)]

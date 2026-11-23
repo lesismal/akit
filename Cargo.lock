@@ -188,6 +188,11 @@ source = "git+https://github.com/lesismal/akio?rev=50a823155a067ce60cfc424490548
 name = "akit"
 version = "0.0.1"
 dependencies = [
+ "akio",
+ "akio-http",
+ "akit-config",
+ "akit-handler",
+ "akit-listener",
  "akit-runtime",
 ]
 
@@ -213,6 +218,11 @@ version = "0.0.1"
 [[package]]
 name = "akit-handler"
 version = "0.0.1"
+dependencies = [
+ "akio-http",
+ "akit-config",
+ "akit-runtime",
+]
 
 [[package]]
 name = "akit-l4"
@@ -221,6 +231,13 @@ version = "0.0.1"
 [[package]]
 name = "akit-listener"
 version = "0.0.1"
+dependencies = [
+ "akio",
+ "akio-http",
+ "akit-config",
+ "akit-handler",
+ "akit-runtime",
+]
 
 [[package]]
 name = "akit-middleware"
@@ -253,6 +270,7 @@ dependencies = [
  "akio",
  "akio-http",
  "akit-config",
+ "akit-router",
 ]
 
 [[package]]

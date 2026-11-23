@@ -11,14 +11,49 @@ done and where the work differs from the plan.
 | | |
 | --- | --- |
 | Last updated | 2026-11-23 |
-| Milestone | M0, foundations: I01, I02, I03, I04, I07a and I07b done. |
+| Milestone | M0, foundations: I01–I05, I07a and I07b done. |
 | akio | `50a82315` on akio's `main` (`1.0.0-rc.1`), pinned by `rev` in `Cargo.toml` |
 | fit | the specification; read at `7daee573` for this plan |
-| What works | the workspace builds and passes `make check`; `akit version` and `akit help`; `akit_config::from_json` reads fit's listeners, routes and the `respond` handler, and refuses the rest of fit's config by name as not supported yet; the module registry and the data-plane traits (`akit-runtime`); `compile` turns a config into a `Graph` and `GraphCell` publishes, reads and retires graphs; the compatibility gate runs every fit fixture through akit-config in `make check` and CI |
-| Next | I05, `akit run` with listeners and `respond`. |
+| What works | `akit run -c <file.json>` serves HTTP/1.1 and h2c listeners with `respond` routes, by fit's host and path rules, 404 when nothing matches; `akit version` and `akit help`; the workspace builds and passes `make check`; `akit_config::from_json` reads fit's listeners, routes and the `respond` handler, and refuses the rest of fit's config by name as not supported yet; the module registry and the data-plane traits (`akit-runtime`); `compile` turns a config into a `Graph` and `GraphCell` publishes, reads and retires graphs; the compatibility gate runs every fit fixture through akit-config in `make check` and CI |
+| Next | I06, the CLI with fit's flags, signals and graceful shutdown. |
 | akio requests | A1–A8 all being added to akio now, each on its own akio branch ([akio API requests](akio-api-requests.md)) |
 
 ## Log
+
+### 2026-11-23: I05, `akit run`: listeners and `respond`
+
+- `akit run -c <file>` reads the config (JSON; `fit.json` when no `-c` is given, as fit's),
+  compiles it, serves it, and prints each listener's address as fit does
+  (`akit: listener "web" on 127.0.0.1:8080 (http/1.1, h2c)`). A config error prints fit's
+  `file:line:col: path: message` lines and exits 1; a bad flag exits 2.
+- `akit-handler`: the `respond` module (`http.handlers.respond`), its response built once at
+  provisioning (status, headers, a `text/plain; charset=utf-8` content type when there is a body and
+  none is set); akit-config already checks its params as fit's `Provision` does.
+- `akit-listener`: `engine(cell, backend)` builds one akio TCP listener per config listener, each
+  serving a `Dispatcher` that routes the request through the cell's current graph and calls the
+  route's handler, or answers fit's `404 page not found`. `":8080"` listens on `[::]` dual-stack,
+  as Go's `net.Listen`. `http/1.1` alone turns akio's HTTP/2 off; with `h2c`, prior knowledge and
+  the `Upgrade: h2c` request are both served.
+- `akit-router`: router v0, fit's host (exact, `*.`, `**.`, ignoring case, port and trailing dot)
+  and path (exact, `*` prefix) rules and its order (priority, host, path, then the order written),
+  by a scan of the routes; the graph builds one per listener at compile time, a route with no
+  `listeners` serving on all.
+- Fixed: akit-config's default listener protocols, found by I07b, are now fit's, `http/1.1`
+  alone without TLS (`DEFAULT_PROTOCOLS`), with a test.
+- Tests: router (6), respond (3), listener addresses; `akit-listener/tests/listeners.rs` (5):
+  HTTP/1.1, h2c prior knowledge and upgrade, 404, host specificity, routes per listener, HTTP/2
+  refused by default, h2c alone refused; `akit/tests/hello.rs` (3): fit's `hello` example, as
+  JSON, answers `/hello` and its `not-found` route over HTTP/1.1 and h2c through the binary; a
+  bad config exits 1 with its errors, bad flags exit 2.
+- Checked: `make check` on macOS. Not yet checked: the tests on Linux (epoll and io_uring), running
+  on the benchmark host; a follow-up records them.
+- Differs from the plan: the router v0 was not in I05's plan; without it the example's
+  `not-found` route (priority -1, no match) would shadow `/hello`. I11 keeps its rules and makes
+  lookups allocation-free, and now also canonicalizes paths as fit's listener does (not planned
+  anywhere before). The example is written as JSON in the test: `.conf` is I23. A listener with
+  `h2c` and no `http/1.1` is refused as not supported yet: fit serves HTTP/2 alone then, and akio's
+  server always takes HTTP/1. Request bodies are buffered (akio's default, 1 MiB) until a handler
+  streams them (I14).
 
 ### 2026-11-23: I04, the runtime graph and its swap
 

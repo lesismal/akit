@@ -52,6 +52,8 @@ impl fmt::Debug for CompiledRoute {
 pub struct Graph {
     listeners: Vec<Listener>,
     routes: Vec<CompiledRoute>,
+    /// Per listener, in the order of `listeners`: its routes' router, to indices of `routes`.
+    routers: Vec<akit_router::Router<usize>>,
     /// Taken (and so cleaned up) once, by [`Graph::retire`] or on drop.
     modules: Mutex<Option<Modules>>,
     /// Requests and connections that keep this graph past their handler's call
@@ -69,10 +71,25 @@ impl Graph {
         &self.listeners
     }
 
-    /// The routes, in the config's order (I11 orders them by priority and specificity).
+    /// The routes, in the config's order.
     #[must_use]
     pub fn routes(&self) -> &[CompiledRoute] {
         &self.routes
+    }
+
+    /// The index of the listener named `name`.
+    #[must_use]
+    pub fn listener_index(&self, name: &str) -> Option<usize> {
+        self.listeners.iter().position(|l| l.name == name)
+    }
+
+    /// The route that serves a request to `host` (the `Host` field) and `path` on the listener at
+    /// `listener` ([`listener_index`](Self::listener_index)), as fit's router picks it; `None`
+    /// when no route matches, or there is no such listener. Runs per request: it only reads.
+    #[must_use]
+    pub fn route(&self, listener: usize, host: &str, path: &str) -> Option<&CompiledRoute> {
+        let i = *self.routers.get(listener)?.find(host, path)?;
+        self.routes.get(i)
     }
 
     /// The IDs of the modules provisioned for this graph, in order; empty once it is retired.
@@ -165,9 +182,30 @@ pub fn compile(
         // `modules` drops here, cleaning up what was provisioned.
         return Err(Errors(errors));
     }
+    // Built here, not per request (rule 12). A route with no listeners serves on every one.
+    let routers = config
+        .listeners
+        .iter()
+        .map(|l| {
+            akit_router::Router::new(
+                routes
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, r)| r.listeners.is_empty() || r.listeners.contains(&l.name))
+                    .map(|(i, r)| akit_router::Route {
+                        hosts: r.host.clone(),
+                        paths: r.path.clone(),
+                        priority: r.priority,
+                        value: i,
+                    })
+                    .collect(),
+            )
+        })
+        .collect();
     Ok(Graph {
         listeners: config.listeners.clone(),
         routes,
+        routers,
         modules: Mutex::new(Some(modules)),
         holds: AtomicUsize::new(0),
         orphaned: AtomicBool::new(false),

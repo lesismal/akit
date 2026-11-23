@@ -10,14 +10,41 @@
 | | |
 | --- | --- |
 | 最后更新 | 2026-11-23 |
-| 里程碑 | M0 基础：I01、I02、I03、I04、I07a、I07b 已完成。 |
+| 里程碑 | M0 基础：I01–I05、I07a、I07b 已完成。 |
 | akio | akio `main` 上的 `50a82315`（`1.0.0-rc.1`），在 `Cargo.toml` 中按 `rev` 锁定 |
 | fit | 作为规格；本计划基于 `7daee573` 阅读 |
-| 可用功能 | 工作区能构建并通过 `make check`；`akit version` 和 `akit help`；`akit_config::from_json` 能读取 fit 的监听器、路由和 `respond` handler，fit 配置的其余部分按名字报为暂不支持；模块注册表和数据面 trait（`akit-runtime`）；`compile` 把配置编译成 `Graph`，`GraphCell` 负责发布、读取和退役图；兼容性门禁在 `make check` 和 CI 中把 fit 的每个夹具交给 akit-config |
-| 下一步 | I05，`akit run`：监听器与 `respond`。 |
+| 可用功能 | `akit run -c <file.json>` 按 fit 的 host 与 path 规则提供 HTTP/1.1 和 h2c 监听器上的 `respond` 路由，没有匹配时返回 404；`akit version` 和 `akit help`；工作区能构建并通过 `make check`；`akit_config::from_json` 能读取 fit 的监听器、路由和 `respond` handler，fit 配置的其余部分按名字报为暂不支持；模块注册表和数据面 trait（`akit-runtime`）；`compile` 把配置编译成 `Graph`，`GraphCell` 负责发布、读取和退役图；兼容性门禁在 `make check` 和 CI 中把 fit 的每个夹具交给 akit-config |
+| 下一步 | I06，带 fit 参数的命令行、信号与优雅关闭。 |
 | akio 需求 | A1–A8 现在全部加进 akio，各在 akio 的独立分支上进行（[akio API 需求](akio-api-requests.zh-CN.md)） |
 
 ## 日志
+
+### 2026-11-23：I05，`akit run`：监听器与 `respond`
+
+- `akit run -c <file>` 读取配置（JSON；没有 `-c` 时为 `fit.json`，与 fit 一致），编译并提供服务，按 fit 的格式
+  打印每个监听器的地址（`akit: listener "web" on 127.0.0.1:8080 (http/1.1, h2c)`）。配置错误按 fit 的
+  `file:line:col: path: message` 逐行打印并以 1 退出；参数错误以 2 退出。
+- `akit-handler`：`respond` 模块（`http.handlers.respond`），响应在初始化时构建一次（状态码、头；有 body 且没有
+  设置时 content type 为 `text/plain; charset=utf-8`）；akit-config 已像 fit 的 `Provision` 一样检查其参数。
+- `akit-listener`：`engine(cell, backend)` 为每个配置监听器建一个 akio TCP 监听器，各自服务一个 `Dispatcher`：
+  它经 cell 的当前图为请求选路由并调用路由的 handler，否则返回 fit 的 `404 page not found`。`":8080"` 监听
+  `[::]` 双栈，与 Go 的 `net.Listen` 一致。只有 `http/1.1` 时关闭 akio 的 HTTP/2；有 `h2c` 时，先验知识和
+  `Upgrade: h2c` 请求都能处理。
+- `akit-router`：路由器 v0，fit 的 host 规则（精确、`*.`、`**.`，忽略大小写、端口和末尾的点）和 path 规则（精确、
+  `*` 前缀）及其排序（优先级、host、path、书写顺序），逐条扫描路由；图在编译时为每个监听器建一个，没有
+  `listeners` 的路由在所有监听器上服务。
+- 修复：I07b 发现的 akit-config 监听器默认协议现在与 fit 一致，没有 TLS 时只有 `http/1.1`（`DEFAULT_PROTOCOLS`），
+  并补了测试。
+- 测试：路由器（6 个）、respond（3 个）、监听地址；`akit-listener/tests/listeners.rs`（5 个）：HTTP/1.1、h2c 先验
+  知识与升级、404、host 具体程度、按监听器的路由、默认拒绝 HTTP/2、拒绝只有 h2c；`akit/tests/hello.rs`（3 个）：
+  经二进制，fit 的 `hello` 示例（写成 JSON）通过 HTTP/1.1 和 h2c 应答 `/hello` 及其 `not-found` 路由；错误配置
+  打印错误并以 1 退出，错误参数以 2 退出。
+- 已验证：macOS 上的 `make check`。尚未验证：Linux（epoll 和 io_uring）上的测试，正在基准测试主机上运行；结果由后续
+  提交记录。
+- 与计划的不同：路由器 v0 不在 I05 的计划中；没有它，示例的 `not-found` 路由（优先级 -1、无匹配条件）会遮住
+  `/hello`。I11 保留其规则并让查找不分配内存，现在还要像 fit 的监听器那样规范化路径（此前没有计划）。示例在测试中
+  写成 JSON：`.conf` 属于 I23。有 `h2c` 而没有 `http/1.1` 的监听器按暂不支持拒绝：fit 此时只提供 HTTP/2，而 akio
+  的服务端总是也接受 HTTP/1。请求 body 先缓冲（akio 的默认值，1 MiB），直到有 handler 以流的方式读取（I14）。
 
 ### 2026-11-23：I04，运行时图及其替换
 
