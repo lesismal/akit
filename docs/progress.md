@@ -11,14 +11,76 @@ done and where the work differs from the plan.
 | | |
 | --- | --- |
 | Last updated | 2026-11-24 |
-| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09, I11, I14, I23 and I24 done. |
+| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09, I11, I14, I22, I23 and I24 done. |
 | akio | `50a82315` on akio's `main` (`1.0.0-rc.1`), pinned by `rev` in `Cargo.toml` |
 | fit | the specification; read at `7daee573` for this plan |
-| What works | `akit run` and `akit validate` with fit's flags and exit codes, `-c` repeated, files and directories merged, in JSON, fit's `.conf` and YAML; a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c and TLS listeners (certificates from files chosen by SNI, ALPN choosing h2 or HTTP/1.1, client authentication); `respond` routes chosen by router v1 (fit's host and path rules by lookup, on canonical paths), 404 when nothing matches; `upstreams` compiled into a pool each on akio's HTTP/1 client, drained when their graph is retired (the proxy that sends through them is I15); the compatibility gate: 80 fixtures, 5 valid, 74 refused only as not supported yet, 1 skipped, none failed; the I08 baseline: akit first in the fixed scenario over HTTP/1.1 and h2c |
-| Next | I15 (reverse proxy I, on I11 and I14), I10 (HTTP/3), I12 (static files), I19 (load balancing), I22 (reload) |
+| What works | `akit run` and `akit validate` with fit's flags and exit codes, `-c` repeated, files and directories merged, in JSON, fit's `.conf` and YAML; a graceful shutdown on SIGINT and SIGTERM; reloading on SIGHUP (startup listeners kept, others added and removed with akit's own sockets until A1); HTTP/1.1, h2c and TLS listeners (certificates from files chosen by SNI, ALPN choosing h2 or HTTP/1.1, client authentication); `respond` routes chosen by router v1 (fit's host and path rules by lookup, on canonical paths), 404 when nothing matches; `upstreams` compiled into a pool each on akio's HTTP/1 client, drained when their graph is retired (the proxy that sends through them is I15); the compatibility gate: 80 fixtures, 5 valid, 74 refused only as not supported yet, 1 skipped, none failed; the I08 baseline: akit first in the fixed scenario over HTTP/1.1 and h2c |
+| Next | I15 (reverse proxy I, on I11 and I14), I10 (HTTP/3), I12 (static files), I19 (load balancing) |
 | akio requests | A1–A8 being added to akio, each on its own akio branch, not merged; A9 (a TLS server capped at TLS 1.2) requested by I09; A10–A12 (HTTP client: closing idle connections, a request's own `Host`, the connect timeout for a lone address) by I14 ([akio API requests](akio-api-requests.md)) |
 
 ## Log
+
+### 2026-11-24: I22, reload on SIGHUP
+
+- `akit run` reloads on SIGHUP: it prints `akit: reloading <files>`, reads and compiles the same
+  `-c` paths again, and, when they compile and their listeners can be served, swaps the new graph
+  in (`GraphCell::swap`), prints the listeners it removed (`akit: listener "x" on ADDR removed`)
+  and added (the startup line), then `akit: reloaded <files>`. A config that does not read or
+  compile, or whose listeners cannot be served, leaves the running one: `akit: reload failed; the
+  running config stays` on stderr, then the errors as fit prints them (as `akit run` prints them
+  at startup). The new graph's upstream pools dial through the running engine.
+- Retiring: the control thread calls `GraphCell::collect` after each swap and every 100 ms while
+  `retiring()` is above 0, waiting on the signal channel with a timeout in between (decision 004);
+  a replaced graph's modules (its upstream pools) are cleaned up there once no request uses it.
+- Listeners (`akit_listener::Listeners`, `crates/akit-listener/src/reload.rs`), as fit's
+  `listener.Server.Reload` moves them: a listener the new graph has with the same name, address,
+  protocols and `tls` is kept, its socket open, its requests going to the new graph's routes from
+  the swap on (a `Dispatcher` reads the current graph per request, by listener name). The rest:
+  - Added: the stopgap the plan names for A1. akit binds a socket of its own (std's
+    `TcpListener`) before the swap, so an address in use or a listener akit cannot serve fails the
+    reload with nothing changed (the sockets bound for it closed again); one accept thread per
+    listener (a control plane thread) waits for the swap, then hands each connection to the
+    engine with `Engine::adopt_tcp`, with the same HTTP or TLS acceptor the engine's own
+    listeners have. The connections run on the engine's dial threads (the last startup
+    listener's).
+  - Removed: such a socket is closed after the swap (its accept thread stopped, woken by a
+    connection of its own); the connections it accepted stay open. A changed one at the same
+    address keeps its socket and serves the new settings from the swap on.
+  - A listener the engine was built with cannot be closed until A1 lands: a reload that removes
+    or changes one is refused, `akit: reload failed; the running config stays: listener "web" on
+    ADDR is removed or changed, which needs a restart: akit cannot close a listener it started
+    with yet (akio API request A1)`. fit binds the new one first and drains the old.
+- `-watch` and `-watch-interval` stay refused (I29's file provider); their usage now names only
+  I29.
+- Tests: `akit/tests/reload.rs`, the e2e test: `akit run` with four client threads sending
+  keep-alive requests (20 per connection) to its listener throughout, SIGHUP changing the routes
+  and adding a listener, a broken config, a config removing the startup listener (refused), the
+  added listener removed, then 20 reloads in a row adding and removing it; the clients see each
+  new body and no request fails, and SIGTERM still exits 0. `akit-listener/tests/reload.rs` (2):
+  listeners kept, added, changed at the same address and removed, a connection of a removed
+  listener left open and the address free again, the old graph retired by `collect`; refusals
+  with nothing changed (the epoch, the listeners and the answers as before): a startup listener
+  removed or changed, an address in use after another new listener was bound, h2c alone.
+- Checked: clippy (`-D warnings`) and the tests of akit, akit-listener and akit-runtime on macOS;
+  the same tests on Linux (the benchmark host), epoll and io_uring, all passing.
+- Differences from the plan and from fit:
+  - Startup listeners cannot be removed or changed by a reload (A1, above); only listeners added
+    by reloads can.
+  - A kept TLS listener keeps the certificates it was started with: its TLS configuration is fixed
+    in the engine's acceptor (fit's kept listener takes the new graph's). Certificates that
+    change without a config change are I30's (`-watch-certs`), and A2's resolver makes them
+    swappable.
+  - A removed listener's open connections are not drained on the old graph, as fit drains them:
+    they stay open, and a request they send after the swap finds no listener of that name in the
+    new graph and is answered 404.
+  - The engine's connect timeout (the shortest upstream `connect_timeout`, the stopgap for A12)
+    is fixed at startup: a reload that shortens it gets it only after a restart.
+  - fit prints the config version after `reloaded`; akit has none until the Admin API (I26).
+- Left for A1: once akit pins an akio with `Engine::add_listener`, `remove_listener` and
+  `shutdown_listener`, `Listeners::reload` adds listeners to the engine instead of adopting their
+  connections (their own threads and accel choices, as the startup ones), removes and drains the
+  startup listeners as well (the refusal goes), and drains a removed listener's connections for
+  the shutdown timeout as fit does; the accept threads go.
 
 ### 2026-11-24: I14, upstream pools on the HTTP/1 client
 
@@ -86,7 +148,7 @@ done and where the work differs from the plan.
 | Milestone | M0, foundations, done (I01–I08); M1, the proxy core, next. |
 | akio | `50a82315` on akio's `main` (`1.0.0-rc.1`), pinned by `rev` in `Cargo.toml` |
 | fit | the specification; read at `7daee573` for this plan |
-| What works | `akit run` and `akit validate` with fit's flags and exit codes (`-c` repeated, files and directories, merged), and a graceful shutdown on SIGINT and SIGTERM; `akit run` serves HTTP/1.1 and h2c listeners with `respond` routes, by fit's host and path rules, 404 when nothing matches; `akit version` and `akit help`; the workspace builds and passes `make check`; `akit_config::from_json` reads fit's listeners, routes and the `respond` handler, and refuses the rest of fit's config by name as not supported yet; the module registry and the data-plane traits (`akit-runtime`); `compile` turns a config into a `Graph` and `GraphCell` publishes, reads and retires graphs; the compatibility gate runs every fit fixture through akit-config in `make check` and CI |
+| What works | `akit run` and `akit validate` with fit's flags and exit codes (`-c` repeated, files and directories, merged), and a graceful shutdown on SIGINT and SIGTERM; reloading on SIGHUP (startup listeners kept, others added and removed with akit's own sockets until A1); `akit run` serves HTTP/1.1 and h2c listeners with `respond` routes, by fit's host and path rules, 404 when nothing matches; `akit version` and `akit help`; the workspace builds and passes `make check`; `akit_config::from_json` reads fit's listeners, routes and the `respond` handler, and refuses the rest of fit's config by name as not supported yet; the module registry and the data-plane traits (`akit-runtime`); `compile` turns a config into a `Graph` and `GraphCell` publishes, reads and retires graphs; the compatibility gate runs every fit fixture through akit-config in `make check` and CI |
 | Next | M1: I09 (TLS), I11 (router v1), I14 (upstream pools), I23 (.conf) and I24 (YAML) are on branches of their own, to merge; then I10, I12, I15 onwards. |
 | akio requests | A1–A8 all being added to akio now, each on its own akio branch ([akio API requests](akio-api-requests.md)) |
 

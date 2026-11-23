@@ -10,14 +10,56 @@
 | | |
 | --- | --- |
 | 最后更新 | 2026-11-24 |
-| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09、I11、I14、I23、I24 已完成。 |
+| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09、I11、I14、I22、I23、I24 已完成。 |
 | akio | akio `main` 上的 `50a82315`（`1.0.0-rc.1`），在 `Cargo.toml` 中按 `rev` 锁定 |
 | fit | 作为规格；本计划基于 `7daee573` 阅读 |
-| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，`-c` 可重复，文件和目录合并，支持 JSON、fit 的 `.conf` 和 YAML；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c 和 TLS 监听器（证书来自文件、按 SNI 选择，ALPN 选择 h2 或 HTTP/1.1，客户端认证）；`respond` 路由由路由器 v1 选择（按 fit 的 host 与 path 规则查找，基于规范化路径），没有匹配时返回 404；`upstreams` 各编译为一个基于 akio HTTP/1 客户端的连接池，其图退役时排空（经它们转发的代理是 I15）；兼容性门禁：80 个夹具，5 个有效，74 个只因暂不支持被拒绝，1 个跳过，没有失败；I08 的基线：akit 在 HTTP/1.1 和 h2c 上的 fixed 场景中第一 |
-| 下一步 | I15（反向代理 I，基于 I11 和 I14）、I10（HTTP/3）、I12（静态文件）、I19（负载均衡）、I22（重载） |
+| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，`-c` 可重复，文件和目录合并，支持 JSON、fit 的 `.conf` 和 YAML；SIGINT 和 SIGTERM 时优雅关闭；SIGHUP 时重载（保留启动监听器，A1 之前用 akit 自己的套接字新增和移除其他监听器）；HTTP/1.1、h2c 和 TLS 监听器（证书来自文件、按 SNI 选择，ALPN 选择 h2 或 HTTP/1.1，客户端认证）；`respond` 路由由路由器 v1 选择（按 fit 的 host 与 path 规则查找，基于规范化路径），没有匹配时返回 404；`upstreams` 各编译为一个基于 akio HTTP/1 客户端的连接池，其图退役时排空（经它们转发的代理是 I15）；兼容性门禁：80 个夹具，5 个有效，74 个只因暂不支持被拒绝，1 个跳过，没有失败；I08 的基线：akit 在 HTTP/1.1 和 h2c 上的 fixed 场景中第一 |
+| 下一步 | I15（反向代理 I，基于 I11 和 I14）、I10（HTTP/3）、I12（静态文件）、I19（负载均衡） |
 | akio 需求 | A1–A8 正在加进 akio，各在 akio 的独立分支上，尚未合并；A9（限制在 TLS 1.2 的 TLS 服务端）由 I09 提出；A10–A12（HTTP 客户端：关闭空闲连接、请求自己的 `Host`、单个地址的连接超时）由 I14 提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
 
 ## 日志
+
+### 2026-11-24：I22，SIGHUP 重载
+
+- `akit run` 收到 SIGHUP 时重载：先打印 `akit: reloading <文件>`，重新读取并编译同样的 `-c` 路径，若编译成功且其
+  监听器都能提供服务，就换入新图（`GraphCell::swap`），打印移除的监听器（`akit: listener "x" on ADDR removed`）和
+  新增的监听器（与启动时同样的行），然后打印 `akit: reloaded <文件>`。读取或编译失败、或监听器无法提供服务的配置，
+  保留正在运行的配置：stderr 上先打印 `akit: reload failed; the running config stays`，再按 fit 的方式打印错误
+  （与 `akit run` 启动时一样）。新图的上游连接池通过正在运行的引擎拨号。
+- 退役：控制线程在每次换入后调用 `GraphCell::collect`，并在 `retiring()` 大于 0 期间每 100 ms 调用一次，其间带超时
+  等待信号通道（决策 004）；被替换的图在没有请求再用它时，在这里清理其模块（上游连接池）。
+- 监听器（`akit_listener::Listeners`，`crates/akit-listener/src/reload.rs`），按 fit 的 `listener.Server.Reload`
+  的方式迁移：新图中名字、地址、协议和 `tls` 都相同的监听器保留，套接字保持打开，从换入起它的请求走新图的路由
+  （`Dispatcher` 每个请求按监听器名字读取当前图）。其余的：
+  - 新增：采用计划为 A1 指定的临时方案。akit 在换入之前绑定自己的套接字（std 的 `TcpListener`），所以地址被占用或
+    akit 无法提供服务的监听器会让重载失败且什么都不改变（为它绑定的套接字会再关闭）；每个监听器一个 accept 线程
+    （控制面线程），等到换入之后，把每个连接用 `Engine::adopt_tcp` 交给引擎，用的是与引擎自身监听器相同的 HTTP 或
+    TLS acceptor。这些连接运行在引擎的拨号线程上（最后一个启动监听器的线程）。
+  - 移除：这样的套接字在换入之后关闭（其 accept 线程停止，由它自己发起的一个连接唤醒）；它已接受的连接保持打开。
+    同一地址上被修改的监听器保留其套接字，从换入起按新设置提供服务。
+  - 引擎构建时就有的监听器在 A1 落地之前无法关闭：移除或修改这类监听器的重载被拒绝，
+    `akit: reload failed; the running config stays: listener "web" on ADDR is removed or changed, which needs a restart: akit cannot close a listener it started with yet (akio API request A1)`。
+    fit 会先绑定新的，再排空旧的。
+- `-watch` 和 `-watch-interval` 仍然拒绝（属于 I29 的文件 provider）；它们的用法说明现在只写 I29。
+- 测试：`akit/tests/reload.rs`，端到端测试：`akit run` 运行时四个客户端线程持续向其监听器发送 keep-alive 请求
+  （每个连接 20 个），期间 SIGHUP 修改路由并新增一个监听器、一个损坏的配置、一个移除启动监听器的配置（被拒绝）、
+  移除新增的监听器，然后连续 20 次重载交替新增和移除它；客户端看到每个新的响应体，没有任何请求失败，SIGTERM 仍以
+  0 退出。`akit-listener/tests/reload.rs`（2 个）：监听器的保留、新增、同一地址上的修改和移除，被移除监听器上的连接
+  保持打开、地址可再次使用，旧图由 `collect` 退役；什么都不改变的拒绝（纪元、监听器和响应都与之前相同）：移除或修改
+  启动监听器、在绑定另一个新监听器之后遇到被占用的地址、只有 h2c。
+- 已检查：macOS 上 clippy（`-D warnings`）以及 akit、akit-listener 和 akit-runtime 的测试；Linux（基准主机）上
+  epoll 和 io_uring 的同样测试，全部通过。
+- 与计划和 fit 的差异：
+  - 重载不能移除或修改启动监听器（A1，见上）；只有重载新增的监听器可以。
+  - 保留的 TLS 监听器沿用启动时的证书：其 TLS 配置固定在引擎的 acceptor 中（fit 保留的监听器会采用新图的证书）。
+    配置未变而证书变化属于 I30（`-watch-certs`），A2 的 resolver 使证书可以替换。
+  - 被移除监听器上打开的连接不会像 fit 那样在旧图上排空：它们保持打开，换入之后它们发出的请求在新图中找不到这个
+    名字的监听器，得到 404。
+  - 引擎的连接超时（上游 `connect_timeout` 中最短的，A12 的临时方案）在启动时固定：缩短它的重载要重启后才生效。
+  - fit 在 `reloaded` 之后打印配置版本；akit 在 Admin API（I26）之前没有版本。
+- 留给 A1 的：akit 锁定带有 `Engine::add_listener`、`remove_listener` 和 `shutdown_listener` 的 akio 之后，
+  `Listeners::reload` 把监听器加到引擎上，而不是接管它们的连接（像启动监听器一样有自己的线程和加速选择），也能移除并
+  排空启动监听器（拒绝随之取消），并像 fit 一样在关闭超时内排空被移除监听器的连接；accept 线程随之去掉。
 
 ### 2026-11-24：I14，基于 HTTP/1 客户端的上游连接池
 
@@ -68,7 +110,7 @@
 | 里程碑 | M0 基础已完成（I01–I08）；接下来是 M1，代理核心。 |
 | akio | akio `main` 上的 `50a82315`（`1.0.0-rc.1`），在 `Cargo.toml` 中按 `rev` 锁定 |
 | fit | 作为规格；本计划基于 `7daee573` 阅读 |
-| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码（`-c` 可重复，文件和目录合并），SIGINT 和 SIGTERM 时优雅关闭；`akit run` 按 fit 的 host 与 path 规则提供 HTTP/1.1 和 h2c 监听器上的 `respond` 路由，没有匹配时返回 404；`akit version` 和 `akit help`；工作区能构建并通过 `make check`；`akit_config::from_json` 能读取 fit 的监听器、路由和 `respond` handler，fit 配置的其余部分按名字报为暂不支持；模块注册表和数据面 trait（`akit-runtime`）；`compile` 把配置编译成 `Graph`，`GraphCell` 负责发布、读取和退役图；兼容性门禁在 `make check` 和 CI 中把 fit 的每个夹具交给 akit-config |
+| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码（`-c` 可重复，文件和目录合并），SIGINT 和 SIGTERM 时优雅关闭；SIGHUP 时重载（保留启动监听器，A1 之前用 akit 自己的套接字新增和移除其他监听器）；`akit run` 按 fit 的 host 与 path 规则提供 HTTP/1.1 和 h2c 监听器上的 `respond` 路由，没有匹配时返回 404；`akit version` 和 `akit help`；工作区能构建并通过 `make check`；`akit_config::from_json` 能读取 fit 的监听器、路由和 `respond` handler，fit 配置的其余部分按名字报为暂不支持；模块注册表和数据面 trait（`akit-runtime`）；`compile` 把配置编译成 `Graph`，`GraphCell` 负责发布、读取和退役图；兼容性门禁在 `make check` 和 CI 中把 fit 的每个夹具交给 akit-config |
 | 下一步 | M1：I09（TLS）、I11（路由器 v1）、I14（上游连接池）、I23（.conf）和 I24（YAML）已在各自的分支上，待合并；然后是 I10、I12、I15 及之后。 |
 | akio 需求 | A1–A8 现在全部加进 akio，各在 akio 的独立分支上进行（[akio API 需求](akio-api-requests.zh-CN.md)） |
 

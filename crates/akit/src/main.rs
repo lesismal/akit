@@ -4,7 +4,9 @@
 //!
 //! - `run`: reads the config (`-c`, repeated, files and directories, merged), compiles it,
 //!   serves it, and on SIGINT or SIGTERM shuts down gracefully, waiting up to
-//!   `-shutdown-timeout` for requests in flight; a second signal exits at once.
+//!   `-shutdown-timeout` for requests in flight; a second signal exits at once. On SIGHUP it
+//!   reads the same files again and, when they compile, swaps the new graph in and moves the
+//!   listeners to its (I22); a broken config leaves the running one.
 //! - `validate`: reads and compiles the config, as `run` would, and says whether it is valid.
 //! - `version`, `help`.
 
@@ -52,12 +54,12 @@ const RUN_FLAGS: &[Spec] = &[
     Spec {
         name: "watch",
         bool: true,
-        usage: "not supported yet (I22, I29)",
+        usage: "not supported yet (I29)",
     },
     Spec {
         name: "watch-interval",
         bool: false,
-        usage: "not supported yet (I22, I29)",
+        usage: "not supported yet (I29)",
     },
     Spec {
         name: "watch-certs",
@@ -120,32 +122,81 @@ fn config_paths(flags: &[(&str, String)]) -> Vec<String> {
     }
 }
 
-/// Reads and compiles the config at `paths`, its upstream pools dialing through the engine
-/// `engine` will hold; the errors are printed, as fit prints them.
-fn load(paths: &[String], engine: &EngineSlot) -> Option<(Config, Graph)> {
-    let name = paths.join(", ");
-    let config = match akit_config::from_files(paths) {
-        Ok(c) => c,
-        Err(errs) => {
-            print_errors(&name, &errs);
-            return None;
-        }
-    };
-    let registry: Registry<HandlerParams> = match Registry::new(&[akit_handler::MODULES]) {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("akit: {e}");
-            return None;
-        }
-    };
-    match compile(&config, &registry, &Env::new(engine.clone())) {
-        Ok(g) => Some((config, g)),
-        Err(errs) => {
-            print_errors(&name, &errs);
-            None
+/// Why a config could not be loaded.
+enum Failure {
+    /// The config's errors.
+    Config(Errors),
+    /// The module registry could not be made (a bug in akit, not in the config).
+    Registry(String),
+}
+
+impl Failure {
+    /// Prints the errors, as fit prints them; `name` names the files.
+    fn print(&self, name: &str) {
+        match self {
+            Failure::Config(errs) => print_errors(name, errs),
+            Failure::Registry(e) => eprintln!("akit: {e}"),
         }
     }
 }
+
+/// Reads and compiles the config at `paths`, its upstream pools dialing through the engine
+/// `engine` will hold.
+fn read(paths: &[String], engine: &EngineSlot) -> Result<(Config, Graph), Failure> {
+    let config = akit_config::from_files(paths).map_err(Failure::Config)?;
+    let registry: Registry<HandlerParams> =
+        Registry::new(&[akit_handler::MODULES]).map_err(|e| Failure::Registry(e.to_string()))?;
+    let graph = compile(&config, &registry, &Env::new(engine.clone())).map_err(Failure::Config)?;
+    Ok((config, graph))
+}
+
+/// [`read`], the errors printed.
+fn load(paths: &[String], engine: &EngineSlot) -> Option<(Config, Graph)> {
+    read(paths, engine)
+        .map_err(|f| f.print(&paths.join(", ")))
+        .ok()
+}
+
+/// SIGHUP: reads the config at `paths` again and, when it compiles and its listeners can be
+/// served, swaps it in; otherwise the running config stays. Says what happened as fit says it.
+fn reload(paths: &[String], slot: &EngineSlot, listeners: &mut akit_listener::Listeners) {
+    let name = paths.join(", ");
+    println!("akit: reloading {name}");
+    let graph = match read(paths, slot) {
+        Ok((_, g)) => g,
+        Err(f) => {
+            eprintln!("akit: reload failed; the running config stays");
+            f.print(&name);
+            return;
+        }
+    };
+    match listeners.reload(graph) {
+        Ok(r) => {
+            for l in &r.removed {
+                println!("akit: listener {:?} on {} removed", l.name, l.address);
+            }
+            for l in &r.added {
+                print_listener(l);
+            }
+            println!("akit: reloaded {name}");
+        }
+        Err(e) => eprintln!("akit: reload failed; the running config stays: {e}"),
+    }
+}
+
+/// `akit: listener "web" on 127.0.0.1:8080 (http/1.1, h2c)`.
+fn print_listener(l: &akit_listener::Served) {
+    let protocols: Vec<&str> = l.protocols.iter().map(|p| p.as_str()).collect();
+    println!(
+        "akit: listener {:?} on {} ({})",
+        l.name,
+        l.address,
+        protocols.join(", ")
+    );
+}
+
+/// How often the control thread retires replaced graphs while some are still in use.
+const COLLECT_EVERY: Duration = Duration::from_millis(100);
 
 fn usage_error(u: &Usage) -> ExitCode {
     eprintln!("{}", u.0);
@@ -230,7 +281,7 @@ fn run(args: &[String]) -> ExitCode {
     // The pools are made with the graph, before the engine they dial through, which is built
     // from the graph's listeners: they reach it through this slot, filled once it is built.
     let slot = EngineSlot::new();
-    let Some((config, graph)) = load(&paths, &slot) else {
+    let Some((_, graph)) = load(&paths, &slot) else {
         return ExitCode::FAILURE;
     };
     // Before the listeners: a signal from then on shuts down gracefully.
@@ -257,19 +308,30 @@ fn run(args: &[String]) -> ExitCode {
     }
     // Upstream connections are dialed on the listeners' threads.
     slot.set(Arc::clone(&engine));
-    for (l, addr) in config.listeners.iter().zip(engine.local_addrs()) {
-        let protocols: Vec<&str> = l.protocols.iter().map(|p| p.as_str()).collect();
-        println!(
-            "akit: listener {:?} on {addr} ({})",
-            l.name,
-            protocols.join(", ")
-        );
+    let mut listeners = akit_listener::Listeners::new(Arc::clone(&engine), cell.clone());
+    for l in listeners.served() {
+        print_listener(&l);
     }
     loop {
-        match signals.recv() {
-            Ok(Signal::Stop) | Err(_) => break,
-            Ok(Signal::Hangup) => {
-                eprintln!("akit: SIGHUP: reloading the config is not supported yet (I22)");
+        // Graphs replaced by a reload are retired from here once no request uses them
+        // (decision 004): after each swap, and on a timer while any is left.
+        let signal = if cell.retiring() > 0 {
+            match signals.recv_timeout(COLLECT_EVERY) {
+                Ok(s) => Some(s),
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    cell.collect();
+                    continue;
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected) => None,
+            }
+        } else {
+            signals.recv().ok()
+        };
+        match signal {
+            Some(Signal::Stop) | None => break,
+            Some(Signal::Hangup) => {
+                reload(&paths, &slot, &mut listeners);
+                cell.collect();
             }
         }
     }
@@ -283,6 +345,8 @@ fn run(args: &[String]) -> ExitCode {
         }
     });
     println!("akit: shutting down");
+    // The listeners added by reloads stop accepting; the engine's own stop with it.
+    listeners.close();
     if !akit_listener::shutdown(&engine, grace) {
         eprintln!(
             "akit run: shutdown took longer than {}; connections still open were closed",
@@ -290,6 +354,7 @@ fn run(args: &[String]) -> ExitCode {
         );
         return ExitCode::FAILURE;
     }
+    drop(listeners);
     drop(engine);
     drop(cell);
     println!("akit: stopped");

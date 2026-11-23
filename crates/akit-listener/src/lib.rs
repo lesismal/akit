@@ -11,6 +11,9 @@
 //! request's canonical path, as fit's listener does: dot and empty segments removed, a path
 //! climbing above the root or hiding a separator in an escape answered `400 bad request path`.
 //!
+//! I22: [`Listeners::reload`] publishes a new graph and moves the listeners to its (see
+//! [`reload`]).
+//!
 //! Part of [akit](https://github.com/lesismal/akit); see `docs/dev-plan.md` for the iterations that
 //! fill this crate in.
 
@@ -25,6 +28,9 @@ use akio::{Backend, Config as EngineConfig, Engine, Listener as EngineListener};
 use akio_http::{Context, HttpConfig};
 use akit_config::{Listener, Protocol};
 use akit_runtime::GraphCell;
+
+pub mod reload;
+pub use reload::{Listeners, ReloadError, Reloaded, Served};
 
 /// fit's answer when no route matches.
 const NOT_FOUND: &str = "404 page not found\n";

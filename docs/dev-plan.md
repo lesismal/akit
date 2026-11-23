@@ -118,7 +118,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I19 | Load balancing v1 | I14 | todo |
 | I20 | Passive health checks | I19 | todo |
 | I21 | Access logs | I15 | todo |
-| I22 | Reload on SIGHUP | I06 | todo |
+| I22 | Reload on SIGHUP | I06 | done |
 | I23 | The .conf reader | I02 | done |
 | I24 | The YAML reader | I02 | done |
 | I25 | M1 conformance and report | I09–I24 | todo |
