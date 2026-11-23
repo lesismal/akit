@@ -37,30 +37,55 @@ akit 读取 fit 的配置（[决策 002](decisions/002-config-compatibility.zh-C
 | --- | --- | --- |
 | 固定的夹具及其许可证 | `tests/compat/fixtures/`、`tests/compat/SOURCE.md` | 完成（I07a） |
 | 字段清单 | `tests/compat/fit-fields.txt`，由 `tools/compat-inventory.py` 生成 | 完成（I07a） |
-| 测试框架：枚举、判定、报告 | `tests/compat/src/lib.rs`、`tests/compat/tests/gate.rs` | 完成（I07a），用替身校验函数测试 |
-| 经由 `akit_config::from_json_file` 的门禁 | `compat-gate` feature，`make compat-gate` | I07b，在 I02 之后 |
-| CI 中运行门禁，报告入库 | `.github/workflows/ci.yml` | I07b |
+| 测试框架：枚举、判定、报告 | `tests/compat/src/lib.rs`、`tests/compat/tests/gate.rs` | 完成（I07a） |
+| 经由 akit-config 的门禁，报告入库 | `tests/compat/tests/gate.rs` 中的 `gate_through_akit_config`，`tests/compat/gate-report.txt` | 完成（I07b） |
+| 已支持字段确实被读取，akit-config 的列表对照字段清单检查 | 同一文件中的 `supported_fields_are_read`、`akit_config_lists_match_the_inventory` | 完成（I07b） |
+| 读取 .conf 夹具和 `conf.d` 目录 | akit-config 的 .conf 读取器与合并 | I23 |
+| 读取 YAML 夹具 | akit-config 的 YAML 读取器 | I24 |
 
-`make check` 运行测试框架自身的测试（夹具完整、字段清单正确且与固定提交一致、结果按上述规则判定），
-以及 `make compat-check`：当 `fit-fields.txt` 或下方表格过期时失败。门禁本身是测试
-`gate_through_akit_config`，在 I07b 打开 `compat-gate` feature 之前处于 ignore 状态；之后用
-`make compat-gate` 运行，它会像 fit-examples 自己的测试那样设置替身密钥。
+门禁是工作区里的普通测试，没有 feature，也没有 ignore：`make test`（因而 `make check`）会运行它，
+CI 在 Linux（epoll、io_uring）和 macOS 上的 `cargo test --workspace` 也会运行它。只有一种构建配置，
+门禁就不会被意外漏掉；在 I02 合并之前用来挡住它的 feature 已经删除。此外，当 `fit-fields.txt` 或下方
+表格过期时，`make compat-check` 失败。
+
+### akit 还不能读取的格式
+
+akit-config 目前只读 JSON。它还没有读取器的格式的夹具——.conf 文件（所有示例，直到 I23）、YAML 模板
+（直到 I24）以及三个 `conf.d` 目录（fit 把目录中的文件合并成一份配置；合并由 I23 实现）——既不会被
+悄悄判为通过，也不会被悄悄判为失败：它的结果是 "format not supported yet"（格式尚不支持），和其他
+结果一样写进门禁的报告。JSON 夹具读取时只能出现 "not supported yet" 的发现；其他任何错误都不能通过
+门禁，"format not supported yet" 与其他发现同时出现也不能通过。
+
+### 入库的报告
+
+[tests/compat/gate-report.txt](../tests/compat/gate-report.txt) 记录每一个结果，每行一条。一次运行的
+结果与它有任何方向的不同，门禁都会失败：某个夹具失败、某个字段新被拒绝，以及某个夹具开始能被读取、
+某个字段不再被拒绝。改变结果的提交用下面的命令重写报告：
+
+```bash
+make compat-bless
+```
+
+只要有夹具失败，它就拒绝写入；报告的 diff 随变更一起评审。若门禁看到某个被当作 "not supported yet"
+拒绝的字段在 `supported.txt` 中标记为已支持，也会失败。
 
 ## 解读结果
 
-`make compat-gate` 每个夹具输出一行：
+`make compat-gate` 单独运行门禁并输出报告，即 `gate-report.txt` 的各行：每个夹具一行；因
+"not supported yet" 被拒绝的夹具则每个字段一行。
 
 ```text
-examples/hello: valid
+examples/hello: format not supported yet: .conf (I23)
 examples/https: skipped: its certificate and key files are the user's own
-examples/jwt: 3 fields not supported yet
-templates/yaml/conf.d: FAILED
-    not supported yet: routes[0].nope: not a field fit accepts
+templates/json/fit.json: not supported yet: upstreams
+templates/yaml/conf.d: format not supported yet: conf.d directories (I23)
 ```
 
-失败时会列出每一条不属于允许的 "not supported yet" 的发现。路径与字段清单匹配时，数组下标
-（`routes[0]`）和映射键（`log.loggers.engine`）分别对应 `[]` 和 `*`，模块标记（见
-[记法](#字段清单)）可有可无。
+失败的夹具写作 `<夹具>: FAILED: <原因>`，每条不属于允许的 "not supported yet" 的发现一行；与入库报告的
+差异写作 `- <行>`（只在入库报告中）和 `+ <行>`（只在本次运行中）。akit 给出的路径按字段清单的写法记录：
+数组下标（`routes[0]`）和映射键（`log.loggers.engine`）分别对应 `[]` 和 `*`；akit 还没有的 handler
+模块在 `routes[0].handler.module` 处被拒绝，记为 `routes[].handler<proxy>`；值数组中的某个值
+（`listeners[0].protocols[1]`，即 `h3` 协议）记为该数组 `listeners[].protocols`。
 
 ## 刷新夹具
 
@@ -80,7 +105,16 @@ python3 tools/compat-inventory.py
 
 让 akit 读取某个字段并真正起作用的迭代，要在同一个提交中把该字段的路径加入
 [tests/compat/supported.txt](../tests/compat/supported.txt)，并重新运行生成器。生成器会拒绝 fit
-不接受的路径，并在本页的两种语言中把该字段标记为已支持。
+不接受的路径，并在本页的两种语言中把该字段标记为已支持。随后由三个测试把标记与代码对应起来：
+
+- `supported_fields_are_read` 用每个已标记字段构造一份小的 JSON 配置，交给 akit-config 读取并检查读到
+  的值：标记为已支持、但 akit 拒绝或读取后丢弃的字段会让它失败；每个新字段都要补一个样例。
+- `akit_config_lists_match_the_inventory` 读取 `crates/akit-config/src/model.rs` 中的列表——每个对象
+  读取哪些字段、把哪些字段作为 "not supported yet" 拒绝（以及拒绝的 handler 模块和协议）：每一项都必须
+  是字段清单中的字段（拼写错误会失败），合起来必须覆盖字段清单中该对象的全部字段（fit 接受的字段不会被
+  当作未知字段拒绝），并且 akit-config 读取的字段必须正是 `supported.txt` 标记的字段。`model.rs` 新增的
+  列表要在这个测试中映射到它在字段清单中的路径。
+- 门禁本身：字段不再被拒绝时，报告随之变化（`make compat-bless`）。
 
 ## 字段清单
 
@@ -99,7 +133,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 0 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 20 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -120,7 +154,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`http.handlers/media_pages`](#fields-http-handlers-media-pages) | 29 | 0 | 29 |
 | [`http.handlers/media_tokens`](#fields-http-handlers-media-tokens) | 11 | 0 | 11 |
 | [`http.handlers/proxy`](#fields-http-handlers-proxy) | 20 | 0 | 20 |
-| [`http.handlers/respond`](#fields-http-handlers-respond) | 5 | 0 | 5 |
+| [`http.handlers/respond`](#fields-http-handlers-respond) | 5 | 5 | 0 |
 | [`http.handlers/static`](#fields-http-handlers-static) | 16 | 0 | 16 |
 | [`http.handlers/stream_whep`](#fields-http-handlers-stream-whep) | 5 | 0 | 5 |
 | [`http.handlers/stream_whip`](#fields-http-handlers-stream-whip) | 5 | 0 | 5 |
@@ -145,7 +179,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`http.middleware/rewrite`](#fields-http-middleware-rewrite) | 6 | 0 | 6 |
 | [`http.middleware/wasm`](#fields-http-middleware-wasm) | 18 | 0 | 18 |
 | [`limits`](#fields-limits) | 7 | 0 | 7 |
-| [`listeners`](#fields-listeners) | 30 | 0 | 30 |
+| [`listeners`](#fields-listeners) | 30 | 4 | 26 |
 | [`llm`](#fields-llm) | 218 | 0 | 218 |
 | [`log`](#fields-log) | 24 | 0 | 24 |
 | [`media_auth`](#fields-media-auth) | 34 | 0 | 34 |
@@ -153,8 +187,8 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`metrics`](#fields-metrics) | 1 | 0 | 1 |
 | [`pprof`](#fields-pprof) | 4 | 0 | 4 |
 | [`providers`](#fields-providers) | 60 | 0 | 60 |
-| [`routes`](#fields-routes) | 24 | 0 | 24 |
-| [`schema_version`](#fields-schema-version) | 1 | 0 | 1 |
+| [`routes`](#fields-routes) | 24 | 10 | 14 |
+| [`schema_version`](#fields-schema-version) | 1 | 1 | 0 |
 | [`services`](#fields-services) | 13 | 0 | 13 |
 | [`streaming`](#fields-streaming) | 76 | 0 | 76 |
 | [`sync`](#fields-sync) | 42 | 0 | 42 |
@@ -224,7 +258,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 0 | 38 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **合计** | 3821 | 0 | 3821 |
+| **合计** | 3821 | 20 | 3801 |
 
 <a id="fields-access"></a>
 
@@ -817,11 +851,11 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
-| `routes[].handler<respond>` | `module` | 尚不支持（not supported yet） |
-| `routes[].handler<respond>.params` | `object` | 尚不支持（not supported yet） |
-| `routes[].handler<respond>.params.body` | `string` | 尚不支持（not supported yet） |
-| `routes[].handler<respond>.params.headers` | `map<string>` | 尚不支持（not supported yet） |
-| `routes[].handler<respond>.params.status` | `integer` | 尚不支持（not supported yet） |
+| `routes[].handler<respond>` | `module` | 已支持 |
+| `routes[].handler<respond>.params` | `object` | 已支持 |
+| `routes[].handler<respond>.params.body` | `string` | 已支持 |
+| `routes[].handler<respond>.params.headers` | `map<string>` | 已支持 |
+| `routes[].handler<respond>.params.status` | `integer` | 已支持 |
 
 <a id="fields-http-handlers-static"></a>
 
@@ -1201,16 +1235,16 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
-| `listeners` | `array<object>` | 尚不支持（not supported yet） |
+| `listeners` | `array<object>` | 已支持 |
 | `listeners[].access` | `object` | 尚不支持（not supported yet） |
 | `listeners[].access.allow` | `array<string>` | 尚不支持（not supported yet） |
 | `listeners[].access.allow_files` | `array<string>` | 尚不支持（not supported yet） |
 | `listeners[].access.deny` | `array<string>` | 尚不支持（not supported yet） |
 | `listeners[].access.deny_files` | `array<string>` | 尚不支持（not supported yet） |
-| `listeners[].address` | `string, required` | 尚不支持（not supported yet） |
+| `listeners[].address` | `string, required` | 已支持 |
 | `listeners[].mptcp` | `boolean` | 尚不支持（not supported yet） |
-| `listeners[].name` | `string, required` | 尚不支持（not supported yet） |
-| `listeners[].protocols` | `array<enum(http/1.1\|h2c\|h2\|h3\|tcp\|udp\|socks)>` | 尚不支持（not supported yet） |
+| `listeners[].name` | `string, required` | 已支持 |
+| `listeners[].protocols` | `array<enum(http/1.1\|h2c\|h2\|h3\|tcp\|udp\|socks)>` | 已支持 |
 | `listeners[].proxy_protocol` | `object` | 尚不支持（not supported yet） |
 | `listeners[].proxy_protocol.trusted` | `array<string>, required` | 尚不支持（not supported yet） |
 | `listeners[].socks` | `object` | 尚不支持（not supported yet） |
@@ -1652,30 +1686,30 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
-| `routes` | `array<object>` | 尚不支持（not supported yet） |
+| `routes` | `array<object>` | 已支持 |
 | `routes[].access` | `object` | 尚不支持（not supported yet） |
 | `routes[].access.allow` | `array<string>` | 尚不支持（not supported yet） |
 | `routes[].access.allow_files` | `array<string>` | 尚不支持（not supported yet） |
 | `routes[].access.deny` | `array<string>` | 尚不支持（not supported yet） |
 | `routes[].access.deny_files` | `array<string>` | 尚不支持（not supported yet） |
-| `routes[].handler` | `object, required` | 尚不支持（not supported yet） |
-| `routes[].handler.module` | `enum(bt_publish\|bt_stream\|bt_tracker\|fastcgi\|forward_proxy\|hls\|httpflv\|media_pages\|media_tokens\|proxy\|respond\|static\|stream_whep\|stream_whip\|sync_ingest\|vod\|webrtc_proxy\|websockify\|whep\|whip), required` | 尚不支持（not supported yet） |
-| `routes[].handler.params` | `object` | 尚不支持（not supported yet） |
-| `routes[].listeners` | `array<string>` | 尚不支持（not supported yet） |
-| `routes[].match` | `object` | 尚不支持（not supported yet） |
+| `routes[].handler` | `object, required` | 已支持 |
+| `routes[].handler.module` | `enum(bt_publish\|bt_stream\|bt_tracker\|fastcgi\|forward_proxy\|hls\|httpflv\|media_pages\|media_tokens\|proxy\|respond\|static\|stream_whep\|stream_whip\|sync_ingest\|vod\|webrtc_proxy\|websockify\|whep\|whip), required` | 已支持 |
+| `routes[].handler.params` | `object` | 已支持 |
+| `routes[].listeners` | `array<string>` | 已支持 |
+| `routes[].match` | `object` | 已支持 |
 | `routes[].match.expr` | `string` | 尚不支持（not supported yet） |
 | `routes[].match.header` | `map<array<string>>` | 尚不支持（not supported yet） |
-| `routes[].match.host` | `array<string>` | 尚不支持（not supported yet） |
+| `routes[].match.host` | `array<string>` | 已支持 |
 | `routes[].match.method` | `array<string>` | 尚不支持（not supported yet） |
-| `routes[].match.path` | `array<string>` | 尚不支持（not supported yet） |
+| `routes[].match.path` | `array<string>` | 已支持 |
 | `routes[].match.path_regexp` | `array<string>` | 尚不支持（not supported yet） |
 | `routes[].match.query` | `map<array<string>>` | 尚不支持（not supported yet） |
 | `routes[].match.remote_ip` | `array<string>` | 尚不支持（not supported yet） |
 | `routes[].middleware` | `array<object>` | 尚不支持（not supported yet） |
 | `routes[].middleware[].module` | `enum(basic_auth\|body_limit\|cache\|circuit_breaker\|client_cert\|compress\|concurrency_limit\|forward_auth\|headers\|jwt\|rate_limit\|redirect\|rewrite\|wasm), required` | 尚不支持（not supported yet） |
 | `routes[].middleware[].params` | `object` | 尚不支持（not supported yet） |
-| `routes[].name` | `string` | 尚不支持（not supported yet） |
-| `routes[].priority` | `integer` | 尚不支持（not supported yet） |
+| `routes[].name` | `string` | 已支持 |
+| `routes[].priority` | `integer` | 已支持 |
 
 <a id="fields-schema-version"></a>
 
@@ -1683,7 +1717,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
-| `schema_version` | `integer` | 尚不支持（not supported yet） |
+| `schema_version` | `integer` | 已支持 |
 
 <a id="fields-services"></a>
 

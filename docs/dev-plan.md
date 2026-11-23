@@ -102,7 +102,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I05 | `akit run`: listeners and `respond` | I04 | todo |
 | I06 | CLI, signals and graceful shutdown | I05 | todo |
 | I07a | Compatibility gate I: pinned fixtures, field inventory, harness | I01 | done |
-| I07b | Compatibility gate wired to validate | I02, I07a | todo |
+| I07b | Compatibility gate wired to validate | I02, I07a | done |
 | I08 | Benchmark harness and baselines | I05 | todo |
 | **M1** | | | |
 | I09 | TLS entry points from files | I05 | todo |
@@ -279,6 +279,12 @@ Split from I07 so that the half that needs no config model runs beside I02.
   I02 reads are in `tests/compat/supported.txt`.
 - **Touches**: `tests/compat`, `akit-config` (the error paths, if needed), CI.
 - **fit**: `cli` (`validate`), fit-examples' `examples_test.go`.
+- **As built**: no feature: the gate is an ordinary test that `make check` and CI's
+  `cargo test --workspace` run. A fixture in a format akit has no reader for (.conf and
+  `conf.d` until I23, YAML until I24) is a "format not supported yet" outcome; every outcome is a
+  line of the checked-in `tests/compat/gate-report.txt`, which a run must reproduce
+  (`make compat-bless` rewrites it). What validation opens for the examples moves to I23, the
+  first iteration that reads them. See [progress](progress.md).
 
 ### I08 Benchmark harness and baselines
 
@@ -409,10 +415,13 @@ Split from I07 so that the half that needs no config model runs beside I02.
 ### I23 The .conf reader
 
 - **Do**: fit's .conf format read into the same model, with errors at line and column; split files
-  and directories as fit merges them.
+  and directories as fit merges them; the compatibility gate's hook reads .conf files and
+  `conf.d` directories with it, settling what validation opens for the examples (the files and
+  WebAssembly plugins they name, relative to fit-examples' root, and the stand-in secrets), moved
+  here from I07b.
 - **Done when**: every .conf in fit's templates and fit-examples reads into the same model as its
   JSON twin.
-- **Touches**: `akit-config`.
+- **Touches**: `akit-config`, `tests/compat`.
 - **fit**: `docs/reference/fit.md`, `config` (the .conf parser), decision 021.
 
 ### I24 The YAML reader

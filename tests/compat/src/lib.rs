@@ -8,9 +8,14 @@
 //! "not supported yet: `<path>`" naming a field fit accepts (`fit-fields.txt`). Anything else
 //! (a parse error, a wrong type, a refused field fit accepts under another name) fails the gate.
 //!
+//! A fixture in a format akit has no reader for yet (.conf until I23, YAML until I24, `conf.d`
+//! directories until I23) is neither: it is an expected outcome, "format not supported yet",
+//! listed with every other outcome in the checked-in report ([`REPORT`]), which the gate's run
+//! must reproduce line for line.
+//!
 //! This crate enumerates the fixtures and judges the outcomes; the validation itself is a
-//! function handed to [`run_gate`]. The `compat-gate` feature hands it
-//! `akit_config::from_json_file` (iteration I07b, once I02's akit-config has it).
+//! function handed to [`run_gate`]. The gate's test (`tests/gate.rs`) hands it akit-config's
+//! readers (iteration I07b).
 //!
 //! [decision 002]: https://github.com/lesismal/akit/blob/main/docs/decisions/002-config-compatibility.md
 
@@ -25,6 +30,14 @@ use std::path::{Path, PathBuf};
 /// [decision 002]: https://github.com/lesismal/akit/blob/main/docs/decisions/002-config-compatibility.md
 pub const NOT_SUPPORTED_YET: &str = "not supported yet: ";
 
+/// What the report says of a fixture in a format akit has no reader for yet
+/// ([`Finding::NoReader`]).
+pub const FORMAT_NOT_SUPPORTED_YET: &str = "format not supported yet: ";
+
+/// The gate's checked-in report, relative to [`compat_dir`]: one line per outcome, as
+/// [`Report::render`] writes it. The gate fails when its report differs from this file.
+pub const REPORT: &str = "gate-report.txt";
+
 /// The template formats: the directory under `templates/` and its single file.
 pub const TEMPLATE_FORMATS: [(&str, &str); 3] = [
     ("conf", "fit.conf"),
@@ -33,8 +46,11 @@ pub const TEMPLATE_FORMATS: [(&str, &str); 3] = [
 ];
 
 /// Environment variables the examples read secrets from, which validation reads as `fit run`
-/// does. fit-examples' own test sets them to stand-ins (`examples_test.go`, `secrets`); the gate
-/// needs them set, which `make compat-gate` does.
+/// does. fit-examples' own test sets them to stand-ins (`examples_test.go`, `secrets`).
+/// akit-config expands no variable yet, and every example is a .conf file, which it cannot read
+/// before I23; I23 hands the gate's reads these stand-ins (best through a lookup the reader
+/// takes, not the process environment, which `cargo test` shares between threads).
+/// `make compat-gate` sets them meanwhile.
 pub const EXAMPLE_SECRETS: [&str; 15] = [
     "ES_PASSWORD",
     "KAFKA_PASSWORD",
@@ -257,6 +273,46 @@ pub fn path_matches(inventory: &str, named: &str) -> bool {
             .all(|(p, q)| p == "*" || normal(p) == normal(q))
 }
 
+/// The inventory path a validator's path names, as [`path_matches`] matches them; when several
+/// match (a path without a module tag matches each module's), the one with the same module tags
+/// first, then the first in the inventory. A path to an element of an array of values names the
+/// array (`listeners[0].protocols[1]`, a value fit accepts that akit does not support yet such as
+/// the `h3` protocol, is `listeners[].protocols`). `None` when no field of the inventory matches.
+pub fn inventory_path<'a>(inventory: &'a [Field], named: &str) -> Option<&'a str> {
+    field_path(inventory, named).or_else(|| {
+        let array = named.strip_suffix(']')?.rsplit_once('[')?.0;
+        field_path(inventory, array).filter(|p| {
+            inventory
+                .iter()
+                .any(|f| f.path == *p && f.ty.starts_with("array<") && !f.ty.contains("object"))
+        })
+    })
+}
+
+fn field_path<'a>(inventory: &'a [Field], named: &str) -> Option<&'a str> {
+    let tags = |path: &str| -> Vec<String> {
+        segments(path)
+            .iter()
+            .map(|s| {
+                s.split_once('<')
+                    .map(|(_, t)| t.to_owned())
+                    .unwrap_or_default()
+            })
+            .collect()
+    };
+    let want = tags(named);
+    let mut matching = inventory.iter().filter(|f| path_matches(&f.path, named));
+    let first = matching.next()?;
+    if tags(&first.path) == want {
+        return Some(&first.path);
+    }
+    Some(
+        matching
+            .find(|f| tags(&f.path) == want)
+            .map_or(first.path.as_str(), |f| f.path.as_str()),
+    )
+}
+
 /// What a validator found wrong with a config.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Finding {
@@ -264,6 +320,11 @@ pub enum Finding {
     Unsupported(String),
     /// Any other error.
     Error(String),
+    /// The config is in a format akit has no reader for yet: the .conf format until I23, YAML
+    /// until I24, a `conf.d` directory until I23 merges them. Neither a pass nor a failure by
+    /// itself: the gate's checked-in report ([`REPORT`]) lists each such fixture, so a fixture
+    /// that starts being read, or stops, changes the report.
+    NoReader(String),
 }
 
 impl Finding {
@@ -288,6 +349,7 @@ impl fmt::Display for Finding {
         match self {
             Self::Unsupported(path) => write!(f, "{NOT_SUPPORTED_YET}{path}"),
             Self::Error(msg) => f.write_str(msg),
+            Self::NoReader(what) => write!(f, "{FORMAT_NOT_SUPPORTED_YET}{what}"),
         }
     }
 }
@@ -297,8 +359,11 @@ impl fmt::Display for Finding {
 pub enum Outcome {
     /// Valid.
     Valid,
-    /// Refused only for fields fit accepts and akit does not support yet: passes the gate.
+    /// Refused only for fields fit accepts and akit does not support yet: passes the gate. The
+    /// fields are written as the inventory writes them (`routes[].handler<proxy>`).
     Unsupported(BTreeSet<String>),
+    /// In a format akit has no reader for yet, with which ([`Finding::NoReader`]).
+    NoReader(String),
     /// Anything else: fails the gate, with why.
     Failed(Vec<String>),
     /// Not validated, with fit-examples' reason ([`NO_VALIDATE`]).
@@ -337,22 +402,78 @@ impl Report {
     }
 }
 
-impl fmt::Display for Report {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Report {
+    /// The report as checked in ([`REPORT`]): one line per outcome, `<fixture>: <outcome>`,
+    /// and one line per field for a fixture refused as not supported yet, sorted, so that a
+    /// change of any outcome is a changed line. Failures are written too, as `FAILED: <why>`,
+    /// though a report with failures is never checked in.
+    #[must_use]
+    pub fn render(&self) -> Vec<String> {
+        let mut out = Vec::new();
         for (name, o) in &self.outcomes {
             match o {
-                Outcome::Valid => writeln!(f, "{name}: valid")?,
-                Outcome::Unsupported(p) => {
-                    writeln!(f, "{name}: {} fields not supported yet", p.len())?;
+                Outcome::Valid => out.push(format!("{name}: valid")),
+                Outcome::Unsupported(paths) => {
+                    out.extend(
+                        paths
+                            .iter()
+                            .map(|p| format!("{name}: {NOT_SUPPORTED_YET}{p}")),
+                    );
                 }
-                Outcome::Skipped(why) => writeln!(f, "{name}: skipped: {why}")?,
+                Outcome::NoReader(what) => {
+                    out.push(format!("{name}: {FORMAT_NOT_SUPPORTED_YET}{what}"));
+                }
+                Outcome::Skipped(why) => out.push(format!("{name}: skipped: {why}")),
                 Outcome::Failed(why) => {
-                    writeln!(f, "{name}: FAILED")?;
-                    for w in why {
-                        writeln!(f, "    {w}")?;
-                    }
+                    out.extend(why.iter().map(|w| format!("{name}: FAILED: {w}")));
                 }
             }
+        }
+        out
+    }
+
+    /// How this report differs from a checked-in one (`#` lines and blank lines ignored): each
+    /// line only the checked-in report has, `- <line>`, then each only this one has, `+ <line>`.
+    /// Empty when they agree.
+    #[must_use]
+    pub fn diff(&self, checked_in: &str) -> Vec<String> {
+        let want: BTreeSet<&str> = checked_in
+            .lines()
+            .filter(|l| !l.is_empty() && !l.starts_with('#'))
+            .collect();
+        let rendered = self.render();
+        let got: BTreeSet<&str> = rendered.iter().map(String::as_str).collect();
+        want.difference(&got)
+            .map(|l| format!("- {l}"))
+            .chain(got.difference(&want).map(|l| format!("+ {l}")))
+            .collect()
+    }
+
+    /// Counts of the outcomes, for the summary line: valid, not supported yet, no reader yet,
+    /// skipped, failed.
+    #[must_use]
+    pub fn counts(&self) -> [usize; 5] {
+        let mut c = [0usize; 5];
+        for o in self.outcomes.values() {
+            let i = match o {
+                Outcome::Valid => 0,
+                Outcome::Unsupported(_) => 1,
+                Outcome::NoReader(_) => 2,
+                Outcome::Skipped(_) => 3,
+                Outcome::Failed(_) => 4,
+            };
+            if let Some(n) = c.get_mut(i) {
+                *n = n.saturating_add(1);
+            }
+        }
+        c
+    }
+}
+
+impl fmt::Display for Report {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for line in self.render() {
+            writeln!(f, "{line}")?;
         }
         Ok(())
     }
@@ -388,16 +509,26 @@ fn judge(findings: Vec<Finding>, inventory: &[Field]) -> Outcome {
     }
     let mut paths = BTreeSet::new();
     let mut why = Vec::new();
+    let mut no_reader = None;
     for f in findings {
         match f {
-            Finding::Unsupported(p) if inventory.iter().any(|i| path_matches(&i.path, &p)) => {
-                paths.insert(p);
-            }
-            Finding::Unsupported(p) => {
-                why.push(format!("{NOT_SUPPORTED_YET}{p}: not a field fit accepts"));
-            }
+            Finding::Unsupported(p) => match inventory_path(inventory, &p) {
+                Some(i) => {
+                    paths.insert(i.to_owned());
+                }
+                None => why.push(format!("{NOT_SUPPORTED_YET}{p}: not a field fit accepts")),
+            },
             Finding::Error(e) => why.push(e),
+            Finding::NoReader(what) => no_reader = Some(what),
         }
+    }
+    if let Some(what) = no_reader {
+        if why.is_empty() && paths.is_empty() {
+            return Outcome::NoReader(what);
+        }
+        why.push(format!(
+            "{FORMAT_NOT_SUPPORTED_YET}{what}, beside other findings"
+        ));
     }
     if why.is_empty() {
         Outcome::Unsupported(paths)
