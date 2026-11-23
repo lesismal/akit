@@ -49,3 +49,12 @@ upstreams[].max_pending
 upstreams[].max_idle_conns
 upstreams[].idle_timeout
 upstreams[].connect_timeout
+#
+# I15: the proxy handler: its upstream, trusted proxies and Host. Its other params (upstreams,
+# failover, mirror, retry, timeout, tunnel_idle_timeout, splice_uploads) are refused as not
+# supported yet (I16, I17, I19, I45, I49).
+routes[].handler<proxy>
+routes[].handler<proxy>.params
+routes[].handler<proxy>.params.upstream
+routes[].handler<proxy>.params.trusted_proxies
+routes[].handler<proxy>.params.host_header

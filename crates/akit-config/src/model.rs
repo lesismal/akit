@@ -2,7 +2,7 @@
 //! defaults and checks. Every other field fit reads is refused as "not supported yet" by the
 //! object that holds it (decision 002), and shrinks from the lists below as iterations land.
 
-use std::net::IpAddr;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::time::Duration;
 
 use crate::decode::{Decoder, Obj};
@@ -186,6 +186,8 @@ pub struct Match {
 pub enum Handler {
     /// `respond`: a fixed status, header fields and body.
     Respond(Respond),
+    /// `proxy`: requests forwarded to an upstream (I15).
+    Proxy(Proxy),
 }
 
 impl Handler {
@@ -194,6 +196,7 @@ impl Handler {
     pub fn module(&self) -> &'static str {
         match self {
             Handler::Respond(_) => "respond",
+            Handler::Proxy(_) => "proxy",
         }
     }
 }
@@ -207,6 +210,104 @@ pub struct Respond {
     pub headers: Vec<(String, String)>,
     /// `body`.
     pub body: String,
+}
+
+/// The `proxy` handler's params: what I15 reads of fit's.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Proxy {
+    /// `upstream`: the name of the upstream requests go to. That it names one of the config's
+    /// upstreams is checked when the handler is provisioned, once every file's are joined.
+    pub upstream: String,
+    /// `trusted_proxies`: the proxies in front of this one, whose `X-Forwarded-*` and
+    /// `Forwarded` fields are believed. None when left out.
+    pub trusted_proxies: Vec<Network>,
+    /// `host_header`: the `Host` sent upstream; the client's when empty.
+    pub host_header: String,
+}
+
+/// An IP network, as fit's `netip.Prefix`: an address alone is a network of one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Network {
+    /// The network's address, its host bits cleared.
+    pub addr: IpAddr,
+    /// The prefix length: up to 32 for IPv4, 128 for IPv6.
+    pub bits: u8,
+}
+
+impl Network {
+    /// Parses `"10.0.0.1"` or `"10.0.0.0/8"` as fit's `parsePrefix` does: an IPv4 address
+    /// written as IPv6 (`::ffff:10.0.0.1`) is taken as IPv4 when it stands alone, and a network's
+    /// host bits are cleared.
+    #[must_use]
+    pub fn parse(s: &str) -> Option<Network> {
+        let Some((addr, bits)) = s.split_once('/') else {
+            let addr = unmap(s.parse::<IpAddr>().ok()?);
+            let bits = if addr.is_ipv4() { 32 } else { 128 };
+            return Some(Network { addr, bits });
+        };
+        let addr = addr.parse::<IpAddr>().ok()?;
+        // Go's prefix lengths are decimal digits, no sign, no leading zero but "0" itself.
+        if bits.is_empty()
+            || !bits.bytes().all(|b| b.is_ascii_digit())
+            || (bits.len() > 1 && bits.starts_with('0'))
+        {
+            return None;
+        }
+        let bits = bits.parse::<u8>().ok()?;
+        let max = if addr.is_ipv4() { 32 } else { 128 };
+        if bits > max {
+            return None;
+        }
+        Some(Network {
+            addr: mask(addr, bits),
+            bits,
+        })
+    }
+
+    /// Whether `ip` is in the network. An IPv4 address is never in an IPv6 network, nor the
+    /// other way round, as in Go: unmap an IPv4-mapped address first.
+    #[must_use]
+    pub fn contains(&self, ip: IpAddr) -> bool {
+        match (ip, self.addr) {
+            (IpAddr::V4(_), IpAddr::V4(_)) | (IpAddr::V6(_), IpAddr::V6(_)) => {
+                mask(ip, self.bits) == self.addr
+            }
+            _ => false,
+        }
+    }
+}
+
+impl std::fmt::Display for Network {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}/{}", self.addr, self.bits)
+    }
+}
+
+/// `ip`, an IPv4-mapped IPv6 address taken as the IPv4 address it maps.
+#[must_use]
+pub(crate) fn unmap(ip: IpAddr) -> IpAddr {
+    match ip {
+        IpAddr::V6(v6) => v6.to_ipv4_mapped().map_or(ip, IpAddr::V4),
+        IpAddr::V4(_) => ip,
+    }
+}
+
+/// `ip` with all but its first `bits` bits cleared.
+fn mask(ip: IpAddr, bits: u8) -> IpAddr {
+    match ip {
+        IpAddr::V4(v4) => {
+            let m = u32::MAX
+                .checked_shl(32u32.saturating_sub(u32::from(bits)))
+                .unwrap_or(0);
+            IpAddr::V4(Ipv4Addr::from(u32::from(v4) & m))
+        }
+        IpAddr::V6(v6) => {
+            let m = u128::MAX
+                .checked_shl(128u32.saturating_sub(u32::from(bits)))
+                .unwrap_or(0);
+            IpAddr::V6(Ipv6Addr::from(u128::from(v6) & m))
+        }
+    }
 }
 
 // What akit reads, and what fit reads that akit does not yet, object by object.
@@ -266,7 +367,6 @@ const FIT_HANDLERS: &[&str] = &[
     "httpflv",
     "media_pages",
     "media_tokens",
-    "proxy",
     "static",
     "stream_whep",
     "stream_whip",
@@ -278,6 +378,18 @@ const FIT_HANDLERS: &[&str] = &[
     "whip",
 ];
 const RESPOND_FIELDS: &[&str] = &["status", "headers", "body"];
+const PROXY_FIELDS: &[&str] = &["upstream", "trusted_proxies", "host_header"];
+// upstreams, failover and mirror come with I19 and later; retry and timeout with I17 and I45;
+// tunnel_idle_timeout with I49; splice_uploads with I16's streamed bodies.
+const PROXY_FIT_ONLY: &[&str] = &[
+    "upstreams",
+    "failover",
+    "mirror",
+    "retry",
+    "tunnel_idle_timeout",
+    "timeout",
+    "splice_uploads",
+];
 const UPSTREAM_FIELDS: &[&str] = &[
     "name",
     "addresses",
@@ -712,6 +824,7 @@ fn handler(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Handler> {
             None
         }
         "respond" => respond(d, params, &params_path).map(Handler::Respond),
+        "proxy" => proxy(d, params, &params_path, off).map(Handler::Proxy),
         m if FIT_HANDLERS.contains(&m) => {
             d.not_yet(off, &module_path, &format!("the {m:?} handler"));
             None
@@ -780,6 +893,66 @@ fn respond(d: &mut Decoder<'_>, params: Option<&Node>, path: &str) -> Option<Res
     }
     o.finish(d, RESPOND_FIELDS, &[]);
     Some(r)
+}
+
+/// The `proxy` handler's params, with fit's checks and messages (its `Provision`), but for the
+/// upstream's name, which akit-runtime's `compile` looks up. `off` is where
+/// the handler's module is named, for a handler with no params.
+fn proxy(d: &mut Decoder<'_>, params: Option<&Node>, path: &str, off: usize) -> Option<Proxy> {
+    let mut p = Proxy {
+        upstream: String::new(),
+        trusted_proxies: Vec::new(),
+        host_header: String::new(),
+    };
+    let upstream_path = crate::error::join_field(path, "upstream");
+    let Some(n) = params else {
+        d.error(off, &upstream_path, "upstream or upstreams is needed");
+        return None;
+    };
+    let mut o: Obj<'_> = d.object(n, path)?;
+    let mut ok = true;
+    let mut upstream_off = o.off;
+    if let Some(v) = o.take("upstream") {
+        upstream_off = v.off;
+        p.upstream = d.string(v, &o.at("upstream")).unwrap_or_default();
+    }
+    if let Some(v) = o.take("trusted_proxies") {
+        let at = o.at("trusted_proxies");
+        for (i, (off, s)) in d.strings(v, &at).into_iter().enumerate() {
+            if let Some(net) = Network::parse(&s) {
+                p.trusted_proxies.push(net);
+            } else {
+                ok = false;
+                d.error(
+                    off,
+                    &crate::error::join_index(&at, i),
+                    format!(
+                        "{s:?} is not an IP address or a network, as in \"10.0.0.1\" or \"10.0.0.0/8\""
+                    ),
+                );
+            }
+        }
+    }
+    if let Some(v) = o.take("host_header") {
+        let at = o.at("host_header");
+        p.host_header = d.string(v, &at).unwrap_or_default();
+        if p.host_header.contains([' ', '\t', '\r', '\n', '\0', '/']) {
+            ok = false;
+            d.error(v.off, &at, format!("{:?} is not a host", p.host_header));
+        }
+    }
+    // Leaving both out is fit's error; upstreams alone is refused as not supported yet.
+    let upstreams = o.has("upstreams");
+    o.finish(d, PROXY_FIELDS, PROXY_FIT_ONLY);
+    if p.upstream.is_empty() && !upstreams {
+        d.error(
+            upstream_off,
+            &upstream_path,
+            "upstream or upstreams is needed",
+        );
+        ok = false;
+    }
+    ok.then_some(p)
 }
 
 fn upstream(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Upstream> {

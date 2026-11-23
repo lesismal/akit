@@ -131,13 +131,14 @@ fn load(paths: &[String], engine: &EngineSlot) -> Option<(Config, Graph)> {
             return None;
         }
     };
-    let registry: Registry<HandlerParams> = match Registry::new(&[akit_handler::MODULES]) {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("akit: {e}");
-            return None;
-        }
-    };
+    let registry: Registry<HandlerParams> =
+        match Registry::new(&[akit_handler::MODULES, akit_proxy::MODULES]) {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("akit: {e}");
+                return None;
+            }
+        };
     match compile(&config, &registry, &Env::new(engine.clone())) {
         Ok(g) => Some((config, g)),
         Err(errs) => {

@@ -28,7 +28,7 @@
 | A8 | TUN 设备 | 进行中，akio 分支 | — | VPN |
 | A9 | 把 TLS 服务端限制在 TLS 1.2（`ServerConfigBuilder` 的公开 API） | 已提出（I09） | 17 | I09 |
 | A10 | 立即关闭 HTTP 客户端的空闲连接 | 已提出（I14） | 10、11 | I14、I22 |
-| A11 | HTTP/1 客户端请求保留自己的 `Host` 字段 | 已提出（I14） | — | I15 |
+| A11 | HTTP/1 客户端请求保留自己的 `Host` 字段（给定空 `User-Agent` 时不发送 `User-Agent`） | 已在 akio 分支 `claude/i15-proxy-699f18`（`552fe283`）完成，未合并 | — | I15 |
 | A12 | HTTP 客户端的连接超时也作用于单个地址 | 已提出（I14） | 10 | I14 |
 
 ## A1 运行中引擎上的 TCP 监听器
@@ -138,6 +138,12 @@ TLS 1.2，而它是隐藏的，标明只供测试和互通工具使用。
 或者提供 `ClientRequest::host(name)` 设置方法。
 
 **akit 的用法。** I15 的代理通过上游连接池发送客户端的 `Host`，或其参数设定的 `Host`。
+
+**已完成（I15）。** 在 akio 分支 `claude/i15-proxy-699f18`，提交 `552fe283`，未合并：`ClientRequest::headers`
+中的 `Host` 字段代替从 URL 得到的那个发出（连接的地址与 TLS 请求的名称仍由 URL 决定），重定向到同源时保留，
+重定向到别的源时去掉。同时，为了 fit 的代理不发送客户端没有发送的 `User-Agent`：值为空的 `User-Agent` 字段表示
+不发送，也不添加 akio 的默认值（`akio-http`），与 Go 的客户端一致。akio-http 的测试在 macOS 和 Linux（epoll 与
+io_uring）上通过。akit 的 I15 用到这两点；相关测试在 akit 的固定版本移到含 A11 的 akio 提交之前保持忽略。
 
 ## A12 HTTP 客户端的连接超时作用于每次连接
 

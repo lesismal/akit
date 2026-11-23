@@ -32,17 +32,14 @@ const NOT_FOUND: &str = "404 page not found\n";
 /// fit's answer to a path that has no canonical form ([`akit_router::canonicalize`]).
 const BAD_REQUEST_PATH: &str = "400 bad request path\n";
 
-/// The [`Context::local`] that holds a request's canonical path, escaped, when it differs from
-/// the path sent (dot or empty segments were removed): what the routes matched, and what handlers
-/// go by (akio's request target cannot be rewritten). Unset for nearly every request, whose path
-/// is canonical already.
-pub const CANONICAL_PATH: &str = "akit.canonical_path";
+pub use akit_runtime::{CANONICAL_PATH, TLS};
 
 /// The akio service of one listener: each request goes to the route the current graph picks for
 /// it on this listener, or is answered 404. Runs on the I/O thread, and only reads the graph.
 pub struct Dispatcher {
     cell: GraphCell,
     listener: String,
+    tls: bool,
 }
 
 impl Dispatcher {
@@ -52,7 +49,15 @@ impl Dispatcher {
         Dispatcher {
             cell,
             listener: listener.into(),
+            tls: false,
         }
+    }
+
+    /// The same, for a listener that serves TLS: its requests carry [`TLS`].
+    #[must_use]
+    pub fn tls(mut self, tls: bool) -> Dispatcher {
+        self.tls = tls;
+        self
     }
 }
 
@@ -86,6 +91,9 @@ impl akio_http::Service for Dispatcher {
             if let Some(p) = changed {
                 ctx.set_local(CANONICAL_PATH, p);
             }
+            if self.tls {
+                ctx.set_local(TLS, "");
+            }
             match route {
                 Some(r) => r.handler.call(ctx),
                 None => ctx.text(404, NOT_FOUND),
@@ -94,7 +102,7 @@ impl akio_http::Service for Dispatcher {
     }
 
     // Request bodies are buffered (akio's default) until a handler takes them as a stream:
-    // the proxy, I14, routes in `body_mode` too.
+    // the proxy's, I16, routes in `body_mode` too.
 }
 
 /// Why the listeners could not be set up.
@@ -241,7 +249,7 @@ pub fn engine(cell: &GraphCell, opts: &Options) -> Result<Engine, Error> {
         })?;
         let http = akio_http::serve_with(
             http_config(l)?,
-            Dispatcher::new(cell.clone(), l.name.clone()),
+            Dispatcher::new(cell.clone(), l.name.clone()).tls(l.tls.is_some()),
         );
         let listener = EngineListener::tcp(addr).backend(opts.backend.clone());
         b = b.listen(match (&l.tls, tls) {

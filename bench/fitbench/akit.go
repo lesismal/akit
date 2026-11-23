@@ -14,9 +14,9 @@ func init() {
 	servers = append(servers, server{
 		name:  "akit",
 		image: "akit-bench:local",
-		// What akit serves so far (docs/dev-plan.md): the fixed response, over HTTP/1.1, h2c,
-		// HTTPS/1.1 and h2, and idle HTTP/1.1 and TLS connections.
-		scenarios: []string{"fixed"},
+		// What akit serves so far (docs/dev-plan.md): the fixed response and the proxy (I15),
+		// over HTTP/1.1, h2c, HTTPS/1.1 and h2, and idle HTTP/1.1 and TLS connections.
+		scenarios: []string{"fixed", "proxy"},
 		idle:      []string{"http1", "tls"},
 		mounts:    [][2]string{{"akit/fit.json", "/etc/akit/fit.json"}, {"certs", "/certs"}},
 		cmd:       []string{"/usr/local/bin/akit", "run", "-c", "/etc/akit/fit.json"},

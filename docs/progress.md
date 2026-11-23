@@ -11,14 +11,99 @@ done and where the work differs from the plan.
 | | |
 | --- | --- |
 | Last updated | 2026-11-24 |
-| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09, I11, I14, I23 and I24 done. |
+| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09, I11, I14, I23 and I24 done; I15 built, waiting for akio's A11. |
 | akio | `50a82315` on akio's `main` (`1.0.0-rc.1`), pinned by `rev` in `Cargo.toml` |
 | fit | the specification; read at `7daee573` for this plan |
-| What works | `akit run` and `akit validate` with fit's flags and exit codes, `-c` repeated, files and directories merged, in JSON, fit's `.conf` and YAML; a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c and TLS listeners (certificates from files chosen by SNI, ALPN choosing h2 or HTTP/1.1, client authentication); `respond` routes chosen by router v1 (fit's host and path rules by lookup, on canonical paths), 404 when nothing matches; `upstreams` compiled into a pool each on akio's HTTP/1 client, drained when their graph is retired (the proxy that sends through them is I15); the compatibility gate: 80 fixtures, 5 valid, 74 refused only as not supported yet, 1 skipped, none failed; the I08 baseline: akit first in the fixed scenario over HTTP/1.1 and h2c |
-| Next | I15 (reverse proxy I, on I11 and I14), I10 (HTTP/3), I12 (static files), I19 (load balancing), I22 (reload) |
-| akio requests | A1–A8 being added to akio, each on its own akio branch, not merged; A9 (a TLS server capped at TLS 1.2) requested by I09; A10–A12 (HTTP client: closing idle connections, a request's own `Host`, the connect timeout for a lone address) by I14 ([akio API requests](akio-api-requests.md)) |
+| What works | `akit run` and `akit validate` with fit's flags and exit codes, `-c` repeated, files and directories merged, in JSON, fit's `.conf` and YAML; a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c and TLS listeners (certificates from files chosen by SNI, ALPN choosing h2 or HTTP/1.1, client authentication); `respond` routes chosen by router v1 (fit's host and path rules by lookup, on canonical paths), 404 when nothing matches; `upstreams` compiled into a pool each on akio's HTTP/1 client, drained when their graph is retired; the `proxy` handler (I15) sending through them, with fit's header handling (its `Host` passed on once akio's A11 is in the pin); the compatibility gate: 80 fixtures, 8 valid, 71 refused only as not supported yet, 1 skipped, none failed; the I08 baseline: akit first in the fixed scenario over HTTP/1.1 and h2c |
+| Next | I15 done once A11 is merged into akio and the pin moved; I16 (streamed bodies), I10 (HTTP/3), I12 (static files), I19 (load balancing), I22 (reload) |
+| akio requests | A1–A8 being added to akio, each on its own akio branch, not merged; A9 (a TLS server capped at TLS 1.2) requested by I09; A10–A12 (HTTP client: closing idle connections, a request's own `Host`, the connect timeout for a lone address) by I14, A11 done on akio branch `claude/i15-proxy-699f18` (`552fe283`) by I15, not merged ([akio API requests](akio-api-requests.md)) |
 
 ## Log
+
+### 2026-11-24: I15, reverse proxy I: requests and headers (doing: waits for akio A11)
+
+- Status `doing`, not `done`: the proxy is built and fit's header tests are ported, but three of
+  them (the `Host` the upstream sees, and no `User-Agent` made up) pass only against akio's A11,
+  which is on an akio branch of its own, not merged: akio `claude/i15-proxy-699f18`, commit
+  `552fe283` (`ClientRequest::headers`' own `Host` sent in place of the URL's; an empty
+  `User-Agent` sends none). On the pinned akio (`50a82315`) akio's client drops the request's
+  `Host` (sending the upstream's address) and sends the empty `User-Agent` as it is; those three
+  tests are `#[ignore]`d, naming A11. I15 is `done` once A11 is on akio's `main`, the pin moves to
+  it, and the three are no longer ignored.
+- `akit_config::Proxy`: the `proxy` handler's params, with fit's checks and messages:
+  `upstream`; `trusted_proxies`, addresses and networks parsed as fit's `parsePrefix` does
+  (`akit_config::Network`: an address alone a network of one, an IPv4-mapped one taken as IPv4,
+  host bits cleared, Go's prefix-length syntax), `"nope" is not an IP address or a network, ...`
+  at `trusted_proxies[i]`; `host_header`, `"a b" is not a host`; `upstream or upstreams is
+  needed` when both are left out. That `upstream` names one of the config's upstreams is checked
+  when the handler is provisioned (`there is no upstream named "nope"` at `params.upstream`),
+  after every file's upstreams are joined, as fit checks it. `upstreams`, `failover`, `mirror`,
+  `retry`, `timeout`, `tunnel_idle_timeout` and `splice_uploads` are refused as not supported yet.
+- `akit-proxy` (`MODULES`, `http.handlers.proxy`, in `akit`'s registry): per request, on the I/O
+  thread, the upstream's request is built (method, target, fields, body), the context detached,
+  and the request handed to the upstream's pool (I14); the pool's completion callback answers
+  through the detached context. Nothing blocks (rules 1–3); a retired graph's pool drains the
+  requests under way, so no graph hold is needed. Failures as fit's `statusOf` answers them:
+  `503 Service Unavailable` for a full or closed pool, `504 Gateway Timeout` for a timeout,
+  `502 Bad Gateway` otherwise; a field name that is not a token, 400.
+- Fields (`headers.rs`), as fit's `outgoingFramed` and `responseBlock`: the request's fields go on
+  in the order and case they came, `Host` first (the client's, or `host_header`); dropped are the
+  hop-by-hop fields (`Connection` and the fields it names, `Keep-Alive`, `Proxy-Connection`,
+  `Proxy-Authenticate`, `Proxy-Authorization`, `TE`, `Trailer`, `Transfer-Encoding`, `Upgrade`),
+  `Content-Length` and `Expect` (akio frames the body), pseudo-fields; `X-Forwarded-For`,
+  `X-Forwarded-Proto`, `X-Forwarded-Host` and `Forwarded` (RFC 7239) are the proxy's own, after
+  the client's fields, unless the client's address is in `trusted_proxies`: then it is added to
+  the `X-Forwarded-For` and `Forwarded` it sent, and its `X-Forwarded-Proto` and `-Host` are kept.
+  A `User-Agent` the client did not send is not added. The response's fields come back in the
+  upstream's order and case without the hop-by-hop ones, those its `Connection` names and
+  `Content-Length` (akio frames the body afresh), but for a response to HEAD, which keeps the
+  upstream's `Content-Length`.
+- The target sent is the canonical path the route matched (akit-listener's `CANONICAL_PATH`, now
+  defined in akit-runtime) with the query as it came, so that a path spelled to dodge a route
+  reaches the upstream as the route saw it; an absolute-form target is sent in origin form.
+  `X-Forwarded-Proto` is `https` for a request on a TLS listener: akit-listener's dispatcher sets
+  the context local `akit_runtime::TLS` on such requests (akio's context does not say whether a
+  request came over TLS).
+- Tests: fit's header tests, ported (`akit-proxy/tests/proxy.rs`, over HTTP/1.1 and h2c to an
+  HTTP/1.1 upstream on std sockets that reports each head as it arrived): `TestForwarding`,
+  `TestHopByHopRequest`, `TestHopByHopResponse`, `TestForwardedUntrusted`,
+  `TestForwardedTrusted`, `TestHostHeader` with `TestFramedHostHeader`, `TestBadGateway`,
+  `TestManyRequests` (64 at once), `TestHead`, `TestConfigErrors`, `TestFramedRequestHeader`,
+  `TestFramedResponseHeader`, `TestFramedResponseConnectionFields`, and the canonical path sent;
+  unit tests (`headers.rs`): `TestFramedFieldNames`, `TestForwardedElement`,
+  `TestRefusedHeaderName`, and the fields of each kind of request; `tests/tls.rs`: `https` behind
+  a TLS listener; `akit-config/tests/proxy.rs`: the params, fit's messages, what is not supported
+  yet, networks. Not ported: `TestFramedRequestReadAgain` and `TestFramedRequestHeaderMiddleware`
+  (fit's map-built requests and middleware, which akit does not have: I40), `TestForwardedNotIP`
+  (akit's peers are always IP addresses; `forwarded_element` covers `for=unknown`).
+- The compatibility gate: 5 proxy fields supported (42 in all); 8 fixtures valid (the three
+  `conf.d` templates now), 71 refused only as not supported yet (`make compat-bless`, its diff
+  reviewed). One line of the report reads `examples/load-balancing: ... handler<fastcgi>.params.timeout`
+  for a proxy's `timeout`: akit-config's error paths, like fit's, do not name the module, and the
+  gate maps a handler param both fastcgi and proxy have to the first; the gate is right that the
+  fixture is refused only as not supported yet.
+- The bench config (`bench/configs/akit/fit.json`, `bench/fitbench/akit.go`): fit's `proxy` route
+  (`/proxy`, `/proxy/*`, `/api/*`) to fitbench's backend, with fit's pool settings, and the
+  `proxy` scenario; fit's `timeout 60s` and `max_fails 0` are not settings akit has yet (I17,
+  I20). No benchmark was run (rule 30).
+- Checked: `make check` on macOS on the pinned akio (the three A11 tests ignored); akit-proxy's
+  tests, the ignored ones included, against akio's A11 branch through a `[patch]` given on the
+  command line (never committed); on Linux (the benchmark host), epoll and io_uring: akio-http's
+  tests on the A11 branch, and the tests of akit-config, akit-runtime, akit-listener,
+  akit-handler, akit-proxy, akit and akit-compat against it, the ignored ones included.
+- Differences from the plan:
+  - Bodies travel whole (akio's buffered bodies, copied into the upstream's request): streaming
+    them is I16. fit's 64KB threshold, splice uploads and trailers are I16 and I17.
+  - The `User-Agent` rule needed A11 as well (an empty `User-Agent` sends none): added to A11
+    rather than as a request of its own.
+  - Known flake, not I15's: `akit-upstream`'s `max_conns_and_max_pending` sometimes sees
+    `in_flight() == 1` under a loaded `make check`, since the pool calls a request's callback
+    before it counts it done; the test should wait for the count (or the pool count first).
+- What a benchmark task should measure: the `proxy` scenario (fitbench `-scenarios proxy`) over
+  HTTP/1.1, h2c, HTTPS/1.1 and h2 against fit, nginx, Caddy and Traefik, once A11 is in the pin;
+  per request the proxy builds a new header list and copies the body and the response's fields,
+  and a TLS request sets a context local (an allocation): profile those against fit's
+  `outgoingFramed`, which writes into a pooled buffer.
 
 ### 2026-11-24: I14, upstream pools on the HTTP/1 client
 

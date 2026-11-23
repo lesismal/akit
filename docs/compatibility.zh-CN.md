@@ -152,7 +152,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 37 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 42 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -172,7 +172,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`http.handlers/httpflv`](#fields-http-handlers-httpflv) | 6 | 0 | 6 |
 | [`http.handlers/media_pages`](#fields-http-handlers-media-pages) | 29 | 0 | 29 |
 | [`http.handlers/media_tokens`](#fields-http-handlers-media-tokens) | 11 | 0 | 11 |
-| [`http.handlers/proxy`](#fields-http-handlers-proxy) | 20 | 0 | 20 |
+| [`http.handlers/proxy`](#fields-http-handlers-proxy) | 20 | 5 | 15 |
 | [`http.handlers/respond`](#fields-http-handlers-respond) | 5 | 5 | 0 |
 | [`http.handlers/static`](#fields-http-handlers-static) | 16 | 0 | 16 |
 | [`http.handlers/stream_whep`](#fields-http-handlers-stream-whep) | 5 | 0 | 5 |
@@ -277,7 +277,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 9 | 29 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **合计** | 3821 | 37 | 3784 |
+| **合计** | 3821 | 42 | 3779 |
 
 <a id="fields-access"></a>
 
@@ -843,10 +843,10 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
-| `routes[].handler<proxy>` | `module` | 尚不支持（not supported yet） |
-| `routes[].handler<proxy>.params` | `object` | 尚不支持（not supported yet） |
+| `routes[].handler<proxy>` | `module` | 已支持 |
+| `routes[].handler<proxy>.params` | `object` | 已支持 |
 | `routes[].handler<proxy>.params.failover` | `string` | 尚不支持（not supported yet） |
-| `routes[].handler<proxy>.params.host_header` | `string` | 尚不支持（not supported yet） |
+| `routes[].handler<proxy>.params.host_header` | `string` | 已支持 |
 | `routes[].handler<proxy>.params.mirror` | `object` | 尚不支持（not supported yet） |
 | `routes[].handler<proxy>.params.mirror.percent` | `number` | 尚不支持（not supported yet） |
 | `routes[].handler<proxy>.params.mirror.upstream` | `string, required` | 尚不支持（not supported yet） |
@@ -857,9 +857,9 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `routes[].handler<proxy>.params.retry.statuses` | `array<integer>` | 尚不支持（not supported yet） |
 | `routes[].handler<proxy>.params.splice_uploads` | `boolean` | 尚不支持（not supported yet） |
 | `routes[].handler<proxy>.params.timeout` | `duration` | 尚不支持（not supported yet） |
-| `routes[].handler<proxy>.params.trusted_proxies` | `array<string>` | 尚不支持（not supported yet） |
+| `routes[].handler<proxy>.params.trusted_proxies` | `array<string>` | 已支持 |
 | `routes[].handler<proxy>.params.tunnel_idle_timeout` | `duration` | 尚不支持（not supported yet） |
-| `routes[].handler<proxy>.params.upstream` | `string` | 尚不支持（not supported yet） |
+| `routes[].handler<proxy>.params.upstream` | `string` | 已支持 |
 | `routes[].handler<proxy>.params.upstreams` | `array<object>` | 尚不支持（not supported yet） |
 | `routes[].handler<proxy>.params.upstreams[].upstream` | `string, required` | 尚不支持（not supported yet） |
 | `routes[].handler<proxy>.params.upstreams[].weight` | `integer, required` | 尚不支持（not supported yet） |

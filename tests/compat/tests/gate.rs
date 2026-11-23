@@ -345,6 +345,11 @@ fn supported_fields_are_read() {
     let upstream = |fields: &str| {
         format!(r#"{{"upstreams": [{{"name": "app", "addresses": ["127.0.0.1:9000"]{fields}}}]}}"#)
     };
+    let proxy = |params: &str| {
+        format!(
+            r#"{{{L}, "upstreams": [{{"name": "app", "addresses": ["127.0.0.1:9000"]}}], "routes": [{{"handler": {{"module": "proxy", "params": {{"upstream": "app"{params}}}}}}}]}}"#
+        )
+    };
     let route = |fields: &str| {
         format!(r#"{{{L}, "routes": [{{{fields}, "handler": {{"module": "respond"}}}}]}}"#)
     };
@@ -479,6 +484,32 @@ fn supported_fields_are_read() {
             respond(r#""body": "hi""#),
             |c| respond_of(c).body == "hi",
         ),
+        ("routes[].handler<proxy>", proxy(""), |c| {
+            proxy_of(c).upstream == "app"
+        }),
+        ("routes[].handler<proxy>.params", proxy(""), |c| {
+            proxy_of(c).trusted_proxies.is_empty()
+        }),
+        ("routes[].handler<proxy>.params.upstream", proxy(""), |c| {
+            proxy_of(c).upstream == "app"
+        }),
+        (
+            "routes[].handler<proxy>.params.trusted_proxies",
+            proxy(r#", "trusted_proxies": ["10.0.0.0/8", "192.0.2.1"]"#),
+            |c| {
+                proxy_of(c)
+                    .trusted_proxies
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    == ["10.0.0.0/8", "192.0.2.1/32"]
+            },
+        ),
+        (
+            "routes[].handler<proxy>.params.host_header",
+            proxy(r#", "host_header": "internal.svc""#),
+            |c| proxy_of(c).host_header == "internal.svc",
+        ),
         ("upstreams", upstream(""), |c| c.upstreams.len() == 1),
         ("upstreams[].name", upstream(""), |c| {
             c.upstreams[0].name == "app"
@@ -542,8 +573,18 @@ fn supported_fields_are_read() {
 
 fn respond_of(c: &Config) -> &akit_config::Respond {
     match &c.routes.first().unwrap().handler {
-        Handler::Respond(r) => r,
+        Handler::Respond(r) => Some(r),
+        _ => None,
     }
+    .unwrap()
+}
+
+fn proxy_of(c: &Config) -> &akit_config::Proxy {
+    match &c.routes.first().unwrap().handler {
+        Handler::Proxy(p) => Some(p),
+        _ => None,
+    }
+    .unwrap()
 }
 
 /// akit-config's lists of what it reads and of what fit reads that it refuses as not supported
@@ -565,7 +606,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 10] = [
+    let objects: [(&str, &str, Option<&str>); 11] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         ("listeners[]", "LISTENER_FIELDS", Some("LISTENER_FIT_ONLY")),
         ("listeners[].tls", "TLS_FIELDS", Some("TLS_FIT_ONLY")),
@@ -575,6 +616,11 @@ fn akit_config_lists_match_the_inventory() {
         ("routes[].match", "MATCH_FIELDS", Some("MATCH_FIT_ONLY")),
         ("routes[].handler", "MODULE_FIELDS", None),
         ("routes[].handler<respond>.params", "RESPOND_FIELDS", None),
+        (
+            "routes[].handler<proxy>.params",
+            "PROXY_FIELDS",
+            Some("PROXY_FIT_ONLY"),
+        ),
         ("upstreams[]", "UPSTREAM_FIELDS", Some("UPSTREAM_FIT_ONLY")),
     ];
     let mapped: BTreeSet<&str> = objects
@@ -621,7 +667,7 @@ fn akit_config_lists_match_the_inventory() {
             "at {prefix:?}, model.rs's lists and fit's fields differ"
         );
     }
-    // Handler modules: respond, which akit reads, and FIT_HANDLERS, which it refuses.
+    // Handler modules: respond and proxy, which akit reads, and FIT_HANDLERS, which it refuses.
     let mut handlers: BTreeSet<String> = list("FIT_HANDLERS").iter().cloned().collect();
     for h in &handlers {
         assert!(
@@ -629,10 +675,9 @@ fn akit_config_lists_match_the_inventory() {
             "model.rs FIT_HANDLERS: {h:?} is not a handler fit has"
         );
     }
-    assert!(
-        handlers.insert("respond".to_owned()),
-        "FIT_HANDLERS lists respond"
-    );
+    for h in ["respond", "proxy"] {
+        assert!(handlers.insert(h.to_owned()), "FIT_HANDLERS lists {h}");
+    }
     let fit_handlers: BTreeSet<String> = inventory
         .iter()
         .filter_map(|f| f.path.strip_prefix("routes[].handler<")?.strip_suffix('>'))
@@ -644,6 +689,8 @@ fn akit_config_lists_match_the_inventory() {
     );
     read.insert("routes[].handler<respond>".to_owned());
     read.insert("routes[].handler<respond>.params".to_owned());
+    read.insert("routes[].handler<proxy>".to_owned());
+    read.insert("routes[].handler<proxy>.params".to_owned());
     // Protocols: the three akit serves and FIT_PROTOCOLS.
     let mut protocols: BTreeSet<String> = list("FIT_PROTOCOLS").iter().cloned().collect();
     for p in [Protocol::Http11, Protocol::H2c, Protocol::H2] {
@@ -745,7 +792,7 @@ fn inventory_paths_for_akit_config_paths() {
 fn findings_from_akit_config_errors() {
     let errs = akit_config::from_json(
         r#"{"listeners": [{"name": "w", "address": ":1", "protocols": ["h3"], "mptcp": true}],
-            "routes": [{"handler": {"module": "proxy"}}], "acme": {}}"#,
+            "routes": [{"handler": {"module": "fastcgi"}}], "acme": {}}"#,
         None,
     )
     .unwrap_err();
@@ -757,7 +804,7 @@ fn findings_from_akit_config_errors() {
     let want: BTreeSet<String> = [
         "listeners[0].protocols[0]: the \"h3\" protocol",
         "listeners[0].mptcp",
-        "routes[0].handler<proxy>",
+        "routes[0].handler<fastcgi>",
         "acme",
     ]
     .iter()

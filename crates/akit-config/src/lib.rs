@@ -32,8 +32,8 @@ pub use json::MAX_DEPTH;
 pub use model::{
     Certificate, ClientAuth, ClientAuthMode, Config, DEFAULT_CONNECT_TIMEOUT, DEFAULT_IDLE_TIMEOUT,
     DEFAULT_MAX_CONNS, DEFAULT_MAX_IDLE_CONNS, DEFAULT_MAX_PENDING, DEFAULT_PROTOCOLS,
-    DEFAULT_TLS_PROTOCOLS, Handler, Listener, Match, Protocol, Respond, Route, SCHEMA_VERSION, Tls,
-    TlsVersion, Upstream,
+    DEFAULT_TLS_PROTOCOLS, Handler, Listener, Match, Network, Protocol, Proxy, Respond, Route,
+    SCHEMA_VERSION, Tls, TlsVersion, Upstream,
 };
 
 /// The largest config document read, in bytes: fit's own configs are kilobytes; this bounds

@@ -63,10 +63,14 @@ fn hello_reads() {
     assert_eq!(c.routes.len(), 2);
     let r = &c.routes[0];
     assert_eq!(r.matcher.as_ref().unwrap().path, ["/hello"]);
-    let Handler::Respond(h) = &r.handler;
+    let Handler::Respond(h) = &r.handler else {
+        panic!("not respond")
+    };
     assert_eq!((h.status, h.body.as_str()), (200, "hello from fit\n"));
     assert_eq!(c.routes[1].priority, -1);
-    let Handler::Respond(h) = &c.routes[1].handler;
+    let Handler::Respond(h) = &c.routes[1].handler else {
+        panic!("not respond")
+    };
     assert_eq!(h.status, 404);
 }
 
@@ -79,18 +83,20 @@ fn defaults() {
     assert_eq!(c.listeners[0].protocols, [Protocol::Http11]);
     let r = &c.routes[0];
     assert!(r.name.is_none() && r.listeners.is_empty() && r.matcher.is_none());
-    let Handler::Respond(h) = &r.handler;
+    let Handler::Respond(h) = &r.handler else {
+        panic!("not respond")
+    };
     assert_eq!((h.status, h.headers.len(), h.body.as_str()), (200, 0, ""));
     assert_eq!(ok("{}").listeners.len(), 0);
 }
 
 #[test]
 fn not_supported_yet_is_not_wrong() {
-    // fit's JSON template, as written out: an upstream akit cannot proxy to yet.
+    // fit's JSON template, as written out, with a proxy param akit does not read yet.
     let e = errs(
         r#"{"schema_version": 1,
             "listeners": [{"name": "web", "address": ":8080", "protocols": ["http/1.1", "h2", "h3"], "tls": {}}],
-            "routes": [{"name": "hello", "middleware": [], "handler": {"module": "proxy", "params": {"upstream": "app"}}},
+            "routes": [{"name": "hello", "middleware": [], "handler": {"module": "proxy", "params": {"upstream": "app", "timeout": "60s"}}},
                        {"match": {"method": ["GET"]}, "handler": {"module": "respond"}}],
             "upstreams": [{"name": "app", "addresses": ["127.0.0.1:9000"], "load_balancing": "p2c"}]}"#,
     );
@@ -101,7 +107,7 @@ fn not_supported_yet_is_not_wrong() {
         [
             "listeners[0].protocols[2]",
             "listeners[0].tls",
-            "routes[0].handler.module",
+            "routes[0].handler.params.timeout",
             "routes[0].middleware",
             "routes[1].match.method",
             "upstreams[0].load_balancing",
@@ -111,10 +117,7 @@ fn not_supported_yet_is_not_wrong() {
         e.as_slice()[0].msg,
         "not supported yet: the \"h3\" protocol"
     );
-    assert_eq!(
-        e.as_slice()[2].msg,
-        "not supported yet: the \"proxy\" handler"
-    );
+    assert_eq!(e.as_slice()[2].msg, "not supported yet");
 }
 
 #[test]
