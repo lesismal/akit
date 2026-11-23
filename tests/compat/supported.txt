@@ -61,3 +61,9 @@ upstreams[].max_pending
 upstreams[].max_idle_conns
 upstreams[].idle_timeout
 upstreams[].connect_timeout
+#
+# I19: load balancing v1. upstreams[].load_balancing takes "round_robin", "weighted_round_robin"
+# and "least_conn"; fit's "random", "p2c" and hash policies (and hash_key) are refused as not
+# supported yet (I36).
+upstreams[].weights
+upstreams[].load_balancing

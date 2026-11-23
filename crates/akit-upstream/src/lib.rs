@@ -2,7 +2,7 @@
 #![warn(clippy::unwrap_used)]
 //! akit's upstream pools on akio's clients: load balancing and health checks.
 //!
-//! So far (I14): a [`Pool`] per named upstream of the config (fit's `upstreams`), sending
+//! I14 gives a [`Pool`] per named upstream of the config (fit's `upstreams`), sending
 //! HTTP/1.1 requests to its addresses through akio-http's asynchronous [`Client`], which keeps
 //! the connections to each address alive between requests and reuses them. The pool bounds them
 //! as fit's does:
@@ -24,6 +24,10 @@
 //!   included, by [`DEFAULT_RESPONSE_TIMEOUT`], fit's `response_timeout` default (the field
 //!   itself comes with I17).
 //!
+//! I19 adds load balancing ([`balance`]): [`Pool::pick`] chooses the address by the upstream's
+//! `load_balancing` and `weights` (round robin, smooth weighted round robin, least connections),
+//! each I/O thread keeping its own turn.
+//!
 //! Nothing here blocks: [`Pool::send`] runs on an I/O thread, and its callback runs once, on an
 //! I/O thread (or the resolver's or the timer's thread, as akio's client says), never blocking
 //! either.
@@ -42,6 +46,8 @@
 //! Part of [akit](https://github.com/lesismal/akit); see `docs/dev-plan.md` for the iterations that
 //! fill this crate in.
 
+pub mod balance;
+
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
 use std::fmt;
@@ -51,6 +57,8 @@ use std::time::{Duration, Instant};
 
 use akio::Engine;
 use akio_http::client::{Client, ClientError, ClientOptions, ClientRequest, ClientResponse};
+
+pub use balance::{Balancer, LoadBalancing};
 
 /// How long a whole exchange may take, from [`Pool::send`] to the end of the response, waiting for
 /// a connection included: fit's `response_timeout` default, 1h.
@@ -199,8 +207,8 @@ impl Backend {
 struct Inner {
     name: String,
     backends: Box<[Backend]>,
-    /// The next backend [`Pool::pick`] gives, in turn.
-    next: AtomicUsize,
+    /// Which backend [`Pool::pick`] gives.
+    balancer: Balancer,
     max_conns: usize,
     max_pending: usize,
     timeout: Duration,
@@ -253,6 +261,7 @@ impl Pool {
         opts.max_idle = u.max_idle_conns.saturating_mul(u.addresses.len().max(1));
         opts.idle_timeout = Some(u.idle_timeout);
         opts.happy_eyeballs.connect_timeout = u.connect_timeout;
+        let weights: Vec<u32> = (0..u.addresses.len()).map(|i| u.weight(i)).collect();
         let backends = u
             .addresses
             .iter()
@@ -268,7 +277,7 @@ impl Pool {
             inner: Arc::new(Inner {
                 name: u.name.clone(),
                 backends,
-                next: AtomicUsize::new(0),
+                balancer: Balancer::new(u.load_balancing, &weights),
                 max_conns: u.max_conns.max(1),
                 max_pending: u.max_pending,
                 timeout: DEFAULT_RESPONSE_TIMEOUT,
@@ -317,16 +326,31 @@ impl Pool {
         &self.inner.opts
     }
 
-    /// The address the next request goes to, in turn (fit's `round_robin`, its default; I19
-    /// brings the other policies).
+    /// The upstream's `load_balancing` policy.
+    #[must_use]
+    pub fn load_balancing(&self) -> LoadBalancing {
+        self.inner.balancer.policy()
+    }
+
+    /// The weight of the address at `backend` (1 when the upstream gives no `weights`).
+    #[must_use]
+    pub fn weight(&self, backend: usize) -> u32 {
+        self.inner.balancer.weight(backend)
+    }
+
+    /// The index of the address the next request goes to, by the upstream's `load_balancing`
+    /// ([`balance`]): in turn, in turn by weight, or the one with the fewest requests under way
+    /// (waiting for a connection included) for its weight. Each I/O thread keeps its own turn.
     #[must_use]
     pub fn pick(&self) -> usize {
-        let n = self.inner.backends.len().max(1);
-        self.inner
-            .next
-            .fetch_add(1, Ordering::Relaxed)
-            .checked_rem(n)
-            .unwrap_or(0)
+        let backends = &self.inner.backends;
+        self.inner.balancer.pick(|i| {
+            backends.get(i).map_or(0, |b| {
+                b.busy
+                    .load(Ordering::Relaxed)
+                    .saturating_add(b.waiting.load(Ordering::Relaxed))
+            })
+        })
     }
 
     /// Sends `req` to the address at `backend` ([`addresses`](Self::addresses)), and calls `done`

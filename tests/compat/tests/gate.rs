@@ -569,6 +569,20 @@ fn supported_fields_are_read() {
             upstream(r#", "connect_timeout": "1500ms""#),
             |c| c.upstreams[0].connect_timeout == std::time::Duration::from_millis(1500),
         ),
+        (
+            "upstreams[].weights",
+            upstream(r#", "weights": [3]"#),
+            |c| {
+                c.upstreams[0].weights == [3]
+                    && c.upstreams[0].load_balancing
+                        == akit_config::LoadBalancing::WeightedRoundRobin
+            },
+        ),
+        (
+            "upstreams[].load_balancing",
+            upstream(r#", "load_balancing": "least_conn""#),
+            |c| c.upstreams[0].load_balancing == akit_config::LoadBalancing::LeastConn,
+        ),
     ];
     let marked = supported().unwrap();
     let sampled: BTreeSet<String> = samples.iter().map(|(p, ..)| (*p).to_owned()).collect();

@@ -6,7 +6,8 @@ use std::time::Duration;
 
 use akit_config::{
     Config, DEFAULT_CONNECT_TIMEOUT, DEFAULT_IDLE_TIMEOUT, DEFAULT_MAX_CONNS,
-    DEFAULT_MAX_IDLE_CONNS, DEFAULT_MAX_PENDING, Errors, Source, from_json, from_sources,
+    DEFAULT_MAX_IDLE_CONNS, DEFAULT_MAX_PENDING, Errors, LoadBalancing, Source, from_json,
+    from_sources,
 };
 
 fn ok(src: &str) -> Config {
@@ -139,10 +140,84 @@ fn fit_checks() {
 }
 
 #[test]
+fn load_balancing() {
+    // fit's default: round robin, or weighted round robin when an address weighs other than 1.
+    let u = &ok(&one(r#""addresses": ["a:1", "b:1"]"#)).upstreams[0];
+    assert_eq!(u.load_balancing, LoadBalancing::RoundRobin);
+    assert!(u.weights.is_empty());
+    assert_eq!((u.weight(0), u.weight(1)), (1, 1));
+    let u = &ok(&one(r#""addresses": ["a:1", "b:1"], "weights": [3, 1]"#)).upstreams[0];
+    assert_eq!(u.load_balancing, LoadBalancing::WeightedRoundRobin);
+    assert_eq!(u.weights, [3, 1]);
+    let u = &ok(&one(r#""addresses": ["a:1", "b:1"], "weights": [1, 1]"#)).upstreams[0];
+    assert_eq!(u.load_balancing, LoadBalancing::RoundRobin);
+    for (name, lb) in [
+        ("round_robin", LoadBalancing::RoundRobin),
+        ("weighted_round_robin", LoadBalancing::WeightedRoundRobin),
+        ("least_conn", LoadBalancing::LeastConn),
+    ] {
+        let c = ok(&one(&format!(
+            r#""addresses": ["a:1"], "load_balancing": "{name}""#
+        )));
+        assert_eq!(c.upstreams[0].load_balancing, lb);
+        assert_eq!(lb.name(), name);
+    }
+    let u = &ok(&one(
+        r#""addresses": ["a:1", "b:1"], "weights": [1000, 1], "load_balancing": "least_conn""#,
+    ))
+    .upstreams[0];
+    assert_eq!(
+        (u.load_balancing, u.weights.as_slice()),
+        (LoadBalancing::LeastConn, &[1000, 1][..])
+    );
+
+    // fit's checks and messages.
+    assert_eq!(
+        problems(&one(r#""addresses": ["a:1", "b:1"], "weights": [2]"#)),
+        ["upstreams[0].weights: 1 weights for 2 addresses; give one weight for each address"]
+    );
+    assert_eq!(
+        problems(&one(
+            r#""addresses": ["a:1"], "weights": [2], "load_balancing": "round_robin""#
+        )),
+        [
+            "upstreams[0].load_balancing: round_robin takes no weights; use weighted_round_robin or least_conn"
+        ]
+    );
+    assert_eq!(
+        problems(&one(r#""addresses": ["a:1", "b:1"], "weights": [0, 1001]"#)),
+        [
+            "upstreams[0].weights[0]: 0 is less than the minimum 1",
+            "upstreams[0].weights[1]: 1001 is greater than the maximum 1000",
+        ]
+    );
+    assert_eq!(
+        problems(&one(r#""addresses": ["a:1"], "load_balancing": "fastest""#)),
+        [
+            r#"upstreams[0].load_balancing: "fastest" is not one of "round_robin", "weighted_round_robin", "least_conn", "random", "p2c", "ip_hash", "uri_hash", "header_hash", "cookie_hash""#
+        ]
+    );
+    // fit's other policies come later (I36).
+    for name in [
+        "random",
+        "p2c",
+        "ip_hash",
+        "uri_hash",
+        "header_hash",
+        "cookie_hash",
+    ] {
+        let e = errs(&one(&format!(
+            r#""addresses": ["a:1"], "load_balancing": "{name}""#
+        )));
+        assert!(e.only_not_supported_yet(), "{name}: {e}");
+    }
+}
+
+#[test]
 fn what_akit_lacks_is_not_supported_yet() {
     let e = errs(&one(
-        r#""addresses": ["a:1"], "protocol": "h2c", "weights": [1], "health_check": {},
-           "response_timeout": "1s""#,
+        r#""addresses": ["a:1"], "protocol": "h2c", "load_balancing": "p2c", "hash_key": "x",
+           "health_check": {}, "response_timeout": "1s""#,
     ));
     assert!(e.only_not_supported_yet(), "{e}");
     let paths: Vec<&str> = e.as_slice().iter().map(|e| e.path.as_str()).collect();
@@ -150,7 +225,8 @@ fn what_akit_lacks_is_not_supported_yet() {
         paths,
         [
             "upstreams[0].protocol",
-            "upstreams[0].weights",
+            "upstreams[0].load_balancing",
+            "upstreams[0].hash_key",
             "upstreams[0].health_check",
             "upstreams[0].response_timeout",
         ]

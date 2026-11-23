@@ -109,7 +109,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I16 | 反向代理 II：流式 body 与联动背压 | I15 | todo |
 | I17 | 反向代理 III：超时、取消、trailer | I16 | todo |
 | I18 | HTTP/2 与 h2c 上游 | I17 | todo |
-| I19 | 负载均衡 v1 | I14 | todo |
+| I19 | 负载均衡 v1 | I14 | done |
 | I20 | 被动健康检查 | I19 | todo |
 | I21 | 访问日志 | I15 | todo |
 | I22 | SIGHUP 重载 | I06 | todo |

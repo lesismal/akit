@@ -1,0 +1,13 @@
+# Decisions waiting for review
+
+[English](decisions-pending.md) | [简体中文](decisions-pending.zh-CN.md)
+
+Decisions taken while the maintainer was away, each implemented as recommended and waiting for a
+yes or a change. A decision confirmed moves to the [decision notes](decisions/README.md) when it
+is one, or is struck from here; one changed is redone.
+
+| # | Date | Where | Decision taken | The other choice |
+| --- | --- | --- | --- | --- |
+| 1 | 2026-11-24 | akio, merging akit's requests | The five akio branches (A1/A3, A2, A4/A5, A7, A8) merged into akio's main; akio's main had used ADR-093 and ADR-094 meanwhile, so A2's ADR became ADR-098 (`098-tls-cert-resolver`) and A1/A3's ADR-099 (`099-runtime-listeners-accept-filter`), every reference with them | keep the branches' numbers and renumber main's (main's were pushed first) |
+| 2 | 2026-11-24 | akio, merging A8 | A8 and main's ICMP work both declared the macOS `ioctl` binding; A8's copy dropped. A8's `probe_gone` allows `needless_pass_by_ref_mut` off Linux, where it only reads | change the signature per platform |
+| 3 | 2026-11-24 | akit, akio API requests | I09 and I14 both numbered their first request A9: I09's (a TLS server capped at TLS 1.2) kept A9, I14's became A10–A12 | — |

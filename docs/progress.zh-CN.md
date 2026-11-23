@@ -19,6 +19,41 @@
 
 ## 日志
 
+### 2026-11-24：I19，负载均衡 v1
+
+- 配置：读取 `upstreams[].weights`（每个 1 到 1000，每个地址一个）和 `upstreams[].load_balancing`
+  （`round_robin`、`weighted_round_robin`、`least_conn`）到 `akit_config::Upstream`（`weights`、
+  `load_balancing`、`weight(i)`），默认值与 fit 相同（轮询；有地址权重不为 1 时为加权轮询），检查和消息也与 fit
+  相同：每个权重的范围、权重与地址数量相同、`round_robin` 不带权重、策略是 fit 的九种之一。fit 的其余六种策略
+  （`random`、`p2c` 和各种哈希）以及 `hash_key` 报为暂不支持（I36）。
+- `akit_upstream::balance::Balancer`，位于 `Pool::pick` 之后（签名不变；连接池新增 `load_balancing()` 和
+  `weight(i)`）：轮询；nginx 的平滑加权轮询，一轮预先算好（权重除以最大公约数，最多 65536 项，同 fit 的
+  `maxSchedule`），每次选择取一项；最少连接，选按权重计进行中请求最少的地址（忙碌加等待，即连接池为 `max_conns`
+  按地址维护的计数），比较时不做除法，平局从每次选择都前移的起点开始找。
+- 每个 I/O 线程一份状态（规则 13）：fit 为每个上游保存一个所有 goroutine 共享的轮次；akit 给每个均衡器每核一个
+  独占缓存行的槽位（并行度向上取整到 2 的幂），每个线程从第一次选择时分到的槽位取轮次。每个线程看到的序列与 fit
+  完全相同，无论哪些线程共用槽位，份额在整轮上都精确；各槽位从一轮中不同的位置开始，避免所有线程的第一个请求都落到
+  第一个地址。必须共享的只读不写：最少连接读取每个地址的计数。一轮太长无法预先算出的加权轮询，在每个槽位自己的
+  当前权重上运行 nginx 的算法，持有的是该槽位自己的锁（没有全局锁）。选择不分配内存。
+- 测试：`akit-upstream/tests/balance.rs`（9 个），移植自 fit 的 `balance_test.go`：轮询和平滑加权轮询的序列（因
+  各槽位起点不同，按 fit 序列的轮转检查）和精确份额、有公约数的权重生成的调度、权重太多无法预先调度时（按权重精确）、
+  8 个线程同时选择（每种策略份额精确）、最少连接的空闲、忙碌和加权情况、单个地址；连接池遵循配置，以及最少连接读取
+  两个真实上游上被挂起的请求（权重 2 和 1 时为 6 和 3）。`akit-config/tests/upstreams.rs`：`load_balancing`
+  （默认值、三种策略、fit 的检查和消息、暂不支持的策略）。门禁为两个字段加了样例。
+- 已检查：macOS 上 `make check`；Linux（基准测试主机）上 akit-config、akit-upstream（epoll 和 io_uring）和
+  akit-compat 的测试，全部通过。fit 的消息及其行列号，用 `fit validate` 对同样的文件核对过。门禁
+  （`make compat-bless`）：`upstreams` 38 个字段中支持 11 个（共 39 个）；`examples/load-balancing` 不再因
+  `weights` 和 `load_balancing` 被拒绝，`examples/l4-udp` 指出缺少的是 `ip_hash` 策略。
+- 与计划和 fit 的不同：
+  - 轮次按线程而不是按上游：所有线程合起来看，轮询在每个线程的整轮上公平，而不是严格依次，所以不同线程上的两个请求
+    可能同时发往同一个地址。fit 单 goroutine 下的序列在每个线程内成立。
+  - fit 的被动和主动健康状态（跳过已下线的地址，`TestWeightedRoundRobinDown`）没有移植：那是 I20。fit 的分配测试
+    （`TestPickAllocs`）也没有移植（计数分配器需要 `unsafe`）；选择按构造不分配内存。
+  - 最少连接从连接池接收请求（`send`）时开始计数，而不是从 fit 的 `Pick`：像 `Pool::request` 那样选择后立即发送
+    的调用方看到的结果相同。
+- 基准测试任务应测量：各策略下 `Pool::pick` 在 1 核和全部核上的表现（每线程槽位对比单个共享计数器），以及按各策略
+  在多个上游地址上运行代理，与 fit 对比，并检查负载下的份额。
+
 ### 2026-11-24：I12，静态文件 I
 
 - 基于 akio-http `Files` 的 `static` handler（`akit-handler`，`static_files.rs`）。`Files` 负责提供：`ETag` 和
@@ -110,16 +145,6 @@
     akio 只对解析出多个地址的名字使用客户端的连接超时，所以 `akit_listener::engine` 把引擎的 `connect_timeout`
     设为各上游中最短的那个（A12）。I15 需要 A11（请求自己的 `Host`）。给 I15 的交接说明在会话笔记目录中。
   - 这里没做的：重载时在图之间保留连接池（fit 的 `Acquire`），属于 I22。
-
-| 最后更新 | 2026-11-23 |
-| 里程碑 | M0 基础已完成（I01–I08）；接下来是 M1，代理核心。 |
-| akio | akio `main` 上的 `50a82315`（`1.0.0-rc.1`），在 `Cargo.toml` 中按 `rev` 锁定 |
-| fit | 作为规格；本计划基于 `7daee573` 阅读 |
-| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码（`-c` 可重复，文件和目录合并），SIGINT 和 SIGTERM 时优雅关闭；`akit run` 按 fit 的 host 与 path 规则提供 HTTP/1.1 和 h2c 监听器上的 `respond` 路由，没有匹配时返回 404；`akit version` 和 `akit help`；工作区能构建并通过 `make check`；`akit_config::from_json` 能读取 fit 的监听器、路由和 `respond` handler，fit 配置的其余部分按名字报为暂不支持；模块注册表和数据面 trait（`akit-runtime`）；`compile` 把配置编译成 `Graph`，`GraphCell` 负责发布、读取和退役图；兼容性门禁在 `make check` 和 CI 中把 fit 的每个夹具交给 akit-config |
-| 下一步 | M1：I09（TLS）、I11（路由器 v1）、I14（上游连接池）、I23（.conf）和 I24（YAML）已在各自的分支上，待合并；然后是 I10、I12、I15 及之后。 |
-| akio 需求 | A1–A8 现在全部加进 akio，各在 akio 的独立分支上进行（[akio API 需求](akio-api-requests.zh-CN.md)） |
-
-## 日志
 
 ### 2026-11-24：I11，路由 v1：host 与 path
 

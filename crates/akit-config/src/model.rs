@@ -49,7 +49,51 @@ pub struct Upstream {
     /// `connect_timeout`: how long opening a connection may take. [`DEFAULT_CONNECT_TIMEOUT`]
     /// when left out or 0.
     pub connect_timeout: Duration,
+    /// `weights`: each address's weight, from 1 to 1000, in the order of `addresses`; empty when
+    /// left out, which weighs each address 1.
+    pub weights: Vec<u32>,
+    /// `load_balancing`: how requests are spread over the addresses. When left out, fit's
+    /// default: [`LoadBalancing::RoundRobin`], or [`LoadBalancing::WeightedRoundRobin`] when an
+    /// address weighs other than 1.
+    pub load_balancing: LoadBalancing,
 }
+
+impl Upstream {
+    /// The weight of the address at `i`: its `weights` entry, or 1.
+    #[must_use]
+    pub fn weight(&self, i: usize) -> u32 {
+        self.weights.get(i).copied().unwrap_or(1)
+    }
+}
+
+/// An upstream's `load_balancing` policy. fit's `random`, `p2c` and hash policies are refused as
+/// not supported yet.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
+pub enum LoadBalancing {
+    /// `round_robin`: the addresses in turn.
+    #[default]
+    RoundRobin,
+    /// `weighted_round_robin`: in turn by weight, smoothly, as nginx does.
+    WeightedRoundRobin,
+    /// `least_conn`: to the address with the fewest requests under way for its weight.
+    LeastConn,
+}
+
+impl LoadBalancing {
+    /// The policy's name in the config.
+    #[must_use]
+    pub fn name(self) -> &'static str {
+        match self {
+            LoadBalancing::RoundRobin => "round_robin",
+            LoadBalancing::WeightedRoundRobin => "weighted_round_robin",
+            LoadBalancing::LeastConn => "least_conn",
+        }
+    }
+}
+
+/// The most an address of an upstream may weigh (fit's `max` on `weights`).
+pub const MAX_WEIGHT: u32 = 1000;
 
 /// fit's default `max_conns`: large enough that high concurrency against a slow upstream does not
 /// reach it, and still a bound.
@@ -348,10 +392,10 @@ const UPSTREAM_FIELDS: &[&str] = &[
     "max_idle_conns",
     "idle_timeout",
     "connect_timeout",
-];
-const UPSTREAM_FIT_ONLY: &[&str] = &[
     "weights",
     "load_balancing",
+];
+const UPSTREAM_FIT_ONLY: &[&str] = &[
     "hash_key",
     "sticky_cookie",
     "deny_internal",
@@ -1015,7 +1059,77 @@ fn upstream(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Upstream> {
     };
     let idle_timeout = duration(d, "idle_timeout", DEFAULT_IDLE_TIMEOUT);
     let connect_timeout = duration(d, "connect_timeout", DEFAULT_CONNECT_TIMEOUT);
+    let weights_at = o.take("weights").map(|v| {
+        let p = o.at("weights");
+        let w = d.array(v, &p, |d, item, at| {
+            d.int(item, at, 1, i64::from(MAX_WEIGHT))
+                .and_then(|w| u32::try_from(w).ok())
+        });
+        let given = match &v.kind {
+            crate::json::Kind::Array(items) => items.len(),
+            _ => 0,
+        };
+        (v.off, p, given, w)
+    });
+    // fit's policies, as its `load_balancing` enum lists them; those akit lacks are not
+    // supported yet.
+    let policy = o.take("load_balancing").map(|v| {
+        let p = o.at("load_balancing");
+        let lb = match d.string(v, &p).as_deref() {
+            Some("round_robin") => Some(LoadBalancing::RoundRobin),
+            Some("weighted_round_robin") => Some(LoadBalancing::WeightedRoundRobin),
+            Some("least_conn") => Some(LoadBalancing::LeastConn),
+            Some(other @ ("random" | "p2c" | "ip_hash" | "uri_hash" | "header_hash" | "cookie_hash")) => {
+                d.not_yet(v.off, &p, &format!("the {other:?} load balancing policy"));
+                None
+            }
+            Some(other) => {
+                d.error(
+                    v.off,
+                    &p,
+                    format!(
+                        "{other:?} is not one of \"round_robin\", \"weighted_round_robin\", \"least_conn\", \"random\", \"p2c\", \"ip_hash\", \"uri_hash\", \"header_hash\", \"cookie_hash\""
+                    ),
+                );
+                None
+            }
+            None => None,
+        };
+        (v.off, p, lb)
+    });
     o.finish(d, UPSTREAM_FIELDS, UPSTREAM_FIT_ONLY);
+    // fit's checks of the two together (config.validate).
+    let mut weights = Vec::new();
+    let mut given = 0;
+    if let Some((off, p, n, w)) = weights_at {
+        given = n;
+        if let Some(a) = &addresses {
+            if given > 0 && given != a.len() {
+                d.error(
+                    off,
+                    &p,
+                    format!(
+                        "{given} weights for {} addresses; give one weight for each address",
+                        a.len()
+                    ),
+                );
+            }
+        }
+        weights = w;
+    }
+    let load_balancing = match policy {
+        Some((off, p, Some(LoadBalancing::RoundRobin))) if given > 0 => {
+            d.error(
+                off,
+                &p,
+                "round_robin takes no weights; use weighted_round_robin or least_conn",
+            );
+            LoadBalancing::RoundRobin
+        }
+        Some((_, _, Some(lb))) => lb,
+        _ if weights.iter().any(|&w| w != 1) => LoadBalancing::WeightedRoundRobin,
+        _ => LoadBalancing::RoundRobin,
+    };
     Some(Upstream {
         name: name?,
         addresses: addresses?,
@@ -1024,6 +1138,8 @@ fn upstream(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Upstream> {
         max_idle_conns,
         idle_timeout,
         connect_timeout,
+        weights,
+        load_balancing,
     })
 }
 
