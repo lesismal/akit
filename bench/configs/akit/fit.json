@@ -1,0 +1,26 @@
+// akit for fit's benchmark harness (bench/README.md), as fit's bench/configs/fit/fit.conf is for
+// fit, with what akit serves so far: the fixed scenario.
+//
+// Port 8080 serves HTTP/1.1 and port 8081 h2c (HTTP/2 with prior knowledge). fit's 8081 serves
+// h2c alone; akit's takes HTTP/1.1 too, since akio's server always does, which no run on 8081
+// uses. TLS (8443, 8445), HTTP/3 (8444), static files, the proxy and the cache come with the
+// iterations that build them (I09, I12, I15, I69).
+//
+// fit's aligned settings (engine.backlog, limits.max_conns, the pool) are not settings akit has
+// yet: akio's defaults apply (bench/README.md says which).
+{
+  "listeners": [
+    {"name": "h1", "address": ":8080", "protocols": ["http/1.1"]},
+    {"name": "h2c", "address": ":8081", "protocols": ["http/1.1", "h2c"]}
+  ],
+  "routes": [
+    {
+      "name": "fixed",
+      "match": {"path": ["/fixed"]},
+      "handler": {
+        "module": "respond",
+        "params": {"headers": {"Content-Type": "text/plain"}, "body": "hello, world"}
+      }
+    }
+  ]
+}
