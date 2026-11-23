@@ -19,6 +19,10 @@ host fit and akio use, one session at a time. Locally run only ordinary tests, f
 
 **Every doc is bilingual** (rule 26): `X.md` and `X.zh-CN.md`, changed together.
 
+**Clean up after every development, test and benchmark run** (rule 29): build directories,
+copies, worktrees, containers and temporary files, here and on the benchmark host, whose disk
+every session shares.
+
 For iteration work, read [docs/progress.md](docs/progress.md) and the iteration's section in
 [docs/dev-plan.md](docs/dev-plan.md); when an iteration is done, update both dev-plan files and
 both progress files.

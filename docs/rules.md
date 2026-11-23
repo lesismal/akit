@@ -129,3 +129,15 @@ for the Go gateway and for the engine underneath akit.
 28. **Every full-harness report says where akit stands**: its place in each workload and protocol
     against nginx, Caddy, Traefik and fit, with the servers ranked by fit's benchreport scores so
     the two projects' reports read the same way.
+
+## 13. Cleaning up
+
+29. **Every development, test and benchmark run cleans up after itself and frees the space it
+    took.** When the work is done (an iteration, a fix, a test or benchmark run, a reproduction),
+    remove what it left behind, on this machine and on the benchmark host: build output made for it
+    (the `target/` directories of copies and worktrees, test binaries), copies of the tree and git
+    worktrees, containers, images and volumes it created, and logs and temporary files no longer
+    needed. Caches kept on purpose (the bench harness's shared target directory, the pinned server
+    images) stay, but are pruned when they grow. The benchmark host's disk is shared by every
+    session: check its free space (`df -h /`) before a large build, and never leave it fuller than
+    you found it; a full disk stops everyone's builds and runs.
