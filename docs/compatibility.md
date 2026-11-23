@@ -85,7 +85,7 @@ one a fixture, or one a field for a fixture refused as not supported yet.
 examples/hello: format not supported yet: .conf (I23)
 examples/https: skipped: its certificate and key files are the user's own
 templates/json/fit.json: not supported yet: upstreams
-templates/yaml/conf.d: format not supported yet: conf.d directories (I23)
+templates/yaml/conf.d: format not supported yet: YAML (I24)
 ```
 
 A fixture that fails is written `<fixture>: FAILED: <why>`, a line for each finding that is not an

@@ -93,7 +93,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I03 | 核心 trait 与模块注册表 | I01 | done |
 | I04 | 运行时图及其替换 | I02, I03 | done |
 | I05 | `akit run`：监听器与 `respond` | I04 | done |
-| I06 | CLI、信号与优雅关闭 | I05 | todo |
+| I06 | CLI、信号与优雅关闭 | I05 | done |
 | I07a | 兼容性门禁 I：固定夹具、字段清单、测试框架 | I01 | done |
 | I07b | 兼容性门禁接入 validate | I02, I07a | done |
 | I08 | 基准框架与基线 | I05 | todo |

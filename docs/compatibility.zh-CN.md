@@ -78,7 +78,7 @@ make compat-bless
 examples/hello: format not supported yet: .conf (I23)
 examples/https: skipped: its certificate and key files are the user's own
 templates/json/fit.json: not supported yet: upstreams
-templates/yaml/conf.d: format not supported yet: conf.d directories (I23)
+templates/yaml/conf.d: format not supported yet: YAML (I24)
 ```
 
 失败的夹具写作 `<夹具>: FAILED: <原因>`，每条不属于允许的 "not supported yet" 的发现一行；与入库报告的

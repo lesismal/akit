@@ -17,7 +17,7 @@ mod error;
 mod json;
 mod model;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub use error::{Error, Errors, NOT_SUPPORTED_YET};
 pub use json::MAX_DEPTH;
@@ -29,60 +29,258 @@ pub use model::{
 /// what a mistaken path (a log file, a device) can make akit read.
 pub const MAX_CONFIG_BYTES: usize = 64 << 20;
 
+/// The most files a config is read from, as fit's.
+pub const MAX_CONFIG_FILES: usize = 10_000;
+
+/// One config file: the name its problems give, and what it holds.
+#[derive(Debug, Clone, Copy)]
+pub struct Source<'a> {
+    /// The file's name, named in every problem found in it.
+    pub name: Option<&'a str>,
+    /// Its text.
+    pub src: &'a str,
+}
+
 /// Reads a config written in JSON. `file`, when given, is named in every problem.
 pub fn from_json(src: &str, file: Option<&str>) -> Result<Config, Errors> {
-    let mut d = decode::Decoder::new(src, file);
-    if src.len() > MAX_CONFIG_BYTES {
-        d.error(
-            0,
-            "",
-            format!("the config is larger than {MAX_CONFIG_BYTES} bytes"),
-        );
-        return Err(Errors(d.errors));
-    }
-    let node = match json::parse(src) {
-        Ok(n) => n,
-        Err(e) => {
-            d.error(e.off, "", e.msg);
-            return Err(Errors(d.errors));
+    from_sources(&[Source { name: file, src }])
+}
+
+/// Reads a config from several JSON files, merged as fit merges a config's files: the lists at
+/// the top (`listeners`, `routes`) are joined in the files' order, `schema_version` may be given
+/// by each if they agree, and the checks across elements (unique names, routes naming listeners
+/// that exist) run on the whole. Every problem names the file it is in, with its line, column and
+/// its path in that file.
+pub fn from_sources(srcs: &[Source<'_>]) -> Result<Config, Errors> {
+    let mut ds: Vec<decode::Decoder<'_>> = srcs
+        .iter()
+        .map(|s| decode::Decoder::new(s.src, s.name))
+        .collect();
+    let total: usize = srcs.iter().map(|s| s.src.len()).sum();
+    if total > MAX_CONFIG_BYTES {
+        if let Some(d) = ds.first_mut() {
+            let what = if srcs.len() > 1 {
+                "the config's files hold"
+            } else {
+                "the config is"
+            };
+            d.error(0, "", format!("{what} more than {MAX_CONFIG_BYTES} bytes"));
         }
-    };
-    let config = model::config(&mut d, &node);
-    match config {
-        Some(c) if d.errors.is_empty() => Ok(c),
-        _ => {
-            if d.errors.is_empty() {
-                d.error(node.off, "", "the config could not be read");
+        return Err(collect(ds));
+    }
+    let mut parts = Vec::with_capacity(srcs.len());
+    for (i, (s, d)) in srcs.iter().zip(ds.iter_mut()).enumerate() {
+        match json::parse(s.src) {
+            Ok(node) => match model::part(d, &node, i) {
+                Some(p) => parts.push(p),
+                None => {
+                    if d.errors.is_empty() {
+                        d.error(node.off, "", "the config could not be read");
+                    }
+                }
+            },
+            Err(e) => d.error(e.off, "", e.msg),
+        }
+    }
+    if parts.len() < srcs.len() || srcs.is_empty() {
+        if ds.iter().all(|d| d.errors.is_empty()) {
+            return Err(Errors(vec![Error {
+                file: None,
+                path: String::new(),
+                line: 0,
+                col: 0,
+                msg: "no config files".into(),
+            }]));
+        }
+        return Err(collect(ds));
+    }
+    let config = model::merge(&mut ds, parts);
+    let errs = collect(ds);
+    if errs.0.is_empty() {
+        Ok(config)
+    } else {
+        Err(errs)
+    }
+}
+
+/// Every decoder's problems, file by file.
+fn collect(ds: Vec<decode::Decoder<'_>>) -> Errors {
+    Errors(ds.into_iter().flat_map(|d| d.errors).collect())
+}
+
+/// The config files `paths` name, as fit finds them: each file as it is, and each directory's
+/// files ending in `.json`, `.conf`, `.yaml` or `.yml`, in its subdirectories too, in lexical
+/// order (files and directories whose names start with a dot left out); a file named twice is
+/// read once; at most [`MAX_CONFIG_FILES`].
+///
+/// # Errors
+///
+/// A path that cannot be read, a directory with no config files, or too many files.
+pub fn config_files<P: AsRef<Path>>(paths: &[P]) -> Result<Vec<PathBuf>, Errors> {
+    let mut files: Vec<PathBuf> = Vec::new();
+    for p in paths {
+        let p = p.as_ref();
+        let meta = std::fs::metadata(p).map_err(|e| file_error(p, &e.to_string()))?;
+        if meta.is_dir() {
+            let before = files.len();
+            walk(p, p, &mut files)?;
+            if files.len() == before {
+                return Err(file_error(
+                    p,
+                    "no config files in the directory (.conf, .yaml, .yml, .json)",
+                ));
             }
-            Err(Errors(d.errors))
+        } else {
+            add(p, &mut files)?;
         }
     }
+    if files.is_empty() {
+        return Err(Errors(vec![Error {
+            file: None,
+            path: String::new(),
+            line: 0,
+            col: 0,
+            msg: "no config files".into(),
+        }]));
+    }
+    Ok(files)
+}
+
+const DIR_EXTS: &[&str] = &["conf", "yaml", "yml", "json"];
+
+fn walk(root: &Path, dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), Errors> {
+    let mut entries: Vec<_> = std::fs::read_dir(dir)
+        .map_err(|e| file_error(dir, &e.to_string()))?
+        .collect::<Result<_, _>>()
+        .map_err(|e| file_error(dir, &e.to_string()))?;
+    // Lexical order, as Go's filepath.WalkDir.
+    entries.sort_by_key(std::fs::DirEntry::file_name);
+    for e in entries {
+        let path = e.path();
+        if e.file_name().as_encoded_bytes().starts_with(b".") && path != root {
+            continue;
+        }
+        let ty = e
+            .file_type()
+            .map_err(|err| file_error(&path, &err.to_string()))?;
+        // A symbolic link is followed, as WalkDir does for the root only: elsewhere it is
+        // read as a file when it ends in one of the extensions.
+        if ty.is_dir() {
+            walk(root, &path, files)?;
+        } else if extension(&path).is_some_and(|x| DIR_EXTS.contains(&x.as_str())) {
+            add(&path, files)?;
+        }
+    }
+    Ok(())
+}
+
+fn add(p: &Path, files: &mut Vec<PathBuf>) -> Result<(), Errors> {
+    // As Go's filepath.Clean, for telling a file named twice: no "." or empty components.
+    let clean: PathBuf = p.components().collect();
+    if files.contains(&clean) {
+        return Ok(());
+    }
+    if files.len() == MAX_CONFIG_FILES {
+        return Err(Errors(vec![Error {
+            file: None,
+            path: String::new(),
+            line: 0,
+            col: 0,
+            msg: format!("a config is read from at most {MAX_CONFIG_FILES} files"),
+        }]));
+    }
+    files.push(clean);
+    Ok(())
+}
+
+fn extension(p: &Path) -> Option<String> {
+    p.extension()
+        .map(|x| x.to_string_lossy().to_ascii_lowercase())
+}
+
+fn file_error(p: &Path, msg: &str) -> Errors {
+    Errors(vec![Error {
+        file: Some(p.display().to_string()),
+        path: String::new(),
+        line: 0,
+        col: 0,
+        msg: msg.to_owned(),
+    }])
+}
+
+/// Reads the config `paths` name ([`config_files`]), merged ([`from_sources`]); at most
+/// [`MAX_CONFIG_BYTES`] in all. A file is read as JSON unless it ends in `.conf`, `.yaml` or
+/// `.yml`, which are refused as not supported yet until their readers come (I23, I24).
+///
+/// # Errors
+///
+/// Every problem found, each naming its file.
+pub fn from_files<P: AsRef<Path>>(paths: &[P]) -> Result<Config, Errors> {
+    let files = config_files(paths)?;
+    let mut texts = Vec::with_capacity(files.len());
+    let mut total: usize = 0;
+    let mut errs = Vec::new();
+    for f in &files {
+        match extension(f).as_deref() {
+            Some("conf") => {
+                errs.extend(file_error(f, &format!("{NOT_SUPPORTED_YET}: .conf files (I23)")).0);
+                continue;
+            }
+            Some("yaml" | "yml") => {
+                errs.extend(file_error(f, &format!("{NOT_SUPPORTED_YET}: YAML files (I24)")).0);
+                continue;
+            }
+            _ => {}
+        }
+        let text = read_limited(f, MAX_CONFIG_BYTES.saturating_sub(total), files.len() > 1)?;
+        total = total.saturating_add(text.len());
+        texts.push((f.display().to_string(), text));
+    }
+    if !errs.is_empty() {
+        return Err(Errors(errs));
+    }
+    let srcs: Vec<Source<'_>> = texts
+        .iter()
+        .map(|(name, src)| Source {
+            name: Some(name),
+            src,
+        })
+        .collect();
+    from_sources(&srcs)
+}
+
+fn read_limited(path: &Path, limit: usize, several: bool) -> Result<String, Errors> {
+    use std::io::Read;
+    let too_big = || {
+        let what = if several {
+            "the config's files hold"
+        } else {
+            "the config is"
+        };
+        file_error(path, &format!("{what} more than {MAX_CONFIG_BYTES} bytes"))
+    };
+    let f = std::fs::File::open(path).map_err(|e| file_error(path, &e.to_string()))?;
+    let mut bytes = Vec::new();
+    let cap = u64::try_from(limit).unwrap_or(u64::MAX).saturating_add(1);
+    f.take(cap)
+        .read_to_end(&mut bytes)
+        .map_err(|e| file_error(path, &e.to_string()))?;
+    if bytes.len() > limit {
+        return Err(too_big());
+    }
+    String::from_utf8(bytes).map_err(|e| {
+        file_error(
+            path,
+            &format!(
+                "the config is not UTF-8 (at byte {})",
+                e.utf8_error().valid_up_to()
+            ),
+        )
+    })
 }
 
 /// Reads a JSON config from a file, at most [`MAX_CONFIG_BYTES`] long.
 pub fn from_json_file(path: &Path) -> Result<Config, Errors> {
-    let name = path.display().to_string();
-    let fail = |msg: String| {
-        Errors(vec![Error {
-            file: Some(name.clone()),
-            path: String::new(),
-            line: 0,
-            col: 0,
-            msg,
-        }])
-    };
-    let meta = std::fs::metadata(path).map_err(|e| fail(e.to_string()))?;
-    if meta.len() > MAX_CONFIG_BYTES as u64 {
-        return Err(fail(format!(
-            "the config is larger than {MAX_CONFIG_BYTES} bytes"
-        )));
-    }
-    let bytes = std::fs::read(path).map_err(|e| fail(e.to_string()))?;
-    let src = String::from_utf8(bytes).map_err(|e| {
-        fail(format!(
-            "the config is not UTF-8 (at byte {})",
-            e.utf8_error().valid_up_to()
-        ))
-    })?;
-    from_json(&src, Some(&name))
+    let src = read_limited(path, MAX_CONFIG_BYTES, false)?;
+    from_json(&src, Some(&path.display().to_string()))
 }

@@ -11,14 +11,55 @@ done and where the work differs from the plan.
 | | |
 | --- | --- |
 | Last updated | 2026-11-23 |
-| Milestone | M0, foundations: I01–I05, I07a and I07b done. |
+| Milestone | M0, foundations: I01–I06, I07a and I07b done. |
 | akio | `50a82315` on akio's `main` (`1.0.0-rc.1`), pinned by `rev` in `Cargo.toml` |
 | fit | the specification; read at `7daee573` for this plan |
-| What works | `akit run -c <file.json>` serves HTTP/1.1 and h2c listeners with `respond` routes, by fit's host and path rules, 404 when nothing matches; `akit version` and `akit help`; the workspace builds and passes `make check`; `akit_config::from_json` reads fit's listeners, routes and the `respond` handler, and refuses the rest of fit's config by name as not supported yet; the module registry and the data-plane traits (`akit-runtime`); `compile` turns a config into a `Graph` and `GraphCell` publishes, reads and retires graphs; the compatibility gate runs every fit fixture through akit-config in `make check` and CI |
-| Next | I06, the CLI with fit's flags, signals and graceful shutdown. |
+| What works | `akit run` and `akit validate` with fit's flags and exit codes (`-c` repeated, files and directories, merged), and a graceful shutdown on SIGINT and SIGTERM; `akit run` serves HTTP/1.1 and h2c listeners with `respond` routes, by fit's host and path rules, 404 when nothing matches; `akit version` and `akit help`; the workspace builds and passes `make check`; `akit_config::from_json` reads fit's listeners, routes and the `respond` handler, and refuses the rest of fit's config by name as not supported yet; the module registry and the data-plane traits (`akit-runtime`); `compile` turns a config into a `Graph` and `GraphCell` publishes, reads and retires graphs; the compatibility gate runs every fit fixture through akit-config in `make check` and CI |
+| Next | I08, the benchmark harness and baselines, which ends M0. |
 | akio requests | A1–A8 all being added to akio now, each on its own akio branch ([akio API requests](akio-api-requests.md)) |
 
 ## Log
+
+### 2026-11-23: I06, CLI, signals and graceful shutdown
+
+- `akit run`, `akit validate`, `akit version` and `akit help` with fit's flags, read as Go's
+  `flag` package reads them (`-c x`, `-c=x`, `--c`, bool flags, `--`), and fit's exit codes: 0, 1
+  when it did not work (config errors, a shutdown out of time), 2 when used wrongly (a bad or
+  unknown flag, an argument, no command). `validate` prints `<files>: valid`; `version` prints
+  akit's version, akio's commit and the platform, a line each, as fit's.
+- `-c` repeated, files and directories: `akit_config::from_files` finds the files as fit does
+  (a directory's `.json`, `.conf`, `.yaml` and `.yml` files, in subdirectories too, in lexical
+  order, dotfiles left out, a file named twice read once, at most 10,000 files and 64 MiB) and
+  merges them as fit does: `listeners` and `routes` joined in the files' order, `schema_version`
+  given by each if they agree, the checks across elements on the whole. Each problem names its
+  file, line and column, with its path in that file. A `.conf` or YAML file is refused as not
+  supported yet (I23, I24); any other is JSON, as in fit. `fit.json` when no `-c` is given.
+- Signals through akio-sys's `signal_pipe` (its `unsafe` stays in akio): SIGINT and SIGTERM print
+  `akit: shutting down`, stop the listeners, close idle connections and wait up to
+  `-shutdown-timeout` (30s by default, a Go duration) for requests in flight, then print
+  `akit: stopped` and exit 0, or say the shutdown took longer and exit 1. A second signal exits at
+  once. SIGHUP says reloading is not supported yet (I22) instead of killing the process.
+  `akit_listener::shutdown` does the drain; `akit_listener::Options` carries the backend and the
+  timeout.
+- fit's other `run` flags (`-watch`, `-watch-interval`, `-watch-certs`, `-admin`, `-timeout`) are
+  refused as not supported yet, exit 2.
+- The compatibility gate now reads a directory of JSON files through the merge:
+  `templates/json/conf.d` is refused only as not supported yet (`upstreams`, the `proxy`
+  handler), no longer a format akit cannot read; 2 fixtures refused only as not supported yet, 77
+  in a format not supported yet.
+- Tests: `akit-config/tests/files.rs` (6: joining, problems in their file, schema versions,
+  directories, formats, missing and empty); flags and Go durations; `akit-listener` (2 more: a
+  request in flight finishes during the shutdown while an idle connection is closed at once; one
+  that outlasts the timeout is cut and reported); `akit/tests/cli.rs` (4: validate across files
+  and a directory, usage errors exit 2, `run` from two files stopped by SIGTERM with an idle
+  keep-alive connection, `run` from a directory stopped by SIGINT).
+- Checked: `make check` on macOS. Not yet checked: the tests on Linux (epoll and io_uring), queued
+  on the benchmark host with I04's and I05's; a follow-up records them.
+- Differs from the plan: the request in flight is tested with the library's server and a handler
+  that answers later, since `respond`, the only handler, answers at once; the binary's tests cover
+  the signals, the output and the exit codes. Whether the shutdown ran out of time is told by how
+  long akio's drain took (akio reports no count of the connections it closed). The second signal
+  exits with 1, where Go's default handler would kill the process by the signal.
 
 ### 2026-11-23: I05, `akit run`: listeners and `respond`
 
