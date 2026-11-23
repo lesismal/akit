@@ -227,6 +227,20 @@ pub struct Match {
     pub host: Vec<String>,
     /// `path`: exact paths, or prefixes ending in `*`.
     pub path: Vec<String>,
+    /// `path_regexp`: regular expressions matched against the path, anywhere in it unless
+    /// anchored.
+    pub path_regexp: Vec<String>,
+    /// `method`: methods, compared as written.
+    pub method: Vec<String>,
+    /// `header`: header names (ignoring case), each with the values one of its fields must have
+    /// (any value when none are listed), in the order written.
+    pub header: Vec<(String, Vec<String>)>,
+    /// `query`: query parameters, alike, compared once unescaped.
+    pub query: Vec<(String, Vec<String>)>,
+    /// `remote_ip`: IP addresses and CIDR prefixes the connection's peer must be in.
+    pub remote_ip: Vec<String>,
+    /// `expr`: an expression the request must match (`akit_router::Expr`); empty when not set.
+    pub expr: String,
 }
 
 /// A route's handler module and its params.
@@ -436,8 +450,9 @@ const CERTIFICATE_FIELDS: &[&str] = &["cert_file", "key_file"];
 const CLIENT_AUTH_FIELDS: &[&str] = &["ca_files", "mode"];
 const ROUTE_FIELDS: &[&str] = &["name", "listeners", "priority", "match", "handler"];
 const ROUTE_FIT_ONLY: &[&str] = &["access", "middleware"];
-const MATCH_FIELDS: &[&str] = &["host", "path"];
-const MATCH_FIT_ONLY: &[&str] = &[
+const MATCH_FIELDS: &[&str] = &[
+    "host",
+    "path",
     "path_regexp",
     "method",
     "header",
@@ -445,6 +460,7 @@ const MATCH_FIT_ONLY: &[&str] = &[
     "remote_ip",
     "expr",
 ];
+const MATCH_FIT_ONLY: &[&str] = &[];
 const MODULE_FIELDS: &[&str] = &["module", "params"];
 /// fit's handler modules (its `http.handlers` namespace) that akit does not have yet.
 const FIT_HANDLERS: &[&str] = &[
@@ -915,8 +931,97 @@ fn route_match(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Match> {
             m.path.push(s);
         }
     }
+    // fit's checks are the router's own builders (`config/validate.go`).
+    if let Some(v) = o.take("path_regexp") {
+        let p = o.at("path_regexp");
+        for (i, (off, s)) in d.strings(v, &p).into_iter().enumerate() {
+            if let Err(e) = akit_router::Matcher::path_regexp(&[&s]) {
+                d.error(off, &crate::error::join_index(&p, i), e.to_string());
+            }
+            m.path_regexp.push(s);
+        }
+    }
+    if let Some(v) = o.take("method") {
+        let p = o.at("method");
+        for (i, (off, s)) in d.strings(v, &p).into_iter().enumerate() {
+            if !is_token(&s) {
+                d.error(
+                    off,
+                    &crate::error::join_index(&p, i),
+                    format!("{s:?} is not a valid method"),
+                );
+            }
+            m.method.push(s);
+        }
+    }
+    if let Some(v) = o.take("header") {
+        m.header = string_lists(d, v, &o.at("header"), |name| {
+            (!is_token(name)).then(|| format!("{name:?} is not a valid header name"))
+        });
+    }
+    if let Some(v) = o.take("query") {
+        m.query = string_lists(d, v, &o.at("query"), |key| {
+            key.is_empty()
+                .then(|| "the query parameter's name is empty".to_owned())
+        });
+    }
+    if let Some(v) = o.take("remote_ip") {
+        let p = o.at("remote_ip");
+        for (i, (off, s)) in d.strings(v, &p).into_iter().enumerate() {
+            if let Err(e) = akit_router::parse_prefix(&s) {
+                d.error(off, &crate::error::join_index(&p, i), e.to_string());
+            }
+            m.remote_ip.push(s);
+        }
+    }
+    if let Some(v) = o.take("expr") {
+        let p = o.at("expr");
+        if let Some(s) = d.string(v, &p) {
+            if !s.is_empty() {
+                if let Err(e) = akit_router::Expr::parse(&s) {
+                    d.error(v.off, &p, e.to_string());
+                }
+            }
+            m.expr = s;
+        }
+    }
     o.finish(d, MATCH_FIELDS, MATCH_FIT_ONLY);
     Some(m)
+}
+
+/// An object of string arrays (`map<array<string>>`), in the order written; `check` names what
+/// is wrong with a key, reported where its value starts, in the keys' sorted order, as fit
+/// reports them.
+fn string_lists(
+    d: &mut Decoder<'_>,
+    n: &Node,
+    path: &str,
+    check: impl Fn(&str) -> Option<String>,
+) -> Vec<(String, Vec<String>)> {
+    let crate::json::Kind::Object(members) = &n.kind else {
+        // Reports the error.
+        let _ = d.object(n, path);
+        return Vec::new();
+    };
+    let mut bad: Vec<(&str, usize, String)> = members
+        .iter()
+        .filter_map(|m| check(&m.key).map(|msg| (m.key.as_str(), m.value.off, msg)))
+        .collect();
+    bad.sort_by(|a, b| a.0.cmp(b.0));
+    for (key, off, msg) in bad {
+        d.error(off, &crate::error::join_key(path, key), msg);
+    }
+    members
+        .iter()
+        .map(|m| {
+            let values = d
+                .strings(&m.value, &crate::error::join_key(path, &m.key))
+                .into_iter()
+                .map(|(_, s)| s)
+                .collect();
+            (m.key.clone(), values)
+        })
+        .collect()
 }
 
 fn handler(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Handler> {

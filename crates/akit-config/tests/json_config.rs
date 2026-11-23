@@ -97,7 +97,7 @@ fn not_supported_yet_is_not_wrong() {
         r#"{"schema_version": 1,
             "listeners": [{"name": "web", "address": ":8080", "protocols": ["http/1.1", "h2", "h3"], "tls": {}}],
             "routes": [{"name": "hello", "middleware": [], "handler": {"module": "proxy", "params": {"upstream": "app", "timeout": "60s"}}},
-                       {"match": {"method": ["GET"]}, "handler": {"module": "respond"}}],
+                       {"access": {}, "handler": {"module": "respond"}}],
             "upstreams": [{"name": "app", "addresses": ["127.0.0.1:9000"], "load_balancing": "p2c"}]}"#,
     );
     assert!(e.only_not_supported_yet(), "{e}");
@@ -108,7 +108,7 @@ fn not_supported_yet_is_not_wrong() {
             "listeners[0].tls",
             "routes[0].handler.params.timeout",
             "routes[0].middleware",
-            "routes[1].match.method",
+            "routes[1].access",
             "upstreams[0].load_balancing",
         ]
     );
@@ -418,4 +418,74 @@ fn fit_template_if_present() {
     if let Err(e) = from_json(&src, Some("fit.json")) {
         assert!(e.only_not_supported_yet(), "{e}");
     }
+}
+
+/// fit's `TestValidate` "route matchers" case (`config/config_test.go`), and what the fields read.
+#[test]
+fn route_matchers() {
+    let l = lines(
+        r#"{"listeners": [{"name": "web", "address": ":80"}], "routes": [
+  {"match": {"method": ["GET", "BAD METHOD", ""], "header": {"X-Ok": [], "Bad Name": ["v"]}, "query": {"": ["1"], "ok": []}}, "handler": {"module": "respond"}},
+  {"match": {"remote_ip": ["10.0.0.0/8", "10.0.0.0/33", "a.example", "::1"], "path_regexp": ["^/ok$", "("]}, "handler": {"module": "respond"}},
+  {"match": {"expr": "Host(\"a.example\") && Nope(\"x\")"}, "handler": {"module": "respond"}}
+]}"#,
+    );
+    let mut want = vec![
+        r#"2:32: routes[0].match.method[1]: "BAD METHOD" is not a valid method"#,
+        r#"2:46: routes[0].match.method[2]: "" is not a valid method"#,
+        // akit writes a map's key as `["key"]`, where fit writes `.key`.
+        r#"2:86: routes[0].match.header["Bad Name"]: "Bad Name" is not a valid header name"#,
+        r#"2:108: routes[0].match.query[""]: the query parameter's name is empty"#,
+        r#"3:42: routes[1].match.remote_ip[1]: "10.0.0.0/33" is not an IP address or a CIDR prefix"#,
+        r#"3:57: routes[1].match.remote_ip[2]: "a.example" is not an IP address or a CIDR prefix"#,
+        "4:22: routes[2].match.expr: at byte 22: there is no matcher Nope",
+    ];
+    // fit's ends in Go's regexp error, akit's in akio-regex's.
+    let re = l
+        .iter()
+        .find(|s| {
+            s.starts_with(
+                "3:103: routes[1].match.path_regexp[1]: \"(\" is not a valid regular expression: ",
+            )
+        })
+        .unwrap_or_else(|| panic!("no path_regexp error in {l:#?}"));
+    want.push(re);
+    let mut got: Vec<&str> = l.iter().map(String::as_str).collect();
+    got.sort_unstable();
+    want.sort_unstable();
+    assert_eq!(got, want);
+
+    let c = ok(
+        r#"{"listeners": [{"name": "web", "address": ":80"}], "routes": [{"match": {
+        "host": ["a.example"], "path": ["/a/*"], "path_regexp": ["^/a/[0-9]+$"], "method": ["GET", "HEAD"],
+        "header": {"X-Env": ["prod", "staging"], "Accept": []}, "query": {"v": ["2"]},
+        "remote_ip": ["10.0.0.0/8", "::1"], "expr": "Method(\"GET\") || Header(\"X-A\")"},
+        "handler": {"module": "respond"}}]}"#,
+    );
+    let m = c.routes[0].matcher.as_ref().unwrap();
+    assert_eq!(m.path_regexp, ["^/a/[0-9]+$"]);
+    assert_eq!(m.method, ["GET", "HEAD"]);
+    assert_eq!(
+        m.header,
+        [
+            (
+                "X-Env".to_owned(),
+                vec!["prod".to_owned(), "staging".to_owned()]
+            ),
+            ("Accept".to_owned(), vec![])
+        ]
+    );
+    assert_eq!(m.query, [("v".to_owned(), vec!["2".to_owned()])]);
+    assert_eq!(m.remote_ip, ["10.0.0.0/8", "::1"]);
+    assert_eq!(m.expr, r#"Method("GET") || Header("X-A")"#);
+    // An empty expression is no expression, as in fit.
+    let c = ok(
+        r#"{"listeners": [{"name": "web", "address": ":80"}], "routes": [{"match": {"expr": ""}, "handler": {"module": "respond"}}]}"#,
+    );
+    assert!(c.routes[0].matcher.as_ref().unwrap().expr.is_empty());
+    // Wrong types are reported as such.
+    assert_eq!(
+        lines(r#"{"listeners": [{"name": "web", "address": ":80"}], "routes": [{"match": {"header": {"X": "v"}, "query": [], "expr": 1}, "handler": {"module": "respond"}}]}"#).len(),
+        3
+    );
 }

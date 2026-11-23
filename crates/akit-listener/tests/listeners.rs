@@ -394,3 +394,79 @@ fn canonical_path_for_handlers() {
     e.shutdown();
     e.wait();
 }
+
+/// An HTTP/1.1 request with `head` (its method, target and extra header lines); the status
+/// line's code and the body.
+fn request(addr: SocketAddr, head: &str) -> (u16, String) {
+    let (method, rest) = head.split_once(' ').unwrap();
+    let (target, extra) = rest.split_once('\n').unwrap_or((rest, ""));
+    let mut s = TcpStream::connect(addr).unwrap();
+    s.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+    let extra: String = extra.lines().map(|l| format!("{l}\r\n")).collect();
+    write!(
+        s,
+        "{method} {target} HTTP/1.1\r\nHost: a.example\r\n{extra}Content-Length: 0\r\nConnection: close\r\n\r\n"
+    )
+    .unwrap();
+    let mut resp = String::new();
+    s.read_to_string(&mut resp).unwrap();
+    let (head, body) = resp.split_once("\r\n\r\n").unwrap();
+    let code = head.split(' ').nth(1).unwrap().parse().unwrap();
+    (code, body.to_owned())
+}
+
+/// I39: routes' method, header, query, remote IP, path regexp and expression matchers, on the
+/// requests a listener serves.
+#[test]
+fn route_matchers() {
+    let body =
+        |b: &str| format!(r#""handler": {{"module": "respond", "params": {{"body": "{b}"}}}}"#);
+    let json = format!(
+        r#"{{"listeners": [{{"name": "web", "address": "127.0.0.1:0", "protocols": ["http/1.1", "h2c"]}}],
+            "routes": [
+              {{"match": {{"path": ["/m"], "method": ["POST"]}}, {}}},
+              {{"match": {{"path": ["/m"], "header": {{"X-Env": ["prod"]}}}}, {}}},
+              {{"match": {{"path": ["/m"], "query": {{"v": ["2"]}}}}, {}}},
+              {{"match": {{"path": ["/m"]}}, {}}},
+              {{"match": {{"path": ["/ip"], "remote_ip": ["10.0.0.0/8"]}}, {}}},
+              {{"match": {{"path": ["/ip"], "remote_ip": ["127.0.0.0/8", "::1"]}}, {}}},
+              {{"match": {{"path_regexp": ["^/users/[0-9]+$"]}}, {}}},
+              {{"priority": 1, "match": {{"expr": "Host(\"*.example\") && (PathPrefix(\"/api/\") || Method(\"DELETE\")) && !Header(\"X-Skip\")"}}, {}}}
+            ]}}"#,
+        body("post"),
+        body("prod"),
+        body("v2"),
+        body("plain"),
+        body("ten"),
+        body("local"),
+        body("user"),
+        body("expr"),
+    );
+    let (e, addrs) = serve(&json);
+    let a = addrs[0];
+    for (head, code, want) in [
+        ("POST /m", 200, "post"),
+        ("GET /m\nX-Env: prod", 200, "prod"),
+        ("GET /m\nX-Env: dev\nX-Env: prod", 200, "prod"),
+        ("GET /m\nx-env: Prod", 200, "plain"),
+        ("GET /m?v=2", 200, "v2"),
+        ("GET /m?v=%32", 200, "v2"),
+        ("GET /m?v=3", 200, "plain"),
+        ("POST /m?v=2\nX-Env: prod", 200, "post"),
+        ("GET /ip", 200, "local"),
+        ("GET /users/42", 200, "user"),
+        ("GET /users/42/x", 404, "404 page not found\n"),
+        ("GET /users/%34%32", 200, "user"),
+        ("GET /api/x", 200, "expr"),
+        ("DELETE /m", 200, "expr"),
+        ("DELETE /m\nX-Skip: 1", 200, "plain"),
+        ("GET /api/x\nX-Skip: 1", 404, "404 page not found\n"),
+    ] {
+        assert_eq!(request(a, head), (code, want.to_owned()), "{head:?}");
+    }
+    // Over HTTP/2 too: the query and the method.
+    assert_eq!(get_h2c(a, "/m?v=2").unwrap(), (200, "v2".to_owned()));
+    assert_eq!(get_h2c(a, "/m").unwrap(), (200, "plain".to_owned()));
+    e.shutdown();
+    e.wait();
+}

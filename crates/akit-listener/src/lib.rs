@@ -112,9 +112,13 @@ impl akio_http::Service for Dispatcher {
                     ctx.text(400, BAD_REQUEST_PATH);
                     return;
                 };
+                let req = RouterRequest {
+                    ctx,
+                    path: &path.decoded,
+                };
                 let route = g
                     .listener_index(&self.listener)
-                    .and_then(|i| g.route(i, ctx.header("host").unwrap_or(""), &path.decoded));
+                    .and_then(|i| g.route_request(i, &req));
                 let changed = match path.escaped {
                     Cow::Owned(p) => Some(p),
                     Cow::Borrowed(_) => None,
@@ -136,6 +140,33 @@ impl akio_http::Service for Dispatcher {
 
     // Request bodies are buffered (akio's default) until a handler takes them as a stream:
     // the proxy's, I16, routes in `body_mode` too.
+}
+
+/// A request as the router's matchers read it: akio's context, with the canonical path.
+struct RouterRequest<'a> {
+    ctx: &'a Context,
+    path: &'a [u8],
+}
+
+impl akit_router::Request for RouterRequest<'_> {
+    fn method(&self) -> &str {
+        self.ctx.method().as_str()
+    }
+    fn host(&self) -> &str {
+        self.ctx.header("host").unwrap_or("")
+    }
+    fn path(&self) -> &[u8] {
+        self.path
+    }
+    fn query(&self) -> &str {
+        self.ctx.req().query().unwrap_or("")
+    }
+    fn remote_ip(&self) -> Option<IpAddr> {
+        Some(self.ctx.peer().ip())
+    }
+    fn any_header(&self, name: &str, f: impl FnMut(&str) -> bool) -> bool {
+        self.ctx.req().headers.get_all(name).any(f)
+    }
 }
 
 /// Why the listeners could not be set up.
