@@ -9,8 +9,13 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
+akit-config = { workspace = true }
 akio = { workspace = true }
 akio-http = { workspace = true }
+
+[[bench]]
+name = "graph_read"
+harness = false
 
 [lints]
 workspace = true

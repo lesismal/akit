@@ -86,6 +86,16 @@ pub enum Handler {
     Respond(Respond),
 }
 
+impl Handler {
+    /// The handler module's name, as the config writes it in `module`.
+    #[must_use]
+    pub fn module(&self) -> &'static str {
+        match self {
+            Handler::Respond(_) => "respond",
+        }
+    }
+}
+
 /// The `respond` handler's params.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Respond {

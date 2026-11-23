@@ -11,14 +11,39 @@ done and where the work differs from the plan.
 | | |
 | --- | --- |
 | Last updated | 2026-11-23 |
-| Milestone | M0, foundations: I01, I02, I03, I07a and I07b done. |
+| Milestone | M0, foundations: I01, I02, I03, I04, I07a and I07b done. |
 | akio | `50a82315` on akio's `main` (`1.0.0-rc.1`), pinned by `rev` in `Cargo.toml` |
 | fit | the specification; read at `7daee573` for this plan |
-| What works | the workspace builds and passes `make check`; `akit version` and `akit help`; `akit_config::from_json` reads fit's listeners, routes and the `respond` handler, and refuses the rest of fit's config by name as not supported yet; the module registry and the data-plane traits (`akit-runtime`); the compatibility gate runs every fit fixture through akit-config in `make check` and CI |
-| Next | I04, which joins I02's config model to I03's registry. |
+| What works | the workspace builds and passes `make check`; `akit version` and `akit help`; `akit_config::from_json` reads fit's listeners, routes and the `respond` handler, and refuses the rest of fit's config by name as not supported yet; the module registry and the data-plane traits (`akit-runtime`); `compile` turns a config into a `Graph` and `GraphCell` publishes, reads and retires graphs; the compatibility gate runs every fit fixture through akit-config in `make check` and CI |
+| Next | I05, `akit run` with listeners and `respond`. |
 | akio requests | A1–A8 all being added to akio now, each on its own akio branch ([akio API requests](akio-api-requests.md)) |
 
 ## Log
+
+### 2026-11-23: I04, the runtime graph and its swap
+
+- `akit_runtime::compile(config, registry, env) -> Graph`: every route's handler loaded from the
+  registry and provisioned before the graph exists. A config that fails leaves nothing behind: the
+  modules provisioned before the failure are cleaned up, and errors carry the path of what failed
+  (`routes[1].handler.params.status` for a provision error naming a field).
+- `GraphCell` ([decision 004](decisions/004-graph-publication-and-retirement.md)): `swap` publishes
+  a graph under a lock and bumps an epoch; `with` reads it through a per-thread cached `Arc`,
+  refreshed once per thread per swap, so a request bumps no shared reference count; `hold` keeps a
+  graph for a request or connection that outlives its handler's call; `collect` retires replaced
+  graphs, cleaning their modules up once, when every thread is outside them or past them and no
+  `Hold` keeps them.
+- Tests (`tests/graph.rs`, 8): compile and its failures, swap and collect, holds, a request still
+  inside the old graph, an idle thread that does not pin it, 8 threads swapping and reading 300
+  times each with every graph retired exactly once, and swaps while 4 akio I/O threads serve.
+- Benchmark `benches/graph_read.rs`: a read through `GraphCell::with` against an `Arc` clone and a
+  mutex-and-clone, on 1 and 16 threads; its numbers come from the benchmark host.
+- Checked: `make check` on macOS. Not yet checked: the tests on Linux (epoll and io_uring) and the
+  benchmark, queued on the benchmark host; a follow-up records them.
+- Differs from the plan: the "atomic pointer" is a mutex taken once per thread per swap (no unsafe,
+  rule 14; the epoch is the atomic). A graph is not released by its last request: akio has no hook
+  on an idle I/O thread, whose cache would keep the old graph, so the control plane retires it
+  with `collect` (decision 004). Handler params are `akit_config::Handler`, decoded and checked by
+  akit-config. Routes stay in the config's order until I11.
 
 ### 2026-11-23: I07b, the compatibility gate wired to akit-config
 
