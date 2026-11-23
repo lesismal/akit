@@ -89,7 +89,9 @@ $BENCH_SSH "cat > $dir/run.sh && chmod +x $dir/run.sh" <<EOP
 cd $dir
 $QUIET run ./rounds.sh > run.log 2>&1
 touch done
+# Rule 29: what the comparison made goes when it ends; the shared target directory stays.
 docker rmi akit-bench:$id-a akit-bench:$id-b >/dev/null 2>&1 || true
+rm -rf $BENCH_DIR/src-$id-a $BENCH_DIR/src-$id-b
 EOP
 $BENCH_SSH "cd $dir && setsid nohup ./run.sh > /dev/null 2>&1 < /dev/null &" < /dev/null
 mkdir -p "$local_dir/$id"

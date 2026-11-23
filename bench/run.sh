@@ -80,7 +80,9 @@ $QUIET run $fit_dir/bin/fitbench -root $fit_dir -bin $fit_dir/bin -akit-image ak
 code=\$?
 [ -e results.json ] && $fit_dir/bin/benchreport -in results.json > report.md 2>&1
 echo "exit \$code" > status
+# Rule 29: what the run made goes when it ends; the shared target directory stays.
 docker rmi akit-bench:$id >/dev/null 2>&1 || true
+rm -rf $BENCH_DIR/src-$id
 EOP
 $BENCH_SSH "cd $dir && setsid nohup ./run.sh > /dev/null 2>&1 < /dev/null &" < /dev/null
 echo "bench: started $id on the benchmark host; bench/run.sh -report $id (or -wait $id)"

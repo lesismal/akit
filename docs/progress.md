@@ -77,8 +77,8 @@ done and where the work differs from the plan.
   that outlasts the timeout is cut and reported); `akit/tests/cli.rs` (4: validate across files
   and a directory, usage errors exit 2, `run` from two files stopped by SIGTERM with an idle
   keep-alive connection, `run` from a directory stopped by SIGINT).
-- Checked: `make check` on macOS. Not yet checked: the tests on Linux (epoll and io_uring), queued
-  on the benchmark host with I04's and I05's; a follow-up records them.
+- Checked: `make check` on macOS; the workspace's tests on Linux, epoll and io_uring, on the
+  benchmark host (2026-11-24, with I04's and I05's): all pass.
 - Differs from the plan: the request in flight is tested with the library's server and a handler
   that answers later, since `respond`, the only handler, answers at once; the binary's tests cover
   the signals, the output and the exit codes. Whether the shutdown ran out of time is told by how
@@ -110,8 +110,8 @@ done and where the work differs from the plan.
   refused by default, h2c alone refused; `akit/tests/hello.rs` (3): fit's `hello` example, as
   JSON, answers `/hello` and its `not-found` route over HTTP/1.1 and h2c through the binary; a
   bad config exits 1 with its errors, bad flags exit 2.
-- Checked: `make check` on macOS. Not yet checked: the tests on Linux (epoll and io_uring), running
-  on the benchmark host; a follow-up records them.
+- Checked: `make check` on macOS; the workspace's tests on Linux, epoll and io_uring, on the
+  benchmark host (2026-11-24, in I06's run): all pass.
 - Differs from the plan: the router v0 was not in I05's plan; without it the example's
   `not-found` route (priority -1, no match) would shadow `/hello`. I11 keeps its rules and makes
   lookups allocation-free, and now also canonicalizes paths as fit's listener does (not planned
@@ -136,9 +136,13 @@ done and where the work differs from the plan.
   inside the old graph, an idle thread that does not pin it, 8 threads swapping and reading 300
   times each with every graph retired exactly once, and swaps while 4 akio I/O threads serve.
 - Benchmark `benches/graph_read.rs`: a read through `GraphCell::with` against an `Arc` clone and a
-  mutex-and-clone, on 1 and 16 threads; its numbers come from the benchmark host.
-- Checked: `make check` on macOS. Not yet checked: the tests on Linux (epoll and io_uring) and the
-  benchmark, queued on the benchmark host; a follow-up records them.
+  mutex-and-clone, 20 million reads a thread on the benchmark host (16 cores): `GraphCell::with`
+  4.06 ns a read on 1 thread and 8.78 ns on 16; an `Arc` clone and drop 2.77 ns and 324.51 ns; a
+  mutex and a clone 6.57 ns and 1,167.62 ns. The shared reference count costs 37 times the cell's
+  read once 16 threads contend for it.
+- Checked: `make check` on macOS; the workspace's tests on Linux, epoll and io_uring, on the
+  benchmark host (2026-11-24, in I06's run): all pass; the read benchmark there, under
+  `quiet.sh` (above).
 - Differs from the plan: the "atomic pointer" is a mutex taken once per thread per swap (no unsafe,
   rule 14; the epoch is the atomic). A graph is not released by its last request: akio has no hook
   on an idle I/O thread, whose cache would keep the old graph, so the control plane retires it
