@@ -186,6 +186,8 @@ pub struct Match {
 pub enum Handler {
     /// `respond`: a fixed status, header fields and body.
     Respond(Respond),
+    /// `static`: the files under a root directory.
+    Static(Static),
 }
 
 impl Handler {
@@ -194,6 +196,7 @@ impl Handler {
     pub fn module(&self) -> &'static str {
         match self {
             Handler::Respond(_) => "respond",
+            Handler::Static(_) => "static",
         }
     }
 }
@@ -207,6 +210,45 @@ pub struct Respond {
     pub headers: Vec<(String, String)>,
     /// `body`.
     pub body: String,
+}
+
+/// The `static` handler's params, as fit's `handler/static`. akit reads the ones akio-http's
+/// `Files` can act on; the rest are refused as not supported yet (I13 and akio API requests A13
+/// to A15 bring them).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Static {
+    /// `root`: the directory files are served from. Required; that it is a directory is checked
+    /// when the handler is provisioned, as fit's.
+    pub root: String,
+    /// `index`: the file that stands for a directory. fit takes a list, tried in order,
+    /// `["index.html"]` when left out; akit takes one name so far (a list of other than one is
+    /// refused as not supported yet, akio API request A14).
+    pub index: String,
+    /// `max_file_bytes`: the largest file kept in memory, [`DEFAULT_MAX_FILE_BYTES`] when left
+    /// out or 0. Larger ones are sent from disk.
+    pub max_file_bytes: u64,
+    /// `dotfiles`: whether paths with a segment starting with a dot are served.
+    pub dotfiles: Dotfiles,
+    /// `check_interval`: how long what was learned of a file is trusted before the disk is
+    /// looked at again, where no watch reports its changes; 0 looks at the disk for every
+    /// request. [`DEFAULT_CHECK_INTERVAL`] when left out.
+    pub check_interval: Duration,
+}
+
+/// fit's default `max_file_bytes`: 1 MiB.
+pub const DEFAULT_MAX_FILE_BYTES: u64 = 1 << 20;
+/// fit's default `check_interval`.
+pub const DEFAULT_CHECK_INTERVAL: Duration = Duration::from_secs(5);
+
+/// The `static` handler's `dotfiles`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Dotfiles {
+    /// `deny`, the default: a path with a segment starting with a dot (but `/.well-known/` at
+    /// the root) is answered 404, as a file not there.
+    #[default]
+    Deny,
+    /// `allow`: dotfiles are served as other files.
+    Allow,
 }
 
 // What akit reads, and what fit reads that akit does not yet, object by object.
@@ -267,7 +309,6 @@ const FIT_HANDLERS: &[&str] = &[
     "media_pages",
     "media_tokens",
     "proxy",
-    "static",
     "stream_whep",
     "stream_whip",
     "sync_ingest",
@@ -278,6 +319,26 @@ const FIT_HANDLERS: &[&str] = &[
     "whip",
 ];
 const RESPOND_FIELDS: &[&str] = &["status", "headers", "body"];
+const STATIC_FIELDS: &[&str] = &[
+    "root",
+    "index",
+    "max_file_bytes",
+    "dotfiles",
+    "disk_io",
+    "check_interval",
+];
+// strip_prefix, max_cache_bytes and default_type wait on akio API requests A13 to A15;
+// precompressed, compress, try_files and browse come with I13.
+const STATIC_FIT_ONLY: &[&str] = &[
+    "strip_prefix",
+    "max_cache_bytes",
+    "precompressed",
+    "compress",
+    "try_files",
+    "browse",
+    "browse_max_entries",
+    "default_type",
+];
 const UPSTREAM_FIELDS: &[&str] = &[
     "name",
     "addresses",
@@ -712,6 +773,7 @@ fn handler(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Handler> {
             None
         }
         "respond" => respond(d, params, &params_path).map(Handler::Respond),
+        "static" => static_files(d, params, off, &params_path).map(Handler::Static),
         m if FIT_HANDLERS.contains(&m) => {
             d.not_yet(off, &module_path, &format!("the {m:?} handler"));
             None
@@ -780,6 +842,117 @@ fn respond(d: &mut Decoder<'_>, params: Option<&Node>, path: &str) -> Option<Res
     }
     o.finish(d, RESPOND_FIELDS, &[]);
     Some(r)
+}
+
+fn static_files(
+    d: &mut Decoder<'_>,
+    params: Option<&Node>,
+    module_off: usize,
+    path: &str,
+) -> Option<Static> {
+    let Some(n) = params else {
+        d.error(
+            module_off,
+            &crate::error::join_field(path, "root"),
+            "missing required field",
+        );
+        return None;
+    };
+    let mut o: Obj<'_> = d.object(n, path)?;
+    let root = o.require(d, "root").and_then(|v| {
+        let p = o.at("root");
+        let s = d.string(v, &p)?;
+        if s.is_empty() {
+            d.error(v.off, &p, "the root is empty");
+        }
+        Some(s)
+    });
+    let dotfiles = match o.take("dotfiles") {
+        None => Dotfiles::Deny,
+        Some(v) => {
+            let p = o.at("dotfiles");
+            match d.string(v, &p).as_deref() {
+                Some("deny") | None => Dotfiles::Deny,
+                Some("allow") => Dotfiles::Allow,
+                Some(other) => {
+                    d.error(
+                        v.off,
+                        &p,
+                        format!("{other:?} is not one of \"deny\", \"allow\""),
+                    );
+                    Dotfiles::Deny
+                }
+            }
+        }
+    };
+    let mut index = String::from("index.html");
+    if let Some(v) = o.take("index") {
+        let p = o.at("index");
+        let names = d.strings(v, &p);
+        for (i, (off, name)) in names.iter().enumerate() {
+            let at = crate::error::join_index(&p, i);
+            if name.is_empty() || name == "." || name == ".." || name.contains(['/', '\\', '\0']) {
+                d.error(*off, &at, format!("{name:?} is not a file name"));
+            } else if dotfiles == Dotfiles::Deny && name.starts_with('.') {
+                d.error(
+                    *off,
+                    &at,
+                    format!(
+                        "{name:?} starts with a dot, which dotfiles deny hides; set dotfiles to allow to serve it"
+                    ),
+                );
+            }
+        }
+        match names.as_slice() {
+            [(_, name)] => index.clone_from(name),
+            // An array of strings with a problem was reported already.
+            _ if !matches!(&v.kind, crate::json::Kind::Array(_)) => {}
+            [] => d.not_yet(v.off, &p, "an empty index list, which serves no index file"),
+            _ => d.not_yet(
+                v.off,
+                &p,
+                "an index list of more than one name, tried in order",
+            ),
+        }
+    }
+    let max_file_bytes = o
+        .take("max_file_bytes")
+        .and_then(|v| d.int(v, &o.at("max_file_bytes"), 0, i64::MAX))
+        .and_then(|n| u64::try_from(n).ok())
+        .filter(|n| *n != 0)
+        .unwrap_or(DEFAULT_MAX_FILE_BYTES);
+    if let Some(v) = o.take("disk_io") {
+        // akit looks at the disk on akio's file pool only (rules.md rule 4): "pool", fit's
+        // default. fit's "auto" looks at it on the worker serving the request.
+        let p = o.at("disk_io");
+        match d.string(v, &p).as_deref() {
+            Some("pool") | None => {}
+            Some("auto") => d.not_yet(
+                v.off,
+                &p,
+                "\"auto\", which looks at the disk on the thread serving the request",
+            ),
+            Some(other) => d.error(
+                v.off,
+                &p,
+                format!("{other:?} is not one of \"pool\", \"auto\""),
+            ),
+        }
+    }
+    let check_interval = match o.take("check_interval") {
+        None => DEFAULT_CHECK_INTERVAL,
+        Some(v) => d
+            .duration(v, &o.at("check_interval"))
+            .unwrap_or(DEFAULT_CHECK_INTERVAL),
+    };
+    o.finish(d, STATIC_FIELDS, STATIC_FIT_ONLY);
+    Some(Static {
+        root: root?,
+        index,
+        max_file_bytes,
+        dotfiles,
+        check_interval,
+    })
 }
 
 fn upstream(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Upstream> {

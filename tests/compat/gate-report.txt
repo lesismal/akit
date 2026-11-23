@@ -1,7 +1,7 @@
 # The compatibility gate's report (docs/compatibility.md), written by make compat-bless;
 # do not edit. The gate fails when a run's outcomes differ from these lines.
 # fit 7daee573, fit-examples 9659d7e4.
-# 80 fixtures: 5 valid, 74 refused only as not supported yet (fields refused: 61), 0 in a format not supported yet, 1 skipped, 0 failed.
+# 80 fixtures: 5 valid, 74 refused only as not supported yet (fields refused: 64), 0 in a format not supported yet, 1 skipped, 0 failed.
 examples/acme-on-demand: not supported yet: acme
 examples/acme-on-demand: not supported yet: listeners[].tls.acme
 examples/acme-on-demand: not supported yet: listeners[].tls.on_demand
@@ -20,7 +20,7 @@ examples/bittorrent: not supported yet: media_library
 examples/bittorrent: not supported yet: routes[].handler<bt_publish>
 examples/bittorrent: not supported yet: routes[].handler<bt_stream>
 examples/bittorrent: not supported yet: routes[].handler<bt_tracker>
-examples/bittorrent: not supported yet: routes[].handler<static>
+examples/bittorrent: not supported yet: routes[].handler<static>.params.strip_prefix
 examples/body-limit: not supported yet: limits
 examples/body-limit: not supported yet: routes[].handler<proxy>
 examples/body-limit: not supported yet: routes[].match.method
@@ -122,7 +122,9 @@ examples/routing: not supported yet: routes[].match.query
 examples/routing: not supported yet: routes[].match.remote_ip
 examples/socks: not supported yet: listeners[].protocols: the "socks" protocol
 examples/socks: not supported yet: listeners[].socks
-examples/static: not supported yet: routes[].handler<static>
+examples/static: not supported yet: routes[].handler<static>.params.browse
+examples/static: not supported yet: routes[].handler<static>.params.max_cache_bytes
+examples/static: not supported yet: routes[].handler<static>.params.precompressed
 examples/static: not supported yet: routes[].middleware
 examples/streaming: not supported yet: media_auth
 examples/streaming: not supported yet: routes[].handler<hls>
@@ -157,7 +159,6 @@ examples/sync-rabbitmq-to-kafka: not supported yet: sync
 examples/sync-wasm-codec: not supported yet: sync
 examples/sync-wasm-sink: not supported yet: routes[].match.method
 examples/sync-wasm-sink: not supported yet: sync
-examples/sync-wasm-source: not supported yet: routes[].handler<static>
 examples/sync-wasm-source: not supported yet: sync
 examples/sync-wasm-transform: not supported yet: sync
 examples/telemetry: not supported yet: routes[].handler<proxy>
@@ -171,7 +172,6 @@ examples/video-site: not supported yet: routes[].handler<hls>
 examples/video-site: not supported yet: routes[].handler<media_pages>
 examples/video-site: not supported yet: routes[].handler<media_tokens>
 examples/video-site: not supported yet: routes[].handler<proxy>
-examples/video-site: not supported yet: routes[].handler<static>
 examples/video-site: not supported yet: routes[].handler<vod>
 examples/video-site: not supported yet: routes[].match.remote_ip
 examples/video-site: not supported yet: routes[].middleware

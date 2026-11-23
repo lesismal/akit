@@ -44,7 +44,9 @@ impl Handler for Nothing {}
 /// A stand-in for I15's proxy: `respond` whose body names an upstream it keeps from its env (and
 /// whose status 418 fails its provisioning).
 fn new_grab(p: &Provision<'_, HandlerParams>) -> Result<Provisioned<dyn Handler>, ProvisionError> {
-    let HandlerConfig::Respond(r) = p.params();
+    let HandlerConfig::Respond(r) = p.params() else {
+        return Err(ProvisionError::new("a respond handler only"));
+    };
     if r.status == 418 {
         return Err(ProvisionError::field("status", "418 is refused here"));
     }

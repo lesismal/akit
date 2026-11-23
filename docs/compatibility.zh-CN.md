@@ -152,7 +152,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 37 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 45 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -174,7 +174,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`http.handlers/media_tokens`](#fields-http-handlers-media-tokens) | 11 | 0 | 11 |
 | [`http.handlers/proxy`](#fields-http-handlers-proxy) | 20 | 0 | 20 |
 | [`http.handlers/respond`](#fields-http-handlers-respond) | 5 | 5 | 0 |
-| [`http.handlers/static`](#fields-http-handlers-static) | 16 | 0 | 16 |
+| [`http.handlers/static`](#fields-http-handlers-static) | 16 | 8 | 8 |
 | [`http.handlers/stream_whep`](#fields-http-handlers-stream-whep) | 5 | 0 | 5 |
 | [`http.handlers/stream_whip`](#fields-http-handlers-stream-whip) | 5 | 0 | 5 |
 | [`http.handlers/sync_ingest`](#fields-http-handlers-sync-ingest) | 6 | 0 | 6 |
@@ -277,7 +277,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 9 | 29 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **合计** | 3821 | 37 | 3784 |
+| **合计** | 3821 | 45 | 3776 |
 
 <a id="fields-access"></a>
 
@@ -882,20 +882,20 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
-| `routes[].handler<static>` | `module` | 尚不支持（not supported yet） |
-| `routes[].handler<static>.params` | `object` | 尚不支持（not supported yet） |
+| `routes[].handler<static>` | `module` | 已支持 |
+| `routes[].handler<static>.params` | `object` | 已支持 |
 | `routes[].handler<static>.params.browse` | `boolean` | 尚不支持（not supported yet） |
 | `routes[].handler<static>.params.browse_max_entries` | `integer` | 尚不支持（not supported yet） |
-| `routes[].handler<static>.params.check_interval` | `duration` | 尚不支持（not supported yet） |
+| `routes[].handler<static>.params.check_interval` | `duration` | 已支持 |
 | `routes[].handler<static>.params.compress` | `array<enum(zstd\|br\|gzip)>` | 尚不支持（not supported yet） |
 | `routes[].handler<static>.params.default_type` | `string` | 尚不支持（not supported yet） |
-| `routes[].handler<static>.params.disk_io` | `enum(pool\|auto)` | 尚不支持（not supported yet） |
-| `routes[].handler<static>.params.dotfiles` | `enum(deny\|allow)` | 尚不支持（not supported yet） |
-| `routes[].handler<static>.params.index` | `array<string>` | 尚不支持（not supported yet） |
+| `routes[].handler<static>.params.disk_io` | `enum(pool\|auto)` | 已支持 |
+| `routes[].handler<static>.params.dotfiles` | `enum(deny\|allow)` | 已支持 |
+| `routes[].handler<static>.params.index` | `array<string>` | 已支持 |
 | `routes[].handler<static>.params.max_cache_bytes` | `integer` | 尚不支持（not supported yet） |
-| `routes[].handler<static>.params.max_file_bytes` | `integer` | 尚不支持（not supported yet） |
+| `routes[].handler<static>.params.max_file_bytes` | `integer` | 已支持 |
 | `routes[].handler<static>.params.precompressed` | `array<enum(br\|zstd\|gzip)>` | 尚不支持（not supported yet） |
-| `routes[].handler<static>.params.root` | `string, required` | 尚不支持（not supported yet） |
+| `routes[].handler<static>.params.root` | `string, required` | 已支持 |
 | `routes[].handler<static>.params.strip_prefix` | `string` | 尚不支持（not supported yet） |
 | `routes[].handler<static>.params.try_files` | `array<string>` | 尚不支持（not supported yet） |
 

@@ -63,10 +63,14 @@ fn hello_reads() {
     assert_eq!(c.routes.len(), 2);
     let r = &c.routes[0];
     assert_eq!(r.matcher.as_ref().unwrap().path, ["/hello"]);
-    let Handler::Respond(h) = &r.handler;
+    let Handler::Respond(h) = &r.handler else {
+        panic!("not a respond handler")
+    };
     assert_eq!((h.status, h.body.as_str()), (200, "hello from fit\n"));
     assert_eq!(c.routes[1].priority, -1);
-    let Handler::Respond(h) = &c.routes[1].handler;
+    let Handler::Respond(h) = &c.routes[1].handler else {
+        panic!("not a respond handler")
+    };
     assert_eq!(h.status, 404);
 }
 
@@ -79,7 +83,9 @@ fn defaults() {
     assert_eq!(c.listeners[0].protocols, [Protocol::Http11]);
     let r = &c.routes[0];
     assert!(r.name.is_none() && r.listeners.is_empty() && r.matcher.is_none());
-    let Handler::Respond(h) = &r.handler;
+    let Handler::Respond(h) = &r.handler else {
+        panic!("not a respond handler")
+    };
     assert_eq!((h.status, h.headers.len(), h.body.as_str()), (200, 0, ""));
     assert_eq!(ok("{}").listeners.len(), 0);
 }

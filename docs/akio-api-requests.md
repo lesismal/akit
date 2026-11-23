@@ -31,6 +31,9 @@ first; its status here records the branch, then the akio commit akit pins.
 | A10 | Closing an HTTP client's idle connections now | requested (I14) | 10, 11 | I14, I22 |
 | A11 | An HTTP/1 client request that keeps its own `Host` field | requested (I14) | — | I15 |
 | A12 | The HTTP client's connect timeout for a lone address too | requested (I14) | 10 | I14 |
+| A13 | `Files` serving a path the caller names | requested (I12) | 19 | I12 |
+| A14 | `Files` answering as a gateway's static handler does | requested (I12) | 19 | I12, I13 |
+| A15 | `Files` bounded in memory, its disk pool with a timeout | requested (I12) | 4, 11 | I12 |
 
 ## A1 TCP listeners on a running engine
 
@@ -177,3 +180,87 @@ any number of addresses.
 **How akit uses it.** Each upstream's pool sets its own. Until then, `akit_listener::engine` sets
 the engine's `connect_timeout` to the shortest of the upstreams', which is each one's when they
 agree (recorded in the I14 progress entry).
+
+## A13 `Files` serving a path the caller names
+
+**Problem.** fit's `static` handler looks up the request path minus its `strip_prefix` under the
+root, and akit's listener routes by the request's canonical path (dot segments removed, I11),
+which it keeps in a context local, since akio's request target cannot be rewritten. akio-http's
+`Files` reads the path from the route parameter `path` (set by akio's own `Router` only) or from
+the request target as sent, so akit can give it neither.
+
+**Evidence.** `crates/akio-http/src/files.rs` at `50a82315`, `Files::relative`:
+`ctx.param_raw("path")`, else `ctx.path()`; `Context::set_params` is `pub(crate)`.
+
+**Suggested API.** `Files::serve(&self, ctx: &mut Context, path: &str)`, the `Service::call` body
+with the path given (still percent-decoded and checked by `Files`), or a public way to set a
+request's route parameters.
+
+**How akit uses it.** The `static` handler passes the canonical path minus `strip_prefix`; until
+then `strip_prefix` is refused as not supported yet, and a path with a `..` segment that stays
+inside the root (`/x/../ok.txt`), which the listener routes as `/ok.txt` and fit's stack serves, is
+answered 400 by the handler, as fit's handler alone answers it.
+
+## A14 `Files` answering as a gateway's static handler does
+
+**Problem.** fit's `static` handler (whose tests akit ports, rule 19) answers some requests
+otherwise than `Files`, which has no setting for these:
+
+- a list of index files tried in order, or none (`index: []`); `Files` takes one name;
+- a directory asked for without its trailing slash is redirected (301, `Location` with the slash,
+  the query kept), so that relative links resolve; `Files` serves the index file;
+- a file asked for with a trailing slash (`/a.txt/`) is 404; `Files` drops empty segments and
+  serves it;
+- compressed twins (`.br`, `.zst`, `.gz`) are served only for the encodings the config lists
+  (`precompressed`, none by default), with `Vary: Accept-Encoding` only then; `Files` always
+  serves a twin it finds and always adds `Vary`;
+- the content type from a full table (Go's `mime.TypeByExtension`: `.xml` is
+  `text/xml; charset=utf-8`, `.avif` is known, and on Linux `/etc/mime.types` adds more), a configured `default_type`, else sniffed from
+  the first 512 bytes; `Files` has a fixed table of 22 extensions and `application/octet-stream`
+  for the rest;
+- 403 for a file that may not be read; `Files` answers 404 for any `stat` error;
+- only regular files: `Files` opens anything that is not a directory, so a FIFO under the root
+  holds a thread of its disk pool until a writer comes (akit's test
+  `a_hung_disk_holds_no_io_thread` relies on it);
+- a name with `:` is a name like others; `Files` answers 404 for it;
+- error bodies as `"404 Not Found\n"`; `Files` sends `"Not Found"`.
+
+**Evidence.** `crates/akio-http/src/files.rs` at `50a82315`: `Inner::index: String`,
+`Files::relative` (empty segments filtered, `:` refused), `Inner::serve_disk` (index served for a
+directory; `fs::metadata` errors answered 404), `Inner::load_tracked` (`TWINS` always looked up),
+`Cached::new` (`Vary` always), `Files::mime`, `Inner::read` (`fs::read` on any non-directory).
+
+**Suggested API.** Builder settings on `Files`: `index_files(&[&str])`,
+`redirect_directories(bool)`, `twins(&[&str])` (the encodings, in order; none turns the lookups
+off), `mime(fn(&Path) -> Option<&'static str>)` or a table, `default_type(&str)` with
+`sniff(bool)`; and fixed: 403 on `PermissionDenied`, 404 for what is not a regular file or a
+directory, a file with a trailing slash 404, `:` allowed, and `error_body(fn(u16) -> Response)`
+for the short answers.
+
+**How akit uses it.** The `static` handler sets them from fit's params (`index`, `precompressed`,
+`default_type`) and fit's fixed behaviour; until then the differences are recorded in the I12
+progress entry, its tests check akit's present answers naming this request, and `index` lists of
+other than one name and `default_type` are refused as not supported yet.
+
+## A15 `Files` bounded in memory, its disk pool with a timeout
+
+**Problem.** fit keeps at most `max_cache_bytes` (64 MiB by default) of files in memory, and a
+request waiting on its file pool past the pool's timeout is answered 503, so a hung disk is not
+waited on forever (rule 4). `Files` bounds the size of each file it keeps (`max_cached_bytes`) and
+the open handles of larger ones (`max_open_files`), but not the total kept: every file under the
+root up to that size can end up in memory; and a request queued on its disk pool (16 threads, 4096
+queued) waits for as long as the disk takes.
+
+**Evidence.** `crates/akio-http/src/files.rs` at `50a82315`: the `shards` maps grow with each file
+read (`Inner::load_tracked`); `disk_pool()` is a `Pool` with `max_threads` 16 and
+`queue_capacity` 4096, and `try_execute` refuses only a full queue.
+
+**Suggested API.** `Files::max_cache_bytes(n)` (the in-memory entries, evicted least recently used
+first, as the open handles are), and `Files::disk_timeout(d)`: a request not answered from the disk
+pool within `d` is answered 503 with `Retry-After`, and its job, when it runs later, answers
+nothing.
+
+**How akit uses it.** The `static` handler sets fit's `max_cache_bytes` (and default) and the pool
+timeout; until then `max_cache_bytes` is refused as not supported yet, and the memory `Files` keeps
+is bounded only by the files under the root of at most `max_file_bytes` (recorded in the I12
+progress entry).
