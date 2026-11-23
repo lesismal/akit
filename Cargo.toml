@@ -17,6 +17,7 @@ members = [
     "crates/akit-observe",
     "crates/akit-cache",
     "crates/akit-plugin",
+    "tests/compat",
 ]
 
 [workspace.package]

@@ -170,6 +170,13 @@ name = "akit-cache"
 version = "0.0.1"
 
 [[package]]
+name = "akit-compat"
+version = "0.0.1"
+dependencies = [
+ "akit-config",
+]
+
+[[package]]
 name = "akit-config"
 version = "0.0.1"
 

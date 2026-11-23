@@ -78,6 +78,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | `akit-cache` | 响应缓存 | `handler/cache` |
 | `akit-plugin` | WASM 插件 | `plugin` |
 | `tests/e2e` | 可执行文件的端到端测试 | `test/e2e` |
+| `tests/compat` | fit 配置兼容性门禁：固定夹具、字段清单 | `templates`、fit-examples |
 | `bench` | 基准框架、场景和报告 | `bench` |
 
 ## 索引
@@ -93,7 +94,8 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I04 | 运行时图及其替换 | I02, I03 | todo |
 | I05 | `akit run`：监听器与 `respond` | I04 | todo |
 | I06 | CLI、信号与优雅关闭 | I05 | todo |
-| I07 | fit 配置兼容性门禁 | I02 | todo |
+| I07a | 兼容性门禁 I：固定夹具、字段清单、测试框架 | I01 | done |
+| I07b | 兼容性门禁接入 validate | I02, I07a | todo |
 | I08 | 基准框架与基线 | I05 | todo |
 | **M1** | | | |
 | I09 | 从文件加载证书的 TLS 入口 | I05 | todo |
@@ -232,14 +234,30 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 - **涉及**：`akit`。
 - **fit**：`cmd/fit`、`cli`。
 
-### I07 fit 配置兼容性门禁
+### I07a 兼容性门禁 I：固定夹具、字段清单、测试框架
 
-- **做什么**：一个测试，把 fit `templates/` 中的每个模板和 fit-examples 中的每份配置（按固定提交拉取）交给
-  `akit validate`；每份要么通过，要么只因 "not supported yet: <field>" 失败；不支持的字段列表写入
-  `docs/compatibility.md`，随里程碑完成而缩短。读取后又被忽略的字段不能通过关卡。
-- **完成标准**：关卡在 CI 中运行，其报告已提交。
-- **涉及**：`akit-config`、`tests`。
-- **fit**：`templates/`、`docs/reference/config.md`。
+从 I07 拆分出来，使不依赖配置模型的那一半可以与 I02 并行。
+
+- **做什么**：把 fit 的 `templates/`（三种格式，单文件和 `conf.d` 目录两种形式）和 fit-examples 的每份配置
+  按固定提交复制到 `tests/compat/fixtures/`，附上许可证、`SOURCE.md` 和移动固定提交的脚本；fit 接受的每个
+  字段路径的清单（`tests/compat/fit-fields.txt`），由开发工具从 fit 的 JSON Schema 生成；枚举夹具并判定每个
+  结果的测试框架（有效，或只因 "not supported yet" 且指向清单中的字段而被拒绝）；`docs/compatibility.md`
+  附上生成的完整字段清单，每个字段都是"尚不支持"。
+- **完成标准**：测试框架用替身校验函数测试；`make check` 检查清单及其表格与固定提交一致。
+- **涉及**：`tests/compat`、`tools`、`docs/compatibility.md`。
+- **fit**：`templates/`、`schema/fit.schema.json`、`docs/reference/config.md`；fit-examples 的 `examples_test.go`。
+
+### I07b 兼容性门禁接入 validate
+
+- **做什么**：打开 `akit-compat` 的 `compat-gate` feature：其测试对每个夹具调用 `akit_config::validate_file`
+  （文件或 `conf.d` 目录，与 `akit validate -c` 的参数相同）；akit-config 的错误给出路径，由测试框架与字段清单
+  匹配；每个夹具要么通过，要么只因 "not supported yet: <field>" 失败；确定校验会打开哪些文件（示例引用的
+  文件和 WebAssembly 插件，相对于 fit-examples 根目录），以及 fit 只做 adapt 的 `https` 示例如何处理。读取后
+  又被忽略的字段不能通过门禁。
+- **完成标准**：门禁在 CI 中运行（`make compat-gate`），其报告已提交；I02 读取的字段已写入
+  `tests/compat/supported.txt`。
+- **涉及**：`tests/compat`、`akit-config`（如需调整错误路径）、CI。
+- **fit**：`cli`（`validate`）、fit-examples 的 `examples_test.go`。
 
 ### I08 基准框架与基线
 

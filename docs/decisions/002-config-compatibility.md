@@ -16,7 +16,7 @@ console pages could be shared, or could fork into two dialects that drift.
   payloads, the CLI's commands and flags, metric names and access log fields.
 - **Not yet supported means refused.** A field akit does not implement yet is an error naming it
   ("not supported yet: `<path>`"), never read and ignored. The list of such fields is generated
-  into `docs/compatibility.md` by the compatibility gate (I07) and shrinks milestone by milestone.
+  into `docs/compatibility.md` by the compatibility gate (I07a, I07b) and shrinks milestone by milestone.
 - **fit leads the schema.** A new field is designed in fit first, or in both at once; akit does not
   add a field fit would not accept. Where akio allows something fib does not (an io_uring backend
   per listener, eBPF steering), the field is proposed to fit too, which may accept it and ignore it
