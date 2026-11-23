@@ -71,6 +71,9 @@
   都在噪声范围内，符合预期，因为单条无 host 路由的查找只占请求耗时（微秒级）中的几纳秒。第一次尝试
   （`ab-20261124-010304`）因基准测试主机磁盘已满而失败；第二次发现 `bench/ab.sh` 可能用 A 的 crate 构建 B
   （git archive 的提交时间 mtime 加上共享的 target 目录），已在 `bench/lib.sh` 中改为以当前时间解包修复。
+- 待测量（由维护者的基准任务进行；规则 30：功能任务不跑基准）：路由查找 v0 对比 v1
+  （`cargo bench -p akit-router --bench lookup`），以及 I11 对比其基点的 fixed 场景 A/B。上面的数字是在规则 30
+  之前测得的，在这些任务重测之前视为暂定。
 - 已检查：macOS 上的 `make check`；基准测试主机上 Linux（epoll）的
   `cargo test -p akit-router -p akit-runtime -p akit-listener`，以及 `AKIO_TEST_BACKEND=uring cargo test -p akit-listener`。
 - 与计划和 fit 的不同：没有 matcher（I39）。错误的转义（`%zz`）回答 `400 bad request path`；fit 的 Go 服务器

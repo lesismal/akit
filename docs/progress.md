@@ -84,6 +84,10 @@ done and where the work differs from the plan.
   (`ab-20261124-010304`) failed because the benchmark host's disk was full; a second found that
   `bench/ab.sh` could build B with A's crates (git archive's commit-time mtimes and a shared
   target directory), fixed in `bench/lib.sh` by extracting with the current time.
+- To measure, in the maintainer's benchmark tasks (rule 30: feature tasks run no benchmarks): the
+  router lookup, v0 against v1 (`cargo bench -p akit-router --bench lookup`), and the fixed-scenario
+  A/B of I11 against its base. The numbers above were measured before rule 30; treat them as
+  provisional until those tasks repeat them.
 - Checked: `make check` on macOS; `cargo test -p akit-router -p akit-runtime -p akit-listener` on
   Linux (epoll) and `AKIO_TEST_BACKEND=uring cargo test -p akit-listener`, on the benchmark host.
 - Differs from the plan and from fit: no matchers (I39). A malformed escape (`%zz`) is answered
