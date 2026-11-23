@@ -85,6 +85,7 @@ few crates as it can. fit's package of the same role is given for reference.
 | `akit-cache` | the response cache | `handler/cache` |
 | `akit-plugin` | WASM plugins | `plugin` |
 | `tests/e2e` | end-to-end tests of the binary | `test/e2e` |
+| `tests/compat` | the fit config compatibility gate: pinned fixtures, field inventory | `templates`, fit-examples |
 | `bench` | the harness, scenarios and reports | `bench` |
 
 ## Index
@@ -100,7 +101,8 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I04 | The runtime graph and its swap | I02, I03 | todo |
 | I05 | `akit run`: listeners and `respond` | I04 | todo |
 | I06 | CLI, signals and graceful shutdown | I05 | todo |
-| I07 | fit config compatibility gate | I02 | todo |
+| I07a | Compatibility gate I: pinned fixtures, field inventory, harness | I01 | done |
+| I07b | Compatibility gate wired to validate | I02, I07a | todo |
 | I08 | Benchmark harness and baselines | I05 | todo |
 | **M1** | | | |
 | I09 | TLS entry points from files | I05 | todo |
@@ -247,15 +249,36 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 - **Touches**: `akit`.
 - **fit**: `cmd/fit`, `cli`.
 
-### I07 fit config compatibility gate
+### I07a Compatibility gate I: pinned fixtures, field inventory, harness
 
-- **Do**: a test that runs every template in fit's `templates/` and every config in fit-examples
-  (fetched at a pinned commit) through `akit validate`; each either passes or fails only with
-  "not supported yet: <field>"; the list of unsupported fields is written to `docs/compatibility.md`
-  and shrinks as milestones land. A field read and then ignored fails the gate.
-- **Done when**: the gate runs in CI and its report is checked in.
-- **Touches**: `akit-config`, `tests`.
-- **fit**: `templates/`, `docs/reference/config.md`.
+Split from I07 so that the half that needs no config model runs beside I02.
+
+- **Do**: fit's `templates/` (all three formats, as files and as `conf.d` directories) and every
+  config of fit-examples copied into `tests/compat/fixtures/` at pinned commits, with their
+  licences, `SOURCE.md` and a script that moves the pin; the inventory of every field path fit
+  accepts (`tests/compat/fit-fields.txt`), generated from fit's JSON Schema by a dev tool; the
+  harness that enumerates the fixtures and judges each outcome (valid, or refused only with
+  "not supported yet" naming a field of the inventory); `docs/compatibility.md` with the full
+  inventory, generated, every field "not supported yet".
+- **Done when**: the harness is tested with stand-in validators; `make check` checks that the
+  inventory and its tables match the pin.
+- **Touches**: `tests/compat`, `tools`, `docs/compatibility.md`.
+- **fit**: `templates/`, `schema/fit.schema.json`, `docs/reference/config.md`; fit-examples'
+  `examples_test.go`.
+
+### I07b Compatibility gate wired to validate
+
+- **Do**: turn on the `compat-gate` feature of `akit-compat`: its test calls
+  `akit_config::from_json_file` on
+  every fixture (`validate_with_akit_config` in `gate.rs`, extended to `conf.d` directories, and to
+  .conf and YAML as I23 and I24 land); akit-config's errors name paths the harness matches against the inventory; each
+  fixture either passes or fails only with "not supported yet: <field>"; settle what validation
+  opens (the files and WebAssembly plugins examples name, relative to fit-examples' root) and the
+  `https` example fit only adapts. A field read and then ignored fails the gate.
+- **Done when**: the gate runs in CI (`make compat-gate`) and its report is checked in; the fields
+  I02 reads are in `tests/compat/supported.txt`.
+- **Touches**: `tests/compat`, `akit-config` (the error paths, if needed), CI.
+- **fit**: `cli` (`validate`), fit-examples' `examples_test.go`.
 
 ### I08 Benchmark harness and baselines
 

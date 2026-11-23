@@ -1,0 +1,20 @@
+[package]
+name = "akit-compat"
+description = "The fit config compatibility gate: fit's templates and fit-examples, pinned, through akit's validation (decision 002, docs/compatibility.md)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[features]
+# Runs the gate through akit_config::from_json_file. Off until I07b wires it: akit-config's API is
+# being written in I02, and this crate must build on main without it.
+compat-gate = ["dep:akit-config"]
+
+[dependencies]
+akit-config = { workspace = true, optional = true }
+
+[lints]
+workspace = true
