@@ -5,11 +5,14 @@
 //!
 //! So far (I05): HTTP/1.1 and h2c listeners from the graph's config, each an akio TCP listener
 //! serving a [`Dispatcher`], which routes every request through the current graph of a
-//! [`GraphCell`] and answers 404 when no route matches.
+//! [`GraphCell`] and answers 404 when no route matches. Since I11 the routes go by the request's
+//! canonical path, as fit's listener does: dot and empty segments removed, a path climbing above
+//! the root or hiding a separator in an escape answered `400 bad request path`.
 //!
 //! Part of [akit](https://github.com/lesismal/akit); see `docs/dev-plan.md` for the iterations that
 //! fill this crate in.
 
+use std::borrow::Cow;
 use std::fmt;
 use std::io;
 use std::net::{Ipv6Addr, SocketAddr, ToSocketAddrs};
@@ -22,6 +25,15 @@ use akit_runtime::GraphCell;
 
 /// fit's answer when no route matches.
 const NOT_FOUND: &str = "404 page not found\n";
+
+/// fit's answer to a path that has no canonical form ([`akit_router::canonicalize`]).
+const BAD_REQUEST_PATH: &str = "400 bad request path\n";
+
+/// The [`Context::local`] that holds a request's canonical path, escaped, when it differs from
+/// the path sent (dot or empty segments were removed): what the routes matched, and what handlers
+/// go by (akio's request target cannot be rewritten). Unset for nearly every request, whose path
+/// is canonical already.
+pub const CANONICAL_PATH: &str = "akit.canonical_path";
 
 /// The akio service of one listener: each request goes to the route the current graph picks for
 /// it on this listener, or is answered 404. Runs on the I/O thread, and only reads the graph.
@@ -52,9 +64,25 @@ impl fmt::Debug for Dispatcher {
 impl akio_http::Service for Dispatcher {
     fn call(&self, ctx: &mut Context) {
         self.cell.with(|g| {
-            let route = g
-                .listener_index(&self.listener)
-                .and_then(|i| g.route(i, ctx.header("host").unwrap_or(""), ctx.path()));
+            // The routes go by the canonical path, as fit's do; a path that has none is answered
+            // 400.
+            let (route, changed) = {
+                let Some(path) = akit_router::canonicalize(ctx.path()) else {
+                    ctx.text(400, BAD_REQUEST_PATH);
+                    return;
+                };
+                let route = g
+                    .listener_index(&self.listener)
+                    .and_then(|i| g.route(i, ctx.header("host").unwrap_or(""), &path.decoded));
+                let changed = match path.escaped {
+                    Cow::Owned(p) => Some(p),
+                    Cow::Borrowed(_) => None,
+                };
+                (route, changed)
+            };
+            if let Some(p) = changed {
+                ctx.set_local(CANONICAL_PATH, p);
+            }
             match route {
                 Some(r) => r.handler.call(ctx),
                 None => ctx.text(404, NOT_FOUND),

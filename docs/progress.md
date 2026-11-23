@@ -10,15 +10,86 @@ done and where the work differs from the plan.
 
 | | |
 | --- | --- |
-| Last updated | 2026-11-23 |
+| Last updated | 2026-11-24 |
 | Milestone | M0, foundations: I01–I06, I07a and I07b done. |
 | akio | `50a82315` on akio's `main` (`1.0.0-rc.1`), pinned by `rev` in `Cargo.toml` |
 | fit | the specification; read at `7daee573` for this plan |
-| What works | `akit run` and `akit validate` with fit's flags and exit codes (`-c` repeated, files and directories, merged), and a graceful shutdown on SIGINT and SIGTERM; `akit run` serves HTTP/1.1 and h2c listeners with `respond` routes, by fit's host and path rules, 404 when nothing matches; `akit version` and `akit help`; the workspace builds and passes `make check`; `akit_config::from_json` reads fit's listeners, routes and the `respond` handler, and refuses the rest of fit's config by name as not supported yet; the module registry and the data-plane traits (`akit-runtime`); `compile` turns a config into a `Graph` and `GraphCell` publishes, reads and retires graphs; the compatibility gate runs every fit fixture through akit-config in `make check` and CI |
+| What works | `akit run` and `akit validate` with fit's flags and exit codes (`-c` repeated, files and directories, merged), and a graceful shutdown on SIGINT and SIGTERM; `akit run` serves HTTP/1.1 and h2c listeners with `respond` routes, by fit's host and path rules (looked up, allocation-free, on the canonical path; 400 for a path fit refuses), 404 when nothing matches; `akit version` and `akit help`; the workspace builds and passes `make check`; `akit_config::from_json` reads fit's listeners, routes and the `respond` handler, and refuses the rest of fit's config by name as not supported yet; the module registry and the data-plane traits (`akit-runtime`); `compile` turns a config into a `Graph` and `GraphCell` publishes, reads and retires graphs; the compatibility gate runs every fit fixture through akit-config in `make check` and CI |
 | Next | I08's baselines, from the benchmark host, which end M0; then I09 (TLS). |
 | akio requests | A1–A8 all being added to akio now, each on its own akio branch ([akio API requests](akio-api-requests.md)) |
 
 ## Log
+
+### 2026-11-24: I11, router v1: host and path
+
+- `akit_router::Router` looks routes up instead of scanning them, as fit's `router` package does
+  (`router/router.go`, without its matchers, which are I39): maps of host patterns (exact, `*.` by
+  the suffix from its dot, `**.` likewise, and the routes with no hosts), and under each host
+  pattern maps of exact paths and of prefixes, with the prefixes' lengths longest first. A lookup
+  tries the request's exact host, its `*.` suffix and up to four `**.` suffixes, the longest first,
+  then the routes with no hosts; under each, its exact path and then each prefix length, stopping
+  once no prefix left can win. The order is fit's: priority, then host, then path specificity,
+  then the route written first. A lookup does not allocate: a host with capitals is lower-cased in
+  a stack buffer (one longer than 255 bytes matches only routes with no hosts, as in fit).
+- Not in fit: the maps hash with an FxHash-style hasher of akit's own (they are built from the
+  config and only read, so a request's host cannot lengthen a probe beyond what the config put
+  there); a map of up to 8 keys is scanned rather than hashed; a router whose routes have no hosts
+  does not look at the host. Since there are no matchers yet, each host and path pattern keeps only
+  its best route.
+- `akit_router::canonicalize` puts a request's path in fit's canonical form (`listener/path.go`):
+  dot-segments removed as RFC 3986 says, `%2E` counting as `.`, empty segments removed; a path
+  whose `..` climbs above the root, or that, decoded, has an empty or dot-segment that came
+  encoded (`%2F`, `%5C`, `\`), is refused. A path with nothing to decode or remove is only
+  scanned. `akit_listener::Dispatcher` canonicalizes every request before routing it and answers
+  a refused path `400 bad request path\n`, as fit does; routes match the percent-decoded path, as
+  fit's match Go's `URL.Path`, so `Router::find` and `Graph::route` take the path as bytes
+  (`impl AsRef<[u8]>`: a decoded path need not be UTF-8).
+- Tests: fit's router table tests, ported (`akit-router` `src/tests.rs`: `TestHostOnly`,
+  `TestHost`, `TestDeepWildcard`, `TestPath`, `TestNoRoutes`, the nine `TestOrder` tables,
+  `TestPathTwice`, `TestHostOnlyUnclosed`), v0's tests kept, and new ones for long hosts, many
+  prefix lengths, a non-UTF-8 path and the bound on `**.` suffixes; fit's `TestCanonicalize`
+  table, ported, plus malformed escapes and non-UTF-8 escapes; `tests/no_alloc.rs`, fit's
+  `TestMatchAllocs` and `TestCanonicalizeAllocs`: a binary of its own, without the test harness,
+  counting with `stats_alloc` as its global allocator (a dev-dependency: akit has no `unsafe` to
+  write one, rule 14), checks that seven lookups, hits and misses, upper case, ports, `**.` and
+  IPv6, and canonicalizing three canonical paths make no allocation in 100 calls each, and that
+  the count is real (a path with dots does allocate); `akit-listener` `tests/listeners.rs`: fit's
+  `TestPathConfusionRoutes` with `respond` routes, over HTTP/1.1 and h2c (paths spelled to miss
+  a protected route get it, or 400), and the canonical path a handler sees.
+- Micro-benchmark `crates/akit-router/benches/lookup.rs` (`harness = false`): v0 (I05's scan,
+  kept in `benches/v0.rs`) against v1, ns per lookup, on fit's `BenchmarkMatch` table (each route
+  a host of its own with a prefix and an exact path, plus a `*.` catch-all) and on the one-route
+  config the benchmark scenarios serve. On the benchmark host, under `quiet.sh`:
+
+  | ns per lookup | v0 | v1 | v0/v1 |
+  | --- | ---: | ---: | ---: |
+  | 1 route, `/` | 12.5 | 7.7 | 1.6x |
+  | 10 routes + catch-all, middle route | 69.0 | 36.7 | 1.9x |
+  | 10 routes + catch-all, catch-all | 48.6 | 24.2 | 2.0x |
+  | 10 routes + catch-all, no route | 33.2 | 16.3 | 2.0x |
+  | 100 routes + catch-all, middle route | 383.3 | 37.2 | 10.3x |
+  | 100 routes + catch-all, catch-all | 315.4 | 24.1 | 13.1x |
+  | 100 routes + catch-all, no route | 227.7 | 16.1 | 14.1x |
+  | 1000 routes + catch-all, middle route | 3523.8 | 30.9 | 114x |
+  | 1000 routes + catch-all, catch-all | 2292.4 | 23.9 | 96x |
+  | 1000 routes + catch-all, no route | 2207.1 | 15.8 | 140x |
+
+  v1 costs about the same at 10 routes as at 1000; v0 grows with the routes. Before small maps
+  were scanned rather than hashed, v1 was slower than v0 on the one-route config (15.7 against
+  12.6 ns); the scan made it 7.7.
+- A/B: `bench/ab.sh main work` was started as `ab-20261124-010304` and failed: every round's
+  fitbench image build failed in `apt-get` because the benchmark host's disk is full (`/` 100%,
+  0 bytes free, mostly other sessions' build directories). It is to be run again once the host
+  has room; the micro-benchmark above ran.
+- Checked: `make check` on macOS; `cargo test -p akit-router -p akit-runtime -p akit-listener` on
+  Linux (epoll) and `AKIO_TEST_BACKEND=uring cargo test -p akit-listener`, on the benchmark host.
+- Differs from the plan and from fit: no matchers (I39). A malformed escape (`%zz`) is answered
+  `400 bad request path`; fit's Go server refuses it, before fit sees it, with its own 400. akio's
+  request target cannot be rewritten, so the canonical path reaches handlers as the context local
+  `akit_listener::CANONICAL_PATH`, set only when it differs from the path sent; I12 and I15 read it
+  (or akio gains a way to rewrite the target). A literal `\` stays as sent in the canonical path,
+  where Go writes `%5C`. A request in absolute form (`GET http://host/path`) is still routed by
+  akio's `path()`, the whole URI, as before I11.
 
 ### 2026-11-24: I08, benchmark harness (baselines pending)
 

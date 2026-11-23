@@ -107,7 +107,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | **M1** | | | |
 | I09 | TLS entry points from files | I05 | todo |
 | I10 | HTTP/3 entry point | I09 | todo |
-| I11 | Router v1: host and path | I04 | todo |
+| I11 | Router v1: host and path | I04 | done |
 | I12 | Static files I | I11 | todo |
 | I13 | Static files II | I12 | todo |
 | I14 | Upstream pools on the HTTP/1 client | I04 | todo |
