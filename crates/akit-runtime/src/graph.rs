@@ -10,6 +10,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use akit_config::{Config, Error, Errors, Listener};
+use akit_upstream::Pool;
 
 use crate::module::{Env, Modules, Registry};
 use crate::traits::Handler;
@@ -54,6 +55,8 @@ pub struct Graph {
     routes: Vec<CompiledRoute>,
     /// Per listener, in the order of `listeners`: its routes' router, to indices of `routes`.
     routers: Vec<akit_router::Router<usize>>,
+    /// The upstreams' pools, in the config's order.
+    upstreams: Vec<Pool>,
     /// Taken (and so cleaned up) once, by [`Graph::retire`] or on drop.
     modules: Mutex<Option<Modules>>,
     /// Requests and connections that keep this graph past their handler's call
@@ -75,6 +78,19 @@ impl Graph {
     #[must_use]
     pub fn routes(&self) -> &[CompiledRoute] {
         &self.routes
+    }
+
+    /// The upstreams' pools, in the config's order. Each is closed, and drains, when the graph is
+    /// retired.
+    #[must_use]
+    pub fn upstreams(&self) -> &[Pool] {
+        &self.upstreams
+    }
+
+    /// The pool of the upstream named `name`.
+    #[must_use]
+    pub fn upstream(&self, name: &str) -> Option<&Pool> {
+        self.upstreams.iter().find(|p| p.name() == name)
     }
 
     /// The index of the listener named `name`.
@@ -124,14 +140,21 @@ impl fmt::Debug for Graph {
         f.debug_struct("Graph")
             .field("listeners", &self.listeners)
             .field("routes", &self.routes)
+            .field("upstreams", &self.upstreams)
             .field("modules", &self.module_ids())
             .field("holds", &self.holds.load(Ordering::Relaxed))
             .finish()
     }
 }
 
-/// Compiles `config` into a graph: every route's handler loaded from `registry` and provisioned
-/// with `env`. Nothing is published: a config that fails leaves nothing behind (the modules
+/// The ID the upstream pools are recorded under among a graph's modules, whose cleanup closes
+/// them.
+pub const UPSTREAM_POOLS: &str = "upstream.pools";
+
+/// Compiles `config` into a graph: a pool made for each upstream (I14), dialing through `env`'s
+/// engine, then every route's handler loaded from `registry` and provisioned with `env` and the
+/// pools. The pools are cleaned up after the handlers, which may use them: each is closed, and
+/// drains its requests in flight, when the graph is retired (decision 004). Nothing is published: a config that fails leaves nothing behind (the modules
 /// provisioned before the failure are cleaned up), and the running graph is untouched.
 ///
 /// Errors carry the path of what failed, as akit-config's do, without a position (the config was
@@ -142,6 +165,17 @@ pub fn compile(
     env: &Env,
 ) -> Result<Graph, Errors> {
     let mut modules = Modules::new();
+    let upstreams: Vec<Pool> = config
+        .upstreams
+        .iter()
+        .map(|u| Pool::new(u, env.engine().clone()))
+        .collect();
+    if !upstreams.is_empty() {
+        // Recorded first, so cleaned up last.
+        let pools = upstreams.clone();
+        modules.push_cleanup(UPSTREAM_POOLS, move || pools.iter().for_each(Pool::close));
+    }
+    let env = &env.with_upstreams(upstreams.clone());
     let mut routes = Vec::with_capacity(config.routes.len());
     let mut errors = Vec::new();
     for (i, r) in config.routes.iter().enumerate() {
@@ -206,6 +240,7 @@ pub fn compile(
         listeners: config.listeners.clone(),
         routes,
         routers,
+        upstreams,
         modules: Mutex::new(Some(modules)),
         holds: AtomicUsize::new(0),
         orphaned: AtomicBool::new(false),

@@ -133,7 +133,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 20 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 29 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -256,9 +256,9 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`sync.transforms/wasm`](#fields-sync-transforms-wasm) | 9 | 0 | 9 |
 | [`telemetry`](#fields-telemetry) | 14 | 0 | 14 |
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
-| [`upstreams`](#fields-upstreams) | 38 | 0 | 38 |
+| [`upstreams`](#fields-upstreams) | 38 | 9 | 29 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **合计** | 3821 | 20 | 3801 |
+| **合计** | 3821 | 29 | 3792 |
 
 <a id="fields-access"></a>
 
@@ -4806,9 +4806,9 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
-| `upstreams` | `array<object>` | 尚不支持（not supported yet） |
-| `upstreams[].addresses` | `array<string>, required` | 尚不支持（not supported yet） |
-| `upstreams[].connect_timeout` | `duration` | 尚不支持（not supported yet） |
+| `upstreams` | `array<object>` | 已支持 |
+| `upstreams[].addresses` | `array<string>, required` | 已支持 |
+| `upstreams[].connect_timeout` | `duration` | 已支持 |
 | `upstreams[].deny_internal` | `boolean` | 尚不支持（not supported yet） |
 | `upstreams[].fail_timeout` | `duration` | 尚不支持（not supported yet） |
 | `upstreams[].hash_key` | `string` | 尚不支持（not supported yet） |
@@ -4823,14 +4823,14 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `upstreams[].health_check.port` | `integer` | 尚不支持（not supported yet） |
 | `upstreams[].health_check.timeout` | `duration` | 尚不支持（not supported yet） |
 | `upstreams[].health_check.type` | `enum(http\|tcp)` | 尚不支持（not supported yet） |
-| `upstreams[].idle_timeout` | `duration` | 尚不支持（not supported yet） |
+| `upstreams[].idle_timeout` | `duration` | 已支持 |
 | `upstreams[].load_balancing` | `enum(round_robin\|weighted_round_robin\|least_conn\|random\|p2c\|ip_hash\|uri_hash\|header_hash\|cookie_hash)` | 尚不支持（not supported yet） |
-| `upstreams[].max_conns` | `integer` | 尚不支持（not supported yet） |
+| `upstreams[].max_conns` | `integer` | 已支持 |
 | `upstreams[].max_fails` | `integer` | 尚不支持（not supported yet） |
-| `upstreams[].max_idle_conns` | `integer` | 尚不支持（not supported yet） |
-| `upstreams[].max_pending` | `integer` | 尚不支持（not supported yet） |
-| `upstreams[].name` | `string, required` | 尚不支持（not supported yet） |
-| `upstreams[].protocol` | `enum(http/1.1\|h2c\|h2)` | 尚不支持（not supported yet） |
+| `upstreams[].max_idle_conns` | `integer` | 已支持 |
+| `upstreams[].max_pending` | `integer` | 已支持 |
+| `upstreams[].name` | `string, required` | 已支持 |
+| `upstreams[].protocol` | `enum(http/1.1\|h2c\|h2)` | 已支持 |
 | `upstreams[].response_header_timeout` | `duration` | 尚不支持（not supported yet） |
 | `upstreams[].response_idle_timeout` | `duration` | 尚不支持（not supported yet） |
 | `upstreams[].response_timeout` | `duration` | 尚不支持（not supported yet） |

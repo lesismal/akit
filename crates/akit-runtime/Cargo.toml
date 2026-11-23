@@ -11,6 +11,7 @@ publish = false
 [dependencies]
 akit-config = { workspace = true }
 akit-router = { workspace = true }
+akit-upstream = { workspace = true }
 akio = { workspace = true }
 akio-http = { workspace = true }
 

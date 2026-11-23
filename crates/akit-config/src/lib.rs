@@ -7,12 +7,14 @@
 //! handler) and the JSON reader: JSON with `//` and `/* */` comments and trailing commas, as fit
 //! reads it; an unknown field, a key given twice or a wrong type is an error. A field fit reads
 //! and akit does not support yet is refused as "not supported yet", never read and ignored
-//! ([`Error::is_not_supported_yet`]). The YAML and .conf readers come with I24 and I23.
+//! ([`Error::is_not_supported_yet`]). I14 adds `upstreams` ([`Upstream`]): their servers and
+//! the limits on the connections to them. The YAML and .conf readers come with I24 and I23.
 //!
 //! Reading a file blocks: this is control plane code, never called on an I/O thread
 //! (rules.md rule 1).
 
 mod decode;
+pub mod duration;
 mod error;
 mod json;
 mod model;
@@ -22,7 +24,9 @@ use std::path::{Path, PathBuf};
 pub use error::{Error, Errors, NOT_SUPPORTED_YET};
 pub use json::MAX_DEPTH;
 pub use model::{
-    Config, DEFAULT_PROTOCOLS, Handler, Listener, Match, Protocol, Respond, Route, SCHEMA_VERSION,
+    Config, DEFAULT_CONNECT_TIMEOUT, DEFAULT_IDLE_TIMEOUT, DEFAULT_MAX_CONNS,
+    DEFAULT_MAX_IDLE_CONNS, DEFAULT_MAX_PENDING, DEFAULT_PROTOCOLS, Handler, Listener, Match,
+    Protocol, Respond, Route, SCHEMA_VERSION, Upstream,
 };
 
 /// The largest config document read, in bytes: fit's own configs are kilobytes; this bounds

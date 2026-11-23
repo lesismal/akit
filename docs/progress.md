@@ -10,15 +10,77 @@ done and where the work differs from the plan.
 
 | | |
 | --- | --- |
-| Last updated | 2026-11-23 |
+| Last updated | 2026-11-24 |
 | Milestone | M0, foundations: I01–I06, I07a and I07b done. |
 | akio | `50a82315` on akio's `main` (`1.0.0-rc.1`), pinned by `rev` in `Cargo.toml` |
 | fit | the specification; read at `7daee573` for this plan |
-| What works | `akit run` and `akit validate` with fit's flags and exit codes (`-c` repeated, files and directories, merged), and a graceful shutdown on SIGINT and SIGTERM; `akit run` serves HTTP/1.1 and h2c listeners with `respond` routes, by fit's host and path rules, 404 when nothing matches; `akit version` and `akit help`; the workspace builds and passes `make check`; `akit_config::from_json` reads fit's listeners, routes and the `respond` handler, and refuses the rest of fit's config by name as not supported yet; the module registry and the data-plane traits (`akit-runtime`); `compile` turns a config into a `Graph` and `GraphCell` publishes, reads and retires graphs; the compatibility gate runs every fit fixture through akit-config in `make check` and CI |
+| What works | `akit run` and `akit validate` with fit's flags and exit codes (`-c` repeated, files and directories, merged), and a graceful shutdown on SIGINT and SIGTERM; `akit run` serves HTTP/1.1 and h2c listeners with `respond` routes, by fit's host and path rules, 404 when nothing matches; `akit version` and `akit help`; the workspace builds and passes `make check`; `akit_config::from_json` reads fit's listeners, routes and the `respond` handler, and refuses the rest of fit's config by name as not supported yet; the module registry and the data-plane traits (`akit-runtime`); `compile` turns a config into a `Graph` and `GraphCell` publishes, reads and retires graphs; the compatibility gate runs every fit fixture through akit-config in `make check` and CI; `upstreams` with their connection limits, a pool per upstream on akio's HTTP/1 client in the graph, drained when the graph is retired (I14; the proxy that sends through it is I15) |
 | Next | I08's baselines, from the benchmark host, which end M0; then I09 (TLS). |
-| akio requests | A1–A8 all being added to akio now, each on its own akio branch ([akio API requests](akio-api-requests.md)) |
+| akio requests | A1–A8 all being added to akio now, each on its own akio branch; A9–A11 (HTTP client: closing idle connections, a request's own `Host`, the connect timeout for a lone address) requested by I14 ([akio API requests](akio-api-requests.md)) |
 
 ## Log
+
+### 2026-11-24: I14, upstream pools on the HTTP/1 client
+
+- `upstreams` are read (`akit_config::Upstream`), joined across files as fit joins them: `name`,
+  `addresses`, `protocol` (`http/1.1`; `h2c` and `h2` refused as not supported yet),
+  `max_conns`, `max_pending`, `max_idle_conns`, `idle_timeout` and `connect_timeout`, with fit's
+  defaults (10000, 50000, 32, 60s, 10s; 0 is the default for all but `max_idle_conns`, where it
+  keeps none) and fit's checks and messages (a valid name unique among the upstreams, at least
+  one address, each a host and a port from 1 to 65535 and not a URL, none listed twice). fit's
+  durations are Go's (`akit_config::duration`), negative ones refused. fit's 15 other upstream
+  fields are refused as not supported yet by name.
+- `akit-upstream`: a `Pool` per upstream on akio-http's `Client`. Per address, at most
+  `max_conns` requests under way, which bounds the connections (HTTP/1.1 carries one request at a
+  time, and akio's client reuses an idle connection before it dials and puts one back idle before
+  it calls back); the next ones wait in order, at most `max_pending`, and one more fails at once
+  with `Error::Busy`. Taking a slot is a compare-and-swap while nobody waits; the address's queue
+  lock is taken only at `max_conns`. A queued request is started from the completion that frees
+  its slot, never recursively (a thread-local trampoline). `max_idle_conns` and `idle_timeout`
+  are akio's per-host idle pool; `connect_timeout` is akio's Happy Eyeballs per-attempt timeout;
+  each exchange, its wait for a connection included, is bounded by fit's `response_timeout`
+  default (1h, the field itself is I17's). `pick` gives the addresses in turn (fit's
+  `round_robin`, its default; I19 the rest). `Error::is_upstream_failure` says which failures
+  count against an address (I20).
+- Drain: `Pool::close` refuses new requests with `Error::Closed` and lets those sent before it
+  finish, the queued ones included; the pool is closed (`is_closed`, `on_closed`) once the last
+  is done. `compile` makes the pools before the modules, gives them to the modules through
+  `Env::upstream` (what I15's proxy takes at provisioning), keeps them in the graph
+  (`Graph::upstream`), and records their cleanup first so it runs last: a retired graph, or a
+  config that fails to compile, closes its pools (decision 004).
+- The engine: pools are made with the graph, before the engine (built from the graph's
+  listeners), so they reach it through an `EngineSlot` that `akit run` fills once the engine is
+  built; connections are dialed on the listeners' threads, on the same engine. `akit validate`
+  leaves the slot empty: its pools fail every request with `Error::NoEngine` and never dial.
+- The compatibility gate: 9 upstream fields supported (29 in all); `templates/json/fit.json` is
+  now valid, `templates/json/conf.d` refused only for the `proxy` handler (`make compat-bless`).
+- Tests: `akit-config/tests/upstreams.rs` (5: defaults, limits, fit's checks and messages, what
+  is not supported yet, joining across files) and Go durations; `akit-upstream/tests/pool.rs`
+  (8: `max_conns` and `max_pending` at and over the limit, `max_pending` 0 as fit's default, idle
+  connections kept, none kept and closed after `idle_timeout`, a pool drained under load with 4
+  under way and 16 queued, an idle pool closed at once, an upstream that refuses connections
+  alone and beside one that answers, no engine and the slot filled later, bad targets and
+  timeouts while queued); `akit-runtime/tests/upstreams.rs` (3: pools compiled and given to
+  modules, a failed compile closes its pools, a retired graph drains its pools under load);
+  `akit-listener/tests/upstreams.rs` (2: pools dial on the listeners' engine, `connect_timeout`
+  against an address that never answers); the gate's field samples.
+- Checked: `make check` on macOS; the tests of akit-config, akit-upstream, akit-runtime,
+  akit-listener, akit and akit-compat on Linux (the benchmark host), epoll and io_uring, all
+  passing. The connect timeout test needs an address that leaves connects unanswered (a full
+  accept queue on Linux) and skips on macOS.
+- Differences from the plan:
+  - `max_conns` bounds requests under way per address rather than counting sockets: the same
+    bound over HTTP/1.1 (the tests check the upstream never sees more connections), and akio's
+    client keeps its connections to itself.
+  - A request waiting for a connection has no timer of its own: its wait counts toward the
+    exchange's timeout, checked when it gets a connection (fib's client bounds the wait the same
+    way); a full queue is refused at once.
+  - Stopgaps for what akio lacks: a closed pool's idle connections stay open until their
+    `idle_timeout` or the engine's shutdown (A9, `Client::close_idle`); akio applies the client's
+    connect timeout only to a name with several addresses, so `akit_listener::engine` sets the
+    engine's `connect_timeout` to the shortest of the upstreams' (A11). I15 needs A10 (the
+    request's own `Host`). Hand-over notes for I15 are in the session notes folder.
+  - Not done here: a pool kept across graphs on reload (fit's `Acquire`), I22's.
 
 ### 2026-11-24: I08, benchmark harness (baselines pending)
 

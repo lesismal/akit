@@ -12,10 +12,11 @@ mod flags;
 
 use std::io::Read;
 use std::process::ExitCode;
-use std::sync::mpsc;
+use std::sync::{Arc, mpsc};
 use std::time::Duration;
 
 use akit_config::{Config, Errors};
+use akit_runtime::upstream::EngineSlot;
 use akit_runtime::{Env, Graph, GraphCell, HandlerParams, Registry, compile};
 use flags::{Spec, Usage};
 
@@ -119,8 +120,9 @@ fn config_paths(flags: &[(&str, String)]) -> Vec<String> {
     }
 }
 
-/// Reads and compiles the config at `paths`; the errors are printed, as fit prints them.
-fn load(paths: &[String]) -> Option<(Config, Graph)> {
+/// Reads and compiles the config at `paths`, its upstream pools dialing through the engine
+/// `engine` will hold; the errors are printed, as fit prints them.
+fn load(paths: &[String], engine: &EngineSlot) -> Option<(Config, Graph)> {
     let name = paths.join(", ");
     let config = match akit_config::from_files(paths) {
         Ok(c) => c,
@@ -136,7 +138,7 @@ fn load(paths: &[String]) -> Option<(Config, Graph)> {
             return None;
         }
     };
-    match compile(&config, &registry, &Env::default()) {
+    match compile(&config, &registry, &Env::new(engine.clone())) {
         Ok(g) => Some((config, g)),
         Err(errs) => {
             print_errors(&name, &errs);
@@ -158,7 +160,8 @@ fn validate(args: &[String]) -> ExitCode {
         Err(u) => return usage_error(&u),
     };
     let paths = config_paths(&flags);
-    match load(&paths) {
+    // No engine: an upstream's pool is made, and never dials.
+    match load(&paths, &EngineSlot::new()) {
         Some(_) => {
             println!("{}: valid", paths.join(", "));
             ExitCode::SUCCESS
@@ -224,7 +227,10 @@ fn run(args: &[String]) -> ExitCode {
         }
     }
     let paths = config_paths(&flags);
-    let Some((config, graph)) = load(&paths) else {
+    // The pools are made with the graph, before the engine they dial through, which is built
+    // from the graph's listeners: they reach it through this slot, filled once it is built.
+    let slot = EngineSlot::new();
+    let Some((config, graph)) = load(&paths, &slot) else {
         return ExitCode::FAILURE;
     };
     // Before the listeners: a signal from then on shuts down gracefully.
@@ -239,7 +245,7 @@ fn run(args: &[String]) -> ExitCode {
     let mut opts = akit_listener::Options::default();
     opts.shutdown_timeout = grace;
     let engine = match akit_listener::engine(&cell, &opts) {
-        Ok(e) => e,
+        Ok(e) => Arc::new(e),
         Err(e) => {
             eprintln!("akit run: {e}");
             return ExitCode::FAILURE;
@@ -249,6 +255,8 @@ fn run(args: &[String]) -> ExitCode {
         eprintln!("akit run: listening: {e}");
         return ExitCode::FAILURE;
     }
+    // Upstream connections are dialed on the listeners' threads.
+    slot.set(Arc::clone(&engine));
     for (l, addr) in config.listeners.iter().zip(engine.local_addrs()) {
         let protocols: Vec<&str> = l.protocols.iter().map(|p| p.as_str()).collect();
         println!(

@@ -174,7 +174,8 @@ impl Default for Options {
 }
 
 /// An akio engine serving every listener of the cell's current graph, each with its own
-/// [`Dispatcher`]; built, not started. [`Engine::local_addrs`] gives where each listens, in the
+/// [`Dispatcher`], and hosting the connections of its upstream pools (on the last listener's
+/// threads); built, not started. [`Engine::local_addrs`] gives where each listens, in the
 /// graph's order.
 ///
 /// # Errors
@@ -185,6 +186,13 @@ pub fn engine(cell: &GraphCell, opts: &Options) -> Result<Engine, Error> {
     let listeners: Vec<Listener> = cell.with(|g| g.listeners().to_vec());
     let mut cfg = EngineConfig::default();
     cfg.shutdown_timeout = opts.shutdown_timeout;
+    // The upstream pools dial on this engine. akio's client honours an upstream's
+    // connect_timeout only for a name that resolves to several addresses, and dials a lone one
+    // with the engine's (akio API request A11): until then the engine's is the shortest of the
+    // upstreams', which is each one's own when they agree (fit's default, 10s, when none sets it).
+    if let Some(t) = cell.with(|g| g.upstreams().iter().map(|p| p.connect_timeout()).min()) {
+        cfg.connect_timeout = Some(t);
+    }
     let mut b = Engine::builder().config(cfg);
     for l in &listeners {
         let addr = resolve(&l.address).map_err(|error| Error::Address {

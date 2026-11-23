@@ -18,8 +18,10 @@ mod graph;
 pub mod module;
 pub mod traits;
 
+/// The upstream pools (I14), which [`Env`] and [`Graph`] hold.
+pub use akit_upstream as upstream;
 pub use cell::{GraphCell, Hold};
-pub use graph::{CompiledRoute, Graph, HandlerParams, compile};
+pub use graph::{CompiledRoute, Graph, HandlerParams, UPSTREAM_POOLS, compile};
 
 pub use module::{Env, Info, LoadError, Modules, Provision, ProvisionError, Provisioned, Registry};
 pub use traits::{

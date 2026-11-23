@@ -27,6 +27,9 @@ first; its status here records the branch, then the akio commit akit pins.
 | A6 | CSR generation in `akio-x509` (and JWS helpers in `akio-crypto`) | done on akio branch `claude/x509-csr` (`7ea64069`), not merged | 15 | I31 |
 | A7 | An MP4 (ISO BMFF) reader for segmenting files without transcoding | in progress, akio branch | — | media library |
 | A8 | TUN devices | in progress, akio branch | — | VPN |
+| A9 | Closing an HTTP client's idle connections now | requested (I14) | 10, 11 | I14, I22 |
+| A10 | An HTTP/1 client request that keeps its own `Host` field | requested (I14) | — | I15 |
+| A11 | The HTTP client's connect timeout for a lone address too | requested (I14) | 10 | I14 |
 
 ## A1 TCP listeners on a running engine
 
@@ -100,3 +103,58 @@ A64). Needed when the media library track starts.
 
 **Problem.** fit's VPN track runs TUN interfaces on the engine. Needed when that track starts in
 akit, after fit's.
+
+## A9 Closing an HTTP client's idle connections
+
+**Problem.** When a graph is retired, its upstream pools drain and close (I14, decision 004). Once
+the last request is done, the connections akio-http's `Client` keeps idle should close too, as
+fit's pool closes fib's client. akio's client has no way to close them: they close only after
+`ClientOptions::idle_timeout` (fit's default 60s), when the server closes them, or when the engine
+shuts down; dropping the `Client` does not close them, since each idle connection's handler holds
+a clone of it.
+
+**Evidence.** `crates/akio-http/src/client.rs` at `50a82315`: `Pool` (the idle connections) is
+private to `Inner`; `ClientConn` keeps `client: Option<Client>`; only `DialAcceptor::on_shutdown`
+and the idle sweep close idle connections.
+
+**Suggested API.** `Client::close_idle(&self)`: closes every idle connection now and keeps
+connections that are in use from going back idle (each closes once its response is in), as Go's
+`Transport.CloseIdleConnections` and the engine's shutdown do. Never blocks.
+
+**How akit uses it.** `Pool::close` calls it once the pool has drained. Until then, a closed pool's
+idle connections stay open up to its `idle_timeout` (recorded in the I14 progress entry).
+
+## A10 A request's own `Host` field
+
+**Problem.** A reverse proxy passes the client's `Host` on to the upstream unless told to rewrite
+it (fit's proxy, I15). akio-http's HTTP/1 client always writes `Host` from the request URL and
+drops a `Host` field the request carries.
+
+**Evidence.** `crates/akio-http/src/client.rs` at `50a82315`, `Client::attempt`: the head is
+written with `Host: {host_header}` from `parse_url`, and request fields named `host` are skipped.
+
+**Suggested API.** A `Host` field set on `ClientRequest::headers` replaces the one taken from the
+URL (the URL still says where to connect), or a `ClientRequest::host(name)` setter.
+
+**How akit uses it.** I15's proxy sends the client's `Host`, or the one its params set, through
+the upstream pool.
+
+## A11 The HTTP client's connect timeout for every connect
+
+**Problem.** fit bounds opening a connection to an upstream by its `connect_timeout`, per
+upstream. akio-http's client takes one through `ClientOptions::happy_eyeballs.connect_timeout`, but
+the Happy Eyeballs racer applies it only when a name resolves to two addresses or more: a lone
+address (an IP literal, a name with one record), or a race the racer is too busy to take, is dialed
+with `Engine::dial`, bounded by the engine's `Config::connect_timeout` instead.
+
+**Evidence.** `crates/akio/src/dns.rs` at `50a82315`: `HappyEyeballs::dial` returns
+`engine.dial(addrs[0], ...)` for one address, and `in_turn` dials with `engine.dial` for
+`Outcome::Busy`.
+
+**Suggested API.** `Engine::dial_timeout(addr, timeout, acceptor, on_error)` (or a timeout on
+`dial`), used by `HappyEyeballs::dial` for every attempt, so that its `connect_timeout` holds for
+any number of addresses.
+
+**How akit uses it.** Each upstream's pool sets its own. Until then, `akit_listener::engine` sets
+the engine's `connect_timeout` to the shortest of the upstreams', which is each one's when they
+agree (recorded in the I14 progress entry).

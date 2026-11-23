@@ -3,6 +3,7 @@
 //! object that holds it (decision 002), and shrinks from the lists below as iterations land.
 
 use std::net::IpAddr;
+use std::time::Duration;
 
 use crate::decode::{Decoder, Obj};
 use crate::json::Node;
@@ -19,7 +20,48 @@ pub struct Config {
     pub listeners: Vec<Listener>,
     /// `routes`: how requests are matched and what handles them.
     pub routes: Vec<Route>,
+    /// `upstreams`: the servers requests can be proxied to, by name.
+    pub upstreams: Vec<Upstream>,
 }
+
+/// A set of servers requests can be proxied to, and how the connections to them are kept, as
+/// fit's `config.Upstream`. The limits hold fit's defaults where the config leaves them out (or,
+/// for `max_conns` and `max_pending`, sets 0).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Upstream {
+    /// `name`, unique among the upstreams, by which handlers refer to this one.
+    pub name: String,
+    /// `addresses`: each server's host and port, as `"10.0.0.1:8080"` or `"backend:80"`.
+    pub addresses: Vec<String>,
+    /// `max_conns`: the most connections open, or being opened, to one address; a request past
+    /// it waits for one. [`DEFAULT_MAX_CONNS`] when left out or 0.
+    pub max_conns: usize,
+    /// `max_pending`: how many requests may wait for a connection to one address once its
+    /// `max_conns` are busy; one more is refused at once. [`DEFAULT_MAX_PENDING`] when left out
+    /// or 0.
+    pub max_pending: usize,
+    /// `max_idle_conns`: idle connections to one address kept for later requests; 0 keeps none.
+    /// [`DEFAULT_MAX_IDLE_CONNS`] when left out.
+    pub max_idle_conns: usize,
+    /// `idle_timeout`: how long an idle connection is kept. [`DEFAULT_IDLE_TIMEOUT`] when left
+    /// out or 0.
+    pub idle_timeout: Duration,
+    /// `connect_timeout`: how long opening a connection may take. [`DEFAULT_CONNECT_TIMEOUT`]
+    /// when left out or 0.
+    pub connect_timeout: Duration,
+}
+
+/// fit's default `max_conns`: large enough that high concurrency against a slow upstream does not
+/// reach it, and still a bound.
+pub const DEFAULT_MAX_CONNS: usize = 10_000;
+/// fit's default `max_pending`.
+pub const DEFAULT_MAX_PENDING: usize = 50_000;
+/// fit's default `max_idle_conns`.
+pub const DEFAULT_MAX_IDLE_CONNS: usize = 32;
+/// fit's default `idle_timeout`.
+pub const DEFAULT_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
+/// fit's default `connect_timeout`.
+pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// One address akit listens on.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -110,9 +152,8 @@ pub struct Respond {
 
 // What akit reads, and what fit reads that akit does not yet, object by object.
 
-const CONFIG_FIELDS: &[&str] = &["schema_version", "listeners", "routes"];
+const CONFIG_FIELDS: &[&str] = &["schema_version", "listeners", "routes", "upstreams"];
 const CONFIG_FIT_ONLY: &[&str] = &[
-    "upstreams",
     "services",
     "log",
     "access_log",
@@ -173,6 +214,33 @@ const FIT_HANDLERS: &[&str] = &[
     "whip",
 ];
 const RESPOND_FIELDS: &[&str] = &["status", "headers", "body"];
+const UPSTREAM_FIELDS: &[&str] = &[
+    "name",
+    "addresses",
+    "protocol",
+    "max_conns",
+    "max_pending",
+    "max_idle_conns",
+    "idle_timeout",
+    "connect_timeout",
+];
+const UPSTREAM_FIT_ONLY: &[&str] = &[
+    "weights",
+    "load_balancing",
+    "hash_key",
+    "sticky_cookie",
+    "deny_internal",
+    "tls_server_name",
+    "tls_ca_file",
+    "tls_cert_file",
+    "tls_key_file",
+    "max_fails",
+    "fail_timeout",
+    "response_header_timeout",
+    "response_idle_timeout",
+    "response_timeout",
+    "health_check",
+];
 
 /// One file's part of a config, before the parts are merged.
 pub(crate) struct Part {
@@ -180,6 +248,7 @@ pub(crate) struct Part {
     schema_version: Option<(i64, usize)>,
     listeners: Vec<At<Listener>>,
     routes: Vec<At<Route>>,
+    upstreams: Vec<At<Upstream>>,
     /// The position of the file's top object.
     doc_off: usize,
 }
@@ -208,18 +277,27 @@ pub(crate) fn part(d: &mut Decoder<'_>, n: &Node, file: usize) -> Option<Part> {
             })
         })
         .unwrap_or_default();
+    let upstreams = o
+        .take("upstreams")
+        .map(|v| {
+            d.array(v, "upstreams", |d, n, p| {
+                Some(At::new(file, p, n, upstream(d, n, p)?))
+            })
+        })
+        .unwrap_or_default();
     let doc_off = o.off;
     o.finish(d, CONFIG_FIELDS, CONFIG_FIT_ONLY);
     Some(Part {
         schema_version,
         listeners,
         routes,
+        upstreams,
         doc_off,
     })
 }
 
 /// Merges the files' parts, `ds` their decoders in the same order, as fit merges a config's
-/// files: the lists at the top (`listeners`, `routes`) are joined in the files' order, and
+/// files: the lists at the top (`listeners`, `routes`, `upstreams`) are joined in the files' order, and
 /// `schema_version` may be given by each file if they agree. The checks across elements (names
 /// unique, routes naming listeners that exist) run on the merged lists; each problem is reported
 /// in the file and at the position of the element it is about, with the element's path in that
@@ -228,6 +306,7 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
     let mut schema: Option<(i64, usize)> = None;
     let mut listeners = Vec::new();
     let mut routes = Vec::new();
+    let mut upstreams = Vec::new();
     let mut first_doc: Option<(usize, usize)> = None;
     for (file, p) in parts.into_iter().enumerate() {
         first_doc.get_or_insert((file, p.doc_off));
@@ -253,6 +332,7 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
         }
         listeners.extend(p.listeners);
         routes.extend(p.routes);
+        upstreams.extend(p.upstreams);
     }
     check_listeners(ds, &listeners);
     if listeners.is_empty() && !routes.is_empty() {
@@ -266,10 +346,12 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
         }
     }
     check_routes(ds, &routes, &listeners);
+    check_upstreams(ds, &upstreams);
     Config {
         schema_version: schema.map_or(SCHEMA_VERSION, |(v, _)| v),
         listeners: listeners.into_iter().map(|a| a.v).collect(),
         routes: routes.into_iter().map(|a| a.v).collect(),
+        upstreams: upstreams.into_iter().map(|a| a.v).collect(),
     }
 }
 
@@ -497,6 +579,133 @@ fn respond(d: &mut Decoder<'_>, params: Option<&Node>, path: &str) -> Option<Res
     }
     o.finish(d, RESPOND_FIELDS, &[]);
     Some(r)
+}
+
+fn upstream(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Upstream> {
+    let mut o = d.object(n, path)?;
+    let name = o
+        .require(d, "name")
+        .and_then(|v| d.string(v, &o.at("name")));
+    let addresses = o.require(d, "addresses").map(|v| {
+        let p = o.at("addresses");
+        let list = d.strings(v, &p);
+        if list.is_empty() && matches!(v.kind, crate::json::Kind::Array(_)) {
+            d.error(v.off, &p, "an upstream needs at least one address");
+        }
+        let mut seen: Vec<&str> = Vec::new();
+        for (i, (off, a)) in list.iter().enumerate() {
+            let at = crate::error::join_index(&p, i);
+            if let Err(msg) = check_upstream_address(a) {
+                d.error(*off, &at, msg);
+            } else if seen.contains(&a.as_str()) {
+                d.error(*off, &at, format!("{a:?} is listed twice"));
+            }
+            seen.push(a);
+        }
+        list.into_iter().map(|(_, a)| a).collect::<Vec<_>>()
+    });
+    if let Some(v) = o.take("protocol") {
+        let p = o.at("protocol");
+        match d.string(v, &p).as_deref() {
+            Some("http/1.1") | None => {}
+            Some(other @ ("h2c" | "h2")) => {
+                d.not_yet(v.off, &p, &format!("the {other:?} protocol for upstreams"));
+            }
+            Some(other) => d.error(
+                v.off,
+                &p,
+                format!("{other:?} is not one of \"http/1.1\", \"h2c\", \"h2\""),
+            ),
+        }
+    }
+    let count = |d: &mut Decoder<'_>, o: &mut Obj<'_>, key: &str, zero: usize| {
+        let v = o.take(key)?;
+        let n = d.int(v, &o.at(key), 0, i64::MAX)?;
+        Some(match usize::try_from(n) {
+            Ok(0) => zero,
+            Ok(n) => n,
+            Err(_) => usize::MAX,
+        })
+    };
+    let max_conns = count(d, &mut o, "max_conns", DEFAULT_MAX_CONNS).unwrap_or(DEFAULT_MAX_CONNS);
+    let max_pending =
+        count(d, &mut o, "max_pending", DEFAULT_MAX_PENDING).unwrap_or(DEFAULT_MAX_PENDING);
+    // 0 keeps no idle connection: only leaving it out means the default.
+    let max_idle_conns = count(d, &mut o, "max_idle_conns", 0).unwrap_or(DEFAULT_MAX_IDLE_CONNS);
+    let mut duration = |d: &mut Decoder<'_>, key: &str, default: Duration| {
+        let v = o.take(key);
+        let p = o.at(key);
+        v.and_then(|v| d.duration(v, &p))
+            .filter(|t| !t.is_zero())
+            .unwrap_or(default)
+    };
+    let idle_timeout = duration(d, "idle_timeout", DEFAULT_IDLE_TIMEOUT);
+    let connect_timeout = duration(d, "connect_timeout", DEFAULT_CONNECT_TIMEOUT);
+    o.finish(d, UPSTREAM_FIELDS, UPSTREAM_FIT_ONLY);
+    Some(Upstream {
+        name: name?,
+        addresses: addresses?,
+        max_conns,
+        max_pending,
+        max_idle_conns,
+        idle_timeout,
+        connect_timeout,
+    })
+}
+
+/// What is wrong with `addr` as an upstream's address, as fit's `checkUpstreamAddress` says it:
+/// a host and a port from 1 to 65535.
+fn check_upstream_address(addr: &str) -> Result<(), String> {
+    if addr.contains("://") {
+        return Err(format!(
+            "{addr} is a URL; write the host and port alone, as in \"10.0.0.1:8080\""
+        ));
+    }
+    let (host, port) = split_host_port(addr)
+        .ok_or_else(|| format!("{addr:?} is not a host and port, as in \"10.0.0.1:8080\""))?;
+    if host.is_empty() {
+        return Err(format!("{addr:?} has no host"));
+    }
+    let digits = port.strip_prefix('+').unwrap_or(port);
+    match digits.parse::<u32>() {
+        Ok(1..=65535) if digits.bytes().all(|b| b.is_ascii_digit()) => Ok(()),
+        _ => Err(format!("{addr:?} has no valid port")),
+    }
+}
+
+/// Go's `net.SplitHostPort`: `host:port` or `[host]:port`, the host holding no `:` unless
+/// bracketed.
+fn split_host_port(a: &str) -> Option<(&str, &str)> {
+    if let Some(rest) = a.strip_prefix('[') {
+        let (h, p) = rest.split_once(']')?;
+        let p = p.strip_prefix(':')?;
+        if h.contains(['[', ']']) || p.contains(['[', ']']) {
+            return None;
+        }
+        return Some((h, p));
+    }
+    let (h, p) = a.rsplit_once(':')?;
+    if h.contains([':', '[', ']']) || p.contains(['[', ']']) {
+        return None;
+    }
+    Some((h, p))
+}
+
+fn check_upstreams(ds: &mut [Decoder<'_>], upstreams: &[At<Upstream>]) {
+    let mut seen: Vec<&str> = Vec::new();
+    for u in upstreams {
+        let path = crate::error::join_field(&u.path, "name");
+        if !valid_name(&u.v.name) {
+            u.error(ds, &path, bad_name(&u.v.name));
+        } else if seen.contains(&u.v.name.as_str()) {
+            u.error(
+                ds,
+                &path,
+                format!("another upstream is already named {:?}", u.v.name),
+            );
+        }
+        seen.push(&u.v.name);
+    }
 }
 
 fn check_listeners(ds: &mut [Decoder<'_>], listeners: &[At<Listener>]) {

@@ -26,6 +26,9 @@
 | A6 | `akio-x509` 中生成 CSR（以及 `akio-crypto` 中的 JWS 辅助函数） | 已在 akio 分支 `claude/x509-csr`（`7ea64069`）完成，未合并 | 15 | I31 |
 | A7 | 不转码即可切分文件的 MP4（ISO BMFF）读取器 | 进行中，akio 分支 | — | 媒体库 |
 | A8 | TUN 设备 | 进行中，akio 分支 | — | VPN |
+| A9 | 立即关闭 HTTP 客户端的空闲连接 | 已提出（I14） | 10、11 | I14、I22 |
+| A10 | HTTP/1 客户端请求保留自己的 `Host` 字段 | 已提出（I14） | — | I15 |
+| A11 | HTTP 客户端的连接超时也作用于单个地址 | 已提出（I14） | 10 | I14 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -89,3 +92,48 @@ ClientHello 中读出，并且不终结 TLS。
 ## A8 TUN 设备
 
 **问题。** fit 的 VPN 路线在引擎上运行 TUN 接口。等这条路线在 akit 中开始时需要，在 fit 之后。
+
+## A9 关闭 HTTP 客户端的空闲连接
+
+**问题。** 图退役时，它的上游连接池会排空并关闭（I14，决策 004）。最后一个请求完成后，akio-http 的 `Client`
+保持的空闲连接也应当关闭，就像 fit 的连接池关闭 fib 的客户端那样。akio 的客户端无法关闭它们：它们只在
+`ClientOptions::idle_timeout`（fit 默认 60s）之后、服务端关闭它们时或引擎关闭时才关闭；丢弃 `Client` 也关不掉，
+因为每个空闲连接的 handler 都持有它的一个克隆。
+
+**依据。** `50a82315` 的 `crates/akio-http/src/client.rs`：`Pool`（空闲连接）是 `Inner` 私有的；`ClientConn`
+持有 `client: Option<Client>`；只有 `DialAcceptor::on_shutdown` 和空闲清扫会关闭空闲连接。
+
+**建议的 API。** `Client::close_idle(&self)`：立即关闭所有空闲连接，并让正在使用的连接不再回到空闲池（各自在
+响应收完后关闭），如同 Go 的 `Transport.CloseIdleConnections` 和引擎关闭时所做的。不阻塞。
+
+**akit 的用法。** `Pool::close` 在连接池排空后调用它。在此之前，已关闭连接池的空闲连接最多保持到它的
+`idle_timeout`（记录在 I14 的进度条目中）。
+
+## A10 请求自己的 `Host` 字段
+
+**问题。** 反向代理会把客户端的 `Host` 传给上游，除非配置要求改写（fit 的代理，I15）。akio-http 的 HTTP/1
+客户端总是根据请求 URL 写 `Host`，并丢弃请求自带的 `Host` 字段。
+
+**依据。** `50a82315` 的 `crates/akio-http/src/client.rs`，`Client::attempt`：请求头按 `parse_url` 得到的
+`Host: {host_header}` 写出，名为 `host` 的请求字段被跳过。
+
+**建议的 API。** `ClientRequest::headers` 中设置的 `Host` 字段取代从 URL 得到的那个（URL 仍决定连到哪里），
+或者提供 `ClientRequest::host(name)` 设置方法。
+
+**akit 的用法。** I15 的代理通过上游连接池发送客户端的 `Host`，或其参数设定的 `Host`。
+
+## A11 HTTP 客户端的连接超时作用于每次连接
+
+**问题。** fit 按每个上游的 `connect_timeout` 限制建立到上游的连接所用的时间。akio-http 的客户端通过
+`ClientOptions::happy_eyeballs.connect_timeout` 接受这个值，但 Happy Eyeballs 竞速器只在一个名字解析出两个及以上
+地址时才使用它：单个地址（IP 字面量、只有一条记录的名字），或竞速器忙不过来而改为依次拨号时，用 `Engine::dial`
+拨号，受引擎的 `Config::connect_timeout` 限制。
+
+**依据。** `50a82315` 的 `crates/akio/src/dns.rs`：`HappyEyeballs::dial` 对单个地址直接返回
+`engine.dial(addrs[0], ...)`，`in_turn` 在 `Outcome::Busy` 时用 `engine.dial` 拨号。
+
+**建议的 API。** `Engine::dial_timeout(addr, timeout, acceptor, on_error)`（或给 `dial` 加超时），由
+`HappyEyeballs::dial` 用于每次尝试，使它的 `connect_timeout` 无论有几个地址都成立。
+
+**akit 的用法。** 每个上游的连接池设置自己的超时。在此之前，`akit_listener::engine` 把引擎的
+`connect_timeout` 设为各上游中最短的那个；各上游一致时即为各自的值（记录在 I14 的进度条目中）。

@@ -27,3 +27,15 @@ routes[].handler<respond>.params
 routes[].handler<respond>.params.status
 routes[].handler<respond>.params.headers
 routes[].handler<respond>.params.body
+#
+# I14: upstreams with their servers and connection limits. upstreams[].protocol takes "http/1.1";
+# "h2c" and "h2" are refused as not supported yet (I18, I54).
+upstreams
+upstreams[].name
+upstreams[].addresses
+upstreams[].protocol
+upstreams[].max_conns
+upstreams[].max_pending
+upstreams[].max_idle_conns
+upstreams[].idle_timeout
+upstreams[].connect_timeout

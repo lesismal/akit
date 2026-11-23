@@ -18,6 +18,8 @@
 
 use std::{fmt, sync::Arc};
 
+use akit_upstream::{EngineSlot, Pool};
+
 use crate::traits::{Handler, Middleware};
 
 /// The namespace of the modules that answer requests: [`Handler`]s.
@@ -54,14 +56,51 @@ impl Kind {
     }
 }
 
-/// What the config a module belongs to provides it with, besides its own params.
+/// What the config a module belongs to provides it with, besides its own params, as fit's
+/// `module.Env`.
 ///
-/// Empty for now: I04 adds what fit's `module.Env` holds (the config's upstream pools, the engine
-/// connections are dialed through, the hold a module takes on its graph for a request that
-/// outlives its handler's call) as the iterations that use them come.
+/// So far (I14): the engine connections are dialed through, and the config's upstream pools, by
+/// name. What compiles a config gives an `Env` with the engine ([`Env::new`]); [`compile`]
+/// (crate::compile) adds the pools it makes from the config's `upstreams` before it provisions
+/// the modules, which keep the pools they use ([`Env::upstream`]).
 #[derive(Debug, Default)]
 #[non_exhaustive]
-pub struct Env {}
+pub struct Env {
+    engine: EngineSlot,
+    upstreams: Vec<Pool>,
+}
+
+impl Env {
+    /// The env of a config whose pools dial through the engine `engine` holds once it is filled.
+    /// [`Env::default`] has an empty slot: its pools fail every request, as for `akit validate`.
+    #[must_use]
+    pub fn new(engine: EngineSlot) -> Env {
+        Env {
+            engine,
+            upstreams: Vec::new(),
+        }
+    }
+
+    /// Where the engine connections are dialed through is, or will be.
+    #[must_use]
+    pub fn engine(&self) -> &EngineSlot {
+        &self.engine
+    }
+
+    /// The pool of the upstream named `name`.
+    #[must_use]
+    pub fn upstream(&self, name: &str) -> Option<&Pool> {
+        self.upstreams.iter().find(|p| p.name() == name)
+    }
+
+    /// The same engine, and `upstreams`.
+    pub(crate) fn with_upstreams(&self, upstreams: Vec<Pool>) -> Env {
+        Env {
+            engine: self.engine.clone(),
+            upstreams,
+        }
+    }
+}
 
 /// What a module's constructor is given: its params, as the config wrote them, and its config's
 /// [`Env`]. As fit's `module.Context`.
@@ -427,6 +466,19 @@ impl Modules {
     /// Cleans the modules up, last provisioned first.
     pub fn release(self) {
         drop(self);
+    }
+
+    /// Records what is not a module but is cleaned up with them, as the config's upstream pools
+    /// are: `cleanup` runs, in the same reverse order, under `id`.
+    pub(crate) fn push_cleanup(
+        &mut self,
+        id: &'static str,
+        cleanup: impl FnOnce() + Send + Sync + 'static,
+    ) {
+        self.loaded.push(Loaded {
+            id,
+            cleanup: Some(Box::new(cleanup)),
+        });
     }
 
     fn push<T: ?Sized>(&mut self, id: &'static str, p: Provisioned<T>) -> Arc<T> {
