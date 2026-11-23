@@ -1,5 +1,7 @@
 [workspace]
 resolver = "3"
+# The cargo-fuzz project (nightly) is a workspace of its own.
+exclude = ["fuzz"]
 members = [
     "crates/akit",
     "crates/akit-config",

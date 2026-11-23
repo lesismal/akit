@@ -1,0 +1,24 @@
+# cargo-fuzz targets (nightly): `cargo +nightly fuzz run <target>`. A workspace of its own, so
+# that libfuzzer-sys never reaches akit's lock file or cargo-deny's graph.
+[package]
+name = "akit-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+akit-config = { path = "../crates/akit-config" }
+
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "config_json"
+path = "fuzz_targets/config_json.rs"
+test = false
+doc = false
+bench = false

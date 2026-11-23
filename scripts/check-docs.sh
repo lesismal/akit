@@ -18,9 +18,9 @@ while IFS= read -r f; do
             echo "no language links under the title: $doc"; bad=1
         fi
     done
-done < <(find . -name '*.md' -not -path './target/*' -not -path './.git/*' | sort)
+done < <(find . -name '*.md' -not -path './target/*' -not -path './.git/*' -not -path './.claude/*' -not -path './fuzz/target/*' | sort)
 while IFS= read -r twin; do
     [ -f "${twin%.zh-CN.md}.md" ] || { echo "missing English original of $twin"; bad=1; }
-done < <(find . -name '*.zh-CN.md' -not -path './target/*' -not -path './.git/*')
+done < <(find . -name '*.zh-CN.md' -not -path './target/*' -not -path './.git/*' -not -path './.claude/*' -not -path './fuzz/target/*')
 if [ "$bad" -eq 0 ]; then echo "docs: every document has its twin"; fi
 exit "$bad"

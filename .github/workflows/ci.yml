@@ -66,3 +66,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: EmbarkStudios/cargo-deny-action@v2
+
+  fuzz:
+    # Each reader fuzzed for a minute (dev-plan I02: "fuzzed for a minute in CI").
+    name: fuzz (config_json, 60s)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: fuzz
+      - run: cargo install cargo-fuzz --locked
+      - run: cargo +nightly fuzz run config_json -- -max_total_time=60
