@@ -10,14 +10,32 @@
 | | |
 | --- | --- |
 | 最后更新 | 2026-11-23 |
-| 里程碑 | M0 基础：I01、I02、I03、I07a 已完成。 |
+| 里程碑 | M0 基础：I01、I02、I03、I04、I07a 已完成。 |
 | akio | akio `main` 上的 `50a82315`（`1.0.0-rc.1`），在 `Cargo.toml` 中按 `rev` 锁定 |
 | fit | 作为规格；本计划基于 `7daee573` 阅读 |
-| 可用功能 | 工作区能构建并通过 `make check`；`akit version` 和 `akit help`；`akit_config::from_json` 能读取 fit 的监听器、路由和 `respond` handler，fit 配置的其余部分按名字报为暂不支持；模块注册表和数据面 trait（`akit-runtime`） |
-| 下一步 | I04，把 I02 的配置模型与 I03 的注册表接起来；I07b，把兼容性门禁接到 `validate`。 |
+| 可用功能 | 工作区能构建并通过 `make check`；`akit version` 和 `akit help`；`akit_config::from_json` 能读取 fit 的监听器、路由和 `respond` handler，fit 配置的其余部分按名字报为暂不支持；模块注册表和数据面 trait（`akit-runtime`）；`compile` 把配置编译成 `Graph`，`GraphCell` 负责发布、读取和退役图 |
+| 下一步 | I05，`akit run`：监听器与 `respond`；I07b，把兼容性门禁接到 `validate`。 |
 | akio 需求 | A1–A8 现在全部加进 akio，各在 akio 的独立分支上进行（[akio API 需求](akio-api-requests.zh-CN.md)） |
 
 ## 日志
+
+### 2026-11-23：I04，运行时图及其替换
+
+- `akit_runtime::compile(config, registry, env) -> Graph`：图存在之前，每条路由的 handler 都已从注册表加载并
+  初始化。失败的配置不留下任何东西：失败前已初始化的模块会被清理，错误带有出错位置的路径（初始化错误指明字段时为
+  `routes[1].handler.params.status`）。
+- `GraphCell`（[决定 004](decisions/004-graph-publication-and-retirement.zh-CN.md)）：`swap` 在锁内发布图并递增
+  epoch；`with` 通过每线程缓存的 `Arc` 读取，每次替换每个线程只刷新一次，因此请求不增减任何共享引用计数；`hold`
+  为处理函数返回后仍在进行的请求或连接保留图；`collect` 在每个线程都已离开或越过旧图、且没有 `Hold` 保留它时退役
+  被替换的图，只清理一次其模块。
+- 测试（`tests/graph.rs`，8 个）：编译及其失败、替换与回收、hold、仍在旧图内的请求、空闲线程不会钉住旧图、8 个线程
+  各替换并读取 300 次且每个图恰好退役一次，以及 4 个 akio I/O 线程服务期间的替换。
+- 基准 `benches/graph_read.rs`：经 `GraphCell::with` 的读取，对比 `Arc` 克隆和加锁再克隆，1 线程和 16 线程；数据来自基准测试主机。
+- 已验证：macOS 上的 `make check`。尚未验证：Linux（epoll 和 io_uring）上的测试和基准，已在基准测试主机上排队；
+  结果由后续提交记录。
+- 与计划的不同：“原子指针”是每次替换每个线程取一次的互斥锁（不用 unsafe，规则 14；epoch 才是原子量）。图不是由最后
+  一个请求释放的：akio 没有在空闲 I/O 线程上运行代码的钩子，空闲线程的缓存会保留旧图，所以由控制面用 `collect` 退役
+  （决定 004）。handler 参数是 `akit_config::Handler`，由 akit-config 解码和检查。在 I11 之前路由保持配置中的顺序。
 
 ### 2026-11-23：I07a，兼容性门禁 I：夹具、字段清单、测试框架
 

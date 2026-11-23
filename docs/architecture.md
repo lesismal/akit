@@ -50,16 +50,21 @@ compile, is handed to the control thread and answered when it completes.
 with matchers and middleware chains built, services, upstream pools, certificates in use. A graph
 is immutable once published.
 
-- **Publish**: the control thread stores the new `Arc<Graph>` in one atomic pointer and bumps an
-  epoch.
-- **Read**: each I/O thread keeps its own `Arc<Graph>` and the epoch it saw. A request checks the
-  epoch (a relaxed load of a line every thread reads but none writes per request) and refreshes its
-  copy only when it changed. Requests on a thread borrow the thread's copy: no shared reference
-  count is bumped per request ([rule 13](rules.md#5-the-hot-path)).
-- **Keep**: a request or connection that outlives a swap (a proxied response in flight, a WebSocket,
-  a TCP tunnel) holds its own `Arc<Graph>` clone, taken once when it starts.
-- **Release**: when the last clone drops, the graph's modules are cleaned up: pools drain, files
-  close. Cleanup that blocks goes to the logical pool.
+- **Publish** (`GraphCell::swap`): the control thread replaces the current `Arc<Graph>` under a
+  lock and bumps an epoch.
+- **Read** (`GraphCell::with`): each I/O thread keeps its own `Arc<Graph>` and the epoch it saw. A
+  request loads the epoch and refreshes its copy, under the lock, only when it changed: once per
+  thread per swap. Requests borrow the thread's copy: no shared reference count is bumped per
+  request ([rule 13](rules.md#5-the-hot-path)); the only per-request writes are to the thread's
+  own slot, marking it inside the graph and out again.
+- **Keep** (`GraphCell::hold`): a request or connection that outlives its handler's call (a
+  proxied response in flight, a WebSocket, a TCP tunnel) takes a `Hold`, once when it starts.
+- **Retire** (`GraphCell::collect`): akio cannot run work on an idle I/O thread, whose cache may
+  keep an old graph's `Arc` for long. So the control plane retires a replaced graph, cleaning its
+  modules up (pools drain, files close), as soon as every thread is outside it or past it and no
+  `Hold` keeps it; the thread's mark and the epoch are a sequentially consistent store and load on
+  each side, so a request never starts on a retired graph. Cleanup runs on the control thread, once
+  ([decision 004](decisions/004-graph-publication-and-retirement.md)).
 
 Listeners are compared between graphs by address and transport: unchanged ones keep their sockets,
 new ones are bound, removed ones drained ([A1](akio-api-requests.md#a1-tcp-listeners-on-a-running-engine)).
