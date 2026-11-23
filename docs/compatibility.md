@@ -175,7 +175,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 37 supported.
+3821 fields in 121 sections, at fit `7daee573`; 39 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -298,9 +298,9 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`sync.transforms/wasm`](#fields-sync-transforms-wasm) | 9 | 0 | 9 |
 | [`telemetry`](#fields-telemetry) | 14 | 0 | 14 |
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
-| [`upstreams`](#fields-upstreams) | 38 | 9 | 29 |
+| [`upstreams`](#fields-upstreams) | 38 | 11 | 27 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 37 | 3784 |
+| **Total** | 3821 | 39 | 3782 |
 
 <a id="fields-access"></a>
 
@@ -4866,7 +4866,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `upstreams[].health_check.timeout` | `duration` | not supported yet |
 | `upstreams[].health_check.type` | `enum(http\|tcp)` | not supported yet |
 | `upstreams[].idle_timeout` | `duration` | supported |
-| `upstreams[].load_balancing` | `enum(round_robin\|weighted_round_robin\|least_conn\|random\|p2c\|ip_hash\|uri_hash\|header_hash\|cookie_hash)` | not supported yet |
+| `upstreams[].load_balancing` | `enum(round_robin\|weighted_round_robin\|least_conn\|random\|p2c\|ip_hash\|uri_hash\|header_hash\|cookie_hash)` | supported |
 | `upstreams[].max_conns` | `integer` | supported |
 | `upstreams[].max_fails` | `integer` | not supported yet |
 | `upstreams[].max_idle_conns` | `integer` | supported |
@@ -4885,7 +4885,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `upstreams[].tls_cert_file` | `string` | not supported yet |
 | `upstreams[].tls_key_file` | `string` | not supported yet |
 | `upstreams[].tls_server_name` | `string` | not supported yet |
-| `upstreams[].weights` | `array<integer>` | not supported yet |
+| `upstreams[].weights` | `array<integer>` | supported |
 
 <a id="fields-webrtc"></a>
 

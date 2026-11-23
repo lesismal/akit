@@ -115,7 +115,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I16 | Reverse proxy II: streamed bodies, linked backpressure | I15 | todo |
 | I17 | Reverse proxy III: timeouts, cancellation, trailers | I16 | todo |
 | I18 | HTTP/2 and h2c upstreams | I17 | todo |
-| I19 | Load balancing v1 | I14 | todo |
+| I19 | Load balancing v1 | I14 | done |
 | I20 | Passive health checks | I19 | todo |
 | I21 | Access logs | I15 | todo |
 | I22 | Reload on SIGHUP | I06 | todo |

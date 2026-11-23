@@ -152,7 +152,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 37 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 39 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -275,9 +275,9 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`sync.transforms/wasm`](#fields-sync-transforms-wasm) | 9 | 0 | 9 |
 | [`telemetry`](#fields-telemetry) | 14 | 0 | 14 |
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
-| [`upstreams`](#fields-upstreams) | 38 | 9 | 29 |
+| [`upstreams`](#fields-upstreams) | 38 | 11 | 27 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **合计** | 3821 | 37 | 3784 |
+| **合计** | 3821 | 39 | 3782 |
 
 <a id="fields-access"></a>
 
@@ -4843,7 +4843,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `upstreams[].health_check.timeout` | `duration` | 尚不支持（not supported yet） |
 | `upstreams[].health_check.type` | `enum(http\|tcp)` | 尚不支持（not supported yet） |
 | `upstreams[].idle_timeout` | `duration` | 已支持 |
-| `upstreams[].load_balancing` | `enum(round_robin\|weighted_round_robin\|least_conn\|random\|p2c\|ip_hash\|uri_hash\|header_hash\|cookie_hash)` | 尚不支持（not supported yet） |
+| `upstreams[].load_balancing` | `enum(round_robin\|weighted_round_robin\|least_conn\|random\|p2c\|ip_hash\|uri_hash\|header_hash\|cookie_hash)` | 已支持 |
 | `upstreams[].max_conns` | `integer` | 已支持 |
 | `upstreams[].max_fails` | `integer` | 尚不支持（not supported yet） |
 | `upstreams[].max_idle_conns` | `integer` | 已支持 |
@@ -4862,7 +4862,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `upstreams[].tls_cert_file` | `string` | 尚不支持（not supported yet） |
 | `upstreams[].tls_key_file` | `string` | 尚不支持（not supported yet） |
 | `upstreams[].tls_server_name` | `string` | 尚不支持（not supported yet） |
-| `upstreams[].weights` | `array<integer>` | 尚不支持（not supported yet） |
+| `upstreams[].weights` | `array<integer>` | 已支持 |
 
 <a id="fields-webrtc"></a>
 

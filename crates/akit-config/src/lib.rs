@@ -8,7 +8,8 @@
 //! reads it; an unknown field, a key given twice or a wrong type is an error. A field fit reads
 //! and akit does not support yet is refused as "not supported yet", never read and ignored
 //! ([`Error::is_not_supported_yet`]). I09 adds listeners' `tls` ([`Tls`]), and I14 `upstreams`
-//! ([`Upstream`]): their servers and the limits on the connections to them.
+//! ([`Upstream`]): their servers and the limits on the connections to them; I19 their
+//! `weights` and `load_balancing` ([`LoadBalancing`]).
 //!
 //! I23 adds fit's own format, `.conf` ([`from_conf`]), and I24 YAML ([`from_yaml`], decision
 //! 005): each read into the same tree as JSON and decoded by the same code, so the model reads
@@ -32,8 +33,8 @@ pub use json::MAX_DEPTH;
 pub use model::{
     Certificate, ClientAuth, ClientAuthMode, Config, DEFAULT_CONNECT_TIMEOUT, DEFAULT_IDLE_TIMEOUT,
     DEFAULT_MAX_CONNS, DEFAULT_MAX_IDLE_CONNS, DEFAULT_MAX_PENDING, DEFAULT_PROTOCOLS,
-    DEFAULT_TLS_PROTOCOLS, Handler, Listener, Match, Protocol, Respond, Route, SCHEMA_VERSION, Tls,
-    TlsVersion, Upstream,
+    DEFAULT_TLS_PROTOCOLS, Handler, Listener, LoadBalancing, MAX_WEIGHT, Match, Protocol, Respond,
+    Route, SCHEMA_VERSION, Tls, TlsVersion, Upstream,
 };
 
 /// The largest config document read, in bytes: fit's own configs are kilobytes; this bounds

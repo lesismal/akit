@@ -11,14 +11,65 @@ done and where the work differs from the plan.
 | | |
 | --- | --- |
 | Last updated | 2026-11-24 |
-| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09, I11, I14, I23 and I24 done. |
+| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09, I11, I14, I19, I23 and I24 done. |
 | akio | `50a82315` on akio's `main` (`1.0.0-rc.1`), pinned by `rev` in `Cargo.toml` |
 | fit | the specification; read at `7daee573` for this plan |
-| What works | `akit run` and `akit validate` with fit's flags and exit codes, `-c` repeated, files and directories merged, in JSON, fit's `.conf` and YAML; a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c and TLS listeners (certificates from files chosen by SNI, ALPN choosing h2 or HTTP/1.1, client authentication); `respond` routes chosen by router v1 (fit's host and path rules by lookup, on canonical paths), 404 when nothing matches; `upstreams` compiled into a pool each on akio's HTTP/1 client, drained when their graph is retired (the proxy that sends through them is I15); the compatibility gate: 80 fixtures, 5 valid, 74 refused only as not supported yet, 1 skipped, none failed; the I08 baseline: akit first in the fixed scenario over HTTP/1.1 and h2c |
-| Next | I15 (reverse proxy I, on I11 and I14), I10 (HTTP/3), I12 (static files), I19 (load balancing), I22 (reload) |
+| What works | `akit run` and `akit validate` with fit's flags and exit codes, `-c` repeated, files and directories merged, in JSON, fit's `.conf` and YAML; a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c and TLS listeners (certificates from files chosen by SNI, ALPN choosing h2 or HTTP/1.1, client authentication); `respond` routes chosen by router v1 (fit's host and path rules by lookup, on canonical paths), 404 when nothing matches; `upstreams` compiled into a pool each on akio's HTTP/1 client, drained when their graph is retired, picking their addresses by round robin, weighted round robin or least connections (the proxy that sends through them is I15); the compatibility gate: 80 fixtures, 5 valid, 74 refused only as not supported yet, 1 skipped, none failed; the I08 baseline: akit first in the fixed scenario over HTTP/1.1 and h2c |
+| Next | I15 (reverse proxy I, on I11 and I14), I10 (HTTP/3), I12 (static files), I20 (passive health checks), I22 (reload) |
 | akio requests | A1–A8 being added to akio, each on its own akio branch, not merged; A9 (a TLS server capped at TLS 1.2) requested by I09; A10–A12 (HTTP client: closing idle connections, a request's own `Host`, the connect timeout for a lone address) by I14 ([akio API requests](akio-api-requests.md)) |
 
 ## Log
+
+### 2026-11-24: I19, load balancing v1
+
+- Config: `upstreams[].weights` (each from 1 to 1000, one per address) and
+  `upstreams[].load_balancing` (`round_robin`, `weighted_round_robin`, `least_conn`) are read into
+  `akit_config::Upstream` (`weights`, `load_balancing`, `weight(i)`), with fit's default (round
+  robin, or weighted round robin when an address weighs other than 1) and fit's checks and
+  messages: the bounds of each weight, as many weights as addresses, no weights with
+  `round_robin`, and the policy one of fit's nine. fit's other six policies (`random`, `p2c`,
+  the hashes) and `hash_key` are refused as not supported yet (I36).
+- `akit_upstream::balance::Balancer`, behind `Pool::pick` (whose signature is unchanged; the pool
+  adds `load_balancing()` and `weight(i)`): round robin; nginx's smooth weighted round robin, its
+  round worked out ahead (weights divided by their greatest common divisor, at most 65536
+  entries, as fit's `maxSchedule`) and taken one entry a pick; least connections, the address with
+  the fewest requests under way for its weight (busy and waiting, the counts the pool keeps per
+  address for `max_conns`), compared without dividing, ties broken from a starting point that
+  moves on with each pick.
+- State per I/O thread (rule 13): fit keeps one turn per upstream for every goroutine; akit gives
+  each balancer one cache-line slot per core (the parallelism rounded up to a power of two), and
+  each thread takes its turns from the slot it was given on its first pick. Each thread sees fit's
+  sequences exactly and the shares are exact over whole rounds whichever threads share a slot;
+  slots start at different places in the round so that every thread's first requests do not all
+  go to the first address. What must be shared is read, not written: least connections reads the
+  per-address counts. Weighted round robin with a round too long to work out ahead runs nginx's
+  algorithm on each slot's own running weights, under the slot's own lock (no global lock).
+  Picking does not allocate.
+- Tests: `akit-upstream/tests/balance.rs` (9), fit's `balance_test.go` ported: round robin and
+  smooth weighted round robin sequences (as rotations of fit's, since each slot starts elsewhere)
+  and exact shares, the schedule from weights with a common divisor, weights too many to schedule
+  (exact by weight), 8 threads at once (exact shares for every policy), least connections idle,
+  busy and weighted, one address; the pool following the config, and least connections reading
+  the requests held by two real upstreams (6 and 3 for weights 2 and 1).
+  `akit-config/tests/upstreams.rs`: `load_balancing` (defaults, the three policies, fit's checks
+  and messages, the policies not supported yet). The gate's samples for both fields.
+- Checked: `make check` on macOS; the tests of akit-config, akit-upstream (epoll and io_uring)
+  and akit-compat on Linux (the benchmark host), all passing. fit's messages and their line and
+  column checked against `fit validate` on the same files. The gate (`make compat-bless`):
+  `upstreams` 11 of 38 fields supported (39 in all); `examples/load-balancing` no longer refuses
+  `weights` and `load_balancing`, and `examples/l4-udp` names the `ip_hash` policy it lacks.
+- Differences from the plan and from fit:
+  - Turns are per thread, not per upstream: over all threads together, round robin is fair over
+    whole rounds per thread rather than strictly in turn, so two requests on different threads
+    may go to the same address at once. fit's single-goroutine sequences hold per thread.
+  - fit's passive and active health (passing over addresses that are down, `TestWeightedRoundRobinDown`)
+    is not ported: that is I20. fit's allocation test (`TestPickAllocs`) is not ported either (a
+    counting allocator needs `unsafe`); picking allocates nothing by construction.
+  - Least connections counts a request from when the pool takes it (`send`), not from fit's
+    `Pick`: a caller that picks and sends at once, as `Pool::request` does, sees the same.
+- What a benchmark task should measure: `Pool::pick` per policy at 1 and at all cores (the
+  per-thread slots against one shared counter), and a proxy run over several upstream addresses
+  per policy against fit, checking the shares under load.
 
 ### 2026-11-24: I14, upstream pools on the HTTP/1 client
 

@@ -1,7 +1,7 @@
 # The compatibility gate's report (docs/compatibility.md), written by make compat-bless;
 # do not edit. The gate fails when a run's outcomes differ from these lines.
 # fit 7daee573, fit-examples 9659d7e4.
-# 80 fixtures: 5 valid, 74 refused only as not supported yet (fields refused: 61), 0 in a format not supported yet, 1 skipped, 0 failed.
+# 80 fixtures: 5 valid, 74 refused only as not supported yet (fields refused: 60), 0 in a format not supported yet, 1 skipped, 0 failed.
 examples/acme-on-demand: not supported yet: acme
 examples/acme-on-demand: not supported yet: listeners[].tls.acme
 examples/acme-on-demand: not supported yet: listeners[].tls.on_demand
@@ -67,7 +67,7 @@ examples/l4-tcp: not supported yet: services
 examples/l4-tcp: not supported yet: upstreams[].health_check
 examples/l4-udp: not supported yet: listeners[].protocols: the "udp" protocol
 examples/l4-udp: not supported yet: services
-examples/l4-udp: not supported yet: upstreams[].load_balancing
+examples/l4-udp: not supported yet: upstreams[].load_balancing: the "ip_hash" load balancing policy
 examples/limits: not supported yet: engine
 examples/limits: not supported yet: limits
 examples/llm-hub: not supported yet: llm
@@ -76,10 +76,8 @@ examples/llm-proxy: not supported yet: llm
 examples/load-balancing: not supported yet: routes[].handler<proxy>
 examples/load-balancing: not supported yet: upstreams[].fail_timeout
 examples/load-balancing: not supported yet: upstreams[].health_check
-examples/load-balancing: not supported yet: upstreams[].load_balancing
 examples/load-balancing: not supported yet: upstreams[].max_fails
 examples/load-balancing: not supported yet: upstreams[].sticky_cookie
-examples/load-balancing: not supported yet: upstreams[].weights
 examples/logging: not supported yet: access_log
 examples/logging: not supported yet: log
 examples/media-pages: not supported yet: media_auth
