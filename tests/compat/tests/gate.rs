@@ -342,6 +342,11 @@ fn supported_fields_are_read() {
             r#"{{{L}, "routes": [{{"handler": {{"module": "respond", "params": {{{params}}}}}}}]}}"#
         )
     };
+    let statics = |params: &str| {
+        format!(
+            r#"{{{L}, "routes": [{{"handler": {{"module": "static", "params": {{"root": "/srv/www"{params}}}}}}}]}}"#
+        )
+    };
     let upstream = |fields: &str| {
         format!(r#"{{"upstreams": [{{"name": "app", "addresses": ["127.0.0.1:9000"]{fields}}}]}}"#)
     };
@@ -479,6 +484,47 @@ fn supported_fields_are_read() {
             respond(r#""body": "hi""#),
             |c| respond_of(c).body == "hi",
         ),
+        ("routes[].handler<static>", statics(""), |c| {
+            static_of(c).index == "index.html"
+        }),
+        ("routes[].handler<static>.params", statics(""), |c| {
+            static_of(c).root == "/srv/www"
+        }),
+        ("routes[].handler<static>.params.root", statics(""), |c| {
+            static_of(c).root == "/srv/www"
+        }),
+        (
+            "routes[].handler<static>.params.index",
+            statics(r#", "index": ["default.htm"]"#),
+            |c| static_of(c).index == "default.htm",
+        ),
+        (
+            "routes[].handler<static>.params.max_file_bytes",
+            statics(r#", "max_file_bytes": 4096"#),
+            |c| static_of(c).max_file_bytes == 4096,
+        ),
+        (
+            "routes[].handler<static>.params.dotfiles",
+            statics(r#", "dotfiles": "allow""#),
+            |c| static_of(c).dotfiles == akit_config::Dotfiles::Allow,
+        ),
+        // Its one value akit takes is the default, so it reads it by refusing the other.
+        (
+            "routes[].handler<static>.params.disk_io",
+            statics(r#", "disk_io": "pool""#),
+            |_| {
+                akit_config::from_json(
+                    r#"{"listeners": [{"name": "web", "address": ":8080"}], "routes": [{"handler": {"module": "static", "params": {"root": "/", "disk_io": "auto"}}}]}"#,
+                    None,
+                )
+                .is_err_and(|e| e.only_not_supported_yet())
+            },
+        ),
+        (
+            "routes[].handler<static>.params.check_interval",
+            statics(r#", "check_interval": "0s""#),
+            |c| static_of(c).check_interval.is_zero(),
+        ),
         ("upstreams", upstream(""), |c| c.upstreams.len() == 1),
         ("upstreams[].name", upstream(""), |c| {
             c.upstreams[0].name == "app"
@@ -540,9 +586,19 @@ fn supported_fields_are_read() {
     }
 }
 
+#[allow(clippy::panic)]
 fn respond_of(c: &Config) -> &akit_config::Respond {
     match &c.routes.first().unwrap().handler {
         Handler::Respond(r) => r,
+        Handler::Static(_) => panic!("not a respond handler"),
+    }
+}
+
+#[allow(clippy::panic)]
+fn static_of(c: &Config) -> &akit_config::Static {
+    match &c.routes.first().unwrap().handler {
+        Handler::Static(s) => s,
+        Handler::Respond(_) => panic!("not a static handler"),
     }
 }
 
@@ -565,7 +621,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 10] = [
+    let objects: [(&str, &str, Option<&str>); 11] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         ("listeners[]", "LISTENER_FIELDS", Some("LISTENER_FIT_ONLY")),
         ("listeners[].tls", "TLS_FIELDS", Some("TLS_FIT_ONLY")),
@@ -575,6 +631,11 @@ fn akit_config_lists_match_the_inventory() {
         ("routes[].match", "MATCH_FIELDS", Some("MATCH_FIT_ONLY")),
         ("routes[].handler", "MODULE_FIELDS", None),
         ("routes[].handler<respond>.params", "RESPOND_FIELDS", None),
+        (
+            "routes[].handler<static>.params",
+            "STATIC_FIELDS",
+            Some("STATIC_FIT_ONLY"),
+        ),
         ("upstreams[]", "UPSTREAM_FIELDS", Some("UPSTREAM_FIT_ONLY")),
     ];
     let mapped: BTreeSet<&str> = objects
@@ -629,10 +690,9 @@ fn akit_config_lists_match_the_inventory() {
             "model.rs FIT_HANDLERS: {h:?} is not a handler fit has"
         );
     }
-    assert!(
-        handlers.insert("respond".to_owned()),
-        "FIT_HANDLERS lists respond"
-    );
+    for h in ["respond", "static"] {
+        assert!(handlers.insert(h.to_owned()), "FIT_HANDLERS lists {h}");
+    }
     let fit_handlers: BTreeSet<String> = inventory
         .iter()
         .filter_map(|f| f.path.strip_prefix("routes[].handler<")?.strip_suffix('>'))
@@ -644,6 +704,8 @@ fn akit_config_lists_match_the_inventory() {
     );
     read.insert("routes[].handler<respond>".to_owned());
     read.insert("routes[].handler<respond>.params".to_owned());
+    read.insert("routes[].handler<static>".to_owned());
+    read.insert("routes[].handler<static>.params".to_owned());
     // Protocols: the three akit serves and FIT_PROTOCOLS.
     let mut protocols: BTreeSet<String> = list("FIT_PROTOCOLS").iter().cloned().collect();
     for p in [Protocol::Http11, Protocol::H2c, Protocol::H2] {

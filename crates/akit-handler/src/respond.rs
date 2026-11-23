@@ -26,7 +26,11 @@ impl Handler for Respond {}
 pub(crate) fn new(
     p: &Provision<'_, HandlerParams>,
 ) -> Result<Provisioned<dyn Handler>, ProvisionError> {
-    let HandlerParams::Respond(r) = p.params();
+    let HandlerParams::Respond(r) = p.params() else {
+        return Err(ProvisionError::new(
+            "the respond handler's params are not respond's",
+        ));
+    };
     Ok(Provisioned::new(Arc::new(Respond {
         response: response(r),
     }) as Arc<dyn Handler>))

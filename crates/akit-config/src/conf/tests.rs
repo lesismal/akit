@@ -484,13 +484,13 @@ fn positions() {
         c.listeners[0].protocols,
         [crate::Protocol::Http11, crate::Protocol::H2]
     );
-    let e = crate::from_conf("route {\n\thandler static { root /srv }\n}\n", None)
+    let e = crate::from_conf("route {\n\thandler fastcgi { root /srv }\n}\n", None)
         .unwrap_err()
         .0[0]
         .to_string();
     assert_eq!(
         e,
-        "2:10: routes[0].handler.module: not supported yet: the \"static\" handler"
+        "2:10: routes[0].handler.module: not supported yet: the \"fastcgi\" handler"
     );
 }
 

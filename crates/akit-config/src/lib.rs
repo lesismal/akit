@@ -30,9 +30,10 @@ use std::path::{Path, PathBuf};
 pub use error::{Error, Errors, NOT_SUPPORTED_YET};
 pub use json::MAX_DEPTH;
 pub use model::{
-    Certificate, ClientAuth, ClientAuthMode, Config, DEFAULT_CONNECT_TIMEOUT, DEFAULT_IDLE_TIMEOUT,
-    DEFAULT_MAX_CONNS, DEFAULT_MAX_IDLE_CONNS, DEFAULT_MAX_PENDING, DEFAULT_PROTOCOLS,
-    DEFAULT_TLS_PROTOCOLS, Handler, Listener, Match, Protocol, Respond, Route, SCHEMA_VERSION, Tls,
+    Certificate, ClientAuth, ClientAuthMode, Config, DEFAULT_CHECK_INTERVAL,
+    DEFAULT_CONNECT_TIMEOUT, DEFAULT_IDLE_TIMEOUT, DEFAULT_MAX_CONNS, DEFAULT_MAX_FILE_BYTES,
+    DEFAULT_MAX_IDLE_CONNS, DEFAULT_MAX_PENDING, DEFAULT_PROTOCOLS, DEFAULT_TLS_PROTOCOLS,
+    Dotfiles, Handler, Listener, Match, Protocol, Respond, Route, SCHEMA_VERSION, Static, Tls,
     TlsVersion, Upstream,
 };
 

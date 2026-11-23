@@ -222,8 +222,10 @@ version = "0.0.1"
 name = "akit-handler"
 version = "0.0.1"
 dependencies = [
+ "akio",
  "akio-http",
  "akit-config",
+ "akit-listener",
  "akit-runtime",
 ]
 

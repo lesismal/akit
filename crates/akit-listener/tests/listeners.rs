@@ -205,7 +205,9 @@ mod slow {
     impl Handler for Slow {}
 
     fn new(p: &Provision<'_, HandlerParams>) -> Result<Provisioned<dyn Handler>, ProvisionError> {
-        let HandlerParams::Respond(r) = p.params();
+        let HandlerParams::Respond(r) = p.params() else {
+            return Err(ProvisionError::new("a respond handler only"));
+        };
         Ok(Provisioned::new(Arc::new(Slow {
             delay: Duration::from_millis(u64::from(r.status)),
             body: r.body.clone(),

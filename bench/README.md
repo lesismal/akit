@@ -40,11 +40,11 @@ passed to fitbench: `-servers` (`nginx,caddy,traefik,fit,akit`), `-scenarios`
 (`fixed,static,proxy`), `-protocols` (`http/1.1,h2c,https/1.1,h2`), `-idle` (`http1,tls`), and `-args` for any
 other fitbench flag, as `-args '-duration 15s -warmup 5s'`.
 
-The defaults are what akit serves so far: the fixed scenario over HTTP/1.1, h2c, HTTPS/1.1 and h2
-(TLS since I09), and idle HTTP/1.1 and TLS connections. The other servers run every scenario they
-serve; akit's other scenarios are recorded as skipped ("akit cannot serve it") until the
-iterations that build them: static files in I12, the proxy in I15, HTTP/3 in I10, the cache in
-I69. Each adds what it
+The defaults are what akit serves so far: the fixed and static scenarios (static since I12, from
+fitbench's files mounted at `/srv/www` as for fit) over HTTP/1.1, h2c, HTTPS/1.1 and h2 (TLS since
+I09), and idle HTTP/1.1 and TLS connections. The other servers run every scenario they serve;
+akit's other scenarios are recorded as skipped ("akit cannot serve it") until the iterations that
+build them: the proxy in I15, HTTP/3 in I10, the cache in I69. Each adds what it
 serves to `fitbench/akit.go` and `configs/akit/fit.json`, and the protocols to the defaults.
 
 ## Comparing two builds

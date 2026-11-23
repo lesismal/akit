@@ -13,5 +13,9 @@ akio-http = { workspace = true }
 akit-config = { workspace = true }
 akit-runtime = { workspace = true }
 
+[dev-dependencies]
+akio = { workspace = true }
+akit-listener = { workspace = true }
+
 [lints]
 workspace = true

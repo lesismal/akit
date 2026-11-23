@@ -11,14 +11,77 @@ done and where the work differs from the plan.
 | | |
 | --- | --- |
 | Last updated | 2026-11-24 |
-| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09, I11, I14, I23 and I24 done. |
+| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09, I11, I12, I14, I23 and I24 done. |
 | akio | `50a82315` on akio's `main` (`1.0.0-rc.1`), pinned by `rev` in `Cargo.toml` |
 | fit | the specification; read at `7daee573` for this plan |
-| What works | `akit run` and `akit validate` with fit's flags and exit codes, `-c` repeated, files and directories merged, in JSON, fit's `.conf` and YAML; a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c and TLS listeners (certificates from files chosen by SNI, ALPN choosing h2 or HTTP/1.1, client authentication); `respond` routes chosen by router v1 (fit's host and path rules by lookup, on canonical paths), 404 when nothing matches; `upstreams` compiled into a pool each on akio's HTTP/1 client, drained when their graph is retired (the proxy that sends through them is I15); the compatibility gate: 80 fixtures, 5 valid, 74 refused only as not supported yet, 1 skipped, none failed; the I08 baseline: akit first in the fixed scenario over HTTP/1.1 and h2c |
-| Next | I15 (reverse proxy I, on I11 and I14), I10 (HTTP/3), I12 (static files), I19 (load balancing), I22 (reload) |
-| akio requests | A1–A8 being added to akio, each on its own akio branch, not merged; A9 (a TLS server capped at TLS 1.2) requested by I09; A10–A12 (HTTP client: closing idle connections, a request's own `Host`, the connect timeout for a lone address) by I14 ([akio API requests](akio-api-requests.md)) |
+| What works | `akit run` and `akit validate` with fit's flags and exit codes, `-c` repeated, files and directories merged, in JSON, fit's `.conf` and YAML; a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c and TLS listeners (certificates from files chosen by SNI, ALPN choosing h2 or HTTP/1.1, client authentication); `respond` and `static` routes chosen by router v1 (fit's host and path rules by lookup, on canonical paths), 404 when nothing matches; static files on akio-http's `Files` (validators, conditional and range requests, an index file, small files in memory, the disk looked at on akio's file pool); `upstreams` compiled into a pool each on akio's HTTP/1 client, drained when their graph is retired (the proxy that sends through them is I15); the compatibility gate: 80 fixtures, 5 valid, 74 refused only as not supported yet, 1 skipped, none failed; the I08 baseline: akit first in the fixed scenario over HTTP/1.1 and h2c |
+| Next | I15 (reverse proxy I, on I11 and I14), I10 (HTTP/3), I13 (static files II), I19 (load balancing), I22 (reload) |
+| akio requests | A1–A8 being added to akio, each on its own akio branch, not merged; A9 (a TLS server capped at TLS 1.2) requested by I09; A10–A12 (HTTP client: closing idle connections, a request's own `Host`, the connect timeout for a lone address) by I14; A13–A15 (`Files`: a path the caller names, fit's answers, bounded memory and a disk timeout) by I12 ([akio API requests](akio-api-requests.md)) |
 
 ## Log
+
+### 2026-11-24: I12, static files I
+
+- The `static` handler (`akit-handler`, `static_files.rs`) on akio-http's `Files`. `Files` serves:
+  `ETag` and `Last-Modified`, `If-Match`, `If-None-Match`, `If-Modified-Since`,
+  `If-Unmodified-Since`, ranges with `If-Range` (several as `multipart/byteranges`), `HEAD` with the
+  length, the `Content-Type` by extension, a directory's index file, files up to
+  `max_file_bytes` kept in memory and larger ones sent from disk (`sendfile` from a kept handle).
+  Only a file it knows within its trust window is answered on the I/O thread; every `stat`,
+  `open` and read runs on akio's file pool (16 threads, 4096 queued, past that 503 with
+  `Retry-After`), answered from there through a detached context (rules 1 and 4). On Linux, with
+  a `check_interval` other than 0, it follows changes through inotify, as fit does; elsewhere it
+  trusts what it learned for `check_interval`; 0 looks at the disk for every request.
+- What akit adds before `Files`, as fit's handler: only `GET` and `HEAD` (405 with
+  `Allow: GET, HEAD`); a path with a `..` segment, a NUL or a backslash, escaped or not, is 400
+  (fit's `dotfile.Scan`, decoding as it scans, without allocating); with `dotfiles` `deny`, the
+  default, a segment starting with a dot is 404 but `/.well-known/` at the root. Its short answers
+  are fit's (`"404 Not Found\n"` and so on), built once.
+- Config: `root` (required; that it is a directory is checked at provisioning, made absolute),
+  `index` (one name; fit's checks: a file name, no dot with `dotfiles` `deny`), `max_file_bytes`
+  (1 MiB), `dotfiles`, `disk_io` (`pool`; `auto`, which looks at the disk on the worker, is refused
+  as not supported yet), `check_interval` (5s). Refused as not supported yet: `strip_prefix` (A13),
+  `max_cache_bytes` (A15), `default_type` and `index` lists of other than one name (A14);
+  `precompressed`, `compress`, `try_files`, `browse` and `browse_max_entries` (I13). The
+  compatibility gate: 8 static fields supported (45 in all); fit's examples that use `static`
+  are now refused only for those fields (`make compat-bless`).
+- The bench config serves fit's `static` and `site` routes from `/srv/www`, mounted as for fit,
+  and `static` is in akit's fitbench scenarios (`bench/configs/akit/fit.json`,
+  `bench/fitbench/akit.go`, bench README). No benchmark was run (rule 30).
+- Tests: `akit-handler/tests/static_files.rs` (11), fit's `static_test.go` ported through akit's
+  listener: serving (types, index, 404, 405, HEAD, twice for the cache), an index file, traversal
+  (12 attempts, escaped and not, 400 from the listener or the handler, dotfiles and
+  `.well-known`, `dotfiles` `allow`), conditional and range requests from memory and from disk,
+  a large file from disk, a changed and removed file with `check_interval` 0, the config's errors
+  and what is not supported yet, fit's bench routes on one root; and: a disk that hangs (a FIFO
+  no one writes to) holds a file pool thread while 16 requests on other connections are answered
+  from memory, a 4 MiB file to a slow reader and to clients that leave midway, pipelined requests
+  answered in order. Unit tests of the path scan (traversal, dotfiles, plain paths).
+- Checked: `make check` on macOS; the tests of akit-handler, akit-config, akit-listener,
+  akit-runtime and akit-compat on Linux (the benchmark host), epoll and io_uring, all passing.
+- Differences from the plan and from fit, until akio's `Files` gains what A13–A15 ask:
+  - A13: the handler looks up the path as sent, not the listener's canonical one, so a `..` that
+    stays inside the root (`/x/../ok.txt`) is 400 where fit's whole stack serves `/ok.txt`;
+    `strip_prefix` is refused.
+  - A14: a directory without its slash is served, not redirected (301); a file with a trailing
+    slash is served, not 404; a `.br`, `.zst` or `.gz` twin is served to a client that accepts it
+    although `precompressed` is not set, and `Vary: Accept-Encoding` is always sent; types come
+    from `Files`' table of 22 extensions, `application/octet-stream` for the rest, without
+    sniffing; a file that may not be read is 404, not 403; a FIFO or device under the root is
+    opened; a name with `:` is 404; `Files`' own 404 says `Not Found`. The ported tests check
+    akit's present answers and name the request.
+  - A15: the memory `Files` keeps is bounded per file (`max_file_bytes`) but not in total, and a
+    request waiting on its disk pool has no timeout (the pool's queue is bounded, 503 past it).
+  - `Files` merges ranges less than 80 bytes apart and answers several ranges of a file sent from
+    disk with a multipart body, where fit sends that file whole; its `ETag` is the size and the
+    modification second, fit's the size and the nanosecond. On macOS fit answers a path whose case
+    differs from the names on disk 404; `Files` serves it.
+  - The file pool is `Files`' own akio pool, not the engine's logical pool: `Files` keeps its
+    disk work there.
+- For a benchmark task: the `static` scenario (fitbench's 1 KiB `small.html`, from memory) over
+  HTTP/1.1, h2c, HTTPS/1.1 and h2 against fit, nginx and Caddy; `download` and `site` (files from
+  disk, `sendfile`, the file pool) once their routes and protocols are added to akit's scenarios;
+  per request, the cost of the path scan and of `Files`' shard read lock on a hit.
 
 ### 2026-11-24: I14, upstream pools on the HTTP/1 client
 

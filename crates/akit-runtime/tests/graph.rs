@@ -52,7 +52,9 @@ impl Handler for Respond {}
 fn new_respond(
     p: &Provision<'_, HandlerParams>,
 ) -> Result<Provisioned<dyn Handler>, ProvisionError> {
-    let HandlerConfig::Respond(r) = p.params();
+    let HandlerConfig::Respond(r) = p.params() else {
+        return Err(ProvisionError::new("a respond handler only"));
+    };
     if r.status == 418 {
         return Err(ProvisionError::field("status", "418 is refused here"));
     }

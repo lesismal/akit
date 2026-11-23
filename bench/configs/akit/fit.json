@@ -1,11 +1,12 @@
 // akit for fit's benchmark harness (bench/README.md), as fit's bench/configs/fit/fit.conf is for
-// fit, with what akit serves so far: the fixed scenario.
+// fit, with what akit serves so far: the fixed and static scenarios.
 //
 // Port 8080 serves HTTP/1.1 and port 8081 h2c (HTTP/2 with prior knowledge). fit's 8081 serves
 // h2c alone; akit's takes HTTP/1.1 too, since akio's server always does, which no run on 8081
 // uses. Port 8443 serves HTTP/1.1 over TLS and 8445 h2 over TLS, as fit's, with fitbench's
-// certificate mounted at /certs (I09). HTTP/3 (8444), static files, the proxy and the cache come
-// with the iterations that build them (I10, I12, I15, I69).
+// certificate mounted at /certs (I09). The static and site routes serve fitbench's files, mounted
+// at /srv/www as for fit (I12). HTTP/3 (8444), the proxy and the cache come with the iterations
+// that build them (I10, I15, I69).
 //
 // fit's aligned settings (engine.backlog, limits.max_conns, the pool) are not settings akit has
 // yet: akio's defaults apply (bench/README.md says which).
@@ -26,6 +27,8 @@
         "module": "respond",
         "params": {"headers": {"Content-Type": "text/plain"}, "body": "hello, world"}
       }
-    }
+    },
+    {"name": "static", "match": {"path": ["/static/*"]}, "handler": {"module": "static", "params": {"root": "/srv/www"}}},
+    {"name": "site", "match": {"path": ["/site/*"]}, "handler": {"module": "static", "params": {"root": "/srv/www"}}}
   ]
 }

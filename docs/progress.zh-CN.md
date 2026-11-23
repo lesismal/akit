@@ -10,14 +10,61 @@
 | | |
 | --- | --- |
 | 最后更新 | 2026-11-24 |
-| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09、I11、I14、I23、I24 已完成。 |
+| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09、I11、I12、I14、I23、I24 已完成。 |
 | akio | akio `main` 上的 `50a82315`（`1.0.0-rc.1`），在 `Cargo.toml` 中按 `rev` 锁定 |
 | fit | 作为规格；本计划基于 `7daee573` 阅读 |
-| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，`-c` 可重复，文件和目录合并，支持 JSON、fit 的 `.conf` 和 YAML；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c 和 TLS 监听器（证书来自文件、按 SNI 选择，ALPN 选择 h2 或 HTTP/1.1，客户端认证）；`respond` 路由由路由器 v1 选择（按 fit 的 host 与 path 规则查找，基于规范化路径），没有匹配时返回 404；`upstreams` 各编译为一个基于 akio HTTP/1 客户端的连接池，其图退役时排空（经它们转发的代理是 I15）；兼容性门禁：80 个夹具，5 个有效，74 个只因暂不支持被拒绝，1 个跳过，没有失败；I08 的基线：akit 在 HTTP/1.1 和 h2c 上的 fixed 场景中第一 |
-| 下一步 | I15（反向代理 I，基于 I11 和 I14）、I10（HTTP/3）、I12（静态文件）、I19（负载均衡）、I22（重载） |
-| akio 需求 | A1–A8 正在加进 akio，各在 akio 的独立分支上，尚未合并；A9（限制在 TLS 1.2 的 TLS 服务端）由 I09 提出；A10–A12（HTTP 客户端：关闭空闲连接、请求自己的 `Host`、单个地址的连接超时）由 I14 提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
+| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，`-c` 可重复，文件和目录合并，支持 JSON、fit 的 `.conf` 和 YAML；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c 和 TLS 监听器（证书来自文件、按 SNI 选择，ALPN 选择 h2 或 HTTP/1.1，客户端认证）；`respond` 和 `static` 路由由路由器 v1 选择（按 fit 的 host 与 path 规则查找，基于规范化路径），没有匹配时返回 404；基于 akio-http `Files` 的静态文件（校验器、条件请求与范围请求、索引文件、小文件放在内存中、磁盘访问在 akio 的文件池上进行）；`upstreams` 各编译为一个基于 akio HTTP/1 客户端的连接池，其图退役时排空（经它们转发的代理是 I15）；兼容性门禁：80 个夹具，5 个有效，74 个只因暂不支持被拒绝，1 个跳过，没有失败；I08 的基线：akit 在 HTTP/1.1 和 h2c 上的 fixed 场景中第一 |
+| 下一步 | I15（反向代理 I，基于 I11 和 I14）、I10（HTTP/3）、I13（静态文件 II）、I19（负载均衡）、I22（重载） |
+| akio 需求 | A1–A8 正在加进 akio，各在 akio 的独立分支上，尚未合并；A9（限制在 TLS 1.2 的 TLS 服务端）由 I09 提出；A10–A12（HTTP 客户端：关闭空闲连接、请求自己的 `Host`、单个地址的连接超时）由 I14 提出；A13–A15（`Files`：调用者给出的路径、fit 的应答、有界内存与磁盘超时）由 I12 提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
 
 ## 日志
+
+### 2026-11-24：I12，静态文件 I
+
+- 基于 akio-http `Files` 的 `static` handler（`akit-handler`，`static_files.rs`）。`Files` 负责提供：`ETag` 和
+  `Last-Modified`，`If-Match`、`If-None-Match`、`If-Modified-Since`、`If-Unmodified-Since`，带 `If-Range` 的范围请求
+  （多个范围用 `multipart/byteranges`），带长度的 `HEAD`，按扩展名的 `Content-Type`，目录的索引文件，不超过
+  `max_file_bytes` 的文件放在内存中、更大的从磁盘发送（从保留的句柄 `sendfile`）。只有它在信任窗口内已知的文件才在
+  I/O 线程上应答；每次 `stat`、`open` 和读取都在 akio 的文件池上运行（16 个线程、4096 个排队，超出时答 503 并带
+  `Retry-After`），通过分离的 context 从那里应答（规则 1 和 4）。在 Linux 上、`check_interval` 不为 0 时，它像 fit
+  一样通过 inotify 跟踪变化；其他系统上它在 `check_interval` 内信任已知的内容；为 0 时每个请求都查看磁盘。
+- akit 在 `Files` 之前按 fit 的 handler 加上的检查：只接受 `GET` 和 `HEAD`（405，带 `Allow: GET, HEAD`）；带 `..`
+  段、NUL 或反斜杠的路径，无论是否转义，答 400（fit 的 `dotfile.Scan`，边扫描边解码，不分配内存）；`dotfiles` 为
+  默认的 `deny` 时，以点开头的段答 404，但根目录下的 `/.well-known/` 除外。它的简短应答与 fit 相同
+  （`"404 Not Found\n"` 等），只构建一次。
+- 配置：`root`（必填；在 provisioning 时检查它是目录，并转为绝对路径）、`index`（一个名字；fit 的检查：是文件名，
+  `dotfiles` 为 `deny` 时不以点开头）、`max_file_bytes`（1 MiB）、`dotfiles`、`disk_io`（`pool`；在工作线程上访问
+  磁盘的 `auto` 报为暂不支持）、`check_interval`（5s）。报为暂不支持的：`strip_prefix`（A13）、`max_cache_bytes`
+  （A15）、`default_type` 和不止或少于一个名字的 `index` 列表（A14）；`precompressed`、`compress`、`try_files`、
+  `browse` 和 `browse_max_entries`（I13）。兼容性门禁：支持 8 个 static 字段（共 45 个）；fit 使用 `static` 的示例
+  现在只因这些字段被拒绝（`make compat-bless`）。
+- 基准配置像 fit 一样从挂载的 `/srv/www` 提供 fit 的 `static` 和 `site` 路由，`static` 加入了 akit 的 fitbench
+  场景（`bench/configs/akit/fit.json`、`bench/fitbench/akit.go`、bench README）。没有运行基准测试（规则 30）。
+- 测试：`akit-handler/tests/static_files.rs`（11 个），把 fit 的 `static_test.go` 移植为经过 akit 监听器的测试：
+  提供文件（类型、索引、404、405、HEAD，每个两次以覆盖缓存）、索引文件、路径穿越（12 种尝试，转义与否，由监听器或
+  handler 答 400，dotfiles 与 `.well-known`，`dotfiles` 为 `allow`）、来自内存和磁盘的条件请求与范围请求、从磁盘
+  发送的大文件、`check_interval` 为 0 时被修改和删除的文件、配置错误与暂不支持的内容、同一根目录上 fit 的基准路由；
+  另外：卡住的磁盘（没有写者的 FIFO）只占用一个文件池线程，其他连接上的 16 个请求照常从内存应答；4 MiB 文件发给慢
+  读者和中途离开的客户端；流水线请求按顺序应答。路径扫描的单元测试（穿越、dotfiles、普通路径）。
+- 已检查：macOS 上的 `make check`；Linux（基准主机）上 akit-handler、akit-config、akit-listener、akit-runtime 和
+  akit-compat 的测试，epoll 和 io_uring，全部通过。
+- 与计划和 fit 的不同之处，直到 akio 的 `Files` 有了 A13–A15 所要求的功能：
+  - A13：handler 按发送的原始路径查找，而不是监听器的规范路径，因此仍在根目录内的 `..`（`/x/../ok.txt`）答 400，
+    而 fit 的整套服务会提供 `/ok.txt`；`strip_prefix` 被拒绝。
+  - A14：不带斜杠的目录直接提供，而不是重定向（301）；带结尾斜杠的文件被提供，而不是 404；即使没有设置
+    `precompressed`，`.br`、`.zst` 或 `.gz` 副本也会提供给接受它的客户端，并且总是发送 `Vary: Accept-Encoding`；类型
+    来自 `Files` 的 22 个扩展名的表，其余为 `application/octet-stream`，不嗅探；不允许读取的文件答 404 而不是 403；
+    根目录下的 FIFO 或设备会被打开；带 `:` 的名字答 404；`Files` 自己的 404 写 `Not Found`。移植的测试检查 akit
+    目前的回答并注明该需求。
+  - A15：`Files` 占用的内存按单个文件（`max_file_bytes`）有界，但总量无界；在其磁盘池中等待的请求没有超时（池的
+    队列有界，超出时答 503）。
+  - `Files` 会合并相距不到 80 字节的范围，并对从磁盘发送的文件的多个范围用 multipart 应答，而 fit 会发送整个文件；
+    它的 `ETag` 由大小和修改时间的秒组成，fit 的由大小和纳秒组成。在 macOS 上，fit 对大小写与磁盘上名字不同的路径
+    答 404；`Files` 会提供它。
+  - 文件池是 `Files` 自己的 akio 池，而不是引擎的逻辑池：`Files` 把它的磁盘工作放在那里。
+- 给基准任务：HTTP/1.1、h2c、HTTPS/1.1 和 h2 上的 `static` 场景（fitbench 的 1 KiB `small.html`，来自内存），
+  对比 fit、nginx 和 Caddy；`download` 和 `site`（来自磁盘的文件、`sendfile`、文件池），在它们的路由和协议加入
+  akit 的场景之后；每个请求中路径扫描和 `Files` 分片读锁（命中时）的开销。
 
 ### 2026-11-24：I14，基于 HTTP/1 客户端的上游连接池
 

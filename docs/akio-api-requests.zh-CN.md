@@ -30,6 +30,9 @@
 | A10 | 立即关闭 HTTP 客户端的空闲连接 | 已提出（I14） | 10、11 | I14、I22 |
 | A11 | HTTP/1 客户端请求保留自己的 `Host` 字段 | 已提出（I14） | — | I15 |
 | A12 | HTTP 客户端的连接超时也作用于单个地址 | 已提出（I14） | 10 | I14 |
+| A13 | `Files` 服务调用者给出的路径 | 已提出（I12） | 19 | I12 |
+| A14 | `Files` 像网关的静态文件 handler 那样应答 | 已提出（I12） | 19 | I12、I13 |
+| A15 | `Files` 的内存有界，磁盘池有超时 | 已提出（I12） | 4、11 | I12 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -154,3 +157,70 @@ TLS 1.2，而它是隐藏的，标明只供测试和互通工具使用。
 
 **akit 的用法。** 每个上游的连接池设置自己的超时。在此之前，`akit_listener::engine` 把引擎的
 `connect_timeout` 设为各上游中最短的那个；各上游一致时即为各自的值（记录在 I14 的进度条目中）。
+
+## A13 `Files` 服务调用者给出的路径
+
+**问题。** fit 的 `static` handler 在根目录下查找去掉 `strip_prefix` 后的请求路径；akit 的监听器按请求的规范路径
+（去掉点段，I11）路由，并把它存在 context 的 local 里，因为 akio 的请求目标无法改写。akio-http 的 `Files` 从路由参数
+`path`（只有 akio 自己的 `Router` 会设置）或原样发送的请求目标读取路径，所以 akit 两者都无法交给它。
+
+**依据。** `50a82315` 的 `crates/akio-http/src/files.rs`，`Files::relative`：先取 `ctx.param_raw("path")`，否则用
+`ctx.path()`；`Context::set_params` 是 `pub(crate)`。
+
+**建议的 API。** `Files::serve(&self, ctx: &mut Context, path: &str)`，即给定路径的 `Service::call`（路径仍由
+`Files` 做百分号解码和检查），或者公开设置请求路由参数的方法。
+
+**akit 的用法。** `static` handler 传入去掉 `strip_prefix` 的规范路径；在此之前 `strip_prefix` 被拒绝为尚不支持，
+而带有 `..` 段但仍在根目录内的路径（`/x/../ok.txt`）——监听器按 `/ok.txt` 路由、fit 的整套服务会提供它——由 handler
+答 400，与 fit 的 handler 单独时的回答相同。
+
+## A14 `Files` 像网关的静态文件 handler 那样应答
+
+**问题。** fit 的 `static` handler（akit 移植它的测试，规则 19）对一些请求的回答与 `Files` 不同，而 `Files` 没有
+相应的设置：
+
+- 按顺序尝试的索引文件列表，或者没有（`index: []`）；`Files` 只接受一个名字；
+- 不带结尾斜杠请求的目录被重定向（301，`Location` 加上斜杠并保留查询串），使相对链接能正确解析；`Files` 直接提供
+  索引文件；
+- 带结尾斜杠请求的文件（`/a.txt/`）答 404；`Files` 丢掉空段后提供它；
+- 压缩副本（`.br`、`.zst`、`.gz`）只对配置列出的编码提供（`precompressed`，默认没有），也只有这时才加
+  `Vary: Accept-Encoding`；`Files` 总是提供它找到的副本，并总是加 `Vary`；
+- 内容类型来自完整的表（Go 的 `mime.TypeByExtension`：`.xml` 是 `text/xml; charset=utf-8`，`.avif` 也有，Linux 上
+  还有 `/etc/mime.types`）、配置的 `default_type`，否则从前 512 字节嗅探；`Files` 只有 22 个扩展名的固定表，其余都是
+  `application/octet-stream`；
+- 不允许读取的文件答 403；`Files` 对任何 `stat` 错误都答 404；
+- 只提供普通文件：`Files` 会打开任何不是目录的东西，所以根目录下的 FIFO 会占住它磁盘池的一个线程，直到有写者出现
+  （akit 的测试 `a_hung_disk_holds_no_io_thread` 正依赖于此）；
+- 带 `:` 的名字和其他名字一样；`Files` 对它答 404；
+- 错误响应体如 `"404 Not Found\n"`；`Files` 发送 `"Not Found"`。
+
+**依据。** `50a82315` 的 `crates/akio-http/src/files.rs`：`Inner::index: String`、`Files::relative`（过滤空段，
+拒绝 `:`）、`Inner::serve_disk`（目录提供索引文件；`fs::metadata` 出错一律答 404）、`Inner::load_tracked`（总是
+查找 `TWINS`）、`Cached::new`（总是加 `Vary`）、`Files::mime`、`Inner::read`（对任何非目录调用 `fs::read`）。
+
+**建议的 API。** `Files` 的构建设置：`index_files(&[&str])`、`redirect_directories(bool)`、`twins(&[&str])`
+（编码及其顺序；为空则不再查找）、`mime(fn(&Path) -> Option<&'static str>)` 或一张表、`default_type(&str)` 和
+`sniff(bool)`；以及固定行为：`PermissionDenied` 答 403，既不是普通文件也不是目录的答 404，带结尾斜杠的文件答 404，
+允许 `:`，并用 `error_body(fn(u16) -> Response)` 生成简短的错误响应。
+
+**akit 的用法。** `static` handler 按 fit 的参数（`index`、`precompressed`、`default_type`）和 fit 的固定行为设置它们；
+在此之前，这些差异记录在 I12 的进度条目中，它的测试检查 akit 目前的回答并注明本请求，多于或少于一个名字的 `index`
+列表和 `default_type` 被拒绝为尚不支持。
+
+## A15 `Files` 的内存有界，磁盘池有超时
+
+**问题。** fit 在内存中最多保存 `max_cache_bytes`（默认 64 MiB）的文件，在文件池中等待超过池超时的请求答 503，
+因此不会无限等待卡住的磁盘（规则 4）。`Files` 限制它保存的每个文件的大小（`max_cached_bytes`）和较大文件打开的
+句柄数（`max_open_files`），但不限制总量：根目录下每个不超过该大小的文件最终都可能进入内存；而在它磁盘池（16 个
+线程、4096 个排队）中排队的请求会一直等到磁盘返回。
+
+**依据。** `50a82315` 的 `crates/akio-http/src/files.rs`：`shards` 映射随每个读入的文件增长
+（`Inner::load_tracked`）；`disk_pool()` 是 `max_threads` 16、`queue_capacity` 4096 的 `Pool`，`try_execute` 只在
+队列满时拒绝。
+
+**建议的 API。** `Files::max_cache_bytes(n)`（内存中的条目，与打开的句柄一样按最近最少使用淘汰），以及
+`Files::disk_timeout(d)`：在 `d` 内未从磁盘池得到回答的请求答 503 并带 `Retry-After`，它的任务之后运行时不再回答。
+
+**akit 的用法。** `static` handler 设置 fit 的 `max_cache_bytes`（及其默认值）和池超时；在此之前
+`max_cache_bytes` 被拒绝为尚不支持，`Files` 占用的内存只受根目录下不超过 `max_file_bytes` 的文件总量限制（记录在
+I12 的进度条目中）。
