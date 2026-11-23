@@ -17,6 +17,11 @@ commit by its hash (rule 22); it is never worked around in akit in breach of the
 **Load tests and benchmarks never run on this machine** (rules 23-24): only on the Linux benchmark
 host fit and akio use, one session at a time. Locally run only ordinary tests, fmt and clippy.
 
+**Feature tasks run only the basic CI tests** (rule 30): no load tests, benchmarks, A/B
+comparisons, profiles or stress runs, here or on the benchmark host, unless the user asks for one in
+that task. Benchmarks are the maintainer's separate tasks (HTTPArena and the like); a feature task
+says in its report what should be measured.
+
 **Every doc is bilingual** (rule 26): `X.md` and `X.zh-CN.md`, changed together.
 
 **Clean up after every development, test and benchmark run** (rule 29): build directories,

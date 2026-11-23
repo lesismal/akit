@@ -111,6 +111,8 @@ for the Go gateway and for the engine underneath akit.
     | The hot path | same-run A/B on the host, alternating rounds, with the scenarios it touches |
     | A milestone's end | the full harness, every server (fit included), and a report |
 
+    In a feature task, this column is left to the separate benchmark tasks (rule 30).
+
 25. **Tests by reach.** While working, test the crates a change touches and those that depend on
     them; the whole workspace (macOS, Linux epoll, Linux io_uring) runs once before a push. At most
     two sessions run the whole suite at once. Benchmarks run in the background and are read before
@@ -141,3 +143,16 @@ for the Go gateway and for the engine underneath akit.
     images) stay, but are pruned when they grow. The benchmark host's disk is shared by every
     session: check its free space (`df -h /`) before a large build, and never leave it fuller than
     you found it; a full disk stops everyone's builds and runs.
+
+## 14. Feature work and benchmarks
+
+30. **A feature task runs the basic CI tests, not load tests or benchmarks.** A task that develops a
+    feature or fixes a bug runs what CI runs: `cargo test` of the crates it touches (and, before a
+    push, the workspace suite rule 25 describes), fmt, clippy and `cargo deny`. It runs no load
+    tests, benchmarks, A/B comparisons, perf profiles, full benchmark harness runs, or stress and
+    soak runs (high repeat counts, long runs under load), neither here nor on the benchmark host.
+    The benchmark host's time belongs to the benchmark tasks the maintainer runs separately
+    (HTTPArena and the like); a feature task that loads the host wastes it and skews or delays those
+    runs. Where another rule asks for a measurement, the feature task leaves it to such a benchmark
+    task and says in its report what should be measured. A feature task runs a benchmark only when
+    the user asks for one in that task.
