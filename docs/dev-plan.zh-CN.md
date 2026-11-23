@@ -1,0 +1,750 @@
+# akit 开发计划
+
+[English](dev-plan.md) | [简体中文](dev-plan.zh-CN.md)
+
+本计划把 [路线图](roadmap.zh-CN.md) 拆成一系列小迭代。每个迭代是一份能在一次工作会话、一个 commit 或 PR
+内完成的工作：小到它涉及的代码、文档和测试能放进一次上下文。
+
+- [如何进行一次迭代](#如何进行一次迭代)
+- [工作区结构](#工作区结构)
+- [索引](#索引)
+- [M0 基础](#m0-基础)
+- [M1 代理核心](#m1-代理核心)
+- [M2 动态配置与 TLS](#m2-动态配置与-tls)
+- [M3 网关能力](#m3-网关能力)
+- [M4 平台集成](#m4-平台集成)
+- [M5 缓存与扩展](#m5-缓存与扩展)
+- [1.0](#10)
+- [1.0 之后](#10-之后)
+
+## 如何进行一次迭代
+
+**选一个。** [开发进度](progress.zh-CN.md) 说明了当前进展和下一个迭代。否则在 [索引](#索引) 中取第一个状态为
+`todo`、且依赖全部为 `done` 的迭代。彼此没有依赖的迭代可以在不同分支上并行进行。
+
+**只读需要的内容。** 一次会话从以下内容开始：
+
+1. [开发进度](progress.zh-CN.md)、本文件的索引和该迭代自己的小节；
+2. [设计原则](roadmap.zh-CN.md#设计原则) 和 [开发规则](rules.zh-CN.md)；
+3. **涉及** 中列出的 crate，**参考** 中列出的 akio crate 和文档，以及 **fit** 中列出的 fit 包：fit 的代码、
+   测试和文档就是要实现的内容的规格。
+
+**移植，不重新发明。** 迭代会遇到的每个问题，fit 都已经遇到过。它的决定说明（`fit/docs/decisions`）、测试和
+配置参考说明了 akit 应该做 *什么*；akit 改变的是 *怎么做*（akio 的回调、Rust 的所有权），保留 *做什么*。akit
+必须与 fit 不同时，由该迭代在决定说明中记录原因。
+
+**保持小。** 目标是改动不超过约 1500 行（含测试）。如果迭代比预想的大，就停在一个可用、有测试的位置，把剩余部分
+在两个计划文件中拆成新的迭代（`I17b` 等），然后完成当前迭代。
+
+**收尾到位。** 迭代完成的条件是：
+
+- **完成标准** 中的各项都满足；
+- `cargo fmt --check`、`cargo clippy --all-targets -- -D warnings` 以及它涉及的 crate 的测试通过，在 macOS
+  上以及 Linux 的 epoll 和 io_uring 上都通过；
+- 请求路径上没有任何操作阻塞 I/O 线程，并且 [开发规则](rules.zh-CN.md) 的每一条都满足；
+- 在同一个 commit 中把索引里的状态改为 `done`，两个计划文件都要改；
+- 两个 progress 文件都记录做了什么、如何验证、与计划的差异，以及下一个迭代；
+- 迭代中做出的决定写成 `docs/decisions/NNN-title.md` 及其中文版。
+
+**会话提示词。** 可以用下面的话开始一次会话：
+
+> 实现 docs/dev-plan.md 中的迭代 IXX。先读 docs/progress.md、索引和该迭代的小节、docs/rules.md，以及它指向的
+> fit 代码和测试。遵守开发规则；完成后更新两个计划文件和两个 progress 文件。
+
+**akio 不足时**，迭代先做不依赖该缺口的部分，把缺口写进 [akio API 需求](akio-api-requests.zh-CN.md)，临时措施
+记录在 progress 文件中。
+
+## 工作区结构
+
+I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个迭代应该尽量少地涉及这些 crate。表中同时给出 fit 中承担
+相同职责的包，供参考。
+
+| Crate | 职责 | fit |
+| --- | --- | --- |
+| `akit` | 可执行文件：`run`、`validate`、`adapt`、`fmt`、`store`、`build` | `cmd/fit`、`cli` |
+| `akit-config` | 配置模型，JSON、YAML 和 .conf 的严格读取器，校验 | `config`、`schema` |
+| `akit-runtime` | 模块注册表、编译、运行时图及其替换 | `runtime`、`module` |
+| `akit-listener` | 监听器，TLS 和 QUIC 入口，mux | `listener` |
+| `akit-router` | 匹配器、优先级、表达式语言 | `router` |
+| `akit-middleware` | 内置中间件 | `middleware` |
+| `akit-handler` | `respond`、`static`、`redirect`、FastCGI 等 handler | `handler` |
+| `akit-proxy` | HTTP、WebSocket 和 gRPC 反向代理 | `handler/proxy` |
+| `akit-upstream` | 上游连接池、负载均衡、健康检查 | `upstream` |
+| `akit-l4` | TCP 和 UDP 代理、SNI 分流、PROXY protocol | `l4` |
+| `akit-tls` | 证书：文件、ACME、存储、OCSP、按需签发 | `tlsmgr` |
+| `akit-admin` | Admin API、文件 provider | `admin` |
+| `akit-provider` | Docker、Kubernetes、Consul、etcd | `provider` |
+| `akit-observe` | 日志、指标、追踪 | `observe`、`logs` |
+| `akit-cache` | 响应缓存 | `handler/cache` |
+| `akit-plugin` | WASM 插件 | `plugin` |
+| `tests/e2e` | 可执行文件的端到端测试 | `test/e2e` |
+| `bench` | 基准框架、场景和报告 | `bench` |
+
+## 索引
+
+状态：`todo`、`doing` 或 `done`。下一个可用的迭代编号是 I81。
+
+| ID | 迭代 | 依赖 | 状态 |
+| --- | --- | --- | --- |
+| **M0** | | | |
+| I01 | 工作区骨架与 CI | — | todo |
+| I02 | 配置模型 v0 与严格的 JSON 读取器 | I01 | todo |
+| I03 | 核心 trait 与模块注册表 | I01 | todo |
+| I04 | 运行时图及其替换 | I02, I03 | todo |
+| I05 | `akit run`：监听器与 `respond` | I04 | todo |
+| I06 | CLI、信号与优雅关闭 | I05 | todo |
+| I07 | fit 配置兼容性门禁 | I02 | todo |
+| I08 | 基准框架与基线 | I05 | todo |
+| **M1** | | | |
+| I09 | 从文件加载证书的 TLS 入口 | I05 | todo |
+| I10 | HTTP/3 入口 | I09 | todo |
+| I11 | 路由 v1：host 与 path | I04 | todo |
+| I12 | 静态文件 I | I11 | todo |
+| I13 | 静态文件 II | I12 | todo |
+| I14 | 基于 HTTP/1 客户端的上游连接池 | I04 | todo |
+| I15 | 反向代理 I：请求与头处理 | I11, I14 | todo |
+| I16 | 反向代理 II：流式 body 与联动背压 | I15 | todo |
+| I17 | 反向代理 III：超时、取消、trailer | I16 | todo |
+| I18 | HTTP/2 与 h2c 上游 | I17 | todo |
+| I19 | 负载均衡 v1 | I14 | todo |
+| I20 | 被动健康检查 | I19 | todo |
+| I21 | 访问日志 | I15 | todo |
+| I22 | SIGHUP 重载 | I06 | todo |
+| I23 | .conf 读取器 | I02 | todo |
+| I24 | YAML 读取器 | I02 | todo |
+| I25 | M1 一致性测试与报告 | I09–I24 | todo |
+| **M2** | | | |
+| I26 | Admin API I：加载、读取、版本 | I22 | todo |
+| I27 | Admin API II：局部修改、回滚、认证 | I26 | todo |
+| I28 | 运行时的监听差量 | I26, A1 | todo |
+| I29 | 文件 provider | I26 | todo |
+| I30 | 证书管理与存储 | I09 | todo |
+| I31 | ACME I：账户、订单、HTTP-01 | I30 | todo |
+| I32 | ACME II：TLS-ALPN-01、续期、OCSP | I31 | todo |
+| I33 | 默认 HTTPS | I32 | todo |
+| I34 | 按需 TLS | I33, A2 | todo |
+| I35 | 主动健康检查 | I20 | todo |
+| I36 | 负载均衡 v2 | I19 | todo |
+| I37 | Prometheus 指标 | I15 | todo |
+| I38 | M2 退出：频繁替换测试与 staging 证书 | I26–I37 | todo |
+| **M3** | | | |
+| I39 | 匹配器 v2 与表达式 | I11 | todo |
+| I40 | 重写、跳转与头处理 | I39 | todo |
+| I41 | 限流、并发与大小限制 | I39 | todo |
+| I42 | Basic 认证与 mTLS | I39 | todo |
+| I43 | ForwardAuth | I42 | todo |
+| I44 | JWT 与 JWKS | I42 | todo |
+| I45 | 重试、熔断、按路由超时 | I17 | todo |
+| I46 | 加权服务、镜像、故障转移 | I45 | todo |
+| I47 | 压缩 | I16 | todo |
+| I48 | fit 的其余中间件 | I40 | todo |
+| I49 | WebSocket 代理 | I17 | todo |
+| I50 | gRPC 代理 | I18 | todo |
+| I51 | TCP 与 UDP 代理 | I05 | todo |
+| I52 | SNI 分流与 PROXY protocol | I51, A4, A5 | todo |
+| I53 | 一个端口多种协议 | I52 | todo |
+| I54 | 上游 TLS | I18 | todo |
+| I55 | SOCKS 与 CONNECT | I53 | todo |
+| I56 | M3 退出 | I39–I55 | todo |
+| **M4** | | | |
+| I57 | Provider 框架与生效配置 | I29 | todo |
+| I58 | Docker provider | I57 | todo |
+| I59 | Kubernetes Ingress | I57 | todo |
+| I60 | Kubernetes Gateway API 与一致性测试 | I59 | todo |
+| I61 | Consul 与 etcd | I57 | todo |
+| I62 | 共享证书存储 | I30, I61 | todo |
+| I63 | 仪表盘 | I37 | todo |
+| I64 | OpenTelemetry | I37 | todo |
+| I65 | 打包 | I06 | todo |
+| I66 | M4 退出 | I57–I65 | todo |
+| **M5** | | | |
+| I67 | 缓存 I：内存层与 RFC 9111 | I17 | todo |
+| I68 | 缓存 II：磁盘层、缓存锁、stale | I67 | todo |
+| I69 | 缓存 III：清除与标签 | I68, I27 | todo |
+| I70 | `akit build` | I03 | todo |
+| I71 | WASM I：运行时与 ABI | I03 | todo |
+| I72 | WASM II：Proxy-Wasm 子集 | I71 | todo |
+| I73 | `akit adapt` 与 `akit fmt` | I23, I24 | todo |
+| I74 | nginx 与 Caddyfile 转换器 | I73 | todo |
+| I75 | FastCGI | I16 | todo |
+| I76 | M5 退出 | I67–I75 | todo |
+| **1.0** | | | |
+| I77 | Fuzz | I56 | todo |
+| I78 | 配置参考与指南 | I76 | todo |
+| I79 | v1 冻结与兼容性 | I78 | todo |
+| I80 | 为安全审查做好准备 | I77, I79 | todo |
+
+## M0 基础
+
+### I01 工作区骨架与 CI
+
+- **做什么**：Cargo 工作区，按 [工作区结构](#工作区结构) 建立各个空库 crate 和 `akit` 可执行文件；edition 和 MSRV
+  与 akio 一致；akio 按 `rev` 固定；每个 crate 都有 `#![forbid(unsafe_code)]`；`clippy.toml`、`deny.toml`、
+  `rustfmt.toml`；带 `check`、`test`、`test-changed`、`lint` 的 `Makefile`（或 `xtask`）；CI 运行 fmt、clippy，
+  在 macOS 和 Linux 上跑测试（epoll，以及 Docker 中的 io_uring），运行 cargo-deny，并检查每个 `docs/*.md` 都有
+  对应的 `.zh-CN.md`。
+- **完成标准**：`make check` 在本机和 CI 中通过；空的 `akit --version` 能运行。
+- **涉及**：全部为新建。
+- **参考**：akio 的 `Cargo.toml`、`deny.toml`、`clippy.toml`、`docs/rules.md`。
+- **fit**：`Makefile`、`.github/workflows/ci.yml`。
+
+### I02 配置模型 v0 与严格的 JSON 读取器
+
+- **做什么**：fit 顶层（`listeners`、`routes`、`upstreams`、`admin`、`log`）和 `respond` handler 的 Rust 类型；
+  akit 自己的 JSON 读取器（或按 [决定 001](decisions/001-dependency-policy.zh-CN.md) 选定的读取器），拒绝未知字段、
+  重复键和错误类型，并给出出错路径；像 fit 一样允许 `//` 与 `/* */` 注释和尾逗号。
+- **完成标准**：fit 的 `hello` 示例的 JSON 版能加载；表驱动测试覆盖每种错误及其路径；CI 中对读取器 fuzz 一分钟。
+- **涉及**：`akit-config`。
+- **fit**：`config`，决定 001（严格解码）。
+
+### I03 核心 trait 与模块注册表
+
+- **做什么**：监听器、匹配器、路由器、中间件、handler、service 和上游的 trait；把配置名（`respond`、`proxy`
+  等）映射到模块构造函数的注册表，初始化可以失败，释放时执行清理。模块在编译期注册（没有全局可变状态）。
+- **完成标准**：一个测试模块能注册、从配置初始化并被清理；未知模块名报错并写明该名字。
+- **涉及**：`akit-runtime`。
+- **参考**：akio 的 `Handler`、`Acceptor`，`akio-http` 的 `Router` 和 `Middleware`。
+- **fit**：`module`、`runtime`。
+
+### I04 运行时图及其替换
+
+- **做什么**：`compile(config) -> Graph`，图发布前所有模块都已初始化；当前图放在原子指针后面；每个 I/O 线程缓存
+  一份，通过 epoch 检查刷新，请求不增减任何共享引用计数；持有某个图的最后一个请求和连接结束时，释放该图（清理其
+  模块）。
+- **完成标准**：测试在多个 I/O 线程处理请求时从另一线程替换图，每个旧图恰好释放一次；微基准表明每个请求的读取
+  不在共享内存上做原子 RMW。
+- **涉及**：`akit-runtime`。
+- **fit**：`runtime/graph*.go`，决定 004。
+
+### I05 `akit run`：监听器与 `respond`
+
+- **做什么**：在 akio 的 `Engine` 上按配置建立监听器（HTTP/1.1 和 h2c）；`respond` handler（状态码、头、body）；
+  没有匹配的路由时返回 404。
+- **完成标准**：e2e 测试中，fit 的 `hello` 示例经 HTTP/1.1 和 h2c 应答 `/hello`。
+- **涉及**：`akit-listener`、`akit-handler`、`akit`。
+- **参考**：akio 的 `Engine::builder`，`akio-http` 服务端。
+
+### I06 CLI、信号与优雅关闭
+
+- **做什么**：`akit run`、`akit validate`、`akit version`，带 fit 的参数（`-c` 可重复，可以是文件或目录）；SIGINT
+  和 SIGTERM 触发优雅关闭，带排空超时；退出码与 fit 一致。
+- **完成标准**：e2e 测试覆盖 validate 的错误、多个 `-c`，以及关闭时让进行中的请求完成。
+- **涉及**：`akit`。
+- **fit**：`cmd/fit`、`cli`。
+
+### I07 fit 配置兼容性门禁
+
+- **做什么**：一个测试，把 fit `templates/` 中的每个模板和 fit-examples 中的每份配置（按固定提交拉取）交给
+  `akit validate`；每份要么通过，要么只因 "not supported yet: <field>" 失败；不支持的字段列表写入
+  `docs/compatibility.md`，随里程碑完成而缩短。读取后又被忽略的字段不能通过关卡。
+- **完成标准**：关卡在 CI 中运行，其报告已提交。
+- **涉及**：`akit-config`、`tests`。
+- **fit**：`templates/`、`docs/reference/config.md`。
+
+### I08 基准框架与基线
+
+- **做什么**：akit 复用 fit 的基准框架（`bench/`）：相同的场景、配置和压测工具，akit 和 fit 都作为被测服务器，与
+  nginx、Caddy 和 Traefik 并列；为压测机交叉编译并在其上运行的脚本；用于热路径改动的同轮 A/B 脚本。
+- **完成标准**：压测机上五个服务器的基线已提交，并记录机器和提交。
+- **涉及**：`bench`。
+- **fit**：`bench/README.md`、`bench/ab.sh`。**akio**：`tools/bench`、`quiet.sh`。
+
+## M1 代理核心
+
+### I09 从文件加载证书的 TLS 入口
+
+- **做什么**：基于 `akio-tls` 的 TLS 监听器，证书和私钥来自文件；ALPN 选择 h2 或 http/1.1；按 SNI 在多张证书中
+  选择；fit 的 TLS 字段（版本、密码套件、客户端认证）。
+- **完成标准**：e2e 测试经 HTTPS 以 HTTP/1.1 和 HTTP/2 访问到路由，并能按 SNI 访问。
+- **涉及**：`akit-listener`、`akit-tls`。
+- **参考**：`akio-tls` 的 `ServerConfigBuilder::sni_cert`。
+
+### I10 HTTP/3 入口
+
+- **做什么**：基于 `akio-h3` 的 HTTP/3 监听器，共用证书来源；同一 host 的 TCP 监听器上通告 `Alt-Svc`。
+- **完成标准**：e2e 测试经 h3 访问到同一路由，并在 h2 上看到 `Alt-Svc`。
+- **涉及**：`akit-listener`。
+
+### I11 路由 v1：host 与 path
+
+- **做什么**：带 host（精确、通配）和 path（精确、前缀）匹配器的路由；先看显式优先级，再按最具体优先，与 fit 的
+  排序一致；没有匹配时返回 404。
+- **完成标准**：移植过来的 fit 路由器表驱动测试通过；查找不分配内存。
+- **涉及**：`akit-router`。
+- **fit**：`router`。
+
+### I12 静态文件 I
+
+- **做什么**：基于 `akio-http` 的 `Files` 的 `static` handler：根目录、索引文件、ETag、`Last-Modified`、条件请求
+  和范围请求、MIME 类型；拒绝路径穿越；缓存未命中时的文件打开不在 I/O 线程上进行。
+- **完成标准**：移植过来的 fit 静态文件测试通过，包括穿越尝试。
+- **涉及**：`akit-handler`。
+- **参考**：`akio-http` 的 `files.rs`。
+
+### I13 静态文件 II
+
+- **做什么**：按 `Accept-Encoding` 选择预压缩副本（`.br`、`.zst`、`.gz`）；`try_files` 回退；大文件用 `sendfile`；
+  目录列表默认关闭。
+- **完成标准**：测试覆盖协商和回退；一个基准场景用到它。
+- **涉及**：`akit-handler`、`bench`。
+
+### I14 基于 HTTP/1 客户端的上游连接池
+
+- **做什么**：带各自服务器的命名上游（`upstreams`）；每个上游一个连接池，基于 akio 的 HTTP/1 客户端，在 akio 允许
+  时与监听器共用同一个 engine；限制连接数和等待连接的请求数；图被释放时，连接池先排空再关闭。
+- **完成标准**：测试覆盖各项上限、负载下排空连接池，以及拒绝连接的上游。
+- **涉及**：`akit-upstream`。
+- **参考**：`akio-http` 的 `client.rs`。
+- **fit**：`upstream`，决定 004。
+
+### I15 反向代理 I：请求与头处理
+
+- **做什么**：`proxy` handler：请求转发到连接池，响应写回；删除逐跳头；设置 `X-Forwarded-For/-Proto/-Host` 和
+  `Forwarded`；可信代理；按 fit 的字段透传或改写 `Host`。
+- **完成标准**：移植过来的 fit 头处理测试通过。
+- **涉及**：`akit-proxy`。
+- **fit**：`handler/proxy`。
+
+### I16 反向代理 II：流式 body 与联动背压
+
+- **做什么**：请求体边到边流式发往上游，响应体流式写回；一侧超过水位时对另一侧 `hold_reads`，在 `on_drain` 时
+  恢复；两个方向都支持 chunked 和固定长度；body 上限。
+- **完成标准**：在 epoll 和 io_uring 上，用慢客户端和慢上游测试，双向大 body 时内存有上限。
+- **涉及**：`akit-proxy`。
+
+### I17 反向代理 III：超时、取消、trailer
+
+- **做什么**：连接、响应头、空闲和总时长超时，按 fit 的方式返回 502 和 504；客户端离开时取消上游请求；透传
+  trailer。
+- **完成标准**：移植过来的 fit HTTP/1.1 代理一致性测试套件通过。
+- **涉及**：`akit-proxy`、`akit-upstream`。
+
+### I18 HTTP/2 与 h2c 上游
+
+- **做什么**：基于 akio 的 `H2Client`，经 h2 和 h2c 访问上游，带逐流背压和每连接流数上限。
+- **完成标准**：一致性测试套件对 h2 和 h2c 上游都通过。
+- **涉及**：`akit-upstream`、`akit-proxy`。
+- **参考**：`akio-http` 的 `h2client.rs`。
+
+### I19 负载均衡 v1
+
+- **做什么**：轮询、加权轮询和最少连接；在 fit 的结果允许时状态按 I/O 线程保存，必须共享时才共享。
+- **完成标准**：分布测试在容差内符合 fit 的预期。
+- **涉及**：`akit-upstream`。
+
+### I20 被动健康检查
+
+- **做什么**：服务器在一个时间窗内失败 N 次后标记为下线，超时后恢复，与 nginx 的 `max_fails` / `fail_timeout`
+  一致。
+- **完成标准**：测试覆盖标记下线、恢复，以及所有服务器都下线。
+- **涉及**：`akit-upstream`。
+
+### I21 访问日志
+
+- **做什么**：采用 fit 格式和字段的结构化访问日志，按 I/O 线程缓冲，由一个有界的写线程写出；缓冲满时丢弃日志行并
+  计数，而不是阻塞。
+- **完成标准**：测试覆盖各字段，以及写入比流量慢的情况。
+- **涉及**：`akit-observe`。
+- **fit**：`observe`、`logs`。
+
+### I22 SIGHUP 重载
+
+- **做什么**：SIGHUP 构建新图并替换；配置有误时保留正在运行的图；地址没变的监听器保留。新增和移除的监听器使用
+  A1，在其完成之前使用 progress 中记录的 `adopt_tcp` 临时措施。
+- **完成标准**：e2e 测试在有流量时重载，没有失败的请求。
+- **涉及**：`akit`、`akit-runtime`、`akit-listener`。
+
+### I23 .conf 读取器
+
+- **做什么**：把 fit 的 .conf 格式读入同一模型，错误带行号和列号；按 fit 的合并方式处理拆分的文件和目录。
+- **完成标准**：fit 模板和 fit-examples 中的每个 .conf 读入的模型与对应的 JSON 版相同。
+- **涉及**：`akit-config`。
+- **fit**：`docs/reference/fit.md`、`config`（.conf 解析器），决定 021。
+
+### I24 YAML 读取器
+
+- **做什么**：把 YAML 读入同一模型，范围是 fit 接受的子集（用决定说明确定：akit 自己的读取器或某个 crate，依据
+  决定 001）。
+- **完成标准**：fit 的 YAML 模板读入的模型与对应的 JSON 版相同。
+- **涉及**：`akit-config`。
+- **fit**：决定 019。
+
+### I25 M1 一致性测试与报告
+
+- **做什么**：在 HTTP/2 入口上运行 h2spec；在 HTTP/1.1 和 HTTP/2 上运行移植过来的一致性测试套件；静态文件和代理
+  的基准；10k 和 100k 连接时每个空闲连接的内存。
+- **完成标准**：带 *akit 的现状* 的 M1 报告已提交，路线图中 M1 的退出标准满足。
+- **涉及**：`bench`、`tests`。
+
+## M2 动态配置与 TLS
+
+### I26 Admin API I：加载、读取、版本
+
+- **做什么**：监听 localhost 或 Unix 套接字的 Admin API：加载整份配置、读取配置、版本和 ETag，路径和请求体与 fit
+  一致。
+- **完成标准**：移植过来的 fit 对这些路径的 Admin API 测试通过。
+- **涉及**：`akit-admin`。
+- **fit**：`admin`，决定 005。
+
+### I27 Admin API II：局部修改、回滚、认证
+
+- **做什么**：按路径局部修改，回滚到更早的版本，可选认证，通过 ETag 拒绝并发写入。
+- **完成标准**：测试覆盖冲突、回滚和认证。
+- **涉及**：`akit-admin`。
+
+### I28 运行时的监听差量
+
+- **做什么**：替换时绑定新地址，移除的地址带超时排空，不变的保留；去掉 `adopt_tcp` 临时措施。依赖 akio A1。
+- **完成标准**：测试在有流量时增删监听器，没有失败的请求。
+- **涉及**：`akit-listener`、`akit-runtime`。
+
+### I29 文件 provider
+
+- **做什么**：监视配置文件（按 fit 的决定采用轮询），并经与 Admin API 相同的路径应用改动。
+- **完成标准**：测试覆盖修改、错误的修改和被删除的文件。
+- **涉及**：`akit-admin`。
+- **fit**：决定 006。
+
+### I30 证书管理与存储
+
+- **做什么**：放在 trait 后面的证书管理器，带文件系统存储和锁；按 SNI 从中取证书提供服务；重新加载时不丢握手。
+- **完成标准**：测试覆盖存储、加锁，以及有流量时替换证书。
+- **涉及**：`akit-tls`。
+- **fit**：`tlsmgr`。
+
+### I31 ACME I：账户、订单、HTTP-01
+
+- **做什么**：akit 自己的 ACME 客户端，基于 `akio-crypto`（JWS、ECDSA）和 `akio-x509`（CSR），不在 I/O 线程上
+  运行；账户、订单，HTTP-01 由监听器应答。
+- **完成标准**：针对 Pebble 的测试能签发证书。
+- **涉及**：`akit-tls`。
+- **fit**：决定 007。
+
+### I32 ACME II：TLS-ALPN-01、续期、OCSP
+
+- **做什么**：TLS-ALPN-01；在到期前续期，带抖动和退避；OCSP stapling。
+- **完成标准**：针对 Pebble 的测试覆盖 TLS-ALPN-01 和续期；stapling 有检查。
+- **涉及**：`akit-tls`。
+
+### I33 默认 HTTPS
+
+- **做什么**：除非另有配置，配置中的每个主机名都获得证书；HTTP 跳转到 HTTPS；fit 的默认值和关闭选项。
+- **完成标准**：只写了主机名的配置能针对 Pebble 提供 HTTPS。
+- **涉及**：`akit-tls`、`akit-runtime`。
+
+### I34 按需 TLS
+
+- **做什么**：在握手时为 "ask" 端点允许的名字签发证书，带限流。依赖 akio A2（由稍后完成的回调选择证书）。
+- **完成标准**：测试覆盖允许、拒绝和被限流的名字，签发期间 I/O 线程从不阻塞。
+- **涉及**：`akit-tls`。
+
+### I35 主动健康检查
+
+- **做什么**：HTTP 和 TCP 探测，带间隔、阈值和抖动，在 akio 的客户端上运行。
+- **完成标准**：停止应答的上游在其时间窗内退出轮转，之后能恢复。
+- **涉及**：`akit-upstream`。
+
+### I36 负载均衡 v2
+
+- **做什么**：随机、P2C，按 IP、头、cookie 或 URI 的一致性哈希，基于 cookie 的会话保持。
+- **完成标准**：分布和会话保持测试通过。
+- **涉及**：`akit-upstream`。
+
+### I37 Prometheus 指标
+
+- **做什么**：按路由器、service 和上游的指标；连接和连接池的 gauge；重载和证书到期；akio 的 engine 指标；采用 fit
+  的指标名。
+- **完成标准**：抓取测试对照 fit 检查名字和标签。
+- **涉及**：`akit-observe`。
+
+### I38 M2 退出：频繁替换测试与 staging 证书
+
+- **做什么**：有流量时进行数千次替换；一张 Let's Encrypt staging 证书；健康检查时间窗测试。
+- **完成标准**：路线图中 M2 的退出标准满足，结果记录在 progress 中。
+- **涉及**：`tests`、`bench`。
+
+## M3 网关能力
+
+### I39 匹配器 v2 与表达式
+
+- **做什么**：method、头、query、远端 IP 和 CIDR、正则路径（`akio-regex`），以及组合它们的 fit 表达式语言；在编译
+  配置时编译。
+- **完成标准**：移植过来的 fit 匹配器测试通过；查找仍不分配内存。
+- **涉及**：`akit-router`。
+
+### I40 重写、跳转与头处理
+
+- **做什么**：路径重写、去前缀、跳转、请求头和响应头修改，值在编译时构建。
+- **完成标准**：移植过来的 fit 相关测试通过。
+- **涉及**：`akit-middleware`。
+
+### I41 限流、并发与大小限制
+
+- **做什么**：按键限流（令牌桶）、并发限制、请求大小限制；在精度允许时状态按 I/O 线程分片。
+- **完成标准**：测试覆盖每种限制在低于、等于和超过上限时的表现。
+- **涉及**：`akit-middleware`。
+
+### I42 Basic 认证与 mTLS
+
+- **做什么**：Basic 认证，密码哈希以常数时间比较；按路由要求客户端证书。
+- **完成标准**：测试覆盖两者；哈希计算较慢时（bcrypt）不在 I/O 线程上校验。
+- **涉及**：`akit-middleware`、`akit-tls`。
+
+### I43 ForwardAuth
+
+- **做什么**：认证请求经 akio 的客户端发出；请求等待时不占用线程；按 fit 的字段复制头。
+- **完成标准**：测试覆盖允许、拒绝、慢的和宕掉的认证服务器。
+- **涉及**：`akit-middleware`。
+
+### I44 JWT 与 JWKS
+
+- **做什么**：每个请求校验 JWT；JWKS 由控制面拉取并缓存。
+- **完成标准**：测试覆盖各算法、过期、密钥轮换和 JWKS 不可用。
+- **涉及**：`akit-middleware`。
+
+### I45 重试、熔断、按路由超时
+
+- **做什么**：带预算和幂等规则的重试；熔断；按路由超时。
+- **完成标准**：测试覆盖每一项，包括无法重放的 body。
+- **涉及**：`akit-proxy`、`akit-upstream`。
+
+### I46 加权服务、镜像、故障转移
+
+- **做什么**：按权重拆分的 service，镜像到第二个 service 且不等待它，以及故障转移。
+- **完成标准**：测试覆盖分布、慢的镜像和故障转移。
+- **涉及**：`akit-upstream`。
+
+### I47 压缩
+
+- **做什么**：按请求协商 gzip、zstd 和 brotli，流式压缩，跳过已压缩的类型。
+- **完成标准**：测试覆盖协商和流式压缩；基准与 fit 对比。
+- **涉及**：`akit-middleware`。
+- **参考**：`akio-http` 的 `compress`、`akio-deflate`、`akio-zstd`、`akio-brotli`。
+
+### I48 fit 的其余中间件
+
+- **做什么**：fit 配置参考中列出、akit 尚未实现的每个中间件（CORS、请求 ID、IP 头等），各自带移植过来的测试。
+- **完成标准**：兼容性门禁不再把任何中间件列为不支持。
+- **涉及**：`akit-middleware`。
+
+### I49 WebSocket 代理
+
+- **做什么**：双向背压的 WebSocket 代理，从 HTTP/1.1、HTTP/2 和 HTTP/3 入口到 HTTP/1.1 上游。
+- **完成标准**：每个入口上带慢对端的端到端测试通过。
+- **涉及**：`akit-proxy`。
+- **参考**：`akio-ws`。
+
+### I50 gRPC 代理
+
+- **做什么**：经 h2c 和 TLS 上游的 gRPC，传递 trailer 和 deadline，支持一元调用和流式调用。
+- **完成标准**：针对 grpc-go 的端到端测试通过。
+- **涉及**：`akit-proxy`。
+
+### I51 TCP 与 UDP 代理
+
+- **做什么**：TCP 和 UDP 的四层路由，带联动背压和超时；监听器要求时使用 eBPF sockmap 中转。
+- **完成标准**：带慢对端的测试通过；基准与 fit 和 nginx 的 `stream` 对比。
+- **涉及**：`akit-l4`。
+
+### I52 SNI 分流与 PROXY protocol
+
+- **做什么**：按 SNI 分流 TLS 而不终止；接收和发送 PROXY protocol v1/v2。依赖 akio A4 和 A5。
+- **完成标准**：测试覆盖两者，包括被截断或伪造的 PROXY 头。
+- **涉及**：`akit-l4`、`akit-listener`。
+
+### I53 一个端口多种协议
+
+- **做什么**：由 akio-mux 把一个监听器拆分为 HTTP、TLS（终止或按 SNI 透传）、gRPC、SOCKS 和自定义协议，带嗅探
+  上限和超时。
+- **完成标准**：一个端口同时提供 HTTP/1.1、HTTP/2、按 SNI 的 TLS 透传和 SOCKS。
+- **涉及**：`akit-listener`。
+
+### I54 上游 TLS
+
+- **做什么**：到上游的 TLS，支持自定义 CA、客户端证书和覆盖 SNI。
+- **完成标准**：测试覆盖每一项。
+- **涉及**：`akit-upstream`。
+
+### I55 SOCKS 与 CONNECT
+
+- **做什么**：基于 `akio-socks` 和 HTTP CONNECT 的正向代理，带认证和上限。
+- **完成标准**：测试用慢对端覆盖两者。
+- **涉及**：`akit-l4`。
+
+### I56 M3 退出
+
+- **做什么**：每个中间件的一致性测试和基准；M3 报告。
+- **完成标准**：路线图中 M3 的退出标准满足。
+- **涉及**：`tests`、`bench`。
+
+## M4 平台集成
+
+### I57 Provider 框架与生效配置
+
+- **做什么**：provider 走同一条编译路径；fit 的合并规则；一个 Admin API 端点，展示生效配置及其各部分的来源。
+- **完成标准**：测试覆盖合并和该端点。
+- **涉及**：`akit-provider`、`akit-admin`。
+
+### I58 Docker provider
+
+- **做什么**：Docker label 作为配置，经 Unix 套接字上 akio 的 HTTP 客户端跟踪事件流。
+- **完成标准**：Docker Compose 示例在服务启动和停止时随之路由。
+- **涉及**：`akit-provider`。
+
+### I59 Kubernetes Ingress
+
+- **做什么**：akit 自己的 watch 客户端（经 HTTP/2 的 list 和 watch），把 Ingress 转为路由。
+- **完成标准**：针对 kind 集群的测试按 Ingress 路由。
+- **涉及**：`akit-provider`。
+
+### I60 Kubernetes Gateway API 与一致性测试
+
+- **做什么**：HTTPRoute、GRPCRoute、TLSRoute、TCPRoute、UDPRoute；一致性测试套件。
+- **完成标准**：akit 通过 `GATEWAY-HTTP` profile。
+- **涉及**：`akit-provider`。
+- **fit**：决定 012。
+
+### I61 Consul 与 etcd
+
+- **做什么**：来自 Consul（HTTP）和 etcd（其 gRPC API，基于 `akio-grpc`）的服务目录和 KV 配置。
+- **完成标准**：针对两者的测试能跟踪变化。
+- **涉及**：`akit-provider`。
+
+### I62 共享证书存储
+
+- **做什么**：证书存储在 Redis、etcd 或 Consul 中并带锁，让多个实例共享签发。
+- **完成标准**：两个实例共享一张证书，只签发一次。
+- **涉及**：`akit-tls`。
+
+### I63 仪表盘
+
+- **做什么**：由 akit 提供 fit 的只读仪表盘页面。
+- **完成标准**：页面展示路由器、service、上游健康状态、证书和版本。
+- **涉及**：`akit-admin`。
+
+### I64 OpenTelemetry
+
+- **做什么**：追踪，上下文传递到上游；OTLP 导出追踪和指标，批量处理且不在 I/O 线程上进行。
+- **完成标准**：测试中追踪数据到达 collector。
+- **涉及**：`akit-observe`。
+
+### I65 打包
+
+- **做什么**：Linux（amd64、arm64）的静态 musl 二进制和 macOS 构建；容器镜像；与 fit 相同的 Helm chart 和
+  systemd unit。
+- **完成标准**：发布流程产出它们并附校验和。
+- **涉及**：`deploy`、CI。
+
+### I66 M4 退出
+
+- **做什么**：CI 中运行一致性测试和 Compose 示例；M4 报告。
+- **完成标准**：路线图中 M4 的退出标准满足。
+
+## M5 缓存与扩展
+
+### I67 缓存 I：内存层与 RFC 9111
+
+- **做什么**：`Cache-Control`、`Vary`、校验器、`Age`；有上限的内存层。
+- **完成标准**：RFC 9111 测试通过。
+- **涉及**：`akit-cache`。
+
+### I68 缓存 II：磁盘层、缓存锁、stale
+
+- **做什么**：基于逻辑池的磁盘层；缓存锁，使一次未命中只回源一次；stale-while-revalidate 和 stale-if-error。
+- **完成标准**：缓存击穿测试只产生一次上游请求；磁盘 I/O 从不在 I/O 线程上运行。
+- **涉及**：`akit-cache`。
+
+### I69 缓存 III：清除与标签
+
+- **做什么**：经 Admin API 按键和标签清除。
+- **完成标准**：测试覆盖两者。
+- **涉及**：`akit-cache`、`akit-admin`。
+
+### I70 `akit build`
+
+- **做什么**：把用户的 crate 作为模块构建进 akit（生成一个注册它们的工作区），就像 `fit build` 对 Go 模块所做的；
+  模块开发指南。
+- **完成标准**：一个示例模块能构建进去并提供服务。
+- **涉及**：`akit`、`docs`。
+
+### I71 WASM I：运行时与 ABI
+
+- **做什么**：选定运行时（决定说明：wasmi、wasmtime 或其他，对照 fit 的 wazero 测量）；fit 的 ABI；插件运行在自己
+  的池上，带时间和内存上限。
+- **完成标准**：fit 的改头插件无需改动即可运行，开销经过测量且有上限。
+- **涉及**：`akit-plugin`。
+- **fit**：决定 017、018。
+
+### I72 WASM II：Proxy-Wasm 子集
+
+- **做什么**：fit 支持的 Proxy-Wasm 子集。
+- **完成标准**：移植过来的 fit Proxy-Wasm 测试通过。
+- **涉及**：`akit-plugin`。
+
+### I73 `akit adapt` 与 `akit fmt`
+
+- **做什么**：.conf、YAML 和 JSON 之间的转换；与 fit 一致的格式化。
+- **完成标准**：在 fit 的模板上往返转换无损。
+- **涉及**：`akit-config`、`akit`。
+
+### I74 nginx 与 Caddyfile 转换器
+
+- **做什么**：针对 fit 所转换子集的转换器，列出跳过的内容。
+- **完成标准**：fit 的转换器样例得到相同输出。
+- **涉及**：`akit-config`。
+
+### I75 FastCGI
+
+- **做什么**：FastCGI handler，带流式 body、连接池和超时。
+- **完成标准**：针对 php-fpm 的测试通过。
+- **涉及**：`akit-handler`。
+
+### I76 M5 退出
+
+- **做什么**：缓存与 nginx 的 `proxy_cache` 对比；WASM 开销；转换器样例；M5 报告。
+- **完成标准**：路线图中 M5 的退出标准满足。
+
+## 1.0
+
+### I77 Fuzz
+
+- **做什么**：配置读取器、路由器、代理的头处理、PROXY protocol 和缓存的 fuzz 目标；CI 中跑固定时长，定时任务中
+  跑得更久。
+- **完成标准**：每个解析器都有目标，语料已提交。
+
+### I78 配置参考与指南
+
+- **做什么**：从代码生成的配置参考；入门；从 fit、nginx、Caddy 和 Traefik 迁移；全部中英双语。
+- **完成标准**：模型中的每个字段都出现在参考中。
+
+### I79 v1 冻结与兼容性
+
+- **做什么**：配置 schema 和 Admin API 冻结为 v1，与 fit 的 v1 相同；一份说明哪些内容保持稳定的兼容性文档。
+- **完成标准**：兼容性门禁在每个 fit 模板上通过，没有不支持的字段。
+
+### I80 为安全审查做好准备
+
+- **做什么**：威胁模型；`cargo audit` 和 `cargo deny` 无问题；外部审查的范围（TLS 处理、Admin API、插件沙箱）。
+- **完成标准**：审查可以开始。
+
+## 1.0 之后
+
+每条路线在开始时拆成迭代，依据 fit 中同一路线的迭代（编号见 fit 的
+[开发计划](https://github.com/lesismal/fit/blob/main/docs/dev-plan.zh-CN.md)）。下表是计划的顺序；彼此没有依赖的
+路线可以并行进行。
+
+| 顺序 | 路线 | fit 的迭代 | akit 中的第一步 |
+| --- | --- | --- | --- |
+| 1 | 日志：文件、切割与保留 | I155–I157 | 带时区的日志文件，按大小和时间切割，保留策略 |
+| 2 | 访问控制列表 | I195 | akio 中的 accept 时过滤（A3）；全局和按作用域的列表 |
+| 3 | 控制台与加密的 store | I104 | 加密的 store、控制台页面、登录 |
+| 4 | 隧道与 LLM | I105–I107, I159–I162 | 基于 `akio-ws` 和 `akio-quic` 的 hub、node 和 proxy 角色；链路 token |
+| 5 | WebRTC | I87, I108–I111 | 基于 `akio-turn` 的 TURN；基于 `akio-webrtc` 的 WHIP 和 WHEP |
+| 6 | 流媒体与媒体认证 | I115–I117 | 基于 `akio-media` 的流媒体角色；`media_auth` |
+| 7 | 媒体库与频道 | I131–I139 | MP4 读取器（akio 需求）；点播；频道；签名 URL |
+| 8 | 集群管理 | I140–I150, I153 | 成员、概览、带健康门槛的发布 |
+| 9 | AI 助手 | I124–I130, I152–I154 | 对话面板、工具、MCP 服务器 |
+| 10 | BitTorrent | I196–I210 | 基于 `akio-bittorrent` 的客户端和 tracker 角色 |
+| 11 | 数据同步 | I163–I194, I211–I222 | 先做流水线核心和检查点，再按 fit 的顺序做连接器 |
+| 12 | Prefork 与 NUMA | fit 中已规划 | 带 CPU 放置的 `akio-prefork`；默认开启前先测量 |
+| 13 | P2P 与 VPN | I84–I103 | 待 fit 的这条路线完成后 |
