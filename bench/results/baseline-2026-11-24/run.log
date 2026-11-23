@@ -1,0 +1,94 @@
+stopped: svc gnome-remote-desktop.service pp balanced 
+==> taking fit and idleconn from /root/akit-bench/fit-7daee573b102/bin
+==> building the load generator image
+==> starting the load generators
+==> starting the proxy backend
+==> starting the WebSocket backend
+==> starting the cache backend
+==> starting nginx
+    nginx    fixed      http/1.1        820888 req/s  mean    0.17ms  max     6.10ms  errors 0  cpu 6.38 (7.78us/req)  peak 197MiB
+    nginx    fixed      h2c             641545 req/s  mean    3.18ms  max     7.19ms  errors 0  cpu 6.98 (10.89us/req)  peak 198MiB
+    nginx    static     http/1.1        617960 req/s  mean    0.41ms  max     7.32ms  errors 0  cpu 6.97 (11.27us/req)  peak 197MiB
+    nginx    static     h2c             484575 req/s  mean    4.27ms  max    62.27ms  errors 0  cpu 6.98 (14.40us/req)  peak 198MiB
+    nginx    proxy      http/1.1        271021 req/s  mean    0.93ms  max     8.78ms  errors 0  cpu 4.91 (18.13us/req)  peak 200MiB
+    nginx    proxy      h2c             260186 req/s  mean    7.85ms  max    20.49ms  errors 0  cpu 5.74 (22.07us/req)  peak 231MiB
+    nginx    idle-http1   10000 connections       548 bytes each  (anon 208392192 -> 213872640)  closed by server 0
+==> starting caddy
+    caddy    fixed      http/1.1        343168 req/s  mean    0.97ms  max    21.64ms  errors 0  cpu 6.54 (19.05us/req)  peak 30MiB
+    caddy    fixed      h2c             221241 req/s  mean    9.26ms  max   158.17ms  errors 0  cpu 6.83 (30.86us/req)  peak 66MiB
+    caddy    static     http/1.1        157389 req/s  mean    2.03ms  max    28.82ms  errors 0  cpu 6.84 (43.48us/req)  peak 36MiB
+    caddy    static     h2c             111910 req/s  mean   18.23ms  max   289.76ms  errors 0  cpu 6.81 (60.82us/req)  peak 87MiB
+    caddy    proxy      http/1.1        126569 req/s  mean    2.08ms  max    22.98ms  errors 0  cpu 6.81 (53.84us/req)  peak 50MiB
+    caddy    proxy      h2c              90219 req/s  mean   22.64ms  max   136.28ms  errors 0  cpu 6.88 (76.29us/req)  peak 251MiB
+    caddy    idle-http1   10000 connections     21706 bytes each  (anon 13651968 -> 230711296)  closed by server 0
+    traefik  fixed      http/1.1  skipped: traefik cannot serve it
+    traefik  fixed      h2c       skipped: traefik cannot serve it
+    traefik  static     http/1.1  skipped: traefik cannot serve it
+    traefik  static     h2c       skipped: traefik cannot serve it
+==> starting traefik
+    traefik  proxy      http/1.1        166422 req/s  mean    1.57ms  max    19.45ms  errors 0  cpu 6.92 (41.57us/req)  peak 103MiB
+    traefik  proxy      h2c             108769 req/s  mean   18.79ms  max   104.75ms  errors 0  cpu 6.91 (63.50us/req)  peak 570MiB
+    traefik  idle-http1   10000 connections     23136 bytes each  (anon 20082688 -> 251441152)  closed by server 0
+==> starting fit
+    fit      fixed      http/1.1        762328 req/s  mean    0.30ms  max     8.37ms  errors 0  cpu 6.32 (8.29us/req)  peak 20MiB  goroutines 153
+    fit      fixed      h2c            4519442 req/s  mean    0.39ms  max     4.03ms  errors 0  cpu 6.98 (1.54us/req)  peak 25MiB  goroutines 174
+    fit      static     http/1.1        758886 req/s  mean    0.24ms  max     7.23ms  errors 0  cpu 6.76 (8.91us/req)  peak 19MiB  goroutines 135
+    fit      static     h2c            3067388 req/s  mean    0.56ms  max     3.86ms  errors 0  cpu 6.98 (2.28us/req)  peak 27MiB  goroutines 183
+    fit      proxy      http/1.1        268778 req/s  mean    0.94ms  max    10.58ms  errors 0  cpu 5.71 (21.26us/req)  peak 31MiB  goroutines 667
+    fit      proxy      h2c             247820 req/s  mean    8.22ms  max    36.55ms  errors 0  cpu 6.31 (25.45us/req)  peak 64MiB  goroutines 735
+    fit      idle-http1   10000 connections      1522 bytes each  (anon 9695232 -> 24911872)  closed by server 0
+    akit     static     http/1.1  skipped: akit cannot serve it
+    akit     static     h2c       skipped: akit cannot serve it
+    akit     proxy      http/1.1  skipped: akit cannot serve it
+    akit     proxy      h2c       skipped: akit cannot serve it
+==> starting akit
+    akit     fixed      http/1.1        825563 req/s  mean    0.17ms  max     4.52ms  errors 0  cpu 6.21 (7.53us/req)  peak 2MiB
+    akit     fixed      h2c            6029715 req/s  mean    0.23ms  max     3.89ms  errors 0  cpu 6.87 (1.14us/req)  peak 3MiB
+    akit     idle-http1   10000 connections      1068 bytes each  (anon 3792896 -> 14475264)  closed by server 0
+
+req/s                          nginx         caddy       traefik           fit          akit
+fixed http/1.1                820888        343168             -        762328        825563
+fixed h2c                     641545        221241             -       4519442       6029715
+static http/1.1               617960        157389             -        758886             -
+static h2c                    484575        111910             -       3067388             -
+proxy http/1.1                271021        126569        166422        268778             -
+proxy h2c                     260186         90219        108769        247820             -
+
+cpu us/req                     nginx         caddy       traefik           fit          akit
+fixed http/1.1                  7.78         19.05             -          8.29          7.53
+fixed h2c                      10.89         30.86             -          1.54          1.14
+static http/1.1                11.27         43.48             -          8.91             -
+static h2c                     14.40         60.82             -          2.28             -
+proxy http/1.1                 18.13         53.84         41.57         21.26             -
+proxy h2c                      22.07         76.29         63.50         25.45             -
+
+peak anon MiB                  nginx         caddy       traefik           fit          akit
+fixed http/1.1                   197            30             -            20             2
+fixed h2c                        198            66             -            25             3
+static http/1.1                  197            36             -            19             -
+static h2c                       198            87             -            27             -
+proxy http/1.1                   200            50           103            31             -
+proxy h2c                        231           251           570            64             -
+
+req/s per MiB                  nginx         caddy       traefik           fit          akit
+fixed http/1.1                  4160         11452             -         37850        358818
+fixed h2c                       3237          3360             -        178905       2033738
+static http/1.1                 3131          4374             -         40754             -
+static h2c                      2444          1293             -        114451             -
+proxy http/1.1                  1355          2523          1622          8582             -
+proxy h2c                       1126           359           191          3858             -
+
+bytes/in-flight                nginx         caddy       traefik           fit          akit
+fixed http/1.1                  1219         79303             -         52354          1382
+fixed h2c                        600         27980             -          9034           508
+static http/1.1                 1382        105114             -         44715             -
+static h2c                       618         38534             -          9842             -
+proxy http/1.1                 12125        165027        353719         98564             -
+proxy h2c                      17480        123044        282896         29110             -
+
+bytes/idle conn            nginx         caddy       traefik           fit          akit
+http1                        548         21706         23136          1522          1068
+
+goroutines fit      started 46  under load at most 735  idle-http1 46 -> 44
+results written to /root/akit-bench/runs/run-20261124-012812/results.json
+restored: svc gnome-remote-desktop.service pp balanced 

@@ -18,7 +18,7 @@ the harness does). The results come only from the benchmark host
 | [`lib.sh`](lib.sh) | staging, shared by the scripts below |
 | [`run.sh`](run.sh) | a run of the harness |
 | [`ab.sh`](ab.sh), [`abreport.py`](abreport.py) | a same-run comparison of two akit builds |
-| [`results`](results) | the runs checked in, each with its results, report, parameters and the akit commit |
+| [`results`](results) | the runs checked in, each with its results, report, parameters and the akit commit; a run is fetched into `results/run-<time>` (not checked in) and renamed to keep it, as `baseline-2026-11-24` |
 
 fit's own files are not changed. The scripts upload fit's tree at `FIT_REV` (from the fit
 repository beside akit's, or `FIT_REPO`) to the host once, add akit's two files to it each time,

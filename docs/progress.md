@@ -38,7 +38,7 @@ done and where the work differs from the plan.
   them to the overlay and the config. Where akit's config differs from fit's (port 8081 also
   takes HTTP/1.1, no backlog or connection limit settings yet, akio's I/O threads per listener)
   is in the bench README.
-- The baseline, `bench/results/run-20261124-012812` (results, fit's benchreport tables, params and
+- The baseline, `bench/results/baseline-2026-11-24` (results, fit's benchreport tables, params and
   the akit commit): akit at `7c835ad`, fit `7daee573`, nginx 1.31.4, Caddy 2.10.2 and Traefik
   3.5.0 on the benchmark host (AMD Ryzen 7 7800X3D, 8 cores, 16 threads, Linux 7.0), fitbench's
   defaults (30s runs after 5s, 256 wrk connections, h2load 64 × 32), the fixed, static and proxy

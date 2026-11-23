@@ -17,7 +17,7 @@ akit 用 fit 的测试框架测量，而不是它的副本：相同的场景、�
 | [`lib.sh`](lib.sh) | 下面两个脚本共用的部署代码 |
 | [`run.sh`](run.sh) | 一次框架运行 |
 | [`ab.sh`](ab.sh)、[`abreport.py`](abreport.py) | 两个 akit 构建在同一次运行中的对比 |
-| [`results`](results) | 入库的运行，每个都带结果、报告、参数和 akit 提交 |
+| [`results`](results) | 入库的运行，每个都带结果、报告、参数和 akit 提交；运行取回到 `results/run-<time>`（不入库），要保留时改名，如 `baseline-2026-11-24` |
 
 fit 自己的文件不做改动。脚本把 `FIT_REV` 处的 fit 源码树（取自 akit 旁边的 fit 仓库，或 `FIT_REPO`）上传到主机
 一次，每次把 akit 的两个文件加进去，在主机上用 Go 构建 fitbench、benchreport、idleconn 和 fit；把所要求的 ref 处
