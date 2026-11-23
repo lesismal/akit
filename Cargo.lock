@@ -297,7 +297,9 @@ version = "0.0.1"
 dependencies = [
  "akio",
  "akio-crypto",
+ "akio-h3",
  "akio-http",
+ "akio-quic",
  "akio-x509",
  "akit-config",
  "akit-handler",

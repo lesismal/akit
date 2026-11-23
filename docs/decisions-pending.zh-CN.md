@@ -10,3 +10,5 @@
 | 1 | 2026-11-24 | akio，合并 akit 的需求 | 五个 akio 分支（A1/A3、A2、A4/A5、A7、A8）合并进 akio 的 main；akio 的 main 期间已用掉 ADR-093 和 ADR-094，所以 A2 的 ADR 改为 ADR-098（`098-tls-cert-resolver`），A1/A3 的改为 ADR-099（`099-runtime-listeners-accept-filter`），所有引用一并修改 | 保留分支的编号，改 main 的编号（main 的先推送） |
 | 2 | 2026-11-24 | akio，合并 A8 | A8 和 main 的 ICMP 工作都声明了 macOS 的 `ioctl` 绑定：删去 A8 的那份。A8 的 `probe_gone` 在非 Linux 上允许 `needless_pass_by_ref_mut`（那里只读） | 按平台改函数签名 |
 | 3 | 2026-11-24 | akit，akio API 需求 | I09 和 I14 都把自己的第一个需求编为 A9：I09 的（限制在 TLS 1.2 的 TLS 服务端）保留 A9，I14 的改为 A10–A12 | — |
+| 4 | 2026-11-24 | akit，合并 I22 与 I10 | 增加服务 h3 的监听器的重载被拒绝（"not supported yet"，保留正在运行的配置）：I22 为新监听器准备的临时办法只接管 TCP 连接，而 HTTP/3 监听器需要引擎中的 UDP 监听器（akio 的 A1）。合并时还修复了 `Listeners`，改由 I10 的 `addrs` 读取地址，因为 h3 监听器会在引擎中多加一个 UDP 监听器 | 先服务新监听器的 TCP 一侧，HTTP/3 等 A1 |
+| 5 | 2026-11-24 | akit，I15 | I15 保持 `doing`：它的三个 `Host` 测试等待 akio 的 A11（写在 akio 分支 `claude/i15-proxy-699f18` 上）；下一组把它合并进 akio 并移动 akit 的锁定 | 在 akit 中改写 `Host`（规则 21：akio 欠缺的加进 akio） |

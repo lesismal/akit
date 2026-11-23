@@ -261,3 +261,73 @@ fn datagrams_that_are_not_quic_do_not_disturb_others() {
     assert_eq!(seen.status, 200);
     assert!(akit_listener::shutdown(&e, Duration::from_secs(5)));
 }
+
+/// Reload (I22) beside HTTP/3 (I10): a listener serving h3 has a UDP listener of its own in the
+/// engine, so the listeners after it are still reported at their own addresses; and a reload
+/// that adds one is refused (its UDP side needs akio API request A1), the running config kept.
+#[test]
+fn reload_knows_h3_listeners() {
+    use std::sync::Arc;
+
+    use akit_listener::{Listeners, ReloadError};
+
+    let p = pki("h3-reload");
+    let tls = |name: &str, protocols: &str| {
+        format!(
+            r#"{{"name": "{name}", "address": "127.0.0.1:0", "protocols": [{protocols}],
+                "tls": {{"certificates": [{{"cert_file": "{}", "key_file": "{}"}}]}}}}"#,
+            s(&p.a.0),
+            s(&p.a.1)
+        )
+    };
+    let json = |listeners: &[String]| {
+        format!(
+            r#"{{"listeners": [{}], "routes": [{{"handler": {{"module": "respond", "params": {{"body": "hi"}}}}}}]}}"#,
+            listeners.join(",")
+        )
+    };
+    let plain = r#"{"name": "plain", "address": "127.0.0.1:0"}"#.to_owned();
+    let registry: Registry<HandlerParams> = Registry::new(&[akit_handler::MODULES]).unwrap();
+    let compiled = |j: &str| {
+        let c = akit_config::from_json(j, None).unwrap();
+        (compile(&c, &registry, &Env::default()).unwrap(), c)
+    };
+    let (g, config) = compiled(&json(&[tls("secure", ALL), plain.clone()]));
+    let cell = GraphCell::new(g);
+    let e = Arc::new(akit_listener::engine(&cell, &options()).unwrap());
+    e.start().unwrap();
+    let addrs = akit_listener::addrs(&config.listeners, &e);
+    let mut l = Listeners::new(Arc::clone(&e), cell.clone());
+    let served: Vec<_> = l
+        .served()
+        .into_iter()
+        .map(|s| (s.name, s.address))
+        .collect();
+    assert_eq!(
+        served,
+        [
+            ("secure".to_owned(), addrs[0].tcp.unwrap()),
+            ("plain".to_owned(), addrs[1].tcp.unwrap()),
+        ]
+    );
+    // The plain listener really is there.
+    let mut s = std::net::TcpStream::connect(addrs[1].tcp.unwrap()).unwrap();
+    std::io::Write::write_all(
+        &mut s,
+        b"GET / HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n",
+    )
+    .unwrap();
+    let mut resp = String::new();
+    std::io::Read::read_to_string(&mut s, &mut resp).unwrap();
+    assert!(resp.ends_with("hi"), "{resp}");
+
+    // Adding a listener serving h3 is refused; the graph is not swapped.
+    let epoch = cell.epoch();
+    let (g, _) = compiled(&json(&[tls("secure", ALL), plain, tls("more", ALL)]));
+    let err = l.reload(g).unwrap_err();
+    assert!(matches!(err, ReloadError::Listener(_)), "{err}");
+    assert!(err.to_string().contains("h3"), "{err}");
+    assert_eq!(cell.epoch(), epoch);
+    e.shutdown();
+    e.wait();
+}

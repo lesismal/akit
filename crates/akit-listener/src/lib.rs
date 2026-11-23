@@ -14,6 +14,9 @@
 //! the certificates its TCP connections serve; its HTTP/1.1 and HTTP/2 responses announce it with
 //! `Alt-Svc`, as fit's do.
 //!
+//! I22: [`Listeners::reload`] publishes a new graph and moves the listeners to its (see
+//! [`reload`]).
+//!
 //! Part of [akit](https://github.com/lesismal/akit); see `docs/dev-plan.md` for the iterations that
 //! fill this crate in.
 
@@ -28,6 +31,9 @@ use akio::{Backend, Config as EngineConfig, Engine, Listener as EngineListener};
 use akio_http::{Context, HttpConfig};
 use akit_config::{Listener, Protocol};
 use akit_runtime::GraphCell;
+
+pub mod reload;
+pub use reload::{Listeners, ReloadError, Reloaded, Served};
 
 /// fit's answer when no route matches.
 const NOT_FOUND: &str = "404 page not found\n";
