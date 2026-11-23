@@ -31,6 +31,8 @@ rust-version = "1.85"
 # akio by commit hash, never a path or [patch] (rules.md rule 22). Move it only to a commit on
 # akio's main whose checks pass, and update akit_runtime::AKIO_REV with it.
 akio = { git = "https://github.com/lesismal/akio", rev = "50a823155a067ce60cfc424490548f0c318d4c09" }
+# The same akio commit: every akio crate moves with `akio` (rule 22).
+akio-http = { git = "https://github.com/lesismal/akio", rev = "50a823155a067ce60cfc424490548f0c318d4c09" }
 
 akit-config = { path = "crates/akit-config" }
 akit-runtime = { path = "crates/akit-runtime" }
