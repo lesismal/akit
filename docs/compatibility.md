@@ -45,7 +45,7 @@ The parts, and where they stand:
 | The gate through akit-config, its report checked in | `gate_through_akit_config` in `tests/compat/tests/gate.rs`, `tests/compat/gate-report.txt` | done (I07b) |
 | The supported fields read, akit-config's lists checked against the inventory | `supported_fields_are_read`, `akit_config_lists_match_the_inventory` in the same file | done (I07b) |
 | The .conf fixtures and `conf.d` directories read | akit-config's .conf reader (`crates/akit-config/src/conf`) and merge | done (I23) |
-| The YAML fixtures read | akit-config's YAML reader | I24 |
+| The YAML fixtures read | akit-config's YAML reader ([decision 005](decisions/005-yaml-reader.md)) | done (I24) |
 
 The gate is an ordinary test of the workspace, with no feature and nothing ignored: `make test`,
 and so `make check`, runs it, and so does CI's `cargo test --workspace` on Linux (epoll,
@@ -55,13 +55,14 @@ when `fit-fields.txt` or the tables below are out of date.
 
 ### Formats akit cannot read yet
 
-akit-config reads JSON and fit's own `.conf` format (I23), and merges a directory's files, as
-fit does: every example, the `.conf` and JSON templates and their `conf.d` directories go through
-it. A fixture in a format it has no reader for yet, the YAML template and its `conf.d` directory
-(until I24), is neither passed nor failed silently: its outcome is "format not supported yet",
-written in the gate's report like every other outcome. A fixture akit reads must read with only
-"not supported yet" findings; any other error fails the gate, and so does a "format not
-supported yet" beside other findings.
+akit-config reads JSON, fit's own `.conf` format (I23) and YAML (I24,
+[decision 005](decisions/005-yaml-reader.md)), and merges a directory's files, as fit does: every
+example, every template and every `conf.d` directory goes through it, and the YAML templates read
+into the same model as their JSON twins, with the same outcomes. A fixture in a format akit had no
+reader for would be neither passed nor failed silently: its outcome would be "format not
+supported yet", written in the gate's report like every other outcome. A fixture akit reads must
+read with only "not supported yet" findings; any other error fails the gate, and so does a
+"format not supported yet" beside other findings.
 
 The `.conf` reader types each directive by its field in fit's own types, which it takes from the
 inventory (`fit-fields.txt`, built into akit-config): a `.conf` file converts into the tree its
@@ -107,7 +108,7 @@ examples/http3: not supported yet: listeners[].protocols: the "h3" protocol
 examples/http3: not supported yet: listeners[].tls
 examples/https: skipped: its certificate and key files are the user's own
 templates/conf/fit.conf: not supported yet: upstreams
-templates/yaml/conf.d: format not supported yet: YAML (I24)
+templates/yaml/conf.d: not supported yet: upstreams
 ```
 
 A fixture that fails is written `<fixture>: FAILED: <why>`, a line for each finding that is not an

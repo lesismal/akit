@@ -7,8 +7,11 @@
 //! handler) and the JSON reader: JSON with `//` and `/* */` comments and trailing commas, as fit
 //! reads it; an unknown field, a key given twice or a wrong type is an error. A field fit reads
 //! and akit does not support yet is refused as "not supported yet", never read and ignored
-//! ([`Error::is_not_supported_yet`]). I23 adds fit's own format, `.conf` ([`from_conf`]), read
-//! into the same tree as JSON and decoded by the same code; the YAML reader comes with I24.
+//! ([`Error::is_not_supported_yet`]).
+//!
+//! I23 adds fit's own format, `.conf` ([`from_conf`]), and I24 YAML ([`from_yaml`], decision
+//! 005): each read into the same tree as JSON and decoded by the same code, so the model reads
+//! all three alike and problems point into the file as written.
 //!
 //! Reading a file blocks: this is control plane code, never called on an I/O thread
 //! (rules.md rule 1).
@@ -18,6 +21,7 @@ mod decode;
 mod error;
 mod json;
 mod model;
+mod yaml;
 
 use std::path::{Path, PathBuf};
 
@@ -34,18 +38,59 @@ pub const MAX_CONFIG_BYTES: usize = 64 << 20;
 /// The most files a config is read from, as fit's.
 pub const MAX_CONFIG_FILES: usize = 10_000;
 
-/// One config file: the name its problems give, and what it holds.
+/// One config file: the name its problems give, its format and what it holds.
 #[derive(Debug, Clone, Copy)]
 pub struct Source<'a> {
     /// The file's name, named in every problem found in it.
     pub name: Option<&'a str>,
+    /// Its format.
+    pub format: Format,
     /// Its text.
     pub src: &'a str,
 }
 
+/// The format a config file is written in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
+pub enum Format {
+    /// JSON, with comments and trailing commas as fit reads it.
+    #[default]
+    Json,
+    /// YAML, as fit reads it (decision 005).
+    Yaml,
+    /// fit's own format, `.conf` (fit's `docs/reference/fit.md`).
+    Conf,
+}
+
+impl Format {
+    /// The format a file's extension says, as fit picks it: `.conf` is fit's own format,
+    /// `.yaml` and `.yml` are YAML, any other file JSON.
+    #[must_use]
+    pub fn of(path: &Path) -> Format {
+        match extension(path).as_deref() {
+            Some("conf") => Format::Conf,
+            Some("yaml" | "yml") => Format::Yaml,
+            _ => Format::Json,
+        }
+    }
+}
+
 /// Reads a config written in JSON. `file`, when given, is named in every problem.
 pub fn from_json(src: &str, file: Option<&str>) -> Result<Config, Errors> {
-    from_sources(&[Source { name: file, src }])
+    from_sources(&[Source {
+        name: file,
+        format: Format::Json,
+        src,
+    }])
+}
+
+/// Reads a config written in YAML. `file`, when given, is named in every problem.
+pub fn from_yaml(src: &str, file: Option<&str>) -> Result<Config, Errors> {
+    from_sources(&[Source {
+        name: file,
+        format: Format::Yaml,
+        src,
+    }])
 }
 
 /// Reads a config written in fit's own format, `.conf` (fit's `docs/reference/fit.md`): each
@@ -54,41 +99,24 @@ pub fn from_json(src: &str, file: Option<&str>) -> Result<Config, Errors> {
 /// each at its line and column in the `.conf` text. `include` and `import`, which read other
 /// files, are refused as not supported yet: name the files on the command line instead.
 pub fn from_conf(src: &str, file: Option<&str>) -> Result<Config, Errors> {
-    read(&[(Source { name: file, src }, Format::Conf)])
+    from_sources(&[Source {
+        name: file,
+        format: Format::Conf,
+        src,
+    }])
 }
 
-/// The formats akit reads.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Format {
-    Json,
-    Conf,
-}
-
-/// Reads one source into the tree the decoder reads.
-fn parse_source(src: &str, format: Format) -> Result<json::Node, json::ParseError> {
-    match format {
-        Format::Json => json::parse(src),
-        Format::Conf => conf::parse(src, &|name| std::env::var(name).ok()),
-    }
-}
-
-/// Reads a config from several JSON files, merged as fit merges a config's files: the lists at
-/// the top (`listeners`, `routes`) are joined in the files' order, `schema_version` may be given
-/// by each if they agree, and the checks across elements (unique names, routes naming listeners
-/// that exist) run on the whole. Every problem names the file it is in, with its line, column and
+/// Reads a config from several files, each in its format, merged as fit merges a config's files:
+/// the lists at the top (`listeners`, `routes`) are joined in the files' order, `schema_version`
+/// may be given by each if they agree, and the checks across elements (unique names, routes
+/// naming listeners that exist) run on the whole. Every problem names the file it is in, with its line, column and
 /// its path in that file.
 pub fn from_sources(srcs: &[Source<'_>]) -> Result<Config, Errors> {
-    let srcs: Vec<(Source<'_>, Format)> = srcs.iter().map(|s| (*s, Format::Json)).collect();
-    read(&srcs)
-}
-
-/// Reads and merges sources, each in its format.
-fn read(srcs: &[(Source<'_>, Format)]) -> Result<Config, Errors> {
     let mut ds: Vec<decode::Decoder<'_>> = srcs
         .iter()
-        .map(|(s, _)| decode::Decoder::new(s.src, s.name))
+        .map(|s| decode::Decoder::new(s.src, s.name))
         .collect();
-    let total: usize = srcs.iter().map(|(s, _)| s.src.len()).sum();
+    let total: usize = srcs.iter().map(|s| s.src.len()).sum();
     if total > MAX_CONFIG_BYTES {
         if let Some(d) = ds.first_mut() {
             let what = if srcs.len() > 1 {
@@ -101,8 +129,13 @@ fn read(srcs: &[(Source<'_>, Format)]) -> Result<Config, Errors> {
         return Err(collect(ds));
     }
     let mut parts = Vec::with_capacity(srcs.len());
-    for (i, ((s, format), d)) in srcs.iter().zip(ds.iter_mut()).enumerate() {
-        match parse_source(s.src, *format) {
+    for (i, (s, d)) in srcs.iter().zip(ds.iter_mut()).enumerate() {
+        let parsed = match s.format {
+            Format::Json => json::parse(s.src),
+            Format::Yaml => yaml::parse(s.src),
+            Format::Conf => conf::parse(s.src, &|name| std::env::var(name).ok()),
+        };
+        match parsed {
             Ok(node) => match model::part(d, &node, i) {
                 Some(p) => parts.push(p),
                 None => {
@@ -241,9 +274,8 @@ fn file_error(p: &Path, msg: &str) -> Errors {
 }
 
 /// Reads the config `paths` name ([`config_files`]), merged ([`from_sources`]); at most
-/// [`MAX_CONFIG_BYTES`] in all. A file ending in `.conf` is read as fit's own format
-/// ([`from_conf`]); one ending in `.yaml` or `.yml` is refused as not supported yet until its
-/// reader comes (I24); any other is read as JSON.
+/// [`MAX_CONFIG_BYTES`] in all. Each file is read in the format its extension says
+/// ([`Format::of`]): fit's own format for `.conf`, YAML for `.yaml` and `.yml`, JSON otherwise.
 ///
 /// # Errors
 ///
@@ -252,36 +284,21 @@ pub fn from_files<P: AsRef<Path>>(paths: &[P]) -> Result<Config, Errors> {
     let files = config_files(paths)?;
     let mut texts = Vec::with_capacity(files.len());
     let mut total: usize = 0;
-    let mut errs = Vec::new();
     for f in &files {
-        let format = match extension(f).as_deref() {
-            Some("conf") => Format::Conf,
-            Some("yaml" | "yml") => {
-                errs.extend(file_error(f, &format!("{NOT_SUPPORTED_YET}: YAML files (I24)")).0);
-                continue;
-            }
-            _ => Format::Json,
-        };
+        let format = Format::of(f);
         let text = read_limited(f, MAX_CONFIG_BYTES.saturating_sub(total), files.len() > 1)?;
         total = total.saturating_add(text.len());
-        texts.push((f.display().to_string(), text, format));
+        texts.push((f.display().to_string(), format, text));
     }
-    if !errs.is_empty() {
-        return Err(Errors(errs));
-    }
-    let srcs: Vec<(Source<'_>, Format)> = texts
+    let srcs: Vec<Source<'_>> = texts
         .iter()
-        .map(|(name, src, format)| {
-            (
-                Source {
-                    name: Some(name),
-                    src,
-                },
-                *format,
-            )
+        .map(|(name, format, src)| Source {
+            name: Some(name),
+            format: *format,
+            src,
         })
         .collect();
-    read(&srcs)
+    from_sources(&srcs)
 }
 
 fn read_limited(path: &Path, limit: usize, several: bool) -> Result<String, Errors> {

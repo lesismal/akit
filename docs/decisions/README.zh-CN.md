@@ -14,3 +14,4 @@
 | [002](002-config-compatibility.zh-CN.md) | akit 读取 fit 的配置 | 已采纳 |
 | [003](003-module-registry-and-traits.zh-CN.md) | 模块注册表与数据面 trait | 已采纳 |
 | [004](004-graph-publication-and-retirement.zh-CN.md) | 发布图、按请求读取、由控制面退役 | 已采纳 |
+| [005](005-yaml-reader.zh-CN.md) | YAML 由 akit 自己的读取器读取 | 已采纳 |

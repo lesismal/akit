@@ -272,8 +272,8 @@ fn report_file(report: &Report) -> String {
 }
 
 /// The one hook into akit-config: read the config with the reader of its format, and turn each
-/// problem into a finding. A format akit has no reader for yet is [`Finding::NoReader`], with
-/// the iteration that brings the reader.
+/// problem into a finding. Every format fit reads has a reader since I23 and I24;
+/// [`Finding::NoReader`] stays for a format a later fit adds.
 ///
 /// What validation opens (I23): the config's own files only. The files a config names (TLS
 /// certificates, the examples' WebAssembly plugins, static roots) are named by fields akit-config
@@ -282,28 +282,19 @@ fn report_file(report: &Report) -> String {
 /// read by no field akit supports either. When a field naming a file is supported, its check
 /// decides whether validation opens the file, relative to the directory fit-examples runs from.
 fn validate_with_akit_config(path: &Path) -> Result<(), Vec<Finding>> {
-    let ext = |f: &Path| f.extension().and_then(|e| e.to_str()).map(str::to_owned);
     if path.is_dir() {
-        // A directory's files, merged as fit merges them (I06), when akit reads their format.
-        let files = akit_config::config_files(&[path])
+        // A directory's files, merged as fit merges them (I06), each in its format: JSON, .conf
+        // (I23) and YAML (I24) are all read. A directory with no config file is a problem.
+        akit_config::config_files(&[path])
             .map_err(|errs| errs.as_slice().iter().map(finding).collect::<Vec<_>>())?;
-        if files
-            .iter()
-            .any(|f| matches!(ext(f).as_deref(), Some("yaml" | "yml")))
-        {
-            return Err(vec![Finding::NoReader("YAML (I24)".into())]);
-        }
-    } else {
-        match ext(path).as_deref() {
-            Some("json" | "conf") => {}
-            Some("yaml" | "yml") => return Err(vec![Finding::NoReader("YAML (I24)".into())]),
-            _ => {
-                return Err(vec![Finding::Error(format!(
-                    "{}: not a config file fit reads",
-                    path.display()
-                ))]);
-            }
-        }
+    } else if !matches!(
+        path.extension().and_then(|e| e.to_str()),
+        Some("json" | "conf" | "yaml" | "yml")
+    ) {
+        return Err(vec![Finding::Error(format!(
+            "{}: not a config file fit reads",
+            path.display()
+        ))]);
     }
     akit_config::from_files(&[path])
         .map(|_| ())

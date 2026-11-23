@@ -164,17 +164,13 @@ fn conf_files_merge_with_json_files() {
 }
 
 #[test]
-fn yaml_is_not_supported_yet() {
+fn every_format_is_read() {
     let d = dir("formats");
+    // YAML (I24), .conf (I23) and JSON, each by its extension.
     let yaml = write(&d, "fit.yaml", "listeners: []");
-    let errs = errors(from_files(&[&yaml]));
-    assert_eq!(
-        errs,
-        [format!(
-            "{}: not supported yet: YAML files (I24)",
-            yaml.display()
-        )]
-    );
+    assert!(from_files(&[&yaml]).is_ok());
+    let conf = write(&d, "fit.conf", "listener web :8080\n");
+    assert_eq!(from_files(&[&conf]).unwrap().listeners.len(), 1);
     // A file named with any other extension is JSON, as in fit.
     let other = write(&d, "fit.cfg", LISTENER);
     assert_eq!(from_files(&[&other]).unwrap().listeners.len(), 1);

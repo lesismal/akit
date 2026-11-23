@@ -34,7 +34,7 @@ Commands:
 Run akit <command> -h for a command's flags.
 ";
 
-const CONFIG_USAGE: &str = "a config file, or a directory of them, to use; give -c again for more, which are merged (fit.json when none is given). A file is JSON (comments and trailing commas allowed); fit's .conf format and YAML come later; a directory's files are those, in its subdirectories too";
+const CONFIG_USAGE: &str = "a config file, or a directory of them, to use; give -c again for more, which are merged (fit.json when none is given). A file ending in .yaml or .yml is YAML, any other JSON (comments and trailing commas allowed); fit's .conf format comes later; a directory's files are those, in its subdirectories too";
 
 const RUN_FLAGS: &[Spec] = &[
     Spec {

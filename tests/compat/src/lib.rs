@@ -8,10 +8,10 @@
 //! "not supported yet: `<path>`" naming a field fit accepts (`fit-fields.txt`). Anything else
 //! (a parse error, a wrong type, a refused field fit accepts under another name) fails the gate.
 //!
-//! A fixture in a format akit has no reader for yet (.conf until I23, YAML until I24, `conf.d`
-//! directories until I23) is neither: it is an expected outcome, "format not supported yet",
-//! listed with every other outcome in the checked-in report ([`REPORT`]), which the gate's run
-//! must reproduce line for line.
+//! A fixture in a format akit has no reader for yet (.conf and its `conf.d` directory until I23)
+//! is neither: it is an expected outcome, "format not supported yet", listed with every other
+//! outcome in the checked-in report ([`REPORT`]), which the gate's run must reproduce line for
+//! line.
 //!
 //! This crate enumerates the fixtures and judges the outcomes; the validation itself is a
 //! function handed to [`run_gate`]. The gate's test (`tests/gate.rs`) hands it akit-config's
@@ -330,8 +330,10 @@ pub enum Finding {
     },
     /// Any other error.
     Error(String),
-    /// The config is in a format akit has no reader for yet: YAML until I24 (the .conf format
-    /// and `conf.d` directories are read since I23). Neither a pass nor a failure by itself: the gate's checked-in report ([`REPORT`]) lists each such fixture, so a fixture
+    /// The config is in a format akit has no reader for yet. Since I23 (.conf) and I24 (YAML)
+    /// every format fit reads has one; this stays for a format a later fit adds. Neither a pass
+    /// nor a failure by itself: the gate's checked-in report ([`REPORT`]) lists each such fixture,
+    /// so a fixture
     /// that starts being read, or stops, changes the report.
     NoReader(String),
 }

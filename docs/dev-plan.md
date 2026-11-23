@@ -120,7 +120,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I21 | Access logs | I15 | todo |
 | I22 | Reload on SIGHUP | I06 | todo |
 | I23 | The .conf reader | I02 | done |
-| I24 | The YAML reader | I02 | todo |
+| I24 | The YAML reader | I02 | done |
 | I25 | M1 conformance and report | I09–I24 | todo |
 | **M2** | | | |
 | I26 | Admin API I: load, read, versions | I22 | todo |

@@ -113,7 +113,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I21 | 访问日志 | I15 | todo |
 | I22 | SIGHUP 重载 | I06 | todo |
 | I23 | .conf 读取器 | I02 | done |
-| I24 | YAML 读取器 | I02 | todo |
+| I24 | YAML 读取器 | I02 | done |
 | I25 | M1 一致性测试与报告 | I09–I24 | todo |
 | **M2** | | | |
 | I26 | Admin API I：加载、读取、版本 | I22 | todo |

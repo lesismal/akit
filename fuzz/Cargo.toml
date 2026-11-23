@@ -29,3 +29,10 @@ path = "fuzz_targets/config_conf.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "config_yaml"
+path = "fuzz_targets/config_yaml.rs"
+test = false
+doc = false
+bench = false

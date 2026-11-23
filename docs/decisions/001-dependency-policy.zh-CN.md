@@ -18,7 +18,8 @@ fit 依赖 fib 和 Go 标准库，少数例外各自记录在一份决定中（A
 - **二进制在数据面路径上链接的任何 crate 中都没有异步运行时**（tokio、async-std、smol）。Kubernetes、etcd、Docker
   等的客户端基于 akio 的客户端编写，只实现 akit 用到的那部分协议。
 - **JSON 和 .conf 的配置读取器由 akit 自己实现**，从构造上保证严格，并做 fuzzing。YAML 在 I24 中决定：是为 fit 接受的
-  子集自己写一个读取器，还是用一个 crate，依据大小、`unsafe` 和严格程度。
+  子集自己写一个读取器，还是用一个 crate，依据大小、`unsafe` 和严格程度：结论是 akit 自己的读取器
+  （[决定 005](005-yaml-reader.zh-CN.md)）。
 - **例外**只在自己写会差很多的地方允许（预期的例外是 WASM 运行时），放在 akit 自己的 trait 后面，每个都附一份决定
   说明，写明 crate、它的 `unsafe` 和依赖数量，以及它会阻塞时如何让它远离 I/O 线程。
 - **开发依赖**（测试服务器、属性测试、基准）不受限制，但不进入发布的二进制；cargo-deny 检查许可证和重复依赖。

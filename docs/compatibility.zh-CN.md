@@ -40,8 +40,8 @@ akit 读取 fit 的配置（[决策 002](decisions/002-config-compatibility.zh-C
 | 测试框架：枚举、判定、报告 | `tests/compat/src/lib.rs`、`tests/compat/tests/gate.rs` | 完成（I07a） |
 | 经由 akit-config 的门禁，报告入库 | `tests/compat/tests/gate.rs` 中的 `gate_through_akit_config`，`tests/compat/gate-report.txt` | 完成（I07b） |
 | 已支持字段确实被读取，akit-config 的列表对照字段清单检查 | 同一文件中的 `supported_fields_are_read`、`akit_config_lists_match_the_inventory` | 完成（I07b） |
-| 读取 .conf 夹具和 `conf.d` 目录 | akit-config 的 .conf 读取器（`crates/akit-config/src/conf`）与合并 | 完成（I23） |
-| 读取 YAML 夹具 | akit-config 的 YAML 读取器 | I24 |
+| 读取 .conf 夹具和 `conf.d` 目录 | akit-config 的 .conf 读取器（`crates/akit-config/src/conf`）与合并 | 已完成（I23） |
+| 读取 YAML 夹具 | akit-config 的 YAML 读取器（[决定 005](decisions/005-yaml-reader.zh-CN.md)） | 已完成（I24） |
 
 门禁是工作区里的普通测试，没有 feature，也没有 ignore：`make test`（因而 `make check`）会运行它，
 CI 在 Linux（epoll、io_uring）和 macOS 上的 `cargo test --workspace` 也会运行它。只有一种构建配置，
@@ -50,12 +50,11 @@ CI 在 Linux（epoll、io_uring）和 macOS 上的 `cargo test --workspace` 也�
 
 ### akit 还不能读取的格式
 
-akit-config 读取 JSON 和 fit 自己的 `.conf` 格式（I23），并像 fit 那样合并目录中的文件：所有示例、
-`.conf` 和 JSON 模板及其 `conf.d` 目录都经由它读取。它还没有读取器的格式的夹具——YAML 模板及其
-`conf.d` 目录（直到 I24）——既不会被悄悄判为通过，也不会被悄悄判为失败：它的结果是
-"format not supported yet"（格式尚不支持），和其他结果一样写进门禁的报告。akit 能读取的夹具读取时
-只能出现 "not supported yet" 的发现；其他任何错误都不能通过门禁，"format not supported yet" 与其他
-发现同时出现也不能通过。
+akit-config 读取 JSON、fit 自己的 `.conf` 格式（I23）和 YAML（I24，[决定 005](decisions/005-yaml-reader.zh-CN.md)），
+并像 fit 那样合并目录中的文件：所有示例、所有模板和所有 `conf.d` 目录都经由它读取，YAML 模板读入的模型与对应的
+JSON 版相同，结果也相同。若有 akit 没有读取器的格式的夹具，它既不会被悄悄判为通过，也不会被悄悄判为失败：它的
+结果是 "format not supported yet"（格式尚不支持），和其他结果一样写进门禁的报告。akit 能读取的夹具读取时只能出现
+"not supported yet" 的发现；其他任何错误都不能通过门禁，"format not supported yet" 与其他发现同时出现也不能通过。
 
 `.conf` 读取器按 fit 自己的类型给每条指令定型，类型取自字段清单（`fit-fields.txt`，编译进
 akit-config）：`.conf` 文件转换成的树与它的 JSON 孪生文件解析出的树逐个成员相同，由同一个解码器读取。
@@ -95,7 +94,7 @@ examples/http3: not supported yet: listeners[].protocols: the "h3" protocol
 examples/http3: not supported yet: listeners[].tls
 examples/https: skipped: its certificate and key files are the user's own
 templates/conf/fit.conf: not supported yet: upstreams
-templates/yaml/conf.d: format not supported yet: YAML (I24)
+templates/yaml/conf.d: not supported yet: upstreams
 ```
 
 失败的夹具写作 `<夹具>: FAILED: <原因>`，每条不属于允许的 "not supported yet" 的发现一行；与入库报告的

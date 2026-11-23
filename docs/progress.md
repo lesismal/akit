@@ -20,6 +20,49 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-24: I24, the YAML reader
+
+- [Decision 005](decisions/005-yaml-reader.md): YAML is read by a reader of akit's own, not a
+  crate. serde_yaml and its forks parse with unsafe-libyaml (`unsafe` throughout) and keep no
+  positions; yaml-rust2 and saphyr are pure Rust but bring crates of their own and read YAML's
+  corners differently from fit's libyaml-based library, so matching fit meant writing most of the
+  work over them anyway.
+- `akit-config`'s `yaml` module (`crates/akit-config/src/yaml.rs`, about 1,700 lines of code, no
+  dependency, no `unsafe`) parses a YAML stream into a tree of YAML nodes, anchors shared, then
+  turns it into the JSON reader's `Node` tree with byte offsets, as fit's `adapter/yaml` turns it
+  into JSON: block and flow collections, plain, quoted, literal and folded scalars, explicit keys,
+  anchors, aliases and merge keys (`<<`), the core schema's tags, `%YAML`, `---` and `...`;
+  scalars resolved as fit's library resolves them and numbers written as fit's adapter writes
+  them; a duplicate key, a non-scalar key, an unknown tag, `.inf`/`.nan`, a second document and
+  more than 2^20 nodes or 64 MiB through aliases refused, as fit refuses them; an empty file an
+  empty config. The model's errors point at the YAML's line and column.
+- `akit_config::Format` (`Json`, `Yaml`) on `Source`, `Format::of(path)`, `from_yaml`;
+  `from_files` reads `.yaml` and `.yml` files with it, so YAML and JSON files merge in one config.
+  `akit run -c` and `akit validate -c` take YAML; the usage text says so.
+- The compatibility gate's hook reads YAML fixtures through `from_files`. `make compat-bless`:
+  80 fixtures, 0 valid, 4 refused only as not supported yet (fields refused: 2), 75 in a format
+  not supported yet (.conf, I23), 1 skipped, 0 failed. The two YAML templates went from "format
+  not supported yet" to exactly their JSON twins' outcomes (`upstreams`, and
+  `routes[].handler<proxy>` for `conf.d`).
+- Tests: `tests/yaml_config.rs` (the templates, file and `conf.d`, read into the same model with
+  the same problems as their JSON twins; one config in both formats; positions; YAML and JSON
+  files merged), and the module's own: fit's `adapter/yaml` test cases ported, scalars, folding,
+  structure, positions, Go's float format, linear time on long lines, every prefix and one-byte
+  edit of a document, every template's tree against its JSON twin's, with the commented-out
+  fields written out too (6 of the 10 templates write out to a valid config in both formats), and
+  fit's verdicts on 493 documents (`crates/akit-config/testdata/yaml-fit.txt`).
+- `tools/yaml-diff/run.sh`: the differential check against fit (fit's adapter built with Go from
+  a fit checkout, a corpus of hand-written cases, fit's YAML files and docs, the written-out
+  templates and random edits). It found about 25 kinds of difference, fixed one by one; the last
+  run, 150,000 cases, reads 2 differently (libyaml oddities, refused by akit, in decision 005).
+- Fuzz target `config_yaml` (`fuzz/`), seeded with two small configs; a 10-minute run found
+  nothing.
+- Differences from the plan: the reader covers everything fit's library reads rather than a
+  subset, refusing only `%TAG` and named tag handles (as not supported yet), nesting deeper than
+  128 (fit: 256; the JSON reader's bound) and the 2 corners above; an explicit empty document (`---`) is `{}` to akit, `null` in fit's JSON, an empty config
+  to both. The plan's "Touches" also gained `tests/compat` (the hook) and `tools/yaml-diff`.
+- Checked: `make check` on macOS.
+
 ### 2026-11-24: I23, the .conf reader
 
 - fit's own format, `.conf`, read by akit-config (`crates/akit-config/src/conf`):
