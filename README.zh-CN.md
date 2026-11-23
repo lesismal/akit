@@ -49,8 +49,9 @@ akit run -c hello.conf
 
 ## 构建
 
-I01 完成后：使用 akio 的 MSRV 对应的 Rust，`cargo build --release`，用 `make check` 运行 fmt、clippy、cargo-deny 和
-测试。Linux 是一等平台；macOS 用于开发；不支持 Windows。
+需要 Rust 1.85 或更高版本（akio 的 MSRV）。`make build` 构建 `target/release/akit`；`make check` 运行 fmt、clippy、
+测试、cargo-deny 和双语文档检查，`make test-changed` 只测试改动波及的 crate。akio 按 `Cargo.toml` 锁定的提交从
+GitHub 获取。Linux 是一等平台；macOS 用于开发；不支持 Windows。
 
 ## 许可证
 

@@ -1,0 +1,12 @@
+[package]
+name = "akit-listener"
+description = "akit's listeners on akio: TCP, UDP, TLS and QUIC entry points, and protocol splitting with akio-mux."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true

@@ -1,0 +1,79 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/akit",
+    "crates/akit-config",
+    "crates/akit-runtime",
+    "crates/akit-listener",
+    "crates/akit-router",
+    "crates/akit-middleware",
+    "crates/akit-handler",
+    "crates/akit-proxy",
+    "crates/akit-upstream",
+    "crates/akit-l4",
+    "crates/akit-tls",
+    "crates/akit-admin",
+    "crates/akit-provider",
+    "crates/akit-observe",
+    "crates/akit-cache",
+    "crates/akit-plugin",
+]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2024"
+license = "Apache-2.0"
+repository = "https://github.com/lesismal/akit"
+# akio's MSRV (rules.md rule 17).
+rust-version = "1.85"
+
+[workspace.dependencies]
+# akio by commit hash, never a path or [patch] (rules.md rule 22). Move it only to a commit on
+# akio's main whose checks pass, and update akit_runtime::AKIO_REV with it.
+akio = { git = "https://github.com/lesismal/akio", rev = "50a823155a067ce60cfc424490548f0c318d4c09" }
+
+akit-config = { path = "crates/akit-config" }
+akit-runtime = { path = "crates/akit-runtime" }
+akit-listener = { path = "crates/akit-listener" }
+akit-router = { path = "crates/akit-router" }
+akit-middleware = { path = "crates/akit-middleware" }
+akit-handler = { path = "crates/akit-handler" }
+akit-proxy = { path = "crates/akit-proxy" }
+akit-upstream = { path = "crates/akit-upstream" }
+akit-l4 = { path = "crates/akit-l4" }
+akit-tls = { path = "crates/akit-tls" }
+akit-admin = { path = "crates/akit-admin" }
+akit-provider = { path = "crates/akit-provider" }
+akit-observe = { path = "crates/akit-observe" }
+akit-cache = { path = "crates/akit-cache" }
+akit-plugin = { path = "crates/akit-plugin" }
+
+[workspace.lints.rust]
+# No unsafe in akit (rules.md rule 14); every crate also says #![forbid(unsafe_code)].
+unsafe_code = "forbid"
+missing_docs = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
+unreachable_pub = "warn"
+unused_qualifications = "warn"
+missing_debug_implementations = "warn"
+
+[workspace.lints.clippy]
+# No panics on peer or config input (rules.md rule 15): unwrap_used is warned per library crate
+# (#![warn(clippy::unwrap_used)]); these catch the rest. Tests may unwrap (clippy.toml).
+expect_used = "warn"
+panic = "warn"
+indexing_slicing = "warn"
+arithmetic_side_effects = "warn"
+dbg_macro = "warn"
+todo = "warn"
+unimplemented = "warn"
+return_self_not_must_use = "warn"
+cast_lossless = "warn"
+cast_possible_truncation = "warn"
+semicolon_if_nothing_returned = "warn"
+uninlined_format_args = "warn"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+panic = "unwind"

@@ -1,0 +1,12 @@
+[package]
+name = "akit-plugin"
+description = "akit's WASM plugins, run off the I/O threads."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true

@@ -1,0 +1,12 @@
+[package]
+name = "akit-proxy"
+description = "akit's reverse proxy for HTTP, WebSocket and gRPC, with streamed bodies and linked backpressure."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true

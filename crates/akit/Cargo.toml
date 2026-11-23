@@ -1,0 +1,20 @@
+[package]
+name = "akit"
+description = "A reverse proxy, load balancer, TLS terminator, static file server and API gateway on akio: fit rebuilt in Rust."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+readme = "../../README.md"
+publish = false
+
+[[bin]]
+name = "akit"
+path = "src/main.rs"
+
+[dependencies]
+akit-runtime = { workspace = true }
+
+[lints]
+workspace = true

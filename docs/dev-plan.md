@@ -94,7 +94,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | ID | Iteration | Depends on | Status |
 | --- | --- | --- | --- |
 | **M0** | | | |
-| I01 | Workspace skeleton and CI | — | todo |
+| I01 | Workspace skeleton and CI | — | done |
 | I02 | Config model v0 and the strict JSON reader | I01 | todo |
 | I03 | Core traits and the module registry | I01 | todo |
 | I04 | The runtime graph and its swap | I02, I03 | todo |

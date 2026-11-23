@@ -1,0 +1,12 @@
+[package]
+name = "akit-config"
+description = "The akit config model: strict readers for JSON, YAML and fit's .conf format, and validation (fit's schema, decision 002)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true

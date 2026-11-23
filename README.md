@@ -51,8 +51,9 @@ akit run -c hello.conf
 
 ## Building
 
-Once I01 lands: Rust at akio's MSRV, `cargo build --release`, and `make check` for fmt, clippy,
-cargo-deny and the tests. Linux is the first-class platform; macOS is for development; Windows is
+Rust 1.85 or later (akio's MSRV). `make build` builds `target/release/akit`; `make check` runs fmt,
+clippy, the tests, cargo-deny and the bilingual docs check, and `make test-changed` tests only the
+crates a change reaches. akio is fetched from GitHub at the commit `Cargo.toml` pins. Linux is the first-class platform; macOS is for development; Windows is
 not supported.
 
 ## License

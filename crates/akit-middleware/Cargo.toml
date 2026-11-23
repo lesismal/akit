@@ -1,0 +1,12 @@
+[package]
+name = "akit-middleware"
+description = "akit's built-in middlewares: rewrites, headers, limits, authentication, compression and the rest of fit's."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true

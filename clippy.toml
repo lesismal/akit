@@ -1,0 +1,6 @@
+# Tests may unwrap, expect, index and panic; library code may not (rules.md rule 15).
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+allow-indexing-slicing-in-tests = true
+allow-dbg-in-tests = true
