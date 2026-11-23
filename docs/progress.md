@@ -15,10 +15,34 @@ done and where the work differs from the plan.
 | akio | `50a82315` on akio's `main` (`1.0.0-rc.1`), pinned by `rev` in `Cargo.toml` |
 | fit | the specification; read at `7daee573` for this plan |
 | What works | `akit run` and `akit validate` with fit's flags and exit codes (`-c` repeated, files and directories, merged), and a graceful shutdown on SIGINT and SIGTERM; `akit run` serves HTTP/1.1 and h2c listeners with `respond` routes, by fit's host and path rules, 404 when nothing matches; `akit version` and `akit help`; the workspace builds and passes `make check`; `akit_config::from_json` reads fit's listeners, routes and the `respond` handler, and refuses the rest of fit's config by name as not supported yet; the module registry and the data-plane traits (`akit-runtime`); `compile` turns a config into a `Graph` and `GraphCell` publishes, reads and retires graphs; the compatibility gate runs every fit fixture through akit-config in `make check` and CI |
-| Next | I08, the benchmark harness and baselines, which ends M0. |
+| Next | I08's baselines, from the benchmark host, which end M0; then I09 (TLS). |
 | akio requests | A1–A8 all being added to akio now, each on its own akio branch ([akio API requests](akio-api-requests.md)) |
 
 ## Log
+
+### 2026-11-24: I08, benchmark harness (baselines pending)
+
+- akit is measured with fit's harness, not a copy of it (`bench/`, [bench/README.md](../bench/README.md)):
+  `bench/fitbench/akit.go`, copied into fit's `bench/cmd/fitbench`, adds akit to fitbench's
+  servers (fit's server list is a slice, so no file of fit's changes); `bench/configs/akit/fit.json`
+  serves fit's bench routes as far as akit serves them (the fixed response on 8080, HTTP/1.1, and
+  8081, h2c). `bench/FIT_REV` pins fit's harness at the commit the compatibility fixtures use.
+- `bench/run.sh [REF]` stages fit's tree on the benchmark host once, adds akit's two files, builds
+  fitbench, benchreport, idleconn and fit there with Go, builds akit at REF there with cargo into
+  an image of its own (`akit-bench:<id>`, on `ubuntu:24.04`), and starts fitbench with nginx,
+  Caddy, Traefik, fit and akit under the host's `quiet.sh` (the lock alone); `-report ID` fetches
+  the results and fit's benchreport tables into `bench/results/ID`. `bench/ab.sh A B` compares two
+  akit builds in the same run, rounds alternating, with fit's `abreport.py`.
+- akit's runs are the fixed scenario over HTTP/1.1 and h2c, with idle HTTP/1.1 connections; its
+  other scenarios are recorded as skipped until the iterations that build them, each of which adds
+  them to the overlay and the config. Where akit's config differs from fit's (port 8081 also
+  takes HTTP/1.1, no backlog or connection limit settings yet, akio's I/O threads per listener)
+  is in the bench README.
+- Not done yet: the baselines. The first five-server run, of akit at `main` (`1e45124`), is staged
+  on the benchmark host and waits for its lock, held by other sessions' benchmarks; I08 stays
+  `doing` until its results are checked in under `bench/results/`.
+- Checked: `make check` on macOS (the bench README in both languages); the scripts upload fit's
+  tree and build fit's harness on the host. Neither script has finished a run yet.
 
 ### 2026-11-23: I06, CLI, signals and graceful shutdown
 
