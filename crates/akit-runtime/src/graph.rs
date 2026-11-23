@@ -109,11 +109,18 @@ impl Graph {
         self.listeners.iter().position(|l| l.name == name)
     }
 
-    /// The route that serves a request to `host` (the `Host` field) and `path` on the listener at
-    /// `listener` ([`listener_index`](Self::listener_index)), as fit's router picks it; `None`
-    /// when no route matches, or there is no such listener. Runs per request: it only reads.
+    /// The route that serves a request to `host` (the `Host` field) and `path` (canonical and
+    /// percent-decoded: [`akit_router::Canonical::decoded`]) on the listener at `listener`
+    /// ([`listener_index`](Self::listener_index)), as fit's router picks it; `None` when no route
+    /// matches, or there is no such listener. Runs per request: it only reads, and does not
+    /// allocate.
     #[must_use]
-    pub fn route(&self, listener: usize, host: &str, path: &str) -> Option<&CompiledRoute> {
+    pub fn route(
+        &self,
+        listener: usize,
+        host: &str,
+        path: impl AsRef<[u8]>,
+    ) -> Option<&CompiledRoute> {
         let i = *self.routers.get(listener)?.find(host, path)?;
         self.routes.get(i)
     }

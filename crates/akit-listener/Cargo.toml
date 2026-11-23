@@ -12,6 +12,7 @@ publish = false
 akio = { workspace = true }
 akio-http = { workspace = true }
 akit-config = { workspace = true }
+akit-router = { workspace = true }
 akit-runtime = { workspace = true }
 
 [dev-dependencies]

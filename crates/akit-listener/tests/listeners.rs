@@ -282,3 +282,113 @@ fn shutdown_closes_what_outlasts_its_timeout() {
     let _ = s.read_to_end(&mut resp);
     assert!(resp.is_empty(), "{}", String::from_utf8_lossy(&resp));
 }
+
+/// fit's `TestPathConfusionRoutes`, with `respond` for its handlers: paths spelled to miss a
+/// protected route and reach the catch-all get the protected route, or 400.
+#[test]
+fn path_confusion() {
+    let (e, addrs) = serve(
+        r#"{"listeners": [{"name": "web", "address": "127.0.0.1:0", "protocols": ["http/1.1", "h2c"]}],
+            "routes": [
+              {"match": {"path": ["/admin/*"]},
+               "handler": {"module": "respond", "params": {"status": 401, "body": "protected"}}},
+              {"match": {"path": ["/php/admin/*"]},
+               "handler": {"module": "respond", "params": {"status": 401, "body": "protected"}}},
+              {"match": {"path": ["/php/*"]},
+               "handler": {"module": "respond", "params": {"body": "php"}}},
+              {"handler": {"module": "respond", "params": {"body": "open"}}}]}"#,
+    );
+    let a = addrs[0];
+    for (target, status, body) in [
+        ("/admin/secret", 401, "protected"),
+        ("/x/../admin/secret", 401, "protected"),
+        ("/x/%2e%2e/admin/secret", 401, "protected"),
+        ("/x/.%2E/admin/secret", 401, "protected"),
+        ("//admin/secret", 401, "protected"),
+        ("/./admin/secret", 401, "protected"),
+        ("/x%2F..%2Fadmin/secret", 400, "400 bad request path\n"),
+        ("/%2Fadmin/secret", 400, "400 bad request path\n"),
+        ("/x%5C..%5Cadmin/secret", 400, "400 bad request path\n"),
+        ("/../admin/secret", 400, "400 bad request path\n"),
+        ("/php/admin/panel.php", 401, "protected"),
+        ("/php/x/../admin/panel.php", 401, "protected"),
+        ("/php/x/%2e%2e/admin/panel.php", 401, "protected"),
+        ("/php/a/../index.php", 200, "php"),
+        ("/a/./b/../c//d?q=/../x", 200, "open"),
+        // Routes match the decoded path, as fit's do.
+        ("/%61dmin/secret", 401, "protected"),
+    ] {
+        let (line, got) = get(a, "a", target);
+        assert!(
+            line.starts_with(&format!("HTTP/1.1 {status} ")),
+            "{target}: {line}"
+        );
+        assert_eq!(got, body, "{target}");
+        if !target.starts_with("//") {
+            assert_eq!(
+                get_h2c(a, target).unwrap(),
+                (status, body.to_owned()),
+                "h2c {target}"
+            );
+        }
+    }
+    e.shutdown();
+    e.wait();
+}
+
+/// A handler that answers with the path it should go by: the canonical one when it differs from
+/// the one sent.
+mod echo {
+    use std::sync::Arc;
+
+    use akio_http::Context;
+    use akit_runtime::{Handler, HandlerParams, Info, Provision, ProvisionError, Provisioned};
+
+    struct Echo;
+
+    impl akio_http::Service for Echo {
+        fn call(&self, ctx: &mut Context) {
+            let p = ctx
+                .local(akit_listener::CANONICAL_PATH)
+                .unwrap_or(ctx.path())
+                .to_owned();
+            ctx.text(200, p);
+        }
+    }
+
+    impl Handler for Echo {}
+
+    fn new(_: &Provision<'_, HandlerParams>) -> Result<Provisioned<dyn Handler>, ProvisionError> {
+        Ok(Provisioned::new(Arc::new(Echo) as Arc<dyn Handler>))
+    }
+
+    pub(crate) static MODULES: &[Info<HandlerParams>] = &[Info::handler(
+        "http.handlers.respond",
+        "Answers with the canonical path.",
+        new,
+    )];
+}
+
+#[test]
+fn canonical_path_for_handlers() {
+    let config = akit_config::from_json(
+        r#"{"listeners": [{"name": "web", "address": "127.0.0.1:0"}],
+            "routes": [{"handler": {"module": "respond"}}]}"#,
+        None,
+    )
+    .unwrap();
+    let registry: Registry<HandlerParams> = Registry::new(&[echo::MODULES]).unwrap();
+    let cell = GraphCell::new(compile(&config, &registry, &Env::default()).unwrap());
+    let e = akit_listener::engine(&cell, &options()).unwrap();
+    e.start().unwrap();
+    let a = e.local_addrs()[0];
+    for (target, want) in [
+        ("/a/b?x=1", "/a/b"),
+        ("/a/./b/../c//d?q=/../x", "/a/c/d"),
+        ("/a/x/%2e%2e/b%2Fc", "/a/b%2Fc"),
+    ] {
+        assert_eq!(get(a, "h", target).1, want, "{target}");
+    }
+    e.shutdown();
+    e.wait();
+}
