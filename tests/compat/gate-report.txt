@@ -1,7 +1,7 @@
 # The compatibility gate's report (docs/compatibility.md), written by make compat-bless;
 # do not edit. The gate fails when a run's outcomes differ from these lines.
 # fit 7daee573, fit-examples 9659d7e4.
-# 80 fixtures: 8 valid, 71 refused only as not supported yet (fields refused: 66), 0 in a format not supported yet, 1 skipped, 0 failed.
+# 80 fixtures: 8 valid, 71 refused only as not supported yet (fields refused: 65), 0 in a format not supported yet, 1 skipped, 0 failed.
 examples/acme-on-demand: not supported yet: acme
 examples/acme-on-demand: not supported yet: listeners[].tls.acme
 examples/acme-on-demand: not supported yet: listeners[].tls.on_demand
@@ -108,9 +108,8 @@ examples/routing: not supported yet: routes[].match.query
 examples/routing: not supported yet: routes[].match.remote_ip
 examples/socks: not supported yet: listeners[].protocols: the "socks" protocol
 examples/socks: not supported yet: listeners[].socks
-examples/static: not supported yet: routes[].handler<static>.params.browse
+examples/static: not supported yet: routes[].handler<static>.params.browse: directory listings (akio API request A18)
 examples/static: not supported yet: routes[].handler<static>.params.max_cache_bytes
-examples/static: not supported yet: routes[].handler<static>.params.precompressed
 examples/static: not supported yet: routes[].middleware
 examples/streaming: not supported yet: media_auth
 examples/streaming: not supported yet: routes[].handler<hls>

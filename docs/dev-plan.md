@@ -110,7 +110,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I10 | HTTP/3 entry point | I09 | done |
 | I11 | Router v1: host and path | I04 | done |
 | I12 | Static files I | I11 | done |
-| I13 | Static files II | I12 | todo |
+| I13 | Static files II | I12 | doing |
 | I14 | Upstream pools on the HTTP/1 client | I04 | done |
 | I15 | Reverse proxy I: requests and headers | I11, I14 | doing |
 | I16 | Reverse proxy II: streamed bodies, linked backpressure | I15 | todo |

@@ -11,14 +11,62 @@ done and where the work differs from the plan.
 | | |
 | --- | --- |
 | Last updated | 2026-11-24 |
-| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I12, I14, I19, I22, I23 and I24 done, I15 doing (waits for akio's A11). |
+| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I12, I14, I19, I22, I23 and I24 done, I15 doing (waits for akio's A11), I13 doing (try_files and browse wait for akio's A17 and A18). |
 | akio | `50a82315` on akio's `main` (`1.0.0-rc.1`), pinned by `rev` in `Cargo.toml` |
 | fit | the specification; read at `7daee573` for this plan |
 | What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept, added and removed, those it started with only once akio's A1 is pinned); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths; the `respond`, `static` (conditional and range requests, files opened on akio's pool) and `proxy` handlers (fit's forwarding fields, trusted proxies; the client's `Host` once A11 is pinned); upstream pools with round robin, weighted round robin and least connections; the compatibility gate: 80 fixtures, 8 valid, 71 refused only as not supported yet, 1 skipped, none failed |
 | Next | Move the akio pin to akio's main with A1–A8 and A11, then I15 done (its `Host` tests) and I22 on A1; then I13, I16, I17, I20, I21 |
-| akio requests | A1–A8 merged into akio's main (2026-11-24); A11 on akio branch `claude/i15-proxy-699f18`; A9, A10, A12–A15 requested ([akio API requests](akio-api-requests.md)) |
+| akio requests | A1–A8 merged into akio's main (2026-11-24); A11 on akio branch `claude/i15-proxy-699f18`; A9, A10, A12–A18 requested ([akio API requests](akio-api-requests.md)) |
 
 ## Log
+
+### 2026-11-24: I13, static files II (doing: try_files and browse wait on akio)
+
+- `precompressed` (akit-config `Static::precompressed`, `Encoding`): fit's list of `br`, `zstd`,
+  `gzip`, each value checked as fit checks it (`"deflate" is not one of "br", "zstd", "gzip"` at
+  `precompressed[i]`). akio-http's `Files` serves the twins (`name.br`, `name.zst`, `name.gz`) it
+  finds next to a file to a client whose `Accept-Encoding` names their coding: from memory, or from
+  disk past `max_file_bytes` with the twin's length; `Content-Encoding`, `Vary: Accept-Encoding`,
+  the original's `Content-Type`, an `ETag` of its own that conditions apply to, ranges of the twin;
+  a twin that changes or goes is followed as files are. The handler's code is unchanged: `Files`
+  does this whatever the config says.
+- `sendfile` for large files: already there since I12. `Files` sends a file (or twin) larger than
+  `max_file_bytes` from a kept handle as a `FileBody`, which akio sends with `sendfile` on plain
+  HTTP/1; over TLS and h2 akio reads it in pieces. Nothing to add in akit.
+- `try_files`: checked as fit checks it (each starts with `/` or `{path}`; with `dotfiles` `deny`
+  none names a dotfile but under `/.well-known/`), then refused as not supported yet naming akio API
+  requests A13 and A17: `Files` serves only the path the request names and answers its own 404, so
+  akit can neither try another path nor learn that one is missing without the disk work `Files`
+  does on its pool.
+- `browse` (read, as I12's `disk_io` is): `false`, fit's default, is taken; `true` is refused as not supported yet naming A18:
+  `Files` answers 404 for a directory without its index file from its disk pool, where akit cannot
+  list it. `browse_max_entries` is taken (an integer of at least 0; it bounds listings only).
+  `compress` stays refused (I47's compression).
+- Requested: A16 (a twin chosen by q values among the encodings configured), A17 (`try_files` on
+  `Files`), A18 (directory listings on `Files`), in [akio API requests](akio-api-requests.md).
+- The compatibility gate: 11 static fields supported (55 in all); fit's `examples/static` is now
+  refused only for `browse`, `max_cache_bytes` and `middleware` (`make compat-bless`).
+- No benchmark scenario added: fit's harness has none for twins, `try_files` or listings (its
+  configs serve nothing precompressed, bench README), so akit's has none either.
+- Tests (`akit-handler/tests/static_files.rs`, 13 now): `precompressed`, fit's TestPrecompressed
+  ported (11 `Accept-Encoding` fields, ETags and `If-None-Match` per representation, a range of a
+  twin, `HEAD`, twins from disk, a list of one encoding, no list); `precompressed_follows_the_disk`
+  (a twin rewritten, removed and added with `check_interval` 0); `large_from_disk` now with fit's
+  large twin from disk and its length; `config_errors` with fit's TestFeatureErrors and
+  TestDotfilesConfig for `try_files`, `browse` and `precompressed`, what is refused as not
+  supported yet and what is taken.
+- Checked: clippy (`-D warnings`) and `make check` on macOS; the tests of akit-handler, akit-config
+  and akit-compat on Linux (the benchmark host), epoll and io_uring, all passing.
+- Differences from the plan and from fit:
+  - Not done: `try_files` and `browse` (A13, A17, A18), so I13 stays `doing`; its tests of
+    fallbacks wait on them.
+  - A16: `Files` takes the first of `br`, `zstd`, `gzip`, in that order, whose name the field holds,
+    whatever its q value and whatever `precompressed` lists: `br;q=0` gets the `br` twin,
+    `br;q=0.5, gzip` gets `br` where fit sends gzip, `*` gets none where fit sends the first listed,
+    `GZIP` and `gzip ;q=0.8` get none. The ported test checks akit's answer for each, naming A16.
+  - A14 (I12's): without `precompressed` the twins are still served, with `Vary`.
+- For a benchmark task: none until fit's harness has a scenario; then a twin from memory and a large
+  twin from disk against the original, and the cost of `Accept-Encoding` matching per request.
 
 ### 2026-11-24: I22, reload on SIGHUP
 

@@ -10,14 +10,52 @@
 | | |
 | --- | --- |
 | 最后更新 | 2026-11-24 |
-| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I12、I14、I19、I22、I23、I24 已完成，I15 进行中（等待 akio 的 A11）。 |
+| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I12、I14、I19、I22、I23、I24 已完成，I15 进行中（等待 akio 的 A11），I13 进行中（try_files 和 browse 等待 akio 的 A17 和 A18）。 |
 | akio | akio `main` 上的 `50a82315`（`1.0.0-rc.1`），在 `Cargo.toml` 中按 `rev` 锁定 |
 | fit | 作为规格；本计划基于 `7daee573` 阅读 |
 | 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；监听器保留、增加和移除，启动时的监听器要等锁定到带 A1 的 akio）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开）和 `proxy` handler（fit 的转发字段、可信代理；锁定到 A11 后传客户端的 `Host`）；上游连接池，轮询、加权轮询和最少连接；兼容性门禁：80 个夹具，8 个有效，71 个只因暂不支持被拒绝，1 个跳过，没有失败 |
 | 下一步 | 把 akio 锁定到带 A1–A8 和 A11 的 akio main，然后 I15 完成（其 `Host` 测试）、I22 改用 A1；再是 I13、I16、I17、I20、I21 |
-| akio 需求 | A1–A8 已合并进 akio 的 main（2026-11-24）；A11 在 akio 分支 `claude/i15-proxy-699f18` 上；A9、A10、A12–A15 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
+| akio 需求 | A1–A8 已合并进 akio 的 main（2026-11-24）；A11 在 akio 分支 `claude/i15-proxy-699f18` 上；A9、A10、A12–A18 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
 
 ## 日志
+
+### 2026-11-24：I13，静态文件 II（进行中：try_files 和 browse 等待 akio）
+
+- `precompressed`（akit-config 的 `Static::precompressed`、`Encoding`）：fit 的 `br`、`zstd`、`gzip` 列表，每个值像
+  fit 一样检查（在 `precompressed[i]` 报 `"deflate" is not one of "br", "zstd", "gzip"`）。akio-http 的 `Files`
+  把它在文件旁找到的副本（`name.br`、`name.zst`、`name.gz`）提供给 `Accept-Encoding` 中列出相应编码的客户端：来自
+  内存，或超过 `max_file_bytes` 时来自磁盘并带副本的长度；`Content-Encoding`、`Vary: Accept-Encoding`、原文件的
+  `Content-Type`、副本自己的 `ETag`（条件请求作用于它）、副本的范围请求；副本被修改或删除时与普通文件一样跟进。
+  handler 的代码没有变化：无论配置怎么写，`Files` 都这样做。
+- 大文件的 `sendfile`：I12 起已经有了。`Files` 把大于 `max_file_bytes` 的文件（或副本）从保留的句柄以 `FileBody`
+  发送，akio 在明文 HTTP/1 上用 `sendfile` 发送；在 TLS 和 h2 上 akio 分块读取。akit 无需添加什么。
+- `try_files`：像 fit 一样检查（每一项以 `/` 或 `{path}` 开头；`dotfiles` 为 `deny` 时除 `/.well-known/` 下外不指向
+  点文件），然后拒绝为尚不支持，并注明 akio API 需求 A13 和 A17：`Files` 只提供请求给出的路径并自己答 404，akit
+  既不能尝试另一个路径，也无法在不做 `Files` 在其池中所做的磁盘工作的情况下得知路径不存在。
+- `browse`（与 I12 的 `disk_io` 一样被读取）：`false`（fit 的默认值）被接受；`true` 被拒绝为尚不支持并注明 A18：`Files` 在它的磁盘池上对没有索引文件
+  的目录答 404，akit 无法在那里列出目录。`browse_max_entries` 被接受（不小于 0 的整数；只限制目录列表）。
+  `compress` 仍被拒绝（I47 的压缩）。
+- 已提出：A16（在配置的编码中按 q 值选择副本）、A17（`Files` 上的 `try_files`）、A18（`Files` 上的目录列表），见
+  [akio API 需求](akio-api-requests.zh-CN.md)。
+- 兼容性门禁：支持 11 个 static 字段（共 55 个）；fit 的 `examples/static` 现在只因 `browse`、`max_cache_bytes` 和
+  `middleware` 被拒绝（`make compat-bless`）。
+- 没有添加基准场景：fit 的测试框架没有针对副本、`try_files` 或目录列表的场景（它的配置不提供任何预压缩内容，见基准
+  README），因此 akit 的也没有。
+- 测试（`akit-handler/tests/static_files.rs`，现在 13 个）：`precompressed`，移植 fit 的 TestPrecompressed（11 个
+  `Accept-Encoding` 字段、每种表示各自的 ETag 和 `If-None-Match`、副本的范围请求、`HEAD`、来自磁盘的副本、只列一种
+  编码、不列编码）；`precompressed_follows_the_disk`（`check_interval` 为 0 时副本被重写、删除和新增）；
+  `large_from_disk` 现在包含 fit 来自磁盘的大副本及其长度；`config_errors` 包含 fit 的 TestFeatureErrors 和
+  TestDotfilesConfig 中关于 `try_files`、`browse` 和 `precompressed` 的部分，以及被拒绝为尚不支持和被接受的内容。
+- 已检查：macOS 上的 clippy（`-D warnings`）和 `make check`；Linux（基准主机）上 akit-handler、akit-config 和
+  akit-compat 的测试，epoll 和 io_uring，全部通过。
+- 与计划和 fit 的不同之处：
+  - 未完成：`try_files` 和 `browse`（A13、A17、A18），因此 I13 仍是 `doing`；回退的测试等待它们。
+  - A16：`Files` 按 `br`、`zstd`、`gzip` 的顺序取第一个出现在字段里的编码，不看 q 值，也不看 `precompressed` 列了
+    什么：`br;q=0` 得到 `br` 副本，`br;q=0.5, gzip` 得到 `br`（fit 发送 gzip），`*` 得不到副本（fit 发送列表中第一个），
+    `GZIP` 和 `gzip ;q=0.8` 得不到副本。移植的测试对每种情况检查 akit 的回答并注明 A16。
+  - A14（I12 的）：没有 `precompressed` 时仍提供副本，并带 `Vary`。
+- 给基准任务：在 fit 的测试框架有对应场景之前没有；之后测量来自内存的副本和来自磁盘的大副本相对原文件的表现，以及每个
+  请求匹配 `Accept-Encoding` 的开销。
 
 ### 2026-11-24：I22，SIGHUP 重载
 

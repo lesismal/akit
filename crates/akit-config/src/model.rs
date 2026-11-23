@@ -264,8 +264,8 @@ pub struct Respond {
 }
 
 /// The `static` handler's params, as fit's `handler/static`. akit reads the ones akio-http's
-/// `Files` can act on; the rest are refused as not supported yet (I13 and akio API requests A13
-/// to A15 bring them).
+/// `Files` can act on; the rest are refused as not supported yet (akio API requests A13 to A15,
+/// A17 and A18, and I47 for `compress`, bring them).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Static {
     /// `root`: the directory files are served from. Required; that it is a directory is checked
@@ -284,6 +284,57 @@ pub struct Static {
     /// looked at again, where no watch reports its changes; 0 looks at the disk for every
     /// request. [`DEFAULT_CHECK_INTERVAL`] when left out.
     pub check_interval: Duration,
+    /// `precompressed`: the encodings whose compressed twins (`name.br`, `name.zst`,
+    /// `name.gz`) are served in place of a file to a client that accepts one, in the order
+    /// written. None when left out.
+    pub precompressed: Vec<Encoding>,
+}
+
+/// A content coding a file's compressed twin is in: `precompressed`'s values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Encoding {
+    /// `br`: the twin `name.br`.
+    Br,
+    /// `zstd`: the twin `name.zst`.
+    Zstd,
+    /// `gzip`: the twin `name.gz`.
+    Gzip,
+}
+
+impl Encoding {
+    /// The name `Accept-Encoding` and `Content-Encoding` give it, as fit's config does.
+    #[must_use]
+    pub fn name(self) -> &'static str {
+        match self {
+            Encoding::Br => "br",
+            Encoding::Zstd => "zstd",
+            Encoding::Gzip => "gzip",
+        }
+    }
+
+    /// The extension of its twin, after the file's name and a dot.
+    #[must_use]
+    pub fn extension(self) -> &'static str {
+        match self {
+            Encoding::Br => "br",
+            Encoding::Zstd => "zst",
+            Encoding::Gzip => "gz",
+        }
+    }
+}
+
+/// Whether `path` has a segment `dotfiles` `deny` hides: one starting with a dot, but `.` and
+/// `..` and `.well-known` as the first segment (fit's `dotfile.Scan`, on a path as written in
+/// the config). A path with a `..` segment is refused 400 at request time rather than hidden,
+/// as fit's `check` answers it, so it is not.
+fn hides_dotfile(path: &str) -> bool {
+    if path.split('/').any(|s| s == "..") {
+        return false;
+    }
+    path.split('/')
+        .filter(|s| !s.is_empty() && *s != "." && *s != "..")
+        .enumerate()
+        .any(|(i, s)| s.starts_with('.') && !(i == 0 && s == ".well-known"))
 }
 
 /// fit's default `max_file_bytes`: 1 MiB.
@@ -474,17 +525,18 @@ const STATIC_FIELDS: &[&str] = &[
     "dotfiles",
     "disk_io",
     "check_interval",
+    "precompressed",
+    "browse",
+    "browse_max_entries",
 ];
-// strip_prefix, max_cache_bytes and default_type wait on akio API requests A13 to A15;
-// precompressed, compress, try_files and browse come with I13.
+// strip_prefix, max_cache_bytes and default_type wait on akio API requests A13 to A15; compress
+// (copies compressed in memory) on I47's compression; try_files on A13 and A17 (checked as fit
+// checks it, then refused). browse is read: false is taken, true refused (A18).
 const STATIC_FIT_ONLY: &[&str] = &[
     "strip_prefix",
     "max_cache_bytes",
-    "precompressed",
-    "compress",
     "try_files",
-    "browse",
-    "browse_max_entries",
+    "compress",
     "default_type",
 ];
 const PROXY_FIELDS: &[&str] = &["upstream", "trusted_proxies", "host_header"];
@@ -1108,6 +1160,80 @@ fn static_files(
             .duration(v, &o.at("check_interval"))
             .unwrap_or(DEFAULT_CHECK_INTERVAL),
     };
+    let precompressed = o
+        .take("precompressed")
+        .map(|v| {
+            let p = o.at("precompressed");
+            d.strings(v, &p)
+                .into_iter()
+                .enumerate()
+                .filter_map(|(i, (off, name))| match name.as_str() {
+                    "br" => Some(Encoding::Br),
+                    "zstd" => Some(Encoding::Zstd),
+                    "gzip" => Some(Encoding::Gzip),
+                    _ => {
+                        d.error(
+                            off,
+                            &crate::error::join_index(&p, i),
+                            format!("{name:?} is not one of \"br\", \"zstd\", \"gzip\""),
+                        );
+                        None
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    if let Some(v) = o.take("try_files") {
+        // fit's checks, then refused: Files serves only the path the request names (akio API
+        // requests A13 and A17).
+        let p = o.at("try_files");
+        let mut ok = matches!(&v.kind, crate::json::Kind::Array(_));
+        for (i, (off, t)) in d.strings(v, &p).into_iter().enumerate() {
+            let at = crate::error::join_index(&p, i);
+            if !t.starts_with('/') && !t.starts_with("{path}") {
+                d.error(
+                    off,
+                    &at,
+                    format!("{t:?} starts with neither / nor {{path}}"),
+                );
+                ok = false;
+            } else if dotfiles == Dotfiles::Deny && hides_dotfile(&t.replace("{path}", "/x")) {
+                d.error(
+                    off,
+                    &at,
+                    format!(
+                        "{t:?} names a path with a segment starting with a dot, which dotfiles deny hides; set dotfiles to allow to serve it"
+                    ),
+                );
+                ok = false;
+            }
+        }
+        if ok {
+            d.not_yet(
+                v.off,
+                &p,
+                "paths tried in turn (akio API requests A13 and A17)",
+            );
+        }
+    }
+    if let Some(v) = o.take("browse") {
+        let p = o.at("browse");
+        match &v.kind {
+            crate::json::Kind::Bool(false) => {}
+            crate::json::Kind::Bool(true) => {
+                d.not_yet(v.off, &p, "directory listings (akio API request A18)");
+            }
+            other => d.error(
+                v.off,
+                &p,
+                format!("expected a boolean, got {}", other.name()),
+            ),
+        }
+    }
+    if let Some(v) = o.take("browse_max_entries") {
+        // Taken as fit takes it; it bounds listings, which browse turns on.
+        let _ = d.int(v, &o.at("browse_max_entries"), 0, i64::MAX);
+    }
     o.finish(d, STATIC_FIELDS, STATIC_FIT_ONLY);
     Some(Static {
         root: root?,
@@ -1115,6 +1241,7 @@ fn static_files(
         max_file_bytes,
         dotfiles,
         check_interval,
+        precompressed,
     })
 }
 

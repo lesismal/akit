@@ -482,8 +482,8 @@ fn conditional_and_ranges() {
     }
 }
 
-/// fit's TestLargeFromDisk, without the compressed twin (precompressed comes with I13): a file
-/// larger than max_file_bytes, sent from disk.
+/// fit's TestLargeFromDisk: a file larger than max_file_bytes, sent from disk, and a compressed
+/// twin sent from disk with its length.
 #[test]
 fn large_from_disk() {
     let big: String = "0123456789".repeat(16 * 1024 / 10 + 1);
@@ -519,6 +519,231 @@ fn large_from_disk() {
         ("zz", Some("gzip"))
     );
     assert_eq!(get(srv.addr, "/twin.txt").text(), "plain");
+
+    // A twin larger than max_file_bytes and 16 KiB, with precompressed: from disk, its length
+    // the twin's.
+    let twin = "z".repeat(16 * 1024 + 3);
+    let root = tree("large-twin", &[("big.txt", &big), ("big.txt.gz", &twin)]);
+    let srv = serve(&root, r#", "max_file_bytes": 4, "precompressed": ["gzip"]"#);
+    let r = request(srv.addr, "GET", "/big.txt", &[("Accept-Encoding", "gzip")]);
+    assert!(r.status == 200 && r.text() == twin, "{}", r.status);
+    assert_eq!(r.header("Content-Encoding"), Some("gzip"));
+    assert_eq!(
+        r.header("Content-Length"),
+        Some(twin.len().to_string().as_str())
+    );
+    let head = request(srv.addr, "HEAD", "/big.txt", &[("Accept-Encoding", "gzip")]);
+    assert!(head.status == 200 && head.body.is_empty(), "{head:?}");
+    assert_eq!(
+        head.header("Content-Length"),
+        Some(twin.len().to_string().as_str())
+    );
+    assert_eq!(get(srv.addr, "/big.txt").text(), big);
+}
+
+/// fit's TestPrecompressed: the twin a client gets for its `Accept-Encoding`, from memory and
+/// from disk, its validators and ranges. Where `Files` picks otherwise than fit (it takes the
+/// first of `br`, `zstd`, `gzip` the field names, whatever its q value and whatever
+/// `precompressed` lists), the case checks akit's answer and names akio API request A16.
+#[test]
+fn precompressed() {
+    let files = [
+        ("app.js", "identity-js"),
+        ("app.js.br", "br-js"),
+        ("app.js.zst", "zstd-js"),
+        ("app.js.gz", "gzip-js"),
+        ("style.css", "identity-css"),
+        ("style.css.gz", "gzip-css-0123456789"),
+        ("plain.txt", "plain"),
+    ];
+    let root = tree("precompressed", &files);
+    let srv = serve(&root, r#", "precompressed": ["br", "zstd", "gzip"]"#);
+    // (target, Accept-Encoding, fit's encoding and body, akit's where they differ.)
+    let cases: [(&str, &str, &str, &str, Option<(&str, &str)>); 11] = [
+        // Equal q: the first listed.
+        ("/app.js", "gzip, br", "br", "br-js", None),
+        // A16: Files does not rank by q.
+        (
+            "/app.js",
+            "br;q=0.5, gzip",
+            "gzip",
+            "gzip-js",
+            Some(("br", "br-js")),
+        ),
+        ("/app.js", "zstd", "zstd", "zstd-js", None),
+        // A16: q=0 refuses br, which Files serves.
+        (
+            "/app.js",
+            "br;q=0, identity",
+            "",
+            "identity-js",
+            Some(("br", "br-js")),
+        ),
+        // A16: Files does not take "*".
+        ("/app.js", "*", "br", "br-js", Some(("", "identity-js"))),
+        (
+            "/app.js",
+            "*, br;q=0",
+            "zstd",
+            "zstd-js",
+            Some(("br", "br-js")),
+        ),
+        ("/app.js", "", "", "identity-js", None),
+        // A16: codings are named in any case.
+        (
+            "/app.js",
+            "GZIP",
+            "gzip",
+            "gzip-js",
+            Some(("", "identity-js")),
+        ),
+        // A16: Files does not trim the blank before the parameters.
+        (
+            "/app.js",
+            "gzip ; q=0.8",
+            "gzip",
+            "gzip-js",
+            Some(("", "identity-js")),
+        ),
+        // No br twin.
+        (
+            "/style.css",
+            "br, gzip",
+            "gzip",
+            "gzip-css-0123456789",
+            None,
+        ),
+        ("/plain.txt", "br, gzip", "", "plain", None),
+    ];
+    for (target, accept, fit_enc, fit_body, akit) in cases {
+        let (enc, body) = akit.unwrap_or((fit_enc, fit_body));
+        let headers: &[(&str, &str)] = if accept.is_empty() {
+            &[]
+        } else {
+            &[("Accept-Encoding", accept)]
+        };
+        let r = request(srv.addr, "GET", target, headers);
+        assert_eq!(r.status, 200, "{target} {accept:?}");
+        assert_eq!(
+            (r.header("Content-Encoding").unwrap_or(""), r.text()),
+            (enc, body),
+            "{target} {accept:?}"
+        );
+        assert_eq!(r.header("Vary"), Some("Accept-Encoding"), "{target}");
+        if target == "/app.js" {
+            assert_eq!(
+                r.header("Content-Type"),
+                Some("text/javascript; charset=utf-8"),
+                "{accept:?}"
+            );
+        }
+    }
+
+    // Each representation has its own ETag, and conditions apply to it.
+    let identity = get(srv.addr, "/app.js").header("ETag").unwrap().to_owned();
+    let br = request(srv.addr, "GET", "/app.js", &[("Accept-Encoding", "br")]);
+    let br = br.header("ETag").unwrap().to_owned();
+    assert_ne!(identity, br);
+    let r = request(
+        srv.addr,
+        "GET",
+        "/app.js",
+        &[("Accept-Encoding", "br"), ("If-None-Match", &br)],
+    );
+    assert_eq!(r.status, 304);
+    // The identity's tag does not match the twin.
+    let r = request(
+        srv.addr,
+        "GET",
+        "/app.js",
+        &[("Accept-Encoding", "br"), ("If-None-Match", &identity)],
+    );
+    assert_eq!((r.status, r.text()), (200, "br-js"));
+    let r = request(
+        srv.addr,
+        "GET",
+        "/style.css",
+        &[("Accept-Encoding", "gzip"), ("Range", "bytes=0-3")],
+    );
+    assert_eq!(
+        (r.status, r.text(), r.header("Content-Encoding")),
+        (206, "gzip", Some("gzip"))
+    );
+    let head = request(srv.addr, "HEAD", "/app.js", &[("Accept-Encoding", "zstd")]);
+    assert_eq!(
+        (
+            head.status,
+            head.header("Content-Encoding"),
+            head.header("Content-Length")
+        ),
+        (200, Some("zstd"), Some("7"))
+    );
+    drop(srv);
+
+    // Twins too large to keep come from disk, with their length and their original's type.
+    let srv = serve(&root, r#", "precompressed": ["gzip"], "max_file_bytes": 4"#);
+    let r = request(
+        srv.addr,
+        "GET",
+        "/style.css",
+        &[("Accept-Encoding", "gzip")],
+    );
+    assert_eq!(
+        (r.status, r.text(), r.header("Content-Encoding")),
+        (200, "gzip-css-0123456789", Some("gzip"))
+    );
+    assert_eq!(r.header("Content-Type"), Some("text/css; charset=utf-8"));
+    assert_eq!(r.header("Vary"), Some("Accept-Encoding"));
+    assert_eq!(r.header("Content-Length"), Some("19"));
+    // A16: precompressed lists gzip alone, and fit serves no br twin; Files serves it.
+    let r = request(
+        srv.addr,
+        "GET",
+        "/app.js",
+        &[("Accept-Encoding", "br, gzip")],
+    );
+    assert_eq!(
+        (r.header("Content-Encoding"), r.text()),
+        (Some("br"), "br-js")
+    );
+    drop(srv);
+
+    // Without precompressed fit serves twins as files like any other, with no Vary; Files serves
+    // them (A14).
+    let srv = serve(&root, "");
+    let r = request(srv.addr, "GET", "/app.js", &[("Accept-Encoding", "br")]);
+    assert_eq!(
+        (r.header("Content-Encoding"), r.text()),
+        (Some("br"), "br-js")
+    );
+    // The twin itself, asked for by its name, is a file.
+    let r = get(srv.addr, "/app.js.gz");
+    assert_eq!((r.status, r.text()), (200, "gzip-js"));
+}
+
+/// A twin of a file that changes or goes, with a check_interval of 0: each request sees the
+/// disk as it is (fit's TestWatch, for the twins).
+#[test]
+fn precompressed_follows_the_disk() {
+    let root = tree("twin-changes", &[("a.txt", "plain"), ("a.txt.gz", "one")]);
+    let srv = serve(
+        &root,
+        r#", "precompressed": ["gzip"], "check_interval": "0s""#,
+    );
+    let gz = |srv: &Server| request(srv.addr, "GET", "/a.txt", &[("Accept-Encoding", "gzip")]);
+    assert_eq!(gz(&srv).text(), "one");
+    fs::write(root.join("a.txt.gz"), "three").unwrap();
+    assert_eq!(gz(&srv).text(), "three");
+    fs::remove_file(root.join("a.txt.gz")).unwrap();
+    let r = gz(&srv);
+    assert_eq!((r.text(), r.header("Content-Encoding")), ("plain", None));
+    fs::write(root.join("a.txt.br"), "brr").unwrap();
+    let r = request(srv.addr, "GET", "/a.txt", &[("Accept-Encoding", "br")]);
+    // A16: fit serves no br twin when precompressed lists gzip alone.
+    assert_eq!(
+        (r.text(), r.header("Content-Encoding")),
+        ("brr", Some("br"))
+    );
 }
 
 /// fit's TestChangedFile: with a check_interval of 0 every request looks at the disk.
@@ -597,6 +822,36 @@ fn config_errors() {
             format!(r#"{{"root": {r}, "check_interval": "soon"}}"#),
             "is not a duration",
         ),
+        // fit's TestFeatureErrors.
+        (
+            format!(r#"{{"root": {r}, "precompressed": ["deflate"]}}"#),
+            r#"routes[0].handler.params.precompressed[0]: "deflate" is not one of "br", "zstd", "gzip""#,
+        ),
+        (
+            format!(r#"{{"root": {r}, "precompressed": "gzip"}}"#),
+            "routes[0].handler.params.precompressed: expected an array",
+        ),
+        (
+            format!(r#"{{"root": {r}, "try_files": ["{{path}}", "index.html"]}}"#),
+            r#"routes[0].handler.params.try_files[1]: "index.html" starts with neither / nor {path}"#,
+        ),
+        // fit's TestDotfilesConfig.
+        (
+            format!(r#"{{"root": {r}, "try_files": ["{{path}}", "/.app/index.html"]}}"#),
+            r#"routes[0].handler.params.try_files[1]: "/.app/index.html" names a path"#,
+        ),
+        (
+            format!(r#"{{"root": {r}, "try_files": ["{{path}}/.htaccess"]}}"#),
+            "routes[0].handler.params.try_files[0]",
+        ),
+        (
+            format!(r#"{{"root": {r}, "browse": "yes"}}"#),
+            "routes[0].handler.params.browse: expected a boolean, got a string",
+        ),
+        (
+            format!(r#"{{"root": {r}, "browse_max_entries": -1}}"#),
+            "routes[0].handler.params.browse_max_entries: -1 is less than the minimum 0",
+        ),
     ];
     for (params, want) in &cases {
         let err = compile_err(params);
@@ -620,21 +875,33 @@ fn config_errors() {
             "default_type",
         ),
         (
-            format!(r#"{{"root": {r}, "precompressed": ["gzip"]}}"#),
-            "precompressed",
-        ),
-        (
             format!(r#"{{"root": {r}, "compress": ["gzip"]}}"#),
             "compress",
         ),
         (
-            format!(r#"{{"root": {r}, "try_files": ["{{path}}"]}}"#),
+            format!(r#"{{"root": {r}, "try_files": ["{{path}}", "{{path}}/", "/index.html"]}}"#),
+            "try_files: not supported yet: paths tried in turn (akio API requests A13 and A17)",
+        ),
+        // A dotfile candidate is taken with dotfiles allow, and .well-known with deny (fit's
+        // TestDotfilesConfig).
+        (
+            format!(r#"{{"root": {r}, "try_files": ["{{path}}.html", "/.well-known/fallback"]}}"#),
             "try_files",
         ),
-        (format!(r#"{{"root": {r}, "browse": true}}"#), "browse"),
         (
-            format!(r#"{{"root": {r}, "browse_max_entries": 5}}"#),
-            "browse_max_entries",
+            format!(
+                r#"{{"root": {r}, "dotfiles": "allow", "try_files": ["{{path}}", "/.app/index.html"]}}"#
+            ),
+            "try_files",
+        ),
+        // fit's TestTryFilesUnsafe: a candidate outside the root is passed over at request time.
+        (
+            format!(r#"{{"root": {r}, "try_files": ["/../a", "{{path}}"]}}"#),
+            "try_files",
+        ),
+        (
+            format!(r#"{{"root": {r}, "browse": true, "browse_max_entries": 5}}"#),
+            "browse: not supported yet: directory listings (akio API request A18)",
         ),
         (format!(r#"{{"root": {r}, "index": []}}"#), "index"),
         (format!(r#"{{"root": {r}, "index": ["a", "b"]}}"#), "index"),
@@ -656,6 +923,11 @@ fn config_errors() {
         format!(
             r#"{{"root": {r}, "disk_io": "pool", "check_interval": "1s", "max_file_bytes": 0}}"#
         ),
+        format!(r#"{{"root": {r}, "precompressed": ["br", "zstd", "gzip"]}}"#),
+        format!(r#"{{"root": {r}, "precompressed": []}}"#),
+        // Listings off, fit's default: nothing changes.
+        format!(r#"{{"root": {r}, "browse": false, "browse_max_entries": 5}}"#),
+        format!(r#"{{"root": {r}, "browse_max_entries": 0}}"#),
     ] {
         let json = format!(
             r#"{{"listeners": [{{"name": "web", "address": ":0"}}], "routes": [{{"handler": {{"module": "static", "params": {params}}}}}]}}"#

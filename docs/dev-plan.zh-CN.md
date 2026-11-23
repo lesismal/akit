@@ -103,7 +103,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I10 | HTTP/3 入口 | I09 | done |
 | I11 | 路由 v1：host 与 path | I04 | done |
 | I12 | 静态文件 I | I11 | done |
-| I13 | 静态文件 II | I12 | todo |
+| I13 | 静态文件 II | I12 | doing |
 | I14 | 基于 HTTP/1 客户端的上游连接池 | I04 | done |
 | I15 | 反向代理 I：请求与头处理 | I11, I14 | doing |
 | I16 | 反向代理 II：流式 body 与联动背压 | I15 | todo |

@@ -4,7 +4,9 @@
 //! `Files` does the serving: `ETag` and `Last-Modified`, conditional requests (`If-Match`,
 //! `If-None-Match`, `If-Modified-Since`, `If-Unmodified-Since`) and ranges (`If-Range`, several
 //! ranges as `multipart/byteranges`), the `Content-Type` by extension, the directory's index
-//! file, small files kept in memory and larger ones sent from disk. Only a file it knows and
+//! file, a file's `.br`, `.zst` or `.gz` twin for a client that accepts it (fit's
+//! `precompressed`), small files kept in memory and larger ones sent from disk (`sendfile` on
+//! plain HTTP/1, from a kept handle). Only a file it knows and
 //! trusts is answered on the I/O thread; every look at the disk (`stat`, `open`, reading a file
 //! in) runs on akio's file pool, bounded in threads and queue, and a request past the queue is
 //! answered 503 (rules.md rule 4).
@@ -16,7 +18,8 @@
 //! for `/.well-known/` at the root. These look at the request path alone, without allocating.
 //!
 //! Where `Files` differs from fit's handler, and the akio API requests that will close the gap,
-//! `docs/progress.md` says (I12).
+//! `docs/progress.md` says (I12, I13). `try_files` and `browse` wait on requests A17 and A18:
+//! akit-config refuses them as not supported yet.
 
 use std::path::PathBuf;
 use std::sync::Arc;

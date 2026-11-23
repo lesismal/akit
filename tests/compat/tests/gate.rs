@@ -530,6 +530,38 @@ fn supported_fields_are_read() {
             statics(r#", "check_interval": "0s""#),
             |c| static_of(c).check_interval.is_zero(),
         ),
+        (
+            "routes[].handler<static>.params.precompressed",
+            statics(r#", "precompressed": ["zstd", "gzip"]"#),
+            |c| {
+                static_of(c).precompressed
+                    == [akit_config::Encoding::Zstd, akit_config::Encoding::Gzip]
+            },
+        ),
+        // Its one value akit takes is the default, so it reads it by refusing the other.
+        (
+            "routes[].handler<static>.params.browse",
+            statics(r#", "browse": false"#),
+            |_| {
+                akit_config::from_json(
+                    r#"{"listeners": [{"name": "web", "address": ":8080"}], "routes": [{"handler": {"module": "static", "params": {"root": "/", "browse": true}}}]}"#,
+                    None,
+                )
+                .is_err_and(|e| e.only_not_supported_yet())
+            },
+        ),
+        // It bounds listings, which browse turns on: akit reads it by checking it.
+        (
+            "routes[].handler<static>.params.browse_max_entries",
+            statics(r#", "browse_max_entries": 5"#),
+            |_| {
+                akit_config::from_json(
+                    r#"{"listeners": [{"name": "web", "address": ":8080"}], "routes": [{"handler": {"module": "static", "params": {"root": "/", "browse_max_entries": -1}}}]}"#,
+                    None,
+                )
+                .is_err_and(|e| !e.only_not_supported_yet())
+            },
+        ),
         ("routes[].handler<proxy>", proxy(""), |c| {
             proxy_of(c).upstream == "app"
         }),
