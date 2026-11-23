@@ -86,6 +86,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "akio-h3"
+version = "1.0.0-rc.1"
+source = "git+https://github.com/lesismal/akio?rev=50a823155a067ce60cfc424490548f0c318d4c09#50a823155a067ce60cfc424490548f0c318d4c09"
+dependencies = [
+ "akio",
+ "akio-core",
+ "akio-http",
+ "akio-quic",
+]
+
+[[package]]
 name = "akio-http"
 version = "1.0.0-rc.1"
 source = "git+https://github.com/lesismal/akio?rev=50a823155a067ce60cfc424490548f0c318d4c09#50a823155a067ce60cfc424490548f0c318d4c09"
@@ -115,6 +126,18 @@ dependencies = [
 name = "akio-pool"
 version = "1.0.0-rc.1"
 source = "git+https://github.com/lesismal/akio?rev=50a823155a067ce60cfc424490548f0c318d4c09#50a823155a067ce60cfc424490548f0c318d4c09"
+
+[[package]]
+name = "akio-quic"
+version = "1.0.0-rc.1"
+source = "git+https://github.com/lesismal/akio?rev=50a823155a067ce60cfc424490548f0c318d4c09#50a823155a067ce60cfc424490548f0c318d4c09"
+dependencies = [
+ "akio",
+ "akio-buf",
+ "akio-core",
+ "akio-crypto",
+ "akio-tls",
+]
 
 [[package]]
 name = "akio-regex"
@@ -190,7 +213,9 @@ version = "0.0.1"
 dependencies = [
  "akio",
  "akio-crypto",
+ "akio-h3",
  "akio-http",
+ "akio-quic",
  "akio-sys",
  "akio-x509",
  "akit-config",
@@ -240,7 +265,9 @@ version = "0.0.1"
 dependencies = [
  "akio",
  "akio-crypto",
+ "akio-h3",
  "akio-http",
+ "akio-quic",
  "akio-x509",
  "akit-config",
  "akit-handler",

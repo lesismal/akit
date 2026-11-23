@@ -104,8 +104,8 @@ one a fixture, or one a field for a fixture refused as not supported yet.
 
 ```text
 examples/hello: valid
-examples/http3: not supported yet: listeners[].protocols: the "h3" protocol
-examples/http3: not supported yet: listeners[].tls
+examples/http3: not supported yet: listeners[].tls.acme
+examples/l4-udp: not supported yet: listeners[].protocols: the "udp" protocol
 examples/https: skipped: its certificate and key files are the user's own
 templates/conf/fit.conf: not supported yet: upstreams
 templates/yaml/conf.d: not supported yet: upstreams
@@ -117,8 +117,8 @@ in the checked-in report) and `+ <line>` (only in this run). Paths akit names ar
 inventory writes them: array indices (`routes[0]`) and map keys (`log.loggers.engine`) stand
 for `[]` and `*`; a handler module akit does not have, refused at `routes[0].handler.module`, is
 `routes[].handler<proxy>`. A value akit does not support yet, of a field it reads, is written
-with the value after the field: `listeners[0].protocols[1]`, the `h3` protocol, is
-`listeners[].protocols: the "h3" protocol`, and a config with no listeners, which fit serves
+with the value after the field: `listeners[0].protocols[0]`, the `udp` protocol, is
+`listeners[].protocols: the "udp" protocol`, and a config with no listeners, which fit serves
 over HTTPS by default, is `listeners: a config with no listeners, ... (auto_https)`. Such a line
 is not the field refused: the field stays supported, and the gate's check that no supported
 field is refused looks at fields refused whole.

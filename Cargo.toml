@@ -42,6 +42,9 @@ akio-sys = { git = "https://github.com/lesismal/akio", rev = "50a823155a067ce60c
 # make certificates and keys.
 akio-x509 = { git = "https://github.com/lesismal/akio", rev = "50a823155a067ce60cfc424490548f0c318d4c09" }
 akio-crypto = { git = "https://github.com/lesismal/akio", rev = "50a823155a067ce60cfc424490548f0c318d4c09" }
+# HTTP/3 listeners (akit-listener): akio-h3 serves akio-http's services over akio-quic.
+akio-h3 = { git = "https://github.com/lesismal/akio", rev = "50a823155a067ce60cfc424490548f0c318d4c09" }
+akio-quic = { git = "https://github.com/lesismal/akio", rev = "50a823155a067ce60cfc424490548f0c318d4c09" }
 
 akit-config = { path = "crates/akit-config" }
 akit-runtime = { path = "crates/akit-runtime" }

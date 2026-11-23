@@ -20,6 +20,60 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-24: I10, the HTTP/3 entry point
+
+- `akit-config` reads fit's `h3` protocol (`Protocol::H3`) with fit's check, `h3 needs tls`; a
+  listener may list it beside `http/1.1` and `h2` or alone. `tcp`, `udp` and `socks` are still
+  refused as not supported yet.
+- `akit-tls`: `server_configs` reads a listener's files once and builds two akio-tls
+  configurations from them, `tcp` (as I09's `server_config`, which now returns it) and, for a
+  listener serving `h3`, `h3`: the same certificates picked by SNI the same way, the same client
+  authentication, with TLS 1.3 alone and ALPN `h3` alone (fib's `http3.ConfigureTLS` puts `h3`
+  first and keeps TCP's protocols after it, which no HTTP/3 client asks for). The graph keeps both (`Graph::tls`, `Graph::h3_tls`), so `akit validate` checks them as
+  before.
+- `akit-listener`: a listener serving `h3` adds a UDP listener on akio-h3 (`akio_h3::serve_with`
+  over `akio_quic::server_config_from` the graph's `h3` TLS) on the port its TCP side listens on,
+  serving the same `Dispatcher` (routes by the `:authority` akio-h3 gives as `Host`, canonical
+  paths, 400 and 404 as over TCP). Its TCP dispatcher adds `alt-svc: h3=":<port>"; ma=86400`,
+  fib's `http3.AltSvc` value, to every response, 400 and 404 included
+  (`Context::add_response_header`; the value is formatted once when the listener is set up). A
+  listener at port 0 serving TCP and h3 first finds a port free for both (a TCP port whose UDP
+  twin binds), as fit binds UDP on the port TCP got, and the engine is built again on another
+  port, at most 8 tries (fit's `maxPortZeroBinds`), if one is taken in between.
+  `akit_listener::addrs` says where each listener listens (`tcp`, `udp`); `akit run` prints
+  TCP's address, or UDP's for an h3-only listener, as fit prints `Addr`.
+- akio: `akio-h3` and `akio-quic` are new workspace dependencies at the pinned commit; nothing was
+  missing, no new API request.
+- The compatibility gate: `listeners[].protocols` takes `h3` (`supported.txt` notes it; no new
+  field). `make compat-bless`: `examples/http3` no longer refuses the `h3` protocol (60 fields
+  refused, from 61); it is still refused for `acme`, `tls.acme`, the proxy and middleware.
+  `docs/compatibility.md`'s example lines use the `udp` protocol now.
+- Tests: `akit-config` (h3 read beside TCP's protocols and alone, `h3 needs tls`, listed twice);
+  `akit-tls` (the `h3` configuration's ALPN, none without h3, a problem's path the same);
+  `akit-listener/tests/h3.rs` (6: the same route over h3 as over h2 and HTTP/1.1 with `Alt-Svc`
+  naming the UDP port, which is TCP's, also on a 404, none on h3 itself, a route by host and the
+  certificate by SNI over h3, canonical paths and 404 over h3, an unknown name refused; h3 alone
+  listening on UDP alone; no `Alt-Svc` and no UDP without h3; a fixed port; client
+  authentication required and if given over h3; datagrams that are not QUIC not disturbing
+  others); `akit/tests/h3.rs` (end to end with `akit run`: the route over h3, `Alt-Svc` on h2 and
+  HTTP/1.1). The I10 done-when is `the_same_route_over_h3_and_alt_svc_on_h2` and the `akit` test.
+- Where it differs from the plan: it touches `akit-config`, `akit-tls`, `akit-runtime` and `akit`
+  besides `akit-listener`. HTTP/3's limits are akio-h3's defaults (8 MiB bodies, 64 KiB field
+  sections, QUIC's idle timeout and 10,000 connections), as the TCP listeners use akio-http's,
+  until akit reads fit's listener limits (`max_header_bytes`, `max_body_bytes`; fit's HTTP/3
+  takes the listener's, 1 MiB and 16 MiB by default). A response that sets its own `Alt-Svc` (a
+  `respond` route's `headers`) keeps it, where fit's hook overwrites it: akio-http's
+  `add_response_header` yields to the response's field, and a response filter would cost a boxed
+  closure per request. The UDP listener runs on akio's per-peer UDP loop (epoll, kqueue on macOS)
+  whatever the TCP backend. Port 0 is probed before akio binds rather than bound TCP first (akio
+  binds every listener when the engine is built).
+- Checked: `make check` on macOS; the touched crates (akit-config, akit-tls, akit-runtime,
+  akit-listener, akit, akit-compat) on Linux (gpu51), epoll and io_uring, all passing.
+- For a benchmark task: HTTP/3 against fit's (requests per second and latency over the fixed
+  `respond` route, with h2load or fitbench's h3 client; the harness has no akit h3 scenario yet),
+  new QUIC handshakes per second, and the cost of the `Alt-Svc` field on the HTTP/1.1 and h2 hot
+  path (a same-run A/B of a listener with and without `h3`).
+
 ### 2026-11-24: I15, reverse proxy I: requests and headers (doing: waits for akio A11)
 
 - Status `doing`, not `done`: the proxy is built and fit's header tests are ported, but three of

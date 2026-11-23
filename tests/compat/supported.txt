@@ -14,6 +14,7 @@ listeners[].address
 listeners[].protocols
 # I09: TLS from files. listeners[].protocols takes "h2" too; tls.max_version takes "1.3" (1.2 is
 # refused as not supported yet); tls.acme, tls.on_demand and tls.kernel_tls_offload are refused.
+# I10: listeners[].protocols takes "h3" too (HTTP/3 on the listener's port in UDP, Alt-Svc on TCP).
 listeners[].tls
 listeners[].tls.certificates
 listeners[].tls.certificates[].cert_file

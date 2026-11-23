@@ -19,6 +19,46 @@
 
 ## 日志
 
+### 2026-11-24：I10，HTTP/3 入口
+
+- `akit-config` 读取 fit 的 `h3` 协议（`Protocol::H3`），带 fit 的检查 `h3 needs tls`；监听器可以把它与
+  `http/1.1`、`h2` 一起列出，也可以单独列出。`tcp`、`udp` 和 `socks` 仍以暂不支持拒绝。
+- `akit-tls`：`server_configs` 只读一次监听器的文件，由此生成两份 akio-tls 配置：`tcp`（即 I09 的
+  `server_config`，它现在返回这一份），以及服务 `h3` 的监听器的 `h3`：同样的证书、同样按 SNI 选择、同样的客户端
+  认证，只用 TLS 1.3，ALPN 只有 `h3`（fib 的 `http3.ConfigureTLS` 把 `h3` 放在最前，后面保留 TCP 的协议，HTTP/3
+  客户端不会请求它们）。图保留两者（`Graph::tls`、
+  `Graph::h3_tls`），因此 `akit validate` 照旧检查它们。
+- `akit-listener`：服务 `h3` 的监听器在其 TCP 一侧所用的端口上再加一个基于 akio-h3 的 UDP 监听器
+  （`akio_h3::serve_with`，用图中 `h3` TLS 经 `akio_quic::server_config_from` 生成的配置），服务同一个
+  `Dispatcher`（按 akio-h3 作为 `Host` 给出的 `:authority` 路由，规范化路径，400 和 404 与 TCP 上相同）。它的 TCP
+  dispatcher 给每个响应（包括 400 和 404）加上 fib 的 `http3.AltSvc` 值 `alt-svc: h3=":<端口>"; ma=86400`
+  （`Context::add_response_header`；该值在建立监听器时格式化一次）。端口为 0 且同时服务 TCP 和 h3 的监听器先找一个
+  两者都空闲的端口（UDP 同号端口也能绑定的 TCP 端口），对应 fit 在 TCP 得到的端口上绑定 UDP；若其间端口被占用，
+  就换一个端口重新构建引擎，最多 8 次（fit 的 `maxPortZeroBinds`）。`akit_listener::addrs` 给出每个监听器监听的地址
+  （`tcp`、`udp`）；`akit run` 打印 TCP 的地址，只服务 h3 的监听器打印 UDP 的地址，与 fit 打印 `Addr` 相同。
+- akio：`akio-h3` 和 `akio-quic` 是新的工作区依赖，在锁定的提交上；没有缺少的东西，没有新的 API 需求。
+- 兼容性门禁：`listeners[].protocols` 接受 `h3`（`supported.txt` 中注明；没有新字段）。`make compat-bless`：
+  `examples/http3` 不再因 `h3` 协议被拒绝（被拒字段 60 个，原为 61）；它仍因 `acme`、`tls.acme`、代理和中间件被拒绝。
+  `docs/compatibility.md` 的示例行改用 `udp` 协议。
+- 测试：`akit-config`（h3 与 TCP 协议一起及单独读取，`h3 needs tls`，重复列出）；`akit-tls`（`h3` 配置的 ALPN，没有
+  h3 时没有它，问题的路径相同）；`akit-listener/tests/h3.rs`（6 个：经 h3 与经 h2、HTTP/1.1 访问同一路由，`Alt-Svc`
+  指向 UDP 端口即 TCP 端口，404 上也有，h3 自身没有，经 h3 按 host 路由、按 SNI 选择证书，经 h3 的规范化路径和 404，
+  未知名字被拒绝；只有 h3 时只监听 UDP；没有 h3 时没有 `Alt-Svc` 也没有 UDP；固定端口；经 h3 的客户端认证 require 和
+  verify_if_given；非 QUIC 的数据报不影响其他客户端）；`akit/tests/h3.rs`（用 `akit run` 端到端：经 h3 访问路由，h2
+  和 HTTP/1.1 上的 `Alt-Svc`）。I10 的完成标准由 `the_same_route_over_h3_and_alt_svc_on_h2` 和 `akit` 的测试满足。
+- 与计划的不同：除 `akit-listener` 外还涉及 `akit-config`、`akit-tls`、`akit-runtime` 和 `akit`。HTTP/3 的限制用
+  akio-h3 的默认值（8 MiB 请求体、64 KiB 字段段、QUIC 的空闲超时和 10,000 个连接），与 TCP 监听器用 akio-http 的默认值
+  一样，直到 akit 读取 fit 的监听器限制（`max_header_bytes`、`max_body_bytes`；fit 的 HTTP/3 取监听器的值，默认 1 MiB
+  和 16 MiB）。自己设置了 `Alt-Svc` 的响应（`respond` 路由的 `headers`）保留自己的值，而 fit 的钩子会覆盖它：
+  akio-http 的 `add_response_header` 让位于响应自己的字段，而响应过滤器每个请求要多一个装箱闭包。UDP 监听器无论 TCP
+  用什么后端，都运行在 akio 的按对端 UDP 循环上（epoll，macOS 上为 kqueue）。端口 0 在 akio 绑定之前探测，而不是先绑定
+  TCP（akio 在构建引擎时绑定所有监听器）。
+- 已检查：macOS 上的 `make check`；改动的 crate（akit-config、akit-tls、akit-runtime、akit-listener、akit、
+  akit-compat）在 Linux（gpu51）上的 epoll 和 io_uring 测试，全部通过。
+- 留给基准测试任务：HTTP/3 与 fit 的对比（固定 `respond` 路由上的每秒请求数和延迟，用 h2load 或 fitbench 的 h3
+  客户端；压测框架还没有 akit 的 h3 场景）、每秒新建 QUIC 握手数，以及 `Alt-Svc` 字段在 HTTP/1.1 和 h2 热路径上的
+  开销（有无 `h3` 的监听器的同轮 A/B）。
+
 ### 2026-11-24：I15，反向代理 I：请求与头处理（doing：等待 akio A11）
 
 - 状态为 `doing` 而非 `done`：代理已实现，fit 的头处理测试已移植，但其中三个（上游看到的 `Host`，以及不凭空添加

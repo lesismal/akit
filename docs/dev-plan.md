@@ -107,7 +107,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I08 | Benchmark harness and baselines | I05 | done |
 | **M1** | | | |
 | I09 | TLS entry points from files | I05 | done |
-| I10 | HTTP/3 entry point | I09 | todo |
+| I10 | HTTP/3 entry point | I09 | done |
 | I11 | Router v1: host and path | I04 | done |
 | I12 | Static files I | I11 | done |
 | I13 | Static files II | I12 | todo |
@@ -347,6 +347,10 @@ Split from I07 so that the half that needs no config model runs beside I02.
   TCP listeners for the same host.
 - **Done when**: an e2e test reaches the same route over h3 and sees `Alt-Svc` on h2.
 - **Touches**: `akit-listener`.
+- **As built**: also touches `akit-config` (the `h3` protocol), `akit-tls` (one read of the
+  files, two configurations), `akit-runtime` (`Graph::h3_tls`) and `akit` (the address it
+  prints). HTTP/3 listens on the port the listener's TCP side has, as fit's; see
+  [progress](progress.md).
 
 ### I11 Router v1: host and path
 

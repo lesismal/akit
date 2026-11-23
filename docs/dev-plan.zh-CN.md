@@ -100,7 +100,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I08 | 基准框架与基线 | I05 | done |
 | **M1** | | | |
 | I09 | 从文件加载证书的 TLS 入口 | I05 | done |
-| I10 | HTTP/3 入口 | I09 | todo |
+| I10 | HTTP/3 入口 | I09 | done |
 | I11 | 路由 v1：host 与 path | I04 | done |
 | I12 | 静态文件 I | I11 | done |
 | I13 | 静态文件 II | I12 | todo |
@@ -318,6 +318,9 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 - **做什么**：基于 `akio-h3` 的 HTTP/3 监听器，共用证书来源；同一 host 的 TCP 监听器上通告 `Alt-Svc`。
 - **完成标准**：e2e 测试经 h3 访问到同一路由，并在 h2 上看到 `Alt-Svc`。
 - **涉及**：`akit-listener`。
+- **实际完成**：还涉及 `akit-config`（`h3` 协议）、`akit-tls`（文件读一次，生成两份配置）、`akit-runtime`
+  （`Graph::h3_tls`）和 `akit`（打印的地址）。与 fit 一样，HTTP/3 监听在该监听器 TCP 一侧所用的端口上；见
+  [进度](progress.zh-CN.md)。
 
 ### I11 路由 v1：host 与 path
 

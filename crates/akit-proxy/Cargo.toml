@@ -16,6 +16,9 @@ akit-runtime = { workspace = true }
 [dev-dependencies]
 akio = { workspace = true }
 akio-crypto = { workspace = true }
+# For akit-listener's test support, which the TLS tests share (its HTTP/3 client, I10).
+akio-h3 = { workspace = true }
+akio-quic = { workspace = true }
 akio-x509 = { workspace = true }
 akit-handler = { workspace = true }
 akit-listener = { workspace = true }

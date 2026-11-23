@@ -767,9 +767,9 @@ fn akit_config_lists_match_the_inventory() {
     read.insert("routes[].handler<static>.params".to_owned());
     read.insert("routes[].handler<proxy>".to_owned());
     read.insert("routes[].handler<proxy>.params".to_owned());
-    // Protocols: the three akit serves and FIT_PROTOCOLS.
+    // Protocols: the four akit serves and FIT_PROTOCOLS.
     let mut protocols: BTreeSet<String> = list("FIT_PROTOCOLS").iter().cloned().collect();
-    for p in [Protocol::Http11, Protocol::H2c, Protocol::H2] {
+    for p in [Protocol::Http11, Protocol::H2c, Protocol::H2, Protocol::H3] {
         assert!(
             protocols.insert(p.as_str().to_owned()),
             "FIT_PROTOCOLS lists {p:?}"
@@ -867,7 +867,7 @@ fn inventory_paths_for_akit_config_paths() {
 #[test]
 fn findings_from_akit_config_errors() {
     let errs = akit_config::from_json(
-        r#"{"listeners": [{"name": "w", "address": ":1", "protocols": ["h3"], "mptcp": true}],
+        r#"{"listeners": [{"name": "w", "address": ":1", "protocols": ["udp"], "mptcp": true}],
             "routes": [{"handler": {"module": "fastcgi"}}], "acme": {}}"#,
         None,
     )
@@ -878,7 +878,7 @@ fn findings_from_akit_config_errors() {
         .map(|e| finding(e).to_string())
         .collect();
     let want: BTreeSet<String> = [
-        "listeners[0].protocols[0]: the \"h3\" protocol",
+        "listeners[0].protocols[0]: the \"udp\" protocol",
         "listeners[0].mptcp",
         "routes[0].handler<fastcgi>",
         "acme",

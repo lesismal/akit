@@ -179,6 +179,9 @@ pub enum Protocol {
     H2c,
     /// `h2`, HTTP/2 over TLS, chosen through ALPN; needs `tls`.
     H2,
+    /// `h3`, HTTP/3 over QUIC, on the listener's port in UDP and announced to its HTTP/1 and
+    /// HTTP/2 clients with `Alt-Svc`; needs `tls`.
+    H3,
 }
 
 impl Protocol {
@@ -189,6 +192,7 @@ impl Protocol {
             Protocol::Http11 => "http/1.1",
             Protocol::H2c => "h2c",
             Protocol::H2 => "h2",
+            Protocol::H3 => "h3",
         }
     }
 }
@@ -424,7 +428,7 @@ const CONFIG_FIT_ONLY: &[&str] = &[
 ];
 const LISTENER_FIELDS: &[&str] = &["name", "address", "protocols", "tls"];
 const LISTENER_FIT_ONLY: &[&str] = &["mptcp", "socks", "access", "proxy_protocol"];
-const FIT_PROTOCOLS: &[&str] = &["h3", "tcp", "udp", "socks"];
+const FIT_PROTOCOLS: &[&str] = &["tcp", "udp", "socks"];
 const TLS_FIELDS: &[&str] = &["certificates", "client_auth", "max_version"];
 // acme and on_demand come with I31 and I34; kernel_tls_offload with engine's.
 const TLS_FIT_ONLY: &[&str] = &["acme", "on_demand", "kernel_tls_offload"];
@@ -685,6 +689,7 @@ fn listener(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Listener> {
                 "http/1.1" => Protocol::Http11,
                 "h2c" => Protocol::H2c,
                 "h2" => Protocol::H2,
+                "h3" => Protocol::H3,
                 other if FIT_PROTOCOLS.contains(&other) => {
                     d.not_yet(off, &at, &format!("the {other:?} protocol"));
                     continue;
@@ -714,6 +719,7 @@ fn listener(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Listener> {
             Protocol::H2 if tls.is_none() => {
                 d.error(*off, at, "h2 needs tls; h2c is HTTP/2 in the clear");
             }
+            Protocol::H3 if tls.is_none() => d.error(*off, at, "h3 needs tls"),
             Protocol::H2c if tls.is_some() => d.error(
                 *off,
                 at,
