@@ -114,8 +114,9 @@ with `ServerConfig::builder_with_resolver`, and its resolver, `akit_runtime::Lis
 answers inline from the current graph's `akit_tls::Certs` (fit's choice: exact or wildcard name,
 then what the client supports, from `ClientHelloInfo`'s signature schemes and suites), so a
 reload or `-watch-certs` replaces certificates without closing the listener, and a wildcard works
-in any certificate (I09's `sni_cert` stopgap refused one past the first). I34 will answer
-`CertDone` later, from the issuing thread.
+in any certificate (I09's `sni_cert` stopgap refused one past the first). I34 answers `CertDone`
+later for a name taken on demand: from the ask client's thread when the name is refused, from an
+ACME worker once its certificate is obtained.
 
 ## A3 A filter on accepted connections
 

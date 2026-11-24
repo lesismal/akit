@@ -157,8 +157,7 @@ pub(crate) fn decode(
 }
 
 /// The position of a listener's `tls` when it asks for nothing (fit's `emptyTLS`): no
-/// certificates, no names in `acme`, and no `on_demand` written (which is refused as not
-/// supported yet, and so not reported twice).
+/// certificates, no names in `acme`, and `on_demand` not set.
 pub(crate) fn empty_tls(listener: &Node) -> Option<usize> {
     let Kind::Object(members) = &listener.kind else {
         return None;
@@ -169,7 +168,7 @@ pub(crate) fn empty_tls(listener: &Node) -> Option<usize> {
     };
     let empty = fields.iter().all(|m| match m.key.as_str() {
         "certificates" | "acme" => matches!(&m.value.kind, Kind::Array(a) if a.is_empty()),
-        "on_demand" => false,
+        "on_demand" => !matches!(&m.value.kind, Kind::Bool(true)),
         _ => true,
     });
     empty.then_some(tls.value.off)
@@ -240,6 +239,7 @@ pub(crate) fn effective(
             client_auth: None,
             max_version: TlsVersion::Tls13,
             acme: names,
+            on_demand: false,
         }),
         max_body_bytes: DEFAULT_MAX_BODY_BYTES,
         redirect_https: 0,

@@ -13,7 +13,7 @@ listeners[].name
 listeners[].address
 listeners[].protocols
 # I09: TLS from files. listeners[].protocols takes "h2" too; tls.max_version takes "1.3" (1.2 is
-# refused as not supported yet); tls.on_demand and tls.kernel_tls_offload are refused.
+# refused as not supported yet); tls.kernel_tls_offload is refused.
 # I10: listeners[].protocols takes "h3" too (HTTP/3 on the listener's port in UDP, Alt-Svc on TCP).
 # I30: no new fields: certificates are chosen per handshake (a wildcard in any of them); the
 # storage comes with acme.storage in I31.
@@ -30,6 +30,8 @@ listeners[].tls.client_auth
 listeners[].tls.client_auth.ca_files
 listeners[].tls.client_auth.mode
 listeners[].tls.max_version
+# I34: tls.on_demand, a certificate obtained during the handshake for a name acme.on_demand allows.
+listeners[].tls.on_demand
 routes
 routes[].name
 routes[].listeners
@@ -310,7 +312,7 @@ metrics
 # I31: acme, an ACME client of akit's own: accounts, orders and HTTP-01, answered by every listener
 # in the clear; certificates kept in acme.storage and renewed. I32: acme.challenges takes
 # "tls-alpn-01" too, answered by the TLS listener that lists the name, both by default as fit's;
-# OCSP responses stapled. shared_storage and on_demand (I34) are refused as not supported yet.
+# OCSP responses stapled. shared_storage is refused as not supported yet.
 acme
 acme.directory
 acme.email
@@ -320,6 +322,16 @@ acme.max_concurrent
 acme.timeout
 acme.request_timeout
 acme.challenges
+# I34: acme.on_demand, certificates obtained during handshakes for the names its ask URL allows,
+# rate limited, max_names in all, idle names dropped; the handshakes wait without holding the
+# I/O threads.
+acme.on_demand
+acme.on_demand.ask
+acme.on_demand.rate
+acme.on_demand.interval
+acme.on_demand.max_names
+acme.on_demand.timeout
+acme.on_demand.idle_timeout
 
 # I33: auto_https, HTTPS by default: a config that writes no listeners is served on https (443) with
 # its routes' host names in tls.acme, and on http (80), which redirects to it with 308 and answers

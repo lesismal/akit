@@ -107,7 +107,7 @@ CertDone)`，`done` 可以稍后从其他线程以证书或告警完成；握手
 `ServerConfig::builder_with_resolver` 构建，其解析器 `akit_runtime::ListenerCerts` 从当前图的 `akit_tls::Certs`
 内联作答（fit 的选择方式：精确或通配符名字，再看客户端支持什么，依据 `ClientHelloInfo` 的签名方案和套件），因此重载或
 `-watch-certs` 可以替换证书而不关闭监听器，任何证书中的通配符都可用（I09 的 `sni_cert` 权宜做法拒绝第一个之后的）。
-I34 将在签发线程中稍后完成 `CertDone`。
+I34 为按需接收的名字稍后完成 `CertDone`：名字被拒绝时在 ask 客户端的线程上，证书获取后在 ACME 工作线程上。
 
 ## A3 过滤已接受的连接
 

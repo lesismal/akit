@@ -26,6 +26,7 @@ fn tls(certificates: Vec<Certificate>, client_auth: Option<ClientAuth>) -> Tls {
         client_auth,
         max_version: TlsVersion::Tls13,
         acme: Vec::new(),
+        on_demand: false,
     }
 }
 

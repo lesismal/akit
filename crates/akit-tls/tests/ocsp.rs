@@ -254,6 +254,7 @@ fn files_tls(cert: &Path, key: &Path, other: (&Path, &Path)) -> Tls {
         client_auth: None,
         max_version: TlsVersion::Tls13,
         acme: Vec::new(),
+        on_demand: false,
     }
 }
 

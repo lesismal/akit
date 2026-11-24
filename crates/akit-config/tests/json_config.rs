@@ -251,7 +251,6 @@ fn tls_problems_as_fit_reports_them() {
 fn tls_fields_akit_lacks_are_not_supported_yet() {
     const CERT: &str = r#""certificates": [{"cert_file": "a.pem", "key_file": "a.key"}]"#;
     for (tls, path) in [
-        (r#""on_demand": true"#, "listeners[0].tls.on_demand"),
         (
             &format!(r#"{CERT}, "kernel_tls_offload": true"#) as &str,
             "listeners[0].tls.kernel_tls_offload",

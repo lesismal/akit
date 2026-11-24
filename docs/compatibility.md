@@ -175,13 +175,13 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 248 supported.
+3821 fields in 121 sections, at fit `7daee573`; 256 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
 | [`access`](#fields-access) | 5 | 0 | 5 |
 | [`access_log`](#fields-access-log) | 14 | 7 | 7 |
-| [`acme`](#fields-acme) | 43 | 9 | 34 |
+| [`acme`](#fields-acme) | 43 | 16 | 27 |
 | [`admin`](#fields-admin) | 105 | 6 | 99 |
 | [`auto_https`](#fields-auto-https) | 5 | 5 | 0 |
 | [`bittorrent`](#fields-bittorrent) | 160 | 0 | 160 |
@@ -221,7 +221,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`http.middleware/rewrite`](#fields-http-middleware-rewrite) | 6 | 6 | 0 |
 | [`http.middleware/wasm`](#fields-http-middleware-wasm) | 18 | 0 | 18 |
 | [`limits`](#fields-limits) | 7 | 3 | 4 |
-| [`listeners`](#fields-listeners) | 30 | 15 | 15 |
+| [`listeners`](#fields-listeners) | 30 | 16 | 14 |
 | [`llm`](#fields-llm) | 218 | 0 | 218 |
 | [`log`](#fields-log) | 24 | 0 | 24 |
 | [`media_auth`](#fields-media-auth) | 34 | 0 | 34 |
@@ -300,7 +300,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 248 | 3573 |
+| **Total** | 3821 | 256 | 3565 |
 
 <a id="fields-access"></a>
 
@@ -347,13 +347,13 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `acme.directory` | `string` | supported |
 | `acme.email` | `string` | supported |
 | `acme.max_concurrent` | `integer` | supported |
-| `acme.on_demand` | `object` | not supported yet |
-| `acme.on_demand.ask` | `string, required` | not supported yet |
-| `acme.on_demand.idle_timeout` | `duration` | not supported yet |
-| `acme.on_demand.interval` | `duration` | not supported yet |
-| `acme.on_demand.max_names` | `integer` | not supported yet |
-| `acme.on_demand.rate` | `integer` | not supported yet |
-| `acme.on_demand.timeout` | `duration` | not supported yet |
+| `acme.on_demand` | `object` | supported |
+| `acme.on_demand.ask` | `string, required` | supported |
+| `acme.on_demand.idle_timeout` | `duration` | supported |
+| `acme.on_demand.interval` | `duration` | supported |
+| `acme.on_demand.max_names` | `integer` | supported |
+| `acme.on_demand.rate` | `integer` | supported |
+| `acme.on_demand.timeout` | `duration` | supported |
 | `acme.request_timeout` | `duration` | supported |
 | `acme.shared_storage` | `object` | not supported yet |
 | `acme.shared_storage.consul` | `object` | not supported yet |
@@ -1306,7 +1306,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `listeners[].tls.client_auth.mode` | `enum(require\|verify_if_given)` | supported |
 | `listeners[].tls.kernel_tls_offload` | `boolean` | not supported yet |
 | `listeners[].tls.max_version` | `enum(1.2\|1.3)` | supported |
-| `listeners[].tls.on_demand` | `boolean` | not supported yet |
+| `listeners[].tls.on_demand` | `boolean` | supported |
 
 <a id="fields-llm"></a>
 

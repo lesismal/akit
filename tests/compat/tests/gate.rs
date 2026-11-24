@@ -609,6 +609,63 @@ fn supported_fields_are_read() {
                     ]
             },
         ),
+        // On-demand TLS (I34).
+        (
+            "acme.on_demand",
+            r#"{"acme": {"on_demand": {"ask": "http://127.0.0.1:5555/"}}}"#.into(),
+            |c| {
+                c.acme.as_ref().unwrap().on_demand
+                    == Some(akit_config::OnDemand::new("http://127.0.0.1:5555/"))
+            },
+        ),
+        (
+            "acme.on_demand.ask",
+            r#"{"acme": {"on_demand": {"ask": "https://ask.test/?k=1"}}}"#.into(),
+            |c| c.acme.as_ref().unwrap().on_demand.as_ref().unwrap().ask == "https://ask.test/?k=1",
+        ),
+        (
+            "acme.on_demand.rate",
+            r#"{"acme": {"on_demand": {"ask": "http://a/", "rate": 3}}}"#.into(),
+            |c| c.acme.as_ref().unwrap().on_demand.as_ref().unwrap().rate == 3,
+        ),
+        (
+            "acme.on_demand.interval",
+            r#"{"acme": {"on_demand": {"ask": "http://a/", "interval": "1h"}}}"#.into(),
+            |c| {
+                c.acme.as_ref().unwrap().on_demand.as_ref().unwrap().interval
+                    == std::time::Duration::from_secs(3600)
+            },
+        ),
+        (
+            "acme.on_demand.max_names",
+            r#"{"acme": {"on_demand": {"ask": "http://a/", "max_names": 7}}}"#.into(),
+            |c| c.acme.as_ref().unwrap().on_demand.as_ref().unwrap().max_names == 7,
+        ),
+        (
+            "acme.on_demand.timeout",
+            r#"{"acme": {"on_demand": {"ask": "http://a/", "timeout": "30s"}}}"#.into(),
+            |c| {
+                c.acme.as_ref().unwrap().on_demand.as_ref().unwrap().timeout
+                    == std::time::Duration::from_secs(30)
+            },
+        ),
+        (
+            "acme.on_demand.idle_timeout",
+            r#"{"acme": {"on_demand": {"ask": "http://a/", "idle_timeout": "24h"}}}"#.into(),
+            |c| {
+                c.acme.as_ref().unwrap().on_demand.as_ref().unwrap().idle_timeout
+                    == std::time::Duration::from_secs(86_400)
+            },
+        ),
+        (
+            "listeners[].tls.on_demand",
+            tls(r#", "on_demand": true"#).replacen(
+                '{',
+                r#"{"acme": {"on_demand": {"ask": "http://a/"}}, "#,
+                1,
+            ),
+            |c| c.listeners[0].tls.as_ref().unwrap().on_demand,
+        ),
         // HTTPS by default (I33): its listeners are made from the routes' host names.
         ("auto_https", auto_https(""), |c| {
             c.auto_https == Some(akit_config::AutoHttps::default()) && c.listeners.len() == 2
@@ -1837,10 +1894,11 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 41] = [
+    let objects: [(&str, &str, Option<&str>); 42] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         ("admin", "ADMIN_FIELDS", Some("ADMIN_FIT_ONLY")),
         ("acme", "ACME_FIELDS", Some("ACME_FIT_ONLY")),
+        ("acme.on_demand", "ON_DEMAND_FIELDS", None),
         ("limits", "LIMITS_FIELDS", Some("LIMITS_FIT_ONLY")),
         (
             "access_log",

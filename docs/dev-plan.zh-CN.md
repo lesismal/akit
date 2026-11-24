@@ -127,7 +127,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I31 | ACME I：账户、订单、HTTP-01 | I30 | done |
 | I32 | ACME II：TLS-ALPN-01、续期、OCSP | I31 | done |
 | I33 | 默认 HTTPS | I32 | done |
-| I34 | 按需 TLS | I33, A2 | todo |
+| I34 | 按需 TLS | I33, A2 | done |
 | I35 | 主动健康检查 | I20 | done |
 | I36 | 负载均衡 v2 | I19 | done |
 | I37 | Prometheus 指标 | I15 | done |
@@ -548,6 +548,8 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 - **做什么**：在握手时为 "ask" 端点允许的名字签发证书，带限流。依赖 akio A2（由稍后完成的回调选择证书）。
 - **完成标准**：测试覆盖允许、拒绝和被限流的名字，签发期间 I/O 线程从不阻塞。
 - **涉及**：`akit-tls`。
+- **已完成**：fit 的 `acme.on_demand` 和 `tls.on_demand`；询问（akio-http 的异步客户端）和 ACME 工作线程接收名字时，
+  握手的 `CertDone` 等待；fit 对询问、速率、名字数和闲置名字的上限；针对 Pebble 的真实握手测试。
 
 ### I35 主动健康检查
 
