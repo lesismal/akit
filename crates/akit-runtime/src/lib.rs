@@ -53,5 +53,10 @@ pub const TLS: &str = "akit.tls";
 /// streamed body to no limit, so the handler does. akit-listener sets it.
 pub const MAX_BODY_BYTES: &str = "akit.max_body_bytes";
 
+/// The [`akio_http::Context::local`] that holds the `traceparent` field naming the span akit
+/// began for a request it traces (I64): the proxy sends it to the upstream in place of the
+/// client's. akit-listener sets it; unset for a request not traced.
+pub const TRACEPARENT: &str = "akit.traceparent";
+
 /// The akio commit akit is built against (rule 22: akio is pinned by commit hash).
 pub const AKIO_REV: &str = "e9891b52c0e97f0023c8a9f324b21453f9477606";

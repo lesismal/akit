@@ -19,6 +19,7 @@
 //!   `limits.max_pending_bytes` yet);
 //! - `fit_config_reloads_total`, `fit_config_version` and
 //!   `fit_config_last_applied_timestamp_seconds`;
+//! - `fit_trace_spans_total`, by what became of the spans, with `telemetry.traces` (I64);
 //! - `fit_access_log_dropped_total`, with an access log;
 //! - akio's engine metrics (`akio_*`), where fit has a few of the Go runtime's (`go_*`).
 //!
@@ -29,8 +30,8 @@ use std::fmt;
 use std::sync::Arc;
 
 use akio::Engine;
-use akit_observe::AccessLog;
 use akit_observe::metrics::{ConfigStats, STATUS_CLASSES, TextWriter};
+use akit_observe::{AccessLog, MetricWriter, Tracer};
 use akit_runtime::GraphCell;
 
 pub use akit_observe::metrics::CONTENT_TYPE;
@@ -44,6 +45,7 @@ pub struct Scrape {
     config: ConfigStats,
     access_log: Option<AccessLog>,
     listeners: Option<crate::ServedView>,
+    tracer: Option<Tracer>,
 }
 
 impl fmt::Debug for Scrape {
@@ -63,6 +65,7 @@ impl Scrape {
             config,
             access_log: None,
             listeners: None,
+            tracer: None,
         }
     }
 
@@ -71,6 +74,13 @@ impl Scrape {
     #[must_use]
     pub fn with_listeners(mut self, view: crate::ServedView) -> Scrape {
         self.listeners = Some(view);
+        self
+    }
+
+    /// The same, with the process's tracer (I64), whose spans it counts.
+    #[must_use]
+    pub fn with_tracer(mut self, tracer: Option<Tracer>) -> Scrape {
+        self.tracer = tracer;
         self
     }
 
@@ -106,9 +116,18 @@ impl Scrape {
     }
 
     /// Appends every metric to `out`, in Prometheus's text format ([`CONTENT_TYPE`]).
-    #[allow(clippy::cast_precision_loss, clippy::too_many_lines)]
     pub fn write(&self, out: &mut Vec<u8>) {
         let mut w = TextWriter::new(std::mem::take(out));
+        self.write_metrics(&mut w);
+        *out = w.out;
+        // akio's engine: its I/O threads' counters, connections and logical pool.
+        out.extend_from_slice(self.engine.telemetry().render_prometheus().as_bytes());
+    }
+
+    /// Writes akit's metrics (all but akio's engine's, which come in Prometheus's text alone) to
+    /// `w`: the scrape's, and OpenTelemetry's export of them (I64).
+    #[allow(clippy::cast_precision_loss, clippy::too_many_lines)]
+    pub fn write_metrics(&self, w: &mut dyn MetricWriter) {
         self.cell.with(|g| {
             if let Some(m) = g.metrics() {
                 let all = m.routes();
@@ -294,6 +313,24 @@ impl Scrape {
             &[],
         );
 
+        if let Some(t) = &self.tracer {
+            w.family(
+                "fit_trace_spans_total",
+                "counter",
+                "Spans of traced requests, by what became of them: exported, failed (in an export the receiver did not take) or dropped (for want of room while they waited).",
+            );
+            w.sample_u64(
+                "fit_trace_spans_total",
+                t.exported(),
+                &[("result", "exported")],
+            );
+            w.sample_u64("fit_trace_spans_total", t.failed(), &[("result", "failed")]);
+            w.sample_u64(
+                "fit_trace_spans_total",
+                t.dropped(),
+                &[("result", "dropped")],
+            );
+        }
         if let Some(log) = &self.access_log {
             w.family(
                 "fit_access_log_dropped_total",
@@ -302,9 +339,5 @@ impl Scrape {
             );
             w.sample_u64("fit_access_log_dropped_total", log.dropped(), &[]);
         }
-
-        *out = w.out;
-        // akio's engine: its I/O threads' counters, connections and logical pool.
-        out.extend_from_slice(self.engine.telemetry().render_prometheus().as_bytes());
     }
 }

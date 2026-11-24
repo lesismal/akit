@@ -180,6 +180,10 @@ pub(crate) struct Client<'a> {
     pub peer: SocketAddr,
     /// Whether it came over TLS.
     pub tls: bool,
+    /// The `traceparent` naming akit's span of a request it traces (I64), which goes on in place
+    /// of the client's, after the forwarding fields, as fit's; `None` for one it does not, whose
+    /// own goes on as it came.
+    pub traceparent: Option<&'a str>,
 }
 
 /// Why a request is not forwarded.
@@ -193,7 +197,8 @@ pub(crate) enum Refused {
 /// The fields of the upstream's request for the client's `c`: `Host` first, the client's own
 /// (`host_header` replacing it when set), then the client's fields in the order and case they
 /// came but those [`request_field`] drops and those its `Connection` names, then the forwarding
-/// fields; a `User-Agent` the client did not send is not added either (an empty one, which akio's
+/// fields, then akit's `traceparent` for a request it traces; a `User-Agent` the client did not
+/// send is not added either (an empty one, which akio's
 /// client sends as none).
 pub(crate) fn outgoing(
     c: &Client<'_>,
@@ -225,7 +230,10 @@ pub(crate) fn outgoing(
             return Err(Refused::BadFieldName);
         }
         let field = request_field(name);
-        if field == Field::Drop || connection_names(connection(), name) {
+        if field == Field::Drop
+            || connection_names(connection(), name)
+            || (c.traceparent.is_some() && name.eq_ignore_ascii_case("traceparent"))
+        {
             continue;
         }
         match field {
@@ -269,6 +277,9 @@ pub(crate) fn outgoing(
     }
     forwarded_element(&mut v, Some(ip), client_host, proto);
     h.append("Forwarded", &v);
+    if let Some(t) = c.traceparent {
+        h.append("Traceparent", t);
+    }
     Ok(h)
 }
 
@@ -449,6 +460,38 @@ mod tests {
         h.iter().map(|(n, v)| format!("{n}: {v}\n")).collect()
     }
 
+    /// A traced request's upstream gets akit's `traceparent` in place of the client's, last, as
+    /// fit's `outgoingFramed` sends it; `tracestate` goes on as it came, and an untraced request's
+    /// `traceparent` too.
+    #[test]
+    fn traceparent_replaced_when_traced() {
+        let h = headers(&[
+            ("Host", "a"),
+            (
+                "traceparent",
+                "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+            ),
+            ("tracestate", "k=v"),
+        ]);
+        let mine = "00-4bf92f3577b34da6a3ce929d0e0e4736-0102030405060708-01";
+        let mut c = Client {
+            headers: &h,
+            peer: "127.0.0.1:1".parse().unwrap(),
+            tls: false,
+            traceparent: Some(mine),
+        };
+        let out = outgoing(&c, &[], "").unwrap();
+        assert_eq!(out.get_all("traceparent").collect::<Vec<_>>(), [mine]);
+        assert_eq!(out.iter().last().map(|(n, _)| n), Some("Traceparent"));
+        assert_eq!(out.get("tracestate"), Some("k=v"));
+        c.traceparent = None;
+        let out = outgoing(&c, &[], "").unwrap();
+        assert_eq!(
+            out.get("traceparent"),
+            Some("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01")
+        );
+    }
+
     /// fit's `TestRefusedHeaderName`: a field name that is not a token is refused.
     #[test]
     fn refused_field_names() {
@@ -457,6 +500,7 @@ mod tests {
             headers: &h,
             peer: "127.0.0.1:1".parse().unwrap(),
             tls: false,
+            traceparent: None,
         };
         assert_eq!(outgoing(&c, &[], "").err(), Some(Refused::BadFieldName));
         assert!(!valid_token(""));
@@ -486,6 +530,7 @@ mod tests {
             headers: &h,
             peer: "127.0.0.1:5".parse().unwrap(),
             tls: false,
+            traceparent: None,
         };
         assert_eq!(
             lines(&outgoing(&c, &[], "").unwrap()),
@@ -499,6 +544,7 @@ mod tests {
             headers: &h,
             peer: "[2001:db8::7]:5".parse().unwrap(),
             tls: true,
+            traceparent: None,
         };
         assert_eq!(
             lines(&outgoing(&c, &[], "internal.svc").unwrap()),
@@ -523,6 +569,7 @@ mod tests {
             headers: &h,
             peer: "[::ffff:10.1.2.3]:5".parse().unwrap(),
             tls: false,
+            traceparent: None,
         };
         let out = outgoing(&c, &trusted, "").unwrap();
         assert_eq!(

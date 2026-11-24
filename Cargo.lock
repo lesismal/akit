@@ -369,6 +369,11 @@ dependencies = [
 [[package]]
 name = "akit-observe"
 version = "0.0.1"
+dependencies = [
+ "akio",
+ "akio-http",
+ "akit-config",
+]
 
 [[package]]
 name = "akit-plugin"

@@ -64,6 +64,11 @@ pub use model::{
     Redirect, Respond, Retry, Rewrite, Route, SCHEMA_VERSION, Service, Split, Static, StickyCookie,
     Tls, TlsVersion, TokenFrom, Upstream, UpstreamProtocol,
 };
+pub use model::{
+    DEFAULT_METRICS_INTERVAL, DEFAULT_TELEMETRY_ENDPOINT, DEFAULT_TELEMETRY_SERVICE_NAME,
+    DEFAULT_TELEMETRY_TIMEOUT, DEFAULT_TRACES_INTERVAL, DEFAULT_TRACES_MAX_QUEUE_BYTES,
+    MetricsExport, Telemetry, TracesExport, parse_headers,
+};
 
 /// The largest config document read, in bytes: fit's own configs are kilobytes; this bounds
 /// what a mistaken path (a log file, a device) can make akit read.

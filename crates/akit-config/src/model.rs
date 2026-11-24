@@ -42,6 +42,9 @@ pub struct Config {
     /// `services`: layer 4 services (I51), which proxy the connections of `tcp` listeners and
     /// the sessions of `udp` listeners to an upstream.
     pub services: Vec<Service>,
+    /// `telemetry`: OpenTelemetry (I64), traces of requests and metrics exported over OTLP/HTTP;
+    /// neither when left out. Read when akit starts: a change takes a restart, as in fit.
+    pub telemetry: Option<Telemetry>,
 }
 
 /// fit's default `acme.directory`: Let's Encrypt's.
@@ -280,6 +283,103 @@ impl AccessLog {
             AccessLevel::Error => 500,
         }
     }
+}
+
+/// `telemetry`: where akit sends its traces and metrics, over OTLP/HTTP as JSON, and which
+/// requests it traces, as fit's `config.Telemetry`, with its defaults filled in.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Telemetry {
+    /// `endpoint`: the OTLP/HTTP receiver, `http://` or `https://` and a host and port; traces go
+    /// to its `/v1/traces` and metrics to its `/v1/metrics`. [`DEFAULT_TELEMETRY_ENDPOINT`] when
+    /// left out; a trailing `/` taken off.
+    pub endpoint: String,
+    /// `headers_file`: a file of `Name: value` lines sent with each export; none when empty.
+    pub headers_file: String,
+    /// `ca_file`: the CAs the receiver's certificate is verified with over https; the system's
+    /// when empty.
+    pub ca_file: String,
+    /// `cert_file`: the client certificate sent over https, with `key_file`.
+    pub cert_file: String,
+    /// `key_file`: `cert_file`'s private key.
+    pub key_file: String,
+    /// `service_name`: the resource's `service.name`; [`DEFAULT_TELEMETRY_SERVICE_NAME`] when left
+    /// out or empty.
+    pub service_name: String,
+    /// `timeout`: how long an export may take, connecting included;
+    /// [`DEFAULT_TELEMETRY_TIMEOUT`] when left out or 0.
+    pub timeout: Duration,
+    /// `traces`: trace requests; no traces when left out.
+    pub traces: Option<TracesExport>,
+    /// `metrics`: export the metrics the Admin API's `/metrics` serves every interval; none when
+    /// left out.
+    pub metrics: Option<MetricsExport>,
+}
+
+/// `telemetry.traces`: which requests are traced, and how spans wait to be exported.
+#[derive(Debug, Clone)]
+pub struct TracesExport {
+    /// `sample_ratio`: the share of requests traced among those whose caller did not decide,
+    /// from 0 to 1; 0, only those a caller sampled, when left out.
+    pub sample_ratio: f64,
+    /// `max_queue_bytes`: the most bytes of spans waiting to be exported, besides the batch being
+    /// sent; [`DEFAULT_TRACES_MAX_QUEUE_BYTES`] when left out or 0.
+    pub max_queue_bytes: usize,
+    /// `interval`: how often spans are exported (and sooner when 256 KiB wait);
+    /// [`DEFAULT_TRACES_INTERVAL`] when left out or 0.
+    pub interval: Duration,
+}
+
+impl PartialEq for TracesExport {
+    fn eq(&self, other: &Self) -> bool {
+        self.sample_ratio.to_bits() == other.sample_ratio.to_bits()
+            && self.max_queue_bytes == other.max_queue_bytes
+            && self.interval == other.interval
+    }
+}
+
+impl Eq for TracesExport {}
+
+/// `telemetry.metrics`: how often metrics are exported.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MetricsExport {
+    /// `interval`: [`DEFAULT_METRICS_INTERVAL`] when left out or 0.
+    pub interval: Duration,
+}
+
+/// fit's default `telemetry.endpoint`.
+pub const DEFAULT_TELEMETRY_ENDPOINT: &str = "http://127.0.0.1:4318";
+/// fit's default `telemetry.service_name`.
+pub const DEFAULT_TELEMETRY_SERVICE_NAME: &str = "fit";
+/// fit's default `telemetry.timeout`.
+pub const DEFAULT_TELEMETRY_TIMEOUT: Duration = Duration::from_secs(10);
+/// fit's default `telemetry.traces.max_queue_bytes`: 4 MiB.
+pub const DEFAULT_TRACES_MAX_QUEUE_BYTES: usize = 4 << 20;
+/// fit's default `telemetry.traces.interval`.
+pub const DEFAULT_TRACES_INTERVAL: Duration = Duration::from_secs(5);
+/// fit's default `telemetry.metrics.interval`.
+pub const DEFAULT_METRICS_INTERVAL: Duration = Duration::from_secs(30);
+
+/// Reads a `headers_file`'s contents, as fit's `config.ParseHeaders`: one `Name: value` a line,
+/// blank lines and lines starting with `#` passed over, names and values trimmed.
+///
+/// # Errors
+///
+/// The number of the first line that is not a header field, from 1.
+pub fn parse_headers(data: &str) -> Result<Vec<(String, String)>, usize> {
+    let mut h = Vec::new();
+    for (i, line) in data.split('\n').enumerate() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let (name, value) = line.split_once(':').unwrap_or((line, ""));
+        let name = name.trim();
+        if !line.contains(':') || name.is_empty() || name.contains([' ', '\t']) {
+            return Err(i.saturating_add(1));
+        }
+        h.push((name.to_owned(), value.trim().to_owned()));
+    }
+    Ok(h)
 }
 
 /// fit's default `flush_interval`.
@@ -1673,10 +1773,10 @@ const CONFIG_FIELDS: &[&str] = &[
     "acme",
     "auto_https",
     "services",
+    "telemetry",
 ];
 const CONFIG_FIT_ONLY: &[&str] = &[
     "log",
-    "telemetry",
     "access",
     "engine",
     "pprof",
@@ -1730,6 +1830,20 @@ const ACCESS_LOG_FIELDS: &[&str] = &[
 ];
 // rotate comes with the file sink's rotation (fit's logs package).
 const ACCESS_LOG_FIT_ONLY: &[&str] = &["rotate"];
+// I64: OpenTelemetry, every field.
+const TELEMETRY_FIELDS: &[&str] = &[
+    "endpoint",
+    "headers_file",
+    "ca_file",
+    "cert_file",
+    "key_file",
+    "service_name",
+    "timeout",
+    "traces",
+    "metrics",
+];
+const TRACES_EXPORT_FIELDS: &[&str] = &["sample_ratio", "max_queue_bytes", "interval"];
+const METRICS_EXPORT_FIELDS: &[&str] = &["interval"];
 const LISTENER_FIELDS: &[&str] = &["name", "address", "protocols", "tls", "proxy_protocol"];
 const LISTENER_FIT_ONLY: &[&str] = &["mptcp", "socks", "access"];
 const LISTENER_PROXY_PROTOCOL_FIELDS: &[&str] = &["trusted"];
@@ -1992,6 +2106,8 @@ pub(crate) struct Part {
     /// `auto_https`, with where a problem with its ports is reported, and the position of its
     /// key, when the file gives it.
     auto_https: Option<((crate::AutoHttps, usize), usize)>,
+    /// `telemetry`, with the position of its key, when the file gives it.
+    telemetry: Option<(Telemetry, usize)>,
     /// The position of the file's top object.
     doc_off: usize,
 }
@@ -2060,6 +2176,9 @@ pub(crate) fn part(d: &mut Decoder<'_>, n: &Node, file: usize) -> Option<Part> {
     let auto_https = o.take("auto_https").and_then(|v| {
         crate::auto_https::decode(d, v, "auto_https", AUTO_HTTPS_FIELDS).map(|a| (a, v.off))
     });
+    let telemetry = o
+        .take("telemetry")
+        .and_then(|v| telemetry(d, v, "telemetry").map(|t| (t, v.off)));
     let doc_off = o.off;
     o.finish(d, CONFIG_FIELDS, CONFIG_FIT_ONLY);
     Some(Part {
@@ -2074,6 +2193,7 @@ pub(crate) fn part(d: &mut Decoder<'_>, n: &Node, file: usize) -> Option<Part> {
         metrics,
         acme,
         auto_https,
+        telemetry,
         doc_off,
     })
 }
@@ -2098,6 +2218,7 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
     let mut metrics: Option<(Metrics, usize, usize)> = None;
     let mut acme: Option<(Acme, usize)> = None;
     let mut auto_https: Option<((crate::AutoHttps, usize), usize)> = None;
+    let mut telemetry: Option<(Telemetry, usize)> = None;
     for (file, p) in parts.into_iter().enumerate() {
         first_doc.get_or_insert((file, p.doc_off));
         if let Some((v, off)) = p.schema_version {
@@ -2214,6 +2335,9 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
         if let Some((a, off)) = p.auto_https {
             once(ds, &mut auto_https, a, file, off, "auto_https");
         }
+        if let Some((t, off)) = p.telemetry {
+            once(ds, &mut telemetry, t, file, off, "telemetry");
+        }
         listeners.extend(p.listeners);
         routes.extend(p.routes);
         upstreams.extend(p.upstreams);
@@ -2257,6 +2381,7 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
         acme: acme.map(|(a, _)| a),
         auto_https: auto_https.map(|((a, _), _)| a),
         services: services.into_iter().map(|a| a.v).collect(),
+        telemetry: telemetry.map(|(t, _)| t),
     }
 }
 
@@ -2642,6 +2767,138 @@ fn access_log(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<AccessLog> {
         format,
         time_zone,
     })
+}
+
+/// `telemetry`, as fit's `config.Telemetry` and its checks (`checkTelemetry`).
+fn telemetry(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Telemetry> {
+    let mut o = d.object(n, path)?;
+    let string = |d: &mut Decoder<'_>, o: &mut Obj<'_>, key: &str| {
+        o.take(key)
+            .and_then(|v| Some((d.string(v, &o.at(key))?, v.off)))
+    };
+    let endpoint = string(d, &mut o, "endpoint");
+    if let Some((ep, off)) = &endpoint {
+        if let Err(msg) = check_endpoint(ep) {
+            d.error(*off, &o.at("endpoint"), msg);
+        }
+    }
+    let headers_file = string(d, &mut o, "headers_file").map(|s| s.0);
+    let ca_file = string(d, &mut o, "ca_file").map(|s| s.0);
+    let cert_file = string(d, &mut o, "cert_file");
+    let key_file = string(d, &mut o, "key_file");
+    let service_name = string(d, &mut o, "service_name").map(|s| s.0);
+    let timeout = o
+        .take("timeout")
+        .and_then(|v| d.duration(v, &o.at("timeout")))
+        .filter(|t| !t.is_zero())
+        .unwrap_or(DEFAULT_TELEMETRY_TIMEOUT);
+    let traces = o.take("traces").and_then(|v| {
+        let at = o.at("traces");
+        let mut t = d.object(v, &at)?;
+        let sample_ratio = t
+            .take("sample_ratio")
+            .and_then(|v| ratio(d, v, &t.at("sample_ratio")))
+            .unwrap_or(0.0);
+        let max_queue_bytes = t
+            .take("max_queue_bytes")
+            .and_then(|v| d.int(v, &t.at("max_queue_bytes"), 0, i64::MAX))
+            .and_then(|n| usize::try_from(n).ok())
+            .filter(|n| *n != 0)
+            .unwrap_or(DEFAULT_TRACES_MAX_QUEUE_BYTES);
+        let interval = t
+            .take("interval")
+            .and_then(|v| d.duration(v, &t.at("interval")))
+            .filter(|i| !i.is_zero())
+            .unwrap_or(DEFAULT_TRACES_INTERVAL);
+        t.finish(d, TRACES_EXPORT_FIELDS, &[]);
+        Some(TracesExport {
+            sample_ratio,
+            max_queue_bytes,
+            interval,
+        })
+    });
+    let metrics = o.take("metrics").and_then(|v| {
+        let at = o.at("metrics");
+        let mut m = d.object(v, &at)?;
+        let interval = m
+            .take("interval")
+            .and_then(|v| d.duration(v, &m.at("interval")))
+            .filter(|i| !i.is_zero())
+            .unwrap_or(DEFAULT_METRICS_INTERVAL);
+        m.finish(d, METRICS_EXPORT_FIELDS, &[]);
+        Some(MetricsExport { interval })
+    });
+    // fit's checkTLSFiles.
+    match (&cert_file, &key_file) {
+        (Some((c, off)), k) if !c.is_empty() && k.as_ref().is_none_or(|k| k.0.is_empty()) => {
+            d.error(*off, &o.at("cert_file"), "cert_file needs key_file");
+        }
+        (c, Some((k, off))) if !k.is_empty() && c.as_ref().is_none_or(|c| c.0.is_empty()) => {
+            d.error(*off, &o.at("key_file"), "key_file needs cert_file");
+        }
+        _ => {}
+    }
+    if traces.is_none() && metrics.is_none() {
+        d.error(
+            o.off,
+            path,
+            "set traces, metrics or both: telemetry exports nothing without them",
+        );
+    }
+    o.finish(d, TELEMETRY_FIELDS, &[]);
+    Some(Telemetry {
+        endpoint: endpoint.map(|e| e.0).filter(|e| !e.is_empty()).map_or_else(
+            || DEFAULT_TELEMETRY_ENDPOINT.to_owned(),
+            |e| e.strip_suffix('/').unwrap_or(&e).to_owned(),
+        ),
+        headers_file: headers_file.unwrap_or_default(),
+        ca_file: ca_file.unwrap_or_default(),
+        cert_file: cert_file.map(|c| c.0).unwrap_or_default(),
+        key_file: key_file.map(|k| k.0).unwrap_or_default(),
+        service_name: service_name
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| DEFAULT_TELEMETRY_SERVICE_NAME.to_owned()),
+        timeout,
+        traces,
+        metrics,
+    })
+}
+
+/// fit's `checkEndpoint`: `http://` or `https://` and a host and port alone. An empty one is
+/// the default.
+fn check_endpoint(ep: &str) -> Result<(), String> {
+    if ep.is_empty() {
+        return Ok(());
+    }
+    let Some(rest) = ep
+        .strip_prefix("http://")
+        .or_else(|| ep.strip_prefix("https://"))
+    else {
+        return Err(format!(
+            "{ep:?} is neither http://<host>:<port> nor https://<host>:<port>"
+        ));
+    };
+    // As Go's net.SplitHostPort: a bracketed IPv6 host, or a host without a colon.
+    let port = match rest.strip_prefix('[') {
+        Some(r) => r.split_once(']').and_then(|(_, p)| p.strip_prefix(':')),
+        None => rest
+            .rsplit_once(':')
+            .filter(|(h, _)| !h.contains(':'))
+            .map(|(_, p)| p),
+    };
+    let ok = port
+        .and_then(|p| {
+            p.parse::<u32>()
+                .ok()
+                .filter(|_| p.bytes().all(|b| b.is_ascii_digit()))
+        })
+        .is_some_and(|n| (1..=65535).contains(&n))
+        && !rest.contains(['/', '?', '#']);
+    if ok {
+        Ok(())
+    } else {
+        Err(format!("{ep:?} is not a host and port alone"))
+    }
 }
 
 fn listener(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Listener> {

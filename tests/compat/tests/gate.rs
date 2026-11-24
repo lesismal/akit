@@ -1781,6 +1781,76 @@ fn supported_fields_are_read() {
                     == [akit_config::Network::parse("10.0.0.0/8").unwrap()]
             },
         ),
+        (
+            "telemetry",
+            r#"{"telemetry": {"traces": {}}}"#.into(),
+            |c| c.telemetry.is_some(),
+        ),
+        (
+            "telemetry.endpoint",
+            r#"{"telemetry": {"endpoint": "https://otel.example:4318", "traces": {}}}"#.into(),
+            |c| c.telemetry.as_ref().unwrap().endpoint == "https://otel.example:4318",
+        ),
+        (
+            "telemetry.headers_file",
+            r#"{"telemetry": {"headers_file": "h", "traces": {}}}"#.into(),
+            |c| c.telemetry.as_ref().unwrap().headers_file == "h",
+        ),
+        (
+            "telemetry.ca_file",
+            r#"{"telemetry": {"ca_file": "ca.pem", "traces": {}}}"#.into(),
+            |c| c.telemetry.as_ref().unwrap().ca_file == "ca.pem",
+        ),
+        (
+            "telemetry.cert_file",
+            r#"{"telemetry": {"cert_file": "c.pem", "key_file": "k.pem", "traces": {}}}"#.into(),
+            |c| c.telemetry.as_ref().unwrap().cert_file == "c.pem",
+        ),
+        (
+            "telemetry.key_file",
+            r#"{"telemetry": {"cert_file": "c.pem", "key_file": "k.pem", "traces": {}}}"#.into(),
+            |c| c.telemetry.as_ref().unwrap().key_file == "k.pem",
+        ),
+        (
+            "telemetry.service_name",
+            r#"{"telemetry": {"service_name": "edge", "traces": {}}}"#.into(),
+            |c| c.telemetry.as_ref().unwrap().service_name == "edge",
+        ),
+        (
+            "telemetry.timeout",
+            r#"{"telemetry": {"timeout": "3s", "traces": {}}}"#.into(),
+            |c| c.telemetry.as_ref().unwrap().timeout == std::time::Duration::from_secs(3),
+        ),
+        (
+            "telemetry.traces",
+            r#"{"telemetry": {"traces": {}}}"#.into(),
+            |c| c.telemetry.as_ref().unwrap().traces.is_some(),
+        ),
+        (
+            "telemetry.traces.sample_ratio",
+            r#"{"telemetry": {"traces": {"sample_ratio": 0.25}}}"#.into(),
+            |c| c.telemetry.as_ref().unwrap().traces.as_ref().unwrap().sample_ratio == 0.25,
+        ),
+        (
+            "telemetry.traces.max_queue_bytes",
+            r#"{"telemetry": {"traces": {"max_queue_bytes": 1024}}}"#.into(),
+            |c| c.telemetry.as_ref().unwrap().traces.as_ref().unwrap().max_queue_bytes == 1024,
+        ),
+        (
+            "telemetry.traces.interval",
+            r#"{"telemetry": {"traces": {"interval": "250ms"}}}"#.into(),
+            |c| c.telemetry.as_ref().unwrap().traces.as_ref().unwrap().interval == std::time::Duration::from_millis(250),
+        ),
+        (
+            "telemetry.metrics",
+            r#"{"telemetry": {"metrics": {}}}"#.into(),
+            |c| c.telemetry.as_ref().unwrap().metrics.is_some(),
+        ),
+        (
+            "telemetry.metrics.interval",
+            r#"{"telemetry": {"metrics": {"interval": "1m"}}}"#.into(),
+            |c| c.telemetry.as_ref().unwrap().metrics.as_ref().unwrap().interval == std::time::Duration::from_secs(60),
+        ),
     ];
     let marked = supported().unwrap();
     let sampled: BTreeSet<String> = samples.iter().map(|(p, ..)| (*p).to_owned()).collect();
@@ -1938,7 +2008,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 43] = [
+    let objects: [(&str, &str, Option<&str>); 46] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         ("admin", "ADMIN_FIELDS", Some("ADMIN_FIT_ONLY")),
         ("acme", "ACME_FIELDS", Some("ACME_FIT_ONLY")),
@@ -1950,6 +2020,9 @@ fn akit_config_lists_match_the_inventory() {
             Some("ACCESS_LOG_FIT_ONLY"),
         ),
         ("auto_https", "AUTO_HTTPS_FIELDS", None),
+        ("telemetry", "TELEMETRY_FIELDS", None),
+        ("telemetry.traces", "TRACES_EXPORT_FIELDS", None),
+        ("telemetry.metrics", "METRICS_EXPORT_FIELDS", None),
         ("listeners[]", "LISTENER_FIELDS", Some("LISTENER_FIT_ONLY")),
         ("listeners[].tls", "TLS_FIELDS", Some("TLS_FIT_ONLY")),
         ("listeners[].tls.certificates[]", "CERTIFICATE_FIELDS", None),

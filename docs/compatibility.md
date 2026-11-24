@@ -175,7 +175,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 264 supported.
+3821 fields in 121 sections, at fit `7daee573`; 278 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -296,11 +296,11 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`sync.transforms/mask`](#fields-sync-transforms-mask) | 5 | 0 | 5 |
 | [`sync.transforms/route`](#fields-sync-transforms-route) | 7 | 0 | 7 |
 | [`sync.transforms/wasm`](#fields-sync-transforms-wasm) | 9 | 0 | 9 |
-| [`telemetry`](#fields-telemetry) | 14 | 0 | 14 |
+| [`telemetry`](#fields-telemetry) | 14 | 14 | 0 |
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 264 | 3557 |
+| **Total** | 3821 | 278 | 3543 |
 
 <a id="fields-access"></a>
 
@@ -4656,20 +4656,20 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `telemetry` | `object` | not supported yet |
-| `telemetry.ca_file` | `string` | not supported yet |
-| `telemetry.cert_file` | `string` | not supported yet |
-| `telemetry.endpoint` | `string` | not supported yet |
-| `telemetry.headers_file` | `string` | not supported yet |
-| `telemetry.key_file` | `string` | not supported yet |
-| `telemetry.metrics` | `object` | not supported yet |
-| `telemetry.metrics.interval` | `duration` | not supported yet |
-| `telemetry.service_name` | `string` | not supported yet |
-| `telemetry.timeout` | `duration` | not supported yet |
-| `telemetry.traces` | `object` | not supported yet |
-| `telemetry.traces.interval` | `duration` | not supported yet |
-| `telemetry.traces.max_queue_bytes` | `integer` | not supported yet |
-| `telemetry.traces.sample_ratio` | `number` | not supported yet |
+| `telemetry` | `object` | supported |
+| `telemetry.ca_file` | `string` | supported |
+| `telemetry.cert_file` | `string` | supported |
+| `telemetry.endpoint` | `string` | supported |
+| `telemetry.headers_file` | `string` | supported |
+| `telemetry.key_file` | `string` | supported |
+| `telemetry.metrics` | `object` | supported |
+| `telemetry.metrics.interval` | `duration` | supported |
+| `telemetry.service_name` | `string` | supported |
+| `telemetry.timeout` | `duration` | supported |
+| `telemetry.traces` | `object` | supported |
+| `telemetry.traces.interval` | `duration` | supported |
+| `telemetry.traces.max_queue_bytes` | `integer` | supported |
+| `telemetry.traces.sample_ratio` | `number` | supported |
 
 <a id="fields-tunnel"></a>
 

@@ -25,6 +25,9 @@
 //!   One metrics registry serves the process (I37): the graphs share their upstreams' counters
 //!   through it and, with `metrics`, count their requests in it; every reload (SIGHUP, the Admin
 //!   API, the certificate files) is counted; the Admin API serves the scrape at `GET /metrics`.
+//!   With `telemetry` (I64), requests are traced and their spans, with the metrics, exported over
+//!   OTLP/HTTP, by threads of their own, from the `telemetry` akit starts with: a change takes a
+//!   restart.
 //! - `validate`: reads and compiles the config, as `run` would, and says whether it is valid.
 //! - `version`, `help`.
 
@@ -41,7 +44,7 @@ use akit_admin::{
 };
 use akit_config::{Config, ConfigFile, Error, Errors, LogFormat};
 use akit_observe::metrics::{ConfigStats, Metrics};
-use akit_observe::{AccessLog, Format, Zone};
+use akit_observe::{AccessLog, Format, MetricsExporter, Otlp, Tracer, Zone};
 use akit_provider::Updates;
 use akit_runtime::upstream::EngineSlot;
 use akit_runtime::{Env, Graph, GraphCell, HandlerParams, Registry, compile};
@@ -208,6 +211,7 @@ fn compile_config(
     log: Option<&AccessLog>,
     metrics: &Metrics,
     acme: Option<&akit_tls::Acme>,
+    tracer: Option<&Tracer>,
 ) -> Result<Graph, Failure> {
     let registry: Registry<HandlerParams> = Registry::new(&[
         akit_handler::MODULES,
@@ -219,14 +223,15 @@ fn compile_config(
     let env = Env::new(engine.clone())
         .with_access_log(log.cloned())
         .with_metrics(Some(metrics.clone()))
-        .with_acme(acme.cloned());
+        .with_acme(acme.cloned())
+        .with_tracer(tracer.cloned());
     compile(config, &registry, &env).map_err(Failure::Config)
 }
 
 /// Reads and compiles the config at `paths`, as [`read_config`] and [`compile_config`].
 fn read(paths: &[String], engine: &EngineSlot, log: Option<&AccessLog>) -> Result<Graph, Failure> {
     let ((config, _, _), _) = read_config(paths)?;
-    compile_config(&config, engine, log, &Metrics::new(), None)
+    compile_config(&config, engine, log, &Metrics::new(), None, None)
 }
 
 /// Opens the access log `c` describes, its times in `zone`, as fit's `NewAccessLogFiles`.
@@ -268,6 +273,10 @@ struct Runner<'a> {
     /// reload goes through [`Runner::apply`] or fails before it, here (SIGHUP, the Admin API,
     /// the certificate files).
     stats: &'a ConfigStats,
+    /// The `telemetry` akit started with, and the tracer made from it (I64): each graph samples
+    /// its requests with it; a config's `telemetry` takes a restart, as fit's.
+    telemetry: Option<&'a akit_config::Telemetry>,
+    tracer: Option<&'a Tracer>,
 }
 
 impl Runner<'_> {
@@ -288,8 +297,15 @@ impl Runner<'_> {
     /// and probe nothing, and its new listeners' addresses tried (`Listeners::plan`). Not counted
     /// as a reload.
     fn check(&self, config: &Config, zone: Option<Zone>) -> Result<Applied, ApplyError> {
-        let graph = compile_config(config, &EngineSlot::new(), None, &Metrics::new(), None)
-            .map_err(failure)?;
+        let graph = compile_config(
+            config,
+            &EngineSlot::new(),
+            None,
+            &Metrics::new(),
+            None,
+            None,
+        )
+        .map_err(failure)?;
         let r = self
             .listeners
             .plan(&graph)
@@ -335,6 +351,9 @@ impl Runner<'_> {
                     .to_owned(),
             );
         }
+        if config.telemetry.as_ref() != self.telemetry {
+            warnings.push("telemetry takes a restart; the running one stays".to_owned());
+        }
         warnings
     }
 
@@ -349,6 +368,7 @@ impl Runner<'_> {
             self.log.map(|l| &l.0),
             self.metrics,
             Some(self.acme),
+            self.tracer,
         )
         .map_err(failure)?;
         let files = graph.cert_files().clone();
@@ -708,12 +728,42 @@ fn run(args: &[String]) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    // OpenTelemetry (I64), from the `telemetry` akit starts with, as fit's: its exports run on
+    // threads of their own; the tracer is closed after the engine, so that every span finished is
+    // exported.
+    let telemetry = config.telemetry.clone();
+    let otlp = match &telemetry {
+        None => None,
+        Some(t) => match Otlp::new(
+            t,
+            env!("CARGO_PKG_VERSION"),
+            akit_observe::otlp::stderr_log(),
+        ) {
+            Ok(o) => Some(o),
+            Err(e) => {
+                eprintln!("akit run: telemetry: {e}");
+                return ExitCode::FAILURE;
+            }
+        },
+    };
+    let traces = telemetry.as_ref().and_then(|t| t.traces.as_ref());
+    let tracer = match (&otlp, traces) {
+        (Some(o), Some(c)) => match Tracer::new(Arc::clone(o), c) {
+            Ok(t) => Some(t),
+            Err(e) => {
+                eprintln!("akit run: telemetry: {e}");
+                return ExitCode::FAILURE;
+            }
+        },
+        _ => None,
+    };
     let graph = match compile_config(
         &config,
         &slot,
         log.as_ref().map(|l| &l.0),
         &metrics,
         Some(&acme),
+        tracer.as_ref(),
     ) {
         Ok(g) => g,
         Err(f) => {
@@ -779,7 +829,8 @@ fn run(args: &[String]) -> ExitCode {
                 stats.clone(),
             )
             .with_access_log(log.as_ref().map(|l| l.0.clone()))
-            .with_listeners(listeners.view());
+            .with_listeners(listeners.view())
+            .with_tracer(tracer.clone());
             let mut api_opts = akit_admin::Options::default();
             // What akit is doing now, at GET /status, which the dashboard reads (I63).
             let status = scrape.clone();
@@ -808,6 +859,33 @@ fn run(args: &[String]) -> ExitCode {
         })
     };
     drop(tx);
+    // The metrics /metrics serves, exported every telemetry.metrics.interval (I64).
+    let exporter = match (&otlp, telemetry.as_ref().and_then(|t| t.metrics.as_ref())) {
+        (Some(o), Some(m)) => {
+            let scrape = akit_listener::metrics::Scrape::new(
+                cell.clone(),
+                Arc::clone(&engine),
+                stats.clone(),
+            )
+            .with_access_log(log.as_ref().map(|l| l.0.clone()))
+            .with_tracer(tracer.clone());
+            let write = Box::new(move |w: &mut dyn akit_observe::MetricWriter| {
+                scrape.write_metrics(w);
+            });
+            match MetricsExporter::new(Arc::clone(o), m.interval, write) {
+                Ok(e) => Some(e),
+                Err(e) => {
+                    eprintln!("akit run: telemetry: {e}");
+                    akit_listener::shutdown(&engine, grace);
+                    return ExitCode::FAILURE;
+                }
+            }
+        }
+        _ => None,
+    };
+    if let Some(t) = &telemetry {
+        println!("akit: exporting telemetry to {}", t.endpoint);
+    }
     let mut runner = Runner {
         slot: &slot,
         listeners: &mut listeners,
@@ -818,6 +896,8 @@ fn run(args: &[String]) -> ExitCode {
         acme_config: acme_config.as_ref(),
         metrics: &metrics,
         stats: &stats,
+        telemetry: telemetry.as_ref(),
+        tracer: tracer.as_ref(),
     };
     // The certificate files watched (fit's -watch-certs), on this thread, every interval: the
     // running config's version number and the files it loaded tell the watcher what it loaded.
@@ -939,6 +1019,7 @@ fn run(args: &[String]) -> ExitCode {
             "akit run: shutdown took longer than {}; connections still open were closed",
             flags::format_duration(grace)
         );
+        close_telemetry(exporter.as_ref(), tracer.as_ref());
         if let Some((l, _)) = &log {
             l.close();
         }
@@ -947,11 +1028,23 @@ fn run(args: &[String]) -> ExitCode {
     drop(listeners);
     drop(engine);
     drop(cell);
+    close_telemetry(exporter.as_ref(), tracer.as_ref());
     if let Some((l, _)) = &log {
         l.close();
     }
     println!("akit: stopped");
     ExitCode::SUCCESS
+}
+
+/// Exports the metrics once more and the spans that wait, and stops their threads, as fit's
+/// deferred `Close`s do.
+fn close_telemetry(exporter: Option<&MetricsExporter>, tracer: Option<&Tracer>) {
+    if let Some(e) = exporter {
+        e.close();
+    }
+    if let Some(t) = tracer {
+        t.close();
+    }
 }
 
 fn main() -> ExitCode {
