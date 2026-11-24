@@ -10,14 +10,67 @@
 | | |
 | --- | --- |
 | 最后更新 | 2026-11-24 |
-| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I24、I17b 和 I18b 已完成；M2 的 I26–I33、I35–I37 和 M3 的 I39–I43、I45、I47、I49、I51 已提前完成。 |
+| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I24、I17b 和 I18b 已完成；M2 的 I26–I33、I35–I37 和 M3 的 I39–I45、I47、I49、I51 已提前完成。 |
 | akio | akio `main` 上的 `c5cf4353`（`1.0.0-rc.1`，带 A1–A8、A11、A13、A16–A21、A36–A38、A51–A53、A63–A66、A90、A91、A93 和 A94），在 `Cargo.toml` 中按 `rev` 锁定 |
 | fit | 作为规格；本计划基于 `7daee573` 阅读 |
-| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；基于 akio 的 A1 保留（按 fit 的 `binding.same`：证书文件和 ACME 名字可以变）、增加、修改和排空监听器，包括启动时的监听器，重载可新增 h3 监听器；服务 h3 的启动监听器要重启才能变）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证；按 fit 的方式每次握手选择证书，重载或 `-watch-certs` 替换证书而不关闭监听器）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；路由中间件：`rewrite`（前缀）、`redirect`、`headers`、`rate_limit`、`concurrency_limit`、`body_limit`、`basic_auth`（bcrypt，在 akio 的线程池上校验）、`client_cert`（按路由的 mTLS）、`forward_auth`（经 akio 的客户端询问认证服务，期间挂起请求）和 `circuit_breaker``forward_auth`（经 akio 的客户端询问认证服务，期间挂起请求）和 `compress`（按 q 值选择 zstd、brotli 和 gzip，流式消息体逐次写入编码）；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，内存中文件的压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`、双向流式转发 body 并联动背压，双向透传 trailer，`timeout` 和上游的 `response_timeout`、`response_header_timeout`、`response_idle_timeout`，超时回答 504，客户端无论何时离开都放弃上游请求，带预算的 `retry`，`timeout` 覆盖所有尝试；经 HTTP/1.1、h2c 和 h2 访问上游）；所有监听器和代理上的 `limits.max_body_bytes`（413），以及 `limits.write_stall_timeout`（重载也可修改）；fit 的 json、text 和 line 格式的访问日志；上游连接池，fit 的九种负载均衡策略（轮询、加权轮询、最少连接、随机、p2c，以及按客户端 IP、路径、头或 cookie 的一致性哈希）和会话保持 cookie，跳过被被动健康检查（`max_fails`、`fail_timeout`）和主动健康检查（`health_check`：http 和 tcp 探测）下线的地址；回环地址上的 Admin API（`GET /config`，也可按 JSON 指针读取，`POST /load`，用 `PUT`、`PATCH` 和 `DELETE /config` 按指针编辑，`POST /rollback/{n}`，`POST /reload`，都带 `If-Match`，除回滚外都可 `?dry_run=1`，`GET /versions`；有 `token_file` 时每个请求都要带 bearer 令牌），修改与 SIGHUP 一样作为重载应用，两者共用一份历史记录；`run -watch` 在配置文件每次变化时应用它们（fit 的文件 provider，轮询）；Admin API 的 `GET /metrics` 提供 fit 的 Prometheus 指标（有 `metrics` 时按监听器和路由的请求、上游和后端、证书、连接、重载、akio 的引擎）；为监听器在 `tls.acme` 中所列的名字通过 HTTP-01 或 TLS-ALPN-01 用 ACME 获取证书，保存在存储中，按有效期或 CA 的续期信息（ARI）续期，并装订其 OCSP 响应；默认 HTTPS（`auto_https`）：没有写监听器的配置以其路由主机名的证书经 HTTPS 服务，经 HTTP 重定向（308）到 HTTPS，空的 `tls` 得到其路由的名字；四层 `services`（I51）：`tcp` 和 `udp` 监听器代理到上游的地址，双向联动背压，空闲超时，`max_conns`，重载后排空；兼容性门禁：80 个夹具，24 个有效，55 个只因暂不支持被拒绝，1 个跳过，没有失败WebSocket 代理（I49）：HTTP/1.1 upgrade 与 HTTP/2、HTTP/3 扩展 CONNECT 代理到 HTTP/1.1 上游，双向联动背压，`tunnel_idle_timeout`；兼容性门禁：80 个夹具，19 个有效，60 个只因暂不支持被拒绝，1 个跳过，没有失败 |
+| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；基于 akio 的 A1 保留（按 fit 的 `binding.same`：证书文件和 ACME 名字可以变）、增加、修改和排空监听器，包括启动时的监听器，重载可新增 h3 监听器；服务 h3 的启动监听器要重启才能变）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证；按 fit 的方式每次握手选择证书，重载或 `-watch-certs` 替换证书而不关闭监听器）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；路由中间件：`rewrite`（前缀）、`redirect`、`headers`、`rate_limit`、`concurrency_limit`、`body_limit`、`basic_auth`（bcrypt，在 akio 的线程池上校验）、`client_cert`（按路由的 mTLS）、`forward_auth`（经 akio 的客户端询问认证服务，期间挂起请求）和 `circuit_breaker``forward_auth`（经 akio 的客户端询问认证服务，期间挂起请求）和 `compress`（按 q 值选择 zstd、brotli 和 gzip，流式消息体逐次写入编码）`forward_auth`（经 akio 的客户端询问认证服务，期间挂起请求）和 `jwt`（用 akio-crypto 校验 JSON Web Token，密钥来自 PEM 文件、密钥文件或经 akio 的客户端获取并轮换的 JWK 集）；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，内存中文件的压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`、双向流式转发 body 并联动背压，双向透传 trailer，`timeout` 和上游的 `response_timeout`、`response_header_timeout`、`response_idle_timeout`，超时回答 504，客户端无论何时离开都放弃上游请求，带预算的 `retry`，`timeout` 覆盖所有尝试；经 HTTP/1.1、h2c 和 h2 访问上游）；所有监听器和代理上的 `limits.max_body_bytes`（413），以及 `limits.write_stall_timeout`（重载也可修改）；fit 的 json、text 和 line 格式的访问日志；上游连接池，fit 的九种负载均衡策略（轮询、加权轮询、最少连接、随机、p2c，以及按客户端 IP、路径、头或 cookie 的一致性哈希）和会话保持 cookie，跳过被被动健康检查（`max_fails`、`fail_timeout`）和主动健康检查（`health_check`：http 和 tcp 探测）下线的地址；回环地址上的 Admin API（`GET /config`，也可按 JSON 指针读取，`POST /load`，用 `PUT`、`PATCH` 和 `DELETE /config` 按指针编辑，`POST /rollback/{n}`，`POST /reload`，都带 `If-Match`，除回滚外都可 `?dry_run=1`，`GET /versions`；有 `token_file` 时每个请求都要带 bearer 令牌），修改与 SIGHUP 一样作为重载应用，两者共用一份历史记录；`run -watch` 在配置文件每次变化时应用它们（fit 的文件 provider，轮询）；Admin API 的 `GET /metrics` 提供 fit 的 Prometheus 指标（有 `metrics` 时按监听器和路由的请求、上游和后端、证书、连接、重载、akio 的引擎）；为监听器在 `tls.acme` 中所列的名字通过 HTTP-01 或 TLS-ALPN-01 用 ACME 获取证书，保存在存储中，按有效期或 CA 的续期信息（ARI）续期，并装订其 OCSP 响应；默认 HTTPS（`auto_https`）：没有写监听器的配置以其路由主机名的证书经 HTTPS 服务，经 HTTP 重定向（308）到 HTTPS，空的 `tls` 得到其路由的名字；四层 `services`（I51）：`tcp` 和 `udp` 监听器代理到上游的地址，双向联动背压，空闲超时，`max_conns`，重载后排空；兼容性门禁：80 个夹具，25 个有效，54 个只因暂不支持被拒绝，1 个跳过，没有失败WebSocket 代理（I49）：HTTP/1.1 upgrade 与 HTTP/2、HTTP/3 扩展 CONNECT 代理到 HTTP/1.1 上游，双向联动背压，`tunnel_idle_timeout`；兼容性门禁：80 个夹具，19 个有效，60 个只因暂不支持被拒绝，1 个跳过，没有失败兼容性门禁：80 个夹具，23 个有效，56 个只因暂不支持被拒绝，1 个跳过，没有失败 |
 | 下一步 | M1 与 M2 的其余迭代；基于 I18b 的 I50（gRPC）和 I54（上游 TLS） |
 | akio 需求 | A1–A8、A11、A13、A16–A21、A36–A38、A51–A53、A63–A66、A90、A91、A93、A94 已在 akio 的 main 并已锁定；A9、A10、A12、A14、A15、A22–A24、A29、A30、A32、A33、A35、A45、A48、A49、A54、A57、A58、A75、A78、A79 和 A92 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
 
 ## 日志
+
+### 2026-11-24：I44，JWT 与 JWKS
+
+- `akit-config` 读取 fit 的 `jwt`（`jwks_url`、`jwks_refresh_interval` 及其旧名
+  `jwks_refresh`、`public_key_files`、`hmac_secret_file`、`algorithms`、`issuer`、`audience`、
+  `leeway`、`token_from`、`claims_headers`）为 `Handler::Jwt`，带 fit 的 `Provision` 中不需要读文件的
+  检查及其消息：需要一个密钥；`jwks_url` 是带主机的 http 或 https URL；`algorithms` 是 fit 的十三种
+  之一（`JWT_ALGORITHMS`）；`token_from` 为 `header`、`header:Name`、`cookie:name` 或 `query:name`；
+  `claims_headers` 的字段是 HTTP token 且指明一个 claim；`jwks_refresh_interval` 省略或为 0 时为 1h。
+  同时给出刷新间隔的两个名字是错误，与 fit 相同（akit 没有警告，旧名被静默接受）。它离开
+  `FIT_MIDDLEWARE`。
+- `akit-middleware` `jws`：按 fit 的 `parseToken` 拆开令牌（最多 16 KiB，三段，base64url，JSON 头中
+  `alg` 和 `kid` 为字符串，不能有 `crit`），用 akio-crypto 校验：RS256/384/512 和 PS256/384/512
+  （`rsa::PublicKey`，PSS 盐长等于哈希长度）、ES256/384/512（P-256、P-384、P-521，定长 `r || s`）、
+  EdDSA（Ed25519）和 HS256/384/512（完整标签，常量时间比较）。密钥只匹配其类型和长度，带 `alg` 的
+  JWK 只用于该算法，HMAC 密钥只能是配置自己的密钥；`none` 从不接受。密钥来自 PEM 文件（`PUBLIC KEY`、
+  `RSA PUBLIC KEY`、`CERTIFICATE`；其他块跳过）和至少 32 字节的 HMAC 密钥文件，在中间件装配时读取
+  （每个最多 1 MiB）；JWK 集按 fit 的 `parseJWKS` 解析（用于加密的、其他类型的、HMAC 的或无法解析的
+  密钥被略过；拒绝小于 2048 位的 RSA 和不在曲线上的 EC 点）。
+- `akit-middleware` `jwt`：按 fit 的方式从 `Authorization: Bearer`、字段、cookie 或 query 参数取令牌；
+  `exp` 必需、`nbf` 可选，都在 `leeway` 内，`iss` 和 `aud` 按 fit 的 `check` 检查；回答 401 和
+  `Bearer realm="fit"`（发送了令牌时加 `error="invalid_token"`）。校验过的令牌按 SHA-256 保存在
+  I/O 线程自己的缓存里（每线程 1024 个），在密钥的代数不变时有效（每个请求一次原子读），每次使用都
+  检查 `exp`/`nbf`，其 `claims_headers` 字段的值一并保存：再次使用的令牌只需一次哈希和一次查找。
+  `claims_headers` 把字段设为 claim（字符串原样，其他按 Go 的 `json.Marshal` 写出，并处理为可作字段
+  值），之前先删除客户端发来的这些字段的所有写法。
+- `akit-middleware` `jwks`：引擎就绪时（引擎槽的 `when_set`，现在在 akit-upstream 中公开）经 akio 的
+  客户端在 akit 的引擎上获取 JWK 集，此后每 `jwks_refresh_interval` 一次，令牌指明集合没有的 kid 时也
+  获取，最多每 10s 一次（fit 的 `minRefetch`）；最多 1 MiB，只接受 200，10s，最多十次重定向。在客户端的
+  回调中解析；刷新和延迟的获取是 akit 定时器线程上的任务。获取失败时保留原有密钥。令牌指明未知 kid
+  的请求，以及首次获取完成前的任何请求，挂起等待获取（`Context::suspend`，A65），同时最多 1024 个
+  （超过时回答 401），并在获取结束的线程上重新校验；基于已被替换的集合检查过的请求立即重新校验。
+  配置释放时，取消进行中的获取，并用现有密钥校验仍在等待的请求。
+- body 流式交给 handler 的请求无法挂起（ADR-109）：只有请求可能等待集合时（首次获取前，或 kid 不在
+  集合中），`jwt` 的 `body_mode` 才在监听器的 `max_body_bytes` 内要求整个 body；其他请求照常流式。
+  A75 可让它们也流式。
+- 测试：单元测试覆盖密钥集查找、令牌拆分和被拒绝的 claims、算法与匹配的密钥、Go 的 JSON 写法、
+  NumericDate、JWK 密钥和集合、claims 与时钟、令牌的位置、缓存（其他密钥、另一个中间件、上限）、
+  密钥文件的错误、基于过期集合的等待、等待者上限以及获取失败时保留密钥。`tests/jwt.rs` 经 akit 的
+  监听器：fit 的 `TestJWTAlgorithms`、`TestJWTClaims`（以及缓存中的令牌过期）、`TestJWTTokenFrom`、
+  `TestJWTClaimsHeaders`、`TestJWTParams` 和 `TestJWTMore` 的参数部分、`TestJWKSRotation`、
+  `TestJWKSRefresh`（带 `TestJWKSGet` 的失败：错误 JSON、500、过大、中断）、
+  `TestJWTClientGoneWaiting`；JWK 集不可达后恢复；200 KiB 的 body 经 `jwt` 到 `proxy` handler，其中
+  一个等待集合。fit 每次运行生成 RSA 密钥；akio-crypto 不生成 RSA 密钥，所以 `tests/data` 中有两个
+  2048 位的测试密钥。
+- 兼容性门禁：`tests/compat/supported.txt` 增加 13 个字段；`make compat-bless`：`examples/jwt` 有效，
+  `examples/whip-whep` 不再因 `jwt` 被拒绝（80 个夹具：23 个有效，56 个只因暂不支持被拒绝，1 个跳过，
+  没有失败）。顺带修正状态表“可用功能”中重复的门禁计数。
+- 与 fit 的不同：claims 不传给后续中间件，用户也不进入访问日志（A29），与 I42 相同；令牌的 JSON 可含
+  akit-config 读取器允许的内容（注释、尾随逗号），不能有重复的键；拒绝来自 PEM 文件的小于 2048 位的
+  RSA 密钥（akio-crypto 的下限）；缓存按 I/O 线程而不是 16 个共享分片；可能等待的请求的流式 body 先被
+  整个读入（A75）。
+- 待测量，在维护者的基准任务中（规则 30）：见开发计划中 I44 的基准行。
 
 ### 2026-11-24：I49，WebSocket 代理
 

@@ -1,7 +1,7 @@
 # The compatibility gate's report (docs/compatibility.md), written by make compat-bless;
 # do not edit. The gate fails when a run's outcomes differ from these lines.
 # fit 7daee573, fit-examples 9659d7e4.
-# 80 fixtures: 24 valid, 55 refused only as not supported yet (fields refused: 52), 0 in a format not supported yet, 1 skipped, 0 failed.
+# 80 fixtures: 25 valid, 54 refused only as not supported yet (fields refused: 51), 0 in a format not supported yet, 1 skipped, 0 failed.
 examples/acme-on-demand: not supported yet: acme.on_demand
 examples/acme-on-demand: not supported yet: listeners[].tls.on_demand
 examples/acme-shared-storage: not supported yet: acme.shared_storage
@@ -31,7 +31,7 @@ examples/headers: valid
 examples/hello: valid
 examples/http3: valid
 examples/https: skipped: its certificate and key files are the user's own
-examples/jwt: not supported yet: routes[].middleware[]<jwt>
+examples/jwt: valid
 examples/l4-tcp: not supported yet: services[].proxy_protocol
 examples/l4-tcp: not supported yet: services[].server_names
 examples/l4-udp: valid
@@ -111,7 +111,6 @@ examples/webrtc-proxy: not supported yet: webrtc
 examples/webrtc-turn: not supported yet: webrtc
 examples/whip-whep: not supported yet: routes[].handler<whep>
 examples/whip-whep: not supported yet: routes[].handler<whip>
-examples/whip-whep: not supported yet: routes[].middleware[]<jwt>
 examples/whip-whep: not supported yet: webrtc
 templates/conf/conf.d: valid
 templates/conf/fit.conf: valid

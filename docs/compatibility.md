@@ -175,7 +175,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 208 supported.
+3821 fields in 121 sections, at fit `7daee573`; 221 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -215,7 +215,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`http.middleware/concurrency_limit`](#fields-http-middleware-concurrency-limit) | 4 | 4 | 0 |
 | [`http.middleware/forward_auth`](#fields-http-middleware-forward-auth) | 7 | 7 | 0 |
 | [`http.middleware/headers`](#fields-http-middleware-headers) | 10 | 10 | 0 |
-| [`http.middleware/jwt`](#fields-http-middleware-jwt) | 13 | 0 | 13 |
+| [`http.middleware/jwt`](#fields-http-middleware-jwt) | 13 | 13 | 0 |
 | [`http.middleware/rate_limit`](#fields-http-middleware-rate-limit) | 9 | 9 | 0 |
 | [`http.middleware/redirect`](#fields-http-middleware-redirect) | 5 | 5 | 0 |
 | [`http.middleware/rewrite`](#fields-http-middleware-rewrite) | 6 | 4 | 2 |
@@ -300,7 +300,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 33 | 5 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 208 | 3613 |
+| **Total** | 3821 | 221 | 3600 |
 
 <a id="fields-access"></a>
 
@@ -1177,19 +1177,19 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `routes[].middleware[]<jwt>` | `module` | not supported yet |
-| `routes[].middleware[]<jwt>.params` | `object` | not supported yet |
-| `routes[].middleware[]<jwt>.params.algorithms` | `array<enum(RS256\|RS384\|RS512\|PS256\|PS384\|PS512\|ES256\|ES384\|ES512\|EdDSA\|HS256\|HS384\|HS512)>` | not supported yet |
-| `routes[].middleware[]<jwt>.params.audience` | `array<string>` | not supported yet |
-| `routes[].middleware[]<jwt>.params.claims_headers` | `map<string>` | not supported yet |
-| `routes[].middleware[]<jwt>.params.hmac_secret_file` | `string` | not supported yet |
-| `routes[].middleware[]<jwt>.params.issuer` | `string` | not supported yet |
-| `routes[].middleware[]<jwt>.params.jwks_refresh` | `duration, deprecated` | not supported yet |
-| `routes[].middleware[]<jwt>.params.jwks_refresh_interval` | `duration` | not supported yet |
-| `routes[].middleware[]<jwt>.params.jwks_url` | `string` | not supported yet |
-| `routes[].middleware[]<jwt>.params.leeway` | `duration` | not supported yet |
-| `routes[].middleware[]<jwt>.params.public_key_files` | `array<string>` | not supported yet |
-| `routes[].middleware[]<jwt>.params.token_from` | `string` | not supported yet |
+| `routes[].middleware[]<jwt>` | `module` | supported |
+| `routes[].middleware[]<jwt>.params` | `object` | supported |
+| `routes[].middleware[]<jwt>.params.algorithms` | `array<enum(RS256\|RS384\|RS512\|PS256\|PS384\|PS512\|ES256\|ES384\|ES512\|EdDSA\|HS256\|HS384\|HS512)>` | supported |
+| `routes[].middleware[]<jwt>.params.audience` | `array<string>` | supported |
+| `routes[].middleware[]<jwt>.params.claims_headers` | `map<string>` | supported |
+| `routes[].middleware[]<jwt>.params.hmac_secret_file` | `string` | supported |
+| `routes[].middleware[]<jwt>.params.issuer` | `string` | supported |
+| `routes[].middleware[]<jwt>.params.jwks_refresh` | `duration, deprecated` | supported |
+| `routes[].middleware[]<jwt>.params.jwks_refresh_interval` | `duration` | supported |
+| `routes[].middleware[]<jwt>.params.jwks_url` | `string` | supported |
+| `routes[].middleware[]<jwt>.params.leeway` | `duration` | supported |
+| `routes[].middleware[]<jwt>.params.public_key_files` | `array<string>` | supported |
+| `routes[].middleware[]<jwt>.params.token_from` | `string` | supported |
 
 <a id="fields-http-middleware-rate-limit"></a>
 

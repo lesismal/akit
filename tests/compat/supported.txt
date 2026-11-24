@@ -271,6 +271,23 @@ routes[].middleware[]<compress>.params.min_length
 routes[].middleware[]<compress>.params.max_in_flight
 routes[].handler<static>.params.compress
 
+# I44: jwt, tokens verified per request with akio-crypto's signatures and kept per I/O thread; the
+# JWK set fetched by akio's client when akit starts, refreshed and fetched again for a new kid, a
+# request waiting for it suspended. jwks_refresh is the old name of jwks_refresh_interval.
+routes[].middleware[]<jwt>
+routes[].middleware[]<jwt>.params
+routes[].middleware[]<jwt>.params.jwks_url
+routes[].middleware[]<jwt>.params.jwks_refresh_interval
+routes[].middleware[]<jwt>.params.jwks_refresh
+routes[].middleware[]<jwt>.params.public_key_files
+routes[].middleware[]<jwt>.params.hmac_secret_file
+routes[].middleware[]<jwt>.params.algorithms
+routes[].middleware[]<jwt>.params.issuer
+routes[].middleware[]<jwt>.params.audience
+routes[].middleware[]<jwt>.params.leeway
+routes[].middleware[]<jwt>.params.token_from
+routes[].middleware[]<jwt>.params.claims_headers
+
 # I37: metrics, fit's request counting by listener and route for the Admin API's /metrics; it has
 # no settings. As in fit, it needs admin.
 metrics

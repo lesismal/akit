@@ -6,7 +6,8 @@
 //! fit's `middleware/rewrite` and `middleware/headers`; `rate_limit`, `concurrency_limit` and
 //! `body_limit` (I41), as fit's `middleware/limit`; `basic_auth` and `client_cert` (I42), as fit's
 //! `middleware/auth`; `forward_auth` (I43), as fit's `middleware/auth` too, which asks an auth
-//! service on akit-upstream's pool, the request suspended meanwhile; `circuit_breaker` (I45), as fit's
+//! service on akit-upstream's pool, the request suspended meanwhile; `jwt` (I44), as fit's too, which verifies JSON
+//! Web Tokens with keys from files or a JWK set fetched by akio's client; `circuit_breaker` (I45), as fit's
 //! `middleware/breaker`; `compress` (I47), as fit's `middleware/compress`, which has akio encode
 //! streamed bodies write by write. Each is compiled from its params when the
 //! config is, and wraps its route's handler once, then (rule 12); per request it runs inline on the
@@ -20,12 +21,17 @@ mod breaker;
 mod compress;
 mod forward;
 mod headers;
+mod jwks;
+mod jws;
+mod jwt;
 mod limit;
 mod redirect;
 mod rewrite;
 mod url;
 
 use akit_runtime::{HandlerParams, Info};
+
+pub use jwt::set_jwks_min_refetch;
 
 /// The middleware modules of this crate, for [`akit_runtime::Registry::new`].
 pub static MODULES: &[Info<HandlerParams>] = &[
@@ -68,6 +74,11 @@ pub static MODULES: &[Info<HandlerParams>] = &[
         "http.middleware.headers",
         "Sets, adds and deletes request and response header fields.",
         headers::new,
+    ),
+    Info::middleware(
+        "http.middleware.jwt",
+        "Verifies JSON Web Tokens with keys from files, a secret or a JWK set, and passes claims on as fields.",
+        jwt::new,
     ),
     Info::middleware(
         "http.middleware.rate_limit",
