@@ -1,7 +1,7 @@
 # The compatibility gate's report (docs/compatibility.md), written by make compat-bless;
 # do not edit. The gate fails when a run's outcomes differ from these lines.
 # fit 7daee573, fit-examples 9659d7e4.
-# 80 fixtures: 22 valid, 57 refused only as not supported yet (fields refused: 55), 0 in a format not supported yet, 1 skipped, 0 failed.
+# 80 fixtures: 23 valid, 56 refused only as not supported yet (fields refused: 53), 0 in a format not supported yet, 1 skipped, 0 failed.
 examples/acme-on-demand: not supported yet: acme.on_demand
 examples/acme-on-demand: not supported yet: listeners[].tls.on_demand
 examples/acme-shared-storage: not supported yet: acme.shared_storage
@@ -16,7 +16,7 @@ examples/bittorrent: not supported yet: routes[].handler<bt_stream>
 examples/bittorrent: not supported yet: routes[].handler<bt_tracker>
 examples/body-limit: valid
 examples/cache: not supported yet: routes[].middleware[]<cache>
-examples/circuit-breaker: not supported yet: routes[].middleware[]<circuit_breaker>
+examples/circuit-breaker: valid
 examples/client-cert: valid
 examples/compress: not supported yet: routes[].middleware[]<compress>
 examples/concurrency-limit: valid
@@ -45,7 +45,6 @@ examples/llm-node: not supported yet: llm
 examples/llm-proxy: not supported yet: llm
 examples/load-balancing: not supported yet: routes[].handler<proxy>.params.failover
 examples/load-balancing: not supported yet: routes[].handler<proxy>.params.mirror
-examples/load-balancing: not supported yet: routes[].handler<proxy>.params.retry
 examples/load-balancing: not supported yet: routes[].handler<proxy>.params.upstreams
 examples/logging: not supported yet: log
 examples/media-pages: not supported yet: media_auth

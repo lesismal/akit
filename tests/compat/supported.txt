@@ -125,6 +125,14 @@ upstreams[].response_timeout
 upstreams[].response_header_timeout
 upstreams[].response_idle_timeout
 #
+# I45: retries, with their budget, re-picking the address (and its sticky cookie) each time;
+# a body that streams is never sent again. The proxy's timeout bounds the attempts together.
+routes[].handler<proxy>.params.retry
+routes[].handler<proxy>.params.retry.attempts
+routes[].handler<proxy>.params.retry.statuses
+routes[].handler<proxy>.params.retry.budget_ratio
+routes[].handler<proxy>.params.retry.budget_min_per_second
+#
 # I39: route matchers v2: path regexps (akio-regex, Go's syntax but for what akio-regex lacks:
 # Unicode classes, POSIX classes, \Q...\E), methods, headers, query parameters, remote IPs and
 # fit's expressions.
@@ -283,3 +291,15 @@ services[].listeners
 services[].upstream
 services[].idle_timeout
 services[].max_conns
+#
+# I45: the circuit breaker, its window counted in ten steps on atomics.
+routes[].middleware[]<circuit_breaker>
+routes[].middleware[]<circuit_breaker>.params
+routes[].middleware[]<circuit_breaker>.params.window
+routes[].middleware[]<circuit_breaker>.params.min_requests
+routes[].middleware[]<circuit_breaker>.params.error_ratio
+routes[].middleware[]<circuit_breaker>.params.statuses
+routes[].middleware[]<circuit_breaker>.params.slow_threshold
+routes[].middleware[]<circuit_breaker>.params.slow_ratio
+routes[].middleware[]<circuit_breaker>.params.open_duration
+routes[].middleware[]<circuit_breaker>.params.half_open_requests

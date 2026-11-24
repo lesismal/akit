@@ -758,6 +758,8 @@ pub enum Handler {
     ClientCert(ClientCert),
     /// The `forward_auth` middleware: an auth service asked whether a request may go on (I43).
     ForwardAuth(ForwardAuth),
+    /// The `circuit_breaker` middleware: requests stopped while too many fail (I45).
+    CircuitBreaker(CircuitBreaker),
 }
 
 impl Handler {
@@ -777,6 +779,7 @@ impl Handler {
             Handler::BasicAuth(_) => "basic_auth",
             Handler::ClientCert(_) => "client_cert",
             Handler::ForwardAuth(_) => "forward_auth",
+            Handler::CircuitBreaker(_) => "circuit_breaker",
         }
     }
 
@@ -794,6 +797,7 @@ impl Handler {
                 | Handler::BasicAuth(_)
                 | Handler::ClientCert(_)
                 | Handler::ForwardAuth(_)
+                | Handler::CircuitBreaker(_)
         )
     }
 }
@@ -988,6 +992,70 @@ pub struct ForwardAuth {
 /// fit's `forward_auth` `timeout` when left out (`DefaultForwardAuthTimeout`).
 pub const DEFAULT_FORWARD_AUTH_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// The `circuit_breaker` middleware's params, as fit's `middleware/breaker` `Breaker`, with its
+/// defaults filled in: while it is closed it counts, over the last `window`, the route's
+/// responses that were failures and those slower than `slow_threshold` to begin; once at least
+/// `min_requests` were counted and the failures reach `error_ratio`, or the slow ones
+/// `slow_ratio`, it opens, answering 503 for `open_duration`, then lets `half_open_requests`
+/// through to try.
+#[derive(Debug, Clone)]
+pub struct CircuitBreaker {
+    /// `window`: how far back requests are counted, in ten steps; 10s when left out or 0.
+    pub window: Duration,
+    /// `min_requests`: how many requests the window must have counted before it can open; at
+    /// least 1, 20 when left out.
+    pub min_requests: u64,
+    /// `error_ratio`: the share of failures in the window that opens it, from 0 to 1; 0.5 when
+    /// left out or 0.
+    pub error_ratio: f64,
+    /// `statuses`: the statuses that count as failures, each from 100 to 599; 500 to 599 when
+    /// empty (left out).
+    pub statuses: Vec<u16>,
+    /// `slow_threshold`: a response that takes longer than this to begin counts as slow; none
+    /// does when left out or 0.
+    pub slow_threshold: Option<Duration>,
+    /// `slow_ratio`: with `slow_threshold`, the share of slow responses that opens it, from 0 to
+    /// 1; 0.5 when left out or 0.
+    pub slow_ratio: f64,
+    /// `open_duration`: how long it stays open; 30s when left out or 0.
+    pub open_duration: Duration,
+    /// `half_open_requests`: how many requests it lets through half-open, which must all fare
+    /// well for it to close; at least 1, 5 when left out.
+    pub half_open_requests: u32,
+}
+
+impl Default for CircuitBreaker {
+    fn default() -> CircuitBreaker {
+        CircuitBreaker {
+            window: Duration::from_secs(10),
+            min_requests: 20,
+            error_ratio: 0.5,
+            statuses: Vec::new(),
+            slow_threshold: None,
+            slow_ratio: 0.5,
+            open_duration: Duration::from_secs(30),
+            half_open_requests: 5,
+        }
+    }
+}
+
+// The ratios are finite numbers (the decoder refuses others), so comparing their bits is an
+// equivalence.
+impl PartialEq for CircuitBreaker {
+    fn eq(&self, o: &CircuitBreaker) -> bool {
+        self.window == o.window
+            && self.min_requests == o.min_requests
+            && self.error_ratio.to_bits() == o.error_ratio.to_bits()
+            && self.statuses == o.statuses
+            && self.slow_threshold == o.slow_threshold
+            && self.slow_ratio.to_bits() == o.slow_ratio.to_bits()
+            && self.open_duration == o.open_duration
+            && self.half_open_requests == o.half_open_requests
+    }
+}
+
+impl Eq for CircuitBreaker {}
+
 /// The `respond` handler's params.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Respond {
@@ -1117,9 +1185,58 @@ pub struct Proxy {
     pub host_header: String,
     /// `timeout`: the most a request may take, from when the proxy takes it to the end of its
     /// response: one past it before its response began is answered 504, and one whose response
-    /// is under way is cut short. None when left out or 0.
+    /// is under way is cut short. None when left out or 0. With `retry`, it bounds the attempts
+    /// together.
     pub timeout: Option<Duration>,
+    /// `retry` (I45): when a request is sent again, to the address picked next; none when left
+    /// out.
+    pub retry: Option<Retry>,
 }
+
+/// The `proxy` handler's `retry`, as fit's `proxy.Retry`, with its defaults filled in: a request
+/// whose connection could not be made (or whose address had `max_pending` requests waiting) is
+/// sent again whatever its method; one of an idempotent method (GET, HEAD, OPTIONS, TRACE, PUT,
+/// DELETE) also when it failed before its response began or was answered with one of
+/// `statuses`. A request whose body streams is never sent again. Retries are held to a budget.
+#[derive(Debug, Clone)]
+pub struct Retry {
+    /// `attempts`: how many times a request may be sent again after the first, from 1 to 10;
+    /// 2 when left out.
+    pub attempts: u32,
+    /// `statuses`: the upstream's statuses, each 5xx, that have an idempotent request sent
+    /// again; none when left out.
+    pub statuses: Vec<u16>,
+    /// `budget_ratio`: the share of the requests the proxy takes that retries may add, from 0 to
+    /// 1; 0.2 when left out.
+    pub budget_ratio: f64,
+    /// `budget_min_per_second`: the retries allowed each second beyond `budget_ratio`, at least
+    /// 0; 10 when left out.
+    pub budget_min_per_second: f64,
+}
+
+impl Default for Retry {
+    fn default() -> Retry {
+        Retry {
+            attempts: 2,
+            statuses: Vec::new(),
+            budget_ratio: 0.2,
+            budget_min_per_second: 10.0,
+        }
+    }
+}
+
+// The budget's numbers are finite (the decoder refuses others), so comparing their bits is an
+// equivalence.
+impl PartialEq for Retry {
+    fn eq(&self, o: &Retry) -> bool {
+        self.attempts == o.attempts
+            && self.statuses == o.statuses
+            && self.budget_ratio.to_bits() == o.budget_ratio.to_bits()
+            && self.budget_min_per_second.to_bits() == o.budget_min_per_second.to_bits()
+    }
+}
+
+impl Eq for Retry {}
 
 /// An IP network, as fit's `netip.Prefix`: an address alone is a network of one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1344,7 +1461,7 @@ const FIT_HANDLERS: &[&str] = &[
     "whip",
 ];
 /// fit's middleware modules (its `http.middleware` namespace) that akit does not have yet.
-const FIT_MIDDLEWARE: &[&str] = &["cache", "circuit_breaker", "compress", "jwt", "wasm"];
+const FIT_MIDDLEWARE: &[&str] = &["cache", "compress", "jwt", "wasm"];
 const REWRITE_FIELDS: &[&str] = &["strip_prefix", "add_prefix"];
 /// akio-regex answers whether a pattern matches, not where (akio API request A32).
 const REWRITE_FIT_ONLY: &[&str] = &["regexp", "replacement"];
@@ -1372,6 +1489,16 @@ const FORWARD_AUTH_FIELDS: &[&str] = &[
     "copy_headers",
     "timeout",
 ];
+const CIRCUIT_BREAKER_FIELDS: &[&str] = &[
+    "window",
+    "min_requests",
+    "error_ratio",
+    "statuses",
+    "slow_threshold",
+    "slow_ratio",
+    "open_duration",
+    "half_open_requests",
+];
 const RESPOND_FIELDS: &[&str] = &["status", "headers", "body"];
 const STATIC_FIELDS: &[&str] = &[
     "root",
@@ -1389,14 +1516,25 @@ const STATIC_FIELDS: &[&str] = &[
 // max_cache_bytes and default_type wait on akio API requests A15 and A14; compress (copies
 // compressed in memory) on I47's compression.
 const STATIC_FIT_ONLY: &[&str] = &["max_cache_bytes", "compress", "default_type"];
-const PROXY_FIELDS: &[&str] = &["upstream", "trusted_proxies", "host_header", "timeout"];
-// upstreams, failover and mirror come with I46; retry with I45; tunnel_idle_timeout with I49;
+const PROXY_FIELDS: &[&str] = &[
+    "upstream",
+    "trusted_proxies",
+    "host_header",
+    "timeout",
+    "retry",
+];
+const RETRY_FIELDS: &[&str] = &[
+    "attempts",
+    "statuses",
+    "budget_ratio",
+    "budget_min_per_second",
+];
+// upstreams, failover and mirror come with I46; tunnel_idle_timeout with I49;
 // splice_uploads (splice(2), which needs unsafe or an akio API) is not planned yet.
 const PROXY_FIT_ONLY: &[&str] = &[
     "upstreams",
     "failover",
     "mirror",
-    "retry",
     "tunnel_idle_timeout",
     "splice_uploads",
 ];
@@ -2565,6 +2703,7 @@ fn middleware(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Handler> {
         "basic_auth" => basic_auth(d, params, off, &params_path).map(Handler::BasicAuth),
         "client_cert" => client_cert(d, params, &params_path).map(Handler::ClientCert),
         "forward_auth" => forward_auth(d, params, off, &params_path).map(Handler::ForwardAuth),
+        "circuit_breaker" => circuit_breaker(d, params, &params_path).map(Handler::CircuitBreaker),
         m if FIT_MIDDLEWARE.contains(&m) => {
             d.not_yet(off, &module_path, &format!("the {m:?} middleware"));
             None
@@ -3502,6 +3641,7 @@ fn proxy(d: &mut Decoder<'_>, params: Option<&Node>, path: &str, off: usize) -> 
         trusted_proxies: Vec::new(),
         host_header: String::new(),
         timeout: None,
+        retry: None,
     };
     let upstream_path = crate::error::join_field(path, "upstream");
     let Some(n) = params else {
@@ -3544,6 +3684,12 @@ fn proxy(d: &mut Decoder<'_>, params: Option<&Node>, path: &str, off: usize) -> 
         // 0, as leaving it out, is no timeout.
         p.timeout = d.duration(v, &o.at("timeout")).filter(|t| !t.is_zero());
     }
+    if let Some(v) = o.take("retry") {
+        match retry(d, v, &o.at("retry")) {
+            Some(r) => p.retry = Some(r),
+            None => ok = false,
+        }
+    }
     // Leaving both out is fit's error; upstreams alone is refused as not supported yet.
     let upstreams = o.has("upstreams");
     o.finish(d, PROXY_FIELDS, PROXY_FIT_ONLY);
@@ -3556,6 +3702,144 @@ fn proxy(d: &mut Decoder<'_>, params: Option<&Node>, path: &str, off: usize) -> 
         ok = false;
     }
     ok.then_some(p)
+}
+
+/// A ratio from 0 to 1, as fit's `min:"0" max:"1"` bound a float.
+fn ratio(d: &mut Decoder<'_>, v: &Node, at: &str) -> Option<f64> {
+    let r = d.number(v, at)?;
+    if r < 0.0 {
+        d.error(v.off, at, format!("{r} is less than the minimum 0"));
+        return None;
+    }
+    if r > 1.0 {
+        d.error(v.off, at, format!("{r} is greater than the maximum 1"));
+        return None;
+    }
+    Some(r)
+}
+
+/// A list of statuses each within `min..=max`, or `None` (an error given) when one is not:
+/// `what` names what each must be, as fit's messages do ("a 5xx status").
+fn statuses(
+    d: &mut Decoder<'_>,
+    v: &Node,
+    at: &str,
+    range: std::ops::RangeInclusive<i64>,
+    what: &str,
+) -> Option<Vec<u16>> {
+    let given = match &v.kind {
+        crate::json::Kind::Array(items) => items.len(),
+        _ => usize::MAX,
+    };
+    let list = d.array(v, at, |d, item, p| {
+        let s = d.int(item, p, i64::MIN, i64::MAX)?;
+        if !range.contains(&s) {
+            d.error(item.off, p, format!("{s} is not {what}"));
+            return None;
+        }
+        u16::try_from(s).ok()
+    });
+    (list.len() == given).then_some(list)
+}
+
+/// The `proxy` handler's `retry`, checked as fit's `Proxy.Provision` and its tags check it.
+fn retry(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Retry> {
+    let mut o = d.object(n, path)?;
+    let mut r = Retry::default();
+    let mut ok = true;
+    if let Some(v) = o.take("attempts") {
+        match d.int(v, &o.at("attempts"), 1, 10) {
+            Some(a) => r.attempts = u32::try_from(a).unwrap_or(2),
+            None => ok = false,
+        }
+    }
+    if let Some(v) = o.take("statuses") {
+        match statuses(d, v, &o.at("statuses"), 500..=599, "a 5xx status") {
+            Some(l) => r.statuses = l,
+            None => ok = false,
+        }
+    }
+    if let Some(v) = o.take("budget_ratio") {
+        match ratio(d, v, &o.at("budget_ratio")) {
+            Some(x) => r.budget_ratio = x,
+            None => ok = false,
+        }
+    }
+    if let Some(v) = o.take("budget_min_per_second") {
+        let at = o.at("budget_min_per_second");
+        match d.number(v, &at) {
+            Some(x) if x < 0.0 => {
+                d.error(v.off, &at, format!("{x} is less than the minimum 0"));
+                ok = false;
+            }
+            Some(x) => r.budget_min_per_second = x,
+            None => ok = false,
+        }
+    }
+    o.finish(d, RETRY_FIELDS, &[]);
+    ok.then_some(r)
+}
+
+/// The `circuit_breaker` middleware's params, checked as fit's `Breaker.Provision` and its tags
+/// check them; every one has a default, so it may have none.
+fn circuit_breaker(
+    d: &mut Decoder<'_>,
+    params: Option<&Node>,
+    path: &str,
+) -> Option<CircuitBreaker> {
+    let mut b = CircuitBreaker::default();
+    let Some(n) = params else {
+        return Some(b);
+    };
+    let mut o = d.object(n, path)?;
+    let mut ok = true;
+    // A duration, 0 (as leaving it out) keeping the default.
+    let mut duration = |d: &mut Decoder<'_>, o: &mut Obj<'_>, key: &str| {
+        let v = o.take(key)?;
+        let t = d.duration(v, &o.at(key));
+        ok &= t.is_some();
+        t.filter(|t| !t.is_zero())
+    };
+    if let Some(t) = duration(d, &mut o, "window") {
+        b.window = t;
+    }
+    b.slow_threshold = duration(d, &mut o, "slow_threshold");
+    if let Some(t) = duration(d, &mut o, "open_duration") {
+        b.open_duration = t;
+    }
+    if let Some(v) = o.take("min_requests") {
+        match d.int(v, &o.at("min_requests"), 1, i64::MAX) {
+            Some(m) => b.min_requests = u64::try_from(m).unwrap_or(20),
+            None => ok = false,
+        }
+    }
+    if let Some(v) = o.take("half_open_requests") {
+        match d.int(v, &o.at("half_open_requests"), 1, i64::from(u32::MAX)) {
+            Some(m) => b.half_open_requests = u32::try_from(m).unwrap_or(5),
+            None => ok = false,
+        }
+    }
+    for (key, slot) in [
+        ("error_ratio", &mut b.error_ratio),
+        ("slow_ratio", &mut b.slow_ratio),
+    ] {
+        if let Some(v) = o.take(key) {
+            match ratio(d, v, &o.at(key)) {
+                // 0, as leaving it out, keeps the default.
+                Some(r) if r > 0.0 => *slot = r,
+                Some(_) => {}
+                None => ok = false,
+            }
+        }
+    }
+    if let Some(v) = o.take("statuses") {
+        match statuses(d, v, &o.at("statuses"), 100..=599, "a status") {
+            Some(l) => b.statuses = l,
+            None => ok = false,
+        }
+    }
+    o.finish(d, CIRCUIT_BREAKER_FIELDS, &[]);
+    ok.then_some(b)
 }
 
 fn upstream(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Upstream> {

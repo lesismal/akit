@@ -97,7 +97,7 @@ fn not_supported_yet_is_not_wrong() {
     let e = errs(
         r#"{"schema_version": 1,
             "listeners": [{"name": "web", "address": ":8080", "protocols": ["http/1.1", "h2", "h3"], "tls": {}}],
-            "routes": [{"name": "hello", "match": {"host": ["www.example.com"]}, "middleware": [{"module": "compress"}], "handler": {"module": "proxy", "params": {"upstream": "app", "retry": {}}}},
+            "routes": [{"name": "hello", "match": {"host": ["www.example.com"]}, "middleware": [{"module": "compress"}], "handler": {"module": "proxy", "params": {"upstream": "app", "splice_uploads": true}}},
                        {"access": {}, "handler": {"module": "respond"}}],
             "upstreams": [{"name": "app", "addresses": ["127.0.0.1:9000"], "tls_server_name": "x"}]}"#,
     );
@@ -107,7 +107,7 @@ fn not_supported_yet_is_not_wrong() {
         paths,
         [
             "routes[0].middleware[0].module",
-            "routes[0].handler.params.retry",
+            "routes[0].handler.params.splice_uploads",
             "routes[1].access",
             "upstreams[0].tls_server_name",
         ]

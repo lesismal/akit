@@ -403,6 +403,7 @@ fn supported_fields_are_read() {
     };
     let cert = |params: &str| mw("client_cert", params);
     let forward = |more: &str| mw("forward_auth", &format!(r#""upstream": "auth"{more}"#));
+    let breaker = |params: &str| mw("circuit_breaker", params);
     let service = |fields: &str| {
         format!(
             r#"{{"listeners": [{{"name": "t", "address": ":7000", "protocols": ["tcp"]}}], "upstreams": [{{"name": "app", "addresses": ["127.0.0.1:9000"]}}], "services": [{{"name": "svc", "listeners": ["t"], "upstream": "app"{fields}}}]}}"#
@@ -826,6 +827,31 @@ fn supported_fields_are_read() {
             |c| proxy_of(c).timeout == Some(std::time::Duration::from_secs(45)),
         ),
         (
+            "routes[].handler<proxy>.params.retry",
+            proxy(r#", "retry": {}"#),
+            |c| proxy_of(c).retry == Some(akit_config::Retry::default()),
+        ),
+        (
+            "routes[].handler<proxy>.params.retry.attempts",
+            proxy(r#", "retry": {"attempts": 4}"#),
+            |c| proxy_of(c).retry.as_ref().unwrap().attempts == 4,
+        ),
+        (
+            "routes[].handler<proxy>.params.retry.statuses",
+            proxy(r#", "retry": {"statuses": [502, 503]}"#),
+            |c| proxy_of(c).retry.as_ref().unwrap().statuses == [502, 503],
+        ),
+        (
+            "routes[].handler<proxy>.params.retry.budget_ratio",
+            proxy(r#", "retry": {"budget_ratio": 0.5}"#),
+            |c| proxy_of(c).retry.as_ref().unwrap().budget_ratio == 0.5,
+        ),
+        (
+            "routes[].handler<proxy>.params.retry.budget_min_per_second",
+            proxy(r#", "retry": {"budget_min_per_second": 3}"#),
+            |c| proxy_of(c).retry.as_ref().unwrap().budget_min_per_second == 3.0,
+        ),
+        (
             "routes[].middleware",
             rewrite(r#""add_prefix": "/v2""#),
             |c| c.routes[0].middleware.len() == 1,
@@ -1111,6 +1137,54 @@ fn supported_fields_are_read() {
             "routes[].middleware[]<forward_auth>.params.timeout",
             forward(r#", "timeout": "5s""#),
             |c| forward_of(c).timeout == std::time::Duration::from_secs(5),
+        ),
+        ("routes[].middleware[]<circuit_breaker>", breaker(""), |c| {
+            matches!(c.routes[0].middleware[0], Handler::CircuitBreaker(_))
+        }),
+        (
+            "routes[].middleware[]<circuit_breaker>.params",
+            breaker(""),
+            |c| *breaker_of(c) == akit_config::CircuitBreaker::default(),
+        ),
+        (
+            "routes[].middleware[]<circuit_breaker>.params.window",
+            breaker(r#""window": "20s""#),
+            |c| breaker_of(c).window == std::time::Duration::from_secs(20),
+        ),
+        (
+            "routes[].middleware[]<circuit_breaker>.params.min_requests",
+            breaker(r#""min_requests": 7"#),
+            |c| breaker_of(c).min_requests == 7,
+        ),
+        (
+            "routes[].middleware[]<circuit_breaker>.params.error_ratio",
+            breaker(r#""error_ratio": 0.25"#),
+            |c| breaker_of(c).error_ratio == 0.25,
+        ),
+        (
+            "routes[].middleware[]<circuit_breaker>.params.statuses",
+            breaker(r#""statuses": [429, 503]"#),
+            |c| breaker_of(c).statuses == [429, 503],
+        ),
+        (
+            "routes[].middleware[]<circuit_breaker>.params.slow_threshold",
+            breaker(r#""slow_threshold": "2s""#),
+            |c| breaker_of(c).slow_threshold == Some(std::time::Duration::from_secs(2)),
+        ),
+        (
+            "routes[].middleware[]<circuit_breaker>.params.slow_ratio",
+            breaker(r#""slow_ratio": 0.75"#),
+            |c| breaker_of(c).slow_ratio == 0.75,
+        ),
+        (
+            "routes[].middleware[]<circuit_breaker>.params.open_duration",
+            breaker(r#""open_duration": "1m""#),
+            |c| breaker_of(c).open_duration == std::time::Duration::from_secs(60),
+        ),
+        (
+            "routes[].middleware[]<circuit_breaker>.params.half_open_requests",
+            breaker(r#""half_open_requests": 2"#),
+            |c| breaker_of(c).half_open_requests == 2,
         ),
         ("upstreams", upstream(""), |c| c.upstreams.len() == 1),
         ("upstreams[].name", upstream(""), |c| {
@@ -1413,6 +1487,14 @@ fn forward_of(c: &Config) -> &akit_config::ForwardAuth {
     .unwrap()
 }
 
+fn breaker_of(c: &Config) -> &akit_config::CircuitBreaker {
+    match c.routes.first().unwrap().middleware.first().unwrap() {
+        Handler::CircuitBreaker(b) => Some(b),
+        _ => None,
+    }
+    .unwrap()
+}
+
 fn cert_of(c: &Config) -> &akit_config::ClientCert {
     match c.routes.first().unwrap().middleware.first().unwrap() {
         Handler::ClientCert(cc) => Some(cc),
@@ -1464,7 +1546,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 33] = [
+    let objects: [(&str, &str, Option<&str>); 35] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         ("admin", "ADMIN_FIELDS", Some("ADMIN_FIT_ONLY")),
         ("acme", "ACME_FIELDS", Some("ACME_FIT_ONLY")),
@@ -1558,6 +1640,12 @@ fn akit_config_lists_match_the_inventory() {
             "FORWARD_AUTH_FIELDS",
             None,
         ),
+        (
+            "routes[].middleware[]<circuit_breaker>.params",
+            "CIRCUIT_BREAKER_FIELDS",
+            None,
+        ),
+        ("routes[].handler<proxy>.params.retry", "RETRY_FIELDS", None),
     ];
     let mapped: BTreeSet<&str> = objects
         .iter()
@@ -1648,6 +1736,7 @@ fn akit_config_lists_match_the_inventory() {
         "basic_auth",
         "client_cert",
         "forward_auth",
+        "circuit_breaker",
     ] {
         assert!(middleware.insert(m.to_owned()), "FIT_MIDDLEWARE lists {m}");
         read.insert(format!("routes[].middleware[]<{m}>"));
