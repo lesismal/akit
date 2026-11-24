@@ -1,7 +1,7 @@
 # The compatibility gate's report (docs/compatibility.md), written by make compat-bless;
 # do not edit. The gate fails when a run's outcomes differ from these lines.
 # fit 7daee573, fit-examples 9659d7e4.
-# 80 fixtures: 30 valid, 49 refused only as not supported yet (fields refused: 43), 0 in a format not supported yet, 1 skipped, 0 failed.
+# 80 fixtures: 31 valid, 48 refused only as not supported yet (fields refused: 42), 0 in a format not supported yet, 1 skipped, 0 failed.
 examples/acme-on-demand: not supported yet: acme.on_demand
 examples/acme-on-demand: not supported yet: listeners[].tls.on_demand
 examples/acme-shared-storage: not supported yet: acme.shared_storage
@@ -90,7 +90,7 @@ examples/sync-wasm-codec: not supported yet: sync
 examples/sync-wasm-sink: not supported yet: sync
 examples/sync-wasm-source: not supported yet: sync
 examples/sync-wasm-transform: not supported yet: sync
-examples/telemetry: not supported yet: telemetry
+examples/telemetry: valid
 examples/tunnel-hub: not supported yet: tunnel
 examples/tunnel-node: not supported yet: tunnel
 examples/tunnel-proxy: not supported yet: tunnel

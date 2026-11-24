@@ -160,7 +160,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I61 | Consul 与 etcd | I57 | todo |
 | I62 | 共享证书存储 | I30, I61 | todo |
 | I63 | 仪表盘 | I37 | todo |
-| I64 | OpenTelemetry | I37 | todo |
+| I64 | OpenTelemetry | I37 | done |
 | I65 | 打包 | I06 | todo |
 | I66 | M4 退出 | I57–I65 | todo |
 | **M5** | | | |
@@ -206,6 +206,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | 明文监听器上的 HTTP-01 检查 | I31 | 否 | 否（已实现，未测） | HTTP/1.1 和 h2c 上的 fixed，与 I31 之前的 main 做同轮 A/B（`akit run` 下每个请求一次前缀比较）。 |
 | 带 TLS-ALPN-01 和 OCSP 装订的证书选择 | I32 | 否 | 否（已实现，未测） | 与 I31 对比每秒完整 TLS 握手数，有和没有装订的响应（读取 ALPN 列表，带响应者的文件证书还要读第二个 `Published` 映射）；带响应时握手的大小。 |
 | Prometheus 指标 | I37 | 否 | 否（已实现，未测量） | fixed 和 proxy 场景下开关 `metrics` 的同轮 A/B（inline 路由的代价是一次线程局部读和三次原子加；代理的路由在 akio A29 之前还多一个装箱的应答过滤器），以及同时开启访问日志（两者共用一个钩子）；大量路由、64 个线程时的一次抓取（按线程的分片）。 |
+| OpenTelemetry | I64 | 否 | 否（已实现，未测量） | fixed 和 proxy 场景下 `telemetry.traces` 关闭、开启且 `sample_ratio` 为 0（每个请求一次字段查找）、开启且为 1（每个请求：生成 id、设置 `traceparent` local、把 span 编码进线程自己的缓冲区、一次分片锁）的同轮 A/B；默认 4 MiB 队列、collector 很慢时满负载下丢弃的 span；导出线程的开销；`Tracer::sample` 和 `Tracer::end` 的微基准（fit 的 `BenchmarkSample`、`BenchmarkEnd`）。 |
 | 匹配器 v2 与表达式 | I39 | 否 | 否（已实现，未测） | 带匹配器、表达式和路径正则的 `find_request` 微基准（不分配内存，`tests/no_alloc.rs`）；fixed 场景下对比 I39 基线的同轮 A/B（一条路由、没有匹配器：预期在噪声以内）。 |
 | 重写、跳转与头处理 | I40 | 否 | 否（已实现，未测） | 在 proxy 场景上做同轮 A/B：带 `headers`（请求和响应修改）与 `rewrite` 的路由对比不带它们的同一路由；每个请求上响应过滤器（一个装箱闭包和一次 `Arc` 克隆）的开销，以及把请求字段放在上下文 local 中的开销（在 akio API 需求 A33 之前的临时方案）。 |
 | 限流、并发与大小限制 | I41 | 否 | 否（已实现，未测） | 在 proxy 场景上做同轮 A/B：每种限制设得足够高、从不拒绝的路由对比不带它的同一路由：按 ip 和按头的 `rate_limit`（一把分片锁、一次 SipHash、一次 map 查找），1、1000 和 1000000 个客户端键、64 个线程（分片的争用），与 fit 的 `BenchmarkRate` 一样；`concurrency_limit`（同一共享缓存行上的两次原子操作，以及在 akio A48 之前的一个装箱响应过滤器和一次 `Arc` 克隆）；`body_limit`（每个请求只查一次字段）。 |
@@ -754,6 +755,8 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 - **做什么**：追踪，上下文传递到上游；OTLP 导出追踪和指标，批量处理且不在 I/O 线程上进行。
 - **完成标准**：测试中追踪数据到达 collector。
 - **涉及**：`akit-observe`。
+- **状态**：done（2026-11-24），没有 akio 请求：fit 的 tracer 跑在 akio 的 HTTP 客户端上
+  （[决策 007](decisions/007-opentelemetry.zh-CN.md)）；见进度日志。
 
 ### I65 打包
 

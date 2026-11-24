@@ -8,5 +8,11 @@ repository.workspace = true
 rust-version.workspace = true
 publish = false
 
+[dependencies]
+# OpenTelemetry's export (I64): the receiver's settings, and akio's HTTP client and TLS.
+akio = { workspace = true }
+akio-http = { workspace = true }
+akit-config = { workspace = true }
+
 [lints]
 workspace = true

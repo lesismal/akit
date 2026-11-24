@@ -103,7 +103,10 @@ pub struct Graph {
     l4: Vec<Option<akit_l4::Entry>>,
     /// The access log its requests' lines go to: the env's, when the config has `access_log`.
     access_log: Option<akit_observe::AccessLog>,
-    /// Where its requests are counted, when the config has `metrics` (I37).
+    /// The process's tracer, which samples its requests (I64).
+    tracer: Option<akit_observe::Tracer>,
+    /// Where its requests are counted, when the config has `metrics` (I37) or
+    /// `telemetry.metrics` (I64).
     requests: Option<Requests>,
     /// The config's `limits.write_stall_timeout` (I17b).
     write_stall_timeout: std::time::Duration,
@@ -209,7 +212,14 @@ impl Graph {
         self.access_log.as_ref()
     }
 
-    /// The metrics registry its requests are counted in, when the config has `metrics` (I37).
+    /// The tracer that samples its requests and records their spans, if akit traces (I64).
+    #[must_use]
+    pub fn tracer(&self) -> Option<&akit_observe::Tracer> {
+        self.tracer.as_ref()
+    }
+
+    /// The metrics registry its requests are counted in, when the config has `metrics` (I37) or
+    /// `telemetry.metrics` (I64).
     #[must_use]
     pub fn metrics(&self) -> Option<&akit_observe::metrics::Metrics> {
         self.requests.as_ref().map(|r| &r.metrics)
@@ -497,8 +507,14 @@ pub fn compile(
     }
     // Each listener's slots, as fit's graph takes them: every route on it, and the requests no
     // route takes.
-    let requests = match (&config.metrics, lease.as_mut()) {
-        (Some(_), Some(l)) => Some(Requests {
+    // With `metrics`, or with `telemetry.metrics`, which exports the same counts (I64), as fit's.
+    let counted = config.metrics.is_some()
+        || config
+            .telemetry
+            .as_ref()
+            .is_some_and(|t| t.metrics.is_some());
+    let requests = match (counted, lease.as_mut()) {
+        (true, Some(l)) => Some(Requests {
             metrics: l.metrics().clone(),
             slots: config
                 .listeners
@@ -585,6 +601,7 @@ pub fn compile(
         services,
         l4,
         access_log: config.access_log.as_ref().and(env.access_log().cloned()),
+        tracer: env.tracer().cloned(),
         requests,
         write_stall_timeout: config.limits.write_stall_timeout,
         modules: Mutex::new(Some(modules)),

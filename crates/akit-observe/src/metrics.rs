@@ -116,7 +116,7 @@ thread_local! {
 static NEXT_SLOT: AtomicUsize = AtomicUsize::new(0);
 
 /// This thread's index among those that count, for picking a shard.
-fn thread_index() -> usize {
+pub(crate) fn thread_index() -> usize {
     SLOT.with(|s| {
         let mut v = s.get();
         if v == usize::MAX {

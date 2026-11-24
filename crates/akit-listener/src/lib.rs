@@ -63,14 +63,14 @@ use std::fmt;
 use std::io;
 use std::net::{IpAddr, Ipv6Addr, SocketAddr, TcpListener, ToSocketAddrs, UdpSocket};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use akio::tls::Tls;
 use akio::{Backend, Config as EngineConfig, Engine, Listener as EngineListener};
 use akio_http::{BodyMode, Context, HttpConfig, Method, Request, Response, Version};
 use akit_config::{Listener, Protocol};
 use akit_observe::metrics::Shard as MetricsShard;
-use akit_observe::{AccessLog, Name, Record, Shard};
+use akit_observe::{AccessLog, Name, Record, SpanEnd, Trace, Tracer};
 use akit_runtime::GraphCell;
 
 pub mod metrics;
@@ -83,7 +83,7 @@ const NOT_FOUND: &str = "404 page not found\n";
 /// fit's answer to a path that has no canonical form ([`akit_router::canonicalize`]).
 const BAD_REQUEST_PATH: &str = "400 bad request path\n";
 
-pub use akit_runtime::{CANONICAL_PATH, MAX_BODY_BYTES, TLS};
+pub use akit_runtime::{CANONICAL_PATH, MAX_BODY_BYTES, TLS, TRACEPARENT};
 
 /// The akio service of one listener: each request goes to the route the current graph picks for
 /// it on this listener, or is answered 404. Runs on the I/O thread, and only reads the graph.
@@ -158,9 +158,10 @@ impl fmt::Debug for Dispatcher {
 }
 
 impl Dispatcher {
-    /// Has `log` write the request's line, and `count` count it (I37), once its response is
-    /// done, from the thread that sends it, as fit's `logRequest`: one hook for both. A request
-    /// whose response is never sent (its connection went first) has no line and is not counted.
+    /// Has `log` write the request's line, `count` count it (I37), and `traced` record its span
+    /// (I64), once its response is done, from the thread that sends it, as fit's `logRequest`:
+    /// one hook for the three. A request whose response is never sent (its connection went
+    /// first) has no line, is not counted and has no span.
     ///
     /// The hook is a boxed closure, one allocation a request, until akio can call a listener's
     /// observer with a few words of the request's own (akio API request A29).
@@ -170,49 +171,80 @@ impl Dispatcher {
         log: Option<&AccessLog>,
         count: Option<(Arc<MetricsShard>, u32)>,
         route: &str,
+        traced: Option<(Tracer, Trace)>,
     ) {
         let start = Instant::now();
-        match log {
-            Some(log) => {
-                let shard = log.shard();
-                let listener = self.log_name.clone();
-                let route = Name::new(route);
-                ctx.add_response_filter(move |resp: &mut Response, req: &Request| {
-                    let took =
-                        write_line(&shard, listener.as_str(), route.as_str(), start, resp, req);
-                    if let Some((m, slot)) = count {
-                        m.observe(slot, resp.status, took);
-                    }
+        if log.is_none() && traced.is_none() {
+            if let Some((m, slot)) = count {
+                ctx.add_response_filter(move |resp: &mut Response, _: &Request| {
+                    m.observe(slot, resp.status, start.elapsed());
                 });
             }
-            None => {
-                if let Some((m, slot)) = count {
-                    ctx.add_response_filter(move |resp: &mut Response, _: &Request| {
-                        m.observe(slot, resp.status, start.elapsed());
-                    });
-                }
-            }
+            return;
         }
+        let shard = log.map(AccessLog::shard);
+        let listener = self.log_name.clone();
+        let route = Name::new(route);
+        let tls = self.tls;
+        // When the span began, in the time it is exported in: read for a traced request alone.
+        let began = traced.as_ref().map(|_| SystemTime::now());
+        ctx.add_response_filter(move |resp: &mut Response, req: &Request| {
+            let took = start.elapsed();
+            akit_observe::upstream(|upstream| {
+                let r = access_record(listener.as_str(), route.as_str(), took, upstream, resp, req);
+                if let Some(shard) = &shard {
+                    shard.log(&r);
+                }
+                if let (Some((tracer, t)), Some(began)) = (&traced, began) {
+                    tracer.end(t, &span_end(&r, req, tls, began));
+                }
+            });
+            if let Some((m, slot)) = count {
+                m.observe(slot, resp.status, took);
+            }
+        });
     }
 }
 
-/// Writes the line of `req`, answered with `resp`, to `shard`, with the upstream the handler
-/// told akit-observe of, if any.
-fn write_line(
-    shard: &Shard,
-    listener: &str,
-    route: &str,
-    start: Instant,
-    resp: &Response,
-    req: &Request,
-) -> Duration {
-    let duration = start.elapsed();
-    akit_observe::upstream(|upstream| {
-        shard.log(&access_record(
-            listener, route, duration, upstream, resp, req,
-        ));
-    });
-    duration
+/// The span of the request `r` records, as fit's `appendSpan` fills it: begun at `began`, ended
+/// `r.duration` later.
+fn span_end<'a>(r: &Record<'a>, req: &'a Request, tls: bool, began: SystemTime) -> SpanEnd<'a> {
+    SpanEnd {
+        method: r.method,
+        route: r.route,
+        path: req.path(),
+        tls,
+        host: r.host,
+        client: r.client,
+        version: match req.version {
+            Version::Http10 => "1.0",
+            Version::Http2 => "2",
+            Version::Http3 => "3",
+            _ => "1.1",
+        },
+        status: r.status,
+        size: r.bytes_out,
+        listener: r.listener,
+        upstream: r.upstream.map_or("", |(a, _)| a),
+        start: began,
+        end: began.checked_add(r.duration).unwrap_or(began),
+    }
+}
+
+/// Whether the current graph's tracer traces the request of `ctx`, by its `traceparent` (one
+/// field of that name, or none), and if so its place in the trace, and the tracer; the upstream
+/// is then sent the `traceparent` naming its span ([`TRACEPARENT`]). A field lookup for a request
+/// not traced.
+fn sample(g: &akit_runtime::Graph, ctx: &mut Context) -> Option<(Tracer, Trace)> {
+    let tracer = g.tracer()?;
+    let t = {
+        let mut fields = ctx.req().headers.get_all("traceparent");
+        let first = fields.next();
+        let traceparent = if fields.next().is_some() { None } else { first };
+        tracer.sample(traceparent)?
+    };
+    ctx.set_local(TRACEPARENT, t.traceparent());
+    Some((tracer.clone(), t))
 }
 
 /// The access log's record of `req` answered with `resp`, as fit's `observe` fills its fields:
@@ -297,13 +329,15 @@ impl akio_http::Service for Dispatcher {
             let listener = g.listener_index(&self.listener);
             // The registry, when the graph counts requests (I37).
             let metrics = g.metrics();
+            // Whether it is traced (I64), whatever is made of it, as fit samples before routing.
+            let traced = sample(g, ctx);
             // The routes go by the canonical path, as fit's do; a path that has none is answered
             // 400, and counted with the requests no route takes.
             let (route, changed) = {
                 let Some(path) = akit_router::canonicalize(ctx.path()) else {
                     let slot = metrics.zip(listener.and_then(|i| g.request_slot(i, None)));
-                    if let Some(log) = log {
-                        self.track(ctx, Some(log), None, "");
+                    if log.is_some() || traced.is_some() {
+                        self.track(ctx, log, None, "", traced);
                     }
                     let start = Instant::now();
                     ctx.text(400, BAD_REQUEST_PATH);
@@ -345,35 +379,35 @@ impl akio_http::Service for Dispatcher {
             // A request answered before its handler returns (fit's inline ones, and the 404) is
             // counted then, with no hook; any other is counted by the hook on its response.
             let inline = route.is_none_or(|(_, r)| r.handler.inline());
+            // A request logged or traced has one hook for its line, its span and its count.
+            let hook = log.is_some() || traced.is_some();
             let hooked = match slot {
-                Some((m, slot)) if !inline || log.is_some() => m.shard().map(|s| (s, slot)),
+                Some((m, slot)) if !inline || hook => m.shard().map(|s| (s, slot)),
                 _ => None,
             };
             let start = Instant::now();
-            match log {
-                Some(log) => {
-                    self.track(
-                        ctx,
-                        Some(log),
-                        hooked,
-                        route.and_then(|(_, r)| r.name.as_deref()).unwrap_or(""),
-                    );
-                    match route {
-                        Some((_, r)) => akit_observe::dispatch_logged(|| r.handler.call(ctx)),
-                        None => unmatched(ctx, redirect_port(g, listener)),
-                    }
+            if hook {
+                self.track(
+                    ctx,
+                    log,
+                    hooked,
+                    route.and_then(|(_, r)| r.name.as_deref()).unwrap_or(""),
+                    traced,
+                );
+                match route {
+                    Some((_, r)) => akit_observe::dispatch_logged(|| r.handler.call(ctx)),
+                    None => unmatched(ctx, redirect_port(g, listener)),
                 }
-                None => {
-                    if hooked.is_some() {
-                        self.track(ctx, None, hooked, "");
-                    }
-                    match route {
-                        Some((_, r)) => r.handler.call(ctx),
-                        None => unmatched(ctx, redirect_port(g, listener)),
-                    }
-                    if let (true, Some((m, slot)), Some(status)) = (inline, slot, ctx.status()) {
-                        m.observe(slot, status, start.elapsed());
-                    }
+            } else {
+                if hooked.is_some() {
+                    self.track(ctx, None, hooked, "", None);
+                }
+                match route {
+                    Some((_, r)) => r.handler.call(ctx),
+                    None => unmatched(ctx, redirect_port(g, listener)),
+                }
+                if let (true, Some((m, slot)), Some(status)) = (inline, slot, ctx.status()) {
+                    m.observe(slot, status, start.elapsed());
                 }
             }
         });

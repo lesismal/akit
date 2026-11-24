@@ -137,7 +137,7 @@ use akit_config::Network;
 use akit_runtime::upstream::{Error, Keys, Split};
 use akit_runtime::{
     CANONICAL_PATH, Handler, HandlerParams, Info, MAX_BODY_BYTES, Provision, ProvisionError,
-    Provisioned, TLS,
+    Provisioned, TLS, TRACEPARENT,
 };
 
 /// The largest request body the proxy takes whole: a larger one, or one of no declared length,
@@ -245,6 +245,7 @@ impl akio_http::Service for Proxy {
             headers: &fields,
             peer: req.peer,
             tls: ctx.local(TLS).is_some(),
+            traceparent: ctx.local(TRACEPARENT),
         };
         let Ok(out_fields) = headers::outgoing(&client, &self.trusted, &self.host_header) else {
             ctx.respond(failure(400, grpc.as_deref()));

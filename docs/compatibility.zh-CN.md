@@ -152,7 +152,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 248 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 262 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -273,11 +273,11 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`sync.transforms/mask`](#fields-sync-transforms-mask) | 5 | 0 | 5 |
 | [`sync.transforms/route`](#fields-sync-transforms-route) | 7 | 0 | 7 |
 | [`sync.transforms/wasm`](#fields-sync-transforms-wasm) | 9 | 0 | 9 |
-| [`telemetry`](#fields-telemetry) | 14 | 0 | 14 |
+| [`telemetry`](#fields-telemetry) | 14 | 14 | 0 |
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **合计** | 3821 | 248 | 3573 |
+| **合计** | 3821 | 262 | 3559 |
 
 <a id="fields-access"></a>
 
@@ -4633,20 +4633,20 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
-| `telemetry` | `object` | 尚不支持（not supported yet） |
-| `telemetry.ca_file` | `string` | 尚不支持（not supported yet） |
-| `telemetry.cert_file` | `string` | 尚不支持（not supported yet） |
-| `telemetry.endpoint` | `string` | 尚不支持（not supported yet） |
-| `telemetry.headers_file` | `string` | 尚不支持（not supported yet） |
-| `telemetry.key_file` | `string` | 尚不支持（not supported yet） |
-| `telemetry.metrics` | `object` | 尚不支持（not supported yet） |
-| `telemetry.metrics.interval` | `duration` | 尚不支持（not supported yet） |
-| `telemetry.service_name` | `string` | 尚不支持（not supported yet） |
-| `telemetry.timeout` | `duration` | 尚不支持（not supported yet） |
-| `telemetry.traces` | `object` | 尚不支持（not supported yet） |
-| `telemetry.traces.interval` | `duration` | 尚不支持（not supported yet） |
-| `telemetry.traces.max_queue_bytes` | `integer` | 尚不支持（not supported yet） |
-| `telemetry.traces.sample_ratio` | `number` | 尚不支持（not supported yet） |
+| `telemetry` | `object` | 已支持 |
+| `telemetry.ca_file` | `string` | 已支持 |
+| `telemetry.cert_file` | `string` | 已支持 |
+| `telemetry.endpoint` | `string` | 已支持 |
+| `telemetry.headers_file` | `string` | 已支持 |
+| `telemetry.key_file` | `string` | 已支持 |
+| `telemetry.metrics` | `object` | 已支持 |
+| `telemetry.metrics.interval` | `duration` | 已支持 |
+| `telemetry.service_name` | `string` | 已支持 |
+| `telemetry.timeout` | `duration` | 已支持 |
+| `telemetry.traces` | `object` | 已支持 |
+| `telemetry.traces.interval` | `duration` | 已支持 |
+| `telemetry.traces.max_queue_bytes` | `integer` | 已支持 |
+| `telemetry.traces.sample_ratio` | `number` | 已支持 |
 
 <a id="fields-tunnel"></a>
 

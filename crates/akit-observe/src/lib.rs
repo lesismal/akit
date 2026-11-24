@@ -17,7 +17,14 @@
 //! their backends, config reloads, counted with atomic adds alone on the request path and
 //! written in Prometheus's text format.
 //!
-//! Depends on std alone.
+//! I64: OpenTelemetry, fit's: [`Tracer`] samples requests by their W3C `traceparent` and the
+//! sample ratio, and records a server span for each one sampled, encoded as OTLP JSON on the
+//! thread that sends the response into a bounded, sharded buffer that a thread of its own exports
+//! ([`trace`]); [`MetricsExporter`] exports the metrics a [`MetricWriter`] is given every
+//! interval ([`otlp`]). Both post over OTLP/HTTP through [`Otlp`], with akio's HTTP client on an
+//! engine of its own, never from an I/O thread.
+//!
+//! Depends on std, akit-config and akio (the exporters' HTTP client).
 //!
 //! Part of [akit](https://github.com/lesismal/akit); see `docs/dev-plan.md` for the iterations that
 //! fill this crate in.
@@ -25,7 +32,9 @@
 mod format;
 mod log;
 pub mod metrics;
+pub mod otlp;
 pub mod time;
+pub mod trace;
 mod zone;
 
 use std::cell::{Cell, RefCell};
@@ -38,6 +47,8 @@ pub use log::{
     AccessLog, DEFAULT_BUFFER_BYTES, DEFAULT_FLUSH_INTERVAL, FLUSH_BYTES, MAX_SHARDS, Options,
     Shard,
 };
+pub use otlp::{MetricWriter, MetricsExporter, Otlp, OtlpWriter};
+pub use trace::{SpanEnd, Trace, Tracer};
 pub use zone::{Zone, ZoneError};
 
 /// Opens where an access log's `output` says lines go: standard output for `"stdout"` (or

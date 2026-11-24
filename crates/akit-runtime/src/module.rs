@@ -71,6 +71,7 @@ pub struct Env {
     access_log: Option<akit_observe::AccessLog>,
     metrics: Option<akit_observe::metrics::Metrics>,
     acme: Option<akit_tls::Acme>,
+    tracer: Option<akit_observe::Tracer>,
 }
 
 impl Env {
@@ -84,7 +85,23 @@ impl Env {
             access_log: None,
             metrics: None,
             acme: None,
+            tracer: None,
         }
+    }
+
+    /// The same, with the process's tracer (I64), made from the `telemetry.traces` akit started
+    /// with: every graph compiled with it samples its requests and records their spans, whatever
+    /// its config's `telemetry`, which takes a restart, as fit's.
+    #[must_use]
+    pub fn with_tracer(mut self, tracer: Option<akit_observe::Tracer>) -> Env {
+        self.tracer = tracer;
+        self
+    }
+
+    /// The process's tracer, if it has one.
+    #[must_use]
+    pub fn tracer(&self) -> Option<&akit_observe::Tracer> {
+        self.tracer.as_ref()
     }
 
     /// The same, with the process's ACME manager (I31), which obtains the certificates of the
@@ -156,6 +173,7 @@ impl Env {
             access_log: self.access_log.clone(),
             metrics: self.metrics.clone(),
             acme: self.acme.clone(),
+            tracer: self.tracer.clone(),
         }
     }
 }
