@@ -53,16 +53,16 @@
 | A45 | 公开的定时器：延迟过后运行一次回调，可从任何线程调度 | 已提出（I35） | 1、11 | I35、I31、I54 |
 | A48 | 获知请求的结束：响应已完整发出，或等待中客户端已离开 | 已提出（I41） | 3、11、13 | I41、I17、I21、I37 |
 | A49 | 由中间件限制请求体大小，无论谁读取请求体 | 已提出（I41） | 7、11 | I41 |
-| A51 | `H2Client` 的流式请求：重置、超时、请求 trailer，以及遇到 `GOAWAY` 时报告失败而不是被遗忘 | 已提出（I18） | 3、10 | I18b、I50 |
-| A52 | `H2Client` 按流的背压：暂停流式响应的读取，报告上传队列 | 已提出（I18） | 8 | I18b、I50 |
-| A53 | `H2Client` 的连接：遵守并报告服务器的流数上限、连接超时、ALPN 回退到 HTTP/1.1 | 已提出（I18） | 10、11 | I18b、I54 |
+| A51 | `H2Client` 的流式请求：重置、超时、请求 trailer，以及遇到 `GOAWAY` 时报告失败而不是被遗忘 | 已在 akio 的 main（`f6750e93`，ADR-110），已锁定，I18b 已使用 | 3、10 | I18b、I50 |
+| A52 | `H2Client` 按流的背压：暂停流式响应的读取，报告上传队列 | 已在 akio 的 main（`f6750e93`，ADR-110），已锁定，I18b 已使用 | 8 | I18b、I50 |
+| A53 | `H2Client` 的连接：遵守并报告服务器的流数上限、连接超时、ALPN 回退到 HTTP/1.1 | 已在 akio 的 main（`f6750e93`，ADR-110），已锁定，I18b 已使用 | 10、11 | I18b、I54 |
 | A54 | 空闲的 HTTP/1 连接在宽限期后排空，而非立即关闭 | 已提出（I28） | 10 | I28 |
 | A57 | 握手之外可用的根证书：用系统的根证书校验证书链 | 已提出（I32） | 1、19 | I32 |
 | A58 | HTTP 服务能看到 TLS 连接协商出的 ALPN 协议（或关闭这样的连接） | 已提出（I32） | 19 | I32、I34 |
 | A63 | `akio-crypto` 中的 bcrypt 密码哈希 | 已在 akio 的 main（`4f7169c4`），已锁定 | 1、4 | I42 |
 | A64 | 每个服务端请求上的客户端已验证证书 | 已在 akio 的 main（`4f7169c4`），已锁定 | — | I42 |
 | A65 | 由中间件挂起、之后带着上下文恢复的请求 | 已在 akio 的 main（`4f7169c4`），已锁定 | 1、3、4 | I42、I43 |
-| A66 | `H2Client` 的请求遵守 `response_header_timeout`、`response_idle_timeout` 和 `CancelToken` | 已提出（I17b） | 3、10 | I17b、I18b |
+| A66 | `H2Client` 的请求遵守 `response_header_timeout`、`response_idle_timeout` 和 `CancelToken` | 已在 akio 的 main（`d27e6a20`，ADR-111），已锁定，I18b 已使用 | 3、10 | I17b、I18b |
 | A75 | 挂起消息体流式读取的请求，并暂停其消息体的读取直到恢复 | 已提出（I43） | 5、7、8 | I42、I43、I44 |
 | A78 | 每个连接（TCP 或 UDP 对端）各自的空闲超时，由其处理器设置 | 已提出（I51） | 10、11 | I51、I55 |
 | A79 | 带各自连接超时的 `Engine::dial` 与 `dial_udp` | 已提出（I51） | 10 | I51、I54、I55 |
@@ -747,6 +747,11 @@ keep-alive 连接。客户端可能已经在这条连接上发出了下一个请
 请求 trailer 会发往上游；`GOAWAY` 让其不再处理的流失败（502，或 I45 的重试）并让该连接停收新流。I50 的 gRPC
 代理四点都需要。
 
+**已完成**（akio ADR-110，已在 akio 的 main `f6750e93`，I18b 已锁定）：`H2Upload::stream()` 给出
+`H2Stream`，其 `cancel` 重置该流（`H2Upload::cancel` 亦然）；`open` 启用 `ClientRequest::timeout`；
+`H2Upload::finish_with_trailers`；`GOAWAY` 判定不处理的流以及其后的请求以新增的 `ClientError::Refused`
+失败，收到 `GOAWAY` 后 `is_open` 为 false。I18b 四项都已使用。
+
 ## A52 `H2Client` 按流的背压
 
 **问题。** 规则 8 要求背压联动：慢客户端暂停上游的读取，慢上游暂停客户端的读取。在 HTTP/1 上，akio 的
@@ -769,6 +774,10 @@ keep-alive 连接。客户端可能已经在这条连接上发出了下一个请
 **akit 的用法。** I18b：代理的转发在客户端落后时暂停 h2 下载，并按队列控制上传节奏，与 HTTP/1 完全相同；akit 的
 权宜之计（暂停的下载超过 `HELD_LIMIT`（4 MiB）后被切断，上传队列可增长到请求体上限）不再需要。
 
+**已完成**（akio ADR-110，`f6750e93`）：`H2Stream::hold_reads` 在暂停期间不归还流的窗口；
+`H2Upload::try_write`、`queued_bytes` 和 `on_drain`，受 `H2Options::max_queued_bytes` 限制。未做：
+`consume(n)`。I18b 用它们暂停下载、为上传控制节奏，与 HTTP/1.1 一样。
+
 ## A53 `H2Client` 的连接：服务器的流数上限、连接超时、ALPN 回退
 
 **问题。** h2 连接池在有空闲流的连接上开流，没有时再拨一个新连接：它必须知道服务器允许多少个流。它还要按上游的
@@ -790,6 +799,13 @@ keep-alive 连接。客户端可能已经在这条连接上发出了下一个请
 
 **akit 的用法。** I18b：`akit_upstream::h2` 按服务器的上限确定每个连接的流数，在上游的 `connect_timeout` 内拨号，
 并且对 `h2`，在服务器不说 h2 时回退到 akio 的 HTTP/1 客户端，与 fit 的 `h2` 一致（I54 加入 `tls_*` 字段）。
+
+**已完成**（akio ADR-110，`f6750e93`）：`H2Client::max_concurrent_streams`、`open_streams` 和
+`waiting_streams`，超过上限的请求在客户端中等待（`H2Options::max_pending_streams`，否则
+`ClientError::Busy`）；`connect` 使用 `H2Options::happy_eyeballs`；TLS 上若 ALPN 没有选择 `h2`，
+拨号以 `NotH2 { alpn }` 失败。未做：`connect_with` 与 `enum { H2, Http1 }`（ADR-110 已否决：竞速属于
+`H2Options`，回退时拨 akio 的 HTTP/1 客户端）。I18b 按服务器的上限确定连接容量，在 `connect_timeout`
+内对地址竞速（单个地址仍用引擎的超时，A12），遇到 `NotH2` 时对 `h2` 地址经 TLS 说 HTTP/1.1。
 
 ## A57 握手之外可用的根证书
 
@@ -922,6 +938,11 @@ fit 在线程池里校验，请求在此期间等待，之后继续执行下一�
 
 **akit 的用法。** I18b：`akit_upstream::h2` 的按地址定时检查不再逐流检查首部、静默和令牌（I17b 的权宜之计，
 在一个 100ms 的 `TICK` 之内），因其中之一而放弃的流会被重置，而不是任其运行、让其连接停收新流。
+
+**已完成**（akio ADR-111，`d27e6a20`，由 I18b 的会话实现）：按建议，不加新 API。`H2Client::request`
+与 `open` 遵守这三个字段：响应头超时从请求的 END_STREAM 到最终的 HEADERS，空闲超时为 DATA 帧之间的间隔
+（暂停读取的时间不计），`CancelToken` 现在也覆盖 h2 流；每一种都只重置该流，并以 `HeaderTimeout`、
+`IdleTimeout` 或 `Cancelled` 让请求失败一次。I18b 去掉了按地址定时检查中的这些检查。
 
 ## A78 每个连接各自的空闲超时
 

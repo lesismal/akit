@@ -1,7 +1,8 @@
-//! Upstream pools over h2c (I18): requests multiplexed on a connection, a second connection once
-//! one carries its streams, `max_conns` and `max_pending` over HTTP/2, an address that refuses
-//! connections, the exchange's timeout giving a stream up, idle connections closed, and a pool
-//! drained. The upstream is akio-http's own server (HTTP/1.1 and h2c with prior knowledge on one
+//! Upstream pools over h2c (I18, I18b): requests multiplexed on a connection, a second
+//! connection once one carries as many streams as its server allows, `max_conns` and
+//! `max_pending` over HTTP/2, an address that refuses connections, the exchange's timeout, the
+//! header timeout and a cancel token each resetting their stream alone, idle connections closed,
+//! and a pool drained. The upstream is akio-http's own server (HTTP/1.1 and h2c with prior knowledge on one
 //! port); the pools dial through an engine whose only threads are a listener's, on the backend
 //! `AKIO_TEST_BACKEND` names (epoll by default, `uring`).
 #![allow(
@@ -37,12 +38,23 @@ fn backend() -> Backend {
 }
 
 fn engine_with(service: impl akio_http::Service) -> Arc<Engine> {
+    engine_limited(None, service)
+}
+
+/// [`engine_with`], its HTTP/2 streams limited to `streams` at once when given.
+fn engine_limited(streams: Option<u32>, service: impl akio_http::Service) -> Arc<Engine> {
+    let mut cfg = akio_http::HttpConfig::default();
+    if let Some(n) = streams {
+        let mut h2 = cfg.h2.clone().unwrap_or_default();
+        h2.max_concurrent_streams = n;
+        cfg.h2 = Some(h2);
+    }
     let e = Engine::builder()
         .listen(
             Listener::tcp("127.0.0.1:0".parse().unwrap())
                 .backend(backend())
                 .threads(2)
-                .serve(akio_http::serve(service)),
+                .serve(akio_http::serve_with(cfg, service)),
         )
         .build()
         .unwrap();
@@ -66,11 +78,16 @@ struct Upstream {
 
 impl Upstream {
     fn start() -> Upstream {
+        Upstream::limited(None)
+    }
+
+    /// An upstream that allows `streams` streams at once on a connection, when given.
+    fn limited(streams: Option<u32>) -> Upstream {
         let held: Arc<Mutex<Vec<Detached>>> = Arc::default();
         let peers: Arc<Mutex<Vec<std::net::SocketAddr>>> = Arc::default();
         let requests = Arc::new(AtomicUsize::new(0));
         let (h, p, n) = (held.clone(), peers.clone(), requests.clone());
-        let engine = engine_with(move |ctx: &mut Context| {
+        let engine = engine_limited(streams, move |ctx: &mut Context| {
             n.fetch_add(1, Ordering::SeqCst);
             let req = ctx.req();
             {
@@ -187,11 +204,18 @@ fn requests_go_over_h2c() {
 }
 
 #[test]
-fn streams_share_a_connection_up_to_its_limit() {
-    let up = Upstream::start();
+fn streams_share_a_connection_up_to_the_servers_limit() {
+    // The server allows 10 streams at once on a connection: the pool learns it from its
+    // SETTINGS (here, while the first request is answered).
+    let up = Upstream::limited(Some(10));
     let pool = Pool::new(&upstream(&[up.addr()], ""), EngineSlot::with(engine()));
+    assert_eq!(
+        body(&send(&pool, "/first", 0..1).recv().unwrap().1),
+        "h2 /first/0"
+    );
+    eventually("the request is over", || pool.in_flight() == 0);
     // One more than a connection carries: a second connection is dialed for the last.
-    let n = STREAMS_PER_CONN + 1;
+    let n = 11;
     let rx = send(&pool, "/hold", 0..n);
     eventually("every request reached the upstream", || up.held() == n);
     assert_eq!(pool.h2_connections(0), Some((2, n)));
@@ -346,17 +370,80 @@ fn a_streamed_exchange_past_its_timeout_is_given_up() {
     );
     assert!(start.elapsed() < Duration::from_secs(3));
     eventually("the exchange is over", || pool.in_flight() == 0);
-    // The timeout is the address's failure; its stream was left, and its connection closed,
-    // since it carried no other.
+    // The timeout is the address's failure; akio reset its stream, and the connection stays
+    // for the next request.
     assert_eq!(pool.backend_requests(0), (1, 1));
-    eventually("the connection is closed", || {
-        pool.h2_connections(0) == Some((0, 0))
-    });
-    // A new request goes on a new connection.
+    assert_eq!(pool.h2_connections(0), Some((1, 0)));
     up.release();
     let rx = send(&pool, "/a", 0..1);
     assert_eq!(body(&rx.recv().unwrap().1), "h2 /a/0");
-    assert_eq!(up.connections(), 2);
+    assert_eq!(up.connections(), 1);
+}
+
+#[test]
+fn the_header_timeout_resets_the_stream_alone() {
+    let up = Upstream::start();
+    let pool = Pool::new(
+        &upstream(&[up.addr()], r#""response_header_timeout": "300ms""#),
+        EngineSlot::with(engine()),
+    );
+    // A request answered at once and one never answered share the connection.
+    let (tx, rx) = channel();
+    let start = Instant::now();
+    pool.stream(0, ClientRequest::get("/hold/1"), Report(tx));
+    let got = rx.recv_timeout(Duration::from_secs(10)).unwrap();
+    assert!(
+        got.starts_with("error upstream: timed out waiting for the response head"),
+        "{got}"
+    );
+    assert!(
+        start.elapsed() >= Duration::from_millis(250),
+        "{:?}",
+        start.elapsed()
+    );
+    eventually("the exchange is over", || pool.in_flight() == 0);
+    assert_eq!(pool.backend_requests(0), (1, 1));
+    assert_eq!(pool.h2_connections(0), Some((1, 0)));
+    let rx = send(&pool, "/a", 0..1);
+    assert_eq!(body(&rx.recv().unwrap().1), "h2 /a/0");
+    assert_eq!(up.connections(), 1);
+}
+
+#[test]
+fn a_cancel_token_resets_the_stream_and_is_no_failure() {
+    let up = Upstream::start();
+    let pool = Pool::new(&upstream(&[up.addr()], ""), EngineSlot::with(engine()));
+    let token = akit_upstream::CancelToken::new();
+    let (tx, rx) = channel();
+    pool.stream(
+        0,
+        ClientRequest::get("/hold/1").cancel_with(&token),
+        Report(tx),
+    );
+    eventually("the request reached the upstream", || up.held() == 1);
+    token.cancel();
+    let got = rx.recv_timeout(Duration::from_secs(10)).unwrap();
+    assert!(
+        got.starts_with("error upstream: request cancelled"),
+        "{got}"
+    );
+    eventually("the exchange is over", || pool.in_flight() == 0);
+    // The client's doing, not the address's; the connection stays.
+    assert_eq!(pool.backend_requests(0), (1, 0));
+    assert_eq!(pool.h2_connections(0), Some((1, 0)));
+    // A whole request given a cancelled token is never sent.
+    let (tx, rx) = channel();
+    pool.request(ClientRequest::get("/never").cancel_with(&token), move |r| {
+        let _ = tx.send(r);
+    });
+    let r = rx.recv_timeout(Duration::from_secs(10)).unwrap();
+    assert!(
+        matches!(r, Err(Error::Client(ClientError::Cancelled))),
+        "{}",
+        body(&r)
+    );
+    assert_eq!(up.requests.load(Ordering::SeqCst), 1);
+    assert_eq!(up.connections(), 1);
 }
 
 #[test]

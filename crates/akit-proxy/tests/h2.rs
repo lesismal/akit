@@ -5,13 +5,13 @@
 //! `TestHead`, `TestPassiveHealth`, `TestStreamDownload`, `TestStreamUpload`, `TestTrailers`,
 //! `TestUpstreamBreaksMidBody` and `TestClientAbort`, and the proxy's `timeout`; fit's
 //! `TestResponseHeaderTimeout`, `TestResponseIdleTimeout` and `TestClientAbort`'s client gone
-//! before the head (I17b, which akit's h2 tick checks: akio API request A66); and one exchange
-//! over h2, with TLS, through a pool given the test CA (the `tls_*` fields are I54's).
+//! before the head (I17b; akio heeds them over h2 since its ADR-111, akio API request A66); and
+//! one exchange over h2, with TLS, through a pool given the test CA (the `tls_*` fields are
+//! I54's).
 //!
-//! What waits on akio API requests A51–A53 (I18b): request trailers to an h2 upstream (A51), and
-//! a slow client pacing an h2 download rather than having it cut past akit_upstream's
-//! `HELD_LIMIT` (A52), which [`a_slow_client_is_cut_off_past_the_held_limit`] checks as the
-//! stopgap does it.
+//! I18b's, on akio's A51–A53 and A66: request trailers to an h2 upstream (`TestTrailers`, the
+//! request's way), a slow client holding an h2 download rather than having it cut short, and an
+//! `h2` upstream whose server chooses HTTP/1.1 in ALPN spoken to over HTTP/1.1.
 //!
 //! The upstream is akio-http's own server, HTTP/1.1 and h2c with prior knowledge on one port,
 //! which reports each request as it arrived. On the backend `AKIO_TEST_BACKEND` names (epoll by
@@ -704,7 +704,6 @@ fn response_trailers() {
 
 /// fit's `TestTrailers`, the request's way: a request's announced trailers reach the upstream.
 #[test]
-#[ignore = "akio API request A51: akio's h2 client cannot send request trailers (I18b)"]
 fn request_trailers() {
     let up = Upstream::start(|ctx, _| ctx.text(200, "ok"));
     let akit = Akit::proxy(&[up.addr()], "", "");
@@ -818,27 +817,93 @@ fn timeout() {
     held.lock().unwrap().clear();
 }
 
-/// The stopgap for akio API request A52: a client that takes nothing of a large h2 download has
-/// it cut off once akit_upstream's `HELD_LIMIT` more has arrived, rather than buffered.
+/// A client that takes nothing of a large h2 download for a while holds it (akio keeps the
+/// stream's window closed, I18b), and gets all of it once it reads; the memory's bound is
+/// `stream.rs`'s.
 #[test]
-fn a_slow_client_is_cut_off_past_the_held_limit() {
+fn a_slow_client_holds_the_h2_download() {
     let up = Upstream::start(|ctx, _| stream_reply(ctx, 1024, 32 << 10, None));
     let akit = Akit::proxy(&[up.addr()], "", r#", "max_fails": 0"#);
     let mut s = TcpStream::connect(akit.addr).unwrap();
     s.write_all(format!("GET /huge HTTP/1.1\r\nHost: {}\r\n\r\n", akit.addr).as_bytes())
         .unwrap();
-    // Nothing read for a while: the download is held, and what still arrives is counted.
+    // Nothing read for a while: the download is held.
     thread::sleep(Duration::from_secs(2));
     s.set_read_timeout(Some(Duration::from_secs(20))).unwrap();
-    let mut total = 0usize;
-    let mut buf = vec![0; 64 << 10];
+    let mut r = BufReader::new(s);
+    let mut head = String::new();
     loop {
-        match s.read(&mut buf) {
-            Ok(0) | Err(_) => break,
-            Ok(n) => total += n,
+        let mut line = String::new();
+        assert!(r.read_line(&mut line).unwrap() > 0, "no head");
+        head.push_str(&line);
+        if line == "\r\n" {
+            break;
         }
     }
-    assert!(total < 32 << 20, "{total} bytes: the whole body arrived");
+    assert!(head.starts_with("HTTP/1.1 200"), "{head}");
+    // Chunked: count what the chunks carry.
+    let mut total = 0usize;
+    loop {
+        let mut line = String::new();
+        r.read_line(&mut line).unwrap();
+        let n = usize::from_str_radix(line.trim(), 16).unwrap();
+        if n == 0 {
+            break;
+        }
+        let mut buf = vec![0; n + 2];
+        r.read_exact(&mut buf).unwrap();
+        total += n;
+    }
+    assert_eq!(total, 1024 * (32 << 10), "the whole body, not cut short");
+}
+
+/// An `h2` upstream whose server chooses HTTP/1.1 in ALPN (I18b, as fit's `h2` offers both): the
+/// pool speaks HTTP/1.1 over TLS to it, the request that waited for the dial included.
+#[test]
+fn h2_falls_back_to_http1_when_alpn_chooses_it() {
+    let d = support::certs::dir("akit-proxy-h2-fallback");
+    let ca = support::certs::Ca::new("akit test CA");
+    let ca_file = ca.write(&d, "ca.pem");
+    let (cert, key) = ca.leaf(&d, "leaf", &["localhost", "127.0.0.1"]);
+    let scfg = akio::tls::ServerConfig::builder(
+        akio::tls::Certificate::from_pem(&std::fs::read(cert).unwrap()).unwrap(),
+        akio::tls::PrivateKey::from_pem(&std::fs::read(key).unwrap()).unwrap(),
+    )
+    .alpn(["http/1.1"])
+    .build()
+    .unwrap();
+    let up = serve(akio::tls::Tls::server(
+        scfg,
+        akio_http::serve(|ctx: &mut Context| {
+            let v = if ctx.req().version == Version::Http2 {
+                "h2"
+            } else {
+                "h1"
+            };
+            ctx.text(200, format!("{v} {}", ctx.req().target));
+        }),
+    ));
+    let addr = up.local_addrs()[0].to_string();
+    let config = akit_config::from_json(
+        &format!(
+            r#"{{"upstreams": [{{"name": "app", "addresses": ["{addr}"], "protocol": "h2"}}]}}"#
+        ),
+        None,
+    )
+    .unwrap();
+    let tls = support::https::client(&ca_file, &["h2", "http/1.1"], None);
+    let pool = Pool::new(&config.upstreams[0], EngineSlot::with(clients())).with_tls(tls);
+    for path in ["/first", "/second"] {
+        let (tx, rx) = channel();
+        pool.request(ClientRequest::get(path), move |r| {
+            let _ = tx.send(r.map(|r| String::from_utf8_lossy(&r.body).into_owned()));
+        });
+        let got = rx.recv_timeout(Duration::from_secs(10)).unwrap();
+        assert_eq!(got.unwrap(), format!("h1 {path}"));
+    }
+    assert_eq!(pool.h2_connections(0), Some((0, 0)));
+    assert_eq!(pool.backend_requests(0), (2, 0));
+    up.shutdown();
 }
 
 /// The request's way over h2 with TLS: a pool of `"protocol": "h2"` given the test CA.

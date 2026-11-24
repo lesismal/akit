@@ -9,9 +9,10 @@
 //!   requests. Only the status counts: the body is given up as soon as the head has arrived. The
 //!   request's timeout, which akio arms from the start, connecting included, is the check's.
 //! - **http** over an h2 or h2c upstream (I18) does the same over HTTP/2, as fit probes over the
-//!   upstream's protocol: a connection of its own ([`H2Client::connect`]), closed once the head
-//!   has arrived; the check's timeout is kept by a timer of the prober's, as for tcp, since akio's
-//!   h2 dial has the engine's connect timeout (akio API request A53).
+//!   upstream's protocol: a connection of its own ([`H2Client::connect`], its addresses raced
+//!   within the check's timeout), closed once the head has arrived; the check's timeout in all is kept by a
+//!   timer of the prober's, as for tcp. An `h2` address whose server chooses HTTP/1.1 in ALPN
+//!   (I18b) is probed over HTTP/1.1 on TLS, as the pool's requests go to it.
 //! - **tcp** passes once a connection opens ([`HappyEyeballs::connect`]), and closes it at once.
 //!   akio dials a lone address with its engine's connect timeout (akio API request A12), so the
 //!   check's timeout is kept by a timer of the prober's.
@@ -34,7 +35,7 @@ use akio_http::Headers;
 use akio_http::client::{
     Client, ClientError, ClientOptions, ClientRequest, ResponseBody, ResponseHandler, ResponseHead,
 };
-use akio_http::h2client::{H2Client, H2Event};
+use akio_http::h2client::{H2Client, H2Event, NotH2};
 use akit_config::{HealthCheck, HealthCheckType};
 
 use crate::Inner;
@@ -106,11 +107,17 @@ pub(crate) fn start(pool: &Arc<Inner>, engine: &Arc<Engine>) {
             } else {
                 format!("{host}:{port}")
             };
+            // An `h2` address is probed over TLS, and over HTTP/1.1 once its server chose it.
+            let scheme = if pool.protocol == akit_config::UpstreamProtocol::H2 {
+                "https"
+            } else {
+                "http"
+            };
             Some(Target {
                 backend: i,
                 host: host.to_owned(),
                 port,
-                url: format!("http://{shown}{}", check.path),
+                url: format!("{scheme}://{shown}{}", check.path),
                 streak: AtomicUsize::new(0),
             })
         })
@@ -122,7 +129,11 @@ pub(crate) fn start(pool: &Arc<Inner>, engine: &Arc<Engine>) {
         opts.max_idle = 0;
         opts.max_head_bytes = MAX_HEAD_BYTES;
         opts.happy_eyeballs.connect_timeout = check.timeout;
-        Client::new(Arc::clone(engine)).with_options(opts)
+        let c = Client::new(Arc::clone(engine)).with_options(opts);
+        match pool.h2.as_ref().and_then(|t| t.tls.as_ref()) {
+            Some(Ok(tls)) => c.with_tls(tls.clone()),
+            _ => c,
+        }
     });
     let seed = std::collections::hash_map::RandomState::new().hash_one(Instant::now()) | 1;
     let pr = Arc::new(Prober {
@@ -152,10 +163,15 @@ impl Prober {
             x ^= x << 17;
             x
         };
-        let prev = self
-            .rng
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |x| Some(step(x)))
-            .unwrap_or(1);
+        // A compare-and-swap loop (`fetch_update` is deprecated from Rust 1.100 on, and its
+        // successor is past the MSRV).
+        let mut prev = self.rng.load(Ordering::Relaxed);
+        while let Err(now) =
+            self.rng
+                .compare_exchange_weak(prev, step(prev), Ordering::Relaxed, Ordering::Relaxed)
+        {
+            prev = now;
+        }
         Duration::from_nanos(
             step(prev)
                 .wrapping_mul(0x2545_f491_4f6c_dd1d)
@@ -180,11 +196,12 @@ impl Prober {
         let began = Instant::now();
         let me = Arc::clone(&self);
         let done: Done = Box::new(move |passed| me.done(i, began, passed));
-        let h2 = self
-            .live()
-            .and_then(|p| p.h2.as_ref().map(|t| t.tls.clone()));
+        let h2 = self.live().and_then(|p| {
+            let http1 = p.backends.get(t.backend).is_some_and(|b| b.h2.fell_back());
+            p.h2.as_ref().filter(|_| !http1).map(|t| t.tls.clone())
+        });
         match (&self.client, h2) {
-            (Some(_), Some(tls)) => self.probe_h2(t, tls, done),
+            (Some(_), Some(tls)) => self.probe_h2(i, t, tls, done),
             (Some(client), None) => Self::probe_http(&self, client, t, done),
             (None, _) => self.probe_tcp(t, done),
         }
@@ -193,7 +210,8 @@ impl Prober {
     /// Sends `GET` to `t` over h2 (with `tls`) or h2c, on a connection of its own, and passes on
     /// an expected status.
     fn probe_h2(
-        &self,
+        self: &Arc<Self>,
+        i: usize,
         t: &Target,
         tls: Option<Result<akio::tls::ClientConfig, String>>,
         done: Done,
@@ -211,21 +229,40 @@ impl Prober {
         let path = &self.check.path;
         let shown = t
             .url
-            .strip_prefix("http://")
-            .and_then(|u| u.strip_suffix(path.as_str()))
+            .split_once("://")
+            .and_then(|(_, u)| u.strip_suffix(path.as_str()))
             .unwrap_or_default();
         let authority = self.check.host.as_deref().unwrap_or(shown);
         let url = format!("{scheme}://{authority}{path}");
         let req = ClientRequest::get(&url).header("User-Agent", USER_AGENT);
         let check = self.check.clone();
         let failed = once.clone();
+        let mut opts = akio_http::h2client::H2Options::default();
+        opts.happy_eyeballs.connect_timeout = self.check.timeout;
+        let me = Arc::clone(self);
         H2Client::connect(
             &self.engine,
             &t.host,
             t.port,
             tls.map(|c| (c, t.host.as_str())),
-            akio_http::h2client::H2Options::default(),
+            opts,
             move |r| match r {
+                Err(e) if NotH2::of(&e).is_some() => {
+                    // The server speaks HTTP/1.1: so do the pool's requests from now on, and
+                    // this probe.
+                    if let Some(p) = me.live() {
+                        if let Some(b) = me.targets.get(i).and_then(|t| p.backends.get(t.backend)) {
+                            b.h2.fall_back();
+                        }
+                    }
+                    match (&me.client, me.targets.get(i)) {
+                        (Some(client), Some(t)) => {
+                            let done: Done = Box::new(move |passed| failed.settle(passed));
+                            Self::probe_http(&me, client, t, done);
+                        }
+                        _ => failed.settle(false),
+                    }
+                }
                 Err(_) => failed.settle(false),
                 Ok(c) => {
                     let conn = c.clone();
