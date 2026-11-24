@@ -5,7 +5,8 @@
 //! [`MODULES`] lists them for the registry. So far: `rewrite`, `redirect` and `headers` (I40), as
 //! fit's `middleware/rewrite` and `middleware/headers`; `rate_limit`, `concurrency_limit` and
 //! `body_limit` (I41), as fit's `middleware/limit`; `basic_auth` and `client_cert` (I42), as fit's
-//! `middleware/auth`. Each is compiled from its params when the
+//! `middleware/auth`; `forward_auth` (I43), as fit's `middleware/auth` too, which asks an auth
+//! service on akit-upstream's pool, the request suspended meanwhile. Each is compiled from its params when the
 //! config is, and wraps its route's handler once, then (rule 12); per request it runs inline on the
 //! I/O thread and never blocks.
 //!
@@ -13,6 +14,7 @@
 //! fill this crate in.
 
 mod auth;
+mod forward;
 mod headers;
 mod limit;
 mod redirect;
@@ -42,6 +44,11 @@ pub static MODULES: &[Info<HandlerParams>] = &[
         "http.middleware.concurrency_limit",
         "Limits how many of a route's requests are under way at once.",
         limit::new_concurrency,
+    ),
+    Info::middleware(
+        "http.middleware.forward_auth",
+        "Asks an auth service whether a request may go on, and passes fields of its answer on.",
+        forward::new,
     ),
     Info::middleware(
         "http.middleware.headers",

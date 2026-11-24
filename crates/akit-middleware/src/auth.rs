@@ -366,7 +366,7 @@ impl Handler for BasicAuthed {}
 
 /// Whether field names `a` and `b` are the same once case is ignored and `_` is read as `-`: an
 /// application behind CGI reads them as one.
-fn same_field(a: &str, b: &str) -> bool {
+pub(crate) fn same_field(a: &str, b: &str) -> bool {
     let fold = |c: u8| {
         if c == b'_' {
             b'-'

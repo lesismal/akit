@@ -231,6 +231,17 @@ routes[].middleware[]<client_cert>.params
 routes[].middleware[]<client_cert>.params.optional
 routes[].middleware[]<client_cert>.params.subject_header
 
+# I43: forward_auth, the auth service asked on akit-upstream's pool (akio's asynchronous client),
+# the request suspended meanwhile and resumed from the answer; cancelled when the client goes.
+# A body that would stream to the handler is read whole first (akio API request A75).
+routes[].middleware[]<forward_auth>
+routes[].middleware[]<forward_auth>.params
+routes[].middleware[]<forward_auth>.params.upstream
+routes[].middleware[]<forward_auth>.params.uri
+routes[].middleware[]<forward_auth>.params.request_headers
+routes[].middleware[]<forward_auth>.params.copy_headers
+routes[].middleware[]<forward_auth>.params.timeout
+
 # I37: metrics, fit's request counting by listener and route for the Admin API's /metrics; it has
 # no settings. As in fit, it needs admin.
 metrics

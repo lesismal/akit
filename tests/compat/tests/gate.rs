@@ -396,6 +396,7 @@ fn supported_fields_are_read() {
         )
     };
     let cert = |params: &str| mw("client_cert", params);
+    let forward = |more: &str| mw("forward_auth", &format!(r#""upstream": "auth"{more}"#));
     let samples: Vec<(&str, String, Check)> = vec![
         ("schema_version", r#"{"schema_version": 1}"#.into(), |c| {
             c.schema_version == 1
@@ -1034,6 +1035,42 @@ fn supported_fields_are_read() {
             cert(r#""subject_header": "X-Subject""#),
             |c| cert_of(c).subject_header == "X-Subject",
         ),
+        ("routes[].middleware[]<forward_auth>", forward(""), |c| {
+            matches!(c.routes[0].middleware[0], Handler::ForwardAuth(_))
+        }),
+        (
+            "routes[].middleware[]<forward_auth>.params",
+            forward(""),
+            |c| {
+                forward_of(c).uri == "/"
+                    && forward_of(c).timeout == std::time::Duration::from_secs(10)
+            },
+        ),
+        (
+            "routes[].middleware[]<forward_auth>.params.upstream",
+            forward(""),
+            |c| forward_of(c).upstream == "auth",
+        ),
+        (
+            "routes[].middleware[]<forward_auth>.params.uri",
+            forward(r#", "uri": "/api/verify?app=1""#),
+            |c| forward_of(c).uri == "/api/verify?app=1",
+        ),
+        (
+            "routes[].middleware[]<forward_auth>.params.request_headers",
+            forward(r#", "request_headers": ["Cookie", "Authorization"]"#),
+            |c| forward_of(c).request_headers == ["Cookie", "Authorization"],
+        ),
+        (
+            "routes[].middleware[]<forward_auth>.params.copy_headers",
+            forward(r#", "copy_headers": ["Remote-User"]"#),
+            |c| forward_of(c).copy_headers == ["Remote-User"],
+        ),
+        (
+            "routes[].middleware[]<forward_auth>.params.timeout",
+            forward(r#", "timeout": "5s""#),
+            |c| forward_of(c).timeout == std::time::Duration::from_secs(5),
+        ),
         ("upstreams", upstream(""), |c| c.upstreams.len() == 1),
         ("upstreams[].name", upstream(""), |c| {
             c.upstreams[0].name == "app"
@@ -1297,6 +1334,14 @@ fn basic_of(c: &Config) -> &akit_config::BasicAuth {
     .unwrap()
 }
 
+fn forward_of(c: &Config) -> &akit_config::ForwardAuth {
+    match c.routes.first().unwrap().middleware.first().unwrap() {
+        Handler::ForwardAuth(f) => Some(f),
+        _ => None,
+    }
+    .unwrap()
+}
+
 fn cert_of(c: &Config) -> &akit_config::ClientCert {
     match c.routes.first().unwrap().middleware.first().unwrap() {
         Handler::ClientCert(cc) => Some(cc),
@@ -1348,7 +1393,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 30] = [
+    let objects: [(&str, &str, Option<&str>); 31] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         ("admin", "ADMIN_FIELDS", Some("ADMIN_FIT_ONLY")),
         ("acme", "ACME_FIELDS", Some("ACME_FIT_ONLY")),
@@ -1433,6 +1478,11 @@ fn akit_config_lists_match_the_inventory() {
         (
             "routes[].middleware[]<client_cert>.params",
             "CLIENT_CERT_FIELDS",
+            None,
+        ),
+        (
+            "routes[].middleware[]<forward_auth>.params",
+            "FORWARD_AUTH_FIELDS",
             None,
         ),
     ];
@@ -1524,6 +1574,7 @@ fn akit_config_lists_match_the_inventory() {
         "body_limit",
         "basic_auth",
         "client_cert",
+        "forward_auth",
     ] {
         assert!(middleware.insert(m.to_owned()), "FIT_MIDDLEWARE lists {m}");
         read.insert(format!("routes[].middleware[]<{m}>"));

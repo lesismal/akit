@@ -144,7 +144,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I40 | Rewrites, redirects, headers | I39 | done |
 | I41 | Rate, concurrency and size limits | I39 | done |
 | I42 | Basic auth and mTLS | I39 | done |
-| I43 | ForwardAuth | I42 | todo |
+| I43 | ForwardAuth | I42 | done |
 | I44 | JWT and JWKS | I42 | todo |
 | I45 | Retries, circuit breakers, route timeouts | I17 | todo |
 | I46 | Weighted services, mirroring, failover | I45 | todo |
@@ -219,7 +219,8 @@ commit and result.
 | Rewrites, redirects, headers | I40 | no | no (built, not measured) | Same-run A/B on the proxy scenario of a route with `headers` (request and response changes) and `rewrite` against the same route without them; the cost per request of the response filter (a boxed closure and an `Arc` clone) and of the request fields kept in a context local (the stopgap until akio API request A33). |
 | Rate, concurrency and size limits | I41 | no | no (built, not measured) | Same-run A/B on the proxy scenario of a route with each limit set high enough never to refuse, against the route without it: `rate_limit` by ip and by header (a shard lock, a SipHash, a map lookup), with 1, 1000 and 1000000 clients' keys and 64 threads (the shards' contention), as fit's `BenchmarkRate`; `concurrency_limit` (two atomic operations on one shared line, and a boxed response filter with an `Arc` clone until akio A48); `body_limit` (nothing per request but a field lookup). |
 | Basic auth and client certificates | I42 | no | no (built, not measured) | Same-run A/B on the proxy scenario of a route with `basic_auth` (a remembered password: a base64 decode, an HMAC-SHA-256 and the request's fields rewritten into a context local until akio A33) and with `client_cert` and `subject_header` (the subject cached per thread), against the route without them, over HTTP/1.1, h2 and h3; the first check of a password (a suspension and a hop to akio's pool and back) at a few hundred new users a second, and a flood of wrong passwords against remembered users' latency. |
-| Middlewares (retries and the rest) | I43–I48 | no | no (not built yet) | I56 benchmarks every middleware; same-run A/B of each on the proxy scenario. |
+| Forward auth | I43 | no | no (built, not measured) | Same-run A/B on the proxy scenario of a route with `forward_auth` against a fast local auth service, against the route without it, over HTTP/1.1 and h2: the cost of the check (the auth request's fields built, a suspension, one exchange on the auth upstream's pool, the resume on the answer's I/O thread); latency and memory with thousands of requests waiting on a slow auth service, and the fast route's latency meanwhile. |
+| Middlewares (retries and the rest) | I44–I48 | no | no (not built yet) | I56 benchmarks every middleware; same-run A/B of each on the proxy scenario. |
 | Compression | I47 | no | no (not built yet) | Against fit, each encoding, as I47 asks. |
 | WebSocket and gRPC proxying | I49, I50 | no | no (not built yet) | Messages a second and memory per connection against fit. |
 | TCP and UDP proxying, SNI routing, many protocols on one port | I51–I53 | no | no (not built yet) | Against fit and nginx's `stream`, as I51 asks; the cost of sniffing on a shared port. |

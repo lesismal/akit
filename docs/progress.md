@@ -11,14 +11,61 @@ done and where the work differs from the plan.
 | | |
 | --- | --- |
 | Last updated | 2026-11-24 |
-| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I24 done (I17b and I18b wait on akio); M2's I26–I28, I30–I32 and I35–I37 and M3's I39–I42 done early. |
+| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I24 done (I17b and I18b wait on akio); M2's I26–I28, I30–I32 and I35–I37 and M3's I39–I43 done early. |
 | akio | `4f7169c4` on akio's `main` (`1.0.0-rc.1`, with A1–A8, A11, A13, A16–A21, A36–A38 and A63–A65), pinned by `rev` in `Cargo.toml` |
 | fit | the specification; read at `7daee573` for this plan |
-| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept (as fit's `binding.same`: certificate files and ACME names may change), added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication; certificates chosen per handshake as fit's, replaced by a reload or by `-watch-certs` without closing the listener) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; route middleware: `rewrite` (prefixes), `redirect`, `headers`, `rate_limit`, `concurrency_limit`, `body_limit`, `basic_auth` (bcrypt, checked on akio's pool) and `client_cert` (mTLS per route); the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`, bodies streamed both ways with linked backpressure, trailers both ways, `timeout` and the upstream's `response_timeout`, 504 for timeouts, the upstream request given up when the client goes mid-body; upstreams over HTTP/1.1, h2c and h2); `limits.max_body_bytes` on every listener (413) and in the proxy; access logs in fit's json, text and line formats; upstream pools with fit's nine load balancing policies (round robin, weighted round robin, least connections, random, p2c, and consistent hashing of the client's IP, the path, a header or a cookie) and sticky cookies, passing over addresses taken out by passive health checks (`max_fails`, `fail_timeout`) and by active ones (`health_check`: http and tcp probes); the Admin API on loopback (`GET /config`, by JSON pointer too, `POST /load`, edits by pointer with `PUT`, `PATCH` and `DELETE /config`, `POST /rollback/{n}`, `POST /reload`, each with `If-Match` and all but a rollback with `?dry_run=1`, `GET /versions`; with `token_file`, a bearer token on every request), changes applied as SIGHUP's reloads, one history for both; Prometheus metrics at the Admin API's `GET /metrics` (requests by listener and route with `metrics`, upstreams and backends, certificates, connections, reloads, akio's engine); certificates obtained with ACME through HTTP-01 or TLS-ALPN-01 for the names listeners list in `tls.acme`, kept in a storage and renewed by their lifetime or the CA's renewal information (ARI), their OCSP responses stapled; the compatibility gate: 80 fixtures, 18 valid, 61 refused only as not supported yet18 valid, 61 refused only as not supported yet, 1 skipped, none failed |
+| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept (as fit's `binding.same`: certificate files and ACME names may change), added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication; certificates chosen per handshake as fit's, replaced by a reload or by `-watch-certs` without closing the listener) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; route middleware: `rewrite` (prefixes), `redirect`, `headers`, `rate_limit`, `concurrency_limit`, `body_limit`, `basic_auth` (bcrypt, checked on akio's pool), `client_cert` (mTLS per route) and `forward_auth` (an auth service asked on akio's client, the request suspended meanwhile); the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`, bodies streamed both ways with linked backpressure, trailers both ways, `timeout` and the upstream's `response_timeout`, 504 for timeouts, the upstream request given up when the client goes mid-body; upstreams over HTTP/1.1, h2c and h2); `limits.max_body_bytes` on every listener (413) and in the proxy; access logs in fit's json, text and line formats; upstream pools with fit's nine load balancing policies (round robin, weighted round robin, least connections, random, p2c, and consistent hashing of the client's IP, the path, a header or a cookie) and sticky cookies, passing over addresses taken out by passive health checks (`max_fails`, `fail_timeout`) and by active ones (`health_check`: http and tcp probes); the Admin API on loopback (`GET /config`, by JSON pointer too, `POST /load`, edits by pointer with `PUT`, `PATCH` and `DELETE /config`, `POST /rollback/{n}`, `POST /reload`, each with `If-Match` and all but a rollback with `?dry_run=1`, `GET /versions`; with `token_file`, a bearer token on every request), changes applied as SIGHUP's reloads, one history for both; Prometheus metrics at the Admin API's `GET /metrics` (requests by listener and route with `metrics`, upstreams and backends, certificates, connections, reloads, akio's engine); certificates obtained with ACME through HTTP-01 or TLS-ALPN-01 for the names listeners list in `tls.acme`, kept in a storage and renewed by their lifetime or the CA's renewal information (ARI), their OCSP responses stapled; the compatibility gate: 80 fixtures, 19 valid, 60 refused only as not supported yet, 1 skipped, none failed |
 | Next | I17b (akio now has A36–A38); I18b once akio has A51–A53 |
-| akio requests | A1–A8, A11, A13, A16–A21, A36–A38 and A63–A65 on akio's main and pinned; A9, A10, A12, A14, A15, A22–A24, A29, A30, A32, A33, A35, A45, A48, A49, A51–A54, A57 and A58 requested ([akio API requests](akio-api-requests.md)) |
+| akio requests | A1–A8, A11, A13, A16–A21, A36–A38 and A63–A65 on akio's main and pinned; A9, A10, A12, A14, A15, A22–A24, A29, A30, A32, A33, A35, A45, A48, A49, A51–A54, A57, A58 and A75 requested ([akio API requests](akio-api-requests.md)) |
 
 ## Log
+
+### 2026-11-24: I43, ForwardAuth
+
+- `akit-config` reads fit's `forward_auth` (`upstream`, `uri`, `request_headers`, `copy_headers`,
+  `timeout`) into `Handler::ForwardAuth`, with the checks of fit's `Provision` and its messages:
+  `uri` a path with a query or not (starting with `/`, no control character, valid `%` escapes in
+  the path), field names HTTP tokens, `timeout` 10s when left out or 0. It leaves
+  `FIT_MIDDLEWARE`. That `upstream` names one of the config's is checked when the middleware is
+  provisioned, as the proxy's.
+- `akit-middleware` `forward`: the auth service is sent a `GET` of `uri` (its path escaped as Go
+  writes it) on the upstream's pool, by its load balancing, with the request's fields (those
+  `request_headers` names, or all but the hop-by-hop ones, those `Connection` names and
+  `Content-Length`, `Content-Type` and `Expect`), its `Host`, and `X-Forwarded-Method`, `-Proto`,
+  `-Host`, `-Uri` and `-For`. The request is suspended (`Context::suspend`, akio's A65) and resumed
+  from the pool's callbacks, so it holds no I/O thread while it waits. A 2xx answer lets it
+  through with the fields `copy_headers` names, after every spelling of them the client sent is
+  removed (as `basic_auth`'s `user_header`); its body is read and dropped when small, else given
+  up. Any other answer is the client's, its status, fields but the hop-by-hop ones, and its body
+  when within 64 KiB (a larger one is given up and the answer goes without it, as fit's). Past
+  `timeout` (the request's own timeout on the pool), 504; an auth service that cannot be reached
+  or fails, 502; a pool closed meanwhile, 503. A client that goes while its request waits cancels
+  the auth request (`Context::on_gone` and akio's `CancelToken`, A37/A38), which is not counted
+  against the auth service's health.
+- A request whose body would stream to its handler cannot be suspended (ADR-109): as
+  `basic_auth`, `forward_auth`'s `body_mode` asks for it whole, within the listener's
+  `max_body_bytes`. Requested of akio as **A75** (a request whose body streams, suspended with its
+  reads held).
+- Tests: unit tests of field names, the fields sent by default, origin forms and the failures'
+  statuses. `tests/forward_auth.rs` through akit's listener, with an auth service on plain
+  threads: fit's `TestForwardAuth` (allowed with the auth service's fields and what it saw, forged
+  fields in every spelling, a redirect passed on with its fields and body, a 401 whose 200 KiB body
+  is dropped, 504 past the timeout), `TestForwardAuthUnreachable` (502),
+  `TestForwardAuthClientGone` (the auth service sees its request given up),
+  `TestForwardAuthSlowService` (128 requests wait half a second at once while another route
+  answers within 250 ms) and `TestForwardAuthParams`; `request_headers` limiting what is sent, a
+  chunked body read whole before the check, and fit's `examples/forward-auth` shape: `forward_auth`
+  in front of the `proxy` handler, the app getting the copied field and a 200 KiB body. fit's `TestForwardAuthAuthenticates` has no akit
+  counterpart yet (no request is marked authenticated, as for I42).
+- Compatibility gate: 7 fields more in `tests/compat/supported.txt`; `make compat-bless`:
+  `examples/forward-auth` is valid (80 fixtures: 19 valid, 60 refused only as not supported yet, 1
+  skipped, none failed).
+- Differs from fit: a request body that would stream is read whole before the check (A75); fit's
+  drain of waiting checks when a config is replaced is the pool's drain here (the check finishes,
+  then the old graph's handler answers); the request is not marked authenticated for the access
+  log or a cache (as I42).
+- To measure, in the maintainer's benchmark tasks (rule 30): see the dev plan's benchmark row for
+  I43.
 
 ### 2026-11-24: I42, basic auth and mTLS
 
