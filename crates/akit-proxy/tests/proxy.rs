@@ -357,6 +357,8 @@ fn forwarding() {
     let seen = recv(&rx);
     assert!(seen.body.is_empty());
     assert!(seen.values("content-length").is_empty(), "{seen:?}");
+    // No body, no framing: not an empty chunked one.
+    assert!(seen.values("transfer-encoding").is_empty(), "{seen:?}");
     assert!(seen.values("user-agent").is_empty(), "{seen:?}");
 }
 
@@ -701,8 +703,8 @@ fn config_errors() {
             "routes[0].handler.params.upstream: upstream or upstreams is needed",
         ),
         (
-            r#"{"upstream": "app", "timeout": "60s"}"#,
-            "routes[0].handler.params.timeout: not supported yet",
+            r#"{"upstream": "app", "retry": {}}"#,
+            "routes[0].handler.params.retry: not supported yet",
         ),
     ] {
         let json = config1(params, "127.0.0.1:1");

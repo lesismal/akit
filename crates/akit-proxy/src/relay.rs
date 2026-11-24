@@ -14,6 +14,12 @@
 //!   client, the upstream connection's reads are held ([`Download::hold_reads`]), and resumed once
 //!   the client has taken it ([`BodyStream::on_drain`]).
 //!
+//! I17 adds what ends an exchange early, and the trailers (see the crate's docs): the client's
+//! body sink dropped before the body ended is the client gone mid-upload ([`Sink`]'s `Drop`),
+//! which gives the upstream request up; trailers go on both ways, those of a request filtered to
+//! the names it announced; a body of no declared length cut short on HTTP/2 or HTTP/3 ends with
+//! [`BROKEN_TRAILER`].
+//!
 //! Nothing here blocks or waits: each side's callbacks run on their I/O threads, and the state
 //! they share is behind one lock that is never held while calling into akio, which may call back.
 
@@ -39,11 +45,17 @@ pub(crate) const DOWNLOAD_PENDING: usize = 64 << 10;
 /// `StreamThreshold`.
 pub(crate) const WHOLE_RESPONSE: u64 = 64 << 10;
 
+/// The trailer an HTTP/2 or HTTP/3 response of no declared length ends with when its upstream
+/// failed mid-body: fit's `Fit-Error` and its `brokenTrailer`.
+pub(crate) const BROKEN_TRAILER: (&str, &str) = ("Fit-Error", "upstream failed mid-body");
+
 /// What the request's two sides share.
 struct Shared {
     /// The right to answer the client, until the response begins or a failure is answered.
     answer: Option<Detached>,
     up: Upload,
+    /// The client went before its body ended: the upstream request was given up for it.
+    gone: bool,
 }
 
 /// A streamed request body on its way up.
@@ -94,17 +106,26 @@ fn logged<R>(log: Option<&Logged>, f: impl FnOnce() -> R) -> R {
 pub(crate) struct Client {
     shared: Arc<Mutex<Shared>>,
     reads: Option<BodyReads>,
+    /// The trailers the request announced.
+    names: Vec<String>,
 }
 
 /// Starts relaying `ctx`'s request: takes its body's reads when it streams (registering its body
-/// sink, held to `limit`), and detaches it. `None` when it was answered already.
-pub(crate) fn start(ctx: &mut Context, limit: u64, chunked: bool) -> Option<(Client, bool)> {
+/// sink, held to `limit`, sent up `chunked` with the trailers of `names`), and detaches it.
+/// `None` when it was answered already.
+pub(crate) fn start(
+    ctx: &mut Context,
+    limit: u64,
+    chunked: bool,
+    names: Vec<String>,
+) -> Option<(Client, bool)> {
     let reads = ctx.body_reads();
     let streamed = reads.is_some();
     let answer = ctx.detach()?;
     let shared = Arc::new(Mutex::new(Shared {
         answer: Some(answer),
         up: Upload::default(),
+        gone: false,
     }));
     if let Some(reads) = &reads {
         let mut sink = Sink {
@@ -113,10 +134,29 @@ pub(crate) fn start(ctx: &mut Context, limit: u64, chunked: bool) -> Option<(Cli
             limit,
             received: 0,
             chunked,
+            names: names.clone(),
+            ended: false,
         };
         ctx.on_body(move |_, ev| sink.event(ev));
     }
-    Some((Client { shared, reads }, streamed))
+    Some((
+        Client {
+            shared,
+            reads,
+            names,
+        },
+        streamed,
+    ))
+}
+
+impl Client {
+    /// A body that arrived whole, with `trailers`, to go up as a stream: chunked, so that it
+    /// carries those of them the request announced.
+    pub(crate) fn preload(&self, body: &[u8], trailers: &Headers) {
+        let mut s = lock(&self.shared);
+        s.up.pending.extend_from_slice(body);
+        s.up.end = Some(headers::announced(trailers, &self.names));
+    }
 }
 
 /// The client's streamed body, as it arrives.
@@ -126,6 +166,10 @@ struct Sink {
     limit: u64,
     received: u64,
     chunked: bool,
+    /// The trailers the request announced: only those go up.
+    names: Vec<String>,
+    /// The body ended, or was refused: dropped after that, the sink is done, not cut off.
+    ended: bool,
 }
 
 impl Sink {
@@ -177,6 +221,8 @@ impl Sink {
     }
 
     fn end(&mut self, trailers: &Headers) {
+        self.ended = true;
+        let trailers = headers::announced(trailers, &self.names);
         let body = {
             let mut s = lock(&self.shared);
             if s.up.done {
@@ -185,17 +231,18 @@ impl Sink {
             match s.up.body.take() {
                 Some(b) => b,
                 None => {
-                    s.up.end = Some(trailers.clone());
+                    s.up.end = Some(trailers);
                     return;
                 }
             }
         };
-        finish(body, trailers, self.chunked);
+        finish(body, &trailers, self.chunked);
     }
 
     /// The body grew past the listener's `max_body_bytes`: answered 413, as fit answers it, and
     /// the upstream request given up.
     fn too_large(&mut self) {
+        self.ended = true;
         let (body, answer) = {
             let mut s = lock(&self.shared);
             if s.up.done {
@@ -211,6 +258,29 @@ impl Sink {
         if let Some(answer) = answer {
             answer.respond(crate::fail(413));
         }
+    }
+}
+
+impl Drop for Sink {
+    /// Dropped before the body ended, the sink is the client gone mid-upload (akio drops a
+    /// request's body sink with its connection or stream): the upstream request is given up, its
+    /// unfinished body closing the upstream connection, as fit's `OnCancel` cancels it.
+    fn drop(&mut self) {
+        if self.ended {
+            return;
+        }
+        let body = {
+            let mut s = lock(&self.shared);
+            if s.up.done {
+                return;
+            }
+            s.up.done = true;
+            s.gone = true;
+            s.up.pending = Vec::new();
+            s.up.end = None;
+            s.up.body.take()
+        };
+        drop(body);
     }
 }
 
@@ -245,14 +315,21 @@ fn finish(body: Arc<RequestBody>, trailers: &Headers, chunked: bool) {
 enum Out {
     /// No head from the upstream yet.
     Waiting,
-    /// Collected, to be sent whole.
+    /// Collected, to be sent whole (or, ending with trailers, streamed to carry them).
     Whole {
         status: u16,
         headers: Headers,
         body: Vec<u8>,
+        /// The trailers the upstream announced, and whether the response may have a body.
+        names: Vec<String>,
+        bodyless: bool,
     },
-    /// Sent as it arrives.
-    Stream { stream: BodyStream, up: Download },
+    /// Sent as it arrives; `framed` says by a declared length.
+    Stream {
+        stream: BodyStream,
+        up: Download,
+        framed: bool,
+    },
     /// Over, or given up.
     Done,
 }
@@ -371,6 +448,8 @@ impl Exchange for Relay {
                 status: head.status,
                 headers: headers::incoming(&head.headers, self.head),
                 body: Vec::with_capacity(usize::try_from(capacity).unwrap_or(0)),
+                names: headers::trailer_names(&head.headers),
+                bodyless,
             };
             return;
         }
@@ -384,10 +463,21 @@ impl Exchange for Relay {
         // chunked, and has no way yet to send it framed by its length (akio API request A35).
         let keep_length =
             length.is_some() && matches!(self.version, Version::Http2 | Version::Http3);
-        let fields = headers::incoming(&head.headers, keep_length);
+        let mut fields = headers::incoming(&head.headers, keep_length);
+        // Its trailers follow it, as their announcement does (fit's `begin`).
+        let names = headers::trailer_names(&head.headers);
+        if !names.is_empty() {
+            fields.append("Trailer", names.join(", "));
+        }
         let status = head.status;
         match logged(self.log.as_ref(), || answer.stream_response(status, fields)) {
-            Some(stream) => self.out = Out::Stream { stream, up },
+            Some(stream) => {
+                self.out = Out::Stream {
+                    stream,
+                    up,
+                    framed: length.is_some(),
+                }
+            }
             None => {
                 up.cancel();
                 self.out = Out::Done;
@@ -398,7 +488,7 @@ impl Exchange for Relay {
     fn on_data(&mut self, chunk: &[u8]) {
         match &mut self.out {
             Out::Whole { body, .. } => body.extend_from_slice(chunk),
-            Out::Stream { stream, up } => {
+            Out::Stream { stream, up, .. } => {
                 if stream.write(chunk).is_err() {
                     // The client went: the response is not wanted.
                     up.cancel();
@@ -421,14 +511,32 @@ impl Exchange for Relay {
         match mem::replace(&mut self.out, Out::Done) {
             Out::Whole {
                 status,
-                headers,
+                mut headers,
                 body,
+                names,
+                bodyless,
             } => {
-                if let Some(answer) = self.answer() {
+                let Some(answer) = self.answer() else { return };
+                if bodyless || trailers.is_empty() {
                     let mut resp = Response::new(status);
                     resp.headers = headers;
                     resp.body = body;
-                    logged(self.log.as_ref(), || answer.respond(resp));
+                    return logged(self.log.as_ref(), || answer.respond(resp));
+                }
+                // akio sends a whole response's trailers on HTTP/2 alone: streamed, chunked
+                // on HTTP/1.1, it carries them everywhere, announced.
+                let names = if names.is_empty() {
+                    trailers.iter().map(|(n, _)| n.to_owned()).collect()
+                } else {
+                    names
+                };
+                headers.append("Trailer", names.join(", "));
+                if let Some(stream) = logged(self.log.as_ref(), || {
+                    answer.stream_response(status, headers)
+                }) {
+                    if stream.write(&body).is_ok() {
+                        stream.finish_with_trailers(trailers.clone());
+                    }
                 }
             }
             Out::Stream { stream, .. } => {
@@ -445,11 +553,25 @@ impl Exchange for Relay {
     fn on_error(&mut self, e: Error) {
         self.end_upload();
         match mem::replace(&mut self.out, Out::Done) {
-            // Broken off mid-body: unfinished, the stream closes the client's connection, which
-            // is what tells an HTTP/1 client that the body is short.
-            Out::Stream { stream, .. } => drop(stream),
+            // Broken off mid-body (or cut short by its timeout): unfinished, the stream closes an
+            // HTTP/1 client's connection, which is what tells it that the body is short, and
+            // resets an HTTP/2 or HTTP/3 stream. One of no declared length there ends with fit's
+            // trailer instead, as fit ends it.
+            Out::Stream { stream, framed, .. } => {
+                if !framed && matches!(self.version, Version::Http2 | Version::Http3) {
+                    let mut t = Headers::new();
+                    t.append(BROKEN_TRAILER.0, BROKEN_TRAILER.1);
+                    stream.finish_with_trailers(t);
+                } else {
+                    drop(stream);
+                }
+            }
             Out::Waiting | Out::Whole { .. } => self.fail(&e),
             Out::Done => {}
         }
+    }
+
+    fn gave_up(&self) -> bool {
+        lock(&self.shared).gone
     }
 }

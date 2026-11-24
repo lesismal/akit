@@ -20,9 +20,11 @@
 //!   `connect_timeout`, per address tried, when the address resolves to several; akio dials a
 //!   lone one with its engine's `connect_timeout` instead (akio API request A12), which
 //!   `akit_listener::engine` sets to the shortest of the upstreams' as a stopgap.
-//! - Every exchange is bounded in all, from the request's start, waiting for a connection
-//!   included, by [`DEFAULT_RESPONSE_TIMEOUT`], fit's `response_timeout` default (the field
-//!   itself comes with I17).
+//! - **`response_timeout`** (I17): every exchange is bounded in all, from the request's start,
+//!   waiting for a connection included, to the end of its response's body; fit's default,
+//!   [`DEFAULT_RESPONSE_TIMEOUT`], when the config leaves it out. A request may ask for less
+//!   ([`ClientRequest::timeout`]), never more. fit's `response_header_timeout` and
+//!   `response_idle_timeout` wait on akio API request A36 (I17b).
 //!
 //! I19 adds load balancing ([`balance`]): [`Pool::pick`] chooses the address by the upstream's
 //! `load_balancing` and `weights` (round robin, smooth weighted round robin, least connections),
@@ -92,7 +94,7 @@ pub use health::Health;
 
 /// How long a whole exchange may take, from [`Pool::send`] to the end of the response, waiting for
 /// a connection included: fit's `response_timeout` default, 1h.
-pub const DEFAULT_RESPONSE_TIMEOUT: Duration = Duration::from_secs(3600);
+pub use akit_config::DEFAULT_RESPONSE_TIMEOUT;
 
 /// Where the engine pools dial through will be: filled once, by whoever builds the engine,
 /// after the pools are made. Cheap to clone; clones share the engine.
@@ -256,6 +258,12 @@ pub trait Exchange: Send + 'static {
     fn on_end(&mut self, trailers: &Headers);
     /// The request failed, or (after the head) its body did not complete.
     fn on_error(&mut self, e: Error);
+    /// Whether the exchange gave the request up itself before its response began, its client
+    /// gone (as by dropping its unfinished [`RequestBody`]): asked as the request fails, which
+    /// is then not counted against the address.
+    fn gave_up(&self) -> bool {
+        false
+    }
 }
 
 /// Holds and resumes the reads of a response's body ([`Exchange::on_head`]), or gives it up.
@@ -441,7 +449,7 @@ impl Pool {
                 epoch: Instant::now(),
                 max_conns: u.max_conns.max(1),
                 max_pending: u.max_pending,
-                timeout: DEFAULT_RESPONSE_TIMEOUT,
+                timeout: u.response_timeout,
                 opts,
                 engine,
                 client: OnceLock::new(),
@@ -464,7 +472,8 @@ impl Pool {
     }
 
     /// The same pool, but bounding each exchange by `timeout` in all, waiting for a connection
-    /// included, rather than [`DEFAULT_RESPONSE_TIMEOUT`]. Only before the pool is shared.
+    /// included, rather than by the upstream's `response_timeout`. Only before the pool is
+    /// shared.
     #[must_use]
     pub fn with_timeout(mut self, timeout: Duration) -> Pool {
         if let Some(inner) = Arc::get_mut(&mut self.inner) {
@@ -525,6 +534,12 @@ impl Pool {
     /// this list.
     pub fn addresses(&self) -> impl ExactSizeIterator<Item = &str> + '_ {
         self.inner.backends.iter().map(|b| b.address.as_str())
+    }
+
+    /// The most an exchange may take in all: the upstream's `response_timeout`.
+    #[must_use]
+    pub fn response_timeout(&self) -> Duration {
+        self.inner.timeout
     }
 
     /// The upstream's `connect_timeout`.
@@ -630,7 +645,7 @@ impl Pool {
     /// Sends `req` to the address at `backend` ([`addresses`](Self::addresses)), and calls `done`
     /// exactly once with the response or the reason there is none. `req.url` is the request's
     /// target in origin form (`/path?query`), which the pool puts after the address; its timeout,
-    /// when set, bounds the exchange in place of the pool's. Runs on any thread and never blocks;
+    /// when set, bounds the exchange too: the shorter of it and the pool's holds. Runs on any thread and never blocks;
     /// `done` must not block either.
     ///
     /// Past `max_conns` requests under way to the address, it waits for one to finish; past
@@ -832,7 +847,7 @@ impl Inner {
             done,
             since,
         } = w;
-        let limit = req.timeout.unwrap_or(self.timeout);
+        let limit = req.timeout.map_or(self.timeout, |t| t.min(self.timeout));
         let left = limit.saturating_sub(since.elapsed());
         let (Some(b), Some(client)) = (self.backends.get(backend), self.client.get()) else {
             // Neither happens: `send` checked both before the slot was taken.
@@ -978,8 +993,8 @@ impl ResponseHandler for Streamed {
         }
         self.pool.release(self.backend);
         // Any response is a success, as for `send`, unless its body broke off: the client going
-        // (a cancel) is not the address's failure.
-        let failed = !(self.headed && self.cancelled.load(Ordering::SeqCst));
+        // (a cancel, or the request given up before its response) is not the address's failure.
+        let failed = !(self.headed && self.cancelled.load(Ordering::SeqCst)) && !self.x.gave_up();
         self.pool.record(self.backend, failed);
         self.x.on_error(Error::Client(e));
         self.pool.finish_one();

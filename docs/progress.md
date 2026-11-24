@@ -11,14 +11,77 @@ done and where the work differs from the plan.
 | | |
 | --- | --- |
 | Last updated | 2026-11-24 |
-| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I16, I19–I24 done; M2's I26, I30, I35 and I37 and M3's I39, I40 and I41 done early. |
+| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I17, I19–I24 done (I17b waits on akio); M2's I26, I30, I35 and I37 and M3's I39, I40 and I41 done early. |
 | akio | `60547435` on akio's `main` (`1.0.0-rc.1`, with A1–A5, A7, A8, A11, A13 and A16–A21), pinned by `rev` in `Cargo.toml` |
 | fit | the specification; read at `7daee573` for this plan |
-| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept, added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication; certificates chosen per handshake as fit's, replaced by a reload or by `-watch-certs` without closing the listener) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; route middleware: `rewrite` (prefixes), `redirect`, `headers`, `rate_limit`, `concurrency_limit` and `body_limit`; the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`, bodies streamed both ways with linked backpressure); `limits.max_body_bytes` on every listener (413) and in the proxy; access logs in fit's json, text and line formats; upstream pools with round robin, weighted round robin and least connections, passing over addresses taken out by passive health checks (`max_fails`, `fail_timeout`) and by active ones (`health_check`: http and tcp probes); the Admin API on loopback (`GET /config`, by JSON pointer too, `POST /load` with `If-Match`, `GET /versions`), loads applied as SIGHUP's reloads, one history for both; Prometheus metrics at the Admin API's `GET /metrics` (requests by listener and route with `metrics`, upstreams and backends, certificates, connections, reloads, akio's engine); the compatibility gate: 80 fixtures, 13 valid, 66 refused only as not supported yet, 1 skipped, none failed |
-| Next | I17 |
-| akio requests | A1–A5, A7, A8, A11, A13 and A16–A21 on akio's main and pinned; A6 on akio branch `claude/x509-csr`; A9, A10, A12, A14, A15, A22–A24, A29, A30, A32, A33, A35, A45, A48 and A49 requested ([akio API requests](akio-api-requests.md)) |
+| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept, added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication; certificates chosen per handshake as fit's, replaced by a reload or by `-watch-certs` without closing the listener) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; route middleware: `rewrite` (prefixes), `redirect`, `headers`, `rate_limit`, `concurrency_limit` and `body_limit`; the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`, bodies streamed both ways with linked backpressure, trailers both ways, `timeout` and the upstream's `response_timeout`, 504 for timeouts, the upstream request given up when the client goes mid-body); `limits.max_body_bytes` on every listener (413) and in the proxy; access logs in fit's json, text and line formats; upstream pools with round robin, weighted round robin and least connections, passing over addresses taken out by passive health checks (`max_fails`, `fail_timeout`) and by active ones (`health_check`: http and tcp probes); the Admin API on loopback (`GET /config`, by JSON pointer too, `POST /load` with `If-Match`, `GET /versions`), loads applied as SIGHUP's reloads, one history for both; Prometheus metrics at the Admin API's `GET /metrics` (requests by listener and route with `metrics`, upstreams and backends, certificates, connections, reloads, akio's engine); the compatibility gate: 80 fixtures, 14 valid, 65 refused only as not supported yet11 valid, 68 refused only as not supported yet, 1 skipped, none failed |
+| Next | I18; I17b once akio has A36–A38 |
+| akio requests | A1–A5, A7, A8, A11, A13 and A16–A21 on akio's main and pinned; A6 on akio branch `claude/x509-csr`; A9, A10, A12, A14, A15, A22–A24, A29, A30, A32, A33, A35–A38, A45, A48 and A49 requested ([akio API requests](akio-api-requests.md)) |
 
 ## Log
+
+### 2026-11-24: I17, reverse proxy III: timeouts, cancellation, trailers
+
+- Config: the upstream's `response_timeout` (`Upstream::response_timeout`, fit's 1h when left out
+  or 0, `akit_config::DEFAULT_RESPONSE_TIMEOUT`) and the proxy's `timeout`
+  (`Proxy::timeout`, none when left out or 0) are read; `response_header_timeout` and
+  `response_idle_timeout` stay refused as not supported yet (A36).
+- `akit-upstream`: a pool bounds each exchange by its upstream's `response_timeout`
+  (`Pool::response_timeout`); a request's own timeout bounds it too, the shorter holding (it used
+  to replace the pool's). `Exchange::gave_up`: an exchange that gave its request up before the
+  response (its client gone) is not counted against the address.
+- `akit-proxy`, as fit's `exchange`:
+  - Timeouts: a connect that times out (`ClientError::Io` of kind `TimedOut`, as akio reports
+    `connect_timeout`) is answered 504, as the request timeouts already were. The proxy's
+    `timeout` goes on each request, and the pool takes the shorter of it and `response_timeout`:
+    past it before the head, 504; after, the response is cut short.
+  - Cut short (by the timeout, or an upstream that broke off): an HTTP/1 client's connection is
+    closed, an HTTP/2 or HTTP/3 stream of a declared length reset, and one of no declared length
+    ended with fit's `Fit-Error: upstream failed mid-body` trailer (`relay::BROKEN_TRAILER`).
+  - Cancellation: a client gone mid-download was already noticed (the next write fails; a held
+    download hears it at once, as akio calls `on_drain` on a close). A client gone mid-upload
+    over HTTP/2 or HTTP/3 drops its body's sink (`Sink`'s `Drop`, before `End`), which drops the
+    upstream request's unfinished body (closing its connection), and the exchange says it gave
+    up, so the address is not counted as failing.
+  - Trailers, as fit's: the names a request announces (`headers::trailer_names`, fit's
+    `trailerNames`) go up in its `Trailer` and only those trailers follow
+    (`headers::announced`); a request that announces trailers goes up chunked, one whose body
+    came whole too (written up as a stream from `Client::preload`), and one that announces none
+    sends none. A streamed response keeps the upstream's `Trailer` announcement; a whole one
+    (within 64 KiB) that ends with trailers is streamed, announced, so that HTTP/1.1 carries them
+    (akio sends a whole response's trailers on HTTP/2 alone).
+- Tests: `akit-proxy/tests/failure.rs`, fit's `failure_test.go` ported: `connect_timeout` (a
+  listener whose backlog is full; skipped where a full backlog refuses, as on macOS),
+  `timeout_before_head` (`response_timeout`, `timeout`, and the shorter of both: 504 after it, the
+  upstream's connection closed), `cut_short_mid_body` (`TestResponseIdleTimeout` with
+  `response_timeout`, and `TestUpstreamBreaksMidBody` over h2c: HTTP/1.1 bodies end short, h2c
+  ones of a length fail and those of none end with `Fit-Error`), `client_abort` (mid-download
+  over HTTP/1.1 and h2c, mid-upload over h2c: the upstream sees its connection closed, and its
+  failure count stays 0), `trailers` (`TestTrailers`: announced request trailers up, unannounced
+  ones dropped, response trailers back over HTTP/1.1 and h2c, small and streamed). Unit tests of
+  `trailer_names` and `announced`, `status_of` for I/O timeouts, the config fields and their
+  errors, the pool's `response_timeout` against a request's own, and `forwarding` checks that a
+  GET without a body goes up without framing. The compat gate's samples cover the two fields.
+- Checked: `make check` on macOS; `akit-proxy`, `akit-upstream` and `akit-config` tests on Linux
+  (gpu51) with epoll and with `AKIO_TEST_BACKEND=uring`.
+- Differences from the plan and from fit (I17b, both plan files):
+  - fit's `response_header_timeout` and `response_idle_timeout` need per-request header and idle
+    timeouts in akio's client (akio API request A36): `TestResponseHeaderTimeout` is not ported,
+    and `TestResponseIdleTimeout` is ported with `response_timeout` in its place.
+  - A client that goes before the response's head (with its body all sent), and an HTTP/1 client
+    that goes mid-upload, go unnoticed until the upstream answers or `response_timeout` passes:
+    akio's client has no handle to cancel a request before its head (A37), a detached server
+    request hears nothing of its client going, and akio's HTTP/1 session keeps a streamed
+    request's body sink while the proxy's pending answer holds the connection (A38, found by
+    `client_abort`). `TestClientAbort`'s "before the header" case and its HTTP/1 upload are not
+    ported.
+  - fit's `limits.write_stall_timeout` stays refused: akio's engine `write_timeout` is the same
+    bound but cannot change on reload (A38); akio's default (60s) bounds a client that stops
+    reading meanwhile.
+  - A request's trailers are tested over HTTP/1.1 alone: akio's h2 client sends none.
+- For a benchmark task: nothing on the hot path changed but one `Trailer` lookup per proxied
+  request and one more field in the shared state; the proxy scenario's row in the
+  [benchmark table](dev-plan.md#benchmark-and-optimization-status) names requests with trailers.
 
 ### 2026-11-24: I41, rate, concurrency and size limits
 

@@ -1,7 +1,7 @@
 # The compatibility gate's report (docs/compatibility.md), written by make compat-bless;
 # do not edit. The gate fails when a run's outcomes differ from these lines.
 # fit 7daee573, fit-examples 9659d7e4.
-# 80 fixtures: 13 valid, 66 refused only as not supported yet (fields refused: 68), 0 in a format not supported yet, 1 skipped, 0 failed.
+# 80 fixtures: 14 valid, 65 refused only as not supported yet (fields refused: 66), 0 in a format not supported yet, 1 skipped, 0 failed.
 examples/acme-on-demand: not supported yet: acme
 examples/acme-on-demand: not supported yet: listeners[].tls.acme
 examples/acme-on-demand: not supported yet: listeners[].tls.on_demand
@@ -24,7 +24,7 @@ examples/client-cert: not supported yet: acme
 examples/client-cert: not supported yet: listeners[].tls.acme
 examples/client-cert: not supported yet: routes[].middleware[]<client_cert>
 examples/compress: not supported yet: routes[].middleware[]<compress>
-examples/concurrency-limit: not supported yet: upstreams[].response_timeout
+examples/concurrency-limit: valid
 examples/console: not supported yet: admin.console
 examples/console: not supported yet: admin.store
 examples/docker-compose: not supported yet: providers
@@ -33,7 +33,6 @@ examples/forward-auth: not supported yet: routes[].middleware[]<forward_auth>
 examples/forward-proxy: not supported yet: routes[].handler<forward_proxy>
 examples/grpc: not supported yet: upstreams[].protocol: the "h2c" protocol for upstreams
 examples/grpc: not supported yet: upstreams[].response_idle_timeout
-examples/grpc: not supported yet: upstreams[].response_timeout
 examples/headers: valid
 examples/hello: valid
 examples/http3: not supported yet: acme
@@ -54,7 +53,6 @@ examples/limits: not supported yet: limits.write_stall_timeout
 examples/llm-hub: not supported yet: llm
 examples/llm-node: not supported yet: llm
 examples/llm-proxy: not supported yet: llm
-examples/load-balancing: not supported yet: routes[].handler<fastcgi>.params.timeout
 examples/load-balancing: not supported yet: routes[].handler<proxy>.params.failover
 examples/load-balancing: not supported yet: routes[].handler<proxy>.params.mirror
 examples/load-balancing: not supported yet: routes[].handler<proxy>.params.retry
@@ -81,7 +79,6 @@ examples/proxy: not supported yet: limits.max_pending_bytes
 examples/proxy: not supported yet: limits.write_stall_timeout
 examples/proxy: not supported yet: upstreams[].response_header_timeout
 examples/proxy: not supported yet: upstreams[].response_idle_timeout
-examples/proxy: not supported yet: upstreams[].response_timeout
 examples/proxy-protocol: not supported yet: listeners[].proxy_protocol
 examples/rate-limit: valid
 examples/redirect: not supported yet: routes[].middleware[]<redirect>.params.to: a group of regexp ($1, ${name}) in to: akio-regex does not capture groups yet (akio API request A32)

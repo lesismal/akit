@@ -10,14 +10,61 @@
 | | |
 | --- | --- |
 | 最后更新 | 2026-11-24 |
-| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I16、I19–I24 已完成；M2 的 I26、I30、I35、I37 和 M3 的 I39、I40、I41 已提前完成。 |
+| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I17、I19–I24 已完成（I17b 等待 akio）；M2 的 I26、I30、I35、I37 和 M3 的 I39、I40、I41 已提前完成。 |
 | akio | akio `main` 上的 `60547435`（`1.0.0-rc.1`，带 A1–A5、A7、A8、A11、A13 和 A16–A21），在 `Cargo.toml` 中按 `rev` 锁定 |
 | fit | 作为规格；本计划基于 `7daee573` 阅读 |
-| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；基于 akio 的 A1 保留、增加、修改和排空监听器，包括启动时的监听器，重载可新增 h3 监听器；服务 h3 的启动监听器要重启才能变）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证；按 fit 的方式每次握手选择证书，重载或 `-watch-certs` 替换证书而不关闭监听器）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；路由中间件：`rewrite`（前缀）、`redirect`、`headers`、`rate_limit`、`concurrency_limit` 和 `body_limit`；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`、双向流式转发 body 并联动背压）；所有监听器和代理上的 `limits.max_body_bytes`（413）；fit 的 json、text 和 line 格式的访问日志；上游连接池，轮询、加权轮询和最少连接，跳过被被动健康检查（`max_fails`、`fail_timeout`）和主动健康检查（`health_check`：http 和 tcp 探测）下线的地址；回环地址上的 Admin API（`GET /config`，也可按 JSON 指针读取，带 `If-Match` 的 `POST /load`，`GET /versions`），加载与 SIGHUP 一样作为重载应用，两者共用一份历史记录；Admin API 的 `GET /metrics` 提供 fit 的 Prometheus 指标（有 `metrics` 时按监听器和路由的请求、上游和后端、证书、连接、重载、akio 的引擎）；兼容性门禁：80 个夹具，13 个有效，66 个只因暂不支持被拒绝，1 个跳过，没有失败 |
-| 下一步 | I17 |
-| akio 需求 | A1–A5、A7、A8、A11、A13、A16–A21 已在 akio 的 main 并已锁定；A6 在 akio 分支 `claude/x509-csr` 上；A9、A10、A12、A14、A15、A22–A24、A29、A30、A32、A33、A35、A45、A48 和 A49 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
+| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；基于 akio 的 A1 保留、增加、修改和排空监听器，包括启动时的监听器，重载可新增 h3 监听器；服务 h3 的启动监听器要重启才能变）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证；按 fit 的方式每次握手选择证书，重载或 `-watch-certs` 替换证书而不关闭监听器）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；路由中间件：`rewrite`（前缀）、`redirect`、`headers`、`rate_limit`、`concurrency_limit` 和 `body_limit`；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`、双向流式转发 body 并联动背压，双向透传 trailer，`timeout` 和上游的 `response_timeout`，超时回答 504，客户端在 body 中途离开时放弃上游请求）；所有监听器和代理上的 `limits.max_body_bytes`（413）；fit 的 json、text 和 line 格式的访问日志；上游连接池，轮询、加权轮询和最少连接，跳过被被动健康检查（`max_fails`、`fail_timeout`）和主动健康检查（`health_check`：http 和 tcp 探测）下线的地址；回环地址上的 Admin API（`GET /config`，也可按 JSON 指针读取，带 `If-Match` 的 `POST /load`，`GET /versions`），加载与 SIGHUP 一样作为重载应用，两者共用一份历史记录；Admin API 的 `GET /metrics` 提供 fit 的 Prometheus 指标（有 `metrics` 时按监听器和路由的请求、上游和后端、证书、连接、重载、akio 的引擎）；兼容性门禁：80 个夹具，14 个有效，65 个只因暂不支持被拒绝，1 个跳过，没有失败兼容性门禁：80 个夹具，11 个有效，68 个只因暂不支持被拒绝，1 个跳过，没有失败 |
+| 下一步 | I18；akio 有了 A36–A38 后做 I17b |
+| akio 需求 | A1–A5、A7、A8、A11、A13、A16–A21 已在 akio 的 main 并已锁定；A6 在 akio 分支 `claude/x509-csr` 上；A9、A10、A12、A14、A15、A22–A24、A29、A30、A32、A33、A35–A38、A45、A48 和 A49 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
 
 ## 日志
+
+### 2026-11-24：I17，反向代理 III：超时、取消、trailer
+
+- 配置：读取上游的 `response_timeout`（`Upstream::response_timeout`，省略或为 0 时取 fit 的 1h，即
+  `akit_config::DEFAULT_RESPONSE_TIMEOUT`）和代理的 `timeout`（`Proxy::timeout`，省略或为 0 时没有）；
+  `response_header_timeout` 和 `response_idle_timeout` 仍以暂不支持拒绝（A36）。
+- `akit-upstream`：连接池用上游的 `response_timeout` 限制每次交换（`Pool::response_timeout`）；请求自己的超时也
+  起作用，取两者中较短的（以前是替换连接池的）。`Exchange::gave_up`：在响应之前因客户端离开而放弃请求的交换，不计为
+  该地址的失败。
+- `akit-proxy`，与 fit 的 `exchange` 相同：
+  - 超时：超时的连接（`ClientError::Io`，类型为 `TimedOut`，akio 以此报告 `connect_timeout`）回答 504，请求超时
+    原本就是如此。代理的 `timeout` 设到每个请求上，连接池取它和 `response_timeout` 中较短的：在响应头之前超过则 504；
+    之后超过则截断响应。
+  - 截断（因超时或上游中途断开）：关闭 HTTP/1 客户端的连接，重置声明了长度的 HTTP/2 或 HTTP/3 流，未声明长度的则以
+    fit 的 `Fit-Error: upstream failed mid-body` 尾部字段结束（`relay::BROKEN_TRAILER`）。
+  - 取消：下载中途离开的客户端原本就能察觉（下一次写失败；被挂起的下载立即得知，因为 akio 在关闭时调用
+    `on_drain`）。经 HTTP/2 或 HTTP/3 在上传中途离开的客户端会丢弃其请求体接收器（`Sink` 在 `End` 之前的
+    `Drop`），从而丢弃上游请求未完成的请求体（关闭其连接），交换声明是自己放弃的，所以不计为该地址的失败。
+  - trailer，与 fit 相同：请求声明的名字（`headers::trailer_names`，即 fit 的 `trailerNames`）放在它的
+    `Trailer` 里发往上游，之后只跟随这些 trailer（`headers::announced`）；声明了 trailer 的请求按 chunked 发往
+    上游，请求体整体到达的也是（经 `Client::preload` 作为流写出），没有声明的则不发送任何 trailer。流式响应保留上游的
+    `Trailer` 声明；整体发送的响应（64 KiB 以内）若以 trailer 结束，则带着声明改为流式发送，使 HTTP/1.1 也能携带
+    （akio 只在 HTTP/2 上发送整体响应的 trailer）。
+- 测试：`akit-proxy/tests/failure.rs`，移植自 fit 的 `failure_test.go`：`connect_timeout`（backlog 已满的监听器；
+  在满 backlog 会拒绝连接的系统上跳过，如 macOS）、`timeout_before_head`（`response_timeout`、`timeout` 以及两者
+  中较短的：超过后 504，上游的连接被关闭）、`cut_short_mid_body`（用 `response_timeout` 代替空闲超时的
+  `TestResponseIdleTimeout`，以及经 h2c 的 `TestUpstreamBreaksMidBody`：HTTP/1.1 的 body 不完整地结束，h2c 上
+  有长度的失败，没有长度的以 `Fit-Error` 结束）、`client_abort`（经 HTTP/1.1 和 h2c 下载中途、经 h2c 上传中途：
+  上游看到连接关闭，其失败计数保持为 0）、`trailers`（`TestTrailers`：声明的请求 trailer 发往上游，未声明的被丢弃，
+  响应 trailer 经 HTTP/1.1 和 h2c 返回，小响应和流式响应都有）。`trailer_names` 和 `announced` 的单元测试，I/O
+  超时的 `status_of`，配置字段及其错误，连接池的 `response_timeout` 与请求自身超时的关系，`forwarding` 检查没有
+  body 的 GET 发往上游时不带分帧。兼容性门禁的样例覆盖这两个字段。
+- 验证：macOS 上的 `make check`；Linux（gpu51）上 epoll 和 `AKIO_TEST_BACKEND=uring` 下 `akit-proxy`、
+  `akit-upstream` 和 `akit-config` 的测试。
+- 与计划和 fit 的差异（I17b，两个计划文件中都有）：
+  - fit 的 `response_header_timeout` 和 `response_idle_timeout` 需要 akio 客户端按请求的响应头超时和空闲超时
+    （akio API 请求 A36）：`TestResponseHeaderTimeout` 未移植，`TestResponseIdleTimeout` 以 `response_timeout`
+    代替移植。
+  - 在响应头之前（请求体已全部发出）离开的客户端，以及上传中途离开的 HTTP/1 客户端，要到上游回答或
+    `response_timeout` 到期才会被察觉：akio 的客户端在响应头之前没有可取消请求的句柄（A37），分离的服务端请求得不到
+    客户端离开的消息，且代理挂起的应答握着连接时，akio 的 HTTP/1 会话会保留流式请求的请求体接收器（A38，由
+    `client_abort` 发现）。`TestClientAbort` 的“响应头之前”情形和它的 HTTP/1 上传未移植。
+  - fit 的 `limits.write_stall_timeout` 仍被拒绝：akio 引擎的 `write_timeout` 是同一个界限，但重载时不能修改
+    （A38）；在此之前，停止读取的客户端由 akio 的默认值（60s）限制。
+  - 请求的 trailer 只经 HTTP/1.1 测试：akio 的 h2 客户端不发送 trailer。
+- 给基准测试任务：热路径上没有变化，只是每个被代理的请求多一次 `Trailer` 查找、共享状态多一个字段；
+  [基准表](dev-plan.zh-CN.md#基准与优化状态)中 proxy 场景那一行写明了带 trailer 的请求。
 
 ### 2026-11-24：I41，限流、并发与大小限制
 

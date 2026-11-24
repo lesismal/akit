@@ -37,8 +37,32 @@
 //!   A35); HTTP/2 and HTTP/3 keep it. A response that breaks off mid-body closes the client's
 //!   connection, which tells the client its body is short.
 //!
-//! I17 brings the timeouts (fit's `write_stall_timeout` for a client that stops reading among
-//! them), cancellation when the client goes, and the trailers' announcements.
+//! I17 brings timeouts, cancellation and trailers, as fit's proxy has them:
+//!
+//! - **Timeouts.** A connect that times out (the upstream's `connect_timeout`) is answered 504.
+//!   The upstream's `response_timeout`, and the proxy's own `timeout` when shorter, bound the
+//!   whole exchange: past it before the response began, 504; later, the response is cut short as
+//!   one the upstream broke off. fit's `response_header_timeout` and `response_idle_timeout` wait
+//!   on akio API request A36, and its `write_stall_timeout` on A38 (I17b); until then akio's
+//!   engine closes a client that takes nothing of a response for 60s.
+//! - **Cancellation.** A client that goes mid-download is noticed at the next write, or at once
+//!   when the download is held for it (akio calls `on_drain` as a connection closes), and the
+//!   upstream's response is given up. An HTTP/2 or HTTP/3 client that goes mid-upload drops its
+//!   body's sink, and the upstream's request is given up with it (its unfinished body closes its
+//!   connection). Neither counts against the upstream's health. An HTTP/1 client that goes
+//!   mid-upload, and any that goes while the proxy waits for the upstream's head with its body
+//!   all sent, go unnoticed until the upstream answers or `response_timeout` passes: akio keeps
+//!   an HTTP/1 request's body sink while the connection is held by the proxy's pending answer,
+//!   and tells a detached request nothing of its client going (akio API requests A37 and A38,
+//!   I17b).
+//! - **Trailers** pass both ways, as fit passes them. A request that announces trailers
+//!   (`Trailer`) goes up chunked, its `Trailer` kept, with the announced fields of the trailers
+//!   it ends with (one whose body came whole too); a request that announced none sends none on,
+//!   as fit's. A response's trailers reach the client: a streamed one's with its `Trailer`
+//!   announcement, and a small one, which is otherwise sent whole, is streamed to carry them.
+//! - **A body cut short** closes an HTTP/1 client's connection, and resets an HTTP/2 or HTTP/3
+//!   stream of a body of a declared length; one of no declared length ends with fit's
+//!   `Fit-Error: upstream failed mid-body` trailer, which is all such a client could tell it by.
 //!
 //! Part of [akit](https://github.com/lesismal/akit); see `docs/dev-plan.md` for the iterations that
 //! fill this crate in.
@@ -48,7 +72,7 @@ mod relay;
 
 use std::borrow::Cow;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use akio_http::client::{ClientError, ClientRequest};
 use akio_http::{BodyMode, Context, Method, Request, Response};
@@ -75,6 +99,8 @@ struct Proxy {
     pool: Pool,
     trusted: Vec<Network>,
     host_header: String,
+    /// The params' `timeout`.
+    timeout: Option<Duration>,
 }
 
 fn new(p: &Provision<'_, HandlerParams>) -> Result<Provisioned<dyn Handler>, ProvisionError> {
@@ -93,6 +119,7 @@ fn new(p: &Provision<'_, HandlerParams>) -> Result<Provisioned<dyn Handler>, Pro
         pool,
         trusted: params.trusted_proxies.clone(),
         host_header: params.host_header.clone(),
+        timeout: params.timeout,
     }) as Arc<dyn Handler>))
 }
 
@@ -112,6 +139,8 @@ impl akio_http::Service for Proxy {
         };
         let mut out = ClientRequest::new(req.method.clone(), &target(ctx));
         out.headers = fields;
+        // The shorter of it and the upstream's response_timeout holds (akit-upstream).
+        out.timeout = self.timeout;
         let head = req.method == Method::Head;
         let version = req.version;
         let length = declared_length(req);
@@ -119,14 +148,28 @@ impl akio_http::Service for Proxy {
             .local(MAX_BODY_BYTES)
             .and_then(|v| v.parse().ok())
             .unwrap_or(akit_config::DEFAULT_MAX_BODY_BYTES);
-        let chunked = length.is_none();
-        let Some((client, streamed)) = relay::start(ctx, limit, chunked) else {
+        // The trailers the request announced go up with it, chunked, as fit sends them.
+        let names = headers::trailer_names(&req.headers);
+        if !names.is_empty() {
+            out.headers.append("Trailer", names.join(", "));
+        }
+        let announced = !names.is_empty();
+        // A body that streams goes up chunked when it came so or carries trailers.
+        let chunked = length.is_none() || announced;
+        let Some((client, streamed)) = relay::start(ctx, limit, chunked, names) else {
             // Answered already: nothing left to do.
             return;
         };
+        // One that came whole goes up chunked only to carry trailers: a request without a body,
+        // which declares no length either, goes as it came, with none.
+        let chunked = if streamed { chunked } else { announced };
         if streamed {
-            // Framed as it came: by its length, or chunked.
-            out = out.streamed(length);
+            out = out.streamed(if chunked { None } else { length });
+        } else if chunked {
+            // Whole, with trailers, which only a chunked body carries: written up as a stream.
+            out = out.streamed(None);
+            let req = ctx.req();
+            client.preload(&req.body, &req.trailers);
         } else {
             // A copy: the body is the request's, and goes on with the context (rule 6).
             out.body = ctx.req().body.clone();
@@ -143,7 +186,7 @@ impl akio_http::Service for Proxy {
                 .to_owned(),
             start: Instant::now(),
         });
-        let x = relay::Relay::new(client, head, version, chunked && streamed, log);
+        let x = relay::Relay::new(client, head, version, chunked, log);
         self.pool.stream(backend, out, x);
     }
 
@@ -196,11 +239,12 @@ fn origin_form(target: &str) -> Cow<'_, str> {
 }
 
 /// The status a request that got no response is answered with: fit's `statusOf`, for what
-/// I15's requests can fail with.
+/// akit's requests can fail with: 504 for a timeout, the connect's included.
 fn status_of(e: &Error) -> u16 {
     match e {
         Error::Busy | Error::Closed => 503,
         Error::Timeout | Error::Client(ClientError::Timeout) => 504,
+        Error::Client(ClientError::Io(e)) if e.kind() == std::io::ErrorKind::TimedOut => 504,
         _ => 502,
     }
 }
@@ -241,6 +285,18 @@ mod tests {
         assert_eq!(super::status_of(&Error::Closed), 503);
         assert_eq!(super::status_of(&Error::NoEngine), 502);
         assert_eq!(super::status_of(&Error::Timeout), 504);
+        let timed_out = std::io::Error::from(std::io::ErrorKind::TimedOut);
+        let refused = std::io::Error::from(std::io::ErrorKind::ConnectionRefused);
+        use akio_http::client::ClientError;
+        assert_eq!(
+            super::status_of(&Error::Client(ClientError::Io(timed_out))),
+            504
+        );
+        assert_eq!(
+            super::status_of(&Error::Client(ClientError::Io(refused))),
+            502
+        );
+        assert_eq!(super::status_of(&Error::Client(ClientError::Timeout)), 504);
         let r = super::fail(502);
         assert_eq!(r.status, 502);
         assert_eq!(r.body, b"502 Bad Gateway\n");

@@ -51,6 +51,9 @@ first; its status here records the branch, then the akio commit akit pins.
 | A45 | A public timer: a callback run once a delay has passed, from any thread | requested (I35) | 1, 11 | I35, I31, I54 |
 | A48 | A request's end heard: its response sent in full, or its client gone while it waits | requested (I41) | 3, 11, 13 | I41, I17, I21, I37 |
 | A49 | A request body limited by a middleware, whoever reads the body | requested (I41) | 7, 11 | I41 |
+| A36 | An HTTP client request's response-header and idle timeouts | requested (I17) | 10 | I17b, I18 |
+| A37 | An HTTP client request cancelled at any point | requested (I17) | 3 | I17b, I45 |
+| A38 | A detached server request that hears its client went; a write stall timeout changed at run time | requested (I17) | 3, 10 | I17b, I49 |
 
 ## A1 TCP listeners on a running engine
 
@@ -759,3 +762,86 @@ body of no declared length is held to the limit only by a handler that reads aki
 `MAX_BODY_BYTES` local (the proxy), which the middleware lowers; a buffered one is checked once
 it has arrived (the stopgap recorded in the I41 progress entry). The listener's own
 `max_body_bytes` for streamed bodies moves to it too.
+
+## A36 An HTTP client request's response-header and idle timeouts
+
+**Problem.** fit bounds an upstream exchange three ways (its `response_header_timeout`,
+`response_idle_timeout` and `response_timeout`): how long the upstream may take to begin its
+response (504 past it), how long it may go silent in the middle of its body (the response cut short
+past it), and the exchange in all. akio's HTTP/1 client has the last alone
+(`ClientRequest::timeout`, which runs until `on_end` for `request_with`): a proxy cannot answer
+504 for an upstream that is slow to begin while letting a long download run, nor cut off an
+upstream that stalls mid-body before the whole exchange's hour is up. akit has no timer of its own
+on the I/O threads to do it with (akio's timers are internal), and a timer thread of akit's would
+need to cancel a request before its head, which akio cannot do either (A37).
+
+**Evidence.** `crates/akio-http/src/client.rs` at `60547435`: `ClientRequest` has `timeout`
+alone; `ClientError::Timeout` is the one timeout error. ADR-101 notes that the streamed response
+has "no idle-gap timeout".
+
+**Suggested API.** `ClientRequest::header_timeout(d)`: from the request's head written (its body,
+when streamed, may still be going) to the response's head; past it the request fails with
+`ClientError::Timeout` (or a `HeaderTimeout` kind) and its connection is closed.
+`ClientRequest::idle_timeout(d)`: the longest gap between reads of the response's body; past it
+`on_error` with the same error, the connection closed. Both for `request`, `request_with` and
+`request_streamed`, and `H2Client`'s alike (I18). The time a held body (`ResponseBody::hold_reads`)
+spends held is not idle: the client chose to stop reading.
+
+**How akit uses it.** I17b: the upstream's `response_header_timeout` and
+`response_idle_timeout` (fit's 60s defaults) are set on each proxied request; a header timeout is
+answered 504, an idle one cuts the response short as a broken one is (I17's `Fit-Error` trailer on
+HTTP/2 and HTTP/3 for a body of no declared length).
+
+## A37 An HTTP client request cancelled at any point
+
+**Problem.** A proxy gives up an upstream request when its client goes (fit's `OnCancel`). akio's
+client can give up a response once its head came (`ResponseBody::cancel`), and a streamed request
+by dropping its unfinished `RequestBody`; but a request whose body went whole (most requests) has
+no handle before its head: `Client::request` and `request_with` return nothing. A client that
+goes while the upstream thinks leaves the upstream working, and an akit connection and `max_conns`
+slot taken, until the upstream answers or `response_timeout` passes (1h by default).
+
+**Evidence.** `crates/akio-http/src/client.rs` at `60547435`: `request`, `request_with` and
+`request_streamed` return `()`; `ResponseBody::cancel` comes with `on_head`.
+
+**Suggested API.** `request_with` (and `request`) return a `RequestHandle` (`Clone + Send`) with
+`cancel()`: before the request is sent it is dropped; once sent, its connection is closed (on
+HTTP/2, its stream reset); the handler gets `on_error(ClientError::Cancelled)` once, unless it had
+`on_end` or `on_error` already. A cancel from another thread is posted to the connection's I/O
+thread, as `ResponseBody::cancel` is.
+
+**How akit uses it.** I17b: the proxy keeps the handle beside its answer and cancels on the client
+going (A38); I45's retries cancel an attempt they give up on.
+
+## A38 A detached server request that hears its client went; a write stall timeout changed at run time
+
+**Problem.** Two server-side gaps, both about clients that leave or stop:
+
+1. A detached request (`Context::detach`) hears nothing of its client going until it writes: a
+   proxy waiting for its upstream's head cannot cancel the upstream request (A37) for a client
+   that left. Worse, on HTTP/1 a request whose body streams (`BodyMode::Stream`) keeps its body
+   sink while the connection closes: the HTTP/1 session holds the request's context (and so the
+   sink) in its state, and the session lives on while the detached answer holds the connection,
+   so the sink is neither told nor dropped. HTTP/2 drops a closed connection's streams, and with
+   them their sinks, which is how akit's proxy (I17) cancels an h2 or h3 client's upload; an
+   HTTP/1 client that goes mid-upload goes unnoticed until the exchange ends.
+2. fit's `write_stall_timeout` (30s): how long a response may wait for its client to take what
+   was sent. akio's `Config::write_timeout` is that bound (output queued, none written), but per
+   engine, fixed when it is built (`Live` can change `idle_timeout` and others, not it): akit
+   cannot apply the config's value on reload.
+
+**Evidence.** `crates/akio-http/src/session.rs` at `60547435`: `Session::on_close` leaves
+`State::Stream { ctx, .. }` in place; `h2.rs` `on_close` drains the streams. `context.rs`:
+`Detached` has `respond` and `stream_response` alone. `akio-core` `telemetry::Live` has no
+`set_write_timeout`. Found with akit's `failure.rs` test of a client that goes mid-upload (I17).
+
+**Suggested API.** (1) `Detached::on_gone(f)` (and `Context::on_gone` before detaching): `f`
+runs once, on the connection's I/O thread, when the request's connection closes or its stream is
+reset before its response is finished; at once if it already happened. The HTTP/1 session drops
+(or ends with a `BodyEvent::Aborted`) a streamed request's sink when its connection closes, as
+HTTP/2 does. (2) `Live::set_write_timeout(Option<Duration>)`, as for `idle_timeout`.
+
+**How akit uses it.** I17b: the proxy registers `on_gone` to cancel its upstream request (A37) and
+not count it against the upstream's health, closing fit's `TestClientAbort` "before the header"
+and HTTP/1 "mid-upload" cases; `limits.write_stall_timeout` sets the engine's write timeout at
+start and on reload. I49's WebSocket and tunnel relays hear a client go the same way.
