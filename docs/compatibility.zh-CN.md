@@ -152,7 +152,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 160 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 167 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -190,7 +190,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`http.middleware/client_cert`](#fields-http-middleware-client-cert) | 4 | 4 | 0 |
 | [`http.middleware/compress`](#fields-http-middleware-compress) | 10 | 0 | 10 |
 | [`http.middleware/concurrency_limit`](#fields-http-middleware-concurrency-limit) | 4 | 4 | 0 |
-| [`http.middleware/forward_auth`](#fields-http-middleware-forward-auth) | 7 | 0 | 7 |
+| [`http.middleware/forward_auth`](#fields-http-middleware-forward-auth) | 7 | 7 | 0 |
 | [`http.middleware/headers`](#fields-http-middleware-headers) | 10 | 10 | 0 |
 | [`http.middleware/jwt`](#fields-http-middleware-jwt) | 13 | 0 | 13 |
 | [`http.middleware/rate_limit`](#fields-http-middleware-rate-limit) | 9 | 9 | 0 |
@@ -277,7 +277,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 31 | 7 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **合计** | 3821 | 160 | 3661 |
+| **合计** | 3821 | 167 | 3654 |
 
 <a id="fields-access"></a>
 
@@ -1123,13 +1123,13 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
-| `routes[].middleware[]<forward_auth>` | `module` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<forward_auth>.params` | `object` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<forward_auth>.params.copy_headers` | `array<string>` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<forward_auth>.params.request_headers` | `array<string>` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<forward_auth>.params.timeout` | `duration` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<forward_auth>.params.upstream` | `string, required` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<forward_auth>.params.uri` | `string` | 尚不支持（not supported yet） |
+| `routes[].middleware[]<forward_auth>` | `module` | 已支持 |
+| `routes[].middleware[]<forward_auth>.params` | `object` | 已支持 |
+| `routes[].middleware[]<forward_auth>.params.copy_headers` | `array<string>` | 已支持 |
+| `routes[].middleware[]<forward_auth>.params.request_headers` | `array<string>` | 已支持 |
+| `routes[].middleware[]<forward_auth>.params.timeout` | `duration` | 已支持 |
+| `routes[].middleware[]<forward_auth>.params.upstream` | `string, required` | 已支持 |
+| `routes[].middleware[]<forward_auth>.params.uri` | `string` | 已支持 |
 
 <a id="fields-http-middleware-headers"></a>
 

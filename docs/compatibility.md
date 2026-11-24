@@ -175,7 +175,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 160 supported.
+3821 fields in 121 sections, at fit `7daee573`; 167 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -213,7 +213,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`http.middleware/client_cert`](#fields-http-middleware-client-cert) | 4 | 4 | 0 |
 | [`http.middleware/compress`](#fields-http-middleware-compress) | 10 | 0 | 10 |
 | [`http.middleware/concurrency_limit`](#fields-http-middleware-concurrency-limit) | 4 | 4 | 0 |
-| [`http.middleware/forward_auth`](#fields-http-middleware-forward-auth) | 7 | 0 | 7 |
+| [`http.middleware/forward_auth`](#fields-http-middleware-forward-auth) | 7 | 7 | 0 |
 | [`http.middleware/headers`](#fields-http-middleware-headers) | 10 | 10 | 0 |
 | [`http.middleware/jwt`](#fields-http-middleware-jwt) | 13 | 0 | 13 |
 | [`http.middleware/rate_limit`](#fields-http-middleware-rate-limit) | 9 | 9 | 0 |
@@ -300,7 +300,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 31 | 7 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 160 | 3661 |
+| **Total** | 3821 | 167 | 3654 |
 
 <a id="fields-access"></a>
 
@@ -1146,13 +1146,13 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `routes[].middleware[]<forward_auth>` | `module` | not supported yet |
-| `routes[].middleware[]<forward_auth>.params` | `object` | not supported yet |
-| `routes[].middleware[]<forward_auth>.params.copy_headers` | `array<string>` | not supported yet |
-| `routes[].middleware[]<forward_auth>.params.request_headers` | `array<string>` | not supported yet |
-| `routes[].middleware[]<forward_auth>.params.timeout` | `duration` | not supported yet |
-| `routes[].middleware[]<forward_auth>.params.upstream` | `string, required` | not supported yet |
-| `routes[].middleware[]<forward_auth>.params.uri` | `string` | not supported yet |
+| `routes[].middleware[]<forward_auth>` | `module` | supported |
+| `routes[].middleware[]<forward_auth>.params` | `object` | supported |
+| `routes[].middleware[]<forward_auth>.params.copy_headers` | `array<string>` | supported |
+| `routes[].middleware[]<forward_auth>.params.request_headers` | `array<string>` | supported |
+| `routes[].middleware[]<forward_auth>.params.timeout` | `duration` | supported |
+| `routes[].middleware[]<forward_auth>.params.upstream` | `string, required` | supported |
+| `routes[].middleware[]<forward_auth>.params.uri` | `string` | supported |
 
 <a id="fields-http-middleware-headers"></a>
 

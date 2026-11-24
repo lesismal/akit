@@ -10,14 +10,45 @@
 | | |
 | --- | --- |
 | 最后更新 | 2026-11-24 |
-| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I24 已完成（I17b 和 I18b 等待 akio）；M2 的 I26–I32、I35–I37 和 M3 的 I39–I42 已提前完成。 |
+| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I24 已完成（I17b 和 I18b 等待 akio）；M2 的 I26–I32、I35–I37 和 M3 的 I39–I43 已提前完成。 |
 | akio | akio `main` 上的 `4f7169c4`（`1.0.0-rc.1`，带 A1–A8、A11、A13、A16–A21、A36–A38 和 A63–A65），在 `Cargo.toml` 中按 `rev` 锁定 |
 | fit | 作为规格；本计划基于 `7daee573` 阅读 |
-| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；基于 akio 的 A1 保留（按 fit 的 `binding.same`：证书文件和 ACME 名字可以变）、增加、修改和排空监听器，包括启动时的监听器，重载可新增 h3 监听器；服务 h3 的启动监听器要重启才能变）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证；按 fit 的方式每次握手选择证书，重载或 `-watch-certs` 替换证书而不关闭监听器）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；路由中间件：`rewrite`（前缀）、`redirect`、`headers`、`rate_limit`、`concurrency_limit`、`body_limit`、`basic_auth`（bcrypt，在 akio 的线程池上校验）和 `client_cert`（按路由的 mTLS）；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`、双向流式转发 body 并联动背压，双向透传 trailer，`timeout` 和上游的 `response_timeout`，超时回答 504，客户端在 body 中途离开时放弃上游请求；经 HTTP/1.1、h2c 和 h2 访问上游）；所有监听器和代理上的 `limits.max_body_bytes`（413）；fit 的 json、text 和 line 格式的访问日志；上游连接池，fit 的九种负载均衡策略（轮询、加权轮询、最少连接、随机、p2c，以及按客户端 IP、路径、头或 cookie 的一致性哈希）和会话保持 cookie，跳过被被动健康检查（`max_fails`、`fail_timeout`）和主动健康检查（`health_check`：http 和 tcp 探测）下线的地址；回环地址上的 Admin API（`GET /config`，也可按 JSON 指针读取，`POST /load`，用 `PUT`、`PATCH` 和 `DELETE /config` 按指针编辑，`POST /rollback/{n}`，`POST /reload`，都带 `If-Match`，除回滚外都可 `?dry_run=1`，`GET /versions`；有 `token_file` 时每个请求都要带 bearer 令牌），修改与 SIGHUP 一样作为重载应用，两者共用一份历史记录；`run -watch` 在配置文件每次变化时应用它们（fit 的文件 provider，轮询）；Admin API 的 `GET /metrics` 提供 fit 的 Prometheus 指标（有 `metrics` 时按监听器和路由的请求、上游和后端、证书、连接、重载、akio 的引擎）；为监听器在 `tls.acme` 中所列的名字通过 HTTP-01 用 ACME 获取证书，保存在存储中并续期兼容性门禁：80 个夹具，18 个有效，61 个只因暂不支持被拒绝，1 个跳过，没有失败兼容性门禁：80 个夹具，11 个有效，68 个只因暂不支持被拒绝，1 个跳过，没有失败为监听器在 `tls.acme` 中所列的名字通过 HTTP-01 或 TLS-ALPN-01 用 ACME 获取证书，保存在存储中，按有效期或 CA 的续期信息（ARI）续期，并装订其 OCSP 响应；兼容性门禁：80 个夹具，15 个有效，64 个只因暂不支持被拒绝，1 个跳过，没有失败为监听器在 `tls.acme` 中所列的名字通过 HTTP-01 用 ACME 获取证书，保存在存储中并续期；兼容性门禁：80 个夹具，18 个有效，61 个只因暂不支持被拒绝，1 个跳过，没有失败 |
+| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；基于 akio 的 A1 保留（按 fit 的 `binding.same`：证书文件和 ACME 名字可以变）、增加、修改和排空监听器，包括启动时的监听器，重载可新增 h3 监听器；服务 h3 的启动监听器要重启才能变）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证；按 fit 的方式每次握手选择证书，重载或 `-watch-certs` 替换证书而不关闭监听器）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；路由中间件：`rewrite`（前缀）、`redirect`、`headers`、`rate_limit`、`concurrency_limit`、`body_limit`、`basic_auth`（bcrypt，在 akio 的线程池上校验）、`client_cert`（按路由的 mTLS）和 `forward_auth`（经 akio 的客户端询问认证服务，期间挂起请求）；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`、双向流式转发 body 并联动背压，双向透传 trailer，`timeout` 和上游的 `response_timeout`，超时回答 504，客户端在 body 中途离开时放弃上游请求；经 HTTP/1.1、h2c 和 h2 访问上游）；所有监听器和代理上的 `limits.max_body_bytes`（413）；fit 的 json、text 和 line 格式的访问日志；上游连接池，fit 的九种负载均衡策略（轮询、加权轮询、最少连接、随机、p2c，以及按客户端 IP、路径、头或 cookie 的一致性哈希）和会话保持 cookie，跳过被被动健康检查（`max_fails`、`fail_timeout`）和主动健康检查（`health_check`：http 和 tcp 探测）下线的地址；回环地址上的 Admin API（`GET /config`，也可按 JSON 指针读取，`POST /load`，用 `PUT`、`PATCH` 和 `DELETE /config` 按指针编辑，`POST /rollback/{n}`，`POST /reload`，都带 `If-Match`，除回滚外都可 `?dry_run=1`，`GET /versions`；有 `token_file` 时每个请求都要带 bearer 令牌），修改与 SIGHUP 一样作为重载应用，两者共用一份历史记录；`run -watch` 在配置文件每次变化时应用它们（fit 的文件 provider，轮询）；Admin API 的 `GET /metrics` 提供 fit 的 Prometheus 指标（有 `metrics` 时按监听器和路由的请求、上游和后端、证书、连接、重载、akio 的引擎）；为监听器在 `tls.acme` 中所列的名字通过 HTTP-01 或 TLS-ALPN-01 用 ACME 获取证书，保存在存储中，按有效期或 CA 的续期信息（ARI）续期，并装订其 OCSP 响应；兼容性门禁：80 个夹具，19 个有效，60 个只因暂不支持被拒绝，1 个跳过，没有失败 |
 | 下一步 | I17b（akio 已有 A36–A38）；akio 有了 A51–A53 后做 I18b |
-| akio 需求 | A1–A8、A11、A13、A16–A21、A36–A38、A63–A65 已在 akio 的 main 并已锁定；A9、A10、A12、A14、A15、A22–A24、A29、A30、A32、A33、A35、A45、A48、A49、A51–A54、A57 和 A58 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
+| akio 需求 | A1–A8、A11、A13、A16–A21、A36–A38、A63–A65 已在 akio 的 main 并已锁定；A9、A10、A12、A14、A15、A22–A24、A29、A30、A32、A33、A35、A45、A48、A49、A51–A54、A57、A58 和 A75 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
 
 ## 日志
+
+### 2026-11-24：I43，ForwardAuth
+
+- `akit-config` 把 fit 的 `forward_auth`（`upstream`、`uri`、`request_headers`、`copy_headers`、`timeout`）读成
+  `Handler::ForwardAuth`，带 fit 的 `Provision` 的检查和提示：`uri` 是路径，可带查询（以 `/` 开头，无控制字符，
+  路径中的 `%` 转义有效），字段名是 HTTP token，`timeout` 省略或为 0 时为 10s。它从 `FIT_MIDDLEWARE` 移除。
+  `upstream` 是否为配置中的 upstream，与代理一样在中间件 provision 时检查。
+- `akit-middleware` 的 `forward`：经该 upstream 的连接池、按其负载均衡向认证服务发送对 `uri` 的 `GET`（路径按
+  Go 的写法转义），带上请求的字段（`request_headers` 列出的那些；省略时为除逐跳字段、`Connection` 列出的字段以及
+  `Content-Length`、`Content-Type` 和 `Expect` 之外的全部）、它的 `Host`，以及 `X-Forwarded-Method`、`-Proto`、
+  `-Host`、`-Uri` 和 `-For`。请求被挂起（`Context::suspend`，akio 的 A65），从连接池的回调中恢复，等待期间不占
+  I/O 线程。2xx 应答放行请求，并带上 `copy_headers` 列出的字段，此前先移除客户端发来的这些字段的各种写法（与
+  `basic_auth` 的 `user_header` 相同）；应答的消息体小时读完丢弃，否则放弃。其他应答交给客户端：状态、除逐跳
+  字段外的字段，以及 64 KiB 以内的消息体（更大的放弃，应答不带消息体，与 fit 相同）。超过 `timeout`（即请求在
+  连接池上的超时）回 504；认证服务连不上或失败回 502；其间连接池已关闭回 503。请求等待时客户端离开会取消认证
+  请求（`Context::on_gone` 与 akio 的 `CancelToken`，A37/A38），不计入认证服务的健康状况。
+- 消息体本会流式交给处理器的请求不能挂起（ADR-109）：与 `basic_auth` 一样，`forward_auth` 的 `body_mode` 要求
+  整体读取（在监听器的 `max_body_bytes` 之内）。已向 akio 提出 **A75**（挂起消息体流式读取的请求，并暂停其读取）。
+- 测试：字段名、默认发送的字段、origin form 和失败状态的单元测试。`tests/forward_auth.rs` 经 akit 的监听器，
+  认证服务跑在普通线程上：fit 的 `TestForwardAuth`（带认证服务的字段和它看到的内容放行，各种写法的伪造字段，
+  带字段和消息体转交的重定向，丢弃 200 KiB 消息体的 401，超时后 504）、`TestForwardAuthUnreachable`（502）、
+  `TestForwardAuthClientGone`（认证服务看到它的请求被放弃）、`TestForwardAuthSlowService`（128 个请求同时等待
+  半秒，此时另一条路由在 250 ms 内应答）和 `TestForwardAuthParams`；`request_headers` 限制发送的内容，检查
+  之前整体读取的 chunked 消息体，以及 fit 的 `examples/forward-auth` 的形态：`proxy` handler 之前的
+  `forward_auth`，应用收到复制的字段和 200 KiB 的消息体。fit 的 `TestForwardAuthAuthenticates` 在 akit 中还没有对应（与 I42 一样，请求
+  不标记为已认证）。
+- 兼容性门禁：`tests/compat/supported.txt` 新增 7 个字段；`make compat-bless`：`examples/forward-auth` 有效
+  （80 个夹具：19 个有效，60 个只因暂不支持被拒绝，1 个跳过，没有失败）。
+- 与 fit 的不同：本会流式的请求消息体在检查前整体读取（A75）；配置被替换时 fit 对等待中检查的排空，在这里是连接池
+  的排空（检查完成后由旧图的处理器作答）；请求不为访问日志或缓存标记为已认证（与 I42 相同）。
+- 留给维护者的基准任务测量（规则 30）：见开发计划中 I43 的基准行。
 
 ### 2026-11-24：I29，文件 provider
 

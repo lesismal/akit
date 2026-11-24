@@ -672,6 +672,8 @@ pub enum Handler {
     BasicAuth(BasicAuth),
     /// The `client_cert` middleware: a client certificate the listener verified (I42).
     ClientCert(ClientCert),
+    /// The `forward_auth` middleware: an auth service asked whether a request may go on (I43).
+    ForwardAuth(ForwardAuth),
 }
 
 impl Handler {
@@ -690,6 +692,7 @@ impl Handler {
             Handler::BodyLimit(_) => "body_limit",
             Handler::BasicAuth(_) => "basic_auth",
             Handler::ClientCert(_) => "client_cert",
+            Handler::ForwardAuth(_) => "forward_auth",
         }
     }
 
@@ -706,6 +709,7 @@ impl Handler {
                 | Handler::BodyLimit(_)
                 | Handler::BasicAuth(_)
                 | Handler::ClientCert(_)
+                | Handler::ForwardAuth(_)
         )
     }
 }
@@ -876,6 +880,29 @@ pub struct ClientCert {
     /// distinguished name (`CN=alice,O=Example`); empty when left out. An HTTP token.
     pub subject_header: String,
 }
+
+/// The `forward_auth` middleware's params, as fit's `middleware/auth` `ForwardAuth`, checked as
+/// its `Provision` checks them, but for the upstream's name, which the middleware looks up when
+/// it is provisioned (as the `proxy` handler's).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ForwardAuth {
+    /// `upstream`: the name of the upstream the auth service is.
+    pub upstream: String,
+    /// `uri`: the path, and query, of the request sent to the auth service; `/` when left out.
+    /// It starts with `/`, holds no control character, and its path's `%` escapes are valid.
+    pub uri: String,
+    /// `request_headers`: the request's fields sent to the auth service; all but the hop-by-hop
+    /// ones and those of the body when empty (left out). Each an HTTP token.
+    pub request_headers: Vec<String>,
+    /// `copy_headers`: fields copied from a 2xx answer onto the request. Each an HTTP token.
+    pub copy_headers: Vec<String>,
+    /// `timeout`: how long to wait for the auth service's answer;
+    /// [`DEFAULT_FORWARD_AUTH_TIMEOUT`] when left out or 0.
+    pub timeout: Duration,
+}
+
+/// fit's `forward_auth` `timeout` when left out (`DefaultForwardAuthTimeout`).
+pub const DEFAULT_FORWARD_AUTH_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// The `respond` handler's params.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1229,14 +1256,7 @@ const FIT_HANDLERS: &[&str] = &[
     "whip",
 ];
 /// fit's middleware modules (its `http.middleware` namespace) that akit does not have yet.
-const FIT_MIDDLEWARE: &[&str] = &[
-    "cache",
-    "circuit_breaker",
-    "compress",
-    "forward_auth",
-    "jwt",
-    "wasm",
-];
+const FIT_MIDDLEWARE: &[&str] = &["cache", "circuit_breaker", "compress", "jwt", "wasm"];
 const REWRITE_FIELDS: &[&str] = &["strip_prefix", "add_prefix"];
 /// akio-regex answers whether a pattern matches, not where (akio API request A32).
 const REWRITE_FIT_ONLY: &[&str] = &["regexp", "replacement"];
@@ -1257,6 +1277,13 @@ const BODY_LIMIT_FIELDS: &[&str] = &["max_bytes"];
 const BASIC_AUTH_FIELDS: &[&str] = &["realm", "users", "user_header", "forward_authorization"];
 const BASIC_USER_FIELDS: &[&str] = &["username", "password_hash"];
 const CLIENT_CERT_FIELDS: &[&str] = &["optional", "subject_header"];
+const FORWARD_AUTH_FIELDS: &[&str] = &[
+    "upstream",
+    "uri",
+    "request_headers",
+    "copy_headers",
+    "timeout",
+];
 const RESPOND_FIELDS: &[&str] = &["status", "headers", "body"];
 const STATIC_FIELDS: &[&str] = &[
     "root",
@@ -2347,6 +2374,7 @@ fn middleware(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Handler> {
         "body_limit" => body_limit(d, params, off, &params_path).map(Handler::BodyLimit),
         "basic_auth" => basic_auth(d, params, off, &params_path).map(Handler::BasicAuth),
         "client_cert" => client_cert(d, params, &params_path).map(Handler::ClientCert),
+        "forward_auth" => forward_auth(d, params, off, &params_path).map(Handler::ForwardAuth),
         m if FIT_MIDDLEWARE.contains(&m) => {
             d.not_yet(off, &module_path, &format!("the {m:?} middleware"));
             None
@@ -2922,6 +2950,108 @@ fn client_cert(d: &mut Decoder<'_>, params: Option<&Node>, path: &str) -> Option
     }
     o.finish(d, CLIENT_CERT_FIELDS, &[]);
     ok.then_some(c)
+}
+
+/// The `forward_auth` middleware's params, checked as fit's `ForwardAuth.Provision` checks them.
+fn forward_auth(
+    d: &mut Decoder<'_>,
+    params: Option<&Node>,
+    off: usize,
+    path: &str,
+) -> Option<ForwardAuth> {
+    let mut o = limit_params(d, params, off, path, "upstream")?;
+    let mut ok = true;
+    let upstream = match o.require(d, "upstream") {
+        Some(v) => {
+            let p = o.at("upstream");
+            match d.string(v, &p) {
+                Some(u) if u.is_empty() => {
+                    d.error(v.off, &p, "the upstream's name is empty");
+                    None
+                }
+                u => u,
+            }
+        }
+        None => None,
+    };
+    ok &= upstream.is_some();
+    let mut uri = "/".to_owned();
+    if let Some(v) = o.take("uri") {
+        let p = o.at("uri");
+        match d.string(v, &p) {
+            Some(u) if u.is_empty() => {}
+            Some(u) if !is_request_path(&u) => {
+                d.error(
+                    v.off,
+                    &p,
+                    format!("{u:?} is not a path, with a query or not"),
+                );
+                ok = false;
+            }
+            Some(u) => uri = u,
+            None => ok = false,
+        }
+    }
+    let names = |d: &mut Decoder<'_>, o: &mut Obj<'_>, field: &str, ok: &mut bool| {
+        let mut out = Vec::new();
+        if let Some(v) = o.take(field) {
+            let at = o.at(field);
+            for (i, (off, h)) in d.strings(v, &at).into_iter().enumerate() {
+                if is_token(&h) {
+                    out.push(h);
+                } else {
+                    d.error(
+                        off,
+                        &crate::error::join_index(&at, i),
+                        format!("{h:?} is not a field name"),
+                    );
+                    *ok = false;
+                }
+            }
+        }
+        out
+    };
+    let request_headers = names(d, &mut o, "request_headers", &mut ok);
+    let copy_headers = names(d, &mut o, "copy_headers", &mut ok);
+    let mut timeout = DEFAULT_FORWARD_AUTH_TIMEOUT;
+    if let Some(v) = o.take("timeout") {
+        match d.duration(v, &o.at("timeout")) {
+            Some(t) if !t.is_zero() => timeout = t,
+            Some(_) => {}
+            None => ok = false,
+        }
+    }
+    o.finish(d, FORWARD_AUTH_FIELDS, &[]);
+    ok.then(|| ForwardAuth {
+        upstream: upstream.unwrap_or_default(),
+        uri,
+        request_headers,
+        copy_headers,
+        timeout,
+    })
+}
+
+/// Whether `u` is a path, with a query or not, as fit's `forward_auth` takes its `uri` (Go's
+/// `url.ParseRequestURI`, without a scheme or host): it starts with `/`, holds no control
+/// character, and the `%` escapes of its path are valid.
+fn is_request_path(u: &str) -> bool {
+    if !u.starts_with('/') || u.bytes().any(|c| c < 0x20 || c == 0x7f) {
+        return false;
+    }
+    let path = u.split_once('?').map_or(u, |(p, _)| p).as_bytes();
+    let mut i = 0;
+    while let Some(&c) = path.get(i) {
+        if c == b'%' {
+            let hex = |j: usize| path.get(j).is_some_and(u8::is_ascii_hexdigit);
+            if !(hex(i.saturating_add(1)) && hex(i.saturating_add(2))) {
+                return false;
+            }
+            i = i.saturating_add(3);
+        } else {
+            i = i.saturating_add(1);
+        }
+    }
+    true
 }
 
 fn respond(d: &mut Decoder<'_>, params: Option<&Node>, path: &str) -> Option<Respond> {

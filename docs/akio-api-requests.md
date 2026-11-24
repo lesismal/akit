@@ -63,6 +63,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | A63 | bcrypt password hashes in `akio-crypto` | in akio's main (`4f7169c4`), pinned | 1, 4 | I42 |
 | A64 | The client's verified certificate on each server request | in akio's main (`4f7169c4`), pinned | — | I42 |
 | A65 | A request suspended by a middleware and resumed with its context | in akio's main (`4f7169c4`), pinned | 1, 3, 4 | I42, I43 |
+| A75 | A request whose body streams suspended, its body's reads held until it is resumed | requested (I43) | 5, 7, 8 | I42, I43, I44 |
 
 ## A1 TCP listeners on a running engine
 
@@ -1091,3 +1092,28 @@ cannot be suspended (akio feeds the body to the context after `call`, as `run_on
 line): `basic_auth` asks for the body whole (within the listener's `max_body_bytes`) only for a
 request with a body whose password it has not checked yet. A later version may let a suspended
 request hold its body's reads instead.
+
+## A75 A request whose body streams, suspended
+
+**Problem.** `forward_auth` (I43) and `basic_auth` (I42) suspend a request while they wait
+(`Context::suspend`, A65), then resume it into the next middleware and the handler. akio cannot
+suspend a request whose body streams to its handler (`BodyMode::Stream`): it feeds the body to
+the context after `call`, so the context cannot move. Both middlewares therefore ask for such a
+body whole, within the listener's `max_body_bytes` (16 MiB by default, or what a config sets):
+behind them, the proxy's uploads lose their streaming and the memory they take is that of the
+whole body, not one read's (rules 5 and 8). fit's `forward_auth` keeps the body streaming: the
+request waits retained, its body unread.
+
+**Evidence.** `crates/akio-http/src/context.rs` at `4f7169c4`: `Context::suspend` returns `None`
+when `self.streamed`; `Service::body_mode` is asked before `call`, so a middleware that cannot know
+yet whether it will suspend must ask for every body whole.
+
+**Suggested API.** `Context::suspend` on a request whose body streams: the body's reads are held
+(as `BodyReads::hold(true)`) from the suspension until the resumed context's handler registers
+its sink (`on_body`) and lets them go, and what arrived before stays buffered (one read's worth)
+for it. A client that goes meanwhile runs the context's `on_gone` as for any suspended request.
+
+**How akit would use it.** `forward_auth`, and `basic_auth` for a password not remembered yet,
+stop asking for bodies whole: a request whose body streams is suspended with its reads held, and
+the proxy behind them streams the upload once the check let it through.
+
