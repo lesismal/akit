@@ -292,6 +292,14 @@ impl akio_http::Service for Dispatcher {
                     }
                     return;
                 };
+                if !self.tls {
+                    // The CA checks an HTTP-01 challenge in the clear; the answer is in memory
+                    // (I31). A token with no challenge under way goes to the routes, as fit's.
+                    if let Some(answer) = g.acme().and_then(|a| acme_answer(a, &path.decoded)) {
+                        ctx.bytes(200, "text/plain", answer.into_bytes());
+                        return;
+                    }
+                }
                 let req = RouterRequest {
                     req: ctx.req(),
                     path: &path.decoded,
@@ -384,6 +392,13 @@ impl akio_http::Service for Dispatcher {
             }
         })
     }
+}
+
+/// The answer to the HTTP-01 challenge a request for the canonical `path` asks for, if `path` is
+/// under [`akit_tls::ACME_CHALLENGE_PREFIX`] and its token's challenge is under way.
+fn acme_answer(acme: &akit_tls::Acme, path: &[u8]) -> Option<String> {
+    let token = path.strip_prefix(akit_tls::ACME_CHALLENGE_PREFIX.as_bytes())?;
+    acme.http_challenge(std::str::from_utf8(token).ok()?)
 }
 
 /// The body length `req` declares (`Content-Length`), if any.

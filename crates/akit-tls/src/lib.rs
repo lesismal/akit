@@ -34,6 +34,11 @@
 //! - **HTTP/3** (I10): a listener serving `h3` gets a second configuration from the same files
 //!   ([`ServerConfigs::h3`]), with ALPN `h3` and TLS 1.3 alone, for its QUIC connections.
 //!
+//! - **ACME** (I31, [`Acme`]): certificates for the names a listener lists in `tls.acme`,
+//!   obtained from an ACME CA through HTTP-01 and kept in the storage. A client asking for one of
+//!   them is given its certificate once there is one ([`ListenerTls::get`]); until then, and for
+//!   other names, the certificates from files.
+//!
 //! - **Metrics** (I37): what each certificate is for and when it expires ([`CertificateInfo`]),
 //!   for `fit_tls_certificate_not_after_seconds`.
 //!
@@ -43,9 +48,15 @@
 //! Part of [akit](https://github.com/lesismal/akit); see `docs/dev-plan.md` for the iterations that
 //! fill this crate in.
 
+mod acme;
 mod certs;
+mod published;
 mod storage;
 mod watch;
+
+pub use acme::{
+    ACME_CHALLENGE_PREFIX, Acme, DEFAULT_RETRY_BASE, DEFAULT_RETRY_MAX, Log, MAX_NAMES,
+};
 
 pub use certs::{Certs, Sum};
 pub use storage::{
@@ -59,7 +70,10 @@ use std::fmt;
 use std::io::Read;
 use std::sync::Arc;
 
-use akio::tls::{CertResolver, Certificate, CertifiedKey, PrivateKey, RootCerts, ServerConfig};
+use akio::tls::{
+    CertAlert, CertDone, CertResolver, Certificate, CertifiedKey, ClientHelloInfo, PrivateKey,
+    RootCerts, ServerConfig,
+};
 use akio_crypto::hash::Sha256;
 use akit_config::{ClientAuthMode, NOT_SUPPORTED_YET, Protocol, Tls};
 
@@ -187,6 +201,9 @@ fn serial_hex(b: &[u8]) -> String {
 #[derive(Clone)]
 pub struct ListenerTls {
     certs: Arc<Certs>,
+    /// The names listed in `tls.acme`, normalized, with the manager that obtains their
+    /// certificates; `None` when it lists none, or when none obtains them (`akit validate`).
+    acme: Option<ListenerAcme>,
     roots: Option<(RootCerts, ClientAuthMode)>,
     alpn: Vec<&'static str>,
     h3: bool,
@@ -196,10 +213,18 @@ pub struct ListenerTls {
     ca_sums: Vec<Sum>,
 }
 
+/// A listener's ACME names and their manager.
+#[derive(Clone)]
+struct ListenerAcme {
+    acme: Acme,
+    names: Arc<[String]>,
+}
+
 impl fmt::Debug for ListenerTls {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ListenerTls")
             .field("certs", &self.certs)
+            .field("acme", &self.acme.as_ref().map(|a| &a.names))
             .field("client_auth", &self.roots.as_ref().map(|(_, m)| m))
             .field("alpn", &self.alpn)
             .field("h3", &self.h3)
@@ -217,6 +242,20 @@ impl ListenerTls {
     /// certificate or key, a key that does not match its certificate, or an authority file with
     /// no certificate.
     pub fn load(tls: &Tls, protocols: &[Protocol]) -> Result<ListenerTls, Error> {
+        ListenerTls::load_with(tls, protocols, None)
+    }
+
+    /// The same, the certificates of the names `tls.acme` lists obtained by `acme`; with none,
+    /// only the certificates from files are served, as when `akit validate` checks a config.
+    ///
+    /// # Errors
+    ///
+    /// As [`load`](Self::load).
+    pub fn load_with(
+        tls: &Tls,
+        protocols: &[Protocol],
+        acme: Option<&Acme>,
+    ) -> Result<ListenerTls, Error> {
         let mut files = BTreeMap::new();
         let mut keys = Vec::with_capacity(tls.certificates.len());
         for (i, c) in tls.certificates.iter().enumerate() {
@@ -226,8 +265,8 @@ impl ListenerTls {
                     .map_err(|msg| Error::new(&at, msg))?,
             );
         }
-        if keys.is_empty() {
-            // akit-config refuses a tls without certificates (ACME obtains them in fit).
+        if keys.is_empty() && tls.acme.is_empty() {
+            // akit-config refuses a tls without certificates or ACME names (fit's auto_https).
             return Err(Error::new(
                 "certificates",
                 format!("{NOT_SUPPORTED_YET}: a tls without certificates"),
@@ -256,8 +295,20 @@ impl ListenerTls {
             }
             roots = Some((r, ca.mode));
         }
+        let acme = match acme {
+            Some(a) if !tls.acme.is_empty() => Some(ListenerAcme {
+                acme: a.clone(),
+                names: tls
+                    .acme
+                    .iter()
+                    .map(|n| n.trim_end_matches('.').to_ascii_lowercase())
+                    .collect(),
+            }),
+            _ => None,
+        };
         let t = ListenerTls {
             certs: Arc::new(certs),
+            acme,
             roots,
             alpn: alpn(protocols),
             h3: protocols.contains(&Protocol::H3),
@@ -265,14 +316,44 @@ impl ListenerTls {
             ca_sums,
         };
         // Built once here, so that `validate` finds what would fail when the listener opens.
-        t.server_configs(t.certs.clone())?;
+        t.server_configs(Arc::new(t.clone()))?;
         Ok(t)
     }
 
-    /// Its certificates.
+    /// Its certificates from files.
     #[must_use]
     pub fn certs(&self) -> &Arc<Certs> {
         &self.certs
+    }
+
+    /// The names its `tls.acme` lists, normalized, when a manager obtains their certificates.
+    #[must_use]
+    pub fn acme_names(&self) -> &[String] {
+        self.acme.as_ref().map_or(&[], |a| &a.names)
+    }
+
+    /// The certificate a handshake gets, as fit's `tlsmgr.Certs`: for a name `tls.acme` lists,
+    /// the one obtained for it once there is one (a client naming none, on a listener with no
+    /// files, gets the first name's); otherwise the certificates from files ([`Certs::get`]).
+    /// Read from memory, in the handshake's call. `None` when there is none to give.
+    #[must_use]
+    pub fn get(&self, hello: &ClientHelloInfo<'_>) -> Option<CertifiedKey> {
+        if let Some(a) = &self.acme {
+            let name = hello
+                .server_name()
+                .map(|n| n.trim_end_matches('.').to_ascii_lowercase());
+            let name = match name {
+                Some(n) if !n.is_empty() => Some(n),
+                _ if self.certs.is_empty() => a.names.first().cloned(),
+                _ => None,
+            };
+            if let Some(n) = name.filter(|n| a.names.contains(n)) {
+                if let Some(k) = a.acme.certificate(&n) {
+                    return Some(k);
+                }
+            }
+        }
+        self.certs.get(hello)
     }
 
     /// The SHA-256 of every file it was loaded from (certificates, keys and authorities), by
@@ -347,7 +428,18 @@ pub fn server_config(tls: &Tls, protocols: &[Protocol]) -> Result<ServerConfig, 
 /// As [`ListenerTls::load`].
 pub fn server_configs(tls: &Tls, protocols: &[Protocol]) -> Result<ServerConfigs, Error> {
     let t = ListenerTls::load(tls, protocols)?;
-    t.server_configs(t.certs.clone())
+    t.server_configs(Arc::new(t.clone()))
+}
+
+/// A listener's TLS chooses its certificates itself: [`ListenerTls::get`], in the handshake's
+/// call.
+impl CertResolver for ListenerTls {
+    fn resolve(&self, hello: &ClientHelloInfo<'_>, done: CertDone) {
+        match self.get(hello) {
+            Some(k) => done.complete(k),
+            None => done.fail(CertAlert::UnrecognizedName),
+        }
+    }
 }
 
 /// A certificate's chain and its key, checked to match; the files' sums go into `files`.

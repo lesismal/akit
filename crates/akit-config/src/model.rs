@@ -33,6 +33,72 @@ pub struct Config {
     /// `/metrics`, which serves the rest of the metrics without it; off when left out, since it
     /// costs every request a little. Needs `admin`, as in fit.
     pub metrics: Option<Metrics>,
+    /// `acme`: how certificates for the names listeners list in `tls.acme` are obtained (I31);
+    /// the defaults when left out. Read when akit starts: a change takes a restart, as in fit.
+    pub acme: Option<Acme>,
+}
+
+/// fit's default `acme.directory`: Let's Encrypt's.
+pub const DEFAULT_ACME_DIRECTORY: &str = "https://acme-v02.api.letsencrypt.org/directory";
+/// fit's default `acme.max_concurrent`.
+pub const DEFAULT_ACME_MAX_CONCURRENT: usize = 2;
+/// fit's default `acme.timeout`: how long obtaining one certificate may take.
+pub const DEFAULT_ACME_TIMEOUT: Duration = Duration::from_secs(600);
+/// fit's default `acme.request_timeout`: how long each request to the CA may take.
+pub const DEFAULT_ACME_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// An ACME challenge (`acme.challenges`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Challenge {
+    /// `http-01`: the CA asks for the answer on port 80, which every listener in the clear gives.
+    Http01,
+    /// `tls-alpn-01`: the CA asks in a TLS handshake on port 443. Read, and refused as not
+    /// supported yet (I32).
+    TlsAlpn01,
+}
+
+/// `acme`, as fit's `config.ACME` (decision 007): where certificates are obtained and kept, and
+/// how fast. `shared_storage` and `on_demand` are refused as not supported yet, as is the
+/// `tls-alpn-01` challenge (I32): certificates are obtained through HTTP-01.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Acme {
+    /// `directory`: the URL of the CA's ACME directory; [`DEFAULT_ACME_DIRECTORY`] when left out.
+    pub directory: String,
+    /// `email`: the address the CA may write to about the account; none when empty.
+    pub email: String,
+    /// `ca_file`: a PEM file of the roots the directory's certificate is checked against, in
+    /// place of the system's; none when empty.
+    pub ca_file: String,
+    /// `storage`: the directory accounts, keys and certificates are kept in;
+    /// `$XDG_DATA_HOME/akit` or `~/.local/share/akit` when empty.
+    pub storage: String,
+    /// `max_concurrent`: how many certificates are obtained at once;
+    /// [`DEFAULT_ACME_MAX_CONCURRENT`] when left out or 0.
+    pub max_concurrent: usize,
+    /// `timeout`: how long obtaining one certificate may take; [`DEFAULT_ACME_TIMEOUT`] when
+    /// left out or 0.
+    pub timeout: Duration,
+    /// `request_timeout`: how long each request to the CA may take;
+    /// [`DEFAULT_ACME_REQUEST_TIMEOUT`] when left out or 0.
+    pub request_timeout: Duration,
+    /// `challenges`: the challenges answered, in the order tried; HTTP-01 alone when left out
+    /// (fit adds TLS-ALPN-01, I32).
+    pub challenges: Vec<Challenge>,
+}
+
+impl Default for Acme {
+    fn default() -> Acme {
+        Acme {
+            directory: DEFAULT_ACME_DIRECTORY.to_owned(),
+            email: String::new(),
+            ca_file: String::new(),
+            storage: String::new(),
+            max_concurrent: DEFAULT_ACME_MAX_CONCURRENT,
+            timeout: DEFAULT_ACME_TIMEOUT,
+            request_timeout: DEFAULT_ACME_REQUEST_TIMEOUT,
+            challenges: vec![Challenge::Http01],
+        }
+    }
 }
 
 /// `metrics`, as fit's `config.Metrics`: it turns on the counting of requests, and has no
@@ -368,6 +434,10 @@ pub struct Tls {
     pub client_auth: Option<ClientAuth>,
     /// `max_version`: the newest TLS version allowed; 1.3 when left out.
     pub max_version: TlsVersion,
+    /// `acme`: host names whose certificates are obtained with ACME (I31), as the top-level
+    /// `acme` says. A client asking for one is given its certificate once there is one; until
+    /// then, and for other names, the certificates from files.
+    pub acme: Vec<String>,
 }
 
 /// A certificate and its key, from PEM files.
@@ -895,6 +965,7 @@ const CONFIG_FIELDS: &[&str] = &[
     "access_log",
     "admin",
     "metrics",
+    "acme",
 ];
 const CONFIG_FIT_ONLY: &[&str] = &[
     "services",
@@ -904,7 +975,6 @@ const CONFIG_FIT_ONLY: &[&str] = &[
     "engine",
     "auto_https",
     "pprof",
-    "acme",
     "llm",
     "tunnel",
     "webrtc",
@@ -959,9 +1029,21 @@ const ACCESS_LOG_FIT_ONLY: &[&str] = &["rotate"];
 const LISTENER_FIELDS: &[&str] = &["name", "address", "protocols", "tls"];
 const LISTENER_FIT_ONLY: &[&str] = &["mptcp", "socks", "access", "proxy_protocol"];
 const FIT_PROTOCOLS: &[&str] = &["tcp", "udp", "socks"];
-const TLS_FIELDS: &[&str] = &["certificates", "client_auth", "max_version"];
-// acme and on_demand come with I31 and I34; kernel_tls_offload with engine's.
-const TLS_FIT_ONLY: &[&str] = &["acme", "on_demand", "kernel_tls_offload"];
+const TLS_FIELDS: &[&str] = &["certificates", "client_auth", "max_version", "acme"];
+// on_demand comes with I34; kernel_tls_offload with engine's.
+const TLS_FIT_ONLY: &[&str] = &["on_demand", "kernel_tls_offload"];
+// I31: shared_storage comes with fit's shared storage, on_demand with I34.
+const ACME_FIELDS: &[&str] = &[
+    "directory",
+    "email",
+    "ca_file",
+    "storage",
+    "max_concurrent",
+    "timeout",
+    "request_timeout",
+    "challenges",
+];
+const ACME_FIT_ONLY: &[&str] = &["shared_storage", "on_demand"];
 const CERTIFICATE_FIELDS: &[&str] = &["cert_file", "key_file"];
 const CLIENT_AUTH_FIELDS: &[&str] = &["ca_files", "mode"];
 const ROUTE_FIELDS: &[&str] = &[
@@ -1117,6 +1199,8 @@ pub(crate) struct Part {
     admin: Option<(Admin, usize)>,
     /// `metrics`, with the position of its key, when the file gives it.
     metrics: Option<(Metrics, usize)>,
+    /// `acme`, with the position of its key, when the file gives it.
+    acme: Option<(Acme, usize)>,
     /// The position of the file's top object.
     doc_off: usize,
 }
@@ -1168,6 +1252,9 @@ pub(crate) fn part(d: &mut Decoder<'_>, n: &Node, file: usize) -> Option<Part> {
         m.finish(d, &[], &[]);
         Some((Metrics {}, v.off))
     });
+    let acme = o
+        .take("acme")
+        .and_then(|v| acme(d, v, "acme").map(|a| (a, v.off)));
     let doc_off = o.off;
     o.finish(d, CONFIG_FIELDS, CONFIG_FIT_ONLY);
     Some(Part {
@@ -1179,6 +1266,7 @@ pub(crate) fn part(d: &mut Decoder<'_>, n: &Node, file: usize) -> Option<Part> {
         access_log,
         admin,
         metrics,
+        acme,
         doc_off,
     })
 }
@@ -1200,6 +1288,7 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
     let mut access_log: Option<(AccessLog, usize)> = None;
     let mut admin: Option<(Admin, usize)> = None;
     let mut metrics: Option<(Metrics, usize, usize)> = None;
+    let mut acme: Option<(Acme, usize)> = None;
     for (file, p) in parts.into_iter().enumerate() {
         first_doc.get_or_insert((file, p.doc_off));
         if let Some((v, off)) = p.schema_version {
@@ -1310,6 +1399,9 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
                 None => metrics = Some((m, file, off)),
             }
         }
+        if let Some((a, off)) = p.acme {
+            once(ds, &mut acme, a, file, off, "acme");
+        }
         listeners.extend(p.listeners);
         routes.extend(p.routes);
         upstreams.extend(p.upstreams);
@@ -1327,6 +1419,7 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
     }
     check_routes(ds, &routes, &listeners);
     check_upstreams(ds, &upstreams);
+    check_acme_names(ds, &listeners, acme.as_ref().map(|(a, _)| a));
     if let Some((_, file, off)) = metrics {
         if admin.is_none() {
             if let Some(d) = ds.get_mut(file) {
@@ -1355,6 +1448,169 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
         access_log: access_log.map(|(a, _)| a),
         admin: admin.map(|(a, _)| a),
         metrics: metrics.map(|(m, _, _)| m),
+        acme: acme.map(|(a, _)| a),
+    }
+}
+
+/// Keeps `v`, a field at the top given by `file` at `off`, in `slot`, or reports it as given by
+/// two files, as fit's adapter does: only the lists at the top may be split across files.
+fn once<T>(
+    ds: &mut [Decoder<'_>],
+    slot: &mut Option<(T, usize)>,
+    v: T,
+    file: usize,
+    off: usize,
+    key: &str,
+) {
+    match slot {
+        Some((_, first_file)) => {
+            let name = ds
+                .get(*first_file)
+                .and_then(Decoder::file)
+                .unwrap_or_default()
+                .to_owned();
+            if let Some(d) = ds.get_mut(file) {
+                d.error(
+                    off,
+                    key,
+                    format!(
+                        "also given in {name}: only the lists at the top of a config (listeners, routes, upstreams, services, providers) may be split across files"
+                    ),
+                );
+            }
+        }
+        None => *slot = Some((v, file)),
+    }
+}
+
+/// `acme`, as fit's `config.ACME` and its checks (config/validate.go).
+fn acme(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Acme> {
+    let mut o = d.object(n, path)?;
+    let mut a = Acme::default();
+    let string = |o: &mut Obj<'_>, d: &mut Decoder<'_>, key: &str| {
+        o.take(key)
+            .and_then(|v| d.string(v, &o.at(key)).map(|s| (v.off, s)))
+    };
+    if let Some((off, s)) = string(&mut o, d, "directory").filter(|(_, s)| !s.is_empty()) {
+        if !http_url(&s) {
+            d.error(
+                off,
+                &o.at("directory"),
+                format!("{s:?} is not an http or https URL"),
+            );
+        }
+        a.directory = s;
+    }
+    if let Some((_, s)) = string(&mut o, d, "email") {
+        a.email = s;
+    }
+    if let Some((_, s)) = string(&mut o, d, "ca_file") {
+        a.ca_file = s;
+    }
+    if let Some((_, s)) = string(&mut o, d, "storage") {
+        a.storage = s;
+    }
+    if let Some(v) = o.take("max_concurrent") {
+        // fit's int, at least 0; 0 is the default.
+        if let Some(n) = d
+            .int(v, &o.at("max_concurrent"), 0, i64::from(u16::MAX))
+            .and_then(|n| usize::try_from(n).ok())
+            .filter(|n| *n != 0)
+        {
+            a.max_concurrent = n;
+        }
+    }
+    for (key, slot) in [
+        ("timeout", &mut a.timeout),
+        ("request_timeout", &mut a.request_timeout),
+    ] {
+        if let Some(t) = o
+            .take(key)
+            .and_then(|v| d.duration(v, &o.at(key)))
+            .filter(|t| !t.is_zero())
+        {
+            *slot = t;
+        }
+    }
+    if let Some(v) = o.take("challenges") {
+        let p = o.at("challenges");
+        let mut list = Vec::new();
+        for (i, (off, s)) in d.strings(v, &p).into_iter().enumerate() {
+            let at = crate::error::join_index(&p, i);
+            let c = match s.as_str() {
+                "http-01" => Challenge::Http01,
+                "tls-alpn-01" => {
+                    d.not_yet(off, &at, "the tls-alpn-01 challenge (I32)");
+                    Challenge::TlsAlpn01
+                }
+                _ => {
+                    d.error(
+                        off,
+                        &at,
+                        format!("{s:?} is not one of \"http-01\", \"tls-alpn-01\""),
+                    );
+                    continue;
+                }
+            };
+            if list.contains(&c) {
+                d.error(off, &at, format!("{s:?} is listed twice"));
+            }
+            list.push(c);
+        }
+        if !list.is_empty() {
+            a.challenges = list;
+        }
+    }
+    o.finish(d, ACME_FIELDS, ACME_FIT_ONLY);
+    Some(a)
+}
+
+/// Whether `s` is an `http` or `https` URL with a host, as fit checks `acme.directory`.
+fn http_url(s: &str) -> bool {
+    let rest = s
+        .strip_prefix("https://")
+        .or_else(|| s.strip_prefix("http://"));
+    rest.is_some_and(|r| !r.split(['/', '?', '#']).next().unwrap_or("").is_empty())
+}
+
+/// fit's checks of the names listeners list in `tls.acme` (config/validate.go): host names, no
+/// wildcards (HTTP-01 cannot obtain them), no IP addresses, none twice in a listener; and a
+/// listener requiring client certificates needs HTTP-01 answered.
+fn check_acme_names(ds: &mut [Decoder<'_>], listeners: &[At<Listener>], acme: Option<&Acme>) {
+    let http01 = acme.is_none_or(|a| a.challenges.contains(&Challenge::Http01));
+    for l in listeners {
+        let Some(t) = &l.v.tls else { continue };
+        let tls_path = crate::error::join_field(&l.path, "tls");
+        let path = crate::error::join_field(&tls_path, "acme");
+        let mut seen: Vec<String> = Vec::new();
+        for (i, name) in t.acme.iter().enumerate() {
+            let at = crate::error::join_index(&path, i);
+            let lower = name.to_ascii_lowercase();
+            let msg = match check_host(name) {
+                Err(msg) => Some(msg),
+                Ok(()) if name.starts_with("*.") || name.starts_with("**.") => Some(format!(
+                    "{name:?} is a wildcard, which the HTTP-01 challenge cannot obtain"
+                )),
+                Ok(()) if name.trim_matches(['[', ']']).parse::<IpAddr>().is_ok() => {
+                    Some(format!("{name:?} is an IP address; acme takes host names"))
+                }
+                Ok(()) if seen.contains(&lower) => Some(format!("{name:?} is listed twice")),
+                Ok(()) => None,
+            };
+            if let Some(msg) = msg {
+                l.error(ds, &at, msg);
+            }
+            seen.push(lower);
+        }
+        if let Some(ca) = &t.client_auth {
+            if ca.mode == ClientAuthMode::Require && !t.acme.is_empty() && !http01 {
+                l.error(
+                    ds,
+                    &crate::error::join_field(&tls_path, "client_auth"),
+                    "a listener that requires client certificates cannot answer TLS-ALPN-01, the only challenge acme.challenges allows; set mode verify_if_given or allow http-01".to_owned(),
+                );
+            }
+        }
     }
 }
 
@@ -1627,9 +1883,20 @@ fn tls(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Tls> {
         Some(v) => tls_version(d, v, &o.at("max_version")),
         None => TlsVersion::Tls13,
     };
+    // Whether names are written, read or not: one with a problem is not missing.
+    let acme_written = o.has("acme");
+    let acme = o
+        .take("acme")
+        .map(|v| {
+            d.strings(v, &o.at("acme"))
+                .into_iter()
+                .map(|(_, s)| s)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
     let off = o.off;
-    // Not taken: finish refuses them as not supported yet.
-    let has_acme = o.has("acme") || o.has("on_demand");
+    // Not taken: finish refuses it as not supported yet.
+    let has_acme = acme_written || o.has("on_demand");
     o.finish(d, TLS_FIELDS, TLS_FIT_ONLY);
     if !some_certs && !has_acme {
         // fit obtains certificates for the listener's routes' host names with ACME then
@@ -1644,6 +1911,7 @@ fn tls(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Tls> {
         certificates,
         client_auth,
         max_version,
+        acme,
     })
 }
 

@@ -1,14 +1,11 @@
 # The compatibility gate's report (docs/compatibility.md), written by make compat-bless;
 # do not edit. The gate fails when a run's outcomes differ from these lines.
 # fit 7daee573, fit-examples 9659d7e4.
-# 80 fixtures: 14 valid, 65 refused only as not supported yet (fields refused: 66), 0 in a format not supported yet, 1 skipped, 0 failed.
-examples/acme-on-demand: not supported yet: acme
-examples/acme-on-demand: not supported yet: listeners[].tls.acme
+# 80 fixtures: 15 valid, 64 refused only as not supported yet (fields refused: 66), 0 in a format not supported yet, 1 skipped, 0 failed.
+examples/acme-on-demand: not supported yet: acme.on_demand
 examples/acme-on-demand: not supported yet: listeners[].tls.on_demand
-examples/acme-shared-storage: not supported yet: acme
-examples/acme-shared-storage: not supported yet: listeners[].tls.acme
+examples/acme-shared-storage: not supported yet: acme.shared_storage
 examples/admin: not supported yet: admin.address: a Unix socket (akio API request A23)
-examples/auto-https: not supported yet: acme
 examples/auto-https: not supported yet: listeners: a config with no listeners, served over HTTPS by default (auto_https)
 examples/basic-auth: not supported yet: routes[].middleware[]<basic_auth>
 examples/bittorrent: not supported yet: bittorrent
@@ -20,8 +17,6 @@ examples/bittorrent: not supported yet: routes[].handler<bt_tracker>
 examples/body-limit: valid
 examples/cache: not supported yet: routes[].middleware[]<cache>
 examples/circuit-breaker: not supported yet: routes[].middleware[]<circuit_breaker>
-examples/client-cert: not supported yet: acme
-examples/client-cert: not supported yet: listeners[].tls.acme
 examples/client-cert: not supported yet: routes[].middleware[]<client_cert>
 examples/compress: not supported yet: routes[].middleware[]<compress>
 examples/concurrency-limit: valid
@@ -35,8 +30,7 @@ examples/grpc: not supported yet: upstreams[].protocol: the "h2c" protocol for u
 examples/grpc: not supported yet: upstreams[].response_idle_timeout
 examples/headers: valid
 examples/hello: valid
-examples/http3: not supported yet: acme
-examples/http3: not supported yet: listeners[].tls.acme
+examples/http3: valid
 examples/https: skipped: its certificate and key files are the user's own
 examples/jwt: not supported yet: routes[].middleware[]<jwt>
 examples/l4-tcp: not supported yet: listeners[].protocols: the "tcp" protocol
@@ -65,8 +59,6 @@ examples/media-pages: not supported yet: routes[].handler<whep>
 examples/media-pages: not supported yet: routes[].handler<whip>
 examples/media-pages: not supported yet: webrtc
 examples/metrics: valid
-examples/mtls: not supported yet: acme
-examples/mtls: not supported yet: listeners[].tls.acme
 examples/mtls: not supported yet: routes[].middleware[]<client_cert>
 examples/provider-consul: not supported yet: providers
 examples/provider-consul-kv: not supported yet: providers

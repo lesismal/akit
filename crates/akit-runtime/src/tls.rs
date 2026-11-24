@@ -6,7 +6,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use akio::tls::{CertAlert, CertDone, CertResolver, ClientHelloInfo};
-use akit_tls::{Certs, ListenerTls, ServerConfigs};
+use akit_tls::{ListenerTls, ServerConfigs};
 
 use crate::{Graph, GraphCell};
 
@@ -26,8 +26,8 @@ pub struct ListenerCerts {
     listener: String,
     /// The epoch from which the cell's current graph is the one to serve from.
     since: u64,
-    /// The certificates of the graph it was made for.
-    own: Arc<Certs>,
+    /// The TLS of the graph it was made for.
+    own: ListenerTls,
 }
 
 impl fmt::Debug for ListenerCerts {
@@ -56,7 +56,7 @@ impl ListenerCerts {
             } else {
                 epoch
             },
-            own: Arc::clone(tls.certs()),
+            own: tls.clone(),
         })
     }
 
@@ -64,7 +64,7 @@ impl ListenerCerts {
         if self.cell.epoch() >= self.since {
             if let Some(k) = self
                 .cell
-                .with(|g| g.certs(&self.listener).map(|c| c.get(hello)))
+                .with(|g| g.listener_tls(&self.listener).map(|t| t.get(hello)))
             {
                 return k;
             }

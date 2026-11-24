@@ -130,7 +130,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I28 | Listeners diffed at run time | I26, A1 | todo |
 | I29 | File provider | I26 | todo |
 | I30 | Certificate manager and storage | I09 | done |
-| I31 | ACME I: account, orders, HTTP-01 | I30 | todo |
+| I31 | ACME I: account, orders, HTTP-01 | I30 | done |
 | I32 | ACME II: TLS-ALPN-01, renewal, OCSP | I31 | todo |
 | I33 | Automatic HTTPS defaults | I32 | todo |
 | I34 | On-demand TLS | I33, A2 | todo |
@@ -211,6 +211,7 @@ commit and result.
 | Active health checks | I35 | no | no (built, not measured) | Off the hot path (a pick still reads one atomic per address): the probes' cost on a busy engine, thousands of addresses probed every second (http and tcp), with the probe timer's thread (the stopgap for akio A45); same-run A/B of the proxy scenario with a health check on and off. |
 | Access logs | I21 | no | no (built, not measured) | Same-run A/B of fixed and proxy with logs on and off (json, and text or line), to a file and to `/dev/null`; lines dropped at full load with the default 4 MiB buffer and a slow disk; the per-request cost (the boxed response filter, the shard lock, formatting). |
 | Certificates chosen per handshake (the resolver reading the graph) | I30 | no | no (built, not measured) | Full TLS handshakes a second with one and ten certificates, against I09's `sni_cert` and fit. |
+| The HTTP-01 check on listeners in the clear | I31 | no | no (built, not measured) | Fixed over HTTP/1.1 and h2c, same-run A/B against main before I31 (a prefix comparison per request under `akit run`). |
 | Prometheus metrics | I37 | no | no (built, not measured) | Same-run A/B of the fixed and proxy scenarios with `metrics` on and off (an inline route costs a thread-local read and three atomic adds; a proxied one also a boxed response filter until akio A29), and with the access log on too (one hook for both); a scrape with many routes and 64 threads (the per-thread shards). |
 | Matchers v2 and expressions | I39 | no | no (built, not measured) | A micro-benchmark of `find_request` with matchers, expressions and path regexps (no allocation, `tests/no_alloc.rs`); same-run A/B against I39's base on the fixed scenario (one route, no matchers: within noise expected). |
 | Rewrites, redirects, headers | I40 | no | no (built, not measured) | Same-run A/B on the proxy scenario of a route with `headers` (request and response changes) and `rewrite` against the same route without them; the cost per request of the response filter (a boxed closure and an `Arc` clone) and of the request fields kept in a context local (the stopgap until akio API request A33). |

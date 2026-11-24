@@ -24,7 +24,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | A3 | A filter on accepted connections before any handler runs | in akio's main (`a9a620ab`), pinned | 11 | access lists |
 | A4 | PROXY protocol v1/v2: parse on accept, write on dial | in akio's main (`a9a620ab`), pinned | 12 | I52 |
 | A5 | An akio-mux rule that routes TLS by SNI without terminating it | in akio's main (`a9a620ab`), pinned | 12 | I52, I53 |
-| A6 | CSR generation in `akio-x509` (and JWS helpers in `akio-crypto`) | done on akio branch `claude/x509-csr` (`7ea64069`), not merged | 15 | I31 |
+| A6 | CSR generation in `akio-x509` (and JWS helpers in `akio-crypto`) | in akio's main (`afbbb521`), pinned | 15 | I31 |
 | A7 | An MP4 (ISO BMFF) reader for segmenting files without transcoding | in akio's main (`a9a620ab`), pinned | — | media library |
 | A8 | TUN devices | in akio's main (`a9a620ab`), pinned | — | VPN |
 | A9 | A TLS server capped at TLS 1.2 (public `ServerConfigBuilder` API) | requested (I09) | 17 | I09 |
@@ -122,7 +122,7 @@ with the sniff limits `Mux` already has.
 
 **Problem.** akit's ACME client needs a PKCS#10 CSR for its keys and JWS signatures (ES256, RS256).
 
-**Done** (akio ADR-093): `akio_x509::CsrParams::sign` makes the request and
+**Done** (akio ADR-107, numbered 093 on its branch): `akio_x509::CsrParams::sign` makes the request and
 `CertificateRequest` parses and checks one. JWS needed nothing new: `akio_crypto::pkey::PrivateKey::sign`
 already gives ES256/384/512, EdDSA and RS256 in the raw forms JWS uses.
 

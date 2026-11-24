@@ -518,6 +518,55 @@ fn supported_fields_are_read() {
                     == akit_config::ClientAuthMode::VerifyIfGiven
             },
         ),
+        (
+            "listeners[].tls.acme",
+            tls(r#", "acme": ["a.example"]"#),
+            |c| c.listeners[0].tls.as_ref().unwrap().acme == ["a.example"],
+        ),
+        ("acme", r#"{"acme": {}}"#.into(), |c| {
+            c.acme == Some(akit_config::Acme::default())
+        }),
+        (
+            "acme.directory",
+            r#"{"acme": {"directory": "https://ca.test/dir"}}"#.into(),
+            |c| c.acme.as_ref().unwrap().directory == "https://ca.test/dir",
+        ),
+        (
+            "acme.email",
+            r#"{"acme": {"email": "ops@example.com"}}"#.into(),
+            |c| c.acme.as_ref().unwrap().email == "ops@example.com",
+        ),
+        (
+            "acme.ca_file",
+            r#"{"acme": {"ca_file": "ca.pem"}}"#.into(),
+            |c| c.acme.as_ref().unwrap().ca_file == "ca.pem",
+        ),
+        (
+            "acme.storage",
+            r#"{"acme": {"storage": "/var/lib/akit"}}"#.into(),
+            |c| c.acme.as_ref().unwrap().storage == "/var/lib/akit",
+        ),
+        (
+            "acme.max_concurrent",
+            r#"{"acme": {"max_concurrent": 3}}"#.into(),
+            |c| c.acme.as_ref().unwrap().max_concurrent == 3,
+        ),
+        (
+            "acme.timeout",
+            r#"{"acme": {"timeout": "1m"}}"#.into(),
+            |c| c.acme.as_ref().unwrap().timeout == std::time::Duration::from_secs(60),
+        ),
+        (
+            "acme.request_timeout",
+            r#"{"acme": {"request_timeout": "5s"}}"#.into(),
+            |c| c.acme.as_ref().unwrap().request_timeout == std::time::Duration::from_secs(5),
+        ),
+        // http-01; tls-alpn-01 is refused as not supported yet (I32).
+        (
+            "acme.challenges",
+            r#"{"acme": {"challenges": ["http-01"]}}"#.into(),
+            |c| c.acme.as_ref().unwrap().challenges == [akit_config::Challenge::Http01],
+        ),
         // 1.3, the default; 1.2 is refused as not supported yet (akio API request A9).
         (
             "listeners[].tls.max_version",
@@ -1165,9 +1214,10 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 25] = [
+    let objects: [(&str, &str, Option<&str>); 26] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         ("admin", "ADMIN_FIELDS", Some("ADMIN_FIT_ONLY")),
+        ("acme", "ACME_FIELDS", Some("ACME_FIT_ONLY")),
         ("limits", "LIMITS_FIELDS", Some("LIMITS_FIT_ONLY")),
         (
             "access_log",
@@ -1441,7 +1491,7 @@ fn inventory_paths_for_akit_config_paths() {
 fn findings_from_akit_config_errors() {
     let errs = akit_config::from_json(
         r#"{"listeners": [{"name": "w", "address": ":1", "protocols": ["udp"], "mptcp": true}],
-            "routes": [{"handler": {"module": "fastcgi"}}], "acme": {}}"#,
+            "routes": [{"handler": {"module": "fastcgi"}}], "acme": {"shared_storage": {}}}"#,
         None,
     )
     .unwrap_err();
@@ -1454,7 +1504,7 @@ fn findings_from_akit_config_errors() {
         "listeners[0].protocols[0]: the \"udp\" protocol",
         "listeners[0].mptcp",
         "routes[0].handler<fastcgi>",
-        "acme",
+        "acme.shared_storage",
     ]
     .iter()
     .map(|p| format!("not supported yet: {p}"))
