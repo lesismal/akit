@@ -10,14 +10,68 @@
 | | |
 | --- | --- |
 | 最后更新 | 2026-11-24 |
-| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I17、I19–I24 已完成（I17b 等待 akio）；M2 的 I26、I27、I30、I31、I35、I37 和 M3 的 I39、I40、I41 已提前完成。 |
+| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I17、I19–I24 已完成（I17b 等待 akio）；M2 的 I26、I27、I30、I31、I32、I35、I37 和 M3 的 I39、I40、I41 已提前完成。 |
 | akio | akio `main` 上的 `afbbb521`（`1.0.0-rc.1`，带 A1–A8、A11、A13 和 A16–A21，以及运行时替换监听器的 io_uring 修复），在 `Cargo.toml` 中按 `rev` 锁定 |
 | fit | 作为规格；本计划基于 `7daee573` 阅读 |
-| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；基于 akio 的 A1 保留、增加、修改和排空监听器，包括启动时的监听器，重载可新增 h3 监听器；服务 h3 的启动监听器要重启才能变）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证；按 fit 的方式每次握手选择证书，重载或 `-watch-certs` 替换证书而不关闭监听器）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；路由中间件：`rewrite`（前缀）、`redirect`、`headers`、`rate_limit`、`concurrency_limit` 和 `body_limit`；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`、双向流式转发 body 并联动背压，双向透传 trailer，`timeout` 和上游的 `response_timeout`，超时回答 504，客户端在 body 中途离开时放弃上游请求）；所有监听器和代理上的 `limits.max_body_bytes`（413）；fit 的 json、text 和 line 格式的访问日志；上游连接池，轮询、加权轮询和最少连接，跳过被被动健康检查（`max_fails`、`fail_timeout`）和主动健康检查（`health_check`：http 和 tcp 探测）下线的地址；回环地址上的 Admin API（`GET /config`，也可按 JSON 指针读取，`POST /load`，用 `PUT`、`PATCH` 和 `DELETE /config` 按指针编辑，`POST /rollback/{n}`，`POST /reload`，都带 `If-Match`，除回滚外都可 `?dry_run=1`，`GET /versions`；有 `token_file` 时每个请求都要带 bearer 令牌），修改与 SIGHUP 一样作为重载应用，两者共用一份历史记录；Admin API 的 `GET /metrics` 提供 fit 的 Prometheus 指标（有 `metrics` 时按监听器和路由的请求、上游和后端、证书、连接、重载、akio 的引擎）；兼容性门禁：80 个夹具，15 个有效，64 个只因暂不支持被拒绝，1 个跳过，没有失败兼容性门禁：80 个夹具，11 个有效，68 个只因暂不支持被拒绝，1 个跳过，没有失败为监听器在 `tls.acme` 中所列的名字通过 HTTP-01 用 ACME 获取证书，保存在存储中并续期；兼容性门禁：80 个夹具，12 个有效，67 个只因暂不支持被拒绝，1 个跳过，没有失败 |
+| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；基于 akio 的 A1 保留、增加、修改和排空监听器，包括启动时的监听器，重载可新增 h3 监听器；服务 h3 的启动监听器要重启才能变）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证；按 fit 的方式每次握手选择证书，重载或 `-watch-certs` 替换证书而不关闭监听器）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；路由中间件：`rewrite`（前缀）、`redirect`、`headers`、`rate_limit`、`concurrency_limit` 和 `body_limit`；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`、双向流式转发 body 并联动背压，双向透传 trailer，`timeout` 和上游的 `response_timeout`，超时回答 504，客户端在 body 中途离开时放弃上游请求）；所有监听器和代理上的 `limits.max_body_bytes`（413）；fit 的 json、text 和 line 格式的访问日志；上游连接池，轮询、加权轮询和最少连接，跳过被被动健康检查（`max_fails`、`fail_timeout`）和主动健康检查（`health_check`：http 和 tcp 探测）下线的地址；回环地址上的 Admin API（`GET /config`，也可按 JSON 指针读取，`POST /load`，用 `PUT`、`PATCH` 和 `DELETE /config` 按指针编辑，`POST /rollback/{n}`，`POST /reload`，都带 `If-Match`，除回滚外都可 `?dry_run=1`，`GET /versions`；有 `token_file` 时每个请求都要带 bearer 令牌），修改与 SIGHUP 一样作为重载应用，两者共用一份历史记录；Admin API 的 `GET /metrics` 提供 fit 的 Prometheus 指标（有 `metrics` 时按监听器和路由的请求、上游和后端、证书、连接、重载、akio 的引擎）；兼容性门禁：80 个夹具，15 个有效，64 个只因暂不支持被拒绝，1 个跳过，没有失败兼容性门禁：80 个夹具，11 个有效，68 个只因暂不支持被拒绝，1 个跳过，没有失败为监听器在 `tls.acme` 中所列的名字通过 HTTP-01 或 TLS-ALPN-01 用 ACME 获取证书，保存在存储中，按有效期或 CA 的续期信息（ARI）续期，并装订其 OCSP 响应；兼容性门禁：80 个夹具，12 个有效，67 个只因暂不支持被拒绝，1 个跳过，没有失败 |
 | 下一步 | I18；akio 有了 A36–A38 后做 I17b |
-| akio 需求 | A1–A8、A11、A13、A16–A21 已在 akio 的 main 并已锁定；A9、A10、A12、A14、A15、A22–A24、A29、A30、A32、A33、A35–A38、A45、A48 和 A49 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
+| akio 需求 | A1–A8、A11、A13、A16–A21 已在 akio 的 main 并已锁定；A9、A10、A12、A14、A15、A22–A24、A29、A30、A32、A33、A35–A38、A45、A48、A49、A57 和 A58 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
 
 ## 日志
+
+### 2026-11-24：I32，ACME II：TLS-ALPN-01、续期、OCSP
+
+- **TLS-ALPN-01**（RFC 8737），与 fit 相同：`acme.challenges` 接受 `tls-alpn-01`，默认两者都用，HTTP-01 在前，和 fit
+  一样。挑战的证书用它自己的 P-256 密钥自签名，只为该名字签发，带关键的 acmeIdentifier 扩展，内容是密钥授权的
+  SHA-256（`akio_x509::CertificateParams` 加自定义扩展）；挑战进行期间保存在内存中（`Acme::alpn_challenge`，一个
+  `Published` 映射，无锁读取）。列出名字的 TLS 监听器在 ALPN 中最后提供 `acme-tls/1`，这样只有单独提供它的客户端会
+  协商出它；这样的握手得到监听器所列名字的挑战证书，否则什么也得不到（`ListenerTls::get`）。先尝试的挑战随每次连续失败
+  依次后移（fit 的 `attempt`），所以 TLS-ALPN-01 失败后接着用 HTTP-01。
+- **续期**：按有效期，带抖动和退避，和 I31 一样；现在还按 **ARI**（RFC 9773，fit 的 `ari.go`，`acme/ari.rs`）：每次
+  运行让某个名字有了证书、并开始提供后，向 CA 的 `renewalInfo` 询问它（ID 由颁发者密钥标识和序列号组成），在
+  `Retry-After` 所说的时间再问（1 分钟到 24 小时，没说时 6 小时；测试用 `Acme::set_ari_bounds`）；证书在建议窗口内随机
+  选一个时间到期，窗口已开始则立即到期；ARI 认为已到期的已存证书不再从存储中取用。`Acme::renew_at` 与
+  `Acme::renewal_info` 给出时间。
+- **OCSP stapling**（`akit_tls::Ocsp`，fit 的 `tlsmgr.OCSP`，`ocsp.rs`）：每个指定了响应者、证书链中带颁发者的证书按
+  证书链的 SHA-256 保存，重载生成的各个运行时图共用，最后一个 `Staple` 释放时丢弃。控制面的两个工作线程获取响应
+  （akio-http 的客户端，用它自己的引擎，10 秒，64 KiB，不跟随重定向），先用 akio-x509 的 `OcspResponse::verify` 校验再
+  装订（`CertifiedKey::with_ocsp_response`）；在有效期过半时重新获取（没有 next update 时一小时），失败按 ACME 的方式
+  退避，过了 next update 就不再装订；吊销或未知：不装订。握手从一个 `Published` 映射读取装订后的证书。ACME 获取的
+  证书与其响应一起发布，任何一个都不会单独提供；响应者说已吊销的证书立即重新获取，不取用存储中的那个。管理器拥有装订器
+  （`Acme::ocsp`），所以 `ListenerTls::load_with` 也通过它为监听器来自文件的证书装订，`Env` 和 `akit run` 都没有改。
+- **来自文件的证书**：与 fit 相同，只有证书链能用受信任的根证书校验通过时才访问它们的响应者，只访问公网地址（除非根证书
+  允许私有地址），只用 `http`，按校验过的地址连接，名字放在 `Host` 中。fit 默认的根证书是系统的，而 akio-tls 不在握手
+  之外提供它们：**临时方案**，在 akio A57 之前，来自文件的证书只在给出根证书时装订（`Ocsp::trust_roots`），`akit run`
+  没有给出，所以它为 ACME 的证书装订、不为文件中的证书装订（每个证书链说明一次原因）。
+- akio 需求：**A57**（握手之外可用的系统根证书）和 **A58**（HTTP 服务能看到协商出的 ALPN，或由 akio 关闭协商出
+  `acme-tls/1` 的连接）。在 A58 之前，协商出 `acme-tls/1` 后又发送 HTTP/1 请求的客户端会得到服务（fit 会关闭它）；
+  握手只给了它挑战的自签名证书。
+- 配置：`acme.challenges` 接受 `tls-alpn-01`；默认两者都用。兼容性门禁中 `acme.challenges` 的用例现在按给定顺序读取
+  两者；没有新增字段，也没有新拒绝的字段。
+- 测试：挑战证书的单元测试（SAN、关键扩展、摘要），fit 的 `TestCertsALPN`（带 acme 名字的 `ListenerTls`：`acme-tls/1`
+  放在最后，只对单独提供它、且名字在列表中的握手给出挑战证书），吊销路径（已存证书不被加载、重新获取、内存中的那个仍在
+  提供），ARI 的证书 ID（RFC 9773 的例子）、`Retry-After`、RFC 3339 与 HTTP 日期、窗口、公网地址和固定地址的响应者
+  URL。`akit-tls/tests/ocsp.rs`（9 个），fit 的 `ocsp_test.go`，对接测试自己的响应者：装订、过半刷新、响应者宕机时
+  保留、过期后丢弃、吊销被报告、证书链共用、最多同时两个获取且 `close` 迅速、受信任根证书下装订文件证书并归还、不受信任
+  时不访问（只说一次）、除非允许否则不访问回环地址；以及在握手中为要求的客户端（`ocsp_stapling`）装订，不为没有响应的
+  证书装订。`akit-tls/tests/ari.rs`（2 个），fit 的 `TestARIWindowBegun` 与 `TestARIWindowLater`，对接明文的 CA。
+  `akit-listener/tests/acme.rs`（新增 4 个，Pebble，epoll 和 io_uring）：fit 的 `TestPebbleTLSALPN`（TLS 监听器在
+  Pebble 的 TLS-ALPN-01 端口上，没有明文监听器；之后挑战证书不再保留；单独提供 `acme-tls/1` 的客户端随后被拒绝）、
+  `TestChallengeFallback`、30 秒的证书被续期、提供给新的握手并保存，以及 `TestPebbleARI`（窗口在有效期内；移到过去后
+  证书被续期）。Pebble 的测试辅助在它挑选的端口被并行测试占用时换端口重新启动（I31 的辅助代码就有的偶发失败）。
+- 检查：macOS 上的 `make check`（运行了 Pebble 测试）；gpu51 上 akit-config、akit-tls、akit-runtime、akit-listener、
+  akit 和 akit-compat 的测试，epoll 与 io_uring，设置了 `$AKIT_PEBBLE_REQUIRED`，全部通过。
+- 与计划和 fit 的不同：
+  - 在 akio A57 之前，不用系统根证书为文件中的证书装订（见上）。
+  - 在 akio A58 之前，`acme-tls/1` 连接在握手后不被关闭（见上）。
+  - fit 的 OCSP 获取走环境变量指定的代理；akit 的不走（不读取 `HTTP_PROXY` 等），来自文件的证书的响应者必须是
+    `http`。
+  - Pebble 为短期证书建议（ARI）的窗口覆盖整个有效期，所以续期测试中的证书立即由 ARI 续期；仅按有效期续期由
+    `renew_at` 的单元测试覆盖，和 I31 一样。
+  - ARI 在证书开始提供之后才询问（fit 在之前询问），所以 CA 不可达时不会延迟来自存储的证书。
+  - 没有测试 TLS 1.2 客户端的装订（akio 的客户端无法限定在 1.2；akio 自己测试了 1.2 的装订）。
+- 基准任务应测量：与 I31 对比每秒完整 TLS 握手数，有和没有装订的响应（证书选择现在要读 ALPN 列表，对带响应者的文件
+  证书还要读第二个 `Published` 映射），以及带响应时握手的大小。
 
 ### 2026-11-24：I31，ACME I：账户、订单、HTTP-01
 

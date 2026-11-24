@@ -54,6 +54,8 @@ first; its status here records the branch, then the akio commit akit pins.
 | A36 | An HTTP client request's response-header and idle timeouts | requested (I17) | 10 | I17b, I18 |
 | A37 | An HTTP client request cancelled at any point | requested (I17) | 3 | I17b, I45 |
 | A38 | A detached server request that hears its client went; a write stall timeout changed at run time | requested (I17) | 3, 10 | I17b, I49 |
+| A57 | Root certificates usable outside a handshake: the system's, to verify a chain against | requested (I32) | 1, 19 | I32 |
+| A58 | The ALPN protocol a TLS connection negotiated, seen by an HTTP service (or such a connection closed) | requested (I32) | 19 | I32, I34 |
 
 ## A1 TCP listeners on a running engine
 
@@ -846,3 +848,50 @@ HTTP/2 does. (2) `Live::set_write_timeout(Option<Duration>)`, as for `idle_timeo
 not count it against the upstream's health, closing fit's `TestClientAbort` "before the header"
 and HTTP/1 "mid-upload" cases; `limits.write_stall_timeout` sets the engine's write timeout at
 start and on reload. I49's WebSocket and tunnel relays hear a client go the same way.
+
+## A57 Root certificates usable outside a handshake
+
+**Problem.** fit staples the OCSP response of a certificate from files only when its chain
+verifies against the system's roots (`x509.SystemCertPool`): a certificate written from what
+someone else gave (a tenant's Kubernetes Secret) must not have the gateway ask a responder it
+names, unless a public CA issued it. akit-tls verifies the chain with akio-x509's `Verifier`, which
+takes an `akio_x509::RootStore`; akio-tls loads the system's roots (`RootCerts::system()`, ADR-010
+and ADR-059: the keychains on macOS, the distribution's bundle elsewhere) but keeps the store
+private to `RootCerts`, so they can only be used by a handshake.
+
+**Evidence.** `crates/akio-tls/src/config.rs` at `afbbb521`: `pub struct RootCerts(akio_x509::RootStore)`
+with no accessor; `RootCerts::system()` builds the store from `crate::system::load()`, which is
+private. Found by I32 (`akit-tls/src/ocsp.rs`).
+
+**Suggested API.** `RootCerts::store(&self) -> &akio_x509::RootStore` (or `impl
+AsRef<RootStore>`, or `From<RootCerts> for RootStore`); or `akio_x509::RootStore::system()`
+sharing akio-tls's loader and cache.
+
+**How akit uses it.** `Ocsp` verifies a certificate from files against `RootCerts::system()`'s
+store, on its own worker thread, as fit's `OCSP` does by default; the roots an operator gives
+(`Ocsp::trust_roots`) stay a replacement. Until then a certificate from files is stapled only
+under roots given, so `akit run` staples ACME's certificates and none from files (the stopgap
+recorded in the I32 progress entry).
+
+## A58 The ALPN protocol a TLS connection negotiated, seen by an HTTP service
+
+**Problem.** A listener that obtains certificates through TLS-ALPN-01 offers `acme-tls/1` last
+in ALPN (RFC 8737), so that only a CA checking a challenge, which offers it alone, negotiates it.
+Such a connection is for the handshake only: fit closes it once the handshake is done (fib's
+server sees `NegotiatedProtocol` and serves no HTTP on it). akio-http's server tells HTTP/2 by its
+preface, not by ALPN, and gives a service nothing of the TLS connection, so a client that
+negotiates `acme-tls/1` and then sends an HTTP/1 request is served it. Nothing is exposed (the
+handshake already gave it the challenge's self-signed certificate), but it is not what fit does,
+and on-demand TLS (I34) has the same case.
+
+**Evidence.** `crates/akio-http/src/session.rs` and `context.rs` at `afbbb521`: no access to the
+connection's `TlsInfo` (`alpn`) from a `Service`; `akio-tls`'s `Connection::alpn()` is there.
+
+**Suggested API.** Either `Context::tls()` (the negotiated ALPN protocol and SNI name of the
+request's connection, `None` in the clear), or an `HttpConfig` setting that closes a TLS
+connection whose negotiated protocol is not one the server speaks (`http/1.1`, `h2`, none) once
+its handshake is done.
+
+**How akit uses it.** The dispatcher closes a connection whose ALPN is `acme-tls/1` without
+answering (or akio closes it), as fit's listener does; today it is served as HTTP/1.1.
+

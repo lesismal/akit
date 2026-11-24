@@ -53,6 +53,8 @@
 | A36 | HTTP 客户端请求的响应头超时和空闲超时 | 已提出（I17） | 10 | I17b、I18 |
 | A37 | 可在任意时刻取消的 HTTP 客户端请求 | 已提出（I17） | 3 | I17b、I45 |
 | A38 | 能得知客户端离开的分离服务端请求；可在运行时修改的写停滞超时 | 已提出（I17） | 3、10 | I17b、I49 |
+| A57 | 握手之外可用的根证书：用系统的根证书校验证书链 | 已提出（I32） | 1、19 | I32 |
+| A58 | HTTP 服务能看到 TLS 连接协商出的 ALPN 协议（或关闭这样的连接） | 已提出（I32） | 19 | I32、I34 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -682,3 +684,38 @@ I17 的 `Fit-Error` 尾部字段结束）。
 **akit 的用法。** I17b：代理注册 `on_gone` 来取消上游请求（A37），且不把它计为上游的失败，补上 fit 的
 `TestClientAbort` 中“响应头之前”和 HTTP/1“上传中途”两种情况；`limits.write_stall_timeout` 在启动和重载时设置引擎的
 写超时。I49 的 WebSocket 和隧道转发也用同样的方式得知客户端离开。
+
+## A57 握手之外可用的根证书
+
+**问题。** fit 只在来自文件的证书的证书链能用系统根证书（`x509.SystemCertPool`）校验通过时，才为它装订 OCSP 响应：
+用别人给的内容写成的证书（租户的 Kubernetes Secret）不能让网关去访问它指定的响应者，除非它是公共 CA 签发的。akit-tls
+用 akio-x509 的 `Verifier` 校验证书链，它接受 `akio_x509::RootStore`；akio-tls 能加载系统根证书（`RootCerts::system()`，
+ADR-010 与 ADR-059：macOS 上读钥匙串，其他系统读发行版的证书包），但这个存储是 `RootCerts` 私有的，只能在握手中使用。
+
+**证据。** `crates/akio-tls/src/config.rs`（`afbbb521`）：`pub struct RootCerts(akio_x509::RootStore)` 没有访问方法；
+`RootCerts::system()` 用私有的 `crate::system::load()` 构建存储。由 I32（`akit-tls/src/ocsp.rs`）发现。
+
+**建议的 API。** `RootCerts::store(&self) -> &akio_x509::RootStore`（或 `impl AsRef<RootStore>`、
+`From<RootCerts> for RootStore`）；或与 akio-tls 共用加载器和缓存的 `akio_x509::RootStore::system()`。
+
+**akit 的用法。** `Ocsp` 在自己的工作线程上用 `RootCerts::system()` 的存储校验来自文件的证书，和 fit 的 `OCSP`
+默认的做法一样；运维给出的根证书（`Ocsp::trust_roots`）仍然是替代。在此之前，来自文件的证书只在给出根证书时装订，
+所以 `akit run` 为 ACME 的证书装订、不为文件中的证书装订（I32 进展记录中的临时方案）。
+
+## A58 HTTP 服务能看到 TLS 连接协商出的 ALPN 协议
+
+**问题。** 通过 TLS-ALPN-01 获取证书的监听器在 ALPN 中把 `acme-tls/1` 放在最后（RFC 8737），这样只有单独提供它的、
+正在检查挑战的 CA 会协商出它。这样的连接只用于握手：fit 在握手完成后关闭它（fib 的服务端看到 `NegotiatedProtocol`，
+不在上面提供 HTTP）。akio-http 的服务端靠前言而不是 ALPN 识别 HTTP/2，也不把 TLS 连接的任何信息交给服务，所以协商出
+`acme-tls/1` 后又发送 HTTP/1 请求的客户端会得到服务。这不会泄露什么（握手已经给了它挑战的自签名证书），但和 fit
+的做法不同，按需 TLS（I34）也有同样的情况。
+
+**证据。** `crates/akio-http/src/session.rs` 与 `context.rs`（`afbbb521`）：`Service` 无法访问连接的 `TlsInfo`
+（`alpn`）；`akio-tls` 的 `Connection::alpn()` 是有的。
+
+**建议的 API。** 要么 `Context::tls()`（请求所在连接协商出的 ALPN 协议和 SNI 名称，明文时为 `None`），要么 `HttpConfig`
+的一个设置：握手完成后，关闭协商出的协议不是服务端所讲协议（`http/1.1`、`h2`、无）的 TLS 连接。
+
+**akit 的用法。** 分发器不作应答地关闭 ALPN 为 `acme-tls/1` 的连接（或由 akio 关闭），和 fit 的监听器一样；目前它
+被当作 HTTP/1.1 服务。
+

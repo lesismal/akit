@@ -1,5 +1,5 @@
 //! `acme` and `tls.acme` (I31): read as fit reads them, with fit's checks of the names; what akit
-//! does not do yet (TLS-ALPN-01, shared storage, on-demand TLS) refused as not supported yet;
+//! does not do yet (shared storage, on-demand TLS) refused as not supported yet;
 //! `acme` given by one file only.
 #![allow(
     clippy::unwrap_used,
@@ -66,7 +66,7 @@ fn defaults_and_values() {
         ),
         (2, Duration::from_secs(600), Duration::from_secs(30))
     );
-    assert_eq!(a.challenges, [Challenge::Http01]);
+    assert_eq!(a.challenges, [Challenge::Http01, Challenge::TlsAlpn01]);
     // 0 and empty are the defaults, as fit's.
     let a =
         acme(r#""directory": "", "max_concurrent": 0, "timeout": "0s", "request_timeout": "0s""#)
@@ -131,7 +131,6 @@ fn refused() {
 #[test]
 fn not_supported_yet() {
     for (fields, path) in [
-        (r#""challenges": ["tls-alpn-01"]"#, "acme.challenges[0]"),
         (r#""shared_storage": {}"#, "acme.shared_storage"),
         (r#""on_demand": {"ask": "http://x/"}"#, "acme.on_demand"),
     ] {

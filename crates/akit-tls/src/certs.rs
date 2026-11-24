@@ -83,6 +83,8 @@ pub(crate) struct Hello<'a> {
     pub(crate) schemes: &'a [u16],
     pub(crate) suites: &'a [u16],
     pub(crate) tls13: bool,
+    /// The ALPN protocols offered, in the client's order.
+    pub(crate) alpn: &'a [&'a [u8]],
 }
 
 impl<'a> From<&ClientHelloInfo<'a>> for Hello<'a> {
@@ -92,6 +94,7 @@ impl<'a> From<&ClientHelloInfo<'a>> for Hello<'a> {
             schemes: h.signature_schemes(),
             suites: h.cipher_suites(),
             tls13: h.version() == "TLSv1_3",
+            alpn: h.alpn(),
         }
     }
 }
@@ -245,6 +248,11 @@ impl Certs {
             .map(|e| e.key.clone())
     }
 
+    /// The `i`th certificate.
+    pub(crate) fn key(&self, i: usize) -> Option<&CertifiedKey> {
+        self.entries.get(i).map(|e| &e.key)
+    }
+
     /// The index of the certificate for `hello` (fit's `Static.GetCertificate`).
     pub(crate) fn choose(&self, hello: &Hello<'_>) -> Option<usize> {
         if self.entries.is_empty() {
@@ -320,6 +328,7 @@ mod tests {
             schemes,
             suites: &[0xc02b, 0xc02f],
             tls13,
+            alpn: &[],
         }
     }
 
