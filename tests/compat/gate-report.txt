@@ -1,7 +1,7 @@
 # The compatibility gate's report (docs/compatibility.md), written by make compat-bless;
 # do not edit. The gate fails when a run's outcomes differ from these lines.
 # fit 7daee573, fit-examples 9659d7e4.
-# 80 fixtures: 8 valid, 71 refused only as not supported yet (fields refused: 66), 0 in a format not supported yet, 1 skipped, 0 failed.
+# 80 fixtures: 8 valid, 71 refused only as not supported yet (fields refused: 70), 0 in a format not supported yet, 1 skipped, 0 failed.
 examples/acme-on-demand: not supported yet: acme
 examples/acme-on-demand: not supported yet: listeners[].tls.acme
 examples/acme-on-demand: not supported yet: listeners[].tls.on_demand
@@ -21,7 +21,6 @@ examples/bittorrent: not supported yet: routes[].handler<bt_publish>
 examples/bittorrent: not supported yet: routes[].handler<bt_stream>
 examples/bittorrent: not supported yet: routes[].handler<bt_tracker>
 examples/bittorrent: not supported yet: routes[].handler<static>.params.strip_prefix
-examples/body-limit: not supported yet: limits
 examples/body-limit: not supported yet: routes[].match.method
 examples/body-limit: not supported yet: routes[].middleware
 examples/cache: not supported yet: routes[].match.method
@@ -57,7 +56,11 @@ examples/l4-udp: not supported yet: listeners[].protocols: the "udp" protocol
 examples/l4-udp: not supported yet: services
 examples/l4-udp: not supported yet: upstreams[].load_balancing: the "ip_hash" load balancing policy
 examples/limits: not supported yet: engine
-examples/limits: not supported yet: limits
+examples/limits: not supported yet: limits.max_conns
+examples/limits: not supported yet: limits.max_header_bytes
+examples/limits: not supported yet: limits.max_pending_bytes
+examples/limits: not supported yet: limits.max_write_queue_bytes
+examples/limits: not supported yet: limits.write_stall_timeout
 examples/llm-hub: not supported yet: llm
 examples/llm-node: not supported yet: llm
 examples/llm-proxy: not supported yet: llm
@@ -88,7 +91,10 @@ examples/provider-docker: not supported yet: providers
 examples/provider-etcd: not supported yet: providers
 examples/provider-kubernetes: not supported yet: providers
 examples/proxy: not supported yet: admin
-examples/proxy: not supported yet: limits
+examples/proxy: not supported yet: limits.max_conns
+examples/proxy: not supported yet: limits.max_header_bytes
+examples/proxy: not supported yet: limits.max_pending_bytes
+examples/proxy: not supported yet: limits.write_stall_timeout
 examples/proxy: not supported yet: upstreams[].fail_timeout
 examples/proxy: not supported yet: upstreams[].health_check
 examples/proxy: not supported yet: upstreams[].max_fails

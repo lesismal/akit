@@ -22,6 +22,30 @@ pub struct Config {
     pub routes: Vec<Route>,
     /// `upstreams`: the servers requests can be proxied to, by name.
     pub upstreams: Vec<Upstream>,
+    /// `limits`: what clients can make akit hold for them. Each listener carries the ones fixed
+    /// in its binding ([`Listener::max_body_bytes`]).
+    pub limits: Limits,
+}
+
+/// fit's default `limits.max_body_bytes`: 16 MiB.
+pub const DEFAULT_MAX_BODY_BYTES: u64 = 16 << 20;
+
+/// `limits`, as fit's `config.Limits`: so far `max_body_bytes`; its other fields are refused as
+/// not supported yet.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Limits {
+    /// `max_body_bytes`: the largest request body a listener takes, whether it arrives whole or
+    /// streams through; a larger one gets 413, or, once it has begun to stream, its connection
+    /// or stream is ended. [`DEFAULT_MAX_BODY_BYTES`] when left out or 0.
+    pub max_body_bytes: u64,
+}
+
+impl Default for Limits {
+    fn default() -> Limits {
+        Limits {
+            max_body_bytes: DEFAULT_MAX_BODY_BYTES,
+        }
+    }
 }
 
 /// A set of servers requests can be proxied to, and how the connections to them are kept, as
@@ -118,6 +142,9 @@ pub struct Listener {
     pub protocols: Vec<Protocol>,
     /// `tls`: the listener serves HTTPS, with these certificates.
     pub tls: Option<Tls>,
+    /// The config's `limits.max_body_bytes`, which fit fixes in each listener's binding: a
+    /// reload that changes it changes every listener, as fit's `binding.same` compares it.
+    pub max_body_bytes: u64,
 }
 
 /// A listener's TLS: its certificates from files, chosen by the name a client asks for (SNI),
@@ -402,13 +429,18 @@ fn mask(ip: IpAddr, bits: u8) -> IpAddr {
 
 // What akit reads, and what fit reads that akit does not yet, object by object.
 
-const CONFIG_FIELDS: &[&str] = &["schema_version", "listeners", "routes", "upstreams"];
+const CONFIG_FIELDS: &[&str] = &[
+    "schema_version",
+    "listeners",
+    "routes",
+    "upstreams",
+    "limits",
+];
 const CONFIG_FIT_ONLY: &[&str] = &[
     "services",
     "log",
     "access_log",
     "telemetry",
-    "limits",
     "access",
     "engine",
     "admin",
@@ -425,6 +457,14 @@ const CONFIG_FIT_ONLY: &[&str] = &[
     "sync",
     "bittorrent",
     "providers",
+];
+const LIMITS_FIELDS: &[&str] = &["max_body_bytes"];
+const LIMITS_FIT_ONLY: &[&str] = &[
+    "max_pending_bytes",
+    "max_header_bytes",
+    "max_conns",
+    "max_write_queue_bytes",
+    "write_stall_timeout",
 ];
 const LISTENER_FIELDS: &[&str] = &["name", "address", "protocols", "tls"];
 const LISTENER_FIT_ONLY: &[&str] = &["mptcp", "socks", "access", "proxy_protocol"];
@@ -534,6 +574,8 @@ pub(crate) struct Part {
     listeners: Vec<At<Listener>>,
     routes: Vec<At<Route>>,
     upstreams: Vec<At<Upstream>>,
+    /// `limits`, with its position, when the file gives it.
+    limits: Option<(Limits, usize)>,
     /// The position of the file's top object.
     doc_off: usize,
 }
@@ -570,6 +612,9 @@ pub(crate) fn part(d: &mut Decoder<'_>, n: &Node, file: usize) -> Option<Part> {
             })
         })
         .unwrap_or_default();
+    let limits = o
+        .take("limits")
+        .and_then(|v| Some((limits(d, v, "limits")?, v.off)));
     let doc_off = o.off;
     o.finish(d, CONFIG_FIELDS, CONFIG_FIT_ONLY);
     Some(Part {
@@ -577,13 +622,15 @@ pub(crate) fn part(d: &mut Decoder<'_>, n: &Node, file: usize) -> Option<Part> {
         listeners,
         routes,
         upstreams,
+        limits,
         doc_off,
     })
 }
 
 /// Merges the files' parts, `ds` their decoders in the same order, as fit merges a config's
 /// files: the lists at the top (`listeners`, `routes`, `upstreams`) are joined in the files' order, and
-/// `schema_version` may be given by each file if they agree. The checks across elements (names
+/// `schema_version` may be given by each file if they agree; any other field (`limits`) by one file
+/// only. The checks across elements (names
 /// unique, routes naming listeners that exist) run on the merged lists; each problem is reported
 /// in the file and at the position of the element it is about, with the element's path in that
 /// file.
@@ -592,6 +639,7 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
     let mut listeners = Vec::new();
     let mut routes = Vec::new();
     let mut upstreams = Vec::new();
+    let mut limits: Option<(Limits, usize)> = None;
     let mut first_doc: Option<(usize, usize)> = None;
     for (file, p) in parts.into_iter().enumerate() {
         first_doc.get_or_insert((file, p.doc_off));
@@ -615,6 +663,30 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
                 None => schema = Some((v, file)),
             }
         }
+        if let Some((l, off)) = p.limits {
+            match limits {
+                Some((_, first_file)) => {
+                    let name = ds
+                        .get(first_file)
+                        .and_then(Decoder::file)
+                        .unwrap_or_default()
+                        .to_owned();
+                    if let Some(d) = ds.get_mut(file) {
+                        // fit's message (adapter.Set.conflict).
+                        d.error(
+                            off,
+                            "limits",
+                            format!(
+                                "also given in {name}: only the lists at the top of a config \
+                                 (listeners, routes, upstreams, services, providers) may be split \
+                                 across files"
+                            ),
+                        );
+                    }
+                }
+                None => limits = Some((l, file)),
+            }
+        }
         listeners.extend(p.listeners);
         routes.extend(p.routes);
         upstreams.extend(p.upstreams);
@@ -632,11 +704,19 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
     }
     check_routes(ds, &routes, &listeners);
     check_upstreams(ds, &upstreams);
+    let limits = limits.map(|(l, _)| l).unwrap_or_default();
     Config {
         schema_version: schema.map_or(SCHEMA_VERSION, |(v, _)| v),
-        listeners: listeners.into_iter().map(|a| a.v).collect(),
+        listeners: listeners
+            .into_iter()
+            .map(|a| Listener {
+                max_body_bytes: limits.max_body_bytes,
+                ..a.v
+            })
+            .collect(),
         routes: routes.into_iter().map(|a| a.v).collect(),
         upstreams: upstreams.into_iter().map(|a| a.v).collect(),
+        limits,
     }
 }
 
@@ -741,7 +821,23 @@ fn listener(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Listener> {
         address: address?,
         protocols,
         tls,
+        // Set from the config's limits once the files are merged.
+        max_body_bytes: DEFAULT_MAX_BODY_BYTES,
     })
+}
+
+fn limits(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Limits> {
+    let mut o = d.object(n, path)?;
+    let mut l = Limits::default();
+    if let Some(v) = o.take("max_body_bytes") {
+        // fit's int64, at least 0; 0 is the default.
+        match d.int(v, &o.at("max_body_bytes"), 0, i64::MAX) {
+            Some(0) | None => {}
+            Some(b) => l.max_body_bytes = u64::try_from(b).unwrap_or(DEFAULT_MAX_BODY_BYTES),
+        }
+    }
+    o.finish(d, LIMITS_FIELDS, LIMITS_FIT_ONLY);
+    Some(l)
 }
 
 fn tls(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Tls> {

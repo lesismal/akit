@@ -9,7 +9,8 @@
 //! and akit does not support yet is refused as "not supported yet", never read and ignored
 //! ([`Error::is_not_supported_yet`]). I09 adds listeners' `tls` ([`Tls`]), and I14 `upstreams`
 //! ([`Upstream`]): their servers and the limits on the connections to them; I19 their
-//! `weights` and `load_balancing` ([`LoadBalancing`]).
+//! `weights` and `load_balancing` ([`LoadBalancing`]). I16 reads `limits.max_body_bytes`
+//! ([`Limits`]), which every listener carries.
 //!
 //! I23 adds fit's own format, `.conf` ([`from_conf`]), and I24 YAML ([`from_yaml`], decision
 //! 005): each read into the same tree as JSON and decoded by the same code, so the model reads
@@ -32,10 +33,10 @@ pub use error::{Error, Errors, NOT_SUPPORTED_YET};
 pub use json::MAX_DEPTH;
 pub use model::{
     Certificate, ClientAuth, ClientAuthMode, Config, DEFAULT_CHECK_INTERVAL,
-    DEFAULT_CONNECT_TIMEOUT, DEFAULT_IDLE_TIMEOUT, DEFAULT_MAX_CONNS, DEFAULT_MAX_FILE_BYTES,
-    DEFAULT_MAX_IDLE_CONNS, DEFAULT_MAX_PENDING, DEFAULT_PROTOCOLS, DEFAULT_TLS_PROTOCOLS,
-    Dotfiles, Handler, Listener, LoadBalancing, MAX_WEIGHT, Match, Network, Protocol, Proxy,
-    Respond, Route, SCHEMA_VERSION, Static, Tls, TlsVersion, Upstream,
+    DEFAULT_CONNECT_TIMEOUT, DEFAULT_IDLE_TIMEOUT, DEFAULT_MAX_BODY_BYTES, DEFAULT_MAX_CONNS,
+    DEFAULT_MAX_FILE_BYTES, DEFAULT_MAX_IDLE_CONNS, DEFAULT_MAX_PENDING, DEFAULT_PROTOCOLS,
+    DEFAULT_TLS_PROTOCOLS, Dotfiles, Handler, Limits, Listener, LoadBalancing, MAX_WEIGHT, Match,
+    Network, Protocol, Proxy, Respond, Route, SCHEMA_VERSION, Static, Tls, TlsVersion, Upstream,
 };
 
 /// The largest config document read, in bytes: fit's own configs are kilobytes; this bounds

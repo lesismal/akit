@@ -34,6 +34,9 @@ first; its status here records the branch, then the akio commit akit pins.
 | A13 | `Files` serving a path the caller names | requested (I12) | 19 | I12 |
 | A14 | `Files` answering as a gateway's static handler does | requested (I12) | 19 | I12, I13 |
 | A15 | `Files` bounded in memory, its disk pool with a timeout | requested (I12) | 4, 11 | I12 |
+| A16 | An HTTP client request whose body is sent as it is produced, with backpressure | requested (I16) | 5, 8 | I16, I17, I18, I49, I75 |
+| A17 | An HTTP client response delivered as it arrives, its reads held and resumed | requested (I16) | 5, 8 | I16, I17, I18, I67 |
+| A18 | A server request that holds its client's reads and hears when its client drained | requested (I16) | 5, 8 | I16, I47, I75 |
 
 ## A1 TCP listeners on a running engine
 
@@ -272,3 +275,107 @@ nothing.
 timeout; until then `max_cache_bytes` is refused as not supported yet, and the memory `Files` keeps
 is bounded only by the files under the root of at most `max_file_bytes` (recorded in the I12
 progress entry).
+
+## A16 An HTTP client request whose body is sent as it is produced
+
+**Problem.** A reverse proxy sends the client's request body to the upstream as it arrives (rule
+5), never whole, and stops taking more from the client while the upstream is behind (rule 8).
+akio-http's HTTP/1 client takes a request body only whole: the proxy would have to hold every
+upload in memory, up to `limits.max_body_bytes` (16 MiB by default) per request, before the
+upstream sees a byte.
+
+**Evidence.** `crates/akio-http/src/client.rs` at `50a82315`: `ClientRequest::body` is a `Vec<u8>`;
+`Client::request` encodes the head and the whole body into one buffer (`Pending::bytes`) and
+`ClientConn::begin` sends it with one `send_owned`. There is no chunked request body and no way to
+learn that the connection's write queue drained. (akio-core has what is needed below the client:
+`Conn::on_drain` and the write high watermark, `conn.rs`.)
+
+**Suggested API.** A body that is a stream rather than bytes:
+
+- `ClientRequest::streamed(len: Option<u64>)` (or `ClientBody::Stream { len }`): the body is
+  written later, framed by `Content-Length` when `len` is known and chunked otherwise.
+- `Client::request_streamed(req, on_ready, done)`: `on_ready(RequestBody)` is called on the
+  connection's I/O thread once the head is written (after a connect, a queue for a pooled
+  connection, a reused connection found dead and retried; a streamed request is never retried
+  once its body has begun, as Go's client does not retry one). `RequestBody` is `Send` and has
+  `write(&[u8]) -> Result<(), Closed>` (copies into the connection's queue, chunk-framed when
+  chunked), `queued_bytes()`, `on_drain(f)` (once the queue falls below the low watermark, `f`
+  runs on the I/O thread), `finish()` (the last chunk, or a check that `len` bytes were written)
+  and `finish_with_trailers(Headers)`; dropping it unfinished closes the connection and fails the
+  request with `ClientError::Closed`. `done` gets the response as today, or with A17 its head.
+- A response may begin, or come whole, before the body is finished (an upstream answering 413
+  early): `done` then runs and later writes fail.
+
+**How akit uses it.** I16's proxy takes the client's body as a stream (`BodyMode::Stream`,
+`on_body`), writes each chunk to the upstream's `RequestBody`, and holds the client's reads (A18)
+while `queued_bytes` is above the watermark, resuming them from `on_drain`. Also the upstream
+pools (`akit-upstream`, which wraps `Client::request`), I17's cancellation (dropping the body),
+I18's h2 upstreams (the same on `H2Client`), I49 (WebSocket) and I75 (FastCGI). Until then akit's
+proxy forwards bodies whole, within `limits.max_body_bytes` (recorded in the I16 progress entry).
+
+## A17 An HTTP client response delivered as it arrives
+
+**Problem.** A reverse proxy sends the upstream's response back as it arrives and stops reading
+the upstream while the client is behind (rules 5 and 8). akio-http's client buffers each response
+body whole (up to `ClientOptions::max_body_bytes`, 64 MiB by default) and calls back once: a
+download through the proxy is held in memory whole, a response past 64 MiB fails, and a slow
+client cannot slow the upstream down.
+
+**Evidence.** `crates/akio-http/src/client.rs` at `50a82315`: `ClientConn` appends every body byte
+to `ClientResponse::body` (`RState::Body`, `RState::Chunked`, `RState::UntilClose`) and calls the
+callback from `complete`; reads on the connection are never held.
+
+**Suggested API.** `Client::request_with(req, handler: impl ResponseHandler)` (and on `H2Client`):
+
+- `on_head(&mut self, head: ResponseHead, body: ResponseBody)`: the status, reason and fields once
+  the head is in (interim 1xx responses before it, or skipped as today); `ResponseBody` is `Send`
+  and has `hold_reads(bool)` (stops and resumes reading the connection, or for h2 the stream's
+  flow-control window) and `cancel()` (closes the connection, or resets the stream).
+- `on_data(&mut self, chunk: &[u8])`: each piece of the body as it is read, dechunked, valid for
+  the call only (rule 6).
+- `on_end(&mut self, trailers: &Headers)` and `on_error(&mut self, e: ClientError)`; with a
+  timeout of its own for the gap between reads (fit's `response_idle_timeout`, I17).
+- `ClientOptions::max_body_bytes` does not apply to such a response; the handler decides.
+- The keep-alive pool takes the connection back after `on_end`, as today after the callback.
+
+**How akit uses it.** I16's proxy starts the client's response from `on_head`
+(`Detached::stream_response`), writes each chunk to its `BodyStream`, and calls
+`hold_reads(true)` while the client's `queued_bytes` is above the watermark, `false` from the
+client's drain (A18). Also I17 (trailers, idle timeouts, cancellation), I18 (h2 upstreams) and the
+cache (I67), which stores a response as it passes. Until then akit's proxy sends responses back
+whole, each at most akio's 64 MiB (recorded in the I16 progress entry).
+
+## A18 A server request that holds its client's reads and hears when its client drained
+
+**Problem.** The other half of linked backpressure (rule 8) is the client's side of a proxied
+request: while the upstream is behind, stop reading the client's body; while the client is behind
+on the response, hear when it caught up, to resume the upstream. akio-http's server gives a
+streamed request body to `on_body` as fast as the client sends it, and a streamed response
+(`BodyStream`) can only be polled (`queued_bytes`); neither the context nor the stream reaches
+the connection's `hold_reads` or `on_drain`.
+
+**Evidence.** `crates/akio-http/src/context.rs` at `50a82315`: `Context` and `Detached` have no
+access to the connection; `BodyStream` has `write`, `queued_bytes` and `finish`.
+`crates/akio-http/src/session.rs`, `State::Stream`: each read is delivered to the sink at once.
+`crates/akio-http/src/h2.rs`, `on_data`: the stream's receive window is replenished as DATA arrives
+("bodies are consumed immediately"), whether the sink keeps up or not. akio-core has both halves
+per connection (`ConnInner::hold_reads`, `ConnInner::on_drain`, `crates/akio-core/src/conn.rs`), as
+does `akio_http::raw` for upgraded connections.
+
+**Suggested API.**
+
+- `Context::body_reads() -> BodyReads` (for `BodyMode::Stream`; `Send`, kept by the handler after
+  `detach`): `hold(bool)`. On HTTP/1 it holds the connection's reads (and so the pipelined requests
+  behind it, as it must); on h2 and h3 it stops replenishing the stream's flow-control window, so
+  that the other streams go on.
+- `BodyStream::on_drain(f)`: `f` runs on the connection's I/O thread once the response's queued
+  bytes fall below the low watermark (at once if they are already), or when the connection
+  closes; on h2 and h3, when the stream's send window and the connection's queue allow more.
+- A body past a limit while streaming: akio already lets the handler answer early or drop the
+  `Detached` (closing the connection); no more is needed.
+
+**How akit uses it.** I16's proxy holds the client's body reads while the upstream's
+`RequestBody::queued_bytes` (A16) is above the watermark, and resumes them from its `on_drain`;
+it holds the upstream's reads (A17) while the client's `BodyStream::queued_bytes` is above it, and
+resumes them from `BodyStream::on_drain`. Also compression (I47) and FastCGI (I75). Until then akit
+buffers proxied bodies whole, within the limits (recorded in the I16 progress entry).

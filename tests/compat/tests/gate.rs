@@ -368,6 +368,14 @@ fn supported_fields_are_read() {
             c.schema_version == 1
         }),
         ("listeners", format!("{{{L}}}"), |c| c.listeners.len() == 1),
+        ("limits", r#"{"limits": {}}"#.into(), |c| {
+            c.limits == akit_config::Limits::default()
+        }),
+        (
+            "limits.max_body_bytes",
+            format!(r#"{{{L}, "limits": {{"max_body_bytes": 5}}}}"#),
+            |c| c.limits.max_body_bytes == 5 && c.listeners[0].max_body_bytes == 5,
+        ),
         ("listeners[].name", format!("{{{L}}}"), |c| {
             c.listeners[0].name == "web"
         }),
@@ -675,8 +683,9 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 12] = [
+    let objects: [(&str, &str, Option<&str>); 13] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
+        ("limits", "LIMITS_FIELDS", Some("LIMITS_FIT_ONLY")),
         ("listeners[]", "LISTENER_FIELDS", Some("LISTENER_FIT_ONLY")),
         ("listeners[].tls", "TLS_FIELDS", Some("TLS_FIT_ONLY")),
         ("listeners[].tls.certificates[]", "CERTIFICATE_FIELDS", None),
