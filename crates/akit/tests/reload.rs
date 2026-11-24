@@ -1,6 +1,7 @@
 //! End to end: `akit run` reloads its config on SIGHUP (I22) while clients send requests, and
-//! none of them fails: the routes change, a listener is added and removed, a broken config and
-//! one that removes a listener akit started with leave the running config.
+//! none of them fails: the routes change, a listener is added and removed, the listener akit
+//! started with is replaced at its address (Linux, where akio's listeners share a port), and a
+//! broken config leaves the running one.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -19,8 +20,12 @@ use std::time::{Duration, Instant};
 
 use akio_sys::process::{SIGHUP, SIGTERM, kill};
 
-/// A config: the `web` listener, `/hello` answering `body`, and the `extra` listener when asked.
-fn config(body: &str, extra: bool) -> String {
+/// `web`'s protocols.
+const H1_H2C: &str = r#""http/1.1", "h2c""#;
+
+/// A config: the `web` listener at `web` serving `protocols`, `/hello` answering `body`, and the
+/// `extra` listener when asked.
+fn config(web: SocketAddr, protocols: &str, body: &str, extra: bool) -> String {
     let extra = if extra {
         r#", {"name": "extra", "address": "127.0.0.1:0"}"#
     } else {
@@ -28,7 +33,7 @@ fn config(body: &str, extra: bool) -> String {
     };
     format!(
         r#"{{
-  "listeners": [{{"name": "web", "address": "127.0.0.1:0", "protocols": ["http/1.1", "h2c"]}}{extra}],
+  "listeners": [{{"name": "web", "address": "{web}", "protocols": [{protocols}]}}{extra}],
   "routes": [
     {{"match": {{"path": ["/hello"]}}, "handler": {{"module": "respond", "params": {{"body": "{body}"}}}}}}
   ]
@@ -119,8 +124,9 @@ fn listener(line: &str) -> (String, SocketAddr) {
     (name, words.next().unwrap().parse().unwrap())
 }
 
-/// One keep-alive request on `s`; the body, or why it failed.
-fn get(s: &mut BufReader<TcpStream>, close: bool) -> Result<String, String> {
+/// One keep-alive request on `s`; the body and whether the server closes the connection after
+/// it (`Connection: close`, as a listener being drained answers), or why it failed.
+fn get_conn(s: &mut BufReader<TcpStream>, close: bool) -> Result<(String, bool), String> {
     let conn = if close { "close" } else { "keep-alive" };
     write!(
         s.get_mut(),
@@ -132,7 +138,7 @@ fn get(s: &mut BufReader<TcpStream>, close: bool) -> Result<String, String> {
     if !status.starts_with("HTTP/1.1 200 ") {
         return Err(format!("status {status:?}"));
     }
-    let mut len = None;
+    let (mut len, mut closing) = (None, false);
     loop {
         let mut h = String::new();
         s.read_line(&mut h).map_err(|e| format!("read: {e}"))?;
@@ -144,11 +150,19 @@ fn get(s: &mut BufReader<TcpStream>, close: bool) -> Result<String, String> {
             if n.eq_ignore_ascii_case("content-length") {
                 len = v.trim().parse::<usize>().ok();
             }
+            if n.eq_ignore_ascii_case("connection") && v.trim().eq_ignore_ascii_case("close") {
+                closing = true;
+            }
         }
     }
     let mut body = vec![0; len.ok_or("no content-length")?];
     s.read_exact(&mut body).map_err(|e| format!("body: {e}"))?;
-    String::from_utf8(body).map_err(|e| e.to_string())
+    Ok((String::from_utf8(body).map_err(|e| e.to_string())?, closing))
+}
+
+/// One request on a connection of its own.
+fn get(s: &mut BufReader<TcpStream>, close: bool) -> Result<String, String> {
+    get_conn(s, close).map(|(body, _)| body)
 }
 
 fn connect(addr: SocketAddr) -> Result<BufReader<TcpStream>, String> {
@@ -161,12 +175,17 @@ fn connect(addr: SocketAddr) -> Result<BufReader<TcpStream>, String> {
 #[derive(Default)]
 struct Seen {
     ok: AtomicUsize,
+    /// Requests a draining listener's server closed the idle keep-alive connection under before
+    /// reading them (`status ""`): sent again on a new connection, as HTTP clients do with an
+    /// idempotent request (RFC 9112 section 9.3.1).
+    retried: AtomicUsize,
     failed: Mutex<Vec<String>>,
     last: Mutex<String>,
 }
 
-/// A client loop: keep-alive connections of 20 requests each (the last closing it), until
-/// `stop`.
+/// A client loop: keep-alive connections of 20 requests each (the last closing it, or the
+/// server's `Connection: close`), until `stop`. A reused connection closed before any byte of
+/// the answer is a retry on a new connection, not a failure.
 fn client(addr: SocketAddr, seen: Arc<Seen>, stop: Arc<AtomicBool>) {
     while !stop.load(SeqCst) {
         let mut s = match connect(addr) {
@@ -177,10 +196,17 @@ fn client(addr: SocketAddr, seen: Arc<Seen>, stop: Arc<AtomicBool>) {
             }
         };
         for i in 0..20 {
-            match get(&mut s, i == 19) {
-                Ok(body) => {
+            match get_conn(&mut s, i == 19) {
+                Ok((body, closing)) => {
                     seen.ok.fetch_add(1, SeqCst);
                     *seen.last.lock().unwrap() = body;
+                    if closing {
+                        break;
+                    }
+                }
+                Err(e) if i > 0 && e == "status \"\"" => {
+                    seen.retried.fetch_add(1, SeqCst);
+                    break;
                 }
                 Err(e) => {
                     seen.failed.lock().unwrap().push(e);
@@ -208,10 +234,15 @@ fn wait_for(seen: &Seen, body: &str) {
 #[test]
 fn reloads_under_traffic_with_no_failed_request() {
     let path = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("reload.json");
-    std::fs::write(&path, config("v1", false)).unwrap();
+    // web at a port of its own, which every config names: replacing it keeps the address.
+    let web = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap();
+    std::fs::write(&path, config(web, H1_H2C, "v1", false)).unwrap();
     let akit = Akit::start(&path);
-    let (name, web) = listener(&akit.out_until("akit: listener")[0]);
-    assert_eq!(name, "web");
+    let (name, at) = listener(&akit.out_until("akit: listener")[0]);
+    assert_eq!((name.as_str(), at), ("web", web));
 
     let seen = Arc::new(Seen::default());
     let stop = Arc::new(AtomicBool::new(false));
@@ -224,7 +255,7 @@ fn reloads_under_traffic_with_no_failed_request() {
     wait_for(&seen, "v1");
 
     // New routes and a new listener.
-    std::fs::write(&path, config("v2", true)).unwrap();
+    std::fs::write(&path, config(web, H1_H2C, "v2", true)).unwrap();
     akit.signal(SIGHUP);
     let out = akit.out_until("akit: reloaded");
     assert_eq!(out[0], format!("akit: reloading {}", path.display()));
@@ -247,20 +278,29 @@ fn reloads_under_traffic_with_no_failed_request() {
     );
     assert_eq!(get(&mut connect(extra).unwrap(), true).unwrap(), "v2");
 
-    // A config without the listener akit started with: refused until akio can close one (A1).
-    std::fs::write(
-        &path,
-        r#"{"listeners": [{"name": "other", "address": "127.0.0.1:0"}]}"#,
-    )
-    .unwrap();
-    akit.signal(SIGHUP);
-    let err = akit.err_until("akit: reload failed; the running config stays");
-    assert!(err[0].contains("listener \"web\" on"), "{err:?}");
-    assert!(err[0].contains("A1"), "{err:?}");
-    akit.out_until("akit: reloading");
+    // The listener akit started with, changed at its address: replaced (akio's add_listener and
+    // shutdown_listener, A1). Linux shares the port between the two while the old one drains;
+    // elsewhere the old one stops first, and connections in that gap would be refused. The old
+    // one's idle keep-alive connections close at once: a request already sent on one is retried.
+    if cfg!(target_os = "linux") {
+        std::fs::write(&path, config(web, r#""http/1.1""#, "v2b", true)).unwrap();
+        akit.signal(SIGHUP);
+        let out = akit.out_until("akit: reloaded");
+        assert_eq!(
+            out[1],
+            format!("akit: listener \"web\" on {web} removed"),
+            "{out:?}"
+        );
+        assert_eq!(listener(&out[2]), ("web".to_owned(), web), "{out:?}");
+        wait_for(&seen, "v2b");
+        std::fs::write(&path, config(web, H1_H2C, "v2", true)).unwrap();
+        akit.signal(SIGHUP);
+        akit.out_until("akit: reloaded");
+        wait_for(&seen, "v2");
+    }
 
     // The added listener removed, the routes changed again.
-    std::fs::write(&path, config("v3", false)).unwrap();
+    std::fs::write(&path, config(web, H1_H2C, "v3", false)).unwrap();
     akit.signal(SIGHUP);
     let out = akit.out_until("akit: reloaded");
     assert_eq!(
@@ -270,11 +310,20 @@ fn reloads_under_traffic_with_no_failed_request() {
     );
     assert_eq!(out.len(), 3, "{out:?}");
     wait_for(&seen, "v3");
-    assert!(TcpStream::connect(extra).is_err(), "extra still listens");
+    // It stops listening at its I/O thread's next loop iteration.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while TcpStream::connect(extra).is_ok() {
+        assert!(Instant::now() < deadline, "extra still listens");
+        std::thread::sleep(Duration::from_millis(10));
+    }
 
     // Again, many times, as fast as signals come.
     for i in 0..20 {
-        std::fs::write(&path, config(&format!("v{}", 4 + i), i % 2 == 0)).unwrap();
+        std::fs::write(
+            &path,
+            config(web, H1_H2C, &format!("v{}", 4 + i), i % 2 == 0),
+        )
+        .unwrap();
         akit.signal(SIGHUP);
         akit.out_until("akit: reloaded");
     }
@@ -286,6 +335,9 @@ fn reloads_under_traffic_with_no_failed_request() {
     }
     let failed = seen.failed.lock().unwrap();
     assert!(failed.is_empty(), "failed requests: {failed:?}");
+    // At most once per client for each removal of a listener it was on (web, replaced twice).
+    let retried = seen.retried.load(SeqCst);
+    assert!(retried <= 4 * 2, "{retried} requests sent again");
     assert!(seen.ok.load(SeqCst) >= 400, "{}", seen.ok.load(SeqCst));
 
     akit.signal(SIGTERM);

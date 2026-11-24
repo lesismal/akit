@@ -18,7 +18,7 @@
 
 | ID | API | 状态 | 解决的规则 | akit 迭代 |
 | --- | --- | --- | --- | --- |
-| A1 | 在运行中的引擎上添加、移除和排空 TCP 监听器 | 已在 akio 的 main（`a9a620ab`），已锁定 | 10、11 | I22、I28 |
+| A1 | 在运行中的引擎上添加、移除和排空 TCP 监听器 | 已在 akio 的 main（`a9a620ab`），已锁定，I22 已使用 | 10、11 | I22、I28 |
 | A2 | 每次握手由回调选择服务端证书，回调可以稍后完成 | 已在 akio 的 main（`a9a620ab`），已锁定 | 1、4 | I30、I34 |
 | A3 | 在任何 handler 运行之前过滤已接受的连接 | 已在 akio 的 main（`a9a620ab`），已锁定 | 11 | 访问控制列表 |
 | A4 | PROXY 协议 v1/v2：接受时解析，拨号时写出 | 已在 akio 的 main（`a9a620ab`），已锁定 | 12 | I52 |
@@ -36,6 +36,7 @@
 | A19 | HTTP 客户端请求的请求体边产生边发送，带背压 | 已提出（I16） | 5、8 | I16、I17、I18、I49、I75 |
 | A20 | HTTP 客户端响应边到达边交付，可暂停和恢复读取 | 已提出（I16） | 5、8 | I16、I17、I18、I67 |
 | A21 | 服务端请求可暂停其客户端的读取，并在客户端排空时得到通知 | 已提出（I16） | 5、8 | I16、I47、I75 |
+| A22 | 在运行中的引擎上移除和排空 UDP 监听器 | 已提出（I22） | 10、11 | I22、I28 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -50,8 +51,9 @@
 `Engine::remove_listener(id)`（停止接受）、`Engine::shutdown_listener(id, drain: Duration)`
 （停止接受，排空期过后关闭它的连接），监听器的后端和加速选项与构建时相同。
 
-**akit 的用法。** I22 和 I28 在每次替换时对比新旧监听器的差异。在此之前的临时措施：akit 自己的监听 socket，由一个
-accept 线程把流交给 `adopt_tcp`，并在 progress 中记录。
+**akit 的用法。** I22 和 I28 在每次替换时对比新旧监听器的差异。I22 已在 `a9a620ab` 上这样做
+（`akit_listener::Listeners::reload`）：换入前 `add_listener`，换入后以关闭超时 `shutdown_listener`；之前用的
+`adopt_tcp` 临时措施已去掉。UDP 监听器还不能移除（A22）。
 
 ## A2 每次握手异步选择证书
 
@@ -313,3 +315,21 @@ sink。`crates/akio-http/src/h2.rs` 的 `on_data`：无论 sink 是否跟得上�
 `on_drain` 中恢复；在客户端 `BodyStream::queued_bytes` 高于水位时暂停读取上游（A20），并在
 `BodyStream::on_drain` 中恢复。压缩（I47）和 FastCGI（I75）也会用到。在此之前，akit 在限制内整体缓冲被代理的请求体
 和响应体（记录在 I16 的进度条目中）。
+
+## A22 移除运行中引擎的 UDP 监听器
+
+**问题。** A1 能在运行时添加、移除和排空 TCP 监听器；交给 builder 的 UDP 监听器不能移除
+（`Engine::remove_listener` 返回 `Unsupported`）。akit 在这样的监听器上提供 HTTP/3，所以移除或修改 akit 启动时就服务
+`h3` 的监听器的重载（或 Admin API 修改）在重启之前都被拒绝。运行时新增的 HTTP/3 用 `Engine::bind_udp`，其
+`UdpBinding::close` 立即关闭所有连接，不排空。
+
+**证据。** `crates/akio/src/lib.rs`（`a9a620ab`）：`Engine::unlisten` 拒绝 `Kind::Tcp` 以外的一切；
+`Engine::add_listener` 拒绝 UDP（运行时用 `bind_udp` 绑定 UDP）；`crates/akio-core/src/group.rs` 的
+`UdpBinding::close`。
+
+**建议的 API。** `Engine::remove_listener` 和 `Engine::shutdown_listener(id, drain)` 也支持 UDP 监听器（按对端的
+UDP：不再接收新对端，对已有的调用 `on_shutdown`，到期关闭剩下的），`Engine::add_listener` 也接受 UDP 监听器；或者
+含义相同的 `UdpBinding::shutdown(drain)`。
+
+**akit 的用法。** `akit_listener::Listeners::reload`（I22、I28）像移除 TCP 一侧那样移除并排空监听器的 HTTP/3，
+`ReloadError::Udp` 的拒绝随之去掉。

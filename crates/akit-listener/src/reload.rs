@@ -1,76 +1,47 @@
 //! Reloading (I22): a new graph published and the listeners moved to its, as fit's
-//! `listener.Server.Reload` moves them.
+//! `listener.Server.Reload` moves them, with akio's listeners added and removed at run time
+//! (akio API request A1, ADR-099).
 //!
-//! A listener the new graph has unchanged (the same name, address, protocols and `tls`) is kept:
-//! its socket stays open, and its requests go to the new graph's routes from the swap on, since a
-//! [`Dispatcher`] reads the current graph per request. The others:
+//! A listener the new graph has unchanged (the same name, address, protocols, `tls` and limits)
+//! is kept: its sockets stay open, and its requests go to the new graph's routes from the swap
+//! on, since a [`Dispatcher`] reads the current graph per request. The others:
 //!
-//! - **Added**: until akio can add a TCP listener to a running engine (akio API request A1), akit
-//!   listens on a socket of its own, with one accept thread (a control plane thread, not an I/O
-//!   thread) that hands each connection to the engine with [`Engine::adopt_tcp`]. The socket is
-//!   bound before the swap, so an address in use fails the reload with nothing changed, and
-//!   accepts from the swap on.
-//! - **Removed or changed**: one of these sockets is closed after the swap (its connections stay
-//!   open and finish what they have); a changed one at the same address keeps its socket and
-//!   serves the new settings from the swap on. A listener the engine was built with cannot be
-//!   closed until A1 lands: a reload that removes or changes one is refused, and the running
-//!   config stays.
+//! - **Added**, the changed ones too, before the swap: the TCP side with
+//!   [`Engine::add_listener`], HTTP/3 with [`Engine::bind_udp`] on the engine's UDP thread, so an
+//!   address in use fails the reload with nothing changed. A listener replacing one at the same
+//!   address is added beside it (Linux shares the port, `SO_REUSEPORT`); where the system refuses,
+//!   the old one stops listening first, as fit's reload does, and cannot be put back if the reload
+//!   then fails.
+//! - **Removed**, the changed ones too, after the swap: [`Engine::shutdown_listener`] stops it
+//!   accepting and drains its connections for [`Options::shutdown_timeout`] (each is asked to
+//!   close, an HTTP/1 one after its response, an HTTP/2 one with `GOAWAY`); HTTP/3 bound by a
+//!   reload is closed with its connections.
+//! - A listener serving HTTP/3 that the engine was built with cannot be removed or changed: akio
+//!   removes TCP listeners only, not a UDP one of a running engine. Such a reload is refused and
+//!   the running config stays.
 
 use std::fmt;
 use std::io;
-use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, TcpListener, TcpStream};
-use std::sync::atomic::{AtomicBool, Ordering::SeqCst};
-use std::sync::{Arc, Mutex, PoisonError, mpsc};
-use std::thread::JoinHandle;
-use std::time::Duration;
+use std::net::SocketAddr;
 
-use akio::tls::Tls;
-use akio::{Acceptor, Conn, Engine, Transport};
+use akio::{Engine, Listener as EngineListener, ListenerId, UdpBinding};
 use akit_config::{Listener, Protocol};
 use akit_runtime::{Graph, GraphCell};
 
-use crate::{Dispatcher, Error, http_config, resolve};
-
-/// What an accept thread does with a connection: hands it to the engine with the listener's
-/// acceptor.
-type Serve = Arc<dyn Fn(TcpStream) + Send + Sync>;
-
-/// An acceptor shared by the connections of one listener: [`Engine::adopt_tcp`] takes one per
-/// connection.
-struct Shared<A>(Arc<A>);
-
-impl<A: Acceptor> Acceptor for Shared<A> {
-    type Handler = A::Handler;
-    fn on_open(&self, c: &Conn<A::Handler>) -> A::Handler {
-        self.0.on_open(c)
-    }
-    fn on_shutdown(&self, c: &Conn<A::Handler>) {
-        self.0.on_shutdown(c);
-    }
-    fn transport(&self) -> Option<Box<dyn Transport>> {
-        self.0.transport()
-    }
-}
+use crate::{
+    Error, MAX_PORT_ZERO_BINDS, Options, free_port, h3_acceptor, resolve, serves_h3, serves_tcp,
+    tcp_listener,
+};
 
 /// A listener as it is served now.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Served {
     /// Its name.
     pub name: String,
-    /// Where it listens.
+    /// Where it listens: its TCP address, or its UDP one when it serves HTTP/3 alone.
     pub address: SocketAddr,
     /// Its protocols.
     pub protocols: Vec<Protocol>,
-}
-
-impl Served {
-    fn new(l: &Listener, address: SocketAddr) -> Served {
-        Served {
-            name: l.name.clone(),
-            address,
-            protocols: l.protocols.clone(),
-        }
-    }
 }
 
 /// What a reload changed.
@@ -85,12 +56,13 @@ pub struct Reloaded {
     pub kept: usize,
 }
 
-/// Why a reload was refused; the running graph and listeners are as they were.
+/// Why a reload was refused; the running graph and listeners are as they were (but see
+/// [`Listeners::reload`] on a system without `SO_REUSEPORT`).
 #[derive(Debug)]
 pub enum ReloadError {
-    /// It removes or changes a listener the engine was built with, which cannot be closed until
-    /// akio can close a listener of a running engine (akio API request A1).
-    Fixed {
+    /// It removes or changes a listener serving HTTP/3 that the engine was built with: akio
+    /// cannot remove a UDP listener of a running engine.
+    Udp {
         /// The listener's name.
         listener: String,
         /// Where it listens.
@@ -104,10 +76,10 @@ pub enum ReloadError {
 impl fmt::Display for ReloadError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ReloadError::Fixed { listener, address } => write!(
+            ReloadError::Udp { listener, address } => write!(
                 f,
-                "listener {listener:?} on {address} is removed or changed, which needs a restart: \
-                 akit cannot close a listener it started with yet (akio API request A1)"
+                "listener {listener:?} on {address} serves h3 and is removed or changed, which \
+                 needs a restart: akio cannot remove the UDP listener akit started it with"
             ),
             ReloadError::Listener(e) => e.fmt(f),
         }
@@ -117,78 +89,67 @@ impl fmt::Display for ReloadError {
 impl std::error::Error for ReloadError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            ReloadError::Fixed { .. } => None,
+            ReloadError::Udp { .. } => None,
             ReloadError::Listener(e) => Some(e),
         }
     }
 }
 
-/// A listener the engine was built with.
-struct Fixed {
-    config: Listener,
-    address: SocketAddr,
+/// A listener's HTTP/3 socket.
+#[derive(Debug)]
+enum Udp {
+    /// A UDP listener the engine was built with, which akio cannot remove.
+    Builder(SocketAddr),
+    /// Bound by a reload.
+    Bound(UdpBinding),
 }
 
-/// A listener on a socket of akit's own (the stopgap for A1).
-struct Adopted {
-    config: Listener,
-    address: SocketAddr,
-    serve: Arc<Mutex<Serve>>,
-    stop: Arc<AtomicBool>,
-    thread: Option<JoinHandle<()>>,
-}
-
-impl Adopted {
-    /// Stops accepting and closes the socket; the connections it accepted stay open.
-    fn close(&mut self) {
-        self.stop.store(true, SeqCst);
-        let Some(thread) = self.thread.take() else {
-            return;
-        };
-        // Wake the accept thread, blocked in accept(), with a connection of our own.
-        let mut to = self.address;
-        if to.ip().is_unspecified() {
-            to.set_ip(match to {
-                SocketAddr::V4(_) => Ipv4Addr::LOCALHOST.into(),
-                SocketAddr::V6(_) => Ipv6Addr::LOCALHOST.into(),
-            });
+impl Udp {
+    fn address(&self) -> SocketAddr {
+        match self {
+            Udp::Builder(a) => *a,
+            Udp::Bound(b) => b.local_addr(),
         }
-        if TcpStream::connect_timeout(&to, Duration::from_secs(1)).is_ok() {
-            let _ = thread.join();
-        }
-        // Otherwise the thread is left to see `stop` at its next connection.
     }
 }
 
-fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
-    m.lock().unwrap_or_else(PoisonError::into_inner)
+/// One listener served.
+#[derive(Debug)]
+struct Entry {
+    config: Listener,
+    /// Its TCP listener in the engine, and where it listens.
+    tcp: Option<(ListenerId, SocketAddr)>,
+    /// Its HTTP/3.
+    udp: Option<Udp>,
 }
 
-/// The accept loop of an adopted listener: waits for the go (sent once its graph is current; a
-/// dropped sender means the reload failed), then hands each connection on until stopped.
-fn accept_loop(
-    socket: TcpListener,
-    serve: Arc<Mutex<Serve>>,
-    stop: Arc<AtomicBool>,
-    go: mpsc::Receiver<()>,
-) {
-    if go.recv().is_err() {
-        return;
+impl Entry {
+    fn address(&self) -> Option<SocketAddr> {
+        self.tcp
+            .map(|(_, a)| a)
+            .or_else(|| self.udp.as_ref().map(Udp::address))
     }
-    loop {
-        let accepted = socket.accept();
-        if stop.load(SeqCst) {
-            return;
+
+    fn served(&self) -> Option<Served> {
+        Some(Served {
+            name: self.config.name.clone(),
+            address: self.address()?,
+            protocols: self.config.protocols.clone(),
+        })
+    }
+
+    /// Stops it listening; `drain`: its TCP connections are drained for that long (none: they
+    /// are left to finish). Its HTTP/3, if a reload bound it, is closed with its connections.
+    fn remove(&self, engine: &Engine, drain: Option<std::time::Duration>) {
+        if let Some((id, _)) = self.tcp {
+            // Only `NotFound` (removed already) or `Unsupported` (not TCP) can come back.
+            let _ = match drain {
+                Some(d) => engine.shutdown_listener(id, d),
+                None => engine.remove_listener(id),
+            };
         }
-        match accepted {
-            Ok((stream, _)) => {
-                let _ = stream.set_nodelay(true);
-                let serve = Arc::clone(&lock(&serve));
-                serve(stream);
-            }
-            Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
-            // Out of descriptors, say: wait rather than spin.
-            Err(_) => std::thread::sleep(Duration::from_millis(10)),
+        if let Some(Udp::Bound(b)) = &self.udp {
+            b.close();
         }
     }
 }
@@ -205,45 +166,36 @@ fn claim<T>(items: &[T], taken: &mut [bool], same: impl Fn(&T) -> bool) -> Optio
     Some(j)
 }
 
-/// How the connections of listener `l` (TLS loaded as `tls`) are served on `engine`.
-fn serve_for(
-    engine: &Arc<Engine>,
-    cell: &GraphCell,
-    l: &Listener,
-    tls: Option<akio::tls::ServerConfig>,
-) -> Result<Serve, Error> {
-    let http = akio_http::serve_with(
-        http_config(l)?,
-        Dispatcher::new(cell.clone(), &l.name).tls(l.tls.is_some()),
-    );
-    let on_error = |_: io::Error| {};
-    Ok(match (&l.tls, tls) {
-        (None, _) => {
-            let a = Arc::new(http);
-            let e = Arc::clone(engine);
-            Arc::new(move |s| e.adopt_tcp(s, Shared(Arc::clone(&a)), on_error))
-        }
-        (Some(_), Some(cfg)) => {
-            let a = Arc::new(Tls::server(cfg, http));
-            let e = Arc::clone(engine);
-            Arc::new(move |s| e.adopt_tcp(s, Shared(Arc::clone(&a)), on_error))
-        }
-        (Some(_), None) => {
-            return Err(Error::Engine(io::Error::other(format!(
-                "listener {}: its tls was not loaded",
-                l.name
-            ))));
-        }
-    })
+fn in_use(e: &io::Error) -> bool {
+    e.kind() == io::ErrorKind::AddrInUse
 }
 
+/// `f` until its address is free: a listener that stopped to make room closes its socket at its
+/// I/O thread's next loop iteration, not at once. On the control plane, which may wait.
+fn retry<T>(f: impl Fn() -> Result<T, Error>) -> Result<T, Error> {
+    let mut tries = 0;
+    loop {
+        match f() {
+            Err(Error::Address { error, .. }) if in_use(&error) && tries < ROOM_TRIES => {
+                tries = tries.saturating_add(1);
+                std::thread::sleep(ROOM_WAIT);
+            }
+            r => return r,
+        }
+    }
+}
+
+/// How long [`retry`] waits for an address: 100 tries, 10 ms apart.
+const ROOM_TRIES: u32 = 100;
+const ROOM_WAIT: std::time::Duration = std::time::Duration::from_millis(10);
+
 /// The listeners of a running engine, moved to each graph [`reload`](Listeners::reload)
-/// publishes. Call [`close`](Listeners::close) before shutting the engine down.
+/// publishes.
 pub struct Listeners {
-    engine: Arc<Engine>,
+    engine: std::sync::Arc<Engine>,
     cell: GraphCell,
-    fixed: Vec<Fixed>,
-    adopted: Vec<Adopted>,
+    opts: Options,
+    entries: Vec<Entry>,
 }
 
 impl fmt::Debug for Listeners {
@@ -255,234 +207,284 @@ impl fmt::Debug for Listeners {
 }
 
 impl Listeners {
-    /// The listeners of `engine`, built by [`engine`](crate::engine) from `cell`'s current graph.
+    /// The listeners of `engine`, built by [`engine`](crate::engine) from `cell`'s current graph
+    /// with `opts`, whose backend the listeners a reload adds take, and whose shutdown timeout is
+    /// how long a removed listener's connections are drained.
     #[must_use]
-    pub fn new(engine: Arc<Engine>, cell: GraphCell) -> Listeners {
+    pub fn new(engine: std::sync::Arc<Engine>, cell: GraphCell, opts: &Options) -> Listeners {
         let configs = cell.with(|g| g.listeners().to_vec());
-        // Through `addrs`: a listener serving h3 has a UDP listener of its own in the engine (I10).
-        let fixed = crate::addrs(&configs, &engine)
+        // The builder's listeners first, in order: each listener's TCP side, then its UDP one
+        // when it serves h3 (I10), as `addrs` reads them.
+        let mut bound = engine.listeners().into_iter();
+        let entries = configs
             .into_iter()
-            .zip(configs)
-            .filter_map(|(a, config)| a.addr().map(|address| Fixed { config, address }))
+            .map(|config| Entry {
+                tcp: if serves_tcp(&config) {
+                    bound.next().map(|i| (i.id, i.local_addr))
+                } else {
+                    None
+                },
+                udp: if serves_h3(&config) {
+                    bound.next().map(|i| Udp::Builder(i.local_addr))
+                } else {
+                    None
+                },
+                config,
+            })
             .collect();
         Listeners {
             engine,
             cell,
-            fixed,
-            adopted: Vec::new(),
+            opts: opts.clone(),
+            entries,
         }
     }
 
-    /// The listeners served now: those the engine was built with, then those added since.
+    /// The listeners served now, in the order of the current graph's.
     #[must_use]
     pub fn served(&self) -> Vec<Served> {
-        self.fixed
-            .iter()
-            .map(|f| Served::new(&f.config, f.address))
-            .chain(
-                self.adopted
-                    .iter()
-                    .map(|a| Served::new(&a.config, a.address)),
-            )
-            .collect()
+        self.entries.iter().filter_map(Entry::served).collect()
     }
 
-    /// Publishes `graph` in the cell and moves the listeners to its: the unchanged ones kept,
-    /// the new ones opened before the swap and accepting from it on, the removed ones closed
-    /// after it. Runs on the control plane (it may resolve names and bind sockets). The cell's
-    /// old graph is left retiring: the caller [`collect`](GraphCell::collect)s it.
-    ///
-    /// # Errors
-    ///
-    /// When a new listener cannot be set up, or a listener the engine was built with is removed
-    /// or changed; nothing changes then, and `graph` is dropped (its modules cleaned up).
-    pub fn reload(&mut self, graph: Graph) -> Result<Reloaded, ReloadError> {
-        let configs = graph.listeners().to_vec();
-        let mut fixed_kept = vec![false; self.fixed.len()];
-        let mut adopted_kept = vec![false; self.adopted.len()];
-        // The new graph's listeners not kept, by index.
-        let mut fresh = Vec::new();
-        for (i, l) in configs.iter().enumerate() {
-            if claim(&self.fixed, &mut fixed_kept, |f| f.config == *l).is_none()
-                && claim(&self.adopted, &mut adopted_kept, |a| a.config == *l).is_none()
-            {
-                fresh.push((i, l));
+    /// Opens listener `l` (the new graph's `index`th), beside those running; a running listener
+    /// of `room` (its index, and whether it stopped already) at an address the system will not
+    /// share stops listening first.
+    fn open(
+        &self,
+        graph: &Graph,
+        index: usize,
+        l: &Listener,
+        room: &mut [(usize, bool)],
+    ) -> Result<Entry, Error> {
+        let address = |error| Error::Address {
+            listener: l.name.clone(),
+            address: l.address.clone(),
+            error,
+        };
+        let resolved = resolve(&l.address).map_err(address)?;
+        let (tcp, h3) = (serves_tcp(l), serves_h3(l));
+        let mut last = None;
+        for _ in 0..MAX_PORT_ZERO_BINDS {
+            let mut addr = resolved;
+            let probed = tcp && h3 && addr.port() == 0;
+            if probed {
+                // HTTP/3 goes on the port TCP gets, the one Alt-Svc names: a port free for both.
+                addr.set_port(free_port(addr.ip()).map_err(address)?);
             }
-        }
-        // An adopted listener is a TCP socket of akit's own: HTTP/3 needs a UDP listener in the
-        // engine, which waits for akio API request A1 as removing one does.
-        if let Some((_, l)) = fresh
-            .iter()
-            .find(|(_, l)| l.protocols.contains(&Protocol::H3))
-        {
-            return Err(ReloadError::Listener(Error::NotSupportedYet {
-                listener: l.name.clone(),
-                what: "a listener serving h3 added by a reload (akio API request A1)".into(),
-            }));
-        }
-        if let Some(f) = self.fixed.iter().zip(&fixed_kept).find(|(_, k)| !**k) {
-            return Err(ReloadError::Fixed {
-                listener: f.0.config.name.clone(),
-                address: f.0.address,
-            });
-        }
-
-        // Before the swap: the new sockets bound, their accept threads waiting for the go; a
-        // changed listener keeps the socket of a removed one at its address.
-        struct Opened<'a> {
-            config: &'a Listener,
-            serve: Serve,
-            /// The adopted listener whose socket it takes over, or the new socket's state.
-            target: Target,
-        }
-        enum Target {
-            Reuse(usize),
-            New {
-                adopted: Box<Adopted>,
-                go: mpsc::Sender<()>,
-            },
-        }
-        let mut opened: Vec<Opened<'_>> = Vec::new();
-        let fail = |opened: Vec<Opened<'_>>, e: Error| {
-            for o in opened {
-                if let Target::New { adopted, go } = o.target {
-                    // The accept thread sees the sender dropped and exits without accepting.
-                    drop(go);
-                    if let Some(t) = adopted.thread {
-                        let _ = t.join();
+            let mut entry = Entry {
+                config: l.clone(),
+                tcp: None,
+                udp: None,
+            };
+            if tcp {
+                let id = self.add_tcp(graph, index, l, addr, room)?;
+                let local = self
+                    .engine
+                    .listeners()
+                    .into_iter()
+                    .find(|i| i.id == id)
+                    .map_or(addr, |i| i.local_addr);
+                entry.tcp = Some((id, local));
+                addr.set_port(local.port());
+            }
+            if h3 {
+                match self.bind_h3(graph, index, l, addr, room) {
+                    Ok(b) => entry.udp = Some(Udp::Bound(b)),
+                    Err(e) => {
+                        entry.remove(&self.engine, None);
+                        match e {
+                            Error::Address { error, .. } if probed && in_use(&error) => {
+                                last = Some(error);
+                                continue;
+                            }
+                            e => return Err(e),
+                        }
                     }
                 }
             }
-            Err(ReloadError::Listener(e))
+            return Ok(entry);
+        }
+        Err(address(
+            last.unwrap_or_else(|| io::ErrorKind::AddrInUse.into()),
+        ))
+    }
+
+    /// Stops listening at once (its connections left to finish) the first running listener of
+    /// `room` not stopped yet that `at` picks; whether there was one.
+    fn make_room(&self, room: &mut [(usize, bool)], at: impl Fn(&Entry) -> bool) -> bool {
+        for (j, stopped) in room.iter_mut() {
+            if let Some(e) = self.entries.get(*j).filter(|e| !*stopped && at(e)) {
+                e.remove(&self.engine, None);
+                *stopped = true;
+                return true;
+            }
+        }
+        false
+    }
+
+    fn add_tcp(
+        &self,
+        graph: &Graph,
+        index: usize,
+        l: &Listener,
+        addr: SocketAddr,
+        room: &mut [(usize, bool)],
+    ) -> Result<ListenerId, Error> {
+        let h3_port = serves_h3(l).then_some(addr.port());
+        let make = || {
+            tcp_listener(
+                &self.cell,
+                l,
+                graph.tls(index),
+                EngineListener::tcp(addr).backend(self.opts.backend.clone()),
+                h3_port,
+            )
         };
-        // Adopted listeners whose sockets are taken over: those kept, and the reused ones.
-        let mut reused = adopted_kept.clone();
-        for (i, l) in fresh {
-            let serve = match serve_for(&self.engine, &self.cell, l, graph.tls(i).cloned()) {
-                Ok(s) => s,
-                Err(e) => return fail(opened, e),
-            };
-            let address = match resolve(&l.address) {
-                Ok(a) => a,
-                Err(error) => {
-                    return fail(
-                        opened,
-                        Error::Address {
-                            listener: l.name.clone(),
-                            address: l.address.clone(),
-                            error,
-                        },
-                    );
-                }
-            };
-            if let Some(j) = claim(&self.adopted, &mut reused, |a| {
-                a.config.address == l.address || a.address == address
-            }) {
-                opened.push(Opened {
-                    config: l,
-                    serve,
-                    target: Target::Reuse(j),
-                });
+        let failed = |error| Error::Address {
+            listener: l.name.clone(),
+            address: l.address.clone(),
+            error,
+        };
+        match self.engine.add_listener(make()?) {
+            Err(e)
+                if in_use(&e)
+                    && self.make_room(room, |g| g.tcp.is_some_and(|(_, a)| a == addr)) =>
+            {
+                retry(|| self.engine.add_listener(make()?).map_err(failed))
+            }
+            r => r.map_err(failed),
+        }
+    }
+
+    fn bind_h3(
+        &self,
+        graph: &Graph,
+        index: usize,
+        l: &Listener,
+        addr: SocketAddr,
+        room: &mut [(usize, bool)],
+    ) -> Result<UdpBinding, Error> {
+        let bind = || {
+            let a = h3_acceptor(&self.cell, l, graph.h3_tls(index))?;
+            self.engine
+                .bind_udp(addr, a)
+                .map_err(|error| Error::Address {
+                    listener: l.name.clone(),
+                    address: l.address.clone(),
+                    error,
+                })
+        };
+        match bind() {
+            Err(Error::Address { error: e, .. })
+                if in_use(&e)
+                    && self.make_room(
+                        room,
+                        |g| matches!(&g.udp, Some(Udp::Bound(b)) if b.local_addr() == addr),
+                    ) =>
+            {
+                retry(bind)
+            }
+            r => r,
+        }
+    }
+
+    /// Publishes `graph` in the cell and moves the listeners to its: the unchanged ones kept,
+    /// the new and changed ones opened before the swap, the removed and changed ones drained
+    /// after it. Runs on the control plane (it resolves names and binds sockets). The cell's old
+    /// graph is left retiring: the caller [`collect`](GraphCell::collect)s it.
+    ///
+    /// # Errors
+    ///
+    /// When a new listener cannot be set up, or a listener serving HTTP/3 that the engine was
+    /// built with is removed or changed; nothing changes then, and `graph` is dropped (its
+    /// modules cleaned up). Except: a listener that had to stop listening to make room for its
+    /// replacement on a system that does not share ports stays stopped, as in fit.
+    pub fn reload(&mut self, graph: Graph) -> Result<Reloaded, ReloadError> {
+        let configs = graph.listeners().to_vec();
+        let mut kept = vec![false; self.entries.len()];
+        // Per listener of the new graph: the running one it keeps.
+        let keeps: Vec<Option<usize>> = configs
+            .iter()
+            .map(|l| claim(&self.entries, &mut kept, |e| e.config == *l))
+            .collect();
+        let unspecified = SocketAddr::from(([0, 0, 0, 0], 0));
+        if let Some((e, _)) = self
+            .entries
+            .iter()
+            .zip(&kept)
+            .find(|(e, k)| !**k && matches!(e.udp, Some(Udp::Builder(_))))
+        {
+            return Err(ReloadError::Udp {
+                listener: e.config.name.clone(),
+                address: e.address().unwrap_or(unspecified),
+            });
+        }
+        // The running listeners not kept, by index, and whether they stopped already.
+        let mut room: Vec<(usize, bool)> = kept
+            .iter()
+            .enumerate()
+            .filter(|(_, k)| !**k)
+            .map(|(j, _)| (j, false))
+            .collect();
+
+        // Before the swap: the new and changed listeners opened.
+        let mut opened: Vec<Option<Entry>> = Vec::with_capacity(configs.len());
+        for (i, (l, keep)) in configs.iter().zip(&keeps).enumerate() {
+            if keep.is_some() {
+                opened.push(None);
                 continue;
             }
-            let bound = TcpListener::bind(address).and_then(|s| s.local_addr().map(|a| (s, a)));
-            let (socket, address) = match bound {
-                Ok(b) => b,
-                Err(error) => {
-                    return fail(
-                        opened,
-                        Error::Address {
-                            listener: l.name.clone(),
-                            address: l.address.clone(),
-                            error,
-                        },
-                    );
+            match self.open(&graph, i, l, &mut room) {
+                Ok(e) => opened.push(Some(e)),
+                Err(err) => {
+                    // Nothing changes: the listeners opened for it are closed again; those that
+                    // stopped to make room stay stopped.
+                    for e in opened.iter().flatten() {
+                        e.remove(&self.engine, None);
+                    }
+                    let stopped: Vec<usize> =
+                        room.iter().filter(|(_, s)| *s).map(|(j, _)| *j).collect();
+                    let mut j = 0usize;
+                    self.entries.retain(|_| {
+                        let keep = !stopped.contains(&j);
+                        j = j.saturating_add(1);
+                        keep
+                    });
+                    return Err(ReloadError::Listener(err));
                 }
-            };
-            let shared = Arc::new(Mutex::new(Arc::clone(&serve)));
-            let stop = Arc::new(AtomicBool::new(false));
-            let (go, wait) = mpsc::channel();
-            let thread = {
-                let (shared, stop) = (Arc::clone(&shared), Arc::clone(&stop));
-                std::thread::Builder::new()
-                    .name(format!("akit-accept-{}", l.name))
-                    .spawn(move || accept_loop(socket, shared, stop, wait))
-            };
-            let thread = match thread {
-                Ok(t) => t,
-                Err(e) => return fail(opened, Error::Engine(e)),
-            };
-            opened.push(Opened {
-                config: l,
-                serve,
-                target: Target::New {
-                    adopted: Box::new(Adopted {
-                        config: l.clone(),
-                        address,
-                        serve: shared,
-                        stop,
-                        thread: Some(thread),
-                    }),
-                    go,
-                },
-            });
+            }
         }
 
         // The swap: requests go to the new graph from here on.
         self.cell.swap(graph);
 
+        let mut old: Vec<Option<Entry>> = self.entries.drain(..).map(Some).collect();
         let mut report = Reloaded {
-            kept: fixed_kept
-                .len()
-                .saturating_add(adopted_kept.iter().filter(|k| **k).count()),
+            kept: keeps.iter().filter(|k| k.is_some()).count(),
             ..Reloaded::default()
         };
-        let mut old: Vec<Option<Adopted>> = self.adopted.drain(..).map(Some).collect();
-        let mut next: Vec<Adopted> = Vec::new();
-        for (slot, kept) in old.iter_mut().zip(&adopted_kept) {
-            if *kept {
-                next.extend(slot.take());
+        let drain = self.opts.shutdown_timeout;
+        for (j, stopped) in room {
+            if let Some(e) = old.get_mut(j).and_then(Option::take) {
+                if !stopped {
+                    e.remove(&self.engine, Some(drain));
+                }
+                report.removed.extend(e.served());
             }
         }
-        for o in opened {
-            let l = o.config;
-            match o.target {
-                Target::Reuse(j) => {
-                    if let Some(mut a) = old.get_mut(j).and_then(Option::take) {
-                        report.removed.push(Served::new(&a.config, a.address));
-                        *lock(&a.serve) = o.serve;
-                        a.config = l.clone();
-                        report.added.push(Served::new(l, a.address));
-                        next.push(a);
-                    }
+        let mut next = Vec::with_capacity(configs.len());
+        for (keep, new) in keeps.iter().zip(opened) {
+            let e = match (keep, new) {
+                (_, Some(e)) => {
+                    report.added.extend(e.served());
+                    Some(e)
                 }
-                Target::New { adopted, go } => {
-                    let _ = go.send(());
-                    report.added.push(Served::new(l, adopted.address));
-                    next.push(*adopted);
-                }
-            }
+                (Some(j), None) => old.get_mut(*j).and_then(Option::take),
+                (None, None) => None,
+            };
+            next.extend(e);
         }
-        for mut a in old.into_iter().flatten() {
-            a.close();
-            report.removed.push(Served::new(&a.config, a.address));
-        }
-        self.adopted = next;
+        self.entries = next;
         Ok(report)
-    }
-
-    /// Closes the listeners added since the engine was built (the engine's own close with it).
-    /// Their connections are the engine's, and close with it.
-    pub fn close(&mut self) {
-        for a in &mut self.adopted {
-            a.close();
-        }
-        self.adopted.clear();
-    }
-}
-
-impl Drop for Listeners {
-    fn drop(&mut self) {
-        self.close();
     }
 }

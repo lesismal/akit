@@ -263,8 +263,9 @@ fn datagrams_that_are_not_quic_do_not_disturb_others() {
 }
 
 /// Reload (I22) beside HTTP/3 (I10): a listener serving h3 has a UDP listener of its own in the
-/// engine, so the listeners after it are still reported at their own addresses; and a reload
-/// that adds one is refused (its UDP side needs akio API request A1), the running config kept.
+/// engine, so the listeners after it are still reported at their own addresses; a reload adds
+/// one (its TCP side with akio's `add_listener`, A1, its HTTP/3 with `bind_udp`) and removes it
+/// again, but cannot remove one akit started with (akio removes no UDP listener at run time).
 #[test]
 fn reload_knows_h3_listeners() {
     use std::sync::Arc;
@@ -297,7 +298,7 @@ fn reload_knows_h3_listeners() {
     let e = Arc::new(akit_listener::engine(&cell, &options()).unwrap());
     e.start().unwrap();
     let addrs = akit_listener::addrs(&config.listeners, &e);
-    let mut l = Listeners::new(Arc::clone(&e), cell.clone());
+    let mut l = Listeners::new(Arc::clone(&e), cell.clone(), &options());
     let served: Vec<_> = l
         .served()
         .into_iter()
@@ -321,13 +322,38 @@ fn reload_knows_h3_listeners() {
     std::io::Read::read_to_string(&mut s, &mut resp).unwrap();
     assert!(resp.ends_with("hi"), "{resp}");
 
-    // Adding a listener serving h3 is refused; the graph is not swapped.
+    // A listener serving h3 added by a reload: TCP added to the engine (A1), HTTP/3 bound on
+    // the engine's UDP thread, on the port TCP got.
+    let (g, _) = compiled(&json(&[
+        tls("secure", ALL),
+        plain.clone(),
+        tls("more", ALL),
+    ]));
+    let r = l.reload(g).unwrap();
+    assert_eq!((r.kept, r.added.len(), r.removed.len()), (2, 1, 0));
+    let more = r.added[0].address;
+    let seen = h3::get(more, h3::client(&p.ca, None), "a.example", "/").unwrap();
+    assert_eq!((seen.status, seen.body.as_str()), (200, "hi"));
+    let c1 = client(&p.ca, &["http/1.1"], None);
+    let seen = get_h1(more, &c1, "a.example", "a.example", "/").unwrap();
+    assert_eq!(seen.body, "hi");
+    let want = akit_listener::alt_svc(more.port());
+    assert_eq!(seen.alt_svc.as_deref(), Some(want.as_str()));
+
+    // Removing the h3 listener akit started with is refused (akio removes no UDP listener of a
+    // running engine); the graph is not swapped.
     let epoch = cell.epoch();
-    let (g, _) = compiled(&json(&[tls("secure", ALL), plain, tls("more", ALL)]));
+    let (g, _) = compiled(&json(&[plain.clone(), tls("more", ALL)]));
     let err = l.reload(g).unwrap_err();
-    assert!(matches!(err, ReloadError::Listener(_)), "{err}");
-    assert!(err.to_string().contains("h3"), "{err}");
+    assert!(matches!(err, ReloadError::Udp { .. }), "{err}");
+    assert!(err.to_string().contains("\"secure\""), "{err}");
     assert_eq!(cell.epoch(), epoch);
+
+    // The one a reload added goes.
+    let (g, _) = compiled(&json(&[tls("secure", ALL), plain]));
+    let r = l.reload(g).unwrap();
+    assert_eq!((r.kept, r.added.len(), r.removed.len()), (2, 0, 1));
+    assert!(h3::get(more, h3::client(&p.ca, None), "a.example", "/").is_err());
     e.shutdown();
     e.wait();
 }
