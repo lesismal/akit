@@ -1265,9 +1265,18 @@ pub enum Dotfiles {
 /// The `proxy` handler's params: what I15 reads of fit's.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Proxy {
-    /// `upstream`: the name of the upstream requests go to. That it names one of the config's
-    /// upstreams is checked when the handler is provisioned, once every file's are joined.
+    /// `upstream`: the name of the upstream requests go to; empty with `upstreams`. That it
+    /// names one of the config's upstreams is checked when the handler is provisioned, once
+    /// every file's are joined.
     pub upstream: String,
+    /// `upstreams` (I46): the upstreams requests are spread over at random by weight, in place
+    /// of `upstream`; empty when left out.
+    pub upstreams: Vec<Split>,
+    /// `failover` (I46): the upstream that takes the requests when none of the chosen
+    /// upstream's addresses is in rotation and one of its own is; none when left out or empty.
+    pub failover: Option<String>,
+    /// `mirror` (I46): where copies of a share of the requests go; none when left out.
+    pub mirror: Option<Mirror>,
     /// `trusted_proxies`: the proxies in front of this one, whose `X-Forwarded-*` and
     /// `Forwarded` fields are believed. None when left out.
     pub trusted_proxies: Vec<Network>,
@@ -1331,6 +1340,41 @@ impl PartialEq for Retry {
 }
 
 impl Eq for Retry {}
+
+/// One of the `proxy` handler's `upstreams` (I46), as fit's `proxy.Split`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Split {
+    /// `upstream`: the name of the upstream, checked when the handler is provisioned.
+    pub upstream: String,
+    /// `weight`: its share of the requests against the others' weights, from 1 to 1000.
+    pub weight: u32,
+}
+
+/// The `proxy` handler's `mirror` (I46), as fit's `proxy.Mirror`: a copy of a share of the
+/// requests whose bodies arrive whole goes to another upstream, its answer dropped. At most
+/// [`MAX_MIRRORED`] copies are under way at once for a proxy; past that, requests are not
+/// copied. The requests never wait for their copies.
+#[derive(Debug, Clone)]
+pub struct Mirror {
+    /// `upstream`: the name of the upstream the copies go to, checked when the handler is
+    /// provisioned.
+    pub upstream: String,
+    /// `percent`: the share of the requests copied, chosen at random, from 0 to 100; 100 when
+    /// left out.
+    pub percent: f64,
+}
+
+// The percent is finite (the decoder refuses others), so comparing its bits is an equivalence.
+impl PartialEq for Mirror {
+    fn eq(&self, o: &Mirror) -> bool {
+        self.upstream == o.upstream && self.percent.to_bits() == o.percent.to_bits()
+    }
+}
+
+impl Eq for Mirror {}
+
+/// fit's `maxMirrored`: the most copies of a proxy's requests under way to its mirror at once.
+pub const MAX_MIRRORED: usize = 256;
 
 /// fit's `DefaultTunnelIdleTimeout`: a tunnel's silence, when `tunnel_idle_timeout` says none.
 pub const DEFAULT_TUNNEL_IDLE_TIMEOUT: Duration = Duration::from_secs(600);
@@ -1643,16 +1687,20 @@ const PROXY_FIELDS: &[&str] = &[
     "timeout",
     "retry",
     "tunnel_idle_timeout",
+    "upstreams",
+    "failover",
+    "mirror",
 ];
+const SPLIT_FIELDS: &[&str] = &["upstream", "weight"];
+const MIRROR_FIELDS: &[&str] = &["upstream", "percent"];
 const RETRY_FIELDS: &[&str] = &[
     "attempts",
     "statuses",
     "budget_ratio",
     "budget_min_per_second",
 ];
-// upstreams, failover and mirror come with I46; splice_uploads (splice(2), which needs unsafe
-// or an akio API) is not planned yet.
-const PROXY_FIT_ONLY: &[&str] = &["upstreams", "failover", "mirror", "splice_uploads"];
+// splice_uploads (splice(2), which needs unsafe or an akio API) is not planned yet.
+const PROXY_FIT_ONLY: &[&str] = &["splice_uploads"];
 const UPSTREAM_FIELDS: &[&str] = &[
     "name",
     "addresses",
@@ -4056,6 +4104,9 @@ fn static_files(
 fn proxy(d: &mut Decoder<'_>, params: Option<&Node>, path: &str, off: usize) -> Option<Proxy> {
     let mut p = Proxy {
         upstream: String::new(),
+        upstreams: Vec::new(),
+        failover: None,
+        mirror: None,
         trusted_proxies: Vec::new(),
         host_header: String::new(),
         timeout: None,
@@ -4118,18 +4169,93 @@ fn proxy(d: &mut Decoder<'_>, params: Option<&Node>, path: &str, off: usize) -> 
             p.tunnel_idle_timeout = t;
         }
     }
-    // Leaving both out is fit's error; upstreams alone is refused as not supported yet.
-    let upstreams = o.has("upstreams");
+    let mut upstreams_off = None;
+    if let Some(v) = o.take("upstreams") {
+        upstreams_off = Some(v.off);
+        let at = o.at("upstreams");
+        let given = match &v.kind {
+            crate::json::Kind::Array(items) => items.len(),
+            _ => usize::MAX,
+        };
+        p.upstreams = d.array(v, &at, split);
+        ok &= p.upstreams.len() == given;
+    }
+    if let Some(v) = o.take("failover") {
+        p.failover = d.string(v, &o.at("failover")).filter(|s| !s.is_empty());
+    }
+    if let Some(v) = o.take("mirror") {
+        match mirror(d, v, &o.at("mirror")) {
+            Some(m) => p.mirror = Some(m),
+            None => ok = false,
+        }
+    }
     o.finish(d, PROXY_FIELDS, PROXY_FIT_ONLY);
-    if p.upstream.is_empty() && !upstreams {
-        d.error(
-            upstream_off,
-            &upstream_path,
-            "upstream or upstreams is needed",
-        );
-        ok = false;
+    // fit's checks of upstream and upstreams, which are each other's alternatives.
+    match (p.upstream.is_empty(), p.upstreams.is_empty(), upstreams_off) {
+        (false, false, Some(off)) => {
+            d.error(
+                off,
+                &crate::error::join_field(path, "upstreams"),
+                "upstream and upstreams are each other's alternatives: set one",
+            );
+            ok = false;
+        }
+        // An upstreams some of whose items were refused is reported already.
+        (true, true, _) if ok => {
+            d.error(
+                upstream_off,
+                &upstream_path,
+                "upstream or upstreams is needed",
+            );
+            ok = false;
+        }
+        _ => {}
     }
     ok.then_some(p)
+}
+
+/// One of the `proxy` handler's `upstreams` (I46), checked as fit's tags check a `proxy.Split`.
+fn split(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Split> {
+    let mut o = d.object(n, path)?;
+    let upstream = o
+        .require(d, "upstream")
+        .and_then(|v| d.string(v, &o.at("upstream")));
+    let weight = o
+        .require(d, "weight")
+        .and_then(|v| d.int(v, &o.at("weight"), 1, 1000));
+    o.finish(d, SPLIT_FIELDS, &[]);
+    Some(Split {
+        upstream: upstream?,
+        weight: u32::try_from(weight?).ok()?,
+    })
+}
+
+/// The `proxy` handler's `mirror` (I46), checked as fit's tags check a `proxy.Mirror`.
+fn mirror(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Mirror> {
+    let mut o = d.object(n, path)?;
+    let upstream = o
+        .require(d, "upstream")
+        .and_then(|v| d.string(v, &o.at("upstream")));
+    let mut percent = Some(100.0);
+    if let Some(v) = o.take("percent") {
+        let at = o.at("percent");
+        percent = match d.number(v, &at) {
+            Some(x) if x < 0.0 => {
+                d.error(v.off, &at, format!("{x} is less than the minimum 0"));
+                None
+            }
+            Some(x) if x > 100.0 => {
+                d.error(v.off, &at, format!("{x} is greater than the maximum 100"));
+                None
+            }
+            x => x,
+        };
+    }
+    o.finish(d, MIRROR_FIELDS, &[]);
+    Some(Mirror {
+        upstream: upstream?,
+        percent: percent?,
+    })
 }
 
 /// A ratio from 0 to 1, as fit's `min:"0" max:"1"` bound a float.

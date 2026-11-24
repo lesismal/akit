@@ -605,14 +605,14 @@ fn below(n: usize) -> usize {
 
 /// A random number below `n` (0 for 0): Lemire's multiply-shift, whose bias is below 2^-32 for
 /// any `n` a balancer draws from.
-fn below_u64(n: u64) -> u64 {
+pub(crate) fn below_u64(n: u64) -> u64 {
     let wide = u128::from(next_random()).wrapping_mul(u128::from(n));
     u64::try_from(wide >> 64).unwrap_or(0)
 }
 
 /// The next number of this thread's wyrand generator, seeded on its first draw from std's
 /// random hash keys.
-fn next_random() -> u64 {
+pub(crate) fn next_random() -> u64 {
     RANDOM.with(|s| {
         let mut x = s.get();
         if x == 0 {

@@ -91,6 +91,14 @@
 //! streams is never sent again. Retries are held to a budget (`budget_ratio` of the requests,
 //! plus `budget_min_per_second`), and the proxy's `timeout` bounds the attempts together.
 //!
+//! I46 spreads requests over several upstreams, as fit's `upstreams`, `failover` and `mirror`:
+//! each request goes to one of `upstreams` drawn at random by weight (or to `upstream`), or to
+//! the `failover` when none of that one's addresses is in rotation and one of the failover's is
+//! (akit-upstream's `Split`); the address, sticky cookie and retries are then the chosen
+//! upstream's. A request whose body came whole may have a copy sent to the `mirror`
+//! (`mirror.rs`), a share of them by `percent`, at most 256 under way: the copy's answer is
+//! dropped, and the request never waits for it.
+//!
 //! I49 proxies WebSockets (`websocket.rs`), as fit's proxy passes on a request that asks to
 //! switch protocols: an HTTP/1.1 upgrade, or an HTTP/2 or HTTP/3 extended CONNECT for
 //! `websocket`, goes to an HTTP/1.1 upstream as its handshake; once the upstream answers `101`,
@@ -103,6 +111,7 @@
 //! fill this crate in.
 
 mod headers;
+mod mirror;
 mod relay;
 mod retry;
 mod websocket;
@@ -114,7 +123,7 @@ use std::time::{Duration, Instant};
 use akio_http::client::{CancelToken, ClientError, ClientRequest};
 use akio_http::{BodyMode, Context, Method, Request, Response};
 use akit_config::Network;
-use akit_runtime::upstream::{Error, Keys, Pool};
+use akit_runtime::upstream::{Error, Keys, Split};
 use akit_runtime::{
     CANONICAL_PATH, Handler, HandlerParams, Info, MAX_BODY_BYTES, Provision, ProvisionError,
     Provisioned, TLS,
@@ -127,13 +136,16 @@ pub const STREAM_THRESHOLD: u64 = 64 << 10;
 /// The handler modules of this crate, for [`akit_runtime::Registry::new`].
 pub static MODULES: &[Info<HandlerParams>] = &[Info::handler(
     "http.handlers.proxy",
-    "Proxies requests to an upstream.",
+    "Proxies requests to an upstream, or to several by weight, with retries, mirroring and failover.",
     new,
 )];
 
 /// The `proxy` handler.
 struct Proxy {
-    pool: Pool,
+    /// The upstream, or the upstreams by weight, and the failover (I46).
+    split: Split,
+    /// The params' `mirror` (I46).
+    mirror: Option<mirror::Mirror>,
     trusted: Vec<Network>,
     host_header: String,
     /// The params' `timeout`.
@@ -150,14 +162,44 @@ fn new(p: &Provision<'_, HandlerParams>) -> Result<Provisioned<dyn Handler>, Pro
             "the proxy handler was given another's params",
         ));
     };
-    let pool = p.env().upstream(&params.upstream).cloned().ok_or_else(|| {
-        ProvisionError::field(
-            "upstream",
-            format!("there is no upstream named {:?}", params.upstream),
-        )
-    })?;
+    let lookup = |field: String, name: &str| {
+        p.env().upstream(name).cloned().ok_or_else(|| {
+            ProvisionError::field(&field, format!("there is no upstream named {name:?}"))
+        })
+    };
+    // fit's provisionSplit: the upstream, or each of upstreams, then failover and mirror.
+    let failover = match &params.failover {
+        Some(name) => Some(lookup("failover".into(), name)?),
+        None => None,
+    };
+    let split = if params.upstreams.is_empty() {
+        let pool = lookup("upstream".into(), &params.upstream)?;
+        match failover {
+            Some(f) => Split::new([(pool, 1)], Some(f)),
+            None => Some(Split::one(pool)),
+        }
+    } else {
+        let mut pools = Vec::with_capacity(params.upstreams.len());
+        for (i, s) in params.upstreams.iter().enumerate() {
+            pools.push((
+                lookup(format!("upstreams[{i}].upstream"), &s.upstream)?,
+                s.weight,
+            ));
+        }
+        Split::new(pools, failover)
+    };
+    let split = split
+        .ok_or_else(|| ProvisionError::field("upstream", "upstream or upstreams is needed"))?;
+    let mirror = match &params.mirror {
+        Some(m) => Some(mirror::Mirror::new(
+            lookup("mirror.upstream".into(), &m.upstream)?,
+            m.percent,
+        )),
+        None => None,
+    };
     Ok(Provisioned::new(Arc::new(Proxy {
-        pool,
+        split,
+        mirror,
         trusted: params.trusted_proxies.clone(),
         host_header: params.host_header.clone(),
         timeout: params.timeout,
@@ -204,8 +246,10 @@ impl akio_http::Service for Proxy {
             query: req.query().unwrap_or(""),
             headers: Some(&fields),
         };
-        let backend = self.pool.pick_for(&keys);
-        let set_cookie = self.pool.set_cookie(&keys, backend).map(str::to_owned);
+        // The upstream, by weight, or the failover (I46).
+        let pool = self.split.pick();
+        let backend = pool.pick_for(&keys);
+        let set_cookie = pool.set_cookie(&keys, backend).map(str::to_owned);
         let fields = out_fields;
         // Cancelled when the client goes (`relay::start`), wherever the exchange is.
         let cancel = CancelToken::new();
@@ -222,12 +266,7 @@ impl akio_http::Service for Proxy {
             .unwrap_or(akit_config::DEFAULT_MAX_BODY_BYTES);
         if asked != websocket::Asked::No {
             let log = akit_observe::logged().then(|| relay::Logged {
-                addr: self
-                    .pool
-                    .addresses()
-                    .nth(backend)
-                    .unwrap_or_default()
-                    .to_owned(),
+                addr: pool.addresses().nth(backend).unwrap_or_default().to_owned(),
                 start: Instant::now(),
             });
             let h = websocket::Handshake {
@@ -238,7 +277,7 @@ impl akio_http::Service for Proxy {
                 log,
                 idle: self.tunnel_idle,
             };
-            return websocket::serve(&self.pool, ctx, asked, h);
+            return websocket::serve(pool, ctx, asked, h);
         }
         // The trailers the request announced go up with it, chunked, as fit sends them.
         let names = headers::trailer_names(&req.headers);
@@ -273,7 +312,7 @@ impl akio_http::Service for Proxy {
                 let req = ctx.req();
                 Some(Box::new(retry::Again {
                     policy: Arc::clone(policy),
-                    pool: self.pool.clone(),
+                    pool: pool.clone(),
                     req: out.clone(),
                     idempotent: retry::idempotent(&req.method),
                     peer: req.peer.ip(),
@@ -292,16 +331,20 @@ impl akio_http::Service for Proxy {
         // The access log's line names the address the request went to and how long it took
         // (fit's upstream and upstream_duration): the line is written as the response is sent.
         let log = akit_observe::logged().then(|| relay::Logged {
-            addr: self
-                .pool
-                .addresses()
-                .nth(backend)
-                .unwrap_or_default()
-                .to_owned(),
+            addr: pool.addresses().nth(backend).unwrap_or_default().to_owned(),
             start: Instant::now(),
         });
+        // A copy of a request whose body came whole goes to the mirror, if it is chosen and has
+        // room (I46), sent first, as fit sends it; the request does not wait for it.
+        if let Some(m) = &self.mirror {
+            if !streamed {
+                if let Some(slot) = m.slot() {
+                    m.send(slot, mirror::copy_of(&out, &ctx.req().body));
+                }
+            }
+        }
         let x = relay::Relay::new(client, head, version, chunked, log, set_cookie, again);
-        self.pool.stream(backend, out, x);
+        pool.stream(backend, out, x);
     }
 
     /// A body of more than [`STREAM_THRESHOLD`], or of no declared length, streams.

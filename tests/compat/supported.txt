@@ -108,8 +108,8 @@ upstreams[].health_check.timeout
 upstreams[].health_check.jitter
 upstreams[].health_check.fails
 upstreams[].health_check.passes
-# I15: the proxy handler: its upstream, trusted proxies and Host. Its other params (upstreams,
-# failover, mirror, retry, splice_uploads) are refused as not supported yet (I45, I46).
+# I15: the proxy handler: its upstream, trusted proxies and Host. splice_uploads is refused as
+# not supported yet.
 routes[].handler<proxy>
 routes[].handler<proxy>.params
 routes[].handler<proxy>.params.upstream
@@ -131,6 +131,17 @@ routes[].handler<proxy>.params.retry.attempts
 routes[].handler<proxy>.params.retry.statuses
 routes[].handler<proxy>.params.retry.budget_ratio
 routes[].handler<proxy>.params.retry.budget_min_per_second
+#
+# I46: requests spread over upstreams by weight, a failover that takes them while the chosen
+# upstream has no address in rotation, and a mirror that gets copies of a share of the requests
+# whose bodies arrive whole, at most 256 under way, never waited for.
+routes[].handler<proxy>.params.upstreams
+routes[].handler<proxy>.params.upstreams[].upstream
+routes[].handler<proxy>.params.upstreams[].weight
+routes[].handler<proxy>.params.failover
+routes[].handler<proxy>.params.mirror
+routes[].handler<proxy>.params.mirror.upstream
+routes[].handler<proxy>.params.mirror.percent
 #
 # I39: route matchers v2: path regexps (akio-regex, Go's syntax but for what akio-regex lacks:
 # Unicode classes, POSIX classes, \Q...\E), methods, headers, query parameters, remote IPs and
