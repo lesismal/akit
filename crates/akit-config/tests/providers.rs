@@ -131,23 +131,20 @@ fn checks() {
     }
 }
 
-/// The kinds of I61 are refused as not supported yet, naming the field; a kubernetes provider
-/// without `ingress` too (the Gateway API, I60).
+/// A kubernetes provider without `ingress` is refused as not supported yet, naming the field
+/// (the Gateway API, I60); Consul, Consul KV and etcd are read (I61, `providers_kv.rs`).
 #[test]
 fn other_kinds_not_supported_yet() {
-    for kind in ["consul", "consul_kv", "etcd", "kubernetes"] {
-        let errs = providers(&format!(r#"[{{"{kind}": {{}}}}]"#)).unwrap_err();
-        assert!(
-            errs.iter()
-                .any(|e| e.contains(&format!("providers[0].{kind}"))
-                    && e.contains("not supported yet")),
-            "{kind}: {errs:?}"
-        );
-        assert!(
-            !errs.iter().any(|e| e.contains("exactly one kind")),
-            "{kind}: {errs:?}"
-        );
-    }
+    let errs = providers(r#"[{"kubernetes": {}}]"#).unwrap_err();
+    assert!(
+        errs.iter()
+            .any(|e| e.contains("providers[0].kubernetes") && e.contains("not supported yet")),
+        "{errs:?}"
+    );
+    assert!(
+        !errs.iter().any(|e| e.contains("exactly one kind")),
+        "{errs:?}"
+    );
 }
 
 /// Providers may be split across files, and their names are unique across them.

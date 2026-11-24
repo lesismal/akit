@@ -1,7 +1,7 @@
 //! `providers`, as fit's `config.Provider` and its checks (`checkProviders`): sources of config
-//! other than the files and the Admin API (I57's framework), each of one kind. Docker (I58) and
-//! Kubernetes' Ingresses (I59) are read; Consul, Consul KV and etcd (I61) are refused as not
-//! supported yet. A kind is a variant of [`ProviderKind`], an arm of [`decode`] and its own
+//! other than the files and the Admin API (I57's framework), each of one kind. Docker (I58),
+//! Kubernetes' Ingresses (I59), and Consul, Consul KV and etcd (I61, their settings in
+//! [`crate::providers_kv`]) are read. A kind is a variant of [`ProviderKind`], an arm of [`decode`] and its own
 //! field lists.
 //!
 //! Read when akit starts: a change takes a restart, as in fit.
@@ -13,6 +13,10 @@ use std::time::Duration;
 use crate::decode::{Decoder, Obj};
 use crate::error::join_field;
 use crate::json::{Kind, Node};
+use crate::providers_kv::{
+    ConsulKvProvider, ConsulProvider, EtcdProvider, consul_kv_provider, consul_provider,
+    etcd_provider,
+};
 
 /// A provider: its name and its kind's settings.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -31,6 +35,12 @@ pub enum ProviderKind {
     Docker(DockerProvider),
     /// `kubernetes` (I59): Ingresses; the Gateway API comes with I60.
     Kubernetes(KubernetesProvider),
+    /// `consul`: upstreams, routes and services from the services of a Consul catalog (I61).
+    Consul(ConsulProvider),
+    /// `consul_kv`: parts from the keys under a prefix in Consul's KV store (I61).
+    ConsulKv(ConsulKvProvider),
+    /// `etcd`: parts from the keys under a prefix in etcd (I61).
+    Etcd(EtcdProvider),
 }
 
 impl ProviderKind {
@@ -40,6 +50,9 @@ impl ProviderKind {
         match self {
             ProviderKind::Docker(_) => "docker",
             ProviderKind::Kubernetes(_) => "kubernetes",
+            ProviderKind::Consul(_) => "consul",
+            ProviderKind::ConsulKv(_) => "consul_kv",
+            ProviderKind::Etcd(_) => "etcd",
         }
     }
 }
@@ -154,10 +167,17 @@ pub struct KubernetesIngress {
 /// The names of the sources of the base config, which no provider may take.
 const BASE_SOURCES: [&str; 4] = ["file", "admin", "rollback", "certificates"];
 
-// I58: the Docker provider, every field; I59: Kubernetes' Ingresses. Consul, Consul KV and etcd
-// wait for I61.
-const PROVIDER_FIELDS: &[&str] = &["name", "docker", "kubernetes"];
-const PROVIDER_FIT_ONLY: &[&str] = &["consul", "consul_kv", "etcd"];
+// I58: the Docker provider, every field; I59: Kubernetes' Ingresses; I61: Consul, Consul KV and
+// etcd.
+const PROVIDER_FIELDS: &[&str] = &[
+    "name",
+    "docker",
+    "kubernetes",
+    "consul",
+    "consul_kv",
+    "etcd",
+];
+const PROVIDER_FIT_ONLY: &[&str] = &[];
 const DOCKER_FIELDS: &[&str] = &[
     "endpoint",
     "expose_all",
@@ -204,6 +224,18 @@ pub(crate) fn decode(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Provid
     if let Some(v) = o.take("kubernetes") {
         given = given.saturating_add(1);
         kinds.extend(kubernetes(d, v, &o.at("kubernetes")).map(ProviderKind::Kubernetes));
+    }
+    if let Some(v) = o.take("consul") {
+        given = given.saturating_add(1);
+        kinds.extend(consul_provider(d, v, &o.at("consul")).map(ProviderKind::Consul));
+    }
+    if let Some(v) = o.take("consul_kv") {
+        given = given.saturating_add(1);
+        kinds.extend(consul_kv_provider(d, v, &o.at("consul_kv")).map(ProviderKind::ConsulKv));
+    }
+    if let Some(v) = o.take("etcd") {
+        given = given.saturating_add(1);
+        kinds.extend(etcd_provider(d, v, &o.at("etcd")).map(ProviderKind::Etcd));
     }
     if given != 1 {
         d.error(
@@ -267,7 +299,7 @@ fn valid_provider_name(s: &str) -> bool {
 }
 
 /// fit's `namePattern`, which a label prefix follows.
-fn valid_prefix(s: &str) -> bool {
+pub(crate) fn valid_prefix(s: &str) -> bool {
     let mut b = s.bytes();
     b.next().is_some_and(|c| c.is_ascii_alphanumeric())
         && b.all(|c| c.is_ascii_alphanumeric() || matches!(c, b'_' | b'.' | b'-'))
@@ -307,7 +339,7 @@ fn default_endpoint() -> DockerEndpoint {
     DockerEndpoint::Unix(PathBuf::from(path))
 }
 
-fn flag(d: &mut Decoder<'_>, o: &mut Obj<'_>, key: &str) -> bool {
+pub(crate) fn flag(d: &mut Decoder<'_>, o: &mut Obj<'_>, key: &str) -> bool {
     match o.take(key) {
         None => false,
         Some(v) => match &v.kind {
@@ -636,7 +668,10 @@ mod tests {
                 r#"{"kubernetes": {"ingress": {}, "allow_external_name_services": true}}"#,
                 "allow_external_name_services: not supported yet",
             ),
-            (r#"{"etcd": {}}"#, "providers[0].etcd: not supported yet"),
+            (
+                r#"{"etcd": {}, "kubernetes": {"ingress": {}}}"#,
+                "set exactly one kind of provider",
+            ),
             (r#"{"name": "x"}"#, "set exactly one kind of provider"),
             (
                 r#"{"docker": {}, "kubernetes": {"ingress": {}}}"#,

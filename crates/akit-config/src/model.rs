@@ -2972,7 +2972,7 @@ fn telemetry(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Telemetry> {
 
 /// fit's `checkEndpoint`: `http://` or `https://` and a host and port alone. An empty one is
 /// the default.
-fn check_endpoint(ep: &str) -> Result<(), String> {
+pub(crate) fn check_endpoint(ep: &str) -> Result<(), String> {
     if ep.is_empty() {
         return Ok(());
     }

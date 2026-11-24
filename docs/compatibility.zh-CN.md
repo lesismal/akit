@@ -152,7 +152,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 335 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 369 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -205,7 +205,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`media_library`](#fields-media-library) | 24 | 0 | 24 |
 | [`metrics`](#fields-metrics) | 1 | 1 | 0 |
 | [`pprof`](#fields-pprof) | 4 | 0 | 4 |
-| [`providers`](#fields-providers) | 60 | 24 | 36 |
+| [`providers`](#fields-providers) | 60 | 58 | 2 |
 | [`routes`](#fields-routes) | 24 | 19 | 5 |
 | [`schema_version`](#fields-schema-version) | 1 | 1 | 0 |
 | [`services`](#fields-services) | 13 | 8 | 5 |
@@ -277,7 +277,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **合计** | 3821 | 335 | 3486 |
+| **合计** | 3821 | 369 | 3452 |
 
 <a id="fields-access"></a>
 
@@ -1639,29 +1639,29 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
 | `providers` | `array<object>` | 已支持 |
-| `providers[].consul` | `object` | 尚不支持（not supported yet） |
-| `providers[].consul.ca_file` | `string` | 尚不支持（not supported yet） |
-| `providers[].consul.cert_file` | `string` | 尚不支持（not supported yet） |
-| `providers[].consul.datacenter` | `string` | 尚不支持（not supported yet） |
-| `providers[].consul.endpoint` | `string` | 尚不支持（not supported yet） |
-| `providers[].consul.expose_all` | `boolean` | 尚不支持（not supported yet） |
-| `providers[].consul.key_file` | `string` | 尚不支持（not supported yet） |
-| `providers[].consul.max_services` | `integer` | 尚不支持（not supported yet） |
-| `providers[].consul.refresh_interval` | `duration` | 尚不支持（not supported yet） |
-| `providers[].consul.request_timeout` | `duration` | 尚不支持（not supported yet） |
-| `providers[].consul.tag_prefix` | `string` | 尚不支持（not supported yet） |
-| `providers[].consul.token_file` | `string` | 尚不支持（not supported yet） |
-| `providers[].consul_kv` | `object` | 尚不支持（not supported yet） |
-| `providers[].consul_kv.ca_file` | `string` | 尚不支持（not supported yet） |
-| `providers[].consul_kv.cert_file` | `string` | 尚不支持（not supported yet） |
-| `providers[].consul_kv.datacenter` | `string` | 尚不支持（not supported yet） |
-| `providers[].consul_kv.endpoint` | `string` | 尚不支持（not supported yet） |
-| `providers[].consul_kv.key_file` | `string` | 尚不支持（not supported yet） |
-| `providers[].consul_kv.max_keys` | `integer` | 尚不支持（not supported yet） |
-| `providers[].consul_kv.prefix` | `string` | 尚不支持（not supported yet） |
-| `providers[].consul_kv.refresh_interval` | `duration` | 尚不支持（not supported yet） |
-| `providers[].consul_kv.request_timeout` | `duration` | 尚不支持（not supported yet） |
-| `providers[].consul_kv.token_file` | `string` | 尚不支持（not supported yet） |
+| `providers[].consul` | `object` | 已支持 |
+| `providers[].consul.ca_file` | `string` | 已支持 |
+| `providers[].consul.cert_file` | `string` | 已支持 |
+| `providers[].consul.datacenter` | `string` | 已支持 |
+| `providers[].consul.endpoint` | `string` | 已支持 |
+| `providers[].consul.expose_all` | `boolean` | 已支持 |
+| `providers[].consul.key_file` | `string` | 已支持 |
+| `providers[].consul.max_services` | `integer` | 已支持 |
+| `providers[].consul.refresh_interval` | `duration` | 已支持 |
+| `providers[].consul.request_timeout` | `duration` | 已支持 |
+| `providers[].consul.tag_prefix` | `string` | 已支持 |
+| `providers[].consul.token_file` | `string` | 已支持 |
+| `providers[].consul_kv` | `object` | 已支持 |
+| `providers[].consul_kv.ca_file` | `string` | 已支持 |
+| `providers[].consul_kv.cert_file` | `string` | 已支持 |
+| `providers[].consul_kv.datacenter` | `string` | 已支持 |
+| `providers[].consul_kv.endpoint` | `string` | 已支持 |
+| `providers[].consul_kv.key_file` | `string` | 已支持 |
+| `providers[].consul_kv.max_keys` | `integer` | 已支持 |
+| `providers[].consul_kv.prefix` | `string` | 已支持 |
+| `providers[].consul_kv.refresh_interval` | `duration` | 已支持 |
+| `providers[].consul_kv.request_timeout` | `duration` | 已支持 |
+| `providers[].consul_kv.token_file` | `string` | 已支持 |
 | `providers[].docker` | `object` | 已支持 |
 | `providers[].docker.endpoint` | `string` | 已支持 |
 | `providers[].docker.expose_all` | `boolean` | 已支持 |
@@ -1671,17 +1671,17 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `providers[].docker.refresh_interval` | `duration` | 已支持 |
 | `providers[].docker.request_timeout` | `duration` | 已支持 |
 | `providers[].docker.use_published_ports` | `boolean` | 已支持 |
-| `providers[].etcd` | `object` | 尚不支持（not supported yet） |
-| `providers[].etcd.ca_file` | `string` | 尚不支持（not supported yet） |
-| `providers[].etcd.cert_file` | `string` | 尚不支持（not supported yet） |
-| `providers[].etcd.endpoints` | `array<string>` | 尚不支持（not supported yet） |
-| `providers[].etcd.key_file` | `string` | 尚不支持（not supported yet） |
-| `providers[].etcd.max_keys` | `integer` | 尚不支持（not supported yet） |
-| `providers[].etcd.password_file` | `string` | 尚不支持（not supported yet） |
-| `providers[].etcd.prefix` | `string` | 尚不支持（not supported yet） |
-| `providers[].etcd.refresh_interval` | `duration` | 尚不支持（not supported yet） |
-| `providers[].etcd.request_timeout` | `duration` | 尚不支持（not supported yet） |
-| `providers[].etcd.username` | `string` | 尚不支持（not supported yet） |
+| `providers[].etcd` | `object` | 已支持 |
+| `providers[].etcd.ca_file` | `string` | 已支持 |
+| `providers[].etcd.cert_file` | `string` | 已支持 |
+| `providers[].etcd.endpoints` | `array<string>` | 已支持 |
+| `providers[].etcd.key_file` | `string` | 已支持 |
+| `providers[].etcd.max_keys` | `integer` | 已支持 |
+| `providers[].etcd.password_file` | `string` | 已支持 |
+| `providers[].etcd.prefix` | `string` | 已支持 |
+| `providers[].etcd.refresh_interval` | `duration` | 已支持 |
+| `providers[].etcd.request_timeout` | `duration` | 已支持 |
+| `providers[].etcd.username` | `string` | 已支持 |
 | `providers[].kubernetes` | `object` | 已支持 |
 | `providers[].kubernetes.addresses` | `array<string>` | 尚不支持（not supported yet） |
 | `providers[].kubernetes.allow_external_name_services` | `boolean` | 尚不支持（not supported yet） |

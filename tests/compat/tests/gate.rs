@@ -2150,6 +2150,177 @@ fn supported_fields_are_read() {
             k8s(r#", "certificates_dir": "/d""#),
             |c| kube(c).certificates_dir == "/d",
         ),
+        // I61: the Consul, Consul KV and etcd providers.
+        (
+            "providers[].consul",
+            r#"{"providers": [{"consul": {}}]}"#.into(),
+            |c| c.providers[0].kind.name() == "consul",
+        ),
+        (
+            "providers[].consul.endpoint",
+            r#"{"providers": [{"consul": {"endpoint": "https://c.example:8501"}}]}"#.into(),
+            |c| consul(c).conn.endpoint == "https://c.example:8501",
+        ),
+        (
+            "providers[].consul.datacenter",
+            r#"{"providers": [{"consul": {"datacenter": "dc2"}}]}"#.into(),
+            |c| consul(c).conn.datacenter == "dc2",
+        ),
+        (
+            "providers[].consul.token_file",
+            r#"{"providers": [{"consul": {"token_file": "t"}}]}"#.into(),
+            |c| consul(c).conn.token_file == "t",
+        ),
+        (
+            "providers[].consul.ca_file",
+            r#"{"providers": [{"consul": {"ca_file": "ca.pem"}}]}"#.into(),
+            |c| consul(c).conn.tls.ca_file == "ca.pem",
+        ),
+        (
+            "providers[].consul.cert_file",
+            r#"{"providers": [{"consul": {"cert_file": "c.pem", "key_file": "k.pem"}}]}"#.into(),
+            |c| consul(c).conn.tls.cert_file == "c.pem",
+        ),
+        (
+            "providers[].consul.key_file",
+            r#"{"providers": [{"consul": {"cert_file": "c.pem", "key_file": "k.pem"}}]}"#.into(),
+            |c| consul(c).conn.tls.key_file == "k.pem",
+        ),
+        (
+            "providers[].consul.expose_all",
+            r#"{"providers": [{"consul": {"expose_all": true}}]}"#.into(),
+            |c| consul(c).expose_all,
+        ),
+        (
+            "providers[].consul.tag_prefix",
+            r#"{"providers": [{"consul": {"tag_prefix": "app"}}]}"#.into(),
+            |c| consul(c).tag_prefix == "app",
+        ),
+        (
+            "providers[].consul.max_services",
+            r#"{"providers": [{"consul": {"max_services": 5}}]}"#.into(),
+            |c| consul(c).max_services == 5,
+        ),
+        (
+            "providers[].consul.refresh_interval",
+            r#"{"providers": [{"consul": {"refresh_interval": "1m"}}]}"#.into(),
+            |c| consul(c).conn.refresh_interval == std::time::Duration::from_secs(60),
+        ),
+        (
+            "providers[].consul.request_timeout",
+            r#"{"providers": [{"consul": {"request_timeout": "3s"}}]}"#.into(),
+            |c| consul(c).conn.request_timeout == std::time::Duration::from_secs(3),
+        ),
+        (
+            "providers[].consul_kv",
+            r#"{"providers": [{"consul_kv": {}}]}"#.into(),
+            |c| c.providers[0].kind.name() == "consul_kv",
+        ),
+        (
+            "providers[].consul_kv.endpoint",
+            r#"{"providers": [{"consul_kv": {"endpoint": "https://c.example:8501"}}]}"#.into(),
+            |c| consul_kv(c).conn.endpoint == "https://c.example:8501",
+        ),
+        (
+            "providers[].consul_kv.datacenter",
+            r#"{"providers": [{"consul_kv": {"datacenter": "dc2"}}]}"#.into(),
+            |c| consul_kv(c).conn.datacenter == "dc2",
+        ),
+        (
+            "providers[].consul_kv.token_file",
+            r#"{"providers": [{"consul_kv": {"token_file": "t"}}]}"#.into(),
+            |c| consul_kv(c).conn.token_file == "t",
+        ),
+        (
+            "providers[].consul_kv.ca_file",
+            r#"{"providers": [{"consul_kv": {"ca_file": "ca.pem"}}]}"#.into(),
+            |c| consul_kv(c).conn.tls.ca_file == "ca.pem",
+        ),
+        (
+            "providers[].consul_kv.cert_file",
+            r#"{"providers": [{"consul_kv": {"cert_file": "c.pem", "key_file": "k.pem"}}]}"#.into(),
+            |c| consul_kv(c).conn.tls.cert_file == "c.pem",
+        ),
+        (
+            "providers[].consul_kv.key_file",
+            r#"{"providers": [{"consul_kv": {"cert_file": "c.pem", "key_file": "k.pem"}}]}"#.into(),
+            |c| consul_kv(c).conn.tls.key_file == "k.pem",
+        ),
+        (
+            "providers[].consul_kv.prefix",
+            r#"{"providers": [{"consul_kv": {"prefix": "edge/"}}]}"#.into(),
+            |c| consul_kv(c).prefix == "edge/",
+        ),
+        (
+            "providers[].consul_kv.max_keys",
+            r#"{"providers": [{"consul_kv": {"max_keys": 7}}]}"#.into(),
+            |c| consul_kv(c).max_keys == 7,
+        ),
+        (
+            "providers[].consul_kv.refresh_interval",
+            r#"{"providers": [{"consul_kv": {"refresh_interval": "1m"}}]}"#.into(),
+            |c| consul_kv(c).conn.refresh_interval == std::time::Duration::from_secs(60),
+        ),
+        (
+            "providers[].consul_kv.request_timeout",
+            r#"{"providers": [{"consul_kv": {"request_timeout": "3s"}}]}"#.into(),
+            |c| consul_kv(c).conn.request_timeout == std::time::Duration::from_secs(3),
+        ),
+        (
+            "providers[].etcd",
+            r#"{"providers": [{"etcd": {}}]}"#.into(),
+            |c| c.providers[0].kind.name() == "etcd",
+        ),
+        (
+            "providers[].etcd.endpoints",
+            r#"{"providers": [{"etcd": {"endpoints": ["http://10.0.0.71:2379"]}}]}"#.into(),
+            |c| etcd(c).endpoints == ["http://10.0.0.71:2379"],
+        ),
+        (
+            "providers[].etcd.username",
+            r#"{"providers": [{"etcd": {"username": "u", "password_file": "p"}}]}"#.into(),
+            |c| etcd(c).username == "u",
+        ),
+        (
+            "providers[].etcd.password_file",
+            r#"{"providers": [{"etcd": {"password_file": "p", "username": "u"}}]}"#.into(),
+            |c| etcd(c).password_file == "p",
+        ),
+        (
+            "providers[].etcd.ca_file",
+            r#"{"providers": [{"etcd": {"ca_file": "ca.pem"}}]}"#.into(),
+            |c| etcd(c).tls.ca_file == "ca.pem",
+        ),
+        (
+            "providers[].etcd.cert_file",
+            r#"{"providers": [{"etcd": {"cert_file": "c.pem", "key_file": "k.pem"}}]}"#.into(),
+            |c| etcd(c).tls.cert_file == "c.pem",
+        ),
+        (
+            "providers[].etcd.key_file",
+            r#"{"providers": [{"etcd": {"cert_file": "c.pem", "key_file": "k.pem"}}]}"#.into(),
+            |c| etcd(c).tls.key_file == "k.pem",
+        ),
+        (
+            "providers[].etcd.prefix",
+            r#"{"providers": [{"etcd": {"prefix": "edge/"}}]}"#.into(),
+            |c| etcd(c).prefix == "edge/",
+        ),
+        (
+            "providers[].etcd.max_keys",
+            r#"{"providers": [{"etcd": {"max_keys": 7}}]}"#.into(),
+            |c| etcd(c).max_keys == 7,
+        ),
+        (
+            "providers[].etcd.refresh_interval",
+            r#"{"providers": [{"etcd": {"refresh_interval": "1m"}}]}"#.into(),
+            |c| etcd(c).refresh_interval == std::time::Duration::from_secs(60),
+        ),
+        (
+            "providers[].etcd.request_timeout",
+            r#"{"providers": [{"etcd": {"request_timeout": "3s"}}]}"#.into(),
+            |c| etcd(c).request_timeout == std::time::Duration::from_secs(3),
+        ),
     ];
     let marked = supported().unwrap();
     let sampled: BTreeSet<String> = samples.iter().map(|(p, ..)| (*p).to_owned()).collect();
@@ -2333,8 +2504,8 @@ fn kube(c: &Config) -> &akit_config::KubernetesProvider {
 /// reads is what `supported.txt` marks.
 #[test]
 fn akit_config_lists_match_the_inventory() {
-    // The model, and the providers' lists, in a module of their own (I58).
-    let src = ["model.rs", "providers.rs"]
+    // The model, and the providers' lists, in modules of their own (I58, I61).
+    let src = ["model.rs", "providers.rs", "providers_kv.rs"]
         .iter()
         .map(|f| {
             fs::read_to_string(compat_dir().join("../../crates/akit-config/src").join(f)).unwrap()
@@ -2351,7 +2522,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 53] = [
+    let objects: [(&str, &str, Option<&str>); 56] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         (
             "providers[].kubernetes",
@@ -2377,6 +2548,9 @@ fn akit_config_lists_match_the_inventory() {
         ("telemetry.traces", "TRACES_EXPORT_FIELDS", None),
         ("telemetry.metrics", "METRICS_EXPORT_FIELDS", None),
         ("providers[]", "PROVIDER_FIELDS", Some("PROVIDER_FIT_ONLY")),
+        ("providers[].consul", "CONSUL_PROVIDER_FIELDS", None),
+        ("providers[].consul_kv", "CONSUL_KV_PROVIDER_FIELDS", None),
+        ("providers[].etcd", "ETCD_PROVIDER_FIELDS", None),
         ("providers[].docker", "DOCKER_FIELDS", None),
         ("listeners[]", "LISTENER_FIELDS", Some("LISTENER_FIT_ONLY")),
         ("listeners[].tls", "TLS_FIELDS", Some("TLS_FIT_ONLY")),
@@ -2802,4 +2976,26 @@ fn formats_without_a_reader_are_their_own_outcome() {
         [format!("- {name}: not supported yet: acme")]
     );
     assert_eq!(report.diff(""), [format!("+ {line}")]);
+}
+
+/// The settings of the config's first provider, of the kind each names (I61).
+fn consul(c: &Config) -> &akit_config::ConsulProvider {
+    match c.providers.first().map(|p| &p.kind) {
+        Some(akit_config::ProviderKind::Consul(p)) => p,
+        other => unreachable!("{other:?}"),
+    }
+}
+
+fn consul_kv(c: &Config) -> &akit_config::ConsulKvProvider {
+    match c.providers.first().map(|p| &p.kind) {
+        Some(akit_config::ProviderKind::ConsulKv(p)) => p,
+        other => unreachable!("{other:?}"),
+    }
+}
+
+fn etcd(c: &Config) -> &akit_config::EtcdProvider {
+    match c.providers.first().map(|p| &p.kind) {
+        Some(akit_config::ProviderKind::Etcd(p)) => p,
+        other => unreachable!("{other:?}"),
+    }
 }

@@ -519,3 +519,41 @@ providers[].kubernetes.ingress
 providers[].kubernetes.ingress.http_port
 providers[].kubernetes.ingress.https_port
 providers[].kubernetes.certificates_dir
+
+# I61: the Consul, Consul KV and etcd providers, on I57's framework: Consul's catalog and KV store
+# followed with blocking queries, etcd's keys with a watch through its JSON gateway, all over
+# akio's HTTP client (fit's decision 013).
+providers[].consul
+providers[].consul.endpoint
+providers[].consul.datacenter
+providers[].consul.token_file
+providers[].consul.ca_file
+providers[].consul.cert_file
+providers[].consul.key_file
+providers[].consul.expose_all
+providers[].consul.tag_prefix
+providers[].consul.max_services
+providers[].consul.refresh_interval
+providers[].consul.request_timeout
+providers[].consul_kv
+providers[].consul_kv.endpoint
+providers[].consul_kv.datacenter
+providers[].consul_kv.token_file
+providers[].consul_kv.ca_file
+providers[].consul_kv.cert_file
+providers[].consul_kv.key_file
+providers[].consul_kv.prefix
+providers[].consul_kv.max_keys
+providers[].consul_kv.refresh_interval
+providers[].consul_kv.request_timeout
+providers[].etcd
+providers[].etcd.endpoints
+providers[].etcd.username
+providers[].etcd.password_file
+providers[].etcd.ca_file
+providers[].etcd.cert_file
+providers[].etcd.key_file
+providers[].etcd.prefix
+providers[].etcd.max_keys
+providers[].etcd.refresh_interval
+providers[].etcd.request_timeout

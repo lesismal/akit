@@ -531,6 +531,7 @@ fn start_providers(
     let kinds = Kinds::new(&[
         akit_provider::docker::KINDS,
         akit_provider::kubernetes::KINDS,
+        akit_provider::API_KINDS,
     ])?;
     let mut out: Vec<Box<dyn Provider>> = Vec::with_capacity(pcs.len());
     for pc in pcs {
@@ -896,7 +897,7 @@ fn run(args: &[String]) -> ExitCode {
         })
     };
     drop(tx);
-    // The providers the config lists (I58, I59), in their order of precedence, as fit's
+    // The providers the config lists (I58, I59, I61), in their order of precedence, as fit's
     // startProviders; read when akit starts.
     let mut providers = match start_providers(&provider_configs, &configs, &updates) {
         Ok(p) => p,
