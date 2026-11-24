@@ -163,7 +163,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I57 | Provider framework and the effective config | I29 | done |
 | I58 | Docker provider | I57 | done |
 | I59 | Kubernetes Ingress | I57 | done |
-| I60 | Kubernetes Gateway API and conformance | I59 | todo |
+| I60 | Kubernetes Gateway API and conformance | I59 | done |
 | I61 | Consul and etcd | I57 | done |
 | I62 | Shared certificate storage | I30, I61 | todo |
 | I63 | Dashboard | I37 | done |
@@ -833,6 +833,10 @@ Split from I07 so that the half that needs no config model runs beside I02.
 - **Done when**: akit passes the `GATEWAY-HTTP` profile.
 - **Touches**: `akit-provider`.
 - **fit**: decision 012.
+- **Status**: done (2026-11-25), with no akio request; fit's translation, statuses and their tests
+  ported, against the fake API server as fit's; the conformance suite against a kind cluster is
+  written up in [tests/conformance](../tests/conformance/README.md) and left to the maintainer;
+  see the progress log.
 
 ### I61 Consul and etcd
 

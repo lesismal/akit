@@ -131,14 +131,19 @@ fn checks() {
     }
 }
 
-/// A kubernetes provider without `ingress` is refused as not supported yet, naming the field
-/// (the Gateway API, I60); Consul, Consul KV and etcd are read (I61, `providers_kv.rs`).
+/// A kubernetes provider serves the Gateway API without `ingress` (I60);
+/// `allow_external_name_services` is refused as not supported yet, naming the field. Consul,
+/// Consul KV and etcd are read (I61, `providers_kv.rs`).
 #[test]
 fn other_kinds_not_supported_yet() {
-    let errs = providers(r#"[{"kubernetes": {}}]"#).unwrap_err();
+    assert!(providers(r#"[{"kubernetes": {}}]"#).is_ok());
+    let errs =
+        providers(r#"[{"kubernetes": {"allow_external_name_services": true}}]"#).unwrap_err();
     assert!(
-        errs.iter()
-            .any(|e| e.contains("providers[0].kubernetes") && e.contains("not supported yet")),
+        errs.iter().any(
+            |e| e.contains("providers[0].kubernetes.allow_external_name_services")
+                && e.contains("not supported yet")
+        ),
         "{errs:?}"
     );
     assert!(

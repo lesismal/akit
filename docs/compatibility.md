@@ -175,7 +175,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 369 supported.
+3821 fields in 121 sections, at fit `7daee573`; 370 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -228,7 +228,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`media_library`](#fields-media-library) | 24 | 0 | 24 |
 | [`metrics`](#fields-metrics) | 1 | 1 | 0 |
 | [`pprof`](#fields-pprof) | 4 | 0 | 4 |
-| [`providers`](#fields-providers) | 60 | 58 | 2 |
+| [`providers`](#fields-providers) | 60 | 59 | 1 |
 | [`routes`](#fields-routes) | 24 | 19 | 5 |
 | [`schema_version`](#fields-schema-version) | 1 | 1 | 0 |
 | [`services`](#fields-services) | 13 | 8 | 5 |
@@ -300,7 +300,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 369 | 3452 |
+| **Total** | 3821 | 370 | 3451 |
 
 <a id="fields-access"></a>
 
@@ -1706,7 +1706,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `providers[].etcd.request_timeout` | `duration` | supported |
 | `providers[].etcd.username` | `string` | supported |
 | `providers[].kubernetes` | `object` | supported |
-| `providers[].kubernetes.addresses` | `array<string>` | not supported yet |
+| `providers[].kubernetes.addresses` | `array<string>` | supported |
 | `providers[].kubernetes.allow_external_name_services` | `boolean` | not supported yet |
 | `providers[].kubernetes.backends` | `enum(endpoints\|cluster_ip)` | supported |
 | `providers[].kubernetes.certificates_dir` | `string` | supported |

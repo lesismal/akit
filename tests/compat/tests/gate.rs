@@ -2116,6 +2116,12 @@ fn supported_fields_are_read() {
             |c| kube(c).listen_host == "10.0.0.1",
         ),
         (
+            "providers[].kubernetes.addresses",
+            r#"{"providers": [{"kubernetes": {"addresses": ["192.0.2.1", "lb.example.com"]}}]}"#
+                .into(),
+            |c| kube(c).addresses == ["192.0.2.1", "lb.example.com"] && kube(c).ingress.is_none(),
+        ),
+        (
             "providers[].kubernetes.backends",
             k8s(r#", "backends": "cluster_ip""#),
             |c| kube(c).backends == akit_config::KubernetesBackends::ClusterIp,

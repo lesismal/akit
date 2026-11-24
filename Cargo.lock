@@ -406,6 +406,7 @@ dependencies = [
  "akio-http",
  "akio-x509",
  "akit-config",
+ "akit-router",
 ]
 
 [[package]]

@@ -6258,7 +6258,7 @@ fn check_address(a: &str) -> Result<(), String> {
 
 /// A route's host: a name, an IP address, or a name under a `*.` (one label) or `**.` (one or
 /// more labels) wildcard, as fit's `checkHost` takes it.
-fn check_host(host: &str) -> Result<(), String> {
+pub(crate) fn check_host(host: &str) -> Result<(), String> {
     let h = host
         .strip_prefix("**.")
         .map_or(host.to_owned(), |rest| format!("*.{rest}"));

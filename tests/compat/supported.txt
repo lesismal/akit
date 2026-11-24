@@ -504,8 +504,8 @@ routes[].handler<forward_proxy>.params.idle_timeout
 # I59: the kubernetes kind, serving Ingresses: listed and watched with akit's own client on akio's
 # (HTTP/2 over TLS, HTTP/1.1 otherwise), each Ingress of an IngressClass of controller_name a set
 # of routes on ingress.http_port and, for its tls hosts, ingress.https_port, to upstreams of its
-# Services' ready endpoints or cluster IPs. A kubernetes provider needs ingress until the Gateway
-# API (I60, with addresses); allow_external_name_services waits for the upstreams' deny_internal.
+# Services' ready endpoints or cluster IPs. allow_external_name_services waits for the upstreams'
+# deny_internal.
 providers[].kubernetes
 providers[].kubernetes.kubeconfig
 providers[].kubernetes.context
@@ -519,6 +519,13 @@ providers[].kubernetes.ingress
 providers[].kubernetes.ingress.http_port
 providers[].kubernetes.ingress.https_port
 providers[].kubernetes.certificates_dir
+
+# I60: the kubernetes kind serves the Gateway API: the Gateways of the GatewayClasses of
+# controller_name, their listeners akit's (HTTP; HTTPS with their Secrets' certificates and TLS
+# passed through, by server name, on one port; TCP; UDP), their HTTPRoutes and GRPCRoutes routes,
+# their TLSRoutes, TCPRoutes and UDPRoutes services, with ReferenceGrants, and the status of each
+# written back, addresses among it; ingress is no longer needed.
+providers[].kubernetes.addresses
 
 # I61: the Consul, Consul KV and etcd providers, on I57's framework: Consul's catalog and KV store
 # followed with blocking queries, etcd's keys with a watch through its JSON gateway, all over

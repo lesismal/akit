@@ -10,6 +10,8 @@ publish = false
 
 [dependencies]
 akit-config = { workspace = true }
+# The Kubernetes provider's regular expressions (I60), checked as routes' path_regexp is.
+akit-router = { workspace = true }
 # The Docker provider (I58): akio's HTTP client, over a Unix socket or TCP; the Kubernetes
 # provider's client of the API server (I59): akio's HTTP/2 and HTTP/1.1 clients, its TLS, and
 # base64 and SHA-256 for Secrets and the certificate files written from them; the Consul and etcd

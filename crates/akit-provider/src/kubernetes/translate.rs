@@ -1,6 +1,6 @@
-//! What the objects held become: a part, as fit's `translator` makes it from Ingresses
-//! (`ingress.go`), with the listeners, upstreams and certificate files of `gateway.go` that they
-//! use. The Gateway API's objects come with I60, on the same translator.
+//! What the objects held become: a part, as fit's `translator` makes it: from the Gateway API's
+//! Gateways and routes (`gateway.go`, `grpc.go`, `l4.go`, in [`super::gateway`]), and from
+//! Ingresses (`ingress.go`), with the listeners, upstreams and certificate files both use.
 //!
 //! The part is the same bytes for the same objects, so that one unchanged is not sent again.
 
@@ -13,8 +13,10 @@ use std::sync::Arc;
 use akit_config::value::write_string;
 use akit_config::{KubernetesBackends, KubernetesIngress, KubernetesProvider};
 
+use super::gateway::{GwState, RouteState};
 use super::types::{
-    Backend, EndpointSlice, Ingress, IngressClass, Meta, Object, Secret, Service, ServicePort,
+    Backend, EndpointSlice, Ingress, IngressClass, Meta, Namespace, Object, ReferenceGrant, Secret,
+    Service, ServicePort,
 };
 
 /// The prefix of the annotations of Ingresses read: fit's, so that the same Ingresses serve
@@ -27,6 +29,15 @@ pub(crate) const MAX_CERT_BYTES: usize = 1 << 20;
 /// What the informers hold, at one moment.
 #[derive(Debug, Default)]
 pub(crate) struct Snapshot {
+    pub(crate) namespaces: Vec<Arc<Object>>,
+    pub(crate) gateway_classes: Vec<Arc<Object>>,
+    pub(crate) gateways: Vec<Arc<Object>>,
+    pub(crate) http_routes: Vec<Arc<Object>>,
+    pub(crate) grpc_routes: Vec<Arc<Object>>,
+    pub(crate) tls_routes: Vec<Arc<Object>>,
+    pub(crate) tcp_routes: Vec<Arc<Object>>,
+    pub(crate) udp_routes: Vec<Arc<Object>>,
+    pub(crate) grants: Vec<Arc<Object>>,
     pub(crate) ingress_classes: Vec<Arc<Object>>,
     pub(crate) ingresses: Vec<Arc<Object>>,
     pub(crate) services: Vec<Arc<Object>>,
@@ -35,10 +46,13 @@ pub(crate) struct Snapshot {
 }
 
 /// The snapshot, indexed.
-struct Index<'a> {
+pub(crate) struct Index<'a> {
+    pub(crate) snap: &'a Snapshot,
     classes: Vec<&'a IngressClass>,
     ingresses: Vec<&'a Ingress>,
-    service: HashMap<String, &'a Service>,
+    pub(crate) namespace: HashMap<&'a str, &'a Namespace>,
+    pub(crate) grants: Vec<&'a ReferenceGrant>,
+    pub(crate) service: HashMap<String, &'a Service>,
     endpoints: HashMap<String, Vec<&'a EndpointSlice>>,
     secret: HashMap<String, &'a Secret>,
 }
@@ -46,6 +60,23 @@ struct Index<'a> {
 impl<'a> Index<'a> {
     fn new(s: &'a Snapshot) -> Index<'a> {
         let mut ix = Index {
+            snap: s,
+            namespace: s
+                .namespaces
+                .iter()
+                .filter_map(|o| match &**o {
+                    Object::Namespace(n) => Some((n.meta.name.as_str(), n)),
+                    _ => None,
+                })
+                .collect(),
+            grants: s
+                .grants
+                .iter()
+                .filter_map(|o| match &**o {
+                    Object::Grant(g) => Some(g),
+                    _ => None,
+                })
+                .collect(),
             classes: s
                 .ingress_classes
                 .iter()
@@ -96,71 +127,138 @@ impl<'a> Index<'a> {
     }
 }
 
-fn by_creation(a: &Meta, b: &Meta) -> std::cmp::Ordering {
+pub(crate) fn by_creation(a: &Meta, b: &Meta) -> std::cmp::Ordering {
     a.creation_timestamp
         .cmp(&b.creation_timestamp)
         .then_with(|| a.namespace.cmp(&b.namespace))
         .then_with(|| a.name.cmp(&b.name))
 }
 
-/// The protocol families of a port: what one listener of akit's serves.
+/// The protocol families of a port: what the Gateway API lets listeners on one port share, and
+/// what one listener of akit's serves.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Family {
+pub(crate) enum Family {
+    /// HTTP.
     Http,
+    /// HTTPS and TLS passed through, told apart by server name.
     Tls,
+    Tcp,
+    Udp,
 }
 
 impl Family {
-    fn name(self) -> &'static str {
+    pub(crate) fn name(self) -> &'static str {
         match self {
             Family::Http => "http",
             Family::Tls => "tls",
+            Family::Tcp => "tcp",
+            Family::Udp => "udp",
         }
     }
 }
 
 /// A certificate file a listener names: a Secret's chain and key, in one file.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-struct OutCert(String);
+pub(crate) struct OutCert(String);
 
-/// A listener of the part: the port's.
+/// A listener of akit's: the Gateway listeners (and Ingresses) on one port, of one family.
 #[derive(Debug)]
-struct OutListener {
+pub(crate) struct OutListener {
     name: String,
     address: String,
     port: u16,
     family: Family,
-    certs: Vec<OutCert>,
+    /// HTTPS listeners' certificates.
+    pub(crate) certs: Vec<OutCert>,
+    /// The services that take it.
+    pub(crate) services: usize,
+    /// What its connections go to: the route that takes those naming no server, every one on
+    /// tcp and udp, and the route that takes each server name (lower case).
+    pub(crate) fallback: String,
+    pub(crate) names: HashMap<String, String>,
 }
 
-#[derive(Debug)]
-struct OutUpstream {
-    addresses: Vec<String>,
-    h2c: bool,
-}
+impl OutListener {
+    pub(crate) fn add_certs(&mut self, certs: Vec<OutCert>) {
+        for c in certs {
+            if !self.certs.contains(&c) {
+                self.certs.push(c);
+            }
+        }
+    }
 
-#[derive(Debug, Clone, Default)]
-struct OutMatch {
-    host: Vec<String>,
-    path: Vec<String>,
-    remote_ip: Vec<String>,
-}
-
-impl OutMatch {
-    fn is_empty(&self) -> bool {
-        self.host.is_empty() && self.path.is_empty() && self.remote_ip.is_empty()
+    /// Its protocols in the part; none when it would serve nothing: a listener of tcp or udp
+    /// needs a service.
+    fn protocols(&self) -> Vec<&'static str> {
+        let mut p = Vec::new();
+        match self.family {
+            Family::Http => p.extend(["http/1.1", "h2c"]),
+            Family::Tls => {
+                if !self.certs.is_empty() {
+                    p.extend(["http/1.1", "h2"]);
+                }
+                if self.services > 0 {
+                    p.push("tcp");
+                }
+            }
+            Family::Tcp | Family::Udp => {
+                if self.services > 0 {
+                    p.push(self.family.name());
+                }
+            }
+        }
+        p
     }
 }
 
 #[derive(Debug)]
-struct OutRoute {
-    name: String,
-    listeners: Vec<String>,
-    priority: i64,
-    m: Option<OutMatch>,
+pub(crate) struct OutUpstream {
+    pub(crate) addresses: Vec<String>,
+    pub(crate) weights: Vec<i64>,
+    pub(crate) h2c: bool,
+}
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct OutMatch {
+    pub(crate) host: Vec<String>,
+    pub(crate) path: Vec<String>,
+    pub(crate) path_regexp: Vec<String>,
+    pub(crate) method: Vec<String>,
+    pub(crate) header: BTreeMap<String, Vec<String>>,
+    pub(crate) query: BTreeMap<String, Vec<String>>,
+    pub(crate) remote_ip: Vec<String>,
+}
+
+impl OutMatch {
+    pub(crate) fn is_empty(&self) -> bool {
+        self.host.is_empty()
+            && self.path.is_empty()
+            && self.path_regexp.is_empty()
+            && self.method.is_empty()
+            && self.header.is_empty()
+            && self.query.is_empty()
+            && self.remote_ip.is_empty()
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct OutRoute {
+    pub(crate) name: String,
+    pub(crate) listeners: Vec<String>,
+    pub(crate) priority: i64,
+    pub(crate) m: Option<OutMatch>,
     /// Each a module as JSON.
-    middleware: Vec<String>,
-    handler: String,
+    pub(crate) middleware: Vec<String>,
+    pub(crate) handler: String,
+}
+
+/// A service of the part: a TLSRoute's, TCPRoute's or UDPRoute's.
+#[derive(Debug)]
+pub(crate) struct OutService {
+    pub(crate) name: String,
+    pub(crate) listeners: Vec<String>,
+    pub(crate) upstream: String,
+    pub(crate) server_names: Vec<String>,
 }
 
 /// What an Ingress's annotations ask of its routes.
@@ -187,20 +285,30 @@ struct Annotations {
 /// Turns a snapshot into a part.
 #[derive(Debug)]
 pub(crate) struct Translator<'o> {
-    opts: &'o KubernetesProvider,
+    pub(crate) opts: &'o KubernetesProvider,
     provider: String,
     /// Where certificate files are written; `None` when there is nowhere, and HTTPS is not
     /// served.
-    cert_dir: Option<String>,
+    pub(crate) cert_dir: Option<String>,
     /// Why what was left out was, in the order found.
     pub(crate) problems: Vec<String>,
-    listeners: BTreeMap<String, OutListener>,
-    /// The family each port serves.
+    pub(crate) listeners: BTreeMap<String, OutListener>,
+    /// The family each TCP port serves.
     ports: HashMap<u16, Family>,
-    upstreams: BTreeMap<String, OutUpstream>,
-    routes: Vec<OutRoute>,
+    pub(crate) upstreams: BTreeMap<String, OutUpstream>,
+    pub(crate) routes: Vec<OutRoute>,
+    pub(crate) services: Vec<OutService>,
     /// The certificate files the part names, by path: each a Secret's chain and key.
     pub(crate) certs: BTreeMap<String, Vec<u8>>,
+    /// For the statuses: the GatewayClasses, akit's Gateways in order (and their index by
+    /// namespace/name), and the routes in the namespaces watched, as each one is being and has
+    /// been translated.
+    pub(crate) classes: Vec<Arc<Object>>,
+    pub(crate) gws: Vec<GwState>,
+    pub(crate) by_key: HashMap<String, usize>,
+    pub(crate) states: Vec<RouteState>,
+    /// The route being translated.
+    pub(crate) cur: Option<RouteState>,
 }
 
 impl<'o> Translator<'o> {
@@ -218,22 +326,30 @@ impl<'o> Translator<'o> {
             ports: HashMap::new(),
             upstreams: BTreeMap::new(),
             routes: Vec::new(),
+            services: Vec::new(),
             certs: BTreeMap::new(),
+            classes: Vec::new(),
+            gws: Vec::new(),
+            by_key: HashMap::new(),
+            states: Vec::new(),
+            cur: None,
         }
     }
 
-    fn problem(&mut self, msg: String) {
+    pub(crate) fn problem(&mut self, msg: String) {
         self.problems.push(msg);
     }
 
-    fn watched(&self, ns: &str) -> bool {
+    pub(crate) fn watched(&self, ns: &str) -> bool {
         self.opts.namespaces.is_empty() || self.opts.namespaces.iter().any(|n| n == ns)
     }
 
-    /// Makes the part: a listener for each port, routes for the Ingresses' paths, upstreams
-    /// for the Services they send to.
+    /// Makes the part: a listener for each port of akit's Gateways' listeners, routes for their
+    /// HTTPRoutes' and GRPCRoutes' rules, services for their TLSRoutes, TCPRoutes and UDPRoutes,
+    /// routes for the Ingresses' paths, and upstreams for the Services those send to.
     pub(crate) fn run(&mut self, s: &Snapshot) -> Vec<u8> {
         let ix = Index::new(s);
+        self.gateway_api(&ix);
         if let Some(ports) = self.opts.ingress {
             self.ingresses(&ix, ports);
         }
@@ -319,11 +435,7 @@ impl<'o> Translator<'o> {
             match self.port_listener(ports.https_port, Family::Tls) {
                 Ok(n) => {
                     if let Some(l) = self.listeners.get_mut(&n) {
-                        for c in certs {
-                            if !l.certs.contains(&c) {
-                                l.certs.push(c);
-                            }
-                        }
+                        l.add_certs(certs);
                     }
                     https_l = Some(n);
                 }
@@ -611,48 +723,85 @@ impl<'o> Translator<'o> {
         port: i64,
         h2c: bool,
     ) -> Result<Option<String>, String> {
+        match self.service_upstream(ix, ns, name, port, "TCP", h2c) {
+            Ok((up, true)) => Ok(Some(up)),
+            Ok((_, false)) => Ok(None),
+            Err(e) => Err(e.msg),
+        }
+    }
+
+    /// Makes the upstream of the port `port`, of protocol `proto` (TCP or UDP), of the Service
+    /// `ns/name`, and returns its name and whether it has endpoints ready. `h2c` makes it speak
+    /// HTTP/2 in the clear.
+    pub(crate) fn service_upstream(
+        &mut self,
+        ix: &Index<'_>,
+        ns: &str,
+        name: &str,
+        port: i64,
+        proto: &str,
+        h2c: bool,
+    ) -> Result<(String, bool), RefError> {
         let Some(svc) = ix.service.get(&format!("{ns}/{name}")) else {
-            return Err(format!("service {ns}/{name} does not exist"));
+            return Err(RefError::new(
+                "BackendNotFound",
+                format!("service {ns}/{name} does not exist"),
+            ));
         };
         let Some(sp) = svc
             .ports
             .iter()
             .rev()
-            .find(|sp| sp.port == port && or(&sp.protocol, "TCP") == "TCP")
+            .find(|sp| sp.port == port && or(&sp.protocol, "TCP") == proto)
         else {
-            return Err(format!("service {ns}/{name} has no TCP port {port}"));
+            return Err(RefError::new(
+                "BackendNotFound",
+                format!("service {ns}/{name} has no {proto} port {port}"),
+            ));
         };
         if svc.typ == "ExternalName" {
             // fit's allow_external_name_services, which needs the upstreams' deny_internal.
-            return Err(format!(
-                "service {ns}/{name} is an ExternalName Service, which allow_external_name_services must allow"
+            return Err(RefError::new(
+                "UnsupportedValue",
+                format!(
+                    "service {ns}/{name} is an ExternalName Service, which allow_external_name_services must allow"
+                ),
             ));
         }
         let app_h2c = sp.app_protocol.as_deref() == Some("kubernetes.io/h2c");
         let mut up = format!("{ns}.{name}.{}", sp.port);
-        if h2c && !app_h2c {
+        if proto == "UDP" {
+            up.push_str(".udp");
+        } else if h2c && !app_h2c {
             up.push_str(".h2c");
         }
         if self.upstreams.contains_key(&up) {
-            return Ok(Some(up));
+            return Ok((up, true));
         }
-        let addrs = self.addresses(ix, svc, sp);
+        let addrs = self.addresses(ix, svc, sp, proto);
         if addrs.is_empty() {
-            return Ok(None);
+            return Ok((up, false));
         }
         self.upstreams.insert(
             up.clone(),
             OutUpstream {
                 addresses: addrs,
-                h2c: h2c || app_h2c,
+                weights: Vec::new(),
+                h2c: proto == "TCP" && (h2c || app_h2c),
             },
         );
-        Ok(Some(up))
+        Ok((up, true))
     }
 
-    /// Where `svc`'s TCP port `sp` is reached: its cluster IP, with backends `cluster_ip`, or
-    /// else its ready endpoints.
-    fn addresses(&self, ix: &Index<'_>, svc: &Service, sp: &ServicePort) -> Vec<String> {
+    /// Where `svc`'s port `sp`, of protocol `proto`, is reached: its cluster IP, with backends
+    /// `cluster_ip`, or else its ready endpoints.
+    fn addresses(
+        &self,
+        ix: &Index<'_>,
+        svc: &Service,
+        sp: &ServicePort,
+        proto: &str,
+    ) -> Vec<String> {
         if self.opts.backends == KubernetesBackends::ClusterIp
             && !svc.cluster_ip.is_empty()
             && svc.cluster_ip != "None"
@@ -668,7 +817,7 @@ impl<'o> Translator<'o> {
             let mut target = 0;
             for p in &es.ports {
                 if p.name.as_deref().unwrap_or("") == sp.name
-                    && p.protocol.as_deref().unwrap_or("TCP") == "TCP"
+                    && p.protocol.as_deref().unwrap_or("TCP") == proto
                 {
                     if let Some(port) = p.port {
                         target = port;
@@ -679,7 +828,7 @@ impl<'o> Translator<'o> {
                 continue;
             }
             for e in &es.endpoints {
-                if !e.ready.unwrap_or(true) {
+                if !e.ready.unwrap_or(true) || e.addresses.is_empty() {
                     continue;
                 }
                 if let Some(addr) = e.addresses.first() {
@@ -693,15 +842,19 @@ impl<'o> Translator<'o> {
     }
 
     /// akit's listener of `family` on `port`, made if need be; or the family the port serves
-    /// already, when it is another.
-    fn port_listener(&mut self, port: u16, family: Family) -> Result<String, Family> {
-        match self.ports.get(&port) {
-            Some(f) if *f != family => return Err(*f),
-            _ => {
-                self.ports.insert(port, family);
+    /// already, when it is another. UDP has listeners of its own.
+    pub(crate) fn port_listener(&mut self, port: u16, family: Family) -> Result<String, Family> {
+        let mut name = format!("{}-{port}", self.provider);
+        if family == Family::Udp {
+            name.push_str("-udp");
+        } else {
+            match self.ports.get(&port) {
+                Some(f) if *f != family => return Err(*f),
+                _ => {
+                    self.ports.insert(port, family);
+                }
             }
         }
-        let name = format!("{}-{port}", self.provider);
         self.listeners
             .entry(name.clone())
             .or_insert_with(|| OutListener {
@@ -710,13 +863,21 @@ impl<'o> Translator<'o> {
                 port,
                 family,
                 certs: Vec::new(),
+                services: 0,
+                fallback: String::new(),
+                names: HashMap::new(),
             });
         Ok(name)
     }
 
     /// The certificate file of the Secret `ns/name`, of type `kubernetes.io/tls`, and gives the
     /// file to write. `cert_dir` must be set.
-    fn secret_cert(&mut self, ix: &Index<'_>, ns: &str, name: &str) -> Result<OutCert, String> {
+    pub(crate) fn secret_cert(
+        &mut self,
+        ix: &Index<'_>,
+        ns: &str,
+        name: &str,
+    ) -> Result<OutCert, String> {
         let Some(sec) = ix.secret.get(&format!("{ns}/{name}")) else {
             return Err(format!(
                 "there is no secret {ns}/{name} of type kubernetes.io/tls"
@@ -816,7 +977,8 @@ impl<'o> Translator<'o> {
         a
     }
 
-    /// The part, as JSON: listeners by port, upstreams by name, routes in the order made.
+    /// The part, as JSON: listeners by port, upstreams by name, routes and services in the
+    /// order made.
     fn part(&self) -> Vec<u8> {
         let mut b = String::with_capacity(256);
         b.push('{');
@@ -830,15 +992,20 @@ impl<'o> Translator<'o> {
             b.push_str(name);
             b.push_str("\":[");
         };
-        let mut ls: Vec<&OutListener> = self
+        let mut ls: Vec<(&OutListener, Vec<&str>)> = self
             .listeners
             .values()
-            .filter(|l| l.family == Family::Http || !l.certs.is_empty())
+            .map(|l| (l, l.protocols()))
+            .filter(|(_, p)| !p.is_empty())
             .collect();
-        ls.sort_by(|a, b| a.port.cmp(&b.port).then_with(|| a.name.cmp(&b.name)));
+        ls.sort_by(|a, b| {
+            a.0.port
+                .cmp(&b.0.port)
+                .then_with(|| a.0.name.cmp(&b.0.name))
+        });
         if !ls.is_empty() {
             field(&mut b, "listeners");
-            for (i, l) in ls.iter().enumerate() {
+            for (i, (l, protocols)) in ls.iter().enumerate() {
                 if i > 0 {
                     b.push(',');
                 }
@@ -846,23 +1013,29 @@ impl<'o> Translator<'o> {
                 write_string(&mut b, &l.name);
                 b.push_str(r#","address":"#);
                 write_string(&mut b, &l.address);
-                match l.family {
-                    Family::Http => b.push_str(r#","protocols":["http/1.1","h2c"]}"#),
-                    Family::Tls => {
-                        b.push_str(r#","protocols":["http/1.1","h2"],"tls":{"certificates":["#);
-                        for (j, c) in l.certs.iter().enumerate() {
-                            if j > 0 {
-                                b.push(',');
-                            }
-                            b.push_str(r#"{"cert_file":"#);
-                            write_string(&mut b, &c.0);
-                            b.push_str(r#","key_file":"#);
-                            write_string(&mut b, &c.0);
-                            b.push('}');
-                        }
-                        b.push_str("]}}");
+                b.push_str(r#","protocols":["#);
+                for (j, p) in protocols.iter().enumerate() {
+                    if j > 0 {
+                        b.push(',');
                     }
+                    write_string(&mut b, p);
                 }
+                b.push(']');
+                if l.family == Family::Tls && !l.certs.is_empty() {
+                    b.push_str(r#","tls":{"certificates":["#);
+                    for (j, c) in l.certs.iter().enumerate() {
+                        if j > 0 {
+                            b.push(',');
+                        }
+                        b.push_str(r#"{"cert_file":"#);
+                        write_string(&mut b, &c.0);
+                        b.push_str(r#","key_file":"#);
+                        write_string(&mut b, &c.0);
+                        b.push('}');
+                    }
+                    b.push_str("]}");
+                }
+                b.push('}');
             }
             b.push(']');
         }
@@ -876,6 +1049,16 @@ impl<'o> Translator<'o> {
                 write_string(&mut b, name);
                 b.push_str(r#","addresses":"#);
                 strings(&mut b, &u.addresses);
+                if !u.weights.is_empty() {
+                    b.push_str(r#","weights":["#);
+                    for (j, w) in u.weights.iter().enumerate() {
+                        if j > 0 {
+                            b.push(',');
+                        }
+                        let _ = write!(b, "{w}");
+                    }
+                    b.push(']');
+                }
                 if u.h2c {
                     b.push_str(r#","protocol":"h2c""#);
                 }
@@ -897,24 +1080,8 @@ impl<'o> Translator<'o> {
                     let _ = write!(b, r#","priority":{}"#, r.priority);
                 }
                 if let Some(m) = &r.m {
-                    b.push_str(r#","match":{"#);
-                    let mut first = true;
-                    for (k, v) in [
-                        ("host", &m.host),
-                        ("path", &m.path),
-                        ("remote_ip", &m.remote_ip),
-                    ] {
-                        if v.is_empty() {
-                            continue;
-                        }
-                        if !first {
-                            b.push(',');
-                        }
-                        first = false;
-                        let _ = write!(b, r#""{k}":"#);
-                        strings(&mut b, v);
-                    }
-                    b.push('}');
+                    b.push_str(r#","match":"#);
+                    write_match(&mut b, m);
                 }
                 if !r.middleware.is_empty() {
                     b.push_str(r#","middleware":["#);
@@ -927,9 +1094,92 @@ impl<'o> Translator<'o> {
             }
             b.push(']');
         }
+        if !self.services.is_empty() {
+            field(&mut b, "services");
+            for (i, sv) in self.services.iter().enumerate() {
+                if i > 0 {
+                    b.push(',');
+                }
+                b.push_str(r#"{"name":"#);
+                write_string(&mut b, &sv.name);
+                b.push_str(r#","listeners":"#);
+                strings(&mut b, &sv.listeners);
+                b.push_str(r#","upstream":"#);
+                write_string(&mut b, &sv.upstream);
+                if !sv.server_names.is_empty() {
+                    b.push_str(r#","server_names":"#);
+                    strings(&mut b, &sv.server_names);
+                }
+                b.push('}');
+            }
+            b.push(']');
+        }
         b.push('}');
         b.into_bytes()
     }
+}
+
+/// A backend, or a certificate, that cannot be resolved, with the reason a route's or listener's
+/// ResolvedRefs condition gives.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RefError {
+    pub(crate) reason: &'static str,
+    pub(crate) msg: String,
+}
+
+impl RefError {
+    pub(crate) fn new(reason: &'static str, msg: String) -> RefError {
+        RefError { reason, msg }
+    }
+}
+
+/// A route's match, as JSON, its fields in fit's order.
+fn write_match(b: &mut String, m: &OutMatch) {
+    b.push('{');
+    let mut first = true;
+    let mut key = |b: &mut String, k: &str| {
+        if !first {
+            b.push(',');
+        }
+        first = false;
+        let _ = write!(b, r#""{k}":"#);
+    };
+    for (k, v) in [
+        ("host", &m.host),
+        ("path", &m.path),
+        ("path_regexp", &m.path_regexp),
+        ("method", &m.method),
+    ] {
+        if !v.is_empty() {
+            key(b, k);
+            strings(b, v);
+        }
+    }
+    for (k, v) in [("header", &m.header), ("query", &m.query)] {
+        if !v.is_empty() {
+            key(b, k);
+            string_lists(b, v);
+        }
+    }
+    if !m.remote_ip.is_empty() {
+        key(b, "remote_ip");
+        strings(b, &m.remote_ip);
+    }
+    b.push('}');
+}
+
+/// A map of string lists, as JSON, by key.
+pub(crate) fn string_lists(b: &mut String, m: &BTreeMap<String, Vec<String>>) {
+    b.push('{');
+    for (i, (k, v)) in m.iter().enumerate() {
+        if i > 0 {
+            b.push(',');
+        }
+        write_string(b, k);
+        b.push(':');
+        strings(b, v);
+    }
+    b.push('}');
 }
 
 /// A route of an Ingress being made.
@@ -953,7 +1203,7 @@ struct Listeners<'a> {
     ports: KubernetesIngress,
 }
 
-fn strings(b: &mut String, v: &[String]) {
+pub(crate) fn strings(b: &mut String, v: &[String]) {
     b.push('[');
     for (i, s) in v.iter().enumerate() {
         if i > 0 {
@@ -969,7 +1219,7 @@ fn or<'a>(a: &'a str, b: &'a str) -> &'a str {
 }
 
 /// The respond handler answering `status`.
-fn respond(status: u16) -> String {
+pub(crate) fn respond(status: u16) -> String {
     format!(r#"{{"module":"respond","params":{{"status":{status}}}}}"#)
 }
 
@@ -1018,7 +1268,7 @@ pub(crate) fn host_matches(p: &str, h: &str) -> bool {
 }
 
 /// Go's `net.JoinHostPort`.
-fn join_host_port(host: &str, port: i64) -> String {
+pub(crate) fn join_host_port(host: &str, port: i64) -> String {
     if host.contains(':') {
         format!("[{host}]:{port}")
     } else {
