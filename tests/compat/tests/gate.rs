@@ -396,6 +396,14 @@ fn supported_fields_are_read() {
             access(r#""time_zone": "utc""#),
             |c| c.access_log.as_ref().unwrap().time_zone == "utc",
         ),
+        // It needs admin, which akit refuses as not supported yet until I26: akit-config reads it
+        // by holding it to fit's rule, an error that is not a "not supported yet" one.
+        ("metrics", "{}".into(), |c| {
+            c.metrics.is_none()
+                && akit_config::from_json(r#"{"metrics": {}}"#, None).is_err_and(|e| {
+                    !e.only_not_supported_yet() && e.to_string().contains("set admin too")
+                })
+        }),
         ("listeners", format!("{{{L}}}"), |c| c.listeners.len() == 1),
         ("limits", r#"{"limits": {}}"#.into(), |c| {
             c.limits == akit_config::Limits::default()

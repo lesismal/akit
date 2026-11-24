@@ -11,14 +11,93 @@ done and where the work differs from the plan.
 | | |
 | --- | --- |
 | Last updated | 2026-11-24 |
-| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I15, I19–I24 done, I16 doing (body limits done; streaming waits for akio's A19–A21); M3's I39 done early. |
+| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I15, I19–I24 done, I16 doing (body limits done; streaming waits for akio's A19–A21); M2's I37 done; M3's I39 done early. |
 | akio | `a9a620ab` on akio's `main` (`1.0.0-rc.1`, with A1–A5, A7, A8, A11, A13 and A16–A18), pinned by `rev` in `Cargo.toml` |
 | fit | the specification; read at `7daee573` for this plan |
-| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept, added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`); `limits.max_body_bytes` on every listener (413) and in the proxy; access logs in fit's json, text and line formats; upstream pools with round robin, weighted round robin and least connections, passing over addresses taken out by passive health checks (`max_fails`, `fail_timeout`); the compatibility gate: 80 fixtures, 9 valid, 70 refused only as not supported yet, 1 skipped, none failed |
+| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept, added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`); `limits.max_body_bytes` on every listener (413) and in the proxy; access logs in fit's json, text and line formats; upstream pools with round robin, weighted round robin and least connections, passing over addresses taken out by passive health checks (`max_fails`, `fail_timeout`); fit's Prometheus metrics (requests by listener and route with `metrics`, upstreams and backends, certificates, connections, reloads, akio's engine), scraped in process until the Admin API serves them (I26); the compatibility gate: 80 fixtures, 9 valid, 70 refused only as not supported yet, 1 skipped, none failed |
 | Next | I17; I16 once A19–A21 land |
-| akio requests | A1–A5, A7, A8, A11, A13 and A16–A18 on akio's main and pinned; A6 on akio branch `claude/x509-csr`; A9, A10, A12, A14, A15, A19–A21 and A22 requested ([akio API requests](akio-api-requests.md)) |
+| akio requests | A1–A5, A7, A8, A11, A13 and A16–A18 on akio's main and pinned; A6 on akio branch `claude/x509-csr`; A9, A10, A12, A14, A15, A19–A21, A22, A29 and A30 requested ([akio API requests](akio-api-requests.md)) |
 
 ## Log
+
+### 2026-11-24: I37, Prometheus metrics
+
+- `akit_observe::metrics` (std only), fit's `observe` metrics: `Histogram` (fit's
+  `DurationBuckets`, sharded by thread), `TextWriter` (Prometheus's text format 0.0.4, fit's
+  escaping and number format, `CONTENT_TYPE`), `Metrics` (the registry), `Lease` (what one graph
+  takes from it), `UpstreamStats` and `BackendCounters`, `ConfigStats` (reloads, version, time
+  applied).
+- Requests by listener and route, as fit counts them: each `(listener, route)` a graph serves
+  takes a slot when the graph is compiled (`Lease::route`; the route's name, or `#` and its index,
+  or empty for the requests no route takes, fit's `metricsName`) and gives it back when the graph
+  is retired (a module cleanup, `akit_runtime::METRICS`), so a route a reload keeps keeps its
+  counts and one it removes is no longer scraped; the counts of a slot given back stay in
+  `Metrics::totals`. The counters are kept per thread (`Metrics::shard`, as many shards as the
+  host's threads up to 64, slots allocated 64 at a time on a thread's first use): no lock and no
+  shared reference count on the request path (rule 13). At most 65,536 pairs are counted at once
+  (rule 11).
+- The listener (`Dispatcher`) counts a request answered before its handler returns (a handler
+  whose `Handler::inline` says so, fit's `module.Inline`: `respond`; the 404 and the 400) once the
+  call returns, from `Context::status`, with no hook and no allocation; any other request by a
+  response filter on the thread that sends its response, the access log's own when there is one
+  (one boxed closure for both: akio API request A29 removes it).
+- Upstreams, as fit's: a pool counts its response times (`Pool::response_times`) and each
+  backend's exchanges over and failed (`backend_requests`, the same outcomes that count towards
+  passive health), and gives each backend's requests not over (`backend_active`). Through
+  `Lease::upstream` the counters are shared by upstream name and address with every graph that
+  has the upstream, so they carry over reloads (akit makes a graph's pools anew; fit shares the
+  pools).
+- Certificates: `akit_tls::ServerConfigs::certificates` gives each certificate's name (its first
+  DNS name, else its common name), serial (as Go's `Text(16)`) and expiry, read when the config is
+  compiled.
+- Config: `metrics` (`{}`, no settings) is read into `Config::metrics`; without `admin` it fails
+  with fit's message, "the Admin API serves metrics: set admin too", and `admin` is refused as not
+  supported yet until I26, so `akit validate` refuses every config with `metrics` until then.
+- `akit_listener::metrics::Scrape` writes the scrape, fit's families in fit's order with fit's
+  help: `fit_http_requests_total`, `fit_http_request_duration_seconds` (with `metrics`),
+  `fit_upstream_requests_in_flight`, `fit_upstream_response_duration_seconds`,
+  `fit_upstream_backend_requests_total`, `fit_upstream_backend_requests_in_flight`,
+  `fit_upstream_backend_up`, `fit_tls_certificate_not_after_seconds`, `fit_connections_open`,
+  `fit_connections_refused_total`, `fit_pending_bytes`, `fit_reads_paused_total`,
+  `fit_config_reloads_total`, `fit_config_version`, `fit_config_last_applied_timestamp_seconds`,
+  `fit_access_log_dropped_total`; then akio's engine metrics (`akio_*`, per I/O thread) where fit
+  has the Go runtime's (`go_*`). `akit run` makes one registry for the process, counts SIGHUP
+  reloads (`ConfigStats::reloaded`) and builds the scrape, which the Admin API (I26) serves at
+  `GET /metrics`.
+- Tests: `akit/tests/metrics.rs`, fit's `TestMetrics` and `TestMetricsOff` ported (the scrape
+  parsed as fit's test parses it, every sample fit checks with its labels and value: requests by
+  route and class through a reload that keeps the routes, the unmatched 404, the durations, the
+  upstream's response times, each backend's successes and failures, in flight and up, the TLS
+  listener's certificate, reloads and version, the reads paused by budget, the gauges and akio's
+  families present, a renamed route dropped once the old graph is retired, the totals kept), and
+  the access log and the metrics sharing one hook. Unit tests of buckets, classes, number format,
+  escaping, slots carried over, given back and reused, shared upstream counters, config stats
+  (`akit-observe`), serials (`akit-tls`); `akit-config/tests/metrics.rs` (needs admin, no
+  settings, one file only); the gate's sample.
+- Checked: `make check` on macOS; the touched crates' tests on Linux (the benchmark host), epoll
+  and io_uring. The gate (`make compat-bless`): `metrics` supported; `examples/metrics` now refuses
+  only `admin` (fields refused 58 to 57).
+- Differences from the plan and from fit:
+  - The scrape is not served yet: fit serves it from the Admin API, which is I26's. Until then
+    the scrape is built and tested in process.
+  - Round robin keeps its turn per I/O thread in akit, so the ported test sends proxied requests
+    until both backends were tried, and checks the counts it saw, where fit's sends exactly one to
+    each.
+  - `fit_connections_open` counts the upstream connections akit dials on the listeners' engine,
+    and UDP peers, as akio's `open_connections` does (akio API request A30). `reason="budget"` of
+    `fit_reads_paused_total` is 0: akit has no `limits.max_pending_bytes` yet.
+  - An upstream's response time is to the whole response, read by akio's client, until it streams
+    (A19–A21); fit times the head.
+  - A request in flight across two reloads, the first removing its route and the second giving
+    its slot to another pair, is counted under that pair (fit's garbage-collected counters have no
+    such window).
+  - No trace spans (`fit_trace_spans_total`: I64), no apps', vod's or websockify's metrics, which
+    akit does not have yet.
+- akio API requests: A29 (a response hook without an allocation) and A30 (the open connections a
+  listener accepted).
+- What a benchmark task should measure: same-run A/B of the fixed and proxy scenarios with
+  `metrics` on and off, and with the access log on as well; a scrape's time with many routes on 64
+  threads.
 
 ### 2026-11-24: I20, passive health checks
 

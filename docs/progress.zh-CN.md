@@ -10,14 +10,68 @@
 | | |
 | --- | --- |
 | 最后更新 | 2026-11-24 |
-| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I15、I19–I24 已完成，I16 进行中（body 限制已完成；流式转发等待 akio 的 A19–A21）；M3 的 I39 已提前完成。 |
+| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I15、I19–I24 已完成，I16 进行中（body 限制已完成；流式转发等待 akio 的 A19–A21）；M2 的 I37 已完成；M3 的 I39 已提前完成。 |
 | akio | akio `main` 上的 `a9a620ab`（`1.0.0-rc.1`，带 A1–A5、A7、A8、A11、A13 和 A16–A18），在 `Cargo.toml` 中按 `rev` 锁定 |
 | fit | 作为规格；本计划基于 `7daee573` 阅读 |
-| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；基于 akio 的 A1 保留、增加、修改和排空监听器，包括启动时的监听器，重载可新增 h3 监听器；服务 h3 的启动监听器要重启才能变）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`）；所有监听器和代理上的 `limits.max_body_bytes`（413）；fit 的 json、text 和 line 格式的访问日志；上游连接池，轮询、加权轮询和最少连接，跳过被被动健康检查（`max_fails`、`fail_timeout`）下线的地址；兼容性门禁：80 个夹具，9 个有效，70 个只因暂不支持被拒绝，1 个跳过，没有失败 |
+| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；基于 akio 的 A1 保留、增加、修改和排空监听器，包括启动时的监听器，重载可新增 h3 监听器；服务 h3 的启动监听器要重启才能变）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`）；所有监听器和代理上的 `limits.max_body_bytes`（413）；fit 的 json、text 和 line 格式的访问日志；上游连接池，轮询、加权轮询和最少连接，跳过被被动健康检查（`max_fails`、`fail_timeout`）下线的地址；fit 的 Prometheus 指标（有 `metrics` 时按监听器和路由的请求、上游和后端、证书、连接、重载、akio 的引擎），在 Admin API（I26）提供之前在进程内抓取；兼容性门禁：80 个夹具，9 个有效，70 个只因暂不支持被拒绝，1 个跳过，没有失败 |
 | 下一步 | I17；A19–A21 落地后再做 I16 |
-| akio 需求 | A1–A5、A7、A8、A11、A13、A16–A18 已在 akio 的 main 并已锁定；A6 在 akio 分支 `claude/x509-csr` 上；A9、A10、A12、A14、A15、A19–A21 和 A22 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
+| akio 需求 | A1–A5、A7、A8、A11、A13、A16–A18 已在 akio 的 main 并已锁定；A6 在 akio 分支 `claude/x509-csr` 上；A9、A10、A12、A14、A15、A19–A21、A22、A29 和 A30 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
 
 ## 日志
+
+### 2026-11-24：I37，Prometheus 指标
+
+- `akit_observe::metrics`（只依赖 std），即 fit `observe` 的指标：`Histogram`（fit 的 `DurationBuckets`，按线程
+  分片）、`TextWriter`（Prometheus 文本格式 0.0.4，fit 的转义和数字格式，`CONTENT_TYPE`）、`Metrics`（注册表）、
+  `Lease`（一个图从中取得的东西）、`UpstreamStats` 和 `BackendCounters`、`ConfigStats`（重载、版本、应用时间）。
+- 按监听器和路由统计请求，与 fit 相同：图编译时，它服务的每个 `(监听器, 路由)` 取得一个槽（`Lease::route`；名字为
+  路由名，没有名字时为 `#` 加序号，没有路由接收的请求为空，即 fit 的 `metricsName`），图退役时交还（模块清理，
+  `akit_runtime::METRICS`），所以重载保留的路由计数继续，移除的路由不再被抓取；交还的槽的计数仍算在
+  `Metrics::totals` 中。计数器按线程保存（`Metrics::shard`，分片数为主机线程数，最多 64；槽在线程首次使用时每次
+  分配 64 个）：请求路径上没有锁，也没有共享的引用计数（规则 13）。同时最多统计 65,536 对（规则 11）。
+- 监听器（`Dispatcher`）对在处理器返回前就应答的请求（`Handler::inline` 为真的处理器，即 fit 的 `module.Inline`：
+  `respond`；以及 404 和 400）在调用返回后从 `Context::status` 计数，不用钩子，不分配内存；其他请求由发送其应答的
+  线程上的应答过滤器计数，有访问日志时就用访问日志那一个（两者共用一个装箱闭包：akio API 需求 A29 会去掉它）。
+- 上游，与 fit 相同：连接池统计其应答时间（`Pool::response_times`），以及每个后端结束和失败的交换
+  （`backend_requests`，与被动健康检查计入的结果相同），并给出每个后端未结束的请求（`backend_active`）。通过
+  `Lease::upstream`，计数器按上游名和地址与所有含该上游的图共享，所以跨重载延续（akit 为每个图新建连接池；fit
+  共享连接池）。
+- 证书：`akit_tls::ServerConfigs::certificates` 给出每张证书的名字（第一个 DNS 名，否则 common name）、序列号
+  （同 Go 的 `Text(16)`）和过期时间，在配置编译时读取。
+- 配置：`metrics`（`{}`，没有设置）读入 `Config::metrics`；没有 `admin` 时报 fit 的错误“the Admin API serves
+  metrics: set admin too”，而 `admin` 在 I26 之前以暂不支持拒绝，所以在此之前 `akit validate` 拒绝所有带
+  `metrics` 的配置。
+- `akit_listener::metrics::Scrape` 写出抓取内容，fit 的指标族、fit 的顺序和说明：`fit_http_requests_total`、
+  `fit_http_request_duration_seconds`（有 `metrics` 时）、`fit_upstream_requests_in_flight`、
+  `fit_upstream_response_duration_seconds`、`fit_upstream_backend_requests_total`、
+  `fit_upstream_backend_requests_in_flight`、`fit_upstream_backend_up`、`fit_tls_certificate_not_after_seconds`、
+  `fit_connections_open`、`fit_connections_refused_total`、`fit_pending_bytes`、`fit_reads_paused_total`、
+  `fit_config_reloads_total`、`fit_config_version`、`fit_config_last_applied_timestamp_seconds`、
+  `fit_access_log_dropped_total`；然后是 akio 的引擎指标（`akio_*`，按 I/O 线程），对应 fit 的 Go 运行时指标
+  （`go_*`）。`akit run` 为进程建一个注册表，统计 SIGHUP 重载（`ConfigStats::reloaded`），并构建抓取对象，由
+  Admin API（I26）在 `GET /metrics` 提供。
+- 测试：`akit/tests/metrics.rs`，移植 fit 的 `TestMetrics` 和 `TestMetricsOff`（像 fit 的测试那样解析抓取内容，
+  检查 fit 检查的每个样本及其标签和值：保留路由的重载前后按路由和类别的请求、未匹配的 404、耗时、上游的应答
+  时间、每个后端的成功和失败、进行中和在线状态、TLS 监听器的证书、重载和版本、因预算暂停的读取、各个指标和
+  akio 的指标族存在、旧图退役后改名的路由消失、总数保留），以及访问日志与指标共用一个钩子。单元测试：桶、
+  类别、数字格式、转义、槽的延续、交还和复用、共享的上游计数器、配置统计（`akit-observe`），序列号
+  （`akit-tls`）；`akit-config/tests/metrics.rs`（需要 admin、没有设置、只能由一个文件给出）；门禁的样本。
+- 已检查：macOS 上的 `make check`；Linux（基准测试主机）上 epoll 和 io_uring 下改动 crate 的测试。门禁
+  （`make compat-bless`）：`metrics` 已支持；`examples/metrics` 现在只拒绝 `admin`（被拒字段从 58 减到 57）。
+- 与计划和 fit 的差异：
+  - 抓取内容尚未对外提供：fit 由 Admin API 提供，那是 I26 的工作。在此之前抓取对象在进程内构建和测试。
+  - akit 的轮询按 I/O 线程各自轮转，所以移植的测试持续发送代理请求直到两个后端都被试过，并检查实际看到的
+    计数，而 fit 的测试对每个后端恰好发一个。
+  - `fit_connections_open` 包含 akit 在监听器引擎上拨出的上游连接和 UDP 对端，与 akio 的 `open_connections`
+    相同（akio API 需求 A30）。`fit_reads_paused_total` 的 `reason="budget"` 为 0：akit 还没有
+    `limits.max_pending_bytes`。
+  - 在 akio 的客户端支持流式（A19–A21）之前，上游的应答时间是读完整个应答的时间；fit 计的是应答头。
+  - 跨两次重载的进行中请求，若第一次移除其路由、第二次把它的槽给了另一对，会计入那一对（fit 的计数器由垃圾
+    回收，没有这样的窗口）。
+  - 没有追踪 span（`fit_trace_spans_total`：I64），也没有 apps、vod 或 websockify 的指标，akit 还没有这些。
+- akio API 需求：A29（不分配内存的应答钩子）和 A30（监听器接受的打开连接数）。
+- 基准测试任务应测量：fixed 和 proxy 场景下开关 `metrics` 的同轮 A/B，以及同时开启访问日志；64 个线程、大量
+  路由时一次抓取的耗时。
 
 ### 2026-11-24：I20，被动健康检查
 

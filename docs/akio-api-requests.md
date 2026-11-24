@@ -41,6 +41,8 @@ first; its status here records the branch, then the akio commit akit pins.
 | A20 | An HTTP client response delivered as it arrives, its reads held and resumed | requested (I16) | 5, 8 | I16, I17, I18, I67 |
 | A21 | A server request that holds its client's reads and hears when its client drained | requested (I16) | 5, 8 | I16, I47, I75 |
 | A22 | UDP listeners removed and drained on a running engine | requested (I22) | 10, 11 | I22, I28 |
+| A29 | A response hook without an allocation: a listener's observer, called with a few words the request set | requested (I37) | 13 | I21, I37, I64 |
+| A30 | The open connections a listener accepted, apart from dialed ones and UDP peers | requested (I37) | — | I37 |
 
 ## A1 TCP listeners on a running engine
 
@@ -487,3 +489,57 @@ close those left at the deadline), and `Engine::add_listener` for a UDP listener
 
 **How akit uses it.** `akit_listener::Listeners::reload` (I22, I28) removes and drains a
 listener's HTTP/3 as it does its TCP side, and the `ReloadError::Udp` refusal goes.
+
+## A29 A response hook without an allocation
+
+**Problem.** The access log (I21) and the metrics (I37) learn of each response on the thread that
+sends it, whichever thread that is (a proxied request's is answered later, from the upstream's
+completion). The only way is `Context::add_response_filter`, which boxes its closure: a closure
+that carries anything (the start time, the metrics slot, the log's shard) costs an allocation per
+request, which rule 13 asks the hot path to avoid. fit's dispatcher counts with a hook too, but
+Go's closure costs no more than the `OnFinish` it is given. akit already counts a request
+answered before its handler returns (fit's inline handlers, `respond`, the 404) without a hook,
+from `Context::status` after the call; a detached response (the proxy, static files read on the
+pool) has no other way.
+
+**Evidence.** `crates/akio-http/src/context.rs` at `a9a620ab`: `add_response_filter` does
+`self.fin.filters.push(Box::new(f))`; `Finish::filters` keeps two inline, but each is a
+`Box<dyn FnOnce>`. akio-http's own `HttpMetrics::middleware` (`observe.rs`) allocates the same way,
+and clones an `Arc` per request.
+
+**Suggested API.** A per-service observer, set once when the listener is built, and a few words a
+request carries inline in its `Finish`:
+
+```rust
+pub trait ResponseObserver: Send + Sync + 'static {
+    /// The response is being sent (on the thread that sends it), with the words the request set.
+    fn on_response(&self, resp: &Response, req: &Request, words: [u64; 2], started: Instant);
+}
+akio_http::serve_with(cfg, svc).observer(Arc<dyn ResponseObserver>);
+ctx.set_observed(words: [u64; 2]); // no allocation; started is taken then
+```
+
+A detached context keeps the words and calls the same observer when its response is sent.
+
+**How akit uses it.** `akit_listener::Dispatcher` sets the route's metrics slot and the log's
+shard index as the words, and its observer writes the access log line and counts the request:
+no allocation and no reference count per request. The boxed filter (`Dispatcher::track`) goes;
+I64's traces take the same hook.
+
+## A30 The open connections a listener accepted
+
+**Problem.** fit's `fit_connections_open` counts the client connections open on the listeners.
+akio's `Telemetry::open_connections` counts every connection open, the ones the engine dialed (the
+upstream pools' connections, which akit dials on the listeners' engine) and UDP peers included,
+so akit's gauge is too high by its upstream connections; and the per-loop counters
+(`accepted`, `dialed`, `closed`) do not say which kind a closed connection was.
+
+**Evidence.** `crates/akio-core/src/telemetry.rs` at `a9a620ab`: `conn_opened(limited)` adds to one
+`open` counter for every kind (`akio-epoll/src/reactor.rs` and `akio-uring/src/reactor.rs` call it
+for dialed connections with `limited` false); `conn_closed` takes from it whatever the kind.
+
+**Suggested API.** `Telemetry::open_accepted()` (or an `accepted_open` gauge per loop in
+`LoopCounters`): accepted TCP connections open now, apart from dialed ones and UDP peers.
+
+**How akit uses it.** `akit_listener::metrics::Scrape` writes it as `fit_connections_open`, in
+place of `open_connections`.

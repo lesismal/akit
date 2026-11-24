@@ -13,6 +13,10 @@
 //! `Dispatcher`); a handler that knows more tells it on the thread that sends the response, as
 //! the proxy does with [`with_upstream`].
 //!
+//! I37: [`metrics`], fit's Prometheus metrics: requests by listener and route, upstreams and
+//! their backends, config reloads, counted with atomic adds alone on the request path and
+//! written in Prometheus's text format.
+//!
 //! Depends on std alone.
 //!
 //! Part of [akit](https://github.com/lesismal/akit); see `docs/dev-plan.md` for the iterations that
@@ -20,6 +24,7 @@
 
 mod format;
 mod log;
+pub mod metrics;
 pub mod time;
 mod zone;
 

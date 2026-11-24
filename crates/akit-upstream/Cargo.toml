@@ -12,6 +12,7 @@ publish = false
 akio = { workspace = true }
 akio-http = { workspace = true }
 akit-config = { workspace = true }
+akit-observe = { workspace = true }
 
 [lints]
 workspace = true

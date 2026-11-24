@@ -21,7 +21,11 @@ impl akio_http::Service for Respond {
     }
 }
 
-impl Handler for Respond {}
+impl Handler for Respond {
+    fn inline(&self) -> bool {
+        true
+    }
+}
 
 pub(crate) fn new(
     p: &Provision<'_, HandlerParams>,

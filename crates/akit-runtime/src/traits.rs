@@ -20,9 +20,18 @@ use akio_http::{BodyMode, Context, Request};
 /// request body says so in [`body_mode`](akio_http::Service::body_mode).
 ///
 /// This is fit's `module.Handler`, which is fib's handler; here it is akio's `Service`, with room
-/// for what akit asks of a handler beyond it (fit's `Inline`, `Unwrapped` and
-/// `NeedsAuthentication` become provided methods here when their iterations come).
-pub trait Handler: akio_http::Service {}
+/// for what akit asks of a handler beyond it (fit's `Unwrapped` and `NeedsAuthentication` become
+/// provided methods here when their iterations come).
+pub trait Handler: akio_http::Service {
+    /// Whether [`call`](akio_http::Service::call) answers every request before it returns, never
+    /// detaching it: fit's `module.Inline`. The listener then counts such a request's metrics
+    /// once the call returns, without a hook on its response (I37). False unless the handler
+    /// says so; a middleware's wrapper says false, as fit's graph takes only a handler with no
+    /// middleware around it as inline.
+    fn inline(&self) -> bool {
+        false
+    }
+}
 
 /// A [`Handler`] as an akio [`akio_http::Service`], to hand to akio's server
 /// ([`akio_http::serve`]) or router.

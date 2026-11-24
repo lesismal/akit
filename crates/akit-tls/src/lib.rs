@@ -21,6 +21,9 @@
 //! - **HTTP/3** (I10): a listener serving `h3` gets a second configuration from the same files
 //!   ([`server_configs`]), with ALPN `h3` and TLS 1.3 alone, for its QUIC connections.
 //!
+//! - **Metrics** (I37): what each certificate is for and when it expires
+//!   ([`ServerConfigs::certificates`]), for `fit_tls_certificate_not_after_seconds`.
+//!
 //! Loading reads files, which blocks: this is control plane code, run when a config is compiled,
 //! never on an I/O thread (rules.md rule 1).
 //!
@@ -89,6 +92,67 @@ pub struct ServerConfigs {
     /// alone, which QUIC is built on, and ALPN `h3` (fib's `http3.ConfigureTLS` keeps TCP's
     /// protocols after it, which no HTTP/3 client asks for).
     pub h3: Option<ServerConfig>,
+    /// The certificates served, in the config's order: what the metrics say of each.
+    pub certificates: Vec<CertificateInfo>,
+}
+
+/// A certificate a listener serves, as fit's metrics name it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct CertificateInfo {
+    /// Its first DNS name, or its subject's common name when it has none (fit's choice).
+    pub name: String,
+    /// Its serial number in lower-case hexadecimal, as Go's `big.Int.Text(16)` writes it.
+    pub serial: String,
+    /// When it expires, in seconds since the Unix epoch.
+    pub not_after: i64,
+}
+
+impl CertificateInfo {
+    fn of(c: &akio_x509::Certificate) -> CertificateInfo {
+        let name = c
+            .subject_alt_names()
+            .iter()
+            .find_map(|n| match n {
+                GeneralName::Dns(d) => Some(d.clone()),
+                _ => None,
+            })
+            .or_else(|| c.subject().common_name())
+            .unwrap_or_default();
+        CertificateInfo {
+            name,
+            serial: serial_hex(c.serial()),
+            not_after: c.not_after(),
+        }
+    }
+}
+
+/// A serial number's INTEGER contents (two's complement, big-endian) as Go's `Text(16)` writes
+/// the number: lower-case hexadecimal without leading zeros, `-` before a negative one.
+fn serial_hex(b: &[u8]) -> String {
+    use std::fmt::Write as _;
+    let negative = b.first().is_some_and(|x| x & 0x80 != 0);
+    let mut mag: Vec<u8> = b.to_vec();
+    if negative {
+        // The magnitude: the two's complement of the bytes.
+        let mut carry = true;
+        for x in mag.iter_mut().rev() {
+            let (v, c) = (!*x).overflowing_add(u8::from(carry));
+            *x = v;
+            carry = c;
+        }
+    }
+    let mut hex = String::new();
+    for x in &mag {
+        let _ = write!(hex, "{x:02x}");
+    }
+    let digits = hex.trim_start_matches('0');
+    let digits = if digits.is_empty() { "0" } else { digits };
+    if negative {
+        format!("-{digits}")
+    } else {
+        digits.to_owned()
+    }
 }
 
 /// Loads `tls` from its files into the configuration a listener serving `protocols` serves over
@@ -111,9 +175,13 @@ pub fn server_config(tls: &Tls, protocols: &[Protocol]) -> Result<ServerConfig, 
 /// a wildcard name akit cannot pick its certificate by yet.
 pub fn server_configs(tls: &Tls, protocols: &[Protocol]) -> Result<ServerConfigs, Error> {
     let mut certs: Vec<(Vec<Certificate>, PrivateKey, Vec<String>)> = Vec::new();
+    let mut certificates = Vec::with_capacity(tls.certificates.len());
     for (i, c) in tls.certificates.iter().enumerate() {
         let at = format!("certificates[{i}]");
-        certs.push(load_pair(&c.cert_file, &c.key_file).map_err(|msg| Error::new(&at, msg))?);
+        let (chain, key, names, info) =
+            load_pair(&c.cert_file, &c.key_file).map_err(|msg| Error::new(&at, msg))?;
+        certs.push((chain, key, names));
+        certificates.push(info);
     }
     let picks = sni_picks(certs.iter().map(|(_, _, names)| names.as_slice()))
         .map_err(|(i, name)| {
@@ -174,14 +242,19 @@ pub fn server_configs(tls: &Tls, protocols: &[Protocol]) -> Result<ServerConfigs
     } else {
         None
     };
-    Ok(ServerConfigs { tcp, h3 })
+    Ok(ServerConfigs {
+        tcp,
+        h3,
+        certificates,
+    })
 }
 
-/// A certificate's chain, its key, checked to match, and the names it is for (lower case).
+/// A certificate's chain, its key, checked to match, the names it is for (lower case), and what
+/// the metrics say of it.
 fn load_pair(
     cert_file: &str,
     key_file: &str,
-) -> Result<(Vec<Certificate>, PrivateKey, Vec<String>), String> {
+) -> Result<(Vec<Certificate>, PrivateKey, Vec<String>, CertificateInfo), String> {
     let chain_pem = read(cert_file)?;
     let key_pem = read(key_file)?;
     let chain = Certificate::from_pem(&chain_pem).map_err(|e| format!("{cert_file}: {e}"))?;
@@ -204,7 +277,8 @@ fn load_pair(
             _ => None,
         })
         .collect();
-    Ok((chain, key, names))
+    let info = CertificateInfo::of(&parsed);
+    Ok((chain, key, names, info))
 }
 
 fn ip(b: &[u8]) -> Option<IpAddr> {
@@ -290,6 +364,16 @@ mod tests {
     fn picks(v: &[&[&str]]) -> Result<Vec<(String, usize)>, (usize, String)> {
         let n = names(v);
         sni_picks(n.iter().map(Vec::as_slice))
+    }
+
+    #[test]
+    fn serials_as_go_writes_them() {
+        assert_eq!(serial_hex(&[0x00, 0x8f, 0x01]), "8f01");
+        assert_eq!(serial_hex(&[0x01, 0x00]), "100");
+        assert_eq!(serial_hex(&[0x00]), "0");
+        assert_eq!(serial_hex(&[]), "0");
+        assert_eq!(serial_hex(&[0xff]), "-1");
+        assert_eq!(serial_hex(&[0x80, 0x00]), "-8000");
     }
 
     #[test]

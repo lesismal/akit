@@ -9,7 +9,10 @@
 //!   listeners to its (I22); a broken config leaves the running one. With `access_log`, a line is
 //!   written for each request (I21): the log is opened when akit starts, and closed, once every
 //!   line is written, when it stops; a reload changes its level and time zone, as fit's does,
-//!   while its output, format, flush interval and buffer take a restart.
+//!   while its output, format, flush interval and buffer take a restart. One metrics registry
+//!   serves the process (I37): the graphs share their upstreams' counters through it, and with
+//!   `metrics` count their requests in it; reloads are counted. The scrape is built for the
+//!   Admin API's `/metrics`, which serves it once akit has an Admin API (I26).
 //! - `validate`: reads and compiles the config, as `run` would, and says whether it is valid.
 //! - `version`, `help`.
 
@@ -21,6 +24,7 @@ use std::sync::{Arc, mpsc};
 use std::time::Duration;
 
 use akit_config::{Config, Error, Errors, LogFormat};
+use akit_observe::metrics::{ConfigStats, Metrics};
 use akit_observe::{AccessLog, Format, Zone};
 use akit_runtime::upstream::EngineSlot;
 use akit_runtime::{Env, Graph, GraphCell, HandlerParams, Registry, compile};
@@ -169,11 +173,14 @@ fn compile_config(
     config: &Config,
     engine: &EngineSlot,
     log: Option<&AccessLog>,
+    metrics: &Metrics,
 ) -> Result<Graph, Failure> {
     let registry: Registry<HandlerParams> =
         Registry::new(&[akit_handler::MODULES, akit_proxy::MODULES])
             .map_err(|e| Failure::Registry(e.to_string()))?;
-    let env = Env::new(engine.clone()).with_access_log(log.cloned());
+    let env = Env::new(engine.clone())
+        .with_access_log(log.cloned())
+        .with_metrics(Some(metrics.clone()));
     compile(config, &registry, &env).map_err(Failure::Config)
 }
 
@@ -182,9 +189,10 @@ fn read(
     paths: &[String],
     engine: &EngineSlot,
     log: Option<&AccessLog>,
+    metrics: &Metrics,
 ) -> Result<(Config, Option<Zone>, Graph), Failure> {
     let (config, zone) = read_config(paths)?;
-    let graph = compile_config(&config, engine, log)?;
+    let graph = compile_config(&config, engine, log, metrics)?;
     Ok((config, zone, graph))
 }
 
@@ -209,24 +217,28 @@ fn open_access_log(c: &akit_config::AccessLog, zone: Zone) -> std::io::Result<Ac
 ///
 /// The access log opened at start, `log` (with the config it was opened from), takes the new
 /// config's level and time zone once the graph is swapped in; its other settings take a restart,
-/// as fit's.
+/// as fit's. `metrics` and `stats` are the process's registry and its count of configs applied
+/// (I37).
 fn reload(
     paths: &[String],
     slot: &EngineSlot,
     listeners: &mut akit_listener::Listeners,
     log: Option<&(AccessLog, akit_config::AccessLog)>,
+    (metrics, stats): (&Metrics, &ConfigStats),
 ) {
     let name = paths.join(", ");
     println!("akit: reloading {name}");
-    let (config, zone, graph) = match read(paths, slot, log.map(|l| &l.0)) {
+    let (config, zone, graph) = match read(paths, slot, log.map(|l| &l.0), metrics) {
         Ok(r) => r,
         Err(f) => {
+            stats.reloaded(false);
             eprintln!("akit: reload failed; the running config stays");
             f.print(&name);
             return;
         }
     };
     let result = listeners.reload(graph);
+    stats.reloaded(result.is_ok());
     if result.is_ok() {
         match (log, &config.access_log, zone) {
             (Some((l, first)), Some(c), Some(zone)) => {
@@ -293,7 +305,9 @@ fn validate(args: &[String]) -> ExitCode {
     };
     let paths = config_paths(&flags);
     // No engine: an upstream's pool is made, and never dials.
-    match read(&paths, &EngineSlot::new(), None).map_err(|f| f.print(&paths.join(", "))) {
+    match read(&paths, &EngineSlot::new(), None, &Metrics::new())
+        .map_err(|f| f.print(&paths.join(", ")))
+    {
         Ok(_) => {
             println!("{}: valid", paths.join(", "));
             ExitCode::SUCCESS
@@ -390,7 +404,11 @@ fn run(args: &[String]) -> ExitCode {
         },
         _ => None,
     };
-    let graph = match compile_config(&config, &slot, log.as_ref().map(|l| &l.0)) {
+    // One registry for the process, as fit's: the graphs share their upstreams' counters through
+    // it, and with `metrics` count their requests in it (I37).
+    let metrics = Metrics::new();
+    let stats = ConfigStats::new();
+    let graph = match compile_config(&config, &slot, log.as_ref().map(|l| &l.0), &metrics) {
         Ok(g) => g,
         Err(f) => {
             f.print(&name);
@@ -423,6 +441,11 @@ fn run(args: &[String]) -> ExitCode {
     // Upstream connections are dialed on the listeners' threads.
     slot.set(Arc::clone(&engine));
     let mut listeners = akit_listener::Listeners::new(Arc::clone(&engine), cell.clone(), &opts);
+    // Every metric, as fit's Admin API serves them at GET /metrics: served there once akit has
+    // an Admin API (I26).
+    let _scrape =
+        akit_listener::metrics::Scrape::new(cell.clone(), Arc::clone(&engine), stats.clone())
+            .with_access_log(log.as_ref().map(|l| l.0.clone()));
     for l in listeners.served() {
         print_listener(&l);
     }
@@ -444,7 +467,13 @@ fn run(args: &[String]) -> ExitCode {
         match signal {
             Some(Signal::Stop) | None => break,
             Some(Signal::Hangup) => {
-                reload(&paths, &slot, &mut listeners, log.as_ref());
+                reload(
+                    &paths,
+                    &slot,
+                    &mut listeners,
+                    log.as_ref(),
+                    (&metrics, &stats),
+                );
                 cell.collect();
             }
         }

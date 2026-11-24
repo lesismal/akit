@@ -113,3 +113,7 @@ access_log.buffer_bytes
 access_log.level
 access_log.format
 access_log.time_zone
+
+# I37: metrics, fit's request counting by listener and route for the Admin API's /metrics; it has
+# no settings. As in fit, it needs admin, which is refused as not supported yet until I26.
+metrics
