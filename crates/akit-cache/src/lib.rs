@@ -5,8 +5,9 @@
 //! [`MODULES`] has the `cache` middleware, as fit's `middleware/cache`: responses kept by RFC
 //! 9111's rules in a bounded memory tier shared by the caches of a zone, and answered from, with
 //! `Cache-Control`, `Vary`, validators and `Age` (I67); a disk tier on a pool of its own, the
-//! cache lock, and stale-while-revalidate and stale-if-error (I68). I69 adds purging by key and
-//! tag.
+//! cache lock, and stale-while-revalidate and stale-if-error (I68); purging by key, URL prefix,
+//! tag or zone, and what each zone keeps, for the Admin API's `POST /cache/purge` and `GET /cache`
+//! ([`purge`], [`zones`]; I69).
 //!
 //! Part of [akit](https://github.com/lesismal/akit); see `docs/dev-plan.md` for the iterations that
 //! fill this crate in.
@@ -14,10 +15,13 @@
 mod cache;
 mod disk;
 mod lock;
+mod purge;
 mod semantics;
 mod store;
 
 use akit_runtime::{HandlerParams, Info};
+
+pub use purge::{PurgeError, Selection, ZoneStats, purge, zones, zones_json};
 
 /// The middleware modules of this crate, for [`akit_runtime::Registry::new`].
 pub static MODULES: &[Info<HandlerParams>] = &[Info::middleware(

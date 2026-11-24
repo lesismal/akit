@@ -19,6 +19,9 @@
 //! GET    /metrics             the metrics scrape Options::metrics writes (I37), when set
 //! GET    /status              what akit is doing now: listeners, connections, upstreams and
 //!                             their backends' health, certificates, requests (I63)
+//! GET    /cache               what each cache zone keeps (I69)
+//! POST   /cache/purge         remove what a cache zone keeps, by URL, URL prefix, tag, or all
+//!                             (I69)
 //! GET    /dashboard/          read-only web pages of the GET endpoints, unless
 //!                             admin.disable_dashboard (I63)
 //! ```
@@ -45,6 +48,7 @@
 //! A Unix socket waits on akio API request A23; TLS for the API (`cert_file`, `key_file`), and
 //! with it an address off loopback, is not supported yet.
 
+mod cache;
 mod configs;
 mod dashboard;
 mod pointer;

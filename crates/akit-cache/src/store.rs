@@ -49,6 +49,9 @@ pub(crate) struct Entry {
     pub(crate) sie: Duration,
     pub(crate) etag: Option<String>,
     pub(crate) last_modified: Option<String>,
+    /// What it can be purged by: its `Cache-Tag` and `Surrogate-Key` members
+    /// ([`crate::semantics::tags_of`]).
+    pub(crate) tags: Box<[Box<str>]>,
     /// What it costs in the store, set when stored.
     pub(crate) size: u64,
 }
@@ -96,7 +99,62 @@ impl Entry {
                 .saturating_add(k.len() as u64)
                 .saturating_add(v.len() as u64);
         }
+        for t in &self.tags {
+            n = n.saturating_add(t.len() as u64).saturating_add(16);
+        }
         n
+    }
+}
+
+/// The keys of a tier's responses by tag, as fit's `tagIndex`: each key counted once for each of
+/// its responses that carries the tag. Bounded by the tier: a response has at most
+/// [`crate::semantics::MAX_TAGS`] tags.
+#[derive(Debug, Default)]
+pub(crate) struct TagIndex(HashMap<Box<str>, HashMap<Arc<str>, u32>>);
+
+impl TagIndex {
+    pub(crate) fn add(&mut self, key: &Arc<str>, tags: &[Box<str>]) {
+        for tag in tags {
+            let keys = match self.0.get_mut(&**tag) {
+                Some(keys) => keys,
+                None => self.0.entry(tag.clone()).or_default(),
+            };
+            let n = keys.entry(Arc::clone(key)).or_insert(0);
+            *n = n.saturating_add(1);
+        }
+    }
+
+    pub(crate) fn remove(&mut self, key: &str, tags: &[Box<str>]) {
+        for tag in tags {
+            let Some(keys) = self.0.get_mut(&**tag) else {
+                continue;
+            };
+            if let Some(n) = keys.get_mut(key) {
+                *n = n.saturating_sub(1);
+                if *n == 0 {
+                    keys.remove(key);
+                }
+            }
+            if keys.is_empty() {
+                self.0.remove(&**tag);
+            }
+        }
+    }
+
+    /// Adds the keys of the responses tagged `tag` to `out`.
+    pub(crate) fn keys(&self, tag: &str, out: &mut Vec<Arc<str>>) {
+        if let Some(keys) = self.0.get(tag) {
+            out.extend(keys.keys().cloned());
+        }
+    }
+
+    pub(crate) fn clear(&mut self) {
+        self.0.clear();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn is_empty(&self) -> bool {
+        self.0.is_empty()
     }
 }
 
@@ -125,6 +183,8 @@ pub(crate) struct Shard {
     head: usize,
     tail: usize,
     size: u64,
+    /// The shard's keys by tag.
+    tags: TagIndex,
     /// The fetches under way, by key, that requests for the key wait for (the cache lock).
     pub(crate) fetches: HashMap<Arc<str>, Arc<Fetch>>,
 }
@@ -138,6 +198,7 @@ impl Shard {
             head: NIL,
             tail: NIL,
             size: 0,
+            tags: TagIndex::default(),
             fetches: HashMap::new(),
         }
     }
@@ -236,7 +297,23 @@ impl Shard {
             self.index.remove(&n.key);
             self.size = self.size.saturating_sub(n.size);
             self.free.push(i);
+            for v in &n.variants {
+                self.tags.remove(&n.key, &v.tags);
+            }
         }
+    }
+
+    /// Drops every node; returns how many keys there were.
+    fn clear(&mut self) -> usize {
+        let n = self.index.len();
+        self.index.clear();
+        self.nodes.clear();
+        self.free.clear();
+        self.head = NIL;
+        self.tail = NIL;
+        self.size = 0;
+        self.tags.clear();
+        n
     }
 
     fn grow(&mut self, i: usize, add: u64, sub: u64) {
@@ -250,8 +327,7 @@ impl Shard {
 /// The memory tier of one zone.
 #[derive(Debug)]
 pub(crate) struct Store {
-    /// Its zone, for debugging.
-    #[allow(dead_code, reason = "read through Debug")]
+    /// Its zone.
     name: String,
     hasher: RandomState,
     max_bytes: AtomicU64,
@@ -328,14 +404,23 @@ impl Store {
         let e = Arc::new(e);
         let mut sh = self.shard(key);
         let i = sh.node_of(key);
-        let mut freed = 0u64;
+        let mut gone = None;
+        let mut node_key = None;
         if let Some(n) = sh.node(i) {
             if let Some(at) = n.variants.iter().position(|v| v.same_variant(&e)) {
-                freed = n.variants.remove(at).size;
+                gone = Some(n.variants.remove(at));
             } else if n.variants.len() >= MAX_VARIANTS && !n.variants.is_empty() {
-                freed = n.variants.remove(0).size;
+                gone = Some(n.variants.remove(0));
             }
             n.variants.push(Arc::clone(&e));
+            node_key = Some(Arc::clone(&n.key));
+        }
+        let freed = gone.as_ref().map_or(0, |g| g.size);
+        if let Some(k) = &node_key {
+            if let Some(g) = &gone {
+                sh.tags.remove(k, &g.tags);
+            }
+            sh.tags.add(k, &e.tags);
         }
         sh.grow(i, e.size, freed);
         while sh.size > limit && sh.tail != NIL {
@@ -377,12 +462,14 @@ impl Store {
         let mut swapped = None;
         if let Some(n) = sh.node(i) {
             if let Some(slot) = n.variants.iter_mut().find(|v| Arc::ptr_eq(v, old)) {
-                swapped = Some(std::mem::replace(slot, Arc::clone(&e)).size);
+                swapped = Some((std::mem::replace(slot, Arc::clone(&e)), Arc::clone(&n.key)));
             }
         }
         let stored = swapped.is_some();
-        if let Some(freed) = swapped {
-            sh.grow(i, e.size, freed);
+        if let Some((gone, k)) = swapped {
+            sh.tags.remove(&k, &gone.tags);
+            sh.tags.add(&k, &e.tags);
+            sh.grow(i, e.size, gone.size);
             let limit = self.shard_max();
             while sh.size > limit && sh.tail != NIL {
                 let tail = sh.tail;
@@ -402,6 +489,54 @@ impl Store {
             }
             None => false,
         }
+    }
+
+    /// Drops everything the store holds; returns how many keys it held.
+    pub(crate) fn clear(&self) -> usize {
+        let mut n = 0usize;
+        for m in &self.shards {
+            let mut sh = m.lock().unwrap_or_else(PoisonError::into_inner);
+            n = n.saturating_add(sh.clear());
+        }
+        n
+    }
+
+    /// Adds the keys of the responses tagged `tag` to `out`, shard by shard, each under its
+    /// lock for as long as the lookup takes.
+    pub(crate) fn tagged(&self, tag: &str, out: &mut Vec<Arc<str>>) {
+        for m in &self.shards {
+            m.lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .tags
+                .keys(tag, out);
+        }
+    }
+
+    /// Adds the keys that start with any of `prefixes` to `out`, shard by shard, each under its
+    /// lock for as long as reading its keys takes.
+    pub(crate) fn keys_with(&self, prefixes: &[String], out: &mut Vec<Arc<str>>) {
+        for m in &self.shards {
+            let sh = m.lock().unwrap_or_else(PoisonError::into_inner);
+            out.extend(
+                sh.index
+                    .keys()
+                    .filter(|k| prefixes.iter().any(|p| k.starts_with(p.as_str())))
+                    .cloned(),
+            );
+        }
+    }
+
+    /// The zone's disk tier, as the last cache of the zone compiled has it.
+    pub(crate) fn disk(&self) -> Option<Arc<Disk>> {
+        self.disk
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
+    /// Its zone.
+    pub(crate) fn name(&self) -> &str {
+        &self.name
     }
 
     /// How many keys the store holds, and its size.
@@ -431,6 +566,19 @@ impl Store {
 /// config's caches take a store before the old config's let it go. Weak, so that a zone no cache
 /// uses goes. Locked only when a config is compiled.
 static ZONES: Mutex<Vec<(String, Weak<Store>)>> = Mutex::new(Vec::new());
+
+/// The stores in use whose zone is `name`, or every one for `""`, in the order of their zones.
+pub(crate) fn zones_named(name: &str) -> Vec<Arc<Store>> {
+    let mut out: Vec<Arc<Store>> = ZONES
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .iter()
+        .filter(|(n, _)| name.is_empty() || n == name)
+        .filter_map(|(_, w)| w.upgrade())
+        .collect();
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    out
+}
 
 /// How many keys zone `name` holds, its size, and what responses being stored hold; `None`
 /// when no cache uses it.
@@ -565,7 +713,63 @@ mod tests {
             sie: Duration::ZERO,
             etag: None,
             last_modified: None,
+            tags: Box::default(),
             size: 0,
+        }
+    }
+
+    fn tagged(body: usize, tags: &[&str]) -> Entry {
+        let mut e = entry(body);
+        e.tags = tags.iter().map(|t| Box::from(*t)).collect();
+        e
+    }
+
+    fn keys(s: &Store, tag: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        s.tagged(tag, &mut out);
+        let mut out: Vec<String> = out.iter().map(|k| k.to_string()).collect();
+        out.sort();
+        out
+    }
+
+    // The tag index follows what the store holds: a variant replaced, a node evicted or removed,
+    // a store cleared.
+    #[test]
+    fn tag_index() {
+        let s = Store::new("tags", 16 * 4096);
+        s.put("/a", tagged(1, &["t", "u"]));
+        let mut v = tagged(1, &["t"]);
+        v.vary = vec![("x".into(), "1".into())];
+        s.put("/a", v);
+        s.put("/b", tagged(1, &["t"]));
+        assert_eq!(keys(&s, "t"), ["/a", "/b"]);
+        assert_eq!(keys(&s, "u"), ["/a"]);
+        // The first variant stored again without "u".
+        s.put("/a", tagged(1, &["v"]));
+        assert!(keys(&s, "u").is_empty());
+        assert_eq!(keys(&s, "t"), ["/a", "/b"]);
+        let old = s.get("/b", &Headers::new()).0.unwrap();
+        s.replace("/b", &old, tagged(1, &["w"]));
+        assert_eq!(keys(&s, "t"), ["/a"]);
+        assert_eq!(keys(&s, "w"), ["/b"]);
+        s.remove("/a");
+        assert!(keys(&s, "t").is_empty() && keys(&s, "v").is_empty());
+        let mut out = Vec::new();
+        s.put("/img/1", entry(1));
+        s.put("/img/2", entry(1));
+        s.keys_with(&["/img/".into(), "/nothing".into()], &mut out);
+        assert_eq!(out.len(), 2);
+        // Evicted past the size, with their tags.
+        for i in 0..200 {
+            s.put(&format!("/e{i}"), tagged(1024, &["e"]));
+        }
+        assert!(keys(&s, "e").len() < 200);
+        let held = s.stats().0;
+        assert!(held > 2);
+        assert_eq!(s.clear(), held);
+        assert_eq!(s.stats(), (0, 0));
+        for sh in &s.shards {
+            assert!(sh.lock().unwrap().tags.is_empty());
         }
     }
 

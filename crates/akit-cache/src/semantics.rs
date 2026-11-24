@@ -287,6 +287,34 @@ pub(crate) fn unsafe_method(method: &str) -> bool {
     !matches!(method, "GET" | "HEAD" | "OPTIONS" | "TRACE")
 }
 
+/// The most tags a response is kept with, and the longest tag: fit's `maxTags` and `maxTagLen`.
+pub(crate) const MAX_TAGS: usize = 32;
+pub(crate) const MAX_TAG_LEN: usize = 128;
+
+/// A response's tags, by which it can be purged, as fit's `tagsOf`: the members of its
+/// `Cache-Tag` fields, comma-separated, and of its `Surrogate-Key` fields, space-separated, each
+/// once, at most [`MAX_TAGS`] of them, none longer than [`MAX_TAG_LEN`].
+pub(crate) fn tags_of(h: &Headers) -> Box<[Box<str>]> {
+    let mut tags: Vec<Box<str>> = Vec::new();
+    let mut add = |tag: &str| {
+        let tag = tag.trim();
+        if !tag.is_empty()
+            && tag.len() <= MAX_TAG_LEN
+            && tags.len() < MAX_TAGS
+            && !tags.iter().any(|t| &**t == tag)
+        {
+            tags.push(tag.into());
+        }
+    };
+    for v in h.get_all("cache-tag") {
+        v.split(',').for_each(&mut add);
+    }
+    for v in h.get_all("surrogate-key") {
+        v.split_ascii_whitespace().for_each(&mut add);
+    }
+    tags.into_boxed_slice()
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used)]
@@ -421,5 +449,23 @@ mod tests {
         assert!(!not_modified(&fields(&[("If-None-Match", "*")]), None, lm));
         assert!(unstored("Transfer-Encoding") && !unstored("ETag"));
         assert!(unsafe_method("POST") && !unsafe_method("OPTIONS"));
+    }
+
+    // fit's TestTagsOf.
+    #[test]
+    fn tags() {
+        let long = "x".repeat(200);
+        let h = fields(&[
+            ("Cache-Tag", "a, b,, a"),
+            ("Cache-Tag", &long),
+            ("Surrogate-Key", "c  d b"),
+        ]);
+        let tags = tags_of(&h);
+        let got: Vec<&str> = tags.iter().map(|t| &**t).collect();
+        assert_eq!(got, ["a", "b", "c", "d"]);
+        let many: Vec<String> = (0..40).map(|i| i.to_string()).collect();
+        let h = fields(&[("Cache-Tag", &many.join(","))]);
+        assert_eq!(tags_of(&h).len(), MAX_TAGS);
+        assert!(tags_of(&Headers::new()).is_empty());
     }
 }

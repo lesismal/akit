@@ -263,6 +263,7 @@ dependencies = [
  "akio",
  "akio-crypto",
  "akio-http",
+ "akit-cache",
  "akit-config",
  "akit-handler",
  "akit-listener",
