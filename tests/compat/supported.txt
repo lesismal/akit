@@ -341,3 +341,7 @@ routes[].middleware[]<circuit_breaker>.params.half_open_requests
 # I49: WebSocket proxying: HTTP/1.1 upgrades and HTTP/2 and HTTP/3 extended CONNECTs joined to an
 # HTTP/1.1 upstream's switched connection, closed after tunnel_idle_timeout carried nothing.
 routes[].handler<proxy>.params.tunnel_idle_timeout
+
+# I50: no new fields: gRPC calls (HTTP/2 or HTTP/3 POSTs of application/grpc) are proxied to h2
+# and h2c upstreams with TE: trailers, grpc-timeout bounding them as the proxy's timeout does,
+# and gRPC's trailers-only answers to the calls the proxy cannot complete.

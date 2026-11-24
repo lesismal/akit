@@ -17,6 +17,8 @@ akit-runtime = { workspace = true }
 
 [dev-dependencies]
 akio = { workspace = true }
+# A gRPC client and server for the gRPC tests (I50).
+akio-grpc = { workspace = true }
 # For akit-listener's test support, which the TLS tests share (its HTTP/3 client, I10).
 akio-h3 = { workspace = true }
 akio-quic = { workspace = true }
