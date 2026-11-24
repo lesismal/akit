@@ -41,8 +41,9 @@ the control plane.
 | control thread | config reading, compile, swap, the Admin API's handling, provider watches' processing | serves traffic |
 | bounded writers | access and error logs, OTLP export | grows a queue without a limit |
 
-The Admin API itself is served by akio (on its own listener); the work a request causes, such as a
-compile, is handed to the control thread and answered when it completes.
+The Admin API itself is served by akio (on an engine of its own, one I/O thread:
+[decision 006](decisions/006-admin-api.md)); the work a request causes, such as a compile, is
+handed to the control thread and answered when it completes.
 
 ## 3. The graph
 

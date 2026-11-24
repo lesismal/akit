@@ -27,6 +27,47 @@ pub struct Config {
     pub limits: Limits,
     /// `access_log`: where a line is written for each request; no access log when left out.
     pub access_log: Option<AccessLog>,
+    /// `admin`: the Admin API (I26); off when left out.
+    pub admin: Option<Admin>,
+}
+
+/// fit's default `admin.address`.
+pub const DEFAULT_ADMIN_ADDRESS: &str = "127.0.0.1:2019";
+/// fit's default `admin.history`: the configs kept, the running one included.
+pub const DEFAULT_ADMIN_HISTORY: usize = 10;
+/// fit's default `admin.max_config_bytes`: 4 MiB.
+pub const DEFAULT_ADMIN_MAX_CONFIG_BYTES: usize = 4 << 20;
+/// fit's default `admin.max_conns`.
+pub const DEFAULT_ADMIN_MAX_CONNS: usize = 16;
+
+/// `admin`: the Admin API, as fit's `config.Admin` (decision 006): so far its address, history
+/// and limits. Its token, TLS, access lists, store, console and the rest are refused as not
+/// supported yet; so is a Unix socket (`unix/<path>`, akio API request A23).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Admin {
+    /// `address`: a loopback host and port; [`DEFAULT_ADMIN_ADDRESS`] when left out. Without a
+    /// token (I27), a host that is not loopback is refused, as fit refuses it.
+    pub address: String,
+    /// `history`: how many configs, the running one included, are kept to be read back;
+    /// [`DEFAULT_ADMIN_HISTORY`] when left out or 0.
+    pub history: usize,
+    /// `max_config_bytes`: the largest config the API takes, larger ones getting 413;
+    /// [`DEFAULT_ADMIN_MAX_CONFIG_BYTES`] when left out or 0.
+    pub max_config_bytes: usize,
+    /// `max_conns`: the most connections the API keeps open at once, one past it closed as it
+    /// is accepted; [`DEFAULT_ADMIN_MAX_CONNS`] when left out or 0.
+    pub max_conns: usize,
+}
+
+impl Default for Admin {
+    fn default() -> Admin {
+        Admin {
+            address: DEFAULT_ADMIN_ADDRESS.to_owned(),
+            history: DEFAULT_ADMIN_HISTORY,
+            max_config_bytes: DEFAULT_ADMIN_MAX_CONFIG_BYTES,
+            max_conns: DEFAULT_ADMIN_MAX_CONNS,
+        }
+    }
 }
 
 /// fit's default `limits.max_body_bytes`: 16 MiB.
@@ -595,6 +636,7 @@ const CONFIG_FIELDS: &[&str] = &[
     "upstreams",
     "limits",
     "access_log",
+    "admin",
 ];
 const CONFIG_FIT_ONLY: &[&str] = &[
     "services",
@@ -602,7 +644,6 @@ const CONFIG_FIT_ONLY: &[&str] = &[
     "telemetry",
     "access",
     "engine",
-    "admin",
     "auto_https",
     "metrics",
     "pprof",
@@ -616,6 +657,24 @@ const CONFIG_FIT_ONLY: &[&str] = &[
     "sync",
     "bittorrent",
     "providers",
+];
+// I26: the Admin API's address, history and limits; its token and TLS come with I27, its
+// access lists with fit's access, a Unix socket with akio API request A23.
+const ADMIN_FIELDS: &[&str] = &["address", "history", "max_config_bytes", "max_conns"];
+const ADMIN_FIT_ONLY: &[&str] = &[
+    "mptcp",
+    "token_file",
+    "cert_file",
+    "key_file",
+    "client_ca_file",
+    "node_id",
+    "disable_dashboard",
+    "store",
+    "console",
+    "assistant",
+    "cluster",
+    "cluster_member",
+    "access",
 ];
 const LIMITS_FIELDS: &[&str] = &["max_body_bytes"];
 const LIMITS_FIT_ONLY: &[&str] = &[
@@ -745,6 +804,8 @@ pub(crate) struct Part {
     limits: Option<(Limits, usize)>,
     /// `access_log`, with the position of its key, when the file gives it.
     access_log: Option<(AccessLog, usize)>,
+    /// `admin`, with the position of its key, when the file gives it.
+    admin: Option<(Admin, usize)>,
     /// The position of the file's top object.
     doc_off: usize,
 }
@@ -787,6 +848,9 @@ pub(crate) fn part(d: &mut Decoder<'_>, n: &Node, file: usize) -> Option<Part> {
     let access_log = o
         .take("access_log")
         .and_then(|v| access_log(d, v, "access_log").map(|a| (a, v.off)));
+    let admin = o
+        .take("admin")
+        .and_then(|v| admin(d, v, "admin").map(|a| (a, v.off)));
     let doc_off = o.off;
     o.finish(d, CONFIG_FIELDS, CONFIG_FIT_ONLY);
     Some(Part {
@@ -796,6 +860,7 @@ pub(crate) fn part(d: &mut Decoder<'_>, n: &Node, file: usize) -> Option<Part> {
         upstreams,
         limits,
         access_log,
+        admin,
         doc_off,
     })
 }
@@ -815,6 +880,7 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
     let mut limits: Option<(Limits, usize)> = None;
     let mut first_doc: Option<(usize, usize)> = None;
     let mut access_log: Option<(AccessLog, usize)> = None;
+    let mut admin: Option<(Admin, usize)> = None;
     for (file, p) in parts.into_iter().enumerate() {
         first_doc.get_or_insert((file, p.doc_off));
         if let Some((v, off)) = p.schema_version {
@@ -883,6 +949,27 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
                 None => access_log = Some((a, file)),
             }
         }
+        if let Some((a, off)) = p.admin {
+            match &admin {
+                Some((_, first_file)) => {
+                    let name = ds
+                        .get(*first_file)
+                        .and_then(Decoder::file)
+                        .unwrap_or_default()
+                        .to_owned();
+                    if let Some(d) = ds.get_mut(file) {
+                        d.error(
+                            off,
+                            "admin",
+                            format!(
+                                "also given in {name}: only the lists at the top of a config (listeners, routes, upstreams, services, providers) may be split across files"
+                            ),
+                        );
+                    }
+                }
+                None => admin = Some((a, file)),
+            }
+        }
         listeners.extend(p.listeners);
         routes.extend(p.routes);
         upstreams.extend(p.upstreams);
@@ -914,6 +1001,7 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
         upstreams: upstreams.into_iter().map(|a| a.v).collect(),
         limits,
         access_log: access_log.map(|(a, _)| a),
+        admin: admin.map(|(a, _)| a),
     }
 }
 
@@ -1092,6 +1180,65 @@ fn listener(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Listener> {
         // Set from the config's limits once the files are merged.
         max_body_bytes: DEFAULT_MAX_BODY_BYTES,
     })
+}
+
+/// `admin`, as fit's `config.Admin` and its `checkAdminAddress`.
+fn admin(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Admin> {
+    let mut o = d.object(n, path)?;
+    let mut a = Admin::default();
+    if let Some(v) = o.take("address") {
+        let p = o.at("address");
+        if let Some(s) = d.string(v, &p).filter(|s| !s.is_empty()) {
+            if s.starts_with("unix/") {
+                d.not_yet(v.off, &p, "a Unix socket (akio API request A23)");
+            } else if let Err(msg) = check_address(&s) {
+                d.error(v.off, &p, msg);
+            } else if !loopback_host(&s) {
+                d.error(
+                    v.off,
+                    &p,
+                    format!(
+                        "{s:?} is not a loopback address: the Admin API can change everything \
+                         akit serves, so listen on localhost, 127.0.0.1 or [::1]; off loopback it \
+                         needs a token (token_file) and TLS (cert_file and key_file), which akit \
+                         does not support yet"
+                    ),
+                );
+            }
+            a.address = s;
+        }
+    }
+    // fit's ints, at least 0; 0 is the default.
+    fn count(o: &mut Obj<'_>, d: &mut Decoder<'_>, key: &str, slot: &mut usize) {
+        if let Some(v) = o.take(key) {
+            if let Some(n) = d
+                .int(v, &o.at(key), 0, i64::MAX)
+                .and_then(|n| usize::try_from(n).ok())
+                .filter(|n| *n != 0)
+            {
+                *slot = n;
+            }
+        }
+    }
+    count(&mut o, d, "history", &mut a.history);
+    count(&mut o, d, "max_config_bytes", &mut a.max_config_bytes);
+    count(&mut o, d, "max_conns", &mut a.max_conns);
+    o.finish(d, ADMIN_FIELDS, ADMIN_FIT_ONLY);
+    Some(a)
+}
+
+/// Whether `address`'s host (it is a host and port, [`check_address`]) is `localhost` or a
+/// loopback address, as fit's `isLoopback`.
+fn loopback_host(address: &str) -> bool {
+    let host = address
+        .rsplit_once(':')
+        .map_or(address, |(h, _)| h)
+        .trim_start_matches('[')
+        .trim_end_matches(']');
+    host.eq_ignore_ascii_case("localhost")
+        || host
+            .parse::<IpAddr>()
+            .is_ok_and(|ip| unmap(ip).is_loopback())
 }
 
 fn limits(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Limits> {

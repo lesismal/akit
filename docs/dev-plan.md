@@ -124,7 +124,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I24 | The YAML reader | I02 | done |
 | I25 | M1 conformance and report | I09–I24 | todo |
 | **M2** | | | |
-| I26 | Admin API I: load, read, versions | I22 | todo |
+| I26 | Admin API I: load, read, versions | I22 | done |
 | I27 | Admin API II: patch, rollback, auth | I26 | todo |
 | I28 | Listeners diffed at run time | I26, A1 | todo |
 | I29 | File provider | I26 | todo |
@@ -491,6 +491,9 @@ Split from I07 so that the half that needs no config model runs beside I02.
 - **Done when**: fit's Admin API tests for these paths, ported, pass.
 - **Touches**: `akit-admin`.
 - **fit**: `admin`, decision 005.
+- **Done** (decision 006): on an akio engine of its own, loads applied by the control thread
+  through I22's reload; a Unix socket waits on akio A23, closing a connection after a refused body
+  on A24.
 
 ### I27 Admin API II: patch, rollback, auth
 

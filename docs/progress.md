@@ -11,14 +11,84 @@ done and where the work differs from the plan.
 | | |
 | --- | --- |
 | Last updated | 2026-11-24 |
-| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I15, I19–I24 done, I16 doing (body limits done; streaming waits for akio's A19–A21); M3's I39 done early. |
+| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I15, I19–I24 done, I16 doing (body limits done; streaming waits for akio's A19–A21); M2's I26 and M3's I39 done early. |
 | akio | `a9a620ab` on akio's `main` (`1.0.0-rc.1`, with A1–A5, A7, A8, A11, A13 and A16–A18), pinned by `rev` in `Cargo.toml` |
 | fit | the specification; read at `7daee573` for this plan |
-| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept, added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`); `limits.max_body_bytes` on every listener (413) and in the proxy; access logs in fit's json, text and line formats; upstream pools with round robin, weighted round robin and least connections, passing over addresses taken out by passive health checks (`max_fails`, `fail_timeout`); the compatibility gate: 80 fixtures, 9 valid, 70 refused only as not supported yet, 1 skipped, none failed |
+| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept, added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`); `limits.max_body_bytes` on every listener (413) and in the proxy; access logs in fit's json, text and line formats; upstream pools with round robin, weighted round robin and least connections, passing over addresses taken out by passive health checks (`max_fails`, `fail_timeout`); the Admin API on loopback (`GET /config`, by JSON pointer too, `POST /load` with `If-Match`, `GET /versions`), loads applied as SIGHUP's reloads, one history for both; the compatibility gate: 80 fixtures, 9 valid, 70 refused only as not supported yet, 1 skipped, none failed |
 | Next | I17; I16 once A19–A21 land |
-| akio requests | A1–A5, A7, A8, A11, A13 and A16–A18 on akio's main and pinned; A6 on akio branch `claude/x509-csr`; A9, A10, A12, A14, A15, A19–A21 and A22 requested ([akio API requests](akio-api-requests.md)) |
+| akio requests | A1–A5, A7, A8, A11, A13 and A16–A18 on akio's main and pinned; A6 on akio branch `claude/x509-csr`; A9, A10, A12, A14, A15, A19–A21, A22, A23 and A24 requested ([akio API requests](akio-api-requests.md)) |
 
 ## Log
+
+### 2026-11-24: I26, Admin API I: load, read, versions
+
+- Config: `admin` read into `akit_config::Admin` (`address`, `history`, `max_config_bytes`,
+  `max_conns`; `DEFAULT_ADMIN_*`, fit's defaults: 127.0.0.1:2019, 10, 4 MiB, 16; 0 is the
+  default). fit's check of the address: a host that is not `localhost` or a loopback address is
+  refused (off loopback fit asks for `token_file`, `cert_file` and `key_file`, which come with
+  I27); `unix/<path>` is refused as not supported yet (akio API request A23); `admin` is given by
+  one file only. The other admin fields are refused as not supported yet.
+- `akit_config::value` (new): `Value`, a JSON value with members in order and numbers as written,
+  `parse`, `to_json` (fit's Admin API writer: two spaces to a level), `standardize` (comments and
+  trailing commas blanked to spaces, every other byte in place, as fit's `config.Standardize`),
+  and `json_of`, a config's files as one JSON document (a lone JSON file standardized; several,
+  or YAML or `.conf`, merged as fit's adapter merges them and written out). `load_files` reads a
+  config and that document together.
+- `akit-admin` (decision 006): `Configs`, the history (numbered from 1, the last `history`
+  kept, ETags of the first 96 bits of SHA-256 via akio-crypto, `If-Match` and `If-None-Match` as
+  fit compares them) and the one path every config takes, `Configs::update`, one at a time;
+  `Server`, akio-http on an akio engine of its own (one I/O thread, HTTP/1.1, `max_conns` as the
+  engine's `max_connections`, fit's timeouts): `GET /config` (ETag, `Fit-Config-Version`, 304 on
+  `If-None-Match`), `GET /config/<pointer>` (RFC 6901, fit's messages), `POST /load`
+  (`application/json`, streamed in under `max_config_bytes`, 413/415, `If-Match` 412),
+  `GET /versions`, `GET /versions/{n}`; fit's guard (`Origin` 403 but for same-origin reads,
+  `Host` must be loopback). A load is detached and handed to the control thread as a `Job`
+  (bounded queue, 503 when full), which applies it and answers it. Answers are fit's JSON:
+  `{"version","etag","listeners_added","listeners_removed","warnings"}`, and config errors as
+  `{"error","errors":[{"path","line","column","message"}]}`.
+- `akit run`: with `admin`, the API is started after the listeners (`akit: admin API on ADDR`);
+  signals and loads share one bounded control channel, so the main loop applies both, one after
+  another: a load through `Runner::apply_text` (parse, compile, `Listeners::reload`, the access
+  log's level and zone), SIGHUP through the same `Runner::apply`, each as a new version
+  (`akit: reloaded FILE (config version N)`, `akit: loaded a config from the admin API (config
+  version N)`). A load that changes `admin` warns that it takes a restart; so do access log
+  changes, as before. On shutdown the API stops first and loads still queued get 503.
+- Tests: `akit-admin/tests/admin.rs` (10), fit's `admin_test.go` ported: load and read back
+  (whole, by pointer, by version, 304, HEAD, 404s, 405), comments kept as standard JSON, loads
+  refused (unknown field with fit's exact answer, a module that does not exist, an address in
+  use, wrong type, too large by length and chunked, unended JSON; 501 for I27's endpoints and dry
+  runs), `If-Match`, browsers refused, history, 8 concurrent loads with distinct versions, slow
+  and cut clients, the connection limit, listeners added and removed and the admin warning; unit
+  tests of the history, ETags, pointers and loopback hosts. `akit-config/tests/admin.rs` (4): the
+  fields, fit's address check, one file only, `load_files`; `value`'s unit tests.
+  `akit/tests/admin.rs`: `akit run` end to end, a load and a SIGHUP numbered in one history. The
+  gate's samples for the five fields.
+- Fuzzing: a new target, `config_value` (in CI beside the others): standardizing keeps the length
+  and the value, and a value written out parses back to itself; 3 million runs in 45 s, no crash.
+- Checked: `make check` on macOS; the tests of akit-config, akit-admin, akit, akit-compat,
+  akit-runtime and akit-listener on Linux (the benchmark host): io_uring all passing; epoll all
+  passing but I22's same-address replacement tests (`akit-listener` and `akit` `tests/reload.rs`),
+  which fail now and then on main `1a5fccf` too (1 run in 6 there, 1 in 3 here): a request reaches
+  the replaced listener in the moment before it stops accepting, and gets its graph's 404. The gate (`make compat-bless`): `admin` and four of its
+  fields supported; `examples/admin` now refused only for its Unix socket, `examples/console` for
+  `admin.console` and `admin.store`, and admin no longer refused in `bittorrent`, `metrics`,
+  `proxy` and the sync examples (fields refused 58 to 60, as `admin` splits into its subfields).
+- Differences from the plan and from fit:
+  - No Unix socket yet: akio's listeners take a `SocketAddr` only (akio API request A23).
+  - A load past `max_config_bytes` gets 413, but akio-http keeps reading the rest of the body
+    (dropped) and keeps the connection, where fit closes it (akio API request A24); the body
+    timeout bounds a slow client.
+  - fit's token and Unix socket tests are not ported (I27, A23); `TestWarnings`' access log and
+    limits warnings are not either: akit's warnings come from `akit run`'s own apply step.
+  - `PUT`/`PATCH`/`DELETE /config`, `POST /rollback/{n}`, `POST /reload` and `?dry_run=1` answer
+    501 until I27; `/config/effective` (providers) is I57 and reads as a pointer for now.
+  - The version history's `applied` is RFC 3339 in UTC with milliseconds; fit's is Go's
+    `time.Time` (nanoseconds, the local offset).
+- For I37 (metrics): `akit_admin::Options::metrics`, a writer `GET /metrics` answers with
+  (`METRICS_CONTENT_TYPE`; 404 when unset). At the merge, `akit run` passes I37's `Scrape::write`
+  there and calls `ConfigStats::reloaded` after each Admin API load (`Job::run` returns the
+  outcome, `None` when nothing was applied), as its SIGHUP reload does.
+- Benchmark: none (rule 24: the control plane).
 
 ### 2026-11-24: I20, passive health checks
 

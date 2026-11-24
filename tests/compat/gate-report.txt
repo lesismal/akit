@@ -1,7 +1,7 @@
 # The compatibility gate's report (docs/compatibility.md), written by make compat-bless;
 # do not edit. The gate fails when a run's outcomes differ from these lines.
 # fit 7daee573, fit-examples 9659d7e4.
-# 80 fixtures: 9 valid, 70 refused only as not supported yet (fields refused: 58), 0 in a format not supported yet, 1 skipped, 0 failed.
+# 80 fixtures: 9 valid, 70 refused only as not supported yet (fields refused: 60), 0 in a format not supported yet, 1 skipped, 0 failed.
 examples/acme-on-demand: not supported yet: acme
 examples/acme-on-demand: not supported yet: listeners[].tls.acme
 examples/acme-on-demand: not supported yet: listeners[].tls.on_demand
@@ -9,11 +9,10 @@ examples/acme-on-demand: not supported yet: routes[].middleware
 examples/acme-shared-storage: not supported yet: acme
 examples/acme-shared-storage: not supported yet: listeners[].tls.acme
 examples/acme-shared-storage: not supported yet: routes[].middleware
-examples/admin: not supported yet: admin
+examples/admin: not supported yet: admin.address: a Unix socket (akio API request A23)
 examples/auto-https: not supported yet: acme
 examples/auto-https: not supported yet: listeners: a config with no listeners, served over HTTPS by default (auto_https)
 examples/basic-auth: not supported yet: routes[].middleware
-examples/bittorrent: not supported yet: admin
 examples/bittorrent: not supported yet: bittorrent
 examples/bittorrent: not supported yet: media_auth
 examples/bittorrent: not supported yet: media_library
@@ -29,7 +28,8 @@ examples/client-cert: not supported yet: routes[].middleware
 examples/compress: not supported yet: routes[].middleware
 examples/concurrency-limit: not supported yet: routes[].middleware
 examples/concurrency-limit: not supported yet: upstreams[].response_timeout
-examples/console: not supported yet: admin
+examples/console: not supported yet: admin.console
+examples/console: not supported yet: admin.store
 examples/docker-compose: not supported yet: providers
 examples/fastcgi: not supported yet: routes[].handler<fastcgi>
 examples/forward-auth: not supported yet: routes[].middleware
@@ -73,7 +73,6 @@ examples/media-pages: not supported yet: routes[].handler<media_pages>
 examples/media-pages: not supported yet: routes[].handler<whep>
 examples/media-pages: not supported yet: routes[].handler<whip>
 examples/media-pages: not supported yet: webrtc
-examples/metrics: not supported yet: admin
 examples/metrics: not supported yet: metrics
 examples/mtls: not supported yet: acme
 examples/mtls: not supported yet: listeners[].tls.acme
@@ -83,7 +82,6 @@ examples/provider-consul-kv: not supported yet: providers
 examples/provider-docker: not supported yet: providers
 examples/provider-etcd: not supported yet: providers
 examples/provider-kubernetes: not supported yet: providers
-examples/proxy: not supported yet: admin
 examples/proxy: not supported yet: limits.max_conns
 examples/proxy: not supported yet: limits.max_header_bytes
 examples/proxy: not supported yet: limits.max_pending_bytes
@@ -108,29 +106,17 @@ examples/streaming: not supported yet: routes[].handler<httpflv>
 examples/streaming: not supported yet: routes[].handler<stream_whep>
 examples/streaming: not supported yet: routes[].handler<stream_whip>
 examples/streaming: not supported yet: streaming
-examples/sync-files-to-elasticsearch: not supported yet: admin
 examples/sync-files-to-elasticsearch: not supported yet: sync
-examples/sync-files-to-loki: not supported yet: admin
 examples/sync-files-to-loki: not supported yet: sync
-examples/sync-mqtt-to-influxdb: not supported yet: admin
 examples/sync-mqtt-to-influxdb: not supported yet: sync
-examples/sync-mqtt-to-tdengine: not supported yet: admin
 examples/sync-mqtt-to-tdengine: not supported yet: sync
-examples/sync-mssql-to-kafka: not supported yet: admin
 examples/sync-mssql-to-kafka: not supported yet: sync
-examples/sync-mysql-to-doris: not supported yet: admin
 examples/sync-mysql-to-doris: not supported yet: sync
-examples/sync-mysql-to-postgres: not supported yet: admin
 examples/sync-mysql-to-postgres: not supported yet: sync
-examples/sync-postgres-to-kafka: not supported yet: admin
 examples/sync-postgres-to-kafka: not supported yet: sync
-examples/sync-postgres-to-nats: not supported yet: admin
 examples/sync-postgres-to-nats: not supported yet: sync
-examples/sync-postgres-to-vectors: not supported yet: admin
 examples/sync-postgres-to-vectors: not supported yet: sync
-examples/sync-pulsar-to-elasticsearch: not supported yet: admin
 examples/sync-pulsar-to-elasticsearch: not supported yet: sync
-examples/sync-rabbitmq-to-kafka: not supported yet: admin
 examples/sync-rabbitmq-to-kafka: not supported yet: sync
 examples/sync-wasm-codec: not supported yet: sync
 examples/sync-wasm-sink: not supported yet: sync

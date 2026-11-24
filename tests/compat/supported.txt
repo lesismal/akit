@@ -113,3 +113,13 @@ access_log.buffer_bytes
 access_log.level
 access_log.format
 access_log.time_zone
+
+# I26: the Admin API (GET /config, POST /load, GET /versions), on a loopback address: a host that
+# is not loopback needs token_file and TLS (I27); a Unix socket (unix/<path>) waits on akio API
+# request A23; the token, TLS, access lists, store, console and the rest are refused as not
+# supported yet.
+admin
+admin.address
+admin.history
+admin.max_config_bytes
+admin.max_conns

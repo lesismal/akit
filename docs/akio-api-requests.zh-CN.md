@@ -40,6 +40,8 @@
 | A20 | HTTP 客户端响应边到达边交付，可暂停和恢复读取 | 已提出（I16） | 5、8 | I16、I17、I18、I67 |
 | A21 | 服务端请求可暂停其客户端的读取，并在客户端排空时得到通知 | 已提出（I16） | 5、8 | I16、I47、I75 |
 | A22 | 在运行中的引擎上移除和排空 UDP 监听器 | 已提出（I22） | 10、11 | I22、I28 |
+| A23 | Unix 域流式监听器（可设套接字文件权限） | 已提出（I26） | 11 | I26、I29 |
+| A24 | 关闭连接的 HTTP/1 响应，并停止读取已拒绝的请求体 | 已提出（I26） | 7、10、11 | I26、I41 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -402,3 +404,39 @@ UDP：不再接收新对端，对已有的调用 `on_shutdown`，到期关闭剩
 
 **akit 的用法。** `akit_listener::Listeners::reload`（I22、I28）像移除 TCP 一侧那样移除并排空监听器的 HTTP/3，
 `ReloadError::Udp` 的拒绝随之去掉。
+
+## A23 Unix 域流式监听器
+
+**问题。** `admin.address` 为 `unix/<path>` 时，fit 的 Admin API 监听 Unix 套接字（权限设为 0600，替换残留的
+套接字文件，拒绝仍在使用的），这样只有属主的进程能访问，无需端口和令牌。akio 的监听器只接受 `SocketAddr`：TCP 或 UDP。
+在 akio 支持之前，akit 把 `unix/` 地址作为尚不支持拒绝。
+
+**证据。** `crates/akio/src/lib.rs`（`a9a620ab`）：`Listener::tcp(SocketAddr)`、
+`Listener::tcp_from_std(std::net::TcpListener)`、`Listener::udp(SocketAddr)`；没有 Unix 域监听器，
+`Conn::peer_addr` 是 `SocketAddr`。
+
+**建议的 API。** `Listener::unix(path)`（以及 `Listener::unix_from_std(UnixListener)`），服务同样的 acceptor
+（akio-http 的 `serve`），其连接的对端地址为占位值或枚举；监听前设置套接字文件的权限（`Listener::mode(0o600)`），
+残留文件由调用方或某个选项删除。支持 epoll、kqueue 和 io_uring。
+
+**akit 的用法。** `admin.address` 为 `unix/<path>` 时，`akit_admin::Server::start` 在该路径上监听，与 fit 的
+`admin.Start` 一样；那里不检查 Host，与 fit 一样。文件提供者的控制套接字（I29）也可能用到。
+
+## A24 关闭连接的 HTTP/1 响应
+
+**问题。** 服务在读完请求体之前拒绝请求（流式读取中发现请求体超限而回 413，或流式路由上 `Content-Length` 已经超限），
+无法在回答后关闭连接：akio-http 只根据请求决定是否保持连接，继续读取请求体的剩余部分（交给没人读的 sink 或丢弃），
+并保留连接等待下一个请求。服务设置的 `Connection: close` 会被发出，但不生效。fit 的 Admin API 会关闭这样的连接
+（Go 的 `MaxBytesReader`），客户端无法让服务器读取它已拒绝的无限长请求体；在 akio-http 下唯一的限制是请求体超时，
+发送快的客户端永远触发不了。
+
+**证据。** `crates/akio-http/src/session.rs`（`a9a620ab`）：`keep_alive` 来自请求的 `Connection` 和版本；
+`State::Stream` 在响应之后仍继续交付数据块；`crates/akio-http/src/message.rs` 的 `Response::encode` 原样写出服务的
+`Connection` 字段，`Responder::send` 只在 `!keep_alive` 时关闭连接。
+
+**建议的 API。** 响应带 `Connection: close` 时生效（发送后关闭，并停止读取请求体），或提供
+`Context::close_after_response()` / `Detached::close_after(..)`；对流式请求体，提供让 sink 停止交付的方法
+（`ctx.stop_body()`），之后响应发出即关闭连接。
+
+**akit 的用法。** Admin API 对超过 `max_config_bytes` 的加载回 413（I26）后关闭连接，与 fit 一样；I41 在数据面上的
+大小限制同样如此。
