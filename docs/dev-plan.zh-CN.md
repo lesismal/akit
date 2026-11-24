@@ -107,7 +107,8 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I14 | 基于 HTTP/1 客户端的上游连接池 | I04 | done |
 | I15 | 反向代理 I：请求与头处理 | I11, I14 | done |
 | I16 | 反向代理 II：流式 body 与联动背压 | I15 | done |
-| I17 | 反向代理 III：超时、取消、trailer | I16 | todo |
+| I17 | 反向代理 III：超时、取消、trailer | I16 | done |
+| I17b | 反向代理 III b：响应头与空闲超时、响应头之前的取消、写停滞 | I17、akio A36–A38 | todo |
 | I18 | HTTP/2 与 h2c 上游 | I17 | todo |
 | I19 | 负载均衡 v1 | I14 | done |
 | I20 | 被动健康检查 | I19 | done |
@@ -194,7 +195,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | 路由 v1：按主机和路径查找 | I11 | 否 | 否（已实现，未测） | 查找的微基准（不分配内存），以及路由较多时 fixed 对比 I05 线性扫描的同轮 A/B。 |
 | 静态文件 | I12、I13 | 否 | 否（已实现，未测） | static 场景，HTTP/1.1 和 h2c（基线中 akit 跳过）；预压缩文件和大文件的 `sendfile`。 |
 | 上游连接池 | I14 | 否 | 否（已实现，未测） | 通过 proxy 场景测：连接复用，连接数受限时等待连接。 |
-| 反向代理：HTTP/1.1、流式请求体、h2 和 h2c 上游 | I15–I18 | 否 | 否（已实现到 I16，未测量；h2 上游属于 I18） | proxy 场景，HTTP/1.1 和 h2c（基线中 akit 跳过）；双向大请求体，及每个进行中请求占用的内存；h2 上游。 |
+| 反向代理：HTTP/1.1、流式请求体、h2 和 h2c 上游 | I15–I18 | 否 | 否（已实现到 I17，未测量；h2 上游属于 I18） | proxy 场景，HTTP/1.1 和 h2c（基线中 akit 跳过）；双向大请求体，及每个进行中请求占用的内存；带 trailer 的请求（I17 每个请求解析 `Trailer`）；h2 上游。 |
 | 负载均衡 v1 和 v2 | I19、I36 | 否 | 否（尚未实现） | 每种策略选择的微基准，1 线程和 16 线程；对比单个服务器的 proxy A/B。 |
 | 被动健康检查 | I20 | 否 | 否（已实现，未测） | 请求路径上记录结果的微基准。 |
 | 访问日志 | I21 | 否 | 否（已实现，未测） | fixed 和 proxy 开关日志的同轮 A/B（json，以及 text 或 line），写文件和写 `/dev/null`；默认 4 MiB 缓冲、磁盘慢时满负载下丢弃的行数；每个请求的开销（装箱的响应过滤器、分片锁、格式化）。 |
@@ -378,6 +379,15 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
   trailer。
 - **完成标准**：移植过来的 fit HTTP/1.1 代理一致性测试套件通过。
 - **涉及**：`akit-proxy`、`akit-upstream`。
+- **拆分**：akio 还做不到的部分移到 I17b。
+
+### I17b 反向代理 III b：响应头与空闲超时、响应头之前的取消、写停滞
+
+- **做什么**：上游的 `response_header_timeout` 和 `response_idle_timeout`（akio API 请求 A36）；客户端在响应头之前
+  离开、或经 HTTP/1 在上传中途离开时取消上游请求（A37、A38）；`limits.write_stall_timeout`，重载时也生效（A38）。
+- **完成标准**：移植过来的 fit `TestResponseHeaderTimeout`、`TestResponseIdleTimeout` 和 `TestClientAbort` 的其余
+  部分通过。
+- **涉及**：`akit-proxy`、`akit-upstream`、`akit-listener`、`akit-config`。
 
 ### I18 HTTP/2 与 h2c 上游
 

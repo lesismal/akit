@@ -706,6 +706,11 @@ fn supported_fields_are_read() {
             |c| proxy_of(c).host_header == "internal.svc",
         ),
         (
+            "routes[].handler<proxy>.params.timeout",
+            proxy(r#", "timeout": "45s""#),
+            |c| proxy_of(c).timeout == Some(std::time::Duration::from_secs(45)),
+        ),
+        (
             "routes[].middleware",
             rewrite(r#""add_prefix": "/v2""#),
             |c| c.routes[0].middleware.len() == 1,
@@ -891,6 +896,11 @@ fn supported_fields_are_read() {
             "upstreams[].fail_timeout",
             upstream(r#", "fail_timeout": "30s""#),
             |c| c.upstreams[0].fail_timeout == std::time::Duration::from_secs(30),
+        ),
+        (
+            "upstreams[].response_timeout",
+            upstream(r#", "response_timeout": "2m""#),
+            |c| c.upstreams[0].response_timeout == std::time::Duration::from_secs(120),
         ),
     ];
     let marked = supported().unwrap();

@@ -217,7 +217,7 @@ fn load_balancing() {
 fn what_akit_lacks_is_not_supported_yet() {
     let e = errs(&one(
         r#""addresses": ["a:1"], "protocol": "h2c", "load_balancing": "p2c", "hash_key": "x",
-           "health_check": {}, "response_timeout": "1s""#,
+           "health_check": {}, "response_idle_timeout": "1s""#,
     ));
     assert!(e.only_not_supported_yet(), "{e}");
     let paths: Vec<&str> = e.as_slice().iter().map(|e| e.path.as_str()).collect();
@@ -228,7 +228,7 @@ fn what_akit_lacks_is_not_supported_yet() {
             "upstreams[0].load_balancing",
             "upstreams[0].hash_key",
             "upstreams[0].health_check",
-            "upstreams[0].response_timeout",
+            "upstreams[0].response_idle_timeout",
         ]
     );
 }
@@ -257,6 +257,24 @@ fn upstreams_are_joined_across_files() {
     );
     let c = from_sources(&srcs[..1]).unwrap();
     assert_eq!(c.upstreams.len(), 1);
+}
+
+/// `response_timeout` (I17): fit's 1h when left out or 0.
+#[test]
+fn response_timeout() {
+    let u = &ok(&one(r#""addresses": ["a:1"]"#)).upstreams[0];
+    assert_eq!(u.response_timeout, Duration::from_secs(3600));
+    assert_eq!(
+        akit_config::DEFAULT_RESPONSE_TIMEOUT,
+        Duration::from_secs(3600)
+    );
+    let u = &ok(&one(r#""addresses": ["a:1"], "response_timeout": "2m""#)).upstreams[0];
+    assert_eq!(u.response_timeout, Duration::from_secs(120));
+    let u = &ok(&one(r#""addresses": ["a:1"], "response_timeout": "0s""#)).upstreams[0];
+    assert_eq!(u.response_timeout, Duration::from_secs(3600));
+    let p = problems(&one(r#""addresses": ["a:1"], "response_timeout": "-1s""#));
+    assert_eq!(p.len(), 1, "{p:?}");
+    assert!(p[0].starts_with("upstreams[0].response_timeout: "), "{p:?}");
 }
 
 #[test]

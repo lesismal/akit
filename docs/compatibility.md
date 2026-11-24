@@ -175,7 +175,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 102 supported.
+3821 fields in 121 sections, at fit `7daee573`; 104 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -195,7 +195,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`http.handlers/httpflv`](#fields-http-handlers-httpflv) | 6 | 0 | 6 |
 | [`http.handlers/media_pages`](#fields-http-handlers-media-pages) | 29 | 0 | 29 |
 | [`http.handlers/media_tokens`](#fields-http-handlers-media-tokens) | 11 | 0 | 11 |
-| [`http.handlers/proxy`](#fields-http-handlers-proxy) | 20 | 5 | 15 |
+| [`http.handlers/proxy`](#fields-http-handlers-proxy) | 20 | 6 | 14 |
 | [`http.handlers/respond`](#fields-http-handlers-respond) | 5 | 5 | 0 |
 | [`http.handlers/static`](#fields-http-handlers-static) | 16 | 13 | 3 |
 | [`http.handlers/stream_whep`](#fields-http-handlers-stream-whep) | 5 | 0 | 5 |
@@ -298,9 +298,9 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`sync.transforms/wasm`](#fields-sync-transforms-wasm) | 9 | 0 | 9 |
 | [`telemetry`](#fields-telemetry) | 14 | 0 | 14 |
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
-| [`upstreams`](#fields-upstreams) | 38 | 13 | 25 |
+| [`upstreams`](#fields-upstreams) | 38 | 14 | 24 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 102 | 3719 |
+| **Total** | 3821 | 104 | 3717 |
 
 <a id="fields-access"></a>
 
@@ -879,7 +879,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `routes[].handler<proxy>.params.retry.budget_ratio` | `number` | not supported yet |
 | `routes[].handler<proxy>.params.retry.statuses` | `array<integer>` | not supported yet |
 | `routes[].handler<proxy>.params.splice_uploads` | `boolean` | not supported yet |
-| `routes[].handler<proxy>.params.timeout` | `duration` | not supported yet |
+| `routes[].handler<proxy>.params.timeout` | `duration` | supported |
 | `routes[].handler<proxy>.params.trusted_proxies` | `array<string>` | supported |
 | `routes[].handler<proxy>.params.tunnel_idle_timeout` | `duration` | not supported yet |
 | `routes[].handler<proxy>.params.upstream` | `string` | supported |
@@ -4875,7 +4875,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `upstreams[].protocol` | `enum(http/1.1\|h2c\|h2)` | supported |
 | `upstreams[].response_header_timeout` | `duration` | not supported yet |
 | `upstreams[].response_idle_timeout` | `duration` | not supported yet |
-| `upstreams[].response_timeout` | `duration` | not supported yet |
+| `upstreams[].response_timeout` | `duration` | supported |
 | `upstreams[].sticky_cookie` | `object` | not supported yet |
 | `upstreams[].sticky_cookie.max_age` | `duration` | not supported yet |
 | `upstreams[].sticky_cookie.name` | `string` | not supported yet |

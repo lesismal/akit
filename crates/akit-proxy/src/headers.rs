@@ -280,6 +280,31 @@ fn join(list: &mut String, value: &str) {
     list.push_str(value);
 }
 
+/// The trailer fields `h` announces in its `Trailer` fields, in the order and case given, each
+/// once: fit's `trailerNames`. Names that are no token are passed over.
+pub(crate) fn trailer_names(h: &Headers) -> Vec<String> {
+    let mut names: Vec<String> = Vec::new();
+    for value in h.get_all("trailer") {
+        for name in value.split(',').map(|n| n.trim_matches([' ', '\t'])) {
+            if valid_token(name) && !names.iter().any(|n| n.eq_ignore_ascii_case(name)) {
+                names.push(name.to_owned());
+            }
+        }
+    }
+    names
+}
+
+/// The fields of `trailers` that `names` announced: fit's `announcedTrailer`.
+pub(crate) fn announced(trailers: &Headers, names: &[String]) -> Headers {
+    let mut h = Headers::new();
+    for (name, value) in trailers.iter() {
+        if names.iter().any(|n| n.eq_ignore_ascii_case(name)) {
+            h.append(name, value);
+        }
+    }
+    h
+}
+
 /// The fields of the client's response for the upstream's `upstream`: in the upstream's order
 /// and case, without the hop-by-hop ones and those its `Connection` names, and without
 /// `Content-Length`, which the response's own framing gives, unless `keep_length` (a response to
@@ -553,5 +578,22 @@ mod tests {
             ("Transfer-Encoding", "chunked"),
         ]);
         assert_eq!(lines(&incoming(&h, false)), "kept: 4\n");
+    }
+
+    /// fit's `trailerNames` and `announcedTrailer`: the names announced, once each, in any case,
+    /// and the trailers of those names alone.
+    #[test]
+    fn trailers() {
+        let h = headers(&[
+            ("Trailer", "X-Sum, x-check"),
+            ("X-Other", "1"),
+            ("trailer", " X-SUM ,,X-Late\t, bad name"),
+        ]);
+        let names = trailer_names(&h);
+        assert_eq!(names, ["X-Sum", "x-check", "X-Late"]);
+        assert!(trailer_names(&headers(&[("X-Other", "1")])).is_empty());
+        let t = headers(&[("x-sum", "3"), ("X-Unannounced", "no"), ("X-CHECK", "ok")]);
+        assert_eq!(lines(&announced(&t, &names)), "x-sum: 3\nX-CHECK: ok\n");
+        assert!(announced(&t, &[]).is_empty());
     }
 }

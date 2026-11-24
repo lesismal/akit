@@ -206,6 +206,11 @@ pub struct Upstream {
     /// `fail_timeout`: the window `max_fails` are counted in, and how long an address that
     /// reached them stays out. [`DEFAULT_FAIL_TIMEOUT`] when left out or 0.
     pub fail_timeout: Duration,
+    /// `response_timeout`: how long a whole exchange may take, from the request's start, waiting
+    /// for a connection included, to the end of its response's body: one past it before its
+    /// response began is answered 504, and one past it later is cut short.
+    /// [`DEFAULT_RESPONSE_TIMEOUT`] when left out or 0.
+    pub response_timeout: Duration,
 }
 
 impl Upstream {
@@ -260,6 +265,8 @@ pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 pub const DEFAULT_MAX_FAILS: usize = 1;
 /// fit's default `fail_timeout`.
 pub const DEFAULT_FAIL_TIMEOUT: Duration = Duration::from_secs(10);
+/// fit's default `response_timeout`.
+pub const DEFAULT_RESPONSE_TIMEOUT: Duration = Duration::from_secs(3600);
 
 /// One address akit listens on.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -630,6 +637,10 @@ pub struct Proxy {
     pub trusted_proxies: Vec<Network>,
     /// `host_header`: the `Host` sent upstream; the client's when empty.
     pub host_header: String,
+    /// `timeout`: the most a request may take, from when the proxy takes it to the end of its
+    /// response: one past it before its response began is answered 504, and one whose response
+    /// is under way is cut short. None when left out or 0.
+    pub timeout: Option<Duration>,
 }
 
 /// An IP network, as fit's `netip.Prefix`: an address alone is a network of one.
@@ -870,16 +881,15 @@ const STATIC_FIELDS: &[&str] = &[
 // max_cache_bytes and default_type wait on akio API requests A15 and A14; compress (copies
 // compressed in memory) on I47's compression.
 const STATIC_FIT_ONLY: &[&str] = &["max_cache_bytes", "compress", "default_type"];
-const PROXY_FIELDS: &[&str] = &["upstream", "trusted_proxies", "host_header"];
-// upstreams, failover and mirror come with I19 and later; retry and timeout with I17 and I45;
-// tunnel_idle_timeout with I49; splice_uploads with I16's streamed bodies.
+const PROXY_FIELDS: &[&str] = &["upstream", "trusted_proxies", "host_header", "timeout"];
+// upstreams, failover and mirror come with I46; retry with I45; tunnel_idle_timeout with I49;
+// splice_uploads (splice(2), which needs unsafe or an akio API) is not planned yet.
 const PROXY_FIT_ONLY: &[&str] = &[
     "upstreams",
     "failover",
     "mirror",
     "retry",
     "tunnel_idle_timeout",
-    "timeout",
     "splice_uploads",
 ];
 const UPSTREAM_FIELDS: &[&str] = &[
@@ -895,7 +905,9 @@ const UPSTREAM_FIELDS: &[&str] = &[
     "load_balancing",
     "max_fails",
     "fail_timeout",
+    "response_timeout",
 ];
+// response_header_timeout and response_idle_timeout wait on akio API request A36 (I17b).
 const UPSTREAM_FIT_ONLY: &[&str] = &[
     "hash_key",
     "sticky_cookie",
@@ -906,7 +918,6 @@ const UPSTREAM_FIT_ONLY: &[&str] = &[
     "tls_key_file",
     "response_header_timeout",
     "response_idle_timeout",
-    "response_timeout",
     "health_check",
 ];
 
@@ -2239,6 +2250,7 @@ fn proxy(d: &mut Decoder<'_>, params: Option<&Node>, path: &str, off: usize) -> 
         upstream: String::new(),
         trusted_proxies: Vec::new(),
         host_header: String::new(),
+        timeout: None,
     };
     let upstream_path = crate::error::join_field(path, "upstream");
     let Some(n) = params else {
@@ -2276,6 +2288,10 @@ fn proxy(d: &mut Decoder<'_>, params: Option<&Node>, path: &str, off: usize) -> 
             ok = false;
             d.error(v.off, &at, format!("{:?} is not a host", p.host_header));
         }
+    }
+    if let Some(v) = o.take("timeout") {
+        // 0, as leaving it out, is no timeout.
+        p.timeout = d.duration(v, &o.at("timeout")).filter(|t| !t.is_zero());
     }
     // Leaving both out is fit's error; upstreams alone is refused as not supported yet.
     let upstreams = o.has("upstreams");
@@ -2352,6 +2368,7 @@ fn upstream(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Upstream> {
     let idle_timeout = duration(d, "idle_timeout", DEFAULT_IDLE_TIMEOUT);
     let connect_timeout = duration(d, "connect_timeout", DEFAULT_CONNECT_TIMEOUT);
     let fail_timeout = duration(d, "fail_timeout", DEFAULT_FAIL_TIMEOUT);
+    let response_timeout = duration(d, "response_timeout", DEFAULT_RESPONSE_TIMEOUT);
     // 0 keeps every address in rotation: only leaving it out means the default.
     let max_fails = count(d, &mut o, "max_fails", 0).unwrap_or(DEFAULT_MAX_FAILS);
     let weights_at = o.take("weights").map(|v| {
@@ -2437,6 +2454,7 @@ fn upstream(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Upstream> {
         load_balancing,
         max_fails,
         fail_timeout,
+        response_timeout,
     })
 }
 

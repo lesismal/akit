@@ -19,7 +19,7 @@ fn reads() {
     let c = from_json(
         &config(
             r#"{"upstream": "app", "trusted_proxies": ["10.1.2.3/8", "::1", "::ffff:192.0.2.1"],
-                "host_header": "internal.svc:8080"}"#,
+                "host_header": "internal.svc:8080", "timeout": "1m30s"}"#,
         ),
         None,
     )
@@ -31,6 +31,18 @@ fn reads() {
     assert_eq!(p.host_header, "internal.svc:8080");
     let nets: Vec<String> = p.trusted_proxies.iter().map(ToString::to_string).collect();
     assert_eq!(nets, ["10.0.0.0/8", "::1/128", "192.0.2.1/32"]);
+    assert_eq!(p.timeout, Some(std::time::Duration::from_secs(90)));
+    // Left out, or 0: none (I17).
+    for params in [
+        r#"{"upstream": "app"}"#,
+        r#"{"upstream": "app", "timeout": "0s"}"#,
+    ] {
+        let c = from_json(&config(params), None).unwrap();
+        let Handler::Proxy(p) = &c.routes[0].handler else {
+            unreachable!()
+        };
+        assert_eq!(p.timeout, None, "{params}");
+    }
 }
 
 #[test]
@@ -47,6 +59,10 @@ fn errors() {
         (
             r#"{"trusted_proxies": []}"#,
             "routes[0].handler.params.upstream: upstream or upstreams is needed",
+        ),
+        (
+            r#"{"upstream": "app", "timeout": "soon"}"#,
+            r#"routes[0].handler.params.timeout: "soon" is not a duration"#,
         ),
         (
             r#"{"upstream": "app", "nope": 1}"#,
@@ -66,7 +82,6 @@ fn not_supported_yet() {
         r#""mirror": {"upstream": "app"}"#,
         r#""retry": {}"#,
         r#""tunnel_idle_timeout": "1m""#,
-        r#""timeout": "60s""#,
         r#""splice_uploads": false"#,
     ] {
         let name = field.split('"').nth(1).unwrap();

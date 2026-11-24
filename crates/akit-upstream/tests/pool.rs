@@ -454,3 +454,41 @@ fn bad_targets_and_timeouts() {
     assert_eq!(settled(&pool), 0);
     up.release();
 }
+
+/// The upstream's `response_timeout` (I17) bounds each exchange; a request may ask for less, and
+/// asking for more does not lift it.
+#[test]
+fn response_timeout() {
+    let up = Upstream::start(true);
+    let pool = Pool::new(
+        &upstream(&[up.addr.to_string()], r#""response_timeout": "300ms""#),
+        EngineSlot::with(engine()),
+    );
+    assert_eq!(pool.response_timeout(), Duration::from_millis(300));
+    for (asked, least, most) in [
+        (None, 250, 3000),
+        (Some(3_600_000), 250, 3000),
+        (Some(100), 50, 280),
+    ] {
+        let (tx, rx) = channel();
+        let mut req = ClientRequest::get("/");
+        if let Some(ms) = asked {
+            req = req.timeout(Duration::from_millis(ms));
+        }
+        let start = Instant::now();
+        pool.request(req, move |r| {
+            let _ = tx.send(r);
+        });
+        let r = rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        let took = start.elapsed();
+        assert!(
+            matches!(r, Err(Error::Client(ClientError::Timeout))),
+            "{asked:?}: {r:?}"
+        );
+        assert!(
+            took >= Duration::from_millis(least) && took < Duration::from_millis(most),
+            "{asked:?}: {took:?}"
+        );
+    }
+    up.release();
+}

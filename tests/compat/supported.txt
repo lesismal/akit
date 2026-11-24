@@ -83,13 +83,19 @@ upstreams[].load_balancing
 upstreams[].max_fails
 upstreams[].fail_timeout
 # I15: the proxy handler: its upstream, trusted proxies and Host. Its other params (upstreams,
-# failover, mirror, retry, timeout, tunnel_idle_timeout, splice_uploads) are refused as not
-# supported yet (I16, I17, I19, I45, I49).
+# failover, mirror, retry, tunnel_idle_timeout, splice_uploads) are refused as not supported yet
+# (I45, I46, I49).
 routes[].handler<proxy>
 routes[].handler<proxy>.params
 routes[].handler<proxy>.params.upstream
 routes[].handler<proxy>.params.trusted_proxies
 routes[].handler<proxy>.params.host_header
+#
+# I17: timeouts: the proxy's own and the upstream's whole-exchange timeout (504 before the
+# response began, cut short after). response_header_timeout and response_idle_timeout wait on
+# akio API request A36 (I17b).
+routes[].handler<proxy>.params.timeout
+upstreams[].response_timeout
 #
 # I39: route matchers v2: path regexps (akio-regex, Go's syntax but for what akio-regex lacks:
 # Unicode classes, POSIX classes, \Q...\E), methods, headers, query parameters, remote IPs and

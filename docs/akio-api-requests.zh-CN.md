@@ -47,6 +47,9 @@
 | A32 | `akio-regex` 模式在哪里匹配、它的分组，以及替换 | 已提出（I40） | 19 | I40、I48 |
 | A33 | 被中间件修改的请求字段和请求目标（`Context::req_mut`） | 已提出（I40） | 12、19 | I40、I43、I44 |
 | A35 | 按长度分帧的流式 HTTP/1.1 响应 | 已提出（I16） | 5 | I16、I67 |
+| A36 | HTTP 客户端请求的响应头超时和空闲超时 | 已提出（I17） | 10 | I17b、I18 |
+| A37 | 可在任意时刻取消的 HTTP 客户端请求 | 已提出（I17） | 3 | I17b、I45 |
+| A38 | 能得知客户端离开的分离服务端请求；可在运行时修改的写停滞超时 | 已提出（I17） | 3、10 | I17b、I49 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -553,3 +556,67 @@ akio 读取请求的地方（`Files` 的条件请求和范围请求字段、`pat
 
 **akit 的用法。** I16 的代理把长度已知、超过 64 KiB 的响应流式发给 HTTP/1.1 客户端时带上它的 `Content-Length`（现在
 按 chunked 发送，去掉该字段：记录在 I16 的进度条目中）。缓存（I67）在边读边提供已存储的响应时也会用到。
+
+## A36 HTTP 客户端请求的响应头超时和空闲超时
+
+**问题。** fit 用三种方式限制一次上游交换（它的 `response_header_timeout`、`response_idle_timeout` 和
+`response_timeout`）：上游开始响应最多可用多久（超过则 504），响应体中途最多可静默多久（超过则截断响应），以及整个
+交换。akio 的 HTTP/1 客户端只有最后一种（`ClientRequest::timeout`，对 `request_with` 计到 `on_end` 为止）：代理无法
+对迟迟不开始响应的上游回答 504 而又让长下载继续，也无法在整整一小时到期前切断中途停滞的上游。akit 在 I/O 线程上没有
+自己的定时器可用（akio 的定时器是内部的），而 akit 自己的定时器线程还需要在响应头到来前取消请求，akio 同样做不到
+（A37）。
+
+**证据。** `crates/akio-http/src/client.rs`（`60547435`）：`ClientRequest` 只有 `timeout`；`ClientError::Timeout`
+是唯一的超时错误。ADR-101 写明流式响应“没有空闲间隔超时”。
+
+**建议的 API。** `ClientRequest::header_timeout(d)`：从请求头写出（流式请求体可能仍在发送）到响应头到达；超过则请求以
+`ClientError::Timeout`（或 `HeaderTimeout` 类）失败并关闭其连接。`ClientRequest::idle_timeout(d)`：两次读取响应体
+之间的最长间隔；超过则以同样的错误调用 `on_error` 并关闭连接。两者都适用于 `request`、`request_with` 和
+`request_streamed`，`H2Client` 也一样（I18）。响应体被挂起（`ResponseBody::hold_reads`）的时间不算空闲：是客户端自己
+选择停止读取。
+
+**akit 的用法。** I17b：上游的 `response_header_timeout` 和 `response_idle_timeout`（fit 的默认值 60s）设到每个
+被代理的请求上；响应头超时回答 504，空闲超时像中途断开那样截断响应（对 HTTP/2 和 HTTP/3 上未声明长度的响应体，用
+I17 的 `Fit-Error` 尾部字段结束）。
+
+## A37 可在任意时刻取消的 HTTP 客户端请求
+
+**问题。** 客户端离开时，代理放弃它的上游请求（fit 的 `OnCancel`）。akio 的客户端在响应头到来后可以放弃响应
+（`ResponseBody::cancel`），流式请求可以通过丢弃未完成的 `RequestBody` 放弃；但请求体整体发出的请求（大多数请求）在
+响应头到来前没有句柄：`Client::request` 和 `request_with` 什么也不返回。上游还在处理时离开的客户端，会让上游继续工作，
+并占着 akit 的一条连接和一个 `max_conns` 名额，直到上游回答或 `response_timeout` 到期（默认 1h）。
+
+**证据。** `crates/akio-http/src/client.rs`（`60547435`）：`request`、`request_with` 和 `request_streamed` 返回
+`()`；`ResponseBody::cancel` 随 `on_head` 才到。
+
+**建议的 API。** `request_with`（和 `request`）返回 `RequestHandle`（`Clone + Send`），带 `cancel()`：请求发出前
+取消则直接丢弃；发出后则关闭其连接（HTTP/2 上重置其流）；处理器收到一次 `on_error(ClientError::Cancelled)`，除非它已
+收到 `on_end` 或 `on_error`。从别的线程取消时投递到连接的 I/O 线程，和 `ResponseBody::cancel` 一样。
+
+**akit 的用法。** I17b：代理把句柄和它的应答放在一起，在客户端离开时取消（A38）；I45 的重试用它取消放弃的那次尝试。
+
+## A38 能得知客户端离开的分离服务端请求；可在运行时修改的写停滞超时
+
+**问题。** 服务端的两个缺口，都与离开或停下的客户端有关：
+
+1. 分离的请求（`Context::detach`）在写之前得不到客户端离开的任何消息：等待上游响应头的代理无法为已离开的客户端取消
+   上游请求（A37）。更糟的是，在 HTTP/1 上，请求体流式到达（`BodyMode::Stream`）的请求在连接关闭时仍保留其请求体
+   接收器：HTTP/1 会话把请求的上下文（也就包括接收器）放在它的状态里，而只要分离的应答还握着连接，会话就一直存在，
+   所以接收器既没有得到通知，也没有被丢弃。HTTP/2 会丢弃已关闭连接的流以及它们的接收器，akit 的代理（I17）正是靠这个
+   取消 h2 或 h3 客户端的上传；中途离开的 HTTP/1 上传客户端要到交换结束才会被察觉。
+2. fit 的 `write_stall_timeout`（30s）：响应等待客户端取走已发送内容的最长时间。akio 的 `Config::write_timeout`
+   正是这个界限（有输出排队而一字节也写不出），但它属于整个引擎，构建时固定（`Live` 能改 `idle_timeout` 等，不能改它）：
+   akit 无法在重载时应用配置的值。
+
+**证据。** `crates/akio-http/src/session.rs`（`60547435`）：`Session::on_close` 保留 `State::Stream { ctx, .. }`
+不动；`h2.rs` 的 `on_close` 会清空流。`context.rs`：`Detached` 只有 `respond` 和 `stream_response`。`akio-core` 的
+`telemetry::Live` 没有 `set_write_timeout`。由 akit 的 `failure.rs` 中客户端中途离开上传的测试发现（I17）。
+
+**建议的 API。** (1) `Detached::on_gone(f)`（分离前为 `Context::on_gone`）：请求的连接关闭、或其流在响应完成前被
+重置时，`f` 在连接的 I/O 线程上运行一次；如果已经发生则立即运行。HTTP/1 会话在连接关闭时丢弃流式请求的接收器（或以
+`BodyEvent::Aborted` 结束它），和 HTTP/2 一样。(2) `Live::set_write_timeout(Option<Duration>)`，与 `idle_timeout`
+相同。
+
+**akit 的用法。** I17b：代理注册 `on_gone` 来取消上游请求（A37），且不把它计为上游的失败，补上 fit 的
+`TestClientAbort` 中“响应头之前”和 HTTP/1“上传中途”两种情况；`limits.write_stall_timeout` 在启动和重载时设置引擎的
+写超时。I49 的 WebSocket 和隧道转发也用同样的方式得知客户端离开。
