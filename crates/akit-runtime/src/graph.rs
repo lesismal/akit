@@ -86,8 +86,8 @@ pub struct Graph {
     /// Per listener, in the order of `listeners`: its TLS, loaded from its files, when it has
     /// `tls` (its certificates, served per handshake through [`crate::ListenerCerts`]).
     tls: Vec<Option<akit_tls::ListenerTls>>,
-    /// The SHA-256 of every certificate, key and authority file its listeners loaded, by path:
-    /// what `run -watch-certs` compares the files with (I30).
+    /// The SHA-256 of every certificate, key and authority file its listeners (I30) and its h2
+    /// upstreams (I54) loaded, by path: what `run -watch-certs` compares the files with.
     cert_files: std::collections::BTreeMap<String, akit_tls::Sum>,
     /// The env's ACME manager, when it has one (I31): it outlives the graph, and once the graph
     /// is current it is told to manage `acme_names`.
@@ -170,7 +170,8 @@ impl Graph {
         &self.acme_names
     }
 
-    /// The SHA-256 of every certificate, key and authority file the listeners loaded, by path.
+    /// The SHA-256 of every certificate, key and authority file the listeners and the h2
+    /// upstreams loaded, by path.
     #[must_use]
     pub fn cert_files(&self) -> &std::collections::BTreeMap<String, akit_tls::Sum> {
         &self.cert_files
@@ -360,11 +361,33 @@ pub fn compile(
     let mut modules = Modules::new();
     // What the graph takes from the metrics registry, given back when it is retired (I37).
     let mut lease = env.metrics().map(akit_observe::metrics::Metrics::lease);
+    let mut errors = Vec::new();
+    // The files the upstreams' TLS was read from (I54), watched with the listeners'.
+    let mut upstream_files = std::collections::BTreeMap::new();
     let upstreams: Vec<Pool> = config
         .upstreams
         .iter()
-        .map(|u| {
-            let pool = Pool::new(u, env.engine().clone());
+        .enumerate()
+        .map(|(i, u)| {
+            // An h2 upstream's CA and client certificate, read here as fit's `upstream.New`
+            // reads them: a config whose files do not load fails, `validate` included.
+            let tls = match akit_tls::UpstreamTls::load(u) {
+                Ok(t) => t.map(|t| {
+                    upstream_files.extend(t.files().iter().map(|(p, s)| (p.clone(), *s)));
+                    t.config().clone()
+                }),
+                Err(e) => {
+                    errors.push(Error {
+                        file: None,
+                        path: format!("upstreams[{i}].{}", e.path),
+                        line: 0,
+                        col: 0,
+                        msg: e.msg,
+                    });
+                    None
+                }
+            };
+            let pool = Pool::new_with_tls(u, env.engine().clone(), tls);
             match lease.as_mut() {
                 Some(l) => {
                     let addrs: Vec<&str> = u.addresses.iter().map(String::as_str).collect();
@@ -381,7 +404,6 @@ pub fn compile(
     }
     let env = &env.with_upstreams(upstreams.clone());
     let mut routes = Vec::with_capacity(config.routes.len());
-    let mut errors = Vec::new();
     for (i, r) in config.routes.iter().enumerate() {
         let handler = match registry.handler(r.handler.module(), &r.handler, env, &mut modules) {
             Ok(h) => h,
@@ -462,11 +484,12 @@ pub fn compile(
             acme_names.push(n.clone());
         }
     }
-    let cert_files = tls
+    let mut cert_files: std::collections::BTreeMap<String, akit_tls::Sum> = tls
         .iter()
         .flatten()
         .flat_map(|t| t.files().iter().map(|(p, s)| (p.clone(), *s)))
         .collect();
+    cert_files.extend(upstream_files);
     if !errors.is_empty() {
         // `modules` drops here, cleaning up what was provisioned, and `lease` gives back what it
         // took.

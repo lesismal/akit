@@ -47,6 +47,8 @@
 //!
 //! - **Metrics** (I37): what each certificate is for and when it expires ([`CertificateInfo`]),
 //!   for `fit_tls_certificate_not_after_seconds`.
+//! - **Upstream TLS** (I54, [`UpstreamTls`]): an `h2` upstream's `tls_ca_file`, and its client
+//!   certificate (`tls_cert_file`, `tls_key_file`), for its pool's connections and probes.
 //!
 //! Loading reads files, which blocks: this is control plane code, run when a config is compiled,
 //! never on an I/O thread (rules.md rule 1).
@@ -59,6 +61,7 @@ mod certs;
 pub mod ocsp;
 mod published;
 mod storage;
+mod upstream;
 mod watch;
 
 pub use acme::{
@@ -72,6 +75,7 @@ pub use storage::{
     DEFAULT_LOCK_POLL, DEFAULT_LOCK_REFRESH, DEFAULT_LOCK_STALE, FileStorage, MAX_HELD_LOCKS,
     MAX_VALUE_BYTES, Storage, StorageError,
 };
+pub use upstream::{UPSTREAM_ALPN, UpstreamTls};
 pub use watch::{DEFAULT_WATCH_DEBOUNCE, DEFAULT_WATCH_INTERVAL, FileWatcher, Report};
 
 use std::collections::BTreeMap;
@@ -93,7 +97,7 @@ pub const MAX_CERT_FILE_BYTES: u64 = 1 << 20;
 /// object, as `certificates[1]` or `client_auth.ca_files[0]`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Error {
-    /// The path of what failed, under `tls`.
+    /// The path of what failed, under `tls` (or, for [`UpstreamTls`], under the upstream).
     pub path: String,
     /// What is wrong; starts with [`akit_config::NOT_SUPPORTED_YET`] for what fit serves and akit not yet.
     pub msg: String,

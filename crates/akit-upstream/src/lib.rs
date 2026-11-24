@@ -74,6 +74,12 @@
 //! addresses within `connect_timeout`, and an `h2` address whose server chooses HTTP/1.1 in ALPN
 //! is spoken HTTP/1.1 over TLS.
 //!
+//! I54 brings fit's upstream TLS: an `h2` upstream's `tls_server_name` is the name its
+//! connections send in SNI and check the certificates against, over HTTP/2 and over HTTP/1.1
+//! (akio's `Client::with_tls_server_name`, akio API request A108), probes included; its
+//! `tls_ca_file` and client certificate are read when the config is compiled
+//! (`akit_tls::UpstreamTls`) and handed to the pool when it is made ([`Pool::new_with_tls`]).
+//!
 //! Nothing here blocks: [`Pool::send`] runs on an I/O thread, and its callback runs once, on an
 //! I/O thread (or the resolver's or the timer's thread, as akio's client says), never blocking
 //! either.
@@ -588,6 +594,20 @@ impl Pool {
     /// `engine` holds once it is filled. Makes no connection: the first request does.
     #[must_use]
     pub fn new(u: &akit_config::Upstream, engine: EngineSlot) -> Pool {
+        Pool::new_with_tls(u, engine, None)
+    }
+
+    /// [`Pool::new`], an h2 upstream's connections made with the TLS configuration `tls` when
+    /// given rather than the system's roots, as its `tls_ca_file` and client certificate make it
+    /// (I54, `akit_tls::UpstreamTls`), its probes included: `tls` must offer ALPN `h2` and
+    /// `http/1.1` (an address whose server chooses HTTP/1.1 is then spoken HTTP/1.1 with `tls`).
+    /// Ignored for other protocols.
+    #[must_use]
+    pub fn new_with_tls(
+        u: &akit_config::Upstream,
+        engine: EngineSlot,
+        tls: Option<akio::tls::ClientConfig>,
+    ) -> Pool {
         let mut opts = ClientOptions::default();
         opts.max_idle_per_host = u.max_idle_conns;
         opts.max_idle = u.max_idle_conns.saturating_mul(u.addresses.len().max(1));
@@ -643,10 +663,12 @@ impl Pool {
                     UpstreamProtocol::H2c => Some(h2::Transport {
                         opts: h2_options(u),
                         tls: None,
+                        server_name: None,
                     }),
                     UpstreamProtocol::H2 => Some(h2::Transport {
                         opts: h2_options(u),
-                        tls: Some(h2::system_tls()),
+                        tls: Some(tls.map_or_else(h2::system_tls, Ok)),
+                        server_name: Some(u.tls_server_name.clone()).filter(|n| !n.is_empty()),
                     }),
                     _ => None,
                 },
@@ -682,9 +704,11 @@ impl Pool {
     }
 
     /// The same h2 pool, its connections made with the TLS configuration `tls` rather than the
-    /// system's roots, as I54's `tls_*` fields will make it; `tls` must offer ALPN `h2` (and
+    /// system's roots; `tls` must offer ALPN `h2` (and
     /// `http/1.1`, for a server that may choose it: an address whose server does is then spoken
-    /// HTTP/1.1 with `tls`). Only before the pool is shared, and only for an h2 upstream.
+    /// HTTP/1.1 with `tls`). Only before the pool is shared, and only for an h2 upstream: a pool
+    /// with a health check whose engine is set is already shared with its probes, so use
+    /// [`Pool::new_with_tls`].
     #[must_use]
     pub fn with_tls(mut self, tls: akio::tls::ClientConfig) -> Pool {
         if let Some(inner) = Arc::get_mut(&mut self.inner) {
@@ -1173,10 +1197,7 @@ impl Inner {
         Some(self.client.get_or_init(|| {
             let c = Client::new(Arc::clone(engine)).with_options(self.opts.clone());
             // An `h2` pool's, for the addresses whose server chose HTTP/1.1 in ALPN.
-            match self.h2.as_ref().and_then(|t| t.tls.as_ref()) {
-                Some(Ok(tls)) => c.with_tls(tls.clone()),
-                _ => c,
-            }
+            h2::http1_tls(self.h2.as_ref(), c)
         }))
     }
 

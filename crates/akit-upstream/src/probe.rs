@@ -130,10 +130,7 @@ pub(crate) fn start(pool: &Arc<Inner>, engine: &Arc<Engine>) {
         opts.max_head_bytes = MAX_HEAD_BYTES;
         opts.happy_eyeballs.connect_timeout = check.timeout;
         let c = Client::new(Arc::clone(engine)).with_options(opts);
-        match pool.h2.as_ref().and_then(|t| t.tls.as_ref()) {
-            Some(Ok(tls)) => c.with_tls(tls.clone()),
-            _ => c,
-        }
+        crate::h2::http1_tls(pool.h2.as_ref(), c)
     });
     let seed = std::collections::hash_map::RandomState::new().hash_one(Instant::now()) | 1;
     let pr = Arc::new(Prober {
@@ -198,22 +195,26 @@ impl Prober {
         let done: Done = Box::new(move |passed| me.done(i, began, passed));
         let h2 = self.live().and_then(|p| {
             let http1 = p.backends.get(t.backend).is_some_and(|b| b.h2.fell_back());
-            p.h2.as_ref().filter(|_| !http1).map(|t| t.tls.clone())
+            p.h2.as_ref()
+                .filter(|_| !http1)
+                .map(|t| (t.tls.clone(), t.server_name.clone()))
         });
         match (&self.client, h2) {
-            (Some(_), Some(tls)) => self.probe_h2(i, t, tls, done),
+            (Some(_), Some((tls, name))) => self.probe_h2(i, t, tls, name, done),
             (Some(client), None) => Self::probe_http(&self, client, t, done),
             (None, _) => self.probe_tcp(t, done),
         }
     }
 
-    /// Sends `GET` to `t` over h2 (with `tls`) or h2c, on a connection of its own, and passes on
-    /// an expected status.
+    /// Sends `GET` to `t` over h2 (with `tls`, checking the certificate against `name`, or
+    /// `t`'s host when `None`) or h2c, on a connection of its own, and passes on an expected
+    /// status.
     fn probe_h2(
         self: &Arc<Self>,
         i: usize,
         t: &Target,
         tls: Option<Result<akio::tls::ClientConfig, String>>,
+        name: Option<String>,
         done: Done,
     ) {
         let once = Once::new(done);
@@ -244,7 +245,7 @@ impl Prober {
             &self.engine,
             &t.host,
             t.port,
-            tls.map(|c| (c, t.host.as_str())),
+            tls.map(|c| (c, name.as_deref().unwrap_or(&t.host))),
             opts,
             move |r| match r {
                 Err(e) if NotH2::of(&e).is_some() => {

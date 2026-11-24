@@ -175,7 +175,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 221 supported.
+3821 fields in 121 sections, at fit `7daee573`; 225 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -298,9 +298,9 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`sync.transforms/wasm`](#fields-sync-transforms-wasm) | 9 | 0 | 9 |
 | [`telemetry`](#fields-telemetry) | 14 | 0 | 14 |
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
-| [`upstreams`](#fields-upstreams) | 38 | 33 | 5 |
+| [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 221 | 3600 |
+| **Total** | 3821 | 225 | 3596 |
 
 <a id="fields-access"></a>
 
@@ -4881,10 +4881,10 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `upstreams[].sticky_cookie.name` | `string` | supported |
 | `upstreams[].sticky_cookie.path` | `string` | supported |
 | `upstreams[].sticky_cookie.secure` | `boolean` | supported |
-| `upstreams[].tls_ca_file` | `string` | not supported yet |
-| `upstreams[].tls_cert_file` | `string` | not supported yet |
-| `upstreams[].tls_key_file` | `string` | not supported yet |
-| `upstreams[].tls_server_name` | `string` | not supported yet |
+| `upstreams[].tls_ca_file` | `string` | supported |
+| `upstreams[].tls_cert_file` | `string` | supported |
+| `upstreams[].tls_key_file` | `string` | supported |
+| `upstreams[].tls_server_name` | `string` | supported |
 | `upstreams[].weights` | `array<integer>` | supported |
 
 <a id="fields-webrtc"></a>

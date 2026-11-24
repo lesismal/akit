@@ -317,6 +317,20 @@ pub struct Upstream {
     /// `protocol`: how requests reach the upstream (I18). [`UpstreamProtocol::Http11`] when
     /// left out.
     pub protocol: UpstreamProtocol,
+    /// `tls_server_name` (I54): with [`UpstreamProtocol::H2`], the name the servers'
+    /// certificates are checked against, and sent in SNI; empty when left out, which takes each
+    /// address's host.
+    pub tls_server_name: String,
+    /// `tls_ca_file` (I54): with h2, a PEM file of the certificates the servers' are checked
+    /// against, in place of the system's roots; empty when left out. Read, and watched, when the
+    /// config is compiled.
+    pub tls_ca_file: String,
+    /// `tls_cert_file` (I54): with h2, a PEM file of the client certificate, and the chain after
+    /// it, presented to servers that ask for one (mutual TLS); given with `tls_key_file`, or
+    /// neither is. Empty when left out.
+    pub tls_cert_file: String,
+    /// `tls_key_file` (I54): the PEM file of `tls_cert_file`'s private key; empty when left out.
+    pub tls_key_file: String,
 }
 
 /// An upstream's `protocol`: how requests reach its servers.
@@ -1672,6 +1686,10 @@ const UPSTREAM_FIELDS: &[&str] = &[
     "response_timeout",
     "response_header_timeout",
     "response_idle_timeout",
+    "tls_server_name",
+    "tls_ca_file",
+    "tls_cert_file",
+    "tls_key_file",
 ];
 const HEALTH_CHECK_FIELDS: &[&str] = &[
     "type",
@@ -1686,13 +1704,7 @@ const HEALTH_CHECK_FIELDS: &[&str] = &[
     "passes",
 ];
 const STICKY_COOKIE_FIELDS: &[&str] = &["name", "path", "max_age", "secure"];
-const UPSTREAM_FIT_ONLY: &[&str] = &[
-    "deny_internal",
-    "tls_server_name",
-    "tls_ca_file",
-    "tls_cert_file",
-    "tls_key_file",
-];
+const UPSTREAM_FIT_ONLY: &[&str] = &["deny_internal"];
 
 /// One file's part of a config, before the parts are merged.
 pub(crate) struct Part {
@@ -4389,9 +4401,39 @@ fn upstream(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Upstream> {
     let health_check = o
         .take("health_check")
         .and_then(|v| health_check(d, v, &o.at("health_check")));
+    // TLS to an h2 upstream (I54): each with the position of its value, where fit reports it.
+    let mut tls_field = |d: &mut Decoder<'_>, key: &str| {
+        let v = o.take(key)?;
+        let p = o.at(key);
+        let s = d.string(v, &p)?;
+        (!s.is_empty()).then_some((v.off, p, s))
+    };
+    let tls_server_name = tls_field(d, "tls_server_name");
+    let tls_ca_file = tls_field(d, "tls_ca_file");
+    let tls_cert_file = tls_field(d, "tls_cert_file");
+    let tls_key_file = tls_field(d, "tls_key_file");
     let obj_off = o.off;
     let hash_key_path = o.at("hash_key");
     o.finish(d, UPSTREAM_FIELDS, UPSTREAM_FIT_ONLY);
+    // fit's checks of the TLS fields (config.validate): with h2 only, and a certificate with its
+    // key.
+    if protocol != UpstreamProtocol::H2 {
+        for (f, key) in [
+            (&tls_server_name, "tls_server_name"),
+            (&tls_ca_file, "tls_ca_file"),
+            (&tls_cert_file, "tls_cert_file"),
+        ] {
+            if let Some((off, p, _)) = f {
+                d.error(*off, p, format!("{key} needs protocol h2"));
+            }
+        }
+    }
+    match (&tls_cert_file, &tls_key_file) {
+        (Some((off, p, _)), None) => d.error(*off, p, "tls_cert_file needs tls_key_file"),
+        (None, Some((off, p, _))) => d.error(*off, p, "tls_key_file needs tls_cert_file"),
+        _ => {}
+    }
+    let value = |f: Option<(usize, String, String)>| f.map(|(_, _, s)| s).unwrap_or_default();
     // fit's checks of the two together (config.validate).
     let mut weights = Vec::new();
     let mut given = 0;
@@ -4475,6 +4517,10 @@ fn upstream(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Upstream> {
         response_header_timeout,
         response_idle_timeout,
         protocol,
+        tls_server_name: value(tls_server_name),
+        tls_ca_file: value(tls_ca_file),
+        tls_cert_file: value(tls_cert_file),
+        tls_key_file: value(tls_key_file),
     })
 }
 

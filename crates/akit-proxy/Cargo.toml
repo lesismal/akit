@@ -23,6 +23,8 @@ akio-quic = { workspace = true }
 akio-x509 = { workspace = true }
 akit-handler = { workspace = true }
 akit-listener = { workspace = true }
+# Upstream TLS loaded from its files, as the graph loads it (I54).
+akit-tls = { workspace = true }
 
 [lints]
 workspace = true

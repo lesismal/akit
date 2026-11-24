@@ -15,7 +15,9 @@
 //!   `-watch-certs` (on by default, as fit's), the certificate, key and authority files the
 //!   running config loaded are looked at every `-watch-interval`, and once a change has settled
 //!   the running config is applied again as a new version (I30): a listener whose files changed
-//!   only in their certificates is kept, and its next handshakes get the new ones. With `-watch`
+//!   only in their certificates is kept, and its next handshakes get the new ones; an h2
+//!   upstream's `tls_ca_file`, `tls_cert_file` and `tls_key_file` (I54) are watched too, and its
+//!   new pool reads them again. With `-watch`
 //!   (I29, fit's file provider), the config's files are looked at every `-watch-interval` too,
 //!   and once a change has settled for 500ms, and the files hold something other than what was
 //!   applied last, they are applied as SIGHUP applies them: a file added to a directory, or taken
@@ -924,7 +926,7 @@ mod tests {
         let v = super::version();
         let lines: Vec<&str> = v.lines().collect();
         assert!(lines[0].starts_with("akit "));
-        assert_eq!(lines[1], "akio c5cf4353c02e");
+        assert_eq!(lines[1], "akio 252fba421168");
         assert_eq!(
             lines[2],
             format!("{}/{}", std::env::consts::OS, std::env::consts::ARCH)
