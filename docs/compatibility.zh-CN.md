@@ -152,7 +152,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 79 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 101 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -191,11 +191,11 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`http.middleware/compress`](#fields-http-middleware-compress) | 10 | 0 | 10 |
 | [`http.middleware/concurrency_limit`](#fields-http-middleware-concurrency-limit) | 4 | 0 | 4 |
 | [`http.middleware/forward_auth`](#fields-http-middleware-forward-auth) | 7 | 0 | 7 |
-| [`http.middleware/headers`](#fields-http-middleware-headers) | 10 | 0 | 10 |
+| [`http.middleware/headers`](#fields-http-middleware-headers) | 10 | 10 | 0 |
 | [`http.middleware/jwt`](#fields-http-middleware-jwt) | 13 | 0 | 13 |
 | [`http.middleware/rate_limit`](#fields-http-middleware-rate-limit) | 9 | 0 | 9 |
-| [`http.middleware/redirect`](#fields-http-middleware-redirect) | 5 | 0 | 5 |
-| [`http.middleware/rewrite`](#fields-http-middleware-rewrite) | 6 | 0 | 6 |
+| [`http.middleware/redirect`](#fields-http-middleware-redirect) | 5 | 5 | 0 |
+| [`http.middleware/rewrite`](#fields-http-middleware-rewrite) | 6 | 4 | 2 |
 | [`http.middleware/wasm`](#fields-http-middleware-wasm) | 18 | 0 | 18 |
 | [`limits`](#fields-limits) | 7 | 2 | 5 |
 | [`listeners`](#fields-listeners) | 30 | 12 | 18 |
@@ -206,7 +206,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`metrics`](#fields-metrics) | 1 | 0 | 1 |
 | [`pprof`](#fields-pprof) | 4 | 0 | 4 |
 | [`providers`](#fields-providers) | 60 | 0 | 60 |
-| [`routes`](#fields-routes) | 24 | 16 | 8 |
+| [`routes`](#fields-routes) | 24 | 19 | 5 |
 | [`schema_version`](#fields-schema-version) | 1 | 1 | 0 |
 | [`services`](#fields-services) | 13 | 0 | 13 |
 | [`streaming`](#fields-streaming) | 76 | 0 | 76 |
@@ -277,7 +277,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 13 | 25 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **合计** | 3821 | 79 | 3742 |
+| **合计** | 3821 | 101 | 3720 |
 
 <a id="fields-access"></a>
 
@@ -1137,16 +1137,16 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
-| `routes[].middleware[]<headers>` | `module` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<headers>.params` | `object` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<headers>.params.request` | `object` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<headers>.params.request.add` | `map<array<string>>` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<headers>.params.request.delete` | `array<string>` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<headers>.params.request.set` | `map<string>` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<headers>.params.response` | `object` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<headers>.params.response.add` | `map<array<string>>` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<headers>.params.response.delete` | `array<string>` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<headers>.params.response.set` | `map<string>` | 尚不支持（not supported yet） |
+| `routes[].middleware[]<headers>` | `module` | 已支持 |
+| `routes[].middleware[]<headers>.params` | `object` | 已支持 |
+| `routes[].middleware[]<headers>.params.request` | `object` | 已支持 |
+| `routes[].middleware[]<headers>.params.request.add` | `map<array<string>>` | 已支持 |
+| `routes[].middleware[]<headers>.params.request.delete` | `array<string>` | 已支持 |
+| `routes[].middleware[]<headers>.params.request.set` | `map<string>` | 已支持 |
+| `routes[].middleware[]<headers>.params.response` | `object` | 已支持 |
+| `routes[].middleware[]<headers>.params.response.add` | `map<array<string>>` | 已支持 |
+| `routes[].middleware[]<headers>.params.response.delete` | `array<string>` | 已支持 |
+| `routes[].middleware[]<headers>.params.response.set` | `map<string>` | 已支持 |
 
 <a id="fields-http-middleware-jwt"></a>
 
@@ -1190,11 +1190,11 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
-| `routes[].middleware[]<redirect>` | `module` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<redirect>.params` | `object` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<redirect>.params.regexp` | `string` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<redirect>.params.status` | `integer` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<redirect>.params.to` | `string, required` | 尚不支持（not supported yet） |
+| `routes[].middleware[]<redirect>` | `module` | 已支持 |
+| `routes[].middleware[]<redirect>.params` | `object` | 已支持 |
+| `routes[].middleware[]<redirect>.params.regexp` | `string` | 已支持 |
+| `routes[].middleware[]<redirect>.params.status` | `integer` | 已支持 |
+| `routes[].middleware[]<redirect>.params.to` | `string, required` | 已支持 |
 
 <a id="fields-http-middleware-rewrite"></a>
 
@@ -1202,12 +1202,12 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
-| `routes[].middleware[]<rewrite>` | `module` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<rewrite>.params` | `object` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<rewrite>.params.add_prefix` | `string` | 尚不支持（not supported yet） |
+| `routes[].middleware[]<rewrite>` | `module` | 已支持 |
+| `routes[].middleware[]<rewrite>.params` | `object` | 已支持 |
+| `routes[].middleware[]<rewrite>.params.add_prefix` | `string` | 已支持 |
 | `routes[].middleware[]<rewrite>.params.regexp` | `string` | 尚不支持（not supported yet） |
 | `routes[].middleware[]<rewrite>.params.replacement` | `string` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<rewrite>.params.strip_prefix` | `array<string>` | 尚不支持（not supported yet） |
+| `routes[].middleware[]<rewrite>.params.strip_prefix` | `array<string>` | 已支持 |
 
 <a id="fields-http-middleware-wasm"></a>
 
@@ -1724,9 +1724,9 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `routes[].match.path_regexp` | `array<string>` | 已支持 |
 | `routes[].match.query` | `map<array<string>>` | 已支持 |
 | `routes[].match.remote_ip` | `array<string>` | 已支持 |
-| `routes[].middleware` | `array<object>` | 尚不支持（not supported yet） |
-| `routes[].middleware[].module` | `enum(basic_auth\|body_limit\|cache\|circuit_breaker\|client_cert\|compress\|concurrency_limit\|forward_auth\|headers\|jwt\|rate_limit\|redirect\|rewrite\|wasm), required` | 尚不支持（not supported yet） |
-| `routes[].middleware[].params` | `object` | 尚不支持（not supported yet） |
+| `routes[].middleware` | `array<object>` | 已支持 |
+| `routes[].middleware[].module` | `enum(basic_auth\|body_limit\|cache\|circuit_breaker\|client_cert\|compress\|concurrency_limit\|forward_auth\|headers\|jwt\|rate_limit\|redirect\|rewrite\|wasm), required` | 已支持 |
+| `routes[].middleware[].params` | `object` | 已支持 |
 | `routes[].name` | `string` | 已支持 |
 | `routes[].priority` | `integer` | 已支持 |
 

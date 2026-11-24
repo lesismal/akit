@@ -15,10 +15,10 @@ use akit_upstream::Pool;
 use crate::module::{Env, Modules, Registry};
 use crate::traits::Handler;
 
-/// The params a handler module is provisioned from: the handler as akit-config read it, its
-/// module named by [`akit_config::Handler::module`]. akit-config decodes and checks each module's
-/// params, with their paths and positions, when the config is read (I02); modules take the typed
-/// value.
+/// The params a module is provisioned from: a route's handler or one of its middleware (I40), as
+/// akit-config read it, its module named by [`akit_config::Handler::module`]. akit-config decodes
+/// and checks each module's params, with their paths and positions, when the config is read
+/// (I02); modules take the typed value.
 pub type HandlerParams = akit_config::Handler;
 
 /// A route, compiled.
@@ -36,7 +36,8 @@ pub struct CompiledRoute {
     /// The rest of `match`, built (I39): method, remote IP, header, query, path regexp and
     /// expression, the cheapest first, as fit's graph orders them.
     pub matchers: Vec<akit_router::Matcher>,
-    /// The handler, its middleware chain built around it (I40 on); provisioned.
+    /// The handler, its middleware chain built around it (I40), the first middleware outermost;
+    /// provisioned.
     pub handler: Arc<dyn Handler>,
 }
 
@@ -201,8 +202,8 @@ impl fmt::Debug for Graph {
 pub const UPSTREAM_POOLS: &str = "upstream.pools";
 
 /// Compiles `config` into a graph: a pool made for each upstream (I14), dialing through `env`'s
-/// engine, then every route's handler loaded from `registry` and provisioned with `env` and the
-/// pools. The pools are cleaned up after the handlers, which may use them: each is closed, and
+/// engine, then every route's handler and middleware loaded from `registry` and provisioned with
+/// `env` and the pools, the middleware chained around the handler once, here (rule 12). The pools are cleaned up after the handlers, which may use them: each is closed, and
 /// drains its requests in flight, when the graph is retired (decision 004). Nothing is published: a config that fails leaves nothing behind (the modules
 /// provisioned before the failure are cleaned up), and the running graph is untouched.
 ///
@@ -231,22 +232,21 @@ pub fn compile(
         let handler = match registry.handler(r.handler.module(), &r.handler, env, &mut modules) {
             Ok(h) => h,
             Err(e) => {
-                let mut path = format!("routes[{i}].handler");
-                if let crate::LoadError::Provision { error, .. } = &e {
-                    if let Some(field) = error.field_name() {
-                        path = format!("{path}.params.{field}");
-                    }
-                }
-                errors.push(Error {
-                    file: None,
-                    path,
-                    line: 0,
-                    col: 0,
-                    msg: e.to_string(),
-                });
+                errors.push(load_error(format!("routes[{i}].handler"), &e));
                 continue;
             }
         };
+        let mut middleware = Vec::with_capacity(r.middleware.len());
+        for (j, m) in r.middleware.iter().enumerate() {
+            match registry.middleware(m.module(), m, env, &mut modules) {
+                Ok(mw) => middleware.push(mw),
+                Err(e) => errors.push(load_error(format!("routes[{i}].middleware[{j}]"), &e)),
+            }
+        }
+        if middleware.len() != r.middleware.len() {
+            continue;
+        }
+        let handler = crate::traits::chain(&middleware, handler);
         let (host, path) = r
             .matcher
             .as_ref()
@@ -334,6 +334,23 @@ pub fn compile(
         holds: AtomicUsize::new(0),
         orphaned: AtomicBool::new(false),
     })
+}
+
+/// The error of a module at `path` (a route's handler or one of its middleware) that failed to
+/// load: at its params' field, when the error names one.
+fn load_error(mut path: String, e: &crate::LoadError) -> Error {
+    if let crate::LoadError::Provision { error, .. } = e {
+        if let Some(field) = error.field_name() {
+            path = format!("{path}.params.{field}");
+        }
+    }
+    Error {
+        file: None,
+        path,
+        line: 0,
+        col: 0,
+        msg: e.to_string(),
+    }
 }
 
 /// The matchers `m` asks for besides hosts and paths, the cheapest first (fit's

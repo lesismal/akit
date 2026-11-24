@@ -179,9 +179,12 @@ fn compile_config(
     engine: &EngineSlot,
     log: Option<&AccessLog>,
 ) -> Result<Graph, Failure> {
-    let registry: Registry<HandlerParams> =
-        Registry::new(&[akit_handler::MODULES, akit_proxy::MODULES])
-            .map_err(|e| Failure::Registry(e.to_string()))?;
+    let registry: Registry<HandlerParams> = Registry::new(&[
+        akit_handler::MODULES,
+        akit_middleware::MODULES,
+        akit_proxy::MODULES,
+    ])
+    .map_err(|e| Failure::Registry(e.to_string()))?;
     let env = Env::new(engine.clone()).with_access_log(log.cloned());
     compile(config, &registry, &env).map_err(Failure::Config)
 }
