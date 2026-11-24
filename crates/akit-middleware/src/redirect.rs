@@ -3,10 +3,11 @@
 //! the others going on to the handler.
 //!
 //! The URL's parts are found when the config is compiled (rule 12): per request, the
-//! placeholders are filled in, nothing else. Groups of the regexp (`$1`, `${name}`) in `to` are
-//! refused as not supported yet when the config is read: akio-regex does not capture yet (akio API
-//! request A32). A URL that the request's parts would make leave the site, where `to` does not,
-//! is answered 400, as fit answers it (an open redirect).
+//! placeholders are filled in, nothing else. With a regexp and a `$` in `to`, the groups of the
+//! match (`$1`, `${name}`, Go's `Regexp.Expand` on akio-regex's captures: akio API request A32)
+//! are put in first, then the placeholders, in fit's order. A URL that the request's parts would
+//! make leave the site, where `to` does not, is answered 400, as fit answers it (an open
+//! redirect).
 
 use std::sync::Arc;
 
@@ -44,6 +45,9 @@ pub(crate) struct Redirect {
     status: u16,
     parts: Arc<[Part]>,
     regexp: Option<Arc<Regex>>,
+    /// With a regexp, `to` as written when it holds a `$` (a group, or `$$`): it is expanded per
+    /// request, and its placeholders found after.
+    template: Option<Arc<str>>,
     /// `to` itself is on another host (starts with `//` or `/\`): the request's parts may
     /// follow it.
     off_site: bool,
@@ -67,17 +71,14 @@ pub(crate) fn new(
                 .map_err(|e| ProvisionError::field("regexp", e))?,
         ))
     };
-    // With a regexp, fit expands `to` as Go's `Regexp.Expand` does: `$$` is `$`, and any other
-    // `$` is itself (akit-config refuses one that names a group).
-    let to = if regexp.is_some() {
-        r.to.replace("$$", "$")
-    } else {
-        r.to.clone()
-    };
+    // With a regexp, fit expands `to` as Go's `Regexp.Expand` does; without a `$` that changes
+    // nothing.
+    let template = (regexp.is_some() && r.to.contains('$')).then(|| r.to.as_str().into());
     Ok(Provisioned::new(Arc::new(Redirect {
         status: r.status,
-        parts: parts(&to).into(),
+        parts: parts(&r.to).into(),
         regexp,
+        template,
         off_site: other_host(&r.to),
         dollar: r.to.starts_with('$'),
     }) as Arc<dyn Middleware>))
@@ -117,30 +118,35 @@ fn parts(to: &str) -> Vec<Part> {
 impl Redirect {
     /// The URL `ctx`'s request is redirected to, its escaped path `path`.
     fn location(&self, ctx: &Context, path: &str) -> String {
-        let query = ctx.req().query();
-        let mut s = String::new();
-        for part in self.parts.iter() {
-            match part {
-                Part::Text(t) => s.push_str(t),
-                Part::Scheme => s.push_str(if ctx.local(TLS).is_some() {
-                    "https"
-                } else {
-                    "http"
-                }),
-                Part::Host => s.push_str(ctx.header("host").unwrap_or("")),
-                Part::Path => s.push_str(path),
-                Part::Query => s.push_str(query.unwrap_or("")),
-                Part::Uri => {
-                    s.push_str(path);
-                    if let Some(q) = query.filter(|q| !q.is_empty()) {
-                        s.push('?');
-                        s.push_str(q);
-                    }
+        fill(&self.parts, ctx, path)
+    }
+}
+
+/// `parts` with the request's placeholders filled in, its escaped path `path`.
+fn fill(parts: &[Part], ctx: &Context, path: &str) -> String {
+    let query = ctx.req().query();
+    let mut s = String::new();
+    for part in parts {
+        match part {
+            Part::Text(t) => s.push_str(t),
+            Part::Scheme => s.push_str(if ctx.local(TLS).is_some() {
+                "https"
+            } else {
+                "http"
+            }),
+            Part::Host => s.push_str(ctx.header("host").unwrap_or("")),
+            Part::Path => s.push_str(path),
+            Part::Query => s.push_str(query.unwrap_or("")),
+            Part::Uri => {
+                s.push_str(path);
+                if let Some(q) = query.filter(|q| !q.is_empty()) {
+                    s.push('?');
+                    s.push_str(q);
                 }
             }
         }
-        s
     }
+    s
 }
 
 /// Whether a browser takes the URL `u` for one on another host with the same scheme: one that
@@ -194,13 +200,28 @@ impl akio_http::Service for Redirecting {
     fn call(&self, ctx: &mut Context) {
         let location = {
             let path = url::escaped_path(url::current_path(ctx));
-            if let Some(re) = &self.rd.regexp {
-                if !re.is_match(&path) {
+            match (&self.rd.regexp, &self.rd.template) {
+                // The groups are taken from the path as escaped, so that what the client wrote
+                // encoded, as `%5C` or `%2F`, stays so in the URL.
+                (Some(re), Some(template)) => {
+                    let Some(caps) = re.captures(&path) else {
+                        self.next.call(ctx);
+                        return;
+                    };
+                    let mut to = String::new();
+                    re.expand(&caps, template, &path, &mut to);
+                    if to.contains('{') {
+                        fill(&parts(&to), ctx, &path)
+                    } else {
+                        to
+                    }
+                }
+                (Some(re), None) if !re.is_match(&path) => {
                     self.next.call(ctx);
                     return;
                 }
+                _ => self.rd.location(ctx, &path),
             }
-            self.rd.location(ctx, &path)
         };
         if !self.rd.off_site && (other_host(&location) || self.rd.dollar && has_scheme(&location)) {
             // The request's parts made a URL on another host: an open redirect.

@@ -810,14 +810,19 @@ impl Handler {
     }
 }
 
-/// The `rewrite` middleware's params, as fit's `middleware/rewrite`. `regexp` and `replacement`
-/// are refused as not supported yet: akio-regex does not find where a pattern matches yet (akio
-/// API request A32).
+/// The `rewrite` middleware's params, as fit's `middleware/rewrite`: a prefix stripped, each
+/// match of `regexp` replaced, a prefix added, in that order.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Rewrite {
     /// `strip_prefix`: prefixes, each starting with `/`; the first the path starts with, at a
     /// segment boundary, is removed. None when left out.
     pub strip_prefix: Vec<String>,
+    /// `regexp`: a regular expression (checked when the config is read); each match in the
+    /// decoded path is replaced with `replacement`. Empty when left out.
+    pub regexp: String,
+    /// `replacement`: what replaces each match, with `$1`, `${name}` for the regexp's groups and
+    /// `$$` for `$` (Go's `Regexp.Expand`). Needs a `regexp`.
+    pub replacement: String,
     /// `add_prefix`: a prefix put before the path, starting with `/` and not ending with one;
     /// empty when left out.
     pub add_prefix: String,
@@ -827,8 +832,8 @@ pub struct Rewrite {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Redirect {
     /// `to`: where to, with `{scheme}`, `{host}`, `{path}`, `{query}` and `{uri}` standing for
-    /// the request's. Groups of `regexp` (`$1`, `${name}`) in it are refused as not supported yet
-    /// (akio API request A32); with a `regexp`, `$$` stands for `$`.
+    /// the request's and, with a `regexp`, `$1` or `${name}` for its groups (`$$` for `$`, Go's
+    /// `Regexp.Expand`).
     pub to: String,
     /// `status`: 301, 302, 303, 307 or 308; 302 when left out.
     pub status: u16,
@@ -1559,9 +1564,7 @@ const FIT_HANDLERS: &[&str] = &[
 ];
 /// fit's middleware modules (its `http.middleware` namespace) that akit does not have yet.
 const FIT_MIDDLEWARE: &[&str] = &["cache", "wasm"];
-const REWRITE_FIELDS: &[&str] = &["strip_prefix", "add_prefix"];
-/// akio-regex answers whether a pattern matches, not where (akio API request A32).
-const REWRITE_FIT_ONLY: &[&str] = &["regexp", "replacement"];
+const REWRITE_FIELDS: &[&str] = &["strip_prefix", "regexp", "replacement", "add_prefix"];
 const REDIRECT_FIELDS: &[&str] = &["to", "status", "regexp"];
 const HEADERS_FIELDS: &[&str] = &["request", "response"];
 const HEADER_OPS_FIELDS: &[&str] = &["set", "add", "delete"];
@@ -2841,7 +2844,6 @@ fn rewrite(d: &mut Decoder<'_>, params: Option<&Node>, off: usize, path: &str) -
     let mut r = Rewrite::default();
     let mut ok = true;
     let mut at = off;
-    let mut regexp = false;
     if let Some(n) = params {
         let mut o: Obj<'_> = d.object(n, path)?;
         at = o.off;
@@ -2868,23 +2870,28 @@ fn rewrite(d: &mut Decoder<'_>, params: Option<&Node>, off: usize, path: &str) -
                 ok = false;
             }
         }
-        // Refused as not supported yet, naming the module (the redirect's regexp is read); they
-        // still count as what the rewrite does.
-        for field in REWRITE_FIT_ONLY {
-            if let Some(v) = o.take(field) {
-                regexp = true;
-                d.not_yet(
-                    v.off,
-                    &o.at(field),
-                    &format!(
-                        "the \"rewrite\" middleware's {field}: akio-regex does not find where a pattern matches yet (akio API request A32)"
-                    ),
-                );
+        let replacement = o.take("replacement");
+        if let Some(v) = replacement {
+            r.replacement = d.string(v, &o.at("replacement")).unwrap_or_default();
+        }
+        if let Some(v) = o.take("regexp") {
+            let p = o.at("regexp");
+            r.regexp = d.string(v, &p).unwrap_or_default();
+            if !r.regexp.is_empty() {
+                if let Err(e) = akit_router::regexp(r.regexp.as_bytes()) {
+                    d.error(v.off, &p, e.to_string());
+                    ok = false;
+                }
             }
         }
-        o.finish(d, REWRITE_FIELDS, REWRITE_FIT_ONLY);
+        if r.regexp.is_empty() && !r.replacement.is_empty() {
+            let off = replacement.map_or(at, |v| v.off);
+            d.error(off, &o.at("replacement"), "a replacement needs a regexp");
+            ok = false;
+        }
+        o.finish(d, REWRITE_FIELDS, &[]);
     }
-    if ok && !regexp && r.strip_prefix.is_empty() && r.add_prefix.is_empty() {
+    if ok && r.strip_prefix.is_empty() && r.regexp.is_empty() && r.add_prefix.is_empty() {
         d.error(at, path, "strip_prefix, regexp or add_prefix is needed");
         ok = false;
     }
@@ -2945,41 +2952,8 @@ fn redirect(
     if to.contains(['\r', '\n', '\0']) {
         d.error(to_off, &to_path, "the URL holds a line break or NUL");
         ok = false;
-    } else if !regexp.is_empty() && names_a_group(&to) {
-        d.not_yet(
-            to_off,
-            &to_path,
-            "a group of regexp ($1, ${name}) in to: akio-regex does not capture groups yet (akio API request A32)",
-        );
-        ok = false;
     }
     ok.then_some(Redirect { to, status, regexp })
-}
-
-/// Whether the template `to` names a group of a regexp as Go's `Regexp.Expand` reads it: a `$`
-/// (not `$$`, which stands for `$`) followed by a name of letters, digits and `_`, or by such a
-/// name in braces. Any other `$` stands for itself.
-fn names_a_group(to: &str) -> bool {
-    let mut rest = to;
-    while let Some(i) = rest.find('$') {
-        let after = rest.get(i.saturating_add(1)..).unwrap_or("");
-        if let Some(r) = after.strip_prefix('$') {
-            rest = r;
-            continue;
-        }
-        let (brace, name) = match after.strip_prefix('{') {
-            Some(n) => (true, n),
-            None => (false, after),
-        };
-        let len = name
-            .find(|c: char| !(c.is_alphanumeric() || c == '_'))
-            .unwrap_or(name.len());
-        if len > 0 && (!brace || name.get(len..).is_some_and(|r| r.starts_with('}'))) {
-            return true;
-        }
-        rest = after;
-    }
-    false
 }
 
 /// The `headers` middleware's params, checked as fit's `Headers.Provision` checks them.

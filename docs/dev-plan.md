@@ -149,7 +149,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I45 | Retries, circuit breakers, route timeouts | I17 | done |
 | I46 | Weighted services, mirroring, failover | I45 | todo |
 | I47 | Compression | I16 | done |
-| I48 | The rest of fit's middlewares | I40 | todo |
+| I48 | The rest of fit's middlewares | I40 | done |
 | I49 | WebSocket proxying | I17 | done |
 | I50 | gRPC proxying | I18 | todo |
 | I51 | TCP and UDP proxying | I05 | done |
@@ -223,8 +223,9 @@ commit and result.
 | Forward auth | I43 | no | no (built, not measured) | Same-run A/B on the proxy scenario of a route with `forward_auth` against a fast local auth service, against the route without it, over HTTP/1.1 and h2: the cost of the check (the auth request's fields built, a suspension, one exchange on the auth upstream's pool, the resume on the answer's I/O thread); latency and memory with thousands of requests waiting on a slow auth service, and the fast route's latency meanwhile. |
 | JWT and JWKS | I44 | no | no (built, not measured) | Same-run A/B on the proxy scenario of a route with `jwt` against the route without it, over HTTP/1.1 and h2, by algorithm (HS256, EdDSA, ES256, RS256), with the token kept verified (a SHA-256 and a per-thread map lookup, the claims fields rewritten into a context local until akio A33) and verified anew (many distinct tokens: the signature check on the I/O thread), as fit's `BenchmarkJWT`; the latency of requests waiting for a JWK set fetch, and of other routes meanwhile. |
 | Retries, circuit breakers, route timeouts | I45 | no | no (built, not measured) | Same-run A/B on the proxy scenario of a route with `retry` and with `circuit_breaker` against the route without them, upstreams healthy: per request, the budget's read (a deposit into a full budget writes nothing), the template kept for a replay (a clone of the outgoing fields and of a body up to 64 KiB, a boxed `Again`), the breaker's boxed response filter and its two atomic adds on shared step counters, with 64 threads (the counters' contention); and with an upstream failing half its requests: retries a second against the budget, and the breaker's open path. |
-| Middlewares (retries and the rest) | I46–I48 | no | no (not built yet) | I56 benchmarks every middleware; same-run A/B of each on the proxy scenario. |
+| Middlewares (retries and the rest) | I46–I48 | no | no (I48 built, not measured; I46 not built yet) | I56 benchmarks every middleware; same-run A/B of each on the proxy scenario. |
 | Compression | I47 | no | no (built, not measured) | Against fit, each encoding, as I47 asks: the proxy scenario with `compress` in front, a whole JSON body and a stream of server-sent events, over HTTP/1.1 and h2, per encoding at fit's default levels (responses a second, server CPU, bytes on the wire); the cost of the filter on responses it leaves alone (an image) against no middleware; the memory of held compressed streams (1,000 at once); the static handler's copies against fit's (`compress` on a file kept in memory). |
+| Rewrite and redirect regexps | I48 | no | no (built, not measured) | Against fit: the proxy scenario behind a `rewrite` with a `regexp` and `replacement` (matched and not matched) and a `redirect` with groups in `to`, requests a second and allocations per request, against no middleware; akio-regex's `captures` and `replace_all` on path-sized texts against Go's `regexp`. |
 | WebSocket and gRPC proxying | I49, I50 | no | no (I49 built, not measured; I50 not built yet) | Against fit: WebSocket messages a second (small, echoed) and bytes a second (large) through akit from HTTP/1.1, h2 and h3 clients, memory per open WebSocket (idle, and with 64 KiB pending each way), and handshakes a second (a key generated, the upstream connection leaving the pool); I50: gRPC calls a second. |
 | TCP and UDP proxying, SNI routing, many protocols on one port | I51–I53 | no | no (I51 built, not measured; I52, I53 not built yet) | Against fit and nginx's `stream`, as I51 asks: TCP throughput (fit's `BenchmarkTCPProxy`, 256 KB echoed at a time, direct and through akit), connections a second, memory per idle connection; UDP datagrams a second and sessions at once; the per-service idle sweep on akit's timer thread with 10,000 connections (the stopgap for akio A78); the cost of sniffing on a shared port (I53). |
 | Response cache | I67, I68 | no | no (not built yet) | Hits from memory and disk against fit. |
@@ -705,6 +706,9 @@ Split from I07 so that the half that needs no config model runs beside I02.
   IP headers and the like), each with its ported tests.
 - **Done when**: the compatibility gate lists no middleware as unsupported.
 - **Touches**: `akit-middleware`.
+- **Built on**: akio API request A32 (ADR-115), added to akio by this iteration. What fit had that
+  akit lacked, besides `cache` (I67) and `wasm` (I71), was `rewrite`'s `regexp` and `replacement`
+  and the groups of `redirect`'s regexp in `to`.
 
 ### I49 WebSocket proxying
 

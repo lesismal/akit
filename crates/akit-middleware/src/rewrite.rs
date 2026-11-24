@@ -4,13 +4,14 @@
 //! The path is changed where akit's handlers read it, [`CANONICAL_PATH`] (akio's request target
 //! cannot be changed: akio API request A33): the `proxy` handler sends the new path upstream, the
 //! `static` handler looks it up. As fit's, the rewrite works on the decoded path and writes the
-//! new one escaped afresh (`/api/a%2Fb` stripped of `/api` is `/a/b`). fit's `regexp` and
-//! `replacement` are refused as not supported yet when the config is read: akio-regex does not
-//! find where a pattern matches yet (akio API request A32).
+//! new one escaped afresh (`/api/a%2Fb` stripped of `/api` is `/a/b`). The `regexp`, compiled
+//! with the config, replaces each of its matches in the decoded path with `replacement` (Go's
+//! `ReplaceAllString`, on akio-regex's matches and groups: akio API request A32).
 
-use std::sync::Arc;
+use std::{borrow::Cow, sync::Arc};
 
 use akio_http::{BodyMode, Context, Request};
+use akio_regex::Regex;
 use akit_runtime::{
     CANONICAL_PATH, Handler, HandlerParams, Middleware, Provision, ProvisionError, Provisioned,
 };
@@ -22,6 +23,8 @@ use crate::url;
 pub(crate) struct Rewrite {
     /// The prefixes to strip, each without a trailing `/`, in the order written.
     strip: Arc<[Box<[u8]>]>,
+    /// The regexp whose matches are replaced, and what replaces them.
+    replace: Option<(Arc<Regex>, Arc<str>)>,
     /// The prefix to add; empty for none.
     add: Arc<[u8]>,
 }
@@ -34,7 +37,15 @@ pub(crate) fn new(
             "the rewrite middleware was given another's params",
         ));
     };
+    let replace = if r.regexp.is_empty() {
+        None
+    } else {
+        let re = akit_router::regexp(r.regexp.as_bytes())
+            .map_err(|e| ProvisionError::field("regexp", e))?;
+        Some((Arc::new(re), r.replacement.as_str().into()))
+    };
     Ok(Provisioned::new(Arc::new(Rewrite {
+        replace,
         strip: r
             .strip_prefix
             .iter()
@@ -55,20 +66,64 @@ impl Rewrite {
             }
         }
         let stripped = rest.len() != p.len();
-        if !stripped && self.add.is_empty() {
+        let replaced = match &self.replace {
+            Some((re, with)) => replace(re, with, rest),
+            None => None,
+        };
+        if !stripped && replaced.is_none() && self.add.is_empty() {
             return None;
         }
+        let rest = replaced.as_deref().unwrap_or(rest);
         let mut out =
             Vec::with_capacity(self.add.len().saturating_add(rest.len()).saturating_add(1));
         out.extend_from_slice(&self.add);
-        if rest.is_empty() {
+        // As fit's: what the strip leaves, or the replacement makes, starts with a `/`.
+        if rest.first() != Some(&b'/') {
             out.push(b'/');
-        } else {
-            out.extend_from_slice(rest);
         }
+        out.extend_from_slice(rest);
         (out != p).then_some(out)
     }
 }
+
+/// `p` (a decoded path, perhaps not UTF-8) with each match of `re` replaced with `with`; `None`
+/// when nothing matched. Go's regexp reads each byte of an invalid UTF-8 sequence as a character
+/// of its own (U+FFFD) and keeps the byte where it copies the text: here such a byte stands, while
+/// the regexp runs, for a character of Unicode's private use plane 16 (U+10FF80 to U+10FFFF), and
+/// is put back after.
+fn replace(re: &Regex, with: &str, p: &[u8]) -> Option<Vec<u8>> {
+    if let Ok(text) = std::str::from_utf8(p) {
+        return match re.replace_all(text, with) {
+            Cow::Borrowed(_) => None,
+            Cow::Owned(s) => Some(s.into_bytes()),
+        };
+    }
+    let mut text = String::with_capacity(p.len().saturating_mul(2));
+    for chunk in p.utf8_chunks() {
+        text.push_str(chunk.valid());
+        for &b in chunk.invalid() {
+            text.push(char::from_u32(STAND_IN | u32::from(b)).unwrap_or('\u{FFFD}'));
+        }
+    }
+    let Cow::Owned(out) = re.replace_all(&text, with) else {
+        return None;
+    };
+    let mut bytes = Vec::with_capacity(out.len());
+    for c in out.chars() {
+        match u32::from(c)
+            .checked_sub(STAND_IN)
+            .and_then(|b| u8::try_from(b).ok())
+        {
+            Some(b) if b >= 0x80 => bytes.push(b),
+            _ => bytes.extend_from_slice(c.encode_utf8(&mut [0; 4]).as_bytes()),
+        }
+    }
+    Some(bytes)
+}
+
+/// A byte `b` of an invalid UTF-8 sequence (0x80 to 0xFF) stands as the character
+/// `STAND_IN | b` while a regexp runs.
+const STAND_IN: u32 = 0x10_FF00;
 
 /// What is left of `p` without `prefix` (which has no trailing `/`), when `p` is `prefix` or goes
 /// on with a `/` after it: fit's `cutSegments`. An empty rest stands for `/`.
@@ -122,6 +177,7 @@ mod tests {
 
     fn rw(strip: &[&str], add: &str) -> Rewrite {
         Rewrite {
+            replace: None,
             strip: strip
                 .iter()
                 .map(|s| s.strip_suffix('/').unwrap_or(s).as_bytes().into())
@@ -164,5 +220,52 @@ mod tests {
         // Unchanged: no new path.
         assert!(rw(&["/api"], "").path(b"/x").is_none());
         assert!(rw(&["/"], "").path(b"/x").is_none());
+    }
+
+    fn rx(strip: &[&str], re: &str, with: &str, add: &str) -> Rewrite {
+        let mut r = rw(strip, add);
+        r.replace = Some((
+            Arc::new(akit_router::regexp(re.as_bytes()).unwrap_or_else(|e| panic!("{e}"))),
+            with.into(),
+        ));
+        r
+    }
+
+    #[test]
+    fn regexps_as_fit_replaces_them() {
+        let r = rx(&[], "^/old/(.*)$", "/new/$1", "");
+        assert_eq!(apply(&r, "/old/a/b"), "/new/a/b");
+        assert_eq!(apply(&r, "/other"), "/other");
+        let r = rx(&[], "^/users/(?P<id>[0-9]+)$", "/u/${id}/profile", "");
+        assert_eq!(apply(&r, "/users/42"), "/u/42/profile");
+        assert_eq!(apply(&r, "/users/x"), "/users/x");
+        // Every match is replaced; `$$` is a `$`; `$1x` names the group `1x` (empty).
+        assert_eq!(apply(&rx(&[], "a", "b", ""), "/aaa/a"), "/bbb/b");
+        assert_eq!(apply(&rx(&[], "(x)", "$$$1", ""), "/x"), "/$x");
+        assert_eq!(apply(&rx(&[], "(x)", "$1x", ""), "/x"), "/");
+        // What the replacement makes gets a leading `/`.
+        assert_eq!(apply(&rx(&[], "^/v1", "", ""), "/v1/users"), "/users");
+        assert_eq!(apply(&rx(&[], "^/", "", ""), "/users"), "/users");
+        assert_eq!(apply(&rx(&[], "^/.*", "", ""), "/users"), "/");
+        // Order: strip, replace, add.
+        let r = rx(&["/api"], "^/v([0-9]+)/", "/version$1/", "/internal");
+        assert_eq!(apply(&r, "/api/v2/x"), "/internal/version2/x");
+        assert_eq!(apply(&r, "/v2/x"), "/internal/version2/x");
+        // Empty matches, as Go's ReplaceAllString.
+        assert_eq!(apply(&rx(&[], "x*", "-", ""), "/ab"), "/-/-a-b-");
+        // Unicode in the decoded path.
+        assert_eq!(apply(&rx(&[], "é+", "e", ""), "/caféé"), "/cafe");
+    }
+
+    #[test]
+    fn bytes_that_are_not_utf8_are_kept() {
+        let r = rx(&[], "^/a/(.)(.*)$", "/b/$2$1", "");
+        assert_eq!(r.path(b"/a/\xffz\xfe"), Some(b"/b/z\xfe\xff".to_vec()));
+        // `.` takes each invalid byte for one character, as Go's regexp does.
+        let r = rx(&[], "^/(.)$", "/one", "");
+        assert_eq!(r.path(b"/\xff"), Some(b"/one".to_vec()));
+        assert!(r.path(b"/\xff\xff").is_none());
+        // Nothing matched: no new path.
+        assert!(rx(&[], "q", "r", "").path(b"/\xff").is_none());
     }
 }
