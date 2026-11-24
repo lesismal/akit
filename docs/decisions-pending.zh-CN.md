@@ -13,3 +13,4 @@
 | 4 | 2026-11-24 | akit，合并 I22 与 I10 | 增加服务 h3 的监听器的重载被拒绝（"not supported yet"，保留正在运行的配置）：I22 为新监听器准备的临时办法只接管 TCP 连接，而 HTTP/3 监听器需要引擎中的 UDP 监听器（akio 的 A1）。合并时还修复了 `Listeners`，改由 I10 的 `addrs` 读取地址，因为 h3 监听器会在引擎中多加一个 UDP 监听器 | 先服务新监听器的 TCP 一侧，HTTP/3 等 A1 |
 | 5 | 2026-11-24 | akit，I15 | I15 保持 `doing`：它的三个 `Host` 测试等待 akio 的 A11（写在 akio 分支 `claude/i15-proxy-699f18` 上）；下一组把它合并进 akio 并移动 akit 的锁定 | 在 akit 中改写 `Host`（规则 21：akio 欠缺的加进 akio） |
 | 6 | 2026-11-24 | akit，I13 | akio-http 的 `Files` 不能尝试候选路径，也不能列出目录：I13 现在支持 `precompressed`，`try_files` 和 `browse` 按暂不支持拒绝（akio 需求 A16–A18），保持 `doing`；I13 会话在 akio 的一个分支上实现 A13 和 A16–A18，在移动 akit 的 akio 锁定时与 A11 一起合并，届时再完成 I13 的 akit 部分 | 在 akit 中围绕 `Files` 实现 `try_files` 和目录列表（规则 21：akio 欠缺的加进 akio） |
+| 7 | 2026-11-24 | akit，合并 I16 | I13 和 I16 都把自己的 akio 需求编为 A16–A18。I13 的保留 A16–A18，因为它的 akio 分支（ADR-100）已在使用；I16 的改为 A19–A21。I16 在 `doing` 状态下合并，因为它的 `limits.max_body_bytes` 已完成并测试；流式转发等待 A19–A21 | 改 I13 的编号，连同它的 akio 分支 |
