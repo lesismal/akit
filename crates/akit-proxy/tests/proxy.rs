@@ -703,8 +703,8 @@ fn config_errors() {
             "routes[0].handler.params.upstream: upstream or upstreams is needed",
         ),
         (
-            r#"{"upstream": "app", "retry": {}}"#,
-            "routes[0].handler.params.retry: not supported yet",
+            r#"{"upstream": "app", "retry": {"statuses": [404]}}"#,
+            "routes[0].handler.params.retry.statuses[0]: 404 is not a 5xx status",
         ),
     ] {
         let json = config1(params, "127.0.0.1:1");

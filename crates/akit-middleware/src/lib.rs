@@ -6,7 +6,8 @@
 //! fit's `middleware/rewrite` and `middleware/headers`; `rate_limit`, `concurrency_limit` and
 //! `body_limit` (I41), as fit's `middleware/limit`; `basic_auth` and `client_cert` (I42), as fit's
 //! `middleware/auth`; `forward_auth` (I43), as fit's `middleware/auth` too, which asks an auth
-//! service on akit-upstream's pool, the request suspended meanwhile. Each is compiled from its params when the
+//! service on akit-upstream's pool, the request suspended meanwhile; `circuit_breaker` (I45), as fit's
+//! `middleware/breaker`. Each is compiled from its params when the
 //! config is, and wraps its route's handler once, then (rule 12); per request it runs inline on the
 //! I/O thread and never blocks.
 //!
@@ -14,6 +15,7 @@
 //! fill this crate in.
 
 mod auth;
+mod breaker;
 mod forward;
 mod headers;
 mod limit;
@@ -34,6 +36,11 @@ pub static MODULES: &[Info<HandlerParams>] = &[
         "http.middleware.body_limit",
         "Limits the size of request bodies, answering 413 past it.",
         limit::new_body,
+    ),
+    Info::middleware(
+        "http.middleware.circuit_breaker",
+        "Stops sending a route's requests on while too many fail or are slow, then lets a few through to try again.",
+        breaker::new,
     ),
     Info::middleware(
         "http.middleware.client_cert",

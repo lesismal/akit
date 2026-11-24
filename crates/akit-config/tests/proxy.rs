@@ -74,13 +74,71 @@ fn errors() {
     }
 }
 
+/// I45: `retry`, its defaults and fit's checks (TestRetryParams).
+#[test]
+fn retry() {
+    let proxy = |params: &str| {
+        let c = from_json(&config(params), None).unwrap();
+        let Handler::Proxy(p) = &c.routes[0].handler else {
+            unreachable!()
+        };
+        p.clone()
+    };
+    assert_eq!(proxy(r#"{"upstream": "app"}"#).retry, None);
+    assert_eq!(
+        proxy(r#"{"upstream": "app", "retry": {}}"#).retry,
+        Some(akit_config::Retry::default())
+    );
+    let r = proxy(
+        r#"{"upstream": "app", "retry": {"attempts": 10, "statuses": [502, 504],
+            "budget_ratio": 0, "budget_min_per_second": 0.5}}"#,
+    )
+    .retry
+    .unwrap();
+    assert_eq!(r.attempts, 10);
+    assert_eq!(r.statuses, [502, 504]);
+    assert_eq!(r.budget_ratio, 0.0);
+    assert_eq!(r.budget_min_per_second, 0.5);
+    for (retry, want) in [
+        (
+            r#"{"statuses": [404]}"#,
+            "routes[0].handler.params.retry.statuses[0]: 404 is not a 5xx status",
+        ),
+        (
+            r#"{"budget_ratio": 2}"#,
+            "routes[0].handler.params.retry.budget_ratio: 2 is greater than the maximum 1",
+        ),
+        (
+            r#"{"budget_ratio": -0.5}"#,
+            "routes[0].handler.params.retry.budget_ratio: -0.5 is less than the minimum 0",
+        ),
+        (
+            r#"{"budget_min_per_second": -1}"#,
+            "routes[0].handler.params.retry.budget_min_per_second: -1 is less than the minimum 0",
+        ),
+        (
+            r#"{"attempts": 0}"#,
+            "routes[0].handler.params.retry.attempts: 0 is less than the minimum 1",
+        ),
+        (
+            r#"{"attempts": 11}"#,
+            "routes[0].handler.params.retry.attempts: 11 is greater than the maximum 10",
+        ),
+        (r#"{"tries": 1}"#, "routes[0].handler.params.retry.tries"),
+        (r#""yes""#, "routes[0].handler.params.retry"),
+    ] {
+        let params = format!(r#"{{"upstream": "app", "retry": {retry}}}"#);
+        let e = from_json(&config(&params), None).unwrap_err().to_string();
+        assert!(e.contains(want), "{retry}: {e}");
+    }
+}
+
 #[test]
 fn not_supported_yet() {
     for field in [
         r#""upstreams": [{"upstream": "app", "weight": 1}]"#,
         r#""failover": "app""#,
         r#""mirror": {"upstream": "app"}"#,
-        r#""retry": {}"#,
         r#""tunnel_idle_timeout": "1m""#,
         r#""splice_uploads": false"#,
     ] {

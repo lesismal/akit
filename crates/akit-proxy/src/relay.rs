@@ -23,6 +23,11 @@
 //! I17b hears the client go at any point ([`start`] registers `Context::on_gone`): the upstream
 //! request's [`CancelToken`] is cancelled, and the exchange says it gave up.
 //!
+//! I45 sends a request again ([`crate::retry`]) from [`Exchange::on_error`] before its response
+//! began, or from [`Exchange::on_head`] for a status the proxy's `retry` lists: the next
+//! attempt is a new [`Relay`] that takes over the client, handed to the pool; this one is left
+//! with nothing to answer.
+//!
 //! Nothing here blocks or waits: each side's callbacks run on their I/O threads, and the state
 //! they share is behind one lock that is never held while calling into akio, which may call back.
 
@@ -35,6 +40,7 @@ use akio_http::{BodyEvent, BodyReads, BodyStream, Context, Detached, Headers, Re
 use akit_runtime::upstream::{Download, Error, Exchange, Head, Upload as Body};
 
 use crate::headers;
+use crate::retry::Again;
 
 /// How much of an upload may wait in the upstream connection's queue before the client's reads
 /// are held: fit's `uploadPending`, one read of the client's.
@@ -364,6 +370,9 @@ pub(crate) struct Relay {
     /// The sticky cookie the response sets (I36), after the upstream's fields.
     set_cookie: Option<String>,
     out: Out,
+    /// What the request needs to be sent again (I45), when the proxy retries and its body can
+    /// be replayed.
+    again: Option<Box<Again>>,
 }
 
 impl Relay {
@@ -374,6 +383,7 @@ impl Relay {
         chunked: bool,
         log: Option<Logged>,
         set_cookie: Option<String>,
+        again: Option<Box<Again>>,
     ) -> Relay {
         Relay {
             shared: client.shared,
@@ -384,7 +394,43 @@ impl Relay {
             log,
             set_cookie,
             out: Out::Waiting,
+            again,
         }
+    }
+
+    /// Sends the request again, if its retries allow it for the attempt that just ended,
+    /// answered with `status` or failed with `err` (I45), and reports whether it did. The next
+    /// attempt takes the client over; this one is left with nothing to answer.
+    fn retry(&mut self, status: Option<u16>, err: Option<&Error>) -> bool {
+        let gone = lock(&self.shared).gone;
+        let Some(again) = self.again.as_mut() else {
+            return false;
+        };
+        if !again.may(status, err, gone) {
+            return false;
+        }
+        let Some(next) = again.next() else {
+            return false;
+        };
+        let pool = again.pool.clone();
+        let log = self.log.as_ref().map(|_| Logged {
+            addr: pool.address(next.backend).unwrap_or_default().to_owned(),
+            start: Instant::now(),
+        });
+        let relay = Relay {
+            shared: Arc::clone(&self.shared),
+            reads: self.reads.clone(),
+            head: self.head,
+            version: self.version,
+            chunked: self.chunked,
+            log,
+            set_cookie: next.set_cookie,
+            out: Out::Waiting,
+            again: self.again.take(),
+        };
+        self.out = Out::Done;
+        pool.stream(next.backend, next.req, relay);
+        true
     }
 
     /// The right to answer the client, if it is still here's.
@@ -461,6 +507,15 @@ impl Exchange for Relay {
             .headers
             .get("content-length")
             .and_then(|v| v.trim().parse::<u64>().ok());
+        // Only 5xx statuses are retried (`retry.statuses`): a healthy response asks nothing more.
+        if head.status >= 500 && self.again.is_some() && self.retry(Some(head.status), None) {
+            // A small body is read and dropped, which keeps the connection; a larger one is not
+            // worth waiting for.
+            if !length.is_some_and(|n| n <= WHOLE_RESPONSE) {
+                up.cancel();
+            }
+            return;
+        }
         let bodyless = self.head || matches!(head.status, 100..=199 | 204 | 304);
         if bodyless || length.is_some_and(|n| n <= WHOLE_RESPONSE) {
             let capacity = if bodyless { 0 } else { length.unwrap_or(0) };
@@ -578,6 +633,9 @@ impl Exchange for Relay {
     }
 
     fn on_error(&mut self, e: Error) {
+        if matches!(self.out, Out::Waiting) && self.again.is_some() && self.retry(None, Some(&e)) {
+            return;
+        }
         self.end_upload();
         match mem::replace(&mut self.out, Out::Done) {
             // Broken off mid-body (or cut short by its timeout): unfinished, the stream closes an

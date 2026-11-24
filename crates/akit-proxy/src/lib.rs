@@ -82,11 +82,20 @@
 //! `akit_upstream::HELD_LIMIT` rather than paced, an upload to one is not paced (its queue bounded
 //! by the body's limit), and request trailers do not reach it.
 //!
+//! I45 brings retries, as fit's `retry` (`retry.rs`): a request whose connection could not be
+//! made (or whose address had `max_pending` requests waiting) is sent again whatever its method,
+//! and one of an idempotent method also when it failed before its response began or was answered
+//! with a status of `statuses`, up to `attempts` times, each to the address the upstream picks
+//! next (one not tried yet, while there is one) with its sticky cookie. A request whose body
+//! streams is never sent again. Retries are held to a budget (`budget_ratio` of the requests,
+//! plus `budget_min_per_second`), and the proxy's `timeout` bounds the attempts together.
+//!
 //! Part of [akit](https://github.com/lesismal/akit); see `docs/dev-plan.md` for the iterations that
 //! fill this crate in.
 
 mod headers;
 mod relay;
+mod retry;
 
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -119,6 +128,8 @@ struct Proxy {
     host_header: String,
     /// The params' `timeout`.
     timeout: Option<Duration>,
+    /// The params' `retry`, compiled with its budget (I45).
+    retry: Option<Arc<retry::Policy>>,
 }
 
 fn new(p: &Provision<'_, HandlerParams>) -> Result<Provisioned<dyn Handler>, ProvisionError> {
@@ -138,11 +149,20 @@ fn new(p: &Provision<'_, HandlerParams>) -> Result<Provisioned<dyn Handler>, Pro
         trusted: params.trusted_proxies.clone(),
         host_header: params.host_header.clone(),
         timeout: params.timeout,
+        retry: params
+            .retry
+            .as_ref()
+            .map(|r| Arc::new(retry::Policy::new(r))),
     }) as Arc<dyn Handler>))
 }
 
 impl akio_http::Service for Proxy {
     fn call(&self, ctx: &mut Context) {
+        // The route's timeout counts from here, retries included.
+        let start = Instant::now();
+        if let Some(r) = &self.retry {
+            r.deposit();
+        }
         let req = ctx.req();
         // The fields as the middleware before left them (a `headers` middleware's changes).
         let fields = akit_runtime::request_headers(ctx);
@@ -206,6 +226,29 @@ impl akio_http::Service for Proxy {
             // A copy: the body is the request's, and goes on with the context (rule 6).
             out.body = ctx.req().body.clone();
         }
+        // A request whose body went whole (or that has none) can be sent again (I45); one whose
+        // body streams cannot.
+        let again = match &self.retry {
+            Some(policy) if !streamed && !chunked => {
+                let req = ctx.req();
+                Some(Box::new(retry::Again {
+                    policy: Arc::clone(policy),
+                    pool: self.pool.clone(),
+                    req: out.clone(),
+                    idempotent: retry::idempotent(&req.method),
+                    peer: req.peer.ip(),
+                    path: ctx
+                        .local(CANONICAL_PATH)
+                        .unwrap_or_else(|| req.path())
+                        .to_owned(),
+                    query: req.query().unwrap_or("").to_owned(),
+                    deadline: self.timeout.and_then(|t| start.checked_add(t)),
+                    attempt: 0,
+                    tried: retry::bit(backend),
+                }))
+            }
+            _ => None,
+        };
         // The access log's line names the address the request went to and how long it took
         // (fit's upstream and upstream_duration): the line is written as the response is sent.
         let log = akit_observe::logged().then(|| relay::Logged {
@@ -217,7 +260,7 @@ impl akio_http::Service for Proxy {
                 .to_owned(),
             start: Instant::now(),
         });
-        let x = relay::Relay::new(client, head, version, chunked, log, set_cookie);
+        let x = relay::Relay::new(client, head, version, chunked, log, set_cookie, again);
         self.pool.stream(backend, out, x);
     }
 

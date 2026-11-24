@@ -152,7 +152,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 181 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 196 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -172,7 +172,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`http.handlers/httpflv`](#fields-http-handlers-httpflv) | 6 | 0 | 6 |
 | [`http.handlers/media_pages`](#fields-http-handlers-media-pages) | 29 | 0 | 29 |
 | [`http.handlers/media_tokens`](#fields-http-handlers-media-tokens) | 11 | 0 | 11 |
-| [`http.handlers/proxy`](#fields-http-handlers-proxy) | 20 | 6 | 14 |
+| [`http.handlers/proxy`](#fields-http-handlers-proxy) | 20 | 11 | 9 |
 | [`http.handlers/respond`](#fields-http-handlers-respond) | 5 | 5 | 0 |
 | [`http.handlers/static`](#fields-http-handlers-static) | 16 | 13 | 3 |
 | [`http.handlers/stream_whep`](#fields-http-handlers-stream-whep) | 5 | 0 | 5 |
@@ -186,7 +186,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`http.middleware/basic_auth`](#fields-http-middleware-basic-auth) | 8 | 8 | 0 |
 | [`http.middleware/body_limit`](#fields-http-middleware-body-limit) | 3 | 3 | 0 |
 | [`http.middleware/cache`](#fields-http-middleware-cache) | 17 | 0 | 17 |
-| [`http.middleware/circuit_breaker`](#fields-http-middleware-circuit-breaker) | 10 | 0 | 10 |
+| [`http.middleware/circuit_breaker`](#fields-http-middleware-circuit-breaker) | 10 | 10 | 0 |
 | [`http.middleware/client_cert`](#fields-http-middleware-client-cert) | 4 | 4 | 0 |
 | [`http.middleware/compress`](#fields-http-middleware-compress) | 10 | 0 | 10 |
 | [`http.middleware/concurrency_limit`](#fields-http-middleware-concurrency-limit) | 4 | 4 | 0 |
@@ -277,7 +277,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 33 | 5 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **合计** | 3821 | 181 | 3640 |
+| **合计** | 3821 | 196 | 3625 |
 
 <a id="fields-access"></a>
 
@@ -850,11 +850,11 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `routes[].handler<proxy>.params.mirror` | `object` | 尚不支持（not supported yet） |
 | `routes[].handler<proxy>.params.mirror.percent` | `number` | 尚不支持（not supported yet） |
 | `routes[].handler<proxy>.params.mirror.upstream` | `string, required` | 尚不支持（not supported yet） |
-| `routes[].handler<proxy>.params.retry` | `object` | 尚不支持（not supported yet） |
-| `routes[].handler<proxy>.params.retry.attempts` | `integer` | 尚不支持（not supported yet） |
-| `routes[].handler<proxy>.params.retry.budget_min_per_second` | `number` | 尚不支持（not supported yet） |
-| `routes[].handler<proxy>.params.retry.budget_ratio` | `number` | 尚不支持（not supported yet） |
-| `routes[].handler<proxy>.params.retry.statuses` | `array<integer>` | 尚不支持（not supported yet） |
+| `routes[].handler<proxy>.params.retry` | `object` | 已支持 |
+| `routes[].handler<proxy>.params.retry.attempts` | `integer` | 已支持 |
+| `routes[].handler<proxy>.params.retry.budget_min_per_second` | `number` | 已支持 |
+| `routes[].handler<proxy>.params.retry.budget_ratio` | `number` | 已支持 |
+| `routes[].handler<proxy>.params.retry.statuses` | `array<integer>` | 已支持 |
 | `routes[].handler<proxy>.params.splice_uploads` | `boolean` | 尚不支持（not supported yet） |
 | `routes[].handler<proxy>.params.timeout` | `duration` | 已支持 |
 | `routes[].handler<proxy>.params.trusted_proxies` | `array<string>` | 已支持 |
@@ -1067,16 +1067,16 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
-| `routes[].middleware[]<circuit_breaker>` | `module` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<circuit_breaker>.params` | `object` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<circuit_breaker>.params.error_ratio` | `number` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<circuit_breaker>.params.half_open_requests` | `integer` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<circuit_breaker>.params.min_requests` | `integer` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<circuit_breaker>.params.open_duration` | `duration` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<circuit_breaker>.params.slow_ratio` | `number` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<circuit_breaker>.params.slow_threshold` | `duration` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<circuit_breaker>.params.statuses` | `array<integer>` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<circuit_breaker>.params.window` | `duration` | 尚不支持（not supported yet） |
+| `routes[].middleware[]<circuit_breaker>` | `module` | 已支持 |
+| `routes[].middleware[]<circuit_breaker>.params` | `object` | 已支持 |
+| `routes[].middleware[]<circuit_breaker>.params.error_ratio` | `number` | 已支持 |
+| `routes[].middleware[]<circuit_breaker>.params.half_open_requests` | `integer` | 已支持 |
+| `routes[].middleware[]<circuit_breaker>.params.min_requests` | `integer` | 已支持 |
+| `routes[].middleware[]<circuit_breaker>.params.open_duration` | `duration` | 已支持 |
+| `routes[].middleware[]<circuit_breaker>.params.slow_ratio` | `number` | 已支持 |
+| `routes[].middleware[]<circuit_breaker>.params.slow_threshold` | `duration` | 已支持 |
+| `routes[].middleware[]<circuit_breaker>.params.statuses` | `array<integer>` | 已支持 |
+| `routes[].middleware[]<circuit_breaker>.params.window` | `duration` | 已支持 |
 
 <a id="fields-http-middleware-client-cert"></a>
 

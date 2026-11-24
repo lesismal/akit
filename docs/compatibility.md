@@ -175,7 +175,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 181 supported.
+3821 fields in 121 sections, at fit `7daee573`; 196 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -195,7 +195,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`http.handlers/httpflv`](#fields-http-handlers-httpflv) | 6 | 0 | 6 |
 | [`http.handlers/media_pages`](#fields-http-handlers-media-pages) | 29 | 0 | 29 |
 | [`http.handlers/media_tokens`](#fields-http-handlers-media-tokens) | 11 | 0 | 11 |
-| [`http.handlers/proxy`](#fields-http-handlers-proxy) | 20 | 6 | 14 |
+| [`http.handlers/proxy`](#fields-http-handlers-proxy) | 20 | 11 | 9 |
 | [`http.handlers/respond`](#fields-http-handlers-respond) | 5 | 5 | 0 |
 | [`http.handlers/static`](#fields-http-handlers-static) | 16 | 13 | 3 |
 | [`http.handlers/stream_whep`](#fields-http-handlers-stream-whep) | 5 | 0 | 5 |
@@ -209,7 +209,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`http.middleware/basic_auth`](#fields-http-middleware-basic-auth) | 8 | 8 | 0 |
 | [`http.middleware/body_limit`](#fields-http-middleware-body-limit) | 3 | 3 | 0 |
 | [`http.middleware/cache`](#fields-http-middleware-cache) | 17 | 0 | 17 |
-| [`http.middleware/circuit_breaker`](#fields-http-middleware-circuit-breaker) | 10 | 0 | 10 |
+| [`http.middleware/circuit_breaker`](#fields-http-middleware-circuit-breaker) | 10 | 10 | 0 |
 | [`http.middleware/client_cert`](#fields-http-middleware-client-cert) | 4 | 4 | 0 |
 | [`http.middleware/compress`](#fields-http-middleware-compress) | 10 | 0 | 10 |
 | [`http.middleware/concurrency_limit`](#fields-http-middleware-concurrency-limit) | 4 | 4 | 0 |
@@ -300,7 +300,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 33 | 5 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 181 | 3640 |
+| **Total** | 3821 | 196 | 3625 |
 
 <a id="fields-access"></a>
 
@@ -873,11 +873,11 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `routes[].handler<proxy>.params.mirror` | `object` | not supported yet |
 | `routes[].handler<proxy>.params.mirror.percent` | `number` | not supported yet |
 | `routes[].handler<proxy>.params.mirror.upstream` | `string, required` | not supported yet |
-| `routes[].handler<proxy>.params.retry` | `object` | not supported yet |
-| `routes[].handler<proxy>.params.retry.attempts` | `integer` | not supported yet |
-| `routes[].handler<proxy>.params.retry.budget_min_per_second` | `number` | not supported yet |
-| `routes[].handler<proxy>.params.retry.budget_ratio` | `number` | not supported yet |
-| `routes[].handler<proxy>.params.retry.statuses` | `array<integer>` | not supported yet |
+| `routes[].handler<proxy>.params.retry` | `object` | supported |
+| `routes[].handler<proxy>.params.retry.attempts` | `integer` | supported |
+| `routes[].handler<proxy>.params.retry.budget_min_per_second` | `number` | supported |
+| `routes[].handler<proxy>.params.retry.budget_ratio` | `number` | supported |
+| `routes[].handler<proxy>.params.retry.statuses` | `array<integer>` | supported |
 | `routes[].handler<proxy>.params.splice_uploads` | `boolean` | not supported yet |
 | `routes[].handler<proxy>.params.timeout` | `duration` | supported |
 | `routes[].handler<proxy>.params.trusted_proxies` | `array<string>` | supported |
@@ -1090,16 +1090,16 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `routes[].middleware[]<circuit_breaker>` | `module` | not supported yet |
-| `routes[].middleware[]<circuit_breaker>.params` | `object` | not supported yet |
-| `routes[].middleware[]<circuit_breaker>.params.error_ratio` | `number` | not supported yet |
-| `routes[].middleware[]<circuit_breaker>.params.half_open_requests` | `integer` | not supported yet |
-| `routes[].middleware[]<circuit_breaker>.params.min_requests` | `integer` | not supported yet |
-| `routes[].middleware[]<circuit_breaker>.params.open_duration` | `duration` | not supported yet |
-| `routes[].middleware[]<circuit_breaker>.params.slow_ratio` | `number` | not supported yet |
-| `routes[].middleware[]<circuit_breaker>.params.slow_threshold` | `duration` | not supported yet |
-| `routes[].middleware[]<circuit_breaker>.params.statuses` | `array<integer>` | not supported yet |
-| `routes[].middleware[]<circuit_breaker>.params.window` | `duration` | not supported yet |
+| `routes[].middleware[]<circuit_breaker>` | `module` | supported |
+| `routes[].middleware[]<circuit_breaker>.params` | `object` | supported |
+| `routes[].middleware[]<circuit_breaker>.params.error_ratio` | `number` | supported |
+| `routes[].middleware[]<circuit_breaker>.params.half_open_requests` | `integer` | supported |
+| `routes[].middleware[]<circuit_breaker>.params.min_requests` | `integer` | supported |
+| `routes[].middleware[]<circuit_breaker>.params.open_duration` | `duration` | supported |
+| `routes[].middleware[]<circuit_breaker>.params.slow_ratio` | `number` | supported |
+| `routes[].middleware[]<circuit_breaker>.params.slow_threshold` | `duration` | supported |
+| `routes[].middleware[]<circuit_breaker>.params.statuses` | `array<integer>` | supported |
+| `routes[].middleware[]<circuit_breaker>.params.window` | `duration` | supported |
 
 <a id="fields-http-middleware-client-cert"></a>
 
