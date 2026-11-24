@@ -45,6 +45,9 @@ pub struct Config {
     /// `telemetry`: OpenTelemetry (I64), traces of requests and metrics exported over OTLP/HTTP;
     /// neither when left out. Read when akit starts: a change takes a restart, as in fit.
     pub telemetry: Option<Telemetry>,
+    /// `providers`: sources of config other than the files and the Admin API (I57, I58), merged
+    /// into it. Read when akit starts: a change takes a restart, as in fit.
+    pub providers: Vec<crate::providers::Provider>,
 }
 
 /// fit's default `acme.directory`: Let's Encrypt's.
@@ -1774,6 +1777,7 @@ const CONFIG_FIELDS: &[&str] = &[
     "auto_https",
     "services",
     "telemetry",
+    "providers",
 ];
 const CONFIG_FIT_ONLY: &[&str] = &[
     "log",
@@ -1788,7 +1792,6 @@ const CONFIG_FIT_ONLY: &[&str] = &[
     "media_library",
     "sync",
     "bittorrent",
-    "providers",
 ];
 // I26: the Admin API's address, history and limits; I27: its token; I63: its dashboard. Its TLS waits for the API to
 // be served over TLS, its access lists for fit's access, a Unix socket for akio API request A23.
@@ -2108,6 +2111,7 @@ pub(crate) struct Part {
     auto_https: Option<((crate::AutoHttps, usize), usize)>,
     /// `telemetry`, with the position of its key, when the file gives it.
     telemetry: Option<(Telemetry, usize)>,
+    providers: Vec<At<crate::providers::Provider>>,
     /// The position of the file's top object.
     doc_off: usize,
 }
@@ -2179,6 +2183,14 @@ pub(crate) fn part(d: &mut Decoder<'_>, n: &Node, file: usize) -> Option<Part> {
     let telemetry = o
         .take("telemetry")
         .and_then(|v| telemetry(d, v, "telemetry").map(|t| (t, v.off)));
+    let providers = o
+        .take("providers")
+        .map(|v| {
+            d.array(v, "providers", |d, n, p| {
+                Some(At::new(file, p, n, crate::providers::decode(d, n, p)?))
+            })
+        })
+        .unwrap_or_default();
     let doc_off = o.off;
     o.finish(d, CONFIG_FIELDS, CONFIG_FIT_ONLY);
     Some(Part {
@@ -2194,6 +2206,7 @@ pub(crate) fn part(d: &mut Decoder<'_>, n: &Node, file: usize) -> Option<Part> {
         acme,
         auto_https,
         telemetry,
+        providers,
         doc_off,
     })
 }
@@ -2219,6 +2232,7 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
     let mut acme: Option<(Acme, usize)> = None;
     let mut auto_https: Option<((crate::AutoHttps, usize), usize)> = None;
     let mut telemetry: Option<(Telemetry, usize)> = None;
+    let mut providers = Vec::new();
     for (file, p) in parts.into_iter().enumerate() {
         first_doc.get_or_insert((file, p.doc_off));
         if let Some((v, off)) = p.schema_version {
@@ -2342,7 +2356,14 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
         routes.extend(p.routes);
         upstreams.extend(p.upstreams);
         services.extend(p.services);
+        providers.extend(p.providers);
     }
+    crate::providers::check(
+        ds,
+        providers
+            .iter()
+            .map(|a: &At<_>| (a.file, a.off, a.path.as_str(), &a.v)),
+    );
     check_listeners(ds, &listeners);
     let served = served_listeners(ds, &listeners, &routes, auto_https, first_doc);
     let names: Vec<&str> = served.iter().map(|l| l.name.as_str()).collect();
@@ -2382,6 +2403,7 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
         auto_https: auto_https.map(|((a, _), _)| a),
         services: services.into_iter().map(|a| a.v).collect(),
         telemetry: telemetry.map(|(t, _)| t),
+        providers: providers.into_iter().map(|a| a.v).collect(),
     }
 }
 

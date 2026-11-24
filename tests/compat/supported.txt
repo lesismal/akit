@@ -438,3 +438,19 @@ routes[].middleware[]<cache>.params.disk.path
 routes[].middleware[]<cache>.params.disk.max_bytes
 routes[].middleware[]<cache>.params.disk.max_size
 routes[].middleware[]<cache>.params.disk.max_entries
+
+# I58: the Docker provider. Routes, upstreams and services from the labels of running Docker
+# containers, followed through the daemon's events on akio's HTTP client over its Unix socket (or
+# TCP), merged by I57's framework. consul, consul_kv, etcd and kubernetes are refused as not
+# supported yet (I59-I61). Read when akit starts: a change takes a restart, as in fit.
+providers
+providers[].name
+providers[].docker
+providers[].docker.endpoint
+providers[].docker.expose_all
+providers[].docker.network
+providers[].docker.use_published_ports
+providers[].docker.label_prefix
+providers[].docker.max_containers
+providers[].docker.refresh_interval
+providers[].docker.request_timeout

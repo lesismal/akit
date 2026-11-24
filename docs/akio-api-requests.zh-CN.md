@@ -78,6 +78,7 @@
 | A112 | 按 RFC 9110 要求接收方接受的三种格式解析 HTTP 日期 | 已在 akio 分支 `claude/a111-body-tap`（`0e36f8d6`）上实现，已锁定 | 15 | I67 |
 | A113 | 在内层过滤器之后运行的响应过滤器（外层过滤器） | 已在 akio 分支 `claude/a111-body-tap`（`0e36f8d6`）上实现，已锁定 | 5 | I67 |
 | A117 | 从 `akio` 同时取得 `akio::Pool` 与 `PoolConfig`：应用自己的、有上限的阻塞工作线程池 | 已提出（I68）；期间 akit-cache 直接依赖 `akio-pool` | 4 | I68 |
+| A135 | 拨号 Unix 域流套接字，以及在其上的 HTTP 客户端（akio、akio-http、akio-sys） | 已在 akio 分支 `claude/a135-unix-dial`（`0f2c419b`，ADR-120）上实现，已锁定 | 1、2 | I58 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -1182,3 +1183,23 @@ acceptor)`）；`Client`、`ClientOptions`、`ClientRequest` 都无法设置该�
 **akit 的用法。** `akit-cache` 的磁盘线程池（`disk.rs`）：用 `Pool::new` 建立至少 16 个、每个 CPU 4 个线程、
 队列 4,096 的线程池，每个文件操作都用 `try_execute` 提交。期间 akit-cache 直接依赖 `akio-pool`，与所有 akio
 crate 同一个提交（权宜之计，记录在进度日志中）；此需求进入 akio 的 main 后改用 `akio::Pool`。
+
+## A135 拨号 Unix 域流套接字，以及在其上的 HTTP 客户端
+
+**问题。** Docker 提供者（I58）通过 Engine API 列出容器、跟随守护进程的事件，守护进程默认在
+Unix 域套接字 `/var/run/docker.sock` 上提供这个 API。规则 2 要求 akit 的请求走 akio 的异步客户端；
+akio 的引擎只能拨 TCP，它的 HTTP 客户端会解析 URL 的主机名，所以 akit 只能用自己的阻塞客户端
+才能连到这个套接字。
+
+**证据。** 在 `e9891b52`：`Engine::dial` 和 `dial_from` 接受 `SocketAddr`；
+`akio_sys::connect_nonblocking` 只创建 `AF_INET`/`AF_INET6` 套接字；epoll 和 io_uring 的
+`finish_connect` 按 IP 地址读取对端和本端地址；`Client::dial` 解析 `key.host` 再拨这些地址。
+
+**建议的 API。** `Engine::dial_unix(path, acceptor, on_error)`：像拨出的 TCP 连接一样服务的 Unix
+域连接（`peer_addr` 和 `local_addr` 是固定的 `UNIX_ADDR`）；以及
+`Client::with_unix_socket(Option<PathBuf>)`：该客户端的每个请求都发往这个套接字，URL 的主机仍是
+`Host` 字段，也仍是空闲连接的键。
+
+**akit 如何使用。** 对 `unix://` 端点，`akit_provider::docker` 用 `with_unix_socket` 构建客户端，
+在其上发出 `GET /events` 和 `GET /containers/json`，回调在 akio 的 I/O 线程上。已由 I58 在 akio
+中完成（ADR-120，分支 `claude/a135-unix-dial`，`0f2c419b`），待合并到 akio 的 main。

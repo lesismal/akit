@@ -10,6 +10,9 @@ publish = false
 
 [dependencies]
 akit-config = { workspace = true }
+# The Docker provider (I58): akio's HTTP client, over a Unix socket or TCP.
+akio = { workspace = true }
+akio-http = { workspace = true }
 
 [lints]
 workspace = true

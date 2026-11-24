@@ -161,7 +161,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I56 | M3 exit | I39–I55 | todo |
 | **M4** | | | |
 | I57 | Provider framework and the effective config | I29 | done |
-| I58 | Docker provider | I57 | todo |
+| I58 | Docker provider | I57 | done |
 | I59 | Kubernetes Ingress | I57 | todo |
 | I60 | Kubernetes Gateway API and conformance | I59 | todo |
 | I61 | Consul and etcd | I57 | todo |
@@ -806,6 +806,8 @@ Split from I07 so that the half that needs no config model runs beside I02.
   Unix socket.
 - **Done when**: the Docker Compose example routes services as they start and stop.
 - **Touches**: `akit-provider`.
+- **fit**: decision 010.
+- **Status**: done (2026-11-24), with akio API request A135 (ADR-120); see the progress log.
 
 ### I59 Kubernetes Ingress
 
