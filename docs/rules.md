@@ -160,3 +160,24 @@ for the Go gateway and for the engine underneath akit.
     [benchmark and optimization status](dev-plan.md#benchmark-and-optimization-status) table,
     marked not benchmarked and not optimized, naming what should be measured; the benchmark task
     that measures or optimizes it updates the row with the date, commit and result.
+
+## 15. No run hangs unnoticed
+
+31. **A hung test costs minutes, not hours.** A bug that deadlocks a test must fail the run
+    quickly and visibly, never leave it waiting:
+    - **Each test binary has a time limit.** Whole-suite runs and other long test runs start every
+      test binary through the cargo runner [`tools/test-timeout.sh`](../tools/test-timeout.sh)
+      (`CARGO_TARGET_<TRIPLE>_RUNNER`, e.g.
+      `CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER=$PWD/tools/test-timeout.sh`). A binary still
+      running after `AKIT_TEST_BINARY_TIMEOUT` seconds (default 900) is reported with a `HANG:`
+      line and its threads (the harness names a test's thread after the test, so the hung test
+      shows), killed, and the run goes on with the next binary.
+    - **A `HANG:` is a failure like any other**: it is reported, and the test is rerun alone a
+      few times (with `timeout`) to tell a rare hang from a deadlock the change brought in.
+    - **Whoever waits on a long run watches its progress, not only its end.** The watcher checks
+      that the log keeps growing and speaks up when it has not grown for 15 minutes; then the
+      running processes are looked at (`ps`, the test binary's threads in `/proc/<pid>/task/*/comm`
+      and `wchan`). Waiting for the end marker alone is not enough.
+    - **Tests have their own deadlines.** A test that waits on a socket, a channel or a condition
+      sets a read/write timeout, `recv_timeout` or a bounded wait, so a bug makes it fail rather
+      than hang.
