@@ -602,8 +602,9 @@ fn jwt_claims() {
     }
 
     // A token kept verified is still checked against the clock: one that expires while kept is
-    // refused once it has.
-    let soon = hs(&base(&format!(r#""exp":{}"#, now - 29)));
+    // refused once it has. The clock is read again here: the cases above can take seconds on a
+    // loaded host, and this token must be within the leeway when it is first sent.
+    let soon = hs(&base(&format!(r#""exp":{}"#, unix_now() - 29)));
     assert_eq!(
         bearer(akit.addr, "/p", &soon).status,
         200,
