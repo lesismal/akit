@@ -991,5 +991,5 @@ below is the planned order; tracks with no dependency between them may run in pa
 | 9 | AI assistant | I124–I130, I152–I154 | the chat panel, tools, MCP server |
 | 10 | BitTorrent | I196–I210 | the client and tracker roles on `akio-bittorrent` |
 | 11 | Sync | I163–I194, I211–I222 | the pipeline core and checkpoints, then connectors by fit's order |
-| 12 | Prefork and NUMA | planned in fit | `akio-prefork` with placement; measured before it is on by default |
+| 12 | Prefork and NUMA | planned in fit | on hold (2026-11-25): akit does not use prefork; akio has stopped testing `akio-prefork` and decides later whether to delete it. Not started until that decision. |
 | 13 | P2P and VPN | I84–I103 | after fit's track is done |
