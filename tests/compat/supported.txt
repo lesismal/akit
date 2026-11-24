@@ -382,9 +382,8 @@ routes[].middleware[]<rewrite>.params.replacement
 
 # I67: cache, responses kept by RFC 9111's rules (Cache-Control, Vary, validators, Age) in a
 # bounded memory tier shared by the caches of a zone and kept across reloads; a streamed (proxied)
-# body copied as it goes through akio's body tap (ADR-116). disable_lock and lock_timeout are read
-# and kept for the cache lock (I68); until then every miss fetches. stale_while_revalidate,
-# stale_if_error and disk wait for I68 and are refused as not supported yet.
+# body copied as it goes through akio's body tap (ADR-116). disable_lock and lock_timeout are the
+# cache lock's (I68).
 routes[].middleware[]<cache>
 routes[].middleware[]<cache>.params
 routes[].middleware[]<cache>.params.zone
@@ -404,3 +403,15 @@ listeners[].proxy_protocol
 listeners[].proxy_protocol.trusted
 services[].server_names
 services[].proxy_protocol
+
+# I68: cache II. The cache lock (one fetch for many misses, waiters suspended), stale responses
+# fetched again by the cache itself, stale-while-revalidate and stale-if-error (RFC 5861, and the
+# params for responses that say nothing of them), and a disk tier on a bounded pool of its own,
+# its index read back from the directory.
+routes[].middleware[]<cache>.params.stale_while_revalidate
+routes[].middleware[]<cache>.params.stale_if_error
+routes[].middleware[]<cache>.params.disk
+routes[].middleware[]<cache>.params.disk.path
+routes[].middleware[]<cache>.params.disk.max_bytes
+routes[].middleware[]<cache>.params.disk.max_size
+routes[].middleware[]<cache>.params.disk.max_entries

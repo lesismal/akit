@@ -1405,6 +1405,45 @@ fn supported_fields_are_read() {
             cache(r#""lock_timeout": "2s""#),
             |c| cache_of(c).lock_timeout == std::time::Duration::from_secs(2),
         ),
+        (
+            "routes[].middleware[]<cache>.params.stale_while_revalidate",
+            cache(r#""stale_while_revalidate": "30s""#),
+            |c| cache_of(c).stale_while_revalidate == Some(std::time::Duration::from_secs(30)),
+        ),
+        (
+            "routes[].middleware[]<cache>.params.stale_if_error",
+            cache(r#""stale_if_error": "1m""#),
+            |c| cache_of(c).stale_if_error == Some(std::time::Duration::from_secs(60)),
+        ),
+        (
+            "routes[].middleware[]<cache>.params.disk",
+            cache(r#""disk": {"path": "/var/cache/akit"}"#),
+            |c| {
+                cache_of(c).disk.as_ref().is_some_and(|d| {
+                    d.path == "/var/cache/akit" && d.max_bytes == 1 << 30 && d.max_entries == 100_000
+                })
+            },
+        ),
+        (
+            "routes[].middleware[]<cache>.params.disk.path",
+            cache(r#""disk": {"path": "d"}"#),
+            |c| cache_of(c).disk.as_ref().is_some_and(|d| d.path == "d"),
+        ),
+        (
+            "routes[].middleware[]<cache>.params.disk.max_bytes",
+            cache(r#""disk": {"path": "d", "max_bytes": 4096}"#),
+            |c| cache_of(c).disk.as_ref().is_some_and(|d| d.max_bytes == 4096),
+        ),
+        (
+            "routes[].middleware[]<cache>.params.disk.max_size",
+            cache(r#""disk": {"path": "d", "max_size": 2048}"#),
+            |c| cache_of(c).disk.as_ref().is_some_and(|d| d.max_bytes == 2048),
+        ),
+        (
+            "routes[].middleware[]<cache>.params.disk.max_entries",
+            cache(r#""disk": {"path": "d", "max_entries": 7}"#),
+            |c| cache_of(c).disk.as_ref().is_some_and(|d| d.max_entries == 7),
+        ),
         ("routes[].middleware[]<jwt>", jwt(""), |c| {
             matches!(c.routes[0].middleware[0], Handler::Jwt(_))
         }),
@@ -1894,7 +1933,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 42] = [
+    let objects: [(&str, &str, Option<&str>); 43] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         ("admin", "ADMIN_FIELDS", Some("ADMIN_FIT_ONLY")),
         ("acme", "ACME_FIELDS", Some("ACME_FIT_ONLY")),
@@ -2016,10 +2055,11 @@ fn akit_config_lists_match_the_inventory() {
             None,
         ),
         ("routes[].middleware[]<jwt>.params", "JWT_FIELDS", None),
+        ("routes[].middleware[]<cache>.params", "CACHE_FIELDS", None),
         (
-            "routes[].middleware[]<cache>.params",
-            "CACHE_FIELDS",
-            Some("CACHE_FIT_ONLY"),
+            "routes[].middleware[]<cache>.params.disk",
+            "CACHE_DISK_FIELDS",
+            None,
         ),
     ];
     let mapped: BTreeSet<&str> = objects

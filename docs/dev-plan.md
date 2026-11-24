@@ -172,7 +172,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I66 | M4 exit | I57–I65 | todo |
 | **M5** | | | |
 | I67 | Cache I: memory tier and RFC 9111 | I17 | done |
-| I68 | Cache II: disk tier, locks, stale | I67 | todo |
+| I68 | Cache II: disk tier, locks, stale | I67 | done |
 | I69 | Cache III: purge and tags | I68, I27 | todo |
 | I70 | `akit build` | I03 | todo |
 | I71 | WASM I: runtime and ABI | I03 | todo |
@@ -229,7 +229,7 @@ commit and result.
 | Rewrite and redirect regexps | I48 | no | no (built, not measured) | Against fit: the proxy scenario behind a `rewrite` with a `regexp` and `replacement` (matched and not matched) and a `redirect` with groups in `to`, requests a second and allocations per request, against no middleware; akio-regex's `captures` and `replace_all` on path-sized texts against Go's `regexp`. |
 | WebSocket and gRPC proxying | I49, I50 | no | no (I49 and I50 built, not measured) | Against fit: WebSocket messages a second (small, echoed) and bytes a second (large) through akit from HTTP/1.1, h2 and h3 clients, memory per open WebSocket (idle, and with 64 KiB pending each way), and handshakes a second (a key generated, the upstream connection leaving the pool); I50: gRPC calls a second (unary, h2c and h2 upstreams) and messages a second on a stream each way, against fit. |
 | TCP and UDP proxying, SNI routing, many protocols on one port | I51–I53 | no | no (I51–I53 built, not measured) | Against fit and nginx's `stream`, as I51 asks: TCP throughput (fit's `BenchmarkTCPProxy`, 256 KB echoed at a time, direct and through akit), connections a second, memory per idle connection; UDP datagrams a second and sessions at once; the per-service idle sweep on akit's timer thread with 10,000 connections (the stopgap for akio A78); the cost of sniffing on a shared port (I53). I52: connections a second through a listener that routes by SNI (the ClientHello read and parsed before the dial) against one that does not, and with a PROXY header read on accept and one sent upstream; HTTP/1.1 and h2c request rates on a listener with `proxy_protocol` against one without, and akio's ADR-118 cost (a `OnceLock::get` per request) on a listener without. |
-| Response cache | I67, I68 | no | no (memory tier built, not measured; disk not built yet) | Against fit, as I67 built it: hits from memory (a 4 KiB and a 1 MiB body, HTTP/1.1 and h2), misses kept through the proxy (a streamed body copied by the tap) against the proxy alone, the cost on requests the cache passes through (POST, `no-store` responses) against no middleware, the shards' locks under many keys and one hot key; disk hits once I68 has them. akio's ADR-116 tap: a tapped stream against an untapped one. |
+| Response cache | I67, I68 | no | no (memory and disk tiers built, not measured) | Against fit, as I67 built it: hits from memory (a 4 KiB and a 1 MiB body, HTTP/1.1 and h2), misses kept through the proxy (a streamed body copied by the tap) against the proxy alone, the cost on requests the cache passes through (POST, `no-store` responses) against no middleware, the shards' locks under many keys and one hot key. I68: hits read back from disk (64 KiB and 1 MiB, the disk pool's threads and queue under many at once), writes to disk under a miss rate that fills `MAX_PENDING_WRITES`, a stampede of many clients on one key with the lock and with `disable_lock` (the waiters' suspend and resume, the timer per fetch), and stale-while-revalidate's background fetches. akio's ADR-116 tap: a tapped stream against an untapped one. |
 | WASM plugins | I71, I72 | no | no (not built yet) | A/B of a no-op plugin against none. |
 
 ## M0, foundations
@@ -870,6 +870,8 @@ Split from I07 so that the half that needs no config model runs beside I02.
   stale-if-error.
 - **Done when**: a stampede test makes one upstream fetch; disk I/O never runs on an I/O thread.
 - **Touches**: `akit-cache`.
+- **Status**: done (2026-11-24); the disk pool on `akio-pool` directly, a stopgap for akio API
+  request A117; see the progress log.
 
 ### I69 Cache III: purge and tags
 

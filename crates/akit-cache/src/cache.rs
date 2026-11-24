@@ -26,16 +26,26 @@
 //! middlewares behind it (`compress`) left it: each encoding is a variant of its own. What
 //! responses being stored hold at once is bounded by a quarter of `max_bytes`.
 //!
-//! Per request it reads the clock once, takes one shard lock for the lookup (another for a store
-//! or an invalidation), and allocates the key; a hit copies the stored fields and body into the
-//! response, as akio's file cache copies its memory bodies. Nothing waits or blocks.
+//! A request that misses while another fetches the same response waits for that fetch (the cache
+//! lock, [`crate::lock`]); a stale response is fetched again by the cache itself, answered at
+//! once while it is if `stale-while-revalidate` allows, and answered when fetching it fails if
+//! `stale-if-error` allows (RFC 5861; the `stale_while_revalidate` and `stale_if_error` params
+//! for a response that says nothing of it). With a disk tier ([`crate::disk`]) every response
+//! kept in memory is written to disk too, and one memory no longer holds is read back, on the
+//! disk pool, while its request waits suspended.
 //!
-//! Not yet (I68): the cache lock, stale-while-revalidate and stale-if-error, the disk tier; a
-//! body akio sends from a file on disk is not kept. Purge by key and tag is I69's.
+//! Per request it reads the clock once, takes one shard lock for the lookup (another for a store
+//! or an invalidation, or for the cache lock on a miss), and allocates the key; a hit copies the
+//! stored fields and body into the response, as akio's file cache copies its memory bodies.
+//! Nothing waits or blocks on an I/O thread. A GET or HEAD whose body would stream to the
+//! handlers comes whole (within the listener's `max_body_bytes`), so that it can wait.
+//!
+//! Not yet: a body akio sends from a file on disk is not kept. Purge by key and tag is I69's.
 
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::Ordering;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 
 use akio_http::{BodyMode, BodyTap, Context, Headers, Request, Response, TapEnd};
 use akit_runtime::{
@@ -43,6 +53,8 @@ use akit_runtime::{
 };
 
 use crate::clock;
+use crate::disk::{self, Disk, DiskEntry};
+use crate::lock::{Base, FetchEnd, FetchResult, Wait};
 use crate::semantics::{
     Directives, NOT_MODIFIED_FIELDS, freshness, http_date, not_modified, parse_directives,
     request_directives, storable_status, unsafe_method, unstored, update_excluded, vary_names,
@@ -52,7 +64,7 @@ use crate::store::{Entry, Store, acquire};
 
 /// What the cache did with a request it sent on, as `Cache-Status` says it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Fwd {
+pub(crate) enum Fwd {
     UriMiss,
     VaryMiss,
     Stale,
@@ -86,12 +98,20 @@ pub(crate) struct Cache {
 
 /// What every request of the middleware's routes reads.
 #[derive(Debug)]
-struct Shared {
-    store: Arc<Store>,
+pub(crate) struct Shared {
+    pub(crate) store: Arc<Store>,
+    /// The zone's disk tier, as this cache was compiled with it.
+    pub(crate) disk: Option<Arc<Disk>>,
     max_entry_bytes: u64,
     default_ttl: Option<Duration>,
     /// The route lets requests in on credentials: each is treated as carrying `Authorization`.
     authenticated: bool,
+    /// Misses wait for another's fetch of their response (no `disable_lock`).
+    lock: bool,
+    pub(crate) lock_timeout: Duration,
+    /// The stale windows of a response that says nothing of them; zero for none.
+    swr: Duration,
+    sie: Duration,
 }
 
 pub(crate) fn new(
@@ -102,12 +122,19 @@ pub(crate) fn new(
             "the cache middleware was given another's params",
         ));
     };
+    let (store, disk) = acquire(&c.zone, c.max_bytes, c.disk.as_ref())
+        .map_err(|e| ProvisionError::field("disk", e))?;
     Ok(Provisioned::new(Arc::new(Cache {
         shared: Arc::new(Shared {
-            store: acquire(&c.zone, c.max_bytes),
+            store,
+            disk,
             max_entry_bytes: c.max_entry_bytes,
             default_ttl: c.default_ttl,
             authenticated: c.authenticated,
+            lock: !c.disable_lock,
+            lock_timeout: c.lock_timeout,
+            swr: c.stale_while_revalidate.unwrap_or(Duration::ZERO),
+            sie: c.stale_if_error.unwrap_or(Duration::ZERO),
         }),
     }) as Arc<dyn Middleware>))
 }
@@ -129,11 +156,16 @@ struct Cached {
 
 impl akio_http::Service for Cached {
     fn call(&self, ctx: &mut Context) {
-        self.shared.serve(ctx, &*self.next);
+        self.shared.serve(ctx, &self.next);
     }
 
+    /// The handler's, except that a GET or HEAD whose body would stream comes whole, so that
+    /// the request can wait for a fetch or a read from disk.
     fn body_mode(&self, req: &Request) -> BodyMode {
-        self.next.body_mode(req)
+        match self.next.body_mode(req) {
+            BodyMode::Stream if matches!(req.method.as_str(), "GET" | "HEAD") => BodyMode::Buffered,
+            mode => mode,
+        }
     }
 
     fn streams_bodies(&self) -> bool {
@@ -165,7 +197,7 @@ fn key_of(ctx: &Context, target: &str) -> String {
 
 /// Whether a stored response may answer a request with directives `req` at `now`, or else why
 /// the request goes on.
-fn usable(e: &Entry, req: &Directives, now: SystemTime) -> Result<(), Fwd> {
+pub(crate) fn usable(e: &Entry, req: &Directives, now: SystemTime) -> Result<(), Fwd> {
     let age = e.age(now);
     let fresh = age < e.lifetime;
     if req.no_cache || req.max_age.is_some_and(|m| age > m) {
@@ -197,7 +229,12 @@ fn signed_secs(a: Duration, b: Duration) -> i64 {
 
 /// The answer to a request with fields `req` from `e`, which is `age` old; `detail`, if any, says
 /// more in `Cache-Status`.
-fn hit_response(e: &Entry, req: &Headers, age: Duration, detail: Option<&str>) -> Response {
+pub(crate) fn hit_response(
+    e: &Entry,
+    req: &Headers,
+    age: Duration,
+    detail: Option<&str>,
+) -> Response {
     let use_304 =
         e.status == 200 && not_modified(req, e.etag.as_deref(), e.last_modified.as_deref());
     let mut r = Response::new(if use_304 { 304 } else { e.status });
@@ -224,7 +261,7 @@ fn hit_response(e: &Entry, req: &Headers, age: Duration, detail: Option<&str>) -
 }
 
 impl Shared {
-    fn serve(self: &Arc<Self>, ctx: &mut Context, next: &dyn Handler) {
+    fn serve(self: &Arc<Self>, ctx: &mut Context, next: &Arc<dyn Handler>) {
         let method = ctx.req().method.as_str();
         let get = method == "GET";
         if !get && method != "HEAD" {
@@ -246,6 +283,7 @@ impl Shared {
         let mut fwd = Fwd::UriMiss;
         let mut stale = None;
         let ranged = ctx.req().headers.get("range").is_some();
+        let authorized = self.authenticated || ctx.req().headers.get("authorization").is_some();
         if ranged {
             fwd = Fwd::Bypass;
         } else {
@@ -256,25 +294,98 @@ impl Shared {
                         ctx.respond(r);
                         return;
                     }
+                    Err(Fwd::Stale) if !e.no_stale && e.stale_for(now, e.swr) => {
+                        let base = Base::of(ctx, authorized);
+                        let detail = Some("stale-while-revalidate");
+                        ctx.respond(hit_response(&e, &ctx.req().headers, e.age(now), detail));
+                        self.revalidate(&key, &e, base, next);
+                        return;
+                    }
                     Err(why) => {
                         fwd = why;
                         stale = Some(e);
                     }
                 },
-                (None, true) => fwd = Fwd::VaryMiss,
-                (None, false) => {}
+                (None, found) => {
+                    if found {
+                        fwd = Fwd::VaryMiss;
+                    }
+                    let on_disk = self
+                        .disk
+                        .as_ref()
+                        .and_then(|d| Some((d, d.get(&key, &ctx.req().headers)?)));
+                    if let Some((d, de)) = on_disk {
+                        let m = &de.meta;
+                        match usable(m, &req, now) {
+                            Ok(()) => {
+                                let d = Arc::clone(d);
+                                return self.from_disk(ctx, next, d, de, key, fwd, false);
+                            }
+                            Err(Fwd::Stale) if !m.no_stale && m.stale_for(now, m.swr) => {
+                                let d = Arc::clone(d);
+                                return self.from_disk(ctx, next, d, de, key, fwd, true);
+                            }
+                            Err(why) => fwd = why,
+                        }
+                    }
+                }
             }
         }
         if req.only_if_cached {
             ctx.respond(Response::text(504, "504 Gateway Timeout\n"));
             return;
         }
-        let headers = &ctx.req().headers;
-        let authorized = self.authenticated || headers.get("authorization").is_some();
-        // A stale response with validators is asked for again with them, unless the client
-        // asks with its own: a 304 then freshens it, and the client is answered from it.
-        let mut revalidating = false;
-        if let Some(s) = stale.as_ref().filter(|_| get) {
+        let mut miss = Miss {
+            shared: Arc::clone(self),
+            key,
+            request_time: now,
+            fwd,
+            stale,
+            revalidating: false,
+            storable: get && !req.no_store,
+            authorized,
+            ranged,
+            fetch: None,
+        };
+        if get && self.lock && !ranged && fwd != Fwd::Request && !req.no_store {
+            let abandoned = self.lock_timeout.saturating_mul(2);
+            let (f, first) = self.store.lock(&miss.key, Instant::now(), abandoned);
+            let next = Arc::clone(next);
+            if !first {
+                return self.wait(&f, ctx, Wait { next, miss, req });
+            }
+            let refetched = miss.stale.clone().filter(|s| {
+                s.etag.is_some() || s.last_modified.is_some() || (!s.no_stale && !s.sie.is_zero())
+            });
+            if let Some(s) = refetched {
+                // The cache fetches it again itself, with the stale response's validators, and
+                // the request waits for that with any others: a 304 freshens the response, and
+                // a failure may be answered with it, as stale-if-error allows.
+                let base = Base::of(ctx, authorized);
+                self.wait(
+                    &f,
+                    ctx,
+                    Wait {
+                        next: Arc::clone(&next),
+                        miss,
+                        req,
+                    },
+                );
+                self.refetch(f, base, s, &next, false);
+                return;
+            }
+            miss.fetch = Some(FetchEnd::new(Arc::clone(&self.store), f));
+        }
+        self.forward(ctx, miss, next);
+    }
+
+    /// Sends the request on to `next`, with the filter that keeps its response. A stale response
+    /// with validators is asked for again with them, unless the client asks with its own: a 304
+    /// then freshens it, and the client is answered from it.
+    pub(crate) fn forward(&self, ctx: &mut Context, mut miss: Miss, next: &Arc<dyn Handler>) {
+        let get = ctx.req().method.as_str() == "GET";
+        if let Some(s) = miss.stale.as_ref().filter(|_| get) {
+            let headers = &ctx.req().headers;
             let own = headers.get("if-none-match").is_some()
                 || headers.get("if-modified-since").is_some();
             if !own && (s.etag.is_some() || s.last_modified.is_some()) {
@@ -286,24 +397,114 @@ impl Shared {
                     fields.set("If-Modified-Since", lm);
                 }
                 akit_runtime::request::set_request_headers(ctx, &fields);
-                revalidating = true;
+                miss.revalidating = true;
             }
         }
-        let miss = Miss {
-            shared: Arc::clone(self),
-            key,
-            request_time: now,
-            fwd,
-            stale,
-            revalidating,
-            storable: get && !req.no_store,
-            authorized,
-            ranged,
-        };
         ctx.add_outer_response_filter(move |resp: &mut Response, req: &Request| {
             miss.filter(resp, req);
         });
         next.call(ctx);
+    }
+
+    /// Answers the request of `ctx` from `de`, read back from `d` on the disk pool while the
+    /// request waits suspended, and keeps it in memory again. A read that fails, or does not
+    /// come within the pool's timeout, as from a disk that hangs, leaves the request to go on as
+    /// a miss (`fwd`). `stale` says the response is stale, and answered as
+    /// stale-while-revalidate allows: it is fetched again in the background once answered.
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "the request's state, as it was looked up"
+    )]
+    fn from_disk(
+        self: &Arc<Self>,
+        ctx: &mut Context,
+        next: &Arc<dyn Handler>,
+        d: Arc<Disk>,
+        de: Arc<DiskEntry>,
+        key: String,
+        fwd: Fwd,
+        stale: bool,
+    ) {
+        let authorized = self.authenticated || ctx.req().headers.get("authorization").is_some();
+        let miss = Miss {
+            shared: Arc::clone(self),
+            key,
+            request_time: clock::now(),
+            fwd,
+            stale: None,
+            revalidating: false,
+            storable: ctx.req().method.as_str() == "GET",
+            authorized,
+            ranged: false,
+            fetch: None,
+        };
+        let gone = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let g = Arc::clone(&gone);
+        ctx.on_gone(move || g.store(true, Ordering::Release));
+        let Some(request) = ctx.suspend() else {
+            return self.forward(ctx, miss, next);
+        };
+        // Whichever takes it first answers: the read, or the timeout.
+        let slot: Arc<Reading> = Arc::new(Mutex::new(Some((request, miss, Arc::clone(next)))));
+        let (s1, s2) = (Arc::clone(&slot), Arc::clone(&slot));
+        if !akit_runtime::upstream::timer::after(disk::timeout(), move || as_miss(&s1)) {
+            return as_miss(&slot);
+        }
+        let me = Arc::clone(self);
+        let run = move || {
+            if gone.load(Ordering::Acquire) {
+                // Its client went: nothing to read for.
+                drop(take(&s2));
+                return;
+            }
+            let read = d.read(&de);
+            let Some((request, miss, next)) = take(&s2) else {
+                return;
+            };
+            let e = match read {
+                Ok(e) => e,
+                Err(_) => {
+                    d.drop_entry(&miss.key, &de);
+                    return request.resume(move |ctx| {
+                        let shared = Arc::clone(&miss.shared);
+                        shared.forward(ctx, miss, &next);
+                    });
+                }
+            };
+            let e = me.store.promote(&miss.key, e);
+            request.resume(move |ctx| {
+                let now = clock::now();
+                if stale {
+                    let base = Base::of(ctx, miss.authorized);
+                    let detail = Some("stale-while-revalidate");
+                    ctx.respond(hit_response(&e, &ctx.req().headers, e.age(now), detail));
+                    me.revalidate(&miss.key, &e, base, &next);
+                } else {
+                    let detail = Some("disk");
+                    ctx.respond(hit_response(&e, &ctx.req().headers, e.age(now), detail));
+                }
+            });
+        };
+        let s3 = Arc::clone(&slot);
+        if !disk::submit(run, move || as_miss(&s3)) {
+            as_miss(&slot);
+        }
+    }
+
+    /// Keeps `e` under `key`, in memory, and on disk when the zone has a disk tier.
+    fn keep(&self, key: &str, e: Entry) {
+        let e = self.store.put(key, e);
+        if let Some(d) = &self.disk {
+            d.write(key, &e);
+        }
+    }
+
+    /// Drops what is kept under `key`, in memory and on disk.
+    fn remove(&self, key: &str) {
+        self.store.remove(key);
+        if let Some(d) = &self.disk {
+            d.remove(key);
+        }
     }
 
     /// Drops what is stored for the target of `req`, and for the `Location` and
@@ -313,12 +514,12 @@ impl Shared {
         let mut key = String::with_capacity(base.len().saturating_add(req.target.len()));
         key.push_str(base);
         key.push_str(&req.target);
-        self.store.remove(&key);
+        self.remove(&key);
         for field in ["location", "content-location"] {
             if let Some(target) = h.get(field).and_then(|v| same_origin(base, req.path(), v)) {
                 key.truncate(base.len());
                 key.push_str(&target);
-                self.store.remove(&key);
+                self.remove(&key);
             }
         }
     }
@@ -355,6 +556,15 @@ impl Shared {
         if !storable_status(status, explicit) {
             return None;
         }
+        let no_stale = d.must_revalidate || d.proxy_revalidate || d.s_maxage.is_some();
+        let (swr, sie) = if no_stale {
+            (Duration::ZERO, Duration::ZERO)
+        } else {
+            (
+                d.stale_while_revalidate.unwrap_or(self.swr),
+                d.stale_if_error.unwrap_or(self.sie),
+            )
+        };
         let age_value = age.map_or(Duration::ZERO, crate::semantics::delta);
         let since_date = now.duration_since(date).unwrap_or(Duration::ZERO);
         let since_request = now.duration_since(request_time).unwrap_or(Duration::ZERO);
@@ -369,7 +579,6 @@ impl Shared {
                 (n, v)
             })
             .collect();
-        let no_stale = d.must_revalidate || d.proxy_revalidate || d.s_maxage.is_some();
         let etag = headers.get("etag").map(str::to_owned);
         let last_modified = headers.get("last-modified").map(str::to_owned);
         Some(Entry {
@@ -381,10 +590,31 @@ impl Shared {
             initial_age,
             lifetime,
             no_stale,
+            swr,
+            sie,
             etag,
             last_modified,
             size: 0,
         })
+    }
+}
+
+/// A request waiting for a read from disk, until the read or its timeout takes it.
+type Reading = Mutex<Option<(akio_http::Suspended, Miss, Arc<dyn Handler>)>>;
+
+fn take(slot: &Reading) -> Option<(akio_http::Suspended, Miss, Arc<dyn Handler>)> {
+    slot.lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .take()
+}
+
+/// Sends the request waiting in `slot` on as a miss, unless the read took it.
+fn as_miss(slot: &Reading) {
+    if let Some((request, miss, next)) = take(slot) {
+        request.resume(move |ctx| {
+            let shared = Arc::clone(&miss.shared);
+            shared.forward(ctx, miss, &next);
+        });
     }
 }
 
@@ -485,36 +715,48 @@ fn remove_dots(target: &str) -> String {
 }
 
 /// A request the cache sent on, and what it does with its response.
-struct Miss {
-    shared: Arc<Shared>,
-    key: String,
-    request_time: SystemTime,
-    fwd: Fwd,
+pub(crate) struct Miss {
+    pub(crate) shared: Arc<Shared>,
+    pub(crate) key: String,
+    pub(crate) request_time: SystemTime,
+    pub(crate) fwd: Fwd,
     /// The stored response the request did not take, freshened by a 304 for it.
-    stale: Option<Arc<Entry>>,
+    pub(crate) stale: Option<Arc<Entry>>,
     /// The cache asked with the stale response's validators, the client with none of its own:
     /// the client is answered from the stale response, not with the upstream's 304.
-    revalidating: bool,
+    pub(crate) revalidating: bool,
     /// The request allows keeping its response (a GET without `no-store`).
-    storable: bool,
-    authorized: bool,
-    ranged: bool,
+    pub(crate) storable: bool,
+    pub(crate) authorized: bool,
+    pub(crate) ranged: bool,
+    /// The fetch this request makes for others waiting for the same response, ended once the
+    /// response is kept or known not to be.
+    pub(crate) fetch: Option<FetchEnd>,
 }
 
 impl Miss {
     /// Runs once the handlers behind the cache settled the response: answers from the stale
     /// response a 304 is for, decides whether to keep the response, and says what the cache did.
-    fn filter(self, resp: &mut Response, req: &Request) {
-        if resp.status == 304 && !resp.is_streaming() {
+    pub(crate) fn filter(mut self, resp: &mut Response, req: &Request) {
+        let status = resp.status;
+        if status == 304 && !resp.is_streaming() {
             if let Some(old) = self.stale.clone() {
                 if let Some(answer) = self.freshen(&old, resp, req) {
                     *resp = answer;
-                    return;
+                    return self.done(status, false);
                 }
             }
         }
         let keep = self.capture(resp, req);
         resp.headers.append("Cache-Status", self.fwd.field(keep));
+        self.done(status, false);
+    }
+
+    /// Ends the fetch the request makes for others, if it still has it.
+    fn done(&mut self, status: u16, failed: bool) {
+        if let Some(f) = self.fetch.take() {
+            f.end(FetchResult { status, failed });
+        }
     }
 
     /// The answer to the client from `old`, which the 304 `resp` is for (their ETags, or else
@@ -534,7 +776,7 @@ impl Miss {
                 return None;
             }
             // Not for what the cache asked about: answer from it as it is, and keep it no more.
-            store.remove(&self.key);
+            self.shared.remove(&self.key);
             let mut r = hit_response(old, &req.headers, old.age(clock::now()), None);
             r.headers.set("Cache-Status", Fwd::Stale.field(false));
             return Some(r);
@@ -565,11 +807,14 @@ impl Miss {
         match fresh {
             Some(mut e) => {
                 e.body = Arc::clone(&old.body);
-                let e = store.replace(&self.key, old, e);
+                let (e, stored) = store.replace(&self.key, old, e);
+                if let Some(d) = self.shared.disk.as_ref().filter(|_| stored) {
+                    d.write(&self.key, &e);
+                }
                 Some(hit_response(&e, &req.headers, e.age(clock::now()), None))
             }
             None => {
-                store.remove(&self.key);
+                self.shared.remove(&self.key);
                 if !self.revalidating {
                     return None;
                 }
@@ -584,7 +829,7 @@ impl Miss {
 
     /// Starts keeping `resp` if it may be kept: a whole body at once, a streamed one through a
     /// tap. Reports whether it is being kept.
-    fn capture(&self, resp: &mut Response, req: &Request) -> bool {
+    fn capture(&mut self, resp: &mut Response, req: &Request) -> bool {
         if !self.storable || matches!(resp.status, 204 | 304) || resp.file.is_some() {
             return false;
         }
@@ -625,21 +870,21 @@ impl Miss {
         ) else {
             return false;
         };
-        let store = &self.shared.store;
         if !streaming {
             e.body = Arc::from(resp.body.as_slice());
-            store.put(&self.key, e);
+            self.shared.keep(&self.key, e);
             return true;
         }
         let capacity = declared.and_then(|d| usize::try_from(d).ok()).unwrap_or(0);
         resp.tap_body(Capture {
-            store: Arc::clone(store),
+            shared: Arc::clone(&self.shared),
             key: self.key.clone(),
             entry: Some(e),
             want: declared,
             limit,
             buf: Vec::with_capacity(capacity),
             held: 0,
+            fetch: self.fetch.take(),
         });
         true
     }
@@ -647,7 +892,7 @@ impl Miss {
 
 /// Copies a streamed response's body as it goes, and stores the response once all of it went.
 struct Capture {
-    store: Arc<Store>,
+    shared: Arc<Shared>,
     key: String,
     /// `None` once given up.
     entry: Option<Entry>,
@@ -657,19 +902,28 @@ struct Capture {
     buf: Vec<u8>,
     /// What this capture counts in its store's `capturing`.
     held: u64,
+    /// The fetch the request makes for others, ended once the response is kept or given up.
+    fetch: Option<FetchEnd>,
 }
 
 impl Capture {
     /// Gives up keeping the response, and what it held.
     fn give_up(&mut self) {
-        self.entry = None;
+        let status = self.entry.take().map_or(0, |e| e.status);
         self.buf = Vec::new();
         self.release();
+        if let Some(f) = self.fetch.take() {
+            f.end(FetchResult {
+                status,
+                failed: false,
+            });
+        }
     }
 
     fn release(&mut self) {
         if self.held > 0 {
-            self.store.capturing.fetch_sub(self.held, Ordering::AcqRel);
+            let store = &self.shared.store;
+            store.capturing.fetch_sub(self.held, Ordering::AcqRel);
             self.held = 0;
         }
     }
@@ -685,8 +939,9 @@ impl BodyTap for Capture {
             return self.give_up();
         }
         self.held = self.held.saturating_add(n);
-        let before = self.store.capturing.fetch_add(n, Ordering::AcqRel);
-        if before.saturating_add(n) > self.store.max_bytes() / 4 {
+        let store = &self.shared.store;
+        let before = store.capturing.fetch_add(n, Ordering::AcqRel);
+        if before.saturating_add(n) > store.max_bytes() / 4 {
             return self.give_up();
         }
         self.buf.extend_from_slice(data);
@@ -699,9 +954,16 @@ impl BodyTap for Capture {
         let body = std::mem::take(&mut self.buf);
         self.release();
         let whole = end == TapEnd::Finished && self.want.is_none_or(|w| w == body.len() as u64);
+        let status = e.status;
         if whole {
             e.body = body.into();
-            self.store.put(&self.key, e);
+            self.shared.keep(&self.key, e);
+        }
+        if let Some(f) = self.fetch.take() {
+            f.end(FetchResult {
+                status,
+                failed: !whole,
+            });
         }
     }
 }

@@ -77,6 +77,7 @@
 | A111 | 响应过滤器看到流式消息体发出的字节及其结束方式（消息体旁路） | 已在 akio 的 main（`e9891b52`），已锁定 | 5、6 | I67 |
 | A112 | 按 RFC 9110 要求接收方接受的三种格式解析 HTTP 日期 | 已在 akio 分支 `claude/a111-body-tap`（`0e36f8d6`）上实现，已锁定 | 15 | I67 |
 | A113 | 在内层过滤器之后运行的响应过滤器（外层过滤器） | 已在 akio 分支 `claude/a111-body-tap`（`0e36f8d6`）上实现，已锁定 | 5 | I67 |
+| A117 | 从 `akio` 同时取得 `akio::Pool` 与 `PoolConfig`：应用自己的、有上限的阻塞工作线程池 | 已提出（I68）；期间 akit-cache 直接依赖 `akio-pool` | 4 | I68 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -1162,3 +1163,22 @@ acceptor)`）；`Client`、`ClientOptions`、`ClientRequest` 都无法设置该�
 **akit 的用法。** `akit-listener` 在带 `proxy_protocol` 的监听器（TCP 上的 HTTP，在 TLS 之前）前面放
 `ProxyProtocol`，信任其 `trusted` 地址；此后所有读取客户端地址的功能读到的都是头里的地址。已由 I52 在 akio 中
 完成（ADR-118，分支 `claude/a105-proxy-peer`，`e3f03a32`），待合并到 akio 的 main。
+
+## A117 从 `akio` 门面取得应用自己的有界线程池
+
+**问题。** 规则 4 要求会阻塞的工作在 akio 的逻辑线程池或 akit 自己的有界线程池上运行。缓存的磁盘层（I68）需要
+一个与逻辑线程池分开的线程池，这样卡住的磁盘既不会拖住逻辑线程池上的处理器，也不会拖住其他东西，正如 fit 的
+缓存有自己的文件池、akio 的 `Files` 有自己的 `disk_pool`。akio 有这个线程池（`akio_pool::Pool`，位于
+`Conn::spawn_blocking` 之后），`akio` 门面重新导出了 `PoolConfig` 和 `PoolStats`，却没有导出 `Pool`，所以应用
+能构造一个用不上的 `PoolConfig`。
+
+**证据。** 在 `e9891b52`：`crates/akio/src/lib.rs` 中 `use akio_core::{.., Pool, ..}`（私有）与
+`pub use akio_core::{.., PoolConfig, PoolStats, ..}` 并列；`akio-pool` 的清单称其为 "akio internals ...
+(use `akio`)"。
+
+**建议的 API。** 从 `akio` 执行 `pub use akio_core::Pool`（连同 `Pool::try_execute` 接收并退回的 `Rejected`
+与 `Job`），并在文档中说明它是供应用自己的阻塞工作使用的线程池。
+
+**akit 的用法。** `akit-cache` 的磁盘线程池（`disk.rs`）：用 `Pool::new` 建立至少 16 个、每个 CPU 4 个线程、
+队列 4,096 的线程池，每个文件操作都用 `try_execute` 提交。期间 akit-cache 直接依赖 `akio-pool`，与所有 akio
+crate 同一个提交（权宜之计，记录在进度日志中）；此需求进入 akio 的 main 后改用 `akio::Pool`。
