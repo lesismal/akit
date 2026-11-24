@@ -148,6 +148,13 @@ pub struct Upstream {
     /// default: [`LoadBalancing::RoundRobin`], or [`LoadBalancing::WeightedRoundRobin`] when an
     /// address weighs other than 1.
     pub load_balancing: LoadBalancing,
+    /// `max_fails`: how many failed requests to an address within `fail_timeout` take it out of
+    /// rotation for `fail_timeout`, as nginx's `max_fails`; 0 keeps every address in rotation.
+    /// [`DEFAULT_MAX_FAILS`] when left out.
+    pub max_fails: usize,
+    /// `fail_timeout`: the window `max_fails` are counted in, and how long an address that
+    /// reached them stays out. [`DEFAULT_FAIL_TIMEOUT`] when left out or 0.
+    pub fail_timeout: Duration,
 }
 
 impl Upstream {
@@ -198,6 +205,10 @@ pub const DEFAULT_MAX_IDLE_CONNS: usize = 32;
 pub const DEFAULT_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 /// fit's default `connect_timeout`.
 pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+/// fit's default `max_fails`.
+pub const DEFAULT_MAX_FAILS: usize = 1;
+/// fit's default `fail_timeout`.
+pub const DEFAULT_FAIL_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// One address akit listens on.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -706,6 +717,8 @@ const UPSTREAM_FIELDS: &[&str] = &[
     "connect_timeout",
     "weights",
     "load_balancing",
+    "max_fails",
+    "fail_timeout",
 ];
 const UPSTREAM_FIT_ONLY: &[&str] = &[
     "hash_key",
@@ -715,8 +728,6 @@ const UPSTREAM_FIT_ONLY: &[&str] = &[
     "tls_ca_file",
     "tls_cert_file",
     "tls_key_file",
-    "max_fails",
-    "fail_timeout",
     "response_header_timeout",
     "response_idle_timeout",
     "response_timeout",
@@ -1763,6 +1774,9 @@ fn upstream(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Upstream> {
     };
     let idle_timeout = duration(d, "idle_timeout", DEFAULT_IDLE_TIMEOUT);
     let connect_timeout = duration(d, "connect_timeout", DEFAULT_CONNECT_TIMEOUT);
+    let fail_timeout = duration(d, "fail_timeout", DEFAULT_FAIL_TIMEOUT);
+    // 0 keeps every address in rotation: only leaving it out means the default.
+    let max_fails = count(d, &mut o, "max_fails", 0).unwrap_or(DEFAULT_MAX_FAILS);
     let weights_at = o.take("weights").map(|v| {
         let p = o.at("weights");
         let w = d.array(v, &p, |d, item, at| {
@@ -1844,6 +1858,8 @@ fn upstream(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Upstream> {
         connect_timeout,
         weights,
         load_balancing,
+        max_fails,
+        fail_timeout,
     })
 }
 

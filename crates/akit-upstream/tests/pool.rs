@@ -370,10 +370,11 @@ fn an_upstream_that_refuses_connections() {
     }
     assert_eq!(settled(&pool), 0);
     assert_eq!(load(&pool), (0, 0));
-    // A pool of a refusing address and one that answers: requests in turn, each its own way.
+    // A pool of a refusing address and one that answers: requests in turn, each its own way
+    // (max_fails 0 keeps the refusing one in rotation: I20's tests take it out).
     let up = Upstream::start(false);
     let pool = Pool::new(
-        &upstream(&[refusing(), up.addr.to_string()], ""),
+        &upstream(&[refusing(), up.addr.to_string()], r#""max_fails": 0"#),
         EngineSlot::with(engine()),
     );
     let rx = send(&pool, 4);
