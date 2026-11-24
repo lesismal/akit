@@ -69,7 +69,7 @@ done and where the work differs from the plan.
   TestBrowseMaxEntries, TestBrowseOrder); `strip_prefix` (fit's TestStripPrefix); `config_errors`
   with fit's TestFeatureErrors, TestDotfilesConfig and `strip_prefix`'s check; `traversal` now
   with `/x/../ok.txt` served. A unit test of the dotfile check on decoded paths (`Files::hide`'s).
-- Checked: `make check` on macOS; Linux (epoll, io_uring) pending, queued on the test host.
+- Checked: `make check` on macOS; on Linux, the tests of akit-handler, akit-config and akit-compat with epoll and of akit-handler with io_uring, passing.
 - Differences from the plan and from fit:
   - The plan's "a benchmark scenario uses it": none, as above; the benchmarks table (dev-plan) says
     static files are not benchmarked yet.

@@ -56,7 +56,7 @@
   TestStripPrefix）；`config_errors` 包含 fit 的 TestFeatureErrors、TestDotfilesConfig 和 `strip_prefix` 的检查；`traversal` 现在
   检查 `/x/../ok.txt` 被提供。另有对
   已解码路径的点文件检查（`Files::hide` 所用）的单元测试。
-- 已检查：macOS 上的 `make check`；Linux（epoll、io_uring）待跑，已在测试机排队。
+- 已检查：macOS 上的 `make check`；Linux 上 akit-handler、akit-config、akit-compat 的测试（epoll）与 akit-handler 的测试（io_uring）通过。
 - 与计划和 fit 的不同之处：
   - 计划中的"有基准场景使用它"：如上，没有；基准表（dev-plan）写明静态文件尚未做基准。
   - A14（I12 的）：`Files` 对不带斜杠请求的目录直接提供（fit 用 301 重定向），在 `strip_prefix` 之下也是；没有候选找到
