@@ -69,6 +69,9 @@
   - `PUT`/`PATCH`/`DELETE /config`、`POST /rollback/{n}`、`POST /reload` 和 `?dry_run=1` 在 I27 之前回 501；
     `/config/effective`（providers）属于 I57，目前按指针读取。
   - 版本历史中的 `applied` 是 UTC 的 RFC 3339，精确到毫秒；fit 的是 Go 的 `time.Time`（纳秒，本地时区偏移）。
+- 为 I37（指标）预留：`akit_admin::Options::metrics`，`GET /metrics` 用它写出的内容回答（`METRICS_CONTENT_TYPE`；
+  未设置时回 404）。合并时，`akit run` 把 I37 的 `Scrape::write` 传给它，并在每次 Admin API 加载后调用
+  `ConfigStats::reloaded`（`Job::run` 返回结果，未应用时为 `None`），与其 SIGHUP 重载一样。
 - 基准测试：无（规则 24：控制面）。
 
 ### 2026-11-24：I20，被动健康检查

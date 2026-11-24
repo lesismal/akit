@@ -29,8 +29,15 @@ pub const VERSION_HEADER: &str = "Fit-Config-Version";
 /// it must not block.
 pub type Submit = Box<dyn Fn(Job) -> Result<(), Job> + Send + Sync>;
 
-/// The Admin API's settings beside the config's: its timeouts and backend.
-#[derive(Debug, Clone)]
+/// What writes the metrics scrape `GET /metrics` answers with (I37's `Scrape::write`), called
+/// on the API's I/O thread: it must not block.
+pub type Metrics = Arc<dyn Fn(&mut Vec<u8>) + Send + Sync>;
+
+/// The content type of a Prometheus text scrape, as fit's `GET /metrics` sends it.
+pub const METRICS_CONTENT_TYPE: &str = "text/plain; version=0.0.4; charset=utf-8";
+
+/// The Admin API's settings beside the config's: its timeouts, backend and metrics.
+#[derive(Clone)]
 #[non_exhaustive]
 pub struct Options {
     /// The akio backend of the API's listener.
@@ -41,6 +48,20 @@ pub struct Options {
     pub body_timeout: Duration,
     /// How long a connection may wait for its next request: 60 s, as fit's.
     pub idle_timeout: Duration,
+    /// The scrape `GET /metrics` answers with, as fit's Admin API serves it; 404 without one.
+    pub metrics: Option<Metrics>,
+}
+
+impl fmt::Debug for Options {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Options")
+            .field("backend", &self.backend)
+            .field("head_timeout", &self.head_timeout)
+            .field("body_timeout", &self.body_timeout)
+            .field("idle_timeout", &self.idle_timeout)
+            .field("metrics", &self.metrics.is_some())
+            .finish()
+    }
 }
 
 impl Default for Options {
@@ -50,6 +71,7 @@ impl Default for Options {
             head_timeout: Duration::from_secs(10),
             body_timeout: Duration::from_secs(60),
             idle_timeout: Duration::from_secs(60),
+            metrics: None,
         }
     }
 }
@@ -189,6 +211,7 @@ impl Server {
             configs,
             submit,
             max_body: settings.max_config_bytes,
+            metrics: opts.metrics.clone(),
         }));
         let mut http = HttpConfig::default();
         // HTTP/1.1 alone: one request at a time on each of the connections max_conns counts.
@@ -234,6 +257,7 @@ struct Shared {
     configs: Configs,
     submit: Submit,
     max_body: usize,
+    metrics: Option<Metrics>,
 }
 
 struct Api(Arc<Shared>);
@@ -255,6 +279,15 @@ impl akio_http::Service for Api {
             "/load" if method == Method::Post => return load(&self.0, ctx),
             "/load" => not_allowed("POST"),
             "/versions" if read => versions(&self.0.configs),
+            "/metrics" if read => match &self.0.metrics {
+                Some(write) => {
+                    let mut out = Vec::new();
+                    write(&mut out);
+                    Response::with_body(200, METRICS_CONTENT_TYPE, out)
+                }
+                None => error(404, "there is no such endpoint"),
+            },
+            "/metrics" => not_allowed("GET, HEAD"),
             "/versions" => not_allowed("GET, HEAD"),
             "/reload" => not_yet("POST /reload"),
             p if p.starts_with("/rollback/") => not_yet("POST /rollback"),

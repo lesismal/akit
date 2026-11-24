@@ -722,3 +722,25 @@ fn listeners_and_warnings() {
     assert!(v.get("warnings").is_none(), "{}", r.body);
     assert_eq!(f.served(), "v3");
 }
+
+/// GET /metrics answers with the scrape `Options::metrics` writes (I37's), 404 without one.
+#[test]
+fn metrics() {
+    let f = start(&doc("v1"), admin(|_| {}));
+    assert_eq!(f.get("/metrics").status, 404);
+    let mut opts = Options::default();
+    opts.metrics = Some(Arc::new(|out: &mut Vec<u8>| {
+        out.extend_from_slice(b"fit_config_version 1\n");
+    }));
+    let f = start_with(&doc("v1"), admin(|_| {}), opts);
+    let r = f.get("/metrics");
+    assert_eq!((r.status, r.body.as_str()), (200, "fit_config_version 1\n"));
+    assert_eq!(
+        r.header("Content-Type"),
+        Some(akit_admin::METRICS_CONTENT_TYPE)
+    );
+    assert_eq!(
+        request(f.api.addr(), "POST", "/metrics", &[], None).status,
+        405
+    );
+}

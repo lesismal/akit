@@ -84,6 +84,10 @@ done and where the work differs from the plan.
     501 until I27; `/config/effective` (providers) is I57 and reads as a pointer for now.
   - The version history's `applied` is RFC 3339 in UTC with milliseconds; fit's is Go's
     `time.Time` (nanoseconds, the local offset).
+- For I37 (metrics): `akit_admin::Options::metrics`, a writer `GET /metrics` answers with
+  (`METRICS_CONTENT_TYPE`; 404 when unset). At the merge, `akit run` passes I37's `Scrape::write`
+  there and calls `ConfigStats::reloaded` after each Admin API load (`Job::run` returns the
+  outcome, `None` when nothing was applied), as its SIGHUP reload does.
 - Benchmark: none (rule 24: the control plane).
 
 ### 2026-11-24: I20, passive health checks

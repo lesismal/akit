@@ -10,6 +10,7 @@
 //!                           within max_config_bytes), If-Match checked
 //! GET  /versions            the configs kept, oldest first
 //! GET  /versions/{n}        the config applied as version n
+//! GET  /metrics             the metrics scrape Options::metrics writes (I37), when set
 //! ```
 //!
 //! [`Configs`] keeps the configs applied, numbered, as written, and is the one path every config
@@ -28,7 +29,7 @@ pub use configs::{
     Applied, ApplyError, Configs, ListenerChange, Outcome, Refused, SOURCE_ADMIN, SOURCE_FILE,
     Version, etag_matches, etag_of,
 };
-pub use server::{Job, Options, Server, Submit, VERSION_HEADER};
+pub use server::{Job, METRICS_CONTENT_TYPE, Metrics, Options, Server, Submit, VERSION_HEADER};
 
 /// The warning a config gets when its `admin` differs from the one akit started with: the API
 /// is not moved until a restart, as in fit.
