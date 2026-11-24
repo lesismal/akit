@@ -15,6 +15,12 @@
 //! GET    /versions            the configs kept, oldest first
 //! GET    /versions/{n}        the config applied as version n
 //! GET    /metrics             the metrics scrape Options::metrics writes (I37), when set
+//! GET    /status              what akit is doing now: listeners, connections, upstreams and
+//!                             their backends' health, certificates, requests (I63)
+//! GET    /config/effective    the config as it runs, and where each part came from (I63; one
+//!                             source until providers, I57)
+//! GET    /dashboard/          read-only web pages of the GET endpoints, unless
+//!                             admin.disable_dashboard (I63)
 //! ```
 //!
 //! Bodies are JSON (`application/json`; for `PATCH`, `application/merge-patch+json` too), within
@@ -36,16 +42,20 @@
 //! with it an address off loopback, is not supported yet.
 
 mod configs;
+mod dashboard;
 mod pointer;
 mod server;
+mod status;
 mod watch;
 
 pub use configs::{
     Applied, ApplyError, Configs, ListenerChange, Mode, Outcome, Refused, SOURCE_ADMIN,
     SOURCE_CERTIFICATES, SOURCE_FILE, SOURCE_ROLLBACK, Version, etag_matches, etag_of,
 };
+pub use dashboard::DASHBOARD_CSP;
 pub use server::{
-    DRY_RUN_HEADER, Job, METRICS_CONTENT_TYPE, Metrics, Options, Server, Submit, VERSION_HEADER,
+    DRY_RUN_HEADER, Job, Live, METRICS_CONTENT_TYPE, Metrics, Options, Server, Submit,
+    VERSION_HEADER,
 };
 pub use watch::{
     DEFAULT_WATCH_DEBOUNCE, DEFAULT_WATCH_INTERVAL, DEFAULT_WATCH_MAX_BYTES, Expand, WatchError,

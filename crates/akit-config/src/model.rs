@@ -142,6 +142,9 @@ pub struct Admin {
     /// `max_conns`: the most connections the API keeps open at once, one past it closed as it
     /// is accepted; [`DEFAULT_ADMIN_MAX_CONNS`] when left out or 0.
     pub max_conns: usize,
+    /// `disable_dashboard`: the read-only dashboard at `/dashboard/` is not served (I63); it is
+    /// when left out.
+    pub disable_dashboard: bool,
 }
 
 impl Default for Admin {
@@ -152,6 +155,7 @@ impl Default for Admin {
             history: DEFAULT_ADMIN_HISTORY,
             max_config_bytes: DEFAULT_ADMIN_MAX_CONFIG_BYTES,
             max_conns: DEFAULT_ADMIN_MAX_CONNS,
+            disable_dashboard: false,
         }
     }
 }
@@ -1599,7 +1603,7 @@ const CONFIG_FIT_ONLY: &[&str] = &[
     "bittorrent",
     "providers",
 ];
-// I26: the Admin API's address, history and limits; I27: its token. Its TLS waits for the API to
+// I26: the Admin API's address, history and limits; I27: its token; I63: its dashboard. Its TLS waits for the API to
 // be served over TLS, its access lists for fit's access, a Unix socket for akio API request A23.
 const ADMIN_FIELDS: &[&str] = &[
     "address",
@@ -1607,6 +1611,7 @@ const ADMIN_FIELDS: &[&str] = &[
     "history",
     "max_config_bytes",
     "max_conns",
+    "disable_dashboard",
 ];
 const ADMIN_FIT_ONLY: &[&str] = &[
     "mptcp",
@@ -1614,7 +1619,6 @@ const ADMIN_FIT_ONLY: &[&str] = &[
     "key_file",
     "client_ca_file",
     "node_id",
-    "disable_dashboard",
     "store",
     "console",
     "assistant",
@@ -2673,6 +2677,8 @@ fn admin(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Admin> {
     count(&mut o, d, "history", &mut a.history);
     count(&mut o, d, "max_config_bytes", &mut a.max_config_bytes);
     count(&mut o, d, "max_conns", &mut a.max_conns);
+    let mut ok = true;
+    a.disable_dashboard = flag(d, &mut o, "disable_dashboard", &mut ok);
     o.finish(d, ADMIN_FIELDS, ADMIN_FIT_ONLY);
     Some(a)
 }

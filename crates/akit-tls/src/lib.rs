@@ -155,6 +155,13 @@ pub struct CertificateInfo {
     pub serial: String,
     /// When it expires, in seconds since the Unix epoch.
     pub not_after: i64,
+    /// Every name it is for: its DNS names, then its IP addresses, or its subject's common name
+    /// when it has neither, as fit's `GET /status` lists them (I63).
+    pub names: Vec<String>,
+    /// Its issuer's common name.
+    pub issuer: String,
+    /// When it becomes valid, in seconds since the Unix epoch.
+    pub not_before: i64,
 }
 
 impl CertificateInfo {
@@ -172,12 +179,46 @@ impl CertificateInfo {
             })
             .or_else(|| c.subject().common_name())
             .unwrap_or_default();
+        let mut names: Vec<String> = c
+            .subject_alt_names()
+            .iter()
+            .filter_map(|n| match n {
+                akio_x509::GeneralName::Dns(d) => Some(d.clone()),
+                _ => None,
+            })
+            .collect();
+        names.extend(c.subject_alt_names().iter().filter_map(|n| match n {
+            akio_x509::GeneralName::Ip(b) => ip_text(b),
+            _ => None,
+        }));
+        if names.is_empty() {
+            names.push(c.subject().common_name().unwrap_or_default());
+        }
         Some(CertificateInfo {
             name,
             serial: serial_hex(c.serial()),
             not_after: c.not_after(),
+            names,
+            issuer: c.issuer().common_name().unwrap_or_default(),
+            not_before: c.not_before(),
         })
     }
+}
+
+/// An iPAddress name's octets as text, as Go's `net.IP.String` writes them; `None` when they are
+/// neither 4 nor 16.
+fn ip_text(b: &[u8]) -> Option<String> {
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+    let ip = match b.len() {
+        4 => IpAddr::V4(Ipv4Addr::from(<[u8; 4]>::try_from(b).ok()?)),
+        16 => {
+            let v6 = Ipv6Addr::from(<[u8; 16]>::try_from(b).ok()?);
+            // Go writes an IPv4-mapped address as IPv4.
+            v6.to_ipv4_mapped().map_or(IpAddr::V6(v6), IpAddr::V4)
+        }
+        _ => return None,
+    };
+    Some(ip.to_string())
 }
 
 /// A serial number's INTEGER contents (two's complement, big-endian) as Go's `Text(16)` writes
@@ -562,6 +603,20 @@ mod tests {
         assert_eq!(serial_hex(&[]), "0");
         assert_eq!(serial_hex(&[0xff]), "-1");
         assert_eq!(serial_hex(&[0x80, 0x00]), "-8000");
+    }
+
+    #[test]
+    fn ip_names_as_go_writes_them() {
+        assert_eq!(ip_text(&[10, 0, 0, 1]).as_deref(), Some("10.0.0.1"));
+        let mut v6 = [0u8; 16];
+        v6[15] = 1;
+        assert_eq!(ip_text(&v6).as_deref(), Some("::1"));
+        let mut mapped = [0u8; 16];
+        mapped[10] = 0xff;
+        mapped[11] = 0xff;
+        mapped[12..].copy_from_slice(&[192, 0, 2, 1]);
+        assert_eq!(ip_text(&mapped).as_deref(), Some("192.0.2.1"));
+        assert_eq!(ip_text(&[1, 2, 3]), None);
     }
 
     fn acme_tls(challenges: Vec<akit_config::Challenge>) -> (Acme, ListenerTls) {

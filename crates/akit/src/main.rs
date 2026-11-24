@@ -741,8 +741,12 @@ fn run(args: &[String]) -> ExitCode {
                 Arc::clone(&engine),
                 stats.clone(),
             )
-            .with_access_log(log.as_ref().map(|l| l.0.clone()));
+            .with_access_log(log.as_ref().map(|l| l.0.clone()))
+            .with_listeners(listeners.view());
             let mut api_opts = akit_admin::Options::default();
+            // What akit is doing now, at GET /status, which the dashboard reads (I63).
+            let status = scrape.clone();
+            api_opts.status = Some(Arc::new(move |out: &mut String| status.write_status(out)));
             api_opts.metrics = Some(Arc::new(move |out: &mut Vec<u8>| scrape.write(out)));
             match akit_admin::Server::start(a, configs.clone(), submit, &api_opts) {
                 Ok(s) => {

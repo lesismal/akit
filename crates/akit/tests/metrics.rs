@@ -3,8 +3,8 @@
 //! reload that keeps a route keeps counting and one that renames it drops; upstreams and their
 //! backends; certificates; config reloads; connections; akio's engine metrics. The scrape is
 //! parsed as fit's test parses it: each family's `HELP` and `TYPE` once, before its samples, no
-//! sample twice, values that parse. On the backend `AKIO_TEST_BACKEND` names (epoll by default,
-//! `uring`).
+//! sample twice, values that parse. And what `GET /status` says of the same (I63), as fit's
+//! `TestStatus` checks it. On the backend `AKIO_TEST_BACKEND` names (epoll by default, `uring`).
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -484,4 +484,199 @@ fn counted_with_the_access_log() {
     log.close();
     let lines = String::from_utf8(sink.0.lock().unwrap().clone()).unwrap();
     assert_eq!(lines.lines().count(), 3, "{lines}");
+}
+
+/// What `GET /status` says akit is doing now (I63), as fit's `TestStatus` checks it
+/// (`admin/dashboard_test.go`): the listeners served, the upstream's live backend up and its dead
+/// one out of rotation for its failures, the certificate the secure listener serves, every
+/// request counted, by class, and the reloads.
+#[test]
+fn status_as_fit() {
+    use akit_config::value::{Value, parse};
+    let live = backend();
+    let dead = {
+        let l = TcpListener::bind("127.0.0.1:0").unwrap();
+        l.local_addr().unwrap()
+    };
+    let d = dir("status");
+    let ca = Ca::new("status test CA");
+    let (cert, key) = ca.leaf(&d, "a", &["a.example"]);
+    let leaf = akio_x509::Certificate::from_der(leaf_der(&cert)).unwrap();
+    let doc = format!(
+        r#"{{
+  "listeners": [
+    {{"name": "web", "address": "127.0.0.1:0"}},
+    {{"name": "secure", "address": "127.0.0.1:0", "tls": {{"certificates": [{{"cert_file": {cert:?}, "key_file": {key:?}}}]}}}}
+  ],
+  "upstreams": [{{"name": "back", "addresses": ["{live}", "{dead}"], "max_fails": 1, "fail_timeout": "1m"}}],
+  "routes": [{{"listeners": ["web"], "handler": {{"module": "proxy", "params": {{"upstream": "back"}}}}}}]
+}}"#
+    );
+    let f = Fixture::start(&doc, true);
+    let status = f.scrape.clone().with_listeners(f.listeners.view());
+    let read = || {
+        let mut b = String::from("{");
+        status.write_status(&mut b);
+        b.push('}');
+        parse(&b).unwrap_or_else(|e| panic!("{b}: {e:?}"))
+    };
+    let backends = |v: &Value| match v.get("upstreams") {
+        Some(Value::Array(us)) => match us[0].get("backends") {
+            Some(Value::Array(bs)) => bs.clone(),
+            other => panic!("{other:?}"),
+        },
+        other => panic!("{other:?}"),
+    };
+    let num = |v: Option<&Value>| match v {
+        Some(Value::Number(n)) => n.parse::<u64>().unwrap(),
+        other => panic!("{other:?}"),
+    };
+    let web = f.addr("web");
+    // Requests until the dead backend is tried, fails and is taken out (each I/O thread keeps
+    // its own turn of round robin), and the live one answers.
+    let mut sent = 0u64;
+    loop {
+        let code = get(web, "/");
+        assert!(code == 200 || code == 502, "{code}");
+        sent += 1;
+        let bs = backends(&read());
+        if bs[1].get("up") == Some(&Value::Bool(false)) && num(bs[0].get("succeeded")) > 0 {
+            break;
+        }
+        assert!(sent < 50, "{bs:?}");
+    }
+
+    // A request is counted once its answer is over, which may be after the client has read
+    // it: read the status until the last one is counted.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let st = loop {
+        let st = read();
+        let total = st.get("requests").and_then(|r| r.get("total"));
+        if num(total) >= sent || Instant::now() > deadline {
+            break st;
+        }
+        thread::sleep(Duration::from_millis(10));
+    };
+    let keys: Vec<&str> = match &st {
+        Value::Object(m) => m.iter().map(|(k, _)| k.as_str()).collect(),
+        _ => unreachable!(),
+    };
+    assert_eq!(
+        keys,
+        [
+            "reloads",
+            "listeners",
+            "connections",
+            "upstreams",
+            "certificates",
+            "requests"
+        ]
+    );
+    let Some(Value::Array(ls)) = st.get("listeners") else {
+        panic!("{st:?}")
+    };
+    assert_eq!(ls.len(), 2, "{ls:?}");
+    assert_eq!(ls[1].get("name"), Some(&Value::String("secure".into())));
+    assert_eq!(ls[0].get("address"), Some(&Value::String(web.to_string())));
+    assert_eq!(
+        st.get("upstreams").and_then(|u| match u {
+            Value::Array(us) => us[0].get("name"),
+            _ => None,
+        }),
+        Some(&Value::String("back".into()))
+    );
+    let bs = backends(&st);
+    let (up, gone) = (&bs[0], &bs[1]);
+    assert_eq!(up.get("address"), Some(&Value::String(live.to_string())));
+    assert_eq!(up.get("up"), Some(&Value::Bool(true)), "{up:?}");
+    assert!(
+        num(up.get("succeeded")) > 0 && num(up.get("failed")) == 0,
+        "{up:?}"
+    );
+    assert_eq!(gone.get("address"), Some(&Value::String(dead.to_string())));
+    assert_eq!(gone.get("up"), Some(&Value::Bool(false)), "{gone:?}");
+    assert_eq!(gone.get("probed_down"), None, "{gone:?}");
+    assert!(num(gone.get("failed")) > 0, "{gone:?}");
+
+    let Some(Value::Array(certs)) = st.get("certificates") else {
+        panic!("{st:?}")
+    };
+    assert_eq!(certs.len(), 1, "{certs:?}");
+    let c = &certs[0];
+    assert_eq!(c.get("listener"), Some(&Value::String("secure".into())));
+    assert_eq!(
+        c.get("names"),
+        Some(&Value::Array(vec![Value::String("a.example".into())]))
+    );
+    assert_eq!(
+        c.get("serial"),
+        Some(&Value::String(serial_hex(leaf.serial())))
+    );
+    assert_eq!(
+        c.get("issuer"),
+        Some(&Value::String("status test CA".into()))
+    );
+    let time = |k: &str| match c.get(k) {
+        Some(Value::String(t)) => t.clone(),
+        other => panic!("{k}: {other:?}"),
+    };
+    // RFC 3339 times sort as they compare.
+    assert!(time("not_after") > time("not_before"), "{c:?}");
+
+    // The requests are counted, the 502s of the dead backend's tries as 5xx; the totals add up.
+    let rq = st.get("requests").unwrap();
+    let Some(Value::Object(classes)) = rq.get("classes") else {
+        panic!("{rq:?}")
+    };
+    let names: Vec<&str> = classes.iter().map(|(k, _)| k.as_str()).collect();
+    assert_eq!(names, ["1xx", "2xx", "3xx", "4xx", "5xx"]);
+    assert_eq!(num(rq.get("total")), sent, "{rq:?}");
+    assert_eq!(
+        num(rq.get("classes").and_then(|c| c.get("2xx")))
+            + num(rq.get("classes").and_then(|c| c.get("5xx"))),
+        sent,
+        "{rq:?}"
+    );
+    assert_eq!(
+        st.get("reloads"),
+        parse(r#"{"succeeded":0,"failed":0}"#).ok().as_ref()
+    );
+    f.stop();
+}
+
+/// Without `metrics`, `GET /status` has no requests, as fit's when nothing counts them; without
+/// a view of the listeners, none.
+#[test]
+fn status_without_metrics() {
+    let f = Fixture::start(
+        r#"{"listeners": [{"name": "web", "address": "127.0.0.1:0"}],
+  "routes": [{"handler": {"module": "respond", "params": {"body": "x"}}}]}"#,
+        false,
+    );
+    let mut b = String::from("{");
+    f.scrape.write_status(&mut b);
+    b.push('}');
+    let v = akit_config::value::parse(&b).unwrap();
+    assert!(v.get("requests").is_none(), "{b}");
+    assert_eq!(
+        v.get("listeners"),
+        Some(&akit_config::value::Value::Array(Vec::new()))
+    );
+    let view = f.listeners.view();
+    let mut b = String::from("{");
+    f.scrape
+        .clone()
+        .with_listeners(view.clone())
+        .write_status(&mut b);
+    assert!(b.contains("\"name\":\"web\""), "{b}");
+    // The view follows the listeners a reload serves.
+    let mut f = f;
+    f.load(
+        r#"{"listeners": [{"name": "web", "address": "127.0.0.1:0"}, {"name": "more", "address": "127.0.0.1:0"}],
+  "routes": [{"handler": {"module": "respond", "params": {"body": "x"}}}]}"#,
+    );
+    let names: Vec<String> = view.get().iter().map(|l| l.name.clone()).collect();
+    assert_eq!(names, ["web", "more"]);
+    assert_eq!(view.get()[1].address, f.addr("more"));
+    f.stop();
 }
