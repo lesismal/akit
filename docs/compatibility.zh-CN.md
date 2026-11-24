@@ -152,12 +152,12 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 52 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 59 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
 | [`access`](#fields-access) | 5 | 0 | 5 |
-| [`access_log`](#fields-access-log) | 14 | 0 | 14 |
+| [`access_log`](#fields-access-log) | 14 | 7 | 7 |
 | [`acme`](#fields-acme) | 43 | 0 | 43 |
 | [`admin`](#fields-admin) | 105 | 0 | 105 |
 | [`auto_https`](#fields-auto-https) | 5 | 0 | 5 |
@@ -277,7 +277,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 11 | 27 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **合计** | 3821 | 52 | 3769 |
+| **合计** | 3821 | 59 | 3762 |
 
 <a id="fields-access"></a>
 
@@ -297,12 +297,12 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
-| `access_log` | `object` | 尚不支持（not supported yet） |
-| `access_log.buffer_bytes` | `integer` | 尚不支持（not supported yet） |
-| `access_log.flush_interval` | `duration` | 尚不支持（not supported yet） |
-| `access_log.format` | `enum(json\|text\|line)` | 尚不支持（not supported yet） |
-| `access_log.level` | `enum(info\|warn\|error)` | 尚不支持（not supported yet） |
-| `access_log.output` | `string` | 尚不支持（not supported yet） |
+| `access_log` | `object` | 已支持 |
+| `access_log.buffer_bytes` | `integer` | 已支持 |
+| `access_log.flush_interval` | `duration` | 已支持 |
+| `access_log.format` | `enum(json\|text\|line)` | 已支持 |
+| `access_log.level` | `enum(info\|warn\|error)` | 已支持 |
+| `access_log.output` | `string` | 已支持 |
 | `access_log.rotate` | `object` | 尚不支持（not supported yet） |
 | `access_log.rotate.compress` | `boolean` | 尚不支持（not supported yet） |
 | `access_log.rotate.interval` | `duration` | 尚不支持（not supported yet） |
@@ -310,7 +310,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `access_log.rotate.max_bytes` | `integer` | 尚不支持（not supported yet） |
 | `access_log.rotate.max_files` | `integer` | 尚不支持（not supported yet） |
 | `access_log.rotate.max_total_bytes` | `integer` | 尚不支持（not supported yet） |
-| `access_log.time_zone` | `string` | 尚不支持（not supported yet） |
+| `access_log.time_zone` | `string` | 已支持 |
 
 <a id="fields-acme"></a>
 

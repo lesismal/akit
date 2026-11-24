@@ -31,11 +31,12 @@ use std::path::{Path, PathBuf};
 pub use error::{Error, Errors, NOT_SUPPORTED_YET};
 pub use json::MAX_DEPTH;
 pub use model::{
-    Certificate, ClientAuth, ClientAuthMode, Config, DEFAULT_CHECK_INTERVAL,
-    DEFAULT_CONNECT_TIMEOUT, DEFAULT_IDLE_TIMEOUT, DEFAULT_MAX_CONNS, DEFAULT_MAX_FILE_BYTES,
-    DEFAULT_MAX_IDLE_CONNS, DEFAULT_MAX_PENDING, DEFAULT_PROTOCOLS, DEFAULT_TLS_PROTOCOLS,
-    Dotfiles, Handler, Listener, LoadBalancing, MAX_WEIGHT, Match, Network, Protocol, Proxy,
-    Respond, Route, SCHEMA_VERSION, Static, Tls, TlsVersion, Upstream,
+    AccessLevel, AccessLog, Certificate, ClientAuth, ClientAuthMode, Config, DEFAULT_BUFFER_BYTES,
+    DEFAULT_CHECK_INTERVAL, DEFAULT_CONNECT_TIMEOUT, DEFAULT_FLUSH_INTERVAL, DEFAULT_IDLE_TIMEOUT,
+    DEFAULT_MAX_CONNS, DEFAULT_MAX_FILE_BYTES, DEFAULT_MAX_IDLE_CONNS, DEFAULT_MAX_PENDING,
+    DEFAULT_PROTOCOLS, DEFAULT_TLS_PROTOCOLS, Dotfiles, Handler, Listener, LoadBalancing,
+    LogFormat, MAX_WEIGHT, Match, Network, Protocol, Proxy, Respond, Route, SCHEMA_VERSION, Static,
+    Tls, TlsVersion, Upstream,
 };
 
 /// The largest config document read, in bytes: fit's own configs are kilobytes; this bounds

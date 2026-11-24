@@ -6,7 +6,10 @@
 //!   serves it, and on SIGINT or SIGTERM shuts down gracefully, waiting up to
 //!   `-shutdown-timeout` for requests in flight; a second signal exits at once. On SIGHUP it
 //!   reads the same files again and, when they compile, swaps the new graph in and moves the
-//!   listeners to its (I22); a broken config leaves the running one.
+//!   listeners to its (I22); a broken config leaves the running one. With `access_log`, a line is
+//!   written for each request (I21): the log is opened when akit starts, and closed, once every
+//!   line is written, when it stops; a reload changes its level and time zone, as fit's does,
+//!   while its output, format, flush interval and buffer take a restart.
 //! - `validate`: reads and compiles the config, as `run` would, and says whether it is valid.
 //! - `version`, `help`.
 
@@ -17,7 +20,8 @@ use std::process::ExitCode;
 use std::sync::{Arc, mpsc};
 use std::time::Duration;
 
-use akit_config::{Config, Errors};
+use akit_config::{Config, Error, Errors, LogFormat};
+use akit_observe::{AccessLog, Format, Zone};
 use akit_runtime::upstream::EngineSlot;
 use akit_runtime::{Env, Graph, GraphCell, HandlerParams, Registry, compile};
 use flags::{Spec, Usage};
@@ -140,38 +144,114 @@ impl Failure {
     }
 }
 
-/// Reads and compiles the config at `paths`, its upstream pools dialing through the engine
-/// `engine` will hold.
-fn read(paths: &[String], engine: &EngineSlot) -> Result<(Config, Graph), Failure> {
+/// Reads the config at `paths`, with the zone its access log's `time_zone` names, which is
+/// loaded here, as fit's validation loads it.
+fn read_config(paths: &[String]) -> Result<(Config, Option<Zone>), Failure> {
     let config = akit_config::from_files(paths).map_err(Failure::Config)?;
+    let zone = match &config.access_log {
+        None => None,
+        Some(a) => Some(Zone::load(&a.time_zone).map_err(|e| {
+            Failure::Config(Errors(vec![Error {
+                file: None,
+                path: "access_log.time_zone".into(),
+                line: 0,
+                col: 0,
+                msg: e.to_string(),
+            }]))
+        })?),
+    };
+    Ok((config, zone))
+}
+
+/// Compiles `config`, its upstream pools dialing through the engine `engine` will hold, its
+/// requests written to `log`.
+fn compile_config(
+    config: &Config,
+    engine: &EngineSlot,
+    log: Option<&AccessLog>,
+) -> Result<Graph, Failure> {
     let registry: Registry<HandlerParams> =
         Registry::new(&[akit_handler::MODULES, akit_proxy::MODULES])
             .map_err(|e| Failure::Registry(e.to_string()))?;
-    let graph = compile(&config, &registry, &Env::new(engine.clone())).map_err(Failure::Config)?;
-    Ok((config, graph))
+    let env = Env::new(engine.clone()).with_access_log(log.cloned());
+    compile(config, &registry, &env).map_err(Failure::Config)
 }
 
-/// [`read`], the errors printed.
-fn load(paths: &[String], engine: &EngineSlot) -> Option<(Config, Graph)> {
-    read(paths, engine)
-        .map_err(|f| f.print(&paths.join(", ")))
-        .ok()
+/// Reads and compiles the config at `paths`, as [`read_config`] and [`compile_config`].
+fn read(
+    paths: &[String],
+    engine: &EngineSlot,
+    log: Option<&AccessLog>,
+) -> Result<(Config, Option<Zone>, Graph), Failure> {
+    let (config, zone) = read_config(paths)?;
+    let graph = compile_config(&config, engine, log)?;
+    Ok((config, zone, graph))
+}
+
+/// Opens the access log `c` describes, its times in `zone`, as fit's `NewAccessLogFiles`.
+fn open_access_log(c: &akit_config::AccessLog, zone: Zone) -> std::io::Result<AccessLog> {
+    let out = akit_observe::open_output(&c.output)?;
+    let mut opts = akit_observe::Options::new();
+    opts.format = match c.format {
+        LogFormat::Json => Format::Json,
+        LogFormat::Text => Format::Text,
+        LogFormat::Line => Format::Line,
+    };
+    opts.zone = zone;
+    opts.min_status = c.min_status();
+    opts.flush_interval = c.flush_interval;
+    opts.buffer_bytes = c.buffer_bytes;
+    AccessLog::new(out, opts)
 }
 
 /// SIGHUP: reads the config at `paths` again and, when it compiles and its listeners can be
 /// served, swaps it in; otherwise the running config stays. Says what happened as fit says it.
-fn reload(paths: &[String], slot: &EngineSlot, listeners: &mut akit_listener::Listeners) {
+///
+/// The access log opened at start, `log` (with the config it was opened from), takes the new
+/// config's level and time zone once the graph is swapped in; its other settings take a restart,
+/// as fit's.
+fn reload(
+    paths: &[String],
+    slot: &EngineSlot,
+    listeners: &mut akit_listener::Listeners,
+    log: Option<&(AccessLog, akit_config::AccessLog)>,
+) {
     let name = paths.join(", ");
     println!("akit: reloading {name}");
-    let graph = match read(paths, slot) {
-        Ok((_, g)) => g,
+    let (config, zone, graph) = match read(paths, slot, log.map(|l| &l.0)) {
+        Ok(r) => r,
         Err(f) => {
             eprintln!("akit: reload failed; the running config stays");
             f.print(&name);
             return;
         }
     };
-    match listeners.reload(graph) {
+    let result = listeners.reload(graph);
+    if result.is_ok() {
+        match (log, &config.access_log, zone) {
+            (Some((l, first)), Some(c), Some(zone)) => {
+                l.set_min_status(c.min_status());
+                l.set_zone(zone);
+                if (&c.output, c.format, c.flush_interval, c.buffer_bytes)
+                    != (
+                        &first.output,
+                        first.format,
+                        first.flush_interval,
+                        first.buffer_bytes,
+                    )
+                {
+                    eprintln!(
+                        "akit: access_log's output, format, flush_interval and buffer_bytes take a restart; the running ones stay"
+                    );
+                }
+            }
+            (None, Some(_), _) => {
+                eprintln!("akit: access_log takes a restart: requests are not logged until then");
+            }
+            _ => {}
+        }
+    }
+    match result {
         Ok(r) => {
             for l in &r.removed {
                 println!("akit: listener {:?} on {} removed", l.name, l.address);
@@ -213,12 +293,12 @@ fn validate(args: &[String]) -> ExitCode {
     };
     let paths = config_paths(&flags);
     // No engine: an upstream's pool is made, and never dials.
-    match load(&paths, &EngineSlot::new()) {
-        Some(_) => {
+    match read(&paths, &EngineSlot::new(), None).map_err(|f| f.print(&paths.join(", "))) {
+        Ok(_) => {
             println!("{}: valid", paths.join(", "));
             ExitCode::SUCCESS
         }
-        None => ExitCode::FAILURE,
+        Err(()) => ExitCode::FAILURE,
     }
 }
 
@@ -282,9 +362,42 @@ fn run(args: &[String]) -> ExitCode {
     // The pools are made with the graph, before the engine they dial through, which is built
     // from the graph's listeners: they reach it through this slot, filled once it is built.
     let slot = EngineSlot::new();
-    let Some((_, graph)) = load(&paths, &slot) else {
-        return ExitCode::FAILURE;
+    let name = paths.join(", ");
+    let (config, zone) = match read_config(&paths) {
+        Ok(c) => c,
+        Err(f) => {
+            f.print(&name);
+            return ExitCode::FAILURE;
+        }
     };
+    // Opened before the graph, which writes to it, and closed after the engine, so that every
+    // response finished has its line written.
+    let log = match (&config.access_log, zone) {
+        (Some(c), Some(zone)) => match open_access_log(c, zone) {
+            Ok(l) => {
+                if !matches!(c.output.as_str(), "stdout" | "stderr") {
+                    eprintln!(
+                        "akit: access log file {} has no rotate: it will grow without bound",
+                        c.output
+                    );
+                }
+                Some((l, c.clone()))
+            }
+            Err(e) => {
+                eprintln!("akit run: access log: {e}");
+                return ExitCode::FAILURE;
+            }
+        },
+        _ => None,
+    };
+    let graph = match compile_config(&config, &slot, log.as_ref().map(|l| &l.0)) {
+        Ok(g) => g,
+        Err(f) => {
+            f.print(&name);
+            return ExitCode::FAILURE;
+        }
+    };
+    drop(config);
     // Before the listeners: a signal from then on shuts down gracefully.
     let signals = match signals() {
         Ok(s) => s,
@@ -331,7 +444,7 @@ fn run(args: &[String]) -> ExitCode {
         match signal {
             Some(Signal::Stop) | None => break,
             Some(Signal::Hangup) => {
-                reload(&paths, &slot, &mut listeners);
+                reload(&paths, &slot, &mut listeners, log.as_ref());
                 cell.collect();
             }
         }
@@ -353,11 +466,17 @@ fn run(args: &[String]) -> ExitCode {
             "akit run: shutdown took longer than {}; connections still open were closed",
             flags::format_duration(grace)
         );
+        if let Some((l, _)) = &log {
+            l.close();
+        }
         return ExitCode::FAILURE;
     }
     drop(listeners);
     drop(engine);
     drop(cell);
+    if let Some((l, _)) = &log {
+        l.close();
+    }
     println!("akit: stopped");
     ExitCode::SUCCESS
 }

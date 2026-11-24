@@ -76,3 +76,14 @@ routes[].handler<proxy>.params
 routes[].handler<proxy>.params.upstream
 routes[].handler<proxy>.params.trusted_proxies
 routes[].handler<proxy>.params.host_header
+#
+# I21: access logs, as fit's observe package writes them. access_log.time_zone takes local, utc or
+# an IANA name (from the system's zoneinfo files); access_log.rotate is refused as not supported
+# yet (fit's logs package's file rotation).
+access_log
+access_log.output
+access_log.flush_interval
+access_log.buffer_bytes
+access_log.level
+access_log.format
+access_log.time_zone

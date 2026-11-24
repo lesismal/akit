@@ -1,7 +1,7 @@
 # The compatibility gate's report (docs/compatibility.md), written by make compat-bless;
 # do not edit. The gate fails when a run's outcomes differ from these lines.
 # fit 7daee573, fit-examples 9659d7e4.
-# 80 fixtures: 8 valid, 71 refused only as not supported yet (fields refused: 66), 0 in a format not supported yet, 1 skipped, 0 failed.
+# 80 fixtures: 8 valid, 71 refused only as not supported yet (fields refused: 65), 0 in a format not supported yet, 1 skipped, 0 failed.
 examples/acme-on-demand: not supported yet: acme
 examples/acme-on-demand: not supported yet: listeners[].tls.acme
 examples/acme-on-demand: not supported yet: listeners[].tls.on_demand
@@ -70,7 +70,6 @@ examples/load-balancing: not supported yet: upstreams[].fail_timeout
 examples/load-balancing: not supported yet: upstreams[].health_check
 examples/load-balancing: not supported yet: upstreams[].max_fails
 examples/load-balancing: not supported yet: upstreams[].sticky_cookie
-examples/logging: not supported yet: access_log
 examples/logging: not supported yet: log
 examples/media-pages: not supported yet: media_auth
 examples/media-pages: not supported yet: routes[].handler<media_pages>

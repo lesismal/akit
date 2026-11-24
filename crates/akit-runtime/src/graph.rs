@@ -60,6 +60,8 @@ pub struct Graph {
     tls: Vec<Option<akit_tls::ServerConfigs>>,
     /// The upstreams' pools, in the config's order.
     upstreams: Vec<Pool>,
+    /// The access log its requests' lines go to: the env's, when the config has `access_log`.
+    access_log: Option<akit_observe::AccessLog>,
     /// Taken (and so cleaned up) once, by [`Graph::retire`] or on drop.
     modules: Mutex<Option<Modules>>,
     /// Requests and connections that keep this graph past their handler's call
@@ -102,6 +104,12 @@ impl Graph {
     #[must_use]
     pub fn upstreams(&self) -> &[Pool] {
         &self.upstreams
+    }
+
+    /// The access log the requests this graph serves are written to, if any (I21).
+    #[must_use]
+    pub fn access_log(&self) -> Option<&akit_observe::AccessLog> {
+        self.access_log.as_ref()
     }
 
     /// The pool of the upstream named `name`.
@@ -288,6 +296,7 @@ pub fn compile(
         routers,
         tls,
         upstreams,
+        access_log: config.access_log.as_ref().and(env.access_log().cloned()),
         modules: Mutex::new(Some(modules)),
         holds: AtomicUsize::new(0),
         orphaned: AtomicBool::new(false),

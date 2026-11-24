@@ -14,6 +14,11 @@
 //! the certificates its TCP connections serve; its HTTP/1.1 and HTTP/2 responses announce it with
 //! `Alt-Svc`, as fit's do.
 //!
+//! I21: a graph with an access log has every request's line written once its response is done,
+//! by a response filter the [`Dispatcher`] registers: it runs on the thread that sends the
+//! response (the I/O thread, or the one a detached handler answers from), and builds the line
+//! there, from the request and the response ([`access_record`]).
+//!
 //! I22: [`Listeners::reload`] publishes a new graph and moves the listeners to its (see
 //! [`reload`]).
 //!
@@ -28,8 +33,9 @@ use std::time::{Duration, Instant};
 
 use akio::tls::Tls;
 use akio::{Backend, Config as EngineConfig, Engine, Listener as EngineListener};
-use akio_http::{Context, HttpConfig};
+use akio_http::{Context, HttpConfig, Method, Request, Response, Version};
 use akit_config::{Listener, Protocol};
+use akit_observe::{AccessLog, Name, Record, Shard};
 use akit_runtime::GraphCell;
 
 pub mod reload;
@@ -48,6 +54,8 @@ pub use akit_runtime::{CANONICAL_PATH, TLS};
 pub struct Dispatcher {
     cell: GraphCell,
     listener: String,
+    /// The listener's name, as each logged request carries it to its line.
+    log_name: Name,
     tls: bool,
     /// The `Alt-Svc` value every response gets, for the TCP side of a listener that also serves
     /// HTTP/3; made once, when the listener is set up.
@@ -58,9 +66,11 @@ impl Dispatcher {
     /// The dispatcher of the listener named `listener`.
     #[must_use]
     pub fn new(cell: GraphCell, listener: impl Into<String>) -> Dispatcher {
+        let listener = listener.into();
         Dispatcher {
             cell,
-            listener: listener.into(),
+            log_name: Name::new(&listener),
+            listener,
             tls: false,
             alt_svc: None,
         }
@@ -98,6 +108,110 @@ impl fmt::Debug for Dispatcher {
     }
 }
 
+impl Dispatcher {
+    /// Has `log` write the request's line once its response is done, from the thread that
+    /// sends it, as fit's `logRequest`. A request whose response is never sent (its connection
+    /// went first) has no line.
+    fn track(&self, ctx: &mut Context, log: &AccessLog, route: &str) {
+        let shard = log.shard();
+        let start = Instant::now();
+        let listener = self.log_name.clone();
+        let route = Name::new(route);
+        ctx.add_response_filter(move |resp: &mut Response, req: &Request| {
+            write_line(&shard, listener.as_str(), route.as_str(), start, resp, req);
+        });
+    }
+}
+
+/// Writes the line of `req`, answered with `resp`, to `shard`, with the upstream the handler
+/// told akit-observe of, if any.
+fn write_line(
+    shard: &Shard,
+    listener: &str,
+    route: &str,
+    start: Instant,
+    resp: &Response,
+    req: &Request,
+) {
+    let duration = start.elapsed();
+    akit_observe::upstream(|upstream| {
+        shard.log(&access_record(
+            listener, route, duration, upstream, resp, req,
+        ));
+    });
+}
+
+/// The access log's record of `req` answered with `resp`, as fit's `observe` fills its fields:
+/// the client's address (an IPv4 address mapped into IPv6 written as IPv4, as Go has it), the
+/// protocol as Go's `Request.Proto`, the `Host` (the target's authority for an absolute-form
+/// target without one), the target as sent, the request body's bytes (its `Content-Length` for a
+/// body not read whole), and the response body's: none for `HEAD` and for a status that has no
+/// body, the file's for a file, the `Content-Length` for a streamed one (its bytes are not known
+/// when its head is sent).
+#[must_use]
+pub fn access_record<'a>(
+    listener: &'a str,
+    route: &'a str,
+    duration: Duration,
+    upstream: Option<(&'a str, Duration)>,
+    resp: &'a Response,
+    req: &'a Request,
+) -> Record<'a> {
+    let content_length = |h: &akio_http::Headers| {
+        h.get("content-length")
+            .and_then(|v| v.trim().parse::<u64>().ok())
+            .unwrap_or(0)
+    };
+    let bytes_in = if req.body.is_empty() {
+        content_length(&req.headers)
+    } else {
+        req.body.len() as u64
+    };
+    let bytes_out = if req.method == Method::Head || matches!(resp.status, 100..=199 | 204 | 304) {
+        0
+    } else if let Some(f) = &resp.file {
+        f.len
+    } else if resp.body.is_empty() {
+        content_length(&resp.headers)
+    } else {
+        resp.body.len() as u64
+    };
+    let ip = req.peer.ip();
+    let client = match ip {
+        IpAddr::V6(v6) => v6.to_ipv4_mapped().map_or(ip, IpAddr::V4),
+        IpAddr::V4(_) => ip,
+    };
+    let host = req.headers.get("host").unwrap_or_else(|| {
+        req.target
+            .split_once("://")
+            .map(|(_, rest)| rest.split(['/', '?']).next().unwrap_or(""))
+            .unwrap_or("")
+    });
+    Record {
+        listener,
+        route,
+        client,
+        user: "",
+        proto: match req.version {
+            Version::Http10 => "HTTP/1.0",
+            Version::Http11 => "HTTP/1.1",
+            Version::Http2 => "HTTP/2.0",
+            Version::Http3 => "HTTP/3.0",
+            _ => "HTTP/1.1",
+        },
+        method: req.method.as_str(),
+        host,
+        uri: &req.target,
+        status: resp.status,
+        bytes_in,
+        bytes_out,
+        duration,
+        upstream,
+        user_agent: req.headers.get("user-agent").unwrap_or(""),
+        referer: req.headers.get("referer").unwrap_or(""),
+    }
+}
+
 impl akio_http::Service for Dispatcher {
     fn call(&self, ctx: &mut Context) {
         // On every response, the 400 and 404 below included, as fit adds it before routing.
@@ -105,10 +219,14 @@ impl akio_http::Service for Dispatcher {
             ctx.add_response_header("alt-svc", v);
         }
         self.cell.with(|g| {
+            let log = g.access_log();
             // The routes go by the canonical path, as fit's do; a path that has none is answered
             // 400.
             let (route, changed) = {
                 let Some(path) = akit_router::canonicalize(ctx.path()) else {
+                    if let Some(log) = log {
+                        self.track(ctx, log, "");
+                    }
                     ctx.text(400, BAD_REQUEST_PATH);
                     return;
                 };
@@ -127,8 +245,20 @@ impl akio_http::Service for Dispatcher {
             if self.tls {
                 ctx.set_local(TLS, "");
             }
+            let Some(log) = log else {
+                match route {
+                    Some(r) => r.handler.call(ctx),
+                    None => ctx.text(404, NOT_FOUND),
+                }
+                return;
+            };
+            self.track(
+                ctx,
+                log,
+                route.and_then(|r| r.name.as_deref()).unwrap_or(""),
+            );
             match route {
-                Some(r) => r.handler.call(ctx),
+                Some(r) => akit_observe::dispatch_logged(|| r.handler.call(ctx)),
                 None => ctx.text(404, NOT_FOUND),
             }
         });

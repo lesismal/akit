@@ -11,6 +11,7 @@ publish = false
 [dependencies]
 akio-http = { workspace = true }
 akit-config = { workspace = true }
+akit-observe = { workspace = true }
 akit-runtime = { workspace = true }
 
 [dev-dependencies]

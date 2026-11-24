@@ -11,14 +11,119 @@ done and where the work differs from the plan.
 | | |
 | --- | --- |
 | Last updated | 2026-11-24 |
-| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I12, I14, I19, I22, I23 and I24 done, I15 doing (waits for akio's A11). |
+| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I12, I14, I19, I21, I22, I23 and I24 done, I15 doing (waits for akio's A11). |
 | akio | `50a82315` on akio's `main` (`1.0.0-rc.1`), pinned by `rev` in `Cargo.toml` |
 | fit | the specification; read at `7daee573` for this plan |
-| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept, added and removed, those it started with only once akio's A1 is pinned); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths; the `respond`, `static` (conditional and range requests, files opened on akio's pool) and `proxy` handlers (fit's forwarding fields, trusted proxies; the client's `Host` once A11 is pinned); upstream pools with round robin, weighted round robin and least connections; the compatibility gate: 80 fixtures, 8 valid, 71 refused only as not supported yet, 1 skipped, none failed |
-| Next | Move the akio pin to akio's main with A1–A8 and A11, then I15 done (its `Host` tests) and I22 on A1; then I13, I16, I17, I20, I21 |
+| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept, added and removed, those it started with only once akio's A1 is pinned); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths; the `respond`, `static` (conditional and range requests, files opened on akio's pool) and `proxy` handlers (fit's forwarding fields, trusted proxies; the client's `Host` once A11 is pinned); upstream pools with round robin, weighted round robin and least connections; access logs in fit's `json`, `text` and `line` formats; the compatibility gate: 80 fixtures, 8 valid, 71 refused only as not supported yet, 1 skipped, none failed |
+| Next | Move the akio pin to akio's main with A1–A8 and A11, then I15 done (its `Host` tests) and I22 on A1; then I13, I16, I17, I20 |
 | akio requests | A1–A8 merged into akio's main (2026-11-24); A11 on akio branch `claude/i15-proxy-699f18`; A9, A10, A12–A15 requested ([akio API requests](akio-api-requests.md)) |
 
 ## Log
+
+### 2026-11-24: I21, access logs
+
+- `akit-config` reads fit's `access_log`: `output` (`stdout`, the default, `stderr` or a file's
+  path), `flush_interval` (1s), `buffer_bytes` (4 MiB; 0 stands for the defaults, as fit's),
+  `level` (`info`, `warn`, `error`: the least status written, 0, 400 or 500), `format` (`json`,
+  `text`, `line`) and `time_zone` (as written). `rotate` stays refused as not supported yet (fit's
+  `logs` package's rotation). As fit's adapter merges files, `access_log` given by a second file
+  is refused: `also given in a.json: only the lists at the top of a config (listeners, routes,
+  upstreams, services, providers) may be split across files`. JSON, YAML and `.conf` alike.
+- `akit-observe` (std alone):
+  - `AccessLog`: lines formatted on the thread that finishes a response, into a buffer of that
+    thread's (a shard: one per thread that logs, up to 64, a power of two; threads past that
+    share), each with its own mutex, which only that thread and the writer (once a flush) take.
+    A shard hands its buffer to the writer thread over a bounded channel once it holds 64 KiB
+    (fit's `flushBytes`), and the writer takes every shard's on the flush interval, under the
+    shard's lock through the same channel, so one thread's lines keep their order. What waits for
+    the writer plus what a shard holds is bounded by `buffer_bytes`, as fit's; a line past it is
+    dropped and counted, never waited for. The writer reports drops once a flush
+    (`akit: access log: N lines dropped, the output was too slow` on stderr, fit's message); an
+    output that fails loses the buffer's lines, counted as dropped. `close` writes out what is
+    left and joins the writer; lines after it are dropped. `set_min_status` and `set_zone` change
+    the level and zone in place (a reload).
+  - `Format`, `Record` and `append_line`: fit's three formats with its fields in its order
+    (`time`, `listener`, `route` when one took it, `client`, `user` when set, `proto`, `method`,
+    `host`, `uri`, `status`, `bytes_in`, `bytes_out`, `duration`, `upstream` and
+    `upstream_duration` when proxied, `user_agent`, `referer`); seconds with six decimals rounded
+    to the microsecond; JSON strings as fit's `appendString` (bytes that are not UTF-8 as U+FFFD);
+    logfmt values bare or quoted as Go's `strconv.Quote`; `text`'s and `line`'s levels by status
+    (INFO, WARN for 4xx, ERROR for 5xx), `line`'s padded to five. Times are RFC 3339 with
+    milliseconds in the zone (`Z` for UTC, else `+08:00`), `line`'s `2006-01-02 15:04:05.000`;
+    the zone's offset is looked up once a second per shard.
+  - `Zone`: `local` (or empty: `TZ`, else `/etc/localtime`, else UTC, as Go's `time.Local`),
+    `utc`, or an IANA name read from the system's zoneinfo directories (Go's list); a TZif reader
+    (versions 1 to 4) with the POSIX `TZ` rule of the footer for times past the last transition
+    (`Mm.w.d`, `Jn`, `n`, times up to 167h, the US rules for a rule without dates). A name is
+    checked to stay inside the directory. `akit run` and `akit validate` load it, so a bad one is
+    `access_log.time_zone: "Nowhere/City" is not a time zone: local, utc or an IANA name such as
+    Asia/Shanghai`, fit's message.
+  - `with_upstream`, `upstream`, `dispatch_logged`, `logged`: thread-local hand-offs for what a
+    handler knows; `Name`, a short name kept inline (a listener's or route's, carried to the line
+    without an allocation of its own); `open_output`.
+- `akit-runtime`: `Env::with_access_log` gives the process's log to the graph of a config with
+  `access_log` (`Graph::access_log`); a config without one logs nothing.
+- `akit-listener`: when the graph has a log, the `Dispatcher` registers a response filter
+  (`Context::add_response_filter`) for each request, the 400 for a bad path and the 404 included,
+  holding this thread's shard, the start, the listener's and route's names. akio runs it on the
+  thread that sends the response (the I/O thread, or the thread a detached handler answers from),
+  and it builds the line there from the request and the response (`access_record`): the client
+  (an IPv4-mapped address as IPv4), `HTTP/1.0` to `HTTP/3.0`, the `Host` (or an absolute
+  target's authority), the target as sent, `bytes_in` (the body read, else `Content-Length`),
+  `bytes_out` (0 for `HEAD`, 1xx, 204 and 304; a file's length; the body's; for a streamed body,
+  whose bytes are not known when the head goes out, its `Content-Length` or 0). A response never
+  sent (its connection gone) has no line, as fit's. The handler runs inside `dispatch_logged`.
+- `akit-proxy`: for a logged request it picks the address itself (`Pool::pick`, then `send`) and
+  answers inside `with_upstream(address, time)`, so the line has `upstream` and
+  `upstream_duration`; an unlogged request goes as before, nothing copied.
+- `akit run`: opens the log before compiling the graph (`akit run: access log: <error>` and exit
+  1 when the output cannot be opened), warns, as fit does, that a file output without `rotate`
+  grows without bound, and closes it after the engine has stopped (also when the shutdown ran out
+  of time), so every response finished has its line. A reload sets the new level and zone; a
+  changed `output`, `format`, `flush_interval` or `buffer_bytes` takes a restart, and says so, as
+  does an `access_log` added by a reload.
+- Compatibility: `supported.txt` marks `access_log` and its six fields; the gate maps
+  `ACCESS_LOG_FIELDS` and `ACCESS_LOG_FIT_ONLY` and samples each field. `make compat-bless`:
+  `examples/logging` no longer refuses `access_log` (still refused for `log`); 65 fields refused,
+  from 66.
+- Tests: `akit-observe` unit tests (dates, times, durations, JSON and logfmt escaping, POSIX rules
+  of both hemispheres, a TZif file with a footer and truncated ones, the system's
+  `Asia/Shanghai` and `America/New_York` where present, names that would leave the zoneinfo
+  directory, `Name`, the thread-local hand-offs) and `tests/access_log.rs` (9, from fit's
+  `accesslog_test.go`): every field in each format, exactly; the level and zone changed in place;
+  the flush interval; a full buffer written without waiting for it; **a writer slower than the
+  traffic**: the output blocked in its first write while 4 threads log 10,000 lines, which return
+  at once (under 2 s), lines past the buffer dropped, written plus dropped equal to logged, every
+  drop reported, no line cut; a failing output; 8 threads keeping their order; a file appended
+  to. `akit-config/tests/access_log.rs` (5): defaults, every field, every error kind with its
+  path, YAML and `.conf`, one file only. `akit/tests/access_log.rs` (2, end to end with
+  `akit run`): a respond route, a proxied `POST` (`upstream`, `upstream_duration`, `bytes_in`), a
+  404, a 400, a `HEAD`, an HTTP/1.0 request, each line's fields checked, all written at
+  shutdown though the flush interval is an hour; a reload to `level: error` stopping 4xx lines.
+  The slow-writer test found a bug in the first version: a close that arrived while the writer
+  was flushing on its interval was taken for a buffer and lost, and the close waited forever.
+- Where it differs from the plan and from fit: it touches `akit-config`, `akit-runtime`,
+  `akit-listener`, `akit-proxy` and `akit` besides `akit-observe`. A line goes to the shard of the
+  thread that dispatched the request, not of its client's address (fit's sharding by address
+  keeps a connection's lines in order; one I/O thread serves a connection here, which does the
+  same with no hashing). A proxied request's line is built on the thread its upstream's response
+  comes in on (the pools' threads), and locks the dispatching thread's shard there: the shard
+  lock is then contended across two threads. fit's free list of written buffers is left out (a
+  new buffer per 64 KiB of lines). `user` is never set until authentication exists (I42).
+  `bytes_out` of a streamed response is its `Content-Length`, not the bytes written: akio-http
+  shows response filters the head only. The line is built before filters registered after it
+  run, so once compression (I47) registers one, `bytes_out` would be the body before
+  compression, where fit's counts what was written. Go's `unicode.IsPrint` is approximated for
+  logfmt quoting (controls, separators and common format characters escaped). No fit `log`
+  section (fit's own log, and its shared file sink with the access log).
+- Checked: `make check` on macOS; the touched crates (akit-observe, akit-config, akit-runtime,
+  akit-listener, akit-proxy, akit, akit-compat) on Linux (gpu51), epoll and io_uring.
+- For a benchmark task (none was run, rule 30): a same-run A/B of the fixed `respond` route and
+  of the proxy with the log off, on to `/dev/null` and on to a file, in `json` and `line`; the
+  per-request cost of the response filter (one boxed closure each, akio-http's API: if it shows,
+  an akio API request for an allocation-free completion hook), the shard lock (contended for
+  proxied requests) and formatting; lines dropped at full load with the default 4 MiB buffer and
+  with a slow disk.
 
 ### 2026-11-24: I22, reload on SIGHUP
 
