@@ -33,21 +33,21 @@ rust-version = "1.85"
 [workspace.dependencies]
 # akio by commit hash, never a path or [patch] (rules.md rule 22). Move it only to a commit on
 # akio's main whose checks pass, and update akit_runtime::AKIO_REV with it.
-akio = { git = "https://github.com/lesismal/akio", rev = "a9a620ab2db9635caee32fc625da51ae255ff591" }
+akio = { git = "https://github.com/lesismal/akio", rev = "60547435e3dd2342a2bdd2876f3f301e14948acd" }
 # The same akio commit: every akio crate moves with `akio` (rule 22).
-akio-http = { git = "https://github.com/lesismal/akio", rev = "a9a620ab2db9635caee32fc625da51ae255ff591" }
+akio-http = { git = "https://github.com/lesismal/akio", rev = "60547435e3dd2342a2bdd2876f3f301e14948acd" }
 # Signals (`process::signal_pipe`): its `unsafe` stays in akio (rule 14).
-akio-sys = { git = "https://github.com/lesismal/akio", rev = "a9a620ab2db9635caee32fc625da51ae255ff591" }
+akio-sys = { git = "https://github.com/lesismal/akio", rev = "60547435e3dd2342a2bdd2876f3f301e14948acd" }
 # Certificates: the names a certificate is for, which pick it by SNI (akit-tls); in tests, to
 # make certificates and keys.
-akio-x509 = { git = "https://github.com/lesismal/akio", rev = "a9a620ab2db9635caee32fc625da51ae255ff591" }
-akio-crypto = { git = "https://github.com/lesismal/akio", rev = "a9a620ab2db9635caee32fc625da51ae255ff591" }
+akio-x509 = { git = "https://github.com/lesismal/akio", rev = "60547435e3dd2342a2bdd2876f3f301e14948acd" }
+akio-crypto = { git = "https://github.com/lesismal/akio", rev = "60547435e3dd2342a2bdd2876f3f301e14948acd" }
 # HTTP/3 listeners (akit-listener): akio-h3 serves akio-http's services over akio-quic.
-akio-h3 = { git = "https://github.com/lesismal/akio", rev = "a9a620ab2db9635caee32fc625da51ae255ff591" }
-akio-quic = { git = "https://github.com/lesismal/akio", rev = "a9a620ab2db9635caee32fc625da51ae255ff591" }
+akio-h3 = { git = "https://github.com/lesismal/akio", rev = "60547435e3dd2342a2bdd2876f3f301e14948acd" }
+akio-quic = { git = "https://github.com/lesismal/akio", rev = "60547435e3dd2342a2bdd2876f3f301e14948acd" }
 # Route path regexps (akit-router) and the redirect middleware's (akit-middleware), decision 001:
 # linear-time matching, no dependencies.
-akio-regex = { git = "https://github.com/lesismal/akio", rev = "a9a620ab2db9635caee32fc625da51ae255ff591" }
+akio-regex = { git = "https://github.com/lesismal/akio", rev = "60547435e3dd2342a2bdd2876f3f301e14948acd" }
 
 akit-config = { path = "crates/akit-config" }
 akit-runtime = { path = "crates/akit-runtime" }

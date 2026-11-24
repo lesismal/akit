@@ -113,7 +113,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I13 | Static files II | I12 | done |
 | I14 | Upstream pools on the HTTP/1 client | I04 | done |
 | I15 | Reverse proxy I: requests and headers | I11, I14 | done |
-| I16 | Reverse proxy II: streamed bodies, linked backpressure | I15 | doing |
+| I16 | Reverse proxy II: streamed bodies, linked backpressure | I15 | done |
 | I17 | Reverse proxy III: timeouts, cancellation, trailers | I16 | todo |
 | I18 | HTTP/2 and h2c upstreams | I17 | todo |
 | I19 | Load balancing v1 | I14 | done |
@@ -204,7 +204,7 @@ commit and result.
 | Router v1: host and path lookup | I11 | no | no (built, not measured) | A micro-benchmark of the lookup (no allocation) and same-run A/B of fixed against I05's scan, with many routes. |
 | Static files | I12, I13 | no | no (built, not measured) | The static scenario, HTTP/1.1 and h2c (skipped for akit in the baseline); precompressed twins and `sendfile` for large files. |
 | Upstream pools | I14 | no | no (built, not measured) | Through the proxy scenario: connection reuse, waiting for a connection under a limit. |
-| Reverse proxy: HTTP/1.1, streamed bodies, h2 and h2c upstreams | I15–I18 | no | no (built in part: bodies forwarded whole; streaming waits for akio A19–A21) | The proxy scenario, HTTP/1.1 and h2c (skipped for akit in the baseline); large bodies both ways, with memory per request in flight; h2 upstreams. |
+| Reverse proxy: HTTP/1.1, streamed bodies, h2 and h2c upstreams | I15–I18 | no | no (built up to I16, not measured; h2 upstreams are I18) | The proxy scenario, HTTP/1.1 and h2c (skipped for akit in the baseline); large bodies both ways, with memory per request in flight; h2 upstreams. |
 | Load balancing v1 and v2 | I19, I36 | no | no (not built yet) | A micro-benchmark of each policy's pick, 1 and 16 threads; proxy A/B against a single server. |
 | Passive health checks | I20 | no | no (built, not measured) | A micro-benchmark of recording a result on the request path. |
 | Access logs | I21 | no | no (built, not measured) | Same-run A/B of fixed and proxy with logs on and off (json, and text or line), to a file and to `/dev/null`; lines dropped at full load with the default 4 MiB buffer and a slow disk; the per-request cost (the boxed response filter, the shard lock, formatting). |

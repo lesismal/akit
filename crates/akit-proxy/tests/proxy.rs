@@ -6,7 +6,8 @@
 //! default, `uring`).
 //!
 //! The upstreams are plain threads on std sockets that report the request head exactly as it
-//! arrived, so that the tests see the fields' order and case.
+//! arrived, so that the tests see the fields' order and case, and its body, framed by its length
+//! or chunked.
 //!
 //! `forwarding`, `request_fields_in_order` and `host_header` check the `Host` the upstream sees
 //! and that no `User-Agent` is made up, through akio API request A11 (a client request's own
@@ -148,13 +149,24 @@ fn upstream(
                             break;
                         }
                     }
-                    let length = field_values(&head, "content-length")
-                        .first()
-                        .map_or(0, |v| v.parse::<usize>().unwrap());
-                    let mut body = vec![0; length];
-                    if r.read_exact(&mut body).is_err() {
-                        return;
-                    }
+                    let chunked = field_values(&head, "transfer-encoding")
+                        .iter()
+                        .any(|v| v.eq_ignore_ascii_case("chunked"));
+                    let body = if chunked {
+                        match read_chunked(&mut r) {
+                            Some(b) => b,
+                            None => return,
+                        }
+                    } else {
+                        let length = field_values(&head, "content-length")
+                            .first()
+                            .map_or(0, |v| v.parse::<usize>().unwrap());
+                        let mut body = vec![0; length];
+                        if r.read_exact(&mut body).is_err() {
+                            return;
+                        }
+                        body
+                    };
                     let seen = Seen { head, body };
                     let out = reply(&seen);
                     let _ = tx.send(seen);
@@ -166,6 +178,34 @@ fn upstream(
         }
     });
     (addr, rx)
+}
+
+/// A chunked body, decoded; its trailers skipped. `None` when the connection ended first.
+fn read_chunked(r: &mut impl BufRead) -> Option<Vec<u8>> {
+    let mut body = Vec::new();
+    loop {
+        let mut line = String::new();
+        if r.read_line(&mut line).ok()? == 0 {
+            return None;
+        }
+        let size = usize::from_str_radix(line.trim().split(';').next()?, 16).ok()?;
+        if size == 0 {
+            loop {
+                line.clear();
+                if r.read_line(&mut line).ok()? == 0 {
+                    return None;
+                }
+                if line == "\r\n" {
+                    return Some(body);
+                }
+            }
+        }
+        let mut chunk = vec![0; size];
+        r.read_exact(&mut chunk).ok()?;
+        body.extend_from_slice(&chunk);
+        let mut crlf = [0; 2];
+        r.read_exact(&mut crlf).ok()?;
+    }
 }
 
 /// fit's echo backend: 201, with `X-Backend: echo`, the request's head and body as its body.
