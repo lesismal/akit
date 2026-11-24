@@ -63,8 +63,9 @@ routes[].handler<static>.params.browse_max_entries
 routes[].handler<static>.params.strip_prefix
 routes[].handler<static>.params.try_files
 #
-# I14: upstreams with their servers and connection limits. upstreams[].protocol takes "http/1.1";
-# "h2c" and "h2" are refused as not supported yet (I18, I54).
+# I14: upstreams with their servers and connection limits. upstreams[].protocol takes "http/1.1",
+# and since I18 "h2c" and "h2" (h2 with the system's roots: tls_server_name, tls_ca_file,
+# tls_cert_file and tls_key_file are refused as not supported yet, I54).
 upstreams
 upstreams[].name
 upstreams[].addresses

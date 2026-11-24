@@ -286,6 +286,41 @@ pub struct Upstream {
     /// response began is answered 504, and one past it later is cut short.
     /// [`DEFAULT_RESPONSE_TIMEOUT`] when left out or 0.
     pub response_timeout: Duration,
+    /// `protocol`: how requests reach the upstream (I18). [`UpstreamProtocol::Http11`] when
+    /// left out.
+    pub protocol: UpstreamProtocol,
+}
+
+/// An upstream's `protocol`: how requests reach its servers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
+pub enum UpstreamProtocol {
+    /// `http/1.1`, in the clear.
+    #[default]
+    Http11,
+    /// `h2c`: HTTP/2 in the clear, with prior knowledge, which the servers must expect.
+    H2c,
+    /// `h2`: HTTP/2 over TLS, offered through ALPN. fit falls back to HTTP/1.1 when a server
+    /// does not choose h2; akit's h2 client cannot yet (akio API request A53).
+    H2,
+}
+
+impl UpstreamProtocol {
+    /// The protocol's name in the config.
+    #[must_use]
+    pub fn name(self) -> &'static str {
+        match self {
+            UpstreamProtocol::Http11 => "http/1.1",
+            UpstreamProtocol::H2c => "h2c",
+            UpstreamProtocol::H2 => "h2",
+        }
+    }
+
+    /// Whether requests go over HTTP/2.
+    #[must_use]
+    pub fn is_h2(self) -> bool {
+        matches!(self, UpstreamProtocol::H2c | UpstreamProtocol::H2)
+    }
 }
 
 /// An upstream's active health check, as fit's `config.HealthCheck`: a probe sent to each of its
@@ -2966,13 +3001,13 @@ fn upstream(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Upstream> {
         }
         list.into_iter().map(|(_, a)| a).collect::<Vec<_>>()
     });
+    let mut protocol = UpstreamProtocol::Http11;
     if let Some(v) = o.take("protocol") {
         let p = o.at("protocol");
         match d.string(v, &p).as_deref() {
             Some("http/1.1") | None => {}
-            Some(other @ ("h2c" | "h2")) => {
-                d.not_yet(v.off, &p, &format!("the {other:?} protocol for upstreams"));
-            }
+            Some("h2c") => protocol = UpstreamProtocol::H2c,
+            Some("h2") => protocol = UpstreamProtocol::H2,
             Some(other) => d.error(
                 v.off,
                 &p,
@@ -3095,6 +3130,7 @@ fn upstream(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Upstream> {
         fail_timeout,
         health_check,
         response_timeout,
+        protocol,
     })
 }
 

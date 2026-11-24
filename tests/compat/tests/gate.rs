@@ -974,17 +974,10 @@ fn supported_fields_are_read() {
         ("upstreams[].addresses", upstream(""), |c| {
             c.upstreams[0].addresses == ["127.0.0.1:9000"]
         }),
-        // Its one value akit takes is the default, so it reads it by refusing the others.
         (
             "upstreams[].protocol",
-            upstream(r#", "protocol": "http/1.1""#),
-            |_| {
-                akit_config::from_json(
-                    r#"{"upstreams": [{"name": "a", "addresses": ["a:1"], "protocol": "h2c"}]}"#,
-                    None,
-                )
-                .is_err_and(|e| e.only_not_supported_yet())
-            },
+            upstream(r#", "protocol": "h2c""#),
+            |c| c.upstreams[0].protocol == akit_config::UpstreamProtocol::H2c,
         ),
         (
             "upstreams[].max_conns",

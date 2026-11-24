@@ -45,7 +45,7 @@ pub use model::{
     DEFAULT_TLS_PROTOCOLS, Dotfiles, Encoding, Handler, HeaderOps, Headers, HealthCheck,
     HealthCheckType, Limits, Listener, LoadBalancing, LogFormat, MAX_WEIGHT, Match, Metrics,
     Network, Protocol, Proxy, RateKey, RateLimit, Redirect, Respond, Rewrite, Route,
-    SCHEMA_VERSION, Static, Tls, TlsVersion, Upstream,
+    SCHEMA_VERSION, Static, Tls, TlsVersion, Upstream, UpstreamProtocol,
 };
 
 /// The largest config document read, in bytes: fit's own configs are kilobytes; this bounds

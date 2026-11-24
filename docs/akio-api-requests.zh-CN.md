@@ -53,6 +53,9 @@
 | A36 | HTTP 客户端请求的响应头超时和空闲超时 | 已提出（I17） | 10 | I17b、I18 |
 | A37 | 可在任意时刻取消的 HTTP 客户端请求 | 已提出（I17） | 3 | I17b、I45 |
 | A38 | 能得知客户端离开的分离服务端请求；可在运行时修改的写停滞超时 | 已提出（I17） | 3、10 | I17b、I49 |
+| A51 | `H2Client` 的流式请求：重置、超时、请求 trailer，以及遇到 `GOAWAY` 时报告失败而不是被遗忘 | 已提出（I18） | 3、10 | I18b、I50 |
+| A52 | `H2Client` 按流的背压：暂停流式响应的读取，报告上传队列 | 已提出（I18） | 8 | I18b、I50 |
+| A53 | `H2Client` 的连接：遵守并报告服务器的流数上限、连接超时、ALPN 回退到 HTTP/1.1 | 已提出（I18） | 10、11 | I18b、I54 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -682,3 +685,76 @@ I17 的 `Fit-Error` 尾部字段结束）。
 **akit 的用法。** I17b：代理注册 `on_gone` 来取消上游请求（A37），且不把它计为上游的失败，补上 fit 的
 `TestClientAbort` 中“响应头之前”和 HTTP/1“上传中途”两种情况；`limits.write_stall_timeout` 在启动和重载时设置引擎的
 写超时。I49 的 WebSocket 和隧道转发也用同样的方式得知客户端离开。
+
+## A51 `H2Client` 的流式请求：重置、超时、trailer、`GOAWAY`
+
+**问题。** 到 h2 上游的代理以流的方式转发每个交换（`H2Client::open`），和 HTTP/1 一样
+（`Client::request_with`，A19、A20）。HTTP/1 路径具备、h2 路径缺少的有四点：
+
+1. **无法重置。** `open` 返回的 `H2Upload` 只有 `write` 和 `finish`：客户端已离开时，代理无法重置上游的流
+   （`RST_STREAM CANCEL`）。`H2Conn::cancel` 存在，但只有整体请求的超时能用到它。
+2. **没有超时。** 只有 `request` 会启用 `ClientRequest::timeout`；`open` 忽略它。
+3. **没有请求 trailer。** `H2Upload` 无法用结尾的 HEADERS 帧结束请求体，因此请求的 trailer（包括 gRPC 的，I50）
+   无法到达 h2 上游。
+4. **遇到 `GOAWAY` 时被遗忘。** `GOAWAY` 判定不再处理的流（高于其最后流 id）会被移除并让其回调失败，但流式请求的
+   `on_event` 不会收到通知：它会永远等待。而且在 `GOAWAY` 之后客户端仍报告 `is_open`，而每个新流都以 `Closed` 失败。
+
+**证据。** akio `afbbb521` 的 `crates/akio-http/src/h2client.rs`：`open` 返回 `H2Upload { write, finish }`；
+只有 `request` 为超时调用 `crate::timer::after`；`H2Conn::cancel` 是私有的；`handle` 的 `GOAWAY` 分支调用
+`s.cb.take()`，从不调用 `s.events`；`is_open` 就是 `conn.is_open()`。由 I18 经 h2c 的代理发现
+（`crates/akit-upstream/src/h2.rs`）。
+
+**建议的 API。** `H2Upload::cancel()`（或 `open` 同时返回的句柄上的同名方法）：以 `CANCEL` 重置该流，
+`on_event` 收到一次 `H2Event::Error(ClientError::Cancelled)`，除非它已结束。`open` 像 `request` 一样启用
+`req.timeout`：超时后重置并报 `Error(Timeout)`。`H2Upload::finish_with_trailers(Headers)`。遇到 `GOAWAY` 时，
+不再处理的流式请求收到 `Error(Closed)`（若有 `Refused` 类别，调用方便知道可以换处重试），且收到 `GOAWAY` 后
+`H2Client::is_open`（或新的 `accepts_streams`）为 false。
+
+**akit 的用法。** I18b：`akit_upstream::h2` 去掉它的权宜之计：放弃的流（客户端离开、超时、客户端太慢）被重置，
+而不是任其运行、让其连接停收新流并在其他流结束后关闭；用来执行 `response_timeout` 的按地址定时检查不再需要；
+请求 trailer 会发往上游；`GOAWAY` 让其不再处理的流失败（502，或 I45 的重试）并让该连接停收新流。I50 的 gRPC
+代理四点都需要。
+
+## A52 `H2Client` 按流的背压
+
+**问题。** 规则 8 要求背压联动：慢客户端暂停上游的读取，慢上游暂停客户端的读取。在 HTTP/1 上，akio 的
+`ResponseBody::hold_reads` 和 `RequestBody::queued_bytes` / `on_drain` 做到了这一点（A19、A20）。akio 的 h2
+客户端两者都没有：
+
+1. DATA 一到就把每个流的接收窗口还回去（每帧都 `window_update`），所以无论消费方如何，服务器都以连接允许的
+   最快速度发送流式响应。客户端较慢的代理只能缓冲它，或放弃这个流。
+2. `H2Upload::write` 无界排队且不报告任何信息：字节在流的 `upload` 队列中等待窗口打开，生产方无从得知有多少。
+
+**证据。** akio `afbbb521` 的 `crates/akio-http/src/h2client.rs`：`handle` 的 `DATA` 分支对每个不结束流的帧调用
+`window_update(&mut out, sid, total)`；`H2Upload::write` 推入 `UpShared::q`，`pump` 再把它移入
+`CStream::upload`（一个 `VecDeque<u8>`），外部没有任何计数。
+
+**建议的 API。** 在 `open` 建立的流上：`hold_reads(bool)`：暂停期间不归还该流的窗口（已在途的 DATA 仍会到达，
+至多一个窗口）；恢复时立即归还已消费的部分。可选 `consume(n)`，供边转交字节边归还窗口的调用方使用。在
+`H2Upload` 上：`queued_bytes()`（已接受、尚未放入 DATA 帧的字节）和 `on_drain(f)`（降到 0 时调用一次，或立即调用），
+并且超过 `max_queued_bytes` 时 `write` 失败，与 `RequestBody` 一致。
+
+**akit 的用法。** I18b：代理的转发在客户端落后时暂停 h2 下载，并按队列控制上传节奏，与 HTTP/1 完全相同；akit 的
+权宜之计（暂停的下载超过 `HELD_LIMIT`（4 MiB）后被切断，上传队列可增长到请求体上限）不再需要。
+
+## A53 `H2Client` 的连接：服务器的流数上限、连接超时、ALPN 回退
+
+**问题。** h2 连接池在有空闲流的连接上开流，没有时再拨一个新连接：它必须知道服务器允许多少个流。它还要按上游的
+`connect_timeout` 限制连接时间，并且对 fit 的 `h2`，在服务器未通过 ALPN 选择 h2 时回退到 HTTP/1.1。
+
+1. akio 的客户端忽略 `SETTINGS_MAX_CONCURRENT_STREAMS`（设置 3），也不报告它：超出的请求会被服务器拒绝
+   （`REFUSED_STREAM`）。akit 假定为 100，即 RFC 9113 允许服务器公布的最小值。
+2. `H2Client::connect` 用 `HappyEyeballs::default()` 竞速各地址，调用方无法设置其 `connect_timeout`；`dial` 使用
+   引擎的超时（与 HTTP/1 客户端的 A12 相同）。
+3. 在 TLS 上，无论 ALPN 选了什么，`dial` 都说 h2；选择 `http/1.1` 的服务器会失败。
+
+**证据。** akio `afbbb521` 的 `crates/akio-http/src/h2client.rs`：`handle` 的 `SETTINGS` 分支匹配 1、4、5 和 8，不含 3；
+`connect` 构造 `akio::dns::HappyEyeballs::default()`；`dial` 传入 TLS acceptor，不查看协商出的协议。
+
+**建议的 API。** `H2Client::max_concurrent_streams()`（服务器最新的值，收到其 SETTINGS 之前为 `u32::MAX`）和
+`open_streams()`；超出上限的请求由调用方选择在客户端中（有界地）等待，或立即以 `Busy` 失败。
+`H2Client::connect_with(engine, host, port, tls, opts, HappyEyeballs, ready)`。经 TLS 拨号时报告 ALPN 选择的协议
+（`ready` 收到 `enum { H2(H2Client), Http1(Conn) }`），或在不是 `h2` 时以明确的错误失败。
+
+**akit 的用法。** I18b：`akit_upstream::h2` 按服务器的上限确定每个连接的流数，在上游的 `connect_timeout` 内拨号，
+并且对 `h2`，在服务器不说 h2 时回退到 akio 的 HTTP/1 客户端，与 fit 的 `h2` 一致（I54 加入 `tls_*` 字段）。

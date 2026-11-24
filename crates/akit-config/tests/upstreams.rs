@@ -216,7 +216,7 @@ fn load_balancing() {
 #[test]
 fn what_akit_lacks_is_not_supported_yet() {
     let e = errs(&one(
-        r#""addresses": ["a:1"], "protocol": "h2c", "load_balancing": "p2c", "hash_key": "x",
+        r#""addresses": ["a:1"], "load_balancing": "p2c", "hash_key": "x",
            "response_idle_timeout": "1s""#,
     ));
     assert!(e.only_not_supported_yet(), "{e}");
@@ -224,12 +224,39 @@ fn what_akit_lacks_is_not_supported_yet() {
     assert_eq!(
         paths,
         [
-            "upstreams[0].protocol",
             "upstreams[0].load_balancing",
             "upstreams[0].hash_key",
             "upstreams[0].response_idle_timeout",
         ]
     );
+}
+
+/// I18: h2c and h2 upstreams.
+#[test]
+fn protocols() {
+    use akit_config::UpstreamProtocol;
+    for (name, want) in [
+        ("http/1.1", UpstreamProtocol::Http11),
+        ("h2c", UpstreamProtocol::H2c),
+        ("h2", UpstreamProtocol::H2),
+    ] {
+        let c = from_json(
+            &format!(
+                r#"{{"upstreams": [{{"name": "a", "addresses": ["a:1"], "protocol": "{name}"}}]}}"#
+            ),
+            None,
+        )
+        .unwrap();
+        assert_eq!(c.upstreams[0].protocol, want);
+        assert_eq!(want.name(), name);
+        assert_eq!(want.is_h2(), name != "http/1.1");
+    }
+    let c = from_json(
+        r#"{"upstreams": [{"name": "a", "addresses": ["a:1"]}]}"#,
+        None,
+    )
+    .unwrap();
+    assert_eq!(c.upstreams[0].protocol, UpstreamProtocol::Http11);
 }
 
 #[test]
