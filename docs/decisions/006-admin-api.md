@@ -40,10 +40,36 @@ two meet without a blocking wait on an I/O thread.
   fit writes one (`akit_config::value::json_of`). The ETag is the first 96 bits of the SHA-256 of
   that text (akio-crypto), as fit's.
 - **Web pages are refused as in fit**: `Origin` gets 403 but on a read from the API's own origin,
-  and the `Host` must name a loopback host. Without a token (I27) the address must be a loopback
-  one; a Unix socket waits on akio (A23).
+  and the `Host` must name a loopback host. The address must be a loopback one (off loopback fit
+  asks for a token and TLS, below); a Unix socket waits on akio (A23).
 - **fit's paths and payloads**, the `Fit-Config-Version` header included, so fit's clients work
-  against akit; edits, rollback, `POST /reload` and dry runs answer 501 until I27.
+  against akit; edits, rollback, `POST /reload` and dry runs answered 501 until I27.
+
+Update, I27 (2026-11-24):
+
+- **Every change is a `Job` the control thread runs**: `POST /load`, `PUT`, `PATCH` and
+  `DELETE /config[/<pointer>]`, `POST /rollback/{n}` and `POST /reload`. Bodies are streamed in as
+  a load's are, the pointer and `?dry_run` checked on the I/O thread; the control thread makes the
+  change from the running config inside `Configs::change`, under the lock that orders applies,
+  after `If-Match` is compared, so that a writer's edit starts from the config before it and a
+  stale one gets 412 with nothing called. An edited config is written out again as fit writes it
+  (`Value::to_json`); a whole config (`POST /load`, `PUT /config`) is kept as written. A rollback
+  applies version `n`'s config as a new version, source `rollback`; a reload applies the running
+  one again, source `admin`, as fit's.
+- **A dry run takes the apply path without its effects**: the config is parsed and compiled with
+  an empty engine slot (its pools dial and probe nothing) and a registry of its own (its counters
+  reach no scrape), and `Listeners::plan` lists what `Listeners::reload` would open and close,
+  resolving each new listener's address and binding it for a moment unless a running listener
+  holds it. Nothing is kept or counted; the answer carries the running version and ETag, the ETag
+  the config would have, and `Fit-Dry-Run: 1`, as fit's.
+- **The token** (`admin.token_file`) is read when the API starts, trimmed, and refused when
+  empty; every request then carries `Authorization: Bearer <token>`, compared in constant time, or
+  gets 401 with `WWW-Authenticate`; the `Host` check is dropped then, as in fit, and `Origin` is
+  still refused. An address off loopback stays refused: fit asks for TLS there too (`cert_file`,
+  `key_file`), and akit does not serve the API over TLS yet.
+- Not taken from fit: its connection limiter (a quarter of `max_conns` kept for clients that
+  showed the token, unauthenticated connections closed after 5 s; akit keeps the engine's
+  `max_connections`), and the connection closed after a 401, which waits on A24 as the 413's does.
 
 ## Consequences
 

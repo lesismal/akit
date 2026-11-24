@@ -227,3 +227,55 @@ fn what_cannot_be_served_is_refused_with_nothing_changed() {
     assert_eq!(get(web), ok("v1"));
     stop(&e, l);
 }
+
+/// `Listeners::plan` (I27's dry runs): what a reload would open and close, with nothing changed;
+/// a new listener's taken address is refused as a reload refuses it, one a running listener holds
+/// is not tried.
+#[test]
+fn a_plan_changes_nothing() {
+    let old = r#"{"name": "old", "address": "127.0.0.1:0", "protocols": ["http/1.1"]}"#;
+    let (cell, e, l) = serve(&config(&format!("{WEB}, {old}"), "v1"));
+    let served = l.served();
+    let before = e.listeners().len();
+
+    let r = l
+        .plan(&graph(&config(
+            &format!(r#"{WEB}, {{"name": "new", "address": "127.0.0.1:0"}}"#),
+            "v2",
+        )))
+        .unwrap();
+    assert_eq!(r.kept, 1);
+    assert_eq!(r.added.len(), 1);
+    assert_eq!(
+        (r.added[0].name.as_str(), r.added[0].address.to_string()),
+        ("new", "127.0.0.1:0".to_owned())
+    );
+    assert_eq!(r.removed.len(), 1);
+    assert_eq!(r.removed[0], served[1]);
+    assert_eq!((l.served(), e.listeners().len()), (served.clone(), before));
+    assert_eq!(get(served[0].address), ok("v1"));
+
+    // A taken address, refused as reload refuses it.
+    let taken = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = taken.local_addr().unwrap();
+    let clash = config(
+        &format!(r#"{WEB}, {{"name": "clash", "address": "{addr}"}}"#),
+        "v2",
+    );
+    let planned = l.plan(&graph(&clash)).unwrap_err();
+    assert!(matches!(planned, ReloadError::Listener(_)), "{planned}");
+    assert!(planned.to_string().contains("listener clash"), "{planned}");
+    drop(taken);
+    // The running listener's own address, changed: not tried, since a reload makes room on it.
+    let moved = config(
+        &format!(
+            r#"{WEB}, {{"name": "old", "address": "{}"}}"#,
+            served[1].address
+        ),
+        "v2",
+    );
+    let r = l.plan(&graph(&moved)).unwrap();
+    assert_eq!((r.added.len(), r.removed.len()), (1, 1));
+    assert_eq!(cell.retiring(), 0);
+    stop(&e, l);
+}

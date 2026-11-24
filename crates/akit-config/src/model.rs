@@ -50,14 +50,18 @@ pub const DEFAULT_ADMIN_MAX_CONFIG_BYTES: usize = 4 << 20;
 /// fit's default `admin.max_conns`.
 pub const DEFAULT_ADMIN_MAX_CONNS: usize = 16;
 
-/// `admin`: the Admin API, as fit's `config.Admin` (decision 006): so far its address, history
-/// and limits. Its token, TLS, access lists, store, console and the rest are refused as not
+/// `admin`: the Admin API, as fit's `config.Admin` (decision 006): so far its address, history,
+/// limits and token (I27). Its TLS, access lists, store, console and the rest are refused as not
 /// supported yet; so is a Unix socket (`unix/<path>`, akio API request A23).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Admin {
-    /// `address`: a loopback host and port; [`DEFAULT_ADMIN_ADDRESS`] when left out. Without a
-    /// token (I27), a host that is not loopback is refused, as fit refuses it.
+    /// `address`: a loopback host and port; [`DEFAULT_ADMIN_ADDRESS`] when left out. A host that
+    /// is not loopback needs a token and TLS, as in fit, and akit does not serve the API over TLS
+    /// yet: it is refused.
     pub address: String,
+    /// `token_file`: a file holding a token that every request must carry, as
+    /// `Authorization: Bearer <token>`, read when akit starts; none asked for when left out.
+    pub token_file: Option<String>,
     /// `history`: how many configs, the running one included, are kept to be read back;
     /// [`DEFAULT_ADMIN_HISTORY`] when left out or 0.
     pub history: usize,
@@ -73,6 +77,7 @@ impl Default for Admin {
     fn default() -> Admin {
         Admin {
             address: DEFAULT_ADMIN_ADDRESS.to_owned(),
+            token_file: None,
             history: DEFAULT_ADMIN_HISTORY,
             max_config_bytes: DEFAULT_ADMIN_MAX_CONFIG_BYTES,
             max_conns: DEFAULT_ADMIN_MAX_CONNS,
@@ -748,12 +753,17 @@ const CONFIG_FIT_ONLY: &[&str] = &[
     "bittorrent",
     "providers",
 ];
-// I26: the Admin API's address, history and limits; its token and TLS come with I27, its
-// access lists with fit's access, a Unix socket with akio API request A23.
-const ADMIN_FIELDS: &[&str] = &["address", "history", "max_config_bytes", "max_conns"];
+// I26: the Admin API's address, history and limits; I27: its token. Its TLS waits for the API to
+// be served over TLS, its access lists for fit's access, a Unix socket for akio API request A23.
+const ADMIN_FIELDS: &[&str] = &[
+    "address",
+    "token_file",
+    "history",
+    "max_config_bytes",
+    "max_conns",
+];
 const ADMIN_FIT_ONLY: &[&str] = &[
     "mptcp",
-    "token_file",
     "cert_file",
     "key_file",
     "client_ca_file",
@@ -1361,13 +1371,16 @@ fn admin(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Admin> {
                     format!(
                         "{s:?} is not a loopback address: the Admin API can change everything \
                          akit serves, so listen on localhost, 127.0.0.1 or [::1]; off loopback it \
-                         needs a token (token_file) and TLS (cert_file and key_file), which akit \
-                         does not support yet"
+                         needs a token (token_file) and TLS (cert_file and key_file), and akit \
+                         does not serve the Admin API over TLS yet"
                     ),
                 );
             }
             a.address = s;
         }
+    }
+    if let Some(v) = o.take("token_file") {
+        a.token_file = d.string(v, &o.at("token_file")).filter(|s| !s.is_empty());
     }
     // fit's ints, at least 0; 0 is the default.
     fn count(o: &mut Obj<'_>, d: &mut Decoder<'_>, key: &str, slot: &mut usize) {

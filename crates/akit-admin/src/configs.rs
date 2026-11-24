@@ -12,6 +12,8 @@ use akit_config::Errors;
 pub const SOURCE_FILE: &str = "file";
 /// A config loaded through the Admin API.
 pub const SOURCE_ADMIN: &str = "admin";
+/// A config applied again by `POST /rollback/{n}` (I27), as fit's `admin.SourceRollback`.
+pub const SOURCE_ROLLBACK: &str = "rollback";
 /// The running config applied again because the certificate files it loaded changed
 /// (`run -watch-certs`, I30), as fit's `admin.SourceCertificates`.
 pub const SOURCE_CERTIFICATES: &str = "certificates";
@@ -23,7 +25,8 @@ pub struct Version {
     pub number: u64,
     /// When it was applied.
     pub applied: SystemTime,
-    /// Where it came from: [`SOURCE_FILE`], [`SOURCE_ADMIN`] or [`SOURCE_CERTIFICATES`].
+    /// Where it came from: [`SOURCE_FILE`], [`SOURCE_ADMIN`], [`SOURCE_ROLLBACK`] or
+    /// [`SOURCE_CERTIFICATES`].
     pub source: &'static str,
     /// A strong entity tag of it as written ([`etag_of`]), which `If-Match` compares.
     pub etag: String,
@@ -69,26 +72,50 @@ pub enum ApplyError {
     Failed(String),
 }
 
-/// Why [`Configs::update`] applied nothing.
+/// Whether a config is applied or only checked: a dry run (`?dry_run=1`) takes the path an apply
+/// takes, and changes nothing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Mode {
+    /// Applied: served, and kept as a new version.
+    Apply,
+    /// Checked as an apply would check it, and not applied.
+    DryRun,
+}
+
+/// Why [`Configs::update`] or [`Configs::change`] applied nothing.
 #[derive(Debug)]
 pub enum Refused {
     /// `If-Match` names a config that is no longer the running one: the API answers 412.
     Changed,
+    /// The change cannot be made (a pointer to nothing, a version no longer kept, ...): the API
+    /// answers with the status and message.
+    Request {
+        /// The status: 400 or 404.
+        status: u16,
+        /// What is wrong.
+        msg: String,
+    },
     /// The apply step refused it.
     Apply(ApplyError),
 }
 
-/// A config applied.
+/// A config applied, or checked by a dry run.
 #[derive(Debug, Clone)]
 pub struct Outcome {
-    /// Its version.
+    /// Its version; for a dry run, the running config's.
     pub version: u64,
-    /// Its ETag.
+    /// Its ETag; for a dry run, the running config's.
     pub etag: String,
     /// Where it came from.
     pub source: &'static str,
-    /// What it changed.
+    /// What it changed; for a dry run, what applying it would change.
     pub applied: Applied,
+    /// Whether it was only checked ([`Mode::DryRun`]): nothing changed.
+    pub dry_run: bool,
+    /// For a dry run, the ETag the config checked would have once applied; empty otherwise.
+    pub new_etag: String,
+    /// For a dry run, whether the config checked is the running one, byte for byte.
+    pub unchanged: bool,
 }
 
 #[derive(Debug)]
@@ -211,12 +238,53 @@ impl Configs {
         data: String,
         apply: impl FnOnce(&str) -> Result<Applied, ApplyError>,
     ) -> Result<Outcome, Refused> {
+        self.change(
+            source,
+            if_match,
+            Mode::Apply,
+            |_| Ok(data),
+            |text, _| apply(text),
+        )
+    }
+
+    /// Applies the config `edit` makes from the running one, as [`update`](Configs::update) does,
+    /// with no other config applied between the two: edits from many writers at once each start
+    /// from the one before, and none is lost, as fit's `Configs.Update`. `edit` gives standard
+    /// JSON. `If-Match` is checked first, under the same lock, so that `edit` is not called when it
+    /// is stale. With [`Mode::DryRun`], `apply` is asked only to check the config, and the outcome
+    /// is the running config's version and ETag, with the ETag the config would have.
+    ///
+    /// # Errors
+    ///
+    /// [`Refused::Changed`] when `if_match` names another config; what `edit` refuses, as it
+    /// refuses it; [`Refused::Apply`] with what `apply` refused. The running config stays.
+    pub fn change(
+        &self,
+        source: &'static str,
+        if_match: Option<&str>,
+        mode: Mode,
+        edit: impl FnOnce(&Version) -> Result<String, Refused>,
+        apply: impl FnOnce(&str, Mode) -> Result<Applied, ApplyError>,
+    ) -> Result<Outcome, Refused> {
         let _one = lock(&self.inner.applying);
         let cur = self.current();
         if if_match.is_some_and(|m| !etag_matches(m, &cur.etag)) {
             return Err(Refused::Changed);
         }
-        let applied = apply(&data).map_err(Refused::Apply)?;
+        let data = edit(&cur)?;
+        let applied = apply(&data, mode).map_err(Refused::Apply)?;
+        if mode == Mode::DryRun {
+            let new_etag = etag_of(data.as_bytes());
+            return Ok(Outcome {
+                version: cur.number,
+                etag: cur.etag.clone(),
+                source,
+                applied,
+                dry_run: true,
+                unchanged: new_etag == cur.etag,
+                new_etag,
+            });
+        }
         let v = Arc::new(Version {
             number: cur.number.saturating_add(1),
             applied: SystemTime::now(),
@@ -229,6 +297,9 @@ impl Configs {
             etag: v.etag.clone(),
             source,
             applied,
+            dry_run: false,
+            new_etag: String::new(),
+            unchanged: false,
         };
         let mut h = lock(&self.inner.history);
         h.push_back(v);
@@ -256,7 +327,83 @@ fn unreachable_empty() -> Arc<Version> {
 mod tests {
     #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
 
-    use super::{Applied, ApplyError, Configs, Refused, SOURCE_ADMIN, etag_matches, etag_of};
+    use super::{
+        Applied, ApplyError, Configs, Mode, Refused, SOURCE_ADMIN, SOURCE_ROLLBACK, etag_matches,
+        etag_of,
+    };
+
+    /// A dry run checks and keeps nothing; an edit's refusal applies nothing; a stale If-Match
+    /// calls neither the edit nor the apply.
+    #[test]
+    fn dry_runs_and_edits() {
+        let cs = Configs::new("{}".into(), super::SOURCE_FILE, 4);
+        let first = cs.current();
+        let o = cs
+            .change(
+                SOURCE_ADMIN,
+                Some(&first.etag),
+                Mode::DryRun,
+                |_| Ok("{\"a\": 1}".into()),
+                |_, mode| {
+                    assert_eq!(mode, Mode::DryRun);
+                    Ok(Applied::default())
+                },
+            )
+            .unwrap();
+        assert!(o.dry_run && !o.unchanged);
+        assert_eq!((o.version, o.etag.as_str()), (1, first.etag.as_str()));
+        assert_eq!(o.new_etag, etag_of(b"{\"a\": 1}"));
+        let o = cs
+            .change(
+                SOURCE_ADMIN,
+                None,
+                Mode::DryRun,
+                |cur| Ok(cur.data().to_owned()),
+                |_, _| Ok(Applied::default()),
+            )
+            .unwrap();
+        assert!(o.unchanged && o.new_etag == first.etag);
+        assert_eq!(cs.versions().len(), 1);
+
+        let r = cs.change(
+            SOURCE_ADMIN,
+            None,
+            Mode::Apply,
+            |_| {
+                Err(Refused::Request {
+                    status: 404,
+                    msg: "no".into(),
+                })
+            },
+            |_, _| unreachable!(),
+        );
+        assert!(matches!(r, Err(Refused::Request { status: 404, .. })));
+        let r = cs.change(
+            SOURCE_ADMIN,
+            Some("\"stale\""),
+            Mode::DryRun,
+            |_| unreachable!(),
+            |_, _| unreachable!(),
+        );
+        assert!(matches!(r, Err(Refused::Changed)));
+
+        // The edit sees the running config, and its result is kept.
+        let o = cs
+            .change(
+                SOURCE_ROLLBACK,
+                None,
+                Mode::Apply,
+                |cur| Ok(format!("[{}]", cur.data())),
+                |_, _| Ok(Applied::default()),
+            )
+            .unwrap();
+        assert_eq!(
+            (o.version, o.source, o.dry_run),
+            (2, SOURCE_ROLLBACK, false)
+        );
+        assert_eq!(cs.current().data(), "[{}]");
+        assert_eq!(cs.current().source, SOURCE_ROLLBACK);
+    }
 
     #[test]
     fn etags() {

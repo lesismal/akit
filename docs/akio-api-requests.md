@@ -42,7 +42,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | A21 | A server request that holds its client's reads and hears when its client drained | in akio's main (`60547435`), pinned, used by I16 | 5, 8 | I16, I47, I75 |
 | A22 | UDP listeners removed and drained on a running engine | requested (I22) | 10, 11 | I22, I28 |
 | A23 | Unix-domain stream listeners (with a socket file mode) | requested (I26) | 11 | I26, I29 |
-| A24 | An HTTP/1 response that closes its connection, and stops reading a body it refused | requested (I26) | 7, 10, 11 | I26, I41 |
+| A24 | An HTTP/1 response that closes its connection, and stops reading a body it refused | requested (I26) | 7, 10, 11 | I26, I27, I41 |
 | A29 | A response hook without an allocation: a listener's observer, called with a few words the request set | requested (I37) | 13 | I21, I37, I64 |
 | A30 | The open connections a listener accepted, apart from dialed ones and UDP peers | requested (I37) | — | I37 |
 | A32 | Where an `akio-regex` pattern matches, its groups, and replacing them | requested (I40) | 19 | I40, I48 |
@@ -543,7 +543,8 @@ for a streamed body, a way for the sink to stop the delivery (`BodyStream`-side
 `ctx.stop_body()`), after which the connection closes once the response is out.
 
 **How akit uses it.** The Admin API's 413 for a load past `max_config_bytes` (I26) closes the
-connection, as fit's; I41's size limits on the data plane do the same.
+connection, as fit's, and so does its 401 for a request without the token (I27), so that a client
+cannot keep trying tokens on one connection; I41's size limits on the data plane do the same.
 
 ## A29 A response hook without an allocation
 

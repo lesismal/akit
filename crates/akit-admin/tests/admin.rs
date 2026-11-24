@@ -1,9 +1,11 @@
-//! The Admin API (I26), with fit's `admin/admin_test.go` ported: loads applied through I22's
-//! reload (`Listeners::reload`) by a control thread, read back whole, by pointer and by version;
-//! what is refused, and how (bad configs, wrong types, bodies too large, web pages, stale
-//! ETags); history; concurrent loads; slow and cut clients; the connection limit. On the backend
-//! `AKIO_TEST_BACKEND` names (epoll by default, `uring`). Not ported: fit's token and Unix socket
-//! tests (I27, akio API request A23).
+//! The Admin API (I26, I27), with fit's `admin/admin_test.go`, `edit_test.go` and
+//! `dryrun_test.go` ported: loads and edits applied through I22's reload (`Listeners::reload`) by
+//! a control thread, read back whole, by pointer and by version; what is refused, and how (bad
+//! configs, wrong types, bodies too large, web pages, stale ETags, missing tokens); edits by
+//! pointer; concurrent writers; rollback; reload; dry runs; history; concurrent loads; slow and
+//! cut clients; the connection limit. On the backend `AKIO_TEST_BACKEND` names (epoll by default,
+//! `uring`). Not ported: fit's Unix socket test (akio API request A23), its console, store and
+//! `/config/text` cases (not in akit).
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -20,9 +22,10 @@ use std::time::{Duration, Instant};
 
 use akio::{Backend, UringConfig};
 use akit_admin::{
-    Applied, ApplyError, Configs, Job, ListenerChange, Options, SOURCE_ADMIN, SOURCE_FILE, Server,
-    VERSION_HEADER,
+    Applied, ApplyError, Configs, DRY_RUN_HEADER, Job, ListenerChange, Mode, Options, SOURCE_ADMIN,
+    SOURCE_FILE, SOURCE_ROLLBACK, Server, VERSION_HEADER, etag_of,
 };
+use akit_config::value::Value;
 use akit_listener::Listeners;
 use akit_runtime::{Env, GraphCell, HandlerParams, Registry, compile};
 
@@ -66,18 +69,22 @@ struct Fixture {
     engine: Arc<akio::Engine>,
 }
 
-/// Applies `text` as the control thread of `akit run` does (its `Runner::apply_text`).
+/// Applies `text`, or checks it, as the control thread of `akit run` does (its
+/// `Runner::apply_text`).
 fn apply(
     text: &str,
+    mode: Mode,
     listeners: &mut Listeners,
     first: Option<&akit_config::Admin>,
 ) -> Result<Applied, ApplyError> {
     let config = akit_config::from_json(text, None).map_err(ApplyError::Config)?;
     let registry: Registry<HandlerParams> = Registry::new(&[akit_handler::MODULES]).unwrap();
     let graph = compile(&config, &registry, &Env::default()).map_err(ApplyError::Config)?;
-    let r = listeners
-        .reload(graph)
-        .map_err(|e| ApplyError::Failed(e.to_string()))?;
+    let r = match mode {
+        Mode::Apply => listeners.reload(graph),
+        Mode::DryRun => listeners.plan(&graph),
+    }
+    .map_err(|e| ApplyError::Failed(e.to_string()))?;
     let change = |l: &akit_listener::Served| ListenerChange {
         name: l.name.clone(),
         address: l.address.to_string(),
@@ -128,7 +135,9 @@ fn start_with(doc: &str, settings: akit_config::Admin, mut opts: Options) -> Fix
     let first = config.admin.clone();
     let control = std::thread::spawn(move || {
         while let Ok(Some(job)) = rx.recv() {
-            job.run(&cs, |text| apply(text, &mut listeners, first.as_ref()));
+            job.run(&cs, |text, mode| {
+                apply(text, mode, &mut listeners, first.as_ref())
+            });
             cell.collect();
         }
     });
@@ -244,6 +253,31 @@ impl Fixture {
         self.load_with(config, &[])
     }
 
+    /// A request with a body of `content_type` when it is not empty, and `If-Match` when
+    /// `if_match` is not empty: fit's `send`.
+    fn send(
+        &self,
+        method: &str,
+        path: &str,
+        content_type: &str,
+        body: &str,
+        if_match: &str,
+    ) -> Resp {
+        let mut h = Vec::new();
+        if !content_type.is_empty() {
+            h.push(("Content-Type", content_type));
+        }
+        if !if_match.is_empty() {
+            h.push(("If-Match", if_match));
+        }
+        let body = (!body.is_empty() || !content_type.is_empty()).then_some(body);
+        request(self.api.addr(), method, path, &h, body)
+    }
+
+    fn request_with(&self, method: &str, path: &str, headers: &[(&str, &str)]) -> Resp {
+        request(self.api.addr(), method, path, headers, None)
+    }
+
     fn load_with(&self, config: &str, headers: &[(&str, &str)]) -> Resp {
         let mut h = vec![("Content-Type", "application/json")];
         h.extend_from_slice(headers);
@@ -266,7 +300,7 @@ fn load_and_read_back() {
     );
     assert_eq!(r.header("Content-Type"), Some("application/json"));
     let etag1 = r.header("ETag").unwrap().to_owned();
-    assert_eq!(etag1, akit_admin::etag_of(doc("v1").as_bytes()));
+    assert_eq!(etag1, etag_of(doc("v1").as_bytes()));
 
     let r = f.load(&doc("v2"));
     let etag2 = r.header("ETag").unwrap().to_owned();
@@ -431,26 +465,6 @@ fn loads_refused() {
     assert_eq!(r.status, 413, "{r:?}");
     assert!(r.body.contains("max_config_bytes, 1024"), "{}", r.body);
 
-    // Endpoints and options that come with I27.
-    for (method, path) in [
-        ("PUT", "/config"),
-        ("PATCH", "/config/listeners/0"),
-        ("DELETE", "/config/routes/0"),
-        ("POST", "/reload"),
-        ("POST", "/rollback/1"),
-    ] {
-        let r = request(f.api.addr(), method, path, &[], None);
-        assert_eq!(r.status, 501, "{method} {path}");
-        assert!(r.body.contains("not supported yet"), "{}", r.body);
-    }
-    let r = request(
-        f.api.addr(),
-        "POST",
-        "/load?dry_run=1",
-        &[("Content-Type", "application/json")],
-        Some(&doc("v2")),
-    );
-    assert_eq!(r.status, 501);
     let r = request(
         f.api.addr(),
         "POST",
@@ -536,10 +550,7 @@ fn history() {
     assert_eq!(field(0, "version"), Number("2".into()));
     assert_eq!(field(1, "source"), Str(SOURCE_ADMIN.into()));
     assert_eq!(field(1, "bytes"), Number(doc("v3").len().to_string()));
-    assert_eq!(
-        field(1, "etag"),
-        Str(akit_admin::etag_of(doc("v3").as_bytes()))
-    );
+    assert_eq!(field(1, "etag"), Str(etag_of(doc("v3").as_bytes())));
     let Str(applied) = field(1, "applied") else {
         panic!()
     };
@@ -743,4 +754,720 @@ fn metrics() {
         request(f.api.addr(), "POST", "/metrics", &[], None).status,
         405
     );
+}
+
+/// fit's `TestEditByPointer`: a value read, set, merged, appended and removed by pointer; the
+/// config edited is written out again, a whole config put is kept as written.
+#[test]
+fn edit_by_pointer() {
+    let f = start(&doc("v1"), admin(|_| {}));
+    let r = f.get("/config/routes/0/handler/params/body");
+    assert_eq!((r.status, r.body.as_str()), (200, "\"v1\"\n"), "{r:?}");
+    assert_eq!(r.header("ETag"), Some(f.configs.current().etag.as_str()));
+    assert_eq!(f.get("/config/routes/3").status, 404);
+
+    let r = f.send(
+        "PUT",
+        "/config/routes/0/handler/params/body",
+        "application/json",
+        r#""v2""#,
+        "",
+    );
+    assert_eq!(
+        (r.status, r.header(VERSION_HEADER)),
+        (200, Some("2")),
+        "{r:?}"
+    );
+    assert_eq!(f.served(), "v2");
+    let r = f.send(
+        "PATCH",
+        "/config/routes/0/handler/params",
+        "application/merge-patch+json",
+        r#"{"body": "v3", "status": 201}"#,
+        "",
+    );
+    assert_eq!(r.status, 200, "{r:?}");
+    assert_eq!(f.served(), "v3");
+    let r = f.send(
+        "PUT",
+        "/config/routes/-",
+        "application/json",
+        r#"{"name": "second", "handler": {"module": "respond", "params": {"body": "v4"}}}"#,
+        "",
+    );
+    assert_eq!(r.status, 200, "{r:?}");
+    let r = f.send("DELETE", "/config/routes/0", "", "", "");
+    assert_eq!(r.status, 200, "{r:?}");
+    assert_eq!(f.served(), "v4");
+    assert_eq!(
+        f.get("/config").body,
+        r#"{
+  "listeners": [
+    {
+      "name": "web",
+      "address": "127.0.0.1:0"
+    }
+  ],
+  "routes": [
+    {
+      "name": "second",
+      "handler": {
+        "module": "respond",
+        "params": {
+          "body": "v4"
+        }
+      }
+    }
+  ]
+}
+"#
+    );
+    // A whole config put is kept as written.
+    let r = f.send("PUT", "/config", "application/json", &doc("v5"), "");
+    assert_eq!(r.status, 200, "{r:?}");
+    assert_eq!(f.get("/config").body, doc("v5"));
+    assert_eq!(f.configs.current().number, 6);
+}
+
+/// fit's `TestEditsRefused`: edits that leave the config invalid, or cannot be made, change
+/// nothing.
+#[test]
+fn edits_refused() {
+    let f = start(&doc("v1"), admin(|_| {}));
+    for (method, path, ct, body, status, want) in [
+        (
+            "PATCH",
+            "/config/listeners/0",
+            "application/merge-patch+json",
+            r#"{"address": "bogus"}"#,
+            400,
+            r#"{"path":"listeners[0].address","line":5,"column":18,"message":"#,
+        ),
+        (
+            "PUT",
+            "/config/routes/0/handler/module",
+            "application/json",
+            r#""nope""#,
+            400,
+            r#"there is no handler module \"nope\""#,
+        ),
+        (
+            "DELETE",
+            "/config/listeners",
+            "",
+            "",
+            400,
+            r#""path":"listeners""#,
+        ),
+        (
+            "PUT",
+            "/config/routes/0/bogus",
+            "application/json",
+            "1",
+            400,
+            r#""path":"routes[0].bogus","line":16,"column":7,"message":"unknown field""#,
+        ),
+        (
+            "PUT",
+            "/config/routes/0",
+            "application/json",
+            "{",
+            400,
+            "the body is not JSON",
+        ),
+        (
+            "PUT",
+            "/config",
+            "application/json",
+            "{",
+            400,
+            "the body is not JSON",
+        ),
+        (
+            "PUT",
+            "/config/nope/x",
+            "application/json",
+            "1",
+            404,
+            r#"there is no member \"nope\""#,
+        ),
+        (
+            "PATCH",
+            "/config/routes/5",
+            "application/json",
+            "{}",
+            404,
+            "index 5 is past the end",
+        ),
+        (
+            "PATCH",
+            "/config/routes/0",
+            "text/plain",
+            "{}",
+            415,
+            "application/merge-patch+json or application/json",
+        ),
+        (
+            "DELETE",
+            "/config",
+            "",
+            "",
+            400,
+            "the config itself cannot be deleted",
+        ),
+        (
+            "DELETE",
+            "/config/",
+            "",
+            "",
+            400,
+            "the config itself cannot be deleted",
+        ),
+        (
+            "PUT",
+            "/config/routes/0",
+            "text/plain",
+            "{}",
+            415,
+            "application/json",
+        ),
+        ("GET", "/config/a~2b", "", "", 400, "not a JSON pointer"),
+        (
+            "PUT",
+            "/config/a~2b",
+            "application/json",
+            "1",
+            400,
+            "not a JSON pointer",
+        ),
+        (
+            "POST",
+            "/config",
+            "application/json",
+            "{}",
+            405,
+            "method not allowed",
+        ),
+        ("GET", "/rollback/1", "", "", 405, "method not allowed"),
+        ("GET", "/reload", "", "", 405, "method not allowed"),
+        ("POST", "/rollback/x", "", "", 404, "versions are numbers"),
+        ("POST", "/rollback/7", "", "", 404, "version 7 is not kept"),
+    ] {
+        let r = f.send(method, path, ct, body, "");
+        assert_eq!(r.status, status, "{method} {path} {body}: {r:?}");
+        assert!(r.body.contains(want), "{method} {path} {body}: {}", r.body);
+    }
+    let v = f.configs.current();
+    assert_eq!((v.number, v.data()), (1, doc("v1").as_str()));
+    assert_eq!(f.served(), "v1");
+    // A body too large is refused before it is read whole.
+    let f = start(&doc("v1"), admin(|a| a.max_config_bytes = 64));
+    let r = f.send(
+        "PUT",
+        "/config/routes/0/name",
+        "application/json",
+        &format!("\"{}\"", "x".repeat(100)),
+        "",
+    );
+    assert_eq!(r.status, 413, "{r:?}");
+}
+
+/// fit's `TestIfMatch`: a stale ETag refuses every kind of change; `*` and a list name the
+/// running config.
+#[test]
+fn if_match_every_change() {
+    let f = start(&doc("v1"), admin(|_| {}));
+    let etag = f.configs.current().etag.clone();
+    let r = f.request_with("GET", "/config", &[("If-None-Match", &etag)]);
+    assert_eq!(r.status, 304);
+    let r = f.send(
+        "PUT",
+        "/config/routes/0/handler/params/body",
+        "application/json",
+        r#""v2""#,
+        &etag,
+    );
+    assert_eq!(r.status, 200, "{r:?}");
+    let next = r.header("ETag").unwrap().to_owned();
+    assert!(next != etag && next == f.configs.current().etag);
+    for (method, path, body) in [
+        ("PUT", "/config/routes/0/handler/params/body", r#""v3""#),
+        ("PATCH", "/config/routes/0", "{}"),
+        ("DELETE", "/config/routes/0", ""),
+        ("POST", "/load", &doc("v3")),
+        ("POST", "/rollback/1", ""),
+        ("POST", "/reload", ""),
+        ("PUT", "/config?dry_run=1", &doc("v3")),
+    ] {
+        let r = f.send(method, path, "application/json", body, &etag);
+        assert_eq!(r.status, 412, "{method} {path}: {r:?}");
+        assert!(r.body.contains("If-Match"), "{}", r.body);
+    }
+    assert_eq!(
+        f.send("POST", "/load", "application/json", &doc("v3"), "*")
+            .status,
+        200
+    );
+    let list = format!("\"other\", {}", f.configs.current().etag);
+    assert_eq!(
+        f.send("POST", "/load", "application/json", &doc("v4"), &list)
+            .status,
+        200
+    );
+    assert_eq!(f.configs.current().number, 4);
+    assert_eq!(f.served(), "v4");
+}
+
+/// fit's `TestConcurrentWriters`: writers that read the config, change it and write it back with
+/// If-Match each either apply their change on top of all the others or are told to read again;
+/// writers without If-Match lose nothing either, since each change is made to the config before
+/// it.
+#[test]
+fn concurrent_writers() {
+    let f = Arc::new(start(
+        &doc("v0"),
+        admin(|a| {
+            a.history = 100;
+            a.max_conns = 64;
+        }),
+    ));
+    const N: usize = 8;
+    let conflicts = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let mut threads = Vec::new();
+    for i in 0..N {
+        let (f1, conflicts) = (Arc::clone(&f), Arc::clone(&conflicts));
+        threads.push(std::thread::spawn(move || {
+            loop {
+                let r = f1.get("/config");
+                let etag = r.header("ETag").unwrap().to_owned();
+                let current = akit_config::value::parse(&r.body).unwrap();
+                let Some(Value::Array(mut routes)) = current.get("routes").cloned() else {
+                    panic!("no routes: {}", r.body);
+                };
+                routes.push(
+                    akit_config::value::parse(&format!(
+                        r#"{{"name": "a{i}", "priority": -1, "handler": {{"module": "respond"}}}}"#
+                    ))
+                    .unwrap(),
+                );
+                let body = Value::Array(routes).to_json();
+                let r = f1.send("PUT", "/config/routes", "application/json", &body, &etag);
+                match r.status {
+                    200 => return,
+                    412 => {
+                        conflicts.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    }
+                    _ => panic!("writer {i}: {r:?}"),
+                }
+            }
+        }));
+        let f2 = Arc::clone(&f);
+        threads.push(std::thread::spawn(move || {
+            let r = f2.send(
+                "PUT",
+                "/config/routes/-",
+                "application/json",
+                &format!(
+                    r#"{{"name": "b{i}", "priority": -1, "handler": {{"module": "respond"}}}}"#
+                ),
+                "",
+            );
+            assert_eq!(r.status, 200, "appender {i}: {r:?}");
+        }));
+    }
+    for t in threads {
+        t.join().unwrap();
+    }
+    let current = f.get("/config").body;
+    for i in 0..N {
+        for name in [format!("a{i}"), format!("b{i}")] {
+            assert_eq!(
+                current.matches(&format!("\"name\": \"{name}\"")).count(),
+                1,
+                "route {name} is not in the config once: {current}"
+            );
+        }
+    }
+    assert_eq!(f.configs.current().number, 2 * N as u64 + 1);
+    eprintln!(
+        "{} conflicts",
+        conflicts.load(std::sync::atomic::Ordering::Relaxed)
+    );
+}
+
+/// fit's `TestRollback`: an earlier version's config applied again as a new version, while it is
+/// kept.
+#[test]
+fn rollback() {
+    let f = start(&doc("v1"), admin(|a| a.history = 3));
+    for body in ["v2", "v3"] {
+        assert_eq!(f.load(&doc(body)).status, 200);
+    }
+    let r = f.send("POST", "/rollback/1", "", "", "");
+    assert_eq!(
+        (r.status, r.header(VERSION_HEADER)),
+        (200, Some("4")),
+        "{r:?}"
+    );
+    assert_eq!(f.served(), "v1");
+    let cur = f.configs.current();
+    // Version 1 has left the history of three, but its config is back.
+    assert!(f.configs.version(1).is_none());
+    assert_eq!(
+        (cur.data(), cur.source),
+        (doc("v1").as_str(), SOURCE_ROLLBACK)
+    );
+    // Its ETag is version 1's again, now the last of those kept.
+    assert_eq!(cur.etag, f.configs.versions()[2].etag);
+    assert_eq!(cur.etag, etag_of(doc("v1").as_bytes()));
+    assert!(f.configs.version(2).is_some());
+    let r = f.send("POST", "/rollback/1", "", "", "");
+    assert_eq!(r.status, 404);
+    assert!(r.body.contains("version 1 is not kept"), "{}", r.body);
+    // A rollback to the version it follows.
+    let r = f.send("POST", "/rollback/3", "", "", &cur.etag);
+    assert_eq!(r.status, 200, "{r:?}");
+    assert_eq!(f.served(), "v3");
+    let vs = f.get("/versions").body;
+    let v = akit_config::value::parse(&vs).unwrap();
+    let Some(Value::Array(kept)) = v.get("versions") else {
+        panic!("{vs}")
+    };
+    assert_eq!(kept.len(), 3, "{vs}");
+    let last = &kept[2];
+    assert_eq!(
+        last.get("version"),
+        Some(&Value::Number("5".into())),
+        "{vs}"
+    );
+    assert_eq!(
+        last.get("source"),
+        Some(&Value::String(SOURCE_ROLLBACK.into())),
+        "{vs}"
+    );
+}
+
+/// fit's `TestReload`: `POST /reload` applies the running config again as a new version; a stale
+/// If-Match is refused, and a dry run applies nothing.
+#[test]
+fn reload() {
+    let f = start(&doc("v1"), admin(|_| {}));
+    let cur = f.configs.current();
+    let r = f.send("POST", "/reload", "", "", "");
+    assert_eq!(
+        (r.status, r.header(VERSION_HEADER)),
+        (200, Some("2")),
+        "{r:?}"
+    );
+    assert!(r.body.contains(r#""version":2"#), "{}", r.body);
+    assert_eq!(f.served(), "v1");
+    let now = f.configs.current();
+    assert_eq!(
+        (now.etag.as_str(), now.source),
+        (cur.etag.as_str(), SOURCE_ADMIN)
+    );
+    assert_eq!(f.send("POST", "/reload", "", "", "\"stale\"").status, 412);
+    let r = f.send("POST", "/reload?dry_run=1", "", "", &now.etag);
+    assert_eq!(
+        (r.status, r.header(DRY_RUN_HEADER)),
+        (200, Some("1")),
+        "{r:?}"
+    );
+    assert!(r.body.contains(r#""unchanged":true"#), "{}", r.body);
+    assert_eq!(f.configs.current().number, 2);
+    assert_eq!(f.send("POST", "/reload?dry_run=x", "", "", "").status, 400);
+}
+
+/// fit's `TestDryRun`: `?dry_run=1` checks a change through the whole apply path and answers as
+/// an apply would, with the same errors, leaving the version, the config and the listeners as
+/// they were.
+#[test]
+fn dry_run() {
+    let f = start(&doc("one"), admin(|_| {}));
+    let v = f.configs.current();
+    let unchanged = |what: &str| {
+        let cur = f.configs.current();
+        assert_eq!((cur.number, f.configs.versions().len()), (1, 1), "{what}");
+        assert_eq!(f.served(), "one", "{what}");
+    };
+
+    // A whole config that loads: answered with the running version and ETag, the ETag it would
+    // have, and the listener it would add.
+    let two = r#"{"listeners": [{"name": "web", "address": "127.0.0.1:0"}, {"name": "more", "address": "127.0.0.1:0"}],
+  "routes": [{"handler": {"module": "respond", "params": {"body": "two"}}}], "admin": {}}"#;
+    let r = f.send("PUT", "/config?dry_run=1", "application/json", two, &v.etag);
+    assert_eq!(r.status, 200, "{r:?}");
+    assert_eq!(r.header(DRY_RUN_HEADER), Some("1"));
+    assert_eq!(r.header("ETag"), Some(v.etag.as_str()));
+    assert_eq!(r.header(VERSION_HEADER), Some("1"));
+    let a = akit_config::value::parse(&r.body).unwrap();
+    assert_eq!(a.get("dry_run"), Some(&Value::Bool(true)), "{}", r.body);
+    assert_eq!(a.get("version"), Some(&Value::Number("1".into())));
+    assert_eq!(a.get("etag"), Some(&Value::String(v.etag.clone())));
+    let Some(Value::String(new_etag)) = a.get("new_etag") else {
+        panic!("{}", r.body)
+    };
+    assert_ne!(new_etag, &v.etag);
+    assert!(a.get("unchanged").is_none(), "{}", r.body);
+    assert!(
+        r.body
+            .contains(r#""listeners_added":[{"name":"more","address":"127.0.0.1:0","#),
+        "{}",
+        r.body
+    );
+    assert!(!r.body.contains("listeners_removed"), "{}", r.body);
+    assert!(r.body.contains("admin changed"), "{}", r.body);
+    unchanged("PUT");
+
+    // The running config itself.
+    let r = f.send(
+        "POST",
+        "/load?dry_run=true",
+        "application/json",
+        &doc("one"),
+        "",
+    );
+    assert!(r.body.contains(r#""unchanged":true"#), "{}", r.body);
+    assert!(
+        r.body
+            .contains(&format!(r#""new_etag":"{}""#, v.etag.replace('"', "\\\""))),
+        "{}",
+        r.body
+    );
+
+    // A config that does not load, or does not compile, is refused as an apply refuses it, word
+    // for word. (fit's first case, `{"listeners": []}`, is left out: akit-config takes a config
+    // without listeners.)
+    for bad in [
+        r#"{"listeners": [{"name": "web", "address": "127.0.0.1:0"}], "routes": [{"handler": {"module": "nope"}}]}"#,
+        r#"{"listeners": [{"name": "web", "address": "127.0.0.1:0"}], "routes": [{"handler": {"module": "respond", "params": {"status": "x"}}}]}"#,
+        r#"{"listeners": ["#,
+    ] {
+        let dry = f.send("PUT", "/config?dry_run=1", "application/json", bad, "");
+        unchanged("a bad config, checked");
+        let applied = f.send("PUT", "/config", "application/json", bad, "");
+        assert_eq!(dry.status, 400, "{bad}: {dry:?}");
+        assert_eq!(
+            (dry.status, &dry.body),
+            (applied.status, &applied.body),
+            "{bad}"
+        );
+        assert_eq!(dry.header(DRY_RUN_HEADER), None);
+    }
+    // An address another socket holds: refused as the apply's bind is.
+    let taken = TcpListener::bind("127.0.0.1:0").unwrap();
+    let clash = format!(
+        r#"{{"listeners": [{{"name": "web", "address": "127.0.0.1:0"}}, {{"name": "clash", "address": "{}"}}],
+  "routes": [{{"handler": {{"module": "respond", "params": {{"body": "two"}}}}}}]}}"#,
+        taken.local_addr().unwrap()
+    );
+    let dry = f.send("PUT", "/config?dry_run=1", "application/json", &clash, "");
+    let applied = f.send("PUT", "/config", "application/json", &clash, "");
+    assert_eq!(dry.status, 500, "{dry:?}");
+    assert_eq!((dry.status, &dry.body), (applied.status, &applied.body));
+    assert!(dry.body.contains("listener clash"), "{}", dry.body);
+    drop(taken);
+    unchanged("a taken address");
+    // A dry_run that is neither yes nor no.
+    for (method, path) in [
+        ("PUT", "/config"),
+        ("PATCH", "/config"),
+        ("DELETE", "/config/routes/0"),
+        ("POST", "/load"),
+        ("POST", "/reload"),
+    ] {
+        let r = f.send(
+            method,
+            &format!("{path}?dry_run=maybe"),
+            "application/json",
+            "{}",
+            "",
+        );
+        assert_eq!(r.status, 400, "{method} {path}: {r:?}");
+        assert!(r.body.contains("dry_run"), "{}", r.body);
+    }
+
+    // PATCH, PUT and DELETE, checked and not applied.
+    for (method, path, ct, body) in [
+        (
+            "PATCH",
+            "/config/routes/0/handler/params?dry_run=1",
+            "application/merge-patch+json",
+            r#"{"body": "patched"}"#,
+        ),
+        (
+            "PUT",
+            "/config/routes/-?dry_run=1",
+            "application/json",
+            r#"{"handler": {"module": "respond"}}"#,
+        ),
+        ("DELETE", "/config/routes/0?dry_run=1", "", ""),
+    ] {
+        let r = f.send(method, path, ct, body, &v.etag);
+        assert_eq!(
+            (r.status, r.header(DRY_RUN_HEADER)),
+            (200, Some("1")),
+            "{method} {path}: {r:?}"
+        );
+        assert!(
+            r.body.contains(r#""dry_run":true"#) && !r.body.contains("unchanged"),
+            "{}",
+            r.body
+        );
+        unchanged(path);
+    }
+
+    // Then the same change applied: the dry run's new ETag is the one it gets.
+    let r = f.send(
+        "PUT",
+        "/config?dry_run=1",
+        "application/json",
+        &doc("three"),
+        &v.etag,
+    );
+    let a = akit_config::value::parse(&r.body).unwrap();
+    let Some(Value::String(new_etag)) = a.get("new_etag") else {
+        panic!("{}", r.body)
+    };
+    let r = f.send("PUT", "/config", "application/json", &doc("three"), &v.etag);
+    assert_eq!(r.status, 200, "{r:?}");
+    assert_eq!(r.header("ETag"), Some(new_etag.as_str()));
+    assert_eq!(f.served(), "three");
+}
+
+/// fit's `TestDryRunRemovesListener`: a dry run lists the listeners an apply would take away, and
+/// frees nothing.
+#[test]
+fn dry_run_removes_listener() {
+    let f = start(
+        r#"{"listeners": [{"name": "web", "address": "127.0.0.1:0"}, {"name": "old", "address": "127.0.0.1:0", "protocols": ["http/1.1"]}],
+  "routes": [{"handler": {"module": "respond", "params": {"body": "one"}}}]}"#,
+        admin(|_| {}),
+    );
+    let old = f.engine.listeners();
+    let r = f.send(
+        "PUT",
+        "/config?dry_run=1",
+        "application/json",
+        &doc("one"),
+        "",
+    );
+    assert_eq!(r.status, 200, "{r:?}");
+    assert!(
+        r.body.contains(r#""listeners_removed":[{"name":"old","#),
+        "{}",
+        r.body
+    );
+    assert!(!r.body.contains("listeners_added"), "{}", r.body);
+    assert_eq!(f.engine.listeners().len(), old.len());
+}
+
+/// fit's `TestToken`: with `token_file`, every request carries the token, and the Host field may
+/// be anything; an empty token file is refused.
+#[test]
+fn token() {
+    let file = std::env::temp_dir().join(format!("akit-admin-token-{}", std::process::id()));
+    std::fs::write(&file, "s3cret\n").unwrap();
+    let path = file.to_str().unwrap().to_owned();
+    let f = start(&doc("v1"), admin(|a| a.token_file = Some(path.clone())));
+    for (auth, status) in [
+        ("", 401),
+        ("Bearer wrong", 401),
+        ("Basic s3cret", 401),
+        ("Bearer s3cre", 401),
+        ("Bearer s3cret", 200),
+    ] {
+        let mut h = vec![("Host", "akit.example.com")];
+        if !auth.is_empty() {
+            h.push(("Authorization", auth));
+        }
+        let r = request(f.api.addr(), "GET", "/config", &h, None);
+        assert_eq!(r.status, status, "Authorization {auth:?}: {r:?}");
+        if status == 401 {
+            assert!(
+                r.header("WWW-Authenticate")
+                    .is_some_and(|v| v.starts_with("Bearer "))
+            );
+            assert!(
+                r.body.contains("a valid bearer token is needed"),
+                "{}",
+                r.body
+            );
+        }
+    }
+    // Every endpoint asks for it; with it, a change is applied.
+    let r = request(f.api.addr(), "POST", "/rollback/1", &[], None);
+    assert_eq!(r.status, 401);
+    let r = request(
+        f.api.addr(),
+        "POST",
+        "/load",
+        &[
+            ("Content-Type", "application/json"),
+            ("Authorization", "Bearer s3cret"),
+        ],
+        Some(&doc("v2")),
+    );
+    assert_eq!(r.status, 200, "{r:?}");
+    assert_eq!(f.served(), "v2");
+    // A web page is still refused, token or not.
+    let r = request(
+        f.api.addr(),
+        "GET",
+        "/config",
+        &[
+            ("Authorization", "Bearer s3cret"),
+            ("Origin", "https://evil.example.com"),
+        ],
+        None,
+    );
+    assert_eq!(r.status, 403);
+
+    std::fs::write(&file, " \n").unwrap();
+    let submit: akit_admin::Submit = Box::new(|_| Ok(()));
+    let settings = admin(|a| a.token_file = Some(path.clone()));
+    let e = Server::start(&settings, f.configs.clone(), submit, &Options::default()).unwrap_err();
+    assert!(e.to_string().contains("is empty"), "{e}");
+    std::fs::remove_file(&file).unwrap();
+    let submit: akit_admin::Submit = Box::new(|_| Ok(()));
+    let e = Server::start(&settings, f.configs.clone(), submit, &Options::default()).unwrap_err();
+    assert!(e.to_string().contains("token_file"), "{e}");
+}
+
+/// An edit's body under, at and over `max_config_bytes`, and one cut off midway: only a whole
+/// body within the limit is applied.
+#[test]
+fn edit_limits_and_cut_clients() {
+    let at = doc("v2");
+    let f = start(&doc("v1"), admin(|a| a.max_config_bytes = at.len()));
+    let r = f.send("PUT", "/config", "application/json", &at, "");
+    assert_eq!(r.status, 200, "at the limit: {r:?}");
+    let r = f.send("PATCH", "/config", "application/json", "{}", "");
+    assert_eq!(r.status, 200, "under the limit: {r:?}");
+    let over = format!(" {at}");
+    let r = f.send("PUT", "/config", "application/json", &over, "");
+    assert_eq!(r.status, 413, "over the limit: {r:?}");
+    assert_eq!(f.configs.current().number, 3);
+
+    // Cut off midway: nothing is applied, and the API goes on.
+    let mut s = TcpStream::connect(f.api.addr()).unwrap();
+    write!(
+        s,
+        "PUT /config HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+        at.len(),
+        &at[..at.len() / 2]
+    )
+    .unwrap();
+    s.shutdown(Shutdown::Both).unwrap();
+    drop(s);
+    let r = f.send(
+        "PATCH",
+        "/config/routes/0/handler/params",
+        "application/json",
+        r#"{"body": "v3"}"#,
+        "",
+    );
+    assert_eq!(r.status, 200, "{r:?}");
+    assert_eq!(f.served(), "v3");
+    assert_eq!(f.configs.current().number, 4);
 }

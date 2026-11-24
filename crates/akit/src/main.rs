@@ -29,7 +29,7 @@ use std::process::ExitCode;
 use std::sync::{Arc, mpsc};
 use std::time::{Duration, Instant};
 
-use akit_admin::{Applied, ApplyError, Configs, ListenerChange, Outcome, Refused};
+use akit_admin::{Applied, ApplyError, Configs, ListenerChange, Mode, Outcome, Refused};
 use akit_config::{Config, Error, Errors, LogFormat};
 use akit_observe::metrics::{ConfigStats, Metrics};
 use akit_observe::{AccessLog, Format, Zone};
@@ -253,11 +253,34 @@ impl Runner<'_> {
         self.stats.reloaded(r.is_ok());
         let (r, files) = r?;
         self.cert_files = files;
+        let warnings = self.warnings(config, zone, true);
+        Ok(applied(&r, warnings))
+    }
+
+    /// Checks `config` as [`apply`](Runner::apply) would apply it, changing nothing (a dry run of
+    /// the Admin API, I27, as fit's): compiled with no engine, so that its pools dial nothing
+    /// and probe nothing, and its new listeners' addresses tried (`Listeners::plan`). Not counted
+    /// as a reload.
+    fn check(&self, config: &Config, zone: Option<Zone>) -> Result<Applied, ApplyError> {
+        let graph =
+            compile_config(config, &EngineSlot::new(), None, &Metrics::new()).map_err(failure)?;
+        let r = self
+            .listeners
+            .plan(&graph)
+            .map_err(|e| ApplyError::Failed(e.to_string()))?;
+        Ok(applied(&r, self.warnings(config, zone, false)))
+    }
+
+    /// The changes in `config` that take a restart, as fit warns of them. With `set`, the access
+    /// log takes `config`'s level and time zone (`zone`).
+    fn warnings(&self, config: &Config, zone: Option<Zone>, set: bool) -> Vec<String> {
         let mut warnings = Vec::new();
         match (self.log, &config.access_log, zone) {
             (Some((l, first)), Some(c), Some(zone)) => {
-                l.set_min_status(c.min_status());
-                l.set_zone(zone);
+                if set {
+                    l.set_min_status(c.min_status());
+                    l.set_zone(zone);
+                }
                 if (&c.output, c.format, c.flush_interval, c.buffer_bytes)
                     != (
                         &first.output,
@@ -280,16 +303,7 @@ impl Runner<'_> {
             _ => {}
         }
         warnings.extend(akit_admin::admin_warning(self.admin, config.admin.as_ref()));
-        let change = |l: &akit_listener::Served| ListenerChange {
-            name: l.name.clone(),
-            address: l.address.to_string(),
-            protocols: l.protocols.iter().map(|p| p.as_str().to_owned()).collect(),
-        };
-        Ok(Applied {
-            added: r.added.iter().map(change).collect(),
-            removed: r.removed.iter().map(change).collect(),
-            warnings,
-        })
+        warnings
     }
 
     /// Compiles `config` and moves the listeners to it; the files its certificates came from.
@@ -298,10 +312,7 @@ impl Runner<'_> {
         config: &Config,
     ) -> Result<(akit_listener::Reloaded, CertFiles), ApplyError> {
         let graph = compile_config(config, self.slot, self.log.map(|l| &l.0), self.metrics)
-            .map_err(|f| match f {
-                Failure::Config(errs) => ApplyError::Config(errs),
-                Failure::Registry(e) => ApplyError::Failed(e),
-            })?;
+            .map_err(failure)?;
         let files = graph.cert_files().clone();
         let r = self
             .listeners
@@ -310,24 +321,46 @@ impl Runner<'_> {
         Ok((r, files))
     }
 
-    /// Applies `text`, a config as standard JSON loaded through the Admin API.
-    fn apply_text(&mut self, text: &str) -> Result<Applied, ApplyError> {
+    /// Applies `text`, a config as standard JSON from the Admin API, or with [`Mode::DryRun`]
+    /// only checks it.
+    fn apply_text(&mut self, text: &str, mode: Mode) -> Result<Applied, ApplyError> {
         let read = akit_config::from_json(text, None)
             .map_err(ApplyError::Config)
             .and_then(|config| {
-                let zone = time_zone(&config).map_err(|f| match f {
-                    Failure::Config(errs) => ApplyError::Config(errs),
-                    Failure::Registry(e) => ApplyError::Failed(e),
-                })?;
+                let zone = time_zone(&config).map_err(failure)?;
                 Ok((config, zone))
             });
-        match read {
-            Ok((config, zone)) => self.apply(&config, zone),
-            Err(e) => {
+        match (read, mode) {
+            (Ok((config, zone)), Mode::Apply) => self.apply(&config, zone),
+            (Ok((config, zone)), Mode::DryRun) => self.check(&config, zone),
+            (Err(e), Mode::Apply) => {
                 self.stats.reloaded(false);
                 Err(e)
             }
+            (Err(e), Mode::DryRun) => Err(e),
         }
+    }
+}
+
+/// A failure to compile, as the Admin API reports it.
+fn failure(f: Failure) -> ApplyError {
+    match f {
+        Failure::Config(errs) => ApplyError::Config(errs),
+        Failure::Registry(e) => ApplyError::Failed(e),
+    }
+}
+
+/// What a reload changed, as the Admin API reports it, with `warnings`.
+fn applied(r: &akit_listener::Reloaded, warnings: Vec<String>) -> Applied {
+    let change = |l: &akit_listener::Served| ListenerChange {
+        name: l.name.clone(),
+        address: l.address.to_string(),
+        protocols: l.protocols.iter().map(|p| p.as_str().to_owned()).collect(),
+    };
+    Applied {
+        added: r.added.iter().map(change).collect(),
+        removed: r.removed.iter().map(change).collect(),
+        warnings,
     }
 }
 
@@ -360,8 +393,8 @@ fn reload(paths: &[String], configs: &Configs, runner: &mut Runner<'_>) {
         Err(Refused::Apply(ApplyError::Failed(e))) => {
             eprintln!("akit: reload failed; the running config stays: {e}");
         }
-        // No If-Match was given.
-        Err(Refused::Changed) => {}
+        // No If-Match was given, and nothing but the config is changed.
+        Err(Refused::Changed | Refused::Request { .. }) => {}
     }
 }
 
@@ -372,7 +405,7 @@ fn reload_certs(configs: &Configs, runner: &mut Runner<'_>) -> Result<(), ()> {
     println!("akit: certificate files changed; reloading");
     let data = configs.current().data().to_owned();
     match configs.update(akit_admin::SOURCE_CERTIFICATES, None, data, |text| {
-        runner.apply_text(text)
+        runner.apply_text(text, Mode::Apply)
     }) {
         Ok(o) => {
             print_applied(&o);
@@ -391,8 +424,8 @@ fn reload_certs(configs: &Configs, runner: &mut Runner<'_>) -> Result<(), ()> {
             eprintln!("akit: reload failed; the running config stays: {e}");
             Err(())
         }
-        // No If-Match was given.
-        Err(Refused::Changed) => Err(()),
+        // No If-Match was given, and nothing but the config is changed.
+        Err(Refused::Changed | Refused::Request { .. }) => Err(()),
     }
 }
 
@@ -702,7 +735,7 @@ fn run(args: &[String]) -> ExitCode {
                 cell.collect();
             }
             Some(Control::Admin(job)) => {
-                if let Some(o) = job.run(&configs, |text| runner.apply_text(text)) {
+                if let Some(o) = job.run(&configs, |text, mode| runner.apply_text(text, mode)) {
                     print_applied(&o);
                     println!(
                         "akit: loaded a config from the admin API (config version {})",

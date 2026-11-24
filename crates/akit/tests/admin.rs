@@ -234,3 +234,135 @@ fn the_admin_api_serves_the_metrics() {
     akit_signal(&akit, SIGTERM);
     until(&akit.out, "akit: stopped");
 }
+
+/// One request with `headers`, `Connection: close`: the status, the head and the body.
+fn call(
+    addr: SocketAddr,
+    method: &str,
+    path: &str,
+    headers: &[(&str, &str)],
+    body: Option<&str>,
+) -> (u16, String, String) {
+    let mut s = TcpStream::connect(addr).unwrap();
+    s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+    let mut req = format!("{method} {path} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n");
+    for (n, v) in headers {
+        req.push_str(&format!("{n}: {v}\r\n"));
+    }
+    let b = body.unwrap_or("");
+    if body.is_some() {
+        req.push_str(&format!("Content-Length: {}\r\n", b.len()));
+    }
+    req.push_str("\r\n");
+    req.push_str(b);
+    s.write_all(req.as_bytes()).unwrap();
+    let mut raw = String::new();
+    s.read_to_string(&mut raw).unwrap();
+    let (head, body) = raw.split_once("\r\n\r\n").unwrap();
+    let status = head.split(' ').nth(1).unwrap().parse().unwrap();
+    (status, head.to_owned(), body.to_owned())
+}
+
+/// I27 through `akit run`: with `token_file` every request carries the token; an edit by pointer
+/// is applied, a dry run checks a change (its new listener tried, not opened) and applies
+/// nothing, and a rollback applies the first config again, each numbered in the one history.
+#[test]
+fn edits_dry_runs_and_rollbacks_behind_the_token() {
+    let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR"));
+    let (path, token) = (dir.join("admin-edits.json"), dir.join("admin-edits.token"));
+    std::fs::write(&token, "s3cret\n").unwrap();
+    let (web, api, extra) = (free(), free(), free());
+    let first = config(web, api, "v1").replacen(
+        "\"history\": 5",
+        &format!(
+            "\"history\": 5, \"token_file\": {:?}",
+            token.to_str().unwrap()
+        ),
+        1,
+    );
+    std::fs::write(&path, &first).unwrap();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_akit"))
+        .args(["run", "-shutdown-timeout", "5s", "-c"])
+        .arg(&path)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let stdout = child.stdout.take().unwrap();
+    let (tx, out) = mpsc::channel();
+    std::thread::spawn(move || {
+        for line in BufReader::new(stdout).lines() {
+            let Ok(line) = line else { break };
+            if tx.send(line).is_err() {
+                break;
+            }
+        }
+    });
+    let akit = Akit { child, out };
+    until(&akit.out, "akit: admin API on");
+    let auth = ("Authorization", "Bearer s3cret");
+    let json = ("Content-Type", "application/json");
+
+    assert_eq!(call(api, "GET", "/config", &[], None).0, 401);
+    let (status, head, body) = call(
+        api,
+        "PATCH",
+        "/config/routes/0/handler/params",
+        &[auth, json],
+        Some(r#"{"body": "v2"}"#),
+    );
+    assert_eq!(status, 200, "{head}\n{body}");
+    assert_eq!(
+        until(&akit.out, "akit: loaded"),
+        ["akit: loaded a config from the admin API (config version 2)"]
+    );
+    assert_eq!(request(web, "GET", "/", None).2, "v2");
+
+    // A dry run: the listener it would add is listed, and not opened.
+    let listener = format!(r#"{{"name": "extra", "address": "{extra}"}}"#);
+    let (status, head, body) = call(
+        api,
+        "PUT",
+        "/config/listeners/-?dry_run=1",
+        &[auth, json],
+        Some(&listener),
+    );
+    assert_eq!(status, 200, "{head}\n{body}");
+    assert!(
+        head.contains("Fit-Dry-Run: 1") && head.contains("Fit-Config-Version: 2"),
+        "{head}"
+    );
+    assert!(
+        body.contains(&format!(
+            r#""listeners_added":[{{"name":"extra","address":"{extra}""#
+        )),
+        "{body}"
+    );
+    assert!(TcpStream::connect(extra).is_err());
+
+    let (status, head, body) = call(api, "POST", "/rollback/1", &[auth], None);
+    assert_eq!(status, 200, "{head}\n{body}");
+    assert_eq!(
+        until(&akit.out, "akit: loaded"),
+        ["akit: loaded a config from the admin API (config version 3)"]
+    );
+    assert_eq!(request(web, "GET", "/", None).2, "v1");
+    let (_, _, body) = call(api, "GET", "/versions", &[auth], None);
+    let sources: Vec<&str> = body
+        .split("\"source\":\"")
+        .skip(1)
+        .map(|s| s.split('"').next().unwrap())
+        .collect();
+    assert_eq!(sources, ["file", "admin", "rollback"], "{body}");
+    let (_, _, now) = call(api, "GET", "/config", &[auth], None);
+    // The first config as it was kept, comments blanked out.
+    assert_eq!(now.len(), first.len());
+    assert!(
+        now.contains(r#""body": "v1""#) && !now.contains("//"),
+        "{now}"
+    );
+
+    akit_signal(&akit, SIGTERM);
+    until(&akit.out, "akit: stopped");
+    let _ = std::fs::remove_file(&token);
+}

@@ -32,9 +32,28 @@ akit 没有 goroutine，也没有异步运行时（规则 1 和 16）：它要�
   原位不动，与 fit 的 `config.Standardize` 一样）；多个文件，或一个 YAML、`.conf` 文件，保存为按 fit 的写法写出的
   一个 JSON 文档（`akit_config::value::json_of`）。ETag 是该文本 SHA-256 的前 96 位（akio-crypto），与 fit 一样。
 - **与 fit 一样拒绝网页**：带 `Origin` 的请求回 403，来自 API 自身源的读请求除外；`Host` 必须是回环主机。
-  没有令牌（I27）时地址必须是回环地址；Unix 套接字要等 akio（A23）。
+  地址必须是回环地址（fit 在非回环地址上要求令牌和 TLS，见下文）；Unix 套接字要等 akio（A23）。
 - **沿用 fit 的路径和载荷**，包括 `Fit-Config-Version` 头，fit 的客户端可以直接用于 akit；编辑、回滚、
   `POST /reload` 和试运行在 I27 之前回 501。
+
+I27 更新（2026-11-24）：
+
+- **每个修改都是控制线程执行的 `Job`**：`POST /load`，`PUT`、`PATCH` 和 `DELETE /config[/<pointer>]`，
+  `POST /rollback/{n}` 和 `POST /reload`。请求体与加载一样流式读入，指针和 `?dry_run` 在 I/O 线程上检查；控制线程
+  在 `Configs::change` 内、在为应用排序的锁下、比较过 `If-Match` 之后，从正在运行的配置做出修改，因此每个写入者的
+  编辑都从前一个配置开始，ETag 过期的写入者得到 412，什么都不会被调用。编辑后的配置按 fit 的写法重新写出
+  （`Value::to_json`）；整份配置（`POST /load`、`PUT /config`）按写入时的样子保存。回滚把第 `n` 版的配置作为新版本
+  应用，来源 `rollback`；重载把正在运行的配置再应用一次，来源 `admin`，与 fit 一样。
+- **试运行走应用的路径但不产生效果**：配置被解析，并用空的引擎槽（其连接池不拨号、不探测）和自己的注册表（其计数器
+  不进入任何抓取）编译，`Listeners::plan` 列出 `Listeners::reload` 会打开和关闭的监听器：解析每个新监听器的地址，
+  除非正在运行的监听器占着它，否则短暂绑定一下再放开。什么都不保存、不计数；回答带正在运行的版本和 ETag、
+  该配置应用后会有的 ETag，以及 `Fit-Dry-Run: 1`，与 fit 一样。
+- **令牌**（`admin.token_file`）在 API 启动时读取，去掉首尾空白，为空则拒绝；此后每个请求都要带
+  `Authorization: Bearer <token>`，以常数时间比较，否则回 401 并带 `WWW-Authenticate`；这时与 fit 一样不再检查
+  `Host`，`Origin` 仍然拒绝。非回环地址仍被拒绝：fit 在那里还要求 TLS（`cert_file`、`key_file`），而 akit 还不能
+  通过 TLS 提供 API。
+- 没有从 fit 搬过来的：它的连接限制器（`max_conns` 的四分之一留给出示过令牌的客户端，未认证的连接 5 秒后关闭；akit
+  仍用引擎的 `max_connections`），以及 401 之后关闭连接，它与 413 一样要等 A24。
 
 ## 影响
 
