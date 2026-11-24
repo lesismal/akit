@@ -17,6 +17,8 @@ listeners[].protocols
 # I10: listeners[].protocols takes "h3" too (HTTP/3 on the listener's port in UDP, Alt-Svc on TCP).
 # I30: no new fields: certificates are chosen per handshake (a wildcard in any of them); the
 # storage comes with acme.storage in I31.
+# I28: no new fields: a reload keeps a listener as fit's binding.same does (its certificate files
+# and tls.acme may change, its client authorities are compared by content).
 # I31: tls.acme, host names whose certificates are obtained with ACME through HTTP-01 (a tls may
 # list names and no certificates); see acme below.
 listeners[].tls.acme

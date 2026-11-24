@@ -127,7 +127,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | **M2** | | | |
 | I26 | Admin API I: load, read, versions | I22 | done |
 | I27 | Admin API II: patch, rollback, auth | I26 | done |
-| I28 | Listeners diffed at run time | I26, A1 | todo |
+| I28 | Listeners diffed at run time | I26, A1 | done |
 | I29 | File provider | I26 | todo |
 | I30 | Certificate manager and storage | I09 | done |
 | I31 | ACME I: account, orders, HTTP-01 | I30 | done |
@@ -529,6 +529,11 @@ Split from I07 so that the half that needs no config model runs beside I02.
   as I22 does on SIGHUP (on A1, which removed the `adopt_tcp` stopgap). Depends on akio A1.
 - **Done when**: a test adds and removes listeners under traffic with no failed request.
 - **Touches**: `akit-listener`, `akit-runtime`.
+- **fit**: `listener.Server.Reload`, `Plan` and `binding.same`; `listener/reload_test.go`.
+- **Done**: on I22's runtime listeners, a listener is kept as fit's `binding.same` decides: its
+  certificate files and `tls.acme` names may change (its manager serves the new ones), its client
+  authorities are compared by content. A startup h3 listener still waits on A22; a request sent on
+  an idle HTTP/1 connection as it is drained meets the close (A54).
 
 ### I29 File provider
 

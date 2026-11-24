@@ -53,6 +53,7 @@
 | A36 | HTTP 客户端请求的响应头超时和空闲超时 | 已提出（I17） | 10 | I17b、I18 |
 | A37 | 可在任意时刻取消的 HTTP 客户端请求 | 已提出（I17） | 3 | I17b、I45 |
 | A38 | 能得知客户端离开的分离服务端请求；可在运行时修改的写停滞超时 | 已提出（I17） | 3、10 | I17b、I49 |
+| A54 | 空闲的 HTTP/1 连接在宽限期后排空，而非立即关闭 | 已提出（I28） | 10 | I28 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -682,3 +683,25 @@ I17 的 `Fit-Error` 尾部字段结束）。
 **akit 的用法。** I17b：代理注册 `on_gone` 来取消上游请求（A37），且不把它计为上游的失败，补上 fit 的
 `TestClientAbort` 中“响应头之前”和 HTTP/1“上传中途”两种情况；`limits.write_stall_timeout` 在启动和重载时设置引擎的
 写超时。I49 的 WebSocket 和隧道转发也用同样的方式得知客户端离开。
+
+## A54 空闲的 HTTP/1 连接在宽限期后排空，而非立即关闭
+
+**问题。** 监听器排空时（`Engine::shutdown_listener`、`Engine::shutdown`），akio-http 立即关闭空闲的 HTTP/1
+keep-alive 连接。客户端可能已经在这条连接上发出了下一个请求，或者正在发：请求遇到关闭而得不到应答，客户端看到的是
+重置或文件结束。HTTP/1 无法告诉空闲的客户端它的连接要关了（HTTP/2 有 `GOAWAY`），所以关闭本身与线路上每个在途请求
+竞争。akit 排空重载移除或改变的监听器（I22、I28），所以此刻正在用被移除或被替换的监听器的客户端，除非重发请求（HTTP
+客户端对幂等请求可以这样做，RFC 9112 第 9.3.1 节），就会看到一个失败的请求。
+
+**证据。** `crates/akio-http/src/session.rs`（`afbbb521`）：`on_shutdown` 运行 `Session::shutdown`，其 HTTP/1
+路径是 `h1_shutdown`；响应顺序中没有响应时，`reserve_response` 立即交出一个槽位，`fill_close` 关闭连接。akit 的
+`crates/akit/tests/reload.rs`（I22）统计其客户端在这种关闭后重发的请求（每次替换每个客户端至多一个），因为不重发就会
+失败。
+
+**建议的 API。** 排空时给空闲的 HTTP/1 连接一个宽限期：空闲连接最多保持打开这么久，期间到达的请求以
+`Connection: close` 应答，响应后关闭连接；期间没有请求到达则在宽限期结束时关闭。期间收到部分请求的连接视为忙碌。
+宽限期不超过排空的截止时间：`ServerConfig::idle_drain_grace(Duration)`（默认几百毫秒，0 为现在的行为），或
+`shutdown_listener` 的一个参数。排空开始时已在套接字接收缓冲区里的请求无论如何都会被读取并应答。
+
+**akit 的用法。** `akit_listener::Listeners::reload` 以 `-shutdown-timeout` 排空移除和改变的监听器时用它；
+`akit/tests/reload.rs` 中的重发去掉，其客户端把每个错误都计为失败。它把竞争缩小到只在宽限期之后才发下一个请求的客户端，
+只有空闲了那么久的客户端才会这样。

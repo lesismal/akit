@@ -1,4 +1,5 @@
-//! Reloading (I22): `Listeners::reload` keeps the unchanged listeners, adds the new ones to the
+//! Reloading (I22, I28; fit's `listener/reload_test.go`): `Listeners::reload` keeps the unchanged
+//! listeners, their connections served the new graph, adds the new ones to the
 //! engine, drains the removed ones (akio's runtime listeners, A1), those akit started with as the
 //! rest, and refuses what it cannot do with nothing changed. On the backend
 //! `AKIO_TEST_BACKEND` names (epoll by default, `uring`).
@@ -10,10 +11,11 @@
     clippy::arithmetic_side_effects
 )]
 
-use std::io::{Read, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
-use std::sync::Arc;
-use std::time::Duration;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use akio::{Backend, UringConfig};
 use akit_listener::{Listeners, ReloadError};
@@ -78,11 +80,63 @@ fn ok(body: &str) -> (String, String) {
     ("HTTP/1.1 200 OK".into(), body.into())
 }
 
+/// A keep-alive HTTP/1.1 connection, its requests sent one at a time.
+struct Keep(BufReader<TcpStream>);
+
+impl Keep {
+    fn new(addr: SocketAddr) -> Result<Keep, String> {
+        let s = TcpStream::connect(addr).map_err(|e| format!("connect {addr}: {e}"))?;
+        s.set_read_timeout(Some(Duration::from_secs(5)))
+            .map_err(|e| e.to_string())?;
+        Ok(Keep(BufReader::new(s)))
+    }
+
+    /// A GET of `/`: the status line and the body.
+    fn get(&mut self) -> Result<(String, String), String> {
+        let s = self.0.get_mut();
+        write!(s, "GET / HTTP/1.1\r\nHost: x\r\n\r\n").map_err(|e| format!("write: {e}"))?;
+        let mut status = String::new();
+        self.0
+            .read_line(&mut status)
+            .map_err(|e| format!("read: {e}"))?;
+        if status.is_empty() {
+            return Err("closed".into());
+        }
+        let mut length = 0usize;
+        loop {
+            let mut line = String::new();
+            self.0
+                .read_line(&mut line)
+                .map_err(|e| format!("read: {e}"))?;
+            let line = line.trim_end();
+            if line.is_empty() {
+                break;
+            }
+            if let Some((k, v)) = line.split_once(':') {
+                if k.eq_ignore_ascii_case("content-length") {
+                    length = v.trim().parse().map_err(|_| line.to_owned())?;
+                }
+            }
+        }
+        let mut body = vec![0u8; length];
+        self.0
+            .read_exact(&mut body)
+            .map_err(|e| format!("read body: {e}"))?;
+        Ok((
+            status.trim_end().to_owned(),
+            String::from_utf8_lossy(&body).into_owned(),
+        ))
+    }
+}
+
 #[test]
 fn unchanged_listeners_are_kept_and_new_ones_opened_and_closed() {
     let (cell, e, mut l) = serve(&config(WEB, "v1"));
     let web = l.served()[0].address;
     assert_eq!(get(web), ok("v1"));
+    // A keep-alive connection to web, open across the reloads.
+    let mut keep = Keep::new(web).unwrap();
+    assert_eq!(keep.get().unwrap(), ok("v1"));
 
     // The routes change, a listener is added.
     let r = l
@@ -98,6 +152,7 @@ fn unchanged_listeners_are_kept_and_new_ones_opened_and_closed() {
     let extra = r.added[0].address;
     assert_eq!(l.served().len(), 2);
     assert_eq!(get(web), ok("v2"));
+    assert_eq!(keep.get().unwrap(), ok("v2"));
     assert_eq!(get(extra), ok("v2"));
     // The old graph is retired once no request uses it.
     assert_eq!(cell.retiring(), 1);
@@ -130,6 +185,7 @@ fn unchanged_listeners_are_kept_and_new_ones_opened_and_closed() {
     assert_eq!((r.kept, r.added.len(), r.removed.len()), (1, 0, 1));
     assert_eq!(l.served().len(), 1);
     assert_eq!(get(web), ok("v4"));
+    assert_eq!(keep.get().unwrap(), ok("v4"));
     assert_eq!(open.read(&mut buf).unwrap(), 0);
     wait_closed(extra);
     // The address can be listened on again.
@@ -142,9 +198,9 @@ fn unchanged_listeners_are_kept_and_new_ones_opened_and_closed() {
 /// Waits until nothing listens at `addr` any more (each I/O thread closes its socket at its
 /// next loop iteration).
 fn wait_closed(addr: SocketAddr) {
-    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    let deadline = Instant::now() + Duration::from_secs(5);
     while TcpStream::connect(addr).is_ok() {
-        assert!(std::time::Instant::now() < deadline, "{addr} still listens");
+        assert!(Instant::now() < deadline, "{addr} still listens");
         std::thread::sleep(Duration::from_millis(10));
     }
 }
@@ -276,6 +332,109 @@ fn a_plan_changes_nothing() {
     );
     let r = l.plan(&graph(&moved)).unwrap();
     assert_eq!((r.added.len(), r.removed.len()), (1, 1));
+    assert_eq!(cell.retiring(), 0);
+    stop(&e, l);
+}
+
+/// I28's test: listeners added and removed again and again while clients use a listener every
+/// reload keeps, over keep-alive connections opened before and during the reloads and over a new
+/// connection per request: no request fails, each answers from a graph published by then, and
+/// each listener added serves until it is removed.
+#[test]
+fn listeners_added_and_removed_under_traffic_fail_no_request() {
+    let (cell, e, mut l) = serve(&config(WEB, "v0"));
+    let web = l.served()[0].address;
+    let stop_clients = Arc::new(AtomicBool::new(false));
+    let done = Arc::new(AtomicUsize::new(0));
+    let failures = Arc::new(Mutex::new(Vec::<String>::new()));
+    let clients: Vec<_> = (0..4)
+        .map(|n| {
+            let (stop_clients, done, failures) = (
+                Arc::clone(&stop_clients),
+                Arc::clone(&done),
+                Arc::clone(&failures),
+            );
+            std::thread::spawn(move || {
+                let mut keep = None;
+                let mut last = 0u32;
+                while !stop_clients.load(Ordering::SeqCst) {
+                    // Half the clients keep one connection; the others reconnect now and then.
+                    let reuse = n % 2 == 0 || done.load(Ordering::SeqCst) % 7 != 0;
+                    if !reuse || keep.is_none() {
+                        keep = Some(Keep::new(web));
+                    }
+                    let r = match keep.as_mut() {
+                        Some(Ok(k)) => k.get(),
+                        Some(Err(e)) => Err(e.clone()),
+                        None => Err("no connection".into()),
+                    };
+                    match r {
+                        Ok((status, body)) if status == "HTTP/1.1 200 OK" => {
+                            // The versions only go up.
+                            match body.strip_prefix('v').and_then(|v| v.parse::<u32>().ok()) {
+                                Some(v) if v >= last => last = v,
+                                _ => failures
+                                    .lock()
+                                    .unwrap()
+                                    .push(format!("{body} after v{last}")),
+                            }
+                        }
+                        Ok(other) => failures.lock().unwrap().push(format!("{other:?}")),
+                        Err(e) => {
+                            failures.lock().unwrap().push(e);
+                            keep = None;
+                        }
+                    }
+                    done.fetch_add(1, Ordering::SeqCst);
+                }
+            })
+        })
+        .collect();
+    let wait_for = |n: usize| {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while done.load(Ordering::SeqCst) < n {
+            assert!(Instant::now() < deadline, "the clients made no progress");
+            std::thread::sleep(Duration::from_millis(2));
+        }
+    };
+    wait_for(20);
+
+    for round in 1..=10u32 {
+        let extra = format!(
+            r#"{{"name": "extra{round}", "address": "127.0.0.1:0", "protocols": ["http/1.1", "h2c"]}}"#
+        );
+        // Added beside web, then removed again with web kept, the routes changed each time.
+        let r = l
+            .reload(graph(&config(
+                &format!("{WEB}, {extra}"),
+                &format!("v{}", round * 2 - 1),
+            )))
+            .unwrap();
+        assert_eq!((r.kept, r.added.len(), r.removed.len()), (1, 1, 0));
+        let added = r.added[0].address;
+        assert_eq!(get(added), ok(&format!("v{}", round * 2 - 1)));
+        wait_for(done.load(Ordering::SeqCst) + 10);
+        let r = l
+            .reload(graph(&config(WEB, &format!("v{}", round * 2))))
+            .unwrap();
+        assert_eq!((r.kept, r.added.len(), r.removed.len()), (1, 0, 1));
+        assert_eq!(r.removed[0].address, added);
+        assert_eq!(l.served().len(), 1);
+        assert_eq!(l.served()[0].address, web);
+        wait_for(done.load(Ordering::SeqCst) + 10);
+        cell.collect();
+    }
+    stop_clients.store(true, Ordering::SeqCst);
+    for c in clients {
+        c.join().unwrap();
+    }
+    assert!(
+        failures.lock().unwrap().is_empty(),
+        "{:?}",
+        failures.lock().unwrap()
+    );
+    assert_eq!(get(web), ok("v20"));
+    cell.collect();
     assert_eq!(cell.retiring(), 0);
     stop(&e, l);
 }

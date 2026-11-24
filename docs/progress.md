@@ -11,14 +11,47 @@ done and where the work differs from the plan.
 | | |
 | --- | --- |
 | Last updated | 2026-11-24 |
-| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I17, I19–I24 done (I17b waits on akio); M2's I26, I27, I30, I31, I35 and I37 and M3's I39, I40 and I41 done early. |
+| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I17, I19–I24 done (I17b waits on akio); M2's I26–I28, I30, I31, I35 and I37 and M3's I39, I40 and I41 done early. |
 | akio | `afbbb521` on akio's `main` (`1.0.0-rc.1`, with A1–A8, A11, A13 and A16–A21, and the io_uring fix for listeners replaced at run time), pinned by `rev` in `Cargo.toml` |
 | fit | the specification; read at `7daee573` for this plan |
-| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept, added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication; certificates chosen per handshake as fit's, replaced by a reload or by `-watch-certs` without closing the listener) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; route middleware: `rewrite` (prefixes), `redirect`, `headers`, `rate_limit`, `concurrency_limit` and `body_limit`; the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`, bodies streamed both ways with linked backpressure, trailers both ways, `timeout` and the upstream's `response_timeout`, 504 for timeouts, the upstream request given up when the client goes mid-body); `limits.max_body_bytes` on every listener (413) and in the proxy; access logs in fit's json, text and line formats; upstream pools with round robin, weighted round robin and least connections, passing over addresses taken out by passive health checks (`max_fails`, `fail_timeout`) and by active ones (`health_check`: http and tcp probes); the Admin API on loopback (`GET /config`, by JSON pointer too, `POST /load`, edits by pointer with `PUT`, `PATCH` and `DELETE /config`, `POST /rollback/{n}`, `POST /reload`, each with `If-Match` and all but a rollback with `?dry_run=1`, `GET /versions`; with `token_file`, a bearer token on every request), changes applied as SIGHUP's reloads, one history for both; Prometheus metrics at the Admin API's `GET /metrics` (requests by listener and route with `metrics`, upstreams and backends, certificates, connections, reloads, akio's engine); certificates obtained with ACME through HTTP-01 for the names listeners list in `tls.acme`, kept in a storage and renewed; the compatibility gate: 80 fixtures, 15 valid, 64 refused only as not supported yet11 valid, 68 refused only as not supported yet12 valid, 67 refused only as not supported yet, 1 skipped, none failed |
+| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept (as fit's `binding.same`: certificate files and ACME names may change), added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication; certificates chosen per handshake as fit's, replaced by a reload or by `-watch-certs` without closing the listener) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; route middleware: `rewrite` (prefixes), `redirect`, `headers`, `rate_limit`, `concurrency_limit` and `body_limit`; the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`, bodies streamed both ways with linked backpressure, trailers both ways, `timeout` and the upstream's `response_timeout`, 504 for timeouts, the upstream request given up when the client goes mid-body); `limits.max_body_bytes` on every listener (413) and in the proxy; access logs in fit's json, text and line formats; upstream pools with round robin, weighted round robin and least connections, passing over addresses taken out by passive health checks (`max_fails`, `fail_timeout`) and by active ones (`health_check`: http and tcp probes); the Admin API on loopback (`GET /config`, by JSON pointer too, `POST /load`, edits by pointer with `PUT`, `PATCH` and `DELETE /config`, `POST /rollback/{n}`, `POST /reload`, each with `If-Match` and all but a rollback with `?dry_run=1`, `GET /versions`; with `token_file`, a bearer token on every request), changes applied as SIGHUP's reloads, one history for both; Prometheus metrics at the Admin API's `GET /metrics` (requests by listener and route with `metrics`, upstreams and backends, certificates, connections, reloads, akio's engine); certificates obtained with ACME through HTTP-01 for the names listeners list in `tls.acme`, kept in a storage and renewed; the compatibility gate: 80 fixtures, 15 valid, 64 refused only as not supported yet11 valid, 68 refused only as not supported yet12 valid, 67 refused only as not supported yet, 1 skipped, none failed |
 | Next | I18; I17b once akio has A36–A38 |
-| akio requests | A1–A8, A11, A13 and A16–A21 on akio's main and pinned; A9, A10, A12, A14, A15, A22–A24, A29, A30, A32, A33, A35–A38, A45, A48 and A49 requested ([akio API requests](akio-api-requests.md)) |
+| akio requests | A1–A8, A11, A13 and A16–A21 on akio's main and pinned; A9, A10, A12, A14, A15, A22–A24, A29, A30, A32, A33, A35–A38, A45, A48, A49 and A54 requested ([akio API requests](akio-api-requests.md)) |
 
 ## Log
+
+### 2026-11-24: I28, listeners diffed at run time
+
+- I22 already moved listeners on akio's runtime listeners (A1): new and changed ones added before
+  the swap (an address in use fails the reload with nothing changed), removed and changed ones
+  drained for `-shutdown-timeout` after it, a replacement at the same address added beside the old
+  one on Linux, and the Admin API's changes (I26, I27) and `-watch-certs` going through the same
+  `Listeners::reload`. I28 makes "unchanged" fit's: `crates/akit-listener/src/reload.rs` `same`
+  is fit's `binding.same`, comparing the name, address, protocols, `limits.max_body_bytes`, TLS
+  or not, `tls.max_version` and `client_auth.mode`, and `ListenerTls::same_config` the ALPN, h3 and
+  the client authorities' contents. A TLS listener whose certificate files or `tls.acme` names
+  change is kept, with its sockets and connections, and its next handshakes get the new
+  certificates from its manager (I30, I31), where before it was opened anew; authorities moved to
+  another file with the same contents keep it too. A kept listener now goes by the new config, which
+  the next reload compares with.
+- Tests, from fit's `listener/reload_test.go`: in `akit-listener/tests/reload.rs`, a keep-alive
+  connection to a kept listener, open across the reloads, answered from each new graph (fit's
+  `TestReload`); `listeners_added_and_removed_under_traffic_fail_no_request`, I28's test: four
+  clients on a kept listener, over kept and new connections, while ten reloads add a listener and
+  remove it again with the routes changed each time, with no failed request and the versions they
+  see only going up. In `tests/certs.rs`, `other_certificate_files_keep_the_listener`: other
+  certificate files and the same authorities from another file keep the listener (the next
+  handshake gets the new certificate, a connection made before still serves), another
+  `client_auth.mode` or no TLS opens it anew. fit's `TestReloadFails`, `TestReloadSameAddress` and
+  `TestPlan` were ported with I22 and I27.
+- akio: A22 (a UDP listener removed on a running engine) is still not in akio's main, so a
+  reload that removes or changes a listener serving h3 that akit started with is still refused.
+  Requested A54: akio-http closes an idle HTTP/1 connection at once when it is drained, so a
+  request the client sent on it at that moment meets the close; a grace on a drain would answer it
+  with `Connection: close`. Until then the e2e test's clients send such a request again, as before.
+- Checked: `make check` on macOS; `akit-listener`, `akit-runtime` and `akit` tests on Linux (the
+  benchmark host), epoll and io_uring. No benchmark: the hot path is unchanged (rule 30).
+- Left: a startup h3 listener (A22); the keep-alive close race of a drained listener (A54).
 
 ### 2026-11-24: I31, ACME I: account, orders, HTTP-01
 

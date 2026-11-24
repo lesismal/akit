@@ -120,7 +120,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | **M2** | | | |
 | I26 | Admin API I：加载、读取、版本 | I22 | done |
 | I27 | Admin API II：局部修改、回滚、认证 | I26 | done |
-| I28 | 运行时的监听差量 | I26, A1 | todo |
+| I28 | 运行时的监听差量 | I26, A1 | done |
 | I29 | 文件 provider | I26 | todo |
 | I30 | 证书管理与存储 | I09 | done |
 | I31 | ACME I：账户、订单、HTTP-01 | I30 | done |
@@ -478,6 +478,10 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 - **做什么**：替换时绑定新地址，移除的地址带超时排空，不变的保留，与 I22 在 SIGHUP 时的做法相同（基于 A1，`adopt_tcp` 临时措施已去掉）。依赖 akio A1。
 - **完成标准**：测试在有流量时增删监听器，没有失败的请求。
 - **涉及**：`akit-listener`、`akit-runtime`。
+- **fit**：`listener.Server.Reload`、`Plan` 和 `binding.same`；`listener/reload_test.go`。
+- **已完成**：在 I22 的运行时监听器之上，按 fit 的 `binding.same` 决定是否保留监听器：证书文件和 `tls.acme` 名字可以变
+  （由它的管理器提供新的证书），客户端 CA 按内容比较。服务 h3 的启动监听器仍等待 A22；排空时在空闲 HTTP/1 连接上发出的
+  请求会遇到关闭（A54）。
 
 ### I29 文件 provider
 

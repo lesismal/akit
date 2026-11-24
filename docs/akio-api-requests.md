@@ -54,6 +54,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | A36 | An HTTP client request's response-header and idle timeouts | requested (I17) | 10 | I17b, I18 |
 | A37 | An HTTP client request cancelled at any point | requested (I17) | 3 | I17b, I45 |
 | A38 | A detached server request that hears its client went; a write stall timeout changed at run time | requested (I17) | 3, 10 | I17b, I49 |
+| A54 | An idle HTTP/1 connection drained after a grace, not at once | requested (I28) | 10 | I28 |
 
 ## A1 TCP listeners on a running engine
 
@@ -846,3 +847,33 @@ HTTP/2 does. (2) `Live::set_write_timeout(Option<Duration>)`, as for `idle_timeo
 not count it against the upstream's health, closing fit's `TestClientAbort` "before the header"
 and HTTP/1 "mid-upload" cases; `limits.write_stall_timeout` sets the engine's write timeout at
 start and on reload. I49's WebSocket and tunnel relays hear a client go the same way.
+
+## A54 An idle HTTP/1 connection drained after a grace, not at once
+
+**Problem.** When a listener is drained (`Engine::shutdown_listener`, `Engine::shutdown`), akio-http
+closes an idle HTTP/1 keep-alive connection at once. A client may have sent its next request on
+that connection already, or be sending it: the request meets the close unanswered, and the client
+sees a reset or an end of file. HTTP/1 has no way to tell an idle client that its connection is
+going (HTTP/2 has `GOAWAY`), so the close itself races every request in flight on the wire. akit
+drains a listener a reload removes or changes (I22, I28), so a client using a removed or replaced
+listener at that moment sees a failed request unless it sends the request again, as HTTP clients
+may with idempotent requests (RFC 9112 section 9.3.1).
+
+**Evidence.** `crates/akio-http/src/session.rs` at `afbbb521`: `on_shutdown` runs
+`Session::shutdown`, whose HTTP/1 path is `h1_shutdown`; with no response in the order,
+`reserve_response` hands a slot at once and `fill_close` closes the connection. akit's
+`crates/akit/tests/reload.rs` (I22) counts the requests its clients send again after such a close
+(at most one per client per replacement), since without the retry they fail.
+
+**Suggested API.** A grace for idle HTTP/1 connections on a drain: an idle connection stays open
+for up to the grace, a request that arrives in it is answered with `Connection: close` and the
+connection closed after the response, and the connection is closed at the end of the grace if none
+does. One that receives part of a request in the grace is treated as busy. The grace is capped by
+the drain's deadline: `ServerConfig::idle_drain_grace(Duration)` (a default of a few hundred
+milliseconds, 0 for today's behaviour), or a parameter of `shutdown_listener`. A request already
+in the socket's receive buffer when the drain starts is read and answered either way.
+
+**How akit uses it.** `akit_listener::Listeners::reload` drains removed and changed listeners
+with it, from `-shutdown-timeout`; the retries in `akit/tests/reload.rs` go, and its clients count
+every error as a failure. It narrows the race to a client that sends its next request only after
+the grace, which only a client idle for that long does.
