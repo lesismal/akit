@@ -634,6 +634,142 @@ fn supported_fields_are_read() {
                     ]
             },
         ),
+        // Shared storage (I62).
+        (
+            "acme.shared_storage",
+            r#"{"acme": {"shared_storage": {"redis": {}}}}"#.into(),
+            |c| shared_storage(c).kind.name() == "redis",
+        ),
+        (
+            "acme.shared_storage.redis",
+            r#"{"acme": {"shared_storage": {"redis": {}}}}"#.into(),
+            |c| redis_storage(c).address == akit_config::DEFAULT_REDIS_ADDRESS,
+        ),
+        (
+            "acme.shared_storage.redis.address",
+            r#"{"acme": {"shared_storage": {"redis": {"address": "r:6380"}}}}"#.into(),
+            |c| redis_storage(c).address == "r:6380",
+        ),
+        (
+            "acme.shared_storage.redis.username",
+            r#"{"acme": {"shared_storage": {"redis": {"username": "u", "password_file": "/p"}}}}"#.into(),
+            |c| redis_storage(c).username == "u",
+        ),
+        (
+            "acme.shared_storage.redis.password_file",
+            r#"{"acme": {"shared_storage": {"redis": {"password_file": "/p"}}}}"#.into(),
+            |c| redis_storage(c).password_file == "/p",
+        ),
+        (
+            "acme.shared_storage.redis.db",
+            r#"{"acme": {"shared_storage": {"redis": {"db": 2}}}}"#.into(),
+            |c| redis_storage(c).db == 2,
+        ),
+        (
+            "acme.shared_storage.redis.tls",
+            r#"{"acme": {"shared_storage": {"redis": {"tls": true}}}}"#.into(),
+            |c| redis_storage(c).tls,
+        ),
+        (
+            "acme.shared_storage.redis.ca_file",
+            r#"{"acme": {"shared_storage": {"redis": {"tls": true, "ca_file": "/ca"}}}}"#.into(),
+            |c| redis_storage(c).tls_files.ca_file == "/ca",
+        ),
+        (
+            "acme.shared_storage.redis.cert_file",
+            r#"{"acme": {"shared_storage": {"redis": {"tls": true, "cert_file": "/c", "key_file": "/k"}}}}"#.into(),
+            |c| redis_storage(c).tls_files.cert_file == "/c",
+        ),
+        (
+            "acme.shared_storage.redis.key_file",
+            r#"{"acme": {"shared_storage": {"redis": {"tls": true, "cert_file": "/c", "key_file": "/k"}}}}"#.into(),
+            |c| redis_storage(c).tls_files.key_file == "/k",
+        ),
+        (
+            "acme.shared_storage.etcd",
+            r#"{"acme": {"shared_storage": {"etcd": {}}}}"#.into(),
+            |c| shared_storage(c).kind.name() == "etcd",
+        ),
+        (
+            "acme.shared_storage.etcd.endpoints",
+            r#"{"acme": {"shared_storage": {"etcd": {"endpoints": ["http://e:2379"]}}}}"#.into(),
+            |c| etcd_storage(c).endpoints == ["http://e:2379"],
+        ),
+        (
+            "acme.shared_storage.etcd.username",
+            r#"{"acme": {"shared_storage": {"etcd": {"username": "u", "password_file": "/p"}}}}"#.into(),
+            |c| etcd_storage(c).username == "u",
+        ),
+        (
+            "acme.shared_storage.etcd.password_file",
+            r#"{"acme": {"shared_storage": {"etcd": {"username": "u", "password_file": "/p"}}}}"#.into(),
+            |c| etcd_storage(c).password_file == "/p",
+        ),
+        (
+            "acme.shared_storage.etcd.ca_file",
+            r#"{"acme": {"shared_storage": {"etcd": {"ca_file": "/ca"}}}}"#.into(),
+            |c| etcd_storage(c).tls.ca_file == "/ca",
+        ),
+        (
+            "acme.shared_storage.etcd.cert_file",
+            r#"{"acme": {"shared_storage": {"etcd": {"cert_file": "/c", "key_file": "/k"}}}}"#.into(),
+            |c| etcd_storage(c).tls.cert_file == "/c",
+        ),
+        (
+            "acme.shared_storage.etcd.key_file",
+            r#"{"acme": {"shared_storage": {"etcd": {"cert_file": "/c", "key_file": "/k"}}}}"#.into(),
+            |c| etcd_storage(c).tls.key_file == "/k",
+        ),
+        (
+            "acme.shared_storage.consul",
+            r#"{"acme": {"shared_storage": {"consul": {}}}}"#.into(),
+            |c| shared_storage(c).kind.name() == "consul",
+        ),
+        (
+            "acme.shared_storage.consul.endpoint",
+            r#"{"acme": {"shared_storage": {"consul": {"endpoint": "http://c:8500"}}}}"#.into(),
+            |c| consul_storage(c).endpoint == "http://c:8500",
+        ),
+        (
+            "acme.shared_storage.consul.datacenter",
+            r#"{"acme": {"shared_storage": {"consul": {"datacenter": "dc2"}}}}"#.into(),
+            |c| consul_storage(c).datacenter == "dc2",
+        ),
+        (
+            "acme.shared_storage.consul.token_file",
+            r#"{"acme": {"shared_storage": {"consul": {"token_file": "/t"}}}}"#.into(),
+            |c| consul_storage(c).token_file == "/t",
+        ),
+        (
+            "acme.shared_storage.consul.ca_file",
+            r#"{"acme": {"shared_storage": {"consul": {"ca_file": "/ca"}}}}"#.into(),
+            |c| consul_storage(c).tls.ca_file == "/ca",
+        ),
+        (
+            "acme.shared_storage.consul.cert_file",
+            r#"{"acme": {"shared_storage": {"consul": {"cert_file": "/c", "key_file": "/k"}}}}"#.into(),
+            |c| consul_storage(c).tls.cert_file == "/c",
+        ),
+        (
+            "acme.shared_storage.consul.key_file",
+            r#"{"acme": {"shared_storage": {"consul": {"cert_file": "/c", "key_file": "/k"}}}}"#.into(),
+            |c| consul_storage(c).tls.key_file == "/k",
+        ),
+        (
+            "acme.shared_storage.prefix",
+            r#"{"acme": {"shared_storage": {"redis": {}, "prefix": "akit/"}}}"#.into(),
+            |c| shared_storage(c).prefix == "akit/",
+        ),
+        (
+            "acme.shared_storage.lock_ttl",
+            r#"{"acme": {"shared_storage": {"redis": {}, "lock_ttl": "1m"}}}"#.into(),
+            |c| shared_storage(c).lock_ttl == std::time::Duration::from_secs(60),
+        ),
+        (
+            "acme.shared_storage.request_timeout",
+            r#"{"acme": {"shared_storage": {"redis": {}, "request_timeout": "3s"}}}"#.into(),
+            |c| shared_storage(c).request_timeout == std::time::Duration::from_secs(3),
+        ),
         // On-demand TLS (I34).
         (
             "acme.on_demand",
@@ -2504,14 +2640,18 @@ fn kube(c: &Config) -> &akit_config::KubernetesProvider {
 /// reads is what `supported.txt` marks.
 #[test]
 fn akit_config_lists_match_the_inventory() {
-    // The model, and the providers' lists, in modules of their own (I58, I61).
-    let src = ["model.rs", "providers.rs", "providers_kv.rs"]
-        .iter()
-        .map(|f| {
-            fs::read_to_string(compat_dir().join("../../crates/akit-config/src").join(f)).unwrap()
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
+    // The model, and the providers' and shared storage's lists, in modules of their own (I58,
+    // I61, I62).
+    let src = [
+        "model.rs",
+        "providers.rs",
+        "providers_kv.rs",
+        "shared_storage.rs",
+    ]
+    .iter()
+    .map(|f| fs::read_to_string(compat_dir().join("../../crates/akit-config/src").join(f)).unwrap())
+    .collect::<Vec<_>>()
+    .join("\n");
     let lists = str_lists(&src);
     let inventory = fields().unwrap();
     let known: BTreeSet<&str> = inventory.iter().map(|f| f.path.as_str()).collect();
@@ -2522,7 +2662,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 56] = [
+    let objects: [(&str, &str, Option<&str>); 60] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         (
             "providers[].kubernetes",
@@ -2537,6 +2677,10 @@ fn akit_config_lists_match_the_inventory() {
         ("admin", "ADMIN_FIELDS", Some("ADMIN_FIT_ONLY")),
         ("acme", "ACME_FIELDS", Some("ACME_FIT_ONLY")),
         ("acme.on_demand", "ON_DEMAND_FIELDS", None),
+        ("acme.shared_storage", "SHARED_STORAGE_FIELDS", None),
+        ("acme.shared_storage.redis", "REDIS_STORAGE_FIELDS", None),
+        ("acme.shared_storage.etcd", "ETCD_STORAGE_FIELDS", None),
+        ("acme.shared_storage.consul", "CONSUL_STORAGE_FIELDS", None),
         ("limits", "LIMITS_FIELDS", Some("LIMITS_FIT_ONLY")),
         (
             "access_log",
@@ -2897,7 +3041,7 @@ fn inventory_paths_for_akit_config_paths() {
 fn findings_from_akit_config_errors() {
     let errs = akit_config::from_json(
         r#"{"listeners": [{"name": "w", "address": ":1", "mptcp": true}],
-            "routes": [{"handler": {"module": "hls"}}], "acme": {"shared_storage": {}}}"#,
+            "routes": [{"handler": {"module": "hls"}}], "limits": {"max_conns": 10}}"#,
         None,
     )
     .unwrap_err();
@@ -2909,7 +3053,7 @@ fn findings_from_akit_config_errors() {
     let want: BTreeSet<String> = [
         "listeners[0].mptcp",
         "routes[0].handler<hls>",
-        "acme.shared_storage",
+        "limits.max_conns",
     ]
     .iter()
     .map(|p| format!("not supported yet: {p}"))
@@ -2996,6 +3140,34 @@ fn consul_kv(c: &Config) -> &akit_config::ConsulKvProvider {
 fn etcd(c: &Config) -> &akit_config::EtcdProvider {
     match c.providers.first().map(|p| &p.kind) {
         Some(akit_config::ProviderKind::Etcd(p)) => p,
+        other => unreachable!("{other:?}"),
+    }
+}
+
+fn shared_storage(c: &Config) -> &akit_config::SharedStorage {
+    c.acme
+        .as_ref()
+        .and_then(|a| a.shared_storage.as_ref())
+        .unwrap()
+}
+
+fn redis_storage(c: &Config) -> &akit_config::RedisStorage {
+    match &shared_storage(c).kind {
+        akit_config::SharedStorageKind::Redis(r) => r,
+        other => unreachable!("{other:?}"),
+    }
+}
+
+fn etcd_storage(c: &Config) -> &akit_config::EtcdStorage {
+    match &shared_storage(c).kind {
+        akit_config::SharedStorageKind::Etcd(e) => e,
+        other => unreachable!("{other:?}"),
+    }
+}
+
+fn consul_storage(c: &Config) -> &akit_config::ConsulStorage {
+    match &shared_storage(c).kind {
+        akit_config::SharedStorageKind::Consul(c) => c,
         other => unreachable!("{other:?}"),
     }
 }

@@ -335,7 +335,7 @@ metrics
 # I31: acme, an ACME client of akit's own: accounts, orders and HTTP-01, answered by every listener
 # in the clear; certificates kept in acme.storage and renewed. I32: acme.challenges takes
 # "tls-alpn-01" too, answered by the TLS listener that lists the name, both by default as fit's;
-# OCSP responses stapled. shared_storage is refused as not supported yet.
+# OCSP responses stapled.
 acme
 acme.directory
 acme.email
@@ -355,6 +355,36 @@ acme.on_demand.interval
 acme.on_demand.max_names
 acme.on_demand.timeout
 acme.on_demand.idle_timeout
+# I62: acme.shared_storage, certificates, locks and challenge answers kept in Redis, etcd or Consul
+# so that instances on several hosts share issuance; locks are leased and renewed, and the
+# instance the CA reaches answers another's challenge from the storage.
+acme.shared_storage
+acme.shared_storage.redis
+acme.shared_storage.redis.address
+acme.shared_storage.redis.username
+acme.shared_storage.redis.password_file
+acme.shared_storage.redis.db
+acme.shared_storage.redis.tls
+acme.shared_storage.redis.ca_file
+acme.shared_storage.redis.cert_file
+acme.shared_storage.redis.key_file
+acme.shared_storage.etcd
+acme.shared_storage.etcd.endpoints
+acme.shared_storage.etcd.username
+acme.shared_storage.etcd.password_file
+acme.shared_storage.etcd.ca_file
+acme.shared_storage.etcd.cert_file
+acme.shared_storage.etcd.key_file
+acme.shared_storage.consul
+acme.shared_storage.consul.endpoint
+acme.shared_storage.consul.datacenter
+acme.shared_storage.consul.token_file
+acme.shared_storage.consul.ca_file
+acme.shared_storage.consul.cert_file
+acme.shared_storage.consul.key_file
+acme.shared_storage.prefix
+acme.shared_storage.lock_ttl
+acme.shared_storage.request_timeout
 
 # I33: auto_https, HTTPS by default: a config that writes no listeners is served on https (443) with
 # its routes' host names in tls.acme, and on http (80), which redirects to it with 308 and answers

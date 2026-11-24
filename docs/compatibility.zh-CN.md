@@ -152,13 +152,13 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 369 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 396 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
 | [`access`](#fields-access) | 5 | 0 | 5 |
 | [`access_log`](#fields-access-log) | 14 | 7 | 7 |
-| [`acme`](#fields-acme) | 43 | 16 | 27 |
+| [`acme`](#fields-acme) | 43 | 43 | 0 |
 | [`admin`](#fields-admin) | 105 | 7 | 98 |
 | [`auto_https`](#fields-auto-https) | 5 | 5 | 0 |
 | [`bittorrent`](#fields-bittorrent) | 160 | 0 | 160 |
@@ -277,7 +277,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **合计** | 3821 | 369 | 3452 |
+| **合计** | 3821 | 396 | 3425 |
 
 <a id="fields-access"></a>
 
@@ -332,33 +332,33 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `acme.on_demand.rate` | `integer` | 已支持 |
 | `acme.on_demand.timeout` | `duration` | 已支持 |
 | `acme.request_timeout` | `duration` | 已支持 |
-| `acme.shared_storage` | `object` | 尚不支持（not supported yet） |
-| `acme.shared_storage.consul` | `object` | 尚不支持（not supported yet） |
-| `acme.shared_storage.consul.ca_file` | `string` | 尚不支持（not supported yet） |
-| `acme.shared_storage.consul.cert_file` | `string` | 尚不支持（not supported yet） |
-| `acme.shared_storage.consul.datacenter` | `string` | 尚不支持（not supported yet） |
-| `acme.shared_storage.consul.endpoint` | `string` | 尚不支持（not supported yet） |
-| `acme.shared_storage.consul.key_file` | `string` | 尚不支持（not supported yet） |
-| `acme.shared_storage.consul.token_file` | `string` | 尚不支持（not supported yet） |
-| `acme.shared_storage.etcd` | `object` | 尚不支持（not supported yet） |
-| `acme.shared_storage.etcd.ca_file` | `string` | 尚不支持（not supported yet） |
-| `acme.shared_storage.etcd.cert_file` | `string` | 尚不支持（not supported yet） |
-| `acme.shared_storage.etcd.endpoints` | `array<string>` | 尚不支持（not supported yet） |
-| `acme.shared_storage.etcd.key_file` | `string` | 尚不支持（not supported yet） |
-| `acme.shared_storage.etcd.password_file` | `string` | 尚不支持（not supported yet） |
-| `acme.shared_storage.etcd.username` | `string` | 尚不支持（not supported yet） |
-| `acme.shared_storage.lock_ttl` | `duration` | 尚不支持（not supported yet） |
-| `acme.shared_storage.prefix` | `string` | 尚不支持（not supported yet） |
-| `acme.shared_storage.redis` | `object` | 尚不支持（not supported yet） |
-| `acme.shared_storage.redis.address` | `string` | 尚不支持（not supported yet） |
-| `acme.shared_storage.redis.ca_file` | `string` | 尚不支持（not supported yet） |
-| `acme.shared_storage.redis.cert_file` | `string` | 尚不支持（not supported yet） |
-| `acme.shared_storage.redis.db` | `integer` | 尚不支持（not supported yet） |
-| `acme.shared_storage.redis.key_file` | `string` | 尚不支持（not supported yet） |
-| `acme.shared_storage.redis.password_file` | `string` | 尚不支持（not supported yet） |
-| `acme.shared_storage.redis.tls` | `boolean` | 尚不支持（not supported yet） |
-| `acme.shared_storage.redis.username` | `string` | 尚不支持（not supported yet） |
-| `acme.shared_storage.request_timeout` | `duration` | 尚不支持（not supported yet） |
+| `acme.shared_storage` | `object` | 已支持 |
+| `acme.shared_storage.consul` | `object` | 已支持 |
+| `acme.shared_storage.consul.ca_file` | `string` | 已支持 |
+| `acme.shared_storage.consul.cert_file` | `string` | 已支持 |
+| `acme.shared_storage.consul.datacenter` | `string` | 已支持 |
+| `acme.shared_storage.consul.endpoint` | `string` | 已支持 |
+| `acme.shared_storage.consul.key_file` | `string` | 已支持 |
+| `acme.shared_storage.consul.token_file` | `string` | 已支持 |
+| `acme.shared_storage.etcd` | `object` | 已支持 |
+| `acme.shared_storage.etcd.ca_file` | `string` | 已支持 |
+| `acme.shared_storage.etcd.cert_file` | `string` | 已支持 |
+| `acme.shared_storage.etcd.endpoints` | `array<string>` | 已支持 |
+| `acme.shared_storage.etcd.key_file` | `string` | 已支持 |
+| `acme.shared_storage.etcd.password_file` | `string` | 已支持 |
+| `acme.shared_storage.etcd.username` | `string` | 已支持 |
+| `acme.shared_storage.lock_ttl` | `duration` | 已支持 |
+| `acme.shared_storage.prefix` | `string` | 已支持 |
+| `acme.shared_storage.redis` | `object` | 已支持 |
+| `acme.shared_storage.redis.address` | `string` | 已支持 |
+| `acme.shared_storage.redis.ca_file` | `string` | 已支持 |
+| `acme.shared_storage.redis.cert_file` | `string` | 已支持 |
+| `acme.shared_storage.redis.db` | `integer` | 已支持 |
+| `acme.shared_storage.redis.key_file` | `string` | 已支持 |
+| `acme.shared_storage.redis.password_file` | `string` | 已支持 |
+| `acme.shared_storage.redis.tls` | `boolean` | 已支持 |
+| `acme.shared_storage.redis.username` | `string` | 已支持 |
+| `acme.shared_storage.request_timeout` | `duration` | 已支持 |
 | `acme.storage` | `string` | 已支持 |
 | `acme.timeout` | `duration` | 已支持 |
 

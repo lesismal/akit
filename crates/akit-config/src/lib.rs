@@ -29,6 +29,7 @@ mod json;
 mod model;
 mod providers;
 mod providers_kv;
+mod shared_storage;
 pub mod value;
 mod yaml;
 
@@ -92,6 +93,11 @@ pub use providers_kv::{
     DEFAULT_CONSUL_MAX_SERVICES, DEFAULT_CONSUL_TAG_PREFIX, DEFAULT_ETCD_ENDPOINT,
     DEFAULT_KV_MAX_KEYS, DEFAULT_KV_PREFIX, DEFAULT_WATCH_REFRESH_INTERVAL,
     DEFAULT_WATCH_REQUEST_TIMEOUT, EtcdProvider,
+};
+pub use shared_storage::{
+    ConsulStorage, DEFAULT_REDIS_ADDRESS, DEFAULT_SHARED_STORAGE_LOCK_TTL,
+    DEFAULT_SHARED_STORAGE_PREFIX, DEFAULT_SHARED_STORAGE_TIMEOUT, EtcdStorage,
+    MIN_SHARED_STORAGE_LOCK_TTL, RedisStorage, SharedStorage, SharedStorageKind,
 };
 
 /// The largest config document read, in bytes: fit's own configs are kilobytes; this bounds
