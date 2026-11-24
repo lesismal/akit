@@ -145,6 +145,11 @@ admin.history
 admin.max_config_bytes
 admin.max_conns
 
+# I27: the Admin API's edits by pointer, rollback, reload and dry runs, and its token: every request
+# carries the one token_file holds. Off loopback the API needs TLS too, which akit does not serve it
+# over yet: such an address is still refused.
+admin.token_file
+
 # I40: route middleware: rewrite, redirect and headers, as fit's. rewrite.regexp and
 # rewrite.replacement are refused as not supported yet, and so are groups of redirect.regexp in
 # redirect.to ($1, ${name}): akio-regex does not find or capture where a pattern matches yet (akio

@@ -449,6 +449,11 @@ fn supported_fields_are_read() {
             r#"{"admin": {"max_conns": 2}}"#.into(),
             |c| c.admin.as_ref().unwrap().max_conns == 2,
         ),
+        (
+            "admin.token_file",
+            r#"{"admin": {"token_file": "/etc/akit/admin.token"}}"#.into(),
+            |c| c.admin.as_ref().unwrap().token_file.as_deref() == Some("/etc/akit/admin.token"),
+        ),
         ("limits", r#"{"limits": {}}"#.into(), |c| {
             c.limits == akit_config::Limits::default()
         }),

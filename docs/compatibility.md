@@ -175,14 +175,14 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 131 supported.
+3821 fields in 121 sections, at fit `7daee573`; 132 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
 | [`access`](#fields-access) | 5 | 0 | 5 |
 | [`access_log`](#fields-access-log) | 14 | 7 | 7 |
 | [`acme`](#fields-acme) | 43 | 0 | 43 |
-| [`admin`](#fields-admin) | 105 | 5 | 100 |
+| [`admin`](#fields-admin) | 105 | 6 | 99 |
 | [`auto_https`](#fields-auto-https) | 5 | 0 | 5 |
 | [`bittorrent`](#fields-bittorrent) | 160 | 0 | 160 |
 | [`engine`](#fields-engine) | 11 | 0 | 11 |
@@ -300,7 +300,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 25 | 13 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 131 | 3690 |
+| **Total** | 3821 | 132 | 3689 |
 
 <a id="fields-access"></a>
 
@@ -495,7 +495,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `admin.store.password_env` | `string` | not supported yet |
 | `admin.store.password_file` | `string` | not supported yet |
 | `admin.store.path` | `string, required` | not supported yet |
-| `admin.token_file` | `string` | not supported yet |
+| `admin.token_file` | `string` | supported |
 
 <a id="fields-auto-https"></a>
 

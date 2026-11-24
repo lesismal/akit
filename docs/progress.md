@@ -11,14 +11,73 @@ done and where the work differs from the plan.
 | | |
 | --- | --- |
 | Last updated | 2026-11-24 |
-| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I17, I19–I24 done (I17b waits on akio); M2's I26, I30, I35 and I37 and M3's I39, I40 and I41 done early. |
+| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I17, I19–I24 done (I17b waits on akio); M2's I26, I27, I30, I35 and I37 and M3's I39, I40 and I41 done early. |
 | akio | `60547435` on akio's `main` (`1.0.0-rc.1`, with A1–A5, A7, A8, A11, A13 and A16–A21), pinned by `rev` in `Cargo.toml` |
 | fit | the specification; read at `7daee573` for this plan |
-| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept, added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication; certificates chosen per handshake as fit's, replaced by a reload or by `-watch-certs` without closing the listener) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; route middleware: `rewrite` (prefixes), `redirect`, `headers`, `rate_limit`, `concurrency_limit` and `body_limit`; the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`, bodies streamed both ways with linked backpressure, trailers both ways, `timeout` and the upstream's `response_timeout`, 504 for timeouts, the upstream request given up when the client goes mid-body); `limits.max_body_bytes` on every listener (413) and in the proxy; access logs in fit's json, text and line formats; upstream pools with round robin, weighted round robin and least connections, passing over addresses taken out by passive health checks (`max_fails`, `fail_timeout`) and by active ones (`health_check`: http and tcp probes); the Admin API on loopback (`GET /config`, by JSON pointer too, `POST /load` with `If-Match`, `GET /versions`), loads applied as SIGHUP's reloads, one history for both; Prometheus metrics at the Admin API's `GET /metrics` (requests by listener and route with `metrics`, upstreams and backends, certificates, connections, reloads, akio's engine); the compatibility gate: 80 fixtures, 14 valid, 65 refused only as not supported yet11 valid, 68 refused only as not supported yet, 1 skipped, none failed |
+| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept, added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication; certificates chosen per handshake as fit's, replaced by a reload or by `-watch-certs` without closing the listener) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; route middleware: `rewrite` (prefixes), `redirect`, `headers`, `rate_limit`, `concurrency_limit` and `body_limit`; the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`, bodies streamed both ways with linked backpressure, trailers both ways, `timeout` and the upstream's `response_timeout`, 504 for timeouts, the upstream request given up when the client goes mid-body); `limits.max_body_bytes` on every listener (413) and in the proxy; access logs in fit's json, text and line formats; upstream pools with round robin, weighted round robin and least connections, passing over addresses taken out by passive health checks (`max_fails`, `fail_timeout`) and by active ones (`health_check`: http and tcp probes); the Admin API on loopback (`GET /config`, by JSON pointer too, `POST /load`, edits by pointer with `PUT`, `PATCH` and `DELETE /config`, `POST /rollback/{n}`, `POST /reload`, each with `If-Match` and all but a rollback with `?dry_run=1`, `GET /versions`; with `token_file`, a bearer token on every request), changes applied as SIGHUP's reloads, one history for both; Prometheus metrics at the Admin API's `GET /metrics` (requests by listener and route with `metrics`, upstreams and backends, certificates, connections, reloads, akio's engine); the compatibility gate: 80 fixtures, 14 valid, 65 refused only as not supported yet11 valid, 68 refused only as not supported yet, 1 skipped, none failed |
 | Next | I18; I17b once akio has A36–A38 |
 | akio requests | A1–A5, A7, A8, A11, A13 and A16–A21 on akio's main and pinned; A6 on akio branch `claude/x509-csr`; A9, A10, A12, A14, A15, A22–A24, A29, A30, A32, A33, A35–A38, A45, A48 and A49 requested ([akio API requests](akio-api-requests.md)) |
 
 ## Log
+
+### 2026-11-24: I27, Admin API II: patch, rollback, auth
+
+- Config: `admin.token_file` read (`Admin::token_file`; empty is none). An address off loopback is
+  still refused: fit asks for TLS there too (`cert_file`, `key_file`), which akit does not serve
+  the API over yet; the message says so.
+- `akit-admin`: `PUT`, `PATCH` (`application/merge-patch+json` or `application/json`) and `DELETE
+  /config[/<pointer>]`, `POST /rollback/{n}` and `POST /reload`, as fit's: a value set, added or
+  appended (`-`), merged as RFC 7396, removed; the config itself cannot be deleted; a whole
+  config put is kept as written, an edited one written out again as fit writes it
+  (`Value::to_json`). Bodies streamed in as a load's are, under `max_config_bytes` (413, 415);
+  the pointer and `?dry_run` checked on the I/O thread, the change handed to the control thread as
+  a `Job` (now an `Op`: load, put, patch, delete, rollback, reload). `Configs::change` makes the
+  change from the running config under the lock that orders applies, after `If-Match` (412 with
+  nothing called), so concurrent writers lose nothing; `Configs::update` is it with fixed data.
+  `Refused::Request` carries a pointer's 400/404 and "version n is not kept"; `SOURCE_ROLLBACK`
+  (`rollback`) for a rollback, `admin` for a reload, as fit's. `pointer.rs` gains `put`,
+  `remove`, `merge_patch` and `lookup_mut`, with fit's messages.
+- Dry runs (`?dry_run=1` or `true` on `POST /load`, `PUT`, `PATCH`, `DELETE` and `POST /reload`;
+  anything else but `0`, `false` or none is 400): `Mode::DryRun` takes the apply path without its
+  effects; the answer has `dry_run`, the running version and ETag, `new_etag`, `unchanged`, the
+  listeners an apply would add and remove and its warnings, and `Fit-Dry-Run: 1`
+  (`DRY_RUN_HEADER`); a refused one answers word for word as the apply would.
+  `akit_listener::Listeners::plan` (new) says what `reload` would open and close without changing
+  anything, resolving a new listener's address and binding it for a moment unless a running
+  listener holds it; `akit run`'s `Runner::check` compiles with an empty engine slot and a
+  registry of its own and calls it, and counts no reload.
+- The token: read when the API starts (trimmed; empty, or unreadable, fails the start); every
+  request then carries `Authorization: Bearer <token>`, compared in constant time, or gets 401
+  with `WWW-Authenticate`; the loopback `Host` check is dropped with a token, `Origin` still
+  refused, as fit's guard.
+- Tests: `akit-admin/tests/admin.rs` (21, 11 new), fit's `edit_test.go` and `dryrun_test.go` and
+  `TestToken` ported: edits by pointer with fit's expected config, edits refused (an invalid
+  address with fit's line and column, a module that does not exist, unknown field, not JSON, 404
+  pointers, 415, 405, the root not deletable), `If-Match` stale for every kind of change, 16
+  concurrent writers (8 with `If-Match` retrying on 412, 8 appending without) each applied once,
+  rollback (as a new version, `rollback` source, a version gone, `x`), reload, dry runs (answers,
+  headers, the same refusals as an apply, a taken address, bad `dry_run`, then applied with the ETag
+  the dry run gave), a dry run that removes a listener and frees nothing, the token, an edit's body
+  under, at and over the limit and cut off midway; unit tests of the edit tree (fit's
+  `TestEditTree` and `TestPointer`), `Configs::change` and the token comparison.
+  `akit-listener/tests/reload.rs`: `Listeners::plan`. `akit-config/tests/admin.rs`: `token_file`.
+  `akit/tests/admin.rs`: `akit run` with a token, an edit, a dry run and a rollback end to end.
+  The gate's sample for `admin.token_file`.
+- Checked: `make check` on macOS; the tests of akit-admin, akit-config, akit-listener, akit and
+  akit-compat on Linux (the benchmark host), epoll and io_uring, all passing (an earlier epoll run hit the known flake in `akit-listener`'s `unchanged_listeners_are_kept_and_new_ones_opened_and_closed`).
+- Differences from fit:
+  - No TLS for the API (`cert_file`, `key_file`, `client_ca_file`), so no address off loopback,
+    token or not; no Unix socket yet (A23).
+  - A 401 does not close the connection as fit's does (akio API request A24, as the 413).
+  - fit's connection limiter (a quarter of `max_conns` kept for clients that showed the token, an
+    unauthenticated connection closed after 5 s, a share per peer) is not ported: the engine's
+    `max_connections` stays the limit.
+  - A body decoded for an edit takes akit's JSON reader, which allows comments and trailing
+    commas where fit's `encoding/json` refuses them.
+  - akit-config takes a config without listeners, which fit refuses: `TestDryRun`'s first refused
+    case is left out.
+  - fit's `/config/text`, `/node`, the store and the console are not in akit.
+- Benchmark: none (rule 24: the control plane).
 
 ### 2026-11-24: I17, reverse proxy III: timeouts, cancellation, trailers
 

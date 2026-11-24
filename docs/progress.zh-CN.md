@@ -10,14 +10,58 @@
 | | |
 | --- | --- |
 | 最后更新 | 2026-11-24 |
-| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I17、I19–I24 已完成（I17b 等待 akio）；M2 的 I26、I30、I35、I37 和 M3 的 I39、I40、I41 已提前完成。 |
+| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I17、I19–I24 已完成（I17b 等待 akio）；M2 的 I26、I27、I30、I35、I37 和 M3 的 I39、I40、I41 已提前完成。 |
 | akio | akio `main` 上的 `60547435`（`1.0.0-rc.1`，带 A1–A5、A7、A8、A11、A13 和 A16–A21），在 `Cargo.toml` 中按 `rev` 锁定 |
 | fit | 作为规格；本计划基于 `7daee573` 阅读 |
-| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；基于 akio 的 A1 保留、增加、修改和排空监听器，包括启动时的监听器，重载可新增 h3 监听器；服务 h3 的启动监听器要重启才能变）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证；按 fit 的方式每次握手选择证书，重载或 `-watch-certs` 替换证书而不关闭监听器）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；路由中间件：`rewrite`（前缀）、`redirect`、`headers`、`rate_limit`、`concurrency_limit` 和 `body_limit`；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`、双向流式转发 body 并联动背压，双向透传 trailer，`timeout` 和上游的 `response_timeout`，超时回答 504，客户端在 body 中途离开时放弃上游请求）；所有监听器和代理上的 `limits.max_body_bytes`（413）；fit 的 json、text 和 line 格式的访问日志；上游连接池，轮询、加权轮询和最少连接，跳过被被动健康检查（`max_fails`、`fail_timeout`）和主动健康检查（`health_check`：http 和 tcp 探测）下线的地址；回环地址上的 Admin API（`GET /config`，也可按 JSON 指针读取，带 `If-Match` 的 `POST /load`，`GET /versions`），加载与 SIGHUP 一样作为重载应用，两者共用一份历史记录；Admin API 的 `GET /metrics` 提供 fit 的 Prometheus 指标（有 `metrics` 时按监听器和路由的请求、上游和后端、证书、连接、重载、akio 的引擎）；兼容性门禁：80 个夹具，14 个有效，65 个只因暂不支持被拒绝，1 个跳过，没有失败兼容性门禁：80 个夹具，11 个有效，68 个只因暂不支持被拒绝，1 个跳过，没有失败 |
+| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；基于 akio 的 A1 保留、增加、修改和排空监听器，包括启动时的监听器，重载可新增 h3 监听器；服务 h3 的启动监听器要重启才能变）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证；按 fit 的方式每次握手选择证书，重载或 `-watch-certs` 替换证书而不关闭监听器）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；路由中间件：`rewrite`（前缀）、`redirect`、`headers`、`rate_limit`、`concurrency_limit` 和 `body_limit`；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`、双向流式转发 body 并联动背压，双向透传 trailer，`timeout` 和上游的 `response_timeout`，超时回答 504，客户端在 body 中途离开时放弃上游请求）；所有监听器和代理上的 `limits.max_body_bytes`（413）；fit 的 json、text 和 line 格式的访问日志；上游连接池，轮询、加权轮询和最少连接，跳过被被动健康检查（`max_fails`、`fail_timeout`）和主动健康检查（`health_check`：http 和 tcp 探测）下线的地址；回环地址上的 Admin API（`GET /config`，也可按 JSON 指针读取，`POST /load`，用 `PUT`、`PATCH` 和 `DELETE /config` 按指针编辑，`POST /rollback/{n}`，`POST /reload`，都带 `If-Match`，除回滚外都可 `?dry_run=1`，`GET /versions`；有 `token_file` 时每个请求都要带 bearer 令牌），修改与 SIGHUP 一样作为重载应用，两者共用一份历史记录；Admin API 的 `GET /metrics` 提供 fit 的 Prometheus 指标（有 `metrics` 时按监听器和路由的请求、上游和后端、证书、连接、重载、akio 的引擎）；兼容性门禁：80 个夹具，14 个有效，65 个只因暂不支持被拒绝，1 个跳过，没有失败兼容性门禁：80 个夹具，11 个有效，68 个只因暂不支持被拒绝，1 个跳过，没有失败 |
 | 下一步 | I18；akio 有了 A36–A38 后做 I17b |
 | akio 需求 | A1–A5、A7、A8、A11、A13、A16–A21 已在 akio 的 main 并已锁定；A6 在 akio 分支 `claude/x509-csr` 上；A9、A10、A12、A14、A15、A22–A24、A29、A30、A32、A33、A35–A38、A45、A48 和 A49 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
 
 ## 日志
+
+### 2026-11-24：I27，Admin API II：局部修改、回滚、认证
+
+- 配置：读取 `admin.token_file`（`Admin::token_file`；空串即没有）。非回环地址仍被拒绝：fit 在那里还要求 TLS
+  （`cert_file`、`key_file`），而 akit 还不能通过 TLS 提供 API；错误信息如是说明。
+- `akit-admin`：`PUT`、`PATCH`（`application/merge-patch+json` 或 `application/json`）和
+  `DELETE /config[/<pointer>]`，`POST /rollback/{n}` 和 `POST /reload`，与 fit 一样：设置、新增或追加（`-`）一个值，
+  按 RFC 7396 合并，删除；配置本身不能删除；整份放入的配置按写入时的样子保存，编辑过的配置按 fit 的写法重新写出
+  （`Value::to_json`）。请求体与加载一样在 `max_config_bytes` 之内流式读入（413、415）；指针和 `?dry_run` 在 I/O
+  线程上检查，修改作为 `Job`（现在是一个 `Op`：load、put、patch、delete、rollback、reload）交给控制线程。
+  `Configs::change` 在为应用排序的锁下、比较过 `If-Match` 之后（412 时什么都不调用）从正在运行的配置做出修改，
+  并发写入不会丢失；`Configs::update` 就是数据固定的它。`Refused::Request` 带指针的 400/404 和
+  “version n is not kept”；回滚的来源是 `SOURCE_ROLLBACK`（`rollback`），重载的来源是 `admin`，与 fit 一样。
+  `pointer.rs` 增加 `put`、`remove`、`merge_patch` 和 `lookup_mut`，错误信息与 fit 相同。
+- 试运行（`POST /load`、`PUT`、`PATCH`、`DELETE` 和 `POST /reload` 上的 `?dry_run=1` 或 `true`；除 `0`、`false`
+  或不带之外的值回 400）：`Mode::DryRun` 走应用的路径但不产生效果；回答带 `dry_run`、正在运行的版本和 ETag、
+  `new_etag`、`unchanged`、应用时会增加和移除的监听器及其提示，以及 `Fit-Dry-Run: 1`（`DRY_RUN_HEADER`）；被拒绝的
+  试运行与应用的回答逐字相同。新增的 `akit_listener::Listeners::plan` 说明 `reload` 会打开和关闭什么而不改变任何
+  东西：解析新监听器的地址，除非正在运行的监听器占着它，否则短暂绑定一下；`akit run` 的 `Runner::check` 用空的
+  引擎槽和自己的注册表编译后调用它，不计入重载。
+- 令牌：API 启动时读取（去掉首尾空白；为空或读不到则启动失败）；此后每个请求都要带
+  `Authorization: Bearer <token>`，以常数时间比较，否则回 401 并带 `WWW-Authenticate`；有令牌时不再检查回环
+  `Host`，`Origin` 仍然拒绝，与 fit 的 guard 一样。
+- 测试：`akit-admin/tests/admin.rs`（21 个，新增 11 个），移植了 fit 的 `edit_test.go`、`dryrun_test.go` 和
+  `TestToken`：按指针编辑并得到 fit 预期的配置；被拒绝的编辑（无效地址带 fit 的行列号、不存在的模块、未知字段、
+  不是 JSON、404 的指针、415、405、根不能删除）；ETag 过期时各种修改都被拒绝；16 个并发写入者（8 个带 `If-Match`，
+  遇 412 重试，8 个不带、只追加）各被应用一次；回滚（作为新版本、来源 `rollback`、已不保留的版本、`x`）；重载；
+  试运行（回答、头、与应用相同的拒绝、被占用的地址、错误的 `dry_run`，然后用试运行给出的 ETag 应用）；移除监听器
+  的试运行不释放任何东西；令牌；编辑请求体低于、等于和超过限制，以及中途断开。单元测试：编辑树（fit 的
+  `TestEditTree` 和 `TestPointer`）、`Configs::change` 和令牌比较。`akit-listener/tests/reload.rs`：
+  `Listeners::plan`。`akit-config/tests/admin.rs`：`token_file`。`akit/tests/admin.rs`：`akit run` 端到端地带令牌
+  做一次编辑、一次试运行和一次回滚。门禁中 `admin.token_file` 的样例。
+- 已检查：macOS 上 `make check`；Linux（基准测试主机）上 akit-admin、akit-config、akit-listener、akit 和
+  akit-compat 的测试，epoll 和 io_uring，全部通过（更早的一次 epoll 运行碰到 `akit-listener` 已知的偶发失败 `unchanged_listeners_are_kept_and_new_ones_opened_and_closed`）。
+- 与 fit 的差异：
+  - API 没有 TLS（`cert_file`、`key_file`、`client_ca_file`），因此无论有没有令牌都不能用非回环地址；还没有 Unix
+    套接字（A23）。
+  - 401 之后不像 fit 那样关闭连接（akio API 需求 A24，与 413 一样）。
+  - 没有移植 fit 的连接限制器（`max_conns` 的四分之一留给出示过令牌的客户端，未认证连接 5 秒后关闭，每个对端一份
+    配额）：限制仍是引擎的 `max_connections`。
+  - 编辑的请求体用 akit 的 JSON 读取器解码，它允许注释和尾随逗号，而 fit 的 `encoding/json` 拒绝它们。
+  - akit-config 接受没有监听器的配置，fit 拒绝：`TestDryRun` 中第一个被拒绝的用例没有移植。
+  - fit 的 `/config/text`、`/node`、store 和 console 不在 akit 中。
+- 基准测试：无（规则 24：控制面）。
 
 ### 2026-11-24：I17，反向代理 III：超时、取消、trailer
 

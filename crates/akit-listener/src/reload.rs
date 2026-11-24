@@ -404,24 +404,14 @@ impl Listeners {
         }
     }
 
-    /// Publishes `graph` in the cell and moves the listeners to its: the unchanged ones kept,
-    /// the new and changed ones opened before the swap, the removed and changed ones drained
-    /// after it. Runs on the control plane (it resolves names and binds sockets). The cell's old
-    /// graph is left retiring: the caller [`collect`](GraphCell::collect)s it.
-    ///
-    /// # Errors
-    ///
-    /// When a new listener cannot be set up, or a listener serving HTTP/3 that the engine was
-    /// built with is removed or changed; nothing changes then, and `graph` is dropped (its
-    /// modules cleaned up). Except: a listener that had to stop listening to make room for its
-    /// replacement on a system that does not share ports stays stopped, as in fit.
-    pub fn reload(&mut self, graph: Graph) -> Result<Reloaded, ReloadError> {
-        let configs = graph.listeners().to_vec();
+    /// Per listener of `graph`, the running one it keeps; and per running listener, whether it
+    /// is kept. A TLS listener whose files changed only in its certificates is kept: its manager
+    /// serves the new ones from the swap on. Refused when a listener serving HTTP/3 that the
+    /// engine was built with would not be kept.
+    fn keeps(&self, graph: &Graph) -> Result<(Vec<Option<usize>>, Vec<bool>), ReloadError> {
         let mut kept = vec![false; self.entries.len()];
-        // Per listener of the new graph: the running one it keeps.
-        // A TLS listener whose files changed only in its certificates is kept: its manager
-        // serves the new ones from the swap on.
-        let keeps: Vec<Option<usize>> = configs
+        let keeps: Vec<Option<usize>> = graph
+            .listeners()
             .iter()
             .enumerate()
             .map(|(i, l)| {
@@ -447,6 +437,77 @@ impl Listeners {
                 address: e.address().unwrap_or(unspecified),
             });
         }
+        Ok((keeps, kept))
+    }
+
+    /// What [`reload`](Listeners::reload) would do with `graph`, done without changing anything,
+    /// for a dry run (I27, as fit's): the listeners it would open, at their addresses as
+    /// configured (a port 0 stays 0), and those it would close. A new listener's address is
+    /// resolved and, unless a running listener holds it (which a reload makes room on), tried by
+    /// binding it and letting it go at once. Runs on the control plane (it resolves names and
+    /// binds sockets).
+    ///
+    /// # Errors
+    ///
+    /// As [`reload`](Listeners::reload)'s: a new listener's address that does not resolve or is
+    /// taken, or a listener serving HTTP/3 that the engine was built with removed or changed.
+    pub fn plan(&self, graph: &Graph) -> Result<Reloaded, ReloadError> {
+        let (keeps, kept) = self.keeps(graph)?;
+        let mut report = Reloaded {
+            kept: keeps.iter().filter(|k| k.is_some()).count(),
+            ..Reloaded::default()
+        };
+        for (l, keep) in graph.listeners().iter().zip(&keeps) {
+            if keep.is_some() {
+                continue;
+            }
+            let address = |error| {
+                ReloadError::Listener(Error::Address {
+                    listener: l.name.clone(),
+                    address: l.address.clone(),
+                    error,
+                })
+            };
+            let addr = resolve(&l.address).map_err(address)?;
+            let held = self.entries.iter().any(|e| e.address() == Some(addr));
+            if addr.port() != 0 && !held {
+                if serves_tcp(l) {
+                    std::net::TcpListener::bind(addr).map_err(address)?;
+                }
+                if serves_h3(l) {
+                    std::net::UdpSocket::bind(addr).map_err(address)?;
+                }
+            }
+            report.added.push(Served {
+                name: l.name.clone(),
+                address: addr,
+                protocols: l.protocols.clone(),
+            });
+        }
+        report.removed = self
+            .entries
+            .iter()
+            .zip(&kept)
+            .filter(|(_, k)| !**k)
+            .filter_map(|(e, _)| e.served())
+            .collect();
+        Ok(report)
+    }
+
+    /// Publishes `graph` in the cell and moves the listeners to its: the unchanged ones kept,
+    /// the new and changed ones opened before the swap, the removed and changed ones drained
+    /// after it. Runs on the control plane (it resolves names and binds sockets). The cell's old
+    /// graph is left retiring: the caller [`collect`](GraphCell::collect)s it.
+    ///
+    /// # Errors
+    ///
+    /// When a new listener cannot be set up, or a listener serving HTTP/3 that the engine was
+    /// built with is removed or changed; nothing changes then, and `graph` is dropped (its
+    /// modules cleaned up). Except: a listener that had to stop listening to make room for its
+    /// replacement on a system that does not share ports stays stopped, as in fit.
+    pub fn reload(&mut self, graph: Graph) -> Result<Reloaded, ReloadError> {
+        let configs = graph.listeners().to_vec();
+        let (keeps, kept) = self.keeps(&graph)?;
         // The running listeners not kept, by index, and whether they stopped already.
         let mut room: Vec<(usize, bool)> = kept
             .iter()

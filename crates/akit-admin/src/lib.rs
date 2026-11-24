@@ -1,35 +1,48 @@
 #![forbid(unsafe_code)]
 #![warn(clippy::unwrap_used)]
-//! akit's Admin API (I26), with fit's paths and payloads (fit's `admin` package, decision 005),
+//! akit's Admin API (I26, I27), with fit's paths and payloads (fit's `admin` package, decision 005),
 //! served by akio-http on an engine of its own (akit's decision 006):
 //!
 //! ```text
-//! GET  /config[/<pointer>]  the running config, as it was written, or the value a JSON
-//!                           pointer names in it; ETag, If-None-Match
-//! POST /load                replace the running config with the body (application/json,
-//!                           within max_config_bytes), If-Match checked
-//! GET  /versions            the configs kept, oldest first
-//! GET  /versions/{n}        the config applied as version n
-//! GET  /metrics             the metrics scrape Options::metrics writes (I37), when set
+//! GET    /config[/<pointer>]  the running config, as it was written, or the value a JSON
+//!                             pointer names in it; ETag, If-None-Match
+//! PUT    /config[/<pointer>]  set that value to the body; "-" appends to an array (I27)
+//! PATCH  /config[/<pointer>]  merge the body into it, a JSON merge patch (RFC 7396) (I27)
+//! DELETE /config/<pointer>    remove it (I27)
+//! POST   /load                replace the running config with the body
+//! POST   /rollback/{n}        apply version n's config again, as a new version (I27)
+//! POST   /reload              apply the running config again, as a new version (I27)
+//! GET    /versions            the configs kept, oldest first
+//! GET    /versions/{n}        the config applied as version n
+//! GET    /metrics             the metrics scrape Options::metrics writes (I37), when set
 //! ```
+//!
+//! Bodies are JSON (`application/json`; for `PATCH`, `application/merge-patch+json` too), within
+//! `max_config_bytes`. Every change takes `If-Match`, checked against the running config under the
+//! lock that orders changes, so that concurrent writers lose nothing and a stale one gets 412;
+//! all but a rollback take `?dry_run=1`, which checks the change as an apply would and applies
+//! nothing. With `token_file`, every request must carry `Authorization: Bearer <token>` (I27).
 //!
 //! [`Configs`] keeps the configs applied, numbered, as written, and is the one path every config
 //! takes to the running server, from the files (SIGHUP) or the API. The API answers reads on its
 //! I/O thread; a load is handed, as a [`Job`], to the control thread, which applies it (through
-//! the same reload as SIGHUP, `akit_listener::Listeners::reload`) and answers it.
+//! the same reload as SIGHUP, `akit_listener::Listeners::reload`) and answers it; so are edits,
+//! rollbacks and reloads, each made from the running config under the history's lock.
 //!
-//! Edits by pointer, rollback, `POST /reload`, dry runs and the token come with I27; a Unix socket
-//! with akio API request A23; the file provider with I29.
+//! A Unix socket waits on akio API request A23; TLS for the API (`cert_file`, `key_file`), and
+//! with it an address off loopback, is not supported yet; the file provider comes with I29.
 
 mod configs;
 mod pointer;
 mod server;
 
 pub use configs::{
-    Applied, ApplyError, Configs, ListenerChange, Outcome, Refused, SOURCE_ADMIN,
-    SOURCE_CERTIFICATES, SOURCE_FILE, Version, etag_matches, etag_of,
+    Applied, ApplyError, Configs, ListenerChange, Mode, Outcome, Refused, SOURCE_ADMIN,
+    SOURCE_CERTIFICATES, SOURCE_FILE, SOURCE_ROLLBACK, Version, etag_matches, etag_of,
 };
-pub use server::{Job, METRICS_CONTENT_TYPE, Metrics, Options, Server, Submit, VERSION_HEADER};
+pub use server::{
+    DRY_RUN_HEADER, Job, METRICS_CONTENT_TYPE, Metrics, Options, Server, Submit, VERSION_HEADER,
+};
 
 /// The warning a config gets when its `admin` differs from the one akit started with: the API
 /// is not moved until a restart, as in fit.

@@ -62,6 +62,19 @@ fn defaults_and_values() {
         ),
         ("[::1]:2020", 3, 1024, 2)
     );
+    // The token (I27): a file, read when akit starts; none when left out or empty.
+    let a = admin(r#""token_file": "/etc/akit/token""#)
+        .unwrap()
+        .unwrap();
+    assert_eq!(a.token_file.as_deref(), Some("/etc/akit/token"));
+    let a = admin(r#""token_file": """#).unwrap().unwrap();
+    assert_eq!(a, Admin::default());
+    // Off loopback, a token is not enough: the API is not served over TLS yet.
+    let e = admin(r#""address": "0.0.0.0:2019", "token_file": "t""#).unwrap_err();
+    assert!(
+        e[0].contains("does not serve the Admin API over TLS yet"),
+        "{e:?}"
+    );
     for addr in ["localhost:2019", "127.0.0.2:1", "LOCALHOST:0"] {
         assert!(admin(&format!(r#""address": "{addr}""#)).is_ok(), "{addr}");
     }
@@ -90,10 +103,8 @@ fn refused() {
             r#""address": "unix//run/akit.sock""#,
             "admin.address: not supported yet: a Unix socket (akio API request A23)",
         ),
-        (
-            r#""token_file": "t""#,
-            "admin.token_file: not supported yet",
-        ),
+        (r#""token_file": 1"#, "admin.token_file: expected a string"),
+        (r#""cert_file": "c""#, "admin.cert_file: not supported yet"),
         (r#""console": {}"#, "admin.console: not supported yet"),
         (r#""bogus": 1"#, "admin.bogus: unknown field"),
     ] {

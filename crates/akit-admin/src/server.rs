@@ -1,9 +1,11 @@
 //! The Admin API's HTTP side: akio-http on an engine of its own, one I/O thread (decision 006).
 //!
 //! Reads (`GET /config`, `/versions`) are answered on the I/O thread from the history, which it
-//! holds only to clone an `Arc`. A load's body is streamed in under `max_config_bytes`, then the
-//! request is detached and handed, as a [`Job`], to the control thread through `submit`; that
-//! thread applies it (binding listeners and reading files, which block) and answers it.
+//! holds only to clone an `Arc`. A change's body (`POST /load`, `PUT` and `PATCH /config`) is
+//! streamed in under `max_config_bytes`; then the request is detached and handed, as a [`Job`],
+//! to the control thread through `submit`, as are `DELETE /config`, `POST /rollback/{n}` and
+//! `POST /reload`. That thread makes the change from the running config, under the history's
+//! lock, applies or checks it (binding listeners and reading files, which block) and answers it.
 
 use std::fmt;
 use std::io;
@@ -16,13 +18,17 @@ use akio_http::{BodyEvent, BodyMode, Context, Detached, HttpConfig, Method, Requ
 use akit_config::Errors;
 use akit_config::value::{Value, write_string};
 
-use crate::configs::{Applied, ApplyError, Configs, Outcome, Refused, SOURCE_ADMIN, Version};
-use crate::configs::{ListenerChange, etag_matches};
-use crate::pointer;
+use crate::configs::{Applied, ApplyError, Configs, Mode, Outcome, Refused, SOURCE_ADMIN, Version};
+use crate::configs::{ListenerChange, SOURCE_ROLLBACK, etag_matches};
+use crate::pointer::{self, Problem};
 
 /// The header that carries the version of the config a response is about: fit's name, so that
 /// fit's clients read it.
 pub const VERSION_HEADER: &str = "Fit-Config-Version";
+
+/// The header set, to `1`, on the answer of a dry run that passed: the config was checked, not
+/// applied, and [`VERSION_HEADER`] and `ETag` are still the running config's. fit's name.
+pub const DRY_RUN_HEADER: &str = "Fit-Dry-Run";
 
 /// What the control thread is given: `submit` hands it a [`Job`], and gives it back when it
 /// cannot be taken now (its queue is full), to be answered 503. Called on the API's I/O thread:
@@ -76,80 +82,199 @@ impl Default for Options {
     }
 }
 
-/// The largest body of a request other than a load: none is read.
+/// The largest body of a request other than a change: none is read.
 const OTHER_BODY_BYTES: usize = 64 << 10;
 
-/// A load waiting for the control thread: its config, its `If-Match`, and the request to answer.
-pub struct Job(Box<Load>);
+/// A change waiting for the control thread: what to change, its `If-Match`, whether it is a dry
+/// run, and the request to answer.
+pub struct Job(Box<Change>);
 
-struct Load {
-    data: Vec<u8>,
+struct Change {
+    op: Op,
     if_match: Option<String>,
+    mode: Mode,
     reply: Detached,
+}
+
+/// What a [`Job`] changes.
+enum Op {
+    /// `POST /load`: a whole config, the body.
+    Load(Vec<u8>),
+    /// `PUT /config[/<pointer>]`: the value there set to the body; at the root, a whole config,
+    /// kept as written.
+    Put(Vec<String>, Vec<u8>),
+    /// `PATCH /config[/<pointer>]`: the body merged into the value there.
+    Patch(Vec<String>, Vec<u8>),
+    /// `DELETE /config/<pointer>`: the value there removed.
+    Delete(Vec<String>),
+    /// `POST /rollback/{n}`: version `n`'s config applied again.
+    Rollback(u64),
+    /// `POST /reload`: the running config applied again.
+    Reload,
+}
+
+impl Op {
+    fn name(&self) -> &'static str {
+        match self {
+            Op::Load(_) => "load",
+            Op::Put(..) => "put",
+            Op::Patch(..) => "patch",
+            Op::Delete(_) => "delete",
+            Op::Rollback(_) => "rollback",
+            Op::Reload => "reload",
+        }
+    }
 }
 
 impl fmt::Debug for Job {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let bytes = match &self.0.op {
+            Op::Load(b) | Op::Put(_, b) | Op::Patch(_, b) => b.len(),
+            _ => 0,
+        };
         f.debug_struct("Job")
-            .field("bytes", &self.0.data.len())
+            .field("op", &self.0.op.name())
+            .field("bytes", &bytes)
             .field("if_match", &self.0.if_match)
+            .field("mode", &self.0.mode)
             .finish_non_exhaustive()
     }
 }
 
+/// A body as text: 400 when it is not UTF-8.
+fn utf8(data: Vec<u8>) -> Result<String, Refused> {
+    String::from_utf8(data).map_err(|_| Refused::Request {
+        status: 400,
+        msg: "the body is not UTF-8".into(),
+    })
+}
+
+/// A body as one JSON value: 400 when it is not, as fit's `decodeJSON`.
+fn body_value(text: &str) -> Result<Value, Refused> {
+    akit_config::value::parse(text).map_err(|errs| Refused::Request {
+        status: 400,
+        msg: format!(
+            "the body is not JSON: {}",
+            errs.as_slice().first().map_or("", |e| e.msg.as_str())
+        ),
+    })
+}
+
+/// A config sent whole, as standard JSON: 400 with its errors when it is not JSON.
+fn whole(text: &str) -> Result<String, Refused> {
+    akit_config::value::standardize(text).map_err(|errs| Refused::Apply(ApplyError::Config(errs)))
+}
+
+/// The running config `cur` with `change` made to it at `tokens`, written out as fit writes an
+/// edited config.
+fn edited(
+    cur: &Version,
+    change: impl FnOnce(&mut Value) -> Result<(), Problem>,
+) -> Result<String, Refused> {
+    let problem = |p: Problem| Refused::Request {
+        status: p.status,
+        msg: p.msg,
+    };
+    let mut root = akit_config::value::parse(cur.data()).map_err(|_| Refused::Request {
+        status: 500,
+        msg: "the running config is not JSON".into(),
+    })?;
+    change(&mut root).map_err(problem)?;
+    Ok(root.to_json())
+}
+
 impl Job {
-    /// Applies the config through `configs` with `apply` (which loads, compiles and serves it:
-    /// the control thread's) and answers the request as fit's API answers it. Returns what was
-    /// applied, for the caller to report, or `None` when nothing was.
+    /// Makes the change from the running config in `configs` and applies it with `apply` (which
+    /// loads, compiles and serves a config, or with [`Mode::DryRun`] only checks it: the control
+    /// thread's), and answers the request as fit's API answers it. Returns what was applied, for
+    /// the caller to report, or `None` when nothing was (a dry run included).
     pub fn run(
         self,
         configs: &Configs,
-        apply: impl FnOnce(&str) -> Result<Applied, ApplyError>,
+        apply: impl FnOnce(&str, Mode) -> Result<Applied, ApplyError>,
     ) -> Option<Outcome> {
-        let Load {
-            data,
+        let Change {
+            op,
             if_match,
+            mode,
             reply,
         } = *self.0;
-        let text = match String::from_utf8(data) {
-            Ok(t) => t,
-            Err(_) => {
-                reply.respond(error(400, "the config is not UTF-8"));
-                return None;
-            }
+        let if_match = if_match.as_deref();
+        let r = match op {
+            Op::Load(data) => utf8(data).and_then(|text| {
+                configs.change(SOURCE_ADMIN, if_match, mode, |_| whole(&text), apply)
+            }),
+            // A whole config, kept as written; the body must be JSON before anything is compared.
+            Op::Put(tokens, data) if tokens.is_empty() => utf8(data).and_then(|text| {
+                body_value(&text)?;
+                configs.change(SOURCE_ADMIN, if_match, mode, |_| whole(&text), apply)
+            }),
+            Op::Put(tokens, data) => utf8(data).and_then(|text| {
+                let v = body_value(&text)?;
+                configs.change(
+                    SOURCE_ADMIN,
+                    if_match,
+                    mode,
+                    |cur| edited(cur, |root| pointer::put(root, &tokens, v)),
+                    apply,
+                )
+            }),
+            Op::Patch(tokens, data) => utf8(data).and_then(|text| {
+                let v = body_value(&text)?;
+                configs.change(
+                    SOURCE_ADMIN,
+                    if_match,
+                    mode,
+                    |cur| {
+                        edited(cur, |root| {
+                            pointer::lookup_mut(root, &tokens)
+                                .map(|target| pointer::merge_patch(target, v))
+                        })
+                    },
+                    apply,
+                )
+            }),
+            Op::Delete(tokens) => configs.change(
+                SOURCE_ADMIN,
+                if_match,
+                mode,
+                |cur| edited(cur, |root| pointer::remove(root, &tokens)),
+                apply,
+            ),
+            Op::Rollback(n) => configs.change(
+                SOURCE_ROLLBACK,
+                if_match,
+                mode,
+                |_| match configs.version(n) {
+                    Some(v) => Ok(v.data().to_owned()),
+                    None => Err(Refused::Request {
+                        status: 404,
+                        msg: format!("version {n} is not kept"),
+                    }),
+                },
+                apply,
+            ),
+            Op::Reload => configs.change(
+                SOURCE_ADMIN,
+                if_match,
+                mode,
+                |cur| Ok(cur.data().to_owned()),
+                apply,
+            ),
         };
-        let std = match akit_config::value::standardize(&text) {
-            Ok(s) => s,
-            Err(errs) => {
-                reply.respond(not_applied(&errs));
-                return None;
-            }
-        };
-        match configs.update(SOURCE_ADMIN, if_match.as_deref(), std, apply) {
+        match r {
             Ok(o) => {
-                reply.respond(
-                    json(200, loaded(&o))
-                        .header("ETag", &o.etag)
-                        .header(VERSION_HEADER, o.version.to_string()),
-                );
-                Some(o)
+                let mut resp = json(200, loaded(&o))
+                    .header("ETag", &o.etag)
+                    .header(VERSION_HEADER, o.version.to_string());
+                if o.dry_run {
+                    resp = resp.header(DRY_RUN_HEADER, "1");
+                }
+                reply.respond(resp);
+                (!o.dry_run).then_some(o)
             }
-            Err(Refused::Changed) => {
-                reply.respond(error(
-                    412,
-                    "the config has changed since the ETag given in If-Match",
-                ));
-                None
-            }
-            Err(Refused::Apply(ApplyError::Config(errs))) => {
-                reply.respond(not_applied(&errs));
-                None
-            }
-            Err(Refused::Apply(ApplyError::Failed(msg))) => {
-                reply.respond(error(
-                    500,
-                    &format!("the config was not applied; the running config stays: {msg}"),
-                ));
+            Err(e) => {
+                reply.respond(refused(&e));
                 None
             }
         }
@@ -159,6 +284,22 @@ impl Job {
     /// down, or the control thread cannot take it.
     pub fn refuse(self, status: u16, msg: &str) {
         self.0.reply.respond(error(status, msg));
+    }
+}
+
+/// The answer to a change refused, as fit's `writeUpdateError`.
+fn refused(e: &Refused) -> Response {
+    match e {
+        Refused::Changed => error(
+            412,
+            "the config has changed since the ETag given in If-Match",
+        ),
+        Refused::Request { status, msg } => error(*status, msg),
+        Refused::Apply(ApplyError::Config(errs)) => not_applied(errs),
+        Refused::Apply(ApplyError::Failed(msg)) => error(
+            500,
+            &format!("the config was not applied; the running config stays: {msg}"),
+        ),
     }
 }
 
@@ -194,24 +335,31 @@ fn resolve(address: &str) -> io::Result<SocketAddr> {
 }
 
 impl Server {
-    /// Listens where `settings` says and serves the Admin API for `configs`, handing loads to
-    /// the control thread with `submit`. On the control plane: it binds a socket.
+    /// Listens where `settings` says and serves the Admin API for `configs`, handing changes to
+    /// the control thread with `submit`. With `token_file`, every request must carry the token it
+    /// holds. On the control plane: it reads the token file and binds a socket.
     ///
     /// # Errors
     ///
-    /// When the address does not parse or cannot be bound.
+    /// When the token file cannot be read or holds no token, or the address does not parse or
+    /// cannot be bound.
     pub fn start(
         settings: &akit_config::Admin,
         configs: Configs,
         submit: Submit,
         opts: &Options,
     ) -> io::Result<Server> {
+        let token = match &settings.token_file {
+            None => None,
+            Some(file) => Some(read_token(file)?),
+        };
         let addr = resolve(&settings.address)?;
         let api = Api(Arc::new(Shared {
             configs,
             submit,
             max_body: settings.max_config_bytes,
             metrics: opts.metrics.clone(),
+            token,
         }));
         let mut http = HttpConfig::default();
         // HTTP/1.1 alone: one request at a time on each of the connections max_conns counts.
@@ -253,31 +401,95 @@ impl Server {
     }
 }
 
+/// The token in `file`, as fit reads it: the file's content, trimmed of white space.
+fn read_token(file: &str) -> io::Result<Vec<u8>> {
+    let data = std::fs::read_to_string(file)
+        .map_err(|e| io::Error::new(e.kind(), format!("token_file {file}: {e}")))?;
+    let token = data.trim();
+    if token.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("token_file {file} is empty"),
+        ));
+    }
+    Ok(token.as_bytes().to_vec())
+}
+
 struct Shared {
     configs: Configs,
     submit: Submit,
     max_body: usize,
     metrics: Option<Metrics>,
+    /// The token every request must carry, from `token_file`; none asked for without it.
+    token: Option<Vec<u8>>,
 }
 
 struct Api(Arc<Shared>);
 
-fn is_load(req: &Request) -> bool {
-    req.method == Method::Post && req.path() == "/load"
+/// Whether `req` sends a config or a value of one: its body is streamed in, within
+/// `max_config_bytes`.
+fn takes_config(req: &Request) -> bool {
+    let path = req.path();
+    match req.method {
+        Method::Post => path == "/load",
+        Method::Put | Method::Patch => path == "/config" || path.starts_with("/config/"),
+        _ => false,
+    }
 }
+
+/// The JSON pointer a `/config[/<pointer>]` path names, percent-decoded: none (the root) for
+/// `/config` and `/config/`, as fit's.
+fn pointer_of(path: &str) -> Result<Vec<String>, Problem> {
+    let rest = path.get("/config".len()..).unwrap_or("");
+    if rest.is_empty() || rest == "/" {
+        return Ok(Vec::new());
+    }
+    let Some(decoded) = akio_http::message::percent_decode(rest) else {
+        return Err(Problem::new(
+            400,
+            format!("{rest:?} is not a JSON pointer: a bad escape"),
+        ));
+    };
+    pointer::parse(&decoded)
+}
+
+/// Whether the request asks for a dry run: `?dry_run=1` or `true`; anything but those, `0`,
+/// `false` or none is refused, as fit's `isDryRun`.
+fn mode_of(ctx: &Context) -> Result<Mode, Problem> {
+    match ctx.req().query_param("dry_run") {
+        None | Some("" | "0" | "false") => Ok(Mode::Apply),
+        Some("1" | "true") => Ok(Mode::DryRun),
+        Some(other) => Err(Problem::new(
+            400,
+            format!("dry_run is 1 or true, 0 or false, not {other:?}"),
+        )),
+    }
+}
+
+/// The answer to a request refused before it is handed on.
+fn problem(p: &Problem) -> Response {
+    error(p.status, &p.msg)
+}
+
+const CONFIG_METHODS: &str = "GET, HEAD, PUT, PATCH, DELETE";
 
 impl akio_http::Service for Api {
     fn call(&self, ctx: &mut Context) {
-        if let Some(resp) = guard(ctx) {
+        if let Some(resp) = guard(ctx, self.0.token.as_deref()) {
             ctx.respond(resp);
             return;
         }
         let path = ctx.path().to_owned();
         let method = ctx.method().clone();
         let read = matches!(method, Method::Get | Method::Head);
+        let post = method == Method::Post;
         let resp = match path.as_str() {
-            "/load" if method == Method::Post => return load(&self.0, ctx),
-            "/load" => not_allowed("POST"),
+            "/load" if post => return change(&self.0, ctx, None),
+            "/reload" if post => match mode_of(ctx) {
+                Ok(mode) => return submit(&self.0, ctx, Op::Reload, mode),
+                Err(p) => problem(&p),
+            },
+            "/load" | "/reload" => not_allowed("POST"),
             "/versions" if read => versions(&self.0.configs),
             "/metrics" if read => match &self.0.metrics {
                 Some(write) => {
@@ -289,8 +501,16 @@ impl akio_http::Service for Api {
             },
             "/metrics" => not_allowed("GET, HEAD"),
             "/versions" => not_allowed("GET, HEAD"),
-            "/reload" => not_yet("POST /reload"),
-            p if p.starts_with("/rollback/") => not_yet("POST /rollback"),
+            p if p.starts_with("/rollback/") => {
+                if !post {
+                    not_allowed("POST")
+                } else if let Ok(n) = p.get("/rollback/".len()..).unwrap_or("").parse::<u64>() {
+                    // fit's rollback takes no dry_run.
+                    return submit(&self.0, ctx, Op::Rollback(n), Mode::Apply);
+                } else {
+                    error(404, "versions are numbers")
+                }
+            }
             p if p.starts_with("/versions/") => {
                 if read {
                     version(&self.0.configs, p.get("/versions/".len()..).unwrap_or(""))
@@ -300,10 +520,17 @@ impl akio_http::Service for Api {
             }
             p if p == "/config" || p.starts_with("/config/") => match method {
                 Method::Get | Method::Head => get_config(ctx, &self.0.configs, &path),
-                Method::Put | Method::Patch | Method::Delete => {
-                    not_yet(&format!("{} /config", method.as_str()))
-                }
-                _ => not_allowed("GET, HEAD"),
+                Method::Put | Method::Patch => match pointer_of(&path) {
+                    Ok(tokens) => return change(&self.0, ctx, Some(tokens)),
+                    Err(p) => problem(&p),
+                },
+                Method::Delete => match pointer_of(&path).and_then(|t| Ok((t, mode_of(ctx)?))) {
+                    Ok((tokens, mode)) => {
+                        return submit(&self.0, ctx, Op::Delete(tokens), mode);
+                    }
+                    Err(p) => problem(&p),
+                },
+                _ => not_allowed(CONFIG_METHODS),
             },
             _ => error(404, "there is no such endpoint"),
         };
@@ -311,7 +538,7 @@ impl akio_http::Service for Api {
     }
 
     fn body_mode(&self, req: &Request) -> BodyMode {
-        if is_load(req) {
+        if takes_config(req) {
             BodyMode::Stream
         } else {
             BodyMode::Buffered
@@ -319,11 +546,41 @@ impl akio_http::Service for Api {
     }
 }
 
-/// What must not reach the API, refused as fit refuses it: a request from a web page, which a
-/// browser marks with `Origin` (but a read from the API's own origin), and one whose `Host` is not
-/// a loopback name, as a web page's is after DNS rebinding. (Without a token, I27, the API
-/// listens on loopback only.)
-fn guard(ctx: &Context) -> Option<Response> {
+/// Hands `op` to the control thread, the request detached to be answered there; 503 when it
+/// cannot take it now.
+fn submit(shared: &Shared, ctx: &mut Context, op: Op, mode: Mode) {
+    let if_match = ctx.header("If-Match").map(str::to_owned);
+    let Some(reply) = ctx.detach() else { return };
+    let job = Job(Box::new(Change {
+        op,
+        if_match,
+        mode,
+        reply,
+    }));
+    if let Err(job) = (shared.submit)(job) {
+        job.refuse(503, "akit is busy applying other configs: try again");
+    }
+}
+
+/// What must not reach the API, refused as fit refuses it: with a token asked for, a request
+/// without it (401); a request from a web page, which a browser marks with `Origin` (but a read
+/// from the API's own origin); and, without a token, one whose `Host` is not a loopback name, as
+/// a web page's is after DNS rebinding.
+fn guard(ctx: &Context, token: Option<&[u8]>) -> Option<Response> {
+    if let Some(token) = token {
+        let valid = ctx
+            .header("Authorization")
+            .and_then(|a| a.strip_prefix("Bearer "))
+            .is_some_and(|got| same(got.as_bytes(), token));
+        if !valid {
+            // fit closes the connection too, so that a client cannot try again on it: akio-http
+            // cannot close a connection after a response yet (akio API request A24).
+            return Some(
+                error(401, "a valid bearer token is needed")
+                    .header("WWW-Authenticate", "Bearer realm=\"akit admin\""),
+            );
+        }
+    }
     let host = ctx.header("Host").unwrap_or("");
     if let Some(origin) = ctx.header("Origin") {
         let same_origin_read = matches!(ctx.method(), Method::Get | Method::Head)
@@ -334,10 +591,16 @@ fn guard(ctx: &Context) -> Option<Response> {
             return Some(error(403, "requests from web pages are refused"));
         }
     }
-    if !loopback_host(host) {
+    if token.is_none() && !loopback_host(host) {
         return Some(error(403, "the Host field must name a loopback host"));
     }
     None
+}
+
+/// Whether `a` and `b` are the same bytes, in a time that does not depend on where they differ
+/// (but on their lengths), as Go's `subtle.ConstantTimeCompare`.
+fn same(a: &[u8], b: &[u8]) -> bool {
+    a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
 /// Whether `hostport` names `localhost` or a loopback address, as fit's `loopbackHost`.
@@ -357,24 +620,29 @@ fn loopback_host(hostport: &str) -> bool {
         || host.parse::<IpAddr>().is_ok_and(|ip| ip.is_loopback())
 }
 
-/// `POST /load`: the body, JSON within `max_config_bytes`, streamed in and handed to the control
-/// thread.
-fn load(shared: &Arc<Shared>, ctx: &mut Context) {
-    match ctx.req().query_param("dry_run") {
-        None | Some("" | "0" | "false") => {}
-        Some("1" | "true") => return ctx.respond(not_yet("dry_run")),
-        Some(other) => {
-            let msg = format!("dry_run is 1 or true, 0 or false, not {other:?}");
-            return ctx.respond(error(400, &msg));
-        }
-    }
-    let json_type = ctx.header("Content-Type").is_some_and(|t| {
+/// `POST /load` (`tokens` none), `PUT` or `PATCH /config[/<pointer>]`: the body, JSON within
+/// `max_config_bytes`, streamed in and handed to the control thread.
+fn change(shared: &Arc<Shared>, ctx: &mut Context, tokens: Option<Vec<String>>) {
+    let mode = match mode_of(ctx) {
+        Ok(m) => m,
+        Err(p) => return ctx.respond(problem(&p)),
+    };
+    let patch = ctx.method() == &Method::Patch;
+    let types: &[&str] = if patch {
+        &["application/merge-patch+json", "application/json"]
+    } else {
+        &["application/json"]
+    };
+    let typed = ctx.header("Content-Type").is_some_and(|t| {
         t.split(';')
             .next()
-            .is_some_and(|m| m.trim().eq_ignore_ascii_case("application/json"))
+            .is_some_and(|m| types.iter().any(|w| m.trim().eq_ignore_ascii_case(w)))
     });
-    if !json_type {
-        return ctx.respond(error(415, "the body must be sent as application/json"));
+    if !typed {
+        return ctx.respond(error(
+            415,
+            &format!("the body must be sent as {}", types.join(" or ")),
+        ));
     }
     let max = shared.max_body;
     // What more the client sends is read and dropped, within the body timeout: akio-http cannot
@@ -391,7 +659,6 @@ fn load(shared: &Arc<Shared>, ctx: &mut Context) {
     if declared.is_some_and(|n| n > u64::try_from(max).unwrap_or(u64::MAX)) {
         return ctx.respond(too_large());
     }
-    let if_match = ctx.header("If-Match").map(str::to_owned);
     // The body as it arrives, within max: bounded by the length sent, when one is.
     let mut data = Vec::with_capacity(
         declared
@@ -401,7 +668,7 @@ fn load(shared: &Arc<Shared>, ctx: &mut Context) {
     );
     let shared = Arc::clone(shared);
     let mut over = false;
-    let mut if_match = Some(if_match);
+    let mut tokens = Some(tokens);
     ctx.on_body(move |ctx, ev| {
         if over {
             return;
@@ -417,15 +684,13 @@ fn load(shared: &Arc<Shared>, ctx: &mut Context) {
                 }
             }
             BodyEvent::End(_) => {
-                let Some(reply) = ctx.detach() else { return };
-                let job = Job(Box::new(Load {
-                    data: std::mem::take(&mut data),
-                    if_match: if_match.take().flatten(),
-                    reply,
-                }));
-                if let Err(job) = (shared.submit)(job) {
-                    job.refuse(503, "akit is busy applying other configs: try again");
-                }
+                let data = std::mem::take(&mut data);
+                let op = match tokens.take().flatten() {
+                    None => Op::Load(data),
+                    Some(t) if patch => Op::Patch(t, data),
+                    Some(t) => Op::Put(t, data),
+                };
+                submit(&shared, ctx, op, mode);
             }
         }
     });
@@ -442,21 +707,16 @@ fn get_config(ctx: &Context, configs: &Configs, path: &str) -> Response {
             .header("ETag", &v.etag)
             .header(VERSION_HEADER, v.number.to_string());
     }
-    let rest = path.get("/config".len()..).unwrap_or("");
-    if rest.is_empty() || rest == "/" {
+    let tokens = match pointer_of(path) {
+        Ok(t) => t,
+        Err(p) => return problem(&p),
+    };
+    if tokens.is_empty() {
         return config(&v);
     }
-    let Some(decoded) = akio_http::message::percent_decode(rest) else {
-        return error(
-            400,
-            &format!("{rest:?} is not a JSON pointer: a bad escape"),
-        );
-    };
-    let found = pointer::parse(&decoded).and_then(|tokens| {
-        let root = akit_config::value::parse(v.data())
-            .map_err(|_| pointer::Problem::new(500, "the running config is not JSON".into()))?;
-        pointer::lookup(&root, &tokens).map(Value::to_json)
-    });
+    let found = akit_config::value::parse(v.data())
+        .map_err(|_| Problem::new(500, "the running config is not JSON".into()))
+        .and_then(|root| pointer::lookup(&root, &tokens).map(Value::to_json));
     match found {
         Ok(body) => json(200, body)
             .header("ETag", &v.etag)
@@ -506,10 +766,22 @@ fn version(configs: &Configs, n: &str) -> Response {
     }
 }
 
-/// A load's answer: its version and ETag, the listeners it opened and closed, its warnings.
+/// A change's answer, as fit's: its version and ETag, the listeners it opened and closed, its
+/// warnings; for a dry run, the running config's version and ETag and the ETag it would have.
 fn loaded(o: &Outcome) -> String {
-    let mut b = format!("{{\"version\":{},\"etag\":", o.version);
+    let mut b = String::from("{");
+    if o.dry_run {
+        b.push_str("\"dry_run\":true,");
+    }
+    b.push_str(&format!("\"version\":{},\"etag\":", o.version));
     write_string(&mut b, &o.etag);
+    if !o.new_etag.is_empty() {
+        b.push_str(",\"new_etag\":");
+        write_string(&mut b, &o.new_etag);
+    }
+    if o.unchanged {
+        b.push_str(",\"unchanged\":true");
+    }
     let lists = [
         ("listeners_added", &o.applied.added),
         ("listeners_removed", &o.applied.removed),
@@ -595,17 +867,17 @@ fn not_allowed(allow: &str) -> Response {
     error(405, "method not allowed").header("Allow", allow)
 }
 
-/// 501 for what fit's API does and akit's does not yet: edits, rollback, reload and dry runs
-/// come with I27.
-fn not_yet(what: &str) -> Response {
-    error(
-        501,
-        &format!("{what} is not supported yet (the Admin API's edits, I27)"),
-    )
-}
-
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn tokens_compared() {
+        assert!(super::same(b"s3cret", b"s3cret"));
+        assert!(!super::same(b"s3cret", b"s3creT"));
+        assert!(!super::same(b"s3cret", b"s3cre"));
+        assert!(!super::same(b"", b"x"));
+        assert!(super::same(b"", b""));
+    }
+
     #[test]
     fn loopback_hosts() {
         for h in [

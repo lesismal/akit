@@ -126,7 +126,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I25 | M1 conformance and report | I09–I24 | todo |
 | **M2** | | | |
 | I26 | Admin API I: load, read, versions | I22 | done |
-| I27 | Admin API II: patch, rollback, auth | I26 | todo |
+| I27 | Admin API II: patch, rollback, auth | I26 | done |
 | I28 | Listeners diffed at run time | I26, A1 | todo |
 | I29 | File provider | I26 | todo |
 | I30 | Certificate manager and storage | I09 | done |
@@ -516,6 +516,11 @@ Split from I07 so that the half that needs no config model runs beside I02.
   by ETag.
 - **Done when**: tests cover conflicts, rollback and auth.
 - **Touches**: `akit-admin`.
+- **fit**: `admin`, decision 005's I25 update.
+- **Done** (decision 006's I27 update): `PUT`, `PATCH` and `DELETE /config[/<pointer>]`,
+  `POST /rollback/{n}`, `POST /reload` and `?dry_run=1`, each change made from the running config
+  under the lock that orders applies; `admin.token_file`. TLS for the API, and with it an address
+  off loopback, is not done; closing a connection after a 401 waits on A24.
 
 ### I28 Listeners diffed at run time
 
