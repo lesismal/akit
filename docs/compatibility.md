@@ -175,7 +175,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 181 supported.
+3821 fields in 121 sections, at fit `7daee573`; 192 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -197,7 +197,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`http.handlers/media_tokens`](#fields-http-handlers-media-tokens) | 11 | 0 | 11 |
 | [`http.handlers/proxy`](#fields-http-handlers-proxy) | 20 | 6 | 14 |
 | [`http.handlers/respond`](#fields-http-handlers-respond) | 5 | 5 | 0 |
-| [`http.handlers/static`](#fields-http-handlers-static) | 16 | 13 | 3 |
+| [`http.handlers/static`](#fields-http-handlers-static) | 16 | 14 | 2 |
 | [`http.handlers/stream_whep`](#fields-http-handlers-stream-whep) | 5 | 0 | 5 |
 | [`http.handlers/stream_whip`](#fields-http-handlers-stream-whip) | 5 | 0 | 5 |
 | [`http.handlers/sync_ingest`](#fields-http-handlers-sync-ingest) | 6 | 0 | 6 |
@@ -211,7 +211,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`http.middleware/cache`](#fields-http-middleware-cache) | 17 | 0 | 17 |
 | [`http.middleware/circuit_breaker`](#fields-http-middleware-circuit-breaker) | 10 | 0 | 10 |
 | [`http.middleware/client_cert`](#fields-http-middleware-client-cert) | 4 | 4 | 0 |
-| [`http.middleware/compress`](#fields-http-middleware-compress) | 10 | 0 | 10 |
+| [`http.middleware/compress`](#fields-http-middleware-compress) | 10 | 10 | 0 |
 | [`http.middleware/concurrency_limit`](#fields-http-middleware-concurrency-limit) | 4 | 4 | 0 |
 | [`http.middleware/forward_auth`](#fields-http-middleware-forward-auth) | 7 | 7 | 0 |
 | [`http.middleware/headers`](#fields-http-middleware-headers) | 10 | 10 | 0 |
@@ -300,7 +300,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 33 | 5 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 181 | 3640 |
+| **Total** | 3821 | 192 | 3629 |
 
 <a id="fields-access"></a>
 
@@ -910,7 +910,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `routes[].handler<static>.params.browse` | `boolean` | supported |
 | `routes[].handler<static>.params.browse_max_entries` | `integer` | supported |
 | `routes[].handler<static>.params.check_interval` | `duration` | supported |
-| `routes[].handler<static>.params.compress` | `array<enum(zstd\|br\|gzip)>` | not supported yet |
+| `routes[].handler<static>.params.compress` | `array<enum(zstd\|br\|gzip)>` | supported |
 | `routes[].handler<static>.params.default_type` | `string` | not supported yet |
 | `routes[].handler<static>.params.disk_io` | `enum(pool\|auto)` | supported |
 | `routes[].handler<static>.params.dotfiles` | `enum(deny\|allow)` | supported |
@@ -1118,16 +1118,16 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `routes[].middleware[]<compress>` | `module` | not supported yet |
-| `routes[].middleware[]<compress>.params` | `object` | not supported yet |
-| `routes[].middleware[]<compress>.params.brotli_level` | `integer` | not supported yet |
-| `routes[].middleware[]<compress>.params.encodings` | `array<enum(zstd\|br\|gzip)>` | not supported yet |
-| `routes[].middleware[]<compress>.params.gzip_level` | `integer` | not supported yet |
-| `routes[].middleware[]<compress>.params.level` | `enum(fastest\|default\|better)` | not supported yet |
-| `routes[].middleware[]<compress>.params.max_in_flight` | `integer` | not supported yet |
-| `routes[].middleware[]<compress>.params.min_bytes` | `integer` | not supported yet |
-| `routes[].middleware[]<compress>.params.min_length` | `integer, deprecated` | not supported yet |
-| `routes[].middleware[]<compress>.params.zstd_level` | `integer` | not supported yet |
+| `routes[].middleware[]<compress>` | `module` | supported |
+| `routes[].middleware[]<compress>.params` | `object` | supported |
+| `routes[].middleware[]<compress>.params.brotli_level` | `integer` | supported |
+| `routes[].middleware[]<compress>.params.encodings` | `array<enum(zstd\|br\|gzip)>` | supported |
+| `routes[].middleware[]<compress>.params.gzip_level` | `integer` | supported |
+| `routes[].middleware[]<compress>.params.level` | `enum(fastest\|default\|better)` | supported |
+| `routes[].middleware[]<compress>.params.max_in_flight` | `integer` | supported |
+| `routes[].middleware[]<compress>.params.min_bytes` | `integer` | supported |
+| `routes[].middleware[]<compress>.params.min_length` | `integer, deprecated` | supported |
+| `routes[].middleware[]<compress>.params.zstd_level` | `integer` | supported |
 
 <a id="fields-http-middleware-concurrency-limit"></a>
 

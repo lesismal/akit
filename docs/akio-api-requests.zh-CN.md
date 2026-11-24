@@ -66,6 +66,9 @@
 | A75 | 挂起消息体流式读取的请求，并暂停其消息体的读取直到恢复 | 已提出（I43） | 5、7、8 | I42、I43、I44 |
 | A78 | 每个连接（TCP 或 UDP 对端）各自的空闲超时，由其处理器设置 | 已提出（I51） | 10、11 | I51、I55 |
 | A79 | 带各自连接超时的 `Engine::dial` 与 `dial_udp` | 已提出（I51） | 10 | I51、I54、I55 |
+| A90 | 由调用方自己的响应过滤器设置流式响应的编码，以及保留到响应发出为止的值 | 已在 akio 分支 `claude/a90-a91-compress` 上实现（ADR-112），未合并 | 8、11 | I47 |
+| A91 | `Files` 为内存中的文件保存压缩副本 | 已在 akio 分支 `claude/a90-a91-compress` 上实现（ADR-112），未合并 | 4、12 | I47 |
+| A92 | 从磁盘文件发送的消息体按流编码压缩 | 已提出（I47） | 1、5 | I47 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -957,3 +960,52 @@ TCP 10 分钟、UDP 1 分钟，每个服务各自设定。akio 只有整个引�
 
 **akit 的用法。** `akit_l4` 在上游的 `connect_timeout` 内拨号每个地址。在此之前，引擎的连接超时取各上游中最短
 的（`akit_listener::engine`，与 A12 相同），主机名解析出的多个地址用 `HappyEyeballs` 以上游的超时竞速。
+
+## A90 由调用方自己的过滤器设置流式响应的编码
+
+**问题。** fit 的 `compress` 中间件（I47）边写边压缩流式响应（代理的响应），有自己的协商（在它提供的编码中按 q 值，
+相同时按顺序）、自己的适用条件（除 206 外所有带消息体的状态码，`no-transform`、`Content-Range`、声明长度小于
+`min_bytes`）、弱标签，以及同时压缩的响应数上限（`max_in_flight`），每个名额在响应结束时归还。akio 的 `compress`
+中间件的选择与之不同，而且只有它能给流式消息体设置编码。
+
+**依据。** `4f7169c4` 的 `crates/akio-http/src/message.rs`（`Response::stream_coding` 和 `streaming` 是
+`pub(crate)`）、`crates/akio-http/src/coding.rs`（`StreamCoding` 是 `pub(crate)`）、`crates/akio-http/src/middleware.rs`
+（由 `compress` 的过滤器设置）。没有任何机制告诉过滤器流式响应的消息体何时结束。
+
+**建议的 API。** 公开的 `Coding`（gzip、deflate、br、zstd，带级别和窗口）、`Response::is_streaming`、
+`Response::set_stream_coding(Option<Coding>)`，以及 `Response::keep_until_sent(value)`：随响应保留到发出为止的值
+（流式响应保留到其 `BodyStream` 结束或被丢弃），它被丢弃时归还名额。
+
+**akit 的用法。** `akit-middleware` 的 `compress` 过滤器像 fit 一样选择编码，在流式头部上设置编码并把名额的守卫保留
+在那里；完整消息体由它自己用 akio 的压缩器压缩。**已在** akio 分支 `claude/a90-a91-compress`（`b5cd3f25`，ADR-112）
+上实现，尚未合并。
+
+## A91 `Files` 为内存中的文件保存压缩副本
+
+**问题。** fit 静态处理器的 `compress` 把内存中的文件也按客户端要的每种编码各存一份压缩副本，在文件线程池上以压得小
+的级别做一次，此后直接提供，任何请求都不必再压缩它。
+
+**依据。** `4f7169c4` 的 `crates/akio-http/src/files.rs` 提供磁盘上的压缩孪生文件（`twins`，ADR-100），把小文件
+保存在内存中（`max_cached_bytes`），但不做副本。
+
+**建议的 API。** `Files::compress(&["br", "zstd", "gzip"])`：内存中足够大、类型可压缩的文件，每种编码一份副本，
+在客户端首次首选该编码时在磁盘线程池上制作，随文件的缓存项保存；有自己的标签，不支持范围；孪生文件优先。
+
+**akit 的用法。** `static` 处理器把它的 `compress` 传给它。**已在** akio 分支 `claude/a90-a91-compress`（`b5cd3f25`，
+ADR-112）上实现，尚未合并。未做：把副本计入缓存的内存上限（A15）。
+
+## A92 从磁盘文件发送的消息体按流编码压缩
+
+**问题。** fit 的 `compress` 中间件压缩处理器写出的一切，包括从磁盘读取的大静态文件。akio 发送文件消息体
+（`Response::file`，大于 `max_cached_bytes` 的文件）用 `sendfile(2)` 或在传输层读取；过滤器无法给它设置编码，
+也不能在 I/O 线程上读取文件来编码（规则 1）。
+
+**依据。** `4f7169c4` 的 `crates/akio-http/src/message.rs`（`FileBody`）、`context.rs` 和 `h2.rs`（文件消息体原样
+发送）；`Response::set_stream_coding`（A90）只作用于流式消息体。
+
+**建议的 API。** 设置了流编码的文件消息体在磁盘线程池上分块读取并编码，各块像流式消息体那样写出，受连接的背压约束
+（队列排空后再读下一块），并删除其 `Content-Length`。
+
+**akit 的用法。** `compress` 中间件像对流式消息体一样给文件消息体设置编码。在此之前，来自磁盘的消息体不压缩，进度
+文件把它列为与 fit 的差异。
+

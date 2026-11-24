@@ -10,14 +10,51 @@
 | | |
 | --- | --- |
 | 最后更新 | 2026-11-24 |
-| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I24 和 I17b 已完成（I18b 等待 akio）；M2 的 I26–I33、I35–I37 和 M3 的 I39–I43、I51 已提前完成。 |
+| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I24 和 I17b 已完成（I18b 等待 akio）；M2 的 I26–I33、I35–I37 和 M3 的 I39–I43、I47、I51 已提前完成。 |
 | akio | akio `main` 上的 `4f7169c4`（`1.0.0-rc.1`，带 A1–A8、A11、A13、A16–A21、A36–A38 和 A63–A65），在 `Cargo.toml` 中按 `rev` 锁定 |
 | fit | 作为规格；本计划基于 `7daee573` 阅读 |
-| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；基于 akio 的 A1 保留（按 fit 的 `binding.same`：证书文件和 ACME 名字可以变）、增加、修改和排空监听器，包括启动时的监听器，重载可新增 h3 监听器；服务 h3 的启动监听器要重启才能变）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证；按 fit 的方式每次握手选择证书，重载或 `-watch-certs` 替换证书而不关闭监听器）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；路由中间件：`rewrite`（前缀）、`redirect`、`headers`、`rate_limit`、`concurrency_limit`、`body_limit`、`basic_auth`（bcrypt，在 akio 的线程池上校验）、`client_cert`（按路由的 mTLS）和 `forward_auth`（经 akio 的客户端询问认证服务，期间挂起请求）；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`、双向流式转发 body 并联动背压，双向透传 trailer，`timeout` 和上游的 `response_timeout`、`response_header_timeout`、`response_idle_timeout`，超时回答 504，客户端无论何时离开都放弃上游请求；经 HTTP/1.1、h2c 和 h2 访问上游）；所有监听器和代理上的 `limits.max_body_bytes`（413），以及 `limits.write_stall_timeout`（重载也可修改）；fit 的 json、text 和 line 格式的访问日志；上游连接池，fit 的九种负载均衡策略（轮询、加权轮询、最少连接、随机、p2c，以及按客户端 IP、路径、头或 cookie 的一致性哈希）和会话保持 cookie，跳过被被动健康检查（`max_fails`、`fail_timeout`）和主动健康检查（`health_check`：http 和 tcp 探测）下线的地址；回环地址上的 Admin API（`GET /config`，也可按 JSON 指针读取，`POST /load`，用 `PUT`、`PATCH` 和 `DELETE /config` 按指针编辑，`POST /rollback/{n}`，`POST /reload`，都带 `If-Match`，除回滚外都可 `?dry_run=1`，`GET /versions`；有 `token_file` 时每个请求都要带 bearer 令牌），修改与 SIGHUP 一样作为重载应用，两者共用一份历史记录；`run -watch` 在配置文件每次变化时应用它们（fit 的文件 provider，轮询）；Admin API 的 `GET /metrics` 提供 fit 的 Prometheus 指标（有 `metrics` 时按监听器和路由的请求、上游和后端、证书、连接、重载、akio 的引擎）；为监听器在 `tls.acme` 中所列的名字通过 HTTP-01 或 TLS-ALPN-01 用 ACME 获取证书，保存在存储中，按有效期或 CA 的续期信息（ARI）续期，并装订其 OCSP 响应；默认 HTTPS（`auto_https`）：没有写监听器的配置以其路由主机名的证书经 HTTPS 服务，经 HTTP 重定向（308）到 HTTPS，空的 `tls` 得到其路由的名字；兼容性门禁：80 个夹具，22 个有效，57 个只因暂不支持被拒绝，1 个跳过，没有失败；四层 `services`（I51）：`tcp` 和 `udp` 监听器代理到上游的地址，双向联动背压，空闲超时，`max_conns`，重载后排空；兼容性门禁：80 个夹具，19 个有效，60 个只因暂不支持被拒绝，1 个跳过，没有失败 |
+| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；基于 akio 的 A1 保留（按 fit 的 `binding.same`：证书文件和 ACME 名字可以变）、增加、修改和排空监听器，包括启动时的监听器，重载可新增 h3 监听器；服务 h3 的启动监听器要重启才能变）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证；按 fit 的方式每次握手选择证书，重载或 `-watch-certs` 替换证书而不关闭监听器）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；路由中间件：`rewrite`（前缀）、`redirect`、`headers`、`rate_limit`、`concurrency_limit`、`body_limit`、`basic_auth`（bcrypt，在 akio 的线程池上校验）、`client_cert`（按路由的 mTLS）、`forward_auth`（经 akio 的客户端询问认证服务，期间挂起请求）和 `compress`（按 q 值选择 zstd、brotli 和 gzip，流式消息体逐次写入编码）；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，内存中文件的压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`、双向流式转发 body 并联动背压，双向透传 trailer，`timeout` 和上游的 `response_timeout`、`response_header_timeout`、`response_idle_timeout`，超时回答 504，客户端无论何时离开都放弃上游请求；经 HTTP/1.1、h2c 和 h2 访问上游）；所有监听器和代理上的 `limits.max_body_bytes`（413），以及 `limits.write_stall_timeout`（重载也可修改）；fit 的 json、text 和 line 格式的访问日志；上游连接池，fit 的九种负载均衡策略（轮询、加权轮询、最少连接、随机、p2c，以及按客户端 IP、路径、头或 cookie 的一致性哈希）和会话保持 cookie，跳过被被动健康检查（`max_fails`、`fail_timeout`）和主动健康检查（`health_check`：http 和 tcp 探测）下线的地址；回环地址上的 Admin API（`GET /config`，也可按 JSON 指针读取，`POST /load`，用 `PUT`、`PATCH` 和 `DELETE /config` 按指针编辑，`POST /rollback/{n}`，`POST /reload`，都带 `If-Match`，除回滚外都可 `?dry_run=1`，`GET /versions`；有 `token_file` 时每个请求都要带 bearer 令牌），修改与 SIGHUP 一样作为重载应用，两者共用一份历史记录；`run -watch` 在配置文件每次变化时应用它们（fit 的文件 provider，轮询）；Admin API 的 `GET /metrics` 提供 fit 的 Prometheus 指标（有 `metrics` 时按监听器和路由的请求、上游和后端、证书、连接、重载、akio 的引擎）；为监听器在 `tls.acme` 中所列的名字通过 HTTP-01 或 TLS-ALPN-01 用 ACME 获取证书，保存在存储中，按有效期或 CA 的续期信息（ARI）续期，并装订其 OCSP 响应；默认 HTTPS（`auto_https`）：没有写监听器的配置以其路由主机名的证书经 HTTPS 服务，经 HTTP 重定向（308）到 HTTPS，空的 `tls` 得到其路由的名字；四层 `services`（I51）：`tcp` 和 `udp` 监听器代理到上游的地址，双向联动背压，空闲超时，`max_conns`，重载后排空；兼容性门禁：80 个夹具，23 个有效，56 个只因暂不支持被拒绝，1 个跳过，没有失败 |
 | 下一步 | akio 有了 A51–A53 和 A66 后做 I18b |
-| akio 需求 | A1–A8、A11、A13、A16–A21、A36–A38、A63–A65 已在 akio 的 main 并已锁定；A9、A10、A12、A14、A15、A22–A24、A29、A30、A32、A33、A35、A45、A48、A49、A51–A54、A57、A58、A66、A75、A78 和 A79 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
+| akio 需求 | A1–A8、A11、A13、A16–A21、A36–A38、A63–A65 已在 akio 的 main 并已锁定；A9、A10、A12、A14、A15、A22–A24、A29、A30、A32、A33、A35、A45、A48、A49、A51–A54、A57、A58、A66、A75、A78、A79 和 A90–A92 已提出，其中 A90 和 A91 已在 akio 的分支 `claude/a90-a91-compress` 上实现（ADR-112），供 I47 使用，锁定版本移到该提交后即可构建（[akio API 需求](akio-api-requests.zh-CN.md)） |
 
 ## 日志
+
+### 2026-11-24：I47，压缩
+
+- `akit-config` 把 fit 的 `compress` 中间件（`encodings`、`level`、`gzip_level`、`brotli_level`、`zstd_level`、
+  `min_bytes` 及其旧名 `min_length`、`max_in_flight`）读入 `Handler::Compress`，级别按 fit 的 `Provision` 计算
+  （gzip/brotli/zstd：fastest 1/1/1，default 5/4/3，better 7/6/6，按编号给出的级别取而代之），并做 fit 的检查：
+  编码只能是 `br`、`zstd`、`gzip`，不得重复，级别在范围内。`compress` 离开 `FIT_MIDDLEWARE`；`static` 处理器的
+  `compress` 离开 `STATIC_FIT_ONLY`。
+- `akit-middleware` 的 `compress`，仿照 fit 的 `middleware/compress`：一个响应过滤器在提供的编码中按 q 值选出客户端
+  最想要的（`x-gzip` 即 gzip，`*` 代表其余，相同时取先提供的）；只压缩状态码带消息体且不是 206、没有
+  `Content-Encoding`（`identity` 除外）或 `Content-Range`、没有 `no-transform`、类型在 fib 的可压缩列表中、声明的长度
+  （字段给出的，或完整消息体的）不小于 `min_bytes` 的响应。它加上 `Vary: Accept-Encoding`（HEAD 只加这个），删除
+  `Content-Length`，把强 `ETag` 改为弱 `ETag`。完整的消息体在过滤器中一次压缩；流式的（代理的，I16）由 akio 逐次写入
+  编码并刷新，上游发来的每一块都能立即解码到达客户端，处于转发的联动背压之下。流使用 fit 的窗口（2^18）。同时压缩
+  的响应最多 `max_in_flight` 个：流式响应通过 akio 的 `Response::keep_until_sent` 占住名额，直到其 `BodyStream`
+  结束或被丢弃（客户端离开）。
+- `static` 处理器的 `compress`：akio 的 `Files::compress` 把内存中的文件也按每种编码各存一份压缩副本，在客户端首次
+  首选该编码时，在 akio 的磁盘线程池上以 gzip 9、brotli 9、zstd 19 做一次；副本的标签是原文件的加上 `-编码`，没有
+  `Accept-Ranges`；范围请求、小文件、不可压缩的类型以及节省不到二十分之一的副本都给原文件；磁盘上的孪生文件优先。
+- akio：提出并实现了 **A90**（`akio_http::Coding`、`Response::set_stream_coding`、`is_streaming` 与
+  `keep_until_sent`：akit 自己的过滤器设置流的编码，原先只有 akio 自己的 `compress` 中间件能做到）和 **A91**
+  （`Files::compress`），在 akio 的分支 `claude/a90-a91-compress` 上（`b5cd3f25`，ADR-112，基于 akio main
+  `f6750e93`），尚未合并。akit 的 `Cargo.toml` 仍锁定 `4f7169c4`：本提交要在锁定版本移到合并后的 akio 提交后才能
+  构建；构建和测试用的是本地未提交的 `[patch]`。只提出未实现：**A92**，从磁盘文件发送的消息体也要编码。
+- 测试：协商（fit 的 `TestNegotiate`）、适用性与 `Vary`（fit 的 `TestEligibleAndVary`）、可压缩类型和完整消息体解码
+  的单元测试。`tests/compress.rs` 经 akit 的监听器，走 HTTP/1.1 和 h2c：fit 的 `TestCompress`（协商表、不压缩的响应、
+  HEAD、弱标签）、`TestCompressStream`（每种编码，第二个事件写出前第一个事件已解码到达）、`TestCompressBounded`
+  （超过 `max_in_flight` 不压缩；客户端离开的流归还名额）、`TestCompressReleased`、`TestCompressLevels` 和
+  `TestCompressParams`；`min_bytes` 以下和恰好等于；经代理：上游停顿前的事件在停顿结束前解码到达，按长度给出的消息体
+  被压缩，半秒不读的客户端完整拿到 4 MiB 消息体，中途离开的客户端归还名额；中间件放在 `static` 处理器前；经
+  `static` 处理器的 fit `TestCompressCopies`。akio 中：自有过滤器设置编码、其守卫保留到流结束，以及副本。
+- 兼容性门禁：`tests/compat/supported.txt` 增加 11 个字段；`make compat-bless`：`examples/compress` 有效（80 个
+  夹具：23 个有效，56 个只因暂不支持被拒绝，1 个跳过，没有失败）。
+- 与 fit 的差异：akio 从磁盘发送的消息体（大于 `max_file_bytes` 的静态文件）不压缩，而 fit 的中间件边读边压缩
+  （A92）；流式消息体每次写入都刷新，而 fit 在处理器刷新时才刷新，所以大量小写入的流压缩率较低；静态副本不计入
+  `max_cache_bytes`，akit 还没有这个字段（A15）；fit 的 `TestCacheOutside` 等待 `cache` 中间件（I67）。
+- 待测（在维护者的基准任务中，规则 30）：见开发计划中 I47 的基准行。
 
 ### 2026-11-24：I51，TCP 与 UDP 代理
 

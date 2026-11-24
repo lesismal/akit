@@ -403,6 +403,7 @@ fn supported_fields_are_read() {
     };
     let cert = |params: &str| mw("client_cert", params);
     let forward = |more: &str| mw("forward_auth", &format!(r#""upstream": "auth"{more}"#));
+    let compress = |params: &str| mw("compress", params);
     let service = |fields: &str| {
         format!(
             r#"{{"listeners": [{{"name": "t", "address": ":7000", "protocols": ["tcp"]}}], "upstreams": [{{"name": "app", "addresses": ["127.0.0.1:9000"]}}], "services": [{{"name": "svc", "listeners": ["t"], "upstream": "app"{fields}}}]}}"#
@@ -772,6 +773,11 @@ fn supported_fields_are_read() {
             },
         ),
         (
+            "routes[].handler<static>.params.compress",
+            statics(r#", "compress": ["br", "gzip"]"#),
+            |c| static_of(c).compress == [akit_config::Encoding::Br, akit_config::Encoding::Gzip],
+        ),
+        (
             "routes[].handler<static>.params.browse",
             statics(r#", "browse": true"#),
             |c| static_of(c).browse,
@@ -1112,6 +1118,56 @@ fn supported_fields_are_read() {
             forward(r#", "timeout": "5s""#),
             |c| forward_of(c).timeout == std::time::Duration::from_secs(5),
         ),
+        ("routes[].middleware[]<compress>", compress(""), |c| {
+            matches!(c.routes[0].middleware[0], Handler::Compress(_))
+        }),
+        (
+            "routes[].middleware[]<compress>.params",
+            compress(""),
+            |c| compress_of(c).min_bytes == 1400 && compress_of(c).max_in_flight == 1024,
+        ),
+        (
+            "routes[].middleware[]<compress>.params.encodings",
+            compress(r#""encodings": ["br", "gzip"]"#),
+            |c| {
+                compress_of(c).encodings == [akit_config::Encoding::Br, akit_config::Encoding::Gzip]
+            },
+        ),
+        (
+            "routes[].middleware[]<compress>.params.level",
+            compress(r#""level": "better""#),
+            |c| compress_of(c).gzip_level == 7 && compress_of(c).zstd_level == 6,
+        ),
+        (
+            "routes[].middleware[]<compress>.params.gzip_level",
+            compress(r#""gzip_level": 9"#),
+            |c| compress_of(c).gzip_level == 9,
+        ),
+        (
+            "routes[].middleware[]<compress>.params.brotli_level",
+            compress(r#""brotli_level": 11"#),
+            |c| compress_of(c).brotli_level == 11,
+        ),
+        (
+            "routes[].middleware[]<compress>.params.zstd_level",
+            compress(r#""zstd_level": 19"#),
+            |c| compress_of(c).zstd_level == 19,
+        ),
+        (
+            "routes[].middleware[]<compress>.params.min_bytes",
+            compress(r#""min_bytes": 512"#),
+            |c| compress_of(c).min_bytes == 512,
+        ),
+        (
+            "routes[].middleware[]<compress>.params.min_length",
+            compress(r#""min_length": 256"#),
+            |c| compress_of(c).min_bytes == 256,
+        ),
+        (
+            "routes[].middleware[]<compress>.params.max_in_flight",
+            compress(r#""max_in_flight": 8"#),
+            |c| compress_of(c).max_in_flight == 8,
+        ),
         ("upstreams", upstream(""), |c| c.upstreams.len() == 1),
         ("upstreams[].name", upstream(""), |c| {
             c.upstreams[0].name == "app"
@@ -1413,6 +1469,14 @@ fn forward_of(c: &Config) -> &akit_config::ForwardAuth {
     .unwrap()
 }
 
+fn compress_of(c: &Config) -> &akit_config::Compress {
+    match c.routes.first().unwrap().middleware.first().unwrap() {
+        Handler::Compress(cm) => Some(cm),
+        _ => None,
+    }
+    .unwrap()
+}
+
 fn cert_of(c: &Config) -> &akit_config::ClientCert {
     match c.routes.first().unwrap().middleware.first().unwrap() {
         Handler::ClientCert(cc) => Some(cc),
@@ -1464,7 +1528,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 33] = [
+    let objects: [(&str, &str, Option<&str>); 34] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         ("admin", "ADMIN_FIELDS", Some("ADMIN_FIT_ONLY")),
         ("acme", "ACME_FIELDS", Some("ACME_FIT_ONLY")),
@@ -1558,6 +1622,11 @@ fn akit_config_lists_match_the_inventory() {
             "FORWARD_AUTH_FIELDS",
             None,
         ),
+        (
+            "routes[].middleware[]<compress>.params",
+            "COMPRESS_FIELDS",
+            None,
+        ),
     ];
     let mapped: BTreeSet<&str> = objects
         .iter()
@@ -1648,6 +1717,7 @@ fn akit_config_lists_match_the_inventory() {
         "basic_auth",
         "client_cert",
         "forward_auth",
+        "compress",
     ] {
         assert!(middleware.insert(m.to_owned()), "FIT_MIDDLEWARE lists {m}");
         read.insert(format!("routes[].middleware[]<{m}>"));

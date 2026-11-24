@@ -11,14 +11,69 @@ done and where the work differs from the plan.
 | | |
 | --- | --- |
 | Last updated | 2026-11-24 |
-| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I24 and I17b done (I18b waits on akio); M2's I26–I33 and I35–I37 and M3's I39–I43 and I51 done early. |
+| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I24 and I17b done (I18b waits on akio); M2's I26–I33 and I35–I37 and M3's I39–I43, I47 and I51 done early. |
 | akio | `4f7169c4` on akio's `main` (`1.0.0-rc.1`, with A1–A8, A11, A13, A16–A21, A36–A38 and A63–A65), pinned by `rev` in `Cargo.toml` |
 | fit | the specification; read at `7daee573` for this plan |
-| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept (as fit's `binding.same`: certificate files and ACME names may change), added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication; certificates chosen per handshake as fit's, replaced by a reload or by `-watch-certs` without closing the listener) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; route middleware: `rewrite` (prefixes), `redirect`, `headers`, `rate_limit`, `concurrency_limit`, `body_limit`, `basic_auth` (bcrypt, checked on akio's pool), `client_cert` (mTLS per route) and `forward_auth` (an auth service asked on akio's client, the request suspended meanwhile); the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`, bodies streamed both ways with linked backpressure, trailers both ways, `timeout` and the upstream's `response_timeout`, `response_header_timeout` and `response_idle_timeout`, 504 for timeouts, the upstream request given up whenever the client goes; upstreams over HTTP/1.1, h2c and h2); `limits.max_body_bytes` on every listener (413) and in the proxy, and `limits.write_stall_timeout` (changed by a reload too); access logs in fit's json, text and line formats; upstream pools with fit's nine load balancing policies (round robin, weighted round robin, least connections, random, p2c, and consistent hashing of the client's IP, the path, a header or a cookie) and sticky cookies, passing over addresses taken out by passive health checks (`max_fails`, `fail_timeout`) and by active ones (`health_check`: http and tcp probes); the Admin API on loopback (`GET /config`, by JSON pointer too, `POST /load`, edits by pointer with `PUT`, `PATCH` and `DELETE /config`, `POST /rollback/{n}`, `POST /reload`, each with `If-Match` and all but a rollback with `?dry_run=1`, `GET /versions`; with `token_file`, a bearer token on every request), changes applied as SIGHUP's reloads, one history for both; `run -watch` applying the config's files each time they change (fit's file provider, polled); Prometheus metrics at the Admin API's `GET /metrics` (requests by listener and route with `metrics`, upstreams and backends, certificates, connections, reloads, akio's engine); certificates obtained with ACME through HTTP-01 or TLS-ALPN-01 for the names listeners list in `tls.acme`, kept in a storage and renewed by their lifetime or the CA's renewal information (ARI), their OCSP responses stapled; HTTPS by default (`auto_https`): a config that writes no listeners served on HTTPS with its routes' host names' certificates and on HTTP redirected to it (308), an empty `tls` given its routes' names; the compatibility gate: 80 fixtures, 22 valid, 57 refused only as not supported yet19 validlayer 4 `services` (I51): `tcp` and `udp` listeners proxied to an upstream's addresses, backpressure linked both ways, idle timeouts, `max_conns`, drained after a reload; the compatibility gate: 80 fixtures, 19 valid, 60 refused only as not supported yet, 1 skipped, none failed |
+| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept (as fit's `binding.same`: certificate files and ACME names may change), added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication; certificates chosen per handshake as fit's, replaced by a reload or by `-watch-certs` without closing the listener) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; route middleware: `rewrite` (prefixes), `redirect`, `headers`, `rate_limit`, `concurrency_limit`, `body_limit`, `basic_auth` (bcrypt, checked on akio's pool), `client_cert` (mTLS per route), `forward_auth` (an auth service asked on akio's client, the request suspended meanwhile) and `compress` (zstd, brotli and gzip by q value, streamed bodies encoded write by write); the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, compressed copies of files kept in memory, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`, bodies streamed both ways with linked backpressure, trailers both ways, `timeout` and the upstream's `response_timeout`, `response_header_timeout` and `response_idle_timeout`, 504 for timeouts, the upstream request given up whenever the client goes; upstreams over HTTP/1.1, h2c and h2); `limits.max_body_bytes` on every listener (413) and in the proxy, and `limits.write_stall_timeout` (changed by a reload too); access logs in fit's json, text and line formats; upstream pools with fit's nine load balancing policies (round robin, weighted round robin, least connections, random, p2c, and consistent hashing of the client's IP, the path, a header or a cookie) and sticky cookies, passing over addresses taken out by passive health checks (`max_fails`, `fail_timeout`) and by active ones (`health_check`: http and tcp probes); the Admin API on loopback (`GET /config`, by JSON pointer too, `POST /load`, edits by pointer with `PUT`, `PATCH` and `DELETE /config`, `POST /rollback/{n}`, `POST /reload`, each with `If-Match` and all but a rollback with `?dry_run=1`, `GET /versions`; with `token_file`, a bearer token on every request), changes applied as SIGHUP's reloads, one history for both; `run -watch` applying the config's files each time they change (fit's file provider, polled); Prometheus metrics at the Admin API's `GET /metrics` (requests by listener and route with `metrics`, upstreams and backends, certificates, connections, reloads, akio's engine); certificates obtained with ACME through HTTP-01 or TLS-ALPN-01 for the names listeners list in `tls.acme`, kept in a storage and renewed by their lifetime or the CA's renewal information (ARI), their OCSP responses stapled; HTTPS by default (`auto_https`): a config that writes no listeners served on HTTPS with its routes' host names' certificates and on HTTP redirected to it (308), an empty `tls` given its routes' names; layer 4 `services` (I51): `tcp` and `udp` listeners proxied to an upstream's addresses, backpressure linked both ways, idle timeouts, `max_conns`, drained after a reload; the compatibility gate: 80 fixtures, 23 valid, 56 refused only as not supported yet, 1 skipped, none failed |
 | Next | I18b once akio has A51–A53 and A66 |
-| akio requests | A1–A8, A11, A13, A16–A21, A36–A38 and A63–A65 on akio's main and pinned; A9, A10, A12, A14, A15, A22–A24, A29, A30, A32, A33, A35, A45, A48, A49, A51–A54, A57, A58, A66, A75, A78 and A79 requested ([akio API requests](akio-api-requests.md)) |
+| akio requests | A1–A8, A11, A13, A16–A21, A36–A38 and A63–A65 on akio's main and pinned; A9, A10, A12, A14, A15, A22–A24, A29, A30, A32, A33, A35, A45, A48, A49, A51–A54, A57, A58, A66, A75, A78, A79 and A90–A92 requested, A90 and A91 built on akio's branch `claude/a90-a91-compress` (ADR-112) for I47, which builds once the pin moves to it ([akio API requests](akio-api-requests.md)) |
 
 ## Log
+
+### 2026-11-24: I47, compression
+
+- `akit-config` reads fit's `compress` middleware (`encodings`, `level`, `gzip_level`,
+  `brotli_level`, `zstd_level`, `min_bytes` and its old name `min_length`, `max_in_flight`) into
+  `Handler::Compress`, its levels worked out as fit's `Provision` does (fastest 1/1/1, default
+  5/4/3, better 7/6/6 for gzip/brotli/zstd, a level by number in its place), with fit's checks: an
+  encoding of `br`, `zstd` and `gzip`, none listed twice, levels in range. `compress` leaves
+  `FIT_MIDDLEWARE`. The `static` handler's `compress` leaves `STATIC_FIT_ONLY`.
+- `akit-middleware` `compress`, after fit's `middleware/compress`: a response filter picks the
+  encoding the client prefers most by q value among those offered (`x-gzip` is gzip, `*` stands
+  for the rest, among equals the first offered), for a response whose status carries a body and
+  is not 206, with no `Content-Encoding` (but `identity`) or `Content-Range`, no `no-transform`,
+  a type fib's list calls compressible, and a declared length (the field's, or a whole body's) of
+  at least `min_bytes`. It adds `Vary: Accept-Encoding` (HEAD gets that alone), drops
+  `Content-Length` and makes a strong `ETag` weak. A whole body is compressed whole in the filter;
+  a streamed one (the proxy's, I16) is encoded by akio write by write and flushed, so each piece
+  the upstream sends reaches the client decodable at once, under the relay's linked backpressure.
+  Streams use fit's windows (2^18). At most `max_in_flight` responses are compressed at once: a
+  streamed one keeps its place until its `BodyStream` ends or is dropped (a client that goes),
+  through akio's `Response::keep_until_sent`.
+- The `static` handler's `compress`: akio's `Files::compress` keeps a file held in memory
+  compressed too, one copy per encoding, made once on akio's disk pool at gzip 9, brotli 9 and
+  zstd 19 the first time a client prefers it; a copy has the file's tag with `-encoding` added and
+  no `Accept-Ranges`; ranges, small files, types that do not compress and copies that save less
+  than a twentieth get the file; twins on disk go first.
+- akio: requested and built as **A90** (`akio_http::Coding`, `Response::set_stream_coding`,
+  `is_streaming` and `keep_until_sent`: a filter of akit's own sets the stream's coding, which
+  akio's own `compress` middleware alone could) and **A91** (`Files::compress`), on akio's branch
+  `claude/a90-a91-compress` (`b5cd3f25`, ADR-112, off akio main `f6750e93`), not merged. akit's
+  `Cargo.toml` still pins `4f7169c4`: this commit builds once the pin moves to the merged akio
+  commit; it was built and tested through a local, uncommitted `[patch]`. Requested only: **A92**,
+  a body sent from a file on disk encoded too.
+- Tests: unit tests of the negotiation (fit's `TestNegotiate`), eligibility and `Vary` (fit's
+  `TestEligibleAndVary`), compressible types and whole bodies decoded.
+  `tests/compress.rs` through akit's listener, over HTTP/1.1 and h2c: fit's `TestCompress` (the
+  negotiation table, the responses left alone, HEAD, weak tags), `TestCompressStream` (the first
+  event decoded before the second is written, each encoding), `TestCompressBounded` (past
+  `max_in_flight` uncompressed; a stream whose client goes gives its place back),
+  `TestCompressReleased`, `TestCompressLevels` and `TestCompressParams`; `min_bytes` under and at;
+  through the proxy, events from a pausing upstream arriving decoded before its pause ends, a body
+  by its length compressed, a client that reads nothing for half a second getting a 4 MiB body
+  whole, and one that goes midway giving its place back; the middleware in front of the `static`
+  handler; fit's `TestCompressCopies` through the `static` handler. In akio: a filter of its own
+  setting the coding and its guard kept until the stream ends, and the copies.
+- Compatibility gate: 11 fields more in `tests/compat/supported.txt`; `make compat-bless`:
+  `examples/compress` is valid (80 fixtures: 23 valid, 56 refused only as not supported yet, 1
+  skipped, none failed).
+- Differs from fit: a body akio sends from disk (a static file above `max_file_bytes`) goes
+  uncompressed, where fit's middleware compresses it as it is read (A92); every write of a
+  streamed body is flushed, where fit flushes when the handler does, so a stream of many small
+  writes compresses less well; the static copies are not counted in `max_cache_bytes`, which akit
+  does not have yet (A15); fit's `TestCacheOutside` waits for the `cache` middleware (I67).
+- To measure, in the maintainer's benchmark tasks (rule 30): see the dev plan's benchmark row for
+  I47.
 
 ### 2026-11-24: I51, TCP and UDP proxying
 

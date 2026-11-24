@@ -307,12 +307,15 @@ name = "akit-middleware"
 version = "0.0.1"
 dependencies = [
  "akio",
+ "akio-brotli",
  "akio-crypto",
+ "akio-deflate",
  "akio-h3",
  "akio-http",
  "akio-quic",
  "akio-regex",
  "akio-x509",
+ "akio-zstd",
  "akit-config",
  "akit-handler",
  "akit-listener",

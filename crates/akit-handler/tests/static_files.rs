@@ -1004,6 +1004,14 @@ fn config_errors() {
             format!(r#"{{"root": {r}, "browse_max_entries": -1}}"#),
             "routes[0].handler.params.browse_max_entries: -1 is less than the minimum 0",
         ),
+        (
+            format!(r#"{{"root": {r}, "compress": ["gzip", "gzip"]}}"#),
+            "routes[0].handler.params.compress[1]: \"gzip\" is listed twice",
+        ),
+        (
+            format!(r#"{{"root": {r}, "compress": ["deflate"]}}"#),
+            "routes[0].handler.params.compress[0]: \"deflate\" is not one of",
+        ),
     ];
     for (params, want) in &cases {
         let err = compile_err(params);
@@ -1021,10 +1029,6 @@ fn config_errors() {
         (
             format!(r#"{{"root": {r}, "default_type": "a/b"}}"#),
             "default_type",
-        ),
-        (
-            format!(r#"{{"root": {r}, "compress": ["gzip"]}}"#),
-            "compress",
         ),
         (format!(r#"{{"root": {r}, "index": []}}"#), "index"),
         (format!(r#"{{"root": {r}, "index": ["a", "b"]}}"#), "index"),

@@ -124,6 +124,7 @@ pub(crate) fn new(
 fn files(root: PathBuf, s: &akit_config::Static) -> Files {
     let check: Duration = s.check_interval;
     let twins: Vec<&str> = s.precompressed.iter().map(|e| e.name()).collect();
+    let copies: Vec<&str> = s.compress.iter().map(|e| e.name()).collect();
     let tries: Vec<&str> = s.try_files.iter().flatten().map(String::as_str).collect();
     let mut files = Files::new(root)
         .index(&s.index)
@@ -131,6 +132,7 @@ fn files(root: PathBuf, s: &akit_config::Static) -> Files {
         .check_interval(check)
         .watch(cfg!(target_os = "linux") && !check.is_zero())
         .twins(&twins)
+        .compress(&copies)
         .try_paths(&tries)
         .list_directories(if s.browse { s.browse_max_entries } else { 0 });
     if s.dotfiles == Dotfiles::Deny {

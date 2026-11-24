@@ -867,7 +867,7 @@ fn not_supported_yet() {
             "A32",
         ),
         (
-            "compress",
+            "wasm",
             "{}",
             "routes[0].middleware[0].module: not supported yet",
         ),

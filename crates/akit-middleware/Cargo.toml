@@ -9,10 +9,13 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
+akio-brotli = { workspace = true }
 akio-crypto = { workspace = true }
+akio-deflate = { workspace = true }
 akio-http = { workspace = true }
 akio-x509 = { workspace = true }
 akio-regex = { workspace = true }
+akio-zstd = { workspace = true }
 akit-config = { workspace = true }
 akit-router = { workspace = true }
 akit-runtime = { workspace = true }
