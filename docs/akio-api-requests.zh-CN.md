@@ -73,6 +73,9 @@
 | A94 | 对 HTTP/2 扩展 CONNECT 的流式 `2xx` 应答即两半各自关闭的隧道 | 已在 akio 的 main（`c5cf4353`），已锁定 | 9 | I49 |
 | A108 | HTTP/1 客户端的 TLS 服务器名，代替 URL 的主机名 | 已在 akio 中完成（`252fba42`，ADR-117，分支 `claude/a108-a109-upstream-tls`），已锁定，I54 已使用；待合入 akio 的 main | 19 | I54 |
 | A109 | 构建 TLS 配置时检查客户端证书的私钥与叶证书相符 | 已在 akio 中完成（`252fba42`，ADR-117，与 A108 一起），已锁定，I54 已使用 | 19 | I54 |
+| A111 | 响应过滤器看到流式消息体发出的字节及其结束方式（消息体旁路） | 已在 akio 分支 `claude/a111-body-tap`（`0e36f8d6`）上实现，已锁定 | 5、6 | I67 |
+| A112 | 按 RFC 9110 要求接收方接受的三种格式解析 HTTP 日期 | 已在 akio 分支 `claude/a111-body-tap`（`0e36f8d6`）上实现，已锁定 | 15 | I67 |
+| A113 | 在内层过滤器之后运行的响应过滤器（外层过滤器） | 已在 akio 分支 `claude/a111-body-tap`（`0e36f8d6`）上实现，已锁定 | 5 | I67 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -1104,3 +1107,40 @@ acceptor)`）；`Client`、`ClientOptions`、`ClientRequest` 都无法设置该�
 
 **akit 的用法。** `akit_tls::UpstreamTls::load` 在编译配置时于 `upstreams[i].tls_cert_file` 报告不匹配，与 fit
 一致。已由本迭代在 akio 中完成（ADR-117，与 A108 一起）。
+
+## A111 响应过滤器在流式消息体发出时看到它
+
+**问题。** 响应缓存（I67）与 fit 一样，在响应发往客户端的同时保留一份，全部发完后才存下，从不扣住响应。
+响应过滤器能看到流式响应（`Context::stream_response`、`Detached::stream_response`，即代理超过 64 KiB 的
+消息体）的响应头，却看不到它的消息体：写入从 `BodyStream::write` 直接进入传输层，也没有办法知道消息体是
+完整结束、被截断还是带 trailer 结束。
+
+**证据。** 在 `c5cf4353`：`crates/akio-http/src/context.rs`，`start_stream` 与
+`BodyStream::write` / `finish` / `finish_with_trailers`。
+
+**建议的 API。** `Response::tap_body(impl BodyTap)`，由过滤器设置在流式响应头上；
+`BodyTap::data(&[u8])` 在每次写入经过流编码之后调用，`BodyTap::end(TapEnd)` 最后调用一次
+（`Finished`、`Trailers`、`Cut`）。
+
+**akit 的用法。** 缓存的过滤器给可存储的流式响应设置旁路，复制经过的字节（每个响应和每个 zone 都有上限），
+在 `Finished` 时存下。已由本迭代在 akio 中完成（ADR-116，与 A112、A113 一起）。
+
+## A112 三种格式的 HTTP 日期
+
+**问题。** 缓存要读 `Date`、`Expires`、`Last-Modified` 和 `If-Modified-Since`，RFC 9110 第 5.6.7 节要求
+接收方接受三种格式，fit 用 Go 的 `http.ParseTime` 正是如此。akio 只在 `files.rs` 中私有地解析 IMF-fixdate。
+
+**建议的 API。** `akio_http::parse_http_date(&str) -> Option<u64>`。
+
+**akit 的用法。** 用于缓存读取的每个日期。已由本迭代在 akio 中完成（ADR-116）。
+
+## A113 在内层过滤器之后运行的响应过滤器
+
+**问题。** 过滤器按注册顺序运行，中间件在调用所包裹的处理器之前注册的过滤器，先于其内层中间件的运行：放在
+`compress` 前面的缓存会在响应被压缩之前存下它。fit 的响应头钩子由内向外运行；akit 的中间件依赖 akio 现有
+的顺序，不能对所有人改变。
+
+**建议的 API。** `Context::add_outer_response_filter(f)`：外层过滤器在所有普通过滤器之后运行，后添加的先运行。
+
+**akit 的用法。** 缓存的过滤器是外层过滤器，因此 `compress` 选择的每种编码各是一个变体。已由本迭代在 akio 中
+完成（ADR-116）。

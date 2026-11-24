@@ -17,6 +17,7 @@ path = "src/main.rs"
 akio = { workspace = true }
 akio-sys = { workspace = true }
 akit-admin = { workspace = true }
+akit-cache = { workspace = true }
 akit-config = { workspace = true }
 akit-observe = { workspace = true }
 akit-handler = { workspace = true }

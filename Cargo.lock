@@ -244,6 +244,7 @@ dependencies = [
  "akio-sys",
  "akio-x509",
  "akit-admin",
+ "akit-cache",
  "akit-config",
  "akit-handler",
  "akit-listener",
@@ -271,6 +272,17 @@ dependencies = [
 [[package]]
 name = "akit-cache"
 version = "0.0.1"
+dependencies = [
+ "akio",
+ "akio-crypto",
+ "akio-deflate",
+ "akio-http",
+ "akit-config",
+ "akit-listener",
+ "akit-middleware",
+ "akit-proxy",
+ "akit-runtime",
+]
 
 [[package]]
 name = "akit-compat"

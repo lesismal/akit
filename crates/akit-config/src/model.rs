@@ -778,6 +778,8 @@ pub enum Handler {
     Compress(Compress),
     /// The `jwt` middleware: a JSON Web Token checked with keys from files or a JWK set (I44).
     Jwt(Jwt),
+    /// The `cache` middleware: responses kept and answered from by RFC 9111's rules (I67).
+    Cache(Cache),
 }
 
 impl Handler {
@@ -800,6 +802,7 @@ impl Handler {
             Handler::CircuitBreaker(_) => "circuit_breaker",
             Handler::Compress(_) => "compress",
             Handler::Jwt(_) => "jwt",
+            Handler::Cache(_) => "cache",
         }
     }
 
@@ -820,6 +823,7 @@ impl Handler {
                 | Handler::CircuitBreaker(_)
                 | Handler::Compress(_)
                 | Handler::Jwt(_)
+                | Handler::Cache(_)
         )
     }
 }
@@ -974,6 +978,48 @@ pub struct Compress {
 pub const DEFAULT_COMPRESS_MIN_BYTES: u64 = 1400;
 /// fit's default `compress` `max_in_flight`.
 pub const DEFAULT_COMPRESS_MAX_IN_FLIGHT: u64 = 1024;
+
+/// The `cache` middleware's params, as fit's `middleware/cache`, worked out as its `Provision`
+/// works them out. The cache lock (`disable_lock`, `lock_timeout`) is read and kept for I68; the
+/// stale windows and the disk tier wait for I68 and are refused as not supported yet.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Cache {
+    /// `zone`: the store responses are kept in, shared by every cache of the same zone and kept
+    /// across reloads; [`DEFAULT_CACHE_ZONE`] when left out or empty.
+    pub zone: String,
+    /// `max_bytes` (once `max_size`): the most bytes the zone keeps, bodies, fields and keys
+    /// counted; [`DEFAULT_CACHE_MAX_BYTES`] when left out or 0.
+    pub max_bytes: u64,
+    /// `max_entry_bytes` (once `max_entry_size`): the largest body kept, at most a sixteenth of
+    /// `max_bytes`; [`DEFAULT_CACHE_MAX_ENTRY_BYTES`], or a sixteenth of `max_bytes` if less,
+    /// when left out or 0.
+    pub max_entry_bytes: u64,
+    /// `default_ttl`: how long a response that gives no lifetime of its own is fresh for, when
+    /// its status allows one to be assumed; a tenth of the time since its `Last-Modified`, at
+    /// most a day, when left out.
+    pub default_ttl: Option<Duration>,
+    /// `disable_lock`: every miss fetches for itself. Without the lock (I68) every miss does.
+    pub disable_lock: bool,
+    /// `lock_timeout`: how long a miss waits for another's fetch (I68);
+    /// [`DEFAULT_CACHE_LOCK_TIMEOUT`] when left out or 0.
+    pub lock_timeout: Duration,
+    /// Not a param: the route has an auth middleware (`basic_auth`, `client_cert`,
+    /// `forward_auth`, `jwt`), so every request the cache keeps a response for was let in on
+    /// credentials, which fit's auth middlewares record per request and RFC 9111 section 3.5
+    /// treats as `Authorization`.
+    pub authenticated: bool,
+}
+
+/// fit's default `cache` `zone`.
+pub const DEFAULT_CACHE_ZONE: &str = "default";
+/// fit's default `cache` `max_bytes`: 128 MiB.
+pub const DEFAULT_CACHE_MAX_BYTES: u64 = 128 << 20;
+/// fit's default `cache` `max_entry_bytes`: 1 MiB.
+pub const DEFAULT_CACHE_MAX_ENTRY_BYTES: u64 = 1 << 20;
+/// fit's default `cache` `lock_timeout`.
+pub const DEFAULT_CACHE_LOCK_TIMEOUT: Duration = Duration::from_secs(5);
+/// How many parts a zone's store is split into; `max_entry_bytes` is at most a part's share.
+pub const CACHE_SHARDS: u64 = 16;
 
 /// The `body_limit` middleware's params, as fit's `middleware/limit` `Body`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1621,7 +1667,19 @@ const FIT_HANDLERS: &[&str] = &[
     "whip",
 ];
 /// fit's middleware modules (its `http.middleware` namespace) that akit does not have yet.
-const FIT_MIDDLEWARE: &[&str] = &["cache", "wasm"];
+const FIT_MIDDLEWARE: &[&str] = &["wasm"];
+const CACHE_FIELDS: &[&str] = &[
+    "zone",
+    "max_bytes",
+    "max_size",
+    "max_entry_bytes",
+    "max_entry_size",
+    "default_ttl",
+    "disable_lock",
+    "lock_timeout",
+];
+/// The stale windows and the disk tier come with I68.
+const CACHE_FIT_ONLY: &[&str] = &["stale_while_revalidate", "stale_if_error", "disk"];
 const REWRITE_FIELDS: &[&str] = &["strip_prefix", "regexp", "replacement", "add_prefix"];
 const REDIRECT_FIELDS: &[&str] = &["to", "status", "regexp"];
 const HEADERS_FIELDS: &[&str] = &["request", "response"];
@@ -2686,10 +2744,25 @@ fn route(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Route> {
     let matcher = o
         .take("match")
         .and_then(|v| route_match(d, v, &o.at("match")));
-    let middleware = o
+    let mut middleware: Vec<Handler> = o
         .take("middleware")
         .map(|v| d.array(v, &o.at("middleware"), middleware))
         .unwrap_or_default();
+    // A route that lets requests in on credentials has its cache treat every one as authorized.
+    let authenticated = middleware.iter().any(|m| {
+        matches!(
+            m,
+            Handler::BasicAuth(_)
+                | Handler::ClientCert(_)
+                | Handler::ForwardAuth(_)
+                | Handler::Jwt(_)
+        )
+    });
+    for m in &mut middleware {
+        if let Handler::Cache(c) = m {
+            c.authenticated = authenticated;
+        }
+    }
     let handler = o
         .require(d, "handler")
         .and_then(|v| handler(d, v, &o.at("handler")));
@@ -2884,6 +2957,7 @@ fn middleware(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Handler> {
         "circuit_breaker" => circuit_breaker(d, params, &params_path).map(Handler::CircuitBreaker),
         "compress" => compress(d, params, &params_path).map(Handler::Compress),
         "jwt" => jwt(d, params, off, &params_path).map(Handler::Jwt),
+        "cache" => cache(d, params, &params_path).map(Handler::Cache),
         m if FIT_MIDDLEWARE.contains(&m) => {
             d.not_yet(off, &module_path, &format!("the {m:?} middleware"));
             None
@@ -3287,6 +3361,120 @@ fn encodings(d: &mut Decoder<'_>, v: &Node, p: &str, once: bool) -> Vec<Encoding
         list.push(e);
     }
     list
+}
+
+/// The `cache` middleware's params, checked and worked out as fit's `Cache.Provision` does.
+fn cache(d: &mut Decoder<'_>, params: Option<&Node>, path: &str) -> Option<Cache> {
+    let mut c = Cache {
+        zone: DEFAULT_CACHE_ZONE.to_owned(),
+        max_bytes: DEFAULT_CACHE_MAX_BYTES,
+        max_entry_bytes: 0,
+        default_ttl: None,
+        disable_lock: false,
+        lock_timeout: DEFAULT_CACHE_LOCK_TIMEOUT,
+        authenticated: false,
+    };
+    let mut ok = true;
+    let mut entry_at = (0, String::new());
+    if let Some(n) = params {
+        let mut o = d.object(n, path)?;
+        if let Some(v) = o.take("zone") {
+            match d.string(v, &o.at("zone")) {
+                Some(z) if !z.is_empty() => c.zone = z,
+                Some(_) => {}
+                None => ok = false,
+            }
+        }
+        if let Some(m) = size_field(d, &mut o, "max_bytes", "max_size", &mut ok) {
+            c.max_bytes = m;
+        }
+        if let Some((m, off, at)) =
+            size_field_at(d, &mut o, "max_entry_bytes", "max_entry_size", &mut ok)
+        {
+            c.max_entry_bytes = m;
+            entry_at = (off, at);
+        }
+        if let Some(v) = o.take("default_ttl") {
+            match d.duration(v, &o.at("default_ttl")) {
+                Some(t) => c.default_ttl = Some(t).filter(|t| !t.is_zero()),
+                None => ok = false,
+            }
+        }
+        if let Some(v) = o.take("disable_lock") {
+            match &v.kind {
+                crate::json::Kind::Bool(b) => c.disable_lock = *b,
+                other => {
+                    d.error(
+                        v.off,
+                        &o.at("disable_lock"),
+                        format!("expected a boolean, got {}", other.name()),
+                    );
+                    ok = false;
+                }
+            }
+        }
+        if let Some(v) = o.take("lock_timeout") {
+            match d.duration(v, &o.at("lock_timeout")) {
+                Some(t) if !t.is_zero() => c.lock_timeout = t,
+                Some(_) => {}
+                None => ok = false,
+            }
+        }
+        o.finish(d, CACHE_FIELDS, CACHE_FIT_ONLY);
+    }
+    let share = c.max_bytes / CACHE_SHARDS;
+    if c.max_entry_bytes == 0 {
+        c.max_entry_bytes = DEFAULT_CACHE_MAX_ENTRY_BYTES.min(share);
+    } else if c.max_entry_bytes > share {
+        d.error(
+            entry_at.0,
+            &entry_at.1,
+            format!("is more than a sixteenth of max_bytes ({share})"),
+        );
+        ok = false;
+    }
+    ok.then_some(c)
+}
+
+/// A size given as `key` or by its old name `old` (not both), at least 0; `None` when left out
+/// or 0. Its offset and path, for an error about it, come along.
+fn size_field_at(
+    d: &mut Decoder<'_>,
+    o: &mut Obj<'_>,
+    key: &str,
+    old: &str,
+    ok: &mut bool,
+) -> Option<(u64, usize, String)> {
+    let new = o.take(key).map(|v| (v, o.at(key)));
+    let was = o.take(old).map(|v| (v, o.at(old)));
+    if let (Some(_), Some((v, at))) = (&new, &was) {
+        d.error(v.off, at, format!("renamed {key:?}, which is also given"));
+        *ok = false;
+        return None;
+    }
+    let (v, at) = new.or(was)?;
+    match d
+        .int(v, &at, 0, i64::MAX)
+        .and_then(|n| u64::try_from(n).ok())
+    {
+        Some(0) => None,
+        Some(n) => Some((n, v.off, at)),
+        None => {
+            *ok = false;
+            None
+        }
+    }
+}
+
+/// [`size_field_at`] without where.
+fn size_field(
+    d: &mut Decoder<'_>,
+    o: &mut Obj<'_>,
+    key: &str,
+    old: &str,
+    ok: &mut bool,
+) -> Option<u64> {
+    size_field_at(d, o, key, old, ok).map(|(n, _, _)| n)
 }
 
 /// The `compress` middleware's params, checked and its levels worked out as fit's

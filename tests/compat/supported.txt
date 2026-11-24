@@ -367,3 +367,19 @@ routes[].handler<proxy>.params.tunnel_idle_timeout
 # and wasm (I71) are left.
 routes[].middleware[]<rewrite>.params.regexp
 routes[].middleware[]<rewrite>.params.replacement
+
+# I67: cache, responses kept by RFC 9111's rules (Cache-Control, Vary, validators, Age) in a
+# bounded memory tier shared by the caches of a zone and kept across reloads; a streamed (proxied)
+# body copied as it goes through akio's body tap (ADR-116). disable_lock and lock_timeout are read
+# and kept for the cache lock (I68); until then every miss fetches. stale_while_revalidate,
+# stale_if_error and disk wait for I68 and are refused as not supported yet.
+routes[].middleware[]<cache>
+routes[].middleware[]<cache>.params
+routes[].middleware[]<cache>.params.zone
+routes[].middleware[]<cache>.params.max_bytes
+routes[].middleware[]<cache>.params.max_size
+routes[].middleware[]<cache>.params.max_entry_bytes
+routes[].middleware[]<cache>.params.max_entry_size
+routes[].middleware[]<cache>.params.default_ttl
+routes[].middleware[]<cache>.params.disable_lock
+routes[].middleware[]<cache>.params.lock_timeout

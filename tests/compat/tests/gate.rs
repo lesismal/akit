@@ -411,6 +411,7 @@ fn supported_fields_are_read() {
     let forward = |more: &str| mw("forward_auth", &format!(r#""upstream": "auth"{more}"#));
     let breaker = |params: &str| mw("circuit_breaker", params);
     let compress = |params: &str| mw("compress", params);
+    let cache = |params: &str| mw("cache", params);
     let jwt = |more: &str| mw("jwt", &format!(r#""hmac_secret_file": "s"{more}"#));
     let service = |fields: &str| {
         format!(
@@ -1301,6 +1302,52 @@ fn supported_fields_are_read() {
             compress(r#""max_in_flight": 8"#),
             |c| compress_of(c).max_in_flight == 8,
         ),
+        ("routes[].middleware[]<cache>", cache(""), |c| {
+            matches!(c.routes[0].middleware[0], Handler::Cache(_))
+        }),
+        ("routes[].middleware[]<cache>.params", cache(""), |c| {
+            cache_of(c).zone == "default" && cache_of(c).max_entry_bytes == 1 << 20
+        }),
+        (
+            "routes[].middleware[]<cache>.params.zone",
+            cache(r#""zone": "z""#),
+            |c| cache_of(c).zone == "z",
+        ),
+        (
+            "routes[].middleware[]<cache>.params.max_bytes",
+            cache(r#""max_bytes": 1048576"#),
+            |c| cache_of(c).max_bytes == 1 << 20 && cache_of(c).max_entry_bytes == 1 << 16,
+        ),
+        (
+            "routes[].middleware[]<cache>.params.max_size",
+            cache(r#""max_size": 1048576"#),
+            |c| cache_of(c).max_bytes == 1 << 20,
+        ),
+        (
+            "routes[].middleware[]<cache>.params.max_entry_bytes",
+            cache(r#""max_entry_bytes": 4096"#),
+            |c| cache_of(c).max_entry_bytes == 4096,
+        ),
+        (
+            "routes[].middleware[]<cache>.params.max_entry_size",
+            cache(r#""max_entry_size": 2048"#),
+            |c| cache_of(c).max_entry_bytes == 2048,
+        ),
+        (
+            "routes[].middleware[]<cache>.params.default_ttl",
+            cache(r#""default_ttl": "1m""#),
+            |c| cache_of(c).default_ttl == Some(std::time::Duration::from_secs(60)),
+        ),
+        (
+            "routes[].middleware[]<cache>.params.disable_lock",
+            cache(r#""disable_lock": true"#),
+            |c| cache_of(c).disable_lock,
+        ),
+        (
+            "routes[].middleware[]<cache>.params.lock_timeout",
+            cache(r#""lock_timeout": "2s""#),
+            |c| cache_of(c).lock_timeout == std::time::Duration::from_secs(2),
+        ),
         ("routes[].middleware[]<jwt>", jwt(""), |c| {
             matches!(c.routes[0].middleware[0], Handler::Jwt(_))
         }),
@@ -1700,6 +1747,14 @@ fn breaker_of(c: &Config) -> &akit_config::CircuitBreaker {
     .unwrap()
 }
 
+fn cache_of(c: &Config) -> &akit_config::Cache {
+    match c.routes.first().unwrap().middleware.first().unwrap() {
+        Handler::Cache(cm) => Some(cm),
+        _ => None,
+    }
+    .unwrap()
+}
+
 fn compress_of(c: &Config) -> &akit_config::Compress {
     match c.routes.first().unwrap().middleware.first().unwrap() {
         Handler::Compress(cm) => Some(cm),
@@ -1759,7 +1814,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 39] = [
+    let objects: [(&str, &str, Option<&str>); 40] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         ("admin", "ADMIN_FIELDS", Some("ADMIN_FIT_ONLY")),
         ("acme", "ACME_FIELDS", Some("ACME_FIT_ONLY")),
@@ -1875,6 +1930,11 @@ fn akit_config_lists_match_the_inventory() {
             None,
         ),
         ("routes[].middleware[]<jwt>.params", "JWT_FIELDS", None),
+        (
+            "routes[].middleware[]<cache>.params",
+            "CACHE_FIELDS",
+            Some("CACHE_FIT_ONLY"),
+        ),
     ];
     let mapped: BTreeSet<&str> = objects
         .iter()
@@ -1968,6 +2028,7 @@ fn akit_config_lists_match_the_inventory() {
         "circuit_breaker",
         "compress",
         "jwt",
+        "cache",
     ] {
         assert!(middleware.insert(m.to_owned()), "FIT_MIDDLEWARE lists {m}");
         read.insert(format!("routes[].middleware[]<{m}>"));

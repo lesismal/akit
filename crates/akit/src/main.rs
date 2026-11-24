@@ -211,6 +211,7 @@ fn compile_config(
     let registry: Registry<HandlerParams> = Registry::new(&[
         akit_handler::MODULES,
         akit_middleware::MODULES,
+        akit_cache::MODULES,
         akit_proxy::MODULES,
     ])
     .map_err(|e| Failure::Registry(e.to_string()))?;

@@ -74,6 +74,9 @@ first; its status here records the branch, then the akio commit akit pins.
 | A94 | A streamed `2xx` to an HTTP/2 extended CONNECT is a tunnel whose halves close separately | in akio's main (`c5cf4353`), pinned | 9 | I49 |
 | A108 | The HTTP/1 client's TLS server name, in place of the URL's host | done in akio (`252fba42`, ADR-117, branch `claude/a108-a109-upstream-tls`), pinned, used by I54; to land on akio's main | 19 | I54 |
 | A109 | A client certificate's key checked against its leaf when the TLS configuration is built | done in akio (`252fba42`, ADR-117, with A108), pinned, used by I54 | 19 | I54 |
+| A111 | A response filter sees a streamed body as it is sent, and how it ended (a body tap) | built on akio's branch `claude/a111-body-tap` (`0e36f8d6`), pinned | 5, 6 | I67 |
+| A112 | An HTTP-date parsed in all three formats RFC 9110 has recipients accept | built on akio's branch `claude/a111-body-tap` (`0e36f8d6`), pinned | 15 | I67 |
+| A113 | A response filter that runs after the inner ones (an outer filter) | built on akio's branch `claude/a111-body-tap` (`0e36f8d6`), pinned | 5 | I67 |
 
 ## A1 TCP listeners on a running engine
 
@@ -1370,3 +1373,45 @@ side does, and fails with `private key does not match the certificate`.
 **How akit uses it.** `akit_tls::UpstreamTls::load` reports the mismatch at
 `upstreams[i].tls_cert_file` when the config is compiled, as fit does. Done in akio by this
 iteration (ADR-117, with A108).
+
+## A111 A streamed body seen by a response filter as it is sent
+
+**Problem.** The response cache (I67), as fit's, keeps a response as it goes to the client and
+stores it once all of it went, never holding it back. A response filter sees the head of a
+streamed response (`Context::stream_response`, `Detached::stream_response`), the proxy's for a
+body past 64 KiB, but not its body: the writes go from `BodyStream::write` to the transport, and
+nothing learns whether the body ended whole, cut short or with trailers.
+
+**Evidence.** At `c5cf4353`: `crates/akio-http/src/context.rs`, `start_stream` and
+`BodyStream::write` / `finish` / `finish_with_trailers`.
+
+**Suggested API.** `Response::tap_body(impl BodyTap)`, set by a filter on a streamed head;
+`BodyTap::data(&[u8])` for each write after the stream coding, `BodyTap::end(TapEnd)` once, last
+(`Finished`, `Trailers`, `Cut`).
+
+**How akit uses it.** The cache's filter taps a storable streamed response, copies what passes
+(bounded per response and per zone) and stores it on `Finished`. Done in akio by this iteration
+(ADR-116, with A112 and A113).
+
+## A112 HTTP-dates in all three formats
+
+**Problem.** A cache reads `Date`, `Expires`, `Last-Modified` and `If-Modified-Since`, which RFC
+9110 section 5.6.7 has recipients accept in three formats, as Go's `http.ParseTime` does for fit.
+akio parsed only the IMF-fixdate, privately in `files.rs`.
+
+**Suggested API.** `akio_http::parse_http_date(&str) -> Option<u64>`.
+
+**How akit uses it.** For every date the cache reads. Done in akio by this iteration (ADR-116).
+
+## A113 A response filter that runs after the inner ones
+
+**Problem.** Filters run in registration order, so a middleware's filter, registered before it
+calls what it wraps, runs before those of the middlewares inside it: a cache in front of
+`compress` would store a response before it is compressed. fit runs its header hooks innermost
+first; akit's middlewares rely on akio's order, which cannot change for everyone.
+
+**Suggested API.** `Context::add_outer_response_filter(f)`: outer filters run after every
+ordinary one, the last added first.
+
+**How akit uses it.** The cache's filter is an outer one, so each encoding `compress` picks is a
+variant of its own. Done in akio by this iteration (ADR-116).
