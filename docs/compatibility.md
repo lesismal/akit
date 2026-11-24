@@ -175,12 +175,12 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 60 supported.
+3821 fields in 121 sections, at fit `7daee573`; 67 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
 | [`access`](#fields-access) | 5 | 0 | 5 |
-| [`access_log`](#fields-access-log) | 14 | 0 | 14 |
+| [`access_log`](#fields-access-log) | 14 | 7 | 7 |
 | [`acme`](#fields-acme) | 43 | 0 | 43 |
 | [`admin`](#fields-admin) | 105 | 0 | 105 |
 | [`auto_https`](#fields-auto-https) | 5 | 0 | 5 |
@@ -300,7 +300,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 11 | 27 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 60 | 3761 |
+| **Total** | 3821 | 67 | 3754 |
 
 <a id="fields-access"></a>
 
@@ -320,12 +320,12 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `access_log` | `object` | not supported yet |
-| `access_log.buffer_bytes` | `integer` | not supported yet |
-| `access_log.flush_interval` | `duration` | not supported yet |
-| `access_log.format` | `enum(json\|text\|line)` | not supported yet |
-| `access_log.level` | `enum(info\|warn\|error)` | not supported yet |
-| `access_log.output` | `string` | not supported yet |
+| `access_log` | `object` | supported |
+| `access_log.buffer_bytes` | `integer` | supported |
+| `access_log.flush_interval` | `duration` | supported |
+| `access_log.format` | `enum(json\|text\|line)` | supported |
+| `access_log.level` | `enum(info\|warn\|error)` | supported |
+| `access_log.output` | `string` | supported |
 | `access_log.rotate` | `object` | not supported yet |
 | `access_log.rotate.compress` | `boolean` | not supported yet |
 | `access_log.rotate.interval` | `duration` | not supported yet |
@@ -333,7 +333,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `access_log.rotate.max_bytes` | `integer` | not supported yet |
 | `access_log.rotate.max_files` | `integer` | not supported yet |
 | `access_log.rotate.max_total_bytes` | `integer` | not supported yet |
-| `access_log.time_zone` | `string` | not supported yet |
+| `access_log.time_zone` | `string` | supported |
 
 <a id="fields-acme"></a>
 

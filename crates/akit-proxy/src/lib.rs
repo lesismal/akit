@@ -20,6 +20,9 @@
 //!   response is answered as fit answers it: 502, or 503 when the pool is full or closed, or 504
 //!   when it timed out.
 //!
+//! - With an access log (I21), the request's line names the upstream address it went to and how
+//!   long the upstream took to answer.
+//!
 //! Bodies travel whole for now: a request body within the listener's `limits.max_body_bytes`
 //! (one past it is answered 413 by the listener before the handler runs, as fit answers it), a
 //! response body within akio's client limit (64 MiB). Streaming them both ways with linked
@@ -34,6 +37,7 @@ mod headers;
 
 use std::borrow::Cow;
 use std::sync::Arc;
+use std::time::Instant;
 
 use akio_http::client::{ClientError, ClientRequest};
 use akio_http::{Context, Method, Response};
@@ -98,8 +102,26 @@ impl akio_http::Service for Proxy {
             // Answered already: nothing left to do.
             return;
         };
-        self.pool
-            .request(out, move |outcome| d.respond(response(outcome, head)));
+        if !akit_observe::logged() {
+            self.pool
+                .request(out, move |outcome| d.respond(response(outcome, head)));
+            return;
+        }
+        // The access log's line names the address the request went to and how long it took
+        // (fit's upstream and upstream_duration): the line is written as the response is sent.
+        let backend = self.pool.pick();
+        let addr = self
+            .pool
+            .addresses()
+            .nth(backend)
+            .unwrap_or_default()
+            .to_owned();
+        let start = Instant::now();
+        self.pool.send(backend, out, move |outcome| {
+            akit_observe::with_upstream(&addr, start.elapsed(), || {
+                d.respond(response(outcome, head));
+            });
+        });
     }
 }
 

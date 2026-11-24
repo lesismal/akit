@@ -118,7 +118,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I18 | HTTP/2 and h2c upstreams | I17 | todo |
 | I19 | Load balancing v1 | I14 | done |
 | I20 | Passive health checks | I19 | todo |
-| I21 | Access logs | I15 | todo |
+| I21 | Access logs | I15 | done |
 | I22 | Reload on SIGHUP | I06 | done |
 | I23 | The .conf reader | I02 | done |
 | I24 | The YAML reader | I02 | done |
@@ -207,7 +207,7 @@ commit and result.
 | Reverse proxy: HTTP/1.1, streamed bodies, h2 and h2c upstreams | I15–I18 | no | no (built in part: bodies forwarded whole; streaming waits for akio A19–A21) | The proxy scenario, HTTP/1.1 and h2c (skipped for akit in the baseline); large bodies both ways, with memory per request in flight; h2 upstreams. |
 | Load balancing v1 and v2 | I19, I36 | no | no (not built yet) | A micro-benchmark of each policy's pick, 1 and 16 threads; proxy A/B against a single server. |
 | Passive health checks | I20 | no | no (not built yet) | A micro-benchmark of recording a result on the request path. |
-| Access logs | I21 | no | no (not built yet) | Same-run A/B of fixed and proxy with logs on and off; lines dropped at full load. |
+| Access logs | I21 | no | no (built, not measured) | Same-run A/B of fixed and proxy with logs on and off (json, and text or line), to a file and to `/dev/null`; lines dropped at full load with the default 4 MiB buffer and a slow disk; the per-request cost (the boxed response filter, the shard lock, formatting). |
 | Prometheus metrics | I37 | no | no (not built yet) | Same-run A/B with metrics on and off. |
 | Matchers v2 and expressions | I39 | no | no (built, not measured) | A micro-benchmark of `find_request` with matchers, expressions and path regexps (no allocation, `tests/no_alloc.rs`); same-run A/B against I39's base on the fixed scenario (one route, no matchers: within noise expected). |
 | Middlewares (rewrites, headers, limits, auth, retries and the rest) | I40–I48 | no | no (not built yet) | I56 benchmarks every middleware; same-run A/B of each on the proxy scenario. |

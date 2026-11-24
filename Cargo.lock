@@ -221,6 +221,7 @@ dependencies = [
  "akit-config",
  "akit-handler",
  "akit-listener",
+ "akit-observe",
  "akit-proxy",
  "akit-runtime",
 ]
@@ -274,6 +275,7 @@ dependencies = [
  "akio-x509",
  "akit-config",
  "akit-handler",
+ "akit-observe",
  "akit-router",
  "akit-runtime",
 ]
@@ -307,6 +309,7 @@ dependencies = [
  "akit-config",
  "akit-handler",
  "akit-listener",
+ "akit-observe",
  "akit-runtime",
 ]
 
@@ -325,6 +328,7 @@ dependencies = [
  "akio",
  "akio-http",
  "akit-config",
+ "akit-observe",
  "akit-router",
  "akit-tls",
  "akit-upstream",

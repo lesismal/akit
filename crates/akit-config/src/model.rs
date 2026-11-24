@@ -25,6 +25,8 @@ pub struct Config {
     /// `limits`: what clients can make akit hold for them. Each listener carries the ones fixed
     /// in its binding ([`Listener::max_body_bytes`]).
     pub limits: Limits,
+    /// `access_log`: where a line is written for each request; no access log when left out.
+    pub access_log: Option<AccessLog>,
 }
 
 /// fit's default `limits.max_body_bytes`: 16 MiB.
@@ -46,6 +48,72 @@ impl Default for Limits {
             max_body_bytes: DEFAULT_MAX_BODY_BYTES,
         }
     }
+}
+
+/// `access_log`: where and how a line is written for each request, as fit's `config.AccessLog`.
+/// Lines are buffered and written by a thread of their own; lines past `buffer_bytes` are
+/// dropped and counted. `rotate` is refused as not supported yet.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AccessLog {
+    /// `output`: `"stdout"`, `"stderr"`, or the path of a file lines are appended to;
+    /// `"stdout"` when left out (or empty).
+    pub output: String,
+    /// `flush_interval`: how long a line may wait in the buffer before it is written;
+    /// [`DEFAULT_FLUSH_INTERVAL`] when left out or 0.
+    pub flush_interval: Duration,
+    /// `buffer_bytes`: how many bytes of lines may wait to be written; [`DEFAULT_BUFFER_BYTES`]
+    /// when left out or 0.
+    pub buffer_bytes: usize,
+    /// `level`: the least level of the requests written, by their status.
+    pub level: AccessLevel,
+    /// `format`: how a line is written.
+    pub format: LogFormat,
+    /// `time_zone`, as written: `local` (or empty, the default), `utc`, or an IANA zone name.
+    /// That it names a zone is checked when the log is opened (akit-observe's `Zone::load`).
+    pub time_zone: String,
+}
+
+impl AccessLog {
+    /// The least status of the responses whose requests are written, by `level`, as fit's
+    /// `MinStatus`.
+    #[must_use]
+    pub fn min_status(&self) -> u16 {
+        match self.level {
+            AccessLevel::Info => 0,
+            AccessLevel::Warn => 400,
+            AccessLevel::Error => 500,
+        }
+    }
+}
+
+/// fit's default `flush_interval`.
+pub const DEFAULT_FLUSH_INTERVAL: Duration = Duration::from_secs(1);
+/// fit's default `buffer_bytes`: 4 MiB.
+pub const DEFAULT_BUFFER_BYTES: usize = 4 << 20;
+
+/// `access_log.level`: a response with a status below 400 is info, a 4xx warn, a 5xx error.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AccessLevel {
+    /// `info`, the default: every request.
+    #[default]
+    Info,
+    /// `warn`: the requests answered with 4xx and 5xx.
+    Warn,
+    /// `error`: the requests answered with 5xx.
+    Error,
+}
+
+/// `access_log.format`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LogFormat {
+    /// `json`, the default: a JSON object a line.
+    #[default]
+    Json,
+    /// `text`: `time=… level=… msg=access` and the fields as `key=value` (logfmt).
+    Text,
+    /// `line`: the time and level, then `access` and the fields as `key=value`, as fit's own log
+    /// writes lines.
+    Line,
 }
 
 /// A set of servers requests can be proxied to, and how the connections to them are kept, as
@@ -449,11 +517,11 @@ const CONFIG_FIELDS: &[&str] = &[
     "routes",
     "upstreams",
     "limits",
+    "access_log",
 ];
 const CONFIG_FIT_ONLY: &[&str] = &[
     "services",
     "log",
-    "access_log",
     "telemetry",
     "access",
     "engine",
@@ -480,6 +548,16 @@ const LIMITS_FIT_ONLY: &[&str] = &[
     "max_write_queue_bytes",
     "write_stall_timeout",
 ];
+const ACCESS_LOG_FIELDS: &[&str] = &[
+    "output",
+    "flush_interval",
+    "buffer_bytes",
+    "level",
+    "format",
+    "time_zone",
+];
+// rotate comes with the file sink's rotation (fit's logs package).
+const ACCESS_LOG_FIT_ONLY: &[&str] = &["rotate"];
 const LISTENER_FIELDS: &[&str] = &["name", "address", "protocols", "tls"];
 const LISTENER_FIT_ONLY: &[&str] = &["mptcp", "socks", "access", "proxy_protocol"];
 const FIT_PROTOCOLS: &[&str] = &["tcp", "udp", "socks"];
@@ -592,6 +670,8 @@ pub(crate) struct Part {
     upstreams: Vec<At<Upstream>>,
     /// `limits`, with its position, when the file gives it.
     limits: Option<(Limits, usize)>,
+    /// `access_log`, with the position of its key, when the file gives it.
+    access_log: Option<(AccessLog, usize)>,
     /// The position of the file's top object.
     doc_off: usize,
 }
@@ -631,6 +711,9 @@ pub(crate) fn part(d: &mut Decoder<'_>, n: &Node, file: usize) -> Option<Part> {
     let limits = o
         .take("limits")
         .and_then(|v| Some((limits(d, v, "limits")?, v.off)));
+    let access_log = o
+        .take("access_log")
+        .and_then(|v| access_log(d, v, "access_log").map(|a| (a, v.off)));
     let doc_off = o.off;
     o.finish(d, CONFIG_FIELDS, CONFIG_FIT_ONLY);
     Some(Part {
@@ -639,6 +722,7 @@ pub(crate) fn part(d: &mut Decoder<'_>, n: &Node, file: usize) -> Option<Part> {
         routes,
         upstreams,
         limits,
+        access_log,
         doc_off,
     })
 }
@@ -657,6 +741,7 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
     let mut upstreams = Vec::new();
     let mut limits: Option<(Limits, usize)> = None;
     let mut first_doc: Option<(usize, usize)> = None;
+    let mut access_log: Option<(AccessLog, usize)> = None;
     for (file, p) in parts.into_iter().enumerate() {
         first_doc.get_or_insert((file, p.doc_off));
         if let Some((v, off)) = p.schema_version {
@@ -703,6 +788,28 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
                 None => limits = Some((l, file)),
             }
         }
+        if let Some((a, off)) = p.access_log {
+            match &access_log {
+                // As fit's adapter merges files: only the lists at the top may be split.
+                Some((_, first_file)) => {
+                    let name = ds
+                        .get(*first_file)
+                        .and_then(Decoder::file)
+                        .unwrap_or_default()
+                        .to_owned();
+                    if let Some(d) = ds.get_mut(file) {
+                        d.error(
+                            off,
+                            "access_log",
+                            format!(
+                                "also given in {name}: only the lists at the top of a config (listeners, routes, upstreams, services, providers) may be split across files"
+                            ),
+                        );
+                    }
+                }
+                None => access_log = Some((a, file)),
+            }
+        }
         listeners.extend(p.listeners);
         routes.extend(p.routes);
         upstreams.extend(p.upstreams);
@@ -733,6 +840,7 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
         routes: routes.into_iter().map(|a| a.v).collect(),
         upstreams: upstreams.into_iter().map(|a| a.v).collect(),
         limits,
+        access_log: access_log.map(|(a, _)| a),
     }
 }
 
@@ -760,6 +868,77 @@ impl<T> At<T> {
             d.error(self.off, path, msg);
         }
     }
+}
+
+fn access_log(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<AccessLog> {
+    let mut o = d.object(n, path)?;
+    let output = o
+        .take("output")
+        .and_then(|v| d.string(v, &o.at("output")))
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "stdout".to_owned());
+    let flush_interval = o
+        .take("flush_interval")
+        .and_then(|v| d.duration(v, &o.at("flush_interval")))
+        .filter(|t| !t.is_zero())
+        .unwrap_or(DEFAULT_FLUSH_INTERVAL);
+    let buffer_bytes = o
+        .take("buffer_bytes")
+        .and_then(|v| d.int(v, &o.at("buffer_bytes"), 0, i64::MAX))
+        .and_then(|n| usize::try_from(n).ok())
+        .filter(|n| *n != 0)
+        .unwrap_or(DEFAULT_BUFFER_BYTES);
+    let level = match o.take("level") {
+        None => AccessLevel::Info,
+        Some(v) => {
+            let p = o.at("level");
+            match d.string(v, &p).as_deref() {
+                Some("info") | None => AccessLevel::Info,
+                Some("warn") => AccessLevel::Warn,
+                Some("error") => AccessLevel::Error,
+                Some(other) => {
+                    d.error(
+                        v.off,
+                        &p,
+                        format!("{other:?} is not one of \"info\", \"warn\", \"error\""),
+                    );
+                    AccessLevel::Info
+                }
+            }
+        }
+    };
+    let format = match o.take("format") {
+        None => LogFormat::Json,
+        Some(v) => {
+            let p = o.at("format");
+            match d.string(v, &p).as_deref() {
+                Some("json") | None => LogFormat::Json,
+                Some("text") => LogFormat::Text,
+                Some("line") => LogFormat::Line,
+                Some(other) => {
+                    d.error(
+                        v.off,
+                        &p,
+                        format!("{other:?} is not one of \"json\", \"text\", \"line\""),
+                    );
+                    LogFormat::Json
+                }
+            }
+        }
+    };
+    let time_zone = o
+        .take("time_zone")
+        .and_then(|v| d.string(v, &o.at("time_zone")))
+        .unwrap_or_default();
+    o.finish(d, ACCESS_LOG_FIELDS, ACCESS_LOG_FIT_ONLY);
+    Some(AccessLog {
+        output,
+        flush_interval,
+        buffer_bytes,
+        level,
+        format,
+        time_zone,
+    })
 }
 
 fn listener(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Listener> {

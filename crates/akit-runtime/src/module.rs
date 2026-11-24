@@ -68,6 +68,7 @@ impl Kind {
 pub struct Env {
     engine: EngineSlot,
     upstreams: Vec<Pool>,
+    access_log: Option<akit_observe::AccessLog>,
 }
 
 impl Env {
@@ -78,7 +79,23 @@ impl Env {
         Env {
             engine,
             upstreams: Vec::new(),
+            access_log: None,
         }
+    }
+
+    /// The same, with the process's access log, which a graph compiled from a config with
+    /// `access_log` writes its requests' lines to (I21). The log outlives the graphs: it is
+    /// opened once, when akit starts, as fit's.
+    #[must_use]
+    pub fn with_access_log(mut self, log: Option<akit_observe::AccessLog>) -> Env {
+        self.access_log = log;
+        self
+    }
+
+    /// The process's access log, if it has one.
+    #[must_use]
+    pub fn access_log(&self) -> Option<&akit_observe::AccessLog> {
+        self.access_log.as_ref()
     }
 
     /// Where the engine connections are dialed through is, or will be.
@@ -98,6 +115,7 @@ impl Env {
         Env {
             engine: self.engine.clone(),
             upstreams,
+            access_log: self.access_log.clone(),
         }
     }
 }

@@ -10,14 +10,87 @@
 | | |
 | --- | --- |
 | 最后更新 | 2026-11-24 |
-| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I12、I14、I19、I22、I23、I24 已完成，I15 进行中（等待 akio 的 A11），I16 进行中（body 限制已完成；流式转发等待 akio 的 A19–A21）；M3 的 I39 已提前完成。 |
+| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I12、I14、I19、I21、I22、I23、I24 已完成，I15 进行中（等待 akio 的 A11），I16 进行中（body 限制已完成；流式转发等待 akio 的 A19–A21）；M3 的 I39 已提前完成。 |
 | akio | akio `main` 上的 `50a82315`（`1.0.0-rc.1`），在 `Cargo.toml` 中按 `rev` 锁定 |
 | fit | 作为规格；本计划基于 `7daee573` 阅读 |
-| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；监听器保留、增加和移除，启动时的监听器要等锁定到带 A1 的 akio）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开）和 `proxy` handler（fit 的转发字段、可信代理；锁定到 A11 后传客户端的 `Host`）；所有监听器和代理上的 `limits.max_body_bytes`（413）；上游连接池，轮询、加权轮询和最少连接；兼容性门禁：80 个夹具，9 个有效，70 个只因暂不支持被拒绝，1 个跳过，没有失败 |
-| 下一步 | 把 akio 锁定到带 A1–A8 和 A11 的 akio main，然后 I15 完成（其 `Host` 测试）、I22 改用 A1；再是 I13、I17、I20、I21；A19–A21 落地后再做 I16 |
+| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；监听器保留、增加和移除，启动时的监听器要等锁定到带 A1 的 akio）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开）和 `proxy` handler（fit 的转发字段、可信代理；锁定到 A11 后传客户端的 `Host`）；所有监听器和代理上的 `limits.max_body_bytes`（413）；fit 的 json、text 和 line 格式的访问日志；上游连接池，轮询、加权轮询和最少连接；兼容性门禁：80 个夹具，9 个有效，70 个只因暂不支持被拒绝，1 个跳过，没有失败 |
+| 下一步 | 把 akio 锁定到带 A1–A8 和 A11 的 akio main，然后 I15 完成（其 `Host` 测试）、I22 改用 A1；再是 I13、I17、I20；A19–A21 落地后再做 I16 |
 | akio 需求 | A1–A8 已合并进 akio 的 main（2026-11-24）；A11 在 akio 分支 `claude/i15-proxy-699f18` 上；A9、A10、A12–A15 和 A19–A21 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
 
 ## 日志
+
+### 2026-11-24：I21，访问日志
+
+- `akit-config` 读取 fit 的 `access_log`：`output`（`stdout`，默认，`stderr` 或文件路径）、`flush_interval`（1s）、
+  `buffer_bytes`（4 MiB；与 fit 相同，0 表示默认值）、`level`（`info`、`warn`、`error`：写出的最小状态码，0、400 或
+  500）、`format`（`json`、`text`、`line`）和 `time_zone`（按原样保存）。`rotate` 仍以暂不支持拒绝（fit `logs` 包的轮转）。
+  与 fit 的 adapter 合并文件一样，第二个文件再给出 `access_log` 会被拒绝：`also given in a.json: only the lists at the
+  top of a config (listeners, routes, upstreams, services, providers) may be split across files`。JSON、YAML 和
+  `.conf` 都一样。
+- `akit-observe`（只依赖 std）：
+  - `AccessLog`：日志行在完成响应的线程上格式化，写入该线程的缓冲（分片：每个写日志的线程一个，最多 64 个，取 2
+    的幂；更多的线程共用），每个分片有自己的互斥锁，只有该线程和写线程（每次刷新一次）会取。分片攒到 64 KiB（fit 的
+    `flushBytes`）时经有界通道交给写线程，写线程每个刷新间隔在分片锁下经同一通道取走各分片的内容，所以同一线程的
+    日志行保持顺序。等待写出的加上分片里的，以 `buffer_bytes` 为界，与 fit 相同；超出的行被丢弃并计数，从不等待。写线程
+    每次刷新报告一次丢弃数（stderr 上 `akit: access log: N lines dropped, the output was too slow`，fit 的措辞）；输出
+    失败时该缓冲的行丢失，计入丢弃。`close` 写出剩余内容并 join 写线程；之后的行被丢弃。`set_min_status` 和
+    `set_zone` 就地修改级别和时区（重载时用）。
+  - `Format`、`Record` 和 `append_line`：fit 的三种格式，字段及顺序与 fit 相同（`time`、`listener`、有路由时的
+    `route`、`client`、设置时的 `user`、`proto`、`method`、`host`、`uri`、`status`、`bytes_in`、`bytes_out`、
+    `duration`、代理时的 `upstream` 和 `upstream_duration`、`user_agent`、`referer`）；秒数六位小数，舍入到微秒；
+    JSON 字符串同 fit 的 `appendString`（非 UTF-8 字节写成 U+FFFD）；logfmt 值原样或按 Go 的 `strconv.Quote` 加引号；
+    `text` 和 `line` 的级别按状态码（INFO，4xx 为 WARN，5xx 为 ERROR），`line` 的级别补齐到五个字符。时间是带毫秒的
+    RFC 3339，用所设时区（UTC 为 `Z`，否则如 `+08:00`），`line` 为 `2006-01-02 15:04:05.000`；时区偏移每个分片每秒
+    查一次。
+  - `Zone`：`local`（或空：`TZ`，否则 `/etc/localtime`，否则 UTC，同 Go 的 `time.Local`）、`utc`，或从系统 zoneinfo
+    目录（Go 的目录列表）读取的 IANA 名称；TZif 读取器（版本 1 到 4），最后一次跳变之后的时间用文件尾的 POSIX `TZ`
+    规则（`Mm.w.d`、`Jn`、`n`，时刻最多 167 小时，没有日期的规则用美国规则）。会检查名称不会越出目录。`akit run` 和
+    `akit validate` 都会加载它，所以错误的值报为 `access_log.time_zone: "Nowhere/City" is not a time zone: local,
+    utc or an IANA name such as Asia/Shanghai`，即 fit 的措辞。
+  - `with_upstream`、`upstream`、`dispatch_logged`、`logged`：用线程局部变量传递 handler 知道的信息；`Name`，内联
+    保存的短名字（监听器或路由的名字，带到日志行时不单独分配）；`open_output`。
+- `akit-runtime`：`Env::with_access_log` 把进程的日志交给带 `access_log` 的配置编译出的图（`Graph::access_log`）；
+  没有它的配置不写日志。
+- `akit-listener`：图有日志时，`Dispatcher` 为每个请求注册一个响应过滤器（`Context::add_response_filter`），包括
+  坏路径的 400 和 404，持有本线程的分片、开始时间、监听器名和路由名。akio 在发送响应的线程上运行它（I/O 线程，或
+  分离的 handler 应答所在的线程），在那里根据请求和响应生成日志行（`access_record`）：客户端（映射到 IPv6 的 IPv4
+  地址写成 IPv4）、`HTTP/1.0` 到 `HTTP/3.0`、`Host`（或绝对形式目标的 authority）、原样的请求目标、`bytes_in`（已读
+  的请求体，否则 `Content-Length`）、`bytes_out`（`HEAD`、1xx、204 和 304 为 0；文件的长度；响应体的长度；流式响应体在
+  发出响应头时还不知道字节数，取其 `Content-Length` 或 0）。从未发出的响应（连接已断）没有日志行，与 fit 相同。handler
+  在 `dispatch_logged` 中运行。
+- `akit-proxy`：对要写日志的请求，自己选地址（`Pool::pick`，再 `send`），并在 `with_upstream(地址, 耗时)` 中应答，
+  使日志行带上 `upstream` 和 `upstream_duration`；不写日志的请求照旧，不做任何复制。
+- `akit run`：在编译图之前打开日志（输出打不开时打印 `akit run: access log: <错误>` 并以 1 退出），与 fit 一样提示没有
+  `rotate` 的文件输出会无限增长，并在引擎停止后关闭它（关闭超时时也一样），因此每个已完成的响应都有日志行。重载会设置
+  新的级别和时区；`output`、`format`、`flush_interval` 或 `buffer_bytes` 的变化需要重启，并会提示；重载时新加的
+  `access_log` 也一样。
+- 兼容性：`supported.txt` 标记了 `access_log` 及其六个字段；门禁映射了 `ACCESS_LOG_FIELDS` 和 `ACCESS_LOG_FIT_ONLY`，
+  并为每个字段取样。`make compat-bless`：`examples/logging` 不再因 `access_log` 被拒绝（仍因 `log` 被拒绝）；被拒绝的
+  字段从 66 个变为 65 个。
+- 测试：`akit-observe` 的单元测试（日期、时间、时长、JSON 和 logfmt 转义、南北半球的 POSIX 规则、带文件尾的 TZif
+  文件以及截断的文件、系统存在时的 `Asia/Shanghai` 和 `America/New_York`、会越出 zoneinfo 目录的名称、`Name`、
+  线程局部传递）和 `tests/access_log.rs`（9 个，来自 fit 的 `accesslog_test.go`）：每种格式的每个字段，逐字比较；就地
+  修改级别和时区；刷新间隔；缓冲满时不等间隔就写出；**写入比流量慢**：输出在第一次写入时被阻塞，4 个线程写 10,000
+  行，立即返回（2 秒内），超出缓冲的行被丢弃，写出加丢弃等于写入总数，每次丢弃都有报告，没有被截断的行；输出失败；
+  8 个线程各自保持顺序；追加写文件。`akit-config/tests/access_log.rs`（5 个）：默认值、每个字段、每类错误及其路径、
+  YAML 和 `.conf`、只能由一个文件给出。`akit/tests/access_log.rs`（2 个，用 `akit run` 端到端）：一个 respond 路由、
+  一个被代理的 `POST`（`upstream`、`upstream_duration`、`bytes_in`）、一个 404、一个 400、一个 `HEAD`、一个 HTTP/1.0
+  请求，逐行检查字段，刷新间隔是一小时但关闭时全部写出；重载为 `level: error` 后不再写 4xx 的行。写入慢的测试发现了
+  第一版的一个缺陷：写线程按间隔刷新时到达的关闭消息被当作缓冲处理而丢失，关闭就永远等待。
+- 与计划和 fit 的不同：除 `akit-observe` 外还涉及 `akit-config`、`akit-runtime`、`akit-listener`、`akit-proxy` 和
+  `akit`。日志行写入分发请求的线程的分片，而不是按客户端地址选分片（fit 按地址分片以保持一个连接的日志顺序；这里一个
+  连接由一个 I/O 线程服务，不用哈希就能做到）。被代理请求的日志行在上游响应到达的线程（连接池的线程）上生成，并在那里
+  锁分发线程的分片：此时分片锁在两个线程间有竞争。没有实现 fit 的已写缓冲空闲列表（每 64 KiB 日志新建一个缓冲）。在有
+  认证（I42）之前 `user` 从不设置。流式响应的 `bytes_out` 是其 `Content-Length`，而不是实际写出的字节数：akio-http 只给
+  响应过滤器看响应头。日志行在之后注册的过滤器运行之前生成，所以等压缩（I47）注册过滤器后，`bytes_out` 会是压缩前的
+  响应体大小，而 fit 记的是写出的大小。logfmt 加引号时近似 Go 的 `unicode.IsPrint`（控制字符、分隔符和常见格式字符会
+  转义）。没有 fit 的 `log` 段（fit 自身的日志，以及它与访问日志共享的文件 sink）。
+- 已检查：macOS 上 `make check`；Linux（gpu51）上涉及的 crate（akit-observe、akit-config、akit-runtime、
+  akit-listener、akit-proxy、akit、akit-compat），epoll 和 io_uring。
+- 留给压测任务（本任务未跑任何压测，规则 30）：fixed `respond` 路由和代理在日志关闭、写 `/dev/null`、写文件三种情况下
+  的同轮 A/B，`json` 和 `line` 各一次；每个请求的开销：响应过滤器（每个请求一个装箱闭包，akio-http 的 API：若开销明显，
+  就向 akio 提无分配完成钩子的 API 需求）、分片锁（代理请求时有竞争）和格式化；默认 4 MiB 缓冲以及磁盘慢时满负载下
+  丢弃的行数。
 
 ### 2026-11-24：I16，反向代理 II：流式 body（doing：等待 akio A19–A21）
 

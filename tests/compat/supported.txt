@@ -90,3 +90,14 @@ routes[].match.expr
 # HTTP/1.1, h2c, h2 and h3 alike; the other limits are refused as not supported yet.
 limits
 limits.max_body_bytes
+
+# I21: access logs, as fit's observe package writes them. access_log.time_zone takes local, utc or
+# an IANA name (from the system's zoneinfo files); access_log.rotate is refused as not supported
+# yet (fit's logs package's file rotation).
+access_log
+access_log.output
+access_log.flush_interval
+access_log.buffer_bytes
+access_log.level
+access_log.format
+access_log.time_zone

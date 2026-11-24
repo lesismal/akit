@@ -363,10 +363,39 @@ fn supported_fields_are_read() {
             r#"{{"listeners": [{{"name": "s", "address": ":443", "tls": {{"certificates": [{{"cert_file": "a.pem", "key_file": "a.key"}}]{more}}}}}]}}"#
         )
     };
+    let access = |fields: &str| format!("{{\"access_log\": {{{fields}}}}}");
     let samples: Vec<(&str, String, Check)> = vec![
         ("schema_version", r#"{"schema_version": 1}"#.into(), |c| {
             c.schema_version == 1
         }),
+        ("access_log", access(""), |c| c.access_log.is_some()),
+        ("access_log.output", access(r#""output": "stderr""#), |c| {
+            c.access_log.as_ref().unwrap().output == "stderr"
+        }),
+        (
+            "access_log.flush_interval",
+            access(r#""flush_interval": "250ms""#),
+            |c| {
+                c.access_log.as_ref().unwrap().flush_interval
+                    == std::time::Duration::from_millis(250)
+            },
+        ),
+        (
+            "access_log.buffer_bytes",
+            access(r#""buffer_bytes": 1024"#),
+            |c| c.access_log.as_ref().unwrap().buffer_bytes == 1024,
+        ),
+        ("access_log.level", access(r#""level": "warn""#), |c| {
+            c.access_log.as_ref().unwrap().min_status() == 400
+        }),
+        ("access_log.format", access(r#""format": "line""#), |c| {
+            c.access_log.as_ref().unwrap().format == akit_config::LogFormat::Line
+        }),
+        (
+            "access_log.time_zone",
+            access(r#""time_zone": "utc""#),
+            |c| c.access_log.as_ref().unwrap().time_zone == "utc",
+        ),
         ("listeners", format!("{{{L}}}"), |c| c.listeners.len() == 1),
         ("limits", r#"{"limits": {}}"#.into(), |c| {
             c.limits == akit_config::Limits::default()
@@ -716,9 +745,14 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 13] = [
+    let objects: [(&str, &str, Option<&str>); 14] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         ("limits", "LIMITS_FIELDS", Some("LIMITS_FIT_ONLY")),
+        (
+            "access_log",
+            "ACCESS_LOG_FIELDS",
+            Some("ACCESS_LOG_FIT_ONLY"),
+        ),
         ("listeners[]", "LISTENER_FIELDS", Some("LISTENER_FIT_ONLY")),
         ("listeners[].tls", "TLS_FIELDS", Some("TLS_FIT_ONLY")),
         ("listeners[].tls.certificates[]", "CERTIFICATE_FIELDS", None),
