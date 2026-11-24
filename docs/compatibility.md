@@ -175,7 +175,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 221 supported.
+3821 fields in 121 sections, at fit `7daee573`; 231 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -208,7 +208,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`http.handlers/whip`](#fields-http-handlers-whip) | 4 | 0 | 4 |
 | [`http.middleware/basic_auth`](#fields-http-middleware-basic-auth) | 8 | 8 | 0 |
 | [`http.middleware/body_limit`](#fields-http-middleware-body-limit) | 3 | 3 | 0 |
-| [`http.middleware/cache`](#fields-http-middleware-cache) | 17 | 0 | 17 |
+| [`http.middleware/cache`](#fields-http-middleware-cache) | 17 | 10 | 7 |
 | [`http.middleware/circuit_breaker`](#fields-http-middleware-circuit-breaker) | 10 | 10 | 0 |
 | [`http.middleware/client_cert`](#fields-http-middleware-client-cert) | 4 | 4 | 0 |
 | [`http.middleware/compress`](#fields-http-middleware-compress) | 10 | 10 | 0 |
@@ -300,7 +300,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 33 | 5 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 221 | 3600 |
+| **Total** | 3821 | 231 | 3590 |
 
 <a id="fields-access"></a>
 
@@ -1066,23 +1066,23 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `routes[].middleware[]<cache>` | `module` | not supported yet |
-| `routes[].middleware[]<cache>.params` | `object` | not supported yet |
-| `routes[].middleware[]<cache>.params.default_ttl` | `duration` | not supported yet |
-| `routes[].middleware[]<cache>.params.disable_lock` | `boolean` | not supported yet |
+| `routes[].middleware[]<cache>` | `module` | supported |
+| `routes[].middleware[]<cache>.params` | `object` | supported |
+| `routes[].middleware[]<cache>.params.default_ttl` | `duration` | supported |
+| `routes[].middleware[]<cache>.params.disable_lock` | `boolean` | supported |
 | `routes[].middleware[]<cache>.params.disk` | `object` | not supported yet |
 | `routes[].middleware[]<cache>.params.disk.max_bytes` | `integer` | not supported yet |
 | `routes[].middleware[]<cache>.params.disk.max_entries` | `integer` | not supported yet |
 | `routes[].middleware[]<cache>.params.disk.max_size` | `integer, deprecated` | not supported yet |
 | `routes[].middleware[]<cache>.params.disk.path` | `string, required` | not supported yet |
-| `routes[].middleware[]<cache>.params.lock_timeout` | `duration` | not supported yet |
-| `routes[].middleware[]<cache>.params.max_bytes` | `integer` | not supported yet |
-| `routes[].middleware[]<cache>.params.max_entry_bytes` | `integer` | not supported yet |
-| `routes[].middleware[]<cache>.params.max_entry_size` | `integer, deprecated` | not supported yet |
-| `routes[].middleware[]<cache>.params.max_size` | `integer, deprecated` | not supported yet |
+| `routes[].middleware[]<cache>.params.lock_timeout` | `duration` | supported |
+| `routes[].middleware[]<cache>.params.max_bytes` | `integer` | supported |
+| `routes[].middleware[]<cache>.params.max_entry_bytes` | `integer` | supported |
+| `routes[].middleware[]<cache>.params.max_entry_size` | `integer, deprecated` | supported |
+| `routes[].middleware[]<cache>.params.max_size` | `integer, deprecated` | supported |
 | `routes[].middleware[]<cache>.params.stale_if_error` | `duration` | not supported yet |
 | `routes[].middleware[]<cache>.params.stale_while_revalidate` | `duration` | not supported yet |
-| `routes[].middleware[]<cache>.params.zone` | `string` | not supported yet |
+| `routes[].middleware[]<cache>.params.zone` | `string` | supported |
 
 <a id="fields-http-middleware-circuit-breaker"></a>
 

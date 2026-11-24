@@ -10,14 +10,53 @@
 | | |
 | --- | --- |
 | 最后更新 | 2026-11-24 |
-| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I24、I17b 和 I18b 已完成；M2 的 I26–I33、I35–I37 和 M3 的 I39–I45、I47、I49、I51 已提前完成。 |
-| akio | akio `main` 上的 `c5cf4353`（`1.0.0-rc.1`，带 A1–A8、A11、A13、A16–A21、A36–A38、A51–A53、A63–A66、A90、A91、A93 和 A94），在 `Cargo.toml` 中按 `rev` 锁定 |
+| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I24、I17b 和 I18b 已完成；M2 的 I26–I33、I35–I37 和 M3 的 I39–I45、I47、I49、I51 以及 M5 的 I67 已提前完成。 |
+| akio | akio 分支 `claude/a111-body-tap` 上的 `0e36f8d6`（A111–A113，ADR-116），基于 akio `main` 的 `c5cf4353`（`1.0.0-rc.1`，带 A1–A8、A11、A13、A16–A21、A36–A38、A51–A53、A63–A66、A90、A91、A93 和 A94），在 `Cargo.toml` 中按 `rev` 锁定，直到合并进 akio 的 main |
 | fit | 作为规格；本计划基于 `7daee573` 阅读 |
-| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；基于 akio 的 A1 保留（按 fit 的 `binding.same`：证书文件和 ACME 名字可以变）、增加、修改和排空监听器，包括启动时的监听器，重载可新增 h3 监听器；服务 h3 的启动监听器要重启才能变）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证；按 fit 的方式每次握手选择证书，重载或 `-watch-certs` 替换证书而不关闭监听器）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；路由中间件：`rewrite`（前缀）、`redirect`、`headers`、`rate_limit`、`concurrency_limit`、`body_limit`、`basic_auth`（bcrypt，在 akio 的线程池上校验）、`client_cert`（按路由的 mTLS）、`forward_auth`（经 akio 的客户端询问认证服务，期间挂起请求）和 `circuit_breaker``forward_auth`（经 akio 的客户端询问认证服务，期间挂起请求）和 `compress`（按 q 值选择 zstd、brotli 和 gzip，流式消息体逐次写入编码）`forward_auth`（经 akio 的客户端询问认证服务，期间挂起请求）和 `jwt`（用 akio-crypto 校验 JSON Web Token，密钥来自 PEM 文件、密钥文件或经 akio 的客户端获取并轮换的 JWK 集）；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，内存中文件的压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`、双向流式转发 body 并联动背压，双向透传 trailer，`timeout` 和上游的 `response_timeout`、`response_header_timeout`、`response_idle_timeout`，超时回答 504，客户端无论何时离开都放弃上游请求，带预算的 `retry`，`timeout` 覆盖所有尝试；经 HTTP/1.1、h2c 和 h2 访问上游）；所有监听器和代理上的 `limits.max_body_bytes`（413），以及 `limits.write_stall_timeout`（重载也可修改）；fit 的 json、text 和 line 格式的访问日志；上游连接池，fit 的九种负载均衡策略（轮询、加权轮询、最少连接、随机、p2c，以及按客户端 IP、路径、头或 cookie 的一致性哈希）和会话保持 cookie，跳过被被动健康检查（`max_fails`、`fail_timeout`）和主动健康检查（`health_check`：http 和 tcp 探测）下线的地址；回环地址上的 Admin API（`GET /config`，也可按 JSON 指针读取，`POST /load`，用 `PUT`、`PATCH` 和 `DELETE /config` 按指针编辑，`POST /rollback/{n}`，`POST /reload`，都带 `If-Match`，除回滚外都可 `?dry_run=1`，`GET /versions`；有 `token_file` 时每个请求都要带 bearer 令牌），修改与 SIGHUP 一样作为重载应用，两者共用一份历史记录；`run -watch` 在配置文件每次变化时应用它们（fit 的文件 provider，轮询）；Admin API 的 `GET /metrics` 提供 fit 的 Prometheus 指标（有 `metrics` 时按监听器和路由的请求、上游和后端、证书、连接、重载、akio 的引擎）；为监听器在 `tls.acme` 中所列的名字通过 HTTP-01 或 TLS-ALPN-01 用 ACME 获取证书，保存在存储中，按有效期或 CA 的续期信息（ARI）续期，并装订其 OCSP 响应；默认 HTTPS（`auto_https`）：没有写监听器的配置以其路由主机名的证书经 HTTPS 服务，经 HTTP 重定向（308）到 HTTPS，空的 `tls` 得到其路由的名字；四层 `services`（I51）：`tcp` 和 `udp` 监听器代理到上游的地址，双向联动背压，空闲超时，`max_conns`，重载后排空；兼容性门禁：80 个夹具，25 个有效，54 个只因暂不支持被拒绝，1 个跳过，没有失败WebSocket 代理（I49）：HTTP/1.1 upgrade 与 HTTP/2、HTTP/3 扩展 CONNECT 代理到 HTTP/1.1 上游，双向联动背压，`tunnel_idle_timeout`；兼容性门禁：80 个夹具，19 个有效，60 个只因暂不支持被拒绝，1 个跳过，没有失败兼容性门禁：80 个夹具，23 个有效，56 个只因暂不支持被拒绝，1 个跳过，没有失败 |
+| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；基于 akio 的 A1 保留（按 fit 的 `binding.same`：证书文件和 ACME 名字可以变）、增加、修改和排空监听器，包括启动时的监听器，重载可新增 h3 监听器；服务 h3 的启动监听器要重启才能变）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证；按 fit 的方式每次握手选择证书，重载或 `-watch-certs` 替换证书而不关闭监听器）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；路由中间件：`rewrite`（前缀）、`redirect`、`headers`、`rate_limit`、`concurrency_limit`、`body_limit`、`basic_auth`（bcrypt，在 akio 的线程池上校验）、`client_cert`（按路由的 mTLS）、`forward_auth`（经 akio 的客户端询问认证服务，期间挂起请求）和 `circuit_breaker``forward_auth`（经 akio 的客户端询问认证服务，期间挂起请求）和 `compress`（按 q 值选择 zstd、brotli 和 gzip，流式消息体逐次写入编码）`forward_auth`（经 akio 的客户端询问认证服务，期间挂起请求）和 `jwt`（用 akio-crypto 校验 JSON Web Token，密钥来自 PEM 文件、密钥文件或经 akio 的客户端获取并轮换的 JWK 集）；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，内存中文件的压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`、双向流式转发 body 并联动背压，双向透传 trailer，`timeout` 和上游的 `response_timeout`、`response_header_timeout`、`response_idle_timeout`，超时回答 504，客户端无论何时离开都放弃上游请求，带预算的 `retry`，`timeout` 覆盖所有尝试；经 HTTP/1.1、h2c 和 h2 访问上游）；所有监听器和代理上的 `limits.max_body_bytes`（413），以及 `limits.write_stall_timeout`（重载也可修改）；fit 的 json、text 和 line 格式的访问日志；上游连接池，fit 的九种负载均衡策略（轮询、加权轮询、最少连接、随机、p2c，以及按客户端 IP、路径、头或 cookie 的一致性哈希）和会话保持 cookie，跳过被被动健康检查（`max_fails`、`fail_timeout`）和主动健康检查（`health_check`：http 和 tcp 探测）下线的地址；回环地址上的 Admin API（`GET /config`，也可按 JSON 指针读取，`POST /load`，用 `PUT`、`PATCH` 和 `DELETE /config` 按指针编辑，`POST /rollback/{n}`，`POST /reload`，都带 `If-Match`，除回滚外都可 `?dry_run=1`，`GET /versions`；有 `token_file` 时每个请求都要带 bearer 令牌），修改与 SIGHUP 一样作为重载应用，两者共用一份历史记录；`run -watch` 在配置文件每次变化时应用它们（fit 的文件 provider，轮询）；Admin API 的 `GET /metrics` 提供 fit 的 Prometheus 指标（有 `metrics` 时按监听器和路由的请求、上游和后端、证书、连接、重载、akio 的引擎）；为监听器在 `tls.acme` 中所列的名字通过 HTTP-01 或 TLS-ALPN-01 用 ACME 获取证书，保存在存储中，按有效期或 CA 的续期信息（ARI）续期，并装订其 OCSP 响应；默认 HTTPS（`auto_https`）：没有写监听器的配置以其路由主机名的证书经 HTTPS 服务，经 HTTP 重定向（308）到 HTTPS，空的 `tls` 得到其路由的名字；四层 `services`（I51）：`tcp` 和 `udp` 监听器代理到上游的地址，双向联动背压，空闲超时，`max_conns`，重载后排空；响应缓存（I67）：zone 共享的有界内存层上的 RFC 9111，流式消息体在发出的同时保存；兼容性门禁：80 个夹具，25 个有效，54 个只因暂不支持被拒绝，1 个跳过，没有失败WebSocket 代理（I49）：HTTP/1.1 upgrade 与 HTTP/2、HTTP/3 扩展 CONNECT 代理到 HTTP/1.1 上游，双向联动背压，`tunnel_idle_timeout`；兼容性门禁：80 个夹具，19 个有效，60 个只因暂不支持被拒绝，1 个跳过，没有失败兼容性门禁：80 个夹具，23 个有效，56 个只因暂不支持被拒绝，1 个跳过，没有失败 |
 | 下一步 | M1 与 M2 的其余迭代；基于 I18b 的 I50（gRPC）和 I54（上游 TLS） |
-| akio 需求 | A1–A8、A11、A13、A16–A21、A36–A38、A51–A53、A63–A66、A90、A91、A93、A94 已在 akio 的 main 并已锁定；A9、A10、A12、A14、A15、A22–A24、A29、A30、A32、A33、A35、A45、A48、A49、A54、A57、A58、A75、A78、A79 和 A92 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
+| akio 需求 | A1–A8、A11、A13、A16–A21、A36–A38、A51–A53、A63–A66、A90、A91、A93、A94 已在 akio 的 main 并已锁定；A111–A113 在 akio 分支 `claude/a111-body-tap` 上并已锁定；A9、A10、A12、A14、A15、A22–A24、A29、A30、A32、A33、A35、A45、A48、A49、A54、A57、A58、A75、A78、A79 和 A92 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
 
 ## 日志
+
+### 2026-11-24：I67，缓存 I：内存层与 RFC 9111
+
+- `akit-cache` 实现 fit 的 `cache` 中间件（`http.middleware.cache`，已在 `akit` 中注册）：按 fit 的
+  `semantics.go` 所述的 RFC 9111 规则保存共享缓存可以保存的 GET 响应（请求和响应的 `Cache-Control`、
+  `Expires`、由 `Last-Modified` 或 `default_ttl` 得到的启发式寿命、可存储的状态码、`Vary` 每个键最多 8 个
+  变体，带 `Set-Cookie`、trailer 和 `Vary: *` 的不保存，带 `Authorization` 的只在 `public`、`s-maxage` 或
+  `must-revalidate` 时保存），回答时带 `Age` 和 fit 的 `Cache-Status`；HEAD 也由它们回答；`If-None-Match`
+  和 `If-Modified-Since` 由它们回答 304；支持请求的 `no-cache`、`max-age`、`min-fresh`、`max-stale`、
+  `only-if-cached`（504）和 `Pragma: no-cache`；带 `Range` 的请求绕过缓存；POST、PUT、DELETE 等成功后删除
+  该 URI 以及同主机的 `Location` 和 `Content-Location`。
+- 带校验器的过期响应带着校验器向后发送（经 `proxy`，它转发被修改的字段，即 I40 的 local）；上游的 304 使它
+  重新新鲜（按 RFC 9111 第 3.2 节合并字段），客户端由它回答，客户端自己的校验器匹配时回答 304。
+- 内存层：每个 zone 一个存储，分 16 个分片，各有锁、`max_bytes` 的一份和最近最少使用顺序（以下标链接的
+  链表，不用 unsafe）；消息体、字段和键都计入；同名缓存共享 zone，重载后保留（弱引用持有，没有缓存使用的
+  zone 会被释放）。
+- 响应在发出的同时保存，从不为此扣住：完整响应取其消息体；流式响应（代理超过 64 KiB 的，I16）由消息体旁路
+  逐次复制，只在流完整结束时保存（未被截断、不以 trailer 结束、长度与声明一致）。缓存的响应过滤器是外层
+  过滤器，因此放在 `compress` 前面时每种编码各是一个变体。同时进行的复制所占内存以 `max_bytes` 的四分之一
+  为上限。
+- 带认证中间件（`basic_auth`、`client_cert`、`forward_auth`、`jwt`）的路由，其缓存把每个请求都当作带
+  `Authorization`，在编译配置时确定：fit 为认证中间件放行的每个请求做标记，对这些中间件而言结果相同，且
+  每个请求没有开销。
+- 配置：`zone`、`max_bytes`（`max_size`）、`max_entry_bytes`（`max_entry_size`，至多为 `max_bytes` 的
+  十六分之一）、`default_ttl`；`disable_lock` 和 `lock_timeout` 被读取并保留给 I68 的缓存锁（在此之前每次
+  未命中都各自获取）；`stale_while_revalidate`、`stale_if_error` 和 `disk` 以暂不支持拒绝（I68）。兼容性
+  门禁的 `examples/cache` 现在只因 stale 窗口被拒绝。
+- akio：提出并实现了 **A111**（`Response::tap_body`、`BodyTap`、`TapEnd`）、**A112**
+  （`akio_http::parse_http_date`，RFC 9110 的三种格式）和 **A113**（`Context::add_outer_response_filter`），
+  即 akio 分支 `claude/a111-body-tap` 上的 ADR-116，提交 `0e36f8d6`（基于 akio main `c5cf4353`），未推送。
+  akit 锁定该提交；它进入 akio 的 main 后即可构建（已通过本地未提交的 `[patch]` 测试）。
+- 测试：`crates/akit-cache/tests/cache.rs` 移植了 fit 的 `cache_test.go`（命中、可存储性、新鲜度、
+  default_ttl、vary、条件请求、重新验证、请求指令、失效、消息体、客户端离开、压缩、参数、zone）和
+  `auth_test.go`，覆盖 HTTP/1.1 和 h2c，以及代理的消息体（流式和 1 MiB 的被保存，被截断的不保存）和经代理的
+  重新验证；语义、存储（淘汰、变体、zone）和同源位置的单元测试。fit 的回答来自缓存锁之处（请求等待时
+  重新获取过期响应），测试期望 I67 的 `fwd=stale; stored` 并注明。
+- 未完成：缓存锁、stale-while-revalidate、stale-if-error 和磁盘层（I68）；清除（I69）；akio 从磁盘文件
+  发送的消息体不保存；fit 为自行认证请求的 handler 所做的标记（akit 没有这样的 handler）。
+- 不做基准测试（规则 30）：要测的内容在开发计划的基准表中。
 
 ### 2026-11-24：I44，JWT 与 JWKS
 

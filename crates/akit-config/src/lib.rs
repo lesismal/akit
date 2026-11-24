@@ -59,6 +59,10 @@ pub use model::{
     SCHEMA_VERSION, Service, Static, StickyCookie, Tls, TlsVersion, TokenFrom, Upstream,
     UpstreamProtocol,
 };
+pub use model::{
+    CACHE_SHARDS, Cache, DEFAULT_CACHE_LOCK_TIMEOUT, DEFAULT_CACHE_MAX_BYTES,
+    DEFAULT_CACHE_MAX_ENTRY_BYTES, DEFAULT_CACHE_ZONE,
+};
 
 /// The largest config document read, in bytes: fit's own configs are kilobytes; this bounds
 /// what a mistaken path (a log file, a device) can make akit read.

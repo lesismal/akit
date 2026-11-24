@@ -1,7 +1,7 @@
 # The compatibility gate's report (docs/compatibility.md), written by make compat-bless;
 # do not edit. The gate fails when a run's outcomes differ from these lines.
 # fit 7daee573, fit-examples 9659d7e4.
-# 80 fixtures: 25 valid, 54 refused only as not supported yet (fields refused: 51), 0 in a format not supported yet, 1 skipped, 0 failed.
+# 80 fixtures: 25 valid, 54 refused only as not supported yet (fields refused: 52), 0 in a format not supported yet, 1 skipped, 0 failed.
 examples/acme-on-demand: not supported yet: acme.on_demand
 examples/acme-on-demand: not supported yet: listeners[].tls.on_demand
 examples/acme-shared-storage: not supported yet: acme.shared_storage
@@ -15,7 +15,8 @@ examples/bittorrent: not supported yet: routes[].handler<bt_publish>
 examples/bittorrent: not supported yet: routes[].handler<bt_stream>
 examples/bittorrent: not supported yet: routes[].handler<bt_tracker>
 examples/body-limit: valid
-examples/cache: not supported yet: routes[].middleware[]<cache>
+examples/cache: not supported yet: routes[].middleware[]<cache>.params.stale_if_error
+examples/cache: not supported yet: routes[].middleware[]<cache>.params.stale_while_revalidate
 examples/circuit-breaker: valid
 examples/client-cert: valid
 examples/compress: valid

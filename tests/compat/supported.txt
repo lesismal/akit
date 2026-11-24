@@ -341,3 +341,19 @@ routes[].middleware[]<circuit_breaker>.params.half_open_requests
 # I49: WebSocket proxying: HTTP/1.1 upgrades and HTTP/2 and HTTP/3 extended CONNECTs joined to an
 # HTTP/1.1 upstream's switched connection, closed after tunnel_idle_timeout carried nothing.
 routes[].handler<proxy>.params.tunnel_idle_timeout
+
+# I67: cache, responses kept by RFC 9111's rules (Cache-Control, Vary, validators, Age) in a
+# bounded memory tier shared by the caches of a zone and kept across reloads; a streamed (proxied)
+# body copied as it goes through akio's body tap (ADR-116). disable_lock and lock_timeout are read
+# and kept for the cache lock (I68); until then every miss fetches. stale_while_revalidate,
+# stale_if_error and disk wait for I68 and are refused as not supported yet.
+routes[].middleware[]<cache>
+routes[].middleware[]<cache>.params
+routes[].middleware[]<cache>.params.zone
+routes[].middleware[]<cache>.params.max_bytes
+routes[].middleware[]<cache>.params.max_size
+routes[].middleware[]<cache>.params.max_entry_bytes
+routes[].middleware[]<cache>.params.max_entry_size
+routes[].middleware[]<cache>.params.default_ttl
+routes[].middleware[]<cache>.params.disable_lock
+routes[].middleware[]<cache>.params.lock_timeout
