@@ -588,11 +588,10 @@ fn host_header() {
 /// and h2c.
 #[test]
 fn bad_gateway() {
-    let addr = {
-        let l = TcpListener::bind("127.0.0.1:0").unwrap();
-        l.local_addr().unwrap()
-    };
-    let akit = Akit::start(&config1(r#"{"upstream": "app"}"#, &addr.to_string()));
+    // Port 1 (tcpmux) is never served here. A port taken from a listener just dropped could be
+    // bound again by another test's upstream running in parallel, which would then answer.
+    let addr = "127.0.0.1:1";
+    let akit = Akit::start(&config1(r#"{"upstream": "app"}"#, addr));
     let h2 = h2c(
         akit.addr,
         ClientRequest::get(&format!("http://{}/", akit.addr)),
