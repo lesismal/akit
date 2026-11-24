@@ -1,13 +1,13 @@
 # The compatibility gate's report (docs/compatibility.md), written by make compat-bless;
 # do not edit. The gate fails when a run's outcomes differ from these lines.
 # fit 7daee573, fit-examples 9659d7e4.
-# 80 fixtures: 15 valid, 64 refused only as not supported yet (fields refused: 63), 0 in a format not supported yet, 1 skipped, 0 failed.
+# 80 fixtures: 18 valid, 61 refused only as not supported yet (fields refused: 61), 0 in a format not supported yet, 1 skipped, 0 failed.
 examples/acme-on-demand: not supported yet: acme.on_demand
 examples/acme-on-demand: not supported yet: listeners[].tls.on_demand
 examples/acme-shared-storage: not supported yet: acme.shared_storage
 examples/admin: not supported yet: admin.address: a Unix socket (akio API request A23)
 examples/auto-https: not supported yet: listeners: a config with no listeners, served over HTTPS by default (auto_https)
-examples/basic-auth: not supported yet: routes[].middleware[]<basic_auth>
+examples/basic-auth: valid
 examples/bittorrent: not supported yet: bittorrent
 examples/bittorrent: not supported yet: media_auth
 examples/bittorrent: not supported yet: media_library
@@ -17,7 +17,7 @@ examples/bittorrent: not supported yet: routes[].handler<bt_tracker>
 examples/body-limit: valid
 examples/cache: not supported yet: routes[].middleware[]<cache>
 examples/circuit-breaker: not supported yet: routes[].middleware[]<circuit_breaker>
-examples/client-cert: not supported yet: routes[].middleware[]<client_cert>
+examples/client-cert: valid
 examples/compress: not supported yet: routes[].middleware[]<compress>
 examples/concurrency-limit: valid
 examples/console: not supported yet: admin.console
@@ -56,7 +56,7 @@ examples/media-pages: not supported yet: routes[].handler<whep>
 examples/media-pages: not supported yet: routes[].handler<whip>
 examples/media-pages: not supported yet: webrtc
 examples/metrics: valid
-examples/mtls: not supported yet: routes[].middleware[]<client_cert>
+examples/mtls: valid
 examples/provider-consul: not supported yet: providers
 examples/provider-consul-kv: not supported yet: providers
 examples/provider-docker: not supported yet: providers
@@ -110,7 +110,6 @@ examples/video-site: not supported yet: routes[].handler<hls>
 examples/video-site: not supported yet: routes[].handler<media_pages>
 examples/video-site: not supported yet: routes[].handler<media_tokens>
 examples/video-site: not supported yet: routes[].handler<vod>
-examples/video-site: not supported yet: routes[].middleware[]<basic_auth>
 examples/video-site: not supported yet: streaming
 examples/virtual-hosts: valid
 examples/wasm: not supported yet: routes[].middleware[]<wasm>

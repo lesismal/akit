@@ -861,7 +861,7 @@ mod tests {
         let v = super::version();
         let lines: Vec<&str> = v.lines().collect();
         assert!(lines[0].starts_with("akit "));
-        assert_eq!(lines[1], "akio afbbb5211480");
+        assert_eq!(lines[1], "akio 4f7169c48399");
         assert_eq!(
             lines[2],
             format!("{}/{}", std::env::consts::OS, std::env::consts::ARCH)

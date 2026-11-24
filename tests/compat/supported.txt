@@ -214,6 +214,23 @@ routes[].middleware[]<body_limit>
 routes[].middleware[]<body_limit>.params
 routes[].middleware[]<body_limit>.params.max_bytes
 
+# I42: basic_auth (bcrypt hashes checked on akio's logical pool, the request suspended meanwhile;
+# a password that passed remembered as a keyed HMAC) and client_cert (the client's verified chain
+# that akio gives each request; its subject as Go writes it). Who the request was authenticated
+# as is not in akit's access log line yet (akio API request A29).
+routes[].middleware[]<basic_auth>
+routes[].middleware[]<basic_auth>.params
+routes[].middleware[]<basic_auth>.params.realm
+routes[].middleware[]<basic_auth>.params.users
+routes[].middleware[]<basic_auth>.params.users[].username
+routes[].middleware[]<basic_auth>.params.users[].password_hash
+routes[].middleware[]<basic_auth>.params.user_header
+routes[].middleware[]<basic_auth>.params.forward_authorization
+routes[].middleware[]<client_cert>
+routes[].middleware[]<client_cert>.params
+routes[].middleware[]<client_cert>.params.optional
+routes[].middleware[]<client_cert>.params.subject_header
+
 # I37: metrics, fit's request counting by listener and route for the Admin API's /metrics; it has
 # no settings. As in fit, it needs admin.
 metrics

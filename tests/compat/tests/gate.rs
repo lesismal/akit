@@ -388,6 +388,14 @@ fn supported_fields_are_read() {
     let rate = |params: &str| mw("rate_limit", params);
     let concurrency = |params: &str| mw("concurrency_limit", params);
     let body = |params: &str| mw("body_limit", params);
+    const H: &str = "$2a$04$5xt5UjNNUVWTqOgf9FDZm.bfWVyXg.U2as/rOFV.Ny5IQstc/jC26";
+    let basic = |more: &str| {
+        mw(
+            "basic_auth",
+            &format!(r#""users": [{{"username": "alice", "password_hash": "{H}"}}]{more}"#),
+        )
+    };
+    let cert = |params: &str| mw("client_cert", params);
     let samples: Vec<(&str, String, Check)> = vec![
         ("schema_version", r#"{"schema_version": 1}"#.into(), |c| {
             c.schema_version == 1
@@ -974,6 +982,58 @@ fn supported_fields_are_read() {
             body(r#""max_bytes": 1048576"#),
             |c| matches!(&c.routes[0].middleware[0], Handler::BodyLimit(b) if b.max_bytes == 1 << 20),
         ),
+        ("routes[].middleware[]<basic_auth>", basic(""), |c| {
+            matches!(c.routes[0].middleware[0], Handler::BasicAuth(_))
+        }),
+        ("routes[].middleware[]<basic_auth>.params", basic(""), |c| {
+            basic_of(c).realm == "fit" && basic_of(c).user_header.is_empty()
+        }),
+        (
+            "routes[].middleware[]<basic_auth>.params.realm",
+            basic(r#", "realm": "staff""#),
+            |c| basic_of(c).realm == "staff",
+        ),
+        (
+            "routes[].middleware[]<basic_auth>.params.users",
+            basic(""),
+            |c| basic_of(c).users.len() == 1,
+        ),
+        (
+            "routes[].middleware[]<basic_auth>.params.users[].username",
+            basic(""),
+            |c| basic_of(c).users[0].username == "alice",
+        ),
+        (
+            "routes[].middleware[]<basic_auth>.params.users[].password_hash",
+            basic(""),
+            |c| basic_of(c).users[0].password_hash.starts_with("$2a$04$"),
+        ),
+        (
+            "routes[].middleware[]<basic_auth>.params.user_header",
+            basic(r#", "user_header": "X-User""#),
+            |c| basic_of(c).user_header == "X-User",
+        ),
+        (
+            "routes[].middleware[]<basic_auth>.params.forward_authorization",
+            basic(r#", "forward_authorization": true"#),
+            |c| basic_of(c).forward_authorization,
+        ),
+        ("routes[].middleware[]<client_cert>", cert(""), |c| {
+            matches!(c.routes[0].middleware[0], Handler::ClientCert(_))
+        }),
+        ("routes[].middleware[]<client_cert>.params", cert(""), |c| {
+            *cert_of(c) == akit_config::ClientCert::default()
+        }),
+        (
+            "routes[].middleware[]<client_cert>.params.optional",
+            cert(r#""optional": true"#),
+            |c| cert_of(c).optional,
+        ),
+        (
+            "routes[].middleware[]<client_cert>.params.subject_header",
+            cert(r#""subject_header": "X-Subject""#),
+            |c| cert_of(c).subject_header == "X-Subject",
+        ),
         ("upstreams", upstream(""), |c| c.upstreams.len() == 1),
         ("upstreams[].name", upstream(""), |c| {
             c.upstreams[0].name == "app"
@@ -1229,6 +1289,22 @@ fn headers_of(c: &Config) -> &akit_config::Headers {
     .unwrap()
 }
 
+fn basic_of(c: &Config) -> &akit_config::BasicAuth {
+    match c.routes.first().unwrap().middleware.first().unwrap() {
+        Handler::BasicAuth(b) => Some(b),
+        _ => None,
+    }
+    .unwrap()
+}
+
+fn cert_of(c: &Config) -> &akit_config::ClientCert {
+    match c.routes.first().unwrap().middleware.first().unwrap() {
+        Handler::ClientCert(cc) => Some(cc),
+        _ => None,
+    }
+    .unwrap()
+}
+
 fn rate_of(c: &Config) -> &akit_config::RateLimit {
     match c.routes.first().unwrap().middleware.first().unwrap() {
         Handler::RateLimit(r) => Some(r),
@@ -1272,7 +1348,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 27] = [
+    let objects: [(&str, &str, Option<&str>); 30] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         ("admin", "ADMIN_FIELDS", Some("ADMIN_FIT_ONLY")),
         ("acme", "ACME_FIELDS", Some("ACME_FIT_ONLY")),
@@ -1342,6 +1418,21 @@ fn akit_config_lists_match_the_inventory() {
         (
             "routes[].middleware[]<body_limit>.params",
             "BODY_LIMIT_FIELDS",
+            None,
+        ),
+        (
+            "routes[].middleware[]<basic_auth>.params",
+            "BASIC_AUTH_FIELDS",
+            None,
+        ),
+        (
+            "routes[].middleware[]<basic_auth>.params.users[]",
+            "BASIC_USER_FIELDS",
+            None,
+        ),
+        (
+            "routes[].middleware[]<client_cert>.params",
+            "CLIENT_CERT_FIELDS",
             None,
         ),
     ];
@@ -1415,8 +1506,8 @@ fn akit_config_lists_match_the_inventory() {
     read.insert("routes[].handler<static>.params".to_owned());
     read.insert("routes[].handler<proxy>".to_owned());
     read.insert("routes[].handler<proxy>.params".to_owned());
-    // Middleware modules: rewrite, redirect, headers and the limits, which akit reads, and FIT_MIDDLEWARE,
-    // which it refuses.
+    // Middleware modules: rewrite, redirect, headers, the limits and auth, which akit reads, and
+    // FIT_MIDDLEWARE, which it refuses.
     let mut middleware: BTreeSet<String> = list("FIT_MIDDLEWARE").iter().cloned().collect();
     for m in &middleware {
         assert!(
@@ -1431,6 +1522,8 @@ fn akit_config_lists_match_the_inventory() {
         "rate_limit",
         "concurrency_limit",
         "body_limit",
+        "basic_auth",
+        "client_cert",
     ] {
         assert!(middleware.insert(m.to_owned()), "FIT_MIDDLEWARE lists {m}");
         read.insert(format!("routes[].middleware[]<{m}>"));

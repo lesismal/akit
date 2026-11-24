@@ -9,7 +9,9 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
+akio-crypto = { workspace = true }
 akio-http = { workspace = true }
+akio-x509 = { workspace = true }
 akio-regex = { workspace = true }
 akit-config = { workspace = true }
 akit-router = { workspace = true }
@@ -17,6 +19,8 @@ akit-runtime = { workspace = true }
 
 [dev-dependencies]
 akio = { workspace = true }
+akio-h3 = { workspace = true }
+akio-quic = { workspace = true }
 akit-handler = { workspace = true }
 akit-listener = { workspace = true }
 akit-proxy = { workspace = true }

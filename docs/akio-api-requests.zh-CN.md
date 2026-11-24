@@ -47,9 +47,9 @@
 | A32 | `akio-regex` 模式在哪里匹配、它的分组，以及替换 | 已提出（I40） | 19 | I40、I48 |
 | A33 | 被中间件修改的请求字段和请求目标（`Context::req_mut`） | 已提出（I40） | 12、19 | I40、I43、I44 |
 | A35 | 按长度分帧的流式 HTTP/1.1 响应 | 已提出（I16） | 5 | I16、I67 |
-| A36 | HTTP 客户端请求的响应头超时和空闲超时 | 已提出（I17） | 10 | I17b、I18 |
-| A37 | 可在任意时刻取消的 HTTP 客户端请求 | 已提出（I17） | 3 | I17b、I45 |
-| A38 | 能得知客户端离开的分离服务端请求；可在运行时修改的写停滞超时 | 已提出（I17） | 3、10 | I17b、I49 |
+| A36 | HTTP 客户端请求的响应头超时和空闲超时 | 已在 akio 的 main（`4f7169c4`），已锁定 | 10 | I17b、I18 |
+| A37 | 可在任意时刻取消的 HTTP 客户端请求 | 已在 akio 的 main（`4f7169c4`），已锁定 | 3 | I17b、I45 |
+| A38 | 能得知客户端离开的分离服务端请求；可在运行时修改的写停滞超时 | 已在 akio 的 main（`4f7169c4`），已锁定 | 3、10 | I17b、I49 |
 | A45 | 公开的定时器：延迟过后运行一次回调，可从任何线程调度 | 已提出（I35） | 1、11 | I35、I31、I54 |
 | A48 | 获知请求的结束：响应已完整发出，或等待中客户端已离开 | 已提出（I41） | 3、11、13 | I41、I17、I21、I37 |
 | A49 | 由中间件限制请求体大小，无论谁读取请求体 | 已提出（I41） | 7、11 | I41 |
@@ -59,6 +59,9 @@
 | A54 | 空闲的 HTTP/1 连接在宽限期后排空，而非立即关闭 | 已提出（I28） | 10 | I28 |
 | A57 | 握手之外可用的根证书：用系统的根证书校验证书链 | 已提出（I32） | 1、19 | I32 |
 | A58 | HTTP 服务能看到 TLS 连接协商出的 ALPN 协议（或关闭这样的连接） | 已提出（I32） | 19 | I32、I34 |
+| A63 | `akio-crypto` 中的 bcrypt 密码哈希 | 已在 akio 的 main（`4f7169c4`），已锁定 | 1、4 | I42 |
+| A64 | 每个服务端请求上的客户端已验证证书 | 已在 akio 的 main（`4f7169c4`），已锁定 | — | I42 |
+| A65 | 由中间件挂起、之后带着上下文恢复的请求 | 已在 akio 的 main（`4f7169c4`），已锁定 | 1、3、4 | I42、I43 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -818,3 +821,62 @@ ADR-010 与 ADR-059：macOS 上读钥匙串，其他系统读发行版的证书�
 **akit 的用法。** 分发器不作应答地关闭 ALPN 为 `acme-tls/1` 的连接（或由 akio 关闭），和 fit 的监听器一样；目前它
 被当作 HTTP/1.1 服务。
 
+## A63 bcrypt 密码哈希
+
+**问题。** fit 的 `basic_auth` 用 bcrypt 哈希（`htpasswd -B` 和 fit 自己的 `hash-password` 生成的 `$2a$`、
+`$2b$`、`$2y$`）校验密码。`akio-crypto` 有 PBKDF2 和 HKDF，没有 bcrypt，网关也不应自带一份 Blowfish。
+
+**依据。** `afbbb521` 的 `crates/akio-crypto/src/lib.rs` 和 `kdf.rs`：没有 bcrypt 或 Blowfish。
+
+**建议的 API。** `akio_crypto::bcrypt`：`Hash::parse(&str) -> Result<Hash, ParseError>`（错误中给出原因）、
+以常数时间比较的 `Hash::verify(&self, password) -> bool`、`cost`、`Display`；`hash(password, cost)` 与
+`hash_with_salt`。与 Go 一致：只读密码的前 72 字节，各次版本号同样处理。
+
+**akit 的用法。** akit-config 用 `Hash::parse` 检查 `password_hash` 并说明不是哈希的原因；`basic_auth` 在
+akio 的逻辑线程池上用 `verify` 校验密码（A65）。
+
+**已完成。** 按建议实现，见 `5e0d433c`（ADR-109）：Go、`htpasswd -B` 与 OpenBSD 的测试向量；Blowfish 的表
+由 π 的各位数字生成，并与 Go 的表核对。
+
+## A64 每个服务端请求上的客户端已验证证书
+
+**问题。** fit 的 `client_cert` 只放行客户端发送了、且监听器已验证（`tls.client_auth`）证书的请求，并把
+证书主题传下去。akio-http 的处理器拿到的是 `Context` 而不是连接；`akio_tls::TlsInfo` 不带对端证书链，
+`akio_quic::Connection` 也不提供。
+
+**依据。** `afbbb521` 的 `crates/akio-tls/src/lib.rs`：`TlsInfo` 有 ALPN、SNI、版本、早期数据和 OCSP，没有
+证书链，尽管协议核心保存了它（`peer_certificates`，会话恢复时也会还原）；`crates/akio-http/src/message.rs`：
+`Request` 只有 `peer`。
+
+**建议的 API。** `Request::peer_certificates: Option<Arc<[Vec<u8>]>>`：客户端发送并经握手验证的证书链，
+设置在 HTTP/1.1、HTTP/2 和 HTTP/3 请求上，同一连接的请求共享；另有 `TlsInfo::peer_certificates` 和
+`akio_quic::Connection::peer_certificates`。
+
+**akit 的用法。** `client_cert` 拒绝没有证书的请求（403，除非 `optional`），并把叶证书的主题按 Go 的
+`pkix.Name.String` 的写法写入 `subject_header`。
+
+**已完成。** 按建议实现，见 `5e0d433c`（ADR-109），另有 `akio_tls::peer_chain`（`PeerChain`），服务端在连接
+握手完成后取一次；以 TLS 1.3 早期数据到达的请求没有证书。
+
+## A65 由中间件挂起、之后带着上下文恢复的请求
+
+**问题。** 一次 bcrypt 校验要花几毫秒到几十毫秒的 CPU，`basic_auth` 不能在 I/O 线程上校验密码（规则 1）。
+fit 在线程池里校验，请求在此期间等待，之后继续执行下一个中间件和处理器。在 akio 中，中间件可以分离响应并在
+线程池里作答（`Context::detach_to_pool`），却无法继续执行链：下一个处理器要的是 `Context`，分离的请求没有。
+`run_on_pool` 则把监听器的所有请求都搬到线程池。ForwardAuth（I43）有同样的需求：请求等待授权服务器，之后
+继续。
+
+**依据。** `afbbb521` 的 `crates/akio-http/src/context.rs` 和 `pool.rs`：`detach` 给出 `Detached`（只能作答
+或流式作答）；`call_on_pool` 把整个上下文移到线程池，但它是 crate 私有的，且只用于开了 `run_on_pool` 的监听器
+的全部请求。
+
+**建议的 API。** `Context::suspend(&mut self) -> Option<Suspended>` 与
+`Suspended::resume(self, impl FnOnce(&mut Context))`，可在任意线程调用，并像服务端在 `call` 之后那样收尾；
+`Context::suspend_to_pool(work)`，线程池满时回 `503`。
+
+**akit 的用法。** `basic_auth` 挂起密码尚未记住的请求，在线程池上校验，再恢复它进入下一个中间件和处理器，
+或回 401。I43 的 ForwardAuth 在授权请求完成时恢复请求。
+
+**已完成。** 按建议实现，见 `5e0d433c`（ADR-109）。消息体流式交给处理器的请求不能挂起（akio 在 `call` 之后把
+消息体交给该上下文，与 `run_on_pool` 的界线相同）：`basic_auth` 只对带消息体、且密码尚未校验过的请求要求整体
+读取消息体（在监听器的 `max_body_bytes` 之内）。以后的版本可以让挂起的请求改为暂停其消息体的读取。

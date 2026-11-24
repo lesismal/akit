@@ -48,9 +48,9 @@ first; its status here records the branch, then the akio commit akit pins.
 | A32 | Where an `akio-regex` pattern matches, its groups, and replacing them | requested (I40) | 19 | I40, I48 |
 | A33 | A request's fields and target changed by a middleware (`Context::req_mut`) | requested (I40) | 12, 19 | I40, I43, I44 |
 | A35 | A streamed HTTP/1.1 response framed by its length | requested (I16) | 5 | I16, I67 |
-| A36 | An HTTP client request's response-header and idle timeouts | requested (I17) | 10 | I17b, I18 |
-| A37 | An HTTP client request cancelled at any point | requested (I17) | 3 | I17b, I45 |
-| A38 | A detached server request that hears its client went; a write stall timeout changed at run time | requested (I17) | 3, 10 | I17b, I49 |
+| A36 | An HTTP client request's response-header and idle timeouts | in akio's main (`4f7169c4`), pinned | 10 | I17b, I18 |
+| A37 | An HTTP client request cancelled at any point | in akio's main (`4f7169c4`), pinned | 3 | I17b, I45 |
+| A38 | A detached server request that hears its client went; a write stall timeout changed at run time | in akio's main (`4f7169c4`), pinned | 3, 10 | I17b, I49 |
 | A45 | A public timer: a callback run once a delay has passed, from any thread | requested (I35) | 1, 11 | I35, I31, I54 |
 | A48 | A request's end heard: its response sent in full, or its client gone while it waits | requested (I41) | 3, 11, 13 | I41, I17, I21, I37 |
 | A49 | A request body limited by a middleware, whoever reads the body | requested (I41) | 7, 11 | I41 |
@@ -60,6 +60,9 @@ first; its status here records the branch, then the akio commit akit pins.
 | A54 | An idle HTTP/1 connection drained after a grace, not at once | requested (I28) | 10 | I28 |
 | A57 | Root certificates usable outside a handshake: the system's, to verify a chain against | requested (I32) | 1, 19 | I32 |
 | A58 | The ALPN protocol a TLS connection negotiated, seen by an HTTP service (or such a connection closed) | requested (I32) | 19 | I32, I34 |
+| A63 | bcrypt password hashes in `akio-crypto` | in akio's main (`4f7169c4`), pinned | 1, 4 | I42 |
+| A64 | The client's verified certificate on each server request | in akio's main (`4f7169c4`), pinned | — | I42 |
+| A65 | A request suspended by a middleware and resumed with its context | in akio's main (`4f7169c4`), pinned | 1, 3, 4 | I42, I43 |
 
 ## A1 TCP listeners on a running engine
 
@@ -1019,3 +1022,72 @@ its handshake is done.
 **How akit uses it.** The dispatcher closes a connection whose ALPN is `acme-tls/1` without
 answering (or akio closes it), as fit's listener does; today it is served as HTTP/1.1.
 
+## A63 bcrypt password hashes
+
+**Problem.** fit's `basic_auth` checks passwords against bcrypt hashes (`$2a$`, `$2b$`, `$2y$`,
+as `htpasswd -B` and its own `hash-password` make them). `akio-crypto` has PBKDF2 and HKDF, not
+bcrypt, and a gateway should not carry Blowfish of its own.
+
+**Evidence.** `crates/akio-crypto/src/lib.rs` and `kdf.rs` at `afbbb521`: no bcrypt or Blowfish.
+
+**Suggested API.** `akio_crypto::bcrypt`: `Hash::parse(&str) -> Result<Hash, ParseError>` (the
+reason in the error), `Hash::verify(&self, password) -> bool` compared in constant time, `cost`,
+`Display`; `hash(password, cost)` and `hash_with_salt`. As Go: a password read to its first 72
+bytes, the minor versions alike.
+
+**How akit uses it.** akit-config checks `password_hash` with `Hash::parse` and says why one is
+not a hash; `basic_auth` checks passwords with `verify` on akio's logical pool (A65).
+
+**Done.** As suggested, in `5e0d433c` (ADR-109): vectors from Go, `htpasswd -B` and OpenBSD;
+Blowfish's tables generated from pi's digits and checked against Go's.
+
+## A64 The client's verified certificate on each server request
+
+**Problem.** fit's `client_cert` lets a request through only when its client sent a certificate
+that the listener verified (`tls.client_auth`), and passes its subject on. An akio-http handler
+sees a `Context`, not the connection; `akio_tls::TlsInfo` did not carry the peer's chain, and
+`akio_quic::Connection` did not give it either.
+
+**Evidence.** `crates/akio-tls/src/lib.rs` at `afbbb521`: `TlsInfo` has ALPN, SNI, version, early
+data and OCSP, not the chain, though the protocol core keeps it (`peer_certificates`, restored on
+resumption); `crates/akio-http/src/message.rs`: `Request` has `peer` only.
+
+**Suggested API.** `Request::peer_certificates: Option<Arc<[Vec<u8>]>>`, the chain the client sent
+and the handshake verified, set on HTTP/1.1, HTTP/2 and HTTP/3 requests, shared by a connection's
+requests; `TlsInfo::peer_certificates` and `akio_quic::Connection::peer_certificates` beside it.
+
+**How akit uses it.** `client_cert` refuses a request without one (403) unless `optional`, and
+writes the leaf's subject, as Go's `pkix.Name.String` writes it, into `subject_header`.
+
+**Done.** As suggested, in `5e0d433c` (ADR-109), with `akio_tls::peer_chain` (`PeerChain`), which
+the servers ask once a connection's handshake is done; a request that came as TLS 1.3 early data
+has none.
+
+## A65 A request suspended by a middleware and resumed with its context
+
+**Problem.** A bcrypt check takes milliseconds to tens of milliseconds of CPU, so `basic_auth`
+cannot check a password on the I/O thread (rule 1). fit runs the check on a pool while the
+request waits, then goes on to the next middleware and the handler. In akio a middleware can
+detach the response and answer from the pool (`Context::detach_to_pool`), but not go on with the
+chain: the next handler takes a `Context`, and a detached request has none. `run_on_pool` moves
+every request of a listener to the pool. ForwardAuth (I43) has the same need: the request waits
+for an authorization server, then goes on.
+
+**Evidence.** `crates/akio-http/src/context.rs` and `pool.rs` at `afbbb521`: `detach` gives a
+`Detached` (respond or stream a response); `call_on_pool` moves a whole context to the pool, but is
+crate-private and taken for every request of a listener with `run_on_pool`.
+
+**Suggested API.** `Context::suspend(&mut self) -> Option<Suspended>` and
+`Suspended::resume(self, impl FnOnce(&mut Context))`, from any thread, finishing the request as a
+server finishes one after `call`; `Context::suspend_to_pool(work)`, with `503` when the pool is
+full.
+
+**How akit uses it.** `basic_auth` suspends a request whose password is not remembered, checks it
+on the pool, and resumes it into the next middleware and the handler, or answers 401. I43's
+ForwardAuth resumes the request from the auth request's completion.
+
+**Done.** As suggested, in `5e0d433c` (ADR-109). A request whose body streams to its handler
+cannot be suspended (akio feeds the body to the context after `call`, as `run_on_pool` draws the
+line): `basic_auth` asks for the body whole (within the listener's `max_body_bytes`) only for a
+request with a body whose password it has not checked yet. A later version may let a suspended
+request hold its body's reads instead.

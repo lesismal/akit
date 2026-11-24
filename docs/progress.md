@@ -11,14 +11,79 @@ done and where the work differs from the plan.
 | | |
 | --- | --- |
 | Last updated | 2026-11-24 |
-| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I24 done (I17b and I18b wait on akio); M2's I26–I28, I30–I32 and I35–I37 and M3's I39, I40 and I41 done early. |
-| akio | `afbbb521` on akio's `main` (`1.0.0-rc.1`, with A1–A8, A11, A13 and A16–A21, and the io_uring fix for listeners replaced at run time), pinned by `rev` in `Cargo.toml` |
+| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I24 done (I17b and I18b wait on akio); M2's I26–I28, I30–I32 and I35–I37 and M3's I39–I42 done early. |
+| akio | `4f7169c4` on akio's `main` (`1.0.0-rc.1`, with A1–A8, A11, A13, A16–A21, A36–A38 and A63–A65), pinned by `rev` in `Cargo.toml` |
 | fit | the specification; read at `7daee573` for this plan |
-| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept (as fit's `binding.same`: certificate files and ACME names may change), added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication; certificates chosen per handshake as fit's, replaced by a reload or by `-watch-certs` without closing the listener) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; route middleware: `rewrite` (prefixes), `redirect`, `headers`, `rate_limit`, `concurrency_limit` and `body_limit`; the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`, bodies streamed both ways with linked backpressure, trailers both ways, `timeout` and the upstream's `response_timeout`, 504 for timeouts, the upstream request given up when the client goes mid-body; upstreams over HTTP/1.1, h2c and h2); `limits.max_body_bytes` on every listener (413) and in the proxy; access logs in fit's json, text and line formats; upstream pools with fit's nine load balancing policies (round robin, weighted round robin, least connections, random, p2c, and consistent hashing of the client's IP, the path, a header or a cookie) and sticky cookies, passing over addresses taken out by passive health checks (`max_fails`, `fail_timeout`) and by active ones (`health_check`: http and tcp probes); the Admin API on loopback (`GET /config`, by JSON pointer too, `POST /load`, edits by pointer with `PUT`, `PATCH` and `DELETE /config`, `POST /rollback/{n}`, `POST /reload`, each with `If-Match` and all but a rollback with `?dry_run=1`, `GET /versions`; with `token_file`, a bearer token on every request), changes applied as SIGHUP's reloads, one history for both; Prometheus metrics at the Admin API's `GET /metrics` (requests by listener and route with `metrics`, upstreams and backends, certificates, connections, reloads, akio's engine); certificates obtained with ACME through HTTP-01 or TLS-ALPN-01 for the names listeners list in `tls.acme`, kept in a storage and renewed by their lifetime or the CA's renewal information (ARI), their OCSP responses stapled; the compatibility gate: 80 fixtures, 15 valid, 64 refused only as not supported yet, 1 skipped, none failed |
-| Next | I17b once akio has A36–A38; I18b once it has A51–A53 |
-| akio requests | A1–A8, A11, A13 and A16–A21 on akio's main and pinned; A9, A10, A12, A14, A15, A22–A24, A29, A30, A32, A33, A35–A38, A45, A48, A49, A51–A54, A57 and A58 requested ([akio API requests](akio-api-requests.md)) |
+| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept (as fit's `binding.same`: certificate files and ACME names may change), added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication; certificates chosen per handshake as fit's, replaced by a reload or by `-watch-certs` without closing the listener) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; route middleware: `rewrite` (prefixes), `redirect`, `headers`, `rate_limit`, `concurrency_limit`, `body_limit`, `basic_auth` (bcrypt, checked on akio's pool) and `client_cert` (mTLS per route); the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`, bodies streamed both ways with linked backpressure, trailers both ways, `timeout` and the upstream's `response_timeout`, 504 for timeouts, the upstream request given up when the client goes mid-body; upstreams over HTTP/1.1, h2c and h2); `limits.max_body_bytes` on every listener (413) and in the proxy; access logs in fit's json, text and line formats; upstream pools with fit's nine load balancing policies (round robin, weighted round robin, least connections, random, p2c, and consistent hashing of the client's IP, the path, a header or a cookie) and sticky cookies, passing over addresses taken out by passive health checks (`max_fails`, `fail_timeout`) and by active ones (`health_check`: http and tcp probes); the Admin API on loopback (`GET /config`, by JSON pointer too, `POST /load`, edits by pointer with `PUT`, `PATCH` and `DELETE /config`, `POST /rollback/{n}`, `POST /reload`, each with `If-Match` and all but a rollback with `?dry_run=1`, `GET /versions`; with `token_file`, a bearer token on every request), changes applied as SIGHUP's reloads, one history for both; Prometheus metrics at the Admin API's `GET /metrics` (requests by listener and route with `metrics`, upstreams and backends, certificates, connections, reloads, akio's engine); certificates obtained with ACME through HTTP-01 or TLS-ALPN-01 for the names listeners list in `tls.acme`, kept in a storage and renewed by their lifetime or the CA's renewal information (ARI), their OCSP responses stapled; the compatibility gate: 80 fixtures, 18 valid, 61 refused only as not supported yet18 valid, 61 refused only as not supported yet, 1 skipped, none failed |
+| Next | I17b (akio now has A36–A38); I18b once akio has A51–A53 |
+| akio requests | A1–A8, A11, A13, A16–A21, A36–A38 and A63–A65 on akio's main and pinned; A9, A10, A12, A14, A15, A22–A24, A29, A30, A32, A33, A35, A45, A48, A49, A51–A54, A57 and A58 requested ([akio API requests](akio-api-requests.md)) |
 
 ## Log
+
+### 2026-11-24: I42, basic auth and mTLS
+
+- Taken early from M3, after I41. `akit-config` reads fit's `basic_auth` (`realm`, `users` with
+  `username` and `password_hash`, `user_header`, `forward_authorization`) and `client_cert`
+  (`optional`, `subject_header`) into `Handler::BasicAuth` and `ClientCert`, with the checks of
+  fit's `Provision`s and their messages (the realm with no quote, backslash or control
+  character; at least one user; names not empty and without a colon or control character, none
+  twice; hashes that `akio_crypto::bcrypt` parses, with its reason; field names HTTP tokens). They
+  leave `FIT_MIDDLEWARE`; akit-config depends on akio-crypto for the hashes.
+- akio (rule 21): what I42 needs went into akio first, on branch `claude/a63-a65-auth`, commit
+  `5e0d433c` (ADR-109), off akio's main `afbbb521`: **A63** bcrypt in akio-crypto; **A64**
+  `Request::peer_certificates`, the client's verified chain on every HTTP/1.1, HTTP/2 and HTTP/3
+  request (`TlsInfo::peer_certificates`, `akio_tls::peer_chain`,
+  `akio_quic::Connection::peer_certificates`); **A65** `Context::suspend`, `Suspended::resume`
+  and `Context::suspend_to_pool`. With their tests, on macOS and on gpu51 (epoll and io_uring).
+  **Not on akio's main and not pushed**: akit's `Cargo.toml` still pins `afbbb521`, and this
+  commit builds once the pin moves to the merged akio commit (akit was built and tested here
+  against `5e0d433c` through a local `[patch]`, not committed).
+- `akit-middleware` `auth`:
+  - `basic_auth`: HTTP Basic credentials read as Go's `Request.BasicAuth`; 401 with
+    `WWW-Authenticate: Basic realm="…", charset="UTF-8"` and fit's body. A password not yet
+    remembered is checked on akio's logical pool: the request is suspended
+    (`suspend_to_pool`) and resumed into the next middleware and the handler, or answered 401.
+    An unknown user's password is checked against the first user's hash, so a refusal takes as
+    long. A password that passed is remembered per user as an HMAC-SHA-256 under a random key,
+    read without a lock (a seqlock of four words) and compared in constant time, so the user's
+    next requests are let in inline. As fit's pool: at most 1024 checks waiting or running, one
+    that waited 5 s answered 503 with `Retry-After: 1`, and 503 from a full pool. Admitted, the
+    request loses `Authorization` unless `forward_authorization`, and `user_header` is set to the
+    user after every spelling of it a client sent is removed (`X_User`, `x_user`, …, as fit's
+    `fieldSet`: names compared ignoring case, `_` read as `-`).
+  - A request whose body streams to its handler cannot be suspended (ADR-109): `basic_auth`'s
+    `body_mode` asks for the body whole when the request's password is not remembered (within
+    the listener's `max_body_bytes`), the handler's mode otherwise. A password forgotten between
+    `body_mode` and `call` (another one stored for the user) is answered 503.
+  - `client_cert`: no verified certificate (none sent, or in the clear) is 403 `Forbidden`
+    unless `optional`; `subject_header` is set to the leaf's subject as Go's
+    `pkix.Name.String` writes it (RDNs most specific first, multi-valued with `+`, Go's
+    escaping, other types by OID), control characters replaced as fit's `headerSafe`, after any
+    spelling of it the client sent is removed, with or without a certificate. The subject is
+    parsed once per run of a connection's requests (a per-thread cache by the shared chain).
+- Tests: unit tests of credentials, field spellings, the remembered HMAC, the checks' bound,
+  `headerSafe` (fit's `TestHeaderSafe`), names (checked against Go's output) and OIDs.
+  `tests/auth.rs` through akit's listener: fit's `TestBasic` (refusals, remembered passwords,
+  per-user, forged fields in every spelling), `TestBasicForwardAuthorization`,
+  `TestBasicParams`, `TestClientCert` and `TestAuthenticated`'s cases (a TLS listener with
+  `verify_if_given`: verified, none, optional, in the clear, with `basic_auth` before it), the
+  certificate over h2 and h3; a slow check on one HTTP/2 connection while other streams are
+  answered (the check is off the I/O thread); bodies sent with a first-time password through the
+  proxy. fit's `TestBasicBusy` is covered by the unit test of the bound and akio's own 503 tests.
+- Compatibility gate: 12 fields more in `tests/compat/supported.txt`; `make compat-bless`:
+  `examples/basic-auth`, `examples/client-cert` and `examples/mtls` are valid (80 fixtures: 18
+  valid, 61 refused only as not supported yet, 1 skipped, none failed).
+- Checked, against akio `5e0d433c`: `make check` on macOS (fmt, clippy, the workspace's tests,
+  `cargo deny` with the lock pinned at `afbbb521`, the docs and the compatibility inventory); on
+  gpu51 under the bench lock, with epoll and with `AKIO_TEST_BACKEND=uring`, the tests of
+  akio-crypto, akio-tls, akio-quic, akio-http and akio-h3 and of akit-config, akit-middleware,
+  akit-compat, akit-runtime, akit-listener and akit-proxy: all passing.
+- Differs from fit: who the request was authenticated as is not in the access log line (`user`)
+  yet: akit's line cannot carry what a request set until akio A29; nor is a request marked
+  authenticated for a cache (I67). A password forgotten between `body_mode` and `call` is 503
+  rather than checked.
+- To measure, in the maintainer's benchmark tasks (rule 30): see the dev plan's benchmark row for
+  I42.
 
 ### 2026-11-24: I32, ACME II: TLS-ALPN-01, renewal, OCSP
 
