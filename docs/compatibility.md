@@ -175,7 +175,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 102 supported.
+3821 fields in 121 sections, at fit `7daee573`; 113 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -298,9 +298,9 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`sync.transforms/wasm`](#fields-sync-transforms-wasm) | 9 | 0 | 9 |
 | [`telemetry`](#fields-telemetry) | 14 | 0 | 14 |
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
-| [`upstreams`](#fields-upstreams) | 38 | 13 | 25 |
+| [`upstreams`](#fields-upstreams) | 38 | 24 | 14 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 102 | 3719 |
+| **Total** | 3821 | 113 | 3708 |
 
 <a id="fields-access"></a>
 
@@ -4854,17 +4854,17 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `upstreams[].deny_internal` | `boolean` | not supported yet |
 | `upstreams[].fail_timeout` | `duration` | supported |
 | `upstreams[].hash_key` | `string` | not supported yet |
-| `upstreams[].health_check` | `object` | not supported yet |
-| `upstreams[].health_check.expect_status` | `array<integer>` | not supported yet |
-| `upstreams[].health_check.fails` | `integer` | not supported yet |
-| `upstreams[].health_check.host` | `string` | not supported yet |
-| `upstreams[].health_check.interval` | `duration` | not supported yet |
-| `upstreams[].health_check.jitter` | `duration` | not supported yet |
-| `upstreams[].health_check.passes` | `integer` | not supported yet |
-| `upstreams[].health_check.path` | `string` | not supported yet |
-| `upstreams[].health_check.port` | `integer` | not supported yet |
-| `upstreams[].health_check.timeout` | `duration` | not supported yet |
-| `upstreams[].health_check.type` | `enum(http\|tcp)` | not supported yet |
+| `upstreams[].health_check` | `object` | supported |
+| `upstreams[].health_check.expect_status` | `array<integer>` | supported |
+| `upstreams[].health_check.fails` | `integer` | supported |
+| `upstreams[].health_check.host` | `string` | supported |
+| `upstreams[].health_check.interval` | `duration` | supported |
+| `upstreams[].health_check.jitter` | `duration` | supported |
+| `upstreams[].health_check.passes` | `integer` | supported |
+| `upstreams[].health_check.path` | `string` | supported |
+| `upstreams[].health_check.port` | `integer` | supported |
+| `upstreams[].health_check.timeout` | `duration` | supported |
+| `upstreams[].health_check.type` | `enum(http\|tcp)` | supported |
 | `upstreams[].idle_timeout` | `duration` | supported |
 | `upstreams[].load_balancing` | `enum(round_robin\|weighted_round_robin\|least_conn\|random\|p2c\|ip_hash\|uri_hash\|header_hash\|cookie_hash)` | supported |
 | `upstreams[].max_conns` | `integer` | supported |

@@ -10,14 +10,58 @@
 | | |
 | --- | --- |
 | 最后更新 | 2026-11-24 |
-| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I16、I19–I24 已完成；M2 的 I26、I30、I37 和 M3 的 I39、I40 已提前完成。 |
+| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I16、I19–I24 已完成；M2 的 I26、I30、I35、I37 和 M3 的 I39、I40 已提前完成。 |
 | akio | akio `main` 上的 `60547435`（`1.0.0-rc.1`，带 A1–A5、A7、A8、A11、A13 和 A16–A21），在 `Cargo.toml` 中按 `rev` 锁定 |
 | fit | 作为规格；本计划基于 `7daee573` 阅读 |
-| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；基于 akio 的 A1 保留、增加、修改和排空监听器，包括启动时的监听器，重载可新增 h3 监听器；服务 h3 的启动监听器要重启才能变）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证；按 fit 的方式每次握手选择证书，重载或 `-watch-certs` 替换证书而不关闭监听器）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；路由中间件：`rewrite`（前缀）、`redirect` 和 `headers`；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`、双向流式转发 body 并联动背压）；所有监听器和代理上的 `limits.max_body_bytes`（413）；fit 的 json、text 和 line 格式的访问日志；上游连接池，轮询、加权轮询和最少连接，跳过被被动健康检查（`max_fails`、`fail_timeout`）下线的地址；回环地址上的 Admin API（`GET /config`，也可按 JSON 指针读取，带 `If-Match` 的 `POST /load`，`GET /versions`），加载与 SIGHUP 一样作为重载应用，两者共用一份历史记录；Admin API 的 `GET /metrics` 提供 fit 的 Prometheus 指标（有 `metrics` 时按监听器和路由的请求、上游和后端、证书、连接、重载、akio 的引擎）；兼容性门禁：80 个夹具，10 个有效，69 个只因暂不支持被拒绝，1 个跳过，没有失败 |
+| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；基于 akio 的 A1 保留、增加、修改和排空监听器，包括启动时的监听器，重载可新增 h3 监听器；服务 h3 的启动监听器要重启才能变）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证；按 fit 的方式每次握手选择证书，重载或 `-watch-certs` 替换证书而不关闭监听器）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；路由中间件：`rewrite`（前缀）、`redirect` 和 `headers`；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`、双向流式转发 body 并联动背压）；所有监听器和代理上的 `limits.max_body_bytes`（413）；fit 的 json、text 和 line 格式的访问日志；上游连接池，轮询、加权轮询和最少连接，跳过被被动健康检查（`max_fails`、`fail_timeout`）和主动健康检查（`health_check`：http 和 tcp 探测）下线的地址；回环地址上的 Admin API（`GET /config`，也可按 JSON 指针读取，带 `If-Match` 的 `POST /load`，`GET /versions`），加载与 SIGHUP 一样作为重载应用，两者共用一份历史记录；Admin API 的 `GET /metrics` 提供 fit 的 Prometheus 指标（有 `metrics` 时按监听器和路由的请求、上游和后端、证书、连接、重载、akio 的引擎）；兼容性门禁：80 个夹具，10 个有效，69 个只因暂不支持被拒绝，1 个跳过，没有失败 |
 | 下一步 | I17 |
-| akio 需求 | A1–A5、A7、A8、A11、A13、A16–A21 已在 akio 的 main 并已锁定；A6 在 akio 分支 `claude/x509-csr` 上；A9、A10、A12、A14、A15、A22–A24、A29、A30、A32、A33 和 A35 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
+| akio 需求 | A1–A5、A7、A8、A11、A13、A16–A21 已在 akio 的 main 并已锁定；A6 在 akio 分支 `claude/x509-csr` 上；A9、A10、A12、A14、A15、A22–A24、A29、A30、A32、A33、A35 和 A45 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
 
 ## 日志
+
+### 2026-11-24：I35，主动健康检查
+
+- 配置：读取 `upstreams[].health_check` 及其十个字段（`type`、`path`、`host`、`port`、`expect_status`、`interval`、
+  `timeout`、`jitter`、`fails`、`passes`）到 `akit_config::HealthCheck`（`Upstream::health_check`、`HealthCheckType`、
+  `DEFAULT_HEALTH_INTERVAL` 5s、`DEFAULT_HEALTH_TIMEOUT` 2s、`DEFAULT_HEALTH_THRESHOLD` 2；不写 jitter 时为 interval
+  的十分之一；0 表示默认值，同 fit 的 `orDefault`），带 fit 的检查和消息：tcp 检查上拒绝 http 专用字段，path 以 `/`
+  开头，host 是主机名或 IP 地址（不带通配符），timeout 不长于 interval，jitter 小于 interval（字段未写时在检查对象的
+  位置报告，同 fit）。`akit_config::duration::format` 按 Go 的方式打印时长，用于这些消息。
+- `akit_upstream::probe`，在 akio 客户端上实现的 fit 探测器：每个地址每 `interval` 加一段随机抖动探测一次，从一次探测
+  开始到下一次开始计；同一地址的探测依次进行。**http**：发送 `GET path`，带 `User-Agent: akit-health-check` 和检查的
+  `Host`，经由探测器自己的、不保留空闲连接的 akio-http `Client`（探测看的是地址是否接受新连接，也从不排在连接池的请求
+  后面）；从响应头读状态码，放弃响应体（`ResponseBody::cancel`）；200 到 399 通过，或 `expect_status` 列出的状态码；
+  请求的超时（由 akio 从开始计，含连接）就是检查的超时。**tcp**：连接建立即通过（`HappyEyeballs::connect`，在 akio 的
+  解析器上解析名字），随即关闭；超时由探测器的定时器把守，因为 akio 拨号单个地址时用的是引擎的连接超时（A12）。`port`
+  探测每个地址所在主机的另一个端口。
+- 状态：fit 的 `record`：连续 `fails` 次失败让地址退出轮转（`Health::set_probed_down`），连续 `passes` 次通过让它
+  回来，与当前状态一致的结果终结与之相反的连续计数。`Health` 把被动和主动状态分开保存，同 fit 的 `storeDown`：探测
+  让地址下线时 `down_until` 为 `u64::MAX`，否则为被动窗口的结束；一个响应清除失败计数，不清除探测结果。选择地址读取的
+  仍是原来那一个原子量，所以负载均衡器、`Pool::is_down`、`available` 和指标的 `backend up` 都能看到两者。连接池新增
+  `health_check()` 和 `is_probed_down(i)`（fit 的 `ProbedDown`）。
+- 生命周期：连接池的引擎就位时探测开始：`EngineSlot::set` 运行槽为空时创建的连接池登记的回调（`akit run` 先建连接池后
+  建引擎），用已填充的槽创建的连接池则立即开始。探测器弱引用其连接池：连接池关闭（其运行时图退役）或被丢弃后，不再开始
+  探测，进行中探测的结果被丢弃。重载产生的新连接池开始时所有地址都在轮转中，与 I20 的被动状态一样（fit 在重载间保留两者；
+  akit 的连接池尚不在运行时图之间共享状态）。
+- 线程（规则 1）：没有线程等待探测。每次探测由 `akit_upstream::timer` 的任务启动，这是 akio API 需求 **A45**（公开的
+  定时器；在锁定的提交上 akio 的定时器都是内部的）之前的临时方案：akit 自己的一个线程，待运行任务的堆上限 65,536（每个
+  被探测的地址最多两个：下一次探测和当前探测的超时），任务只启动探测或判定探测失败。结果在 akio 的回调里到达（I/O 线程、
+  解析器线程或定时器线程），在那里记录并安排下一次探测。
+- 测试：`akit-upstream/tests/probe.rs`（6 个），把 fit 的 `record`、`TestProberEdges` 和端到端的
+  `TestHealthCheckRotation` 移植到真实套接字上的连接池：探测路径挂起的地址在 `fails × interval + timeout + interval`
+  内退出轮转，下线期间收不到请求，并在 `passes × interval + interval` 内回来；http 探测的 `Host`、`User-Agent`、默认和
+  列出的状态码，以及不读取巨大的响应体（关闭其连接）；探测检查 `port` 的 tcp 探测，端口拒绝连接时下线、重新监听时回来，
+  地址自己的端口照常服务；被拒绝的 tcp 探测；关闭的连接池停止探测；探测等待引擎槽；没有检查的连接池从不探测；`Health`
+  中探测与失败分开保存。`akit-config/tests/health_check.rs`（4 个）：默认值、每个字段、fit 的 "health checks" 用例及其
+  位置、错误的值。门禁为这 11 个路径加了样例。
+- 已验证：macOS 上 `make check`；Linux（基准主机）上 epoll 和 io_uring 的 akit-config、akit-upstream、akit-compat 和 akit-runtime
+  测试。门禁（`make compat-bless`）：`examples/grpc`、`examples/l4-tcp`、`examples/load-balancing`、`examples/proxy` 和
+  `examples/webrtc-proxy` 不再因 `health_check` 被拒绝（被拒字段从 72 到 71）；它们仍因其他字段被拒绝。没有运行基准（规则 30）；要测量的内容在开发计划的状态表中。
+- 与 fit 的差异：
+  - 探测与连接池一样是明文 TCP 上的 HTTP/1.1：fit 的探测跟随上游的协议和 TLS，它们随 I17 和 I18 到来，届时探测也要跟随。
+  - 在 akio A45 之前，探测的定时器是 akit 自己的线程；探测先结束时它的超时任务仍待运行（届时什么也不做），因为这个临时
+    方案不能取消。
+  - 探测状态在重载后不保留（被动状态也不保留，I20）。
 
 ### 2026-11-24：I37，Prometheus 指标
 

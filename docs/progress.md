@@ -11,14 +11,77 @@ done and where the work differs from the plan.
 | | |
 | --- | --- |
 | Last updated | 2026-11-24 |
-| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I16, I19–I24 done; M2's I26, I30 and I37 and M3's I39 and I40 done early. |
+| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I16, I19–I24 done; M2's I26, I30, I35 and I37 and M3's I39 and I40 done early. |
 | akio | `60547435` on akio's `main` (`1.0.0-rc.1`, with A1–A5, A7, A8, A11, A13 and A16–A21), pinned by `rev` in `Cargo.toml` |
 | fit | the specification; read at `7daee573` for this plan |
-| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept, added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication; certificates chosen per handshake as fit's, replaced by a reload or by `-watch-certs` without closing the listener) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; route middleware: `rewrite` (prefixes), `redirect` and `headers`; the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`, bodies streamed both ways with linked backpressure); `limits.max_body_bytes` on every listener (413) and in the proxy; access logs in fit's json, text and line formats; upstream pools with round robin, weighted round robin and least connections, passing over addresses taken out by passive health checks (`max_fails`, `fail_timeout`); the Admin API on loopback (`GET /config`, by JSON pointer too, `POST /load` with `If-Match`, `GET /versions`), loads applied as SIGHUP's reloads, one history for both; Prometheus metrics at the Admin API's `GET /metrics` (requests by listener and route with `metrics`, upstreams and backends, certificates, connections, reloads, akio's engine); the compatibility gate: 80 fixtures, 10 valid, 69 refused only as not supported yet, 1 skipped, none failed |
+| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept, added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication; certificates chosen per handshake as fit's, replaced by a reload or by `-watch-certs` without closing the listener) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; route middleware: `rewrite` (prefixes), `redirect` and `headers`; the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`, bodies streamed both ways with linked backpressure); `limits.max_body_bytes` on every listener (413) and in the proxy; access logs in fit's json, text and line formats; upstream pools with round robin, weighted round robin and least connections, passing over addresses taken out by passive health checks (`max_fails`, `fail_timeout`) and by active ones (`health_check`: http and tcp probes); the Admin API on loopback (`GET /config`, by JSON pointer too, `POST /load` with `If-Match`, `GET /versions`), loads applied as SIGHUP's reloads, one history for both; Prometheus metrics at the Admin API's `GET /metrics` (requests by listener and route with `metrics`, upstreams and backends, certificates, connections, reloads, akio's engine); the compatibility gate: 80 fixtures, 10 valid, 69 refused only as not supported yet, 1 skipped, none failed |
 | Next | I17 |
-| akio requests | A1–A5, A7, A8, A11, A13 and A16–A21 on akio's main and pinned; A6 on akio branch `claude/x509-csr`; A9, A10, A12, A14, A15, A22–A24, A29, A30, A32, A33 and A35 requested ([akio API requests](akio-api-requests.md)) |
+| akio requests | A1–A5, A7, A8, A11, A13 and A16–A21 on akio's main and pinned; A6 on akio branch `claude/x509-csr`; A9, A10, A12, A14, A15, A22–A24, A29, A30, A32, A33, A35 and A45 requested ([akio API requests](akio-api-requests.md)) |
 
 ## Log
+
+### 2026-11-24: I35, active health checks
+
+- Config: `upstreams[].health_check` and its ten fields (`type`, `path`, `host`, `port`,
+  `expect_status`, `interval`, `timeout`, `jitter`, `fails`, `passes`) are read into
+  `akit_config::HealthCheck` (`Upstream::health_check`, `HealthCheckType`,
+  `DEFAULT_HEALTH_INTERVAL` 5s, `DEFAULT_HEALTH_TIMEOUT` 2s, `DEFAULT_HEALTH_THRESHOLD` 2; the
+  jitter a tenth of the interval when left out; 0 means the default, as fit's `orDefault`), with
+  fit's checks and messages: the http fields refused on a tcp check, a path starting with `/`, a
+  host name or IP address (no wildcard), a timeout no longer than the interval, a jitter less than
+  it (reported at the check's object when the field is left out, as fit does).
+  `akit_config::duration::format` prints durations as Go does, for those messages.
+- `akit_upstream::probe`, fit's prober on akio's clients: each address is probed every `interval`,
+  plus a random jitter, from the start of one probe to the start of the next; one address's probes
+  follow one another. **http**: `GET path` with `User-Agent: akit-health-check` and the check's
+  `Host`, through an akio-http `Client` of the prober's own that keeps no idle connection (a probe
+  sees whether the address takes new connections and never waits behind the pool's requests); the
+  status is read from the head and the body is given up (`ResponseBody::cancel`); 200 to 399 pass,
+  or what `expect_status` lists; the request's timeout (armed by akio from the start, connecting
+  included) is the check's. **tcp**: passes once a connection opens (`HappyEyeballs::connect`,
+  which resolves names on akio's resolver), closed at once; the timeout is kept by the prober's
+  timer, since akio dials a lone address with its engine's connect timeout (A12). `port` probes
+  another port of each address's host.
+- State: fit's `record`: `fails` failures in a row take an address out
+  (`Health::set_probed_down`), `passes` passes in a row put it back, a result agreeing with the
+  state ends a run against it. `Health` keeps the passive and the active state apart, as fit's
+  `storeDown`: `down_until` is `u64::MAX` while probes keep the address out, else the passive
+  window's end; a response clears the failures, not the probes. Picks read the same one atomic as
+  before, so the balancers, `Pool::is_down`, `available` and the metrics' `backend up` gauge see
+  both. The pool adds `health_check()` and `is_probed_down(i)` (fit's `ProbedDown`).
+- Lifecycle: the probes start when the pool's engine is there: `EngineSlot::set` runs what pools
+  made while it was empty registered (`akit run` makes its pools before its engine), and a pool
+  made with a filled slot starts at once. The prober holds its pool weakly: once the pool is closed
+  (its graph retired) or dropped, no probe starts and the result of one under way is dropped. A
+  reload's new pool starts with every address in rotation, as I20's passive state does (fit
+  carries both over a reload; akit's pools do not share state across graphs yet).
+- Threads (rule 1): no thread waits for a probe. Each is started by a job of
+  `akit_upstream::timer`, a stopgap for akio API request **A45** (a public timer; akio's are
+  internal at the pinned commit): one thread of akit's own, a heap of pending jobs bounded at
+  65,536 (each probed address has at most two: its next probe and its probe's timeout), whose jobs
+  only start a probe or fail one. Results arrive on akio's callbacks (an I/O thread, the resolver's
+  or a timer's), which record them and schedule the next probe.
+- Tests: `akit-upstream/tests/probe.rs` (6), fit's `record`, `TestProberEdges` and e2e
+  `TestHealthCheckRotation` ported onto pools on real sockets: an address whose probe path hangs
+  leaves rotation within `fails × interval + timeout + interval` and is sent nothing while out,
+  and comes back within `passes × interval + interval`; http probes' `Host`, `User-Agent`, default
+  and listed statuses, and a huge body not read (its connection closed); a tcp probe of the
+  check's `port`, out once it refuses and back once it listens, the address's own port still
+  serving; a refused tcp probe; a closed pool's probes stop; probes wait for the engine slot; a
+  pool without a check never probes; probes and failures kept apart in `Health`.
+  `akit-config/tests/health_check.rs` (4): defaults, every field, fit's "health checks" case with
+  its positions, and bad values. The gate's samples for the eleven paths.
+- Checked: `make check` on macOS; the tests of akit-config, akit-upstream, akit-compat and akit-runtime on Linux
+  (the benchmark host), epoll and io_uring. The gate (`make compat-bless`): `examples/grpc`,
+  `examples/l4-tcp`, `examples/load-balancing`, `examples/proxy` and `examples/webrtc-proxy` no
+  longer refuse `health_check` (fields refused 72 to 71); each still refuses other fields.
+  No benchmark was run (rule 30); what to measure is in the dev plan's status table.
+- Differences from fit:
+  - Probes are HTTP/1.1 over plain TCP, as the pools are: fit's probes follow the upstream's
+    protocol and TLS, which come with I17 and I18; their probes must then follow too.
+  - The probes' timer is akit's own thread until akio A45; a probe's timeout job stays pending
+    when the probe ends first (it then does nothing), since the stopgap cannot cancel.
+  - Probed state does not survive a reload (nor does the passive state, I20).
 
 ### 2026-11-24: I37, Prometheus metrics
 
