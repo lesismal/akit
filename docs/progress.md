@@ -86,7 +86,9 @@ done and where the work differs from the plan.
   Linux (the benchmark host, gpu51), epoll all passing, io_uring all passing but
   `akit-listener/tests/reload.rs` (plain HTTP, a read timing out in its `get`), which fails as
   often on main `1a5fccf` (2 of 5 runs each) on the host at a load average of 200 to 480: a flake
-  under load that predates I30.
+  under load that predates I30. After merging main (I26, I40): `make check` on macOS, and the
+  tests of akit and akit-listener on gpu51 (load average about 10), epoll and io_uring, all
+  passing, `reload.rs` included.
 - Differences from the plan and from fit:
   - fit's `Certs` (ACME and files together), OCSP stapling (`Staple`) and the shared storages
     (Redis, etcd, Consul) are I31, I32 and I62; the trait is ready for them.

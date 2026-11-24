@@ -60,7 +60,8 @@
   私钥尚未写入时失败一次、写入后应用；以及 `-watch-certs=false`。`cli.rs`：错误的 `-watch-interval` 退出码 2。
 - 验证：macOS 上 `make check`；Linux（基准机 gpu51）上 akit-tls、akit-runtime、akit-listener 和 akit 的测试，epoll
   全部通过，io_uring 除 `akit-listener/tests/reload.rs`（明文 HTTP，其 `get` 读超时）外全部通过；该测试在负载
-  200 到 480 的机器上于 main `1a5fccf` 失败得一样频繁（各 5 次中 2 次）：是 I30 之前就有的负载下偶发失败。
+  200 到 480 的机器上于 main `1a5fccf` 失败得一样频繁（各 5 次中 2 次）：是 I30 之前就有的负载下偶发失败。合并 main（I26、I40）后：macOS 上 `make check`，以及 gpu51（负载约 10）上 akit
+  和 akit-listener 的测试，epoll 和 io_uring 全部通过，包括 `reload.rs`。
 - 与计划和 fit 的差异：
   - fit 的 `Certs`（ACME 与文件合用）、OCSP stapling（`Staple`）和共享存储（Redis、etcd、Consul）属于 I31、I32 和
     I62；trait 已为它们准备好。
