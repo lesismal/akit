@@ -204,7 +204,7 @@ commit and result.
 | Router v1: host and path lookup | I11 | no | no (built, not measured) | A micro-benchmark of the lookup (no allocation) and same-run A/B of fixed against I05's scan, with many routes. |
 | Static files | I12, I13 | no | no (not built yet) | The static scenario, HTTP/1.1 and h2c (skipped for akit in the baseline); precompressed twins and `sendfile` for large files. |
 | Upstream pools | I14 | no | no (built, not measured) | Through the proxy scenario: connection reuse, waiting for a connection under a limit. |
-| Reverse proxy: HTTP/1.1, streamed bodies, h2 and h2c upstreams | I15–I18 | no | no (built in part: bodies forwarded whole; streaming waits for akio A16–A18) | The proxy scenario, HTTP/1.1 and h2c (skipped for akit in the baseline); large bodies both ways, with memory per request in flight; h2 upstreams. |
+| Reverse proxy: HTTP/1.1, streamed bodies, h2 and h2c upstreams | I15–I18 | no | no (built in part: bodies forwarded whole; streaming waits for akio A19–A21) | The proxy scenario, HTTP/1.1 and h2c (skipped for akit in the baseline); large bodies both ways, with memory per request in flight; h2 upstreams. |
 | Load balancing v1 and v2 | I19, I36 | no | no (not built yet) | A micro-benchmark of each policy's pick, 1 and 16 threads; proxy A/B against a single server. |
 | Passive health checks | I20 | no | no (not built yet) | A micro-benchmark of recording a result on the request path. |
 | Access logs | I21 | no | no (not built yet) | Same-run A/B of fixed and proxy with logs on and off; lines dropped at full load. |

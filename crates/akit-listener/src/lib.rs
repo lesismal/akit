@@ -139,7 +139,7 @@ impl akio_http::Service for Dispatcher {
 
     // Request bodies are buffered (akio's default), within the listener's `max_body_bytes`
     // (`http_config`). The proxy (I16) takes its bodies as a stream once akio's client can send
-    // one (akio API requests A16 to A18): `body_mode` routes then too.
+    // one (akio API requests A19 to A21): `body_mode` routes then too.
 }
 
 /// Why the listeners could not be set up.

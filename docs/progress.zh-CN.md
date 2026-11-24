@@ -10,16 +10,16 @@
 | | |
 | --- | --- |
 | 最后更新 | 2026-11-24 |
-| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I12、I14、I19、I22、I23、I24 已完成，I15 进行中（等待 akio 的 A11），I16 进行中（等待 akio 的 A16–A18）。 |
+| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I12、I14、I19、I22、I23、I24 已完成，I15 进行中（等待 akio 的 A11），I16 进行中（等待 akio 的 A19–A21）。 |
 | akio | akio `main` 上的 `50a82315`（`1.0.0-rc.1`），在 `Cargo.toml` 中按 `rev` 锁定 |
 | fit | 作为规格；本计划基于 `7daee573` 阅读 |
 | 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；监听器保留、增加和移除，启动时的监听器要等锁定到带 A1 的 akio）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开）和 `proxy` handler（fit 的转发字段、可信代理；锁定到 A11 后传客户端的 `Host`）；上游连接池，轮询、加权轮询和最少连接；`limits.max_body_bytes`（超过答 413）；兼容性门禁：80 个夹具，8 个有效，71 个只因暂不支持被拒绝，1 个跳过，没有失败 |
-| 下一步 | 把 akio 锁定到带 A1–A8 和 A11 的 akio main，然后 I15 完成（其 `Host` 测试）、I22 改用 A1；再是 I13、I17、I20、I21；akio 有了 A16–A18 后完成 I16 的流式转发 |
-| akio 需求 | A1–A8 已合并进 akio 的 main（2026-11-24）；A11 在 akio 分支 `claude/i15-proxy-699f18` 上；A9、A10、A12–A18 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
+| 下一步 | 把 akio 锁定到带 A1–A8 和 A11 的 akio main，然后 I15 完成（其 `Host` 测试）、I22 改用 A1；再是 I13、I17、I20、I21；akio 有了 A19–A21 后完成 I16 的流式转发 |
+| akio 需求 | A1–A8 已合并进 akio 的 main（2026-11-24）；A11 在 akio 分支 `claude/i15-proxy-699f18` 上；A9、A10、A12–A21 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
 
 ## 日志
 
-### 2026-11-24：I16，反向代理 II：流式 body（doing：等待 akio A16–A18）
+### 2026-11-24：I16，反向代理 II：流式 body（doing：等待 akio A19–A21）
 
 - 状态是 `doing` 而不是 `done`：流式转发本身无法在不绕过 akio 的前提下实现（规则 21）。对照 akio `50a82315`
   （锁定的提交）和 akio 的 `main`（`13ed6327`，此处两者一致）：akio-http 的 HTTP/1 客户端只接受完整的请求体
@@ -27,8 +27,8 @@
   `ClientOptions::max_body_bytes`，64 MiB）；以流的方式接收的服务端请求（`BodyMode::Stream`、`on_body`）无法暂停
   客户端的读取，流式响应（`BodyStream`）也无法告知客户端已排空（只有可轮询的 `queued_bytes`）；h2 甚至在 DATA 到达时
   就补充流的窗口。akio-core 在每个连接上有 `hold_reads` 和 `on_drain`，但 akio-http 只在升级后的连接（`raw`）上
-  暴露它们。已写成 akio API 需求 A16（客户端请求体边产生边发送，带 `queued_bytes` 和 `on_drain`）、A17（客户端响应边
-  到达边交付，可暂停和恢复读取）和 A18（服务端请求可暂停其客户端的读取，以及 `BodyStream::on_drain`），并写明代理
+  暴露它们。已写成 akio API 需求 A19（客户端请求体边产生边发送，带 `queued_bytes` 和 `on_drain`）、A20（客户端响应边
+  到达边交付，可暂停和恢复读取）和 A21（服务端请求可暂停其客户端的读取，以及 `BodyStream::on_drain`），并写明代理
   如何把它们联动起来（[akio API 需求](akio-api-requests.zh-CN.md)）。等它们进入 akio、锁定提交前移、代理能流式转发
   并通过计划中的测试（慢客户端和慢上游、双向大 body、内存有界、epoll 和 io_uring）后，I16 才算 `done`。
 - 现在实现了不依赖它们的部分：fit 的 body 限制。`akit_config::Limits` 读取 `limits`：`max_body_bytes`（fit 的
@@ -43,7 +43,7 @@
   使用 akio 的默认值：HTTP/1.1 和 HTTP/2 为 1 MiB，HTTP/3 为 8 MiB，fit 接受的请求体（最多 16 MiB）会被拒绝。
 - 代理：请求体和 I15 一样整体发给上游，不超过该限制（超过的请求体到不了 handler）；响应整体发回，不超过 akio 客户端
   的限制（64 MiB；超过时请求失败，客户端得到 502，而 fit 流式转发任意大小）。代理的文档写明了这一点。监听器仍对每个
-  路由回答 `BodyMode::Buffered`；等代理能流式转发（A16–A18）后再在 `body_mode` 中路由。
+  路由回答 `BodyMode::Buffered`；等代理能流式转发（A19–A21）后再在 `body_mode` 中路由。
 - 测试：`akit-config/tests/limits.rs`（3 个）：默认值、每个监听器都带有的值、0、负数或字符串作为错误拒绝、其他字段
   尚不支持、fit 没有的字段是错误、只能由一个文件给出（该文件的值作用于其他文件的监听器）。
   `akit-listener/tests/listeners.rs`：`body_limit`，移植 fit 的 `TestBodyLimit`（限制为 100000 时，1000 和 90000
@@ -55,10 +55,10 @@
   `cargo test -p akit-config -p akit-listener -p akit-proxy`。`make compat-bless`：报告中的 `limits` 行变成每个被
   拒绝的字段一行（`examples/limits`、`examples/proxy`），`examples/body-limit` 不再拒绝 `limits`（仍拒绝
   `routes[].match.method` 和 `routes[].middleware`）；被拒绝的字段 70 个，原为 66 个；其他结果不变。
-- 与计划的差异：流式转发、联动背压和“完成标准”中的测试等待 A16–A18（I16 保持 `doing`）；body 限制先完成。HTTP/3
+- 与计划的差异：流式转发、联动背压和“完成标准”中的测试等待 A19–A21（I16 保持 `doing`）；body 限制先完成。HTTP/3
   的限制已设置，但只通过共用的代码测试（h3 测试客户端只发 GET）。启动时不打印 `limits` 字段（fit 的 `-v` 限制行随
   其余字段一起实现）。
-- 给基准测试任务：目前除 proxy 场景外没有可测的（大 body 现在整体缓冲）；A16–A18 落地后，测量双向大 body 且对端
+- 给基准测试任务：目前除 proxy 场景外没有可测的（大 body 现在整体缓冲）；A19–A21 落地后，测量双向大 body 且对端
   缓慢时每个进行中的代理请求占用的内存，以及大上传和大下载对比 fit 的吞吐。
 
 ### 2026-11-24：I22，SIGHUP 重载

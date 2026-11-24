@@ -23,7 +23,7 @@
 //! Bodies travel whole for now: a request body within the listener's `limits.max_body_bytes`
 //! (one past it is answered 413 by the listener before the handler runs, as fit answers it), a
 //! response body within akio's client limit (64 MiB). Streaming them both ways with linked
-//! backpressure (I16) waits for akio API requests A16 to A18: akio's client takes a request body
+//! backpressure (I16) waits for akio API requests A19 to A21: akio's client takes a request body
 //! only whole and buffers each response whole, and a server request cannot hold its client's
 //! reads or hear when it drained. I17 brings the timeouts, cancellation and trailers.
 //!
