@@ -16,36 +16,52 @@
 //!   the upstream who the client is. What a client sends in them is believed only when its
 //!   address is in `trusted_proxies`.
 //! - The handler never blocks (rules 1–3): it detaches the request's context, hands the request
-//!   to the pool, and answers from the pool's completion callback. A request that gets no
-//!   response is answered as fit answers it: 502, or 503 when the pool is full or closed, or 504
-//!   when it timed out.
-//!
+//!   to the pool, and answers from the pool's callbacks. A request that gets no response is
+//!   answered as fit answers it: 502, or 503 when the pool is full or closed, or 504 when it
+//!   timed out.
 //! - With an access log (I21), the request's line names the upstream address it went to and how
 //!   long the upstream took to answer.
 //!
-//! Bodies travel whole for now: a request body within the listener's `limits.max_body_bytes`
-//! (one past it is answered 413 by the listener before the handler runs, as fit answers it), a
-//! response body within akio's client limit (64 MiB). Streaming them both ways with linked
-//! backpressure (I16) waits for akio API requests A19 to A21: akio's client takes a request body
-//! only whole and buffers each response whole, and a server request cannot hold its client's
-//! reads or hear when it drained. I17 brings the timeouts, cancellation and trailers.
+//! I16 streams the bodies both ways with linked backpressure, as fit's proxy does (`relay.rs`):
+//!
+//! - A request body of more than [`STREAM_THRESHOLD`], or of no declared length (chunked, or
+//!   HTTP/2 and HTTP/3 without `Content-Length`), reaches the proxy as it arrives
+//!   ([`BodyMode::Stream`]) and goes up as it does, framed as it came: by its length, or chunked.
+//!   While the upstream is behind, the client's reads are held. A smaller one arrives whole and
+//!   goes up whole. Either is held to the listener's `limits.max_body_bytes`: one that declares
+//!   a length past it is answered 413 before the handler runs, and one that grows past it 413
+//!   when it does, as fit answers both.
+//! - A response body of a length within 64 KiB is sent whole; any other as it arrives, the
+//!   upstream's reads held while the client is behind. akio sends an HTTP/1.1 response that
+//!   streams chunked, its length dropped, until it can frame one by its length (akio API request
+//!   A23); HTTP/2 and HTTP/3 keep it. A response that breaks off mid-body closes the client's
+//!   connection, which tells the client its body is short.
+//!
+//! I17 brings the timeouts (fit's `write_stall_timeout` for a client that stops reading among
+//! them), cancellation when the client goes, and the trailers' announcements.
 //!
 //! Part of [akit](https://github.com/lesismal/akit); see `docs/dev-plan.md` for the iterations that
 //! fill this crate in.
 
 mod headers;
+mod relay;
 
 use std::borrow::Cow;
 use std::sync::Arc;
 use std::time::Instant;
 
 use akio_http::client::{ClientError, ClientRequest};
-use akio_http::{Context, Method, Response};
+use akio_http::{BodyMode, Context, Method, Request, Response};
 use akit_config::Network;
-use akit_runtime::upstream::{Error, Outcome, Pool};
+use akit_runtime::upstream::{Error, Pool};
 use akit_runtime::{
-    CANONICAL_PATH, Handler, HandlerParams, Info, Provision, ProvisionError, Provisioned, TLS,
+    CANONICAL_PATH, Handler, HandlerParams, Info, MAX_BODY_BYTES, Provision, ProvisionError,
+    Provisioned, TLS,
 };
+
+/// The largest request body the proxy takes whole: a larger one, or one of no declared length,
+/// streams to it as it arrives (fit's listener `StreamThreshold`).
+pub const STREAM_THRESHOLD: u64 = 64 << 10;
 
 /// The handler modules of this crate, for [`akit_runtime::Registry::new`].
 pub static MODULES: &[Info<HandlerParams>] = &[Info::handler(
@@ -94,35 +110,55 @@ impl akio_http::Service for Proxy {
         };
         let mut out = ClientRequest::new(req.method.clone(), &target(ctx));
         out.headers = fields;
-        // A copy: the body is the request's, and goes on with the context (rule 6). I16 streams
-        // it instead.
-        out.body = req.body.clone();
         let head = req.method == Method::Head;
-        let Some(d) = ctx.detach() else {
+        let version = req.version;
+        let length = declared_length(req);
+        let limit = ctx
+            .local(MAX_BODY_BYTES)
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(akit_config::DEFAULT_MAX_BODY_BYTES);
+        let chunked = length.is_none();
+        let Some((client, streamed)) = relay::start(ctx, limit, chunked) else {
             // Answered already: nothing left to do.
             return;
         };
-        if !akit_observe::logged() {
-            self.pool
-                .request(out, move |outcome| d.respond(response(outcome, head)));
-            return;
+        if streamed {
+            // Framed as it came: by its length, or chunked.
+            out = out.streamed(length);
+        } else {
+            // A copy: the body is the request's, and goes on with the context (rule 6).
+            out.body = ctx.req().body.clone();
         }
+        let backend = self.pool.pick();
         // The access log's line names the address the request went to and how long it took
         // (fit's upstream and upstream_duration): the line is written as the response is sent.
-        let backend = self.pool.pick();
-        let addr = self
-            .pool
-            .addresses()
-            .nth(backend)
-            .unwrap_or_default()
-            .to_owned();
-        let start = Instant::now();
-        self.pool.send(backend, out, move |outcome| {
-            akit_observe::with_upstream(&addr, start.elapsed(), || {
-                d.respond(response(outcome, head));
-            });
+        let log = akit_observe::logged().then(|| relay::Logged {
+            addr: self
+                .pool
+                .addresses()
+                .nth(backend)
+                .unwrap_or_default()
+                .to_owned(),
+            start: Instant::now(),
         });
+        let x = relay::Relay::new(client, head, version, chunked && streamed, log);
+        self.pool.stream(backend, out, x);
     }
+
+    /// A body of more than [`STREAM_THRESHOLD`], or of no declared length, streams.
+    fn body_mode(&self, req: &Request) -> BodyMode {
+        match declared_length(req) {
+            Some(n) if n <= STREAM_THRESHOLD => BodyMode::Buffered,
+            _ => BodyMode::Stream,
+        }
+    }
+}
+
+/// The body length `req` declares (`Content-Length`), if any.
+fn declared_length(req: &Request) -> Option<u64> {
+    req.headers
+        .get("content-length")
+        .and_then(|v| v.trim().parse().ok())
 }
 
 impl Handler for Proxy {}
@@ -157,20 +193,6 @@ fn origin_form(target: &str) -> Cow<'_, str> {
     }
 }
 
-/// The client's response for the upstream's outcome: the upstream's response, its fields edited
-/// ([`headers::incoming`]), or fit's answer to a request that got none.
-fn response(outcome: Outcome, head: bool) -> Response {
-    match outcome {
-        Ok(up) => {
-            let mut resp = Response::new(up.status);
-            resp.headers = headers::incoming(&up.headers, head);
-            resp.body = up.body;
-            resp
-        }
-        Err(e) => fail(status_of(&e)),
-    }
-}
-
 /// The status a request that got no response is answered with: fit's `statusOf`, for what
 /// I15's requests can fail with.
 fn status_of(e: &Error) -> u16 {
@@ -185,6 +207,7 @@ fn status_of(e: &Error) -> u16 {
 fn fail(status: u16) -> Response {
     let reason = match status {
         400 => "Bad Request",
+        413 => "Request Entity Too Large",
         503 => "Service Unavailable",
         504 => "Gateway Timeout",
         _ => "Bad Gateway",

@@ -37,10 +37,11 @@ first; its status here records the branch, then the akio commit akit pins.
 | A16 | `Files` choosing a compressed twin by the client's q values, among the encodings configured | in akio's main (`a9a620ab`), pinned | 19 | I13 |
 | A17 | `Files` trying candidate paths in turn (`try_files`) | in akio's main (`a9a620ab`), pinned | 19 | I13 |
 | A18 | `Files` listing a directory that has no index file | in akio's main (`a9a620ab`), pinned | 4, 11, 19 | I13 |
-| A19 | An HTTP client request whose body is sent as it is produced, with backpressure | requested (I16) | 5, 8 | I16, I17, I18, I49, I75 |
-| A20 | An HTTP client response delivered as it arrives, its reads held and resumed | requested (I16) | 5, 8 | I16, I17, I18, I67 |
-| A21 | A server request that holds its client's reads and hears when its client drained | requested (I16) | 5, 8 | I16, I47, I75 |
+| A19 | An HTTP client request whose body is sent as it is produced, with backpressure | in akio's main (`60547435`), pinned, used by I16 | 5, 8 | I16, I17, I18, I49, I75 |
+| A20 | An HTTP client response delivered as it arrives, its reads held and resumed | in akio's main (`60547435`), pinned, used by I16 | 5, 8 | I16, I17, I18, I67 |
+| A21 | A server request that holds its client's reads and hears when its client drained | in akio's main (`60547435`), pinned, used by I16 | 5, 8 | I16, I47, I75 |
 | A22 | UDP listeners removed and drained on a running engine | requested (I22) | 10, 11 | I22, I28 |
+| A23 | A streamed HTTP/1.1 response framed by its length | requested (I16) | 5 | I16, I67 |
 
 ## A1 TCP listeners on a running engine
 
@@ -398,8 +399,9 @@ learn that the connection's write queue drained. (akio-core has what is needed b
 `on_body`), writes each chunk to the upstream's `RequestBody`, and holds the client's reads (A21)
 while `queued_bytes` is above the watermark, resuming them from `on_drain`. Also the upstream
 pools (`akit-upstream`, which wraps `Client::request`), I17's cancellation (dropping the body),
-I18's h2 upstreams (the same on `H2Client`), I49 (WebSocket) and I75 (FastCGI). Until then akit's
-proxy forwards bodies whole, within `limits.max_body_bytes` (recorded in the I16 progress entry).
+I18's h2 upstreams (the same on `H2Client`), I49 (WebSocket) and I75 (FastCGI). akio built it in
+`60547435` (ADR-101: `ClientRequest::streamed`, `RequestBody`, its `on_drain` on the connection's
+empty queue); I16 does as above through `akit_upstream::Pool::stream`.
 
 ## A20 An HTTP client response delivered as it arrives
 
@@ -430,8 +432,9 @@ callback from `complete`; reads on the connection are never held.
 (`Detached::stream_response`), writes each chunk to its `BodyStream`, and calls
 `hold_reads(true)` while the client's `queued_bytes` is above the watermark, `false` from the
 client's drain (A21). Also I17 (trailers, idle timeouts, cancellation), I18 (h2 upstreams) and the
-cache (I67), which stores a response as it passes. Until then akit's proxy sends responses back
-whole, each at most akio's 64 MiB (recorded in the I16 progress entry).
+cache (I67), which stores a response as it passes. akio built it in `60547435` (ADR-101:
+`Client::request_with`, `ResponseHandler`, `ResponseBody`; not yet on `H2Client`, nor the idle
+timeout between reads, which come with I18 and I17); I16 does as above.
 
 ## A21 A server request that holds its client's reads and hears when its client drained
 
@@ -465,8 +468,9 @@ does `akio_http::raw` for upgraded connections.
 **How akit uses it.** I16's proxy holds the client's body reads while the upstream's
 `RequestBody::queued_bytes` (A19) is above the watermark, and resumes them from its `on_drain`;
 it holds the upstream's reads (A20) while the client's `BodyStream::queued_bytes` is above it, and
-resumes them from `BodyStream::on_drain`. Also compression (I47) and FastCGI (I75). Until then akit
-buffers proxied bodies whole, within the limits (recorded in the I16 progress entry).
+resumes them from `BodyStream::on_drain`. Also compression (I47) and FastCGI (I75). akio built it in
+`60547435` (ADR-101: `Context::body_reads`, `BodyReads::hold`, `BodyStream::on_drain`, on
+HTTP/1.1, HTTP/2 and HTTP/3); I16 does as above.
 
 ## A22 Removing a UDP listener of a running engine
 
@@ -487,3 +491,28 @@ close those left at the deadline), and `Engine::add_listener` for a UDP listener
 
 **How akit uses it.** `akit_listener::Listeners::reload` (I22, I28) removes and drains a
 listener's HTTP/3 as it does its TCP side, and the `ReloadError::Udp` refusal goes.
+
+## A23 A streamed HTTP/1.1 response framed by its length
+
+**Problem.** A proxy that streams an upstream's response of a known length should send it with
+that length, as fit does: the client then knows how much is coming (a download's progress, a
+range's end) and can tell a body cut short from a whole one by its framing. akio-http's server
+streams every HTTP/1.1 response (`stream_response`) chunked on a keep-alive connection; a
+`Content-Length` field given with it would be sent beside `Transfer-Encoding: chunked`, which is
+not valid, so akit drops it. HTTP/2 and HTTP/3 keep the field, their DATA frames being framing
+enough.
+
+**Evidence.** `crates/akio-http/src/context.rs` at `60547435`: `start_stream` sets
+`Transfer-Encoding: chunked` whenever the HTTP/1 response is keep-alive 1.1, whatever its
+headers; `BodyStream::write` chunk-frames each piece. `message.rs` `Response::encode` adds no
+`Content-Length` to a streamed response but keeps one it is given.
+
+**Suggested API.** `stream_response` honours a `Content-Length` in the headers it is given on
+HTTP/1: no chunked framing, the pieces written as they are, `finish` checking that the length was
+written in full (closing the connection when it was not, as a body cut short must), a write past
+the length refused. Or `Context::stream_response_sized(status, headers, len: u64)` with the same
+meaning, if a field read from the headers is too implicit.
+
+**How akit uses it.** I16's proxy streams a response of a known length past 64 KiB to an HTTP/1.1
+client with its `Content-Length` (it now goes chunked, the field dropped: recorded in the I16
+progress entry). Also the cache (I67), which serves a stored response as it reads it.

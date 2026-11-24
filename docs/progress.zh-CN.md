@@ -10,12 +10,12 @@
 | | |
 | --- | --- |
 | 最后更新 | 2026-11-24 |
-| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I15、I19–I24 已完成，I16 进行中（body 限制已完成；流式转发等待 akio 的 A19–A21）；M3 的 I39 已提前完成。 |
-| akio | akio `main` 上的 `a9a620ab`（`1.0.0-rc.1`，带 A1–A5、A7、A8、A11、A13 和 A16–A18），在 `Cargo.toml` 中按 `rev` 锁定 |
+| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I16、I19–I24 已完成；M3 的 I39 已提前完成。 |
+| akio | akio `main` 上的 `60547435`（`1.0.0-rc.1`，带 A1–A5、A7、A8、A11、A13 和 A16–A21），在 `Cargo.toml` 中按 `rev` 锁定 |
 | fit | 作为规格；本计划基于 `7daee573` 阅读 |
-| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；基于 akio 的 A1 保留、增加、修改和排空监听器，包括启动时的监听器，重载可新增 h3 监听器；服务 h3 的启动监听器要重启才能变）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`）；所有监听器和代理上的 `limits.max_body_bytes`（413）；fit 的 json、text 和 line 格式的访问日志；上游连接池，轮询、加权轮询和最少连接，跳过被被动健康检查（`max_fails`、`fail_timeout`）下线的地址；兼容性门禁：80 个夹具，9 个有效，70 个只因暂不支持被拒绝，1 个跳过，没有失败 |
-| 下一步 | I17；A19–A21 落地后再做 I16 |
-| akio 需求 | A1–A5、A7、A8、A11、A13、A16–A18 已在 akio 的 main 并已锁定；A6 在 akio 分支 `claude/x509-csr` 上；A9、A10、A12、A14、A15、A19–A21 和 A22 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
+| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；基于 akio 的 A1 保留、增加、修改和排空监听器，包括启动时的监听器，重载可新增 h3 监听器；服务 h3 的启动监听器要重启才能变）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`）；所有监听器和代理上的 `limits.max_body_bytes`（413）；代理的 body 双向流式转发，带联动背压，按长度或分块；fit 的 json、text 和 line 格式的访问日志；上游连接池，轮询、加权轮询和最少连接，跳过被被动健康检查（`max_fails`、`fail_timeout`）下线的地址；兼容性门禁：80 个夹具，9 个有效，70 个只因暂不支持被拒绝，1 个跳过，没有失败 |
+| 下一步 | I17 |
+| akio 需求 | A1–A5、A7、A8、A11、A13、A16–A21 已在 akio 的 main 并已锁定；A6 在 akio 分支 `claude/x509-csr` 上；A9、A10、A12、A14、A15、A22 和 A23 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
 
 ## 日志
 
@@ -225,19 +225,62 @@
   就向 akio 提无分配完成钩子的 API 需求）、分片锁（代理请求时有竞争）和格式化；默认 4 MiB 缓冲以及磁盘慢时满负载下
   丢弃的行数。
 
-### 2026-11-24：I16，反向代理 II：流式 body（doing：等待 akio A19–A21）
+### 2026-11-24：I16，反向代理 II：流式 body 与联动背压
 
-- 状态是 `doing` 而不是 `done`：流式转发本身无法在不绕过 akio 的前提下实现（规则 21）。对照 akio `50a82315`
-  （锁定的提交）和 akio 的 `main`（`13ed6327`，此处两者一致）：akio-http 的 HTTP/1 客户端只接受完整的请求体
-  （`ClientRequest::body`，头和请求体一次 `send_owned`），并在回调一次之前把每个响应整体缓冲（不超过
-  `ClientOptions::max_body_bytes`，64 MiB）；以流的方式接收的服务端请求（`BodyMode::Stream`、`on_body`）无法暂停
-  客户端的读取，流式响应（`BodyStream`）也无法告知客户端已排空（只有可轮询的 `queued_bytes`）；h2 甚至在 DATA 到达时
-  就补充流的窗口。akio-core 在每个连接上有 `hold_reads` 和 `on_drain`，但 akio-http 只在升级后的连接（`raw`）上
-  暴露它们。已写成 akio API 需求 A19（客户端请求体边产生边发送，带 `queued_bytes` 和 `on_drain`）、A20（客户端响应边
-  到达边交付，可暂停和恢复读取）和 A21（服务端请求可暂停其客户端的读取，以及 `BodyStream::on_drain`），并写明代理
-  如何把它们联动起来（[akio API 需求](akio-api-requests.zh-CN.md)）。等它们进入 akio、锁定提交前移、代理能流式转发
-  并通过计划中的测试（慢客户端和慢上游、双向大 body、内存有界、epoll 和 io_uring）后，I16 才算 `done`。
-- 现在实现了不依赖它们的部分：fit 的 body 限制。`akit_config::Limits` 读取 `limits`：`max_body_bytes`（fit 的
+- 基于 akio `60547435`（ADR-101）完成，A19–A21 已在其中落地（最初在这里写成 A16–A18，合并时重新编号）。锁定的
+  提交移到这里（`Cargo.toml`、`akit_runtime::AKIO_REV`、`akit version` 的那一行）。等待期间先完成了 body 限制
+  （见下文）。
+- `akit-upstream`：`Pool::stream(backend, req, impl Exchange)`，请求体边产生边写出（`Exchange::on_request_body`，
+  akio 的 `RequestBody`）、响应边读边到达（`on_head` 带一个可暂停、恢复上游读取或取消的 `Download`，`on_data`、
+  `on_end`，`on_error` 带连接池的 `Error`）的交换，基于 akio 的 `Client::request_with`。它和 `send` 一样受
+  `max_conns` 和 `max_pending` 约束、参与负载均衡和计时，并占用其地址直到响应体完整，因此 `max_conns` 和
+  `least_conn` 把长时间的下载算作忙碌，和 fit 一样。响应头之后中途断开的响应体算作该地址的失败，如 fit 的
+  `Done(b, true)`，除非是代理取消的（其客户端离开了）：这是 I20 留下的问题。
+- `akit-listener`：`Dispatcher` 在 `body_mode` 中路由（在当前图上查找路由，和 `call` 一样；两者之间的重载可能把流式
+  请求体交给缓冲的路由，它会看到空的请求体）。handler 以流的方式接收请求体的路由就这样得到请求体，除非请求声明的长度
+  超过 `max_body_bytes`，此时和以前一样读取并由 akio 答 413。请求体以流的方式传递的请求在
+  `akit_runtime::MAX_BODY_BYTES`（一个 context local，和 `TLS` 一样）中带着这个限制，因为 akio 对流式请求体不设限制。
+- `akit-proxy`（`relay.rs`），和 fit 的 `exchange` 一样：
+  - 超过 64 KiB 或没有声明长度（分块，或 HTTP/2 和 HTTP/3 没有 `Content-Length`）的请求体以流的方式传递（fit 的
+    `StreamThreshold`）；更小的整体到达并整体发往上游。流式请求体按到达时的分帧发往上游：`Content-Length` 或分块
+    （没有长度的 HTTP/2 请求体按分块发送，和 fit 的测试期望一致），分块时带上它的 trailer。
+  - 上游连接就绪之前到达的部分在 relay 中等待，同时暂停读取客户端。之后每块写进 `RequestBody`；排队超过 64 KiB
+    （fit 的 `uploadPending`）时暂停读取客户端（`BodyReads`），直到队列排空（`RequestBody::on_drain`）。增长超过
+    `max_body_bytes` 的请求体答 413，并丢弃其上游请求（关闭其连接）。上游在请求体传完之前应答则结束上传；之后到达的
+    部分被丢弃，不再暂停读取。
+  - 长度在 64 KiB 以内（fit 上游的 `StreamThreshold`）的响应，以及 `HEAD` 的响应或没有 body 的状态，收齐后整体发送；
+    其他响应边到达边发送（`stream_response`）。等待客户端的部分超过 64 KiB 时暂停读取上游（`Download::hold_reads`），
+    直到客户端取走（`BodyStream::on_drain`）。客户端离开时取消上游响应。中途断开的响应关闭客户端的连接。分块响应体
+    之后转发上游的 trailer。
+  - 两侧线程之间每个请求一把锁，调用 akio 时从不持有（akio 的调用可能回调）；请求体的句柄交给结束它的一侧独占。
+- 测试：`akit-proxy/tests/stream.rs`，移植 fit 的 `TestStreamDownload` 和 `TestStreamUpload`：每个方向 64 MiB 的
+  质数长度模式数据，按长度和分块，HTTP/1.1 和 h2c（测试自带一个最小的 h2c 客户端，按要求慢慢读取，只为读过的部分
+  归还窗口）；慢的一方每 4 MiB 暂停 20 ms；逐字节检查；进程的常驻内存（`/proc/self/statm`，每 5 ms 采样；计数分配器
+  需要 `unsafe`，规则 14）的上升必须小于 16 MiB，在 Linux 上检查。`broken_download`，移植 fit 的
+  `TestUpstreamBreaksMidBody`（HTTP/1.1）：客户端的连接在响应体结束之前关闭。`proxy.rs` 的上游也能读取分块请求体，
+  因为 `body_limit` 的分块上传现在按分块发往上游。
+- 已检查：macOS 上的 `make check`；Linux（gpu51）上用 epoll 和 `AKIO_TEST_BACKEND=uring` 运行
+  `cargo test --workspace`（`--no-fail-fast`）：除 io_uring 下
+  `akit-listener` 的 `reload.rs` 外全部通过；它大约一半的运行中有一个测试失败（刚重载的监听器上的 GET 被截断，
+  `reload.rs:72`），akit 的 `main`（`3631362`，akio `a9a620ab`）在那里失败得一样频繁，所以不是 I16 引入的。流式测试中
+  进程常驻内存在任一方向传输 64 MiB 时最多上升 4 MiB，两种后端都是如此。h2c 下载到测试的慢客户端用了 1 到 20 秒，
+  HTTP/1.1 不到 1 秒（测试的客户端每次只归还一帧的窗口）；没有进一步测量（规则 30）。
+- 与计划和 fit 的差异：
+  - 流式发送的 HTTP/1.1 响应按分块发送，去掉 `Content-Length`：akio 还不能按长度为流式 HTTP/1.1 响应分帧（akio API
+    需求 A23）。HTTP/2 和 HTTP/3 保留它。整体发送的响应（64 KiB 以内）在所有协议上都保留它。
+  - fit 的 splice 上传（`spliceMinBody`，用 splice(2) 从客户端的 socket 到上游的 socket）没有移植：akio 在服务端
+    连接和客户端连接之间没有 splice。应由基准测试判断是否值得提一个 akio 需求。
+  - 停止读取的客户端会占住其上游直到交换超时（1 小时）：fit 的 `write_stall_timeout` 和 `response_idle_timeout`
+    属于 I17，客户端在响应之前离开时取消上游请求、以及声明的 trailer 也属于 I17。
+  - 没有长度、中途断开的 HTTP/2 响应以丢弃其流结束（akio 关闭连接），而不是 fit 的 `Fit-Error` trailer（I17，随
+    trailer 一起）。
+  - h2 上游（`H2Client` 还没有流式接口）属于 I18。
+- 给基准测试任务：双向大 body 且对端缓慢时每个进行中的代理请求占用的内存，以及大上传和大下载对比 fit 的吞吐；64 KiB
+  水位（fit 的）对比更大的水位；`body_mode` 中第二次路由查找对带请求体的请求的开销。
+
+A19–A21 落地之前（本条目当时为 `doing`）：
+
+- fit 的 body 限制。`akit_config::Limits` 读取 `limits`：`max_body_bytes`（fit 的
   int64，至少为 0；省略或为 0 时 16 MiB），其他字段（`max_pending_bytes`、`max_header_bytes`、`max_conns`、
   `max_write_queue_bytes`、`write_stall_timeout`）逐个拒绝为尚不支持。`limits` 只能由配置的一个文件给出，第二个文件
   中给出时用 fit 的消息拒绝（`adapter.Set.conflict`：“also given in …”）。每个 `Listener` 都带有这个值
@@ -247,9 +290,6 @@
   和 HTTP/3（`H3Config::max_body_bytes`）上的限制：声明长度超过它的请求体在读取前就答 413，分块的请求体在超过时答
   413（HTTP/1.1 上 akio 在 413 之后关闭连接，仍在发送的客户端可能看到连接被重置，fit 的测试也允许这样）。此前 akit
   使用 akio 的默认值：HTTP/1.1 和 HTTP/2 为 1 MiB，HTTP/3 为 8 MiB，fit 接受的请求体（最多 16 MiB）会被拒绝。
-- 代理：请求体和 I15 一样整体发给上游，不超过该限制（超过的请求体到不了 handler）；响应整体发回，不超过 akio 客户端
-  的限制（64 MiB；超过时请求失败，客户端得到 502，而 fit 流式转发任意大小）。代理的文档写明了这一点。监听器仍对每个
-  路由回答 `BodyMode::Buffered`；等代理能流式转发（A19–A21）后再在 `body_mode` 中路由。
 - 测试：`akit-config/tests/limits.rs`（3 个）：默认值、每个监听器都带有的值、0、负数或字符串作为错误拒绝、其他字段
   尚不支持、fit 没有的字段是错误、只能由一个文件给出（该文件的值作用于其他文件的监听器）。
   `akit-listener/tests/listeners.rs`：`body_limit`，移植 fit 的 `TestBodyLimit`（限制为 100000 时，1000 和 90000
@@ -261,11 +301,8 @@
   `cargo test -p akit-config -p akit-listener -p akit-proxy`。`make compat-bless`：报告中的 `limits` 行变成每个被
   拒绝的字段一行（`examples/limits`、`examples/proxy`），`examples/body-limit` 不再拒绝 `limits`（仍拒绝
   `routes[].match.method` 和 `routes[].middleware`）；被拒绝的字段 70 个，原为 66 个；其他结果不变。
-- 与计划的差异：流式转发、联动背压和“完成标准”中的测试等待 A19–A21（I16 保持 `doing`）；body 限制先完成。HTTP/3
-  的限制已设置，但只通过共用的代码测试（h3 测试客户端只发 GET）。启动时不打印 `limits` 字段（fit 的 `-v` 限制行随
-  其余字段一起实现）。
-- 给基准测试任务：目前除 proxy 场景外没有可测的（大 body 现在整体缓冲）；A19–A21 落地后，测量双向大 body 且对端
-  缓慢时每个进行中的代理请求占用的内存，以及大上传和大下载对比 fit 的吞吐。
+- HTTP/3 的限制已设置，但只通过共用的代码测试（h3 测试客户端只发 GET）。启动时不打印 `limits` 字段（fit 的 `-v`
+  限制行随其余字段一起实现）。
 
 ### 2026-11-24：I39，匹配器 v2 与表达式
 

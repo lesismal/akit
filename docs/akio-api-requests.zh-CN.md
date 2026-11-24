@@ -36,10 +36,11 @@
 | A16 | `Files` 在配置的编码中按客户端的 q 值选择压缩副本 | 已在 akio 的 main（`a9a620ab`），已锁定 | 19 | I13 |
 | A17 | `Files` 依次尝试候选路径（`try_files`） | 已在 akio 的 main（`a9a620ab`），已锁定 | 19 | I13 |
 | A18 | `Files` 列出没有索引文件的目录 | 已在 akio 的 main（`a9a620ab`），已锁定 | 4、11、19 | I13 |
-| A19 | HTTP 客户端请求的请求体边产生边发送，带背压 | 已提出（I16） | 5、8 | I16、I17、I18、I49、I75 |
-| A20 | HTTP 客户端响应边到达边交付，可暂停和恢复读取 | 已提出（I16） | 5、8 | I16、I17、I18、I67 |
-| A21 | 服务端请求可暂停其客户端的读取，并在客户端排空时得到通知 | 已提出（I16） | 5、8 | I16、I47、I75 |
+| A19 | HTTP 客户端请求的请求体边产生边发送，带背压 | 已在 akio 的 main（`60547435`），已固定，I16 已使用 | 5、8 | I16、I17、I18、I49、I75 |
+| A20 | HTTP 客户端响应边到达边交付，可暂停和恢复读取 | 已在 akio 的 main（`60547435`），已固定，I16 已使用 | 5、8 | I16、I17、I18、I67 |
+| A21 | 服务端请求可暂停其客户端的读取，并在客户端排空时得到通知 | 已在 akio 的 main（`60547435`），已固定，I16 已使用 | 5、8 | I16、I47、I75 |
 | A22 | 在运行中的引擎上移除和排空 UDP 监听器 | 已提出（I22） | 10、11 | I22、I28 |
+| A23 | 按长度分帧的流式 HTTP/1.1 响应 | 已提出（I16） | 5 | I16、I67 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -330,8 +331,8 @@ UTC 修改时间），最多读取 `browse_max_entries` 项（默认 10000；还
 **akit 的用法。** I16 的代理以流的方式接收客户端的请求体（`BodyMode::Stream`、`on_body`），把每块写进上游的
 `RequestBody`，在 `queued_bytes` 高于水位时暂停读取客户端（A21），并在 `on_drain` 中恢复。上游连接池
 （`akit-upstream`，它封装 `Client::request`）、I17 的取消（丢弃请求体）、I18 的 h2 上游（`H2Client` 上的同样接口）、
-I49（WebSocket）和 I75（FastCGI）也会用到。在此之前，akit 的代理整体转发请求体，不超过 `limits.max_body_bytes`
-（记录在 I16 的进度条目中）。
+I49（WebSocket）和 I75（FastCGI）也会用到。akio 在 `60547435` 中实现了它（ADR-101：`ClientRequest::streamed`、
+`RequestBody`，其 `on_drain` 以连接队列排空为准）；I16 通过 `akit_upstream::Pool::stream` 按上面的方式使用。
 
 ## A20 边到达边交付的 HTTP 客户端响应
 
@@ -356,8 +357,9 @@ I49（WebSocket）和 I75（FastCGI）也会用到。在此之前，akit 的代�
 
 **akit 的用法。** I16 的代理在 `on_head` 中开始客户端的响应（`Detached::stream_response`），把每块写进它的
 `BodyStream`，在客户端的 `queued_bytes` 高于水位时调用 `hold_reads(true)`，在客户端排空时（A21）调用
-`hold_reads(false)`。I17（trailer、空闲超时、取消）、I18（h2 上游）和缓存（I67，响应经过时存储）也会用到。在此之前，
-akit 的代理整体发回响应，每个最多 akio 的 64 MiB（记录在 I16 的进度条目中）。
+`hold_reads(false)`。I17（trailer、空闲超时、取消）、I18（h2 上游）和缓存（I67，响应经过时存储）也会用到。akio 在
+`60547435` 中实现了它（ADR-101：`Client::request_with`、`ResponseHandler`、`ResponseBody`；`H2Client` 上还没有，
+读取之间的空闲超时也还没有，分别随 I18 和 I17 而来）；I16 按上面的方式使用。
 
 ## A21 可暂停其客户端读取、并在客户端排空时得到通知的服务端请求
 
@@ -382,8 +384,9 @@ sink。`crates/akio-http/src/h2.rs` 的 `on_data`：无论 sink 是否跟得上�
 
 **akit 的用法。** I16 的代理在上游 `RequestBody::queued_bytes`（A19）高于水位时暂停读取客户端的请求体，并在它的
 `on_drain` 中恢复；在客户端 `BodyStream::queued_bytes` 高于水位时暂停读取上游（A20），并在
-`BodyStream::on_drain` 中恢复。压缩（I47）和 FastCGI（I75）也会用到。在此之前，akit 在限制内整体缓冲被代理的请求体
-和响应体（记录在 I16 的进度条目中）。
+`BodyStream::on_drain` 中恢复。压缩（I47）和 FastCGI（I75）也会用到。akio 在 `60547435` 中实现了它（ADR-101：
+`Context::body_reads`、`BodyReads::hold`、`BodyStream::on_drain`，HTTP/1.1、HTTP/2 和 HTTP/3 都有）；I16 按上面的
+方式使用。
 
 ## A22 移除运行中引擎的 UDP 监听器
 
@@ -402,3 +405,21 @@ UDP：不再接收新对端，对已有的调用 `on_shutdown`，到期关闭剩
 
 **akit 的用法。** `akit_listener::Listeners::reload`（I22、I28）像移除 TCP 一侧那样移除并排空监听器的 HTTP/3，
 `ReloadError::Udp` 的拒绝随之去掉。
+
+## A23 按长度分帧的流式 HTTP/1.1 响应
+
+**问题。** 流式转发长度已知的上游响应时，代理应像 fit 那样带着这个长度发出：客户端由此知道还有多少（下载进度、范围的
+结尾），并能从分帧上分辨被截断的响应体和完整的响应体。akio-http 的服务端在 keep-alive 连接上把每个流式 HTTP/1.1 响应
+（`stream_response`）都按 chunked 发送；随它给出的 `Content-Length` 字段会和 `Transfer-Encoding: chunked` 一起发出，
+这是无效的，所以 akit 去掉了它。HTTP/2 和 HTTP/3 保留该字段，它们的 DATA 帧本身就足以分帧。
+
+**证据。** `crates/akio-http/src/context.rs`（`60547435`）：只要 HTTP/1 响应是 keep-alive 的 1.1，`start_stream`
+就设置 `Transfer-Encoding: chunked`，不看它的头部；`BodyStream::write` 把每块按 chunk 分帧。`message.rs` 的
+`Response::encode` 不给流式响应加 `Content-Length`，但保留给定的。
+
+**建议的 API。** `stream_response` 在 HTTP/1 上尊重给定头部中的 `Content-Length`：不用 chunked 分帧，各块原样写出，
+`finish` 检查长度是否写满（没写满时关闭连接，被截断的响应体就该如此），超出长度的写入被拒绝。如果从头部读字段太隐晦，
+也可以是含义相同的 `Context::stream_response_sized(status, headers, len: u64)`。
+
+**akit 的用法。** I16 的代理把长度已知、超过 64 KiB 的响应流式发给 HTTP/1.1 客户端时带上它的 `Content-Length`（现在
+按 chunked 发送，去掉该字段：记录在 I16 的进度条目中）。缓存（I67）在边读边提供已存储的响应时也会用到。

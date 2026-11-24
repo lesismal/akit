@@ -23,7 +23,10 @@
 //! [`reload`]).
 //!
 //! I16: each listener takes request bodies up to the config's `limits.max_body_bytes` (fit's
-//! 16 MiB by default) over HTTP/1.1, HTTP/2 and HTTP/3, and answers a larger one 413.
+//! 16 MiB by default) over HTTP/1.1, HTTP/2 and HTTP/3, and answers a larger one 413. A request
+//! whose route's handler takes its body as it arrives (`body_mode`, the proxy's) gets it so,
+//! with [`MAX_BODY_BYTES`] telling the handler the limit, which it holds the body to; one that
+//! declares a length past it is answered 413 before its handler runs, as before.
 //!
 //! Part of [akit](https://github.com/lesismal/akit); see `docs/dev-plan.md` for the iterations that
 //! fill this crate in.
@@ -36,7 +39,7 @@ use std::time::{Duration, Instant};
 
 use akio::tls::Tls;
 use akio::{Backend, Config as EngineConfig, Engine, Listener as EngineListener};
-use akio_http::{Context, HttpConfig, Method, Request, Response, Version};
+use akio_http::{BodyMode, Context, HttpConfig, Method, Request, Response, Version};
 use akit_config::{Listener, Protocol};
 use akit_observe::{AccessLog, Name, Record, Shard};
 use akit_runtime::GraphCell;
@@ -50,7 +53,7 @@ const NOT_FOUND: &str = "404 page not found\n";
 /// fit's answer to a path that has no canonical form ([`akit_router::canonicalize`]).
 const BAD_REQUEST_PATH: &str = "400 bad request path\n";
 
-pub use akit_runtime::{CANONICAL_PATH, TLS};
+pub use akit_runtime::{CANONICAL_PATH, MAX_BODY_BYTES, TLS};
 
 /// The akio service of one listener: each request goes to the route the current graph picks for
 /// it on this listener, or is answered 404. Runs on the I/O thread, and only reads the graph.
@@ -63,6 +66,9 @@ pub struct Dispatcher {
     /// The `Alt-Svc` value every response gets, for the TCP side of a listener that also serves
     /// HTTP/3; made once, when the listener is set up.
     alt_svc: Option<String>,
+    /// The listener's `max_body_bytes`, as [`MAX_BODY_BYTES`] gives it to a handler that takes
+    /// its body as it arrives.
+    max_body_bytes: u64,
 }
 
 impl Dispatcher {
@@ -76,6 +82,7 @@ impl Dispatcher {
             listener,
             tls: false,
             alt_svc: None,
+            max_body_bytes: akit_config::DEFAULT_MAX_BODY_BYTES,
         }
     }
 
@@ -83,6 +90,15 @@ impl Dispatcher {
     #[must_use]
     pub fn tls(mut self, tls: bool) -> Dispatcher {
         self.tls = tls;
+        self
+    }
+
+    /// The listener's `max_body_bytes`: a request body streamed to its handler is held to it
+    /// ([`MAX_BODY_BYTES`]), and one that declares a length past it is answered 413 by akio
+    /// before its handler runs. fit's 16 MiB unless set.
+    #[must_use]
+    pub fn max_body_bytes(mut self, n: u64) -> Dispatcher {
+        self.max_body_bytes = n;
         self
     }
 
@@ -234,7 +250,7 @@ impl akio_http::Service for Dispatcher {
                     return;
                 };
                 let req = RouterRequest {
-                    ctx,
+                    req: ctx.req(),
                     path: &path.decoded,
                 };
                 let route = g
@@ -251,6 +267,10 @@ impl akio_http::Service for Dispatcher {
             }
             if self.tls {
                 ctx.set_local(TLS, "");
+            }
+            if ctx.body_reads().is_some() {
+                // Its body streams (`body_mode`): the handler holds it to the limit.
+                ctx.set_local(MAX_BODY_BYTES, self.max_body_bytes.to_string());
             }
             let Some(log) = log else {
                 match route {
@@ -271,35 +291,72 @@ impl akio_http::Service for Dispatcher {
         });
     }
 
-    // Request bodies are buffered (akio's default), within the listener's `max_body_bytes`
-    // (`http_config`). The proxy (I16) takes its bodies as a stream once akio's client can send
-    // one (akio API requests A19 to A21): `body_mode` routes then too.
+    /// The route's handler's: a request whose route takes its body as it arrives (the proxy's,
+    /// I16) gets it so, unless it declares a length past `max_body_bytes`, which is then read
+    /// as buffered bodies are, and answered 413 by akio. Others are buffered (akio's default),
+    /// within the listener's `max_body_bytes` (`http_config`).
+    ///
+    /// The route is looked up here and again in [`call`](Self::call), on the graph current each
+    /// time; a reload in between can hand a streamed body to a route that buffers, which then
+    /// sees it empty.
+    fn body_mode(&self, req: &Request) -> BodyMode {
+        self.cell.with(|g| {
+            let Some(path) = akit_router::canonicalize(req.path()) else {
+                return BodyMode::Buffered;
+            };
+            let rr = RouterRequest {
+                req,
+                path: &path.decoded,
+            };
+            let Some(route) = g
+                .listener_index(&self.listener)
+                .and_then(|i| g.route_request(i, &rr))
+            else {
+                return BodyMode::Buffered;
+            };
+            match route.handler.body_mode(req) {
+                BodyMode::Stream
+                    if declared_length(req).is_some_and(|n| n > self.max_body_bytes) =>
+                {
+                    BodyMode::Buffered
+                }
+                mode => mode,
+            }
+        })
+    }
 }
 
-/// A request as the router's matchers read it: akio's context, with the canonical path.
+/// The body length `req` declares (`Content-Length`), if any.
+fn declared_length(req: &Request) -> Option<u64> {
+    req.headers
+        .get("content-length")
+        .and_then(|v| v.trim().parse().ok())
+}
+
+/// A request as the router's matchers read it: akio's request, with the canonical path.
 struct RouterRequest<'a> {
-    ctx: &'a Context,
+    req: &'a Request,
     path: &'a [u8],
 }
 
 impl akit_router::Request for RouterRequest<'_> {
     fn method(&self) -> &str {
-        self.ctx.method().as_str()
+        self.req.method.as_str()
     }
     fn host(&self) -> &str {
-        self.ctx.header("host").unwrap_or("")
+        self.req.headers.get("host").unwrap_or("")
     }
     fn path(&self) -> &[u8] {
         self.path
     }
     fn query(&self) -> &str {
-        self.ctx.req().query().unwrap_or("")
+        self.req.query().unwrap_or("")
     }
     fn remote_ip(&self) -> Option<IpAddr> {
-        Some(self.ctx.peer().ip())
+        Some(self.req.peer.ip())
     }
     fn any_header(&self, name: &str, f: impl FnMut(&str) -> bool) -> bool {
-        self.ctx.req().headers.get_all(name).any(f)
+        self.req.headers.get_all(name).any(f)
     }
 }
 
@@ -583,7 +640,9 @@ fn tcp_listener(
     listener: EngineListener,
     h3_port: Option<u16>,
 ) -> Result<EngineListener, Error> {
-    let mut d = Dispatcher::new(cell.clone(), l.name.clone()).tls(l.tls.is_some());
+    let mut d = Dispatcher::new(cell.clone(), l.name.clone())
+        .tls(l.tls.is_some())
+        .max_body_bytes(l.max_body_bytes);
     if let Some(port) = h3_port {
         d = d.with_alt_svc(alt_svc(port));
     }
@@ -612,7 +671,9 @@ fn h3_acceptor(
         quic,
         h3_config(l),
         // HTTP/3 is always over TLS.
-        Dispatcher::new(cell.clone(), l.name.clone()).tls(true),
+        Dispatcher::new(cell.clone(), l.name.clone())
+            .tls(true)
+            .max_body_bytes(l.max_body_bytes),
     ))
 }
 

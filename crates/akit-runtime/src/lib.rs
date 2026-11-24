@@ -38,5 +38,10 @@ pub const CANONICAL_PATH: &str = "akit.canonical_path";
 /// akit-listener; unset in the clear. akio's context does not say yet.
 pub const TLS: &str = "akit.tls";
 
+/// The [`akio_http::Context::local`] that holds the listener's `limits.max_body_bytes`, in
+/// decimal, on a request whose body streams to its handler (`body_mode`, I16): akio holds a
+/// streamed body to no limit, so the handler does. akit-listener sets it.
+pub const MAX_BODY_BYTES: &str = "akit.max_body_bytes";
+
 /// The akio commit akit is built against (rule 22: akio is pinned by commit hash).
-pub const AKIO_REV: &str = "a9a620ab2db9635caee32fc625da51ae255ff591";
+pub const AKIO_REV: &str = "60547435e3dd2342a2bdd2876f3f301e14948acd";

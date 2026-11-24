@@ -35,6 +35,13 @@
 //! [`Error::is_upstream_failure`] says: the address could not be reached, broke off, sent no
 //! valid response, or timed out (waiting for a connection to it included).
 //!
+//! I16 adds [`Pool::stream`]: an exchange whose request body is written as it is produced and
+//! whose response is delivered as it arrives ([`Exchange`], on akio's `Client::request_with`), for
+//! the proxy to stream bodies with linked backpressure. It is bounded, balanced and counted
+//! towards health as [`Pool::send`] is, and holds its address until the response's body is
+//! complete, so that `max_conns` and `least_conn` count a long download as busy for as long as it
+//! lasts, as fit's do.
+//!
 //! Nothing here blocks: [`Pool::send`] runs on an I/O thread, and its callback runs once, on an
 //! I/O thread (or the resolver's or the timer's thread, as akio's client says), never blocking
 //! either.
@@ -64,7 +71,11 @@ use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
 use std::time::{Duration, Instant};
 
 use akio::Engine;
-use akio_http::client::{Client, ClientError, ClientOptions, ClientRequest, ClientResponse};
+use akio_http::Headers;
+use akio_http::client::{
+    Client, ClientError, ClientOptions, ClientRequest, ClientResponse, RequestBody, ResponseBody,
+    ResponseHandler, ResponseHead,
+};
 
 pub use balance::{Balancer, LoadBalancing};
 pub use health::Health;
@@ -169,10 +180,77 @@ pub type Outcome = Result<ClientResponse, Error>;
 
 type Done = Box<dyn FnOnce(Outcome) + Send>;
 
+/// An exchange with an upstream whose bodies stream ([`Pool::stream`]): akio's
+/// [`ResponseHandler`], with the pool's errors. Its methods run on an I/O thread (or, for a
+/// failure before the request is sent, on the thread that sent it) and must not block. After
+/// [`on_head`](Self::on_head), exactly one of [`on_end`](Self::on_end) and
+/// [`on_error`](Self::on_error) follows; a request that gets no response gets `on_error` alone.
+pub trait Exchange: Send + 'static {
+    /// The request's body, when it is streamed ([`ClientRequest::streamed`]), once its head is
+    /// written. The default drops it, which fails the request.
+    fn on_request_body(&mut self, body: RequestBody) {
+        drop(body);
+    }
+    /// The response head. `body` holds and resumes the reads of the body that follows.
+    fn on_head(&mut self, head: ResponseHead, body: Download);
+    /// A piece of the body, as read (dechunked); valid for the call only.
+    fn on_data(&mut self, chunk: &[u8]);
+    /// The body is complete, with the trailer fields of a chunked one.
+    fn on_end(&mut self, trailers: &Headers);
+    /// The request failed, or (after the head) its body did not complete.
+    fn on_error(&mut self, e: Error);
+}
+
+/// Holds and resumes the reads of a response's body ([`Exchange::on_head`]), or gives it up.
+/// Cheap to clone, usable from any thread; it does nothing once the response is over.
+#[derive(Clone)]
+pub struct Download {
+    body: ResponseBody,
+    cancelled: Arc<AtomicBool>,
+}
+
+impl Download {
+    /// Holds (`true`) or resumes the upstream connection's reads.
+    pub fn hold_reads(&self, hold: bool) {
+        self.body.hold_reads(hold);
+    }
+
+    /// Gives the response up: its connection is closed, and the exchange ends with
+    /// [`Exchange::on_error`]. The address is not counted as failing for it: the proxy's client
+    /// went, not the upstream.
+    pub fn cancel(&self) {
+        self.cancelled.store(true, Ordering::SeqCst);
+        self.body.cancel();
+    }
+}
+
+impl fmt::Debug for Download {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Download").finish_non_exhaustive()
+    }
+}
+
+/// Where a request's response goes.
+enum Deliver {
+    /// Whole, to a callback ([`Pool::send`]).
+    Whole(Done),
+    /// As it arrives ([`Pool::stream`]).
+    Stream(Box<dyn Exchange>),
+}
+
+impl Deliver {
+    fn fail(self, e: Error) {
+        match self {
+            Deliver::Whole(done) => done(Err(e)),
+            Deliver::Stream(mut x) => x.on_error(e),
+        }
+    }
+}
+
 /// A request waiting for a connection to its address.
 struct Waiter {
     req: ClientRequest,
-    done: Done,
+    done: Deliver,
     since: Instant,
 }
 
@@ -435,7 +513,18 @@ impl Pool {
         req: ClientRequest,
         done: impl FnOnce(Outcome) + Send + 'static,
     ) {
-        self.inner.send(backend, req, Box::new(done));
+        self.inner
+            .send(backend, req, Deliver::Whole(Box::new(done)));
+    }
+
+    /// Like [`send`](Self::send), with the response delivered to `x` as it arrives, and the
+    /// request's body written as it is produced when it is [streamed](ClientRequest::streamed)
+    /// ([`Exchange::on_request_body`]). The address is held until the response is complete; a
+    /// failure after the head counts against it unless the exchange
+    /// [cancelled](Download::cancel) the response. A request that fails before it is sent gets
+    /// [`Exchange::on_error`] at once, on this thread.
+    pub fn stream(&self, backend: usize, req: ClientRequest, x: impl Exchange) {
+        self.inner.send(backend, req, Deliver::Stream(Box::new(x)));
     }
 
     /// [`pick`](Self::pick) and [`send`](Self::send).
@@ -530,29 +619,29 @@ impl Inner {
         }
     }
 
-    fn send(self: &Arc<Self>, backend: usize, req: ClientRequest, done: Done) {
+    fn send(self: &Arc<Self>, backend: usize, req: ClientRequest, done: Deliver) {
         // Counted before `closing` is read, and `close` sets `closing` before it reads the count:
         // either this request sees the pool closing or `close` sees it in flight.
         self.in_flight.fetch_add(1, Ordering::SeqCst);
         if self.closing.load(Ordering::SeqCst) {
             self.finish_one();
-            return done(Err(Error::Closed));
+            return done.fail(Error::Closed);
         }
         let Some(b) = self.backends.get(backend) else {
             self.finish_one();
-            return done(Err(Error::Client(ClientError::InvalidUrl(format!(
+            return done.fail(Error::Client(ClientError::InvalidUrl(format!(
                 "upstream {}: no address {backend}",
                 self.name
-            )))));
+            ))));
         };
         if !req.url.starts_with('/') {
             self.finish_one();
             let url = req.url;
-            return done(Err(Error::Client(ClientError::InvalidUrl(url))));
+            return done.fail(Error::Client(ClientError::InvalidUrl(url)));
         }
         if self.client().is_none() {
             self.finish_one();
-            return done(Err(Error::NoEngine));
+            return done.fail(Error::NoEngine);
         }
         let w = Waiter {
             req,
@@ -596,7 +685,7 @@ impl Inner {
             b.waiting.fetch_sub(1, Ordering::SeqCst);
             drop(q);
             self.finish_one();
-            (w.done)(Err(Error::Busy));
+            w.done.fail(Error::Busy);
             return None;
         }
         q.push_back(w);
@@ -616,17 +705,32 @@ impl Inner {
             // Neither happens: `send` checked both before the slot was taken.
             self.release(backend);
             self.finish_one();
-            return done(Err(Error::NoEngine));
+            return done.fail(Error::NoEngine);
         };
         if left.is_zero() {
             self.release(backend);
             self.record(backend, true);
             self.finish_one();
-            return done(Err(Error::Timeout));
+            return done.fail(Error::Timeout);
         }
         req.timeout = Some(left);
         req.url.insert_str(0, &b.base);
         let me = Arc::clone(self);
+        let done = match done {
+            Deliver::Whole(done) => done,
+            Deliver::Stream(x) => {
+                return client.request_with(
+                    req,
+                    Streamed {
+                        pool: me,
+                        backend,
+                        x,
+                        headed: false,
+                        cancelled: Arc::new(AtomicBool::new(false)),
+                    },
+                );
+            }
+        };
         client.request(req, move |r| {
             // The connection is back in the client's idle pool (or closed) by now: the slot
             // goes to the next request before this one's callback runs.
@@ -688,6 +792,53 @@ impl Inner {
         for f in callbacks {
             f();
         }
+    }
+}
+
+/// akio's handler for an exchange of [`Pool::stream`]: passes it on to the [`Exchange`], and
+/// gives the address back and counts how it did once the response is over.
+struct Streamed {
+    pool: Arc<Inner>,
+    backend: usize,
+    x: Box<dyn Exchange>,
+    headed: bool,
+    cancelled: Arc<AtomicBool>,
+}
+
+impl ResponseHandler for Streamed {
+    fn on_request_body(&mut self, body: RequestBody) {
+        self.x.on_request_body(body);
+    }
+
+    fn on_head(&mut self, head: ResponseHead, body: ResponseBody) {
+        self.headed = true;
+        let body = Download {
+            body,
+            cancelled: self.cancelled.clone(),
+        };
+        self.x.on_head(head, body);
+    }
+
+    fn on_data(&mut self, chunk: &[u8]) {
+        self.x.on_data(chunk);
+    }
+
+    fn on_end(&mut self, trailers: &Headers) {
+        // The connection is back in the client's idle pool by now, as for `send`.
+        self.pool.release(self.backend);
+        self.pool.record(self.backend, false);
+        self.x.on_end(trailers);
+        self.pool.finish_one();
+    }
+
+    fn on_error(&mut self, e: ClientError) {
+        self.pool.release(self.backend);
+        // Any response is a success, as for `send`, unless its body broke off: the client going
+        // (a cancel) is not the address's failure.
+        let failed = !(self.headed && self.cancelled.load(Ordering::SeqCst));
+        self.pool.record(self.backend, failed);
+        self.x.on_error(Error::Client(e));
+        self.pool.finish_one();
     }
 }
 
