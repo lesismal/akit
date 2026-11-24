@@ -410,7 +410,7 @@ fn read_token(file: &str) -> io::Result<Vec<u8>> {
     Ok(token.as_bytes().to_vec())
 }
 
-struct Shared {
+pub(crate) struct Shared {
     configs: Configs,
     submit: Submit,
     max_body: usize,
@@ -424,12 +424,12 @@ struct Shared {
 
 struct Api(Arc<Shared>);
 
-/// Whether `req` sends a config or a value of one: its body is streamed in, within
+/// Whether `req` sends a config or a value of one, or a purge: its body is streamed in, within
 /// `max_config_bytes`.
 fn takes_config(req: &Request) -> bool {
     let path = req.path();
     match req.method {
-        Method::Post => path == "/load",
+        Method::Post => path == "/load" || path == "/cache/purge",
         Method::Put | Method::Patch => path == "/config" || path.starts_with("/config/"),
         _ => false,
     }
@@ -501,6 +501,10 @@ impl akio_http::Service for Api {
             "/versions" => not_allowed("GET, HEAD"),
             "/status" if read => crate::status::status(&self.0.configs, self.0.status.as_ref()),
             "/status" => not_allowed("GET, HEAD"),
+            "/cache" if read => crate::cache::zones(),
+            "/cache" => not_allowed("GET, HEAD"),
+            "/cache/purge" if post => return crate::cache::purge(&self.0, ctx),
+            "/cache/purge" => not_allowed("POST"),
             // Its other methods edit the member `effective`, as fit's `PUT /config/{path...}`.
             p if self.0.dashboard && dashboard::is_dashboard(p) => {
                 if read {
@@ -645,6 +649,25 @@ fn change(shared: &Arc<Shared>, ctx: &mut Context, tokens: Option<Vec<String>>) 
     } else {
         &["application/json"]
     };
+    let shared2 = Arc::clone(shared);
+    read_body(shared, ctx, types, move |ctx, data| {
+        let op = match tokens {
+            None => Op::Load(data),
+            Some(t) if patch => Op::Patch(t, data),
+            Some(t) => Op::Put(t, data),
+        };
+        submit(&shared2, ctx, op, mode);
+    });
+}
+
+/// Streams in the body of a request sent as one of `types`, within `max_config_bytes`, and
+/// hands it to `done`; 415 for another type, 413 past the bound, as fit's `readBody`.
+pub(crate) fn read_body(
+    shared: &Arc<Shared>,
+    ctx: &mut Context,
+    types: &'static [&'static str],
+    done: impl FnOnce(&mut Context, Vec<u8>) + Send + 'static,
+) {
     let typed = ctx.header("Content-Type").is_some_and(|t| {
         t.split(';')
             .next()
@@ -678,9 +701,8 @@ fn change(shared: &Arc<Shared>, ctx: &mut Context, tokens: Option<Vec<String>>) 
             .unwrap_or(0)
             .min(max),
     );
-    let shared = Arc::clone(shared);
     let mut over = false;
-    let mut tokens = Some(tokens);
+    let mut done = Some(done);
     ctx.on_body(move |ctx, ev| {
         if over {
             return;
@@ -696,13 +718,9 @@ fn change(shared: &Arc<Shared>, ctx: &mut Context, tokens: Option<Vec<String>>) 
                 }
             }
             BodyEvent::End(_) => {
-                let data = std::mem::take(&mut data);
-                let op = match tokens.take().flatten() {
-                    None => Op::Load(data),
-                    Some(t) if patch => Op::Patch(t, data),
-                    Some(t) => Op::Put(t, data),
-                };
-                submit(&shared, ctx, op, mode);
+                if let Some(done) = done.take() {
+                    done(ctx, std::mem::take(&mut data));
+                }
             }
         }
     });

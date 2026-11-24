@@ -175,7 +175,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 293 supported.
+3821 fields in 121 sections, at fit `7daee573`; 302 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -228,7 +228,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`media_library`](#fields-media-library) | 24 | 0 | 24 |
 | [`metrics`](#fields-metrics) | 1 | 1 | 0 |
 | [`pprof`](#fields-pprof) | 4 | 0 | 4 |
-| [`providers`](#fields-providers) | 60 | 15 | 45 |
+| [`providers`](#fields-providers) | 60 | 24 | 36 |
 | [`routes`](#fields-routes) | 24 | 19 | 5 |
 | [`schema_version`](#fields-schema-version) | 1 | 1 | 0 |
 | [`services`](#fields-services) | 13 | 8 | 5 |
@@ -300,7 +300,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 293 | 3528 |
+| **Total** | 3821 | 302 | 3519 |
 
 <a id="fields-access"></a>
 
@@ -1685,15 +1685,15 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `providers[].consul_kv.refresh_interval` | `duration` | not supported yet |
 | `providers[].consul_kv.request_timeout` | `duration` | not supported yet |
 | `providers[].consul_kv.token_file` | `string` | not supported yet |
-| `providers[].docker` | `object` | not supported yet |
-| `providers[].docker.endpoint` | `string` | not supported yet |
-| `providers[].docker.expose_all` | `boolean` | not supported yet |
-| `providers[].docker.label_prefix` | `string` | not supported yet |
-| `providers[].docker.max_containers` | `integer` | not supported yet |
-| `providers[].docker.network` | `string` | not supported yet |
-| `providers[].docker.refresh_interval` | `duration` | not supported yet |
-| `providers[].docker.request_timeout` | `duration` | not supported yet |
-| `providers[].docker.use_published_ports` | `boolean` | not supported yet |
+| `providers[].docker` | `object` | supported |
+| `providers[].docker.endpoint` | `string` | supported |
+| `providers[].docker.expose_all` | `boolean` | supported |
+| `providers[].docker.label_prefix` | `string` | supported |
+| `providers[].docker.max_containers` | `integer` | supported |
+| `providers[].docker.network` | `string` | supported |
+| `providers[].docker.refresh_interval` | `duration` | supported |
+| `providers[].docker.request_timeout` | `duration` | supported |
+| `providers[].docker.use_published_ports` | `boolean` | supported |
 | `providers[].etcd` | `object` | not supported yet |
 | `providers[].etcd.ca_file` | `string` | not supported yet |
 | `providers[].etcd.cert_file` | `string` | not supported yet |

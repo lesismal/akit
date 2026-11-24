@@ -11,12 +11,12 @@ done and where the work differs from the plan.
 | | |
 | --- | --- |
 | Last updated | 2026-11-24 |
-| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I24, I17b and I18b done; M2's I26–I37, M3's I39–I54 and M4's I57, I59, I63 and I64 done early, with I67 and I68. |
-| akio | `e9891b52` on akio's `main` (`1.0.0-rc.1`, with every request akit pins in [akio API requests](akio-api-requests.md)), pinned by `rev` in `Cargo.toml` |
+| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I24, I17b and I18b done; M2's I26–I37, M3's I39–I54 and M4's I57–I59, I63 and I64 done early, with I67–I69. |
+| akio | `0f2c419b` on akio's `main` (`1.0.0-rc.1`, with every request akit pins in [akio API requests](akio-api-requests.md)), pinned by `rev` in `Cargo.toml` |
 | fit | the specification; read at `7daee573` for this plan |
-| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept (as fit's `binding.same`: certificate files and ACME names may change), added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication; certificates chosen per handshake as fit's, replaced by a reload or by `-watch-certs` without closing the listener) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; route middleware: `rewrite` (prefixes and regexps), `redirect` (with the regexp's groups), `headers`, `rate_limit`, `concurrency_limit`, `body_limit`, `basic_auth` (bcrypt, checked on akio's pool), `client_cert` (mTLS per route), `forward_auth` (an auth service asked on akio's client, the request suspended meanwhile), `circuit_breaker`, `compress` (zstd, brotli and gzip by q value, streamed bodies encoded write by write) and `jwt` (JSON Web Tokens verified with akio-crypto, keys from PEM files, a secret or a JWK set fetched by akio's client and rotated); the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, compressed copies of files kept in memory, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`, bodies streamed both ways with linked backpressure, trailers both ways, `timeout` and the upstream's `response_timeout`, `response_header_timeout` and `response_idle_timeout`, 504 for timeouts, the upstream request given up whenever the client goes, `retry` with its budget, the `timeout` bounding the attempts together; `upstreams` chosen at random by weight, a `failover` taking the requests while the chosen upstream has no address in rotation, a `mirror` getting copies of requests whose bodies came whole, at most 256 under way, never waited for; upstreams over HTTP/1.1, h2c and h2, h2 with fit's `tls_server_name`, `tls_ca_file` and client certificate); `limits.max_body_bytes` on every listener (413) and in the proxy, and `limits.write_stall_timeout` (changed by a reload too); access logs in fit's json, text and line formats; upstream pools with fit's nine load balancing policies (round robin, weighted round robin, least connections, random, p2c, and consistent hashing of the client's IP, the path, a header or a cookie) and sticky cookies, passing over addresses taken out by passive health checks (`max_fails`, `fail_timeout`) and by active ones (`health_check`: http and tcp probes); the Admin API on loopback (`GET /config`, by JSON pointer too, `POST /load`, edits by pointer with `PUT`, `PATCH` and `DELETE /config`, `POST /rollback/{n}`, `POST /reload`, each with `If-Match` and all but a rollback with `?dry_run=1`, `GET /versions`; with `token_file`, a bearer token on every request), changes applied as SIGHUP's reloads, one history for both; `run -watch` applying the config's files each time they change (fit's file provider, polled); Prometheus metrics at the Admin API's `GET /metrics` (requests by listener and route with `metrics`, upstreams and backends, certificates, connections, reloads, akio's engine); fit's read-only dashboard at the Admin API's `/dashboard/`, on `GET /status` and `GET /config/effective` (I63); certificates obtained with ACME through HTTP-01 or TLS-ALPN-01 for the names listeners list in `tls.acme`, kept in a storage and renewed by their lifetime or the CA's renewal information (ARI), their OCSP responses stapled, and obtained during handshakes for the names an ask URL allows (`tls.on_demand`, rate limited, the handshakes waiting without holding an I/O thread); HTTPS by default (`auto_https`): a config that writes no listeners served on HTTPS with its routes' host names' certificates and on HTTP redirected to it (308), an empty `tls` given its routes' names; layer 4 `services` (I51): `tcp` and `udp` listeners proxied to an upstream's addresses, backpressure linked both ways, idle timeouts, `max_conns`, drained after a reload; services sharing a `tcp` listener by the server names of their TLS ClientHellos, passed through without terminating them (I52), and PROXY protocol headers (v1, v2) taken from a listener's trusted proxies, on `tcp` and HTTP listeners, and sent to a service's upstream; `tcp` beside HTTP on one port (I53), told apart by what a client sends first; WebSockets proxied (I49) from HTTP/1.1 upgrades and HTTP/2 and HTTP/3 extended CONNECTs to HTTP/1.1 upstreams, backpressure linked both ways, `tunnel_idle_timeout`; gRPC calls proxied (I50) to h2 and h2c upstreams, streamed both ways with their trailers, bounded by `grpc-timeout`, answered with gRPC statuses when they failthe response cache (I67, I68): RFC 9111 in a bounded memory tier shared by a zone, streamed bodies kept as they go, the cache lock, stale-while-revalidate and stale-if-error, and a disk tier on a pool of its own; the provider framework (I57): providers' parts merged into the base config by fit's rules, applied as versions of their own, `GET /config/effective` with where each part came from; the Kubernetes provider (I59): the Ingresses of akit's IngressClasses listed and watched over HTTP/2 or HTTP/1.1, served as routes to their Services' ready endpoints, their TLS Secrets written as certificate files; OpenTelemetry (I64): requests traced by their `traceparent` and `telemetry.traces.sample_ratio`, the upstream sent akit's span, spans and metrics exported over OTLP/HTTP; the compatibility gate: 80 fixtures, 33 valid, 46 refused only as not supported yet27 valid27 valid31 valid, 48 refused only as not supported yet27 valid27 valid, 52 refused only as not supported yet, 1 skipped, none failed |
-| Next | I55, I69 (cache III); M2's I38; I25 (M1 conformance) |
-| akio requests | A1–A8, A11, A13, A16–A21, A32, A36–A38, A51–A53, A63–A66, A90, A91, A93, A94, A105, A108, A109 and A111 on akio's main and pinned; A112 and A113 in progress; A9, A10, A12, A14, A15, A22–A24, A29, A30, A33, A35, A45, A48, A49, A54, A57, A58, A75, A78, A79, A92 and A117 requested ([akio API requests](akio-api-requests.md)) |
+| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept (as fit's `binding.same`: certificate files and ACME names may change), added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication; certificates chosen per handshake as fit's, replaced by a reload or by `-watch-certs` without closing the listener) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; route middleware: `rewrite` (prefixes and regexps), `redirect` (with the regexp's groups), `headers`, `rate_limit`, `concurrency_limit`, `body_limit`, `basic_auth` (bcrypt, checked on akio's pool), `client_cert` (mTLS per route), `forward_auth` (an auth service asked on akio's client, the request suspended meanwhile), `circuit_breaker`, `compress` (zstd, brotli and gzip by q value, streamed bodies encoded write by write) and `jwt` (JSON Web Tokens verified with akio-crypto, keys from PEM files, a secret or a JWK set fetched by akio's client and rotated); the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, compressed copies of files kept in memory, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`, bodies streamed both ways with linked backpressure, trailers both ways, `timeout` and the upstream's `response_timeout`, `response_header_timeout` and `response_idle_timeout`, 504 for timeouts, the upstream request given up whenever the client goes, `retry` with its budget, the `timeout` bounding the attempts together; `upstreams` chosen at random by weight, a `failover` taking the requests while the chosen upstream has no address in rotation, a `mirror` getting copies of requests whose bodies came whole, at most 256 under way, never waited for; upstreams over HTTP/1.1, h2c and h2, h2 with fit's `tls_server_name`, `tls_ca_file` and client certificate); `limits.max_body_bytes` on every listener (413) and in the proxy, and `limits.write_stall_timeout` (changed by a reload too); access logs in fit's json, text and line formats; upstream pools with fit's nine load balancing policies (round robin, weighted round robin, least connections, random, p2c, and consistent hashing of the client's IP, the path, a header or a cookie) and sticky cookies, passing over addresses taken out by passive health checks (`max_fails`, `fail_timeout`) and by active ones (`health_check`: http and tcp probes); the Admin API on loopback (`GET /config`, by JSON pointer too, `POST /load`, edits by pointer with `PUT`, `PATCH` and `DELETE /config`, `POST /rollback/{n}`, `POST /reload`, each with `If-Match` and all but a rollback with `?dry_run=1`, `GET /versions`; with `token_file`, a bearer token on every request), changes applied as SIGHUP's reloads, one history for both; `run -watch` applying the config's files each time they change (fit's file provider, polled); Prometheus metrics at the Admin API's `GET /metrics` (requests by listener and route with `metrics`, upstreams and backends, certificates, connections, reloads, akio's engine); fit's read-only dashboard at the Admin API's `/dashboard/`, on `GET /status` and `GET /config/effective` (I63); certificates obtained with ACME through HTTP-01 or TLS-ALPN-01 for the names listeners list in `tls.acme`, kept in a storage and renewed by their lifetime or the CA's renewal information (ARI), their OCSP responses stapled, and obtained during handshakes for the names an ask URL allows (`tls.on_demand`, rate limited, the handshakes waiting without holding an I/O thread); HTTPS by default (`auto_https`): a config that writes no listeners served on HTTPS with its routes' host names' certificates and on HTTP redirected to it (308), an empty `tls` given its routes' names; layer 4 `services` (I51): `tcp` and `udp` listeners proxied to an upstream's addresses, backpressure linked both ways, idle timeouts, `max_conns`, drained after a reload; services sharing a `tcp` listener by the server names of their TLS ClientHellos, passed through without terminating them (I52), and PROXY protocol headers (v1, v2) taken from a listener's trusted proxies, on `tcp` and HTTP listeners, and sent to a service's upstream; `tcp` beside HTTP on one port (I53), told apart by what a client sends first; WebSockets proxied (I49) from HTTP/1.1 upgrades and HTTP/2 and HTTP/3 extended CONNECTs to HTTP/1.1 upstreams, backpressure linked both ways, `tunnel_idle_timeout`; gRPC calls proxied (I50) to h2 and h2c upstreams, streamed both ways with their trailers, bounded by `grpc-timeout`, answered with gRPC statuses when they failthe response cache (I67, I68): RFC 9111 in a bounded memory tier shared by a zone, streamed bodies kept as they go, the cache lock, stale-while-revalidate and stale-if-error, a disk tier on a pool of its own, and purges by URL, URL prefix, tag or zone at the Admin API's `POST /cache/purge` (I69); the provider framework (I57): providers' parts merged into the base config by fit's rules, applied as versions of their own, `GET /config/effective` with where each part came from; the Docker provider (I58): routes, upstreams and services from the labels of running containers, followed through the daemon's events on akio's HTTP client over its Unix socket (or TCP); the Kubernetes provider (I59): the Ingresses of akit's IngressClasses listed and watched over HTTP/2 or HTTP/1.1, served as routes to their Services' ready endpoints, their TLS Secrets written as certificate files; OpenTelemetry (I64): requests traced by their `traceparent` and `telemetry.traces.sample_ratio`, the upstream sent akit's span, spans and metrics exported over OTLP/HTTP; the compatibility gate: 80 fixtures, 35 valid, 44 refused only as not supported yet, 1 skipped, none failed |
+| Next | I55; M2's I38; I25 (M1 conformance) |
+| akio requests | A1–A8, A11, A13, A16–A21, A32, A36–A38, A51–A53, A63–A66, A90, A91, A93, A94, A105, A108, A109, A111 and A135 on akio's main and pinned; A112 and A113 in progress; A9, A10, A12, A14, A15, A22–A24, A29, A30, A33, A35, A45, A48, A49, A54, A57, A58, A75, A78, A79, A92 and A117 requested ([akio API requests](akio-api-requests.md)) |
 
 ## Log
 
@@ -29,7 +29,8 @@ done and where the work differs from the plan.
   (`http_port`, `https_port`) and `certificates_dir`, fit's defaults and checks. Not supported
   yet: a kubernetes provider without `ingress` (the Gateway API, I60), `addresses` (the Gateways'
   status, I60) and `allow_external_name_services` (needs the upstreams' `deny_internal`); the
-  docker, consul, consul_kv and etcd kinds (I58, I61). The gate's `provider-kubernetes` example is
+  consul, consul_kv and etcd kinds (I61). The kind is a `ProviderKind` variant beside I58's
+  Docker, in the same `providers.rs`. The gate's `provider-kubernetes` example is
   now refused only for `addresses`.
 - `akit-provider::kubernetes`, fit's `provider/kubernetes` for Ingresses: a client of akit's own
   on akio's (fit's decision 011) that lists each kind in pages of 500 (64 MiB at most a page, a
@@ -67,6 +68,84 @@ done and where the work differs from the plan.
   `TestProviderSetupFails`, and an Ingress's TLS end to end (the file written, removed). No kind
   cluster: the fake server is fit's way, and needs no Docker.
 - The control plane: no benchmark (rule 24).
+
+### 2026-11-24: I58, the Docker provider
+
+- `akit-config` reads fit's `providers` (`crates/akit-config/src/providers.rs`): `name` and
+  `docker` (`endpoint`, `expose_all`, `network`, `use_published_ports`, `label_prefix`,
+  `max_containers`, `refresh_interval`, `request_timeout`) with fit's defaults and
+  `checkProviders`' messages (exactly one kind, the name's pattern, not a base source, unique
+  across files, `unix://<path>` or `tcp://<host>:<port>`, the prefix's pattern). `consul`,
+  `consul_kv`, `etcd` and `kubernetes` stay not supported yet (I59–I61: a `ProviderKind` variant
+  each). Read when akit starts: a reload that changes them warns that they take a restart.
+- `akit-provider`: `labels` is fit's `provider/labels` (routes, services and an upstream's
+  settings from labels under a prefix, and the part they make, the same for the same labels),
+  for Consul's tags too in I61. `docker` is fit's `provider/docker`: containers' labels turned
+  into upstreams (replicas by Compose project and service, or `name`), routes and layer 4
+  services, those left out reported once each; `GET /events` (container events, `exec_` ones
+  passed over) and `GET /containers/json` on akio's HTTP client, over the Unix socket with A135
+  or over TCP. The event stream is read and the listing collected by callbacks on akio's I/O
+  threads, which parse what came (an event at most 1 MiB, a listing at most 16 MiB, an error's
+  body at most 4 KiB) and tell the provider's thread; that thread keeps fit's timings (200 ms of
+  debounce after events, a listing every `refresh_interval` whether or not one came, the backoff
+  from 1 s to 30 s after the daemon fails, the part sent again after a reconnect) and sends the
+  parts. `request_timeout` bounds a listing and the head of the event stream; the stream itself
+  may stay quiet (the refresh notices a daemon gone). The provider runs on an engine of its own
+  (one client thread), as the OTLP exporter does.
+- `akit run` makes the providers the config lists, in their order, names them to `Configs` and
+  starts them on I57's `Updates` (fit's `startProviders`, its "built without the ... provider"
+  message), and stops them at shutdown.
+- akio A135 (ADR-120), built on akio's branch `claude/a135-unix-dial` (`0f2c419b`, off
+  `e9891b52`) and pinned: `Engine::dial_unix` (epoll and io_uring), `UNIX_ADDR`,
+  `akio_sys::connect_unix_nonblocking`, `Client::with_unix_socket`.
+- Tests: `crates/akit-provider` ports `TestTranslate`, `TestTranslateOptions`,
+  `TestTranslateEdges`, `TestProvider`, `TestProviderRefresh`, `TestProviderNoDaemon`,
+  `TestProviderListFails`, `TestClientFails` (over TCP), `TestReadEvents` and `TestKind`, and
+  the labels' `TestParse` and `TestParseRefused`, against a fake daemon on a Unix socket, the
+  client on the backend under test; an event past the limit and one not JSON end the stream.
+  `crates/akit-config/tests/providers.rs` ports `config_test.go`'s provider cases.
+  `crates/akit/tests/docker.rs` runs fit's Docker Compose example's config against a fake daemon:
+  services routed as their containers start and stop, the fallback route kept.
+- Compatibility gate: 11 fields; `examples/docker-compose` and `examples/provider-docker` valid
+  (80 fixtures: 35 valid, 44 refused only as not supported yet, 1 skipped).
+- No benchmark (rule 24: the control plane).
+
+### 2026-11-24: I69, Cache III: purge and tags
+
+- Tags, as fit's `tagsOf`: a response kept is tagged by the members of its `Cache-Tag` fields
+  (comma-separated) and its `Surrogate-Key` fields (space-separated), each once, at most 32 of
+  them, none longer than 128 bytes; they count against the zone's size. Each of the memory tier's
+  16 shards keeps an index of its keys by tag, under the shard's lock, so that storing a tagged
+  response takes no lock of the zone's (rules.md rule 13); the disk tier's index keeps its own,
+  rebuilt from the files' fields when it is read back (the file format is unchanged).
+- `akit_cache::purge(zone, &Selection)`, as fit's `PurgeBy`: what a zone keeps (every zone's for
+  `""`), in memory and on disk, removed by URL (an absolute `http` or `https` URL, its host in any
+  case, every variant), by URL prefix (`https://example.com/img/`; one with user information or a
+  fragment refused), by tag, or all of it; it returns how many keys it removed, fit's count. A key
+  is found under each shard's lock and the disk index's for as long as the lookup takes (a prefix
+  goes through the keys); the files go on the disk pool, as an eviction's do. A purge drops the
+  writes still queued for what it removes, as an invalidation does, and a clear drops every write
+  queued before it and every file read back after it, so nothing purged comes back on disk.
+  `akit_cache::zones()` is fit's `Zones`.
+- Admin API: `GET /cache` (each zone's `zone`, `keys`, `bytes`, and `disk_entries`, `disk_bytes`,
+  `disk_path` when it has a disk tier) and `POST /cache/purge` (`{"zone", "urls", "prefixes",
+  "tags", "all"}` as JSON within `max_config_bytes`, streamed in as a config is; `{"purged": n}`;
+  404 for a zone no cache uses, 400 for a body that names nothing or a URL that is not one, 415
+  for a body not sent as JSON), as fit's `admin/cache.go`. Both run on the API's I/O thread;
+  `akit-admin` depends on `akit-cache` for them, as fit's admin package imports its cache.
+- Tests: `crates/akit-cache/tests/cache.rs` ports fit's `TestPurge` (URL, tags, prefixes, all, in
+  memory and on disk, the refusals and `Zones`) and adds a key on disk alone purged and a purge
+  dropping writes queued behind a held disk pool; unit tests port `TestTagsOf` and cover the tag
+  index through replaced variants, evictions, removals and a clear, and the URL keys;
+  `crates/akit-admin/tests/cache.rs` ports `TestCachePurge` against a served listener, with the
+  415 and 405 answers. No config field: `supported.txt` has a comment for I69, the gate report and
+  the inventory are unchanged.
+- No akio request (A144–A146 unused). Checked: `make check` on macOS; on gpu51 under the bench
+  lock, `akit-cache`, `akit-admin` and `akit` on epoll and `AKIO_TEST_BACKEND=uring`.
+- No benchmark (rule 30). To measure: the tag index's cost on storing tagged responses (none and
+  32 tags) against untagged ones, and purges by prefix and by tag of a large zone while it serves
+  (how long the shards' and the disk index's locks are held); recorded in the dev plan's response
+  cache row.
 
 ### 2026-11-24: I64, OpenTelemetry
 

@@ -344,16 +344,6 @@ fn finding(e: &akit_config::Error) -> Finding {
 
 /// Every field `supported.txt` marks, in a config akit-config reads, and what it reads from it:
 /// a field marked supported that akit refuses, or reads and drops, fails here.
-/// The first provider's kubernetes settings.
-#[allow(clippy::indexing_slicing, clippy::panic)]
-fn kube(c: &Config) -> &akit_config::KubernetesProvider {
-    match &c.providers[0].kind {
-        akit_config::ProviderKind::Kubernetes(k) => k,
-        #[allow(unreachable_patterns)]
-        _ => panic!("not kubernetes"),
-    }
-}
-
 #[test]
 fn supported_fields_are_read() {
     type Check = fn(&Config) -> bool;
@@ -1865,15 +1855,61 @@ fn supported_fields_are_read() {
             r#"{"telemetry": {"metrics": {"interval": "1m"}}}"#.into(),
             |c| c.telemetry.as_ref().unwrap().metrics.as_ref().unwrap().interval == std::time::Duration::from_secs(60),
         ),
+        // I58: the Docker provider.
         (
             "providers",
-            r#"{"providers": [{"kubernetes": {"ingress": {}}}]}"#.into(),
+            r#"{"providers": [{"docker": {}}]}"#.into(),
             |c| c.providers.len() == 1,
         ),
         (
             "providers[].name",
-            r#"{"providers": [{"name": "k", "kubernetes": {"ingress": {}}}]}"#.into(),
-            |c| c.providers[0].name == "k",
+            r#"{"providers": [{"name": "dk", "docker": {}}]}"#.into(),
+            |c| c.providers.first().unwrap().name == "dk",
+        ),
+        (
+            "providers[].docker",
+            r#"{"providers": [{"docker": {}}]}"#.into(),
+            |c| c.providers.first().unwrap().name == "docker" && docker(c).label_prefix == "fit",
+        ),
+        (
+            "providers[].docker.endpoint",
+            r#"{"providers": [{"docker": {"endpoint": "tcp://proxy:2375"}}]}"#.into(),
+            |c| docker(c).endpoint == akit_config::DockerEndpoint::Tcp("proxy:2375".into()),
+        ),
+        (
+            "providers[].docker.expose_all",
+            r#"{"providers": [{"docker": {"expose_all": true}}]}"#.into(),
+            |c| docker(c).expose_all,
+        ),
+        (
+            "providers[].docker.network",
+            r#"{"providers": [{"docker": {"network": "web"}}]}"#.into(),
+            |c| docker(c).network == "web",
+        ),
+        (
+            "providers[].docker.use_published_ports",
+            r#"{"providers": [{"docker": {"use_published_ports": true}}]}"#.into(),
+            |c| docker(c).use_published_ports,
+        ),
+        (
+            "providers[].docker.label_prefix",
+            r#"{"providers": [{"docker": {"label_prefix": "app"}}]}"#.into(),
+            |c| docker(c).label_prefix == "app",
+        ),
+        (
+            "providers[].docker.max_containers",
+            r#"{"providers": [{"docker": {"max_containers": 5}}]}"#.into(),
+            |c| docker(c).max_containers == 5,
+        ),
+        (
+            "providers[].docker.refresh_interval",
+            r#"{"providers": [{"docker": {"refresh_interval": "5s"}}]}"#.into(),
+            |c| docker(c).refresh_interval == std::time::Duration::from_secs(5),
+        ),
+        (
+            "providers[].docker.request_timeout",
+            r#"{"providers": [{"docker": {"request_timeout": "2s"}}]}"#.into(),
+            |c| docker(c).request_timeout == std::time::Duration::from_secs(2),
         ),
         (
             "providers[].kubernetes",
@@ -2078,6 +2114,24 @@ fn proxy_of(c: &Config) -> &akit_config::Proxy {
     .unwrap()
 }
 
+/// The first provider's Docker settings.
+#[allow(clippy::panic)]
+fn docker(c: &Config) -> &akit_config::DockerProvider {
+    match &c.providers.first().unwrap().kind {
+        akit_config::ProviderKind::Docker(d) => d,
+        _ => panic!("not docker"),
+    }
+}
+
+/// The first provider's Kubernetes settings.
+#[allow(clippy::panic)]
+fn kube(c: &Config) -> &akit_config::KubernetesProvider {
+    match &c.providers.first().unwrap().kind {
+        akit_config::ProviderKind::Kubernetes(k) => k,
+        _ => panic!("not kubernetes"),
+    }
+}
+
 /// akit-config's lists of what it reads and of what fit reads that it refuses as not supported
 /// yet (`crates/akit-config/src/model.rs`), read from the source: each entry is a field (or
 /// handler module, or protocol) of the inventory, together they cover every field fit has at each
@@ -2085,12 +2139,14 @@ fn proxy_of(c: &Config) -> &akit_config::Proxy {
 /// reads is what `supported.txt` marks.
 #[test]
 fn akit_config_lists_match_the_inventory() {
-    // The providers' lists are in providers.rs (I58-I61).
+    // The model, and the providers' lists, in a module of their own (I58).
     let src = ["model.rs", "providers.rs"]
+        .iter()
         .map(|f| {
             fs::read_to_string(compat_dir().join("../../crates/akit-config/src").join(f)).unwrap()
         })
-        .concat();
+        .collect::<Vec<_>>()
+        .join("\n");
     let lists = str_lists(&src);
     let inventory = fields().unwrap();
     let known: BTreeSet<&str> = inventory.iter().map(|f| f.path.as_str()).collect();
@@ -2101,9 +2157,8 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 49] = [
+    let objects: [(&str, &str, Option<&str>); 50] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
-        ("providers[]", "PROVIDER_FIELDS", Some("PROVIDER_FIT_ONLY")),
         (
             "providers[].kubernetes",
             "KUBERNETES_FIELDS",
@@ -2127,6 +2182,8 @@ fn akit_config_lists_match_the_inventory() {
         ("telemetry", "TELEMETRY_FIELDS", None),
         ("telemetry.traces", "TRACES_EXPORT_FIELDS", None),
         ("telemetry.metrics", "METRICS_EXPORT_FIELDS", None),
+        ("providers[]", "PROVIDER_FIELDS", Some("PROVIDER_FIT_ONLY")),
+        ("providers[].docker", "DOCKER_FIELDS", None),
         ("listeners[]", "LISTENER_FIELDS", Some("LISTENER_FIT_ONLY")),
         ("listeners[].tls", "TLS_FIELDS", Some("TLS_FIT_ONLY")),
         ("listeners[].tls.certificates[]", "CERTIFICATE_FIELDS", None),

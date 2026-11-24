@@ -581,6 +581,7 @@ impl Shared {
             .collect();
         let etag = headers.get("etag").map(str::to_owned);
         let last_modified = headers.get("last-modified").map(str::to_owned);
+        let tags = crate::semantics::tags_of(&headers);
         Some(Entry {
             status,
             headers,
@@ -594,6 +595,7 @@ impl Shared {
             sie,
             etag,
             last_modified,
+            tags,
             size: 0,
         })
     }

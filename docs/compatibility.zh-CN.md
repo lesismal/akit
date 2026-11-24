@@ -152,7 +152,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 293 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 302 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -205,7 +205,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`media_library`](#fields-media-library) | 24 | 0 | 24 |
 | [`metrics`](#fields-metrics) | 1 | 1 | 0 |
 | [`pprof`](#fields-pprof) | 4 | 0 | 4 |
-| [`providers`](#fields-providers) | 60 | 15 | 45 |
+| [`providers`](#fields-providers) | 60 | 24 | 36 |
 | [`routes`](#fields-routes) | 24 | 19 | 5 |
 | [`schema_version`](#fields-schema-version) | 1 | 1 | 0 |
 | [`services`](#fields-services) | 13 | 8 | 5 |
@@ -277,7 +277,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **合计** | 3821 | 293 | 3528 |
+| **合计** | 3821 | 302 | 3519 |
 
 <a id="fields-access"></a>
 
@@ -1662,15 +1662,15 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `providers[].consul_kv.refresh_interval` | `duration` | 尚不支持（not supported yet） |
 | `providers[].consul_kv.request_timeout` | `duration` | 尚不支持（not supported yet） |
 | `providers[].consul_kv.token_file` | `string` | 尚不支持（not supported yet） |
-| `providers[].docker` | `object` | 尚不支持（not supported yet） |
-| `providers[].docker.endpoint` | `string` | 尚不支持（not supported yet） |
-| `providers[].docker.expose_all` | `boolean` | 尚不支持（not supported yet） |
-| `providers[].docker.label_prefix` | `string` | 尚不支持（not supported yet） |
-| `providers[].docker.max_containers` | `integer` | 尚不支持（not supported yet） |
-| `providers[].docker.network` | `string` | 尚不支持（not supported yet） |
-| `providers[].docker.refresh_interval` | `duration` | 尚不支持（not supported yet） |
-| `providers[].docker.request_timeout` | `duration` | 尚不支持（not supported yet） |
-| `providers[].docker.use_published_ports` | `boolean` | 尚不支持（not supported yet） |
+| `providers[].docker` | `object` | 已支持 |
+| `providers[].docker.endpoint` | `string` | 已支持 |
+| `providers[].docker.expose_all` | `boolean` | 已支持 |
+| `providers[].docker.label_prefix` | `string` | 已支持 |
+| `providers[].docker.max_containers` | `integer` | 已支持 |
+| `providers[].docker.network` | `string` | 已支持 |
+| `providers[].docker.refresh_interval` | `duration` | 已支持 |
+| `providers[].docker.request_timeout` | `duration` | 已支持 |
+| `providers[].docker.use_published_ports` | `boolean` | 已支持 |
 | `providers[].etcd` | `object` | 尚不支持（not supported yet） |
 | `providers[].etcd.ca_file` | `string` | 尚不支持（not supported yet） |
 | `providers[].etcd.cert_file` | `string` | 尚不支持（not supported yet） |

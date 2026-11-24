@@ -71,9 +71,11 @@ pub use model::{
     MetricsExport, Telemetry, TracesExport, parse_headers,
 };
 pub use providers::{
+    DEFAULT_DOCKER_ENDPOINT, DEFAULT_DOCKER_LABEL_PREFIX, DEFAULT_DOCKER_MAX_CONTAINERS,
+    DEFAULT_DOCKER_REFRESH_INTERVAL, DEFAULT_DOCKER_REQUEST_TIMEOUT,
     DEFAULT_KUBERNETES_CONTROLLER_NAME, DEFAULT_KUBERNETES_MAX_OBJECTS,
-    DEFAULT_KUBERNETES_REQUEST_TIMEOUT, KubernetesBackends, KubernetesIngress, KubernetesProvider,
-    Provider, ProviderKind,
+    DEFAULT_KUBERNETES_REQUEST_TIMEOUT, DockerEndpoint, DockerProvider, KubernetesBackends,
+    KubernetesIngress, KubernetesProvider, Provider, ProviderKind,
 };
 
 /// The largest config document read, in bytes: fit's own configs are kilobytes; this bounds

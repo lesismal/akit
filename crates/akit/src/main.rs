@@ -45,7 +45,7 @@ use akit_admin::{
 use akit_config::{Config, ConfigFile, Error, Errors, LogFormat};
 use akit_observe::metrics::{ConfigStats, Metrics};
 use akit_observe::{AccessLog, Format, MetricsExporter, Otlp, Tracer, Zone};
-use akit_provider::Updates;
+use akit_provider::{Kinds, Provider, Updates};
 use akit_runtime::upstream::EngineSlot;
 use akit_runtime::{Env, Graph, GraphCell, HandlerParams, Registry, compile};
 use akit_tls::{FileWatcher, Report};
@@ -277,7 +277,7 @@ struct Runner<'a> {
     /// its requests with it; a config's `telemetry` takes a restart, as fit's.
     telemetry: Option<&'a akit_config::Telemetry>,
     tracer: Option<&'a Tracer>,
-    /// The `providers` akit started with (I57-I61): a config's take a restart, as fit's.
+    /// The `providers` akit started with (I58, I59): a config's take a restart, as fit's.
     providers: &'a [akit_config::Provider],
 }
 
@@ -521,6 +521,37 @@ fn reload_certs(configs: &Configs, runner: &mut Runner<'_>) -> Result<(), ()> {
     }
 }
 
+/// Makes and starts the providers `pcs` lists, as fit's `startProviders`: each named to
+/// `configs`, in their order of precedence, and sending its parts through `updates`.
+fn start_providers(
+    pcs: &[akit_config::Provider],
+    configs: &Configs,
+    updates: &Updates,
+) -> Result<Vec<Box<dyn Provider>>, String> {
+    let kinds = Kinds::new(&[
+        akit_provider::docker::KINDS,
+        akit_provider::kubernetes::KINDS,
+    ])?;
+    let mut out: Vec<Box<dyn Provider>> = Vec::with_capacity(pcs.len());
+    for pc in pcs {
+        let name = &pc.name;
+        let kind = pc.kind.name();
+        let Some(make) = kinds.lookup(kind) else {
+            return Err(format!(
+                "provider {name}: this akit was built without the {kind} provider (it has {})",
+                kinds.names().join(", ")
+            ));
+        };
+        let (mut p, watching) = make(name, pc)?;
+        println!("akit: provider {name} {watching}");
+        configs.add_provider(name)?;
+        p.start(updates.update(name))
+            .map_err(|e| format!("provider {name}: {e}"))?;
+        out.push(p);
+    }
+    Ok(out)
+}
+
 /// Applies the parts providers sent (I57), each merged into the running base config as a new
 /// version whose source is the provider, at most one per provider that has one waiting, so that
 /// the control thread goes back to its other work in between; a part refused leaves the
@@ -551,34 +582,6 @@ fn provide(updates: &Updates, configs: &Configs, runner: &mut Runner<'_>) {
             Err(Refused::Changed) => {}
         }
     }
-}
-
-/// Starts the providers `list` names (I57's framework, the kinds of I58-I61), in their order
-/// of precedence, each sending its parts through `updates`, as fit's `startProviders`.
-fn start_providers(
-    list: &[akit_config::Provider],
-    configs: &Configs,
-    updates: &Updates,
-) -> Result<Vec<Box<dyn akit_provider::Provider>>, String> {
-    let kinds = akit_provider::Kinds::new(&[akit_provider::kubernetes::KINDS])?;
-    let mut started = Vec::new();
-    for pc in list {
-        let name = &pc.name;
-        let kind = pc.kind.name();
-        let Some(make) = kinds.lookup(kind) else {
-            let have = kinds.names().join(", ");
-            return Err(format!(
-                "provider {name}: this akit was built without the {kind} provider (it has {have})"
-            ));
-        };
-        configs.add_provider(name)?;
-        let (mut p, watching) = make(name, pc)?;
-        println!("akit: provider {name} {watching}");
-        p.start(updates.update(name))
-            .map_err(|e| format!("provider {name}: {e}"))?;
-        started.push(p);
-    }
-    Ok(started)
 }
 
 /// What applying a config changed: the listeners closed and opened, and its warnings.
@@ -893,6 +896,8 @@ fn run(args: &[String]) -> ExitCode {
         })
     };
     drop(tx);
+    // The providers the config lists (I58, I59), in their order of precedence, as fit's
+    // startProviders; read when akit starts.
     let mut providers = match start_providers(&provider_configs, &configs, &updates) {
         Ok(p) => p,
         Err(e) => {
@@ -1130,7 +1135,7 @@ mod tests {
         let v = super::version();
         let lines: Vec<&str> = v.lines().collect();
         assert!(lines[0].starts_with("akit "));
-        assert_eq!(lines[1], "akio e9891b52c0e9");
+        assert_eq!(lines[1], "akio 0f2c419b1be8");
         assert_eq!(
             lines[2],
             format!("{}/{}", std::env::consts::OS, std::env::consts::ARCH)
