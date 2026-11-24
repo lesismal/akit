@@ -11,12 +11,12 @@ done and where the work differs from the plan.
 | | |
 | --- | --- |
 | Last updated | 2026-11-24 |
-| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I12, I14, I19, I21, I22, I23 and I24 done, I15 doing (waits for akio's A11), I16 doing (body limits done; streaming waits for akio's A19–A21); M3's I39 done early. |
-| akio | `50a82315` on akio's `main` (`1.0.0-rc.1`), pinned by `rev` in `Cargo.toml` |
+| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I12, I14, I15, I19, I21, I22, I23 and I24 done, I16 doing (body limits done; streaming waits for akio's A19–A21); M3's I39 done early. |
+| akio | `a9a620ab` on akio's `main` (`1.0.0-rc.1`, with A1–A5, A7, A8, A11, A13 and A16–A18), pinned by `rev` in `Cargo.toml` |
 | fit | the specification; read at `7daee573` for this plan |
-| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept, added and removed, those it started with only once akio's A1 is pinned); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; the `respond`, `static` (conditional and range requests, files opened on akio's pool) and `proxy` handlers (fit's forwarding fields, trusted proxies; the client's `Host` once A11 is pinned); `limits.max_body_bytes` on every listener (413) and in the proxy; access logs in fit's json, text and line formats; upstream pools with round robin, weighted round robin and least connections; the compatibility gate: 80 fixtures, 9 valid, 70 refused only as not supported yet, 1 skipped, none failed |
-| Next | Move the akio pin to akio's main with A1–A8 and A11, then I15 done (its `Host` tests) and I22 on A1; then I13, I17, I20; I16 once A19–A21 land |
-| akio requests | A1–A8 merged into akio's main (2026-11-24); A11 on akio branch `claude/i15-proxy-699f18`; A9, A10, A12–A15 and A19–A21 requested ([akio API requests](akio-api-requests.md)) |
+| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept, added and removed, those it started with only once akio's A1 is pinned); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; the `respond`, `static` (conditional and range requests, files opened on akio's pool) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`); `limits.max_body_bytes` on every listener (413) and in the proxy; access logs in fit's json, text and line formats; upstream pools with round robin, weighted round robin and least connections; the compatibility gate: 80 fixtures, 9 valid, 70 refused only as not supported yet, 1 skipped, none failed |
+| Next | I22 on A1 (listeners it started with, h3 on reload) and I13 on A13 and A16–A18; then I17, I20; I16 once A19–A21 land |
+| akio requests | A1–A5, A7, A8, A11, A13 and A16–A18 on akio's main and pinned; A6 on akio branch `claude/x509-csr`; A9, A10, A12, A14, A15 and A19–A21 requested ([akio API requests](akio-api-requests.md)) |
 
 ## Log
 
@@ -363,7 +363,17 @@ done and where the work differs from the plan.
   new QUIC handshakes per second, and the cost of the `Alt-Svc` field on the HTTP/1.1 and h2 hot
   path (a same-run A/B of a listener with and without `h3`).
 
-### 2026-11-24: I15, reverse proxy I: requests and headers (doing: waits for akio A11)
+### 2026-11-24: akio pinned at `a9a620ab`; I15 done
+
+- The akio pin moved from `50a82315` to `a9a620ab` on akio's `main`: A1–A5, A7 and A8 (merged
+  2026-11-24), A11 (I15's `Host`), A13 and A16–A18 (I13's `Files`). Every akio crate moved with
+  it, and `akit_runtime::AKIO_REV`.
+- I15 is `done`: its three A11 tests (`forwarding`, `request_fields_in_order`, `host_header`) are
+  no longer ignored and pass.
+- Checked: `make check` on macOS; on the benchmark host, the workspace's tests on epoll and
+  io_uring.
+
+### 2026-11-24: I15, reverse proxy I: requests and headers (was doing: waited for akio A11)
 
 - Status `doing`, not `done`: the proxy is built and fit's header tests are ported, but three of
   them (the `Host` the upstream sees, and no `User-Agent` made up) pass only against akio's A11,

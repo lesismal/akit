@@ -9,10 +9,8 @@
 //! arrived, so that the tests see the fields' order and case.
 //!
 //! `forwarding`, `request_fields_in_order` and `host_header` check the `Host` the upstream sees
-//! and that no `User-Agent` is made up, which needs akio API request A11: akio's client at the
-//! pinned commit drops a request's own `Host` and sends an empty `User-Agent` as it is. They are
-//! ignored until the pin moves to an akio with A11; run them with `--ignored` against akio's A11
-//! branch (a `[patch]` given on the command line, never committed).
+//! and that no `User-Agent` is made up, through akio API request A11 (a client request's own
+//! `Host`; an empty `User-Agent` sends none).
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use std::io::{BufRead, BufReader, Read, Write};
@@ -269,7 +267,6 @@ fn recv(rx: &Receiver<Seen>) -> Seen {
 /// upstream's status and fields back; over HTTP/1.1 and h2c. No body and no `User-Agent`: none is
 /// made up.
 #[test]
-#[ignore = "needs akio A11 (a client request's own Host and User-Agent): run with --ignored against akio's A11 branch"]
 fn forwarding() {
     let (up, rx) = echo();
     let akit = Akit::start(&config1(r#"{"upstream": "app"}"#, &up.to_string()));
@@ -395,7 +392,6 @@ fn hop_by_hop_response() {
 /// the hop-by-hop ones, those `Connection` names, `Content-Length` (akio's client writes its own,
 /// last) and the client's forwarding fields, replaced by the proxy's own after them.
 #[test]
-#[ignore = "needs akio A11 (a client request's own Host and User-Agent): run with --ignored against akio's A11 branch"]
 fn request_fields_in_order() {
     let (up, rx) = echo();
     let akit = Akit::start(&config1(r#"{"upstream": "app"}"#, &up.to_string()));
@@ -527,7 +523,6 @@ fn forwarded_trusted() {
 /// fit's `TestHostHeader` and `TestFramedHostHeader`: `host_header` is sent, the client's in
 /// `X-Forwarded-Host`, and the body goes with it.
 #[test]
-#[ignore = "needs akio A11 (a client request's own Host and User-Agent): run with --ignored against akio's A11 branch"]
 fn host_header() {
     let (up, rx) = echo();
     let akit = Akit::start(&config1(

@@ -112,7 +112,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I12 | Static files I | I11 | done |
 | I13 | Static files II | I12 | todo |
 | I14 | Upstream pools on the HTTP/1 client | I04 | done |
-| I15 | Reverse proxy I: requests and headers | I11, I14 | doing |
+| I15 | Reverse proxy I: requests and headers | I11, I14 | done |
 | I16 | Reverse proxy II: streamed bodies, linked backpressure | I15 | doing |
 | I17 | Reverse proxy III: timeouts, cancellation, trailers | I16 | todo |
 | I18 | HTTP/2 and h2c upstreams | I17 | todo |

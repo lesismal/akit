@@ -19,19 +19,19 @@ first; its status here records the branch, then the akio commit akit pins.
 
 | ID | API | Status | Rules | akit iterations |
 | --- | --- | --- | --- | --- |
-| A1 | TCP listeners added, removed and drained on a running engine | in progress, akio branch | 10, 11 | I22, I28 |
-| A2 | A server certificate chosen per handshake by a callback that may complete later | in progress, akio branch | 1, 4 | I30, I34 |
-| A3 | A filter on accepted connections before any handler runs | in progress, akio branch | 11 | access lists |
-| A4 | PROXY protocol v1/v2: parse on accept, write on dial | in progress, akio branch | 12 | I52 |
-| A5 | An akio-mux rule that routes TLS by SNI without terminating it | in progress, akio branch | 12 | I52, I53 |
+| A1 | TCP listeners added, removed and drained on a running engine | in akio's main (`a9a620ab`), pinned | 10, 11 | I22, I28 |
+| A2 | A server certificate chosen per handshake by a callback that may complete later | in akio's main (`a9a620ab`), pinned | 1, 4 | I30, I34 |
+| A3 | A filter on accepted connections before any handler runs | in akio's main (`a9a620ab`), pinned | 11 | access lists |
+| A4 | PROXY protocol v1/v2: parse on accept, write on dial | in akio's main (`a9a620ab`), pinned | 12 | I52 |
+| A5 | An akio-mux rule that routes TLS by SNI without terminating it | in akio's main (`a9a620ab`), pinned | 12 | I52, I53 |
 | A6 | CSR generation in `akio-x509` (and JWS helpers in `akio-crypto`) | done on akio branch `claude/x509-csr` (`7ea64069`), not merged | 15 | I31 |
-| A7 | An MP4 (ISO BMFF) reader for segmenting files without transcoding | in progress, akio branch | — | media library |
-| A8 | TUN devices | in progress, akio branch | — | VPN |
+| A7 | An MP4 (ISO BMFF) reader for segmenting files without transcoding | in akio's main (`a9a620ab`), pinned | — | media library |
+| A8 | TUN devices | in akio's main (`a9a620ab`), pinned | — | VPN |
 | A9 | A TLS server capped at TLS 1.2 (public `ServerConfigBuilder` API) | requested (I09) | 17 | I09 |
 | A10 | Closing an HTTP client's idle connections now | requested (I14) | 10, 11 | I14, I22 |
-| A11 | An HTTP/1 client request that keeps its own `Host` field (and sends no `User-Agent` when given an empty one) | done on akio branch `claude/i15-proxy-699f18` (`552fe283`), not merged | — | I15 |
+| A11 | An HTTP/1 client request that keeps its own `Host` field (and sends no `User-Agent` when given an empty one) | in akio's main (`a9a620ab`), pinned | — | I15 |
 | A12 | The HTTP client's connect timeout for a lone address too | requested (I14) | 10 | I14 |
-| A13 | `Files` serving a path the caller names | requested (I12) | 19 | I12 |
+| A13 | `Files` serving a path the caller names | in akio's main (`a9a620ab`), pinned | 19 | I12 |
 | A14 | `Files` answering as a gateway's static handler does | requested (I12) | 19 | I12, I13 |
 | A15 | `Files` bounded in memory, its disk pool with a timeout | requested (I12) | 4, 11 | I12 |
 | A19 | An HTTP client request whose body is sent as it is produced, with backpressure | requested (I16) | 5, 8 | I16, I17, I18, I49, I75 |
