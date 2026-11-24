@@ -69,6 +69,7 @@ pub struct Env {
     engine: EngineSlot,
     upstreams: Vec<Pool>,
     access_log: Option<akit_observe::AccessLog>,
+    metrics: Option<akit_observe::metrics::Metrics>,
 }
 
 impl Env {
@@ -80,6 +81,7 @@ impl Env {
             engine,
             upstreams: Vec::new(),
             access_log: None,
+            metrics: None,
         }
     }
 
@@ -90,6 +92,21 @@ impl Env {
     pub fn with_access_log(mut self, log: Option<akit_observe::AccessLog>) -> Env {
         self.access_log = log;
         self
+    }
+
+    /// The same, with the process's metrics registry (I37): a graph compiled with it shares its
+    /// upstreams' counters with the other graphs that have them, and, from a config with
+    /// `metrics`, counts its requests in it. Made once, when akit starts, as fit's.
+    #[must_use]
+    pub fn with_metrics(mut self, metrics: Option<akit_observe::metrics::Metrics>) -> Env {
+        self.metrics = metrics;
+        self
+    }
+
+    /// The process's metrics registry, if it has one.
+    #[must_use]
+    pub fn metrics(&self) -> Option<&akit_observe::metrics::Metrics> {
+        self.metrics.as_ref()
     }
 
     /// The process's access log, if it has one.
@@ -116,6 +133,7 @@ impl Env {
             engine: self.engine.clone(),
             upstreams,
             access_log: self.access_log.clone(),
+            metrics: self.metrics.clone(),
         }
     }
 }

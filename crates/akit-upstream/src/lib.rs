@@ -76,6 +76,7 @@ use akio_http::client::{
     Client, ClientError, ClientOptions, ClientRequest, ClientResponse, RequestBody, ResponseBody,
     ResponseHandler, ResponseHead,
 };
+use akit_observe::metrics::{HistogramSnapshot, UpstreamStats};
 
 pub use balance::{Balancer, LoadBalancing};
 pub use health::Health;
@@ -312,6 +313,9 @@ struct Inner {
     client: OnceLock<Client>,
     /// Requests sent and not done, waiting ones included.
     in_flight: AtomicUsize,
+    /// Its response times and its backends' counts (I37): its own, or shared with the other
+    /// graphs that have the upstream ([`Pool::with_stats`]).
+    stats: UpstreamStats,
     closing: AtomicBool,
     closed: AtomicBool,
     on_closed: Mutex<Vec<Box<dyn FnOnce() + Send>>>,
@@ -383,6 +387,7 @@ impl Pool {
                 engine,
                 client: OnceLock::new(),
                 in_flight: AtomicUsize::new(0),
+                stats: UpstreamStats::new(u.addresses.len()),
                 closing: AtomicBool::new(false),
                 closed: AtomicBool::new(false),
                 on_closed: Mutex::new(Vec::new()),
@@ -398,6 +403,48 @@ impl Pool {
             inner.timeout = timeout;
         }
         self
+    }
+
+    /// The same pool, counting into `stats` (I37): counters shared by every graph that has the
+    /// upstream, so they carry over reloads ([`akit_observe::metrics::Lease::upstream`]). Only
+    /// before the pool is shared, and with a counter for each address.
+    #[must_use]
+    pub fn with_stats(mut self, stats: UpstreamStats) -> Pool {
+        if let Some(inner) = Arc::get_mut(&mut self.inner) {
+            if stats.backends.len() == inner.backends.len() {
+                inner.stats = stats;
+            }
+        }
+        self
+    }
+
+    /// How long the upstream took to send a response, or to fail without one (fit's
+    /// `ResponseTimes`).
+    #[must_use]
+    pub fn response_times(&self) -> HistogramSnapshot {
+        self.inner.stats.responses.snapshot()
+    }
+
+    /// The exchanges with the address at `backend` that are over, and those it failed among them
+    /// (fit's `Backend.Requests`).
+    #[must_use]
+    pub fn backend_requests(&self, backend: usize) -> (u64, u64) {
+        self.inner
+            .stats
+            .backends
+            .get(backend)
+            .map_or((0, 0), |b| b.requests())
+    }
+
+    /// Requests to the address at `backend` that are not over: under way and waiting for a
+    /// connection (fit's `Backend.Active`).
+    #[must_use]
+    pub fn backend_active(&self, backend: usize) -> usize {
+        self.inner.backends.get(backend).map_or(0, |b| {
+            b.busy
+                .load(Ordering::Relaxed)
+                .saturating_add(b.waiting.load(Ordering::Relaxed))
+        })
     }
 
     /// The upstream's name.
@@ -605,8 +652,11 @@ impl Inner {
         t
     }
 
-    /// Counts how an exchange with `backend` ended, towards its health.
+    /// Counts how an exchange with `backend` ended, towards its health and in its metrics.
     fn record(&self, backend: usize, failed: bool) {
+        if let Some(c) = self.stats.backends.get(backend) {
+            c.done(failed);
+        }
         let Some(b) = self.backends.get(backend) else {
             return;
         };
@@ -727,11 +777,15 @@ impl Inner {
                         x,
                         headed: false,
                         cancelled: Arc::new(AtomicBool::new(false)),
+                        since,
                     },
                 );
             }
         };
         client.request(req, move |r| {
+            // The time to the response, or to the failure without one: handed over whole, its
+            // body read (a streamed response, `Streamed`, is timed to its head, as fit times it).
+            me.stats.responses.observe(since.elapsed());
             // The connection is back in the client's idle pool (or closed) by now: the slot
             // goes to the next request before this one's callback runs.
             me.release(backend);
@@ -803,6 +857,8 @@ struct Streamed {
     x: Box<dyn Exchange>,
     headed: bool,
     cancelled: Arc<AtomicBool>,
+    /// When the request began waiting, for the time to its response's head (I37).
+    since: Instant,
 }
 
 impl ResponseHandler for Streamed {
@@ -812,6 +868,7 @@ impl ResponseHandler for Streamed {
 
     fn on_head(&mut self, head: ResponseHead, body: ResponseBody) {
         self.headed = true;
+        self.pool.stats.responses.observe(self.since.elapsed());
         let body = Download {
             body,
             cancelled: self.cancelled.clone(),
@@ -832,6 +889,10 @@ impl ResponseHandler for Streamed {
     }
 
     fn on_error(&mut self, e: ClientError) {
+        if !self.headed {
+            // The time to the failure, as for a response handed over whole.
+            self.pool.stats.responses.observe(self.since.elapsed());
+        }
         self.pool.release(self.backend);
         // Any response is a success, as for `send`, unless its body broke off: the client going
         // (a cancel) is not the address's failure.

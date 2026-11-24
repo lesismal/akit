@@ -16,6 +16,9 @@
 //!   running config loaded are looked at every `-watch-interval`, and once a change has settled
 //!   the running config is applied again as a new version (I30): a listener whose files changed
 //!   only in their certificates is kept, and its next handshakes get the new ones.
+//!   One metrics registry serves the process (I37): the graphs share their upstreams' counters
+//!   through it and, with `metrics`, count their requests in it; every reload (SIGHUP, the Admin
+//!   API, the certificate files) is counted; the Admin API serves the scrape at `GET /metrics`.
 //! - `validate`: reads and compiles the config, as `run` would, and says whether it is valid.
 //! - `version`, `help`.
 
@@ -28,6 +31,7 @@ use std::time::{Duration, Instant};
 
 use akit_admin::{Applied, ApplyError, Configs, ListenerChange, Outcome, Refused};
 use akit_config::{Config, Error, Errors, LogFormat};
+use akit_observe::metrics::{ConfigStats, Metrics};
 use akit_observe::{AccessLog, Format, Zone};
 use akit_runtime::upstream::EngineSlot;
 use akit_runtime::{Env, Graph, GraphCell, HandlerParams, Registry, compile};
@@ -183,6 +187,7 @@ fn compile_config(
     config: &Config,
     engine: &EngineSlot,
     log: Option<&AccessLog>,
+    metrics: &Metrics,
 ) -> Result<Graph, Failure> {
     let registry: Registry<HandlerParams> = Registry::new(&[
         akit_handler::MODULES,
@@ -190,14 +195,16 @@ fn compile_config(
         akit_proxy::MODULES,
     ])
     .map_err(|e| Failure::Registry(e.to_string()))?;
-    let env = Env::new(engine.clone()).with_access_log(log.cloned());
+    let env = Env::new(engine.clone())
+        .with_access_log(log.cloned())
+        .with_metrics(Some(metrics.clone()));
     compile(config, &registry, &env).map_err(Failure::Config)
 }
 
 /// Reads and compiles the config at `paths`, as [`read_config`] and [`compile_config`].
 fn read(paths: &[String], engine: &EngineSlot, log: Option<&AccessLog>) -> Result<Graph, Failure> {
     let (config, _, _) = read_config(paths)?;
-    compile_config(&config, engine, log)
+    compile_config(&config, engine, log, &Metrics::new())
 }
 
 /// Opens the access log `c` describes, its times in `zone`, as fit's `NewAccessLogFiles`.
@@ -229,6 +236,12 @@ struct Runner<'a> {
     log: Option<&'a (AccessLog, akit_config::AccessLog)>,
     admin: Option<&'a akit_config::Admin>,
     cert_files: CertFiles,
+    /// The process's metrics registry, which each graph is compiled with (I37).
+    metrics: &'a Metrics,
+    /// The configs applied after the first, and those that failed, for the metrics: every
+    /// reload goes through [`Runner::apply`] or fails before it, here (SIGHUP, the Admin API,
+    /// the certificate files).
+    stats: &'a ConfigStats,
 }
 
 impl Runner<'_> {
@@ -236,16 +249,9 @@ impl Runner<'_> {
     /// the running config stays. The access log takes the new config's level and time zone
     /// (`zone`); its other settings, and `admin`, take a restart, as fit's, and are warned of.
     fn apply(&mut self, config: &Config, zone: Option<Zone>) -> Result<Applied, ApplyError> {
-        let graph =
-            compile_config(config, self.slot, self.log.map(|l| &l.0)).map_err(|f| match f {
-                Failure::Config(errs) => ApplyError::Config(errs),
-                Failure::Registry(e) => ApplyError::Failed(e),
-            })?;
-        let files = graph.cert_files().clone();
-        let r = self
-            .listeners
-            .reload(graph)
-            .map_err(|e| ApplyError::Failed(e.to_string()))?;
+        let r = self.swap(config);
+        self.stats.reloaded(r.is_ok());
+        let (r, files) = r?;
         self.cert_files = files;
         let mut warnings = Vec::new();
         match (self.log, &config.access_log, zone) {
@@ -286,14 +292,42 @@ impl Runner<'_> {
         })
     }
 
+    /// Compiles `config` and moves the listeners to it; the files its certificates came from.
+    fn swap(
+        &mut self,
+        config: &Config,
+    ) -> Result<(akit_listener::Reloaded, CertFiles), ApplyError> {
+        let graph = compile_config(config, self.slot, self.log.map(|l| &l.0), self.metrics)
+            .map_err(|f| match f {
+                Failure::Config(errs) => ApplyError::Config(errs),
+                Failure::Registry(e) => ApplyError::Failed(e),
+            })?;
+        let files = graph.cert_files().clone();
+        let r = self
+            .listeners
+            .reload(graph)
+            .map_err(|e| ApplyError::Failed(e.to_string()))?;
+        Ok((r, files))
+    }
+
     /// Applies `text`, a config as standard JSON loaded through the Admin API.
     fn apply_text(&mut self, text: &str) -> Result<Applied, ApplyError> {
-        let config = akit_config::from_json(text, None).map_err(ApplyError::Config)?;
-        let zone = time_zone(&config).map_err(|f| match f {
-            Failure::Config(errs) => ApplyError::Config(errs),
-            Failure::Registry(e) => ApplyError::Failed(e),
-        })?;
-        self.apply(&config, zone)
+        let read = akit_config::from_json(text, None)
+            .map_err(ApplyError::Config)
+            .and_then(|config| {
+                let zone = time_zone(&config).map_err(|f| match f {
+                    Failure::Config(errs) => ApplyError::Config(errs),
+                    Failure::Registry(e) => ApplyError::Failed(e),
+                })?;
+                Ok((config, zone))
+            });
+        match read {
+            Ok((config, zone)) => self.apply(&config, zone),
+            Err(e) => {
+                self.stats.reloaded(false);
+                Err(e)
+            }
+        }
     }
 }
 
@@ -306,6 +340,7 @@ fn reload(paths: &[String], configs: &Configs, runner: &mut Runner<'_>) {
     let (config, json, zone) = match read_config(paths) {
         Ok(r) => r,
         Err(f) => {
+            runner.stats.reloaded(false);
             eprintln!("akit: reload failed; the running config stays");
             f.print(&name);
             return;
@@ -523,7 +558,11 @@ fn run(args: &[String]) -> ExitCode {
         },
         _ => None,
     };
-    let graph = match compile_config(&config, &slot, log.as_ref().map(|l| &l.0)) {
+    // One registry for the process, as fit's: the graphs share their upstreams' counters through
+    // it, and with `metrics` count their requests in it (I37).
+    let metrics = Metrics::new();
+    let stats = ConfigStats::new();
+    let graph = match compile_config(&config, &slot, log.as_ref().map(|l| &l.0), &metrics) {
         Ok(g) => g,
         Err(f) => {
             f.print(&name);
@@ -579,12 +618,16 @@ fn run(args: &[String]) -> ExitCode {
                     Err(_) => Ok(()),
                 }
             });
-            match akit_admin::Server::start(
-                a,
-                configs.clone(),
-                submit,
-                &akit_admin::Options::default(),
-            ) {
+            // Every metric, at GET /metrics, as fit's Admin API serves them (I37).
+            let scrape = akit_listener::metrics::Scrape::new(
+                cell.clone(),
+                Arc::clone(&engine),
+                stats.clone(),
+            )
+            .with_access_log(log.as_ref().map(|l| l.0.clone()));
+            let mut api_opts = akit_admin::Options::default();
+            api_opts.metrics = Some(Arc::new(move |out: &mut Vec<u8>| scrape.write(out)));
+            match akit_admin::Server::start(a, configs.clone(), submit, &api_opts) {
                 Ok(s) => {
                     println!("akit: admin API on {}", s.addr());
                     Some(s)
@@ -604,6 +647,8 @@ fn run(args: &[String]) -> ExitCode {
         log: log.as_ref(),
         admin: admin.as_ref(),
         cert_files,
+        metrics: &metrics,
+        stats: &stats,
     };
     // The certificate files watched (fit's -watch-certs), on this thread, every interval: the
     // running config's version number and the files it loaded tell the watcher what it loaded.

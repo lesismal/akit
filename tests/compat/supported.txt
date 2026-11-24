@@ -153,3 +153,7 @@ routes[].middleware[]<headers>.params.response
 routes[].middleware[]<headers>.params.response.set
 routes[].middleware[]<headers>.params.response.add
 routes[].middleware[]<headers>.params.response.delete
+
+# I37: metrics, fit's request counting by listener and route for the Admin API's /metrics; it has
+# no settings. As in fit, it needs admin.
+metrics

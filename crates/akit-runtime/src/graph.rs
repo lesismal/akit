@@ -54,6 +54,29 @@ impl fmt::Debug for CompiledRoute {
     }
 }
 
+/// Where a graph counts its requests (I37): the registry, and per listener the slot of each
+/// route that serves on it (by route index) and of the requests no route takes, as fit's
+/// `Listener.Requests` and `Unmatched`.
+struct Requests {
+    metrics: akit_observe::metrics::Metrics,
+    /// Per listener: per route, its slot ([`NO_SLOT`] for a route not on the listener, or past
+    /// the bound); then the unmatched requests' slot.
+    slots: Vec<(Box<[u32]>, u32)>,
+}
+
+/// No slot: not counted.
+pub const NO_SLOT: u32 = u32::MAX;
+
+/// The name a route's requests are counted under: its own, or `#` and its place in the config's
+/// routes for one without (fit's `metricsName`).
+#[must_use]
+pub fn metrics_name(name: Option<&str>, index: usize) -> String {
+    match name {
+        Some(n) if !n.is_empty() => n.to_owned(),
+        _ => format!("#{index}"),
+    }
+}
+
 /// A config, compiled: immutable, shared by every I/O thread, its modules provisioned.
 pub struct Graph {
     listeners: Vec<Listener>,
@@ -70,6 +93,8 @@ pub struct Graph {
     upstreams: Vec<Pool>,
     /// The access log its requests' lines go to: the env's, when the config has `access_log`.
     access_log: Option<akit_observe::AccessLog>,
+    /// Where its requests are counted, when the config has `metrics` (I37).
+    requests: Option<Requests>,
     /// Taken (and so cleaned up) once, by [`Graph::retire`] or on drop.
     modules: Mutex<Option<Modules>>,
     /// Requests and connections that keep this graph past their handler's call
@@ -130,6 +155,43 @@ impl Graph {
         self.access_log.as_ref()
     }
 
+    /// The metrics registry its requests are counted in, when the config has `metrics` (I37).
+    #[must_use]
+    pub fn metrics(&self) -> Option<&akit_observe::metrics::Metrics> {
+        self.requests.as_ref().map(|r| &r.metrics)
+    }
+
+    /// The slot the requests the route at `route` (an index of [`routes`](Self::routes), or
+    /// `None` for those no route takes) answers on the listener at `listener` are counted in
+    /// ([`akit_observe::metrics::Shard::observe`]); `None` when requests are not counted. Runs
+    /// per request: it only reads.
+    #[must_use]
+    pub fn request_slot(&self, listener: usize, route: Option<usize>) -> Option<u32> {
+        let (routes, unmatched) = self.requests.as_ref()?.slots.get(listener)?;
+        let slot = match route {
+            Some(i) => *routes.get(i)?,
+            None => *unmatched,
+        };
+        (slot != NO_SLOT).then_some(slot)
+    }
+
+    /// The certificates the listener at `listener` serves, for the metrics: none for one in the
+    /// clear.
+    #[must_use]
+    /// Parses each one: control plane only.
+    pub fn certificates(&self, listener: usize) -> Vec<akit_tls::CertificateInfo> {
+        self.tls
+            .get(listener)
+            .and_then(Option::as_ref)
+            .map(|t| {
+                t.certs()
+                    .certificates()
+                    .filter_map(akit_tls::CertificateInfo::of)
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     /// The pool of the upstream named `name`.
     #[must_use]
     pub fn upstream(&self, name: &str) -> Option<&Pool> {
@@ -167,8 +229,19 @@ impl Graph {
         listener: usize,
         r: &R,
     ) -> Option<&CompiledRoute> {
+        self.route_request_at(listener, r).map(|(_, route)| route)
+    }
+
+    /// [`route_request`](Self::route_request), with the route's index among
+    /// [`routes`](Self::routes).
+    #[must_use]
+    pub fn route_request_at<R: akit_router::Request + ?Sized>(
+        &self,
+        listener: usize,
+        r: &R,
+    ) -> Option<(usize, &CompiledRoute)> {
         let i = *self.routers.get(listener)?.find_request(r)?;
-        self.routes.get(i)
+        self.routes.get(i).map(|route| (i, route))
     }
 
     /// The IDs of the modules provisioned for this graph, in order; empty once it is retired.
@@ -214,6 +287,10 @@ impl fmt::Debug for Graph {
 /// them.
 pub const UPSTREAM_POOLS: &str = "upstream.pools";
 
+/// The ID the graph's lease of the metrics registry is recorded under among its modules, whose
+/// cleanup gives back its counters (I37).
+pub const METRICS: &str = "metrics";
+
 /// Compiles `config` into a graph: a pool made for each upstream (I14), dialing through `env`'s
 /// engine, then every route's handler and middleware loaded from `registry` and provisioned with
 /// `env` and the pools, the middleware chained around the handler once, here (rule 12). The pools are cleaned up after the handlers, which may use them: each is closed, and
@@ -228,10 +305,21 @@ pub fn compile(
     env: &Env,
 ) -> Result<Graph, Errors> {
     let mut modules = Modules::new();
+    // What the graph takes from the metrics registry, given back when it is retired (I37).
+    let mut lease = env.metrics().map(akit_observe::metrics::Metrics::lease);
     let upstreams: Vec<Pool> = config
         .upstreams
         .iter()
-        .map(|u| Pool::new(u, env.engine().clone()))
+        .map(|u| {
+            let pool = Pool::new(u, env.engine().clone());
+            match lease.as_mut() {
+                Some(l) => {
+                    let addrs: Vec<&str> = u.addresses.iter().map(String::as_str).collect();
+                    pool.with_stats(l.upstream(&u.name, &addrs))
+                }
+                None => pool,
+            }
+        })
         .collect();
     if !upstreams.is_empty() {
         // Recorded first, so cleaned up last.
@@ -317,8 +405,39 @@ pub fn compile(
         .flat_map(|t| t.files().iter().map(|(p, s)| (p.clone(), *s)))
         .collect();
     if !errors.is_empty() {
-        // `modules` drops here, cleaning up what was provisioned.
+        // `modules` drops here, cleaning up what was provisioned, and `lease` gives back what it
+        // took.
         return Err(Errors(errors));
+    }
+    // Each listener's slots, as fit's graph takes them: every route on it, and the requests no
+    // route takes.
+    let requests = match (&config.metrics, lease.as_mut()) {
+        (Some(_), Some(l)) => Some(Requests {
+            metrics: l.metrics().clone(),
+            slots: config
+                .listeners
+                .iter()
+                .map(|li| {
+                    let routes = routes
+                        .iter()
+                        .enumerate()
+                        .map(|(i, r)| {
+                            if r.listeners.is_empty() || r.listeners.contains(&li.name) {
+                                l.route(&li.name, &metrics_name(r.name.as_deref(), i))
+                                    .unwrap_or(NO_SLOT)
+                            } else {
+                                NO_SLOT
+                            }
+                        })
+                        .collect();
+                    (routes, l.route(&li.name, "").unwrap_or(NO_SLOT))
+                })
+                .collect(),
+        }),
+        _ => None,
+    };
+    if let Some(l) = lease {
+        modules.push_cleanup(METRICS, move || drop(l));
     }
     // Built here, not per request (rule 12). A route with no listeners serves on every one.
     let routers = config
@@ -349,6 +468,7 @@ pub fn compile(
         cert_files,
         upstreams,
         access_log: config.access_log.as_ref().and(env.access_log().cloned()),
+        requests,
         modules: Mutex::new(Some(modules)),
         holds: AtomicUsize::new(0),
         orphaned: AtomicBool::new(false),

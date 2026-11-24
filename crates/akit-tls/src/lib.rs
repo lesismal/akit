@@ -34,6 +34,9 @@
 //! - **HTTP/3** (I10): a listener serving `h3` gets a second configuration from the same files
 //!   ([`ServerConfigs::h3`]), with ALPN `h3` and TLS 1.3 alone, for its QUIC connections.
 //!
+//! - **Metrics** (I37): what each certificate is for and when it expires ([`CertificateInfo`]),
+//!   for `fit_tls_certificate_not_after_seconds`.
+//!
 //! Loading reads files, which blocks: this is control plane code, run when a config is compiled,
 //! never on an I/O thread (rules.md rule 1).
 //!
@@ -113,6 +116,69 @@ pub struct ServerConfigs {
     /// alone, which QUIC is built on, and ALPN `h3` (fib's `http3.ConfigureTLS` keeps TCP's
     /// protocols after it, which no HTTP/3 client asks for).
     pub h3: Option<ServerConfig>,
+}
+
+/// A certificate a listener serves, as fit's metrics name it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct CertificateInfo {
+    /// Its first DNS name, or its subject's common name when it has none (fit's choice).
+    pub name: String,
+    /// Its serial number in lower-case hexadecimal, as Go's `big.Int.Text(16)` writes it.
+    pub serial: String,
+    /// When it expires, in seconds since the Unix epoch.
+    pub not_after: i64,
+}
+
+impl CertificateInfo {
+    /// What the metrics say of `key`'s leaf; `None` when it does not parse (akio-tls parsed it
+    /// when the key was made, so not expected). Parses the certificate: control plane only.
+    #[must_use]
+    pub fn of(key: &CertifiedKey) -> Option<CertificateInfo> {
+        let c = akio_x509::Certificate::from_der(key.chain_der().next()?.to_vec()).ok()?;
+        let name = c
+            .subject_alt_names()
+            .iter()
+            .find_map(|n| match n {
+                akio_x509::GeneralName::Dns(d) => Some(d.clone()),
+                _ => None,
+            })
+            .or_else(|| c.subject().common_name())
+            .unwrap_or_default();
+        Some(CertificateInfo {
+            name,
+            serial: serial_hex(c.serial()),
+            not_after: c.not_after(),
+        })
+    }
+}
+
+/// A serial number's INTEGER contents (two's complement, big-endian) as Go's `Text(16)` writes
+/// the number: lower-case hexadecimal without leading zeros, `-` before a negative one.
+fn serial_hex(b: &[u8]) -> String {
+    use std::fmt::Write as _;
+    let negative = b.first().is_some_and(|x| x & 0x80 != 0);
+    let mut mag: Vec<u8> = b.to_vec();
+    if negative {
+        // The magnitude: the two's complement of the bytes.
+        let mut carry = true;
+        for x in mag.iter_mut().rev() {
+            let (v, c) = (!*x).overflowing_add(u8::from(carry));
+            *x = v;
+            carry = c;
+        }
+    }
+    let mut hex = String::new();
+    for x in &mag {
+        let _ = write!(hex, "{x:02x}");
+    }
+    let digits = hex.trim_start_matches('0');
+    let digits = if digits.is_empty() { "0" } else { digits };
+    if negative {
+        format!("-{digits}")
+    } else {
+        digits.to_owned()
+    }
 }
 
 /// A listener's `tls`, loaded from its files once: its certificates, the manager of
@@ -319,6 +385,16 @@ pub(crate) fn read(path: &str) -> Result<Vec<u8>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn serials_as_go_writes_them() {
+        assert_eq!(serial_hex(&[0x00, 0x8f, 0x01]), "8f01");
+        assert_eq!(serial_hex(&[0x01, 0x00]), "100");
+        assert_eq!(serial_hex(&[0x00]), "0");
+        assert_eq!(serial_hex(&[]), "0");
+        assert_eq!(serial_hex(&[0xff]), "-1");
+        assert_eq!(serial_hex(&[0x80, 0x00]), "-8000");
+    }
 
     #[test]
     fn alpn_as_fit() {

@@ -376,6 +376,7 @@ dependencies = [
  "akio",
  "akio-http",
  "akit-config",
+ "akit-observe",
 ]
 
 [[package]]

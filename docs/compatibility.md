@@ -175,7 +175,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 101 supported.
+3821 fields in 121 sections, at fit `7daee573`; 102 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -226,7 +226,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`log`](#fields-log) | 24 | 0 | 24 |
 | [`media_auth`](#fields-media-auth) | 34 | 0 | 34 |
 | [`media_library`](#fields-media-library) | 24 | 0 | 24 |
-| [`metrics`](#fields-metrics) | 1 | 0 | 1 |
+| [`metrics`](#fields-metrics) | 1 | 1 | 0 |
 | [`pprof`](#fields-pprof) | 4 | 0 | 4 |
 | [`providers`](#fields-providers) | 60 | 0 | 60 |
 | [`routes`](#fields-routes) | 24 | 19 | 5 |
@@ -300,7 +300,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 13 | 25 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 101 | 3720 |
+| **Total** | 3821 | 102 | 3719 |
 
 <a id="fields-access"></a>
 
@@ -1642,7 +1642,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `metrics` | `object` | not supported yet |
+| `metrics` | `object` | supported |
 
 <a id="fields-pprof"></a>
 

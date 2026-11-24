@@ -42,6 +42,8 @@
 | A22 | 在运行中的引擎上移除和排空 UDP 监听器 | 已提出（I22） | 10、11 | I22、I28 |
 | A23 | Unix 域流式监听器（可设套接字文件权限） | 已提出（I26） | 11 | I26、I29 |
 | A24 | 关闭连接的 HTTP/1 响应，并停止读取已拒绝的请求体 | 已提出（I26） | 7、10、11 | I26、I41 |
+| A29 | 不分配内存的应答钩子：监听器的观察者，带着请求设下的几个字被调用 | 已提出（I37） | 13 | I21、I37、I64 |
+| A30 | 监听器接受的打开连接数，与拨出的连接和 UDP 对端分开 | 已提出（I37） | — | I37 |
 | A32 | `akio-regex` 模式在哪里匹配、它的分组，以及替换 | 已提出（I40） | 19 | I40、I48 |
 | A33 | 被中间件修改的请求字段和请求目标（`Context::req_mut`） | 已提出（I40） | 12、19 | I40、I43、I44 |
 | A35 | 按长度分帧的流式 HTTP/1.1 响应 | 已提出（I16） | 5 | I16、I67 |
@@ -447,6 +449,50 @@ UDP：不再接收新对端，对已有的调用 `on_shutdown`，到期关闭剩
 
 **akit 的用法。** Admin API 对超过 `max_config_bytes` 的加载回 413（I26）后关闭连接，与 fit 一样；I41 在数据面上的
 大小限制同样如此。
+
+## A29 不分配内存的应答钩子
+
+**问题。** 访问日志（I21）和指标（I37）要在发送应答的线程上得知每个应答，不论是哪个线程（代理的请求在上游
+完成后才应答）。唯一的办法是 `Context::add_response_filter`，它把闭包装箱：带着任何东西（开始时间、指标槽、
+日志分片）的闭包每个请求都要分配一次内存，而规则 13 要求热路径避免这样。fit 的分发器也用钩子计数，但 Go 的闭包
+不比交给它的 `OnFinish` 多花什么。akit 已经在处理器返回后读 `Context::status`，不用钩子就能统计在处理器返回前
+应答的请求（fit 的 inline 处理器、`respond`、404）；分离的应答（代理、在池上读取的静态文件）没有别的办法。
+
+**证据。** `crates/akio-http/src/context.rs`（`a9a620ab`）：`add_response_filter` 执行
+`self.fin.filters.push(Box::new(f))`；`Finish::filters` 内联保存两个，但每个都是 `Box<dyn FnOnce>`。akio-http
+自己的 `HttpMetrics::middleware`（`observe.rs`）也这样分配，并且每个请求克隆一次 `Arc`。
+
+**建议的 API。** 每个服务一个观察者，在构建监听器时设一次，请求在其 `Finish` 中内联携带几个字：
+
+```rust
+pub trait ResponseObserver: Send + Sync + 'static {
+    /// 应答正在发送（在发送它的线程上），带着请求设下的字。
+    fn on_response(&self, resp: &Response, req: &Request, words: [u64; 2], started: Instant);
+}
+akio_http::serve_with(cfg, svc).observer(Arc<dyn ResponseObserver>);
+ctx.set_observed(words: [u64; 2]); // 不分配；此时记下 started
+```
+
+分离的上下文保留这些字，在其应答发送时调用同一个观察者。
+
+**akit 的用法。** `akit_listener::Dispatcher` 把路由的指标槽和日志分片的序号设为这些字，其观察者写访问日志行
+并统计请求：每个请求既不分配内存，也不碰引用计数。装箱的过滤器（`Dispatcher::track`）随之去掉；I64 的追踪也用
+同一个钩子。
+
+## A30 监听器接受的打开连接数
+
+**问题。** fit 的 `fit_connections_open` 统计监听器上打开的客户端连接。akio 的 `Telemetry::open_connections`
+统计所有打开的连接，包括引擎拨出的（akit 在监听器的引擎上拨出的上游连接池连接）和 UDP 对端，所以 akit 的这个
+指标会多出它的上游连接；而按循环的计数（`accepted`、`dialed`、`closed`）也不区分关闭的连接属于哪一种。
+
+**证据。** `crates/akio-core/src/telemetry.rs`（`a9a620ab`）：`conn_opened(limited)` 对每种连接都加到同一个
+`open` 计数（`akio-epoll/src/reactor.rs` 和 `akio-uring/src/reactor.rs` 对拨出的连接以 `limited` 为 false 调用
+它）；`conn_closed` 不分种类地减去。
+
+**建议的 API。** `Telemetry::open_accepted()`（或 `LoopCounters` 中按循环的 `accepted_open` 指标）：现在打开的
+已接受 TCP 连接，不含拨出的连接和 UDP 对端。
+
+**akit 的用法。** `akit_listener::metrics::Scrape` 把它写作 `fit_connections_open`，替代 `open_connections`。
 
 ## A32 正则表达式在哪里匹配、它的分组，以及替换
 

@@ -164,3 +164,73 @@ fn loads_through_the_admin_api_and_sighup_share_one_history() {
 fn akit_signal(akit: &Akit, sig: i32) {
     kill(akit.child.id(), sig).unwrap();
 }
+
+/// With `metrics` (I37): the Admin API serves the scrape at `GET /metrics`, in Prometheus's text
+/// format, with the requests counted and every config applied after the first counted, from
+/// SIGHUP and from the Admin API alike, a refused load included.
+#[test]
+fn the_admin_api_serves_the_metrics() {
+    let path = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("admin-metrics.json");
+    let (web, api) = (free(), free());
+    let doc = |body: &str| {
+        config(web, api, body).replacen("\"listeners\"", "\"metrics\": {},\n  \"listeners\"", 1)
+    };
+    std::fs::write(&path, doc("v1")).unwrap();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_akit"))
+        .args(["run", "-shutdown-timeout", "5s", "-c"])
+        .arg(&path)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let stdout = child.stdout.take().unwrap();
+    let (tx, out) = mpsc::channel();
+    std::thread::spawn(move || {
+        for line in BufReader::new(stdout).lines() {
+            let Ok(line) = line else { break };
+            if tx.send(line).is_err() {
+                break;
+            }
+        }
+    });
+    let akit = Akit { child, out };
+    until(&akit.out, "akit: admin API on");
+    assert_eq!(request(web, "GET", "/", None).2, "v1");
+    assert_eq!(request(api, "POST", "/load", Some(&doc("v2"))).0, 200);
+    until(&akit.out, "akit: loaded");
+    assert_eq!(
+        request(api, "POST", "/load", Some("{\"listeners\": 1}")).0,
+        400
+    );
+    akit_signal(&akit, SIGHUP);
+    until(&akit.out, "akit: reloaded");
+    assert_eq!(request(web, "GET", "/", None).2, "v1");
+
+    let mut s = TcpStream::connect(api).unwrap();
+    s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+    write!(
+        s,
+        "GET /metrics HTTP/1.1\r\nHost: {api}\r\nConnection: close\r\n\r\n"
+    )
+    .unwrap();
+    let mut raw = String::new();
+    s.read_to_string(&mut raw).unwrap();
+    let (head, body) = raw.split_once("\r\n\r\n").unwrap();
+    assert!(head.starts_with("HTTP/1.1 200"), "{head}");
+    assert!(
+        head.to_ascii_lowercase()
+            .contains("content-type: text/plain; version=0.0.4; charset=utf-8"),
+        "{head}"
+    );
+    for line in [
+        "fit_config_reloads_total{result=\"success\"} 2",
+        "fit_config_reloads_total{result=\"failure\"} 1",
+        "fit_config_version 3",
+        "fit_http_requests_total{listener=\"web\",route=\"#0\",code=\"2xx\"} 2",
+    ] {
+        assert!(body.lines().any(|l| l == line), "no {line:?} in:\n{body}");
+    }
+
+    akit_signal(&akit, SIGTERM);
+    until(&akit.out, "akit: stopped");
+}

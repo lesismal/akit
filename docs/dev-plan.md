@@ -135,7 +135,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I34 | On-demand TLS | I33, A2 | todo |
 | I35 | Active health checks | I20 | todo |
 | I36 | Load balancing v2 | I19 | todo |
-| I37 | Prometheus metrics | I15 | todo |
+| I37 | Prometheus metrics | I15 | done |
 | I38 | M2 exit: churn test and staging certificate | I26–I37 | todo |
 | **M3** | | | |
 | I39 | Matchers v2 and expressions | I11 | done |
@@ -209,7 +209,7 @@ commit and result.
 | Passive health checks | I20 | no | no (built, not measured) | A micro-benchmark of recording a result on the request path. |
 | Access logs | I21 | no | no (built, not measured) | Same-run A/B of fixed and proxy with logs on and off (json, and text or line), to a file and to `/dev/null`; lines dropped at full load with the default 4 MiB buffer and a slow disk; the per-request cost (the boxed response filter, the shard lock, formatting). |
 | Certificates chosen per handshake (the resolver reading the graph) | I30 | no | no (built, not measured) | Full TLS handshakes a second with one and ten certificates, against I09's `sni_cert` and fit. |
-| Prometheus metrics | I37 | no | no (not built yet) | Same-run A/B with metrics on and off. |
+| Prometheus metrics | I37 | no | no (built, not measured) | Same-run A/B of the fixed and proxy scenarios with `metrics` on and off (an inline route costs a thread-local read and three atomic adds; a proxied one also a boxed response filter until akio A29), and with the access log on too (one hook for both); a scrape with many routes and 64 threads (the per-thread shards). |
 | Matchers v2 and expressions | I39 | no | no (built, not measured) | A micro-benchmark of `find_request` with matchers, expressions and path regexps (no allocation, `tests/no_alloc.rs`); same-run A/B against I39's base on the fixed scenario (one route, no matchers: within noise expected). |
 | Rewrites, redirects, headers | I40 | no | no (built, not measured) | Same-run A/B on the proxy scenario of a route with `headers` (request and response changes) and `rewrite` against the same route without them; the cost per request of the response filter (a boxed closure and an `Arc` clone) and of the request fields kept in a context local (the stopgap until akio API request A33). |
 | Middlewares (limits, auth, retries and the rest) | I41–I48 | no | no (not built yet) | I56 benchmarks every middleware; same-run A/B of each on the proxy scenario. |

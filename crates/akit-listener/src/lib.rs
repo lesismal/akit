@@ -23,6 +23,12 @@
 //! I22: [`Listeners::reload`] publishes a new graph and moves the listeners to its (see
 //! [`reload`]).
 //!
+//! I37: a graph whose config has `metrics` has each request counted by listener and route
+//! (`fit_http_requests_total`, `fit_http_request_duration_seconds`): one answered before its
+//! handler returns (an inline handler's, the 404, the 400) once the call returns, with no hook;
+//! any other by a response filter, the access log's when there is one. [`metrics::Scrape`] writes
+//! every metric, in fit's names, for the Admin API's `/metrics`.
+//!
 //! I16: each listener takes request bodies up to the config's `limits.max_body_bytes` (fit's
 //! 16 MiB by default) over HTTP/1.1, HTTP/2 and HTTP/3, and answers a larger one 413. A request
 //! whose route's handler takes its body as it arrives (`body_mode`, the proxy's) gets it so,
@@ -36,15 +42,18 @@ use std::borrow::Cow;
 use std::fmt;
 use std::io;
 use std::net::{IpAddr, Ipv6Addr, SocketAddr, TcpListener, ToSocketAddrs, UdpSocket};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use akio::tls::Tls;
 use akio::{Backend, Config as EngineConfig, Engine, Listener as EngineListener};
 use akio_http::{BodyMode, Context, HttpConfig, Method, Request, Response, Version};
 use akit_config::{Listener, Protocol};
+use akit_observe::metrics::Shard as MetricsShard;
 use akit_observe::{AccessLog, Name, Record, Shard};
 use akit_runtime::GraphCell;
 
+pub mod metrics;
 pub mod reload;
 pub use reload::{Listeners, ReloadError, Reloaded, Served};
 
@@ -129,17 +138,41 @@ impl fmt::Debug for Dispatcher {
 }
 
 impl Dispatcher {
-    /// Has `log` write the request's line once its response is done, from the thread that
-    /// sends it, as fit's `logRequest`. A request whose response is never sent (its connection
-    /// went first) has no line.
-    fn track(&self, ctx: &mut Context, log: &AccessLog, route: &str) {
-        let shard = log.shard();
+    /// Has `log` write the request's line, and `count` count it (I37), once its response is
+    /// done, from the thread that sends it, as fit's `logRequest`: one hook for both. A request
+    /// whose response is never sent (its connection went first) has no line and is not counted.
+    ///
+    /// The hook is a boxed closure, one allocation a request, until akio can call a listener's
+    /// observer with a few words of the request's own (akio API request A29).
+    fn track(
+        &self,
+        ctx: &mut Context,
+        log: Option<&AccessLog>,
+        count: Option<(Arc<MetricsShard>, u32)>,
+        route: &str,
+    ) {
         let start = Instant::now();
-        let listener = self.log_name.clone();
-        let route = Name::new(route);
-        ctx.add_response_filter(move |resp: &mut Response, req: &Request| {
-            write_line(&shard, listener.as_str(), route.as_str(), start, resp, req);
-        });
+        match log {
+            Some(log) => {
+                let shard = log.shard();
+                let listener = self.log_name.clone();
+                let route = Name::new(route);
+                ctx.add_response_filter(move |resp: &mut Response, req: &Request| {
+                    let took =
+                        write_line(&shard, listener.as_str(), route.as_str(), start, resp, req);
+                    if let Some((m, slot)) = count {
+                        m.observe(slot, resp.status, took);
+                    }
+                });
+            }
+            None => {
+                if let Some((m, slot)) = count {
+                    ctx.add_response_filter(move |resp: &mut Response, _: &Request| {
+                        m.observe(slot, resp.status, start.elapsed());
+                    });
+                }
+            }
+        }
     }
 }
 
@@ -152,13 +185,14 @@ fn write_line(
     start: Instant,
     resp: &Response,
     req: &Request,
-) {
+) -> Duration {
     let duration = start.elapsed();
     akit_observe::upstream(|upstream| {
         shard.log(&access_record(
             listener, route, duration, upstream, resp, req,
         ));
     });
+    duration
 }
 
 /// The access log's record of `req` answered with `resp`, as fit's `observe` fills its fields:
@@ -240,23 +274,29 @@ impl akio_http::Service for Dispatcher {
         }
         self.cell.with(|g| {
             let log = g.access_log();
+            let listener = g.listener_index(&self.listener);
+            // The registry, when the graph counts requests (I37).
+            let metrics = g.metrics();
             // The routes go by the canonical path, as fit's do; a path that has none is answered
-            // 400.
+            // 400, and counted with the requests no route takes.
             let (route, changed) = {
                 let Some(path) = akit_router::canonicalize(ctx.path()) else {
+                    let slot = metrics.zip(listener.and_then(|i| g.request_slot(i, None)));
                     if let Some(log) = log {
-                        self.track(ctx, log, "");
+                        self.track(ctx, Some(log), None, "");
                     }
+                    let start = Instant::now();
                     ctx.text(400, BAD_REQUEST_PATH);
+                    if let Some((m, slot)) = slot {
+                        m.observe(slot, 400, start.elapsed());
+                    }
                     return;
                 };
                 let req = RouterRequest {
                     req: ctx.req(),
                     path: &path.decoded,
                 };
-                let route = g
-                    .listener_index(&self.listener)
-                    .and_then(|i| g.route_request(i, &req));
+                let route = listener.and_then(|i| g.route_request_at(i, &req));
                 let changed = match path.escaped {
                     Cow::Owned(p) => Some(p),
                     Cow::Borrowed(_) => None,
@@ -273,21 +313,40 @@ impl akio_http::Service for Dispatcher {
                 // Its body streams (`body_mode`): the handler holds it to the limit.
                 ctx.set_local(MAX_BODY_BYTES, self.max_body_bytes.to_string());
             }
-            let Some(log) = log else {
-                match route {
-                    Some(r) => r.handler.call(ctx),
-                    None => ctx.text(404, NOT_FOUND),
-                }
-                return;
+            let slot = metrics.zip(listener.and_then(|i| g.request_slot(i, route.map(|(i, _)| i))));
+            // A request answered before its handler returns (fit's inline ones, and the 404) is
+            // counted then, with no hook; any other is counted by the hook on its response.
+            let inline = route.is_none_or(|(_, r)| r.handler.inline());
+            let hooked = match slot {
+                Some((m, slot)) if !inline || log.is_some() => m.shard().map(|s| (s, slot)),
+                _ => None,
             };
-            self.track(
-                ctx,
-                log,
-                route.and_then(|r| r.name.as_deref()).unwrap_or(""),
-            );
-            match route {
-                Some(r) => akit_observe::dispatch_logged(|| r.handler.call(ctx)),
-                None => ctx.text(404, NOT_FOUND),
+            let start = Instant::now();
+            match log {
+                Some(log) => {
+                    self.track(
+                        ctx,
+                        Some(log),
+                        hooked,
+                        route.and_then(|(_, r)| r.name.as_deref()).unwrap_or(""),
+                    );
+                    match route {
+                        Some((_, r)) => akit_observe::dispatch_logged(|| r.handler.call(ctx)),
+                        None => ctx.text(404, NOT_FOUND),
+                    }
+                }
+                None => {
+                    if hooked.is_some() {
+                        self.track(ctx, None, hooked, "");
+                    }
+                    match route {
+                        Some((_, r)) => r.handler.call(ctx),
+                        None => ctx.text(404, NOT_FOUND),
+                    }
+                    if let (true, Some((m, slot)), Some(status)) = (inline, slot, ctx.status()) {
+                        m.observe(slot, status, start.elapsed());
+                    }
+                }
             }
         });
     }

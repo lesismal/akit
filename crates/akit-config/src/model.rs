@@ -29,7 +29,17 @@ pub struct Config {
     pub access_log: Option<AccessLog>,
     /// `admin`: the Admin API (I26); off when left out.
     pub admin: Option<Admin>,
+    /// `metrics`: count and time requests by listener and route, for the Admin API's
+    /// `/metrics`, which serves the rest of the metrics without it; off when left out, since it
+    /// costs every request a little. Needs `admin`, as in fit.
+    pub metrics: Option<Metrics>,
 }
+
+/// `metrics`, as fit's `config.Metrics`: it turns on the counting of requests, and has no
+/// settings yet.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct Metrics {}
 
 /// fit's default `admin.address`.
 pub const DEFAULT_ADMIN_ADDRESS: &str = "127.0.0.1:2019";
@@ -717,6 +727,7 @@ const CONFIG_FIELDS: &[&str] = &[
     "limits",
     "access_log",
     "admin",
+    "metrics",
 ];
 const CONFIG_FIT_ONLY: &[&str] = &[
     "services",
@@ -725,7 +736,6 @@ const CONFIG_FIT_ONLY: &[&str] = &[
     "access",
     "engine",
     "auto_https",
-    "metrics",
     "pprof",
     "acme",
     "llm",
@@ -913,6 +923,8 @@ pub(crate) struct Part {
     access_log: Option<(AccessLog, usize)>,
     /// `admin`, with the position of its key, when the file gives it.
     admin: Option<(Admin, usize)>,
+    /// `metrics`, with the position of its key, when the file gives it.
+    metrics: Option<(Metrics, usize)>,
     /// The position of the file's top object.
     doc_off: usize,
 }
@@ -958,6 +970,12 @@ pub(crate) fn part(d: &mut Decoder<'_>, n: &Node, file: usize) -> Option<Part> {
     let admin = o
         .take("admin")
         .and_then(|v| admin(d, v, "admin").map(|a| (a, v.off)));
+    let metrics = o.take("metrics").and_then(|v| {
+        let m = d.object(v, "metrics")?;
+        // No settings yet: any field is unknown, as in fit.
+        m.finish(d, &[], &[]);
+        Some((Metrics {}, v.off))
+    });
     let doc_off = o.off;
     o.finish(d, CONFIG_FIELDS, CONFIG_FIT_ONLY);
     Some(Part {
@@ -968,6 +986,7 @@ pub(crate) fn part(d: &mut Decoder<'_>, n: &Node, file: usize) -> Option<Part> {
         limits,
         access_log,
         admin,
+        metrics,
         doc_off,
     })
 }
@@ -988,6 +1007,7 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
     let mut first_doc: Option<(usize, usize)> = None;
     let mut access_log: Option<(AccessLog, usize)> = None;
     let mut admin: Option<(Admin, usize)> = None;
+    let mut metrics: Option<(Metrics, usize, usize)> = None;
     for (file, p) in parts.into_iter().enumerate() {
         first_doc.get_or_insert((file, p.doc_off));
         if let Some((v, off)) = p.schema_version {
@@ -1077,6 +1097,27 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
                 None => admin = Some((a, file)),
             }
         }
+        if let Some((m, off)) = p.metrics {
+            match &metrics {
+                Some((_, first_file, _)) => {
+                    let name = ds
+                        .get(*first_file)
+                        .and_then(Decoder::file)
+                        .unwrap_or_default()
+                        .to_owned();
+                    if let Some(d) = ds.get_mut(file) {
+                        d.error(
+                            off,
+                            "metrics",
+                            format!(
+                                "also given in {name}: only the lists at the top of a config (listeners, routes, upstreams, services, providers) may be split across files"
+                            ),
+                        );
+                    }
+                }
+                None => metrics = Some((m, file, off)),
+            }
+        }
         listeners.extend(p.listeners);
         routes.extend(p.routes);
         upstreams.extend(p.upstreams);
@@ -1094,6 +1135,18 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
     }
     check_routes(ds, &routes, &listeners);
     check_upstreams(ds, &upstreams);
+    if let Some((_, file, off)) = metrics {
+        if admin.is_none() {
+            if let Some(d) = ds.get_mut(file) {
+                // fit's message (config/validate.go).
+                d.error(
+                    off,
+                    "metrics",
+                    "the Admin API serves metrics: set admin too",
+                );
+            }
+        }
+    }
     let limits = limits.map(|(l, _)| l).unwrap_or_default();
     Config {
         schema_version: schema.map_or(SCHEMA_VERSION, |(v, _)| v),
@@ -1109,6 +1162,7 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
         limits,
         access_log: access_log.map(|(a, _)| a),
         admin: admin.map(|(a, _)| a),
+        metrics: metrics.map(|(m, _, _)| m),
     }
 }
 

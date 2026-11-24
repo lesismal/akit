@@ -415,6 +415,12 @@ fn supported_fields_are_read() {
             access(r#""time_zone": "utc""#),
             |c| c.access_log.as_ref().unwrap().time_zone == "utc",
         ),
+        // It needs admin, as in fit: refused without it, with fit's message.
+        ("metrics", r#"{"admin": {}, "metrics": {}}"#.into(), |c| {
+            c.metrics.is_some()
+                && akit_config::from_json(r#"{"metrics": {}}"#, None)
+                    .is_err_and(|e| e.to_string().contains("set admin too"))
+        }),
         ("listeners", format!("{{{L}}}"), |c| c.listeners.len() == 1),
         ("admin", r#"{"admin": {}}"#.into(), |c| {
             c.admin == Some(akit_config::Admin::default())
