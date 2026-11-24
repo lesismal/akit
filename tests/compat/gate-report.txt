@@ -1,7 +1,7 @@
 # The compatibility gate's report (docs/compatibility.md), written by make compat-bless;
 # do not edit. The gate fails when a run's outcomes differ from these lines.
 # fit 7daee573, fit-examples 9659d7e4.
-# 80 fixtures: 15 valid, 64 refused only as not supported yet (fields refused: 64), 0 in a format not supported yet, 1 skipped, 0 failed.
+# 80 fixtures: 15 valid, 64 refused only as not supported yet (fields refused: 63), 0 in a format not supported yet, 1 skipped, 0 failed.
 examples/acme-on-demand: not supported yet: acme.on_demand
 examples/acme-on-demand: not supported yet: listeners[].tls.on_demand
 examples/acme-shared-storage: not supported yet: acme.shared_storage
@@ -26,7 +26,6 @@ examples/docker-compose: not supported yet: providers
 examples/fastcgi: not supported yet: routes[].handler<fastcgi>
 examples/forward-auth: not supported yet: routes[].middleware[]<forward_auth>
 examples/forward-proxy: not supported yet: routes[].handler<forward_proxy>
-examples/grpc: not supported yet: upstreams[].protocol: the "h2c" protocol for upstreams
 examples/grpc: not supported yet: upstreams[].response_idle_timeout
 examples/headers: valid
 examples/hello: valid

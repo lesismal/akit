@@ -45,7 +45,7 @@ pub use model::{
     DEFAULT_STICKY_COOKIE_NAME, DEFAULT_TLS_PROTOCOLS, Dotfiles, Encoding, Handler, HeaderOps,
     Headers, HealthCheck, HealthCheckType, Limits, Listener, LoadBalancing, LogFormat, MAX_WEIGHT,
     Match, Metrics, Network, Protocol, Proxy, RateKey, RateLimit, Redirect, Respond, Rewrite,
-    Route, SCHEMA_VERSION, Static, StickyCookie, Tls, TlsVersion, Upstream,
+    Route, SCHEMA_VERSION, Static, StickyCookie, Tls, TlsVersion, Upstream, UpstreamProtocol,
 };
 
 /// The largest config document read, in bytes: fit's own configs are kilobytes; this bounds

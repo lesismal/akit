@@ -27,9 +27,8 @@ use std::mem;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Instant;
 
-use akio_http::client::{RequestBody, ResponseHead};
 use akio_http::{BodyEvent, BodyReads, BodyStream, Context, Detached, Headers, Response, Version};
-use akit_runtime::upstream::{Download, Error, Exchange};
+use akit_runtime::upstream::{Download, Error, Exchange, Head, Upload as Body};
 
 use crate::headers;
 
@@ -63,7 +62,7 @@ struct Shared {
 struct Upload {
     /// The upstream's body, once its head is written and what arrived before is flushed. An
     /// `Arc` so that it is written to outside the lock.
-    body: Option<Arc<RequestBody>>,
+    body: Option<Arc<Body>>,
     /// What arrived before `body`, the client's reads held meanwhile.
     pending: Vec<u8>,
     /// The client's body ended (with these trailers) before `body` was there.
@@ -213,7 +212,7 @@ impl Sink {
                 }
             }
         };
-        if body.write(data).is_err() {
+        if !body.write(data) {
             // The upstream request is over (answered early, or failed): the rest is not wanted.
             return;
         }
@@ -286,7 +285,7 @@ impl Drop for Sink {
 
 /// Holds the client's reads while more than [`UPLOAD_PENDING`] of its body waits for the
 /// upstream, until that has drained; else lets them go on.
-fn pace(body: &RequestBody, reads: &BodyReads) {
+fn pace(body: &Body, reads: &BodyReads) {
     if body.queued_bytes() > UPLOAD_PENDING {
         reads.hold(true);
         let reads = reads.clone();
@@ -298,7 +297,7 @@ fn pace(body: &RequestBody, reads: &BodyReads) {
 }
 
 /// Ends the upstream's body, with the client's trailers when it is chunked.
-fn finish(body: Arc<RequestBody>, trailers: &Headers, chunked: bool) {
+fn finish(body: Arc<Body>, trailers: &Headers, chunked: bool) {
     // Held alone: the sink drops its clone before its next event, and `on_request_body` hands
     // its over.
     let Ok(body) = Arc::try_unwrap(body) else {
@@ -404,7 +403,7 @@ impl Relay {
 }
 
 impl Exchange for Relay {
-    fn on_request_body(&mut self, body: RequestBody) {
+    fn on_request_body(&mut self, body: Body) {
         let body = Arc::new(body);
         // What arrived meanwhile goes first. More may arrive while it is written, and once the
         // reads are let go, so the body is handed to the sink, which keeps no clone of its own
@@ -417,7 +416,7 @@ impl Exchange for Relay {
                 }
                 (mem::take(&mut s.up.pending), s.up.end.take())
             };
-            if !pending.is_empty() && body.write(&pending).is_err() {
+            if !pending.is_empty() && !body.write(&pending) {
                 return;
             }
             if let Some(end) = end {
@@ -440,7 +439,7 @@ impl Exchange for Relay {
         }
     }
 
-    fn on_head(&mut self, head: ResponseHead, up: Download) {
+    fn on_head(&mut self, head: Head, up: Download) {
         let length = head
             .headers
             .get("content-length")

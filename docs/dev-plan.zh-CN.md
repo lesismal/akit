@@ -109,7 +109,8 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I16 | 反向代理 II：流式 body 与联动背压 | I15 | done |
 | I17 | 反向代理 III：超时、取消、trailer | I16 | done |
 | I17b | 反向代理 III b：响应头与空闲超时、响应头之前的取消、写停滞 | I17、akio A36–A38 | todo |
-| I18 | HTTP/2 与 h2c 上游 | I17 | todo |
+| I18 | HTTP/2 与 h2c 上游 | I17 | done |
+| I18b | HTTP/2 上游 II：由 akio 重置、计时和控制节奏的流 | I18、akio A51–A53 | todo |
 | I19 | 负载均衡 v1 | I14 | done |
 | I20 | 被动健康检查 | I19 | done |
 | I21 | 访问日志 | I15 | done |
@@ -195,7 +196,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | 路由 v1：按主机和路径查找 | I11 | 否 | 否（已实现，未测） | 查找的微基准（不分配内存），以及路由较多时 fixed 对比 I05 线性扫描的同轮 A/B。 |
 | 静态文件 | I12、I13 | 否 | 否（已实现，未测） | static 场景，HTTP/1.1 和 h2c（基线中 akit 跳过）；预压缩文件和大文件的 `sendfile`。 |
 | 上游连接池 | I14 | 否 | 否（已实现，未测） | 通过 proxy 场景测：连接复用，连接数受限时等待连接。 |
-| 反向代理：HTTP/1.1、流式请求体、h2 和 h2c 上游 | I15–I18 | 否 | 否（已实现到 I17，未测量；h2 上游属于 I18） | proxy 场景，HTTP/1.1 和 h2c（基线中 akit 跳过）；双向大请求体，及每个进行中请求占用的内存；带 trailer 的请求（I17 每个请求解析 `Trailer`）；h2 上游。 |
+| 反向代理：HTTP/1.1、流式请求体、h2 和 h2c 上游 | I15–I18 | 否 | 否（已实现，未测量） | proxy 场景，HTTP/1.1 和 h2c（基线中 akit 跳过）；双向大请求体，及每个进行中请求占用的内存；带 trailer 的请求（I17 每个请求解析 `Trailer`）；h2c 上游（I18）：与 HTTP/1.1 上游对比每秒请求数和每请求 CPU，许多客户端复用少数连接，以及租用流时的按地址锁（`akit_upstream::h2`）。 |
 | 负载均衡 v1 和 v2 | I19、I36 | 否 | 否（已实现，未测量） | 每种策略选择的微基准（fit 的 `BenchmarkPick` 和 `BenchmarkPickNew`：九种策略、哈希一个键、查找会话保持 cookie），1 线程和 16 线程；对比单个服务器的 proxy A/B；proxy 场景下 `round_robin` 对比 `p2c`、`header_hash` 和 `sticky_cookie` 的同轮 A/B（每个请求的键哈希，以及首个请求复制的 `Set-Cookie`）。 |
 | 被动健康检查 | I20 | 否 | 否（已实现，未测） | 请求路径上记录结果的微基准。 |
 | 主动健康检查 | I35 | 否 | 否（已实现，未测） | 不在热路径上（选择地址仍只读每个地址一个原子量）：繁忙引擎上探测的开销，每秒探测数千个地址（http 和 tcp），连同探测定时器的线程（akio A45 之前的临时方案）；proxy 场景下开关健康检查的同轮 A/B。 |
@@ -398,6 +399,17 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 - **完成标准**：一致性测试套件对 h2 和 h2c 上游都通过。
 - **涉及**：`akit-upstream`、`akit-proxy`。
 - **参考**：`akio-http` 的 `h2client.rs`。
+- **拆分**：akio 的 h2 客户端还做不到的部分移到 I18b。
+
+### I18b HTTP/2 上游 II：由 akio 重置、计时和控制节奏的流
+
+- **做什么**：用 akio 的 h2 客户端替换 I18 在 `akit_upstream::h2` 中的权宜之计：放弃的流被重置，`response_timeout`
+  由 akio 启用，请求 trailer 能发出（akio API 请求 A51）；h2 下载按流暂停、上传按流控制节奏（A52）；每个连接按服务器的
+  `SETTINGS_MAX_CONCURRENT_STREAMS` 确定流数，拨号受上游 `connect_timeout` 限制，ALPN 未选择 h2 时 `h2` 回退到
+  HTTP/1.1（A53）。
+- **完成标准**：h2 代理测试中的 `request_trailers` 通过；在 epoll 和 io_uring 上，慢客户端和慢上游经 h2 时内存有界，
+  与 I16 的测试在 HTTP/1.1 上所示一致。
+- **涉及**：`akit-upstream`、`akit-proxy`。
 
 ### I19 负载均衡 v1
 

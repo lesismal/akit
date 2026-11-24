@@ -310,20 +310,39 @@ fn sticky_cookie() {
 
 #[test]
 fn what_akit_lacks_is_not_supported_yet() {
-    let e = errs(&one(
-        r#""addresses": ["a:1"], "protocol": "h2c", "tls_server_name": "x",
-           "response_idle_timeout": "1s""#,
-    ));
+    let e = errs(&one(r#""addresses": ["a:1"],
+           "response_idle_timeout": "1s""#));
     assert!(e.only_not_supported_yet(), "{e}");
     let paths: Vec<&str> = e.as_slice().iter().map(|e| e.path.as_str()).collect();
-    assert_eq!(
-        paths,
-        [
-            "upstreams[0].protocol",
-            "upstreams[0].tls_server_name",
-            "upstreams[0].response_idle_timeout",
-        ]
-    );
+    assert_eq!(paths, ["upstreams[0].response_idle_timeout",]);
+}
+
+/// I18: h2c and h2 upstreams.
+#[test]
+fn protocols() {
+    use akit_config::UpstreamProtocol;
+    for (name, want) in [
+        ("http/1.1", UpstreamProtocol::Http11),
+        ("h2c", UpstreamProtocol::H2c),
+        ("h2", UpstreamProtocol::H2),
+    ] {
+        let c = from_json(
+            &format!(
+                r#"{{"upstreams": [{{"name": "a", "addresses": ["a:1"], "protocol": "{name}"}}]}}"#
+            ),
+            None,
+        )
+        .unwrap();
+        assert_eq!(c.upstreams[0].protocol, want);
+        assert_eq!(want.name(), name);
+        assert_eq!(want.is_h2(), name != "http/1.1");
+    }
+    let c = from_json(
+        r#"{"upstreams": [{"name": "a", "addresses": ["a:1"]}]}"#,
+        None,
+    )
+    .unwrap();
+    assert_eq!(c.upstreams[0].protocol, UpstreamProtocol::Http11);
 }
 
 #[test]

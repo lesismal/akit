@@ -8,6 +8,10 @@
 //!   probe sees whether the address takes new connections, and never waits behind the pool's
 //!   requests. Only the status counts: the body is given up as soon as the head has arrived. The
 //!   request's timeout, which akio arms from the start, connecting included, is the check's.
+//! - **http** over an h2 or h2c upstream (I18) does the same over HTTP/2, as fit probes over the
+//!   upstream's protocol: a connection of its own ([`H2Client::connect`]), closed once the head
+//!   has arrived; the check's timeout is kept by a timer of the prober's, as for tcp, since akio's
+//!   h2 dial has the engine's connect timeout (akio API request A53).
 //! - **tcp** passes once a connection opens ([`HappyEyeballs::connect`]), and closes it at once.
 //!   akio dials a lone address with its engine's connect timeout (akio API request A12), so the
 //!   check's timeout is kept by a timer of the prober's.
@@ -30,6 +34,7 @@ use akio_http::Headers;
 use akio_http::client::{
     Client, ClientError, ClientOptions, ClientRequest, ResponseBody, ResponseHandler, ResponseHead,
 };
+use akio_http::h2client::{H2Client, H2Event};
 use akit_config::{HealthCheck, HealthCheckType};
 
 use crate::Inner;
@@ -175,10 +180,68 @@ impl Prober {
         let began = Instant::now();
         let me = Arc::clone(&self);
         let done: Done = Box::new(move |passed| me.done(i, began, passed));
-        match &self.client {
-            Some(client) => Self::probe_http(&self, client, t, done),
-            None => self.probe_tcp(t, done),
+        let h2 = self
+            .live()
+            .and_then(|p| p.h2.as_ref().map(|t| t.tls.clone()));
+        match (&self.client, h2) {
+            (Some(_), Some(tls)) => self.probe_h2(t, tls, done),
+            (Some(client), None) => Self::probe_http(&self, client, t, done),
+            (None, _) => self.probe_tcp(t, done),
         }
+    }
+
+    /// Sends `GET` to `t` over h2 (with `tls`) or h2c, on a connection of its own, and passes on
+    /// an expected status.
+    fn probe_h2(
+        &self,
+        t: &Target,
+        tls: Option<Result<akio::tls::ClientConfig, String>>,
+        done: Done,
+    ) {
+        let once = Once::new(done);
+        let late = once.clone();
+        timer::after(self.check.timeout, move || late.settle(false));
+        let tls = match tls {
+            None => None,
+            Some(Ok(cfg)) => Some(cfg),
+            Some(Err(_)) => return once.settle(false),
+        };
+        // HTTP/2 has no Host field: the check's `host` is the request's `:authority`.
+        let scheme = if tls.is_some() { "https" } else { "http" };
+        let path = &self.check.path;
+        let shown = t
+            .url
+            .strip_prefix("http://")
+            .and_then(|u| u.strip_suffix(path.as_str()))
+            .unwrap_or_default();
+        let authority = self.check.host.as_deref().unwrap_or(shown);
+        let url = format!("{scheme}://{authority}{path}");
+        let req = ClientRequest::get(&url).header("User-Agent", USER_AGENT);
+        let check = self.check.clone();
+        let failed = once.clone();
+        H2Client::connect(
+            &self.engine,
+            &t.host,
+            t.port,
+            tls.map(|c| (c, t.host.as_str())),
+            akio_http::h2client::H2Options::default(),
+            move |r| match r {
+                Err(_) => failed.settle(false),
+                Ok(c) => {
+                    let conn = c.clone();
+                    let up = c.open(req, move |e| match e {
+                        H2Event::Head { status, .. } => {
+                            once.settle(check.expects(status));
+                            // The body is not read: its connection is closed.
+                            conn.close();
+                        }
+                        H2Event::Error(_) | H2Event::End => once.settle(false),
+                        _ => {}
+                    });
+                    up.finish();
+                }
+            },
+        );
     }
 
     /// Records target `i`'s probe, begun at `began`, and schedules its next.

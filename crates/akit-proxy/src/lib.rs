@@ -68,6 +68,12 @@
 //!   stream of a body of a declared length; one of no declared length ends with fit's
 //!   `Fit-Error: upstream failed mid-body` trailer, which is all such a client could tell it by.
 //!
+//! I18 adds upstreams over h2 and h2c (the upstream's `protocol`): the same exchange, through
+//! akit-upstream's h2 pool, the request's `Host` going as HTTP/2's `:authority`. Until akio's h2
+//! client has akio API requests A51–A53 (I18b), a held h2 download is cut short past
+//! `akit_upstream::HELD_LIMIT` rather than paced, an upload to one is not paced (its queue bounded
+//! by the body's limit), and request trailers do not reach it.
+//!
 //! Part of [akit](https://github.com/lesismal/akit); see `docs/dev-plan.md` for the iterations that
 //! fill this crate in.
 

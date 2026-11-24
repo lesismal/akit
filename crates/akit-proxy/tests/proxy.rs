@@ -2,8 +2,8 @@
 //! the request and response forwarded, hop-by-hop fields dropped both ways, the forwarding fields
 //! from clients trusted and not, `Host` passed on or rewritten, 502 when the upstream cannot be
 //! reached, HEAD, many requests at once, and the params' errors. Over HTTP/1.1 and h2c, to an
-//! HTTP/1.1 upstream (akit's only kind so far), on the backend `AKIO_TEST_BACKEND` names (epoll by
-//! default, `uring`).
+//! HTTP/1.1 upstream (`h2.rs` runs them against h2c and h2 upstreams, I18), on the backend
+//! `AKIO_TEST_BACKEND` names (epoll by default, `uring`).
 //!
 //! The upstreams are plain threads on std sockets that report the request head exactly as it
 //! arrived, so that the tests see the fields' order and case, and its body, framed by its length

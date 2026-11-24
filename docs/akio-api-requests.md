@@ -55,6 +55,9 @@ first; its status here records the branch, then the akio commit akit pins.
 | A37 | An HTTP client request cancelled at any point | requested (I17) | 3 | I17b, I45 |
 | A38 | A detached server request that hears its client went; a write stall timeout changed at run time | requested (I17) | 3, 10 | I17b, I49 |
 | A54 | An idle HTTP/1 connection drained after a grace, not at once | requested (I28) | 10 | I28 |
+| A51 | `H2Client`'s streamed requests: reset, timeout, request trailers, and failed rather than forgotten on a `GOAWAY` | requested (I18) | 3, 10 | I18b, I50 |
+| A52 | `H2Client` backpressure per stream: a streamed response's reads held, an upload's queue reported | requested (I18) | 8 | I18b, I50 |
+| A53 | `H2Client`'s connection: the server's stream limit heeded and reported, the connect timeout, ALPN's HTTP/1.1 fallback | requested (I18) | 10, 11 | I18b, I54 |
 
 ## A1 TCP listeners on a running engine
 
@@ -877,3 +880,93 @@ in the socket's receive buffer when the drain starts is read and answered either
 with it, from `-shutdown-timeout`; the retries in `akit/tests/reload.rs` go, and its clients count
 every error as a failure. It narrows the race to a client that sends its next request only after
 the grace, which only a client idle for that long does.
+
+## A51 `H2Client`'s streamed requests: reset, timeout, trailers, `GOAWAY`
+
+**Problem.** A proxy to an h2 upstream streams each exchange (`H2Client::open`), as it streams
+an HTTP/1 one (`Client::request_with`, A19, A20). Four things the HTTP/1 path has, the h2 one
+lacks:
+
+1. **No reset.** `open` returns an `H2Upload` with `write` and `finish` alone: a proxy whose client
+   went cannot reset the upstream's stream (`RST_STREAM CANCEL`). `H2Conn::cancel` exists but only
+   a whole request's timeout reaches it.
+2. **No timeout.** `ClientRequest::timeout` is armed by `request` alone; `open` ignores it.
+3. **No request trailers.** `H2Upload` cannot end the body with a trailing HEADERS frame, so a
+   request's trailers (gRPC's among them, I50) cannot reach an h2 upstream.
+4. **Forgotten on `GOAWAY`.** A `GOAWAY`'s doomed streams (above its last stream id) are removed
+   with their callback failed, but a streamed request's `on_event` is not told: it waits forever.
+   And after a `GOAWAY` the client still says `is_open`, while every new stream fails `Closed`.
+
+**Evidence.** `crates/akio-http/src/h2client.rs` at `afbbb521`: `open` returns `H2Upload { write,
+finish }`; `request` alone arms `crate::timer::after` for its timeout; `H2Conn::cancel` is private;
+the `GOAWAY` arm of `handle` calls `s.cb.take()` and never `s.events`; `is_open` is
+`conn.is_open()`. Found by I18's proxy over h2c (`crates/akit-upstream/src/h2.rs`).
+
+**Suggested API.** `H2Upload::cancel()` (also on a handle `open` returns beside it): the stream is
+reset `CANCEL` and `on_event` gets `H2Event::Error(ClientError::Cancelled)` once, unless it ended.
+`open` arms `req.timeout` as `request` does: past it, reset and `Error(Timeout)`.
+`H2Upload::finish_with_trailers(Headers)`. On `GOAWAY`, doomed streamed requests get
+`Error(Closed)` (a `Refused` kind would tell a caller it may retry them elsewhere), and
+`H2Client::is_open` (or a new `accepts_streams`) is false once a `GOAWAY` came.
+
+**How akit uses it.** I18b: `akit_upstream::h2` drops its stopgaps: a stream given up (client gone,
+timeout, a slow client) is reset rather than left running with its connection retired and closed
+once its other streams are over; the per-address timer tick that enforces `response_timeout` goes;
+request trailers go up; a `GOAWAY` fails its doomed streams (502, or a retry, I45) and retires the
+connection. I50's gRPC proxying needs all four.
+
+## A52 `H2Client` backpressure per stream
+
+**Problem.** Rule 8 links backpressure: a slow client holds the upstream's reads, and a slow
+upstream holds the client's. Over HTTP/1, akio's `ResponseBody::hold_reads` and
+`RequestBody::queued_bytes` / `on_drain` do it (A19, A20). akio's h2 client has neither:
+
+1. It gives each stream's receive window back as soon as DATA arrives (`window_update` on every
+   frame), so the server sends a streamed response as fast as the connection allows whatever the
+   consumer does. A proxy with a slow client can only buffer it or give the stream up.
+2. `H2Upload::write` queues without bound and reports nothing: the bytes wait in the stream's
+   `upload` queue until the window opens, and the producer cannot tell how many.
+
+**Evidence.** `crates/akio-http/src/h2client.rs` at `afbbb521`: the `DATA` arm of `handle` calls
+`window_update(&mut out, sid, total)` for every frame not ending the stream; `H2Upload::write`
+pushes onto `UpShared::q` and `pump` moves it into `CStream::upload` (a `VecDeque<u8>`) with no
+count kept outside.
+
+**Suggested API.** On the stream `open` makes: `hold_reads(bool)`: while held, the stream's window
+is not given back (DATA already in flight still arrives, at most one window); released, what was
+consumed is given back at once. Optionally `consume(n)` for a caller that gives the window back as
+it hands bytes on. On `H2Upload`: `queued_bytes()` (accepted, not yet in a DATA frame) and
+`on_drain(f)` (once it falls to 0, or at once), with `write` failing past a `max_queued_bytes`, as
+`RequestBody`'s do.
+
+**How akit uses it.** I18b: the proxy's relay holds an h2 download while its client is behind and
+paces an upload by its queue, exactly as over HTTP/1; akit's stopgap, which cuts a held download
+off past `HELD_LIMIT` (4 MiB) and lets an upload's queue grow up to the body limit, goes.
+
+## A53 `H2Client`'s connection: the server's stream limit, the connect timeout, ALPN's fallback
+
+**Problem.** A pool of h2 connections opens a stream on a connection with one free and dials
+another when none has: it must know how many the server allows. And it bounds the connect as
+the upstream's `connect_timeout` says, and, for fit's `h2`, falls back to HTTP/1.1 when the server
+does not choose h2 in ALPN.
+
+1. akio's client ignores `SETTINGS_MAX_CONCURRENT_STREAMS` (setting 3) and does not report it: a
+   request past it is refused by the server (`REFUSED_STREAM`). akit assumes 100, the least RFC 9113
+   lets a server advertise.
+2. `H2Client::connect` races addresses with `HappyEyeballs::default()`, whose `connect_timeout` the
+   caller cannot set; `dial` uses the engine's (as A12 for the HTTP/1 client).
+3. Over TLS, `dial` speaks h2 whatever ALPN chose; a server that picks `http/1.1` fails.
+
+**Evidence.** `crates/akio-http/src/h2client.rs` at `afbbb521`: the `SETTINGS` arm of `handle`
+matches 1, 4, 5 and 8, not 3; `connect` builds `akio::dns::HappyEyeballs::default()`; `dial` passes
+the TLS acceptor without looking at the negotiated protocol.
+
+**Suggested API.** `H2Client::max_concurrent_streams()` (the server's latest, `u32::MAX` until its
+SETTINGS) and `open_streams()`; a request past the limit waits in the client (bounded) or fails
+`Busy` at once, as the caller chooses. `H2Client::connect_with(engine, host, port, tls, opts,
+HappyEyeballs, ready)`. A dial over TLS that reports the protocol ALPN chose (`ready` given an
+`enum { H2(H2Client), Http1(Conn) }`), or fails with a clear error when it is not `h2`.
+
+**How akit uses it.** I18b: `akit_upstream::h2` sizes each connection by the server's limit, dials
+within the upstream's `connect_timeout`, and with `h2` falls back to akio's HTTP/1 client for a
+server that does not speak h2, as fit's `h2` does (I54 adds the `tls_*` fields).

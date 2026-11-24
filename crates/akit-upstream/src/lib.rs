@@ -56,6 +56,13 @@
 //! complete, so that `max_conns` and `least_conn` count a long download as busy for as long as it
 //! lasts, as fit's do.
 //!
+//! I18 adds upstreams over h2 and h2c (the upstream's `protocol`), on akio's h2 client
+//! ([`h2`]): each address's connections carry up to [`STREAMS_PER_CONN`] requests at once, and
+//! `max_conns` bounds the connections; `max_pending`, the balancers, health and the timeouts
+//! work as over HTTP/1.1. [`Exchange`]'s bodies ([`Upload`], [`Download`]) are the same for
+//! both. What akio's h2 client lacks (akio API requests A51–A53) is done by bounded stopgaps,
+//! listed in [`h2`].
+//!
 //! Nothing here blocks: [`Pool::send`] runs on an I/O thread, and its callback runs once, on an
 //! I/O thread (or the resolver's or the timer's thread, as akio's client says), never blocking
 //! either.
@@ -75,6 +82,7 @@
 //! fill this crate in.
 
 pub mod balance;
+pub mod h2;
 pub mod health;
 pub mod probe;
 pub mod sticky;
@@ -93,10 +101,12 @@ use akio_http::client::{
     Client, ClientError, ClientOptions, ClientRequest, ClientResponse, RequestBody, ResponseBody,
     ResponseHandler, ResponseHead,
 };
+use akio_http::h2client::H2Options;
 use akit_observe::metrics::{HistogramSnapshot, UpstreamStats};
 
-pub use akit_config::{HealthCheck, HealthCheckType};
+pub use akit_config::{HealthCheck, HealthCheckType, UpstreamProtocol};
 pub use balance::{Balancer, Keys, LoadBalancing};
+pub use h2::{HELD_LIMIT, STREAMS_PER_CONN};
 pub use health::Health;
 pub use sticky::{Sticky, sticky_id};
 
@@ -254,12 +264,13 @@ type Done = Box<dyn FnOnce(Outcome) + Send>;
 /// [`on_error`](Self::on_error) follows; a request that gets no response gets `on_error` alone.
 pub trait Exchange: Send + 'static {
     /// The request's body, when it is streamed ([`ClientRequest::streamed`]), once its head is
-    /// written. The default drops it, which fails the request.
-    fn on_request_body(&mut self, body: RequestBody) {
+    /// written (over h2, once the request is started). The default drops it, which fails the
+    /// request.
+    fn on_request_body(&mut self, body: Upload) {
         drop(body);
     }
     /// The response head. `body` holds and resumes the reads of the body that follows.
-    fn on_head(&mut self, head: ResponseHead, body: Download);
+    fn on_head(&mut self, head: Head, body: Download);
     /// A piece of the body, as read (dechunked); valid for the call only.
     fn on_data(&mut self, chunk: &[u8]);
     /// The body is complete, with the trailer fields of a chunked one.
@@ -274,26 +285,124 @@ pub trait Exchange: Send + 'static {
     }
 }
 
+/// The head of a response delivered as it arrives ([`Exchange::on_head`]).
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub struct Head {
+    /// Status code.
+    pub status: u16,
+    /// Header fields.
+    pub headers: Headers,
+}
+
+/// A request body written as it is produced ([`Exchange::on_request_body`]), to an HTTP/1.1
+/// upstream or an h2 one. Dropped unfinished, it gives the request up.
+pub struct Upload(UploadKind);
+
+enum UploadKind {
+    H1(RequestBody),
+    H2(h2::Body),
+}
+
+impl Upload {
+    fn h2(body: h2::Body) -> Upload {
+        Upload(UploadKind::H2(body))
+    }
+
+    /// Appends `data`; false when the request is over (answered, failed or given up), or past
+    /// what the connection may queue.
+    pub fn write(&self, data: &[u8]) -> bool {
+        match &self.0 {
+            UploadKind::H1(b) => b.write(data).is_ok(),
+            UploadKind::H2(b) => b.write(data),
+        }
+    }
+
+    /// Bytes written but not yet sent. Always 0 over h2, whose client does not tell (akio API
+    /// request A52).
+    #[must_use]
+    pub fn queued_bytes(&self) -> usize {
+        match &self.0 {
+            UploadKind::H1(b) => b.queued_bytes(),
+            UploadKind::H2(_) => 0,
+        }
+    }
+
+    /// Calls `f` once what is queued is sent (at once, on this thread, if nothing is, as over
+    /// h2 always), or when the connection closes.
+    pub fn on_drain(&self, f: impl FnOnce() + Send + 'static) {
+        match &self.0 {
+            UploadKind::H1(b) => b.on_drain(f),
+            UploadKind::H2(_) => f(),
+        }
+    }
+
+    /// Ends the body; false when it could not be (the request is over, or a `Content-Length`
+    /// body is short).
+    pub fn finish(self) -> bool {
+        match self.0 {
+            UploadKind::H1(b) => b.finish().is_ok(),
+            UploadKind::H2(b) => b.finish(),
+        }
+    }
+
+    /// Ends the body with `trailers` after it, when it is chunked. Over h2 the trailers are
+    /// dropped: its client cannot send them yet (akio API request A51).
+    pub fn finish_with_trailers(self, trailers: Headers) -> bool {
+        match self.0 {
+            UploadKind::H1(b) => b.finish_with_trailers(trailers).is_ok(),
+            UploadKind::H2(b) => b.finish(),
+        }
+    }
+}
+
+impl fmt::Debug for Upload {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Upload").finish_non_exhaustive()
+    }
+}
+
 /// Holds and resumes the reads of a response's body ([`Exchange::on_head`]), or gives it up.
 /// Cheap to clone, usable from any thread; it does nothing once the response is over.
 #[derive(Clone)]
-pub struct Download {
-    body: ResponseBody,
-    cancelled: Arc<AtomicBool>,
+pub struct Download(DownloadKind);
+
+#[derive(Clone)]
+enum DownloadKind {
+    H1 {
+        body: ResponseBody,
+        cancelled: Arc<AtomicBool>,
+    },
+    H2(Arc<h2::Stream>),
 }
 
 impl Download {
-    /// Holds (`true`) or resumes the upstream connection's reads.
-    pub fn hold_reads(&self, hold: bool) {
-        self.body.hold_reads(hold);
+    fn h2(s: Arc<h2::Stream>) -> Download {
+        Download(DownloadKind::H2(s))
     }
 
-    /// Gives the response up: its connection is closed, and the exchange ends with
+    /// Holds (`true`) or resumes the upstream connection's reads. Over h2, whose client cannot
+    /// hold one stream (akio API request A52), what still arrives is passed on, and past
+    /// [`HELD_LIMIT`] the response is given up.
+    pub fn hold_reads(&self, hold: bool) {
+        match &self.0 {
+            DownloadKind::H1 { body, .. } => body.hold_reads(hold),
+            DownloadKind::H2(s) => s.hold_reads(hold),
+        }
+    }
+
+    /// Gives the response up: its connection is closed (over h2, its stream is left and the
+    /// connection closed once its other streams are over), and the exchange ends with
     /// [`Exchange::on_error`]. The address is not counted as failing for it: the proxy's client
     /// went, not the upstream.
     pub fn cancel(&self) {
-        self.cancelled.store(true, Ordering::SeqCst);
-        self.body.cancel();
+        match &self.0 {
+            DownloadKind::H1 { body, cancelled } => {
+                cancelled.store(true, Ordering::SeqCst);
+                body.cancel();
+            }
+            DownloadKind::H2(s) => s.cancel(),
+        }
     }
 }
 
@@ -304,7 +413,7 @@ impl fmt::Debug for Download {
 }
 
 /// Where a request's response goes.
-enum Deliver {
+pub(crate) enum Deliver {
     /// Whole, to a callback ([`Pool::send`]).
     Whole(Done),
     /// As it arrives ([`Pool::stream`]).
@@ -339,6 +448,8 @@ struct Backend {
     queue: Mutex<VecDeque<Waiter>>,
     /// Whether it is in rotation, by its failures.
     health: Health,
+    /// Its connections, over h2 (I18).
+    h2: h2::Conns,
 }
 
 impl Backend {
@@ -381,9 +492,15 @@ struct Inner {
     /// What the backends' health times count from.
     epoch: Instant,
     max_conns: usize,
+    /// Requests under way to one address at most: `max_conns`, times the streams each
+    /// connection carries over h2.
+    max_busy: usize,
     max_pending: usize,
     timeout: Duration,
     opts: ClientOptions,
+    protocol: UpstreamProtocol,
+    /// How h2 and h2c upstreams are reached; `None` for HTTP/1.1.
+    h2: Option<h2::Transport>,
     engine: EngineSlot,
     /// Made on the first request, once the engine is there.
     client: OnceLock<Client>,
@@ -446,6 +563,7 @@ impl Pool {
                 waiting: AtomicUsize::new(0),
                 queue: Mutex::new(VecDeque::new()),
                 health: Health::new(),
+                h2: h2::Conns::default(),
             })
             .collect();
         let pool = Pool {
@@ -462,9 +580,26 @@ impl Pool {
                 health_check: u.health_check.clone(),
                 epoch: Instant::now(),
                 max_conns: u.max_conns.max(1),
+                max_busy: if u.protocol.is_h2() {
+                    u.max_conns.max(1).saturating_mul(STREAMS_PER_CONN)
+                } else {
+                    u.max_conns.max(1)
+                },
                 max_pending: u.max_pending,
                 timeout: u.response_timeout,
                 opts,
+                protocol: u.protocol,
+                h2: match u.protocol {
+                    UpstreamProtocol::H2c => Some(h2::Transport {
+                        opts: H2Options::default(),
+                        tls: None,
+                    }),
+                    UpstreamProtocol::H2 => Some(h2::Transport {
+                        opts: H2Options::default(),
+                        tls: Some(h2::system_tls()),
+                    }),
+                    _ => None,
+                },
                 engine,
                 client: OnceLock::new(),
                 in_flight: AtomicUsize::new(0),
@@ -494,6 +629,39 @@ impl Pool {
             inner.timeout = timeout;
         }
         self
+    }
+
+    /// The same h2 pool, its connections made with the TLS configuration `tls` rather than the
+    /// system's roots, as I54's `tls_*` fields will make it; `tls` must offer ALPN `h2`. Only
+    /// before the pool is shared, and only for an h2 upstream.
+    #[must_use]
+    pub fn with_tls(mut self, tls: akio::tls::ClientConfig) -> Pool {
+        if let Some(inner) = Arc::get_mut(&mut self.inner) {
+            if let Some(t) = inner.h2.as_mut().filter(|t| t.tls.is_some()) {
+                t.tls = Some(Ok(tls));
+            }
+        }
+        self
+    }
+
+    /// The upstream's `max_conns`: connections to one address at most.
+    #[must_use]
+    pub fn max_conns(&self) -> usize {
+        self.inner.max_conns
+    }
+
+    /// The upstream's `protocol`.
+    #[must_use]
+    pub fn protocol(&self) -> UpstreamProtocol {
+        self.inner.protocol
+    }
+
+    /// Over h2: the connections to the address at `backend` open or being dialed, and the
+    /// streams under way on them (`None` over HTTP/1.1, whose connections akio's client keeps).
+    #[must_use]
+    pub fn h2_connections(&self, backend: usize) -> Option<(usize, usize)> {
+        self.inner.h2.as_ref()?;
+        self.inner.backends.get(backend).map(|b| b.h2.counts())
     }
 
     /// The same pool, counting into `stats` (I37): counters shared by every graph that has the
@@ -845,7 +1013,12 @@ impl Inner {
             let url = req.url;
             return done.fail(Error::Client(ClientError::InvalidUrl(url)));
         }
-        if self.client().is_none() {
+        let ready = if self.h2.is_some() {
+            self.engine.get().is_some()
+        } else {
+            self.client().is_some()
+        };
+        if !ready {
             self.finish_one();
             return done.fail(Error::NoEngine);
         }
@@ -875,7 +1048,7 @@ impl Inner {
     /// refused (its callback then ran).
     fn acquire(&self, b: &Backend, w: Waiter) -> Option<Waiter> {
         // The fast way, while nobody waits: first come, first served.
-        if b.waiting.load(Ordering::SeqCst) == 0 && b.claim(self.max_conns) {
+        if b.waiting.load(Ordering::SeqCst) == 0 && b.claim(self.max_busy) {
             return Some(w);
         }
         let mut q = b.queue();
@@ -883,7 +1056,7 @@ impl Inner {
         // before it reads `waiting`: either this sees the slot released, or `release` sees this
         // waiting and takes the queue's lock, which this holds until it has queued.
         b.waiting.fetch_add(1, Ordering::SeqCst);
-        if b.claim(self.max_conns) {
+        if b.claim(self.max_busy) {
             b.waiting.fetch_sub(1, Ordering::SeqCst);
             return Some(w);
         }
@@ -907,18 +1080,21 @@ impl Inner {
         } = w;
         let limit = req.timeout.map_or(self.timeout, |t| t.min(self.timeout));
         let left = limit.saturating_sub(since.elapsed());
-        let (Some(b), Some(client)) = (self.backends.get(backend), self.client.get()) else {
-            // Neither happens: `send` checked both before the slot was taken.
-            self.release(backend);
-            self.finish_one();
-            return done.fail(Error::NoEngine);
-        };
         if left.is_zero() {
             self.release(backend);
             self.record(backend, true);
             self.finish_one();
             return done.fail(Error::Timeout);
         }
+        if self.h2.is_some() {
+            return self.start_h2(backend, req, done, since, left);
+        }
+        let (Some(b), Some(client)) = (self.backends.get(backend), self.client.get()) else {
+            // Neither happens: `send` checked both before the slot was taken.
+            self.release(backend);
+            self.finish_one();
+            return done.fail(Error::NoEngine);
+        };
         req.timeout = Some(left);
         req.url.insert_str(0, &b.base);
         let me = Arc::clone(self);
@@ -965,7 +1141,7 @@ impl Inner {
         }
         let next = {
             let mut q = b.queue();
-            if !q.is_empty() && b.claim(self.max_conns) {
+            if !q.is_empty() && b.claim(self.max_busy) {
                 b.waiting.fetch_sub(1, Ordering::SeqCst);
                 q.pop_front()
             } else {
@@ -993,6 +1169,11 @@ impl Inner {
         if self.in_flight.load(Ordering::SeqCst) != 0 || self.closed.swap(true, Ordering::SeqCst) {
             return;
         }
+        if self.h2.is_some() {
+            for b in self.backends.iter() {
+                b.h2.close_idle();
+            }
+        }
         let callbacks = std::mem::take(
             &mut *self
                 .on_closed
@@ -1019,15 +1200,19 @@ struct Streamed {
 
 impl ResponseHandler for Streamed {
     fn on_request_body(&mut self, body: RequestBody) {
-        self.x.on_request_body(body);
+        self.x.on_request_body(Upload(UploadKind::H1(body)));
     }
 
     fn on_head(&mut self, head: ResponseHead, body: ResponseBody) {
         self.headed = true;
         self.pool.stats.responses.observe(self.since.elapsed());
-        let body = Download {
+        let body = Download(DownloadKind::H1 {
             body,
             cancelled: self.cancelled.clone(),
+        });
+        let head = Head {
+            status: head.status,
+            headers: head.headers,
         };
         self.x.on_head(head, body);
     }
