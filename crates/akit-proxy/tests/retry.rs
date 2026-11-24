@@ -318,7 +318,10 @@ fn statuses() {
         bad_hits.load(Ordering::SeqCst),
         good_hits.load(Ordering::SeqCst),
     );
-    assert!(g == 10 && b >= 4, "503 address {b}, 200 address {g}");
+    // Every GET ends at the 200 address, and some went to the 503 one first and were sent
+    // again. How many did depends on the balancer's turns, one per CPU slot (I36), so on where
+    // the I/O threads run: at least one, not a share.
+    assert!(g == 10 && b >= 1, "503 address {b}, 200 address {g}");
     bad_hits.store(0, Ordering::SeqCst);
     let mut n503 = 0;
     for _ in 0..10 {
