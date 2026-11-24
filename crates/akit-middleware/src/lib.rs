@@ -2,8 +2,9 @@
 #![warn(clippy::unwrap_used)]
 //! akit's built-in middlewares: rewrites, headers, limits, authentication, compression and the rest of fit's.
 //!
-//! [`MODULES`] lists them for the registry. So far (I40): `rewrite`, `redirect` and `headers`, as
-//! fit's `middleware/rewrite` and `middleware/headers`. Each is compiled from its params when the
+//! [`MODULES`] lists them for the registry. So far: `rewrite`, `redirect` and `headers` (I40), as
+//! fit's `middleware/rewrite` and `middleware/headers`; `rate_limit`, `concurrency_limit` and
+//! `body_limit` (I41), as fit's `middleware/limit`. Each is compiled from its params when the
 //! config is, and wraps its route's handler once, then (rule 12); per request it runs inline on the
 //! I/O thread and never blocks.
 //!
@@ -11,6 +12,7 @@
 //! fill this crate in.
 
 mod headers;
+mod limit;
 mod redirect;
 mod rewrite;
 mod url;
@@ -20,9 +22,24 @@ use akit_runtime::{HandlerParams, Info};
 /// The middleware modules of this crate, for [`akit_runtime::Registry::new`].
 pub static MODULES: &[Info<HandlerParams>] = &[
     Info::middleware(
+        "http.middleware.body_limit",
+        "Limits the size of request bodies, answering 413 past it.",
+        limit::new_body,
+    ),
+    Info::middleware(
+        "http.middleware.concurrency_limit",
+        "Limits how many of a route's requests are under way at once.",
+        limit::new_concurrency,
+    ),
+    Info::middleware(
         "http.middleware.headers",
         "Sets, adds and deletes request and response header fields.",
         headers::new,
+    ),
+    Info::middleware(
+        "http.middleware.rate_limit",
+        "Limits the rate of requests, by client address, header field or route, allowing a burst.",
+        limit::new_rate,
     ),
     Info::middleware(
         "http.middleware.redirect",

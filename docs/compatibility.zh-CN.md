@@ -152,7 +152,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 113 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 129 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -184,16 +184,16 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`http.handlers/whep`](#fields-http-handlers-whep) | 4 | 0 | 4 |
 | [`http.handlers/whip`](#fields-http-handlers-whip) | 4 | 0 | 4 |
 | [`http.middleware/basic_auth`](#fields-http-middleware-basic-auth) | 8 | 0 | 8 |
-| [`http.middleware/body_limit`](#fields-http-middleware-body-limit) | 3 | 0 | 3 |
+| [`http.middleware/body_limit`](#fields-http-middleware-body-limit) | 3 | 3 | 0 |
 | [`http.middleware/cache`](#fields-http-middleware-cache) | 17 | 0 | 17 |
 | [`http.middleware/circuit_breaker`](#fields-http-middleware-circuit-breaker) | 10 | 0 | 10 |
 | [`http.middleware/client_cert`](#fields-http-middleware-client-cert) | 4 | 0 | 4 |
 | [`http.middleware/compress`](#fields-http-middleware-compress) | 10 | 0 | 10 |
-| [`http.middleware/concurrency_limit`](#fields-http-middleware-concurrency-limit) | 4 | 0 | 4 |
+| [`http.middleware/concurrency_limit`](#fields-http-middleware-concurrency-limit) | 4 | 4 | 0 |
 | [`http.middleware/forward_auth`](#fields-http-middleware-forward-auth) | 7 | 0 | 7 |
 | [`http.middleware/headers`](#fields-http-middleware-headers) | 10 | 10 | 0 |
 | [`http.middleware/jwt`](#fields-http-middleware-jwt) | 13 | 0 | 13 |
-| [`http.middleware/rate_limit`](#fields-http-middleware-rate-limit) | 9 | 0 | 9 |
+| [`http.middleware/rate_limit`](#fields-http-middleware-rate-limit) | 9 | 9 | 0 |
 | [`http.middleware/redirect`](#fields-http-middleware-redirect) | 5 | 5 | 0 |
 | [`http.middleware/rewrite`](#fields-http-middleware-rewrite) | 6 | 4 | 2 |
 | [`http.middleware/wasm`](#fields-http-middleware-wasm) | 18 | 0 | 18 |
@@ -277,7 +277,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 24 | 14 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **合计** | 3821 | 113 | 3708 |
+| **合计** | 3821 | 129 | 3692 |
 
 <a id="fields-access"></a>
 
@@ -1033,9 +1033,9 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
-| `routes[].middleware[]<body_limit>` | `module` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<body_limit>.params` | `object` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<body_limit>.params.max_bytes` | `integer, required` | 尚不支持（not supported yet） |
+| `routes[].middleware[]<body_limit>` | `module` | 已支持 |
+| `routes[].middleware[]<body_limit>.params` | `object` | 已支持 |
+| `routes[].middleware[]<body_limit>.params.max_bytes` | `integer, required` | 已支持 |
 
 <a id="fields-http-middleware-cache"></a>
 
@@ -1112,10 +1112,10 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
-| `routes[].middleware[]<concurrency_limit>` | `module` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<concurrency_limit>.params` | `object` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<concurrency_limit>.params.max` | `integer, required` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<concurrency_limit>.params.status` | `integer` | 尚不支持（not supported yet） |
+| `routes[].middleware[]<concurrency_limit>` | `module` | 已支持 |
+| `routes[].middleware[]<concurrency_limit>.params` | `object` | 已支持 |
+| `routes[].middleware[]<concurrency_limit>.params.max` | `integer, required` | 已支持 |
+| `routes[].middleware[]<concurrency_limit>.params.status` | `integer` | 已支持 |
 
 <a id="fields-http-middleware-forward-auth"></a>
 
@@ -1174,15 +1174,15 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
-| `routes[].middleware[]<rate_limit>` | `module` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<rate_limit>.params` | `object` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<rate_limit>.params.burst` | `integer` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<rate_limit>.params.ipv6_prefix` | `integer` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<rate_limit>.params.key` | `string` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<rate_limit>.params.max_keys` | `integer` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<rate_limit>.params.rate` | `number, required` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<rate_limit>.params.status` | `integer` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<rate_limit>.params.trusted_proxies` | `array<string>` | 尚不支持（not supported yet） |
+| `routes[].middleware[]<rate_limit>` | `module` | 已支持 |
+| `routes[].middleware[]<rate_limit>.params` | `object` | 已支持 |
+| `routes[].middleware[]<rate_limit>.params.burst` | `integer` | 已支持 |
+| `routes[].middleware[]<rate_limit>.params.ipv6_prefix` | `integer` | 已支持 |
+| `routes[].middleware[]<rate_limit>.params.key` | `string` | 已支持 |
+| `routes[].middleware[]<rate_limit>.params.max_keys` | `integer` | 已支持 |
+| `routes[].middleware[]<rate_limit>.params.rate` | `number, required` | 已支持 |
+| `routes[].middleware[]<rate_limit>.params.status` | `integer` | 已支持 |
+| `routes[].middleware[]<rate_limit>.params.trusted_proxies` | `array<string>` | 已支持 |
 
 <a id="fields-http-middleware-redirect"></a>
 

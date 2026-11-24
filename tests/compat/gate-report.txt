@@ -1,7 +1,7 @@
 # The compatibility gate's report (docs/compatibility.md), written by make compat-bless;
 # do not edit. The gate fails when a run's outcomes differ from these lines.
 # fit 7daee573, fit-examples 9659d7e4.
-# 80 fixtures: 11 valid, 68 refused only as not supported yet (fields refused: 71), 0 in a format not supported yet, 1 skipped, 0 failed.
+# 80 fixtures: 13 valid, 66 refused only as not supported yet (fields refused: 68), 0 in a format not supported yet, 1 skipped, 0 failed.
 examples/acme-on-demand: not supported yet: acme
 examples/acme-on-demand: not supported yet: listeners[].tls.acme
 examples/acme-on-demand: not supported yet: listeners[].tls.on_demand
@@ -17,14 +17,13 @@ examples/bittorrent: not supported yet: media_library
 examples/bittorrent: not supported yet: routes[].handler<bt_publish>
 examples/bittorrent: not supported yet: routes[].handler<bt_stream>
 examples/bittorrent: not supported yet: routes[].handler<bt_tracker>
-examples/body-limit: not supported yet: routes[].middleware[]<body_limit>
+examples/body-limit: valid
 examples/cache: not supported yet: routes[].middleware[]<cache>
 examples/circuit-breaker: not supported yet: routes[].middleware[]<circuit_breaker>
 examples/client-cert: not supported yet: acme
 examples/client-cert: not supported yet: listeners[].tls.acme
 examples/client-cert: not supported yet: routes[].middleware[]<client_cert>
 examples/compress: not supported yet: routes[].middleware[]<compress>
-examples/concurrency-limit: not supported yet: routes[].middleware[]<concurrency_limit>
 examples/concurrency-limit: not supported yet: upstreams[].response_timeout
 examples/console: not supported yet: admin.console
 examples/console: not supported yet: admin.store
@@ -84,8 +83,7 @@ examples/proxy: not supported yet: upstreams[].response_header_timeout
 examples/proxy: not supported yet: upstreams[].response_idle_timeout
 examples/proxy: not supported yet: upstreams[].response_timeout
 examples/proxy-protocol: not supported yet: listeners[].proxy_protocol
-examples/proxy-protocol: not supported yet: routes[].middleware[]<rate_limit>
-examples/rate-limit: not supported yet: routes[].middleware[]<rate_limit>
+examples/rate-limit: valid
 examples/redirect: not supported yet: routes[].middleware[]<redirect>.params.to: a group of regexp ($1, ${name}) in to: akio-regex does not capture groups yet (akio API request A32)
 examples/rewrite: not supported yet: routes[].middleware[]<rewrite>.params.regexp
 examples/rewrite: not supported yet: routes[].middleware[]<rewrite>.params.replacement

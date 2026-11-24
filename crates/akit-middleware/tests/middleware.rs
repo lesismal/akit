@@ -871,11 +871,7 @@ fn not_supported_yet() {
             "{}",
             "routes[0].middleware[0].module: not supported yet",
         ),
-        (
-            "rate_limit",
-            "{}",
-            "not supported yet: the \"rate_limit\" middleware",
-        ),
+        ("jwt", "{}", "not supported yet: the \"jwt\" middleware"),
     ] {
         let config = with_middleware(name, params);
         let e = akit_config::from_json(&config, None).unwrap_err();

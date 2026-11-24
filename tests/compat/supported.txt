@@ -167,6 +167,29 @@ routes[].middleware[]<headers>.params.response.set
 routes[].middleware[]<headers>.params.response.add
 routes[].middleware[]<headers>.params.response.delete
 
+# I41: the limit middleware, as fit's: rate_limit (token buckets by client address, header or
+# route, in shards shared by the I/O threads), concurrency_limit and body_limit. A streamed
+# response gives its concurrency place back when its head is sent, and a request whose client
+# went holds it until its handler lets it go (akio API request A48); a body streamed to its handler
+# with no declared length is held to body_limit by the handler (the proxy), as to the listener's
+# max_body_bytes (akio API request A49).
+routes[].middleware[]<rate_limit>
+routes[].middleware[]<rate_limit>.params
+routes[].middleware[]<rate_limit>.params.rate
+routes[].middleware[]<rate_limit>.params.burst
+routes[].middleware[]<rate_limit>.params.key
+routes[].middleware[]<rate_limit>.params.trusted_proxies
+routes[].middleware[]<rate_limit>.params.ipv6_prefix
+routes[].middleware[]<rate_limit>.params.max_keys
+routes[].middleware[]<rate_limit>.params.status
+routes[].middleware[]<concurrency_limit>
+routes[].middleware[]<concurrency_limit>.params
+routes[].middleware[]<concurrency_limit>.params.max
+routes[].middleware[]<concurrency_limit>.params.status
+routes[].middleware[]<body_limit>
+routes[].middleware[]<body_limit>.params
+routes[].middleware[]<body_limit>.params.max_bytes
+
 # I37: metrics, fit's request counting by listener and route for the Admin API's /metrics; it has
 # no settings. As in fit, it needs admin.
 metrics

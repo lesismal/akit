@@ -140,7 +140,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | **M3** | | | |
 | I39 | Matchers v2 and expressions | I11 | done |
 | I40 | Rewrites, redirects, headers | I39 | done |
-| I41 | Rate, concurrency and size limits | I39 | todo |
+| I41 | Rate, concurrency and size limits | I39 | done |
 | I42 | Basic auth and mTLS | I39 | todo |
 | I43 | ForwardAuth | I42 | todo |
 | I44 | JWT and JWKS | I42 | todo |
@@ -213,7 +213,8 @@ commit and result.
 | Prometheus metrics | I37 | no | no (built, not measured) | Same-run A/B of the fixed and proxy scenarios with `metrics` on and off (an inline route costs a thread-local read and three atomic adds; a proxied one also a boxed response filter until akio A29), and with the access log on too (one hook for both); a scrape with many routes and 64 threads (the per-thread shards). |
 | Matchers v2 and expressions | I39 | no | no (built, not measured) | A micro-benchmark of `find_request` with matchers, expressions and path regexps (no allocation, `tests/no_alloc.rs`); same-run A/B against I39's base on the fixed scenario (one route, no matchers: within noise expected). |
 | Rewrites, redirects, headers | I40 | no | no (built, not measured) | Same-run A/B on the proxy scenario of a route with `headers` (request and response changes) and `rewrite` against the same route without them; the cost per request of the response filter (a boxed closure and an `Arc` clone) and of the request fields kept in a context local (the stopgap until akio API request A33). |
-| Middlewares (limits, auth, retries and the rest) | I41–I48 | no | no (not built yet) | I56 benchmarks every middleware; same-run A/B of each on the proxy scenario. |
+| Rate, concurrency and size limits | I41 | no | no (built, not measured) | Same-run A/B on the proxy scenario of a route with each limit set high enough never to refuse, against the route without it: `rate_limit` by ip and by header (a shard lock, a SipHash, a map lookup), with 1, 1000 and 1000000 clients' keys and 64 threads (the shards' contention), as fit's `BenchmarkRate`; `concurrency_limit` (two atomic operations on one shared line, and a boxed response filter with an `Arc` clone until akio A48); `body_limit` (nothing per request but a field lookup). |
+| Middlewares (auth, retries and the rest) | I42–I48 | no | no (not built yet) | I56 benchmarks every middleware; same-run A/B of each on the proxy scenario. |
 | Compression | I47 | no | no (not built yet) | Against fit, each encoding, as I47 asks. |
 | WebSocket and gRPC proxying | I49, I50 | no | no (not built yet) | Messages a second and memory per connection against fit. |
 | TCP and UDP proxying, SNI routing, many protocols on one port | I51–I53 | no | no (not built yet) | Against fit and nginx's `stream`, as I51 asks; the cost of sniffing on a shared port. |

@@ -48,6 +48,8 @@
 | A33 | 被中间件修改的请求字段和请求目标（`Context::req_mut`） | 已提出（I40） | 12、19 | I40、I43、I44 |
 | A35 | 按长度分帧的流式 HTTP/1.1 响应 | 已提出（I16） | 5 | I16、I67 |
 | A45 | 公开的定时器：延迟过后运行一次回调，可从任何线程调度 | 已提出（I35） | 1、11 | I35、I31、I54 |
+| A48 | 获知请求的结束：响应已完整发出，或等待中客户端已离开 | 已提出（I41） | 3、11、13 | I41、I17、I21、I37 |
+| A49 | 由中间件限制请求体大小，无论谁读取请求体 | 已提出（I41） | 7、11 | I41 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -574,3 +576,41 @@ internals ... (use `akio`)"），没有任何地方重新导出。akio 的 `clau
 探测的地址最多有两个待运行任务：它的下一次探测和当前探测的超时）。有了这个 API 就替换它，探测的超时也改为取消，而不是
 留着运行。
 
+## A48 获知请求的结束：响应已完整发出，或客户端已离开
+
+**问题。** fit 的 `concurrency_limit` 把请求计为进行中，直到它的响应发出或客户端离开，用的是 fib 的 `OnFinish` 和
+`OnCancel`。akio-http 两者都不告诉服务：请求上唯一的钩子是响应过滤器（`Context::add_response_filter`），在响应头发出时
+运行。流式响应（`stream_response`，akit 的代理对超过 64 KiB 的响应体都用它）在响应体之前就运行它，于是请求在响应体
+还在发送时就离开了限制；而客户端在请求以 detach 方式等待时（上游很慢）离开，请求在处理器放开 `Detached` 之前什么也
+听不到，于是它的名额一直占着，直到上游回答或超时。过滤器的闭包还是装箱的，每个请求一次分配（A29 已记录）。
+
+**证据。** `crates/akio-http/src/context.rs`（`60547435`）：`Finish::apply` 在 `Out::send` 和 `start_stream` 中、
+即发送响应头时运行过滤器；`BodyStream::finish` 和它的析构不运行请求的任何东西；`Detached` 和 `BodyStream` 在被使用之前
+无从得知连接或流已关闭（`BodyStream::write` 只在写入时返回错误）。
+
+**建议的 API。** `Context::on_end(f: impl FnOnce(End) + Send)`，在请求结束时运行一次：响应完整写出后（流式响应的最后一个
+字节交给连接）为 `End::Sent`，连接或流先关闭时为 `End::Gone`，无论请求是在应答中、已 detach 还是都不是。接受几个字而
+不是装箱闭包的形式（如 A29 的观察者）可以不经过分配器。`Detached::on_gone(f)`（或可轮询的 `is_gone()`）让等待中的
+处理器在客户端离开时放弃上游的工作。
+
+**akit 的用法。** `concurrency_limit` 在 `on_end` 时归还请求的名额，与 fit 的 `OnFinish`/`OnCancel` 一样；现在它在响应头
+发出时，或请求未回答就被丢弃时归还（I41 进度条目中记录的临时方案）。代理（I17）在 `Gone` 时取消上游请求；访问日志
+（I21）和指标（I37）可以把流式响应的耗时算到它结束。
+
+## A49 由中间件限制请求体大小
+
+**问题。** fit 的 `body_limit`（fib 的 `Context.LimitBody`）为读取请求体的任何处理器限制请求体：流式请求体超过限制时，
+在处理器的 `OnBody` 中以 `ErrBodyTooLarge` 失败并回 413，HTTP/1 连接关闭而不是继续读剩下的部分。在 akio-http 中，只有
+监听器的 `HttpConfig::max_body_bytes` 限制缓冲的请求体；流式请求体（`BodyMode::Stream`）不受限制地交给处理器的 sink，
+中间件看不到也无法包装这个 sink（`Context::on_body` 会替换它；sink 是私有的）。
+
+**证据。** `crates/akio-http/src/context.rs`（`60547435`）：`on_body` 保存一个 sink，`deliver` 是 crate 私有的；
+`crates/akio-http/src/session.rs`：`max_body_bytes` 的检查只作用于缓冲的请求体及其声明的长度。
+
+**建议的 API。** `Context::limit_body(&mut self, max: u64)`，可在处理器设置 sink 之前或之后调用，降低本请求的上限：
+超过后 akio-http 以错误事件（`BodyEvent::TooLarge`，或与 `Chunk`、`End` 并列的 `Err`）结束交付，除非响应已经开始，
+否则回 413，并在 HTTP/1 上于回答发出后关闭连接而不是继续读（配合 A24）；HTTP/2 和 HTTP/3 重置该流。
+
+**akit 的用法。** `body_limit` 对每个请求调用它，去掉临时方案：没有声明长度的流式请求体只由读取 akit-runtime 的
+`MAX_BODY_BYTES` 本地值的处理器（代理）限制，中间件会调低该值；缓冲的请求体在全部到达后检查（I41 进度条目中记录的
+临时方案）。监听器自己对流式请求体的 `max_body_bytes` 也改用它。

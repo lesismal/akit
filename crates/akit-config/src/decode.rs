@@ -111,6 +111,21 @@ impl<'s> Decoder<'s> {
         Some(v)
     }
 
+    /// A number, as fit's `float64` fields take it: any JSON number.
+    pub(crate) fn number(&mut self, n: &Node, path: &str) -> Option<f64> {
+        let Kind::Number(raw) = &n.kind else {
+            self.expected(n, path, "a number");
+            return None;
+        };
+        match raw.parse::<f64>() {
+            Ok(v) if v.is_finite() => Some(v),
+            _ => {
+                self.error(n.off, path, format!("{raw} is not a number in range"));
+                None
+            }
+        }
+    }
+
     /// A duration, written as a string Go's `time.ParseDuration` takes (`"10s"`, `"1m30s"`,
     /// `"250ms"`), not negative: fit's `config.Duration`.
     pub(crate) fn duration(&mut self, n: &Node, path: &str) -> Option<std::time::Duration> {

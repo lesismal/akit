@@ -33,17 +33,17 @@ use std::path::{Path, PathBuf};
 pub use error::{Error, Errors, NOT_SUPPORTED_YET};
 pub use json::MAX_DEPTH;
 pub use model::{
-    AccessLevel, AccessLog, Admin, Certificate, ClientAuth, ClientAuthMode, Config,
-    DEFAULT_ADMIN_ADDRESS, DEFAULT_ADMIN_HISTORY, DEFAULT_ADMIN_MAX_CONFIG_BYTES,
-    DEFAULT_ADMIN_MAX_CONNS, DEFAULT_BROWSE_MAX_ENTRIES, DEFAULT_BUFFER_BYTES,
-    DEFAULT_CHECK_INTERVAL, DEFAULT_CONNECT_TIMEOUT, DEFAULT_FAIL_TIMEOUT, DEFAULT_FLUSH_INTERVAL,
-    DEFAULT_HEALTH_INTERVAL, DEFAULT_HEALTH_THRESHOLD, DEFAULT_HEALTH_TIMEOUT,
-    DEFAULT_IDLE_TIMEOUT, DEFAULT_MAX_BODY_BYTES, DEFAULT_MAX_CONNS, DEFAULT_MAX_FAILS,
-    DEFAULT_MAX_FILE_BYTES, DEFAULT_MAX_IDLE_CONNS, DEFAULT_MAX_PENDING, DEFAULT_PROTOCOLS,
-    DEFAULT_TLS_PROTOCOLS, Dotfiles, Encoding, Handler, HeaderOps, Headers, HealthCheck,
-    HealthCheckType, Limits, Listener, LoadBalancing, LogFormat, MAX_WEIGHT, Match, Metrics,
-    Network, Protocol, Proxy, Redirect, Respond, Rewrite, Route, SCHEMA_VERSION, Static, Tls,
-    TlsVersion, Upstream,
+    AccessLevel, AccessLog, Admin, BodyLimit, Certificate, ClientAuth, ClientAuthMode,
+    ConcurrencyLimit, Config, DEFAULT_ADMIN_ADDRESS, DEFAULT_ADMIN_HISTORY,
+    DEFAULT_ADMIN_MAX_CONFIG_BYTES, DEFAULT_ADMIN_MAX_CONNS, DEFAULT_BROWSE_MAX_ENTRIES,
+    DEFAULT_BUFFER_BYTES, DEFAULT_CHECK_INTERVAL, DEFAULT_CONNECT_TIMEOUT, DEFAULT_FAIL_TIMEOUT,
+    DEFAULT_FLUSH_INTERVAL, DEFAULT_HEALTH_INTERVAL, DEFAULT_HEALTH_THRESHOLD,
+    DEFAULT_HEALTH_TIMEOUT, DEFAULT_IDLE_TIMEOUT, DEFAULT_MAX_BODY_BYTES, DEFAULT_MAX_CONNS,
+    DEFAULT_MAX_FAILS, DEFAULT_MAX_FILE_BYTES, DEFAULT_MAX_IDLE_CONNS, DEFAULT_MAX_PENDING,
+    DEFAULT_PROTOCOLS, DEFAULT_RATE_MAX_KEYS, DEFAULT_TLS_PROTOCOLS, Dotfiles, Encoding, Handler,
+    HeaderOps, Headers, HealthCheck, HealthCheckType, Limits, Listener, LoadBalancing, LogFormat,
+    MAX_WEIGHT, Match, Metrics, Network, Protocol, Proxy, RateKey, RateLimit, Redirect, Respond,
+    Rewrite, Route, SCHEMA_VERSION, Static, Tls, TlsVersion, Upstream,
 };
 
 /// The largest config document read, in bytes: fit's own configs are kilobytes; this bounds
