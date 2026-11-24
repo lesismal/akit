@@ -15,7 +15,7 @@
 | fit | 作为规格；本计划基于 `7daee573` 阅读 |
 | 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；基于 akio 的 A1 保留、增加、修改和排空监听器，包括启动时的监听器，重载可新增 h3 监听器；服务 h3 的启动监听器要重启才能变）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`）；所有监听器和代理上的 `limits.max_body_bytes`（413）；代理的 body 双向流式转发，带联动背压，按长度或分块；fit 的 json、text 和 line 格式的访问日志；上游连接池，轮询、加权轮询和最少连接，跳过被被动健康检查（`max_fails`、`fail_timeout`）下线的地址；兼容性门禁：80 个夹具，9 个有效，70 个只因暂不支持被拒绝，1 个跳过，没有失败 |
 | 下一步 | I17 |
-| akio 需求 | A1–A5、A7、A8、A11、A13、A16–A21 已在 akio 的 main 并已锁定；A6 在 akio 分支 `claude/x509-csr` 上；A9、A10、A12、A14、A15、A22 和 A23 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
+| akio 需求 | A1–A5、A7、A8、A11、A13、A16–A21 已在 akio 的 main 并已锁定；A6 在 akio 分支 `claude/x509-csr` 上；A9、A10、A12、A14、A15、A22 和 A35 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
 
 ## 日志
 
@@ -267,7 +267,7 @@
   HTTP/1.1 不到 1 秒（测试的客户端每次只归还一帧的窗口）；没有进一步测量（规则 30）。
 - 与计划和 fit 的差异：
   - 流式发送的 HTTP/1.1 响应按分块发送，去掉 `Content-Length`：akio 还不能按长度为流式 HTTP/1.1 响应分帧（akio API
-    需求 A23）。HTTP/2 和 HTTP/3 保留它。整体发送的响应（64 KiB 以内）在所有协议上都保留它。
+    需求 A35）。HTTP/2 和 HTTP/3 保留它。整体发送的响应（64 KiB 以内）在所有协议上都保留它。
   - fit 的 splice 上传（`spliceMinBody`，用 splice(2) 从客户端的 socket 到上游的 socket）没有移植：akio 在服务端
     连接和客户端连接之间没有 splice。应由基准测试判断是否值得提一个 akio 需求。
   - 停止读取的客户端会占住其上游直到交换超时（1 小时）：fit 的 `write_stall_timeout` 和 `response_idle_timeout`

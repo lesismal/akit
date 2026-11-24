@@ -16,7 +16,7 @@ done and where the work differs from the plan.
 | fit | the specification; read at `7daee573` for this plan |
 | What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept, added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`); `limits.max_body_bytes` on every listener (413) and in the proxy; proxied bodies streamed both ways with linked backpressure, by length or chunked; access logs in fit's json, text and line formats; upstream pools with round robin, weighted round robin and least connections, passing over addresses taken out by passive health checks (`max_fails`, `fail_timeout`); the compatibility gate: 80 fixtures, 9 valid, 70 refused only as not supported yet, 1 skipped, none failed |
 | Next | I17 |
-| akio requests | A1–A5, A7, A8, A11, A13 and A16–A21 on akio's main and pinned; A6 on akio branch `claude/x509-csr`; A9, A10, A12, A14, A15, A22 and A23 requested ([akio API requests](akio-api-requests.md)) |
+| akio requests | A1–A5, A7, A8, A11, A13 and A16–A21 on akio's main and pinned; A6 on akio branch `claude/x509-csr`; A9, A10, A12, A14, A15, A22 and A35 requested ([akio API requests](akio-api-requests.md)) |
 
 ## Log
 
@@ -360,7 +360,7 @@ done and where the work differs from the plan.
   frame at a time); not measured further (rule 30).
 - Differences from the plan and from fit:
   - An HTTP/1.1 response that streams goes chunked, its `Content-Length` dropped: akio cannot
-    frame a streamed HTTP/1.1 response by its length yet (akio API request A23). HTTP/2 and
+    frame a streamed HTTP/1.1 response by its length yet (akio API request A35). HTTP/2 and
     HTTP/3 keep it. A whole response (within 64 KiB) keeps it everywhere.
   - fit's spliced uploads (`spliceMinBody`, splice(2) from the client's socket to the
     upstream's) are not ported: akio has no splice between a server and a client connection. A

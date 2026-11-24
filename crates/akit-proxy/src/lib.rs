@@ -34,7 +34,7 @@
 //! - A response body of a length within 64 KiB is sent whole; any other as it arrives, the
 //!   upstream's reads held while the client is behind. akio sends an HTTP/1.1 response that
 //!   streams chunked, its length dropped, until it can frame one by its length (akio API request
-//!   A23); HTTP/2 and HTTP/3 keep it. A response that breaks off mid-body closes the client's
+//!   A35); HTTP/2 and HTTP/3 keep it. A response that breaks off mid-body closes the client's
 //!   connection, which tells the client its body is short.
 //!
 //! I17 brings the timeouts (fit's `write_stall_timeout` for a client that stops reading among

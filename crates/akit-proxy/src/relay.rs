@@ -381,7 +381,7 @@ impl Exchange for Relay {
             return;
         };
         // HTTP/2 and HTTP/3 keep the length; akio sends an HTTP/1.1 response that streams
-        // chunked, and has no way yet to send it framed by its length (akio API request A23).
+        // chunked, and has no way yet to send it framed by its length (akio API request A35).
         let keep_length =
             length.is_some() && matches!(self.version, Version::Http2 | Version::Http3);
         let fields = headers::incoming(&head.headers, keep_length);

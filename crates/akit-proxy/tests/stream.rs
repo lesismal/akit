@@ -612,7 +612,7 @@ fn stream_download() {
         } else {
             let (head, n) = h1_download(akit.addr, length);
             assert!(head.starts_with("HTTP/1.1 200"), "{name}: {head}");
-            // akio streams an HTTP/1.1 response chunked, whatever its length (akio API A23).
+            // akio streams an HTTP/1.1 response chunked, whatever its length (akio API A35).
             assert_eq!(field(&head, "transfer-encoding"), Some("chunked"), "{name}");
             n
         };

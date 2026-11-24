@@ -41,7 +41,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | A20 | An HTTP client response delivered as it arrives, its reads held and resumed | in akio's main (`60547435`), pinned, used by I16 | 5, 8 | I16, I17, I18, I67 |
 | A21 | A server request that holds its client's reads and hears when its client drained | in akio's main (`60547435`), pinned, used by I16 | 5, 8 | I16, I47, I75 |
 | A22 | UDP listeners removed and drained on a running engine | requested (I22) | 10, 11 | I22, I28 |
-| A23 | A streamed HTTP/1.1 response framed by its length | requested (I16) | 5 | I16, I67 |
+| A35 | A streamed HTTP/1.1 response framed by its length | requested (I16) | 5 | I16, I67 |
 
 ## A1 TCP listeners on a running engine
 
@@ -492,7 +492,7 @@ close those left at the deadline), and `Engine::add_listener` for a UDP listener
 **How akit uses it.** `akit_listener::Listeners::reload` (I22, I28) removes and drains a
 listener's HTTP/3 as it does its TCP side, and the `ReloadError::Udp` refusal goes.
 
-## A23 A streamed HTTP/1.1 response framed by its length
+## A35 A streamed HTTP/1.1 response framed by its length
 
 **Problem.** A proxy that streams an upstream's response of a known length should send it with
 that length, as fit does: the client then knows how much is coming (a download's progress, a
