@@ -129,7 +129,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I26 | Admin API I: load, read, versions | I22 | done |
 | I27 | Admin API II: patch, rollback, auth | I26 | done |
 | I28 | Listeners diffed at run time | I26, A1 | done |
-| I29 | File provider | I26 | todo |
+| I29 | File provider | I26 | done |
 | I30 | Certificate manager and storage | I09 | done |
 | I31 | ACME I: account, orders, HTTP-01 | I30 | done |
 | I32 | ACME II: TLS-ALPN-01, renewal, OCSP | I31 | done |

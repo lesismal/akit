@@ -15,7 +15,11 @@
 //!   `-watch-certs` (on by default, as fit's), the certificate, key and authority files the
 //!   running config loaded are looked at every `-watch-interval`, and once a change has settled
 //!   the running config is applied again as a new version (I30): a listener whose files changed
-//!   only in their certificates is kept, and its next handshakes get the new ones.
+//!   only in their certificates is kept, and its next handshakes get the new ones. With `-watch`
+//!   (I29, fit's file provider), the config's files are looked at every `-watch-interval` too,
+//!   and once a change has settled for 500ms, and the files hold something other than what was
+//!   applied last, they are applied as SIGHUP applies them: a file added to a directory, or taken
+//!   out, is a change too; a broken edit is reported once and the running config stays.
 //!   One metrics registry serves the process (I37): the graphs share their upstreams' counters
 //!   through it and, with `metrics`, count their requests in it; every reload (SIGHUP, the Admin
 //!   API, the certificate files) is counted; the Admin API serves the scrape at `GET /metrics`.
@@ -29,8 +33,11 @@ use std::process::ExitCode;
 use std::sync::{Arc, mpsc};
 use std::time::{Duration, Instant};
 
-use akit_admin::{Applied, ApplyError, Configs, ListenerChange, Mode, Outcome, Refused};
-use akit_config::{Config, Error, Errors, LogFormat};
+use akit_admin::{
+    Applied, ApplyError, Configs, ListenerChange, Mode, Outcome, Refused, WatchOptions,
+    WatchReport, Watcher,
+};
+use akit_config::{Config, ConfigFile, Error, Errors, LogFormat};
 use akit_observe::metrics::{ConfigStats, Metrics};
 use akit_observe::{AccessLog, Format, Zone};
 use akit_runtime::upstream::EngineSlot;
@@ -66,22 +73,22 @@ const RUN_FLAGS: &[Spec] = &[
         bool: false,
         usage: "how long shutdown waits for requests in flight before closing their connections (default 30s)",
     },
-    // fit's, not supported yet: refused when given.
     Spec {
         name: "watch",
         bool: true,
-        usage: "not supported yet (I29)",
+        usage: "apply the config again each time one of its files changes, or a directory's files are added or taken out, as SIGHUP does",
     },
     Spec {
         name: "watch-interval",
         bool: false,
-        usage: "how often watched files are looked at: certificate files, with -watch-certs (default 1s)",
+        usage: "how often watched files are looked at: the config's, with -watch, and certificate files, with -watch-certs (default 1s)",
     },
     Spec {
         name: "watch-certs",
         bool: true,
         usage: "apply the running config again each time the certificate or key files it loaded change (default true)",
     },
+    // fit's, not supported yet: refused when given.
     Spec {
         name: "admin",
         bool: true,
@@ -156,11 +163,20 @@ impl Failure {
     }
 }
 
-/// Reads the config at `paths`, with the config as one JSON document (what the Admin API keeps of
-/// it) and the zone its access log's `time_zone` names, which is loaded here, as fit's validation
-/// loads it.
-fn read_config(paths: &[String]) -> Result<(Config, String, Option<Zone>), Failure> {
-    let (config, json) = akit_config::load_files(paths).map_err(Failure::Config)?;
+/// A config read: the config, as one JSON document too (what the Admin API keeps of it), and the
+/// zone its access log's `time_zone` names, which is loaded here, as fit's validation loads it.
+type Loaded = (Config, String, Option<Zone>);
+
+/// Reads the config at `paths`, as [`load`] reads it, with the files it was read from (what
+/// `-watch` compares the files with).
+fn read_config(paths: &[String]) -> Result<(Loaded, Vec<ConfigFile>), Failure> {
+    let files = akit_config::read_config_files(paths).map_err(Failure::Config)?;
+    Ok((load(&files)?, files))
+}
+
+/// The config `files` hold.
+fn load(files: &[ConfigFile]) -> Result<Loaded, Failure> {
+    let (config, json) = akit_config::load_config_files(files).map_err(Failure::Config)?;
     let zone = time_zone(&config)?;
     Ok((config, json, zone))
 }
@@ -205,7 +221,7 @@ fn compile_config(
 
 /// Reads and compiles the config at `paths`, as [`read_config`] and [`compile_config`].
 fn read(paths: &[String], engine: &EngineSlot, log: Option<&AccessLog>) -> Result<Graph, Failure> {
-    let (config, _, _) = read_config(paths)?;
+    let ((config, _, _), _) = read_config(paths)?;
     compile_config(&config, engine, log, &Metrics::new(), None)
 }
 
@@ -387,16 +403,40 @@ fn applied(r: &akit_listener::Reloaded, warnings: Vec<String>) -> Applied {
 
 /// SIGHUP: reads the config at `paths` again and, when it compiles and its listeners can be
 /// served, applies it as a new version; otherwise the running config stays. Says what happened
-/// as fit says it.
-fn reload(paths: &[String], configs: &Configs, runner: &mut Runner<'_>) {
+/// as fit says it. The file provider, when there is one, is told what was read, so that it does
+/// not apply the same again.
+fn reload(
+    paths: &[String],
+    configs: &Configs,
+    runner: &mut Runner<'_>,
+    watcher: Option<&mut Watcher>,
+) {
     let name = paths.join(", ");
     println!("akit: reloading {name}");
-    let (config, json, zone) = match read_config(paths) {
+    let files = match akit_config::read_config_files(paths) {
+        Ok(f) => f,
+        Err(errs) => {
+            runner.stats.reloaded(false);
+            eprintln!("akit: reload failed; the running config stays");
+            print_errors(&name, &errs);
+            return;
+        }
+    };
+    if let Some(w) = watcher {
+        w.applied(&files);
+    }
+    apply_files(&name, &files, configs, runner);
+}
+
+/// Applies the config `files` hold, named `name`, as a new version from the files, for SIGHUP and
+/// `-watch` (I29); on any failure the running config stays. Says what happened as fit says it.
+fn apply_files(name: &str, files: &[ConfigFile], configs: &Configs, runner: &mut Runner<'_>) {
+    let (config, json, zone) = match load(files) {
         Ok(r) => r,
         Err(f) => {
             runner.stats.reloaded(false);
             eprintln!("akit: reload failed; the running config stays");
-            f.print(&name);
+            f.print(name);
             return;
         }
     };
@@ -409,7 +449,7 @@ fn reload(paths: &[String], configs: &Configs, runner: &mut Runner<'_>) {
         }
         Err(Refused::Apply(ApplyError::Config(errs))) => {
             eprintln!("akit: reload failed; the running config stays");
-            print_errors(&name, &errs);
+            print_errors(name, &errs);
         }
         Err(Refused::Apply(ApplyError::Failed(e))) => {
             eprintln!("akit: reload failed; the running config stays: {e}");
@@ -550,11 +590,13 @@ fn run(args: &[String]) -> ExitCode {
         Err(u) => return usage_error(&u),
     };
     let mut grace = Duration::from_secs(30);
+    let mut watch = false;
     let mut watch_certs = true;
     let mut watch_interval = akit_tls::DEFAULT_WATCH_INTERVAL;
     for (name, value) in &flags {
         match *name {
             "c" => {}
+            "watch" => watch = value == "true",
             "watch-certs" => watch_certs = value == "true",
             "watch-interval" => match flags::parse_duration(value) {
                 Some(d) if !d.is_zero() => watch_interval = d,
@@ -585,7 +627,7 @@ fn run(args: &[String]) -> ExitCode {
     // from the graph's listeners: they reach it through this slot, filled once it is built.
     let slot = EngineSlot::new();
     let name = paths.join(", ");
-    let (config, json, zone) = match read_config(&paths) {
+    let ((config, json, zone), files) = match read_config(&paths) {
         Ok(c) => c,
         Err(f) => {
             f.print(&name);
@@ -726,17 +768,28 @@ fn run(args: &[String]) -> ExitCode {
     };
     // The certificate files watched (fit's -watch-certs), on this thread, every interval: the
     // running config's version number and the files it loaded tell the watcher what it loaded.
-    let mut watcher = watch_certs.then(|| {
-        (
-            FileWatcher::new(akit_tls::DEFAULT_WATCH_DEBOUNCE),
-            Instant::now(),
-        )
+    let mut watcher = watch_certs.then(|| FileWatcher::new(akit_tls::DEFAULT_WATCH_DEBOUNCE));
+    // The config's files watched (fit's -watch, I29), on this thread, every interval, each change
+    // applied through the same `Configs` as SIGHUP and the Admin API.
+    let mut provider = watch.then(|| {
+        let mut opts = WatchOptions::default();
+        opts.expand = Some(Box::new(|paths: &[String]| {
+            akit_config::config_files(paths)
+                .map(|fs| fs.iter().map(|f| f.display().to_string()).collect())
+                .map_err(|e| e.to_string())
+        }));
+        Watcher::new(&paths, &files, opts)
     });
+    drop(files);
+    if provider.is_some() {
+        println!("akit: watching {name}");
+    }
+    let mut at = Instant::now();
     loop {
         // Graphs replaced by a reload are retired from here once no request uses them
         // (decision 004): after each swap, and on a timer while any is left.
         let mut wait = (cell.retiring() > 0).then_some(COLLECT_EVERY);
-        if let Some((_, at)) = &watcher {
+        if watcher.is_some() || provider.is_some() {
             let until = at.saturating_duration_since(Instant::now());
             wait = Some(wait.map_or(until, |w| w.min(until)));
         }
@@ -745,10 +798,20 @@ fn run(args: &[String]) -> ExitCode {
             Some(wait) => match control.recv_timeout(wait) {
                 Ok(c) => Some(c),
                 Err(mpsc::RecvTimeoutError::Timeout) => {
-                    if let Some((w, at)) = &mut watcher {
-                        let now = Instant::now();
-                        if now >= *at {
-                            *at = now.checked_add(watch_interval).unwrap_or(now);
+                    let now = Instant::now();
+                    if now >= at && (watcher.is_some() || provider.is_some()) {
+                        at = now.checked_add(watch_interval).unwrap_or(now);
+                        if let Some(p) = &mut provider {
+                            let r = p.tick(now, |files| {
+                                println!("akit: {name} changed; reloading");
+                                apply_files(&name, files, &configs, &mut runner);
+                                Ok::<(), ()>(()) // apply_files said what happened
+                            });
+                            if let Some(WatchReport::Unreadable(e)) = r {
+                                eprintln!("akit: watching {name}: {e}");
+                            }
+                        }
+                        if let Some(w) = &mut watcher {
                             let files = runner.cert_files.clone();
                             let version = configs.current().number;
                             if let Some(Report::Unreadable(e)) =
@@ -772,7 +835,7 @@ fn run(args: &[String]) -> ExitCode {
         match next {
             Some(Control::Stop) | None => break,
             Some(Control::Hangup) => {
-                reload(&paths, &configs, &mut runner);
+                reload(&paths, &configs, &mut runner, provider.as_mut());
                 cell.collect();
             }
             Some(Control::Admin(job)) => {

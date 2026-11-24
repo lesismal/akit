@@ -10,14 +10,54 @@
 | | |
 | --- | --- |
 | 最后更新 | 2026-11-24 |
-| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I24 已完成（I17b 和 I18b 等待 akio）；M2 的 I26–I28、I30–I32、I35–I37 和 M3 的 I39–I42 已提前完成。 |
+| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I24 已完成（I17b 和 I18b 等待 akio）；M2 的 I26–I32、I35–I37 和 M3 的 I39–I42 已提前完成。 |
 | akio | akio `main` 上的 `4f7169c4`（`1.0.0-rc.1`，带 A1–A8、A11、A13、A16–A21、A36–A38 和 A63–A65），在 `Cargo.toml` 中按 `rev` 锁定 |
 | fit | 作为规格；本计划基于 `7daee573` 阅读 |
-| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；基于 akio 的 A1 保留（按 fit 的 `binding.same`：证书文件和 ACME 名字可以变）、增加、修改和排空监听器，包括启动时的监听器，重载可新增 h3 监听器；服务 h3 的启动监听器要重启才能变）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证；按 fit 的方式每次握手选择证书，重载或 `-watch-certs` 替换证书而不关闭监听器）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；路由中间件：`rewrite`（前缀）、`redirect`、`headers`、`rate_limit`、`concurrency_limit`、`body_limit`、`basic_auth`（bcrypt，在 akio 的线程池上校验）和 `client_cert`（按路由的 mTLS）；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`、双向流式转发 body 并联动背压，双向透传 trailer，`timeout` 和上游的 `response_timeout`，超时回答 504，客户端在 body 中途离开时放弃上游请求；经 HTTP/1.1、h2c 和 h2 访问上游）；所有监听器和代理上的 `limits.max_body_bytes`（413）；fit 的 json、text 和 line 格式的访问日志；上游连接池，fit 的九种负载均衡策略（轮询、加权轮询、最少连接、随机、p2c，以及按客户端 IP、路径、头或 cookie 的一致性哈希）和会话保持 cookie，跳过被被动健康检查（`max_fails`、`fail_timeout`）和主动健康检查（`health_check`：http 和 tcp 探测）下线的地址；回环地址上的 Admin API（`GET /config`，也可按 JSON 指针读取，`POST /load`，用 `PUT`、`PATCH` 和 `DELETE /config` 按指针编辑，`POST /rollback/{n}`，`POST /reload`，都带 `If-Match`，除回滚外都可 `?dry_run=1`，`GET /versions`；有 `token_file` 时每个请求都要带 bearer 令牌），修改与 SIGHUP 一样作为重载应用，两者共用一份历史记录；Admin API 的 `GET /metrics` 提供 fit 的 Prometheus 指标（有 `metrics` 时按监听器和路由的请求、上游和后端、证书、连接、重载、akio 的引擎）；为监听器在 `tls.acme` 中所列的名字通过 HTTP-01 用 ACME 获取证书，保存在存储中并续期兼容性门禁：80 个夹具，18 个有效，61 个只因暂不支持被拒绝，1 个跳过，没有失败兼容性门禁：80 个夹具，11 个有效，68 个只因暂不支持被拒绝，1 个跳过，没有失败为监听器在 `tls.acme` 中所列的名字通过 HTTP-01 或 TLS-ALPN-01 用 ACME 获取证书，保存在存储中，按有效期或 CA 的续期信息（ARI）续期，并装订其 OCSP 响应；兼容性门禁：80 个夹具，15 个有效，64 个只因暂不支持被拒绝，1 个跳过，没有失败为监听器在 `tls.acme` 中所列的名字通过 HTTP-01 用 ACME 获取证书，保存在存储中并续期；兼容性门禁：80 个夹具，18 个有效，61 个只因暂不支持被拒绝，1 个跳过，没有失败 |
+| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；基于 akio 的 A1 保留（按 fit 的 `binding.same`：证书文件和 ACME 名字可以变）、增加、修改和排空监听器，包括启动时的监听器，重载可新增 h3 监听器；服务 h3 的启动监听器要重启才能变）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证；按 fit 的方式每次握手选择证书，重载或 `-watch-certs` 替换证书而不关闭监听器）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；路由中间件：`rewrite`（前缀）、`redirect`、`headers`、`rate_limit`、`concurrency_limit`、`body_limit`、`basic_auth`（bcrypt，在 akio 的线程池上校验）和 `client_cert`（按路由的 mTLS）；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`、双向流式转发 body 并联动背压，双向透传 trailer，`timeout` 和上游的 `response_timeout`，超时回答 504，客户端在 body 中途离开时放弃上游请求；经 HTTP/1.1、h2c 和 h2 访问上游）；所有监听器和代理上的 `limits.max_body_bytes`（413）；fit 的 json、text 和 line 格式的访问日志；上游连接池，fit 的九种负载均衡策略（轮询、加权轮询、最少连接、随机、p2c，以及按客户端 IP、路径、头或 cookie 的一致性哈希）和会话保持 cookie，跳过被被动健康检查（`max_fails`、`fail_timeout`）和主动健康检查（`health_check`：http 和 tcp 探测）下线的地址；回环地址上的 Admin API（`GET /config`，也可按 JSON 指针读取，`POST /load`，用 `PUT`、`PATCH` 和 `DELETE /config` 按指针编辑，`POST /rollback/{n}`，`POST /reload`，都带 `If-Match`，除回滚外都可 `?dry_run=1`，`GET /versions`；有 `token_file` 时每个请求都要带 bearer 令牌），修改与 SIGHUP 一样作为重载应用，两者共用一份历史记录；`run -watch` 在配置文件每次变化时应用它们（fit 的文件 provider，轮询）；Admin API 的 `GET /metrics` 提供 fit 的 Prometheus 指标（有 `metrics` 时按监听器和路由的请求、上游和后端、证书、连接、重载、akio 的引擎）；为监听器在 `tls.acme` 中所列的名字通过 HTTP-01 用 ACME 获取证书，保存在存储中并续期兼容性门禁：80 个夹具，18 个有效，61 个只因暂不支持被拒绝，1 个跳过，没有失败兼容性门禁：80 个夹具，11 个有效，68 个只因暂不支持被拒绝，1 个跳过，没有失败为监听器在 `tls.acme` 中所列的名字通过 HTTP-01 或 TLS-ALPN-01 用 ACME 获取证书，保存在存储中，按有效期或 CA 的续期信息（ARI）续期，并装订其 OCSP 响应；兼容性门禁：80 个夹具，15 个有效，64 个只因暂不支持被拒绝，1 个跳过，没有失败为监听器在 `tls.acme` 中所列的名字通过 HTTP-01 用 ACME 获取证书，保存在存储中并续期；兼容性门禁：80 个夹具，18 个有效，61 个只因暂不支持被拒绝，1 个跳过，没有失败 |
 | 下一步 | I17b（akio 已有 A36–A38）；akio 有了 A51–A53 后做 I18b |
 | akio 需求 | A1–A8、A11、A13、A16–A21、A36–A38、A63–A65 已在 akio 的 main 并已锁定；A9、A10、A12、A14、A15、A22–A24、A29、A30、A32、A33、A35、A45、A48、A49、A51–A54、A57 和 A58 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
 
 ## 日志
+
+### 2026-11-24：I29，文件 provider
+
+- `akit run -watch`（fit 的文件 provider，`provider/file`，对应 fit 的 `run -watch`）：每隔
+  `-watch-interval`（1s）查看一次配置的文件，变更稳定 500 ms 之后，且文件内容与上次应用的不同
+  （文件名和内容的 SHA-256）时，像 SIGHUP 一样应用它们：通过 `Configs::update` 生成来源为 `file`
+  的新版本，与 SIGHUP 和 Admin API 走同一条路径（先输出 `akit: FILES changed; reloading`，然后是
+  fit 的重载输出）。按 fit 的决定（fit 的决策 006）它轮询大小和修改时间，而不是向系统要事件：
+  不引入依赖，在所有系统上表现一致，被改名替换到位的文件和原地写入的文件都能看到。`-c` 指定的
+  路径对应的文件在每次查看时重新查找（`akit_config::config_files`），所以目录里新增或移走文件
+  也算变更。错误的修改只报告一次（fit 的输出和错误），正在运行的配置保留到下一次修改；读不了的
+  文件（被删除、正在替换）只报告一次（`akit: watching FILES: ...`），恢复后再应用；只是 touch，
+  或者改了又改回去，不会应用任何东西。SIGHUP 会把它读到并应用的内容告诉监视器，监视器不会再应用
+  一次。所有文件合计最多读 64 MiB（`akit_config::MAX_CONFIG_BYTES`），与 fit 相同。
+- `akit_admin::Watcher`（`crates/akit-admin/src/watch.rs`），即 fit 的 `file.Watcher`，带
+  `WatchOptions`（防抖时间、最多读取多少、路径如何展开），`tick(now, apply)` 返回
+  `WatchReport`（`Unreadable(WatchError)` 或 `Failed`），以及 `applied(files)`。它和 fit 一样
+  从"文件刚刚变过"的状态开始，所以在读取配置之后、监视器启动之前的修改也会被应用。
+- `akit-config`：`ConfigFile`（文件的路径和字节）、`read_config_files`（与之前一样有上限）和
+  `load_config_files`（从已读取的文件得到配置及其 JSON 文档）；`load_files` 和 `from_files`
+  基于它们实现。`akit run` 在启动和 SIGHUP 时只读一次文件，并加载读到的内容，使监视器比较的
+  正好是已应用的内容。
+- 测试：`akit-admin/tests/watch.rs`（12 个，fit 的 `provider/file` 测试：修改、改名替换到位、
+  touch、监视前的修改、连续写入只应用一次、错误修改只报告一次且下一次修改被应用、文件删除后恢复、
+  文件过大、以其他方式应用过的内容、目录中新增和移走文件、akit 自己的目录读取、默认值、找不到的
+  文件、把目录当文件读）；`akit/tests/watch.rs`（2 个，用 `akit run -watch` 端到端，对应 fit 的
+  `TestServeWatch`、`TestWatch` 和 `TestConfigDirectory`：每次修改都生效，SIGHUP 应用的修改不会
+  再次应用，错误修改只报告一次且正在运行的配置继续服务，删除的文件被报告、恢复后应用，touch 被
+  忽略；由 `.conf` 和 YAML 文件组成的目录，新增、移走和写坏文件，按文件名报告）。`cli.rs`：
+  `-watch` 不再是用法错误。
+- 验证：macOS 上 `make check`；akit-config、akit-admin 和 akit 的测试在 Linux（基准测试主机
+  gpu51）上用 epoll 和 io_uring 运行。
+- 与计划和 fit 的差异：
+  - 监视器在控制线程的循环里被驱动，与 `-watch-certs` 的监视器并排（共用 `-watch-interval`），
+    而不是在自己的 goroutine 上：它发起的重载、SIGHUP 的和 Admin API 的在那里依次执行，都不会
+    阻塞 I/O 线程（规则 1）。
+  - fit 在配置保存在它的 store 中时拒绝 `-watch`；akit 还没有 store。
+  - 没有配置字段：文件 provider 和 fit 一样是一个参数，所以 `tests/compat/supported.txt` 不变。
+    Unix 控制套接字（A23）不在此范围内。
+- 没有基准测试：控制面（规则 24）。
 
 ### 2026-11-24：I42，Basic 认证与 mTLS
 

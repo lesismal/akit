@@ -123,7 +123,6 @@ fn usage_errors_exit_2() {
         &["run", "-c"],
         &["run", "extra"],
         &["run", "-shutdown-timeout", "soon"],
-        &["run", "-watch"],
         &["run", "-watch-interval", "soon"],
         &["run", "-watch-interval", "0s"],
         &["run", "-admin"],
