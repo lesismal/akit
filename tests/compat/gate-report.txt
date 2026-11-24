@@ -54,7 +54,7 @@ examples/provider-consul: not supported yet: providers[].consul
 examples/provider-consul-kv: not supported yet: providers[].consul_kv
 examples/provider-docker: valid
 examples/provider-etcd: not supported yet: providers[].etcd
-examples/provider-kubernetes: not supported yet: providers[].kubernetes
+examples/provider-kubernetes: not supported yet: providers[].kubernetes.addresses
 examples/proxy: not supported yet: limits.max_conns
 examples/proxy: not supported yet: limits.max_header_bytes
 examples/proxy: not supported yet: limits.max_pending_bytes

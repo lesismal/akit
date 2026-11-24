@@ -20,6 +20,7 @@
 //! that fill this crate in.
 
 pub mod docker;
+pub mod kubernetes;
 mod labels;
 mod merge;
 mod run;

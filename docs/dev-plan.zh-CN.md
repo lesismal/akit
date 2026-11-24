@@ -155,7 +155,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | **M4** | | | |
 | I57 | Provider 框架与生效配置 | I29 | done |
 | I58 | Docker provider | I57 | done |
-| I59 | Kubernetes Ingress | I57 | todo |
+| I59 | Kubernetes Ingress | I57 | done |
 | I60 | Kubernetes Gateway API 与一致性测试 | I59 | todo |
 | I61 | Consul 与 etcd | I57 | todo |
 | I62 | 共享证书存储 | I30, I61 | todo |
@@ -740,6 +740,9 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 - **做什么**：akit 自己的 watch 客户端（经 HTTP/2 的 list 和 watch），把 Ingress 转为路由。
 - **完成标准**：针对 kind 集群的测试按 Ingress 路由。
 - **涉及**：`akit-provider`。
+- **fit**：决策 011。
+- **状态**：已完成（2026-11-24），没有 akio API 需求；测试与 fit 的一样针对一个假 API 服务器，经 HTTP/2
+  和 HTTP/1.1，而非 kind 集群；见进度日志。
 
 ### I60 Kubernetes Gateway API 与一致性测试
 

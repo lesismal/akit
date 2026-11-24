@@ -26,6 +26,7 @@ fn providers(ps: &str) -> Result<Vec<Provider>, Vec<String>> {
 fn docker(p: &Provider) -> &DockerProvider {
     match &p.kind {
         ProviderKind::Docker(d) => d,
+        other => panic!("not docker: {}", other.name()),
     }
 }
 
@@ -130,7 +131,8 @@ fn checks() {
     }
 }
 
-/// The kinds of I59–I61 are refused as not supported yet, naming the field.
+/// The kinds of I61 are refused as not supported yet, naming the field; a kubernetes provider
+/// without `ingress` too (the Gateway API, I60).
 #[test]
 fn other_kinds_not_supported_yet() {
     for kind in ["consul", "consul_kv", "etcd", "kubernetes"] {

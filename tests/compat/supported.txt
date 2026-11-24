@@ -445,7 +445,7 @@ routes[].middleware[]<cache>.params.disk.max_entries
 
 # I58: the Docker provider. Routes, upstreams and services from the labels of running Docker
 # containers, followed through the daemon's events on akio's HTTP client over its Unix socket (or
-# TCP), merged by I57's framework. consul, consul_kv, etcd and kubernetes are refused as not
+# TCP), merged by I57's framework. consul, consul_kv and etcd are refused as not
 # supported yet (I59-I61). Read when akit starts: a change takes a restart, as in fit.
 providers
 providers[].name
@@ -500,3 +500,22 @@ routes[].handler<forward_proxy>.params.deny
 routes[].handler<forward_proxy>.params.ports
 routes[].handler<forward_proxy>.params.connect_timeout
 routes[].handler<forward_proxy>.params.idle_timeout
+
+# I59: the kubernetes kind, serving Ingresses: listed and watched with akit's own client on akio's
+# (HTTP/2 over TLS, HTTP/1.1 otherwise), each Ingress of an IngressClass of controller_name a set
+# of routes on ingress.http_port and, for its tls hosts, ingress.https_port, to upstreams of its
+# Services' ready endpoints or cluster IPs. A kubernetes provider needs ingress until the Gateway
+# API (I60, with addresses); allow_external_name_services waits for the upstreams' deny_internal.
+providers[].kubernetes
+providers[].kubernetes.kubeconfig
+providers[].kubernetes.context
+providers[].kubernetes.controller_name
+providers[].kubernetes.namespaces
+providers[].kubernetes.listen_host
+providers[].kubernetes.backends
+providers[].kubernetes.max_objects
+providers[].kubernetes.request_timeout
+providers[].kubernetes.ingress
+providers[].kubernetes.ingress.http_port
+providers[].kubernetes.ingress.https_port
+providers[].kubernetes.certificates_dir

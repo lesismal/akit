@@ -277,7 +277,7 @@ struct Runner<'a> {
     /// its requests with it; a config's `telemetry` takes a restart, as fit's.
     telemetry: Option<&'a akit_config::Telemetry>,
     tracer: Option<&'a Tracer>,
-    /// The `providers` akit started with (I58): a config's take a restart, as fit's.
+    /// The `providers` akit started with (I58, I59): a config's take a restart, as fit's.
     providers: &'a [akit_config::Provider],
 }
 
@@ -528,7 +528,10 @@ fn start_providers(
     configs: &Configs,
     updates: &Updates,
 ) -> Result<Vec<Box<dyn Provider>>, String> {
-    let kinds = Kinds::new(&[akit_provider::docker::KINDS])?;
+    let kinds = Kinds::new(&[
+        akit_provider::docker::KINDS,
+        akit_provider::kubernetes::KINDS,
+    ])?;
     let mut out: Vec<Box<dyn Provider>> = Vec::with_capacity(pcs.len());
     for pc in pcs {
         let name = &pc.name;
@@ -893,12 +896,15 @@ fn run(args: &[String]) -> ExitCode {
         })
     };
     drop(tx);
-    // The providers the config lists (I58), in their order of precedence, as fit's
+    // The providers the config lists (I58, I59), in their order of precedence, as fit's
     // startProviders; read when akit starts.
     let mut providers = match start_providers(&provider_configs, &configs, &updates) {
         Ok(p) => p,
         Err(e) => {
             eprintln!("akit run: {e}");
+            if let Some(api) = &api {
+                api.shutdown();
+            }
             akit_listener::shutdown(&engine, grace);
             return ExitCode::FAILURE;
         }
