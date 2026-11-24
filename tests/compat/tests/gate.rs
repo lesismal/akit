@@ -715,6 +715,16 @@ fn supported_fields_are_read() {
             upstream(r#", "load_balancing": "least_conn""#),
             |c| c.upstreams[0].load_balancing == akit_config::LoadBalancing::LeastConn,
         ),
+        (
+            "upstreams[].max_fails",
+            upstream(r#", "max_fails": 3"#),
+            |c| c.upstreams[0].max_fails == 3,
+        ),
+        (
+            "upstreams[].fail_timeout",
+            upstream(r#", "fail_timeout": "30s""#),
+            |c| c.upstreams[0].fail_timeout == std::time::Duration::from_secs(30),
+        ),
     ];
     let marked = supported().unwrap();
     let sampled: BTreeSet<String> = samples.iter().map(|(p, ..)| (*p).to_owned()).collect();

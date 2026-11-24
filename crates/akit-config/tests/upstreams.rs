@@ -258,3 +258,32 @@ fn upstreams_are_joined_across_files() {
     let c = from_sources(&srcs[..1]).unwrap();
     assert_eq!(c.upstreams.len(), 1);
 }
+
+#[test]
+fn passive_health_fields() {
+    // fit's defaults: max_fails 1, fail_timeout 10s.
+    let u = &ok(&one(r#""addresses": ["a:1"]"#)).upstreams[0];
+    assert_eq!((u.max_fails, u.fail_timeout), (1, Duration::from_secs(10)));
+    assert_eq!(
+        (
+            akit_config::DEFAULT_MAX_FAILS,
+            akit_config::DEFAULT_FAIL_TIMEOUT
+        ),
+        (1, Duration::from_secs(10))
+    );
+    let u = &ok(&one(
+        r#""addresses": ["a:1"], "max_fails": 3, "fail_timeout": "30s""#,
+    ))
+    .upstreams[0];
+    assert_eq!((u.max_fails, u.fail_timeout), (3, Duration::from_secs(30)));
+    // max_fails 0 keeps every address in rotation; fail_timeout 0 is the default.
+    let u = &ok(&one(
+        r#""addresses": ["a:1"], "max_fails": 0, "fail_timeout": "0s""#,
+    ))
+    .upstreams[0];
+    assert_eq!((u.max_fails, u.fail_timeout), (0, Duration::from_secs(10)));
+    // fit's min 0.
+    let p = problems(&one(r#""addresses": ["a:1"], "max_fails": -1"#));
+    assert_eq!(p.len(), 1, "{p:?}");
+    assert!(p[0].starts_with("upstreams[0].max_fails: "), "{p:?}");
+}

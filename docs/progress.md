@@ -11,14 +11,76 @@ done and where the work differs from the plan.
 | | |
 | --- | --- |
 | Last updated | 2026-11-24 |
-| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I15, I19, I21, I22, I23 and I24 done, I16 doing (body limits done; streaming waits for akio's A19–A21); M3's I39 done early. |
+| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I15, I19–I24 done, I16 doing (body limits done; streaming waits for akio's A19–A21); M3's I39 done early. |
 | akio | `a9a620ab` on akio's `main` (`1.0.0-rc.1`, with A1–A5, A7, A8, A11, A13 and A16–A18), pinned by `rev` in `Cargo.toml` |
 | fit | the specification; read at `7daee573` for this plan |
-| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept, added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`); `limits.max_body_bytes` on every listener (413) and in the proxy; access logs in fit's json, text and line formats; upstream pools with round robin, weighted round robin and least connections; the compatibility gate: 80 fixtures, 9 valid, 70 refused only as not supported yet, 1 skipped, none failed |
-| Next | I17, I20; I16 once A19–A21 land |
+| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept, added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`); `limits.max_body_bytes` on every listener (413) and in the proxy; access logs in fit's json, text and line formats; upstream pools with round robin, weighted round robin and least connections, passing over addresses taken out by passive health checks (`max_fails`, `fail_timeout`); the compatibility gate: 80 fixtures, 9 valid, 70 refused only as not supported yet, 1 skipped, none failed |
+| Next | I17; I16 once A19–A21 land |
 | akio requests | A1–A5, A7, A8, A11, A13 and A16–A18 on akio's main and pinned; A6 on akio branch `claude/x509-csr`; A9, A10, A12, A14, A15, A19–A21 and A22 requested ([akio API requests](akio-api-requests.md)) |
 
 ## Log
+
+### 2026-11-24: I20, passive health checks
+
+- Config: `upstreams[].max_fails` (from 0; 1 when left out, 0 keeps every address in rotation)
+  and `upstreams[].fail_timeout` (10s when left out or 0) are read into `akit_config::Upstream`
+  (`max_fails`, `fail_timeout`; `DEFAULT_MAX_FAILS`, `DEFAULT_FAIL_TIMEOUT`), as fit's.
+- `akit_upstream::health::Health`, one per address of a pool, as fit's `Backend`: `max_fails`
+  failures within `fail_timeout` (the window starting at the first) take the address out of
+  rotation for `fail_timeout` from the last; one response from it clears the failures and puts it
+  back at once; failures in different windows do not add up. A failure is what
+  `Error::is_upstream_failure` says: the client's errors (refused or timed-out connect, a broken
+  connection, a malformed or too large response, the exchange's timeout) and a timeout waiting
+  for a connection; `Busy`, `Closed`, `NoEngine` and a bad target are not. Any response counts
+  as a success, whatever its status, as in fit. The pool records the outcome before it calls the
+  request's callback, so the callback sees the health the exchange left.
+- The balancers pass over addresses that are down, as fit's do: `Balancer::pick_up(load, up)`
+  (`pick(load)` is unchanged and takes every address as up). Round robin and least connections
+  move the slot's turn past the addresses passed over; weighted round robin draws more entries of
+  its round, so a down address's share goes to the others by weight, and the locked form (rounds
+  too long to work out ahead) runs nginx's algorithm over the addresses up. Every address down:
+  health is ignored and the pick is the one without health. `Pool::pick` (signature unchanged)
+  passes each address's health; the pool adds `is_down(i)`, `available()` (fit's `Available`),
+  `max_fails()` and `fail_timeout()`.
+- State (rule 13): health is the address's, shared by every I/O thread, as fit's, so that a
+  failure seen on one thread takes the address out for all. A pick reads one atomic per address
+  it looks at, and the clock (once a pick) only when an address has been out; a success reads two
+  atomics and writes nothing while the address has no failure counted. Only a failure, and the
+  first success after failures, take the address's own mutex: no global lock, nothing on the path
+  of requests that succeed. Times are nanoseconds since the pool was made (`Instant`).
+- Tests: `akit-upstream/tests/health.rs` (9), fit's `health_test.go` and
+  `TestWeightedRoundRobinDown` ported: `max_fails` (counting, the window, out for `fail_timeout`
+  and back, `max_fails` 0 and 1) on a clock the test moves; a success clearing the count; every
+  policy passing over a down address (exact shares), all down (health ignored), back after the
+  window; least connections passing over an idle address that is down; weighted round robin down
+  (shares by weight; all down gives the weights exactly) with and without a schedule; through a
+  pool on real sockets: fit's `TestLeaveAndRejoin` (an address that starts refusing is taken out
+  by its first failure, nothing reaches it while out, and it is back after `fail_timeout`), all
+  addresses down still picked, and `max_fails` 3 counted through the pool.
+  `akit-config/tests/upstreams.rs`: the two fields, defaults and bounds. The gate's samples for
+  both. `akit-upstream/tests/pool.rs`'s refusing-address test sets `max_fails` 0 so its
+  alternation does not depend on timing.
+- Rebased onto akit main `69e255e` (akio `a9a620ab`): conflicts only in the config exports, the
+  status rows and the generated compatibility files, regenerated.
+- Checked: `make check` on macOS; the tests of akit-config and akit-upstream on Linux (the
+  benchmark host), epoll and io_uring, all passing. The gate (`make compat-bless`): `upstreams[]`
+  12 of its 37 fields supported; `examples/load-balancing` and `examples/proxy` no longer refuse
+  `max_fails` and `fail_timeout` (fields refused 60 to 58).
+- Differences from the plan and from fit:
+  - fit's allocation check of a pick with an address down (`TestPickSkipsDown`'s
+    `AllocsPerRun`) is not ported (a counting allocator needs `unsafe`); picking allocates
+    nothing by construction.
+  - fit's active health checks (`health_check`, `probedDown`) are I35; `Health` has no probed
+    state yet, and `health_check` stays refused.
+  - A response's body is buffered by akio's client, so the outcome is known when the callback
+    runs; once I16 streams bodies, a body that breaks off should count as a failure as fit's
+    `Done(b, true)` does (I16 then needs a way to record it: a `Pool` method that does not count
+    the exchange twice).
+- What a benchmark task should measure: `Pool::pick` per policy with no address down, one down
+  and all down, 1 and all cores (the clock read and the extra draws); recording a success on the
+  request path (the two atomic loads); a proxy run with one address refusing against fit, checking
+  the errors stay at one per `fail_timeout`.
+
 
 ### 2026-11-24: I22 on akio's A1: every listener reloadable, h3 added by a reload
 

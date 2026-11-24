@@ -28,6 +28,13 @@
 //! `load_balancing` and `weights` (round robin, smooth weighted round robin, least connections),
 //! each I/O thread keeping its own turn.
 //!
+//! I20 adds passive health checks ([`health`]), as fit's (nginx's `max_fails` and
+//! `fail_timeout`): `max_fails` failures of an address within `fail_timeout` take it out of
+//! rotation for `fail_timeout`, and one response from it puts it back; the balancers pass over an
+//! address that is out, unless every address is. A failure is what
+//! [`Error::is_upstream_failure`] says: the address could not be reached, broke off, sent no
+//! valid response, or timed out (waiting for a connection to it included).
+//!
 //! Nothing here blocks: [`Pool::send`] runs on an I/O thread, and its callback runs once, on an
 //! I/O thread (or the resolver's or the timer's thread, as akio's client says), never blocking
 //! either.
@@ -47,6 +54,7 @@
 //! fill this crate in.
 
 pub mod balance;
+pub mod health;
 
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
@@ -59,6 +67,7 @@ use akio::Engine;
 use akio_http::client::{Client, ClientError, ClientOptions, ClientRequest, ClientResponse};
 
 pub use balance::{Balancer, LoadBalancing};
+pub use health::Health;
 
 /// How long a whole exchange may take, from [`Pool::send`] to the end of the response, waiting for
 /// a connection included: fit's `response_timeout` default, 1h.
@@ -177,6 +186,8 @@ struct Backend {
     /// Requests in `queue`, or about to be put there or taken out (see [`Inner::acquire`]).
     waiting: AtomicUsize,
     queue: Mutex<VecDeque<Waiter>>,
+    /// Whether it is in rotation, by its failures.
+    health: Health,
 }
 
 impl Backend {
@@ -209,6 +220,11 @@ struct Inner {
     backends: Box<[Backend]>,
     /// Which backend [`Pool::pick`] gives.
     balancer: Balancer,
+    /// `max_fails` and `fail_timeout`.
+    max_fails: usize,
+    fail_timeout: Duration,
+    /// What the backends' health times count from.
+    epoch: Instant,
     max_conns: usize,
     max_pending: usize,
     timeout: Duration,
@@ -271,6 +287,7 @@ impl Pool {
                 busy: AtomicUsize::new(0),
                 waiting: AtomicUsize::new(0),
                 queue: Mutex::new(VecDeque::new()),
+                health: Health::new(),
             })
             .collect();
         Pool {
@@ -278,6 +295,9 @@ impl Pool {
                 name: u.name.clone(),
                 backends,
                 balancer: Balancer::new(u.load_balancing, &weights),
+                max_fails: u.max_fails,
+                fail_timeout: u.fail_timeout,
+                epoch: Instant::now(),
                 max_conns: u.max_conns.max(1),
                 max_pending: u.max_pending,
                 timeout: DEFAULT_RESPONSE_TIMEOUT,
@@ -338,19 +358,65 @@ impl Pool {
         self.inner.balancer.weight(backend)
     }
 
+    /// The upstream's `max_fails`: failures within `fail_timeout` that take an address out of
+    /// rotation (0: never).
+    #[must_use]
+    pub fn max_fails(&self) -> usize {
+        self.inner.max_fails
+    }
+
+    /// The upstream's `fail_timeout`.
+    #[must_use]
+    pub fn fail_timeout(&self) -> Duration {
+        self.inner.fail_timeout
+    }
+
     /// The index of the address the next request goes to, by the upstream's `load_balancing`
     /// ([`balance`]): in turn, in turn by weight, or the one with the fewest requests under way
-    /// (waiting for a connection included) for its weight. Each I/O thread keeps its own turn.
+    /// (waiting for a connection included) for its weight, passing over the addresses that are
+    /// [down](Self::is_down) unless all are. Each I/O thread keeps its own turn.
     #[must_use]
     pub fn pick(&self) -> usize {
-        let backends = &self.inner.backends;
-        self.inner.balancer.pick(|i| {
-            backends.get(i).map_or(0, |b| {
-                b.busy
-                    .load(Ordering::Relaxed)
-                    .saturating_add(b.waiting.load(Ordering::Relaxed))
-            })
-        })
+        let inner = &*self.inner;
+        let backends = &inner.backends;
+        // The clock is read once, and only if an address has been out.
+        let now = Cell::new(None);
+        inner.balancer.pick_up(
+            |i| {
+                backends.get(i).map_or(0, |b| {
+                    b.busy
+                        .load(Ordering::Relaxed)
+                        .saturating_add(b.waiting.load(Ordering::Relaxed))
+                })
+            },
+            |i| {
+                backends
+                    .get(i)
+                    .is_none_or(|b| b.health.up(|| inner.now(&now)))
+            },
+        )
+    }
+
+    /// Whether the address at `backend` is out of rotation, for having failed `max_fails`
+    /// requests within `fail_timeout`, less than `fail_timeout` ago.
+    #[must_use]
+    pub fn is_down(&self, backend: usize) -> bool {
+        let now = Cell::new(None);
+        self.inner
+            .backends
+            .get(backend)
+            .is_some_and(|b| !b.health.up(|| self.inner.now(&now)))
+    }
+
+    /// Whether any address is in rotation, as fit's `Available`: a pool none of whose addresses
+    /// is still [picks](Self::pick) one, as a last resort.
+    #[must_use]
+    pub fn available(&self) -> bool {
+        let now = Cell::new(None);
+        self.inner
+            .backends
+            .iter()
+            .any(|b| b.health.up(|| self.inner.now(&now)))
     }
 
     /// Sends `req` to the address at `backend` ([`addresses`](Self::addresses)), and calls `done`
@@ -440,6 +506,30 @@ impl Pool {
 }
 
 impl Inner {
+    /// The time on the backends' health clock, read once into `now`.
+    fn now(&self, now: &Cell<Option<u64>>) -> u64 {
+        if let Some(t) = now.get() {
+            return t;
+        }
+        let t = health::nanos(self.epoch.elapsed());
+        now.set(Some(t));
+        t
+    }
+
+    /// Counts how an exchange with `backend` ended, towards its health.
+    fn record(&self, backend: usize, failed: bool) {
+        let Some(b) = self.backends.get(backend) else {
+            return;
+        };
+        if failed {
+            b.health.failed(self.max_fails, self.fail_timeout, || {
+                health::nanos(self.epoch.elapsed())
+            });
+        } else {
+            b.health.succeeded();
+        }
+    }
+
     fn send(self: &Arc<Self>, backend: usize, req: ClientRequest, done: Done) {
         // Counted before `closing` is read, and `close` sets `closing` before it reads the count:
         // either this request sees the pool closing or `close` sees it in flight.
@@ -530,6 +620,7 @@ impl Inner {
         };
         if left.is_zero() {
             self.release(backend);
+            self.record(backend, true);
             self.finish_one();
             return done(Err(Error::Timeout));
         }
@@ -540,6 +631,10 @@ impl Inner {
             // The connection is back in the client's idle pool (or closed) by now: the slot
             // goes to the next request before this one's callback runs.
             me.release(backend);
+            // Counted before the callback runs, so that what it does next sees the address's
+            // health as this exchange left it. Any response is a success, whatever its status,
+            // as in fit.
+            me.record(backend, r.is_err());
             done(r.map_err(Error::Client));
             me.finish_one();
         });

@@ -10,14 +10,63 @@
 | | |
 | --- | --- |
 | 最后更新 | 2026-11-24 |
-| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I15、I19、I21、I22、I23、I24 已完成，I16 进行中（body 限制已完成；流式转发等待 akio 的 A19–A21）；M3 的 I39 已提前完成。 |
+| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I15、I19–I24 已完成，I16 进行中（body 限制已完成；流式转发等待 akio 的 A19–A21）；M3 的 I39 已提前完成。 |
 | akio | akio `main` 上的 `a9a620ab`（`1.0.0-rc.1`，带 A1–A5、A7、A8、A11、A13 和 A16–A18），在 `Cargo.toml` 中按 `rev` 锁定 |
 | fit | 作为规格；本计划基于 `7daee573` 阅读 |
-| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；基于 akio 的 A1 保留、增加、修改和排空监听器，包括启动时的监听器，重载可新增 h3 监听器；服务 h3 的启动监听器要重启才能变）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`）；所有监听器和代理上的 `limits.max_body_bytes`（413）；fit 的 json、text 和 line 格式的访问日志；上游连接池，轮询、加权轮询和最少连接；兼容性门禁：80 个夹具，9 个有效，70 个只因暂不支持被拒绝，1 个跳过，没有失败 |
-| 下一步 | I17、I20；A19–A21 落地后再做 I16 |
+| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；基于 akio 的 A1 保留、增加、修改和排空监听器，包括启动时的监听器，重载可新增 h3 监听器；服务 h3 的启动监听器要重启才能变）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`）；所有监听器和代理上的 `limits.max_body_bytes`（413）；fit 的 json、text 和 line 格式的访问日志；上游连接池，轮询、加权轮询和最少连接，跳过被被动健康检查（`max_fails`、`fail_timeout`）下线的地址；兼容性门禁：80 个夹具，9 个有效，70 个只因暂不支持被拒绝，1 个跳过，没有失败 |
+| 下一步 | I17；A19–A21 落地后再做 I16 |
 | akio 需求 | A1–A5、A7、A8、A11、A13、A16–A18 已在 akio 的 main 并已锁定；A6 在 akio 分支 `claude/x509-csr` 上；A9、A10、A12、A14、A15、A19–A21 和 A22 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
 
 ## 日志
+
+### 2026-11-24：I20，被动健康检查
+
+- 配置：`upstreams[].max_fails`（从 0 起；省略时为 1，0 表示所有地址一直参与轮转）和
+  `upstreams[].fail_timeout`（省略或为 0 时 10s）读入 `akit_config::Upstream`（`max_fails`、
+  `fail_timeout`；`DEFAULT_MAX_FAILS`、`DEFAULT_FAIL_TIMEOUT`），与 fit 相同。
+- `akit_upstream::health::Health`，连接池每个地址一个，对应 fit 的 `Backend`：在 `fail_timeout`
+  内（窗口从第一次失败开始）失败 `max_fails` 次，该地址从最后一次失败起退出轮转 `fail_timeout`；
+  它的一次响应会清除失败计数并立即让它回到轮转；不同窗口里的失败不累加。失败即
+  `Error::is_upstream_failure` 所说的：客户端的错误（连接被拒或超时、连接断开、响应格式错误或过大、
+  交换超时）以及等待连接超时；`Busy`、`Closed`、`NoEngine` 和错误的目标不算。任何响应都算成功，
+  不论状态码，与 fit 相同。连接池在调用请求回调之前记录结果，因此回调看到的是这次交换之后的健康状态。
+- 负载均衡器跳过已下线的地址，与 fit 相同：`Balancer::pick_up(load, up)`（`pick(load)` 不变，
+  视所有地址为在线）。轮询和最少连接把槽的轮次移过被跳过的地址；加权轮询多抽取其轮次中的条目，
+  于是下线地址的份额按权重分给其他地址，而加锁形式（轮次太长无法预先算出）只在在线地址上运行
+  nginx 的算法。所有地址都下线时忽略健康状态，选择与不看健康状态时相同。`Pool::pick`（签名不变）
+  传入每个地址的健康状态；连接池新增 `is_down(i)`、`available()`（fit 的 `Available`）、
+  `max_fails()` 和 `fail_timeout()`。
+- 状态（规则 13）：健康状态属于地址，由所有 I/O 线程共享，与 fit 相同，这样一个线程看到的失败会让
+  该地址对所有线程下线。一次选择对它查看的每个地址读一个原子量，只有地址曾下线时才读时钟（每次选择
+  最多一次）；一次成功读两个原子量，地址没有失败计数时什么也不写。只有失败以及失败之后的第一次成功
+  才会获取该地址自己的互斥锁：没有全局锁，成功请求的路径上没有锁。时间是自连接池创建以来的纳秒数
+  （`Instant`）。
+- 测试：`akit-upstream/tests/health.rs`（9 个），移植 fit 的 `health_test.go` 和
+  `TestWeightedRoundRobinDown`：在测试控制的时钟上测 `max_fails`（计数、窗口、下线 `fail_timeout`
+  后恢复、`max_fails` 为 0 和 1）；成功清除计数；每种策略跳过下线地址（精确份额）、全部下线（忽略健康
+  状态）、窗口过后恢复；最少连接跳过空闲但下线的地址；加权轮询有下线地址（按权重分配；全部下线时
+  精确按权重），有和没有预算轮次两种情况；在真实套接字上通过连接池：fit 的 `TestLeaveAndRejoin`
+  （开始拒绝连接的地址在第一次失败后下线，下线期间没有请求到达它，`fail_timeout` 后恢复）、所有地址
+  下线时仍会选择、通过连接池计数 `max_fails` 3。`akit-config/tests/upstreams.rs`：这两个字段、默认值
+  和范围。门禁对这两个字段的样例。`akit-upstream/tests/pool.rs` 中拒绝连接地址的测试设置
+  `max_fails` 0，使其交替顺序不依赖时序。
+- 变基到 akit main `69e255e`（akio `a9a620ab`）：冲突只在配置导出、状态行和生成的兼容性文件中，已重新生成。
+- 已检查：macOS 上的 `make check`；Linux（基准测试主机）上 akit-config 和 akit-upstream 的测试，
+  epoll 和 io_uring，全部通过。门禁（`make compat-bless`）：`upstreams[]` 的 37 个字段中支持 12 个；
+  `examples/load-balancing` 和 `examples/proxy` 不再拒绝 `max_fails` 和 `fail_timeout`（被拒字段
+  从 60 降到 58）。
+- 与计划和 fit 的差异：
+  - 未移植 fit 对有地址下线时选择的内存分配检查（`TestPickSkipsDown` 的 `AllocsPerRun`）（计数分配器
+    需要 `unsafe`）；选择在构造上不分配内存。
+  - fit 的主动健康检查（`health_check`、`probedDown`）属于 I35；`Health` 还没有探测状态，
+    `health_check` 仍被拒绝。
+  - akio 的客户端缓冲整个响应体，因此回调运行时结果已知；I16 流式传输响应体后，中途断开的响应体
+    应像 fit 的 `Done(b, true)` 那样算作失败（届时 I16 需要一种记录方式：一个不会重复计数的
+    `Pool` 方法）。
+- 基准测试任务应测量：每种策略的 `Pool::pick`，无地址下线、一个下线和全部下线，1 个和所有核
+  （时钟读取和额外抽取）；请求路径上记录一次成功（两个原子加载）；一个地址拒绝连接时与 fit 对比的
+  代理运行，检查错误保持在每个 `fail_timeout` 一次。
+
 
 ### 2026-11-24：I22 改用 akio 的 A1：所有监听器都可重载，重载可新增 h3
 

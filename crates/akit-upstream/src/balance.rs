@@ -119,15 +119,26 @@ impl Balancer {
 
     /// The index of the address the next request goes to. `load(i)` is how many requests are
     /// under way to the address at `i` (waiting for a connection included), which only
-    /// `least_conn` reads.
+    /// `least_conn` reads. Every address is taken as up: [`pick_up`](Self::pick_up) passes over
+    /// those that are down.
     pub fn pick(&self, load: impl Fn(usize) -> usize) -> usize {
+        self.pick_up(load, |_| true)
+    }
+
+    /// [`pick`](Self::pick), passing over the addresses that are down (I20): `up(i)` says whether
+    /// the address at `i` may take a request. As fit does, round robin and least connections move
+    /// the turn past the addresses passed over, and weighted round robin draws more entries of its
+    /// sequence, so that the share of an address that is down goes to the others by their weights.
+    /// When every address is down, health is ignored and the pick is the one `pick` makes: an
+    /// upstream that may still answer serves better than one that surely will not.
+    pub fn pick_up(&self, load: impl Fn(usize) -> usize, up: impl Fn(usize) -> bool) -> usize {
         let Some(slot) = self.slot() else {
             return 0;
         };
         match self.policy {
-            LoadBalancing::WeightedRoundRobin => self.weighted(slot),
-            LoadBalancing::LeastConn => self.least_conn(slot, load),
-            _ => self.turn(slot).checked_rem(self.weights.len()).unwrap_or(0),
+            LoadBalancing::WeightedRoundRobin => self.weighted(slot, &up),
+            LoadBalancing::LeastConn => self.least_conn(slot, load, &up),
+            _ => self.round_robin(slot, &up),
         }
     }
 
@@ -149,43 +160,116 @@ impl Balancer {
         slot.next.fetch_add(1, Ordering::Relaxed)
     }
 
-    fn weighted(&self, slot: &Slot) -> usize {
-        if !self.schedule.is_empty() {
+    /// The first address up from `first` on, in turn, and how many were passed over; `None`
+    /// when none is up.
+    fn next_up(&self, first: usize, up: &impl Fn(usize) -> bool) -> Option<(usize, usize)> {
+        let n = self.weights.len();
+        (0..n).find_map(|i| {
+            let b = first.wrapping_add(i).checked_rem(n).unwrap_or(0);
+            up(b).then_some((b, i))
+        })
+    }
+
+    fn round_robin(&self, slot: &Slot, up: &impl Fn(usize) -> bool) -> usize {
+        let first = self.turn(slot);
+        match self.next_up(first, up) {
+            Some((b, skipped)) => {
+                if skipped > 0 {
+                    // Move the turn past the addresses passed over.
+                    slot.next.fetch_add(skipped, Ordering::Relaxed);
+                }
+                b
+            }
+            None => first.checked_rem(self.weights.len()).unwrap_or(0),
+        }
+    }
+
+    fn weighted(&self, slot: &Slot, up: &impl Fn(usize) -> bool) -> usize {
+        if self.schedule.is_empty() {
+            return self.weighted_locked(slot, up);
+        }
+        let draw = || {
             let i = self
                 .turn(slot)
                 .checked_rem(self.schedule.len())
                 .unwrap_or(0);
-            return self.schedule.get(i).map_or(0, |&b| b as usize);
+            self.schedule.get(i).map_or(0, |&b| b as usize)
+        };
+        let first = draw();
+        if up(first) {
+            return first;
         }
-        // nginx's smooth weighted round robin, on this slot's running weights: each pick adds
-        // every weight to its running weight, takes the highest, and takes the total back off it.
+        // Another entry, as many times as it takes: each is a fair draw of the sequence, so the
+        // addresses up share the pick by weight. One up is found within a round unless none is,
+        // which the scan settles first.
+        if self.next_up(0, up).is_none() {
+            return first;
+        }
+        for _ in 0..self.schedule.len() {
+            let b = draw();
+            if up(b) {
+                return b;
+            }
+        }
+        self.next_up(0, up).map_or(first, |(b, _)| b)
+    }
+
+    fn weighted_locked(&self, slot: &Slot, up: &impl Fn(usize) -> bool) -> usize {
         let mut current = slot.current.lock().unwrap_or_else(PoisonError::into_inner);
-        let mut best = 0;
+        let healthy = self.next_up(0, up).is_some();
+        // nginx's smooth weighted round robin, on this slot's running weights: each pick adds
+        // every weight to its running weight, takes the highest, and takes the total back off it;
+        // over the addresses up, or over all of them when none is.
+        let mut best = None;
         let mut best_current = i64::MIN;
         let mut total = 0i64;
         for (i, (c, &w)) in current.iter_mut().zip(self.weights.iter()).enumerate() {
+            if healthy && !up(i) {
+                continue;
+            }
             *c = c.saturating_add(i64::from(w));
             total = total.saturating_add(i64::from(w));
-            if *c > best_current {
-                best = i;
+            if best.is_none() || *c > best_current {
+                best = Some(i);
                 best_current = *c;
             }
         }
+        let best = best.unwrap_or(0);
         if let Some(c) = current.get_mut(best) {
             *c = c.saturating_sub(total);
         }
         best
     }
 
-    fn least_conn(&self, slot: &Slot, load: impl Fn(usize) -> usize) -> usize {
+    fn least_conn(
+        &self,
+        slot: &Slot,
+        load: impl Fn(usize) -> usize,
+        up: &impl Fn(usize) -> bool,
+    ) -> usize {
         // Ties go to the first found from a starting point that moves on with each pick, so
-        // that idle addresses share the load rather than the first taking all of it.
+        // that idle addresses share the load rather than the first taking all of it. The scan
+        // starts at the next address in turn that is up, the turn moved past those passed over,
+        // so that ties spread over the addresses up rather than going to whichever follows one
+        // that is down.
         let n = self.weights.len();
-        let start = self.turn(slot).checked_rem(n).unwrap_or(0);
+        let first = self.turn(slot);
+        let (start, healthy) = match self.next_up(first, up) {
+            Some((b, skipped)) => {
+                if skipped > 0 {
+                    slot.next.fetch_add(skipped, Ordering::Relaxed);
+                }
+                (b, true)
+            }
+            None => (first.checked_rem(n).unwrap_or(0), false),
+        };
         let mut best = start;
         // (load, weight) of the best so far; u128 products of a usize and a u32 cannot overflow.
         let mut best_lw: Option<(u128, u128)> = None;
         for i in (start..n).chain(0..start) {
+            if healthy && !up(i) {
+                continue;
+            }
             let l = load(i) as u128;
             let w = u128::from(self.weight(i));
             // l/w < best_load/best_weight, without dividing.

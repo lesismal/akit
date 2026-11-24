@@ -75,6 +75,11 @@ upstreams[].connect_timeout
 # supported yet (I36).
 upstreams[].weights
 upstreams[].load_balancing
+#
+# I20: passive health checks: max_fails failures within fail_timeout take an address out of
+# rotation for fail_timeout; the balancers pass over it unless every address is out.
+upstreams[].max_fails
+upstreams[].fail_timeout
 # I15: the proxy handler: its upstream, trusted proxies and Host. Its other params (upstreams,
 # failover, mirror, retry, timeout, tunnel_idle_timeout, splice_uploads) are refused as not
 # supported yet (I16, I17, I19, I45, I49).
