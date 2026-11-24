@@ -11,14 +11,79 @@ done and where the work differs from the plan.
 | | |
 | --- | --- |
 | Last updated | 2026-11-24 |
-| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I12, I14, I15, I19, I21, I22, I23 and I24 done, I16 doing (body limits done; streaming waits for akio's A19–A21); M3's I39 done early. |
+| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I15, I19, I21, I22, I23 and I24 done, I16 doing (body limits done; streaming waits for akio's A19–A21); M3's I39 done early. |
 | akio | `a9a620ab` on akio's `main` (`1.0.0-rc.1`, with A1–A5, A7, A8, A11, A13 and A16–A18), pinned by `rev` in `Cargo.toml` |
 | fit | the specification; read at `7daee573` for this plan |
-| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept, added and removed, those it started with only once akio's A1 is pinned); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; the `respond`, `static` (conditional and range requests, files opened on akio's pool) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`); `limits.max_body_bytes` on every listener (413) and in the proxy; access logs in fit's json, text and line formats; upstream pools with round robin, weighted round robin and least connections; the compatibility gate: 80 fixtures, 9 valid, 70 refused only as not supported yet, 1 skipped, none failed |
-| Next | I22 on A1 (listeners it started with, h3 on reload) and I13 on A13 and A16–A18; then I17, I20; I16 once A19–A21 land |
+| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept, added and removed, those it started with only once akio's A1 is pinned); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`); `limits.max_body_bytes` on every listener (413) and in the proxy; access logs in fit's json, text and line formats; upstream pools with round robin, weighted round robin and least connections; the compatibility gate: 80 fixtures, 9 valid, 70 refused only as not supported yet, 1 skipped, none failed |
+| Next | I22 on A1 (listeners it started with, h3 on reload); then I17, I20; I16 once A19–A21 land |
 | akio requests | A1–A5, A7, A8, A11, A13 and A16–A18 on akio's main and pinned; A6 on akio branch `claude/x509-csr`; A9, A10, A12, A14, A15 and A19–A21 requested ([akio API requests](akio-api-requests.md)) |
 
 ## Log
+
+### 2026-11-24: I13, static files II
+
+- On akio `a9a620ab` (A13 and A16–A18, akio ADR-100), the `static` handler sets akio-http's
+  `Files` up from all of fit's I13 params:
+  - `precompressed` (akit-config `Static::precompressed`, `Encoding`; `"deflate" is not one of "br",
+    "zstd", "gzip"` at `precompressed[i]`) gives `Files::twins`: the twin (`name.br`, `name.zst`,
+    `name.gz`) of the coding the client prefers by its q values (RFC 9110: `q=0` refuses a coding,
+    `*` stands for those not named, names in any case), among those listed and in their order among
+    equals; none, and no `Vary`, when left out. From memory, or from disk past `max_file_bytes`
+    with the twin's length; `Content-Encoding`, `Vary: Accept-Encoding`, the original's
+    `Content-Type`, an `ETag` of its own that conditions apply to, ranges of the twin; a twin that
+    changes or goes is followed as files are.
+  - `try_files` gives `Files::try_paths`: `{path}` stands for the path asked for, a candidate ending
+    in `/` names a directory, served by its index (or listing) and not redirected; the first that
+    exists is served, else 404. What the candidates resolved a path to is kept (up to 4096 paths)
+    and trusted for `check_interval`, so a path resolved lately is answered on the I/O thread; the
+    rest are resolved on akio's file pool. Checked as fit checks it: each starts with `/` or
+    `{path}`, and with `dotfiles` `deny` names no dotfile but under `/.well-known/`. An empty list,
+    as fit's, finds nothing (every request 404).
+  - `browse` and `browse_max_entries` (10000 when left out or 0) give `Files::list_directories`:
+    fit's page for a directory without its index file, read on the pool for every request.
+  - `dotfiles` `deny` also gives `Files::hide`, so a `try_files` candidate a dotfile segment names
+    is passed over, as fit's handler passes it over.
+  - The path served is the canonical one the route matched (akit-listener's `CANONICAL_PATH`, A13's
+    `Files::serve`): a `..` that stays inside the root (`/x/../ok.txt`) is removed and the file
+    served, as fit's listener and handler together serve it, where I12 answered 400.
+  - `strip_prefix`: cut from that path as written, a path without it answered 404, the rest
+    checked as before and served; `"assets" does not start with /` as fit's. Only a handler with a
+    prefix, or a request whose path was not canonical, copies the path; otherwise `Files` reads it
+    from the request.
+- `sendfile` for large files: there since I12. `Files` sends a file (or twin) larger than
+  `max_file_bytes` from a kept handle as a `FileBody`, which akio sends with `sendfile` on plain
+  HTTP/1; over TLS and h2 akio reads it in pieces.
+- The compatibility gate: `strip_prefix` and `try_files` supported too (72 fields in all); fit's
+  `examples/static` is refused only for `max_cache_bytes` and `middleware`, `examples/bittorrent` no
+  longer for `strip_prefix` (`make compat-bless`). `compress` stays refused (I47's compression),
+  `max_cache_bytes` and `default_type` wait on A15 and A14.
+- No benchmark scenario added: fit's harness has none for twins, `try_files` or listings (its
+  configs serve nothing precompressed, bench README), so akit's has none either (rule 30: no
+  benchmark run for a feature task).
+- Tests (`akit-handler/tests/static_files.rs`, 16): `precompressed`, fit's TestPrecompressed ported
+  with fit's answers for all 11 `Accept-Encoding` fields, ETags and `If-None-Match` per
+  representation, a range of a twin, `HEAD`, twins from disk, a list of one encoding, no list (no
+  twin, no `Vary`); `precompressed_follows_the_disk`; `large_from_disk` with fit's large twin;
+  `try_files` (fit's TestTryFiles and TestTryFilesUnsafe, each path twice to go through what
+  `Files` keeps, an empty list, a dotfile candidate passed over); `browse` (fit's TestBrowse,
+  TestBrowseMaxEntries, TestBrowseOrder); `strip_prefix` (fit's TestStripPrefix); `config_errors`
+  with fit's TestFeatureErrors, TestDotfilesConfig and `strip_prefix`'s check; `traversal` now
+  with `/x/../ok.txt` served. A unit test of the dotfile check on decoded paths (`Files::hide`'s).
+- Checked: `make check` on macOS; Linux (epoll, io_uring) pending, queued on the test host.
+- Differences from the plan and from fit:
+  - The plan's "a benchmark scenario uses it": none, as above; the benchmarks table (dev-plan) says
+    static files are not benchmarked yet.
+  - A14 (I12's): `Files` serves a directory asked for without its slash (fit redirects, 301), here
+    also below `strip_prefix`; its 404 for a path no candidate finds has its own text; a listing
+    below `strip_prefix` is titled by the path below the prefix (`Index of /`, no `../` link) where
+    fit's is titled by the whole path (`Index of /assets/`). Added to A14.
+  - `strip_prefix` is cut from the path as sent (percent-encoded), fit's from the decoded path: a
+    prefix spelt with escapes in the request (`/%61ssets/`) is 404 in akit.
+  - `/../secret` with `try_files`: 400 from akio's parser, with its own text, as I12's traversal
+    tests already record.
+- For a benchmark task: none until fit's harness has a scenario; then a twin from memory and a large
+  twin from disk against the original, `try_files` resolved from what `Files` keeps against the
+  pool, and the cost of `Accept-Encoding` ranking per request.
 
 ### 2026-11-24: I21, access logs
 

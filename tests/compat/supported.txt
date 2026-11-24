@@ -40,8 +40,7 @@ routes[].handler<respond>.params.headers
 routes[].handler<respond>.params.body
 #
 # I12: the static handler on akio-http's Files. index takes one name; disk_io takes "pool" ("auto"
-# is refused). strip_prefix, max_cache_bytes and default_type wait on akio API requests A13 to
-# A15; precompressed, compress, try_files and browse come with I13.
+# is refused). max_cache_bytes and default_type wait on akio API requests A15 and A14.
 routes[].handler<static>
 routes[].handler<static>.params
 routes[].handler<static>.params.root
@@ -50,6 +49,14 @@ routes[].handler<static>.params.max_file_bytes
 routes[].handler<static>.params.dotfiles
 routes[].handler<static>.params.disk_io
 routes[].handler<static>.params.check_interval
+#
+# I13: precompressed (twins chosen by q value among those listed), try_files, browse and
+# browse_max_entries, strip_prefix, on akio-http's Files (akio API requests A13 and A16 to A18).
+routes[].handler<static>.params.precompressed
+routes[].handler<static>.params.browse
+routes[].handler<static>.params.browse_max_entries
+routes[].handler<static>.params.strip_prefix
+routes[].handler<static>.params.try_files
 #
 # I14: upstreams with their servers and connection limits. upstreams[].protocol takes "http/1.1";
 # "h2c" and "h2" are refused as not supported yet (I18, I54).

@@ -4,19 +4,31 @@
 //! `Files` does the serving: `ETag` and `Last-Modified`, conditional requests (`If-Match`,
 //! `If-None-Match`, `If-Modified-Since`, `If-Unmodified-Since`) and ranges (`If-Range`, several
 //! ranges as `multipart/byteranges`), the `Content-Type` by extension, the directory's index
-//! file, small files kept in memory and larger ones sent from disk. Only a file it knows and
+//! file, a file's `.br`, `.zst` or `.gz` twin for a client that accepts it (fit's
+//! `precompressed`), small files kept in memory and larger ones sent from disk (`sendfile` on
+//! plain HTTP/1, from a kept handle). Only a file it knows and
 //! trusts is answered on the I/O thread; every look at the disk (`stat`, `open`, reading a file
 //! in) runs on akio's file pool, bounded in threads and queue, and a request past the queue is
 //! answered 503 (rules.md rule 4).
 //!
+//! `Files` also does fit's `try_files` (`Files::try_paths`, with what the candidates resolved a
+//! path to kept and trusted as a file is), `browse` (`Files::list_directories`, fit's page, read
+//! on the pool) and the choice of a twin by the client's q values among the encodings
+//! `precompressed` lists (`Files::twins`).
+//!
 //! What this module adds before `Files` sees a request is fit's: only `GET` and `HEAD`, others
-//! answered 405 with `Allow: GET, HEAD`; a path with a `..` segment, a NUL or a backslash,
-//! escaped or not, refused with 400, so no request names a file outside the root; and, with
-//! `dotfiles` `deny` (the default), a path with a segment starting with a dot answered 404 but
-//! for `/.well-known/` at the root. These look at the request path alone, without allocating.
+//! answered 405 with `Allow: GET, HEAD`; the canonical path the route matched (akit-listener's
+//! `CANONICAL_PATH`, dot and empty segments removed, as fit's listener gives its handler) with
+//! `strip_prefix` cut from it, a path without the prefix answered 404, the rest given to
+//! `Files::serve`; a path with a `..` segment, a NUL or a backslash, escaped or not, refused with
+//! 400, so no request names a file outside the root; and, with `dotfiles` `deny` (the default), a
+//! path with a segment starting with a dot answered 404 but for `/.well-known/` at the root. These
+//! look at the path alone, without allocating; the path is copied for `Files::serve` only with a
+//! prefix or a path that was not canonical. With `deny`, `Files::hide` passes over `try_files`
+//! candidates that such a segment names, as fit's handler does.
 //!
 //! Where `Files` differs from fit's handler, and the akio API requests that will close the gap,
-//! `docs/progress.md` says (I12).
+//! `docs/progress.md` says (I12, I13).
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -25,11 +37,17 @@ use std::time::Duration;
 use akio_http::files::Files;
 use akio_http::{Context, Method, Response};
 use akit_config::Dotfiles;
-use akit_runtime::{Handler, HandlerParams, Provision, ProvisionError, Provisioned};
+use akit_runtime::{
+    CANONICAL_PATH, Handler, HandlerParams, Provision, ProvisionError, Provisioned,
+};
 
 /// The handler: fit's checks, then `Files`.
 struct Static {
     files: Files,
+    /// `strip_prefix`, empty for none.
+    strip_prefix: String,
+    /// `try_files` given as an empty list, which finds nothing: every request is answered 404.
+    find_nothing: bool,
     hide_dotfiles: bool,
     bad_request: Response,
     not_found: Response,
@@ -42,10 +60,29 @@ impl akio_http::Service for Static {
             ctx.respond(self.method_not_allowed.clone());
             return;
         }
-        match scan(ctx.path()) {
+        // The canonical path, what the route matched (akit-listener's, when it differs from the
+        // path sent: dot and empty segments removed, as fit's listener removes them before its
+        // handler sees the path).
+        let canonical = ctx.local(CANONICAL_PATH);
+        let as_sent = canonical.is_none();
+        let full = canonical.unwrap_or_else(|| ctx.path());
+        let Some(path) = full.strip_prefix(self.strip_prefix.as_str()) else {
+            ctx.respond(self.not_found.clone());
+            return;
+        };
+        match scan(path) {
             Scan::Unsafe => ctx.respond(self.bad_request.clone()),
             Scan::Hidden if self.hide_dotfiles => ctx.respond(self.not_found.clone()),
-            Scan::Hidden | Scan::Plain => self.files.call(ctx),
+            Scan::Hidden | Scan::Plain if self.find_nothing => ctx.respond(self.not_found.clone()),
+            Scan::Hidden | Scan::Plain if as_sent && self.strip_prefix.is_empty() => {
+                self.files.call(ctx);
+            }
+            Scan::Hidden | Scan::Plain => {
+                // The path is borrowed from the request, which `Files::serve` takes alongside it:
+                // a copy, for a handler with a prefix or a path that was not canonical only.
+                let rest = path.to_owned();
+                self.files.serve(ctx, &rest);
+            }
         }
     }
 }
@@ -71,7 +108,9 @@ pub(crate) fn new(
         ));
     }
     Ok(Provisioned::new(Arc::new(Static {
-        files: files(root, &s.index, s.max_file_bytes, s.check_interval),
+        files: files(root, s),
+        strip_prefix: s.strip_prefix.clone(),
+        find_nothing: s.try_files.as_ref().is_some_and(Vec::is_empty),
         hide_dotfiles: s.dotfiles == Dotfiles::Deny,
         bad_request: error(400, "400 Bad Request\n"),
         not_found: error(404, "404 Not Found\n"),
@@ -82,12 +121,22 @@ pub(crate) fn new(
 /// The `Files` for the params. fit's handler follows changes on Linux through a watch of the
 /// directories under the root, and trusts what it knows for `check_interval` elsewhere and with
 /// a `check_interval` of 0 looks at the disk for every request: `Files` is set up alike.
-fn files(root: PathBuf, index: &str, max_file_bytes: u64, check: Duration) -> Files {
-    Files::new(root)
-        .index(index)
-        .max_cached_bytes(max_file_bytes)
+fn files(root: PathBuf, s: &akit_config::Static) -> Files {
+    let check: Duration = s.check_interval;
+    let twins: Vec<&str> = s.precompressed.iter().map(|e| e.name()).collect();
+    let tries: Vec<&str> = s.try_files.iter().flatten().map(String::as_str).collect();
+    let mut files = Files::new(root)
+        .index(&s.index)
+        .max_cached_bytes(s.max_file_bytes)
         .check_interval(check)
         .watch(cfg!(target_os = "linux") && !check.is_zero())
+        .twins(&twins)
+        .try_paths(&tries)
+        .list_directories(if s.browse { s.browse_max_entries } else { 0 });
+    if s.dotfiles == Dotfiles::Deny {
+        files = files.hide(|path| scan_decoded(path) != Scan::Plain);
+    }
+    files
 }
 
 /// One of fit's short text answers, built once; each request sends a copy.
@@ -149,6 +198,23 @@ fn scan(raw: &str) -> Scan {
     }
 }
 
+/// [`scan`] of a path already percent-decoded, as `Files::hide` is given: a `%` is a byte as
+/// any other.
+fn scan_decoded(path: &str) -> Scan {
+    let mut s = Scanner::default();
+    for b in path.bytes() {
+        s.byte(b);
+    }
+    s.end_segment();
+    if s.unsafe_ {
+        Scan::Unsafe
+    } else if s.hidden {
+        Scan::Hidden
+    } else {
+        Scan::Plain
+    }
+}
+
 /// [`scan`]'s state: what it found so far, and the segment being read (its decoded length and
 /// first bytes, which tell a dot segment and `.well-known` from the rest).
 #[derive(Default)]
@@ -196,7 +262,18 @@ impl Scanner {
 
 #[cfg(test)]
 mod tests {
-    use super::{Scan, scan};
+    use super::{Scan, scan, scan_decoded};
+
+    #[test]
+    fn decoded_paths() {
+        // What Files::hide is given is decoded already: a % is a byte as any other.
+        assert_eq!(scan_decoded("/a/%2e%2e/b"), Scan::Plain);
+        assert_eq!(scan_decoded("/a%"), Scan::Plain);
+        assert_eq!(scan_decoded("/.env"), Scan::Hidden);
+        assert_eq!(scan_decoded("/a/.well-known/x"), Scan::Hidden);
+        assert_eq!(scan_decoded("/.well-known/x"), Scan::Plain);
+        assert_eq!(scan_decoded("/a/../b"), Scan::Unsafe);
+    }
 
     #[test]
     fn traversal_is_unsafe() {
