@@ -45,7 +45,7 @@ use akit_admin::{
 use akit_config::{Config, ConfigFile, Error, Errors, LogFormat};
 use akit_observe::metrics::{ConfigStats, Metrics};
 use akit_observe::{AccessLog, Format, MetricsExporter, Otlp, Tracer, Zone};
-use akit_provider::Updates;
+use akit_provider::{Kinds, Provider, Updates};
 use akit_runtime::upstream::EngineSlot;
 use akit_runtime::{Env, Graph, GraphCell, HandlerParams, Registry, compile};
 use akit_tls::{FileWatcher, Report};
@@ -277,6 +277,8 @@ struct Runner<'a> {
     /// its requests with it; a config's `telemetry` takes a restart, as fit's.
     telemetry: Option<&'a akit_config::Telemetry>,
     tracer: Option<&'a Tracer>,
+    /// The `providers` akit started with (I58): a config's take a restart, as fit's.
+    providers: &'a [akit_config::Provider],
 }
 
 impl Runner<'_> {
@@ -353,6 +355,9 @@ impl Runner<'_> {
         }
         if config.telemetry.as_ref() != self.telemetry {
             warnings.push("telemetry takes a restart; the running one stays".to_owned());
+        }
+        if config.providers != self.providers {
+            warnings.push("providers take a restart; the running ones stay".to_owned());
         }
         warnings
     }
@@ -514,6 +519,34 @@ fn reload_certs(configs: &Configs, runner: &mut Runner<'_>) -> Result<(), ()> {
         // No If-Match was given, and nothing but the config is changed.
         Err(Refused::Changed | Refused::Request { .. }) => Err(()),
     }
+}
+
+/// Makes and starts the providers `pcs` lists, as fit's `startProviders`: each named to
+/// `configs`, in their order of precedence, and sending its parts through `updates`.
+fn start_providers(
+    pcs: &[akit_config::Provider],
+    configs: &Configs,
+    updates: &Updates,
+) -> Result<Vec<Box<dyn Provider>>, String> {
+    let kinds = Kinds::new(&[akit_provider::docker::KINDS])?;
+    let mut out: Vec<Box<dyn Provider>> = Vec::with_capacity(pcs.len());
+    for pc in pcs {
+        let name = &pc.name;
+        let kind = pc.kind.name();
+        let Some(make) = kinds.lookup(kind) else {
+            return Err(format!(
+                "provider {name}: this akit was built without the {kind} provider (it has {})",
+                kinds.names().join(", ")
+            ));
+        };
+        let (mut p, watching) = make(name, pc)?;
+        println!("akit: provider {name} {watching}");
+        configs.add_provider(name)?;
+        p.start(updates.update(name))
+            .map_err(|e| format!("provider {name}: {e}"))?;
+        out.push(p);
+    }
+    Ok(out)
 }
 
 /// Applies the parts providers sent (I57), each merged into the running base config as a new
@@ -772,6 +805,7 @@ fn run(args: &[String]) -> ExitCode {
         }
     };
     let admin = config.admin.clone();
+    let provider_configs = config.providers.clone();
     drop(config);
     let cert_files = graph.cert_files().clone();
     let acme_names = graph.acme_names().to_vec();
@@ -859,6 +893,16 @@ fn run(args: &[String]) -> ExitCode {
         })
     };
     drop(tx);
+    // The providers the config lists (I58), in their order of precedence, as fit's
+    // startProviders; read when akit starts.
+    let mut providers = match start_providers(&provider_configs, &configs, &updates) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("akit run: {e}");
+            akit_listener::shutdown(&engine, grace);
+            return ExitCode::FAILURE;
+        }
+    };
     // The metrics /metrics serves, exported every telemetry.metrics.interval (I64).
     let exporter = match (&otlp, telemetry.as_ref().and_then(|t| t.metrics.as_ref())) {
         (Some(o), Some(m)) => {
@@ -898,6 +942,7 @@ fn run(args: &[String]) -> ExitCode {
         stats: &stats,
         telemetry: telemetry.as_ref(),
         tracer: tracer.as_ref(),
+        providers: &provider_configs,
     };
     // The certificate files watched (fit's -watch-certs), on this thread, every interval: the
     // running config's version number and the files it loaded tell the watcher what it loaded.
@@ -998,6 +1043,9 @@ fn run(args: &[String]) -> ExitCode {
         api.shutdown();
     }
     updates.close();
+    for p in &mut providers {
+        p.stop();
+    }
     // No more certificates obtained: its work under way is given up.
     acme.close();
     // A second SIGINT or SIGTERM does not wait for the shutdown, as fit's.
@@ -1081,7 +1129,7 @@ mod tests {
         let v = super::version();
         let lines: Vec<&str> = v.lines().collect();
         assert!(lines[0].starts_with("akit "));
-        assert_eq!(lines[1], "akio e9891b52c0e9");
+        assert_eq!(lines[1], "akio 0f2c419b1be8");
         assert_eq!(
             lines[2],
             format!("{}/{}", std::env::consts::OS, std::env::consts::ARCH)

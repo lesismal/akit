@@ -154,7 +154,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I56 | M3 退出 | I39–I55 | todo |
 | **M4** | | | |
 | I57 | Provider 框架与生效配置 | I29 | done |
-| I58 | Docker provider | I57 | todo |
+| I58 | Docker provider | I57 | done |
 | I59 | Kubernetes Ingress | I57 | todo |
 | I60 | Kubernetes Gateway API 与一致性测试 | I59 | todo |
 | I61 | Consul 与 etcd | I57 | todo |
@@ -725,6 +725,8 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 - **做什么**：Docker label 作为配置，经 Unix 套接字上 akio 的 HTTP 客户端跟踪事件流。
 - **完成标准**：Docker Compose 示例在服务启动和停止时随之路由。
 - **涉及**：`akit-provider`。
+- **fit**：决定 010。
+- **状态**：已完成（2026-11-24），附带 akio API 需求 A135（ADR-120）；见进度日志。
 
 ### I59 Kubernetes Ingress
 

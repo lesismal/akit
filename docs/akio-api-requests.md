@@ -79,6 +79,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | A112 | An HTTP-date parsed in all three formats RFC 9110 has recipients accept | built on akio's branch `claude/a111-body-tap` (`0e36f8d6`), pinned | 15 | I67 |
 | A113 | A response filter that runs after the inner ones (an outer filter) | built on akio's branch `claude/a111-body-tap` (`0e36f8d6`), pinned | 5 | I67 |
 | A117 | `akio::Pool` and `PoolConfig` together: a bounded pool of an application's own for its blocking work | requested (I68); akit-cache depends on `akio-pool` meanwhile | 4 | I68 |
+| A135 | Dialing a Unix-domain stream socket, and the HTTP client over one (akio, akio-http, akio-sys) | in akio's main (`0f2c419b`), pinned | 1, 2 | I58 |
 
 ## A1 TCP listeners on a running engine
 
@@ -1463,3 +1464,26 @@ blocking work.
 and 4 a CPU and a queue of 4,096, every file operation submitted with `try_execute`. Meanwhile
 akit-cache depends on `akio-pool` directly, at the same commit as every akio crate (a stopgap, in
 the progress log); it moves to `akio::Pool` once this is on akio's main.
+
+## A135 Dialing a Unix-domain stream socket, and the HTTP client over one
+
+**Problem.** The Docker provider (I58) lists containers and follows the daemon's events through
+the Engine API, which the daemon serves on a Unix-domain socket, `/var/run/docker.sock`, by
+default. Rule 2 has akit's requests go through akio's asynchronous clients; akio's engine dials
+TCP only and its HTTP client resolves the URL's host, so akit could reach the socket only with a
+blocking client of its own.
+
+**Evidence.** At `e9891b52`: `Engine::dial` and `dial_from` take a `SocketAddr`;
+`akio_sys::connect_nonblocking` makes `AF_INET`/`AF_INET6` sockets only; epoll's and io_uring's
+`finish_connect` read the peer and local addresses as IP ones; `Client::dial` resolves
+`key.host` and dials the addresses.
+
+**Suggested API.** `Engine::dial_unix(path, acceptor, on_error)`, a Unix-domain connection served
+as a dialed TCP one (its `peer_addr` and `local_addr` a fixed `UNIX_ADDR`); and
+`Client::with_unix_socket(Option<PathBuf>)`, every request of the client sent to that socket, the
+URL's host its `Host` field and the key of its idle connections.
+
+**How akit uses it.** `akit_provider::docker` builds its client with `with_unix_socket` for a
+`unix://` endpoint and runs `GET /events` and `GET /containers/json` on it, their callbacks on
+akio's I/O threads. Done in akio by I58 (ADR-120, branch `claude/a135-unix-dial`, `0f2c419b`),
+to be merged onto akio's main.
