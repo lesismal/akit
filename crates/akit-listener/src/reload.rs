@@ -2,9 +2,11 @@
 //! `listener.Server.Reload` moves them, with akio's listeners added and removed at run time
 //! (akio API request A1, ADR-099).
 //!
-//! A listener the new graph has unchanged (the same name, address, protocols, `tls` and limits)
-//! is kept: its sockets stay open, and its requests go to the new graph's routes from the swap
-//! on, since a [`Dispatcher`] reads the current graph per request. The others:
+//! A listener the new graph has unchanged (the same name, address, protocols, `tls` and limits,
+//! and the same client authorities in its `tls` files) is kept: its sockets stay open, and its
+//! requests go to the new graph's routes from the swap on, since a [`Dispatcher`] reads the
+//! current graph per request; a TLS one's handshakes get the new graph's certificates from then
+//! on (I30), since its certificate manager reads the current graph too. The others:
 //!
 //! - **Added**, the changed ones too, before the swap: the TCP side with
 //!   [`Engine::add_listener`], HTTP/3 with [`Engine::bind_udp`] on the engine's UDP thread, so an
@@ -117,6 +119,9 @@ impl Udp {
 #[derive(Debug)]
 struct Entry {
     config: Listener,
+    /// Its TLS as loaded, for a reload to tell whether its configuration changed besides its
+    /// certificates (which its manager serves from the current graph: I30).
+    tls: Option<akit_tls::ListenerTls>,
     /// Its TCP listener in the engine, and where it listens.
     tcp: Option<(ListenerId, SocketAddr)>,
     /// Its HTTP/3.
@@ -212,13 +217,20 @@ impl Listeners {
     /// how long a removed listener's connections are drained.
     #[must_use]
     pub fn new(engine: std::sync::Arc<Engine>, cell: GraphCell, opts: &Options) -> Listeners {
-        let configs = cell.with(|g| g.listeners().to_vec());
+        let configs: Vec<(Listener, Option<akit_tls::ListenerTls>)> = cell.with(|g| {
+            g.listeners()
+                .iter()
+                .enumerate()
+                .map(|(i, l)| (l.clone(), g.tls(i).cloned()))
+                .collect()
+        });
         // The builder's listeners first, in order: each listener's TCP side, then its UDP one
         // when it serves h3 (I10), as `addrs` reads them.
         let mut bound = engine.listeners().into_iter();
         let entries = configs
             .into_iter()
-            .map(|config| Entry {
+            .map(|(config, tls)| Entry {
+                tls,
                 tcp: if serves_tcp(&config) {
                     bound.next().map(|i| (i.id, i.local_addr))
                 } else {
@@ -263,6 +275,11 @@ impl Listeners {
         };
         let resolved = resolve(&l.address).map_err(address)?;
         let (tcp, h3) = (serves_tcp(l), serves_h3(l));
+        // Its certificates served per handshake from the cell's graph once `graph` is published
+        // in it, and from `graph` until then (I30).
+        let tls = akit_runtime::tls::server_configs(&self.cell, graph, index, true)
+            .transpose()
+            .map_err(|e| crate::tls_error(&e))?;
         let mut last = None;
         for _ in 0..MAX_PORT_ZERO_BINDS {
             let mut addr = resolved;
@@ -273,11 +290,12 @@ impl Listeners {
             }
             let mut entry = Entry {
                 config: l.clone(),
+                tls: graph.tls(index).cloned(),
                 tcp: None,
                 udp: None,
             };
             if tcp {
-                let id = self.add_tcp(graph, index, l, addr, room)?;
+                let id = self.add_tcp(tls.as_ref().map(|c| &c.tcp), l, addr, room)?;
                 let local = self
                     .engine
                     .listeners()
@@ -288,7 +306,7 @@ impl Listeners {
                 addr.set_port(local.port());
             }
             if h3 {
-                match self.bind_h3(graph, index, l, addr, room) {
+                match self.bind_h3(tls.as_ref().and_then(|c| c.h3.as_ref()), l, addr, room) {
                     Ok(b) => entry.udp = Some(Udp::Bound(b)),
                     Err(e) => {
                         entry.remove(&self.engine, None);
@@ -324,8 +342,7 @@ impl Listeners {
 
     fn add_tcp(
         &self,
-        graph: &Graph,
-        index: usize,
+        tls: Option<&akio::tls::ServerConfig>,
         l: &Listener,
         addr: SocketAddr,
         room: &mut [(usize, bool)],
@@ -335,7 +352,7 @@ impl Listeners {
             tcp_listener(
                 &self.cell,
                 l,
-                graph.tls(index),
+                tls,
                 EngineListener::tcp(addr).backend(self.opts.backend.clone()),
                 h3_port,
             )
@@ -358,14 +375,13 @@ impl Listeners {
 
     fn bind_h3(
         &self,
-        graph: &Graph,
-        index: usize,
+        h3_tls: Option<&akio::tls::ServerConfig>,
         l: &Listener,
         addr: SocketAddr,
         room: &mut [(usize, bool)],
     ) -> Result<UdpBinding, Error> {
         let bind = || {
-            let a = h3_acceptor(&self.cell, l, graph.h3_tls(index))?;
+            let a = h3_acceptor(&self.cell, l, h3_tls)?;
             self.engine
                 .bind_udp(addr, a)
                 .map_err(|error| Error::Address {
@@ -403,9 +419,21 @@ impl Listeners {
         let configs = graph.listeners().to_vec();
         let mut kept = vec![false; self.entries.len()];
         // Per listener of the new graph: the running one it keeps.
+        // A TLS listener whose files changed only in its certificates is kept: its manager
+        // serves the new ones from the swap on.
         let keeps: Vec<Option<usize>> = configs
             .iter()
-            .map(|l| claim(&self.entries, &mut kept, |e| e.config == *l))
+            .enumerate()
+            .map(|(i, l)| {
+                let tls = graph.tls(i);
+                claim(&self.entries, &mut kept, |e| {
+                    e.config == *l
+                        && match (&e.tls, tls) {
+                            (Some(a), Some(b)) => a.same_config(b),
+                            (a, b) => a.is_none() && b.is_none(),
+                        }
+                })
+            })
             .collect();
         let unspecified = SocketAddr::from(([0, 0, 0, 0], 0));
         if let Some((e, _)) = self

@@ -15,6 +15,8 @@ listeners[].protocols
 # I09: TLS from files. listeners[].protocols takes "h2" too; tls.max_version takes "1.3" (1.2 is
 # refused as not supported yet); tls.acme, tls.on_demand and tls.kernel_tls_offload are refused.
 # I10: listeners[].protocols takes "h3" too (HTTP/3 on the listener's port in UDP, Alt-Svc on TCP).
+# I30: no new fields: certificates are chosen per handshake (a wildcard in any of them); the
+# storage comes with acme.storage in I31.
 listeners[].tls
 listeners[].tls.certificates
 listeners[].tls.certificates[].cert_file

@@ -11,14 +11,89 @@ done and where the work differs from the plan.
 | | |
 | --- | --- |
 | Last updated | 2026-11-24 |
-| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I15, I19–I24 done, I16 doing (body limits done; streaming waits for akio's A19–A21); M3's I39 done early. |
+| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I15, I19–I24 done, I16 doing (body limits done; streaming waits for akio's A19–A21); M2's I30 and M3's I39 done early. |
 | akio | `a9a620ab` on akio's `main` (`1.0.0-rc.1`, with A1–A5, A7, A8, A11, A13 and A16–A18), pinned by `rev` in `Cargo.toml` |
 | fit | the specification; read at `7daee573` for this plan |
-| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept, added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`); `limits.max_body_bytes` on every listener (413) and in the proxy; access logs in fit's json, text and line formats; upstream pools with round robin, weighted round robin and least connections, passing over addresses taken out by passive health checks (`max_fails`, `fail_timeout`); the compatibility gate: 80 fixtures, 9 valid, 70 refused only as not supported yet, 1 skipped, none failed |
+| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept, added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication; certificates chosen per handshake as fit's, replaced by a reload or by `-watch-certs` without closing the listener) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`); `limits.max_body_bytes` on every listener (413) and in the proxy; access logs in fit's json, text and line formats; upstream pools with round robin, weighted round robin and least connections, passing over addresses taken out by passive health checks (`max_fails`, `fail_timeout`); the compatibility gate: 80 fixtures, 9 valid, 70 refused only as not supported yet, 1 skipped, none failed |
 | Next | I17; I16 once A19–A21 land |
 | akio requests | A1–A5, A7, A8, A11, A13 and A16–A18 on akio's main and pinned; A6 on akio branch `claude/x509-csr`; A9, A10, A12, A14, A15, A19–A21 and A22 requested ([akio API requests](akio-api-requests.md)) |
 
 ## Log
+
+### 2026-11-24: I30, certificate manager and storage
+
+- The manager is akio-tls's `CertResolver` (akio A2, ADR-098), what fit's `tlsmgr.Manager` is to
+  Go's `GetCertificate`: asked for each full handshake's certificate, it answers in the call from
+  memory (or later from another thread, which on-demand TLS, I34, will use). Every TLS listener's
+  configuration is now built around one (`ServerConfig::builder_with_resolver`) instead of
+  I09's `sni_cert` table.
+- `akit_tls::Certs`, fit's `tlsmgr.Static`: a listener's certificates (`CertifiedKey`s) indexed by
+  the names in their leaves (DNS names in lower case, IP addresses) and by the parent of each
+  `*.` name. A handshake gets the first certificate for its name, exactly or by a wildcard one
+  label deep, that the client can take (its signature schemes and, in TLS 1.2, an ECDHE suite of
+  the key's kind, as Go's `SupportsCertificate`), else the first for the name, else the first of
+  all; one certificate serves every name. So a wildcard in any certificate now works (I09 refused
+  one past the first), and of an RSA and an ECDSA certificate for a name the client gets the one
+  it supports, as in fit (I09 served the first).
+- `akit_tls::ListenerTls`: a listener's `tls` loaded once (certificates, client authorities,
+  protocols) with the SHA-256 of every file read; `server_configs(manager)` builds its TCP and h3
+  configurations around a manager; `same_config` compares all but the certificates.
+  `server_config` and `server_configs(tls, protocols)` are kept, serving the loaded certificates.
+- Reloads without dropping handshakes: `akit_runtime::ListenerCerts`, the manager of each TLS
+  listener, serves the certificates the cell's current graph loaded for the listener (by name),
+  reading the graph through the I/O thread's cache as a request does, with no lock. A reload whose
+  listener has the same config and the same client authorities (their files' contents included)
+  keeps the listener, its sockets and connections, and the next handshake gets the new
+  certificate; a handshake under way keeps the one it was given. A listener opened by a reload
+  serves its own graph's certificates until the swap; one being drained serves its own when the
+  current graph no longer has it. New client authorities reopen the listener (beside the old one,
+  which drains), since a configuration holds them. This fixes I22's kept TLS listener keeping its
+  old certificates.
+- `run -watch-certs` (on by default, as fit's) and `-watch-interval` (1s): `akit_tls::FileWatcher`,
+  fit's `tlsmgr.FileWatcher`, looks at the size and modification time of every certificate, key
+  and authority file the running config loaded (`Graph::cert_files`) on the main thread's loop,
+  and once a change has settled (500 ms) and the contents differ, applies the config again as on
+  SIGHUP (`akit: certificate files changed; reloading`). A pair that fails (a key not written yet)
+  is reported once and not tried again until the files change; an unreadable file is reported
+  once. `-watch` (the config file, I29) is still refused.
+- Storage: `akit_tls::Storage`, fit's `tlsmgr.Storage` (load, store, delete, list, lock, unlock),
+  with a deadline in place of a context; its methods block and are called off the I/O threads.
+  `FileStorage`, fit's `FileStorage`: a file per key under a root (keys checked: no empty, `.` or
+  `..` part, no backslash or NUL), written to a temporary file, synced and renamed; values up to
+  4 MiB; directories 0700 and files 0600; `list` sorted, skipping locks and temporary files.
+  Locks are files under `locks/` made with `create_new`, touched every 5 s by a thread per lock
+  while held, removed when untouched for 30 s (a holder that stopped), polled every second by a
+  waiter until its deadline; at most 256 held at once (rule 11). ACME (I31) is its first user;
+  `acme.storage` and `shared_storage` stay refused until then.
+- Tests: `akit-tls` unit tests (the choice of a certificate as fit's `TestStatic`: exact,
+  wildcard, one label only, order, the client's schemes; Go's support rules); `tests/storage.rs`
+  (4, fit's storage tests: keys, values, sizes, permissions, list, deadlines, a lock taken in turn
+  by two storages on one directory, a fresh lock waited for, a stale one taken over);
+  `tests/watch.rs` (2, fit's watcher tests: a renewal applied once, touches and changes back
+  ignored, a failing pair reported once, an unreadable file, a config applied another way);
+  `tests/files.rs` (a wildcard in any certificate, file sums and `same_config`).
+  `akit-listener/tests/certs.rs` (3, on epoll and io_uring): wildcards in any certificate by SNI;
+  a certificate replaced under traffic (four clients making full handshakes all along, a reload
+  that keeps the listener, the new certificate served after it, no failed request, a connection
+  made before still serving); new client authorities reopening the listener.
+  `akit/tests/watch_certs.rs` (2, end to end with `akit run`): renewed files served without a
+  restart and with the listener kept, a key not yet written failing once and then applied; and
+  `-watch-certs=false`. `cli.rs`: bad `-watch-interval` values exit 2.
+- Checked: `make check` on macOS; the tests of akit-tls, akit-runtime, akit-listener and akit on
+  Linux (the benchmark host, gpu51), epoll all passing, io_uring all passing but
+  `akit-listener/tests/reload.rs` (plain HTTP, a read timing out in its `get`), which fails as
+  often on main `1a5fccf` (2 of 5 runs each) on the host at a load average of 200 to 480: a flake
+  under load that predates I30.
+- Differences from the plan and from fit:
+  - fit's `Certs` (ACME and files together), OCSP stapling (`Staple`) and the shared storages
+    (Redis, etcd, Consul) are I31, I32 and I62; the trait is ready for them.
+  - The watcher runs on the main thread's signal loop (`recv_timeout`), not a goroutine of its
+    own; reloads it starts and SIGHUP's are one after the other there.
+  - A session resumed by a client sends no certificate, so it keeps the certificate of its first
+    handshake until its ticket expires, as with Go.
+- What a benchmark task should measure: full TLS handshakes a second on a listener with one and
+  with ten certificates, against I09's `sni_cert` (main before I30) and fit; the cost of the
+  choice per handshake (a graph read and an `Arc` clone).
 
 ### 2026-11-24: I20, passive health checks
 

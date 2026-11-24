@@ -128,7 +128,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I27 | Admin API II: patch, rollback, auth | I26 | todo |
 | I28 | Listeners diffed at run time | I26, A1 | todo |
 | I29 | File provider | I26 | todo |
-| I30 | Certificate manager and storage | I09 | todo |
+| I30 | Certificate manager and storage | I09 | done |
 | I31 | ACME I: account, orders, HTTP-01 | I30 | todo |
 | I32 | ACME II: TLS-ALPN-01, renewal, OCSP | I31 | todo |
 | I33 | Automatic HTTPS defaults | I32 | todo |
@@ -208,6 +208,7 @@ commit and result.
 | Load balancing v1 and v2 | I19, I36 | no | no (not built yet) | A micro-benchmark of each policy's pick, 1 and 16 threads; proxy A/B against a single server. |
 | Passive health checks | I20 | no | no (built, not measured) | A micro-benchmark of recording a result on the request path. |
 | Access logs | I21 | no | no (built, not measured) | Same-run A/B of fixed and proxy with logs on and off (json, and text or line), to a file and to `/dev/null`; lines dropped at full load with the default 4 MiB buffer and a slow disk; the per-request cost (the boxed response filter, the shard lock, formatting). |
+| Certificates chosen per handshake (the resolver reading the graph) | I30 | no | no (built, not measured) | Full TLS handshakes a second with one and ten certificates, against I09's `sni_cert` and fit. |
 | Prometheus metrics | I37 | no | no (not built yet) | Same-run A/B with metrics on and off. |
 | Matchers v2 and expressions | I39 | no | no (built, not measured) | A micro-benchmark of `find_request` with matchers, expressions and path regexps (no allocation, `tests/no_alloc.rs`); same-run A/B against I39's base on the fixed scenario (one route, no matchers: within noise expected). |
 | Middlewares (rewrites, headers, limits, auth, retries and the rest) | I40–I48 | no | no (not built yet) | I56 benchmarks every middleware; same-run A/B of each on the proxy scenario. |

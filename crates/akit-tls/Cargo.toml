@@ -10,11 +10,9 @@ publish = false
 
 [dependencies]
 akio = { workspace = true }
+akio-crypto = { workspace = true }
 akio-x509 = { workspace = true }
 akit-config = { workspace = true }
-
-[dev-dependencies]
-akio-crypto = { workspace = true }
 
 [lints]
 workspace = true

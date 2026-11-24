@@ -72,10 +72,13 @@ without blocking the I/O thread.
 CertDone)`, where `done` may be completed later from another thread with a certificate or an alert;
 the handshake waits without holding the thread. A synchronous fast path for a cached certificate.
 
-**How akit uses it.** I30 serves certificates from its manager; I34 issues on demand. I09 picks
-certificates from files with `sni_cert`, which looks a name up exactly: a wildcard name
-(`*.example.com`) in a certificate other than the first, the default, is refused as not supported
-yet until the resolver (whose `CertStore` takes `*.` names) is on akio's `main`.
+**How akit uses it.** On `a9a620ab` (ADR-098), I30: every TLS listener's configuration is built
+with `ServerConfig::builder_with_resolver`, and its resolver, `akit_runtime::ListenerCerts`,
+answers inline from the current graph's `akit_tls::Certs` (fit's choice: exact or wildcard name,
+then what the client supports, from `ClientHelloInfo`'s signature schemes and suites), so a
+reload or `-watch-certs` replaces certificates without closing the listener, and a wildcard works
+in any certificate (I09's `sni_cert` stopgap refused one past the first). I34 will answer
+`CertDone` later, from the issuing thread.
 
 ## A3 A filter on accepted connections
 

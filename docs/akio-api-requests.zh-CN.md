@@ -66,9 +66,11 @@
 **建议的 API。** 服务端配置上的解析器 `fn resolve(&self, hello: &ClientHello, done:
 CertDone)`，`done` 可以稍后从其他线程以证书或告警完成；握手等待期间不占用线程。缓存命中的证书走同步快速路径。
 
-**akit 的用法。** I30 从它的证书管理器提供证书；I34 按需签发。I09 用 `sni_cert` 从文件中选证书，它按名字精确
-查找：第一个证书（即默认证书）以外的证书中的通配符名字（`*.example.com`）会被拒绝为尚不支持，直到解析器（其
-`CertStore` 接受 `*.` 名字）进入 akio 的 `main`。
+**akit 的用法。** 基于 `a9a620ab`（ADR-098）的 I30：每个 TLS 监听器的配置都用
+`ServerConfig::builder_with_resolver` 构建，其解析器 `akit_runtime::ListenerCerts` 从当前图的 `akit_tls::Certs`
+内联作答（fit 的选择方式：精确或通配符名字，再看客户端支持什么，依据 `ClientHelloInfo` 的签名方案和套件），因此重载或
+`-watch-certs` 可以替换证书而不关闭监听器，任何证书中的通配符都可用（I09 的 `sni_cert` 权宜做法拒绝第一个之后的）。
+I34 将在签发线程中稍后完成 `CertDone`。
 
 ## A3 过滤已接受的连接
 

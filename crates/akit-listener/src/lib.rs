@@ -7,7 +7,8 @@
 //! serving a [`Dispatcher`], which routes every request through the current graph of a
 //! [`GraphCell`] and answers 404 when no route matches. I09: a listener with `tls` serves HTTPS,
 //! its HTTP acceptor wrapped in akio-tls with the configuration the graph loaded (certificates
-//! by SNI, ALPN choosing h2 or http/1.1, client authentication). Since I11 the routes go by the
+//! by SNI, ALPN choosing h2 or http/1.1, client authentication); since I30 its certificates are
+//! chosen per handshake by an [`akit_runtime::ListenerCerts`], from the current graph. Since I11 the routes go by the
 //! request's canonical path, as fit's listener does: dot and empty segments removed, a path
 //! climbing above the root or hiding a separator in an escape answered `400 bad request path`.
 //! I10: a TLS listener serving `h3` serves HTTP/3 on akio-h3, over QUIC on its port in UDP, with
@@ -509,18 +510,21 @@ pub fn engine(cell: &GraphCell, opts: &Options) -> Result<Engine, Error> {
 
 /// [`engine`]'s one try; the error says too whether a port was probed for a listener at port 0.
 fn build(cell: &GraphCell, opts: &Options) -> Result<Engine, (Error, bool)> {
-    type Loaded = (
-        Listener,
-        Option<akio::tls::ServerConfig>,
-        Option<akio::tls::ServerConfig>,
-    );
-    let listeners: Vec<Loaded> = cell.with(|g| {
-        g.listeners()
-            .iter()
-            .enumerate()
-            .map(|(i, l)| (l.clone(), g.tls(i).cloned(), g.h3_tls(i).cloned()))
-            .collect()
-    });
+    type Loaded = (Listener, Option<akit_tls::ServerConfigs>);
+    // Each TLS listener's configurations, its certificates served from the current graph per
+    // handshake (I30), so that a reload keeping the listener changes them.
+    let listeners: Vec<Loaded> = cell
+        .with(|g| {
+            g.listeners()
+                .iter()
+                .enumerate()
+                .map(|(i, l)| {
+                    let tls = akit_runtime::tls::server_configs(cell, g, i, false).transpose()?;
+                    Ok((l.clone(), tls))
+                })
+                .collect::<Result<_, akit_tls::Error>>()
+        })
+        .map_err(|e| (tls_error(&e), false))?;
     let mut probed = false;
     let mut cfg = EngineConfig::default();
     cfg.shutdown_timeout = opts.shutdown_timeout;
@@ -532,7 +536,7 @@ fn build(cell: &GraphCell, opts: &Options) -> Result<Engine, (Error, bool)> {
         cfg.connect_timeout = Some(t);
     }
     let mut b = Engine::builder().config(cfg);
-    for (l, tls, h3_tls) in &listeners {
+    for (l, tls) in &listeners {
         let fail = |e: Error| (e, false);
         let mut addr = resolve(&l.address).map_err(|error| {
             fail(Error::Address {
@@ -551,23 +555,28 @@ fn build(cell: &GraphCell, opts: &Options) -> Result<Engine, (Error, bool)> {
         if tcp {
             let listener = EngineListener::tcp(addr).backend(opts.backend.clone());
             b = b.listen(
-                tcp_listener(cell, l, tls.as_ref(), listener, h3.then_some(addr.port()))
-                    .map_err(fail)?,
+                tcp_listener(
+                    cell,
+                    l,
+                    tls.as_ref().map(|c| &c.tcp),
+                    listener,
+                    h3.then_some(addr.port()),
+                )
+                .map_err(fail)?,
             );
         }
         if h3 {
             // Per-peer UDP listeners run on akio's epoll (kqueue) UDP loop whatever the TCP
             // backend: the backend is left to akio.
-            b = b.listen(
-                EngineListener::udp(addr)
-                    .serve(h3_acceptor(cell, l, h3_tls.as_ref()).map_err(fail)?),
-            );
+            b = b.listen(EngineListener::udp(addr).serve(
+                h3_acceptor(cell, l, tls.as_ref().and_then(|c| c.h3.as_ref())).map_err(fail)?,
+            ));
         }
     }
     // The HTTP/3 of a listener a reload adds is bound on the engine's UDP threads
     // (`Engine::bind_udp`, I22): those of the last listener serving h3, or one of their own when
     // none does. (akio adds TCP listeners at run time, A1, not UDP ones.)
-    if !listeners.iter().any(|(l, _, _)| serves_h3(l)) {
+    if !listeners.iter().any(|(l, _)| serves_h3(l)) {
         b = b.udp_client_threads(1);
     }
     b.build().map_err(|e| (Error::Engine(e), probed))
@@ -614,6 +623,12 @@ fn h3_acceptor(
         // HTTP/3 is always over TLS.
         Dispatcher::new(cell.clone(), l.name.clone()).tls(true),
     ))
+}
+
+/// A listener's TLS configuration refused by akio-tls (the graph built one when it was
+/// compiled, so this is not expected).
+fn tls_error(e: &akit_tls::Error) -> Error {
+    Error::Engine(io::Error::other(e.to_string()))
 }
 
 fn not_loaded(l: &Listener) -> Error {

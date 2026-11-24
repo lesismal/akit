@@ -9,7 +9,11 @@
 //!   listeners to its (I22); a broken config leaves the running one. With `access_log`, a line is
 //!   written for each request (I21): the log is opened when akit starts, and closed, once every
 //!   line is written, when it stops; a reload changes its level and time zone, as fit's does,
-//!   while its output, format, flush interval and buffer take a restart.
+//!   while its output, format, flush interval and buffer take a restart. With `-watch-certs` (on
+//!   by default, as fit's), the certificate, key and authority files the running config loaded
+//!   are looked at every `-watch-interval`, and once a change has settled the config is applied
+//!   again as on SIGHUP (I30): a listener whose files changed only in their certificates is kept,
+//!   and its next handshakes get the new ones.
 //! - `validate`: reads and compiles the config, as `run` would, and says whether it is valid.
 //! - `version`, `help`.
 
@@ -18,7 +22,7 @@ mod flags;
 use std::io::Read;
 use std::process::ExitCode;
 use std::sync::{Arc, mpsc};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use akit_config::{Config, Error, Errors, LogFormat};
 use akit_observe::{AccessLog, Format, Zone};
@@ -63,12 +67,12 @@ const RUN_FLAGS: &[Spec] = &[
     Spec {
         name: "watch-interval",
         bool: false,
-        usage: "not supported yet (I29)",
+        usage: "how often watched files are looked at: certificate files, with -watch-certs (default 1s)",
     },
     Spec {
         name: "watch-certs",
         bool: true,
-        usage: "not supported yet (I30)",
+        usage: "apply the running config again each time the certificate or key files it loaded change (default true)",
     },
     Spec {
         name: "admin",
@@ -206,6 +210,7 @@ fn open_access_log(c: &akit_config::AccessLog, zone: Zone) -> std::io::Result<Ac
 
 /// SIGHUP: reads the config at `paths` again and, when it compiles and its listeners can be
 /// served, swaps it in; otherwise the running config stays. Says what happened as fit says it.
+/// Returns the certificate files the new config loaded, with their sums, when it was swapped in.
 ///
 /// The access log opened at start, `log` (with the config it was opened from), takes the new
 /// config's level and time zone once the graph is swapped in; its other settings take a restart,
@@ -215,7 +220,7 @@ fn reload(
     slot: &EngineSlot,
     listeners: &mut akit_listener::Listeners,
     log: Option<&(AccessLog, akit_config::AccessLog)>,
-) {
+) -> Option<CertFiles> {
     let name = paths.join(", ");
     println!("akit: reloading {name}");
     let (config, zone, graph) = match read(paths, slot, log.map(|l| &l.0)) {
@@ -223,9 +228,10 @@ fn reload(
         Err(f) => {
             eprintln!("akit: reload failed; the running config stays");
             f.print(&name);
-            return;
+            return None;
         }
     };
+    let files = graph.cert_files().clone();
     let result = listeners.reload(graph);
     if result.is_ok() {
         match (log, &config.access_log, zone) {
@@ -260,10 +266,17 @@ fn reload(
                 print_listener(l);
             }
             println!("akit: reloaded {name}");
+            Some(files)
         }
-        Err(e) => eprintln!("akit: reload failed; the running config stays: {e}"),
+        Err(e) => {
+            eprintln!("akit: reload failed; the running config stays: {e}");
+            None
+        }
     }
 }
+
+/// The certificate, key and authority files a config loaded, with their SHA-256, by path.
+type CertFiles = std::collections::BTreeMap<String, akit_tls::Sum>;
 
 /// `akit: listener "web" on 127.0.0.1:8080 (http/1.1, h2c)`.
 fn print_listener(l: &akit_listener::Served) {
@@ -340,9 +353,21 @@ fn run(args: &[String]) -> ExitCode {
         Err(u) => return usage_error(&u),
     };
     let mut grace = Duration::from_secs(30);
+    let mut watch_certs = true;
+    let mut watch_interval = akit_tls::DEFAULT_WATCH_INTERVAL;
     for (name, value) in &flags {
         match *name {
             "c" => {}
+            "watch-certs" => watch_certs = value == "true",
+            "watch-interval" => match flags::parse_duration(value) {
+                Some(d) if !d.is_zero() => watch_interval = d,
+                _ => {
+                    return usage_error(&Usage(format!(
+                        "invalid value {value:?} for flag -watch-interval: parse error\n{}",
+                        flags::usage("run", RUN_FLAGS)
+                    )));
+                }
+            },
             "shutdown-timeout" => match flags::parse_duration(value) {
                 Some(d) => grace = d,
                 None => {
@@ -398,6 +423,7 @@ fn run(args: &[String]) -> ExitCode {
         }
     };
     drop(config);
+    let mut cert_files = graph.cert_files().clone();
     // Before the listeners: a signal from then on shuts down gracefully.
     let signals = match signals() {
         Ok(s) => s,
@@ -426,25 +452,65 @@ fn run(args: &[String]) -> ExitCode {
     for l in listeners.served() {
         print_listener(&l);
     }
+    // The certificate files watched (fit's -watch-certs): the running config's version (one
+    // more per config applied) and its files, looked at every interval on this thread.
+    let mut version: u64 = 0;
+    let mut watcher = watch_certs.then(|| {
+        (
+            akit_tls::FileWatcher::new(akit_tls::DEFAULT_WATCH_DEBOUNCE),
+            Instant::now(),
+        )
+    });
     loop {
         // Graphs replaced by a reload are retired from here once no request uses them
         // (decision 004): after each swap, and on a timer while any is left.
-        let signal = if cell.retiring() > 0 {
-            match signals.recv_timeout(COLLECT_EVERY) {
+        let mut wait = (cell.retiring() > 0).then_some(COLLECT_EVERY);
+        if let Some((_, next)) = &watcher {
+            let until = next.saturating_duration_since(Instant::now());
+            wait = Some(wait.map_or(until, |w| w.min(until)));
+        }
+        let signal = match wait {
+            None => signals.recv().ok(),
+            Some(wait) => match signals.recv_timeout(wait) {
                 Ok(s) => Some(s),
                 Err(mpsc::RecvTimeoutError::Timeout) => {
-                    cell.collect();
+                    if let Some((w, next)) = &mut watcher {
+                        let now = Instant::now();
+                        if now >= *next {
+                            *next = now.checked_add(watch_interval).unwrap_or(now);
+                            let files = cert_files.clone();
+                            let report = w.tick(now, version, &files, || {
+                                println!("akit: certificate files changed; reloading");
+                                let files =
+                                    reload(&paths, &slot, &mut listeners, log.as_ref()).ok_or(())?;
+                                cert_files = files;
+                                version = version.wrapping_add(1);
+                                Ok(())
+                            });
+                            match report {
+                                Some(akit_tls::Report::Unreadable(e)) => eprintln!(
+                                    "akit: certificate files: {e}; the running certificates stay"
+                                ),
+                                // The reload said why.
+                                Some(akit_tls::Report::Failed(())) | None => {}
+                            }
+                        }
+                    }
+                    if cell.retiring() > 0 {
+                        cell.collect();
+                    }
                     continue;
                 }
                 Err(mpsc::RecvTimeoutError::Disconnected) => None,
-            }
-        } else {
-            signals.recv().ok()
+            },
         };
         match signal {
             Some(Signal::Stop) | None => break,
             Some(Signal::Hangup) => {
-                reload(&paths, &slot, &mut listeners, log.as_ref());
+                if let Some(files) = reload(&paths, &slot, &mut listeners, log.as_ref()) {
+                    cert_files = files;
+                    version = version.wrapping_add(1);
+                }
                 cell.collect();
             }
         }
