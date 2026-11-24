@@ -562,11 +562,17 @@ fn supported_fields_are_read() {
             r#"{"acme": {"request_timeout": "5s"}}"#.into(),
             |c| c.acme.as_ref().unwrap().request_timeout == std::time::Duration::from_secs(5),
         ),
-        // http-01; tls-alpn-01 is refused as not supported yet (I32).
+        // Both, in the order given (I32).
         (
             "acme.challenges",
-            r#"{"acme": {"challenges": ["http-01"]}}"#.into(),
-            |c| c.acme.as_ref().unwrap().challenges == [akit_config::Challenge::Http01],
+            r#"{"acme": {"challenges": ["tls-alpn-01", "http-01"]}}"#.into(),
+            |c| {
+                c.acme.as_ref().unwrap().challenges
+                    == [
+                        akit_config::Challenge::TlsAlpn01,
+                        akit_config::Challenge::Http01,
+                    ]
+            },
         ),
         // 1.3, the default; 1.2 is refused as not supported yet (akio API request A9).
         (

@@ -52,14 +52,13 @@ pub const DEFAULT_ACME_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 pub enum Challenge {
     /// `http-01`: the CA asks for the answer on port 80, which every listener in the clear gives.
     Http01,
-    /// `tls-alpn-01`: the CA asks in a TLS handshake on port 443. Read, and refused as not
-    /// supported yet (I32).
+    /// `tls-alpn-01`: the CA asks in a TLS handshake on port 443, which the TLS listener that
+    /// lists the name answers (I32).
     TlsAlpn01,
 }
 
 /// `acme`, as fit's `config.ACME` (decision 007): where certificates are obtained and kept, and
-/// how fast. `shared_storage` and `on_demand` are refused as not supported yet, as is the
-/// `tls-alpn-01` challenge (I32): certificates are obtained through HTTP-01.
+/// how fast. `shared_storage` and `on_demand` are refused as not supported yet.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Acme {
     /// `directory`: the URL of the CA's ACME directory; [`DEFAULT_ACME_DIRECTORY`] when left out.
@@ -81,8 +80,8 @@ pub struct Acme {
     /// `request_timeout`: how long each request to the CA may take;
     /// [`DEFAULT_ACME_REQUEST_TIMEOUT`] when left out or 0.
     pub request_timeout: Duration,
-    /// `challenges`: the challenges answered, in the order tried; HTTP-01 alone when left out
-    /// (fit adds TLS-ALPN-01, I32).
+    /// `challenges`: the challenges answered, in the order tried, a failed attempt tried again
+    /// with the next; HTTP-01 then TLS-ALPN-01 when left out, as fit's.
     pub challenges: Vec<Challenge>,
 }
 
@@ -96,7 +95,7 @@ impl Default for Acme {
             max_concurrent: DEFAULT_ACME_MAX_CONCURRENT,
             timeout: DEFAULT_ACME_TIMEOUT,
             request_timeout: DEFAULT_ACME_REQUEST_TIMEOUT,
-            challenges: vec![Challenge::Http01],
+            challenges: vec![Challenge::Http01, Challenge::TlsAlpn01],
         }
     }
 }
@@ -1633,10 +1632,7 @@ fn acme(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Acme> {
             let at = crate::error::join_index(&p, i);
             let c = match s.as_str() {
                 "http-01" => Challenge::Http01,
-                "tls-alpn-01" => {
-                    d.not_yet(off, &at, "the tls-alpn-01 challenge (I32)");
-                    Challenge::TlsAlpn01
-                }
+                "tls-alpn-01" => Challenge::TlsAlpn01,
                 _ => {
                     d.error(
                         off,

@@ -132,7 +132,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I29 | File provider | I26 | todo |
 | I30 | Certificate manager and storage | I09 | done |
 | I31 | ACME I: account, orders, HTTP-01 | I30 | done |
-| I32 | ACME II: TLS-ALPN-01, renewal, OCSP | I31 | todo |
+| I32 | ACME II: TLS-ALPN-01, renewal, OCSP | I31 | done |
 | I33 | Automatic HTTPS defaults | I32 | todo |
 | I34 | On-demand TLS | I33, A2 | todo |
 | I35 | Active health checks | I20 | done |
@@ -213,6 +213,7 @@ commit and result.
 | Access logs | I21 | no | no (built, not measured) | Same-run A/B of fixed and proxy with logs on and off (json, and text or line), to a file and to `/dev/null`; lines dropped at full load with the default 4 MiB buffer and a slow disk; the per-request cost (the boxed response filter, the shard lock, formatting). |
 | Certificates chosen per handshake (the resolver reading the graph) | I30 | no | no (built, not measured) | Full TLS handshakes a second with one and ten certificates, against I09's `sni_cert` and fit. |
 | The HTTP-01 check on listeners in the clear | I31 | no | no (built, not measured) | Fixed over HTTP/1.1 and h2c, same-run A/B against main before I31 (a prefix comparison per request under `akit run`). |
+| The certificate choice with TLS-ALPN-01 and OCSP staples | I32 | no | no (built, not measured) | Full TLS handshakes a second against I31, with and without a stapled response (the ALPN list read, and a second `Published` map for files with responders); the handshake's size with a response. |
 | Prometheus metrics | I37 | no | no (built, not measured) | Same-run A/B of the fixed and proxy scenarios with `metrics` on and off (an inline route costs a thread-local read and three atomic adds; a proxied one also a boxed response filter until akio A29), and with the access log on too (one hook for both); a scrape with many routes and 64 threads (the per-thread shards). |
 | Matchers v2 and expressions | I39 | no | no (built, not measured) | A micro-benchmark of `find_request` with matchers, expressions and path regexps (no allocation, `tests/no_alloc.rs`); same-run A/B against I39's base on the fixed scenario (one route, no matchers: within noise expected). |
 | Rewrites, redirects, headers | I40 | no | no (built, not measured) | Same-run A/B on the proxy scenario of a route with `headers` (request and response changes) and `rewrite` against the same route without them; the cost per request of the response filter (a boxed closure and an `Arc` clone) and of the request fields kept in a context local (the stopgap until akio API request A33). |
@@ -578,6 +579,9 @@ Split from I07 so that the half that needs no config model runs beside I02.
 - **Do**: TLS-ALPN-01; renewal ahead of expiry with jitter and backoff; OCSP stapling.
 - **Done when**: tests against Pebble cover TLS-ALPN-01 and renewal; stapling is checked.
 - **Touches**: `akit-tls`.
+- **Done**: TLS-ALPN-01, renewal by lifetime and by ARI (RFC 9773), OCSP stapling of ACME's
+  certificates and of files' under trusted roots. Files' under the system's roots wait on akio
+  A57; closing `acme-tls/1` connections after their handshake waits on A58.
 
 ### I33 Automatic HTTPS defaults
 

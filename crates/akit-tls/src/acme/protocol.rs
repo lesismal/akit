@@ -44,6 +44,8 @@ struct Directory {
     new_nonce: String,
     new_account: String,
     new_order: String,
+    /// ARI's endpoint (RFC 9773), when the CA has one.
+    renewal_info: Option<String>,
 }
 
 /// A CA's answer to a signed request.
@@ -248,6 +250,9 @@ impl Ca {
             new_nonce: url("newNonce")?,
             new_account: url("newAccount")?,
             new_order: url("newOrder")?,
+            renewal_info: string(&v, "renewalInfo")
+                .filter(|u| !u.is_empty())
+                .map(|u| u.trim_end_matches('/').to_owned()),
         };
         *self
             .directory
@@ -448,6 +453,31 @@ impl Ca {
             deadline,
         )
         .map(|a| a.body)
+    }
+
+    /// What ARI says of the certificate whose identifier is `id`, with the `Retry-After` the CA
+    /// answered with: `None` when the CA has no ARI.
+    pub(crate) fn renewal_info(
+        &self,
+        id: &str,
+        deadline: Instant,
+    ) -> Result<Option<(Value, Option<String>)>, Error> {
+        let Some(base) = self.directory(deadline)?.renewal_info else {
+            return Ok(None);
+        };
+        let url = format!("{base}/{id}");
+        let r = self.send(ClientRequest::get(&url), deadline)?;
+        if r.status != 200 {
+            return Err(format!("{url}: {} {}", r.status, problem(&r.body)));
+        }
+        if r.body.len() > super::ari::ARI_MAX_BYTES {
+            return Err(format!("{url}: the answer is too large"));
+        }
+        let v = std::str::from_utf8(&r.body)
+            .ok()
+            .and_then(|t| parse(t).ok())
+            .ok_or_else(|| format!("{url}: the answer is not JSON"))?;
+        Ok(Some((v, r.headers.get("retry-after").map(str::to_owned))))
     }
 
     /// Sleeps `d`, or until the deadline, waking to stop.

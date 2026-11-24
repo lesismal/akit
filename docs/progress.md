@@ -11,14 +11,95 @@ done and where the work differs from the plan.
 | | |
 | --- | --- |
 | Last updated | 2026-11-24 |
-| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I24 done (I17b and I18b wait on akio); M2's I26–I28, I30, I31, I35, I36 and I37 and M3's I39, I40 and I41 done early. |
+| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I24 done (I17b and I18b wait on akio); M2's I26–I28, I30–I32 and I35–I37 and M3's I39, I40 and I41 done early. |
 | akio | `afbbb521` on akio's `main` (`1.0.0-rc.1`, with A1–A8, A11, A13 and A16–A21, and the io_uring fix for listeners replaced at run time), pinned by `rev` in `Cargo.toml` |
 | fit | the specification; read at `7daee573` for this plan |
-| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept (as fit's `binding.same`: certificate files and ACME names may change), added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication; certificates chosen per handshake as fit's, replaced by a reload or by `-watch-certs` without closing the listener) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; route middleware: `rewrite` (prefixes), `redirect`, `headers`, `rate_limit`, `concurrency_limit` and `body_limit`; the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`, bodies streamed both ways with linked backpressure, trailers both ways, `timeout` and the upstream's `response_timeout`, 504 for timeouts, the upstream request given up when the client goes mid-body; upstreams over HTTP/1.1, h2c and h2); `limits.max_body_bytes` on every listener (413) and in the proxy; access logs in fit's json, text and line formats; upstream pools with fit's nine load balancing policies (round robin, weighted round robin, least connections, random, p2c, and consistent hashing of the client's IP, the path, a header or a cookie) and sticky cookies, passing over addresses taken out by passive health checks (`max_fails`, `fail_timeout`) and by active ones (`health_check`: http and tcp probes); the Admin API on loopback (`GET /config`, by JSON pointer too, `POST /load`, edits by pointer with `PUT`, `PATCH` and `DELETE /config`, `POST /rollback/{n}`, `POST /reload`, each with `If-Match` and all but a rollback with `?dry_run=1`, `GET /versions`; with `token_file`, a bearer token on every request), changes applied as SIGHUP's reloads, one history for both; Prometheus metrics at the Admin API's `GET /metrics` (requests by listener and route with `metrics`, upstreams and backends, certificates, connections, reloads, akio's engine); certificates obtained with ACME through HTTP-01 for the names listeners list in `tls.acme`, kept in a storage and renewed; the compatibility gate: 80 fixtures, 15 valid, 64 refused only as not supported yet, 1 skipped, none failed |
+| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept (as fit's `binding.same`: certificate files and ACME names may change), added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication; certificates chosen per handshake as fit's, replaced by a reload or by `-watch-certs` without closing the listener) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; route middleware: `rewrite` (prefixes), `redirect`, `headers`, `rate_limit`, `concurrency_limit` and `body_limit`; the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`, bodies streamed both ways with linked backpressure, trailers both ways, `timeout` and the upstream's `response_timeout`, 504 for timeouts, the upstream request given up when the client goes mid-body; upstreams over HTTP/1.1, h2c and h2); `limits.max_body_bytes` on every listener (413) and in the proxy; access logs in fit's json, text and line formats; upstream pools with fit's nine load balancing policies (round robin, weighted round robin, least connections, random, p2c, and consistent hashing of the client's IP, the path, a header or a cookie) and sticky cookies, passing over addresses taken out by passive health checks (`max_fails`, `fail_timeout`) and by active ones (`health_check`: http and tcp probes); the Admin API on loopback (`GET /config`, by JSON pointer too, `POST /load`, edits by pointer with `PUT`, `PATCH` and `DELETE /config`, `POST /rollback/{n}`, `POST /reload`, each with `If-Match` and all but a rollback with `?dry_run=1`, `GET /versions`; with `token_file`, a bearer token on every request), changes applied as SIGHUP's reloads, one history for both; Prometheus metrics at the Admin API's `GET /metrics` (requests by listener and route with `metrics`, upstreams and backends, certificates, connections, reloads, akio's engine); certificates obtained with ACME through HTTP-01 or TLS-ALPN-01 for the names listeners list in `tls.acme`, kept in a storage and renewed by their lifetime or the CA's renewal information (ARI), their OCSP responses stapled; the compatibility gate: 80 fixtures, 15 valid, 64 refused only as not supported yet, 1 skipped, none failed |
 | Next | I17b once akio has A36–A38; I18b once it has A51–A53 |
-| akio requests | A1–A8, A11, A13 and A16–A21 on akio's main and pinned; A9, A10, A12, A14, A15, A22–A24, A29, A30, A32, A33, A35–A38, A45, A48, A49 and A51–A54 requested ([akio API requests](akio-api-requests.md)) |
+| akio requests | A1–A8, A11, A13 and A16–A21 on akio's main and pinned; A9, A10, A12, A14, A15, A22–A24, A29, A30, A32, A33, A35–A38, A45, A48, A49, A51–A54, A57 and A58 requested ([akio API requests](akio-api-requests.md)) |
 
 ## Log
+
+### 2026-11-24: I32, ACME II: TLS-ALPN-01, renewal, OCSP
+
+- **TLS-ALPN-01** (RFC 8737), fit's: `acme.challenges` takes `tls-alpn-01`, and both, HTTP-01
+  first, are the default, as fit's. A challenge's certificate is self-signed on a P-256 key of its
+  own, for the name alone, with the critical acmeIdentifier extension holding the key
+  authorization's SHA-256 (`akio_x509::CertificateParams` with a custom extension); it is kept in
+  memory while the challenge is under way (`Acme::alpn_challenge`, a `Published` map, read without
+  a lock). A TLS listener that lists names offers `acme-tls/1` last in ALPN, so that only a client
+  offering it alone negotiates it; such a handshake gets the challenge's certificate of a name the
+  listener lists, or none (`ListenerTls::get`). The challenge tried first moves on with each
+  failure in a row (fit's `attempt`), so a failed TLS-ALPN-01 is followed by HTTP-01.
+- **Renewal**: by lifetime with jitter and backoff as I31 has it, and now by **ARI** (RFC 9773,
+  fit's `ari.go`, `acme/ari.rs`): after each run that leaves a name with a certificate, once it is
+  served, the CA's `renewalInfo` is asked about it (its ID from the authority key identifier and
+  the serial number), again when `Retry-After` says (1 min to 24 h, 6 h when it says nothing;
+  `Acme::set_ari_bounds` for tests); the certificate is due at a time picked at random in the
+  suggested window, at once once the window has begun; a stored certificate ARI says is due is not
+  taken from the storage. `Acme::renew_at` and `Acme::renewal_info` tell when.
+- **OCSP stapling** (`akit_tls::Ocsp`, fit's `tlsmgr.OCSP`, `ocsp.rs`): each certificate naming a
+  responder and with its issuer in its chain is kept by its chain's SHA-256, shared by the graphs
+  a reload makes, dropped with its last `Staple`. Two worker threads of the control plane fetch
+  responses (akio-http's client on an engine of its own, 10 s, 64 KiB, no redirect), checked with
+  akio-x509's `OcspResponse::verify` before they are stapled (`CertifiedKey::with_ocsp_response`);
+  fetched again halfway through their validity (an hour without a next update), failures backed
+  off as ACME's, never stapled past their next update; revoked or unknown: none stapled. A
+  handshake reads the stapled certificate from a `Published` map. A certificate ACME obtained is
+  stapled with it, so neither is served without the other; one its responder says is revoked is
+  obtained again at once, the stored one not taken. The manager owns the stapler
+  (`Acme::ocsp`), so `ListenerTls::load_with` staples the listeners' certificates from files
+  through it too and neither `Env` nor `akit run` changed.
+- **Certificates from files**: as fit's, their responders are asked only when their chain
+  verifies against trusted roots, at public addresses only (unless the roots allow private ones),
+  over `http`, dialled at the address checked with the name in `Host`. fit's default roots are
+  the system's, which akio-tls does not expose outside a handshake: **stopgap**, until akio A57,
+  a certificate from files is stapled only under roots given (`Ocsp::trust_roots`), which `akit
+  run` gives none, so it staples ACME's certificates and none from files (it says once per chain
+  why).
+- akio requests: **A57** (the system's roots usable outside a handshake) and **A58** (an HTTP
+  service sees the negotiated ALPN, or akio closes a connection that negotiated `acme-tls/1`).
+  Until A58 a client that negotiates `acme-tls/1` and then sends an HTTP/1 request is served it
+  (fit closes it); the handshake has given it only the challenge's self-signed certificate.
+- Config: `acme.challenges` takes `tls-alpn-01`; the default is both. The compatibility gate's
+  `acme.challenges` case now reads both, in the order given; no field added, none newly refused.
+- Tests: unit tests of the challenge certificate (SAN, critical extension, digest), fit's
+  `TestCertsALPN` (`ListenerTls` with acme names: `acme-tls/1` offered last, a challenge served
+  only to a handshake offering it alone, for a listed name), the revoked path (a stored
+  certificate not loaded, obtained again, the one in memory still served), ARI's cert ID
+  (RFC 9773's example), `Retry-After`, RFC 3339 and HTTP dates, windows, public addresses and
+  pinned responder URLs. `akit-tls/tests/ocsp.rs` (9), fit's `ocsp_test.go` against a responder of
+  the test's own: stapled, refreshed halfway, kept while the responder is down and dropped once
+  expired, revoked reported, chains shared, at most two fetches at once and `close` prompt, files
+  stapled under trusted roots and given back, not asked when untrusted (said once), not asked at a
+  loopback address unless allowed; and stapled in a handshake to a client that asks
+  (`ocsp_stapling`), not to a certificate without one. `akit-tls/tests/ari.rs` (2), fit's
+  `TestARIWindowBegun` and `TestARIWindowLater` against a CA in the clear. `akit-listener/tests/acme.rs`
+  (4 more, Pebble, epoll and io_uring): fit's `TestPebbleTLSALPN` (a TLS listener on Pebble's
+  TLS-ALPN-01 port, no listener in the clear; the challenge's certificate gone afterwards; a
+  client offering `acme-tls/1` alone then refused), `TestChallengeFallback`, a 30-second
+  certificate renewed, served to a new handshake and stored, and `TestPebbleARI` (the window
+  within the lifetime; moved into the past, the certificate renewed). Pebble's harness starts it
+  again on other ports when one it picked was taken by a test running alongside (a flake I31's
+  harness had).
+- Checked: `make check` on macOS (the Pebble tests run); the tests of akit-config, akit-tls,
+  akit-runtime, akit-listener, akit and akit-compat on gpu51, epoll and io_uring, with
+  `$AKIT_PEBBLE_REQUIRED` set, all passing.
+- Differences from the plan and from fit:
+  - Files' certificates are not stapled under the system's roots until akio A57 (above).
+  - `acme-tls/1` connections are not closed after their handshake until akio A58 (above).
+  - fit's OCSP fetches go through the environment's proxy; akit's do not (`HTTP_PROXY` and the
+    like are not read), and a responder of a certificate from files must be `http`.
+  - Pebble suggests (ARI) a window covering the whole life of a short certificate, so the
+    renewal test's certificate is renewed by ARI at once; the renewal by lifetime alone is
+    `renew_at`'s unit test, as in I31.
+  - ARI is asked once the certificate is served (fit asks before), so a CA out of reach delays no
+    certificate from the storage.
+  - TLS 1.2 clients are not tested for stapling (akio's client has no way to cap at 1.2; akio
+    tests its 1.2 stapling itself).
+- What a benchmark task should measure: full TLS handshakes a second against I31, with and
+  without a stapled response (the certificate choice now reads the ALPN list and, for files with
+  responders, a second `Published` map), and the size of the handshake with a response.
 
 ### 2026-11-24: I18, HTTP/2 and h2c upstreams
 

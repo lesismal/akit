@@ -219,8 +219,9 @@ routes[].middleware[]<body_limit>.params.max_bytes
 metrics
 
 # I31: acme, an ACME client of akit's own: accounts, orders and HTTP-01, answered by every listener
-# in the clear; certificates kept in acme.storage and renewed. acme.challenges takes "http-01";
-# "tls-alpn-01" (I32), shared_storage and on_demand (I34) are refused as not supported yet.
+# in the clear; certificates kept in acme.storage and renewed. I32: acme.challenges takes
+# "tls-alpn-01" too, answered by the TLS listener that lists the name, both by default as fit's;
+# OCSP responses stapled. shared_storage and on_demand (I34) are refused as not supported yet.
 acme
 acme.directory
 acme.email

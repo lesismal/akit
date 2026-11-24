@@ -48,16 +48,18 @@ first; its status here records the branch, then the akio commit akit pins.
 | A32 | Where an `akio-regex` pattern matches, its groups, and replacing them | requested (I40) | 19 | I40, I48 |
 | A33 | A request's fields and target changed by a middleware (`Context::req_mut`) | requested (I40) | 12, 19 | I40, I43, I44 |
 | A35 | A streamed HTTP/1.1 response framed by its length | requested (I16) | 5 | I16, I67 |
-| A45 | A public timer: a callback run once a delay has passed, from any thread | requested (I35) | 1, 11 | I35, I31, I54 |
-| A48 | A request's end heard: its response sent in full, or its client gone while it waits | requested (I41) | 3, 11, 13 | I41, I17, I21, I37 |
-| A49 | A request body limited by a middleware, whoever reads the body | requested (I41) | 7, 11 | I41 |
 | A36 | An HTTP client request's response-header and idle timeouts | requested (I17) | 10 | I17b, I18 |
 | A37 | An HTTP client request cancelled at any point | requested (I17) | 3 | I17b, I45 |
 | A38 | A detached server request that hears its client went; a write stall timeout changed at run time | requested (I17) | 3, 10 | I17b, I49 |
-| A54 | An idle HTTP/1 connection drained after a grace, not at once | requested (I28) | 10 | I28 |
+| A45 | A public timer: a callback run once a delay has passed, from any thread | requested (I35) | 1, 11 | I35, I31, I54 |
+| A48 | A request's end heard: its response sent in full, or its client gone while it waits | requested (I41) | 3, 11, 13 | I41, I17, I21, I37 |
+| A49 | A request body limited by a middleware, whoever reads the body | requested (I41) | 7, 11 | I41 |
 | A51 | `H2Client`'s streamed requests: reset, timeout, request trailers, and failed rather than forgotten on a `GOAWAY` | requested (I18) | 3, 10 | I18b, I50 |
 | A52 | `H2Client` backpressure per stream: a streamed response's reads held, an upload's queue reported | requested (I18) | 8 | I18b, I50 |
 | A53 | `H2Client`'s connection: the server's stream limit heeded and reported, the connect timeout, ALPN's HTTP/1.1 fallback | requested (I18) | 10, 11 | I18b, I54 |
+| A54 | An idle HTTP/1 connection drained after a grace, not at once | requested (I28) | 10 | I28 |
+| A57 | Root certificates usable outside a handshake: the system's, to verify a chain against | requested (I32) | 1, 19 | I32 |
+| A58 | The ALPN protocol a TLS connection negotiated, seen by an HTTP service (or such a connection closed) | requested (I32) | 19 | I32, I34 |
 
 ## A1 TCP listeners on a running engine
 
@@ -970,3 +972,50 @@ HappyEyeballs, ready)`. A dial over TLS that reports the protocol ALPN chose (`r
 **How akit uses it.** I18b: `akit_upstream::h2` sizes each connection by the server's limit, dials
 within the upstream's `connect_timeout`, and with `h2` falls back to akio's HTTP/1 client for a
 server that does not speak h2, as fit's `h2` does (I54 adds the `tls_*` fields).
+
+## A57 Root certificates usable outside a handshake
+
+**Problem.** fit staples the OCSP response of a certificate from files only when its chain
+verifies against the system's roots (`x509.SystemCertPool`): a certificate written from what
+someone else gave (a tenant's Kubernetes Secret) must not have the gateway ask a responder it
+names, unless a public CA issued it. akit-tls verifies the chain with akio-x509's `Verifier`, which
+takes an `akio_x509::RootStore`; akio-tls loads the system's roots (`RootCerts::system()`, ADR-010
+and ADR-059: the keychains on macOS, the distribution's bundle elsewhere) but keeps the store
+private to `RootCerts`, so they can only be used by a handshake.
+
+**Evidence.** `crates/akio-tls/src/config.rs` at `afbbb521`: `pub struct RootCerts(akio_x509::RootStore)`
+with no accessor; `RootCerts::system()` builds the store from `crate::system::load()`, which is
+private. Found by I32 (`akit-tls/src/ocsp.rs`).
+
+**Suggested API.** `RootCerts::store(&self) -> &akio_x509::RootStore` (or `impl
+AsRef<RootStore>`, or `From<RootCerts> for RootStore`); or `akio_x509::RootStore::system()`
+sharing akio-tls's loader and cache.
+
+**How akit uses it.** `Ocsp` verifies a certificate from files against `RootCerts::system()`'s
+store, on its own worker thread, as fit's `OCSP` does by default; the roots an operator gives
+(`Ocsp::trust_roots`) stay a replacement. Until then a certificate from files is stapled only
+under roots given, so `akit run` staples ACME's certificates and none from files (the stopgap
+recorded in the I32 progress entry).
+
+## A58 The ALPN protocol a TLS connection negotiated, seen by an HTTP service
+
+**Problem.** A listener that obtains certificates through TLS-ALPN-01 offers `acme-tls/1` last
+in ALPN (RFC 8737), so that only a CA checking a challenge, which offers it alone, negotiates it.
+Such a connection is for the handshake only: fit closes it once the handshake is done (fib's
+server sees `NegotiatedProtocol` and serves no HTTP on it). akio-http's server tells HTTP/2 by its
+preface, not by ALPN, and gives a service nothing of the TLS connection, so a client that
+negotiates `acme-tls/1` and then sends an HTTP/1 request is served it. Nothing is exposed (the
+handshake already gave it the challenge's self-signed certificate), but it is not what fit does,
+and on-demand TLS (I34) has the same case.
+
+**Evidence.** `crates/akio-http/src/session.rs` and `context.rs` at `afbbb521`: no access to the
+connection's `TlsInfo` (`alpn`) from a `Service`; `akio-tls`'s `Connection::alpn()` is there.
+
+**Suggested API.** Either `Context::tls()` (the negotiated ALPN protocol and SNI name of the
+request's connection, `None` in the clear), or an `HttpConfig` setting that closes a TLS
+connection whose negotiated protocol is not one the server speaks (`http/1.1`, `h2`, none) once
+its handshake is done.
+
+**How akit uses it.** The dispatcher closes a connection whose ALPN is `acme-tls/1` without
+answering (or akio closes it), as fit's listener does; today it is served as HTTP/1.1.
+

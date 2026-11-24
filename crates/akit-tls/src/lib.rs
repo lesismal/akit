@@ -35,9 +35,15 @@
 //!   ([`ServerConfigs::h3`]), with ALPN `h3` and TLS 1.3 alone, for its QUIC connections.
 //!
 //! - **ACME** (I31, [`Acme`]): certificates for the names a listener lists in `tls.acme`,
-//!   obtained from an ACME CA through HTTP-01 and kept in the storage. A client asking for one of
-//!   them is given its certificate once there is one ([`ListenerTls::get`]); until then, and for
-//!   other names, the certificates from files.
+//!   obtained from an ACME CA through HTTP-01 or TLS-ALPN-01 (I32) and kept in the storage. A
+//!   client asking for one of them is given its certificate once there is one
+//!   ([`ListenerTls::get`]); until then, and for other names, the certificates from files. A
+//!   listener that lists names offers [`ACME_TLS_ALPN`] last in ALPN, so that only a client
+//!   offering it alone, as a CA checking a TLS-ALPN-01 challenge does, negotiates it, and gets the
+//!   challenge's certificate.
+//! - **OCSP stapling** (I32, [`Ocsp`]): the responses of the certificates ACME obtains, and of
+//!   the certificates from files that name a responder, fetched off the I/O threads and stapled
+//!   (see [`ocsp`](crate::ocsp) for which files' are).
 //!
 //! - **Metrics** (I37): what each certificate is for and when it expires ([`CertificateInfo`]),
 //!   for `fit_tls_certificate_not_after_seconds`.
@@ -50,13 +56,16 @@
 
 mod acme;
 mod certs;
+pub mod ocsp;
 mod published;
 mod storage;
 mod watch;
 
 pub use acme::{
-    ACME_CHALLENGE_PREFIX, Acme, DEFAULT_RETRY_BASE, DEFAULT_RETRY_MAX, Log, MAX_NAMES,
+    ACME_CHALLENGE_PREFIX, ACME_TLS_ALPN, Acme, DEFAULT_RETRY_BASE, DEFAULT_RETRY_MAX, Log,
+    MAX_NAMES,
 };
+pub use ocsp::{Ocsp, Staple};
 
 pub use certs::{Certs, Sum};
 pub use storage::{
@@ -201,6 +210,9 @@ fn serial_hex(b: &[u8]) -> String {
 #[derive(Clone)]
 pub struct ListenerTls {
     certs: Arc<Certs>,
+    /// The OCSP response kept for each of `certs`, in their order, when one is (I32); empty
+    /// when none is.
+    staples: Arc<[Option<Staple>]>,
     /// The names listed in `tls.acme`, normalized, with the manager that obtains their
     /// certificates; `None` when it lists none, or when none obtains them (`akit validate`).
     acme: Option<ListenerAcme>,
@@ -245,8 +257,9 @@ impl ListenerTls {
         ListenerTls::load_with(tls, protocols, None)
     }
 
-    /// The same, the certificates of the names `tls.acme` lists obtained by `acme`; with none,
-    /// only the certificates from files are served, as when `akit validate` checks a config.
+    /// The same, the certificates of the names `tls.acme` lists obtained by `acme`, and the
+    /// OCSP responses of the certificates from files kept by its [`Ocsp`]; with none, only the
+    /// certificates from files are served, as when `akit validate` checks a config.
     ///
     /// # Errors
     ///
@@ -295,6 +308,7 @@ impl ListenerTls {
             }
             roots = Some((r, ca.mode));
         }
+        let ocsp = acme.map(|a| a.ocsp().clone());
         let acme = match acme {
             Some(a) if !tls.acme.is_empty() => Some(ListenerAcme {
                 acme: a.clone(),
@@ -306,24 +320,55 @@ impl ListenerTls {
             }),
             _ => None,
         };
+        let mut alpn = alpn(protocols);
+        // Last, so that only a client offering it alone, as a CA checking a TLS-ALPN-01
+        // challenge does, negotiates it (fit's).
+        if !tls.acme.is_empty() && acme.as_ref().is_none_or(|a| a.acme.answers_tls_alpn()) {
+            alpn.push(ACME_TLS_ALPN);
+        }
         let t = ListenerTls {
             certs: Arc::new(certs),
+            staples: Arc::new([]),
             acme,
             roots,
-            alpn: alpn(protocols),
+            alpn,
             h3: protocols.contains(&Protocol::H3),
             files,
             ca_sums,
         };
         // Built once here, so that `validate` finds what would fail when the listener opens.
         t.server_configs(Arc::new(t.clone()))?;
-        Ok(t)
+        Ok(match ocsp {
+            Some(o) => t.with_ocsp(&o),
+            None => t,
+        })
+    }
+
+    /// The same, the OCSP responses of its certificates from files kept by `ocsp` (fit's
+    /// `Static.Staple`): those that name a responder.
+    #[must_use]
+    pub fn with_ocsp(mut self, ocsp: &Ocsp) -> ListenerTls {
+        let staples: Vec<Option<Staple>> = self
+            .certs
+            .certificates()
+            .map(|c| ocsp.add_from_files(c))
+            .collect();
+        if staples.iter().any(Option::is_some) {
+            self.staples = staples.into();
+        }
+        self
     }
 
     /// Its certificates from files.
     #[must_use]
     pub fn certs(&self) -> &Arc<Certs> {
         &self.certs
+    }
+
+    /// The OCSP response kept for its `i`th certificate from files, when one is.
+    #[must_use]
+    pub fn staple(&self, i: usize) -> Option<&Staple> {
+        self.staples.get(i).and_then(Option::as_ref)
     }
 
     /// The names its `tls.acme` lists, normalized, when a manager obtains their certificates.
@@ -336,11 +381,29 @@ impl ListenerTls {
     /// the one obtained for it once there is one (a client naming none, on a listener with no
     /// files, gets the first name's); otherwise the certificates from files ([`Certs::get`]).
     /// Read from memory, in the handshake's call. `None` when there is none to give.
+    ///
+    /// A handshake offering [`ACME_TLS_ALPN`] alone is a CA checking a TLS-ALPN-01 challenge: it
+    /// gets the challenge's certificate, for a name this listener lists, or nothing.
     #[must_use]
     pub fn get(&self, hello: &ClientHelloInfo<'_>) -> Option<CertifiedKey> {
+        self.get_hello(&certs::Hello::from(hello))
+    }
+
+    pub(crate) fn get_hello(&self, hello: &certs::Hello<'_>) -> Option<CertifiedKey> {
         if let Some(a) = &self.acme {
+            if let [p] = hello.alpn {
+                if *p == ACME_TLS_ALPN.as_bytes() {
+                    let name = hello
+                        .name
+                        .map(|n| n.trim_end_matches('.').to_ascii_lowercase())?;
+                    if !a.names.contains(&name) {
+                        return None;
+                    }
+                    return a.acme.alpn_challenge(&name);
+                }
+            }
             let name = hello
-                .server_name()
+                .name
                 .map(|n| n.trim_end_matches('.').to_ascii_lowercase());
             let name = match name {
                 Some(n) if !n.is_empty() => Some(n),
@@ -353,7 +416,14 @@ impl ListenerTls {
                 }
             }
         }
-        self.certs.get(hello)
+        let i = self.certs.choose(hello)?;
+        if self.staples.is_empty() {
+            return self.certs.key(i).cloned();
+        }
+        match self.staples.get(i) {
+            Some(Some(s)) => Some(s.certificate()),
+            _ => self.certs.key(i).cloned(),
+        }
     }
 
     /// The SHA-256 of every file it was loaded from (certificates, keys and authorities), by
@@ -476,6 +546,7 @@ pub(crate) fn read(path: &str) -> Result<Vec<u8>, String> {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::panic)]
     use super::*;
 
     #[test]
@@ -486,6 +557,80 @@ mod tests {
         assert_eq!(serial_hex(&[]), "0");
         assert_eq!(serial_hex(&[0xff]), "-1");
         assert_eq!(serial_hex(&[0x80, 0x00]), "-8000");
+    }
+
+    fn acme_tls(challenges: Vec<akit_config::Challenge>) -> (Acme, ListenerTls) {
+        let a = Acme::with_storage(
+            &akit_config::Acme {
+                directory: "https://127.0.0.1:1/dir".into(),
+                challenges,
+                ..akit_config::Acme::default()
+            },
+            Arc::new(FileStorage::new(
+                std::env::temp_dir().join("akit-tls-unused"),
+            )),
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+        let tls = Tls {
+            certificates: Vec::new(),
+            client_auth: None,
+            max_version: akit_config::TlsVersion::Tls13,
+            acme: vec!["A.akit.test".into()],
+        };
+        let t = ListenerTls::load_with(&tls, &[Protocol::Http11, Protocol::H2], Some(&a))
+            .unwrap_or_else(|e| panic!("{e}"));
+        (a, t)
+    }
+
+    /// fit's `TestCertsALPN`: a handshake offering acme-tls/1 alone gets the challenge's
+    /// certificate of a name the listener lists, or nothing; one offering other protocols too is
+    /// no CA checking a challenge.
+    #[test]
+    fn tls_alpn_challenges_as_fit() {
+        use akit_config::Challenge;
+        let (a, t) = acme_tls(vec![Challenge::Http01, Challenge::TlsAlpn01]);
+        // Offered last, so that only a client offering it alone negotiates it.
+        assert_eq!(t.alpn, ["h2", "http/1.1", ACME_TLS_ALPN]);
+        let acme_only: &[&[u8]] = &[ACME_TLS_ALPN.as_bytes()];
+        let hello = |name, alpn| certs::Hello {
+            name,
+            schemes: &[0x0403],
+            suites: &[],
+            tls13: true,
+            alpn,
+        };
+        assert!(
+            t.get_hello(&hello(Some("a.akit.test"), acme_only))
+                .is_none()
+        );
+        let challenge =
+            acme::alpn_cert("a.akit.test", "token.thumb").unwrap_or_else(|e| panic!("{e}"));
+        let other = acme::alpn_cert("b.akit.test", "token.thumb").unwrap_or_else(|e| panic!("{e}"));
+        a.set_alpn("a.akit.test", Some(challenge.clone()));
+        a.set_alpn("b.akit.test", Some(other));
+        let leaf = |k: &CertifiedKey| k.chain_der().next().map(<[u8]>::to_vec);
+        let got = t.get_hello(&hello(Some("A.akit.test."), acme_only));
+        assert_eq!(got.as_ref().and_then(leaf), leaf(&challenge));
+        // Not for a name the listener does not list, nor without a name.
+        assert!(
+            t.get_hello(&hello(Some("b.akit.test"), acme_only))
+                .is_none()
+        );
+        assert!(t.get_hello(&hello(None, acme_only)).is_none());
+        // A client offering h2 too gets no certificate yet: none was obtained.
+        let both: &[&[u8]] = &[b"h2", ACME_TLS_ALPN.as_bytes()];
+        assert!(t.get_hello(&hello(Some("a.akit.test"), both)).is_none());
+        a.set_alpn("a.akit.test", None);
+        assert!(
+            t.get_hello(&hello(Some("a.akit.test"), acme_only))
+                .is_none()
+        );
+        a.close();
+
+        // Not offered when acme.challenges leaves TLS-ALPN-01 out.
+        let (a, t) = acme_tls(vec![Challenge::Http01]);
+        assert_eq!(t.alpn, ["h2", "http/1.1"]);
+        a.close();
     }
 
     #[test]

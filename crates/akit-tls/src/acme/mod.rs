@@ -4,20 +4,32 @@
 //!
 //! - **Accounts**: one per CA, its P-256 key kept in the storage and registered, agreeing to the
 //!   CA's terms, the first time it is needed.
-//! - **Orders**: a certificate per name, its own P-256 key, through the HTTP-01 challenge, which
-//!   every listener in the clear answers from memory ([`Acme::http_challenge`]). TLS-ALPN-01 comes
-//!   with I32.
+//! - **Orders**: a certificate per name, its own P-256 key, through the challenges
+//!   `acme.challenges` lists, in its order (HTTP-01 then TLS-ALPN-01 by default, as fit's), each
+//!   attempt after a failure starting with the next: HTTP-01, which every listener in the clear
+//!   answers from memory ([`Acme::http_challenge`]), and TLS-ALPN-01 (RFC 8737, I32), which the
+//!   TLS listener that lists the name answers, to a handshake offering `acme-tls/1` alone, with
+//!   the challenge's certificate ([`Acme::alpn_challenge`]).
 //! - **The storage** ([`Storage`]): a certificate there is used as it is until it is due for
 //!   renewal, so that a restart, or another instance sharing the storage, does not obtain it
 //!   again; instances take a lock in it before they obtain one, and look again once they hold it.
 //! - **Renewal**: once a third of a certificate's lifetime is left, up to a fiftieth of it
 //!   earlier by its serial number, as fit's; a failure is tried again after a minute, then twice
-//!   as long each time, up to an hour.
+//!   as long each time, up to an hour. A certificate whose OCSP responder says it is revoked is
+//!   obtained again at once, the stored one not used.
+//! - **ARI** (I32, RFC 9773, as fit's): after each run that leaves a name with a certificate,
+//!   the CA's suggested renewal window is asked for, and again when its `Retry-After` says (a
+//!   minute to a day, six hours when it says nothing); the certificate is due at a time picked at
+//!   random in the window, at once once it has begun, and by its lifetime when the CA has no ARI
+//!   or does not answer.
+//! - **OCSP** (I32): the response of each certificate obtained is stapled ([`Ocsp`], which the
+//!   manager owns, and which staples the listeners' certificates from files too).
 //! - **Threads**: `acme.max_concurrent` workers of the control plane, started when the first name
 //!   is managed, each order bounded by `acme.timeout` and each request by
 //!   `acme.request_timeout`. A handshake asks for a certificate ([`Acme::certificate`]) and a
 //!   request for an HTTP-01 answer, both read from memory, without a lock (rules 1 and 13).
 
+mod ari;
 mod jws;
 mod protocol;
 
@@ -30,16 +42,25 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use akio::tls::{Certificate, CertifiedKey, PrivateKey, RootCerts};
-use akio_x509::{CsrParams, GeneralName};
+use akio_crypto::hash::Sha256;
+use akio_x509::{CertificateParams, CsrParams, Extension, GeneralName};
+use akit_config::Challenge;
 
+use crate::ocsp::{Ocsp, Staple};
 use crate::published::Published;
 use crate::storage::{FileStorage, Storage, StorageError};
 
+use ari::AriState;
 use jws::AccountKey;
 use protocol::{Ca, string, strings};
 
 /// Where a CA asks for an HTTP-01 challenge's answer: this path, then the challenge's token.
 pub const ACME_CHALLENGE_PREFIX: &str = "/.well-known/acme-challenge/";
+/// The protocol a CA offers alone through ALPN when it checks a TLS-ALPN-01 challenge (RFC 8737).
+pub const ACME_TLS_ALPN: &str = "acme-tls/1";
+/// id-pe-acmeIdentifier, 1.3.6.1.5.5.7.1.31: the extension of a TLS-ALPN-01 challenge's
+/// certificate (RFC 8737 section 3).
+const ACME_IDENTIFIER: &[u8] = &[0x2b, 0x06, 0x01, 0x05, 0x05, 0x07, 0x01, 0x1f];
 
 /// How long after the first failure in a row a name is tried again, by default; each failure
 /// after doubles it, up to [`DEFAULT_RETRY_MAX`] (fit's).
@@ -61,6 +82,26 @@ struct Managed {
     failures: u32,
     running: bool,
     last_error: Option<String>,
+    /// The serial number of a certificate its OCSP responder says is revoked: not taken from
+    /// the storage again.
+    revoked: Option<Vec<u8>>,
+    /// What ARI says of its certificate.
+    ari: Option<AriState>,
+}
+
+/// A certificate obtained for a name, with its OCSP response kept.
+#[derive(Clone)]
+struct Served {
+    key: CertifiedKey,
+    staple: Option<Arc<Staple>>,
+}
+
+impl Served {
+    fn certificate(&self) -> CertifiedKey {
+        self.staple
+            .as_ref()
+            .map_or_else(|| self.key.clone(), |s| s.certificate())
+    }
 }
 
 #[derive(Debug, Default)]
@@ -70,6 +111,9 @@ struct State {
     closed: bool,
     retry_base: Option<Duration>,
     retry_max: Option<Duration>,
+    /// The bounds of the wait before ARI is asked about a certificate again.
+    ari_min: Option<Duration>,
+    ari_max: Option<Duration>,
 }
 
 struct Inner {
@@ -82,10 +126,15 @@ struct Inner {
     timeout: Duration,
     request_timeout: Duration,
     workers: usize,
-    /// The certificate of each name that has one, and the key authorization of each HTTP-01
-    /// challenge under way, by its token: what the I/O threads read.
-    certs: Published<HashMap<String, CertifiedKey>>,
+    /// The challenges answered, in the order tried.
+    challenges: Vec<Challenge>,
+    /// The certificate of each name that has one, the key authorization of each HTTP-01
+    /// challenge under way, by its token, and the certificate of each TLS-ALPN-01 challenge
+    /// under way, by its name: what the I/O threads read.
+    certs: Published<HashMap<String, Served>>,
     tokens: Published<HashMap<String, String>>,
+    alpn_certs: Published<HashMap<String, CertifiedKey>>,
+    ocsp: Ocsp,
     state: Mutex<State>,
     wake: Condvar,
     stop: Arc<AtomicBool>,
@@ -160,6 +209,18 @@ fn ca_key(directory: &str) -> String {
     }
 }
 
+/// The instant of Unix second `t`, as seen now.
+fn instant_of(t: i64) -> Instant {
+    let now = Instant::now();
+    let d = t.saturating_sub(unix_now());
+    let secs = Duration::from_secs(d.unsigned_abs());
+    if d >= 0 {
+        now.checked_add(secs).unwrap_or(now)
+    } else {
+        now.checked_sub(secs).unwrap_or(now)
+    }
+}
+
 /// `d` from now, or now when that cannot be told.
 fn after(d: Duration) -> Instant {
     let now = Instant::now();
@@ -192,7 +253,7 @@ fn renew_at(not_before: i64, not_after: i64, serial: &[u8]) -> i64 {
 
 /// A certificate as the storage keeps it: its chain and key in one PEM, checked to be for
 /// `name`; with when it is due for renewal.
-fn parse_stored(data: &[u8], name: &str) -> Result<(CertifiedKey, i64), String> {
+fn parse_stored(data: &[u8], name: &str) -> Result<Stored, String> {
     let chain = Certificate::from_pem(data).map_err(|e| e.to_string())?;
     let keys = akio_crypto::pem::decode_label(data, "PRIVATE KEY").map_err(|e| e.to_string())?;
     let key = keys.into_iter().next().ok_or("no private key")?;
@@ -208,18 +269,57 @@ fn parse_stored(data: &[u8], name: &str) -> Result<(CertifiedKey, i64), String> 
     let due = renew_at(leaf.not_before(), leaf.not_after(), leaf.serial());
     let ck =
         CertifiedKey::new(chain, PrivateKey::from_pkcs8_der(key)).map_err(|e| e.to_string())?;
-    Ok((ck, due))
+    Ok(Stored {
+        key: ck,
+        due,
+        serial: leaf.serial().to_vec(),
+    })
 }
 
-/// The key authorization of a token under way, given back when it is dropped.
-struct Answering<'a> {
-    acme: &'a Acme,
-    token: String,
+/// A certificate as [`parse_stored`] reads it.
+struct Stored {
+    key: CertifiedKey,
+    /// When it is due for renewal, in seconds since the epoch.
+    due: i64,
+    serial: Vec<u8>,
+}
+
+/// The certificate that answers the TLS-ALPN-01 challenge of `name` whose key authorization is
+/// `key_auth` (RFC 8737 section 3): self-signed, for `name` alone, with the critical
+/// acmeIdentifier extension holding the authorization's SHA-256, on a key of its own.
+pub(crate) fn alpn_cert(name: &str, key_auth: &str) -> Result<CertifiedKey, String> {
+    let key = akio_crypto::p256::SecretKey::generate().map_err(|e| e.to_string())?;
+    let key = akio_crypto::pkey::PrivateKey::P256(key);
+    let mut p = CertificateParams::new([name]);
+    // extnValue holds an OCTET STRING of the 32 bytes.
+    let mut value = vec![0x04, 0x20];
+    value.extend_from_slice(&Sha256::digest(key_auth.as_bytes()));
+    p.custom_extensions.push(Extension {
+        oid: ACME_IDENTIFIER.to_vec(),
+        critical: true,
+        value,
+    });
+    let cert = p.self_signed(&key).map_err(|e| e.to_string())?;
+    CertifiedKey::new(
+        vec![Certificate::from_der(cert.as_der().to_vec())],
+        PrivateKey::from_pkcs8_der(key.to_pkcs8_der()),
+    )
+    .map_err(|e| e.to_string())
+}
+
+/// A challenge's answer under way, given back when it is dropped: the key authorization of an
+/// HTTP-01 token, or the certificate of a TLS-ALPN-01 name.
+enum Answering<'a> {
+    Token(&'a Acme, String),
+    Alpn(&'a Acme, String),
 }
 
 impl Drop for Answering<'_> {
     fn drop(&mut self) {
-        self.acme.set_token(&self.token, None);
+        match self {
+            Answering::Token(a, token) => a.set_token(token, None),
+            Answering::Alpn(a, name) => a.set_alpn(name, None),
+        }
     }
 }
 
@@ -278,8 +378,15 @@ impl Acme {
                 timeout: config.timeout,
                 request_timeout: config.request_timeout,
                 workers: config.max_concurrent.max(1),
+                challenges: if config.challenges.is_empty() {
+                    vec![Challenge::Http01, Challenge::TlsAlpn01]
+                } else {
+                    config.challenges.clone()
+                },
                 certs: Published::new(HashMap::new()),
                 tokens: Published::new(HashMap::new()),
+                alpn_certs: Published::new(HashMap::new()),
+                ocsp: Ocsp::new(),
                 state: Mutex::new(State::default()),
                 wake: Condvar::new(),
                 stop: Arc::new(AtomicBool::new(false)),
@@ -291,9 +398,24 @@ impl Acme {
         })
     }
 
-    /// Has the manager report through `log` from now on (standard error by default).
+    /// Has the manager, and its [`Ocsp`], report through `log` from now on (standard error by
+    /// default).
     pub fn set_log(&self, log: Log) {
+        self.inner.ocsp.set_log(Arc::clone(&log));
         *lock(&self.inner.log) = log;
+    }
+
+    /// Its OCSP stapler: of the certificates it obtains, and of the listeners' from files.
+    #[must_use]
+    pub fn ocsp(&self) -> &Ocsp {
+        &self.inner.ocsp
+    }
+
+    /// Whether it answers TLS-ALPN-01 challenges (`acme.challenges` lists it): the listeners
+    /// that list names offer [`ACME_TLS_ALPN`] then.
+    #[must_use]
+    pub fn answers_tls_alpn(&self) -> bool {
+        self.inner.challenges.contains(&Challenge::TlsAlpn01)
     }
 
     /// The waits after failures: `base` after the first, twice as long after each next one, up
@@ -302,6 +424,38 @@ impl Acme {
         let mut st = lock(&self.inner.state);
         st.retry_base = Some(base);
         st.retry_max = Some(max);
+    }
+
+    /// The bounds of the wait before the CA's renewal information about a certificate is asked
+    /// for again, whatever its `Retry-After` says (a minute and a day by default).
+    pub fn set_ari_bounds(&self, min: Duration, max: Duration) {
+        let mut st = lock(&self.inner.state);
+        st.ari_min = Some(min);
+        st.ari_max = Some(max);
+    }
+
+    /// When `name`'s certificate is due for renewal, by its lifetime or by what ARI says,
+    /// whichever comes first; `None` for a name it does not manage or has no certificate for.
+    #[must_use]
+    pub fn renew_at(&self, name: &str) -> Option<SystemTime> {
+        let name = normalize(name);
+        self.inner
+            .certs
+            .with(|c| c.contains_key(&name))
+            .then_some(())?;
+        let st = lock(&self.inner.state);
+        let m = st.names.get(&name)?;
+        let left = m.due.saturating_duration_since(Instant::now());
+        SystemTime::now().checked_add(left)
+    }
+
+    /// When the CA's renewal information (ARI) says `name`'s certificate is due: the time picked
+    /// in the window it suggested, if it suggested one.
+    #[must_use]
+    pub fn renewal_info(&self, name: &str) -> Option<SystemTime> {
+        let st = lock(&self.inner.state);
+        let t = st.names.get(&normalize(name))?.ari.as_ref()?.renew_at?;
+        UNIX_EPOCH.checked_add(Duration::from_secs(u64::try_from(t).ok()?))
     }
 
     fn log(&self, line: &str) {
@@ -344,6 +498,8 @@ impl Acme {
                     failures: 0,
                     running: false,
                     last_error: None,
+                    revoked: None,
+                    ari: None,
                 });
             }
             if dropped {
@@ -387,7 +543,46 @@ impl Acme {
     /// handshake.
     #[must_use]
     pub fn certificate(&self, name: &str) -> Option<CertifiedKey> {
-        self.inner.certs.with(|m| m.get(name).cloned())
+        self.inner
+            .certs
+            .with(|m| m.get(name).map(Served::certificate))
+    }
+
+    /// The certificate that answers the TLS-ALPN-01 challenge of `name` (normalized: lower case,
+    /// no trailing dot), if one is under way: read from memory, without a lock, for a handshake
+    /// offering [`ACME_TLS_ALPN`] alone.
+    #[must_use]
+    pub fn alpn_challenge(&self, name: &str) -> Option<CertifiedKey> {
+        self.inner.alpn_certs.with(|m| m.get(name).cloned())
+    }
+
+    pub(crate) fn set_alpn(&self, name: &str, cert: Option<CertifiedKey>) {
+        let _st = lock(&self.inner.state);
+        let mut m = (*self.inner.alpn_certs.get()).clone();
+        match cert {
+            Some(c) => m.insert(name.to_owned(), c),
+            None => m.remove(name),
+        };
+        self.inner.alpn_certs.set(m);
+    }
+
+    /// Has `name` obtained again at once, its certificate with serial number `serial` not taken
+    /// from the storage: what its OCSP responder saying it is revoked does.
+    fn renew_revoked(&self, name: &str, serial: &[u8]) {
+        {
+            let mut st = lock(&self.inner.state);
+            let Some(m) = st.names.get_mut(name) else {
+                return;
+            };
+            m.revoked = Some(serial.to_vec());
+            if !m.running {
+                m.due = Instant::now();
+            }
+        }
+        self.log(&format!(
+            "{name}: its certificate is revoked; obtaining another"
+        ));
+        self.inner.wake.notify_all();
     }
 
     /// Why the last attempt for `name` failed, if it did and none has succeeded since.
@@ -433,6 +628,7 @@ impl Acme {
         for t in threads {
             let _ = t.join();
         }
+        self.inner.ocsp.close();
     }
 
     /// A worker: takes a name that is due and not being worked on, works on it, and sleeps
@@ -476,7 +672,23 @@ impl Acme {
     /// or, after a failure, later and later.
     fn run(&self, name: &str) {
         let deadline = after(self.inner.timeout);
-        let r = self.ensure(name, deadline);
+        let (attempt, revoked, ari) = {
+            let st = lock(&self.inner.state);
+            st.names.get(name).map_or((0, None, None), |m| {
+                (m.failures, m.revoked.clone(), m.ari.clone())
+            })
+        };
+        let r = self.ensure(name, deadline, attempt, revoked.as_deref(), ari.as_ref());
+        let serial = r.as_ref().ok().map(|s| s.serial.clone());
+        self.settle(name, r);
+        // ARI is asked once the certificate is served, so that a CA out of reach delays nothing.
+        if let Some(serial) = serial {
+            self.check_ari(name, &serial, ari, deadline);
+        }
+    }
+
+    /// Records how a run of `name` went: serves its certificate, and sets when it is next due.
+    fn settle(&self, name: &str, r: Result<Stored, String>) {
         let mut st = lock(&self.inner.state);
         let closed = st.closed;
         let (base, max) = (
@@ -489,14 +701,54 @@ impl Acme {
         };
         m.running = false;
         match r {
-            Ok((cert, renew)) => {
+            Ok(stored) => {
                 m.failures = 0;
                 m.last_error = None;
-                let wait = u64::try_from(renew.saturating_sub(unix_now())).unwrap_or(0);
+                if m.revoked.as_deref() != Some(stored.serial.as_slice()) {
+                    m.revoked = None;
+                }
+                let wait = u64::try_from(stored.due.saturating_sub(unix_now())).unwrap_or(0);
                 m.due = after(Duration::from_secs(wait));
-                let mut certs = (*self.inner.certs.get()).clone();
-                certs.insert(name.to_owned(), cert);
-                self.inner.certs.set(certs);
+                match &m.ari {
+                    // Earlier when the CA's window says so, and when it is time to ask again.
+                    Some(a) if a.serial == stored.serial => {
+                        if let Some(t) = a.renew_at {
+                            m.due = m.due.min(instant_of(t));
+                        }
+                        m.due = m.due.min(a.check_at);
+                    }
+                    Some(_) => m.ari = None,
+                    None => {}
+                }
+                let same = self.inner.certs.with(|c| {
+                    c.get(name)
+                        .is_some_and(|s| s.key.chain_der().next() == stored.key.chain_der().next())
+                });
+                if !same {
+                    // With its staple: a certificate is never served without its response,
+                    // nor the last one's response with it.
+                    let weak = Arc::downgrade(&self.inner);
+                    let (n, serial) = (name.to_owned(), stored.serial.clone());
+                    let revoked: crate::ocsp::Revoked = Arc::new(move || {
+                        if let Some(inner) = weak.upgrade() {
+                            Acme { inner }.renew_revoked(&n, &serial);
+                        }
+                    });
+                    let staple = self
+                        .inner
+                        .ocsp
+                        .add(&stored.key, Some(revoked))
+                        .map(Arc::new);
+                    let mut certs = (*self.inner.certs.get()).clone();
+                    certs.insert(
+                        name.to_owned(),
+                        Served {
+                            key: stored.key,
+                            staple,
+                        },
+                    );
+                    self.inner.certs.set(certs);
+                }
             }
             Err(_) if closed => {}
             Err(e) => {
@@ -523,12 +775,97 @@ impl Acme {
         format!("acme/{}/account.pem", self.inner.ca_key)
     }
 
-    /// `name`'s certificate from the storage, if there is one that can be served and is not due
-    /// for renewal.
-    fn load(&self, name: &str, deadline: Instant) -> Option<(CertifiedKey, i64)> {
+    /// Asks the CA what ARI says of `name`'s certificate, whose serial number is `serial`, unless
+    /// `cur` is about it and it is not yet time to ask again; and has the certificate due when
+    /// ARI says, if that is sooner.
+    fn check_ari(&self, name: &str, serial: &[u8], cur: Option<AriState>, deadline: Instant) {
+        let (least, most) = {
+            let st = lock(&self.inner.state);
+            (
+                st.ari_min.unwrap_or(ari::ARI_CHECK_MIN),
+                st.ari_max.unwrap_or(ari::ARI_CHECK_MAX),
+            )
+        };
+        if cur
+            .as_ref()
+            .is_some_and(|c| c.serial == serial && Instant::now() < c.check_at)
+        {
+            return;
+        }
+        let Some(id) = self.inner.certs.with(|c| {
+            let leaf = c.get(name)?.key.chain_der().next()?.to_vec();
+            let leaf = akio_x509::Certificate::from_der(leaf).ok()?;
+            ari::cert_id(leaf.authority_key_id(), leaf.serial())
+        }) else {
+            return;
+        };
+        let fallback = AriState {
+            serial: serial.to_vec(),
+            renew_at: None,
+            check_at: after(ari::ARI_CHECK_DEFAULT.min(most)),
+        };
+        let s = match self.ca().and_then(|ca| ca.renewal_info(&id, deadline)) {
+            Ok(None) => return,
+            Ok(Some((v, retry))) => {
+                let now = unix_now();
+                let window = v.get("suggestedWindow");
+                let at = |k| window.and_then(|w| string(w, k)).and_then(ari::rfc3339);
+                let mut s = AriState {
+                    serial: serial.to_vec(),
+                    renew_at: None,
+                    check_at: after(ari::retry_after(retry.as_deref(), now, least, most)),
+                };
+                match (at("start"), at("end")) {
+                    (Some(start), Some(end)) if end > start => {
+                        s.renew_at = ari::pick(start, end, now);
+                    }
+                    _ => self.log(&format!(
+                        "{name}: renewal information: no valid suggested window"
+                    )),
+                }
+                s
+            }
+            Err(e) => {
+                self.log(&format!("{name}: renewal information: {e}"));
+                fallback
+            }
+        };
+        let mut st = lock(&self.inner.state);
+        let Some(m) = st.names.get_mut(name) else {
+            return;
+        };
+        if m.running {
+            // Being worked on again: what it finds decides.
+            return;
+        }
+        if let Some(t) = s.renew_at {
+            m.due = m.due.min(instant_of(t));
+        }
+        m.due = m.due.min(s.check_at);
+        m.ari = Some(s);
+        drop(st);
+        self.inner.wake.notify_all();
+    }
+
+    /// `name`'s certificate from the storage, if there is one that can be served, is not due for
+    /// renewal (by its lifetime or by `ari`), and is not the revoked one, whose serial number is
+    /// `revoked`.
+    fn load(
+        &self,
+        name: &str,
+        deadline: Instant,
+        revoked: Option<&[u8]>,
+        ari: Option<&AriState>,
+    ) -> Option<Stored> {
         match self.inner.storage.load(&self.cert_key(name), deadline) {
             Ok(data) => match parse_stored(&data, name) {
-                Ok((ck, due)) if unix_now() < due => Some((ck, due)),
+                Ok(s)
+                    if unix_now() < s.due
+                        && revoked != Some(s.serial.as_slice())
+                        && !ari.is_some_and(|a| a.due(&s.serial, unix_now())) =>
+                {
+                    Some(s)
+                }
                 Ok(_) => None,
                 Err(e) => {
                     self.log(&format!(
@@ -545,10 +882,18 @@ impl Acme {
         }
     }
 
-    /// A certificate for `name` that is not due for renewal: the storage's, or a new one, which
-    /// it stores; with when it is due.
-    fn ensure(&self, name: &str, deadline: Instant) -> Result<(CertifiedKey, i64), String> {
-        if let Some(c) = self.load(name, deadline) {
+    /// A certificate for `name` that is not due for renewal and not the revoked one: the
+    /// storage's, or a new one, which it stores; with when it is due. `attempt` counts the
+    /// failures before it, which pick the challenge tried first.
+    fn ensure(
+        &self,
+        name: &str,
+        deadline: Instant,
+        attempt: u32,
+        revoked: Option<&[u8]>,
+        ari: Option<&AriState>,
+    ) -> Result<Stored, String> {
+        if let Some(c) = self.load(name, deadline, revoked, ari) {
             return Ok(c);
         }
         let lock_name = format!("issue/{}/{name}", self.inner.ca_key);
@@ -558,11 +903,11 @@ impl Acme {
             .map_err(|e| format!("taking the storage's lock: {e}"))?;
         let r = (|| {
             // Another instance may have obtained it while this one waited.
-            if let Some(c) = self.load(name, deadline) {
+            if let Some(c) = self.load(name, deadline, revoked, ari) {
                 return Ok(c);
             }
-            let data = self.obtain(name, deadline)?;
-            let (ck, due) =
+            let data = self.obtain(name, deadline, attempt)?;
+            let stored =
                 parse_stored(&data, name).map_err(|e| format!("the CA's certificate: {e}"))?;
             if let Err(e) = self
                 .inner
@@ -573,7 +918,7 @@ impl Acme {
                 self.log(&format!("{name}: storing the certificate: {e}"));
             }
             self.log(&format!("{name}: obtained a certificate"));
-            Ok((ck, due))
+            Ok(stored)
         })();
         self.unlock(&lock_name);
         r
@@ -641,7 +986,7 @@ impl Acme {
 
     /// Orders a certificate for `name`, answers its challenges, and returns it, its chain and
     /// key as one PEM to store.
-    fn obtain(&self, name: &str, deadline: Instant) -> Result<Vec<u8>, String> {
+    fn obtain(&self, name: &str, deadline: Instant, attempt: u32) -> Result<Vec<u8>, String> {
         let ca = self.ca()?;
         let account = self.account(&ca, deadline)?;
         let (key, kid) = (&account.0, account.1.as_str());
@@ -649,7 +994,7 @@ impl Acme {
             .new_order(key, kid, name, deadline)
             .map_err(|e| format!("ordering: {e}"))?;
         for authz in strings(&order, "authorizations") {
-            self.authorize(&ca, key, kid, authz, deadline)?;
+            self.authorize(&ca, key, kid, authz, deadline, attempt)?;
         }
         let order = ca
             .poll(key, kid, &order_url, &["ready"], None, deadline)
@@ -682,8 +1027,9 @@ impl Acme {
         Ok(data)
     }
 
-    /// Answers the HTTP-01 challenge of the authorization at `url`, unless it is valid already,
-    /// and waits for the CA to check it.
+    /// Answers a challenge of the authorization at `url`, unless it is valid already, and waits
+    /// for the CA to check it: the first of `acme.challenges`, starting at the `attempt`th, that
+    /// the CA offers (fit's).
     fn authorize(
         &self,
         ca: &Ca,
@@ -691,6 +1037,7 @@ impl Acme {
         kid: &str,
         url: &str,
         deadline: Instant,
+        attempt: u32,
     ) -> Result<(), String> {
         let (authz, _) = ca
             .get(key, kid, url, deadline)
@@ -702,13 +1049,33 @@ impl Acme {
             .get("identifier")
             .and_then(|i| string(i, "value"))
             .unwrap_or("");
-        let chal = match authz.get("challenges") {
-            Some(akit_config::value::Value::Array(cs)) => {
-                cs.iter().find(|c| string(c, "type") == Some("http-01"))
-            }
-            _ => None,
-        }
-        .ok_or_else(|| format!("the CA offers no http-01 challenge for {ident}"))?;
+        let offered = match authz.get("challenges") {
+            Some(akit_config::value::Value::Array(cs)) => cs.as_slice(),
+            _ => &[],
+        };
+        let types = &self.inner.challenges;
+        let first = usize::try_from(attempt)
+            .unwrap_or(0)
+            .checked_rem(types.len())
+            .unwrap_or(0);
+        let (typ, chal) = types
+            .iter()
+            .cycle()
+            .skip(first)
+            .take(types.len())
+            .find_map(|t| {
+                offered
+                    .iter()
+                    .find(|c| string(c, "type") == Some(challenge_name(*t)))
+                    .map(|c| (*t, c))
+            })
+            .ok_or_else(|| {
+                let names: Vec<&str> = types.iter().map(|t| challenge_name(*t)).collect();
+                format!(
+                    "the CA offers none of the challenges {} for {ident}",
+                    names.join(", ")
+                )
+            })?;
         let token = string(chal, "token").unwrap_or("");
         let chal_url = string(chal, "url").ok_or("the challenge has no URL")?;
         if token.is_empty()
@@ -718,10 +1085,19 @@ impl Acme {
         {
             return Err(format!("the challenge's token {token:?} is not base64url"));
         }
-        self.set_token(token, Some(key.key_authorization(token)));
-        let _answering = Answering {
-            acme: self,
-            token: token.to_owned(),
+        let key_auth = key.key_authorization(token);
+        let _answering = match typ {
+            Challenge::Http01 => {
+                self.set_token(token, Some(key_auth));
+                Answering::Token(self, token.to_owned())
+            }
+            Challenge::TlsAlpn01 => {
+                let name = normalize(ident);
+                let cert = alpn_cert(&name, &key_auth)
+                    .map_err(|e| format!("the tls-alpn-01 certificate: {e}"))?;
+                self.set_alpn(&name, Some(cert));
+                Answering::Alpn(self, name)
+            }
         };
         ca.accept(key, kid, chal_url, deadline)
             .map_err(|e| format!("accepting the challenge: {e}"))?;
@@ -731,9 +1107,17 @@ impl Acme {
     }
 }
 
+/// A challenge as ACME names it.
+fn challenge_name(c: Challenge) -> &'static str {
+    match c {
+        Challenge::Http01 => "http-01",
+        Challenge::TlsAlpn01 => "tls-alpn-01",
+    }
+}
+
 /// How long to wait after the `n`th failure in a row: `base` doubled `n - 1` times, up to
 /// `max`, less up to a tenth at random.
-fn backoff(base: Duration, max: Duration, n: u32) -> Duration {
+pub(crate) fn backoff(base: Duration, max: Duration, n: u32) -> Duration {
     let mut d = base;
     for _ in 1..n {
         if d >= max {
@@ -788,6 +1172,7 @@ impl Storage for NoStorage {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::panic)]
     use super::*;
 
     #[test]
@@ -809,6 +1194,103 @@ mod tests {
         assert!(at <= 60 * day && at > 60 * day - 90 * day / 50, "{at}");
         assert_eq!(at, renew_at(0, 90 * day, &[1, 2, 3]));
         assert_eq!(renew_at(10, 10, &[]), 10);
+    }
+
+    /// RFC 8737 section 3: self-signed, for the name alone, with a critical acmeIdentifier
+    /// holding the key authorization's SHA-256.
+    #[test]
+    fn tls_alpn_certificates() {
+        let k = alpn_cert("a.akit.test", "tok.thumb").unwrap_or_else(|e| panic!("{e}"));
+        let der = k.chain_der().next().unwrap_or_default().to_vec();
+        assert_eq!(k.chain_der().count(), 1);
+        let c = akio_x509::Certificate::from_der(der).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(
+            c.subject_alt_names(),
+            [GeneralName::Dns("a.akit.test".into())]
+        );
+        let e = c
+            .extensions()
+            .iter()
+            .find(|e| e.oid == ACME_IDENTIFIER)
+            .unwrap_or_else(|| panic!("no acmeIdentifier"));
+        assert!(e.critical);
+        let mut want = vec![0x04, 0x20];
+        want.extend_from_slice(&Sha256::digest(b"tok.thumb"));
+        assert_eq!(e.value, want);
+        assert_eq!(c.issuer(), c.subject());
+    }
+
+    /// A certificate its OCSP responder says is revoked is obtained again at once, the stored
+    /// one not taken; until another is obtained, the one in memory is still served.
+    #[test]
+    fn a_revoked_certificate_is_not_taken_from_the_storage() {
+        let name = "revoked.akit.test";
+        let root = std::env::temp_dir().join(format!("akit-acme-revoked-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let a = Acme::with_storage(
+            &akit_config::Acme {
+                directory: "https://127.0.0.1:1/dir".into(),
+                timeout: Duration::from_secs(5),
+                ..akit_config::Acme::default()
+            },
+            Arc::new(FileStorage::new(&root)),
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+        a.set_log(Arc::new(|l: &str| eprintln!("acme: {l}")));
+        a.set_backoff(Duration::from_secs(60), Duration::from_secs(60));
+        let key = akio_crypto::pkey::PrivateKey::P256(
+            akio_crypto::p256::SecretKey::generate().unwrap_or_else(|e| panic!("{e}")),
+        );
+        let cert = CertificateParams::new([name])
+            .self_signed(&key)
+            .unwrap_or_else(|e| panic!("{e}"));
+        let pem = format!(
+            "{}{}",
+            cert.to_pem(),
+            akio_crypto::pem::encode("PRIVATE KEY", &key.to_pkcs8_der())
+        );
+        let deadline = after(Duration::from_secs(5));
+        a.inner
+            .storage
+            .store(&a.cert_key(name), pem.as_bytes(), deadline)
+            .unwrap_or_else(|e| panic!("{e}"));
+        assert!(a.load(name, deadline, None, None).is_some());
+        assert!(a.load(name, deadline, Some(cert.serial()), None).is_none());
+        assert!(a.load(name, deadline, Some(&[1, 2, 3]), None).is_some());
+
+        // Managed: the stored one is served, without the CA.
+        a.manage(&[name]);
+        let wait = |f: &dyn Fn() -> bool| {
+            let end = after(Duration::from_secs(10));
+            while !f() {
+                assert!(Instant::now() < end, "timed out");
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        };
+        wait(&|| a.certificate(name).is_some());
+        // Revoked: obtained again at once, which fails without a CA.
+        a.renew_revoked(name, cert.serial());
+        wait(&|| a.last_error(name).is_some());
+        let e = a.last_error(name).unwrap_or_default();
+        assert!(e.contains("127.0.0.1:1"), "{e}");
+        let st = lock(&a.inner.state);
+        assert_eq!(
+            st.names
+                .get(name)
+                .and_then(|m| m.revoked.clone())
+                .as_deref(),
+            Some(cert.serial())
+        );
+        drop(st);
+        assert!(a.certificate(name).is_some(), "the one in memory dropped");
+        a.close();
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn challenges_named_as_acme() {
+        assert_eq!(challenge_name(Challenge::Http01), "http-01");
+        assert_eq!(challenge_name(Challenge::TlsAlpn01), "tls-alpn-01");
     }
 
     #[test]
