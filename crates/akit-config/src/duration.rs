@@ -76,11 +76,69 @@ pub fn parse(s: &str) -> Option<Result<Duration, ()>> {
     Some(Ok(Duration::from_nanos(nanos)))
 }
 
+/// `d` as Go prints a duration: `30s`, `1m30s`, `1h0m0s`, `500ms`, `1.5s`.
+#[must_use]
+pub fn format(d: Duration) -> String {
+    let secs = d.as_secs();
+    let nanos = d.subsec_nanos();
+    if secs == 0 {
+        let (n, unit, scale) = match nanos {
+            0 => return "0s".to_owned(),
+            n if n >= 1_000_000 => (n, "ms", 1_000_000),
+            n if n >= 1_000 => (n, "\u{b5}s", 1_000),
+            n => return format!("{n}ns"),
+        };
+        return format!(
+            "{}{unit}",
+            decimal(
+                u64::from(n.checked_div(scale).unwrap_or(0)),
+                n.checked_rem(scale).unwrap_or(0),
+                scale,
+            )
+        );
+    }
+    let s_part = decimal(secs % 60, nanos, 1_000_000_000);
+    let (h, m) = (secs / 3600, (secs / 60) % 60);
+    if h > 0 {
+        format!("{h}h{m}m{s_part}s")
+    } else if m > 0 {
+        format!("{m}m{s_part}s")
+    } else {
+        format!("{s_part}s")
+    }
+}
+
+/// `whole.frac` with `frac` in units of `1/scale`, trailing zeros dropped.
+fn decimal(whole: u64, frac: u32, scale: u32) -> String {
+    if frac == 0 {
+        return whole.to_string();
+    }
+    let width = scale.to_string().len().saturating_sub(1);
+    let f = format!("{frac:0width$}");
+    format!("{whole}.{}", f.trim_end_matches('0'))
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
 
-    use super::parse;
+    use super::{format, parse};
+
+    #[test]
+    fn go_formats() {
+        for (d, want) in [
+            (Duration::ZERO, "0s"),
+            (Duration::from_nanos(7), "7ns"),
+            (Duration::from_micros(1500), "1.5ms"),
+            (Duration::from_millis(100), "100ms"),
+            (Duration::from_secs(5), "5s"),
+            (Duration::from_millis(2500), "2.5s"),
+            (Duration::from_secs(90), "1m30s"),
+            (Duration::from_secs(3600), "1h0m0s"),
+        ] {
+            assert_eq!(format(d), want);
+        }
+    }
 
     #[test]
     fn go_durations() {

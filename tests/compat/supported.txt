@@ -82,6 +82,19 @@ upstreams[].load_balancing
 # rotation for fail_timeout; the balancers pass over it unless every address is out.
 upstreams[].max_fails
 upstreams[].fail_timeout
+# I35: active health checks: http and tcp probes of each address every interval plus jitter;
+# fails failures in a row take it out of rotation, passes passes in a row put it back.
+upstreams[].health_check
+upstreams[].health_check.type
+upstreams[].health_check.path
+upstreams[].health_check.host
+upstreams[].health_check.port
+upstreams[].health_check.expect_status
+upstreams[].health_check.interval
+upstreams[].health_check.timeout
+upstreams[].health_check.jitter
+upstreams[].health_check.fails
+upstreams[].health_check.passes
 # I15: the proxy handler: its upstream, trusted proxies and Host. Its other params (upstreams,
 # failover, mirror, retry, timeout, tunnel_idle_timeout, splice_uploads) are refused as not
 # supported yet (I16, I17, I19, I45, I49).

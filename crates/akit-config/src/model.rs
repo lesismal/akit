@@ -206,7 +206,74 @@ pub struct Upstream {
     /// `fail_timeout`: the window `max_fails` are counted in, and how long an address that
     /// reached them stays out. [`DEFAULT_FAIL_TIMEOUT`] when left out or 0.
     pub fail_timeout: Duration,
+    /// `health_check`: probes of each address on a schedule, which take one that fails them out
+    /// of rotation until it passes them again (I35); `None`, no probes, when left out. Probes
+    /// and `max_fails` take an address out each on their own account.
+    pub health_check: Option<HealthCheck>,
 }
+
+/// An upstream's active health check, as fit's `config.HealthCheck`: a probe sent to each of its
+/// addresses every `interval`. Every duration and count holds its default where the config
+/// leaves it out (or sets 0).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HealthCheck {
+    /// `type`: what a probe does. [`HealthCheckType::Http`] when left out.
+    pub kind: HealthCheckType,
+    /// `path`: with http, the path, and query, a probe asks for; `/` when left out.
+    pub path: String,
+    /// `host`: with http, the `Host` field a probe sends; the address's host when left out.
+    pub host: Option<String>,
+    /// `port`: the port probes go to, in place of each address's own.
+    pub port: Option<u16>,
+    /// `expect_status`: with http, the statuses that pass; any from 200 to 399 when empty.
+    pub expect_status: Vec<u16>,
+    /// `interval`: from the start of one probe of an address to the start of the next.
+    /// [`DEFAULT_HEALTH_INTERVAL`] when left out or 0.
+    pub interval: Duration,
+    /// `timeout`: how long a probe may take, connecting included, before it fails; no longer
+    /// than `interval`. [`DEFAULT_HEALTH_TIMEOUT`] when left out or 0.
+    pub timeout: Duration,
+    /// `jitter`: up to how much longer than `interval` each wait between probes may be, chosen
+    /// at random each time; less than `interval`. A tenth of `interval` when left out or 0.
+    pub jitter: Duration,
+    /// `fails`: probes in a row that must fail to take an address out of rotation.
+    /// [`DEFAULT_HEALTH_THRESHOLD`] when left out or 0.
+    pub fails: usize,
+    /// `passes`: probes in a row that must pass to put an address that was out back in.
+    /// [`DEFAULT_HEALTH_THRESHOLD`] when left out or 0.
+    pub passes: usize,
+}
+
+impl HealthCheck {
+    /// Whether an http probe answered with `status` passes: one of `expect_status`, or any from
+    /// 200 to 399 without it.
+    #[must_use]
+    pub fn expects(&self, status: u16) -> bool {
+        if self.expect_status.is_empty() {
+            (200..400).contains(&status)
+        } else {
+            self.expect_status.contains(&status)
+        }
+    }
+}
+
+/// A health check's `type`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
+pub enum HealthCheckType {
+    /// `http`: a `GET` request, passing on an expected status.
+    #[default]
+    Http,
+    /// `tcp`: passes once a connection opens.
+    Tcp,
+}
+
+/// fit's default health check `interval`.
+pub const DEFAULT_HEALTH_INTERVAL: Duration = Duration::from_secs(5);
+/// fit's default health check `timeout`.
+pub const DEFAULT_HEALTH_TIMEOUT: Duration = Duration::from_secs(2);
+/// fit's default health check `fails` and `passes`.
+pub const DEFAULT_HEALTH_THRESHOLD: usize = 2;
 
 impl Upstream {
     /// The weight of the address at `i`: its `weights` entry, or 1.
@@ -895,6 +962,19 @@ const UPSTREAM_FIELDS: &[&str] = &[
     "load_balancing",
     "max_fails",
     "fail_timeout",
+    "health_check",
+];
+const HEALTH_CHECK_FIELDS: &[&str] = &[
+    "type",
+    "path",
+    "host",
+    "port",
+    "expect_status",
+    "interval",
+    "timeout",
+    "jitter",
+    "fails",
+    "passes",
 ];
 const UPSTREAM_FIT_ONLY: &[&str] = &[
     "hash_key",
@@ -907,7 +987,6 @@ const UPSTREAM_FIT_ONLY: &[&str] = &[
     "response_header_timeout",
     "response_idle_timeout",
     "response_timeout",
-    "health_check",
 ];
 
 /// One file's part of a config, before the parts are merged.
@@ -2392,6 +2471,9 @@ fn upstream(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Upstream> {
         };
         (v.off, p, lb)
     });
+    let health_check = o
+        .take("health_check")
+        .and_then(|v| health_check(d, v, &o.at("health_check")));
     o.finish(d, UPSTREAM_FIELDS, UPSTREAM_FIT_ONLY);
     // fit's checks of the two together (config.validate).
     let mut weights = Vec::new();
@@ -2437,6 +2519,160 @@ fn upstream(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Upstream> {
         load_balancing,
         max_fails,
         fail_timeout,
+        health_check,
+    })
+}
+
+/// An upstream's `health_check`, with fit's checks (config.validate): the http fields refused on
+/// a tcp check, a path starting with `/`, a host name or IP address, a timeout no longer than the
+/// interval and a jitter less than it. A problem with a field left out is reported where the
+/// check's object starts, as fit reports it.
+fn health_check(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<HealthCheck> {
+    let mut o = d.object(n, path)?;
+    let mut ok = true;
+    let kind = match o.take("type") {
+        Some(v) => match d.string(v, &o.at("type")).as_deref() {
+            Some("http") => HealthCheckType::Http,
+            Some("tcp") => HealthCheckType::Tcp,
+            Some(other) => {
+                d.error(
+                    v.off,
+                    &o.at("type"),
+                    format!("{other:?} is not one of \"http\", \"tcp\""),
+                );
+                ok = false;
+                HealthCheckType::Http
+            }
+            None => {
+                ok = false;
+                HealthCheckType::Http
+            }
+        },
+        None => HealthCheckType::Http,
+    };
+    let mut string = |d: &mut Decoder<'_>, o: &mut Obj<'_>, key: &str| {
+        let v = o.take(key)?;
+        let s = d.string(v, &o.at(key));
+        ok &= s.is_some();
+        Some((v.off, s.unwrap_or_default()))
+    };
+    let path_at = string(d, &mut o, "path");
+    let host_at = string(d, &mut o, "host");
+    let port = o.take("port").and_then(|v| {
+        let n = d.int(v, &o.at("port"), 1, 65_535);
+        ok &= n.is_some();
+        n.and_then(|n| u16::try_from(n).ok())
+    });
+    let status_at = o.take("expect_status").map(|v| {
+        let p = o.at("expect_status");
+        let given = match &v.kind {
+            crate::json::Kind::Array(items) => items.len(),
+            _ => usize::MAX,
+        };
+        let list = d.array(v, &p, |d, item, at| {
+            d.int(item, at, 100, 599)
+                .and_then(|s| u16::try_from(s).ok())
+        });
+        ok &= list.len() == given;
+        (v.off, list)
+    });
+    let mut duration = |d: &mut Decoder<'_>, o: &mut Obj<'_>, key: &str| {
+        let v = o.take(key)?;
+        let t = d.duration(v, &o.at(key));
+        ok &= t.is_some();
+        Some((v.off, t.unwrap_or_default()))
+    };
+    let interval_at = duration(d, &mut o, "interval");
+    let timeout_at = duration(d, &mut o, "timeout");
+    let jitter_at = duration(d, &mut o, "jitter");
+    let mut count = |d: &mut Decoder<'_>, o: &mut Obj<'_>, key: &str| {
+        let v = o.take(key)?;
+        let n = d.int(v, &o.at(key), 0, i64::MAX);
+        ok &= n.is_some();
+        n.map(|n| usize::try_from(n).unwrap_or(usize::MAX))
+    };
+    let fails = count(d, &mut o, "fails").filter(|&n| n != 0);
+    let passes = count(d, &mut o, "passes").filter(|&n| n != 0);
+    let obj_off = o.off;
+    let at = |key: &str| crate::error::join_field(path, key);
+    o.finish(d, HEALTH_CHECK_FIELDS, &[]);
+    if kind == HealthCheckType::Tcp {
+        let http_only = [
+            ("path", path_at.as_ref().map(|(off, _)| *off)),
+            ("host", host_at.as_ref().map(|(off, _)| *off)),
+            ("expect_status", status_at.as_ref().map(|(off, _)| *off)),
+        ];
+        for (name, off) in http_only {
+            if let Some(off) = off {
+                d.error(
+                    off,
+                    &at(name),
+                    format!("{name} is for http health checks; a tcp one only opens a connection"),
+                );
+                ok = false;
+            }
+        }
+    }
+    if let Some((off, p)) = &path_at {
+        if !p.is_empty() && !p.starts_with('/') {
+            d.error(*off, &at("path"), format!("{p:?} does not start with '/'"));
+            ok = false;
+        }
+    }
+    if let Some((off, h)) = &host_at {
+        if !h.is_empty() && (h.starts_with('*') || check_host(h).is_err()) {
+            d.error(
+                *off,
+                &at("host"),
+                format!("{h:?} is not a host name or IP address"),
+            );
+            ok = false;
+        }
+    }
+    let given = |v: &Option<(usize, Duration)>| v.map(|(_, t)| t).filter(|t| !t.is_zero());
+    let interval = given(&interval_at).unwrap_or(DEFAULT_HEALTH_INTERVAL);
+    let timeout = given(&timeout_at).unwrap_or(DEFAULT_HEALTH_TIMEOUT);
+    let jitter = given(&jitter_at).unwrap_or(interval.checked_div(10).unwrap_or_default());
+    let show = crate::duration::format;
+    if timeout > interval {
+        d.error(
+            timeout_at.map_or(obj_off, |(off, _)| off),
+            &at("timeout"),
+            format!(
+                "the timeout, {}, is longer than the interval, {}",
+                show(timeout),
+                show(interval)
+            ),
+        );
+        ok = false;
+    }
+    if jitter >= interval {
+        d.error(
+            jitter_at.map_or(obj_off, |(off, _)| off),
+            &at("jitter"),
+            format!(
+                "the jitter, {}, is not less than the interval, {}",
+                show(jitter),
+                show(interval)
+            ),
+        );
+        ok = false;
+    }
+    let path = path_at
+        .map(|(_, p)| p)
+        .filter(|p| !p.is_empty())
+        .unwrap_or_else(|| "/".to_owned());
+    ok.then(|| HealthCheck {
+        kind,
+        path,
+        host: host_at.map(|(_, h)| h).filter(|h| !h.is_empty()),
+        port,
+        expect_status: status_at.map(|(_, l)| l).unwrap_or_default(),
+        interval,
+        timeout,
+        jitter,
+        fails: fails.unwrap_or(DEFAULT_HEALTH_THRESHOLD),
+        passes: passes.unwrap_or(DEFAULT_HEALTH_THRESHOLD),
     })
 }
 

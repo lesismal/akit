@@ -35,6 +35,12 @@
 //! [`Error::is_upstream_failure`] says: the address could not be reached, broke off, sent no
 //! valid response, or timed out (waiting for a connection to it included).
 //!
+//! I35 adds active health checks ([`probe`]), as fit's: with an upstream's `health_check`, each
+//! address is probed every `interval` (plus a random `jitter`), by an HTTP `GET` or a TCP
+//! connect on akio's clients; `fails` failed probes in a row take it out of rotation until
+//! `passes` in a row put it back. Probes start once the pool's engine is there
+//! ([`EngineSlot::set`]) and stop when the pool is closed.
+//!
 //! I16 adds [`Pool::stream`]: an exchange whose request body is written as it is produced and
 //! whose response is delivered as it arrives ([`Exchange`], on akio's `Client::request_with`), for
 //! the proxy to stream bodies with linked backpressure. It is bounded, balanced and counted
@@ -62,6 +68,8 @@
 
 pub mod balance;
 pub mod health;
+pub mod probe;
+mod timer;
 
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
@@ -78,6 +86,7 @@ use akio_http::client::{
 };
 use akit_observe::metrics::{HistogramSnapshot, UpstreamStats};
 
+pub use akit_config::{HealthCheck, HealthCheckType};
 pub use balance::{Balancer, LoadBalancing};
 pub use health::Health;
 
@@ -88,7 +97,19 @@ pub const DEFAULT_RESPONSE_TIMEOUT: Duration = Duration::from_secs(3600);
 /// Where the engine pools dial through will be: filled once, by whoever builds the engine,
 /// after the pools are made. Cheap to clone; clones share the engine.
 #[derive(Clone, Default)]
-pub struct EngineSlot(Arc<OnceLock<Arc<Engine>>>);
+pub struct EngineSlot(Arc<Slot>);
+
+/// What to run with the engine once a slot is filled.
+type OnSet = Box<dyn FnOnce(&Arc<Engine>) + Send>;
+
+#[derive(Default)]
+struct Slot {
+    engine: OnceLock<Arc<Engine>>,
+    /// Run once the engine is there (the pools' probes, I35). One for each pool with a health
+    /// check made while the slot was empty: as many as the config has, and each holds its pool
+    /// weakly.
+    waiting: Mutex<Vec<OnSet>>,
+}
 
 impl EngineSlot {
     /// An empty slot.
@@ -108,20 +129,55 @@ impl EngineSlot {
     /// Fills the slot with `engine`, which must be started before requests are sent; false when
     /// it was filled already (the first engine stays).
     pub fn set(&self, engine: Arc<Engine>) -> bool {
-        self.0.set(engine).is_ok()
+        if self.0.engine.set(engine).is_err() {
+            return false;
+        }
+        // Taken under the lock that `when_set` checks the engine under: each runs here or there.
+        let waiting = std::mem::take(
+            &mut *self
+                .0
+                .waiting
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner),
+        );
+        if let Some(e) = self.0.engine.get() {
+            for f in waiting {
+                f(e);
+            }
+        }
+        true
     }
 
     /// The engine, once set.
     #[must_use]
     pub fn get(&self) -> Option<&Arc<Engine>> {
-        self.0.get()
+        self.0.engine.get()
+    }
+
+    /// Runs `f` with the engine: now, on this thread, if the slot is filled; else on the thread
+    /// that fills it, when it does.
+    fn when_set(&self, f: impl FnOnce(&Arc<Engine>) + Send + 'static) {
+        {
+            let mut w = self
+                .0
+                .waiting
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
+            if self.0.engine.get().is_none() {
+                w.push(Box::new(f));
+                return;
+            }
+        }
+        if let Some(e) = self.0.engine.get() {
+            f(e);
+        }
     }
 }
 
 impl fmt::Debug for EngineSlot {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("EngineSlot")
-            .field("set", &self.0.get().is_some())
+            .field("set", &self.0.engine.get().is_some())
             .finish()
     }
 }
@@ -302,6 +358,8 @@ struct Inner {
     /// `max_fails` and `fail_timeout`.
     max_fails: usize,
     fail_timeout: Duration,
+    /// `health_check`: the probes of its addresses ([`probe`]).
+    health_check: Option<HealthCheck>,
     /// What the backends' health times count from.
     epoch: Instant,
     max_conns: usize,
@@ -372,13 +430,14 @@ impl Pool {
                 health: Health::new(),
             })
             .collect();
-        Pool {
+        let pool = Pool {
             inner: Arc::new(Inner {
                 name: u.name.clone(),
                 backends,
                 balancer: Balancer::new(u.load_balancing, &weights),
                 max_fails: u.max_fails,
                 fail_timeout: u.fail_timeout,
+                health_check: u.health_check.clone(),
                 epoch: Instant::now(),
                 max_conns: u.max_conns.max(1),
                 max_pending: u.max_pending,
@@ -392,7 +451,16 @@ impl Pool {
                 closed: AtomicBool::new(false),
                 on_closed: Mutex::new(Vec::new()),
             }),
+        };
+        if pool.inner.health_check.is_some() {
+            let weak = Arc::downgrade(&pool.inner);
+            pool.inner.engine.when_set(move |engine| {
+                if let Some(inner) = weak.upgrade() {
+                    probe::start(&inner, engine);
+                }
+            });
         }
+        pool
     }
 
     /// The same pool, but bounding each exchange by `timeout` in all, waiting for a connection
@@ -496,6 +564,21 @@ impl Pool {
         self.inner.fail_timeout
     }
 
+    /// The upstream's `health_check`, when it has one.
+    #[must_use]
+    pub fn health_check(&self) -> Option<&HealthCheck> {
+        self.inner.health_check.as_ref()
+    }
+
+    /// Whether the address at `backend` is out of rotation for its probes (fit's `ProbedDown`).
+    #[must_use]
+    pub fn is_probed_down(&self, backend: usize) -> bool {
+        self.inner
+            .backends
+            .get(backend)
+            .is_some_and(|b| b.health.probed_down())
+    }
+
     /// The index of the address the next request goes to, by the upstream's `load_balancing`
     /// ([`balance`]): in turn, in turn by weight, or the one with the fewest requests under way
     /// (waiting for a connection included) for its weight, passing over the addresses that are
@@ -522,8 +605,8 @@ impl Pool {
         )
     }
 
-    /// Whether the address at `backend` is out of rotation, for having failed `max_fails`
-    /// requests within `fail_timeout`, less than `fail_timeout` ago.
+    /// Whether the address at `backend` is out of rotation: for having failed `max_fails`
+    /// requests within `fail_timeout`, less than `fail_timeout` ago, or for its probes.
     #[must_use]
     pub fn is_down(&self, backend: usize) -> bool {
         let now = Cell::new(None);

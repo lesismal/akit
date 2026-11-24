@@ -30,7 +30,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | A9 | A TLS server capped at TLS 1.2 (public `ServerConfigBuilder` API) | requested (I09) | 17 | I09 |
 | A10 | Closing an HTTP client's idle connections now | requested (I14) | 10, 11 | I14, I22 |
 | A11 | An HTTP/1 client request that keeps its own `Host` field (and sends no `User-Agent` when given an empty one) | in akio's main (`a9a620ab`), pinned | — | I15 |
-| A12 | The HTTP client's connect timeout for a lone address too | requested (I14) | 10 | I14 |
+| A12 | The HTTP client's connect timeout for a lone address too | requested (I14) | 10 | I14, I35 |
 | A13 | `Files` serving a path the caller names | in akio's main (`a9a620ab`), pinned | 19 | I12, I13 |
 | A14 | `Files` answering as a gateway's static handler does | requested (I12) | 19 | I12, I13 |
 | A15 | `Files` bounded in memory, its disk pool with a timeout | requested (I12) | 4, 11 | I12 |
@@ -48,6 +48,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | A32 | Where an `akio-regex` pattern matches, its groups, and replacing them | requested (I40) | 19 | I40, I48 |
 | A33 | A request's fields and target changed by a middleware (`Context::req_mut`) | requested (I40) | 12, 19 | I40, I43, I44 |
 | A35 | A streamed HTTP/1.1 response framed by its length | requested (I16) | 5 | I16, I67 |
+| A45 | A public timer: a callback run once a delay has passed, from any thread | requested (I35) | 1, 11 | I35, I31, I54 |
 
 ## A1 TCP listeners on a running engine
 
@@ -676,3 +677,30 @@ meaning, if a field read from the headers is too implicit.
 **How akit uses it.** I16's proxy streams a response of a known length past 64 KiB to an HTTP/1.1
 client with its `Content-Length` (it now goes chunked, the field dropped: recorded in the I16
 progress entry). Also the cache (I67), which serves a stored response as it reads it.
+
+## A45 A public timer
+
+**Problem.** Active health checks (I35) probe each address of an upstream every interval, and a
+TCP probe must fail once its timeout passes: something has to run a callback after a delay. akio
+has timers, but none is public at the pinned commit: the I/O loops' wheels (`akio-timer`) are
+internal, and akio-http's timer thread (`crate::timer::after`, which arms its clients' request
+timeouts) is `pub(crate)`. A gateway has more uses: ACME renewals and retries (I31), retries with
+backoff (I54), any periodic job on the control plane, each of which would otherwise start a
+thread of its own.
+
+**Evidence.** At `60547435`: `crates/akio-http/src/timer.rs` (`pub(crate) fn after`);
+`crates/akio-timer` ("akio internals ... (use `akio`)"), re-exported nowhere. akio's
+`claude/akio-all` branch has an `akio_core::timer::after(delay, f)` on the calling I/O thread's
+wheel, not on main.
+
+**Suggested API.** `akio::timer::after(delay, f: impl FnOnce() + Send + 'static) -> TimerHandle`,
+`f` run on a timer thread (or an engine's I/O thread) once `delay` has passed, never blocking it,
+and `TimerHandle::cancel`. An engine-bound form, `Engine::after`, would run `f` on one of its I/O
+threads and drop it when the engine stops. Bounded, as everything in akio is: a cap on pending
+timers with an error past it.
+
+**How akit uses it.** `akit_upstream::timer` is the stopgap: one thread of akit's own with a heap
+of pending jobs, bounded at 65,536 (each probed address has at most two pending: its next probe
+and its probe's timeout). It is replaced by this API, and the probes' timeouts cancelled rather
+than left to run.
+

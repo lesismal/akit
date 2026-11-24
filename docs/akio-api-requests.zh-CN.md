@@ -29,7 +29,7 @@
 | A9 | 把 TLS 服务端限制在 TLS 1.2（`ServerConfigBuilder` 的公开 API） | 已提出（I09） | 17 | I09 |
 | A10 | 立即关闭 HTTP 客户端的空闲连接 | 已提出（I14） | 10、11 | I14、I22 |
 | A11 | HTTP/1 客户端请求保留自己的 `Host` 字段（给定空 `User-Agent` 时不发送 `User-Agent`） | 已在 akio 的 main（`a9a620ab`），已锁定 | — | I15 |
-| A12 | HTTP 客户端的连接超时也作用于单个地址 | 已提出（I14） | 10 | I14 |
+| A12 | HTTP 客户端的连接超时也作用于单个地址 | 已提出（I14） | 10 | I14、I35 |
 | A13 | `Files` 服务调用者给出的路径 | 已在 akio 的 main（`a9a620ab`），已锁定 | 19 | I12、I13 |
 | A14 | `Files` 像网关的静态文件 handler 那样应答 | 已提出（I12） | 19 | I12、I13 |
 | A15 | `Files` 的内存有界，磁盘池有超时 | 已提出（I12） | 4、11 | I12 |
@@ -47,6 +47,7 @@
 | A32 | `akio-regex` 模式在哪里匹配、它的分组，以及替换 | 已提出（I40） | 19 | I40、I48 |
 | A33 | 被中间件修改的请求字段和请求目标（`Context::req_mut`） | 已提出（I40） | 12、19 | I40、I43、I44 |
 | A35 | 按长度分帧的流式 HTTP/1.1 响应 | 已提出（I16） | 5 | I16、I67 |
+| A45 | 公开的定时器：延迟过后运行一次回调，可从任何线程调度 | 已提出（I35） | 1、11 | I35、I31、I54 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -553,3 +554,23 @@ akio 读取请求的地方（`Files` 的条件请求和范围请求字段、`pat
 
 **akit 的用法。** I16 的代理把长度已知、超过 64 KiB 的响应流式发给 HTTP/1.1 客户端时带上它的 `Content-Length`（现在
 按 chunked 发送，去掉该字段：记录在 I16 的进度条目中）。缓存（I67）在边读边提供已存储的响应时也会用到。
+
+## A45 公开的定时器
+
+**问题。** 主动健康检查（I35）每个 interval 探测上游的每个地址一次，TCP 探测还必须在超时到达时判为失败：需要有东西在
+一段延迟之后运行回调。akio 有定时器，但在锁定的提交上没有一个是公开的：I/O 循环的时间轮（`akio-timer`）是内部的，
+akio-http 的定时器线程（`crate::timer::after`，用来设置其客户端的请求超时）是 `pub(crate)`。网关还有更多用处：ACME 的
+续期和重试（I31）、带退避的重试（I54）、控制面上的任何周期任务，否则每一处都要各自启动一个线程。
+
+**证据。** `60547435` 上：`crates/akio-http/src/timer.rs`（`pub(crate) fn after`）；`crates/akio-timer`（"akio
+internals ... (use `akio`)"），没有任何地方重新导出。akio 的 `claude/akio-all` 分支有一个 `akio_core::timer::after(delay, f)`，
+挂在调用它的 I/O 线程的时间轮上，不在 main 上。
+
+**建议的 API。** `akio::timer::after(delay, f: impl FnOnce() + Send + 'static) -> TimerHandle`：延迟过后在定时器线程
+（或某个引擎的 I/O 线程）上运行 `f`，从不阻塞它；以及 `TimerHandle::cancel`。绑定引擎的形式 `Engine::after` 会在引擎的
+某个 I/O 线程上运行 `f`，并在引擎停止时丢弃它。和 akio 的一切一样有界：待运行定时器有上限，超过时返回错误。
+
+**akit 的用法。** `akit_upstream::timer` 是临时方案：akit 自己的一个线程，持有一个待运行任务的堆，上限 65,536（每个被
+探测的地址最多有两个待运行任务：它的下一次探测和当前探测的超时）。有了这个 API 就替换它，探测的超时也改为取消，而不是
+留着运行。
+

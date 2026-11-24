@@ -133,7 +133,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I32 | ACME II: TLS-ALPN-01, renewal, OCSP | I31 | todo |
 | I33 | Automatic HTTPS defaults | I32 | todo |
 | I34 | On-demand TLS | I33, A2 | todo |
-| I35 | Active health checks | I20 | todo |
+| I35 | Active health checks | I20 | done |
 | I36 | Load balancing v2 | I19 | todo |
 | I37 | Prometheus metrics | I15 | done |
 | I38 | M2 exit: churn test and staging certificate | I26–I37 | todo |
@@ -207,6 +207,7 @@ commit and result.
 | Reverse proxy: HTTP/1.1, streamed bodies, h2 and h2c upstreams | I15–I18 | no | no (built up to I16, not measured; h2 upstreams are I18) | The proxy scenario, HTTP/1.1 and h2c (skipped for akit in the baseline); large bodies both ways, with memory per request in flight; h2 upstreams. |
 | Load balancing v1 and v2 | I19, I36 | no | no (not built yet) | A micro-benchmark of each policy's pick, 1 and 16 threads; proxy A/B against a single server. |
 | Passive health checks | I20 | no | no (built, not measured) | A micro-benchmark of recording a result on the request path. |
+| Active health checks | I35 | no | no (built, not measured) | Off the hot path (a pick still reads one atomic per address): the probes' cost on a busy engine, thousands of addresses probed every second (http and tcp), with the probe timer's thread (the stopgap for akio A45); same-run A/B of the proxy scenario with a health check on and off. |
 | Access logs | I21 | no | no (built, not measured) | Same-run A/B of fixed and proxy with logs on and off (json, and text or line), to a file and to `/dev/null`; lines dropped at full load with the default 4 MiB buffer and a slow disk; the per-request cost (the boxed response filter, the shard lock, formatting). |
 | Certificates chosen per handshake (the resolver reading the graph) | I30 | no | no (built, not measured) | Full TLS handshakes a second with one and ten certificates, against I09's `sni_cert` and fit. |
 | Prometheus metrics | I37 | no | no (built, not measured) | Same-run A/B of the fixed and proxy scenarios with `metrics` on and off (an inline route costs a thread-local read and three atomic adds; a proxied one also a boxed response filter until akio A29), and with the access log on too (one hook for both); a scrape with many routes and 64 threads (the per-thread shards). |

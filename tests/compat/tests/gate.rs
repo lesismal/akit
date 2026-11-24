@@ -375,6 +375,7 @@ fn supported_fields_are_read() {
         )
     };
     let access = |fields: &str| format!("{{\"access_log\": {{{fields}}}}}");
+    let health = |fields: &str| upstream(&format!(r#", "health_check": {{{fields}}}"#));
     let mw = |module: &str, params: &str| {
         format!(
             r#"{{{L}, "routes": [{{"middleware": [{{"module": "{module}", "params": {{{params}}}}}], "handler": {{"module": "respond"}}}}]}}"#
@@ -892,6 +893,79 @@ fn supported_fields_are_read() {
             upstream(r#", "fail_timeout": "30s""#),
             |c| c.upstreams[0].fail_timeout == std::time::Duration::from_secs(30),
         ),
+        ("upstreams[].health_check", health(""), |c| {
+            c.upstreams[0].health_check.is_some()
+        }),
+        (
+            "upstreams[].health_check.type",
+            health(r#""type": "tcp""#),
+            |c| {
+                c.upstreams[0].health_check.as_ref().unwrap().kind
+                    == akit_config::HealthCheckType::Tcp
+            },
+        ),
+        (
+            "upstreams[].health_check.path",
+            health(r#""path": "/h""#),
+            |c| c.upstreams[0].health_check.as_ref().unwrap().path == "/h",
+        ),
+        (
+            "upstreams[].health_check.host",
+            health(r#""host": "app.internal""#),
+            |c| {
+                c.upstreams[0]
+                    .health_check
+                    .as_ref()
+                    .unwrap()
+                    .host
+                    .as_deref()
+                    == Some("app.internal")
+            },
+        ),
+        (
+            "upstreams[].health_check.port",
+            health(r#""port": 8081"#),
+            |c| c.upstreams[0].health_check.as_ref().unwrap().port == Some(8081),
+        ),
+        (
+            "upstreams[].health_check.expect_status",
+            health(r#""expect_status": [204]"#),
+            |c| c.upstreams[0].health_check.as_ref().unwrap().expect_status == [204],
+        ),
+        (
+            "upstreams[].health_check.interval",
+            health(r#""interval": "7s""#),
+            |c| {
+                c.upstreams[0].health_check.as_ref().unwrap().interval
+                    == std::time::Duration::from_secs(7)
+            },
+        ),
+        (
+            "upstreams[].health_check.timeout",
+            health(r#""timeout": "1s""#),
+            |c| {
+                c.upstreams[0].health_check.as_ref().unwrap().timeout
+                    == std::time::Duration::from_secs(1)
+            },
+        ),
+        (
+            "upstreams[].health_check.jitter",
+            health(r#""jitter": "3ms""#),
+            |c| {
+                c.upstreams[0].health_check.as_ref().unwrap().jitter
+                    == std::time::Duration::from_millis(3)
+            },
+        ),
+        (
+            "upstreams[].health_check.fails",
+            health(r#""fails": 4"#),
+            |c| c.upstreams[0].health_check.as_ref().unwrap().fails == 4,
+        ),
+        (
+            "upstreams[].health_check.passes",
+            health(r#""passes": 5"#),
+            |c| c.upstreams[0].health_check.as_ref().unwrap().passes == 5,
+        ),
     ];
     let marked = supported().unwrap();
     let sampled: BTreeSet<String> = samples.iter().map(|(p, ..)| (*p).to_owned()).collect();
@@ -977,7 +1051,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 21] = [
+    let objects: [(&str, &str, Option<&str>); 22] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         ("admin", "ADMIN_FIELDS", Some("ADMIN_FIT_ONLY")),
         ("limits", "LIMITS_FIELDS", Some("LIMITS_FIT_ONLY")),
@@ -1005,6 +1079,7 @@ fn akit_config_lists_match_the_inventory() {
             Some("PROXY_FIT_ONLY"),
         ),
         ("upstreams[]", "UPSTREAM_FIELDS", Some("UPSTREAM_FIT_ONLY")),
+        ("upstreams[].health_check", "HEALTH_CHECK_FIELDS", None),
         ("routes[].middleware[]", "MODULE_FIELDS", None),
         (
             "routes[].middleware[]<rewrite>.params",

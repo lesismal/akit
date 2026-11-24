@@ -1,7 +1,7 @@
 # The compatibility gate's report (docs/compatibility.md), written by make compat-bless;
 # do not edit. The gate fails when a run's outcomes differ from these lines.
 # fit 7daee573, fit-examples 9659d7e4.
-# 80 fixtures: 11 valid, 68 refused only as not supported yet (fields refused: 72), 0 in a format not supported yet, 1 skipped, 0 failed.
+# 80 fixtures: 11 valid, 68 refused only as not supported yet (fields refused: 71), 0 in a format not supported yet, 1 skipped, 0 failed.
 examples/acme-on-demand: not supported yet: acme
 examples/acme-on-demand: not supported yet: listeners[].tls.acme
 examples/acme-on-demand: not supported yet: listeners[].tls.on_demand
@@ -32,7 +32,6 @@ examples/docker-compose: not supported yet: providers
 examples/fastcgi: not supported yet: routes[].handler<fastcgi>
 examples/forward-auth: not supported yet: routes[].middleware[]<forward_auth>
 examples/forward-proxy: not supported yet: routes[].handler<forward_proxy>
-examples/grpc: not supported yet: upstreams[].health_check
 examples/grpc: not supported yet: upstreams[].protocol: the "h2c" protocol for upstreams
 examples/grpc: not supported yet: upstreams[].response_idle_timeout
 examples/grpc: not supported yet: upstreams[].response_timeout
@@ -44,7 +43,6 @@ examples/https: skipped: its certificate and key files are the user's own
 examples/jwt: not supported yet: routes[].middleware[]<jwt>
 examples/l4-tcp: not supported yet: listeners[].protocols: the "tcp" protocol
 examples/l4-tcp: not supported yet: services
-examples/l4-tcp: not supported yet: upstreams[].health_check
 examples/l4-udp: not supported yet: listeners[].protocols: the "udp" protocol
 examples/l4-udp: not supported yet: services
 examples/l4-udp: not supported yet: upstreams[].load_balancing: the "ip_hash" load balancing policy
@@ -62,7 +60,6 @@ examples/load-balancing: not supported yet: routes[].handler<proxy>.params.failo
 examples/load-balancing: not supported yet: routes[].handler<proxy>.params.mirror
 examples/load-balancing: not supported yet: routes[].handler<proxy>.params.retry
 examples/load-balancing: not supported yet: routes[].handler<proxy>.params.upstreams
-examples/load-balancing: not supported yet: upstreams[].health_check
 examples/load-balancing: not supported yet: upstreams[].sticky_cookie
 examples/logging: not supported yet: log
 examples/media-pages: not supported yet: media_auth
@@ -83,7 +80,6 @@ examples/proxy: not supported yet: limits.max_conns
 examples/proxy: not supported yet: limits.max_header_bytes
 examples/proxy: not supported yet: limits.max_pending_bytes
 examples/proxy: not supported yet: limits.write_stall_timeout
-examples/proxy: not supported yet: upstreams[].health_check
 examples/proxy: not supported yet: upstreams[].response_header_timeout
 examples/proxy: not supported yet: upstreams[].response_idle_timeout
 examples/proxy: not supported yet: upstreams[].response_timeout
@@ -135,7 +131,6 @@ examples/video-site: not supported yet: streaming
 examples/virtual-hosts: valid
 examples/wasm: not supported yet: routes[].middleware[]<wasm>
 examples/webrtc-proxy: not supported yet: routes[].handler<webrtc_proxy>
-examples/webrtc-proxy: not supported yet: upstreams[].health_check
 examples/webrtc-proxy: not supported yet: webrtc
 examples/webrtc-turn: not supported yet: webrtc
 examples/whip-whep: not supported yet: routes[].handler<whep>

@@ -217,7 +217,7 @@ fn load_balancing() {
 fn what_akit_lacks_is_not_supported_yet() {
     let e = errs(&one(
         r#""addresses": ["a:1"], "protocol": "h2c", "load_balancing": "p2c", "hash_key": "x",
-           "health_check": {}, "response_timeout": "1s""#,
+           "response_timeout": "1s""#,
     ));
     assert!(e.only_not_supported_yet(), "{e}");
     let paths: Vec<&str> = e.as_slice().iter().map(|e| e.path.as_str()).collect();
@@ -227,7 +227,6 @@ fn what_akit_lacks_is_not_supported_yet() {
             "upstreams[0].protocol",
             "upstreams[0].load_balancing",
             "upstreams[0].hash_key",
-            "upstreams[0].health_check",
             "upstreams[0].response_timeout",
         ]
     );
