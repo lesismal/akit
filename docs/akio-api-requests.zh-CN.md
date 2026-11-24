@@ -18,19 +18,19 @@
 
 | ID | API | 状态 | 解决的规则 | akit 迭代 |
 | --- | --- | --- | --- | --- |
-| A1 | 在运行中的引擎上添加、移除和排空 TCP 监听器 | 进行中，akio 分支 | 10、11 | I22、I28 |
-| A2 | 每次握手由回调选择服务端证书，回调可以稍后完成 | 进行中，akio 分支 | 1、4 | I30、I34 |
-| A3 | 在任何 handler 运行之前过滤已接受的连接 | 进行中，akio 分支 | 11 | 访问控制列表 |
-| A4 | PROXY 协议 v1/v2：接受时解析，拨号时写出 | 进行中，akio 分支 | 12 | I52 |
-| A5 | akio-mux 中按 SNI 路由 TLS 而不终结它的规则 | 进行中，akio 分支 | 12 | I52、I53 |
+| A1 | 在运行中的引擎上添加、移除和排空 TCP 监听器 | 已在 akio 的 main（`a9a620ab`），已锁定 | 10、11 | I22、I28 |
+| A2 | 每次握手由回调选择服务端证书，回调可以稍后完成 | 已在 akio 的 main（`a9a620ab`），已锁定 | 1、4 | I30、I34 |
+| A3 | 在任何 handler 运行之前过滤已接受的连接 | 已在 akio 的 main（`a9a620ab`），已锁定 | 11 | 访问控制列表 |
+| A4 | PROXY 协议 v1/v2：接受时解析，拨号时写出 | 已在 akio 的 main（`a9a620ab`），已锁定 | 12 | I52 |
+| A5 | akio-mux 中按 SNI 路由 TLS 而不终结它的规则 | 已在 akio 的 main（`a9a620ab`），已锁定 | 12 | I52、I53 |
 | A6 | `akio-x509` 中生成 CSR（以及 `akio-crypto` 中的 JWS 辅助函数） | 已在 akio 分支 `claude/x509-csr`（`7ea64069`）完成，未合并 | 15 | I31 |
-| A7 | 不转码即可切分文件的 MP4（ISO BMFF）读取器 | 进行中，akio 分支 | — | 媒体库 |
-| A8 | TUN 设备 | 进行中，akio 分支 | — | VPN |
+| A7 | 不转码即可切分文件的 MP4（ISO BMFF）读取器 | 已在 akio 的 main（`a9a620ab`），已锁定 | — | 媒体库 |
+| A8 | TUN 设备 | 已在 akio 的 main（`a9a620ab`），已锁定 | — | VPN |
 | A9 | 把 TLS 服务端限制在 TLS 1.2（`ServerConfigBuilder` 的公开 API） | 已提出（I09） | 17 | I09 |
 | A10 | 立即关闭 HTTP 客户端的空闲连接 | 已提出（I14） | 10、11 | I14、I22 |
-| A11 | HTTP/1 客户端请求保留自己的 `Host` 字段（给定空 `User-Agent` 时不发送 `User-Agent`） | 已在 akio 分支 `claude/i15-proxy-699f18`（`552fe283`）完成，未合并 | — | I15 |
+| A11 | HTTP/1 客户端请求保留自己的 `Host` 字段（给定空 `User-Agent` 时不发送 `User-Agent`） | 已在 akio 的 main（`a9a620ab`），已锁定 | — | I15 |
 | A12 | HTTP 客户端的连接超时也作用于单个地址 | 已提出（I14） | 10 | I14 |
-| A13 | `Files` 服务调用者给出的路径 | 已提出（I12） | 19 | I12 |
+| A13 | `Files` 服务调用者给出的路径 | 已在 akio 的 main（`a9a620ab`），已锁定 | 19 | I12 |
 | A14 | `Files` 像网关的静态文件 handler 那样应答 | 已提出（I12） | 19 | I12、I13 |
 | A15 | `Files` 的内存有界，磁盘池有超时 | 已提出（I12） | 4、11 | I12 |
 | A19 | HTTP 客户端请求的请求体边产生边发送，带背压 | 已提出（I16） | 5、8 | I16、I17、I18、I49、I75 |

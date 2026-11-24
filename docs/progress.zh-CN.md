@@ -10,12 +10,12 @@
 | | |
 | --- | --- |
 | 最后更新 | 2026-11-24 |
-| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I12、I14、I19、I21、I22、I23、I24 已完成，I15 进行中（等待 akio 的 A11），I16 进行中（body 限制已完成；流式转发等待 akio 的 A19–A21）；M3 的 I39 已提前完成。 |
-| akio | akio `main` 上的 `50a82315`（`1.0.0-rc.1`），在 `Cargo.toml` 中按 `rev` 锁定 |
+| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I12、I14、I15、I19、I21、I22、I23、I24 已完成，I16 进行中（body 限制已完成；流式转发等待 akio 的 A19–A21）；M3 的 I39 已提前完成。 |
+| akio | akio `main` 上的 `a9a620ab`（`1.0.0-rc.1`，带 A1–A5、A7、A8、A11、A13 和 A16–A18），在 `Cargo.toml` 中按 `rev` 锁定 |
 | fit | 作为规格；本计划基于 `7daee573` 阅读 |
-| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；监听器保留、增加和移除，启动时的监听器要等锁定到带 A1 的 akio）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开）和 `proxy` handler（fit 的转发字段、可信代理；锁定到 A11 后传客户端的 `Host`）；所有监听器和代理上的 `limits.max_body_bytes`（413）；fit 的 json、text 和 line 格式的访问日志；上游连接池，轮询、加权轮询和最少连接；兼容性门禁：80 个夹具，9 个有效，70 个只因暂不支持被拒绝，1 个跳过，没有失败 |
-| 下一步 | 把 akio 锁定到带 A1–A8 和 A11 的 akio main，然后 I15 完成（其 `Host` 测试）、I22 改用 A1；再是 I13、I17、I20；A19–A21 落地后再做 I16 |
-| akio 需求 | A1–A8 已合并进 akio 的 main（2026-11-24）；A11 在 akio 分支 `claude/i15-proxy-699f18` 上；A9、A10、A12–A15 和 A19–A21 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
+| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；监听器保留、增加和移除，启动时的监听器要等锁定到带 A1 的 akio）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`）；所有监听器和代理上的 `limits.max_body_bytes`（413）；fit 的 json、text 和 line 格式的访问日志；上游连接池，轮询、加权轮询和最少连接；兼容性门禁：80 个夹具，9 个有效，70 个只因暂不支持被拒绝，1 个跳过，没有失败 |
+| 下一步 | I22 改用 A1（启动时的监听器、重载时的 h3），I13 改用 A13 和 A16–A18；再是 I17、I20；A19–A21 落地后再做 I16 |
+| akio 需求 | A1–A5、A7、A8、A11、A13、A16–A18 已在 akio 的 main 并已锁定；A6 在 akio 分支 `claude/x509-csr` 上；A9、A10、A12、A14、A15 和 A19–A21 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
 
 ## 日志
 
@@ -260,7 +260,14 @@
   客户端；压测框架还没有 akit 的 h3 场景）、每秒新建 QUIC 握手数，以及 `Alt-Svc` 字段在 HTTP/1.1 和 h2 热路径上的
   开销（有无 `h3` 的监听器的同轮 A/B）。
 
-### 2026-11-24：I15，反向代理 I：请求与头处理（doing：等待 akio A11）
+### 2026-11-24：akio 锁定到 `a9a620ab`；I15 完成
+
+- akio 锁定从 `50a82315` 移到 akio `main` 上的 `a9a620ab`：A1–A5、A7 和 A8（2026-11-24 合并）、A11（I15 的
+  `Host`）、A13 和 A16–A18（I13 的 `Files`）。所有 akio crate 随之移动，`akit_runtime::AKIO_REV` 也一样。
+- I15 为 `done`：它的三个 A11 测试（`forwarding`、`request_fields_in_order`、`host_header`）不再忽略，并且通过。
+- 已检查：macOS 上的 `make check`；基准主机上 epoll 和 io_uring 下整个 workspace 的测试。
+
+### 2026-11-24：I15，反向代理 I：请求与头处理（曾为 doing：等待 akio A11）
 
 - 状态为 `doing` 而非 `done`：代理已实现，fit 的头处理测试已移植，但其中三个（上游看到的 `Host`，以及不凭空添加
   `User-Agent`）只有在 akio 的 A11 上才能通过，而 A11 在 akio 的独立分支上，尚未合并：akio `claude/i15-proxy-699f18`，

@@ -39,4 +39,4 @@ pub const CANONICAL_PATH: &str = "akit.canonical_path";
 pub const TLS: &str = "akit.tls";
 
 /// The akio commit akit is built against (rule 22: akio is pinned by commit hash).
-pub const AKIO_REV: &str = "50a823155a067ce60cfc424490548f0c318d4c09";
+pub const AKIO_REV: &str = "a9a620ab2db9635caee32fc625da51ae255ff591";
