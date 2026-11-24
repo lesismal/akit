@@ -250,6 +250,7 @@ dependencies = [
  "akit-listener",
  "akit-middleware",
  "akit-observe",
+ "akit-provider",
  "akit-proxy",
  "akit-runtime",
  "akit-tls",
@@ -266,6 +267,7 @@ dependencies = [
  "akit-handler",
  "akit-listener",
  "akit-observe",
+ "akit-provider",
  "akit-runtime",
 ]
 
@@ -374,6 +376,9 @@ version = "0.0.1"
 [[package]]
 name = "akit-provider"
 version = "0.0.1"
+dependencies = [
+ "akit-config",
+]
 
 [[package]]
 name = "akit-proxy"

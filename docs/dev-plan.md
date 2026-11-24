@@ -160,7 +160,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I55 | SOCKS and CONNECT | I53 | todo |
 | I56 | M3 exit | I39–I55 | todo |
 | **M4** | | | |
-| I57 | Provider framework and the effective config | I29 | todo |
+| I57 | Provider framework and the effective config | I29 | done |
 | I58 | Docker provider | I57 | todo |
 | I59 | Kubernetes Ingress | I57 | todo |
 | I60 | Kubernetes Gateway API and conformance | I59 | todo |
@@ -789,6 +789,7 @@ Split from I07 so that the half that needs no config model runs beside I02.
   the effective config and where each part came from.
 - **Done when**: tests cover merging and the endpoint.
 - **Touches**: `akit-provider`, `akit-admin`.
+- **fit**: decision 009.
 
 ### I58 Docker provider
 

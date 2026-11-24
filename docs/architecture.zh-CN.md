@@ -13,7 +13,7 @@ akit 怎样组成，一个请求怎样穿过它。这是 [开发计划](dev-plan
 ├───────────────────────────── control plane ──────────────────┤
 │ akit-config   readers (.conf, YAML, JSON) → model → validate  │
 │ akit-admin    Admin API, file provider                        │
-│ akit-provider Docker, Kubernetes, Consul, etcd                │
+│ akit-provider merging; Docker, Kubernetes, Consul, etcd       │
 │ akit-tls      certificate manager, ACME, OCSP                 │
 │ akit-runtime  registry · compile · Graph · atomic swap        │
 ├───────────────────────────── data plane ─────────────────────┤

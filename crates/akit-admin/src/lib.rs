@@ -4,8 +4,10 @@
 //! served by akio-http on an engine of its own (akit's decision 006):
 //!
 //! ```text
-//! GET    /config[/<pointer>]  the running config, as it was written, or the value a JSON
+//! GET    /config[/<pointer>]  the running base config, as it was written, or the value a JSON
 //!                             pointer names in it; ETag, If-None-Match
+//! GET    /config/effective    the config as it runs, with what providers provide merged into
+//!                             it, and where each part came from (I57)
 //! PUT    /config[/<pointer>]  set that value to the body; "-" appends to an array (I27)
 //! PATCH  /config[/<pointer>]  merge the body into it, a JSON merge patch (RFC 7396) (I27)
 //! DELETE /config/<pointer>    remove it (I27)
@@ -30,7 +32,11 @@
 //! rollbacks and reloads, each made from the running config under the history's lock.
 //!
 //! The file provider (I29, [`Watcher`]) applies a config's files each time they change, through
-//! the same [`Configs`].
+//! the same [`Configs`]. Other providers (I57, `akit_provider`) send parts, which [`Configs`]
+//! merges into the base config (the one the files and the API write) each time a config is
+//! applied, by fit's rules: [`Configs::provide`] applies a provider's new part, as a new version
+//! whose source is the provider; `GET /config`, its pointers, ETags and rollbacks stay about the
+//! base config, as in fit.
 //!
 //! A Unix socket waits on akio API request A23; TLS for the API (`cert_file`, `key_file`), and
 //! with it an address off loopback, is not supported yet.
@@ -41,7 +47,7 @@ mod server;
 mod watch;
 
 pub use configs::{
-    Applied, ApplyError, Configs, ListenerChange, Mode, Outcome, Refused, SOURCE_ADMIN,
+    Applied, ApplyError, Configs, Effective, ListenerChange, Mode, Outcome, Refused, SOURCE_ADMIN,
     SOURCE_CERTIFICATES, SOURCE_FILE, SOURCE_ROLLBACK, Version, etag_matches, etag_of,
 };
 pub use server::{
