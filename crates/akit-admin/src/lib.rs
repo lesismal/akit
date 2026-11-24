@@ -29,12 +29,16 @@
 //! the same reload as SIGHUP, `akit_listener::Listeners::reload`) and answers it; so are edits,
 //! rollbacks and reloads, each made from the running config under the history's lock.
 //!
+//! The file provider (I29, [`Watcher`]) applies a config's files each time they change, through
+//! the same [`Configs`].
+//!
 //! A Unix socket waits on akio API request A23; TLS for the API (`cert_file`, `key_file`), and
-//! with it an address off loopback, is not supported yet; the file provider comes with I29.
+//! with it an address off loopback, is not supported yet.
 
 mod configs;
 mod pointer;
 mod server;
+mod watch;
 
 pub use configs::{
     Applied, ApplyError, Configs, ListenerChange, Mode, Outcome, Refused, SOURCE_ADMIN,
@@ -42,6 +46,10 @@ pub use configs::{
 };
 pub use server::{
     DRY_RUN_HEADER, Job, METRICS_CONTENT_TYPE, Metrics, Options, Server, Submit, VERSION_HEADER,
+};
+pub use watch::{
+    DEFAULT_WATCH_DEBOUNCE, DEFAULT_WATCH_INTERVAL, DEFAULT_WATCH_MAX_BYTES, Expand, WatchError,
+    WatchOptions, WatchReport, Watcher,
 };
 
 /// The warning a config gets when its `admin` differs from the one akit started with: the API

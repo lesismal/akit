@@ -11,14 +11,61 @@ done and where the work differs from the plan.
 | | |
 | --- | --- |
 | Last updated | 2026-11-24 |
-| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I24 done (I17b and I18b wait on akio); M2's I26–I28, I30–I32 and I35–I37 and M3's I39–I42 done early. |
+| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I24 done (I17b and I18b wait on akio); M2's I26–I32 and I35–I37 and M3's I39–I42 done early. |
 | akio | `4f7169c4` on akio's `main` (`1.0.0-rc.1`, with A1–A8, A11, A13, A16–A21, A36–A38 and A63–A65), pinned by `rev` in `Cargo.toml` |
 | fit | the specification; read at `7daee573` for this plan |
-| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept (as fit's `binding.same`: certificate files and ACME names may change), added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication; certificates chosen per handshake as fit's, replaced by a reload or by `-watch-certs` without closing the listener) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; route middleware: `rewrite` (prefixes), `redirect`, `headers`, `rate_limit`, `concurrency_limit`, `body_limit`, `basic_auth` (bcrypt, checked on akio's pool) and `client_cert` (mTLS per route); the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`, bodies streamed both ways with linked backpressure, trailers both ways, `timeout` and the upstream's `response_timeout`, 504 for timeouts, the upstream request given up when the client goes mid-body; upstreams over HTTP/1.1, h2c and h2); `limits.max_body_bytes` on every listener (413) and in the proxy; access logs in fit's json, text and line formats; upstream pools with fit's nine load balancing policies (round robin, weighted round robin, least connections, random, p2c, and consistent hashing of the client's IP, the path, a header or a cookie) and sticky cookies, passing over addresses taken out by passive health checks (`max_fails`, `fail_timeout`) and by active ones (`health_check`: http and tcp probes); the Admin API on loopback (`GET /config`, by JSON pointer too, `POST /load`, edits by pointer with `PUT`, `PATCH` and `DELETE /config`, `POST /rollback/{n}`, `POST /reload`, each with `If-Match` and all but a rollback with `?dry_run=1`, `GET /versions`; with `token_file`, a bearer token on every request), changes applied as SIGHUP's reloads, one history for both; Prometheus metrics at the Admin API's `GET /metrics` (requests by listener and route with `metrics`, upstreams and backends, certificates, connections, reloads, akio's engine); certificates obtained with ACME through HTTP-01 or TLS-ALPN-01 for the names listeners list in `tls.acme`, kept in a storage and renewed by their lifetime or the CA's renewal information (ARI), their OCSP responses stapled; the compatibility gate: 80 fixtures, 18 valid, 61 refused only as not supported yet18 valid, 61 refused only as not supported yet, 1 skipped, none failed |
+| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept (as fit's `binding.same`: certificate files and ACME names may change), added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication; certificates chosen per handshake as fit's, replaced by a reload or by `-watch-certs` without closing the listener) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; route middleware: `rewrite` (prefixes), `redirect`, `headers`, `rate_limit`, `concurrency_limit`, `body_limit`, `basic_auth` (bcrypt, checked on akio's pool) and `client_cert` (mTLS per route); the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`, bodies streamed both ways with linked backpressure, trailers both ways, `timeout` and the upstream's `response_timeout`, 504 for timeouts, the upstream request given up when the client goes mid-body; upstreams over HTTP/1.1, h2c and h2); `limits.max_body_bytes` on every listener (413) and in the proxy; access logs in fit's json, text and line formats; upstream pools with fit's nine load balancing policies (round robin, weighted round robin, least connections, random, p2c, and consistent hashing of the client's IP, the path, a header or a cookie) and sticky cookies, passing over addresses taken out by passive health checks (`max_fails`, `fail_timeout`) and by active ones (`health_check`: http and tcp probes); the Admin API on loopback (`GET /config`, by JSON pointer too, `POST /load`, edits by pointer with `PUT`, `PATCH` and `DELETE /config`, `POST /rollback/{n}`, `POST /reload`, each with `If-Match` and all but a rollback with `?dry_run=1`, `GET /versions`; with `token_file`, a bearer token on every request), changes applied as SIGHUP's reloads, one history for both; `run -watch` applying the config's files each time they change (fit's file provider, polled); Prometheus metrics at the Admin API's `GET /metrics` (requests by listener and route with `metrics`, upstreams and backends, certificates, connections, reloads, akio's engine); certificates obtained with ACME through HTTP-01 or TLS-ALPN-01 for the names listeners list in `tls.acme`, kept in a storage and renewed by their lifetime or the CA's renewal information (ARI), their OCSP responses stapled; the compatibility gate: 80 fixtures, 18 valid, 61 refused only as not supported yet18 valid, 61 refused only as not supported yet, 1 skipped, none failed |
 | Next | I17b (akio now has A36–A38); I18b once akio has A51–A53 |
 | akio requests | A1–A8, A11, A13, A16–A21, A36–A38 and A63–A65 on akio's main and pinned; A9, A10, A12, A14, A15, A22–A24, A29, A30, A32, A33, A35, A45, A48, A49, A51–A54, A57 and A58 requested ([akio API requests](akio-api-requests.md)) |
 
 ## Log
+
+### 2026-11-24: I29, the file provider
+
+- `akit run -watch` (fit's file provider, `provider/file`, behind fit's `run -watch`): the config's
+  files are looked at every `-watch-interval` (1s) and, once a change has settled for 500 ms and
+  the files hold something other than what was applied last (SHA-256 of their names and
+  contents), they are applied as SIGHUP applies them, a new version with source `file` through
+  `Configs::update`, the same path as SIGHUP and the Admin API (`akit: FILES changed;
+  reloading`, then fit's reload lines). As fit decided (fit's decision 006) it polls sizes and
+  modification times rather than asking for events: no dependency, the same on every system, and
+  a file renamed into place is seen as well as one written in place. The files `-c` stands for
+  are found afresh at each look (`akit_config::config_files`), so a file added to a directory, or
+  taken out, is a change too. A broken edit is reported once (fit's lines and errors) and the
+  running config stays until the next edit; a file that cannot be read (removed, being replaced)
+  is reported once (`akit: watching FILES: ...`) and applied when it comes back; a touch, or a
+  change changed back, applies nothing. SIGHUP tells the watcher what it read and applied, so the
+  watcher does not apply it again. The read is bounded at 64 MiB for all the files
+  (`akit_config::MAX_CONFIG_BYTES`), as fit's.
+- `akit_admin::Watcher` (`crates/akit-admin/src/watch.rs`), fit's `file.Watcher`, with
+  `WatchOptions` (debounce, the most read, how paths expand), `tick(now, apply)` returning a
+  `WatchReport` (`Unreadable(WatchError)` or `Failed`), and `applied(files)`. It starts as if the
+  files had just changed, as fit's, so an edit made between the config's read and the watcher's
+  start is applied.
+- `akit-config`: `ConfigFile` (a file's path and bytes), `read_config_files` (bounded, as
+  before) and `load_config_files` (the config and its JSON document from files already read);
+  `load_files` and `from_files` are built on them. `akit run` reads the files once at start and
+  on SIGHUP, and loads what it read, so that the watcher compares with exactly what was applied.
+- Tests: `akit-admin/tests/watch.rs` (12, fit's `provider/file` tests: an edit, a rename into
+  place, a touch, an edit before watching, writes in a row applied once, a broken edit reported
+  once and the next applied, a file removed and back, a file too large, contents applied another
+  way, a directory's files added and taken out, akit's own directory reading, defaults, files
+  that cannot be found, a directory read as a file); `akit/tests/watch.rs` (2, end to end with
+  `akit run -watch`, fit's `TestServeWatch`, `TestWatch` and `TestConfigDirectory`: each edit
+  served, SIGHUP's edit not applied again, a broken edit reported once while the running config
+  serves, a removed file reported and applied when back, a touch ignored; a directory of `.conf`
+  and YAML files with files added, taken out and broken, reported by name). `cli.rs`: `-watch` is
+  no longer a usage error.
+- Checked: `make check` on macOS; the tests of akit-config, akit-admin and akit on Linux (the
+  benchmark host, gpu51), epoll and io_uring.
+- Differences from the plan and from fit:
+  - The watcher is ticked on the control thread's loop, beside `-watch-certs`' (they share
+    `-watch-interval`), not on a goroutine of its own: the reloads it starts, SIGHUP's and the
+    Admin API's are one after the other there, and none blocks an I/O thread (rule 1).
+  - fit refuses `-watch` with a config kept in its store; akit has no store yet.
+  - No config field: the file provider is a flag, as in fit, so `tests/compat/supported.txt` is
+    unchanged. A Unix control socket (A23) is not part of it.
+- No benchmark: the control plane (rule 24).
 
 ### 2026-11-24: I42, basic auth and mTLS
 

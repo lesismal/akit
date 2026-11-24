@@ -299,8 +299,8 @@ fn file_error(p: &Path, msg: &str) -> Errors {
 ///
 /// Every problem found, each naming its file.
 pub fn from_files<P: AsRef<Path>>(paths: &[P]) -> Result<Config, Errors> {
-    let texts = read_files(paths)?;
-    from_sources(&sources(&texts))
+    let files = read_config_files(paths)?;
+    from_sources(&sources(&files)?)
 }
 
 /// [`from_files`], with the config as one JSON document too ([`value::json_of`]): what the
@@ -310,38 +310,72 @@ pub fn from_files<P: AsRef<Path>>(paths: &[P]) -> Result<Config, Errors> {
 ///
 /// Every problem found, each naming its file.
 pub fn load_files<P: AsRef<Path>>(paths: &[P]) -> Result<(Config, String), Errors> {
-    let texts = read_files(paths)?;
-    let srcs = sources(&texts);
+    load_config_files(&read_config_files(paths)?)
+}
+
+/// A config file as it was read: its path and its bytes. What the file provider (I29) compares
+/// with what it reads at its next look.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConfigFile {
+    /// Its path, as [`config_files`] gives it.
+    pub path: String,
+    /// What it held.
+    pub data: Vec<u8>,
+}
+
+/// Reads the files `paths` name ([`config_files`]), at most [`MAX_CONFIG_BYTES`] in all.
+///
+/// # Errors
+///
+/// A path that cannot be read, or files past the limit, each naming its file.
+pub fn read_config_files<P: AsRef<Path>>(paths: &[P]) -> Result<Vec<ConfigFile>, Errors> {
+    let files = config_files(paths)?;
+    let mut read = Vec::with_capacity(files.len());
+    let mut total: usize = 0;
+    for f in &files {
+        let data = read_limited(f, MAX_CONFIG_BYTES.saturating_sub(total), files.len() > 1)?;
+        total = total.saturating_add(data.len());
+        read.push(ConfigFile {
+            path: f.display().to_string(),
+            data,
+        });
+    }
+    Ok(read)
+}
+
+/// The config `files` hold, as [`load_files`] reads it from them: each file in the format its
+/// extension says, merged, with the config as one JSON document too.
+///
+/// # Errors
+///
+/// Every problem found, each naming its file; a file that is not UTF-8.
+pub fn load_config_files(files: &[ConfigFile]) -> Result<(Config, String), Errors> {
+    let srcs = sources(files)?;
     let config = from_sources(&srcs)?;
     Ok((config, value::json_of(&srcs)?))
 }
 
-/// The files `paths` name, read: each one's name, format and text.
-fn read_files<P: AsRef<Path>>(paths: &[P]) -> Result<Vec<(String, Format, String)>, Errors> {
-    let files = config_files(paths)?;
-    let mut texts = Vec::with_capacity(files.len());
-    let mut total: usize = 0;
-    for f in &files {
-        let format = Format::of(f);
-        let text = read_limited(f, MAX_CONFIG_BYTES.saturating_sub(total), files.len() > 1)?;
-        total = total.saturating_add(text.len());
-        texts.push((f.display().to_string(), format, text));
-    }
-    Ok(texts)
-}
-
-fn sources(texts: &[(String, Format, String)]) -> Vec<Source<'_>> {
-    texts
+/// `files` as sources, each in the format its extension says.
+fn sources(files: &[ConfigFile]) -> Result<Vec<Source<'_>>, Errors> {
+    files
         .iter()
-        .map(|(name, format, src)| Source {
-            name: Some(name),
-            format: *format,
-            src,
+        .map(|f| {
+            let path = Path::new(&f.path);
+            let src = std::str::from_utf8(&f.data).map_err(|e| not_utf8(path, e.valid_up_to()))?;
+            Ok(Source {
+                name: Some(&f.path),
+                format: Format::of(path),
+                src,
+            })
         })
         .collect()
 }
 
-fn read_limited(path: &Path, limit: usize, several: bool) -> Result<String, Errors> {
+fn not_utf8(path: &Path, at: usize) -> Errors {
+    file_error(path, &format!("the config is not UTF-8 (at byte {at})"))
+}
+
+fn read_limited(path: &Path, limit: usize, several: bool) -> Result<Vec<u8>, Errors> {
     use std::io::Read;
     let too_big = || {
         let what = if several {
@@ -360,19 +394,12 @@ fn read_limited(path: &Path, limit: usize, several: bool) -> Result<String, Erro
     if bytes.len() > limit {
         return Err(too_big());
     }
-    String::from_utf8(bytes).map_err(|e| {
-        file_error(
-            path,
-            &format!(
-                "the config is not UTF-8 (at byte {})",
-                e.utf8_error().valid_up_to()
-            ),
-        )
-    })
+    Ok(bytes)
 }
 
 /// Reads a JSON config from a file, at most [`MAX_CONFIG_BYTES`] long.
 pub fn from_json_file(path: &Path) -> Result<Config, Errors> {
-    let src = read_limited(path, MAX_CONFIG_BYTES, false)?;
+    let data = read_limited(path, MAX_CONFIG_BYTES, false)?;
+    let src = String::from_utf8(data).map_err(|e| not_utf8(path, e.utf8_error().valid_up_to()))?;
     from_json(&src, Some(&path.display().to_string()))
 }

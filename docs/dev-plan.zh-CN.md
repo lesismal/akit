@@ -122,7 +122,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I26 | Admin API I：加载、读取、版本 | I22 | done |
 | I27 | Admin API II：局部修改、回滚、认证 | I26 | done |
 | I28 | 运行时的监听差量 | I26, A1 | done |
-| I29 | 文件 provider | I26 | todo |
+| I29 | 文件 provider | I26 | done |
 | I30 | 证书管理与存储 | I09 | done |
 | I31 | ACME I：账户、订单、HTTP-01 | I30 | done |
 | I32 | ACME II：TLS-ALPN-01、续期、OCSP | I31 | done |
