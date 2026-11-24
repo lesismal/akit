@@ -96,6 +96,11 @@ pub struct Graph {
     acme_names: Vec<String>,
     /// The upstreams' pools, in the config's order.
     upstreams: Vec<Pool>,
+    /// The layer 4 services (I51), in the config's order.
+    services: Vec<akit_l4::Service>,
+    /// Per listener, in the order of `listeners`: the index in `services` of the one that takes
+    /// its connections, for a `tcp` or `udp` listener.
+    l4: Vec<Option<usize>>,
     /// The access log its requests' lines go to: the env's, when the config has `access_log`.
     access_log: Option<akit_observe::AccessLog>,
     /// Where its requests are counted, when the config has `metrics` (I37).
@@ -182,6 +187,19 @@ impl Graph {
     #[must_use]
     pub fn upstreams(&self) -> &[Pool] {
         &self.upstreams
+    }
+
+    /// The layer 4 services (I51), in the config's order.
+    #[must_use]
+    pub fn services(&self) -> &[akit_l4::Service] {
+        &self.services
+    }
+
+    /// The service that takes the connections of the listener at `listener`, a `tcp` or `udp`
+    /// one (I51).
+    #[must_use]
+    pub fn service(&self, listener: usize) -> Option<&akit_l4::Service> {
+        self.services.get((*self.l4.get(listener)?)?)
     }
 
     /// The access log the requests this graph serves are written to, if any (I21).
@@ -506,6 +524,28 @@ pub fn compile(
             )
         })
         .collect();
+    // Each service with its upstream's pool (the config's checks make sure it has one), and
+    // each listener's service.
+    let services: Vec<akit_l4::Service> = config
+        .services
+        .iter()
+        .filter_map(|s| {
+            let pool = upstreams.iter().find(|p| p.name() == s.upstream)?;
+            Some(akit_l4::Service::new(s, pool.clone()))
+        })
+        .collect();
+    let l4 = config
+        .listeners
+        .iter()
+        .map(|l| {
+            let name = &config
+                .services
+                .iter()
+                .find(|s| s.listeners.contains(&l.name))?
+                .name;
+            services.iter().position(|s| s.name() == name)
+        })
+        .collect();
     Ok(Graph {
         listeners: config.listeners.clone(),
         routes,
@@ -515,6 +555,8 @@ pub fn compile(
         acme: env.acme().cloned(),
         acme_names,
         upstreams,
+        services,
+        l4,
         access_log: config.access_log.as_ref().and(env.access_log().cloned()),
         requests,
         write_stall_timeout: config.limits.write_stall_timeout,

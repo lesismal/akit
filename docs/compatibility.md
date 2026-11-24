@@ -175,7 +175,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 175 supported.
+3821 fields in 121 sections, at fit `7daee573`; 181 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -231,7 +231,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`providers`](#fields-providers) | 60 | 0 | 60 |
 | [`routes`](#fields-routes) | 24 | 19 | 5 |
 | [`schema_version`](#fields-schema-version) | 1 | 1 | 0 |
-| [`services`](#fields-services) | 13 | 0 | 13 |
+| [`services`](#fields-services) | 13 | 6 | 7 |
 | [`streaming`](#fields-streaming) | 76 | 0 | 76 |
 | [`sync`](#fields-sync) | 42 | 0 | 42 |
 | [`sync.codecs/canal_json`](#fields-sync-codecs-canal-json) | 87 | 0 | 87 |
@@ -300,7 +300,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 33 | 5 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 175 | 3646 |
+| **Total** | 3821 | 181 | 3640 |
 
 <a id="fields-access"></a>
 
@@ -1767,19 +1767,19 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `services` | `array<object>` | not supported yet |
+| `services` | `array<object>` | supported |
 | `services[].access` | `object` | not supported yet |
 | `services[].access.allow` | `array<string>` | not supported yet |
 | `services[].access.allow_files` | `array<string>` | not supported yet |
 | `services[].access.deny` | `array<string>` | not supported yet |
 | `services[].access.deny_files` | `array<string>` | not supported yet |
-| `services[].idle_timeout` | `duration` | not supported yet |
-| `services[].listeners` | `array<string>, required` | not supported yet |
-| `services[].max_conns` | `integer` | not supported yet |
-| `services[].name` | `string, required` | not supported yet |
+| `services[].idle_timeout` | `duration` | supported |
+| `services[].listeners` | `array<string>, required` | supported |
+| `services[].max_conns` | `integer` | supported |
+| `services[].name` | `string, required` | supported |
 | `services[].proxy_protocol` | `enum(v1\|v2)` | not supported yet |
 | `services[].server_names` | `array<string>` | not supported yet |
-| `services[].upstream` | `string, required` | not supported yet |
+| `services[].upstream` | `string, required` | supported |
 
 <a id="fields-streaming"></a>
 

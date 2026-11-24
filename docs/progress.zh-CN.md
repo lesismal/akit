@@ -10,14 +10,59 @@
 | | |
 | --- | --- |
 | 最后更新 | 2026-11-24 |
-| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I24 和 I17b 已完成（I18b 等待 akio）；M2 的 I26–I33、I35–I37 和 M3 的 I39–I43 已提前完成。 |
+| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I24 和 I17b 已完成（I18b 等待 akio）；M2 的 I26–I33、I35–I37 和 M3 的 I39–I43、I51 已提前完成。 |
 | akio | akio `main` 上的 `4f7169c4`（`1.0.0-rc.1`，带 A1–A8、A11、A13、A16–A21、A36–A38 和 A63–A65），在 `Cargo.toml` 中按 `rev` 锁定 |
 | fit | 作为规格；本计划基于 `7daee573` 阅读 |
-| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；基于 akio 的 A1 保留（按 fit 的 `binding.same`：证书文件和 ACME 名字可以变）、增加、修改和排空监听器，包括启动时的监听器，重载可新增 h3 监听器；服务 h3 的启动监听器要重启才能变）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证；按 fit 的方式每次握手选择证书，重载或 `-watch-certs` 替换证书而不关闭监听器）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；路由中间件：`rewrite`（前缀）、`redirect`、`headers`、`rate_limit`、`concurrency_limit`、`body_limit`、`basic_auth`（bcrypt，在 akio 的线程池上校验）、`client_cert`（按路由的 mTLS）和 `forward_auth`（经 akio 的客户端询问认证服务，期间挂起请求）；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`、双向流式转发 body 并联动背压，双向透传 trailer，`timeout` 和上游的 `response_timeout`、`response_header_timeout`、`response_idle_timeout`，超时回答 504，客户端无论何时离开都放弃上游请求；经 HTTP/1.1、h2c 和 h2 访问上游）；所有监听器和代理上的 `limits.max_body_bytes`（413），以及 `limits.write_stall_timeout`（重载也可修改）；fit 的 json、text 和 line 格式的访问日志；上游连接池，fit 的九种负载均衡策略（轮询、加权轮询、最少连接、随机、p2c，以及按客户端 IP、路径、头或 cookie 的一致性哈希）和会话保持 cookie，跳过被被动健康检查（`max_fails`、`fail_timeout`）和主动健康检查（`health_check`：http 和 tcp 探测）下线的地址；回环地址上的 Admin API（`GET /config`，也可按 JSON 指针读取，`POST /load`，用 `PUT`、`PATCH` 和 `DELETE /config` 按指针编辑，`POST /rollback/{n}`，`POST /reload`，都带 `If-Match`，除回滚外都可 `?dry_run=1`，`GET /versions`；有 `token_file` 时每个请求都要带 bearer 令牌），修改与 SIGHUP 一样作为重载应用，两者共用一份历史记录；`run -watch` 在配置文件每次变化时应用它们（fit 的文件 provider，轮询）；Admin API 的 `GET /metrics` 提供 fit 的 Prometheus 指标（有 `metrics` 时按监听器和路由的请求、上游和后端、证书、连接、重载、akio 的引擎）；为监听器在 `tls.acme` 中所列的名字通过 HTTP-01 或 TLS-ALPN-01 用 ACME 获取证书，保存在存储中，按有效期或 CA 的续期信息（ARI）续期，并装订其 OCSP 响应；默认 HTTPS（`auto_https`）：没有写监听器的配置以其路由主机名的证书经 HTTPS 服务，经 HTTP 重定向（308）到 HTTPS，空的 `tls` 得到其路由的名字；兼容性门禁：80 个夹具，21 个有效，58 个只因暂不支持被拒绝，1 个跳过，没有失败；兼容性门禁：80 个夹具，19 个有效，60 个只因暂不支持被拒绝，1 个跳过，没有失败 |
+| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；基于 akio 的 A1 保留（按 fit 的 `binding.same`：证书文件和 ACME 名字可以变）、增加、修改和排空监听器，包括启动时的监听器，重载可新增 h3 监听器；服务 h3 的启动监听器要重启才能变）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证；按 fit 的方式每次握手选择证书，重载或 `-watch-certs` 替换证书而不关闭监听器）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；路由中间件：`rewrite`（前缀）、`redirect`、`headers`、`rate_limit`、`concurrency_limit`、`body_limit`、`basic_auth`（bcrypt，在 akio 的线程池上校验）、`client_cert`（按路由的 mTLS）和 `forward_auth`（经 akio 的客户端询问认证服务，期间挂起请求）；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`、双向流式转发 body 并联动背压，双向透传 trailer，`timeout` 和上游的 `response_timeout`、`response_header_timeout`、`response_idle_timeout`，超时回答 504，客户端无论何时离开都放弃上游请求；经 HTTP/1.1、h2c 和 h2 访问上游）；所有监听器和代理上的 `limits.max_body_bytes`（413），以及 `limits.write_stall_timeout`（重载也可修改）；fit 的 json、text 和 line 格式的访问日志；上游连接池，fit 的九种负载均衡策略（轮询、加权轮询、最少连接、随机、p2c，以及按客户端 IP、路径、头或 cookie 的一致性哈希）和会话保持 cookie，跳过被被动健康检查（`max_fails`、`fail_timeout`）和主动健康检查（`health_check`：http 和 tcp 探测）下线的地址；回环地址上的 Admin API（`GET /config`，也可按 JSON 指针读取，`POST /load`，用 `PUT`、`PATCH` 和 `DELETE /config` 按指针编辑，`POST /rollback/{n}`，`POST /reload`，都带 `If-Match`，除回滚外都可 `?dry_run=1`，`GET /versions`；有 `token_file` 时每个请求都要带 bearer 令牌），修改与 SIGHUP 一样作为重载应用，两者共用一份历史记录；`run -watch` 在配置文件每次变化时应用它们（fit 的文件 provider，轮询）；Admin API 的 `GET /metrics` 提供 fit 的 Prometheus 指标（有 `metrics` 时按监听器和路由的请求、上游和后端、证书、连接、重载、akio 的引擎）；为监听器在 `tls.acme` 中所列的名字通过 HTTP-01 或 TLS-ALPN-01 用 ACME 获取证书，保存在存储中，按有效期或 CA 的续期信息（ARI）续期，并装订其 OCSP 响应；默认 HTTPS（`auto_https`）：没有写监听器的配置以其路由主机名的证书经 HTTPS 服务，经 HTTP 重定向（308）到 HTTPS，空的 `tls` 得到其路由的名字；兼容性门禁：80 个夹具，22 个有效，57 个只因暂不支持被拒绝，1 个跳过，没有失败；四层 `services`（I51）：`tcp` 和 `udp` 监听器代理到上游的地址，双向联动背压，空闲超时，`max_conns`，重载后排空；兼容性门禁：80 个夹具，19 个有效，60 个只因暂不支持被拒绝，1 个跳过，没有失败 |
 | 下一步 | akio 有了 A51–A53 和 A66 后做 I18b |
-| akio 需求 | A1–A8、A11、A13、A16–A21、A36–A38、A63–A65 已在 akio 的 main 并已锁定；A9、A10、A12、A14、A15、A22–A24、A29、A30、A32、A33、A35、A45、A48、A49、A51–A54、A57、A58、A66 和 A75 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
+| akio 需求 | A1–A8、A11、A13、A16–A21、A36–A38、A63–A65 已在 akio 的 main 并已锁定；A9、A10、A12、A14、A15、A22–A24、A29、A30、A32、A33、A35、A45、A48、A49、A51–A54、A57、A58、A66、A75、A78 和 A79 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
 
 ## 日志
+
+### 2026-11-24：I51，TCP 与 UDP 代理
+
+- 从 M3 提前完成。`akit-config` 读取 fit 的 `services`（`name`、`listeners`、`upstream`、`idle_timeout`、
+  `max_conns`），得到 `Config::services`；`listeners[].protocols` 接受 `tcp`（单独使用：与其他协议共用一个端口
+  属于 I53，报告为暂不支持）和 `udp`（单独使用，同 fit 的要求）。检查与报错同 fit：名字有效且不重复，至少一个
+  监听器，每个都是 `tcp` 或 `udp` 监听器且只属于一个服务，上游存在，每个 `tcp` 和 `udp` 监听器都有服务接管，
+  路由不能挂在这种监听器上，不服务 HTTP 的监听器不能有 `tls`。`server_names` 和 `proxy_protocol`（I52）以及
+  `access` 报告为暂不支持；带 `server_names` 的服务可以像 fit 那样共用一个 `tcp` 监听器，因此门禁只报告这些字段。
+- `akit-l4`，仿照 fit 的 `l4` 包：每个配置中的服务对应一个 `Service`，带其上游的连接池，放在图中
+  （`Graph::services`、`Graph::service(listener)`）；`ClientAcceptor` 服务 `tcp` 监听器（akio 的 TCP 监听器）或
+  `udp` 监听器（`Listener::udp`，每个客户端地址是一个对端连接），每个连接在打开时交给当前图为该监听器指定的
+  服务。在 akio 引擎上拨号上游时（`Engine::dial`、`dial_udp`；主机名由 `akio::dns` 解析，TCP 时由
+  `HappyEyeballs` 在上游的 `connect_timeout` 内对其地址竞速）暂停读取客户端。数据在收到它的回调里继续发出；
+  未发出的超过 64 KiB（`WATERMARK`）时暂停发送方的读取，直到另一侧 `on_drain`；两个连接都设为
+  `set_relayed`。一侧结束后，在其已发数据发完后关闭另一侧（`close_after_send`）。UDP：每个数据报原样作为一个
+  数据报转发，发不出就丢弃，上游套接字打开前最多保留 64 KiB；ICMP 拒绝会结束会话并计入该地址的失败。
+- 地址：`Pool::stream_pick`（按上游的 `load_balancing`，`ip_hash` 按客户端地址，跳过下线的地址）在该地址上
+  计一个连接，供 `least_conn` 读取，直到 `Pool::stream_done` 像请求那样记录结果（`max_fails`）；连接失败时换
+  下一个选中的地址重试，最多三个。
+- 限制：每个服务的 `max_conns`（10,000），超出的连接在接受时关闭（UDP 数据报丢弃）；空闲超时（TCP 10 分钟、
+  UDP 1 分钟，或 `idle_timeout`）由每个服务在 akit 的定时线程（`akit_upstream::timer`，现已公开）上扫描，间隔为
+  较短者的四分之一，在 10 毫秒到 1 秒之间；akio 的 UDP 对端超时在启动和每次重载时提高到各服务中最长的。两者都是
+  akio API 需求 A45 和 **A78**（每个连接各自的空闲超时）之前的权宜之计。拨号 IP 字面量时由引擎的连接超时限定，
+  与 HTTP 相同（A12；**A79** 请求带各自超时的 `Engine::dial`）。
+- 监听器：与 HTTP 的监听器一起构建和重载（`akit_listener::engine`、`Listeners::reload`）；保留下来的 `tcp` 或
+  `udp` 监听器把新连接交给新图的服务，旧图的服务仍在代理的连接在排空超时（`-shutdown-timeout`）后关闭，与 fit
+  的重载相同。akit 启动时就有的 `udp` 监听器不能被重载移除或修改（akio A22），与 h3 相同。引擎关闭时立即关闭
+  中转（`on_shutdown`）。
+- 未完成：计划中的 eBPF sockmap 中转移到了 **I51b**：fit 没有让监听器开启它的字段，需要 akit 自己的字段（或先在
+  fit 中加），而且它的空闲超时要依据套接字的字节计数。
+- 测试：`crates/akit-listener/tests/l4.rs` 移植了 fit 的 `TestTCPEcho`、`TestTCPLarge`（双向各 32 MB）、
+  `TestTCPSlowClient` 和 `TestTCPSlowUpstream`（64 MB 被挡住）、`TestTCPHangUp`、`TestTCPConnectFailure`、
+  `TestTCPEngineStopped`、`TestTCPIdleTimeout`、`TestTCPMaxConns`、`TestTCPReload`、`TestUDPEcho`（200 个会话）、
+  `TestUDPSessionsExpire`、`TestUDPMaxConns`、`TestUDPRefused` 和 `TestUDPReload`，另有主机名上游和地址上的计数；
+  `crates/akit-config/tests/services.rs` 覆盖字段、默认值和检查。fit 的 `TestTCPDenyInternal` 等待
+  `deny_internal`，SNI、PROXY 和协议嗅探的测试等待 I52 和 I53。
+- 兼容性门禁：多支持 6 个字段；`make compat-bless`：`examples/l4-udp` 有效，`examples/l4-tcp` 只因
+  `services[].server_names` 和 `proxy_protocol` 被拒绝（80 个夹具：19 个有效，60 个只因暂不支持被拒绝，1 个跳过，
+  没有失败）。
+- 验证：macOS 上 `make check`（fmt、clippy、工作区测试、`cargo deny`、文档和兼容性清单）；gpu51 上在基准锁下，
+  分别用 epoll 和 `AKIO_TEST_BACKEND=uring` 运行 akit-config、akit-upstream、akit-l4、akit-runtime、
+  akit-listener、akit-compat 和 akit 的测试：全部通过。打开几百个套接字的两个测试单独运行（gpu51 核数多，每个
+  引擎的线程也多，所有测试的引擎同时打开时超过了 1,024 个文件的软限制）。
+- 待测（维护者的基准任务，规则 30）：见开发计划中 I51–I53 的基准行。
 
 ### 2026-11-24：I17b，反向代理 III b：响应头与空闲超时、任意时刻的取消、写停滞
 

@@ -403,6 +403,11 @@ fn supported_fields_are_read() {
     };
     let cert = |params: &str| mw("client_cert", params);
     let forward = |more: &str| mw("forward_auth", &format!(r#""upstream": "auth"{more}"#));
+    let service = |fields: &str| {
+        format!(
+            r#"{{"listeners": [{{"name": "t", "address": ":7000", "protocols": ["tcp"]}}], "upstreams": [{{"name": "app", "addresses": ["127.0.0.1:9000"]}}], "services": [{{"name": "svc", "listeners": ["t"], "upstream": "app"{fields}}}]}}"#
+        )
+    };
     let samples: Vec<(&str, String, Check)> = vec![
         ("schema_version", r#"{"schema_version": 1}"#.into(), |c| {
             c.schema_version == 1
@@ -1314,6 +1319,26 @@ fn supported_fields_are_read() {
             upstream(r#", "response_idle_timeout": "4s""#),
             |c| c.upstreams[0].response_idle_timeout == std::time::Duration::from_secs(4),
         ),
+        ("services", service(""), |c| c.services.len() == 1),
+        ("services[].name", service(""), |c| {
+            c.services[0].name == "svc"
+        }),
+        ("services[].listeners", service(""), |c| {
+            c.services[0].listeners == ["t"]
+        }),
+        ("services[].upstream", service(""), |c| {
+            c.services[0].upstream == "app"
+        }),
+        (
+            "services[].idle_timeout",
+            service(r#", "idle_timeout": "45s""#),
+            |c| c.services[0].idle_timeout == Some(std::time::Duration::from_secs(45)),
+        ),
+        (
+            "services[].max_conns",
+            service(r#", "max_conns": 7"#),
+            |c| c.services[0].max_conns == 7,
+        ),
     ];
     let marked = supported().unwrap();
     let sampled: BTreeSet<String> = samples.iter().map(|(p, ..)| (*p).to_owned()).collect();
@@ -1439,7 +1464,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 32] = [
+    let objects: [(&str, &str, Option<&str>); 33] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         ("admin", "ADMIN_FIELDS", Some("ADMIN_FIT_ONLY")),
         ("acme", "ACME_FIELDS", Some("ACME_FIT_ONLY")),
@@ -1469,6 +1494,7 @@ fn akit_config_lists_match_the_inventory() {
             Some("PROXY_FIT_ONLY"),
         ),
         ("upstreams[]", "UPSTREAM_FIELDS", Some("UPSTREAM_FIT_ONLY")),
+        ("services[]", "SERVICE_FIELDS", Some("SERVICE_FIT_ONLY")),
         ("upstreams[].health_check", "HEALTH_CHECK_FIELDS", None),
         ("upstreams[].sticky_cookie", "STICKY_COOKIE_FIELDS", None),
         ("routes[].middleware[]", "MODULE_FIELDS", None),
@@ -1640,9 +1666,16 @@ fn akit_config_lists_match_the_inventory() {
         middleware, fit_middleware,
         "model.rs's middleware and fit's differ"
     );
-    // Protocols: the four akit serves and FIT_PROTOCOLS.
+    // Protocols: the six akit serves and FIT_PROTOCOLS.
     let mut protocols: BTreeSet<String> = list("FIT_PROTOCOLS").iter().cloned().collect();
-    for p in [Protocol::Http11, Protocol::H2c, Protocol::H2, Protocol::H3] {
+    for p in [
+        Protocol::Http11,
+        Protocol::H2c,
+        Protocol::H2,
+        Protocol::H3,
+        Protocol::Tcp,
+        Protocol::Udp,
+    ] {
         assert!(
             protocols.insert(p.as_str().to_owned()),
             "FIT_PROTOCOLS lists {p:?}"
@@ -1740,7 +1773,7 @@ fn inventory_paths_for_akit_config_paths() {
 #[test]
 fn findings_from_akit_config_errors() {
     let errs = akit_config::from_json(
-        r#"{"listeners": [{"name": "w", "address": ":1", "protocols": ["udp"], "mptcp": true}],
+        r#"{"listeners": [{"name": "w", "address": ":1", "protocols": ["socks"], "mptcp": true}],
             "routes": [{"handler": {"module": "fastcgi"}}], "acme": {"shared_storage": {}}}"#,
         None,
     )
@@ -1751,7 +1784,7 @@ fn findings_from_akit_config_errors() {
         .map(|e| finding(e).to_string())
         .collect();
     let want: BTreeSet<String> = [
-        "listeners[0].protocols[0]: the \"udp\" protocol",
+        "listeners[0].protocols[0]: the \"socks\" protocol",
         "listeners[0].mptcp",
         "routes[0].handler<fastcgi>",
         "acme.shared_storage",

@@ -39,6 +39,9 @@ pub struct Config {
     /// `auto_https`: HTTPS by default (I33), on when left out; what it made of the listeners is
     /// already in [`listeners`](Self::listeners).
     pub auto_https: Option<crate::AutoHttps>,
+    /// `services`: layer 4 services (I51), which proxy the connections of `tcp` listeners and
+    /// the sessions of `udp` listeners to an upstream.
+    pub services: Vec<Service>,
 }
 
 /// fit's default `acme.directory`: Let's Encrypt's.
@@ -607,6 +610,11 @@ pub enum Protocol {
     /// `h3`, HTTP/3 over QUIC, on the listener's port in UDP and announced to its HTTP/1 and
     /// HTTP/2 clients with `Alt-Svc`; needs `tls`.
     H3,
+    /// `tcp`, raw TCP, whose connections the service that lists the listener proxies (I51).
+    Tcp,
+    /// `udp`, alone: each client address a session, whose datagrams the service that lists the
+    /// listener proxies (I51).
+    Udp,
 }
 
 impl Protocol {
@@ -618,7 +626,56 @@ impl Protocol {
             Protocol::H2c => "h2c",
             Protocol::H2 => "h2",
             Protocol::H3 => "h3",
+            Protocol::Tcp => "tcp",
+            Protocol::Udp => "udp",
         }
+    }
+
+    /// Whether it is one of HTTP's: HTTP/1.1, h2c, h2 or h3.
+    #[must_use]
+    pub fn is_http(self) -> bool {
+        !matches!(self, Protocol::Tcp | Protocol::Udp)
+    }
+}
+
+/// A layer 4 service (I51): it proxies the connections of its `tcp` listeners, and the sessions
+/// of its `udp` listeners, to an address of its upstream, as fit's `config.Service`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Service {
+    /// `name`, unique among the services.
+    pub name: String,
+    /// `listeners`: the names of the `tcp` and `udp` listeners whose connections it takes; a
+    /// listener is one service's.
+    pub listeners: Vec<String>,
+    /// `upstream`: the name of the upstream connections go to.
+    pub upstream: String,
+    /// `idle_timeout`, when given: how long a connection or session may carry nothing either
+    /// way before both sides are closed ([`Service::idle`], [`Service::udp_idle`]).
+    pub idle_timeout: Option<Duration>,
+    /// `max_conns`: the most connections and sessions it proxies at once;
+    /// [`DEFAULT_SERVICE_MAX_CONNS`] when left out or 0.
+    pub max_conns: usize,
+}
+
+/// fit's default `idle_timeout` of a service's TCP connections.
+pub const DEFAULT_SERVICE_IDLE_TIMEOUT: Duration = Duration::from_secs(600);
+/// fit's default `idle_timeout` of a service's UDP sessions.
+pub const DEFAULT_SERVICE_UDP_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
+/// fit's default `max_conns` of a service.
+pub const DEFAULT_SERVICE_MAX_CONNS: usize = 10_000;
+
+impl Service {
+    /// The idle timeout of a TCP connection: `idle_timeout`, or 10 minutes.
+    #[must_use]
+    pub fn idle(&self) -> Duration {
+        self.idle_timeout.unwrap_or(DEFAULT_SERVICE_IDLE_TIMEOUT)
+    }
+
+    /// The idle timeout of a UDP session: `idle_timeout`, or 1 minute.
+    #[must_use]
+    pub fn udp_idle(&self) -> Duration {
+        self.idle_timeout
+            .unwrap_or(DEFAULT_SERVICE_UDP_IDLE_TIMEOUT)
     }
 }
 
@@ -1162,9 +1219,9 @@ const CONFIG_FIELDS: &[&str] = &[
     "metrics",
     "acme",
     "auto_https",
+    "services",
 ];
 const CONFIG_FIT_ONLY: &[&str] = &[
-    "services",
     "log",
     "telemetry",
     "access",
@@ -1222,7 +1279,10 @@ const ACCESS_LOG_FIELDS: &[&str] = &[
 const ACCESS_LOG_FIT_ONLY: &[&str] = &["rotate"];
 const LISTENER_FIELDS: &[&str] = &["name", "address", "protocols", "tls"];
 const LISTENER_FIT_ONLY: &[&str] = &["mptcp", "socks", "access", "proxy_protocol"];
-const FIT_PROTOCOLS: &[&str] = &["tcp", "udp", "socks"];
+const FIT_PROTOCOLS: &[&str] = &["socks"];
+// I51; server_names and proxy_protocol come with I52, access with fit's access lists.
+const SERVICE_FIELDS: &[&str] = &["name", "listeners", "upstream", "idle_timeout", "max_conns"];
+const SERVICE_FIT_ONLY: &[&str] = &["server_names", "access", "proxy_protocol"];
 const TLS_FIELDS: &[&str] = &["certificates", "client_auth", "max_version", "acme"];
 // on_demand comes with I34; kernel_tls_offload with engine's.
 const TLS_FIT_ONLY: &[&str] = &["on_demand", "kernel_tls_offload"];
@@ -1388,6 +1448,8 @@ pub(crate) struct Part {
     listeners: Vec<At<Listener>>,
     routes: Vec<At<Route>>,
     upstreams: Vec<At<Upstream>>,
+    /// Each with whether it gives `server_names`, which I52 reads.
+    services: Vec<At<(Service, bool)>>,
     /// `limits`, with its position, when the file gives it.
     limits: Option<(Limits, usize)>,
     /// `access_log`, with the position of its key, when the file gives it.
@@ -1440,6 +1502,14 @@ pub(crate) fn part(d: &mut Decoder<'_>, n: &Node, file: usize) -> Option<Part> {
             })
         })
         .unwrap_or_default();
+    let services = o
+        .take("services")
+        .map(|v| {
+            d.array(v, "services", |d, n, p| {
+                Some(At::new(file, p, n, service(d, n, p)?))
+            })
+        })
+        .unwrap_or_default();
     let limits = o
         .take("limits")
         .and_then(|v| Some((limits(d, v, "limits")?, v.off)));
@@ -1468,6 +1538,7 @@ pub(crate) fn part(d: &mut Decoder<'_>, n: &Node, file: usize) -> Option<Part> {
         listeners,
         routes,
         upstreams,
+        services,
         limits,
         access_log,
         admin,
@@ -1490,6 +1561,7 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
     let mut listeners = Vec::new();
     let mut routes = Vec::new();
     let mut upstreams = Vec::new();
+    let mut services = Vec::new();
     let mut limits: Option<(Limits, usize)> = None;
     let mut first_doc: Option<(usize, usize)> = None;
     let mut access_log: Option<(AccessLog, usize)> = None;
@@ -1616,12 +1688,14 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
         listeners.extend(p.listeners);
         routes.extend(p.routes);
         upstreams.extend(p.upstreams);
+        services.extend(p.services);
     }
     check_listeners(ds, &listeners);
     let served = served_listeners(ds, &listeners, &routes, auto_https, first_doc);
     let names: Vec<&str> = served.iter().map(|l| l.name.as_str()).collect();
-    check_routes(ds, &routes, &names);
+    check_routes(ds, &routes, &names, &listeners);
     check_upstreams(ds, &upstreams);
+    check_services(ds, &services, &listeners, &upstreams);
     check_acme_names(ds, &listeners, acme.as_ref().map(|(a, _)| a));
     if let Some((_, file, off)) = metrics {
         if admin.is_none() {
@@ -1653,6 +1727,7 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
         metrics: metrics.map(|(m, _, _)| m),
         acme: acme.map(|(a, _)| a),
         auto_https: auto_https.map(|((a, _), _)| a),
+        services: services.into_iter().map(|a| a.v.0).collect(),
     }
 }
 
@@ -2004,6 +2079,8 @@ fn listener(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Listener> {
                 "h2c" => Protocol::H2c,
                 "h2" => Protocol::H2,
                 "h3" => Protocol::H3,
+                "tcp" => Protocol::Tcp,
+                "udp" => Protocol::Udp,
                 other if FIT_PROTOCOLS.contains(&other) => {
                     d.not_yet(off, &at, &format!("the {other:?} protocol"));
                     continue;
@@ -2026,7 +2103,8 @@ fn listener(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Listener> {
             protocols.push((off, at, proto));
         }
     }
-    let tls = o.take("tls").and_then(|v| tls(d, v, &o.at("tls")));
+    let tls_at = o.take("tls").map(|v| (v, o.at("tls")));
+    let tls = tls_at.as_ref().and_then(|(v, p)| tls(d, v, p));
     o.finish(d, LISTENER_FIELDS, LISTENER_FIT_ONLY);
     for (off, at, proto) in &protocols {
         match proto {
@@ -2039,8 +2117,26 @@ fn listener(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Listener> {
                 at,
                 "h2c is HTTP/2 in the clear, which a listener with tls does not serve; use h2",
             ),
+            Protocol::Udp if protocols.len() > 1 => d.error(
+                *off,
+                at,
+                "a udp listener serves UDP alone: list udp without other protocols",
+            ),
+            // fit tells them apart by what a client sends first: akio-mux, with I53.
+            Protocol::Tcp if protocols.len() > 1 => {
+                d.not_yet(*off, at, "tcp beside other protocols on one port");
+            }
             _ => {}
         }
+    }
+    if let Some((v, p)) = tls_at.filter(|_| {
+        tls.is_some() && !protocols.is_empty() && protocols.iter().all(|(_, _, p)| !p.is_http())
+    }) {
+        d.error(
+            v.off,
+            &p,
+            "tls serves the listener's HTTP, and this one serves none: tcp and udp are proxied as they are, TLS and all",
+        );
     }
     let mut protocols: Vec<Protocol> = protocols.into_iter().map(|(_, _, p)| p).collect();
     if protocols.is_empty() {
@@ -3896,6 +3992,161 @@ fn health_check(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<HealthCheck
 
 /// What is wrong with `addr` as an upstream's address, as fit's `checkUpstreamAddress` says it:
 /// a host and a port from 1 to 65535.
+/// `services[]`, as fit's `config.Service`, and whether it gives `server_names`; checked across
+/// the config by [`check_services`].
+fn service(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<(Service, bool)> {
+    let mut o = d.object(n, path)?;
+    // Refused as not supported yet (I52), but it lets services share a tcp listener.
+    let named = o.has("server_names");
+    let name = o
+        .require(d, "name")
+        .and_then(|v| d.string(v, &o.at("name")));
+    let listeners = o
+        .require(d, "listeners")
+        .map(|v| {
+            d.strings(v, &o.at("listeners"))
+                .into_iter()
+                .map(|(_, s)| s)
+                .collect()
+        })
+        .unwrap_or_default();
+    let upstream = o
+        .require(d, "upstream")
+        .and_then(|v| d.string(v, &o.at("upstream")));
+    // 0 means the defaults, as fit's `Idle` and `UDPIdle` read it.
+    let idle_timeout = o
+        .take("idle_timeout")
+        .and_then(|v| d.duration(v, &o.at("idle_timeout")))
+        .filter(|t| !t.is_zero());
+    let max_conns = o
+        .take("max_conns")
+        .and_then(|v| d.int(v, &o.at("max_conns"), 0, i64::MAX))
+        .map_or(DEFAULT_SERVICE_MAX_CONNS, |n| match usize::try_from(n) {
+            Ok(0) => DEFAULT_SERVICE_MAX_CONNS,
+            Ok(n) => n,
+            Err(_) => usize::MAX,
+        });
+    o.finish(d, SERVICE_FIELDS, SERVICE_FIT_ONLY);
+    Some((
+        Service {
+            name: name?,
+            listeners,
+            upstream: upstream?,
+            idle_timeout,
+            max_conns,
+        },
+        named,
+    ))
+}
+
+/// The layer 4 protocol a listener serves, `tcp` or `udp`, if any.
+fn l4_protocol(l: &Listener) -> Option<Protocol> {
+    l.protocols
+        .iter()
+        .copied()
+        .find(|p| matches!(p, Protocol::Tcp | Protocol::Udp))
+}
+
+/// The checks of fit's `config.Validate` across services, listeners and upstreams: names
+/// unique, each service's listeners `tcp` or `udp` ones, each listener one service's, and every
+/// `tcp` or `udp` listener taken by one.
+fn check_services(
+    ds: &mut [Decoder<'_>],
+    services: &[At<(Service, bool)>],
+    listeners: &[At<Listener>],
+    upstreams: &[At<Upstream>],
+) {
+    let mut seen: Vec<&str> = Vec::new();
+    // Each listener a service took, that service's name, and whether it took it without
+    // server_names.
+    let mut served_by: Vec<(&str, &str, bool)> = Vec::new();
+    for svc in services {
+        let (s, named) = (&svc.v.0, svc.v.1);
+        let name = &s.name;
+        let s_path = &svc.path;
+        let path = crate::error::join_field(s_path, "name");
+        if !valid_name(name) {
+            svc.error(ds, &path, bad_name(name));
+        } else if seen.contains(&name.as_str()) {
+            svc.error(
+                ds,
+                &path,
+                format!("another service is already named {name:?}"),
+            );
+        }
+        seen.push(name);
+        let lpath = crate::error::join_field(s_path, "listeners");
+        if s.listeners.is_empty() {
+            svc.error(
+                ds,
+                &lpath,
+                "a service needs at least one tcp or udp listener".to_owned(),
+            );
+        }
+        for (i, l) in s.listeners.iter().enumerate() {
+            let at = crate::error::join_index(&lpath, i);
+            let Some(listener) = listeners.iter().find(|x| &x.v.name == l) else {
+                svc.error(ds, &at, format!("there is no listener named {l:?}"));
+                continue;
+            };
+            let proto = l4_protocol(&listener.v);
+            // A tcp listener's services with server_names share it (I52): one may have none.
+            let taken = served_by.iter().find(|(x, _, fallback)| {
+                x == l && (proto == Some(Protocol::Udp) || (*fallback && !named))
+            });
+            match taken {
+                _ if proto.is_none() => svc.error(
+                    ds,
+                    &at,
+                    format!(
+                        "{l:?} is not a tcp or udp listener: a service takes the connections of \
+                         listeners whose protocols include tcp, or are [\"udp\"]"
+                    ),
+                ),
+                // Services that share a tcp listener pick by SNI, I52: one without
+                // server_names takes them all.
+                Some((_, other, _)) if proto == Some(Protocol::Udp) => svc.error(
+                    ds,
+                    &at,
+                    format!("listener {l:?} is already service {other:?}'s"),
+                ),
+                Some((_, other, _)) => svc.error(
+                    ds,
+                    &at,
+                    format!(
+                        "listener {l:?} is already service {other:?}'s: services that share a \
+                         tcp listener take the connections of their server_names, and only one \
+                         of them may have none"
+                    ),
+                ),
+                None => served_by.push((l, name, !named)),
+            }
+        }
+        if !upstreams.iter().any(|u| u.v.name == s.upstream) {
+            svc.error(
+                ds,
+                &crate::error::join_field(s_path, "upstream"),
+                format!("there is no upstream named {:?}", s.upstream),
+            );
+        }
+    }
+    for l in listeners {
+        if let Some(p) = l4_protocol(&l.v) {
+            if !served_by.iter().any(|(x, _, _)| *x == l.v.name) {
+                l.error(
+                    ds,
+                    &crate::error::join_field(&l.path, "protocols"),
+                    format!(
+                        "no service takes this {} listener's connections: list it in a \
+                         service's listeners",
+                        p.as_str()
+                    ),
+                );
+            }
+        }
+    }
+}
+
 fn check_upstream_address(addr: &str) -> Result<(), String> {
     if addr.contains("://") {
         return Err(format!(
@@ -3966,7 +4217,12 @@ fn check_listeners(ds: &mut [Decoder<'_>], listeners: &[At<Listener>]) {
     }
 }
 
-fn check_routes(ds: &mut [Decoder<'_>], routes: &[At<Route>], listeners: &[&str]) {
+fn check_routes(
+    ds: &mut [Decoder<'_>],
+    routes: &[At<Route>],
+    listeners: &[&str],
+    written: &[At<Listener>],
+) {
     let mut seen: Vec<&str> = Vec::new();
     for r in routes {
         if let Some(name) = r.v.name.as_deref().filter(|s| !s.is_empty()) {
@@ -3983,10 +4239,24 @@ fn check_routes(ds: &mut [Decoder<'_>], routes: &[At<Route>], listeners: &[&str]
             seen.push(name);
         }
         for (j, l) in r.v.listeners.iter().enumerate() {
+            let path = crate::error::join_index(&crate::error::join_field(&r.path, "listeners"), j);
             if !listeners.contains(&l.as_str()) {
-                let path =
-                    crate::error::join_index(&crate::error::join_field(&r.path, "listeners"), j);
                 r.error(ds, &path, format!("there is no listener named {l:?}"));
+            } else if let Some(x) = written.iter().find(|x| &x.v.name == l) {
+                // fit's message: such a listener is a service's.
+                if !x.v.protocols.iter().any(|p| p.is_http()) {
+                    if let Some(p) = l4_protocol(&x.v) {
+                        r.error(
+                            ds,
+                            &path,
+                            format!(
+                                "{l:?} is a {} listener, which a service serves, not routes: it \
+                                 serves no HTTP",
+                                p.as_str()
+                            ),
+                        );
+                    }
+                }
             }
         }
     }

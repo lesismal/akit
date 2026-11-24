@@ -64,6 +64,8 @@
 | A65 | 由中间件挂起、之后带着上下文恢复的请求 | 已在 akio 的 main（`4f7169c4`），已锁定 | 1、3、4 | I42、I43 |
 | A66 | `H2Client` 的请求遵守 `response_header_timeout`、`response_idle_timeout` 和 `CancelToken` | 已提出（I17b） | 3、10 | I17b、I18b |
 | A75 | 挂起消息体流式读取的请求，并暂停其消息体的读取直到恢复 | 已提出（I43） | 5、7、8 | I42、I43、I44 |
+| A78 | 每个连接（TCP 或 UDP 对端）各自的空闲超时，由其处理器设置 | 已提出（I51） | 10、11 | I51、I55 |
+| A79 | 带各自连接超时的 `Engine::dial` 与 `dial_udp` | 已提出（I51） | 10 | I51、I54、I55 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -920,3 +922,38 @@ fit 在线程池里校验，请求在此期间等待，之后继续执行下一�
 
 **akit 的用法。** I18b：`akit_upstream::h2` 的按地址定时检查不再逐流检查首部、静默和令牌（I17b 的权宜之计，
 在一个 100ms 的 `TICK` 之内），因其中之一而放弃的流会被重置，而不是任其运行、让其连接停收新流。
+
+## A78 每个连接各自的空闲超时
+
+**问题。** fit 的四层服务（I51）会关闭在服务的 `idle_timeout` 内两个方向都没有数据的连接或 UDP 会话：默认
+TCP 10 分钟、UDP 1 分钟，每个服务各自设定。akio 只有整个引擎的空闲超时：`Config::idle_timeout`（TCP，只算
+入站数据）和 `Config::udp_idle_timeout`（UDP 对端，监听器的和 `dial_udp` 的都算），后者也约束 HTTP/3 监听器的
+对端。fit 底下的 fib 可以按连接设置（`SetUDPIdleTimeout(-1)` 为服务自己计时的会话关掉引擎的超时）。
+
+**依据。** `4f7169c4` 的 `crates/akio-core/src/config.rs`（`idle_timeout`、`udp_idle_timeout`，作用于引擎
+的所有连接）；`Live::set_udp_idle_timeout` 改的是引擎的值，不是某个连接的。`Conn` 没有对应的设置方法。
+
+**建议的 API。** `Conn::set_idle_timeout(Option<Duration>)`，适用于 TCP 连接和 UDP 对端（接受的或拨出的），
+可在任意线程调用，为该连接覆盖引擎的值；`None` 为它关掉超时。另加一个选项把出站数据也算作活动
+（`Conn::set_idle_counts_writes(bool)`），因为中继只有在两边都不发送时才算空闲；或者由 akit 在中继里同时
+刷新两个连接，再由每个连接的计时器读取。
+
+**akit 的用法。** `akit_l4` 按服务的设置为每个连接和会话设定空闲超时，由 akio 在其自己的 I/O 线程上关闭。在此
+之前的权宜之计：每个服务在 akit 的定时线程（`akit_upstream::timer`，A45 的权宜之计）上扫描自己打开的连接，
+间隔为较短空闲超时的四分之一（10 毫秒到 1 秒之间）；akit 把引擎的 `udp_idle_timeout` 提高到各服务中最长的那个
+（`Live::set_udp_idle_timeout`，每次重载时更新），以免 akio 先关闭会话。
+
+## A79 带各自连接超时的 `Engine::dial`
+
+**问题。** 四层服务（I51）像 fit 那样在上游的 `connect_timeout` 内拨号上游地址。`Engine::dial` 和
+`Engine::dial_udp` 用的是引擎的 `Config::connect_timeout`，所有拨号共用一个；`akio::dns::HappyEyeballs` 每次
+尝试有自己的超时，但只有一个地址时同样用引擎的。这是 A12 在非 HTTP 拨号上的缺口。
+
+**依据。** `4f7169c4` 的 `crates/akio/src/lib.rs`（`Engine::dial`、`dial_udp`、`dial_from` 都不接受超时）；
+`crates/akio/src/dns.rs`（`HappyEyeballs::dial` 对单个地址直接调用 `engine.dial`）。
+
+**建议的 API。** `Engine::dial_with(addr, DialOptions { connect_timeout, .. }, acceptor, on_error)`，以及让
+`HappyEyeballs::dial` 对单个地址也使用它的 `connect_timeout`。
+
+**akit 的用法。** `akit_l4` 在上游的 `connect_timeout` 内拨号每个地址。在此之前，引擎的连接超时取各上游中最短
+的（`akit_listener::engine`，与 A12 相同），主机名解析出的多个地址用 `HappyEyeballs` 以上游的超时竞速。

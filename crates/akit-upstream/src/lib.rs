@@ -94,7 +94,7 @@ pub mod h2;
 pub mod health;
 pub mod probe;
 pub mod sticky;
-mod timer;
+pub mod timer;
 
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
@@ -464,6 +464,11 @@ struct Backend {
     health: Health,
     /// Its connections, over h2 (I18).
     h2: h2::Conns,
+    /// Its address as a socket address, when it is an IP literal: what a layer 4 connection
+    /// dials without resolving it (I51).
+    socket: Option<std::net::SocketAddr>,
+    /// Layer 4 connections to it, open or being opened (I51), which `least_conn` counts too.
+    streams: AtomicUsize,
 }
 
 impl Backend {
@@ -580,6 +585,8 @@ impl Pool {
                 queue: Mutex::new(VecDeque::new()),
                 health: Health::new(),
                 h2: h2::Conns::default(),
+                socket: a.parse().ok(),
+                streams: AtomicUsize::new(0),
             })
             .collect();
         let pool = Pool {
@@ -865,6 +872,7 @@ impl Pool {
                     b.busy
                         .load(Ordering::Relaxed)
                         .saturating_add(b.waiting.load(Ordering::Relaxed))
+                        .saturating_add(b.streams.load(Ordering::Relaxed))
                 })
             },
             |i| {
@@ -930,6 +938,61 @@ impl Pool {
     /// [`pick`](Self::pick) and [`send`](Self::send).
     pub fn request(&self, req: ClientRequest, done: impl FnOnce(Outcome) + Send + 'static) {
         self.send(self.pick(), req, done);
+    }
+
+    /// The address a layer 4 connection from `peer` goes to (I51), as fit's services pick it:
+    /// by the upstream's `load_balancing`, `ip_hash` hashing `peer`, the other hash policies, which
+    /// a connection has nothing for, in turn. Counted at once as one of the address's
+    /// connections ([`stream_count`](Self::stream_count)), for `least_conn`, until
+    /// [`stream_done`](Self::stream_done).
+    #[must_use]
+    pub fn stream_pick(&self, peer: std::net::IpAddr) -> usize {
+        let b = self.pick_for(&Keys {
+            peer: Some(peer),
+            ..Keys::default()
+        });
+        if let Some(x) = self.inner.backends.get(b) {
+            x.streams.fetch_add(1, Ordering::Relaxed);
+        }
+        b
+    }
+
+    /// A layer 4 connection to the address at `backend`, from [`stream_pick`](Self::stream_pick),
+    /// is over: `failed` when it could not be opened (or a UDP session was refused), which
+    /// counts against the address as a failed request does.
+    pub fn stream_done(&self, backend: usize, failed: bool) {
+        if let Some(x) = self.inner.backends.get(backend) {
+            x.streams.fetch_sub(1, Ordering::Relaxed);
+        }
+        self.inner.record(backend, failed);
+    }
+
+    /// The layer 4 connections to the address at `backend` open or being opened.
+    #[must_use]
+    pub fn stream_count(&self, backend: usize) -> usize {
+        self.inner
+            .backends
+            .get(backend)
+            .map_or(0, |b| b.streams.load(Ordering::Relaxed))
+    }
+
+    /// The address at `backend` as a socket address, when it is an IP literal; a host name is
+    /// resolved when it is dialed.
+    #[must_use]
+    pub fn socket_addr(&self, backend: usize) -> Option<std::net::SocketAddr> {
+        self.inner.backends.get(backend).and_then(|b| b.socket)
+    }
+
+    /// The address at `backend`, as the config writes it.
+    #[must_use]
+    pub fn address(&self, backend: usize) -> Option<&str> {
+        self.inner.backends.get(backend).map(|b| b.address.as_str())
+    }
+
+    /// The engine the pool dials through, once it is set.
+    #[must_use]
+    pub fn engine(&self) -> Option<&Arc<Engine>> {
+        self.inner.engine.get()
     }
 
     /// Requests sent and not yet done, waiting ones included.

@@ -152,7 +152,8 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I48 | The rest of fit's middlewares | I40 | todo |
 | I49 | WebSocket proxying | I17 | todo |
 | I50 | gRPC proxying | I18 | todo |
-| I51 | TCP and UDP proxying | I05 | todo |
+| I51 | TCP and UDP proxying | I05 | done |
+| I51b | The eBPF sockmap relay | I51 | todo |
 | I52 | SNI routing and PROXY protocol | I51, A4, A5 | todo |
 | I53 | Many protocols on one port | I52 | todo |
 | I54 | Upstream TLS | I18 | todo |
@@ -223,7 +224,7 @@ commit and result.
 | Middlewares (retries and the rest) | I44–I48 | no | no (not built yet) | I56 benchmarks every middleware; same-run A/B of each on the proxy scenario. |
 | Compression | I47 | no | no (not built yet) | Against fit, each encoding, as I47 asks. |
 | WebSocket and gRPC proxying | I49, I50 | no | no (not built yet) | Messages a second and memory per connection against fit. |
-| TCP and UDP proxying, SNI routing, many protocols on one port | I51–I53 | no | no (not built yet) | Against fit and nginx's `stream`, as I51 asks; the cost of sniffing on a shared port. |
+| TCP and UDP proxying, SNI routing, many protocols on one port | I51–I53 | no | no (I51 built, not measured; I52, I53 not built yet) | Against fit and nginx's `stream`, as I51 asks: TCP throughput (fit's `BenchmarkTCPProxy`, 256 KB echoed at a time, direct and through akit), connections a second, memory per idle connection; UDP datagrams a second and sessions at once; the per-service idle sweep on akit's timer thread with 10,000 connections (the stopgap for akio A78); the cost of sniffing on a shared port (I53). |
 | Response cache | I67, I68 | no | no (not built yet) | Hits from memory and disk against fit. |
 | WASM plugins | I71, I72 | no | no (not built yet) | A/B of a no-op plugin against none. |
 
@@ -723,6 +724,16 @@ Split from I07 so that the half that needs no config model runs beside I02.
   where the listener asks for it.
 - **Done when**: tests with slow peers pass; a benchmark compares with fit and nginx's `stream`.
 - **Touches**: `akit-l4`.
+- **Split**: the eBPF sockmap relay went to I51b; the benchmark is the maintainer's (rule 30).
+
+### I51b The eBPF sockmap relay
+
+- **Do**: a `tcp` service's connections spliced in the kernel (akio's `ebpf::Relay`) where a
+  listener asks for it and the kernel and privileges allow, falling back to I51's relay; idle
+  timeouts kept from the sockets' byte counts.
+- **Done when**: a field (fit has none: an akit extension, or one added to fit first) turns it on;
+  tests on Linux 6.15+ as root cover splicing, the fallback and the idle timeout.
+- **Touches**: `akit-l4`, `akit-config`.
 
 ### I52 SNI routing and PROXY protocol
 

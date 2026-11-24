@@ -8,5 +8,10 @@ repository.workspace = true
 rust-version.workspace = true
 publish = false
 
+[dependencies]
+akio = { workspace = true }
+akit-config = { workspace = true }
+akit-upstream = { workspace = true }
+
 [lints]
 workspace = true

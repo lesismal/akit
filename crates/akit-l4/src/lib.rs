@@ -2,5 +2,290 @@
 #![warn(clippy::unwrap_used)]
 //! akit's layer 4 proxying: TCP and UDP, TLS routed by SNI, PROXY protocol.
 //!
+//! So far (I51): the config's `services`, as fit's `l4` package proxies them. Each connection a
+//! `tcp` listener accepts goes to an address of its service's upstream, and what either side
+//! sends is passed to the other as it comes, untouched. A `udp` listener's sessions go the same
+//! way: akio makes each address that sends the listener a datagram a connection of its own
+//! ([`akio::Listener::udp`]), whose session dials a UDP socket of its own to an upstream address
+//! ([`akio::Engine::dial_udp`]), and each datagram either side sends is sent on as one datagram.
+//!
+//! Nothing waits, as rules 1 and 8 ask. The upstream's connection is dialed through akio's
+//! engine, asynchronously (a host name resolved off the I/O thread by [`akio::dns`]), while the
+//! client's reads are held; each side's data is sent on from the callback that received it; and a
+//! side's reads are held while the other has more than [`WATERMARK`] of it unsent, until that has
+//! drained ([`akio::Conn::on_drain`]). Both connections are marked relayed
+//! ([`akio::Conn::set_relayed`]): the relay paces each by the other. UDP has no backpressure: a
+//! datagram that cannot be sent is dropped, as the network would drop it, and so are those past
+//! [`WATERMARK`] that arrive before the upstream's socket is open.
+//!
+//! The address is picked by the upstream's `load_balancing` (`ip_hash` by the client's address),
+//! out of rotation for its `max_fails` and health checks as for HTTP; a connect that fails is
+//! tried on the next address picked, up to [`MAX_ATTEMPTS`] addresses, and counts against the
+//! address. A UDP session the upstream refuses (an ICMP port unreachable) counts against it too,
+//! and ends: the client's next datagram starts another.
+//!
+//! A side that ends ends the other once what it sent has gone. A connection or session that
+//! carries nothing either way for the service's idle timeout is closed (10 minutes for TCP and 1
+//! for UDP by default), and so is one still open when the graph it started on has been replaced
+//! for the drain timeout ([`Service::drain`]). At most `max_conns` are proxied at once by a
+//! service; one past it is closed as soon as it is accepted (a UDP session's datagrams dropped).
+//!
+//! The idle timeouts are swept per service, on akit's timer thread
+//! ([`akit_upstream::timer`]): a stopgap for akio API requests A45 (a public timer) and A78 (an
+//! idle timeout per connection), which would close each connection on its own I/O thread.
+//!
 //! Part of [akit](https://github.com/lesismal/akit); see `docs/dev-plan.md` for the iterations that
 //! fill this crate in.
+
+use std::collections::HashMap;
+use std::fmt;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
+use std::time::{Duration, Instant};
+
+use akit_upstream::Pool;
+
+mod relay;
+
+pub use relay::{Client, ClientAcceptor};
+
+/// How much may wait to go to one side before the other side's reads are held; also how much a
+/// UDP session keeps of what its client sends before its upstream socket is open. fit's.
+pub const WATERMARK: usize = 64 << 10;
+
+/// The most addresses one connection's dial is tried on.
+pub const MAX_ATTEMPTS: usize = 3;
+
+/// The shards of a service's open connections, so that connections opening and closing on
+/// different I/O threads rarely meet on one lock.
+const SHARDS: usize = 16;
+
+/// The shortest and the longest wait between two sweeps of a service's idle connections: a
+/// quarter of its shorter idle timeout, within these.
+const MIN_SWEEP: Duration = Duration::from_millis(10);
+const MAX_SWEEP: Duration = Duration::from_secs(1);
+
+/// A layer 4 service, compiled from the config's: it proxies the connections and sessions its
+/// listeners hand it ([`ClientAcceptor`]) to its upstream's pool. Cheap to clone: clones share
+/// it.
+#[derive(Clone)]
+pub struct Service(Arc<Inner>);
+
+pub(crate) struct Inner {
+    name: String,
+    pub(crate) pool: Pool,
+    idle: Duration,
+    udp_idle: Duration,
+    max_conns: usize,
+    /// The addresses one connection is tried on: [`MAX_ATTEMPTS`], or fewer when the upstream
+    /// has fewer.
+    pub(crate) attempts: usize,
+    /// Connections and sessions proxied now.
+    conns: AtomicUsize,
+    /// The open ones, by their client connection's ID, for the sweep and the drain.
+    open: [Mutex<HashMap<u64, Arc<relay::Relay>>>; SHARDS],
+    /// What [`Inner::now`] counts from.
+    epoch: Instant,
+    /// A sweep of the idle connections is scheduled.
+    sweeping: AtomicBool,
+    /// [`Service::drain`] was called: connections that come after are closed at once.
+    drained: AtomicBool,
+}
+
+impl fmt::Debug for Service {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Service")
+            .field("name", &self.0.name)
+            .field("upstream", &self.0.pool.name())
+            .field("conns", &self.conns())
+            .finish_non_exhaustive()
+    }
+}
+
+impl Service {
+    /// The service `c`, whose upstream is `pool`, which it dials through.
+    #[must_use]
+    pub fn new(c: &akit_config::Service, pool: Pool) -> Service {
+        let attempts = MAX_ATTEMPTS.min(pool.addresses().len()).max(1);
+        Service(Arc::new(Inner {
+            name: c.name.clone(),
+            pool,
+            idle: c.idle(),
+            udp_idle: c.udp_idle(),
+            max_conns: c.max_conns,
+            attempts,
+            conns: AtomicUsize::new(0),
+            open: std::array::from_fn(|_| Mutex::new(HashMap::new())),
+            epoch: Instant::now(),
+            sweeping: AtomicBool::new(false),
+            drained: AtomicBool::new(false),
+        }))
+    }
+
+    /// Its name.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.0.name
+    }
+
+    /// Its upstream's pool.
+    #[must_use]
+    pub fn pool(&self) -> &Pool {
+        &self.0.pool
+    }
+
+    /// The idle timeout of its TCP connections.
+    #[must_use]
+    pub fn idle_timeout(&self) -> Duration {
+        self.0.idle
+    }
+
+    /// The idle timeout of its UDP sessions.
+    #[must_use]
+    pub fn udp_idle_timeout(&self) -> Duration {
+        self.0.udp_idle
+    }
+
+    /// How many connections and UDP sessions it proxies now.
+    #[must_use]
+    pub fn conns(&self) -> usize {
+        self.0.conns.load(Ordering::SeqCst)
+    }
+
+    /// Closes the connections and sessions it still proxies, both sides at once, and any that
+    /// comes to it later: for once the graph it is part of has been replaced for the drain
+    /// timeout, as fit's `Service.Drain`. Never blocks.
+    pub fn drain(&self) {
+        self.0.drained.store(true, Ordering::SeqCst);
+        for r in self.0.all() {
+            r.abandon();
+        }
+    }
+}
+
+impl Inner {
+    /// Milliseconds since the service was made: what each connection's last activity is told in.
+    pub(crate) fn now(&self) -> u64 {
+        u64::try_from(self.epoch.elapsed().as_millis()).unwrap_or(u64::MAX)
+    }
+
+    fn shard(&self, id: u64) -> MutexGuard<'_, HashMap<u64, Arc<relay::Relay>>> {
+        let i = usize::try_from(id.checked_rem(SHARDS as u64).unwrap_or(0)).unwrap_or(0);
+        self.open
+            .get(i)
+            .unwrap_or(&self.open[0])
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Takes a place under `max_conns`; false when there is none, or the service was drained.
+    pub(crate) fn admit(&self) -> bool {
+        if self.drained.load(Ordering::SeqCst) {
+            return false;
+        }
+        let mut cur = self.conns.load(Ordering::SeqCst);
+        loop {
+            if cur >= self.max_conns {
+                return false;
+            }
+            match self.conns.compare_exchange_weak(
+                cur,
+                cur.saturating_add(1),
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            ) {
+                Ok(_) => return true,
+                Err(now) => cur = now,
+            }
+        }
+    }
+
+    /// Gives back a place [`admit`](Self::admit) took.
+    pub(crate) fn leave(&self) {
+        self.conns.fetch_sub(1, Ordering::SeqCst);
+    }
+
+    /// Records `r` among the open connections, and has the idle ones swept.
+    pub(crate) fn add(self: &Arc<Self>, r: &Arc<relay::Relay>) {
+        self.shard(r.id).insert(r.id, Arc::clone(r));
+        self.arm_sweep();
+        // A drain that ran between `admit` and here did not see it.
+        if self.drained.load(Ordering::SeqCst) {
+            r.abandon();
+        }
+    }
+
+    pub(crate) fn remove(&self, id: u64) {
+        self.shard(id).remove(&id);
+    }
+
+    /// The open connections, taken out of the locks.
+    fn all(&self) -> Vec<Arc<relay::Relay>> {
+        let mut v = Vec::new();
+        for s in &self.open {
+            v.extend(
+                s.lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .values()
+                    .cloned(),
+            );
+        }
+        v
+    }
+
+    /// How long a sweep waits for the next.
+    fn sweep_every(&self) -> Duration {
+        self.idle
+            .min(self.udp_idle)
+            .checked_div(4)
+            .unwrap_or(MIN_SWEEP)
+            .clamp(MIN_SWEEP, MAX_SWEEP)
+    }
+
+    /// Schedules a sweep, unless one is.
+    fn arm_sweep(self: &Arc<Self>) {
+        if self.sweeping.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let me = Arc::downgrade(self);
+        if !akit_upstream::timer::after(self.sweep_every(), move || sweep(&me)) {
+            // The timers are full: the next connection tries again.
+            self.sweeping.store(false, Ordering::SeqCst);
+        }
+    }
+}
+
+/// Closes the service's connections idle for their timeout, and schedules the next sweep while
+/// any is open. On akit's timer thread: it only closes connections, which returns at once.
+fn sweep(me: &Weak<Inner>) {
+    let Some(s) = me.upgrade() else {
+        return;
+    };
+    let now = s.now();
+    let mut idle = Vec::new();
+    for shard in &s.open {
+        let m = shard.lock().unwrap_or_else(PoisonError::into_inner);
+        idle.extend(
+            m.values()
+                .filter(|r| {
+                    let limit = if r.udp { s.udp_idle } else { s.idle };
+                    let limit = u64::try_from(limit.as_millis()).unwrap_or(u64::MAX);
+                    now.saturating_sub(r.last()) >= limit
+                })
+                .cloned(),
+        );
+    }
+    for r in idle {
+        r.abandon();
+    }
+    // Counted after the flag is down: a connection added meanwhile either saw it down and
+    // scheduled the sweep itself, or is counted here.
+    s.sweeping.store(false, Ordering::SeqCst);
+    let open = s
+        .open
+        .iter()
+        .any(|m| !m.lock().unwrap_or_else(PoisonError::into_inner).is_empty());
+    if open {
+        s.arm_sweep();
+    }
+}

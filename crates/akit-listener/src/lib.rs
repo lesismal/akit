@@ -42,6 +42,13 @@
 //! which resets an HTTP/2 or HTTP/3 stream alone, it closes the connection, and it does not
 //! bound HTTP/3 (akio's write timeout is TCP's).
 //!
+//! I51: a `tcp` listener is an akio TCP listener, and a `udp` one an akio UDP listener (each
+//! client address a connection), whose connections go to the service the current graph has for
+//! the listener, through akit-l4's [`akit_l4::ClientAcceptor`]. A reload that keeps such a
+//! listener hands its new connections to the new graph's service, and closes those the old
+//! graph's services still proxy once the drain timeout ([`Options::shutdown_timeout`]) has
+//! passed, as fit's does.
+//!
 //! Part of [akit](https://github.com/lesismal/akit); see `docs/dev-plan.md` for the iterations that
 //! fill this crate in.
 
@@ -665,6 +672,52 @@ fn serves_h3(l: &Listener) -> bool {
     l.protocols.contains(&Protocol::H3)
 }
 
+/// Whether a listener's connections go to a layer 4 service, over TCP (I51).
+fn serves_l4_tcp(l: &Listener) -> bool {
+    l.protocols.contains(&Protocol::Tcp)
+}
+
+/// Whether a listener's sessions go to a layer 4 service, over UDP (I51).
+fn serves_l4_udp(l: &Listener) -> bool {
+    l.protocols.contains(&Protocol::Udp)
+}
+
+/// Whether a listener has a TCP socket in the engine: for HTTP over TCP, or a service.
+fn tcp_side(l: &Listener) -> bool {
+    serves_tcp(l) || serves_l4_tcp(l)
+}
+
+/// Whether a listener has a UDP socket in the engine: for HTTP/3, or a service.
+fn udp_side(l: &Listener) -> bool {
+    serves_h3(l) || serves_l4_udp(l)
+}
+
+/// The acceptor of a `tcp` or `udp` listener: each connection to the service the cell's current
+/// graph has for it (I51).
+fn l4_acceptor(
+    cell: &GraphCell,
+    l: &Listener,
+) -> akit_l4::ClientAcceptor<impl Fn() -> Option<akit_l4::Service> + Send + Sync + 'static> {
+    let cell = cell.clone();
+    let name = l.name.clone();
+    let find = move || cell.with(|g| g.listener_index(&name).and_then(|i| g.service(i)).cloned());
+    if serves_l4_udp(l) {
+        akit_l4::ClientAcceptor::udp(find)
+    } else {
+        akit_l4::ClientAcceptor::tcp(find)
+    }
+}
+
+/// How long akio keeps a UDP peer that sends nothing: at least as long as the longest idle
+/// timeout of the graph's services, which close their sessions themselves. A stopgap for akio
+/// API request A78 (an idle timeout per connection): akio's is the engine's.
+fn udp_idle(g: &akit_runtime::Graph, now: Duration) -> Duration {
+    g.services()
+        .iter()
+        .map(akit_l4::Service::udp_idle_timeout)
+        .fold(now, Duration::max)
+}
+
 /// How many ports [`engine`] tries for listeners at port 0 that serve HTTP/3 beside TCP, whose
 /// UDP port is the one TCP gets and may be taken (fit's `maxPortZeroBinds`).
 const MAX_PORT_ZERO_BINDS: usize = 8;
@@ -696,8 +749,8 @@ pub fn addrs(listeners: &[Listener], engine: &Engine) -> Vec<Addrs> {
     listeners
         .iter()
         .map(|l| Addrs {
-            tcp: if serves_tcp(l) { bound.next() } else { None },
-            udp: if serves_h3(l) { bound.next() } else { None },
+            tcp: if tcp_side(l) { bound.next() } else { None },
+            udp: if udp_side(l) { bound.next() } else { None },
         })
         .collect()
 }
@@ -761,6 +814,7 @@ fn build(cell: &GraphCell, opts: &Options) -> Result<Engine, (Error, bool)> {
     // fit's limits.write_stall_timeout is akio's write timeout: a connection whose queued output
     // makes no progress for it is closed (a reload changes it, `Listeners::reload`).
     cfg.write_timeout = Some(cell.with(akit_runtime::Graph::write_stall_timeout));
+    cfg.udp_idle_timeout = cell.with(|g| udp_idle(g, cfg.udp_idle_timeout));
     let mut b = Engine::builder().config(cfg);
     for (l, tls) in &listeners {
         let fail = |e: Error| (e, false);
@@ -798,11 +852,19 @@ fn build(cell: &GraphCell, opts: &Options) -> Result<Engine, (Error, bool)> {
                 h3_acceptor(cell, l, tls.as_ref().and_then(|c| c.h3.as_ref())).map_err(fail)?,
             ));
         }
+        if serves_l4_tcp(l) {
+            let listener = EngineListener::tcp(addr).backend(opts.backend.clone());
+            b = b.listen(listener.serve(l4_acceptor(cell, l)));
+        }
+        if serves_l4_udp(l) {
+            b = b.listen(EngineListener::udp(addr).serve(l4_acceptor(cell, l)));
+        }
     }
     // The HTTP/3 of a listener a reload adds is bound on the engine's UDP threads
     // (`Engine::bind_udp`, I22): those of the last listener serving h3, or one of their own when
     // none does. (akio adds TCP listeners at run time, A1, not UDP ones.)
-    if !listeners.iter().any(|(l, _)| serves_h3(l)) {
+    // UDP services dial their upstreams there too (I51).
+    if !listeners.iter().any(|(l, _)| udp_side(l)) {
         b = b.udp_client_threads(1);
     }
     b.build().map_err(|e| (Error::Engine(e), probed))
