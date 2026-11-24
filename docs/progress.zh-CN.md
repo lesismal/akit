@@ -10,14 +10,66 @@
 | | |
 | --- | --- |
 | 最后更新 | 2026-11-24 |
-| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I15、I19–I24 已完成，I16 进行中（body 限制已完成；流式转发等待 akio 的 A19–A21）；M3 的 I39 已提前完成。 |
+| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I15、I19–I24 已完成，I16 进行中（body 限制已完成；流式转发等待 akio 的 A19–A21）；M2 的 I26 和 M3 的 I39 已提前完成。 |
 | akio | akio `main` 上的 `a9a620ab`（`1.0.0-rc.1`，带 A1–A5、A7、A8、A11、A13 和 A16–A18），在 `Cargo.toml` 中按 `rev` 锁定 |
 | fit | 作为规格；本计划基于 `7daee573` 阅读 |
-| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；基于 akio 的 A1 保留、增加、修改和排空监听器，包括启动时的监听器，重载可新增 h3 监听器；服务 h3 的启动监听器要重启才能变）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`）；所有监听器和代理上的 `limits.max_body_bytes`（413）；fit 的 json、text 和 line 格式的访问日志；上游连接池，轮询、加权轮询和最少连接，跳过被被动健康检查（`max_fails`、`fail_timeout`）下线的地址；兼容性门禁：80 个夹具，9 个有效，70 个只因暂不支持被拒绝，1 个跳过，没有失败 |
+| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；基于 akio 的 A1 保留、增加、修改和排空监听器，包括启动时的监听器，重载可新增 h3 监听器；服务 h3 的启动监听器要重启才能变）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`）；所有监听器和代理上的 `limits.max_body_bytes`（413）；fit 的 json、text 和 line 格式的访问日志；上游连接池，轮询、加权轮询和最少连接，跳过被被动健康检查（`max_fails`、`fail_timeout`）下线的地址；回环地址上的 Admin API（`GET /config`，也可按 JSON 指针读取，带 `If-Match` 的 `POST /load`，`GET /versions`），加载与 SIGHUP 一样作为重载应用，两者共用一份历史记录；兼容性门禁：80 个夹具，9 个有效，70 个只因暂不支持被拒绝，1 个跳过，没有失败 |
 | 下一步 | I17；A19–A21 落地后再做 I16 |
-| akio 需求 | A1–A5、A7、A8、A11、A13、A16–A18 已在 akio 的 main 并已锁定；A6 在 akio 分支 `claude/x509-csr` 上；A9、A10、A12、A14、A15、A19–A21 和 A22 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
+| akio 需求 | A1–A5、A7、A8、A11、A13、A16–A18 已在 akio 的 main 并已锁定；A6 在 akio 分支 `claude/x509-csr` 上；A9、A10、A12、A14、A15、A19–A21、A22、A23 和 A24 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
 
 ## 日志
+
+### 2026-11-24：I26，Admin API I：加载、读取、版本
+
+- 配置：`admin` 读入 `akit_config::Admin`（`address`、`history`、`max_config_bytes`、`max_conns`；
+  `DEFAULT_ADMIN_*`，fit 的默认值：127.0.0.1:2019、10、4 MiB、16；0 即默认值）。按 fit 检查地址：主机不是
+  `localhost` 或回环地址时拒绝（fit 在非回环地址上要求 `token_file`、`cert_file` 和 `key_file`，它们随 I27 到来）；
+  `unix/<path>` 作为尚不支持拒绝（akio API 需求 A23）；`admin` 只能由一个文件给出。其余 admin 字段作为尚不支持拒绝。
+- `akit_config::value`（新增）：`Value`，成员保持顺序、数字保持原写法的 JSON 值；`parse`、`to_json`（fit 的
+  Admin API 写法：每层缩进两个空格）、`standardize`（注释和尾随逗号替换为空格，其余字节原位不动，与 fit 的
+  `config.Standardize` 一样），以及 `json_of`：把配置的各个文件作为一个 JSON 文档（单个 JSON 文件标准化；多个文件，
+  或 YAML、`.conf`，按 fit 的 adapter 的方式合并后写出）。`load_files` 同时读出配置和该文档。
+- `akit-admin`（决定 006）：`Configs` 是历史记录（从 1 编号，保留最近 `history` 个；ETag 取 SHA-256 的前 96 位，
+  用 akio-crypto 计算；`If-Match` 和 `If-None-Match` 按 fit 的方式比较），也是每个配置都要经过的唯一路径
+  `Configs::update`，一次一个；`Server` 是运行在自己的 akio 引擎上的 akio-http（一个 I/O 线程，HTTP/1.1，
+  `max_conns` 作为引擎的 `max_connections`，fit 的超时）：`GET /config`（ETag、`Fit-Config-Version`，
+  `If-None-Match` 命中回 304）、`GET /config/<pointer>`（RFC 6901，fit 的消息）、`POST /load`（`application/json`，
+  在 `max_config_bytes` 之内流式读入，413/415，`If-Match` 不符回 412）、`GET /versions`、`GET /versions/{n}`；
+  fit 的防护（带 `Origin` 回 403，同源读请求除外；`Host` 必须是回环主机）。加载请求被分离，作为 `Job` 交给控制线程
+  （有界队列，满了回 503），由它应用并回答。回答是 fit 的 JSON：
+  `{"version","etag","listeners_added","listeners_removed","warnings"}`，配置错误为
+  `{"error","errors":[{"path","line","column","message"}]}`。
+- `akit run`：有 `admin` 时，在监听器之后启动 API（`akit: admin API on ADDR`）；信号和加载共用一个有界控制通道，
+  由主循环依次应用：加载经 `Runner::apply_text`（解析、编译、`Listeners::reload`、访问日志的级别和时区），SIGHUP 经
+  同一个 `Runner::apply`，各自成为新版本（`akit: reloaded FILE (config version N)`、`akit: loaded a config from
+  the admin API (config version N)`）。修改 `admin` 的加载会提示需要重启；访问日志的修改与之前一样提示。关闭时先停
+  API，队列中仍在等待的加载回 503。
+- 测试：`akit-admin/tests/admin.rs`（10 个），移植 fit 的 `admin_test.go`：加载与读回（整份、按指针、按版本、304、
+  HEAD、404、405），带注释的配置保存为标准 JSON，被拒绝的加载（未知字段，回答与 fit 完全一致；不存在的模块；地址被
+  占用；类型不对；按长度和分块两种方式超限；未结束的 JSON；I27 的端点和试运行回 501），`If-Match`，拒绝浏览器，
+  历史记录，8 个并发加载各得不同版本，慢客户端与中途断开的客户端，连接数上限，监听器的增删与 admin 提示；历史记录、
+  ETag、指针和回环主机的单元测试。`akit-config/tests/admin.rs`（4 个）：各字段、fit 的地址检查、只能由一个文件给出、
+  `load_files`；`value` 的单元测试。`akit/tests/admin.rs`：`akit run` 端到端，一次加载和一次 SIGHUP 在同一份历史中
+  编号。门禁为这五个字段加了样例。
+- 模糊测试：新增目标 `config_value`（在 CI 中与其他目标并列）：标准化保持长度和值不变，写出的值能解析回自身；
+  45 秒 300 万次运行，无崩溃。
+- 已检查：macOS 上 `make check`；Linux（基准主机）上 akit-config、akit-admin、akit、akit-compat、akit-runtime 和
+  akit-listener 的测试：io_uring 全部通过；epoll 除 I22 的同地址替换测试（`akit-listener` 和 `akit` 的
+  `tests/reload.rs`）外全部通过，这两个测试在 main `1a5fccf` 上也会偶尔失败（那里 6 次中 1 次，这里 3 次中 1 次）：
+  请求在被替换的监听器停止接受之前的瞬间到达它，得到其图的 404。
+  门禁（`make compat-bless`）：支持 `admin` 及其四个字段；`examples/admin` 现在只因 Unix 套接字被拒绝，
+  `examples/console` 因 `admin.console` 和 `admin.store` 被拒绝，`bittorrent`、`metrics`、`proxy` 和 sync 示例
+  不再因 admin 被拒绝（被拒绝的字段从 58 变为 60，因为 `admin` 拆成了它的子字段）。
+- 与计划和 fit 的不同：
+  - 还不支持 Unix 套接字：akio 的监听器只接受 `SocketAddr`（akio API 需求 A23）。
+  - 超过 `max_config_bytes` 的加载回 413，但 akio-http 会继续读取请求体的剩余部分（丢弃）并保留连接，而 fit 会关闭
+    连接（akio API 需求 A24）；慢客户端受请求体超时约束。
+  - fit 的令牌和 Unix 套接字测试没有移植（I27、A23）；`TestWarnings` 中访问日志和 limits 的提示也没有移植：akit 的
+    提示来自 `akit run` 自己的应用步骤。
+  - `PUT`/`PATCH`/`DELETE /config`、`POST /rollback/{n}`、`POST /reload` 和 `?dry_run=1` 在 I27 之前回 501；
+    `/config/effective`（providers）属于 I57，目前按指针读取。
+  - 版本历史中的 `applied` 是 UTC 的 RFC 3339，精确到毫秒；fit 的是 Go 的 `time.Time`（纳秒，本地时区偏移）。
+- 基准测试：无（规则 24：控制面）。
 
 ### 2026-11-24：I20，被动健康检查
 

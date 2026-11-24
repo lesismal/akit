@@ -41,6 +41,8 @@ first; its status here records the branch, then the akio commit akit pins.
 | A20 | An HTTP client response delivered as it arrives, its reads held and resumed | requested (I16) | 5, 8 | I16, I17, I18, I67 |
 | A21 | A server request that holds its client's reads and hears when its client drained | requested (I16) | 5, 8 | I16, I47, I75 |
 | A22 | UDP listeners removed and drained on a running engine | requested (I22) | 10, 11 | I22, I28 |
+| A23 | Unix-domain stream listeners (with a socket file mode) | requested (I26) | 11 | I26, I29 |
+| A24 | An HTTP/1 response that closes its connection, and stops reading a body it refused | requested (I26) | 7, 10, 11 | I26, I41 |
 
 ## A1 TCP listeners on a running engine
 
@@ -487,3 +489,47 @@ close those left at the deadline), and `Engine::add_listener` for a UDP listener
 
 **How akit uses it.** `akit_listener::Listeners::reload` (I22, I28) removes and drains a
 listener's HTTP/3 as it does its TCP side, and the `ReloadError::Udp` refusal goes.
+
+## A23 Unix-domain stream listeners
+
+**Problem.** fit's Admin API listens on a Unix socket when `admin.address` is `unix/<path>`
+(made 0600, a stale socket file replaced, one in use refused), so that only the owner's processes
+reach it, with no port and no token. akio's listeners take a `SocketAddr` only: TCP or UDP. akit
+refuses `unix/` addresses as not supported yet until akio serves them.
+
+**Evidence.** `crates/akio/src/lib.rs` at `a9a620ab`: `Listener::tcp(SocketAddr)`,
+`Listener::tcp_from_std(std::net::TcpListener)`, `Listener::udp(SocketAddr)`; no Unix-domain
+listener, and `Conn::peer_addr` is a `SocketAddr`.
+
+**Suggested API.** `Listener::unix(path)` (and `Listener::unix_from_std(UnixListener)`), serving
+the same acceptors (akio-http's `serve`), its connections' peer address a placeholder or an enum;
+the socket file's mode set before it is listened on (`Listener::mode(0o600)`), and a stale file
+removed by the caller or by an option. On epoll, kqueue and io_uring.
+
+**How akit uses it.** `akit_admin::Server::start` listens on the path when `admin.address` is
+`unix/<path>`, as fit's `admin.Start`; the Host check is skipped there, as fit skips it, and the
+file provider's control socket (I29) may use it too.
+
+## A24 An HTTP/1 response that closes its connection
+
+**Problem.** A service that refuses a request before reading its body (413 for a body past a
+limit it found mid-stream, or one whose `Content-Length` is already too large on a streamed
+route) cannot close the connection after its answer: akio-http decides keep-alive from the
+request alone, keeps reading the rest of the body (delivering it to a sink no one reads, or
+discarding it) and keeps the connection for the next request. A `Connection: close` header the
+service sets is sent but not honoured. fit's Admin API closes such a connection (Go's
+`MaxBytesReader`), so a client cannot make the server read an unbounded body it already refused;
+under akio-http the only bound is the body timeout, which a fast client never trips.
+
+**Evidence.** `crates/akio-http/src/session.rs` at `a9a620ab`: `keep_alive` comes from the
+request's `Connection` and version; in `State::Stream` the decoder keeps delivering chunks after
+the response; `crates/akio-http/src/message.rs` `Response::encode` writes a service's
+`Connection` field as it is and `Responder::send` closes only when `!keep_alive`.
+
+**Suggested API.** Honour `Connection: close` on a response (close after it is sent, and stop
+reading the request body), or `Context::close_after_response()` / `Detached::close_after(..)`;
+for a streamed body, a way for the sink to stop the delivery (`BodyStream`-side
+`ctx.stop_body()`), after which the connection closes once the response is out.
+
+**How akit uses it.** The Admin API's 413 for a load past `max_config_bytes` (I26) closes the
+connection, as fit's; I41's size limits on the data plane do the same.

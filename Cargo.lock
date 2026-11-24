@@ -218,6 +218,7 @@ dependencies = [
  "akio-quic",
  "akio-sys",
  "akio-x509",
+ "akit-admin",
  "akit-config",
  "akit-handler",
  "akit-listener",
@@ -229,6 +230,16 @@ dependencies = [
 [[package]]
 name = "akit-admin"
 version = "0.0.1"
+dependencies = [
+ "akio",
+ "akio-crypto",
+ "akio-http",
+ "akit-config",
+ "akit-handler",
+ "akit-listener",
+ "akit-observe",
+ "akit-runtime",
+]
 
 [[package]]
 name = "akit-cache"

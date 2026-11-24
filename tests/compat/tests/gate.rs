@@ -397,6 +397,29 @@ fn supported_fields_are_read() {
             |c| c.access_log.as_ref().unwrap().time_zone == "utc",
         ),
         ("listeners", format!("{{{L}}}"), |c| c.listeners.len() == 1),
+        ("admin", r#"{"admin": {}}"#.into(), |c| {
+            c.admin == Some(akit_config::Admin::default())
+        }),
+        (
+            "admin.address",
+            r#"{"admin": {"address": "localhost:2020"}}"#.into(),
+            |c| c.admin.as_ref().unwrap().address == "localhost:2020",
+        ),
+        (
+            "admin.history",
+            r#"{"admin": {"history": 3}}"#.into(),
+            |c| c.admin.as_ref().unwrap().history == 3,
+        ),
+        (
+            "admin.max_config_bytes",
+            r#"{"admin": {"max_config_bytes": 1024}}"#.into(),
+            |c| c.admin.as_ref().unwrap().max_config_bytes == 1024,
+        ),
+        (
+            "admin.max_conns",
+            r#"{"admin": {"max_conns": 2}}"#.into(),
+            |c| c.admin.as_ref().unwrap().max_conns == 2,
+        ),
         ("limits", r#"{"limits": {}}"#.into(), |c| {
             c.limits == akit_config::Limits::default()
         }),
@@ -786,8 +809,9 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 14] = [
+    let objects: [(&str, &str, Option<&str>); 15] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
+        ("admin", "ADMIN_FIELDS", Some("ADMIN_FIT_ONLY")),
         ("limits", "LIMITS_FIELDS", Some("LIMITS_FIT_ONLY")),
         (
             "access_log",

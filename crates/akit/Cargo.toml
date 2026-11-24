@@ -16,6 +16,7 @@ path = "src/main.rs"
 [dependencies]
 akio = { workspace = true }
 akio-sys = { workspace = true }
+akit-admin = { workspace = true }
 akit-config = { workspace = true }
 akit-observe = { workspace = true }
 akit-handler = { workspace = true }

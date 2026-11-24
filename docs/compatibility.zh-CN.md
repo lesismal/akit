@@ -152,14 +152,14 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 74 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 79 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
 | [`access`](#fields-access) | 5 | 0 | 5 |
 | [`access_log`](#fields-access-log) | 14 | 7 | 7 |
 | [`acme`](#fields-acme) | 43 | 0 | 43 |
-| [`admin`](#fields-admin) | 105 | 0 | 105 |
+| [`admin`](#fields-admin) | 105 | 5 | 100 |
 | [`auto_https`](#fields-auto-https) | 5 | 0 | 5 |
 | [`bittorrent`](#fields-bittorrent) | 160 | 0 | 160 |
 | [`engine`](#fields-engine) | 11 | 0 | 11 |
@@ -277,7 +277,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 13 | 25 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **合计** | 3821 | 74 | 3747 |
+| **合计** | 3821 | 79 | 3742 |
 
 <a id="fields-access"></a>
 
@@ -368,13 +368,13 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
-| `admin` | `object` | 尚不支持（not supported yet） |
+| `admin` | `object` | 已支持 |
 | `admin.access` | `object` | 尚不支持（not supported yet） |
 | `admin.access.allow` | `array<string>` | 尚不支持（not supported yet） |
 | `admin.access.allow_files` | `array<string>` | 尚不支持（not supported yet） |
 | `admin.access.deny` | `array<string>` | 尚不支持（not supported yet） |
 | `admin.access.deny_files` | `array<string>` | 尚不支持（not supported yet） |
-| `admin.address` | `string` | 尚不支持（not supported yet） |
+| `admin.address` | `string` | 已支持 |
 | `admin.assistant` | `object` | 尚不支持（not supported yet） |
 | `admin.assistant.data` | `object` | 尚不支持（not supported yet） |
 | `admin.assistant.data.redact` | `array<string>` | 尚不支持（not supported yet） |
@@ -461,10 +461,10 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `admin.console.users[].password_hash` | `string, required` | 尚不支持（not supported yet） |
 | `admin.console.users[].username` | `string, required` | 尚不支持（not supported yet） |
 | `admin.disable_dashboard` | `boolean` | 尚不支持（not supported yet） |
-| `admin.history` | `integer` | 尚不支持（not supported yet） |
+| `admin.history` | `integer` | 已支持 |
 | `admin.key_file` | `string` | 尚不支持（not supported yet） |
-| `admin.max_config_bytes` | `integer` | 尚不支持（not supported yet） |
-| `admin.max_conns` | `integer` | 尚不支持（not supported yet） |
+| `admin.max_config_bytes` | `integer` | 已支持 |
+| `admin.max_conns` | `integer` | 已支持 |
 | `admin.mptcp` | `boolean` | 尚不支持（not supported yet） |
 | `admin.node_id` | `string` | 尚不支持（not supported yet） |
 | `admin.store` | `object` | 尚不支持（not supported yet） |

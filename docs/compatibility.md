@@ -175,14 +175,14 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 74 supported.
+3821 fields in 121 sections, at fit `7daee573`; 79 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
 | [`access`](#fields-access) | 5 | 0 | 5 |
 | [`access_log`](#fields-access-log) | 14 | 7 | 7 |
 | [`acme`](#fields-acme) | 43 | 0 | 43 |
-| [`admin`](#fields-admin) | 105 | 0 | 105 |
+| [`admin`](#fields-admin) | 105 | 5 | 100 |
 | [`auto_https`](#fields-auto-https) | 5 | 0 | 5 |
 | [`bittorrent`](#fields-bittorrent) | 160 | 0 | 160 |
 | [`engine`](#fields-engine) | 11 | 0 | 11 |
@@ -300,7 +300,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 13 | 25 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 74 | 3747 |
+| **Total** | 3821 | 79 | 3742 |
 
 <a id="fields-access"></a>
 
@@ -391,13 +391,13 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `admin` | `object` | not supported yet |
+| `admin` | `object` | supported |
 | `admin.access` | `object` | not supported yet |
 | `admin.access.allow` | `array<string>` | not supported yet |
 | `admin.access.allow_files` | `array<string>` | not supported yet |
 | `admin.access.deny` | `array<string>` | not supported yet |
 | `admin.access.deny_files` | `array<string>` | not supported yet |
-| `admin.address` | `string` | not supported yet |
+| `admin.address` | `string` | supported |
 | `admin.assistant` | `object` | not supported yet |
 | `admin.assistant.data` | `object` | not supported yet |
 | `admin.assistant.data.redact` | `array<string>` | not supported yet |
@@ -484,10 +484,10 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `admin.console.users[].password_hash` | `string, required` | not supported yet |
 | `admin.console.users[].username` | `string, required` | not supported yet |
 | `admin.disable_dashboard` | `boolean` | not supported yet |
-| `admin.history` | `integer` | not supported yet |
+| `admin.history` | `integer` | supported |
 | `admin.key_file` | `string` | not supported yet |
-| `admin.max_config_bytes` | `integer` | not supported yet |
-| `admin.max_conns` | `integer` | not supported yet |
+| `admin.max_config_bytes` | `integer` | supported |
+| `admin.max_conns` | `integer` | supported |
 | `admin.mptcp` | `boolean` | not supported yet |
 | `admin.node_id` | `string` | not supported yet |
 | `admin.store` | `object` | not supported yet |

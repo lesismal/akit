@@ -74,7 +74,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        target: [config_json, config_conf, config_yaml]
+        target: [config_json, config_conf, config_yaml, config_value]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly

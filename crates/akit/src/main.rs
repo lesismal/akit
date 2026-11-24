@@ -9,7 +9,9 @@
 //!   listeners to its (I22); a broken config leaves the running one. With `access_log`, a line is
 //!   written for each request (I21): the log is opened when akit starts, and closed, once every
 //!   line is written, when it stops; a reload changes its level and time zone, as fit's does,
-//!   while its output, format, flush interval and buffer take a restart.
+//!   while its output, format, flush interval and buffer take a restart. With `admin`, the Admin
+//!   API (I26) serves the running config and its versions and loads new configs, each applied
+//!   by the control thread through the same reload as SIGHUP, one config at a time.
 //! - `validate`: reads and compiles the config, as `run` would, and says whether it is valid.
 //! - `version`, `help`.
 
@@ -20,6 +22,7 @@ use std::process::ExitCode;
 use std::sync::{Arc, mpsc};
 use std::time::Duration;
 
+use akit_admin::{Applied, ApplyError, Configs, ListenerChange, Outcome, Refused};
 use akit_config::{Config, Error, Errors, LogFormat};
 use akit_observe::{AccessLog, Format, Zone};
 use akit_runtime::upstream::EngineSlot;
@@ -144,11 +147,18 @@ impl Failure {
     }
 }
 
-/// Reads the config at `paths`, with the zone its access log's `time_zone` names, which is
-/// loaded here, as fit's validation loads it.
-fn read_config(paths: &[String]) -> Result<(Config, Option<Zone>), Failure> {
-    let config = akit_config::from_files(paths).map_err(Failure::Config)?;
-    let zone = match &config.access_log {
+/// Reads the config at `paths`, with the config as one JSON document (what the Admin API keeps of
+/// it) and the zone its access log's `time_zone` names, which is loaded here, as fit's validation
+/// loads it.
+fn read_config(paths: &[String]) -> Result<(Config, String, Option<Zone>), Failure> {
+    let (config, json) = akit_config::load_files(paths).map_err(Failure::Config)?;
+    let zone = time_zone(&config)?;
+    Ok((config, json, zone))
+}
+
+/// The zone `config`'s access log's `time_zone` names, loaded.
+fn time_zone(config: &Config) -> Result<Option<Zone>, Failure> {
+    Ok(match &config.access_log {
         None => None,
         Some(a) => Some(Zone::load(&a.time_zone).map_err(|e| {
             Failure::Config(Errors(vec![Error {
@@ -159,8 +169,7 @@ fn read_config(paths: &[String]) -> Result<(Config, Option<Zone>), Failure> {
                 msg: e.to_string(),
             }]))
         })?),
-    };
-    Ok((config, zone))
+    })
 }
 
 /// Compiles `config`, its upstream pools dialing through the engine `engine` will hold, its
@@ -178,14 +187,9 @@ fn compile_config(
 }
 
 /// Reads and compiles the config at `paths`, as [`read_config`] and [`compile_config`].
-fn read(
-    paths: &[String],
-    engine: &EngineSlot,
-    log: Option<&AccessLog>,
-) -> Result<(Config, Option<Zone>, Graph), Failure> {
-    let (config, zone) = read_config(paths)?;
-    let graph = compile_config(&config, engine, log)?;
-    Ok((config, zone, graph))
+fn read(paths: &[String], engine: &EngineSlot, log: Option<&AccessLog>) -> Result<Graph, Failure> {
+    let (config, _, _) = read_config(paths)?;
+    compile_config(&config, engine, log)
 }
 
 /// Opens the access log `c` describes, its times in `zone`, as fit's `NewAccessLogFiles`.
@@ -204,31 +208,32 @@ fn open_access_log(c: &akit_config::AccessLog, zone: Zone) -> std::io::Result<Ac
     AccessLog::new(out, opts)
 }
 
-/// SIGHUP: reads the config at `paths` again and, when it compiles and its listeners can be
-/// served, swaps it in; otherwise the running config stays. Says what happened as fit says it.
-///
-/// The access log opened at start, `log` (with the config it was opened from), takes the new
-/// config's level and time zone once the graph is swapped in; its other settings take a restart,
-/// as fit's.
-fn reload(
-    paths: &[String],
-    slot: &EngineSlot,
-    listeners: &mut akit_listener::Listeners,
-    log: Option<&(AccessLog, akit_config::AccessLog)>,
-) {
-    let name = paths.join(", ");
-    println!("akit: reloading {name}");
-    let (config, zone, graph) = match read(paths, slot, log.map(|l| &l.0)) {
-        Ok(r) => r,
-        Err(f) => {
-            eprintln!("akit: reload failed; the running config stays");
-            f.print(&name);
-            return;
-        }
-    };
-    let result = listeners.reload(graph);
-    if result.is_ok() {
-        match (log, &config.access_log, zone) {
+/// What applying a config takes: the engine slot its pools dial through, the listeners it moves,
+/// the access log opened at start (with the config it was opened from), and the `admin` akit
+/// started with.
+struct Runner<'a> {
+    slot: &'a EngineSlot,
+    listeners: &'a mut akit_listener::Listeners,
+    log: Option<&'a (AccessLog, akit_config::AccessLog)>,
+    admin: Option<&'a akit_config::Admin>,
+}
+
+impl Runner<'_> {
+    /// Compiles `config` and moves the server to it (I22's reload), as one step: on any failure
+    /// the running config stays. The access log takes the new config's level and time zone
+    /// (`zone`); its other settings, and `admin`, take a restart, as fit's, and are warned of.
+    fn apply(&mut self, config: &Config, zone: Option<Zone>) -> Result<Applied, ApplyError> {
+        let graph =
+            compile_config(config, self.slot, self.log.map(|l| &l.0)).map_err(|f| match f {
+                Failure::Config(errs) => ApplyError::Config(errs),
+                Failure::Registry(e) => ApplyError::Failed(e),
+            })?;
+        let r = self
+            .listeners
+            .reload(graph)
+            .map_err(|e| ApplyError::Failed(e.to_string()))?;
+        let mut warnings = Vec::new();
+        match (self.log, &config.access_log, zone) {
             (Some((l, first)), Some(c), Some(zone)) => {
                 l.set_min_status(c.min_status());
                 l.set_zone(zone);
@@ -240,28 +245,91 @@ fn reload(
                         first.buffer_bytes,
                     )
                 {
-                    eprintln!(
-                        "akit: access_log's output, format, flush_interval and buffer_bytes take a restart; the running ones stay"
+                    warnings.push(
+                        "access_log's output, format, flush_interval and buffer_bytes take a restart; the running ones stay"
+                            .to_owned(),
                     );
                 }
             }
             (None, Some(_), _) => {
-                eprintln!("akit: access_log takes a restart: requests are not logged until then");
+                warnings.push(
+                    "access_log takes a restart: requests are not logged until then".to_owned(),
+                );
             }
             _ => {}
         }
+        warnings.extend(akit_admin::admin_warning(self.admin, config.admin.as_ref()));
+        let change = |l: &akit_listener::Served| ListenerChange {
+            name: l.name.clone(),
+            address: l.address.to_string(),
+            protocols: l.protocols.iter().map(|p| p.as_str().to_owned()).collect(),
+        };
+        Ok(Applied {
+            added: r.added.iter().map(change).collect(),
+            removed: r.removed.iter().map(change).collect(),
+            warnings,
+        })
     }
-    match result {
-        Ok(r) => {
-            for l in &r.removed {
-                println!("akit: listener {:?} on {} removed", l.name, l.address);
-            }
-            for l in &r.added {
-                print_listener(l);
-            }
-            println!("akit: reloaded {name}");
+
+    /// Applies `text`, a config as standard JSON loaded through the Admin API.
+    fn apply_text(&mut self, text: &str) -> Result<Applied, ApplyError> {
+        let config = akit_config::from_json(text, None).map_err(ApplyError::Config)?;
+        let zone = time_zone(&config).map_err(|f| match f {
+            Failure::Config(errs) => ApplyError::Config(errs),
+            Failure::Registry(e) => ApplyError::Failed(e),
+        })?;
+        self.apply(&config, zone)
+    }
+}
+
+/// SIGHUP: reads the config at `paths` again and, when it compiles and its listeners can be
+/// served, applies it as a new version; otherwise the running config stays. Says what happened
+/// as fit says it.
+fn reload(paths: &[String], configs: &Configs, runner: &mut Runner<'_>) {
+    let name = paths.join(", ");
+    println!("akit: reloading {name}");
+    let (config, json, zone) = match read_config(paths) {
+        Ok(r) => r,
+        Err(f) => {
+            eprintln!("akit: reload failed; the running config stays");
+            f.print(&name);
+            return;
         }
-        Err(e) => eprintln!("akit: reload failed; the running config stays: {e}"),
+    };
+    match configs.update(akit_admin::SOURCE_FILE, None, json, |_| {
+        runner.apply(&config, zone)
+    }) {
+        Ok(o) => {
+            print_applied(&o);
+            println!("akit: reloaded {name} (config version {})", o.version);
+        }
+        Err(Refused::Apply(ApplyError::Config(errs))) => {
+            eprintln!("akit: reload failed; the running config stays");
+            print_errors(&name, &errs);
+        }
+        Err(Refused::Apply(ApplyError::Failed(e))) => {
+            eprintln!("akit: reload failed; the running config stays: {e}");
+        }
+        // No If-Match was given.
+        Err(Refused::Changed) => {}
+    }
+}
+
+/// What applying a config changed: the listeners closed and opened, and its warnings.
+fn print_applied(o: &Outcome) {
+    for l in &o.applied.removed {
+        println!("akit: listener {:?} on {} removed", l.name, l.address);
+    }
+    for l in &o.applied.added {
+        println!(
+            "akit: listener {:?} on {} ({})",
+            l.name,
+            l.address,
+            l.protocols.join(", ")
+        );
+    }
+    for w in &o.applied.warnings {
+        eprintln!("akit: {w}");
     }
 }
 
@@ -302,18 +370,25 @@ fn validate(args: &[String]) -> ExitCode {
     }
 }
 
-/// What the signal thread passes on.
-enum Signal {
+/// What the control thread is asked to do: by the signal thread, and by the Admin API.
+enum Control {
+    /// SIGINT or SIGTERM.
     Stop,
+    /// SIGHUP.
     Hangup,
+    /// A config loaded through the Admin API.
+    Admin(akit_admin::Job),
 }
 
-/// Delivers SIGINT, SIGTERM and SIGHUP on a channel, read from akio's signal pipe by a thread
-/// of its own (the handlers only write a byte).
-fn signals() -> std::io::Result<mpsc::Receiver<Signal>> {
+/// How many requests may wait for the control thread: the Admin API's connections, each with
+/// one request at a time, and signals. Past it, a load is answered 503.
+const CONTROL_QUEUE: usize = 64;
+
+/// Delivers SIGINT, SIGTERM and SIGHUP on `tx`, read from akio's signal pipe by a thread of its
+/// own (the handlers only write a byte).
+fn signals(tx: mpsc::SyncSender<Control>) -> std::io::Result<()> {
     use akio_sys::process::{SIGHUP, SIGINT, SIGTERM, signal_pipe};
     let mut pipe = signal_pipe(&[SIGINT, SIGTERM, SIGHUP])?;
-    let (tx, rx) = mpsc::channel();
     std::thread::Builder::new()
         .name("akit-signals".into())
         .spawn(move || {
@@ -321,16 +396,16 @@ fn signals() -> std::io::Result<mpsc::Receiver<Signal>> {
             while pipe.read_exact(&mut b).is_ok() {
                 let sig = i32::from(b[0]);
                 let s = if sig == SIGHUP {
-                    Signal::Hangup
+                    Control::Hangup
                 } else {
-                    Signal::Stop
+                    Control::Stop
                 };
                 if tx.send(s).is_err() {
                     break;
                 }
             }
         })?;
-    Ok(rx)
+    Ok(())
 }
 
 /// `akit run`.
@@ -363,7 +438,7 @@ fn run(args: &[String]) -> ExitCode {
     // from the graph's listeners: they reach it through this slot, filled once it is built.
     let slot = EngineSlot::new();
     let name = paths.join(", ");
-    let (config, zone) = match read_config(&paths) {
+    let (config, json, zone) = match read_config(&paths) {
         Ok(c) => c,
         Err(f) => {
             f.print(&name);
@@ -397,15 +472,19 @@ fn run(args: &[String]) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    let admin = config.admin.clone();
     drop(config);
+    let configs = Configs::new(
+        json,
+        akit_admin::SOURCE_FILE,
+        admin.as_ref().map_or(1, |a| a.history),
+    );
     // Before the listeners: a signal from then on shuts down gracefully.
-    let signals = match signals() {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("akit run: signals: {e}");
-            return ExitCode::FAILURE;
-        }
-    };
+    let (tx, control) = mpsc::sync_channel(CONTROL_QUEUE);
+    if let Err(e) = signals(tx.clone()) {
+        eprintln!("akit run: signals: {e}");
+        return ExitCode::FAILURE;
+    }
     let cell = GraphCell::new(graph);
     let mut opts = akit_listener::Options::default();
     opts.shutdown_timeout = grace;
@@ -426,12 +505,52 @@ fn run(args: &[String]) -> ExitCode {
     for l in listeners.served() {
         print_listener(&l);
     }
+    let api = match &admin {
+        None => None,
+        Some(a) => {
+            let tx = tx.clone();
+            let submit: akit_admin::Submit = Box::new(move |job| {
+                match tx.try_send(Control::Admin(job)) {
+                    Ok(()) => Ok(()),
+                    Err(
+                        mpsc::TrySendError::Full(Control::Admin(job))
+                        | mpsc::TrySendError::Disconnected(Control::Admin(job)),
+                    ) => Err(job),
+                    // Only a job is sent here.
+                    Err(_) => Ok(()),
+                }
+            });
+            match akit_admin::Server::start(
+                a,
+                configs.clone(),
+                submit,
+                &akit_admin::Options::default(),
+            ) {
+                Ok(s) => {
+                    println!("akit: admin API on {}", s.addr());
+                    Some(s)
+                }
+                Err(e) => {
+                    eprintln!("akit run: admin: {e}");
+                    akit_listener::shutdown(&engine, grace);
+                    return ExitCode::FAILURE;
+                }
+            }
+        }
+    };
+    drop(tx);
+    let mut runner = Runner {
+        slot: &slot,
+        listeners: &mut listeners,
+        log: log.as_ref(),
+        admin: admin.as_ref(),
+    };
     loop {
         // Graphs replaced by a reload are retired from here once no request uses them
         // (decision 004): after each swap, and on a timer while any is left.
-        let signal = if cell.retiring() > 0 {
-            match signals.recv_timeout(COLLECT_EVERY) {
-                Ok(s) => Some(s),
+        let next = if cell.retiring() > 0 {
+            match control.recv_timeout(COLLECT_EVERY) {
+                Ok(c) => Some(c),
                 Err(mpsc::RecvTimeoutError::Timeout) => {
                     cell.collect();
                     continue;
@@ -439,22 +558,40 @@ fn run(args: &[String]) -> ExitCode {
                 Err(mpsc::RecvTimeoutError::Disconnected) => None,
             }
         } else {
-            signals.recv().ok()
+            control.recv().ok()
         };
-        match signal {
-            Some(Signal::Stop) | None => break,
-            Some(Signal::Hangup) => {
-                reload(&paths, &slot, &mut listeners, log.as_ref());
+        match next {
+            Some(Control::Stop) | None => break,
+            Some(Control::Hangup) => {
+                reload(&paths, &configs, &mut runner);
+                cell.collect();
+            }
+            Some(Control::Admin(job)) => {
+                if let Some(o) = job.run(&configs, |text| runner.apply_text(text)) {
+                    print_applied(&o);
+                    println!(
+                        "akit: loaded a config from the admin API (config version {})",
+                        o.version
+                    );
+                }
                 cell.collect();
             }
         }
     }
+    // The API first: no more loads. Those still waiting are refused.
+    if let Some(api) = &api {
+        api.shutdown();
+    }
     // A second SIGINT or SIGTERM does not wait for the shutdown, as fit's.
     std::thread::spawn(move || {
-        while let Ok(s) = signals.recv() {
-            if let Signal::Stop = s {
-                eprintln!("akit run: stopped by a second signal");
-                std::process::exit(1);
+        while let Ok(c) = control.recv() {
+            match c {
+                Control::Stop => {
+                    eprintln!("akit run: stopped by a second signal");
+                    std::process::exit(1);
+                }
+                Control::Admin(job) => job.refuse(503, "akit is shutting down"),
+                Control::Hangup => {}
             }
         }
     });
