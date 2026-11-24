@@ -152,7 +152,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 142 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 148 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -275,9 +275,9 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`sync.transforms/wasm`](#fields-sync-transforms-wasm) | 9 | 0 | 9 |
 | [`telemetry`](#fields-telemetry) | 14 | 0 | 14 |
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
-| [`upstreams`](#fields-upstreams) | 38 | 25 | 13 |
+| [`upstreams`](#fields-upstreams) | 38 | 31 | 7 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **合计** | 3821 | 142 | 3679 |
+| **合计** | 3821 | 148 | 3673 |
 
 <a id="fields-access"></a>
 
@@ -4830,7 +4830,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `upstreams[].connect_timeout` | `duration` | 已支持 |
 | `upstreams[].deny_internal` | `boolean` | 尚不支持（not supported yet） |
 | `upstreams[].fail_timeout` | `duration` | 已支持 |
-| `upstreams[].hash_key` | `string` | 尚不支持（not supported yet） |
+| `upstreams[].hash_key` | `string` | 已支持 |
 | `upstreams[].health_check` | `object` | 已支持 |
 | `upstreams[].health_check.expect_status` | `array<integer>` | 已支持 |
 | `upstreams[].health_check.fails` | `integer` | 已支持 |
@@ -4853,11 +4853,11 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `upstreams[].response_header_timeout` | `duration` | 尚不支持（not supported yet） |
 | `upstreams[].response_idle_timeout` | `duration` | 尚不支持（not supported yet） |
 | `upstreams[].response_timeout` | `duration` | 已支持 |
-| `upstreams[].sticky_cookie` | `object` | 尚不支持（not supported yet） |
-| `upstreams[].sticky_cookie.max_age` | `duration` | 尚不支持（not supported yet） |
-| `upstreams[].sticky_cookie.name` | `string` | 尚不支持（not supported yet） |
-| `upstreams[].sticky_cookie.path` | `string` | 尚不支持（not supported yet） |
-| `upstreams[].sticky_cookie.secure` | `boolean` | 尚不支持（not supported yet） |
+| `upstreams[].sticky_cookie` | `object` | 已支持 |
+| `upstreams[].sticky_cookie.max_age` | `duration` | 已支持 |
+| `upstreams[].sticky_cookie.name` | `string` | 已支持 |
+| `upstreams[].sticky_cookie.path` | `string` | 已支持 |
+| `upstreams[].sticky_cookie.secure` | `boolean` | 已支持 |
 | `upstreams[].tls_ca_file` | `string` | 尚不支持（not supported yet） |
 | `upstreams[].tls_cert_file` | `string` | 尚不支持（not supported yet） |
 | `upstreams[].tls_key_file` | `string` | 尚不支持（not supported yet） |

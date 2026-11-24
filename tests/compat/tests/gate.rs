@@ -376,6 +376,7 @@ fn supported_fields_are_read() {
     };
     let access = |fields: &str| format!("{{\"access_log\": {{{fields}}}}}");
     let health = |fields: &str| upstream(&format!(r#", "health_check": {{{fields}}}"#));
+    let sticky = |fields: &str| upstream(&format!(r#", "sticky_cookie": {{{fields}}}"#));
     let mw = |module: &str, params: &str| {
         format!(
             r#"{{{L}, "routes": [{{"middleware": [{{"module": "{module}", "params": {{{params}}}}}], "handler": {{"module": "respond"}}}}]}}"#
@@ -1035,6 +1036,64 @@ fn supported_fields_are_read() {
             upstream(r#", "fail_timeout": "30s""#),
             |c| c.upstreams[0].fail_timeout == std::time::Duration::from_secs(30),
         ),
+        (
+            "upstreams[].hash_key",
+            upstream(r#", "load_balancing": "header_hash", "hash_key": "x-user""#),
+            |c| {
+                c.upstreams[0].load_balancing == akit_config::LoadBalancing::HeaderHash
+                    && c.upstreams[0].hash_key == "x-user"
+            },
+        ),
+        ("upstreams[].sticky_cookie", sticky(""), |c| {
+            c.upstreams[0]
+                .sticky_cookie
+                .as_ref()
+                .map(|s| s.name.as_str())
+                == Some("fit_sticky")
+        }),
+        (
+            "upstreams[].sticky_cookie.name",
+            sticky(r#""name": "s""#),
+            |c| {
+                c.upstreams[0]
+                    .sticky_cookie
+                    .as_ref()
+                    .map(|s| s.name.as_str())
+                    == Some("s")
+            },
+        ),
+        (
+            "upstreams[].sticky_cookie.path",
+            sticky(r#""path": "/app""#),
+            |c| {
+                c.upstreams[0]
+                    .sticky_cookie
+                    .as_ref()
+                    .map(|s| s.path.as_str())
+                    == Some("/app")
+            },
+        ),
+        (
+            "upstreams[].sticky_cookie.max_age",
+            sticky(r#""max_age": "1h""#),
+            |c| {
+                c.upstreams[0]
+                    .sticky_cookie
+                    .as_ref()
+                    .and_then(|s| s.max_age)
+                    == Some(std::time::Duration::from_secs(3600))
+            },
+        ),
+        (
+            "upstreams[].sticky_cookie.secure",
+            sticky(r#""secure": true"#),
+            |c| {
+                c.upstreams[0]
+                    .sticky_cookie
+                    .as_ref()
+                    .is_some_and(|s| s.secure)
+            },
+        ),
         ("upstreams[].health_check", health(""), |c| {
             c.upstreams[0].health_check.is_some()
         }),
@@ -1214,7 +1273,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 26] = [
+    let objects: [(&str, &str, Option<&str>); 27] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         ("admin", "ADMIN_FIELDS", Some("ADMIN_FIT_ONLY")),
         ("acme", "ACME_FIELDS", Some("ACME_FIT_ONLY")),
@@ -1244,6 +1303,7 @@ fn akit_config_lists_match_the_inventory() {
         ),
         ("upstreams[]", "UPSTREAM_FIELDS", Some("UPSTREAM_FIT_ONLY")),
         ("upstreams[].health_check", "HEALTH_CHECK_FIELDS", None),
+        ("upstreams[].sticky_cookie", "STICKY_COOKIE_FIELDS", None),
         ("routes[].middleware[]", "MODULE_FIELDS", None),
         (
             "routes[].middleware[]<rewrite>.params",

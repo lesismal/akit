@@ -175,7 +175,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 142 supported.
+3821 fields in 121 sections, at fit `7daee573`; 148 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -298,9 +298,9 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`sync.transforms/wasm`](#fields-sync-transforms-wasm) | 9 | 0 | 9 |
 | [`telemetry`](#fields-telemetry) | 14 | 0 | 14 |
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
-| [`upstreams`](#fields-upstreams) | 38 | 25 | 13 |
+| [`upstreams`](#fields-upstreams) | 38 | 31 | 7 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 142 | 3679 |
+| **Total** | 3821 | 148 | 3673 |
 
 <a id="fields-access"></a>
 
@@ -4853,7 +4853,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `upstreams[].connect_timeout` | `duration` | supported |
 | `upstreams[].deny_internal` | `boolean` | not supported yet |
 | `upstreams[].fail_timeout` | `duration` | supported |
-| `upstreams[].hash_key` | `string` | not supported yet |
+| `upstreams[].hash_key` | `string` | supported |
 | `upstreams[].health_check` | `object` | supported |
 | `upstreams[].health_check.expect_status` | `array<integer>` | supported |
 | `upstreams[].health_check.fails` | `integer` | supported |
@@ -4876,11 +4876,11 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `upstreams[].response_header_timeout` | `duration` | not supported yet |
 | `upstreams[].response_idle_timeout` | `duration` | not supported yet |
 | `upstreams[].response_timeout` | `duration` | supported |
-| `upstreams[].sticky_cookie` | `object` | not supported yet |
-| `upstreams[].sticky_cookie.max_age` | `duration` | not supported yet |
-| `upstreams[].sticky_cookie.name` | `string` | not supported yet |
-| `upstreams[].sticky_cookie.path` | `string` | not supported yet |
-| `upstreams[].sticky_cookie.secure` | `boolean` | not supported yet |
+| `upstreams[].sticky_cookie` | `object` | supported |
+| `upstreams[].sticky_cookie.max_age` | `duration` | supported |
+| `upstreams[].sticky_cookie.name` | `string` | supported |
+| `upstreams[].sticky_cookie.path` | `string` | supported |
+| `upstreams[].sticky_cookie.secure` | `boolean` | supported |
 | `upstreams[].tls_ca_file` | `string` | not supported yet |
 | `upstreams[].tls_cert_file` | `string` | not supported yet |
 | `upstreams[].tls_key_file` | `string` | not supported yet |

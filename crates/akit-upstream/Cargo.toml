@@ -11,8 +11,18 @@ publish = false
 [dependencies]
 akio = { workspace = true }
 akio-http = { workspace = true }
+# SHA-256 for the sticky cookie's values, as fit's (I36).
+akio-crypto = { workspace = true }
 akit-config = { workspace = true }
 akit-observe = { workspace = true }
+
+[dev-dependencies]
+# Counts allocations in tests/no_alloc.rs without unsafe code of akit's own (rule 14).
+stats_alloc = "0.1"
+
+[[test]]
+name = "no_alloc"
+harness = false
 
 [lints]
 workspace = true

@@ -375,9 +375,11 @@ name = "akit-upstream"
 version = "0.0.1"
 dependencies = [
  "akio",
+ "akio-crypto",
  "akio-http",
  "akit-config",
  "akit-observe",
+ "stats_alloc",
 ]
 
 [[package]]

@@ -78,10 +78,17 @@ upstreams[].idle_timeout
 upstreams[].connect_timeout
 #
 # I19: load balancing v1. upstreams[].load_balancing takes "round_robin", "weighted_round_robin"
-# and "least_conn"; fit's "random", "p2c" and hash policies (and hash_key) are refused as not
-# supported yet (I36).
+# and "least_conn".
 upstreams[].weights
 upstreams[].load_balancing
+# I36: load balancing v2: "random", "p2c", and consistent hashing ("ip_hash", "uri_hash",
+# "header_hash" and "cookie_hash", by hash_key); sticky sessions by cookie.
+upstreams[].hash_key
+upstreams[].sticky_cookie
+upstreams[].sticky_cookie.name
+upstreams[].sticky_cookie.path
+upstreams[].sticky_cookie.max_age
+upstreams[].sticky_cookie.secure
 #
 # I20: passive health checks: max_fails failures within fail_timeout take an address out of
 # rotation for fail_timeout; the balancers pass over it unless every address is out.

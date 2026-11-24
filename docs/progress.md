@@ -11,14 +11,72 @@ done and where the work differs from the plan.
 | | |
 | --- | --- |
 | Last updated | 2026-11-24 |
-| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I17, I19–I24 done (I17b waits on akio); M2's I26–I28, I30, I31, I35 and I37 and M3's I39, I40 and I41 done early. |
+| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I17, I19–I24 done (I17b waits on akio); M2's I26–I28, I30, I31, I35, I36 and I37 and M3's I39, I40 and I41 done early. |
 | akio | `afbbb521` on akio's `main` (`1.0.0-rc.1`, with A1–A8, A11, A13 and A16–A21, and the io_uring fix for listeners replaced at run time), pinned by `rev` in `Cargo.toml` |
 | fit | the specification; read at `7daee573` for this plan |
-| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept (as fit's `binding.same`: certificate files and ACME names may change), added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication; certificates chosen per handshake as fit's, replaced by a reload or by `-watch-certs` without closing the listener) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; route middleware: `rewrite` (prefixes), `redirect`, `headers`, `rate_limit`, `concurrency_limit` and `body_limit`; the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`, bodies streamed both ways with linked backpressure, trailers both ways, `timeout` and the upstream's `response_timeout`, 504 for timeouts, the upstream request given up when the client goes mid-body); `limits.max_body_bytes` on every listener (413) and in the proxy; access logs in fit's json, text and line formats; upstream pools with round robin, weighted round robin and least connections, passing over addresses taken out by passive health checks (`max_fails`, `fail_timeout`) and by active ones (`health_check`: http and tcp probes); the Admin API on loopback (`GET /config`, by JSON pointer too, `POST /load`, edits by pointer with `PUT`, `PATCH` and `DELETE /config`, `POST /rollback/{n}`, `POST /reload`, each with `If-Match` and all but a rollback with `?dry_run=1`, `GET /versions`; with `token_file`, a bearer token on every request), changes applied as SIGHUP's reloads, one history for both; Prometheus metrics at the Admin API's `GET /metrics` (requests by listener and route with `metrics`, upstreams and backends, certificates, connections, reloads, akio's engine); certificates obtained with ACME through HTTP-01 for the names listeners list in `tls.acme`, kept in a storage and renewed; the compatibility gate: 80 fixtures, 15 valid, 64 refused only as not supported yet11 valid, 68 refused only as not supported yet12 valid, 67 refused only as not supported yet, 1 skipped, none failed |
+| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept (as fit's `binding.same`: certificate files and ACME names may change), added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication; certificates chosen per handshake as fit's, replaced by a reload or by `-watch-certs` without closing the listener) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; route middleware: `rewrite` (prefixes), `redirect`, `headers`, `rate_limit`, `concurrency_limit` and `body_limit`; the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`, bodies streamed both ways with linked backpressure, trailers both ways, `timeout` and the upstream's `response_timeout`, 504 for timeouts, the upstream request given up when the client goes mid-body); `limits.max_body_bytes` on every listener (413) and in the proxy; access logs in fit's json, text and line formats; upstream pools with fit's nine load balancing policies (round robin, weighted round robin, least connections, random, p2c, and consistent hashing of the client's IP, the path, a header or a cookie) and sticky cookies, passing over addresses taken out by passive health checks (`max_fails`, `fail_timeout`) and by active ones (`health_check`: http and tcp probes); the Admin API on loopback (`GET /config`, by JSON pointer too, `POST /load`, edits by pointer with `PUT`, `PATCH` and `DELETE /config`, `POST /rollback/{n}`, `POST /reload`, each with `If-Match` and all but a rollback with `?dry_run=1`, `GET /versions`; with `token_file`, a bearer token on every request), changes applied as SIGHUP's reloads, one history for both; Prometheus metrics at the Admin API's `GET /metrics` (requests by listener and route with `metrics`, upstreams and backends, certificates, connections, reloads, akio's engine); certificates obtained with ACME through HTTP-01 for the names listeners list in `tls.acme`, kept in a storage and renewed; the compatibility gate: 80 fixtures, 15 valid, 64 refused only as not supported yet, 1 skipped, none failed |
 | Next | I18; I17b once akio has A36–A38 |
 | akio requests | A1–A8, A11, A13 and A16–A21 on akio's main and pinned; A9, A10, A12, A14, A15, A22–A24, A29, A30, A32, A33, A35–A38, A45, A48, A49 and A54 requested ([akio API requests](akio-api-requests.md)) |
 
 ## Log
+
+### 2026-11-24: I36, load balancing v2
+
+- Config: `upstreams[].load_balancing` takes fit's other six policies (`random`, `p2c`, `ip_hash`,
+  `uri_hash`, `header_hash`, `cookie_hash`; `LoadBalancing::{Random, P2c, IpHash, UriHash,
+  HeaderHash, CookieHash}`, `is_hash`), with `hash_key` (`Upstream::hash_key`) and
+  `sticky_cookie` (`akit_config::StickyCookie`: `name`, default `fit_sticky`
+  (`DEFAULT_STICKY_COOKIE_NAME`), `path`, default `/`, `max_age`, `secure`), with fit's checks and
+  messages: `header_hash` and `cookie_hash` need a `hash_key` that is a token, no other policy
+  takes one, and the cookie's name is a token and its path starts with `/` and holds no `;`.
+- `akit_upstream::balance`, fit's `upstream/hash.go`: **random** draws by weight among the
+  addresses up (all when none is); **p2c** draws two distinct addresses and takes the one with
+  fewer requests under way (busy plus waiting, as `least_conn` reads them) for its weight, drawing
+  again from those up for a choice that is down. Each thread draws from a wyrand generator of its
+  own (seeded from std's random hash keys), so a draw writes nothing shared (rule 13).
+- **Consistent hashing**: a ring of 160 points per unit of weight for each address, at fit's
+  hashes (FNV-1a with MurmurHash3's finish) of `address#i`, sorted by hash then address, built when
+  the config is compiled; a key goes to the first point at or after its hash, or past it to the
+  first whose address is up (a ring with every address down is not walked). The keys:
+  `ip_hash` the client's IP address (an IPv4-mapped IPv6 address as IPv4), hashed as text without
+  formatting it into a buffer; `uri_hash` the path the route matched and the query; `header_hash`
+  the first value of the header; `cookie_hash` the cookie, as fit's `cookieValue` reads it. A
+  request without its key goes in turn. `Balancer::keyed`, `Balancer::key` and
+  `Balancer::pick_keyed` take the addresses, hash a request's `Keys` and pick by the hash.
+- **Sticky cookie** (`akit_upstream::sticky`): a request whose cookie names an address that is up
+  goes there; the response to any other carries `Set-Cookie` naming the address it went to (after
+  the upstream's own), its value fit's `StickyID` (the first 64 bits of the address's SHA-256 in
+  hex, on akio-crypto), so akit and fit with the same addresses agree. The ids, sorted for a binary
+  search, and each address's whole `Set-Cookie` value are made at compile time (rule 12).
+- The pool: `Pool::pick_for(&Keys)` (the sticky cookie, then the balancer), `Pool::set_cookie`,
+  `Pool::is_sticky`; `Pool::pick` keeps its meaning (no request: hashes go in turn). The proxy
+  picks with the request's peer, canonical path, query and fields (as the middleware left them) and
+  hands the relay the `Set-Cookie` to add, copied only when one is to be set.
+- Tests: `akit-upstream/tests/hash.rs` (13), fit's `TestRandom`, `TestP2C`, `TestP2COneUp`,
+  `TestPickSkipsDownNewPolicies`, `TestWeightedRandomAllDown`, `TestHashDistribution`,
+  `TestHashStable`, `TestHashKeys`, `TestHashRingEdges`, `TestSticky` (on a pool with an address
+  taken down by a failure) and `TestStickyNilRequest`, ported; the ring bounded; and the picks of
+  fit's own `upstream` package for the same keys (ip, uri and header hashes over four weighted
+  addresses, and `StickyID`), which akit's match exactly. `akit-upstream/tests/no_alloc.rs`, fit's
+  `TestNewPoliciesAllocs`: no pick of any of the nine policies allocates, with a key and an address
+  down, nor does a pool's sticky pick and its `set_cookie` (counted by `stats_alloc`, a
+  dev-dependency, as akit-router's). `akit-proxy/tests/balance.rs` (3), fit's `TestStickyCookie`
+  (responses sent whole and streamed) and `TestHeaderHash`, and uri and ip hashes end to end.
+  `akit-config/tests/upstreams.rs`: the policies, fit's `TestHashedPolicyConfig`, the cookie's
+  defaults and values. The gate's samples for the six new paths.
+- Checked: `make check` on macOS; the tests of akit-config, akit-upstream, akit-proxy and
+  akit-compat on Linux (the benchmark host), epoll and io_uring. The gate (`make compat-bless`):
+  `examples/l4-udp` no longer refuses `ip_hash` and `examples/load-balancing` no longer refuses
+  `sticky_cookie` (fields refused 66 to 64); each still refuses other fields. No benchmark was run
+  (rule 30); what to measure is in the dev plan's status table.
+- Differences from fit:
+  - A ring holds at most `MAX_RING_POINTS` (2^20) points: past weights summing to 6,553, each unit
+    of weight gets fewer than 160, which spreads keys a little less evenly; fit's ring grows
+    without bound. Below that, keys land exactly where fit's do.
+  - `uri_hash` hashes the canonical path the route matched (as sent, percent-encoded), where fit
+    hashes Go's decoded `URL.Path`; keys whose paths have escapes may land elsewhere than in fit.
+  - Random draws come from a per-thread wyrand generator rather than Go's `math/rand/v2`; the
+    shares are the same.
 
 ### 2026-11-24: I28, listeners diffed at run time
 

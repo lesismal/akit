@@ -19,6 +19,10 @@
 //!   to the pool, and answers from the pool's callbacks. A request that gets no response is
 //!   answered as fit answers it: 502, or 503 when the pool is full or closed, or 504 when it
 //!   timed out.
+//! - The address is the one the upstream's sticky cookie names, when it has one and the address
+//!   is up, or else the one its `load_balancing` picks, which for a hash policy hashes the
+//!   client's address, the path the route matched and the query, or a field (I36). A response
+//!   that should set the sticky cookie gets its `Set-Cookie` after the upstream's own.
 //! - With an access log (I21), the request's line names the upstream address it went to and how
 //!   long the upstream took to answer.
 //!
@@ -77,7 +81,7 @@ use std::time::{Duration, Instant};
 use akio_http::client::{ClientError, ClientRequest};
 use akio_http::{BodyMode, Context, Method, Request, Response};
 use akit_config::Network;
-use akit_runtime::upstream::{Error, Pool};
+use akit_runtime::upstream::{Error, Keys, Pool};
 use akit_runtime::{
     CANONICAL_PATH, Handler, HandlerParams, Info, MAX_BODY_BYTES, Provision, ProvisionError,
     Provisioned, TLS,
@@ -133,10 +137,22 @@ impl akio_http::Service for Proxy {
             peer: req.peer,
             tls: ctx.local(TLS).is_some(),
         };
-        let Ok(fields) = headers::outgoing(&client, &self.trusted, &self.host_header) else {
+        let Ok(out_fields) = headers::outgoing(&client, &self.trusted, &self.host_header) else {
             ctx.respond(fail(400));
             return;
         };
+        // The address, by the upstream's sticky cookie and load balancing, which may hash the
+        // client's address, the path and query, or a field (I36); and the sticky cookie the
+        // response sets, copied only when there is one to set.
+        let keys = Keys {
+            peer: Some(req.peer.ip()),
+            path: ctx.local(CANONICAL_PATH).unwrap_or_else(|| req.path()),
+            query: req.query().unwrap_or(""),
+            headers: Some(&fields),
+        };
+        let backend = self.pool.pick_for(&keys);
+        let set_cookie = self.pool.set_cookie(&keys, backend).map(str::to_owned);
+        let fields = out_fields;
         let mut out = ClientRequest::new(req.method.clone(), &target(ctx));
         out.headers = fields;
         // The shorter of it and the upstream's response_timeout holds (akit-upstream).
@@ -174,7 +190,6 @@ impl akio_http::Service for Proxy {
             // A copy: the body is the request's, and goes on with the context (rule 6).
             out.body = ctx.req().body.clone();
         }
-        let backend = self.pool.pick();
         // The access log's line names the address the request went to and how long it took
         // (fit's upstream and upstream_duration): the line is written as the response is sent.
         let log = akit_observe::logged().then(|| relay::Logged {
@@ -186,7 +201,7 @@ impl akio_http::Service for Proxy {
                 .to_owned(),
             start: Instant::now(),
         });
-        let x = relay::Relay::new(client, head, version, chunked, log);
+        let x = relay::Relay::new(client, head, version, chunked, log, set_cookie);
         self.pool.stream(backend, out, x);
     }
 

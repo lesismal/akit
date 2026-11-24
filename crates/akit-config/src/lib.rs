@@ -42,10 +42,10 @@ pub use model::{
     DEFAULT_HEALTH_THRESHOLD, DEFAULT_HEALTH_TIMEOUT, DEFAULT_IDLE_TIMEOUT, DEFAULT_MAX_BODY_BYTES,
     DEFAULT_MAX_CONNS, DEFAULT_MAX_FAILS, DEFAULT_MAX_FILE_BYTES, DEFAULT_MAX_IDLE_CONNS,
     DEFAULT_MAX_PENDING, DEFAULT_PROTOCOLS, DEFAULT_RATE_MAX_KEYS, DEFAULT_RESPONSE_TIMEOUT,
-    DEFAULT_TLS_PROTOCOLS, Dotfiles, Encoding, Handler, HeaderOps, Headers, HealthCheck,
-    HealthCheckType, Limits, Listener, LoadBalancing, LogFormat, MAX_WEIGHT, Match, Metrics,
-    Network, Protocol, Proxy, RateKey, RateLimit, Redirect, Respond, Rewrite, Route,
-    SCHEMA_VERSION, Static, Tls, TlsVersion, Upstream,
+    DEFAULT_STICKY_COOKIE_NAME, DEFAULT_TLS_PROTOCOLS, Dotfiles, Encoding, Handler, HeaderOps,
+    Headers, HealthCheck, HealthCheckType, Limits, Listener, LoadBalancing, LogFormat, MAX_WEIGHT,
+    Match, Metrics, Network, Protocol, Proxy, RateKey, RateLimit, Redirect, Respond, Rewrite,
+    Route, SCHEMA_VERSION, Static, StickyCookie, Tls, TlsVersion, Upstream,
 };
 
 /// The largest config document read, in bytes: fit's own configs are kilobytes; this bounds
