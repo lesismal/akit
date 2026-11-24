@@ -11,14 +11,80 @@ done and where the work differs from the plan.
 | | |
 | --- | --- |
 | Last updated | 2026-11-24 |
-| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I24 and I17b done (I18b waits on akio); M2's I26–I33 and I35–I37 and M3's I39–I43 and I51 done early. |
+| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I24 and I17b done (I18b waits on akio); M2's I26–I33 and I35–I37 and M3's I39–I44 and I51 done early. |
 | akio | `4f7169c4` on akio's `main` (`1.0.0-rc.1`, with A1–A8, A11, A13, A16–A21, A36–A38 and A63–A65), pinned by `rev` in `Cargo.toml` |
 | fit | the specification; read at `7daee573` for this plan |
-| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept (as fit's `binding.same`: certificate files and ACME names may change), added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication; certificates chosen per handshake as fit's, replaced by a reload or by `-watch-certs` without closing the listener) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; route middleware: `rewrite` (prefixes), `redirect`, `headers`, `rate_limit`, `concurrency_limit`, `body_limit`, `basic_auth` (bcrypt, checked on akio's pool), `client_cert` (mTLS per route) and `forward_auth` (an auth service asked on akio's client, the request suspended meanwhile); the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`, bodies streamed both ways with linked backpressure, trailers both ways, `timeout` and the upstream's `response_timeout`, `response_header_timeout` and `response_idle_timeout`, 504 for timeouts, the upstream request given up whenever the client goes; upstreams over HTTP/1.1, h2c and h2); `limits.max_body_bytes` on every listener (413) and in the proxy, and `limits.write_stall_timeout` (changed by a reload too); access logs in fit's json, text and line formats; upstream pools with fit's nine load balancing policies (round robin, weighted round robin, least connections, random, p2c, and consistent hashing of the client's IP, the path, a header or a cookie) and sticky cookies, passing over addresses taken out by passive health checks (`max_fails`, `fail_timeout`) and by active ones (`health_check`: http and tcp probes); the Admin API on loopback (`GET /config`, by JSON pointer too, `POST /load`, edits by pointer with `PUT`, `PATCH` and `DELETE /config`, `POST /rollback/{n}`, `POST /reload`, each with `If-Match` and all but a rollback with `?dry_run=1`, `GET /versions`; with `token_file`, a bearer token on every request), changes applied as SIGHUP's reloads, one history for both; `run -watch` applying the config's files each time they change (fit's file provider, polled); Prometheus metrics at the Admin API's `GET /metrics` (requests by listener and route with `metrics`, upstreams and backends, certificates, connections, reloads, akio's engine); certificates obtained with ACME through HTTP-01 or TLS-ALPN-01 for the names listeners list in `tls.acme`, kept in a storage and renewed by their lifetime or the CA's renewal information (ARI), their OCSP responses stapled; HTTPS by default (`auto_https`): a config that writes no listeners served on HTTPS with its routes' host names' certificates and on HTTP redirected to it (308), an empty `tls` given its routes' names; the compatibility gate: 80 fixtures, 22 valid, 57 refused only as not supported yet19 validlayer 4 `services` (I51): `tcp` and `udp` listeners proxied to an upstream's addresses, backpressure linked both ways, idle timeouts, `max_conns`, drained after a reload; the compatibility gate: 80 fixtures, 19 valid, 60 refused only as not supported yet, 1 skipped, none failed |
+| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept (as fit's `binding.same`: certificate files and ACME names may change), added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication; certificates chosen per handshake as fit's, replaced by a reload or by `-watch-certs` without closing the listener) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; route middleware: `rewrite` (prefixes), `redirect`, `headers`, `rate_limit`, `concurrency_limit`, `body_limit`, `basic_auth` (bcrypt, checked on akio's pool), `client_cert` (mTLS per route), `forward_auth` (an auth service asked on akio's client, the request suspended meanwhile) and `jwt` (JSON Web Tokens verified with akio-crypto, keys from PEM files, a secret or a JWK set fetched by akio's client and rotated); the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`, bodies streamed both ways with linked backpressure, trailers both ways, `timeout` and the upstream's `response_timeout`, `response_header_timeout` and `response_idle_timeout`, 504 for timeouts, the upstream request given up whenever the client goes; upstreams over HTTP/1.1, h2c and h2); `limits.max_body_bytes` on every listener (413) and in the proxy, and `limits.write_stall_timeout` (changed by a reload too); access logs in fit's json, text and line formats; upstream pools with fit's nine load balancing policies (round robin, weighted round robin, least connections, random, p2c, and consistent hashing of the client's IP, the path, a header or a cookie) and sticky cookies, passing over addresses taken out by passive health checks (`max_fails`, `fail_timeout`) and by active ones (`health_check`: http and tcp probes); the Admin API on loopback (`GET /config`, by JSON pointer too, `POST /load`, edits by pointer with `PUT`, `PATCH` and `DELETE /config`, `POST /rollback/{n}`, `POST /reload`, each with `If-Match` and all but a rollback with `?dry_run=1`, `GET /versions`; with `token_file`, a bearer token on every request), changes applied as SIGHUP's reloads, one history for both; `run -watch` applying the config's files each time they change (fit's file provider, polled); Prometheus metrics at the Admin API's `GET /metrics` (requests by listener and route with `metrics`, upstreams and backends, certificates, connections, reloads, akio's engine); certificates obtained with ACME through HTTP-01 or TLS-ALPN-01 for the names listeners list in `tls.acme`, kept in a storage and renewed by their lifetime or the CA's renewal information (ARI), their OCSP responses stapled; HTTPS by default (`auto_https`): a config that writes no listeners served on HTTPS with its routes' host names' certificates and on HTTP redirected to it (308), an empty `tls` given its routes' names; layer 4 `services` (I51): `tcp` and `udp` listeners proxied to an upstream's addresses, backpressure linked both ways, idle timeouts, `max_conns`, drained after a reload; the compatibility gate: 80 fixtures, 23 valid, 56 refused only as not supported yet, 1 skipped, none failed |
 | Next | I18b once akio has A51–A53 and A66 |
 | akio requests | A1–A8, A11, A13, A16–A21, A36–A38 and A63–A65 on akio's main and pinned; A9, A10, A12, A14, A15, A22–A24, A29, A30, A32, A33, A35, A45, A48, A49, A51–A54, A57, A58, A66, A75, A78 and A79 requested ([akio API requests](akio-api-requests.md)) |
 
 ## Log
+
+### 2026-11-24: I44, JWT and JWKS
+
+- `akit-config` reads fit's `jwt` (`jwks_url`, `jwks_refresh_interval` and its old name
+  `jwks_refresh`, `public_key_files`, `hmac_secret_file`, `algorithms`, `issuer`, `audience`,
+  `leeway`, `token_from`, `claims_headers`) into `Handler::Jwt`, with the checks of fit's
+  `Provision` that need no file and its messages: a key is needed, `jwks_url` an http or https URL
+  with a host, `algorithms` one of fit's thirteen (`JWT_ALGORITHMS`), `token_from` `header`,
+  `header:Name`, `cookie:name` or `query:name`, `claims_headers` fields HTTP tokens naming a claim;
+  `jwks_refresh_interval` 1h when left out or 0. Both names of the refresh interval given is an
+  error, as in fit (akit has no warnings, so the old name is taken silently). It leaves
+  `FIT_MIDDLEWARE`.
+- `akit-middleware` `jws`: tokens taken apart as fit's `parseToken` (16 KiB at most, three parts,
+  base64url, a JSON header whose `alg` and `kid` are strings, no `crit`) and verified with
+  akio-crypto: RS256/384/512 and PS256/384/512 (`rsa::PublicKey`, PSS salt the hash's length),
+  ES256/384/512 (P-256, P-384, P-521, the fixed `r || s` form), EdDSA (Ed25519) and HS256/384/512
+  (a whole tag compared in constant time). A key fits only its kind and size, a JWK with `alg` only
+  that algorithm, an HMAC key only the config's secret; `none` never. Keys from PEM files (`PUBLIC
+  KEY`, `RSA PUBLIC KEY`, `CERTIFICATE`; others skipped) and an HMAC secret file of at least 32
+  bytes, read when the middleware is provisioned (1 MiB each at most); JWK sets parsed as fit's
+  `parseJWKS` (keys for encryption, of other types, for HMAC or that do not parse left out; RSA
+  below 2048 bits and EC points off their curve refused).
+- `akit-middleware` `jwt`: the token from `Authorization: Bearer`, a field, a cookie or a query
+  parameter, as fit finds it; `exp` required and `nbf` optional, within `leeway`, `iss` and `aud`
+  checked as fit's `check`; 401 with `Bearer realm="fit"` (and `error="invalid_token"` when a token
+  was sent). A verified token is kept in a cache of the I/O thread's own, by its SHA-256 (1024 per
+  thread), valid while the keys keep their generation (one atomic load per request), its
+  `exp`/`nbf` checked on every use, and the values of its `claims_headers` fields kept with it: a
+  token used again costs a hash and a lookup. `claims_headers` sets fields to claims (a string as
+  it is, anything else as Go's `json.Marshal` writes it, made safe for a field), after removing
+  every spelling of them the client sent.
+- `akit-middleware` `jwks`: the JWK set fetched with akio's client on akit's engine (the engine
+  slot's `when_set`, now public in akit-upstream) when it is set, every
+  `jwks_refresh_interval`, and when a token names a kid the set lacks, at most every 10s (fit's
+  `minRefetch`); 1 MiB, a 200 only, 10s, ten redirects at most. Parsed in the client's callback;
+  the refresh and delayed fetches are jobs on akit's timer thread. A failed fetch keeps the keys.
+  A request whose token names an unknown kid, or any before the first fetch, waits for the fetch
+  suspended (`Context::suspend`, A65), at most 1024 at once (past that, 401), and is verified again
+  on the thread the fetch ends on; one checked against a set replaced since is verified at once.
+  When the config is released, a fetch under way is cancelled and the requests waiting are
+  verified with the keys there are.
+- A request whose body would stream to its handler cannot be suspended (ADR-109): `jwt`'s
+  `body_mode` asks for it whole only when the request may wait for the set (before the first fetch,
+  or a kid the set lacks), within the listener's `max_body_bytes`; other requests stream. A75
+  would let them stream too.
+- Tests: unit tests of the key set's lookup, tokens taken apart and claims refused, algorithms and
+  keys that fit them, Go's JSON writing, NumericDates, JWK keys and sets, the claims and the clock,
+  where tokens are found, the cache (other keys, another middleware, the bound), the key files'
+  errors, waiting against a stale set, the waiters' bound and a failed fetch keeping the keys.
+  `tests/jwt.rs` through akit's listener: fit's `TestJWTAlgorithms`, `TestJWTClaims` (and a kept
+  token expiring), `TestJWTTokenFrom`, `TestJWTClaimsHeaders`, `TestJWTParams` and `TestJWTMore`'s
+  params, `TestJWKSRotation`, `TestJWKSRefresh` (with `TestJWKSGet`'s failures: bad JSON, 500, too
+  large, cut), `TestJWTClientGoneWaiting`; a JWK set out of reach and back; bodies of 200 KiB
+  through `jwt` to the `proxy` handler, one waiting for the set. fit's RSA keys are generated per
+  run; akio-crypto makes none, so two 2048-bit test keys are in `tests/data`.
+- Compatibility gate: 13 fields more in `tests/compat/supported.txt`; `make compat-bless`:
+  `examples/jwt` is valid, `examples/whip-whep` no longer refused for `jwt` (80 fixtures: 23 valid,
+  56 refused only as not supported yet, 1 skipped, none failed). The garbled gate counts of the
+  status table's "What works" fixed in passing.
+- Differs from fit: claims are not passed to later middleware nor the user to the access log
+  (A29), as for I42; a token's JSON may hold what akit-config's reader allows (comments, trailing
+  commas) and not a key twice; RSA keys below 2048 bits from PEM files are refused (akio-crypto's
+  bound); the cache is per I/O thread rather than 16 shared shards; a request that may wait has its
+  streamed body read whole first (A75).
+- To measure, in the maintainer's benchmark tasks (rule 30): see the dev plan's benchmark row for
+  I44.
 
 ### 2026-11-24: I51, TCP and UDP proxying
 

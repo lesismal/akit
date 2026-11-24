@@ -47,7 +47,7 @@ use akit_runtime::{
 use crate::url::canonical_key;
 
 /// fit's (Go's) body of a 401.
-const UNAUTHORIZED: &str = "Unauthorized\n";
+pub(crate) const UNAUTHORIZED: &str = "Unauthorized\n";
 
 /// fit's (Go's) body of a 403.
 const FORBIDDEN: &str = "Forbidden\n";
@@ -668,7 +668,7 @@ fn hex(b: &[u8]) -> String {
 
 /// `s` with the bytes a field value may not hold, the control characters but tab, replaced by
 /// `?`, as fit's `headerSafe`.
-fn header_safe(s: &str) -> String {
+pub(crate) fn header_safe(s: &str) -> String {
     s.chars()
         .map(|c| {
             if (c < ' ' && c != '\t') || c == '\x7f' {

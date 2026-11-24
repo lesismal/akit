@@ -758,6 +758,8 @@ pub enum Handler {
     ClientCert(ClientCert),
     /// The `forward_auth` middleware: an auth service asked whether a request may go on (I43).
     ForwardAuth(ForwardAuth),
+    /// The `jwt` middleware: a JSON Web Token checked with keys from files or a JWK set (I44).
+    Jwt(Jwt),
 }
 
 impl Handler {
@@ -777,6 +779,7 @@ impl Handler {
             Handler::BasicAuth(_) => "basic_auth",
             Handler::ClientCert(_) => "client_cert",
             Handler::ForwardAuth(_) => "forward_auth",
+            Handler::Jwt(_) => "jwt",
         }
     }
 
@@ -794,6 +797,7 @@ impl Handler {
                 | Handler::BasicAuth(_)
                 | Handler::ClientCert(_)
                 | Handler::ForwardAuth(_)
+                | Handler::Jwt(_)
         )
     }
 }
@@ -987,6 +991,58 @@ pub struct ForwardAuth {
 
 /// fit's `forward_auth` `timeout` when left out (`DefaultForwardAuthTimeout`).
 pub const DEFAULT_FORWARD_AUTH_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// The `jwt` middleware's params, as fit's `middleware/auth` `JWT`, checked as its `Provision`
+/// checks them, but for the key files, which the middleware reads when it is provisioned.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Jwt {
+    /// `jwks_url`: an `http` or `https` URL of a JWK set (RFC 7517); empty when left out.
+    pub jwks_url: String,
+    /// `jwks_refresh_interval` (or its old name, `jwks_refresh`): how often the JWK set is
+    /// fetched again; [`DEFAULT_JWKS_REFRESH_INTERVAL`] when left out or 0.
+    pub jwks_refresh_interval: Duration,
+    /// `public_key_files`: PEM files of public keys or certificates.
+    pub public_key_files: Vec<String>,
+    /// `hmac_secret_file`: a file holding the HMAC secret; empty when left out.
+    pub hmac_secret_file: String,
+    /// `algorithms`: those tokens may be signed with, each one of [`JWT_ALGORITHMS`]; any that
+    /// fits the keys when empty.
+    pub algorithms: Vec<String>,
+    /// `issuer`: the `iss` a token must have; any when empty.
+    pub issuer: String,
+    /// `audience`: audiences of which a token's `aud` must name one; any when empty.
+    pub audience: Vec<String>,
+    /// `leeway`: how far `exp` and `nbf` may be off; none when left out.
+    pub leeway: Duration,
+    /// `token_from`: where the token is.
+    pub token_from: TokenFrom,
+    /// `claims_headers`: request fields set to claims, as (field, claim), in the order written.
+    /// Each field an HTTP token, each claim not empty.
+    pub claims_headers: Vec<(String, String)>,
+}
+
+/// Where the `jwt` middleware finds a request's token: its `token_from`.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum TokenFrom {
+    /// `header` (the default): after `Bearer ` in the `Authorization` field.
+    #[default]
+    Authorization,
+    /// `header:Name`: the whole of that field. The name as written, an HTTP token.
+    Header(String),
+    /// `cookie:name`: the cookie of that name. An HTTP token.
+    Cookie(String),
+    /// `query:name`: the query parameter of that name; not empty.
+    Query(String),
+}
+
+/// fit's `jwks_refresh_interval` when left out (`defaultRefresh`).
+pub const DEFAULT_JWKS_REFRESH_INTERVAL: Duration = Duration::from_secs(3600);
+
+/// The algorithms the `jwt` middleware verifies, as fit's `algorithms` enum lists them.
+pub const JWT_ALGORITHMS: [&str; 13] = [
+    "RS256", "RS384", "RS512", "PS256", "PS384", "PS512", "ES256", "ES384", "ES512", "EdDSA",
+    "HS256", "HS384", "HS512",
+];
 
 /// The `respond` handler's params.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1344,7 +1400,7 @@ const FIT_HANDLERS: &[&str] = &[
     "whip",
 ];
 /// fit's middleware modules (its `http.middleware` namespace) that akit does not have yet.
-const FIT_MIDDLEWARE: &[&str] = &["cache", "circuit_breaker", "compress", "jwt", "wasm"];
+const FIT_MIDDLEWARE: &[&str] = &["cache", "circuit_breaker", "compress", "wasm"];
 const REWRITE_FIELDS: &[&str] = &["strip_prefix", "add_prefix"];
 /// akio-regex answers whether a pattern matches, not where (akio API request A32).
 const REWRITE_FIT_ONLY: &[&str] = &["regexp", "replacement"];
@@ -1371,6 +1427,19 @@ const FORWARD_AUTH_FIELDS: &[&str] = &[
     "request_headers",
     "copy_headers",
     "timeout",
+];
+const JWT_FIELDS: &[&str] = &[
+    "jwks_url",
+    "jwks_refresh_interval",
+    "jwks_refresh",
+    "public_key_files",
+    "hmac_secret_file",
+    "algorithms",
+    "issuer",
+    "audience",
+    "leeway",
+    "token_from",
+    "claims_headers",
 ];
 const RESPOND_FIELDS: &[&str] = &["status", "headers", "body"];
 const STATIC_FIELDS: &[&str] = &[
@@ -2565,6 +2634,7 @@ fn middleware(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Handler> {
         "basic_auth" => basic_auth(d, params, off, &params_path).map(Handler::BasicAuth),
         "client_cert" => client_cert(d, params, &params_path).map(Handler::ClientCert),
         "forward_auth" => forward_auth(d, params, off, &params_path).map(Handler::ForwardAuth),
+        "jwt" => jwt(d, params, off, &params_path).map(Handler::Jwt),
         m if FIT_MIDDLEWARE.contains(&m) => {
             d.not_yet(off, &module_path, &format!("the {m:?} middleware"));
             None
@@ -3219,6 +3289,186 @@ fn forward_auth(
         copy_headers,
         timeout,
     })
+}
+
+/// The `jwt` middleware's params, checked as fit's `JWT.Provision` checks them, but for the key
+/// files, which the middleware reads.
+fn jwt(d: &mut Decoder<'_>, params: Option<&Node>, off: usize, path: &str) -> Option<Jwt> {
+    let Some(n) = params else {
+        d.error(
+            off,
+            path,
+            "a key is needed: jwks_url, public_key_files or hmac_secret_file",
+        );
+        return None;
+    };
+    let mut o = d.object(n, path)?;
+    let mut ok = true;
+    let string = |d: &mut Decoder<'_>, o: &mut Obj<'_>, key: &str, ok: &mut bool| {
+        o.take(key).map_or_else(String::new, |v| {
+            d.string(v, &o.at(key)).unwrap_or_else(|| {
+                *ok = false;
+                String::new()
+            })
+        })
+    };
+    let url_off = o.take("jwks_url").map_or(n.off, |v| v.off);
+    let jwks_url = string(d, &mut o, "jwks_url", &mut ok);
+    if !jwks_url.is_empty() && !is_http_url(&jwks_url) {
+        d.error(
+            url_off,
+            &o.at("jwks_url"),
+            format!("{jwks_url:?} is not an http or https URL"),
+        );
+        ok = false;
+    }
+    let mut jwks_refresh_interval = DEFAULT_JWKS_REFRESH_INTERVAL;
+    let new_name = o.has("jwks_refresh_interval");
+    for key in ["jwks_refresh_interval", "jwks_refresh"] {
+        let Some(v) = o.take(key) else { continue };
+        if key == "jwks_refresh" && new_name {
+            d.error(
+                v.off,
+                &o.at(key),
+                "\"jwks_refresh\" is the old name of \"jwks_refresh_interval\"; give only \"jwks_refresh_interval\"",
+            );
+            ok = false;
+            continue;
+        }
+        match d.duration(v, &o.at(key)) {
+            Some(t) if !t.is_zero() => jwks_refresh_interval = t,
+            Some(_) => {}
+            None => ok = false,
+        }
+    }
+    let strings = |d: &mut Decoder<'_>, o: &mut Obj<'_>, key: &str| -> Vec<(usize, String)> {
+        o.take(key)
+            .map_or_else(Vec::new, |v| d.strings(v, &o.at(key)))
+    };
+    let public_key_files: Vec<String> = strings(d, &mut o, "public_key_files")
+        .into_iter()
+        .map(|(_, s)| s)
+        .collect();
+    let hmac_secret_file = string(d, &mut o, "hmac_secret_file", &mut ok);
+    let mut algorithms = Vec::new();
+    let at = o.at("algorithms");
+    for (i, (aoff, a)) in strings(d, &mut o, "algorithms").into_iter().enumerate() {
+        if JWT_ALGORITHMS.contains(&a.as_str()) {
+            algorithms.push(a);
+        } else {
+            let list = JWT_ALGORITHMS
+                .iter()
+                .map(|a| format!("{a:?}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            d.error(
+                aoff,
+                &crate::error::join_index(&at, i),
+                format!("{a:?} is not one of {list}"),
+            );
+            ok = false;
+        }
+    }
+    let issuer = string(d, &mut o, "issuer", &mut ok);
+    let audience = strings(d, &mut o, "audience")
+        .into_iter()
+        .map(|(_, s)| s)
+        .collect();
+    let mut leeway = Duration::ZERO;
+    if let Some(v) = o.take("leeway") {
+        match d.duration(v, &o.at("leeway")) {
+            Some(t) => leeway = t,
+            None => ok = false,
+        }
+    }
+    let mut token_from = TokenFrom::Authorization;
+    if let Some(v) = o.take("token_from") {
+        let p = o.at("token_from");
+        match d.string(v, &p) {
+            Some(f) => match parse_token_from(&f) {
+                Some(t) => token_from = t,
+                None => {
+                    d.error(
+                        v.off,
+                        &p,
+                        format!("{f:?} is not header, header:Name, cookie:name or query:name"),
+                    );
+                    ok = false;
+                }
+            },
+            None => ok = false,
+        }
+    }
+    let mut claims_headers = Vec::new();
+    if let Some(v) = o.take("claims_headers") {
+        let p = o.at("claims_headers");
+        for (koff, field, claim) in d.string_map(v, &p) {
+            if !is_token(&field) {
+                d.error(koff, &p, format!("{field:?} is not a field name"));
+                ok = false;
+            } else if claim.is_empty() {
+                d.error(koff, &p, format!("{field:?} names no claim"));
+                ok = false;
+            } else {
+                claims_headers.push((field, claim));
+            }
+        }
+    }
+    o.finish(d, JWT_FIELDS, &[]);
+    if ok && jwks_url.is_empty() && public_key_files.is_empty() && hmac_secret_file.is_empty() {
+        d.error(
+            n.off,
+            path,
+            "a key is needed: jwks_url, public_key_files or hmac_secret_file",
+        );
+        ok = false;
+    }
+    ok.then_some(Jwt {
+        jwks_url,
+        jwks_refresh_interval,
+        public_key_files,
+        hmac_secret_file,
+        algorithms,
+        issuer,
+        audience,
+        leeway,
+        token_from,
+        claims_headers,
+    })
+}
+
+/// `jwt`'s `token_from`, as fit's `Provision` reads it.
+fn parse_token_from(f: &str) -> Option<TokenFrom> {
+    if f.is_empty() || f == "header" {
+        return Some(TokenFrom::Authorization);
+    }
+    if let Some(n) = f.strip_prefix("header:") {
+        return is_token(n).then(|| TokenFrom::Header(n.to_owned()));
+    }
+    if let Some(n) = f.strip_prefix("cookie:") {
+        return is_token(n).then(|| TokenFrom::Cookie(n.to_owned()));
+    }
+    if let Some(n) = f.strip_prefix("query:") {
+        return (!n.is_empty()).then(|| TokenFrom::Query(n.to_owned()));
+    }
+    None
+}
+
+/// Whether `u` is an absolute `http` or `https` URL with a host, as fit's `jwt` checks its
+/// `jwks_url` (Go's `url.Parse`, its scheme in any case).
+fn is_http_url(u: &str) -> bool {
+    if u.bytes().any(|c| c < 0x20 || c == 0x7f || c == b' ') {
+        return false;
+    }
+    let Some((scheme, rest)) = u.split_once("://") else {
+        return false;
+    };
+    if !scheme.eq_ignore_ascii_case("http") && !scheme.eq_ignore_ascii_case("https") {
+        return false;
+    }
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+    let host = authority.rsplit_once('@').map_or(authority, |(_, h)| h);
+    !host.is_empty() && !host.starts_with(':')
 }
 
 /// Whether `u` is a path, with a query or not, as fit's `forward_auth` takes its `uri` (Go's

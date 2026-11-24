@@ -152,7 +152,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 181 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 194 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -192,7 +192,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`http.middleware/concurrency_limit`](#fields-http-middleware-concurrency-limit) | 4 | 4 | 0 |
 | [`http.middleware/forward_auth`](#fields-http-middleware-forward-auth) | 7 | 7 | 0 |
 | [`http.middleware/headers`](#fields-http-middleware-headers) | 10 | 10 | 0 |
-| [`http.middleware/jwt`](#fields-http-middleware-jwt) | 13 | 0 | 13 |
+| [`http.middleware/jwt`](#fields-http-middleware-jwt) | 13 | 13 | 0 |
 | [`http.middleware/rate_limit`](#fields-http-middleware-rate-limit) | 9 | 9 | 0 |
 | [`http.middleware/redirect`](#fields-http-middleware-redirect) | 5 | 5 | 0 |
 | [`http.middleware/rewrite`](#fields-http-middleware-rewrite) | 6 | 4 | 2 |
@@ -277,7 +277,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 33 | 5 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **合计** | 3821 | 181 | 3640 |
+| **合计** | 3821 | 194 | 3627 |
 
 <a id="fields-access"></a>
 
@@ -1154,19 +1154,19 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
-| `routes[].middleware[]<jwt>` | `module` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<jwt>.params` | `object` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<jwt>.params.algorithms` | `array<enum(RS256\|RS384\|RS512\|PS256\|PS384\|PS512\|ES256\|ES384\|ES512\|EdDSA\|HS256\|HS384\|HS512)>` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<jwt>.params.audience` | `array<string>` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<jwt>.params.claims_headers` | `map<string>` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<jwt>.params.hmac_secret_file` | `string` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<jwt>.params.issuer` | `string` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<jwt>.params.jwks_refresh` | `duration, deprecated` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<jwt>.params.jwks_refresh_interval` | `duration` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<jwt>.params.jwks_url` | `string` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<jwt>.params.leeway` | `duration` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<jwt>.params.public_key_files` | `array<string>` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<jwt>.params.token_from` | `string` | 尚不支持（not supported yet） |
+| `routes[].middleware[]<jwt>` | `module` | 已支持 |
+| `routes[].middleware[]<jwt>.params` | `object` | 已支持 |
+| `routes[].middleware[]<jwt>.params.algorithms` | `array<enum(RS256\|RS384\|RS512\|PS256\|PS384\|PS512\|ES256\|ES384\|ES512\|EdDSA\|HS256\|HS384\|HS512)>` | 已支持 |
+| `routes[].middleware[]<jwt>.params.audience` | `array<string>` | 已支持 |
+| `routes[].middleware[]<jwt>.params.claims_headers` | `map<string>` | 已支持 |
+| `routes[].middleware[]<jwt>.params.hmac_secret_file` | `string` | 已支持 |
+| `routes[].middleware[]<jwt>.params.issuer` | `string` | 已支持 |
+| `routes[].middleware[]<jwt>.params.jwks_refresh` | `duration, deprecated` | 已支持 |
+| `routes[].middleware[]<jwt>.params.jwks_refresh_interval` | `duration` | 已支持 |
+| `routes[].middleware[]<jwt>.params.jwks_url` | `string` | 已支持 |
+| `routes[].middleware[]<jwt>.params.leeway` | `duration` | 已支持 |
+| `routes[].middleware[]<jwt>.params.public_key_files` | `array<string>` | 已支持 |
+| `routes[].middleware[]<jwt>.params.token_from` | `string` | 已支持 |
 
 <a id="fields-http-middleware-rate-limit"></a>
 

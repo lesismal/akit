@@ -185,8 +185,9 @@ impl EngineSlot {
     }
 
     /// Runs `f` with the engine: now, on this thread, if the slot is filled; else on the thread
-    /// that fills it, when it does.
-    fn when_set(&self, f: impl FnOnce(&Arc<Engine>) + Send + 'static) {
+    /// that fills it, when it does (never, for a slot never filled, as in `akit validate`). The
+    /// pools' probes start so (I35), and the `jwt` middleware's JWK set fetches (I44).
+    pub fn when_set(&self, f: impl FnOnce(&Arc<Engine>) + Send + 'static) {
         {
             let mut w = self
                 .0

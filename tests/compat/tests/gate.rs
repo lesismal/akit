@@ -403,6 +403,7 @@ fn supported_fields_are_read() {
     };
     let cert = |params: &str| mw("client_cert", params);
     let forward = |more: &str| mw("forward_auth", &format!(r#""upstream": "auth"{more}"#));
+    let jwt = |more: &str| mw("jwt", &format!(r#""hmac_secret_file": "s"{more}"#));
     let service = |fields: &str| {
         format!(
             r#"{{"listeners": [{{"name": "t", "address": ":7000", "protocols": ["tcp"]}}], "upstreams": [{{"name": "app", "addresses": ["127.0.0.1:9000"]}}], "services": [{{"name": "svc", "listeners": ["t"], "upstream": "app"{fields}}}]}}"#
@@ -1112,6 +1113,68 @@ fn supported_fields_are_read() {
             forward(r#", "timeout": "5s""#),
             |c| forward_of(c).timeout == std::time::Duration::from_secs(5),
         ),
+        ("routes[].middleware[]<jwt>", jwt(""), |c| {
+            matches!(c.routes[0].middleware[0], Handler::Jwt(_))
+        }),
+        ("routes[].middleware[]<jwt>.params", jwt(""), |c| {
+            jwt_of(c).jwks_refresh_interval == std::time::Duration::from_secs(3600)
+                && jwt_of(c).token_from == akit_config::TokenFrom::Authorization
+        }),
+        (
+            "routes[].middleware[]<jwt>.params.jwks_url",
+            jwt(r#", "jwks_url": "https://idp.example/keys""#),
+            |c| jwt_of(c).jwks_url == "https://idp.example/keys",
+        ),
+        (
+            "routes[].middleware[]<jwt>.params.jwks_refresh_interval",
+            jwt(r#", "jwks_refresh_interval": "10m""#),
+            |c| jwt_of(c).jwks_refresh_interval == std::time::Duration::from_secs(600),
+        ),
+        (
+            "routes[].middleware[]<jwt>.params.jwks_refresh",
+            jwt(r#", "jwks_refresh": "10m""#),
+            |c| jwt_of(c).jwks_refresh_interval == std::time::Duration::from_secs(600),
+        ),
+        (
+            "routes[].middleware[]<jwt>.params.public_key_files",
+            jwt(r#", "public_key_files": ["k.pem"]"#),
+            |c| jwt_of(c).public_key_files == ["k.pem"],
+        ),
+        (
+            "routes[].middleware[]<jwt>.params.hmac_secret_file",
+            jwt(""),
+            |c| jwt_of(c).hmac_secret_file == "s",
+        ),
+        (
+            "routes[].middleware[]<jwt>.params.algorithms",
+            jwt(r#", "algorithms": ["RS256", "EdDSA"]"#),
+            |c| jwt_of(c).algorithms == ["RS256", "EdDSA"],
+        ),
+        (
+            "routes[].middleware[]<jwt>.params.issuer",
+            jwt(r#", "issuer": "https://idp.example""#),
+            |c| jwt_of(c).issuer == "https://idp.example",
+        ),
+        (
+            "routes[].middleware[]<jwt>.params.audience",
+            jwt(r#", "audience": ["api"]"#),
+            |c| jwt_of(c).audience == ["api"],
+        ),
+        (
+            "routes[].middleware[]<jwt>.params.leeway",
+            jwt(r#", "leeway": "30s""#),
+            |c| jwt_of(c).leeway == std::time::Duration::from_secs(30),
+        ),
+        (
+            "routes[].middleware[]<jwt>.params.token_from",
+            jwt(r#", "token_from": "query:access_token""#),
+            |c| jwt_of(c).token_from == akit_config::TokenFrom::Query("access_token".into()),
+        ),
+        (
+            "routes[].middleware[]<jwt>.params.claims_headers",
+            jwt(r#", "claims_headers": {"X-User": "sub"}"#),
+            |c| jwt_of(c).claims_headers == [("X-User".to_owned(), "sub".to_owned())],
+        ),
         ("upstreams", upstream(""), |c| c.upstreams.len() == 1),
         ("upstreams[].name", upstream(""), |c| {
             c.upstreams[0].name == "app"
@@ -1405,6 +1468,14 @@ fn basic_of(c: &Config) -> &akit_config::BasicAuth {
     .unwrap()
 }
 
+fn jwt_of(c: &Config) -> &akit_config::Jwt {
+    match c.routes.first().unwrap().middleware.first().unwrap() {
+        Handler::Jwt(j) => Some(j),
+        _ => None,
+    }
+    .unwrap()
+}
+
 fn forward_of(c: &Config) -> &akit_config::ForwardAuth {
     match c.routes.first().unwrap().middleware.first().unwrap() {
         Handler::ForwardAuth(f) => Some(f),
@@ -1464,7 +1535,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 33] = [
+    let objects: [(&str, &str, Option<&str>); 34] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         ("admin", "ADMIN_FIELDS", Some("ADMIN_FIT_ONLY")),
         ("acme", "ACME_FIELDS", Some("ACME_FIT_ONLY")),
@@ -1558,6 +1629,7 @@ fn akit_config_lists_match_the_inventory() {
             "FORWARD_AUTH_FIELDS",
             None,
         ),
+        ("routes[].middleware[]<jwt>.params", "JWT_FIELDS", None),
     ];
     let mapped: BTreeSet<&str> = objects
         .iter()
@@ -1648,6 +1720,7 @@ fn akit_config_lists_match_the_inventory() {
         "basic_auth",
         "client_cert",
         "forward_auth",
+        "jwt",
     ] {
         assert!(middleware.insert(m.to_owned()), "FIT_MIDDLEWARE lists {m}");
         read.insert(format!("routes[].middleware[]<{m}>"));

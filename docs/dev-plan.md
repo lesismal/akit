@@ -145,7 +145,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I41 | Rate, concurrency and size limits | I39 | done |
 | I42 | Basic auth and mTLS | I39 | done |
 | I43 | ForwardAuth | I42 | done |
-| I44 | JWT and JWKS | I42 | todo |
+| I44 | JWT and JWKS | I42 | done |
 | I45 | Retries, circuit breakers, route timeouts | I17 | todo |
 | I46 | Weighted services, mirroring, failover | I45 | todo |
 | I47 | Compression | I16 | todo |
@@ -221,7 +221,8 @@ commit and result.
 | Rate, concurrency and size limits | I41 | no | no (built, not measured) | Same-run A/B on the proxy scenario of a route with each limit set high enough never to refuse, against the route without it: `rate_limit` by ip and by header (a shard lock, a SipHash, a map lookup), with 1, 1000 and 1000000 clients' keys and 64 threads (the shards' contention), as fit's `BenchmarkRate`; `concurrency_limit` (two atomic operations on one shared line, and a boxed response filter with an `Arc` clone until akio A48); `body_limit` (nothing per request but a field lookup). |
 | Basic auth and client certificates | I42 | no | no (built, not measured) | Same-run A/B on the proxy scenario of a route with `basic_auth` (a remembered password: a base64 decode, an HMAC-SHA-256 and the request's fields rewritten into a context local until akio A33) and with `client_cert` and `subject_header` (the subject cached per thread), against the route without them, over HTTP/1.1, h2 and h3; the first check of a password (a suspension and a hop to akio's pool and back) at a few hundred new users a second, and a flood of wrong passwords against remembered users' latency. |
 | Forward auth | I43 | no | no (built, not measured) | Same-run A/B on the proxy scenario of a route with `forward_auth` against a fast local auth service, against the route without it, over HTTP/1.1 and h2: the cost of the check (the auth request's fields built, a suspension, one exchange on the auth upstream's pool, the resume on the answer's I/O thread); latency and memory with thousands of requests waiting on a slow auth service, and the fast route's latency meanwhile. |
-| Middlewares (retries and the rest) | I44–I48 | no | no (not built yet) | I56 benchmarks every middleware; same-run A/B of each on the proxy scenario. |
+| JWT and JWKS | I44 | no | no (built, not measured) | Same-run A/B on the proxy scenario of a route with `jwt` against the route without it, over HTTP/1.1 and h2, by algorithm (HS256, EdDSA, ES256, RS256), with the token kept verified (a SHA-256 and a per-thread map lookup, the claims fields rewritten into a context local until akio A33) and verified anew (many distinct tokens: the signature check on the I/O thread), as fit's `BenchmarkJWT`; the latency of requests waiting for a JWK set fetch, and of other routes meanwhile. |
+| Middlewares (retries and the rest) | I45–I48 | no | no (not built yet) | I56 benchmarks every middleware; same-run A/B of each on the proxy scenario. |
 | Compression | I47 | no | no (not built yet) | Against fit, each encoding, as I47 asks. |
 | WebSocket and gRPC proxying | I49, I50 | no | no (not built yet) | Messages a second and memory per connection against fit. |
 | TCP and UDP proxying, SNI routing, many protocols on one port | I51–I53 | no | no (I51 built, not measured; I52, I53 not built yet) | Against fit and nginx's `stream`, as I51 asks: TCP throughput (fit's `BenchmarkTCPProxy`, 256 KB echoed at a time, direct and through akit), connections a second, memory per idle connection; UDP datagrams a second and sessions at once; the per-service idle sweep on akit's timer thread with 10,000 connections (the stopgap for akio A78); the cost of sniffing on a shared port (I53). |
