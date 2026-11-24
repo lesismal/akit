@@ -63,6 +63,8 @@ first; its status here records the branch, then the akio commit akit pins.
 | A63 | bcrypt password hashes in `akio-crypto` | in akio's main (`4f7169c4`), pinned | 1, 4 | I42 |
 | A64 | The client's verified certificate on each server request | in akio's main (`4f7169c4`), pinned | — | I42 |
 | A65 | A request suspended by a middleware and resumed with its context | in akio's main (`4f7169c4`), pinned | 1, 3, 4 | I42, I43 |
+| A78 | An idle timeout per connection, TCP or a UDP peer, set by its handler | requested (I51) | 10, 11 | I51, I55 |
+| A79 | `Engine::dial` and `dial_udp` with a connect timeout of their own | requested (I51) | 10 | I51, I54, I55 |
 
 ## A1 TCP listeners on a running engine
 
@@ -1091,3 +1093,49 @@ cannot be suspended (akio feeds the body to the context after `call`, as `run_on
 line): `basic_auth` asks for the body whole (within the listener's `max_body_bytes`) only for a
 request with a body whose password it has not checked yet. A later version may let a suspended
 request hold its body's reads instead.
+
+## A78 An idle timeout per connection
+
+**Problem.** fit's layer 4 services (I51) close a connection, or a UDP session, that carries
+nothing either way for the service's `idle_timeout`: 10 minutes for TCP and 1 for UDP by default,
+each service its own. akio has idle timeouts for the whole engine only: `Config::idle_timeout`
+(TCP, counting inbound data alone) and `Config::udp_idle_timeout` (UDP peers, listeners' and
+`dial_udp`'s alike), the latter also bounding the HTTP/3 listeners' peers. fib, under fit, sets
+one per connection (`SetUDPIdleTimeout(-1)` turns the engine's off for a session the service times
+itself).
+
+**Evidence.** At `4f7169c4`: `crates/akio-core/src/config.rs` (`idle_timeout`,
+`udp_idle_timeout`, applied to every connection of the engine); `Live::set_udp_idle_timeout`
+changes the engine's value, not a connection's. `Conn` has no setter.
+
+**Suggested API.** `Conn::set_idle_timeout(Option<Duration>)`, for TCP connections and UDP peers
+(accepted or dialed), from any thread, overriding the engine's for that connection; `None` turns
+it off for it. An option to count outbound data as activity too
+(`Conn::set_idle_counts_writes(bool)`), since a relay is idle only when neither side sends: or
+akit touches both connections from the relay, which the per-connection timer then reads.
+
+**How akit uses it.** `akit_l4` sets each connection's and session's idle timeout from its
+service's and lets akio close it on its own I/O thread. Until then, the stopgap: each service
+sweeps its open connections on akit's timer thread (`akit_upstream::timer`, A45's stopgap), every
+quarter of its shorter idle timeout (between 10 ms and 1 s), and akit raises the engine's
+`udp_idle_timeout` to the longest of the services' (`Live::set_udp_idle_timeout`, on each reload)
+so that akio does not close a session first.
+
+## A79 `Engine::dial` with a connect timeout of its own
+
+**Problem.** A layer 4 service (I51) dials its upstream's addresses within the upstream's
+`connect_timeout`, as fit's do. `Engine::dial` and `Engine::dial_udp` take the engine's
+`Config::connect_timeout`, one for every dial; `akio::dns::HappyEyeballs` has a timeout per
+attempt but dials a lone address with the engine's too. It is A12's gap for dials that are not
+HTTP's.
+
+**Evidence.** At `4f7169c4`: `crates/akio/src/lib.rs` (`Engine::dial`, `dial_udp`, `dial_from`
+take no timeout); `crates/akio/src/dns.rs` (`HappyEyeballs::dial` calls `engine.dial` for a single
+address).
+
+**Suggested API.** `Engine::dial_with(addr, DialOptions { connect_timeout, .. }, acceptor,
+on_error)`, and `HappyEyeballs::dial` passing its `connect_timeout` to a lone address too.
+
+**How akit uses it.** `akit_l4` dials each address within its upstream's `connect_timeout`. Until
+then the engine's connect timeout is the shortest of the upstreams' (`akit_listener::engine`, as
+for A12), and a host name's addresses are raced with `HappyEyeballs` at the upstream's timeout.

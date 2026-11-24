@@ -1,5 +1,5 @@
-//! Deferred jobs for the active health checks (I35): one thread of akit's own that runs each job
-//! once its delay has passed.
+//! Deferred jobs for the active health checks (I35), and for the layer 4 services' idle sweeps and
+//! drains (I51, `akit-l4`): one thread of akit's own that runs each job once its delay has passed.
 //!
 //! A stopgap for akio API request A45 (a public timer on akio's engine): akio's own timers, the
 //! I/O loops' wheels and akio-http's request-timeout thread, are not public at the pinned commit.
@@ -19,7 +19,7 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock, PoisonError};
 use std::time::{Duration, Instant};
 
 /// The most jobs pending at once.
-pub(crate) const MAX_TIMERS: usize = 1 << 16;
+pub const MAX_TIMERS: usize = 1 << 16;
 
 type Job = Box<dyn FnOnce() + Send>;
 
@@ -118,7 +118,7 @@ fn timers() -> Option<&'static Arc<Timers>> {
 
 /// Runs `job` on the timers' thread once `delay` has passed. Never blocks for long. False, and
 /// `job` dropped unrun, when [`MAX_TIMERS`] jobs are pending or the thread could not be started.
-pub(crate) fn after(delay: Duration, job: impl FnOnce() + Send + 'static) -> bool {
+pub fn after(delay: Duration, job: impl FnOnce() + Send + 'static) -> bool {
     let Some(t) = timers() else {
         return false;
     };

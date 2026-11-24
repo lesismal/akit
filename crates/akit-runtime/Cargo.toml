@@ -10,6 +10,7 @@ publish = false
 
 [dependencies]
 akit-config = { workspace = true }
+akit-l4 = { workspace = true }
 akit-observe = { workspace = true }
 akit-router = { workspace = true }
 akit-tls = { workspace = true }

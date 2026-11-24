@@ -276,6 +276,11 @@ dependencies = [
 [[package]]
 name = "akit-l4"
 version = "0.0.1"
+dependencies = [
+ "akio",
+ "akit-config",
+ "akit-upstream",
+]
 
 [[package]]
 name = "akit-listener"
@@ -289,10 +294,12 @@ dependencies = [
  "akio-x509",
  "akit-config",
  "akit-handler",
+ "akit-l4",
  "akit-observe",
  "akit-router",
  "akit-runtime",
  "akit-tls",
+ "akit-upstream",
 ]
 
 [[package]]
@@ -358,6 +365,7 @@ dependencies = [
  "akio",
  "akio-http",
  "akit-config",
+ "akit-l4",
  "akit-observe",
  "akit-router",
  "akit-tls",

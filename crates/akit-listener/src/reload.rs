@@ -19,9 +19,13 @@
 //!   accepting and drains its connections for [`Options::shutdown_timeout`] (each is asked to
 //!   close, an HTTP/1 one after its response, an HTTP/2 one with `GOAWAY`); HTTP/3 bound by a
 //!   reload is closed with its connections.
-//! - A listener serving HTTP/3 that the engine was built with cannot be removed or changed: akio
-//!   removes TCP listeners only, not a UDP one of a running engine. Such a reload is refused and
-//!   the running config stays.
+//! - A listener serving HTTP/3 or `udp` that the engine was built with cannot be removed or
+//!   changed: akio removes TCP listeners only, not a UDP one of a running engine (akio API
+//!   request A22). Such a reload is refused and the running config stays.
+//!
+//! A kept `tcp` or `udp` listener (I51) hands its new connections to the new graph's service from
+//! the swap on; those the old graph's services still proxy are closed once
+//! [`Options::shutdown_timeout`], the drain timeout, has passed, as fit's reload drains them.
 
 use std::fmt;
 use std::io;
@@ -32,8 +36,8 @@ use akit_config::{Listener, Protocol};
 use akit_runtime::{Graph, GraphCell};
 
 use crate::{
-    Error, MAX_PORT_ZERO_BINDS, Options, free_port, h3_acceptor, resolve, serves_h3, serves_tcp,
-    tcp_listener,
+    Error, MAX_PORT_ZERO_BINDS, Options, free_port, h3_acceptor, l4_acceptor, resolve, serves_h3,
+    serves_l4_tcp, tcp_listener, tcp_side, udp_side,
 };
 
 /// A listener as it is served now.
@@ -63,8 +67,8 @@ pub struct Reloaded {
 /// [`Listeners::reload`] on a system without `SO_REUSEPORT`).
 #[derive(Debug)]
 pub enum ReloadError {
-    /// It removes or changes a listener serving HTTP/3 that the engine was built with: akio
-    /// cannot remove a UDP listener of a running engine.
+    /// It removes or changes a listener serving HTTP/3, or `udp`, that the engine was built
+    /// with: akio cannot remove a UDP listener of a running engine.
     Udp {
         /// The listener's name.
         listener: String,
@@ -81,8 +85,9 @@ impl fmt::Display for ReloadError {
         match self {
             ReloadError::Udp { listener, address } => write!(
                 f,
-                "listener {listener:?} on {address} serves h3 and is removed or changed, which \
-                 needs a restart: akio cannot remove the UDP listener akit started it with"
+                "listener {listener:?} on {address} serves UDP (h3 or udp) and is removed or \
+                 changed, which needs a restart: akio cannot remove the UDP listener akit started \
+                 it with"
             ),
             ReloadError::Listener(e) => e.fmt(f),
         }
@@ -98,7 +103,7 @@ impl std::error::Error for ReloadError {
     }
 }
 
-/// A listener's HTTP/3 socket.
+/// A listener's UDP socket: its HTTP/3, or its `udp` service's.
 #[derive(Debug)]
 enum Udp {
     /// A UDP listener the engine was built with, which akio cannot remove.
@@ -125,7 +130,7 @@ struct Entry {
     tls: Option<akit_tls::ListenerTls>,
     /// Its TCP listener in the engine, and where it listens.
     tcp: Option<(ListenerId, SocketAddr)>,
-    /// Its HTTP/3.
+    /// Its HTTP/3, or its `udp` service's socket.
     udp: Option<Udp>,
 }
 
@@ -254,12 +259,12 @@ impl Listeners {
             .into_iter()
             .map(|(config, tls)| Entry {
                 tls,
-                tcp: if serves_tcp(&config) {
+                tcp: if tcp_side(&config) {
                     bound.next().map(|i| (i.id, i.local_addr))
                 } else {
                     None
                 },
-                udp: if serves_h3(&config) {
+                udp: if udp_side(&config) {
                     bound.next().map(|i| Udp::Builder(i.local_addr))
                 } else {
                     None
@@ -297,7 +302,7 @@ impl Listeners {
             error,
         };
         let resolved = resolve(&l.address).map_err(address)?;
-        let (tcp, h3) = (serves_tcp(l), serves_h3(l));
+        let (tcp, h3) = (tcp_side(l), udp_side(l));
         // Its certificates served per handshake from the cell's graph once `graph` is published
         // in it, and from `graph` until then (I30).
         let tls = akit_runtime::tls::server_configs(&self.cell, graph, index, true)
@@ -372,6 +377,10 @@ impl Listeners {
     ) -> Result<ListenerId, Error> {
         let h3_port = serves_h3(l).then_some(addr.port());
         let make = || {
+            if serves_l4_tcp(l) {
+                let listener = EngineListener::tcp(addr).backend(self.opts.backend.clone());
+                return Ok(listener.serve(l4_acceptor(&self.cell, l)));
+            }
             tcp_listener(
                 &self.cell,
                 l,
@@ -404,14 +413,20 @@ impl Listeners {
         room: &mut [(usize, bool)],
     ) -> Result<UdpBinding, Error> {
         let bind = || {
+            let failed = |error| Error::Address {
+                listener: l.name.clone(),
+                address: l.address.clone(),
+                error,
+            };
+            if !serves_h3(l) {
+                // A `udp` listener's (I51).
+                return self
+                    .engine
+                    .bind_udp(addr, l4_acceptor(&self.cell, l))
+                    .map_err(failed);
+            }
             let a = h3_acceptor(&self.cell, l, h3_tls)?;
-            self.engine
-                .bind_udp(addr, a)
-                .map_err(|error| Error::Address {
-                    listener: l.name.clone(),
-                    address: l.address.clone(),
-                    error,
-                })
+            self.engine.bind_udp(addr, a).map_err(failed)
         };
         match bind() {
             Err(Error::Address { error: e, .. })
@@ -495,10 +510,10 @@ impl Listeners {
             let addr = resolve(&l.address).map_err(address)?;
             let held = self.entries.iter().any(|e| e.address() == Some(addr));
             if addr.port() != 0 && !held {
-                if serves_tcp(l) {
+                if tcp_side(l) {
                     std::net::TcpListener::bind(addr).map_err(address)?;
                 }
-                if serves_h3(l) {
+                if udp_side(l) {
                     std::net::UdpSocket::bind(addr).map_err(address)?;
                 }
             }
@@ -568,8 +583,24 @@ impl Listeners {
             }
         }
 
+        // The old graph's layer 4 services, whose connections are closed after the drain
+        // timeout (I51), and akio's UDP idle timeout made long enough for the new graph's.
+        let services: Vec<akit_l4::Service> = self.cell.with(|g| g.services().to_vec());
+        let udp = self.engine.telemetry().live();
+        udp.set_udp_idle_timeout(crate::udp_idle(&graph, udp.udp_idle_timeout()));
+
         // The swap: requests go to the new graph from here on.
         self.cell.swap(graph);
+        if !services.is_empty() {
+            let drain = self.opts.shutdown_timeout;
+            let left = services.clone();
+            // The timers full: drained at once rather than never.
+            if !akit_upstream::timer::after(drain, move || {
+                left.iter().for_each(akit_l4::Service::drain);
+            }) {
+                services.iter().for_each(akit_l4::Service::drain);
+            }
+        }
 
         let mut old: Vec<Option<Entry>> = self.entries.drain(..).map(Some).collect();
         let mut report = Reloaded {

@@ -248,3 +248,13 @@ acme.max_concurrent
 acme.timeout
 acme.request_timeout
 acme.challenges
+
+# I51: services, layer 4 proxying of tcp and udp listeners (listeners[].protocols takes "tcp",
+# alone, and "udp", alone) to an upstream's addresses. server_names and proxy_protocol come with
+# I52, a tcp listener beside other protocols with I53, access with fit's access lists.
+services
+services[].name
+services[].listeners
+services[].upstream
+services[].idle_timeout
+services[].max_conns

@@ -14,10 +14,12 @@ akio-h3 = { workspace = true }
 akio-http = { workspace = true }
 akio-quic = { workspace = true }
 akit-config = { workspace = true }
+akit-l4 = { workspace = true }
 akit-observe = { workspace = true }
 akit-router = { workspace = true }
 akit-runtime = { workspace = true }
 akit-tls = { workspace = true }
+akit-upstream = { workspace = true }
 
 [dev-dependencies]
 akio-crypto = { workspace = true }
