@@ -15,6 +15,8 @@ listeners[].protocols
 # I09: TLS from files. listeners[].protocols takes "h2" too; tls.max_version takes "1.3" (1.2 is
 # refused as not supported yet); tls.acme, tls.on_demand and tls.kernel_tls_offload are refused.
 # I10: listeners[].protocols takes "h3" too (HTTP/3 on the listener's port in UDP, Alt-Svc on TCP).
+# I30: no new fields: certificates are chosen per handshake (a wildcard in any of them); the
+# storage comes with acme.storage in I31.
 listeners[].tls
 listeners[].tls.certificates
 listeners[].tls.certificates[].cert_file
@@ -114,6 +116,44 @@ access_log.level
 access_log.format
 access_log.time_zone
 
+# I26: the Admin API (GET /config, POST /load, GET /versions), on a loopback address: a host that
+# is not loopback needs token_file and TLS (I27); a Unix socket (unix/<path>) waits on akio API
+# request A23; the token, TLS, access lists, store, console and the rest are refused as not
+# supported yet.
+admin
+admin.address
+admin.history
+admin.max_config_bytes
+admin.max_conns
+
+# I40: route middleware: rewrite, redirect and headers, as fit's. rewrite.regexp and
+# rewrite.replacement are refused as not supported yet, and so are groups of redirect.regexp in
+# redirect.to ($1, ${name}): akio-regex does not find or capture where a pattern matches yet (akio
+# API request A32). The request changes of headers reach the proxy's upstream (akio API request
+# A33 changes the request itself). The other middleware modules are refused as not supported yet.
+routes[].middleware
+routes[].middleware[].module
+routes[].middleware[].params
+routes[].middleware[]<rewrite>
+routes[].middleware[]<rewrite>.params
+routes[].middleware[]<rewrite>.params.strip_prefix
+routes[].middleware[]<rewrite>.params.add_prefix
+routes[].middleware[]<redirect>
+routes[].middleware[]<redirect>.params
+routes[].middleware[]<redirect>.params.to
+routes[].middleware[]<redirect>.params.status
+routes[].middleware[]<redirect>.params.regexp
+routes[].middleware[]<headers>
+routes[].middleware[]<headers>.params
+routes[].middleware[]<headers>.params.request
+routes[].middleware[]<headers>.params.request.set
+routes[].middleware[]<headers>.params.request.add
+routes[].middleware[]<headers>.params.request.delete
+routes[].middleware[]<headers>.params.response
+routes[].middleware[]<headers>.params.response.set
+routes[].middleware[]<headers>.params.response.add
+routes[].middleware[]<headers>.params.response.delete
+
 # I37: metrics, fit's request counting by listener and route for the Admin API's /metrics; it has
-# no settings. As in fit, it needs admin, which is refused as not supported yet until I26.
+# no settings. As in fit, it needs admin.
 metrics

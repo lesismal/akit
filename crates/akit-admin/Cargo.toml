@@ -8,5 +8,17 @@ repository.workspace = true
 rust-version.workspace = true
 publish = false
 
+[dependencies]
+akio = { workspace = true }
+akio-crypto = { workspace = true }
+akio-http = { workspace = true }
+akit-config = { workspace = true }
+akit-observe = { workspace = true }
+
+[dev-dependencies]
+akit-handler = { workspace = true }
+akit-listener = { workspace = true }
+akit-runtime = { workspace = true }
+
 [lints]
 workspace = true

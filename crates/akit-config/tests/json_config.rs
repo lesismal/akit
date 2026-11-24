@@ -96,7 +96,7 @@ fn not_supported_yet_is_not_wrong() {
     let e = errs(
         r#"{"schema_version": 1,
             "listeners": [{"name": "web", "address": ":8080", "protocols": ["http/1.1", "h2", "h3"], "tls": {}}],
-            "routes": [{"name": "hello", "middleware": [], "handler": {"module": "proxy", "params": {"upstream": "app", "timeout": "60s"}}},
+            "routes": [{"name": "hello", "middleware": [{"module": "compress"}], "handler": {"module": "proxy", "params": {"upstream": "app", "timeout": "60s"}}},
                        {"access": {}, "handler": {"module": "respond"}}],
             "upstreams": [{"name": "app", "addresses": ["127.0.0.1:9000"], "load_balancing": "p2c"}]}"#,
     );
@@ -106,8 +106,8 @@ fn not_supported_yet_is_not_wrong() {
         paths,
         [
             "listeners[0].tls",
+            "routes[0].middleware[0].module",
             "routes[0].handler.params.timeout",
-            "routes[0].middleware",
             "routes[1].access",
             "upstreams[0].load_balancing",
         ]

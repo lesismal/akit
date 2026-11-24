@@ -41,8 +41,12 @@ first; its status here records the branch, then the akio commit akit pins.
 | A20 | An HTTP client response delivered as it arrives, its reads held and resumed | requested (I16) | 5, 8 | I16, I17, I18, I67 |
 | A21 | A server request that holds its client's reads and hears when its client drained | requested (I16) | 5, 8 | I16, I47, I75 |
 | A22 | UDP listeners removed and drained on a running engine | requested (I22) | 10, 11 | I22, I28 |
+| A23 | Unix-domain stream listeners (with a socket file mode) | requested (I26) | 11 | I26, I29 |
+| A24 | An HTTP/1 response that closes its connection, and stops reading a body it refused | requested (I26) | 7, 10, 11 | I26, I41 |
 | A29 | A response hook without an allocation: a listener's observer, called with a few words the request set | requested (I37) | 13 | I21, I37, I64 |
 | A30 | The open connections a listener accepted, apart from dialed ones and UDP peers | requested (I37) | — | I37 |
+| A32 | Where an `akio-regex` pattern matches, its groups, and replacing them | requested (I40) | 19 | I40, I48 |
+| A33 | A request's fields and target changed by a middleware (`Context::req_mut`) | requested (I40) | 12, 19 | I40, I43, I44 |
 
 ## A1 TCP listeners on a running engine
 
@@ -74,10 +78,13 @@ without blocking the I/O thread.
 CertDone)`, where `done` may be completed later from another thread with a certificate or an alert;
 the handshake waits without holding the thread. A synchronous fast path for a cached certificate.
 
-**How akit uses it.** I30 serves certificates from its manager; I34 issues on demand. I09 picks
-certificates from files with `sni_cert`, which looks a name up exactly: a wildcard name
-(`*.example.com`) in a certificate other than the first, the default, is refused as not supported
-yet until the resolver (whose `CertStore` takes `*.` names) is on akio's `main`.
+**How akit uses it.** On `a9a620ab` (ADR-098), I30: every TLS listener's configuration is built
+with `ServerConfig::builder_with_resolver`, and its resolver, `akit_runtime::ListenerCerts`,
+answers inline from the current graph's `akit_tls::Certs` (fit's choice: exact or wildcard name,
+then what the client supports, from `ClientHelloInfo`'s signature schemes and suites), so a
+reload or `-watch-certs` replaces certificates without closing the listener, and a wildcard works
+in any certificate (I09's `sni_cert` stopgap refused one past the first). I34 will answer
+`CertDone` later, from the issuing thread.
 
 ## A3 A filter on accepted connections
 
@@ -490,6 +497,50 @@ close those left at the deadline), and `Engine::add_listener` for a UDP listener
 **How akit uses it.** `akit_listener::Listeners::reload` (I22, I28) removes and drains a
 listener's HTTP/3 as it does its TCP side, and the `ReloadError::Udp` refusal goes.
 
+## A23 Unix-domain stream listeners
+
+**Problem.** fit's Admin API listens on a Unix socket when `admin.address` is `unix/<path>`
+(made 0600, a stale socket file replaced, one in use refused), so that only the owner's processes
+reach it, with no port and no token. akio's listeners take a `SocketAddr` only: TCP or UDP. akit
+refuses `unix/` addresses as not supported yet until akio serves them.
+
+**Evidence.** `crates/akio/src/lib.rs` at `a9a620ab`: `Listener::tcp(SocketAddr)`,
+`Listener::tcp_from_std(std::net::TcpListener)`, `Listener::udp(SocketAddr)`; no Unix-domain
+listener, and `Conn::peer_addr` is a `SocketAddr`.
+
+**Suggested API.** `Listener::unix(path)` (and `Listener::unix_from_std(UnixListener)`), serving
+the same acceptors (akio-http's `serve`), its connections' peer address a placeholder or an enum;
+the socket file's mode set before it is listened on (`Listener::mode(0o600)`), and a stale file
+removed by the caller or by an option. On epoll, kqueue and io_uring.
+
+**How akit uses it.** `akit_admin::Server::start` listens on the path when `admin.address` is
+`unix/<path>`, as fit's `admin.Start`; the Host check is skipped there, as fit skips it, and the
+file provider's control socket (I29) may use it too.
+
+## A24 An HTTP/1 response that closes its connection
+
+**Problem.** A service that refuses a request before reading its body (413 for a body past a
+limit it found mid-stream, or one whose `Content-Length` is already too large on a streamed
+route) cannot close the connection after its answer: akio-http decides keep-alive from the
+request alone, keeps reading the rest of the body (delivering it to a sink no one reads, or
+discarding it) and keeps the connection for the next request. A `Connection: close` header the
+service sets is sent but not honoured. fit's Admin API closes such a connection (Go's
+`MaxBytesReader`), so a client cannot make the server read an unbounded body it already refused;
+under akio-http the only bound is the body timeout, which a fast client never trips.
+
+**Evidence.** `crates/akio-http/src/session.rs` at `a9a620ab`: `keep_alive` comes from the
+request's `Connection` and version; in `State::Stream` the decoder keeps delivering chunks after
+the response; `crates/akio-http/src/message.rs` `Response::encode` writes a service's
+`Connection` field as it is and `Responder::send` closes only when `!keep_alive`.
+
+**Suggested API.** Honour `Connection: close` on a response (close after it is sent, and stop
+reading the request body), or `Context::close_after_response()` / `Detached::close_after(..)`;
+for a streamed body, a way for the sink to stop the delivery (`BodyStream`-side
+`ctx.stop_body()`), after which the connection closes once the response is out.
+
+**How akit uses it.** The Admin API's 413 for a load past `max_config_bytes` (I26) closes the
+connection, as fit's; I41's size limits on the data plane do the same.
+
 ## A29 A response hook without an allocation
 
 **Problem.** The access log (I21) and the metrics (I37) learn of each response on the thread that
@@ -543,3 +594,56 @@ for dialed connections with `limited` false); `conn_closed` takes from it whatev
 
 **How akit uses it.** `akit_listener::metrics::Scrape` writes it as `fit_connections_open`, in
 place of `open_connections`.
+
+## A32 Where a regular expression matches, its groups, and replacing them
+
+**Problem.** fit's `rewrite` middleware replaces each match of a regular expression in the path
+(`regexp` and `replacement`, with `$1` and `${name}` for its groups), and its `redirect` middleware
+builds the URL from the groups of the one match (`"to": "/new/$1"`). akio-regex answers only
+whether a pattern occurs in a text: it neither finds where nor captures a group. akit refuses those
+fields as not supported yet (I40).
+
+**Evidence.** `crates/akio-regex/src/lib.rs` at `a9a620ab`: `Regex` has `is_match`,
+`is_match_fmt` and `nfa_is_match`; the crate's documentation says groups are parsed but "nothing
+is captured". The Pike VM (`crates/akio-regex/src/exec.rs`) keeps no positions per thread.
+
+**Suggested API.** On `Regex`, with the leftmost-first semantics of Go's `regexp` and the `regex`
+crate, in linear time as now (a Pike VM with capture slots, or the DFA to find the match's end and
+start, then the slots only for the match):
+
+- `find_at(&self, text: &str, start: usize) -> Option<Range<usize>>` and `find_iter`;
+- `captures(&self, text: &str) -> Option<Captures>` (each group's range, by index and by name);
+  `group_names`;
+- `expand(&self, caps: &Captures, template: &str, text: &str, out: &mut String)`, with Go's
+  `Regexp.Expand` template rules (`$1`, `${1}`, `$name`, `${name}`, `$$`; an unknown or unmatched
+  group is empty; a malformed `$` is itself), and `replace_all(&self, text, template) -> Cow<str>`
+  as Go's `ReplaceAllString`, empty matches included.
+
+**How akit uses it.** `rewrite`'s `regexp` and `replacement` (`replace_all` on the decoded path)
+and `redirect`'s groups in `to` (`captures` on the escaped path, then `expand`), compiled when the
+config is; the not-supported-yet refusals in akit-config go.
+
+## A33 A request changed by a middleware: its fields and its target
+
+**Problem.** A middleware changes the request before the handler sees it: fit's `headers`
+middleware sets, adds and deletes request fields, its `rewrite` middleware changes the path, and
+later ones (ForwardAuth's copied fields, JWT's claims as fields) do too. akio-http's `Context`
+gives its request by shared reference only (`req()`), so neither its fields nor its target can be
+changed.
+
+**Evidence.** `crates/akio-http/src/context.rs` at `a9a620ab`: `Context` holds the request in a
+private `ReqCell` (owned until a `Detached` or an upgrade shares it) and offers `req(&self) ->
+&Request`, `path`, `header` and `local`; there is no `&mut` access. `Request`'s `headers` and
+`target` are public fields.
+
+**Suggested API.** `Context::req_mut(&mut self) -> Option<&mut Request>`, `None` once the request
+is shared (after `detach` or an upgrade), or narrower: `Context::request_headers_mut` and
+`Context::set_target(&mut self, target: &str)`. What akio reads of the request afterwards (`Files`'s
+conditional and range fields, `path()`, the router's params) then sees the change.
+
+**How akit uses it.** The `headers` middleware changes the request's fields in place, and the
+`rewrite` middleware its target, before calling the handler; the stopgaps go: the request fields
+kept in a context local (`akit_runtime::REQUEST_FIELDS`, read by `request_headers`) and the
+rewritten path kept in `CANONICAL_PATH` (which stays for I11's canonical path only, or goes too).
+Until then the changed fields reach the `proxy` handler's upstream only (recorded in the I40
+progress entry).

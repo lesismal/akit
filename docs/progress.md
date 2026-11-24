@@ -11,12 +11,12 @@ done and where the work differs from the plan.
 | | |
 | --- | --- |
 | Last updated | 2026-11-24 |
-| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I15, I19–I24 done, I16 doing (body limits done; streaming waits for akio's A19–A21); M2's I37 done; M3's I39 done early. |
+| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I15, I19–I24 done, I16 doing (body limits done; streaming waits for akio's A19–A21); M2's I26, I30 and I37 and M3's I39 and I40 done early. |
 | akio | `a9a620ab` on akio's `main` (`1.0.0-rc.1`, with A1–A5, A7, A8, A11, A13 and A16–A18), pinned by `rev` in `Cargo.toml` |
 | fit | the specification; read at `7daee573` for this plan |
-| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept, added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`); `limits.max_body_bytes` on every listener (413) and in the proxy; access logs in fit's json, text and line formats; upstream pools with round robin, weighted round robin and least connections, passing over addresses taken out by passive health checks (`max_fails`, `fail_timeout`); fit's Prometheus metrics (requests by listener and route with `metrics`, upstreams and backends, certificates, connections, reloads, akio's engine), scraped in process until the Admin API serves them (I26); the compatibility gate: 80 fixtures, 9 valid, 70 refused only as not supported yet, 1 skipped, none failed |
+| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept, added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication; certificates chosen per handshake as fit's, replaced by a reload or by `-watch-certs` without closing the listener) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; route middleware: `rewrite` (prefixes), `redirect` and `headers`; the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`); `limits.max_body_bytes` on every listener (413) and in the proxy; access logs in fit's json, text and line formats; upstream pools with round robin, weighted round robin and least connections, passing over addresses taken out by passive health checks (`max_fails`, `fail_timeout`); the Admin API on loopback (`GET /config`, by JSON pointer too, `POST /load` with `If-Match`, `GET /versions`), loads applied as SIGHUP's reloads, one history for both; fit's Prometheus metrics at the Admin API's `GET /metrics` (requests by listener and route with `metrics`, upstreams and backends, certificates, connections, reloads, akio's engine); the compatibility gate: 80 fixtures, 10 valid, 69 refused only as not supported yet, 1 skipped, none failed |
 | Next | I17; I16 once A19–A21 land |
-| akio requests | A1–A5, A7, A8, A11, A13 and A16–A18 on akio's main and pinned; A6 on akio branch `claude/x509-csr`; A9, A10, A12, A14, A15, A19–A21, A22, A29 and A30 requested ([akio API requests](akio-api-requests.md)) |
+| akio requests | A1–A5, A7, A8, A11, A13 and A16–A18 on akio's main and pinned; A6 on akio branch `claude/x509-csr`; A9, A10, A12, A14, A15, A19–A21, A22–A24, A29 and A30 requested ([akio API requests](akio-api-requests.md)) |
 
 ## Log
 
@@ -47,12 +47,12 @@ done and where the work differs from the plan.
   `Lease::upstream` the counters are shared by upstream name and address with every graph that
   has the upstream, so they carry over reloads (akit makes a graph's pools anew; fit shares the
   pools).
-- Certificates: `akit_tls::ServerConfigs::certificates` gives each certificate's name (its first
-  DNS name, else its common name), serial (as Go's `Text(16)`) and expiry, read when the config is
-  compiled.
+- Certificates: `akit_tls::CertificateInfo::of` gives a certificate's name (its first DNS name,
+  else its common name), serial (as Go's `Text(16)`) and expiry; the scrape reads them from the
+  running graph's certificates (`Graph::certificates`, I30's `Certs`), so a renewal the
+  certificate watcher applies shows at once.
 - Config: `metrics` (`{}`, no settings) is read into `Config::metrics`; without `admin` it fails
-  with fit's message, "the Admin API serves metrics: set admin too", and `admin` is refused as not
-  supported yet until I26, so `akit validate` refuses every config with `metrics` until then.
+  with fit's message, "the Admin API serves metrics: set admin too".
 - `akit_listener::metrics::Scrape` writes the scrape, fit's families in fit's order with fit's
   help: `fit_http_requests_total`, `fit_http_request_duration_seconds` (with `metrics`),
   `fit_upstream_requests_in_flight`, `fit_upstream_response_duration_seconds`,
@@ -61,25 +61,32 @@ done and where the work differs from the plan.
   `fit_connections_refused_total`, `fit_pending_bytes`, `fit_reads_paused_total`,
   `fit_config_reloads_total`, `fit_config_version`, `fit_config_last_applied_timestamp_seconds`,
   `fit_access_log_dropped_total`; then akio's engine metrics (`akio_*`, per I/O thread) where fit
-  has the Go runtime's (`go_*`). `akit run` makes one registry for the process, counts SIGHUP
-  reloads (`ConfigStats::reloaded`) and builds the scrape, which the Admin API (I26) serves at
-  `GET /metrics`.
+  has the Go runtime's (`go_*`). `akit run` makes one registry for the process and keeps it,
+  with the count of configs applied (`ConfigStats`), in I26's `Runner`: every config goes through
+  `Runner::apply` (or fails before it, in `reload` or `apply_text`), so SIGHUP, Admin API loads and
+  I30's certificate reloads are all counted. The Admin API serves the scrape at `GET /metrics`
+  (`akit_admin::Options::metrics`).
 - Tests: `akit/tests/metrics.rs`, fit's `TestMetrics` and `TestMetricsOff` ported (the scrape
   parsed as fit's test parses it, every sample fit checks with its labels and value: requests by
   route and class through a reload that keeps the routes, the unmatched 404, the durations, the
   upstream's response times, each backend's successes and failures, in flight and up, the TLS
   listener's certificate, reloads and version, the reads paused by budget, the gauges and akio's
   families present, a renamed route dropped once the old graph is retired, the totals kept), and
-  the access log and the metrics sharing one hook. Unit tests of buckets, classes, number format,
+  the access log and the metrics sharing one hook; `akit/tests/admin.rs`: `akit run` with `admin`
+  and `metrics` serving `GET /metrics` (content type, requests, a SIGHUP, an Admin API load and a
+  refused one counted). Unit tests of buckets, classes, number format,
   escaping, slots carried over, given back and reused, shared upstream counters, config stats
   (`akit-observe`), serials (`akit-tls`); `akit-config/tests/metrics.rs` (needs admin, no
   settings, one file only); the gate's sample.
-- Checked: `make check` on macOS; the touched crates' tests on Linux (the benchmark host), epoll
-  and io_uring. The gate (`make compat-bless`): `metrics` supported; `examples/metrics` now refuses
-  only `admin` (fields refused 58 to 57).
+- Merged with I26, I30 and I40 (akit main `4afa34a` with I30, `131908f`).
+- Checked: `make check` on macOS; the workspace tests on Linux (the benchmark host), epoll and
+  io_uring, all passing but two flakes that are not I37's: on epoll `akit-proxy`'s `bad_gateway`
+  and `hop_by_hop_request` failed together once (the port `bad_gateway` freed was taken by the
+  other test's upstream; 14 of 14 when rerun), and on io_uring I22's
+  `reloads_under_traffic_with_no_failed_request` (`akit/tests/reload.rs`) failed 1 run in 5, as
+  it does on the merged base `131908f` without I37 (1 in 4 there). The gate (`make compat-bless`): `metrics` supported; `examples/metrics` is valid (80
+  fixtures: 11 valid, 68 refused only as not supported yet, 1 skipped, none failed).
 - Differences from the plan and from fit:
-  - The scrape is not served yet: fit serves it from the Admin API, which is I26's. Until then
-    the scrape is built and tested in process.
   - Round robin keeps its turn per I/O thread in akit, so the ported test sends proxied requests
     until both backends were tried, and checks the counts it saw, where fit's sends exactly one to
     each.
@@ -98,6 +105,213 @@ done and where the work differs from the plan.
 - What a benchmark task should measure: same-run A/B of the fixed and proxy scenarios with
   `metrics` on and off, and with the access log on as well; a scrape's time with many routes on 64
   threads.
+### 2026-11-24: I30, certificate manager and storage
+
+- The manager is akio-tls's `CertResolver` (akio A2, ADR-098), what fit's `tlsmgr.Manager` is to
+  Go's `GetCertificate`: asked for each full handshake's certificate, it answers in the call from
+  memory (or later from another thread, which on-demand TLS, I34, will use). Every TLS listener's
+  configuration is now built around one (`ServerConfig::builder_with_resolver`) instead of
+  I09's `sni_cert` table.
+- `akit_tls::Certs`, fit's `tlsmgr.Static`: a listener's certificates (`CertifiedKey`s) indexed by
+  the names in their leaves (DNS names in lower case, IP addresses) and by the parent of each
+  `*.` name. A handshake gets the first certificate for its name, exactly or by a wildcard one
+  label deep, that the client can take (its signature schemes and, in TLS 1.2, an ECDHE suite of
+  the key's kind, as Go's `SupportsCertificate`), else the first for the name, else the first of
+  all; one certificate serves every name. So a wildcard in any certificate now works (I09 refused
+  one past the first), and of an RSA and an ECDSA certificate for a name the client gets the one
+  it supports, as in fit (I09 served the first).
+- `akit_tls::ListenerTls`: a listener's `tls` loaded once (certificates, client authorities,
+  protocols) with the SHA-256 of every file read; `server_configs(manager)` builds its TCP and h3
+  configurations around a manager; `same_config` compares all but the certificates.
+  `server_config` and `server_configs(tls, protocols)` are kept, serving the loaded certificates.
+- Reloads without dropping handshakes: `akit_runtime::ListenerCerts`, the manager of each TLS
+  listener, serves the certificates the cell's current graph loaded for the listener (by name),
+  reading the graph through the I/O thread's cache as a request does, with no lock. A reload whose
+  listener has the same config and the same client authorities (their files' contents included)
+  keeps the listener, its sockets and connections, and the next handshake gets the new
+  certificate; a handshake under way keeps the one it was given. A listener opened by a reload
+  serves its own graph's certificates until the swap; one being drained serves its own when the
+  current graph no longer has it. New client authorities reopen the listener (beside the old one,
+  which drains), since a configuration holds them. This fixes I22's kept TLS listener keeping its
+  old certificates.
+- `run -watch-certs` (on by default, as fit's) and `-watch-interval` (1s): `akit_tls::FileWatcher`,
+  fit's `tlsmgr.FileWatcher`, looks at the size and modification time of every certificate, key
+  and authority file the running config loaded (`Graph::cert_files`) on the main thread's loop,
+  and once a change has settled (500 ms) and the contents differ, applies the running config again
+  as a new version with source `certificates` (`akit_admin::SOURCE_CERTIFICATES`), through
+  `Configs::update` as SIGHUP and the Admin API do, as fit's `Configs.Reapply`
+  (`akit: certificate files changed; reloading`, then `akit: reloaded certificate files (config
+  version N)`). `Runner::apply` keeps the files the running graph loaded, whichever way it came. A pair that fails (a key not written yet)
+  is reported once and not tried again until the files change; an unreadable file is reported
+  once. `-watch` (the config file, I29) is still refused.
+- Storage: `akit_tls::Storage`, fit's `tlsmgr.Storage` (load, store, delete, list, lock, unlock),
+  with a deadline in place of a context; its methods block and are called off the I/O threads.
+  `FileStorage`, fit's `FileStorage`: a file per key under a root (keys checked: no empty, `.` or
+  `..` part, no backslash or NUL), written to a temporary file, synced and renamed; values up to
+  4 MiB; directories 0700 and files 0600; `list` sorted, skipping locks and temporary files.
+  Locks are files under `locks/` made with `create_new`, touched every 5 s by a thread per lock
+  while held, removed when untouched for 30 s (a holder that stopped), polled every second by a
+  waiter until its deadline; at most 256 held at once (rule 11). ACME (I31) is its first user;
+  `acme.storage` and `shared_storage` stay refused until then.
+- Tests: `akit-tls` unit tests (the choice of a certificate as fit's `TestStatic`: exact,
+  wildcard, one label only, order, the client's schemes; Go's support rules); `tests/storage.rs`
+  (4, fit's storage tests: keys, values, sizes, permissions, list, deadlines, a lock taken in turn
+  by two storages on one directory, a fresh lock waited for, a stale one taken over);
+  `tests/watch.rs` (2, fit's watcher tests: a renewal applied once, touches and changes back
+  ignored, a failing pair reported once, an unreadable file, a config applied another way);
+  `tests/files.rs` (a wildcard in any certificate, file sums and `same_config`).
+  `akit-listener/tests/certs.rs` (3, on epoll and io_uring): wildcards in any certificate by SNI;
+  a certificate replaced under traffic (four clients making full handshakes all along, a reload
+  that keeps the listener, the new certificate served after it, no failed request, a connection
+  made before still serving); new client authorities reopening the listener.
+  `akit/tests/watch_certs.rs` (2, end to end with `akit run`): renewed files served without a
+  restart and with the listener kept, a key not yet written failing once and then applied; and
+  `-watch-certs=false`. `cli.rs`: bad `-watch-interval` values exit 2.
+- Checked: `make check` on macOS; the tests of akit-tls, akit-runtime, akit-listener and akit on
+  Linux (the benchmark host, gpu51), epoll all passing, io_uring all passing but
+  `akit-listener/tests/reload.rs` (plain HTTP, a read timing out in its `get`), which fails as
+  often on main `1a5fccf` (2 of 5 runs each) on the host at a load average of 200 to 480: a flake
+  under load that predates I30.
+- Differences from the plan and from fit:
+  - fit's `Certs` (ACME and files together), OCSP stapling (`Staple`) and the shared storages
+    (Redis, etcd, Consul) are I31, I32 and I62; the trait is ready for them.
+  - The watcher runs on the control thread's loop (`recv_timeout` on I26's `Control` channel),
+    not a goroutine of its own; the reloads it starts, SIGHUP's and the Admin API's are one after
+    the other there.
+  - A session resumed by a client sends no certificate, so it keeps the certificate of its first
+    handshake until its ticket expires, as with Go.
+- What a benchmark task should measure: full TLS handshakes a second on a listener with one and
+  with ten certificates, against I09's `sni_cert` (main before I30) and fit; the cost of the
+  choice per handshake (a graph read and an `Arc` clone).
+
+### 2026-11-24: I40, rewrites, redirects, headers
+
+- Taken early from M3, after I39. A route's `middleware` is read: `akit-config` decodes each
+  module reference (`module`, `params`) into `Route::middleware`, the middleware variants of
+  `akit_config::Handler` (`Rewrite`, `Redirect`, `Headers`: one params type for handlers and
+  middleware, as akit-runtime's registry provisions every module from one), with the checks of
+  fit's `Provision`s and their messages; fit's other middleware modules are refused as not
+  supported yet, naming the module (`FIT_MIDDLEWARE`). `akit-runtime`'s `compile` loads each
+  route's middleware from the registry, errors at `routes[i].middleware[j].params.<field>`, and
+  chains them around the handler once (rule 12), the first outermost. The binary's registry has
+  `akit_middleware::MODULES`.
+- `akit-middleware` has fit's `rewrite`, `redirect` and `headers` (`middleware/rewrite`,
+  `middleware/headers`):
+  - `rewrite`: `strip_prefix` (the first prefix the path starts with at a segment boundary) and
+    `add_prefix`, on the decoded path, the new path escaped afresh as Go writes it
+    (`/api/a%2Fb` stripped of `/api` is `/a/b`; `!` is `%21`). The new path is set in
+    `CANONICAL_PATH`, which the `proxy` handler sends upstream (with the query as it came) and
+    the `static` handler looks up, and which a middleware after it goes by.
+  - `redirect`: `to` with `{scheme}`, `{host}`, `{path}`, `{query}` and `{uri}`, split into its
+    parts when the config is compiled; `status`; `regexp` (`akio-regex`, compiled as the router
+    compiles path regexps) matched against the escaped path as Go's `URL.EscapedPath` gives it
+    (a raw `\` is `%5C`), the other requests going on to the handler; fit's open-redirect check
+    (`otherHost`, `hasScheme`), answered `400 bad redirect target`.
+  - `headers`: `request` and `response`, each `delete` (names, or prefixes ending in `*`), `set`
+    and `add`, in that order, names made canonical as Go's `CanonicalHeaderKey`. The response's
+    changes are an akio response filter, so they reach every response of the route: answered at
+    once, later from a completion callback (a proxied one) or streamed.
+- Stopgaps, until akio can (rule 21; both in [akio API requests](akio-api-requests.md)):
+  - A32: `akio-regex` answers whether a pattern matches, not where, and captures nothing. So the
+    rewrite's `regexp` and `replacement`, and groups of the redirect's regexp in `to` (`$1`,
+    `${name}`), are refused as not supported yet when the config is read; `$$` is `$`.
+  - A33: akio's `Context` gives the request by shared reference only. The `headers` middleware's
+    request changes are kept in a context local (`akit_runtime::REQUEST_FIELDS`, written by
+    `set_request_headers`), which `akit_runtime::request_headers` reads and the `proxy` handler
+    sends upstream; what akio itself reads of the request (the `static` handler's conditional and
+    range fields) is as the client sent it. The path rewrite goes through `CANONICAL_PATH`, as
+    I11's canonical path does.
+- Tests: `akit-middleware` `tests/middleware.rs` through akit's listener: fit's `TestRewrite`,
+  `TestRedirect`, `TestRedirectHeaderIsItsOwn`, `TestHeaders` (twice each, values not shared),
+  `TestResponseOfAnyKind` (answered at once and proxied) and `TestParamErrors` of both packages,
+  ported; the cases that need A32 checked to be refused as not supported yet; the rewritten path
+  and the changed request fields as the upstream sees them, with a 1 MiB body; middleware run in
+  order (a rewrite then a redirect); clients that leave midway; unit tests of the path escaping,
+  `otherHost`, `hasScheme`, the placeholders and the request-fields local.
+- Compatibility gate: the 22 fields in `tests/compat/supported.txt`; the gate names a refused
+  middleware module as `routes[].middleware[]<module>` and the rewrite's refused fields with
+  their module; `make compat-bless`: `examples/headers` is valid, and the other examples are
+  refused only for the middleware modules they use (80 fixtures: 10 valid, 69 refused only as
+  not supported yet, 1 skipped, none failed).
+- Checked: `make check` on macOS; on the benchmark host, the touched crates' tests (`cargo test
+  -p akit-middleware -p akit-config -p akit-runtime -p akit-router -p akit-proxy -p akit-compat`)
+  with epoll and with `AKIO_TEST_BACKEND=uring`.
+- Differs from fit: through akit's listener the path is canonical before any middleware sees it,
+  as fit's listener makes it, so fit's `path makes //` case is answered `302 /evil.com/x` end to
+  end (and a `\` next to a `/` is refused 400 by the listener). Errors of a header name are
+  reported at the `request` or `response` object, as fit's.
+- To measure, in the maintainer's benchmark tasks (rule 30): see the dev plan's benchmark row
+  for I40.
+
+### 2026-11-24: I26, Admin API I: load, read, versions
+
+- Config: `admin` read into `akit_config::Admin` (`address`, `history`, `max_config_bytes`,
+  `max_conns`; `DEFAULT_ADMIN_*`, fit's defaults: 127.0.0.1:2019, 10, 4 MiB, 16; 0 is the
+  default). fit's check of the address: a host that is not `localhost` or a loopback address is
+  refused (off loopback fit asks for `token_file`, `cert_file` and `key_file`, which come with
+  I27); `unix/<path>` is refused as not supported yet (akio API request A23); `admin` is given by
+  one file only. The other admin fields are refused as not supported yet.
+- `akit_config::value` (new): `Value`, a JSON value with members in order and numbers as written,
+  `parse`, `to_json` (fit's Admin API writer: two spaces to a level), `standardize` (comments and
+  trailing commas blanked to spaces, every other byte in place, as fit's `config.Standardize`),
+  and `json_of`, a config's files as one JSON document (a lone JSON file standardized; several,
+  or YAML or `.conf`, merged as fit's adapter merges them and written out). `load_files` reads a
+  config and that document together.
+- `akit-admin` (decision 006): `Configs`, the history (numbered from 1, the last `history`
+  kept, ETags of the first 96 bits of SHA-256 via akio-crypto, `If-Match` and `If-None-Match` as
+  fit compares them) and the one path every config takes, `Configs::update`, one at a time;
+  `Server`, akio-http on an akio engine of its own (one I/O thread, HTTP/1.1, `max_conns` as the
+  engine's `max_connections`, fit's timeouts): `GET /config` (ETag, `Fit-Config-Version`, 304 on
+  `If-None-Match`), `GET /config/<pointer>` (RFC 6901, fit's messages), `POST /load`
+  (`application/json`, streamed in under `max_config_bytes`, 413/415, `If-Match` 412),
+  `GET /versions`, `GET /versions/{n}`; fit's guard (`Origin` 403 but for same-origin reads,
+  `Host` must be loopback). A load is detached and handed to the control thread as a `Job`
+  (bounded queue, 503 when full), which applies it and answers it. Answers are fit's JSON:
+  `{"version","etag","listeners_added","listeners_removed","warnings"}`, and config errors as
+  `{"error","errors":[{"path","line","column","message"}]}`.
+- `akit run`: with `admin`, the API is started after the listeners (`akit: admin API on ADDR`);
+  signals and loads share one bounded control channel, so the main loop applies both, one after
+  another: a load through `Runner::apply_text` (parse, compile, `Listeners::reload`, the access
+  log's level and zone), SIGHUP through the same `Runner::apply`, each as a new version
+  (`akit: reloaded FILE (config version N)`, `akit: loaded a config from the admin API (config
+  version N)`). A load that changes `admin` warns that it takes a restart; so do access log
+  changes, as before. On shutdown the API stops first and loads still queued get 503.
+- Tests: `akit-admin/tests/admin.rs` (10), fit's `admin_test.go` ported: load and read back
+  (whole, by pointer, by version, 304, HEAD, 404s, 405), comments kept as standard JSON, loads
+  refused (unknown field with fit's exact answer, a module that does not exist, an address in
+  use, wrong type, too large by length and chunked, unended JSON; 501 for I27's endpoints and dry
+  runs), `If-Match`, browsers refused, history, 8 concurrent loads with distinct versions, slow
+  and cut clients, the connection limit, listeners added and removed and the admin warning; unit
+  tests of the history, ETags, pointers and loopback hosts. `akit-config/tests/admin.rs` (4): the
+  fields, fit's address check, one file only, `load_files`; `value`'s unit tests.
+  `akit/tests/admin.rs`: `akit run` end to end, a load and a SIGHUP numbered in one history. The
+  gate's samples for the five fields.
+- Fuzzing: a new target, `config_value` (in CI beside the others): standardizing keeps the length
+  and the value, and a value written out parses back to itself; 3 million runs in 45 s, no crash.
+- Checked: `make check` on macOS; the tests of akit-config, akit-admin, akit, akit-compat,
+  akit-runtime and akit-listener on Linux (the benchmark host): io_uring all passing; epoll all
+  passing but I22's same-address replacement tests (`akit-listener` and `akit` `tests/reload.rs`),
+  which fail now and then on main `1a5fccf` too (1 run in 6 there, 1 in 3 here): a request reaches
+  the replaced listener in the moment before it stops accepting, and gets its graph's 404. The gate (`make compat-bless`): `admin` and four of its
+  fields supported; `examples/admin` now refused only for its Unix socket, `examples/console` for
+  `admin.console` and `admin.store`, and admin no longer refused in `bittorrent`, `metrics`,
+  `proxy` and the sync examples (fields refused 58 to 60, as `admin` splits into its subfields).
+- Differences from the plan and from fit:
+  - No Unix socket yet: akio's listeners take a `SocketAddr` only (akio API request A23).
+  - A load past `max_config_bytes` gets 413, but akio-http keeps reading the rest of the body
+    (dropped) and keeps the connection, where fit closes it (akio API request A24); the body
+    timeout bounds a slow client.
+  - fit's token and Unix socket tests are not ported (I27, A23); `TestWarnings`' access log and
+    limits warnings are not either: akit's warnings come from `akit run`'s own apply step.
+  - `PUT`/`PATCH`/`DELETE /config`, `POST /rollback/{n}`, `POST /reload` and `?dry_run=1` answer
+    501 until I27; `/config/effective` (providers) is I57 and reads as a pointer for now.
+  - The version history's `applied` is RFC 3339 in UTC with milliseconds; fit's is Go's
+    `time.Time` (nanoseconds, the local offset).
+- For I37 (metrics): `akit_admin::Options::metrics`, a writer `GET /metrics` answers with
+  (`METRICS_CONTENT_TYPE`; 404 when unset). At the merge, `akit run` passes I37's `Scrape::write`
+  there and calls `ConfigStats::reloaded` after each Admin API load (`Job::run` returns the
+  outcome, `None` when nothing was applied), as its SIGHUP reload does.
+- Benchmark: none (rule 24: the control plane).
 
 ### 2026-11-24: I20, passive health checks
 

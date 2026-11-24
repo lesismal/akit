@@ -25,6 +25,7 @@ pub mod duration;
 mod error;
 mod json;
 mod model;
+pub mod value;
 mod yaml;
 
 use std::path::{Path, PathBuf};
@@ -32,14 +33,15 @@ use std::path::{Path, PathBuf};
 pub use error::{Error, Errors, NOT_SUPPORTED_YET};
 pub use json::MAX_DEPTH;
 pub use model::{
-    AccessLevel, AccessLog, Certificate, ClientAuth, ClientAuthMode, Config,
-    DEFAULT_BROWSE_MAX_ENTRIES, DEFAULT_BUFFER_BYTES, DEFAULT_CHECK_INTERVAL,
-    DEFAULT_CONNECT_TIMEOUT, DEFAULT_FAIL_TIMEOUT, DEFAULT_FLUSH_INTERVAL, DEFAULT_IDLE_TIMEOUT,
-    DEFAULT_MAX_BODY_BYTES, DEFAULT_MAX_CONNS, DEFAULT_MAX_FAILS, DEFAULT_MAX_FILE_BYTES,
-    DEFAULT_MAX_IDLE_CONNS, DEFAULT_MAX_PENDING, DEFAULT_PROTOCOLS, DEFAULT_TLS_PROTOCOLS,
-    Dotfiles, Encoding, Handler, Limits, Listener, LoadBalancing, LogFormat, MAX_WEIGHT, Match,
-    Metrics, Network, Protocol, Proxy, Respond, Route, SCHEMA_VERSION, Static, Tls, TlsVersion,
-    Upstream,
+    AccessLevel, AccessLog, Admin, Certificate, ClientAuth, ClientAuthMode, Config,
+    DEFAULT_ADMIN_ADDRESS, DEFAULT_ADMIN_HISTORY, DEFAULT_ADMIN_MAX_CONFIG_BYTES,
+    DEFAULT_ADMIN_MAX_CONNS, DEFAULT_BROWSE_MAX_ENTRIES, DEFAULT_BUFFER_BYTES,
+    DEFAULT_CHECK_INTERVAL, DEFAULT_CONNECT_TIMEOUT, DEFAULT_FAIL_TIMEOUT, DEFAULT_FLUSH_INTERVAL,
+    DEFAULT_IDLE_TIMEOUT, DEFAULT_MAX_BODY_BYTES, DEFAULT_MAX_CONNS, DEFAULT_MAX_FAILS,
+    DEFAULT_MAX_FILE_BYTES, DEFAULT_MAX_IDLE_CONNS, DEFAULT_MAX_PENDING, DEFAULT_PROTOCOLS,
+    DEFAULT_TLS_PROTOCOLS, Dotfiles, Encoding, Handler, HeaderOps, Headers, Limits, Listener,
+    LoadBalancing, LogFormat, MAX_WEIGHT, Match, Metrics, Network, Protocol, Proxy, Redirect,
+    Respond, Rewrite, Route, SCHEMA_VERSION, Static, Tls, TlsVersion, Upstream,
 };
 
 /// The largest config document read, in bytes: fit's own configs are kilobytes; this bounds
@@ -292,6 +294,25 @@ fn file_error(p: &Path, msg: &str) -> Errors {
 ///
 /// Every problem found, each naming its file.
 pub fn from_files<P: AsRef<Path>>(paths: &[P]) -> Result<Config, Errors> {
+    let texts = read_files(paths)?;
+    from_sources(&sources(&texts))
+}
+
+/// [`from_files`], with the config as one JSON document too ([`value::json_of`]): what the
+/// Admin API keeps of a config read from files and answers `GET /config` with.
+///
+/// # Errors
+///
+/// Every problem found, each naming its file.
+pub fn load_files<P: AsRef<Path>>(paths: &[P]) -> Result<(Config, String), Errors> {
+    let texts = read_files(paths)?;
+    let srcs = sources(&texts);
+    let config = from_sources(&srcs)?;
+    Ok((config, value::json_of(&srcs)?))
+}
+
+/// The files `paths` name, read: each one's name, format and text.
+fn read_files<P: AsRef<Path>>(paths: &[P]) -> Result<Vec<(String, Format, String)>, Errors> {
     let files = config_files(paths)?;
     let mut texts = Vec::with_capacity(files.len());
     let mut total: usize = 0;
@@ -301,15 +322,18 @@ pub fn from_files<P: AsRef<Path>>(paths: &[P]) -> Result<Config, Errors> {
         total = total.saturating_add(text.len());
         texts.push((f.display().to_string(), format, text));
     }
-    let srcs: Vec<Source<'_>> = texts
+    Ok(texts)
+}
+
+fn sources(texts: &[(String, Format, String)]) -> Vec<Source<'_>> {
+    texts
         .iter()
         .map(|(name, format, src)| Source {
             name: Some(name),
             format: *format,
             src,
         })
-        .collect();
-    from_sources(&srcs)
+        .collect()
 }
 
 fn read_limited(path: &Path, limit: usize, several: bool) -> Result<String, Errors> {

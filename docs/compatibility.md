@@ -175,14 +175,14 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 75 supported.
+3821 fields in 121 sections, at fit `7daee573`; 102 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
 | [`access`](#fields-access) | 5 | 0 | 5 |
 | [`access_log`](#fields-access-log) | 14 | 7 | 7 |
 | [`acme`](#fields-acme) | 43 | 0 | 43 |
-| [`admin`](#fields-admin) | 105 | 0 | 105 |
+| [`admin`](#fields-admin) | 105 | 5 | 100 |
 | [`auto_https`](#fields-auto-https) | 5 | 0 | 5 |
 | [`bittorrent`](#fields-bittorrent) | 160 | 0 | 160 |
 | [`engine`](#fields-engine) | 11 | 0 | 11 |
@@ -214,11 +214,11 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`http.middleware/compress`](#fields-http-middleware-compress) | 10 | 0 | 10 |
 | [`http.middleware/concurrency_limit`](#fields-http-middleware-concurrency-limit) | 4 | 0 | 4 |
 | [`http.middleware/forward_auth`](#fields-http-middleware-forward-auth) | 7 | 0 | 7 |
-| [`http.middleware/headers`](#fields-http-middleware-headers) | 10 | 0 | 10 |
+| [`http.middleware/headers`](#fields-http-middleware-headers) | 10 | 10 | 0 |
 | [`http.middleware/jwt`](#fields-http-middleware-jwt) | 13 | 0 | 13 |
 | [`http.middleware/rate_limit`](#fields-http-middleware-rate-limit) | 9 | 0 | 9 |
-| [`http.middleware/redirect`](#fields-http-middleware-redirect) | 5 | 0 | 5 |
-| [`http.middleware/rewrite`](#fields-http-middleware-rewrite) | 6 | 0 | 6 |
+| [`http.middleware/redirect`](#fields-http-middleware-redirect) | 5 | 5 | 0 |
+| [`http.middleware/rewrite`](#fields-http-middleware-rewrite) | 6 | 4 | 2 |
 | [`http.middleware/wasm`](#fields-http-middleware-wasm) | 18 | 0 | 18 |
 | [`limits`](#fields-limits) | 7 | 2 | 5 |
 | [`listeners`](#fields-listeners) | 30 | 12 | 18 |
@@ -229,7 +229,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`metrics`](#fields-metrics) | 1 | 1 | 0 |
 | [`pprof`](#fields-pprof) | 4 | 0 | 4 |
 | [`providers`](#fields-providers) | 60 | 0 | 60 |
-| [`routes`](#fields-routes) | 24 | 16 | 8 |
+| [`routes`](#fields-routes) | 24 | 19 | 5 |
 | [`schema_version`](#fields-schema-version) | 1 | 1 | 0 |
 | [`services`](#fields-services) | 13 | 0 | 13 |
 | [`streaming`](#fields-streaming) | 76 | 0 | 76 |
@@ -300,7 +300,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 13 | 25 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 75 | 3746 |
+| **Total** | 3821 | 102 | 3719 |
 
 <a id="fields-access"></a>
 
@@ -391,13 +391,13 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `admin` | `object` | not supported yet |
+| `admin` | `object` | supported |
 | `admin.access` | `object` | not supported yet |
 | `admin.access.allow` | `array<string>` | not supported yet |
 | `admin.access.allow_files` | `array<string>` | not supported yet |
 | `admin.access.deny` | `array<string>` | not supported yet |
 | `admin.access.deny_files` | `array<string>` | not supported yet |
-| `admin.address` | `string` | not supported yet |
+| `admin.address` | `string` | supported |
 | `admin.assistant` | `object` | not supported yet |
 | `admin.assistant.data` | `object` | not supported yet |
 | `admin.assistant.data.redact` | `array<string>` | not supported yet |
@@ -484,10 +484,10 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `admin.console.users[].password_hash` | `string, required` | not supported yet |
 | `admin.console.users[].username` | `string, required` | not supported yet |
 | `admin.disable_dashboard` | `boolean` | not supported yet |
-| `admin.history` | `integer` | not supported yet |
+| `admin.history` | `integer` | supported |
 | `admin.key_file` | `string` | not supported yet |
-| `admin.max_config_bytes` | `integer` | not supported yet |
-| `admin.max_conns` | `integer` | not supported yet |
+| `admin.max_config_bytes` | `integer` | supported |
+| `admin.max_conns` | `integer` | supported |
 | `admin.mptcp` | `boolean` | not supported yet |
 | `admin.node_id` | `string` | not supported yet |
 | `admin.store` | `object` | not supported yet |
@@ -1160,16 +1160,16 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `routes[].middleware[]<headers>` | `module` | not supported yet |
-| `routes[].middleware[]<headers>.params` | `object` | not supported yet |
-| `routes[].middleware[]<headers>.params.request` | `object` | not supported yet |
-| `routes[].middleware[]<headers>.params.request.add` | `map<array<string>>` | not supported yet |
-| `routes[].middleware[]<headers>.params.request.delete` | `array<string>` | not supported yet |
-| `routes[].middleware[]<headers>.params.request.set` | `map<string>` | not supported yet |
-| `routes[].middleware[]<headers>.params.response` | `object` | not supported yet |
-| `routes[].middleware[]<headers>.params.response.add` | `map<array<string>>` | not supported yet |
-| `routes[].middleware[]<headers>.params.response.delete` | `array<string>` | not supported yet |
-| `routes[].middleware[]<headers>.params.response.set` | `map<string>` | not supported yet |
+| `routes[].middleware[]<headers>` | `module` | supported |
+| `routes[].middleware[]<headers>.params` | `object` | supported |
+| `routes[].middleware[]<headers>.params.request` | `object` | supported |
+| `routes[].middleware[]<headers>.params.request.add` | `map<array<string>>` | supported |
+| `routes[].middleware[]<headers>.params.request.delete` | `array<string>` | supported |
+| `routes[].middleware[]<headers>.params.request.set` | `map<string>` | supported |
+| `routes[].middleware[]<headers>.params.response` | `object` | supported |
+| `routes[].middleware[]<headers>.params.response.add` | `map<array<string>>` | supported |
+| `routes[].middleware[]<headers>.params.response.delete` | `array<string>` | supported |
+| `routes[].middleware[]<headers>.params.response.set` | `map<string>` | supported |
 
 <a id="fields-http-middleware-jwt"></a>
 
@@ -1213,11 +1213,11 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `routes[].middleware[]<redirect>` | `module` | not supported yet |
-| `routes[].middleware[]<redirect>.params` | `object` | not supported yet |
-| `routes[].middleware[]<redirect>.params.regexp` | `string` | not supported yet |
-| `routes[].middleware[]<redirect>.params.status` | `integer` | not supported yet |
-| `routes[].middleware[]<redirect>.params.to` | `string, required` | not supported yet |
+| `routes[].middleware[]<redirect>` | `module` | supported |
+| `routes[].middleware[]<redirect>.params` | `object` | supported |
+| `routes[].middleware[]<redirect>.params.regexp` | `string` | supported |
+| `routes[].middleware[]<redirect>.params.status` | `integer` | supported |
+| `routes[].middleware[]<redirect>.params.to` | `string, required` | supported |
 
 <a id="fields-http-middleware-rewrite"></a>
 
@@ -1225,12 +1225,12 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `routes[].middleware[]<rewrite>` | `module` | not supported yet |
-| `routes[].middleware[]<rewrite>.params` | `object` | not supported yet |
-| `routes[].middleware[]<rewrite>.params.add_prefix` | `string` | not supported yet |
+| `routes[].middleware[]<rewrite>` | `module` | supported |
+| `routes[].middleware[]<rewrite>.params` | `object` | supported |
+| `routes[].middleware[]<rewrite>.params.add_prefix` | `string` | supported |
 | `routes[].middleware[]<rewrite>.params.regexp` | `string` | not supported yet |
 | `routes[].middleware[]<rewrite>.params.replacement` | `string` | not supported yet |
-| `routes[].middleware[]<rewrite>.params.strip_prefix` | `array<string>` | not supported yet |
+| `routes[].middleware[]<rewrite>.params.strip_prefix` | `array<string>` | supported |
 
 <a id="fields-http-middleware-wasm"></a>
 
@@ -1747,9 +1747,9 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `routes[].match.path_regexp` | `array<string>` | supported |
 | `routes[].match.query` | `map<array<string>>` | supported |
 | `routes[].match.remote_ip` | `array<string>` | supported |
-| `routes[].middleware` | `array<object>` | not supported yet |
-| `routes[].middleware[].module` | `enum(basic_auth\|body_limit\|cache\|circuit_breaker\|client_cert\|compress\|concurrency_limit\|forward_auth\|headers\|jwt\|rate_limit\|redirect\|rewrite\|wasm), required` | not supported yet |
-| `routes[].middleware[].params` | `object` | not supported yet |
+| `routes[].middleware` | `array<object>` | supported |
+| `routes[].middleware[].module` | `enum(basic_auth\|body_limit\|cache\|circuit_breaker\|client_cert\|compress\|concurrency_limit\|forward_auth\|headers\|jwt\|rate_limit\|redirect\|rewrite\|wasm), required` | supported |
+| `routes[].middleware[].params` | `object` | supported |
 | `routes[].name` | `string` | supported |
 | `routes[].priority` | `integer` | supported |
 

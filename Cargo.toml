@@ -45,7 +45,8 @@ akio-crypto = { git = "https://github.com/lesismal/akio", rev = "a9a620ab2db9635
 # HTTP/3 listeners (akit-listener): akio-h3 serves akio-http's services over akio-quic.
 akio-h3 = { git = "https://github.com/lesismal/akio", rev = "a9a620ab2db9635caee32fc625da51ae255ff591" }
 akio-quic = { git = "https://github.com/lesismal/akio", rev = "a9a620ab2db9635caee32fc625da51ae255ff591" }
-# Route path regexps (akit-router, decision 001): linear-time matching, no dependencies.
+# Route path regexps (akit-router) and the redirect middleware's (akit-middleware), decision 001:
+# linear-time matching, no dependencies.
 akio-regex = { git = "https://github.com/lesismal/akio", rev = "a9a620ab2db9635caee32fc625da51ae255ff591" }
 
 akit-config = { path = "crates/akit-config" }

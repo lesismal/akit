@@ -1,0 +1,45 @@
+# 006：Admin API 运行在自己的 akio 引擎上，由控制线程应用
+
+[English](006-admin-api.md) | [简体中文](006-admin-api.zh-CN.md)
+
+状态：于 I26 采纳（2026-11-24）。
+
+## 背景
+
+I26 加入 fit 的 Admin API：`GET /config`（整份，或按 JSON 指针取一个值）、`POST /load`、`GET /versions` 和
+`GET /versions/{n}`，带 ETag、`If-Match` 和 `If-None-Match`
+（[fit 的决定 005](https://github.com/lesismal/fit/blob/main/docs/decisions/005-admin-api.zh-CN.md)）。
+fit 用 net/http 在自己的 goroutine 上提供它，不占 fib 的 worker，因为应用配置要读文件、绑定监听器，这些会阻塞。
+akit 没有 goroutine，也没有异步运行时（规则 1 和 16）：它要决定由什么提供 API、在哪里应用配置，以及两者如何
+衔接而不在 I/O 线程上阻塞等待。
+
+## 决定
+
+- **API 由 akio-http 提供，运行在自己的 akio 引擎上，只有一个 I/O 线程**，由 `akit_admin::Server::start`
+  在监听器的引擎之外构建并启动：数据面繁忙不会拖住 API，API 的限制就是其引擎的限制。只支持 HTTP/1.1（每个连接
+  一次一个请求），`max_conns` 作为引擎的 `max_connections`（超出的连接在接受时即关闭），请求头 64 KiB，
+  请求头 10 秒、请求体 60 秒无字节、空闲 60 秒超时，与 fit 一样。
+- **读请求在 I/O 线程上回答**，数据来自历史记录 `akit_admin::Configs`，I/O 线程只在克隆某个版本的 `Arc` 时
+  持有它（规则 1：不长时间持锁）。
+- **加载的请求体在 `max_config_bytes` 之内流式读入**（超出回 413，依据 `Content-Length` 或边读边判断），然后分离
+  （`Context::detach`），作为 `Job` 经有界队列交给控制线程（`try_send`；满了回 503）。控制线程就是 `akit run`
+  已经在处理信号的主循环，用与 SIGHUP 相同的代码应用它：解析、编译，然后 `akit_listener::Listeners::reload`
+  （I22），并在那里回答（`Detached::respond` 可从任意线程调用）。配置一次应用一个，`If-Match` 与被替换的配置
+  比较，并发写入不会丢失。
+- **每个配置都经过 `Configs::update`**，无论来自文件（SIGHUP，来源 `file`）还是 API（来源 `admin`）：统一编号，
+  启动时为 1，每应用一个加 1；保留最近 `admin.history`（10）个。
+- **配置按写入时的样子保存**：加载的请求体和单个 JSON 文件保存为标准 JSON（注释和尾随逗号替换为空格，其余字节
+  原位不动，与 fit 的 `config.Standardize` 一样）；多个文件，或一个 YAML、`.conf` 文件，保存为按 fit 的写法写出的
+  一个 JSON 文档（`akit_config::value::json_of`）。ETag 是该文本 SHA-256 的前 96 位（akio-crypto），与 fit 一样。
+- **与 fit 一样拒绝网页**：带 `Origin` 的请求回 403，来自 API 自身源的读请求除外；`Host` 必须是回环主机。
+  没有令牌（I27）时地址必须是回环地址；Unix 套接字要等 akio（A23）。
+- **沿用 fit 的路径和载荷**，包括 `Fit-Config-Version` 头，fit 的客户端可以直接用于 akit；编辑、回滚、
+  `POST /reload` 和试运行在 I27 之前回 501。
+
+## 影响
+
+- 配置有 `admin` 时，akit 多运行一个只有一个线程的 akio 引擎。
+- 加载要排在 SIGHUP 重载之后，反之亦然：只有一个控制线程。
+- akio-http 还不能在拒绝请求体的响应之后关闭连接（A24）：超过 `max_config_bytes` 的请求体剩余部分会被读取并丢弃，
+  受请求体超时约束，而 fit 会关闭连接。
+- 对 `admin` 的修改在重启后生效，修改它的加载会给出提示，与 fit 一样。

@@ -22,10 +22,13 @@ fn needs_admin() {
         errors(&format!("{{{BASE},\n\"metrics\": {{}}}}")),
         ["3:12: metrics: the Admin API serves metrics: set admin too"]
     );
-    // With admin, admin alone is refused, until akit has an Admin API (I26).
-    let errs = errors(&format!("{{{BASE}, \"admin\": {{}}, \"metrics\": {{}}}}"));
-    assert_eq!(errs.len(), 1, "{errs:?}");
-    assert!(errs[0].contains("admin: not supported yet"), "{errs:?}");
+    // With admin, it is read.
+    let c = from_json(
+        &format!("{{{BASE}, \"admin\": {{}}, \"metrics\": {{}}}}"),
+        None,
+    )
+    .unwrap();
+    assert!(c.metrics.is_some() && c.admin.is_some());
     // Left out, nothing is counted.
     assert_eq!(
         from_json(&format!("{{{BASE}}}"), None).unwrap().metrics,

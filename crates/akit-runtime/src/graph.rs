@@ -15,10 +15,10 @@ use akit_upstream::Pool;
 use crate::module::{Env, Modules, Registry};
 use crate::traits::Handler;
 
-/// The params a handler module is provisioned from: the handler as akit-config read it, its
-/// module named by [`akit_config::Handler::module`]. akit-config decodes and checks each module's
-/// params, with their paths and positions, when the config is read (I02); modules take the typed
-/// value.
+/// The params a module is provisioned from: a route's handler or one of its middleware (I40), as
+/// akit-config read it, its module named by [`akit_config::Handler::module`]. akit-config decodes
+/// and checks each module's params, with their paths and positions, when the config is read
+/// (I02); modules take the typed value.
 pub type HandlerParams = akit_config::Handler;
 
 /// A route, compiled.
@@ -36,7 +36,8 @@ pub struct CompiledRoute {
     /// The rest of `match`, built (I39): method, remote IP, header, query, path regexp and
     /// expression, the cheapest first, as fit's graph orders them.
     pub matchers: Vec<akit_router::Matcher>,
-    /// The handler, its middleware chain built around it (I40 on); provisioned.
+    /// The handler, its middleware chain built around it (I40), the first middleware outermost;
+    /// provisioned.
     pub handler: Arc<dyn Handler>,
 }
 
@@ -83,8 +84,11 @@ pub struct Graph {
     /// Per listener, in the order of `listeners`: its routes' router, to indices of `routes`.
     routers: Vec<akit_router::Router<usize>>,
     /// Per listener, in the order of `listeners`: its TLS, loaded from its files, when it has
-    /// `tls`: over TCP, and over QUIC when it serves `h3`.
-    tls: Vec<Option<akit_tls::ServerConfigs>>,
+    /// `tls` (its certificates, served per handshake through [`crate::ListenerCerts`]).
+    tls: Vec<Option<akit_tls::ListenerTls>>,
+    /// The SHA-256 of every certificate, key and authority file its listeners loaded, by path:
+    /// what `run -watch-certs` compares the files with (I30).
+    cert_files: std::collections::BTreeMap<String, akit_tls::Sum>,
     /// The upstreams' pools, in the config's order.
     upstreams: Vec<Pool>,
     /// The access log its requests' lines go to: the env's, when the config has `access_log`.
@@ -108,18 +112,28 @@ impl Graph {
         &self.listeners
     }
 
-    /// The TLS the listener at `listener` ([`listener_index`](Self::listener_index)) serves,
-    /// its certificates loaded when the graph was compiled; `None` for one in the clear.
+    /// The TLS of the listener at `listener` ([`listener_index`](Self::listener_index)), loaded
+    /// from its files when the graph was compiled; `None` for one in the clear. Its
+    /// configurations are built around a manager with [`akit_tls::ListenerTls::server_configs`]
+    /// ([`crate::ListenerCerts`] for a listener that serves the current graph's certificates).
     #[must_use]
-    pub fn tls(&self, listener: usize) -> Option<&akio::tls::ServerConfig> {
-        self.tls.get(listener)?.as_ref().map(|c| &c.tcp)
+    pub fn tls(&self, listener: usize) -> Option<&akit_tls::ListenerTls> {
+        self.tls.get(listener)?.as_ref()
     }
 
-    /// The TLS the HTTP/3 connections of the listener at `listener` serve (ALPN `h3`, TLS 1.3),
-    /// from the same certificates as [`tls`](Self::tls); `None` for one that does not serve `h3`.
+    /// The certificates of the listener named `name`, when it has `tls`: what a handshake on it
+    /// is served from while this graph is current. Looks the listener up by name (there are
+    /// few): once per full TLS handshake, not per request.
     #[must_use]
-    pub fn h3_tls(&self, listener: usize) -> Option<&akio::tls::ServerConfig> {
-        self.tls.get(listener)?.as_ref()?.h3.as_ref()
+    pub fn certs(&self, name: &str) -> Option<&Arc<akit_tls::Certs>> {
+        let i = self.listener_index(name)?;
+        Some(self.tls.get(i)?.as_ref()?.certs())
+    }
+
+    /// The SHA-256 of every certificate, key and authority file the listeners loaded, by path.
+    #[must_use]
+    pub fn cert_files(&self) -> &std::collections::BTreeMap<String, akit_tls::Sum> {
+        &self.cert_files
     }
 
     /// The routes, in the config's order.
@@ -164,11 +178,18 @@ impl Graph {
     /// The certificates the listener at `listener` serves, for the metrics: none for one in the
     /// clear.
     #[must_use]
-    pub fn certificates(&self, listener: usize) -> &[akit_tls::CertificateInfo] {
+    /// Parses each one: control plane only.
+    pub fn certificates(&self, listener: usize) -> Vec<akit_tls::CertificateInfo> {
         self.tls
             .get(listener)
             .and_then(Option::as_ref)
-            .map_or(&[], |c| &c.certificates[..])
+            .map(|t| {
+                t.certs()
+                    .certificates()
+                    .filter_map(akit_tls::CertificateInfo::of)
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
     /// The pool of the upstream named `name`.
@@ -271,8 +292,8 @@ pub const UPSTREAM_POOLS: &str = "upstream.pools";
 pub const METRICS: &str = "metrics";
 
 /// Compiles `config` into a graph: a pool made for each upstream (I14), dialing through `env`'s
-/// engine, then every route's handler loaded from `registry` and provisioned with `env` and the
-/// pools. The pools are cleaned up after the handlers, which may use them: each is closed, and
+/// engine, then every route's handler and middleware loaded from `registry` and provisioned with
+/// `env` and the pools, the middleware chained around the handler once, here (rule 12). The pools are cleaned up after the handlers, which may use them: each is closed, and
 /// drains its requests in flight, when the graph is retired (decision 004). Nothing is published: a config that fails leaves nothing behind (the modules
 /// provisioned before the failure are cleaned up), and the running graph is untouched.
 ///
@@ -312,22 +333,21 @@ pub fn compile(
         let handler = match registry.handler(r.handler.module(), &r.handler, env, &mut modules) {
             Ok(h) => h,
             Err(e) => {
-                let mut path = format!("routes[{i}].handler");
-                if let crate::LoadError::Provision { error, .. } = &e {
-                    if let Some(field) = error.field_name() {
-                        path = format!("{path}.params.{field}");
-                    }
-                }
-                errors.push(Error {
-                    file: None,
-                    path,
-                    line: 0,
-                    col: 0,
-                    msg: e.to_string(),
-                });
+                errors.push(load_error(format!("routes[{i}].handler"), &e));
                 continue;
             }
         };
+        let mut middleware = Vec::with_capacity(r.middleware.len());
+        for (j, m) in r.middleware.iter().enumerate() {
+            match registry.middleware(m.module(), m, env, &mut modules) {
+                Ok(mw) => middleware.push(mw),
+                Err(e) => errors.push(load_error(format!("routes[{i}].middleware[{j}]"), &e)),
+            }
+        }
+        if middleware.len() != r.middleware.len() {
+            continue;
+        }
+        let handler = crate::traits::chain(&middleware, handler);
         let (host, path) = r
             .matcher
             .as_ref()
@@ -362,7 +382,7 @@ pub fn compile(
     let mut tls = Vec::with_capacity(config.listeners.len());
     for (i, l) in config.listeners.iter().enumerate() {
         tls.push(l.tls.as_ref().and_then(|t| {
-            akit_tls::server_configs(t, &l.protocols)
+            akit_tls::ListenerTls::load(t, &l.protocols)
                 .map_err(|e| {
                     let mut path = format!("listeners[{i}].tls");
                     if !e.path.is_empty() {
@@ -379,6 +399,11 @@ pub fn compile(
                 .ok()
         }));
     }
+    let cert_files = tls
+        .iter()
+        .flatten()
+        .flat_map(|t| t.files().iter().map(|(p, s)| (p.clone(), *s)))
+        .collect();
     if !errors.is_empty() {
         // `modules` drops here, cleaning up what was provisioned, and `lease` gives back what it
         // took.
@@ -440,6 +465,7 @@ pub fn compile(
         routes,
         routers,
         tls,
+        cert_files,
         upstreams,
         access_log: config.access_log.as_ref().and(env.access_log().cloned()),
         requests,
@@ -447,6 +473,23 @@ pub fn compile(
         holds: AtomicUsize::new(0),
         orphaned: AtomicBool::new(false),
     })
+}
+
+/// The error of a module at `path` (a route's handler or one of its middleware) that failed to
+/// load: at its params' field, when the error names one.
+fn load_error(mut path: String, e: &crate::LoadError) -> Error {
+    if let crate::LoadError::Provision { error, .. } = e {
+        if let Some(field) = error.field_name() {
+            path = format!("{path}.params.{field}");
+        }
+    }
+    Error {
+        file: None,
+        path,
+        line: 0,
+        col: 0,
+        msg: e.to_string(),
+    }
 }
 
 /// The matchers `m` asks for besides hosts and paths, the cheapest first (fit's
