@@ -133,7 +133,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I30 | Certificate manager and storage | I09 | done |
 | I31 | ACME I: account, orders, HTTP-01 | I30 | done |
 | I32 | ACME II: TLS-ALPN-01, renewal, OCSP | I31 | done |
-| I33 | Automatic HTTPS defaults | I32 | todo |
+| I33 | Automatic HTTPS defaults | I32 | done |
 | I34 | On-demand TLS | I33, A2 | todo |
 | I35 | Active health checks | I20 | done |
 | I36 | Load balancing v2 | I19 | done |
@@ -590,6 +590,9 @@ Split from I07 so that the half that needs no config model runs beside I02.
   HTTPS; fit's defaults and opt-outs.
 - **Done when**: a config with only a host name serves HTTPS against Pebble.
 - **Touches**: `akit-tls`, `akit-runtime`.
+- **Done**: fit's `auto_https` in `akit-config` (the listeners made or filled in when the config is
+  read), the redirect in `akit-listener`'s dispatcher; a config naming only a host gets its
+  certificate from Pebble through HTTP-01 on the `http` listener made and serves it on `https`.
 
 ### I34 On-demand TLS
 

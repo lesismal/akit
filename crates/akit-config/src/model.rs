@@ -36,6 +36,9 @@ pub struct Config {
     /// `acme`: how certificates for the names listeners list in `tls.acme` are obtained (I31);
     /// the defaults when left out. Read when akit starts: a change takes a restart, as in fit.
     pub acme: Option<Acme>,
+    /// `auto_https`: HTTPS by default (I33), on when left out; what it made of the listeners is
+    /// already in [`listeners`](Self::listeners).
+    pub auto_https: Option<crate::AutoHttps>,
 }
 
 /// fit's default `acme.directory`: Let's Encrypt's.
@@ -512,6 +515,10 @@ pub struct Listener {
     /// The config's `limits.max_body_bytes`, which fit fixes in each listener's binding: a
     /// reload that changes it changes every listener, as fit's `binding.same` compares it.
     pub max_body_bytes: u64,
+    /// When not 0, the HTTPS port every request this listener in the clear takes is redirected
+    /// to with a 308, but for ACME's HTTP-01 challenges; it serves no routes. Only the listener
+    /// HTTPS by default makes (`auto_https`, I33) has one; 0 for every listener written.
+    pub redirect_https: u16,
 }
 
 /// A listener's TLS: its certificates from files, chosen by the name a client asks for (SNI),
@@ -1107,6 +1114,7 @@ const CONFIG_FIELDS: &[&str] = &[
     "admin",
     "metrics",
     "acme",
+    "auto_https",
 ];
 const CONFIG_FIT_ONLY: &[&str] = &[
     "services",
@@ -1114,7 +1122,6 @@ const CONFIG_FIT_ONLY: &[&str] = &[
     "telemetry",
     "access",
     "engine",
-    "auto_https",
     "pprof",
     "llm",
     "tunnel",
@@ -1184,6 +1191,8 @@ const ACME_FIELDS: &[&str] = &[
     "request_timeout",
     "challenges",
 ];
+// I33: HTTPS by default (crate::auto_https).
+const AUTO_HTTPS_FIELDS: &[&str] = &["disable", "disable_redirects", "http_port", "https_port"];
 const ACME_FIT_ONLY: &[&str] = &["shared_storage", "on_demand"];
 const CERTIFICATE_FIELDS: &[&str] = &["cert_file", "key_file"];
 const CLIENT_AUTH_FIELDS: &[&str] = &["ca_files", "mode"];
@@ -1344,6 +1353,9 @@ pub(crate) struct Part {
     metrics: Option<(Metrics, usize)>,
     /// `acme`, with the position of its key, when the file gives it.
     acme: Option<(Acme, usize)>,
+    /// `auto_https`, with where a problem with its ports is reported, and the position of its
+    /// key, when the file gives it.
+    auto_https: Option<((crate::AutoHttps, usize), usize)>,
     /// The position of the file's top object.
     doc_off: usize,
 }
@@ -1360,7 +1372,10 @@ pub(crate) fn part(d: &mut Decoder<'_>, n: &Node, file: usize) -> Option<Part> {
         .take("listeners")
         .map(|v| {
             d.array(v, "listeners", |d, n, p| {
-                Some(At::new(file, p, n, listener(d, n, p)?))
+                let empty_tls = crate::auto_https::empty_tls(n);
+                let mut l = At::new(file, p, n, listener(d, n, p)?);
+                l.empty_tls = empty_tls;
+                Some(l)
             })
         })
         .unwrap_or_default();
@@ -1398,6 +1413,9 @@ pub(crate) fn part(d: &mut Decoder<'_>, n: &Node, file: usize) -> Option<Part> {
     let acme = o
         .take("acme")
         .and_then(|v| acme(d, v, "acme").map(|a| (a, v.off)));
+    let auto_https = o.take("auto_https").and_then(|v| {
+        crate::auto_https::decode(d, v, "auto_https", AUTO_HTTPS_FIELDS).map(|a| (a, v.off))
+    });
     let doc_off = o.off;
     o.finish(d, CONFIG_FIELDS, CONFIG_FIT_ONLY);
     Some(Part {
@@ -1410,6 +1428,7 @@ pub(crate) fn part(d: &mut Decoder<'_>, n: &Node, file: usize) -> Option<Part> {
         admin,
         metrics,
         acme,
+        auto_https,
         doc_off,
     })
 }
@@ -1432,6 +1451,7 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
     let mut admin: Option<(Admin, usize)> = None;
     let mut metrics: Option<(Metrics, usize, usize)> = None;
     let mut acme: Option<(Acme, usize)> = None;
+    let mut auto_https: Option<((crate::AutoHttps, usize), usize)> = None;
     for (file, p) in parts.into_iter().enumerate() {
         first_doc.get_or_insert((file, p.doc_off));
         if let Some((v, off)) = p.schema_version {
@@ -1545,22 +1565,17 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
         if let Some((a, off)) = p.acme {
             once(ds, &mut acme, a, file, off, "acme");
         }
+        if let Some((a, off)) = p.auto_https {
+            once(ds, &mut auto_https, a, file, off, "auto_https");
+        }
         listeners.extend(p.listeners);
         routes.extend(p.routes);
         upstreams.extend(p.upstreams);
     }
     check_listeners(ds, &listeners);
-    if listeners.is_empty() && !routes.is_empty() {
-        if let Some(d) = first_doc.and_then(|(f, off)| ds.get_mut(f).map(|d| (d, off))) {
-            // fit serves such a config over HTTPS by default, with certificates from ACME.
-            d.0.not_yet(
-                d.1,
-                "listeners",
-                "a config with no listeners, served over HTTPS by default (auto_https)",
-            );
-        }
-    }
-    check_routes(ds, &routes, &listeners);
+    let served = served_listeners(ds, &listeners, &routes, auto_https, first_doc);
+    let names: Vec<&str> = served.iter().map(|l| l.name.as_str()).collect();
+    check_routes(ds, &routes, &names);
     check_upstreams(ds, &upstreams);
     check_acme_names(ds, &listeners, acme.as_ref().map(|(a, _)| a));
     if let Some((_, file, off)) = metrics {
@@ -1578,11 +1593,11 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
     let limits = limits.map(|(l, _)| l).unwrap_or_default();
     Config {
         schema_version: schema.map_or(SCHEMA_VERSION, |(v, _)| v),
-        listeners: listeners
+        listeners: served
             .into_iter()
-            .map(|a| Listener {
+            .map(|l| Listener {
                 max_body_bytes: limits.max_body_bytes,
-                ..a.v
+                ..l
             })
             .collect(),
         routes: routes.into_iter().map(|a| a.v).collect(),
@@ -1592,6 +1607,71 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
         admin: admin.map(|(a, _)| a),
         metrics: metrics.map(|(m, _, _)| m),
         acme: acme.map(|(a, _)| a),
+        auto_https: auto_https.map(|((a, _), _)| a),
+    }
+}
+
+/// The listeners the config is served on: those written, or those HTTPS by default makes
+/// ([`crate::auto_https`]), with fit's checks of them (config/validate.go). A config with no
+/// listeners and no routes is let through, as akit's start with only the Admin API (fit's with
+/// only its console or its roles).
+fn served_listeners(
+    ds: &mut [Decoder<'_>],
+    listeners: &[At<Listener>],
+    routes: &[At<Route>],
+    auto_https: Option<((crate::AutoHttps, usize), usize)>,
+    first_doc: Option<(usize, usize)>,
+) -> Vec<Listener> {
+    use crate::auto_https::{Effective, effective};
+    let (auto, auto_at) = match auto_https {
+        Some(((a, off), file)) => (a, Some((file, off))),
+        None => (crate::AutoHttps::default(), None),
+    };
+    if listeners.is_empty() && routes.is_empty() {
+        return Vec::new();
+    }
+    let written = listeners
+        .iter()
+        .map(|l| (l.v.clone(), l.empty_tls.is_some()))
+        .collect();
+    let routes: Vec<&Route> = routes.iter().map(|r| &r.v).collect();
+    match effective(&auto, written, &routes) {
+        Effective::Written(served, problems) => {
+            for (i, msg) in problems {
+                if let Some(l) = listeners.get(i) {
+                    if let (Some(off), Some(d)) = (l.empty_tls, ds.get_mut(l.file)) {
+                        d.error(off, &crate::error::join_field(&l.path, "tls"), msg);
+                    }
+                }
+            }
+            served
+        }
+        Effective::Made(served) => served,
+        Effective::None(msg) => {
+            // fit's, with no position: about the config as a whole.
+            if let Some(d) = first_doc.and_then(|(f, _)| ds.get_mut(f)) {
+                d.errors.push(crate::error::Error {
+                    file: d.file().map(str::to_owned),
+                    path: "listeners".to_owned(),
+                    line: 0,
+                    col: 0,
+                    msg: msg.to_owned(),
+                });
+            }
+            Vec::new()
+        }
+        Effective::OnePort(port) => {
+            if let Some((file, off)) = auto_at {
+                if let Some(d) = ds.get_mut(file) {
+                    d.error(
+                        off,
+                        "auto_https.http_port",
+                        format!("the HTTP port is the HTTPS port, {port}"),
+                    );
+                }
+            }
+            Vec::new()
+        }
     }
 }
 
@@ -1760,6 +1840,9 @@ struct At<T> {
     path: String,
     off: usize,
     v: T,
+    /// For a listener whose `tls` asks for nothing, the position of its `tls`
+    /// ([`crate::auto_https::empty_tls`]).
+    empty_tls: Option<usize>,
 }
 
 impl<T> At<T> {
@@ -1769,6 +1852,7 @@ impl<T> At<T> {
             path: path.to_owned(),
             off: n.off,
             v,
+            empty_tls: None,
         }
     }
 
@@ -1928,6 +2012,7 @@ fn listener(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Listener> {
         tls,
         // Set from the config's limits once the files are merged.
         max_body_bytes: DEFAULT_MAX_BODY_BYTES,
+        redirect_https: 0,
     })
 }
 
@@ -2009,11 +2094,8 @@ fn limits(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Limits> {
 
 fn tls(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Tls> {
     let mut o = d.object(n, path)?;
-    let certs_node = o.take("certificates");
-    // Whether any is written, read or not: one with a problem is not missing.
-    let some_certs =
-        certs_node.is_some_and(|v| !matches!(&v.kind, crate::json::Kind::Array(a) if a.is_empty()));
-    let certificates = certs_node
+    let certificates = o
+        .take("certificates")
         .map(|v| d.array(v, &o.at("certificates"), certificate))
         .unwrap_or_default();
     let client_auth = o
@@ -2023,8 +2105,6 @@ fn tls(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Tls> {
         Some(v) => tls_version(d, v, &o.at("max_version")),
         None => TlsVersion::Tls13,
     };
-    // Whether names are written, read or not: one with a problem is not missing.
-    let acme_written = o.has("acme");
     let acme = o
         .take("acme")
         .map(|v| {
@@ -2034,19 +2114,9 @@ fn tls(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Tls> {
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();
-    let off = o.off;
-    // Not taken: finish refuses it as not supported yet.
-    let has_acme = acme_written || o.has("on_demand");
+    // One with no certificates and no names gets its routes' host names (auto_https), or is
+    // refused once the routes are read (`served_listeners`).
     o.finish(d, TLS_FIELDS, TLS_FIT_ONLY);
-    if !some_certs && !has_acme {
-        // fit obtains certificates for the listener's routes' host names with ACME then
-        // (auto_https), or refuses a listener whose routes match none.
-        d.not_yet(
-            off,
-            path,
-            "a tls without certificates, whose certificates are obtained with ACME for its routes' host names (auto_https)",
-        );
-    }
     Some(Tls {
         certificates,
         client_auth,
@@ -3734,7 +3804,7 @@ fn check_listeners(ds: &mut [Decoder<'_>], listeners: &[At<Listener>]) {
     }
 }
 
-fn check_routes(ds: &mut [Decoder<'_>], routes: &[At<Route>], listeners: &[At<Listener>]) {
+fn check_routes(ds: &mut [Decoder<'_>], routes: &[At<Route>], listeners: &[&str]) {
     let mut seen: Vec<&str> = Vec::new();
     for r in routes {
         if let Some(name) = r.v.name.as_deref().filter(|s| !s.is_empty()) {
@@ -3751,7 +3821,7 @@ fn check_routes(ds: &mut [Decoder<'_>], routes: &[At<Route>], listeners: &[At<Li
             seen.push(name);
         }
         for (j, l) in r.v.listeners.iter().enumerate() {
-            if !listeners.iter().any(|x| &x.v.name == l) {
+            if !listeners.contains(&l.as_str()) {
                 let path =
                     crate::error::join_index(&crate::error::join_field(&r.path, "listeners"), j);
                 r.error(ds, &path, format!("there is no listener named {l:?}"));

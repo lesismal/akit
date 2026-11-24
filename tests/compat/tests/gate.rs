@@ -375,6 +375,12 @@ fn supported_fields_are_read() {
         )
     };
     let access = |fields: &str| format!("{{\"access_log\": {{{fields}}}}}");
+    // No listeners: HTTPS by default makes them, or with `listeners`, written ones.
+    let auto_https = |fields: &str| {
+        format!(
+            r#"{{"auto_https": {{{fields}}}, "routes": [{{"match": {{"host": ["a.example"]}}, "handler": {{"module": "respond"}}}}]}}"#
+        )
+    };
     let health = |fields: &str| upstream(&format!(r#", "health_check": {{{fields}}}"#));
     let sticky = |fields: &str| upstream(&format!(r#", "sticky_cookie": {{{fields}}}"#));
     let mw = |module: &str, params: &str| {
@@ -581,6 +587,31 @@ fn supported_fields_are_read() {
                         akit_config::Challenge::Http01,
                     ]
             },
+        ),
+        // HTTPS by default (I33): its listeners are made from the routes' host names.
+        ("auto_https", auto_https(""), |c| {
+            c.auto_https == Some(akit_config::AutoHttps::default()) && c.listeners.len() == 2
+        }),
+        // Off: listeners must be written.
+        (
+            "auto_https.disable",
+            auto_https(r#""disable": true"#).replacen('{', &format!("{{{L}, "), 1),
+            |c| c.auto_https.unwrap().disable && c.listeners.len() == 1,
+        ),
+        (
+            "auto_https.disable_redirects",
+            auto_https(r#""disable_redirects": true"#),
+            |c| c.listeners.len() == 1 && c.listeners[0].name == "https",
+        ),
+        (
+            "auto_https.http_port",
+            auto_https(r#""http_port": 8080"#),
+            |c| c.listeners[1].address == ":8080",
+        ),
+        (
+            "auto_https.https_port",
+            auto_https(r#""https_port": 8443"#),
+            |c| c.listeners[0].address == ":8443" && c.listeners[1].redirect_https == 8443,
         ),
         // 1.3, the default; 1.2 is refused as not supported yet (akio API request A9).
         (
@@ -1348,7 +1379,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 30] = [
+    let objects: [(&str, &str, Option<&str>); 31] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         ("admin", "ADMIN_FIELDS", Some("ADMIN_FIT_ONLY")),
         ("acme", "ACME_FIELDS", Some("ACME_FIT_ONLY")),
@@ -1358,6 +1389,7 @@ fn akit_config_lists_match_the_inventory() {
             "ACCESS_LOG_FIELDS",
             Some("ACCESS_LOG_FIT_ONLY"),
         ),
+        ("auto_https", "AUTO_HTTPS_FIELDS", None),
         ("listeners[]", "LISTENER_FIELDS", Some("LISTENER_FIT_ONLY")),
         ("listeners[].tls", "TLS_FIELDS", Some("TLS_FIT_ONLY")),
         ("listeners[].tls.certificates[]", "CERTIFICATE_FIELDS", None),

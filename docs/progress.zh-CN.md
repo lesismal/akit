@@ -10,14 +10,45 @@
 | | |
 | --- | --- |
 | 最后更新 | 2026-11-24 |
-| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I24 已完成（I17b 和 I18b 等待 akio）；M2 的 I26–I28、I30–I32、I35–I37 和 M3 的 I39–I42 已提前完成。 |
+| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I24 已完成（I17b 和 I18b 等待 akio）；M2 的 I26–I28、I30–I33、I35–I37 和 M3 的 I39–I42 已提前完成。 |
 | akio | akio `main` 上的 `4f7169c4`（`1.0.0-rc.1`，带 A1–A8、A11、A13、A16–A21、A36–A38 和 A63–A65），在 `Cargo.toml` 中按 `rev` 锁定 |
 | fit | 作为规格；本计划基于 `7daee573` 阅读 |
-| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；基于 akio 的 A1 保留（按 fit 的 `binding.same`：证书文件和 ACME 名字可以变）、增加、修改和排空监听器，包括启动时的监听器，重载可新增 h3 监听器；服务 h3 的启动监听器要重启才能变）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证；按 fit 的方式每次握手选择证书，重载或 `-watch-certs` 替换证书而不关闭监听器）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；路由中间件：`rewrite`（前缀）、`redirect`、`headers`、`rate_limit`、`concurrency_limit`、`body_limit`、`basic_auth`（bcrypt，在 akio 的线程池上校验）和 `client_cert`（按路由的 mTLS）；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`、双向流式转发 body 并联动背压，双向透传 trailer，`timeout` 和上游的 `response_timeout`，超时回答 504，客户端在 body 中途离开时放弃上游请求；经 HTTP/1.1、h2c 和 h2 访问上游）；所有监听器和代理上的 `limits.max_body_bytes`（413）；fit 的 json、text 和 line 格式的访问日志；上游连接池，fit 的九种负载均衡策略（轮询、加权轮询、最少连接、随机、p2c，以及按客户端 IP、路径、头或 cookie 的一致性哈希）和会话保持 cookie，跳过被被动健康检查（`max_fails`、`fail_timeout`）和主动健康检查（`health_check`：http 和 tcp 探测）下线的地址；回环地址上的 Admin API（`GET /config`，也可按 JSON 指针读取，`POST /load`，用 `PUT`、`PATCH` 和 `DELETE /config` 按指针编辑，`POST /rollback/{n}`，`POST /reload`，都带 `If-Match`，除回滚外都可 `?dry_run=1`，`GET /versions`；有 `token_file` 时每个请求都要带 bearer 令牌），修改与 SIGHUP 一样作为重载应用，两者共用一份历史记录；Admin API 的 `GET /metrics` 提供 fit 的 Prometheus 指标（有 `metrics` 时按监听器和路由的请求、上游和后端、证书、连接、重载、akio 的引擎）；为监听器在 `tls.acme` 中所列的名字通过 HTTP-01 用 ACME 获取证书，保存在存储中并续期兼容性门禁：80 个夹具，18 个有效，61 个只因暂不支持被拒绝，1 个跳过，没有失败兼容性门禁：80 个夹具，11 个有效，68 个只因暂不支持被拒绝，1 个跳过，没有失败为监听器在 `tls.acme` 中所列的名字通过 HTTP-01 或 TLS-ALPN-01 用 ACME 获取证书，保存在存储中，按有效期或 CA 的续期信息（ARI）续期，并装订其 OCSP 响应；兼容性门禁：80 个夹具，15 个有效，64 个只因暂不支持被拒绝，1 个跳过，没有失败为监听器在 `tls.acme` 中所列的名字通过 HTTP-01 用 ACME 获取证书，保存在存储中并续期；兼容性门禁：80 个夹具，18 个有效，61 个只因暂不支持被拒绝，1 个跳过，没有失败 |
+| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；基于 akio 的 A1 保留（按 fit 的 `binding.same`：证书文件和 ACME 名字可以变）、增加、修改和排空监听器，包括启动时的监听器，重载可新增 h3 监听器；服务 h3 的启动监听器要重启才能变）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证；按 fit 的方式每次握手选择证书，重载或 `-watch-certs` 替换证书而不关闭监听器）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；路由中间件：`rewrite`（前缀）、`redirect`、`headers`、`rate_limit`、`concurrency_limit`、`body_limit`、`basic_auth`（bcrypt，在 akio 的线程池上校验）和 `client_cert`（按路由的 mTLS）；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`、双向流式转发 body 并联动背压，双向透传 trailer，`timeout` 和上游的 `response_timeout`，超时回答 504，客户端在 body 中途离开时放弃上游请求；经 HTTP/1.1、h2c 和 h2 访问上游）；所有监听器和代理上的 `limits.max_body_bytes`（413）；fit 的 json、text 和 line 格式的访问日志；上游连接池，fit 的九种负载均衡策略（轮询、加权轮询、最少连接、随机、p2c，以及按客户端 IP、路径、头或 cookie 的一致性哈希）和会话保持 cookie，跳过被被动健康检查（`max_fails`、`fail_timeout`）和主动健康检查（`health_check`：http 和 tcp 探测）下线的地址；回环地址上的 Admin API（`GET /config`，也可按 JSON 指针读取，`POST /load`，用 `PUT`、`PATCH` 和 `DELETE /config` 按指针编辑，`POST /rollback/{n}`，`POST /reload`，都带 `If-Match`，除回滚外都可 `?dry_run=1`，`GET /versions`；有 `token_file` 时每个请求都要带 bearer 令牌），修改与 SIGHUP 一样作为重载应用，两者共用一份历史记录；Admin API 的 `GET /metrics` 提供 fit 的 Prometheus 指标（有 `metrics` 时按监听器和路由的请求、上游和后端、证书、连接、重载、akio 的引擎）；为监听器在 `tls.acme` 中所列的名字通过 HTTP-01 或 TLS-ALPN-01 用 ACME 获取证书，保存在存储中，按有效期或 CA 的续期信息（ARI）续期，并装订其 OCSP 响应；默认 HTTPS（`auto_https`）：没有写监听器的配置以其路由主机名的证书经 HTTPS 服务，经 HTTP 重定向（308）到 HTTPS，空的 `tls` 得到其路由的名字；兼容性门禁：80 个夹具，19 个有效，60 个只因暂不支持被拒绝，1 个跳过，没有失败 |
 | 下一步 | I17b（akio 已有 A36–A38）；akio 有了 A51–A53 后做 I18b |
 | akio 需求 | A1–A8、A11、A13、A16–A21、A36–A38、A63–A65 已在 akio 的 main 并已锁定；A9、A10、A12、A14、A15、A22–A24、A29、A30、A32、A33、A35、A45、A48、A49、A51–A54、A57 和 A58 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
 
 ## 日志
+
+### 2026-11-24：I33，默认 HTTPS
+
+- fit 的 `auto_https`（`config/autohttps.go`），放在 `akit-config` 新的 `auto_https` 模块：该字段（`disable`、
+  `disable_redirects`、`http_port`、`https_port`；不写时开启、带重定向、端口 80 和 443，写 0 取默认值）和 fit 的
+  `Effective`。没有写监听器的配置得到一个 `:https_port` 上的 `https` 监听器（HTTP/1.1 和 h2），其 `tls.acme` 是所有路由的
+  主机名，除非关闭重定向，还得到一个 `:http_port` 上的 `http` 监听器；路由可以指名这两个监听器。写出的监听器若 `tls` 为空
+  （没有证书、没有名字，包括 `acme: []`），得到它所服务路由的主机名。名字按 fit 的 `AutoHTTPSName`：两个标签以上，小写，
+  每个一次，不含通配符、IP 地址和私有名字（`localhost`、`local`、`internal`、`home.arpa`、`invalid` 及其子域名）。
+- 在读配置时一次算好：`Config::listeners` 存放实际服务的监听器，写出的或生成的（fit 保留写出的，在需要时调用
+  `Effective`），所以运行时像其他监听器一样绑定、重载时比较和服务它们；`Config::auto_https` 保留该字段。生成的 `http`
+  监听器带 `Listener::redirect_https`，即它重定向到的端口；图不给它路由。
+- 重定向（fit 的 `redirectHTTPS`）：在这样的监听器上，没有路由接收的请求（HTTP-01 的质询除外，它们像在所有明文监听器上
+  一样先被回答）得到 308，指向 `https://` 加去掉端口的请求主机（IPv6 地址加方括号；没有 `Host` 时取目标的 authority）、
+  非 443 时加 `:port`，以及相同的目标（绝对形式目标的路径和 query）；没有主机时回答 400 和 fit 的 body。监听器的端口
+  只在没有路由接收请求时读取，所以有路由的请求不比以前多做工作。
+- fit 的检查和消息：没有监听器也没有主机名（`at least one listener is needed, or a route that matches a host name for
+  HTTPS by default`），关闭时没有监听器，HTTP 端口等于 HTTPS 端口（报在 `auto_https.http_port`），以及得不到名字的空
+  `tls`（报在该 `tls`）。没有监听器的配置和空 `tls` 的"暂不支持"拒绝已去掉。**与 fit 不同**：既没有监听器也没有路由的
+  配置仍被接受（akit 只启动 Admin API），fit 则拒绝，除非它有控制台或角色。
+- 测试：`akit-config` 的名字单元测试（fit 的 `TestAutoHTTPSName`）；`tests/auto_https.rs` 移植 fit 的 `TestEffective`
+  以及 `config_test.go` 和 `more_test.go` 的检查，带位置；`akit-listener` 的重定向位置单元测试（fit 的
+  `TestRedirectEdges`）和 `tests/auto_https.rs`：fit 的 `TestAutoHTTPSRedirect`（生成的监听器和端口，GET 和 POST 的
+  308，带端口的主机和 IPv6，未知令牌的质询路径，绝对形式的目标），不重定向，写出的空 `tls` 监听器，以及 fit 的
+  `TestAutoHTTPSFromPebble`：只写一个主机名的配置通过生成的 `http` 监听器上的 HTTP-01 从 Pebble 获取证书并在 `https`
+  上服务，`http` 重定向其余请求。
+- 兼容性门禁：`auto_https` 及其四个字段加入 `tests/compat/supported.txt`；`make compat-bless`：`examples/auto-https`
+  有效（80 个夹具：19 个有效，60 个只因暂不支持被拒绝，1 个跳过，没有失败）。
+- 检查：macOS 上 `make check`（带 Pebble）；gpu51 上在 bench 锁下，epoll 和 `AKIO_TEST_BACKEND=uring` 下，akit-config、
+  akit-compat、akit-tls、akit-runtime、akit-listener 和 akit 的测试：全部通过。没有 akio 请求。
+- 待测量：无；有路由的请求走与以前相同的路径（规则 24：控制面，重定向不在热路径上）。
 
 ### 2026-11-24：I42，Basic 认证与 mTLS
 

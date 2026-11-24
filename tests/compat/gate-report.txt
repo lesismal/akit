@@ -1,12 +1,12 @@
 # The compatibility gate's report (docs/compatibility.md), written by make compat-bless;
 # do not edit. The gate fails when a run's outcomes differ from these lines.
 # fit 7daee573, fit-examples 9659d7e4.
-# 80 fixtures: 18 valid, 61 refused only as not supported yet (fields refused: 61), 0 in a format not supported yet, 1 skipped, 0 failed.
+# 80 fixtures: 19 valid, 60 refused only as not supported yet (fields refused: 60), 0 in a format not supported yet, 1 skipped, 0 failed.
 examples/acme-on-demand: not supported yet: acme.on_demand
 examples/acme-on-demand: not supported yet: listeners[].tls.on_demand
 examples/acme-shared-storage: not supported yet: acme.shared_storage
 examples/admin: not supported yet: admin.address: a Unix socket (akio API request A23)
-examples/auto-https: not supported yet: listeners: a config with no listeners, served over HTTPS by default (auto_https)
+examples/auto-https: valid
 examples/basic-auth: valid
 examples/bittorrent: not supported yet: bittorrent
 examples/bittorrent: not supported yet: media_auth

@@ -248,3 +248,12 @@ acme.max_concurrent
 acme.timeout
 acme.request_timeout
 acme.challenges
+
+# I33: auto_https, HTTPS by default: a config that writes no listeners is served on https (443) with
+# its routes' host names in tls.acme, and on http (80), which redirects to it with 308 and answers
+# HTTP-01; a listener with an empty tls gets the names of the routes it serves.
+auto_https
+auto_https.disable
+auto_https.disable_redirects
+auto_https.http_port
+auto_https.https_port

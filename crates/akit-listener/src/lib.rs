@@ -340,7 +340,7 @@ impl akio_http::Service for Dispatcher {
                     );
                     match route {
                         Some((_, r)) => akit_observe::dispatch_logged(|| r.handler.call(ctx)),
-                        None => ctx.text(404, NOT_FOUND),
+                        None => unmatched(ctx, redirect_port(g, listener)),
                     }
                 }
                 None => {
@@ -349,7 +349,7 @@ impl akio_http::Service for Dispatcher {
                     }
                     match route {
                         Some((_, r)) => r.handler.call(ctx),
-                        None => ctx.text(404, NOT_FOUND),
+                        None => unmatched(ctx, redirect_port(g, listener)),
                     }
                     if let (true, Some((m, slot)), Some(status)) = (inline, slot, ctx.status()) {
                         m.observe(slot, status, start.elapsed());
@@ -391,6 +391,91 @@ impl akio_http::Service for Dispatcher {
                 mode => mode,
             }
         })
+    }
+}
+
+/// The HTTPS port the listener at `listener` redirects to when HTTPS by default made it (I33),
+/// or 0: read only for a request no route takes.
+fn redirect_port(g: &akit_runtime::Graph, listener: Option<usize>) -> u16 {
+    listener
+        .and_then(|i| g.listeners().get(i))
+        .map_or(0, |l| l.redirect_https)
+}
+
+/// The answer to a request no route takes: a redirect to HTTPS on `redirect` when it is not 0
+/// (the listener HTTPS by default made), 404 otherwise.
+fn unmatched(ctx: &mut Context, redirect: u16) {
+    if redirect == 0 {
+        ctx.text(404, NOT_FOUND);
+        return;
+    }
+    let req = ctx.req();
+    let location = https_location(req.headers.get("host"), &req.target, redirect);
+    match location {
+        Some(l) => {
+            let mut resp = Response::new(308);
+            resp.headers.set("Location", l);
+            ctx.respond(resp);
+        }
+        None => ctx.text(400, NO_HOST),
+    }
+}
+
+/// fit's answer to a request to redirect that names no host.
+const NO_HOST: &str = "400 no host to redirect to\n";
+
+/// Where a request in the clear to `host` (its `Host` field, if any) for `target` is redirected
+/// on HTTPS port `port`, as fit's `redirectHTTPS`: the same host without its port, and the same
+/// target; `None` when there is no host. A target in absolute form gives its host when there is
+/// no `Host`, and its path and query.
+fn https_location(host: Option<&str>, target: &str, port: u16) -> Option<String> {
+    // A target in absolute form: its authority and the rest.
+    let (authority, rest) = match target.split_once("://") {
+        Some((_, after)) if !target.starts_with('/') => {
+            let end = after.find(['/', '?']).unwrap_or(after.len());
+            (after.get(..end), after.get(end..).unwrap_or(""))
+        }
+        _ => (None, target),
+    };
+    let host = host.filter(|h| !h.is_empty()).or(authority).unwrap_or("");
+    let host = strip_port(host);
+    if host.is_empty() {
+        return None;
+    }
+    let mut location =
+        String::with_capacity(host.len().saturating_add(rest.len()).saturating_add(16));
+    location.push_str("https://");
+    if host.contains(':') && !host.starts_with('[') {
+        // An IPv6 address, from a host and port.
+        location.push('[');
+        location.push_str(host);
+        location.push(']');
+    } else {
+        location.push_str(host);
+    }
+    if port != 443 {
+        location.push(':');
+        location.push_str(&port.to_string());
+    }
+    if !rest.starts_with('/') {
+        location.push('/');
+    }
+    location.push_str(rest);
+    Some(location)
+}
+
+/// `host` without its port, as Go's `net.SplitHostPort` takes one apart (and `host` as it is
+/// when it has none): `[::1]:80` gives `::1`, `a.example:80` `a.example`.
+fn strip_port(host: &str) -> &str {
+    if let Some(inner) = host.strip_prefix('[') {
+        return match inner.split_once("]:") {
+            Some((h, _)) => h,
+            None => host,
+        };
+    }
+    match host.split_once(':') {
+        Some((h, p)) if !p.contains(':') => h,
+        _ => host,
     }
 }
 
@@ -826,5 +911,54 @@ mod tests {
         );
         assert!(super::resolve("localhost:80").unwrap().ip().is_loopback());
         assert!(super::resolve(":x").is_err());
+    }
+
+    /// fit's `TestRedirectEdges` and the redirects of `TestAutoHTTPSRedirect`: the host without
+    /// its port, an IPv6 one in brackets, the target kept, a target in absolute form taken apart,
+    /// and no host refused.
+    #[test]
+    fn https_locations() {
+        let l = super::https_location;
+        for (host, target, port, want) in [
+            (
+                Some("a.example"),
+                "/x?y=1",
+                8443,
+                Some("https://a.example:8443/x?y=1"),
+            ),
+            (
+                Some("A.example:8080"),
+                "/form",
+                8443,
+                Some("https://A.example:8443/form"),
+            ),
+            (Some("a.example:80"), "/", 443, Some("https://a.example/")),
+            (Some("[::1]"), "/", 8443, Some("https://[::1]:8443/")),
+            (Some("[::1]:8080"), "/x", 8443, Some("https://[::1]:8443/x")),
+            (Some("::1"), "/x", 443, Some("https://[::1]/x")),
+            (
+                Some("other.example"),
+                "/.well-known/acme-challenge/none",
+                443,
+                Some("https://other.example/.well-known/acme-challenge/none"),
+            ),
+            (
+                Some("a.example"),
+                "http://a.example/y?z=1",
+                8443,
+                Some("https://a.example:8443/y?z=1"),
+            ),
+            (
+                None,
+                "http://b.example:8080?q",
+                443,
+                Some("https://b.example/?q"),
+            ),
+            (None, "http://b.example", 443, Some("https://b.example/")),
+            (None, "/x", 8443, None),
+            (Some(""), "/x", 8443, None),
+        ] {
+            assert_eq!(l(host, target, port).as_deref(), want, "{host:?} {target}");
+        }
     }
 }
