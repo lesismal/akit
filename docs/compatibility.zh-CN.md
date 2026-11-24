@@ -152,7 +152,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 58 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 60 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -197,7 +197,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`http.middleware/redirect`](#fields-http-middleware-redirect) | 5 | 0 | 5 |
 | [`http.middleware/rewrite`](#fields-http-middleware-rewrite) | 6 | 0 | 6 |
 | [`http.middleware/wasm`](#fields-http-middleware-wasm) | 18 | 0 | 18 |
-| [`limits`](#fields-limits) | 7 | 0 | 7 |
+| [`limits`](#fields-limits) | 7 | 2 | 5 |
 | [`listeners`](#fields-listeners) | 30 | 12 | 18 |
 | [`llm`](#fields-llm) | 218 | 0 | 218 |
 | [`log`](#fields-log) | 24 | 0 | 24 |
@@ -277,7 +277,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 11 | 27 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **合计** | 3821 | 58 | 3763 |
+| **合计** | 3821 | 60 | 3761 |
 
 <a id="fields-access"></a>
 
@@ -1240,8 +1240,8 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
-| `limits` | `object` | 尚不支持（not supported yet） |
-| `limits.max_body_bytes` | `integer` | 尚不支持（not supported yet） |
+| `limits` | `object` | 已支持 |
+| `limits.max_body_bytes` | `integer` | 已支持 |
 | `limits.max_conns` | `integer` | 尚不支持（not supported yet） |
 | `limits.max_header_bytes` | `integer` | 尚不支持（not supported yet） |
 | `limits.max_pending_bytes` | `bytes\|percent` | 尚不支持（not supported yet） |

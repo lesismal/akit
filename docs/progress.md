@@ -11,14 +11,74 @@ done and where the work differs from the plan.
 | | |
 | --- | --- |
 | Last updated | 2026-11-24 |
-| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I12, I14, I19, I22, I23 and I24 done, I15 doing (waits for akio's A11); M3's I39 done early. |
+| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I12, I14, I19, I22, I23 and I24 done, I15 doing (waits for akio's A11), I16 doing (body limits done; streaming waits for akio's A19–A21); M3's I39 done early. |
 | akio | `50a82315` on akio's `main` (`1.0.0-rc.1`), pinned by `rev` in `Cargo.toml` |
 | fit | the specification; read at `7daee573` for this plan |
-| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept, added and removed, those it started with only once akio's A1 is pinned); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; the `respond`, `static` (conditional and range requests, files opened on akio's pool) and `proxy` handlers (fit's forwarding fields, trusted proxies; the client's `Host` once A11 is pinned); upstream pools with round robin, weighted round robin and least connections; the compatibility gate: 80 fixtures, 9 valid, 70 refused only as not supported yet, 1 skipped, none failed |
-| Next | Move the akio pin to akio's main with A1–A8 and A11, then I15 done (its `Host` tests) and I22 on A1; then I13, I16, I17, I20, I21 |
-| akio requests | A1–A8 merged into akio's main (2026-11-24); A11 on akio branch `claude/i15-proxy-699f18`; A9, A10, A12–A15 requested ([akio API requests](akio-api-requests.md)) |
+| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept, added and removed, those it started with only once akio's A1 is pinned); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; the `respond`, `static` (conditional and range requests, files opened on akio's pool) and `proxy` handlers (fit's forwarding fields, trusted proxies; the client's `Host` once A11 is pinned); `limits.max_body_bytes` on every listener (413) and in the proxy; upstream pools with round robin, weighted round robin and least connections; the compatibility gate: 80 fixtures, 9 valid, 70 refused only as not supported yet, 1 skipped, none failed |
+| Next | Move the akio pin to akio's main with A1–A8 and A11, then I15 done (its `Host` tests) and I22 on A1; then I13, I17, I20, I21; I16 once A19–A21 land |
+| akio requests | A1–A8 merged into akio's main (2026-11-24); A11 on akio branch `claude/i15-proxy-699f18`; A9, A10, A12–A15 and A19–A21 requested ([akio API requests](akio-api-requests.md)) |
 
 ## Log
+
+### 2026-11-24: I16, reverse proxy II: streamed bodies (doing: waits for akio A19–A21)
+
+- Status `doing`, not `done`: the streaming itself cannot be built on akio without working around
+  it (rule 21). Read against akio `50a82315` (the pin) and akio's `main` (`13ed6327`), which agree
+  here: akio-http's HTTP/1 client takes a request body only whole (`ClientRequest::body`, one
+  `send_owned` of head and body) and buffers each response whole (up to
+  `ClientOptions::max_body_bytes`, 64 MiB) before calling back once; and a server request taken
+  as a stream (`BodyMode::Stream`, `on_body`) cannot hold its client's reads, nor can a streamed
+  response (`BodyStream`) say when its client drained (only `queued_bytes`, to poll); h2 even
+  replenishes a stream's window as DATA arrives. akio-core has `hold_reads` and `on_drain` per
+  connection, but akio-http exposes them only on upgraded connections (`raw`). Written up as akio
+  API requests A19 (a client request body sent as it is produced, with `queued_bytes` and
+  `on_drain`), A20 (a client response delivered as it arrives, its reads held and resumed) and A21
+  (a server request that holds its client's reads, and `BodyStream::on_drain`), with how the proxy
+  links them ([akio API requests](akio-api-requests.md)). I16 is `done` once they are in akio, the
+  pin moves, and the proxy streams with the tests the plan names (a slow client and a slow upstream,
+  large bodies both ways, bounded memory, epoll and io_uring).
+- Built now, what does not wait on them: fit's body limit. `akit_config::Limits` reads `limits`:
+  `max_body_bytes` (fit's int64, at least 0; 16 MiB when left out or 0), and refuses its other
+  fields (`max_pending_bytes`, `max_header_bytes`, `max_conns`, `max_write_queue_bytes`,
+  `write_stall_timeout`) as not supported yet, one by one. `limits` may be given by one file of a
+  config only, refused in the second with fit's message (`adapter.Set.conflict`: "also given in
+  …"). Each `Listener` carries the value (`Listener::max_body_bytes`), as fit's
+  `runtime.Listener` does, so a reload that changes it changes every listener, as fit's
+  `binding.same` compares it (a listener akit started with is then refused until A1).
+- `akit-listener` sets it as akio's limit on HTTP/1.1 (`HttpConfig::max_body_bytes`), HTTP/2
+  (`H2Config::max_body_bytes`) and HTTP/3 (`H3Config::max_body_bytes`): a body that declares a
+  length past it is answered 413 before it is read, a chunked one once it passes it (on HTTP/1.1
+  akio closes the connection after the 413, so a client still sending may see it reset, as fit's
+  test allows). Before, akit took akio's defaults: 1 MiB on HTTP/1.1 and HTTP/2, 8 MiB on HTTP/3,
+  so bodies fit takes (up to 16 MiB) were refused.
+- The proxy: request bodies go to the upstream whole, as I15 sent them, within that limit (a body
+  past it never reaches the handler); responses come back whole, within akio's client limit
+  (64 MiB; past it the request fails and the client gets 502, where fit streams any size). The
+  proxy's docs say so. The listener still answers `BodyMode::Buffered` for every route; it routes
+  `body_mode` once the proxy can stream (A19–A21).
+- Tests: `akit-config/tests/limits.rs` (3): the default, a value carried by every listener, 0, a
+  negative or a string refused as wrong, the other fields not supported yet, a field fit lacks
+  wrong, one file only (and the value from that file applying to another file's listeners).
+  `akit-listener/tests/listeners.rs`: `body_limit`, fit's `TestBodyLimit` ported (1000 and 90000
+  bytes answered 200, 150000 answered 413 against a limit of 100000; framed by length and chunked
+  over HTTP/1.1, and over h2c), and `body_limit_default` (2 MiB taken over HTTP/1.1 and h2c,
+  16 MiB + 1 answered 413). `akit-proxy/tests/proxy.rs`: `body_limit`, fit's
+  `TestStreamedBodyLimit` ported (150000 bytes reach the upstream whole, 300000 answered 413
+  against a limit of 200000, by length and chunked over HTTP/1.1 and over h2c; none past the limit
+  reaches the upstream). The compatibility gate's samples read `limits` and
+  `limits.max_body_bytes`.
+- Checked: `make check` on macOS; `cargo test -p akit-config -p akit-listener -p akit-proxy` on
+  Linux (gpu51) with epoll and with `AKIO_TEST_BACKEND=uring`. `make compat-bless`: the report's
+  `limits` lines became one per field refused (`examples/limits`, `examples/proxy`), and
+  `examples/body-limit` no longer refuses `limits` (still `routes[].match.method` and
+  `routes[].middleware`); 70 fields refused, was 66; outcomes otherwise unchanged.
+- Differences from the plan: the streaming, the linked backpressure and the "Done when" tests wait
+  for A19–A21 (I16 stays `doing`); body limits came first. HTTP/3's limit is set but tested only
+  through the shared code (the h3 test client sends GETs alone). No `limits` field is printed at
+  startup (fit's `-v` line of limits comes with the rest of them).
+- For a benchmark task: nothing to measure yet beyond the proxy scenario (large bodies are
+  buffered whole today); once A19–A21 land, memory per proxied request in flight with large bodies
+  both ways and a slow peer, and throughput of large uploads and downloads against fit.
 
 ### 2026-11-24: I39, matchers v2 and expressions
 

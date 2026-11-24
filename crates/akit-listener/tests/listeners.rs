@@ -470,3 +470,92 @@ fn route_matchers() {
     e.shutdown();
     e.wait();
 }
+
+/// A POST of `size` bytes over HTTP/1.1, framed by its length or chunked; the status, or `None`
+/// when the connection was ended before one came (a chunked body past the limit may be).
+fn post(addr: SocketAddr, size: usize, chunked: bool) -> Option<u16> {
+    let mut s = TcpStream::connect(addr).unwrap();
+    s.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+    let framing = if chunked {
+        "Transfer-Encoding: chunked".to_owned()
+    } else {
+        format!("Content-Length: {size}")
+    };
+    write!(
+        s,
+        "POST / HTTP/1.1\r\nHost: x\r\n{framing}\r\nConnection: close\r\n\r\n"
+    )
+    .unwrap();
+    let body = vec![b'b'; size];
+    // A body past the limit may be refused before it is all sent: stop writing then.
+    let _ = if chunked {
+        body.chunks(16 << 10)
+            .try_for_each(|c| {
+                write!(s, "{:x}\r\n", c.len())?;
+                s.write_all(c)?;
+                s.write_all(b"\r\n")
+            })
+            .and_then(|()| s.write_all(b"0\r\n\r\n"))
+    } else {
+        s.write_all(&body)
+    };
+    let mut resp = Vec::new();
+    let _ = s.read_to_end(&mut resp);
+    let status = String::from_utf8_lossy(resp.get(9..12)?).parse().ok()?;
+    Some(status)
+}
+
+/// A POST of `size` bytes over HTTP/2 in the clear; its status.
+fn post_h2c(addr: SocketAddr, size: usize) -> Result<u16, String> {
+    let client = Engine::builder().client_threads(1).build().unwrap();
+    client.start().unwrap();
+    let c = H2Client::dial_blocking(&client, addr, None, H2Options::default())
+        .map_err(|e| e.to_string())?;
+    let r = c
+        .send(
+            ClientRequest::post(&format!("http://{addr}/"), vec![b'b'; size])
+                .timeout(Duration::from_secs(5)),
+        )
+        .wait()
+        .map_err(|e| e.to_string())?;
+    Ok(r.status)
+}
+
+/// fit's `TestBodyLimit` (listener/limits_test.go): `limits.max_body_bytes` bounds every
+/// request body a listener takes; one past it is answered 413, over HTTP/1.1 (framed by its
+/// length or chunked) and h2c.
+#[test]
+fn body_limit() {
+    let (e, addrs) = serve(
+        r#"{"listeners": [{"name": "web", "address": "127.0.0.1:0", "protocols": ["http/1.1", "h2c"]}],
+            "limits": {"max_body_bytes": 100000},
+            "routes": [{"handler": {"module": "respond", "params": {"body": "ok"}}}]}"#,
+    );
+    let a = addrs[0];
+    for (size, status) in [(1000, 200), (90_000, 200), (150_000, 413)] {
+        assert_eq!(post(a, size, false), Some(status), "{size} bytes");
+        let chunked = post(a, size, true);
+        assert!(
+            chunked == Some(status) || status == 413 && chunked.is_none(),
+            "{size} bytes, chunked: {chunked:?}"
+        );
+        assert_eq!(post_h2c(a, size), Ok(status), "{size} bytes over h2c");
+    }
+    e.shutdown();
+    e.wait();
+}
+
+/// Without `limits`, fit's default: 16 MiB (akio's own is 1 MiB).
+#[test]
+fn body_limit_default() {
+    let (e, addrs) = serve(
+        r#"{"listeners": [{"name": "web", "address": "127.0.0.1:0", "protocols": ["http/1.1", "h2c"]}],
+            "routes": [{"handler": {"module": "respond", "params": {"body": "ok"}}}]}"#,
+    );
+    let a = addrs[0];
+    assert_eq!(post(a, 2 << 20, false), Some(200));
+    assert_eq!(post_h2c(a, 2 << 20), Ok(200));
+    assert_eq!(post(a, (16 << 20) + 1, false), Some(413));
+    e.shutdown();
+    e.wait();
+}

@@ -704,3 +704,94 @@ fn canonical_path() {
     );
     assert_eq!(recv(&rx).request_line(), "GET /a/b/d?x=/../y HTTP/1.1");
 }
+
+/// A backend that answers each request with the length of its body, as fit's
+/// `TestStreamedBodyLimit` backend does.
+fn counter() -> (SocketAddr, Receiver<Seen>) {
+    upstream(|seen| {
+        let n = seen.body.len().to_string();
+        format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{n}", n.len()).into_bytes()
+    })
+}
+
+/// A PUT of `size` bytes over HTTP/1.1, framed by its length or chunked; the status and body, or
+/// `None` when the connection was ended before a response came (a chunked body past the limit may
+/// be).
+fn put(addr: SocketAddr, size: usize, chunked: bool) -> Option<(u16, String)> {
+    let mut s = TcpStream::connect(addr).unwrap();
+    s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+    let framing = if chunked {
+        "Transfer-Encoding: chunked".to_owned()
+    } else {
+        format!("Content-Length: {size}")
+    };
+    write!(
+        s,
+        "PUT / HTTP/1.1\r\nHost: x\r\n{framing}\r\nConnection: close\r\n\r\n"
+    )
+    .unwrap();
+    let body = vec![b'x'; size];
+    // A body past the limit may be refused before it is all sent: stop writing then.
+    let _ = if chunked {
+        body.chunks(16 << 10)
+            .try_for_each(|c| {
+                write!(s, "{:x}\r\n", c.len())?;
+                s.write_all(c)?;
+                s.write_all(b"\r\n")
+            })
+            .and_then(|()| s.write_all(b"0\r\n\r\n"))
+    } else {
+        s.write_all(&body)
+    };
+    let mut resp = Vec::new();
+    let _ = s.read_to_end(&mut resp);
+    let resp = String::from_utf8_lossy(&resp);
+    let (head, body) = resp.split_once("\r\n\r\n")?;
+    let status = head.get(9..12)?.parse().ok()?;
+    Some((status, body.to_owned()))
+}
+
+/// fit's `TestStreamedBodyLimit` (`limits_test.go`): `limits.max_body_bytes` bounds a proxied
+/// body; one that declares a length past it is refused before it is sent, and a chunked one that
+/// grows past it is answered 413 (or its connection ended), over HTTP/1.1 and h2c. Neither
+/// reaches the upstream.
+#[test]
+fn body_limit() {
+    let (addr, rx) = counter();
+    let akit = Akit::start(
+        &config1(r#"{"upstream": "app"}"#, &addr.to_string()).replacen(
+            '{',
+            r#"{"limits": {"max_body_bytes": 200000},"#,
+            1,
+        ),
+    );
+    for (size, status) in [(150_000, 200), (300_000, 413)] {
+        let want = (size == 150_000).then(|| size.to_string());
+        let got = put(akit.addr, size, false).unwrap();
+        assert_eq!(got.0, status, "{size} bytes");
+        if let Some(n) = &want {
+            assert_eq!(&got.1, n);
+        }
+        match put(akit.addr, size, true) {
+            Some(got) => {
+                assert_eq!(got.0, status, "{size} bytes, chunked");
+                if let Some(n) = &want {
+                    assert_eq!(&got.1, n);
+                }
+            }
+            None => assert_eq!(status, 413, "{size} bytes, chunked: cut off"),
+        }
+        let got = h2c(
+            akit.addr,
+            ClientRequest::new(akio_http::Method::Put, &format!("http://{}/", akit.addr))
+                .body(vec![b'x'; size]),
+        );
+        assert_eq!(got.status, status, "{size} bytes over h2c");
+        if let Some(n) = &want {
+            assert_eq!(&String::from_utf8_lossy(&got.body), n);
+        }
+    }
+    // The bodies within the limit reached the upstream, whole; those past it did not.
+    let seen: Vec<usize> = rx.try_iter().map(|s| s.body.len()).collect();
+    assert_eq!(seen, [150_000; 3]);
+}

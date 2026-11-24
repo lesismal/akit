@@ -17,6 +17,9 @@
 //! I22: [`Listeners::reload`] publishes a new graph and moves the listeners to its (see
 //! [`reload`]).
 //!
+//! I16: each listener takes request bodies up to the config's `limits.max_body_bytes` (fit's
+//! 16 MiB by default) over HTTP/1.1, HTTP/2 and HTTP/3, and answers a larger one 413.
+//!
 //! Part of [akit](https://github.com/lesismal/akit); see `docs/dev-plan.md` for the iterations that
 //! fill this crate in.
 
@@ -138,8 +141,9 @@ impl akio_http::Service for Dispatcher {
         });
     }
 
-    // Request bodies are buffered (akio's default) until a handler takes them as a stream:
-    // the proxy's, I16, routes in `body_mode` too.
+    // Request bodies are buffered (akio's default), within the listener's `max_body_bytes`
+    // (`http_config`). The proxy (I16) takes its bodies as a stream once akio's client can send
+    // one (akio API requests A19 to A21): `body_mode` routes then too.
 }
 
 /// A request as the router's matchers read it: akio's context, with the canonical path.
@@ -254,10 +258,25 @@ fn http_config(l: &Listener) -> Result<HttpConfig, Error> {
         });
     }
     let mut cfg = HttpConfig::default();
-    if !h2c && !h2 {
-        cfg.h2 = None;
+    cfg.max_body_bytes = body_limit(l);
+    match &mut cfg.h2 {
+        Some(h2cfg) if h2c || h2 => h2cfg.max_body_bytes = cfg.max_body_bytes,
+        _ => cfg.h2 = None,
     }
     Ok(cfg)
+}
+
+/// The listener's `limits.max_body_bytes` for akio, which answers a body past it 413 (one that
+/// declares its length, at once; a chunked one, once it passes it), as fit's listener does.
+fn body_limit(l: &Listener) -> usize {
+    usize::try_from(l.max_body_bytes).unwrap_or(usize::MAX)
+}
+
+/// The akio HTTP/3 settings of a listener serving `h3`.
+fn h3_config(l: &Listener) -> akio_h3::H3Config {
+    let mut cfg = akio_h3::H3Config::default();
+    cfg.max_body_bytes = body_limit(l);
+    cfg
 }
 
 /// How the listeners are served.
@@ -424,7 +443,7 @@ fn build(cell: &GraphCell, opts: &Options) -> Result<Engine, (Error, bool)> {
             // backend: the backend is left to akio.
             b = b.listen(EngineListener::udp(addr).serve(akio_h3::serve_with(
                 quic,
-                akio_h3::H3Config::default(),
+                h3_config(l),
                 // HTTP/3 is always over TLS.
                 Dispatcher::new(cell.clone(), l.name.clone()).tls(true),
             )));

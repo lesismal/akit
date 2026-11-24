@@ -86,3 +86,7 @@ routes[].match.header
 routes[].match.query
 routes[].match.remote_ip
 routes[].match.expr
+# I16: limits.max_body_bytes, the largest request body a listener takes (413 past it), on
+# HTTP/1.1, h2c, h2 and h3 alike; the other limits are refused as not supported yet.
+limits
+limits.max_body_bytes
