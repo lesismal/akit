@@ -53,6 +53,9 @@
 | A36 | HTTP 客户端请求的响应头超时和空闲超时 | 已提出（I17） | 10 | I17b、I18 |
 | A37 | 可在任意时刻取消的 HTTP 客户端请求 | 已提出（I17） | 3 | I17b、I45 |
 | A38 | 能得知客户端离开的分离服务端请求；可在运行时修改的写停滞超时 | 已提出（I17） | 3、10 | I17b、I49 |
+| A63 | `akio-crypto` 中的 bcrypt 密码哈希 | 在 akio 分支 `claude/a63-a65-auth`（`5e0d433c`，ADR-109），尚未进入 akio 的 main；I42 基于它构建 | 1、4 | I42 |
+| A64 | 每个服务端请求上的客户端已验证证书 | 在 akio 分支 `claude/a63-a65-auth`（`5e0d433c`，ADR-109），尚未进入 akio 的 main；I42 基于它构建 | — | I42 |
+| A65 | 由中间件挂起、之后带着上下文恢复的请求 | 在 akio 分支 `claude/a63-a65-auth`（`5e0d433c`，ADR-109），尚未进入 akio 的 main；I42 基于它构建 | 1、3、4 | I42、I43 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -682,3 +685,63 @@ I17 的 `Fit-Error` 尾部字段结束）。
 **akit 的用法。** I17b：代理注册 `on_gone` 来取消上游请求（A37），且不把它计为上游的失败，补上 fit 的
 `TestClientAbort` 中“响应头之前”和 HTTP/1“上传中途”两种情况；`limits.write_stall_timeout` 在启动和重载时设置引擎的
 写超时。I49 的 WebSocket 和隧道转发也用同样的方式得知客户端离开。
+
+## A63 bcrypt 密码哈希
+
+**问题。** fit 的 `basic_auth` 用 bcrypt 哈希（`htpasswd -B` 和 fit 自己的 `hash-password` 生成的 `$2a$`、
+`$2b$`、`$2y$`）校验密码。`akio-crypto` 有 PBKDF2 和 HKDF，没有 bcrypt，网关也不应自带一份 Blowfish。
+
+**依据。** `afbbb521` 的 `crates/akio-crypto/src/lib.rs` 和 `kdf.rs`：没有 bcrypt 或 Blowfish。
+
+**建议的 API。** `akio_crypto::bcrypt`：`Hash::parse(&str) -> Result<Hash, ParseError>`（错误中给出原因）、
+以常数时间比较的 `Hash::verify(&self, password) -> bool`、`cost`、`Display`；`hash(password, cost)` 与
+`hash_with_salt`。与 Go 一致：只读密码的前 72 字节，各次版本号同样处理。
+
+**akit 的用法。** akit-config 用 `Hash::parse` 检查 `password_hash` 并说明不是哈希的原因；`basic_auth` 在
+akio 的逻辑线程池上用 `verify` 校验密码（A65）。
+
+**已完成。** 按建议实现，见 `5e0d433c`（ADR-109）：Go、`htpasswd -B` 与 OpenBSD 的测试向量；Blowfish 的表
+由 π 的各位数字生成，并与 Go 的表核对。
+
+## A64 每个服务端请求上的客户端已验证证书
+
+**问题。** fit 的 `client_cert` 只放行客户端发送了、且监听器已验证（`tls.client_auth`）证书的请求，并把
+证书主题传下去。akio-http 的处理器拿到的是 `Context` 而不是连接；`akio_tls::TlsInfo` 不带对端证书链，
+`akio_quic::Connection` 也不提供。
+
+**依据。** `afbbb521` 的 `crates/akio-tls/src/lib.rs`：`TlsInfo` 有 ALPN、SNI、版本、早期数据和 OCSP，没有
+证书链，尽管协议核心保存了它（`peer_certificates`，会话恢复时也会还原）；`crates/akio-http/src/message.rs`：
+`Request` 只有 `peer`。
+
+**建议的 API。** `Request::peer_certificates: Option<Arc<[Vec<u8>]>>`：客户端发送并经握手验证的证书链，
+设置在 HTTP/1.1、HTTP/2 和 HTTP/3 请求上，同一连接的请求共享；另有 `TlsInfo::peer_certificates` 和
+`akio_quic::Connection::peer_certificates`。
+
+**akit 的用法。** `client_cert` 拒绝没有证书的请求（403，除非 `optional`），并把叶证书的主题按 Go 的
+`pkix.Name.String` 的写法写入 `subject_header`。
+
+**已完成。** 按建议实现，见 `5e0d433c`（ADR-109），另有 `akio_tls::peer_chain`（`PeerChain`），服务端在连接
+握手完成后取一次；以 TLS 1.3 早期数据到达的请求没有证书。
+
+## A65 由中间件挂起、之后带着上下文恢复的请求
+
+**问题。** 一次 bcrypt 校验要花几毫秒到几十毫秒的 CPU，`basic_auth` 不能在 I/O 线程上校验密码（规则 1）。
+fit 在线程池里校验，请求在此期间等待，之后继续执行下一个中间件和处理器。在 akio 中，中间件可以分离响应并在
+线程池里作答（`Context::detach_to_pool`），却无法继续执行链：下一个处理器要的是 `Context`，分离的请求没有。
+`run_on_pool` 则把监听器的所有请求都搬到线程池。ForwardAuth（I43）有同样的需求：请求等待授权服务器，之后
+继续。
+
+**依据。** `afbbb521` 的 `crates/akio-http/src/context.rs` 和 `pool.rs`：`detach` 给出 `Detached`（只能作答
+或流式作答）；`call_on_pool` 把整个上下文移到线程池，但它是 crate 私有的，且只用于开了 `run_on_pool` 的监听器
+的全部请求。
+
+**建议的 API。** `Context::suspend(&mut self) -> Option<Suspended>` 与
+`Suspended::resume(self, impl FnOnce(&mut Context))`，可在任意线程调用，并像服务端在 `call` 之后那样收尾；
+`Context::suspend_to_pool(work)`，线程池满时回 `503`。
+
+**akit 的用法。** `basic_auth` 挂起密码尚未记住的请求，在线程池上校验，再恢复它进入下一个中间件和处理器，
+或回 401。I43 的 ForwardAuth 在授权请求完成时恢复请求。
+
+**已完成。** 按建议实现，见 `5e0d433c`（ADR-109）。消息体流式交给处理器的请求不能挂起（akio 在 `call` 之后把
+消息体交给该上下文，与 `run_on_pool` 的界线相同）：`basic_auth` 只对带消息体、且密码尚未校验过的请求要求整体
+读取消息体（在监听器的 `max_body_bytes` 之内）。以后的版本可以让挂起的请求改为暂停其消息体的读取。

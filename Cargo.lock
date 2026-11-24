@@ -258,6 +258,7 @@ dependencies = [
 name = "akit-config"
 version = "0.0.1"
 dependencies = [
+ "akio-crypto",
  "akit-router",
 ]
 
@@ -299,8 +300,12 @@ name = "akit-middleware"
 version = "0.0.1"
 dependencies = [
  "akio",
+ "akio-crypto",
+ "akio-h3",
  "akio-http",
+ "akio-quic",
  "akio-regex",
+ "akio-x509",
  "akit-config",
  "akit-handler",
  "akit-listener",

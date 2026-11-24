@@ -152,7 +152,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 142 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 154 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -183,11 +183,11 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`http.handlers/websockify`](#fields-http-handlers-websockify) | 12 | 0 | 12 |
 | [`http.handlers/whep`](#fields-http-handlers-whep) | 4 | 0 | 4 |
 | [`http.handlers/whip`](#fields-http-handlers-whip) | 4 | 0 | 4 |
-| [`http.middleware/basic_auth`](#fields-http-middleware-basic-auth) | 8 | 0 | 8 |
+| [`http.middleware/basic_auth`](#fields-http-middleware-basic-auth) | 8 | 8 | 0 |
 | [`http.middleware/body_limit`](#fields-http-middleware-body-limit) | 3 | 3 | 0 |
 | [`http.middleware/cache`](#fields-http-middleware-cache) | 17 | 0 | 17 |
 | [`http.middleware/circuit_breaker`](#fields-http-middleware-circuit-breaker) | 10 | 0 | 10 |
-| [`http.middleware/client_cert`](#fields-http-middleware-client-cert) | 4 | 0 | 4 |
+| [`http.middleware/client_cert`](#fields-http-middleware-client-cert) | 4 | 4 | 0 |
 | [`http.middleware/compress`](#fields-http-middleware-compress) | 10 | 0 | 10 |
 | [`http.middleware/concurrency_limit`](#fields-http-middleware-concurrency-limit) | 4 | 4 | 0 |
 | [`http.middleware/forward_auth`](#fields-http-middleware-forward-auth) | 7 | 0 | 7 |
@@ -277,7 +277,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 25 | 13 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **合计** | 3821 | 142 | 3679 |
+| **合计** | 3821 | 154 | 3667 |
 
 <a id="fields-access"></a>
 
@@ -1018,14 +1018,14 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
-| `routes[].middleware[]<basic_auth>` | `module` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<basic_auth>.params` | `object` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<basic_auth>.params.forward_authorization` | `boolean` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<basic_auth>.params.realm` | `string` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<basic_auth>.params.user_header` | `string` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<basic_auth>.params.users` | `array<object>, required` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<basic_auth>.params.users[].password_hash` | `string, required` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<basic_auth>.params.users[].username` | `string, required` | 尚不支持（not supported yet） |
+| `routes[].middleware[]<basic_auth>` | `module` | 已支持 |
+| `routes[].middleware[]<basic_auth>.params` | `object` | 已支持 |
+| `routes[].middleware[]<basic_auth>.params.forward_authorization` | `boolean` | 已支持 |
+| `routes[].middleware[]<basic_auth>.params.realm` | `string` | 已支持 |
+| `routes[].middleware[]<basic_auth>.params.user_header` | `string` | 已支持 |
+| `routes[].middleware[]<basic_auth>.params.users` | `array<object>, required` | 已支持 |
+| `routes[].middleware[]<basic_auth>.params.users[].password_hash` | `string, required` | 已支持 |
+| `routes[].middleware[]<basic_auth>.params.users[].username` | `string, required` | 已支持 |
 
 <a id="fields-http-middleware-body-limit"></a>
 
@@ -1084,10 +1084,10 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
-| `routes[].middleware[]<client_cert>` | `module` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<client_cert>.params` | `object` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<client_cert>.params.optional` | `boolean` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<client_cert>.params.subject_header` | `string` | 尚不支持（not supported yet） |
+| `routes[].middleware[]<client_cert>` | `module` | 已支持 |
+| `routes[].middleware[]<client_cert>.params` | `object` | 已支持 |
+| `routes[].middleware[]<client_cert>.params.optional` | `boolean` | 已支持 |
+| `routes[].middleware[]<client_cert>.params.subject_header` | `string` | 已支持 |
 
 <a id="fields-http-middleware-compress"></a>
 

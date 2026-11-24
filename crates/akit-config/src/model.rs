@@ -575,6 +575,11 @@ pub enum Handler {
     ConcurrencyLimit(ConcurrencyLimit),
     /// The `body_limit` middleware: the size of a request's body (I41).
     BodyLimit(BodyLimit),
+    /// The `basic_auth` middleware: a user name and password, checked against bcrypt hashes
+    /// (I42).
+    BasicAuth(BasicAuth),
+    /// The `client_cert` middleware: a client certificate the listener verified (I42).
+    ClientCert(ClientCert),
 }
 
 impl Handler {
@@ -591,6 +596,8 @@ impl Handler {
             Handler::RateLimit(_) => "rate_limit",
             Handler::ConcurrencyLimit(_) => "concurrency_limit",
             Handler::BodyLimit(_) => "body_limit",
+            Handler::BasicAuth(_) => "basic_auth",
+            Handler::ClientCert(_) => "client_cert",
         }
     }
 
@@ -605,6 +612,8 @@ impl Handler {
                 | Handler::RateLimit(_)
                 | Handler::ConcurrencyLimit(_)
                 | Handler::BodyLimit(_)
+                | Handler::BasicAuth(_)
+                | Handler::ClientCert(_)
         )
     }
 }
@@ -734,6 +743,46 @@ pub struct ConcurrencyLimit {
 pub struct BodyLimit {
     /// `max_bytes`: the most bytes a request's body may have.
     pub max_bytes: u64,
+}
+
+/// The `basic_auth` middleware's params, as fit's `middleware/auth` `Basic`, checked as its
+/// `Provision` checks them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BasicAuth {
+    /// `realm`: what the browser shows when it asks for a user and password; `fit` when left
+    /// out. It holds no quote, backslash or control character.
+    pub realm: String,
+    /// `users`: at least one, each name once.
+    pub users: Vec<BasicUser>,
+    /// `user_header`: a request field set to the user's name for the handler; empty when left
+    /// out. An HTTP token.
+    pub user_header: String,
+    /// `forward_authorization`: leave the `Authorization` field on the request the handler
+    /// sees; it is removed when false.
+    pub forward_authorization: bool,
+}
+
+/// One user `basic_auth` lets in.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BasicUser {
+    /// `username`: not empty, without a colon, NUL, CR or LF.
+    pub username: String,
+    /// `password_hash`: a bcrypt hash (`$2a$`, `$2b$` or `$2y$`, cost 4 to 31), as
+    /// `htpasswd -B` or fit's `hash-password` makes it; checked with `akio_crypto::bcrypt`.
+    pub password_hash: String,
+}
+
+/// fit's `realm` when left out.
+pub const DEFAULT_REALM: &str = "fit";
+
+/// The `client_cert` middleware's params, as fit's `middleware/auth` `ClientCert`.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ClientCert {
+    /// `optional`: let a request without a certificate through as well; refused 403 when false.
+    pub optional: bool,
+    /// `subject_header`: a request field set to the certificate's subject, as Go writes a
+    /// distinguished name (`CN=alice,O=Example`); empty when left out. An HTTP token.
+    pub subject_header: String,
 }
 
 /// The `respond` handler's params.
@@ -1089,10 +1138,8 @@ const FIT_HANDLERS: &[&str] = &[
 ];
 /// fit's middleware modules (its `http.middleware` namespace) that akit does not have yet.
 const FIT_MIDDLEWARE: &[&str] = &[
-    "basic_auth",
     "cache",
     "circuit_breaker",
-    "client_cert",
     "compress",
     "forward_auth",
     "jwt",
@@ -1115,6 +1162,9 @@ const RATE_LIMIT_FIELDS: &[&str] = &[
 ];
 const CONCURRENCY_LIMIT_FIELDS: &[&str] = &["max", "status"];
 const BODY_LIMIT_FIELDS: &[&str] = &["max_bytes"];
+const BASIC_AUTH_FIELDS: &[&str] = &["realm", "users", "user_header", "forward_authorization"];
+const BASIC_USER_FIELDS: &[&str] = &["username", "password_hash"];
+const CLIENT_CERT_FIELDS: &[&str] = &["optional", "subject_header"];
 const RESPOND_FIELDS: &[&str] = &["status", "headers", "body"];
 const STATIC_FIELDS: &[&str] = &[
     "root",
@@ -2205,6 +2255,8 @@ fn middleware(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Handler> {
             concurrency_limit(d, params, off, &params_path).map(Handler::ConcurrencyLimit)
         }
         "body_limit" => body_limit(d, params, off, &params_path).map(Handler::BodyLimit),
+        "basic_auth" => basic_auth(d, params, off, &params_path).map(Handler::BasicAuth),
+        "client_cert" => client_cert(d, params, &params_path).map(Handler::ClientCert),
         m if FIT_MIDDLEWARE.contains(&m) => {
             d.not_yet(off, &module_path, &format!("the {m:?} middleware"));
             None
@@ -2627,6 +2679,159 @@ fn body_limit(
     Some(BodyLimit {
         max_bytes: max_bytes?,
     })
+}
+
+/// A boolean member of `o`, false when left out.
+fn flag(d: &mut Decoder<'_>, o: &mut Obj<'_>, key: &str, ok: &mut bool) -> bool {
+    match o.take(key).map(|v| (v.off, &v.kind)) {
+        None => false,
+        Some((_, crate::json::Kind::Bool(b))) => *b,
+        Some((off, other)) => {
+            d.error(
+                off,
+                &o.at(key),
+                format!("expected a boolean, got {}", other.name()),
+            );
+            *ok = false;
+            false
+        }
+    }
+}
+
+/// The `basic_auth` middleware's params, checked as fit's `Basic.Provision` checks them.
+fn basic_auth(
+    d: &mut Decoder<'_>,
+    params: Option<&Node>,
+    off: usize,
+    path: &str,
+) -> Option<BasicAuth> {
+    let mut o = limit_params(d, params, off, path, "users")?;
+    let mut ok = true;
+    let mut realm = DEFAULT_REALM.to_owned();
+    if let Some(v) = o.take("realm") {
+        let p = o.at("realm");
+        match d.string(v, &p) {
+            Some(r)
+                if r.bytes()
+                    .any(|c| c < 0x20 || c == 0x7f || c == b'"' || c == b'\\') =>
+            {
+                d.error(
+                    v.off,
+                    &p,
+                    format!("{r:?} has a quote, a backslash or a control character"),
+                );
+                ok = false;
+            }
+            Some(r) if !r.is_empty() => realm = r,
+            Some(_) => {}
+            None => ok = false,
+        }
+    }
+    let mut users: Vec<BasicUser> = Vec::new();
+    if let Some(v) = o.require(d, "users") {
+        let at = o.at("users");
+        let list = d.array(v, &at, |d, n, p| basic_user(d, n, p).map(|u| (n.off, u)));
+        if list.is_empty() && ok {
+            d.error(v.off, &at, "at least one user is needed");
+        }
+        for (i, (uoff, u)) in list.into_iter().enumerate() {
+            if users.iter().any(|x| x.username == u.username) {
+                d.error(
+                    uoff,
+                    &at,
+                    format!("user {i}: {:?} is listed twice", u.username),
+                );
+                ok = false;
+            }
+            users.push(u);
+        }
+    } else {
+        ok = false;
+    }
+    let mut user_header = String::new();
+    if let Some(v) = o.take("user_header") {
+        let p = o.at("user_header");
+        match d.string(v, &p) {
+            Some(h) if !h.is_empty() && !is_token(&h) => {
+                d.error(v.off, &p, format!("{h:?} is not a field name"));
+                ok = false;
+            }
+            Some(h) => user_header = h,
+            None => ok = false,
+        }
+    }
+    let forward_authorization = flag(d, &mut o, "forward_authorization", &mut ok);
+    o.finish(d, BASIC_AUTH_FIELDS, &[]);
+    (ok && !users.is_empty()).then_some(BasicAuth {
+        realm,
+        users,
+        user_header,
+        forward_authorization,
+    })
+}
+
+/// One of `basic_auth`'s `users`.
+fn basic_user(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<BasicUser> {
+    let mut o = d.object(n, path)?;
+    let mut ok = true;
+    let username = o.require(d, "username").and_then(|v| {
+        let p = o.at("username");
+        let u = d.string(v, &p)?;
+        if u.is_empty() || u.contains([':', '\0', '\r', '\n']) {
+            d.error(
+                v.off,
+                &p,
+                format!(
+                    "{u:?} is not a user name: it is empty, or has a colon or a control character"
+                ),
+            );
+            return None;
+        }
+        Some(u)
+    });
+    let password_hash = o.require(d, "password_hash").and_then(|v| {
+        let p = o.at("password_hash");
+        let h = d.string(v, &p)?;
+        if let Err(why) = akio_crypto::bcrypt::Hash::parse(&h) {
+            d.error(
+                v.off,
+                &p,
+                format!("password_hash is not a bcrypt hash: {why}"),
+            );
+            return None;
+        }
+        Some(h)
+    });
+    o.finish(d, BASIC_USER_FIELDS, &[]);
+    ok &= username.is_some() && password_hash.is_some();
+    ok.then(|| BasicUser {
+        username: username.unwrap_or_default(),
+        password_hash: password_hash.unwrap_or_default(),
+    })
+}
+
+/// The `client_cert` middleware's params.
+fn client_cert(d: &mut Decoder<'_>, params: Option<&Node>, path: &str) -> Option<ClientCert> {
+    let mut c = ClientCert::default();
+    let Some(n) = params else {
+        return Some(c);
+    };
+    let mut o = d.object(n, path)?;
+    let mut ok = true;
+    c.optional = flag(d, &mut o, "optional", &mut ok);
+    if let Some(v) = o.take("subject_header") {
+        let p = o.at("subject_header");
+        match d.string(v, &p) {
+            Some(h) if !h.is_empty() && !is_token(&h) => {
+                d.error(v.off, &p, format!("{h:?} is not a field name"));
+                ok = false;
+            }
+            Some(h) => c.subject_header = h,
+            None => ok = false,
+        }
+    }
+    o.finish(d, CLIENT_CERT_FIELDS, &[]);
+    ok.then_some(c)
 }
 
 fn respond(d: &mut Decoder<'_>, params: Option<&Node>, path: &str) -> Option<Respond> {

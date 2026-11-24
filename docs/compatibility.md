@@ -175,7 +175,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 142 supported.
+3821 fields in 121 sections, at fit `7daee573`; 154 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -206,11 +206,11 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`http.handlers/websockify`](#fields-http-handlers-websockify) | 12 | 0 | 12 |
 | [`http.handlers/whep`](#fields-http-handlers-whep) | 4 | 0 | 4 |
 | [`http.handlers/whip`](#fields-http-handlers-whip) | 4 | 0 | 4 |
-| [`http.middleware/basic_auth`](#fields-http-middleware-basic-auth) | 8 | 0 | 8 |
+| [`http.middleware/basic_auth`](#fields-http-middleware-basic-auth) | 8 | 8 | 0 |
 | [`http.middleware/body_limit`](#fields-http-middleware-body-limit) | 3 | 3 | 0 |
 | [`http.middleware/cache`](#fields-http-middleware-cache) | 17 | 0 | 17 |
 | [`http.middleware/circuit_breaker`](#fields-http-middleware-circuit-breaker) | 10 | 0 | 10 |
-| [`http.middleware/client_cert`](#fields-http-middleware-client-cert) | 4 | 0 | 4 |
+| [`http.middleware/client_cert`](#fields-http-middleware-client-cert) | 4 | 4 | 0 |
 | [`http.middleware/compress`](#fields-http-middleware-compress) | 10 | 0 | 10 |
 | [`http.middleware/concurrency_limit`](#fields-http-middleware-concurrency-limit) | 4 | 4 | 0 |
 | [`http.middleware/forward_auth`](#fields-http-middleware-forward-auth) | 7 | 0 | 7 |
@@ -300,7 +300,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 25 | 13 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 142 | 3679 |
+| **Total** | 3821 | 154 | 3667 |
 
 <a id="fields-access"></a>
 
@@ -1041,14 +1041,14 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `routes[].middleware[]<basic_auth>` | `module` | not supported yet |
-| `routes[].middleware[]<basic_auth>.params` | `object` | not supported yet |
-| `routes[].middleware[]<basic_auth>.params.forward_authorization` | `boolean` | not supported yet |
-| `routes[].middleware[]<basic_auth>.params.realm` | `string` | not supported yet |
-| `routes[].middleware[]<basic_auth>.params.user_header` | `string` | not supported yet |
-| `routes[].middleware[]<basic_auth>.params.users` | `array<object>, required` | not supported yet |
-| `routes[].middleware[]<basic_auth>.params.users[].password_hash` | `string, required` | not supported yet |
-| `routes[].middleware[]<basic_auth>.params.users[].username` | `string, required` | not supported yet |
+| `routes[].middleware[]<basic_auth>` | `module` | supported |
+| `routes[].middleware[]<basic_auth>.params` | `object` | supported |
+| `routes[].middleware[]<basic_auth>.params.forward_authorization` | `boolean` | supported |
+| `routes[].middleware[]<basic_auth>.params.realm` | `string` | supported |
+| `routes[].middleware[]<basic_auth>.params.user_header` | `string` | supported |
+| `routes[].middleware[]<basic_auth>.params.users` | `array<object>, required` | supported |
+| `routes[].middleware[]<basic_auth>.params.users[].password_hash` | `string, required` | supported |
+| `routes[].middleware[]<basic_auth>.params.users[].username` | `string, required` | supported |
 
 <a id="fields-http-middleware-body-limit"></a>
 
@@ -1107,10 +1107,10 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `routes[].middleware[]<client_cert>` | `module` | not supported yet |
-| `routes[].middleware[]<client_cert>.params` | `object` | not supported yet |
-| `routes[].middleware[]<client_cert>.params.optional` | `boolean` | not supported yet |
-| `routes[].middleware[]<client_cert>.params.subject_header` | `string` | not supported yet |
+| `routes[].middleware[]<client_cert>` | `module` | supported |
+| `routes[].middleware[]<client_cert>.params` | `object` | supported |
+| `routes[].middleware[]<client_cert>.params.optional` | `boolean` | supported |
+| `routes[].middleware[]<client_cert>.params.subject_header` | `string` | supported |
 
 <a id="fields-http-middleware-compress"></a>
 

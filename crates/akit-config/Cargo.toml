@@ -9,6 +9,8 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
+# basic_auth's password hashes are checked with akio's bcrypt parser (I42).
+akio-crypto.workspace = true
 # fit validates matchers with its router's own builders: path regexps, prefixes, expressions.
 akit-router.workspace = true
 
