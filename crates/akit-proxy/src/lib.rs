@@ -46,19 +46,27 @@
 //! - **Timeouts.** A connect that times out (the upstream's `connect_timeout`) is answered 504.
 //!   The upstream's `response_timeout`, and the proxy's own `timeout` when shorter, bound the
 //!   whole exchange: past it before the response began, 504; later, the response is cut short as
-//!   one the upstream broke off. fit's `response_header_timeout` and `response_idle_timeout` wait
-//!   on akio API request A36, and its `write_stall_timeout` on A38 (I17b); until then akio's
-//!   engine closes a client that takes nothing of a response for 60s.
+//!   one the upstream broke off.
 //! - **Cancellation.** A client that goes mid-download is noticed at the next write, or at once
 //!   when the download is held for it (akio calls `on_drain` as a connection closes), and the
-//!   upstream's response is given up. An HTTP/2 or HTTP/3 client that goes mid-upload drops its
-//!   body's sink, and the upstream's request is given up with it (its unfinished body closes its
-//!   connection). Neither counts against the upstream's health. An HTTP/1 client that goes
-//!   mid-upload, and any that goes while the proxy waits for the upstream's head with its body
-//!   all sent, go unnoticed until the upstream answers or `response_timeout` passes: akio keeps
-//!   an HTTP/1 request's body sink while the connection is held by the proxy's pending answer,
-//!   and tells a detached request nothing of its client going (akio API requests A37 and A38,
-//!   I17b).
+//!   upstream's response is given up. A client that goes mid-upload drops its body's sink, and
+//!   the upstream's request is given up with it (its unfinished body closes its connection).
+//!   Neither counts against the upstream's health.
+//!
+//! I17b brings the rest of fit's timeouts and cancellation, on akio's ADR-108:
+//!
+//! - **`response_header_timeout`**: an upstream that takes longer than it, once the request is
+//!   sent whole, to begin its response is answered 504. **`response_idle_timeout`**: one that
+//!   goes silent mid-body for longer (the time its reads are held for a slow client aside) has
+//!   its response cut short, as one that broke off. Both are fit's 60s by default.
+//! - **The client gone at any point**, its body all sent or not, the response's head come or
+//!   not: each request's upstream exchange has a [`CancelToken`], cancelled when akio says the
+//!   client went (`Context::on_gone`: its connection closed, its HTTP/1 EOF, its HTTP/2 or
+//!   HTTP/3 stream reset), which gives the upstream request up wherever it is, a wait for a
+//!   connection included; it does not count against the upstream's health, as fit's `OnCancel`.
+//! - **`limits.write_stall_timeout`** is akio's engine `write_timeout`, set by akit-listener
+//!   when the engine is built and on each reload: a client that takes nothing of what it was
+//!   sent for that long is closed.
 //! - **Trailers** pass both ways, as fit passes them. A request that announces trailers
 //!   (`Trailer`) goes up chunked, its `Trailer` kept, with the announced fields of the trailers
 //!   it ends with (one whose body came whole too); a request that announced none sends none on,
@@ -84,7 +92,7 @@ use std::borrow::Cow;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use akio_http::client::{ClientError, ClientRequest};
+use akio_http::client::{CancelToken, ClientError, ClientRequest};
 use akio_http::{BodyMode, Context, Method, Request, Response};
 use akit_config::Network;
 use akit_runtime::upstream::{Error, Keys, Pool};
@@ -159,7 +167,9 @@ impl akio_http::Service for Proxy {
         let backend = self.pool.pick_for(&keys);
         let set_cookie = self.pool.set_cookie(&keys, backend).map(str::to_owned);
         let fields = out_fields;
-        let mut out = ClientRequest::new(req.method.clone(), &target(ctx));
+        // Cancelled when the client goes (`relay::start`), wherever the exchange is.
+        let cancel = CancelToken::new();
+        let mut out = ClientRequest::new(req.method.clone(), &target(ctx)).cancel_with(&cancel);
         out.headers = fields;
         // The shorter of it and the upstream's response_timeout holds (akit-upstream).
         out.timeout = self.timeout;
@@ -178,7 +188,7 @@ impl akio_http::Service for Proxy {
         let announced = !names.is_empty();
         // A body that streams goes up chunked when it came so or carries trailers.
         let chunked = length.is_none() || announced;
-        let Some((client, streamed)) = relay::start(ctx, limit, chunked, names) else {
+        let Some((client, streamed)) = relay::start(ctx, limit, chunked, names, cancel) else {
             // Answered already: nothing left to do.
             return;
         };
@@ -260,11 +270,12 @@ fn origin_form(target: &str) -> Cow<'_, str> {
 }
 
 /// The status a request that got no response is answered with: fit's `statusOf`, for what
-/// akit's requests can fail with: 504 for a timeout, the connect's included.
+/// akit's requests can fail with: 504 for a timeout, the connect's and the head's included.
 fn status_of(e: &Error) -> u16 {
     match e {
         Error::Busy | Error::Closed => 503,
-        Error::Timeout | Error::Client(ClientError::Timeout) => 504,
+        Error::Timeout => 504,
+        Error::Client(e) if e.is_timeout() => 504,
         Error::Client(ClientError::Io(e)) if e.kind() == std::io::ErrorKind::TimedOut => 504,
         _ => 502,
     }
@@ -318,6 +329,14 @@ mod tests {
             502
         );
         assert_eq!(super::status_of(&Error::Client(ClientError::Timeout)), 504);
+        assert_eq!(
+            super::status_of(&Error::Client(ClientError::HeaderTimeout)),
+            504
+        );
+        assert_eq!(
+            super::status_of(&Error::Client(ClientError::Cancelled)),
+            502
+        );
         let r = super::fail(502);
         assert_eq!(r.status, 502);
         assert_eq!(r.body, b"502 Bad Gateway\n");

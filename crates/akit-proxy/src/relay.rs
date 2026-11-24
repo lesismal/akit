@@ -20,6 +20,9 @@
 //! the names it announced; a body of no declared length cut short on HTTP/2 or HTTP/3 ends with
 //! [`BROKEN_TRAILER`].
 //!
+//! I17b hears the client go at any point ([`start`] registers `Context::on_gone`): the upstream
+//! request's [`CancelToken`] is cancelled, and the exchange says it gave up.
+//!
 //! Nothing here blocks or waits: each side's callbacks run on their I/O threads, and the state
 //! they share is behind one lock that is never held while calling into akio, which may call back.
 
@@ -27,6 +30,7 @@ use std::mem;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Instant;
 
+use akio_http::client::CancelToken;
 use akio_http::{BodyEvent, BodyReads, BodyStream, Context, Detached, Headers, Response, Version};
 use akit_runtime::upstream::{Download, Error, Exchange, Head, Upload as Body};
 
@@ -53,7 +57,8 @@ struct Shared {
     /// The right to answer the client, until the response begins or a failure is answered.
     answer: Option<Detached>,
     up: Upload,
-    /// The client went before its body ended: the upstream request was given up for it.
+    /// The client went (before its body ended, or before the response was over): the upstream
+    /// request was given up for it.
     gone: bool,
 }
 
@@ -110,22 +115,34 @@ pub(crate) struct Client {
 }
 
 /// Starts relaying `ctx`'s request: takes its body's reads when it streams (registering its body
-/// sink, held to `limit`, sent up `chunked` with the trailers of `names`), and detaches it.
-/// `None` when it was answered already.
+/// sink, held to `limit`, sent up `chunked` with the trailers of `names`), has `cancel`
+/// cancelled when its client goes, and detaches it. `None` when it was answered already.
 pub(crate) fn start(
     ctx: &mut Context,
     limit: u64,
     chunked: bool,
     names: Vec<String>,
+    cancel: CancelToken,
 ) -> Option<(Client, bool)> {
     let reads = ctx.body_reads();
     let streamed = reads.is_some();
-    let answer = ctx.detach()?;
     let shared = Arc::new(Mutex::new(Shared {
-        answer: Some(answer),
+        answer: None,
         up: Upload::default(),
         gone: false,
     }));
+    // The client gone, whenever: the upstream request given up, wherever it is. Weak: akio keeps
+    // the callback with the answer, which `shared` holds. Run at once if it went already, before
+    // the answer is put there (the lock is not held).
+    let weak = Arc::downgrade(&shared);
+    ctx.on_gone(move || {
+        if let Some(s) = weak.upgrade() {
+            lock(&s).gone = true;
+        }
+        cancel.cancel();
+    });
+    let answer = ctx.detach()?;
+    lock(&shared).answer = Some(answer);
     if let Some(reads) = &reads {
         let mut sink = Sink {
             shared: shared.clone(),

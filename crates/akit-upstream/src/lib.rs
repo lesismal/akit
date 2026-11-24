@@ -23,8 +23,16 @@
 //! - **`response_timeout`** (I17): every exchange is bounded in all, from the request's start,
 //!   waiting for a connection included, to the end of its response's body; fit's default,
 //!   [`DEFAULT_RESPONSE_TIMEOUT`], when the config leaves it out. A request may ask for less
-//!   ([`ClientRequest::timeout`]), never more. fit's `response_header_timeout` and
-//!   `response_idle_timeout` wait on akio API request A36 (I17b).
+//!   ([`ClientRequest::timeout`]), never more.
+//! - **`response_header_timeout`** and **`response_idle_timeout`** (I17b): how long the upstream
+//!   may take, once the request is sent whole, to begin its response
+//!   ([`ClientError::HeaderTimeout`]), and how long it may go silent mid-body while its reads are
+//!   not held ([`ClientError::IdleTimeout`]): akio's client's own (ADR-108) over HTTP/1.1, the
+//!   [`h2`] tick's over h2.
+//! - **Cancellation** (I17b): a request given a [`CancelToken`] ([`ClientRequest::cancel_with`])
+//!   is given up when the token is cancelled, whether it waits for a connection, waits for its
+//!   head or reads its body; it fails with [`ClientError::Cancelled`], which is not the address's
+//!   failure.
 //!
 //! I19 adds load balancing ([`balance`]): [`Pool::pick`] chooses the address by the upstream's
 //! `load_balancing` and `weights` (round robin, smooth weighted round robin, least connections),
@@ -104,6 +112,8 @@ use akio_http::client::{
 use akio_http::h2client::H2Options;
 use akit_observe::metrics::{HistogramSnapshot, UpstreamStats};
 
+/// What cancels a request ([`ClientRequest::cancel_with`]), over HTTP/1.1 and h2 alike.
+pub use akio_http::client::CancelToken;
 pub use akit_config::{HealthCheck, HealthCheckType, UpstreamProtocol};
 pub use balance::{Balancer, Keys, LoadBalancing};
 pub use h2::{HELD_LIMIT, STREAMS_PER_CONN};
@@ -224,10 +234,14 @@ pub enum Error {
 
 impl Error {
     /// Whether it counts against the address, as fit's passive health checks count failures:
-    /// the address failed it, rather than the pool refusing it.
+    /// the address failed it, rather than the pool refusing it or its sender cancelling it.
     #[must_use]
     pub fn is_upstream_failure(&self) -> bool {
-        matches!(self, Error::Timeout | Error::Client(_))
+        match self {
+            Error::Timeout => true,
+            Error::Client(e) => !matches!(e, ClientError::Cancelled),
+            _ => false,
+        }
     }
 }
 
@@ -277,9 +291,9 @@ pub trait Exchange: Send + 'static {
     fn on_end(&mut self, trailers: &Headers);
     /// The request failed, or (after the head) its body did not complete.
     fn on_error(&mut self, e: Error);
-    /// Whether the exchange gave the request up itself before its response began, its client
-    /// gone (as by dropping its unfinished [`RequestBody`]): asked as the request fails, which
-    /// is then not counted against the address.
+    /// Whether the exchange gave the request up itself, its client gone (as by dropping its
+    /// unfinished [`RequestBody`], or cancelling its [`CancelToken`]): asked as the request
+    /// fails, which is then not counted against the address.
     fn gave_up(&self) -> bool {
         false
     }
@@ -552,6 +566,8 @@ impl Pool {
         opts.max_idle = u.max_idle_conns.saturating_mul(u.addresses.len().max(1));
         opts.idle_timeout = Some(u.idle_timeout);
         opts.happy_eyeballs.connect_timeout = u.connect_timeout;
+        opts.response_header_timeout = Some(u.response_header_timeout);
+        opts.response_idle_timeout = Some(u.response_idle_timeout);
         let weights: Vec<u32> = (0..u.addresses.len()).map(|i| u.weight(i)).collect();
         let backends = u
             .addresses
@@ -722,6 +738,19 @@ impl Pool {
     #[must_use]
     pub fn response_timeout(&self) -> Duration {
         self.inner.timeout
+    }
+
+    /// The upstream's `response_header_timeout`: how long it may take, once a request is sent
+    /// whole, to begin its response.
+    #[must_use]
+    pub fn response_header_timeout(&self) -> Duration {
+        self.inner.header_timeout()
+    }
+
+    /// The upstream's `response_idle_timeout`: how long it may go silent mid-body.
+    #[must_use]
+    pub fn response_idle_timeout(&self) -> Duration {
+        self.inner.idle_timeout()
     }
 
     /// The upstream's `connect_timeout`.
@@ -966,6 +995,18 @@ impl Pool {
 }
 
 impl Inner {
+    fn header_timeout(&self) -> Duration {
+        self.opts
+            .response_header_timeout
+            .unwrap_or(akit_config::DEFAULT_RESPONSE_HEADER_TIMEOUT)
+    }
+
+    fn idle_timeout(&self) -> Duration {
+        self.opts
+            .response_idle_timeout
+            .unwrap_or(akit_config::DEFAULT_RESPONSE_IDLE_TIMEOUT)
+    }
+
     /// The time on the backends' health clock, read once into `now`.
     fn now(&self, now: &Cell<Option<u64>>) -> u64 {
         if let Some(t) = now.get() {
@@ -1124,7 +1165,11 @@ impl Inner {
             // Counted before the callback runs, so that what it does next sees the address's
             // health as this exchange left it. Any response is a success, whatever its status,
             // as in fit.
-            me.record(backend, r.is_err());
+            me.record(
+                backend,
+                r.as_ref()
+                    .is_err_and(|e| !matches!(e, ClientError::Cancelled)),
+            );
             done(r.map_err(Error::Client));
             me.finish_one();
         });
@@ -1236,8 +1281,10 @@ impl ResponseHandler for Streamed {
         }
         self.pool.release(self.backend);
         // Any response is a success, as for `send`, unless its body broke off: the client going
-        // (a cancel, or the request given up before its response) is not the address's failure.
-        let failed = !(self.headed && self.cancelled.load(Ordering::SeqCst)) && !self.x.gave_up();
+        // (a cancel, its token's, or the request given up) is not the address's failure.
+        let failed = !(self.headed && self.cancelled.load(Ordering::SeqCst))
+            && !matches!(e, ClientError::Cancelled)
+            && !self.x.gave_up();
         self.pool.record(self.backend, failed);
         self.x.on_error(Error::Client(e));
         self.pool.finish_one();

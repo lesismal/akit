@@ -35,6 +35,13 @@
 //! with [`MAX_BODY_BYTES`] telling the handler the limit, which it holds the body to; one that
 //! declares a length past it is answered 413 before its handler runs, as before.
 //!
+//! I17b: the config's `limits.write_stall_timeout` (fit's 30s by default) is the engine's write
+//! timeout: a connection whose queued output makes no progress for that long is closed, between
+//! one and two of it after its last progress (akio checks it about once a timeout). A reload
+//! applies a new one to the connections already open ([`Listeners::reload`]). Unlike fit's,
+//! which resets an HTTP/2 or HTTP/3 stream alone, it closes the connection, and it does not
+//! bound HTTP/3 (akio's write timeout is TCP's).
+//!
 //! Part of [akit](https://github.com/lesismal/akit); see `docs/dev-plan.md` for the iterations that
 //! fill this crate in.
 
@@ -666,6 +673,9 @@ fn build(cell: &GraphCell, opts: &Options) -> Result<Engine, (Error, bool)> {
     if let Some(t) = cell.with(|g| g.upstreams().iter().map(|p| p.connect_timeout()).min()) {
         cfg.connect_timeout = Some(t);
     }
+    // fit's limits.write_stall_timeout is akio's write timeout: a connection whose queued output
+    // makes no progress for it is closed (a reload changes it, `Listeners::reload`).
+    cfg.write_timeout = Some(cell.with(akit_runtime::Graph::write_stall_timeout));
     let mut b = Engine::builder().config(cfg);
     for (l, tls) in &listeners {
         let fail = |e: Error| (e, false);

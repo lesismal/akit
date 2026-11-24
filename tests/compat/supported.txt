@@ -118,10 +118,12 @@ routes[].handler<proxy>.params.trusted_proxies
 routes[].handler<proxy>.params.host_header
 #
 # I17: timeouts: the proxy's own and the upstream's whole-exchange timeout (504 before the
-# response began, cut short after). response_header_timeout and response_idle_timeout wait on
-# akio API request A36 (I17b).
+# response began, cut short after). I17b: the upstream's header timeout (504) and idle timeout
+# (cut short), on akio's client (ADR-108) over HTTP/1.1 and akit's h2 tick over h2 (A66).
 routes[].handler<proxy>.params.timeout
 upstreams[].response_timeout
+upstreams[].response_header_timeout
+upstreams[].response_idle_timeout
 #
 # I39: route matchers v2: path regexps (akio-regex, Go's syntax but for what akio-regex lacks:
 # Unicode classes, POSIX classes, \Q...\E), methods, headers, query parameters, remote IPs and
@@ -133,9 +135,12 @@ routes[].match.query
 routes[].match.remote_ip
 routes[].match.expr
 # I16: limits.max_body_bytes, the largest request body a listener takes (413 past it), on
-# HTTP/1.1, h2c, h2 and h3 alike; the other limits are refused as not supported yet.
+# HTTP/1.1, h2c, h2 and h3 alike. I17b: limits.write_stall_timeout, akio's engine write timeout
+# (the connection closed, an HTTP/2 one too; HTTP/3 not bounded), changed on reload. The other
+# limits are refused as not supported yet.
 limits
 limits.max_body_bytes
+limits.write_stall_timeout
 
 # I21: access logs, as fit's observe package writes them. access_log.time_zone takes local, utc or
 # an IANA name (from the system's zoneinfo files); access_log.rotate is refused as not supported

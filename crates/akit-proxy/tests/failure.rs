@@ -1,14 +1,13 @@
-//! fit's failure tests for its proxy (`handler/proxy/failure_test.go`), ported for I17: a connect
-//! that times out, the upstream's `response_timeout` and the proxy's `timeout` before the
-//! response's head and in the middle of its body, an upstream that breaks off mid-body, a client
-//! that goes mid-download and mid-upload (the upstream's request given up, and the upstream not
-//! counted as failing for it), and trailers both ways. Over HTTP/1.1 and h2c, to an HTTP/1.1
-//! upstream, on the backend `AKIO_TEST_BACKEND` names (epoll by default, `uring`).
+//! fit's failure tests for its proxy (`handler/proxy/failure_test.go`), ported for I17 and I17b:
+//! a connect that times out, the upstream's `response_timeout` and the proxy's `timeout` before
+//! the response's head and in the middle of its body, `response_header_timeout` and
+//! `response_idle_timeout` (I17b), an upstream that breaks off mid-body, a client that goes
+//! before the response's head, mid-download and mid-upload (the upstream's request given up, and
+//! the upstream not counted as failing for it), trailers both ways, and `limits.write_stall_timeout`
+//! (I17b). Over HTTP/1.1 and h2c, to an HTTP/1.1 upstream, on the backend `AKIO_TEST_BACKEND`
+//! names (epoll by default, `uring`). `tests/h2.rs` runs the same against an h2c upstream.
 //!
-//! Not ported yet (I17b): `TestResponseHeaderTimeout` and `TestResponseIdleTimeout`, whose fields
-//! wait on akio API request A36, and `TestClientAbort`'s client that goes before the response's
-//! head, which waits on A37 and A38. A request's trailers are sent over HTTP/1.1 alone: akio's
-//! h2 client sends none.
+//! A request's trailers are sent over HTTP/1.1 alone: akio's h2 client sends none.
 //!
 //! The upstream is plain threads on std sockets, which report on a channel each request whose
 //! client (akit) went before it was answered in full.
@@ -191,6 +190,7 @@ fn read_body(r: &mut impl BufRead, head: &str) -> Body {
 ///   nothing;
 /// - `/broken`: the same, then the connection closed;
 /// - `/download`: a chunked body of up to 1000 pieces of 64 KiB, 5ms apart;
+/// - `/large`: a chunked body of [`LARGE`] bytes, as fast as it is taken;
 /// - `/upload`: the body read to its end, then 200;
 /// - `/trailers`: the body read, then a chunked one of 10 bytes (200 KiB with `?big=1`) with an
 ///   `X-Sum` trailer saying what came: `in=<length> in-trailer=<X-Check trailer> out=<length>`,
@@ -269,6 +269,21 @@ fn serve(s: TcpStream, gone: &Sender<String>) {
                 }
                 return;
             }
+            "/large" => {
+                let piece = vec![b'l'; 64 << 10];
+                let mut sent =
+                    write!(w, "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n").is_ok();
+                for _ in 0..LARGE / piece.len() {
+                    sent = sent
+                        && write!(w, "{:x}\r\n", piece.len())
+                            .and_then(|()| w.write_all(&piece))
+                            .and_then(|()| w.write_all(b"\r\n"))
+                            .is_ok();
+                }
+                if !(sent && w.write_all(b"0\r\n\r\n").is_ok()) {
+                    return;
+                }
+            }
             "/download" => {
                 if write!(w, "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n").is_err() {
                     return;
@@ -327,6 +342,9 @@ fn serve(s: TcpStream, gone: &Sender<String>) {
         }
     }
 }
+
+/// The length of `/large`'s body: more than a client's socket buffers and akit's queue hold.
+const LARGE: usize = 16 << 20;
 
 /// A response as a client read it.
 #[derive(Debug)]
@@ -490,9 +508,8 @@ fn timeout_before_head() {
     }
 }
 
-/// fit's `TestResponseIdleTimeout`, with `response_timeout` in place of the idle timeout (which
-/// waits on A36), and `TestUpstreamBreaksMidBody`: a response cut short once it began, by its
-/// timeout or by its upstream. The client can tell: an HTTP/1.1 body ends with its connection,
+/// `response_timeout` mid-body, and fit's `TestUpstreamBreaksMidBody`: a response cut short once
+/// it began, by its timeout or by its upstream. The client can tell: an HTTP/1.1 body ends with its connection,
 /// short of its length or of its last chunk; an h2c one of a length fails, and one of no length
 /// ends with fit's `Fit-Error` trailer.
 #[test]
@@ -539,10 +556,9 @@ fn cut_short_mid_body() {
     }
 }
 
-/// fit's `TestClientAbort`, but for the client that goes before the response's head (A37, A38)
-/// and the HTTP/1.1 client that goes mid-upload (A38): a client that goes mid-download, and an
-/// h2c one that goes mid-upload, have the upstream's request given up; and neither takes the
-/// upstream out of rotation (`max_fails` is 1 by default).
+/// fit's `TestClientAbort` (the rest is [`client_abort_before_head_and_mid_upload`]): a client
+/// that goes mid-download, and an h2c one that goes mid-upload, have the upstream's request given
+/// up; and neither takes the upstream out of rotation (`max_fails` is 1 by default).
 #[test]
 fn client_abort() {
     let (up, gone) = upstream();
@@ -586,10 +602,6 @@ fn client_abort() {
     }
     wait_gone(&gone, "/download");
     assert_eq!(get(akit.addr, "/").status, 200);
-
-    // Mid-upload over HTTP/1.1 waits on A38 (I17b): akio keeps the request's body sink while
-    // the connection it came on is held by the proxy's pending answer, so the sink cannot tell
-    // that its client went.
 
     // Mid-upload, over h2c, a body of no declared length.
     {
@@ -670,4 +682,167 @@ fn trailers() {
         assert_eq!((got.status, got.len), (200, out), "big={big}: {got:?}");
         assert_eq!(got.trailers.get("x-sum"), Some(want.as_str()), "{got:?}");
     }
+}
+
+/// fit's `TestResponseHeaderTimeout`: an upstream that does not begin its response within
+/// `response_header_timeout` is answered 504, and its request given up.
+#[test]
+fn response_header_timeout() {
+    let (up, gone) = upstream();
+    let akit = Akit::start(&config(
+        &up.to_string(),
+        r#", "response_header_timeout": "150ms""#,
+        "",
+    ));
+    let got = get(akit.addr, "/hang");
+    assert_eq!(got.status, 504, "{got:?}");
+    assert_eq!(got.body.len, "504 Gateway Timeout\n".len());
+    assert!(
+        got.took >= Duration::from_millis(100) && got.took < Duration::from_secs(3),
+        "{got:?}"
+    );
+    wait_gone(&gone, "/hang");
+    let got = h2c_get(akit.addr, "/hang");
+    assert_eq!(got.status, 504, "{got:?}");
+    assert!(
+        got.took >= Duration::from_millis(100) && got.took < Duration::from_secs(3),
+        "{got:?}"
+    );
+    wait_gone(&gone, "/hang");
+    // An upstream that answers in time is not cut off, and a long body is not bound by it.
+    assert_eq!(get(akit.addr, "/").status, 200);
+    let got = get(akit.addr, "/large");
+    assert_eq!((got.status, got.body.len), (200, LARGE), "{:?}", got.status);
+    assert!(got.body.whole);
+}
+
+/// fit's `TestResponseIdleTimeout`: an upstream silent mid-body past `response_idle_timeout` has
+/// its response cut short, and the client can tell: an HTTP/1.1 body ends with its connection,
+/// an h2c one of a length fails, and one of no length ends with fit's `Fit-Error` trailer.
+#[test]
+fn response_idle_timeout() {
+    let (up, gone) = upstream();
+    let akit = Akit::start(&config(
+        &up.to_string(),
+        r#", "response_idle_timeout": "200ms""#,
+        "",
+    ));
+    for length in [true, false] {
+        let target = if length { "/stall?length=1" } else { "/stall" };
+        let got = get(akit.addr, target);
+        assert_eq!(got.status, 200, "{target}: {got:?}");
+        assert!(got.body.len >= 200 << 10, "{target}: {got:?}");
+        assert!(!got.body.whole, "{target}: a body cut short read as whole");
+        assert!(got.took < Duration::from_secs(3), "{target}: {got:?}");
+        wait_gone(&gone, "/stall");
+
+        let got = h2c_get(akit.addr, target);
+        assert_eq!(got.status, 200, "h2c {target}: {got:?}");
+        assert!(got.len >= 200 << 10, "h2c {target}: {got:?}");
+        assert!(got.took < Duration::from_secs(3), "h2c {target}: {got:?}");
+        if length {
+            assert!(!got.ended, "h2c {target}: a body cut short read as whole");
+        } else {
+            assert_eq!(
+                got.trailers.get("fit-error"),
+                Some("upstream failed mid-body"),
+                "h2c {target}: {got:?}"
+            );
+        }
+        wait_gone(&gone, "/stall");
+    }
+}
+
+/// The idle timeout stops while the proxy holds the upstream's reads for a client that is
+/// behind: a client that takes nothing of a large body for longer than it still gets it whole.
+#[test]
+fn response_idle_timeout_spares_a_slow_client() {
+    let (up, _gone) = upstream();
+    let akit = Akit::start(&config(
+        &up.to_string(),
+        r#", "response_idle_timeout": "200ms", "max_fails": 0"#,
+        "",
+    ));
+    let s = TcpStream::connect(akit.addr).unwrap();
+    s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+    let mut w = s.try_clone().unwrap();
+    w.write_all(b"GET /large HTTP/1.1\r\nHost: x\r\n\r\n")
+        .unwrap();
+    thread::sleep(Duration::from_millis(800));
+    let mut r = BufReader::new(s);
+    let head = read_head(&mut r).unwrap();
+    let body = read_body(&mut r, &head);
+    assert!(head.starts_with("HTTP/1.1 200"), "{head}");
+    assert_eq!(body.len, LARGE);
+    assert!(body.whole);
+}
+
+/// The rest of fit's `TestClientAbort` (I17b): a client that goes before the response's head,
+/// over HTTP/1.1 and h2c, and one that goes mid-upload over HTTP/1.1, have the upstream's request
+/// given up, which does not count against the upstream.
+#[test]
+fn client_abort_before_head_and_mid_upload() {
+    let (up, gone) = upstream();
+    let akit = Akit::start(&config(&up.to_string(), "", ""));
+
+    // Before the head, over HTTP/1.1: the client gives up waiting.
+    {
+        let mut s = TcpStream::connect(akit.addr).unwrap();
+        s.write_all(b"GET /hang HTTP/1.1\r\nHost: x\r\n\r\n")
+            .unwrap();
+        thread::sleep(Duration::from_millis(200));
+    }
+    wait_gone(&gone, "/hang");
+
+    // Before the head, over h2c.
+    {
+        let (client, c) = h2c_conn(akit.addr);
+        let req = ClientRequest::get(&format!("http://{}/hang", akit.addr));
+        let upload = c.open(req, |_| {});
+        assert!(upload.finish());
+        thread::sleep(Duration::from_millis(200));
+        c.close();
+        client.shutdown();
+    }
+    wait_gone(&gone, "/hang");
+
+    // Mid-upload, over HTTP/1.1: a body that stops arriving, then a client that goes.
+    {
+        let mut s = TcpStream::connect(akit.addr).unwrap();
+        s.write_all(b"PUT /upload HTTP/1.1\r\nHost: x\r\nContent-Length: 10485760\r\n\r\n")
+            .unwrap();
+        s.write_all(&vec![b'u'; 256 << 10]).unwrap();
+        thread::sleep(Duration::from_millis(200));
+    }
+    wait_gone(&gone, "/upload");
+
+    assert_eq!(get(akit.addr, "/").status, 200);
+    // The upstream did nothing wrong.
+    assert_eq!(akit.failures(), 0);
+}
+
+/// `limits.write_stall_timeout` (I17b): a client that takes nothing of a large response for
+/// longer loses it, its connection closed, rather than holding it open.
+#[test]
+fn write_stall_timeout() {
+    let (up, _gone) = upstream();
+    let json = config(&up.to_string(), r#", "max_fails": 0"#, "").replacen(
+        "\"upstreams\"",
+        r#""limits": {"write_stall_timeout": "300ms"}, "upstreams""#,
+        1,
+    );
+    let akit = Akit::start(&json);
+    let s = TcpStream::connect(akit.addr).unwrap();
+    s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+    let mut w = s.try_clone().unwrap();
+    w.write_all(b"GET /large HTTP/1.1\r\nHost: x\r\n\r\n")
+        .unwrap();
+    // Closed between one and two timeouts after its last progress.
+    thread::sleep(Duration::from_secs(2));
+    let mut r = BufReader::new(s);
+    let head = read_head(&mut r).unwrap();
+    assert!(head.starts_with("HTTP/1.1 200"), "{head}");
+    let body = read_body(&mut r, &head);
+    assert!(!body.whole, "the body came whole: {} bytes", body.len);
+    assert!(body.len < LARGE, "{} bytes", body.len);
 }

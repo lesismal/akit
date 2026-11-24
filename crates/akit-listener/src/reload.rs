@@ -568,8 +568,14 @@ impl Listeners {
             }
         }
 
-        // The swap: requests go to the new graph from here on.
+        // The swap: requests go to the new graph from here on, and its write stall timeout to
+        // every connection, those open included (akio's live write timeout, ADR-108).
+        let stall = graph.write_stall_timeout();
         self.cell.swap(graph);
+        self.engine
+            .telemetry()
+            .live()
+            .set_write_timeout(Some(stall));
 
         let mut old: Vec<Option<Entry>> = self.entries.drain(..).map(Some).collect();
         let mut report = Reloaded {
