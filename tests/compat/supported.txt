@@ -13,10 +13,13 @@ listeners[].name
 listeners[].address
 listeners[].protocols
 # I09: TLS from files. listeners[].protocols takes "h2" too; tls.max_version takes "1.3" (1.2 is
-# refused as not supported yet); tls.acme, tls.on_demand and tls.kernel_tls_offload are refused.
+# refused as not supported yet); tls.on_demand and tls.kernel_tls_offload are refused.
 # I10: listeners[].protocols takes "h3" too (HTTP/3 on the listener's port in UDP, Alt-Svc on TCP).
 # I30: no new fields: certificates are chosen per handshake (a wildcard in any of them); the
 # storage comes with acme.storage in I31.
+# I31: tls.acme, host names whose certificates are obtained with ACME through HTTP-01 (a tls may
+# list names and no certificates); see acme below.
+listeners[].tls.acme
 listeners[].tls
 listeners[].tls.certificates
 listeners[].tls.certificates[].cert_file
@@ -157,3 +160,16 @@ routes[].middleware[]<headers>.params.response.delete
 # I37: metrics, fit's request counting by listener and route for the Admin API's /metrics; it has
 # no settings. As in fit, it needs admin.
 metrics
+
+# I31: acme, an ACME client of akit's own: accounts, orders and HTTP-01, answered by every listener
+# in the clear; certificates kept in acme.storage and renewed. acme.challenges takes "http-01";
+# "tls-alpn-01" (I32), shared_storage and on_demand (I34) are refused as not supported yet.
+acme
+acme.directory
+acme.email
+acme.ca_file
+acme.storage
+acme.max_concurrent
+acme.timeout
+acme.request_timeout
+acme.challenges

@@ -175,13 +175,13 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 102 supported.
+3821 fields in 121 sections, at fit `7daee573`; 112 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
 | [`access`](#fields-access) | 5 | 0 | 5 |
 | [`access_log`](#fields-access-log) | 14 | 7 | 7 |
-| [`acme`](#fields-acme) | 43 | 0 | 43 |
+| [`acme`](#fields-acme) | 43 | 9 | 34 |
 | [`admin`](#fields-admin) | 105 | 5 | 100 |
 | [`auto_https`](#fields-auto-https) | 5 | 0 | 5 |
 | [`bittorrent`](#fields-bittorrent) | 160 | 0 | 160 |
@@ -221,7 +221,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`http.middleware/rewrite`](#fields-http-middleware-rewrite) | 6 | 4 | 2 |
 | [`http.middleware/wasm`](#fields-http-middleware-wasm) | 18 | 0 | 18 |
 | [`limits`](#fields-limits) | 7 | 2 | 5 |
-| [`listeners`](#fields-listeners) | 30 | 12 | 18 |
+| [`listeners`](#fields-listeners) | 30 | 13 | 17 |
 | [`llm`](#fields-llm) | 218 | 0 | 218 |
 | [`log`](#fields-log) | 24 | 0 | 24 |
 | [`media_auth`](#fields-media-auth) | 34 | 0 | 34 |
@@ -300,7 +300,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 13 | 25 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 102 | 3719 |
+| **Total** | 3821 | 112 | 3709 |
 
 <a id="fields-access"></a>
 
@@ -341,12 +341,12 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `acme` | `object` | not supported yet |
-| `acme.ca_file` | `string` | not supported yet |
-| `acme.challenges` | `array<enum(http-01\|tls-alpn-01)>` | not supported yet |
-| `acme.directory` | `string` | not supported yet |
-| `acme.email` | `string` | not supported yet |
-| `acme.max_concurrent` | `integer` | not supported yet |
+| `acme` | `object` | supported |
+| `acme.ca_file` | `string` | supported |
+| `acme.challenges` | `array<enum(http-01\|tls-alpn-01)>` | supported |
+| `acme.directory` | `string` | supported |
+| `acme.email` | `string` | supported |
+| `acme.max_concurrent` | `integer` | supported |
 | `acme.on_demand` | `object` | not supported yet |
 | `acme.on_demand.ask` | `string, required` | not supported yet |
 | `acme.on_demand.idle_timeout` | `duration` | not supported yet |
@@ -354,7 +354,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `acme.on_demand.max_names` | `integer` | not supported yet |
 | `acme.on_demand.rate` | `integer` | not supported yet |
 | `acme.on_demand.timeout` | `duration` | not supported yet |
-| `acme.request_timeout` | `duration` | not supported yet |
+| `acme.request_timeout` | `duration` | supported |
 | `acme.shared_storage` | `object` | not supported yet |
 | `acme.shared_storage.consul` | `object` | not supported yet |
 | `acme.shared_storage.consul.ca_file` | `string` | not supported yet |
@@ -382,8 +382,8 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `acme.shared_storage.redis.tls` | `boolean` | not supported yet |
 | `acme.shared_storage.redis.username` | `string` | not supported yet |
 | `acme.shared_storage.request_timeout` | `duration` | not supported yet |
-| `acme.storage` | `string` | not supported yet |
-| `acme.timeout` | `duration` | not supported yet |
+| `acme.storage` | `string` | supported |
+| `acme.timeout` | `duration` | supported |
 
 <a id="fields-admin"></a>
 
@@ -1297,7 +1297,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `listeners[].socks.idle_timeout` | `duration` | not supported yet |
 | `listeners[].socks.ports` | `array<integer>` | not supported yet |
 | `listeners[].tls` | `object` | supported |
-| `listeners[].tls.acme` | `array<string>` | not supported yet |
+| `listeners[].tls.acme` | `array<string>` | supported |
 | `listeners[].tls.certificates` | `array<object>` | supported |
 | `listeners[].tls.certificates[].cert_file` | `string, required` | supported |
 | `listeners[].tls.certificates[].key_file` | `string, required` | supported |

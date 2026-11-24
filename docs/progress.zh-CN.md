@@ -10,14 +10,67 @@
 | | |
 | --- | --- |
 | 最后更新 | 2026-11-24 |
-| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I16、I19–I24 已完成；M2 的 I26、I30、I37 和 M3 的 I39、I40 已提前完成。 |
-| akio | akio `main` 上的 `60547435`（`1.0.0-rc.1`，带 A1–A5、A7、A8、A11、A13 和 A16–A21），在 `Cargo.toml` 中按 `rev` 锁定 |
+| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I16、I19–I24 已完成；M2 的 I26、I30、I31、I37 和 M3 的 I39、I40 已提前完成。 |
+| akio | `a49aaae3`，即 akio 的 `main`（`60547435`，`1.0.0-rc.1`，带 A1–A5、A7、A8、A11、A13 和 A16–A21）合入 A6（I31），在 `Cargo.toml` 中按 `rev` 锁定；尚未推送（akio 分支 `claude/i31-acme-csr`） |
 | fit | 作为规格；本计划基于 `7daee573` 阅读 |
-| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；基于 akio 的 A1 保留、增加、修改和排空监听器，包括启动时的监听器，重载可新增 h3 监听器；服务 h3 的启动监听器要重启才能变）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证；按 fit 的方式每次握手选择证书，重载或 `-watch-certs` 替换证书而不关闭监听器）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；路由中间件：`rewrite`（前缀）、`redirect` 和 `headers`；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`、双向流式转发 body 并联动背压）；所有监听器和代理上的 `limits.max_body_bytes`（413）；fit 的 json、text 和 line 格式的访问日志；上游连接池，轮询、加权轮询和最少连接，跳过被被动健康检查（`max_fails`、`fail_timeout`）下线的地址；回环地址上的 Admin API（`GET /config`，也可按 JSON 指针读取，带 `If-Match` 的 `POST /load`，`GET /versions`），加载与 SIGHUP 一样作为重载应用，两者共用一份历史记录；Admin API 的 `GET /metrics` 提供 fit 的 Prometheus 指标（有 `metrics` 时按监听器和路由的请求、上游和后端、证书、连接、重载、akio 的引擎）；兼容性门禁：80 个夹具，10 个有效，69 个只因暂不支持被拒绝，1 个跳过，没有失败 |
+| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；基于 akio 的 A1 保留、增加、修改和排空监听器，包括启动时的监听器，重载可新增 h3 监听器；服务 h3 的启动监听器要重启才能变）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证；按 fit 的方式每次握手选择证书，重载或 `-watch-certs` 替换证书而不关闭监听器）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；路由中间件：`rewrite`（前缀）、`redirect` 和 `headers`；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`、双向流式转发 body 并联动背压）；所有监听器和代理上的 `limits.max_body_bytes`（413）；fit 的 json、text 和 line 格式的访问日志；上游连接池，轮询、加权轮询和最少连接，跳过被被动健康检查（`max_fails`、`fail_timeout`）下线的地址；回环地址上的 Admin API（`GET /config`，也可按 JSON 指针读取，带 `If-Match` 的 `POST /load`，`GET /versions`），加载与 SIGHUP 一样作为重载应用，两者共用一份历史记录；Admin API 的 `GET /metrics` 提供 fit 的 Prometheus 指标（有 `metrics` 时按监听器和路由的请求、上游和后端、证书、连接、重载、akio 的引擎）；为监听器在 `tls.acme` 中所列的名字通过 HTTP-01 用 ACME 获取证书，保存在存储中并续期；兼容性门禁：80 个夹具，12 个有效，67 个只因暂不支持被拒绝，1 个跳过，没有失败 |
 | 下一步 | I17 |
-| akio 需求 | A1–A5、A7、A8、A11、A13、A16–A21 已在 akio 的 main 并已锁定；A6 在 akio 分支 `claude/x509-csr` 上；A9、A10、A12、A14、A15、A22–A24、A29、A30、A32、A33 和 A35 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
+| akio 需求 | A1–A5、A7、A8、A11、A13、A16–A21 已在 akio 的 main 并已锁定；A6 已合并到其上并锁定（`a49aaae3`，尚未推送）；A9、A10、A12、A14、A15、A22–A24、A29、A30、A32、A33 和 A35 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
 
 ## 日志
+
+### 2026-11-24：I31，ACME I：账户、订单、HTTP-01
+
+- `akit_tls::Acme`，即 fit 的 `tlsmgr.ACME`（fit 决策 007），配一个 akit 自己的 ACME 客户端（RFC 8555）：基于
+  akio-crypto 的 JWS（`acme/jws.rs`：P-256 账户密钥、它的 JWK 和 RFC 7638 指纹、扁平序列化的 ES256），基于
+  akio-x509 的 CSR（`CsrParams`，akio A6），以及 CA 协议（`acme/protocol.rs`：目录、有上限的 nonce 池、`badNonce`
+  时换新 nonce 重试、problem 文档、同意条款的 `newAccount`、`newOrder`、授权、`Retry-After`、finalize、PEM 格式的证书）。
+- 请求经由 akio-http 的异步客户端，运行在管理器自己的引擎上（一个客户端线程，第一次需要 CA 时创建）：回调只把响应交给
+  一个通道，工作线程以 50 ms 为片等待，因此 `close` 能立即结束进行中的工作。响应上限 1 MiB，每个请求受
+  `acme.request_timeout`（30 s）限制，每个订单受 `acme.timeout`（10 分钟）限制；查看订单或授权之间的等待遵循
+  `Retry-After`，限定在 1 s 到 30 s 之间。
+- 管理器：`manage(names)`（名字转为小写、去掉末尾的点，最多 `MAX_NAMES` 个），第一个名字被管理时启动
+  `acme.max_concurrent` 个工作线程（2），每个取最先到期的名字。一个名字只获取一次，保存在存储中
+  （`certificates/<ca>/<name>.pem`，证书链和私钥在同一个 PEM 中；账户密钥在 `acme/<ca>/account.pem`；`<ca>` 是 fit 对
+  目录 URL 的 `caKey`），并一直从存储中使用，直到需要续期：到期前剩三分之一有效期时，按序列号最多再提前五十分之一
+  （fit 的 `defaultRenewAt`）。共用存储的实例会锁住 `issue/<ca>/<name>` 和 `account/<ca>`，拿到锁后再查一次。失败后
+  一分钟重试，每次翻倍，最多一小时，并随机减去最多十分之一（`set_backoff` 可改上下限），并报告（`last_error` 和日志）。
+  重载去掉的名字不再提供证书；它们的证书留在存储中。
+- I/O 线程读取的内容都不加锁（规则 1 和 13）：证书和 HTTP-01 应答各是一个 `published::Published` 映射，由工作线程
+  整体替换，并像运行时图单元一样按 epoch 在每个线程缓存。
+- `tls.acme`：`ListenerTls::load_with(tls, protocols, acme)` 和 `ListenerTls::get`，即 fit 的 `tlsmgr.Certs`：请求所列
+  名字的握手，一旦有证书就得到它（不带名字的客户端，在没有文件证书的监听器上，得到第一个名字的证书）；否则得到文件中的
+  证书。`tls` 可以只列名字而没有证书。`ListenerCerts`（I30）现在从当前图读取监听器的 `ListenerTls`。
+- 每个明文监听器都应答 HTTP-01：分发器在路由之前，对请求 `/.well-known/acme-challenge/<token>`（规范化路径）且该挑战
+  正在进行的请求，以其 key authorization 应答 `200 text/plain`；其他 token 照常走路由，与 fit 相同。
+- `akit run` 用启动时的 `acme` 创建一个管理器（`Env::with_acme`）；每次应用配置（启动、SIGHUP、Admin API、
+  `-watch-certs`）后，在图成为当前图时让它管理监听器所列的名字（`Graph::acme_names`）；`acme` 改变时警告需要重启；
+  关闭时关闭管理器。`akit validate` 不获取证书。
+- 配置：`acme`（`directory`、`email`、`ca_file`、`storage`、`max_concurrent`、`timeout`、`request_timeout`、
+  `challenges`）和 `listeners[].tls.acme`，带 fit 的检查（目录是 http 或 https URL；挑战已知且不重复；名字是合法主机名、
+  不是通配符、不是 IP 地址、不重复；要求客户端证书的监听器需要 HTTP-01）。`challenges` 接受 `http-01`；`tls-alpn-01`
+  （I32）、`shared_storage` 和 `on_demand`（I34）作为暂不支持被拒绝。兼容性门禁多了十个字段：12 个有效夹具（现在包括
+  `http3`），67 个只因暂不支持被拒绝。
+- akio：A6 的 CSR（分支 `claude/x509-csr`）合并到 akio 的 main（`60547435`）上，得到 akio 分支 `claude/i31-acme-csr`
+  上的 `a49aaae3`，其 ADR 改号为 107（main 上 093 已被占用）；akit 锁定到它。**尚未推送**：构建时需从包含该提交的
+  akio 检出获取（或先把它推送到 akio 的 main）。
+- 测试：JWS（签名后用公钥验证；RFC 7638 指纹）、problem 文档、`caKey`、续期时间、退避和 `Published`（跨线程读取、
+  嵌套读取）的单元测试。`akit-config/tests/acme.rs`（6 个）：默认值和取值、拒绝的和暂不支持的、只能由一个文件给出、
+  有无证书的 `tls.acme`、fit 对名字的检查。`akit-listener/tests/acme.rs`（2 个，epoll 和 io_uring），像 fit 的
+  `internal/pebbletest` 那样运行 Pebble v2.10.1（`support/pebble.rs`；没有其二进制时跳过，用 `$AKIT_PEBBLE_BIN` 指定
+  位置）：一个在 Pebble HTTP-01 端口上的明文监听器和一个带 `tls.acme`、没有文件证书的 TLS 监听器；获取前没有证书，之后
+  获取到证书并在握手中提供，按 Pebble 的根证书验证（名字大小写不同也可）；挑战结束后该路径回到路由；在同一存储上的新
+  管理器在 Pebble 停止后提供同一证书；去掉的名字不再提供证书。还有 CA 不可达：报告失败、再次尝试、`close` 立即返回。
+- 已检查：macOS 上的 `make check`（设置 `$AKIT_PEBBLE_BIN`，Pebble 测试会运行）；gpu51 上 akit-config、akit-tls、
+  akit-runtime、akit-listener、akit 和 akit-compat 的测试，epoll 和 io_uring，设置 `$AKIT_PEBBLE_REQUIRED`，全部通过。
+- 与计划和 fit 的不同：
+  - TLS-ALPN-01、OCSP stapling 和 ARI 属于 I32；按需 TLS 属于 I34；共享存储属于 I62。在 I32 之前，fit 默认的
+    `challenges`（先 HTTP-01 后 TLS-ALPN-01）只有 HTTP-01。
+  - 默认存储是 `$XDG_DATA_HOME/akit` 或 `~/.local/share/akit`（fit 是 `.../fit`）。
+  - 管理器的线程是 akit 自己的（控制面），不是 akio 的逻辑线程池：它们会为 CA 等待数秒，也会等待存储的锁。
+  - ACME 的证书还没有列入指标的证书列表（I37 列出的是文件中的证书）。
+- 基准任务应测量的：分发器在明文监听器上的 HTTP-01 检查（`akit run` 有管理器时每个请求一次前缀比较）：HTTP/1.1 和
+  h2c 上的 fixed，与 I31 之前的 main 做同轮 A/B。
 
 ### 2026-11-24：I37，Prometheus 指标
 

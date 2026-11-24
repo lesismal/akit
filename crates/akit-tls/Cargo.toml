@@ -11,6 +11,8 @@ publish = false
 [dependencies]
 akio = { workspace = true }
 akio-crypto = { workspace = true }
+# The ACME client's requests to the CA (I31).
+akio-http = { workspace = true }
 akio-x509 = { workspace = true }
 akit-config = { workspace = true }
 

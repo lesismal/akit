@@ -89,6 +89,11 @@ pub struct Graph {
     /// The SHA-256 of every certificate, key and authority file its listeners loaded, by path:
     /// what `run -watch-certs` compares the files with (I30).
     cert_files: std::collections::BTreeMap<String, akit_tls::Sum>,
+    /// The env's ACME manager, when it has one (I31): it outlives the graph, and once the graph
+    /// is current it is told to manage `acme_names`.
+    acme: Option<akit_tls::Acme>,
+    /// The names the listeners list in `tls.acme`, each once, in the config's order.
+    acme_names: Vec<String>,
     /// The upstreams' pools, in the config's order.
     upstreams: Vec<Pool>,
     /// The access log its requests' lines go to: the env's, when the config has `access_log`.
@@ -126,8 +131,29 @@ impl Graph {
     /// few): once per full TLS handshake, not per request.
     #[must_use]
     pub fn certs(&self, name: &str) -> Option<&Arc<akit_tls::Certs>> {
+        self.listener_tls(name).map(akit_tls::ListenerTls::certs)
+    }
+
+    /// The TLS of the listener named `name`, when it has `tls`: its certificates from files and
+    /// from ACME ([`akit_tls::ListenerTls::get`]).
+    #[must_use]
+    pub fn listener_tls(&self, name: &str) -> Option<&akit_tls::ListenerTls> {
         let i = self.listener_index(name)?;
-        Some(self.tls.get(i)?.as_ref()?.certs())
+        self.tls.get(i)?.as_ref()
+    }
+
+    /// The ACME manager its listeners' `tls.acme` names are obtained by, and whose HTTP-01
+    /// answers its listeners in the clear give (I31).
+    #[must_use]
+    pub fn acme(&self) -> Option<&akit_tls::Acme> {
+        self.acme.as_ref()
+    }
+
+    /// The names its listeners list in `tls.acme`, each once: what the ACME manager is told to
+    /// manage once the graph is current.
+    #[must_use]
+    pub fn acme_names(&self) -> &[String] {
+        &self.acme_names
     }
 
     /// The SHA-256 of every certificate, key and authority file the listeners loaded, by path.
@@ -382,7 +408,7 @@ pub fn compile(
     let mut tls = Vec::with_capacity(config.listeners.len());
     for (i, l) in config.listeners.iter().enumerate() {
         tls.push(l.tls.as_ref().and_then(|t| {
-            akit_tls::ListenerTls::load(t, &l.protocols)
+            akit_tls::ListenerTls::load_with(t, &l.protocols, env.acme())
                 .map_err(|e| {
                     let mut path = format!("listeners[{i}].tls");
                     if !e.path.is_empty() {
@@ -398,6 +424,16 @@ pub fn compile(
                 })
                 .ok()
         }));
+    }
+    let mut acme_names: Vec<String> = Vec::new();
+    for n in tls
+        .iter()
+        .flatten()
+        .flat_map(akit_tls::ListenerTls::acme_names)
+    {
+        if !acme_names.contains(n) {
+            acme_names.push(n.clone());
+        }
     }
     let cert_files = tls
         .iter()
@@ -466,6 +502,8 @@ pub fn compile(
         routers,
         tls,
         cert_files,
+        acme: env.acme().cloned(),
+        acme_names,
         upstreams,
         access_log: config.access_log.as_ref().and(env.access_log().cloned()),
         requests,

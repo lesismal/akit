@@ -70,6 +70,7 @@ pub struct Env {
     upstreams: Vec<Pool>,
     access_log: Option<akit_observe::AccessLog>,
     metrics: Option<akit_observe::metrics::Metrics>,
+    acme: Option<akit_tls::Acme>,
 }
 
 impl Env {
@@ -82,7 +83,24 @@ impl Env {
             upstreams: Vec::new(),
             access_log: None,
             metrics: None,
+            acme: None,
         }
+    }
+
+    /// The same, with the process's ACME manager (I31), which obtains the certificates of the
+    /// names listeners list in `tls.acme`, and whose HTTP-01 answers listeners in the clear
+    /// give. Made once, when akit starts, as fit's; without one (`akit validate`), only the
+    /// certificates from files are served.
+    #[must_use]
+    pub fn with_acme(mut self, acme: Option<akit_tls::Acme>) -> Env {
+        self.acme = acme;
+        self
+    }
+
+    /// The process's ACME manager, if it has one.
+    #[must_use]
+    pub fn acme(&self) -> Option<&akit_tls::Acme> {
+        self.acme.as_ref()
     }
 
     /// The same, with the process's access log, which a graph compiled from a config with
@@ -134,6 +152,7 @@ impl Env {
             upstreams,
             access_log: self.access_log.clone(),
             metrics: self.metrics.clone(),
+            acme: self.acme.clone(),
         }
     }
 }

@@ -188,6 +188,7 @@ fn compile_config(
     engine: &EngineSlot,
     log: Option<&AccessLog>,
     metrics: &Metrics,
+    acme: Option<&akit_tls::Acme>,
 ) -> Result<Graph, Failure> {
     let registry: Registry<HandlerParams> = Registry::new(&[
         akit_handler::MODULES,
@@ -197,14 +198,15 @@ fn compile_config(
     .map_err(|e| Failure::Registry(e.to_string()))?;
     let env = Env::new(engine.clone())
         .with_access_log(log.cloned())
-        .with_metrics(Some(metrics.clone()));
+        .with_metrics(Some(metrics.clone()))
+        .with_acme(acme.cloned());
     compile(config, &registry, &env).map_err(Failure::Config)
 }
 
 /// Reads and compiles the config at `paths`, as [`read_config`] and [`compile_config`].
 fn read(paths: &[String], engine: &EngineSlot, log: Option<&AccessLog>) -> Result<Graph, Failure> {
     let (config, _, _) = read_config(paths)?;
-    compile_config(&config, engine, log, &Metrics::new())
+    compile_config(&config, engine, log, &Metrics::new(), None)
 }
 
 /// Opens the access log `c` describes, its times in `zone`, as fit's `NewAccessLogFiles`.
@@ -238,6 +240,10 @@ struct Runner<'a> {
     cert_files: CertFiles,
     /// The process's metrics registry, which each graph is compiled with (I37).
     metrics: &'a Metrics,
+    /// The ACME manager made from the `acme` akit started with (I31), and that `acme`: each
+    /// config applied has it manage the names its listeners list in `tls.acme`.
+    acme: &'a akit_tls::Acme,
+    acme_config: Option<&'a akit_config::Acme>,
     /// The configs applied after the first, and those that failed, for the metrics: every
     /// reload goes through [`Runner::apply`] or fails before it, here (SIGHUP, the Admin API,
     /// the certificate files).
@@ -280,6 +286,12 @@ impl Runner<'_> {
             _ => {}
         }
         warnings.extend(akit_admin::admin_warning(self.admin, config.admin.as_ref()));
+        if config.acme.as_ref() != self.acme_config {
+            warnings.push(
+                "acme's settings take a restart; the running ones stay (its names follow every reload)"
+                    .to_owned(),
+            );
+        }
         let change = |l: &akit_listener::Served| ListenerChange {
             name: l.name.clone(),
             address: l.address.to_string(),
@@ -297,16 +309,25 @@ impl Runner<'_> {
         &mut self,
         config: &Config,
     ) -> Result<(akit_listener::Reloaded, CertFiles), ApplyError> {
-        let graph = compile_config(config, self.slot, self.log.map(|l| &l.0), self.metrics)
-            .map_err(|f| match f {
-                Failure::Config(errs) => ApplyError::Config(errs),
-                Failure::Registry(e) => ApplyError::Failed(e),
-            })?;
+        let graph = compile_config(
+            config,
+            self.slot,
+            self.log.map(|l| &l.0),
+            self.metrics,
+            Some(self.acme),
+        )
+        .map_err(|f| match f {
+            Failure::Config(errs) => ApplyError::Config(errs),
+            Failure::Registry(e) => ApplyError::Failed(e),
+        })?;
         let files = graph.cert_files().clone();
+        let names = graph.acme_names().to_vec();
         let r = self
             .listeners
             .reload(graph)
             .map_err(|e| ApplyError::Failed(e.to_string()))?;
+        // Once the graph is current, as fit's manageACME.
+        self.acme.manage(&names);
         Ok((r, files))
     }
 
@@ -562,7 +583,23 @@ fn run(args: &[String]) -> ExitCode {
     // it, and with `metrics` count their requests in it (I37).
     let metrics = Metrics::new();
     let stats = ConfigStats::new();
-    let graph = match compile_config(&config, &slot, log.as_ref().map(|l| &l.0), &metrics) {
+    // One ACME manager for the process, from the `acme` akit starts with, as fit's (I31): it runs
+    // no thread until a listener lists a name in `tls.acme`.
+    let acme_config = config.acme.clone();
+    let acme = match akit_tls::Acme::new(&acme_config.clone().unwrap_or_default()) {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("akit run: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let graph = match compile_config(
+        &config,
+        &slot,
+        log.as_ref().map(|l| &l.0),
+        &metrics,
+        Some(&acme),
+    ) {
         Ok(g) => g,
         Err(f) => {
             f.print(&name);
@@ -572,6 +609,7 @@ fn run(args: &[String]) -> ExitCode {
     let admin = config.admin.clone();
     drop(config);
     let cert_files = graph.cert_files().clone();
+    let acme_names = graph.acme_names().to_vec();
     let configs = Configs::new(
         json,
         akit_admin::SOURCE_FILE,
@@ -603,6 +641,7 @@ fn run(args: &[String]) -> ExitCode {
     for l in listeners.served() {
         print_listener(&l);
     }
+    acme.manage(&acme_names);
     let api = match &admin {
         None => None,
         Some(a) => {
@@ -647,6 +686,8 @@ fn run(args: &[String]) -> ExitCode {
         log: log.as_ref(),
         admin: admin.as_ref(),
         cert_files,
+        acme: &acme,
+        acme_config: acme_config.as_ref(),
         metrics: &metrics,
         stats: &stats,
     };
@@ -717,6 +758,8 @@ fn run(args: &[String]) -> ExitCode {
     if let Some(api) = &api {
         api.shutdown();
     }
+    // No more certificates obtained: its work under way is given up.
+    acme.close();
     // A second SIGINT or SIGTERM does not wait for the shutdown, as fit's.
     std::thread::spawn(move || {
         while let Ok(c) = control.recv() {
@@ -785,7 +828,7 @@ mod tests {
         let v = super::version();
         let lines: Vec<&str> = v.lines().collect();
         assert!(lines[0].starts_with("akit "));
-        assert_eq!(lines[1], "akio 60547435e3dd");
+        assert_eq!(lines[1], "akio a49aaae3c4d3");
         assert_eq!(
             lines[2],
             format!("{}/{}", std::env::consts::OS, std::env::consts::ARCH)

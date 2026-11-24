@@ -11,14 +11,91 @@ done and where the work differs from the plan.
 | | |
 | --- | --- |
 | Last updated | 2026-11-24 |
-| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I16, I19–I24 done; M2's I26, I30 and I37 and M3's I39 and I40 done early. |
-| akio | `60547435` on akio's `main` (`1.0.0-rc.1`, with A1–A5, A7, A8, A11, A13 and A16–A21), pinned by `rev` in `Cargo.toml` |
+| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I16, I19–I24 done; M2's I26, I30, I31 and I37 and M3's I39 and I40 done early. |
+| akio | `a49aaae3`, akio's `main` (`60547435`, `1.0.0-rc.1`, with A1–A5, A7, A8, A11, A13 and A16–A21) with A6 merged (I31), pinned by `rev` in `Cargo.toml`; not pushed yet (akio branch `claude/i31-acme-csr`) |
 | fit | the specification; read at `7daee573` for this plan |
-| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept, added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication; certificates chosen per handshake as fit's, replaced by a reload or by `-watch-certs` without closing the listener) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; route middleware: `rewrite` (prefixes), `redirect` and `headers`; the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`, bodies streamed both ways with linked backpressure); `limits.max_body_bytes` on every listener (413) and in the proxy; access logs in fit's json, text and line formats; upstream pools with round robin, weighted round robin and least connections, passing over addresses taken out by passive health checks (`max_fails`, `fail_timeout`); the Admin API on loopback (`GET /config`, by JSON pointer too, `POST /load` with `If-Match`, `GET /versions`), loads applied as SIGHUP's reloads, one history for both; Prometheus metrics at the Admin API's `GET /metrics` (requests by listener and route with `metrics`, upstreams and backends, certificates, connections, reloads, akio's engine); the compatibility gate: 80 fixtures, 10 valid, 69 refused only as not supported yet, 1 skipped, none failed |
+| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept, added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication; certificates chosen per handshake as fit's, replaced by a reload or by `-watch-certs` without closing the listener) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; route middleware: `rewrite` (prefixes), `redirect` and `headers`; the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`, bodies streamed both ways with linked backpressure); `limits.max_body_bytes` on every listener (413) and in the proxy; access logs in fit's json, text and line formats; upstream pools with round robin, weighted round robin and least connections, passing over addresses taken out by passive health checks (`max_fails`, `fail_timeout`); the Admin API on loopback (`GET /config`, by JSON pointer too, `POST /load` with `If-Match`, `GET /versions`), loads applied as SIGHUP's reloads, one history for both; Prometheus metrics at the Admin API's `GET /metrics` (requests by listener and route with `metrics`, upstreams and backends, certificates, connections, reloads, akio's engine); certificates obtained with ACME through HTTP-01 for the names listeners list in `tls.acme`, kept in a storage and renewed; the compatibility gate: 80 fixtures, 12 valid, 67 refused only as not supported yet, 1 skipped, none failed |
 | Next | I17 |
-| akio requests | A1–A5, A7, A8, A11, A13 and A16–A21 on akio's main and pinned; A6 on akio branch `claude/x509-csr`; A9, A10, A12, A14, A15, A22–A24, A29, A30, A32, A33 and A35 requested ([akio API requests](akio-api-requests.md)) |
+| akio requests | A1–A5, A7, A8, A11, A13 and A16–A21 on akio's main and pinned; A6 merged onto it and pinned (`a49aaae3`, not pushed); A9, A10, A12, A14, A15, A22–A24, A29, A30, A32, A33 and A35 requested ([akio API requests](akio-api-requests.md)) |
 
 ## Log
+
+### 2026-11-24: I31, ACME I: account, orders, HTTP-01
+
+- `akit_tls::Acme`, fit's `tlsmgr.ACME` (fit's decision 007) with an ACME client of akit's own
+  (RFC 8555): JWS on akio-crypto (`acme/jws.rs`: a P-256 account key, its JWK and RFC 7638
+  thumbprint, ES256 in the flattened serialization), the CSR on akio-x509 (`CsrParams`, akio A6),
+  and the CA's protocol (`acme/protocol.rs`: the directory, a bounded pool of nonces, `badNonce`
+  retried with a fresh one, problem documents, `newAccount` agreeing to the terms, `newOrder`,
+  authorizations, `Retry-After`, finalize, the certificate as PEM).
+- Requests go through akio-http's asynchronous client on an engine of the manager's own (one
+  client thread, made the first time the CA is needed): its callback only hands the response to a
+  channel, and the worker waits for it in 50 ms slices, so `close` ends work under way at once.
+  Responses are capped at 1 MiB, each request at `acme.request_timeout` (30 s) and each order at
+  `acme.timeout` (10 min); waits between looks at an order or authorization follow `Retry-After`
+  within 1 s to 30 s.
+- The manager: `manage(names)` (names in lower case, without a trailing dot, at most
+  `MAX_NAMES`), `acme.max_concurrent` worker threads (2) started when the first name is managed,
+  each taking the name due soonest. A name is obtained once, kept in the storage
+  (`certificates/<ca>/<name>.pem`, chain and key in one PEM; the account key in
+  `acme/<ca>/account.pem`; `<ca>` is fit's `caKey` of the directory URL) and used from there until
+  it is due for renewal: a third of its lifetime before it expires, up to a fiftieth earlier by
+  its serial number (fit's `defaultRenewAt`). Instances sharing a storage lock
+  `issue/<ca>/<name>` and `account/<ca>` and look again once they hold the lock. A failure is
+  tried again after a minute, doubling up to an hour, less up to a tenth at random
+  (`set_backoff` changes the bounds) and reported (`last_error`, and the log). Names dropped by a
+  reload are no longer served; their certificates stay in the storage.
+- What the I/O threads read, they read without a lock (rules 1 and 13): the certificates and the
+  HTTP-01 answers are each a `published::Published` map, replaced whole by the workers and cached
+  per thread by epoch as the graph cell is.
+- `tls.acme`: `ListenerTls::load_with(tls, protocols, acme)` and `ListenerTls::get`, fit's
+  `tlsmgr.Certs`: a handshake for a listed name gets its certificate once there is one (a client
+  naming none, on a listener with no files, the first name's); otherwise the files'. A `tls` may
+  list names and no certificates. `ListenerCerts` (I30) now reads the listener's `ListenerTls`
+  from the current graph.
+- HTTP-01 is answered by every listener in the clear: the dispatcher answers a request for
+  `/.well-known/acme-challenge/<token>` (canonical path) whose challenge is under way with its key
+  authorization, `200 text/plain`, before routing; any other token goes to the routes, as fit's.
+- `akit run` makes one manager from the `acme` it starts with (`Env::with_acme`); every config
+  applied (start, SIGHUP, the Admin API, `-watch-certs`) has it manage the names its listeners list
+  (`Graph::acme_names`) once the graph is current; a changed `acme` is warned of as taking a
+  restart; the manager is closed at shutdown. `akit validate` obtains nothing.
+- Config: `acme` (`directory`, `email`, `ca_file`, `storage`, `max_concurrent`, `timeout`,
+  `request_timeout`, `challenges`) and `listeners[].tls.acme`, with fit's checks (the directory an
+  http or https URL; challenges known and once; names valid host names, no wildcard, no IP
+  address, none twice; a listener requiring client certificates needs HTTP-01). `challenges`
+  takes `http-01`; `tls-alpn-01` (I32), `shared_storage` and `on_demand` (I34) are refused as not
+  supported yet. Ten fields more in the compatibility gate: 12 valid fixtures (`http3` now), 67
+  refused only as not supported yet.
+- akio: A6's CSR (branch `claude/x509-csr`) merged onto akio's main (`60547435`) as `a49aaae3` on
+  akio branch `claude/i31-acme-csr`, its ADR renumbered 107 (093 is taken on main); akit is
+  pinned at it. **Not pushed**: to build, fetch akio from a checkout that has the commit (or push
+  it to akio's main first).
+- Tests: unit tests of the JWS (signed, then verified with the public key; RFC 7638's
+  thumbprint), problem documents, `caKey`, the renewal time, the backoff and `Published` (reads
+  across threads, nested reads). `akit-config/tests/acme.rs` (6): defaults and values, what is
+  refused and what is not supported yet, one file only, `tls.acme` with and without certificates,
+  fit's checks of the names. `akit-listener/tests/acme.rs` (2, on epoll and io_uring), against
+  Pebble v2.10.1 as fit's `internal/pebbletest` runs it (`support/pebble.rs`; skipped without its
+  binaries, which `$AKIT_PEBBLE_BIN` points to): a listener in the clear on Pebble's HTTP-01 port
+  and a TLS listener with `tls.acme` and no files; no certificate before, then one obtained and
+  served to a handshake verified against Pebble's root (in any case of the name); the challenge
+  path back to the routes afterwards; a new manager on the same storage, with Pebble stopped,
+  serving the same certificate; a name dropped no longer served. And a CA out of reach: the
+  failure reported, tried again, `close` prompt.
+- Checked: `make check` on macOS (the Pebble tests run, with `$AKIT_PEBBLE_BIN` set); the tests of
+  akit-config, akit-tls, akit-runtime, akit-listener, akit and akit-compat on gpu51, epoll and
+  io_uring, with `$AKIT_PEBBLE_REQUIRED` set, all passing.
+- Differences from the plan and from fit:
+  - TLS-ALPN-01, OCSP stapling and ARI are I32; on-demand TLS I34; shared storages I62. fit's
+    default `challenges` (HTTP-01 then TLS-ALPN-01) is HTTP-01 alone until I32.
+  - The default storage is `$XDG_DATA_HOME/akit` or `~/.local/share/akit` (fit's: `.../fit`).
+  - The manager's threads are akit's own (the control plane), not akio's logical pool: they wait
+    on the CA for seconds, and on the storage's locks.
+  - ACME's certificates are not yet in the metrics' certificate list (I37 lists the files').
+- What a benchmark task should measure: the dispatcher's HTTP-01 check on listeners in the clear
+  (a prefix comparison per request when `akit run` has a manager): fixed over HTTP/1.1 and h2c,
+  same-run A/B against main before I31.
 
 ### 2026-11-24: I37, Prometheus metrics
 

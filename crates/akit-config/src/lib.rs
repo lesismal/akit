@@ -33,15 +33,16 @@ use std::path::{Path, PathBuf};
 pub use error::{Error, Errors, NOT_SUPPORTED_YET};
 pub use json::MAX_DEPTH;
 pub use model::{
-    AccessLevel, AccessLog, Admin, Certificate, ClientAuth, ClientAuthMode, Config,
-    DEFAULT_ADMIN_ADDRESS, DEFAULT_ADMIN_HISTORY, DEFAULT_ADMIN_MAX_CONFIG_BYTES,
-    DEFAULT_ADMIN_MAX_CONNS, DEFAULT_BROWSE_MAX_ENTRIES, DEFAULT_BUFFER_BYTES,
-    DEFAULT_CHECK_INTERVAL, DEFAULT_CONNECT_TIMEOUT, DEFAULT_FAIL_TIMEOUT, DEFAULT_FLUSH_INTERVAL,
-    DEFAULT_IDLE_TIMEOUT, DEFAULT_MAX_BODY_BYTES, DEFAULT_MAX_CONNS, DEFAULT_MAX_FAILS,
-    DEFAULT_MAX_FILE_BYTES, DEFAULT_MAX_IDLE_CONNS, DEFAULT_MAX_PENDING, DEFAULT_PROTOCOLS,
-    DEFAULT_TLS_PROTOCOLS, Dotfiles, Encoding, Handler, HeaderOps, Headers, Limits, Listener,
-    LoadBalancing, LogFormat, MAX_WEIGHT, Match, Metrics, Network, Protocol, Proxy, Redirect,
-    Respond, Rewrite, Route, SCHEMA_VERSION, Static, Tls, TlsVersion, Upstream,
+    AccessLevel, AccessLog, Acme, Admin, Certificate, Challenge, ClientAuth, ClientAuthMode,
+    Config, DEFAULT_ACME_DIRECTORY, DEFAULT_ACME_MAX_CONCURRENT, DEFAULT_ACME_REQUEST_TIMEOUT,
+    DEFAULT_ACME_TIMEOUT, DEFAULT_ADMIN_ADDRESS, DEFAULT_ADMIN_HISTORY,
+    DEFAULT_ADMIN_MAX_CONFIG_BYTES, DEFAULT_ADMIN_MAX_CONNS, DEFAULT_BROWSE_MAX_ENTRIES,
+    DEFAULT_BUFFER_BYTES, DEFAULT_CHECK_INTERVAL, DEFAULT_CONNECT_TIMEOUT, DEFAULT_FAIL_TIMEOUT,
+    DEFAULT_FLUSH_INTERVAL, DEFAULT_IDLE_TIMEOUT, DEFAULT_MAX_BODY_BYTES, DEFAULT_MAX_CONNS,
+    DEFAULT_MAX_FAILS, DEFAULT_MAX_FILE_BYTES, DEFAULT_MAX_IDLE_CONNS, DEFAULT_MAX_PENDING,
+    DEFAULT_PROTOCOLS, DEFAULT_TLS_PROTOCOLS, Dotfiles, Encoding, Handler, HeaderOps, Headers,
+    Limits, Listener, LoadBalancing, LogFormat, MAX_WEIGHT, Match, Metrics, Network, Protocol,
+    Proxy, Redirect, Respond, Rewrite, Route, SCHEMA_VERSION, Static, Tls, TlsVersion, Upstream,
 };
 
 /// The largest config document read, in bytes: fit's own configs are kilobytes; this bounds

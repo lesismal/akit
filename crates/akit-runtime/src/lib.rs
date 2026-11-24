@@ -54,4 +54,4 @@ pub const TLS: &str = "akit.tls";
 pub const MAX_BODY_BYTES: &str = "akit.max_body_bytes";
 
 /// The akio commit akit is built against (rule 22: akio is pinned by commit hash).
-pub const AKIO_REV: &str = "60547435e3dd2342a2bdd2876f3f301e14948acd";
+pub const AKIO_REV: &str = "a49aaae3c4d3357f9c4fb4d36267feb85e735dc3";
