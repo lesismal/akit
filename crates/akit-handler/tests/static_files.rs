@@ -282,8 +282,9 @@ fn index_file() {
 }
 
 /// fit's TestTraversal, through akit's listener: what climbs above the root is refused by the
-/// listener's canonical path (I11), the rest by the handler, all with 400; dotfiles are 404
-/// unless `dotfiles` is `allow`.
+/// listener's canonical path (I11), the rest by the handler, all with 400; a `..` that stays
+/// inside is removed by the listener and the canonical path served; dotfiles are 404 unless
+/// `dotfiles` is `allow`.
 #[test]
 fn traversal() {
     let outer = dir("traversal");
@@ -308,9 +309,6 @@ fn traversal() {
         "/www/../../secret.txt",
         "/%2e%2e%2fsecret.txt",
         "/ok.txt%5c..%5c..%5csecret.txt",
-        // A ".." segment that would stay inside is refused too.
-        "/x/../ok.txt",
-        "/x/%2e%2e/ok.txt",
     ] {
         let r = get(srv.addr, target);
         assert!(
@@ -319,6 +317,12 @@ fn traversal() {
         );
     }
     assert_eq!(get(srv.addr, "/ok.txt").text(), "ok");
+    // A ".." segment that stays inside the root is removed by the listener, as fit's, and the
+    // handler serves the canonical path.
+    for target in ["/x/../ok.txt", "/x/%2e%2e/ok.txt", "//ok.txt"] {
+        let r = get(srv.addr, target);
+        assert_eq!((r.status, r.text()), (200, "ok"), "{target}");
+    }
     // Dots that are not a whole segment make a dotfile, which only dotfiles allow serves.
     for target in ["/..dots", "/.git/config", "/%2egit/config"] {
         let r = get(srv.addr, target);
@@ -331,7 +335,7 @@ fn traversal() {
         let r = get(srv.addr, target);
         assert_eq!((r.status, r.text()), (200, body), "{target}");
     }
-    assert_eq!(get(srv.addr, "/x/../ok.txt").status, 400);
+    assert_eq!(get(srv.addr, "/x/../ok.txt").text(), "ok");
 }
 
 /// fit's TestConditional: from memory, and from disk (`max_file_bytes` 4).
@@ -482,8 +486,8 @@ fn conditional_and_ranges() {
     }
 }
 
-/// fit's TestLargeFromDisk, without the compressed twin (precompressed comes with I13): a file
-/// larger than max_file_bytes, sent from disk.
+/// fit's TestLargeFromDisk: a file larger than max_file_bytes, sent from disk, and a compressed
+/// twin sent from disk with its length.
 #[test]
 fn large_from_disk() {
     let big: String = "0123456789".repeat(16 * 1024 / 10 + 1);
@@ -511,14 +515,382 @@ fn large_from_disk() {
     assert_eq!(r.status, 416);
     let r = request(srv.addr, "GET", "/big.txt", &[("Range", "bytes=10-19")]);
     assert_eq!((r.status, r.text()), (206, "0123456789"));
-    // fit serves a compressed twin only for an encoding precompressed lists (none when left
-    // out); Files serves a .br, .zst or .gz twin to every client that accepts it (A14).
+    // A compressed twin only for an encoding precompressed lists: none when left out.
     let r = request(srv.addr, "GET", "/twin.txt", &[("Accept-Encoding", "gzip")]);
-    assert_eq!(
-        (r.text(), r.header("Content-Encoding")),
-        ("zz", Some("gzip"))
-    );
+    assert_eq!((r.text(), r.header("Content-Encoding")), ("plain", None));
     assert_eq!(get(srv.addr, "/twin.txt").text(), "plain");
+
+    // A twin larger than max_file_bytes and 16 KiB, with precompressed: from disk, its length
+    // the twin's.
+    let twin = "z".repeat(16 * 1024 + 3);
+    let root = tree("large-twin", &[("big.txt", &big), ("big.txt.gz", &twin)]);
+    let srv = serve(&root, r#", "max_file_bytes": 4, "precompressed": ["gzip"]"#);
+    let r = request(srv.addr, "GET", "/big.txt", &[("Accept-Encoding", "gzip")]);
+    assert!(r.status == 200 && r.text() == twin, "{}", r.status);
+    assert_eq!(r.header("Content-Encoding"), Some("gzip"));
+    assert_eq!(
+        r.header("Content-Length"),
+        Some(twin.len().to_string().as_str())
+    );
+    let head = request(srv.addr, "HEAD", "/big.txt", &[("Accept-Encoding", "gzip")]);
+    assert!(head.status == 200 && head.body.is_empty(), "{head:?}");
+    assert_eq!(
+        head.header("Content-Length"),
+        Some(twin.len().to_string().as_str())
+    );
+    assert_eq!(get(srv.addr, "/big.txt").text(), big);
+}
+
+/// fit's TestPrecompressed: the twin a client gets for its `Accept-Encoding` (by q value, among
+/// the encodings `precompressed` lists, in its order among equals), from memory and from disk,
+/// its validators and ranges.
+#[test]
+fn precompressed() {
+    let files = [
+        ("app.js", "identity-js"),
+        ("app.js.br", "br-js"),
+        ("app.js.zst", "zstd-js"),
+        ("app.js.gz", "gzip-js"),
+        ("style.css", "identity-css"),
+        ("style.css.gz", "gzip-css-0123456789"),
+        ("plain.txt", "plain"),
+    ];
+    let root = tree("precompressed", &files);
+    let srv = serve(&root, r#", "precompressed": ["br", "zstd", "gzip"]"#);
+    // (target, Accept-Encoding, encoding and body.)
+    let cases: [(&str, &str, &str, &str); 11] = [
+        // Equal q: the first listed.
+        ("/app.js", "gzip, br", "br", "br-js"),
+        // Ranked by q.
+        ("/app.js", "br;q=0.5, gzip", "gzip", "gzip-js"),
+        ("/app.js", "zstd", "zstd", "zstd-js"),
+        // q=0 refuses a coding.
+        ("/app.js", "br;q=0, identity", "", "identity-js"),
+        // "*" stands for the codings not named.
+        ("/app.js", "*", "br", "br-js"),
+        ("/app.js", "*, br;q=0", "zstd", "zstd-js"),
+        ("/app.js", "", "", "identity-js"),
+        // Codings are named in any case, with blanks around the parameters.
+        ("/app.js", "GZIP", "gzip", "gzip-js"),
+        ("/app.js", "gzip ; q=0.8", "gzip", "gzip-js"),
+        // No br twin.
+        ("/style.css", "br, gzip", "gzip", "gzip-css-0123456789"),
+        ("/plain.txt", "br, gzip", "", "plain"),
+    ];
+    for (target, accept, enc, body) in cases {
+        let headers: &[(&str, &str)] = if accept.is_empty() {
+            &[]
+        } else {
+            &[("Accept-Encoding", accept)]
+        };
+        let r = request(srv.addr, "GET", target, headers);
+        assert_eq!(r.status, 200, "{target} {accept:?}");
+        assert_eq!(
+            (r.header("Content-Encoding").unwrap_or(""), r.text()),
+            (enc, body),
+            "{target} {accept:?}"
+        );
+        assert_eq!(r.header("Vary"), Some("Accept-Encoding"), "{target}");
+        if target == "/app.js" {
+            assert_eq!(
+                r.header("Content-Type"),
+                Some("text/javascript; charset=utf-8"),
+                "{accept:?}"
+            );
+        }
+    }
+
+    // Each representation has its own ETag, and conditions apply to it.
+    let identity = get(srv.addr, "/app.js").header("ETag").unwrap().to_owned();
+    let br = request(srv.addr, "GET", "/app.js", &[("Accept-Encoding", "br")]);
+    let br = br.header("ETag").unwrap().to_owned();
+    assert_ne!(identity, br);
+    let r = request(
+        srv.addr,
+        "GET",
+        "/app.js",
+        &[("Accept-Encoding", "br"), ("If-None-Match", &br)],
+    );
+    assert_eq!(r.status, 304);
+    // The identity's tag does not match the twin.
+    let r = request(
+        srv.addr,
+        "GET",
+        "/app.js",
+        &[("Accept-Encoding", "br"), ("If-None-Match", &identity)],
+    );
+    assert_eq!((r.status, r.text()), (200, "br-js"));
+    let r = request(
+        srv.addr,
+        "GET",
+        "/style.css",
+        &[("Accept-Encoding", "gzip"), ("Range", "bytes=0-3")],
+    );
+    assert_eq!(
+        (r.status, r.text(), r.header("Content-Encoding")),
+        (206, "gzip", Some("gzip"))
+    );
+    let head = request(srv.addr, "HEAD", "/app.js", &[("Accept-Encoding", "zstd")]);
+    assert_eq!(
+        (
+            head.status,
+            head.header("Content-Encoding"),
+            head.header("Content-Length")
+        ),
+        (200, Some("zstd"), Some("7"))
+    );
+    drop(srv);
+
+    // Twins too large to keep come from disk, with their length and their original's type.
+    let srv = serve(&root, r#", "precompressed": ["gzip"], "max_file_bytes": 4"#);
+    let r = request(
+        srv.addr,
+        "GET",
+        "/style.css",
+        &[("Accept-Encoding", "gzip")],
+    );
+    assert_eq!(
+        (r.status, r.text(), r.header("Content-Encoding")),
+        (200, "gzip-css-0123456789", Some("gzip"))
+    );
+    assert_eq!(r.header("Content-Type"), Some("text/css; charset=utf-8"));
+    assert_eq!(r.header("Vary"), Some("Accept-Encoding"));
+    assert_eq!(r.header("Content-Length"), Some("19"));
+    // precompressed lists gzip alone: no br twin.
+    let r = request(
+        srv.addr,
+        "GET",
+        "/app.js",
+        &[("Accept-Encoding", "br, gzip")],
+    );
+    assert_eq!(
+        (r.header("Content-Encoding"), r.text()),
+        (Some("gzip"), "gzip-js")
+    );
+    drop(srv);
+
+    // Without precompressed, twins are files like any other, and there is no Vary.
+    let srv = serve(&root, "");
+    let r = request(srv.addr, "GET", "/app.js", &[("Accept-Encoding", "br")]);
+    assert_eq!(
+        (r.header("Content-Encoding"), r.text(), r.header("Vary")),
+        (None, "identity-js", None)
+    );
+    // The twin itself, asked for by its name, is a file.
+    let r = get(srv.addr, "/app.js.gz");
+    assert_eq!((r.status, r.text()), (200, "gzip-js"));
+}
+
+/// fit's TestTryFiles and TestTryFilesUnsafe: candidates tried in turn, a directory served by
+/// its index and not redirected, a single-page application's fallback, and a listing reached
+/// through a candidate.
+#[test]
+fn try_files() {
+    let root = tree(
+        "try-files",
+        &[
+            ("index.html", "app"),
+            ("assets/a.js", "js"),
+            ("docs/index.html", "docs"),
+            ("plain/x.txt", "x"),
+        ],
+    );
+    let srv = serve(
+        &root,
+        r#", "try_files": ["{path}", "{path}/", "/index.html"]"#,
+    );
+    for (target, status, body) in [
+        ("/assets/a.js", 200, "js"),
+        // A directory, served by its index, not redirected.
+        ("/docs", 200, "docs"),
+        ("/docs/", 200, "docs"),
+        ("/some/client/route", 200, "app"),
+        // No index: falls through.
+        ("/plain/", 200, "app"),
+        ("/", 200, "app"),
+        // akio's parser refuses the path before the handler sees it, with its own text.
+        ("/../secret", 400, ""),
+    ] {
+        // Twice: the second time from what Files keeps of the resolution.
+        for _ in 0..2 {
+            let r = get(srv.addr, target);
+            assert_eq!(r.status, status, "{target}");
+            if status == 200 {
+                assert_eq!(r.text(), body, "{target}");
+            }
+            assert_eq!(r.header("Location"), None, "{target}");
+        }
+    }
+    drop(srv);
+    let srv = serve(&root, r#", "try_files": ["{path}", "/missing.html"]"#);
+    assert_eq!(get(srv.addr, "/nope").status, 404);
+    drop(srv);
+    // Browse applies to a directory try_files reaches.
+    let srv = serve(&root, r#", "try_files": ["{path}/"], "browse": true"#);
+    let r = get(srv.addr, "/plain");
+    assert!(r.status == 200 && r.text().contains("x.txt"), "{r:?}");
+    assert!(
+        r.text().contains("<title>Index of /plain/</title>"),
+        "{r:?}"
+    );
+    drop(srv);
+    // An empty list finds nothing, as fit's.
+    let srv = serve(&root, r#", "try_files": []"#);
+    assert_eq!(get(srv.addr, "/assets/a.js").status, 404);
+    drop(srv);
+    // A candidate outside the root is passed over.
+    let srv = serve(&root, r#", "try_files": ["/../index.html", "{path}"]"#);
+    let r = get(srv.addr, "/assets/a.js");
+    assert_eq!((r.status, r.text()), (200, "js"));
+    drop(srv);
+    // With dotfiles deny, a candidate a dotfile segment names is passed over: {path} stands for
+    // the path asked for, which may be /.well-known/... at the root (served) but not below it.
+    let root = tree(
+        "try-files-dot",
+        &[("a/.well-known/x", "hidden"), ("fallback.txt", "fb")],
+    );
+    let srv = serve(&root, r#", "try_files": ["/a{path}", "/fallback.txt"]"#);
+    let r = get(srv.addr, "/.well-known/x");
+    assert_eq!((r.status, r.text()), (200, "fb"));
+    fs::remove_dir_all(&root).unwrap();
+}
+
+/// fit's TestBrowse, TestBrowseMaxEntries and TestBrowseOrder: the listing of a directory
+/// without an index file, escaped, without dotfiles, directories first, bounded.
+#[test]
+fn browse() {
+    let root = tree(
+        "browse",
+        &[
+            ("files/b.txt", "bb"),
+            ("files/a&b<c>.txt", "a"),
+            ("files/q?x.txt", "q"),
+            ("files/.hidden", "h"),
+            ("files/sub/z", "z"),
+        ],
+    );
+    let srv = serve(&root, r#", "browse": true"#);
+    let r = get(srv.addr, "/files/");
+    assert_eq!((r.status, r.header("Content-Type")), (200, Some(HTML)));
+    let body = r.text();
+    for want in [
+        "<title>Index of /files/</title>",
+        r#"<a href="../">../</a>"#,
+        r#"<a href="./sub/">sub/</a>"#,
+        r#"<a href="./a&amp;b%3Cc%3E.txt">a&amp;b&lt;c&gt;.txt</a>"#,
+        r#"<a href="./q%3Fx.txt">q?x.txt</a>"#,
+        r#"<a href="./b.txt">b.txt</a></td><td>2</td>"#,
+    ] {
+        assert!(body.contains(want), "the listing lacks {want}:\n{body}");
+    }
+    assert!(!body.contains("hidden"), "a dotfile is listed:\n{body}");
+    assert!(
+        body.find("sub/") < body.find("a&amp;b"),
+        "directories do not come first:\n{body}"
+    );
+    drop(srv);
+    let srv = serve(&root, "");
+    assert_eq!(get(srv.addr, "/files/").status, 404);
+    drop(srv);
+
+    let names: Vec<String> = (0..20).map(|i| format!("d/f{i:02}.txt")).collect();
+    let files: Vec<(&str, &str)> = names.iter().map(|n| (n.as_str(), "x")).collect();
+    let root = tree("browse-max", &files);
+    let srv = serve(&root, r#", "browse": true, "browse_max_entries": 5"#);
+    let r = get(srv.addr, "/d/");
+    assert_eq!(r.status, 200);
+    assert_eq!(r.text().matches(r#"<tr><td><a href="./f"#).count(), 5);
+    assert!(
+        r.text().contains("Only the first 5 entries"),
+        "{}",
+        r.text()
+    );
+    drop(srv);
+    let srv = serve(&root, r#", "browse": true"#);
+    let r = get(srv.addr, "/d/");
+    assert_eq!(r.text().matches(r#"<tr><td><a href="./f"#).count(), 20);
+    assert!(!r.text().contains("Only the first"), "{}", r.text());
+    drop(srv);
+
+    let mut names = Vec::new();
+    for i in 0..6 {
+        names.push(format!("f{i}"));
+        names.push(format!("d{i}/x"));
+    }
+    let files: Vec<(&str, &str)> = names.iter().map(|n| (n.as_str(), "x")).collect();
+    let root = tree("browse-order", &files);
+    let srv = serve(&root, r#", "browse": true, "check_interval": "1h""#);
+    for _ in 0..2 {
+        let r = get(srv.addr, "/");
+        let body = r.text();
+        assert_eq!(r.status, 200);
+        assert!(body.rfind("d5/") < body.find(">f0<"), "{body}");
+        // The root has no ../ link.
+        assert!(!body.contains(r#"href="../""#), "{body}");
+    }
+}
+
+/// fit's TestStripPrefix: the prefix cut before the path is looked up; a path without it is 404.
+#[test]
+fn strip_prefix() {
+    let root = tree("strip", &[("a.txt", "a"), ("sub/index.html", "i")]);
+    let srv = serve(&root, r#", "strip_prefix": "/assets""#);
+    for (target, status, body) in [
+        ("/assets/a.txt", 200, "a"),
+        // The root has no index.html.
+        ("/assets/", 404, ""),
+        // fit redirects a directory asked for without its slash (301, Location /assets/sub/);
+        // Files serves it (A14).
+        ("/assets/sub", 200, "i"),
+        ("/assets/sub/", 200, "i"),
+        ("/a.txt", 404, ""),
+        // fit's handler alone answers 400; through the listener, as through fit's, the path is
+        // /a.txt, which lacks the prefix.
+        ("/assets/../a.txt", 404, ""),
+        ("/assets/sub/../a.txt", 200, "a"),
+        // The prefix is cut as written, not at a segment's end, as fit's CutPrefix.
+        ("/assetsa.txt", 200, "a"),
+    ] {
+        let r = get(srv.addr, target);
+        assert_eq!(r.status, status, "{target}: {r:?}");
+        if status == 200 {
+            assert_eq!(r.text(), body, "{target}");
+        }
+    }
+    drop(srv);
+    // A listing below a prefix: fit titles it by the request's whole path, with a ../ link at the
+    // prefix; Files by the path below the prefix (A14).
+    let srv = serve(
+        &root,
+        r#", "strip_prefix": "/assets", "browse": true, "index": ["none.html"]"#,
+    );
+    let r = get(srv.addr, "/assets/");
+    assert!(
+        r.status == 200 && r.text().contains("<title>Index of /</title>"),
+        "{r:?}"
+    );
+}
+
+/// A twin of a file that changes or goes, with a check_interval of 0: each request sees the
+/// disk as it is (fit's TestWatch, for the twins).
+#[test]
+fn precompressed_follows_the_disk() {
+    let root = tree("twin-changes", &[("a.txt", "plain"), ("a.txt.gz", "one")]);
+    let srv = serve(
+        &root,
+        r#", "precompressed": ["gzip"], "check_interval": "0s""#,
+    );
+    let gz = |srv: &Server| request(srv.addr, "GET", "/a.txt", &[("Accept-Encoding", "gzip")]);
+    assert_eq!(gz(&srv).text(), "one");
+    fs::write(root.join("a.txt.gz"), "three").unwrap();
+    assert_eq!(gz(&srv).text(), "three");
+    fs::remove_file(root.join("a.txt.gz")).unwrap();
+    let r = gz(&srv);
+    assert_eq!((r.text(), r.header("Content-Encoding")), ("plain", None));
+    fs::write(root.join("a.txt.br"), "brr").unwrap();
+    let r = request(srv.addr, "GET", "/a.txt", &[("Accept-Encoding", "br")]);
+    // No br twin when precompressed lists gzip alone.
+    assert_eq!((r.text(), r.header("Content-Encoding")), ("plain", None));
 }
 
 /// fit's TestChangedFile: with a check_interval of 0 every request looks at the disk.
@@ -597,6 +969,41 @@ fn config_errors() {
             format!(r#"{{"root": {r}, "check_interval": "soon"}}"#),
             "is not a duration",
         ),
+        // fit's TestFeatureErrors.
+        (
+            format!(r#"{{"root": {r}, "precompressed": ["deflate"]}}"#),
+            r#"routes[0].handler.params.precompressed[0]: "deflate" is not one of "br", "zstd", "gzip""#,
+        ),
+        (
+            format!(r#"{{"root": {r}, "precompressed": "gzip"}}"#),
+            "routes[0].handler.params.precompressed: expected an array",
+        ),
+        (
+            format!(r#"{{"root": {r}, "try_files": ["{{path}}", "index.html"]}}"#),
+            r#"routes[0].handler.params.try_files[1]: "index.html" starts with neither / nor {path}"#,
+        ),
+        // fit's TestDotfilesConfig.
+        (
+            format!(r#"{{"root": {r}, "try_files": ["{{path}}", "/.app/index.html"]}}"#),
+            r#"routes[0].handler.params.try_files[1]: "/.app/index.html" names a path"#,
+        ),
+        (
+            format!(r#"{{"root": {r}, "try_files": ["{{path}}/.htaccess"]}}"#),
+            "routes[0].handler.params.try_files[0]",
+        ),
+        // fit's TestStripPrefix's check.
+        (
+            format!(r#"{{"root": {r}, "strip_prefix": "assets"}}"#),
+            r#"routes[0].handler.params.strip_prefix: "assets" does not start with /"#,
+        ),
+        (
+            format!(r#"{{"root": {r}, "browse": "yes"}}"#),
+            "routes[0].handler.params.browse: expected a boolean, got a string",
+        ),
+        (
+            format!(r#"{{"root": {r}, "browse_max_entries": -1}}"#),
+            "routes[0].handler.params.browse_max_entries: -1 is less than the minimum 0",
+        ),
     ];
     for (params, want) in &cases {
         let err = compile_err(params);
@@ -605,12 +1012,8 @@ fn config_errors() {
     assert!(
         compile_err(&format!(r#"{{"root": {}}}"#, quote(&root.join("none")))).contains("os error")
     );
-    // fit's index:[] is no index file; ".hidden" is taken with dotfiles allow.
+    // fit's index:[] is no index file.
     for (params, field) in [
-        (
-            format!(r#"{{"root": {r}, "strip_prefix": "/assets"}}"#),
-            "strip_prefix",
-        ),
         (
             format!(r#"{{"root": {r}, "max_cache_bytes": 6}}"#),
             "max_cache_bytes",
@@ -620,21 +1023,8 @@ fn config_errors() {
             "default_type",
         ),
         (
-            format!(r#"{{"root": {r}, "precompressed": ["gzip"]}}"#),
-            "precompressed",
-        ),
-        (
             format!(r#"{{"root": {r}, "compress": ["gzip"]}}"#),
             "compress",
-        ),
-        (
-            format!(r#"{{"root": {r}, "try_files": ["{{path}}"]}}"#),
-            "try_files",
-        ),
-        (format!(r#"{{"root": {r}, "browse": true}}"#), "browse"),
-        (
-            format!(r#"{{"root": {r}, "browse_max_entries": 5}}"#),
-            "browse_max_entries",
         ),
         (format!(r#"{{"root": {r}, "index": []}}"#), "index"),
         (format!(r#"{{"root": {r}, "index": ["a", "b"]}}"#), "index"),
@@ -656,6 +1046,21 @@ fn config_errors() {
         format!(
             r#"{{"root": {r}, "disk_io": "pool", "check_interval": "1s", "max_file_bytes": 0}}"#
         ),
+        format!(r#"{{"root": {r}, "precompressed": ["br", "zstd", "gzip"]}}"#),
+        format!(r#"{{"root": {r}, "precompressed": []}}"#),
+        format!(r#"{{"root": {r}, "browse": false, "browse_max_entries": 5}}"#),
+        format!(r#"{{"root": {r}, "browse": true, "browse_max_entries": 0}}"#),
+        format!(r#"{{"root": {r}, "strip_prefix": "/assets"}}"#),
+        format!(r#"{{"root": {r}, "try_files": ["{{path}}", "{{path}}/", "/index.html"]}}"#),
+        format!(r#"{{"root": {r}, "try_files": []}}"#),
+        // A dotfile candidate is taken with dotfiles allow, and .well-known with deny (fit's
+        // TestDotfilesConfig).
+        format!(r#"{{"root": {r}, "try_files": ["{{path}}.html", "/.well-known/fallback"]}}"#),
+        format!(
+            r#"{{"root": {r}, "dotfiles": "allow", "try_files": ["{{path}}", "/.app/index.html"]}}"#
+        ),
+        // A candidate outside the root is passed over at request time (try_files_unsafe).
+        format!(r#"{{"root": {r}, "try_files": ["/../a", "{{path}}"]}}"#),
     ] {
         let json = format!(
             r#"{{"listeners": [{{"name": "web", "address": ":0"}}], "routes": [{{"handler": {{"module": "static", "params": {params}}}}}]}}"#

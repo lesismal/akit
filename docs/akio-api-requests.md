@@ -31,9 +31,12 @@ first; its status here records the branch, then the akio commit akit pins.
 | A10 | Closing an HTTP client's idle connections now | requested (I14) | 10, 11 | I14, I22 |
 | A11 | An HTTP/1 client request that keeps its own `Host` field (and sends no `User-Agent` when given an empty one) | in akio's main (`a9a620ab`), pinned | — | I15 |
 | A12 | The HTTP client's connect timeout for a lone address too | requested (I14) | 10 | I14 |
-| A13 | `Files` serving a path the caller names | in akio's main (`a9a620ab`), pinned | 19 | I12 |
+| A13 | `Files` serving a path the caller names | in akio's main (`a9a620ab`), pinned | 19 | I12, I13 |
 | A14 | `Files` answering as a gateway's static handler does | requested (I12) | 19 | I12, I13 |
 | A15 | `Files` bounded in memory, its disk pool with a timeout | requested (I12) | 4, 11 | I12 |
+| A16 | `Files` choosing a compressed twin by the client's q values, among the encodings configured | in akio's main (`a9a620ab`), pinned | 19 | I13 |
+| A17 | `Files` trying candidate paths in turn (`try_files`) | in akio's main (`a9a620ab`), pinned | 19 | I13 |
+| A18 | `Files` listing a directory that has no index file | in akio's main (`a9a620ab`), pinned | 4, 11, 19 | I13 |
 | A19 | An HTTP client request whose body is sent as it is produced, with backpressure | requested (I16) | 5, 8 | I16, I17, I18, I49, I75 |
 | A20 | An HTTP client response delivered as it arrives, its reads held and resumed | requested (I16) | 5, 8 | I16, I17, I18, I67 |
 | A21 | A server request that holds its client's reads and hears when its client drained | requested (I16) | 5, 8 | I16, I47, I75 |
@@ -212,6 +215,13 @@ then `strip_prefix` is refused as not supported yet, and a path with a `..` segm
 inside the root (`/x/../ok.txt`), which the listener routes as `/ok.txt` and fit's stack serves, is
 answered 400 by the handler, as fit's handler alone answers it.
 
+**Done** (akio ADR-100, in akio's main at `a9a620ab`, pinned): A13 as `Files::serve(ctx, path)`;
+A16 as `Files::twins(&[&str])` and a twin picked by q value; A17 as `Files::try_paths(&[&str])`
+with `Files::hide(f)` for fit's dotfiles; A18 as `Files::list_directories(max_entries)`, fit's page
+byte for byte. akit's `static` handler uses them since I13: it serves the canonical path (so
+`/x/../ok.txt` is served, as fit's stack serves it), and `strip_prefix`, `precompressed`,
+`try_files`, `browse` and `browse_max_entries` are supported.
+
 ## A14 `Files` answering as a gateway's static handler does
 
 **Problem.** fit's `static` handler (whose tests akit ports, rule 19) answers some requests
@@ -222,9 +232,8 @@ otherwise than `Files`, which has no setting for these:
   the query kept), so that relative links resolve; `Files` serves the index file;
 - a file asked for with a trailing slash (`/a.txt/`) is 404; `Files` drops empty segments and
   serves it;
-- compressed twins (`.br`, `.zst`, `.gz`) are served only for the encodings the config lists
-  (`precompressed`, none by default), with `Vary: Accept-Encoding` only then; `Files` always
-  serves a twin it finds and always adds `Vary`;
+- (done with A16: `Files::twins`, which akit sets from `precompressed`) compressed twins only for
+  the encodings the config lists, with `Vary: Accept-Encoding` only then;
 - the content type from a full table (Go's `mime.TypeByExtension`: `.xml` is
   `text/xml; charset=utf-8`, `.avif` is known, and on Linux `/etc/mime.types` adds more), a configured `default_type`, else sniffed from
   the first 512 bytes; `Files` has a fixed table of 22 extensions and `application/octet-stream`
@@ -234,7 +243,11 @@ otherwise than `Files`, which has no setting for these:
   holds a thread of its disk pool until a writer comes (akit's test
   `a_hung_disk_holds_no_io_thread` relies on it);
 - a name with `:` is a name like others; `Files` answers 404 for it;
-- error bodies as `"404 Not Found\n"`; `Files` sends `"Not Found"`.
+- error bodies as `"404 Not Found\n"`; `Files` sends `"Not Found"` (also for a path no
+  `try_files` candidate finds);
+- a listing below `strip_prefix` is titled by the request's whole path (`Index of /assets/`, with a
+  `../` link); `Files::serve` titles it by the path it is given (`Index of /`, no `../`): a title
+  (or prefix) given alongside the path would do (I13).
 
 **Evidence.** `crates/akio-http/src/files.rs` at `50a82315`: `Inner::index: String`,
 `Files::relative` (empty segments filtered, `:` refused), `Inner::serve_disk` (index served for a
@@ -275,6 +288,78 @@ nothing.
 timeout; until then `max_cache_bytes` is refused as not supported yet, and the memory `Files` keeps
 is bounded only by the files under the root of at most `max_file_bytes` (recorded in the I12
 progress entry).
+
+## A16 A compressed twin chosen by q values, among the encodings configured
+
+**Problem.** fit's `static` handler serves a file's `.br`, `.zst` or `.gz` twin only for the
+encodings `precompressed` lists, and picks the one the client prefers by the q values of its
+`Accept-Encoding` (RFC 9110 section 12.5.3), among equals the first listed; a coding with `q=0` is
+refused, `*` stands for the codings the field does not name, and codings are named in any case.
+`Files` takes the first of `br`, `zstd`, `gzip` (its fixed order) whose token the field holds,
+whatever its q value: `br;q=0` gets the `br` twin, which the client refused; `br;q=0.5, gzip` gets
+`br`; `*` gets none; `GZIP` and `gzip ;q=1` (a blank before the parameters) get none.
+
+**Evidence.** `crates/akio-http/src/files.rs` at `50a82315`: `pick` splits the field on `,`, then
+compares `tok.trim().split(';').next()` with `TWINS`' names, case-sensitively and without trimming
+the name or reading `q`; `TWINS` is a fixed `[("br", "br"), ("zstd", "zst"), ("gzip", "gz")]`.
+akit's test `precompressed` (`crates/akit-handler/tests/static_files.rs`) checks these answers.
+
+**Suggested API.** With A14's `twins(&[&str])` (the encodings, in order of preference among
+equals; none turns the lookups and `Vary` off), `pick` ranks the twins on disk by their q value
+(the coding's own, else `*`'s, 0 refusing it), case-insensitively, the configured order breaking
+ties, and serves the original when none has a q above 0.
+
+**How akit uses it.** The `static` handler passes `precompressed`'s list. Until then akit takes
+`precompressed` and `Files` serves the twins it finds as above; the differences are in the I13
+progress entry, and the test names this request for each.
+
+## A17 Candidate paths tried in turn (`try_files`)
+
+**Problem.** fit's `try_files` serves the first of a list of paths that exists, `{path}` standing
+for the request's path and a path ending in `/` for a directory served by its index file (or its
+listing, A18); none existing is 404, and a directory without its slash is not redirected then.
+`["{path}", "{path}/", "/index.html"]` serves a single-page application. A candidate with a `..`
+segment, or a dotfile `dotfiles` `deny` hides, is passed over. `Files` serves only the path the
+request names, and its 404 is final: akit cannot ask it whether a path exists, nor make it serve
+another path (A13), without doing on the I/O thread the disk work `Files` does on its pool.
+
+**Evidence.** `crates/akio-http/src/files.rs` at `50a82315`: `Service::call` takes the path from
+`Files::relative` (the route parameter `path` or the request target) and answers 404 itself when
+`Inner::serve_disk` finds nothing; no method takes a path or reports a miss to the caller.
+
+**Suggested API.** `Files::try_paths(&[&str])`: candidate templates with a `{path}` placeholder,
+each resolved on the disk pool in turn (and cached, as a path is, with what it resolved to), the
+first that is a file, or a directory with an index file, served; a candidate that is unsafe
+(`..`, NUL, `\`), or that a hook refuses (`hide(fn(&str) -> bool)`, for fit's dotfiles), passed
+over; 404 when none is. Or, more general: `Files::serve_first(ctx, &[PathBuf])` with A13's
+`serve`.
+
+**How akit uses it.** The `static` handler passes `try_files` and its dotfile check. Until then
+akit checks `try_files` as fit does (each starts with `/` or `{path}`; with `dotfiles` `deny`, none
+names a dotfile) and refuses it as not supported yet, naming A13 and this request.
+
+## A18 A directory listing for a directory without an index file
+
+**Problem.** fit's `browse` lists a directory asked for with its trailing slash that has no index
+file: an HTML page (`Index of /files/`, a `../` link but at the root, directories first, then by
+name, each name HTML-escaped and its `href` a relative, percent-escaped segment, size and
+modification time in UTC), at most `browse_max_entries` entries read (10000 by default; more read
+says so in a last paragraph), names starting with a dot left out whatever `dotfiles` says,
+`Content-Type: text/html; charset=utf-8` and `Cache-Control: no-cache`, read on the file pool every
+time. `Files` answers 404 for a directory without its index file, from its disk pool, and akit
+cannot tell that 404 from others nor list the directory there.
+
+**Evidence.** `crates/akio-http/src/files.rs` at `50a82315`: `Inner::serve_disk` returns
+`Response::text(404, "Not Found")` when `fs::metadata(dir/index)` fails or is not a file.
+
+**Suggested API.** `Files::list_directories(max_entries)` (off by default), answering as above on
+the disk pool, the entries bounded before they are sorted (rules 4 and 11); or a hook
+`on_directory(fn(&Path, &Request) -> Response)` run on the disk pool for a directory without an
+index file, for the caller to build the page.
+
+**How akit uses it.** The `static` handler turns it on for `browse` with `browse_max_entries`.
+Until then `browse` `true` is refused as not supported yet naming this request; `browse` `false`,
+fit's default, and `browse_max_entries` are taken.
 
 ## A19 An HTTP client request whose body is sent as it is produced
 

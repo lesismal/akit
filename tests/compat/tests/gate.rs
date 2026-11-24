@@ -600,6 +600,37 @@ fn supported_fields_are_read() {
             statics(r#", "check_interval": "0s""#),
             |c| static_of(c).check_interval.is_zero(),
         ),
+        (
+            "routes[].handler<static>.params.precompressed",
+            statics(r#", "precompressed": ["zstd", "gzip"]"#),
+            |c| {
+                static_of(c).precompressed
+                    == [akit_config::Encoding::Zstd, akit_config::Encoding::Gzip]
+            },
+        ),
+        (
+            "routes[].handler<static>.params.browse",
+            statics(r#", "browse": true"#),
+            |c| static_of(c).browse,
+        ),
+        (
+            "routes[].handler<static>.params.browse_max_entries",
+            statics(r#", "browse_max_entries": 5"#),
+            |c| static_of(c).browse_max_entries == 5,
+        ),
+        (
+            "routes[].handler<static>.params.strip_prefix",
+            statics(r#", "strip_prefix": "/assets""#),
+            |c| static_of(c).strip_prefix == "/assets",
+        ),
+        (
+            "routes[].handler<static>.params.try_files",
+            statics(r#", "try_files": ["{path}", "/index.html"]"#),
+            |c| {
+                static_of(c).try_files.as_deref()
+                    == Some(&["{path}".to_owned(), "/index.html".to_owned()][..])
+            },
+        ),
         ("routes[].handler<proxy>", proxy(""), |c| {
             proxy_of(c).upstream == "app"
         }),

@@ -10,14 +10,63 @@
 | | |
 | --- | --- |
 | 最后更新 | 2026-11-24 |
-| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I12、I14、I15、I19、I21、I22、I23、I24 已完成，I16 进行中（body 限制已完成；流式转发等待 akio 的 A19–A21）；M3 的 I39 已提前完成。 |
+| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I15、I19、I21、I22、I23、I24 已完成，I16 进行中（body 限制已完成；流式转发等待 akio 的 A19–A21）；M3 的 I39 已提前完成。 |
 | akio | akio `main` 上的 `a9a620ab`（`1.0.0-rc.1`，带 A1–A5、A7、A8、A11、A13 和 A16–A18），在 `Cargo.toml` 中按 `rev` 锁定 |
 | fit | 作为规格；本计划基于 `7daee573` 阅读 |
-| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；监听器保留、增加和移除，启动时的监听器要等锁定到带 A1 的 akio）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`）；所有监听器和代理上的 `limits.max_body_bytes`（413）；fit 的 json、text 和 line 格式的访问日志；上游连接池，轮询、加权轮询和最少连接；兼容性门禁：80 个夹具，9 个有效，70 个只因暂不支持被拒绝，1 个跳过，没有失败 |
-| 下一步 | I22 改用 A1（启动时的监听器、重载时的 h3），I13 改用 A13 和 A16–A18；再是 I17、I20；A19–A21 落地后再做 I16 |
+| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；监听器保留、增加和移除，启动时的监听器要等锁定到带 A1 的 akio）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`）；所有监听器和代理上的 `limits.max_body_bytes`（413）；fit 的 json、text 和 line 格式的访问日志；上游连接池，轮询、加权轮询和最少连接；兼容性门禁：80 个夹具，9 个有效，70 个只因暂不支持被拒绝，1 个跳过，没有失败 |
+| 下一步 | I22 改用 A1（启动时的监听器、重载时的 h3）；再是 I17、I20；A19–A21 落地后再做 I16 |
 | akio 需求 | A1–A5、A7、A8、A11、A13、A16–A18 已在 akio 的 main 并已锁定；A6 在 akio 分支 `claude/x509-csr` 上；A9、A10、A12、A14、A15 和 A19–A21 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
 
 ## 日志
+
+### 2026-11-24：I13，静态文件 II
+
+- 在 akio `a9a620ab`（A13 和 A16–A18，akio ADR-100）上，`static` handler 按 fit 在 I13 的全部参数设置 akio-http 的
+  `Files`：
+  - `precompressed`（akit-config 的 `Static::precompressed`、`Encoding`；在 `precompressed[i]` 报 `"deflate" is not
+    one of "br", "zstd", "gzip"`）设置 `Files::twins`：在列出的编码中，按客户端的 q 值选它最偏好的编码的副本（`name.br`、
+    `name.zst`、`name.gz`）（RFC 9110：`q=0` 拒绝该编码，`*` 代表未列出的编码，名称不区分大小写），q 值相同时按列出的
+    顺序；未写时没有副本，也没有 `Vary`。来自内存，或超过 `max_file_bytes` 时来自磁盘并带副本的长度；`Content-Encoding`、
+    `Vary: Accept-Encoding`、原文件的 `Content-Type`、副本自己的 `ETag`（条件请求作用于它）、副本的范围请求；副本被修改或
+    删除时与普通文件一样跟进。
+  - `try_files` 设置 `Files::try_paths`：`{path}` 代表请求的路径，以 `/` 结尾的候选指目录，用它的索引文件（或目录列表）
+    提供，不重定向；提供第一个存在的，都不存在时答 404。候选把路径解析成什么会被保留（最多 4096 个路径），在
+    `check_interval` 内被信任，所以最近解析过的路径在 I/O 线程上应答；其余在 akio 的文件池上解析。像 fit 一样检查：每一项
+    以 `/` 或 `{path}` 开头，`dotfiles` 为 `deny` 时除 `/.well-known/` 下外不指向点文件。空列表与 fit 一样什么也找不到
+    （每个请求都是 404）。
+  - `browse` 和 `browse_max_entries`（未写或为 0 时 10000）设置 `Files::list_directories`：对没有索引文件的目录给出 fit
+    的页面，每个请求都在池上读取。
+  - `dotfiles` 为 `deny` 时还设置 `Files::hide`，于是点文件段所指的 `try_files` 候选被跳过，与 fit 的 handler 一样。
+  - 提供的是路由匹配所用的规范路径（akit-listener 的 `CANONICAL_PATH`，A13 的 `Files::serve`）：仍在根目录内的 `..`
+    （`/x/../ok.txt`）被去掉后提供文件，与 fit 的监听器和 handler 一起时一样；I12 时答 400。
+  - `strip_prefix`：从该路径按原样去掉，没有该前缀的路径答 404，其余部分照旧检查后提供；像 fit 一样报
+    `"assets" does not start with /`。只有带前缀的 handler 或路径不是规范形式的请求才复制路径；否则 `Files` 从请求中读取。
+- 大文件的 `sendfile`：I12 起已经有了。`Files` 把大于 `max_file_bytes` 的文件（或副本）从保留的句柄以 `FileBody` 发送，
+  akio 在明文 HTTP/1 上用 `sendfile` 发送；在 TLS 和 h2 上 akio 分块读取。
+- 兼容性门禁：`strip_prefix` 和 `try_files` 也已支持（共 72 个字段）；fit 的 `examples/static` 只因 `max_cache_bytes` 和
+  `middleware` 被拒绝，`examples/bittorrent` 不再因 `strip_prefix` 被拒绝（`make compat-bless`）。`compress` 仍被拒绝
+  （I47 的压缩），`max_cache_bytes` 和 `default_type` 等待 A15 和 A14。
+- 没有添加基准场景：fit 的测试框架没有针对副本、`try_files` 或目录列表的场景（它的配置不提供任何预压缩内容，见基准
+  README），因此 akit 的也没有（规则 30：功能任务不跑基准）。
+- 测试（`akit-handler/tests/static_files.rs`，16 个）：`precompressed`，移植 fit 的 TestPrecompressed，11 个
+  `Accept-Encoding` 字段全部采用 fit 的应答，每种表示各自的 ETag 和 `If-None-Match`、副本的范围请求、`HEAD`、来自磁盘的
+  副本、只列一种编码、不列编码（没有副本，没有 `Vary`）；`precompressed_follows_the_disk`；`large_from_disk` 包含 fit 的
+  大副本；`try_files`（fit 的 TestTryFiles 和 TestTryFilesUnsafe，每个路径请求两次以经过 `Files` 保留的内容，空列表，
+  被跳过的点文件候选）；`browse`（fit 的 TestBrowse、TestBrowseMaxEntries、TestBrowseOrder）；`strip_prefix`（fit 的
+  TestStripPrefix）；`config_errors` 包含 fit 的 TestFeatureErrors、TestDotfilesConfig 和 `strip_prefix` 的检查；`traversal` 现在
+  检查 `/x/../ok.txt` 被提供。另有对
+  已解码路径的点文件检查（`Files::hide` 所用）的单元测试。
+- 已检查：macOS 上的 `make check`；Linux 上 akit-handler、akit-config、akit-compat 的测试（epoll）与 akit-handler 的测试（io_uring）通过。
+- 与计划和 fit 的不同之处：
+  - 计划中的"有基准场景使用它"：如上，没有；基准表（dev-plan）写明静态文件尚未做基准。
+  - A14（I12 的）：`Files` 对不带斜杠请求的目录直接提供（fit 用 301 重定向），在 `strip_prefix` 之下也是；没有候选找到
+    路径时的 404 用它自己的文本；`strip_prefix` 之下的目录列表以前缀之后的路径为标题（`Index of /`，没有 `../` 链接），
+    fit 以整个路径为标题（`Index of /assets/`）。已加入 A14。
+  - `strip_prefix` 从发送时的路径（百分号编码）去掉，fit 从解码后的路径去掉：请求中用转义写出的前缀（`/%61ssets/`）在
+    akit 中是 404。
+  - 带 `try_files` 时的 `/../secret`：由 akio 的解析器以它自己的文本答 400，与 I12 的路径穿越测试记录的一样。
+- 给基准任务：在 fit 的测试框架有对应场景之前没有；之后测量来自内存的副本和来自磁盘的大副本相对原文件的表现、从 `Files`
+  保留的内容解析 `try_files` 相对线程池的表现，以及每个请求按 `Accept-Encoding` 排序的开销。
 
 ### 2026-11-24：I21，访问日志
 

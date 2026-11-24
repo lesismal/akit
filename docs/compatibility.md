@@ -175,7 +175,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 67 supported.
+3821 fields in 121 sections, at fit `7daee573`; 72 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -197,7 +197,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`http.handlers/media_tokens`](#fields-http-handlers-media-tokens) | 11 | 0 | 11 |
 | [`http.handlers/proxy`](#fields-http-handlers-proxy) | 20 | 5 | 15 |
 | [`http.handlers/respond`](#fields-http-handlers-respond) | 5 | 5 | 0 |
-| [`http.handlers/static`](#fields-http-handlers-static) | 16 | 8 | 8 |
+| [`http.handlers/static`](#fields-http-handlers-static) | 16 | 13 | 3 |
 | [`http.handlers/stream_whep`](#fields-http-handlers-stream-whep) | 5 | 0 | 5 |
 | [`http.handlers/stream_whip`](#fields-http-handlers-stream-whip) | 5 | 0 | 5 |
 | [`http.handlers/sync_ingest`](#fields-http-handlers-sync-ingest) | 6 | 0 | 6 |
@@ -300,7 +300,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 11 | 27 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 67 | 3754 |
+| **Total** | 3821 | 72 | 3749 |
 
 <a id="fields-access"></a>
 
@@ -907,8 +907,8 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | --- | --- | --- |
 | `routes[].handler<static>` | `module` | supported |
 | `routes[].handler<static>.params` | `object` | supported |
-| `routes[].handler<static>.params.browse` | `boolean` | not supported yet |
-| `routes[].handler<static>.params.browse_max_entries` | `integer` | not supported yet |
+| `routes[].handler<static>.params.browse` | `boolean` | supported |
+| `routes[].handler<static>.params.browse_max_entries` | `integer` | supported |
 | `routes[].handler<static>.params.check_interval` | `duration` | supported |
 | `routes[].handler<static>.params.compress` | `array<enum(zstd\|br\|gzip)>` | not supported yet |
 | `routes[].handler<static>.params.default_type` | `string` | not supported yet |
@@ -917,10 +917,10 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `routes[].handler<static>.params.index` | `array<string>` | supported |
 | `routes[].handler<static>.params.max_cache_bytes` | `integer` | not supported yet |
 | `routes[].handler<static>.params.max_file_bytes` | `integer` | supported |
-| `routes[].handler<static>.params.precompressed` | `array<enum(br\|zstd\|gzip)>` | not supported yet |
+| `routes[].handler<static>.params.precompressed` | `array<enum(br\|zstd\|gzip)>` | supported |
 | `routes[].handler<static>.params.root` | `string, required` | supported |
-| `routes[].handler<static>.params.strip_prefix` | `string` | not supported yet |
-| `routes[].handler<static>.params.try_files` | `array<string>` | not supported yet |
+| `routes[].handler<static>.params.strip_prefix` | `string` | supported |
+| `routes[].handler<static>.params.try_files` | `array<string>` | supported |
 
 <a id="fields-http-handlers-stream-whep"></a>
 
