@@ -53,7 +53,11 @@
   `TestTLSTerminatedWithoutNames` 属于 I53。未测：永远不完整的 hello 在 10 s 开场超时后被关闭（fit 也未测）。
 - 兼容性门禁：增加 4 个字段；`make compat-bless`：`examples/l4-tcp` 和 `examples/proxy-protocol` 有效（80 个夹具：
   27 个有效，52 个只因暂不支持被拒绝，1 个跳过，没有失败）。
-- 检查：macOS 上 `make check`。尚未运行：gpu51 上（epoll 与 `AKIO_TEST_BACKEND=uring`）所改 crate 与 akio 分支的测试。
+- 检查：macOS 上 `make check`；gpu51 上持基准锁，akio 分支的 akio-http 与 akio-mux（clippy，epoll 与
+  `AKIO_TEST_BACKEND=uring` 下的测试），以及 akit 整个 workspace（clippy，两种后端下的测试），`sni_proxy` 每种后端
+  各跑五次：全部通过，只有三个测试在整套测试的负载下失败过一次、单独运行五次全部通过（epoll 下的 `akit --test
+  reload`；io_uring 下的 `akit-admin --test admin` 与 `akit-proxy --test h2 host_header`，引擎未能启动，I52 之前
+  已出现过）。akio 的公开 API 检查未能运行：gpu51 上没有 `cargo-public-api`（akio-http 的公开项未变）。
 - 待测（维护者的基准任务，规则 30）：见开发计划中 I51–I53 的基准一行。
 
 ### 2026-11-24：I44，JWT 与 JWKS

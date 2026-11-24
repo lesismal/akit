@@ -65,8 +65,13 @@ done and where the work differs from the plan.
 - Compatibility gate: 4 fields more; `make compat-bless`: `examples/l4-tcp` and
   `examples/proxy-protocol` are valid (80 fixtures: 27 valid, 52 refused only as not supported
   yet, 1 skipped, none failed).
-- Checked: `make check` on macOS. Not yet run: the gpu51 tests (epoll and
-  `AKIO_TEST_BACKEND=uring`) of the crates touched and of the akio branch.
+- Checked: `make check` on macOS; on gpu51 under the bench lock, the akio branch's akio-http and
+  akio-mux (clippy, tests on epoll and `AKIO_TEST_BACKEND=uring`), and akit's workspace (clippy,
+  tests on both backends), `sni_proxy` five times on each: all passing but three tests that
+  failed once under the whole suite's load and passed five times out of five alone
+  (`akit --test reload` on epoll; `akit-admin --test admin` and `akit-proxy --test h2
+  host_header` on io_uring, an engine that did not start, seen before I52). akio's public API
+  check could not run: gpu51 lacks `cargo-public-api` (akio-http's public items are unchanged).
 - To measure, in the maintainer's benchmark tasks (rule 30): see the dev plan's benchmark row for
   I51–I53.
 
