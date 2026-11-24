@@ -43,6 +43,7 @@ pub struct Scrape {
     engine: Arc<Engine>,
     config: ConfigStats,
     access_log: Option<AccessLog>,
+    listeners: Option<crate::ServedView>,
 }
 
 impl fmt::Debug for Scrape {
@@ -61,7 +62,32 @@ impl Scrape {
             engine,
             config,
             access_log: None,
+            listeners: None,
         }
+    }
+
+    /// The same, with the listeners served, which [`write_status`](Scrape::write_status) lists
+    /// (I63).
+    #[must_use]
+    pub fn with_listeners(mut self, view: crate::ServedView) -> Scrape {
+        self.listeners = Some(view);
+        self
+    }
+
+    pub(crate) fn cell(&self) -> &GraphCell {
+        &self.cell
+    }
+
+    pub(crate) fn engine(&self) -> &Engine {
+        &self.engine
+    }
+
+    pub(crate) fn config(&self) -> &ConfigStats {
+        &self.config
+    }
+
+    pub(crate) fn listeners(&self) -> Option<&crate::ServedView> {
+        self.listeners.as_ref()
     }
 
     /// The same, with the process's access log, whose dropped lines it counts.

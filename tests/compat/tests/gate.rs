@@ -485,6 +485,11 @@ fn supported_fields_are_read() {
             r#"{"admin": {"token_file": "/etc/akit/admin.token"}}"#.into(),
             |c| c.admin.as_ref().unwrap().token_file.as_deref() == Some("/etc/akit/admin.token"),
         ),
+        (
+            "admin.disable_dashboard",
+            r#"{"admin": {"disable_dashboard": true}}"#.into(),
+            |c| c.admin.as_ref().unwrap().disable_dashboard,
+        ),
         ("limits", r#"{"limits": {}}"#.into(), |c| {
             c.limits == akit_config::Limits::default()
         }),

@@ -69,6 +69,14 @@ fn defaults_and_values() {
     assert_eq!(a.token_file.as_deref(), Some("/etc/akit/token"));
     let a = admin(r#""token_file": """#).unwrap().unwrap();
     assert_eq!(a, Admin::default());
+    // The dashboard (I63): served unless disabled.
+    assert!(!Admin::default().disable_dashboard);
+    let a = admin(r#""disable_dashboard": true"#).unwrap().unwrap();
+    assert!(a.disable_dashboard);
+    assert_eq!(
+        admin(r#""disable_dashboard": false"#).unwrap().unwrap(),
+        Admin::default()
+    );
     // Off loopback, a token is not enough: the API is not served over TLS yet.
     let e = admin(r#""address": "0.0.0.0:2019", "token_file": "t""#).unwrap_err();
     assert!(
@@ -104,6 +112,10 @@ fn refused() {
             "admin.address: not supported yet: a Unix socket (akio API request A23)",
         ),
         (r#""token_file": 1"#, "admin.token_file: expected a string"),
+        (
+            r#""disable_dashboard": "yes""#,
+            "admin.disable_dashboard: expected a boolean",
+        ),
         (r#""cert_file": "c""#, "admin.cert_file: not supported yet"),
         (r#""console": {}"#, "admin.console: not supported yet"),
         (r#""bogus": 1"#, "admin.bogus: unknown field"),

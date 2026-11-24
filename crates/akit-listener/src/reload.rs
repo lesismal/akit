@@ -51,6 +51,38 @@ pub struct Served {
     pub protocols: Vec<Protocol>,
 }
 
+/// The listeners served now, as [`Listeners`] last moved them, for another thread to read: the
+/// Admin API's `GET /status` (I63). Cheap to clone; reading it takes a lock only to clone an
+/// `Arc`, which the control thread takes only to replace it after a reload.
+#[derive(Clone, Default)]
+pub struct ServedView(std::sync::Arc<std::sync::Mutex<std::sync::Arc<[Served]>>>);
+
+impl fmt::Debug for ServedView {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("ServedView").field(&self.get()).finish()
+    }
+}
+
+impl ServedView {
+    /// The listeners served now, in the order of the current graph's.
+    #[must_use]
+    pub fn get(&self) -> std::sync::Arc<[Served]> {
+        std::sync::Arc::clone(
+            &self
+                .0
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+        )
+    }
+
+    fn set(&self, served: Vec<Served>) {
+        *self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = served.into();
+    }
+}
+
 /// What a reload changed.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 #[non_exhaustive]
@@ -230,6 +262,7 @@ pub struct Listeners {
     cell: GraphCell,
     opts: Options,
     entries: Vec<Entry>,
+    view: ServedView,
 }
 
 impl fmt::Debug for Listeners {
@@ -273,12 +306,21 @@ impl Listeners {
                 config,
             })
             .collect();
-        Listeners {
+        let l = Listeners {
             engine,
             cell,
             opts: opts.clone(),
             entries,
-        }
+            view: ServedView::default(),
+        };
+        l.view.set(l.served());
+        l
+    }
+
+    /// A view of the listeners served now, which each reload updates.
+    #[must_use]
+    pub fn view(&self) -> ServedView {
+        self.view.clone()
     }
 
     /// The listeners served now, in the order of the current graph's.
@@ -635,6 +677,7 @@ impl Listeners {
             next.extend(e);
         }
         self.entries = next;
+        self.view.set(self.served());
         Ok(report)
     }
 }

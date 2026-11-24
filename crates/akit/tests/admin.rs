@@ -366,3 +366,86 @@ fn edits_dry_runs_and_rollbacks_behind_the_token() {
     until(&akit.out, "akit: stopped");
     let _ = std::fs::remove_file(&token);
 }
+
+/// I63 through `akit run`: the dashboard's pages are served, and `GET /status` says what akit is
+/// doing now, the listeners it serves, the reloads and the requests counted among them, after a
+/// load through the API.
+#[test]
+fn the_dashboard_and_the_status() {
+    let path = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("admin-status.json");
+    let (web, api) = (free(), free());
+    let doc = |body: &str| {
+        config(web, api, body).replacen("\"listeners\"", "\"metrics\": {},\n  \"listeners\"", 1)
+    };
+    std::fs::write(&path, doc("v1")).unwrap();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_akit"))
+        .args(["run", "-shutdown-timeout", "5s", "-c"])
+        .arg(&path)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let stdout = child.stdout.take().unwrap();
+    let (tx, out) = mpsc::channel();
+    std::thread::spawn(move || {
+        for line in BufReader::new(stdout).lines() {
+            let Ok(line) = line else { break };
+            if tx.send(line).is_err() {
+                break;
+            }
+        }
+    });
+    let akit = Akit { child, out };
+    until(&akit.out, "akit: admin API on");
+
+    let (status, head, body) = call(api, "GET", "/dashboard/", &[], None);
+    assert_eq!(status, 200, "{head}");
+    assert!(body.contains("<title>akit dashboard</title>"), "{body}");
+    assert!(
+        head.contains("Content-Security-Policy: default-src 'none'"),
+        "{head}"
+    );
+    assert_eq!(call(api, "GET", "/dashboard/app.js", &[], None).0, 200);
+
+    assert_eq!(request(web, "GET", "/", None).2, "v1");
+    assert_eq!(request(api, "POST", "/load", Some(&doc("v2"))).0, 200);
+    until(&akit.out, "akit: loaded");
+    assert_eq!(request(web, "GET", "/", None).2, "v2");
+
+    // The dashboard's own request, from the API's origin.
+    let origin = format!("http://{api}");
+    let mut body = String::new();
+    for _ in 0..500 {
+        let (status, head, b) = call(api, "GET", "/status", &[("Origin", &origin)], None);
+        assert_eq!(status, 200, "{head}\n{b}");
+        assert!(head.contains("Fit-Config-Version: 2"), "{head}");
+        body = b;
+        // Both requests counted: one may be counted after its client has the answer.
+        if body.contains("\"requests\":{\"total\":2,") {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    for want in [
+        "{\"version\":2,\"applied\":\"".to_owned(),
+        "\"source\":\"admin\"".to_owned(),
+        "\"reloads\":{\"succeeded\":1,\"failed\":0}".to_owned(),
+        format!(
+            "\"listeners\":[{{\"name\":\"web\",\"address\":\"{web}\",\"protocols\":[\"http/1.1\"]}}]"
+        ),
+        "\"upstreams\":[],\"certificates\":[]".to_owned(),
+        "\"requests\":{\"total\":2,\"classes\":{\"1xx\":0,\"2xx\":2,".to_owned(),
+    ] {
+        assert!(body.contains(&want), "no {want} in {body}");
+    }
+    let (status, _, body) = call(api, "GET", "/config/effective", &[], None);
+    assert_eq!(status, 200);
+    assert!(
+        body.contains("\"precedence\":[\"admin\"]")
+            && body.contains("{\"path\":\"/listeners/0\",\"source\":\"admin\"}"),
+        "{body}"
+    );
+
+    akit_signal(&akit, SIGTERM);
+    until(&akit.out, "akit: stopped");
+}

@@ -166,7 +166,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I60 | Kubernetes Gateway API and conformance | I59 | todo |
 | I61 | Consul and etcd | I57 | todo |
 | I62 | Shared certificate storage | I30, I61 | todo |
-| I63 | Dashboard | I37 | todo |
+| I63 | Dashboard | I37 | done |
 | I64 | OpenTelemetry | I37 | todo |
 | I65 | Packaging | I06 | todo |
 | I66 | M4 exit | I57–I65 | todo |
@@ -836,6 +836,7 @@ Split from I07 so that the half that needs no config model runs beside I02.
 - **Do**: fit's read-only dashboard pages served by akit.
 - **Done when**: the pages show routers, services, upstream health, certificates and versions.
 - **Touches**: `akit-admin`.
+- **Status**: done (2026-11-24), with no akio API request; see the progress log.
 
 ### I64 OpenTelemetry
 

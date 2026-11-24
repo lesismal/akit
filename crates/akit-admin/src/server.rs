@@ -20,6 +20,7 @@ use akit_config::value::{Value, write_string};
 
 use crate::configs::{Applied, ApplyError, Configs, Mode, Outcome, Refused, SOURCE_ADMIN, Version};
 use crate::configs::{Effective, ListenerChange, etag_matches};
+use crate::dashboard;
 use crate::pointer::{self, Problem};
 
 /// The header that carries the version of the config a response is about: fit's name, so that
@@ -39,6 +40,11 @@ pub type Submit = Box<dyn Fn(Job) -> Result<(), Job> + Send + Sync>;
 /// on the API's I/O thread: it must not block.
 pub type Metrics = Arc<dyn Fn(&mut Vec<u8>) + Send + Sync>;
 
+/// What writes what akit is doing now, as the members of `GET /status`'s object after the running
+/// config's version, applied time and source (I63's `Scrape::write_status`): comma-separated, with
+/// no comma before the first or after the last. Called on the API's I/O thread: it must not block.
+pub type Live = Arc<dyn Fn(&mut String) + Send + Sync>;
+
 /// The content type of a Prometheus text scrape, as fit's `GET /metrics` sends it.
 pub const METRICS_CONTENT_TYPE: &str = "text/plain; version=0.0.4; charset=utf-8";
 
@@ -56,6 +62,9 @@ pub struct Options {
     pub idle_timeout: Duration,
     /// The scrape `GET /metrics` answers with, as fit's Admin API serves it; 404 without one.
     pub metrics: Option<Metrics>,
+    /// What `GET /status` says akit is doing now (I63); without it, nothing: no listeners, no
+    /// upstreams, no certificates.
+    pub status: Option<Live>,
 }
 
 impl fmt::Debug for Options {
@@ -66,6 +75,7 @@ impl fmt::Debug for Options {
             .field("body_timeout", &self.body_timeout)
             .field("idle_timeout", &self.idle_timeout)
             .field("metrics", &self.metrics.is_some())
+            .field("status", &self.status.is_some())
             .finish()
     }
 }
@@ -78,6 +88,7 @@ impl Default for Options {
             body_timeout: Duration::from_secs(60),
             idle_timeout: Duration::from_secs(60),
             metrics: None,
+            status: None,
         }
     }
 }
@@ -341,6 +352,8 @@ impl Server {
             submit,
             max_body: settings.max_config_bytes,
             metrics: opts.metrics.clone(),
+            status: opts.status.clone(),
+            dashboard: !settings.disable_dashboard,
             token,
         }));
         let mut http = HttpConfig::default();
@@ -402,6 +415,9 @@ struct Shared {
     submit: Submit,
     max_body: usize,
     metrics: Option<Metrics>,
+    status: Option<Live>,
+    /// Whether the dashboard is served (I63): unless `disable_dashboard`.
+    dashboard: bool,
     /// The token every request must carry, from `token_file`; none asked for without it.
     token: Option<Vec<u8>>,
 }
@@ -483,6 +499,16 @@ impl akio_http::Service for Api {
             },
             "/metrics" => not_allowed("GET, HEAD"),
             "/versions" => not_allowed("GET, HEAD"),
+            "/status" if read => crate::status::status(&self.0.configs, self.0.status.as_ref()),
+            "/status" => not_allowed("GET, HEAD"),
+            // Its other methods edit the member `effective`, as fit's `PUT /config/{path...}`.
+            p if self.0.dashboard && dashboard::is_dashboard(p) => {
+                if read {
+                    dashboard::serve(p)
+                } else {
+                    not_allowed("GET, HEAD")
+                }
+            }
             p if p.starts_with("/rollback/") => {
                 if !post {
                     not_allowed("POST")
@@ -546,7 +572,8 @@ fn submit(shared: &Shared, ctx: &mut Context, op: Op, mode: Mode) {
 }
 
 /// What must not reach the API, refused as fit refuses it: with a token asked for, a request
-/// without it (401); a request from a web page, which a browser marks with `Origin` (but a read
+/// without it (401), but for the dashboard's files, which hold no data and ask for the token
+/// themselves (I63); a request from a web page, which a browser marks with `Origin` (but a read
 /// from the API's own origin); and, without a token, one whose `Host` is not a loopback name, as
 /// a web page's is after DNS rebinding.
 fn guard(ctx: &Context, token: Option<&[u8]>) -> Option<Response> {
@@ -555,7 +582,9 @@ fn guard(ctx: &Context, token: Option<&[u8]>) -> Option<Response> {
             .header("Authorization")
             .and_then(|a| a.strip_prefix("Bearer "))
             .is_some_and(|got| same(got.as_bytes(), token));
-        if !valid {
+        let dashboard = matches!(ctx.method(), Method::Get | Method::Head)
+            && dashboard::is_dashboard(ctx.path());
+        if !valid && !dashboard {
             // fit closes the connection too, so that a client cannot try again on it: akio-http
             // cannot close a connection after a response yet (akio API request A24).
             return Some(
@@ -912,12 +941,12 @@ fn not_applied(errs: &Errors) -> Response {
     json(400, b)
 }
 
-fn json(status: u16, body: String) -> Response {
+pub(crate) fn json(status: u16, body: String) -> Response {
     Response::with_body(status, "application/json", body.into_bytes())
 }
 
 /// `{"error": msg}`, as fit's `writeError`.
-fn error(status: u16, msg: &str) -> Response {
+pub(crate) fn error(status: u16, msg: &str) -> Response {
     let mut b = String::from("{\"error\":");
     write_string(&mut b, msg);
     b.push_str("}\n");

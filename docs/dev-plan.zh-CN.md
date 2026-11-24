@@ -159,7 +159,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I60 | Kubernetes Gateway API 与一致性测试 | I59 | todo |
 | I61 | Consul 与 etcd | I57 | todo |
 | I62 | 共享证书存储 | I30, I61 | todo |
-| I63 | 仪表盘 | I37 | todo |
+| I63 | 仪表盘 | I37 | done |
 | I64 | OpenTelemetry | I37 | todo |
 | I65 | 打包 | I06 | todo |
 | I66 | M4 退出 | I57–I65 | todo |
@@ -755,6 +755,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 - **做什么**：由 akit 提供 fit 的只读仪表盘页面。
 - **完成标准**：页面展示路由器、service、上游健康状态、证书和版本。
 - **涉及**：`akit-admin`。
+- **状态**：已完成（2026-11-24），无需 akio API 需求；见进度日志。
 
 ### I64 OpenTelemetry
 

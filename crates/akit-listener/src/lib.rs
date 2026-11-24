@@ -84,7 +84,8 @@ use akit_runtime::GraphCell;
 
 pub mod metrics;
 pub mod reload;
-pub use reload::{Listeners, ReloadError, Reloaded, Served};
+mod status;
+pub use reload::{Listeners, ReloadError, Reloaded, Served, ServedView};
 
 /// fit's answer when no route matches.
 const NOT_FOUND: &str = "404 page not found\n";
