@@ -723,6 +723,49 @@ pub struct Listener {
     /// `proxy_protocol` (I52): the proxies whose connections begin with a PROXY protocol header
     /// naming the client, for a listener of `tcp` or of HTTP over TCP.
     pub proxy_protocol: Option<ListenerProxyProtocol>,
+    /// `socks` (I55): who may use the listener's `socks` protocol and where it connects them;
+    /// set exactly when its protocols include `socks`.
+    pub socks: Option<ForwardProxy>,
+}
+
+/// Who may use a forward proxy, SOCKS (a listener's `socks`) or HTTP CONNECT (the
+/// `forward_proxy` handler), and where it may connect them to: fit's `config.ForwardProxy`
+/// (I55).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ForwardProxy {
+    /// `clients`: the addresses and networks of the clients that may use the proxy.
+    pub clients: Vec<Network>,
+    /// `allow`: the destinations the proxy connects to. Left out, every destination `deny` does
+    /// not hold, but for loopback, link-local, unspecified and multicast addresses and the
+    /// host's own, which a network here must name.
+    pub allow: Vec<Destination>,
+    /// `deny`: destinations refused, whatever `allow` holds.
+    pub deny: Vec<Destination>,
+    /// `ports`: the destination ports allowed; any when empty.
+    pub ports: Vec<u16>,
+    /// `connect_timeout`: how long resolving and connecting to a destination may take;
+    /// [`DEFAULT_FORWARD_CONNECT_TIMEOUT`] when left out.
+    pub connect_timeout: Duration,
+    /// `idle_timeout`: how long a proxied connection may carry nothing either way;
+    /// [`DEFAULT_FORWARD_IDLE_TIMEOUT`] when left out.
+    pub idle_timeout: Duration,
+}
+
+/// fit's `DefaultForwardConnectTimeout`.
+pub const DEFAULT_FORWARD_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+/// fit's `DefaultForwardIdleTimeout`.
+pub const DEFAULT_FORWARD_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
+
+/// A forward proxy's destination in `allow` or `deny`, as fit's `dests.add` reads it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Destination {
+    /// An IP address or CIDR range, which also holds the address a host name resolves to.
+    Network(Network),
+    /// A host name, in lower case and without a trailing dot.
+    Name(String),
+    /// `*.example.com`: every name below `example.com`, kept as the suffix `.example.com`, in
+    /// lower case.
+    Suffix(String),
 }
 
 /// A listener's `proxy_protocol`, as fit's `config.ProxyProtocol`: a connection from one of
@@ -819,6 +862,9 @@ pub enum Protocol {
     /// `udp`, alone: each client address a session, whose datagrams the service that lists the
     /// listener proxies (I51).
     Udp,
+    /// `socks`: a SOCKS5, SOCKS4 and SOCKS4a forward proxy, as the listener's `socks` allows
+    /// (I55); beside HTTP and `tcp`, told apart from them by what a client sends first.
+    Socks,
 }
 
 impl Protocol {
@@ -832,13 +878,14 @@ impl Protocol {
             Protocol::H3 => "h3",
             Protocol::Tcp => "tcp",
             Protocol::Udp => "udp",
+            Protocol::Socks => "socks",
         }
     }
 
     /// Whether it is one of HTTP's: HTTP/1.1, h2c, h2 or h3.
     #[must_use]
     pub fn is_http(self) -> bool {
-        !matches!(self, Protocol::Tcp | Protocol::Udp)
+        !matches!(self, Protocol::Tcp | Protocol::Udp | Protocol::Socks)
     }
 }
 
@@ -962,6 +1009,8 @@ pub enum Handler {
     Proxy(Proxy),
     /// `fastcgi`: requests answered by a FastCGI application, as PHP-FPM is (I75).
     FastCgi(crate::fastcgi::FastCgi),
+    /// `forward_proxy`: HTTP CONNECT tunnels to where its rules allow (I55).
+    ForwardProxy(ForwardProxy),
     /// The `rewrite` middleware: the request's path changed before the handler sees it (I40).
     Rewrite(Rewrite),
     /// The `redirect` middleware: requests answered with a redirect (I40).
@@ -1000,6 +1049,7 @@ impl Handler {
             Handler::Static(_) => "static",
             Handler::Proxy(_) => "proxy",
             Handler::FastCgi(_) => "fastcgi",
+            Handler::ForwardProxy(_) => "forward_proxy",
             Handler::Rewrite(_) => "rewrite",
             Handler::Redirect(_) => "redirect",
             Handler::Headers(_) => "headers",
@@ -1850,10 +1900,24 @@ const TELEMETRY_FIELDS: &[&str] = &[
 ];
 const TRACES_EXPORT_FIELDS: &[&str] = &["sample_ratio", "max_queue_bytes", "interval"];
 const METRICS_EXPORT_FIELDS: &[&str] = &["interval"];
-const LISTENER_FIELDS: &[&str] = &["name", "address", "protocols", "tls", "proxy_protocol"];
-const LISTENER_FIT_ONLY: &[&str] = &["mptcp", "socks", "access"];
+const LISTENER_FIELDS: &[&str] = &[
+    "name",
+    "address",
+    "protocols",
+    "tls",
+    "proxy_protocol",
+    "socks",
+];
+const LISTENER_FIT_ONLY: &[&str] = &["mptcp", "access"];
+const FORWARD_PROXY_FIELDS: &[&str] = &[
+    "clients",
+    "allow",
+    "deny",
+    "ports",
+    "connect_timeout",
+    "idle_timeout",
+];
 const LISTENER_PROXY_PROTOCOL_FIELDS: &[&str] = &["trusted"];
-const FIT_PROTOCOLS: &[&str] = &["socks"];
 // I51, I52; access comes with fit's access lists.
 const SERVICE_FIELDS: &[&str] = &[
     "name",
@@ -1925,7 +1989,6 @@ const FIT_HANDLERS: &[&str] = &[
     "bt_publish",
     "bt_stream",
     "bt_tracker",
-    "forward_proxy",
     "hls",
     "httpflv",
     "media_pages",
@@ -2970,10 +3033,7 @@ fn listener(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Listener> {
                 "h3" => Protocol::H3,
                 "tcp" => Protocol::Tcp,
                 "udp" => Protocol::Udp,
-                other if FIT_PROTOCOLS.contains(&other) => {
-                    d.not_yet(off, &at, &format!("the {other:?} protocol"));
-                    continue;
-                }
+                "socks" => Protocol::Socks,
                 other => {
                     d.error(
                         off,
@@ -3000,6 +3060,20 @@ fn listener(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Listener> {
     let proxy_protocol = pp_at
         .as_ref()
         .and_then(|(v, p)| listener_proxy_protocol(d, v, p));
+    let socks_at = o.take("socks").map(|v| (v.off, o.at("socks"), v));
+    // The defaults never hold socks: only the protocols written may.
+    if let Some((off, p, _)) = &socks_at {
+        if !protocols.iter().any(|(_, _, p)| *p == Protocol::Socks) {
+            d.error(
+                *off,
+                p,
+                "socks is for a listener whose protocols include socks",
+            );
+        }
+    }
+    let socks = socks_at
+        .as_ref()
+        .and_then(|(_, p, v)| forward_proxy(d, v, p));
     o.finish(d, LISTENER_FIELDS, LISTENER_FIT_ONLY);
     for (off, at, proto) in &protocols {
         match proto {
@@ -3016,6 +3090,11 @@ fn listener(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Listener> {
                 *off,
                 at,
                 "a udp listener serves UDP alone: list udp without other protocols",
+            ),
+            Protocol::Socks if socks_at.is_none() => d.error(
+                *off,
+                at,
+                "socks needs the listener's socks, which says who may use it",
             ),
             // tcp beside HTTP: told apart by what a client sends first (I53, akit-listener).
             _ => {}
@@ -3061,6 +3140,106 @@ fn listener(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Listener> {
         max_body_bytes: DEFAULT_MAX_BODY_BYTES,
         redirect_https: 0,
         proxy_protocol,
+        socks,
+    })
+}
+
+/// A forward proxy's rules, a listener's `socks` or the `forward_proxy` handler's params, as
+/// fit's `config.ForwardProxy` and its `checkForwardProxy` (I55).
+fn forward_proxy(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<ForwardProxy> {
+    let mut o = d.object(n, path)?;
+    let clients = o.require(d, "clients").map(|v| {
+        let p = o.at("clients");
+        let given = d.strings(v, &p);
+        if given.is_empty() && matches!(v.kind, crate::json::Kind::Array(_)) {
+            d.error(v.off, &p, "at least one address is needed");
+        }
+        let mut nets = Vec::new();
+        for (i, (off, s)) in given.into_iter().enumerate() {
+            match Network::parse(&s) {
+                Some(net) => nets.push(net),
+                None => d.error(
+                    off,
+                    &crate::error::join_index(&p, i),
+                    format!("{s:?} is not an IP address or CIDR range"),
+                ),
+            }
+        }
+        nets
+    });
+    let dests = |d: &mut Decoder<'_>, o: &mut Obj<'_>, key: &str| {
+        let mut out = Vec::new();
+        let Some(v) = o.take(key) else {
+            return out;
+        };
+        let p = o.at(key);
+        for (i, (off, s)) in d.strings(v, &p).into_iter().enumerate() {
+            match destination(&s) {
+                Some(dest) => out.push(dest),
+                None => d.error(
+                    off,
+                    &crate::error::join_index(&p, i),
+                    format!("{s:?} is not a host name, an IP address or a CIDR range"),
+                ),
+            }
+        }
+        out
+    };
+    let allow = dests(d, &mut o, "allow");
+    let deny = dests(d, &mut o, "deny");
+    let ports = o.take("ports").map_or_else(Vec::new, |v| {
+        d.array(v, &o.at("ports"), |d, item, at| {
+            let n = d.int(item, at, i64::MIN, i64::MAX)?;
+            match u16::try_from(n) {
+                Ok(port) if port > 0 => Some(port),
+                _ => {
+                    d.error(item.off, at, format!("{n} is not a port"));
+                    None
+                }
+            }
+        })
+    });
+    let timeout = |d: &mut Decoder<'_>, o: &mut Obj<'_>, key: &str, default: Duration| {
+        o.take(key)
+            .and_then(|v| d.duration(v, &o.at(key)))
+            .filter(|t| !t.is_zero())
+            .unwrap_or(default)
+    };
+    let connect_timeout = timeout(
+        d,
+        &mut o,
+        "connect_timeout",
+        DEFAULT_FORWARD_CONNECT_TIMEOUT,
+    );
+    let idle_timeout = timeout(d, &mut o, "idle_timeout", DEFAULT_FORWARD_IDLE_TIMEOUT);
+    o.finish(d, FORWARD_PROXY_FIELDS, &[]);
+    Some(ForwardProxy {
+        clients: clients?,
+        allow,
+        deny,
+        ports,
+        connect_timeout,
+        idle_timeout,
+    })
+}
+
+/// A destination of `allow` or `deny`, as fit's `checkForwardProxy` takes it and `dests.add`
+/// reads it: an IP address or CIDR range, a host name, or a name under `*.`.
+fn destination(s: &str) -> Option<Destination> {
+    if let Some(net) = Network::parse(s) {
+        return Some(Destination::Network(net));
+    }
+    // A host as fit's checkHost takes it, but no IP address (a bracketed one) and no `**.`.
+    if s.starts_with("**.")
+        || s.trim_matches(['[', ']']).parse::<IpAddr>().is_ok()
+        || check_host(s).is_err()
+    {
+        return None;
+    }
+    let lower = s.to_ascii_lowercase();
+    Some(match lower.strip_prefix('*') {
+        Some(rest) => Destination::Suffix(rest.to_owned()),
+        None => Destination::Name(lower),
     })
 }
 
@@ -3481,6 +3660,17 @@ fn handler(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Handler> {
         "static" => static_files(d, params, off, &params_path).map(Handler::Static),
         "proxy" => proxy(d, params, &params_path, off).map(Handler::Proxy),
         "fastcgi" => crate::fastcgi::fastcgi(d, params, off, &params_path).map(Handler::FastCgi),
+        "forward_proxy" => {
+            let Some(n) = params else {
+                d.error(
+                    off,
+                    &crate::error::join_field(&params_path, "clients"),
+                    "missing required field",
+                );
+                return None;
+            };
+            forward_proxy(d, n, &params_path).map(Handler::ForwardProxy)
+        }
         m if FIT_HANDLERS.contains(&m) => {
             d.not_yet(off, &module_path, &format!("the {m:?} handler"));
             None
@@ -6016,6 +6206,12 @@ fn check_routes(
                                  serves no HTTP",
                                 p.as_str()
                             ),
+                        );
+                    } else if x.v.protocols.contains(&Protocol::Socks) {
+                        r.error(
+                            ds,
+                            &path,
+                            format!("{l:?} is a socks listener, not routes: it serves no HTTP"),
                         );
                     }
                 }

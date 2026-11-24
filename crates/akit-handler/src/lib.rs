@@ -1,14 +1,15 @@
 #![forbid(unsafe_code)]
 #![warn(clippy::unwrap_used)]
-//! akit's handlers: respond, static files, redirects, FastCGI.
+//! akit's handlers: respond, static files, redirects, FastCGI, the forward proxy.
 //!
-//! [`MODULES`] lists them for the registry. So far: `respond` (I05), `static` (I12) and `fastcgi`
-//! (I75).
+//! [`MODULES`] lists them for the registry. So far: `respond` (I05), `static` (I12), `fastcgi`
+//! (I75) and `forward_proxy` (I55).
 //!
 //! Part of [akit](https://github.com/lesismal/akit); see `docs/dev-plan.md` for the iterations that
 //! fill this crate in.
 
 mod fastcgi;
+mod forward_proxy;
 mod respond;
 mod static_files;
 
@@ -30,5 +31,10 @@ pub static MODULES: &[Info<HandlerParams>] = &[
         "http.handlers.fastcgi",
         "Answers requests from a FastCGI application, as PHP-FPM is, over a bounded pool of connections, streaming both ways.",
         fastcgi::new,
+    ),
+    Info::handler(
+        "http.handlers.forward_proxy",
+        "A forward proxy for HTTP CONNECT, with access rules for clients and destinations.",
+        forward_proxy::new,
     ),
 ];

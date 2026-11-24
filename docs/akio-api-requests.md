@@ -79,6 +79,9 @@ first; its status here records the branch, then the akio commit akit pins.
 | A112 | An HTTP-date parsed in all three formats RFC 9110 has recipients accept | built on akio's branch `claude/a111-body-tap` (`0e36f8d6`), pinned | 15 | I67 |
 | A113 | A response filter that runs after the inner ones (an outer filter) | built on akio's branch `claude/a111-body-tap` (`0e36f8d6`), pinned | 5 | I67 |
 | A117 | `akio::Pool` and `PoolConfig` together: a bounded pool of an application's own for its blocking work | requested (I68); akit-cache depends on `akio-pool` meanwhile | 4 | I68 |
+| A132 | A proxy tunnel's upstream checked once connected, by the name asked for and both addresses; the SOCKS client a trusted PROXY header names | in akio's main (`8453b60c`), pinned | 1, 19 | I55 |
+| A133 | A proxy's connect timeout of its own, answered (SOCKS5 4, HTTP 504) | in akio's main (`8453b60c`), pinned | 10 | I55 |
+| A134 | CONNECT tunnels over HTTP/2 and HTTP/3 (RFC 9113 §8.5, RFC 9114 §4.4) | requested (I55); a CONNECT on an h2 or h3 stream is answered 501 meanwhile | 9, 19 | I55 |
 | A135 | Dialing a Unix-domain stream socket, and the HTTP client over one (akio, akio-http, akio-sys) | in akio's main (`0f2c419b`), pinned | 1, 2 | I58 |
 | A148 | The address a request came to (the listener's local address), on HTTP/1.1, h2 and h3 | requested (I75) | — | I75 |
 
@@ -1510,3 +1513,65 @@ where there is none, as for a virtual connection).
 **How akit uses it.** The `fastcgi` handler's `SERVER_ADDR` and `SERVER_PORT`, as fit's; later,
 any field or matcher that names the address a request came to.
 
+## A132 A proxy tunnel's upstream checked once connected
+
+**Problem.** fit's forward proxy (a listener's `socks`, the `forward_proxy` handler) decides a
+destination host name by the address it resolved to, differently by the name: one its `allow`
+names is refused only by a `deny` network or by the refusal of internal addresses (loopback,
+link-local, multicast, unspecified, the host's own), another needs an `allow` network to hold its
+address. The host's own address shows only on the open connection, as one coming from the
+address it goes to. fit decides once connected, before anything is sent, so that DNS cannot
+answer the check one way and the dial another. akio-socks has `ProxyConfig::destinations`, which
+sees each resolved address without the name or the local address, and `Socks::allow`, which sees
+the name unresolved. Behind a trusted PROXY header, fit also checks the SOCKS client the header
+names; akio-socks's access hook saw the socket's peer.
+
+**Evidence.** At `e9891b52`: `crates/akio-socks/src/lib.rs`, `Destinations::allows(SocketAddr)`
+filters resolved addresses before the dial; `Request::client` is `c.peer_addr()`.
+
+**Suggested API.** `ProxyConfig::connected: Option<Connected>`, `Connected = Arc<dyn Fn(&Dest,
+SocketAddr, SocketAddr) -> bool>`: called on the upstream's I/O thread once it opens, with the
+destination as asked and the remote and local addresses; `false` closes it and fails the request
+as not allowed (SOCKS5 2, SOCKS4 `0x5b`, HTTP 502), no other address tried. `Request::client` is
+`akio_mux::proxy::client_addr(conn)`.
+
+**How akit uses it.** `akit_l4::forward::Rules::proxy_config` sets `destinations` to `Any`, decides
+the request in the access hook (and, for HTTP, in the handler) by what was asked, and the address
+in `connected` (fit's `Rules.resolved` and `netguard.Refused`). Done in akio by I55 (ADR-119,
+branch `claude/a132-a133-socks-rules`, `9b096d0d`), to be merged onto akio's main.
+
+## A133 A proxy's connect timeout of its own
+
+**Problem.** fit's proxies have `connect_timeout` (10s): resolving and connecting may take that
+long, answered `504` over HTTP and "host unreachable" over SOCKS5, apart from the SOCKS
+handshake's timeout. akio-socks's `handshake_timeout` covers the greeting through the connect
+and closes the client without a reply.
+
+**Evidence.** At `e9891b52`: `crates/akio-socks/src/guard.rs` has the handshake and idle
+timeouts only; a fired timeout calls `client.close()`.
+
+**Suggested API.** `ProxyConfig::connect_timeout: Option<Duration>`, from the `CONNECT` request to
+its upstream connected; past it SOCKS5 reply 4, SOCKS4 `0x5b`, HTTP `504`, then the close.
+
+**How akit uses it.** Each forward proxy's `connect_timeout`, with a handshake timeout of 10s
+(fit's `OpeningTimeout`) plus it. Done in akio by I55 with A132 (ADR-119).
+
+## A134 CONNECT tunnels over HTTP/2 and HTTP/3
+
+**Problem.** fit's `forward_proxy` tunnels a CONNECT on an HTTP/1.1 connection, an h2 or h2c
+stream (RFC 9113 §8.5) and an h3 stream (RFC 9114 §4.4). akio-http dispatches an HTTP/2 stream
+as a tunnel only for an extended CONNECT (`:protocol`, A94), and akio-socks's `connect_proxy`
+tunnels with `Context::upgrade_raw`, HTTP/1 only: on an HTTP/2 stream it returns `false` and the
+request is never answered.
+
+**Evidence.** At `e9891b52`: `crates/akio-http/src/h2.rs` sets `st.connect`/`streaming` only when
+`req.protocol.is_some()`; `Context::upgrade_raw` documents "HTTP/1 only; `false` otherwise";
+`connect_proxy_with` ignores its result.
+
+**Suggested API.** A plain CONNECT on an HTTP/2 or HTTP/3 stream dispatched at once with its DATA
+streamed as the request body, and a streamed `2xx` to it opening a tunnel whose halves close
+separately (as A94 does for extended CONNECT); `connect_proxy` relaying such a stream to its
+upstream with the same backpressure, timeouts and checks as its HTTP/1.1 tunnels.
+
+**How akit uses it.** The `forward_proxy` handler hands every CONNECT to `connect_proxy`; until
+then it answers one on an HTTP/2 or HTTP/3 stream 501 (a stopgap, in the progress log).

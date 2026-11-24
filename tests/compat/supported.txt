@@ -367,7 +367,7 @@ auto_https.https_port
 
 # I51: services, layer 4 proxying of tcp and udp listeners (listeners[].protocols takes "tcp"
 # and "udp", alone) to an upstream's addresses; access comes with fit's access lists. I53: "tcp"
-# beside HTTP on one port, told apart by what a client sends first ("socks" comes with I55).
+# beside HTTP on one port, told apart by what a client sends first ("socks" too since I55).
 services
 services[].name
 services[].listeners
@@ -480,3 +480,23 @@ routes[].handler<fastcgi>.params.response_idle_timeout
 routes[].handler<fastcgi>.params.timeout
 routes[].handler<fastcgi>.params.idle_timeout
 routes[].handler<fastcgi>.params.max_header_bytes
+
+# I55: the forward proxy. A listener's "socks" protocol (SOCKS5, SOCKS4 and 4a CONNECT, alone or
+# beside HTTP and tcp on one port) with the rules of its socks, and the forward_proxy handler's
+# HTTP CONNECT tunnels with the same rules (over HTTP/1.1; HTTP/2 and HTTP/3 wait for akio API
+# request A134).
+listeners[].socks
+listeners[].socks.clients
+listeners[].socks.allow
+listeners[].socks.deny
+listeners[].socks.ports
+listeners[].socks.connect_timeout
+listeners[].socks.idle_timeout
+routes[].handler<forward_proxy>
+routes[].handler<forward_proxy>.params
+routes[].handler<forward_proxy>.params.clients
+routes[].handler<forward_proxy>.params.allow
+routes[].handler<forward_proxy>.params.deny
+routes[].handler<forward_proxy>.params.ports
+routes[].handler<forward_proxy>.params.connect_timeout
+routes[].handler<forward_proxy>.params.idle_timeout

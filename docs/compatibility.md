@@ -175,7 +175,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 307 supported.
+3821 fields in 121 sections, at fit `7daee573`; 322 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -190,7 +190,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`http.handlers/bt_stream`](#fields-http-handlers-bt-stream) | 14 | 0 | 14 |
 | [`http.handlers/bt_tracker`](#fields-http-handlers-bt-tracker) | 2 | 0 | 2 |
 | [`http.handlers/fastcgi`](#fields-http-handlers-fastcgi) | 18 | 18 | 0 |
-| [`http.handlers/forward_proxy`](#fields-http-handlers-forward-proxy) | 8 | 0 | 8 |
+| [`http.handlers/forward_proxy`](#fields-http-handlers-forward-proxy) | 8 | 8 | 0 |
 | [`http.handlers/hls`](#fields-http-handlers-hls) | 12 | 0 | 12 |
 | [`http.handlers/httpflv`](#fields-http-handlers-httpflv) | 6 | 0 | 6 |
 | [`http.handlers/media_pages`](#fields-http-handlers-media-pages) | 29 | 0 | 29 |
@@ -221,7 +221,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`http.middleware/rewrite`](#fields-http-middleware-rewrite) | 6 | 6 | 0 |
 | [`http.middleware/wasm`](#fields-http-middleware-wasm) | 18 | 0 | 18 |
 | [`limits`](#fields-limits) | 7 | 3 | 4 |
-| [`listeners`](#fields-listeners) | 30 | 16 | 14 |
+| [`listeners`](#fields-listeners) | 30 | 23 | 7 |
 | [`llm`](#fields-llm) | 218 | 0 | 218 |
 | [`log`](#fields-log) | 24 | 0 | 24 |
 | [`media_auth`](#fields-media-auth) | 34 | 0 | 34 |
@@ -300,7 +300,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 307 | 3514 |
+| **Total** | 3821 | 322 | 3499 |
 
 <a id="fields-access"></a>
 
@@ -765,14 +765,14 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `routes[].handler<forward_proxy>` | `module` | not supported yet |
-| `routes[].handler<forward_proxy>.params` | `object` | not supported yet |
-| `routes[].handler<forward_proxy>.params.allow` | `array<string>` | not supported yet |
-| `routes[].handler<forward_proxy>.params.clients` | `array<string>, required` | not supported yet |
-| `routes[].handler<forward_proxy>.params.connect_timeout` | `duration` | not supported yet |
-| `routes[].handler<forward_proxy>.params.deny` | `array<string>` | not supported yet |
-| `routes[].handler<forward_proxy>.params.idle_timeout` | `duration` | not supported yet |
-| `routes[].handler<forward_proxy>.params.ports` | `array<integer>` | not supported yet |
+| `routes[].handler<forward_proxy>` | `module` | supported |
+| `routes[].handler<forward_proxy>.params` | `object` | supported |
+| `routes[].handler<forward_proxy>.params.allow` | `array<string>` | supported |
+| `routes[].handler<forward_proxy>.params.clients` | `array<string>, required` | supported |
+| `routes[].handler<forward_proxy>.params.connect_timeout` | `duration` | supported |
+| `routes[].handler<forward_proxy>.params.deny` | `array<string>` | supported |
+| `routes[].handler<forward_proxy>.params.idle_timeout` | `duration` | supported |
+| `routes[].handler<forward_proxy>.params.ports` | `array<integer>` | supported |
 
 <a id="fields-http-handlers-hls"></a>
 
@@ -1289,13 +1289,13 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `listeners[].protocols` | `array<enum(http/1.1\|h2c\|h2\|h3\|tcp\|udp\|socks)>` | supported |
 | `listeners[].proxy_protocol` | `object` | supported |
 | `listeners[].proxy_protocol.trusted` | `array<string>, required` | supported |
-| `listeners[].socks` | `object` | not supported yet |
-| `listeners[].socks.allow` | `array<string>` | not supported yet |
-| `listeners[].socks.clients` | `array<string>, required` | not supported yet |
-| `listeners[].socks.connect_timeout` | `duration` | not supported yet |
-| `listeners[].socks.deny` | `array<string>` | not supported yet |
-| `listeners[].socks.idle_timeout` | `duration` | not supported yet |
-| `listeners[].socks.ports` | `array<integer>` | not supported yet |
+| `listeners[].socks` | `object` | supported |
+| `listeners[].socks.allow` | `array<string>` | supported |
+| `listeners[].socks.clients` | `array<string>, required` | supported |
+| `listeners[].socks.connect_timeout` | `duration` | supported |
+| `listeners[].socks.deny` | `array<string>` | supported |
+| `listeners[].socks.idle_timeout` | `duration` | supported |
+| `listeners[].socks.ports` | `array<integer>` | supported |
 | `listeners[].tls` | `object` | supported |
 | `listeners[].tls.acme` | `array<string>` | supported |
 | `listeners[].tls.certificates` | `array<object>` | supported |
