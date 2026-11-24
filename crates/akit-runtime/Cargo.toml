@@ -18,6 +18,10 @@ akit-upstream = { workspace = true }
 akio = { workspace = true }
 akio-http = { workspace = true }
 
+[dev-dependencies]
+# Certificates for the upstream TLS tests (I54).
+akio-x509 = { workspace = true }
+
 [[bench]]
 name = "graph_read"
 harness = false

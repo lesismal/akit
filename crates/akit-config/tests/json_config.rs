@@ -99,7 +99,7 @@ fn not_supported_yet_is_not_wrong() {
             "listeners": [{"name": "web", "address": ":8080", "protocols": ["http/1.1", "h2", "h3"], "tls": {}}],
             "routes": [{"name": "hello", "match": {"host": ["www.example.com"]}, "middleware": [{"module": "cache"}], "handler": {"module": "proxy", "params": {"upstream": "app", "splice_uploads": true}}},
                        {"access": {}, "handler": {"module": "respond"}}],
-            "upstreams": [{"name": "app", "addresses": ["127.0.0.1:9000"], "tls_server_name": "x"}]}"#,
+            "upstreams": [{"name": "app", "addresses": ["127.0.0.1:9000"], "deny_internal": true}]}"#,
     );
     assert!(e.only_not_supported_yet(), "{e}");
     let paths: Vec<&str> = e.as_slice().iter().map(|e| e.path.as_str()).collect();
@@ -109,7 +109,7 @@ fn not_supported_yet_is_not_wrong() {
             "routes[0].middleware[0].module",
             "routes[0].handler.params.splice_uploads",
             "routes[1].access",
-            "upstreams[0].tls_server_name",
+            "upstreams[0].deny_internal",
         ]
     );
     assert_eq!(e.as_slice()[1].msg, "not supported yet");

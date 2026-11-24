@@ -156,7 +156,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I51b | The eBPF sockmap relay | I51 | todo |
 | I52 | SNI routing and PROXY protocol | I51, A4, A5 | todo |
 | I53 | Many protocols on one port | I52 | todo |
-| I54 | Upstream TLS | I18 | todo |
+| I54 | Upstream TLS | I18 | done |
 | I55 | SOCKS and CONNECT | I53 | todo |
 | I56 | M3 exit | I39–I55 | todo |
 | **M4** | | | |
@@ -761,6 +761,7 @@ Split from I07 so that the half that needs no config model runs beside I02.
 - **Do**: TLS to upstreams with custom CAs, client certificates and SNI overrides.
 - **Done when**: tests cover each.
 - **Touches**: `akit-upstream`.
+- **Built on**: akio API requests A108 and A109 (ADR-117), added to akio by this iteration.
 
 ### I55 SOCKS and CONNECT
 

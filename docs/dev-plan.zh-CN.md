@@ -149,7 +149,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I51b | eBPF sockmap 中转 | I51 | todo |
 | I52 | SNI 分流与 PROXY protocol | I51, A4, A5 | todo |
 | I53 | 一个端口多种协议 | I52 | todo |
-| I54 | 上游 TLS | I18 | todo |
+| I54 | 上游 TLS | I18 | done |
 | I55 | SOCKS 与 CONNECT | I53 | todo |
 | I56 | M3 退出 | I39–I55 | todo |
 | **M4** | | | |
@@ -686,6 +686,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 - **做什么**：到上游的 TLS，支持自定义 CA、客户端证书和覆盖 SNI。
 - **完成标准**：测试覆盖每一项。
 - **涉及**：`akit-upstream`。
+- **基于**：本迭代加进 akio 的 akio API 需求 A108 和 A109（ADR-117）。
 
 ### I55 SOCKS 与 CONNECT
 

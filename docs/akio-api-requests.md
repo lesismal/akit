@@ -72,6 +72,8 @@ first; its status here records the branch, then the akio commit akit pins.
 | A92 | A body sent from a file on disk encoded by a stream coding | requested (I47) | 1, 5 | I47 |
 | A93 | The HTTP/1 client hands a connection over on `101 Switching Protocols` | in akio's main (`c5cf4353`), pinned | 8, 9 | I49, I55 |
 | A94 | A streamed `2xx` to an HTTP/2 extended CONNECT is a tunnel whose halves close separately | in akio's main (`c5cf4353`), pinned | 9 | I49 |
+| A108 | The HTTP/1 client's TLS server name, in place of the URL's host | done in akio (`252fba42`, ADR-117, branch `claude/a108-a109-upstream-tls`), pinned, used by I54; to land on akio's main | 19 | I54 |
+| A109 | A client certificate's key checked against its leaf when the TLS configuration is built | done in akio (`252fba42`, ADR-117, with A108), pinned, used by I54 | 19 | I54 |
 
 ## A1 TCP listeners on a running engine
 
@@ -1325,3 +1327,42 @@ never ends its half is reset.
 
 **How akit uses it.** An HTTP/2 or HTTP/3 WebSocket's client side is its streamed request and a
 streamed `200`. Done in akio by this iteration (ADR-113, with A93).
+
+## A108 The HTTP/1 client's TLS server name
+
+**Problem.** fit's `tls_server_name` (I54) is the name an `h2` upstream's certificates are checked
+against, and sent in SNI, in place of each address's host: an upstream reached at `10.0.0.5:443`
+whose certificate names `app.internal`. `H2Client::connect` takes the TLS name apart from the host,
+but an address whose server chooses HTTP/1.1 in ALPN, and its probes, go through akio-http's
+`Client`, which always used the URL's host; the URL cannot carry the name instead, since the
+connection goes to its host.
+
+**Evidence.** At `c5cf4353`: `crates/akio-http/src/client.rs`, `Client::dial` (`Tls::client(cfg,
+&key.host, acceptor)`); nothing in `Client`, `ClientOptions` or `ClientRequest` sets the name.
+
+**Suggested API.** `Client::with_tls_server_name(name)`: every `https://` connection sends `name` in
+SNI and checks the certificate against it; connections still pooled by host and port; an empty
+name restores the URL's host.
+
+**How akit uses it.** An `h2` pool's HTTP/1 client (the fallback) and its probes' client are given
+the upstream's `tls_server_name`. Done in akio by this iteration (ADR-117, branch
+`claude/a108-a109-upstream-tls`, `252fba42`), to be merged onto akio's main.
+
+## A109 A client certificate's key checked when the configuration is built
+
+**Problem.** fit loads `tls_cert_file` and `tls_key_file` with Go's `tls.LoadX509KeyPair`, which
+refuses a key that is not the certificate's, and reports it at the field when the config is
+compiled. akio-tls's `ClientConfigBuilder::build` parsed the key without checking it against the
+leaf, as `ServerConfigBuilder::build` does, so a mismatched pair built and then failed every
+handshake that asked for the certificate.
+
+**Evidence.** At `c5cf4353`: `crates/akio-tls/src/config.rs`, `ClientConfigBuilder::build`
+(`CertKey::new(chain, key.parse())`; the server side calls `certified_key`, which compares the
+public keys).
+
+**Suggested API.** No new API: `ClientConfigBuilder::build` checks the client chain as the server
+side does, and fails with `private key does not match the certificate`.
+
+**How akit uses it.** `akit_tls::UpstreamTls::load` reports the mismatch at
+`upstreams[i].tls_cert_file` when the config is compiled, as fit does. Done in akio by this
+iteration (ADR-117, with A108).

@@ -311,10 +311,72 @@ fn sticky_cookie() {
 #[test]
 fn what_akit_lacks_is_not_supported_yet() {
     let e = errs(&one(r#""addresses": ["a:1"],
-           "tls_server_name": "x""#));
+           "deny_internal": true"#));
     assert!(e.only_not_supported_yet(), "{e}");
     let paths: Vec<&str> = e.as_slice().iter().map(|e| e.path.as_str()).collect();
-    assert_eq!(paths, ["upstreams[0].tls_server_name",]);
+    assert_eq!(paths, ["upstreams[0].deny_internal",]);
+}
+
+/// I54: the TLS fields of an h2 upstream are read, as fit's.
+#[test]
+fn tls_fields() {
+    let c = ok(&one(
+        r#""addresses": ["a:1"], "protocol": "h2", "tls_server_name": "app.internal",
+           "tls_ca_file": "ca.pem", "tls_cert_file": "c.pem", "tls_key_file": "k.pem""#,
+    ));
+    let u = &c.upstreams[0];
+    assert_eq!(
+        (
+            u.tls_server_name.as_str(),
+            u.tls_ca_file.as_str(),
+            u.tls_cert_file.as_str(),
+            u.tls_key_file.as_str()
+        ),
+        ("app.internal", "ca.pem", "c.pem", "k.pem")
+    );
+    // Left out, or empty, as left out.
+    let c = ok(&one(
+        r#""addresses": ["a:1"], "protocol": "h2", "tls_server_name": """#,
+    ));
+    let u = &c.upstreams[0];
+    assert!(u.tls_server_name.is_empty() && u.tls_ca_file.is_empty());
+    assert!(u.tls_cert_file.is_empty() && u.tls_key_file.is_empty());
+}
+
+/// fit's `TestValidate` case "upstream tls without h2", with its positions.
+#[test]
+fn tls_fields_checks() {
+    let e = errs(
+        r#"{"listeners": [{"name": "web", "address": ":80"}], "upstreams": [
+  {"name": "u", "addresses": ["a:1"], "tls_server_name": "x", "tls_ca_file": "ca.pem"},
+  {"name": "v", "addresses": ["a:1"], "tls_cert_file": "c.pem", "tls_key_file": "k.pem"},
+  {"name": "w", "addresses": ["a:1"], "protocol": "h2", "tls_cert_file": "c.pem"},
+  {"name": "x", "addresses": ["a:1"], "protocol": "h2", "tls_key_file": "k.pem"}
+]}"#,
+    );
+    let got: Vec<String> = e
+        .as_slice()
+        .iter()
+        .map(|e| format!("{}:{}: {}: {}", e.line, e.col, e.path, e.msg))
+        .collect();
+    assert_eq!(
+        got,
+        [
+            "2:58: upstreams[0].tls_server_name: tls_server_name needs protocol h2",
+            "2:78: upstreams[0].tls_ca_file: tls_ca_file needs protocol h2",
+            "3:56: upstreams[1].tls_cert_file: tls_cert_file needs protocol h2",
+            "4:74: upstreams[2].tls_cert_file: tls_cert_file needs tls_key_file",
+            "5:73: upstreams[3].tls_key_file: tls_key_file needs tls_cert_file",
+        ]
+    );
+    // A string is needed.
+    assert_eq!(
+        problems(&one(
+            r#""addresses": ["a:1"], "protocol": "h2", "tls_ca_file": 1"#
+        ))
+        .len(),
+        1
+    );
 }
 
 /// I18: h2c and h2 upstreams.

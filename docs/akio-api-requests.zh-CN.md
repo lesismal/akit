@@ -71,6 +71,8 @@
 | A92 | 从磁盘文件发送的消息体按流编码压缩 | 已提出（I47） | 1、5 | I47 |
 | A93 | HTTP/1 客户端在 `101 Switching Protocols` 时交出连接 | 已在 akio 的 main（`c5cf4353`），已锁定 | 8、9 | I49、I55 |
 | A94 | 对 HTTP/2 扩展 CONNECT 的流式 `2xx` 应答即两半各自关闭的隧道 | 已在 akio 的 main（`c5cf4353`），已锁定 | 9 | I49 |
+| A108 | HTTP/1 客户端的 TLS 服务器名，代替 URL 的主机名 | 已在 akio 中完成（`252fba42`，ADR-117，分支 `claude/a108-a109-upstream-tls`），已锁定，I54 已使用；待合入 akio 的 main | 19 | I54 |
+| A109 | 构建 TLS 配置时检查客户端证书的私钥与叶证书相符 | 已在 akio 中完成（`252fba42`，ADR-117，与 A108 一起），已锁定，I54 已使用 | 19 | I54 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -1067,3 +1069,34 @@ akio 的 HTTP/2 服务端已把扩展 CONNECT 作为流式请求分发（其 DAT
 
 **akit 的用法。** HTTP/2 或 HTTP/3 WebSocket 的客户端一侧就是它的流式请求和一个流式 `200`。已由本迭代在 akio 中
 完成（ADR-113，与 A93 一起）。
+
+## A108 HTTP/1 客户端的 TLS 服务器名
+
+**问题。** fit 的 `tls_server_name`（I54）是校验 `h2` 上游证书所用、并在 SNI 中发送的名字，代替每个地址的
+主机名：经 `10.0.0.5:443` 访问、证书却写着 `app.internal` 的上游。`H2Client::connect` 把 TLS 名字与主机分开
+传入，但在 ALPN 中选择 HTTP/1.1 的地址及其探测走的是 akio-http 的 `Client`，它总用 URL 的主机名；URL 也不能
+改写成那个名字，因为连接就是发往 URL 的主机。
+
+**依据。** `c5cf4353` 的 `crates/akio-http/src/client.rs`，`Client::dial`（`Tls::client(cfg, &key.host,
+acceptor)`）；`Client`、`ClientOptions`、`ClientRequest` 都无法设置该名字。
+
+**建议的 API。** `Client::with_tls_server_name(name)`：每个 `https://` 连接都在 SNI 中发送 `name` 并以它校验
+证书；连接仍按主机和端口入池；空名字恢复 URL 的主机名。
+
+**akit 的用法。** `h2` 连接池的 HTTP/1 客户端（回退用）及其探测的客户端都带上上游的 `tls_server_name`。
+已由本迭代在 akio 中完成（ADR-117，分支 `claude/a108-a109-upstream-tls`，`252fba42`），待合入 akio 的 main。
+
+## A109 构建配置时检查客户端证书的私钥
+
+**问题。** fit 用 Go 的 `tls.LoadX509KeyPair` 加载 `tls_cert_file` 和 `tls_key_file`，它拒绝不属于该证书的
+私钥，并在编译配置时在该字段上报告。akio-tls 的 `ClientConfigBuilder::build` 解析私钥后没有像
+`ServerConfigBuilder::build` 那样与叶证书比对，不匹配的一对也能构建出来，之后每次索要证书的握手都失败。
+
+**依据。** `c5cf4353` 的 `crates/akio-tls/src/config.rs`，`ClientConfigBuilder::build`
+（`CertKey::new(chain, key.parse())`；服务端调用会比对公钥的 `certified_key`）。
+
+**建议的 API。** 不需要新 API：`ClientConfigBuilder::build` 像服务端一样检查客户端证书链，失败时报
+`private key does not match the certificate`。
+
+**akit 的用法。** `akit_tls::UpstreamTls::load` 在编译配置时于 `upstreams[i].tls_cert_file` 报告不匹配，与 fit
+一致。已由本迭代在 akio 中完成（ADR-117，与 A108 一起）。

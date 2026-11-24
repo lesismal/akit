@@ -1,0 +1,151 @@
+//! An h2 upstream's TLS files in the graph (I54): read when the config is compiled, a file that
+//! does not load failing it with the field's path (fit's `TestCompileFails`), and each file
+//! watched with the listeners' certificate files, so that a change compiles a new pool that reads
+//! it again (fit's `TestSharedPools`).
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing
+)]
+
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+use akio_http::Context;
+use akit_config::{Config, from_json};
+use akit_runtime::{
+    Env, Handler, HandlerParams, Info, Provision, ProvisionError, Provisioned, Registry, compile,
+};
+
+struct Nothing;
+
+impl akio_http::Service for Nothing {
+    fn call(&self, ctx: &mut Context) {
+        ctx.text(200, "");
+    }
+}
+
+impl Handler for Nothing {}
+
+fn new_nothing(
+    _: &Provision<'_, HandlerParams>,
+) -> Result<Provisioned<dyn Handler>, ProvisionError> {
+    Ok(Provisioned::new(Arc::new(Nothing) as Arc<dyn Handler>))
+}
+
+static MODULES: &[Info<HandlerParams>] = &[Info::handler(
+    "http.handlers.respond",
+    "Answers nothing in particular.",
+    new_nothing,
+)];
+
+fn registry() -> Registry<HandlerParams> {
+    Registry::new(&[MODULES]).unwrap()
+}
+
+fn dir(name: &str) -> PathBuf {
+    let d = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(name);
+    let _ = std::fs::remove_dir_all(&d);
+    std::fs::create_dir_all(&d).unwrap();
+    d
+}
+
+/// A new self-signed certificate for `name`, its PEM written to `cert` and its key's to `key`.
+fn write_pair(name: &str, cert: &Path, key: &Path) {
+    let (c, k) = akio_x509::generate_simple_self_signed([name]).unwrap();
+    std::fs::write(cert, c.to_pem()).unwrap();
+    std::fs::write(key, k.to_pkcs8_pem()).unwrap();
+}
+
+fn s(p: &Path) -> String {
+    p.display().to_string()
+}
+
+/// Two upstreams, `a` over HTTP/1.1 and `b` over h2 with `b_fields`, and a route.
+fn config(b_fields: &str) -> Config {
+    from_json(
+        &format!(
+            r#"{{"listeners": [{{"name": "web", "address": "127.0.0.1:0"}}],
+                "upstreams": [{{"name": "a", "addresses": ["127.0.0.1:1"]}},
+                              {{"name": "b", "addresses": ["127.0.0.1:2"], "protocol": "h2"{b_fields}}}],
+                "routes": [{{"handler": {{"module": "respond"}}}}]}}"#
+        ),
+        None,
+    )
+    .unwrap()
+}
+
+#[test]
+fn a_file_that_does_not_load_fails_the_config() {
+    let d = dir("runtime-upstream-tls-fails");
+    let missing = d.join("missing.pem");
+    let e = compile(
+        &config(&format!(r#", "tls_ca_file": "{}""#, s(&missing))),
+        &registry(),
+        &Env::default(),
+    )
+    .unwrap_err();
+    assert_eq!(e.as_slice().len(), 1, "{e}");
+    assert_eq!(e.as_slice()[0].path, "upstreams[1].tls_ca_file");
+    assert!(e.as_slice()[0].msg.contains(&s(&missing)), "{e}");
+    // A key that is not the certificate's: at tls_cert_file.
+    let (c, k, other) = (d.join("c.pem"), d.join("c.key"), d.join("o.key"));
+    write_pair("akit", &c, &k);
+    write_pair("other", &d.join("o.pem"), &other);
+    let e = compile(
+        &config(&format!(
+            r#", "tls_cert_file": "{}", "tls_key_file": "{}""#,
+            s(&c),
+            s(&other)
+        )),
+        &registry(),
+        &Env::default(),
+    )
+    .unwrap_err();
+    assert_eq!(e.as_slice()[0].path, "upstreams[1].tls_cert_file", "{e}");
+    assert!(e.as_slice()[0].msg.contains("does not match"), "{e}");
+}
+
+#[test]
+fn the_files_are_watched() {
+    let d = dir("runtime-upstream-tls-watched");
+    let (ca, ca_key) = (d.join("ca.pem"), d.join("ca.key"));
+    write_pair("upstream CA", &ca, &ca_key);
+    let with_ca = format!(r#", "tls_ca_file": "{}""#, s(&ca));
+    let g = compile(&config(&with_ca), &registry(), &Env::default()).unwrap();
+    let before = g
+        .cert_files()
+        .get(&s(&ca))
+        .copied()
+        .expect("the CA file is not watched");
+    assert_eq!(g.cert_files().len(), 1);
+    // The CA file changes: the next config reads it again.
+    write_pair("another CA", &ca, &ca_key);
+    let g = compile(&config(&with_ca), &registry(), &Env::default()).unwrap();
+    assert_ne!(g.cert_files()[&s(&ca)], before);
+    // A client certificate and its key: watched too.
+    let (c, k) = (d.join("client.pem"), d.join("client.key"));
+    write_pair("akit", &c, &k);
+    let g = compile(
+        &config(&format!(
+            r#"{with_ca}, "tls_cert_file": "{}", "tls_key_file": "{}""#,
+            s(&c),
+            s(&k)
+        )),
+        &registry(),
+        &Env::default(),
+    )
+    .unwrap();
+    for f in [&ca, &c, &k] {
+        assert!(g.cert_files().contains_key(&s(f)), "{f:?} is not watched");
+    }
+    // tls_server_name alone reads no file.
+    let g = compile(
+        &config(r#", "tls_server_name": "app.internal""#),
+        &registry(),
+        &Env::default(),
+    )
+    .unwrap();
+    assert!(g.cert_files().is_empty());
+}

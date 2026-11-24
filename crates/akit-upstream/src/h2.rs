@@ -164,6 +164,16 @@ pub(crate) struct Transport {
     pub(crate) opts: H2Options,
     /// With h2: the TLS configuration, or why there is none.
     pub(crate) tls: Option<Result<TlsClientConfig, String>>,
+    /// With h2: `tls_server_name` (I54), the name sent in SNI and checked against the servers'
+    /// certificates in place of each address's host; `None` when left out.
+    pub(crate) server_name: Option<String>,
+}
+
+impl Transport {
+    /// The name TLS to `host` sends in SNI and checks the certificate against.
+    pub(crate) fn tls_name<'a>(&'a self, host: &'a str) -> &'a str {
+        self.server_name.as_deref().unwrap_or(host)
+    }
 }
 
 /// The TLS configuration of an h2 upstream with the system's roots, offering `h2` and
@@ -176,6 +186,23 @@ pub(crate) fn system_tls() -> Result<TlsClientConfig, String> {
         .alpn(["h2", "http/1.1"])
         .build()
         .map_err(|e| e.to_string())
+}
+
+/// `c` with an `h2` pool's TLS, and its `tls_server_name`, for the addresses whose server chose
+/// HTTP/1.1 in ALPN, and their probes; `c` as it is for other pools.
+pub(crate) fn http1_tls(
+    t: Option<&Transport>,
+    c: akio_http::client::Client,
+) -> akio_http::client::Client {
+    let Some(t) = t else { return c };
+    let c = match &t.tls {
+        Some(Ok(tls)) => c.with_tls(tls.clone()),
+        _ => c,
+    };
+    match &t.server_name {
+        Some(name) => c.with_tls_server_name(name.clone()),
+        None => c,
+    }
 }
 
 /// The host and port of `address` (`host:port`, `[v6]:port`).
@@ -287,7 +314,7 @@ impl Inner {
         };
         let tls = match &t.tls {
             None => None,
-            Some(Ok(cfg)) => Some((cfg.clone(), host)),
+            Some(Ok(cfg)) => Some((cfg.clone(), t.tls_name(host))),
             Some(Err(why)) => {
                 let e = io::Error::other(format!("upstream TLS: {why}"));
                 return self.dialed(backend, id, Err(Error::Client(ClientError::Io(e))));

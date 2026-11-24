@@ -6,8 +6,8 @@
 //! `TestUpstreamBreaksMidBody` and `TestClientAbort`, and the proxy's `timeout`; fit's
 //! `TestResponseHeaderTimeout`, `TestResponseIdleTimeout` and `TestClientAbort`'s client gone
 //! before the head (I17b; akio heeds them over h2 since its ADR-111, akio API request A66); and
-//! one exchange over h2, with TLS, through a pool given the test CA (the `tls_*` fields are
-//! I54's).
+//! one exchange over h2, with TLS, through a pool given the test CA (the `tls_*` fields, I54,
+//! are tested in `upstream_tls.rs`).
 //!
 //! I18b's, on akio's A51–A53 and A66: request trailers to an h2 upstream (`TestTrailers`, the
 //! request's way), a slow client holding an h2 download rather than having it cut short, and an

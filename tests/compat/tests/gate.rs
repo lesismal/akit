@@ -1366,6 +1366,26 @@ fn supported_fields_are_read() {
             |c| c.upstreams[0].protocol == akit_config::UpstreamProtocol::H2c,
         ),
         (
+            "upstreams[].tls_server_name",
+            upstream(r#", "protocol": "h2", "tls_server_name": "app.internal""#),
+            |c| c.upstreams[0].tls_server_name == "app.internal",
+        ),
+        (
+            "upstreams[].tls_ca_file",
+            upstream(r#", "protocol": "h2", "tls_ca_file": "/etc/akit/upstream-ca.pem""#),
+            |c| c.upstreams[0].tls_ca_file == "/etc/akit/upstream-ca.pem",
+        ),
+        (
+            "upstreams[].tls_cert_file",
+            upstream(r#", "protocol": "h2", "tls_cert_file": "c.pem", "tls_key_file": "k.pem""#),
+            |c| c.upstreams[0].tls_cert_file == "c.pem",
+        ),
+        (
+            "upstreams[].tls_key_file",
+            upstream(r#", "protocol": "h2", "tls_cert_file": "c.pem", "tls_key_file": "k.pem""#),
+            |c| c.upstreams[0].tls_key_file == "k.pem",
+        ),
+        (
             "upstreams[].max_conns",
             upstream(r#", "max_conns": 7"#),
             |c| c.upstreams[0].max_conns == 7,
