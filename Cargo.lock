@@ -312,6 +312,7 @@ dependencies = [
  "akit-config",
  "akit-listener",
  "akit-runtime",
+ "akit-upstream",
 ]
 
 [[package]]

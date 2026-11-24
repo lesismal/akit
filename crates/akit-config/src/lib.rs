@@ -24,6 +24,7 @@ mod conf;
 mod decode;
 pub mod duration;
 mod error;
+mod fastcgi;
 mod json;
 mod model;
 mod providers;
@@ -37,6 +38,11 @@ pub use auto_https::{
     auto_https_name,
 };
 pub use error::{Error, Errors, NOT_SUPPORTED_YET};
+pub use fastcgi::{
+    DEFAULT_FASTCGI_CONNECT_TIMEOUT, DEFAULT_FASTCGI_IDLE_TIMEOUT, DEFAULT_FASTCGI_MAX_CONNS,
+    DEFAULT_FASTCGI_MAX_HEADER_BYTES, DEFAULT_FASTCGI_MAX_IDLE_CONNS, DEFAULT_FASTCGI_MAX_PENDING,
+    DEFAULT_FASTCGI_RESPONSE_TIMEOUT, DEFAULT_FASTCGI_TIMEOUT, FastCgi, FastCgiAddress, Scan, scan,
+};
 pub use json::MAX_DEPTH;
 pub use model::CACHE_SHARDS;
 pub use model::{

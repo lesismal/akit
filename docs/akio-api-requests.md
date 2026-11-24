@@ -80,6 +80,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | A113 | A response filter that runs after the inner ones (an outer filter) | built on akio's branch `claude/a111-body-tap` (`0e36f8d6`), pinned | 5 | I67 |
 | A117 | `akio::Pool` and `PoolConfig` together: a bounded pool of an application's own for its blocking work | requested (I68); akit-cache depends on `akio-pool` meanwhile | 4 | I68 |
 | A135 | Dialing a Unix-domain stream socket, and the HTTP client over one (akio, akio-http, akio-sys) | in akio's main (`0f2c419b`), pinned | 1, 2 | I58 |
+| A148 | The address a request came to (the listener's local address), on HTTP/1.1, h2 and h3 | requested (I75) | — | I75 |
 
 ## A1 TCP listeners on a running engine
 
@@ -1487,3 +1488,25 @@ URL's host its `Host` field and the key of its idle connections.
 `unix://` endpoint and runs `GET /events` and `GET /containers/json` on it, their callbacks on
 akio's I/O threads. Done in akio by I58 (ADR-120, branch `claude/a135-unix-dial`, `0f2c419b`),
 to be merged onto akio's main.
+
+## A148 The address a request came to
+
+**Problem.** A FastCGI application reads the address and port a request came to as CGI's
+`SERVER_ADDR` and `SERVER_PORT` (PHP's `$_SERVER['SERVER_ADDR']`), which fit fills from its
+connection's local address. A handler on akio's `Context` sees the request's peer
+(`Request::peer`) but not the local address of the connection it came on, so akit's `fastcgi`
+handler (I75) sends `SERVER_ADDR` empty and `SERVER_PORT` from the `Host` field (or 80 and 443),
+as fit does only when its connection is not TCP. A listener bound to several addresses (`0.0.0.0`,
+`[::]`) cannot tell either; neither can the access log's `server_addr` or a matcher on it.
+
+**Evidence.** At `e9891b52`: `crates/akio-http/src/message.rs` has `Request::peer` and no local
+address; `Context` has `peer()` and nothing for the other end; `akio_core::Conn::local_addr`
+exists but a request handler never sees the connection.
+
+**Suggested API.** `Request::local: SocketAddr` (or `Context::local_addr()`), filled as `peer` is:
+the connection's local address on HTTP/1.1 and h2, the UDP socket's on h3 (an unspecified address
+where there is none, as for a virtual connection).
+
+**How akit uses it.** The `fastcgi` handler's `SERVER_ADDR` and `SERVER_PORT`, as fit's; later,
+any field or matcher that names the address a request came to.
+

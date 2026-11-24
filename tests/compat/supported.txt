@@ -458,3 +458,25 @@ providers[].docker.label_prefix
 providers[].docker.max_containers
 providers[].docker.refresh_interval
 providers[].docker.request_timeout
+
+# I75: FastCGI. Requests answered by a FastCGI application, as PHP-FPM is, over a bounded pool of
+# connections (TCP, or a Unix-domain socket), both bodies streamed with linked backpressure, with
+# try_files, dotfiles and fit's timeouts and limits.
+routes[].handler<fastcgi>
+routes[].handler<fastcgi>.params
+routes[].handler<fastcgi>.params.address
+routes[].handler<fastcgi>.params.root
+routes[].handler<fastcgi>.params.split_path
+routes[].handler<fastcgi>.params.index
+routes[].handler<fastcgi>.params.try_files
+routes[].handler<fastcgi>.params.dotfiles
+routes[].handler<fastcgi>.params.env
+routes[].handler<fastcgi>.params.max_conns
+routes[].handler<fastcgi>.params.max_idle_conns
+routes[].handler<fastcgi>.params.max_pending
+routes[].handler<fastcgi>.params.connect_timeout
+routes[].handler<fastcgi>.params.response_header_timeout
+routes[].handler<fastcgi>.params.response_idle_timeout
+routes[].handler<fastcgi>.params.timeout
+routes[].handler<fastcgi>.params.idle_timeout
+routes[].handler<fastcgi>.params.max_header_bytes

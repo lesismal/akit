@@ -79,6 +79,7 @@
 | A113 | 在内层过滤器之后运行的响应过滤器（外层过滤器） | 已在 akio 分支 `claude/a111-body-tap`（`0e36f8d6`）上实现，已锁定 | 5 | I67 |
 | A117 | 从 `akio` 同时取得 `akio::Pool` 与 `PoolConfig`：应用自己的、有上限的阻塞工作线程池 | 已提出（I68）；期间 akit-cache 直接依赖 `akio-pool` | 4 | I68 |
 | A135 | 拨号 Unix 域流套接字，以及在其上的 HTTP 客户端（akio、akio-http、akio-sys） | 已在 akio 的 main（`0f2c419b`），已锁定 | 1、2 | I58 |
+| A148 | 请求到达的地址（监听器的本地地址），HTTP/1.1、h2 和 h3 | 已提出（I75） | — | I75 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -1203,3 +1204,21 @@ akio 的引擎只能拨 TCP，它的 HTTP 客户端会解析 URL 的主机名，
 **akit 如何使用。** 对 `unix://` 端点，`akit_provider::docker` 用 `with_unix_socket` 构建客户端，
 在其上发出 `GET /events` 和 `GET /containers/json`，回调在 akio 的 I/O 线程上。已由 I58 在 akio
 中完成（ADR-120，分支 `claude/a135-unix-dial`，`0f2c419b`），待合并到 akio 的 main。
+
+## A148 请求到达的地址
+
+**问题。** FastCGI 应用通过 CGI 的 `SERVER_ADDR` 和 `SERVER_PORT`（PHP 的 `$_SERVER['SERVER_ADDR']`）读取请求到达
+的地址和端口，fit 从连接的本地地址取得它们。基于 akio `Context` 的 handler 能看到请求的对端（`Request::peer`），
+却看不到请求所在连接的本地地址，所以 akit 的 `fastcgi` handler（I75）发送空的 `SERVER_ADDR`，`SERVER_PORT` 取自
+`Host` 字段（或 80、443），fit 只在连接不是 TCP 时才这样做。绑定在多个地址（`0.0.0.0`、`[::]`）上的监听器同样
+无法区分；访问日志的 `server_addr` 和基于它的匹配器也是如此。
+
+**证据。** 在 `e9891b52`：`crates/akio-http/src/message.rs` 有 `Request::peer`，没有本地地址；`Context` 有
+`peer()`，没有另一端的地址；`akio_core::Conn::local_addr` 存在，但请求处理器看不到连接。
+
+**建议的 API。** `Request::local: SocketAddr`（或 `Context::local_addr()`），与 `peer` 一样填入：HTTP/1.1 和
+h2 上是连接的本地地址，h3 上是 UDP 套接字的地址（没有时为未指定地址，如虚拟连接）。
+
+**akit 的用法。** `fastcgi` handler 的 `SERVER_ADDR` 和 `SERVER_PORT`，与 fit 一致；以后任何指明请求到达地址的
+字段或匹配器。
+
