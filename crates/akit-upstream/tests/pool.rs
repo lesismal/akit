@@ -343,11 +343,10 @@ fn an_idle_pool_closes_at_once() {
 }
 
 /// An address on this host where nothing listens.
+/// An address nothing listens on: port 1 (tcpmux) is never served here, where a port taken from a
+/// listener just dropped could be bound again by another test's upstream running in parallel.
 fn refusing() -> String {
-    let l = TcpListener::bind("127.0.0.1:0").unwrap();
-    let a = l.local_addr().unwrap().to_string();
-    drop(l);
-    a
+    "127.0.0.1:1".to_owned()
 }
 
 #[test]
