@@ -152,7 +152,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 278 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 296 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -166,7 +166,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`http.handlers/bt_publish`](#fields-http-handlers-bt-publish) | 3 | 0 | 3 |
 | [`http.handlers/bt_stream`](#fields-http-handlers-bt-stream) | 14 | 0 | 14 |
 | [`http.handlers/bt_tracker`](#fields-http-handlers-bt-tracker) | 2 | 0 | 2 |
-| [`http.handlers/fastcgi`](#fields-http-handlers-fastcgi) | 18 | 0 | 18 |
+| [`http.handlers/fastcgi`](#fields-http-handlers-fastcgi) | 18 | 18 | 0 |
 | [`http.handlers/forward_proxy`](#fields-http-handlers-forward-proxy) | 8 | 0 | 8 |
 | [`http.handlers/hls`](#fields-http-handlers-hls) | 12 | 0 | 12 |
 | [`http.handlers/httpflv`](#fields-http-handlers-httpflv) | 6 | 0 | 6 |
@@ -277,7 +277,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **合计** | 3821 | 278 | 3543 |
+| **合计** | 3821 | 296 | 3525 |
 
 <a id="fields-access"></a>
 
@@ -717,24 +717,24 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
-| `routes[].handler<fastcgi>` | `module` | 尚不支持（not supported yet） |
-| `routes[].handler<fastcgi>.params` | `object` | 尚不支持（not supported yet） |
-| `routes[].handler<fastcgi>.params.address` | `string, required` | 尚不支持（not supported yet） |
-| `routes[].handler<fastcgi>.params.connect_timeout` | `duration` | 尚不支持（not supported yet） |
-| `routes[].handler<fastcgi>.params.dotfiles` | `enum(deny\|allow)` | 尚不支持（not supported yet） |
-| `routes[].handler<fastcgi>.params.env` | `map<string>` | 尚不支持（not supported yet） |
-| `routes[].handler<fastcgi>.params.idle_timeout` | `duration` | 尚不支持（not supported yet） |
-| `routes[].handler<fastcgi>.params.index` | `string` | 尚不支持（not supported yet） |
-| `routes[].handler<fastcgi>.params.max_conns` | `integer` | 尚不支持（not supported yet） |
-| `routes[].handler<fastcgi>.params.max_header_bytes` | `integer` | 尚不支持（not supported yet） |
-| `routes[].handler<fastcgi>.params.max_idle_conns` | `integer` | 尚不支持（not supported yet） |
-| `routes[].handler<fastcgi>.params.max_pending` | `integer` | 尚不支持（not supported yet） |
-| `routes[].handler<fastcgi>.params.response_header_timeout` | `duration` | 尚不支持（not supported yet） |
-| `routes[].handler<fastcgi>.params.response_idle_timeout` | `duration` | 尚不支持（not supported yet） |
-| `routes[].handler<fastcgi>.params.root` | `string, required` | 尚不支持（not supported yet） |
-| `routes[].handler<fastcgi>.params.split_path` | `array<string>` | 尚不支持（not supported yet） |
-| `routes[].handler<fastcgi>.params.timeout` | `duration` | 尚不支持（not supported yet） |
-| `routes[].handler<fastcgi>.params.try_files` | `array<string>` | 尚不支持（not supported yet） |
+| `routes[].handler<fastcgi>` | `module` | 已支持 |
+| `routes[].handler<fastcgi>.params` | `object` | 已支持 |
+| `routes[].handler<fastcgi>.params.address` | `string, required` | 已支持 |
+| `routes[].handler<fastcgi>.params.connect_timeout` | `duration` | 已支持 |
+| `routes[].handler<fastcgi>.params.dotfiles` | `enum(deny\|allow)` | 已支持 |
+| `routes[].handler<fastcgi>.params.env` | `map<string>` | 已支持 |
+| `routes[].handler<fastcgi>.params.idle_timeout` | `duration` | 已支持 |
+| `routes[].handler<fastcgi>.params.index` | `string` | 已支持 |
+| `routes[].handler<fastcgi>.params.max_conns` | `integer` | 已支持 |
+| `routes[].handler<fastcgi>.params.max_header_bytes` | `integer` | 已支持 |
+| `routes[].handler<fastcgi>.params.max_idle_conns` | `integer` | 已支持 |
+| `routes[].handler<fastcgi>.params.max_pending` | `integer` | 已支持 |
+| `routes[].handler<fastcgi>.params.response_header_timeout` | `duration` | 已支持 |
+| `routes[].handler<fastcgi>.params.response_idle_timeout` | `duration` | 已支持 |
+| `routes[].handler<fastcgi>.params.root` | `string, required` | 已支持 |
+| `routes[].handler<fastcgi>.params.split_path` | `array<string>` | 已支持 |
+| `routes[].handler<fastcgi>.params.timeout` | `duration` | 已支持 |
+| `routes[].handler<fastcgi>.params.try_files` | `array<string>` | 已支持 |
 
 <a id="fields-http-handlers-forward-proxy"></a>
 

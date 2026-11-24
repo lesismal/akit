@@ -358,6 +358,11 @@ fn supported_fields_are_read() {
             r#"{{{L}, "routes": [{{"handler": {{"module": "static", "params": {{"root": "/srv/www"{params}}}}}}}]}}"#
         )
     };
+    let fastcgi = |params: &str| {
+        format!(
+            r#"{{{L}, "routes": [{{"handler": {{"module": "fastcgi", "params": {{"address": "127.0.0.1:9000", "root": "/srv/www"{params}}}}}}}]}}"#
+        )
+    };
     let upstream = |fields: &str| {
         format!(r#"{{"upstreams": [{{"name": "app", "addresses": ["127.0.0.1:9000"]{fields}}}]}}"#)
     };
@@ -870,6 +875,92 @@ fn supported_fields_are_read() {
                 static_of(c).try_files.as_deref()
                     == Some(&["{path}".to_owned(), "/index.html".to_owned()][..])
             },
+        ),
+        ("routes[].handler<fastcgi>", fastcgi(""), |c| {
+            fastcgi_of(c).index == "index.php"
+        }),
+        ("routes[].handler<fastcgi>.params", fastcgi(""), |c| {
+            fastcgi_of(c).split_path == [".php"]
+        }),
+        ("routes[].handler<fastcgi>.params.address", fastcgi(""), |c| {
+            fastcgi_of(c).address
+                == akit_config::FastCgiAddress::Tcp {
+                    host: "127.0.0.1".to_owned(),
+                    port: 9000,
+                }
+        }),
+        ("routes[].handler<fastcgi>.params.root", fastcgi(""), |c| {
+            fastcgi_of(c).root == "/srv/www"
+        }),
+        (
+            "routes[].handler<fastcgi>.params.split_path",
+            fastcgi(r#", "split_path": [".PHP", ".phtml"]"#),
+            |c| fastcgi_of(c).split_path == [".php", ".phtml"],
+        ),
+        (
+            "routes[].handler<fastcgi>.params.index",
+            fastcgi(r#", "index": "app.php""#),
+            |c| fastcgi_of(c).index == "app.php",
+        ),
+        (
+            "routes[].handler<fastcgi>.params.try_files",
+            fastcgi(r#", "try_files": ["{path}", "/index.php"]"#),
+            |c| fastcgi_of(c).try_files == ["{path}", "/index.php"],
+        ),
+        (
+            "routes[].handler<fastcgi>.params.dotfiles",
+            fastcgi(r#", "dotfiles": "allow""#),
+            |c| fastcgi_of(c).dotfiles == akit_config::Dotfiles::Allow,
+        ),
+        (
+            "routes[].handler<fastcgi>.params.env",
+            fastcgi(r#", "env": {"APP_ENV": "prod"}"#),
+            |c| fastcgi_of(c).env == [("APP_ENV".to_owned(), "prod".to_owned())],
+        ),
+        (
+            "routes[].handler<fastcgi>.params.max_conns",
+            fastcgi(r#", "max_conns": 8"#),
+            |c| fastcgi_of(c).max_conns == 8,
+        ),
+        (
+            "routes[].handler<fastcgi>.params.max_idle_conns",
+            fastcgi(r#", "max_idle_conns": 4"#),
+            |c| fastcgi_of(c).max_idle_conns == 4,
+        ),
+        (
+            "routes[].handler<fastcgi>.params.max_pending",
+            fastcgi(r#", "max_pending": 9"#),
+            |c| fastcgi_of(c).max_pending == 9,
+        ),
+        (
+            "routes[].handler<fastcgi>.params.connect_timeout",
+            fastcgi(r#", "connect_timeout": "2s""#),
+            |c| fastcgi_of(c).connect_timeout == std::time::Duration::from_secs(2),
+        ),
+        (
+            "routes[].handler<fastcgi>.params.response_header_timeout",
+            fastcgi(r#", "response_header_timeout": "3s""#),
+            |c| fastcgi_of(c).response_header_timeout == std::time::Duration::from_secs(3),
+        ),
+        (
+            "routes[].handler<fastcgi>.params.response_idle_timeout",
+            fastcgi(r#", "response_idle_timeout": "4s""#),
+            |c| fastcgi_of(c).response_idle_timeout == std::time::Duration::from_secs(4),
+        ),
+        (
+            "routes[].handler<fastcgi>.params.timeout",
+            fastcgi(r#", "timeout": "5s""#),
+            |c| fastcgi_of(c).timeout == std::time::Duration::from_secs(5),
+        ),
+        (
+            "routes[].handler<fastcgi>.params.idle_timeout",
+            fastcgi(r#", "idle_timeout": "6s""#),
+            |c| fastcgi_of(c).idle_timeout == std::time::Duration::from_secs(6),
+        ),
+        (
+            "routes[].handler<fastcgi>.params.max_header_bytes",
+            fastcgi(r#", "max_header_bytes": 4096"#),
+            |c| fastcgi_of(c).max_header_bytes == 4096,
         ),
         ("routes[].handler<proxy>", proxy(""), |c| {
             proxy_of(c).upstream == "app"
@@ -1981,6 +2072,14 @@ fn concurrency_of(c: &Config) -> &akit_config::ConcurrencyLimit {
     .unwrap()
 }
 
+fn fastcgi_of(c: &Config) -> &akit_config::FastCgi {
+    match &c.routes.first().unwrap().handler {
+        Handler::FastCgi(f) => Some(f),
+        _ => None,
+    }
+    .unwrap()
+}
+
 fn proxy_of(c: &Config) -> &akit_config::Proxy {
     match &c.routes.first().unwrap().handler {
         Handler::Proxy(p) => Some(p),
@@ -2008,7 +2107,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 46] = [
+    let objects: [(&str, &str, Option<&str>); 47] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         ("admin", "ADMIN_FIELDS", Some("ADMIN_FIT_ONLY")),
         ("acme", "ACME_FIELDS", Some("ACME_FIT_ONLY")),
@@ -2046,6 +2145,7 @@ fn akit_config_lists_match_the_inventory() {
             "PROXY_FIELDS",
             Some("PROXY_FIT_ONLY"),
         ),
+        ("routes[].handler<fastcgi>.params", "FASTCGI_FIELDS", None),
         ("upstreams[]", "UPSTREAM_FIELDS", Some("UPSTREAM_FIT_ONLY")),
         ("services[]", "SERVICE_FIELDS", Some("SERVICE_FIT_ONLY")),
         ("upstreams[].health_check", "HEALTH_CHECK_FIELDS", None),
@@ -2192,7 +2292,7 @@ fn akit_config_lists_match_the_inventory() {
             "model.rs FIT_HANDLERS: {h:?} is not a handler fit has"
         );
     }
-    for h in ["respond", "static", "proxy"] {
+    for h in ["respond", "static", "proxy", "fastcgi"] {
         assert!(handlers.insert(h.to_owned()), "FIT_HANDLERS lists {h}");
     }
     let fit_handlers: BTreeSet<String> = inventory
@@ -2210,6 +2310,8 @@ fn akit_config_lists_match_the_inventory() {
     read.insert("routes[].handler<static>.params".to_owned());
     read.insert("routes[].handler<proxy>".to_owned());
     read.insert("routes[].handler<proxy>.params".to_owned());
+    read.insert("routes[].handler<fastcgi>".to_owned());
+    read.insert("routes[].handler<fastcgi>.params".to_owned());
     // Middleware modules: rewrite, redirect, headers, the limits and auth, which akit reads, and
     // FIT_MIDDLEWARE, which it refuses.
     let mut middleware: BTreeSet<String> = list("FIT_MIDDLEWARE").iter().cloned().collect();
@@ -2359,7 +2461,7 @@ fn inventory_paths_for_akit_config_paths() {
 fn findings_from_akit_config_errors() {
     let errs = akit_config::from_json(
         r#"{"listeners": [{"name": "w", "address": ":1", "protocols": ["socks"], "mptcp": true}],
-            "routes": [{"handler": {"module": "fastcgi"}}], "acme": {"shared_storage": {}}}"#,
+            "routes": [{"handler": {"module": "hls"}}], "acme": {"shared_storage": {}}}"#,
         None,
     )
     .unwrap_err();
@@ -2371,7 +2473,7 @@ fn findings_from_akit_config_errors() {
     let want: BTreeSet<String> = [
         "listeners[0].protocols[0]: the \"socks\" protocol",
         "listeners[0].mptcp",
-        "routes[0].handler<fastcgi>",
+        "routes[0].handler<hls>",
         "acme.shared_storage",
     ]
     .iter()

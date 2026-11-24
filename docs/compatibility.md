@@ -175,7 +175,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 278 supported.
+3821 fields in 121 sections, at fit `7daee573`; 296 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -189,7 +189,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`http.handlers/bt_publish`](#fields-http-handlers-bt-publish) | 3 | 0 | 3 |
 | [`http.handlers/bt_stream`](#fields-http-handlers-bt-stream) | 14 | 0 | 14 |
 | [`http.handlers/bt_tracker`](#fields-http-handlers-bt-tracker) | 2 | 0 | 2 |
-| [`http.handlers/fastcgi`](#fields-http-handlers-fastcgi) | 18 | 0 | 18 |
+| [`http.handlers/fastcgi`](#fields-http-handlers-fastcgi) | 18 | 18 | 0 |
 | [`http.handlers/forward_proxy`](#fields-http-handlers-forward-proxy) | 8 | 0 | 8 |
 | [`http.handlers/hls`](#fields-http-handlers-hls) | 12 | 0 | 12 |
 | [`http.handlers/httpflv`](#fields-http-handlers-httpflv) | 6 | 0 | 6 |
@@ -300,7 +300,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 278 | 3543 |
+| **Total** | 3821 | 296 | 3525 |
 
 <a id="fields-access"></a>
 
@@ -740,24 +740,24 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `routes[].handler<fastcgi>` | `module` | not supported yet |
-| `routes[].handler<fastcgi>.params` | `object` | not supported yet |
-| `routes[].handler<fastcgi>.params.address` | `string, required` | not supported yet |
-| `routes[].handler<fastcgi>.params.connect_timeout` | `duration` | not supported yet |
-| `routes[].handler<fastcgi>.params.dotfiles` | `enum(deny\|allow)` | not supported yet |
-| `routes[].handler<fastcgi>.params.env` | `map<string>` | not supported yet |
-| `routes[].handler<fastcgi>.params.idle_timeout` | `duration` | not supported yet |
-| `routes[].handler<fastcgi>.params.index` | `string` | not supported yet |
-| `routes[].handler<fastcgi>.params.max_conns` | `integer` | not supported yet |
-| `routes[].handler<fastcgi>.params.max_header_bytes` | `integer` | not supported yet |
-| `routes[].handler<fastcgi>.params.max_idle_conns` | `integer` | not supported yet |
-| `routes[].handler<fastcgi>.params.max_pending` | `integer` | not supported yet |
-| `routes[].handler<fastcgi>.params.response_header_timeout` | `duration` | not supported yet |
-| `routes[].handler<fastcgi>.params.response_idle_timeout` | `duration` | not supported yet |
-| `routes[].handler<fastcgi>.params.root` | `string, required` | not supported yet |
-| `routes[].handler<fastcgi>.params.split_path` | `array<string>` | not supported yet |
-| `routes[].handler<fastcgi>.params.timeout` | `duration` | not supported yet |
-| `routes[].handler<fastcgi>.params.try_files` | `array<string>` | not supported yet |
+| `routes[].handler<fastcgi>` | `module` | supported |
+| `routes[].handler<fastcgi>.params` | `object` | supported |
+| `routes[].handler<fastcgi>.params.address` | `string, required` | supported |
+| `routes[].handler<fastcgi>.params.connect_timeout` | `duration` | supported |
+| `routes[].handler<fastcgi>.params.dotfiles` | `enum(deny\|allow)` | supported |
+| `routes[].handler<fastcgi>.params.env` | `map<string>` | supported |
+| `routes[].handler<fastcgi>.params.idle_timeout` | `duration` | supported |
+| `routes[].handler<fastcgi>.params.index` | `string` | supported |
+| `routes[].handler<fastcgi>.params.max_conns` | `integer` | supported |
+| `routes[].handler<fastcgi>.params.max_header_bytes` | `integer` | supported |
+| `routes[].handler<fastcgi>.params.max_idle_conns` | `integer` | supported |
+| `routes[].handler<fastcgi>.params.max_pending` | `integer` | supported |
+| `routes[].handler<fastcgi>.params.response_header_timeout` | `duration` | supported |
+| `routes[].handler<fastcgi>.params.response_idle_timeout` | `duration` | supported |
+| `routes[].handler<fastcgi>.params.root` | `string, required` | supported |
+| `routes[].handler<fastcgi>.params.split_path` | `array<string>` | supported |
+| `routes[].handler<fastcgi>.params.timeout` | `duration` | supported |
+| `routes[].handler<fastcgi>.params.try_files` | `array<string>` | supported |
 
 <a id="fields-http-handlers-forward-proxy"></a>
 

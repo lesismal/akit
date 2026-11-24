@@ -957,6 +957,8 @@ pub enum Handler {
     Static(Static),
     /// `proxy`: requests forwarded to an upstream (I15).
     Proxy(Proxy),
+    /// `fastcgi`: requests answered by a FastCGI application, as PHP-FPM is (I75).
+    FastCgi(crate::fastcgi::FastCgi),
     /// The `rewrite` middleware: the request's path changed before the handler sees it (I40).
     Rewrite(Rewrite),
     /// The `redirect` middleware: requests answered with a redirect (I40).
@@ -994,6 +996,7 @@ impl Handler {
             Handler::Respond(_) => "respond",
             Handler::Static(_) => "static",
             Handler::Proxy(_) => "proxy",
+            Handler::FastCgi(_) => "fastcgi",
             Handler::Rewrite(_) => "rewrite",
             Handler::Redirect(_) => "redirect",
             Handler::Headers(_) => "headers",
@@ -1919,7 +1922,6 @@ const FIT_HANDLERS: &[&str] = &[
     "bt_publish",
     "bt_stream",
     "bt_tracker",
-    "fastcgi",
     "forward_proxy",
     "hls",
     "httpflv",
@@ -2025,6 +2027,25 @@ const STATIC_FIELDS: &[&str] = &[
 ];
 // max_cache_bytes and default_type wait on akio API requests A15 and A14.
 const STATIC_FIT_ONLY: &[&str] = &["max_cache_bytes", "default_type"];
+/// The fields of a `fastcgi` handler's params (I75), read in `fastcgi.rs`.
+pub(crate) const FASTCGI_FIELDS: &[&str] = &[
+    "address",
+    "root",
+    "split_path",
+    "index",
+    "try_files",
+    "dotfiles",
+    "env",
+    "max_conns",
+    "max_idle_conns",
+    "max_pending",
+    "connect_timeout",
+    "response_header_timeout",
+    "response_idle_timeout",
+    "timeout",
+    "idle_timeout",
+    "max_header_bytes",
+];
 const PROXY_FIELDS: &[&str] = &[
     "upstream",
     "trusted_proxies",
@@ -3437,6 +3458,7 @@ fn handler(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Handler> {
         "respond" => respond(d, params, &params_path).map(Handler::Respond),
         "static" => static_files(d, params, off, &params_path).map(Handler::Static),
         "proxy" => proxy(d, params, &params_path, off).map(Handler::Proxy),
+        "fastcgi" => crate::fastcgi::fastcgi(d, params, off, &params_path).map(Handler::FastCgi),
         m if FIT_HANDLERS.contains(&m) => {
             d.not_yet(off, &module_path, &format!("the {m:?} handler"));
             None
