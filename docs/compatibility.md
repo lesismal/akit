@@ -175,7 +175,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 278 supported.
+3821 fields in 121 sections, at fit `7daee573`; 314 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -228,7 +228,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`media_library`](#fields-media-library) | 24 | 0 | 24 |
 | [`metrics`](#fields-metrics) | 1 | 1 | 0 |
 | [`pprof`](#fields-pprof) | 4 | 0 | 4 |
-| [`providers`](#fields-providers) | 60 | 0 | 60 |
+| [`providers`](#fields-providers) | 60 | 36 | 24 |
 | [`routes`](#fields-routes) | 24 | 19 | 5 |
 | [`schema_version`](#fields-schema-version) | 1 | 1 | 0 |
 | [`services`](#fields-services) | 13 | 8 | 5 |
@@ -300,7 +300,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 278 | 3543 |
+| **Total** | 3821 | 314 | 3507 |
 
 <a id="fields-access"></a>
 
@@ -1661,30 +1661,30 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `providers` | `array<object>` | not supported yet |
-| `providers[].consul` | `object` | not supported yet |
-| `providers[].consul.ca_file` | `string` | not supported yet |
-| `providers[].consul.cert_file` | `string` | not supported yet |
-| `providers[].consul.datacenter` | `string` | not supported yet |
-| `providers[].consul.endpoint` | `string` | not supported yet |
-| `providers[].consul.expose_all` | `boolean` | not supported yet |
-| `providers[].consul.key_file` | `string` | not supported yet |
-| `providers[].consul.max_services` | `integer` | not supported yet |
-| `providers[].consul.refresh_interval` | `duration` | not supported yet |
-| `providers[].consul.request_timeout` | `duration` | not supported yet |
-| `providers[].consul.tag_prefix` | `string` | not supported yet |
-| `providers[].consul.token_file` | `string` | not supported yet |
-| `providers[].consul_kv` | `object` | not supported yet |
-| `providers[].consul_kv.ca_file` | `string` | not supported yet |
-| `providers[].consul_kv.cert_file` | `string` | not supported yet |
-| `providers[].consul_kv.datacenter` | `string` | not supported yet |
-| `providers[].consul_kv.endpoint` | `string` | not supported yet |
-| `providers[].consul_kv.key_file` | `string` | not supported yet |
-| `providers[].consul_kv.max_keys` | `integer` | not supported yet |
-| `providers[].consul_kv.prefix` | `string` | not supported yet |
-| `providers[].consul_kv.refresh_interval` | `duration` | not supported yet |
-| `providers[].consul_kv.request_timeout` | `duration` | not supported yet |
-| `providers[].consul_kv.token_file` | `string` | not supported yet |
+| `providers` | `array<object>` | supported |
+| `providers[].consul` | `object` | supported |
+| `providers[].consul.ca_file` | `string` | supported |
+| `providers[].consul.cert_file` | `string` | supported |
+| `providers[].consul.datacenter` | `string` | supported |
+| `providers[].consul.endpoint` | `string` | supported |
+| `providers[].consul.expose_all` | `boolean` | supported |
+| `providers[].consul.key_file` | `string` | supported |
+| `providers[].consul.max_services` | `integer` | supported |
+| `providers[].consul.refresh_interval` | `duration` | supported |
+| `providers[].consul.request_timeout` | `duration` | supported |
+| `providers[].consul.tag_prefix` | `string` | supported |
+| `providers[].consul.token_file` | `string` | supported |
+| `providers[].consul_kv` | `object` | supported |
+| `providers[].consul_kv.ca_file` | `string` | supported |
+| `providers[].consul_kv.cert_file` | `string` | supported |
+| `providers[].consul_kv.datacenter` | `string` | supported |
+| `providers[].consul_kv.endpoint` | `string` | supported |
+| `providers[].consul_kv.key_file` | `string` | supported |
+| `providers[].consul_kv.max_keys` | `integer` | supported |
+| `providers[].consul_kv.prefix` | `string` | supported |
+| `providers[].consul_kv.refresh_interval` | `duration` | supported |
+| `providers[].consul_kv.request_timeout` | `duration` | supported |
+| `providers[].consul_kv.token_file` | `string` | supported |
 | `providers[].docker` | `object` | not supported yet |
 | `providers[].docker.endpoint` | `string` | not supported yet |
 | `providers[].docker.expose_all` | `boolean` | not supported yet |
@@ -1694,17 +1694,17 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `providers[].docker.refresh_interval` | `duration` | not supported yet |
 | `providers[].docker.request_timeout` | `duration` | not supported yet |
 | `providers[].docker.use_published_ports` | `boolean` | not supported yet |
-| `providers[].etcd` | `object` | not supported yet |
-| `providers[].etcd.ca_file` | `string` | not supported yet |
-| `providers[].etcd.cert_file` | `string` | not supported yet |
-| `providers[].etcd.endpoints` | `array<string>` | not supported yet |
-| `providers[].etcd.key_file` | `string` | not supported yet |
-| `providers[].etcd.max_keys` | `integer` | not supported yet |
-| `providers[].etcd.password_file` | `string` | not supported yet |
-| `providers[].etcd.prefix` | `string` | not supported yet |
-| `providers[].etcd.refresh_interval` | `duration` | not supported yet |
-| `providers[].etcd.request_timeout` | `duration` | not supported yet |
-| `providers[].etcd.username` | `string` | not supported yet |
+| `providers[].etcd` | `object` | supported |
+| `providers[].etcd.ca_file` | `string` | supported |
+| `providers[].etcd.cert_file` | `string` | supported |
+| `providers[].etcd.endpoints` | `array<string>` | supported |
+| `providers[].etcd.key_file` | `string` | supported |
+| `providers[].etcd.max_keys` | `integer` | supported |
+| `providers[].etcd.password_file` | `string` | supported |
+| `providers[].etcd.prefix` | `string` | supported |
+| `providers[].etcd.refresh_interval` | `duration` | supported |
+| `providers[].etcd.request_timeout` | `duration` | supported |
+| `providers[].etcd.username` | `string` | supported |
 | `providers[].kubernetes` | `object` | not supported yet |
 | `providers[].kubernetes.addresses` | `array<string>` | not supported yet |
 | `providers[].kubernetes.allow_external_name_services` | `boolean` | not supported yet |
@@ -1720,7 +1720,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `providers[].kubernetes.max_objects` | `integer` | not supported yet |
 | `providers[].kubernetes.namespaces` | `array<string>` | not supported yet |
 | `providers[].kubernetes.request_timeout` | `duration` | not supported yet |
-| `providers[].name` | `string` | not supported yet |
+| `providers[].name` | `string` | supported |
 
 <a id="fields-routes"></a>
 

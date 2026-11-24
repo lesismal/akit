@@ -157,7 +157,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I58 | Docker provider | I57 | todo |
 | I59 | Kubernetes Ingress | I57 | todo |
 | I60 | Kubernetes Gateway API 与一致性测试 | I59 | todo |
-| I61 | Consul 与 etcd | I57 | todo |
+| I61 | Consul 与 etcd | I57 | done |
 | I62 | 共享证书存储 | I30, I61 | todo |
 | I63 | 仪表盘 | I37 | done |
 | I64 | OpenTelemetry | I37 | done |
@@ -741,9 +741,13 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 
 ### I61 Consul 与 etcd
 
-- **做什么**：来自 Consul（HTTP）和 etcd（其 gRPC API，基于 `akio-grpc`）的服务目录和 KV 配置。
+- **做什么**：来自 Consul（HTTP）和 etcd（与 fit 一样经 etcd 在客户端端口上提供的 JSON 网关访问其
+  v3 API；最初计划基于 `akio-grpc`）的服务目录和 KV 配置。
 - **完成标准**：针对两者的测试能跟踪变化。
 - **涉及**：`akit-provider`。
+- **fit**：决策 013。
+- **状态**：done（2026-11-24），没有 akio 请求：两者都基于 akio 的 HTTP 客户端，Consul 用阻塞
+  查询，etcd 用流式 watch；见进度日志。
 
 ### I62 共享证书存储
 

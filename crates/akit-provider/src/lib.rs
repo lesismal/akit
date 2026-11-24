@@ -19,8 +19,75 @@
 //! Part of [akit](https://github.com/lesismal/akit); see `docs/dev-plan.md` for the iterations
 //! that fill this crate in.
 
+mod api;
+mod consul;
+mod etcd;
+mod kvpart;
+mod labels;
 mod merge;
 mod run;
+#[cfg(test)]
+mod testing;
+mod watch;
 
+pub use consul::{ConsulCatalog, ConsulKv};
+pub use etcd::Etcd;
 pub use merge::{KINDS, MAX_PART_BYTES, Merged, Part, Shadowed, Source, merge, parse};
 pub use run::{Kinds, Make, Provider, Update, Updates};
+pub use watch::{Log, stderr_log};
+
+/// The kinds of provider that follow a service's HTTP API (I61): `consul`, `consul_kv` and
+/// `etcd`, each reporting to standard error. For [`Kinds::new`].
+pub const API_KINDS: &[(&str, Make<akit_config::Provider>)] = &[
+    ("consul", make_consul),
+    ("consul_kv", make_consul_kv),
+    ("etcd", make_etcd),
+];
+
+fn make_consul(
+    name: &str,
+    pc: &akit_config::Provider,
+) -> Result<(Box<dyn Provider>, String), String> {
+    match &pc.kind {
+        akit_config::ProviderKind::Consul(c) => Ok((
+            Box::new(ConsulCatalog::new(name, c, stderr_log())),
+            ConsulCatalog::watching(c),
+        )),
+        other => Err(format!(
+            "provider {name}: a {} provider is not consul",
+            other.name()
+        )),
+    }
+}
+
+fn make_consul_kv(
+    name: &str,
+    pc: &akit_config::Provider,
+) -> Result<(Box<dyn Provider>, String), String> {
+    match &pc.kind {
+        akit_config::ProviderKind::ConsulKv(c) => Ok((
+            Box::new(ConsulKv::new(name, c, stderr_log())),
+            ConsulKv::watching(c),
+        )),
+        other => Err(format!(
+            "provider {name}: a {} provider is not consul_kv",
+            other.name()
+        )),
+    }
+}
+
+fn make_etcd(
+    name: &str,
+    pc: &akit_config::Provider,
+) -> Result<(Box<dyn Provider>, String), String> {
+    match &pc.kind {
+        akit_config::ProviderKind::Etcd(e) => Ok((
+            Box::new(Etcd::new(name, e, stderr_log())),
+            Etcd::watching(e),
+        )),
+        other => Err(format!(
+            "provider {name}: a {} provider is not etcd",
+            other.name()
+        )),
+    }
+}

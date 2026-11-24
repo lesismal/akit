@@ -383,6 +383,9 @@ version = "0.0.1"
 name = "akit-provider"
 version = "0.0.1"
 dependencies = [
+ "akio",
+ "akio-crypto",
+ "akio-http",
  "akit-config",
 ]
 

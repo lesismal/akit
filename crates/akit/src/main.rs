@@ -548,6 +548,33 @@ fn provide(updates: &Updates, configs: &Configs, runner: &mut Runner<'_>) {
     }
 }
 
+/// Starts the providers `ps` lists, in their order of precedence, as fit's `startProviders`:
+/// each made by its kind, added to `configs` and started, its parts sent through `updates`.
+fn start_providers(
+    ps: &[akit_config::Provider],
+    configs: &Configs,
+    updates: &Updates,
+) -> Result<Vec<Box<dyn akit_provider::Provider>>, String> {
+    let kinds = akit_provider::Kinds::new(&[akit_provider::API_KINDS])?;
+    let mut out = Vec::with_capacity(ps.len());
+    for pc in ps {
+        let (name, kind) = (&pc.name, pc.kind.name());
+        let make = kinds.lookup(kind).ok_or_else(|| {
+            format!(
+                "provider {name}: this akit was built without the {kind} provider (it has {})",
+                kinds.names().join(", ")
+            )
+        })?;
+        let (mut p, watching) = make(name, pc)?;
+        configs.add_provider(name)?;
+        println!("akit: provider {name} {watching}");
+        p.start(updates.update(name))
+            .map_err(|e| format!("provider {name}: {e}"))?;
+        out.push(p);
+    }
+    Ok(out)
+}
+
 /// What applying a config changed: the listeners closed and opened, and its warnings.
 fn print_applied(o: &Outcome) {
     for l in &o.applied.removed {
@@ -772,6 +799,7 @@ fn run(args: &[String]) -> ExitCode {
         }
     };
     let admin = config.admin.clone();
+    let provider_configs = config.providers.clone();
     drop(config);
     let cert_files = graph.cert_files().clone();
     let acme_names = graph.acme_names().to_vec();
@@ -859,6 +887,16 @@ fn run(args: &[String]) -> ExitCode {
         })
     };
     drop(tx);
+    // The providers the config lists (I61), in their order of precedence, each following its
+    // source on threads of its own; read when akit starts, as fit's.
+    let mut providers = match start_providers(&provider_configs, &configs, &updates) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("akit run: {e}");
+            akit_listener::shutdown(&engine, grace);
+            return ExitCode::FAILURE;
+        }
+    };
     // The metrics /metrics serves, exported every telemetry.metrics.interval (I64).
     let exporter = match (&otlp, telemetry.as_ref().and_then(|t| t.metrics.as_ref())) {
         (Some(o), Some(m)) => {
@@ -998,6 +1036,9 @@ fn run(args: &[String]) -> ExitCode {
         api.shutdown();
     }
     updates.close();
+    for p in &mut providers {
+        p.stop();
+    }
     // No more certificates obtained: its work under way is given up.
     acme.close();
     // A second SIGINT or SIGTERM does not wait for the shutdown, as fit's.

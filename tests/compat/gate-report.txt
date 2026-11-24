@@ -1,7 +1,7 @@
 # The compatibility gate's report (docs/compatibility.md), written by make compat-bless;
 # do not edit. The gate fails when a run's outcomes differ from these lines.
 # fit 7daee573, fit-examples 9659d7e4.
-# 80 fixtures: 33 valid, 46 refused only as not supported yet (fields refused: 38), 0 in a format not supported yet, 1 skipped, 0 failed.
+# 80 fixtures: 36 valid, 43 refused only as not supported yet (fields refused: 39), 0 in a format not supported yet, 1 skipped, 0 failed.
 examples/acme-on-demand: valid
 examples/acme-shared-storage: not supported yet: acme.shared_storage
 examples/admin: not supported yet: admin.address: a Unix socket (akio API request A23)
@@ -21,7 +21,7 @@ examples/compress: valid
 examples/concurrency-limit: valid
 examples/console: not supported yet: admin.console
 examples/console: not supported yet: admin.store
-examples/docker-compose: not supported yet: providers
+examples/docker-compose: not supported yet: providers[].docker
 examples/fastcgi: not supported yet: routes[].handler<fastcgi>
 examples/forward-auth: valid
 examples/forward-proxy: not supported yet: routes[].handler<forward_proxy>
@@ -50,11 +50,11 @@ examples/media-pages: not supported yet: routes[].handler<whip>
 examples/media-pages: not supported yet: webrtc
 examples/metrics: valid
 examples/mtls: valid
-examples/provider-consul: not supported yet: providers
-examples/provider-consul-kv: not supported yet: providers
-examples/provider-docker: not supported yet: providers
-examples/provider-etcd: not supported yet: providers
-examples/provider-kubernetes: not supported yet: providers
+examples/provider-consul: valid
+examples/provider-consul-kv: valid
+examples/provider-docker: not supported yet: providers[].docker
+examples/provider-etcd: valid
+examples/provider-kubernetes: not supported yet: providers[].kubernetes
 examples/proxy: not supported yet: limits.max_conns
 examples/proxy: not supported yet: limits.max_header_bytes
 examples/proxy: not supported yet: limits.max_pending_bytes

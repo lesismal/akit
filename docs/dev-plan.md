@@ -164,7 +164,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I58 | Docker provider | I57 | todo |
 | I59 | Kubernetes Ingress | I57 | todo |
 | I60 | Kubernetes Gateway API and conformance | I59 | todo |
-| I61 | Consul and etcd | I57 | todo |
+| I61 | Consul and etcd | I57 | done |
 | I62 | Shared certificate storage | I30, I61 | todo |
 | I63 | Dashboard | I37 | done |
 | I64 | OpenTelemetry | I37 | done |
@@ -822,9 +822,13 @@ Split from I07 so that the half that needs no config model runs beside I02.
 
 ### I61 Consul and etcd
 
-- **Do**: service catalogues and KV config from Consul (HTTP) and etcd (its gRPC API on `akio-grpc`).
+- **Do**: service catalogues and KV config from Consul (HTTP) and etcd (its v3 API through the
+  JSON gateway etcd serves on its client port, as fit's; first planned on `akio-grpc`).
 - **Done when**: tests against both follow changes.
 - **Touches**: `akit-provider`.
+- **fit**: decision 013.
+- **Status**: done (2026-11-24), with no akio request: both over akio's HTTP client, Consul with
+  blocking queries, etcd with a streamed watch; see the progress log.
 
 ### I62 Shared certificate storage
 
