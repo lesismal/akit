@@ -302,19 +302,30 @@ fn validate_with_akit_config(path: &Path) -> Result<(), Vec<Finding>> {
 }
 
 /// An akit-config problem as a finding. "not supported yet" names its field by the problem's
-/// path; a handler module akit does not have is refused at `<handler>.module` as
-/// `the "<module>" handler`, which the inventory writes `<handler><<module>>`; any other
+/// path; a handler or middleware module akit does not have is refused at `<handler>.module` as
+/// `the "<module>" handler` (or `middleware`), which the inventory writes `<handler><<module>>`;
+/// a field of a module's params that another module akit reads also has is refused as
+/// `the "<module>" middleware's <field>: ...`, at the field of `<ref><<module>>.params`; any other
 /// "not supported yet: <what>" is a value of the field at the path (a protocol), or what its
 /// absence asks for, reported with `what`.
 fn finding(e: &akit_config::Error) -> Finding {
     if !e.is_not_supported_yet() {
         return Finding::Error(e.to_string());
     }
-    let module = e
+    let quoted = e
         .msg
         .strip_prefix(akit_config::NOT_SUPPORTED_YET)
-        .and_then(|r| r.strip_prefix(": the \""))
-        .and_then(|r| r.strip_suffix("\" handler"));
+        .and_then(|r| r.strip_prefix(": the \""));
+    let module = quoted.and_then(|r| {
+        r.strip_suffix("\" handler")
+            .or_else(|| r.strip_suffix("\" middleware"))
+    });
+    // A field of a module's params: the path with the module's tag.
+    if let Some((m, _)) = quoted.and_then(|r| r.split_once("\" middleware's ")) {
+        if let Some((at, field)) = e.path.split_once(".params.") {
+            return Finding::Unsupported(format!("{at}<{m}>.params.{field}"));
+        }
+    }
     let what = e
         .msg
         .strip_prefix(akit_config::NOT_SUPPORTED_YET)
@@ -364,6 +375,14 @@ fn supported_fields_are_read() {
         )
     };
     let access = |fields: &str| format!("{{\"access_log\": {{{fields}}}}}");
+    let mw = |module: &str, params: &str| {
+        format!(
+            r#"{{{L}, "routes": [{{"middleware": [{{"module": "{module}", "params": {{{params}}}}}], "handler": {{"module": "respond"}}}}]}}"#
+        )
+    };
+    let rewrite = |params: &str| mw("rewrite", params);
+    let redirect = |params: &str| mw("redirect", params);
+    let headers = |params: &str| mw("headers", params);
     let samples: Vec<(&str, String, Check)> = vec![
         ("schema_version", r#"{"schema_version": 1}"#.into(), |c| {
             c.schema_version == 1
@@ -397,6 +416,29 @@ fn supported_fields_are_read() {
             |c| c.access_log.as_ref().unwrap().time_zone == "utc",
         ),
         ("listeners", format!("{{{L}}}"), |c| c.listeners.len() == 1),
+        ("admin", r#"{"admin": {}}"#.into(), |c| {
+            c.admin == Some(akit_config::Admin::default())
+        }),
+        (
+            "admin.address",
+            r#"{"admin": {"address": "localhost:2020"}}"#.into(),
+            |c| c.admin.as_ref().unwrap().address == "localhost:2020",
+        ),
+        (
+            "admin.history",
+            r#"{"admin": {"history": 3}}"#.into(),
+            |c| c.admin.as_ref().unwrap().history == 3,
+        ),
+        (
+            "admin.max_config_bytes",
+            r#"{"admin": {"max_config_bytes": 1024}}"#.into(),
+            |c| c.admin.as_ref().unwrap().max_config_bytes == 1024,
+        ),
+        (
+            "admin.max_conns",
+            r#"{"admin": {"max_conns": 2}}"#.into(),
+            |c| c.admin.as_ref().unwrap().max_conns == 2,
+        ),
         ("limits", r#"{"limits": {}}"#.into(), |c| {
             c.limits == akit_config::Limits::default()
         }),
@@ -657,6 +699,125 @@ fn supported_fields_are_read() {
             proxy(r#", "host_header": "internal.svc""#),
             |c| proxy_of(c).host_header == "internal.svc",
         ),
+        (
+            "routes[].middleware",
+            rewrite(r#""add_prefix": "/v2""#),
+            |c| c.routes[0].middleware.len() == 1,
+        ),
+        (
+            "routes[].middleware[].module",
+            redirect(r#""to": "/x""#),
+            |c| c.routes[0].middleware[0].module() == "redirect",
+        ),
+        (
+            "routes[].middleware[].params",
+            rewrite(r#""add_prefix": "/v2""#),
+            |c| rewrite_of(c).add_prefix == "/v2",
+        ),
+        (
+            "routes[].middleware[]<rewrite>",
+            rewrite(r#""add_prefix": "/v2""#),
+            |c| rewrite_of(c).strip_prefix.is_empty(),
+        ),
+        (
+            "routes[].middleware[]<rewrite>.params",
+            rewrite(r#""add_prefix": "/v2""#),
+            |c| rewrite_of(c).add_prefix == "/v2",
+        ),
+        (
+            "routes[].middleware[]<rewrite>.params.strip_prefix",
+            rewrite(r#""strip_prefix": ["/api", "/b/"]"#),
+            |c| rewrite_of(c).strip_prefix == ["/api", "/b/"],
+        ),
+        (
+            "routes[].middleware[]<rewrite>.params.add_prefix",
+            rewrite(r#""add_prefix": "/v2""#),
+            |c| rewrite_of(c).add_prefix == "/v2",
+        ),
+        (
+            "routes[].middleware[]<redirect>",
+            redirect(r#""to": "/x""#),
+            |c| redirect_of(c).status == 302,
+        ),
+        (
+            "routes[].middleware[]<redirect>.params",
+            redirect(r#""to": "/x""#),
+            |c| redirect_of(c).regexp.is_empty(),
+        ),
+        (
+            "routes[].middleware[]<redirect>.params.to",
+            redirect(r#""to": "https://{host}{uri}""#),
+            |c| redirect_of(c).to == "https://{host}{uri}",
+        ),
+        (
+            "routes[].middleware[]<redirect>.params.status",
+            redirect(r#""to": "/x", "status": 308"#),
+            |c| redirect_of(c).status == 308,
+        ),
+        (
+            "routes[].middleware[]<redirect>.params.regexp",
+            redirect(r#""to": "/x", "regexp": "^/old/""#),
+            |c| redirect_of(c).regexp == "^/old/",
+        ),
+        (
+            "routes[].middleware[]<headers>",
+            headers(r#""request": {"delete": ["X-A"]}"#),
+            |c| headers_of(c).response.is_empty(),
+        ),
+        (
+            "routes[].middleware[]<headers>.params",
+            headers(r#""request": {"delete": ["X-A"]}"#),
+            |c| !headers_of(c).request.is_empty(),
+        ),
+        (
+            "routes[].middleware[]<headers>.params.request",
+            headers(r#""request": {"delete": ["X-A"]}"#),
+            |c| headers_of(c).request.delete == ["X-A"],
+        ),
+        (
+            "routes[].middleware[]<headers>.params.request.set",
+            headers(r#""request": {"set": {"X-B": "1", "X-A": "2"}}"#),
+            |c| {
+                headers_of(c).request.set
+                    == [
+                        ("X-A".to_owned(), "2".to_owned()),
+                        ("X-B".to_owned(), "1".to_owned()),
+                    ]
+            },
+        ),
+        (
+            "routes[].middleware[]<headers>.params.request.add",
+            headers(r#""request": {"add": {"X-A": ["1", "2"]}}"#),
+            |c| {
+                headers_of(c).request.add
+                    == [("X-A".to_owned(), vec!["1".to_owned(), "2".to_owned()])]
+            },
+        ),
+        (
+            "routes[].middleware[]<headers>.params.request.delete",
+            headers(r#""request": {"delete": ["X-A", "X-Debug-*"]}"#),
+            |c| headers_of(c).request.delete == ["X-A", "X-Debug-*"],
+        ),
+        (
+            "routes[].middleware[]<headers>.params.response",
+            headers(r#""response": {"delete": ["Server"]}"#),
+            |c| headers_of(c).request.is_empty() && !headers_of(c).response.is_empty(),
+        ),
+        (
+            "routes[].middleware[]<headers>.params.response.set",
+            headers(r#""response": {"set": {"Server": "akit"}}"#),
+            |c| headers_of(c).response.set == [("Server".to_owned(), "akit".to_owned())],
+        ),
+        (
+            "routes[].middleware[]<headers>.params.response.add",
+            headers(r#""response": {"add": {"Vary": ["Accept"]}}"#),
+            |c| headers_of(c).response.add == [("Vary".to_owned(), vec!["Accept".to_owned()])],
+        ),
+        (
+            "routes[].middleware[]<headers>.params.response.delete",
+            headers(r#""response": {"delete": ["*"]}"#),
+            |c| headers_of(c).response.delete == ["*"],
+        ),
         ("upstreams", upstream(""), |c| c.upstreams.len() == 1),
         ("upstreams[].name", upstream(""), |c| {
             c.upstreams[0].name == "app"
@@ -759,6 +920,30 @@ fn static_of(c: &Config) -> &akit_config::Static {
     .unwrap()
 }
 
+fn rewrite_of(c: &Config) -> &akit_config::Rewrite {
+    match c.routes.first().unwrap().middleware.first().unwrap() {
+        Handler::Rewrite(r) => Some(r),
+        _ => None,
+    }
+    .unwrap()
+}
+
+fn redirect_of(c: &Config) -> &akit_config::Redirect {
+    match c.routes.first().unwrap().middleware.first().unwrap() {
+        Handler::Redirect(r) => Some(r),
+        _ => None,
+    }
+    .unwrap()
+}
+
+fn headers_of(c: &Config) -> &akit_config::Headers {
+    match c.routes.first().unwrap().middleware.first().unwrap() {
+        Handler::Headers(h) => Some(h),
+        _ => None,
+    }
+    .unwrap()
+}
+
 fn proxy_of(c: &Config) -> &akit_config::Proxy {
     match &c.routes.first().unwrap().handler {
         Handler::Proxy(p) => Some(p),
@@ -786,8 +971,9 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 14] = [
+    let objects: [(&str, &str, Option<&str>); 21] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
+        ("admin", "ADMIN_FIELDS", Some("ADMIN_FIT_ONLY")),
         ("limits", "LIMITS_FIELDS", Some("LIMITS_FIT_ONLY")),
         (
             "access_log",
@@ -813,12 +999,38 @@ fn akit_config_lists_match_the_inventory() {
             Some("PROXY_FIT_ONLY"),
         ),
         ("upstreams[]", "UPSTREAM_FIELDS", Some("UPSTREAM_FIT_ONLY")),
+        ("routes[].middleware[]", "MODULE_FIELDS", None),
+        (
+            "routes[].middleware[]<rewrite>.params",
+            "REWRITE_FIELDS",
+            Some("REWRITE_FIT_ONLY"),
+        ),
+        (
+            "routes[].middleware[]<redirect>.params",
+            "REDIRECT_FIELDS",
+            None,
+        ),
+        (
+            "routes[].middleware[]<headers>.params",
+            "HEADERS_FIELDS",
+            None,
+        ),
+        (
+            "routes[].middleware[]<headers>.params.request",
+            "HEADER_OPS_FIELDS",
+            None,
+        ),
+        (
+            "routes[].middleware[]<headers>.params.response",
+            "HEADER_OPS_FIELDS",
+            None,
+        ),
     ];
     let mapped: BTreeSet<&str> = objects
         .iter()
         .flat_map(|(_, r, n)| [Some(*r), *n])
         .flatten()
-        .chain(["FIT_HANDLERS", "FIT_PROTOCOLS"])
+        .chain(["FIT_HANDLERS", "FIT_MIDDLEWARE", "FIT_PROTOCOLS"])
         .collect();
     for name in lists.keys() {
         assert!(
@@ -884,6 +1096,33 @@ fn akit_config_lists_match_the_inventory() {
     read.insert("routes[].handler<static>.params".to_owned());
     read.insert("routes[].handler<proxy>".to_owned());
     read.insert("routes[].handler<proxy>.params".to_owned());
+    // Middleware modules: rewrite, redirect and headers, which akit reads, and FIT_MIDDLEWARE,
+    // which it refuses.
+    let mut middleware: BTreeSet<String> = list("FIT_MIDDLEWARE").iter().cloned().collect();
+    for m in &middleware {
+        assert!(
+            known.contains(format!("routes[].middleware[]<{m}>").as_str()),
+            "model.rs FIT_MIDDLEWARE: {m:?} is not a middleware fit has"
+        );
+    }
+    for m in ["rewrite", "redirect", "headers"] {
+        assert!(middleware.insert(m.to_owned()), "FIT_MIDDLEWARE lists {m}");
+        read.insert(format!("routes[].middleware[]<{m}>"));
+        read.insert(format!("routes[].middleware[]<{m}>.params"));
+    }
+    let fit_middleware: BTreeSet<String> = inventory
+        .iter()
+        .filter_map(|f| {
+            f.path
+                .strip_prefix("routes[].middleware[]<")?
+                .strip_suffix('>')
+        })
+        .map(str::to_owned)
+        .collect();
+    assert_eq!(
+        middleware, fit_middleware,
+        "model.rs's middleware and fit's differ"
+    );
     // Protocols: the four akit serves and FIT_PROTOCOLS.
     let mut protocols: BTreeSet<String> = list("FIT_PROTOCOLS").iter().cloned().collect();
     for p in [Protocol::Http11, Protocol::H2c, Protocol::H2, Protocol::H3] {

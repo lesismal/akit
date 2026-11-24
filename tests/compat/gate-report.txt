@@ -1,50 +1,47 @@
 # The compatibility gate's report (docs/compatibility.md), written by make compat-bless;
 # do not edit. The gate fails when a run's outcomes differ from these lines.
 # fit 7daee573, fit-examples 9659d7e4.
-# 80 fixtures: 9 valid, 70 refused only as not supported yet (fields refused: 58), 0 in a format not supported yet, 1 skipped, 0 failed.
+# 80 fixtures: 10 valid, 69 refused only as not supported yet (fields refused: 73), 0 in a format not supported yet, 1 skipped, 0 failed.
 examples/acme-on-demand: not supported yet: acme
 examples/acme-on-demand: not supported yet: listeners[].tls.acme
 examples/acme-on-demand: not supported yet: listeners[].tls.on_demand
-examples/acme-on-demand: not supported yet: routes[].middleware
 examples/acme-shared-storage: not supported yet: acme
 examples/acme-shared-storage: not supported yet: listeners[].tls.acme
-examples/acme-shared-storage: not supported yet: routes[].middleware
-examples/admin: not supported yet: admin
+examples/admin: not supported yet: admin.address: a Unix socket (akio API request A23)
 examples/auto-https: not supported yet: acme
 examples/auto-https: not supported yet: listeners: a config with no listeners, served over HTTPS by default (auto_https)
-examples/basic-auth: not supported yet: routes[].middleware
-examples/bittorrent: not supported yet: admin
+examples/basic-auth: not supported yet: routes[].middleware[]<basic_auth>
 examples/bittorrent: not supported yet: bittorrent
 examples/bittorrent: not supported yet: media_auth
 examples/bittorrent: not supported yet: media_library
 examples/bittorrent: not supported yet: routes[].handler<bt_publish>
 examples/bittorrent: not supported yet: routes[].handler<bt_stream>
 examples/bittorrent: not supported yet: routes[].handler<bt_tracker>
-examples/body-limit: not supported yet: routes[].middleware
-examples/cache: not supported yet: routes[].middleware
-examples/circuit-breaker: not supported yet: routes[].middleware
+examples/body-limit: not supported yet: routes[].middleware[]<body_limit>
+examples/cache: not supported yet: routes[].middleware[]<cache>
+examples/circuit-breaker: not supported yet: routes[].middleware[]<circuit_breaker>
 examples/client-cert: not supported yet: acme
 examples/client-cert: not supported yet: listeners[].tls.acme
-examples/client-cert: not supported yet: routes[].middleware
-examples/compress: not supported yet: routes[].middleware
-examples/concurrency-limit: not supported yet: routes[].middleware
+examples/client-cert: not supported yet: routes[].middleware[]<client_cert>
+examples/compress: not supported yet: routes[].middleware[]<compress>
+examples/concurrency-limit: not supported yet: routes[].middleware[]<concurrency_limit>
 examples/concurrency-limit: not supported yet: upstreams[].response_timeout
-examples/console: not supported yet: admin
+examples/console: not supported yet: admin.console
+examples/console: not supported yet: admin.store
 examples/docker-compose: not supported yet: providers
 examples/fastcgi: not supported yet: routes[].handler<fastcgi>
-examples/forward-auth: not supported yet: routes[].middleware
+examples/forward-auth: not supported yet: routes[].middleware[]<forward_auth>
 examples/forward-proxy: not supported yet: routes[].handler<forward_proxy>
 examples/grpc: not supported yet: upstreams[].health_check
 examples/grpc: not supported yet: upstreams[].protocol: the "h2c" protocol for upstreams
 examples/grpc: not supported yet: upstreams[].response_idle_timeout
 examples/grpc: not supported yet: upstreams[].response_timeout
-examples/headers: not supported yet: routes[].middleware
+examples/headers: valid
 examples/hello: valid
 examples/http3: not supported yet: acme
 examples/http3: not supported yet: listeners[].tls.acme
-examples/http3: not supported yet: routes[].middleware
 examples/https: skipped: its certificate and key files are the user's own
-examples/jwt: not supported yet: routes[].middleware
+examples/jwt: not supported yet: routes[].middleware[]<jwt>
 examples/l4-tcp: not supported yet: listeners[].protocols: the "tcp" protocol
 examples/l4-tcp: not supported yet: services
 examples/l4-tcp: not supported yet: upstreams[].health_check
@@ -73,17 +70,15 @@ examples/media-pages: not supported yet: routes[].handler<media_pages>
 examples/media-pages: not supported yet: routes[].handler<whep>
 examples/media-pages: not supported yet: routes[].handler<whip>
 examples/media-pages: not supported yet: webrtc
-examples/metrics: not supported yet: admin
 examples/metrics: not supported yet: metrics
 examples/mtls: not supported yet: acme
 examples/mtls: not supported yet: listeners[].tls.acme
-examples/mtls: not supported yet: routes[].middleware
+examples/mtls: not supported yet: routes[].middleware[]<client_cert>
 examples/provider-consul: not supported yet: providers
 examples/provider-consul-kv: not supported yet: providers
 examples/provider-docker: not supported yet: providers
 examples/provider-etcd: not supported yet: providers
 examples/provider-kubernetes: not supported yet: providers
-examples/proxy: not supported yet: admin
 examples/proxy: not supported yet: limits.max_conns
 examples/proxy: not supported yet: limits.max_header_bytes
 examples/proxy: not supported yet: limits.max_pending_bytes
@@ -93,44 +88,33 @@ examples/proxy: not supported yet: upstreams[].response_header_timeout
 examples/proxy: not supported yet: upstreams[].response_idle_timeout
 examples/proxy: not supported yet: upstreams[].response_timeout
 examples/proxy-protocol: not supported yet: listeners[].proxy_protocol
-examples/proxy-protocol: not supported yet: routes[].middleware
-examples/rate-limit: not supported yet: routes[].middleware
-examples/redirect: not supported yet: routes[].middleware
-examples/rewrite: not supported yet: routes[].middleware
+examples/proxy-protocol: not supported yet: routes[].middleware[]<rate_limit>
+examples/rate-limit: not supported yet: routes[].middleware[]<rate_limit>
+examples/redirect: not supported yet: routes[].middleware[]<redirect>.params.to: a group of regexp ($1, ${name}) in to: akio-regex does not capture groups yet (akio API request A32)
+examples/rewrite: not supported yet: routes[].middleware[]<rewrite>.params.regexp
+examples/rewrite: not supported yet: routes[].middleware[]<rewrite>.params.replacement
 examples/routing: valid
 examples/socks: not supported yet: listeners[].protocols: the "socks" protocol
 examples/socks: not supported yet: listeners[].socks
 examples/static: not supported yet: routes[].handler<static>.params.max_cache_bytes
-examples/static: not supported yet: routes[].middleware
+examples/static: not supported yet: routes[].middleware[]<compress>
 examples/streaming: not supported yet: media_auth
 examples/streaming: not supported yet: routes[].handler<hls>
 examples/streaming: not supported yet: routes[].handler<httpflv>
 examples/streaming: not supported yet: routes[].handler<stream_whep>
 examples/streaming: not supported yet: routes[].handler<stream_whip>
 examples/streaming: not supported yet: streaming
-examples/sync-files-to-elasticsearch: not supported yet: admin
 examples/sync-files-to-elasticsearch: not supported yet: sync
-examples/sync-files-to-loki: not supported yet: admin
 examples/sync-files-to-loki: not supported yet: sync
-examples/sync-mqtt-to-influxdb: not supported yet: admin
 examples/sync-mqtt-to-influxdb: not supported yet: sync
-examples/sync-mqtt-to-tdengine: not supported yet: admin
 examples/sync-mqtt-to-tdengine: not supported yet: sync
-examples/sync-mssql-to-kafka: not supported yet: admin
 examples/sync-mssql-to-kafka: not supported yet: sync
-examples/sync-mysql-to-doris: not supported yet: admin
 examples/sync-mysql-to-doris: not supported yet: sync
-examples/sync-mysql-to-postgres: not supported yet: admin
 examples/sync-mysql-to-postgres: not supported yet: sync
-examples/sync-postgres-to-kafka: not supported yet: admin
 examples/sync-postgres-to-kafka: not supported yet: sync
-examples/sync-postgres-to-nats: not supported yet: admin
 examples/sync-postgres-to-nats: not supported yet: sync
-examples/sync-postgres-to-vectors: not supported yet: admin
 examples/sync-postgres-to-vectors: not supported yet: sync
-examples/sync-pulsar-to-elasticsearch: not supported yet: admin
 examples/sync-pulsar-to-elasticsearch: not supported yet: sync
-examples/sync-rabbitmq-to-kafka: not supported yet: admin
 examples/sync-rabbitmq-to-kafka: not supported yet: sync
 examples/sync-wasm-codec: not supported yet: sync
 examples/sync-wasm-sink: not supported yet: sync
@@ -146,17 +130,17 @@ examples/video-site: not supported yet: routes[].handler<hls>
 examples/video-site: not supported yet: routes[].handler<media_pages>
 examples/video-site: not supported yet: routes[].handler<media_tokens>
 examples/video-site: not supported yet: routes[].handler<vod>
-examples/video-site: not supported yet: routes[].middleware
+examples/video-site: not supported yet: routes[].middleware[]<basic_auth>
 examples/video-site: not supported yet: streaming
 examples/virtual-hosts: valid
-examples/wasm: not supported yet: routes[].middleware
+examples/wasm: not supported yet: routes[].middleware[]<wasm>
 examples/webrtc-proxy: not supported yet: routes[].handler<webrtc_proxy>
 examples/webrtc-proxy: not supported yet: upstreams[].health_check
 examples/webrtc-proxy: not supported yet: webrtc
 examples/webrtc-turn: not supported yet: webrtc
 examples/whip-whep: not supported yet: routes[].handler<whep>
 examples/whip-whep: not supported yet: routes[].handler<whip>
-examples/whip-whep: not supported yet: routes[].middleware
+examples/whip-whep: not supported yet: routes[].middleware[]<jwt>
 examples/whip-whep: not supported yet: webrtc
 templates/conf/conf.d: valid
 templates/conf/fit.conf: valid

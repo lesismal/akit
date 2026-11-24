@@ -141,8 +141,7 @@ fn renewed_files_are_served_without_a_restart() {
     let ca = Ca::new("akit e2e ca");
     let roots = ca.write(&d, "ca.pem");
     let a = ca.leaf(&d, "a", &["a.example"]);
-    let cfg = config(&d, &a);
-    let (akit, addr) = start(&cfg, &["-watch-interval", "50ms"]);
+    let (akit, addr) = start(&config(&d, &a), &["-watch-interval", "50ms"]);
     assert_eq!(leaf(addr, &roots), leaf_der(&a.0));
 
     // Renewed in place: applied again once the files settle, the listener kept.
@@ -172,8 +171,8 @@ fn renewed_files_are_served_without_a_restart() {
         lines[0], "akit: certificate files changed; reloading",
         "{lines:?}"
     );
-    // Why, under the config's path.
-    let why = akit.until(&s(&cfg)).pop().unwrap();
+    // Why, for the running config applied again.
+    let why = akit.until("the running config: ").pop().unwrap();
     assert!(why.contains("does not match"), "{why}");
     assert_eq!(leaf(addr, &roots), served);
     akit.quiet(Duration::from_millis(1000));

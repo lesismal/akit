@@ -27,6 +27,47 @@ pub struct Config {
     pub limits: Limits,
     /// `access_log`: where a line is written for each request; no access log when left out.
     pub access_log: Option<AccessLog>,
+    /// `admin`: the Admin API (I26); off when left out.
+    pub admin: Option<Admin>,
+}
+
+/// fit's default `admin.address`.
+pub const DEFAULT_ADMIN_ADDRESS: &str = "127.0.0.1:2019";
+/// fit's default `admin.history`: the configs kept, the running one included.
+pub const DEFAULT_ADMIN_HISTORY: usize = 10;
+/// fit's default `admin.max_config_bytes`: 4 MiB.
+pub const DEFAULT_ADMIN_MAX_CONFIG_BYTES: usize = 4 << 20;
+/// fit's default `admin.max_conns`.
+pub const DEFAULT_ADMIN_MAX_CONNS: usize = 16;
+
+/// `admin`: the Admin API, as fit's `config.Admin` (decision 006): so far its address, history
+/// and limits. Its token, TLS, access lists, store, console and the rest are refused as not
+/// supported yet; so is a Unix socket (`unix/<path>`, akio API request A23).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Admin {
+    /// `address`: a loopback host and port; [`DEFAULT_ADMIN_ADDRESS`] when left out. Without a
+    /// token (I27), a host that is not loopback is refused, as fit refuses it.
+    pub address: String,
+    /// `history`: how many configs, the running one included, are kept to be read back;
+    /// [`DEFAULT_ADMIN_HISTORY`] when left out or 0.
+    pub history: usize,
+    /// `max_config_bytes`: the largest config the API takes, larger ones getting 413;
+    /// [`DEFAULT_ADMIN_MAX_CONFIG_BYTES`] when left out or 0.
+    pub max_config_bytes: usize,
+    /// `max_conns`: the most connections the API keeps open at once, one past it closed as it
+    /// is accepted; [`DEFAULT_ADMIN_MAX_CONNS`] when left out or 0.
+    pub max_conns: usize,
+}
+
+impl Default for Admin {
+    fn default() -> Admin {
+        Admin {
+            address: DEFAULT_ADMIN_ADDRESS.to_owned(),
+            history: DEFAULT_ADMIN_HISTORY,
+            max_config_bytes: DEFAULT_ADMIN_MAX_CONFIG_BYTES,
+            max_conns: DEFAULT_ADMIN_MAX_CONNS,
+        }
+    }
 }
 
 /// fit's default `limits.max_body_bytes`: 16 MiB.
@@ -322,6 +363,9 @@ pub struct Route {
     pub priority: i64,
     /// `match`; every request when left out.
     pub matcher: Option<Match>,
+    /// `middleware`, in the order written: the first is the outermost, the first a request goes
+    /// through (I40). Each is one of [`Handler`]'s middleware variants ([`Handler::is_middleware`]).
+    pub middleware: Vec<Handler>,
     /// `handler`.
     pub handler: Handler,
 }
@@ -349,7 +393,9 @@ pub struct Match {
     pub expr: String,
 }
 
-/// A route's handler module and its params.
+/// A module of a route and its params: its handler (`respond`, `static`, `proxy`) or, from I40,
+/// one of its middleware (`rewrite`, `redirect`, `headers`). One type for both, as akit-runtime's
+/// registry provisions every module from the same params type.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Handler {
     /// `respond`: a fixed status, header fields and body.
@@ -358,17 +404,92 @@ pub enum Handler {
     Static(Static),
     /// `proxy`: requests forwarded to an upstream (I15).
     Proxy(Proxy),
+    /// The `rewrite` middleware: the request's path changed before the handler sees it (I40).
+    Rewrite(Rewrite),
+    /// The `redirect` middleware: requests answered with a redirect (I40).
+    Redirect(Redirect),
+    /// The `headers` middleware: request and response header fields changed (I40).
+    Headers(Headers),
 }
 
 impl Handler {
-    /// The handler module's name, as the config writes it in `module`.
+    /// The module's name, as the config writes it in `module`.
     #[must_use]
     pub fn module(&self) -> &'static str {
         match self {
             Handler::Respond(_) => "respond",
             Handler::Static(_) => "static",
             Handler::Proxy(_) => "proxy",
+            Handler::Rewrite(_) => "rewrite",
+            Handler::Redirect(_) => "redirect",
+            Handler::Headers(_) => "headers",
         }
+    }
+
+    /// Whether the module is a middleware (in a route's `middleware`) rather than a handler.
+    #[must_use]
+    pub fn is_middleware(&self) -> bool {
+        matches!(
+            self,
+            Handler::Rewrite(_) | Handler::Redirect(_) | Handler::Headers(_)
+        )
+    }
+}
+
+/// The `rewrite` middleware's params, as fit's `middleware/rewrite`. `regexp` and `replacement`
+/// are refused as not supported yet: akio-regex does not find where a pattern matches yet (akio
+/// API request A32).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Rewrite {
+    /// `strip_prefix`: prefixes, each starting with `/`; the first the path starts with, at a
+    /// segment boundary, is removed. None when left out.
+    pub strip_prefix: Vec<String>,
+    /// `add_prefix`: a prefix put before the path, starting with `/` and not ending with one;
+    /// empty when left out.
+    pub add_prefix: String,
+}
+
+/// The `redirect` middleware's params, as fit's `middleware/redirect`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Redirect {
+    /// `to`: where to, with `{scheme}`, `{host}`, `{path}`, `{query}` and `{uri}` standing for
+    /// the request's. Groups of `regexp` (`$1`, `${name}`) in it are refused as not supported yet
+    /// (akio API request A32); with a `regexp`, `$$` stands for `$`.
+    pub to: String,
+    /// `status`: 301, 302, 303, 307 or 308; 302 when left out.
+    pub status: u16,
+    /// `regexp`: what the escaped path must match for the request to be redirected; every
+    /// request is when empty.
+    pub regexp: String,
+}
+
+/// The `headers` middleware's params, as fit's `middleware/headers`.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Headers {
+    /// `request`: changes to the request's fields, made before the handler sees them.
+    pub request: HeaderOps,
+    /// `response`: changes to the response's fields, made just before it is sent.
+    pub response: HeaderOps,
+}
+
+/// Changes to a header, as fit's `headers.Ops`: deletions first, then fields set, then fields
+/// added. Names are as written, checked to be HTTP tokens; values are checked to hold no line
+/// break or NUL.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct HeaderOps {
+    /// `set`: fields each replacing any of the same name, sorted by name.
+    pub set: Vec<(String, String)>,
+    /// `add`: values added to fields after any already there, sorted by name.
+    pub add: Vec<(String, Vec<String>)>,
+    /// `delete`: names, or prefixes ending in `*` (`"X-Debug-*"`; `"*"` is every field).
+    pub delete: Vec<String>,
+}
+
+impl HeaderOps {
+    /// Whether there is nothing to change.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.set.is_empty() && self.add.is_empty() && self.delete.is_empty()
     }
 }
 
@@ -595,6 +716,7 @@ const CONFIG_FIELDS: &[&str] = &[
     "upstreams",
     "limits",
     "access_log",
+    "admin",
 ];
 const CONFIG_FIT_ONLY: &[&str] = &[
     "services",
@@ -602,7 +724,6 @@ const CONFIG_FIT_ONLY: &[&str] = &[
     "telemetry",
     "access",
     "engine",
-    "admin",
     "auto_https",
     "metrics",
     "pprof",
@@ -616,6 +737,24 @@ const CONFIG_FIT_ONLY: &[&str] = &[
     "sync",
     "bittorrent",
     "providers",
+];
+// I26: the Admin API's address, history and limits; its token and TLS come with I27, its
+// access lists with fit's access, a Unix socket with akio API request A23.
+const ADMIN_FIELDS: &[&str] = &["address", "history", "max_config_bytes", "max_conns"];
+const ADMIN_FIT_ONLY: &[&str] = &[
+    "mptcp",
+    "token_file",
+    "cert_file",
+    "key_file",
+    "client_ca_file",
+    "node_id",
+    "disable_dashboard",
+    "store",
+    "console",
+    "assistant",
+    "cluster",
+    "cluster_member",
+    "access",
 ];
 const LIMITS_FIELDS: &[&str] = &["max_body_bytes"];
 const LIMITS_FIT_ONLY: &[&str] = &[
@@ -643,8 +782,15 @@ const TLS_FIELDS: &[&str] = &["certificates", "client_auth", "max_version"];
 const TLS_FIT_ONLY: &[&str] = &["acme", "on_demand", "kernel_tls_offload"];
 const CERTIFICATE_FIELDS: &[&str] = &["cert_file", "key_file"];
 const CLIENT_AUTH_FIELDS: &[&str] = &["ca_files", "mode"];
-const ROUTE_FIELDS: &[&str] = &["name", "listeners", "priority", "match", "handler"];
-const ROUTE_FIT_ONLY: &[&str] = &["access", "middleware"];
+const ROUTE_FIELDS: &[&str] = &[
+    "name",
+    "listeners",
+    "priority",
+    "match",
+    "middleware",
+    "handler",
+];
+const ROUTE_FIT_ONLY: &[&str] = &["access"];
 const MATCH_FIELDS: &[&str] = &[
     "host",
     "path",
@@ -677,6 +823,26 @@ const FIT_HANDLERS: &[&str] = &[
     "whep",
     "whip",
 ];
+/// fit's middleware modules (its `http.middleware` namespace) that akit does not have yet.
+const FIT_MIDDLEWARE: &[&str] = &[
+    "basic_auth",
+    "body_limit",
+    "cache",
+    "circuit_breaker",
+    "client_cert",
+    "compress",
+    "concurrency_limit",
+    "forward_auth",
+    "jwt",
+    "rate_limit",
+    "wasm",
+];
+const REWRITE_FIELDS: &[&str] = &["strip_prefix", "add_prefix"];
+/// akio-regex answers whether a pattern matches, not where (akio API request A32).
+const REWRITE_FIT_ONLY: &[&str] = &["regexp", "replacement"];
+const REDIRECT_FIELDS: &[&str] = &["to", "status", "regexp"];
+const HEADERS_FIELDS: &[&str] = &["request", "response"];
+const HEADER_OPS_FIELDS: &[&str] = &["set", "add", "delete"];
 const RESPOND_FIELDS: &[&str] = &["status", "headers", "body"];
 const STATIC_FIELDS: &[&str] = &[
     "root",
@@ -745,6 +911,8 @@ pub(crate) struct Part {
     limits: Option<(Limits, usize)>,
     /// `access_log`, with the position of its key, when the file gives it.
     access_log: Option<(AccessLog, usize)>,
+    /// `admin`, with the position of its key, when the file gives it.
+    admin: Option<(Admin, usize)>,
     /// The position of the file's top object.
     doc_off: usize,
 }
@@ -787,6 +955,9 @@ pub(crate) fn part(d: &mut Decoder<'_>, n: &Node, file: usize) -> Option<Part> {
     let access_log = o
         .take("access_log")
         .and_then(|v| access_log(d, v, "access_log").map(|a| (a, v.off)));
+    let admin = o
+        .take("admin")
+        .and_then(|v| admin(d, v, "admin").map(|a| (a, v.off)));
     let doc_off = o.off;
     o.finish(d, CONFIG_FIELDS, CONFIG_FIT_ONLY);
     Some(Part {
@@ -796,6 +967,7 @@ pub(crate) fn part(d: &mut Decoder<'_>, n: &Node, file: usize) -> Option<Part> {
         upstreams,
         limits,
         access_log,
+        admin,
         doc_off,
     })
 }
@@ -815,6 +987,7 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
     let mut limits: Option<(Limits, usize)> = None;
     let mut first_doc: Option<(usize, usize)> = None;
     let mut access_log: Option<(AccessLog, usize)> = None;
+    let mut admin: Option<(Admin, usize)> = None;
     for (file, p) in parts.into_iter().enumerate() {
         first_doc.get_or_insert((file, p.doc_off));
         if let Some((v, off)) = p.schema_version {
@@ -883,6 +1056,27 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
                 None => access_log = Some((a, file)),
             }
         }
+        if let Some((a, off)) = p.admin {
+            match &admin {
+                Some((_, first_file)) => {
+                    let name = ds
+                        .get(*first_file)
+                        .and_then(Decoder::file)
+                        .unwrap_or_default()
+                        .to_owned();
+                    if let Some(d) = ds.get_mut(file) {
+                        d.error(
+                            off,
+                            "admin",
+                            format!(
+                                "also given in {name}: only the lists at the top of a config (listeners, routes, upstreams, services, providers) may be split across files"
+                            ),
+                        );
+                    }
+                }
+                None => admin = Some((a, file)),
+            }
+        }
         listeners.extend(p.listeners);
         routes.extend(p.routes);
         upstreams.extend(p.upstreams);
@@ -914,6 +1108,7 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
         upstreams: upstreams.into_iter().map(|a| a.v).collect(),
         limits,
         access_log: access_log.map(|(a, _)| a),
+        admin: admin.map(|(a, _)| a),
     }
 }
 
@@ -1094,6 +1289,65 @@ fn listener(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Listener> {
     })
 }
 
+/// `admin`, as fit's `config.Admin` and its `checkAdminAddress`.
+fn admin(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Admin> {
+    let mut o = d.object(n, path)?;
+    let mut a = Admin::default();
+    if let Some(v) = o.take("address") {
+        let p = o.at("address");
+        if let Some(s) = d.string(v, &p).filter(|s| !s.is_empty()) {
+            if s.starts_with("unix/") {
+                d.not_yet(v.off, &p, "a Unix socket (akio API request A23)");
+            } else if let Err(msg) = check_address(&s) {
+                d.error(v.off, &p, msg);
+            } else if !loopback_host(&s) {
+                d.error(
+                    v.off,
+                    &p,
+                    format!(
+                        "{s:?} is not a loopback address: the Admin API can change everything \
+                         akit serves, so listen on localhost, 127.0.0.1 or [::1]; off loopback it \
+                         needs a token (token_file) and TLS (cert_file and key_file), which akit \
+                         does not support yet"
+                    ),
+                );
+            }
+            a.address = s;
+        }
+    }
+    // fit's ints, at least 0; 0 is the default.
+    fn count(o: &mut Obj<'_>, d: &mut Decoder<'_>, key: &str, slot: &mut usize) {
+        if let Some(v) = o.take(key) {
+            if let Some(n) = d
+                .int(v, &o.at(key), 0, i64::MAX)
+                .and_then(|n| usize::try_from(n).ok())
+                .filter(|n| *n != 0)
+            {
+                *slot = n;
+            }
+        }
+    }
+    count(&mut o, d, "history", &mut a.history);
+    count(&mut o, d, "max_config_bytes", &mut a.max_config_bytes);
+    count(&mut o, d, "max_conns", &mut a.max_conns);
+    o.finish(d, ADMIN_FIELDS, ADMIN_FIT_ONLY);
+    Some(a)
+}
+
+/// Whether `address`'s host (it is a host and port, [`check_address`]) is `localhost` or a
+/// loopback address, as fit's `isLoopback`.
+fn loopback_host(address: &str) -> bool {
+    let host = address
+        .rsplit_once(':')
+        .map_or(address, |(h, _)| h)
+        .trim_start_matches('[')
+        .trim_end_matches(']');
+    host.eq_ignore_ascii_case("localhost")
+        || host
+            .parse::<IpAddr>()
+            .is_ok_and(|ip| unmap(ip).is_loopback())
+}
+
 fn limits(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Limits> {
     let mut o = d.object(n, path)?;
     let mut l = Limits::default();
@@ -1242,6 +1496,10 @@ fn route(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Route> {
     let matcher = o
         .take("match")
         .and_then(|v| route_match(d, v, &o.at("match")));
+    let middleware = o
+        .take("middleware")
+        .map(|v| d.array(v, &o.at("middleware"), middleware))
+        .unwrap_or_default();
     let handler = o
         .require(d, "handler")
         .and_then(|v| handler(d, v, &o.at("handler")));
@@ -1251,6 +1509,7 @@ fn route(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Route> {
         listeners,
         priority,
         matcher,
+        middleware,
         handler: handler?,
     })
 }
@@ -1403,6 +1662,270 @@ fn handler(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Handler> {
             None
         }
     }
+}
+
+/// One of a route's `middleware`: a module reference, as a handler's, naming a middleware module.
+fn middleware(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Handler> {
+    let mut o = d.object(n, path)?;
+    let module = o
+        .require(d, "module")
+        .and_then(|v| d.string(v, &o.at("module")).map(|s| (v.off, s)));
+    let params = o.take("params");
+    let params_path = o.at("params");
+    let module_path = o.at("module");
+    o.finish(d, MODULE_FIELDS, &[]);
+    let (off, module) = module?;
+    match module.as_str() {
+        "" => {
+            d.error(off, &module_path, "the module name is empty");
+            None
+        }
+        "rewrite" => rewrite(d, params, off, &params_path).map(Handler::Rewrite),
+        "redirect" => redirect(d, params, off, &params_path).map(Handler::Redirect),
+        "headers" => headers(d, params, off, &params_path).map(Handler::Headers),
+        m if FIT_MIDDLEWARE.contains(&m) => {
+            d.not_yet(off, &module_path, &format!("the {m:?} middleware"));
+            None
+        }
+        m => {
+            d.error(
+                off,
+                &module_path,
+                format!("there is no middleware module {m:?}"),
+            );
+            None
+        }
+    }
+}
+
+/// The `rewrite` middleware's params, checked as fit's `Rewrite.Provision` checks them.
+fn rewrite(d: &mut Decoder<'_>, params: Option<&Node>, off: usize, path: &str) -> Option<Rewrite> {
+    let mut r = Rewrite::default();
+    let mut ok = true;
+    let mut at = off;
+    let mut regexp = false;
+    if let Some(n) = params {
+        let mut o: Obj<'_> = d.object(n, path)?;
+        at = o.off;
+        if let Some(v) = o.take("strip_prefix") {
+            let p = o.at("strip_prefix");
+            for (off, s) in d.strings(v, &p) {
+                if !s.starts_with('/') {
+                    d.error(off, &p, format!("{s:?} does not start with '/'"));
+                    ok = false;
+                }
+                r.strip_prefix.push(s);
+            }
+        }
+        if let Some(v) = o.take("add_prefix") {
+            let p = o.at("add_prefix");
+            r.add_prefix = d.string(v, &p).unwrap_or_default();
+            let a = &r.add_prefix;
+            if !a.is_empty() && (!a.starts_with('/') || a.ends_with('/')) {
+                d.error(
+                    v.off,
+                    &p,
+                    format!("{a:?} does not start with '/', or ends with one"),
+                );
+                ok = false;
+            }
+        }
+        // Refused as not supported yet, naming the module (the redirect's regexp is read); they
+        // still count as what the rewrite does.
+        for field in REWRITE_FIT_ONLY {
+            if let Some(v) = o.take(field) {
+                regexp = true;
+                d.not_yet(
+                    v.off,
+                    &o.at(field),
+                    &format!(
+                        "the \"rewrite\" middleware's {field}: akio-regex does not find where a pattern matches yet (akio API request A32)"
+                    ),
+                );
+            }
+        }
+        o.finish(d, REWRITE_FIELDS, REWRITE_FIT_ONLY);
+    }
+    if ok && !regexp && r.strip_prefix.is_empty() && r.add_prefix.is_empty() {
+        d.error(at, path, "strip_prefix, regexp or add_prefix is needed");
+        ok = false;
+    }
+    ok.then_some(r)
+}
+
+/// The `redirect` middleware's params, checked as fit's `Redirect.Provision` checks them.
+fn redirect(
+    d: &mut Decoder<'_>,
+    params: Option<&Node>,
+    off: usize,
+    path: &str,
+) -> Option<Redirect> {
+    let Some(n) = params else {
+        d.error(
+            off,
+            &crate::error::join_field(path, "to"),
+            "missing required field",
+        );
+        return None;
+    };
+    let mut o: Obj<'_> = d.object(n, path)?;
+    let mut ok = true;
+    let to = o
+        .require(d, "to")
+        .and_then(|v| d.string(v, &o.at("to")).map(|s| (v.off, s)));
+    let mut status = 302;
+    if let Some(v) = o.take("status") {
+        let p = o.at("status");
+        match d.int(v, &p, i64::MIN, i64::MAX) {
+            Some(0) => {}
+            Some(s @ (301 | 302 | 303 | 307 | 308)) => status = u16::try_from(s).unwrap_or(302),
+            Some(s) => {
+                d.error(
+                    v.off,
+                    &p,
+                    format!("{s} is not a redirect status: use 301, 302, 303, 307 or 308"),
+                );
+                ok = false;
+            }
+            None => ok = false,
+        }
+    }
+    let mut regexp = String::new();
+    if let Some(v) = o.take("regexp") {
+        let p = o.at("regexp");
+        regexp = d.string(v, &p).unwrap_or_default();
+        if !regexp.is_empty() {
+            if let Err(e) = akit_router::regexp(regexp.as_bytes()) {
+                d.error(v.off, &p, e.to_string());
+                ok = false;
+            }
+        }
+    }
+    let to_path = o.at("to");
+    o.finish(d, REDIRECT_FIELDS, &[]);
+    let (to_off, to) = to?;
+    if to.contains(['\r', '\n', '\0']) {
+        d.error(to_off, &to_path, "the URL holds a line break or NUL");
+        ok = false;
+    } else if !regexp.is_empty() && names_a_group(&to) {
+        d.not_yet(
+            to_off,
+            &to_path,
+            "a group of regexp ($1, ${name}) in to: akio-regex does not capture groups yet (akio API request A32)",
+        );
+        ok = false;
+    }
+    ok.then_some(Redirect { to, status, regexp })
+}
+
+/// Whether the template `to` names a group of a regexp as Go's `Regexp.Expand` reads it: a `$`
+/// (not `$$`, which stands for `$`) followed by a name of letters, digits and `_`, or by such a
+/// name in braces. Any other `$` stands for itself.
+fn names_a_group(to: &str) -> bool {
+    let mut rest = to;
+    while let Some(i) = rest.find('$') {
+        let after = rest.get(i.saturating_add(1)..).unwrap_or("");
+        if let Some(r) = after.strip_prefix('$') {
+            rest = r;
+            continue;
+        }
+        let (brace, name) = match after.strip_prefix('{') {
+            Some(n) => (true, n),
+            None => (false, after),
+        };
+        let len = name
+            .find(|c: char| !(c.is_alphanumeric() || c == '_'))
+            .unwrap_or(name.len());
+        if len > 0 && (!brace || name.get(len..).is_some_and(|r| r.starts_with('}'))) {
+            return true;
+        }
+        rest = after;
+    }
+    false
+}
+
+/// The `headers` middleware's params, checked as fit's `Headers.Provision` checks them.
+fn headers(d: &mut Decoder<'_>, params: Option<&Node>, off: usize, path: &str) -> Option<Headers> {
+    let mut h = Headers::default();
+    let mut ok = true;
+    let mut at = off;
+    if let Some(n) = params {
+        let mut o: Obj<'_> = d.object(n, path)?;
+        at = o.off;
+        if let Some(v) = o.take("request") {
+            h.request = header_ops(d, v, &o.at("request"), &mut ok);
+        }
+        if let Some(v) = o.take("response") {
+            h.response = header_ops(d, v, &o.at("response"), &mut ok);
+        }
+        o.finish(d, HEADERS_FIELDS, &[]);
+    }
+    if ok && h.request.is_empty() && h.response.is_empty() {
+        d.error(at, path, "request or response changes are needed");
+        ok = false;
+    }
+    ok.then_some(h)
+}
+
+/// One side's changes of the `headers` middleware; problems are reported at `path`, as fit
+/// reports them at `request` or `response`, and clear `ok`.
+fn header_ops(d: &mut Decoder<'_>, n: &Node, path: &str, ok: &mut bool) -> HeaderOps {
+    let mut ops = HeaderOps::default();
+    let Some(mut o) = d.object(n, path) else {
+        *ok = false;
+        return ops;
+    };
+    if let Some(v) = o.take("delete") {
+        for (off, name) in d.strings(v, &o.at("delete")) {
+            let bad = match name.strip_suffix('*') {
+                Some(prefix) => (!prefix.is_empty() && !is_token(prefix))
+                    .then(|| format!("{name:?} is not a valid header name or prefix")),
+                None => (!is_token(&name)).then(|| format!("{name:?} is not a valid header name")),
+            };
+            if let Some(msg) = bad {
+                d.error(off, path, msg);
+                *ok = false;
+            }
+            ops.delete.push(name);
+        }
+    }
+    let check = |d: &mut Decoder<'_>, off: usize, name: &str, value: &str| {
+        if !is_token(name) {
+            d.error(off, path, format!("{name:?} is not a valid header name"));
+            false
+        } else if value.contains(['\r', '\n', '\0']) {
+            d.error(
+                off,
+                path,
+                format!("the value of {name} holds a line break or NUL"),
+            );
+            false
+        } else {
+            true
+        }
+    };
+    if let Some(v) = o.take("set") {
+        let mut set = d.string_map(v, &o.at("set"));
+        set.sort_by(|a, b| a.1.cmp(&b.1));
+        for (off, name, value) in set {
+            *ok &= check(d, off, &name, &value);
+            ops.set.push((name, value));
+        }
+    }
+    if let Some(v) = o.take("add") {
+        let at = o.at("add");
+        let mut add = string_lists(d, v, &at, |_| None);
+        add.sort_by(|a, b| a.0.cmp(&b.0));
+        for (name, values) in add {
+            for value in &values {
+                // The position of the object: string_lists keeps no positions of its keys.
+                *ok &= check(d, v.off, &name, value);
+            }
+            ops.add.push((name, values));
+        }
+    }
+    o.finish(d, HEADER_OPS_FIELDS, &[]);
+    ops
 }
 
 fn respond(d: &mut Decoder<'_>, params: Option<&Node>, path: &str) -> Option<Respond> {

@@ -124,7 +124,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I24 | The YAML reader | I02 | done |
 | I25 | M1 conformance and report | I09–I24 | todo |
 | **M2** | | | |
-| I26 | Admin API I: load, read, versions | I22 | todo |
+| I26 | Admin API I: load, read, versions | I22 | done |
 | I27 | Admin API II: patch, rollback, auth | I26 | todo |
 | I28 | Listeners diffed at run time | I26, A1 | todo |
 | I29 | File provider | I26 | todo |
@@ -139,7 +139,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I38 | M2 exit: churn test and staging certificate | I26–I37 | todo |
 | **M3** | | | |
 | I39 | Matchers v2 and expressions | I11 | done |
-| I40 | Rewrites, redirects, headers | I39 | todo |
+| I40 | Rewrites, redirects, headers | I39 | done |
 | I41 | Rate, concurrency and size limits | I39 | todo |
 | I42 | Basic auth and mTLS | I39 | todo |
 | I43 | ForwardAuth | I42 | todo |
@@ -211,7 +211,8 @@ commit and result.
 | Certificates chosen per handshake (the resolver reading the graph) | I30 | no | no (built, not measured) | Full TLS handshakes a second with one and ten certificates, against I09's `sni_cert` and fit. |
 | Prometheus metrics | I37 | no | no (not built yet) | Same-run A/B with metrics on and off. |
 | Matchers v2 and expressions | I39 | no | no (built, not measured) | A micro-benchmark of `find_request` with matchers, expressions and path regexps (no allocation, `tests/no_alloc.rs`); same-run A/B against I39's base on the fixed scenario (one route, no matchers: within noise expected). |
-| Middlewares (rewrites, headers, limits, auth, retries and the rest) | I40–I48 | no | no (not built yet) | I56 benchmarks every middleware; same-run A/B of each on the proxy scenario. |
+| Rewrites, redirects, headers | I40 | no | no (built, not measured) | Same-run A/B on the proxy scenario of a route with `headers` (request and response changes) and `rewrite` against the same route without them; the cost per request of the response filter (a boxed closure and an `Arc` clone) and of the request fields kept in a context local (the stopgap until akio API request A33). |
+| Middlewares (limits, auth, retries and the rest) | I41–I48 | no | no (not built yet) | I56 benchmarks every middleware; same-run A/B of each on the proxy scenario. |
 | Compression | I47 | no | no (not built yet) | Against fit, each encoding, as I47 asks. |
 | WebSocket and gRPC proxying | I49, I50 | no | no (not built yet) | Messages a second and memory per connection against fit. |
 | TCP and UDP proxying, SNI routing, many protocols on one port | I51–I53 | no | no (not built yet) | Against fit and nginx's `stream`, as I51 asks; the cost of sniffing on a shared port. |
@@ -492,6 +493,9 @@ Split from I07 so that the half that needs no config model runs beside I02.
 - **Done when**: fit's Admin API tests for these paths, ported, pass.
 - **Touches**: `akit-admin`.
 - **fit**: `admin`, decision 005.
+- **Done** (decision 006): on an akio engine of its own, loads applied by the control thread
+  through I22's reload; a Unix socket waits on akio A23, closing a connection after a refused body
+  on A24.
 
 ### I27 Admin API II: patch, rollback, auth
 

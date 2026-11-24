@@ -297,8 +297,10 @@ pub(crate) fn one_field(name: &[u8], values: &[Box<[u8]>]) -> Box<[Field]> {
     Box::new([Field::from_bytes(name, values)])
 }
 
-/// Compiles a path regexp as fit's `PathRegexp` does, with Go's ASCII classes.
-pub(crate) fn regexp(s: &[u8]) -> Result<Regex, Error> {
+/// Compiles a path regexp as fit's `PathRegexp` does, with Go's ASCII classes; also what fit's
+/// `redirect` middleware compiles its `regexp` with (I40). The error says, as fit's, that `s` is
+/// not a valid regular expression, and why.
+pub fn regexp(s: &[u8]) -> Result<Regex, Error> {
     let bad = |why: &dyn fmt::Display| {
         Error(format!(
             "{} is not a valid regular expression: {why}",
