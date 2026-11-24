@@ -148,7 +148,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I44 | JWT and JWKS | I42 | todo |
 | I45 | Retries, circuit breakers, route timeouts | I17 | done |
 | I46 | Weighted services, mirroring, failover | I45 | todo |
-| I47 | Compression | I16 | todo |
+| I47 | Compression | I16 | done |
 | I48 | The rest of fit's middlewares | I40 | todo |
 | I49 | WebSocket proxying | I17 | todo |
 | I50 | gRPC proxying | I18 | todo |
@@ -223,7 +223,7 @@ commit and result.
 | Forward auth | I43 | no | no (built, not measured) | Same-run A/B on the proxy scenario of a route with `forward_auth` against a fast local auth service, against the route without it, over HTTP/1.1 and h2: the cost of the check (the auth request's fields built, a suspension, one exchange on the auth upstream's pool, the resume on the answer's I/O thread); latency and memory with thousands of requests waiting on a slow auth service, and the fast route's latency meanwhile. |
 | Retries, circuit breakers, route timeouts | I45 | no | no (built, not measured) | Same-run A/B on the proxy scenario of a route with `retry` and with `circuit_breaker` against the route without them, upstreams healthy: per request, the budget's read (a deposit into a full budget writes nothing), the template kept for a replay (a clone of the outgoing fields and of a body up to 64 KiB, a boxed `Again`), the breaker's boxed response filter and its two atomic adds on shared step counters, with 64 threads (the counters' contention); and with an upstream failing half its requests: retries a second against the budget, and the breaker's open path. |
 | Middlewares (retries and the rest) | I44–I48 | no | no (not built yet) | I56 benchmarks every middleware; same-run A/B of each on the proxy scenario. |
-| Compression | I47 | no | no (not built yet) | Against fit, each encoding, as I47 asks. |
+| Compression | I47 | no | no (built, not measured) | Against fit, each encoding, as I47 asks: the proxy scenario with `compress` in front, a whole JSON body and a stream of server-sent events, over HTTP/1.1 and h2, per encoding at fit's default levels (responses a second, server CPU, bytes on the wire); the cost of the filter on responses it leaves alone (an image) against no middleware; the memory of held compressed streams (1,000 at once); the static handler's copies against fit's (`compress` on a file kept in memory). |
 | WebSocket and gRPC proxying | I49, I50 | no | no (not built yet) | Messages a second and memory per connection against fit. |
 | TCP and UDP proxying, SNI routing, many protocols on one port | I51–I53 | no | no (I51 built, not measured; I52, I53 not built yet) | Against fit and nginx's `stream`, as I51 asks: TCP throughput (fit's `BenchmarkTCPProxy`, 256 KB echoed at a time, direct and through akit), connections a second, memory per idle connection; UDP datagrams a second and sessions at once; the per-service idle sweep on akit's timer thread with 10,000 connections (the stopgap for akio A78); the cost of sniffing on a shared port (I53). |
 | Response cache | I67, I68 | no | no (not built yet) | Hits from memory and disk against fit. |

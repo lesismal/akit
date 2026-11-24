@@ -67,6 +67,9 @@ first; its status here records the branch, then the akio commit akit pins.
 | A75 | A request whose body streams suspended, its body's reads held until it is resumed | requested (I43) | 5, 7, 8 | I42, I43, I44 |
 | A78 | An idle timeout per connection, TCP or a UDP peer, set by its handler | requested (I51) | 10, 11 | I51, I55 |
 | A79 | `Engine::dial` and `dial_udp` with a connect timeout of their own | requested (I51) | 10 | I51, I54, I55 |
+| A90 | A streamed response's coding set by a response filter of the caller's own, and a value kept until the response is sent | in akio's main (`c5cf4353`), pinned | 8, 11 | I47 |
+| A91 | `Files` keeping compressed copies of the files it holds in memory | in akio's main (`c5cf4353`), pinned | 4, 12 | I47 |
+| A92 | A body sent from a file on disk encoded by a stream coding | requested (I47) | 1, 5 | I47 |
 
 ## A1 TCP listeners on a running engine
 
@@ -1215,3 +1218,64 @@ on_error)`, and `HappyEyeballs::dial` passing its `connect_timeout` to a lone ad
 **How akit uses it.** `akit_l4` dials each address within its upstream's `connect_timeout`. Until
 then the engine's connect timeout is the shortest of the upstreams' (`akit_listener::engine`, as
 for A12), and a host name's addresses are raced with `HappyEyeballs` at the upstream's timeout.
+
+## A90 A streamed response's coding set by a filter of the caller's own
+
+**Problem.** fit's `compress` middleware (I47) compresses a streamed response (a proxied one) as it
+is written, with its own negotiation (q values among the encodings it offers, in their order),
+its own eligibility (every status with a body but 206, `no-transform`, `Content-Range`, a
+declared length below `min_bytes`), weak tags, and a bound on the responses compressed at once
+(`max_in_flight`), each given back when its response ends. akio's `compress` middleware has its
+own choices, which differ, and only it can give a streamed body a coding.
+
+**Evidence.** At `4f7169c4`: `crates/akio-http/src/message.rs` (`Response::stream_coding` and
+`streaming` are `pub(crate)`), `crates/akio-http/src/coding.rs` (`StreamCoding` is
+`pub(crate)`), `crates/akio-http/src/middleware.rs` (`compress`'s filter sets them). Nothing tells
+a filter when a streamed response's body ends.
+
+**Suggested API.** A public `Coding` (gzip, deflate, br, zstd with levels and windows),
+`Response::is_streaming`, `Response::set_stream_coding(Option<Coding>)`, and
+`Response::keep_until_sent(value)`: a value kept with the response until it is sent (for a
+streamed one, until its `BodyStream` is finished or dropped), whose drop gives a place back.
+
+**How akit uses it.** `akit-middleware`'s `compress` filter picks the encoding as fit's does, sets
+the coding on a streamed head and keeps its place's guard there; a whole body it compresses itself
+with akio's compressors. **Done** on akio's branch `claude/a90-a91-compress` (`b5cd3f25`,
+ADR-112), not merged yet.
+
+## A91 `Files` keeping compressed copies of files held in memory
+
+**Problem.** fit's static handler's `compress` keeps a file it holds in memory compressed too, with
+each encoding a client asks for, made once on its file pool at a level that makes it small and
+served from then on, so that no request compresses it again.
+
+**Evidence.** At `4f7169c4`: `crates/akio-http/src/files.rs` serves compressed twins from disk
+(`twins`, ADR-100) and keeps small files in memory (`max_cached_bytes`), but makes no copies.
+
+**Suggested API.** `Files::compress(&["br", "zstd", "gzip"])`: a copy per coding of a file held in
+memory, large enough and of a compressible type, made on the disk pool the first time a client
+prefers that coding, kept with the file's entry; its own tag, no ranges; twins first.
+
+**How akit uses it.** The `static` handler passes its `compress` to it. **Done** on akio's branch
+`claude/a90-a91-compress` (`b5cd3f25`, ADR-112), not merged yet. Not done: counting the copies in a
+bound on the cache's memory (A15).
+
+## A92 A body sent from a file on disk encoded by a stream coding
+
+**Problem.** fit's `compress` middleware compresses whatever the handler writes, a large static
+file read from disk included. akio sends a file body (`Response::file`, for files above
+`max_cached_bytes`) with `sendfile(2)` or by reading it on the transport's side; a filter cannot
+give it a coding, and the file cannot be read on the I/O thread to encode it (rule 1).
+
+**Evidence.** At `4f7169c4`: `crates/akio-http/src/message.rs` (`FileBody`), `context.rs` and
+`h2.rs` (file bodies sent as they are); `Response::set_stream_coding` (A90) applies to streamed
+bodies only.
+
+**Suggested API.** A file body with a stream coding set is read in pieces on the disk pool and
+encoded there, its pieces written as a streamed body's, under the connection's backpressure (the
+next piece read once the queue drains), its `Content-Length` dropped.
+
+**How akit uses it.** The `compress` middleware sets the coding on a file body as on a streamed one.
+Until then a body from disk goes uncompressed, which the progress files list as a difference from
+fit.
+

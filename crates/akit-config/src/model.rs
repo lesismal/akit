@@ -760,6 +760,8 @@ pub enum Handler {
     ForwardAuth(ForwardAuth),
     /// The `circuit_breaker` middleware: requests stopped while too many fail (I45).
     CircuitBreaker(CircuitBreaker),
+    /// The `compress` middleware: responses compressed as they are written (I47).
+    Compress(Compress),
 }
 
 impl Handler {
@@ -780,6 +782,7 @@ impl Handler {
             Handler::ClientCert(_) => "client_cert",
             Handler::ForwardAuth(_) => "forward_auth",
             Handler::CircuitBreaker(_) => "circuit_breaker",
+            Handler::Compress(_) => "compress",
         }
     }
 
@@ -798,6 +801,7 @@ impl Handler {
                 | Handler::ClientCert(_)
                 | Handler::ForwardAuth(_)
                 | Handler::CircuitBreaker(_)
+                | Handler::Compress(_)
         )
     }
 }
@@ -921,6 +925,32 @@ pub struct ConcurrencyLimit {
     /// `status`: the status of a request refused; 429 when left out or 0.
     pub status: u16,
 }
+
+/// The `compress` middleware's params, as fit's `middleware/compress`, its levels worked out as
+/// its `Provision` works them out.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Compress {
+    /// `encodings`: those offered, in order of preference among encodings the client prefers as
+    /// much; zstd, gzip and br when left out.
+    pub encodings: Vec<Encoding>,
+    /// gzip's level, 1 to 9: `gzip_level`, else the one `level` names.
+    pub gzip_level: u32,
+    /// brotli's quality, 1 to 11: `brotli_level`, else the one `level` names.
+    pub brotli_level: u32,
+    /// zstd's level, 1 to 22: `zstd_level`, else the one `level` names.
+    pub zstd_level: u32,
+    /// `min_bytes` (once `min_length`): the shortest declared body compressed,
+    /// [`DEFAULT_COMPRESS_MIN_BYTES`] when left out or 0.
+    pub min_bytes: u64,
+    /// `max_in_flight`: how many responses are compressed at once, past which they go
+    /// uncompressed; [`DEFAULT_COMPRESS_MAX_IN_FLIGHT`] when left out or 0.
+    pub max_in_flight: u64,
+}
+
+/// fit's default `compress` `min_bytes`: a body below it goes in one packet either way.
+pub const DEFAULT_COMPRESS_MIN_BYTES: u64 = 1400;
+/// fit's default `compress` `max_in_flight`.
+pub const DEFAULT_COMPRESS_MAX_IN_FLIGHT: u64 = 1024;
 
 /// The `body_limit` middleware's params, as fit's `middleware/limit` `Body`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1068,8 +1098,8 @@ pub struct Respond {
 }
 
 /// The `static` handler's params, as fit's `handler/static`. akit reads the ones akio-http's
-/// `Files` can act on; the rest are refused as not supported yet (akio API requests A14 and A15,
-/// and I47 for `compress`, bring them).
+/// `Files` can act on; the rest are refused as not supported yet (akio API requests A14 and A15
+/// bring them).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Static {
     /// `root`: the directory files are served from. Required; that it is a directory is checked
@@ -1092,6 +1122,9 @@ pub struct Static {
     /// `name.gz`) are served in place of a file to a client that accepts one, in the order
     /// written. None when left out.
     pub precompressed: Vec<Encoding>,
+    /// `compress`: the encodings a file kept in memory is also kept compressed with, made once
+    /// and served to the clients that prefer one, in the order written. None when left out.
+    pub compress: Vec<Encoding>,
     /// `strip_prefix`: a prefix removed from the request path before it is looked up under the
     /// root; a request whose path lacks it is answered 404. Empty when left out.
     pub strip_prefix: String,
@@ -1107,7 +1140,8 @@ pub struct Static {
     pub browse_max_entries: usize,
 }
 
-/// A content coding a file's compressed twin is in: `precompressed`'s values.
+/// A content coding: of a file's compressed twin (`precompressed`), a compressed copy
+/// (`static`'s `compress`) or a response (the `compress` middleware's `encodings`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Encoding {
     /// `br`: the twin `name.br`.
@@ -1461,7 +1495,7 @@ const FIT_HANDLERS: &[&str] = &[
     "whip",
 ];
 /// fit's middleware modules (its `http.middleware` namespace) that akit does not have yet.
-const FIT_MIDDLEWARE: &[&str] = &["cache", "compress", "jwt", "wasm"];
+const FIT_MIDDLEWARE: &[&str] = &["cache", "jwt", "wasm"];
 const REWRITE_FIELDS: &[&str] = &["strip_prefix", "add_prefix"];
 /// akio-regex answers whether a pattern matches, not where (akio API request A32).
 const REWRITE_FIT_ONLY: &[&str] = &["regexp", "replacement"];
@@ -1479,6 +1513,16 @@ const RATE_LIMIT_FIELDS: &[&str] = &[
 ];
 const CONCURRENCY_LIMIT_FIELDS: &[&str] = &["max", "status"];
 const BODY_LIMIT_FIELDS: &[&str] = &["max_bytes"];
+const COMPRESS_FIELDS: &[&str] = &[
+    "encodings",
+    "level",
+    "gzip_level",
+    "brotli_level",
+    "zstd_level",
+    "min_bytes",
+    "min_length",
+    "max_in_flight",
+];
 const BASIC_AUTH_FIELDS: &[&str] = &["realm", "users", "user_header", "forward_authorization"];
 const BASIC_USER_FIELDS: &[&str] = &["username", "password_hash"];
 const CLIENT_CERT_FIELDS: &[&str] = &["optional", "subject_header"];
@@ -1508,14 +1552,14 @@ const STATIC_FIELDS: &[&str] = &[
     "disk_io",
     "check_interval",
     "precompressed",
+    "compress",
     "browse",
     "browse_max_entries",
     "strip_prefix",
     "try_files",
 ];
-// max_cache_bytes and default_type wait on akio API requests A15 and A14; compress (copies
-// compressed in memory) on I47's compression.
-const STATIC_FIT_ONLY: &[&str] = &["max_cache_bytes", "compress", "default_type"];
+// max_cache_bytes and default_type wait on akio API requests A15 and A14.
+const STATIC_FIT_ONLY: &[&str] = &["max_cache_bytes", "default_type"];
 const PROXY_FIELDS: &[&str] = &[
     "upstream",
     "trusted_proxies",
@@ -2704,6 +2748,7 @@ fn middleware(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Handler> {
         "client_cert" => client_cert(d, params, &params_path).map(Handler::ClientCert),
         "forward_auth" => forward_auth(d, params, off, &params_path).map(Handler::ForwardAuth),
         "circuit_breaker" => circuit_breaker(d, params, &params_path).map(Handler::CircuitBreaker),
+        "compress" => compress(d, params, &params_path).map(Handler::Compress),
         m if FIT_MIDDLEWARE.contains(&m) => {
             d.not_yet(off, &module_path, &format!("the {m:?} middleware"));
             None
@@ -3108,6 +3153,141 @@ fn concurrency_limit(
     o.finish(d, CONCURRENCY_LIMIT_FIELDS, &[]);
     let max = max?;
     ok.then_some(ConcurrencyLimit { max, status })
+}
+
+/// A list of encodings at `p`, each one of `br`, `zstd` and `gzip`; `once` refuses one listed
+/// twice, as fit's `compress` does.
+fn encodings(d: &mut Decoder<'_>, v: &Node, p: &str, once: bool) -> Vec<Encoding> {
+    let mut list: Vec<Encoding> = Vec::new();
+    for (i, (off, name)) in d.strings(v, p).into_iter().enumerate() {
+        let at = crate::error::join_index(p, i);
+        let e = match name.as_str() {
+            "br" => Encoding::Br,
+            "zstd" => Encoding::Zstd,
+            "gzip" => Encoding::Gzip,
+            _ => {
+                d.error(
+                    off,
+                    &at,
+                    format!("{name:?} is not one of \"br\", \"zstd\", \"gzip\""),
+                );
+                continue;
+            }
+        };
+        if once && list.contains(&e) {
+            d.error(off, &at, format!("{name:?} is listed twice"));
+            continue;
+        }
+        list.push(e);
+    }
+    list
+}
+
+/// The `compress` middleware's params, checked and its levels worked out as fit's
+/// `Compress.Provision` does.
+fn compress(d: &mut Decoder<'_>, params: Option<&Node>, path: &str) -> Option<Compress> {
+    let mut c = Compress {
+        encodings: vec![Encoding::Zstd, Encoding::Gzip, Encoding::Br],
+        gzip_level: 1,
+        brotli_level: 1,
+        zstd_level: 1,
+        min_bytes: DEFAULT_COMPRESS_MIN_BYTES,
+        max_in_flight: DEFAULT_COMPRESS_MAX_IN_FLIGHT,
+    };
+    let Some(n) = params else {
+        return Some(c);
+    };
+    let mut o = d.object(n, path)?;
+    let mut ok = true;
+    if let Some(v) = o.take("encodings") {
+        let list = encodings(d, v, &o.at("encodings"), true);
+        if !list.is_empty() {
+            c.encodings = list;
+        }
+    }
+    // fastest, default and better, as gzip's, brotli's and zstd's levels.
+    let mut named = [1, 1, 1];
+    if let Some(v) = o.take("level") {
+        match d.string(v, &o.at("level")).as_deref() {
+            None => ok = false,
+            Some("fastest") => {}
+            Some("default") => named = [5, 4, 3],
+            Some("better") => named = [7, 6, 6],
+            Some(other) => {
+                d.error(
+                    v.off,
+                    &o.at("level"),
+                    format!("{other:?} is not one of \"fastest\", \"default\", \"better\""),
+                );
+                ok = false;
+            }
+        }
+    }
+    c.gzip_level = compress_level(d, &mut o, "gzip_level", 9, named[0], &mut ok);
+    c.brotli_level = compress_level(d, &mut o, "brotli_level", 11, named[1], &mut ok);
+    c.zstd_level = compress_level(d, &mut o, "zstd_level", 22, named[2], &mut ok);
+    let min_bytes = positive(d, &mut o, "min_bytes", 0, &mut ok);
+    let min_length = positive(d, &mut o, "min_length", 0, &mut ok);
+    if let (Some(_), Some(_)) = (min_bytes, min_length) {
+        d.error(
+            n.off,
+            &o.at("min_length"),
+            "renamed \"min_bytes\", which is also given",
+        );
+        ok = false;
+    }
+    if let Some(m) = min_bytes.or(min_length) {
+        c.min_bytes = m;
+    }
+    if let Some(m) = positive(d, &mut o, "max_in_flight", 0, &mut ok) {
+        c.max_in_flight = m;
+    }
+    o.finish(d, COMPRESS_FIELDS, &[]);
+    ok.then_some(c)
+}
+
+/// One of the `compress` middleware's levels by number, 1 to `max`: `named` (the one `level`
+/// gives it) when left out or 0.
+fn compress_level(
+    d: &mut Decoder<'_>,
+    o: &mut Obj<'_>,
+    key: &str,
+    max: i64,
+    named: u32,
+    ok: &mut bool,
+) -> u32 {
+    let Some(v) = o.take(key) else {
+        return named;
+    };
+    match d
+        .int(v, &o.at(key), 0, max)
+        .and_then(|n| u32::try_from(n).ok())
+    {
+        Some(0) => named,
+        Some(n) => n,
+        None => {
+            *ok = false;
+            named
+        }
+    }
+}
+
+/// A count of at least `min`; `None` when left out or 0, for the default.
+fn positive(
+    d: &mut Decoder<'_>,
+    o: &mut Obj<'_>,
+    key: &str,
+    min: i64,
+    ok: &mut bool,
+) -> Option<u64> {
+    let v = o.take(key)?;
+    let n = d
+        .int(v, &o.at(key), min, i64::MAX)
+        .and_then(|n| u64::try_from(n).ok());
+    if n.is_none() {
+        *ok = false;
+    }
+    n.filter(|n| *n != 0)
 }
 
 /// The `body_limit` middleware's params.
@@ -3541,26 +3721,11 @@ fn static_files(
     };
     let precompressed = o
         .take("precompressed")
-        .map(|v| {
-            let p = o.at("precompressed");
-            d.strings(v, &p)
-                .into_iter()
-                .enumerate()
-                .filter_map(|(i, (off, name))| match name.as_str() {
-                    "br" => Some(Encoding::Br),
-                    "zstd" => Some(Encoding::Zstd),
-                    "gzip" => Some(Encoding::Gzip),
-                    _ => {
-                        d.error(
-                            off,
-                            &crate::error::join_index(&p, i),
-                            format!("{name:?} is not one of \"br\", \"zstd\", \"gzip\""),
-                        );
-                        None
-                    }
-                })
-                .collect()
-        })
+        .map(|v| encodings(d, v, &o.at("precompressed"), false))
+        .unwrap_or_default();
+    let compress = o
+        .take("compress")
+        .map(|v| encodings(d, v, &o.at("compress"), true))
         .unwrap_or_default();
     let mut try_files = None;
     if let Some(v) = o.take("try_files") {
@@ -3625,6 +3790,7 @@ fn static_files(
         dotfiles,
         check_interval,
         precompressed,
+        compress,
         strip_prefix,
         try_files,
         browse,

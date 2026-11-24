@@ -255,6 +255,23 @@ routes[].middleware[]<forward_auth>.params.request_headers
 routes[].middleware[]<forward_auth>.params.copy_headers
 routes[].middleware[]<forward_auth>.params.timeout
 
+# I47: compress, responses compressed with zstd, brotli or gzip as they are written: a streamed
+# (proxied) body write by write, flushed, by akio's encoder (ADR-112), a whole one whole; fit's
+# negotiation, eligibility and max_in_flight. A body akio sends from disk (a static file larger
+# than max_file_bytes) goes uncompressed (akio API request A92). The static handler's compress
+# keeps copies of files held in memory, made once on akio's disk pool (A91).
+routes[].middleware[]<compress>
+routes[].middleware[]<compress>.params
+routes[].middleware[]<compress>.params.encodings
+routes[].middleware[]<compress>.params.level
+routes[].middleware[]<compress>.params.gzip_level
+routes[].middleware[]<compress>.params.brotli_level
+routes[].middleware[]<compress>.params.zstd_level
+routes[].middleware[]<compress>.params.min_bytes
+routes[].middleware[]<compress>.params.min_length
+routes[].middleware[]<compress>.params.max_in_flight
+routes[].handler<static>.params.compress
+
 # I37: metrics, fit's request counting by listener and route for the Admin API's /metrics; it has
 # no settings. As in fit, it needs admin.
 metrics

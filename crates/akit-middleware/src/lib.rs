@@ -7,7 +7,8 @@
 //! `body_limit` (I41), as fit's `middleware/limit`; `basic_auth` and `client_cert` (I42), as fit's
 //! `middleware/auth`; `forward_auth` (I43), as fit's `middleware/auth` too, which asks an auth
 //! service on akit-upstream's pool, the request suspended meanwhile; `circuit_breaker` (I45), as fit's
-//! `middleware/breaker`. Each is compiled from its params when the
+//! `middleware/breaker`; `compress` (I47), as fit's `middleware/compress`, which has akio encode
+//! streamed bodies write by write. Each is compiled from its params when the
 //! config is, and wraps its route's handler once, then (rule 12); per request it runs inline on the
 //! I/O thread and never blocks.
 //!
@@ -16,6 +17,7 @@
 
 mod auth;
 mod breaker;
+mod compress;
 mod forward;
 mod headers;
 mod limit;
@@ -46,6 +48,11 @@ pub static MODULES: &[Info<HandlerParams>] = &[
         "http.middleware.client_cert",
         "Asks for a client certificate, verified by the listener's TLS (mTLS).",
         auth::new_client_cert,
+    ),
+    Info::middleware(
+        "http.middleware.compress",
+        "Compresses responses with zstd, brotli or gzip as they are written.",
+        compress::new,
     ),
     Info::middleware(
         "http.middleware.concurrency_limit",
