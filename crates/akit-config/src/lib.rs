@@ -26,6 +26,7 @@ pub mod duration;
 mod error;
 mod json;
 mod model;
+mod providers;
 pub mod value;
 mod yaml;
 
@@ -68,6 +69,11 @@ pub use model::{
     DEFAULT_METRICS_INTERVAL, DEFAULT_TELEMETRY_ENDPOINT, DEFAULT_TELEMETRY_SERVICE_NAME,
     DEFAULT_TELEMETRY_TIMEOUT, DEFAULT_TRACES_INTERVAL, DEFAULT_TRACES_MAX_QUEUE_BYTES,
     MetricsExport, Telemetry, TracesExport, parse_headers,
+};
+pub use providers::{
+    DEFAULT_KUBERNETES_CONTROLLER_NAME, DEFAULT_KUBERNETES_MAX_OBJECTS,
+    DEFAULT_KUBERNETES_REQUEST_TIMEOUT, KubernetesBackends, KubernetesIngress, KubernetesProvider,
+    Provider, ProviderKind,
 };
 
 /// The largest config document read, in bytes: fit's own configs are kilobytes; this bounds

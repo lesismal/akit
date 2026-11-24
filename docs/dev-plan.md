@@ -162,7 +162,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | **M4** | | | |
 | I57 | Provider framework and the effective config | I29 | done |
 | I58 | Docker provider | I57 | todo |
-| I59 | Kubernetes Ingress | I57 | todo |
+| I59 | Kubernetes Ingress | I57 | done |
 | I60 | Kubernetes Gateway API and conformance | I59 | todo |
 | I61 | Consul and etcd | I57 | todo |
 | I62 | Shared certificate storage | I30, I61 | todo |
@@ -812,6 +812,9 @@ Split from I07 so that the half that needs no config model runs beside I02.
 - **Do**: a watch client of akit's own (list and watch over HTTP/2), Ingress to routes.
 - **Done when**: tests against a kind cluster route by Ingress.
 - **Touches**: `akit-provider`.
+- **fit**: decision 011.
+- **Status**: done (2026-11-24), with no akio API request; its tests run against a fake API server
+  over HTTP/2 and HTTP/1.1, as fit's do, not a kind cluster; see the progress log.
 
 ### I60 Kubernetes Gateway API and conformance
 

@@ -438,3 +438,25 @@ routes[].middleware[]<cache>.params.disk.path
 routes[].middleware[]<cache>.params.disk.max_bytes
 routes[].middleware[]<cache>.params.disk.max_size
 routes[].middleware[]<cache>.params.disk.max_entries
+
+# I59: providers (I57's framework), with the kubernetes kind serving Ingresses: listed and watched
+# with akit's own client on akio's (HTTP/2 over TLS, HTTP/1.1 otherwise), each Ingress of an
+# IngressClass of controller_name a set of routes on ingress.http_port and, for its tls hosts,
+# ingress.https_port, to upstreams of its Services' ready endpoints or cluster IPs. A kubernetes
+# provider needs ingress until the Gateway API (I60, with addresses); allow_external_name_services
+# waits for the upstreams' deny_internal. Docker (I58), Consul and etcd (I61) are not supported yet.
+providers
+providers[].name
+providers[].kubernetes
+providers[].kubernetes.kubeconfig
+providers[].kubernetes.context
+providers[].kubernetes.controller_name
+providers[].kubernetes.namespaces
+providers[].kubernetes.listen_host
+providers[].kubernetes.backends
+providers[].kubernetes.max_objects
+providers[].kubernetes.request_timeout
+providers[].kubernetes.ingress
+providers[].kubernetes.ingress.http_port
+providers[].kubernetes.ingress.https_port
+providers[].kubernetes.certificates_dir

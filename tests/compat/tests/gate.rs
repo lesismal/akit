@@ -344,6 +344,16 @@ fn finding(e: &akit_config::Error) -> Finding {
 
 /// Every field `supported.txt` marks, in a config akit-config reads, and what it reads from it:
 /// a field marked supported that akit refuses, or reads and drops, fails here.
+/// The first provider's kubernetes settings.
+#[allow(clippy::indexing_slicing, clippy::panic)]
+fn kube(c: &Config) -> &akit_config::KubernetesProvider {
+    match &c.providers[0].kind {
+        akit_config::ProviderKind::Kubernetes(k) => k,
+        #[allow(unreachable_patterns)]
+        _ => panic!("not kubernetes"),
+    }
+}
+
 #[test]
 fn supported_fields_are_read() {
     type Check = fn(&Config) -> bool;
@@ -381,6 +391,10 @@ fn supported_fields_are_read() {
         )
     };
     let access = |fields: &str| format!("{{\"access_log\": {{{fields}}}}}");
+    // A kubernetes provider serving Ingresses, with `fields` (I59).
+    let k8s = |fields: &str| {
+        format!(r#"{{"providers": [{{"kubernetes": {{"ingress": {{}}{fields}}}}}]}}"#)
+    };
     // No listeners: HTTPS by default makes them, or with `listeners`, written ones.
     let auto_https = |fields: &str| {
         format!(
@@ -1851,6 +1865,81 @@ fn supported_fields_are_read() {
             r#"{"telemetry": {"metrics": {"interval": "1m"}}}"#.into(),
             |c| c.telemetry.as_ref().unwrap().metrics.as_ref().unwrap().interval == std::time::Duration::from_secs(60),
         ),
+        (
+            "providers",
+            r#"{"providers": [{"kubernetes": {"ingress": {}}}]}"#.into(),
+            |c| c.providers.len() == 1,
+        ),
+        (
+            "providers[].name",
+            r#"{"providers": [{"name": "k", "kubernetes": {"ingress": {}}}]}"#.into(),
+            |c| c.providers[0].name == "k",
+        ),
+        (
+            "providers[].kubernetes",
+            k8s(""),
+            |c| c.providers[0].kind.name() == "kubernetes",
+        ),
+        (
+            "providers[].kubernetes.kubeconfig",
+            k8s(r#", "kubeconfig": "/k""#),
+            |c| kube(c).kubeconfig == "/k",
+        ),
+        (
+            "providers[].kubernetes.context",
+            k8s(r#", "context": "prod""#),
+            |c| kube(c).context == "prod",
+        ),
+        (
+            "providers[].kubernetes.controller_name",
+            k8s(r#", "controller_name": "example.net/gw""#),
+            |c| kube(c).controller_name == "example.net/gw",
+        ),
+        (
+            "providers[].kubernetes.namespaces",
+            k8s(r#", "namespaces": ["a"]"#),
+            |c| kube(c).namespaces == ["a"],
+        ),
+        (
+            "providers[].kubernetes.listen_host",
+            k8s(r#", "listen_host": "10.0.0.1""#),
+            |c| kube(c).listen_host == "10.0.0.1",
+        ),
+        (
+            "providers[].kubernetes.backends",
+            k8s(r#", "backends": "cluster_ip""#),
+            |c| kube(c).backends == akit_config::KubernetesBackends::ClusterIp,
+        ),
+        (
+            "providers[].kubernetes.max_objects",
+            k8s(r#", "max_objects": 7"#),
+            |c| kube(c).max_objects == 7,
+        ),
+        (
+            "providers[].kubernetes.request_timeout",
+            k8s(r#", "request_timeout": "3s""#),
+            |c| kube(c).request_timeout == std::time::Duration::from_secs(3),
+        ),
+        (
+            "providers[].kubernetes.ingress",
+            k8s(""),
+            |c| kube(c).ingress.is_some(),
+        ),
+        (
+            "providers[].kubernetes.ingress.http_port",
+            r#"{"providers": [{"kubernetes": {"ingress": {"http_port": 8080}}}]}"#.into(),
+            |c| kube(c).ingress.unwrap().http_port == 8080,
+        ),
+        (
+            "providers[].kubernetes.ingress.https_port",
+            r#"{"providers": [{"kubernetes": {"ingress": {"https_port": 8443}}}]}"#.into(),
+            |c| kube(c).ingress.unwrap().https_port == 8443,
+        ),
+        (
+            "providers[].kubernetes.certificates_dir",
+            k8s(r#", "certificates_dir": "/d""#),
+            |c| kube(c).certificates_dir == "/d",
+        ),
     ];
     let marked = supported().unwrap();
     let sampled: BTreeSet<String> = samples.iter().map(|(p, ..)| (*p).to_owned()).collect();
@@ -1996,8 +2085,12 @@ fn proxy_of(c: &Config) -> &akit_config::Proxy {
 /// reads is what `supported.txt` marks.
 #[test]
 fn akit_config_lists_match_the_inventory() {
-    let src =
-        fs::read_to_string(compat_dir().join("../../crates/akit-config/src/model.rs")).unwrap();
+    // The providers' lists are in providers.rs (I58-I61).
+    let src = ["model.rs", "providers.rs"]
+        .map(|f| {
+            fs::read_to_string(compat_dir().join("../../crates/akit-config/src").join(f)).unwrap()
+        })
+        .concat();
     let lists = str_lists(&src);
     let inventory = fields().unwrap();
     let known: BTreeSet<&str> = inventory.iter().map(|f| f.path.as_str()).collect();
@@ -2008,8 +2101,19 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 46] = [
+    let objects: [(&str, &str, Option<&str>); 49] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
+        ("providers[]", "PROVIDER_FIELDS", Some("PROVIDER_FIT_ONLY")),
+        (
+            "providers[].kubernetes",
+            "KUBERNETES_FIELDS",
+            Some("KUBERNETES_FIT_ONLY"),
+        ),
+        (
+            "providers[].kubernetes.ingress",
+            "KUBERNETES_INGRESS_FIELDS",
+            None,
+        ),
         ("admin", "ADMIN_FIELDS", Some("ADMIN_FIT_ONLY")),
         ("acme", "ACME_FIELDS", Some("ACME_FIT_ONLY")),
         ("acme.on_demand", "ON_DEMAND_FIELDS", None),

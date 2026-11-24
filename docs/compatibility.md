@@ -175,7 +175,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 278 supported.
+3821 fields in 121 sections, at fit `7daee573`; 293 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -228,7 +228,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`media_library`](#fields-media-library) | 24 | 0 | 24 |
 | [`metrics`](#fields-metrics) | 1 | 1 | 0 |
 | [`pprof`](#fields-pprof) | 4 | 0 | 4 |
-| [`providers`](#fields-providers) | 60 | 0 | 60 |
+| [`providers`](#fields-providers) | 60 | 15 | 45 |
 | [`routes`](#fields-routes) | 24 | 19 | 5 |
 | [`schema_version`](#fields-schema-version) | 1 | 1 | 0 |
 | [`services`](#fields-services) | 13 | 8 | 5 |
@@ -300,7 +300,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 278 | 3543 |
+| **Total** | 3821 | 293 | 3528 |
 
 <a id="fields-access"></a>
 
@@ -1661,7 +1661,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `providers` | `array<object>` | not supported yet |
+| `providers` | `array<object>` | supported |
 | `providers[].consul` | `object` | not supported yet |
 | `providers[].consul.ca_file` | `string` | not supported yet |
 | `providers[].consul.cert_file` | `string` | not supported yet |
@@ -1705,22 +1705,22 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `providers[].etcd.refresh_interval` | `duration` | not supported yet |
 | `providers[].etcd.request_timeout` | `duration` | not supported yet |
 | `providers[].etcd.username` | `string` | not supported yet |
-| `providers[].kubernetes` | `object` | not supported yet |
+| `providers[].kubernetes` | `object` | supported |
 | `providers[].kubernetes.addresses` | `array<string>` | not supported yet |
 | `providers[].kubernetes.allow_external_name_services` | `boolean` | not supported yet |
-| `providers[].kubernetes.backends` | `enum(endpoints\|cluster_ip)` | not supported yet |
-| `providers[].kubernetes.certificates_dir` | `string` | not supported yet |
-| `providers[].kubernetes.context` | `string` | not supported yet |
-| `providers[].kubernetes.controller_name` | `string` | not supported yet |
-| `providers[].kubernetes.ingress` | `object` | not supported yet |
-| `providers[].kubernetes.ingress.http_port` | `integer` | not supported yet |
-| `providers[].kubernetes.ingress.https_port` | `integer` | not supported yet |
-| `providers[].kubernetes.kubeconfig` | `string` | not supported yet |
-| `providers[].kubernetes.listen_host` | `string` | not supported yet |
-| `providers[].kubernetes.max_objects` | `integer` | not supported yet |
-| `providers[].kubernetes.namespaces` | `array<string>` | not supported yet |
-| `providers[].kubernetes.request_timeout` | `duration` | not supported yet |
-| `providers[].name` | `string` | not supported yet |
+| `providers[].kubernetes.backends` | `enum(endpoints\|cluster_ip)` | supported |
+| `providers[].kubernetes.certificates_dir` | `string` | supported |
+| `providers[].kubernetes.context` | `string` | supported |
+| `providers[].kubernetes.controller_name` | `string` | supported |
+| `providers[].kubernetes.ingress` | `object` | supported |
+| `providers[].kubernetes.ingress.http_port` | `integer` | supported |
+| `providers[].kubernetes.ingress.https_port` | `integer` | supported |
+| `providers[].kubernetes.kubeconfig` | `string` | supported |
+| `providers[].kubernetes.listen_host` | `string` | supported |
+| `providers[].kubernetes.max_objects` | `integer` | supported |
+| `providers[].kubernetes.namespaces` | `array<string>` | supported |
+| `providers[].kubernetes.request_timeout` | `duration` | supported |
+| `providers[].name` | `string` | supported |
 
 <a id="fields-routes"></a>
 

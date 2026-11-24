@@ -277,6 +277,8 @@ struct Runner<'a> {
     /// its requests with it; a config's `telemetry` takes a restart, as fit's.
     telemetry: Option<&'a akit_config::Telemetry>,
     tracer: Option<&'a Tracer>,
+    /// The `providers` akit started with (I57-I61): a config's take a restart, as fit's.
+    providers: &'a [akit_config::Provider],
 }
 
 impl Runner<'_> {
@@ -353,6 +355,9 @@ impl Runner<'_> {
         }
         if config.telemetry.as_ref() != self.telemetry {
             warnings.push("telemetry takes a restart; the running one stays".to_owned());
+        }
+        if config.providers != self.providers {
+            warnings.push("providers take a restart; the running ones stay".to_owned());
         }
         warnings
     }
@@ -546,6 +551,34 @@ fn provide(updates: &Updates, configs: &Configs, runner: &mut Runner<'_>) {
             Err(Refused::Changed) => {}
         }
     }
+}
+
+/// Starts the providers `list` names (I57's framework, the kinds of I58-I61), in their order
+/// of precedence, each sending its parts through `updates`, as fit's `startProviders`.
+fn start_providers(
+    list: &[akit_config::Provider],
+    configs: &Configs,
+    updates: &Updates,
+) -> Result<Vec<Box<dyn akit_provider::Provider>>, String> {
+    let kinds = akit_provider::Kinds::new(&[akit_provider::kubernetes::KINDS])?;
+    let mut started = Vec::new();
+    for pc in list {
+        let name = &pc.name;
+        let kind = pc.kind.name();
+        let Some(make) = kinds.lookup(kind) else {
+            let have = kinds.names().join(", ");
+            return Err(format!(
+                "provider {name}: this akit was built without the {kind} provider (it has {have})"
+            ));
+        };
+        configs.add_provider(name)?;
+        let (mut p, watching) = make(name, pc)?;
+        println!("akit: provider {name} {watching}");
+        p.start(updates.update(name))
+            .map_err(|e| format!("provider {name}: {e}"))?;
+        started.push(p);
+    }
+    Ok(started)
 }
 
 /// What applying a config changed: the listeners closed and opened, and its warnings.
@@ -772,6 +805,7 @@ fn run(args: &[String]) -> ExitCode {
         }
     };
     let admin = config.admin.clone();
+    let provider_configs = config.providers.clone();
     drop(config);
     let cert_files = graph.cert_files().clone();
     let acme_names = graph.acme_names().to_vec();
@@ -859,6 +893,17 @@ fn run(args: &[String]) -> ExitCode {
         })
     };
     drop(tx);
+    let mut providers = match start_providers(&provider_configs, &configs, &updates) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("akit run: {e}");
+            if let Some(api) = &api {
+                api.shutdown();
+            }
+            akit_listener::shutdown(&engine, grace);
+            return ExitCode::FAILURE;
+        }
+    };
     // The metrics /metrics serves, exported every telemetry.metrics.interval (I64).
     let exporter = match (&otlp, telemetry.as_ref().and_then(|t| t.metrics.as_ref())) {
         (Some(o), Some(m)) => {
@@ -898,6 +943,7 @@ fn run(args: &[String]) -> ExitCode {
         stats: &stats,
         telemetry: telemetry.as_ref(),
         tracer: tracer.as_ref(),
+        providers: &provider_configs,
     };
     // The certificate files watched (fit's -watch-certs), on this thread, every interval: the
     // running config's version number and the files it loaded tell the watcher what it loaded.
@@ -998,6 +1044,9 @@ fn run(args: &[String]) -> ExitCode {
         api.shutdown();
     }
     updates.close();
+    for p in &mut providers {
+        p.stop();
+    }
     // No more certificates obtained: its work under way is given up.
     acme.close();
     // A second SIGINT or SIGTERM does not wait for the shutdown, as fit's.

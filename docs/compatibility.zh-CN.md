@@ -152,7 +152,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 278 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 293 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -205,7 +205,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`media_library`](#fields-media-library) | 24 | 0 | 24 |
 | [`metrics`](#fields-metrics) | 1 | 1 | 0 |
 | [`pprof`](#fields-pprof) | 4 | 0 | 4 |
-| [`providers`](#fields-providers) | 60 | 0 | 60 |
+| [`providers`](#fields-providers) | 60 | 15 | 45 |
 | [`routes`](#fields-routes) | 24 | 19 | 5 |
 | [`schema_version`](#fields-schema-version) | 1 | 1 | 0 |
 | [`services`](#fields-services) | 13 | 8 | 5 |
@@ -277,7 +277,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **合计** | 3821 | 278 | 3543 |
+| **合计** | 3821 | 293 | 3528 |
 
 <a id="fields-access"></a>
 
@@ -1638,7 +1638,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
-| `providers` | `array<object>` | 尚不支持（not supported yet） |
+| `providers` | `array<object>` | 已支持 |
 | `providers[].consul` | `object` | 尚不支持（not supported yet） |
 | `providers[].consul.ca_file` | `string` | 尚不支持（not supported yet） |
 | `providers[].consul.cert_file` | `string` | 尚不支持（not supported yet） |
@@ -1682,22 +1682,22 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `providers[].etcd.refresh_interval` | `duration` | 尚不支持（not supported yet） |
 | `providers[].etcd.request_timeout` | `duration` | 尚不支持（not supported yet） |
 | `providers[].etcd.username` | `string` | 尚不支持（not supported yet） |
-| `providers[].kubernetes` | `object` | 尚不支持（not supported yet） |
+| `providers[].kubernetes` | `object` | 已支持 |
 | `providers[].kubernetes.addresses` | `array<string>` | 尚不支持（not supported yet） |
 | `providers[].kubernetes.allow_external_name_services` | `boolean` | 尚不支持（not supported yet） |
-| `providers[].kubernetes.backends` | `enum(endpoints\|cluster_ip)` | 尚不支持（not supported yet） |
-| `providers[].kubernetes.certificates_dir` | `string` | 尚不支持（not supported yet） |
-| `providers[].kubernetes.context` | `string` | 尚不支持（not supported yet） |
-| `providers[].kubernetes.controller_name` | `string` | 尚不支持（not supported yet） |
-| `providers[].kubernetes.ingress` | `object` | 尚不支持（not supported yet） |
-| `providers[].kubernetes.ingress.http_port` | `integer` | 尚不支持（not supported yet） |
-| `providers[].kubernetes.ingress.https_port` | `integer` | 尚不支持（not supported yet） |
-| `providers[].kubernetes.kubeconfig` | `string` | 尚不支持（not supported yet） |
-| `providers[].kubernetes.listen_host` | `string` | 尚不支持（not supported yet） |
-| `providers[].kubernetes.max_objects` | `integer` | 尚不支持（not supported yet） |
-| `providers[].kubernetes.namespaces` | `array<string>` | 尚不支持（not supported yet） |
-| `providers[].kubernetes.request_timeout` | `duration` | 尚不支持（not supported yet） |
-| `providers[].name` | `string` | 尚不支持（not supported yet） |
+| `providers[].kubernetes.backends` | `enum(endpoints\|cluster_ip)` | 已支持 |
+| `providers[].kubernetes.certificates_dir` | `string` | 已支持 |
+| `providers[].kubernetes.context` | `string` | 已支持 |
+| `providers[].kubernetes.controller_name` | `string` | 已支持 |
+| `providers[].kubernetes.ingress` | `object` | 已支持 |
+| `providers[].kubernetes.ingress.http_port` | `integer` | 已支持 |
+| `providers[].kubernetes.ingress.https_port` | `integer` | 已支持 |
+| `providers[].kubernetes.kubeconfig` | `string` | 已支持 |
+| `providers[].kubernetes.listen_host` | `string` | 已支持 |
+| `providers[].kubernetes.max_objects` | `integer` | 已支持 |
+| `providers[].kubernetes.namespaces` | `array<string>` | 已支持 |
+| `providers[].kubernetes.request_timeout` | `duration` | 已支持 |
+| `providers[].name` | `string` | 已支持 |
 
 <a id="fields-routes"></a>
 
