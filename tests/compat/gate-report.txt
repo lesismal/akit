@@ -1,7 +1,7 @@
 # The compatibility gate's report (docs/compatibility.md), written by make compat-bless;
 # do not edit. The gate fails when a run's outcomes differ from these lines.
 # fit 7daee573, fit-examples 9659d7e4.
-# 80 fixtures: 8 valid, 71 refused only as not supported yet (fields refused: 66), 0 in a format not supported yet, 1 skipped, 0 failed.
+# 80 fixtures: 9 valid, 70 refused only as not supported yet (fields refused: 60), 0 in a format not supported yet, 1 skipped, 0 failed.
 examples/acme-on-demand: not supported yet: acme
 examples/acme-on-demand: not supported yet: listeners[].tls.acme
 examples/acme-on-demand: not supported yet: listeners[].tls.on_demand
@@ -22,9 +22,7 @@ examples/bittorrent: not supported yet: routes[].handler<bt_stream>
 examples/bittorrent: not supported yet: routes[].handler<bt_tracker>
 examples/bittorrent: not supported yet: routes[].handler<static>.params.strip_prefix
 examples/body-limit: not supported yet: limits
-examples/body-limit: not supported yet: routes[].match.method
 examples/body-limit: not supported yet: routes[].middleware
-examples/cache: not supported yet: routes[].match.method
 examples/cache: not supported yet: routes[].middleware
 examples/circuit-breaker: not supported yet: routes[].middleware
 examples/client-cert: not supported yet: acme
@@ -38,7 +36,6 @@ examples/docker-compose: not supported yet: providers
 examples/fastcgi: not supported yet: routes[].handler<fastcgi>
 examples/forward-auth: not supported yet: routes[].middleware
 examples/forward-proxy: not supported yet: routes[].handler<forward_proxy>
-examples/forward-proxy: not supported yet: routes[].match.method
 examples/grpc: not supported yet: upstreams[].health_check
 examples/grpc: not supported yet: upstreams[].protocol: the "h2c" protocol for upstreams
 examples/grpc: not supported yet: upstreams[].response_idle_timeout
@@ -100,12 +97,7 @@ examples/proxy-protocol: not supported yet: routes[].middleware
 examples/rate-limit: not supported yet: routes[].middleware
 examples/redirect: not supported yet: routes[].middleware
 examples/rewrite: not supported yet: routes[].middleware
-examples/routing: not supported yet: routes[].match.expr
-examples/routing: not supported yet: routes[].match.header
-examples/routing: not supported yet: routes[].match.method
-examples/routing: not supported yet: routes[].match.path_regexp
-examples/routing: not supported yet: routes[].match.query
-examples/routing: not supported yet: routes[].match.remote_ip
+examples/routing: valid
 examples/socks: not supported yet: listeners[].protocols: the "socks" protocol
 examples/socks: not supported yet: listeners[].socks
 examples/static: not supported yet: routes[].handler<static>.params.browse
@@ -143,7 +135,6 @@ examples/sync-pulsar-to-elasticsearch: not supported yet: sync
 examples/sync-rabbitmq-to-kafka: not supported yet: admin
 examples/sync-rabbitmq-to-kafka: not supported yet: sync
 examples/sync-wasm-codec: not supported yet: sync
-examples/sync-wasm-sink: not supported yet: routes[].match.method
 examples/sync-wasm-sink: not supported yet: sync
 examples/sync-wasm-source: not supported yet: sync
 examples/sync-wasm-transform: not supported yet: sync
@@ -157,7 +148,6 @@ examples/video-site: not supported yet: routes[].handler<hls>
 examples/video-site: not supported yet: routes[].handler<media_pages>
 examples/video-site: not supported yet: routes[].handler<media_tokens>
 examples/video-site: not supported yet: routes[].handler<vod>
-examples/video-site: not supported yet: routes[].match.remote_ip
 examples/video-site: not supported yet: routes[].middleware
 examples/video-site: not supported yet: streaming
 examples/virtual-hosts: valid

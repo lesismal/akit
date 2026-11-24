@@ -8,6 +8,7 @@ fn route(name: &'static str, priority: i64, hosts: &[&str], paths: &[&str]) -> R
     Route {
         hosts: hosts.iter().map(|s| (*s).to_owned()).collect(),
         paths: paths.iter().map(|s| (*s).to_owned()).collect(),
+        matchers: Vec::new(),
         priority,
         value: name,
     }

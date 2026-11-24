@@ -76,3 +76,13 @@ routes[].handler<proxy>.params
 routes[].handler<proxy>.params.upstream
 routes[].handler<proxy>.params.trusted_proxies
 routes[].handler<proxy>.params.host_header
+#
+# I39: route matchers v2: path regexps (akio-regex, Go's syntax but for what akio-regex lacks:
+# Unicode classes, POSIX classes, \Q...\E), methods, headers, query parameters, remote IPs and
+# fit's expressions.
+routes[].match.path_regexp
+routes[].match.method
+routes[].match.header
+routes[].match.query
+routes[].match.remote_ip
+routes[].match.expr

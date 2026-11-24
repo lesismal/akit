@@ -70,6 +70,7 @@ fn main() {
     let r1 = akit_router::Router::new(vec![akit_router::Route {
         hosts: vec![],
         paths: vec!["/".into()],
+        matchers: Vec::new(),
         priority: 0,
         value: 0usize,
     }]);
@@ -102,6 +103,7 @@ fn main() {
                 .map(|(hosts, paths, v)| akit_router::Route {
                     hosts: hosts.clone(),
                     paths: paths.clone(),
+                    matchers: Vec::new(),
                     priority: 0,
                     value: *v,
                 })

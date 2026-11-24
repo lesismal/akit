@@ -8,6 +8,9 @@ repository.workspace = true
 rust-version.workspace = true
 publish = false
 
+[dependencies]
+akio-regex.workspace = true
+
 [dev-dependencies]
 # Counts allocations in tests/no_alloc.rs without unsafe code of akit's own (rule 14).
 stats_alloc = "0.1"

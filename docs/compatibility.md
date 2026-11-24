@@ -175,7 +175,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 52 supported.
+3821 fields in 121 sections, at fit `7daee573`; 58 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -229,7 +229,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`metrics`](#fields-metrics) | 1 | 0 | 1 |
 | [`pprof`](#fields-pprof) | 4 | 0 | 4 |
 | [`providers`](#fields-providers) | 60 | 0 | 60 |
-| [`routes`](#fields-routes) | 24 | 10 | 14 |
+| [`routes`](#fields-routes) | 24 | 16 | 8 |
 | [`schema_version`](#fields-schema-version) | 1 | 1 | 0 |
 | [`services`](#fields-services) | 13 | 0 | 13 |
 | [`streaming`](#fields-streaming) | 76 | 0 | 76 |
@@ -300,7 +300,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 11 | 27 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 52 | 3769 |
+| **Total** | 3821 | 58 | 3763 |
 
 <a id="fields-access"></a>
 
@@ -1739,14 +1739,14 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `routes[].handler.params` | `object` | supported |
 | `routes[].listeners` | `array<string>` | supported |
 | `routes[].match` | `object` | supported |
-| `routes[].match.expr` | `string` | not supported yet |
-| `routes[].match.header` | `map<array<string>>` | not supported yet |
+| `routes[].match.expr` | `string` | supported |
+| `routes[].match.header` | `map<array<string>>` | supported |
 | `routes[].match.host` | `array<string>` | supported |
-| `routes[].match.method` | `array<string>` | not supported yet |
+| `routes[].match.method` | `array<string>` | supported |
 | `routes[].match.path` | `array<string>` | supported |
-| `routes[].match.path_regexp` | `array<string>` | not supported yet |
-| `routes[].match.query` | `map<array<string>>` | not supported yet |
-| `routes[].match.remote_ip` | `array<string>` | not supported yet |
+| `routes[].match.path_regexp` | `array<string>` | supported |
+| `routes[].match.query` | `map<array<string>>` | supported |
+| `routes[].match.remote_ip` | `array<string>` | supported |
 | `routes[].middleware` | `array<object>` | not supported yet |
 | `routes[].middleware[].module` | `enum(basic_auth\|body_limit\|cache\|circuit_breaker\|client_cert\|compress\|concurrency_limit\|forward_auth\|headers\|jwt\|rate_limit\|redirect\|rewrite\|wasm), required` | not supported yet |
 | `routes[].middleware[].params` | `object` | not supported yet |

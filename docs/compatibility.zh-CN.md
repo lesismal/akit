@@ -152,7 +152,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 52 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 58 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -206,7 +206,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`metrics`](#fields-metrics) | 1 | 0 | 1 |
 | [`pprof`](#fields-pprof) | 4 | 0 | 4 |
 | [`providers`](#fields-providers) | 60 | 0 | 60 |
-| [`routes`](#fields-routes) | 24 | 10 | 14 |
+| [`routes`](#fields-routes) | 24 | 16 | 8 |
 | [`schema_version`](#fields-schema-version) | 1 | 1 | 0 |
 | [`services`](#fields-services) | 13 | 0 | 13 |
 | [`streaming`](#fields-streaming) | 76 | 0 | 76 |
@@ -277,7 +277,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 11 | 27 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **合计** | 3821 | 52 | 3769 |
+| **合计** | 3821 | 58 | 3763 |
 
 <a id="fields-access"></a>
 
@@ -1716,14 +1716,14 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `routes[].handler.params` | `object` | 已支持 |
 | `routes[].listeners` | `array<string>` | 已支持 |
 | `routes[].match` | `object` | 已支持 |
-| `routes[].match.expr` | `string` | 尚不支持（not supported yet） |
-| `routes[].match.header` | `map<array<string>>` | 尚不支持（not supported yet） |
+| `routes[].match.expr` | `string` | 已支持 |
+| `routes[].match.header` | `map<array<string>>` | 已支持 |
 | `routes[].match.host` | `array<string>` | 已支持 |
-| `routes[].match.method` | `array<string>` | 尚不支持（not supported yet） |
+| `routes[].match.method` | `array<string>` | 已支持 |
 | `routes[].match.path` | `array<string>` | 已支持 |
-| `routes[].match.path_regexp` | `array<string>` | 尚不支持（not supported yet） |
-| `routes[].match.query` | `map<array<string>>` | 尚不支持（not supported yet） |
-| `routes[].match.remote_ip` | `array<string>` | 尚不支持（not supported yet） |
+| `routes[].match.path_regexp` | `array<string>` | 已支持 |
+| `routes[].match.query` | `map<array<string>>` | 已支持 |
+| `routes[].match.remote_ip` | `array<string>` | 已支持 |
 | `routes[].middleware` | `array<object>` | 尚不支持（not supported yet） |
 | `routes[].middleware[].module` | `enum(basic_auth\|body_limit\|cache\|circuit_breaker\|client_cert\|compress\|concurrency_limit\|forward_auth\|headers\|jwt\|rate_limit\|redirect\|rewrite\|wasm), required` | 尚不支持（not supported yet） |
 | `routes[].middleware[].params` | `object` | 尚不支持（not supported yet） |

@@ -11,14 +11,76 @@ done and where the work differs from the plan.
 | | |
 | --- | --- |
 | Last updated | 2026-11-24 |
-| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I12, I14, I19, I22, I23 and I24 done, I15 doing (waits for akio's A11). |
+| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I12, I14, I19, I22, I23 and I24 done, I15 doing (waits for akio's A11); M3's I39 done early. |
 | akio | `50a82315` on akio's `main` (`1.0.0-rc.1`), pinned by `rev` in `Cargo.toml` |
 | fit | the specification; read at `7daee573` for this plan |
-| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept, added and removed, those it started with only once akio's A1 is pinned); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths; the `respond`, `static` (conditional and range requests, files opened on akio's pool) and `proxy` handlers (fit's forwarding fields, trusted proxies; the client's `Host` once A11 is pinned); upstream pools with round robin, weighted round robin and least connections; the compatibility gate: 80 fixtures, 8 valid, 71 refused only as not supported yet, 1 skipped, none failed |
+| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept, added and removed, those it started with only once akio's A1 is pinned); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; the `respond`, `static` (conditional and range requests, files opened on akio's pool) and `proxy` handlers (fit's forwarding fields, trusted proxies; the client's `Host` once A11 is pinned); upstream pools with round robin, weighted round robin and least connections; the compatibility gate: 80 fixtures, 9 valid, 70 refused only as not supported yet, 1 skipped, none failed |
 | Next | Move the akio pin to akio's main with A1–A8 and A11, then I15 done (its `Host` tests) and I22 on A1; then I13, I16, I17, I20, I21 |
 | akio requests | A1–A8 merged into akio's main (2026-11-24); A11 on akio branch `claude/i15-proxy-699f18`; A9, A10, A12–A15 requested ([akio API requests](akio-api-requests.md)) |
 
 ## Log
+
+### 2026-11-24: I39, matchers v2 and expressions
+
+- Taken early from M3: its one dependency, I11, is done. `akit-router` has fit's matchers
+  (`router/matchers.go`) as `akit_router::Matcher`: `methods` (compared as written), `headers`
+  (names ignoring case, a field's values compared as they are; any value when none are listed),
+  `query` (keys and values compared once unescaped, `+` as a space, without allocating; an
+  invalid escape matches nothing), `remote_ip` (addresses and CIDR prefixes, `parse_prefix` as
+  Go's `netip` with fit's rules: an IPv4 address mapped into IPv6 is IPv4, an IPv4 prefix written
+  in IPv6 refused, a prefix masked; the peer's address unmapped), `path_regexp` (on `akio-regex`,
+  decision 001: linear time, compiled with Go's ASCII `\d \w \s \b`; a path that is not UTF-8
+  reads as one U+FFFD per invalid byte, as Go's regexp reads it, through `is_match_fmt`, without
+  allocating) and `expr`, fit's expression language (`router/expr.go`, `akit_router::Expr`):
+  `Host`, `Path`, `PathPrefix`, `PathRegexp`, `Method`, `Header`, `Query` and `RemoteIP` combined
+  with `&&`, `||`, `!` and parentheses, strings quoted as in Go (`strconv.Unquote`, `\x` and
+  octal escapes included, so arguments are bytes), at most 64 KiB and nested at most 100 deep,
+  with fit's error messages (`at byte N: ...`) and its canonical printing. Chains of `&&` and `||`
+  are kept flat, so evaluating, printing and dropping an expression recurse only as deep as its
+  parentheses and `!`s (a chain of thousands of matchers is not deep).
+- The router (`Router::find_request`, generic over `akit_router::Request`: method, host, path,
+  query, peer address and header fields) runs a route's matchers as fit's does: under each host
+  and path pattern the routes are kept best first (priority, host and path specificity, then more
+  matchers, then the route written first) and cut after the first with no matchers; a route's
+  matchers run only once its host and path match and only while it would beat the best route
+  found, so a lower-priority route's matchers never run once a higher one matched.
+  `Router::find(host, path)` stays, as a GET with nothing else (`Parts::new`). Every matcher is
+  built when the config is compiled (rule 12), cheapest first as fit's graph orders them
+  (method, remote IP, header, query, path regexp, expression; an expression counts as one).
+- `akit-config` reads `match.path_regexp`, `method`, `header`, `query`, `remote_ip` and `expr`
+  with fit's checks (`config/validate.go`: a method and a header name must be tokens, a query
+  key not empty, the regexps, prefixes and expression must build, with the router's own
+  builders: akit-config now depends on akit-router). `akit-runtime` builds them into
+  `CompiledRoute::matchers` and has `Graph::route_request`; `akit-listener`'s `Dispatcher`
+  routes with it, reading the method, `Host`, query, peer address and header fields from akio's
+  context.
+- Tests: fit's `TestMatchers`, `TestMatcherErrors`, `TestMatcherOrder` (its `panicMatcher` cases
+  with a request that counts the matchers that read it), `TestParseExpr`, `TestParseExprErrors`,
+  `TestExprMatch`, `TestQueryHexEscapes`, `TestSameBucket`, `TestPathTwice` with a matcher, and
+  `FuzzParseExpr`'s seeds and more as a round-trip test (`akit-router` `src/tests_matchers.rs`),
+  plus details of query pairs, prefixes, ASCII classes and non-UTF-8 paths; `tests/no_alloc.rs`
+  extended with fit's `TestMatchersAllocs` and `TestExprAllocs` (and a path regexp): 0
+  allocations in 100 lookups each; fit's config test "route matchers" (`akit-config`
+  `tests/json_config.rs`); `akit-listener` `tests/listeners.rs` `route_matchers`: every kind of
+  matcher on requests over HTTP/1.1, the query and method over h2c.
+- Compatibility gate: the six fields in `tests/compat/supported.txt`; `make compat-bless`:
+  `examples/routing` is now valid, and `match.method` / `match.remote_ip` no longer refuse
+  body-limit, cache, forward-proxy, sync-wasm-sink and video-site (80 fixtures: 9 valid, 70
+  refused only as not supported yet, 1 skipped, none failed).
+- Checked: `make check` on macOS; on the benchmark host, `cargo test -p akit-router -p
+  akit-config -p akit-runtime -p akit-listener` (epoll) and `AKIO_TEST_BACKEND=uring cargo test
+  -p akit-listener`.
+- Differs from fit: path regexps are `akio-regex`'s syntax, a subset of Go's: Unicode classes
+  (`\pL`), POSIX classes (`[[:alpha:]]`) and `\Q...\E` are refused when the config is read, and
+  the end of a regexp's error message is akio-regex's (`unclosed group at byte 1`), not Go's.
+  Go's `%q` quoting is approximated: Rust has no Unicode categories, so "printable" is control
+  characters, spaces other than U+0020 and common format characters left out (the printed form
+  always parses back to the same). A map key in an error's path is written `header["Bad Name"]`,
+  akit's form, where fit writes `header.Bad Name`. As in fit, `Header("Host")` never matches
+  (Go's server takes `Host` out of the header fields).
+- To measure, in the maintainer's benchmark tasks (rule 30): `find_request` with matchers,
+  expressions and path regexps against `find` on the same routes (a micro-benchmark in
+  `benches/lookup.rs`), and the fixed-scenario A/B of I39 against its base.
 
 ### 2026-11-24: I22, reload on SIGHUP
 

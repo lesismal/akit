@@ -10,14 +10,58 @@
 | | |
 | --- | --- |
 | 最后更新 | 2026-11-24 |
-| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I12、I14、I19、I22、I23、I24 已完成，I15 进行中（等待 akio 的 A11）。 |
+| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I12、I14、I19、I22、I23、I24 已完成，I15 进行中（等待 akio 的 A11）；M3 的 I39 已提前完成。 |
 | akio | akio `main` 上的 `50a82315`（`1.0.0-rc.1`），在 `Cargo.toml` 中按 `rev` 锁定 |
 | fit | 作为规格；本计划基于 `7daee573` 阅读 |
-| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；监听器保留、增加和移除，启动时的监听器要等锁定到带 A1 的 akio）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开）和 `proxy` handler（fit 的转发字段、可信代理；锁定到 A11 后传客户端的 `Host`）；上游连接池，轮询、加权轮询和最少连接；兼容性门禁：80 个夹具，8 个有效，71 个只因暂不支持被拒绝，1 个跳过，没有失败 |
+| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；监听器保留、增加和移除，启动时的监听器要等锁定到带 A1 的 akio）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开）和 `proxy` handler（fit 的转发字段、可信代理；锁定到 A11 后传客户端的 `Host`）；上游连接池，轮询、加权轮询和最少连接；兼容性门禁：80 个夹具，9 个有效，70 个只因暂不支持被拒绝，1 个跳过，没有失败 |
 | 下一步 | 把 akio 锁定到带 A1–A8 和 A11 的 akio main，然后 I15 完成（其 `Host` 测试）、I22 改用 A1；再是 I13、I16、I17、I20、I21 |
 | akio 需求 | A1–A8 已合并进 akio 的 main（2026-11-24）；A11 在 akio 分支 `claude/i15-proxy-699f18` 上；A9、A10、A12–A15 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
 
 ## 日志
+
+### 2026-11-24：I39，匹配器 v2 与表达式
+
+- 从 M3 提前做：它唯一的依赖 I11 已完成。`akit-router` 有了 fit 的匹配器（`router/matchers.go`），即
+  `akit_router::Matcher`：`methods`（按原样比较）、`headers`（名字不区分大小写，字段的值按原样比较；没列出值时任意
+  值都行）、`query`（键和值解码后比较，`+` 作空格，不分配内存；无效的转义什么都不匹配）、`remote_ip`（地址和 CIDR
+  前缀，`parse_prefix` 同 Go 的 `netip` 加上 fit 的规则：映射到 IPv6 的 IPv4 地址算 IPv4，用 IPv6 写的 IPv4 前缀被
+  拒绝，前缀按位数掩码；对端地址先去掉映射）、`path_regexp`（基于 `akio-regex`，决策 001：线性时间，按 Go 的 ASCII
+  `\d \w \s \b` 编译；不是 UTF-8 的路径按 Go 正则的读法，每个无效字节当作一个 U+FFFD，经 `is_match_fmt`，不分配内存）
+  和 `expr`，即 fit 的表达式语言（`router/expr.go`，`akit_router::Expr`）：`Host`、`Path`、`PathPrefix`、
+  `PathRegexp`、`Method`、`Header`、`Query` 和 `RemoteIP` 用 `&&`、`||`、`!` 和括号组合，字符串按 Go 的方式加引号
+  （`strconv.Unquote`，含 `\x` 和八进制转义，所以参数是字节），最长 64 KiB，嵌套最深 100 层，错误信息与 fit 相同
+  （`at byte N: ...`），打印出的规范形式也相同。`&&` 和 `||` 的链保持扁平，所以求值、打印和释放表达式的递归深度
+  只有括号和 `!` 那么深（几千个匹配器的链并不深）。
+- 路由器（`Router::find_request`，对 `akit_router::Request` 泛型：方法、host、路径、query、对端地址和头字段）按
+  fit 的方式运行路由的匹配器：每个 host 和路径模式下的路由按优劣排序（优先级、host 和路径的具体程度，然后匹配器
+  多的，然后先写的路由），在第一个没有匹配器的路由之后截断；只有在路由的 host 和路径匹配、且它能胜过已找到的最佳
+  路由时才运行它的匹配器，所以已有更高优先级的路由匹配时，低优先级路由的匹配器不会运行。`Router::find(host, path)`
+  保留，相当于没有其他内容的 GET（`Parts::new`）。所有匹配器都在编译配置时构建（规则 12），按 fit 的图的顺序先便宜
+  后昂贵（方法、远端 IP、头、query、路径正则、表达式；一个表达式算一个匹配器）。
+- `akit-config` 读取 `match.path_regexp`、`method`、`header`、`query`、`remote_ip` 和 `expr`，检查同 fit
+  （`config/validate.go`：方法和头名必须是 token，query 键不能为空，正则、前缀和表达式必须能构建，用的是路由器自己的
+  构建函数：akit-config 现在依赖 akit-router）。`akit-runtime` 把它们构建进 `CompiledRoute::matchers`，并提供
+  `Graph::route_request`；`akit-listener` 的 `Dispatcher` 用它路由，从 akio 的上下文读取方法、`Host`、query、对端
+  地址和头字段。
+- 测试：移植了 fit 的 `TestMatchers`、`TestMatcherErrors`、`TestMatcherOrder`（其 `panicMatcher` 用例用一个统计
+  读取它的匹配器次数的请求来做）、`TestParseExpr`、`TestParseExprErrors`、`TestExprMatch`、`TestQueryHexEscapes`、
+  `TestSameBucket`、带匹配器的 `TestPathTwice`，以及 `FuzzParseExpr` 的种子和更多用例作为往返测试（`akit-router`
+  `src/tests_matchers.rs`），另有 query 键值对、前缀、ASCII 字符类和非 UTF-8 路径的细节测试；`tests/no_alloc.rs`
+  扩展了 fit 的 `TestMatchersAllocs` 和 `TestExprAllocs`（再加一个路径正则）：每项 100 次查找 0 次分配；fit 的配置
+  测试 "route matchers"（`akit-config` `tests/json_config.rs`）；`akit-listener` `tests/listeners.rs` 的
+  `route_matchers`：每种匹配器都通过 HTTP/1.1 请求测试，query 和方法也通过 h2c 测试。
+- 兼容性门禁：`tests/compat/supported.txt` 加了这六个字段；`make compat-bless`：`examples/routing` 现在有效，
+  `match.method` / `match.remote_ip` 不再让 body-limit、cache、forward-proxy、sync-wasm-sink 和 video-site 被拒绝
+  （80 个夹具：9 个有效，70 个只因暂不支持被拒绝，1 个跳过，没有失败）。
+- 已检查：macOS 上 `make check`；基准测试主机上 `cargo test -p akit-router -p akit-config -p akit-runtime -p
+  akit-listener`（epoll）和 `AKIO_TEST_BACKEND=uring cargo test -p akit-listener`。
+- 与 fit 的不同：路径正则用 `akio-regex` 的语法，是 Go 语法的子集：Unicode 字符类（`\pL`）、POSIX 字符类
+  （`[[:alpha:]]`）和 `\Q...\E` 在读取配置时被拒绝，正则错误信息的末尾是 akio-regex 的（`unclosed group at byte 1`），
+  不是 Go 的。Go 的 `%q` 引号写法是近似的：Rust 没有 Unicode 类别，所以“可打印”是排除控制字符、U+0020 以外的空白
+  和常见格式字符（打印出的形式总能解析回同样的表达式）。错误路径中的 map 键按 akit 的形式写成 `header["Bad Name"]`，
+  fit 写成 `header.Bad Name`。与 fit 相同，`Header("Host")` 永远不匹配（Go 的服务器把 `Host` 从头字段中拿掉）。
+- 待测（维护者的基准任务，规则 30）：同样路由上带匹配器、表达式和路径正则的 `find_request` 对比 `find`
+  （`benches/lookup.rs` 中的微基准），以及 fixed 场景下 I39 对比其基线的 A/B。
 
 ### 2026-11-24：I22，SIGHUP 重载
 

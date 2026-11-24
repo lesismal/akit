@@ -455,6 +455,39 @@ fn supported_fields_are_read() {
             route(r#""match": {"path": ["/x*"]}"#),
             |c| c.routes[0].matcher.as_ref().unwrap().path == ["/x*"],
         ),
+        (
+            "routes[].match.path_regexp",
+            route(r#""match": {"path_regexp": ["^/a$"]}"#),
+            |c| c.routes[0].matcher.as_ref().unwrap().path_regexp == ["^/a$"],
+        ),
+        (
+            "routes[].match.method",
+            route(r#""match": {"method": ["GET"]}"#),
+            |c| c.routes[0].matcher.as_ref().unwrap().method == ["GET"],
+        ),
+        (
+            "routes[].match.header",
+            route(r#""match": {"header": {"X-A": ["1"]}}"#),
+            |c| {
+                c.routes[0].matcher.as_ref().unwrap().header
+                    == [("X-A".to_owned(), vec!["1".to_owned()])]
+            },
+        ),
+        (
+            "routes[].match.query",
+            route(r#""match": {"query": {"v": []}}"#),
+            |c| c.routes[0].matcher.as_ref().unwrap().query == [("v".to_owned(), vec![])],
+        ),
+        (
+            "routes[].match.remote_ip",
+            route(r#""match": {"remote_ip": ["10.0.0.0/8"]}"#),
+            |c| c.routes[0].matcher.as_ref().unwrap().remote_ip == ["10.0.0.0/8"],
+        ),
+        (
+            "routes[].match.expr",
+            route(r#""match": {"expr": "Method(\"GET\")"}"#),
+            |c| c.routes[0].matcher.as_ref().unwrap().expr == r#"Method("GET")"#,
+        ),
         ("routes[].handler", respond(""), |c| {
             matches!(c.routes[0].handler, Handler::Respond(_))
         }),

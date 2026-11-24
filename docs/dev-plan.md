@@ -138,7 +138,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I37 | Prometheus metrics | I15 | todo |
 | I38 | M2 exit: churn test and staging certificate | I26–I37 | todo |
 | **M3** | | | |
-| I39 | Matchers v2 and expressions | I11 | todo |
+| I39 | Matchers v2 and expressions | I11 | done |
 | I40 | Rewrites, redirects, headers | I39 | todo |
 | I41 | Rate, concurrency and size limits | I39 | todo |
 | I42 | Basic auth and mTLS | I39 | todo |
@@ -209,7 +209,7 @@ commit and result.
 | Passive health checks | I20 | no | no (not built yet) | A micro-benchmark of recording a result on the request path. |
 | Access logs | I21 | no | no (not built yet) | Same-run A/B of fixed and proxy with logs on and off; lines dropped at full load. |
 | Prometheus metrics | I37 | no | no (not built yet) | Same-run A/B with metrics on and off. |
-| Matchers v2 and expressions | I39 | no | no (not built yet) | A micro-benchmark of matching; A/B against router v1. |
+| Matchers v2 and expressions | I39 | no | no (built, not measured) | A micro-benchmark of `find_request` with matchers, expressions and path regexps (no allocation, `tests/no_alloc.rs`); same-run A/B against I39's base on the fixed scenario (one route, no matchers: within noise expected). |
 | Middlewares (rewrites, headers, limits, auth, retries and the rest) | I40–I48 | no | no (not built yet) | I56 benchmarks every middleware; same-run A/B of each on the proxy scenario. |
 | Compression | I47 | no | no (not built yet) | Against fit, each encoding, as I47 asks. |
 | WebSocket and gRPC proxying | I49, I50 | no | no (not built yet) | Messages a second and memory per connection against fit. |

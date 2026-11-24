@@ -243,6 +243,9 @@ dependencies = [
 [[package]]
 name = "akit-config"
 version = "0.0.1"
+dependencies = [
+ "akit-router",
+]
 
 [[package]]
 name = "akit-handler"
@@ -311,6 +314,7 @@ dependencies = [
 name = "akit-router"
 version = "0.0.1"
 dependencies = [
+ "akio-regex",
  "stats_alloc",
 ]
 

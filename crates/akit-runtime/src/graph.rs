@@ -33,6 +33,9 @@ pub struct CompiledRoute {
     pub host: Vec<String>,
     /// `match.path`.
     pub path: Vec<String>,
+    /// The rest of `match`, built (I39): method, remote IP, header, query, path regexp and
+    /// expression, the cheapest first, as fit's graph orders them.
+    pub matchers: Vec<akit_router::Matcher>,
     /// The handler, its middleware chain built around it (I40 on); provisioned.
     pub handler: Arc<dyn Handler>,
 }
@@ -45,6 +48,7 @@ impl fmt::Debug for CompiledRoute {
             .field("priority", &self.priority)
             .field("host", &self.host)
             .field("path", &self.path)
+            .field("matchers", &self.matchers.len())
             .finish_non_exhaustive()
     }
 }
@@ -129,6 +133,19 @@ impl Graph {
         path: impl AsRef<[u8]>,
     ) -> Option<&CompiledRoute> {
         let i = *self.routers.get(listener)?.find(host, path)?;
+        self.routes.get(i)
+    }
+
+    /// The route that serves request `r` on the listener at `listener`: [`route`](Self::route)
+    /// with the routes' other matchers (method, header, query, remote IP, path regexps,
+    /// expressions) run on `r`. Runs per request: it only reads, and does not allocate.
+    #[must_use]
+    pub fn route_request<R: akit_router::Request + ?Sized>(
+        &self,
+        listener: usize,
+        r: &R,
+    ) -> Option<&CompiledRoute> {
+        let i = *self.routers.get(listener)?.find_request(r)?;
         self.routes.get(i)
     }
 
@@ -227,12 +244,27 @@ pub fn compile(
             .as_ref()
             .map(|m| (m.host.clone(), m.path.clone()))
             .unwrap_or_default();
+        let matchers = match r.matcher.as_ref().map(matchers).transpose() {
+            Ok(ms) => ms.unwrap_or_default(),
+            Err(e) => {
+                // The config's checks build the same matchers: not reached with a checked one.
+                errors.push(Error {
+                    file: None,
+                    path: format!("routes[{i}].match"),
+                    line: 0,
+                    col: 0,
+                    msg: e.to_string(),
+                });
+                continue;
+            }
+        };
         routes.push(CompiledRoute {
             name: r.name.clone(),
             listeners: r.listeners.clone(),
             priority: r.priority,
             host,
             path,
+            matchers,
             handler,
         });
     }
@@ -275,6 +307,7 @@ pub fn compile(
                     .map(|(i, r)| akit_router::Route {
                         hosts: r.host.clone(),
                         paths: r.path.clone(),
+                        matchers: r.matchers.clone(),
                         priority: r.priority,
                         value: i,
                     })
@@ -292,4 +325,30 @@ pub fn compile(
         holds: AtomicUsize::new(0),
         orphaned: AtomicBool::new(false),
     })
+}
+
+/// The matchers `m` asks for besides hosts and paths, the cheapest first (fit's
+/// `runtime/graph.go` `matchers`).
+fn matchers(m: &akit_config::Match) -> Result<Vec<akit_router::Matcher>, akit_router::Error> {
+    use akit_router::Matcher;
+    let mut ms = Vec::new();
+    if !m.method.is_empty() {
+        ms.push(Matcher::methods(&m.method));
+    }
+    if !m.remote_ip.is_empty() {
+        ms.push(Matcher::remote_ip(&m.remote_ip)?);
+    }
+    if !m.header.is_empty() {
+        ms.push(Matcher::headers(&m.header));
+    }
+    if !m.query.is_empty() {
+        ms.push(Matcher::query(&m.query));
+    }
+    if !m.path_regexp.is_empty() {
+        ms.push(Matcher::path_regexp(&m.path_regexp)?);
+    }
+    if !m.expr.is_empty() {
+        ms.push(Matcher::expr(&m.expr)?);
+    }
+    Ok(ms)
 }

@@ -8,5 +8,9 @@ repository.workspace = true
 rust-version.workspace = true
 publish = false
 
+[dependencies]
+# fit validates matchers with its router's own builders: path regexps, prefixes, expressions.
+akit-router.workspace = true
+
 [lints]
 workspace = true
