@@ -26,14 +26,16 @@ use akit_runtime::upstream::EngineSlot;
 use akit_runtime::{Env, GraphCell, HandlerParams, Registry, compile};
 
 /// fit's `splitConfig`: upstreams `a` (out of rotation for a minute after one failure), `b` and
-/// `c` at the addresses given, and a route proxying with `params`.
+/// `c` at the addresses given, and a route proxying with `params`. `c`, the mirror, has 32
+/// connections at most: copies past them wait in its pool, which keeps a held mirror's sockets
+/// within a test host's 1024 descriptors.
 fn config(params: &str, a: SocketAddr, b: SocketAddr, c: SocketAddr) -> String {
     format!(
         r#"{{
   "listeners": [{{"name": "web", "address": "127.0.0.1:0"}}],
   "upstreams": [{{"name": "a", "addresses": ["{a}"], "max_fails": 1, "fail_timeout": "1m"}},
                 {{"name": "b", "addresses": ["{b}"]}},
-                {{"name": "c", "addresses": ["{c}"]}}],
+                {{"name": "c", "addresses": ["{c}"], "max_conns": 32}}],
   "routes": [{{"handler": {{"module": "proxy", "params": {params}}}}}]
 }}"#
     )
@@ -462,13 +464,18 @@ fn mirror_does_not_slow() {
     for w in workers {
         w.join().unwrap();
     }
-    let n = m.settle(1);
-    assert!(
-        n > 0 && n <= akit_config::MAX_MIRRORED,
-        "the mirror got {n} copies, want 1 to {}",
-        akit_config::MAX_MIRRORED
-    );
+    // The mirror has the copies its 32 connections carry; the rest wait in its pool, under way
+    // all the same. None has ended, so no slot was given back: once released, the mirror gets
+    // exactly the bound's copies, and none of the other 144 requests'.
+    let held = m.settle(1);
+    assert!((1..=32).contains(&held), "the mirror holds {held} copies");
     m.release();
+    let n = m.settle(akit_config::MAX_MIRRORED);
+    assert_eq!(
+        n,
+        akit_config::MAX_MIRRORED,
+        "the mirror got {n} copies of 400 requests"
+    );
 }
 
 /// fit's TestMirrorPercent: about a quarter of 400 copied.
