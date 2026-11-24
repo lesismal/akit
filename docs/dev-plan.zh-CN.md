@@ -153,7 +153,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I55 | SOCKS 与 CONNECT | I53 | todo |
 | I56 | M3 退出 | I39–I55 | todo |
 | **M4** | | | |
-| I57 | Provider 框架与生效配置 | I29 | todo |
+| I57 | Provider 框架与生效配置 | I29 | done |
 | I58 | Docker provider | I57 | todo |
 | I59 | Kubernetes Ingress | I57 | todo |
 | I60 | Kubernetes Gateway API 与一致性测试 | I59 | todo |
@@ -717,6 +717,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 - **做什么**：provider 走同一条编译路径；fit 的合并规则；一个 Admin API 端点，展示生效配置及其各部分的来源。
 - **完成标准**：测试覆盖合并和该端点。
 - **涉及**：`akit-provider`、`akit-admin`。
+- **fit**：决策 009。
 
 ### I58 Docker provider
 

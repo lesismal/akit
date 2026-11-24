@@ -19,7 +19,7 @@ use akit_config::Errors;
 use akit_config::value::{Value, write_string};
 
 use crate::configs::{Applied, ApplyError, Configs, Mode, Outcome, Refused, SOURCE_ADMIN, Version};
-use crate::configs::{ListenerChange, SOURCE_ROLLBACK, etag_matches};
+use crate::configs::{Effective, ListenerChange, etag_matches};
 use crate::pointer::{self, Problem};
 
 /// The header that carries the version of the config a response is about: fit's name, so that
@@ -241,26 +241,8 @@ impl Job {
                 |cur| edited(cur, |root| pointer::remove(root, &tokens)),
                 apply,
             ),
-            Op::Rollback(n) => configs.change(
-                SOURCE_ROLLBACK,
-                if_match,
-                mode,
-                |_| match configs.version(n) {
-                    Some(v) => Ok(v.data().to_owned()),
-                    None => Err(Refused::Request {
-                        status: 404,
-                        msg: format!("version {n} is not kept"),
-                    }),
-                },
-                apply,
-            ),
-            Op::Reload => configs.change(
-                SOURCE_ADMIN,
-                if_match,
-                mode,
-                |cur| Ok(cur.data().to_owned()),
-                apply,
-            ),
+            Op::Rollback(n) => configs.rollback(n, if_match, mode, apply),
+            Op::Reload => configs.reapply(SOURCE_ADMIN, if_match, mode, apply),
         };
         match r {
             Ok(o) => {
@@ -518,6 +500,7 @@ impl akio_http::Service for Api {
                     not_allowed("GET, HEAD")
                 }
             }
+            "/config/effective" if read => effective(&self.0.configs.effective()),
             p if p == "/config" || p.starts_with("/config/") => match method {
                 Method::Get | Method::Head => get_config(ctx, &self.0.configs, &path),
                 Method::Put | Method::Patch => match pointer_of(&path) {
@@ -746,7 +729,7 @@ fn versions(configs: &Configs) -> Response {
         akit_observe::time::rfc3339(&mut t, akit_observe::time::Stamp::of(v.applied), 0);
         write_string(&mut b, &String::from_utf8_lossy(&t));
         b.push_str(",\"source\":");
-        write_string(&mut b, v.source);
+        write_string(&mut b, &v.source);
         b.push_str(&format!(",\"bytes\":{},\"etag\":", v.data().len()));
         write_string(&mut b, &v.etag);
         b.push('}');
@@ -763,6 +746,84 @@ fn version(configs: &Configs, n: &str) -> Response {
     match configs.version(n) {
         Some(v) => config(&v),
         None => error(404, &format!("version {n} is not kept")),
+    }
+}
+
+/// `GET /config/effective`: the running config as it runs, the base config with what providers
+/// provide merged into it, and where each part came from, as fit's `Effective`: the version and
+/// the base config's ETag, the sources in their order of precedence, the config (compact, as Go
+/// writes a raw message), the source of each member and array element, and what was shadowed.
+fn effective(e: &Effective) -> Response {
+    let v = &e.version;
+    let mut b = format!("{{\"version\":{},\"etag\":", v.number);
+    write_string(&mut b, &v.etag);
+    b.push_str(",\"precedence\":[");
+    for (i, s) in e.precedence.iter().enumerate() {
+        if i > 0 {
+            b.push(',');
+        }
+        write_string(&mut b, s);
+    }
+    b.push_str("],\"config\":");
+    compact(&mut b, v.effective());
+    b.push_str(",\"sources\":[");
+    for (i, s) in v.sources().iter().enumerate() {
+        if i > 0 {
+            b.push(',');
+        }
+        b.push_str("{\"path\":");
+        write_string(&mut b, &s.path);
+        b.push_str(",\"source\":");
+        write_string(&mut b, &s.source);
+        if !s.from.is_empty() {
+            b.push_str(",\"from\":");
+            write_string(&mut b, &s.from);
+        }
+        b.push('}');
+    }
+    b.push(']');
+    if !v.shadowed().is_empty() {
+        b.push_str(",\"shadowed\":[");
+        for (i, s) in v.shadowed().iter().enumerate() {
+            if i > 0 {
+                b.push(',');
+            }
+            b.push_str("{\"source\":");
+            write_string(&mut b, &s.source);
+            b.push_str(",\"from\":");
+            write_string(&mut b, &s.from);
+            b.push_str(",\"name\":");
+            write_string(&mut b, &s.name);
+            b.push_str(",\"by\":");
+            write_string(&mut b, &s.by);
+            b.push('}');
+        }
+        b.push(']');
+    }
+    b.push_str("}\n");
+    json(200, b).header(VERSION_HEADER, v.number.to_string())
+}
+
+/// `json`, standard JSON, without the white space between its tokens.
+fn compact(b: &mut String, json: &str) {
+    let mut in_string = false;
+    let mut escaped = false;
+    for c in json.chars() {
+        if in_string {
+            b.push(c);
+            if escaped {
+                escaped = false;
+            } else if c == '\\' {
+                escaped = true;
+            } else if c == '"' {
+                in_string = false;
+            }
+        } else if c == '"' {
+            in_string = true;
+            b.push(c);
+        } else if !matches!(c, ' ' | '\t' | '\r' | '\n') {
+            b.push(c);
+        }
     }
 }
 
@@ -869,6 +930,13 @@ fn not_allowed(allow: &str) -> Response {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn compacts() {
+        let mut b = String::new();
+        super::compact(&mut b, "{ \"a b\" : [1, \"x\\\" y\"],\n  \"c\": {} }");
+        assert_eq!(b, r#"{"a b":[1,"x\" y"],"c":{}}"#);
+    }
+
     #[test]
     fn tokens_compared() {
         assert!(super::same(b"s3cret", b"s3cret"));

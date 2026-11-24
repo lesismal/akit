@@ -1,12 +1,15 @@
 [package]
 name = "akit-provider"
-description = "akit's config providers: Docker, Kubernetes, Consul and etcd."
+description = "akit's config providers: the framework, and Docker, Kubernetes, Consul and etcd."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 publish = false
+
+[dependencies]
+akit-config = { workspace = true }
 
 [lints]
 workspace = true

@@ -1114,7 +1114,7 @@ fn rollback() {
     // Version 1 has left the history of three, but its config is back.
     assert!(f.configs.version(1).is_none());
     assert_eq!(
-        (cur.data(), cur.source),
+        (cur.data(), &*cur.source),
         (doc("v1").as_str(), SOURCE_ROLLBACK)
     );
     // Its ETag is version 1's again, now the last of those kept.
@@ -1163,7 +1163,7 @@ fn reload() {
     assert_eq!(f.served(), "v1");
     let now = f.configs.current();
     assert_eq!(
-        (now.etag.as_str(), now.source),
+        (now.etag.as_str(), &*now.source),
         (cur.etag.as_str(), SOURCE_ADMIN)
     );
     assert_eq!(f.send("POST", "/reload", "", "", "\"stale\"").status, 412);

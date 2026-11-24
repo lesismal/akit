@@ -42,6 +42,7 @@ use akit_admin::{
 use akit_config::{Config, ConfigFile, Error, Errors, LogFormat};
 use akit_observe::metrics::{ConfigStats, Metrics};
 use akit_observe::{AccessLog, Format, Zone};
+use akit_provider::Updates;
 use akit_runtime::upstream::EngineSlot;
 use akit_runtime::{Env, Graph, GraphCell, HandlerParams, Registry, compile};
 use akit_tls::{FileWatcher, Report};
@@ -467,10 +468,12 @@ fn apply_files(name: &str, files: &[ConfigFile], configs: &Configs, runner: &mut
 /// its certificates, stay. Says what happened as fit says it.
 fn reload_certs(configs: &Configs, runner: &mut Runner<'_>) -> Result<(), ()> {
     println!("akit: certificate files changed; reloading");
-    let data = configs.current().data().to_owned();
-    match configs.update(akit_admin::SOURCE_CERTIFICATES, None, data, |text| {
-        runner.apply_text(text, Mode::Apply)
-    }) {
+    match configs.reapply(
+        akit_admin::SOURCE_CERTIFICATES,
+        None,
+        Mode::Apply,
+        |text, mode| runner.apply_text(text, mode),
+    ) {
         Ok(o) => {
             print_applied(&o);
             println!(
@@ -490,6 +493,38 @@ fn reload_certs(configs: &Configs, runner: &mut Runner<'_>) -> Result<(), ()> {
         }
         // No If-Match was given, and nothing but the config is changed.
         Err(Refused::Changed | Refused::Request { .. }) => Err(()),
+    }
+}
+
+/// Applies the parts providers sent (I57), each merged into the running base config as a new
+/// version whose source is the provider, at most one per provider that has one waiting, so that
+/// the control thread goes back to its other work in between; a part refused leaves the
+/// provider's last in place. Says what happened as fit says it.
+fn provide(updates: &Updates, configs: &Configs, runner: &mut Runner<'_>) {
+    for _ in 0..updates.pending() {
+        let Some((name, data)) = updates.take() else {
+            break;
+        };
+        match configs.provide(&name, &data, |text, mode| runner.apply_text(text, mode)) {
+            Ok(o) if o.unchanged => {}
+            Ok(o) => {
+                print_applied(&o);
+                println!(
+                    "akit: applied what provider {name} provides (config version {})",
+                    o.version
+                );
+            }
+            Err(Refused::Apply(ApplyError::Config(errs))) => {
+                eprintln!("akit: provider {name}: refused; what it provided before stays");
+                print_errors(&format!("provider {name}"), &errs);
+            }
+            Err(Refused::Apply(ApplyError::Failed(e))) => {
+                eprintln!("akit: provider {name}: refused; what it provided before stays: {e}");
+            }
+            Err(Refused::Request { msg, .. }) => eprintln!("akit: provider {name}: {msg}"),
+            // No If-Match is given.
+            Err(Refused::Changed) => {}
+        }
     }
 }
 
@@ -556,6 +591,8 @@ enum Control {
     Hangup,
     /// A config loaded through the Admin API.
     Admin(akit_admin::Job),
+    /// Providers' parts wait (I57).
+    Provide,
 }
 
 /// How many requests may wait for the control thread: the Admin API's connections, each with
@@ -757,6 +794,15 @@ fn run(args: &[String]) -> ExitCode {
             }
         }
     };
+    // Providers' parts (I57) wake the control thread through the same queue; one it could not
+    // be given is made up for after the next thing it does, when it takes the parts waiting. The
+    // providers' kinds and their config come with I58-I61: none runs yet.
+    let updates = {
+        let tx = tx.clone();
+        Updates::new(move || {
+            let _ = tx.try_send(Control::Provide);
+        })
+    };
     drop(tx);
     let mut runner = Runner {
         slot: &slot,
@@ -789,9 +835,16 @@ fn run(args: &[String]) -> ExitCode {
     }
     let mut at = Instant::now();
     loop {
+        if updates.pending() > 0 {
+            provide(&updates, &configs, &mut runner);
+            cell.collect();
+        }
         // Graphs replaced by a reload are retired from here once no request uses them
         // (decision 004): after each swap, and on a timer while any is left.
         let mut wait = (cell.retiring() > 0).then_some(COLLECT_EVERY);
+        if updates.pending() > 0 {
+            wait = Some(Duration::ZERO);
+        }
         if watcher.is_some() || provider.is_some() {
             let until = at.saturating_duration_since(Instant::now());
             wait = Some(wait.map_or(until, |w| w.min(until)));
@@ -841,6 +894,8 @@ fn run(args: &[String]) -> ExitCode {
                 reload(&paths, &configs, &mut runner, provider.as_mut());
                 cell.collect();
             }
+            // Taken at the top of the loop.
+            Some(Control::Provide) => {}
             Some(Control::Admin(job)) => {
                 if let Some(o) = job.run(&configs, |text, mode| runner.apply_text(text, mode)) {
                     print_applied(&o);
@@ -853,10 +908,12 @@ fn run(args: &[String]) -> ExitCode {
             }
         }
     }
-    // The API first: no more loads. Those still waiting are refused.
+    // The API first: no more loads. Those still waiting are refused. No provider's part is
+    // applied either.
     if let Some(api) = &api {
         api.shutdown();
     }
+    updates.close();
     // No more certificates obtained: its work under way is given up.
     acme.close();
     // A second SIGINT or SIGTERM does not wait for the shutdown, as fit's.
@@ -868,7 +925,7 @@ fn run(args: &[String]) -> ExitCode {
                     std::process::exit(1);
                 }
                 Control::Admin(job) => job.refuse(503, "akit is shutting down"),
-                Control::Hangup => {}
+                Control::Hangup | Control::Provide => {}
             }
         }
     });
