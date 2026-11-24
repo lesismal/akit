@@ -22,8 +22,8 @@ first; its status here records the branch, then the akio commit akit pins.
 | A1 | TCP listeners added, removed and drained on a running engine | in akio's main (`a9a620ab`), pinned, used by I22 | 10, 11 | I22, I28 |
 | A2 | A server certificate chosen per handshake by a callback that may complete later | in akio's main (`a9a620ab`), pinned | 1, 4 | I30, I34 |
 | A3 | A filter on accepted connections before any handler runs | in akio's main (`a9a620ab`), pinned | 11 | access lists |
-| A4 | PROXY protocol v1/v2: parse on accept, write on dial | in akio's main (`a9a620ab`), pinned | 12 | I52 |
-| A5 | An akio-mux rule that routes TLS by SNI without terminating it | in akio's main (`a9a620ab`), pinned | 12 | I52, I53 |
+| A4 | PROXY protocol v1/v2: parse on accept, write on dial | in akio's main (`a9a620ab`), pinned, used by I52 | 12 | I52 |
+| A5 | An akio-mux rule that routes TLS by SNI without terminating it | in akio's main (`a9a620ab`), pinned, its ClientHello parser used by I52 | 12 | I52, I53 |
 | A6 | CSR generation in `akio-x509` (and JWS helpers in `akio-crypto`) | in akio's main (`afbbb521`), pinned | 15 | I31 |
 | A7 | An MP4 (ISO BMFF) reader for segmenting files without transcoding | in akio's main (`a9a620ab`), pinned | — | media library |
 | A8 | TUN devices | in akio's main (`a9a620ab`), pinned | — | VPN |
@@ -45,13 +45,13 @@ first; its status here records the branch, then the akio commit akit pins.
 | A24 | An HTTP/1 response that closes its connection, and stops reading a body it refused | requested (I26) | 7, 10, 11 | I26, I27, I41 |
 | A29 | A response hook without an allocation: a listener's observer, called with a few words the request set | requested (I37) | 13 | I21, I37, I64 |
 | A30 | The open connections a listener accepted, apart from dialed ones and UDP peers | requested (I37) | — | I37 |
-| A32 | Where an `akio-regex` pattern matches, its groups, and replacing them | built on akio's branch `claude/a32-regex-captures` (`26c500b5`, ADR-115), pinned, used by I48 | 19 | I40, I48 |
+| A32 | Where an `akio-regex` pattern matches, its groups, and replacing them | in akio's main (`e9891b52`), pinned | 19 | I40, I48 |
 | A33 | A request's fields and target changed by a middleware (`Context::req_mut`) | requested (I40) | 12, 19 | I40, I43, I44 |
 | A35 | A streamed HTTP/1.1 response framed by its length | requested (I16) | 5 | I16, I67 |
 | A36 | An HTTP client request's response-header and idle timeouts | in akio's main (`4f7169c4`), pinned, used by I17b | 10 | I17b, I18 |
 | A37 | An HTTP client request cancelled at any point | in akio's main (`4f7169c4`), pinned, used by I17b | 3 | I17b, I45 |
 | A38 | A detached server request that hears its client went; a write stall timeout changed at run time | in akio's main (`4f7169c4`), pinned, used by I17b | 3, 10 | I17b, I49 |
-| A45 | A public timer: a callback run once a delay has passed, from any thread | requested (I35) | 1, 11 | I35, I31, I54 |
+| A45 | A public timer: a callback run once a delay has passed, from any thread | requested (I35) | 1, 11 | I35, I31, I52, I54 |
 | A48 | A request's end heard: its response sent in full, or its client gone while it waits | requested (I41) | 3, 11, 13 | I41, I17, I21, I37 |
 | A49 | A request body limited by a middleware, whoever reads the body | requested (I41) | 7, 11 | I41 |
 | A51 | `H2Client`'s streamed requests: reset, timeout, request trailers, and failed rather than forgotten on a `GOAWAY` | in akio's main (`f6750e93`, ADR-110), pinned, used by I18b 3, 10 | I18b, I50 |
@@ -72,9 +72,10 @@ first; its status here records the branch, then the akio commit akit pins.
 | A92 | A body sent from a file on disk encoded by a stream coding | requested (I47) | 1, 5 | I47 |
 | A93 | The HTTP/1 client hands a connection over on `101 Switching Protocols` | in akio's main (`c5cf4353`), pinned | 8, 9 | I49, I55 |
 | A94 | A streamed `2xx` to an HTTP/2 extended CONNECT is a tunnel whose halves close separately | in akio's main (`c5cf4353`), pinned | 9 | I49 |
-| A108 | The HTTP/1 client's TLS server name, in place of the URL's host | done in akio (`252fba42`, ADR-117, branch `claude/a108-a109-upstream-tls`), pinned, used by I54; to land on akio's main | 19 | I54 |
-| A109 | A client certificate's key checked against its leaf when the TLS configuration is built | done in akio (`252fba42`, ADR-117, with A108), pinned, used by I54 | 19 | I54 |
-| A111 | A response filter sees a streamed body as it is sent, and how it ended (a body tap) | built on akio's branch `claude/a111-body-tap` (`0e36f8d6`), pinned | 5, 6 | I67 |
+| A105 | A request's peer is the client a trusted PROXY header names (akio-http) | in akio's main (`e9891b52`), pinned | 19 | I52 |
+| A108 | The HTTP/1 client's TLS server name, in place of the URL's host | in akio's main (`e9891b52`), pinned | 19 | I54 |
+| A109 | A client certificate's key checked against its leaf when the TLS configuration is built | in akio's main (`e9891b52`), pinned | 19 | I54 |
+| A111 | A response filter sees a streamed body as it is sent, and how it ended (a body tap) | in akio's main (`e9891b52`), pinned | 5, 6 | I67 |
 | A112 | An HTTP-date parsed in all three formats RFC 9110 has recipients accept | built on akio's branch `claude/a111-body-tap` (`0e36f8d6`), pinned | 15 | I67 |
 | A113 | A response filter that runs after the inner ones (an outer filter) | built on akio's branch `claude/a111-body-tap` (`0e36f8d6`), pinned | 5 | I67 |
 
@@ -1415,3 +1416,25 @@ ordinary one, the last added first.
 
 **How akit uses it.** The cache's filter is an outer one, so each encoding `compress` picks is a
 variant of its own. Done in akio by this iteration (ADR-116).
+
+## A105 A request's peer is the client a trusted PROXY header names
+
+**Problem.** An HTTP listener behind a load balancer takes the client's address from a PROXY
+header, as fit's `proxy_protocol` does: the client it names is the request's, in
+`X-Forwarded-For`, the access log, `remote_ip` matchers, rate limits and `ip_hash`, all of which
+akit reads from `Request::peer`. akio-mux's `ProxyProtocol` layer (A4) reads the header and
+attaches it to the connection, but akio-http fills `Request::peer` with the socket's peer, and a
+request handler never sees the connection, so akit cannot reach the header.
+
+**Evidence.** At `c5cf4353`: `crates/akio-http/src/session.rs` builds `Request { peer:
+c.peer_addr(), .. }` and gives HTTP/2 sessions `c.peer_addr()`; ADR-095 leaves "using
+`proxy::client_addr` there" to a later change.
+
+**Suggested API.** No new API: `Request::peer` (and `Context::peer`) is `akio_mux::proxy::
+client_addr(conn)`, the header's source when the layer attached one naming an address, else the
+socket's peer; `Conn::peer_addr` unchanged.
+
+**How akit uses it.** `akit-listener` puts `ProxyProtocol` in front of a listener with
+`proxy_protocol` (HTTP over TCP, before TLS), trusting its `trusted` addresses; every feature that
+reads the client's address then reads the header's. Done in akio by I52 (ADR-118, branch
+`claude/a105-proxy-peer`, `e3f03a32`), to be merged onto akio's main.

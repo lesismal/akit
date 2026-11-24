@@ -556,6 +556,28 @@ pub struct Listener {
     /// to with a 308, but for ACME's HTTP-01 challenges; it serves no routes. Only the listener
     /// HTTPS by default makes (`auto_https`, I33) has one; 0 for every listener written.
     pub redirect_https: u16,
+    /// `proxy_protocol` (I52): the proxies whose connections begin with a PROXY protocol header
+    /// naming the client, for a listener of `tcp` or of HTTP over TCP.
+    pub proxy_protocol: Option<ListenerProxyProtocol>,
+}
+
+/// A listener's `proxy_protocol`, as fit's `config.ProxyProtocol`: a connection from one of
+/// `trusted` must begin with a PROXY protocol header, of version 1 or 2, within 10s, and is
+/// served as from the client it names; one from elsewhere is served as it is.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ListenerProxyProtocol {
+    /// `trusted`: the addresses and networks of the proxies that send the header.
+    pub trusted: Vec<Network>,
+}
+
+impl ListenerProxyProtocol {
+    /// Whether a connection from `ip` is one of a trusted proxy's (an IPv4-mapped address taken
+    /// as the IPv4 address it maps).
+    #[must_use]
+    pub fn trusts(&self, ip: IpAddr) -> bool {
+        let ip = unmap(ip);
+        self.trusted.iter().any(|n| n.contains(ip))
+    }
 }
 
 /// A listener's TLS: its certificates from files, chosen by the name a client asks for (SNI),
@@ -669,6 +691,23 @@ pub struct Service {
     /// `max_conns`: the most connections and sessions it proxies at once;
     /// [`DEFAULT_SERVICE_MAX_CONNS`] when left out or 0.
     pub max_conns: usize,
+    /// `server_names` (I52): the server names of the TLS connections it takes from its `tcp`
+    /// listeners, by their ClientHello, without terminating them; `*.example.com` takes the
+    /// names one label below `example.com`. In lower case, without a trailing dot. Empty: the
+    /// connections no other service's names take.
+    pub server_names: Vec<String>,
+    /// `proxy_protocol` (I52): the PROXY protocol header sent first on each upstream
+    /// connection, naming the client and the address it connected to.
+    pub proxy_protocol: Option<ProxyVersion>,
+}
+
+/// A version of the PROXY protocol: a service's `proxy_protocol`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProxyVersion {
+    /// `v1`, a line of text.
+    V1,
+    /// `v2`, binary.
+    V2,
 }
 
 /// fit's default `idle_timeout` of a service's TCP connections.
@@ -1600,12 +1639,21 @@ const ACCESS_LOG_FIELDS: &[&str] = &[
 ];
 // rotate comes with the file sink's rotation (fit's logs package).
 const ACCESS_LOG_FIT_ONLY: &[&str] = &["rotate"];
-const LISTENER_FIELDS: &[&str] = &["name", "address", "protocols", "tls"];
-const LISTENER_FIT_ONLY: &[&str] = &["mptcp", "socks", "access", "proxy_protocol"];
+const LISTENER_FIELDS: &[&str] = &["name", "address", "protocols", "tls", "proxy_protocol"];
+const LISTENER_FIT_ONLY: &[&str] = &["mptcp", "socks", "access"];
+const LISTENER_PROXY_PROTOCOL_FIELDS: &[&str] = &["trusted"];
 const FIT_PROTOCOLS: &[&str] = &["socks"];
-// I51; server_names and proxy_protocol come with I52, access with fit's access lists.
-const SERVICE_FIELDS: &[&str] = &["name", "listeners", "upstream", "idle_timeout", "max_conns"];
-const SERVICE_FIT_ONLY: &[&str] = &["server_names", "access", "proxy_protocol"];
+// I51, I52; access comes with fit's access lists.
+const SERVICE_FIELDS: &[&str] = &[
+    "name",
+    "listeners",
+    "upstream",
+    "idle_timeout",
+    "max_conns",
+    "server_names",
+    "proxy_protocol",
+];
+const SERVICE_FIT_ONLY: &[&str] = &["access"];
 const TLS_FIELDS: &[&str] = &["certificates", "client_auth", "max_version", "acme"];
 // on_demand comes with I34; kernel_tls_offload with engine's.
 const TLS_FIT_ONLY: &[&str] = &["on_demand", "kernel_tls_offload"];
@@ -1822,8 +1870,7 @@ pub(crate) struct Part {
     listeners: Vec<At<Listener>>,
     routes: Vec<At<Route>>,
     upstreams: Vec<At<Upstream>>,
-    /// Each with whether it gives `server_names`, which I52 reads.
-    services: Vec<At<(Service, bool)>>,
+    services: Vec<At<Service>>,
     /// `limits`, with its position, when the file gives it.
     limits: Option<(Limits, usize)>,
     /// `access_log`, with the position of its key, when the file gives it.
@@ -2101,7 +2148,7 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
         metrics: metrics.map(|(m, _, _)| m),
         acme: acme.map(|(a, _)| a),
         auto_https: auto_https.map(|((a, _), _)| a),
-        services: services.into_iter().map(|a| a.v.0).collect(),
+        services: services.into_iter().map(|a| a.v).collect(),
     }
 }
 
@@ -2479,6 +2526,12 @@ fn listener(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Listener> {
     }
     let tls_at = o.take("tls").map(|v| (v, o.at("tls")));
     let tls = tls_at.as_ref().and_then(|(v, p)| tls(d, v, p));
+    let pp_at = o
+        .take("proxy_protocol")
+        .map(|v| (v, o.at("proxy_protocol")));
+    let proxy_protocol = pp_at
+        .as_ref()
+        .and_then(|(v, p)| listener_proxy_protocol(d, v, p));
     o.finish(d, LISTENER_FIELDS, LISTENER_FIT_ONLY);
     for (off, at, proto) in &protocols {
         match proto {
@@ -2520,6 +2573,20 @@ fn listener(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Listener> {
             DEFAULT_PROTOCOLS.to_vec()
         };
     }
+    // The header comes at the start of a TCP connection: neither udp nor HTTP/3 takes one.
+    if let Some((v, p)) = &pp_at {
+        if protocols
+            .iter()
+            .all(|p| matches!(p, Protocol::Udp | Protocol::H3))
+        {
+            d.error(
+                v.off,
+                p,
+                "a PROXY protocol header comes at the start of a TCP connection; this listener \
+                 takes UDP alone",
+            );
+        }
+    }
     Some(Listener {
         name: name?,
         address: address?,
@@ -2528,7 +2595,38 @@ fn listener(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Listener> {
         // Set from the config's limits once the files are merged.
         max_body_bytes: DEFAULT_MAX_BODY_BYTES,
         redirect_https: 0,
+        proxy_protocol,
     })
+}
+
+/// A listener's `proxy_protocol`, as fit's `config.ProxyProtocol` and its checks.
+fn listener_proxy_protocol(
+    d: &mut Decoder<'_>,
+    n: &Node,
+    path: &str,
+) -> Option<ListenerProxyProtocol> {
+    let mut o = d.object(n, path)?;
+    let trusted = o.require(d, "trusted").map(|v| {
+        let p = o.at("trusted");
+        let mut nets = Vec::new();
+        let given = d.strings(v, &p);
+        if given.is_empty() && matches!(v.kind, crate::json::Kind::Array(_)) {
+            d.error(v.off, &p, "at least one address is needed");
+        }
+        for (i, (off, s)) in given.into_iter().enumerate() {
+            match Network::parse(&s) {
+                Some(net) => nets.push(net),
+                None => d.error(
+                    off,
+                    &crate::error::join_index(&p, i),
+                    format!("{s:?} is not an IP address or CIDR range"),
+                ),
+            }
+        }
+        nets
+    });
+    o.finish(d, LISTENER_PROXY_PROTOCOL_FIELDS, &[]);
+    Some(ListenerProxyProtocol { trusted: trusted? })
 }
 
 /// `admin`, as fit's `config.Admin` and its `checkAdminAddress`.
@@ -5038,12 +5136,9 @@ fn health_check(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<HealthCheck
 
 /// What is wrong with `addr` as an upstream's address, as fit's `checkUpstreamAddress` says it:
 /// a host and a port from 1 to 65535.
-/// `services[]`, as fit's `config.Service`, and whether it gives `server_names`; checked across
-/// the config by [`check_services`].
-fn service(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<(Service, bool)> {
+/// `services[]`, as fit's `config.Service`; checked across the config by [`check_services`].
+fn service(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Service> {
     let mut o = d.object(n, path)?;
-    // Refused as not supported yet (I52), but it lets services share a tcp listener.
-    let named = o.has("server_names");
     let name = o
         .require(d, "name")
         .and_then(|v| d.string(v, &o.at("name")));
@@ -5072,17 +5167,63 @@ fn service(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<(Service, bool)>
             Ok(n) => n,
             Err(_) => usize::MAX,
         });
+    let mut server_names: Vec<String> = Vec::new();
+    if let Some(v) = o.take("server_names") {
+        let p = o.at("server_names");
+        for (i, (off, sn)) in d.strings(v, &p).into_iter().enumerate() {
+            let at = crate::error::join_index(&p, i);
+            let lower = sn.to_ascii_lowercase();
+            if server_names.contains(&lower) {
+                d.error(off, &at, format!("{sn:?} is listed twice"));
+                continue;
+            }
+            if let Err(msg) = check_server_name(&sn) {
+                d.error(off, &at, msg);
+            }
+            // Kept when refused too: the service still shares its listener by name.
+            server_names.push(lower);
+        }
+    }
+    let proxy_protocol = o.take("proxy_protocol").and_then(|v| {
+        let p = o.at("proxy_protocol");
+        match d.string(v, &p).as_deref() {
+            Some("v1") => Some(ProxyVersion::V1),
+            Some("v2") => Some(ProxyVersion::V2),
+            // fit's enum takes "" as left out.
+            Some("") | None => None,
+            Some(other) => {
+                d.error(v.off, &p, format!("{other:?} is not one of \"v1\", \"v2\""));
+                None
+            }
+        }
+    });
     o.finish(d, SERVICE_FIELDS, SERVICE_FIT_ONLY);
-    Some((
-        Service {
-            name: name?,
-            listeners,
-            upstream: upstream?,
-            idle_timeout,
-            max_conns,
-        },
-        named,
-    ))
+    Some(Service {
+        name: name?,
+        listeners,
+        upstream: upstream?,
+        idle_timeout,
+        max_conns,
+        server_names,
+        proxy_protocol,
+    })
+}
+
+/// What is wrong with `name` as one of a service's `server_names`, as fit checks it: a host name,
+/// or one under a `*.` wildcard, and not an IP address, which a ClientHello does not name.
+fn check_server_name(name: &str) -> Result<(), String> {
+    if name.starts_with("**.") {
+        return Err(format!(
+            "{name:?}: a server name's wildcard is \"*.\", one label, as in certificates"
+        ));
+    }
+    check_host(name)?;
+    if name.trim_matches(['[', ']']).parse::<IpAddr>().is_ok() {
+        return Err(format!(
+            "{name:?} is an IP address; a ClientHello names host names"
+        ));
+    }
+    Ok(())
 }
 
 /// The layer 4 protocol a listener serves, `tcp` or `udp`, if any.
@@ -5098,7 +5239,7 @@ fn l4_protocol(l: &Listener) -> Option<Protocol> {
 /// `tcp` or `udp` listener taken by one.
 fn check_services(
     ds: &mut [Decoder<'_>],
-    services: &[At<(Service, bool)>],
+    services: &[At<Service>],
     listeners: &[At<Listener>],
     upstreams: &[At<Upstream>],
 ) {
@@ -5106,8 +5247,11 @@ fn check_services(
     // Each listener a service took, that service's name, and whether it took it without
     // server_names.
     let mut served_by: Vec<(&str, &str, bool)> = Vec::new();
+    // Each tcp listener's server names, with the service that takes each.
+    let mut by_name: Vec<(&str, &str, &str)> = Vec::new();
     for svc in services {
-        let (s, named) = (&svc.v.0, svc.v.1);
+        let s = &svc.v;
+        let named = !s.server_names.is_empty();
         let name = &s.name;
         let s_path = &svc.path;
         let path = crate::error::join_field(s_path, "name");
@@ -5165,8 +5309,54 @@ fn check_services(
                          of them may have none"
                     ),
                 ),
-                None => served_by.push((l, name, !named)),
+                None => {
+                    if proto == Some(Protocol::Tcp) {
+                        // Two services of one listener take no name both.
+                        for (j, sn) in s.server_names.iter().enumerate() {
+                            match by_name
+                                .iter()
+                                .find(|(x, n, other)| x == l && n == sn && other != name)
+                            {
+                                Some((_, _, other)) => svc.error(
+                                    ds,
+                                    &crate::error::join_index(
+                                        &crate::error::join_field(s_path, "server_names"),
+                                        j,
+                                    ),
+                                    format!(
+                                        "{sn:?} is already service {other:?}'s on listener {l:?}"
+                                    ),
+                                ),
+                                None => by_name.push((l, sn, name)),
+                            }
+                        }
+                    }
+                    served_by.push((l, name, !named));
+                }
             }
+        }
+        let udp = s.listeners.iter().any(|l| {
+            listeners
+                .iter()
+                .any(|x| &x.v.name == l && l4_protocol(&x.v) == Some(Protocol::Udp))
+        });
+        if udp && named {
+            svc.error(
+                ds,
+                &crate::error::join_field(s_path, "server_names"),
+                "server_names pick a service by the TLS ClientHello of a tcp connection; a \
+                 service with a udp listener takes none"
+                    .to_owned(),
+            );
+        }
+        if udp && s.proxy_protocol.is_some() {
+            svc.error(
+                ds,
+                &crate::error::join_field(s_path, "proxy_protocol"),
+                "the PROXY protocol is sent on tcp connections; a service with a udp listener \
+                 sends none"
+                    .to_owned(),
+            );
         }
         if !upstreams.iter().any(|u| u.v.name == s.upstream) {
             svc.error(

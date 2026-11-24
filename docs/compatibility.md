@@ -175,7 +175,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 244 supported.
+3821 fields in 121 sections, at fit `7daee573`; 248 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -221,7 +221,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`http.middleware/rewrite`](#fields-http-middleware-rewrite) | 6 | 6 | 0 |
 | [`http.middleware/wasm`](#fields-http-middleware-wasm) | 18 | 0 | 18 |
 | [`limits`](#fields-limits) | 7 | 3 | 4 |
-| [`listeners`](#fields-listeners) | 30 | 13 | 17 |
+| [`listeners`](#fields-listeners) | 30 | 15 | 15 |
 | [`llm`](#fields-llm) | 218 | 0 | 218 |
 | [`log`](#fields-log) | 24 | 0 | 24 |
 | [`media_auth`](#fields-media-auth) | 34 | 0 | 34 |
@@ -231,7 +231,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`providers`](#fields-providers) | 60 | 0 | 60 |
 | [`routes`](#fields-routes) | 24 | 19 | 5 |
 | [`schema_version`](#fields-schema-version) | 1 | 1 | 0 |
-| [`services`](#fields-services) | 13 | 6 | 7 |
+| [`services`](#fields-services) | 13 | 8 | 5 |
 | [`streaming`](#fields-streaming) | 76 | 0 | 76 |
 | [`sync`](#fields-sync) | 42 | 0 | 42 |
 | [`sync.codecs/canal_json`](#fields-sync-codecs-canal-json) | 87 | 0 | 87 |
@@ -300,7 +300,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 244 | 3577 |
+| **Total** | 3821 | 248 | 3573 |
 
 <a id="fields-access"></a>
 
@@ -1287,8 +1287,8 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `listeners[].mptcp` | `boolean` | not supported yet |
 | `listeners[].name` | `string, required` | supported |
 | `listeners[].protocols` | `array<enum(http/1.1\|h2c\|h2\|h3\|tcp\|udp\|socks)>` | supported |
-| `listeners[].proxy_protocol` | `object` | not supported yet |
-| `listeners[].proxy_protocol.trusted` | `array<string>, required` | not supported yet |
+| `listeners[].proxy_protocol` | `object` | supported |
+| `listeners[].proxy_protocol.trusted` | `array<string>, required` | supported |
 | `listeners[].socks` | `object` | not supported yet |
 | `listeners[].socks.allow` | `array<string>` | not supported yet |
 | `listeners[].socks.clients` | `array<string>, required` | not supported yet |
@@ -1777,8 +1777,8 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `services[].listeners` | `array<string>, required` | supported |
 | `services[].max_conns` | `integer` | supported |
 | `services[].name` | `string, required` | supported |
-| `services[].proxy_protocol` | `enum(v1\|v2)` | not supported yet |
-| `services[].server_names` | `array<string>` | not supported yet |
+| `services[].proxy_protocol` | `enum(v1\|v2)` | supported |
+| `services[].server_names` | `array<string>` | supported |
 | `services[].upstream` | `string, required` | supported |
 
 <a id="fields-streaming"></a>

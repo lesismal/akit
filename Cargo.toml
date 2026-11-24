@@ -56,6 +56,9 @@ akio-zstd = { git = "https://github.com/lesismal/akio", rev = "e9891b52c0e97f002
 # gRPC's client and server, for akit-proxy's gRPC tests (I50).
 akio-grpc = { git = "https://github.com/lesismal/akio", rev = "e9891b52c0e97f0023c8a9f324b21453f9477606" }
 
+# PROXY protocol headers and TLS ClientHellos read on accept (akit-l4, akit-listener: I52).
+akio-mux = { git = "https://github.com/lesismal/akio", rev = "e9891b52c0e97f0023c8a9f324b21453f9477606" }
+
 akit-config = { path = "crates/akit-config" }
 akit-runtime = { path = "crates/akit-runtime" }
 akit-listener = { path = "crates/akit-listener" }

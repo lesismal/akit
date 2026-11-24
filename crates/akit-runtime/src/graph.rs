@@ -98,9 +98,9 @@ pub struct Graph {
     upstreams: Vec<Pool>,
     /// The layer 4 services (I51), in the config's order.
     services: Vec<akit_l4::Service>,
-    /// Per listener, in the order of `listeners`: the index in `services` of the one that takes
-    /// its connections, for a `tcp` or `udp` listener.
-    l4: Vec<Option<usize>>,
+    /// Per listener, in the order of `listeners`: the services that take its connections, by
+    /// server name (I52), for a `tcp` or `udp` listener.
+    l4: Vec<Option<akit_l4::Entry>>,
     /// The access log its requests' lines go to: the env's, when the config has `access_log`.
     access_log: Option<akit_observe::AccessLog>,
     /// Where its requests are counted, when the config has `metrics` (I37).
@@ -196,11 +196,11 @@ impl Graph {
         &self.services
     }
 
-    /// The service that takes the connections of the listener at `listener`, a `tcp` or `udp`
-    /// one (I51).
+    /// The services that take the connections of the listener at `listener`, a `tcp` or `udp`
+    /// one (I51), by the server names of their ClientHellos (I52).
     #[must_use]
-    pub fn service(&self, listener: usize) -> Option<&akit_l4::Service> {
-        self.services.get((*self.l4.get(listener)?)?)
+    pub fn entry(&self, listener: usize) -> Option<&akit_l4::Entry> {
+        self.l4.get(listener)?.as_ref()
     }
 
     /// The access log the requests this graph serves are written to, if any (I21).
@@ -561,12 +561,16 @@ pub fn compile(
         .listeners
         .iter()
         .map(|l| {
-            let name = &config
+            let mine: Vec<(akit_l4::Service, &[String])> = config
                 .services
                 .iter()
-                .find(|s| s.listeners.contains(&l.name))?
-                .name;
-            services.iter().position(|s| s.name() == name)
+                .filter(|c| c.listeners.contains(&l.name))
+                .filter_map(|c| {
+                    let s = services.iter().find(|s| s.name() == c.name)?;
+                    Some((s.clone(), c.server_names.as_slice()))
+                })
+                .collect();
+            (!mine.is_empty()).then(|| akit_l4::Entry::of(mine))
         })
         .collect();
     Ok(Graph {

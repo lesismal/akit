@@ -30,6 +30,17 @@
 //! for the drain timeout ([`Service::drain`]). At most `max_conns` are proxied at once by a
 //! service; one past it is closed as soon as it is accepted (a UDP session's datagrams dropped).
 //!
+//! I52: services may share a `tcp` listener, each taking the TLS connections whose ClientHello
+//! asks for one of its `server_names` ([`Entry`]), which it proxies as they are, without
+//! terminating their TLS; the one without `server_names` takes the rest. The ClientHello is read
+//! with akio-mux's parser ([`akio_mux::tls::parse_client_hello`]), up to [`MAX_CLIENT_HELLO`]
+//! bytes and within [`OPENING_TIMEOUT`], before a service takes the connection, and is sent on
+//! to the upstream with what follows. A listener with `proxy_protocol` reads the PROXY header of
+//! its trusted proxies' connections first (akio-mux's `ProxyProtocol`, put in front by
+//! akit-listener): the client it names is the connection's, which `ip_hash` picks by, and a
+//! service with `proxy_protocol` sends its upstream a header of its own naming that client and
+//! the address it connected to ([`akio_mux::proxy::ProxyHeader`]).
+//!
 //! The idle timeouts are swept per service, on akit's timer thread
 //! ([`akit_upstream::timer`]): a stopgap for akio API requests A45 (a public timer) and A78 (an
 //! idle timeout per connection), which would close each connection on its own I/O thread.
@@ -45,9 +56,21 @@ use std::time::{Duration, Instant};
 
 use akit_upstream::Pool;
 
+mod entry;
 mod relay;
 
+pub use akio_mux::proxy::Version as ProxyVersion;
+pub use entry::Entry;
 pub use relay::{Client, ClientAcceptor};
+
+/// The most bytes read for a ClientHello on a listener whose services pick by server name (fit's
+/// `MaxClientHello`): one with large key shares spans several records, but none in use comes
+/// near it. A hello still incomplete past it goes to the fallback.
+pub const MAX_CLIENT_HELLO: usize = 64 << 10;
+
+/// How long a connection may take to send what is read before a service takes it: its
+/// ClientHello, and its PROXY header (fit's `OpeningTimeout`).
+pub const OPENING_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// How much may wait to go to one side before the other side's reads are held; also how much a
 /// UDP session keeps of what its client sends before its upstream socket is open. fit's.
@@ -77,6 +100,8 @@ pub(crate) struct Inner {
     idle: Duration,
     udp_idle: Duration,
     max_conns: usize,
+    /// The PROXY protocol version of the header sent first on each upstream connection.
+    pub(crate) proxy: Option<ProxyVersion>,
     /// The addresses one connection is tried on: [`MAX_ATTEMPTS`], or fewer when the upstream
     /// has fewer.
     pub(crate) attempts: usize,
@@ -113,6 +138,10 @@ impl Service {
             idle: c.idle(),
             udp_idle: c.udp_idle(),
             max_conns: c.max_conns,
+            proxy: c.proxy_protocol.map(|v| match v {
+                akit_config::ProxyVersion::V1 => ProxyVersion::V1,
+                akit_config::ProxyVersion::V2 => ProxyVersion::V2,
+            }),
             attempts,
             conns: AtomicUsize::new(0),
             open: std::array::from_fn(|_| Mutex::new(HashMap::new())),
@@ -144,6 +173,18 @@ impl Service {
     #[must_use]
     pub fn udp_idle_timeout(&self) -> Duration {
         self.0.udp_idle
+    }
+
+    /// The PROXY protocol version of the header it sends its upstream first, if any.
+    #[must_use]
+    pub fn proxy_protocol(&self) -> Option<ProxyVersion> {
+        self.0.proxy
+    }
+
+    /// Whether `other` is this service (a clone of it).
+    #[must_use]
+    pub fn same(&self, other: &Service) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
     }
 
     /// How many connections and UDP sessions it proxies now.

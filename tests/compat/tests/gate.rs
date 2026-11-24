@@ -1657,6 +1657,29 @@ fn supported_fields_are_read() {
             service(r#", "max_conns": 7"#),
             |c| c.services[0].max_conns == 7,
         ),
+        (
+            "services[].server_names",
+            service(r#", "server_names": ["A.example.com", "*.w.example.com"]"#),
+            |c| c.services[0].server_names == ["a.example.com", "*.w.example.com"],
+        ),
+        (
+            "services[].proxy_protocol",
+            service(r#", "proxy_protocol": "v2""#),
+            |c| c.services[0].proxy_protocol == Some(akit_config::ProxyVersion::V2),
+        ),
+        (
+            "listeners[].proxy_protocol",
+            r#"{"listeners": [{"name": "web", "address": ":80", "proxy_protocol": {"trusted": ["10.0.0.1"]}}]}"#.into(),
+            |c| c.listeners[0].proxy_protocol.is_some(),
+        ),
+        (
+            "listeners[].proxy_protocol.trusted",
+            r#"{"listeners": [{"name": "web", "address": ":80", "proxy_protocol": {"trusted": ["10.0.0.0/8"]}}]}"#.into(),
+            |c| {
+                c.listeners[0].proxy_protocol.as_ref().unwrap().trusted
+                    == [akit_config::Network::parse("10.0.0.0/8").unwrap()]
+            },
+        ),
     ];
     let marked = supported().unwrap();
     let sampled: BTreeSet<String> = samples.iter().map(|(p, ..)| (*p).to_owned()).collect();
@@ -1814,7 +1837,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 40] = [
+    let objects: [(&str, &str, Option<&str>); 41] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         ("admin", "ADMIN_FIELDS", Some("ADMIN_FIT_ONLY")),
         ("acme", "ACME_FIELDS", Some("ACME_FIT_ONLY")),
@@ -1829,6 +1852,11 @@ fn akit_config_lists_match_the_inventory() {
         ("listeners[].tls", "TLS_FIELDS", Some("TLS_FIT_ONLY")),
         ("listeners[].tls.certificates[]", "CERTIFICATE_FIELDS", None),
         ("listeners[].tls.client_auth", "CLIENT_AUTH_FIELDS", None),
+        (
+            "listeners[].proxy_protocol",
+            "LISTENER_PROXY_PROTOCOL_FIELDS",
+            None,
+        ),
         ("routes[]", "ROUTE_FIELDS", Some("ROUTE_FIT_ONLY")),
         ("routes[].match", "MATCH_FIELDS", Some("MATCH_FIT_ONLY")),
         ("routes[].handler", "MODULE_FIELDS", None),

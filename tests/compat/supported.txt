@@ -331,8 +331,8 @@ auto_https.http_port
 auto_https.https_port
 
 # I51: services, layer 4 proxying of tcp and udp listeners (listeners[].protocols takes "tcp",
-# alone, and "udp", alone) to an upstream's addresses. server_names and proxy_protocol come with
-# I52, a tcp listener beside other protocols with I53, access with fit's access lists.
+# alone, and "udp", alone) to an upstream's addresses. A tcp listener beside other protocols
+# comes with I53, access with fit's access lists.
 services
 services[].name
 services[].listeners
@@ -383,3 +383,12 @@ routes[].middleware[]<cache>.params.max_entry_size
 routes[].middleware[]<cache>.params.default_ttl
 routes[].middleware[]<cache>.params.disable_lock
 routes[].middleware[]<cache>.params.lock_timeout
+
+# I52: SNI routing and the PROXY protocol. Services sharing a tcp listener by the server names of
+# their TLS ClientHellos, passed through without terminating them; PROXY headers (v1, v2) taken
+# from a listener's trusted proxies, on tcp and HTTP-over-TCP listeners, and sent to a service's
+# upstream.
+listeners[].proxy_protocol
+listeners[].proxy_protocol.trusted
+services[].server_names
+services[].proxy_protocol

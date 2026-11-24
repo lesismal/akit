@@ -1,7 +1,7 @@
 # The compatibility gate's report (docs/compatibility.md), written by make compat-bless;
 # do not edit. The gate fails when a run's outcomes differ from these lines.
 # fit 7daee573, fit-examples 9659d7e4.
-# 80 fixtures: 28 valid, 51 refused only as not supported yet (fields refused: 46), 0 in a format not supported yet, 1 skipped, 0 failed.
+# 80 fixtures: 30 valid, 49 refused only as not supported yet (fields refused: 43), 0 in a format not supported yet, 1 skipped, 0 failed.
 examples/acme-on-demand: not supported yet: acme.on_demand
 examples/acme-on-demand: not supported yet: listeners[].tls.on_demand
 examples/acme-shared-storage: not supported yet: acme.shared_storage
@@ -33,8 +33,7 @@ examples/hello: valid
 examples/http3: valid
 examples/https: skipped: its certificate and key files are the user's own
 examples/jwt: valid
-examples/l4-tcp: not supported yet: services[].proxy_protocol
-examples/l4-tcp: not supported yet: services[].server_names
+examples/l4-tcp: valid
 examples/l4-udp: valid
 examples/limits: not supported yet: engine
 examples/limits: not supported yet: limits.max_conns
@@ -61,7 +60,7 @@ examples/provider-kubernetes: not supported yet: providers
 examples/proxy: not supported yet: limits.max_conns
 examples/proxy: not supported yet: limits.max_header_bytes
 examples/proxy: not supported yet: limits.max_pending_bytes
-examples/proxy-protocol: not supported yet: listeners[].proxy_protocol
+examples/proxy-protocol: valid
 examples/rate-limit: valid
 examples/redirect: valid
 examples/rewrite: valid

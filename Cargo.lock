@@ -315,6 +315,7 @@ name = "akit-l4"
 version = "0.0.1"
 dependencies = [
  "akio",
+ "akio-mux",
  "akit-config",
  "akit-upstream",
 ]
@@ -327,6 +328,7 @@ dependencies = [
  "akio-crypto",
  "akio-h3",
  "akio-http",
+ "akio-mux",
  "akio-quic",
  "akio-x509",
  "akit-config",

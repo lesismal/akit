@@ -10,6 +10,7 @@ publish = false
 
 [dependencies]
 akio = { workspace = true }
+akio-mux = { workspace = true }
 akit-config = { workspace = true }
 akit-upstream = { workspace = true }
 

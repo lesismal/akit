@@ -21,8 +21,8 @@
 | A1 | 在运行中的引擎上添加、移除和排空 TCP 监听器 | 已在 akio 的 main（`a9a620ab`），已锁定，I22 已使用 | 10、11 | I22、I28 |
 | A2 | 每次握手由回调选择服务端证书，回调可以稍后完成 | 已在 akio 的 main（`a9a620ab`），已锁定 | 1、4 | I30、I34 |
 | A3 | 在任何 handler 运行之前过滤已接受的连接 | 已在 akio 的 main（`a9a620ab`），已锁定 | 11 | 访问控制列表 |
-| A4 | PROXY 协议 v1/v2：接受时解析，拨号时写出 | 已在 akio 的 main（`a9a620ab`），已锁定 | 12 | I52 |
-| A5 | akio-mux 中按 SNI 路由 TLS 而不终结它的规则 | 已在 akio 的 main（`a9a620ab`），已锁定 | 12 | I52、I53 |
+| A4 | PROXY 协议 v1/v2：接受时解析，拨号时写出 | 已在 akio 的 main（`a9a620ab`），已锁定，I52 已使用 | 12 | I52 |
+| A5 | akio-mux 中按 SNI 路由 TLS 而不终结它的规则 | 已在 akio 的 main（`a9a620ab`），已锁定，I52 已使用其 ClientHello 解析器 | 12 | I52、I53 |
 | A6 | `akio-x509` 中生成 CSR（以及 `akio-crypto` 中的 JWS 辅助函数） | 已在 akio 的 main（`afbbb521`），已锁定 | 15 | I31 |
 | A7 | 不转码即可切分文件的 MP4（ISO BMFF）读取器 | 已在 akio 的 main（`a9a620ab`），已锁定 | — | 媒体库 |
 | A8 | TUN 设备 | 已在 akio 的 main（`a9a620ab`），已锁定 | — | VPN |
@@ -44,13 +44,13 @@
 | A24 | 关闭连接的 HTTP/1 响应，并停止读取已拒绝的请求体 | 已提出（I26） | 7、10、11 | I26、I27、I41 |
 | A29 | 不分配内存的应答钩子：监听器的观察者，带着请求设下的几个字被调用 | 已提出（I37） | 13 | I21、I37、I64 |
 | A30 | 监听器接受的打开连接数，与拨出的连接和 UDP 对端分开 | 已提出（I37） | — | I37 |
-| A32 | `akio-regex` 模式在哪里匹配、它的分组，以及替换 | 已在 akio 分支 `claude/a32-regex-captures` 实现（`26c500b5`，ADR-115），已锁定，I48 使用 | 19 | I40、I48 |
+| A32 | `akio-regex` 模式在哪里匹配、它的分组，以及替换 | 已在 akio 的 main（`e9891b52`），已锁定 | 19 | I40、I48 |
 | A33 | 被中间件修改的请求字段和请求目标（`Context::req_mut`） | 已提出（I40） | 12、19 | I40、I43、I44 |
 | A35 | 按长度分帧的流式 HTTP/1.1 响应 | 已提出（I16） | 5 | I16、I67 |
 | A36 | HTTP 客户端请求的响应头超时和空闲超时 | 已在 akio 的 main（`4f7169c4`），已锁定，I17b 已使用 | 10 | I17b、I18 |
 | A37 | 可在任意时刻取消的 HTTP 客户端请求 | 已在 akio 的 main（`4f7169c4`），已锁定，I17b 已使用 | 3 | I17b、I45 |
 | A38 | 能得知客户端离开的分离服务端请求；可在运行时修改的写停滞超时 | 已在 akio 的 main（`4f7169c4`），已锁定，I17b 已使用 | 3、10 | I17b、I49 |
-| A45 | 公开的定时器：延迟过后运行一次回调，可从任何线程调度 | 已提出（I35） | 1、11 | I35、I31、I54 |
+| A45 | 公开的定时器：延迟过后运行一次回调，可从任何线程调度 | 已提出（I35） | 1、11 | I35、I31、I52、I54 |
 | A48 | 获知请求的结束：响应已完整发出，或等待中客户端已离开 | 已提出（I41） | 3、11、13 | I41、I17、I21、I37 |
 | A49 | 由中间件限制请求体大小，无论谁读取请求体 | 已提出（I41） | 7、11 | I41 |
 | A51 | `H2Client` 的流式请求：重置、超时、请求 trailer，以及遇到 `GOAWAY` 时报告失败而不是被遗忘 | 已在 akio 的 main（`f6750e93`，ADR-110），已锁定，I18b 已使用 | 3、10 | I18b、I50 |
@@ -71,9 +71,10 @@
 | A92 | 从磁盘文件发送的消息体按流编码压缩 | 已提出（I47） | 1、5 | I47 |
 | A93 | HTTP/1 客户端在 `101 Switching Protocols` 时交出连接 | 已在 akio 的 main（`c5cf4353`），已锁定 | 8、9 | I49、I55 |
 | A94 | 对 HTTP/2 扩展 CONNECT 的流式 `2xx` 应答即两半各自关闭的隧道 | 已在 akio 的 main（`c5cf4353`），已锁定 | 9 | I49 |
-| A108 | HTTP/1 客户端的 TLS 服务器名，代替 URL 的主机名 | 已在 akio 中完成（`252fba42`，ADR-117，分支 `claude/a108-a109-upstream-tls`），已锁定，I54 已使用；待合入 akio 的 main | 19 | I54 |
-| A109 | 构建 TLS 配置时检查客户端证书的私钥与叶证书相符 | 已在 akio 中完成（`252fba42`，ADR-117，与 A108 一起），已锁定，I54 已使用 | 19 | I54 |
-| A111 | 响应过滤器看到流式消息体发出的字节及其结束方式（消息体旁路） | 已在 akio 分支 `claude/a111-body-tap`（`0e36f8d6`）上实现，已锁定 | 5、6 | I67 |
+| A105 | 请求的对端是受信任 PROXY 头所指的客户端（akio-http） | 已在 akio 的 main（`e9891b52`），已锁定 | 19 | I52 |
+| A108 | HTTP/1 客户端的 TLS 服务器名，代替 URL 的主机名 | 已在 akio 的 main（`e9891b52`），已锁定 | 19 | I54 |
+| A109 | 构建 TLS 配置时检查客户端证书的私钥与叶证书相符 | 已在 akio 的 main（`e9891b52`），已锁定 | 19 | I54 |
+| A111 | 响应过滤器看到流式消息体发出的字节及其结束方式（消息体旁路） | 已在 akio 的 main（`e9891b52`），已锁定 | 5、6 | I67 |
 | A112 | 按 RFC 9110 要求接收方接受的三种格式解析 HTTP 日期 | 已在 akio 分支 `claude/a111-body-tap`（`0e36f8d6`）上实现，已锁定 | 15 | I67 |
 | A113 | 在内层过滤器之后运行的响应过滤器（外层过滤器） | 已在 akio 分支 `claude/a111-body-tap`（`0e36f8d6`）上实现，已锁定 | 5 | I67 |
 
@@ -1144,3 +1145,20 @@ acceptor)`）；`Client`、`ClientOptions`、`ClientRequest` 都无法设置该�
 
 **akit 的用法。** 缓存的过滤器是外层过滤器，因此 `compress` 选择的每种编码各是一个变体。已由本迭代在 akio 中
 完成（ADR-116）。
+
+## A105 请求的对端是受信任 PROXY 头所指的客户端
+
+**问题。** 位于负载均衡器后面的 HTTP 监听器像 fit 的 `proxy_protocol` 那样从 PROXY 头取得客户端地址：头所指的
+客户端就是请求的客户端，体现在 `X-Forwarded-For`、访问日志、`remote_ip` 匹配、限流与 `ip_hash` 中，而 akit 都从
+`Request::peer` 读取。akio-mux 的 `ProxyProtocol` 层（A4）读出头并挂到连接上，但 akio-http 用套接字的对端填
+`Request::peer`，请求处理函数又看不到连接，所以 akit 拿不到这个头。
+
+**证据。** 在 `c5cf4353`：`crates/akio-http/src/session.rs` 构造 `Request { peer: c.peer_addr(), .. }`，并把
+`c.peer_addr()` 交给 HTTP/2 会话；ADR-095 把“在那里使用 `proxy::client_addr`”留给以后的改动。
+
+**建议的 API。** 不需要新 API：`Request::peer`（以及 `Context::peer`）取 `akio_mux::proxy::client_addr(conn)`，
+即该层挂上的头若给出了地址就取其源地址，否则取套接字的对端；`Conn::peer_addr` 不变。
+
+**akit 的用法。** `akit-listener` 在带 `proxy_protocol` 的监听器（TCP 上的 HTTP，在 TLS 之前）前面放
+`ProxyProtocol`，信任其 `trusted` 地址；此后所有读取客户端地址的功能读到的都是头里的地址。已由 I52 在 akio 中
+完成（ADR-118，分支 `claude/a105-proxy-peer`，`e3f03a32`），待合并到 akio 的 main。
