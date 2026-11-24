@@ -330,9 +330,9 @@ auto_https.disable_redirects
 auto_https.http_port
 auto_https.https_port
 
-# I51: services, layer 4 proxying of tcp and udp listeners (listeners[].protocols takes "tcp",
-# alone, and "udp", alone) to an upstream's addresses. A tcp listener beside other protocols
-# comes with I53, access with fit's access lists.
+# I51: services, layer 4 proxying of tcp and udp listeners (listeners[].protocols takes "tcp"
+# and "udp", alone) to an upstream's addresses; access comes with fit's access lists. I53: "tcp"
+# beside HTTP on one port, told apart by what a client sends first ("socks" comes with I55).
 services
 services[].name
 services[].listeners

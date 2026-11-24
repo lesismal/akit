@@ -36,8 +36,8 @@ use akit_config::{Listener, Protocol};
 use akit_runtime::{Graph, GraphCell};
 
 use crate::{
-    Error, MAX_PORT_ZERO_BINDS, Options, free_port, h3_acceptor, l4_acceptor, resolve, serve_tcp,
-    serves_h3, serves_l4_tcp, tcp_listener, tcp_side, udp_side,
+    Error, MAX_PORT_ZERO_BINDS, Options, free_port, h3_acceptor, l4_acceptor, resolve, serves_h3,
+    tcp_listener, tcp_side, udp_side,
 };
 
 /// A listener as it is served now.
@@ -378,10 +378,6 @@ impl Listeners {
     ) -> Result<ListenerId, Error> {
         let h3_port = serves_h3(l).then_some(addr.port());
         let make = || {
-            if serves_l4_tcp(l) {
-                let listener = EngineListener::tcp(addr).backend(self.opts.backend.clone());
-                return Ok(serve_tcp(l, listener, l4_acceptor(&self.cell, l)));
-            }
             tcp_listener(
                 &self.cell,
                 l,

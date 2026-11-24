@@ -146,13 +146,6 @@ fn checks() {
             r#"{"name": "a", "listeners": ["t"], "upstream": "app", "access": {}}"#,
             &["services[0].access: not supported yet"],
         ),
-        (
-            r#"{"name": "t", "address": ":7000", "protocols": ["http/1.1", "tcp"]}"#,
-            r#"{"name": "a", "listeners": ["t"], "upstream": "app"}"#,
-            &[
-                "listeners[0].protocols[1]: not supported yet: tcp beside other protocols on one port",
-            ],
-        ),
     ];
     let mut wrong = Vec::new();
     for (listeners, services, want) in cases {
@@ -333,4 +326,30 @@ fn server_names_and_proxy_protocol() {
             ],
         ),
     ]);
+}
+
+/// I53: `tcp` beside HTTP on one listener (fit's "mixed" listener), in the clear and with tls,
+/// beside h3 too: a service takes its connections, and routes its HTTP.
+#[test]
+fn tcp_beside_other_protocols() {
+    for listener in [
+        r#"{"name": "t", "address": ":7000", "protocols": ["http/1.1", "h2c", "tcp"]}"#,
+        r#"{"name": "t", "address": ":7000", "protocols": ["http/1.1", "h2", "h3", "tcp"],
+            "tls": {"certificates": [{"cert_file": "c", "key_file": "k"}]},
+            "proxy_protocol": {"trusted": ["10.0.0.0/8"]}}"#,
+    ] {
+        let src = format!(
+            r#"{{"listeners": [{listener}],
+                "upstreams": [{{"name": "app", "addresses": ["127.0.0.1:9000"]}}],
+                "services": [{{"name": "a", "listeners": ["t"], "upstream": "app"}},
+                             {{"name": "b", "listeners": ["t"], "upstream": "app", "server_names": ["b.example"]}}],
+                "routes": [{{"listeners": ["t"], "handler": {{"module": "respond"}}}}]}}"#
+        );
+        let c = ok(&src);
+        assert!(
+            c.listeners[0].protocols.contains(&Protocol::Tcp),
+            "{listener}"
+        );
+        assert!(c.listeners[0].protocols.len() > 2, "{listener}");
+    }
 }
