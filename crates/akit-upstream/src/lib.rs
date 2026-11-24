@@ -30,6 +30,12 @@
 //! `load_balancing` and `weights` (round robin, smooth weighted round robin, least connections),
 //! each I/O thread keeping its own turn.
 //!
+//! I36 adds fit's other policies ([`balance`]): `random`, `p2c`, and consistent hashing of the
+//! client's IP address, the path and query, a header or a cookie ([`Pool::pick_for`] with the
+//! request's [`Keys`]); and sticky sessions by cookie ([`sticky`]): a request whose cookie names
+//! an address that is up goes there, and the response to any other sets the cookie
+//! ([`Pool::set_cookie`]).
+//!
 //! I20 adds passive health checks ([`health`]), as fit's (nginx's `max_fails` and
 //! `fail_timeout`): `max_fails` failures of an address within `fail_timeout` take it out of
 //! rotation for `fail_timeout`, and one response from it puts it back; the balancers pass over an
@@ -71,6 +77,7 @@
 pub mod balance;
 pub mod health;
 pub mod probe;
+pub mod sticky;
 mod timer;
 
 use std::cell::{Cell, RefCell};
@@ -89,8 +96,9 @@ use akio_http::client::{
 use akit_observe::metrics::{HistogramSnapshot, UpstreamStats};
 
 pub use akit_config::{HealthCheck, HealthCheckType};
-pub use balance::{Balancer, LoadBalancing};
+pub use balance::{Balancer, Keys, LoadBalancing};
 pub use health::Health;
+pub use sticky::{Sticky, sticky_id};
 
 /// How long a whole exchange may take, from [`Pool::send`] to the end of the response, waiting for
 /// a connection included: fit's `response_timeout` default, 1h.
@@ -363,6 +371,8 @@ struct Inner {
     backends: Box<[Backend]>,
     /// Which backend [`Pool::pick`] gives.
     balancer: Balancer,
+    /// `sticky_cookie`, checked before the balancer.
+    sticky: Option<Sticky>,
     /// `max_fails` and `fail_timeout`.
     max_fails: usize,
     fail_timeout: Duration,
@@ -442,7 +452,11 @@ impl Pool {
             inner: Arc::new(Inner {
                 name: u.name.clone(),
                 backends,
-                balancer: Balancer::new(u.load_balancing, &weights),
+                balancer: Balancer::keyed(u.load_balancing, &u.addresses, &weights, &u.hash_key),
+                sticky: u
+                    .sticky_cookie
+                    .as_ref()
+                    .map(|c| Sticky::new(c, &u.addresses)),
                 max_fails: u.max_fails,
                 fail_timeout: u.fail_timeout,
                 health_check: u.health_check.clone(),
@@ -598,13 +612,57 @@ impl Pool {
     /// ([`balance`]): in turn, in turn by weight, or the one with the fewest requests under way
     /// (waiting for a connection included) for its weight, passing over the addresses that are
     /// [down](Self::is_down) unless all are. Each I/O thread keeps its own turn.
+    /// A request with nothing to go by: the hash policies go in turn, and the sticky cookie is
+    /// not read.
     #[must_use]
     pub fn pick(&self) -> usize {
+        self.pick_key(None, &Cell::new(None))
+    }
+
+    /// [`pick`](Self::pick) for a request with `keys`: to the address its sticky cookie names,
+    /// when the upstream has one and that address is up; otherwise by the upstream's
+    /// `load_balancing`, which for a hash policy hashes the request's key (I36).
+    #[must_use]
+    pub fn pick_for(&self, keys: &Keys<'_>) -> usize {
+        let inner = &*self.inner;
+        let now = Cell::new(None);
+        if let (Some(sticky), Some(headers)) = (&inner.sticky, keys.headers) {
+            if let Some(b) = sticky.backend(headers) {
+                if inner
+                    .backends
+                    .get(b)
+                    .is_some_and(|x| x.health.up(|| inner.now(&now)))
+                {
+                    return b;
+                }
+            }
+        }
+        self.pick_key(inner.balancer.key(keys), &now)
+    }
+
+    /// The `Set-Cookie` value the response to a request with `keys`, which went to the address
+    /// at `backend`, carries: the sticky cookie naming that address, unless the request's names
+    /// it already; `None` without a sticky cookie.
+    #[must_use]
+    pub fn set_cookie(&self, keys: &Keys<'_>, backend: usize) -> Option<&str> {
+        self.inner
+            .sticky
+            .as_ref()?
+            .set_cookie(keys.headers, backend)
+    }
+
+    /// Whether the upstream has a sticky cookie.
+    #[must_use]
+    pub fn is_sticky(&self) -> bool {
+        self.inner.sticky.is_some()
+    }
+
+    fn pick_key(&self, key: Option<u64>, now: &Cell<Option<u64>>) -> usize {
         let inner = &*self.inner;
         let backends = &inner.backends;
         // The clock is read once, and only if an address has been out.
-        let now = Cell::new(None);
-        inner.balancer.pick_up(
+        inner.balancer.pick_keyed(
+            key,
             |i| {
                 backends.get(i).map_or(0, |b| {
                     b.busy
@@ -615,7 +673,7 @@ impl Pool {
             |i| {
                 backends
                     .get(i)
-                    .is_none_or(|b| b.health.up(|| inner.now(&now)))
+                    .is_none_or(|b| b.health.up(|| inner.now(now)))
             },
         )
     }

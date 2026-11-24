@@ -345,6 +345,8 @@ pub(crate) struct Relay {
     /// The request's body is sent chunked upstream.
     chunked: bool,
     log: Option<Logged>,
+    /// The sticky cookie the response sets (I36), after the upstream's fields.
+    set_cookie: Option<String>,
     out: Out,
 }
 
@@ -355,6 +357,7 @@ impl Relay {
         version: Version,
         chunked: bool,
         log: Option<Logged>,
+        set_cookie: Option<String>,
     ) -> Relay {
         Relay {
             shared: client.shared,
@@ -363,6 +366,7 @@ impl Relay {
             version,
             chunked,
             log,
+            set_cookie,
             out: Out::Waiting,
         }
     }
@@ -444,9 +448,13 @@ impl Exchange for Relay {
         let bodyless = self.head || matches!(head.status, 100..=199 | 204 | 304);
         if bodyless || length.is_some_and(|n| n <= WHOLE_RESPONSE) {
             let capacity = if bodyless { 0 } else { length.unwrap_or(0) };
+            let mut fields = headers::incoming(&head.headers, self.head);
+            if let Some(c) = self.set_cookie.take() {
+                fields.append("Set-Cookie", c);
+            }
             self.out = Out::Whole {
                 status: head.status,
-                headers: headers::incoming(&head.headers, self.head),
+                headers: fields,
                 body: Vec::with_capacity(usize::try_from(capacity).unwrap_or(0)),
                 names: headers::trailer_names(&head.headers),
                 bodyless,
@@ -464,6 +472,9 @@ impl Exchange for Relay {
         let keep_length =
             length.is_some() && matches!(self.version, Version::Http2 | Version::Http3);
         let mut fields = headers::incoming(&head.headers, keep_length);
+        if let Some(c) = self.set_cookie.take() {
+            fields.append("Set-Cookie", c);
+        }
         // Its trailers follow it, as their announcement does (fit's `begin`).
         let names = headers::trailer_names(&head.headers);
         if !names.is_empty() {

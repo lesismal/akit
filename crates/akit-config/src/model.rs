@@ -270,6 +270,13 @@ pub struct Upstream {
     /// default: [`LoadBalancing::RoundRobin`], or [`LoadBalancing::WeightedRoundRobin`] when an
     /// address weighs other than 1.
     pub load_balancing: LoadBalancing,
+    /// `hash_key`: with [`LoadBalancing::HeaderHash`], the header, and with
+    /// [`LoadBalancing::CookieHash`], the cookie, whose value requests are hashed by; empty for
+    /// the other policies.
+    pub hash_key: String,
+    /// `sticky_cookie`: the cookie that keeps each client on one address (I36); `None`, no
+    /// cookie, when left out.
+    pub sticky_cookie: Option<StickyCookie>,
     /// `max_fails`: how many failed requests to an address within `fail_timeout` take it out of
     /// rotation for `fail_timeout`, as nginx's `max_fails`; 0 keeps every address in rotation.
     /// [`DEFAULT_MAX_FAILS`] when left out.
@@ -359,8 +366,27 @@ impl Upstream {
     }
 }
 
-/// An upstream's `load_balancing` policy. fit's `random`, `p2c` and hash policies are refused as
-/// not supported yet.
+/// An upstream's `sticky_cookie`, as fit's `config.StickyCookie`: a request whose cookie names an
+/// address that is up goes there, and any other gets the cookie for the address it went to. The
+/// cookie's value is a hash of the address, the same in every akit (and fit) with the same
+/// addresses.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StickyCookie {
+    /// `name`: the cookie's name; [`DEFAULT_STICKY_COOKIE_NAME`] when left out or empty.
+    pub name: String,
+    /// `path`: the cookie's `Path`; `/` when left out or empty.
+    pub path: String,
+    /// `max_age`: how long the client keeps the cookie, as its `Max-Age`; `None`, until the
+    /// browser closes, when left out or 0.
+    pub max_age: Option<Duration>,
+    /// `secure`: mark the cookie `Secure`. It is always `HttpOnly` and `SameSite=Lax`.
+    pub secure: bool,
+}
+
+/// fit's default sticky cookie name.
+pub const DEFAULT_STICKY_COOKIE_NAME: &str = "fit_sticky";
+
+/// An upstream's `load_balancing` policy: each of fit's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[non_exhaustive]
 pub enum LoadBalancing {
@@ -371,6 +397,20 @@ pub enum LoadBalancing {
     WeightedRoundRobin,
     /// `least_conn`: to the address with the fewest requests under way for its weight.
     LeastConn,
+    /// `random`: at random, by weight.
+    Random,
+    /// `p2c`: the less busy for its weight of two addresses drawn at random.
+    P2c,
+    /// `ip_hash`: a consistent hash of the client's IP address.
+    IpHash,
+    /// `uri_hash`: a consistent hash of the request's path and query.
+    UriHash,
+    /// `header_hash`: a consistent hash of the header `hash_key` names; a request without it goes
+    /// in turn.
+    HeaderHash,
+    /// `cookie_hash`: a consistent hash of the cookie `hash_key` names; a request without it goes
+    /// in turn.
+    CookieHash,
 }
 
 impl LoadBalancing {
@@ -381,7 +421,25 @@ impl LoadBalancing {
             LoadBalancing::RoundRobin => "round_robin",
             LoadBalancing::WeightedRoundRobin => "weighted_round_robin",
             LoadBalancing::LeastConn => "least_conn",
+            LoadBalancing::Random => "random",
+            LoadBalancing::P2c => "p2c",
+            LoadBalancing::IpHash => "ip_hash",
+            LoadBalancing::UriHash => "uri_hash",
+            LoadBalancing::HeaderHash => "header_hash",
+            LoadBalancing::CookieHash => "cookie_hash",
         }
+    }
+
+    /// Whether it hashes a key of the request onto a ring of the addresses.
+    #[must_use]
+    pub fn is_hash(self) -> bool {
+        matches!(
+            self,
+            LoadBalancing::IpHash
+                | LoadBalancing::UriHash
+                | LoadBalancing::HeaderHash
+                | LoadBalancing::CookieHash
+        )
     }
 }
 
@@ -1154,6 +1212,8 @@ const UPSTREAM_FIELDS: &[&str] = &[
     "connect_timeout",
     "weights",
     "load_balancing",
+    "hash_key",
+    "sticky_cookie",
     "max_fails",
     "fail_timeout",
     "health_check",
@@ -1172,9 +1232,8 @@ const HEALTH_CHECK_FIELDS: &[&str] = &[
     "passes",
 ];
 // response_header_timeout and response_idle_timeout wait on akio API request A36 (I17b).
+const STICKY_COOKIE_FIELDS: &[&str] = &["name", "path", "max_age", "secure"];
 const UPSTREAM_FIT_ONLY: &[&str] = &[
-    "hash_key",
-    "sticky_cookie",
     "deny_internal",
     "tls_server_name",
     "tls_ca_file",
@@ -3019,18 +3078,19 @@ fn upstream(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Upstream> {
         };
         (v.off, p, given, w)
     });
-    // fit's policies, as its `load_balancing` enum lists them; those akit lacks are not
-    // supported yet.
+    // fit's policies, as its `load_balancing` enum lists them.
     let policy = o.take("load_balancing").map(|v| {
         let p = o.at("load_balancing");
         let lb = match d.string(v, &p).as_deref() {
             Some("round_robin") => Some(LoadBalancing::RoundRobin),
             Some("weighted_round_robin") => Some(LoadBalancing::WeightedRoundRobin),
             Some("least_conn") => Some(LoadBalancing::LeastConn),
-            Some(other @ ("random" | "p2c" | "ip_hash" | "uri_hash" | "header_hash" | "cookie_hash")) => {
-                d.not_yet(v.off, &p, &format!("the {other:?} load balancing policy"));
-                None
-            }
+            Some("random") => Some(LoadBalancing::Random),
+            Some("p2c") => Some(LoadBalancing::P2c),
+            Some("ip_hash") => Some(LoadBalancing::IpHash),
+            Some("uri_hash") => Some(LoadBalancing::UriHash),
+            Some("header_hash") => Some(LoadBalancing::HeaderHash),
+            Some("cookie_hash") => Some(LoadBalancing::CookieHash),
             Some(other) => {
                 d.error(
                     v.off,
@@ -3045,9 +3105,18 @@ fn upstream(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Upstream> {
         };
         (v.off, p, lb)
     });
+    let hash_key_at = o.take("hash_key").map(|v| {
+        let p = o.at("hash_key");
+        (v.off, p.clone(), d.string(v, &p).unwrap_or_default())
+    });
+    let sticky_cookie = o
+        .take("sticky_cookie")
+        .and_then(|v| sticky_cookie(d, v, &o.at("sticky_cookie")));
     let health_check = o
         .take("health_check")
         .and_then(|v| health_check(d, v, &o.at("health_check")));
+    let obj_off = o.off;
+    let hash_key_path = o.at("hash_key");
     o.finish(d, UPSTREAM_FIELDS, UPSTREAM_FIT_ONLY);
     // fit's checks of the two together (config.validate).
     let mut weights = Vec::new();
@@ -3081,6 +3150,38 @@ fn upstream(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Upstream> {
         _ if weights.iter().any(|&w| w != 1) => LoadBalancing::WeightedRoundRobin,
         _ => LoadBalancing::RoundRobin,
     };
+    // fit's checks of hash_key against the policy; one left out is reported where the upstream
+    // starts, as fit reports it.
+    let keyed = matches!(
+        load_balancing,
+        LoadBalancing::HeaderHash | LoadBalancing::CookieHash
+    );
+    let what = if load_balancing == LoadBalancing::HeaderHash {
+        "header"
+    } else {
+        "cookie"
+    };
+    let mut hash_key = String::new();
+    match hash_key_at {
+        Some((off, p, k)) if !k.is_empty() => {
+            if !keyed {
+                d.error(off, &p, "hash_key is for header_hash and cookie_hash");
+            } else if !is_token(&k) {
+                d.error(off, &p, format!("{k:?} is not a valid {what} name"));
+            } else {
+                hash_key = k;
+            }
+        }
+        at if keyed => d.error(
+            at.map_or(obj_off, |(off, _, _)| off),
+            &hash_key_path,
+            format!(
+                "{} needs hash_key, the name of the {what} to hash",
+                load_balancing.name()
+            ),
+        ),
+        _ => {}
+    }
     Some(Upstream {
         name: name?,
         addresses: addresses?,
@@ -3091,10 +3192,83 @@ fn upstream(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Upstream> {
         connect_timeout,
         weights,
         load_balancing,
+        hash_key,
+        sticky_cookie,
         max_fails,
         fail_timeout,
         health_check,
         response_timeout,
+    })
+}
+
+/// An upstream's `sticky_cookie`, with fit's checks (config.validate): a name that is a token and
+/// a path that starts with `/` and holds no `;`.
+fn sticky_cookie(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<StickyCookie> {
+    let mut o = d.object(n, path)?;
+    let mut ok = true;
+    let mut name = DEFAULT_STICKY_COOKIE_NAME.to_owned();
+    if let Some(v) = o.take("name") {
+        let p = o.at("name");
+        match d.string(v, &p) {
+            Some(s) if s.is_empty() => {}
+            Some(s) if is_token(&s) => name = s,
+            Some(s) => {
+                d.error(v.off, &p, format!("{s:?} is not a valid cookie name"));
+                ok = false;
+            }
+            None => ok = false,
+        }
+    }
+    let mut cookie_path = "/".to_owned();
+    if let Some(v) = o.take("path") {
+        let p = o.at("path");
+        match d.string(v, &p) {
+            Some(s) if s.is_empty() => {}
+            Some(s) if s.starts_with('/') && !s.contains([';', '\0', '\r', '\n']) => {
+                cookie_path = s;
+            }
+            Some(s) => {
+                d.error(
+                    v.off,
+                    &p,
+                    format!("{s:?} is not a cookie path: it must start with '/' and hold no ';'"),
+                );
+                ok = false;
+            }
+            None => ok = false,
+        }
+    }
+    let max_age = match o.take("max_age") {
+        Some(v) => match d.duration(v, &o.at("max_age")) {
+            Some(t) => Some(t).filter(|t| !t.is_zero()),
+            None => {
+                ok = false;
+                None
+            }
+        },
+        None => None,
+    };
+    let secure = match o.take("secure") {
+        None => false,
+        Some(v) => match &v.kind {
+            crate::json::Kind::Bool(b) => *b,
+            other => {
+                d.error(
+                    v.off,
+                    &o.at("secure"),
+                    format!("expected a boolean, got {}", other.name()),
+                );
+                ok = false;
+                false
+            }
+        },
+    };
+    o.finish(d, STICKY_COOKIE_FIELDS, &[]);
+    ok.then_some(StickyCookie {
+        name,
+        path: cookie_path,
+        max_age,
+        secure,
     })
 }
 

@@ -197,26 +197,121 @@ fn load_balancing() {
             r#"upstreams[0].load_balancing: "fastest" is not one of "round_robin", "weighted_round_robin", "least_conn", "random", "p2c", "ip_hash", "uri_hash", "header_hash", "cookie_hash""#
         ]
     );
-    // fit's other policies come later (I36).
-    for name in [
-        "random",
-        "p2c",
-        "ip_hash",
-        "uri_hash",
-        "header_hash",
-        "cookie_hash",
+}
+
+#[test]
+fn load_balancing_v2() {
+    for (name, lb) in [
+        ("random", LoadBalancing::Random),
+        ("p2c", LoadBalancing::P2c),
+        ("ip_hash", LoadBalancing::IpHash),
+        ("uri_hash", LoadBalancing::UriHash),
     ] {
-        let e = errs(&one(&format!(
-            r#""addresses": ["a:1"], "load_balancing": "{name}""#
-        )));
-        assert!(e.only_not_supported_yet(), "{name}: {e}");
+        let u = &ok(&one(&format!(
+            r#""addresses": ["a:1", "b:1"], "weights": [2, 1], "load_balancing": "{name}""#
+        )))
+        .upstreams[0];
+        assert_eq!((u.load_balancing, u.hash_key.as_str()), (lb, ""));
+        assert_eq!(lb.name(), name);
+        assert_eq!(lb.is_hash(), name.ends_with("_hash"));
     }
+    for (name, lb) in [
+        ("header_hash", LoadBalancing::HeaderHash),
+        ("cookie_hash", LoadBalancing::CookieHash),
+    ] {
+        let u = &ok(&one(&format!(
+            r#""addresses": ["a:1"], "load_balancing": "{name}", "hash_key": "x-user""#
+        )))
+        .upstreams[0];
+        assert_eq!((u.load_balancing, u.hash_key.as_str()), (lb, "x-user"));
+        assert!(lb.is_hash());
+    }
+    assert!(
+        ok(&one(r#""addresses": ["a:1"]"#)).upstreams[0]
+            .sticky_cookie
+            .is_none()
+    );
+
+    // fit's TestHashedPolicyConfig, with its messages.
+    for (doc, want) in [
+        (
+            r#""addresses": ["a:1"], "load_balancing": "header_hash""#,
+            "upstreams[0].hash_key: header_hash needs hash_key, the name of the header to hash",
+        ),
+        (
+            r#""addresses": ["a:1"], "load_balancing": "cookie_hash", "hash_key": """#,
+            "upstreams[0].hash_key: cookie_hash needs hash_key, the name of the cookie to hash",
+        ),
+        (
+            r#""addresses": ["a:1"], "load_balancing": "cookie_hash", "hash_key": "a b""#,
+            r#"upstreams[0].hash_key: "a b" is not a valid cookie name"#,
+        ),
+        (
+            r#""addresses": ["a:1"], "hash_key": "x""#,
+            "upstreams[0].hash_key: hash_key is for header_hash and cookie_hash",
+        ),
+        (
+            r#""addresses": ["a:1"], "load_balancing": "p2c", "hash_key": "x""#,
+            "upstreams[0].hash_key: hash_key is for header_hash and cookie_hash",
+        ),
+        (
+            r#""addresses": ["a:1"], "sticky_cookie": {"name": "a;b", "path": "/"}"#,
+            r#"upstreams[0].sticky_cookie.name: "a;b" is not a valid cookie name"#,
+        ),
+        (
+            r#""addresses": ["a:1"], "sticky_cookie": {"path": "/a;b"}"#,
+            r#"upstreams[0].sticky_cookie.path: "/a;b" is not a cookie path: it must start with '/' and hold no ';'"#,
+        ),
+        (
+            r#""addresses": ["a:1"], "sticky_cookie": {"path": "x"}"#,
+            r#"upstreams[0].sticky_cookie.path: "x" is not a cookie path: it must start with '/' and hold no ';'"#,
+        ),
+        (
+            r#""addresses": ["a:1"], "sticky_cookie": {"secure": "yes"}"#,
+            "upstreams[0].sticky_cookie.secure: expected a boolean, got a string",
+        ),
+    ] {
+        assert_eq!(problems(&one(doc)), [want], "{doc}");
+    }
+    let e = errs(&one(
+        r#""addresses": ["a:1"], "sticky_cookie": {"domain": "x"}"#,
+    ));
+    assert!(e.to_string().contains("sticky_cookie.domain"), "{e}");
+}
+
+#[test]
+fn sticky_cookie() {
+    let sticky = |fields: &str| {
+        ok(&one(&format!(
+            r#""addresses": ["a:1"], "sticky_cookie": {fields}"#
+        )))
+        .upstreams[0]
+            .sticky_cookie
+            .clone()
+            .unwrap()
+    };
+    let s = sticky("{}");
+    assert_eq!(
+        (s.name.as_str(), s.path.as_str(), s.max_age, s.secure),
+        (akit_config::DEFAULT_STICKY_COOKIE_NAME, "/", None, false)
+    );
+    assert_eq!(s.name, "fit_sticky");
+    let s = sticky(r#"{"name": "s", "path": "/app", "max_age": "1h", "secure": true}"#);
+    assert_eq!(
+        (s.name.as_str(), s.path.as_str(), s.max_age, s.secure),
+        ("s", "/app", Some(Duration::from_secs(3600)), true)
+    );
+    let s = sticky(r#"{"name": "", "path": "", "max_age": "0s"}"#);
+    assert_eq!(
+        (s.name.as_str(), s.path.as_str(), s.max_age),
+        ("fit_sticky", "/", None)
+    );
 }
 
 #[test]
 fn what_akit_lacks_is_not_supported_yet() {
     let e = errs(&one(
-        r#""addresses": ["a:1"], "protocol": "h2c", "load_balancing": "p2c", "hash_key": "x",
+        r#""addresses": ["a:1"], "protocol": "h2c", "tls_server_name": "x",
            "response_idle_timeout": "1s""#,
     ));
     assert!(e.only_not_supported_yet(), "{e}");
@@ -225,8 +320,7 @@ fn what_akit_lacks_is_not_supported_yet() {
         paths,
         [
             "upstreams[0].protocol",
-            "upstreams[0].load_balancing",
-            "upstreams[0].hash_key",
+            "upstreams[0].tls_server_name",
             "upstreams[0].response_idle_timeout",
         ]
     );

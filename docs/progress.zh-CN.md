@@ -10,14 +10,60 @@
 | | |
 | --- | --- |
 | 最后更新 | 2026-11-24 |
-| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I17、I19–I24 已完成（I17b 等待 akio）；M2 的 I26、I27、I30、I31、I35、I37 和 M3 的 I39、I40、I41 已提前完成。 |
+| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I17、I19–I24 已完成（I17b 等待 akio）；M2 的 I26、I27、I30、I31、I35、I36、I37 和 M3 的 I39、I40、I41 已提前完成。 |
 | akio | akio `main` 上的 `afbbb521`（`1.0.0-rc.1`，带 A1–A8、A11、A13 和 A16–A21，以及运行时替换监听器的 io_uring 修复），在 `Cargo.toml` 中按 `rev` 锁定 |
 | fit | 作为规格；本计划基于 `7daee573` 阅读 |
-| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；基于 akio 的 A1 保留、增加、修改和排空监听器，包括启动时的监听器，重载可新增 h3 监听器；服务 h3 的启动监听器要重启才能变）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证；按 fit 的方式每次握手选择证书，重载或 `-watch-certs` 替换证书而不关闭监听器）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；路由中间件：`rewrite`（前缀）、`redirect`、`headers`、`rate_limit`、`concurrency_limit` 和 `body_limit`；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`、双向流式转发 body 并联动背压，双向透传 trailer，`timeout` 和上游的 `response_timeout`，超时回答 504，客户端在 body 中途离开时放弃上游请求）；所有监听器和代理上的 `limits.max_body_bytes`（413）；fit 的 json、text 和 line 格式的访问日志；上游连接池，轮询、加权轮询和最少连接，跳过被被动健康检查（`max_fails`、`fail_timeout`）和主动健康检查（`health_check`：http 和 tcp 探测）下线的地址；回环地址上的 Admin API（`GET /config`，也可按 JSON 指针读取，`POST /load`，用 `PUT`、`PATCH` 和 `DELETE /config` 按指针编辑，`POST /rollback/{n}`，`POST /reload`，都带 `If-Match`，除回滚外都可 `?dry_run=1`，`GET /versions`；有 `token_file` 时每个请求都要带 bearer 令牌），修改与 SIGHUP 一样作为重载应用，两者共用一份历史记录；Admin API 的 `GET /metrics` 提供 fit 的 Prometheus 指标（有 `metrics` 时按监听器和路由的请求、上游和后端、证书、连接、重载、akio 的引擎）；兼容性门禁：80 个夹具，15 个有效，64 个只因暂不支持被拒绝，1 个跳过，没有失败兼容性门禁：80 个夹具，11 个有效，68 个只因暂不支持被拒绝，1 个跳过，没有失败为监听器在 `tls.acme` 中所列的名字通过 HTTP-01 用 ACME 获取证书，保存在存储中并续期；兼容性门禁：80 个夹具，12 个有效，67 个只因暂不支持被拒绝，1 个跳过，没有失败 |
+| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；基于 akio 的 A1 保留、增加、修改和排空监听器，包括启动时的监听器，重载可新增 h3 监听器；服务 h3 的启动监听器要重启才能变）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证；按 fit 的方式每次握手选择证书，重载或 `-watch-certs` 替换证书而不关闭监听器）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；路由中间件：`rewrite`（前缀）、`redirect`、`headers`、`rate_limit`、`concurrency_limit` 和 `body_limit`；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`、双向流式转发 body 并联动背压，双向透传 trailer，`timeout` 和上游的 `response_timeout`，超时回答 504，客户端在 body 中途离开时放弃上游请求）；所有监听器和代理上的 `limits.max_body_bytes`（413）；fit 的 json、text 和 line 格式的访问日志；上游连接池，fit 的九种负载均衡策略（轮询、加权轮询、最少连接、随机、p2c，以及按客户端 IP、路径、头或 cookie 的一致性哈希）和会话保持 cookie，跳过被被动健康检查（`max_fails`、`fail_timeout`）和主动健康检查（`health_check`：http 和 tcp 探测）下线的地址；回环地址上的 Admin API（`GET /config`，也可按 JSON 指针读取，`POST /load`，用 `PUT`、`PATCH` 和 `DELETE /config` 按指针编辑，`POST /rollback/{n}`，`POST /reload`，都带 `If-Match`，除回滚外都可 `?dry_run=1`，`GET /versions`；有 `token_file` 时每个请求都要带 bearer 令牌），修改与 SIGHUP 一样作为重载应用，两者共用一份历史记录；Admin API 的 `GET /metrics` 提供 fit 的 Prometheus 指标（有 `metrics` 时按监听器和路由的请求、上游和后端、证书、连接、重载、akio 的引擎）；为监听器在 `tls.acme` 中所列的名字通过 HTTP-01 用 ACME 获取证书，保存在存储中并续期；兼容性门禁：80 个夹具，15 个有效，64 个只因暂不支持被拒绝，1 个跳过，没有失败 |
 | 下一步 | I18；akio 有了 A36–A38 后做 I17b |
 | akio 需求 | A1–A8、A11、A13、A16–A21 已在 akio 的 main 并已锁定；A9、A10、A12、A14、A15、A22–A24、A29、A30、A32、A33、A35–A38、A45、A48 和 A49 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
 
 ## 日志
+
+### 2026-11-24：I36，负载均衡 v2
+
+- 配置：`upstreams[].load_balancing` 接受 fit 的另外六种策略（`random`、`p2c`、`ip_hash`、`uri_hash`、
+  `header_hash`、`cookie_hash`；`LoadBalancing::{Random, P2c, IpHash, UriHash, HeaderHash, CookieHash}`、
+  `is_hash`），以及 `hash_key`（`Upstream::hash_key`）和 `sticky_cookie`（`akit_config::StickyCookie`：`name`，
+  默认 `fit_sticky`（`DEFAULT_STICKY_COOKIE_NAME`），`path`，默认 `/`，`max_age`，`secure`），带 fit 的检查和
+  消息：`header_hash` 和 `cookie_hash` 需要一个合法 token 的 `hash_key`，其他策略不接受它；cookie 名必须是
+  token，路径以 `/` 开头且不含 `;`。
+- `akit_upstream::balance`，即 fit 的 `upstream/hash.go`：**random** 在在线的地址中按权重随机抽取（全部下线时
+  在全部地址中）；**p2c** 抽取两个不同的地址，取按权重计进行中请求（busy 加 waiting，与 `least_conn` 读的一样）
+  较少的那个，下线的选择从在线的地址中重抽。每个线程用自己的 wyrand 生成器（用 std 的随机哈希密钥做种子），
+  抽取不写任何共享数据（规则 13）。
+- **一致性哈希**：每个地址按每单位权重 160 个点放在环上，位置是 fit 的哈希（FNV-1a 加 MurmurHash3 的收尾）
+  `address#i`，按哈希再按地址排序，在编译配置时构建；键落到哈希处或之后的第一个点，该点地址下线时往后找第一个
+  地址在线的点（全部下线时不遍历整个环）。键：`ip_hash` 用客户端 IP（IPv4 映射的 IPv6 地址按 IPv4），按文本
+  哈希而不格式化到缓冲区；`uri_hash` 用路由匹配到的路径和 query；`header_hash` 用该头的第一个值；
+  `cookie_hash` 用该 cookie，按 fit 的 `cookieValue` 读取。没有键的请求按轮询。`Balancer::keyed`、
+  `Balancer::key` 和 `Balancer::pick_keyed` 接收地址、哈希请求的 `Keys` 并按哈希选择。
+- **会话保持 cookie**（`akit_upstream::sticky`）：cookie 指向一个在线地址的请求去那里；其他请求的响应带上指向
+  它所去地址的 `Set-Cookie`（在上游自己的之后），值为 fit 的 `StickyID`（地址 SHA-256 的前 64 位的十六进制，
+  基于 akio-crypto），因此地址相同的 akit 和 fit 一致。排好序供二分查找的 id 以及每个地址完整的 `Set-Cookie`
+  值都在编译时生成（规则 12）。
+- 连接池：`Pool::pick_for(&Keys)`（先会话保持 cookie，再均衡器）、`Pool::set_cookie`、`Pool::is_sticky`；
+  `Pool::pick` 含义不变（没有请求：哈希策略按轮询）。代理用请求的对端地址、规范化路径、query 和头字段（中间件
+  修改后的）选择地址，并把要加的 `Set-Cookie` 交给 relay，只在需要设置时才复制。
+- 测试：`akit-upstream/tests/hash.rs`（13 个），移植 fit 的 `TestRandom`、`TestP2C`、`TestP2COneUp`、
+  `TestPickSkipsDownNewPolicies`、`TestWeightedRandomAllDown`、`TestHashDistribution`、`TestHashStable`、
+  `TestHashKeys`、`TestHashRingEdges`、`TestSticky`（在一个连接池上，一个地址因失败下线）和
+  `TestStickyNilRequest`；环的大小有界；以及 fit 自己的 `upstream` 包对相同键的选择（四个带权重地址上的 ip、uri
+  和头哈希，以及 `StickyID`），akit 的结果完全一致。`akit-upstream/tests/no_alloc.rs`，即 fit 的
+  `TestNewPoliciesAllocs`：九种策略的选择在有键、有地址下线时都不分配内存，连接池的会话保持选择和
+  `set_cookie` 也不分配（用 `stats_alloc` 计数，开发依赖，与 akit-router 一样）。`akit-proxy/tests/balance.rs`
+  （3 个），移植 fit 的 `TestStickyCookie`（整体发送和流式发送的响应）和 `TestHeaderHash`，以及端到端的 uri
+  和 ip 哈希。`akit-config/tests/upstreams.rs`：各策略、fit 的 `TestHashedPolicyConfig`、cookie 的默认值和取值。
+  门禁为六个新路径增加了样例。
+- 已检查：macOS 上 `make check`；Linux（基准测试主机）上 akit-config、akit-upstream、akit-proxy 和
+  akit-compat 的测试，epoll 和 io_uring。门禁（`make compat-bless`）：`examples/l4-udp` 不再拒绝 `ip_hash`，
+  `examples/load-balancing` 不再拒绝 `sticky_cookie`（被拒字段 66 到 64）；它们仍拒绝其他字段。没有运行
+  基准测试（规则 30）；需要测量的内容在开发计划的状态表中。
+- 与 fit 的差异：
+  - 环最多 `MAX_RING_POINTS`（2^20）个点：权重总和超过 6,553 时，每单位权重少于 160 个点，键分布稍不均匀；
+    fit 的环没有上限。低于这个值时，键落点与 fit 完全一致。
+  - `uri_hash` 哈希路由匹配到的规范化路径（按发送的形式，百分号编码），fit 哈希 Go 解码后的 `URL.Path`；路径
+    含转义的键落点可能与 fit 不同。
+  - 随机抽取来自每线程的 wyrand 生成器，而不是 Go 的 `math/rand/v2`；份额相同。
 
 ### 2026-11-24：I31，ACME I：账户、订单、HTTP-01
 
