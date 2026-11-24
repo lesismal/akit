@@ -19,6 +19,7 @@ akio-sys = { workspace = true }
 akit-config = { workspace = true }
 akit-observe = { workspace = true }
 akit-handler = { workspace = true }
+akit-middleware = { workspace = true }
 akit-listener = { workspace = true }
 akit-proxy = { workspace = true }
 akit-runtime = { workspace = true }

@@ -11,14 +11,73 @@ done and where the work differs from the plan.
 | | |
 | --- | --- |
 | Last updated | 2026-11-24 |
-| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I15, I19–I24 done, I16 doing (body limits done; streaming waits for akio's A19–A21); M3's I39 done early. |
+| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I15, I19–I24 done, I16 doing (body limits done; streaming waits for akio's A19–A21); M3's I39 and I40 done early. |
 | akio | `a9a620ab` on akio's `main` (`1.0.0-rc.1`, with A1–A5, A7, A8, A11, A13 and A16–A18), pinned by `rev` in `Cargo.toml` |
 | fit | the specification; read at `7daee573` for this plan |
-| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept, added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`); `limits.max_body_bytes` on every listener (413) and in the proxy; access logs in fit's json, text and line formats; upstream pools with round robin, weighted round robin and least connections, passing over addresses taken out by passive health checks (`max_fails`, `fail_timeout`); the compatibility gate: 80 fixtures, 9 valid, 70 refused only as not supported yet, 1 skipped, none failed |
+| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept, added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; route middleware: `rewrite` (prefixes), `redirect` and `headers`; the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`); `limits.max_body_bytes` on every listener (413) and in the proxy; access logs in fit's json, text and line formats; upstream pools with round robin, weighted round robin and least connections, passing over addresses taken out by passive health checks (`max_fails`, `fail_timeout`); the compatibility gate: 80 fixtures, 10 valid, 69 refused only as not supported yet, 1 skipped, none failed |
 | Next | I17; I16 once A19–A21 land |
-| akio requests | A1–A5, A7, A8, A11, A13 and A16–A18 on akio's main and pinned; A6 on akio branch `claude/x509-csr`; A9, A10, A12, A14, A15, A19–A21 and A22 requested ([akio API requests](akio-api-requests.md)) |
+| akio requests | A1–A5, A7, A8, A11, A13 and A16–A18 on akio's main and pinned; A6 on akio branch `claude/x509-csr`; A9, A10, A12, A14, A15, A19–A21, A22, A32 and A33 requested ([akio API requests](akio-api-requests.md)) |
 
 ## Log
+
+### 2026-11-24: I40, rewrites, redirects, headers
+
+- Taken early from M3, after I39. A route's `middleware` is read: `akit-config` decodes each
+  module reference (`module`, `params`) into `Route::middleware`, the middleware variants of
+  `akit_config::Handler` (`Rewrite`, `Redirect`, `Headers`: one params type for handlers and
+  middleware, as akit-runtime's registry provisions every module from one), with the checks of
+  fit's `Provision`s and their messages; fit's other middleware modules are refused as not
+  supported yet, naming the module (`FIT_MIDDLEWARE`). `akit-runtime`'s `compile` loads each
+  route's middleware from the registry, errors at `routes[i].middleware[j].params.<field>`, and
+  chains them around the handler once (rule 12), the first outermost. The binary's registry has
+  `akit_middleware::MODULES`.
+- `akit-middleware` has fit's `rewrite`, `redirect` and `headers` (`middleware/rewrite`,
+  `middleware/headers`):
+  - `rewrite`: `strip_prefix` (the first prefix the path starts with at a segment boundary) and
+    `add_prefix`, on the decoded path, the new path escaped afresh as Go writes it
+    (`/api/a%2Fb` stripped of `/api` is `/a/b`; `!` is `%21`). The new path is set in
+    `CANONICAL_PATH`, which the `proxy` handler sends upstream (with the query as it came) and
+    the `static` handler looks up, and which a middleware after it goes by.
+  - `redirect`: `to` with `{scheme}`, `{host}`, `{path}`, `{query}` and `{uri}`, split into its
+    parts when the config is compiled; `status`; `regexp` (`akio-regex`, compiled as the router
+    compiles path regexps) matched against the escaped path as Go's `URL.EscapedPath` gives it
+    (a raw `\` is `%5C`), the other requests going on to the handler; fit's open-redirect check
+    (`otherHost`, `hasScheme`), answered `400 bad redirect target`.
+  - `headers`: `request` and `response`, each `delete` (names, or prefixes ending in `*`), `set`
+    and `add`, in that order, names made canonical as Go's `CanonicalHeaderKey`. The response's
+    changes are an akio response filter, so they reach every response of the route: answered at
+    once, later from a completion callback (a proxied one) or streamed.
+- Stopgaps, until akio can (rule 21; both in [akio API requests](akio-api-requests.md)):
+  - A32: `akio-regex` answers whether a pattern matches, not where, and captures nothing. So the
+    rewrite's `regexp` and `replacement`, and groups of the redirect's regexp in `to` (`$1`,
+    `${name}`), are refused as not supported yet when the config is read; `$$` is `$`.
+  - A33: akio's `Context` gives the request by shared reference only. The `headers` middleware's
+    request changes are kept in a context local (`akit_runtime::REQUEST_FIELDS`, written by
+    `set_request_headers`), which `akit_runtime::request_headers` reads and the `proxy` handler
+    sends upstream; what akio itself reads of the request (the `static` handler's conditional and
+    range fields) is as the client sent it. The path rewrite goes through `CANONICAL_PATH`, as
+    I11's canonical path does.
+- Tests: `akit-middleware` `tests/middleware.rs` through akit's listener: fit's `TestRewrite`,
+  `TestRedirect`, `TestRedirectHeaderIsItsOwn`, `TestHeaders` (twice each, values not shared),
+  `TestResponseOfAnyKind` (answered at once and proxied) and `TestParamErrors` of both packages,
+  ported; the cases that need A32 checked to be refused as not supported yet; the rewritten path
+  and the changed request fields as the upstream sees them, with a 1 MiB body; middleware run in
+  order (a rewrite then a redirect); clients that leave midway; unit tests of the path escaping,
+  `otherHost`, `hasScheme`, the placeholders and the request-fields local.
+- Compatibility gate: the 22 fields in `tests/compat/supported.txt`; the gate names a refused
+  middleware module as `routes[].middleware[]<module>` and the rewrite's refused fields with
+  their module; `make compat-bless`: `examples/headers` is valid, and the other examples are
+  refused only for the middleware modules they use (80 fixtures: 10 valid, 69 refused only as
+  not supported yet, 1 skipped, none failed).
+- Checked: `make check` on macOS; on the benchmark host, the touched crates' tests (`cargo test
+  -p akit-middleware -p akit-config -p akit-runtime -p akit-router -p akit-proxy -p akit-compat`)
+  with epoll and with `AKIO_TEST_BACKEND=uring`.
+- Differs from fit: through akit's listener the path is canonical before any middleware sees it,
+  as fit's listener makes it, so fit's `path makes //` case is answered `302 /evil.com/x` end to
+  end (and a `\` next to a `/` is refused 400 by the listener). Errors of a header name are
+  reported at the `request` or `response` object, as fit's.
+- To measure, in the maintainer's benchmark tasks (rule 30): see the dev plan's benchmark row
+  for I40.
 
 ### 2026-11-24: I20, passive health checks
 

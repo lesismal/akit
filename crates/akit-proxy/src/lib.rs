@@ -83,8 +83,10 @@ fn new(p: &Provision<'_, HandlerParams>) -> Result<Provisioned<dyn Handler>, Pro
 impl akio_http::Service for Proxy {
     fn call(&self, ctx: &mut Context) {
         let req = ctx.req();
+        // The fields as the middleware before left them (a `headers` middleware's changes).
+        let fields = akit_runtime::request_headers(ctx);
         let client = headers::Client {
-            headers: &req.headers,
+            headers: &fields,
             peer: req.peer,
             tls: ctx.local(TLS).is_some(),
         };

@@ -139,7 +139,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I38 | M2 exit: churn test and staging certificate | I26–I37 | todo |
 | **M3** | | | |
 | I39 | Matchers v2 and expressions | I11 | done |
-| I40 | Rewrites, redirects, headers | I39 | todo |
+| I40 | Rewrites, redirects, headers | I39 | done |
 | I41 | Rate, concurrency and size limits | I39 | todo |
 | I42 | Basic auth and mTLS | I39 | todo |
 | I43 | ForwardAuth | I42 | todo |
@@ -210,7 +210,8 @@ commit and result.
 | Access logs | I21 | no | no (built, not measured) | Same-run A/B of fixed and proxy with logs on and off (json, and text or line), to a file and to `/dev/null`; lines dropped at full load with the default 4 MiB buffer and a slow disk; the per-request cost (the boxed response filter, the shard lock, formatting). |
 | Prometheus metrics | I37 | no | no (not built yet) | Same-run A/B with metrics on and off. |
 | Matchers v2 and expressions | I39 | no | no (built, not measured) | A micro-benchmark of `find_request` with matchers, expressions and path regexps (no allocation, `tests/no_alloc.rs`); same-run A/B against I39's base on the fixed scenario (one route, no matchers: within noise expected). |
-| Middlewares (rewrites, headers, limits, auth, retries and the rest) | I40–I48 | no | no (not built yet) | I56 benchmarks every middleware; same-run A/B of each on the proxy scenario. |
+| Rewrites, redirects, headers | I40 | no | no (built, not measured) | Same-run A/B on the proxy scenario of a route with `headers` (request and response changes) and `rewrite` against the same route without them; the cost per request of the response filter (a boxed closure and an `Arc` clone) and of the request fields kept in a context local (the stopgap until akio API request A33). |
+| Middlewares (limits, auth, retries and the rest) | I41–I48 | no | no (not built yet) | I56 benchmarks every middleware; same-run A/B of each on the proxy scenario. |
 | Compression | I47 | no | no (not built yet) | Against fit, each encoding, as I47 asks. |
 | WebSocket and gRPC proxying | I49, I50 | no | no (not built yet) | Messages a second and memory per connection against fit. |
 | TCP and UDP proxying, SNI routing, many protocols on one port | I51–I53 | no | no (not built yet) | Against fit and nginx's `stream`, as I51 asks; the cost of sniffing on a shared port. |

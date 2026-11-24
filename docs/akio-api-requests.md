@@ -41,6 +41,8 @@ first; its status here records the branch, then the akio commit akit pins.
 | A20 | An HTTP client response delivered as it arrives, its reads held and resumed | requested (I16) | 5, 8 | I16, I17, I18, I67 |
 | A21 | A server request that holds its client's reads and hears when its client drained | requested (I16) | 5, 8 | I16, I47, I75 |
 | A22 | UDP listeners removed and drained on a running engine | requested (I22) | 10, 11 | I22, I28 |
+| A32 | Where an `akio-regex` pattern matches, its groups, and replacing them | requested (I40) | 19 | I40, I48 |
+| A33 | A request's fields and target changed by a middleware (`Context::req_mut`) | requested (I40) | 12, 19 | I40, I43, I44 |
 
 ## A1 TCP listeners on a running engine
 
@@ -487,3 +489,56 @@ close those left at the deadline), and `Engine::add_listener` for a UDP listener
 
 **How akit uses it.** `akit_listener::Listeners::reload` (I22, I28) removes and drains a
 listener's HTTP/3 as it does its TCP side, and the `ReloadError::Udp` refusal goes.
+
+## A32 Where a regular expression matches, its groups, and replacing them
+
+**Problem.** fit's `rewrite` middleware replaces each match of a regular expression in the path
+(`regexp` and `replacement`, with `$1` and `${name}` for its groups), and its `redirect` middleware
+builds the URL from the groups of the one match (`"to": "/new/$1"`). akio-regex answers only
+whether a pattern occurs in a text: it neither finds where nor captures a group. akit refuses those
+fields as not supported yet (I40).
+
+**Evidence.** `crates/akio-regex/src/lib.rs` at `a9a620ab`: `Regex` has `is_match`,
+`is_match_fmt` and `nfa_is_match`; the crate's documentation says groups are parsed but "nothing
+is captured". The Pike VM (`crates/akio-regex/src/exec.rs`) keeps no positions per thread.
+
+**Suggested API.** On `Regex`, with the leftmost-first semantics of Go's `regexp` and the `regex`
+crate, in linear time as now (a Pike VM with capture slots, or the DFA to find the match's end and
+start, then the slots only for the match):
+
+- `find_at(&self, text: &str, start: usize) -> Option<Range<usize>>` and `find_iter`;
+- `captures(&self, text: &str) -> Option<Captures>` (each group's range, by index and by name);
+  `group_names`;
+- `expand(&self, caps: &Captures, template: &str, text: &str, out: &mut String)`, with Go's
+  `Regexp.Expand` template rules (`$1`, `${1}`, `$name`, `${name}`, `$$`; an unknown or unmatched
+  group is empty; a malformed `$` is itself), and `replace_all(&self, text, template) -> Cow<str>`
+  as Go's `ReplaceAllString`, empty matches included.
+
+**How akit uses it.** `rewrite`'s `regexp` and `replacement` (`replace_all` on the decoded path)
+and `redirect`'s groups in `to` (`captures` on the escaped path, then `expand`), compiled when the
+config is; the not-supported-yet refusals in akit-config go.
+
+## A33 A request changed by a middleware: its fields and its target
+
+**Problem.** A middleware changes the request before the handler sees it: fit's `headers`
+middleware sets, adds and deletes request fields, its `rewrite` middleware changes the path, and
+later ones (ForwardAuth's copied fields, JWT's claims as fields) do too. akio-http's `Context`
+gives its request by shared reference only (`req()`), so neither its fields nor its target can be
+changed.
+
+**Evidence.** `crates/akio-http/src/context.rs` at `a9a620ab`: `Context` holds the request in a
+private `ReqCell` (owned until a `Detached` or an upgrade shares it) and offers `req(&self) ->
+&Request`, `path`, `header` and `local`; there is no `&mut` access. `Request`'s `headers` and
+`target` are public fields.
+
+**Suggested API.** `Context::req_mut(&mut self) -> Option<&mut Request>`, `None` once the request
+is shared (after `detach` or an upgrade), or narrower: `Context::request_headers_mut` and
+`Context::set_target(&mut self, target: &str)`. What akio reads of the request afterwards (`Files`'s
+conditional and range fields, `path()`, the router's params) then sees the change.
+
+**How akit uses it.** The `headers` middleware changes the request's fields in place, and the
+`rewrite` middleware its target, before calling the handler; the stopgaps go: the request fields
+kept in a context local (`akit_runtime::REQUEST_FIELDS`, read by `request_headers`) and the
+rewritten path kept in `CANONICAL_PATH` (which stays for I11's canonical path only, or goes too).
+Until then the changed fields reach the `proxy` handler's upstream only (recorded in the I40
+progress entry).

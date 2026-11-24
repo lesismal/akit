@@ -40,6 +40,8 @@
 | A20 | HTTP 客户端响应边到达边交付，可暂停和恢复读取 | 已提出（I16） | 5、8 | I16、I17、I18、I67 |
 | A21 | 服务端请求可暂停其客户端的读取，并在客户端排空时得到通知 | 已提出（I16） | 5、8 | I16、I47、I75 |
 | A22 | 在运行中的引擎上移除和排空 UDP 监听器 | 已提出（I22） | 10、11 | I22、I28 |
+| A32 | `akio-regex` 模式在哪里匹配、它的分组，以及替换 | 已提出（I40） | 19 | I40、I48 |
+| A33 | 被中间件修改的请求字段和请求目标（`Context::req_mut`） | 已提出（I40） | 12、19 | I40、I43、I44 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -402,3 +404,45 @@ UDP：不再接收新对端，对已有的调用 `on_shutdown`，到期关闭剩
 
 **akit 的用法。** `akit_listener::Listeners::reload`（I22、I28）像移除 TCP 一侧那样移除并排空监听器的 HTTP/3，
 `ReloadError::Udp` 的拒绝随之去掉。
+
+## A32 正则表达式在哪里匹配、它的分组，以及替换
+
+**问题。** fit 的 `rewrite` 中间件替换路径中正则表达式的每一处匹配（`regexp` 和 `replacement`，用 `$1` 和
+`${name}` 表示分组），`redirect` 中间件用一次匹配的分组构造 URL（`"to": "/new/$1"`）。akio-regex 只回答模式是否
+出现在文本中：既不找出位置，也不捕获分组。akit 以“暂不支持”拒绝这些字段（I40）。
+
+**证据。** `crates/akio-regex/src/lib.rs`（`a9a620ab`）：`Regex` 只有 `is_match`、`is_match_fmt` 和
+`nfa_is_match`；crate 文档说分组会被解析，但“不捕获任何内容”。Pike VM（`crates/akio-regex/src/exec.rs`）
+不为线程保存位置。
+
+**建议的 API。** 在 `Regex` 上，采用 Go 的 `regexp` 和 `regex` crate 的最左优先语义，像现在一样线性时间（带捕获槽的
+Pike VM，或先用 DFA 找出匹配的结束和开始，再只为这次匹配计算槽）：
+
+- `find_at(&self, text: &str, start: usize) -> Option<Range<usize>>` 和 `find_iter`；
+- `captures(&self, text: &str) -> Option<Captures>`（每个分组的范围，按序号和名字）；`group_names`；
+- `expand(&self, caps: &Captures, template: &str, text: &str, out: &mut String)`，模板规则与 Go 的
+  `Regexp.Expand` 相同（`$1`、`${1}`、`$name`、`${name}`、`$$`；未知或未匹配的分组为空；格式不对的 `$` 是它自己），
+  以及与 Go 的 `ReplaceAllString` 相同的 `replace_all(&self, text, template) -> Cow<str>`，包括空匹配。
+
+**akit 的用法。** `rewrite` 的 `regexp` 和 `replacement`（在解码后的路径上 `replace_all`），以及 `redirect` 在
+`to` 中引用的分组（在转义路径上 `captures`，再 `expand`），都在编译配置时准备好；akit-config 中“暂不支持”的拒绝
+随之去掉。
+
+## A33 被中间件修改的请求：字段和请求目标
+
+**问题。** 中间件在 handler 看到请求之前修改它：fit 的 `headers` 中间件设置、添加和删除请求字段，`rewrite`
+中间件修改路径，之后的中间件（ForwardAuth 复制的字段、JWT 的 claims 字段）也会修改。akio-http 的 `Context`
+只以共享引用提供请求（`req()`），字段和请求目标都不能修改。
+
+**证据。** `crates/akio-http/src/context.rs`（`a9a620ab`）：`Context` 把请求放在私有的 `ReqCell` 中（在
+`Detached` 或升级共享它之前归 `Context` 所有），只提供 `req(&self) -> &Request`、`path`、`header` 和 `local`；
+没有 `&mut` 访问。`Request` 的 `headers` 和 `target` 是公有字段。
+
+**建议的 API。** `Context::req_mut(&mut self) -> Option<&mut Request>`，请求被共享之后（`detach` 或升级之后）
+返回 `None`；或者更窄的 `Context::request_headers_mut` 和 `Context::set_target(&mut self, target: &str)`。之后
+akio 读取请求的地方（`Files` 的条件请求和范围请求字段、`path()`、路由器的参数）都能看到修改。
+
+**akit 的用法。** `headers` 中间件在调用 handler 之前就地修改请求字段，`rewrite` 中间件修改请求目标；临时方案
+随之去掉：保存在上下文 local 中的请求字段（`akit_runtime::REQUEST_FIELDS`，由 `request_headers` 读取），以及
+保存在 `CANONICAL_PATH` 中的重写后路径（它只留给 I11 的规范化路径，或者也去掉）。在此之前，修改后的字段只到达
+`proxy` handler 的上游（记录在 I40 的进度条目中）。

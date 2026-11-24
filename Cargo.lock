@@ -221,6 +221,7 @@ dependencies = [
  "akit-config",
  "akit-handler",
  "akit-listener",
+ "akit-middleware",
  "akit-observe",
  "akit-proxy",
  "akit-runtime",
@@ -283,6 +284,17 @@ dependencies = [
 [[package]]
 name = "akit-middleware"
 version = "0.0.1"
+dependencies = [
+ "akio",
+ "akio-http",
+ "akio-regex",
+ "akit-config",
+ "akit-handler",
+ "akit-listener",
+ "akit-proxy",
+ "akit-router",
+ "akit-runtime",
+]
 
 [[package]]
 name = "akit-observe"

@@ -322,6 +322,9 @@ pub struct Route {
     pub priority: i64,
     /// `match`; every request when left out.
     pub matcher: Option<Match>,
+    /// `middleware`, in the order written: the first is the outermost, the first a request goes
+    /// through (I40). Each is one of [`Handler`]'s middleware variants ([`Handler::is_middleware`]).
+    pub middleware: Vec<Handler>,
     /// `handler`.
     pub handler: Handler,
 }
@@ -349,7 +352,9 @@ pub struct Match {
     pub expr: String,
 }
 
-/// A route's handler module and its params.
+/// A module of a route and its params: its handler (`respond`, `static`, `proxy`) or, from I40,
+/// one of its middleware (`rewrite`, `redirect`, `headers`). One type for both, as akit-runtime's
+/// registry provisions every module from the same params type.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Handler {
     /// `respond`: a fixed status, header fields and body.
@@ -358,17 +363,92 @@ pub enum Handler {
     Static(Static),
     /// `proxy`: requests forwarded to an upstream (I15).
     Proxy(Proxy),
+    /// The `rewrite` middleware: the request's path changed before the handler sees it (I40).
+    Rewrite(Rewrite),
+    /// The `redirect` middleware: requests answered with a redirect (I40).
+    Redirect(Redirect),
+    /// The `headers` middleware: request and response header fields changed (I40).
+    Headers(Headers),
 }
 
 impl Handler {
-    /// The handler module's name, as the config writes it in `module`.
+    /// The module's name, as the config writes it in `module`.
     #[must_use]
     pub fn module(&self) -> &'static str {
         match self {
             Handler::Respond(_) => "respond",
             Handler::Static(_) => "static",
             Handler::Proxy(_) => "proxy",
+            Handler::Rewrite(_) => "rewrite",
+            Handler::Redirect(_) => "redirect",
+            Handler::Headers(_) => "headers",
         }
+    }
+
+    /// Whether the module is a middleware (in a route's `middleware`) rather than a handler.
+    #[must_use]
+    pub fn is_middleware(&self) -> bool {
+        matches!(
+            self,
+            Handler::Rewrite(_) | Handler::Redirect(_) | Handler::Headers(_)
+        )
+    }
+}
+
+/// The `rewrite` middleware's params, as fit's `middleware/rewrite`. `regexp` and `replacement`
+/// are refused as not supported yet: akio-regex does not find where a pattern matches yet (akio
+/// API request A32).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Rewrite {
+    /// `strip_prefix`: prefixes, each starting with `/`; the first the path starts with, at a
+    /// segment boundary, is removed. None when left out.
+    pub strip_prefix: Vec<String>,
+    /// `add_prefix`: a prefix put before the path, starting with `/` and not ending with one;
+    /// empty when left out.
+    pub add_prefix: String,
+}
+
+/// The `redirect` middleware's params, as fit's `middleware/redirect`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Redirect {
+    /// `to`: where to, with `{scheme}`, `{host}`, `{path}`, `{query}` and `{uri}` standing for
+    /// the request's. Groups of `regexp` (`$1`, `${name}`) in it are refused as not supported yet
+    /// (akio API request A32); with a `regexp`, `$$` stands for `$`.
+    pub to: String,
+    /// `status`: 301, 302, 303, 307 or 308; 302 when left out.
+    pub status: u16,
+    /// `regexp`: what the escaped path must match for the request to be redirected; every
+    /// request is when empty.
+    pub regexp: String,
+}
+
+/// The `headers` middleware's params, as fit's `middleware/headers`.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Headers {
+    /// `request`: changes to the request's fields, made before the handler sees them.
+    pub request: HeaderOps,
+    /// `response`: changes to the response's fields, made just before it is sent.
+    pub response: HeaderOps,
+}
+
+/// Changes to a header, as fit's `headers.Ops`: deletions first, then fields set, then fields
+/// added. Names are as written, checked to be HTTP tokens; values are checked to hold no line
+/// break or NUL.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct HeaderOps {
+    /// `set`: fields each replacing any of the same name, sorted by name.
+    pub set: Vec<(String, String)>,
+    /// `add`: values added to fields after any already there, sorted by name.
+    pub add: Vec<(String, Vec<String>)>,
+    /// `delete`: names, or prefixes ending in `*` (`"X-Debug-*"`; `"*"` is every field).
+    pub delete: Vec<String>,
+}
+
+impl HeaderOps {
+    /// Whether there is nothing to change.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.set.is_empty() && self.add.is_empty() && self.delete.is_empty()
     }
 }
 
@@ -643,8 +723,15 @@ const TLS_FIELDS: &[&str] = &["certificates", "client_auth", "max_version"];
 const TLS_FIT_ONLY: &[&str] = &["acme", "on_demand", "kernel_tls_offload"];
 const CERTIFICATE_FIELDS: &[&str] = &["cert_file", "key_file"];
 const CLIENT_AUTH_FIELDS: &[&str] = &["ca_files", "mode"];
-const ROUTE_FIELDS: &[&str] = &["name", "listeners", "priority", "match", "handler"];
-const ROUTE_FIT_ONLY: &[&str] = &["access", "middleware"];
+const ROUTE_FIELDS: &[&str] = &[
+    "name",
+    "listeners",
+    "priority",
+    "match",
+    "middleware",
+    "handler",
+];
+const ROUTE_FIT_ONLY: &[&str] = &["access"];
 const MATCH_FIELDS: &[&str] = &[
     "host",
     "path",
@@ -677,6 +764,26 @@ const FIT_HANDLERS: &[&str] = &[
     "whep",
     "whip",
 ];
+/// fit's middleware modules (its `http.middleware` namespace) that akit does not have yet.
+const FIT_MIDDLEWARE: &[&str] = &[
+    "basic_auth",
+    "body_limit",
+    "cache",
+    "circuit_breaker",
+    "client_cert",
+    "compress",
+    "concurrency_limit",
+    "forward_auth",
+    "jwt",
+    "rate_limit",
+    "wasm",
+];
+const REWRITE_FIELDS: &[&str] = &["strip_prefix", "add_prefix"];
+/// akio-regex answers whether a pattern matches, not where (akio API request A32).
+const REWRITE_FIT_ONLY: &[&str] = &["regexp", "replacement"];
+const REDIRECT_FIELDS: &[&str] = &["to", "status", "regexp"];
+const HEADERS_FIELDS: &[&str] = &["request", "response"];
+const HEADER_OPS_FIELDS: &[&str] = &["set", "add", "delete"];
 const RESPOND_FIELDS: &[&str] = &["status", "headers", "body"];
 const STATIC_FIELDS: &[&str] = &[
     "root",
@@ -1242,6 +1349,10 @@ fn route(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Route> {
     let matcher = o
         .take("match")
         .and_then(|v| route_match(d, v, &o.at("match")));
+    let middleware = o
+        .take("middleware")
+        .map(|v| d.array(v, &o.at("middleware"), middleware))
+        .unwrap_or_default();
     let handler = o
         .require(d, "handler")
         .and_then(|v| handler(d, v, &o.at("handler")));
@@ -1251,6 +1362,7 @@ fn route(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Route> {
         listeners,
         priority,
         matcher,
+        middleware,
         handler: handler?,
     })
 }
@@ -1403,6 +1515,270 @@ fn handler(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Handler> {
             None
         }
     }
+}
+
+/// One of a route's `middleware`: a module reference, as a handler's, naming a middleware module.
+fn middleware(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Handler> {
+    let mut o = d.object(n, path)?;
+    let module = o
+        .require(d, "module")
+        .and_then(|v| d.string(v, &o.at("module")).map(|s| (v.off, s)));
+    let params = o.take("params");
+    let params_path = o.at("params");
+    let module_path = o.at("module");
+    o.finish(d, MODULE_FIELDS, &[]);
+    let (off, module) = module?;
+    match module.as_str() {
+        "" => {
+            d.error(off, &module_path, "the module name is empty");
+            None
+        }
+        "rewrite" => rewrite(d, params, off, &params_path).map(Handler::Rewrite),
+        "redirect" => redirect(d, params, off, &params_path).map(Handler::Redirect),
+        "headers" => headers(d, params, off, &params_path).map(Handler::Headers),
+        m if FIT_MIDDLEWARE.contains(&m) => {
+            d.not_yet(off, &module_path, &format!("the {m:?} middleware"));
+            None
+        }
+        m => {
+            d.error(
+                off,
+                &module_path,
+                format!("there is no middleware module {m:?}"),
+            );
+            None
+        }
+    }
+}
+
+/// The `rewrite` middleware's params, checked as fit's `Rewrite.Provision` checks them.
+fn rewrite(d: &mut Decoder<'_>, params: Option<&Node>, off: usize, path: &str) -> Option<Rewrite> {
+    let mut r = Rewrite::default();
+    let mut ok = true;
+    let mut at = off;
+    let mut regexp = false;
+    if let Some(n) = params {
+        let mut o: Obj<'_> = d.object(n, path)?;
+        at = o.off;
+        if let Some(v) = o.take("strip_prefix") {
+            let p = o.at("strip_prefix");
+            for (off, s) in d.strings(v, &p) {
+                if !s.starts_with('/') {
+                    d.error(off, &p, format!("{s:?} does not start with '/'"));
+                    ok = false;
+                }
+                r.strip_prefix.push(s);
+            }
+        }
+        if let Some(v) = o.take("add_prefix") {
+            let p = o.at("add_prefix");
+            r.add_prefix = d.string(v, &p).unwrap_or_default();
+            let a = &r.add_prefix;
+            if !a.is_empty() && (!a.starts_with('/') || a.ends_with('/')) {
+                d.error(
+                    v.off,
+                    &p,
+                    format!("{a:?} does not start with '/', or ends with one"),
+                );
+                ok = false;
+            }
+        }
+        // Refused as not supported yet, naming the module (the redirect's regexp is read); they
+        // still count as what the rewrite does.
+        for field in REWRITE_FIT_ONLY {
+            if let Some(v) = o.take(field) {
+                regexp = true;
+                d.not_yet(
+                    v.off,
+                    &o.at(field),
+                    &format!(
+                        "the \"rewrite\" middleware's {field}: akio-regex does not find where a pattern matches yet (akio API request A32)"
+                    ),
+                );
+            }
+        }
+        o.finish(d, REWRITE_FIELDS, REWRITE_FIT_ONLY);
+    }
+    if ok && !regexp && r.strip_prefix.is_empty() && r.add_prefix.is_empty() {
+        d.error(at, path, "strip_prefix, regexp or add_prefix is needed");
+        ok = false;
+    }
+    ok.then_some(r)
+}
+
+/// The `redirect` middleware's params, checked as fit's `Redirect.Provision` checks them.
+fn redirect(
+    d: &mut Decoder<'_>,
+    params: Option<&Node>,
+    off: usize,
+    path: &str,
+) -> Option<Redirect> {
+    let Some(n) = params else {
+        d.error(
+            off,
+            &crate::error::join_field(path, "to"),
+            "missing required field",
+        );
+        return None;
+    };
+    let mut o: Obj<'_> = d.object(n, path)?;
+    let mut ok = true;
+    let to = o
+        .require(d, "to")
+        .and_then(|v| d.string(v, &o.at("to")).map(|s| (v.off, s)));
+    let mut status = 302;
+    if let Some(v) = o.take("status") {
+        let p = o.at("status");
+        match d.int(v, &p, i64::MIN, i64::MAX) {
+            Some(0) => {}
+            Some(s @ (301 | 302 | 303 | 307 | 308)) => status = u16::try_from(s).unwrap_or(302),
+            Some(s) => {
+                d.error(
+                    v.off,
+                    &p,
+                    format!("{s} is not a redirect status: use 301, 302, 303, 307 or 308"),
+                );
+                ok = false;
+            }
+            None => ok = false,
+        }
+    }
+    let mut regexp = String::new();
+    if let Some(v) = o.take("regexp") {
+        let p = o.at("regexp");
+        regexp = d.string(v, &p).unwrap_or_default();
+        if !regexp.is_empty() {
+            if let Err(e) = akit_router::regexp(regexp.as_bytes()) {
+                d.error(v.off, &p, e.to_string());
+                ok = false;
+            }
+        }
+    }
+    let to_path = o.at("to");
+    o.finish(d, REDIRECT_FIELDS, &[]);
+    let (to_off, to) = to?;
+    if to.contains(['\r', '\n', '\0']) {
+        d.error(to_off, &to_path, "the URL holds a line break or NUL");
+        ok = false;
+    } else if !regexp.is_empty() && names_a_group(&to) {
+        d.not_yet(
+            to_off,
+            &to_path,
+            "a group of regexp ($1, ${name}) in to: akio-regex does not capture groups yet (akio API request A32)",
+        );
+        ok = false;
+    }
+    ok.then_some(Redirect { to, status, regexp })
+}
+
+/// Whether the template `to` names a group of a regexp as Go's `Regexp.Expand` reads it: a `$`
+/// (not `$$`, which stands for `$`) followed by a name of letters, digits and `_`, or by such a
+/// name in braces. Any other `$` stands for itself.
+fn names_a_group(to: &str) -> bool {
+    let mut rest = to;
+    while let Some(i) = rest.find('$') {
+        let after = rest.get(i.saturating_add(1)..).unwrap_or("");
+        if let Some(r) = after.strip_prefix('$') {
+            rest = r;
+            continue;
+        }
+        let (brace, name) = match after.strip_prefix('{') {
+            Some(n) => (true, n),
+            None => (false, after),
+        };
+        let len = name
+            .find(|c: char| !(c.is_alphanumeric() || c == '_'))
+            .unwrap_or(name.len());
+        if len > 0 && (!brace || name.get(len..).is_some_and(|r| r.starts_with('}'))) {
+            return true;
+        }
+        rest = after;
+    }
+    false
+}
+
+/// The `headers` middleware's params, checked as fit's `Headers.Provision` checks them.
+fn headers(d: &mut Decoder<'_>, params: Option<&Node>, off: usize, path: &str) -> Option<Headers> {
+    let mut h = Headers::default();
+    let mut ok = true;
+    let mut at = off;
+    if let Some(n) = params {
+        let mut o: Obj<'_> = d.object(n, path)?;
+        at = o.off;
+        if let Some(v) = o.take("request") {
+            h.request = header_ops(d, v, &o.at("request"), &mut ok);
+        }
+        if let Some(v) = o.take("response") {
+            h.response = header_ops(d, v, &o.at("response"), &mut ok);
+        }
+        o.finish(d, HEADERS_FIELDS, &[]);
+    }
+    if ok && h.request.is_empty() && h.response.is_empty() {
+        d.error(at, path, "request or response changes are needed");
+        ok = false;
+    }
+    ok.then_some(h)
+}
+
+/// One side's changes of the `headers` middleware; problems are reported at `path`, as fit
+/// reports them at `request` or `response`, and clear `ok`.
+fn header_ops(d: &mut Decoder<'_>, n: &Node, path: &str, ok: &mut bool) -> HeaderOps {
+    let mut ops = HeaderOps::default();
+    let Some(mut o) = d.object(n, path) else {
+        *ok = false;
+        return ops;
+    };
+    if let Some(v) = o.take("delete") {
+        for (off, name) in d.strings(v, &o.at("delete")) {
+            let bad = match name.strip_suffix('*') {
+                Some(prefix) => (!prefix.is_empty() && !is_token(prefix))
+                    .then(|| format!("{name:?} is not a valid header name or prefix")),
+                None => (!is_token(&name)).then(|| format!("{name:?} is not a valid header name")),
+            };
+            if let Some(msg) = bad {
+                d.error(off, path, msg);
+                *ok = false;
+            }
+            ops.delete.push(name);
+        }
+    }
+    let check = |d: &mut Decoder<'_>, off: usize, name: &str, value: &str| {
+        if !is_token(name) {
+            d.error(off, path, format!("{name:?} is not a valid header name"));
+            false
+        } else if value.contains(['\r', '\n', '\0']) {
+            d.error(
+                off,
+                path,
+                format!("the value of {name} holds a line break or NUL"),
+            );
+            false
+        } else {
+            true
+        }
+    };
+    if let Some(v) = o.take("set") {
+        let mut set = d.string_map(v, &o.at("set"));
+        set.sort_by(|a, b| a.1.cmp(&b.1));
+        for (off, name, value) in set {
+            *ok &= check(d, off, &name, &value);
+            ops.set.push((name, value));
+        }
+    }
+    if let Some(v) = o.take("add") {
+        let at = o.at("add");
+        let mut add = string_lists(d, v, &at, |_| None);
+        add.sort_by(|a, b| a.0.cmp(&b.0));
+        for (name, values) in add {
+            for value in &values {
+                // The position of the object: string_lists keeps no positions of its keys.
+                *ok &= check(d, v.off, &name, value);
+            }
+            ops.add.push((name, values));
+        }
+    }
+    o.finish(d, HEADER_OPS_FIELDS, &[]);
+    ops
 }
 
 fn respond(d: &mut Decoder<'_>, params: Option<&Node>, path: &str) -> Option<Respond> {

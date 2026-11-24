@@ -10,14 +10,60 @@
 | | |
 | --- | --- |
 | 最后更新 | 2026-11-24 |
-| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I15、I19–I24 已完成，I16 进行中（body 限制已完成；流式转发等待 akio 的 A19–A21）；M3 的 I39 已提前完成。 |
+| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I15、I19–I24 已完成，I16 进行中（body 限制已完成；流式转发等待 akio 的 A19–A21）；M3 的 I39 和 I40 已提前完成。 |
 | akio | akio `main` 上的 `a9a620ab`（`1.0.0-rc.1`，带 A1–A5、A7、A8、A11、A13 和 A16–A18），在 `Cargo.toml` 中按 `rev` 锁定 |
 | fit | 作为规格；本计划基于 `7daee573` 阅读 |
-| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；基于 akio 的 A1 保留、增加、修改和排空监听器，包括启动时的监听器，重载可新增 h3 监听器；服务 h3 的启动监听器要重启才能变）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`）；所有监听器和代理上的 `limits.max_body_bytes`（413）；fit 的 json、text 和 line 格式的访问日志；上游连接池，轮询、加权轮询和最少连接，跳过被被动健康检查（`max_fails`、`fail_timeout`）下线的地址；兼容性门禁：80 个夹具，9 个有效，70 个只因暂不支持被拒绝，1 个跳过，没有失败 |
+| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；基于 akio 的 A1 保留、增加、修改和排空监听器，包括启动时的监听器，重载可新增 h3 监听器；服务 h3 的启动监听器要重启才能变）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；路由中间件：`rewrite`（前缀）、`redirect` 和 `headers`；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`）；所有监听器和代理上的 `limits.max_body_bytes`（413）；fit 的 json、text 和 line 格式的访问日志；上游连接池，轮询、加权轮询和最少连接，跳过被被动健康检查（`max_fails`、`fail_timeout`）下线的地址；兼容性门禁：80 个夹具，10 个有效，69 个只因暂不支持被拒绝，1 个跳过，没有失败 |
 | 下一步 | I17；A19–A21 落地后再做 I16 |
-| akio 需求 | A1–A5、A7、A8、A11、A13、A16–A18 已在 akio 的 main 并已锁定；A6 在 akio 分支 `claude/x509-csr` 上；A9、A10、A12、A14、A15、A19–A21 和 A22 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
+| akio 需求 | A1–A5、A7、A8、A11、A13、A16–A18 已在 akio 的 main 并已锁定；A6 在 akio 分支 `claude/x509-csr` 上；A9、A10、A12、A14、A15、A19–A21、A22、A32 和 A33 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
 
 ## 日志
+
+### 2026-11-24：I40，重写、跳转与头处理
+
+- 在 I39 之后提前完成的 M3 迭代。路由的 `middleware` 被读取：`akit-config` 把每个模块引用（`module`、
+  `params`）解码到 `Route::middleware`，即 `akit_config::Handler` 的中间件变体（`Rewrite`、`Redirect`、
+  `Headers`：handler 和中间件共用一种参数类型，因为 akit-runtime 的注册表用同一种类型配置所有模块），
+  检查和错误消息与 fit 的 `Provision` 相同；fit 的其他中间件模块以“暂不支持”拒绝，并给出模块名
+  （`FIT_MIDDLEWARE`）。`akit-runtime` 的 `compile` 从注册表加载每条路由的中间件，错误位于
+  `routes[i].middleware[j].params.<字段>`，并在编译时把它们一次性包在 handler 外面（规则 12），第一个在最外层。
+  可执行文件的注册表包含 `akit_middleware::MODULES`。
+- `akit-middleware` 实现了 fit 的 `rewrite`、`redirect` 和 `headers`（`middleware/rewrite`、
+  `middleware/headers`）：
+  - `rewrite`：`strip_prefix`（路径在段边界上以之开头的第一个前缀）和 `add_prefix`，作用于解码后的路径，
+    新路径按 Go 的方式重新转义（`/api/a%2Fb` 去掉 `/api` 后是 `/a/b`；`!` 写成 `%21`）。新路径写入
+    `CANONICAL_PATH`：`proxy` handler 把它（连同原样的 query）发给上游，`static` handler 用它查找文件，
+    其后的中间件也以它为准。
+  - `redirect`：`to` 中的 `{scheme}`、`{host}`、`{path}`、`{query}` 和 `{uri}` 在编译配置时拆分；`status`；
+    `regexp`（`akio-regex`，与路由器编译路径正则的方式相同）匹配 Go 的 `URL.EscapedPath` 给出的转义路径
+    （原样的 `\` 是 `%5C`），不匹配的请求交给 handler；fit 的开放重定向检查（`otherHost`、`hasScheme`），
+    回答 `400 bad redirect target`。
+  - `headers`：`request` 和 `response`，各自依次 `delete`（名字，或以 `*` 结尾的前缀）、`set` 和 `add`，
+    名字按 Go 的 `CanonicalHeaderKey` 规范化。响应的修改是一个 akio 响应过滤器，因此作用于该路由的所有响应：
+    立即回答的、之后从完成回调回答的（代理的）以及流式的。
+- 临时方案，直到 akio 能做到（规则 21；都在 [akio API 需求](akio-api-requests.zh-CN.md) 中）：
+  - A32：`akio-regex` 只回答模式是否匹配，不回答在哪里匹配，也不捕获分组。所以 rewrite 的 `regexp` 和
+    `replacement`，以及 `to` 中对 redirect 正则分组的引用（`$1`、`${name}`），在读取配置时以“暂不支持”拒绝；
+    `$$` 表示 `$`。
+  - A33：akio 的 `Context` 只以共享引用提供请求。`headers` 中间件对请求的修改保存在上下文的 local 中
+    （`akit_runtime::REQUEST_FIELDS`，由 `set_request_headers` 写入），由 `akit_runtime::request_headers`
+    读取，`proxy` handler 把它发给上游；akio 自己读取的请求内容（`static` handler 的条件请求和范围请求字段）
+    仍是客户端发来的样子。路径重写通过 `CANONICAL_PATH` 完成，与 I11 的规范化路径相同。
+- 测试：`akit-middleware` 的 `tests/middleware.rs` 通过 akit 的监听器运行：移植了 fit 的 `TestRewrite`、
+  `TestRedirect`、`TestRedirectHeaderIsItsOwn`、`TestHeaders`（每个两次，值不共享）、`TestResponseOfAnyKind`
+  （立即回答和代理的响应）以及两个包的 `TestParamErrors`；需要 A32 的用例检查为以“暂不支持”拒绝；上游看到的
+  重写后路径和修改后的请求字段，带 1 MiB 的 body；中间件按顺序运行（先 rewrite 再 redirect）；中途离开的客户端；
+  路径转义、`otherHost`、`hasScheme`、占位符和请求字段 local 的单元测试。
+- 兼容性门禁：`tests/compat/supported.txt` 中的 22 个字段；门禁把被拒绝的中间件模块记为
+  `routes[].middleware[]<模块>`，把 rewrite 被拒绝的字段连同其模块记录；`make compat-bless`：
+  `examples/headers` 有效，其余示例只因所用的中间件模块被拒绝（80 个夹具：10 个有效，69 个只因暂不支持被拒绝，
+  1 个跳过，没有失败）。
+- 已检查：macOS 上的 `make check`；基准主机上，相关 crate 的测试（`cargo test -p akit-middleware -p akit-config
+  -p akit-runtime -p akit-router -p akit-proxy -p akit-compat`），epoll 和 `AKIO_TEST_BACKEND=uring` 都跑过。
+- 与 fit 的不同：经过 akit 的监听器时，路径在任何中间件看到之前已被规范化，与 fit 的监听器相同，所以 fit 的
+  `path makes //` 用例端到端回答 `302 /evil.com/x`（挨着 `/` 的 `\` 被监听器以 400 拒绝）。头名字的错误
+  报告在 `request` 或 `response` 对象上，与 fit 相同。
+- 待测量，由维护者的基准任务完成（规则 30）：见开发计划中 I40 的基准行。
 
 ### 2026-11-24：I20，被动健康检查
 
