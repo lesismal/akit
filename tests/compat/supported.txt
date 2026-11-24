@@ -367,7 +367,7 @@ auto_https.https_port
 
 # I51: services, layer 4 proxying of tcp and udp listeners (listeners[].protocols takes "tcp"
 # and "udp", alone) to an upstream's addresses; access comes with fit's access lists. I53: "tcp"
-# beside HTTP on one port, told apart by what a client sends first ("socks" comes with I55).
+# beside HTTP on one port, told apart by what a client sends first ("socks" too since I55).
 services
 services[].name
 services[].listeners
@@ -439,11 +439,90 @@ routes[].middleware[]<cache>.params.disk.max_bytes
 routes[].middleware[]<cache>.params.disk.max_size
 routes[].middleware[]<cache>.params.disk.max_entries
 
-# I61: the Consul, Consul KV and etcd providers, on I57's framework: Consul's catalog and KV store
-# followed with blocking queries, etcd's keys with a watch through its JSON gateway, all over
-# akio's HTTP client (fit's decision 013). docker and kubernetes stay not supported yet (I58-I60).
+# I69: cache III. Purges of what a cache zone keeps, in memory and on disk, by URL, URL prefix, tag
+# (Cache-Tag, Surrogate-Key) or all of it, and what each zone keeps, through the Admin API's
+# POST /cache/purge and GET /cache, as fit's. No config field of its own: every cache field above.
+
+# I58: the Docker provider. Routes, upstreams and services from the labels of running Docker
+# containers, followed through the daemon's events on akio's HTTP client over its Unix socket (or
+# TCP), merged by I57's framework. consul, consul_kv and etcd are refused as not
+# supported yet (I59-I61). Read when akit starts: a change takes a restart, as in fit.
 providers
 providers[].name
+providers[].docker
+providers[].docker.endpoint
+providers[].docker.expose_all
+providers[].docker.network
+providers[].docker.use_published_ports
+providers[].docker.label_prefix
+providers[].docker.max_containers
+providers[].docker.refresh_interval
+providers[].docker.request_timeout
+
+# I75: FastCGI. Requests answered by a FastCGI application, as PHP-FPM is, over a bounded pool of
+# connections (TCP, or a Unix-domain socket), both bodies streamed with linked backpressure, with
+# try_files, dotfiles and fit's timeouts and limits.
+routes[].handler<fastcgi>
+routes[].handler<fastcgi>.params
+routes[].handler<fastcgi>.params.address
+routes[].handler<fastcgi>.params.root
+routes[].handler<fastcgi>.params.split_path
+routes[].handler<fastcgi>.params.index
+routes[].handler<fastcgi>.params.try_files
+routes[].handler<fastcgi>.params.dotfiles
+routes[].handler<fastcgi>.params.env
+routes[].handler<fastcgi>.params.max_conns
+routes[].handler<fastcgi>.params.max_idle_conns
+routes[].handler<fastcgi>.params.max_pending
+routes[].handler<fastcgi>.params.connect_timeout
+routes[].handler<fastcgi>.params.response_header_timeout
+routes[].handler<fastcgi>.params.response_idle_timeout
+routes[].handler<fastcgi>.params.timeout
+routes[].handler<fastcgi>.params.idle_timeout
+routes[].handler<fastcgi>.params.max_header_bytes
+
+# I55: the forward proxy. A listener's "socks" protocol (SOCKS5, SOCKS4 and 4a CONNECT, alone or
+# beside HTTP and tcp on one port) with the rules of its socks, and the forward_proxy handler's
+# HTTP CONNECT tunnels with the same rules (over HTTP/1.1; HTTP/2 and HTTP/3 wait for akio API
+# request A134).
+listeners[].socks
+listeners[].socks.clients
+listeners[].socks.allow
+listeners[].socks.deny
+listeners[].socks.ports
+listeners[].socks.connect_timeout
+listeners[].socks.idle_timeout
+routes[].handler<forward_proxy>
+routes[].handler<forward_proxy>.params
+routes[].handler<forward_proxy>.params.clients
+routes[].handler<forward_proxy>.params.allow
+routes[].handler<forward_proxy>.params.deny
+routes[].handler<forward_proxy>.params.ports
+routes[].handler<forward_proxy>.params.connect_timeout
+routes[].handler<forward_proxy>.params.idle_timeout
+
+# I59: the kubernetes kind, serving Ingresses: listed and watched with akit's own client on akio's
+# (HTTP/2 over TLS, HTTP/1.1 otherwise), each Ingress of an IngressClass of controller_name a set
+# of routes on ingress.http_port and, for its tls hosts, ingress.https_port, to upstreams of its
+# Services' ready endpoints or cluster IPs. A kubernetes provider needs ingress until the Gateway
+# API (I60, with addresses); allow_external_name_services waits for the upstreams' deny_internal.
+providers[].kubernetes
+providers[].kubernetes.kubeconfig
+providers[].kubernetes.context
+providers[].kubernetes.controller_name
+providers[].kubernetes.namespaces
+providers[].kubernetes.listen_host
+providers[].kubernetes.backends
+providers[].kubernetes.max_objects
+providers[].kubernetes.request_timeout
+providers[].kubernetes.ingress
+providers[].kubernetes.ingress.http_port
+providers[].kubernetes.ingress.https_port
+providers[].kubernetes.certificates_dir
+
+# I61: the Consul, Consul KV and etcd providers, on I57's framework: Consul's catalog and KV store
+# followed with blocking queries, etcd's keys with a watch through its JSON gateway, all over
+# akio's HTTP client (fit's decision 013).
 providers[].consul
 providers[].consul.endpoint
 providers[].consul.datacenter

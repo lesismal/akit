@@ -64,6 +64,10 @@
 //! sent enough to tell within [`akit_l4::OPENING_TIMEOUT`] is closed. A PROXY header comes before
 //! all of it.
 //!
+//! I55: a listener serving `socks` serves akio-socks's SOCKS server with its `socks` rules
+//! (akit-l4's [`akit_l4::forward`]), alone or beside HTTP and `tcp`, where a SOCKS5 or SOCKS4
+//! greeting goes to it.
+//!
 //! Part of [akit](https://github.com/lesismal/akit); see `docs/dev-plan.md` for the iterations that
 //! fill this crate in.
 
@@ -732,9 +736,14 @@ fn serves_l4_udp(l: &Listener) -> bool {
     l.protocols.contains(&Protocol::Udp)
 }
 
-/// Whether a listener has a TCP socket in the engine: for HTTP over TCP, or a service.
+/// Whether a listener serves the `socks` forward proxy (I55).
+fn serves_socks(l: &Listener) -> bool {
+    l.protocols.contains(&Protocol::Socks)
+}
+
+/// Whether a listener has a TCP socket in the engine: for HTTP over TCP, a service, or SOCKS.
 fn tcp_side(l: &Listener) -> bool {
-    serves_tcp(l) || serves_l4_tcp(l)
+    serves_tcp(l) || serves_l4_tcp(l) || serves_socks(l)
 }
 
 /// Whether a listener has a UDP socket in the engine: for HTTP/3, or a service.
@@ -756,6 +765,18 @@ fn l4_acceptor(
     } else {
         akit_l4::ClientAcceptor::tcp(find)
     }
+}
+
+/// The SOCKS server of a listener serving `socks` (I55): its `socks` rules, fixed for as long as
+/// the listener runs (a reload that changes them binds the listener anew, as fit's does), its
+/// tunnels dialed through the engine the graph's slot is filled with once `akit run` has built
+/// it. `None` for a listener without `socks`, which akit-config refuses for one serving it.
+fn socks_acceptor(cell: &GraphCell, l: &Listener) -> Option<akio_socks::Socks> {
+    let rules = akit_l4::forward::Rules::new(l.socks.as_ref()?);
+    let engine = akio::EngineRef::new();
+    let set = engine.clone();
+    cell.with(|g| g.engine().when_set(move |e| set.set(e)));
+    Some(rules.socks(engine))
 }
 
 /// How long akio keeps a UDP peer that sends nothing: at least as long as the longest idle
@@ -917,8 +938,9 @@ fn build(cell: &GraphCell, opts: &Options) -> Result<Engine, (Error, bool)> {
 }
 
 /// The TCP side of listener `l` on `listener` (its address and backend set): HTTP/1.1 and h2c,
-/// or HTTPS with `tls` (the graph's, loaded), and its `tcp` service, beside HTTP told apart by
-/// [`sniff`]; `h3_port` names the port of its HTTP/3, which its responses' `Alt-Svc` advertises.
+/// or HTTPS with `tls` (the graph's, loaded), its `tcp` service and its `socks` forward proxy,
+/// told apart by [`sniff`] when it serves more than one of them; `h3_port` names the port of its
+/// HTTP/3, which its responses' `Alt-Svc` advertises.
 fn tcp_listener(
     cell: &GraphCell,
     l: &Listener,
@@ -926,38 +948,41 @@ fn tcp_listener(
     listener: EngineListener,
     h3_port: Option<u16>,
 ) -> Result<EngineListener, Error> {
-    if !serves_tcp(l) {
-        return Ok(serve_tcp(
-            l,
-            listener,
-            AnyAcceptor::new(l4_acceptor(cell, l)),
-        ));
-    }
-    let mut d = Dispatcher::new(cell.clone(), l.name.clone())
-        .tls(l.tls.is_some())
-        .max_body_bytes(l.max_body_bytes);
-    if let Some(port) = h3_port {
-        d = d.with_alt_svc(alt_svc(port));
-    }
-    let http = akio_http::serve_with(http_config(l)?, d);
-    let web = match (&l.tls, tls) {
-        (None, _) => AnyAcceptor::new(http),
-        (Some(_), Some(cfg)) => AnyAcceptor::new(Tls::server(cfg.clone(), http)),
-        // The graph loads every listener's tls, or is not compiled.
-        (Some(_), None) => return Err(not_loaded(l)),
-    };
-    let acc = if serves_l4_tcp(l) {
-        sniff(cell, l, web).into_any()
+    let web = if serves_tcp(l) {
+        let mut d = Dispatcher::new(cell.clone(), l.name.clone())
+            .tls(l.tls.is_some())
+            .max_body_bytes(l.max_body_bytes);
+        if let Some(port) = h3_port {
+            d = d.with_alt_svc(alt_svc(port));
+        }
+        let http = akio_http::serve_with(http_config(l)?, d);
+        Some(match (&l.tls, tls) {
+            (None, _) => AnyAcceptor::new(http),
+            (Some(_), Some(cfg)) => AnyAcceptor::new(Tls::server(cfg.clone(), http)),
+            // The graph loads every listener's tls, or is not compiled.
+            (Some(_), None) => return Err(not_loaded(l)),
+        })
     } else {
-        web
+        None
+    };
+    let socks = if serves_socks(l) {
+        Some(socks_acceptor(cell, l).ok_or_else(|| not_loaded(l))?)
+    } else {
+        None
+    };
+    let acc = match (web, socks) {
+        (Some(web), None) if !serves_l4_tcp(l) => web,
+        (None, Some(socks)) if !serves_l4_tcp(l) => AnyAcceptor::new(socks),
+        (None, None) => AnyAcceptor::new(l4_acceptor(cell, l)),
+        (web, socks) => sniff(cell, l, web, socks).into_any(),
     };
     // The PROXY header comes before TLS, and before the sniffing.
     Ok(serve_tcp(l, listener, acc))
 }
 
-/// The acceptor of a listener serving `tcp` beside HTTP (I53; fit's `sniff`), which tells them
-/// apart by what a client sends first with akio-mux, `web` being its HTTP acceptor (HTTPS with
-/// `tls`):
+/// The acceptor of a listener serving more than one of HTTP, `tcp` and `socks` (I53, I55; fit's
+/// `sniff`), which tells them apart by what a client sends first with akio-mux, `web` being its
+/// HTTP acceptor (HTTPS with `tls`) and `socks` its SOCKS server:
 ///
 /// - with `tls`, a ClientHello whose server name a service of the listener takes (in the current
 ///   graph) goes to the listener's services, which pass it through to that one (akit-l4's
@@ -965,38 +990,56 @@ fn tcp_listener(
 ///   up to [`akit_l4::MAX_CLIENT_HELLO`] bytes are read for the hello;
 /// - in the clear, TLS goes to the listener's services, which pick by its name (I52), HTTP/1.1
 ///   (and HTTP/2's preface with `h2c`) to `web`;
+/// - a SOCKS5 or SOCKS4 greeting to `socks`;
 /// - whatever else to the listener's services, whose service without `server_names` takes it,
-///   or closes it when there is none.
+///   or closes it when there is none (or the listener serves no `tcp`).
 ///
 /// A client that has not sent enough to tell within [`akit_l4::OPENING_TIMEOUT`] is closed.
-/// `socks`, a third protocol fit tells apart here, comes with I55.
-fn sniff(cell: &GraphCell, l: &Listener, web: AnyAcceptor) -> akio_mux::Mux {
-    use akio_mux::{Mux, Rule};
+fn sniff(
+    cell: &GraphCell,
+    l: &Listener,
+    web: Option<AnyAcceptor>,
+    socks: Option<akio_socks::Socks>,
+) -> akio_mux::Mux {
+    use akio_mux::{Decision, Mux, Rule};
     let mut mux = Mux::new().sniff_timeout(Some(akit_l4::OPENING_TIMEOUT));
-    if l.tls.is_some() {
-        let (c, name) = (cell.clone(), l.name.clone());
-        let named = move |h: &akio_mux::ClientHello<'_>| {
-            h.server_name().is_some_and(|n| {
-                c.with(|g| {
-                    g.listener_index(&name)
-                        .and_then(|i| g.entry(i))
-                        .is_some_and(|e| e.named(n).is_some())
+    match (&l.tls, web) {
+        (Some(_), Some(web)) => {
+            let (c, name) = (cell.clone(), l.name.clone());
+            let named = move |h: &akio_mux::ClientHello<'_>| {
+                h.server_name().is_some_and(|n| {
+                    c.with(|g| {
+                        g.listener_index(&name)
+                            .and_then(|i| g.entry(i))
+                            .is_some_and(|e| e.named(n).is_some())
+                    })
                 })
-            })
+            };
+            mux = mux
+                .route(Rule::TlsHello(Arc::new(named)), l4_acceptor(cell, l))
+                .max_sniff_bytes(akit_l4::MAX_CLIENT_HELLO)
+                .route_any(Rule::Tls, web);
+        }
+        (_, web) => {
+            mux = mux.route(Rule::Tls, l4_acceptor(cell, l));
+            if let Some(web) = web {
+                let http = if l.protocols.contains(&Protocol::H2c) {
+                    Rule::Http
+                } else {
+                    Rule::Http1
+                };
+                mux = mux.route_any(http, web);
+            }
+        }
+    }
+    if let Some(socks) = socks {
+        // SOCKS5 or SOCKS4 (and 4a): one server takes both.
+        let greeting = |b: &[u8]| match (Rule::Socks5.decide(b), Rule::Socks4.decide(b)) {
+            (Decision::Yes, _) | (_, Decision::Yes) => Decision::Yes,
+            (Decision::NeedMore, _) | (_, Decision::NeedMore) => Decision::NeedMore,
+            _ => Decision::No,
         };
-        mux = mux
-            .route(Rule::TlsHello(Arc::new(named)), l4_acceptor(cell, l))
-            .max_sniff_bytes(akit_l4::MAX_CLIENT_HELLO)
-            .route_any(Rule::Tls, web);
-    } else {
-        let http = if l.protocols.contains(&Protocol::H2c) {
-            Rule::Http
-        } else {
-            Rule::Http1
-        };
-        mux = mux
-            .route(Rule::Tls, l4_acceptor(cell, l))
-            .route_any(http, web);
+        mux = mux.route(Rule::Custom(Arc::new(greeting)), socks);
     }
     mux.fallback(l4_acceptor(cell, l))
 }

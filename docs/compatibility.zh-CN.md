@@ -152,7 +152,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 314 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 369 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -166,8 +166,8 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`http.handlers/bt_publish`](#fields-http-handlers-bt-publish) | 3 | 0 | 3 |
 | [`http.handlers/bt_stream`](#fields-http-handlers-bt-stream) | 14 | 0 | 14 |
 | [`http.handlers/bt_tracker`](#fields-http-handlers-bt-tracker) | 2 | 0 | 2 |
-| [`http.handlers/fastcgi`](#fields-http-handlers-fastcgi) | 18 | 0 | 18 |
-| [`http.handlers/forward_proxy`](#fields-http-handlers-forward-proxy) | 8 | 0 | 8 |
+| [`http.handlers/fastcgi`](#fields-http-handlers-fastcgi) | 18 | 18 | 0 |
+| [`http.handlers/forward_proxy`](#fields-http-handlers-forward-proxy) | 8 | 8 | 0 |
 | [`http.handlers/hls`](#fields-http-handlers-hls) | 12 | 0 | 12 |
 | [`http.handlers/httpflv`](#fields-http-handlers-httpflv) | 6 | 0 | 6 |
 | [`http.handlers/media_pages`](#fields-http-handlers-media-pages) | 29 | 0 | 29 |
@@ -198,14 +198,14 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`http.middleware/rewrite`](#fields-http-middleware-rewrite) | 6 | 6 | 0 |
 | [`http.middleware/wasm`](#fields-http-middleware-wasm) | 18 | 0 | 18 |
 | [`limits`](#fields-limits) | 7 | 3 | 4 |
-| [`listeners`](#fields-listeners) | 30 | 16 | 14 |
+| [`listeners`](#fields-listeners) | 30 | 23 | 7 |
 | [`llm`](#fields-llm) | 218 | 0 | 218 |
 | [`log`](#fields-log) | 24 | 0 | 24 |
 | [`media_auth`](#fields-media-auth) | 34 | 0 | 34 |
 | [`media_library`](#fields-media-library) | 24 | 0 | 24 |
 | [`metrics`](#fields-metrics) | 1 | 1 | 0 |
 | [`pprof`](#fields-pprof) | 4 | 0 | 4 |
-| [`providers`](#fields-providers) | 60 | 36 | 24 |
+| [`providers`](#fields-providers) | 60 | 58 | 2 |
 | [`routes`](#fields-routes) | 24 | 19 | 5 |
 | [`schema_version`](#fields-schema-version) | 1 | 1 | 0 |
 | [`services`](#fields-services) | 13 | 8 | 5 |
@@ -277,7 +277,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **合计** | 3821 | 314 | 3507 |
+| **合计** | 3821 | 369 | 3452 |
 
 <a id="fields-access"></a>
 
@@ -717,24 +717,24 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
-| `routes[].handler<fastcgi>` | `module` | 尚不支持（not supported yet） |
-| `routes[].handler<fastcgi>.params` | `object` | 尚不支持（not supported yet） |
-| `routes[].handler<fastcgi>.params.address` | `string, required` | 尚不支持（not supported yet） |
-| `routes[].handler<fastcgi>.params.connect_timeout` | `duration` | 尚不支持（not supported yet） |
-| `routes[].handler<fastcgi>.params.dotfiles` | `enum(deny\|allow)` | 尚不支持（not supported yet） |
-| `routes[].handler<fastcgi>.params.env` | `map<string>` | 尚不支持（not supported yet） |
-| `routes[].handler<fastcgi>.params.idle_timeout` | `duration` | 尚不支持（not supported yet） |
-| `routes[].handler<fastcgi>.params.index` | `string` | 尚不支持（not supported yet） |
-| `routes[].handler<fastcgi>.params.max_conns` | `integer` | 尚不支持（not supported yet） |
-| `routes[].handler<fastcgi>.params.max_header_bytes` | `integer` | 尚不支持（not supported yet） |
-| `routes[].handler<fastcgi>.params.max_idle_conns` | `integer` | 尚不支持（not supported yet） |
-| `routes[].handler<fastcgi>.params.max_pending` | `integer` | 尚不支持（not supported yet） |
-| `routes[].handler<fastcgi>.params.response_header_timeout` | `duration` | 尚不支持（not supported yet） |
-| `routes[].handler<fastcgi>.params.response_idle_timeout` | `duration` | 尚不支持（not supported yet） |
-| `routes[].handler<fastcgi>.params.root` | `string, required` | 尚不支持（not supported yet） |
-| `routes[].handler<fastcgi>.params.split_path` | `array<string>` | 尚不支持（not supported yet） |
-| `routes[].handler<fastcgi>.params.timeout` | `duration` | 尚不支持（not supported yet） |
-| `routes[].handler<fastcgi>.params.try_files` | `array<string>` | 尚不支持（not supported yet） |
+| `routes[].handler<fastcgi>` | `module` | 已支持 |
+| `routes[].handler<fastcgi>.params` | `object` | 已支持 |
+| `routes[].handler<fastcgi>.params.address` | `string, required` | 已支持 |
+| `routes[].handler<fastcgi>.params.connect_timeout` | `duration` | 已支持 |
+| `routes[].handler<fastcgi>.params.dotfiles` | `enum(deny\|allow)` | 已支持 |
+| `routes[].handler<fastcgi>.params.env` | `map<string>` | 已支持 |
+| `routes[].handler<fastcgi>.params.idle_timeout` | `duration` | 已支持 |
+| `routes[].handler<fastcgi>.params.index` | `string` | 已支持 |
+| `routes[].handler<fastcgi>.params.max_conns` | `integer` | 已支持 |
+| `routes[].handler<fastcgi>.params.max_header_bytes` | `integer` | 已支持 |
+| `routes[].handler<fastcgi>.params.max_idle_conns` | `integer` | 已支持 |
+| `routes[].handler<fastcgi>.params.max_pending` | `integer` | 已支持 |
+| `routes[].handler<fastcgi>.params.response_header_timeout` | `duration` | 已支持 |
+| `routes[].handler<fastcgi>.params.response_idle_timeout` | `duration` | 已支持 |
+| `routes[].handler<fastcgi>.params.root` | `string, required` | 已支持 |
+| `routes[].handler<fastcgi>.params.split_path` | `array<string>` | 已支持 |
+| `routes[].handler<fastcgi>.params.timeout` | `duration` | 已支持 |
+| `routes[].handler<fastcgi>.params.try_files` | `array<string>` | 已支持 |
 
 <a id="fields-http-handlers-forward-proxy"></a>
 
@@ -742,14 +742,14 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
-| `routes[].handler<forward_proxy>` | `module` | 尚不支持（not supported yet） |
-| `routes[].handler<forward_proxy>.params` | `object` | 尚不支持（not supported yet） |
-| `routes[].handler<forward_proxy>.params.allow` | `array<string>` | 尚不支持（not supported yet） |
-| `routes[].handler<forward_proxy>.params.clients` | `array<string>, required` | 尚不支持（not supported yet） |
-| `routes[].handler<forward_proxy>.params.connect_timeout` | `duration` | 尚不支持（not supported yet） |
-| `routes[].handler<forward_proxy>.params.deny` | `array<string>` | 尚不支持（not supported yet） |
-| `routes[].handler<forward_proxy>.params.idle_timeout` | `duration` | 尚不支持（not supported yet） |
-| `routes[].handler<forward_proxy>.params.ports` | `array<integer>` | 尚不支持（not supported yet） |
+| `routes[].handler<forward_proxy>` | `module` | 已支持 |
+| `routes[].handler<forward_proxy>.params` | `object` | 已支持 |
+| `routes[].handler<forward_proxy>.params.allow` | `array<string>` | 已支持 |
+| `routes[].handler<forward_proxy>.params.clients` | `array<string>, required` | 已支持 |
+| `routes[].handler<forward_proxy>.params.connect_timeout` | `duration` | 已支持 |
+| `routes[].handler<forward_proxy>.params.deny` | `array<string>` | 已支持 |
+| `routes[].handler<forward_proxy>.params.idle_timeout` | `duration` | 已支持 |
+| `routes[].handler<forward_proxy>.params.ports` | `array<integer>` | 已支持 |
 
 <a id="fields-http-handlers-hls"></a>
 
@@ -1266,13 +1266,13 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `listeners[].protocols` | `array<enum(http/1.1\|h2c\|h2\|h3\|tcp\|udp\|socks)>` | 已支持 |
 | `listeners[].proxy_protocol` | `object` | 已支持 |
 | `listeners[].proxy_protocol.trusted` | `array<string>, required` | 已支持 |
-| `listeners[].socks` | `object` | 尚不支持（not supported yet） |
-| `listeners[].socks.allow` | `array<string>` | 尚不支持（not supported yet） |
-| `listeners[].socks.clients` | `array<string>, required` | 尚不支持（not supported yet） |
-| `listeners[].socks.connect_timeout` | `duration` | 尚不支持（not supported yet） |
-| `listeners[].socks.deny` | `array<string>` | 尚不支持（not supported yet） |
-| `listeners[].socks.idle_timeout` | `duration` | 尚不支持（not supported yet） |
-| `listeners[].socks.ports` | `array<integer>` | 尚不支持（not supported yet） |
+| `listeners[].socks` | `object` | 已支持 |
+| `listeners[].socks.allow` | `array<string>` | 已支持 |
+| `listeners[].socks.clients` | `array<string>, required` | 已支持 |
+| `listeners[].socks.connect_timeout` | `duration` | 已支持 |
+| `listeners[].socks.deny` | `array<string>` | 已支持 |
+| `listeners[].socks.idle_timeout` | `duration` | 已支持 |
+| `listeners[].socks.ports` | `array<integer>` | 已支持 |
 | `listeners[].tls` | `object` | 已支持 |
 | `listeners[].tls.acme` | `array<string>` | 已支持 |
 | `listeners[].tls.certificates` | `array<object>` | 已支持 |
@@ -1662,15 +1662,15 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `providers[].consul_kv.refresh_interval` | `duration` | 已支持 |
 | `providers[].consul_kv.request_timeout` | `duration` | 已支持 |
 | `providers[].consul_kv.token_file` | `string` | 已支持 |
-| `providers[].docker` | `object` | 尚不支持（not supported yet） |
-| `providers[].docker.endpoint` | `string` | 尚不支持（not supported yet） |
-| `providers[].docker.expose_all` | `boolean` | 尚不支持（not supported yet） |
-| `providers[].docker.label_prefix` | `string` | 尚不支持（not supported yet） |
-| `providers[].docker.max_containers` | `integer` | 尚不支持（not supported yet） |
-| `providers[].docker.network` | `string` | 尚不支持（not supported yet） |
-| `providers[].docker.refresh_interval` | `duration` | 尚不支持（not supported yet） |
-| `providers[].docker.request_timeout` | `duration` | 尚不支持（not supported yet） |
-| `providers[].docker.use_published_ports` | `boolean` | 尚不支持（not supported yet） |
+| `providers[].docker` | `object` | 已支持 |
+| `providers[].docker.endpoint` | `string` | 已支持 |
+| `providers[].docker.expose_all` | `boolean` | 已支持 |
+| `providers[].docker.label_prefix` | `string` | 已支持 |
+| `providers[].docker.max_containers` | `integer` | 已支持 |
+| `providers[].docker.network` | `string` | 已支持 |
+| `providers[].docker.refresh_interval` | `duration` | 已支持 |
+| `providers[].docker.request_timeout` | `duration` | 已支持 |
+| `providers[].docker.use_published_ports` | `boolean` | 已支持 |
 | `providers[].etcd` | `object` | 已支持 |
 | `providers[].etcd.ca_file` | `string` | 已支持 |
 | `providers[].etcd.cert_file` | `string` | 已支持 |
@@ -1682,21 +1682,21 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `providers[].etcd.refresh_interval` | `duration` | 已支持 |
 | `providers[].etcd.request_timeout` | `duration` | 已支持 |
 | `providers[].etcd.username` | `string` | 已支持 |
-| `providers[].kubernetes` | `object` | 尚不支持（not supported yet） |
+| `providers[].kubernetes` | `object` | 已支持 |
 | `providers[].kubernetes.addresses` | `array<string>` | 尚不支持（not supported yet） |
 | `providers[].kubernetes.allow_external_name_services` | `boolean` | 尚不支持（not supported yet） |
-| `providers[].kubernetes.backends` | `enum(endpoints\|cluster_ip)` | 尚不支持（not supported yet） |
-| `providers[].kubernetes.certificates_dir` | `string` | 尚不支持（not supported yet） |
-| `providers[].kubernetes.context` | `string` | 尚不支持（not supported yet） |
-| `providers[].kubernetes.controller_name` | `string` | 尚不支持（not supported yet） |
-| `providers[].kubernetes.ingress` | `object` | 尚不支持（not supported yet） |
-| `providers[].kubernetes.ingress.http_port` | `integer` | 尚不支持（not supported yet） |
-| `providers[].kubernetes.ingress.https_port` | `integer` | 尚不支持（not supported yet） |
-| `providers[].kubernetes.kubeconfig` | `string` | 尚不支持（not supported yet） |
-| `providers[].kubernetes.listen_host` | `string` | 尚不支持（not supported yet） |
-| `providers[].kubernetes.max_objects` | `integer` | 尚不支持（not supported yet） |
-| `providers[].kubernetes.namespaces` | `array<string>` | 尚不支持（not supported yet） |
-| `providers[].kubernetes.request_timeout` | `duration` | 尚不支持（not supported yet） |
+| `providers[].kubernetes.backends` | `enum(endpoints\|cluster_ip)` | 已支持 |
+| `providers[].kubernetes.certificates_dir` | `string` | 已支持 |
+| `providers[].kubernetes.context` | `string` | 已支持 |
+| `providers[].kubernetes.controller_name` | `string` | 已支持 |
+| `providers[].kubernetes.ingress` | `object` | 已支持 |
+| `providers[].kubernetes.ingress.http_port` | `integer` | 已支持 |
+| `providers[].kubernetes.ingress.https_port` | `integer` | 已支持 |
+| `providers[].kubernetes.kubeconfig` | `string` | 已支持 |
+| `providers[].kubernetes.listen_host` | `string` | 已支持 |
+| `providers[].kubernetes.max_objects` | `integer` | 已支持 |
+| `providers[].kubernetes.namespaces` | `array<string>` | 已支持 |
+| `providers[].kubernetes.request_timeout` | `duration` | 已支持 |
 | `providers[].name` | `string` | 已支持 |
 
 <a id="fields-routes"></a>

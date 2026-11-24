@@ -198,8 +198,8 @@ impl Entry {
 }
 
 /// Whether a running listener configured as `running` can serve `next` as it is, as fit's
-/// `binding.same` decides (I28): the same name, address, protocols, body limit and
-/// `proxy_protocol` (I52), TLS or not as `next` has it, and the same newest TLS version and client
+/// `binding.same` decides (I28): the same name, address, protocols, body limit,
+/// `proxy_protocol` (I52) and `socks` rules (I55), TLS or not as `next` has it, and the same newest TLS version and client
 /// authentication mode, each fixed in its engine listener. Its certificates may differ, their files and its ACME names: a kept
 /// listener's manager serves `next`'s per handshake (I30). Its client authorities are compared
 /// by their contents, by [`akit_tls::ListenerTls::same_config`], not by their paths.
@@ -209,6 +209,7 @@ fn same(running: &Listener, next: &Listener) -> bool {
         && running.protocols == next.protocols
         && running.max_body_bytes == next.max_body_bytes
         && running.proxy_protocol == next.proxy_protocol
+        && running.socks == next.socks
         && match (&running.tls, &next.tls) {
             (None, None) => true,
             (Some(a), Some(b)) => {

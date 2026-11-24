@@ -13,6 +13,7 @@ akio = { workspace = true }
 akio-h3 = { workspace = true }
 akio-http = { workspace = true }
 akio-mux = { workspace = true }
+akio-socks = { workspace = true }
 akio-quic = { workspace = true }
 akit-config = { workspace = true }
 akit-l4 = { workspace = true }

@@ -21,7 +21,9 @@
 
 mod api;
 mod consul;
+pub mod docker;
 mod etcd;
+pub mod kubernetes;
 mod kvpart;
 mod labels;
 mod merge;

@@ -175,7 +175,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 314 supported.
+3821 fields in 121 sections, at fit `7daee573`; 369 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -189,8 +189,8 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`http.handlers/bt_publish`](#fields-http-handlers-bt-publish) | 3 | 0 | 3 |
 | [`http.handlers/bt_stream`](#fields-http-handlers-bt-stream) | 14 | 0 | 14 |
 | [`http.handlers/bt_tracker`](#fields-http-handlers-bt-tracker) | 2 | 0 | 2 |
-| [`http.handlers/fastcgi`](#fields-http-handlers-fastcgi) | 18 | 0 | 18 |
-| [`http.handlers/forward_proxy`](#fields-http-handlers-forward-proxy) | 8 | 0 | 8 |
+| [`http.handlers/fastcgi`](#fields-http-handlers-fastcgi) | 18 | 18 | 0 |
+| [`http.handlers/forward_proxy`](#fields-http-handlers-forward-proxy) | 8 | 8 | 0 |
 | [`http.handlers/hls`](#fields-http-handlers-hls) | 12 | 0 | 12 |
 | [`http.handlers/httpflv`](#fields-http-handlers-httpflv) | 6 | 0 | 6 |
 | [`http.handlers/media_pages`](#fields-http-handlers-media-pages) | 29 | 0 | 29 |
@@ -221,14 +221,14 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`http.middleware/rewrite`](#fields-http-middleware-rewrite) | 6 | 6 | 0 |
 | [`http.middleware/wasm`](#fields-http-middleware-wasm) | 18 | 0 | 18 |
 | [`limits`](#fields-limits) | 7 | 3 | 4 |
-| [`listeners`](#fields-listeners) | 30 | 16 | 14 |
+| [`listeners`](#fields-listeners) | 30 | 23 | 7 |
 | [`llm`](#fields-llm) | 218 | 0 | 218 |
 | [`log`](#fields-log) | 24 | 0 | 24 |
 | [`media_auth`](#fields-media-auth) | 34 | 0 | 34 |
 | [`media_library`](#fields-media-library) | 24 | 0 | 24 |
 | [`metrics`](#fields-metrics) | 1 | 1 | 0 |
 | [`pprof`](#fields-pprof) | 4 | 0 | 4 |
-| [`providers`](#fields-providers) | 60 | 36 | 24 |
+| [`providers`](#fields-providers) | 60 | 58 | 2 |
 | [`routes`](#fields-routes) | 24 | 19 | 5 |
 | [`schema_version`](#fields-schema-version) | 1 | 1 | 0 |
 | [`services`](#fields-services) | 13 | 8 | 5 |
@@ -300,7 +300,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 314 | 3507 |
+| **Total** | 3821 | 369 | 3452 |
 
 <a id="fields-access"></a>
 
@@ -740,24 +740,24 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `routes[].handler<fastcgi>` | `module` | not supported yet |
-| `routes[].handler<fastcgi>.params` | `object` | not supported yet |
-| `routes[].handler<fastcgi>.params.address` | `string, required` | not supported yet |
-| `routes[].handler<fastcgi>.params.connect_timeout` | `duration` | not supported yet |
-| `routes[].handler<fastcgi>.params.dotfiles` | `enum(deny\|allow)` | not supported yet |
-| `routes[].handler<fastcgi>.params.env` | `map<string>` | not supported yet |
-| `routes[].handler<fastcgi>.params.idle_timeout` | `duration` | not supported yet |
-| `routes[].handler<fastcgi>.params.index` | `string` | not supported yet |
-| `routes[].handler<fastcgi>.params.max_conns` | `integer` | not supported yet |
-| `routes[].handler<fastcgi>.params.max_header_bytes` | `integer` | not supported yet |
-| `routes[].handler<fastcgi>.params.max_idle_conns` | `integer` | not supported yet |
-| `routes[].handler<fastcgi>.params.max_pending` | `integer` | not supported yet |
-| `routes[].handler<fastcgi>.params.response_header_timeout` | `duration` | not supported yet |
-| `routes[].handler<fastcgi>.params.response_idle_timeout` | `duration` | not supported yet |
-| `routes[].handler<fastcgi>.params.root` | `string, required` | not supported yet |
-| `routes[].handler<fastcgi>.params.split_path` | `array<string>` | not supported yet |
-| `routes[].handler<fastcgi>.params.timeout` | `duration` | not supported yet |
-| `routes[].handler<fastcgi>.params.try_files` | `array<string>` | not supported yet |
+| `routes[].handler<fastcgi>` | `module` | supported |
+| `routes[].handler<fastcgi>.params` | `object` | supported |
+| `routes[].handler<fastcgi>.params.address` | `string, required` | supported |
+| `routes[].handler<fastcgi>.params.connect_timeout` | `duration` | supported |
+| `routes[].handler<fastcgi>.params.dotfiles` | `enum(deny\|allow)` | supported |
+| `routes[].handler<fastcgi>.params.env` | `map<string>` | supported |
+| `routes[].handler<fastcgi>.params.idle_timeout` | `duration` | supported |
+| `routes[].handler<fastcgi>.params.index` | `string` | supported |
+| `routes[].handler<fastcgi>.params.max_conns` | `integer` | supported |
+| `routes[].handler<fastcgi>.params.max_header_bytes` | `integer` | supported |
+| `routes[].handler<fastcgi>.params.max_idle_conns` | `integer` | supported |
+| `routes[].handler<fastcgi>.params.max_pending` | `integer` | supported |
+| `routes[].handler<fastcgi>.params.response_header_timeout` | `duration` | supported |
+| `routes[].handler<fastcgi>.params.response_idle_timeout` | `duration` | supported |
+| `routes[].handler<fastcgi>.params.root` | `string, required` | supported |
+| `routes[].handler<fastcgi>.params.split_path` | `array<string>` | supported |
+| `routes[].handler<fastcgi>.params.timeout` | `duration` | supported |
+| `routes[].handler<fastcgi>.params.try_files` | `array<string>` | supported |
 
 <a id="fields-http-handlers-forward-proxy"></a>
 
@@ -765,14 +765,14 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `routes[].handler<forward_proxy>` | `module` | not supported yet |
-| `routes[].handler<forward_proxy>.params` | `object` | not supported yet |
-| `routes[].handler<forward_proxy>.params.allow` | `array<string>` | not supported yet |
-| `routes[].handler<forward_proxy>.params.clients` | `array<string>, required` | not supported yet |
-| `routes[].handler<forward_proxy>.params.connect_timeout` | `duration` | not supported yet |
-| `routes[].handler<forward_proxy>.params.deny` | `array<string>` | not supported yet |
-| `routes[].handler<forward_proxy>.params.idle_timeout` | `duration` | not supported yet |
-| `routes[].handler<forward_proxy>.params.ports` | `array<integer>` | not supported yet |
+| `routes[].handler<forward_proxy>` | `module` | supported |
+| `routes[].handler<forward_proxy>.params` | `object` | supported |
+| `routes[].handler<forward_proxy>.params.allow` | `array<string>` | supported |
+| `routes[].handler<forward_proxy>.params.clients` | `array<string>, required` | supported |
+| `routes[].handler<forward_proxy>.params.connect_timeout` | `duration` | supported |
+| `routes[].handler<forward_proxy>.params.deny` | `array<string>` | supported |
+| `routes[].handler<forward_proxy>.params.idle_timeout` | `duration` | supported |
+| `routes[].handler<forward_proxy>.params.ports` | `array<integer>` | supported |
 
 <a id="fields-http-handlers-hls"></a>
 
@@ -1289,13 +1289,13 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `listeners[].protocols` | `array<enum(http/1.1\|h2c\|h2\|h3\|tcp\|udp\|socks)>` | supported |
 | `listeners[].proxy_protocol` | `object` | supported |
 | `listeners[].proxy_protocol.trusted` | `array<string>, required` | supported |
-| `listeners[].socks` | `object` | not supported yet |
-| `listeners[].socks.allow` | `array<string>` | not supported yet |
-| `listeners[].socks.clients` | `array<string>, required` | not supported yet |
-| `listeners[].socks.connect_timeout` | `duration` | not supported yet |
-| `listeners[].socks.deny` | `array<string>` | not supported yet |
-| `listeners[].socks.idle_timeout` | `duration` | not supported yet |
-| `listeners[].socks.ports` | `array<integer>` | not supported yet |
+| `listeners[].socks` | `object` | supported |
+| `listeners[].socks.allow` | `array<string>` | supported |
+| `listeners[].socks.clients` | `array<string>, required` | supported |
+| `listeners[].socks.connect_timeout` | `duration` | supported |
+| `listeners[].socks.deny` | `array<string>` | supported |
+| `listeners[].socks.idle_timeout` | `duration` | supported |
+| `listeners[].socks.ports` | `array<integer>` | supported |
 | `listeners[].tls` | `object` | supported |
 | `listeners[].tls.acme` | `array<string>` | supported |
 | `listeners[].tls.certificates` | `array<object>` | supported |
@@ -1685,15 +1685,15 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `providers[].consul_kv.refresh_interval` | `duration` | supported |
 | `providers[].consul_kv.request_timeout` | `duration` | supported |
 | `providers[].consul_kv.token_file` | `string` | supported |
-| `providers[].docker` | `object` | not supported yet |
-| `providers[].docker.endpoint` | `string` | not supported yet |
-| `providers[].docker.expose_all` | `boolean` | not supported yet |
-| `providers[].docker.label_prefix` | `string` | not supported yet |
-| `providers[].docker.max_containers` | `integer` | not supported yet |
-| `providers[].docker.network` | `string` | not supported yet |
-| `providers[].docker.refresh_interval` | `duration` | not supported yet |
-| `providers[].docker.request_timeout` | `duration` | not supported yet |
-| `providers[].docker.use_published_ports` | `boolean` | not supported yet |
+| `providers[].docker` | `object` | supported |
+| `providers[].docker.endpoint` | `string` | supported |
+| `providers[].docker.expose_all` | `boolean` | supported |
+| `providers[].docker.label_prefix` | `string` | supported |
+| `providers[].docker.max_containers` | `integer` | supported |
+| `providers[].docker.network` | `string` | supported |
+| `providers[].docker.refresh_interval` | `duration` | supported |
+| `providers[].docker.request_timeout` | `duration` | supported |
+| `providers[].docker.use_published_ports` | `boolean` | supported |
 | `providers[].etcd` | `object` | supported |
 | `providers[].etcd.ca_file` | `string` | supported |
 | `providers[].etcd.cert_file` | `string` | supported |
@@ -1705,21 +1705,21 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `providers[].etcd.refresh_interval` | `duration` | supported |
 | `providers[].etcd.request_timeout` | `duration` | supported |
 | `providers[].etcd.username` | `string` | supported |
-| `providers[].kubernetes` | `object` | not supported yet |
+| `providers[].kubernetes` | `object` | supported |
 | `providers[].kubernetes.addresses` | `array<string>` | not supported yet |
 | `providers[].kubernetes.allow_external_name_services` | `boolean` | not supported yet |
-| `providers[].kubernetes.backends` | `enum(endpoints\|cluster_ip)` | not supported yet |
-| `providers[].kubernetes.certificates_dir` | `string` | not supported yet |
-| `providers[].kubernetes.context` | `string` | not supported yet |
-| `providers[].kubernetes.controller_name` | `string` | not supported yet |
-| `providers[].kubernetes.ingress` | `object` | not supported yet |
-| `providers[].kubernetes.ingress.http_port` | `integer` | not supported yet |
-| `providers[].kubernetes.ingress.https_port` | `integer` | not supported yet |
-| `providers[].kubernetes.kubeconfig` | `string` | not supported yet |
-| `providers[].kubernetes.listen_host` | `string` | not supported yet |
-| `providers[].kubernetes.max_objects` | `integer` | not supported yet |
-| `providers[].kubernetes.namespaces` | `array<string>` | not supported yet |
-| `providers[].kubernetes.request_timeout` | `duration` | not supported yet |
+| `providers[].kubernetes.backends` | `enum(endpoints\|cluster_ip)` | supported |
+| `providers[].kubernetes.certificates_dir` | `string` | supported |
+| `providers[].kubernetes.context` | `string` | supported |
+| `providers[].kubernetes.controller_name` | `string` | supported |
+| `providers[].kubernetes.ingress` | `object` | supported |
+| `providers[].kubernetes.ingress.http_port` | `integer` | supported |
+| `providers[].kubernetes.ingress.https_port` | `integer` | supported |
+| `providers[].kubernetes.kubeconfig` | `string` | supported |
+| `providers[].kubernetes.listen_host` | `string` | supported |
+| `providers[].kubernetes.max_objects` | `integer` | supported |
+| `providers[].kubernetes.namespaces` | `array<string>` | supported |
+| `providers[].kubernetes.request_timeout` | `duration` | supported |
 | `providers[].name` | `string` | supported |
 
 <a id="fields-routes"></a>

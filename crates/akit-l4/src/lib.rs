@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 #![warn(clippy::unwrap_used)]
-//! akit's layer 4 proxying: TCP and UDP, TLS routed by SNI, PROXY protocol.
+//! akit's layer 4 proxying: TCP and UDP, TLS routed by SNI, PROXY protocol, and the forward
+//! proxy's rules (I55, [`forward`]).
 //!
 //! So far (I51): the config's `services`, as fit's `l4` package proxies them. Each connection a
 //! `tcp` listener accepts goes to an address of its service's upstream, and what either side
@@ -57,6 +58,7 @@ use std::time::{Duration, Instant};
 use akit_upstream::Pool;
 
 mod entry;
+pub mod forward;
 mod relay;
 
 pub use akio_mux::proxy::Version as ProxyVersion;

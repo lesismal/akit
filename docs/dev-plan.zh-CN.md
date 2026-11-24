@@ -150,12 +150,12 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I52 | SNI 分流与 PROXY protocol | I51, A4, A5 | done |
 | I53 | 一个端口多种协议 | I52 | done |
 | I54 | 上游 TLS | I18 | done |
-| I55 | SOCKS 与 CONNECT | I53 | todo |
+| I55 | SOCKS 与 CONNECT | I53 | done |
 | I56 | M3 退出 | I39–I55 | todo |
 | **M4** | | | |
 | I57 | Provider 框架与生效配置 | I29 | done |
-| I58 | Docker provider | I57 | todo |
-| I59 | Kubernetes Ingress | I57 | todo |
+| I58 | Docker provider | I57 | done |
+| I59 | Kubernetes Ingress | I57 | done |
 | I60 | Kubernetes Gateway API 与一致性测试 | I59 | todo |
 | I61 | Consul 与 etcd | I57 | done |
 | I62 | 共享证书存储 | I30, I61 | todo |
@@ -166,13 +166,13 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | **M5** | | | |
 | I67 | 缓存 I：内存层与 RFC 9111 | I17 | done |
 | I68 | 缓存 II：磁盘层、缓存锁、stale | I67 | done |
-| I69 | 缓存 III：清除与标签 | I68, I27 | todo |
+| I69 | 缓存 III：清除与标签 | I68, I27 | done |
 | I70 | `akit build` | I03 | todo |
 | I71 | WASM I：运行时与 ABI | I03 | todo |
 | I72 | WASM II：Proxy-Wasm 子集 | I71 | todo |
 | I73 | `akit adapt` 与 `akit fmt` | I23, I24 | todo |
 | I74 | nginx 与 Caddyfile 转换器 | I73 | todo |
-| I75 | FastCGI | I16 | todo |
+| I75 | FastCGI | I16 | done |
 | I76 | M5 退出 | I67–I75 | todo |
 | **1.0** | | | |
 | I77 | Fuzz | I56 | todo |
@@ -220,7 +220,9 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | 重写与重定向的正则 | I48 | 否 | 否（已实现，未测量） | 对比 fit：代理场景前面加带 `regexp` 与 `replacement` 的 `rewrite`（匹配与不匹配）和 `to` 中带分组的 `redirect`，每秒请求数和每请求分配次数，与不加中间件对比；akio-regex 的 `captures` 与 `replace_all` 在路径长度文本上对比 Go 的 `regexp`。 |
 | WebSocket 与 gRPC 代理 | I49、I50 | 否 | 否（I49 与 I50 已实现，未测量） | 对比 fit：经 akit 的 WebSocket 每秒消息数（小消息回显）与每秒字节数（大消息），来自 HTTP/1.1、h2 和 h3 客户端；每个打开的 WebSocket 的内存（空闲时，以及每个方向各有 64 KiB 待发时）；每秒握手数（生成密钥、上游连接离开连接池）；I50：对比 fit，每秒 gRPC 调用数（一元调用，h2c 与 h2 上游）与一个流上每个方向的每秒消息数。 |
 | TCP 和 UDP 代理、SNI 路由、单端口多协议 | I51–I53 | 否 | 否（I51–I53 已实现，未测） | 按 I51 的要求对比 fit 和 nginx 的 `stream`：TCP 吞吐（fit 的 `BenchmarkTCPProxy`，每次回显 256 KB，直连与经 akit 对比）、每秒连接数、每个空闲连接的内存；UDP 每秒数据报数与同时的会话数；10,000 个连接时每个服务在 akit 定时线程上的空闲扫描（akio A78 之前的权宜之计）；共享端口上协议嗅探的开销（I53）。I52：按 SNI 分流的监听器（拨号前读取并解析 ClientHello）与不分流的监听器每秒连接数的对比，以及接受时读 PROXY 头、向上游发送 PROXY 头时的情形；带与不带 `proxy_protocol` 的监听器上 HTTP/1.1 与 h2c 的请求速率，以及不带时 akio ADR-118 的开销（每个请求一次 `OnceLock::get`）。 |
-| 响应缓存 | I67、I68 | 否 | 否（内存层与磁盘层已实现、未测量） | 对比 fit，按 I67 的实现：内存命中（4 KiB 与 1 MiB 消息体，HTTP/1.1 与 h2），经代理保存的未命中（旁路复制的流式消息体）对比仅代理，缓存直接放行的请求（POST、`no-store` 响应）对比无中间件的开销，大量键与单个热点键下分片锁的表现。I68：从磁盘读回的命中（64 KiB 与 1 MiB，大量并发下磁盘线程池的线程与队列），未命中率高到填满 `MAX_PENDING_WRITES` 时的磁盘写入，大量客户端对同一个键的惊群，开启锁与 `disable_lock` 两种情况（等待者的挂起与恢复、每次获取一个定时器），以及 stale-while-revalidate 的后台获取。akio ADR-116 的旁路：有旁路的流对比无旁路的流。 |
+| 正向代理：SOCKS 与 HTTP CONNECT | I55 | 否 | 否（已实现，未测） | 对比 fit（原始吞吐另对比 nginx 的 `stream`）：经 SOCKS5 隧道和 HTTP/1.1 CONNECT 隧道的每秒字节数（每次回显 256 KB，同 fit 的 `BenchmarkTCPProxy`），每秒建立的隧道数（握手、规则检查、在线程池上解析名字以及 `connected` 检查），每个空闲隧道的内存；共享端口上 SOCKS 的开销（akio-mux 的问候规则与 HTTP、TLS 并列）对比只有 HTTP；10,000 条隧道时 akio-socks 看门狗线程的开销（ADR-119 在其上增加了连接超时）。 |
+| 响应缓存 | I67、I68、I69 | 否 | 否（内存层、磁盘层与清除已实现、未测量） | 对比 fit，按 I67 的实现：内存命中（4 KiB 与 1 MiB 消息体，HTTP/1.1 与 h2），经代理保存的未命中（旁路复制的流式消息体）对比仅代理，缓存直接放行的请求（POST、`no-store` 响应）对比无中间件的开销，大量键与单个热点键下分片锁的表现。I68：从磁盘读回的命中（64 KiB 与 1 MiB，大量并发下磁盘线程池的线程与队列），未命中率高到填满 `MAX_PENDING_WRITES` 时的磁盘写入，大量客户端对同一个键的惊群，开启锁与 `disable_lock` 两种情况（等待者的挂起与恢复、每次获取一个定时器），以及 stale-while-revalidate 的后台获取。akio ADR-116 的旁路：有旁路的流对比无旁路的流。I69：带标签响应（0 与 32 个标签）对比无标签响应的保存开销，以及服务期间对大 zone 按前缀和按标签清除（分片锁与磁盘索引锁的持有时间）。 |
+| FastCGI | I75 | 否 | 否（已实现，未测量） | 对比 fit 和 nginx 的 `fastcgi_pass`，经 TCP 和 Unix 域套接字连接 PHP-FPM（或立即应答的 FastCGI 应用）：小页面的每秒请求数与延迟，HTTP/1.1 与 h2；1 MiB 上传与 16 MiB 下载（每个进行中请求的内存，双向 64 KiB 水位线）；连接复用对比每个请求一个连接；客户端多于 `max_conns` 时连接池的队列；`try_files` 的开销（每个候选在 akio 逻辑线程池上一次 `stat`）对比不带它的路由；每秒大量请求时，handler 每 100 ms 在 akit 定时器线程（A45 的临时方案）上对其交换的巡检。 |
 | WASM 插件 | I71、I72 | 否 | 否（尚未实现） | 空插件对比无插件的 A/B。 |
 
 ## M0 基础
@@ -703,7 +705,12 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 - **做什么**：基于 `akio-socks` 和 HTTP CONNECT 的正向代理，带认证和上限。
 - **完成标准**：测试用慢对端覆盖两者；一个端口在 HTTP、TLS 和 `tcp` 旁同时提供 SOCKS（从 I53 转来：在
   akit-listener 的 `sniff` 中加一条 `Rule::Socks5`/`Rule::Socks4` 路由）。
-- **涉及**：`akit-l4`、`akit-listener`。
+- **涉及**：`akit-l4`、`akit-listener`、`akit-handler`（`forward_proxy`）、`akit-config`。
+- **基于**：akio API 需求 A132 和 A133（ADR-119：隧道的上游连接建立后，按所请求的名字和两端地址检查；独立的
+  连接超时；SOCKS 客户端取受信任 PROXY 头中的客户端），由本迭代加入 akio。
+- **拆分**：“认证”按 fit 的做法：fit 的正向代理不认证任何人，而是按 `clients` 和目的地规则判定，akit 也一样。
+  经 HTTP/2 和 HTTP/3 的 HTTP CONNECT（fit 的 `forward_proxy` 也支持隧道）等待 akio API 需求 A134；在此之前这样的
+  CONNECT 应答 501。
 
 ### I56 M3 退出
 
@@ -725,12 +732,17 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 - **做什么**：Docker label 作为配置，经 Unix 套接字上 akio 的 HTTP 客户端跟踪事件流。
 - **完成标准**：Docker Compose 示例在服务启动和停止时随之路由。
 - **涉及**：`akit-provider`。
+- **fit**：决定 010。
+- **状态**：已完成（2026-11-24），附带 akio API 需求 A135（ADR-120）；见进度日志。
 
 ### I59 Kubernetes Ingress
 
 - **做什么**：akit 自己的 watch 客户端（经 HTTP/2 的 list 和 watch），把 Ingress 转为路由。
 - **完成标准**：针对 kind 集群的测试按 Ingress 路由。
 - **涉及**：`akit-provider`。
+- **fit**：决策 011。
+- **状态**：已完成（2026-11-24），没有 akio API 需求；测试与 fit 的一样针对一个假 API 服务器，经 HTTP/2
+  和 HTTP/1.1，而非 kind 集群；见进度日志。
 
 ### I60 Kubernetes Gateway API 与一致性测试
 

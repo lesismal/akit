@@ -11,7 +11,7 @@ use akit_compat::{
     Field, Finding, Kind, NO_VALIDATE, Outcome, REPORT, Report, TEMPLATE_FORMATS, compat_dir,
     fields, fixtures, fixtures_dir, inventory_path, path_matches, pins, run_gate, supported,
 };
-use akit_config::{Config, Handler, Protocol};
+use akit_config::{Config, Destination, Handler, Protocol};
 
 #[test]
 fn fixtures_are_pinned_and_complete() {
@@ -358,6 +358,11 @@ fn supported_fields_are_read() {
             r#"{{{L}, "routes": [{{"handler": {{"module": "static", "params": {{"root": "/srv/www"{params}}}}}}}]}}"#
         )
     };
+    let fastcgi = |params: &str| {
+        format!(
+            r#"{{{L}, "routes": [{{"handler": {{"module": "fastcgi", "params": {{"address": "127.0.0.1:9000", "root": "/srv/www"{params}}}}}}}]}}"#
+        )
+    };
     let upstream = |fields: &str| {
         format!(r#"{{"upstreams": [{{"name": "app", "addresses": ["127.0.0.1:9000"]{fields}}}]}}"#)
     };
@@ -381,6 +386,10 @@ fn supported_fields_are_read() {
         )
     };
     let access = |fields: &str| format!("{{\"access_log\": {{{fields}}}}}");
+    // A kubernetes provider serving Ingresses, with `fields` (I59).
+    let k8s = |fields: &str| {
+        format!(r#"{{"providers": [{{"kubernetes": {{"ingress": {{}}{fields}}}}}]}}"#)
+    };
     // No listeners: HTTPS by default makes them, or with `listeners`, written ones.
     let auto_https = |fields: &str| {
         format!(
@@ -416,6 +425,17 @@ fn supported_fields_are_read() {
     let service = |fields: &str| {
         format!(
             r#"{{"listeners": [{{"name": "t", "address": ":7000", "protocols": ["tcp"]}}], "upstreams": [{{"name": "app", "addresses": ["127.0.0.1:9000"]}}], "services": [{{"name": "svc", "listeners": ["t"], "upstream": "app"{fields}}}]}}"#
+        )
+    };
+    // I55: a listener's socks, and the forward_proxy handler's params, holding `fields`.
+    let socks = |fields: &str| {
+        format!(
+            r#"{{"listeners": [{{"name": "s", "address": ":1080", "protocols": ["socks"], "socks": {{"clients": ["10.0.0.0/8"]{fields}}}}}]}}"#
+        )
+    };
+    let fproxy = |fields: &str| {
+        format!(
+            r#"{{{L}, "routes": [{{"handler": {{"module": "forward_proxy", "params": {{"clients": ["10.0.0.0/8"]{fields}}}}}}}]}}"#
         )
     };
     let samples: Vec<(&str, String, Check)> = vec![
@@ -870,6 +890,92 @@ fn supported_fields_are_read() {
                 static_of(c).try_files.as_deref()
                     == Some(&["{path}".to_owned(), "/index.html".to_owned()][..])
             },
+        ),
+        ("routes[].handler<fastcgi>", fastcgi(""), |c| {
+            fastcgi_of(c).index == "index.php"
+        }),
+        ("routes[].handler<fastcgi>.params", fastcgi(""), |c| {
+            fastcgi_of(c).split_path == [".php"]
+        }),
+        ("routes[].handler<fastcgi>.params.address", fastcgi(""), |c| {
+            fastcgi_of(c).address
+                == akit_config::FastCgiAddress::Tcp {
+                    host: "127.0.0.1".to_owned(),
+                    port: 9000,
+                }
+        }),
+        ("routes[].handler<fastcgi>.params.root", fastcgi(""), |c| {
+            fastcgi_of(c).root == "/srv/www"
+        }),
+        (
+            "routes[].handler<fastcgi>.params.split_path",
+            fastcgi(r#", "split_path": [".PHP", ".phtml"]"#),
+            |c| fastcgi_of(c).split_path == [".php", ".phtml"],
+        ),
+        (
+            "routes[].handler<fastcgi>.params.index",
+            fastcgi(r#", "index": "app.php""#),
+            |c| fastcgi_of(c).index == "app.php",
+        ),
+        (
+            "routes[].handler<fastcgi>.params.try_files",
+            fastcgi(r#", "try_files": ["{path}", "/index.php"]"#),
+            |c| fastcgi_of(c).try_files == ["{path}", "/index.php"],
+        ),
+        (
+            "routes[].handler<fastcgi>.params.dotfiles",
+            fastcgi(r#", "dotfiles": "allow""#),
+            |c| fastcgi_of(c).dotfiles == akit_config::Dotfiles::Allow,
+        ),
+        (
+            "routes[].handler<fastcgi>.params.env",
+            fastcgi(r#", "env": {"APP_ENV": "prod"}"#),
+            |c| fastcgi_of(c).env == [("APP_ENV".to_owned(), "prod".to_owned())],
+        ),
+        (
+            "routes[].handler<fastcgi>.params.max_conns",
+            fastcgi(r#", "max_conns": 8"#),
+            |c| fastcgi_of(c).max_conns == 8,
+        ),
+        (
+            "routes[].handler<fastcgi>.params.max_idle_conns",
+            fastcgi(r#", "max_idle_conns": 4"#),
+            |c| fastcgi_of(c).max_idle_conns == 4,
+        ),
+        (
+            "routes[].handler<fastcgi>.params.max_pending",
+            fastcgi(r#", "max_pending": 9"#),
+            |c| fastcgi_of(c).max_pending == 9,
+        ),
+        (
+            "routes[].handler<fastcgi>.params.connect_timeout",
+            fastcgi(r#", "connect_timeout": "2s""#),
+            |c| fastcgi_of(c).connect_timeout == std::time::Duration::from_secs(2),
+        ),
+        (
+            "routes[].handler<fastcgi>.params.response_header_timeout",
+            fastcgi(r#", "response_header_timeout": "3s""#),
+            |c| fastcgi_of(c).response_header_timeout == std::time::Duration::from_secs(3),
+        ),
+        (
+            "routes[].handler<fastcgi>.params.response_idle_timeout",
+            fastcgi(r#", "response_idle_timeout": "4s""#),
+            |c| fastcgi_of(c).response_idle_timeout == std::time::Duration::from_secs(4),
+        ),
+        (
+            "routes[].handler<fastcgi>.params.timeout",
+            fastcgi(r#", "timeout": "5s""#),
+            |c| fastcgi_of(c).timeout == std::time::Duration::from_secs(5),
+        ),
+        (
+            "routes[].handler<fastcgi>.params.idle_timeout",
+            fastcgi(r#", "idle_timeout": "6s""#),
+            |c| fastcgi_of(c).idle_timeout == std::time::Duration::from_secs(6),
+        ),
+        (
+            "routes[].handler<fastcgi>.params.max_header_bytes",
+            fastcgi(r#", "max_header_bytes": 4096"#),
+            |c| fastcgi_of(c).max_header_bytes == 4096,
         ),
         ("routes[].handler<proxy>", proxy(""), |c| {
             proxy_of(c).upstream == "app"
@@ -1781,6 +1887,78 @@ fn supported_fields_are_read() {
                     == [akit_config::Network::parse("10.0.0.0/8").unwrap()]
             },
         ),
+        ("listeners[].socks", socks(""), |c| {
+            c.listeners[0].protocols == [Protocol::Socks] && c.listeners[0].socks.is_some()
+        }),
+        ("listeners[].socks.clients", socks(""), |c| {
+            socks_of(c).clients == [akit_config::Network::parse("10.0.0.0/8").unwrap()]
+        }),
+        (
+            "listeners[].socks.allow",
+            socks(r#", "allow": ["*.Example.com"]"#),
+            |c| socks_of(c).allow == [Destination::Suffix(".example.com".into())],
+        ),
+        (
+            "listeners[].socks.deny",
+            socks(r#", "deny": ["bad.example.com"]"#),
+            |c| socks_of(c).deny == [Destination::Name("bad.example.com".into())],
+        ),
+        (
+            "listeners[].socks.ports",
+            socks(r#", "ports": [443]"#),
+            |c| socks_of(c).ports == [443],
+        ),
+        (
+            "listeners[].socks.connect_timeout",
+            socks(r#", "connect_timeout": "3s""#),
+            |c| socks_of(c).connect_timeout == std::time::Duration::from_secs(3),
+        ),
+        (
+            "listeners[].socks.idle_timeout",
+            socks(r#", "idle_timeout": "1m""#),
+            |c| socks_of(c).idle_timeout == std::time::Duration::from_secs(60),
+        ),
+        ("routes[].handler<forward_proxy>", fproxy(""), |c| {
+            fproxy_of(c).ports.is_empty()
+        }),
+        ("routes[].handler<forward_proxy>.params", fproxy(""), |c| {
+            fproxy_of(c).connect_timeout == akit_config::DEFAULT_FORWARD_CONNECT_TIMEOUT
+        }),
+        (
+            "routes[].handler<forward_proxy>.params.clients",
+            fproxy(""),
+            |c| fproxy_of(c).clients == [akit_config::Network::parse("10.0.0.0/8").unwrap()],
+        ),
+        (
+            "routes[].handler<forward_proxy>.params.allow",
+            fproxy(r#", "allow": ["192.0.2.0/24"]"#),
+            |c| {
+                fproxy_of(c).allow
+                    == [Destination::Network(
+                        akit_config::Network::parse("192.0.2.0/24").unwrap(),
+                    )]
+            },
+        ),
+        (
+            "routes[].handler<forward_proxy>.params.deny",
+            fproxy(r#", "deny": ["169.254.169.254"]"#),
+            |c| fproxy_of(c).deny.len() == 1,
+        ),
+        (
+            "routes[].handler<forward_proxy>.params.ports",
+            fproxy(r#", "ports": [443, 8443]"#),
+            |c| fproxy_of(c).ports == [443, 8443],
+        ),
+        (
+            "routes[].handler<forward_proxy>.params.connect_timeout",
+            fproxy(r#", "connect_timeout": "2s""#),
+            |c| fproxy_of(c).connect_timeout == std::time::Duration::from_secs(2),
+        ),
+        (
+            "routes[].handler<forward_proxy>.params.idle_timeout",
+            fproxy(r#", "idle_timeout": "2m""#),
+            |c| fproxy_of(c).idle_timeout == std::time::Duration::from_secs(120),
+        ),
         (
             "telemetry",
             r#"{"telemetry": {"traces": {}}}"#.into(),
@@ -1851,16 +2029,128 @@ fn supported_fields_are_read() {
             r#"{"telemetry": {"metrics": {"interval": "1m"}}}"#.into(),
             |c| c.telemetry.as_ref().unwrap().metrics.as_ref().unwrap().interval == std::time::Duration::from_secs(60),
         ),
+        // I58: the Docker provider.
         (
             "providers",
-            r#"{"providers": [{"etcd": {}}]}"#.into(),
+            r#"{"providers": [{"docker": {}}]}"#.into(),
             |c| c.providers.len() == 1,
         ),
         (
             "providers[].name",
-            r#"{"providers": [{"name": "e1", "etcd": {}}]}"#.into(),
-            |c| c.providers[0].name == "e1",
+            r#"{"providers": [{"name": "dk", "docker": {}}]}"#.into(),
+            |c| c.providers.first().unwrap().name == "dk",
         ),
+        (
+            "providers[].docker",
+            r#"{"providers": [{"docker": {}}]}"#.into(),
+            |c| c.providers.first().unwrap().name == "docker" && docker(c).label_prefix == "fit",
+        ),
+        (
+            "providers[].docker.endpoint",
+            r#"{"providers": [{"docker": {"endpoint": "tcp://proxy:2375"}}]}"#.into(),
+            |c| docker(c).endpoint == akit_config::DockerEndpoint::Tcp("proxy:2375".into()),
+        ),
+        (
+            "providers[].docker.expose_all",
+            r#"{"providers": [{"docker": {"expose_all": true}}]}"#.into(),
+            |c| docker(c).expose_all,
+        ),
+        (
+            "providers[].docker.network",
+            r#"{"providers": [{"docker": {"network": "web"}}]}"#.into(),
+            |c| docker(c).network == "web",
+        ),
+        (
+            "providers[].docker.use_published_ports",
+            r#"{"providers": [{"docker": {"use_published_ports": true}}]}"#.into(),
+            |c| docker(c).use_published_ports,
+        ),
+        (
+            "providers[].docker.label_prefix",
+            r#"{"providers": [{"docker": {"label_prefix": "app"}}]}"#.into(),
+            |c| docker(c).label_prefix == "app",
+        ),
+        (
+            "providers[].docker.max_containers",
+            r#"{"providers": [{"docker": {"max_containers": 5}}]}"#.into(),
+            |c| docker(c).max_containers == 5,
+        ),
+        (
+            "providers[].docker.refresh_interval",
+            r#"{"providers": [{"docker": {"refresh_interval": "5s"}}]}"#.into(),
+            |c| docker(c).refresh_interval == std::time::Duration::from_secs(5),
+        ),
+        (
+            "providers[].docker.request_timeout",
+            r#"{"providers": [{"docker": {"request_timeout": "2s"}}]}"#.into(),
+            |c| docker(c).request_timeout == std::time::Duration::from_secs(2),
+        ),
+        (
+            "providers[].kubernetes",
+            k8s(""),
+            |c| c.providers[0].kind.name() == "kubernetes",
+        ),
+        (
+            "providers[].kubernetes.kubeconfig",
+            k8s(r#", "kubeconfig": "/k""#),
+            |c| kube(c).kubeconfig == "/k",
+        ),
+        (
+            "providers[].kubernetes.context",
+            k8s(r#", "context": "prod""#),
+            |c| kube(c).context == "prod",
+        ),
+        (
+            "providers[].kubernetes.controller_name",
+            k8s(r#", "controller_name": "example.net/gw""#),
+            |c| kube(c).controller_name == "example.net/gw",
+        ),
+        (
+            "providers[].kubernetes.namespaces",
+            k8s(r#", "namespaces": ["a"]"#),
+            |c| kube(c).namespaces == ["a"],
+        ),
+        (
+            "providers[].kubernetes.listen_host",
+            k8s(r#", "listen_host": "10.0.0.1""#),
+            |c| kube(c).listen_host == "10.0.0.1",
+        ),
+        (
+            "providers[].kubernetes.backends",
+            k8s(r#", "backends": "cluster_ip""#),
+            |c| kube(c).backends == akit_config::KubernetesBackends::ClusterIp,
+        ),
+        (
+            "providers[].kubernetes.max_objects",
+            k8s(r#", "max_objects": 7"#),
+            |c| kube(c).max_objects == 7,
+        ),
+        (
+            "providers[].kubernetes.request_timeout",
+            k8s(r#", "request_timeout": "3s""#),
+            |c| kube(c).request_timeout == std::time::Duration::from_secs(3),
+        ),
+        (
+            "providers[].kubernetes.ingress",
+            k8s(""),
+            |c| kube(c).ingress.is_some(),
+        ),
+        (
+            "providers[].kubernetes.ingress.http_port",
+            r#"{"providers": [{"kubernetes": {"ingress": {"http_port": 8080}}}]}"#.into(),
+            |c| kube(c).ingress.unwrap().http_port == 8080,
+        ),
+        (
+            "providers[].kubernetes.ingress.https_port",
+            r#"{"providers": [{"kubernetes": {"ingress": {"https_port": 8443}}}]}"#.into(),
+            |c| kube(c).ingress.unwrap().https_port == 8443,
+        ),
+        (
+            "providers[].kubernetes.certificates_dir",
+            k8s(r#", "certificates_dir": "/d""#),
+            |c| kube(c).certificates_dir == "/d",
+        ),
+        // I61: the Consul, Consul KV and etcd providers.
         (
             "providers[].consul",
             r#"{"providers": [{"consul": {}}]}"#.into(),
@@ -2049,6 +2339,18 @@ fn supported_fields_are_read() {
 }
 
 #[allow(clippy::panic)]
+fn socks_of(c: &Config) -> &akit_config::ForwardProxy {
+    c.listeners.first().unwrap().socks.as_ref().unwrap()
+}
+
+fn fproxy_of(c: &Config) -> &akit_config::ForwardProxy {
+    match &c.routes.first().unwrap().handler {
+        Handler::ForwardProxy(f) => Some(f),
+        _ => None,
+    }
+    .unwrap()
+}
+
 fn respond_of(c: &Config) -> &akit_config::Respond {
     match &c.routes.first().unwrap().handler {
         Handler::Respond(r) => Some(r),
@@ -2161,12 +2463,38 @@ fn concurrency_of(c: &Config) -> &akit_config::ConcurrencyLimit {
     .unwrap()
 }
 
+fn fastcgi_of(c: &Config) -> &akit_config::FastCgi {
+    match &c.routes.first().unwrap().handler {
+        Handler::FastCgi(f) => Some(f),
+        _ => None,
+    }
+    .unwrap()
+}
+
 fn proxy_of(c: &Config) -> &akit_config::Proxy {
     match &c.routes.first().unwrap().handler {
         Handler::Proxy(p) => Some(p),
         _ => None,
     }
     .unwrap()
+}
+
+/// The first provider's Docker settings.
+#[allow(clippy::panic)]
+fn docker(c: &Config) -> &akit_config::DockerProvider {
+    match &c.providers.first().unwrap().kind {
+        akit_config::ProviderKind::Docker(d) => d,
+        _ => panic!("not docker"),
+    }
+}
+
+/// The first provider's Kubernetes settings.
+#[allow(clippy::panic)]
+fn kube(c: &Config) -> &akit_config::KubernetesProvider {
+    match &c.providers.first().unwrap().kind {
+        akit_config::ProviderKind::Kubernetes(k) => k,
+        _ => panic!("not kubernetes"),
+    }
 }
 
 /// akit-config's lists of what it reads and of what fit reads that it refuses as not supported
@@ -2176,12 +2504,14 @@ fn proxy_of(c: &Config) -> &akit_config::Proxy {
 /// reads is what `supported.txt` marks.
 #[test]
 fn akit_config_lists_match_the_inventory() {
-    // The model's lists, and those of the providers' settings, in files of their own.
-    let mut src = String::new();
-    for file in ["model.rs", "providers.rs", "providers_kv.rs"] {
-        let path = compat_dir().join("../../crates/akit-config/src").join(file);
-        src.push_str(&fs::read_to_string(path).unwrap());
-    }
+    // The model, and the providers' lists, in modules of their own (I58, I61).
+    let src = ["model.rs", "providers.rs", "providers_kv.rs"]
+        .iter()
+        .map(|f| {
+            fs::read_to_string(compat_dir().join("../../crates/akit-config/src").join(f)).unwrap()
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
     let lists = str_lists(&src);
     let inventory = fields().unwrap();
     let known: BTreeSet<&str> = inventory.iter().map(|f| f.path.as_str()).collect();
@@ -2192,8 +2522,18 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 50] = [
+    let objects: [(&str, &str, Option<&str>); 56] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
+        (
+            "providers[].kubernetes",
+            "KUBERNETES_FIELDS",
+            Some("KUBERNETES_FIT_ONLY"),
+        ),
+        (
+            "providers[].kubernetes.ingress",
+            "KUBERNETES_INGRESS_FIELDS",
+            None,
+        ),
         ("admin", "ADMIN_FIELDS", Some("ADMIN_FIT_ONLY")),
         ("acme", "ACME_FIELDS", Some("ACME_FIT_ONLY")),
         ("acme.on_demand", "ON_DEMAND_FIELDS", None),
@@ -2207,6 +2547,11 @@ fn akit_config_lists_match_the_inventory() {
         ("telemetry", "TELEMETRY_FIELDS", None),
         ("telemetry.traces", "TRACES_EXPORT_FIELDS", None),
         ("telemetry.metrics", "METRICS_EXPORT_FIELDS", None),
+        ("providers[]", "PROVIDER_FIELDS", Some("PROVIDER_FIT_ONLY")),
+        ("providers[].consul", "CONSUL_PROVIDER_FIELDS", None),
+        ("providers[].consul_kv", "CONSUL_KV_PROVIDER_FIELDS", None),
+        ("providers[].etcd", "ETCD_PROVIDER_FIELDS", None),
+        ("providers[].docker", "DOCKER_FIELDS", None),
         ("listeners[]", "LISTENER_FIELDS", Some("LISTENER_FIT_ONLY")),
         ("listeners[].tls", "TLS_FIELDS", Some("TLS_FIT_ONLY")),
         ("listeners[].tls.certificates[]", "CERTIFICATE_FIELDS", None),
@@ -2214,6 +2559,12 @@ fn akit_config_lists_match_the_inventory() {
         (
             "listeners[].proxy_protocol",
             "LISTENER_PROXY_PROTOCOL_FIELDS",
+            None,
+        ),
+        ("listeners[].socks", "FORWARD_PROXY_FIELDS", None),
+        (
+            "routes[].handler<forward_proxy>.params",
+            "FORWARD_PROXY_FIELDS",
             None,
         ),
         ("routes[]", "ROUTE_FIELDS", Some("ROUTE_FIT_ONLY")),
@@ -2230,6 +2581,7 @@ fn akit_config_lists_match_the_inventory() {
             "PROXY_FIELDS",
             Some("PROXY_FIT_ONLY"),
         ),
+        ("routes[].handler<fastcgi>.params", "FASTCGI_FIELDS", None),
         ("upstreams[]", "UPSTREAM_FIELDS", Some("UPSTREAM_FIT_ONLY")),
         ("services[]", "SERVICE_FIELDS", Some("SERVICE_FIT_ONLY")),
         ("upstreams[].health_check", "HEALTH_CHECK_FIELDS", None),
@@ -2323,16 +2675,12 @@ fn akit_config_lists_match_the_inventory() {
             "CACHE_DISK_FIELDS",
             None,
         ),
-        ("providers[]", "PROVIDER_FIELDS", Some("PROVIDER_FIT_ONLY")),
-        ("providers[].consul", "CONSUL_PROVIDER_FIELDS", None),
-        ("providers[].consul_kv", "CONSUL_KV_PROVIDER_FIELDS", None),
-        ("providers[].etcd", "ETCD_PROVIDER_FIELDS", None),
     ];
     let mapped: BTreeSet<&str> = objects
         .iter()
         .flat_map(|(_, r, n)| [Some(*r), *n])
         .flatten()
-        .chain(["FIT_HANDLERS", "FIT_MIDDLEWARE", "FIT_PROTOCOLS"])
+        .chain(["FIT_HANDLERS", "FIT_MIDDLEWARE"])
         .collect();
     for name in lists.keys() {
         assert!(
@@ -2380,7 +2728,7 @@ fn akit_config_lists_match_the_inventory() {
             "model.rs FIT_HANDLERS: {h:?} is not a handler fit has"
         );
     }
-    for h in ["respond", "static", "proxy"] {
+    for h in ["respond", "static", "proxy", "fastcgi", "forward_proxy"] {
         assert!(handlers.insert(h.to_owned()), "FIT_HANDLERS lists {h}");
     }
     let fit_handlers: BTreeSet<String> = inventory
@@ -2398,6 +2746,10 @@ fn akit_config_lists_match_the_inventory() {
     read.insert("routes[].handler<static>.params".to_owned());
     read.insert("routes[].handler<proxy>".to_owned());
     read.insert("routes[].handler<proxy>.params".to_owned());
+    read.insert("routes[].handler<fastcgi>".to_owned());
+    read.insert("routes[].handler<fastcgi>.params".to_owned());
+    read.insert("routes[].handler<forward_proxy>".to_owned());
+    read.insert("routes[].handler<forward_proxy>.params".to_owned());
     // Middleware modules: rewrite, redirect, headers, the limits and auth, which akit reads, and
     // FIT_MIDDLEWARE, which it refuses.
     let mut middleware: BTreeSet<String> = list("FIT_MIDDLEWARE").iter().cloned().collect();
@@ -2439,8 +2791,8 @@ fn akit_config_lists_match_the_inventory() {
         middleware, fit_middleware,
         "model.rs's middleware and fit's differ"
     );
-    // Protocols: the six akit serves and FIT_PROTOCOLS.
-    let mut protocols: BTreeSet<String> = list("FIT_PROTOCOLS").iter().cloned().collect();
+    // Protocols: the seven akit serves, every one of fit's since I55.
+    let mut protocols: BTreeSet<String> = BTreeSet::new();
     for p in [
         Protocol::Http11,
         Protocol::H2c,
@@ -2448,11 +2800,9 @@ fn akit_config_lists_match_the_inventory() {
         Protocol::H3,
         Protocol::Tcp,
         Protocol::Udp,
+        Protocol::Socks,
     ] {
-        assert!(
-            protocols.insert(p.as_str().to_owned()),
-            "FIT_PROTOCOLS lists {p:?}"
-        );
+        assert!(protocols.insert(p.as_str().to_owned()), "{p:?} twice");
     }
     let ty = &inventory
         .iter()
@@ -2546,8 +2896,8 @@ fn inventory_paths_for_akit_config_paths() {
 #[test]
 fn findings_from_akit_config_errors() {
     let errs = akit_config::from_json(
-        r#"{"listeners": [{"name": "w", "address": ":1", "protocols": ["socks"], "mptcp": true}],
-            "routes": [{"handler": {"module": "fastcgi"}}], "acme": {"shared_storage": {}}}"#,
+        r#"{"listeners": [{"name": "w", "address": ":1", "mptcp": true}],
+            "routes": [{"handler": {"module": "hls"}}], "acme": {"shared_storage": {}}}"#,
         None,
     )
     .unwrap_err();
@@ -2557,9 +2907,8 @@ fn findings_from_akit_config_errors() {
         .map(|e| finding(e).to_string())
         .collect();
     let want: BTreeSet<String> = [
-        "listeners[0].protocols[0]: the \"socks\" protocol",
         "listeners[0].mptcp",
-        "routes[0].handler<fastcgi>",
+        "routes[0].handler<hls>",
         "acme.shared_storage",
     ]
     .iter()

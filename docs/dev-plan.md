@@ -157,12 +157,12 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I52 | SNI routing and PROXY protocol | I51, A4, A5 | done |
 | I53 | Many protocols on one port | I52 | done |
 | I54 | Upstream TLS | I18 | done |
-| I55 | SOCKS and CONNECT | I53 | todo |
+| I55 | SOCKS and CONNECT | I53 | done |
 | I56 | M3 exit | I39–I55 | todo |
 | **M4** | | | |
 | I57 | Provider framework and the effective config | I29 | done |
-| I58 | Docker provider | I57 | todo |
-| I59 | Kubernetes Ingress | I57 | todo |
+| I58 | Docker provider | I57 | done |
+| I59 | Kubernetes Ingress | I57 | done |
 | I60 | Kubernetes Gateway API and conformance | I59 | todo |
 | I61 | Consul and etcd | I57 | done |
 | I62 | Shared certificate storage | I30, I61 | todo |
@@ -173,13 +173,13 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | **M5** | | | |
 | I67 | Cache I: memory tier and RFC 9111 | I17 | done |
 | I68 | Cache II: disk tier, locks, stale | I67 | done |
-| I69 | Cache III: purge and tags | I68, I27 | todo |
+| I69 | Cache III: purge and tags | I68, I27 | done |
 | I70 | `akit build` | I03 | todo |
 | I71 | WASM I: runtime and ABI | I03 | todo |
 | I72 | WASM II: the Proxy-Wasm subset | I71 | todo |
 | I73 | `akit adapt` and `akit fmt` | I23, I24 | todo |
 | I74 | nginx and Caddyfile converters | I73 | todo |
-| I75 | FastCGI | I16 | todo |
+| I75 | FastCGI | I16 | done |
 | I76 | M5 exit | I67–I75 | todo |
 | **1.0** | | | |
 | I77 | Fuzzing | I56 | todo |
@@ -230,7 +230,9 @@ commit and result.
 | Rewrite and redirect regexps | I48 | no | no (built, not measured) | Against fit: the proxy scenario behind a `rewrite` with a `regexp` and `replacement` (matched and not matched) and a `redirect` with groups in `to`, requests a second and allocations per request, against no middleware; akio-regex's `captures` and `replace_all` on path-sized texts against Go's `regexp`. |
 | WebSocket and gRPC proxying | I49, I50 | no | no (I49 and I50 built, not measured) | Against fit: WebSocket messages a second (small, echoed) and bytes a second (large) through akit from HTTP/1.1, h2 and h3 clients, memory per open WebSocket (idle, and with 64 KiB pending each way), and handshakes a second (a key generated, the upstream connection leaving the pool); I50: gRPC calls a second (unary, h2c and h2 upstreams) and messages a second on a stream each way, against fit. |
 | TCP and UDP proxying, SNI routing, many protocols on one port | I51–I53 | no | no (I51–I53 built, not measured) | Against fit and nginx's `stream`, as I51 asks: TCP throughput (fit's `BenchmarkTCPProxy`, 256 KB echoed at a time, direct and through akit), connections a second, memory per idle connection; UDP datagrams a second and sessions at once; the per-service idle sweep on akit's timer thread with 10,000 connections (the stopgap for akio A78); the cost of sniffing on a shared port (I53). I52: connections a second through a listener that routes by SNI (the ClientHello read and parsed before the dial) against one that does not, and with a PROXY header read on accept and one sent upstream; HTTP/1.1 and h2c request rates on a listener with `proxy_protocol` against one without, and akio's ADR-118 cost (a `OnceLock::get` per request) on a listener without. |
-| Response cache | I67, I68 | no | no (memory and disk tiers built, not measured) | Against fit, as I67 built it: hits from memory (a 4 KiB and a 1 MiB body, HTTP/1.1 and h2), misses kept through the proxy (a streamed body copied by the tap) against the proxy alone, the cost on requests the cache passes through (POST, `no-store` responses) against no middleware, the shards' locks under many keys and one hot key. I68: hits read back from disk (64 KiB and 1 MiB, the disk pool's threads and queue under many at once), writes to disk under a miss rate that fills `MAX_PENDING_WRITES`, a stampede of many clients on one key with the lock and with `disable_lock` (the waiters' suspend and resume, the timer per fetch), and stale-while-revalidate's background fetches. akio's ADR-116 tap: a tapped stream against an untapped one. |
+| Forward proxy: SOCKS and HTTP CONNECT | I55 | no | no (built, not measured) | Against fit (and nginx's `stream` for raw throughput): bytes a second through a SOCKS5 tunnel and an HTTP/1.1 CONNECT tunnel (256 KB echoed at a time, as fit's `BenchmarkTCPProxy`), tunnels opened a second (the handshake, the rules' checks, a name resolved on the pool and the `connected` check), memory per idle tunnel; the cost of SOCKS on a shared port (akio-mux's greeting rule beside HTTP and TLS) against HTTP alone; akio-socks's watchdog thread (the connect timeout added to it, ADR-119) with 10,000 tunnels. |
+| Response cache | I67, I68, I69 | no | no (memory and disk tiers and purges built, not measured) | Against fit, as I67 built it: hits from memory (a 4 KiB and a 1 MiB body, HTTP/1.1 and h2), misses kept through the proxy (a streamed body copied by the tap) against the proxy alone, the cost on requests the cache passes through (POST, `no-store` responses) against no middleware, the shards' locks under many keys and one hot key. I68: hits read back from disk (64 KiB and 1 MiB, the disk pool's threads and queue under many at once), writes to disk under a miss rate that fills `MAX_PENDING_WRITES`, a stampede of many clients on one key with the lock and with `disable_lock` (the waiters' suspend and resume, the timer per fetch), and stale-while-revalidate's background fetches. akio's ADR-116 tap: a tapped stream against an untapped one. I69: storing tagged responses (none and 32 tags) against untagged ones, and purges of a large zone by prefix and by tag while it serves (the shards' and the disk index's lock hold times). |
+| FastCGI | I75 | no | no (built, not measured) | Against fit and nginx's `fastcgi_pass`, PHP-FPM (or a FastCGI application that answers at once) over TCP and a Unix-domain socket: requests a second and latency for a small page, HTTP/1.1 and h2; a 1 MiB upload and a 16 MiB download (memory per request in flight, the 64 KiB watermarks both ways); keep-alive reuse against a connection a request; the pool's queue under more clients than `max_conns`; the cost of `try_files` (a `stat` on akio's logical pool a candidate) against a route without it; the handler's sweep every 100 ms on akit's timer thread (A45's stopgap) over its exchanges at many requests a second. |
 | WASM plugins | I71, I72 | no | no (not built yet) | A/B of a no-op plugin against none. |
 
 ## M0, foundations
@@ -782,7 +784,14 @@ Split from I07 so that the half that needs no config model runs beside I02.
 - **Do**: forward proxying with `akio-socks` and HTTP CONNECT, with auth and limits.
 - **Done when**: tests cover both with slow peers; one port serves SOCKS beside HTTP, TLS and
   `tcp` (carried over from I53: a `Rule::Socks5`/`Rule::Socks4` route in akit-listener's `sniff`).
-- **Touches**: `akit-l4`, `akit-listener`.
+- **Touches**: `akit-l4`, `akit-listener`, `akit-handler` (`forward_proxy`), `akit-config`.
+- **Built on**: akio API requests A132 and A133 (ADR-119: a tunnel's upstream checked once
+  connected, by the name asked for and both addresses; a connect timeout of its own; the SOCKS
+  client from a trusted PROXY header), added to akio by this iteration.
+- **Split**: "auth" is fit's: its forward proxy authenticates no one, and decides by `clients`
+  and the destination rules, as akit does. HTTP CONNECT over HTTP/2 and HTTP/3, which fit's
+  `forward_proxy` tunnels too, waits for akio API request A134; until then such a CONNECT is
+  answered 501.
 
 ### I56 M3 exit
 
@@ -806,12 +815,17 @@ Split from I07 so that the half that needs no config model runs beside I02.
   Unix socket.
 - **Done when**: the Docker Compose example routes services as they start and stop.
 - **Touches**: `akit-provider`.
+- **fit**: decision 010.
+- **Status**: done (2026-11-24), with akio API request A135 (ADR-120); see the progress log.
 
 ### I59 Kubernetes Ingress
 
 - **Do**: a watch client of akit's own (list and watch over HTTP/2), Ingress to routes.
 - **Done when**: tests against a kind cluster route by Ingress.
 - **Touches**: `akit-provider`.
+- **fit**: decision 011.
+- **Status**: done (2026-11-24), with no akio API request; its tests run against a fake API server
+  over HTTP/2 and HTTP/1.1, as fit's do, not a kind cluster; see the progress log.
 
 ### I60 Kubernetes Gateway API and conformance
 

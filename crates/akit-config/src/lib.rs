@@ -24,6 +24,7 @@ mod conf;
 mod decode;
 pub mod duration;
 mod error;
+mod fastcgi;
 mod json;
 mod model;
 mod providers;
@@ -38,6 +39,11 @@ pub use auto_https::{
     auto_https_name,
 };
 pub use error::{Error, Errors, NOT_SUPPORTED_YET};
+pub use fastcgi::{
+    DEFAULT_FASTCGI_CONNECT_TIMEOUT, DEFAULT_FASTCGI_IDLE_TIMEOUT, DEFAULT_FASTCGI_MAX_CONNS,
+    DEFAULT_FASTCGI_MAX_HEADER_BYTES, DEFAULT_FASTCGI_MAX_IDLE_CONNS, DEFAULT_FASTCGI_MAX_PENDING,
+    DEFAULT_FASTCGI_RESPONSE_TIMEOUT, DEFAULT_FASTCGI_TIMEOUT, FastCgi, FastCgiAddress, Scan, scan,
+};
 pub use json::MAX_DEPTH;
 pub use model::CACHE_SHARDS;
 pub use model::{
@@ -67,11 +73,20 @@ pub use model::{
     Tls, TlsVersion, TokenFrom, Upstream, UpstreamProtocol,
 };
 pub use model::{
+    DEFAULT_FORWARD_CONNECT_TIMEOUT, DEFAULT_FORWARD_IDLE_TIMEOUT, Destination, ForwardProxy,
+};
+pub use model::{
     DEFAULT_METRICS_INTERVAL, DEFAULT_TELEMETRY_ENDPOINT, DEFAULT_TELEMETRY_SERVICE_NAME,
     DEFAULT_TELEMETRY_TIMEOUT, DEFAULT_TRACES_INTERVAL, DEFAULT_TRACES_MAX_QUEUE_BYTES,
     MetricsExport, Telemetry, TracesExport, parse_headers,
 };
-pub use providers::{Provider, ProviderKind};
+pub use providers::{
+    DEFAULT_DOCKER_ENDPOINT, DEFAULT_DOCKER_LABEL_PREFIX, DEFAULT_DOCKER_MAX_CONTAINERS,
+    DEFAULT_DOCKER_REFRESH_INTERVAL, DEFAULT_DOCKER_REQUEST_TIMEOUT,
+    DEFAULT_KUBERNETES_CONTROLLER_NAME, DEFAULT_KUBERNETES_MAX_OBJECTS,
+    DEFAULT_KUBERNETES_REQUEST_TIMEOUT, DockerEndpoint, DockerProvider, KubernetesBackends,
+    KubernetesIngress, KubernetesProvider, Provider, ProviderKind,
+};
 pub use providers_kv::{
     ClientTlsFiles, ConsulConn, ConsulKvProvider, ConsulProvider, DEFAULT_CONSUL_ENDPOINT,
     DEFAULT_CONSUL_MAX_SERVICES, DEFAULT_CONSUL_TAG_PREFIX, DEFAULT_ETCD_ENDPOINT,

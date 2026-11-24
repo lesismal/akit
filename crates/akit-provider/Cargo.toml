@@ -9,11 +9,18 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
-# The Consul and etcd providers (I61) speak their HTTP APIs with akio's client (fit's decision 013).
-akio = { workspace = true }
-akio-crypto = { workspace = true }
-akio-http = { workspace = true }
 akit-config = { workspace = true }
+# The Docker provider (I58): akio's HTTP client, over a Unix socket or TCP; the Kubernetes
+# provider's client of the API server (I59): akio's HTTP/2 and HTTP/1.1 clients, its TLS, and
+# base64 and SHA-256 for Secrets and the certificate files written from them; the Consul and etcd
+# providers (I61): akio's HTTP client for their APIs (fit's decision 013), base64 for their values.
+akio = { workspace = true }
+akio-http = { workspace = true }
+akio-crypto = { workspace = true }
+
+[dev-dependencies]
+# The fake API server's certificates, in tests.
+akio-x509 = { workspace = true }
 
 [lints]
 workspace = true

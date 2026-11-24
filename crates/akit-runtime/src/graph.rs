@@ -110,6 +110,9 @@ pub struct Graph {
     requests: Option<Requests>,
     /// The config's `limits.write_stall_timeout` (I17b).
     write_stall_timeout: std::time::Duration,
+    /// Where the engine connections are dialed through is, or will be: the [`Env`]'s, for what a
+    /// listener dials outside the upstream pools (a `socks` listener's tunnels, I55).
+    engine: akit_upstream::EngineSlot,
     /// Taken (and so cleaned up) once, by [`Graph::retire`] or on drop.
     modules: Mutex<Option<Modules>>,
     /// Requests and connections that keep this graph past their handler's call
@@ -191,6 +194,13 @@ impl Graph {
     #[must_use]
     pub fn upstreams(&self) -> &[Pool] {
         &self.upstreams
+    }
+
+    /// Where the engine is, or will be, once `akit run` has built it: what a `socks` listener's
+    /// tunnels are dialed through (I55).
+    #[must_use]
+    pub fn engine(&self) -> &akit_upstream::EngineSlot {
+        &self.engine
     }
 
     /// The layer 4 services (I51), in the config's order.
@@ -604,6 +614,7 @@ pub fn compile(
         tracer: env.tracer().cloned(),
         requests,
         write_stall_timeout: config.limits.write_stall_timeout,
+        engine: env.engine().clone(),
         modules: Mutex::new(Some(modules)),
         holds: AtomicUsize::new(0),
         orphaned: AtomicBool::new(false),

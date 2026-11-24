@@ -678,8 +678,9 @@ pub(crate) fn translate(
                 continue;
             }
             let g = groups.entry(name).or_insert_with(|| Group {
-                set: l.clone(),
-                ..Group::default()
+                set: l,
+                addrs: Vec::new(),
+                svc_addrs: BTreeMap::new(),
             });
             g.addrs.push(join_host_port(host, port));
             let svc_ports: Vec<(String, u16)> = g

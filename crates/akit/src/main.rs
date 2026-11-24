@@ -45,7 +45,7 @@ use akit_admin::{
 use akit_config::{Config, ConfigFile, Error, Errors, LogFormat};
 use akit_observe::metrics::{ConfigStats, Metrics};
 use akit_observe::{AccessLog, Format, MetricsExporter, Otlp, Tracer, Zone};
-use akit_provider::Updates;
+use akit_provider::{Kinds, Provider, Updates};
 use akit_runtime::upstream::EngineSlot;
 use akit_runtime::{Env, Graph, GraphCell, HandlerParams, Registry, compile};
 use akit_tls::{FileWatcher, Report};
@@ -277,6 +277,8 @@ struct Runner<'a> {
     /// its requests with it; a config's `telemetry` takes a restart, as fit's.
     telemetry: Option<&'a akit_config::Telemetry>,
     tracer: Option<&'a Tracer>,
+    /// The `providers` akit started with (I58, I59): a config's take a restart, as fit's.
+    providers: &'a [akit_config::Provider],
 }
 
 impl Runner<'_> {
@@ -353,6 +355,9 @@ impl Runner<'_> {
         }
         if config.telemetry.as_ref() != self.telemetry {
             warnings.push("telemetry takes a restart; the running one stays".to_owned());
+        }
+        if config.providers != self.providers {
+            warnings.push("providers take a restart; the running ones stay".to_owned());
         }
         warnings
     }
@@ -516,6 +521,38 @@ fn reload_certs(configs: &Configs, runner: &mut Runner<'_>) -> Result<(), ()> {
     }
 }
 
+/// Makes and starts the providers `pcs` lists, as fit's `startProviders`: each named to
+/// `configs`, in their order of precedence, and sending its parts through `updates`.
+fn start_providers(
+    pcs: &[akit_config::Provider],
+    configs: &Configs,
+    updates: &Updates,
+) -> Result<Vec<Box<dyn Provider>>, String> {
+    let kinds = Kinds::new(&[
+        akit_provider::docker::KINDS,
+        akit_provider::kubernetes::KINDS,
+        akit_provider::API_KINDS,
+    ])?;
+    let mut out: Vec<Box<dyn Provider>> = Vec::with_capacity(pcs.len());
+    for pc in pcs {
+        let name = &pc.name;
+        let kind = pc.kind.name();
+        let Some(make) = kinds.lookup(kind) else {
+            return Err(format!(
+                "provider {name}: this akit was built without the {kind} provider (it has {})",
+                kinds.names().join(", ")
+            ));
+        };
+        let (mut p, watching) = make(name, pc)?;
+        println!("akit: provider {name} {watching}");
+        configs.add_provider(name)?;
+        p.start(updates.update(name))
+            .map_err(|e| format!("provider {name}: {e}"))?;
+        out.push(p);
+    }
+    Ok(out)
+}
+
 /// Applies the parts providers sent (I57), each merged into the running base config as a new
 /// version whose source is the provider, at most one per provider that has one waiting, so that
 /// the control thread goes back to its other work in between; a part refused leaves the
@@ -546,33 +583,6 @@ fn provide(updates: &Updates, configs: &Configs, runner: &mut Runner<'_>) {
             Err(Refused::Changed) => {}
         }
     }
-}
-
-/// Starts the providers `ps` lists, in their order of precedence, as fit's `startProviders`:
-/// each made by its kind, added to `configs` and started, its parts sent through `updates`.
-fn start_providers(
-    ps: &[akit_config::Provider],
-    configs: &Configs,
-    updates: &Updates,
-) -> Result<Vec<Box<dyn akit_provider::Provider>>, String> {
-    let kinds = akit_provider::Kinds::new(&[akit_provider::API_KINDS])?;
-    let mut out = Vec::with_capacity(ps.len());
-    for pc in ps {
-        let (name, kind) = (&pc.name, pc.kind.name());
-        let make = kinds.lookup(kind).ok_or_else(|| {
-            format!(
-                "provider {name}: this akit was built without the {kind} provider (it has {})",
-                kinds.names().join(", ")
-            )
-        })?;
-        let (mut p, watching) = make(name, pc)?;
-        configs.add_provider(name)?;
-        println!("akit: provider {name} {watching}");
-        p.start(updates.update(name))
-            .map_err(|e| format!("provider {name}: {e}"))?;
-        out.push(p);
-    }
-    Ok(out)
 }
 
 /// What applying a config changed: the listeners closed and opened, and its warnings.
@@ -887,12 +897,15 @@ fn run(args: &[String]) -> ExitCode {
         })
     };
     drop(tx);
-    // The providers the config lists (I61), in their order of precedence, each following its
-    // source on threads of its own; read when akit starts, as fit's.
+    // The providers the config lists (I58, I59, I61), in their order of precedence, as fit's
+    // startProviders; read when akit starts.
     let mut providers = match start_providers(&provider_configs, &configs, &updates) {
         Ok(p) => p,
         Err(e) => {
             eprintln!("akit run: {e}");
+            if let Some(api) = &api {
+                api.shutdown();
+            }
             akit_listener::shutdown(&engine, grace);
             return ExitCode::FAILURE;
         }
@@ -936,6 +949,7 @@ fn run(args: &[String]) -> ExitCode {
         stats: &stats,
         telemetry: telemetry.as_ref(),
         tracer: tracer.as_ref(),
+        providers: &provider_configs,
     };
     // The certificate files watched (fit's -watch-certs), on this thread, every interval: the
     // running config's version number and the files it loaded tell the watcher what it loaded.
@@ -1122,7 +1136,7 @@ mod tests {
         let v = super::version();
         let lines: Vec<&str> = v.lines().collect();
         assert!(lines[0].starts_with("akit "));
-        assert_eq!(lines[1], "akio e9891b52c0e9");
+        assert_eq!(lines[1], "akio 8453b60cfa7a");
         assert_eq!(
             lines[2],
             format!("{}/{}", std::env::consts::OS, std::env::consts::ARCH)
