@@ -646,7 +646,8 @@ pub enum Protocol {
     /// `h3`, HTTP/3 over QUIC, on the listener's port in UDP and announced to its HTTP/1 and
     /// HTTP/2 clients with `Alt-Svc`; needs `tls`.
     H3,
-    /// `tcp`, raw TCP, whose connections the service that lists the listener proxies (I51).
+    /// `tcp`, raw TCP, whose connections the service that lists the listener proxies (I51);
+    /// beside HTTP, told apart from it by what a client sends first (I53).
     Tcp,
     /// `udp`, alone: each client address a session, whose datagrams the service that lists the
     /// listener proxies (I51).
@@ -2549,10 +2550,7 @@ fn listener(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Listener> {
                 at,
                 "a udp listener serves UDP alone: list udp without other protocols",
             ),
-            // fit tells them apart by what a client sends first: akio-mux, with I53.
-            Protocol::Tcp if protocols.len() > 1 => {
-                d.not_yet(*off, at, "tcp beside other protocols on one port");
-            }
+            // tcp beside HTTP: told apart by what a client sends first (I53, akit-listener).
             _ => {}
         }
     }

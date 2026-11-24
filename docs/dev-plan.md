@@ -155,7 +155,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I51 | TCP and UDP proxying | I05 | done |
 | I51b | The eBPF sockmap relay | I51 | todo |
 | I52 | SNI routing and PROXY protocol | I51, A4, A5 | done |
-| I53 | Many protocols on one port | I52 | todo |
+| I53 | Many protocols on one port | I52 | done |
 | I54 | Upstream TLS | I18 | done |
 | I55 | SOCKS and CONNECT | I53 | todo |
 | I56 | M3 exit | I39–I55 | todo |
@@ -228,7 +228,7 @@ commit and result.
 | Compression | I47 | no | no (built, not measured) | Against fit, each encoding, as I47 asks: the proxy scenario with `compress` in front, a whole JSON body and a stream of server-sent events, over HTTP/1.1 and h2, per encoding at fit's default levels (responses a second, server CPU, bytes on the wire); the cost of the filter on responses it leaves alone (an image) against no middleware; the memory of held compressed streams (1,000 at once); the static handler's copies against fit's (`compress` on a file kept in memory). |
 | Rewrite and redirect regexps | I48 | no | no (built, not measured) | Against fit: the proxy scenario behind a `rewrite` with a `regexp` and `replacement` (matched and not matched) and a `redirect` with groups in `to`, requests a second and allocations per request, against no middleware; akio-regex's `captures` and `replace_all` on path-sized texts against Go's `regexp`. |
 | WebSocket and gRPC proxying | I49, I50 | no | no (I49 and I50 built, not measured) | Against fit: WebSocket messages a second (small, echoed) and bytes a second (large) through akit from HTTP/1.1, h2 and h3 clients, memory per open WebSocket (idle, and with 64 KiB pending each way), and handshakes a second (a key generated, the upstream connection leaving the pool); I50: gRPC calls a second (unary, h2c and h2 upstreams) and messages a second on a stream each way, against fit. |
-| TCP and UDP proxying, SNI routing, many protocols on one port | I51–I53 | no | no (I51 and I52 built, not measured; I53 not built yet) | Against fit and nginx's `stream`, as I51 asks: TCP throughput (fit's `BenchmarkTCPProxy`, 256 KB echoed at a time, direct and through akit), connections a second, memory per idle connection; UDP datagrams a second and sessions at once; the per-service idle sweep on akit's timer thread with 10,000 connections (the stopgap for akio A78); the cost of sniffing on a shared port (I53). I52: connections a second through a listener that routes by SNI (the ClientHello read and parsed before the dial) against one that does not, and with a PROXY header read on accept and one sent upstream; HTTP/1.1 and h2c request rates on a listener with `proxy_protocol` against one without, and akio's ADR-118 cost (a `OnceLock::get` per request) on a listener without. |
+| TCP and UDP proxying, SNI routing, many protocols on one port | I51–I53 | no | no (I51–I53 built, not measured) | Against fit and nginx's `stream`, as I51 asks: TCP throughput (fit's `BenchmarkTCPProxy`, 256 KB echoed at a time, direct and through akit), connections a second, memory per idle connection; UDP datagrams a second and sessions at once; the per-service idle sweep on akit's timer thread with 10,000 connections (the stopgap for akio A78); the cost of sniffing on a shared port (I53). I52: connections a second through a listener that routes by SNI (the ClientHello read and parsed before the dial) against one that does not, and with a PROXY header read on accept and one sent upstream; HTTP/1.1 and h2c request rates on a listener with `proxy_protocol` against one without, and akio's ADR-118 cost (a `OnceLock::get` per request) on a listener without. |
 | Response cache | I67, I68 | no | no (memory tier built, not measured; disk not built yet) | Against fit, as I67 built it: hits from memory (a 4 KiB and a 1 MiB body, HTTP/1.1 and h2), misses kept through the proxy (a streamed body copied by the tap) against the proxy alone, the cost on requests the cache passes through (POST, `no-store` responses) against no middleware, the shards' locks under many keys and one hot key; disk hits once I68 has them. akio's ADR-116 tap: a tapped stream against an untapped one. |
 | WASM plugins | I71, I72 | no | no (not built yet) | A/B of a no-op plugin against none. |
 
@@ -761,6 +761,10 @@ Split from I07 so that the half that needs no config model runs beside I02.
   custom protocols, with sniff limits and timeouts.
 - **Done when**: one port serves HTTP/1.1, HTTP/2, TLS passthrough by SNI and SOCKS at once.
 - **Touches**: `akit-listener`.
+- **Split**: SOCKS on the shared port goes to I55, which builds fit's forward proxy (`socks` and
+  `listeners[].socks`) and adds its akio-mux route; I53 serves HTTP/1.1, HTTP/2 (h2c and h2),
+  HTTPS, TLS passthrough by SNI and raw TCP on one port, as fit's `sniff` does without `socks`.
+  gRPC is HTTP/2's; the custom protocols are what the service without `server_names` takes.
 
 ### I54 Upstream TLS
 
@@ -772,8 +776,9 @@ Split from I07 so that the half that needs no config model runs beside I02.
 ### I55 SOCKS and CONNECT
 
 - **Do**: forward proxying with `akio-socks` and HTTP CONNECT, with auth and limits.
-- **Done when**: tests cover both with slow peers.
-- **Touches**: `akit-l4`.
+- **Done when**: tests cover both with slow peers; one port serves SOCKS beside HTTP, TLS and
+  `tcp` (carried over from I53: a `Rule::Socks5`/`Rule::Socks4` route in akit-listener's `sniff`).
+- **Touches**: `akit-l4`, `akit-listener`.
 
 ### I56 M3 exit
 

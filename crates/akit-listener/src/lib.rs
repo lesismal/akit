@@ -55,6 +55,15 @@
 //! services may pick its connections by their ClientHello's server name (akit-l4's
 //! [`akit_l4::Entry`]).
 //!
+//! I53: a listener that serves `tcp` beside HTTP tells them apart on its port by what a client
+//! sends first, with akio-mux ([`sniff`]), as fit's does: a TLS ClientHello whose server name a
+//! service of the listener takes goes to that service, passed through; any other TLS is served
+//! HTTPS when the listener has `tls`, or else goes to the service without `server_names`; HTTP
+//! (HTTP/1.1, and with `h2c` HTTP/2's preface), on a listener in the clear, is served; and
+//! whatever else goes to the service without `server_names`, or is closed. A client that has not
+//! sent enough to tell within [`akit_l4::OPENING_TIMEOUT`] is closed. A PROXY header comes before
+//! all of it.
+//!
 //! Part of [akit](https://github.com/lesismal/akit); see `docs/dev-plan.md` for the iterations that
 //! fill this crate in.
 
@@ -66,7 +75,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use akio::tls::Tls;
-use akio::{Backend, Config as EngineConfig, Engine, Listener as EngineListener};
+use akio::{AnyAcceptor, Backend, Config as EngineConfig, Engine, Listener as EngineListener};
 use akio_http::{BodyMode, Context, HttpConfig, Method, Request, Response, Version};
 use akit_config::{Listener, Protocol};
 use akit_observe::metrics::Shard as MetricsShard;
@@ -831,7 +840,7 @@ fn build(cell: &GraphCell, opts: &Options) -> Result<Engine, (Error, bool)> {
                 error,
             })
         })?;
-        let (tcp, h3) = (serves_tcp(l), serves_h3(l));
+        let (tcp, h3) = (tcp_side(l), serves_h3(l));
         if tcp && h3 && addr.port() == 0 {
             // HTTP/3 goes on the port TCP gets, the one Alt-Svc names: a port free for both.
             probed = true;
@@ -858,10 +867,6 @@ fn build(cell: &GraphCell, opts: &Options) -> Result<Engine, (Error, bool)> {
                 h3_acceptor(cell, l, tls.as_ref().and_then(|c| c.h3.as_ref())).map_err(fail)?,
             ));
         }
-        if serves_l4_tcp(l) {
-            let listener = EngineListener::tcp(addr).backend(opts.backend.clone());
-            b = b.listen(serve_tcp(l, listener, l4_acceptor(cell, l)));
-        }
         if serves_l4_udp(l) {
             b = b.listen(EngineListener::udp(addr).serve(l4_acceptor(cell, l)));
         }
@@ -877,8 +882,8 @@ fn build(cell: &GraphCell, opts: &Options) -> Result<Engine, (Error, bool)> {
 }
 
 /// The TCP side of listener `l` on `listener` (its address and backend set): HTTP/1.1 and h2c,
-/// or HTTPS with `tls` (the graph's, loaded); `h3_port` names the port of its HTTP/3, which
-/// its responses' `Alt-Svc` advertises.
+/// or HTTPS with `tls` (the graph's, loaded), and its `tcp` service, beside HTTP told apart by
+/// [`sniff`]; `h3_port` names the port of its HTTP/3, which its responses' `Alt-Svc` advertises.
 fn tcp_listener(
     cell: &GraphCell,
     l: &Listener,
@@ -886,6 +891,13 @@ fn tcp_listener(
     listener: EngineListener,
     h3_port: Option<u16>,
 ) -> Result<EngineListener, Error> {
+    if !serves_tcp(l) {
+        return Ok(serve_tcp(
+            l,
+            listener,
+            AnyAcceptor::new(l4_acceptor(cell, l)),
+        ));
+    }
     let mut d = Dispatcher::new(cell.clone(), l.name.clone())
         .tls(l.tls.is_some())
         .max_body_bytes(l.max_body_bytes);
@@ -893,13 +905,65 @@ fn tcp_listener(
         d = d.with_alt_svc(alt_svc(port));
     }
     let http = akio_http::serve_with(http_config(l)?, d);
-    Ok(match (&l.tls, tls) {
-        (None, _) => serve_tcp(l, listener, http),
-        // The PROXY header comes before TLS.
-        (Some(_), Some(cfg)) => serve_tcp(l, listener, Tls::server(cfg.clone(), http)),
+    let web = match (&l.tls, tls) {
+        (None, _) => AnyAcceptor::new(http),
+        (Some(_), Some(cfg)) => AnyAcceptor::new(Tls::server(cfg.clone(), http)),
         // The graph loads every listener's tls, or is not compiled.
         (Some(_), None) => return Err(not_loaded(l)),
-    })
+    };
+    let acc = if serves_l4_tcp(l) {
+        sniff(cell, l, web).into_any()
+    } else {
+        web
+    };
+    // The PROXY header comes before TLS, and before the sniffing.
+    Ok(serve_tcp(l, listener, acc))
+}
+
+/// The acceptor of a listener serving `tcp` beside HTTP (I53; fit's `sniff`), which tells them
+/// apart by what a client sends first with akio-mux, `web` being its HTTP acceptor (HTTPS with
+/// `tls`):
+///
+/// - with `tls`, a ClientHello whose server name a service of the listener takes (in the current
+///   graph) goes to the listener's services, which pass it through to that one (akit-l4's
+///   [`akit_l4::ClientAcceptor`], which reads the hello again), and any other TLS to `web`;
+///   up to [`akit_l4::MAX_CLIENT_HELLO`] bytes are read for the hello;
+/// - in the clear, TLS goes to the listener's services, which pick by its name (I52), HTTP/1.1
+///   (and HTTP/2's preface with `h2c`) to `web`;
+/// - whatever else to the listener's services, whose service without `server_names` takes it,
+///   or closes it when there is none.
+///
+/// A client that has not sent enough to tell within [`akit_l4::OPENING_TIMEOUT`] is closed.
+/// `socks`, a third protocol fit tells apart here, comes with I55.
+fn sniff(cell: &GraphCell, l: &Listener, web: AnyAcceptor) -> akio_mux::Mux {
+    use akio_mux::{Mux, Rule};
+    let mut mux = Mux::new().sniff_timeout(Some(akit_l4::OPENING_TIMEOUT));
+    if l.tls.is_some() {
+        let (c, name) = (cell.clone(), l.name.clone());
+        let named = move |h: &akio_mux::ClientHello<'_>| {
+            h.server_name().is_some_and(|n| {
+                c.with(|g| {
+                    g.listener_index(&name)
+                        .and_then(|i| g.entry(i))
+                        .is_some_and(|e| e.named(n).is_some())
+                })
+            })
+        };
+        mux = mux
+            .route(Rule::TlsHello(Arc::new(named)), l4_acceptor(cell, l))
+            .max_sniff_bytes(akit_l4::MAX_CLIENT_HELLO)
+            .route_any(Rule::Tls, web);
+    } else {
+        let http = if l.protocols.contains(&Protocol::H2c) {
+            Rule::Http
+        } else {
+            Rule::Http1
+        };
+        mux = mux
+            .route(Rule::Tls, l4_acceptor(cell, l))
+            .route_any(http, web);
+    }
+    mux.fallback(l4_acceptor(cell, l))
 }
 
 /// The most bytes of a PROXY header a listener reads (fit's `MaxProxyHeader`): a v1 line is at
@@ -911,12 +975,12 @@ pub const MAX_PROXY_HEADER: usize = 4096;
 /// of version 1 or 2, of at most [`MAX_PROXY_HEADER`] bytes within
 /// [`akit_l4::OPENING_TIMEOUT`], or is closed, and is served as from the client it names (the
 /// request's peer: akio API request A105); one from elsewhere is served as it is.
-fn serve_tcp(l: &Listener, listener: EngineListener, acc: impl akio::Acceptor) -> EngineListener {
+fn serve_tcp(l: &Listener, listener: EngineListener, acc: AnyAcceptor) -> EngineListener {
     let Some(pp) = l.proxy_protocol.clone() else {
-        return listener.serve(acc);
+        return listener.serve_any(acc);
     };
     listener.serve_any(
-        akio_mux::proxy::ProxyProtocol::new(acc)
+        akio_mux::proxy::ProxyProtocol::new_any(acc)
             .trusted(move |a| pp.trusts(a.ip()))
             .header_timeout(Some(akit_l4::OPENING_TIMEOUT))
             .max_header_bytes(MAX_PROXY_HEADER),
