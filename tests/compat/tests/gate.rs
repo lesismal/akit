@@ -366,6 +366,12 @@ fn supported_fields_are_read() {
             r#"{{{L}, "upstreams": [{{"name": "app", "addresses": ["127.0.0.1:9000"]}}], "routes": [{{"handler": {{"module": "proxy", "params": {{"upstream": "app"{params}}}}}}}]}}"#
         )
     };
+    // A proxy with two upstreams, app and b, and only `params` (I46).
+    let split = |params: &str| {
+        format!(
+            r#"{{{L}, "upstreams": [{{"name": "app", "addresses": ["127.0.0.1:9000"]}}, {{"name": "b", "addresses": ["127.0.0.1:9001"]}}], "routes": [{{"handler": {{"module": "proxy", "params": {{{params}}}}}}}]}}"#
+        )
+    };
     let route = |fields: &str| {
         format!(r#"{{{L}, "routes": [{{{fields}, "handler": {{"module": "respond"}}}}]}}"#)
     };
@@ -857,6 +863,43 @@ fn supported_fields_are_read() {
             "routes[].handler<proxy>.params.retry.budget_min_per_second",
             proxy(r#", "retry": {"budget_min_per_second": 3}"#),
             |c| proxy_of(c).retry.as_ref().unwrap().budget_min_per_second == 3.0,
+        ),
+        (
+            "routes[].handler<proxy>.params.upstreams",
+            split(
+                r#""upstreams": [{"upstream": "app", "weight": 3}, {"upstream": "b", "weight": 1}]"#,
+            ),
+            |c| proxy_of(c).upstreams.len() == 2,
+        ),
+        (
+            "routes[].handler<proxy>.params.upstreams[].upstream",
+            split(r#""upstreams": [{"upstream": "b", "weight": 1}]"#),
+            |c| proxy_of(c).upstreams[0].upstream == "b",
+        ),
+        (
+            "routes[].handler<proxy>.params.upstreams[].weight",
+            split(r#""upstreams": [{"upstream": "b", "weight": 7}]"#),
+            |c| proxy_of(c).upstreams[0].weight == 7,
+        ),
+        (
+            "routes[].handler<proxy>.params.failover",
+            split(r#""upstream": "app", "failover": "b""#),
+            |c| proxy_of(c).failover.as_deref() == Some("b"),
+        ),
+        (
+            "routes[].handler<proxy>.params.mirror",
+            split(r#""upstream": "app", "mirror": {"upstream": "b"}"#),
+            |c| proxy_of(c).mirror.as_ref().unwrap().percent == 100.0,
+        ),
+        (
+            "routes[].handler<proxy>.params.mirror.upstream",
+            split(r#""upstream": "app", "mirror": {"upstream": "b"}"#),
+            |c| proxy_of(c).mirror.as_ref().unwrap().upstream == "b",
+        ),
+        (
+            "routes[].handler<proxy>.params.mirror.percent",
+            split(r#""upstream": "app", "mirror": {"upstream": "b", "percent": 10}"#),
+            |c| proxy_of(c).mirror.as_ref().unwrap().percent == 10.0,
         ),
         (
             "routes[].handler<proxy>.params.tunnel_idle_timeout",
@@ -1686,7 +1729,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 37] = [
+    let objects: [(&str, &str, Option<&str>); 39] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         ("admin", "ADMIN_FIELDS", Some("ADMIN_FIT_ONLY")),
         ("acme", "ACME_FIELDS", Some("ACME_FIT_ONLY")),
@@ -1786,6 +1829,16 @@ fn akit_config_lists_match_the_inventory() {
             None,
         ),
         ("routes[].handler<proxy>.params.retry", "RETRY_FIELDS", None),
+        (
+            "routes[].handler<proxy>.params.upstreams[]",
+            "SPLIT_FIELDS",
+            None,
+        ),
+        (
+            "routes[].handler<proxy>.params.mirror",
+            "MIRROR_FIELDS",
+            None,
+        ),
         (
             "routes[].middleware[]<compress>.params",
             "COMPRESS_FIELDS",

@@ -74,6 +74,10 @@
 //! addresses within `connect_timeout`, and an `h2` address whose server chooses HTTP/1.1 in ALPN
 //! is spoken HTTP/1.1 over TLS.
 //!
+//! I46 adds [`Split`]: a proxy's requests spread over several upstreams at random by weight
+//! (fit's `upstreams`), with a failover that takes them while none of the chosen upstream's
+//! addresses is in rotation and one of its own is.
+//!
 //! Nothing here blocks: [`Pool::send`] runs on an I/O thread, and its callback runs once, on an
 //! I/O thread (or the resolver's or the timer's thread, as akio's client says), never blocking
 //! either.
@@ -96,6 +100,7 @@ pub mod balance;
 pub mod h2;
 pub mod health;
 pub mod probe;
+pub mod split;
 pub mod sticky;
 pub mod timer;
 
@@ -122,6 +127,7 @@ pub use akit_config::{HealthCheck, HealthCheckType, UpstreamProtocol};
 pub use balance::{Balancer, Keys, LoadBalancing};
 pub use h2::STREAMS_PER_CONN;
 pub use health::Health;
+pub use split::Split;
 pub use sticky::{Sticky, sticky_id};
 
 /// How long a whole exchange may take, from [`Pool::send`] to the end of the response, waiting for

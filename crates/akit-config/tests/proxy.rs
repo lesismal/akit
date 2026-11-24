@@ -171,26 +171,131 @@ fn retry() {
 
 #[test]
 fn not_supported_yet() {
-    for field in [
-        r#""upstreams": [{"upstream": "app", "weight": 1}]"#,
-        r#""failover": "app""#,
-        r#""mirror": {"upstream": "app"}"#,
-        r#""splice_uploads": false"#,
-    ] {
-        let name = field.split('"').nth(1).unwrap();
-        let params = if name == "upstreams" {
-            format!("{{{field}}}")
-        } else {
-            format!(r#"{{"upstream": "app", {field}}}"#)
+    let e = from_json(
+        &config(r#"{"upstream": "app", "splice_uploads": false}"#),
+        None,
+    )
+    .unwrap_err();
+    assert!(e.only_not_supported_yet(), "{e}");
+    assert_eq!(e.as_slice().len(), 1, "{e}");
+    assert_eq!(
+        e.as_slice()[0].path,
+        "routes[0].handler.params.splice_uploads"
+    );
+}
+
+/// I46: `upstreams`, `failover` and `mirror`, read, and fit's checks (TestSplitParams); that the
+/// upstreams they name exist is checked when the handler is provisioned (akit-proxy's tests).
+#[test]
+fn split() {
+    let proxy = |params: &str| {
+        let c = from_json(&config(params), None).unwrap();
+        let Handler::Proxy(p) = &c.routes[0].handler else {
+            unreachable!()
         };
-        let e = from_json(&config(&params), None).unwrap_err();
-        assert!(e.only_not_supported_yet(), "{name}: {e}");
-        assert_eq!(e.as_slice().len(), 1, "{name}: {e}");
-        assert_eq!(
-            e.as_slice()[0].path,
-            format!("routes[0].handler.params.{name}")
-        );
+        p.clone()
+    };
+    let p = proxy(
+        r#"{"upstreams": [{"upstream": "a", "weight": 3}, {"upstream": "b", "weight": 1000}],
+            "failover": "c", "mirror": {"upstream": "d", "percent": 12.5}}"#,
+    );
+    assert_eq!(p.upstream, "");
+    assert_eq!(
+        p.upstreams,
+        [
+            akit_config::Split {
+                upstream: "a".into(),
+                weight: 3
+            },
+            akit_config::Split {
+                upstream: "b".into(),
+                weight: 1000
+            }
+        ]
+    );
+    assert_eq!(p.failover.as_deref(), Some("c"));
+    let m = p.mirror.unwrap();
+    assert_eq!((m.upstream.as_str(), m.percent), ("d", 12.5));
+    // Left out: none, and a mirror copies every request.
+    let p = proxy(r#"{"upstream": "app", "failover": "", "mirror": {"upstream": "d"}}"#);
+    assert!(p.upstreams.is_empty());
+    assert_eq!(p.failover, None);
+    assert_eq!(p.mirror.unwrap().percent, 100.0);
+    // An empty upstreams beside upstream is none.
+    assert!(
+        proxy(r#"{"upstream": "app", "upstreams": []}"#)
+            .upstreams
+            .is_empty()
+    );
+    assert_eq!(akit_config::MAX_MIRRORED, 256);
+    for (params, want) in [
+        (
+            r#"{}"#,
+            "routes[0].handler.params.upstream: upstream or upstreams is needed",
+        ),
+        (
+            r#"{"upstreams": []}"#,
+            "routes[0].handler.params.upstream: upstream or upstreams is needed",
+        ),
+        (
+            r#"{"upstream": "a", "upstreams": [{"upstream": "b", "weight": 1}]}"#,
+            "routes[0].handler.params.upstreams: upstream and upstreams are each other's alternatives: set one",
+        ),
+        (
+            r#"{"upstreams": [{"upstream": "a", "weight": 0}]}"#,
+            "routes[0].handler.params.upstreams[0].weight: 0 is less than the minimum 1",
+        ),
+        (
+            r#"{"upstreams": [{"upstream": "a", "weight": 1001}]}"#,
+            "routes[0].handler.params.upstreams[0].weight: 1001 is greater than the maximum 1000",
+        ),
+        (
+            r#"{"upstreams": [{"upstream": "a"}]}"#,
+            "routes[0].handler.params.upstreams[0].weight: missing required field",
+        ),
+        (
+            r#"{"upstreams": [{"weight": 2}]}"#,
+            "routes[0].handler.params.upstreams[0].upstream: missing required field",
+        ),
+        (
+            r#"{"upstreams": [{"upstream": "a", "weight": 1, "share": 1}]}"#,
+            "routes[0].handler.params.upstreams[0].share: unknown field",
+        ),
+        (
+            r#"{"upstreams": {"upstream": "a"}}"#,
+            "routes[0].handler.params.upstreams",
+        ),
+        (
+            r#"{"upstream": "a", "failover": 1}"#,
+            "routes[0].handler.params.failover",
+        ),
+        (
+            r#"{"upstream": "a", "mirror": {"percent": 5}}"#,
+            "routes[0].handler.params.mirror.upstream: missing required field",
+        ),
+        (
+            r#"{"upstream": "a", "mirror": {"upstream": "b", "percent": 101}}"#,
+            "routes[0].handler.params.mirror.percent: 101 is greater than the maximum 100",
+        ),
+        (
+            r#"{"upstream": "a", "mirror": {"upstream": "b", "percent": -1}}"#,
+            "routes[0].handler.params.mirror.percent: -1 is less than the minimum 0",
+        ),
+        (
+            r#"{"upstream": "a", "mirror": "b"}"#,
+            "routes[0].handler.params.mirror",
+        ),
+    ] {
+        let e = from_json(&config(params), None).unwrap_err().to_string();
+        assert!(e.contains(want), "{params}: {e}");
     }
+    // An item refused does not also say upstream is needed.
+    let e = from_json(
+        &config(r#"{"upstreams": [{"upstream": "a", "weight": 0}]}"#),
+        None,
+    )
+    .unwrap_err();
+    assert_eq!(e.as_slice().len(), 1, "{e}");
 }
 
 #[test]

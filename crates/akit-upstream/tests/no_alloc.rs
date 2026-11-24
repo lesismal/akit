@@ -89,5 +89,13 @@ fn main() {
         });
         assert_eq!(n, 0, "pool: {n} allocations in 1000 picks");
     }
+    // A split by weight with a failover (I46).
+    let split =
+        akit_upstream::Split::new([(pool.clone(), 3), (pool.clone(), 1)], Some(pool)).unwrap();
+    let n = allocs(|| {
+        black_box(split.pick());
+        black_box(akit_upstream::split::chance(black_box(50.0)));
+    });
+    assert_eq!(n, 0, "split: {n} allocations in 1000 picks");
     println!("no_alloc: ok");
 }
