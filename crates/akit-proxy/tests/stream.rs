@@ -2,8 +2,10 @@
 //! client slower than its upstream, and an upload to an upstream slower than its client, each
 //! framed by its length and chunked, over HTTP/1.1 and h2c, with the bytes checked against a
 //! pattern and the memory's rise while they move bounded far below their size: neither side's
-//! body piles up in akit (I16, linked backpressure). On the backend `AKIO_TEST_BACKEND` names
-//! (epoll by default, `uring`).
+//! body piles up in akit (I16, linked backpressure). The same against an h2c upstream (I18b, as
+//! fit runs its stream tests for each upstream protocol): a held download keeps its stream's
+//! window closed, and an upload is paced by what waits in its stream. On the backend
+//! `AKIO_TEST_BACKEND` names (epoll by default, `uring`).
 //!
 //! fit samples Go's live heap; here the process's resident memory is sampled (Linux, where the
 //! bound is checked; akit has no `unsafe` for a counting allocator, rule 14). The clients and the
@@ -147,11 +149,16 @@ struct Akit {
 
 impl Akit {
     fn start(up: SocketAddr) -> Akit {
+        Akit::start_with(up, "http/1.1")
+    }
+
+    /// akit proxying to the upstream at `up`, spoken to over `protocol`.
+    fn start_with(up: SocketAddr, protocol: &str) -> Akit {
         let json = format!(
             r#"{{
   "listeners": [{{"name": "web", "address": "127.0.0.1:0", "protocols": ["http/1.1", "h2c"]}}],
   "limits": {{"max_body_bytes": {}}},
-  "upstreams": [{{"name": "app", "addresses": ["{up}"]}}],
+  "upstreams": [{{"name": "app", "addresses": ["{up}"], "protocol": "{protocol}"}}],
   "routes": [{{"handler": {{"module": "proxy", "params": {{"upstream": "app"}}}}}}]
 }}"#,
             SIZE * 2
@@ -314,6 +321,223 @@ fn serve(s: TcpStream) {
             .is_err()
             {
                 return;
+            }
+        }
+    }
+}
+
+/// The upstream over h2c with prior knowledge, as [`upstream`] over HTTP/1.1: `GET /big` sends
+/// the pattern as fast as akit's windows let it (with its length with `?length=1`), and the body
+/// of a `PUT` is read slowly, its window given back only as it is read, and answered with its
+/// length and its `content-length` (-1 for none). One stream at a time per connection.
+fn h2_upstream() -> SocketAddr {
+    let l = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = l.local_addr().unwrap();
+    thread::spawn(move || {
+        for s in l.incoming() {
+            let Ok(s) = s else { return };
+            thread::spawn(move || {
+                // A connection akit closed ends its thread.
+                let _ = std::panic::catch_unwind(move || H2Up::serve(s));
+            });
+        }
+    });
+    addr
+}
+
+/// akit closed the connection: its thread ends, quietly (no panic message).
+fn gone() -> ! {
+    std::panic::resume_unwind(Box::new("connection closed"))
+}
+
+/// One h2c connection of [`h2_upstream`].
+struct H2Up {
+    s: TcpStream,
+    dec: akio_http::hpack::Decoder,
+    send_conn: i64,
+    /// The current stream's send window, and the initial one akit's SETTINGS give.
+    send_stream: i64,
+    initial: i64,
+    sid: u32,
+}
+
+impl H2Up {
+    fn serve(s: TcpStream) {
+        s.set_nodelay(true).unwrap();
+        let mut h = H2Up {
+            s,
+            dec: akio_http::hpack::Decoder::new(),
+            send_conn: 65_535,
+            send_stream: 65_535,
+            initial: 65_535,
+            sid: 0,
+        };
+        let mut preface = [0; 24];
+        h.s.read_exact(&mut preface).unwrap_or_else(|_| gone());
+        h.frame(SETTINGS, 0, 0, &[]);
+        loop {
+            let (kind, flags, sid, p) = h.next();
+            if kind != HEADERS {
+                continue;
+            }
+            h.sid = sid;
+            h.send_stream = h.initial;
+            let fields = h.dec.decode(&p).unwrap();
+            let get = |n: &str| {
+                fields
+                    .iter()
+                    .find(|(k, _)| k == n.as_bytes())
+                    .map(|(_, v)| String::from_utf8_lossy(v).into_owned())
+            };
+            let path = get(":path").unwrap_or_default();
+            if path.starts_with("/big") {
+                h.download(path.contains("length=1"));
+            } else {
+                let cl = get("content-length").unwrap_or_else(|| "-1".to_owned());
+                let n = if flags & END_STREAM != 0 {
+                    0
+                } else {
+                    h.read_upload()
+                };
+                let body = format!("{n} {cl}");
+                h.head(
+                    &[
+                        (":status", "200"),
+                        ("content-length", &body.len().to_string()),
+                    ],
+                    false,
+                );
+                h.frame(DATA, END_STREAM, sid, body.as_bytes());
+            }
+        }
+    }
+
+    fn frame(&mut self, kind: u8, flags: u8, stream: u32, payload: &[u8]) {
+        let len = payload.len();
+        let mut f = vec![(len >> 16) as u8, (len >> 8) as u8, len as u8, kind, flags];
+        f.extend_from_slice(&stream.to_be_bytes());
+        f.extend_from_slice(payload);
+        self.s.write_all(&f).unwrap_or_else(|_| gone());
+    }
+
+    fn head(&mut self, fields: &[(&str, &str)], end: bool) {
+        let mut block = Vec::new();
+        for (n, v) in fields {
+            block.push(0);
+            hpack_str(&mut block, n);
+            hpack_str(&mut block, v);
+        }
+        let flags = END_HEADERS | if end { END_STREAM } else { 0 };
+        let sid = self.sid;
+        self.frame(HEADERS, flags, sid, &block);
+    }
+
+    /// The next frame of akit's, after answering the connection's own: kind, flags, stream,
+    /// payload.
+    fn next(&mut self) -> (u8, u8, u32, Vec<u8>) {
+        loop {
+            if let Some(f) = self.step() {
+                return f;
+            }
+        }
+    }
+
+    /// Reads one frame: the connection's own (settings, pings, window updates) are answered and
+    /// give `None`.
+    fn step(&mut self) -> Option<(u8, u8, u32, Vec<u8>)> {
+        {
+            let mut h = [0; 9];
+            self.s.read_exact(&mut h).unwrap_or_else(|_| gone());
+            let len = (usize::from(h[0]) << 16) | (usize::from(h[1]) << 8) | usize::from(h[2]);
+            let (kind, flags) = (h[3], h[4]);
+            let stream = u32::from_be_bytes([h[5], h[6], h[7], h[8]]) & 0x7fff_ffff;
+            let mut p = vec![0; len];
+            self.s.read_exact(&mut p).unwrap_or_else(|_| gone());
+            match kind {
+                SETTINGS if flags & ACK == 0 => {
+                    for s in p.chunks_exact(6) {
+                        if u16::from_be_bytes([s[0], s[1]]) == 4 {
+                            let v = i64::from(u32::from_be_bytes([s[2], s[3], s[4], s[5]]));
+                            self.send_stream += v - self.initial;
+                            self.initial = v;
+                        }
+                    }
+                    self.frame(SETTINGS, ACK, 0, &[]);
+                }
+                SETTINGS => {}
+                PING if flags & ACK == 0 => self.frame(PING, ACK, 0, &p),
+                PING => {}
+                WINDOW_UPDATE => {
+                    let v = i64::from(u32::from_be_bytes([p[0], p[1], p[2], p[3]]) & 0x7fff_ffff);
+                    if stream == 0 {
+                        self.send_conn += v;
+                    } else if stream == self.sid {
+                        self.send_stream += v;
+                    }
+                }
+                RST_STREAM | GOAWAY => panic!("frame {kind} from akit: {p:?}"),
+                _ => return Some((kind, flags, stream, p)),
+            }
+            None
+        }
+    }
+
+    /// Sends `SIZE` bytes of the pattern on the current stream as akit's windows let it.
+    fn download(&mut self, length: bool) {
+        let size = SIZE.to_string();
+        let mut fields = vec![(":status", "200")];
+        if length {
+            fields.push(("content-length", &size));
+        }
+        self.head(&fields, false);
+        let mut buf = vec![0; 16 << 10];
+        let mut off = 0;
+        while off < SIZE {
+            let room = self.send_conn.min(self.send_stream);
+            if room <= 0 {
+                // Blocked on akit's window: a held download keeps it closed.
+                if let Some((kind, _, _, _)) = self.step() {
+                    assert!(kind != HEADERS, "a request while the download is blocked");
+                }
+                continue;
+            }
+            let n = buf
+                .len()
+                .min(SIZE - off)
+                .min(usize::try_from(room).unwrap());
+            fill(&mut buf[..n], off);
+            off += n;
+            let end = if off == SIZE { END_STREAM } else { 0 };
+            let data = buf[..n].to_vec();
+            let sid = self.sid;
+            self.frame(DATA, end, sid, &data);
+            self.send_conn -= n as i64;
+            self.send_stream -= n as i64;
+        }
+    }
+
+    /// Reads the current stream's body slowly, checking it and giving its window back as it
+    /// does; its length.
+    fn read_upload(&mut self) -> usize {
+        let mut pace = Pace { since: 0 };
+        let mut off = 0;
+        loop {
+            let (kind, flags, sid, p) = self.next();
+            if sid != self.sid {
+                continue;
+            }
+            if kind == DATA {
+                check(&p, off);
+                off += p.len();
+                pace.took(p.len());
+                if !p.is_empty() && flags & END_STREAM == 0 {
+                    let n = u32::try_from(p.len()).unwrap().to_be_bytes();
+                    self.frame(WINDOW_UPDATE, 0, 0, &n);
+                    self.frame(WINDOW_UPDATE, 0, sid, &n);
+                }
+            }
+            if flags & END_STREAM != 0 {
+                return off;
             }
         }
     }
@@ -653,6 +877,75 @@ fn stream_upload() {
             format!("{SIZE} {SIZE} ")
         } else {
             format!("{SIZE} -1 chunked")
+        };
+        assert_eq!(got, want, "{name}");
+        bounded(&name, watch, start);
+    }
+}
+
+/// [`stream_download`] from an h2c upstream (I18b): the download to a slow client holds the
+/// upstream's stream (its window kept closed), rather than piling up in akit.
+#[test]
+fn stream_download_from_h2c() {
+    let _serial = SERIAL
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let akit = Akit::start_with(h2_upstream(), "h2c");
+    for (h2c, length) in [(false, true), (false, false), (true, true), (true, false)] {
+        let name = format!("to h2c, h2c={h2c} length={length}");
+        let watch = Watch::new();
+        let start = Instant::now();
+        let mut pace = Pace { since: 0 };
+        let n = if h2c {
+            let mut h = H2::connect(akit.addr);
+            let q = if length { "?length=1" } else { "" };
+            h.request("GET", &format!("/big{q}"), &[], true);
+            h.response(|data, off| {
+                check(data, off);
+                pace.took(data.len());
+            })
+        } else {
+            let (head, n) = h1_download(akit.addr, length);
+            assert!(head.starts_with("HTTP/1.1 200"), "{name}: {head}");
+            n
+        };
+        assert_eq!(n, SIZE, "{name}");
+        bounded(&name, watch, start);
+    }
+}
+
+/// [`stream_upload`] to an h2c upstream (I18b): the upload is paced by what waits in its stream,
+/// rather than piling up in akit.
+#[test]
+fn stream_upload_to_h2c() {
+    let _serial = SERIAL
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let akit = Akit::start_with(h2_upstream(), "h2c");
+    for (h2c, length) in [(false, true), (false, false), (true, true), (true, false)] {
+        let name = format!("to h2c, h2c={h2c} length={length}");
+        let watch = Watch::new();
+        let start = Instant::now();
+        let got = if h2c {
+            let mut h = H2::connect(akit.addr);
+            let size = SIZE.to_string();
+            let fields: &[(&str, &str)] = if length {
+                &[("content-length", &size)]
+            } else {
+                &[]
+            };
+            h.request("PUT", "/upload", fields, false);
+            h.upload();
+            let mut body = Vec::new();
+            h.response(|data, _| body.extend_from_slice(data));
+            String::from_utf8(body).unwrap()
+        } else {
+            h1_upload(akit.addr, length)
+        };
+        let want = if length {
+            format!("{SIZE} {SIZE}")
+        } else {
+            format!("{SIZE} -1")
         };
         assert_eq!(got, want, "{name}");
         bounded(&name, watch, start);

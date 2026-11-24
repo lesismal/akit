@@ -54,16 +54,16 @@ first; its status here records the branch, then the akio commit akit pins.
 | A45 | A public timer: a callback run once a delay has passed, from any thread | requested (I35) | 1, 11 | I35, I31, I54 |
 | A48 | A request's end heard: its response sent in full, or its client gone while it waits | requested (I41) | 3, 11, 13 | I41, I17, I21, I37 |
 | A49 | A request body limited by a middleware, whoever reads the body | requested (I41) | 7, 11 | I41 |
-| A51 | `H2Client`'s streamed requests: reset, timeout, request trailers, and failed rather than forgotten on a `GOAWAY` | requested (I18) | 3, 10 | I18b, I50 |
-| A52 | `H2Client` backpressure per stream: a streamed response's reads held, an upload's queue reported | requested (I18) | 8 | I18b, I50 |
-| A53 | `H2Client`'s connection: the server's stream limit heeded and reported, the connect timeout, ALPN's HTTP/1.1 fallback | requested (I18) | 10, 11 | I18b, I54 |
+| A51 | `H2Client`'s streamed requests: reset, timeout, request trailers, and failed rather than forgotten on a `GOAWAY` | in akio's main (`f6750e93`, ADR-110), pinned, used by I18b 3, 10 | I18b, I50 |
+| A52 | `H2Client` backpressure per stream: a streamed response's reads held, an upload's queue reported | in akio's main (`f6750e93`, ADR-110), pinned, used by I18b 8 | I18b, I50 |
+| A53 | `H2Client`'s connection: the server's stream limit heeded and reported, the connect timeout, ALPN's HTTP/1.1 fallback | in akio's main (`f6750e93`, ADR-110), pinned, used by I18b 10, 11 | I18b, I54 |
 | A54 | An idle HTTP/1 connection drained after a grace, not at once | requested (I28) | 10 | I28 |
 | A57 | Root certificates usable outside a handshake: the system's, to verify a chain against | requested (I32) | 1, 19 | I32 |
 | A58 | The ALPN protocol a TLS connection negotiated, seen by an HTTP service (or such a connection closed) | requested (I32) | 19 | I32, I34 |
 | A63 | bcrypt password hashes in `akio-crypto` | in akio's main (`4f7169c4`), pinned | 1, 4 | I42 |
 | A64 | The client's verified certificate on each server request | in akio's main (`4f7169c4`), pinned | — | I42 |
 | A65 | A request suspended by a middleware and resumed with its context | in akio's main (`4f7169c4`), pinned | 1, 3, 4 | I42, I43 |
-| A66 | `H2Client`'s requests heeding `response_header_timeout`, `response_idle_timeout` and a `CancelToken` | requested (I17b) | 3, 10 | I17b, I18b |
+| A66 | `H2Client`'s requests heeding `response_header_timeout`, `response_idle_timeout` and a `CancelToken` | in akio's main (`d27e6a20`, ADR-111), pinned, used by I18b | 3, 10 | I17b, I18b |
 | A75 | A request whose body streams suspended, its body's reads held until it is resumed | requested (I43) | 5, 7, 8 | I42, I43, I44 |
 | A78 | An idle timeout per connection, TCP or a UDP peer, set by its handler | requested (I51) | 10, 11 | I51, I55 |
 | A79 | `Engine::dial` and `dial_udp` with a connect timeout of their own | requested (I51) | 10 | I51, I54, I55 |
@@ -924,6 +924,12 @@ once its other streams are over; the per-address timer tick that enforces `respo
 request trailers go up; a `GOAWAY` fails its doomed streams (502, or a retry, I45) and retires the
 connection. I50's gRPC proxying needs all four.
 
+**Done** (akio ADR-110, in akio's main at `f6750e93`, pinned by I18b): `H2Upload::stream()`
+gives an `H2Stream` whose `cancel` resets the stream (`H2Upload::cancel` too); `open` arms
+`ClientRequest::timeout`; `H2Upload::finish_with_trailers`; a `GOAWAY`'s doomed streams, and
+requests after it, fail with the new `ClientError::Refused`, and `is_open` is false once one came.
+I18b uses all four.
+
 ## A52 `H2Client` backpressure per stream
 
 **Problem.** Rule 8 links backpressure: a slow client holds the upstream's reads, and a slow
@@ -952,6 +958,11 @@ it hands bytes on. On `H2Upload`: `queued_bytes()` (accepted, not yet in a DATA 
 paces an upload by its queue, exactly as over HTTP/1; akit's stopgap, which cuts a held download
 off past `HELD_LIMIT` (4 MiB) and lets an upload's queue grow up to the body limit, goes.
 
+**Done** (akio ADR-110, `f6750e93`): `H2Stream::hold_reads` keeps the stream's window closed
+while held; `H2Upload::try_write`, `queued_bytes` and `on_drain`, bounded by
+`H2Options::max_queued_bytes`. Not done: `consume(n)`. I18b holds downloads and paces uploads with
+them, as over HTTP/1.1.
+
 ## A53 `H2Client`'s connection: the server's stream limit, the connect timeout, ALPN's fallback
 
 **Problem.** A pool of h2 connections opens a stream on a connection with one free and dials
@@ -979,6 +990,14 @@ HappyEyeballs, ready)`. A dial over TLS that reports the protocol ALPN chose (`r
 **How akit uses it.** I18b: `akit_upstream::h2` sizes each connection by the server's limit, dials
 within the upstream's `connect_timeout`, and with `h2` falls back to akio's HTTP/1 client for a
 server that does not speak h2, as fit's `h2` does (I54 adds the `tls_*` fields).
+
+**Done** (akio ADR-110, `f6750e93`): `H2Client::max_concurrent_streams`, `open_streams` and
+`waiting_streams`, requests past the limit waiting in the client (`H2Options::max_pending_streams`,
+else `ClientError::Busy`); `H2Options::happy_eyeballs` for `connect`; over TLS, a dial that
+fails with `NotH2 { alpn }` when ALPN did not choose `h2`. Not done: `connect_with` and the
+`enum { H2, Http1 }` (rejected in ADR-110: the race belongs in `H2Options`, and a fallback dials
+akio's HTTP/1 client). I18b sizes connections by the server's limit, races addresses within
+`connect_timeout` (a lone address keeps the engine's, A12), and speaks HTTP/1.1 over TLS to an `h2` address on `NotH2`.
 
 ## A57 Root certificates usable outside a handshake
 
@@ -1144,6 +1163,12 @@ once, and leaves the connection to its other streams.
 **How akit uses it.** I18b: `akit_upstream::h2`'s per-address tick stops checking each stream for
 its head, its silence and its token (I17b's stopgap, within a `TICK` of 100ms), and a stream given
 up for one of them is reset rather than left running with its connection retired.
+
+**Done** (akio ADR-111, `d27e6a20`, made by I18b's session): as suggested, no new API.
+`H2Client::request` and `open` heed the three fields: the header timeout from the request's
+END_STREAM to the final HEADERS, the idle timeout between DATA frames (held reads not counted),
+and a `CancelToken` that now covers h2 streams too; each resets the stream alone and fails it
+once with `HeaderTimeout`, `IdleTimeout` or `Cancelled`. I18b drops the per-address tick's checks.
 
 ## A78 An idle timeout per connection
 

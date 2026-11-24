@@ -117,7 +117,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I17 | Reverse proxy III: timeouts, cancellation, trailers | I16 | done |
 | I17b | Reverse proxy III b: header and idle timeouts, cancellation before the head, write stalls | I17, akio A36–A38 | done |
 | I18 | HTTP/2 and h2c upstreams | I17 | done |
-| I18b | HTTP/2 upstreams II: streams reset, timed and paced by akio | I18, akio A51–A53, A66 | todo |
+| I18b | HTTP/2 upstreams II: streams reset, timed and paced by akio | I18, akio A51–A53, A66 | done |
 | I19 | Load balancing v1 | I14 | done |
 | I20 | Passive health checks | I19 | done |
 | I21 | Access logs | I15 | done |
@@ -207,7 +207,7 @@ commit and result.
 | Router v1: host and path lookup | I11 | no | no (built, not measured) | A micro-benchmark of the lookup (no allocation) and same-run A/B of fixed against I05's scan, with many routes. |
 | Static files | I12, I13 | no | no (built, not measured) | The static scenario, HTTP/1.1 and h2c (skipped for akit in the baseline); precompressed twins and `sendfile` for large files. |
 | Upstream pools | I14 | no | no (built, not measured) | Through the proxy scenario: connection reuse, waiting for a connection under a limit. |
-| Reverse proxy: HTTP/1.1, streamed bodies, h2 and h2c upstreams | I15–I18 | no | no (built, not measured) | The proxy scenario, HTTP/1.1 and h2c (skipped for akit in the baseline); large bodies both ways, with memory per request in flight; requests with trailers (I17's `Trailer` parsing per request); h2c upstreams (I18): requests a second and CPU a request against an HTTP/1.1 upstream, with many clients multiplexed on few connections, and the per-address lock that leases a stream (`akit_upstream::h2`); I17b's `CancelToken` and `on_gone` per proxied request, and over h2c the idle timeout re-armed per DATA frame. |
+| Reverse proxy: HTTP/1.1, streamed bodies, h2 and h2c upstreams | I15–I18 | no | no (built, not measured) | The proxy scenario, HTTP/1.1 and h2c (skipped for akit in the baseline); large bodies both ways, with memory per request in flight; requests with trailers (I17's `Trailer` parsing per request); h2c upstreams (I18): requests a second and CPU a request against an HTTP/1.1 upstream, with many clients multiplexed on few connections, and the per-address lock that leases a stream (`akit_upstream::h2`); I17b's `CancelToken` and `on_gone` per proxied request; over h2c (I18b) akio's per-stream state and its header and idle timers (a clock read per DATA frame, a timer job per request), a held download and a paced upload against HTTP/1.1's. |
 | Load balancing v1 and v2 | I19, I36 | no | no (built, not measured) | A micro-benchmark of each policy's pick (fit's `BenchmarkPick` and `BenchmarkPickNew`: the nine policies, a key hashed, a sticky cookie looked up), 1 and 16 threads; proxy A/B against a single server; same-run A/B of the proxy scenario with `round_robin` against `p2c`, `header_hash` and a `sticky_cookie` (the per-request key hashing and, for a first request, the `Set-Cookie` copied). |
 | Passive health checks | I20 | no | no (built, not measured) | A micro-benchmark of recording a result on the request path. |
 | Active health checks | I35 | no | no (built, not measured) | Off the hot path (a pick still reads one atomic per address): the probes' cost on a busy engine, thousands of addresses probed every second (http and tcp), with the probe timer's thread (the stopgap for akio A45); same-run A/B of the proxy scenario with a health check on and off. |
@@ -437,7 +437,7 @@ Split from I07 so that the half that needs no config model runs beside I02.
   `TestClientAbort`, ported, pass.
 - **Touches**: `akit-proxy`, `akit-upstream`, `akit-listener`, `akit-config`.
 - **Split**: what akio's h2 client does not heed yet (the timeouts and the cancel over h2, akio API
-  request A66) is checked by `akit_upstream::h2`'s tick until I18b.
+  request A66) was checked by `akit_upstream::h2`'s tick until I18b, which hands them to akio.
 
 ### I18 HTTP/2 and h2c upstreams
 

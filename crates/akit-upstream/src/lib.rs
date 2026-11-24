@@ -27,8 +27,8 @@
 //! - **`response_header_timeout`** and **`response_idle_timeout`** (I17b): how long the upstream
 //!   may take, once the request is sent whole, to begin its response
 //!   ([`ClientError::HeaderTimeout`]), and how long it may go silent mid-body while its reads are
-//!   not held ([`ClientError::IdleTimeout`]): akio's client's own (ADR-108) over HTTP/1.1, the
-//!   [`h2`] tick's over h2.
+//!   not held ([`ClientError::IdleTimeout`]): akio's clients' own (ADR-108 over HTTP/1.1,
+//!   ADR-111 over h2).
 //! - **Cancellation** (I17b): a request given a [`CancelToken`] ([`ClientRequest::cancel_with`])
 //!   is given up when the token is cancelled, whether it waits for a connection, waits for its
 //!   head or reads its body; it fails with [`ClientError::Cancelled`], which is not the address's
@@ -65,11 +65,14 @@
 //! lasts, as fit's do.
 //!
 //! I18 adds upstreams over h2 and h2c (the upstream's `protocol`), on akio's h2 client
-//! ([`h2`]): each address's connections carry up to [`STREAMS_PER_CONN`] requests at once, and
-//! `max_conns` bounds the connections; `max_pending`, the balancers, health and the timeouts
-//! work as over HTTP/1.1. [`Exchange`]'s bodies ([`Upload`], [`Download`]) are the same for
-//! both. What akio's h2 client lacks (akio API requests A51–A53) is done by bounded stopgaps,
-//! listed in [`h2`].
+//! ([`h2`]): each address's connections carry as many requests at once as its server allows,
+//! and `max_conns` bounds the connections; `max_pending`, the balancers, health and the
+//! timeouts work as over HTTP/1.1. [`Exchange`]'s bodies ([`Upload`], [`Download`]) are the same
+//! for both. I18b moves what I18 did by stopgaps to akio (akio API requests A51–A53 and A66): a
+//! stream given up is reset, akio times it, a held download keeps its window closed, an upload
+//! is paced by what waits in its stream, request trailers go up, the dial races a name's resolved
+//! addresses within `connect_timeout`, and an `h2` address whose server chooses HTTP/1.1 in ALPN
+//! is spoken HTTP/1.1 over TLS.
 //!
 //! Nothing here blocks: [`Pool::send`] runs on an I/O thread, and its callback runs once, on an
 //! I/O thread (or the resolver's or the timer's thread, as akio's client says), never blocking
@@ -116,7 +119,7 @@ use akit_observe::metrics::{HistogramSnapshot, UpstreamStats};
 pub use akio_http::client::CancelToken;
 pub use akit_config::{HealthCheck, HealthCheckType, UpstreamProtocol};
 pub use balance::{Balancer, Keys, LoadBalancing};
-pub use h2::{HELD_LIMIT, STREAMS_PER_CONN};
+pub use h2::STREAMS_PER_CONN;
 pub use health::Health;
 pub use sticky::{Sticky, sticky_id};
 
@@ -332,22 +335,22 @@ impl Upload {
         }
     }
 
-    /// Bytes written but not yet sent. Always 0 over h2, whose client does not tell (akio API
-    /// request A52).
+    /// Bytes written but not yet sent (over h2: not yet in a DATA frame, the stream's or the
+    /// connection's window closed).
     #[must_use]
     pub fn queued_bytes(&self) -> usize {
         match &self.0 {
             UploadKind::H1(b) => b.queued_bytes(),
-            UploadKind::H2(_) => 0,
+            UploadKind::H2(b) => b.queued_bytes(),
         }
     }
 
-    /// Calls `f` once what is queued is sent (at once, on this thread, if nothing is, as over
-    /// h2 always), or when the connection closes.
+    /// Calls `f` once what is queued is sent (at once, on this thread, if nothing is), or when
+    /// the connection (over h2, the stream) is over.
     pub fn on_drain(&self, f: impl FnOnce() + Send + 'static) {
         match &self.0 {
             UploadKind::H1(b) => b.on_drain(f),
-            UploadKind::H2(_) => f(),
+            UploadKind::H2(b) => b.on_drain(f),
         }
     }
 
@@ -360,12 +363,12 @@ impl Upload {
         }
     }
 
-    /// Ends the body with `trailers` after it, when it is chunked. Over h2 the trailers are
-    /// dropped: its client cannot send them yet (akio API request A51).
+    /// Ends the body with `trailers` after it, when it is chunked (over h2, always: a HEADERS
+    /// frame ends the stream).
     pub fn finish_with_trailers(self, trailers: Headers) -> bool {
         match self.0 {
             UploadKind::H1(b) => b.finish_with_trailers(trailers).is_ok(),
-            UploadKind::H2(b) => b.finish(),
+            UploadKind::H2(b) => b.finish_with_trailers(trailers),
         }
     }
 }
@@ -395,9 +398,9 @@ impl Download {
         Download(DownloadKind::H2(s))
     }
 
-    /// Holds (`true`) or resumes the upstream connection's reads. Over h2, whose client cannot
-    /// hold one stream (akio API request A52), what still arrives is passed on, and past
-    /// [`HELD_LIMIT`] the response is given up.
+    /// Holds (`true`) or resumes the upstream connection's reads (over h2, the stream's: its
+    /// window is not given back, so the upstream stops once it has sent what it had; what is
+    /// already in flight is still passed on).
     pub fn hold_reads(&self, hold: bool) {
         match &self.0 {
             DownloadKind::H1 { body, .. } => body.hold_reads(hold),
@@ -405,10 +408,9 @@ impl Download {
         }
     }
 
-    /// Gives the response up: its connection is closed (over h2, its stream is left and the
-    /// connection closed once its other streams are over), and the exchange ends with
-    /// [`Exchange::on_error`]. The address is not counted as failing for it: the proxy's client
-    /// went, not the upstream.
+    /// Gives the response up: its connection is closed (over h2, its stream is reset), and the
+    /// exchange ends with [`Exchange::on_error`]. The address is not counted as failing for it:
+    /// the proxy's client went, not the upstream.
     pub fn cancel(&self) {
         match &self.0 {
             DownloadKind::H1 { body, cancelled } => {
@@ -533,6 +535,13 @@ struct Inner {
     on_closed: Mutex<Vec<Box<dyn FnOnce() + Send>>>,
 }
 
+/// The h2 client's options of upstream `u`: its dial bounded by `connect_timeout`.
+fn h2_options(u: &akit_config::Upstream) -> H2Options {
+    let mut o = H2Options::default();
+    o.happy_eyeballs.connect_timeout = u.connect_timeout;
+    o
+}
+
 /// The connections to one upstream's addresses, and the limits on them. Cheap to clone: clones
 /// share the pool.
 #[derive(Clone)]
@@ -579,7 +588,12 @@ impl Pool {
             .iter()
             .map(|a| Backend {
                 address: a.clone(),
-                base: format!("http://{a}"),
+                // Over HTTP/1.1, and for an `h2` address whose server chose HTTP/1.1, over TLS.
+                base: if u.protocol == UpstreamProtocol::H2 {
+                    format!("https://{a}")
+                } else {
+                    format!("http://{a}")
+                },
                 busy: AtomicUsize::new(0),
                 waiting: AtomicUsize::new(0),
                 queue: Mutex::new(VecDeque::new()),
@@ -614,11 +628,11 @@ impl Pool {
                 protocol: u.protocol,
                 h2: match u.protocol {
                     UpstreamProtocol::H2c => Some(h2::Transport {
-                        opts: H2Options::default(),
+                        opts: h2_options(u),
                         tls: None,
                     }),
                     UpstreamProtocol::H2 => Some(h2::Transport {
-                        opts: H2Options::default(),
+                        opts: h2_options(u),
                         tls: Some(h2::system_tls()),
                     }),
                     _ => None,
@@ -655,8 +669,9 @@ impl Pool {
     }
 
     /// The same h2 pool, its connections made with the TLS configuration `tls` rather than the
-    /// system's roots, as I54's `tls_*` fields will make it; `tls` must offer ALPN `h2`. Only
-    /// before the pool is shared, and only for an h2 upstream.
+    /// system's roots, as I54's `tls_*` fields will make it; `tls` must offer ALPN `h2` (and
+    /// `http/1.1`, for a server that may choose it: an address whose server does is then spoken
+    /// HTTP/1.1 with `tls`). Only before the pool is shared, and only for an h2 upstream.
     #[must_use]
     pub fn with_tls(mut self, tls: akio::tls::ClientConfig) -> Pool {
         if let Some(inner) = Arc::get_mut(&mut self.inner) {
@@ -1142,10 +1157,14 @@ impl Inner {
             return Some(c);
         }
         let engine = self.engine.get()?;
-        Some(
-            self.client
-                .get_or_init(|| Client::new(Arc::clone(engine)).with_options(self.opts.clone())),
-        )
+        Some(self.client.get_or_init(|| {
+            let c = Client::new(Arc::clone(engine)).with_options(self.opts.clone());
+            // An `h2` pool's, for the addresses whose server chose HTTP/1.1 in ALPN.
+            match self.h2.as_ref().and_then(|t| t.tls.as_ref()) {
+                Some(Ok(tls)) => c.with_tls(tls.clone()),
+                _ => c,
+            }
+        }))
     }
 
     /// A slot for `w` on `b`: `Some(w)` when it has one now, `None` when it was queued or
@@ -1177,11 +1196,7 @@ impl Inner {
 
     /// Sends `w` to `backend`, whose slot it holds.
     fn start(self: &Arc<Self>, backend: usize, w: Waiter) {
-        let Waiter {
-            mut req,
-            done,
-            since,
-        } = w;
+        let Waiter { req, done, since } = w;
         let limit = req.timeout.map_or(self.timeout, |t| t.min(self.timeout));
         let left = limit.saturating_sub(since.elapsed());
         if left.is_zero() {
@@ -1190,10 +1205,24 @@ impl Inner {
             self.finish_one();
             return done.fail(Error::Timeout);
         }
-        if self.h2.is_some() {
+        let http1 = self.backends.get(backend).is_some_and(|b| b.h2.fell_back());
+        if self.h2.is_some() && !http1 {
             return self.start_h2(backend, req, done, since, left);
         }
-        let (Some(b), Some(client)) = (self.backends.get(backend), self.client.get()) else {
+        self.start_http1(backend, req, done, since, left);
+    }
+
+    /// Sends `req` (its target in origin form) to `backend` over HTTP/1.1, its slot held, the
+    /// exchange bounded by `left` from now.
+    fn start_http1(
+        self: &Arc<Self>,
+        backend: usize,
+        mut req: ClientRequest,
+        done: Deliver,
+        since: Instant,
+        left: Duration,
+    ) {
+        let (Some(b), Some(client)) = (self.backends.get(backend), self.client()) else {
             // Neither happens: `send` checked both before the slot was taken.
             self.release(backend);
             self.finish_one();

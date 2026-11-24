@@ -1,86 +1,66 @@
-//! Requests to an h2 or h2c upstream (I18), on akio's [`H2Client`]: the connections to each
-//! address, the streams on them, and an exchange's two bodies.
+//! Requests to an h2 or h2c upstream (I18, I18b), on akio's [`H2Client`]: the connections to
+//! each address, the streams on them, and an exchange's two bodies.
 //!
 //! Each address has its own connections ([`Conns`]). A request takes a stream on the first
-//! connection with one free, and a connection is dialed when none has one: at most
-//! [`STREAMS_PER_CONN`] streams to a connection, and the pool's `max_conns` bounds the
-//! connections, through the streams under way to the address, which are at most `max_conns`
-//! times as many. A connection that has carried its last stream stays for the next request,
-//! as an HTTP/1 one does: at most `max_idle_conns` of them to an address, each for
-//! `idle_timeout`.
+//! connection with one free, by the server's `SETTINGS_MAX_CONCURRENT_STREAMS`
+//! ([`H2Client::max_concurrent_streams`]; [`STREAMS_PER_CONN`] until the server says, or when it
+//! sets no limit), and a connection is dialed when none has one, while the address has fewer
+//! than `max_conns` open. Past that, the request goes to the open connection with the fewest
+//! streams, where akio holds it until one of them ends (`H2Options::max_pending_streams`, its
+//! timeouts and cancel applying meanwhile). The pool's slots bound the streams under way to an
+//! address at `max_conns` times [`STREAMS_PER_CONN`]. A connection that has carried its last
+//! stream stays for the next request, as an HTTP/1 one does: at most `max_idle_conns` of them to
+//! an address, each for `idle_timeout`, closed by a job of akit's timer thread ([`crate::timer`])
+//! that runs every [`TICK`] while the address has an idle connection. A connection that is no
+//! longer open (closed, or after the server's `GOAWAY`: [`H2Client::is_open`]) takes no more
+//! streams and is closed once its last is over.
 //!
-//! What akio's h2 client cannot do yet is done here by stopgaps, each bounded, until akio API
-//! requests A51–A53 replace them (I18b):
+//! akio does the rest (its ADR-110 and ADR-111, akio API requests A51–A53 and A66):
 //!
-//! - **Streams per connection** are [`STREAMS_PER_CONN`], the least RFC 9113 lets a server
-//!   advertise, since akio's client neither reports nor heeds the server's
-//!   `SETTINGS_MAX_CONCURRENT_STREAMS` (A53).
-//! - **Giving a stream up** (the client gone, the exchange's timeout, a client too slow): akio's
-//!   streamed requests ([`H2Client::open`]) cannot be reset (A51), so the stream is left to run
-//!   with its events dropped, and its connection takes no more streams and is closed once its
-//!   other streams are over, which ends it. A connection that failed a stream as closed (as
-//!   after a `GOAWAY`) takes no more either.
-//! - **Timeouts and cancellation**: akio's streamed requests have no timeouts (A51) and its h2
-//!   client heeds neither the request's `response_header_timeout` and `response_idle_timeout`
-//!   nor its [`CancelToken`](akio_http::client::CancelToken) (akio API request A66), so each
-//!   address's streams are checked every [`TICK`] by a job of akit's timer thread
-//!   ([`crate::timer`]), which gives up those past their deadline, those whose head is late
-//!   (the header timeout, from the request's body ended), those silent mid-body (the idle
-//!   timeout, stopped while the download is held) and those whose token was cancelled. Each is
-//!   noticed within a [`TICK`] of it. The same job closes connections idle past `idle_timeout`.
-//! - **Backpressure on the response**: akio's client gives each stream's window back as soon as
-//!   data arrives (A52), so holding a download cannot slow the upstream. While a download is
-//!   held, what still arrives is passed on and counted; past [`HELD_LIMIT`] the stream is given
-//!   up, its response cut short, as a client that took nothing of it would have it.
-//! - **Backpressure on the request**: akio's [`H2Upload`] reports nothing of what waits in its
-//!   queue (A52), so an upload is not paced: what waits there is bounded by the body's limit
-//!   (the listener's `limits.max_body_bytes`).
-//! - **Request trailers** are dropped: [`H2Upload`] cannot send them (A51).
+//! - **Giving a stream up** resets it (`RST_STREAM CANCEL`) and leaves its connection to the
+//!   others: the client gone after the head ([`crate::Download::cancel`]), the request's body
+//!   dropped unfinished (its client went mid-upload), the request's [`CancelToken`]
+//!   (`ClientRequest::cancel`) at any point. Each fails the exchange with
+//!   `ClientError::Cancelled`, which is not the address's failure.
+//! - **Timeouts**: the exchange's `response_timeout` (`ClientRequest::timeout`), and the
+//!   upstream's `response_header_timeout` (from the request's END_STREAM) and
+//!   `response_idle_timeout` (between DATA frames, the time the download is held aside), each
+//!   resetting the stream alone.
+//! - **Backpressure** both ways: a held download keeps the stream's window closed
+//!   (`H2Stream::hold_reads`), and an upload is paced by what waits in its stream
+//!   (`H2Upload::queued_bytes`, `on_drain`), as over HTTP/1.1.
+//! - **Request trailers** end the body (`H2Upload::finish_with_trailers`).
+//! - **The dial** is bounded by the upstream's `connect_timeout` (`H2Options::happy_eyeballs`), per
+//!   address raced when its name resolves to several; a lone address is dialed within the
+//!   engine's, as over HTTP/1.1 (akio API request A12). With `h2`, the TLS handshake offers `h2` and `http/1.1` in ALPN, as fit's does: when the
+//!   server chooses `http/1.1` (or nothing), akio fails the dial with [`NotH2`], and the address
+//!   is spoken HTTP/1.1 over TLS by the pool's HTTP/1 client from then on, the requests that
+//!   waited for the dial included.
 
 use std::io;
-use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError, TryLockError, Weak};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
 use std::time::{Duration, Instant};
 
 use akio::Engine;
 use akio::tls::ClientConfig as TlsClientConfig;
 use akio_http::Headers;
-use akio_http::client::{CancelToken, ClientError, ClientRequest, ClientResponse, StreamedBody};
-use akio_http::h2client::{H2Client, H2Event, H2Options, H2Upload};
+use akio_http::client::{ClientError, ClientRequest, ClientResponse, StreamedBody};
+use akio_http::h2client::{H2Client, H2Event, H2Options, H2Stream, H2Upload, NotH2};
+
+#[cfg(doc)]
+use akio_http::client::CancelToken;
 
 use crate::{Error, Exchange, Head, Inner};
 
-/// The most streams a request opens on one connection at once: the least RFC 9113 (§6.5.2)
-/// lets a server advertise, until akio reports the server's own (akio API request A53).
+/// The streams a request opens on one connection at once until the server says how many it
+/// allows (or when it sets no limit): the least RFC 9113 (§6.5.2) lets a server advertise, and
+/// Go's transport's guess. A pool's slots bound an address's streams at `max_conns` times it.
 pub const STREAMS_PER_CONN: usize = 100;
 
-/// How much of a held download may still arrive before the stream is given up (the stopgap for
-/// akio API request A52).
-pub const HELD_LIMIT: usize = 4 << 20;
-
-/// How often each address's streams are checked for their deadline, and its idle connections
-/// for their `idle_timeout`, while it has connections (the stopgap for akio API request A51).
+/// How often an address's idle connections are checked for their `idle_timeout`, while it has
+/// one.
 pub const TICK: Duration = Duration::from_millis(100);
-
-/// Why a stream is given up before akio ends it.
-const STOP_NONE: u8 = 0;
-/// The proxy's client went, after the response began ([`crate::Download::cancel`]).
-const STOP_CANCEL: u8 = 1;
-/// The request's body was dropped unfinished: its client went before it ended.
-const STOP_GAVE_UP: u8 = 2;
-/// The exchange's timeout passed.
-const STOP_TIMEOUT: u8 = 3;
-/// More than [`HELD_LIMIT`] arrived while the download was held.
-const STOP_SLOW: u8 = 4;
-/// No head within the upstream's `response_header_timeout` of the request sent whole.
-const STOP_HEADER: u8 = 5;
-/// The body was silent past the upstream's `response_idle_timeout`.
-const STOP_IDLE: u8 = 6;
-/// The request's [`CancelToken`] was cancelled.
-const STOP_CANCELLED: u8 = 7;
-
-/// A deadline on the pool's clock that is not armed.
-const UNARMED: u64 = u64::MAX;
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(PoisonError::into_inner)
@@ -97,19 +77,30 @@ struct Conn {
     client: Option<H2Client>,
     /// The requests waiting for it to be dialed.
     waiting: Vec<Ready>,
-    /// Streams on it that are not over (those waiting for it included), given-up ones aside.
+    /// Streams on it that are not over (those waiting for it included).
     streams: usize,
-    /// It takes no more streams, and is closed once `streams` is 0.
+    /// It takes no more streams, and is closed once `streams` is 0 (the pool is closing).
     retiring: bool,
     /// Since when it has carried no stream.
     idle_since: Option<Instant>,
-    /// Its streams with a deadline, for the tick.
-    timed: Vec<Arc<Stream>>,
 }
 
 impl Conn {
     fn open(&self) -> bool {
         self.client.as_ref().is_none_or(H2Client::is_open)
+    }
+
+    /// Whether it may take a stream: open, not retiring.
+    fn usable(&self) -> bool {
+        !self.retiring && self.open()
+    }
+
+    /// The streams it may carry at once: the server's limit, once it said one.
+    fn cap(&self) -> usize {
+        match self.client.as_ref().map(H2Client::max_concurrent_streams) {
+            None | Some(u32::MAX) => STREAMS_PER_CONN,
+            Some(n) => usize::try_from(n).unwrap_or(usize::MAX),
+        }
     }
 }
 
@@ -125,6 +116,8 @@ struct State {
 #[derive(Default)]
 pub(crate) struct Conns {
     state: Mutex<State>,
+    /// The server chose HTTP/1.1 in ALPN: requests go to it over HTTP/1.1 (TLS).
+    http1: AtomicBool,
 }
 
 impl Conns {
@@ -154,6 +147,16 @@ impl Conns {
         let st = lock(&self.state);
         (st.list.len(), st.list.iter().map(|c| c.streams).sum())
     }
+
+    /// Whether the address speaks HTTP/1.1 rather than h2 (its server chose it in ALPN).
+    pub(crate) fn fell_back(&self) -> bool {
+        self.http1.load(Ordering::SeqCst)
+    }
+
+    /// The address's server chose HTTP/1.1 (or nothing) in ALPN.
+    pub(crate) fn fall_back(&self) {
+        self.http1.store(true, Ordering::SeqCst);
+    }
 }
 
 /// How the pool reaches an h2 or h2c upstream.
@@ -163,13 +166,14 @@ pub(crate) struct Transport {
     pub(crate) tls: Option<Result<TlsClientConfig, String>>,
 }
 
-/// The TLS configuration of an h2 upstream with the system's roots and ALPN `h2`. Reads the
-/// roots from disk: run when the config is compiled, never on an I/O thread.
+/// The TLS configuration of an h2 upstream with the system's roots, offering `h2` and
+/// `http/1.1` in ALPN, as fit's does. Reads the roots from disk: run when the config is compiled,
+/// never on an I/O thread.
 pub(crate) fn system_tls() -> Result<TlsClientConfig, String> {
     let roots = akio::tls::RootCerts::system().map_err(|e| e.to_string())?;
     TlsClientConfig::builder()
         .roots(roots)
-        .alpn(["h2"])
+        .alpn(["h2", "http/1.1"])
         .build()
         .map_err(|e| e.to_string())
 }
@@ -190,8 +194,9 @@ fn io_error(e: &io::Error) -> Error {
 
 impl Inner {
     /// A stream to `backend`'s address, given to `ready` once its connection is there: on a
-    /// connection with one free, or on one dialed for it. Runs `ready` on this thread when a
-    /// connection is open, or on the thread that dialed one.
+    /// connection with one free, on one dialed for it, or, once the address has `max_conns`, on
+    /// the one with the fewest streams. Runs `ready` on this thread when a connection is open,
+    /// or on the thread that dialed one.
     fn lease(self: &Arc<Self>, backend: usize, ready: Ready) {
         let Some(b) = self.backends.get(backend) else {
             return ready(Err(Error::NoEngine));
@@ -211,11 +216,25 @@ impl Inner {
                     true
                 }
             });
-            let found = st
+            let live = st.list.iter().filter(|c| c.usable()).count();
+            let free = st
                 .list
-                .iter_mut()
-                .find(|c| !c.retiring && c.streams < STREAMS_PER_CONN && c.open());
-            match found {
+                .iter()
+                .position(|c| c.usable() && c.streams < c.cap());
+            // All full and as many as allowed: akio holds the stream on the least busy one.
+            let found = free.or_else(|| {
+                (live >= self.max_conns)
+                    .then(|| {
+                        st.list
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, c)| c.usable())
+                            .min_by_key(|(_, c)| c.streams)
+                            .map(|(i, _)| i)
+                    })
+                    .flatten()
+            });
+            match found.and_then(|i| st.list.get_mut(i)) {
                 Some(c) => {
                     c.streams = c.streams.saturating_add(1);
                     c.idle_since = None;
@@ -237,7 +256,6 @@ impl Inner {
                         streams: 1,
                         retiring: false,
                         idle_since: None,
-                        timed: Vec::new(),
                     });
                     (None, Some(id), closing)
                 }
@@ -276,8 +294,8 @@ impl Inner {
             }
         };
         let me = Arc::clone(self);
-        // akio resolves a name off this thread, and dials within the engine's connect timeout
-        // (akio API request A53 asks for the upstream's own).
+        // akio resolves a name off this thread, and races its addresses within the upstream's
+        // connect timeout (`t.opts.happy_eyeballs`; a lone one, the engine's: A12).
         H2Client::connect(
             &Arc::clone(engine) as &Arc<Engine>,
             host,
@@ -285,7 +303,15 @@ impl Inner {
             tls,
             t.opts.clone(),
             move |r| {
-                let r = r.map_err(|e| io_error(&e));
+                let r = r.map_err(|e| {
+                    if NotH2::of(&e).is_some() {
+                        // The waiting requests go over HTTP/1.1 (`start_h2`), and those after.
+                        if let Some(b) = me.backends.get(backend) {
+                            b.h2.fall_back();
+                        }
+                    }
+                    io_error(&e)
+                });
                 me.dialed(backend, id, r);
             },
         );
@@ -336,15 +362,8 @@ impl Inner {
         }
     }
 
-    /// A stream on connection `id` to `backend` is over: given up (`retire`: the connection takes
-    /// no more, as when its stream is left running) or not.
-    fn stream_done(
-        self: &Arc<Self>,
-        backend: usize,
-        id: u64,
-        stream: Option<&Arc<Stream>>,
-        retire: bool,
-    ) {
+    /// A stream on connection `id` to `backend` is over.
+    fn stream_done(self: &Arc<Self>, backend: usize, id: u64) {
         let Some(b) = self.backends.get(backend) else {
             return;
         };
@@ -363,14 +382,9 @@ impl Inner {
             let Some(c) = st.list.get_mut(i) else {
                 return;
             };
-            if let Some(s) = stream {
-                if let Some(j) = c.timed.iter().position(|t| Arc::ptr_eq(t, s)) {
-                    c.timed.swap_remove(j);
-                }
-            }
             c.streams = c.streams.saturating_sub(1);
-            c.retiring |= retire;
             let mut close = None;
+            let mut tick = false;
             if c.streams == 0 {
                 if c.retiring
                     || !c.open()
@@ -380,36 +394,14 @@ impl Inner {
                     close = st.list.swap_remove(i).client;
                 } else {
                     c.idle_since = Some(now);
+                    tick = !std::mem::replace(&mut st.ticking, true);
                 }
-            }
-            let tick = !st.ticking && !st.list.is_empty();
-            if tick {
-                st.ticking = true;
             }
             (close, tick)
         };
         if let Some(c) = close {
             c.close();
         }
-        if tick {
-            self.schedule_tick(backend);
-        }
-    }
-
-    /// Registers `s`, on connection `id` to `backend`, for the tick to give up past its deadline.
-    fn track(self: &Arc<Self>, backend: usize, id: u64, s: &Arc<Stream>) {
-        let Some(b) = self.backends.get(backend) else {
-            return;
-        };
-        let tick = {
-            let mut st = lock(&b.h2.state);
-            if let Some(c) = st.list.iter_mut().find(|c| c.id == id) {
-                c.timed.push(Arc::clone(s));
-            }
-            let tick = !st.ticking;
-            st.ticking = true;
-            tick
-        };
         if tick {
             self.schedule_tick(backend);
         }
@@ -423,32 +415,23 @@ impl Inner {
             }
         });
         if !scheduled {
-            // The timers are full: the next stream that starts or ends tries again.
+            // The timers are full: the next connection that goes idle tries again.
             if let Some(b) = self.backends.get(backend) {
                 lock(&b.h2.state).ticking = false;
             }
         }
     }
 
-    /// Gives up `backend`'s streams past their deadline and closes its connections idle past
-    /// `idle_timeout`; runs again while it has connections.
+    /// Closes `backend`'s connections idle past `idle_timeout`, and those that died idle; runs
+    /// again while it has an idle connection.
     fn tick(self: &Arc<Self>, backend: usize) {
         let Some(b) = self.backends.get(backend) else {
             return;
         };
         let now = Instant::now();
         let idle = self.opts.idle_timeout.unwrap_or(Duration::MAX);
-        let (late, closing, again) = {
+        let (closing, again) = {
             let mut st = lock(&b.h2.state);
-            let mut late = Vec::new();
-            let clock = crate::health::nanos(self.epoch.elapsed());
-            for c in &st.list {
-                late.extend(
-                    c.timed
-                        .iter()
-                        .filter_map(|s| s.due(now, clock).map(|why| (Arc::clone(s), why))),
-                );
-            }
             let mut closing = Vec::new();
             st.list.retain_mut(|c| {
                 let stale = c.idle_since.is_some_and(|t| now.duration_since(t) >= idle);
@@ -459,15 +442,12 @@ impl Inner {
                     true
                 }
             });
-            let again = !st.list.is_empty();
+            let again = st.list.iter().any(|c| c.idle_since.is_some());
             st.ticking = again;
-            (late, closing, again)
+            (closing, again)
         };
         for c in closing {
             c.close();
-        }
-        for (s, why) in late {
-            s.stop(why);
         }
         if again {
             self.schedule_tick(backend);
@@ -475,7 +455,8 @@ impl Inner {
     }
 
     /// Sends `req` (its target in origin form) to `backend` over h2, its slot held, the exchange
-    /// bounded by `left` from now; `whole` gets the response whole, else `x` as it arrives.
+    /// bounded by `left` from now; `whole` gets the response whole, else `x` as it arrives. An
+    /// address whose server chose HTTP/1.1 in ALPN is sent it over HTTP/1.1 instead.
     pub(crate) fn start_h2(
         self: &Arc<Self>,
         backend: usize,
@@ -485,10 +466,20 @@ impl Inner {
         left: Duration,
     ) {
         let me = Arc::clone(self);
+        let deadline = Instant::now().checked_add(left);
         self.lease(
             backend,
             Box::new(move |r| match r {
-                Err(e) => me.fail_unsent(backend, deliver, since, e),
+                Err(e) => {
+                    let fell_back = me.backends.get(backend).is_some_and(|b| b.h2.fell_back());
+                    let left =
+                        deadline.map_or(left, |d| d.saturating_duration_since(Instant::now()));
+                    if fell_back && !left.is_zero() {
+                        me.start_http1(backend, req, deliver, since, left);
+                    } else {
+                        me.fail_unsent(backend, deliver, since, e);
+                    }
+                }
                 Ok((client, id)) => me.begin(backend, id, &client, req, deliver, since, left),
             }),
         );
@@ -543,77 +534,53 @@ impl Inner {
                 req.headers.append("Content-Length", n.to_string());
             }
         }
+        // akio bounds the exchange, its head and its silences, and heeds the request's token.
+        req.timeout = Some(left);
+        req.response_header_timeout = req.response_header_timeout.or(Some(self.header_timeout()));
+        req.response_idle_timeout = req.response_idle_timeout.or(Some(self.idle_timeout()));
         let x = match deliver {
             crate::Deliver::Whole(done) => {
-                req.timeout = Some(left);
                 let me = Arc::clone(self);
                 return client.request(req, move |r: Result<ClientResponse, ClientError>| {
                     me.stats.responses.observe(since.elapsed());
                     // Off its connection before the slot goes to a waiting request, which then
                     // finds the stream free.
-                    let closed = matches!(r, Err(ClientError::Closed));
-                    me.stream_done(backend, id, None, closed);
+                    me.stream_done(backend, id);
                     me.release(backend);
-                    me.record(backend, r.is_err());
+                    me.record(
+                        backend,
+                        r.as_ref()
+                            .is_err_and(|e| !matches!(e, ClientError::Cancelled)),
+                    );
                     done(r.map_err(Error::Client));
                     me.finish_one();
                 });
             }
             crate::Deliver::Stream(x) => x,
         };
-        req.timeout = None;
-        let cancel = req.cancel.take();
-        let header_at = if streamed.is_some() {
-            // From the body's end ([`Body::finish`]), as akio's HTTP/1 client counts it.
-            UNARMED
-        } else {
-            self.clock_after(self.header_timeout())
-        };
         let s = Arc::new(Stream {
             pool: Arc::clone(self),
             backend,
             conn: id,
             since,
-            deadline: Instant::now()
-                .checked_add(left)
-                .unwrap_or_else(Instant::now),
             x: Mutex::new(Some(x)),
-            stop: AtomicU8::new(STOP_NONE),
             headed: AtomicBool::new(false),
-            held: AtomicBool::new(false),
-            held_bytes: AtomicUsize::new(0),
-            ended: AtomicBool::new(false),
-            cancel,
-            header_at: AtomicU64::new(header_at),
-            idle_at: AtomicU64::new(UNARMED),
+            ctl: Mutex::new(Ctl::default()),
         });
-        self.track(backend, id, &s);
         let mut trailers = Headers::new();
         let ev = Arc::clone(&s);
         let up = client.open(req, move |e| ev.event(e, &mut trailers));
+        s.attach(up.stream());
         if streamed.is_some() {
-            let body = crate::Upload::h2(Body {
-                up: Some(up),
-                stream: Arc::clone(&s),
-            });
-            {
-                let mut g = lock(&s.x);
-                match g.as_mut() {
-                    Some(x) => x.on_request_body(body),
-                    None => drop(body),
-                }
+            let body = crate::Upload::h2(Body { up: Some(up) });
+            let mut g = lock(&s.x);
+            match g.as_mut() {
+                Some(x) => x.on_request_body(body),
+                None => drop(body),
             }
-            s.check_stop();
         } else {
             up.finish();
         }
-    }
-}
-
-impl Inner {
-    /// The pool's clock (`health::nanos` since its epoch) `d` from now.
-    fn clock_after(&self, d: Duration) -> u64 {
-        crate::health::nanos(self.epoch.elapsed().saturating_add(d)).min(UNARMED - 1)
     }
 }
 
@@ -633,6 +600,14 @@ fn copy(e: &Error) -> Error {
     }
 }
 
+/// What the download's holder asked of a stream, kept until akio's handle to it is there.
+#[derive(Default)]
+struct Ctl {
+    h2: Option<H2Stream>,
+    held: bool,
+    cancelled: bool,
+}
+
 /// One streamed exchange on an h2 connection: the [`Exchange`] it reports to, until it is over.
 pub(crate) struct Stream {
     pool: Arc<Inner>,
@@ -640,121 +615,71 @@ pub(crate) struct Stream {
     conn: u64,
     /// When the request began waiting, for the time to its response's head.
     since: Instant,
-    deadline: Instant,
-    /// Taken by whoever ends the exchange; held while one of its methods runs.
+    /// Taken by whichever event ends the exchange; held while one of its methods runs.
     x: Mutex<Option<Box<dyn Exchange>>>,
-    /// Why it is to be given up (`STOP_*`), set before the one holding `x` is told.
-    stop: AtomicU8,
     headed: AtomicBool,
-    held: AtomicBool,
-    /// What arrived while the download was held.
-    held_bytes: AtomicUsize,
-    /// `x` was taken: the exchange is over (read without its lock, which a body written from
-    /// inside one of `x`'s methods cannot take).
-    ended: AtomicBool,
-    /// The request's token, checked by the tick.
-    cancel: Option<CancelToken>,
-    /// When, on the pool's clock, the head is late ([`UNARMED`] until the request is sent
-    /// whole).
-    header_at: AtomicU64,
-    /// When, on the pool's clock, the body is silent too long ([`UNARMED`] before the head and
-    /// while the download is held).
-    idle_at: AtomicU64,
+    /// akio's handle to the stream, which `client.open` gives after its events may have begun.
+    ctl: Mutex<Ctl>,
 }
 
 impl Stream {
-    /// Why the tick should give it up at `now` (`clock` on the pool's clock), if it should.
-    fn due(&self, now: Instant, clock: u64) -> Option<u8> {
-        if self.deadline <= now {
-            return Some(STOP_TIMEOUT);
+    /// akio's handle to the stream: what was asked of it before is done now.
+    fn attach(&self, h: H2Stream) {
+        let mut c = lock(&self.ctl);
+        if c.held {
+            h.hold_reads(true);
         }
-        if self.cancel.as_ref().is_some_and(CancelToken::is_cancelled) {
-            return Some(STOP_CANCELLED);
+        if c.cancelled {
+            h.cancel();
         }
-        if self.headed.load(Ordering::SeqCst) {
-            // Held, it waits for the proxy's client, not the upstream.
-            let silent =
-                !self.held.load(Ordering::SeqCst) && self.idle_at.load(Ordering::SeqCst) <= clock;
-            silent.then_some(STOP_IDLE)
-        } else {
-            (self.header_at.load(Ordering::SeqCst) <= clock).then_some(STOP_HEADER)
-        }
-    }
-
-    /// Arms the idle timeout from now.
-    fn arm_idle(&self) {
-        let at = self.pool.clock_after(self.pool.idle_timeout());
-        self.idle_at.store(at, Ordering::SeqCst);
+        c.h2 = Some(h);
     }
 
     /// akio's report of the response, on the connection's I/O thread.
     fn event(self: &Arc<Self>, e: H2Event<'_>, trailers: &mut Headers) {
         match e {
             H2Event::Head { status, headers } => {
-                {
-                    let mut g = lock(&self.x);
-                    if let Some(x) = g.as_mut() {
-                        self.arm_idle();
-                        self.headed.store(true, Ordering::SeqCst);
-                        self.pool.stats.responses.observe(self.since.elapsed());
-                        let head = Head {
-                            status,
-                            headers: headers.clone(),
-                        };
-                        x.on_head(head, crate::Download::h2(Arc::clone(self)));
-                    }
+                let mut g = lock(&self.x);
+                if let Some(x) = g.as_mut() {
+                    self.headed.store(true, Ordering::SeqCst);
+                    self.pool.stats.responses.observe(self.since.elapsed());
+                    let head = Head {
+                        status,
+                        headers: headers.clone(),
+                    };
+                    x.on_head(head, crate::Download::h2(Arc::clone(self)));
                 }
-                self.check_stop();
             }
             H2Event::Data(d) => {
-                if self.held.load(Ordering::SeqCst) {
-                    let n = self
-                        .held_bytes
-                        .fetch_add(d.len(), Ordering::SeqCst)
-                        .saturating_add(d.len());
-                    if n > HELD_LIMIT {
-                        self.stop(STOP_SLOW);
-                        return;
-                    }
-                } else {
-                    self.arm_idle();
+                let mut g = lock(&self.x);
+                if let Some(x) = g.as_mut() {
+                    x.on_data(d);
                 }
-                {
-                    let mut g = lock(&self.x);
-                    if let Some(x) = g.as_mut() {
-                        x.on_data(d);
-                    }
-                }
-                self.check_stop();
             }
             H2Event::Trailers(t) => *trailers = t.clone(),
             H2Event::End => {
-                let Some(mut x) = self.take(lock(&self.x).take()) else {
+                let Some(mut x) = lock(&self.x).take() else {
                     return;
                 };
                 // Off its connection before the slot goes to a waiting request.
-                self.pool
-                    .stream_done(self.backend, self.conn, Some(self), false);
+                self.pool.stream_done(self.backend, self.conn);
                 self.pool.release(self.backend);
                 self.pool.record(self.backend, false);
                 x.on_end(trailers);
                 self.pool.finish_one();
             }
             H2Event::Error(e) => {
-                let Some(mut x) = self.take(lock(&self.x).take()) else {
+                let Some(mut x) = lock(&self.x).take() else {
                     return;
                 };
-                let headed = self.headed.load(Ordering::SeqCst);
-                if !headed {
+                if !self.headed.load(Ordering::SeqCst) {
                     self.pool.stats.responses.observe(self.since.elapsed());
                 }
-                // Refused as closed (as after a GOAWAY): the connection takes no more.
-                let retire = matches!(e, ClientError::Closed);
-                self.pool
-                    .stream_done(self.backend, self.conn, Some(self), retire);
+                self.pool.stream_done(self.backend, self.conn);
                 self.pool.release(self.backend);
-                let failed =
-                    !(headed && self.stop.load(Ordering::SeqCst) == STOP_CANCEL) && !x.gave_up();
+                // Given up for the client (cancelled: gone, its body dropped, its token) is
+                // not the address's failure.
+                let failed = !matches!(e, ClientError::Cancelled) && !x.gave_up();
                 self.pool.record(self.backend, failed);
                 x.on_error(Error::Client(e));
                 self.pool.finish_one();
@@ -762,113 +687,67 @@ impl Stream {
         }
     }
 
-    /// Asks for the exchange to be given up for `why`, unless it is over or asked already.
-    fn stop(self: &Arc<Self>, why: u8) {
-        if self
-            .stop
-            .compare_exchange(STOP_NONE, why, Ordering::SeqCst, Ordering::SeqCst)
-            .is_ok()
-        {
-            self.check_stop();
-        }
-    }
-
-    /// Gives the exchange up if it was asked to be and nobody holds it: whoever holds it calls
-    /// this once done, so one of the two does.
-    fn check_stop(self: &Arc<Self>) {
-        let why = self.stop.load(Ordering::SeqCst);
-        if why == STOP_NONE {
-            return;
-        }
-        let x = match self.x.try_lock() {
-            Ok(mut g) => g.take(),
-            Err(TryLockError::Poisoned(p)) => p.into_inner().take(),
-            Err(TryLockError::WouldBlock) => return,
-        };
-        let Some(mut x) = self.take(x) else { return };
-        let headed = self.headed.load(Ordering::SeqCst);
-        if !headed {
-            self.pool.stats.responses.observe(self.since.elapsed());
-        }
-        // Left running (akio cannot reset it, A51): its connection takes no more streams and is
-        // closed once the others are over.
-        self.pool
-            .stream_done(self.backend, self.conn, Some(self), true);
-        self.pool.release(self.backend);
-        // Only the timeouts are the address's failures: the others are the client's doing.
-        let timeout = matches!(why, STOP_TIMEOUT | STOP_HEADER | STOP_IDLE);
-        self.pool.record(self.backend, timeout && !x.gave_up());
-        let e = match why {
-            STOP_TIMEOUT => ClientError::Timeout,
-            STOP_HEADER => ClientError::HeaderTimeout,
-            STOP_IDLE => ClientError::IdleTimeout,
-            STOP_CANCELLED => ClientError::Cancelled,
-            _ => ClientError::Closed,
-        };
-        x.on_error(Error::Client(e));
-        self.pool.finish_one();
-    }
-
-    /// Holds or resumes the download; the idle timeout stops while it is held, and is armed
-    /// afresh when it resumes.
+    /// Holds or resumes the download: akio keeps the stream's window closed while it is held.
     pub(crate) fn hold_reads(&self, hold: bool) {
-        if hold {
-            self.idle_at.store(UNARMED, Ordering::SeqCst);
-        } else {
-            self.held_bytes.store(0, Ordering::SeqCst);
-            self.arm_idle();
+        let mut c = lock(&self.ctl);
+        c.held = hold;
+        if let Some(h) = &c.h2 {
+            h.hold_reads(hold);
         }
-        self.held.store(hold, Ordering::SeqCst);
     }
 
-    pub(crate) fn cancel(self: &Arc<Self>) {
-        self.stop(STOP_CANCEL);
-    }
-
-    /// Takes the exchange, to end it: `None` when another did.
-    fn take(&self, g: Option<Box<dyn Exchange>>) -> Option<Box<dyn Exchange>> {
-        if g.is_some() {
-            self.ended.store(true, Ordering::SeqCst);
+    /// Gives the response up: akio resets the stream, and the exchange ends with
+    /// `ClientError::Cancelled`.
+    pub(crate) fn cancel(&self) {
+        let mut c = lock(&self.ctl);
+        c.cancelled = true;
+        if let Some(h) = &c.h2 {
+            h.cancel();
         }
-        g
-    }
-
-    /// Whether the exchange is over, or being given up.
-    fn over(&self) -> bool {
-        self.stop.load(Ordering::SeqCst) != STOP_NONE || self.ended.load(Ordering::SeqCst)
     }
 }
 
 /// A request body streamed to an h2 upstream.
 pub(crate) struct Body {
     up: Option<H2Upload>,
-    stream: Arc<Stream>,
 }
 
 impl Body {
     pub(crate) fn write(&self, data: &[u8]) -> bool {
+        self.up.as_ref().is_some_and(|up| up.write(data))
+    }
+
+    /// Bytes written and not yet in a DATA frame.
+    pub(crate) fn queued_bytes(&self) -> usize {
+        self.up.as_ref().map_or(0, H2Upload::queued_bytes)
+    }
+
+    /// Calls `f` once nothing written waits, or the stream is over.
+    pub(crate) fn on_drain(&self, f: impl FnOnce() + Send + 'static) {
         match &self.up {
-            Some(up) if !self.stream.over() => up.write(data),
-            _ => false,
+            Some(up) => up.on_drain(f),
+            None => f(),
         }
     }
 
     /// Ends the body; the header timeout runs from here.
-    pub(crate) fn finish(mut self) -> bool {
-        let at = self
-            .stream
-            .pool
-            .clock_after(self.stream.pool.header_timeout());
-        self.stream.header_at.store(at, Ordering::SeqCst);
-        self.up.take().is_some_and(|up| up.finish())
+    pub(crate) fn finish(self) -> bool {
+        self.finish_with_trailers(Headers::new())
+    }
+
+    /// Ends the body with `trailers` after it (none: as [`finish`](Self::finish)).
+    pub(crate) fn finish_with_trailers(mut self, trailers: Headers) -> bool {
+        self.up
+            .take()
+            .is_some_and(|up| up.finish_with_trailers(trailers))
     }
 }
 
 impl Drop for Body {
-    /// Dropped unfinished, the body is its client gone: the exchange is given up.
+    /// Dropped unfinished, the body is its client gone: the stream is reset.
     fn drop(&mut self) {
-        if self.up.take().is_some() {
-            self.stream.stop(STOP_GAVE_UP);
+        if let Some(up) = self.up.take() {
+            up.cancel();
         }
     }
 }

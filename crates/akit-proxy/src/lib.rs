@@ -77,10 +77,11 @@
 //!   `Fit-Error: upstream failed mid-body` trailer, which is all such a client could tell it by.
 //!
 //! I18 adds upstreams over h2 and h2c (the upstream's `protocol`): the same exchange, through
-//! akit-upstream's h2 pool, the request's `Host` going as HTTP/2's `:authority`. Until akio's h2
-//! client has akio API requests A51–A53 (I18b), a held h2 download is cut short past
-//! `akit_upstream::HELD_LIMIT` rather than paced, an upload to one is not paced (its queue bounded
-//! by the body's limit), and request trailers do not reach it.
+//! akit-upstream's h2 pool, the request's `Host` going as HTTP/2's `:authority`. Since I18b (akio
+//! API requests A51–A53 and A66), it is the same relay in every way: a held h2 download keeps its
+//! stream's window closed, an upload is paced by what waits in its stream, request trailers go
+//! up, a request given up resets its stream alone, and an `h2` upstream whose server chooses
+//! HTTP/1.1 in ALPN is spoken to over HTTP/1.1.
 //!
 //! Part of [akit](https://github.com/lesismal/akit); see `docs/dev-plan.md` for the iterations that
 //! fill this crate in.

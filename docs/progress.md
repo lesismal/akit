@@ -11,14 +11,53 @@ done and where the work differs from the plan.
 | | |
 | --- | --- |
 | Last updated | 2026-11-24 |
-| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I24 and I17b done (I18b waits on akio); M2's I26–I33 and I35–I37 and M3's I39–I43 and I51 done early. |
-| akio | `4f7169c4` on akio's `main` (`1.0.0-rc.1`, with A1–A8, A11, A13, A16–A21, A36–A38 and A63–A65), pinned by `rev` in `Cargo.toml` |
+| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I24, I17b and I18b done; M2's I26–I33 and I35–I37 and M3's I39–I43 and I51 done early. |
+| akio | `d27e6a20` on akio's `main` (`1.0.0-rc.1`, with A1–A8, A11, A13, A16–A21, A36–A38, A51–A53, A63–A66), pinned by `rev` in `Cargo.toml` |
 | fit | the specification; read at `7daee573` for this plan |
 | What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept (as fit's `binding.same`: certificate files and ACME names may change), added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication; certificates chosen per handshake as fit's, replaced by a reload or by `-watch-certs` without closing the listener) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; route middleware: `rewrite` (prefixes), `redirect`, `headers`, `rate_limit`, `concurrency_limit`, `body_limit`, `basic_auth` (bcrypt, checked on akio's pool), `client_cert` (mTLS per route) and `forward_auth` (an auth service asked on akio's client, the request suspended meanwhile); the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`, bodies streamed both ways with linked backpressure, trailers both ways, `timeout` and the upstream's `response_timeout`, `response_header_timeout` and `response_idle_timeout`, 504 for timeouts, the upstream request given up whenever the client goes; upstreams over HTTP/1.1, h2c and h2); `limits.max_body_bytes` on every listener (413) and in the proxy, and `limits.write_stall_timeout` (changed by a reload too); access logs in fit's json, text and line formats; upstream pools with fit's nine load balancing policies (round robin, weighted round robin, least connections, random, p2c, and consistent hashing of the client's IP, the path, a header or a cookie) and sticky cookies, passing over addresses taken out by passive health checks (`max_fails`, `fail_timeout`) and by active ones (`health_check`: http and tcp probes); the Admin API on loopback (`GET /config`, by JSON pointer too, `POST /load`, edits by pointer with `PUT`, `PATCH` and `DELETE /config`, `POST /rollback/{n}`, `POST /reload`, each with `If-Match` and all but a rollback with `?dry_run=1`, `GET /versions`; with `token_file`, a bearer token on every request), changes applied as SIGHUP's reloads, one history for both; `run -watch` applying the config's files each time they change (fit's file provider, polled); Prometheus metrics at the Admin API's `GET /metrics` (requests by listener and route with `metrics`, upstreams and backends, certificates, connections, reloads, akio's engine); certificates obtained with ACME through HTTP-01 or TLS-ALPN-01 for the names listeners list in `tls.acme`, kept in a storage and renewed by their lifetime or the CA's renewal information (ARI), their OCSP responses stapled; HTTPS by default (`auto_https`): a config that writes no listeners served on HTTPS with its routes' host names' certificates and on HTTP redirected to it (308), an empty `tls` given its routes' names; the compatibility gate: 80 fixtures, 22 valid, 57 refused only as not supported yet19 validlayer 4 `services` (I51): `tcp` and `udp` listeners proxied to an upstream's addresses, backpressure linked both ways, idle timeouts, `max_conns`, drained after a reload; the compatibility gate: 80 fixtures, 19 valid, 60 refused only as not supported yet, 1 skipped, none failed |
-| Next | I18b once akio has A51–A53 and A66 |
-| akio requests | A1–A8, A11, A13, A16–A21, A36–A38 and A63–A65 on akio's main and pinned; A9, A10, A12, A14, A15, A22–A24, A29, A30, A32, A33, A35, A45, A48, A49, A51–A54, A57, A58, A66, A75, A78 and A79 requested ([akio API requests](akio-api-requests.md)) |
+| Next | the rest of M1's and M2's iterations; I50 (gRPC) and I54 (upstream TLS) on I18b |
+| akio requests | A1–A8, A11, A13, A16–A21, A36–A38, A51–A53 and A63–A66 on akio's main and pinned; A9, A10, A12, A14, A15, A22–A24, A29, A30, A32, A33, A35, A45, A48, A49, A54, A57, A58, A75, A78 and A79 requested ([akio API requests](akio-api-requests.md)) |
 
 ## Log
+
+### 2026-11-24: I18b, HTTP/2 upstreams II: streams reset, timed and paced by akio
+
+- akio moves to `d27e6a20` (rule 22): A51–A53 (ADR-110, `f6750e93`) and A66, which this
+  iteration's session added to akio (ADR-111: `H2Client::request` and `open` heed
+  `response_header_timeout`, `response_idle_timeout` and a `CancelToken`, each resetting the
+  stream alone).
+- `akit_upstream::h2` drops I18's and I17b's stopgaps. A stream given up (the client gone after
+  the head, its body dropped unfinished, its `CancelToken`) is reset by akio and fails
+  `Cancelled`, which is not the address's failure; its connection goes on carrying the others
+  (no more retiring). `response_timeout`, `response_header_timeout` and `response_idle_timeout`
+  are akio's (`ClientRequest::timeout` and the two fields), so the per-address tick only closes
+  idle connections, and runs only while an address has one. A held download keeps its stream's
+  window closed (`H2Stream::hold_reads`; `HELD_LIMIT` is gone); an upload is paced by
+  `H2Upload::queued_bytes` and `on_drain`, exactly as over HTTP/1.1 (`Upload::queued_bytes`,
+  `on_drain` over h2); request trailers end the body (`finish_with_trailers`).
+- Connections are sized by the server's `SETTINGS_MAX_CONCURRENT_STREAMS`
+  (`H2Client::max_concurrent_streams`; `STREAMS_PER_CONN`, 100, until it says or when it sets no
+  limit), a new one dialed while the address has fewer than `max_conns` open; past that the
+  stream waits in akio on the least busy connection. A connection that is no longer open (after a
+  `GOAWAY`: `is_open`) takes no more streams and is closed once its last ends. The pool's slots
+  still bound an address at `max_conns` × 100 streams.
+- The dial is bounded by the upstream's `connect_timeout` (`H2Options::happy_eyeballs`), the
+  probes' by the check's timeout, per address raced when a name resolves to several (a lone
+  address has the engine's, as over HTTP/1.1: A12). `h2` offers `h2` and `http/1.1` in ALPN, as fit's does; a server
+  that chooses `http/1.1` fails akio's dial with `NotH2`, and the address is spoken HTTP/1.1 over
+  TLS by the pool's HTTP/1 client (given the same TLS configuration) from then on, the requests
+  that waited for the dial included; its probes follow.
+- Tests: `akit-upstream` `tests/h2.rs` (a connection's streams up to the server's limit, here 10;
+  the exchange's timeout, the header timeout and a cancel token each resetting their stream with
+  the connection kept; a cancelled token's request never sent and no failure); `akit-proxy`
+  `tests/h2.rs` (`request_trailers` no longer ignored; a slow client holding an h2 download and
+  then getting all of it, in place of the held-limit stopgap's test; an `h2` upstream whose server
+  chooses HTTP/1.1); `akit-proxy` `tests/stream.rs`, fit's stream tests against an h2c upstream of
+  the test's own (std sockets, honouring flow control): 64 MiB down to a slow client and up to a
+  slow upstream, by length and chunked, from HTTP/1.1 and h2c clients, the resident memory's rise
+  bounded as over HTTP/1.1 (checked on Linux).
+- Not measured (rule 30): the proxy to an h2c upstream (dev plan's benchmark table, its row
+  updated: akio's per-stream timers, a held download and a paced upload against HTTP/1.1's).
 
 ### 2026-11-24: I51, TCP and UDP proxying
 
