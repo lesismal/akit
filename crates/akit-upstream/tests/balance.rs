@@ -120,14 +120,17 @@ fn least_conn() {
     let b = Balancer::new(LoadBalancing::LeastConn, &[1, 1, 1]);
     // Idle addresses share the load.
     assert_eq!(counts(&b, 300), [100, 100, 100]);
-    // Busy ones are passed over until the rest catch up.
-    let mut active = [5usize, 2, 0];
+    // Busy ones are passed over until the rest catch up. (No pick here is a tie: which of two
+    // tied addresses wins depends on the slot the picking thread lands on, so on the CPU it
+    // runs on.)
+    let mut active = [5usize, 3, 0];
     for _ in 0..3 {
         let p = b.pick(|i| active[i]);
         assert_eq!(p, 2, "picked {p} with {active:?}");
         active[p] += 1;
     }
-    // Now b and c have 2 and 3: b next.
+    // Now b has 3 and c 4: b next.
+    active[2] += 1;
     assert_eq!(b.pick(|i| active[i]), 1);
 
     // Weighted: a of weight 2 takes twice the requests under way.
