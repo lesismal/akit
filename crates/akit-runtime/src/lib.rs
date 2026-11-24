@@ -59,4 +59,4 @@ pub const MAX_BODY_BYTES: &str = "akit.max_body_bytes";
 pub const TRACEPARENT: &str = "akit.traceparent";
 
 /// The akio commit akit is built against (rule 22: akio is pinned by commit hash).
-pub const AKIO_REV: &str = "e9891b52c0e97f0023c8a9f324b21453f9477606";
+pub const AKIO_REV: &str = "9b096d0db01fe19304dafb95b9b0e5ec09b2b01c";

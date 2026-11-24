@@ -2,8 +2,8 @@
 //! `l4/edges_test.go` `TestTLSTerminatedWithoutNames`): a listener serving `tcp` beside HTTP
 //! tells them apart by what a client sends first. HTTP/1.1 and h2c in the clear, HTTPS (h2 and
 //! HTTP/1.1) with tls, TLS passed through by its server name to the service that takes it, and
-//! the rest to the service without `server_names`, on one port, behind a PROXY header too. SOCKS,
-//! which fit's `TestSniffClear` serves on the port as well, comes with I55.
+//! the rest to the service without `server_names`, on one port, behind a PROXY header too; and
+//! SOCKS beside them (I55), as fit's `TestSniffClear` and `test/e2e/multiproto_test.go` serve it.
 //! On the backend `AKIO_TEST_BACKEND` names (epoll by default, `uring`).
 #![allow(
     clippy::unwrap_used,
@@ -225,6 +225,13 @@ fn tls_client(cfg: &ClientConfig, name: &str, sock: TcpStream) -> Stream<TcpStre
     s
 }
 
+/// Reads exactly `n` bytes.
+fn read_bytes(r: &mut impl Read, n: usize) -> Vec<u8> {
+    let mut got = vec![0u8; n];
+    r.read_exact(&mut got).unwrap();
+    got
+}
+
 /// Reads exactly `n` bytes as text.
 fn read_text(r: &mut impl Read, n: usize) -> String {
     let mut got = vec![0u8; n];
@@ -306,12 +313,35 @@ fn tls_of(p: &Pki) -> String {
     )
 }
 
-/// HTTP/1.1, h2c, TLS passed through by its name and raw TCP on one port in the clear (fit's
-/// `TestSniffClear`, without its SOCKS).
+/// The `socks` block of a listener serving SOCKS to the tests' loopback servers.
+const SOCKS: &str = r#", "socks": {"clients": ["127.0.0.1"], "allow": ["127.0.0.1"]}"#;
+
+/// A SOCKS5 CONNECT to `dest`, an IPv4 address, over `c`, without authentication; the reply's
+/// code (fit's `socks5Connect`).
+fn socks5_connect(c: &mut TcpStream, dest: &str) -> u8 {
+    let SocketAddr::V4(a) = dest.parse::<SocketAddr>().unwrap() else {
+        unreachable!()
+    };
+    let mut req = vec![5, 1, 0, 5, 1, 0, 1];
+    req.extend_from_slice(&a.ip().octets());
+    req.extend_from_slice(&a.port().to_be_bytes());
+    c.write_all(&req).unwrap();
+    let mut reply = [0u8; 12];
+    c.read_exact(&mut reply).unwrap();
+    reply[3]
+}
+
+/// HTTP/1.1, h2c, TLS passed through by its name, SOCKS and raw TCP on one port in the clear
+/// (fit's `TestSniffClear`).
 #[test]
 fn sniff_clear() {
     let p = pki("one-port-clear");
-    let a = Akit::start(&config(&p, r#""http/1.1", "h2c", "tcp""#, "", true));
+    let a = Akit::start(&config(
+        &p,
+        r#""http/1.1", "h2c", "tcp", "socks""#,
+        SOCKS,
+        true,
+    ));
     assert_eq!(
         get_clear(&mut a.dial()),
         ("HTTP/1.1 200 OK".to_owned(), "site".to_owned())
@@ -322,6 +352,23 @@ fn sniff_clear() {
     let mut c = tls_client(&cfg, "a.example.com", a.dial());
     assert_eq!(read_text(&mut c, 15), "a:a.example.com");
     expect_echo(&mut c, "ping");
+
+    // SOCKS5, and SOCKS4, to an echo server.
+    let echo = backend(echo);
+    let mut c = a.dial();
+    assert_eq!(socks5_connect(&mut c, &echo), 0);
+    expect_echo(&mut c, "socks");
+    let mut c = a.dial();
+    let SocketAddr::V4(e) = echo.parse::<SocketAddr>().unwrap() else {
+        unreachable!()
+    };
+    let mut req = vec![4, 1];
+    req.extend_from_slice(&e.port().to_be_bytes());
+    req.extend_from_slice(&e.ip().octets());
+    req.push(0);
+    c.write_all(&req).unwrap();
+    assert_eq!(read_bytes(&mut c, 8)[1], 0x5a);
+    expect_echo(&mut c, "socks4");
 
     // What no other protocol takes, the service without server_names.
     expect_echo(&mut a.dial(), "\x00raw bytes");
@@ -410,6 +457,51 @@ fn tls_passthrough_beside_https() {
     assert_eq!(seen.body, "site");
     let mut c = a.dial();
     c.write_all(b"raw").unwrap();
+    expect_closed(&mut c, Duration::from_secs(5));
+}
+
+/// HTTPS (HTTP/1.1 and h2), TLS passed through by its server name, SOCKS and raw TCP on one
+/// port; and HTTPS and SOCKS alone on another, whose other bytes are closed (fit's
+/// `TestOnePortManyProtocols`, listeners "one" and "three").
+#[test]
+fn socks_beside_https() {
+    let p = pki("one-port-socks");
+    let echo = backend(echo);
+    let a = Akit::start(&config(
+        &p,
+        r#""http/1.1", "h2", "tcp", "socks""#,
+        &format!("{}{SOCKS}", tls_of(&p)),
+        true,
+    ));
+    let cfg = client(&p.ca, &[], None);
+    let seen = get_h1(a.addr(), &cfg, "b.example.com", "b.example.com", "/").unwrap();
+    assert_eq!(seen.body, "site");
+    let h2 = client(&p.ca, &["h2"], None);
+    assert_eq!(
+        get_h2(a.addr(), &h2, "b.example.com", "/").unwrap(),
+        (200, "site".to_owned())
+    );
+    let mut c = tls_client(&cfg, "a.example.com", a.dial());
+    assert_eq!(read_text(&mut c, 15), "a:a.example.com");
+    let mut c = a.dial();
+    assert_eq!(socks5_connect(&mut c, &echo), 0);
+    expect_echo(&mut c, "socks to one");
+    expect_echo(&mut a.dial(), "\x00raw to one");
+    drop(a);
+
+    let json = format!(
+        r#"{{"listeners": [{{"name": "three", "address": "127.0.0.1:0", "protocols": ["http/1.1", "socks"]{}{SOCKS}}}],
+  "routes": [{{"handler": {{"module": "respond", "params": {{"body": "site"}}}}}}]}}"#,
+        tls_of(&p)
+    );
+    let a = Akit::start(&json);
+    let seen = get_h1(a.addr(), &cfg, "localhost", "localhost", "/").unwrap();
+    assert_eq!(seen.body, "site");
+    let mut c = a.dial();
+    assert_eq!(socks5_connect(&mut c, &echo), 0);
+    expect_echo(&mut c, "socks to three");
+    let mut c = a.dial();
+    c.write_all(b"\x00raw").unwrap();
     expect_closed(&mut c, Duration::from_secs(5));
 }
 

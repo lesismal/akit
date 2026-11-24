@@ -11,7 +11,7 @@ use akit_compat::{
     Field, Finding, Kind, NO_VALIDATE, Outcome, REPORT, Report, TEMPLATE_FORMATS, compat_dir,
     fields, fixtures, fixtures_dir, inventory_path, path_matches, pins, run_gate, supported,
 };
-use akit_config::{Config, Handler, Protocol};
+use akit_config::{Config, Destination, Handler, Protocol};
 
 #[test]
 fn fixtures_are_pinned_and_complete() {
@@ -416,6 +416,17 @@ fn supported_fields_are_read() {
     let service = |fields: &str| {
         format!(
             r#"{{"listeners": [{{"name": "t", "address": ":7000", "protocols": ["tcp"]}}], "upstreams": [{{"name": "app", "addresses": ["127.0.0.1:9000"]}}], "services": [{{"name": "svc", "listeners": ["t"], "upstream": "app"{fields}}}]}}"#
+        )
+    };
+    // I55: a listener's socks, and the forward_proxy handler's params, holding `fields`.
+    let socks = |fields: &str| {
+        format!(
+            r#"{{"listeners": [{{"name": "s", "address": ":1080", "protocols": ["socks"], "socks": {{"clients": ["10.0.0.0/8"]{fields}}}}}]}}"#
+        )
+    };
+    let fproxy = |fields: &str| {
+        format!(
+            r#"{{{L}, "routes": [{{"handler": {{"module": "forward_proxy", "params": {{"clients": ["10.0.0.0/8"]{fields}}}}}}}]}}"#
         )
     };
     let samples: Vec<(&str, String, Check)> = vec![
@@ -1781,6 +1792,78 @@ fn supported_fields_are_read() {
                     == [akit_config::Network::parse("10.0.0.0/8").unwrap()]
             },
         ),
+        ("listeners[].socks", socks(""), |c| {
+            c.listeners[0].protocols == [Protocol::Socks] && c.listeners[0].socks.is_some()
+        }),
+        ("listeners[].socks.clients", socks(""), |c| {
+            socks_of(c).clients == [akit_config::Network::parse("10.0.0.0/8").unwrap()]
+        }),
+        (
+            "listeners[].socks.allow",
+            socks(r#", "allow": ["*.Example.com"]"#),
+            |c| socks_of(c).allow == [Destination::Suffix(".example.com".into())],
+        ),
+        (
+            "listeners[].socks.deny",
+            socks(r#", "deny": ["bad.example.com"]"#),
+            |c| socks_of(c).deny == [Destination::Name("bad.example.com".into())],
+        ),
+        (
+            "listeners[].socks.ports",
+            socks(r#", "ports": [443]"#),
+            |c| socks_of(c).ports == [443],
+        ),
+        (
+            "listeners[].socks.connect_timeout",
+            socks(r#", "connect_timeout": "3s""#),
+            |c| socks_of(c).connect_timeout == std::time::Duration::from_secs(3),
+        ),
+        (
+            "listeners[].socks.idle_timeout",
+            socks(r#", "idle_timeout": "1m""#),
+            |c| socks_of(c).idle_timeout == std::time::Duration::from_secs(60),
+        ),
+        ("routes[].handler<forward_proxy>", fproxy(""), |c| {
+            fproxy_of(c).ports.is_empty()
+        }),
+        ("routes[].handler<forward_proxy>.params", fproxy(""), |c| {
+            fproxy_of(c).connect_timeout == akit_config::DEFAULT_FORWARD_CONNECT_TIMEOUT
+        }),
+        (
+            "routes[].handler<forward_proxy>.params.clients",
+            fproxy(""),
+            |c| fproxy_of(c).clients == [akit_config::Network::parse("10.0.0.0/8").unwrap()],
+        ),
+        (
+            "routes[].handler<forward_proxy>.params.allow",
+            fproxy(r#", "allow": ["192.0.2.0/24"]"#),
+            |c| {
+                fproxy_of(c).allow
+                    == [Destination::Network(
+                        akit_config::Network::parse("192.0.2.0/24").unwrap(),
+                    )]
+            },
+        ),
+        (
+            "routes[].handler<forward_proxy>.params.deny",
+            fproxy(r#", "deny": ["169.254.169.254"]"#),
+            |c| fproxy_of(c).deny.len() == 1,
+        ),
+        (
+            "routes[].handler<forward_proxy>.params.ports",
+            fproxy(r#", "ports": [443, 8443]"#),
+            |c| fproxy_of(c).ports == [443, 8443],
+        ),
+        (
+            "routes[].handler<forward_proxy>.params.connect_timeout",
+            fproxy(r#", "connect_timeout": "2s""#),
+            |c| fproxy_of(c).connect_timeout == std::time::Duration::from_secs(2),
+        ),
+        (
+            "routes[].handler<forward_proxy>.params.idle_timeout",
+            fproxy(r#", "idle_timeout": "2m""#),
+            |c| fproxy_of(c).idle_timeout == std::time::Duration::from_secs(120),
+        ),
         (
             "telemetry",
             r#"{"telemetry": {"traces": {}}}"#.into(),
@@ -1869,6 +1952,18 @@ fn supported_fields_are_read() {
 }
 
 #[allow(clippy::panic)]
+fn socks_of(c: &Config) -> &akit_config::ForwardProxy {
+    c.listeners.first().unwrap().socks.as_ref().unwrap()
+}
+
+fn fproxy_of(c: &Config) -> &akit_config::ForwardProxy {
+    match &c.routes.first().unwrap().handler {
+        Handler::ForwardProxy(f) => Some(f),
+        _ => None,
+    }
+    .unwrap()
+}
+
 fn respond_of(c: &Config) -> &akit_config::Respond {
     match &c.routes.first().unwrap().handler {
         Handler::Respond(r) => Some(r),
@@ -2008,7 +2103,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 46] = [
+    let objects: [(&str, &str, Option<&str>); 48] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         ("admin", "ADMIN_FIELDS", Some("ADMIN_FIT_ONLY")),
         ("acme", "ACME_FIELDS", Some("ACME_FIT_ONLY")),
@@ -2030,6 +2125,12 @@ fn akit_config_lists_match_the_inventory() {
         (
             "listeners[].proxy_protocol",
             "LISTENER_PROXY_PROTOCOL_FIELDS",
+            None,
+        ),
+        ("listeners[].socks", "FORWARD_PROXY_FIELDS", None),
+        (
+            "routes[].handler<forward_proxy>.params",
+            "FORWARD_PROXY_FIELDS",
             None,
         ),
         ("routes[]", "ROUTE_FIELDS", Some("ROUTE_FIT_ONLY")),
@@ -2144,7 +2245,7 @@ fn akit_config_lists_match_the_inventory() {
         .iter()
         .flat_map(|(_, r, n)| [Some(*r), *n])
         .flatten()
-        .chain(["FIT_HANDLERS", "FIT_MIDDLEWARE", "FIT_PROTOCOLS"])
+        .chain(["FIT_HANDLERS", "FIT_MIDDLEWARE"])
         .collect();
     for name in lists.keys() {
         assert!(
@@ -2192,7 +2293,7 @@ fn akit_config_lists_match_the_inventory() {
             "model.rs FIT_HANDLERS: {h:?} is not a handler fit has"
         );
     }
-    for h in ["respond", "static", "proxy"] {
+    for h in ["respond", "static", "proxy", "forward_proxy"] {
         assert!(handlers.insert(h.to_owned()), "FIT_HANDLERS lists {h}");
     }
     let fit_handlers: BTreeSet<String> = inventory
@@ -2210,6 +2311,8 @@ fn akit_config_lists_match_the_inventory() {
     read.insert("routes[].handler<static>.params".to_owned());
     read.insert("routes[].handler<proxy>".to_owned());
     read.insert("routes[].handler<proxy>.params".to_owned());
+    read.insert("routes[].handler<forward_proxy>".to_owned());
+    read.insert("routes[].handler<forward_proxy>.params".to_owned());
     // Middleware modules: rewrite, redirect, headers, the limits and auth, which akit reads, and
     // FIT_MIDDLEWARE, which it refuses.
     let mut middleware: BTreeSet<String> = list("FIT_MIDDLEWARE").iter().cloned().collect();
@@ -2251,8 +2354,8 @@ fn akit_config_lists_match_the_inventory() {
         middleware, fit_middleware,
         "model.rs's middleware and fit's differ"
     );
-    // Protocols: the six akit serves and FIT_PROTOCOLS.
-    let mut protocols: BTreeSet<String> = list("FIT_PROTOCOLS").iter().cloned().collect();
+    // Protocols: the seven akit serves, every one of fit's since I55.
+    let mut protocols: BTreeSet<String> = BTreeSet::new();
     for p in [
         Protocol::Http11,
         Protocol::H2c,
@@ -2260,11 +2363,9 @@ fn akit_config_lists_match_the_inventory() {
         Protocol::H3,
         Protocol::Tcp,
         Protocol::Udp,
+        Protocol::Socks,
     ] {
-        assert!(
-            protocols.insert(p.as_str().to_owned()),
-            "FIT_PROTOCOLS lists {p:?}"
-        );
+        assert!(protocols.insert(p.as_str().to_owned()), "{p:?} twice");
     }
     let ty = &inventory
         .iter()
@@ -2358,7 +2459,7 @@ fn inventory_paths_for_akit_config_paths() {
 #[test]
 fn findings_from_akit_config_errors() {
     let errs = akit_config::from_json(
-        r#"{"listeners": [{"name": "w", "address": ":1", "protocols": ["socks"], "mptcp": true}],
+        r#"{"listeners": [{"name": "w", "address": ":1", "mptcp": true}],
             "routes": [{"handler": {"module": "fastcgi"}}], "acme": {"shared_storage": {}}}"#,
         None,
     )
@@ -2369,7 +2470,6 @@ fn findings_from_akit_config_errors() {
         .map(|e| finding(e).to_string())
         .collect();
     let want: BTreeSet<String> = [
-        "listeners[0].protocols[0]: the \"socks\" protocol",
         "listeners[0].mptcp",
         "routes[0].handler<fastcgi>",
         "acme.shared_storage",

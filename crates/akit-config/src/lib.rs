@@ -65,6 +65,9 @@ pub use model::{
     Tls, TlsVersion, TokenFrom, Upstream, UpstreamProtocol,
 };
 pub use model::{
+    DEFAULT_FORWARD_CONNECT_TIMEOUT, DEFAULT_FORWARD_IDLE_TIMEOUT, Destination, ForwardProxy,
+};
+pub use model::{
     DEFAULT_METRICS_INTERVAL, DEFAULT_TELEMETRY_ENDPOINT, DEFAULT_TELEMETRY_SERVICE_NAME,
     DEFAULT_TELEMETRY_TIMEOUT, DEFAULT_TRACES_INTERVAL, DEFAULT_TRACES_MAX_QUEUE_BYTES,
     MetricsExport, Telemetry, TracesExport, parse_headers,

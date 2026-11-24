@@ -152,7 +152,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 278 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 293 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -167,7 +167,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`http.handlers/bt_stream`](#fields-http-handlers-bt-stream) | 14 | 0 | 14 |
 | [`http.handlers/bt_tracker`](#fields-http-handlers-bt-tracker) | 2 | 0 | 2 |
 | [`http.handlers/fastcgi`](#fields-http-handlers-fastcgi) | 18 | 0 | 18 |
-| [`http.handlers/forward_proxy`](#fields-http-handlers-forward-proxy) | 8 | 0 | 8 |
+| [`http.handlers/forward_proxy`](#fields-http-handlers-forward-proxy) | 8 | 8 | 0 |
 | [`http.handlers/hls`](#fields-http-handlers-hls) | 12 | 0 | 12 |
 | [`http.handlers/httpflv`](#fields-http-handlers-httpflv) | 6 | 0 | 6 |
 | [`http.handlers/media_pages`](#fields-http-handlers-media-pages) | 29 | 0 | 29 |
@@ -198,7 +198,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`http.middleware/rewrite`](#fields-http-middleware-rewrite) | 6 | 6 | 0 |
 | [`http.middleware/wasm`](#fields-http-middleware-wasm) | 18 | 0 | 18 |
 | [`limits`](#fields-limits) | 7 | 3 | 4 |
-| [`listeners`](#fields-listeners) | 30 | 16 | 14 |
+| [`listeners`](#fields-listeners) | 30 | 23 | 7 |
 | [`llm`](#fields-llm) | 218 | 0 | 218 |
 | [`log`](#fields-log) | 24 | 0 | 24 |
 | [`media_auth`](#fields-media-auth) | 34 | 0 | 34 |
@@ -277,7 +277,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **合计** | 3821 | 278 | 3543 |
+| **合计** | 3821 | 293 | 3528 |
 
 <a id="fields-access"></a>
 
@@ -742,14 +742,14 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
-| `routes[].handler<forward_proxy>` | `module` | 尚不支持（not supported yet） |
-| `routes[].handler<forward_proxy>.params` | `object` | 尚不支持（not supported yet） |
-| `routes[].handler<forward_proxy>.params.allow` | `array<string>` | 尚不支持（not supported yet） |
-| `routes[].handler<forward_proxy>.params.clients` | `array<string>, required` | 尚不支持（not supported yet） |
-| `routes[].handler<forward_proxy>.params.connect_timeout` | `duration` | 尚不支持（not supported yet） |
-| `routes[].handler<forward_proxy>.params.deny` | `array<string>` | 尚不支持（not supported yet） |
-| `routes[].handler<forward_proxy>.params.idle_timeout` | `duration` | 尚不支持（not supported yet） |
-| `routes[].handler<forward_proxy>.params.ports` | `array<integer>` | 尚不支持（not supported yet） |
+| `routes[].handler<forward_proxy>` | `module` | 已支持 |
+| `routes[].handler<forward_proxy>.params` | `object` | 已支持 |
+| `routes[].handler<forward_proxy>.params.allow` | `array<string>` | 已支持 |
+| `routes[].handler<forward_proxy>.params.clients` | `array<string>, required` | 已支持 |
+| `routes[].handler<forward_proxy>.params.connect_timeout` | `duration` | 已支持 |
+| `routes[].handler<forward_proxy>.params.deny` | `array<string>` | 已支持 |
+| `routes[].handler<forward_proxy>.params.idle_timeout` | `duration` | 已支持 |
+| `routes[].handler<forward_proxy>.params.ports` | `array<integer>` | 已支持 |
 
 <a id="fields-http-handlers-hls"></a>
 
@@ -1266,13 +1266,13 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `listeners[].protocols` | `array<enum(http/1.1\|h2c\|h2\|h3\|tcp\|udp\|socks)>` | 已支持 |
 | `listeners[].proxy_protocol` | `object` | 已支持 |
 | `listeners[].proxy_protocol.trusted` | `array<string>, required` | 已支持 |
-| `listeners[].socks` | `object` | 尚不支持（not supported yet） |
-| `listeners[].socks.allow` | `array<string>` | 尚不支持（not supported yet） |
-| `listeners[].socks.clients` | `array<string>, required` | 尚不支持（not supported yet） |
-| `listeners[].socks.connect_timeout` | `duration` | 尚不支持（not supported yet） |
-| `listeners[].socks.deny` | `array<string>` | 尚不支持（not supported yet） |
-| `listeners[].socks.idle_timeout` | `duration` | 尚不支持（not supported yet） |
-| `listeners[].socks.ports` | `array<integer>` | 尚不支持（not supported yet） |
+| `listeners[].socks` | `object` | 已支持 |
+| `listeners[].socks.allow` | `array<string>` | 已支持 |
+| `listeners[].socks.clients` | `array<string>, required` | 已支持 |
+| `listeners[].socks.connect_timeout` | `duration` | 已支持 |
+| `listeners[].socks.deny` | `array<string>` | 已支持 |
+| `listeners[].socks.idle_timeout` | `duration` | 已支持 |
+| `listeners[].socks.ports` | `array<integer>` | 已支持 |
 | `listeners[].tls` | `object` | 已支持 |
 | `listeners[].tls.acme` | `array<string>` | 已支持 |
 | `listeners[].tls.certificates` | `array<object>` | 已支持 |
