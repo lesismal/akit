@@ -14,11 +14,61 @@ done and where the work differs from the plan.
 | Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I15, I19, I21, I22, I23 and I24 done, I16 doing (body limits done; streaming waits for akio's A19–A21); M3's I39 done early. |
 | akio | `a9a620ab` on akio's `main` (`1.0.0-rc.1`, with A1–A5, A7, A8, A11, A13 and A16–A18), pinned by `rev` in `Cargo.toml` |
 | fit | the specification; read at `7daee573` for this plan |
-| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept, added and removed, those it started with only once akio's A1 is pinned); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`); `limits.max_body_bytes` on every listener (413) and in the proxy; access logs in fit's json, text and line formats; upstream pools with round robin, weighted round robin and least connections; the compatibility gate: 80 fixtures, 9 valid, 70 refused only as not supported yet, 1 skipped, none failed |
-| Next | I22 on A1 (listeners it started with, h3 on reload); then I17, I20; I16 once A19–A21 land |
-| akio requests | A1–A5, A7, A8, A11, A13 and A16–A18 on akio's main and pinned; A6 on akio branch `claude/x509-csr`; A9, A10, A12, A14, A15 and A19–A21 requested ([akio API requests](akio-api-requests.md)) |
+| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept, added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`); `limits.max_body_bytes` on every listener (413) and in the proxy; access logs in fit's json, text and line formats; upstream pools with round robin, weighted round robin and least connections; the compatibility gate: 80 fixtures, 9 valid, 70 refused only as not supported yet, 1 skipped, none failed |
+| Next | I17, I20; I16 once A19–A21 land |
+| akio requests | A1–A5, A7, A8, A11, A13 and A16–A18 on akio's main and pinned; A6 on akio branch `claude/x509-csr`; A9, A10, A12, A14, A15, A19–A21 and A22 requested ([akio API requests](akio-api-requests.md)) |
 
 ## Log
+
+### 2026-11-24: I22 on akio's A1: every listener reloadable, h3 added by a reload
+
+- `Listeners::reload` (`crates/akit-listener/src/reload.rs`) now moves listeners with akio's
+  runtime listeners (A1, ADR-099) instead of the `adopt_tcp` stopgap, whose accept threads are
+  gone. Before the swap, a new or changed listener's TCP side is added with
+  `Engine::add_listener` (the backend of `Options`, its own I/O threads, as the startup ones), so
+  an address in use still fails the reload with nothing changed (those added for it are removed
+  again). After the swap, a removed or changed one is drained with
+  `Engine::shutdown_listener` for `-shutdown-timeout` (fit drains its retired bindings): each of
+  its connections is asked to close (`Connection: close` after the response in flight, `GOAWAY`
+  on HTTP/2) and those still open at the deadline are closed. `Listeners::new` takes the
+  `Options` and reads the listeners' ids from `Engine::listeners`.
+- The listeners akit started with are reloaded like the rest: changed (protocols, `tls`,
+  limits) or removed, no longer refused. A listener replacing one at the same address is added
+  beside it: on Linux akio's listeners share the port (`SO_REUSEPORT`) while the old one drains,
+  so no connection is refused. On macOS akio's listeners do not share it: the old one stops
+  listening first (retried for up to a second while its I/O thread closes the socket), as fit's
+  reload does on such a system, and it cannot be put back if the reload then fails.
+- HTTP/3 on reload: a listener serving `h3` added by a reload gets its TCP side from
+  `add_listener` and its HTTP/3 from `Engine::bind_udp` on the port TCP got (probed free for both
+  at port 0, as at startup), on the engine's UDP threads: those of the last startup listener
+  serving h3, or one UDP thread `engine` now adds (`udp_client_threads(1)`) when none does. One
+  removed by a later reload is closed (`UdpBinding::close`, its connections closed with it).
+  akio adds and removes TCP listeners only: a startup listener serving h3, whose UDP listener the
+  engine was built with, cannot be removed or changed, and such a reload is refused
+  (`ReloadError::Udp`, "… serves h3 and is removed or changed, which needs a restart …"), the
+  running config kept. Requested from akio as A22.
+- `lib.rs`: `build` split into `tcp_listener` and `h3_acceptor`, which `reload` uses too.
+- Tests: `akit-listener/tests/reload.rs` (3): listeners kept, added, changed at the same
+  address and removed, an idle connection of a removed listener drained, the address free again;
+  the listener akit started with changed at its address and removed; refusals with nothing
+  changed (an address in use after another new listener was added, h2c alone).
+  `akit-listener/tests/h3.rs` `reload_knows_h3_listeners`: an h3 listener added by a reload
+  answers over HTTP/3 and over HTTP/1.1 with its `Alt-Svc`, removing the startup h3 listener is
+  refused with the epoch unchanged, the added one removed again. `akit/tests/reload.rs`, the e2e
+  test under traffic: the clients now honour `Connection: close` (a drained listener's answer),
+  `web` listens at a port fixed in every config, and on Linux it is replaced at that address
+  (its protocols changed, then back) under traffic, with no failed request; the step needing a
+  startup listener refused is gone. A drain closes an idle HTTP/1 keep-alive connection at once
+  (akio-http's `on_shutdown`), so a request the client had already sent on it meets the close
+  unanswered; the test's clients send it again on a new connection, as HTTP clients do with
+  idempotent requests (RFC 9112 section 9.3.1), and count it (at most one per client per
+  replacement); every other error still fails the test.
+- Checked: `make check` on macOS; the tests of akit and akit-listener on Linux (the benchmark
+  host), epoll and io_uring, the e2e test five more times.
+- Left: a startup h3 listener (A22); a removed listener's open requests that arrive after the swap
+  still find no listener of their name and get 404 (their connections are told to close); a kept
+  TLS listener keeps its startup certificates (A2's resolver, I30); a client that does not retry
+  sees the keep-alive close race above when a listener it uses is removed or replaced.
 
 ### 2026-11-24: I13, static files II
 
@@ -314,6 +364,8 @@ done and where the work differs from the plan.
 
 ### 2026-11-24: I22, reload on SIGHUP
 
+- Since moved onto akio's A1 (the entry above): the `adopt_tcp` stopgap and the refusal of
+  startup listeners described here are gone.
 - `akit run` reloads on SIGHUP: it prints `akit: reloading <files>`, reads and compiles the same
   `-c` paths again, and, when they compile and their listeners can be served, swaps the new graph
   in (`GraphCell::swap`), prints the listeners it removed (`akit: listener "x" on ADDR removed`)

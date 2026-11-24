@@ -19,7 +19,7 @@ first; its status here records the branch, then the akio commit akit pins.
 
 | ID | API | Status | Rules | akit iterations |
 | --- | --- | --- | --- | --- |
-| A1 | TCP listeners added, removed and drained on a running engine | in akio's main (`a9a620ab`), pinned | 10, 11 | I22, I28 |
+| A1 | TCP listeners added, removed and drained on a running engine | in akio's main (`a9a620ab`), pinned, used by I22 | 10, 11 | I22, I28 |
 | A2 | A server certificate chosen per handshake by a callback that may complete later | in akio's main (`a9a620ab`), pinned | 1, 4 | I30, I34 |
 | A3 | A filter on accepted connections before any handler runs | in akio's main (`a9a620ab`), pinned | 11 | access lists |
 | A4 | PROXY protocol v1/v2: parse on accept, write on dial | in akio's main (`a9a620ab`), pinned | 12 | I52 |
@@ -40,6 +40,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | A19 | An HTTP client request whose body is sent as it is produced, with backpressure | requested (I16) | 5, 8 | I16, I17, I18, I49, I75 |
 | A20 | An HTTP client response delivered as it arrives, its reads held and resumed | requested (I16) | 5, 8 | I16, I17, I18, I67 |
 | A21 | A server request that holds its client's reads and hears when its client drained | requested (I16) | 5, 8 | I16, I47, I75 |
+| A22 | UDP listeners removed and drained on a running engine | requested (I22) | 10, 11 | I22, I28 |
 
 ## A1 TCP listeners on a running engine
 
@@ -56,8 +57,10 @@ listeners on every reload and Admin API change (fib's `AddBinding`, `RemoveBindi
 (stop accepting, close its connections after the drain), with the listener's backend and accel
 choices as at build time.
 
-**How akit uses it.** I22 and I28 diff listeners on each swap. Until then, a stopgap: a listening
-socket of akit's own with one accept thread handing streams to `adopt_tcp`, recorded in progress.
+**How akit uses it.** I22 and I28 diff listeners on each swap. I22 does on `a9a620ab`
+(`akit_listener::Listeners::reload`): `add_listener` before the swap, `shutdown_listener` with
+the shutdown timeout after it; the `adopt_tcp` stopgap it used before is gone. A UDP listener
+cannot be removed yet (A22).
 
 ## A2 Certificates chosen per handshake, asynchronously
 
@@ -464,3 +467,23 @@ does `akio_http::raw` for upgraded connections.
 it holds the upstream's reads (A20) while the client's `BodyStream::queued_bytes` is above it, and
 resumes them from `BodyStream::on_drain`. Also compression (I47) and FastCGI (I75). Until then akit
 buffers proxied bodies whole, within the limits (recorded in the I16 progress entry).
+
+## A22 Removing a UDP listener of a running engine
+
+**Problem.** A1 adds, removes and drains TCP listeners at run time; a UDP listener given to the
+builder cannot be removed (`Engine::remove_listener` answers `Unsupported`). akit serves HTTP/3
+on such a listener, so a reload (or an Admin API change) that removes or changes a listener
+serving `h3` that akit started with is refused until a restart. HTTP/3 added at run time goes on
+`Engine::bind_udp`, whose `UdpBinding::close` closes its connections at once, without a drain.
+
+**Evidence.** `crates/akio/src/lib.rs` at `a9a620ab`: `Engine::unlisten` refuses every kind but
+`Kind::Tcp`; `Engine::add_listener` refuses UDP (`bind_udp` binds UDP at run time);
+`crates/akio-core/src/group.rs` `UdpBinding::close`.
+
+**Suggested API.** `Engine::remove_listener` and `Engine::shutdown_listener(id, drain)` for UDP
+listeners too (per-peer UDP: stop receiving new peers, call `on_shutdown` on the existing ones,
+close those left at the deadline), and `Engine::add_listener` for a UDP listener; or
+`UdpBinding::shutdown(drain)` with the same meaning.
+
+**How akit uses it.** `akit_listener::Listeners::reload` (I22, I28) removes and drains a
+listener's HTTP/3 as it does its TCP side, and the `ReloadError::Udp` refusal goes.

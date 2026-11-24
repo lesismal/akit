@@ -1,11 +1,13 @@
-//! Reloading (I22): `Listeners::reload` keeps the unchanged listeners, opens the new ones,
-//! closes the removed ones, and refuses what it cannot do with nothing changed. On the backend
+//! Reloading (I22): `Listeners::reload` keeps the unchanged listeners, adds the new ones to the
+//! engine, drains the removed ones (akio's runtime listeners, A1), those akit started with as the
+//! rest, and refuses what it cannot do with nothing changed. On the backend
 //! `AKIO_TEST_BACKEND` names (epoll by default, `uring`).
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::panic,
-    clippy::indexing_slicing
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects
 )]
 
 use std::io::{Read, Write};
@@ -52,12 +54,12 @@ fn serve(json: &str) -> (GraphCell, Arc<akio::Engine>, Listeners) {
     let cell = GraphCell::new(graph(json));
     let e = Arc::new(akit_listener::engine(&cell, &options()).unwrap());
     e.start().unwrap();
-    let l = Listeners::new(Arc::clone(&e), cell.clone());
+    let l = Listeners::new(Arc::clone(&e), cell.clone(), &options());
     (cell, e, l)
 }
 
-fn stop(e: &akio::Engine, mut l: Listeners) {
-    l.close();
+fn stop(e: &akio::Engine, l: Listeners) {
+    drop(l);
     assert!(akit_listener::shutdown(e, Duration::from_secs(5)));
 }
 
@@ -102,8 +104,7 @@ fn unchanged_listeners_are_kept_and_new_ones_opened_and_closed() {
     cell.collect();
     assert_eq!(cell.retiring(), 0);
 
-    // The added listener changed at the same address: it keeps its socket, with the new
-    // settings.
+    // The added listener changed at the same address: replaced, with the new settings.
     let r = l
         .reload(graph(&config(
             &format!(r#"{WEB}, {{"name": "extra2", "address": "{extra}"}}"#),
@@ -118,7 +119,7 @@ fn unchanged_listeners_are_kept_and_new_ones_opened_and_closed() {
     );
     assert_eq!(get(extra), ok("v3"));
 
-    // Removed: its socket closed, a connection it accepted kept until it ends.
+    // Removed: it stops listening, and an idle connection it accepted is drained (closed).
     let mut open = TcpStream::connect(extra).unwrap();
     open.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
     open.write_all(b"GET / HTTP/1.1\r\nHost: x\r\n\r\n")
@@ -128,11 +129,56 @@ fn unchanged_listeners_are_kept_and_new_ones_opened_and_closed() {
     let r = l.reload(graph(&config(WEB, "v4"))).unwrap();
     assert_eq!((r.kept, r.added.len(), r.removed.len()), (1, 0, 1));
     assert_eq!(l.served().len(), 1);
-    assert!(TcpStream::connect(extra).is_err());
     assert_eq!(get(web), ok("v4"));
+    assert_eq!(open.read(&mut buf).unwrap(), 0);
+    wait_closed(extra);
     // The address can be listened on again.
     drop(TcpListener::bind(extra).unwrap());
-    drop(open);
+    cell.collect();
+    assert_eq!(cell.retiring(), 0);
+    stop(&e, l);
+}
+
+/// Waits until nothing listens at `addr` any more (each I/O thread closes its socket at its
+/// next loop iteration).
+fn wait_closed(addr: SocketAddr) {
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    while TcpStream::connect(addr).is_ok() {
+        assert!(std::time::Instant::now() < deadline, "{addr} still listens");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+#[test]
+fn the_listeners_akit_started_with_change_and_go() {
+    let (cell, e, mut l) = serve(&config(WEB, "v1"));
+    let web = l.served()[0].address;
+
+    // Changed at its address (h2c added): replaced, the address served throughout.
+    let r = l
+        .reload(graph(&config(
+            &format!(r#"{{"name": "web", "address": "{web}", "protocols": ["http/1.1", "h2c"]}}"#),
+            "v2",
+        )))
+        .unwrap();
+    assert_eq!((r.kept, r.added.len(), r.removed.len()), (0, 1, 1));
+    assert_eq!((r.added[0].name.as_str(), r.added[0].address), ("web", web));
+    assert_eq!(r.removed[0].address, web);
+    assert_eq!(get(web), ok("v2"));
+    cell.collect();
+
+    // Removed, another listener in its place.
+    let r = l
+        .reload(graph(&config(
+            r#"{"name": "other", "address": "127.0.0.1:0"}"#,
+            "v3",
+        )))
+        .unwrap();
+    assert_eq!((r.kept, r.added.len(), r.removed.len()), (0, 1, 1));
+    let other = r.added[0].address;
+    assert_eq!(get(other), ok("v3"));
+    wait_closed(web);
+    assert_eq!(l.served().len(), 1);
     cell.collect();
     assert_eq!(cell.retiring(), 0);
     stop(&e, l);
@@ -143,19 +189,6 @@ fn what_cannot_be_served_is_refused_with_nothing_changed() {
     let (cell, e, mut l) = serve(&config(WEB, "v1"));
     let web = l.served()[0].address;
     let epoch = cell.epoch();
-
-    // A listener akit started with, removed or changed: needs A1.
-    for listeners in [
-        r#"{"name": "other", "address": "127.0.0.1:0"}"#.to_owned(),
-        r#"{"name": "web", "address": "127.0.0.1:0", "protocols": ["http/1.1", "h2c"]}"#.to_owned(),
-    ] {
-        match l.reload(graph(&config(&listeners, "v2"))) {
-            Err(ReloadError::Fixed { listener, address }) => {
-                assert_eq!((listener.as_str(), address), ("web", web));
-            }
-            other => panic!("{other:?}"),
-        }
-    }
 
     // An address in use: the listeners bound before it are closed again.
     let busy = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -174,10 +207,11 @@ fn what_cannot_be_served_is_refused_with_nothing_changed() {
         Err(e @ ReloadError::Listener(_)) => {
             let msg = e.to_string();
             assert!(msg.starts_with("listener b: address"), "{msg}");
+            assert!(msg.contains(&busy_addr.to_string()), "{msg}");
         }
         other => panic!("{other:?}"),
     }
-    assert!(TcpStream::connect(free).is_err());
+    wait_closed(free);
     drop(busy);
 
     // h2c alone is not supported yet.

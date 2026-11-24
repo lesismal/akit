@@ -549,37 +549,71 @@ fn build(cell: &GraphCell, opts: &Options) -> Result<Engine, (Error, bool)> {
             addr.set_port(port);
         }
         if tcp {
-            let mut d = Dispatcher::new(cell.clone(), l.name.clone()).tls(l.tls.is_some());
-            if h3 {
-                d = d.with_alt_svc(alt_svc(addr.port()));
-            }
-            let http = akio_http::serve_with(http_config(l).map_err(fail)?, d);
             let listener = EngineListener::tcp(addr).backend(opts.backend.clone());
-            b = b.listen(match (&l.tls, tls) {
-                (None, _) => listener.serve(http),
-                (Some(_), Some(cfg)) => listener.serve(Tls::server(cfg.clone(), http)),
-                // The graph loads every listener's tls, or is not compiled.
-                (Some(_), None) => return Err(fail(not_loaded(l))),
-            });
+            b = b.listen(
+                tcp_listener(cell, l, tls.as_ref(), listener, h3.then_some(addr.port()))
+                    .map_err(fail)?,
+            );
         }
         if h3 {
-            // akit-config refuses h3 without tls; the graph loads its h3 TLS with the rest.
-            let Some(tls) = h3_tls else {
-                return Err(fail(not_loaded(l)));
-            };
-            let quic = akio_quic::server_config_from(tls)
-                .map_err(|e| fail(Error::Engine(io::Error::other(e.to_string()))))?;
             // Per-peer UDP listeners run on akio's epoll (kqueue) UDP loop whatever the TCP
             // backend: the backend is left to akio.
-            b = b.listen(EngineListener::udp(addr).serve(akio_h3::serve_with(
-                quic,
-                h3_config(l),
-                // HTTP/3 is always over TLS.
-                Dispatcher::new(cell.clone(), l.name.clone()).tls(true),
-            )));
+            b = b.listen(
+                EngineListener::udp(addr)
+                    .serve(h3_acceptor(cell, l, h3_tls.as_ref()).map_err(fail)?),
+            );
         }
     }
+    // The HTTP/3 of a listener a reload adds is bound on the engine's UDP threads
+    // (`Engine::bind_udp`, I22): those of the last listener serving h3, or one of their own when
+    // none does. (akio adds TCP listeners at run time, A1, not UDP ones.)
+    if !listeners.iter().any(|(l, _, _)| serves_h3(l)) {
+        b = b.udp_client_threads(1);
+    }
     b.build().map_err(|e| (Error::Engine(e), probed))
+}
+
+/// The TCP side of listener `l` on `listener` (its address and backend set): HTTP/1.1 and h2c,
+/// or HTTPS with `tls` (the graph's, loaded); `h3_port` names the port of its HTTP/3, which
+/// its responses' `Alt-Svc` advertises.
+fn tcp_listener(
+    cell: &GraphCell,
+    l: &Listener,
+    tls: Option<&akio::tls::ServerConfig>,
+    listener: EngineListener,
+    h3_port: Option<u16>,
+) -> Result<EngineListener, Error> {
+    let mut d = Dispatcher::new(cell.clone(), l.name.clone()).tls(l.tls.is_some());
+    if let Some(port) = h3_port {
+        d = d.with_alt_svc(alt_svc(port));
+    }
+    let http = akio_http::serve_with(http_config(l)?, d);
+    Ok(match (&l.tls, tls) {
+        (None, _) => listener.serve(http),
+        (Some(_), Some(cfg)) => listener.serve(Tls::server(cfg.clone(), http)),
+        // The graph loads every listener's tls, or is not compiled.
+        (Some(_), None) => return Err(not_loaded(l)),
+    })
+}
+
+/// The HTTP/3 acceptor of listener `l`, with its h3 TLS (the graph's, loaded).
+fn h3_acceptor(
+    cell: &GraphCell,
+    l: &Listener,
+    h3_tls: Option<&akio::tls::ServerConfig>,
+) -> Result<impl akio::Acceptor, Error> {
+    // akit-config refuses h3 without tls; the graph loads its h3 TLS with the rest.
+    let Some(tls) = h3_tls else {
+        return Err(not_loaded(l));
+    };
+    let quic = akio_quic::server_config_from(tls)
+        .map_err(|e| Error::Engine(io::Error::other(e.to_string())))?;
+    Ok(akio_h3::serve_with(
+        quic,
+        h3_config(l),
+        // HTTP/3 is always over TLS.
+        Dispatcher::new(cell.clone(), l.name.clone()).tls(true),
+    ))
 }
 
 fn not_loaded(l: &Listener) -> Error {

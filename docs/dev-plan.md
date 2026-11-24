@@ -449,8 +449,8 @@ Split from I07 so that the half that needs no config model runs beside I02.
 ### I22 Reload on SIGHUP
 
 - **Do**: SIGHUP builds a new graph and swaps it; a broken config leaves the running one; listeners
-  whose address did not change are kept. New and removed listeners use A1, or, until it lands, the
-  `adopt_tcp` stopgap recorded in progress.
+  whose address did not change are kept. New and removed listeners use A1 (done on akio `a9a620ab`;
+  the `adopt_tcp` stopgap it used before is gone).
 - **Done when**: an e2e test reloads under traffic with no failed request.
 - **Touches**: `akit`, `akit-runtime`, `akit-listener`.
 
@@ -502,7 +502,7 @@ Split from I07 so that the half that needs no config model runs beside I02.
 ### I28 Listeners diffed at run time
 
 - **Do**: on a swap, new addresses bound, removed ones drained with a timeout, unchanged ones kept;
-  the `adopt_tcp` stopgap removed. Depends on akio A1.
+  as I22 does on SIGHUP (on A1, which removed the `adopt_tcp` stopgap). Depends on akio A1.
 - **Done when**: a test adds and removes listeners under traffic with no failed request.
 - **Touches**: `akit-listener`, `akit-runtime`.
 

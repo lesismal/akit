@@ -422,7 +422,7 @@ fn run(args: &[String]) -> ExitCode {
     }
     // Upstream connections are dialed on the listeners' threads.
     slot.set(Arc::clone(&engine));
-    let mut listeners = akit_listener::Listeners::new(Arc::clone(&engine), cell.clone());
+    let mut listeners = akit_listener::Listeners::new(Arc::clone(&engine), cell.clone(), &opts);
     for l in listeners.served() {
         print_listener(&l);
     }
@@ -459,8 +459,6 @@ fn run(args: &[String]) -> ExitCode {
         }
     });
     println!("akit: shutting down");
-    // The listeners added by reloads stop accepting; the engine's own stop with it.
-    listeners.close();
     if !akit_listener::shutdown(&engine, grace) {
         eprintln!(
             "akit run: shutdown took longer than {}; connections still open were closed",

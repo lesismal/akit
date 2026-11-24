@@ -13,11 +13,46 @@
 | 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I15、I19、I21、I22、I23、I24 已完成，I16 进行中（body 限制已完成；流式转发等待 akio 的 A19–A21）；M3 的 I39 已提前完成。 |
 | akio | akio `main` 上的 `a9a620ab`（`1.0.0-rc.1`，带 A1–A5、A7、A8、A11、A13 和 A16–A18），在 `Cargo.toml` 中按 `rev` 锁定 |
 | fit | 作为规格；本计划基于 `7daee573` 阅读 |
-| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；监听器保留、增加和移除，启动时的监听器要等锁定到带 A1 的 akio）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`）；所有监听器和代理上的 `limits.max_body_bytes`（413）；fit 的 json、text 和 line 格式的访问日志；上游连接池，轮询、加权轮询和最少连接；兼容性门禁：80 个夹具，9 个有效，70 个只因暂不支持被拒绝，1 个跳过，没有失败 |
-| 下一步 | I22 改用 A1（启动时的监听器、重载时的 h3）；再是 I17、I20；A19–A21 落地后再做 I16 |
-| akio 需求 | A1–A5、A7、A8、A11、A13、A16–A18 已在 akio 的 main 并已锁定；A6 在 akio 分支 `claude/x509-csr` 上；A9、A10、A12、A14、A15 和 A19–A21 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
+| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；基于 akio 的 A1 保留、增加、修改和排空监听器，包括启动时的监听器，重载可新增 h3 监听器；服务 h3 的启动监听器要重启才能变）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`）；所有监听器和代理上的 `limits.max_body_bytes`（413）；fit 的 json、text 和 line 格式的访问日志；上游连接池，轮询、加权轮询和最少连接；兼容性门禁：80 个夹具，9 个有效，70 个只因暂不支持被拒绝，1 个跳过，没有失败 |
+| 下一步 | I17、I20；A19–A21 落地后再做 I16 |
+| akio 需求 | A1–A5、A7、A8、A11、A13、A16–A18 已在 akio 的 main 并已锁定；A6 在 akio 分支 `claude/x509-csr` 上；A9、A10、A12、A14、A15、A19–A21 和 A22 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
 
 ## 日志
+
+### 2026-11-24：I22 改用 akio 的 A1：所有监听器都可重载，重载可新增 h3
+
+- `Listeners::reload`（`crates/akit-listener/src/reload.rs`）现在用 akio 的运行时监听器（A1，ADR-099）迁移监听器，
+  不再用 `adopt_tcp` 临时方案，其 accept 线程随之去掉。换入之前，新增或修改的监听器的 TCP 一侧用
+  `Engine::add_listener` 添加（用 `Options` 的后端，与启动监听器一样有自己的 I/O 线程），所以地址被占用仍会让重载
+  失败且什么都不改变（为它添加的监听器会再移除）。换入之后，移除或修改的监听器用 `Engine::shutdown_listener` 在
+  `-shutdown-timeout` 内排空（fit 也排空退役的 binding）：它的每个连接都被要求关闭（HTTP/1 在当前响应后带
+  `Connection: close`，HTTP/2 发 `GOAWAY`），到期仍打开的连接被关闭。`Listeners::new` 接受 `Options`，并从
+  `Engine::listeners` 读取监听器的 id。
+- akit 启动时的监听器与其他监听器一样可以重载：修改（协议、`tls`、限制）或移除，不再被拒绝。替换同一地址上监听器的
+  新监听器加在旧的旁边：Linux 上 akio 的监听器在旧的排空期间共享端口（`SO_REUSEPORT`），不会拒绝任何连接。macOS 上
+  akio 的监听器不共享端口：旧的先停止监听（在其 I/O 线程关闭套接字期间最多重试一秒），与 fit 在这类系统上的重载一样，
+  若之后重载失败也无法恢复。
+- 重载时的 HTTP/3：重载新增的服务 `h3` 的监听器，TCP 一侧来自 `add_listener`，HTTP/3 用 `Engine::bind_udp` 绑定在
+  TCP 得到的端口上（端口为 0 时与启动时一样探测一个两者都空闲的端口），运行在引擎的 UDP 线程上：最后一个服务 h3 的
+  启动监听器的线程，或没有这样的监听器时 `engine` 现在添加的一个 UDP 线程（`udp_client_threads(1)`）。之后的重载移除它
+  时将其关闭（`UdpBinding::close`，其连接一并关闭）。akio 只能添加和移除 TCP 监听器：服务 h3 的启动监听器（引擎构建时
+  就有其 UDP 监听器）不能移除或修改，这样的重载被拒绝（`ReloadError::Udp`，"… serves h3 and is removed or changed,
+  which needs a restart …"），保留正在运行的配置。已向 akio 提出 A22。
+- `lib.rs`：`build` 拆出 `tcp_listener` 和 `h3_acceptor`，`reload` 也使用它们。
+- 测试：`akit-listener/tests/reload.rs`（3 个）：监听器的保留、新增、同一地址上的修改和移除，被移除监听器上的空闲
+  连接被排空，地址可再次使用；akit 启动时的监听器在其地址上被修改和被移除；什么都不改变的拒绝（在添加另一个新监听器
+  之后遇到被占用的地址、只有 h2c）。`akit-listener/tests/h3.rs` 的 `reload_knows_h3_listeners`：重载新增的 h3 监听器
+  通过 HTTP/3 应答，通过 HTTP/1.1 应答时带 `Alt-Svc`；移除启动时的 h3 监听器被拒绝且纪元不变；新增的那个再被移除。
+  `akit/tests/reload.rs`，有流量时的端到端测试：客户端现在遵从 `Connection: close`（被排空的监听器的应答），`web` 监听
+  每个配置都写明的固定端口，在 Linux 上它在流量下于该地址被替换（修改协议，再改回），没有失败的请求；原先需要拒绝启动
+  监听器的那一步去掉了。排空会立即关闭空闲的 HTTP/1 保活连接（akio-http 的 `on_shutdown`），客户端已在其上
+  发出的请求会碰上关闭而得不到应答；测试的客户端像 HTTP 客户端对幂等请求那样（RFC 9112 第 9.3.1 节）在新连接上重发
+  并计数（每次替换每个客户端至多一次）；其他任何错误仍使测试失败。
+- 已检查：macOS 上的 `make check`；Linux（基准主机）上 epoll 和 io_uring 的 akit 和 akit-listener 测试，端到端测试
+  另外再跑五次。
+- 遗留：服务 h3 的启动监听器（A22）；被移除监听器上换入之后才到达的请求仍找不到同名监听器而得到 404（其连接已被要求
+  关闭）；保留的 TLS 监听器沿用启动时的证书（A2 的 resolver，I30）；不重试的客户端在其所用监听器被移除或替换时
+  会遇到上述保活关闭竞争。
 
 ### 2026-11-24：I13，静态文件 II
 
@@ -229,6 +264,7 @@
 
 ### 2026-11-24：I22，SIGHUP 重载
 
+- 之后已改用 akio 的 A1（见上一条）：这里描述的 `adopt_tcp` 临时方案和对启动监听器的拒绝已去掉。
 - `akit run` 收到 SIGHUP 时重载：先打印 `akit: reloading <文件>`，重新读取并编译同样的 `-c` 路径，若编译成功且其
   监听器都能提供服务，就换入新图（`GraphCell::swap`），打印移除的监听器（`akit: listener "x" on ADDR removed`）和
   新增的监听器（与启动时同样的行），然后打印 `akit: reloaded <文件>`。读取或编译失败、或监听器无法提供服务的配置，
