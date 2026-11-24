@@ -76,8 +76,8 @@ first; its status here records the branch, then the akio commit akit pins.
 | A108 | The HTTP/1 client's TLS server name, in place of the URL's host | in akio's main (`e9891b52`), pinned | 19 | I54 |
 | A109 | A client certificate's key checked against its leaf when the TLS configuration is built | in akio's main (`e9891b52`), pinned | 19 | I54 |
 | A111 | A response filter sees a streamed body as it is sent, and how it ended (a body tap) | in akio's main (`e9891b52`), pinned | 5, 6 | I67 |
-| A112 | An HTTP-date parsed in all three formats RFC 9110 has recipients accept | built on akio's branch `claude/a111-body-tap` (`0e36f8d6`), pinned | 15 | I67 |
-| A113 | A response filter that runs after the inner ones (an outer filter) | built on akio's branch `claude/a111-body-tap` (`0e36f8d6`), pinned | 5 | I67 |
+| A112 | An HTTP-date parsed in all three formats RFC 9110 has recipients accept | in akio's main (`e9891b52`, ADR-116), pinned | 15 | I67 |
+| A113 | A response filter that runs after the inner ones (an outer filter) | in akio's main (`e9891b52`, ADR-116), pinned | 5 | I67 |
 | A117 | `akio::Pool` and `PoolConfig` together: a bounded pool of an application's own for its blocking work | requested (I68); akit-cache depends on `akio-pool` meanwhile | 4 | I68 |
 | A132 | A proxy tunnel's upstream checked once connected, by the name asked for and both addresses; the SOCKS client a trusted PROXY header names | in akio's main (`8453b60c`), pinned | 1, 19 | I55 |
 | A133 | A proxy's connect timeout of its own, answered (SOCKS5 4, HTTP 504) | in akio's main (`8453b60c`), pinned | 10 | I55 |
