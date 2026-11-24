@@ -36,8 +36,8 @@ use akit_config::{Listener, Protocol};
 use akit_runtime::{Graph, GraphCell};
 
 use crate::{
-    Error, MAX_PORT_ZERO_BINDS, Options, free_port, h3_acceptor, l4_acceptor, resolve, serves_h3,
-    serves_l4_tcp, tcp_listener, tcp_side, udp_side,
+    Error, MAX_PORT_ZERO_BINDS, Options, free_port, h3_acceptor, l4_acceptor, resolve, serve_tcp,
+    serves_h3, serves_l4_tcp, tcp_listener, tcp_side, udp_side,
 };
 
 /// A listener as it is served now.
@@ -166,9 +166,9 @@ impl Entry {
 }
 
 /// Whether a running listener configured as `running` can serve `next` as it is, as fit's
-/// `binding.same` decides (I28): the same name, address, protocols and body limit, TLS or not as
-/// `next` has it, and the same newest TLS version and client authentication mode, each fixed in
-/// its engine listener. Its certificates may differ, their files and its ACME names: a kept
+/// `binding.same` decides (I28): the same name, address, protocols, body limit and
+/// `proxy_protocol` (I52), TLS or not as `next` has it, and the same newest TLS version and client
+/// authentication mode, each fixed in its engine listener. Its certificates may differ, their files and its ACME names: a kept
 /// listener's manager serves `next`'s per handshake (I30). Its client authorities are compared
 /// by their contents, by [`akit_tls::ListenerTls::same_config`], not by their paths.
 fn same(running: &Listener, next: &Listener) -> bool {
@@ -176,6 +176,7 @@ fn same(running: &Listener, next: &Listener) -> bool {
         && running.address == next.address
         && running.protocols == next.protocols
         && running.max_body_bytes == next.max_body_bytes
+        && running.proxy_protocol == next.proxy_protocol
         && match (&running.tls, &next.tls) {
             (None, None) => true,
             (Some(a), Some(b)) => {
@@ -379,7 +380,7 @@ impl Listeners {
         let make = || {
             if serves_l4_tcp(l) {
                 let listener = EngineListener::tcp(addr).backend(self.opts.backend.clone());
-                return Ok(listener.serve(l4_acceptor(&self.cell, l)));
+                return Ok(serve_tcp(l, listener, l4_acceptor(&self.cell, l)));
             }
             tcp_listener(
                 &self.cell,

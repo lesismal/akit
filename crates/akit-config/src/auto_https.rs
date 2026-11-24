@@ -243,6 +243,7 @@ pub(crate) fn effective(
         }),
         max_body_bytes: DEFAULT_MAX_BODY_BYTES,
         redirect_https: 0,
+        proxy_protocol: None,
     }];
     if auto.redirects() {
         listeners.push(Listener {
@@ -252,6 +253,7 @@ pub(crate) fn effective(
             tls: None,
             max_body_bytes: DEFAULT_MAX_BODY_BYTES,
             redirect_https: auto.https_port,
+            proxy_protocol: None,
         });
     }
     Effective::Made(listeners)

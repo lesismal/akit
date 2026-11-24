@@ -54,10 +54,10 @@ pub use model::{
     DEFAULT_SERVICE_MAX_CONNS, DEFAULT_SERVICE_UDP_IDLE_TIMEOUT, DEFAULT_STICKY_COOKIE_NAME,
     DEFAULT_TLS_PROTOCOLS, DEFAULT_TUNNEL_IDLE_TIMEOUT, DEFAULT_WRITE_STALL_TIMEOUT, Dotfiles,
     Encoding, ForwardAuth, Handler, HeaderOps, Headers, HealthCheck, HealthCheckType,
-    JWT_ALGORITHMS, Jwt, Limits, Listener, LoadBalancing, LogFormat, MAX_WEIGHT, Match, Metrics,
-    Network, Protocol, Proxy, RateKey, RateLimit, Redirect, Respond, Retry, Rewrite, Route,
-    SCHEMA_VERSION, Service, Static, StickyCookie, Tls, TlsVersion, TokenFrom, Upstream,
-    UpstreamProtocol,
+    JWT_ALGORITHMS, Jwt, Limits, Listener, ListenerProxyProtocol, LoadBalancing, LogFormat,
+    MAX_WEIGHT, Match, Metrics, Network, Protocol, Proxy, ProxyVersion, RateKey, RateLimit,
+    Redirect, Respond, Retry, Rewrite, Route, SCHEMA_VERSION, Service, Static, StickyCookie, Tls,
+    TlsVersion, TokenFrom, Upstream, UpstreamProtocol,
 };
 
 /// The largest config document read, in bytes: fit's own configs are kilobytes; this bounds

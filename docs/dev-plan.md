@@ -154,7 +154,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I50 | gRPC proxying | I18 | todo |
 | I51 | TCP and UDP proxying | I05 | done |
 | I51b | The eBPF sockmap relay | I51 | todo |
-| I52 | SNI routing and PROXY protocol | I51, A4, A5 | todo |
+| I52 | SNI routing and PROXY protocol | I51, A4, A5 | done |
 | I53 | Many protocols on one port | I52 | todo |
 | I54 | Upstream TLS | I18 | todo |
 | I55 | SOCKS and CONNECT | I53 | todo |
@@ -226,7 +226,7 @@ commit and result.
 | Middlewares (retries and the rest) | I46–I48 | no | no (not built yet) | I56 benchmarks every middleware; same-run A/B of each on the proxy scenario. |
 | Compression | I47 | no | no (built, not measured) | Against fit, each encoding, as I47 asks: the proxy scenario with `compress` in front, a whole JSON body and a stream of server-sent events, over HTTP/1.1 and h2, per encoding at fit's default levels (responses a second, server CPU, bytes on the wire); the cost of the filter on responses it leaves alone (an image) against no middleware; the memory of held compressed streams (1,000 at once); the static handler's copies against fit's (`compress` on a file kept in memory). |
 | WebSocket and gRPC proxying | I49, I50 | no | no (I49 built, not measured; I50 not built yet) | Against fit: WebSocket messages a second (small, echoed) and bytes a second (large) through akit from HTTP/1.1, h2 and h3 clients, memory per open WebSocket (idle, and with 64 KiB pending each way), and handshakes a second (a key generated, the upstream connection leaving the pool); I50: gRPC calls a second. |
-| TCP and UDP proxying, SNI routing, many protocols on one port | I51–I53 | no | no (I51 built, not measured; I52, I53 not built yet) | Against fit and nginx's `stream`, as I51 asks: TCP throughput (fit's `BenchmarkTCPProxy`, 256 KB echoed at a time, direct and through akit), connections a second, memory per idle connection; UDP datagrams a second and sessions at once; the per-service idle sweep on akit's timer thread with 10,000 connections (the stopgap for akio A78); the cost of sniffing on a shared port (I53). |
+| TCP and UDP proxying, SNI routing, many protocols on one port | I51–I53 | no | no (I51 and I52 built, not measured; I53 not built yet) | Against fit and nginx's `stream`, as I51 asks: TCP throughput (fit's `BenchmarkTCPProxy`, 256 KB echoed at a time, direct and through akit), connections a second, memory per idle connection; UDP datagrams a second and sessions at once; the per-service idle sweep on akit's timer thread with 10,000 connections (the stopgap for akio A78); the cost of sniffing on a shared port (I53). I52: connections a second through a listener that routes by SNI (the ClientHello read and parsed before the dial) against one that does not, and with a PROXY header read on accept and one sent upstream; HTTP/1.1 and h2c request rates on a listener with `proxy_protocol` against one without, and akio's ADR-118 cost (a `OnceLock::get` per request) on a listener without. |
 | Response cache | I67, I68 | no | no (not built yet) | Hits from memory and disk against fit. |
 | WASM plugins | I71, I72 | no | no (not built yet) | A/B of a no-op plugin against none. |
 
@@ -744,6 +744,8 @@ Split from I07 so that the half that needs no config model runs beside I02.
   akio A4 and A5.
 - **Done when**: tests cover both, including a truncated or forged PROXY header.
 - **Touches**: `akit-l4`, `akit-listener`.
+- **Built on**: akio API requests A4 and A5 (ADR-095), and A105 (ADR-118: a request's peer from
+  the PROXY header), added to akio by this iteration.
 
 ### I53 Many protocols on one port
 

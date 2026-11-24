@@ -49,6 +49,12 @@
 //! graph's services still proxy once the drain timeout ([`Options::shutdown_timeout`]) has
 //! passed, as fit's does.
 //!
+//! I52: a listener with `proxy_protocol`, of `tcp` or of HTTP over TCP, reads the PROXY header
+//! of its trusted proxies' connections before anything else (before TLS), with akio-mux's
+//! `ProxyProtocol`; the client it names is the relay's, or the request's. A `tcp` listener's
+//! services may pick its connections by their ClientHello's server name (akit-l4's
+//! [`akit_l4::Entry`]).
+//!
 //! Part of [akit](https://github.com/lesismal/akit); see `docs/dev-plan.md` for the iterations that
 //! fill this crate in.
 
@@ -692,15 +698,15 @@ fn udp_side(l: &Listener) -> bool {
     serves_h3(l) || serves_l4_udp(l)
 }
 
-/// The acceptor of a `tcp` or `udp` listener: each connection to the service the cell's current
-/// graph has for it (I51).
+/// The acceptor of a `tcp` or `udp` listener: each connection to a service the cell's current
+/// graph has for it (I51), by the server name of its ClientHello (I52).
 fn l4_acceptor(
     cell: &GraphCell,
     l: &Listener,
-) -> akit_l4::ClientAcceptor<impl Fn() -> Option<akit_l4::Service> + Send + Sync + 'static> {
+) -> akit_l4::ClientAcceptor<impl Fn() -> Option<akit_l4::Entry> + Send + Sync + 'static> {
     let cell = cell.clone();
     let name = l.name.clone();
-    let find = move || cell.with(|g| g.listener_index(&name).and_then(|i| g.service(i)).cloned());
+    let find = move || cell.with(|g| g.listener_index(&name).and_then(|i| g.entry(i)).cloned());
     if serves_l4_udp(l) {
         akit_l4::ClientAcceptor::udp(find)
     } else {
@@ -854,7 +860,7 @@ fn build(cell: &GraphCell, opts: &Options) -> Result<Engine, (Error, bool)> {
         }
         if serves_l4_tcp(l) {
             let listener = EngineListener::tcp(addr).backend(opts.backend.clone());
-            b = b.listen(listener.serve(l4_acceptor(cell, l)));
+            b = b.listen(serve_tcp(l, listener, l4_acceptor(cell, l)));
         }
         if serves_l4_udp(l) {
             b = b.listen(EngineListener::udp(addr).serve(l4_acceptor(cell, l)));
@@ -888,11 +894,33 @@ fn tcp_listener(
     }
     let http = akio_http::serve_with(http_config(l)?, d);
     Ok(match (&l.tls, tls) {
-        (None, _) => listener.serve(http),
-        (Some(_), Some(cfg)) => listener.serve(Tls::server(cfg.clone(), http)),
+        (None, _) => serve_tcp(l, listener, http),
+        // The PROXY header comes before TLS.
+        (Some(_), Some(cfg)) => serve_tcp(l, listener, Tls::server(cfg.clone(), http)),
         // The graph loads every listener's tls, or is not compiled.
         (Some(_), None) => return Err(not_loaded(l)),
     })
+}
+
+/// The most bytes of a PROXY header a listener reads (fit's `MaxProxyHeader`): a v1 line is at
+/// most 107, and a v2 header's TLVs are left at what a proxy sends in practice.
+pub const MAX_PROXY_HEADER: usize = 4096;
+
+/// `listener` (TCP) serving `acc`, behind akio-mux's PROXY protocol layer when listener `l` has
+/// `proxy_protocol` (I52): a connection from one of its trusted proxies must begin with a header,
+/// of version 1 or 2, of at most [`MAX_PROXY_HEADER`] bytes within
+/// [`akit_l4::OPENING_TIMEOUT`], or is closed, and is served as from the client it names (the
+/// request's peer: akio API request A105); one from elsewhere is served as it is.
+fn serve_tcp(l: &Listener, listener: EngineListener, acc: impl akio::Acceptor) -> EngineListener {
+    let Some(pp) = l.proxy_protocol.clone() else {
+        return listener.serve(acc);
+    };
+    listener.serve_any(
+        akio_mux::proxy::ProxyProtocol::new(acc)
+            .trusted(move |a| pp.trusts(a.ip()))
+            .header_timeout(Some(akit_l4::OPENING_TIMEOUT))
+            .max_header_bytes(MAX_PROXY_HEADER),
+    )
 }
 
 /// The HTTP/3 acceptor of listener `l`, with its h3 TLS (the graph's, loaded).

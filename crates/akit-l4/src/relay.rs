@@ -6,12 +6,16 @@ use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
 
 use akio::{Acceptor, Conn, Handler};
+use akio_mux::proxy::{self, ProxyHeader};
+use akio_mux::tls::{HelloError, parse_client_hello};
 
-use crate::{Inner, Service, WATERMARK};
+use crate::{Entry, Inner, MAX_CLIENT_HELLO, OPENING_TIMEOUT, Service, WATERMARK};
 
-/// What a `tcp` or `udp` listener serves its connections with: each goes to the service `find`
-/// gives when it opens, the one the current graph has for the listener, or is closed when there
-/// is none. `find` runs on the I/O thread, once per connection, and must not block.
+/// What a `tcp` or `udp` listener serves its connections with: each goes to a service of the
+/// [`Entry`] `find` gives when it opens, the one the current graph has for the listener, or is
+/// closed when there is none. When the entry picks its services by server name, a TCP
+/// connection's ClientHello is read first, at most [`MAX_CLIENT_HELLO`] bytes within
+/// [`OPENING_TIMEOUT`]. `find` runs on the I/O thread, once per connection, and must not block.
 pub struct ClientAcceptor<F> {
     find: F,
     udp: bool,
@@ -19,7 +23,7 @@ pub struct ClientAcceptor<F> {
 
 impl<F> ClientAcceptor<F>
 where
-    F: Fn() -> Option<Service> + Send + Sync + 'static,
+    F: Fn() -> Option<Entry> + Send + Sync + 'static,
 {
     /// The acceptor of a `tcp` listener whose service `find` gives.
     #[must_use]
@@ -43,45 +47,47 @@ impl<F> std::fmt::Debug for ClientAcceptor<F> {
 
 impl<F> Acceptor for ClientAcceptor<F>
 where
-    F: Fn() -> Option<Service> + Send + Sync + 'static,
+    F: Fn() -> Option<Entry> + Send + Sync + 'static,
 {
     type Handler = Client;
 
     fn on_open(&self, c: &Conn<Client>) -> Client {
-        let Some(service) = (self.find)() else {
+        let Some(entry) = (self.find)() else {
             c.close();
-            return Client { relay: None };
+            return Client::default();
         };
-        let s = service.0;
-        if !s.admit() {
-            // Past max_conns: closed at once, a UDP session's datagram dropped.
-            c.close();
-            return Client { relay: None };
+        if self.udp || !entry.routes() {
+            let Some(s) = entry.fallback() else {
+                c.close();
+                return Client::default();
+            };
+            return Client {
+                relay: start(s, c, self.udp, Vec::new()),
+                opening: None,
+            };
         }
-        let udp = self.udp;
-        let r = Arc::new(Relay {
-            id: c.id(),
-            udp,
-            peer: c.peer_addr().ip(),
-            client: c.clone(),
-            up: OnceLock::new(),
-            state: Mutex::new(State::default()),
-            to_up_held: AtomicBool::new(false),
-            to_client_held: AtomicBool::new(false),
-            last: AtomicU64::new(s.now()),
-            ended: AtomicU8::new(0),
-            failed: AtomicBool::new(false),
-            backend: AtomicUsize::new(usize::MAX),
-            s,
+        // The ClientHello picks the service: read before one takes the connection, within the
+        // opening timeout, which closes it unless a service took it first.
+        let waiting = Arc::new(Mutex::new(Some(c.clone())));
+        let w = Arc::clone(&waiting);
+        let armed = akit_upstream::timer::after(OPENING_TIMEOUT, move || {
+            if let Some(c) = w.lock().unwrap_or_else(PoisonError::into_inner).take() {
+                c.close();
+            }
         });
-        if !udp {
-            // Nothing is read from the client until there is somewhere to send it.
-            c.hold_reads(true);
-            c.set_relayed(true);
+        if !armed {
+            // The timers are full: a connection that could wait forever is not taken.
+            c.close();
+            return Client::default();
         }
-        r.s.add(&r);
-        Relay::dial(&r);
-        Client { relay: Some(r) }
+        Client {
+            relay: None,
+            opening: Some(Box::new(Opening {
+                entry,
+                buf: Vec::new(),
+                waiting,
+            })),
+        }
     }
 
     fn on_shutdown(&self, c: &Conn<Client>) {
@@ -89,20 +95,135 @@ where
     }
 }
 
+/// Has `s` proxy `c`, a connection one of its listeners accepted or a UDP listener's new
+/// session, `initial` what the client sent before; `None` when `s` takes no more (`max_conns`,
+/// or drained), and `c` is closed.
+fn start(s: &Service, c: &Conn<Client>, udp: bool, initial: Vec<u8>) -> Option<Arc<Relay>> {
+    let s = Arc::clone(&s.0);
+    if !s.admit() {
+        // Past max_conns: closed at once, a UDP session's datagram dropped.
+        c.close();
+        return None;
+    }
+    // The client a trusted PROXY header named, and where it connected to; else the socket's.
+    let client_addr = proxy::client_addr(c);
+    let dst = proxy::header(c)
+        .and_then(ProxyHeader::destination)
+        .unwrap_or_else(|| c.local_addr());
+    let pending = initial.len();
+    let datagrams = if initial.is_empty() {
+        Vec::new()
+    } else {
+        vec![initial]
+    };
+    let r = Arc::new(Relay {
+        id: c.id(),
+        udp,
+        peer: client_addr.ip(),
+        client_addr,
+        dst,
+        client: c.clone(),
+        up: OnceLock::new(),
+        state: Mutex::new(State {
+            datagrams,
+            pending,
+            ..State::default()
+        }),
+        to_up_held: AtomicBool::new(false),
+        to_client_held: AtomicBool::new(false),
+        last: AtomicU64::new(s.now()),
+        ended: AtomicU8::new(0),
+        failed: AtomicBool::new(false),
+        backend: AtomicUsize::new(usize::MAX),
+        s,
+    });
+    if !udp {
+        // Nothing is read from the client until there is somewhere to send it.
+        c.hold_reads(true);
+        c.set_relayed(true);
+    }
+    r.s.add(&r);
+    Relay::dial(&r);
+    Some(r)
+}
+
+/// A TCP connection whose ClientHello is still being read, before a service takes it.
+struct Opening {
+    entry: Entry,
+    /// What the client sent so far, sent on to the upstream once a service takes it.
+    buf: Vec<u8>,
+    /// The connection, until a service takes it or the opening timeout closes it.
+    waiting: Arc<Mutex<Option<Conn<Client>>>>,
+}
+
+impl Opening {
+    /// Takes what the client sent; the service its ClientHello picks once it is whole, or not a
+    /// hello, or past [`MAX_CLIENT_HELLO`]. `None` while more is needed.
+    fn read(&mut self, data: &[u8]) -> Option<Option<Service>> {
+        self.buf.extend_from_slice(data);
+        let name = match parse_client_hello(&self.buf) {
+            Ok(h) => h.server_name().map(str::to_owned),
+            Err(HelloError::Incomplete) if self.buf.len() < MAX_CLIENT_HELLO => return None,
+            // Not TLS, a hello akio-mux cannot read, or too long: the fallback's.
+            Err(_) => None,
+        };
+        Some(self.entry.pick(name.as_deref()).cloned())
+    }
+
+    /// Disarms the opening timeout: false when it closed the connection already.
+    fn settle(&self) -> bool {
+        self.waiting
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take()
+            .is_some()
+    }
+}
+
 /// The handler of a client's connection or UDP session.
-#[derive(Debug)]
+#[derive(Default)]
 pub struct Client {
     relay: Option<Arc<Relay>>,
+    /// Its ClientHello is being read.
+    opening: Option<Box<Opening>>,
+}
+
+impl std::fmt::Debug for Client {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Client")
+            .field("relay", &self.relay)
+            .field("opening", &self.opening.is_some())
+            .finish()
+    }
 }
 
 impl Handler for Client {
-    fn on_data(&mut self, _c: &Conn<Client>, data: &[u8]) {
+    fn on_data(&mut self, c: &Conn<Client>, data: &[u8]) {
+        if let Some(o) = &mut self.opening {
+            let Some(picked) = o.read(data) else {
+                return;
+            };
+            let Some(o) = self.opening.take() else {
+                return;
+            };
+            if !o.settle() {
+                return;
+            }
+            match picked {
+                Some(s) => self.relay = start(&s, c, false, o.buf),
+                None => c.close(),
+            }
+            return;
+        }
         if let Some(r) = &self.relay {
             r.from_client(data);
         }
     }
 
     fn on_close(&mut self, _c: &Conn<Client>, _err: Option<akio::Error>) {
+        if let Some(o) = self.opening.take() {
+            o.settle();
+        }
         if let Some(r) = self.relay.take() {
             r.client_closed();
         }
@@ -129,7 +250,12 @@ pub(crate) struct Relay {
     /// The client connection's ID, its key among the service's open connections.
     pub(crate) id: u64,
     pub(crate) udp: bool,
+    /// The client's address, which the upstream's address is picked by (`ip_hash`).
     peer: IpAddr,
+    /// The client's address and port, and where it connected to: a trusted PROXY header's when
+    /// it sent one, else the socket's. The PROXY header sent upstream names them.
+    client_addr: SocketAddr,
+    dst: SocketAddr,
     client: Conn<Client>,
     /// The upstream's connection, once it is open.
     up: OnceLock<Conn<Upstream>>,
@@ -258,6 +384,13 @@ impl Relay {
         }
         if !self.udp {
             up.set_relayed(true);
+            // The service's PROXY header goes first, before anything the client sent.
+            if let Some(v) = self.s.proxy {
+                let h = ProxyHeader::proxy(unmap(self.client_addr), unmap(self.dst));
+                if let Some(b) = h.encode(v) {
+                    let _ = up.send_owned(b);
+                }
+            }
         }
         for d in std::mem::take(&mut st.datagrams) {
             let _ = up.send_owned(d);
@@ -387,6 +520,17 @@ impl Relay {
                 .stream_done(backend, self.failed.load(Ordering::SeqCst));
         }
         self.s.leave();
+    }
+}
+
+/// `a` with an IPv4-mapped IPv6 address as the IPv4 address it maps, as fit writes PROXY
+/// headers.
+fn unmap(a: SocketAddr) -> SocketAddr {
+    match a.ip() {
+        IpAddr::V6(v6) => v6
+            .to_ipv4_mapped()
+            .map_or(a, |v4| SocketAddr::new(IpAddr::V4(v4), a.port())),
+        IpAddr::V4(_) => a,
     }
 }
 
