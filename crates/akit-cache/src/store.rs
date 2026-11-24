@@ -11,7 +11,10 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
 use std::time::{Duration, SystemTime};
 
 use akio_http::Headers;
+use akit_config::CacheDisk;
 
+use crate::disk::Disk;
+use crate::lock::Fetch;
 use crate::semantics::vary_value;
 
 /// How many parts a store is split into.
@@ -40,6 +43,10 @@ pub(crate) struct Entry {
     pub(crate) lifetime: Duration,
     /// It must not be answered stale: `must-revalidate`, `proxy-revalidate` or `s-maxage`.
     pub(crate) no_stale: bool,
+    /// How long past its lifetime it may be answered while it is fetched again, and when
+    /// fetching it again fails (RFC 5861); zero for none.
+    pub(crate) swr: Duration,
+    pub(crate) sie: Duration,
     pub(crate) etag: Option<String>,
     pub(crate) last_modified: Option<String>,
     /// What it costs in the store, set when stored.
@@ -55,6 +62,11 @@ impl Entry {
         self.initial_age.saturating_add(since)
     }
 
+    /// Whether, stale at `now`, it is so by no more than `window` (which is not zero).
+    pub(crate) fn stale_for(&self, now: SystemTime, window: Duration) -> bool {
+        !window.is_zero() && self.age(now).saturating_sub(self.lifetime) <= window
+    }
+
     /// Whether it answers a request with fields `h`: the fields it varies on have the values
     /// they had.
     pub(crate) fn matches(&self, h: &Headers) -> bool {
@@ -64,7 +76,7 @@ impl Entry {
     }
 
     /// Whether it answers the same requests as `o`.
-    fn same_variant(&self, o: &Entry) -> bool {
+    pub(crate) fn same_variant(&self, o: &Entry) -> bool {
         self.vary == o.vary
     }
 
@@ -104,7 +116,7 @@ struct Node {
 
 /// One part of a store.
 #[derive(Debug)]
-struct Shard {
+pub(crate) struct Shard {
     index: HashMap<Arc<str>, usize>,
     /// The nodes, by index; a free one is `None`, its index in `free`.
     nodes: Vec<Option<Node>>,
@@ -113,6 +125,8 @@ struct Shard {
     head: usize,
     tail: usize,
     size: u64,
+    /// The fetches under way, by key, that requests for the key wait for (the cache lock).
+    pub(crate) fetches: HashMap<Arc<str>, Arc<Fetch>>,
 }
 
 impl Shard {
@@ -124,6 +138,7 @@ impl Shard {
             head: NIL,
             tail: NIL,
             size: 0,
+            fetches: HashMap::new(),
         }
     }
 
@@ -243,6 +258,11 @@ pub(crate) struct Store {
     /// What responses being stored hold so far, bounded by a quarter of `max_bytes`: past it, a
     /// response goes without being kept.
     pub(crate) capturing: AtomicU64,
+    /// The fetches under way that no request waits for, refreshing responses answered stale.
+    pub(crate) background: AtomicU64,
+    /// The zone's disk tier, as the last cache of the zone compiled has it: read when a config
+    /// is compiled; requests read their cache's own copy.
+    disk: Mutex<Option<Arc<Disk>>>,
     shards: [Mutex<Shard>; SHARDS],
 }
 
@@ -253,6 +273,8 @@ impl Store {
             hasher: RandomState::new(),
             max_bytes: AtomicU64::new(max_bytes),
             capturing: AtomicU64::new(0),
+            background: AtomicU64::new(0),
+            disk: Mutex::new(None),
             shards: std::array::from_fn(|_| Mutex::new(Shard::new())),
         }
     }
@@ -266,7 +288,13 @@ impl Store {
         self.max_bytes().checked_div(SHARDS as u64).unwrap_or(0)
     }
 
-    fn shard(&self, key: &str) -> MutexGuard<'_, Shard> {
+    /// Shard `i`.
+    pub(crate) fn shard_at(&self, i: usize) -> MutexGuard<'_, Shard> {
+        let m = self.shards.get(i).unwrap_or(&self.shards[0]);
+        m.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    pub(crate) fn shard(&self, key: &str) -> MutexGuard<'_, Shard> {
         let h = self.hasher.hash_one(key);
         // The remainder is below SHARDS: the index is in range.
         let i = usize::try_from(h.checked_rem(SHARDS as u64).unwrap_or(0)).unwrap_or(0);
@@ -290,11 +318,12 @@ impl Store {
 
     /// Stores `e` under `key`, in place of the variant it answers for, and evicts the least
     /// recently used keys past the shard's size. An entry larger than a shard is not kept.
-    pub(crate) fn put(&self, key: &str, mut e: Entry) {
+    /// Returns the entry, shared.
+    pub(crate) fn put(&self, key: &str, mut e: Entry) -> Arc<Entry> {
         e.size = e.cost(key);
         let limit = self.shard_max();
         if e.size > limit {
-            return;
+            return Arc::new(e);
         }
         let e = Arc::new(e);
         let mut sh = self.shard(key);
@@ -313,16 +342,37 @@ impl Store {
             let tail = sh.tail;
             sh.drop_node(tail);
         }
+        e
+    }
+
+    /// Puts `e`, read back from disk, under `key`, unless a variant it answers for is there
+    /// already (stored since it was looked up); returns what answers.
+    pub(crate) fn promote(&self, key: &str, e: Entry) -> Arc<Entry> {
+        {
+            let mut sh = self.shard(key);
+            if let Some(&i) = sh.index.get(key) {
+                if let Some(v) = sh
+                    .node(i)
+                    .and_then(|n| n.variants.iter().find(|v| v.same_variant(&e)).cloned())
+                {
+                    if v.response_time >= e.response_time {
+                        return v;
+                    }
+                }
+            }
+        }
+        self.put(key, e)
     }
 
     /// Stores `e` in place of `old`, if `old` is still stored under `key`: a response freshened
-    /// by a 304 does not bring back one removed meanwhile. Returns the entry stored.
-    pub(crate) fn replace(&self, key: &str, old: &Arc<Entry>, mut e: Entry) -> Arc<Entry> {
+    /// by a 304 does not bring back one removed meanwhile. Returns the entry, and whether it
+    /// was stored.
+    pub(crate) fn replace(&self, key: &str, old: &Arc<Entry>, mut e: Entry) -> (Arc<Entry>, bool) {
         e.size = e.cost(key);
         let e = Arc::new(e);
         let mut sh = self.shard(key);
         let Some(&i) = sh.index.get(key) else {
-            return e;
+            return (e, false);
         };
         let mut swapped = None;
         if let Some(n) = sh.node(i) {
@@ -330,6 +380,7 @@ impl Store {
                 swapped = Some(std::mem::replace(slot, Arc::clone(&e)).size);
             }
         }
+        let stored = swapped.is_some();
         if let Some(freed) = swapped {
             sh.grow(i, e.size, freed);
             let limit = self.shard_max();
@@ -338,7 +389,7 @@ impl Store {
                 sh.drop_node(tail);
             }
         }
-        e
+        (e, stored)
     }
 
     /// Drops every variant under `key`; reports whether there was any.
@@ -394,22 +445,104 @@ pub(crate) fn zone_stats(name: &str) -> Option<(usize, u64, u64)> {
     Some((keys, size, s.capturing.load(Ordering::Acquire)))
 }
 
-/// The store of zone `name`, made if no cache uses it, sized `max_bytes` (the size of the last
-/// cache of the zone compiled).
-pub(crate) fn acquire(name: &str, max_bytes: u64) -> Arc<Store> {
-    let mut zones = ZONES.lock().unwrap_or_else(PoisonError::into_inner);
-    zones.retain(|(_, w)| w.strong_count() > 0);
-    if let Some(s) = zones
+/// The fetches under way in zone `name`, and those in the background; for tests.
+pub(crate) fn zone_fetches(name: &str) -> Option<(usize, u64)> {
+    let s = ZONES
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
         .iter()
         .find(|(n, _)| n == name)
-        .and_then(|(_, w)| w.upgrade())
-    {
-        s.max_bytes.store(max_bytes, Ordering::Relaxed);
-        return s;
+        .and_then(|(_, w)| w.upgrade())?;
+    Some((s.fetches(), s.background.load(Ordering::Acquire)))
+}
+
+/// Drops `key` from zone `name`'s memory alone; for tests.
+pub(crate) fn zone_evict(name: &str, key: &str) {
+    let s = ZONES
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .iter()
+        .find(|(n, _)| n == name)
+        .and_then(|(_, w)| w.upgrade());
+    if let Some(s) = s {
+        s.remove(key);
     }
-    let s = Arc::new(Store::new(name, max_bytes));
-    zones.push((name.to_owned(), Arc::downgrade(&s)));
-    s
+}
+
+/// The disk tier of zone `name`, if a cache uses the zone and it has one; for tests.
+pub(crate) fn zone_disk(name: &str) -> Option<Arc<Disk>> {
+    let s = ZONES
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .iter()
+        .find(|(n, _)| n == name)
+        .and_then(|(_, w)| w.upgrade())?;
+    s.disk
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clone()
+}
+
+/// The store of zone `name`, made if no cache uses it, sized `max_bytes` (the size of the last
+/// cache of the zone compiled), with the disk tier `disk` describes or none, and that disk. A
+/// zone whose disk moved takes the new directory, read back from what it holds; one that names
+/// the directory of another zone's disk is refused. Runs when a config is compiled, never on an
+/// I/O thread: a new disk's directory is made here.
+pub(crate) fn acquire(
+    name: &str,
+    max_bytes: u64,
+    disk: Option<&CacheDisk>,
+) -> Result<(Arc<Store>, Option<Arc<Disk>>), String> {
+    let mut zones = ZONES.lock().unwrap_or_else(PoisonError::into_inner);
+    zones.retain(|(_, w)| w.strong_count() > 0);
+    let found = zones
+        .iter()
+        .find(|(n, _)| n == name)
+        .and_then(|(_, w)| w.upgrade());
+    let s = match &found {
+        Some(s) => Arc::clone(s),
+        None => Arc::new(Store::new(name, max_bytes)),
+    };
+    let tier = match disk {
+        None => None,
+        Some(cfg) => {
+            let dir = crate::disk::clean(&cfg.path);
+            let current = s
+                .disk
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .clone();
+            match current.filter(|d| d.dir() == dir) {
+                Some(d) => {
+                    d.set_limits(cfg);
+                    Some(d)
+                }
+                None => {
+                    for (other, w) in zones.iter().filter(|(n, _)| n != name) {
+                        let Some(o) = w.upgrade() else { continue };
+                        let od = o
+                            .disk
+                            .lock()
+                            .unwrap_or_else(PoisonError::into_inner)
+                            .clone();
+                        if od.is_some_and(|d| d.dir() == dir) {
+                            return Err(format!(
+                                "the directory {} is zone {other:?}'s",
+                                dir.display()
+                            ));
+                        }
+                    }
+                    Some(Disk::open(dir, cfg).map_err(|e| e.to_string())?)
+                }
+            }
+        }
+    };
+    *s.disk.lock().unwrap_or_else(PoisonError::into_inner) = tier.clone();
+    s.max_bytes.store(max_bytes, Ordering::Relaxed);
+    if found.is_none() {
+        zones.push((name.to_owned(), Arc::downgrade(&s)));
+    }
+    Ok((s, tier))
 }
 
 #[cfg(test)]
@@ -428,6 +561,8 @@ mod tests {
             initial_age: Duration::ZERO,
             lifetime: Duration::from_secs(60),
             no_stale: false,
+            swr: Duration::ZERO,
+            sie: Duration::ZERO,
             etag: None,
             last_modified: None,
             size: 0,
@@ -489,10 +624,10 @@ mod tests {
         let none = Headers::new();
         s.put("/r", entry(1));
         let old = s.get("/r", &none).0.unwrap();
-        let new = s.replace("/r", &old, entry(2));
-        assert!(Arc::ptr_eq(&s.get("/r", &none).0.unwrap(), &new));
+        let (new, stored) = s.replace("/r", &old, entry(2));
+        assert!(stored && Arc::ptr_eq(&s.get("/r", &none).0.unwrap(), &new));
         s.remove("/r");
-        s.replace("/r", &new, entry(3));
+        assert!(!s.replace("/r", &new, entry(3)).1);
         assert!(
             s.get("/r", &none).0.is_none(),
             "a removed response came back"
@@ -505,9 +640,9 @@ mod tests {
     #[test]
     fn zones() {
         let none = Headers::new();
-        let old = acquire("reload", 1 << 20);
+        let old = acquire("reload", 1 << 20, None).unwrap().0;
         old.put("/k", entry(1));
-        let next = acquire("reload", 2 << 20);
+        let next = acquire("reload", 2 << 20, None).unwrap().0;
         drop(old);
         assert!(
             next.get("/k", &none).0.is_some(),
@@ -517,7 +652,7 @@ mod tests {
         let weak = Arc::downgrade(&next);
         drop(next);
         assert!(weak.upgrade().is_none());
-        let again = acquire("reload", 1 << 20);
+        let again = acquire("reload", 1 << 20, None).unwrap().0;
         assert!(
             again.get("/k", &none).0.is_none(),
             "a zone no cache uses was kept"

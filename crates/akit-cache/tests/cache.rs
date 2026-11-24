@@ -8,10 +8,6 @@
 //!
 //! The tests run one at a time ([`serial`]): they share the origin's counts, and some hold the
 //! cache's clock, which every cache in the process reads.
-//!
-//! Where fit's answer comes from its cache lock (I68: a stale response fetched again by the cache
-//! while the request waits, and answered from what that keeps), akit's I67 sends the request on
-//! with the stale response's validators and keeps what comes back: the tests say which.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -98,7 +94,7 @@ fn http_date(t: SystemTime) -> String {
 /// The test origin, as fit's: it answers by path, counting what it answers.
 mod origin {
     use std::collections::HashMap;
-    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
     use std::sync::mpsc::{Receiver, Sender, channel};
     use std::sync::{Arc, Mutex};
     use std::thread;
@@ -115,12 +111,15 @@ mod origin {
     static RELEASE: Mutex<Option<Release>> = Mutex::new(None);
     /// The slow streams whose client the server heard go.
     pub(crate) static GONE: AtomicU64 = AtomicU64::new(0);
+    /// `/sie` and `/sie-param` answer 500 while it is set.
+    pub(crate) static FAILING: AtomicBool = AtomicBool::new(false);
 
     pub(crate) fn reset() {
         *HITS.lock().unwrap() = Some(HashMap::new());
         let (tx, rx) = channel();
         *RELEASE.lock().unwrap() = Some((tx, Arc::new(Mutex::new(rx))));
         GONE.store(0, Ordering::SeqCst);
+        FAILING.store(false, Ordering::SeqCst);
     }
 
     pub(crate) fn hits(path: &str) -> u64 {
@@ -275,6 +274,48 @@ mod origin {
                         return ctx.respond(r);
                     }
                 }
+                "/late" | "/late-private" => {
+                    // Answered later, from a thread, as an upstream that takes its time.
+                    h.append(
+                        "Cache-Control",
+                        if path == "/late" {
+                            "max-age=60"
+                        } else {
+                            "private"
+                        },
+                    );
+                    let delay = match ctx.req().target.split_once("delay=") {
+                        Some((_, "1s")) => Duration::from_secs(1),
+                        _ => Duration::from_millis(200),
+                    };
+                    let Some(d) = ctx.detach() else { return };
+                    thread::spawn(move || {
+                        thread::sleep(delay);
+                        let mut r = Response::new(200);
+                        r.headers = h;
+                        r.body = body;
+                        d.respond(r);
+                    });
+                    return;
+                }
+                "/swr" => {
+                    h.append("Cache-Control", "max-age=10, stale-while-revalidate=60");
+                    h.append("ETag", "\"s1\"");
+                    if fields.get("if-none-match") == Some("\"s1\"") {
+                        let mut r = Response::new(304);
+                        r.headers = h;
+                        return ctx.respond(r);
+                    }
+                }
+                "/sie" | "/sie-param" => {
+                    if FAILING.load(Ordering::SeqCst) {
+                        status = 500;
+                    } else if path == "/sie" {
+                        h.append("Cache-Control", "max-age=10, stale-if-error=60");
+                    } else {
+                        h.append("Cache-Control", "max-age=10");
+                    }
+                }
                 "/gzip" => {
                     h.set("Content-Type", "application/json");
                     h.append("Cache-Control", "max-age=60");
@@ -421,7 +462,10 @@ const PROTOS: [Proto; 2] = [Proto::H1, Proto::H2c];
 fn get(proto: Proto, addr: SocketAddr, method: &str, path: &str, fields: &[(&str, &str)]) -> Got {
     match proto {
         Proto::H1 => {
-            let mut head = format!("{method} {path} HTTP/1.1\r\nHost: {addr}");
+            let mut head = format!("{method} {path} HTTP/1.1");
+            if !fields.iter().any(|(n, _)| n.eq_ignore_ascii_case("host")) {
+                head.push_str(&format!("\r\nHost: {addr}"));
+            }
             for (n, v) in fields {
                 head.push_str(&format!("\r\n{n}: {v}"));
             }
@@ -655,8 +699,7 @@ fn storable() {
     }
 }
 
-// fit's TestFreshness. A stale response is sent on with its validators and kept again (fit
-// answers it from its cache lock's fetch, I68).
+// fit's TestFreshness.
 #[test]
 fn freshness() {
     let _s = serial();
@@ -675,18 +718,15 @@ fn freshness() {
         matches!(r.cache_status(), "fit; hit; ttl=29" | "fit; hit; ttl=30"),
         "{r:?}"
     );
+    // Stale: fetched again by the cache, with its validators, and answered from what that keeps.
     let r = get(c, a.addr, "GET", "/heuristic", &[]);
-    assert_eq!(r.cache_status(), "fit; fwd=stale; stored");
-    assert_eq!(origin::hits("/heuristic"), 2);
+    assert!(r.hit() && origin::hits("/heuristic") == 2, "{r:?}");
     assert!(get(c, a.addr, "GET", "/expires", &[]).hit());
     let _c = at(start, 61);
     let r = get(c, a.addr, "GET", "/fresh", &[]);
-    assert_eq!(
-        (r.cache_status(), r.text().as_str()),
-        ("fit; fwd=stale; stored", "/fresh 2")
-    );
-    let r = get(c, a.addr, "GET", "/fresh", &[]);
     assert!(r.fresh_hit() && r.text() == "/fresh 2", "{r:?}");
+    let r = get(c, a.addr, "GET", "/fresh", &[]);
+    assert!(r.hit() && r.text() == "/fresh 2", "{r:?}");
 }
 
 // fit's TestDefaultTTL.
@@ -886,11 +926,11 @@ fn request_directives() {
             vec![("Cache-Control", "max-stale=30")],
             "fit; hit",
         ),
-        // Sent on with its validators, and kept again (fit: "fit; hit; ttl=59", from its lock).
+        // Fetched again by the cache, and answered from what that keeps.
         (
             "/fresh",
             vec![("Cache-Control", "max-stale=10")],
-            "fit; fwd=stale; stored",
+            "fit; hit; ttl=59",
         ),
         (
             "/must",
@@ -1211,7 +1251,7 @@ fn authenticated_not_shared() {
     }
 }
 
-// fit's TestParams, and the fields that wait for I68.
+// fit's TestParams, and the stale windows and the disk.
 #[test]
 fn params() {
     let cfg = |params: &str| {
@@ -1233,9 +1273,23 @@ fn params() {
             "renamed \"max_bytes\"",
         ),
         (r#"{"default_ttl": "soon"}"#, "not a duration"),
-        (r#"{"stale_while_revalidate": "1m"}"#, "not supported yet"),
-        (r#"{"stale_if_error": "1m"}"#, "not supported yet"),
-        (r#"{"disk": {"path": "/tmp/x"}}"#, "not supported yet"),
+        (r#"{"stale_while_revalidate": "soon"}"#, "not a duration"),
+        (r#"{"stale_if_error": 1}"#, "stale_if_error"),
+        (r#"{"disk": {}}"#, "disk.path: missing required field"),
+        (r#"{"disk": {"path": ""}}"#, "must not be empty"),
+        (r#"{"disk": "/tmp/x"}"#, "disk"),
+        (
+            r#"{"disk": {"path": "x", "max_bytes": 1, "max_size": 1}}"#,
+            "renamed \"max_bytes\"",
+        ),
+        (
+            r#"{"disk": {"path": "x", "max_entries": -1}}"#,
+            "max_entries",
+        ),
+        (
+            r#"{"disk": {"path": "x", "Path": "y"}}"#,
+            "did you mean \"path\"",
+        ),
         (r#"{"Zone": "x"}"#, "did you mean \"zone\""),
     ] {
         let e = cfg(params)
@@ -1262,6 +1316,30 @@ fn params() {
         panic!("not a cache");
     };
     assert_eq!((m.max_bytes, m.max_entry_bytes), (128 << 20, 1 << 20));
+    assert!(m.disk.is_none() && m.stale_while_revalidate.is_none() && m.stale_if_error.is_none());
+    let c = cfg(
+        r#"{"stale_while_revalidate": "30s", "stale_if_error": "0s", "disk": {"path": "/var/cache/x/", "max_size": 4096, "max_entries": 3}}"#,
+    )
+    .unwrap();
+    let akit_config::Handler::Cache(m) = &c.routes[0].middleware[0] else {
+        panic!("not a cache");
+    };
+    assert_eq!(m.stale_while_revalidate, Some(Duration::from_secs(30)));
+    assert_eq!(m.stale_if_error, None, "0s is none");
+    assert_eq!(
+        m.disk,
+        Some(akit_config::CacheDisk {
+            path: "/var/cache/x/".into(),
+            max_bytes: 4096,
+            max_entries: 3
+        })
+    );
+    let c = cfg(r#"{"disk": {"path": "d"}}"#).unwrap();
+    let akit_config::Handler::Cache(m) = &c.routes[0].middleware[0] else {
+        panic!("not a cache");
+    };
+    let d = m.disk.as_ref().unwrap();
+    assert_eq!((d.max_bytes, d.max_entries), (1 << 30, 100_000));
 }
 
 /// The zone outlives a reload: a graph compiled while the old one serves takes its store.
@@ -1278,4 +1356,523 @@ fn zones_outlive_a_reload() {
     // That a zone no cache uses goes is the store's unit test (`store::tests::zones`): an
     // engine's I/O threads let their graph go on their own time after a shutdown.
     drop(b);
+}
+
+/// `n` requests for `path` at once, over HTTP/1.1 and h2c in turn, and their replies.
+fn many(n: usize, addr: SocketAddr, path: &str) -> Vec<Got> {
+    let handles: Vec<_> = (0..n)
+        .map(|i| {
+            let path = path.to_owned();
+            thread::spawn(move || get(PROTOS[i % 2], addr, "GET", &path, &[]))
+        })
+        .collect();
+    handles.into_iter().map(|h| h.join().unwrap()).collect()
+}
+
+// fit's TestStampede: many clients asking at once for a response not kept make one fetch, and
+// all get its answer.
+#[test]
+fn stampede() {
+    let _s = serial();
+    let a = Akit::serve(CACHE_ONLY);
+    let replies = many(100, a.addr, "/late");
+    assert_eq!(origin::hits("/late"), 1, "fetches for 100 clients");
+    for (i, r) in replies.iter().enumerate() {
+        assert!(r.status == 200 && r.text() == "/late 1", "{i}: {r:?}");
+    }
+    assert_eq!(akit_cache::fetches("test"), Some((0, 0)));
+}
+
+/// The same through the proxy: the response streams, and the fetch ends once its body is kept.
+#[test]
+fn stampede_through_the_proxy() {
+    let _s = serial();
+    let origin = Akit::serve("[]");
+    let a = Akit::proxy(CACHE_ONLY, origin.addr);
+    let replies = many(40, a.addr, "/late");
+    assert_eq!(origin::hits("/late"), 1);
+    for (i, r) in replies.iter().enumerate() {
+        assert!(r.status == 200 && r.text() == "/late 1", "{i}: {r:?}");
+    }
+}
+
+// fit's TestLockNotKept: requests waiting for a fetch whose response is not kept go on to fetch
+// for themselves, as soon as that is known.
+#[test]
+fn lock_not_kept() {
+    let _s = serial();
+    let a = Akit::serve(CACHE_ONLY);
+    let started = Instant::now();
+    for (i, r) in many(20, a.addr, "/late-private").iter().enumerate() {
+        assert!(
+            r.status == 200 && r.text().starts_with("/late-private "),
+            "{i}: {r:?}"
+        );
+    }
+    // Each waiter goes on as the first response's head is settled: two rounds of the origin's
+    // 200ms, not 20, nor lock_timeout's 5s.
+    let took = started.elapsed();
+    assert!(took < Duration::from_secs(2), "took {took:?}");
+    assert_eq!(origin::hits("/late-private"), 20);
+}
+
+// fit's TestLockTimeout: a request waits for another's fetch no longer than lock_timeout.
+#[test]
+fn lock_timeout() {
+    let _s = serial();
+    let a = Akit::serve(
+        r#"[{"module": "cache", "params": {"zone": "test", "lock_timeout": "100ms"}}]"#,
+    );
+    let started = Instant::now();
+    for (i, r) in many(10, a.addr, "/late?delay=1s").iter().enumerate() {
+        assert_eq!(r.status, 200, "{i}");
+    }
+    assert_eq!(origin::hits("/late"), 10, "fetches past lock_timeout");
+    let took = started.elapsed();
+    assert!(took < Duration::from_millis(1800), "took {took:?}");
+    let r = get(Proto::H2c, a.addr, "GET", "/late?delay=1s", &[]);
+    assert!(r.hit(), "then: {r:?}");
+}
+
+// fit's TestDisableLock: every request fetches for itself without the lock.
+#[test]
+fn disable_lock() {
+    let _s = serial();
+    let a =
+        Akit::serve(r#"[{"module": "cache", "params": {"zone": "test", "disable_lock": true}}]"#);
+    many(10, a.addr, "/late");
+    assert_eq!(origin::hits("/late"), 10);
+}
+
+// fit's TestStaleWhileRevalidate: a stale response its stale-while-revalidate allows is answered
+// at once, and fetched again in the background, once, with its validators.
+#[test]
+fn stale_while_revalidate() {
+    let _s = serial();
+    let start = SystemTime::now();
+    let _c = at(start, 0);
+    let a = Akit::serve(CACHE_ONLY);
+    let c = Proto::H2c;
+    get(c, a.addr, "GET", "/swr", &[]);
+    let _c = at(start, 30);
+    // The first is answered stale, and the fetch it starts, a 304 here, may freshen the
+    // response before the others come.
+    let mut stale = 0;
+    for r in many(20, a.addr, "/swr") {
+        assert_eq!(r.text(), "/swr 1");
+        if r.cache_status().ends_with("detail=stale-while-revalidate") {
+            stale += 1;
+        } else {
+            assert!(r.fresh_hit(), "{r:?}");
+        }
+    }
+    assert!(stale > 0, "nothing answered stale");
+    wait_for("the background fetch", || {
+        get(c, a.addr, "GET", "/swr", &[]).fresh_hit()
+    });
+    assert_eq!(origin::hits("/swr"), 2);
+    assert_eq!(akit_cache::fetches("test"), Some((0, 0)));
+    // Past the window, it is fetched before it is answered.
+    let _c = at(start, 200);
+    let r = get(c, a.addr, "GET", "/swr", &[]);
+    assert!(
+        r.fresh_hit() && origin::hits("/swr") == 3,
+        "past the window: {r:?}"
+    );
+}
+
+/// fit's TestStaleIfError, against `a` (whose cache has `stale_if_error` 30s): a stale response
+/// stale-if-error allows is answered when fetching it again fails, and not past the window.
+fn stale_if_error_of(a: &Akit) {
+    let start = SystemTime::now();
+    let _c = at(start, 0);
+    let c = Proto::H1;
+    get(c, a.addr, "GET", "/sie", &[]);
+    get(c, a.addr, "GET", "/sie-param", &[]);
+    origin::FAILING.store(true, Ordering::SeqCst);
+    let _c = at(start, 20);
+    for p in ["/sie", "/sie-param"] {
+        let r = get(c, a.addr, "GET", p, &[]);
+        assert!(
+            r.status == 200
+                && r.text() == format!("{p} 1")
+                && r.cache_status().ends_with("detail=stale-if-error"),
+            "{p} at 20s: {r:?}"
+        );
+    }
+    // Past the param's 30s, within the response's 60s.
+    let _c = at(start, 50);
+    let r = get(c, a.addr, "GET", "/sie", &[]);
+    assert!(
+        r.status == 200 && r.cache_status().ends_with("detail=stale-if-error"),
+        "/sie at 50s: {r:?}"
+    );
+    let r = get(c, a.addr, "GET", "/sie-param", &[]);
+    assert_eq!(r.status, 500, "/sie-param at 50s: {r:?}");
+    origin::FAILING.store(false, Ordering::SeqCst);
+    let r = get(c, a.addr, "GET", "/sie", &[]);
+    assert!(
+        r.status == 200 && r.fresh_hit(),
+        "once the origin is back: {r:?}"
+    );
+}
+
+#[test]
+fn stale_if_error() {
+    let _s = serial();
+    stale_if_error_of(&Akit::serve(
+        r#"[{"module": "cache", "params": {"zone": "test", "stale_if_error": "30s"}}]"#,
+    ));
+}
+
+/// The same through the proxy, whose 500 streams to the cache's own request.
+#[test]
+fn stale_if_error_through_the_proxy() {
+    let _s = serial();
+    let origin = Akit::serve("[]");
+    stale_if_error_of(&Akit::proxy(
+        r#"[{"module": "cache", "params": {"zone": "test", "stale_if_error": "30s"}}]"#,
+        origin.addr,
+    ));
+}
+
+/// A directory of the test's own, removed when it goes.
+struct TempDir(std::path::PathBuf);
+
+impl TempDir {
+    fn new(name: &str) -> TempDir {
+        let d = std::env::temp_dir().join(format!(
+            "akit-cache-{name}-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = std::fs::remove_dir_all(&d);
+        TempDir(d)
+    }
+
+    fn path(&self) -> &str {
+        self.0.to_str().unwrap()
+    }
+
+    /// The files under it, `tmp` left out.
+    fn files(&self) -> Vec<std::path::PathBuf> {
+        let mut out = Vec::new();
+        for sub in std::fs::read_dir(&self.0).unwrap().flatten() {
+            if sub.file_name() != "tmp" {
+                for f in std::fs::read_dir(sub.path()).unwrap().flatten() {
+                    out.push(f.path());
+                }
+            }
+        }
+        out
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+fn disk_params(zone: &str, dir: &TempDir, extra: &str) -> String {
+    format!(
+        r#"[{{"module": "cache", "params": {{"zone": "{zone}", "disk": {{"path": "{}"}}{extra}}}}}]"#,
+        dir.path()
+    )
+}
+
+/// How many responses zone `zone`'s disk holds, once its index is read back.
+fn on_disk(zone: &str) -> u64 {
+    match akit_cache::disk_stats(zone) {
+        Some((n, _, true)) => n,
+        _ => u64::MAX,
+    }
+}
+
+/// Compiles `json`, without serving it: the graph, or the error.
+fn compile_only(json: &str) -> Result<akit_runtime::Graph, String> {
+    let config = akit_config::from_json(json, None).map_err(|e| e.to_string())?;
+    let registry = Registry::new(&[origin::MODULES, akit_cache::MODULES]).unwrap();
+    compile(&config, &registry, &Env::new(EngineSlot::new())).map_err(|e| e.to_string())
+}
+
+fn route_of(middleware: &str) -> String {
+    format!(
+        r#"{{"listeners": [{{"name": "web", "address": "127.0.0.1:0"}}], "routes": [{{"middleware": {middleware}, "handler": {{"module": "respond"}}}}]}}"#
+    )
+}
+
+// fit's TestDiskRestart: what a zone keeps on disk is found again by another's, through the
+// index read back from the directory, and kept in memory once read.
+#[test]
+fn disk_restart() {
+    let _s = serial();
+    let dir = TempDir::new("restart");
+    let c = Proto::H1;
+    let paths = ["/fresh", "/s-maxage", "/stream"];
+    {
+        let a = Akit::serve(&disk_params("restart-1", &dir, ""));
+        let host = [("Host", "cache.test")];
+        for p in paths {
+            get(c, a.addr, "GET", p, &host);
+        }
+        get(
+            c,
+            a.addr,
+            "GET",
+            "/vary",
+            &[("Accept-Language", "en"), host[0]],
+        );
+        get(
+            c,
+            a.addr,
+            "GET",
+            "/vary",
+            &[("Accept-Language", "fr"), host[0]],
+        );
+        wait_for("files written", || on_disk("restart-1") == 5);
+        // The zone gives its directory up, as one whose process ended.
+        drop(
+            compile_only(&route_of(
+                r#"[{"module": "cache", "params": {"zone": "restart-1"}}]"#,
+            ))
+            .unwrap(),
+        );
+    }
+    origin::reset_hits();
+    let b = Akit::serve(&disk_params("restart-2", &dir, ""));
+    wait_for("the index read back", || on_disk("restart-2") == 5);
+    let (_, size, _) = akit_cache::disk_stats("restart-2").unwrap();
+    assert!(size > 64 << 10, "{size} bytes");
+    let host = ("Host", "cache.test");
+    for p in paths {
+        let r = get(c, b.addr, "GET", p, &[host]);
+        assert!(
+            r.status == 200 && r.cache_status().ends_with("; detail=disk"),
+            "{p}: {r:?}"
+        );
+        if p == "/stream" {
+            assert!(
+                r.body == long().as_bytes()[..64 << 10] && r.one("content-length") == Some("65536"),
+                "/stream: {} bytes",
+                r.body.len()
+            );
+        }
+        if p == "/fresh" {
+            assert!(
+                r.text() == "/fresh 1" && r.one("etag") == Some("\"v1\"") && r.one("age").is_some(),
+                "/fresh: {r:?}"
+            );
+        }
+        let r = get(c, b.addr, "GET", p, &[host]);
+        assert!(
+            r.hit() && !r.cache_status().contains("disk"),
+            "{p} again: {r:?}"
+        );
+    }
+    for lang in ["en", "fr"] {
+        let r = get(
+            c,
+            b.addr,
+            "GET",
+            "/vary",
+            &[("Accept-Language", lang), host],
+        );
+        assert!(
+            r.text().ends_with(lang) && r.cache_status().ends_with("detail=disk"),
+            "/vary {lang}: {r:?}"
+        );
+    }
+    let r = get(
+        c,
+        b.addr,
+        "GET",
+        "/fresh",
+        &[("If-None-Match", "\"v1\""), host],
+    );
+    assert_eq!(r.status, 304, "a precondition");
+    for p in paths.iter().chain(&["/vary"]) {
+        assert_eq!(origin::hits(p), 0, "{p}: the origin was asked");
+    }
+    assert_eq!(
+        akit_cache::disk_io_off_pool(),
+        0,
+        "file operations off the disk pool"
+    );
+}
+
+// fit's TestDiskPromotion: a zone whose memory holds less than its disk reads back what memory
+// evicts.
+#[test]
+fn disk_promotion() {
+    let _s = serial();
+    let dir = TempDir::new("promotion");
+    let a = Akit::serve(&disk_params(
+        "promotion",
+        &dir,
+        r#", "max_bytes": 1048576, "max_entry_bytes": 65536"#,
+    ));
+    let c = Proto::H2c;
+    let n = 64; // 64 KiB each: four times what memory holds
+    for i in 0..n {
+        get(c, a.addr, "GET", &format!("/stream?{i}"), &[]);
+    }
+    wait_for("files written", || on_disk("promotion") == n);
+    let mut from_disk = 0;
+    for i in 0..n {
+        let r = get(c, a.addr, "GET", &format!("/stream?{i}"), &[]);
+        assert!(r.hit() && r.body.len() == 64 << 10, "{i}: {r:?}");
+        if r.cache_status().ends_with("detail=disk") {
+            from_disk += 1;
+        }
+    }
+    assert!(
+        from_disk >= n / 2 && origin::hits("/stream") == n,
+        "{from_disk} of {n} from disk, {} fetches",
+        origin::hits("/stream")
+    );
+    assert_eq!(akit_cache::disk_io_off_pool(), 0);
+}
+
+/// Lets the disk pool go and its timeout back, however the test ends.
+struct DiskBack;
+
+impl Drop for DiskBack {
+    fn drop(&mut self) {
+        akit_cache::hold_disk(false);
+        akit_cache::set_disk_timeout(None);
+    }
+}
+
+// fit's TestDiskNeverBlocks: a disk that hangs holds up no I/O thread. The request waits for its
+// read without one, others are answered meanwhile, and it goes on as a miss once the disk's
+// timeout has passed.
+#[test]
+fn disk_never_blocks() {
+    let _s = serial();
+    let dir = TempDir::new("hung");
+    let a = Akit::serve(&disk_params("hung", &dir, ""));
+    let c = Proto::H1;
+    get(c, a.addr, "GET", "/fresh", &[]);
+    get(c, a.addr, "GET", "/expires", &[]);
+    wait_for("the files written", || on_disk("hung") == 2);
+    let key = format!("http://{}/fresh", a.addr);
+    akit_cache::evict_from_memory("hung", &key);
+    let _back = DiskBack;
+    akit_cache::set_disk_timeout(Some(Duration::from_millis(300)));
+    akit_cache::hold_disk(true);
+    for i in 0..2 {
+        let addr = a.addr;
+        let started = Instant::now();
+        let waiting = thread::spawn(move || {
+            (
+                get(Proto::H2c, addr, "GET", "/fresh", &[]),
+                started.elapsed(),
+            )
+        });
+        // Meanwhile the I/O threads answer others.
+        thread::sleep(Duration::from_millis(50));
+        let quick = Instant::now();
+        let r = get(c, a.addr, "GET", "/expires", &[]);
+        assert!(
+            r.hit() && quick.elapsed() < Duration::from_millis(200),
+            "{i}: {r:?}"
+        );
+        let (r, took) = waiting.join().unwrap();
+        assert_eq!(
+            (r.status, r.cache_status()),
+            (200, "fit; fwd=uri-miss; stored"),
+            "{i}"
+        );
+        assert!(
+            took >= Duration::from_millis(250),
+            "{i}: answered in {took:?}"
+        );
+        akit_cache::evict_from_memory("hung", &key);
+    }
+    assert_eq!(origin::hits("/fresh"), 3);
+    akit_cache::hold_disk(false);
+    wait_for("the writes", || akit_cache::disk_pending("hung") == Some(0));
+    assert_eq!(akit_cache::disk_io_off_pool(), 0);
+}
+
+// fit's TestDiskBrokenFiles, its last part: a file gone from under its entry leaves the request
+// to the origin.
+#[test]
+fn disk_file_gone() {
+    let _s = serial();
+    let dir = TempDir::new("gone");
+    let a = Akit::serve(&disk_params("gone", &dir, ""));
+    let c = Proto::H1;
+    get(c, a.addr, "GET", "/expires", &[]);
+    wait_for("the file written", || on_disk("gone") == 1);
+    akit_cache::evict_from_memory("gone", &format!("http://{}/expires", a.addr));
+    for f in dir.files() {
+        std::fs::remove_file(f).unwrap();
+    }
+    let r = get(c, a.addr, "GET", "/expires", &[]);
+    assert_eq!(
+        (r.status, r.cache_status()),
+        (200, "fit; fwd=uri-miss; stored")
+    );
+    wait_for("written again", || {
+        on_disk("gone") == 1 && dir.files().len() == 1
+    });
+    assert_eq!(akit_cache::disk_io_off_pool(), 0);
+}
+
+// fit's TestDiskInvalidate: a request that changes a resource removes its response from disk too.
+#[test]
+fn disk_invalidate() {
+    let _s = serial();
+    let dir = TempDir::new("invalidate");
+    let a = Akit::serve(&disk_params("invalidate", &dir, ""));
+    let c = Proto::H1;
+    get(c, a.addr, "GET", "/fresh", &[]);
+    get(c, a.addr, "GET", "/s-maxage", &[]);
+    wait_for("files written", || on_disk("invalidate") == 2);
+    get(c, a.addr, "DELETE", "/fresh", &[]);
+    wait_for("the file removed", || {
+        on_disk("invalidate") == 1 && dir.files().len() == 1
+    });
+    let r = get(c, a.addr, "GET", "/fresh", &[]);
+    assert_eq!(r.cache_status(), "fit; fwd=uri-miss; stored");
+    wait_for("/fresh written again", || on_disk("invalidate") == 2);
+    assert_eq!(akit_cache::disk_io_off_pool(), 0);
+}
+
+// fit's TestDiskZones: two zones cannot share a directory, a zone whose disk moves takes the new
+// directory, and one whose config drops its disk has none.
+#[test]
+fn disk_zones() {
+    let _s = serial();
+    let (dir, other) = (TempDir::new("zones"), TempDir::new("zones-moved"));
+    let a = compile_only(&route_of(&disk_params("a", &dir, ""))).unwrap();
+    let same = format!("{}/", dir.path());
+    let Err(e) = compile_only(&route_of(&format!(
+        r#"[{{"module": "cache", "params": {{"zone": "b", "disk": {{"path": "{same}"}}}}}}]"#
+    ))) else {
+        panic!("a second zone in the same directory");
+    };
+    assert!(e.contains("zone \"a\"") && e.contains("disk"), "{e}");
+    let moved = compile_only(&route_of(&disk_params("a", &other, ""))).unwrap();
+    assert_eq!(
+        akit_cache::disk_path("a").as_deref(),
+        Some(other.0.as_path())
+    );
+    let none = compile_only(&route_of(
+        r#"[{"module": "cache", "params": {"zone": "a"}}]"#,
+    ))
+    .unwrap();
+    assert!(
+        akit_cache::disk_path("a").is_none(),
+        "the zone kept a disk its config dropped"
+    );
+    wait_for("the indexes read back", || {
+        dir.0.join("tmp").exists() && other.0.join("tmp").exists()
+    });
+    drop((a, moved, none));
 }

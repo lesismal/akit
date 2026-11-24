@@ -152,7 +152,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 248 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 255 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -185,7 +185,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`http.handlers/whip`](#fields-http-handlers-whip) | 4 | 0 | 4 |
 | [`http.middleware/basic_auth`](#fields-http-middleware-basic-auth) | 8 | 8 | 0 |
 | [`http.middleware/body_limit`](#fields-http-middleware-body-limit) | 3 | 3 | 0 |
-| [`http.middleware/cache`](#fields-http-middleware-cache) | 17 | 10 | 7 |
+| [`http.middleware/cache`](#fields-http-middleware-cache) | 17 | 17 | 0 |
 | [`http.middleware/circuit_breaker`](#fields-http-middleware-circuit-breaker) | 10 | 10 | 0 |
 | [`http.middleware/client_cert`](#fields-http-middleware-client-cert) | 4 | 4 | 0 |
 | [`http.middleware/compress`](#fields-http-middleware-compress) | 10 | 10 | 0 |
@@ -277,7 +277,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **合计** | 3821 | 248 | 3573 |
+| **合计** | 3821 | 255 | 3566 |
 
 <a id="fields-access"></a>
 
@@ -1047,18 +1047,18 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `routes[].middleware[]<cache>.params` | `object` | 已支持 |
 | `routes[].middleware[]<cache>.params.default_ttl` | `duration` | 已支持 |
 | `routes[].middleware[]<cache>.params.disable_lock` | `boolean` | 已支持 |
-| `routes[].middleware[]<cache>.params.disk` | `object` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<cache>.params.disk.max_bytes` | `integer` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<cache>.params.disk.max_entries` | `integer` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<cache>.params.disk.max_size` | `integer, deprecated` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<cache>.params.disk.path` | `string, required` | 尚不支持（not supported yet） |
+| `routes[].middleware[]<cache>.params.disk` | `object` | 已支持 |
+| `routes[].middleware[]<cache>.params.disk.max_bytes` | `integer` | 已支持 |
+| `routes[].middleware[]<cache>.params.disk.max_entries` | `integer` | 已支持 |
+| `routes[].middleware[]<cache>.params.disk.max_size` | `integer, deprecated` | 已支持 |
+| `routes[].middleware[]<cache>.params.disk.path` | `string, required` | 已支持 |
 | `routes[].middleware[]<cache>.params.lock_timeout` | `duration` | 已支持 |
 | `routes[].middleware[]<cache>.params.max_bytes` | `integer` | 已支持 |
 | `routes[].middleware[]<cache>.params.max_entry_bytes` | `integer` | 已支持 |
 | `routes[].middleware[]<cache>.params.max_entry_size` | `integer, deprecated` | 已支持 |
 | `routes[].middleware[]<cache>.params.max_size` | `integer, deprecated` | 已支持 |
-| `routes[].middleware[]<cache>.params.stale_if_error` | `duration` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<cache>.params.stale_while_revalidate` | `duration` | 尚不支持（not supported yet） |
+| `routes[].middleware[]<cache>.params.stale_if_error` | `duration` | 已支持 |
+| `routes[].middleware[]<cache>.params.stale_while_revalidate` | `duration` | 已支持 |
 | `routes[].middleware[]<cache>.params.zone` | `string` | 已支持 |
 
 <a id="fields-http-middleware-circuit-breaker"></a>

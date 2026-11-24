@@ -277,6 +277,7 @@ dependencies = [
  "akio-crypto",
  "akio-deflate",
  "akio-http",
+ "akio-pool",
  "akit-config",
  "akit-listener",
  "akit-middleware",

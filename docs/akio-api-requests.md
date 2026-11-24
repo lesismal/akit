@@ -78,6 +78,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | A111 | A response filter sees a streamed body as it is sent, and how it ended (a body tap) | in akio's main (`e9891b52`), pinned | 5, 6 | I67 |
 | A112 | An HTTP-date parsed in all three formats RFC 9110 has recipients accept | built on akio's branch `claude/a111-body-tap` (`0e36f8d6`), pinned | 15 | I67 |
 | A113 | A response filter that runs after the inner ones (an outer filter) | built on akio's branch `claude/a111-body-tap` (`0e36f8d6`), pinned | 5 | I67 |
+| A117 | `akio::Pool` and `PoolConfig` together: a bounded pool of an application's own for its blocking work | requested (I68); akit-cache depends on `akio-pool` meanwhile | 4 | I68 |
 
 ## A1 TCP listeners on a running engine
 
@@ -1438,3 +1439,26 @@ socket's peer; `Conn::peer_addr` unchanged.
 `proxy_protocol` (HTTP over TCP, before TLS), trusting its `trusted` addresses; every feature that
 reads the client's address then reads the header's. Done in akio by I52 (ADR-118, branch
 `claude/a105-proxy-peer`, `e3f03a32`), to be merged onto akio's main.
+
+## A117 A bounded pool of an application's own, from the `akio` facade
+
+**Problem.** Rule 4 has blocking work run on akio's logical pool or on a bounded pool of akit's
+own. The cache's disk tier (I68) wants a pool of its own, apart from the logical pool, so that a
+disk that hangs holds up neither the handlers on the logical pool nor anything else, as fit's
+cache has its own file pool and akio's `Files` has its own `disk_pool`. akio has the pool
+(`akio_pool::Pool`, behind `Conn::spawn_blocking`), and the `akio` facade re-exports
+`PoolConfig` and `PoolStats` but not `Pool`, so an application builds a `PoolConfig` it cannot
+use.
+
+**Evidence.** At `e9891b52`: `crates/akio/src/lib.rs` has `use akio_core::{.., Pool, ..}`
+(private) beside `pub use akio_core::{.., PoolConfig, PoolStats, ..}`; `akio-pool`'s manifest
+calls it "akio internals ... (use `akio`)".
+
+**Suggested API.** `pub use akio_core::Pool` from `akio` (with `Rejected` and `Job`, which
+`Pool::try_execute` takes and gives back), documented as the pool for an application's own
+blocking work.
+
+**How akit uses it.** `akit-cache`'s disk pool (`disk.rs`): `Pool::new` with at least 16 threads
+and 4 a CPU and a queue of 4,096, every file operation submitted with `try_execute`. Meanwhile
+akit-cache depends on `akio-pool` directly, at the same commit as every akio crate (a stopgap, in
+the progress log); it moves to `akio::Pool` once this is on akio's main.

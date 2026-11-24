@@ -1019,8 +1019,7 @@ pub const DEFAULT_COMPRESS_MIN_BYTES: u64 = 1400;
 pub const DEFAULT_COMPRESS_MAX_IN_FLIGHT: u64 = 1024;
 
 /// The `cache` middleware's params, as fit's `middleware/cache`, worked out as its `Provision`
-/// works them out. The cache lock (`disable_lock`, `lock_timeout`) is read and kept for I68; the
-/// stale windows and the disk tier wait for I68 and are refused as not supported yet.
+/// works them out.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Cache {
     /// `zone`: the store responses are kept in, shared by every cache of the same zone and kept
@@ -1037,17 +1036,44 @@ pub struct Cache {
     /// its status allows one to be assumed; a tenth of the time since its `Last-Modified`, at
     /// most a day, when left out.
     pub default_ttl: Option<Duration>,
-    /// `disable_lock`: every miss fetches for itself. Without the lock (I68) every miss does.
+    /// `disable_lock`: every miss fetches for itself, with no cache lock.
     pub disable_lock: bool,
-    /// `lock_timeout`: how long a miss waits for another's fetch (I68);
+    /// `lock_timeout`: how long a miss waits for another's fetch of its response;
     /// [`DEFAULT_CACHE_LOCK_TIMEOUT`] when left out or 0.
     pub lock_timeout: Duration,
+    /// `stale_while_revalidate`: how long past its lifetime a response that says nothing of it
+    /// may be answered while it is fetched again in the background (RFC 5861); `None` when left
+    /// out or 0.
+    pub stale_while_revalidate: Option<Duration>,
+    /// `stale_if_error`: how long past its lifetime a response that says nothing of it may be
+    /// answered when fetching it again fails (RFC 5861); `None` when left out or 0.
+    pub stale_if_error: Option<Duration>,
+    /// `disk`: the zone's disk tier, or `None`.
+    pub disk: Option<CacheDisk>,
     /// Not a param: the route has an auth middleware (`basic_auth`, `client_cert`,
     /// `forward_auth`, `jwt`), so every request the cache keeps a response for was let in on
     /// credentials, which fit's auth middlewares record per request and RFC 9111 section 3.5
     /// treats as `Authorization`.
     pub authenticated: bool,
 }
+
+/// The `cache` middleware's `disk` param, as fit's `middleware/cache` `Disk`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CacheDisk {
+    /// `path` (required): the directory the zone's responses are kept in, the zone's alone.
+    pub path: String,
+    /// `max_bytes` (once `max_size`): the most bytes the zone keeps on disk;
+    /// [`DEFAULT_CACHE_DISK_MAX_BYTES`] when left out or 0.
+    pub max_bytes: u64,
+    /// `max_entries`: the most responses the zone keeps on disk;
+    /// [`DEFAULT_CACHE_DISK_MAX_ENTRIES`] when left out or 0.
+    pub max_entries: u64,
+}
+
+/// fit's default `cache` `disk` `max_bytes`: 1 GiB.
+pub const DEFAULT_CACHE_DISK_MAX_BYTES: u64 = 1 << 30;
+/// fit's default `cache` `disk` `max_entries`.
+pub const DEFAULT_CACHE_DISK_MAX_ENTRIES: u64 = 100_000;
 
 /// fit's default `cache` `zone`.
 pub const DEFAULT_CACHE_ZONE: &str = "default";
@@ -1725,9 +1751,11 @@ const CACHE_FIELDS: &[&str] = &[
     "default_ttl",
     "disable_lock",
     "lock_timeout",
+    "stale_while_revalidate",
+    "stale_if_error",
+    "disk",
 ];
-/// The stale windows and the disk tier come with I68.
-const CACHE_FIT_ONLY: &[&str] = &["stale_while_revalidate", "stale_if_error", "disk"];
+const CACHE_DISK_FIELDS: &[&str] = &["path", "max_bytes", "max_size", "max_entries"];
 const REWRITE_FIELDS: &[&str] = &["strip_prefix", "regexp", "replacement", "add_prefix"];
 const REDIRECT_FIELDS: &[&str] = &["to", "status", "regexp"];
 const HEADERS_FIELDS: &[&str] = &["request", "response"];
@@ -3470,6 +3498,9 @@ fn cache(d: &mut Decoder<'_>, params: Option<&Node>, path: &str) -> Option<Cache
         default_ttl: None,
         disable_lock: false,
         lock_timeout: DEFAULT_CACHE_LOCK_TIMEOUT,
+        stale_while_revalidate: None,
+        stale_if_error: None,
+        disk: None,
         authenticated: false,
     };
     let mut ok = true;
@@ -3518,7 +3549,22 @@ fn cache(d: &mut Decoder<'_>, params: Option<&Node>, path: &str) -> Option<Cache
                 None => ok = false,
             }
         }
-        o.finish(d, CACHE_FIELDS, CACHE_FIT_ONLY);
+        for (key, slot) in [
+            ("stale_while_revalidate", &mut c.stale_while_revalidate),
+            ("stale_if_error", &mut c.stale_if_error),
+        ] {
+            if let Some(v) = o.take(key) {
+                match d.duration(v, &o.at(key)) {
+                    Some(t) => *slot = Some(t).filter(|t| !t.is_zero()),
+                    None => ok = false,
+                }
+            }
+        }
+        if let Some(v) = o.take("disk") {
+            c.disk = cache_disk(d, v, &o.at("disk"));
+            ok &= c.disk.is_some();
+        }
+        o.finish(d, CACHE_FIELDS, &[]);
     }
     let share = c.max_bytes / CACHE_SHARDS;
     if c.max_entry_bytes == 0 {
@@ -3531,6 +3577,43 @@ fn cache(d: &mut Decoder<'_>, params: Option<&Node>, path: &str) -> Option<Cache
         );
         ok = false;
     }
+    ok.then_some(c)
+}
+
+/// The `cache` middleware's `disk` param.
+fn cache_disk(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<CacheDisk> {
+    let mut o = d.object(n, path)?;
+    let mut ok = true;
+    let mut c = CacheDisk {
+        path: String::new(),
+        max_bytes: DEFAULT_CACHE_DISK_MAX_BYTES,
+        max_entries: DEFAULT_CACHE_DISK_MAX_ENTRIES,
+    };
+    match o.require(d, "path") {
+        Some(v) => match d.string(v, &o.at("path")) {
+            Some(p) if !p.is_empty() => c.path = p,
+            Some(_) => {
+                d.error(v.off, &o.at("path"), "must not be empty");
+                ok = false;
+            }
+            None => ok = false,
+        },
+        None => ok = false,
+    }
+    if let Some(m) = size_field(d, &mut o, "max_bytes", "max_size", &mut ok) {
+        c.max_bytes = m;
+    }
+    if let Some(v) = o.take("max_entries") {
+        match d
+            .int(v, &o.at("max_entries"), 0, i64::MAX)
+            .and_then(|n| u64::try_from(n).ok())
+        {
+            Some(0) => {}
+            Some(n) => c.max_entries = n,
+            None => ok = false,
+        }
+    }
+    o.finish(d, CACHE_DISK_FIELDS, &[]);
     ok.then_some(c)
 }
 

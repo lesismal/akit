@@ -22,6 +22,9 @@ pub(crate) struct Directives {
     pub(crate) must_revalidate: bool,
     pub(crate) proxy_revalidate: bool,
     pub(crate) only_if_cached: bool,
+    /// RFC 5861's `stale-while-revalidate` and `stale-if-error`.
+    pub(crate) stale_while_revalidate: Option<Duration>,
+    pub(crate) stale_if_error: Option<Duration>,
 }
 
 /// The bound on delta-seconds, as RFC 9111 section 1.2.2 has caches keep it: 2^31 seconds.
@@ -64,6 +67,10 @@ pub(crate) fn parse_directives<'a>(fields: impl Iterator<Item = &'a str>) -> Dir
                 d.proxy_revalidate = true;
             } else if is("only-if-cached") {
                 d.only_if_cached = true;
+            } else if is("stale-while-revalidate") {
+                d.stale_while_revalidate = Some(delta(value));
+            } else if is("stale-if-error") {
+                d.stale_if_error = Some(delta(value));
             }
         }
     }
@@ -301,9 +308,12 @@ mod tests {
             [
                 r#"Max-Age="60", s-maxage=x, no-cache="Set-Cookie""#,
                 "private, max-stale, min-fresh=5, only-if-cached, PUBLIC",
+                "stale-while-revalidate=30, Stale-If-Error=\"600\"",
             ]
             .into_iter(),
         );
+        assert_eq!(d.stale_while_revalidate, Some(Duration::from_secs(30)));
+        assert_eq!(d.stale_if_error, Some(Duration::from_secs(600)));
         assert_eq!(d.max_age, Some(Duration::from_secs(60)));
         assert_eq!(d.s_maxage, Some(Duration::ZERO), "a bad delta is 0");
         assert!(d.no_cache && d.private && d.public && d.only_if_cached && d.max_stale_any);
