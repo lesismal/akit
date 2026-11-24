@@ -151,7 +151,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I47 | Compression | I16 | done |
 | I48 | The rest of fit's middlewares | I40 | todo |
 | I49 | WebSocket proxying | I17 | done |
-| I50 | gRPC proxying | I18 | todo |
+| I50 | gRPC proxying | I18 | done |
 | I51 | TCP and UDP proxying | I05 | done |
 | I51b | The eBPF sockmap relay | I51 | todo |
 | I52 | SNI routing and PROXY protocol | I51, A4, A5 | todo |
@@ -226,7 +226,7 @@ commit and result.
 | Weighted upstreams, mirroring, failover | I46 | no | no (built, not measured) | Same-run A/B on the proxy scenario of a route with `upstreams` (two, by weight) and with `failover` against the route with `upstream`: the draw by weight and `available` read per request; with `mirror` at 100% against a fast mirror (a copy of the fields and body, a second exchange per request) and against a mirror that answers nothing (the bound of 256 held: the requests' latency and akit's memory), over HTTP/1.1 and h2. |
 | Middlewares (the rest) | I48 | no | no (not built yet) | I56 benchmarks every middleware; same-run A/B of each on the proxy scenario. |
 | Compression | I47 | no | no (built, not measured) | Against fit, each encoding, as I47 asks: the proxy scenario with `compress` in front, a whole JSON body and a stream of server-sent events, over HTTP/1.1 and h2, per encoding at fit's default levels (responses a second, server CPU, bytes on the wire); the cost of the filter on responses it leaves alone (an image) against no middleware; the memory of held compressed streams (1,000 at once); the static handler's copies against fit's (`compress` on a file kept in memory). |
-| WebSocket and gRPC proxying | I49, I50 | no | no (I49 built, not measured; I50 not built yet) | Against fit: WebSocket messages a second (small, echoed) and bytes a second (large) through akit from HTTP/1.1, h2 and h3 clients, memory per open WebSocket (idle, and with 64 KiB pending each way), and handshakes a second (a key generated, the upstream connection leaving the pool); I50: gRPC calls a second. |
+| WebSocket and gRPC proxying | I49, I50 | no | no (I49 and I50 built, not measured) | Against fit: WebSocket messages a second (small, echoed) and bytes a second (large) through akit from HTTP/1.1, h2 and h3 clients, memory per open WebSocket (idle, and with 64 KiB pending each way), and handshakes a second (a key generated, the upstream connection leaving the pool); I50: gRPC calls a second (unary, h2c and h2 upstreams) and messages a second on a stream each way, against fit. |
 | TCP and UDP proxying, SNI routing, many protocols on one port | I51–I53 | no | no (I51 built, not measured; I52, I53 not built yet) | Against fit and nginx's `stream`, as I51 asks: TCP throughput (fit's `BenchmarkTCPProxy`, 256 KB echoed at a time, direct and through akit), connections a second, memory per idle connection; UDP datagrams a second and sessions at once; the per-service idle sweep on akit's timer thread with 10,000 connections (the stopgap for akio A78); the cost of sniffing on a shared port (I53). |
 | Response cache | I67, I68 | no | no (not built yet) | Hits from memory and disk against fit. |
 | WASM plugins | I71, I72 | no | no (not built yet) | A/B of a no-op plugin against none. |
@@ -721,6 +721,9 @@ Split from I07 so that the half that needs no config model runs beside I02.
 - **Do**: gRPC over h2c and TLS upstreams, trailers and deadlines carried, unary and streaming.
 - **Done when**: end-to-end tests against grpc-go pass.
 - **Touches**: `akit-proxy`.
+- **Split**: the end-to-end tests are fit's, ported onto akio-grpc's client and server (fit runs
+  them on fib's gRPC); a run against grpc-go, which needs a Go toolchain akit's CI does not
+  have, is left to an interoperability task.
 
 ### I51 TCP and UDP proxying
 

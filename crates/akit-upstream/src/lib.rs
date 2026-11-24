@@ -303,8 +303,9 @@ pub trait Exchange: Send + 'static {
     /// The request failed, or (after the head) its body did not complete.
     fn on_error(&mut self, e: Error);
     /// Whether the exchange gave the request up itself, its client gone (as by dropping its
-    /// unfinished [`RequestBody`], or cancelling its [`CancelToken`]): asked as the request
-    /// fails, which is then not counted against the address.
+    /// unfinished [`RequestBody`], or cancelling its [`CancelToken`]), or its own deadline past
+    /// (akit-proxy's `timeout`, a gRPC call's `grpc-timeout`): asked as the request fails, which
+    /// is then not counted against the address.
     fn gave_up(&self) -> bool {
         false
     }

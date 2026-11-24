@@ -86,6 +86,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "akio-grpc"
+version = "1.0.0-rc.1"
+source = "git+https://github.com/lesismal/akio?rev=c5cf4353c02e7fb1bd2d764eef9ff82ea98e6a06#c5cf4353c02e7fb1bd2d764eef9ff82ea98e6a06"
+dependencies = [
+ "akio",
+ "akio-deflate",
+ "akio-http",
+ "akio-protobuf",
+]
+
+[[package]]
 name = "akio-h3"
 version = "1.0.0-rc.1"
 source = "git+https://github.com/lesismal/akio?rev=c5cf4353c02e7fb1bd2d764eef9ff82ea98e6a06#c5cf4353c02e7fb1bd2d764eef9ff82ea98e6a06"
@@ -124,6 +135,11 @@ dependencies = [
 
 [[package]]
 name = "akio-pool"
+version = "1.0.0-rc.1"
+source = "git+https://github.com/lesismal/akio?rev=c5cf4353c02e7fb1bd2d764eef9ff82ea98e6a06#c5cf4353c02e7fb1bd2d764eef9ff82ea98e6a06"
+
+[[package]]
+name = "akio-protobuf"
 version = "1.0.0-rc.1"
 source = "git+https://github.com/lesismal/akio?rev=c5cf4353c02e7fb1bd2d764eef9ff82ea98e6a06#c5cf4353c02e7fb1bd2d764eef9ff82ea98e6a06"
 
@@ -342,6 +358,7 @@ version = "0.0.1"
 dependencies = [
  "akio",
  "akio-crypto",
+ "akio-grpc",
  "akio-h3",
  "akio-http",
  "akio-quic",

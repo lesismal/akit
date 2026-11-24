@@ -107,9 +107,20 @@
 //! side's reads held while more than 64 KiB waits for the other, until the tunnel ends or carries
 //! nothing for `tunnel_idle_timeout`. Any other answer is passed on as a response.
 //!
+//! I50 proxies gRPC calls (`grpc.rs`), as fit's proxy passes them: an HTTP/2 or HTTP/3 `POST`
+//! of `application/grpc` (or a subtype) streams both ways as any request does, its body from its
+//! head, to an `h2` or `h2c` upstream, with `TE: trailers`; its `grpc-timeout` bounds it as the
+//! proxy's `timeout` does, and the upstream is told the shorter of the two. Its response is never
+//! collected whole: a trailers-only one is passed on as one, any other as it arrives, its
+//! trailers after it. A call that gets no response is answered as gRPC answers, a trailers-only
+//! `200` with fit's `grpc-status` (`UNAVAILABLE`, `DEADLINE_EXCEEDED`, `RESOURCE_EXHAUSTED`,
+//! `INTERNAL`), and one cut short ends with those trailers. A request cut short by the proxy's own
+//! timeout, gRPC or not, does not count against its address (fit's `timedOut`).
+//!
 //! Part of [akit](https://github.com/lesismal/akit); see `docs/dev-plan.md` for the iterations that
 //! fill this crate in.
 
+mod grpc;
 mod headers;
 mod mirror;
 mod relay;
@@ -219,6 +230,8 @@ impl akio_http::Service for Proxy {
             r.deposit();
         }
         let req = ctx.req();
+        // A gRPC call (I50) is answered as gRPC answers when it fails: by its content type.
+        let grpc = grpc::call(req).map(str::to_owned);
         // A request that asks to switch protocols (I49): only a WebSocket's extended CONNECT
         // has an HTTP/1.1 handshake to go as.
         let asked = websocket::asked(req);
@@ -234,7 +247,7 @@ impl akio_http::Service for Proxy {
             tls: ctx.local(TLS).is_some(),
         };
         let Ok(out_fields) = headers::outgoing(&client, &self.trusted, &self.host_header) else {
-            ctx.respond(fail(400));
+            ctx.respond(failure(400, grpc.as_deref()));
             return;
         };
         // The address, by the upstream's sticky cookie and load balancing, which may hash the
@@ -257,6 +270,18 @@ impl akio_http::Service for Proxy {
         out.headers = fields;
         // The shorter of it and the upstream's response_timeout holds (akit-upstream).
         out.timeout = self.timeout;
+        if grpc.is_some() {
+            // As gRPC servers ask of their clients; and the call's grpc-timeout bounds it too,
+            // the upstream told the route's when that is the shorter.
+            out.headers.append("TE", "trailers");
+            let (timeout, told) = grpc::deadline(&out.headers, self.timeout);
+            if let Some(told) = told {
+                out.headers.set("grpc-timeout", told);
+            }
+            out.timeout = timeout;
+        }
+        // Past it, the request was cut short by the proxy, which is no failure of the address's.
+        let deadline = out.timeout.and_then(|t| start.checked_add(t));
         let head = req.method == Method::Head;
         let version = req.version;
         let length = declared_length(req);
@@ -287,7 +312,8 @@ impl akio_http::Service for Proxy {
         let announced = !names.is_empty();
         // A body that streams goes up chunked when it came so or carries trailers.
         let chunked = length.is_none() || announced;
-        let Some((client, streamed)) = relay::start(ctx, limit, chunked, names, cancel) else {
+        let Some((client, streamed)) = relay::start(ctx, limit, chunked, names, cancel, grpc)
+        else {
             // Answered already: nothing left to do.
             return;
         };
@@ -343,12 +369,17 @@ impl akio_http::Service for Proxy {
                 }
             }
         }
-        let x = relay::Relay::new(client, head, version, chunked, log, set_cookie, again);
+        let x = relay::Relay::new(client, head, version, chunked, log, set_cookie, again)
+            .with_deadline(deadline);
         pool.stream(backend, out, x);
     }
 
-    /// A body of more than [`STREAM_THRESHOLD`], or of no declared length, streams.
+    /// A body of more than [`STREAM_THRESHOLD`], or of no declared length, streams; a gRPC
+    /// call's always does, from its head (fit's `StreamRequestBodyAtHeader`).
     fn body_mode(&self, req: &Request) -> BodyMode {
+        if grpc::call(req).is_some() {
+            return BodyMode::Stream;
+        }
         match declared_length(req) {
             Some(n) if n <= STREAM_THRESHOLD => BodyMode::Buffered,
             _ => BodyMode::Stream,
@@ -404,6 +435,15 @@ fn status_of(e: &Error) -> u16 {
         Error::Client(e) if e.is_timeout() => 504,
         Error::Client(ClientError::Io(e)) if e.kind() == std::io::ErrorKind::TimedOut => 504,
         _ => 502,
+    }
+}
+
+/// The answer to a request that got no response, with `status`: [`fail`]'s, or for a gRPC call
+/// of the content type `grpc`, gRPC's (`grpc::fail`).
+fn failure(status: u16, grpc: Option<&str>) -> Response {
+    match grpc {
+        Some(ct) => grpc::fail(status, ct),
+        None => fail(status),
     }
 }
 

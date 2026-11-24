@@ -66,6 +66,9 @@ struct Shared {
     /// The client went (before its body ended, or before the response was over): the upstream
     /// request was given up for it.
     gone: bool,
+    /// The request's content type when it is a gRPC call (I50), whose failures are answered as
+    /// gRPC answers them.
+    grpc: Option<String>,
 }
 
 /// A streamed request body on its way up.
@@ -122,13 +125,15 @@ pub(crate) struct Client {
 
 /// Starts relaying `ctx`'s request: takes its body's reads when it streams (registering its body
 /// sink, held to `limit`, sent up `chunked` with the trailers of `names`), has `cancel`
-/// cancelled when its client goes, and detaches it. `None` when it was answered already.
+/// cancelled when its client goes, and detaches it. `grpc` is the request's content type when it
+/// is a gRPC call. `None` when it was answered already.
 pub(crate) fn start(
     ctx: &mut Context,
     limit: u64,
     chunked: bool,
     names: Vec<String>,
     cancel: CancelToken,
+    grpc: Option<String>,
 ) -> Option<(Client, bool)> {
     let reads = ctx.body_reads();
     let streamed = reads.is_some();
@@ -136,6 +141,7 @@ pub(crate) fn start(
         answer: None,
         up: Upload::default(),
         gone: false,
+        grpc,
     }));
     // The client gone, whenever: the upstream request given up, wherever it is. Weak: akio keeps
     // the callback with the answer, which `shared` holds. Run at once if it went already, before
@@ -183,6 +189,7 @@ impl Client {
                     ..Upload::default()
                 },
                 gone: false,
+                grpc: None,
             })),
             reads: None,
             names: Vec::new(),
@@ -282,20 +289,20 @@ impl Sink {
     /// the upstream request given up.
     fn too_large(&mut self) {
         self.ended = true;
-        let (body, answer) = {
+        let (body, answer, grpc) = {
             let mut s = lock(&self.shared);
             if s.up.done {
                 return;
             }
             s.up.done = true;
             s.up.pending = Vec::new();
-            (s.up.body.take(), s.answer.take())
+            (s.up.body.take(), s.answer.take(), s.grpc.clone())
         };
         // Unfinished, it closes the upstream connection.
         drop(body);
         self.reads.hold(false);
         if let Some(answer) = answer {
-            answer.respond(crate::fail(413));
+            answer.respond(crate::failure(413, grpc.as_deref()));
         }
     }
 }
@@ -390,6 +397,11 @@ pub(crate) struct Relay {
     /// What the request needs to be sent again (I45), when the proxy retries and its body can
     /// be replayed.
     again: Option<Box<Again>>,
+    /// The request is a gRPC call (I50).
+    grpc: bool,
+    /// When the proxy's own timeout (its `timeout`, or a gRPC call's `grpc-timeout`) cuts the
+    /// request short: a failure past it is no failure of the address's, as fit's `timedOut`.
+    deadline: Option<Instant>,
 }
 
 impl Relay {
@@ -402,6 +414,7 @@ impl Relay {
         set_cookie: Option<String>,
         again: Option<Box<Again>>,
     ) -> Relay {
+        let grpc = lock(&client.shared).grpc.is_some();
         Relay {
             shared: client.shared,
             reads: client.reads,
@@ -412,7 +425,21 @@ impl Relay {
             set_cookie,
             out: Out::Waiting,
             again,
+            grpc,
+            deadline: None,
         }
+    }
+
+    /// The same, the request cut short by the proxy at `deadline`.
+    #[must_use]
+    pub(crate) fn with_deadline(mut self, deadline: Option<Instant>) -> Relay {
+        self.deadline = deadline;
+        self
+    }
+
+    /// Whether the proxy's own timeout has passed.
+    fn timed_out(&self) -> bool {
+        self.deadline.is_some_and(|d| Instant::now() >= d)
     }
 
     /// Sends the request again, if its retries allow it for the attempt that just ended,
@@ -444,6 +471,8 @@ impl Relay {
             set_cookie: next.set_cookie,
             out: Out::Waiting,
             again: self.again.take(),
+            grpc: self.grpc,
+            deadline: self.deadline,
         };
         self.out = Out::Done;
         pool.stream(next.backend, next.req, relay);
@@ -473,10 +502,20 @@ impl Relay {
         }
     }
 
-    /// Answers the client with fit's status for `e`, unless it was answered already.
+    /// Answers the client with fit's status for `e`, unless it was answered already; a gRPC
+    /// call with its gRPC status, a past deadline being `DEADLINE_EXCEEDED`.
     fn fail(&self, e: &Error) {
-        if let Some(answer) = self.answer() {
-            let resp = crate::fail(crate::status_of(e));
+        let (answer, grpc) = {
+            let mut s = lock(&self.shared);
+            (s.answer.take(), s.grpc.clone())
+        };
+        if let Some(answer) = answer {
+            let status = if grpc.is_some() && self.timed_out() {
+                504
+            } else {
+                crate::status_of(e)
+            };
+            let resp = crate::failure(status, grpc.as_deref());
             logged(self.log.as_ref(), || answer.respond(resp));
         }
     }
@@ -533,8 +572,12 @@ impl Exchange for Relay {
             }
             return;
         }
-        let bodyless = self.head || matches!(head.status, 100..=199 | 204 | 304);
-        if bodyless || length.is_some_and(|n| n <= WHOLE_RESPONSE) {
+        // A gRPC call's trailers-only response (its status in its head) is passed on as one; any
+        // other of its responses streams, however short (fit's `blockResponse`).
+        let trailers_only = self.grpc && head.headers.get("grpc-status").is_some();
+        let bodyless = self.head || trailers_only || matches!(head.status, 100..=199 | 204 | 304);
+        let whole = !self.grpc && length.is_some_and(|n| n <= WHOLE_RESPONSE);
+        if bodyless || whole {
             let capacity = if bodyless { 0 } else { length.unwrap_or(0) };
             let mut fields = headers::incoming(&head.headers, self.head);
             if let Some(c) = self.set_cookie.take() {
@@ -586,7 +629,12 @@ impl Exchange for Relay {
 
     fn on_data(&mut self, chunk: &[u8]) {
         match &mut self.out {
-            Out::Whole { body, .. } => body.extend_from_slice(chunk),
+            // What follows a head that says there is no body is not wanted.
+            Out::Whole { body, bodyless, .. } => {
+                if !*bodyless {
+                    body.extend_from_slice(chunk);
+                }
+            }
             Out::Stream { stream, up, .. } => {
                 if stream.write(chunk).is_err() {
                     // The client went: the response is not wanted.
@@ -659,6 +707,12 @@ impl Exchange for Relay {
             // HTTP/1 client's connection, which is what tells it that the body is short, and
             // resets an HTTP/2 or HTTP/3 stream. One of no declared length there ends with fit's
             // trailer instead, as fit ends it.
+            // A gRPC call's ends with gRPC's status, which is all its client reads.
+            Out::Stream { stream, .. } if self.grpc => {
+                let timed_out = self.timed_out()
+                    || matches!(e, Error::Client(akio_http::client::ClientError::Timeout));
+                stream.finish_with_trailers(crate::grpc::broken(timed_out));
+            }
             Out::Stream { stream, framed, .. } => {
                 if !framed && matches!(self.version, Version::Http2 | Version::Http3) {
                     let mut t = Headers::new();
@@ -673,7 +727,9 @@ impl Exchange for Relay {
         }
     }
 
+    /// The client gone, or the proxy's own timeout passed (fit's `timedOut`): neither is the
+    /// address's failure.
     fn gave_up(&self) -> bool {
-        lock(&self.shared).gone
+        lock(&self.shared).gone || self.timed_out()
     }
 }

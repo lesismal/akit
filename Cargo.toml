@@ -53,6 +53,8 @@ akio-regex = { git = "https://github.com/lesismal/akio", rev = "c5cf4353c02e7fb1
 akio-deflate = { git = "https://github.com/lesismal/akio", rev = "c5cf4353c02e7fb1bd2d764eef9ff82ea98e6a06" }
 akio-brotli = { git = "https://github.com/lesismal/akio", rev = "c5cf4353c02e7fb1bd2d764eef9ff82ea98e6a06" }
 akio-zstd = { git = "https://github.com/lesismal/akio", rev = "c5cf4353c02e7fb1bd2d764eef9ff82ea98e6a06" }
+# gRPC's client and server, for akit-proxy's gRPC tests (I50).
+akio-grpc = { git = "https://github.com/lesismal/akio", rev = "c5cf4353c02e7fb1bd2d764eef9ff82ea98e6a06" }
 
 akit-config = { path = "crates/akit-config" }
 akit-runtime = { path = "crates/akit-runtime" }

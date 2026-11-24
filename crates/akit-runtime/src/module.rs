@@ -145,8 +145,11 @@ impl Env {
         self.upstreams.iter().find(|p| p.name() == name)
     }
 
-    /// The same engine, and `upstreams`.
-    pub(crate) fn with_upstreams(&self, upstreams: Vec<Pool>) -> Env {
+    /// The same engine, and `upstreams`: what [`compile`](crate::compile) provisions a config's
+    /// modules with; public for a module provisioned outside a config, on pools made by hand
+    /// (as akit-proxy's tests give an `h2` pool the test CA with [`Pool::with_tls`]).
+    #[must_use]
+    pub fn with_upstreams(&self, upstreams: Vec<Pool>) -> Env {
         Env {
             engine: self.engine.clone(),
             upstreams,
