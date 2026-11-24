@@ -12,6 +12,7 @@ publish = false
 akio = { workspace = true }
 akio-crypto = { workspace = true }
 akio-http = { workspace = true }
+akit-cache = { workspace = true }
 akit-config = { workspace = true }
 akit-observe = { workspace = true }
 akit-provider = { workspace = true }

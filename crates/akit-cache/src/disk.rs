@@ -27,7 +27,7 @@ use akio_http::Headers;
 use akio_pool::{Pool, PoolConfig};
 use akit_config::CacheDisk;
 
-use crate::store::{Entry, MAX_VARIANTS};
+use crate::store::{Entry, MAX_VARIANTS, TagIndex};
 
 /// How long a job may wait for the pool, and a request for a response read from disk, before
 /// it goes on without: fit's `diskTimeout`.
@@ -170,6 +170,10 @@ struct State {
     /// Files whose entries are gone, to be removed on the pool.
     trash: Vec<String>,
     draining: bool,
+    /// The keys of the responses on disk by tag.
+    tags: TagIndex,
+    /// The seq of the last clear: a write queued before it is not kept.
+    cleared: u64,
 }
 
 impl State {
@@ -195,10 +199,11 @@ impl State {
         it
     }
 
-    /// Drops `de` from the counts and trashes its file.
-    fn forget(&mut self, de: &DiskEntry) {
+    /// Drops `de`, `key`'s entry, from the counts and the tags, and trashes its file.
+    fn forget(&mut self, key: &str, de: &DiskEntry) {
         self.size = self.size.saturating_sub(de.size);
         self.count = self.count.saturating_sub(1);
+        self.tags.remove(key, &de.meta.tags);
         self.trash.push(de.file.clone());
     }
 
@@ -211,7 +216,7 @@ impl State {
             };
             if let Some(it) = self.items.remove(&k) {
                 for de in &it.variants {
-                    self.forget(de);
+                    self.forget(&k, de);
                 }
             }
         }
@@ -344,7 +349,7 @@ impl Disk {
             it.removed = seq;
             found = !gone.is_empty();
             for de in &gone {
-                st.forget(de);
+                st.forget(key, de);
             }
             self.evict(&mut st);
         }
@@ -352,13 +357,58 @@ impl Disk {
         found
     }
 
+    /// Drops every response on disk; returns how many keys had one. Their files go on the
+    /// pool, and a write queued before now is not kept, nor a file read back after now.
+    pub(crate) fn clear(&self) -> usize {
+        let seq = self.seq.fetch_add(1, Ordering::AcqRel).saturating_add(1);
+        let n;
+        {
+            let mut st = self.lock();
+            let items = std::mem::take(&mut st.items);
+            st.order.clear();
+            n = items.values().filter(|it| !it.variants.is_empty()).count();
+            for (k, it) in &items {
+                for de in &it.variants {
+                    st.forget(k, de);
+                }
+            }
+            st.cleared = seq;
+        }
+        self.drain_later();
+        n
+    }
+
+    /// Adds the keys of the responses on disk tagged `tag` to `out`.
+    pub(crate) fn tagged(&self, tag: &str, out: &mut Vec<Arc<str>>) {
+        self.lock().tags.keys(tag, out);
+    }
+
+    /// Adds the keys with responses on disk that start with any of `prefixes` to `out`, under the
+    /// index's lock for as long as reading its keys takes.
+    pub(crate) fn keys_with(&self, prefixes: &[String], out: &mut Vec<Arc<str>>) {
+        let st = self.lock();
+        out.extend(
+            st.items
+                .iter()
+                .filter(|(k, it)| {
+                    !it.variants.is_empty() && prefixes.iter().any(|p| k.starts_with(p.as_str()))
+                })
+                .map(|(k, _)| Arc::clone(k)),
+        );
+    }
+
     /// Puts `de` in the index under `key`, in place of the variant it answers for, unless `key`
-    /// was removed after the write was queued, at `seq` (0 for a file read back).
+    /// was removed or the tier cleared after the write was queued, at `seq` (0 for a file read
+    /// back, which loses to any removal or clear).
     pub(crate) fn add(&self, key: &str, de: DiskEntry, seq: u64) {
         let mut st = self.lock();
+        let cleared = st.cleared;
         let it = st.touch(key);
-        if seq != 0 && seq < it.removed {
-            st.trash.push(de.file);
+        if seq < it.removed || (seq < cleared || (seq == 0 && cleared != 0)) {
+            // A file read back may be the one a later write put in place: that one stays.
+            if !it.variants.iter().any(|v| v.file == de.file) {
+                st.trash.push(de.file);
+            }
             return;
         }
         let mut gone = Vec::new();
@@ -383,14 +433,21 @@ impl Disk {
             gone.push((it.variants.remove(0), false));
         }
         let size = de.size;
-        it.variants.push(Arc::new(de));
+        let de = Arc::new(de);
+        it.variants.push(Arc::clone(&de));
+        let k = st
+            .items
+            .get_key_value(key)
+            .map_or_else(|| Arc::from(key), |(k, _)| Arc::clone(k));
         for (v, same_file) in gone {
             st.size = st.size.saturating_sub(v.size);
             st.count = st.count.saturating_sub(1);
+            st.tags.remove(key, &v.meta.tags);
             if !same_file {
                 st.trash.push(v.file.clone());
             }
         }
+        st.tags.add(&k, &de.meta.tags);
         st.size = st.size.saturating_add(size);
         st.count = st.count.saturating_add(1);
         self.evict(&mut st);
@@ -407,7 +464,7 @@ impl Disk {
                 }
             }
             if let Some(v) = gone {
-                st.forget(&v);
+                st.forget(key, &v);
             }
         }
         self.drain_later();
@@ -596,6 +653,7 @@ fn meta_only(e: &Entry) -> Entry {
         sie: e.sie,
         etag: e.etag.clone(),
         last_modified: e.last_modified.clone(),
+        tags: e.tags.clone(),
         size: 0,
     }
 }
@@ -717,6 +775,7 @@ fn decode_meta(meta: &[u8]) -> Option<(Entry, String, u64)> {
     }
     let etag = headers.get("etag").map(str::to_owned);
     let last_modified = headers.get("last-modified").map(str::to_owned);
+    let tags = crate::semantics::tags_of(&headers);
     let e = Entry {
         status,
         headers,
@@ -730,6 +789,7 @@ fn decode_meta(meta: &[u8]) -> Option<(Entry, String, u64)> {
         sie,
         etag,
         last_modified,
+        tags,
         size: 0,
     };
     Some((e, key, body_len))
@@ -793,6 +853,7 @@ mod tests {
             sie: Duration::from_secs(9),
             etag: Some("\"e\"".into()),
             last_modified: None,
+            tags: Box::default(),
             size: 0,
         }
     }

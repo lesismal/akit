@@ -438,3 +438,7 @@ routes[].middleware[]<cache>.params.disk.path
 routes[].middleware[]<cache>.params.disk.max_bytes
 routes[].middleware[]<cache>.params.disk.max_size
 routes[].middleware[]<cache>.params.disk.max_entries
+
+# I69: cache III. Purges of what a cache zone keeps, in memory and on disk, by URL, URL prefix, tag
+# (Cache-Tag, Surrogate-Key) or all of it, and what each zone keeps, through the Admin API's
+# POST /cache/purge and GET /cache, as fit's. No config field of its own: every cache field above.

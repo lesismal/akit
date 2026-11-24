@@ -316,6 +316,14 @@ mod origin {
                         h.append("Cache-Control", "max-age=10");
                     }
                 }
+                "/tagged" => {
+                    h.append("Cache-Control", "max-age=60");
+                    if ctx.req().target.ends_with("?b") {
+                        h.append("Surrogate-Key", "t2 t3");
+                    } else {
+                        h.append("Cache-Tag", "t1, t2");
+                    }
+                }
                 "/gzip" => {
                     h.set("Content-Type", "application/json");
                     h.append("Cache-Control", "max-age=60");
@@ -1875,4 +1883,151 @@ fn disk_zones() {
         dir.0.join("tmp").exists() && other.0.join("tmp").exists()
     });
     drop((a, moved, none));
+}
+
+// fit's TestPurge: purges by URL, by tag, by prefix and of everything, in memory and on disk.
+#[test]
+fn purge() {
+    use akit_cache::{PurgeError, Selection, purge};
+    let _s = serial();
+    let dir = TempDir::new("purge");
+    let a = Akit::serve(&disk_params("purge", &dir, ""));
+    let c = Proto::H1;
+    let host = a.addr.to_string();
+    let paths = ["/fresh", "/s-maxage", "/tagged?a", "/tagged?b", "/expires"];
+    for p in paths {
+        get(c, a.addr, "GET", p, &[]);
+    }
+    wait_for("files written", || on_disk("purge") == paths.len() as u64);
+    let kept =
+        |p: &str| get(c, a.addr, "GET", p, &[("Cache-Control", "only-if-cached")]).status != 504;
+    let urls = |u: &[String]| Selection {
+        urls: u.to_vec(),
+        ..Selection::default()
+    };
+    let tags = |t: &[&str]| Selection {
+        tags: t.iter().map(|t| (*t).to_owned()).collect(),
+        ..Selection::default()
+    };
+    // The host as written in any case; a URL nothing answers counts for nothing.
+    let by_url = urls(&[
+        format!("http://{}/fresh", host.to_uppercase()),
+        format!("http://{host}/nothing"),
+    ]);
+    assert_eq!(purge("purge", &by_url), Ok(1), "purge by URL");
+    assert!(!kept("/fresh") && kept("/s-maxage"), "purge by URL");
+    assert_eq!(purge("", &tags(&["t1"])), Ok(1), "purge by t1");
+    assert!(!kept("/tagged?a") && kept("/tagged?b"), "purge by tag");
+    assert_eq!(
+        purge("purge", &tags(&["t3", "t2"])),
+        Ok(1),
+        "purge by t3, t2"
+    );
+    wait_for("the files removed", || {
+        on_disk("purge") == 2 && dir.files().len() == 2
+    });
+    // /expires and /s-maxage are left; a prefix of /s- and of nothing else takes one, from
+    // memory and disk.
+    let prefixes = Selection {
+        prefixes: vec![
+            format!("http://{}/s-", host.to_uppercase()),
+            format!("https://{host}/"),
+        ],
+        ..Selection::default()
+    };
+    assert_eq!(purge("purge", &prefixes), Ok(1), "purge by prefix");
+    assert!(!kept("/s-maxage") && kept("/expires"), "purge by prefix");
+    wait_for("the file removed", || on_disk("purge") == 1);
+    // A key on disk alone is purged too.
+    akit_cache::evict_from_memory("purge", &format!("http://{host}/expires"));
+    assert_eq!(
+        purge("purge", &urls(&[format!("http://{host}/expires")])),
+        Ok(1)
+    );
+    assert!(!kept("/expires"));
+    get(c, a.addr, "GET", "/s-maxage", &[]);
+    get(c, a.addr, "GET", "/expires", &[]);
+    wait_for("files written", || on_disk("purge") == 2);
+    let all = Selection {
+        all: true,
+        ..Selection::default()
+    };
+    assert_eq!(purge("purge", &all), Ok(2), "purge all");
+    for p in paths {
+        assert!(!kept(p), "{p} kept after purging all");
+    }
+    wait_for("the files removed", || {
+        on_disk("purge") == 0 && dir.files().is_empty()
+    });
+    assert!(matches!(purge("nothing", &all), Err(PurgeError::NoZone(_))));
+    assert!(matches!(
+        purge("", &urls(&["/relative".into()])),
+        Err(PurgeError::Invalid(_))
+    ));
+    for p in [
+        "/relative",
+        "ftp://h/",
+        "http://u@h/",
+        "http://h/#f",
+        "http://%zz",
+    ] {
+        let sel = Selection {
+            prefixes: vec![p.into()],
+            ..Selection::default()
+        };
+        assert!(
+            matches!(purge("", &sel), Err(PurgeError::Invalid(_))),
+            "the prefix {p}"
+        );
+    }
+    let z: Vec<_> = akit_cache::zones()
+        .into_iter()
+        .filter(|z| z.zone == "purge")
+        .collect();
+    assert!(
+        z.len() == 1 && z[0].disk_path.as_deref() == Some(dir.path()),
+        "zones: {z:?}"
+    );
+    assert_eq!(akit_cache::disk_io_off_pool(), 0);
+}
+
+// A purge while a write is queued drops the write: the response does not come back on disk.
+#[test]
+fn purge_drops_queued_writes() {
+    use akit_cache::{Selection, purge};
+    let _s = serial();
+    let dir = TempDir::new("purge-queued");
+    let a = Akit::serve(&disk_params("purge-queued", &dir, ""));
+    wait_for("the index read back", || on_disk("purge-queued") == 0);
+    let _back = DiskBack;
+    akit_cache::hold_disk(true);
+    get(Proto::H1, a.addr, "GET", "/tagged?a", &[]);
+    get(Proto::H1, a.addr, "GET", "/fresh", &[]);
+    assert_eq!(
+        purge(
+            "purge-queued",
+            &Selection {
+                tags: vec!["t1".into()],
+                ..Selection::default()
+            }
+        ),
+        Ok(1)
+    );
+    assert_eq!(
+        purge(
+            "purge-queued",
+            &Selection {
+                all: true,
+                ..Selection::default()
+            }
+        ),
+        Ok(1)
+    );
+    akit_cache::hold_disk(false);
+    wait_for("the writes", || {
+        akit_cache::disk_pending("purge-queued") == Some(0)
+    });
+    thread::sleep(Duration::from_millis(50));
+    assert_eq!(on_disk("purge-queued"), 0);
+    wait_for("the files removed", || dir.files().is_empty());
 }
