@@ -420,6 +420,12 @@ pub enum Handler {
     Redirect(Redirect),
     /// The `headers` middleware: request and response header fields changed (I40).
     Headers(Headers),
+    /// The `rate_limit` middleware: requests a second by key, by token bucket (I41).
+    RateLimit(RateLimit),
+    /// The `concurrency_limit` middleware: requests under way at once (I41).
+    ConcurrencyLimit(ConcurrencyLimit),
+    /// The `body_limit` middleware: the size of a request's body (I41).
+    BodyLimit(BodyLimit),
 }
 
 impl Handler {
@@ -433,6 +439,9 @@ impl Handler {
             Handler::Rewrite(_) => "rewrite",
             Handler::Redirect(_) => "redirect",
             Handler::Headers(_) => "headers",
+            Handler::RateLimit(_) => "rate_limit",
+            Handler::ConcurrencyLimit(_) => "concurrency_limit",
+            Handler::BodyLimit(_) => "body_limit",
         }
     }
 
@@ -441,7 +450,12 @@ impl Handler {
     pub fn is_middleware(&self) -> bool {
         matches!(
             self,
-            Handler::Rewrite(_) | Handler::Redirect(_) | Handler::Headers(_)
+            Handler::Rewrite(_)
+                | Handler::Redirect(_)
+                | Handler::Headers(_)
+                | Handler::RateLimit(_)
+                | Handler::ConcurrencyLimit(_)
+                | Handler::BodyLimit(_)
         )
     }
 }
@@ -501,6 +515,76 @@ impl HeaderOps {
     pub fn is_empty(&self) -> bool {
         self.set.is_empty() && self.add.is_empty() && self.delete.is_empty()
     }
+}
+
+/// What the `rate_limit` middleware counts requests by: its `key`.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum RateKey {
+    /// `ip`: the client's address (the default).
+    #[default]
+    Ip,
+    /// `route`: every request of the route together.
+    Route,
+    /// `header:Name`: a header field's first value, or the client's address without one. The
+    /// name as written; compared ignoring case.
+    Header(String),
+}
+
+/// The `rate_limit` middleware's params, as fit's `middleware/limit` `Rate`: a token bucket for
+/// each key, holding up to `burst` tokens, refilled at `rate` a second; a request takes one or is
+/// refused with `status` and `Retry-After`.
+#[derive(Debug, Clone)]
+pub struct RateLimit {
+    /// `rate`: requests a second each key may make, on average; at least 0.001.
+    pub rate: f64,
+    /// `burst`: the bucket's size; the rate rounded up when left out or 0.
+    pub burst: u64,
+    /// `key`: what requests are counted by.
+    pub key: RateKey,
+    /// `trusted_proxies`: proxies whose `X-Forwarded-For` names the client.
+    pub trusted_proxies: Vec<Network>,
+    /// `ipv6_prefix`: the leading bits of an IPv6 address that name a client; 64 when left out
+    /// or 0.
+    pub ipv6_prefix: u8,
+    /// `max_keys`: the most keys kept at once; 100000 when left out or 0.
+    pub max_keys: u64,
+    /// `status`: the status of a request refused; 429 when left out or 0.
+    pub status: u16,
+}
+
+// The rate is a finite number (the decoder refuses others), so comparing its bits is an
+// equivalence.
+impl PartialEq for RateLimit {
+    fn eq(&self, o: &RateLimit) -> bool {
+        self.rate.to_bits() == o.rate.to_bits()
+            && self.burst == o.burst
+            && self.key == o.key
+            && self.trusted_proxies == o.trusted_proxies
+            && self.ipv6_prefix == o.ipv6_prefix
+            && self.max_keys == o.max_keys
+            && self.status == o.status
+    }
+}
+
+impl Eq for RateLimit {}
+
+/// fit's `max_keys` when left out or 0.
+pub const DEFAULT_RATE_MAX_KEYS: u64 = 100_000;
+
+/// The `concurrency_limit` middleware's params, as fit's `middleware/limit` `Concurrency`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConcurrencyLimit {
+    /// `max`: the most requests under way at once; at least 1.
+    pub max: u64,
+    /// `status`: the status of a request refused; 429 when left out or 0.
+    pub status: u16,
+}
+
+/// The `body_limit` middleware's params, as fit's `middleware/limit` `Body`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BodyLimit {
+    /// `max_bytes`: the most bytes a request's body may have.
+    pub max_bytes: u64,
 }
 
 /// The `respond` handler's params.
@@ -836,15 +920,12 @@ const FIT_HANDLERS: &[&str] = &[
 /// fit's middleware modules (its `http.middleware` namespace) that akit does not have yet.
 const FIT_MIDDLEWARE: &[&str] = &[
     "basic_auth",
-    "body_limit",
     "cache",
     "circuit_breaker",
     "client_cert",
     "compress",
-    "concurrency_limit",
     "forward_auth",
     "jwt",
-    "rate_limit",
     "wasm",
 ];
 const REWRITE_FIELDS: &[&str] = &["strip_prefix", "add_prefix"];
@@ -853,6 +934,17 @@ const REWRITE_FIT_ONLY: &[&str] = &["regexp", "replacement"];
 const REDIRECT_FIELDS: &[&str] = &["to", "status", "regexp"];
 const HEADERS_FIELDS: &[&str] = &["request", "response"];
 const HEADER_OPS_FIELDS: &[&str] = &["set", "add", "delete"];
+const RATE_LIMIT_FIELDS: &[&str] = &[
+    "rate",
+    "burst",
+    "key",
+    "trusted_proxies",
+    "ipv6_prefix",
+    "max_keys",
+    "status",
+];
+const CONCURRENCY_LIMIT_FIELDS: &[&str] = &["max", "status"];
+const BODY_LIMIT_FIELDS: &[&str] = &["max_bytes"];
 const RESPOND_FIELDS: &[&str] = &["status", "headers", "body"];
 const STATIC_FIELDS: &[&str] = &[
     "root",
@@ -1737,6 +1829,11 @@ fn middleware(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Handler> {
         "rewrite" => rewrite(d, params, off, &params_path).map(Handler::Rewrite),
         "redirect" => redirect(d, params, off, &params_path).map(Handler::Redirect),
         "headers" => headers(d, params, off, &params_path).map(Handler::Headers),
+        "rate_limit" => rate_limit(d, params, off, &params_path).map(Handler::RateLimit),
+        "concurrency_limit" => {
+            concurrency_limit(d, params, off, &params_path).map(Handler::ConcurrencyLimit)
+        }
+        "body_limit" => body_limit(d, params, off, &params_path).map(Handler::BodyLimit),
         m if FIT_MIDDLEWARE.contains(&m) => {
             d.not_yet(off, &module_path, &format!("the {m:?} middleware"));
             None
@@ -1980,6 +2077,185 @@ fn header_ops(d: &mut Decoder<'_>, n: &Node, path: &str, ok: &mut bool) -> Heade
     }
     o.finish(d, HEADER_OPS_FIELDS, &[]);
     ops
+}
+
+/// A limit middleware's params object, or the "missing required field" problem of `required`
+/// when there is none.
+fn limit_params<'n>(
+    d: &mut Decoder<'_>,
+    params: Option<&'n Node>,
+    off: usize,
+    path: &str,
+    required: &str,
+) -> Option<Obj<'n>> {
+    let Some(n) = params else {
+        d.error(
+            off,
+            &crate::error::join_field(path, required),
+            "missing required field",
+        );
+        return None;
+    };
+    d.object(n, path)
+}
+
+/// A refusal's `status`: 0 for `default`, else an error status (400 to 599), as fit's limits
+/// check it.
+fn error_status(d: &mut Decoder<'_>, o: &mut Obj<'_>, default: u16, ok: &mut bool) -> u16 {
+    let Some(v) = o.take("status") else {
+        return default;
+    };
+    match d.int(v, &o.at("status"), i64::MIN, i64::MAX) {
+        Some(0) => default,
+        Some(s @ 400..=599) => u16::try_from(s).unwrap_or(default),
+        Some(s) => {
+            d.error(
+                v.off,
+                &o.at("status"),
+                format!("{s} is not an error status"),
+            );
+            *ok = false;
+            default
+        }
+        None => {
+            *ok = false;
+            default
+        }
+    }
+}
+
+/// The `rate_limit` middleware's params, checked as fit's `Rate.Provision` checks them.
+fn rate_limit(
+    d: &mut Decoder<'_>,
+    params: Option<&Node>,
+    off: usize,
+    path: &str,
+) -> Option<RateLimit> {
+    let mut o = limit_params(d, params, off, path, "rate")?;
+    let mut ok = true;
+    let rate = o.require(d, "rate").and_then(|v| {
+        let p = o.at("rate");
+        let r = d.number(v, &p)?;
+        if r < 0.001 {
+            d.error(v.off, &p, format!("{r} is below 0.001"));
+            return None;
+        }
+        Some(r)
+    });
+    let mut burst = 0;
+    if let Some(v) = o.take("burst") {
+        match d.int(v, &o.at("burst"), 0, i64::MAX) {
+            Some(b) => burst = u64::try_from(b).unwrap_or(0),
+            None => ok = false,
+        }
+    }
+    let mut key = RateKey::Ip;
+    if let Some(v) = o.take("key") {
+        let p = o.at("key");
+        match d.string(v, &p) {
+            Some(k) => match k.as_str() {
+                "" | "ip" => {}
+                "route" => key = RateKey::Route,
+                _ => match k.strip_prefix("header:").filter(|n| is_token(n)) {
+                    Some(name) => key = RateKey::Header(name.to_owned()),
+                    None => {
+                        d.error(v.off, &p, format!("{k:?} is not ip, route or header:Name"));
+                        ok = false;
+                    }
+                },
+            },
+            None => ok = false,
+        }
+    }
+    let mut trusted_proxies = Vec::new();
+    if let Some(v) = o.take("trusted_proxies") {
+        let at = o.at("trusted_proxies");
+        for (i, (off, s)) in d.strings(v, &at).into_iter().enumerate() {
+            match Network::parse(&s) {
+                Some(net) => trusted_proxies.push(net),
+                None => {
+                    ok = false;
+                    d.error(
+                        off,
+                        &crate::error::join_index(&at, i),
+                        format!("{s:?} is not an IP address or a CIDR prefix"),
+                    );
+                }
+            }
+        }
+    }
+    let mut ipv6_prefix = 64;
+    if let Some(v) = o.take("ipv6_prefix") {
+        match d.int(v, &o.at("ipv6_prefix"), 0, 128) {
+            Some(0) => {}
+            Some(b) => ipv6_prefix = u8::try_from(b).unwrap_or(64),
+            None => ok = false,
+        }
+    }
+    let mut max_keys = DEFAULT_RATE_MAX_KEYS;
+    if let Some(v) = o.take("max_keys") {
+        match d.int(v, &o.at("max_keys"), 0, i64::MAX) {
+            Some(0) => {}
+            Some(n) => max_keys = u64::try_from(n).unwrap_or(DEFAULT_RATE_MAX_KEYS),
+            None => ok = false,
+        }
+    }
+    let status = error_status(d, &mut o, 429, &mut ok);
+    o.finish(d, RATE_LIMIT_FIELDS, &[]);
+    let rate = rate?;
+    if burst == 0 {
+        // The rate rounded up, as fit's int(rate + 0.999); a float's cast saturates.
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let b = (rate + 0.999) as u64;
+        burst = b.max(1);
+    }
+    ok.then_some(RateLimit {
+        rate,
+        burst,
+        key,
+        trusted_proxies,
+        ipv6_prefix,
+        max_keys,
+        status,
+    })
+}
+
+/// The `concurrency_limit` middleware's params, checked as fit's `Concurrency.Provision` checks
+/// them.
+fn concurrency_limit(
+    d: &mut Decoder<'_>,
+    params: Option<&Node>,
+    off: usize,
+    path: &str,
+) -> Option<ConcurrencyLimit> {
+    let mut o = limit_params(d, params, off, path, "max")?;
+    let mut ok = true;
+    let max = o
+        .require(d, "max")
+        .and_then(|v| d.int(v, &o.at("max"), 1, i64::MAX))
+        .and_then(|m| u64::try_from(m).ok());
+    let status = error_status(d, &mut o, 429, &mut ok);
+    o.finish(d, CONCURRENCY_LIMIT_FIELDS, &[]);
+    let max = max?;
+    ok.then_some(ConcurrencyLimit { max, status })
+}
+
+/// The `body_limit` middleware's params.
+fn body_limit(
+    d: &mut Decoder<'_>,
+    params: Option<&Node>,
+    off: usize,
+    path: &str,
+) -> Option<BodyLimit> {
+    let mut o = limit_params(d, params, off, path, "max_bytes")?;
+    let max_bytes = o
+        .require(d, "max_bytes")
+        .and_then(|v| d.int(v, &o.at("max_bytes"), 0, i64::MAX))
+        .and_then(|m| u64::try_from(m).ok());
+    o.finish(d, BODY_LIMIT_FIELDS, &[]);
+    Some(BodyLimit {
+        max_bytes: max_bytes?,
+    })
 }
 
 fn respond(d: &mut Decoder<'_>, params: Option<&Node>, path: &str) -> Option<Respond> {

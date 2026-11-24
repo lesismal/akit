@@ -11,14 +11,72 @@ done and where the work differs from the plan.
 | | |
 | --- | --- |
 | Last updated | 2026-11-24 |
-| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I16, I19–I24 done; M2's I26, I30 and I37 and M3's I39 and I40 done early. |
+| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I16, I19–I24 done; M2's I26, I30 and I37 and M3's I39, I40 and I41 done early. |
 | akio | `60547435` on akio's `main` (`1.0.0-rc.1`, with A1–A5, A7, A8, A11, A13 and A16–A21), pinned by `rev` in `Cargo.toml` |
 | fit | the specification; read at `7daee573` for this plan |
-| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept, added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication; certificates chosen per handshake as fit's, replaced by a reload or by `-watch-certs` without closing the listener) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; route middleware: `rewrite` (prefixes), `redirect` and `headers`; the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`, bodies streamed both ways with linked backpressure); `limits.max_body_bytes` on every listener (413) and in the proxy; access logs in fit's json, text and line formats; upstream pools with round robin, weighted round robin and least connections, passing over addresses taken out by passive health checks (`max_fails`, `fail_timeout`); the Admin API on loopback (`GET /config`, by JSON pointer too, `POST /load` with `If-Match`, `GET /versions`), loads applied as SIGHUP's reloads, one history for both; Prometheus metrics at the Admin API's `GET /metrics` (requests by listener and route with `metrics`, upstreams and backends, certificates, connections, reloads, akio's engine); the compatibility gate: 80 fixtures, 10 valid, 69 refused only as not supported yet, 1 skipped, none failed |
+| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept, added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication; certificates chosen per handshake as fit's, replaced by a reload or by `-watch-certs` without closing the listener) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; route middleware: `rewrite` (prefixes), `redirect`, `headers`, `rate_limit`, `concurrency_limit` and `body_limit`; the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`, bodies streamed both ways with linked backpressure); `limits.max_body_bytes` on every listener (413) and in the proxy; access logs in fit's json, text and line formats; upstream pools with round robin, weighted round robin and least connections, passing over addresses taken out by passive health checks (`max_fails`, `fail_timeout`); the Admin API on loopback (`GET /config`, by JSON pointer too, `POST /load` with `If-Match`, `GET /versions`), loads applied as SIGHUP's reloads, one history for both; Prometheus metrics at the Admin API's `GET /metrics` (requests by listener and route with `metrics`, upstreams and backends, certificates, connections, reloads, akio's engine); the compatibility gate: 80 fixtures, 13 valid, 66 refused only as not supported yet, 1 skipped, none failed |
 | Next | I17 |
-| akio requests | A1–A5, A7, A8, A11, A13 and A16–A21 on akio's main and pinned; A6 on akio branch `claude/x509-csr`; A9, A10, A12, A14, A15, A22–A24, A29, A30, A32, A33 and A35 requested ([akio API requests](akio-api-requests.md)) |
+| akio requests | A1–A5, A7, A8, A11, A13 and A16–A21 on akio's main and pinned; A6 on akio branch `claude/x509-csr`; A9, A10, A12, A14, A15, A22–A24, A29, A30, A32, A33, A35, A48 and A49 requested ([akio API requests](akio-api-requests.md)) |
 
 ## Log
+
+### 2026-11-24: I41, rate, concurrency and size limits
+
+- Taken early from M3, after I40. `akit-config` reads fit's `rate_limit`, `concurrency_limit` and
+  `body_limit` middleware (`middleware/limit`) into `Handler::RateLimit`, `ConcurrencyLimit` and
+  `BodyLimit`, with the checks of fit's `Provision`s and their messages and fit's defaults (burst:
+  the rate rounded up; key `ip`; `ipv6_prefix` 64; `max_keys` 100000; status 429); a decoder of
+  JSON numbers for `rate`. They leave `FIT_MIDDLEWARE`.
+- `akit-middleware` `limit`:
+  - `rate_limit`: a token bucket a key, refilled at `rate` a second up to `burst`, in nanotokens
+    as fit's; a request with no token is answered `status` with `Retry-After` (whole seconds,
+    rounded up). Keys: the client's address (an IPv6 one cut to `ipv6_prefix` bits; behind
+    `trusted_proxies`, the last `X-Forwarded-For` address that is not one, walked as fit's
+    `clientIP` without allocating), a header's first value by its keyed hash, or the route. The
+    buckets are fit's: 64 shards by the key's hash, each a map under a lock of its own, shared by
+    the I/O threads (sharding per thread would let a client on many connections take the rate as
+    many times), at most `max_keys` keys, a new key past it evicting one whose bucket is full
+    among 8 it looks at, else the first of them. A lookup allocates nothing: the key is the
+    address or a 64-bit SipHash with a random key (fit keeps values of up to 128 bytes as they
+    are and hashes longer ones), and the shard's map takes that hash as it is.
+  - `concurrency_limit`: one atomic count of the route's requests under way; one past `max` is
+    answered `status` at once. A request's place is a guard in a response filter: given back
+    when the response is sent, or when the request ends without one (the filter dropped with the
+    request or its `Detached`).
+  - `body_limit`: a request that declares a body past `max_bytes` is answered 413 (fit's
+    `Request Entity Too Large`) before its handler runs, its body taken as a stream so that none
+    of it is buffered; a buffered body past it likewise once it has arrived; one that streams to
+    its handler with no declared length has the listener's `MAX_BODY_BYTES` local lowered to the
+    limit, which the proxy holds it to (413 when it grows past).
+- Stopgaps, until akio can (rule 21; in [akio API requests](akio-api-requests.md)):
+  - A48: akio tells a service neither that a response was sent in full nor that a client went
+    while its request waits. So a streamed response (the proxy's past 64 KiB) gives its
+    concurrency place back when its head is sent, and a request whose client went holds it until
+    its handler lets the request go (the proxy's upstream answers or fails). The response filter
+    is a boxed closure with an `Arc` clone, per request.
+  - A49: a middleware cannot bound a streamed body it does not read. A handler that streams
+    bodies holds them to `MAX_BODY_BYTES` (the proxy does; it is the only one); a 413 does not
+    close the HTTP/1 connection, whose rest of the body akio reads and drops (A24).
+- Tests: `akit-middleware` unit tests on a clock the test moves: fit's `TestRateBucket`,
+  `TestRateSlow`, `TestRateKeys`, `TestClientIP`, `TestRateMemoryBounded`,
+  `TestEvictPrefersFull`, `TestRateIPv6Prefix` and `TestPeerAndName`, ported, and the extremes of
+  rate, burst and clock (rule 15). `tests/limits.rs` through akit's listener: a burst, then 429
+  with `Retry-After: 100`; keys by header with status 503; fit's `TestConcurrency` (inline
+  answers give their place back; at the limit one more is refused; one answered later, or let go
+  unanswered, makes room); fit's `TestConcurrencyClientGone` as akit has it; fit's `TestBody` and
+  `TestBodyOverNetwork` (under, at and over, by length and chunked, to a handler that takes the
+  body whole and to the proxy, which streams it); fit's `TestParamErrors`.
+- Compatibility gate: the 16 fields in `tests/compat/supported.txt`; `make compat-bless`:
+  `examples/rate-limit` and `examples/body-limit` are valid (80 fixtures: 13 valid, 66 refused
+  only as not supported yet, 1 skipped, none failed).
+- Checked: `make check` on macOS; on the benchmark host, the touched crates' tests (`cargo test
+  -p akit-middleware -p akit-config -p akit-compat`) with epoll and with
+  `AKIO_TEST_BACKEND=uring`.
+- Differs from fit: a header value used as a key is kept by its 64-bit keyed hash whatever its
+  length; a refused body of a declared length past the listener's `max_body_bytes` too is
+  answered by the listener (akio's `Payload Too Large`) before the middleware sees it.
+- To measure, in the maintainer's benchmark tasks (rule 30): see the dev plan's benchmark row
+  for I41.
 
 ### 2026-11-24: I37, Prometheus metrics
 

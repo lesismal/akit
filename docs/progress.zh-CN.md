@@ -10,14 +10,53 @@
 | | |
 | --- | --- |
 | 最后更新 | 2026-11-24 |
-| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I16、I19–I24 已完成；M2 的 I26、I30、I37 和 M3 的 I39、I40 已提前完成。 |
+| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I16、I19–I24 已完成；M2 的 I26、I30、I37 和 M3 的 I39、I40、I41 已提前完成。 |
 | akio | akio `main` 上的 `60547435`（`1.0.0-rc.1`，带 A1–A5、A7、A8、A11、A13 和 A16–A21），在 `Cargo.toml` 中按 `rev` 锁定 |
 | fit | 作为规格；本计划基于 `7daee573` 阅读 |
-| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；基于 akio 的 A1 保留、增加、修改和排空监听器，包括启动时的监听器，重载可新增 h3 监听器；服务 h3 的启动监听器要重启才能变）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证；按 fit 的方式每次握手选择证书，重载或 `-watch-certs` 替换证书而不关闭监听器）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；路由中间件：`rewrite`（前缀）、`redirect` 和 `headers`；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`、双向流式转发 body 并联动背压）；所有监听器和代理上的 `limits.max_body_bytes`（413）；fit 的 json、text 和 line 格式的访问日志；上游连接池，轮询、加权轮询和最少连接，跳过被被动健康检查（`max_fails`、`fail_timeout`）下线的地址；回环地址上的 Admin API（`GET /config`，也可按 JSON 指针读取，带 `If-Match` 的 `POST /load`，`GET /versions`），加载与 SIGHUP 一样作为重载应用，两者共用一份历史记录；Admin API 的 `GET /metrics` 提供 fit 的 Prometheus 指标（有 `metrics` 时按监听器和路由的请求、上游和后端、证书、连接、重载、akio 的引擎）；兼容性门禁：80 个夹具，10 个有效，69 个只因暂不支持被拒绝，1 个跳过，没有失败 |
+| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；基于 akio 的 A1 保留、增加、修改和排空监听器，包括启动时的监听器，重载可新增 h3 监听器；服务 h3 的启动监听器要重启才能变）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证；按 fit 的方式每次握手选择证书，重载或 `-watch-certs` 替换证书而不关闭监听器）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；路由中间件：`rewrite`（前缀）、`redirect`、`headers`、`rate_limit`、`concurrency_limit` 和 `body_limit`；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`、双向流式转发 body 并联动背压）；所有监听器和代理上的 `limits.max_body_bytes`（413）；fit 的 json、text 和 line 格式的访问日志；上游连接池，轮询、加权轮询和最少连接，跳过被被动健康检查（`max_fails`、`fail_timeout`）下线的地址；回环地址上的 Admin API（`GET /config`，也可按 JSON 指针读取，带 `If-Match` 的 `POST /load`，`GET /versions`），加载与 SIGHUP 一样作为重载应用，两者共用一份历史记录；Admin API 的 `GET /metrics` 提供 fit 的 Prometheus 指标（有 `metrics` 时按监听器和路由的请求、上游和后端、证书、连接、重载、akio 的引擎）；兼容性门禁：80 个夹具，13 个有效，66 个只因暂不支持被拒绝，1 个跳过，没有失败 |
 | 下一步 | I17 |
-| akio 需求 | A1–A5、A7、A8、A11、A13、A16–A21 已在 akio 的 main 并已锁定；A6 在 akio 分支 `claude/x509-csr` 上；A9、A10、A12、A14、A15、A22–A24、A29、A30、A32、A33 和 A35 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
+| akio 需求 | A1–A5、A7、A8、A11、A13、A16–A21 已在 akio 的 main 并已锁定；A6 在 akio 分支 `claude/x509-csr` 上；A9、A10、A12、A14、A15、A22–A24、A29、A30、A32、A33、A35、A48 和 A49 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
 
 ## 日志
+
+### 2026-11-24：I41，限流、并发与大小限制
+
+- 在 I40 之后提前从 M3 中做。`akit-config` 把 fit 的 `rate_limit`、`concurrency_limit` 和 `body_limit` 中间件
+  （`middleware/limit`）读成 `Handler::RateLimit`、`ConcurrencyLimit` 和 `BodyLimit`，带 fit 的 `Provision` 的检查和
+  消息，以及 fit 的默认值（burst：速率向上取整；key 为 `ip`；`ipv6_prefix` 64；`max_keys` 100000；状态码 429）；新增
+  读取 JSON 数字的解码器，用于 `rate`。它们从 `FIT_MIDDLEWARE` 中移除。
+- `akit-middleware` 的 `limit`：
+  - `rate_limit`：每个键一个令牌桶，以每秒 `rate` 的速度补充，最多 `burst` 个，与 fit 一样以纳令牌计；没有令牌的请求
+    以 `status` 回答，带 `Retry-After`（整秒，向上取整）。键：客户端地址（IPv6 地址截到 `ipv6_prefix` 位；在
+    `trusted_proxies` 之后时，取 `X-Forwarded-For` 中最后一个不是可信代理的地址，按 fit 的 `clientIP` 遍历且不分配
+    内存）、某个头的第一个值（按带密钥的哈希）或路由。令牌桶与 fit 一样：按键的哈希分为 64 个分片，每个分片一个 map 和
+    一把自己的锁，由各 I/O 线程共享（按线程分片会让连接分布在多个线程上的客户端得到成倍的速率），最多 `max_keys` 个键，
+    超过时新键淘汰所查看的 8 个中桶已满的一个，否则淘汰其中第一个。查找不分配内存：键是地址或 64 位随机密钥的 SipHash
+    （fit 保留 128 字节以内的值原样、更长的取哈希），分片的 map 直接使用这个哈希。
+  - `concurrency_limit`：路由进行中请求的一个原子计数；超过 `max` 的请求立即以 `status` 回答。请求的名额是响应过滤器
+    中的一个守卫：响应发出时归还，或请求没有响应就结束时归还（过滤器随请求或其 `Detached` 一起被丢弃）。
+  - `body_limit`：声明的请求体超过 `max_bytes` 的请求在处理器运行之前回 413（fit 的 `Request Entity Too Large`），
+    其请求体按流读取，一点也不缓冲；缓冲的请求体超过时，在到齐后同样处理；没有声明长度、流式交给处理器的请求体，
+    把监听器的 `MAX_BODY_BYTES` 本地值调低到该限制，由代理据此限制（超过时 413）。
+- 临时方案，直到 akio 支持（规则 21；见 [akio API 需求](akio-api-requests.zh-CN.md)）：
+  - A48：akio 既不告诉服务响应已完整发出，也不告诉它请求等待期间客户端已离开。因此流式响应（代理超过 64 KiB 的响应）
+    在响应头发出时归还并发名额，客户端已离开的请求一直占着名额，直到处理器放开请求（代理的上游回答或失败）。响应过滤器
+    是每个请求一个装箱闭包加一次 `Arc` 克隆。
+  - A49：中间件无法限制它自己不读的流式请求体。流式读取请求体的处理器按 `MAX_BODY_BYTES` 限制（代理如此；也只有它）；
+    413 不关闭 HTTP/1 连接，akio 会读完并丢弃剩下的请求体（A24）。
+- 测试：`akit-middleware` 在测试控制的时钟上的单元测试：移植 fit 的 `TestRateBucket`、`TestRateSlow`、`TestRateKeys`、
+  `TestClientIP`、`TestRateMemoryBounded`、`TestEvictPrefersFull`、`TestRateIPv6Prefix` 和 `TestPeerAndName`，以及
+  速率、burst 和时钟的极值（规则 15）。`tests/limits.rs` 通过 akit 的监听器：一次突发后 429 并带 `Retry-After: 100`；
+  按头分键并用 503；fit 的 `TestConcurrency`（立即回答的请求归还名额；到达限制后再来一个被拒绝；稍后回答的或未回答就
+  放开的请求腾出名额）；akit 版本的 fit `TestConcurrencyClientGone`；fit 的 `TestBody` 和 `TestBodyOverNetwork`
+  （低于、等于和超过限制，按长度和 chunked，发给整体读取请求体的处理器和流式转发的代理）；fit 的 `TestParamErrors`。
+- 兼容性门禁：`tests/compat/supported.txt` 中的 16 个字段；`make compat-bless`：`examples/rate-limit` 和
+  `examples/body-limit` 有效（80 个夹具：13 个有效，66 个只因暂不支持被拒绝，1 个跳过，没有失败）。
+- 已检查：macOS 上 `make check`；基准机上，带 epoll 和 `AKIO_TEST_BACKEND=uring` 运行受影响 crate 的测试
+  （`cargo test -p akit-middleware -p akit-config -p akit-compat`）。
+- 与 fit 的不同：用作键的头值不论长短都按 64 位带密钥哈希保存；声明长度还超过监听器 `max_body_bytes` 的请求体由监听器
+  先回答（akio 的 `Payload Too Large`），中间件看不到。
+- 待测量，由维护者的基准任务完成（规则 30）：见开发计划中 I41 的基准行。
 
 ### 2026-11-24：I37，Prometheus 指标
 

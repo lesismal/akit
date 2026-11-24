@@ -48,6 +48,8 @@ first; its status here records the branch, then the akio commit akit pins.
 | A32 | Where an `akio-regex` pattern matches, its groups, and replacing them | requested (I40) | 19 | I40, I48 |
 | A33 | A request's fields and target changed by a middleware (`Context::req_mut`) | requested (I40) | 12, 19 | I40, I43, I44 |
 | A35 | A streamed HTTP/1.1 response framed by its length | requested (I16) | 5 | I16, I67 |
+| A48 | A request's end heard: its response sent in full, or its client gone while it waits | requested (I41) | 3, 11, 13 | I41, I17, I21, I37 |
+| A49 | A request body limited by a middleware, whoever reads the body | requested (I41) | 7, 11 | I41 |
 
 ## A1 TCP listeners on a running engine
 
@@ -676,3 +678,57 @@ meaning, if a field read from the headers is too implicit.
 **How akit uses it.** I16's proxy streams a response of a known length past 64 KiB to an HTTP/1.1
 client with its `Content-Length` (it now goes chunked, the field dropped: recorded in the I16
 progress entry). Also the cache (I67), which serves a stored response as it reads it.
+
+## A48 A request's end heard: its response sent in full, or its client gone
+
+**Problem.** fit's `concurrency_limit` counts a request as under way until its response is sent
+or its client has gone, with fib's `OnFinish` and `OnCancel`. akio-http tells a service neither:
+the one hook on a request is a response filter (`Context::add_response_filter`), which runs when
+the response's head is sent. A streamed response (`stream_response`, which akit's proxy uses for
+every body past 64 KiB) runs it before its body, so the request leaves the limit while its body
+still goes out; and a request whose client goes while it waits detached (a slow upstream) hears
+nothing until its handler lets the `Detached` go, so its place is held until the upstream answers
+or times out. The filter's closure is also boxed, an allocation a request (as A29 records).
+
+**Evidence.** `crates/akio-http/src/context.rs` at `60547435`: `Finish::apply` runs the filters
+from `Out::send` and `start_stream`, at the head; `BodyStream::finish` and its drop run nothing of
+the request's; `Detached` and `BodyStream` give no way to learn that the connection or stream
+closed before they are used (`BodyStream::write` returns an error only when written to).
+
+**Suggested API.** `Context::on_end(f: impl FnOnce(End) + Send)`, run once when the request is
+done with: `End::Sent` once the response is written in full (a streamed one's last byte handed to
+the connection), `End::Gone` when the connection or stream closes first, whether the request was
+answering, detached or not. A form that takes a few words rather than a boxed closure (as A29's
+observer) keeps it off the allocator. `Detached::on_gone(f)` (or a pollable `is_gone()`) lets a
+handler that waits give up its upstream work when the client goes.
+
+**How akit uses it.** `concurrency_limit` gives a request's place back on `on_end`, as fit's
+`OnFinish`/`OnCancel`; today it gives it back when the response's head is sent, or when the
+request is dropped unanswered (the stopgap recorded in the I41 progress entry). The proxy (I17)
+cancels its upstream request on `Gone`; the access log (I21) and metrics (I37) can count a
+streamed response's duration to its end.
+
+## A49 A request body limited by a middleware
+
+**Problem.** fit's `body_limit` (fib's `Context.LimitBody`) bounds a request's body for whatever
+handler reads it: a streamed body that grows past the limit fails in the handler's `OnBody` with
+`ErrBodyTooLarge` and is answered 413, and an HTTP/1 connection closes rather than read the rest.
+In akio-http only the listener's `HttpConfig::max_body_bytes` bounds a buffered body; a streamed
+one (`BodyMode::Stream`) is delivered to the handler's sink without a bound, and a middleware
+cannot see or wrap that sink (`Context::on_body` replaces it; the sink is private).
+
+**Evidence.** `crates/akio-http/src/context.rs` at `60547435`: `on_body` stores one sink,
+`deliver` is crate-private; `crates/akio-http/src/session.rs`: the `max_body_bytes` check applies
+to buffered bodies and to declared lengths of buffered ones only.
+
+**Suggested API.** `Context::limit_body(&mut self, max: u64)`, callable before or after the
+handler sets its sink, lowering the bound for this request: past it akio-http ends the delivery
+with an error event to the sink (`BodyEvent::TooLarge`, or `Err` beside `Chunk` and `End`),
+answers 413 unless a response has begun, and on HTTP/1 closes the connection once the answer is
+out rather than read on (with A24); HTTP/2 and HTTP/3 reset the stream.
+
+**How akit uses it.** `body_limit` calls it for every request and drops its stopgap: a streamed
+body of no declared length is held to the limit only by a handler that reads akit-runtime's
+`MAX_BODY_BYTES` local (the proxy), which the middleware lowers; a buffered one is checked once
+it has arrived (the stopgap recorded in the I41 progress entry). The listener's own
+`max_body_bytes` for streamed bodies moves to it too.

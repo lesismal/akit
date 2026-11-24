@@ -383,6 +383,9 @@ fn supported_fields_are_read() {
     let rewrite = |params: &str| mw("rewrite", params);
     let redirect = |params: &str| mw("redirect", params);
     let headers = |params: &str| mw("headers", params);
+    let rate = |params: &str| mw("rate_limit", params);
+    let concurrency = |params: &str| mw("concurrency_limit", params);
+    let body = |params: &str| mw("body_limit", params);
     let samples: Vec<(&str, String, Check)> = vec![
         ("schema_version", r#"{"schema_version": 1}"#.into(), |c| {
             c.schema_version == 1
@@ -824,6 +827,86 @@ fn supported_fields_are_read() {
             headers(r#""response": {"delete": ["*"]}"#),
             |c| headers_of(c).response.delete == ["*"],
         ),
+        (
+            "routes[].middleware[]<rate_limit>",
+            rate(r#""rate": 1"#),
+            |c| rate_of(c).burst == 1,
+        ),
+        (
+            "routes[].middleware[]<rate_limit>.params",
+            rate(r#""rate": 2.5"#),
+            |c| rate_of(c).burst == 3 && rate_of(c).status == 429,
+        ),
+        (
+            "routes[].middleware[]<rate_limit>.params.rate",
+            rate(r#""rate": 0.5"#),
+            |c| rate_of(c).rate.to_bits() == 0.5f64.to_bits(),
+        ),
+        (
+            "routes[].middleware[]<rate_limit>.params.burst",
+            rate(r#""rate": 1, "burst": 7"#),
+            |c| rate_of(c).burst == 7,
+        ),
+        (
+            "routes[].middleware[]<rate_limit>.params.key",
+            rate(r#""rate": 1, "key": "header:X-Api-Key""#),
+            |c| rate_of(c).key == akit_config::RateKey::Header("X-Api-Key".into()),
+        ),
+        (
+            "routes[].middleware[]<rate_limit>.params.trusted_proxies",
+            rate(r#""rate": 1, "trusted_proxies": ["10.0.0.0/8"]"#),
+            |c| rate_of(c).trusted_proxies.len() == 1,
+        ),
+        (
+            "routes[].middleware[]<rate_limit>.params.ipv6_prefix",
+            rate(r#""rate": 1, "ipv6_prefix": 48"#),
+            |c| rate_of(c).ipv6_prefix == 48,
+        ),
+        (
+            "routes[].middleware[]<rate_limit>.params.max_keys",
+            rate(r#""rate": 1, "max_keys": 640"#),
+            |c| rate_of(c).max_keys == 640,
+        ),
+        (
+            "routes[].middleware[]<rate_limit>.params.status",
+            rate(r#""rate": 1, "status": 503"#),
+            |c| rate_of(c).status == 503,
+        ),
+        (
+            "routes[].middleware[]<concurrency_limit>",
+            concurrency(r#""max": 1"#),
+            |c| matches!(c.routes[0].middleware[0], Handler::ConcurrencyLimit(_)),
+        ),
+        (
+            "routes[].middleware[]<concurrency_limit>.params",
+            concurrency(r#""max": 1"#),
+            |c| concurrency_of(c).status == 429,
+        ),
+        (
+            "routes[].middleware[]<concurrency_limit>.params.max",
+            concurrency(r#""max": 64"#),
+            |c| concurrency_of(c).max == 64,
+        ),
+        (
+            "routes[].middleware[]<concurrency_limit>.params.status",
+            concurrency(r#""max": 1, "status": 503"#),
+            |c| concurrency_of(c).status == 503,
+        ),
+        (
+            "routes[].middleware[]<body_limit>",
+            body(r#""max_bytes": 0"#),
+            |c| matches!(c.routes[0].middleware[0], Handler::BodyLimit(_)),
+        ),
+        (
+            "routes[].middleware[]<body_limit>.params",
+            body(r#""max_bytes": 5"#),
+            |c| matches!(&c.routes[0].middleware[0], Handler::BodyLimit(b) if b.max_bytes == 5),
+        ),
+        (
+            "routes[].middleware[]<body_limit>.params.max_bytes",
+            body(r#""max_bytes": 1048576"#),
+            |c| matches!(&c.routes[0].middleware[0], Handler::BodyLimit(b) if b.max_bytes == 1 << 20),
+        ),
         ("upstreams", upstream(""), |c| c.upstreams.len() == 1),
         ("upstreams[].name", upstream(""), |c| {
             c.upstreams[0].name == "app"
@@ -950,6 +1033,22 @@ fn headers_of(c: &Config) -> &akit_config::Headers {
     .unwrap()
 }
 
+fn rate_of(c: &Config) -> &akit_config::RateLimit {
+    match c.routes.first().unwrap().middleware.first().unwrap() {
+        Handler::RateLimit(r) => Some(r),
+        _ => None,
+    }
+    .unwrap()
+}
+
+fn concurrency_of(c: &Config) -> &akit_config::ConcurrencyLimit {
+    match c.routes.first().unwrap().middleware.first().unwrap() {
+        Handler::ConcurrencyLimit(l) => Some(l),
+        _ => None,
+    }
+    .unwrap()
+}
+
 fn proxy_of(c: &Config) -> &akit_config::Proxy {
     match &c.routes.first().unwrap().handler {
         Handler::Proxy(p) => Some(p),
@@ -977,7 +1076,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 21] = [
+    let objects: [(&str, &str, Option<&str>); 24] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         ("admin", "ADMIN_FIELDS", Some("ADMIN_FIT_ONLY")),
         ("limits", "LIMITS_FIELDS", Some("LIMITS_FIT_ONLY")),
@@ -1029,6 +1128,21 @@ fn akit_config_lists_match_the_inventory() {
         (
             "routes[].middleware[]<headers>.params.response",
             "HEADER_OPS_FIELDS",
+            None,
+        ),
+        (
+            "routes[].middleware[]<rate_limit>.params",
+            "RATE_LIMIT_FIELDS",
+            None,
+        ),
+        (
+            "routes[].middleware[]<concurrency_limit>.params",
+            "CONCURRENCY_LIMIT_FIELDS",
+            None,
+        ),
+        (
+            "routes[].middleware[]<body_limit>.params",
+            "BODY_LIMIT_FIELDS",
             None,
         ),
     ];
@@ -1102,7 +1216,7 @@ fn akit_config_lists_match_the_inventory() {
     read.insert("routes[].handler<static>.params".to_owned());
     read.insert("routes[].handler<proxy>".to_owned());
     read.insert("routes[].handler<proxy>.params".to_owned());
-    // Middleware modules: rewrite, redirect and headers, which akit reads, and FIT_MIDDLEWARE,
+    // Middleware modules: rewrite, redirect, headers and the limits, which akit reads, and FIT_MIDDLEWARE,
     // which it refuses.
     let mut middleware: BTreeSet<String> = list("FIT_MIDDLEWARE").iter().cloned().collect();
     for m in &middleware {
@@ -1111,7 +1225,14 @@ fn akit_config_lists_match_the_inventory() {
             "model.rs FIT_MIDDLEWARE: {m:?} is not a middleware fit has"
         );
     }
-    for m in ["rewrite", "redirect", "headers"] {
+    for m in [
+        "rewrite",
+        "redirect",
+        "headers",
+        "rate_limit",
+        "concurrency_limit",
+        "body_limit",
+    ] {
         assert!(middleware.insert(m.to_owned()), "FIT_MIDDLEWARE lists {m}");
         read.insert(format!("routes[].middleware[]<{m}>"));
         read.insert(format!("routes[].middleware[]<{m}>.params"));

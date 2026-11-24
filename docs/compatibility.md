@@ -175,7 +175,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 102 supported.
+3821 fields in 121 sections, at fit `7daee573`; 118 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -207,16 +207,16 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`http.handlers/whep`](#fields-http-handlers-whep) | 4 | 0 | 4 |
 | [`http.handlers/whip`](#fields-http-handlers-whip) | 4 | 0 | 4 |
 | [`http.middleware/basic_auth`](#fields-http-middleware-basic-auth) | 8 | 0 | 8 |
-| [`http.middleware/body_limit`](#fields-http-middleware-body-limit) | 3 | 0 | 3 |
+| [`http.middleware/body_limit`](#fields-http-middleware-body-limit) | 3 | 3 | 0 |
 | [`http.middleware/cache`](#fields-http-middleware-cache) | 17 | 0 | 17 |
 | [`http.middleware/circuit_breaker`](#fields-http-middleware-circuit-breaker) | 10 | 0 | 10 |
 | [`http.middleware/client_cert`](#fields-http-middleware-client-cert) | 4 | 0 | 4 |
 | [`http.middleware/compress`](#fields-http-middleware-compress) | 10 | 0 | 10 |
-| [`http.middleware/concurrency_limit`](#fields-http-middleware-concurrency-limit) | 4 | 0 | 4 |
+| [`http.middleware/concurrency_limit`](#fields-http-middleware-concurrency-limit) | 4 | 4 | 0 |
 | [`http.middleware/forward_auth`](#fields-http-middleware-forward-auth) | 7 | 0 | 7 |
 | [`http.middleware/headers`](#fields-http-middleware-headers) | 10 | 10 | 0 |
 | [`http.middleware/jwt`](#fields-http-middleware-jwt) | 13 | 0 | 13 |
-| [`http.middleware/rate_limit`](#fields-http-middleware-rate-limit) | 9 | 0 | 9 |
+| [`http.middleware/rate_limit`](#fields-http-middleware-rate-limit) | 9 | 9 | 0 |
 | [`http.middleware/redirect`](#fields-http-middleware-redirect) | 5 | 5 | 0 |
 | [`http.middleware/rewrite`](#fields-http-middleware-rewrite) | 6 | 4 | 2 |
 | [`http.middleware/wasm`](#fields-http-middleware-wasm) | 18 | 0 | 18 |
@@ -300,7 +300,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 13 | 25 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 102 | 3719 |
+| **Total** | 3821 | 118 | 3703 |
 
 <a id="fields-access"></a>
 
@@ -1056,9 +1056,9 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `routes[].middleware[]<body_limit>` | `module` | not supported yet |
-| `routes[].middleware[]<body_limit>.params` | `object` | not supported yet |
-| `routes[].middleware[]<body_limit>.params.max_bytes` | `integer, required` | not supported yet |
+| `routes[].middleware[]<body_limit>` | `module` | supported |
+| `routes[].middleware[]<body_limit>.params` | `object` | supported |
+| `routes[].middleware[]<body_limit>.params.max_bytes` | `integer, required` | supported |
 
 <a id="fields-http-middleware-cache"></a>
 
@@ -1135,10 +1135,10 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `routes[].middleware[]<concurrency_limit>` | `module` | not supported yet |
-| `routes[].middleware[]<concurrency_limit>.params` | `object` | not supported yet |
-| `routes[].middleware[]<concurrency_limit>.params.max` | `integer, required` | not supported yet |
-| `routes[].middleware[]<concurrency_limit>.params.status` | `integer` | not supported yet |
+| `routes[].middleware[]<concurrency_limit>` | `module` | supported |
+| `routes[].middleware[]<concurrency_limit>.params` | `object` | supported |
+| `routes[].middleware[]<concurrency_limit>.params.max` | `integer, required` | supported |
+| `routes[].middleware[]<concurrency_limit>.params.status` | `integer` | supported |
 
 <a id="fields-http-middleware-forward-auth"></a>
 
@@ -1197,15 +1197,15 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `routes[].middleware[]<rate_limit>` | `module` | not supported yet |
-| `routes[].middleware[]<rate_limit>.params` | `object` | not supported yet |
-| `routes[].middleware[]<rate_limit>.params.burst` | `integer` | not supported yet |
-| `routes[].middleware[]<rate_limit>.params.ipv6_prefix` | `integer` | not supported yet |
-| `routes[].middleware[]<rate_limit>.params.key` | `string` | not supported yet |
-| `routes[].middleware[]<rate_limit>.params.max_keys` | `integer` | not supported yet |
-| `routes[].middleware[]<rate_limit>.params.rate` | `number, required` | not supported yet |
-| `routes[].middleware[]<rate_limit>.params.status` | `integer` | not supported yet |
-| `routes[].middleware[]<rate_limit>.params.trusted_proxies` | `array<string>` | not supported yet |
+| `routes[].middleware[]<rate_limit>` | `module` | supported |
+| `routes[].middleware[]<rate_limit>.params` | `object` | supported |
+| `routes[].middleware[]<rate_limit>.params.burst` | `integer` | supported |
+| `routes[].middleware[]<rate_limit>.params.ipv6_prefix` | `integer` | supported |
+| `routes[].middleware[]<rate_limit>.params.key` | `string` | supported |
+| `routes[].middleware[]<rate_limit>.params.max_keys` | `integer` | supported |
+| `routes[].middleware[]<rate_limit>.params.rate` | `number, required` | supported |
+| `routes[].middleware[]<rate_limit>.params.status` | `integer` | supported |
+| `routes[].middleware[]<rate_limit>.params.trusted_proxies` | `array<string>` | supported |
 
 <a id="fields-http-middleware-redirect"></a>
 
