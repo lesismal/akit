@@ -1,6 +1,6 @@
-//! `acme` and `tls.acme` (I31): read as fit reads them, with fit's checks of the names; what akit
-//! does not do yet (shared storage, on-demand TLS) refused as not supported yet;
-//! `acme` given by one file only.
+//! `acme` and `tls.acme` (I31): read as fit reads them, with fit's checks of the names;
+//! `acme.on_demand` and `tls.on_demand` (I34) with fit's checks; what akit does not do yet
+//! (shared storage) refused as not supported yet; `acme` given by one file only.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -12,7 +12,8 @@ use std::time::Duration;
 
 use akit_config::{
     Acme, Challenge, DEFAULT_ACME_DIRECTORY, DEFAULT_ACME_MAX_CONCURRENT,
-    DEFAULT_ACME_REQUEST_TIMEOUT, DEFAULT_ACME_TIMEOUT, Format, Source, from_json, from_sources,
+    DEFAULT_ACME_REQUEST_TIMEOUT, DEFAULT_ACME_TIMEOUT, Format, OnDemand, Source, from_json,
+    from_sources,
 };
 
 fn acme(fields: &str) -> Result<Option<Acme>, Vec<String>> {
@@ -130,14 +131,9 @@ fn refused() {
 
 #[test]
 fn not_supported_yet() {
-    for (fields, path) in [
-        (r#""shared_storage": {}"#, "acme.shared_storage"),
-        (r#""on_demand": {"ask": "http://x/"}"#, "acme.on_demand"),
-    ] {
-        let e = from_json(&format!(r#"{{"acme": {{{fields}}}}}"#), None).unwrap_err();
-        assert!(e.only_not_supported_yet(), "{fields}: {e}");
-        assert_eq!(e.as_slice()[0].path, path, "{fields}");
-    }
+    let e = from_json(r#"{"acme": {"shared_storage": {}}}"#, None).unwrap_err();
+    assert!(e.only_not_supported_yet(), "{e}");
+    assert_eq!(e.as_slice()[0].path, "acme.shared_storage");
 }
 
 #[test]
@@ -195,5 +191,112 @@ fn listener_names_as_fit_checks_them() {
     assert_eq!(
         problems(r#""acme": [1]"#, ""),
         ["listeners[0].tls.acme[0]: expected a string, got a number"]
+    );
+}
+
+/// fit's `config.OnDemand`: its defaults (0 and empty are the defaults), its values, and its
+/// checks: `ask` required, an http or https URL.
+#[test]
+fn on_demand_as_fit() {
+    let od = |fields: &str| {
+        acme(&format!(r#""on_demand": {{{fields}}}"#)).map(|a| a.and_then(|a| a.on_demand))
+    };
+    let d = od(r#""ask": "http://127.0.0.1:5555/check""#)
+        .unwrap()
+        .unwrap();
+    assert_eq!(d, OnDemand::new("http://127.0.0.1:5555/check"));
+    assert_eq!(
+        (d.rate, d.interval, d.max_names, d.timeout, d.idle_timeout),
+        (
+            10,
+            Duration::from_secs(60),
+            1000,
+            Duration::from_secs(10),
+            Duration::from_secs(7 * 24 * 3600)
+        )
+    );
+    let zero = od(
+        r#""ask": "http://a/", "rate": 0, "max_names": 0, "interval": "0s", "timeout": "0s",
+           "idle_timeout": "0s""#,
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(zero, OnDemand::new("http://a/"));
+    let d = od(
+        r#""ask": "https://a/?k=1", "rate": 2, "interval": "1h", "max_names": 5,
+           "timeout": "30s", "idle_timeout": "24h""#,
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(
+        (d.rate, d.interval, d.max_names, d.timeout, d.idle_timeout),
+        (
+            2,
+            Duration::from_secs(3600),
+            5,
+            Duration::from_secs(30),
+            Duration::from_secs(86_400)
+        )
+    );
+    for (fields, want) in [
+        ("", "acme.on_demand.ask: missing required field"),
+        (
+            r#""ask": "ftp://a/""#,
+            r#"acme.on_demand.ask: "ftp://a/" is not an http or https URL"#,
+        ),
+        (
+            r#""ask": "http://a/", "rate": -1"#,
+            "acme.on_demand.rate: -1 is less than the minimum 0",
+        ),
+        (
+            r#""ask": "http://a/", "bogus": 1"#,
+            "acme.on_demand.bogus: unknown field",
+        ),
+    ] {
+        let e = od(fields).unwrap_err();
+        assert_eq!(e.len(), 1, "{fields}: {e:?}");
+        let got = e[0].splitn(4, ':').nth(3).unwrap_or("").trim_start();
+        assert!(got.starts_with(want), "{fields}: {e:?}");
+    }
+}
+
+/// `tls.on_demand` needs `acme.on_demand`; with it, a listener with no certificates and no names
+/// is served; one requiring client certificates needs HTTP-01 answered, as for `tls.acme`.
+#[test]
+fn tls_on_demand_as_fit() {
+    let top = r#", "acme": {"on_demand": {"ask": "http://127.0.0.1:5555/"}}"#;
+    let c = listener(r#""on_demand": true"#, top).unwrap();
+    let t = c.listeners[0].tls.as_ref().unwrap();
+    assert!(t.on_demand);
+    assert!(t.acme.is_empty() && t.certificates.is_empty());
+    assert_eq!(
+        problems(r#""on_demand": true"#, ""),
+        [
+            "listeners[0].tls.on_demand: on_demand needs acme.on_demand, which says whom to ask whether a name may have a certificate"
+        ]
+    );
+    assert_eq!(
+        problems(r#""on_demand": true"#, r#", "acme": {}"#),
+        [
+            "listeners[0].tls.on_demand: on_demand needs acme.on_demand, which says whom to ask whether a name may have a certificate"
+        ]
+    );
+    assert_eq!(
+        problems(r#""on_demand": "yes""#, top),
+        [
+            "listeners[0].tls.on_demand: expected a boolean, got a string",
+            "listeners[0].tls: a certificate, a name for acme or on_demand is needed, or a route on this listener that matches a host name for HTTPS by default"
+        ]
+    );
+    let tls_alpn_only =
+        r#", "acme": {"challenges": ["tls-alpn-01"], "on_demand": {"ask": "http://a/"}}"#;
+    assert_eq!(
+        problems(
+            r#""on_demand": true, "client_auth": {"ca_files": ["ca.pem"]}"#,
+            tls_alpn_only
+        ),
+        [
+            "listeners[0].tls.client_auth: a listener that requires client certificates cannot answer TLS-ALPN-01, the only challenge acme.challenges allows; set mode verify_if_given or allow http-01"
+        ]
     );
 }

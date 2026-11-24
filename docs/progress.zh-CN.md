@@ -10,14 +10,44 @@
 | | |
 | --- | --- |
 | 最后更新 | 2026-11-24 |
-| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I24、I17b 和 I18b 已完成；M2 的 I26–I33、I35–I37 和 M3 的 I39–I54、I67 已提前完成。 |
+| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I24、I17b 和 I18b 已完成；M2 的 I26–I37 和 M3 的 I39–I54、I67 已提前完成。 |
 | akio | akio `main` 上的 `e9891b52`（`1.0.0-rc.1`，带 [akio API 需求](akio-api-requests.zh-CN.md) 中所有已锁定的需求），在 `Cargo.toml` 中按 `rev` 锁定 |
 | fit | 作为规格；本计划基于 `7daee573` 阅读 |
-| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；基于 akio 的 A1 保留（按 fit 的 `binding.same`：证书文件和 ACME 名字可以变）、增加、修改和排空监听器，包括启动时的监听器，重载可新增 h3 监听器；服务 h3 的启动监听器要重启才能变）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证；按 fit 的方式每次握手选择证书，重载或 `-watch-certs` 替换证书而不关闭监听器）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；路由中间件：`rewrite`（前缀和正则）、`redirect`（含正则的分组）、`headers`、`rate_limit`、`concurrency_limit`、`body_limit`、`basic_auth`（bcrypt，在 akio 的线程池上校验）、`client_cert`（按路由的 mTLS）、`forward_auth`（经 akio 的客户端询问认证服务，期间挂起请求）、`circuit_breaker`、`compress`（按 q 值选择 zstd、brotli 和 gzip，流式消息体逐次写入编码）和 `jwt`（用 akio-crypto 校验 JSON Web Token，密钥来自 PEM 文件、密钥文件或经 akio 的客户端获取并轮换的 JWK 集）；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，内存中文件的压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`、双向流式转发 body 并联动背压，双向透传 trailer，`timeout` 和上游的 `response_timeout`、`response_header_timeout`、`response_idle_timeout`，超时回答 504，客户端无论何时离开都放弃上游请求，带预算的 `retry`，`timeout` 覆盖所有尝试；按权重随机选择的 `upstreams`，所选上游没有地址在轮转中时接管请求的 `failover`，接收消息体完整到达的请求副本的 `mirror`（同时最多 256 个，请求从不等待副本）；经 HTTP/1.1、h2c 和 h2 访问上游，h2 支持 fit 的 `tls_server_name`、`tls_ca_file` 和客户端证书）；所有监听器和代理上的 `limits.max_body_bytes`（413），以及 `limits.write_stall_timeout`（重载也可修改）；fit 的 json、text 和 line 格式的访问日志；上游连接池，fit 的九种负载均衡策略（轮询、加权轮询、最少连接、随机、p2c，以及按客户端 IP、路径、头或 cookie 的一致性哈希）和会话保持 cookie，跳过被被动健康检查（`max_fails`、`fail_timeout`）和主动健康检查（`health_check`：http 和 tcp 探测）下线的地址；回环地址上的 Admin API（`GET /config`，也可按 JSON 指针读取，`POST /load`，用 `PUT`、`PATCH` 和 `DELETE /config` 按指针编辑，`POST /rollback/{n}`，`POST /reload`，都带 `If-Match`，除回滚外都可 `?dry_run=1`，`GET /versions`；有 `token_file` 时每个请求都要带 bearer 令牌），修改与 SIGHUP 一样作为重载应用，两者共用一份历史记录；`run -watch` 在配置文件每次变化时应用它们（fit 的文件 provider，轮询）；Admin API 的 `GET /metrics` 提供 fit 的 Prometheus 指标（有 `metrics` 时按监听器和路由的请求、上游和后端、证书、连接、重载、akio 的引擎）；为监听器在 `tls.acme` 中所列的名字通过 HTTP-01 或 TLS-ALPN-01 用 ACME 获取证书，保存在存储中，按有效期或 CA 的续期信息（ARI）续期，并装订其 OCSP 响应；默认 HTTPS（`auto_https`）：没有写监听器的配置以其路由主机名的证书经 HTTPS 服务，经 HTTP 重定向（308）到 HTTPS，空的 `tls` 得到其路由的名字；四层 `services`（I51）：`tcp` 和 `udp` 监听器代理到上游的地址，双向联动背压，空闲超时，`max_conns`，重载后排空；WebSocket 代理（I49）：HTTP/1.1 upgrade 与 HTTP/2响应缓存（I67）：zone 共享的有界内存层上的 RFC 9111，流式消息体在发出的同时保存；兼容性门禁：80 个夹具，30 个有效，49 个只因暂不支持被拒绝，1 个跳过，没有失败WebSocket 代理（I49）：HTTP/1.1 upgrade 与 HTTP/2、HTTP/3 扩展 CONNECT 代理到 HTTP/1.1 上游，双向联动背压，`tunnel_idle_timeout`；兼容性门禁：80 个夹具，28 个有效，51 个只因暂不支持被拒绝，1 个跳过，没有失败gRPC 调用代理（I50）到 h2 和 h2c 上游，双向流式传输并带 trailer，受 `grpc-timeout` 约束，失败时以 gRPC 状态应答；兼容性门禁：80 个夹具，19 个有效，60 个只因暂不支持被拒绝，1 个跳过，没有失败兼容性门禁：80 个夹具，23 个有效，56 个只因暂不支持被拒绝，1 个跳过，没有失败兼容性门禁：80 个夹具，27 个有效，52 个只因暂不支持被拒绝，1 个跳过，没有失败按 TLS ClientHello 的服务器名共用一个 `tcp` 监听器的服务，不终结 TLS 直接透传（I52），以及 `tcp` 与 HTTP 监听器从受信任代理接收、并向服务的上游发送的 PROXY protocol 头（v1、v2）；一个端口上与 HTTP 并列的 `tcp`（I53），按客户端先发的字节区分；WebSocket 代理（I49）：HTTP/1.1 upgrade 与 HTTP/2、HTTP/3 扩展 CONNECT 代理到 HTTP/1.1 上游，双向联动背压，`tunnel_idle_timeout`；兼容性门禁：80 个夹具，27 个有效，52 个只因暂不支持被拒绝，1 个跳过，没有失败 |
-| 下一步 | I55、I68（缓存 II）；M2 的 I34 与 I38；I25（M1 一致性） |
+| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；基于 akio 的 A1 保留（按 fit 的 `binding.same`：证书文件和 ACME 名字可以变）、增加、修改和排空监听器，包括启动时的监听器，重载可新增 h3 监听器；服务 h3 的启动监听器要重启才能变）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证；按 fit 的方式每次握手选择证书，重载或 `-watch-certs` 替换证书而不关闭监听器）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；路由中间件：`rewrite`（前缀和正则）、`redirect`（含正则的分组）、`headers`、`rate_limit`、`concurrency_limit`、`body_limit`、`basic_auth`（bcrypt，在 akio 的线程池上校验）、`client_cert`（按路由的 mTLS）、`forward_auth`（经 akio 的客户端询问认证服务，期间挂起请求）、`circuit_breaker`、`compress`（按 q 值选择 zstd、brotli 和 gzip，流式消息体逐次写入编码）和 `jwt`（用 akio-crypto 校验 JSON Web Token，密钥来自 PEM 文件、密钥文件或经 akio 的客户端获取并轮换的 JWK 集）；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，内存中文件的压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`、双向流式转发 body 并联动背压，双向透传 trailer，`timeout` 和上游的 `response_timeout`、`response_header_timeout`、`response_idle_timeout`，超时回答 504，客户端无论何时离开都放弃上游请求，带预算的 `retry`，`timeout` 覆盖所有尝试；按权重随机选择的 `upstreams`，所选上游没有地址在轮转中时接管请求的 `failover`，接收消息体完整到达的请求副本的 `mirror`（同时最多 256 个，请求从不等待副本）；经 HTTP/1.1、h2c 和 h2 访问上游，h2 支持 fit 的 `tls_server_name`、`tls_ca_file` 和客户端证书）；所有监听器和代理上的 `limits.max_body_bytes`（413），以及 `limits.write_stall_timeout`（重载也可修改）；fit 的 json、text 和 line 格式的访问日志；上游连接池，fit 的九种负载均衡策略（轮询、加权轮询、最少连接、随机、p2c，以及按客户端 IP、路径、头或 cookie 的一致性哈希）和会话保持 cookie，跳过被被动健康检查（`max_fails`、`fail_timeout`）和主动健康检查（`health_check`：http 和 tcp 探测）下线的地址；回环地址上的 Admin API（`GET /config`，也可按 JSON 指针读取，`POST /load`，用 `PUT`、`PATCH` 和 `DELETE /config` 按指针编辑，`POST /rollback/{n}`，`POST /reload`，都带 `If-Match`，除回滚外都可 `?dry_run=1`，`GET /versions`；有 `token_file` 时每个请求都要带 bearer 令牌），修改与 SIGHUP 一样作为重载应用，两者共用一份历史记录；`run -watch` 在配置文件每次变化时应用它们（fit 的文件 provider，轮询）；Admin API 的 `GET /metrics` 提供 fit 的 Prometheus 指标（有 `metrics` 时按监听器和路由的请求、上游和后端、证书、连接、重载、akio 的引擎）；为监听器在 `tls.acme` 中所列的名字通过 HTTP-01 或 TLS-ALPN-01 用 ACME 获取证书，保存在存储中，按有效期或 CA 的续期信息（ARI）续期，并装订其 OCSP 响应，也在握手时为 ask URL 允许的名字获取证书（`tls.on_demand`，带限流，握手等待时不占住 I/O 线程）；默认 HTTPS（`auto_https`）：没有写监听器的配置以其路由主机名的证书经 HTTPS 服务，经 HTTP 重定向（308）到 HTTPS，空的 `tls` 得到其路由的名字；四层 `services`（I51）：`tcp` 和 `udp` 监听器代理到上游的地址，双向联动背压，空闲超时，`max_conns`，重载后排空；WebSocket 代理（I49）：HTTP/1.1 upgrade 与 HTTP/2响应缓存（I67）：zone 共享的有界内存层上的 RFC 9111，流式消息体在发出的同时保存；兼容性门禁：80 个夹具，31 个有效，48 个只因暂不支持被拒绝，1 个跳过，没有失败WebSocket 代理（I49）：HTTP/1.1 upgrade 与 HTTP/2、HTTP/3 扩展 CONNECT 代理到 HTTP/1.1 上游，双向联动背压，`tunnel_idle_timeout`；兼容性门禁：80 个夹具，28 个有效，51 个只因暂不支持被拒绝，1 个跳过，没有失败gRPC 调用代理（I50）到 h2 和 h2c 上游，双向流式传输并带 trailer，受 `grpc-timeout` 约束，失败时以 gRPC 状态应答；兼容性门禁：80 个夹具，19 个有效，60 个只因暂不支持被拒绝，1 个跳过，没有失败兼容性门禁：80 个夹具，23 个有效，56 个只因暂不支持被拒绝，1 个跳过，没有失败兼容性门禁：80 个夹具，27 个有效，52 个只因暂不支持被拒绝，1 个跳过，没有失败按 TLS ClientHello 的服务器名共用一个 `tcp` 监听器的服务，不终结 TLS 直接透传（I52），以及 `tcp` 与 HTTP 监听器从受信任代理接收、并向服务的上游发送的 PROXY protocol 头（v1、v2）；一个端口上与 HTTP 并列的 `tcp`（I53），按客户端先发的字节区分；WebSocket 代理（I49）：HTTP/1.1 upgrade 与 HTTP/2、HTTP/3 扩展 CONNECT 代理到 HTTP/1.1 上游，双向联动背压，`tunnel_idle_timeout`；兼容性门禁：80 个夹具，27 个有效，52 个只因暂不支持被拒绝，1 个跳过，没有失败 |
+| 下一步 | I55、I68（缓存 II）；M2 的 I38；I25（M1 一致性） |
 | akio 需求 | A1–A8、A11、A13、A16–A21、A32、A36–A38、A51–A53、A63–A66、A90、A91、A93、A94、A105、A108、A109、A111 已在 akio 的 main 并已锁定；A112、A113 进行中；A9、A10、A12、A14、A15、A22–A24、A29、A30、A33、A35、A45、A48、A49、A54、A57、A58、A75、A78、A79 和 A92 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
 
 ## 日志
+
+### 2026-11-24：I34，按需 TLS
+
+- `akit-config` 读取 fit 的 `acme.on_demand`（`ask` 必填，须是 http 或 https URL；`rate` 10、`interval` 1m、
+  `max_names` 1000、`timeout` 10s、`idle_timeout` 168h，写 0 取默认值）和 `tls.on_demand`，检查和提示同 fit：
+  `on_demand` 需要 `acme.on_demand`，要求客户端证书的监听器需要回答 HTTP-01，只有 `on_demand` 的 `tls` 不算空（默认
+  HTTPS 不给它名字；`"on_demand": false` 仍算空）。
+- `akit-tls`：fit 的 `tlsmgr/ondemand.go` 放在新的 `acme::on_demand` 模块。`tls.on_demand` 打开的监听器，对客户端
+  要的、文件和 `tls.acme` 都没有的名字，从证书解析器（akio 的 A2，ADR-098）调用 `Acme::on_demand`。已有证书的名字在
+  调用中作答；其他名字把握手的 `CertDone` 留在该名字下等待并返回，所以从不占住 I/O 线程。ask URL（查询里加上
+  `domain=<name>`）经 akio-http 的异步客户端询问，客户端在自己的引擎上；回调接收该名字，ACME 工作线程像获取列出的
+  名字一样获取证书，处理完时回答所有等它的握手。同一名字的握手等同一张证书、同一次询问。
+- fit 的各项上限都在握手的调用中检查，超出的握手立即失败：拒绝记住一分钟（最多 10,000 个），同时最多 8 个询问，平均
+  每秒 5 个、一次最多 20 个（`MAX_ASKS`、`ASK_EVERY`、`ASK_BURST`），每 `interval` 最多 `rate` 个，总共 `max_names`
+  个；每个名字最多 1,024 个等待的握手（`MAX_WAITERS`，另有 akio 的 `max_pending_cert_resolutions`）。监听器的
+  `cert_resolver_timeout` 是 `acme.on_demand.timeout`，握手超时是它再加 10s。
+- 第一张证书失败的名字被丢弃（等它的握手得知原因）；`idle_timeout` 内没有握手要过的名字由工作线程丢弃（每个名字每秒
+  最多记录一次，不加锁），其证书留在存储中，给下一个被允许的握手。重载列出的名字归配置所有；不列任何名字的重载保留按需
+  接收的名字。按需监听器为任何名字回答 TLS-ALPN-01。
+- 测试：`akit-tls` 的单元测试移植 fit 的 `TestOnDemandRefused`、`RateLimited`、`MaxNames`、`Dropped`、`Names`、
+  `Idle`、`IdleTimer` 和 `AskBounds`（ask URL 以及挂起或切断连接的 CA 用几行 std 写成；测试可以拨动的时钟）；
+  `akit-listener/tests/on_demand.rs` 针对 Pebble 用真实握手移植 `TestOnDemandAllowed`（同时四个握手，一次询问，一张
+  证书；询问被挂起时，二十个对文件中名字的握手和请求立即完成，被拒绝的名字失败），并用握手检查超时和限流；
+  `akit-config` 的测试和门禁的样例覆盖这些字段。
+- 兼容性门禁：`acme.on_demand`、它的六个字段和 `listeners[].tls.on_demand` 加入 `tests/compat/supported.txt`；
+  `examples/acme-on-demand` 有效（80 个夹具：31 个有效，48 个只因暂不支持被拒绝，1 个跳过，没有失败）。
+- 检查：macOS 上 `make check`（带 Pebble）；gpu51 上在 bench 锁下，epoll 和 `AKIO_TEST_BACKEND=uring` 下，akit-config、
+  akit-tls、akit-runtime、akit-listener、akit-compat 和 akit 的 clippy 与测试（要求 Pebble）：全部通过。
+- 没有 akio 请求（A120–A122 未使用）。
+- 待测量：无；没有 `tls.on_demand` 的监听器照旧选择证书（规则 24：控制面）。
 
 ### 2026-11-24：I53，一个端口多种协议
 

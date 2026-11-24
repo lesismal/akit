@@ -5,14 +5,15 @@
 use std::fmt;
 use std::sync::Arc;
 
-use akio::tls::{CertAlert, CertDone, CertResolver, ClientHelloInfo};
+use akio::tls::{CertDone, CertResolver, ClientHelloInfo};
 use akit_tls::{ListenerTls, ServerConfigs};
 
 use crate::{Graph, GraphCell};
 
 /// The certificate manager of the TLS listener named `listener`: an akio-tls
 /// [`CertResolver`] that answers each full handshake from the certificates the cell's current
-/// graph loaded for the listener, in the handshake's call (it never blocks).
+/// graph loaded for the listener, in the handshake's call, or later for a name taken on demand
+/// (it never blocks).
 ///
 /// A handshake under way keeps the certificate it was given; a reload changes what the next one
 /// gets. Until the graph it was made for is published (a listener opened by a reload before the
@@ -59,25 +60,24 @@ impl ListenerCerts {
             own: tls.clone(),
         })
     }
-
-    fn get(&self, hello: &ClientHelloInfo<'_>) -> Option<akio::tls::CertifiedKey> {
-        if self.cell.epoch() >= self.since {
-            if let Some(k) = self
-                .cell
-                .with(|g| g.listener_tls(&self.listener).map(|t| t.get(hello)))
-            {
-                return k;
-            }
-        }
-        self.own.get(hello)
-    }
 }
 
 impl CertResolver for ListenerCerts {
+    /// Answers from the current graph's TLS of the listener ([`ListenerTls::resolve`]): from
+    /// memory in the call, or, for a name taken on demand (I34), later from another thread.
     fn resolve(&self, hello: &ClientHelloInfo<'_>, done: CertDone) {
-        match self.get(hello) {
-            Some(k) => done.complete(k),
-            None => done.fail(CertAlert::UnrecognizedName),
+        let mut done = Some(done);
+        if self.cell.epoch() >= self.since {
+            self.cell.with(|g| {
+                if let Some(t) = g.listener_tls(&self.listener) {
+                    if let Some(d) = done.take() {
+                        t.resolve(hello, d);
+                    }
+                }
+            });
+        }
+        if let Some(d) = done {
+            self.own.resolve(hello, d);
         }
     }
 }

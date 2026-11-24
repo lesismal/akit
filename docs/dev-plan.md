@@ -134,7 +134,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I31 | ACME I: account, orders, HTTP-01 | I30 | done |
 | I32 | ACME II: TLS-ALPN-01, renewal, OCSP | I31 | done |
 | I33 | Automatic HTTPS defaults | I32 | done |
-| I34 | On-demand TLS | I33, A2 | todo |
+| I34 | On-demand TLS | I33, A2 | done |
 | I35 | Active health checks | I20 | done |
 | I36 | Load balancing v2 | I19 | done |
 | I37 | Prometheus metrics | I15 | done |
@@ -610,6 +610,9 @@ Split from I07 so that the half that needs no config model runs beside I02.
 - **Done when**: tests cover allowed, refused and rate-limited names, with the I/O thread never
   blocked during issuance.
 - **Touches**: `akit-tls`.
+- **Done**: fit's `acme.on_demand` and `tls.on_demand`; the handshake's `CertDone` waits while the
+  ask (akio-http's asynchronous client) and the ACME workers take the name on; fit's bounds on
+  asks, rate, names and idle names; tests against Pebble through real handshakes.
 
 ### I35 Active health checks
 

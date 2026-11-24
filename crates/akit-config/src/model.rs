@@ -64,7 +64,8 @@ pub enum Challenge {
 }
 
 /// `acme`, as fit's `config.ACME` (decision 007): where certificates are obtained and kept, and
-/// how fast. `shared_storage` and `on_demand` are refused as not supported yet.
+/// how fast, and how names are taken on during handshakes (`on_demand`, I34). `shared_storage`
+/// is refused as not supported yet.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Acme {
     /// `directory`: the URL of the CA's ACME directory; [`DEFAULT_ACME_DIRECTORY`] when left out.
@@ -89,6 +90,61 @@ pub struct Acme {
     /// `challenges`: the challenges answered, in the order tried, a failed attempt tried again
     /// with the next; HTTP-01 then TLS-ALPN-01 when left out, as fit's.
     pub challenges: Vec<Challenge>,
+    /// `on_demand`: how certificates are obtained during handshakes, for the listeners whose
+    /// `tls.on_demand` is set (I34).
+    pub on_demand: Option<OnDemand>,
+}
+
+/// fit's default `acme.on_demand.rate`: certificates obtained on demand every `interval`.
+pub const DEFAULT_ON_DEMAND_RATE: usize = 10;
+/// fit's default `acme.on_demand.interval`.
+pub const DEFAULT_ON_DEMAND_INTERVAL: Duration = Duration::from_secs(60);
+/// fit's default `acme.on_demand.max_names`.
+pub const DEFAULT_ON_DEMAND_MAX_NAMES: usize = 1000;
+/// fit's default `acme.on_demand.timeout`: how long a handshake waits for its certificate.
+pub const DEFAULT_ON_DEMAND_TIMEOUT: Duration = Duration::from_secs(10);
+/// fit's default `acme.on_demand.idle_timeout`: a week.
+pub const DEFAULT_ON_DEMAND_IDLE_TIMEOUT: Duration = Duration::from_secs(7 * 24 * 3600);
+
+/// `acme.on_demand`, as fit's `config.OnDemand`: certificates obtained during handshakes, for
+/// names no listener lists, only for names the `ask` URL allows, at most `rate` every
+/// `interval` and `max_names` in all, each dropped once no handshake has asked for it for
+/// `idle_timeout`. A handshake for such a name waits for its certificate for at most `timeout`,
+/// without holding its I/O thread.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OnDemand {
+    /// `ask` (required): the http or https URL asked, with `domain=<name>` added to its query,
+    /// whether a name may have a certificate: 2xx allows it, any other answer refuses it.
+    pub ask: String,
+    /// `rate`: certificates obtained every `interval`; [`DEFAULT_ON_DEMAND_RATE`] when left out
+    /// or 0.
+    pub rate: usize,
+    /// `interval`: what `rate` counts over; [`DEFAULT_ON_DEMAND_INTERVAL`] when left out.
+    pub interval: Duration,
+    /// `max_names`: names with certificates obtained on demand, in all;
+    /// [`DEFAULT_ON_DEMAND_MAX_NAMES`] when left out or 0.
+    pub max_names: usize,
+    /// `timeout`: how long a handshake waits for its name's certificate;
+    /// [`DEFAULT_ON_DEMAND_TIMEOUT`] when left out.
+    pub timeout: Duration,
+    /// `idle_timeout`: how long a name taken on demand is kept with no handshake asking for it;
+    /// [`DEFAULT_ON_DEMAND_IDLE_TIMEOUT`] when left out.
+    pub idle_timeout: Duration,
+}
+
+impl OnDemand {
+    /// `acme.on_demand` asking `ask`, its other settings their defaults.
+    #[must_use]
+    pub fn new(ask: impl Into<String>) -> OnDemand {
+        OnDemand {
+            ask: ask.into(),
+            rate: DEFAULT_ON_DEMAND_RATE,
+            interval: DEFAULT_ON_DEMAND_INTERVAL,
+            max_names: DEFAULT_ON_DEMAND_MAX_NAMES,
+            timeout: DEFAULT_ON_DEMAND_TIMEOUT,
+            idle_timeout: DEFAULT_ON_DEMAND_IDLE_TIMEOUT,
+        }
+    }
 }
 
 impl Default for Acme {
@@ -102,6 +158,7 @@ impl Default for Acme {
             timeout: DEFAULT_ACME_TIMEOUT,
             request_timeout: DEFAULT_ACME_REQUEST_TIMEOUT,
             challenges: vec![Challenge::Http01, Challenge::TlsAlpn01],
+            on_demand: None,
         }
     }
 }
@@ -596,6 +653,9 @@ pub struct Tls {
     /// `acme` says. A client asking for one is given its certificate once there is one; until
     /// then, and for other names, the certificates from files.
     pub acme: Vec<String>,
+    /// `on_demand`: a certificate is obtained during the handshake for a name a client asks for
+    /// that neither the files nor `acme` have, as the top-level `acme.on_demand` allows (I34).
+    pub on_demand: bool,
 }
 
 /// A certificate and its key, from PEM files.
@@ -1655,10 +1715,16 @@ const SERVICE_FIELDS: &[&str] = &[
     "proxy_protocol",
 ];
 const SERVICE_FIT_ONLY: &[&str] = &["access"];
-const TLS_FIELDS: &[&str] = &["certificates", "client_auth", "max_version", "acme"];
-// on_demand comes with I34; kernel_tls_offload with engine's.
-const TLS_FIT_ONLY: &[&str] = &["on_demand", "kernel_tls_offload"];
-// I31: shared_storage comes with fit's shared storage, on_demand with I34.
+const TLS_FIELDS: &[&str] = &[
+    "certificates",
+    "client_auth",
+    "max_version",
+    "acme",
+    "on_demand",
+];
+// kernel_tls_offload comes with engine's.
+const TLS_FIT_ONLY: &[&str] = &["kernel_tls_offload"];
+// I31: shared_storage comes with fit's shared storage.
 const ACME_FIELDS: &[&str] = &[
     "directory",
     "email",
@@ -1668,10 +1734,19 @@ const ACME_FIELDS: &[&str] = &[
     "timeout",
     "request_timeout",
     "challenges",
+    "on_demand",
+];
+const ON_DEMAND_FIELDS: &[&str] = &[
+    "ask",
+    "rate",
+    "interval",
+    "max_names",
+    "timeout",
+    "idle_timeout",
 ];
 // I33: HTTPS by default (crate::auto_https).
 const AUTO_HTTPS_FIELDS: &[&str] = &["disable", "disable_redirects", "http_port", "https_port"];
-const ACME_FIT_ONLY: &[&str] = &["shared_storage", "on_demand"];
+const ACME_FIT_ONLY: &[&str] = &["shared_storage"];
 const CERTIFICATE_FIELDS: &[&str] = &["cert_file", "key_file"];
 const CLIENT_AUTH_FIELDS: &[&str] = &["ca_files", "mode"];
 const ROUTE_FIELDS: &[&str] = &[
@@ -2323,8 +2398,59 @@ fn acme(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Acme> {
             a.challenges = list;
         }
     }
+    if let Some(v) = o.take("on_demand") {
+        a.on_demand = on_demand(d, v, &o.at("on_demand"));
+    }
     o.finish(d, ACME_FIELDS, ACME_FIT_ONLY);
     Some(a)
+}
+
+/// `acme.on_demand`, as fit's `config.OnDemand` and its checks.
+fn on_demand(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<OnDemand> {
+    let mut o = d.object(n, path)?;
+    let mut od = OnDemand::new("");
+    match o.take("ask") {
+        None => d.error(n.off, &o.at("ask"), "missing required field"),
+        Some(v) => {
+            if let Some(s) = d.string(v, &o.at("ask")) {
+                if !http_url(&s) {
+                    d.error(
+                        v.off,
+                        &o.at("ask"),
+                        format!("{s:?} is not an http or https URL"),
+                    );
+                }
+                od.ask = s;
+            }
+        }
+    }
+    for (key, slot) in [("rate", &mut od.rate), ("max_names", &mut od.max_names)] {
+        if let Some(v) = o.take(key) {
+            // fit's int, at least 0; 0 is the default.
+            if let Some(n) = d
+                .int(v, &o.at(key), 0, i64::from(u32::MAX))
+                .and_then(|n| usize::try_from(n).ok())
+                .filter(|n| *n != 0)
+            {
+                *slot = n;
+            }
+        }
+    }
+    for (key, slot) in [
+        ("interval", &mut od.interval),
+        ("timeout", &mut od.timeout),
+        ("idle_timeout", &mut od.idle_timeout),
+    ] {
+        if let Some(t) = o
+            .take(key)
+            .and_then(|v| d.duration(v, &o.at(key)))
+            .filter(|t| !t.is_zero())
+        {
+            *slot = t;
+        }
+    }
+    o.finish(d, ON_DEMAND_FIELDS, &[]);
+    Some(od)
 }
 
 /// Whether `s` is an `http` or `https` URL with a host, as fit checks `acme.directory`.
@@ -2337,12 +2463,20 @@ fn http_url(s: &str) -> bool {
 
 /// fit's checks of the names listeners list in `tls.acme` (config/validate.go): host names, no
 /// wildcards (HTTP-01 cannot obtain them), no IP addresses, none twice in a listener; and a
-/// listener requiring client certificates needs HTTP-01 answered.
+/// listener requiring client certificates needs HTTP-01 answered; `on_demand` needs
+/// `acme.on_demand`.
 fn check_acme_names(ds: &mut [Decoder<'_>], listeners: &[At<Listener>], acme: Option<&Acme>) {
     let http01 = acme.is_none_or(|a| a.challenges.contains(&Challenge::Http01));
     for l in listeners {
         let Some(t) = &l.v.tls else { continue };
         let tls_path = crate::error::join_field(&l.path, "tls");
+        if t.on_demand && acme.is_none_or(|a| a.on_demand.is_none()) {
+            l.error(
+                ds,
+                &crate::error::join_field(&tls_path, "on_demand"),
+                "on_demand needs acme.on_demand, which says whom to ask whether a name may have a certificate".to_owned(),
+            );
+        }
         let path = crate::error::join_field(&tls_path, "acme");
         let mut seen: Vec<String> = Vec::new();
         for (i, name) in t.acme.iter().enumerate() {
@@ -2365,7 +2499,8 @@ fn check_acme_names(ds: &mut [Decoder<'_>], listeners: &[At<Listener>], acme: Op
             seen.push(lower);
         }
         if let Some(ca) = &t.client_auth {
-            if ca.mode == ClientAuthMode::Require && !t.acme.is_empty() && !http01 {
+            if ca.mode == ClientAuthMode::Require && (!t.acme.is_empty() || t.on_demand) && !http01
+            {
                 l.error(
                     ds,
                     &crate::error::join_field(&tls_path, "client_auth"),
@@ -2731,14 +2866,17 @@ fn tls(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Tls> {
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();
-    // One with no certificates and no names gets its routes' host names (auto_https), or is
-    // refused once the routes are read (`served_listeners`).
+    let mut ok = true;
+    let on_demand = flag(d, &mut o, "on_demand", &mut ok);
+    // One with no certificates, no names and no on_demand gets its routes' host names
+    // (auto_https), or is refused once the routes are read (`served_listeners`).
     o.finish(d, TLS_FIELDS, TLS_FIT_ONLY);
     Some(Tls {
         certificates,
         client_auth,
         max_version,
         acme,
+        on_demand,
     })
 }
 

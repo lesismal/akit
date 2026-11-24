@@ -28,15 +28,22 @@
 //!   is managed, each order bounded by `acme.timeout` and each request by
 //!   `acme.request_timeout`. A handshake asks for a certificate ([`Acme::certificate`]) and a
 //!   request for an HTTP-01 answer, both read from memory, without a lock (rules 1 and 13).
+//! - **On demand** (I34, [`on_demand`](Acme::on_demand)): names taken on during handshakes, as
+//!   `acme.on_demand` allows; see the `on_demand` module.
 
 mod ari;
 mod jws;
+mod on_demand;
 mod protocol;
+
+pub use on_demand::{
+    ASK_BURST, ASK_EVERY, MAX_ASKS, MAX_REFUSED, MAX_WAITERS, OnDemandError, REFUSED_FOR, Waiter,
+};
 
 use std::collections::HashMap;
 use std::fmt;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -87,6 +94,23 @@ struct Managed {
     revoked: Option<Vec<u8>>,
     /// What ARI says of its certificate.
     ari: Option<AriState>,
+    /// For a name a handshake took on (I34), when a handshake last asked for it, on the
+    /// on-demand clock; `None` for the config's names.
+    on_demand: Option<Arc<AtomicU64>>,
+}
+
+impl Managed {
+    fn new(on_demand: Option<Arc<AtomicU64>>) -> Managed {
+        Managed {
+            due: Instant::now(),
+            failures: 0,
+            running: false,
+            last_error: None,
+            revoked: None,
+            ari: None,
+            on_demand,
+        }
+    }
 }
 
 /// A certificate obtained for a name, with its OCSP response kept.
@@ -94,6 +118,8 @@ struct Managed {
 struct Served {
     key: CertifiedKey,
     staple: Option<Arc<Staple>>,
+    /// A name taken on demand's last use, which a handshake records.
+    used: Option<Arc<AtomicU64>>,
 }
 
 impl Served {
@@ -142,6 +168,8 @@ struct Inner {
     account: Mutex<Option<Arc<(AccountKey, String)>>>,
     threads: Mutex<Vec<JoinHandle<()>>>,
     log: Mutex<Log>,
+    /// `acme.on_demand`, when it is configured.
+    on_demand: Option<on_demand::OnDemand>,
 }
 
 /// Obtains certificates for the names it manages from an ACME CA, keeps them in a [`Storage`],
@@ -368,7 +396,12 @@ impl Acme {
             Some(roots)
         };
         let log: Log = Arc::new(|line: &str| eprintln!("akit: acme: {line}"));
-        Ok(Acme {
+        let on_demand = config
+            .on_demand
+            .as_ref()
+            .map(on_demand::OnDemand::new)
+            .transpose()?;
+        let a = Acme {
             inner: Arc::new(Inner {
                 storage,
                 directory: config.directory.clone(),
@@ -394,8 +427,15 @@ impl Acme {
                 account: Mutex::new(None),
                 threads: Mutex::new(Vec::new()),
                 log: Mutex::new(log),
+                on_demand,
             }),
-        })
+        };
+        if a.inner.on_demand.is_some() {
+            // Handshakes take names on from the start: the workers wait for them.
+            lock(&a.inner.state).started = true;
+            a.start_workers();
+        }
+        Ok(a)
     }
 
     /// Has the manager, and its [`Ocsp`], report through `log` from now on (standard error by
@@ -489,46 +529,62 @@ impl Acme {
                 return;
             }
             let before = st.names.len();
-            st.names.retain(|n, _| want.binary_search(n).is_ok());
+            // Names taken on demand stay (fit's Manage); one listed now is the config's, and no
+            // longer counted on demand.
+            let mut listed_on_demand = 0usize;
+            st.names.retain(|n, m| {
+                let listed = want.binary_search(n).is_ok();
+                if listed && m.on_demand.take().is_some() {
+                    listed_on_demand = listed_on_demand.saturating_add(1);
+                }
+                listed || m.on_demand.is_some()
+            });
+            if let Some(od) = &self.inner.on_demand {
+                for _ in 0..listed_on_demand {
+                    od.release();
+                }
+            }
             let dropped = st.names.len() != before;
-            let now = Instant::now();
             for n in want {
-                st.names.entry(n).or_insert(Managed {
-                    due: now,
-                    failures: 0,
-                    running: false,
-                    last_error: None,
-                    revoked: None,
-                    ari: None,
-                });
+                st.names.entry(n).or_insert_with(|| Managed::new(None));
             }
             if dropped {
-                let certs = self.inner.certs.get();
-                let kept = certs
-                    .iter()
-                    .filter(|(n, _)| st.names.contains_key(*n))
-                    .map(|(n, c)| (n.clone(), c.clone()))
-                    .collect();
-                self.inner.certs.set(kept);
+                self.prune_certs(&st);
             }
             let start = !st.started && !st.names.is_empty();
             st.started |= start;
             start
         };
         if start {
-            let mut threads = lock(&self.inner.threads);
-            for i in 0..self.inner.workers {
-                let a = self.clone();
-                match std::thread::Builder::new()
-                    .name(format!("akit-acme-{i}"))
-                    .spawn(move || a.work())
-                {
-                    Ok(t) => threads.push(t),
-                    Err(e) => self.log(&format!("starting a worker: {e}")),
-                }
-            }
+            self.start_workers();
         }
         self.inner.wake.notify_all();
+    }
+
+    /// Starts the workers.
+    fn start_workers(&self) {
+        let mut threads = lock(&self.inner.threads);
+        for i in 0..self.inner.workers {
+            let a = self.clone();
+            match std::thread::Builder::new()
+                .name(format!("akit-acme-{i}"))
+                .spawn(move || a.work())
+            {
+                Ok(t) => threads.push(t),
+                Err(e) => self.log(&format!("starting a worker: {e}")),
+            }
+        }
+    }
+
+    /// Stops serving the certificates of names it no longer manages. The state's lock is held.
+    fn prune_certs(&self, st: &State) {
+        let certs = self.inner.certs.get();
+        let kept = certs
+            .iter()
+            .filter(|(n, _)| st.names.contains_key(*n))
+            .map(|(n, c)| (n.clone(), c.clone()))
+            .collect();
+        self.inner.certs.set(kept);
     }
 
     /// The names it manages, sorted.
@@ -628,6 +684,9 @@ impl Acme {
         for t in threads {
             let _ = t.join();
         }
+        if let Some(od) = &self.inner.on_demand {
+            od.close();
+        }
         self.inner.ocsp.close();
     }
 
@@ -639,6 +698,7 @@ impl Acme {
             if st.closed {
                 return;
             }
+            let idle = self.drop_idle(&mut st);
             let now = Instant::now();
             let due = st
                 .names
@@ -654,9 +714,16 @@ impl Acme {
                     st = lock(&self.inner.state);
                 }
                 other => {
-                    let wait = other.map_or(IDLE_WAIT, |(_, m)| {
+                    let mut wait = other.map_or(IDLE_WAIT, |(_, m)| {
                         m.due.saturating_duration_since(now).min(IDLE_WAIT)
                     });
+                    if let Some(t) = idle {
+                        // At least a millisecond: the on-demand clock may run ahead in tests.
+                        wait = wait.min(
+                            t.saturating_duration_since(now)
+                                .max(Duration::from_millis(1)),
+                        );
+                    }
                     st = self
                         .inner
                         .wake
@@ -687,8 +754,23 @@ impl Acme {
         }
     }
 
-    /// Records how a run of `name` went: serves its certificate, and sets when it is next due.
+    /// Records how a run of `name` went: serves its certificate, and sets when it is next due;
+    /// and answers the handshakes waiting for it, whether or not it is still on demand.
     fn settle(&self, name: &str, r: Result<Stored, String>) {
+        let err = r.as_ref().err().cloned();
+        self.settle_managed(name, r);
+        if let Some(od) = &self.inner.on_demand {
+            let stopped = self.inner.stop.load(Ordering::Acquire);
+            let r = self.certificate(name).ok_or_else(|| match err {
+                _ if stopped => OnDemandError::Stopped,
+                Some(e) => OnDemandError::Failed(e),
+                None => OnDemandError::Failed("dropped".to_owned()),
+            });
+            od.finish(name, &r);
+        }
+    }
+
+    fn settle_managed(&self, name: &str, r: Result<Stored, String>) {
         let mut st = lock(&self.inner.state);
         let closed = st.closed;
         let (base, max) = (
@@ -745,12 +827,25 @@ impl Acme {
                         Served {
                             key: stored.key,
                             staple,
+                            used: m.on_demand.clone(),
                         },
                     );
                     self.inner.certs.set(certs);
                 }
             }
             Err(_) if closed => {}
+            Err(e) if m.on_demand.is_some() && self.certificate(name).is_none() => {
+                // A name taken on during a handshake whose first certificate fails is dropped,
+                // rather than tried again for ever; the next handshake may take it on again.
+                st.names.remove(name);
+                if let Some(od) = &self.inner.on_demand {
+                    od.release();
+                }
+                drop(st);
+                self.log(&format!("{name}: {e}; dropped"));
+                self.inner.wake.notify_all();
+                return;
+            }
             Err(e) => {
                 m.failures = m.failures.saturating_add(1);
                 let wait = backoff(base, max, m.failures);

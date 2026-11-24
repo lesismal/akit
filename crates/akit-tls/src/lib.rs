@@ -45,6 +45,11 @@
 //!   the certificates from files that name a responder, fetched off the I/O threads and stapled
 //!   (see [`ocsp`](crate::ocsp) for which files' are).
 //!
+//! - **On-demand TLS** (I34, [`Acme::on_demand`]): a listener whose `tls.on_demand` is set has a
+//!   certificate obtained during the handshake for a name neither its files nor its `tls.acme`
+//!   cover, when `acme.on_demand.ask` allows it; the handshake waits for it through akio-tls's
+//!   `CertDone`, without holding its I/O thread, at most `acme.on_demand.timeout`.
+//!
 //! - **Metrics** (I37): what each certificate is for and when it expires ([`CertificateInfo`]),
 //!   for `fit_tls_certificate_not_after_seconds`.
 //! - **Upstream TLS** (I54, [`UpstreamTls`]): an `h2` upstream's `tls_ca_file`, and its client
@@ -65,8 +70,9 @@ mod upstream;
 mod watch;
 
 pub use acme::{
-    ACME_CHALLENGE_PREFIX, ACME_TLS_ALPN, Acme, DEFAULT_RETRY_BASE, DEFAULT_RETRY_MAX, Log,
-    MAX_NAMES,
+    ACME_CHALLENGE_PREFIX, ACME_TLS_ALPN, ASK_BURST, ASK_EVERY, Acme, DEFAULT_RETRY_BASE,
+    DEFAULT_RETRY_MAX, Log, MAX_ASKS, MAX_NAMES, MAX_REFUSED, MAX_WAITERS, OnDemandError,
+    REFUSED_FOR, Waiter,
 };
 pub use ocsp::{Ocsp, Staple};
 
@@ -229,11 +235,42 @@ pub struct ListenerTls {
     ca_sums: Vec<Sum>,
 }
 
-/// A listener's ACME names and their manager.
+/// A listener's ACME names and their manager; and, with `tls.on_demand` and
+/// `acme.on_demand`, how long a handshake waits for a name taken on.
 #[derive(Clone)]
 struct ListenerAcme {
     acme: Acme,
     names: Arc<[String]>,
+    on_demand: Option<std::time::Duration>,
+}
+
+/// The handshake time added to `acme.on_demand.timeout` on a listener taking names on: akio's
+/// default handshake timeout.
+const ON_DEMAND_HANDSHAKE_EXTRA: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// What a handshake gets: a certificate (or none), or a name to take on demand.
+enum Pick {
+    Key(Option<CertifiedKey>),
+    OnDemand(String),
+}
+
+/// A handshake waiting for a certificate on demand: akio-tls's answer.
+struct Handshake(CertDone);
+
+impl Waiter for Handshake {
+    fn answer(self: Box<Self>, r: Result<CertifiedKey, OnDemandError>) {
+        match r {
+            Ok(k) => self.0.complete(k),
+            Err(OnDemandError::Refused | OnDemandError::BadName | OnDemandError::Off) => {
+                self.0.fail(CertAlert::UnrecognizedName);
+            }
+            Err(_) => self.0.fail(CertAlert::InternalError),
+        }
+    }
+
+    fn abandoned(&self) -> bool {
+        self.0.is_abandoned()
+    }
 }
 
 impl fmt::Debug for ListenerTls {
@@ -241,6 +278,7 @@ impl fmt::Debug for ListenerTls {
         f.debug_struct("ListenerTls")
             .field("certs", &self.certs)
             .field("acme", &self.acme.as_ref().map(|a| &a.names))
+            .field("on_demand", &self.acme.as_ref().and_then(|a| a.on_demand))
             .field("client_auth", &self.roots.as_ref().map(|(_, m)| m))
             .field("alpn", &self.alpn)
             .field("h3", &self.h3)
@@ -282,7 +320,7 @@ impl ListenerTls {
                     .map_err(|msg| Error::new(&at, msg))?,
             );
         }
-        if keys.is_empty() && tls.acme.is_empty() {
+        if keys.is_empty() && tls.acme.is_empty() && !tls.on_demand {
             // akit-config gives such a tls its routes' host names (auto_https, I33), or refuses
             // it: only a tls built by hand gets here.
             return Err(Error::new(
@@ -314,21 +352,27 @@ impl ListenerTls {
             roots = Some((r, ca.mode));
         }
         let ocsp = acme.map(|a| a.ocsp().clone());
+        let on_demand = acme
+            .filter(|_| tls.on_demand)
+            .and_then(Acme::on_demand_timeout);
         let acme = match acme {
-            Some(a) if !tls.acme.is_empty() => Some(ListenerAcme {
+            Some(a) if !tls.acme.is_empty() || on_demand.is_some() => Some(ListenerAcme {
                 acme: a.clone(),
                 names: tls
                     .acme
                     .iter()
                     .map(|n| n.trim_end_matches('.').to_ascii_lowercase())
                     .collect(),
+                on_demand,
             }),
             _ => None,
         };
         let mut alpn = alpn(protocols);
         // Last, so that only a client offering it alone, as a CA checking a TLS-ALPN-01
         // challenge does, negotiates it (fit's).
-        if !tls.acme.is_empty() && acme.as_ref().is_none_or(|a| a.acme.answers_tls_alpn()) {
+        if (!tls.acme.is_empty() || tls.on_demand)
+            && acme.as_ref().is_none_or(|a| a.acme.answers_tls_alpn())
+        {
             alpn.push(ACME_TLS_ALPN);
         }
         let t = ListenerTls {
@@ -395,18 +439,46 @@ impl ListenerTls {
     }
 
     pub(crate) fn get_hello(&self, hello: &certs::Hello<'_>) -> Option<CertifiedKey> {
-        if let Some(a) = &self.acme {
-            if let [p] = hello.alpn {
-                if *p == ACME_TLS_ALPN.as_bytes() {
-                    let name = hello
-                        .name
-                        .map(|n| n.trim_end_matches('.').to_ascii_lowercase())?;
-                    if !a.names.contains(&name) {
-                        return None;
-                    }
-                    return a.acme.alpn_challenge(&name);
+        match self.pick(hello) {
+            Pick::Key(k) => k,
+            Pick::OnDemand(_) => None,
+        }
+    }
+
+    /// Answers `done` with the certificate a handshake gets, as [`get`](Self::get), but for a
+    /// name it takes on demand (`tls.on_demand`, fit's `Certs.GetCertificate`): one neither its
+    /// `tls.acme` lists nor its files have, which [`Acme::on_demand`] answers, now or later.
+    /// Never blocks.
+    pub fn resolve(&self, hello: &ClientHelloInfo<'_>, done: CertDone) {
+        match self.pick(&certs::Hello::from(hello)) {
+            Pick::Key(Some(k)) => done.complete(k),
+            Pick::Key(None) => done.fail(CertAlert::UnrecognizedName),
+            Pick::OnDemand(name) => match &self.acme {
+                Some(a) => a.acme.on_demand(&name, Box::new(Handshake(done))),
+                None => done.fail(CertAlert::UnrecognizedName),
+            },
+        }
+    }
+
+    fn pick(&self, hello: &certs::Hello<'_>) -> Pick {
+        let Some(a) = &self.acme else {
+            return Pick::Key(self.files_cert(hello));
+        };
+        if let [p] = hello.alpn {
+            if *p == ACME_TLS_ALPN.as_bytes() {
+                let Some(name) = hello
+                    .name
+                    .map(|n| n.trim_end_matches('.').to_ascii_lowercase())
+                else {
+                    return Pick::Key(None);
+                };
+                if !a.names.contains(&name) && a.on_demand.is_none() {
+                    return Pick::Key(None);
                 }
+                return Pick::Key(a.acme.alpn_challenge(&name));
             }
+        }
+        {
             let name = hello
                 .name
                 .map(|n| n.trim_end_matches('.').to_ascii_lowercase());
@@ -417,10 +489,20 @@ impl ListenerTls {
             };
             if let Some(n) = name.filter(|n| a.names.contains(n)) {
                 if let Some(k) = a.acme.certificate(&n) {
-                    return Some(k);
+                    return Pick::Key(Some(k));
                 }
             }
         }
+        if a.on_demand.is_some() {
+            if let Some(n) = hello.name.filter(|n| !n.is_empty() && !self.certs.has(n)) {
+                return Pick::OnDemand(n.to_owned());
+            }
+        }
+        Pick::Key(self.files_cert(hello))
+    }
+
+    /// The certificate from files a handshake gets, with its OCSP response.
+    fn files_cert(&self, hello: &certs::Hello<'_>) -> Option<CertifiedKey> {
         let i = self.certs.choose(hello)?;
         if self.staples.is_empty() {
             return self.certs.key(i).cloned();
@@ -446,6 +528,8 @@ impl ListenerTls {
     pub fn same_config(&self, other: &ListenerTls) -> bool {
         self.alpn == other.alpn
             && self.h3 == other.h3
+            && self.acme.as_ref().and_then(|a| a.on_demand)
+                == other.acme.as_ref().and_then(|a| a.on_demand)
             && self.roots.as_ref().map(|(_, m)| m) == other.roots.as_ref().map(|(_, m)| m)
             && self.ca_sums == other.ca_sums
     }
@@ -461,6 +545,13 @@ impl ListenerTls {
             let mut b = ServerConfig::builder_with_resolver(manager.clone())
                 .alpn(alpn)
                 .session_tickets(true);
+            if let Some(t) = self.acme.as_ref().and_then(|a| a.on_demand) {
+                // A handshake waits for its certificate on demand (akio's ADR-098): both
+                // timeouts raised, as akio-tls asks.
+                b = b
+                    .cert_resolver_timeout(t)
+                    .handshake_timeout(Some(t.saturating_add(ON_DEMAND_HANDSHAKE_EXTRA)));
+            }
             if tls13_only {
                 b = b.tls13_only(true);
             }
@@ -510,10 +601,7 @@ pub fn server_configs(tls: &Tls, protocols: &[Protocol]) -> Result<ServerConfigs
 /// call.
 impl CertResolver for ListenerTls {
     fn resolve(&self, hello: &ClientHelloInfo<'_>, done: CertDone) {
-        match self.get(hello) {
-            Some(k) => done.complete(k),
-            None => done.fail(CertAlert::UnrecognizedName),
-        }
+        ListenerTls::resolve(self, hello, done);
     }
 }
 
@@ -581,6 +669,7 @@ mod tests {
             client_auth: None,
             max_version: akit_config::TlsVersion::Tls13,
             acme: vec!["A.akit.test".into()],
+            on_demand: false,
         };
         let t = ListenerTls::load_with(&tls, &[Protocol::Http11, Protocol::H2], Some(&a))
             .unwrap_or_else(|e| panic!("{e}"));
