@@ -458,7 +458,7 @@ pub fn compile(
                         .iter()
                         .enumerate()
                         .map(|(i, r)| {
-                            if r.listeners.is_empty() || r.listeners.contains(&li.name) {
+                            if serves(li, r) {
                                 l.route(&li.name, &metrics_name(r.name.as_deref(), i))
                                     .unwrap_or(NO_SLOT)
                             } else {
@@ -475,7 +475,8 @@ pub fn compile(
     if let Some(l) = lease {
         modules.push_cleanup(METRICS, move || drop(l));
     }
-    // Built here, not per request (rule 12). A route with no listeners serves on every one.
+    // Built here, not per request (rule 12). A route with no listeners serves on every one
+    // ([`serves`]).
     let routers = config
         .listeners
         .iter()
@@ -484,7 +485,7 @@ pub fn compile(
                 routes
                     .iter()
                     .enumerate()
-                    .filter(|(_, r)| r.listeners.is_empty() || r.listeners.contains(&l.name))
+                    .filter(|(_, r)| serves(l, r))
                     .map(|(i, r)| akit_router::Route {
                         hosts: r.host.clone(),
                         paths: r.path.clone(),
@@ -511,6 +512,12 @@ pub fn compile(
         holds: AtomicUsize::new(0),
         orphaned: AtomicBool::new(false),
     })
+}
+
+/// Whether the route `r` serves on the listener `l`: on every one when it names none, but for a
+/// listener that redirects to HTTPS (`auto_https`, I33), which serves no routes.
+fn serves(l: &Listener, r: &CompiledRoute) -> bool {
+    l.redirect_https == 0 && (r.listeners.is_empty() || r.listeners.contains(&l.name))
 }
 
 /// The error of a module at `path` (a route's handler or one of its middleware) that failed to

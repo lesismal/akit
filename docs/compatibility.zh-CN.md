@@ -152,7 +152,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 167 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 172 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -160,7 +160,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`access_log`](#fields-access-log) | 14 | 7 | 7 |
 | [`acme`](#fields-acme) | 43 | 9 | 34 |
 | [`admin`](#fields-admin) | 105 | 6 | 99 |
-| [`auto_https`](#fields-auto-https) | 5 | 0 | 5 |
+| [`auto_https`](#fields-auto-https) | 5 | 5 | 0 |
 | [`bittorrent`](#fields-bittorrent) | 160 | 0 | 160 |
 | [`engine`](#fields-engine) | 11 | 0 | 11 |
 | [`http.handlers/bt_publish`](#fields-http-handlers-bt-publish) | 3 | 0 | 3 |
@@ -277,7 +277,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 31 | 7 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **合计** | 3821 | 167 | 3654 |
+| **合计** | 3821 | 172 | 3649 |
 
 <a id="fields-access"></a>
 
@@ -480,11 +480,11 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
-| `auto_https` | `object` | 尚不支持（not supported yet） |
-| `auto_https.disable` | `boolean` | 尚不支持（not supported yet） |
-| `auto_https.disable_redirects` | `boolean` | 尚不支持（not supported yet） |
-| `auto_https.http_port` | `integer` | 尚不支持（not supported yet） |
-| `auto_https.https_port` | `integer` | 尚不支持（not supported yet） |
+| `auto_https` | `object` | 已支持 |
+| `auto_https.disable` | `boolean` | 已支持 |
+| `auto_https.disable_redirects` | `boolean` | 已支持 |
+| `auto_https.http_port` | `integer` | 已支持 |
+| `auto_https.https_port` | `integer` | 已支持 |
 
 <a id="fields-bittorrent"></a>
 

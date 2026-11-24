@@ -92,11 +92,12 @@ fn defaults() {
 
 #[test]
 fn not_supported_yet_is_not_wrong() {
-    // fit's JSON template, as written out, with a proxy param akit does not read yet.
+    // fit's JSON template, as written out, with a proxy param akit does not read yet. Its empty
+    // tls gets the routes' host names (auto_https).
     let e = errs(
         r#"{"schema_version": 1,
             "listeners": [{"name": "web", "address": ":8080", "protocols": ["http/1.1", "h2", "h3"], "tls": {}}],
-            "routes": [{"name": "hello", "middleware": [{"module": "compress"}], "handler": {"module": "proxy", "params": {"upstream": "app", "retry": {}}}},
+            "routes": [{"name": "hello", "match": {"host": ["www.example.com"]}, "middleware": [{"module": "compress"}], "handler": {"module": "proxy", "params": {"upstream": "app", "retry": {}}}},
                        {"access": {}, "handler": {"module": "respond"}}],
             "upstreams": [{"name": "app", "addresses": ["127.0.0.1:9000"], "tls_server_name": "x"}]}"#,
     );
@@ -105,18 +106,13 @@ fn not_supported_yet_is_not_wrong() {
     assert_eq!(
         paths,
         [
-            "listeners[0].tls",
             "routes[0].middleware[0].module",
             "routes[0].handler.params.retry",
             "routes[1].access",
             "upstreams[0].tls_server_name",
         ]
     );
-    assert_eq!(
-        e.as_slice()[0].msg,
-        "not supported yet: a tls without certificates, whose certificates are obtained with ACME for its routes' host names (auto_https)"
-    );
-    assert_eq!(e.as_slice()[2].msg, "not supported yet");
+    assert_eq!(e.as_slice()[1].msg, "not supported yet");
 }
 
 #[test]
@@ -264,8 +260,6 @@ fn tls_fields_akit_lacks_are_not_supported_yet() {
             &format!(r#"{CERT}, "max_version": "1.2""#),
             "listeners[0].tls.max_version",
         ),
-        // No certificates: fit obtains them with ACME for the routes' names.
-        ("", "listeners[0].tls"),
     ] {
         let e = errs(&format!(
             r#"{{"listeners": [{{"name": "web", "address": ":443", "tls": {{{tls}}}}}]}}"#
@@ -274,13 +268,6 @@ fn tls_fields_akit_lacks_are_not_supported_yet() {
         let paths: Vec<&str> = e.as_slice().iter().map(|e| e.path.as_str()).collect();
         assert_eq!(paths, [path], "{tls}");
     }
-}
-
-#[test]
-fn no_listeners_is_https_by_default_in_fit() {
-    let e = errs(r#"{"routes": [{"handler": {"module": "respond"}}]}"#);
-    assert!(e.only_not_supported_yet(), "{e}");
-    assert!(e.as_slice()[0].msg.contains("auto_https"));
 }
 
 #[test]

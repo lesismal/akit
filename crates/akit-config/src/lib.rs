@@ -19,6 +19,7 @@
 //! Reading a file blocks: this is control plane code, never called on an I/O thread
 //! (rules.md rule 1).
 
+mod auto_https;
 mod conf;
 mod decode;
 pub mod duration;
@@ -30,6 +31,10 @@ mod yaml;
 
 use std::path::{Path, PathBuf};
 
+pub use auto_https::{
+    AUTO_HTTP_LISTENER, AUTO_HTTPS_LISTENER, AutoHttps, DEFAULT_HTTP_PORT, DEFAULT_HTTPS_PORT,
+    auto_https_name,
+};
 pub use error::{Error, Errors, NOT_SUPPORTED_YET};
 pub use json::MAX_DEPTH;
 pub use model::{

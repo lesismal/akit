@@ -84,7 +84,7 @@ use akio::tls::{
     RootCerts, ServerConfig,
 };
 use akio_crypto::hash::Sha256;
-use akit_config::{ClientAuthMode, NOT_SUPPORTED_YET, Protocol, Tls};
+use akit_config::{ClientAuthMode, Protocol, Tls};
 
 /// The largest certificate, key or authority file read, as fit's `tlsmgr.MaxCertFileBytes`.
 pub const MAX_CERT_FILE_BYTES: u64 = 1 << 20;
@@ -95,7 +95,7 @@ pub const MAX_CERT_FILE_BYTES: u64 = 1 << 20;
 pub struct Error {
     /// The path of what failed, under `tls`.
     pub path: String,
-    /// What is wrong; starts with [`NOT_SUPPORTED_YET`] for what fit serves and akit not yet.
+    /// What is wrong; starts with [`akit_config::NOT_SUPPORTED_YET`] for what fit serves and akit not yet.
     pub msg: String,
 }
 
@@ -279,10 +279,11 @@ impl ListenerTls {
             );
         }
         if keys.is_empty() && tls.acme.is_empty() {
-            // akit-config refuses a tls without certificates or ACME names (fit's auto_https).
+            // akit-config gives such a tls its routes' host names (auto_https, I33), or refuses
+            // it: only a tls built by hand gets here.
             return Err(Error::new(
-                "certificates",
-                format!("{NOT_SUPPORTED_YET}: a tls without certificates"),
+                "",
+                "a certificate, a name for acme or on_demand is needed",
             ));
         }
         let certs = Certs::new(keys)

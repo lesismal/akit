@@ -175,7 +175,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 167 supported.
+3821 fields in 121 sections, at fit `7daee573`; 172 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -183,7 +183,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`access_log`](#fields-access-log) | 14 | 7 | 7 |
 | [`acme`](#fields-acme) | 43 | 9 | 34 |
 | [`admin`](#fields-admin) | 105 | 6 | 99 |
-| [`auto_https`](#fields-auto-https) | 5 | 0 | 5 |
+| [`auto_https`](#fields-auto-https) | 5 | 5 | 0 |
 | [`bittorrent`](#fields-bittorrent) | 160 | 0 | 160 |
 | [`engine`](#fields-engine) | 11 | 0 | 11 |
 | [`http.handlers/bt_publish`](#fields-http-handlers-bt-publish) | 3 | 0 | 3 |
@@ -300,7 +300,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 31 | 7 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 167 | 3654 |
+| **Total** | 3821 | 172 | 3649 |
 
 <a id="fields-access"></a>
 
@@ -503,11 +503,11 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `auto_https` | `object` | not supported yet |
-| `auto_https.disable` | `boolean` | not supported yet |
-| `auto_https.disable_redirects` | `boolean` | not supported yet |
-| `auto_https.http_port` | `integer` | not supported yet |
-| `auto_https.https_port` | `integer` | not supported yet |
+| `auto_https` | `object` | supported |
+| `auto_https.disable` | `boolean` | supported |
+| `auto_https.disable_redirects` | `boolean` | supported |
+| `auto_https.http_port` | `integer` | supported |
+| `auto_https.https_port` | `integer` | supported |
 
 <a id="fields-bittorrent"></a>
 

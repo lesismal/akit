@@ -126,7 +126,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I30 | 证书管理与存储 | I09 | done |
 | I31 | ACME I：账户、订单、HTTP-01 | I30 | done |
 | I32 | ACME II：TLS-ALPN-01、续期、OCSP | I31 | done |
-| I33 | 默认 HTTPS | I32 | todo |
+| I33 | 默认 HTTPS | I32 | done |
 | I34 | 按需 TLS | I33, A2 | todo |
 | I35 | 主动健康检查 | I20 | done |
 | I36 | 负载均衡 v2 | I19 | done |
@@ -533,6 +533,8 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 - **做什么**：除非另有配置，配置中的每个主机名都获得证书；HTTP 跳转到 HTTPS；fit 的默认值和关闭选项。
 - **完成标准**：只写了主机名的配置能针对 Pebble 提供 HTTPS。
 - **涉及**：`akit-tls`、`akit-runtime`。
+- **已完成**：fit 的 `auto_https` 在 `akit-config` 中实现（读配置时生成或补全监听器），重定向在 `akit-listener` 的分发器中；
+  只写一个主机名的配置通过生成的 `http` 监听器上的 HTTP-01 从 Pebble 获取证书，并在 `https` 上服务。
 
 ### I34 按需 TLS
 
