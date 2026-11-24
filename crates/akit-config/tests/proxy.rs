@@ -46,6 +46,42 @@ fn reads() {
 }
 
 #[test]
+fn tunnel_idle_timeout() {
+    // I49: fit's 10 minutes when left out or 0.
+    for (params, want) in [
+        (r#"{"upstream": "app"}"#, 600_000),
+        (
+            r#"{"upstream": "app", "tunnel_idle_timeout": "0s"}"#,
+            600_000,
+        ),
+        (
+            r#"{"upstream": "app", "tunnel_idle_timeout": "300ms"}"#,
+            300,
+        ),
+    ] {
+        let c = from_json(&config(params), None).unwrap();
+        let Handler::Proxy(p) = &c.routes[0].handler else {
+            unreachable!()
+        };
+        assert_eq!(p.tunnel_idle_timeout.as_millis(), want, "{params}");
+    }
+    assert_eq!(
+        akit_config::DEFAULT_TUNNEL_IDLE_TIMEOUT,
+        std::time::Duration::from_secs(600)
+    );
+    let e = from_json(
+        &config(r#"{"upstream": "app", "tunnel_idle_timeout": "soon"}"#),
+        None,
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(
+        e.contains(r#"routes[0].handler.params.tunnel_idle_timeout: "soon" is not a duration"#),
+        "{e}"
+    );
+}
+
+#[test]
 fn errors() {
     for (params, want) in [
         (
@@ -81,7 +117,6 @@ fn not_supported_yet() {
         r#""failover": "app""#,
         r#""mirror": {"upstream": "app"}"#,
         r#""retry": {}"#,
-        r#""tunnel_idle_timeout": "1m""#,
         r#""splice_uploads": false"#,
     ] {
         let name = field.split('"').nth(1).unwrap();

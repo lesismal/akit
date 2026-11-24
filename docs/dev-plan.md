@@ -150,7 +150,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I46 | Weighted services, mirroring, failover | I45 | todo |
 | I47 | Compression | I16 | todo |
 | I48 | The rest of fit's middlewares | I40 | todo |
-| I49 | WebSocket proxying | I17 | todo |
+| I49 | WebSocket proxying | I17 | done |
 | I50 | gRPC proxying | I18 | todo |
 | I51 | TCP and UDP proxying | I05 | done |
 | I51b | The eBPF sockmap relay | I51 | todo |
@@ -223,7 +223,7 @@ commit and result.
 | Forward auth | I43 | no | no (built, not measured) | Same-run A/B on the proxy scenario of a route with `forward_auth` against a fast local auth service, against the route without it, over HTTP/1.1 and h2: the cost of the check (the auth request's fields built, a suspension, one exchange on the auth upstream's pool, the resume on the answer's I/O thread); latency and memory with thousands of requests waiting on a slow auth service, and the fast route's latency meanwhile. |
 | Middlewares (retries and the rest) | I44–I48 | no | no (not built yet) | I56 benchmarks every middleware; same-run A/B of each on the proxy scenario. |
 | Compression | I47 | no | no (not built yet) | Against fit, each encoding, as I47 asks. |
-| WebSocket and gRPC proxying | I49, I50 | no | no (not built yet) | Messages a second and memory per connection against fit. |
+| WebSocket and gRPC proxying | I49, I50 | no | no (I49 built, not measured; I50 not built yet) | Against fit: WebSocket messages a second (small, echoed) and bytes a second (large) through akit from HTTP/1.1, h2 and h3 clients, memory per open WebSocket (idle, and with 64 KiB pending each way), and handshakes a second (a key generated, the upstream connection leaving the pool); I50: gRPC calls a second. |
 | TCP and UDP proxying, SNI routing, many protocols on one port | I51–I53 | no | no (I51 built, not measured; I52, I53 not built yet) | Against fit and nginx's `stream`, as I51 asks: TCP throughput (fit's `BenchmarkTCPProxy`, 256 KB echoed at a time, direct and through akit), connections a second, memory per idle connection; UDP datagrams a second and sessions at once; the per-service idle sweep on akit's timer thread with 10,000 connections (the stopgap for akio A78); the cost of sniffing on a shared port (I53). |
 | Response cache | I67, I68 | no | no (not built yet) | Hits from memory and disk against fit. |
 | WASM plugins | I71, I72 | no | no (not built yet) | A/B of a no-op plugin against none. |
@@ -711,6 +711,7 @@ Split from I07 so that the half that needs no config model runs beside I02.
 - **Done when**: end-to-end tests with slow peers pass on each entry point.
 - **Touches**: `akit-proxy`.
 - **Read**: `akio-ws`.
+- **Built on**: akio API requests A93 and A94 (ADR-113), added to akio by this iteration.
 
 ### I50 gRPC proxying
 

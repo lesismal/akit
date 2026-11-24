@@ -9,6 +9,7 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
+akio-crypto = { workspace = true }
 akio-http = { workspace = true }
 akit-config = { workspace = true }
 akit-observe = { workspace = true }
@@ -16,7 +17,6 @@ akit-runtime = { workspace = true }
 
 [dev-dependencies]
 akio = { workspace = true }
-akio-crypto = { workspace = true }
 # For akit-listener's test support, which the TLS tests share (its HTTP/3 client, I10).
 akio-h3 = { workspace = true }
 akio-quic = { workspace = true }

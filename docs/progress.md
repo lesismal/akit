@@ -11,14 +11,63 @@ done and where the work differs from the plan.
 | | |
 | --- | --- |
 | Last updated | 2026-11-24 |
-| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I24 and I17b done (I18b waits on akio); M2's I26–I33 and I35–I37 and M3's I39–I43 and I51 done early. |
-| akio | `4f7169c4` on akio's `main` (`1.0.0-rc.1`, with A1–A8, A11, A13, A16–A21, A36–A38 and A63–A65), pinned by `rev` in `Cargo.toml` |
+| Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I24 and I17b done (I18b waits on akio); M2's I26–I33 and I35–I37 and M3's I39–I43, I49 and I51 done early. |
+| akio | `30cdf93a` on akio's branch `claude/a93-a94-tunnels` (A93, A94, ADR-113), on `main`'s `f6750e93` (`1.0.0-rc.1`, with A1–A8, A11, A13, A16–A21, A36–A38, A51–A53 and A63–A65), pinned by `rev` in `Cargo.toml` until it is merged onto `main` |
 | fit | the specification; read at `7daee573` for this plan |
-| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept (as fit's `binding.same`: certificate files and ACME names may change), added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication; certificates chosen per handshake as fit's, replaced by a reload or by `-watch-certs` without closing the listener) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; route middleware: `rewrite` (prefixes), `redirect`, `headers`, `rate_limit`, `concurrency_limit`, `body_limit`, `basic_auth` (bcrypt, checked on akio's pool), `client_cert` (mTLS per route) and `forward_auth` (an auth service asked on akio's client, the request suspended meanwhile); the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`, bodies streamed both ways with linked backpressure, trailers both ways, `timeout` and the upstream's `response_timeout`, `response_header_timeout` and `response_idle_timeout`, 504 for timeouts, the upstream request given up whenever the client goes; upstreams over HTTP/1.1, h2c and h2); `limits.max_body_bytes` on every listener (413) and in the proxy, and `limits.write_stall_timeout` (changed by a reload too); access logs in fit's json, text and line formats; upstream pools with fit's nine load balancing policies (round robin, weighted round robin, least connections, random, p2c, and consistent hashing of the client's IP, the path, a header or a cookie) and sticky cookies, passing over addresses taken out by passive health checks (`max_fails`, `fail_timeout`) and by active ones (`health_check`: http and tcp probes); the Admin API on loopback (`GET /config`, by JSON pointer too, `POST /load`, edits by pointer with `PUT`, `PATCH` and `DELETE /config`, `POST /rollback/{n}`, `POST /reload`, each with `If-Match` and all but a rollback with `?dry_run=1`, `GET /versions`; with `token_file`, a bearer token on every request), changes applied as SIGHUP's reloads, one history for both; `run -watch` applying the config's files each time they change (fit's file provider, polled); Prometheus metrics at the Admin API's `GET /metrics` (requests by listener and route with `metrics`, upstreams and backends, certificates, connections, reloads, akio's engine); certificates obtained with ACME through HTTP-01 or TLS-ALPN-01 for the names listeners list in `tls.acme`, kept in a storage and renewed by their lifetime or the CA's renewal information (ARI), their OCSP responses stapled; HTTPS by default (`auto_https`): a config that writes no listeners served on HTTPS with its routes' host names' certificates and on HTTP redirected to it (308), an empty `tls` given its routes' names; the compatibility gate: 80 fixtures, 22 valid, 57 refused only as not supported yet19 validlayer 4 `services` (I51): `tcp` and `udp` listeners proxied to an upstream's addresses, backpressure linked both ways, idle timeouts, `max_conns`, drained after a reload; the compatibility gate: 80 fixtures, 19 valid, 60 refused only as not supported yet, 1 skipped, none failed |
+| What works | `akit run` and `akit validate` with fit's flags and exit codes, configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept (as fit's `binding.same`: certificate files and ACME names may change), added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication; certificates chosen per handshake as fit's, replaced by a reload or by `-watch-certs` without closing the listener) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; route middleware: `rewrite` (prefixes), `redirect`, `headers`, `rate_limit`, `concurrency_limit`, `body_limit`, `basic_auth` (bcrypt, checked on akio's pool), `client_cert` (mTLS per route) and `forward_auth` (an auth service asked on akio's client, the request suspended meanwhile); the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`, bodies streamed both ways with linked backpressure, trailers both ways, `timeout` and the upstream's `response_timeout`, `response_header_timeout` and `response_idle_timeout`, 504 for timeouts, the upstream request given up whenever the client goes; upstreams over HTTP/1.1, h2c and h2); `limits.max_body_bytes` on every listener (413) and in the proxy, and `limits.write_stall_timeout` (changed by a reload too); access logs in fit's json, text and line formats; upstream pools with fit's nine load balancing policies (round robin, weighted round robin, least connections, random, p2c, and consistent hashing of the client's IP, the path, a header or a cookie) and sticky cookies, passing over addresses taken out by passive health checks (`max_fails`, `fail_timeout`) and by active ones (`health_check`: http and tcp probes); the Admin API on loopback (`GET /config`, by JSON pointer too, `POST /load`, edits by pointer with `PUT`, `PATCH` and `DELETE /config`, `POST /rollback/{n}`, `POST /reload`, each with `If-Match` and all but a rollback with `?dry_run=1`, `GET /versions`; with `token_file`, a bearer token on every request), changes applied as SIGHUP's reloads, one history for both; `run -watch` applying the config's files each time they change (fit's file provider, polled); Prometheus metrics at the Admin API's `GET /metrics` (requests by listener and route with `metrics`, upstreams and backends, certificates, connections, reloads, akio's engine); certificates obtained with ACME through HTTP-01 or TLS-ALPN-01 for the names listeners list in `tls.acme`, kept in a storage and renewed by their lifetime or the CA's renewal information (ARI), their OCSP responses stapled; HTTPS by default (`auto_https`): a config that writes no listeners served on HTTPS with its routes' host names' certificates and on HTTP redirected to it (308), an empty `tls` given its routes' names; the compatibility gate: 80 fixtures, 22 valid, 57 refused only as not supported yet19 validlayer 4 `services` (I51): `tcp` and `udp` listeners proxied to an upstream's addresses, backpressure linked both ways, idle timeouts, `max_conns`, drained after a reload; WebSockets proxied (I49) from HTTP/1.1 upgrades and HTTP/2 and HTTP/3 extended CONNECTs to HTTP/1.1 upstreams, backpressure linked both ways, `tunnel_idle_timeout`; the compatibility gate: 80 fixtures, 19 valid, 60 refused only as not supported yet, 1 skipped, none failed |
 | Next | I18b once akio has A51–A53 and A66 |
-| akio requests | A1–A8, A11, A13, A16–A21, A36–A38 and A63–A65 on akio's main and pinned; A9, A10, A12, A14, A15, A22–A24, A29, A30, A32, A33, A35, A45, A48, A49, A51–A54, A57, A58, A66, A75, A78 and A79 requested ([akio API requests](akio-api-requests.md)) |
+| akio requests | A1–A8, A11, A13, A16–A21, A36–A38 and A63–A65 on akio's main and pinned; A93 and A94 on an akio branch, pinned; A9, A10, A12, A14, A15, A22–A24, A29, A30, A32, A33, A35, A45, A48, A49, A51–A54, A57, A58, A66, A75, A78 and A79 requested ([akio API requests](akio-api-requests.md)) |
 
 ## Log
+
+### 2026-11-24: I49, WebSocket proxying
+
+- Taken early from M3, on akio API requests **A93** and **A94**, which this iteration added to akio
+  (ADR-113, akio branch `claude/a93-a94-tunnels`, commit `30cdf93a`, on akio main `f6750e93`):
+  akio-http's client hands a connection over on `101` (`ClientRequest::upgrade`,
+  `ResponseHandler::on_upgrade`), and a streamed `2xx` to an HTTP/2 extended CONNECT is a tunnel
+  whose halves close separately (HTTP/3's already were). akit pins that commit; the coordinating
+  session merges it onto akio's main with A66 and moves the pin to the merged commit.
+- `akit-proxy`'s `websocket` module, after fit's `handler/proxy/upgrade.go`: an HTTP/1.1 request
+  that asks to switch (`Connection: upgrade` and an `Upgrade` other than `h2c`) goes to the
+  upstream as the upgrade it is; an HTTP/2 or HTTP/3 extended CONNECT for `websocket` as the
+  HTTP/1.1 handshake it stands for (`GET`, a `Sec-WebSocket-Key` of akit's own); one for another
+  protocol is answered 501, and an h2 or h2c upstream, which cannot switch, 502. The fields go up
+  as any proxied request's (forwarding fields, trusted proxies, `Host`), with the address the
+  upstream's balancing and sticky cookie pick.
+- The switch: an HTTP/1.1 client's connection is taken over at the handshake
+  (`Context::upgrade_raw`) and gets the upstream's `101` with its fields once the upstream
+  switched; an HTTP/2 or HTTP/3 client gets a streamed `200` with them, without
+  `Sec-WebSocket-Accept`. The upstream's connection leaves the pool (`Exchange::on_upgrade` in
+  `akit-upstream`): its slot is given back at once, so open WebSockets do not fill `max_conns`
+  or `max_pending`, and it counts among the address's connections (`least_conn`) until it closes.
+- The tunnel: bytes go on from the callback that read them; past 64 KiB waiting to go to one side
+  (fit's `tunnelWatermark`) the other side's reads are held (an HTTP/1.1 connection's, an HTTP/2
+  or HTTP/3 stream's `BodyReads`, the upstream connection's) until that side drained. Bytes a
+  client sends before the switch wait, its reads held, up to 64 KiB. A side that ends ends the
+  other after what it sent; a client that goes closes the upstream's connection, or gives the
+  handshake up (its `CancelToken`). `tunnel_idle_timeout` (fit's 10 minutes when left out or 0)
+  closes a tunnel that carried nothing either way, checked on akit's timer thread.
+- Answers that do not switch are the client's: over HTTP/2 and HTTP/3 through the proxy's
+  ordinary relay (streamed past 64 KiB with backpressure), but a `2xx`, which a client would take
+  for an open tunnel, is a 502 and the upstream's connection closed; over HTTP/1.1 written on the
+  connection akit already holds, framed by its length (or by the connection's close), whole up
+  to 64 KiB (a cut one then a 502), streamed past it with backpressure (a cut one cut short in
+  turn). A handshake that gets no answer is fit's 502, 503 or 504.
+- Config: the proxy's `tunnel_idle_timeout` (`akit_config::DEFAULT_TUNNEL_IDLE_TIMEOUT`).
+- Tests (fit's `websocket_test.go`, `websocket_ext_test.go`, `websocket_unix_test.go` and
+  `upgrade_test.go`, ported in `crates/akit-proxy/tests/websocket.rs`): echo with subprotocol and
+  16 MiB both ways at once, refusals and no upstream, the idle timeout, WebSockets leaving the
+  pool, a 64 MiB flood to a client that reads nothing over HTTP/1.1, h2c (its stream window) and
+  HTTP/3 (its stream's reads held), large refusals by length, chunked and close-delimited with
+  the backend kept in rotation, a slow client's small refusal, refusals cut short, a client gone
+  mid-refusal, WebSockets over h2c, h2 and h3 to an akio WebSocket server, and an upstream
+  answering an extended CONNECT without switching.
+- Not done: an HTTP/1.1 WebSocket's access log line (its `101` is written by akit on the
+  connection it took over, not sent through akio's response path, which writes the line); fit's
+  drain of open tunnels on a reload (they run on until they end or idle out; the engine's
+  shutdown closes them).
+- No benchmark (rule 30): what should be measured is in the dev plan's benchmark table.
 
 ### 2026-11-24: I51, TCP and UDP proxying
 

@@ -114,6 +114,7 @@ use akit_observe::metrics::{HistogramSnapshot, UpstreamStats};
 
 /// What cancels a request ([`ClientRequest::cancel_with`]), over HTTP/1.1 and h2 alike.
 pub use akio_http::client::CancelToken;
+pub use akio_http::raw::{RawConn, RawHandler};
 pub use akit_config::{HealthCheck, HealthCheckType, UpstreamProtocol};
 pub use balance::{Balancer, Keys, LoadBalancing};
 pub use h2::{HELD_LIMIT, STREAMS_PER_CONN};
@@ -296,6 +297,17 @@ pub trait Exchange: Send + 'static {
     /// fails, which is then not counted against the address.
     fn gave_up(&self) -> bool {
         false
+    }
+    /// A `101 Switching Protocols` to a request that asked to upgrade (I49; akio's
+    /// [`ResponseHandler::on_upgrade`], ADR-113): returning a handler takes the upstream's
+    /// connection over as a byte stream (its `on_open` gets the [`RawConn`]), and the request is
+    /// over: no other method follows. The connection leaves the pool: the address's slot is
+    /// given back at once, and the connection counts among its
+    /// [`stream_count`](Pool::stream_count) until it closes. `None`, the default: the `101` is
+    /// delivered as a response without a body (`on_head`, `on_end`), its connection closed.
+    fn on_upgrade(&mut self, head: Head) -> Option<Box<dyn RawHandler>> {
+        let _ = head;
+        None
     }
 }
 
@@ -1337,6 +1349,29 @@ impl ResponseHandler for Streamed {
         self.pool.finish_one();
     }
 
+    fn on_upgrade(&mut self, head: &ResponseHead, _conn: &RawConn) -> Option<Box<dyn RawHandler>> {
+        let up = Head {
+            status: head.status,
+            headers: head.headers.clone(),
+        };
+        let h = self.x.on_upgrade(up)?;
+        self.headed = true;
+        self.pool.stats.responses.observe(self.since.elapsed());
+        // Out of the pool, as fit's `Tunneled`: an open tunnel does not hold one of the address's
+        // `max_conns`, and counts as one of its connections until it closes.
+        if let Some(b) = self.pool.backends.get(self.backend) {
+            b.streams.fetch_add(1, Ordering::Relaxed);
+        }
+        self.pool.release(self.backend);
+        self.pool.record(self.backend, false);
+        self.pool.finish_one();
+        Some(Box::new(Tunneled {
+            pool: self.pool.clone(),
+            backend: self.backend,
+            h,
+        }))
+    }
+
     fn on_error(&mut self, e: ClientError) {
         if !self.headed {
             // The time to the failure, as for a response handed over whole.
@@ -1351,6 +1386,35 @@ impl ResponseHandler for Streamed {
         self.pool.record(self.backend, failed);
         self.x.on_error(Error::Client(e));
         self.pool.finish_one();
+    }
+}
+
+/// An upstream connection switched to another protocol ([`Exchange::on_upgrade`]): passes its
+/// bytes to the exchange's handler, and counts as one of its address's connections until it
+/// is dropped (it closed, or akio let it go).
+struct Tunneled {
+    pool: Arc<Inner>,
+    backend: usize,
+    h: Box<dyn RawHandler>,
+}
+
+impl RawHandler for Tunneled {
+    fn on_open(&mut self, conn: &RawConn) {
+        self.h.on_open(conn);
+    }
+    fn on_data(&mut self, conn: &RawConn, data: &[u8]) {
+        self.h.on_data(conn, data);
+    }
+    fn on_close(&mut self) {
+        self.h.on_close();
+    }
+}
+
+impl Drop for Tunneled {
+    fn drop(&mut self) {
+        if let Some(b) = self.pool.backends.get(self.backend) {
+            b.streams.fetch_sub(1, Ordering::Relaxed);
+        }
     }
 }
 

@@ -14,7 +14,7 @@ dependencies = [
 [[package]]
 name = "akio"
 version = "1.0.0-rc.1"
-source = "git+https://github.com/lesismal/akio?rev=4f7169c48399eaa9687787b1ac937f665ad73573#4f7169c48399eaa9687787b1ac937f665ad73573"
+source = "git+https://github.com/lesismal/akio?rev=30cdf93a70062add9be8d9bafdf49fb419b4e8e9#30cdf93a70062add9be8d9bafdf49fb419b4e8e9"
 dependencies = [
  "akio-buf",
  "akio-core",
@@ -29,12 +29,12 @@ dependencies = [
 [[package]]
 name = "akio-brotli"
 version = "1.0.0-rc.1"
-source = "git+https://github.com/lesismal/akio?rev=4f7169c48399eaa9687787b1ac937f665ad73573#4f7169c48399eaa9687787b1ac937f665ad73573"
+source = "git+https://github.com/lesismal/akio?rev=30cdf93a70062add9be8d9bafdf49fb419b4e8e9#30cdf93a70062add9be8d9bafdf49fb419b4e8e9"
 
 [[package]]
 name = "akio-buf"
 version = "1.0.0-rc.1"
-source = "git+https://github.com/lesismal/akio?rev=4f7169c48399eaa9687787b1ac937f665ad73573#4f7169c48399eaa9687787b1ac937f665ad73573"
+source = "git+https://github.com/lesismal/akio?rev=30cdf93a70062add9be8d9bafdf49fb419b4e8e9#30cdf93a70062add9be8d9bafdf49fb419b4e8e9"
 dependencies = [
  "loom",
 ]
@@ -42,7 +42,7 @@ dependencies = [
 [[package]]
 name = "akio-core"
 version = "1.0.0-rc.1"
-source = "git+https://github.com/lesismal/akio?rev=4f7169c48399eaa9687787b1ac937f665ad73573#4f7169c48399eaa9687787b1ac937f665ad73573"
+source = "git+https://github.com/lesismal/akio?rev=30cdf93a70062add9be8d9bafdf49fb419b4e8e9#30cdf93a70062add9be8d9bafdf49fb419b4e8e9"
 dependencies = [
  "akio-buf",
  "akio-log",
@@ -54,7 +54,7 @@ dependencies = [
 [[package]]
 name = "akio-crypto"
 version = "1.0.0-rc.1"
-source = "git+https://github.com/lesismal/akio?rev=4f7169c48399eaa9687787b1ac937f665ad73573#4f7169c48399eaa9687787b1ac937f665ad73573"
+source = "git+https://github.com/lesismal/akio?rev=30cdf93a70062add9be8d9bafdf49fb419b4e8e9#30cdf93a70062add9be8d9bafdf49fb419b4e8e9"
 dependencies = [
  "akio-sys",
 ]
@@ -62,12 +62,12 @@ dependencies = [
 [[package]]
 name = "akio-deflate"
 version = "1.0.0-rc.1"
-source = "git+https://github.com/lesismal/akio?rev=4f7169c48399eaa9687787b1ac937f665ad73573#4f7169c48399eaa9687787b1ac937f665ad73573"
+source = "git+https://github.com/lesismal/akio?rev=30cdf93a70062add9be8d9bafdf49fb419b4e8e9#30cdf93a70062add9be8d9bafdf49fb419b4e8e9"
 
 [[package]]
 name = "akio-ebpf"
 version = "1.0.0-rc.1"
-source = "git+https://github.com/lesismal/akio?rev=4f7169c48399eaa9687787b1ac937f665ad73573#4f7169c48399eaa9687787b1ac937f665ad73573"
+source = "git+https://github.com/lesismal/akio?rev=30cdf93a70062add9be8d9bafdf49fb419b4e8e9#30cdf93a70062add9be8d9bafdf49fb419b4e8e9"
 dependencies = [
  "akio-core",
  "akio-sys",
@@ -76,7 +76,7 @@ dependencies = [
 [[package]]
 name = "akio-epoll"
 version = "1.0.0-rc.1"
-source = "git+https://github.com/lesismal/akio?rev=4f7169c48399eaa9687787b1ac937f665ad73573#4f7169c48399eaa9687787b1ac937f665ad73573"
+source = "git+https://github.com/lesismal/akio?rev=30cdf93a70062add9be8d9bafdf49fb419b4e8e9#30cdf93a70062add9be8d9bafdf49fb419b4e8e9"
 dependencies = [
  "akio-buf",
  "akio-core",
@@ -88,7 +88,7 @@ dependencies = [
 [[package]]
 name = "akio-h3"
 version = "1.0.0-rc.1"
-source = "git+https://github.com/lesismal/akio?rev=4f7169c48399eaa9687787b1ac937f665ad73573#4f7169c48399eaa9687787b1ac937f665ad73573"
+source = "git+https://github.com/lesismal/akio?rev=30cdf93a70062add9be8d9bafdf49fb419b4e8e9#30cdf93a70062add9be8d9bafdf49fb419b4e8e9"
 dependencies = [
  "akio",
  "akio-core",
@@ -99,7 +99,7 @@ dependencies = [
 [[package]]
 name = "akio-http"
 version = "1.0.0-rc.1"
-source = "git+https://github.com/lesismal/akio?rev=4f7169c48399eaa9687787b1ac937f665ad73573#4f7169c48399eaa9687787b1ac937f665ad73573"
+source = "git+https://github.com/lesismal/akio?rev=30cdf93a70062add9be8d9bafdf49fb419b4e8e9#30cdf93a70062add9be8d9bafdf49fb419b4e8e9"
 dependencies = [
  "akio",
  "akio-brotli",
@@ -117,7 +117,7 @@ dependencies = [
 [[package]]
 name = "akio-log"
 version = "1.0.0-rc.1"
-source = "git+https://github.com/lesismal/akio?rev=4f7169c48399eaa9687787b1ac937f665ad73573#4f7169c48399eaa9687787b1ac937f665ad73573"
+source = "git+https://github.com/lesismal/akio?rev=30cdf93a70062add9be8d9bafdf49fb419b4e8e9#30cdf93a70062add9be8d9bafdf49fb419b4e8e9"
 dependencies = [
  "akio-regex",
 ]
@@ -125,12 +125,12 @@ dependencies = [
 [[package]]
 name = "akio-pool"
 version = "1.0.0-rc.1"
-source = "git+https://github.com/lesismal/akio?rev=4f7169c48399eaa9687787b1ac937f665ad73573#4f7169c48399eaa9687787b1ac937f665ad73573"
+source = "git+https://github.com/lesismal/akio?rev=30cdf93a70062add9be8d9bafdf49fb419b4e8e9#30cdf93a70062add9be8d9bafdf49fb419b4e8e9"
 
 [[package]]
 name = "akio-quic"
 version = "1.0.0-rc.1"
-source = "git+https://github.com/lesismal/akio?rev=4f7169c48399eaa9687787b1ac937f665ad73573#4f7169c48399eaa9687787b1ac937f665ad73573"
+source = "git+https://github.com/lesismal/akio?rev=30cdf93a70062add9be8d9bafdf49fb419b4e8e9#30cdf93a70062add9be8d9bafdf49fb419b4e8e9"
 dependencies = [
  "akio",
  "akio-buf",
@@ -142,12 +142,12 @@ dependencies = [
 [[package]]
 name = "akio-regex"
 version = "1.0.0-rc.1"
-source = "git+https://github.com/lesismal/akio?rev=4f7169c48399eaa9687787b1ac937f665ad73573#4f7169c48399eaa9687787b1ac937f665ad73573"
+source = "git+https://github.com/lesismal/akio?rev=30cdf93a70062add9be8d9bafdf49fb419b4e8e9#30cdf93a70062add9be8d9bafdf49fb419b4e8e9"
 
 [[package]]
 name = "akio-sys"
 version = "1.0.0-rc.1"
-source = "git+https://github.com/lesismal/akio?rev=4f7169c48399eaa9687787b1ac937f665ad73573#4f7169c48399eaa9687787b1ac937f665ad73573"
+source = "git+https://github.com/lesismal/akio?rev=30cdf93a70062add9be8d9bafdf49fb419b4e8e9#30cdf93a70062add9be8d9bafdf49fb419b4e8e9"
 dependencies = [
  "akio-buf",
 ]
@@ -155,12 +155,12 @@ dependencies = [
 [[package]]
 name = "akio-timer"
 version = "1.0.0-rc.1"
-source = "git+https://github.com/lesismal/akio?rev=4f7169c48399eaa9687787b1ac937f665ad73573#4f7169c48399eaa9687787b1ac937f665ad73573"
+source = "git+https://github.com/lesismal/akio?rev=30cdf93a70062add9be8d9bafdf49fb419b4e8e9#30cdf93a70062add9be8d9bafdf49fb419b4e8e9"
 
 [[package]]
 name = "akio-tls"
 version = "1.0.0-rc.1"
-source = "git+https://github.com/lesismal/akio?rev=4f7169c48399eaa9687787b1ac937f665ad73573#4f7169c48399eaa9687787b1ac937f665ad73573"
+source = "git+https://github.com/lesismal/akio?rev=30cdf93a70062add9be8d9bafdf49fb419b4e8e9#30cdf93a70062add9be8d9bafdf49fb419b4e8e9"
 dependencies = [
  "akio-brotli",
  "akio-core",
@@ -174,7 +174,7 @@ dependencies = [
 [[package]]
 name = "akio-uring"
 version = "1.0.0-rc.1"
-source = "git+https://github.com/lesismal/akio?rev=4f7169c48399eaa9687787b1ac937f665ad73573#4f7169c48399eaa9687787b1ac937f665ad73573"
+source = "git+https://github.com/lesismal/akio?rev=30cdf93a70062add9be8d9bafdf49fb419b4e8e9#30cdf93a70062add9be8d9bafdf49fb419b4e8e9"
 dependencies = [
  "akio-core",
  "akio-log",
@@ -185,7 +185,7 @@ dependencies = [
 [[package]]
 name = "akio-ws"
 version = "1.0.0-rc.1"
-source = "git+https://github.com/lesismal/akio?rev=4f7169c48399eaa9687787b1ac937f665ad73573#4f7169c48399eaa9687787b1ac937f665ad73573"
+source = "git+https://github.com/lesismal/akio?rev=30cdf93a70062add9be8d9bafdf49fb419b4e8e9#30cdf93a70062add9be8d9bafdf49fb419b4e8e9"
 dependencies = [
  "akio",
  "akio-buf",
@@ -197,7 +197,7 @@ dependencies = [
 [[package]]
 name = "akio-x509"
 version = "1.0.0-rc.1"
-source = "git+https://github.com/lesismal/akio?rev=4f7169c48399eaa9687787b1ac937f665ad73573#4f7169c48399eaa9687787b1ac937f665ad73573"
+source = "git+https://github.com/lesismal/akio?rev=30cdf93a70062add9be8d9bafdf49fb419b4e8e9#30cdf93a70062add9be8d9bafdf49fb419b4e8e9"
 dependencies = [
  "akio-crypto",
 ]
@@ -205,7 +205,7 @@ dependencies = [
 [[package]]
 name = "akio-zstd"
 version = "1.0.0-rc.1"
-source = "git+https://github.com/lesismal/akio?rev=4f7169c48399eaa9687787b1ac937f665ad73573#4f7169c48399eaa9687787b1ac937f665ad73573"
+source = "git+https://github.com/lesismal/akio?rev=30cdf93a70062add9be8d9bafdf49fb419b4e8e9#30cdf93a70062add9be8d9bafdf49fb419b4e8e9"
 
 [[package]]
 name = "akit"

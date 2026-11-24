@@ -1119,7 +1119,14 @@ pub struct Proxy {
     /// response: one past it before its response began is answered 504, and one whose response
     /// is under way is cut short. None when left out or 0.
     pub timeout: Option<Duration>,
+    /// `tunnel_idle_timeout`: how long a tunnel (a WebSocket joined to its upstream, I49) may
+    /// carry nothing either way before it is closed. [`DEFAULT_TUNNEL_IDLE_TIMEOUT`] when left
+    /// out or 0.
+    pub tunnel_idle_timeout: Duration,
 }
+
+/// fit's `DefaultTunnelIdleTimeout`: a tunnel's silence, when `tunnel_idle_timeout` says none.
+pub const DEFAULT_TUNNEL_IDLE_TIMEOUT: Duration = Duration::from_secs(600);
 
 /// An IP network, as fit's `netip.Prefix`: an address alone is a network of one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1389,17 +1396,16 @@ const STATIC_FIELDS: &[&str] = &[
 // max_cache_bytes and default_type wait on akio API requests A15 and A14; compress (copies
 // compressed in memory) on I47's compression.
 const STATIC_FIT_ONLY: &[&str] = &["max_cache_bytes", "compress", "default_type"];
-const PROXY_FIELDS: &[&str] = &["upstream", "trusted_proxies", "host_header", "timeout"];
-// upstreams, failover and mirror come with I46; retry with I45; tunnel_idle_timeout with I49;
-// splice_uploads (splice(2), which needs unsafe or an akio API) is not planned yet.
-const PROXY_FIT_ONLY: &[&str] = &[
-    "upstreams",
-    "failover",
-    "mirror",
-    "retry",
+const PROXY_FIELDS: &[&str] = &[
+    "upstream",
+    "trusted_proxies",
+    "host_header",
+    "timeout",
     "tunnel_idle_timeout",
-    "splice_uploads",
 ];
+// upstreams, failover and mirror come with I46; retry with I45; splice_uploads (splice(2),
+// which needs unsafe or an akio API) is not planned yet.
+const PROXY_FIT_ONLY: &[&str] = &["upstreams", "failover", "mirror", "retry", "splice_uploads"];
 const UPSTREAM_FIELDS: &[&str] = &[
     "name",
     "addresses",
@@ -3502,6 +3508,7 @@ fn proxy(d: &mut Decoder<'_>, params: Option<&Node>, path: &str, off: usize) -> 
         trusted_proxies: Vec::new(),
         host_header: String::new(),
         timeout: None,
+        tunnel_idle_timeout: DEFAULT_TUNNEL_IDLE_TIMEOUT,
     };
     let upstream_path = crate::error::join_field(path, "upstream");
     let Some(n) = params else {
@@ -3543,6 +3550,15 @@ fn proxy(d: &mut Decoder<'_>, params: Option<&Node>, path: &str, off: usize) -> 
     if let Some(v) = o.take("timeout") {
         // 0, as leaving it out, is no timeout.
         p.timeout = d.duration(v, &o.at("timeout")).filter(|t| !t.is_zero());
+    }
+    if let Some(v) = o.take("tunnel_idle_timeout") {
+        // 0, as leaving it out, is fit's default.
+        if let Some(t) = d
+            .duration(v, &o.at("tunnel_idle_timeout"))
+            .filter(|t| !t.is_zero())
+        {
+            p.tunnel_idle_timeout = t;
+        }
     }
     // Leaving both out is fit's error; upstreams alone is refused as not supported yet.
     let upstreams = o.has("upstreams");
