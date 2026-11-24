@@ -167,6 +167,17 @@ fn load(pool: &Pool) -> (usize, usize) {
     (l.busy, l.waiting)
 }
 
+/// The pool's requests in flight once the last callback has returned: a request's callback runs
+/// before the pool counts it finished, on the I/O thread, so the count can lag the result the
+/// test thread got by a moment.
+fn settled(pool: &Pool) -> usize {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while pool.in_flight() != 0 && Instant::now() < deadline {
+        thread::sleep(Duration::from_millis(1));
+    }
+    pool.in_flight()
+}
+
 fn ok(r: &Outcome) -> bool {
     matches!(r, Ok(resp) if resp.status == 200 && resp.body == b"ok")
 }
@@ -208,7 +219,7 @@ fn max_conns_and_max_pending() {
     // The waiting requests went over the two connections, kept alive: never more than two.
     assert_eq!(up.accepted.load(Ordering::SeqCst), 2);
     assert_eq!(up.most_open.load(Ordering::SeqCst), 2);
-    assert_eq!(pool.in_flight(), 0);
+    assert_eq!(settled(&pool), 0);
     assert_eq!(load(&pool), (0, 0));
 }
 
@@ -313,7 +324,7 @@ fn drained_under_load() {
     }
     closed_rx.recv_timeout(Duration::from_secs(5)).unwrap();
     assert!(pool.is_closed());
-    assert_eq!(pool.in_flight(), 0);
+    assert_eq!(settled(&pool), 0);
     assert!(up.most_open.load(Ordering::SeqCst) <= 4);
     // Closed for good, and a callback added now runs at once.
     let (tx, again) = channel();
@@ -357,7 +368,7 @@ fn an_upstream_that_refuses_connections() {
             other => panic!("{i}: {other:?}"),
         }
     }
-    assert_eq!(pool.in_flight(), 0);
+    assert_eq!(settled(&pool), 0);
     assert_eq!(load(&pool), (0, 0));
     // A pool of a refusing address and one that answers: requests in turn, each its own way.
     let up = Upstream::start(false);
@@ -440,6 +451,6 @@ fn bad_targets_and_timeouts() {
             "{i}: {r:?}"
         );
     }
-    assert_eq!(pool.in_flight(), 0);
+    assert_eq!(settled(&pool), 0);
     up.release();
 }
