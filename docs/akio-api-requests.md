@@ -70,6 +70,8 @@ first; its status here records the branch, then the akio commit akit pins.
 | A90 | A streamed response's coding set by a response filter of the caller's own, and a value kept until the response is sent | in akio's main (`c5cf4353`), pinned | 8, 11 | I47 |
 | A91 | `Files` keeping compressed copies of the files it holds in memory | in akio's main (`c5cf4353`), pinned | 4, 12 | I47 |
 | A92 | A body sent from a file on disk encoded by a stream coding | requested (I47) | 1, 5 | I47 |
+| A93 | The HTTP/1 client hands a connection over on `101 Switching Protocols` | in akio's main (`c5cf4353`), pinned | 8, 9 | I49, I55 |
+| A94 | A streamed `2xx` to an HTTP/2 extended CONNECT is a tunnel whose halves close separately | in akio's main (`c5cf4353`), pinned | 9 | I49 |
 
 ## A1 TCP listeners on a running engine
 
@@ -1279,3 +1281,47 @@ next piece read once the queue drains), its `Content-Length` dropped.
 Until then a body from disk goes uncompressed, which the progress files list as a difference from
 fit.
 
+## A93 The HTTP/1 client hands a connection over on `101`
+
+**Problem.** A WebSocket proxy (I49) sends the client's handshake to the upstream as an HTTP/1.1
+upgrade and, once the upstream answers `101 Switching Protocols`, joins its connection to the
+client's, as fit's `pool.SendUpgrade` and `resp.Tunnel()` do. akio-http's `Client` could not hand
+a connection over: it read a `101` as a response without a body, ended the exchange and put the
+connection back in its keep-alive pool, where the bytes that followed were taken for garbage and
+closed it.
+
+**Evidence.** At `f6750e93`: `crates/akio-http/src/client.rs`, `ClientConn::advance` (`no_body`
+for `101`, `complete` returning the connection to the pool; `RState::Idle` closing on bytes nobody
+asked for). Nothing in `ResponseHandler` or `ResponseBody` gives the connection out.
+
+**Suggested API.** `ClientRequest::upgrade(protocol)` and `ResponseHandler::on_upgrade(&ResponseHead,
+&RawConn) -> Option<Box<dyn RawHandler>>`: on a `101` to a request that asked to upgrade, the
+request is over and the connection, with what the server sent after the head, goes to the returned
+handler as a byte stream (`RawConn`: `send`, `hold_reads`, `on_drain`, `queued_bytes`).
+
+**How akit uses it.** `akit_upstream::Exchange::on_upgrade` passes it on, gives the address's slot
+back and counts the connection among the address's until it closes; `akit_proxy`'s `websocket`
+joins it to the client's side with backpressure both ways. Done in akio by this iteration
+(ADR-113, branch `claude/a93-a94-tunnels`, `30cdf93a`), to be merged onto akio's main.
+
+## A94 A streamed `2xx` to an HTTP/2 extended CONNECT is a tunnel
+
+**Problem.** An HTTP/2 or HTTP/3 client opens a WebSocket with an extended CONNECT (RFC 8441, RFC
+9220); the proxy answers it only once the upstream switched, with the upstream's fields, so it
+cannot use `Context::upgrade_websocket`, which answers at once with its own choices and ends the
+WebSocket in the server. akio's HTTP/2 server already dispatches an extended CONNECT as a streamed
+request (its DATA to `on_body`, held with `BodyReads`) that a streamed response answers, but only
+`upgrade_websocket` marked the stream a tunnel: a streamed `200` finished while the client's half
+was open was answered `RST_STREAM NO_ERROR`, cutting off the client's last bytes (its close frame's
+echo).
+
+**Evidence.** At `f6750e93`: `crates/akio-http/src/h2.rs`, `Core::finish_if_done` (only
+`st.tunnel` keeps the peer's half open; `start_tunnel`, used by `upgrade_websocket`, alone sets
+it). HTTP/3 (`akio-h3`) already keeps a stream's directions apart.
+
+**Suggested API.** No new API: a `2xx` streamed (`stream_response`) to an extended CONNECT makes
+the stream a tunnel, as `upgrade_websocket`'s `200` does, with the same linger before a peer that
+never ends its half is reset.
+
+**How akit uses it.** An HTTP/2 or HTTP/3 WebSocket's client side is its streamed request and a
+streamed `200`. Done in akio by this iteration (ADR-113, with A93).

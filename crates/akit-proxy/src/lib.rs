@@ -91,12 +91,21 @@
 //! streams is never sent again. Retries are held to a budget (`budget_ratio` of the requests,
 //! plus `budget_min_per_second`), and the proxy's `timeout` bounds the attempts together.
 //!
+//! I49 proxies WebSockets (`websocket.rs`), as fit's proxy passes on a request that asks to
+//! switch protocols: an HTTP/1.1 upgrade, or an HTTP/2 or HTTP/3 extended CONNECT for
+//! `websocket`, goes to an HTTP/1.1 upstream as its handshake; once the upstream answers `101`,
+//! its connection leaves the pool (akio's ADR-113) and is joined to the client's (an HTTP/1.1
+//! connection taken over, or an HTTP/2 or HTTP/3 stream answered with a streamed `200`), each
+//! side's reads held while more than 64 KiB waits for the other, until the tunnel ends or carries
+//! nothing for `tunnel_idle_timeout`. Any other answer is passed on as a response.
+//!
 //! Part of [akit](https://github.com/lesismal/akit); see `docs/dev-plan.md` for the iterations that
 //! fill this crate in.
 
 mod headers;
 mod relay;
 mod retry;
+mod websocket;
 
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -131,6 +140,8 @@ struct Proxy {
     timeout: Option<Duration>,
     /// The params' `retry`, compiled with its budget (I45).
     retry: Option<Arc<retry::Policy>>,
+    /// The params' `tunnel_idle_timeout` (I49).
+    tunnel_idle: Duration,
 }
 
 fn new(p: &Provision<'_, HandlerParams>) -> Result<Provisioned<dyn Handler>, ProvisionError> {
@@ -154,6 +165,7 @@ fn new(p: &Provision<'_, HandlerParams>) -> Result<Provisioned<dyn Handler>, Pro
             .retry
             .as_ref()
             .map(|r| Arc::new(retry::Policy::new(r))),
+        tunnel_idle: params.tunnel_idle_timeout,
     }) as Arc<dyn Handler>))
 }
 
@@ -165,6 +177,13 @@ impl akio_http::Service for Proxy {
             r.deposit();
         }
         let req = ctx.req();
+        // A request that asks to switch protocols (I49): only a WebSocket's extended CONNECT
+        // has an HTTP/1.1 handshake to go as.
+        let asked = websocket::asked(req);
+        if asked == websocket::Asked::Other {
+            ctx.respond(fail(501));
+            return;
+        }
         // The fields as the middleware before left them (a `headers` middleware's changes).
         let fields = akit_runtime::request_headers(ctx);
         let client = headers::Client {
@@ -201,6 +220,26 @@ impl akio_http::Service for Proxy {
             .local(MAX_BODY_BYTES)
             .and_then(|v| v.parse().ok())
             .unwrap_or(akit_config::DEFAULT_MAX_BODY_BYTES);
+        if asked != websocket::Asked::No {
+            let log = akit_observe::logged().then(|| relay::Logged {
+                addr: self
+                    .pool
+                    .addresses()
+                    .nth(backend)
+                    .unwrap_or_default()
+                    .to_owned(),
+                start: Instant::now(),
+            });
+            let h = websocket::Handshake {
+                out,
+                cancel,
+                backend,
+                set_cookie,
+                log,
+                idle: self.tunnel_idle,
+            };
+            return websocket::serve(&self.pool, ctx, asked, h);
+        }
         // The trailers the request announced go up with it, chunked, as fit sends them.
         let names = headers::trailer_names(&req.headers);
         if !names.is_empty() {
@@ -330,6 +369,7 @@ fn fail(status: u16) -> Response {
     let reason = match status {
         400 => "Bad Request",
         413 => "Request Entity Too Large",
+        501 => "Not Implemented",
         503 => "Service Unavailable",
         504 => "Gateway Timeout",
         _ => "Bad Gateway",

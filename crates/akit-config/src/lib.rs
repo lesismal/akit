@@ -51,11 +51,12 @@ pub use model::{
     DEFAULT_MAX_PENDING, DEFAULT_PROTOCOLS, DEFAULT_RATE_MAX_KEYS, DEFAULT_REALM,
     DEFAULT_RESPONSE_HEADER_TIMEOUT, DEFAULT_RESPONSE_IDLE_TIMEOUT, DEFAULT_RESPONSE_TIMEOUT,
     DEFAULT_SERVICE_IDLE_TIMEOUT, DEFAULT_SERVICE_MAX_CONNS, DEFAULT_SERVICE_UDP_IDLE_TIMEOUT,
-    DEFAULT_STICKY_COOKIE_NAME, DEFAULT_TLS_PROTOCOLS, DEFAULT_WRITE_STALL_TIMEOUT, Dotfiles,
-    Encoding, ForwardAuth, Handler, HeaderOps, Headers, HealthCheck, HealthCheckType, Limits,
-    Listener, LoadBalancing, LogFormat, MAX_WEIGHT, Match, Metrics, Network, Protocol, Proxy,
-    RateKey, RateLimit, Redirect, Respond, Retry, Rewrite, Route, SCHEMA_VERSION, Service, Static,
-    StickyCookie, Tls, TlsVersion, Upstream, UpstreamProtocol,
+    DEFAULT_STICKY_COOKIE_NAME, DEFAULT_TLS_PROTOCOLS, DEFAULT_TUNNEL_IDLE_TIMEOUT,
+    DEFAULT_WRITE_STALL_TIMEOUT, Dotfiles, Encoding, ForwardAuth, Handler, HeaderOps, Headers,
+    HealthCheck, HealthCheckType, Limits, Listener, LoadBalancing, LogFormat, MAX_WEIGHT, Match,
+    Metrics, Network, Protocol, Proxy, RateKey, RateLimit, Redirect, Respond, Retry, Rewrite,
+    Route, SCHEMA_VERSION, Service, Static, StickyCookie, Tls, TlsVersion, Upstream,
+    UpstreamProtocol,
 };
 
 /// The largest config document read, in bytes: fit's own configs are kilobytes; this bounds

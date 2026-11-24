@@ -69,6 +69,8 @@
 | A90 | 由调用方自己的响应过滤器设置流式响应的编码，以及保留到响应发出为止的值 | 已在 akio 的 main（`c5cf4353`），已锁定 | 8、11 | I47 |
 | A91 | `Files` 为内存中的文件保存压缩副本 | 已在 akio 的 main（`c5cf4353`），已锁定 | 4、12 | I47 |
 | A92 | 从磁盘文件发送的消息体按流编码压缩 | 已提出（I47） | 1、5 | I47 |
+| A93 | HTTP/1 客户端在 `101 Switching Protocols` 时交出连接 | 已在 akio 的 main（`c5cf4353`），已锁定 | 8、9 | I49、I55 |
+| A94 | 对 HTTP/2 扩展 CONNECT 的流式 `2xx` 应答即两半各自关闭的隧道 | 已在 akio 的 main（`c5cf4353`），已锁定 | 9 | I49 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -1030,3 +1032,38 @@ ADR-112）上实现，尚未合并。未做：把副本计入缓存的内存上�
 **akit 的用法。** `compress` 中间件像对流式消息体一样给文件消息体设置编码。在此之前，来自磁盘的消息体不压缩，进度
 文件把它列为与 fit 的差异。
 
+## A93 HTTP/1 客户端在 `101` 时交出连接
+
+**问题。** WebSocket 代理（I49）把客户端的握手作为 HTTP/1.1 upgrade 发往上游，上游回答 `101 Switching
+Protocols` 后，把它的连接与客户端的接起来，如同 fit 的 `pool.SendUpgrade` 和 `resp.Tunnel()`。akio-http 的
+`Client` 无法交出连接：它把 `101` 当作没有响应体的响应，结束交换并把连接放回 keep-alive 池，之后到达的字节被当作
+垃圾并关闭连接。
+
+**依据。** `f6750e93` 的 `crates/akio-http/src/client.rs`，`ClientConn::advance`（`101` 被视为 `no_body`，
+`complete` 把连接放回池中；`RState::Idle` 收到没人要的字节时关闭连接）。`ResponseHandler` 和 `ResponseBody` 都不
+交出连接。
+
+**建议的 API。** `ClientRequest::upgrade(protocol)` 与 `ResponseHandler::on_upgrade(&ResponseHead, &RawConn) ->
+Option<Box<dyn RawHandler>>`：对请求升级的请求收到 `101` 时，请求结束，连接连同服务端在头部之后发送的内容作为
+字节流交给返回的处理器（`RawConn`：`send`、`hold_reads`、`on_drain`、`queued_bytes`）。
+
+**akit 的用法。** `akit_upstream::Exchange::on_upgrade` 把它传下去，归还该地址的名额，并在连接关闭前把它计入该地址
+的连接数；`akit_proxy` 的 `websocket` 把它与客户端一侧接起来，双向背压。已由本迭代在 akio 中完成（ADR-113，分支
+`claude/a93-a94-tunnels`，`30cdf93a`），待合入 akio 的 main。
+
+## A94 对 HTTP/2 扩展 CONNECT 的流式 `2xx` 应答即隧道
+
+**问题。** HTTP/2 或 HTTP/3 客户端用扩展 CONNECT（RFC 8441、RFC 9220）打开 WebSocket；代理要等上游切换后才能
+带着上游的字段应答，因此不能用 `Context::upgrade_websocket`（它立即以自己的选择应答，并在服务端终结 WebSocket）。
+akio 的 HTTP/2 服务端已把扩展 CONNECT 作为流式请求分发（其 DATA 交给 `on_body`，可用 `BodyReads` 暂停），可由
+流式响应应答，但只有 `upgrade_websocket` 会把流标记为隧道：客户端一半仍开着时结束的流式 `200` 以
+`RST_STREAM NO_ERROR` 收尾，截掉客户端最后的字节（其关闭帧的回应）。
+
+**依据。** `f6750e93` 的 `crates/akio-http/src/h2.rs`，`Core::finish_if_done`（只有 `st.tunnel` 会让对端一半保持
+打开；只有 `upgrade_websocket` 所用的 `start_tunnel` 设置它）。HTTP/3（`akio-h3`）本就让流的两个方向分开。
+
+**建议的 API。** 不需要新 API：对扩展 CONNECT 的流式（`stream_response`）`2xx` 应答使该流成为隧道，与
+`upgrade_websocket` 的 `200` 相同，对端一直不结束其一半时同样延迟后重置。
+
+**akit 的用法。** HTTP/2 或 HTTP/3 WebSocket 的客户端一侧就是它的流式请求和一个流式 `200`。已由本迭代在 akio 中
+完成（ADR-113，与 A93 一起）。

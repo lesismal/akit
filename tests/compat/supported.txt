@@ -109,8 +109,7 @@ upstreams[].health_check.jitter
 upstreams[].health_check.fails
 upstreams[].health_check.passes
 # I15: the proxy handler: its upstream, trusted proxies and Host. Its other params (upstreams,
-# failover, mirror, retry, tunnel_idle_timeout, splice_uploads) are refused as not supported yet
-# (I45, I46, I49).
+# failover, mirror, retry, splice_uploads) are refused as not supported yet (I45, I46).
 routes[].handler<proxy>
 routes[].handler<proxy>.params
 routes[].handler<proxy>.params.upstream
@@ -320,3 +319,8 @@ routes[].middleware[]<circuit_breaker>.params.slow_threshold
 routes[].middleware[]<circuit_breaker>.params.slow_ratio
 routes[].middleware[]<circuit_breaker>.params.open_duration
 routes[].middleware[]<circuit_breaker>.params.half_open_requests
+
+
+# I49: WebSocket proxying: HTTP/1.1 upgrades and HTTP/2 and HTTP/3 extended CONNECTs joined to an
+# HTTP/1.1 upstream's switched connection, closed after tunnel_idle_timeout carried nothing.
+routes[].handler<proxy>.params.tunnel_idle_timeout

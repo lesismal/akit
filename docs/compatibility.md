@@ -175,7 +175,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 207 supported.
+3821 fields in 121 sections, at fit `7daee573`; 208 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -195,7 +195,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`http.handlers/httpflv`](#fields-http-handlers-httpflv) | 6 | 0 | 6 |
 | [`http.handlers/media_pages`](#fields-http-handlers-media-pages) | 29 | 0 | 29 |
 | [`http.handlers/media_tokens`](#fields-http-handlers-media-tokens) | 11 | 0 | 11 |
-| [`http.handlers/proxy`](#fields-http-handlers-proxy) | 20 | 11 | 9 |
+| [`http.handlers/proxy`](#fields-http-handlers-proxy) | 20 | 12 | 8 |
 | [`http.handlers/respond`](#fields-http-handlers-respond) | 5 | 5 | 0 |
 | [`http.handlers/static`](#fields-http-handlers-static) | 16 | 14 | 2 |
 | [`http.handlers/stream_whep`](#fields-http-handlers-stream-whep) | 5 | 0 | 5 |
@@ -300,7 +300,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 33 | 5 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 207 | 3614 |
+| **Total** | 3821 | 208 | 3613 |
 
 <a id="fields-access"></a>
 
@@ -881,7 +881,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `routes[].handler<proxy>.params.splice_uploads` | `boolean` | not supported yet |
 | `routes[].handler<proxy>.params.timeout` | `duration` | supported |
 | `routes[].handler<proxy>.params.trusted_proxies` | `array<string>` | supported |
-| `routes[].handler<proxy>.params.tunnel_idle_timeout` | `duration` | not supported yet |
+| `routes[].handler<proxy>.params.tunnel_idle_timeout` | `duration` | supported |
 | `routes[].handler<proxy>.params.upstream` | `string` | supported |
 | `routes[].handler<proxy>.params.upstreams` | `array<object>` | not supported yet |
 | `routes[].handler<proxy>.params.upstreams[].upstream` | `string, required` | not supported yet |

@@ -858,6 +858,11 @@ fn supported_fields_are_read() {
             |c| proxy_of(c).retry.as_ref().unwrap().budget_min_per_second == 3.0,
         ),
         (
+            "routes[].handler<proxy>.params.tunnel_idle_timeout",
+            proxy(r#", "tunnel_idle_timeout": "90s""#),
+            |c| proxy_of(c).tunnel_idle_timeout == std::time::Duration::from_secs(90),
+        ),
+        (
             "routes[].middleware",
             rewrite(r#""add_prefix": "/v2""#),
             |c| c.routes[0].middleware.len() == 1,

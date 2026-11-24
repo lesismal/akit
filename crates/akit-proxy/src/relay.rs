@@ -94,7 +94,7 @@ pub(crate) struct Logged {
 }
 
 /// Runs `f`, which answers the client, with the upstream the access log's line names, if logged.
-fn logged<R>(log: Option<&Logged>, f: impl FnOnce() -> R) -> R {
+pub(crate) fn logged<R>(log: Option<&Logged>, f: impl FnOnce() -> R) -> R {
     match log {
         Some(l) => {
             let mut f = Some(f);
@@ -172,6 +172,23 @@ pub(crate) fn start(
 }
 
 impl Client {
+    /// The client's side of a request already detached whose body goes nowhere: an extended
+    /// CONNECT's, whose upstream answered without switching (I49, `websocket`).
+    pub(crate) fn answered(answer: Detached) -> Client {
+        Client {
+            shared: Arc::new(Mutex::new(Shared {
+                answer: Some(answer),
+                up: Upload {
+                    done: true,
+                    ..Upload::default()
+                },
+                gone: false,
+            })),
+            reads: None,
+            names: Vec::new(),
+        }
+    }
+
     /// A body that arrived whole, with `trailers`, to go up as a stream: chunked, so that it
     /// carries those of them the request announced.
     pub(crate) fn preload(&self, body: &[u8], trailers: &Headers) {
