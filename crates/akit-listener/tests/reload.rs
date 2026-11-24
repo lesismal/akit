@@ -438,3 +438,28 @@ fn listeners_added_and_removed_under_traffic_fail_no_request() {
     assert_eq!(cell.retiring(), 0);
     stop(&e, l);
 }
+
+/// `limits.write_stall_timeout` (I17b) is the engine's write timeout: fit's 30s when the config
+/// sets none, and what a reload sets from then on, for the connections already open too.
+#[test]
+fn a_reload_changes_the_write_stall_timeout() {
+    let (cell, e, mut l) = serve(&config(WEB, "one"));
+    let live = || e.telemetry().live().write_timeout();
+    assert_eq!(live(), Some(Duration::from_secs(30)));
+    let with_stall = |t: &str| {
+        config(WEB, "two").replacen(
+            "\"listeners\"",
+            &format!(r#""limits": {{"write_stall_timeout": "{t}"}}, "listeners""#),
+            1,
+        )
+    };
+    l.reload(graph(&with_stall("250ms"))).unwrap();
+    cell.collect();
+    assert_eq!(live(), Some(Duration::from_millis(250)));
+    let addr = l.served()[0].address;
+    assert_eq!(get(addr), ok("two"));
+    l.reload(graph(&config(WEB, "three"))).unwrap();
+    cell.collect();
+    assert_eq!(live(), Some(Duration::from_secs(30)));
+    stop(&e, l);
+}

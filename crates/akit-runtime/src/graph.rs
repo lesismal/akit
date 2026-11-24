@@ -100,6 +100,8 @@ pub struct Graph {
     access_log: Option<akit_observe::AccessLog>,
     /// Where its requests are counted, when the config has `metrics` (I37).
     requests: Option<Requests>,
+    /// The config's `limits.write_stall_timeout` (I17b).
+    write_stall_timeout: std::time::Duration,
     /// Taken (and so cleaned up) once, by [`Graph::retire`] or on drop.
     modules: Mutex<Option<Modules>>,
     /// Requests and connections that keep this graph past their handler's call
@@ -111,6 +113,13 @@ pub struct Graph {
 }
 
 impl Graph {
+    /// The config's `limits.write_stall_timeout`: how long a response may wait for its client to
+    /// take what it was sent, which is akio's engine `write_timeout` (akit-listener sets it).
+    #[must_use]
+    pub fn write_stall_timeout(&self) -> std::time::Duration {
+        self.write_stall_timeout
+    }
+
     /// The listeners, as the config gives them.
     #[must_use]
     pub fn listeners(&self) -> &[Listener] {
@@ -508,6 +517,7 @@ pub fn compile(
         upstreams,
         access_log: config.access_log.as_ref().and(env.access_log().cloned()),
         requests,
+        write_stall_timeout: config.limits.write_stall_timeout,
         modules: Mutex::new(Some(modules)),
         holds: AtomicUsize::new(0),
         orphaned: AtomicBool::new(false),

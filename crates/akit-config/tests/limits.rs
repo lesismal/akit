@@ -1,5 +1,5 @@
-//! `limits` (I16): `max_body_bytes` read as fit reads it, carried by every listener; its other
-//! fields refused as not supported yet; given by one file only.
+//! `limits` (I16, I17b): `max_body_bytes` read as fit reads it, carried by every listener, and
+//! `write_stall_timeout`; its other fields refused as not supported yet; given by one file only.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use std::fs;
@@ -45,6 +45,28 @@ fn max_body_bytes() {
     assert!(!e.only_not_supported_yet(), "{e}");
 }
 
+/// `write_stall_timeout` (I17b): fit's 30s when left out or 0.
+#[test]
+fn write_stall_timeout() {
+    use std::time::Duration;
+    for fields in ["", r#""write_stall_timeout": "0s""#] {
+        let c = limits(fields).unwrap();
+        assert_eq!(c.limits.write_stall_timeout, Duration::from_secs(30));
+    }
+    assert_eq!(
+        akit_config::DEFAULT_WRITE_STALL_TIMEOUT,
+        Duration::from_secs(30)
+    );
+    let c = limits(r#""write_stall_timeout": "250ms""#).unwrap();
+    assert_eq!(c.limits.write_stall_timeout, Duration::from_millis(250));
+    let e = limits(r#""write_stall_timeout": "-1s""#).unwrap_err();
+    assert!(!e.only_not_supported_yet(), "{e}");
+    assert!(
+        e.to_string().contains("limits.write_stall_timeout: "),
+        "{e}"
+    );
+}
+
 #[test]
 fn other_fields_not_supported_yet() {
     let e = limits(
@@ -62,7 +84,6 @@ fn other_fields_not_supported_yet() {
             "limits.max_header_bytes",
             "limits.max_pending_bytes",
             "limits.max_write_queue_bytes",
-            "limits.write_stall_timeout",
         ]
     );
     // A field fit does not have is wrong, not "not supported yet".

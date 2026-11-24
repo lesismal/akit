@@ -152,7 +152,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 172 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 175 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -197,7 +197,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`http.middleware/redirect`](#fields-http-middleware-redirect) | 5 | 5 | 0 |
 | [`http.middleware/rewrite`](#fields-http-middleware-rewrite) | 6 | 4 | 2 |
 | [`http.middleware/wasm`](#fields-http-middleware-wasm) | 18 | 0 | 18 |
-| [`limits`](#fields-limits) | 7 | 2 | 5 |
+| [`limits`](#fields-limits) | 7 | 3 | 4 |
 | [`listeners`](#fields-listeners) | 30 | 13 | 17 |
 | [`llm`](#fields-llm) | 218 | 0 | 218 |
 | [`log`](#fields-log) | 24 | 0 | 24 |
@@ -275,9 +275,9 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`sync.transforms/wasm`](#fields-sync-transforms-wasm) | 9 | 0 | 9 |
 | [`telemetry`](#fields-telemetry) | 14 | 0 | 14 |
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
-| [`upstreams`](#fields-upstreams) | 38 | 31 | 7 |
+| [`upstreams`](#fields-upstreams) | 38 | 33 | 5 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **合计** | 3821 | 172 | 3649 |
+| **合计** | 3821 | 175 | 3646 |
 
 <a id="fields-access"></a>
 
@@ -1246,7 +1246,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `limits.max_header_bytes` | `integer` | 尚不支持（not supported yet） |
 | `limits.max_pending_bytes` | `bytes\|percent` | 尚不支持（not supported yet） |
 | `limits.max_write_queue_bytes` | `integer` | 尚不支持（not supported yet） |
-| `limits.write_stall_timeout` | `duration` | 尚不支持（not supported yet） |
+| `limits.write_stall_timeout` | `duration` | 已支持 |
 
 <a id="fields-listeners"></a>
 
@@ -4850,8 +4850,8 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `upstreams[].max_pending` | `integer` | 已支持 |
 | `upstreams[].name` | `string, required` | 已支持 |
 | `upstreams[].protocol` | `enum(http/1.1\|h2c\|h2)` | 已支持 |
-| `upstreams[].response_header_timeout` | `duration` | 尚不支持（not supported yet） |
-| `upstreams[].response_idle_timeout` | `duration` | 尚不支持（not supported yet） |
+| `upstreams[].response_header_timeout` | `duration` | 已支持 |
+| `upstreams[].response_idle_timeout` | `duration` | 已支持 |
 | `upstreams[].response_timeout` | `duration` | 已支持 |
 | `upstreams[].sticky_cookie` | `object` | 已支持 |
 | `upstreams[].sticky_cookie.max_age` | `duration` | 已支持 |

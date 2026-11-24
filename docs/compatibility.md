@@ -175,7 +175,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 172 supported.
+3821 fields in 121 sections, at fit `7daee573`; 175 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -220,7 +220,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`http.middleware/redirect`](#fields-http-middleware-redirect) | 5 | 5 | 0 |
 | [`http.middleware/rewrite`](#fields-http-middleware-rewrite) | 6 | 4 | 2 |
 | [`http.middleware/wasm`](#fields-http-middleware-wasm) | 18 | 0 | 18 |
-| [`limits`](#fields-limits) | 7 | 2 | 5 |
+| [`limits`](#fields-limits) | 7 | 3 | 4 |
 | [`listeners`](#fields-listeners) | 30 | 13 | 17 |
 | [`llm`](#fields-llm) | 218 | 0 | 218 |
 | [`log`](#fields-log) | 24 | 0 | 24 |
@@ -298,9 +298,9 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`sync.transforms/wasm`](#fields-sync-transforms-wasm) | 9 | 0 | 9 |
 | [`telemetry`](#fields-telemetry) | 14 | 0 | 14 |
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
-| [`upstreams`](#fields-upstreams) | 38 | 31 | 7 |
+| [`upstreams`](#fields-upstreams) | 38 | 33 | 5 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 172 | 3649 |
+| **Total** | 3821 | 175 | 3646 |
 
 <a id="fields-access"></a>
 
@@ -1269,7 +1269,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `limits.max_header_bytes` | `integer` | not supported yet |
 | `limits.max_pending_bytes` | `bytes\|percent` | not supported yet |
 | `limits.max_write_queue_bytes` | `integer` | not supported yet |
-| `limits.write_stall_timeout` | `duration` | not supported yet |
+| `limits.write_stall_timeout` | `duration` | supported |
 
 <a id="fields-listeners"></a>
 
@@ -4873,8 +4873,8 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `upstreams[].max_pending` | `integer` | supported |
 | `upstreams[].name` | `string, required` | supported |
 | `upstreams[].protocol` | `enum(http/1.1\|h2c\|h2)` | supported |
-| `upstreams[].response_header_timeout` | `duration` | not supported yet |
-| `upstreams[].response_idle_timeout` | `duration` | not supported yet |
+| `upstreams[].response_header_timeout` | `duration` | supported |
+| `upstreams[].response_idle_timeout` | `duration` | supported |
 | `upstreams[].response_timeout` | `duration` | supported |
 | `upstreams[].sticky_cookie` | `object` | supported |
 | `upstreams[].sticky_cookie.max_age` | `duration` | supported |

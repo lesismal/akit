@@ -3,14 +3,15 @@
 //! clients over HTTP/1.1 and h2c: `TestForwarding`, `TestHopByHopRequest`,
 //! `TestForwardedUntrusted`, `TestForwardedTrusted`, `TestHostHeader`, `TestManyRequests`,
 //! `TestHead`, `TestPassiveHealth`, `TestStreamDownload`, `TestStreamUpload`, `TestTrailers`,
-//! `TestUpstreamBreaksMidBody` and `TestClientAbort`, and the proxy's `timeout`; and one exchange
+//! `TestUpstreamBreaksMidBody` and `TestClientAbort`, and the proxy's `timeout`; fit's
+//! `TestResponseHeaderTimeout`, `TestResponseIdleTimeout` and `TestClientAbort`'s client gone
+//! before the head (I17b, which akit's h2 tick checks: akio API request A66); and one exchange
 //! over h2, with TLS, through a pool given the test CA (the `tls_*` fields are I54's).
 //!
 //! What waits on akio API requests A51–A53 (I18b): request trailers to an h2 upstream (A51), and
 //! a slow client pacing an h2 download rather than having it cut past akit_upstream's
 //! `HELD_LIMIT` (A52), which [`a_slow_client_is_cut_off_past_the_held_limit`] checks as the
-//! stopgap does it. fit's `TestResponseHeaderTimeout` and `TestResponseIdleTimeout` are I17b's
-//! (A36).
+//! stopgap does it.
 //!
 //! The upstream is akio-http's own server, HTTP/1.1 and h2c with prior knowledge on one port,
 //! which reports each request as it arrived. On the backend `AKIO_TEST_BACKEND` names (epoll by
@@ -882,4 +883,118 @@ fn h2_over_tls() {
     let got = rx.recv_timeout(Duration::from_secs(10)).unwrap();
     assert_eq!(got.unwrap(), "h2 /secure");
     up.shutdown();
+}
+
+/// fit's `TestResponseHeaderTimeout` (I17b): an h2c upstream that does not begin its response
+/// within `response_header_timeout` is answered 504.
+#[test]
+fn response_header_timeout() {
+    let held = Arc::new(Mutex::new(Vec::new()));
+    let h = held.clone();
+    let up = Upstream::start(move |ctx, _| {
+        if let Some(d) = ctx.detach() {
+            h.lock().unwrap().push(d);
+        }
+    });
+    let akit = Akit::proxy(&[up.addr()], "", r#", "response_header_timeout": "150ms""#);
+    for client in CLIENTS {
+        let start = Instant::now();
+        let got = client.get(akit.addr, "/slow", &[]);
+        let took = start.elapsed();
+        assert_eq!(got.status, 504, "{client:?}");
+        assert!(
+            took >= Duration::from_millis(100) && took < Duration::from_secs(3),
+            "{client:?}: {took:?}"
+        );
+    }
+    held.lock().unwrap().clear();
+}
+
+/// fit's `TestResponseIdleTimeout` (I17b): an h2c upstream silent mid-body past
+/// `response_idle_timeout` has its response cut short, as one that broke off.
+#[test]
+fn response_idle_timeout() {
+    let held = Arc::new(Mutex::new(Vec::new()));
+    let h = held.clone();
+    let up = Upstream::start(move |ctx, seen| {
+        let mut fields = Headers::new();
+        if seen.target.contains("length=1") {
+            fields.append("Content-Length", "1000000");
+        }
+        let Some(s) = ctx.stream_response(200, fields) else {
+            return;
+        };
+        let _ = s.write(&pattern(200 << 10));
+        h.lock().unwrap().push(s);
+    });
+    let akit = Akit::proxy(
+        &[up.addr()],
+        "",
+        r#", "response_idle_timeout": "200ms", "max_fails": 0"#,
+    );
+    for client in CLIENTS {
+        for path in ["/?length=1", "/"] {
+            let start = Instant::now();
+            let got = client.get(akit.addr, path, &[]);
+            let took = start.elapsed();
+            assert_eq!(got.status, 200, "{client:?} {path}");
+            assert!(got.body.len() >= 200 << 10, "{client:?} {path}");
+            assert!(took < Duration::from_secs(3), "{client:?} {path}: {took:?}");
+            if matches!(client, Client::H2c) && path == "/" {
+                assert_eq!(
+                    got.trailer("fit-error"),
+                    Some("upstream failed mid-body"),
+                    "{client:?} {path}"
+                );
+            } else {
+                assert!(
+                    !got.complete,
+                    "{client:?} {path}: a body cut short read as whole"
+                );
+            }
+        }
+    }
+    held.lock().unwrap().clear();
+}
+
+/// The rest of fit's `TestClientAbort` (I17b): a client that goes before the response's head has
+/// the h2c upstream's request given up (its connection closed, akio's h2 client being unable to
+/// reset the stream: A51).
+#[test]
+fn client_abort_before_head() {
+    let held = Arc::new(Mutex::new(Vec::new()));
+    let (tx, gone) = channel();
+    let tx = Mutex::new(tx);
+    let h = held.clone();
+    let up = Upstream::start(move |ctx, _| {
+        let tx = tx.lock().unwrap().clone();
+        ctx.on_gone(move || {
+            let _ = tx.send(());
+        });
+        if let Some(d) = ctx.detach() {
+            h.lock().unwrap().push(d);
+        }
+    });
+    let akit = Akit::proxy(&[up.addr()], "", "");
+    {
+        let mut s = TcpStream::connect(akit.addr).unwrap();
+        s.write_all(format!("GET /hang HTTP/1.1\r\nHost: {}\r\n\r\n", akit.addr).as_bytes())
+            .unwrap();
+        thread::sleep(Duration::from_millis(200));
+    }
+    gone.recv_timeout(Duration::from_secs(5))
+        .expect("the upstream request was not given up (HTTP/1.1)");
+    {
+        let c = H2Client::dial_blocking(&clients(), akit.addr, None, H2Options::default()).unwrap();
+        let up = c.open(
+            ClientRequest::get(&format!("http://{}/hang", akit.addr)),
+            |_| {},
+        );
+        up.finish();
+        thread::sleep(Duration::from_millis(200));
+        c.close();
+    }
+    gone.recv_timeout(Duration::from_secs(5))
+        .expect("the upstream request was not given up (h2c)");
+    held.lock().unwrap().clear();
 }

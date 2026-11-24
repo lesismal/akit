@@ -156,20 +156,28 @@ impl Default for Admin {
 /// fit's default `limits.max_body_bytes`: 16 MiB.
 pub const DEFAULT_MAX_BODY_BYTES: u64 = 16 << 20;
 
-/// `limits`, as fit's `config.Limits`: so far `max_body_bytes`; its other fields are refused as
-/// not supported yet.
+/// fit's default `limits.write_stall_timeout`: 30s.
+pub const DEFAULT_WRITE_STALL_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// `limits`, as fit's `config.Limits`: so far `max_body_bytes` and `write_stall_timeout`; its
+/// other fields are refused as not supported yet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Limits {
     /// `max_body_bytes`: the largest request body a listener takes, whether it arrives whole or
     /// streams through; a larger one gets 413, or, once it has begun to stream, its connection
     /// or stream is ended. [`DEFAULT_MAX_BODY_BYTES`] when left out or 0.
     pub max_body_bytes: u64,
+    /// `write_stall_timeout` (I17b): how long a response may wait for its client to take what
+    /// it was sent before the client loses it. [`DEFAULT_WRITE_STALL_TIMEOUT`] when left out or
+    /// 0. A reload applies it to the connections already open too.
+    pub write_stall_timeout: Duration,
 }
 
 impl Default for Limits {
     fn default() -> Limits {
         Limits {
             max_body_bytes: DEFAULT_MAX_BODY_BYTES,
+            write_stall_timeout: DEFAULT_WRITE_STALL_TIMEOUT,
         }
     }
 }
@@ -295,6 +303,14 @@ pub struct Upstream {
     /// response began is answered 504, and one past it later is cut short.
     /// [`DEFAULT_RESPONSE_TIMEOUT`] when left out or 0.
     pub response_timeout: Duration,
+    /// `response_header_timeout` (I17b): how long the upstream may take, once the request is
+    /// sent whole, to begin its response; one past it is answered 504.
+    /// [`DEFAULT_RESPONSE_HEADER_TIMEOUT`] when left out or 0.
+    pub response_header_timeout: Duration,
+    /// `response_idle_timeout` (I17b): how long the upstream may go silent in the middle of a
+    /// response's body (the time the proxy holds its reads for a slow client aside); the
+    /// response is then cut short. [`DEFAULT_RESPONSE_IDLE_TIMEOUT`] when left out or 0.
+    pub response_idle_timeout: Duration,
     /// `protocol`: how requests reach the upstream (I18). [`UpstreamProtocol::Http11`] when
     /// left out.
     pub protocol: UpstreamProtocol,
@@ -500,6 +516,10 @@ pub const DEFAULT_MAX_FAILS: usize = 1;
 pub const DEFAULT_FAIL_TIMEOUT: Duration = Duration::from_secs(10);
 /// fit's default `response_timeout`.
 pub const DEFAULT_RESPONSE_TIMEOUT: Duration = Duration::from_secs(3600);
+/// fit's default `response_header_timeout`.
+pub const DEFAULT_RESPONSE_HEADER_TIMEOUT: Duration = Duration::from_secs(60);
+/// fit's default `response_idle_timeout`.
+pub const DEFAULT_RESPONSE_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// One address akit listens on.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1183,13 +1203,12 @@ const ADMIN_FIT_ONLY: &[&str] = &[
     "cluster_member",
     "access",
 ];
-const LIMITS_FIELDS: &[&str] = &["max_body_bytes"];
+const LIMITS_FIELDS: &[&str] = &["max_body_bytes", "write_stall_timeout"];
 const LIMITS_FIT_ONLY: &[&str] = &[
     "max_pending_bytes",
     "max_header_bytes",
     "max_conns",
     "max_write_queue_bytes",
-    "write_stall_timeout",
 ];
 const ACCESS_LOG_FIELDS: &[&str] = &[
     "output",
@@ -1338,6 +1357,8 @@ const UPSTREAM_FIELDS: &[&str] = &[
     "fail_timeout",
     "health_check",
     "response_timeout",
+    "response_header_timeout",
+    "response_idle_timeout",
 ];
 const HEALTH_CHECK_FIELDS: &[&str] = &[
     "type",
@@ -1351,7 +1372,6 @@ const HEALTH_CHECK_FIELDS: &[&str] = &[
     "fails",
     "passes",
 ];
-// response_header_timeout and response_idle_timeout wait on akio API request A36 (I17b).
 const STICKY_COOKIE_FIELDS: &[&str] = &["name", "path", "max_age", "secure"];
 const UPSTREAM_FIT_ONLY: &[&str] = &[
     "deny_internal",
@@ -1359,8 +1379,6 @@ const UPSTREAM_FIT_ONLY: &[&str] = &[
     "tls_ca_file",
     "tls_cert_file",
     "tls_key_file",
-    "response_header_timeout",
-    "response_idle_timeout",
 ];
 
 /// One file's part of a config, before the parts are merged.
@@ -2113,6 +2131,12 @@ fn limits(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Limits> {
         match d.int(v, &o.at("max_body_bytes"), 0, i64::MAX) {
             Some(0) | None => {}
             Some(b) => l.max_body_bytes = u64::try_from(b).unwrap_or(DEFAULT_MAX_BODY_BYTES),
+        }
+    }
+    if let Some(v) = o.take("write_stall_timeout") {
+        let p = o.at("write_stall_timeout");
+        if let Some(t) = d.duration(v, &p).filter(|t| !t.is_zero()) {
+            l.write_stall_timeout = t;
         }
     }
     o.finish(d, LIMITS_FIELDS, LIMITS_FIT_ONLY);
@@ -3500,6 +3524,12 @@ fn upstream(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Upstream> {
     let connect_timeout = duration(d, "connect_timeout", DEFAULT_CONNECT_TIMEOUT);
     let fail_timeout = duration(d, "fail_timeout", DEFAULT_FAIL_TIMEOUT);
     let response_timeout = duration(d, "response_timeout", DEFAULT_RESPONSE_TIMEOUT);
+    let response_header_timeout = duration(
+        d,
+        "response_header_timeout",
+        DEFAULT_RESPONSE_HEADER_TIMEOUT,
+    );
+    let response_idle_timeout = duration(d, "response_idle_timeout", DEFAULT_RESPONSE_IDLE_TIMEOUT);
     // 0 keeps every address in rotation: only leaving it out means the default.
     let max_fails = count(d, &mut o, "max_fails", 0).unwrap_or(DEFAULT_MAX_FAILS);
     let weights_at = o.take("weights").map(|v| {
@@ -3634,6 +3664,8 @@ fn upstream(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Upstream> {
         fail_timeout,
         health_check,
         response_timeout,
+        response_header_timeout,
+        response_idle_timeout,
         protocol,
     })
 }

@@ -311,10 +311,10 @@ fn sticky_cookie() {
 #[test]
 fn what_akit_lacks_is_not_supported_yet() {
     let e = errs(&one(r#""addresses": ["a:1"],
-           "response_idle_timeout": "1s""#));
+           "tls_server_name": "x""#));
     assert!(e.only_not_supported_yet(), "{e}");
     let paths: Vec<&str> = e.as_slice().iter().map(|e| e.path.as_str()).collect();
-    assert_eq!(paths, ["upstreams[0].response_idle_timeout",]);
+    assert_eq!(paths, ["upstreams[0].tls_server_name",]);
 }
 
 /// I18: h2c and h2 upstreams.
@@ -387,6 +387,40 @@ fn response_timeout() {
     let p = problems(&one(r#""addresses": ["a:1"], "response_timeout": "-1s""#));
     assert_eq!(p.len(), 1, "{p:?}");
     assert!(p[0].starts_with("upstreams[0].response_timeout: "), "{p:?}");
+}
+
+/// `response_header_timeout` and `response_idle_timeout` (I17b): fit's 60s when left out or 0.
+#[test]
+fn response_header_and_idle_timeouts() {
+    let u = &ok(&one(r#""addresses": ["a:1"]"#)).upstreams[0];
+    assert_eq!(u.response_header_timeout, Duration::from_secs(60));
+    assert_eq!(u.response_idle_timeout, Duration::from_secs(60));
+    assert_eq!(
+        (
+            akit_config::DEFAULT_RESPONSE_HEADER_TIMEOUT,
+            akit_config::DEFAULT_RESPONSE_IDLE_TIMEOUT
+        ),
+        (Duration::from_secs(60), Duration::from_secs(60))
+    );
+    let u = &ok(&one(
+        r#""addresses": ["a:1"], "response_header_timeout": "150ms",
+           "response_idle_timeout": "2s""#,
+    ))
+    .upstreams[0];
+    assert_eq!(u.response_header_timeout, Duration::from_millis(150));
+    assert_eq!(u.response_idle_timeout, Duration::from_secs(2));
+    let u = &ok(&one(
+        r#""addresses": ["a:1"], "response_header_timeout": "0s",
+           "response_idle_timeout": "0s""#,
+    ))
+    .upstreams[0];
+    assert_eq!(u.response_header_timeout, Duration::from_secs(60));
+    assert_eq!(u.response_idle_timeout, Duration::from_secs(60));
+    for key in ["response_header_timeout", "response_idle_timeout"] {
+        let p = problems(&one(&format!(r#""addresses": ["a:1"], "{key}": "-1s""#)));
+        assert_eq!(p.len(), 1, "{p:?}");
+        assert!(p[0].starts_with(&format!("upstreams[0].{key}: ")), "{p:?}");
+    }
 }
 
 #[test]

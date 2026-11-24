@@ -47,9 +47,9 @@
 | A32 | `akio-regex` 模式在哪里匹配、它的分组，以及替换 | 已提出（I40） | 19 | I40、I48 |
 | A33 | 被中间件修改的请求字段和请求目标（`Context::req_mut`） | 已提出（I40） | 12、19 | I40、I43、I44 |
 | A35 | 按长度分帧的流式 HTTP/1.1 响应 | 已提出（I16） | 5 | I16、I67 |
-| A36 | HTTP 客户端请求的响应头超时和空闲超时 | 已在 akio 的 main（`4f7169c4`），已锁定 | 10 | I17b、I18 |
-| A37 | 可在任意时刻取消的 HTTP 客户端请求 | 已在 akio 的 main（`4f7169c4`），已锁定 | 3 | I17b、I45 |
-| A38 | 能得知客户端离开的分离服务端请求；可在运行时修改的写停滞超时 | 已在 akio 的 main（`4f7169c4`），已锁定 | 3、10 | I17b、I49 |
+| A36 | HTTP 客户端请求的响应头超时和空闲超时 | 已在 akio 的 main（`4f7169c4`），已锁定，I17b 已使用 | 10 | I17b、I18 |
+| A37 | 可在任意时刻取消的 HTTP 客户端请求 | 已在 akio 的 main（`4f7169c4`），已锁定，I17b 已使用 | 3 | I17b、I45 |
+| A38 | 能得知客户端离开的分离服务端请求；可在运行时修改的写停滞超时 | 已在 akio 的 main（`4f7169c4`），已锁定，I17b 已使用 | 3、10 | I17b、I49 |
 | A45 | 公开的定时器：延迟过后运行一次回调，可从任何线程调度 | 已提出（I35） | 1、11 | I35、I31、I54 |
 | A48 | 获知请求的结束：响应已完整发出，或等待中客户端已离开 | 已提出（I41） | 3、11、13 | I41、I17、I21、I37 |
 | A49 | 由中间件限制请求体大小，无论谁读取请求体 | 已提出（I41） | 7、11 | I41 |
@@ -62,6 +62,7 @@
 | A63 | `akio-crypto` 中的 bcrypt 密码哈希 | 已在 akio 的 main（`4f7169c4`），已锁定 | 1、4 | I42 |
 | A64 | 每个服务端请求上的客户端已验证证书 | 已在 akio 的 main（`4f7169c4`），已锁定 | — | I42 |
 | A65 | 由中间件挂起、之后带着上下文恢复的请求 | 已在 akio 的 main（`4f7169c4`），已锁定 | 1、3、4 | I42、I43 |
+| A66 | `H2Client` 的请求遵守 `response_header_timeout`、`response_idle_timeout` 和 `CancelToken` | 已提出（I17b） | 3、10 | I17b、I18b |
 | A75 | 挂起消息体流式读取的请求，并暂停其消息体的读取直到恢复 | 已提出（I43） | 5、7、8 | I42、I43、I44 |
 
 ## A1 运行中引擎上的 TCP 监听器
@@ -901,3 +902,21 @@ fit 在线程池里校验，请求在此期间等待，之后继续执行下一�
 **akit 的用法。** `forward_auth`，以及密码尚未记住时的 `basic_auth`，不再要求整体读取消息体：消息体流式
 读取的请求被挂起并暂停读取，检查放行后，其后的代理再流式上传。
 
+## A66 `H2Client` 的请求遵守首部超时、空闲超时和 `CancelToken`
+
+**问题。** ADR-108（A36、A37）为 akio 的 HTTP/1 客户端加上了请求的 `response_header_timeout`、
+`response_idle_timeout` 和 `cancel`（`CancelToken`），但没有包括 `H2Client`：它忽略这三个字段，就像忽略
+`streamed` 一样。到 h2 上游的代理用 fit 同样的超时约束每个交换，并在客户端离开时放弃请求，无论请求处于哪个阶段；
+在 h2 上它没有可以交给的东西。A51 要求的是流式请求的重置和整体超时；这里是 HTTP/1 客户端现在能做的其余部分。
+
+**证据。** akio `4f7169c4`：`ClientRequest::response_header_timeout`、`response_idle_timeout` 和 `cancel`
+的文档写明"仅 HTTP/1 客户端"；`crates/akio-http/src/h2client.rs` 一个都不读（ADR-108 的"被否决：本次变更不含
+`H2Client`"）。由 I17b 经 h2c 的代理发现（`crates/akit-upstream/src/h2.rs`）。
+
+**建议的 API。** 不需要新 API：`H2Client::open` 和 `request` 像 `Client` 一样遵守请求的这三个字段。首部超时
+从请求的 END_STREAM（请求体结束）算到最终响应的 HEADERS；空闲超时是两个 DATA 帧之间的最长间隔，在该流的读取
+被暂停时停止计时（A52）；令牌被取消时以 `CANCEL` 重置该流。每种情况都以 `ClientError::HeaderTimeout`、
+`IdleTimeout` 或 `Cancelled`（`H2Event::Error`）让该流失败一次，连接留给它的其他流。
+
+**akit 的用法。** I18b：`akit_upstream::h2` 的按地址定时检查不再逐流检查首部、静默和令牌（I17b 的权宜之计，
+在一个 100ms 的 `TICK` 之内），因其中之一而放弃的流会被重置，而不是任其运行、让其连接停收新流。

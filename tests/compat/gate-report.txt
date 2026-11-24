@@ -1,7 +1,7 @@
 # The compatibility gate's report (docs/compatibility.md), written by make compat-bless;
 # do not edit. The gate fails when a run's outcomes differ from these lines.
 # fit 7daee573, fit-examples 9659d7e4.
-# 80 fixtures: 20 valid, 59 refused only as not supported yet (fields refused: 59), 0 in a format not supported yet, 1 skipped, 0 failed.
+# 80 fixtures: 21 valid, 58 refused only as not supported yet (fields refused: 56), 0 in a format not supported yet, 1 skipped, 0 failed.
 examples/acme-on-demand: not supported yet: acme.on_demand
 examples/acme-on-demand: not supported yet: listeners[].tls.on_demand
 examples/acme-shared-storage: not supported yet: acme.shared_storage
@@ -26,7 +26,7 @@ examples/docker-compose: not supported yet: providers
 examples/fastcgi: not supported yet: routes[].handler<fastcgi>
 examples/forward-auth: valid
 examples/forward-proxy: not supported yet: routes[].handler<forward_proxy>
-examples/grpc: not supported yet: upstreams[].response_idle_timeout
+examples/grpc: valid
 examples/headers: valid
 examples/hello: valid
 examples/http3: valid
@@ -41,7 +41,6 @@ examples/limits: not supported yet: limits.max_conns
 examples/limits: not supported yet: limits.max_header_bytes
 examples/limits: not supported yet: limits.max_pending_bytes
 examples/limits: not supported yet: limits.max_write_queue_bytes
-examples/limits: not supported yet: limits.write_stall_timeout
 examples/llm-hub: not supported yet: llm
 examples/llm-node: not supported yet: llm
 examples/llm-proxy: not supported yet: llm
@@ -65,9 +64,6 @@ examples/provider-kubernetes: not supported yet: providers
 examples/proxy: not supported yet: limits.max_conns
 examples/proxy: not supported yet: limits.max_header_bytes
 examples/proxy: not supported yet: limits.max_pending_bytes
-examples/proxy: not supported yet: limits.write_stall_timeout
-examples/proxy: not supported yet: upstreams[].response_header_timeout
-examples/proxy: not supported yet: upstreams[].response_idle_timeout
 examples/proxy-protocol: not supported yet: listeners[].proxy_protocol
 examples/rate-limit: valid
 examples/redirect: not supported yet: routes[].middleware[]<redirect>.params.to: a group of regexp ($1, ${name}) in to: akio-regex does not capture groups yet (akio API request A32)

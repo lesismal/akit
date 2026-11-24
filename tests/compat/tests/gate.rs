@@ -478,6 +478,11 @@ fn supported_fields_are_read() {
             format!(r#"{{{L}, "limits": {{"max_body_bytes": 5}}}}"#),
             |c| c.limits.max_body_bytes == 5 && c.listeners[0].max_body_bytes == 5,
         ),
+        (
+            "limits.write_stall_timeout",
+            format!(r#"{{{L}, "limits": {{"write_stall_timeout": "5s"}}}}"#),
+            |c| c.limits.write_stall_timeout == std::time::Duration::from_secs(5),
+        ),
         ("listeners[].name", format!("{{{L}}}"), |c| {
             c.listeners[0].name == "web"
         }),
@@ -1298,6 +1303,16 @@ fn supported_fields_are_read() {
             "upstreams[].response_timeout",
             upstream(r#", "response_timeout": "2m""#),
             |c| c.upstreams[0].response_timeout == std::time::Duration::from_secs(120),
+        ),
+        (
+            "upstreams[].response_header_timeout",
+            upstream(r#", "response_header_timeout": "3s""#),
+            |c| c.upstreams[0].response_header_timeout == std::time::Duration::from_secs(3),
+        ),
+        (
+            "upstreams[].response_idle_timeout",
+            upstream(r#", "response_idle_timeout": "4s""#),
+            |c| c.upstreams[0].response_idle_timeout == std::time::Duration::from_secs(4),
         ),
     ];
     let marked = supported().unwrap();

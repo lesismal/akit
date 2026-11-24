@@ -48,9 +48,9 @@ first; its status here records the branch, then the akio commit akit pins.
 | A32 | Where an `akio-regex` pattern matches, its groups, and replacing them | requested (I40) | 19 | I40, I48 |
 | A33 | A request's fields and target changed by a middleware (`Context::req_mut`) | requested (I40) | 12, 19 | I40, I43, I44 |
 | A35 | A streamed HTTP/1.1 response framed by its length | requested (I16) | 5 | I16, I67 |
-| A36 | An HTTP client request's response-header and idle timeouts | in akio's main (`4f7169c4`), pinned | 10 | I17b, I18 |
-| A37 | An HTTP client request cancelled at any point | in akio's main (`4f7169c4`), pinned | 3 | I17b, I45 |
-| A38 | A detached server request that hears its client went; a write stall timeout changed at run time | in akio's main (`4f7169c4`), pinned | 3, 10 | I17b, I49 |
+| A36 | An HTTP client request's response-header and idle timeouts | in akio's main (`4f7169c4`), pinned, used by I17b | 10 | I17b, I18 |
+| A37 | An HTTP client request cancelled at any point | in akio's main (`4f7169c4`), pinned, used by I17b | 3 | I17b, I45 |
+| A38 | A detached server request that hears its client went; a write stall timeout changed at run time | in akio's main (`4f7169c4`), pinned, used by I17b | 3, 10 | I17b, I49 |
 | A45 | A public timer: a callback run once a delay has passed, from any thread | requested (I35) | 1, 11 | I35, I31, I54 |
 | A48 | A request's end heard: its response sent in full, or its client gone while it waits | requested (I41) | 3, 11, 13 | I41, I17, I21, I37 |
 | A49 | A request body limited by a middleware, whoever reads the body | requested (I41) | 7, 11 | I41 |
@@ -63,6 +63,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | A63 | bcrypt password hashes in `akio-crypto` | in akio's main (`4f7169c4`), pinned | 1, 4 | I42 |
 | A64 | The client's verified certificate on each server request | in akio's main (`4f7169c4`), pinned | — | I42 |
 | A65 | A request suspended by a middleware and resumed with its context | in akio's main (`4f7169c4`), pinned | 1, 3, 4 | I42, I43 |
+| A66 | `H2Client`'s requests heeding `response_header_timeout`, `response_idle_timeout` and a `CancelToken` | requested (I17b) | 3, 10 | I17b, I18b |
 | A75 | A request whose body streams suspended, its body's reads held until it is resumed | requested (I43) | 5, 7, 8 | I42, I43, I44 |
 
 ## A1 TCP listeners on a running engine
@@ -1117,3 +1118,27 @@ for it. A client that goes meanwhile runs the context's `on_gone` as for any sus
 stop asking for bodies whole: a request whose body streams is suspended with its reads held, and
 the proxy behind them streams the upload once the check let it through.
 
+## A66 `H2Client`'s requests heeding the header and idle timeouts and a `CancelToken`
+
+**Problem.** ADR-108 (A36, A37) gave akio's HTTP/1 client a request's `response_header_timeout`,
+`response_idle_timeout` and `cancel` (`CancelToken`), and left `H2Client` out: it ignores the
+three fields, as it ignores `streamed`. A proxy to an h2 upstream bounds its exchanges by fit's
+same timeouts and gives a request up when its client goes, wherever the request is; over h2 it
+has nothing to hand them to. A51 asks for a streamed request's reset and its whole timeout; these
+are the rest of what the HTTP/1 client now does.
+
+**Evidence.** akio `4f7169c4`: `ClientRequest::response_header_timeout`, `response_idle_timeout`
+and `cancel` are documented "HTTP/1 client only"; `crates/akio-http/src/h2client.rs` reads none of
+them (ADR-108's "Rejected: `H2Client` in this change"). Found by I17b's proxy over h2c
+(`crates/akit-upstream/src/h2.rs`).
+
+**Suggested API.** No new API: `H2Client::open` and `request` heed the request's three fields as
+`Client` does. The header timeout runs from the request's END_STREAM (its body ended) to the
+final response's HEADERS; the idle timeout is the longest gap between DATA frames, stopped while
+the stream's reads are held (A52); a cancelled token resets the stream (`CANCEL`). Each fails
+the stream with `ClientError::HeaderTimeout`, `IdleTimeout` or `Cancelled` (`H2Event::Error`),
+once, and leaves the connection to its other streams.
+
+**How akit uses it.** I18b: `akit_upstream::h2`'s per-address tick stops checking each stream for
+its head, its silence and its token (I17b's stopgap, within a `TICK` of 100ms), and a stream given
+up for one of them is reset rather than left running with its connection retired.

@@ -382,17 +382,21 @@ fn an_upstream_that_refuses_connections() {
         let (i, r) = rx.recv_timeout(Duration::from_secs(10)).unwrap();
         by_index[i] = Some(r);
     }
-    for (i, r) in by_index.into_iter().enumerate() {
-        let r = r.unwrap();
-        if i % 2 == 0 {
-            assert!(
-                matches!(r, Err(Error::Client(ClientError::Io(_)))),
-                "{i}: {r:?}"
-            );
-        } else {
-            assert!(ok(&r), "{i}: {r:?}");
-        }
-    }
+    // The round starts where this thread's turn does (each thread's at its own place): the
+    // requests alternate from there.
+    let refused: Vec<bool> = by_index
+        .into_iter()
+        .map(|r| {
+            let r = r.unwrap();
+            let refused = matches!(r, Err(Error::Client(ClientError::Io(_))));
+            assert!(refused || ok(&r), "{r:?}");
+            refused
+        })
+        .collect();
+    assert!(
+        refused == [true, false, true, false] || refused == [false, true, false, true],
+        "{refused:?}"
+    );
 }
 
 #[test]
@@ -490,5 +494,80 @@ fn response_timeout() {
             "{asked:?}: {took:?}"
         );
     }
+    up.release();
+}
+
+/// `response_header_timeout` (I17b): an upstream that does not answer within it fails the
+/// request with `HeaderTimeout`, which counts against the address; fit's 60s when left out.
+#[test]
+fn response_header_timeout() {
+    let up = Upstream::start(true);
+    let dflt = Pool::new(&upstream(&[up.addr.to_string()], ""), EngineSlot::new());
+    assert_eq!(dflt.response_header_timeout(), Duration::from_secs(60));
+    assert_eq!(dflt.response_idle_timeout(), Duration::from_secs(60));
+    let pool = Pool::new(
+        &upstream(
+            &[up.addr.to_string()],
+            r#""response_header_timeout": "150ms", "response_idle_timeout": "1s", "max_fails": 0"#,
+        ),
+        EngineSlot::with(engine()),
+    );
+    assert_eq!(pool.response_header_timeout(), Duration::from_millis(150));
+    assert_eq!(pool.response_idle_timeout(), Duration::from_secs(1));
+    let (tx, rx) = channel();
+    let start = Instant::now();
+    pool.request(ClientRequest::get("/"), move |r| {
+        let _ = tx.send(r);
+    });
+    let r = rx.recv_timeout(Duration::from_secs(5)).unwrap();
+    let took = start.elapsed();
+    assert!(
+        matches!(r, Err(Error::Client(ClientError::HeaderTimeout))),
+        "{r:?}"
+    );
+    assert!(
+        took >= Duration::from_millis(100) && took < Duration::from_secs(3),
+        "{took:?}"
+    );
+    assert_eq!(settled(&pool), 0);
+    assert_eq!(pool.backend_requests(0).1, 1);
+    up.release();
+}
+
+/// A request cancelled by its token (I17b), while it waits for a connection or for its head,
+/// fails with `Cancelled`, which does not count against the address.
+#[test]
+fn cancelled_requests() {
+    use akit_upstream::CancelToken;
+    let up = Upstream::start(true);
+    let pool = Pool::new(
+        &upstream(&[up.addr.to_string()], r#""max_conns": 1"#),
+        EngineSlot::with(engine()),
+    );
+    let (tx, rx) = channel();
+    let (sent, waiting) = (CancelToken::new(), CancelToken::new());
+    for (i, token) in [&sent, &waiting].into_iter().enumerate() {
+        let tx = tx.clone();
+        pool.request(ClientRequest::get("/").cancel_with(token), move |r| {
+            let _ = tx.send((i, r));
+        });
+    }
+    eventually("one held, one waiting", || {
+        up.held.load(Ordering::SeqCst) == 1 && load(&pool) == (1, 1)
+    });
+    sent.cancel();
+    waiting.cancel();
+    for _ in 0..2 {
+        let (i, r) = rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert!(
+            matches!(r, Err(Error::Client(ClientError::Cancelled))),
+            "{i}: {r:?}"
+        );
+    }
+    assert_eq!(settled(&pool), 0);
+    assert_eq!(pool.backend_requests(0).1, 0);
+    assert!(!pool.is_down(0));
+    assert!(!Error::Client(ClientError::Cancelled).is_upstream_failure());
+    assert!(Error::Client(ClientError::HeaderTimeout).is_upstream_failure());
     up.release();
 }
