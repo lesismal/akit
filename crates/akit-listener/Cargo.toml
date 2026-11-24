@@ -17,6 +17,7 @@ akit-config = { workspace = true }
 akit-observe = { workspace = true }
 akit-router = { workspace = true }
 akit-runtime = { workspace = true }
+akit-tls = { workspace = true }
 
 [dev-dependencies]
 akio-crypto = { workspace = true }

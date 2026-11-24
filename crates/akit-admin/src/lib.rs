@@ -26,8 +26,8 @@ mod pointer;
 mod server;
 
 pub use configs::{
-    Applied, ApplyError, Configs, ListenerChange, Outcome, Refused, SOURCE_ADMIN, SOURCE_FILE,
-    Version, etag_matches, etag_of,
+    Applied, ApplyError, Configs, ListenerChange, Outcome, Refused, SOURCE_ADMIN,
+    SOURCE_CERTIFICATES, SOURCE_FILE, Version, etag_matches, etag_of,
 };
 pub use server::{Job, METRICS_CONTENT_TYPE, Metrics, Options, Server, Submit, VERSION_HEADER};
 

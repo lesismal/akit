@@ -12,6 +12,9 @@ use akit_config::Errors;
 pub const SOURCE_FILE: &str = "file";
 /// A config loaded through the Admin API.
 pub const SOURCE_ADMIN: &str = "admin";
+/// The running config applied again because the certificate files it loaded changed
+/// (`run -watch-certs`, I30), as fit's `admin.SourceCertificates`.
+pub const SOURCE_CERTIFICATES: &str = "certificates";
 
 /// A config that was applied.
 #[derive(Debug)]
@@ -20,7 +23,7 @@ pub struct Version {
     pub number: u64,
     /// When it was applied.
     pub applied: SystemTime,
-    /// Where it came from: [`SOURCE_FILE`] or [`SOURCE_ADMIN`].
+    /// Where it came from: [`SOURCE_FILE`], [`SOURCE_ADMIN`] or [`SOURCE_CERTIFICATES`].
     pub source: &'static str,
     /// A strong entity tag of it as written ([`etag_of`]), which `If-Match` compares.
     pub etag: String,

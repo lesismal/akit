@@ -61,8 +61,11 @@ pub struct Graph {
     /// Per listener, in the order of `listeners`: its routes' router, to indices of `routes`.
     routers: Vec<akit_router::Router<usize>>,
     /// Per listener, in the order of `listeners`: its TLS, loaded from its files, when it has
-    /// `tls`: over TCP, and over QUIC when it serves `h3`.
-    tls: Vec<Option<akit_tls::ServerConfigs>>,
+    /// `tls` (its certificates, served per handshake through [`crate::ListenerCerts`]).
+    tls: Vec<Option<akit_tls::ListenerTls>>,
+    /// The SHA-256 of every certificate, key and authority file its listeners loaded, by path:
+    /// what `run -watch-certs` compares the files with (I30).
+    cert_files: std::collections::BTreeMap<String, akit_tls::Sum>,
     /// The upstreams' pools, in the config's order.
     upstreams: Vec<Pool>,
     /// The access log its requests' lines go to: the env's, when the config has `access_log`.
@@ -84,18 +87,28 @@ impl Graph {
         &self.listeners
     }
 
-    /// The TLS the listener at `listener` ([`listener_index`](Self::listener_index)) serves,
-    /// its certificates loaded when the graph was compiled; `None` for one in the clear.
+    /// The TLS of the listener at `listener` ([`listener_index`](Self::listener_index)), loaded
+    /// from its files when the graph was compiled; `None` for one in the clear. Its
+    /// configurations are built around a manager with [`akit_tls::ListenerTls::server_configs`]
+    /// ([`crate::ListenerCerts`] for a listener that serves the current graph's certificates).
     #[must_use]
-    pub fn tls(&self, listener: usize) -> Option<&akio::tls::ServerConfig> {
-        self.tls.get(listener)?.as_ref().map(|c| &c.tcp)
+    pub fn tls(&self, listener: usize) -> Option<&akit_tls::ListenerTls> {
+        self.tls.get(listener)?.as_ref()
     }
 
-    /// The TLS the HTTP/3 connections of the listener at `listener` serve (ALPN `h3`, TLS 1.3),
-    /// from the same certificates as [`tls`](Self::tls); `None` for one that does not serve `h3`.
+    /// The certificates of the listener named `name`, when it has `tls`: what a handshake on it
+    /// is served from while this graph is current. Looks the listener up by name (there are
+    /// few): once per full TLS handshake, not per request.
     #[must_use]
-    pub fn h3_tls(&self, listener: usize) -> Option<&akio::tls::ServerConfig> {
-        self.tls.get(listener)?.as_ref()?.h3.as_ref()
+    pub fn certs(&self, name: &str) -> Option<&Arc<akit_tls::Certs>> {
+        let i = self.listener_index(name)?;
+        Some(self.tls.get(i)?.as_ref()?.certs())
+    }
+
+    /// The SHA-256 of every certificate, key and authority file the listeners loaded, by path.
+    #[must_use]
+    pub fn cert_files(&self) -> &std::collections::BTreeMap<String, akit_tls::Sum> {
+        &self.cert_files
     }
 
     /// The routes, in the config's order.
@@ -281,7 +294,7 @@ pub fn compile(
     let mut tls = Vec::with_capacity(config.listeners.len());
     for (i, l) in config.listeners.iter().enumerate() {
         tls.push(l.tls.as_ref().and_then(|t| {
-            akit_tls::server_configs(t, &l.protocols)
+            akit_tls::ListenerTls::load(t, &l.protocols)
                 .map_err(|e| {
                     let mut path = format!("listeners[{i}].tls");
                     if !e.path.is_empty() {
@@ -298,6 +311,11 @@ pub fn compile(
                 .ok()
         }));
     }
+    let cert_files = tls
+        .iter()
+        .flatten()
+        .flat_map(|t| t.files().iter().map(|(p, s)| (p.clone(), *s)))
+        .collect();
     if !errors.is_empty() {
         // `modules` drops here, cleaning up what was provisioned.
         return Err(Errors(errors));
@@ -328,6 +346,7 @@ pub fn compile(
         routes,
         routers,
         tls,
+        cert_files,
         upstreams,
         access_log: config.access_log.as_ref().and(env.access_log().cloned()),
         modules: Mutex::new(Some(modules)),

@@ -11,7 +11,11 @@
 //!   line is written, when it stops; a reload changes its level and time zone, as fit's does,
 //!   while its output, format, flush interval and buffer take a restart. With `admin`, the Admin
 //!   API (I26) serves the running config and its versions and loads new configs, each applied
-//!   by the control thread through the same reload as SIGHUP, one config at a time.
+//!   by the control thread through the same reload as SIGHUP, one config at a time. With
+//!   `-watch-certs` (on by default, as fit's), the certificate, key and authority files the
+//!   running config loaded are looked at every `-watch-interval`, and once a change has settled
+//!   the running config is applied again as a new version (I30): a listener whose files changed
+//!   only in their certificates is kept, and its next handshakes get the new ones.
 //! - `validate`: reads and compiles the config, as `run` would, and says whether it is valid.
 //! - `version`, `help`.
 
@@ -20,13 +24,14 @@ mod flags;
 use std::io::Read;
 use std::process::ExitCode;
 use std::sync::{Arc, mpsc};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use akit_admin::{Applied, ApplyError, Configs, ListenerChange, Outcome, Refused};
 use akit_config::{Config, Error, Errors, LogFormat};
 use akit_observe::{AccessLog, Format, Zone};
 use akit_runtime::upstream::EngineSlot;
 use akit_runtime::{Env, Graph, GraphCell, HandlerParams, Registry, compile};
+use akit_tls::{FileWatcher, Report};
 use flags::{Spec, Usage};
 
 const USAGE: &str = "\
@@ -66,12 +71,12 @@ const RUN_FLAGS: &[Spec] = &[
     Spec {
         name: "watch-interval",
         bool: false,
-        usage: "not supported yet (I29)",
+        usage: "how often watched files are looked at: certificate files, with -watch-certs (default 1s)",
     },
     Spec {
         name: "watch-certs",
         bool: true,
-        usage: "not supported yet (I30)",
+        usage: "apply the running config again each time the certificate or key files it loaded change (default true)",
     },
     Spec {
         name: "admin",
@@ -211,14 +216,19 @@ fn open_access_log(c: &akit_config::AccessLog, zone: Zone) -> std::io::Result<Ac
     AccessLog::new(out, opts)
 }
 
+/// The certificate, key and authority files a config loaded, with their SHA-256, by path.
+type CertFiles = std::collections::BTreeMap<String, akit_tls::Sum>;
+
 /// What applying a config takes: the engine slot its pools dial through, the listeners it moves,
 /// the access log opened at start (with the config it was opened from), and the `admin` akit
-/// started with.
+/// started with; and what the running config loaded from certificate files, which
+/// `-watch-certs` compares the files with.
 struct Runner<'a> {
     slot: &'a EngineSlot,
     listeners: &'a mut akit_listener::Listeners,
     log: Option<&'a (AccessLog, akit_config::AccessLog)>,
     admin: Option<&'a akit_config::Admin>,
+    cert_files: CertFiles,
 }
 
 impl Runner<'_> {
@@ -231,10 +241,12 @@ impl Runner<'_> {
                 Failure::Config(errs) => ApplyError::Config(errs),
                 Failure::Registry(e) => ApplyError::Failed(e),
             })?;
+        let files = graph.cert_files().clone();
         let r = self
             .listeners
             .reload(graph)
             .map_err(|e| ApplyError::Failed(e.to_string()))?;
+        self.cert_files = files;
         let mut warnings = Vec::new();
         match (self.log, &config.access_log, zone) {
             (Some((l, first)), Some(c), Some(zone)) => {
@@ -315,6 +327,37 @@ fn reload(paths: &[String], configs: &Configs, runner: &mut Runner<'_>) {
         }
         // No If-Match was given.
         Err(Refused::Changed) => {}
+    }
+}
+
+/// `-watch-certs`: the certificate files changed, so the running config is applied again as a
+/// new version, as fit's `Configs.Reapply`, loading them anew; on failure the running config, and
+/// its certificates, stay. Says what happened as fit says it.
+fn reload_certs(configs: &Configs, runner: &mut Runner<'_>) -> Result<(), ()> {
+    println!("akit: certificate files changed; reloading");
+    let data = configs.current().data().to_owned();
+    match configs.update(akit_admin::SOURCE_CERTIFICATES, None, data, |text| {
+        runner.apply_text(text)
+    }) {
+        Ok(o) => {
+            print_applied(&o);
+            println!(
+                "akit: reloaded certificate files (config version {})",
+                o.version
+            );
+            Ok(())
+        }
+        Err(Refused::Apply(ApplyError::Config(errs))) => {
+            eprintln!("akit: reload failed; the running config stays");
+            print_errors("the running config", &errs);
+            Err(())
+        }
+        Err(Refused::Apply(ApplyError::Failed(e))) => {
+            eprintln!("akit: reload failed; the running config stays: {e}");
+            Err(())
+        }
+        // No If-Match was given.
+        Err(Refused::Changed) => Err(()),
     }
 }
 
@@ -418,9 +461,21 @@ fn run(args: &[String]) -> ExitCode {
         Err(u) => return usage_error(&u),
     };
     let mut grace = Duration::from_secs(30);
+    let mut watch_certs = true;
+    let mut watch_interval = akit_tls::DEFAULT_WATCH_INTERVAL;
     for (name, value) in &flags {
         match *name {
             "c" => {}
+            "watch-certs" => watch_certs = value == "true",
+            "watch-interval" => match flags::parse_duration(value) {
+                Some(d) if !d.is_zero() => watch_interval = d,
+                _ => {
+                    return usage_error(&Usage(format!(
+                        "invalid value {value:?} for flag -watch-interval: parse error\n{}",
+                        flags::usage("run", RUN_FLAGS)
+                    )));
+                }
+            },
             "shutdown-timeout" => match flags::parse_duration(value) {
                 Some(d) => grace = d,
                 None => {
@@ -477,6 +532,7 @@ fn run(args: &[String]) -> ExitCode {
     };
     let admin = config.admin.clone();
     drop(config);
+    let cert_files = graph.cert_files().clone();
     let configs = Configs::new(
         json,
         akit_admin::SOURCE_FILE,
@@ -547,21 +603,52 @@ fn run(args: &[String]) -> ExitCode {
         listeners: &mut listeners,
         log: log.as_ref(),
         admin: admin.as_ref(),
+        cert_files,
     };
+    // The certificate files watched (fit's -watch-certs), on this thread, every interval: the
+    // running config's version number and the files it loaded tell the watcher what it loaded.
+    let mut watcher = watch_certs.then(|| {
+        (
+            FileWatcher::new(akit_tls::DEFAULT_WATCH_DEBOUNCE),
+            Instant::now(),
+        )
+    });
     loop {
         // Graphs replaced by a reload are retired from here once no request uses them
         // (decision 004): after each swap, and on a timer while any is left.
-        let next = if cell.retiring() > 0 {
-            match control.recv_timeout(COLLECT_EVERY) {
+        let mut wait = (cell.retiring() > 0).then_some(COLLECT_EVERY);
+        if let Some((_, at)) = &watcher {
+            let until = at.saturating_duration_since(Instant::now());
+            wait = Some(wait.map_or(until, |w| w.min(until)));
+        }
+        let next = match wait {
+            None => control.recv().ok(),
+            Some(wait) => match control.recv_timeout(wait) {
                 Ok(c) => Some(c),
                 Err(mpsc::RecvTimeoutError::Timeout) => {
-                    cell.collect();
+                    if let Some((w, at)) = &mut watcher {
+                        let now = Instant::now();
+                        if now >= *at {
+                            *at = now.checked_add(watch_interval).unwrap_or(now);
+                            let files = runner.cert_files.clone();
+                            let version = configs.current().number;
+                            if let Some(Report::Unreadable(e)) =
+                                w.tick(now, version, &files, || reload_certs(&configs, &mut runner))
+                            {
+                                eprintln!(
+                                    "akit: certificate files: {e}; the running certificates stay"
+                                );
+                            }
+                            // A failed reload said why.
+                        }
+                    }
+                    if cell.retiring() > 0 {
+                        cell.collect();
+                    }
                     continue;
                 }
                 Err(mpsc::RecvTimeoutError::Disconnected) => None,
-            }
-        } else {
-            control.recv().ok()
+            },
         };
         match next {
             Some(Control::Stop) | None => break,

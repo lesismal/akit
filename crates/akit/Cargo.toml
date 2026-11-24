@@ -24,6 +24,7 @@ akit-middleware = { workspace = true }
 akit-listener = { workspace = true }
 akit-proxy = { workspace = true }
 akit-runtime = { workspace = true }
+akit-tls = { workspace = true }
 
 [dev-dependencies]
 akio-crypto = { workspace = true }

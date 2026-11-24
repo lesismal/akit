@@ -127,16 +127,53 @@ fn problems_name_the_certificate_or_file() {
     assert!(e.msg.starts_with(&ak.display().to_string()), "{e}");
 }
 
+/// Any certificate may hold wildcards (akio's certificate resolver, A2): fit's choice.
 #[test]
-fn a_wildcard_past_the_first_certificate_is_not_supported_yet() {
+fn wildcards_in_any_certificate() {
     let d = dir("wildcard");
     let ca = Ca::new("test ca");
     let (a, ak) = ca.leaf(&d, "a", &["a.example"]);
     let (w, wk) = ca.leaf(&d, "w", &["*.example"]);
-    let e =
-        akit_tls::server_config(&tls(vec![cert(&a, &ak), cert(&w, &wk)], None), H1_H2).unwrap_err();
-    assert_eq!(e.path, "certificates[1]");
-    assert!(e.msg.starts_with(akit_config::NOT_SUPPORTED_YET), "{e}");
-    // First, it is the default, which serves the names it holds.
+    akit_tls::server_config(&tls(vec![cert(&a, &ak), cert(&w, &wk)], None), H1_H2).unwrap();
     akit_tls::server_config(&tls(vec![cert(&w, &wk), cert(&a, &ak)], None), H1_H2).unwrap();
+}
+
+/// What a reload compares: the files' sums, and the configuration but for its certificates.
+#[test]
+fn files_and_same_config() {
+    let d = dir("same");
+    let ca = Ca::new("test ca");
+    let (a, ak) = ca.leaf(&d, "a", &["a.example"]);
+    let roots = ca.write(&d, "ca.pem");
+    let auth = || {
+        Some(ClientAuth {
+            ca_files: vec![roots.display().to_string()],
+            mode: ClientAuthMode::Require,
+        })
+    };
+    let t = tls(vec![cert(&a, &ak)], auth());
+    let one = akit_tls::ListenerTls::load(&t, H1_H2).unwrap();
+    let keys: Vec<&String> = one.files().keys().collect();
+    let mut want = [
+        a.display().to_string(),
+        ak.display().to_string(),
+        roots.display().to_string(),
+    ];
+    want.sort();
+    assert_eq!(keys, want.iter().collect::<Vec<_>>());
+    assert_eq!(one.certs().len(), 1);
+    assert_eq!(one.certs().files().len(), 2);
+
+    // New certificates: the same configuration.
+    ca.leaf(&d, "a", &["a.example", "b.example"]);
+    let two = akit_tls::ListenerTls::load(&t, H1_H2).unwrap();
+    assert!(one.same_config(&two));
+    assert_ne!(one.files(), two.files());
+    assert!(two.certs().has("b.example"));
+    // Another authority, or other protocols: another.
+    Ca::new("other ca").write(&d, "ca.pem");
+    let three = akit_tls::ListenerTls::load(&t, H1_H2).unwrap();
+    assert!(!two.same_config(&three));
+    let h2 = akit_tls::ListenerTls::load(&t, &[Protocol::H2]).unwrap();
+    assert!(!three.same_config(&h2));
 }

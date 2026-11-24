@@ -9,6 +9,8 @@
 //! - [`compile`] and [`Graph`]: a config compiled into what the data plane reads, and
 //!   [`GraphCell`], which publishes graphs to the I/O threads, gives each request the current one
 //!   without a shared reference count, and retires the old ones (I04).
+//! - [`ListenerCerts`]: a TLS listener's certificate manager, serving each handshake the current
+//!   graph's certificates, so that a reload changes them without closing the listener (I30).
 //!
 //! Part of [akit](https://github.com/lesismal/akit); see `docs/dev-plan.md` for the iterations that
 //! fill this crate in.
@@ -17,12 +19,14 @@ mod cell;
 mod graph;
 pub mod module;
 pub mod request;
+pub mod tls;
 pub mod traits;
 
 /// The upstream pools (I14), which [`Env`] and [`Graph`] hold.
 pub use akit_upstream as upstream;
 pub use cell::{GraphCell, Hold};
 pub use graph::{CompiledRoute, Graph, HandlerParams, UPSTREAM_POOLS, compile};
+pub use tls::ListenerCerts;
 
 pub use module::{Env, Info, LoadError, Modules, Provision, ProvisionError, Provisioned, Registry};
 pub use request::{REQUEST_FIELDS, request_headers, set_request_headers};

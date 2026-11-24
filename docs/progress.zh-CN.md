@@ -10,14 +10,66 @@
 | | |
 | --- | --- |
 | 最后更新 | 2026-11-24 |
-| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I15、I19–I24 已完成，I16 进行中（body 限制已完成；流式转发等待 akio 的 A19–A21）；M2 的 I26 和 M3 的 I39、I40 已提前完成。 |
+| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I15、I19–I24 已完成，I16 进行中（body 限制已完成；流式转发等待 akio 的 A19–A21）；M2 的 I26、I30 和 M3 的 I39、I40 已提前完成。 |
 | akio | akio `main` 上的 `a9a620ab`（`1.0.0-rc.1`，带 A1–A5、A7、A8、A11、A13 和 A16–A18），在 `Cargo.toml` 中按 `rev` 锁定 |
 | fit | 作为规格；本计划基于 `7daee573` 阅读 |
-| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；基于 akio 的 A1 保留、增加、修改和排空监听器，包括启动时的监听器，重载可新增 h3 监听器；服务 h3 的启动监听器要重启才能变）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；路由中间件：`rewrite`（前缀）、`redirect` 和 `headers`；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`）；所有监听器和代理上的 `limits.max_body_bytes`（413）；fit 的 json、text 和 line 格式的访问日志；上游连接池，轮询、加权轮询和最少连接，跳过被被动健康检查（`max_fails`、`fail_timeout`）下线的地址；回环地址上的 Admin API（`GET /config`，也可按 JSON 指针读取，带 `If-Match` 的 `POST /load`，`GET /versions`），加载与 SIGHUP 一样作为重载应用，两者共用一份历史记录；兼容性门禁：80 个夹具，10 个有效，69 个只因暂不支持被拒绝，1 个跳过，没有失败 |
+| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；基于 akio 的 A1 保留、增加、修改和排空监听器，包括启动时的监听器，重载可新增 h3 监听器；服务 h3 的启动监听器要重启才能变）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证；按 fit 的方式每次握手选择证书，重载或 `-watch-certs` 替换证书而不关闭监听器）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；路由中间件：`rewrite`（前缀）、`redirect` 和 `headers`；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`）；所有监听器和代理上的 `limits.max_body_bytes`（413）；fit 的 json、text 和 line 格式的访问日志；上游连接池，轮询、加权轮询和最少连接，跳过被被动健康检查（`max_fails`、`fail_timeout`）下线的地址；回环地址上的 Admin API（`GET /config`，也可按 JSON 指针读取，带 `If-Match` 的 `POST /load`，`GET /versions`），加载与 SIGHUP 一样作为重载应用，两者共用一份历史记录；兼容性门禁：80 个夹具，10 个有效，69 个只因暂不支持被拒绝，1 个跳过，没有失败 |
 | 下一步 | I17；A19–A21 落地后再做 I16 |
 | akio 需求 | A1–A5、A7、A8、A11、A13、A16–A18 已在 akio 的 main 并已锁定；A6 在 akio 分支 `claude/x509-csr` 上；A9、A10、A12、A14、A15、A19–A21、A22、A23 和 A24 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
 
 ## 日志
+
+### 2026-11-24：I30，证书管理与存储
+
+- 证书管理器就是 akio-tls 的 `CertResolver`（akio A2，ADR-098），相当于 fit 的 `tlsmgr.Manager` 之于 Go 的
+  `GetCertificate`：每次完整握手都向它要证书，它在调用中从内存作答（或稍后从其他线程作答，按需 TLS 即 I34 会用到）。
+  现在每个 TLS 监听器的配置都围绕一个管理器构建（`ServerConfig::builder_with_resolver`），不再用 I09 的 `sni_cert` 表。
+- `akit_tls::Certs`，对应 fit 的 `tlsmgr.Static`：监听器的证书（`CertifiedKey`），按叶子证书中的名字（小写 DNS 名、
+  IP 地址）以及每个 `*.` 名字的父域建立索引。握手得到：按名字精确匹配或通过单层通配符匹配、且客户端能接受（其签名
+  方案，以及 TLS 1.2 下与密钥类型相符的 ECDHE 套件，同 Go 的 `SupportsCertificate`）的第一个证书；否则该名字的第一个
+  证书；否则所有证书中的第一个；只有一个证书时它服务所有名字。因此任何证书中的通配符现在都可用（I09 拒绝第一个之后
+  的证书中的通配符），同一名字有 RSA 和 ECDSA 两个证书时客户端得到它支持的那个，与 fit 相同（I09 给第一个）。
+- `akit_tls::ListenerTls`：一次加载的监听器 `tls`（证书、客户端 CA、协议），带所读每个文件的 SHA-256；
+  `server_configs(manager)` 围绕一个管理器构建其 TCP 和 h3 配置；`same_config` 比较证书以外的一切。
+  `server_config` 和 `server_configs(tls, protocols)` 保留，服务加载的证书。
+- 重载不丢握手：每个 TLS 监听器的管理器 `akit_runtime::ListenerCerts` 提供 cell 当前图为该监听器（按名字）加载的
+  证书，像请求一样通过 I/O 线程的缓存读图，不加锁。若重载后监听器配置相同、客户端 CA 相同（包括其文件内容），监听器、
+  它的 socket 和连接都保留，下一次握手得到新证书；进行中的握手保留已拿到的证书。重载新开的监听器在切换前服务自己那张
+  图的证书；正在排空的监听器在当前图已没有它时服务自己的证书。客户端 CA 变化会重开监听器（新的在旧的旁边，旧的排空），
+  因为配置持有它们。这修正了 I22 中被保留的 TLS 监听器仍用旧证书的问题。
+- `run -watch-certs`（默认开启，与 fit 相同）和 `-watch-interval`（1s）：`akit_tls::FileWatcher`，对应 fit 的
+  `tlsmgr.FileWatcher`，在主线程循环中查看运行中配置加载的每个证书、私钥和 CA 文件（`Graph::cert_files`）的大小和
+  修改时间，变化稳定（500 ms）且内容不同后，把运行中的配置作为来源为 `certificates`
+  （`akit_admin::SOURCE_CERTIFICATES`）的新版本重新应用，像 SIGHUP 和 Admin API 一样经由 `Configs::update`，对应 fit 的
+  `Configs.Reapply`（`akit: certificate files changed; reloading`，然后 `akit: reloaded certificate files (config
+  version N)`）。无论配置从哪条路来，`Runner::apply` 都记下运行中的图加载的文件。失败的一对文件（私钥尚未写入）只报告一次，文件再变化前不重试；不可读的文件只报告一次。`-watch`
+  （配置文件，I29）仍被拒绝。
+- 存储：`akit_tls::Storage`，对应 fit 的 `tlsmgr.Storage`（load、store、delete、list、lock、unlock），用截止时间
+  代替 context；其方法会阻塞，在 I/O 线程之外调用。`FileStorage` 对应 fit 的 `FileStorage`：根目录下每个键一个文件
+  （检查键：没有空、`.` 或 `..` 段，没有反斜杠或 NUL），先写临时文件、sync 再 rename；值最大 4 MiB；目录 0700、文件
+  0600；`list` 排序，跳过锁和临时文件。锁是 `locks/` 下用 `create_new` 创建的文件，持有期间每个锁一个线程每 5 s
+  touch 一次，30 s 未被 touch（持有者已停止）即被删除，等待者每秒检查一次直到截止时间；同时最多持有 256 个（规则
+  11）。ACME（I31）是它的第一个用户；`acme.storage` 和 `shared_storage` 在那之前仍被拒绝。
+- 测试：`akit-tls` 单元测试（按 fit 的 `TestStatic` 选择证书：精确、通配符、仅单层、顺序、客户端的签名方案；Go 的
+  支持规则）；`tests/storage.rs`（4 个，fit 的存储测试：键、值、大小、权限、list、截止时间、同一目录上两个存储轮流
+  持有一个锁、等待新鲜的锁、接管过期的锁）；`tests/watch.rs`（2 个，fit 的 watcher 测试：续期只应用一次、忽略 touch
+  和改回、失败的一对只报告一次、不可读的文件、其他途径应用的配置）；`tests/files.rs`（任何证书中的通配符、文件摘要和
+  `same_config`）。`akit-listener/tests/certs.rs`（3 个，epoll 和 io_uring）：按 SNI 选择任何证书中的通配符；流量下
+  替换证书（四个客户端一直做完整握手，重载保留监听器，之后服务新证书，没有失败的请求，之前建立的连接仍可用）；新的客户端
+  CA 重开监听器。`akit/tests/watch_certs.rs`（2 个，用 `akit run` 端到端）：续期的文件无需重启即被服务且监听器保留，
+  私钥尚未写入时失败一次、写入后应用；以及 `-watch-certs=false`。`cli.rs`：错误的 `-watch-interval` 退出码 2。
+- 验证：macOS 上 `make check`；Linux（基准机 gpu51）上 akit-tls、akit-runtime、akit-listener 和 akit 的测试，epoll
+  全部通过，io_uring 除 `akit-listener/tests/reload.rs`（明文 HTTP，其 `get` 读超时）外全部通过；该测试在负载
+  200 到 480 的机器上于 main `1a5fccf` 失败得一样频繁（各 5 次中 2 次）：是 I30 之前就有的负载下偶发失败。合并 main（I26、I40）后：macOS 上 `make check`，以及 gpu51（负载约 10）上 akit
+  和 akit-listener 的测试，epoll 和 io_uring 全部通过，包括 `reload.rs`。
+- 与计划和 fit 的差异：
+  - fit 的 `Certs`（ACME 与文件合用）、OCSP stapling（`Staple`）和共享存储（Redis、etcd、Consul）属于 I31、I32 和
+    I62；trait 已为它们准备好。
+  - watcher 运行在控制线程的循环（在 I26 的 `Control` 通道上 `recv_timeout`）中，而不是单独的 goroutine；它发起的
+    重载、SIGHUP 的重载和 Admin API 的加载在那里依次进行。
+  - 客户端恢复的会话不发送证书，所以在票据过期前保留首次握手的证书，与 Go 相同。
+- 基准任务应测量：一个和十个证书的监听器每秒完整 TLS 握手数，对比 I09 的 `sni_cert` 和 fit；每次握手选择证书的开销
+  （一次读图和一次 `Arc` 克隆）。
 
 ### 2026-11-24：I40，重写、跳转与头处理
 
