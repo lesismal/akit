@@ -1,12 +1,13 @@
-//! Reloading (I22): a new graph published and the listeners moved to its, as fit's
+//! Reloading (I22, I28): a new graph published and the listeners moved to its, as fit's
 //! `listener.Server.Reload` moves them, with akio's listeners added and removed at run time
 //! (akio API request A1, ADR-099).
 //!
-//! A listener the new graph has unchanged (the same name, address, protocols, `tls` and limits,
-//! and the same client authorities in its `tls` files) is kept: its sockets stay open, and its
-//! requests go to the new graph's routes from the swap on, since a [`Dispatcher`] reads the
-//! current graph per request; a TLS one's handshakes get the new graph's certificates from then
-//! on (I30), since its certificate manager reads the current graph too. The others:
+//! A listener the new graph has unchanged (the same name, address, protocols and limits, TLS or
+//! not, the same TLS version and client authorities, as fit's `binding.same` compares them; its
+//! certificates may differ: I28) is kept: its sockets stay open, and its requests go to the new
+//! graph's routes from the swap on, since a [`Dispatcher`] reads the current graph per request; a
+//! TLS one's handshakes get the new graph's certificates from then on (I30), since its
+//! certificate manager reads the current graph too. The others:
 //!
 //! - **Added**, the changed ones too, before the swap: the TCP side with
 //!   [`Engine::add_listener`], HTTP/3 with [`Engine::bind_udp`] on the engine's UDP thread, so an
@@ -157,6 +158,28 @@ impl Entry {
             b.close();
         }
     }
+}
+
+/// Whether a running listener configured as `running` can serve `next` as it is, as fit's
+/// `binding.same` decides (I28): the same name, address, protocols and body limit, TLS or not as
+/// `next` has it, and the same newest TLS version and client authentication mode, each fixed in
+/// its engine listener. Its certificates may differ, their files and its ACME names: a kept
+/// listener's manager serves `next`'s per handshake (I30). Its client authorities are compared
+/// by their contents, by [`akit_tls::ListenerTls::same_config`], not by their paths.
+fn same(running: &Listener, next: &Listener) -> bool {
+    running.name == next.name
+        && running.address == next.address
+        && running.protocols == next.protocols
+        && running.max_body_bytes == next.max_body_bytes
+        && match (&running.tls, &next.tls) {
+            (None, None) => true,
+            (Some(a), Some(b)) => {
+                a.max_version == b.max_version
+                    && a.client_auth.as_ref().map(|c| c.mode)
+                        == b.client_auth.as_ref().map(|c| c.mode)
+            }
+            _ => false,
+        }
 }
 
 /// The first of `items` not `taken` for which `same` holds, now taken.
@@ -405,9 +428,10 @@ impl Listeners {
     }
 
     /// Per listener of `graph`, the running one it keeps; and per running listener, whether it
-    /// is kept. A TLS listener whose files changed only in its certificates is kept: its manager
-    /// serves the new ones from the swap on. Refused when a listener serving HTTP/3 that the
-    /// engine was built with would not be kept.
+    /// is kept: the first not kept yet that is [`same`] and whose loaded TLS is the same but for
+    /// its certificates. A TLS listener whose certificates changed (their files, their contents,
+    /// its ACME names) is kept: its manager serves the new ones from the swap on. Refused when a
+    /// listener serving HTTP/3 that the engine was built with would not be kept.
     fn keeps(&self, graph: &Graph) -> Result<(Vec<Option<usize>>, Vec<bool>), ReloadError> {
         let mut kept = vec![false; self.entries.len()];
         let keeps: Vec<Option<usize>> = graph
@@ -417,7 +441,7 @@ impl Listeners {
             .map(|(i, l)| {
                 let tls = graph.tls(i);
                 claim(&self.entries, &mut kept, |e| {
-                    e.config == *l
+                    same(&e.config, l)
                         && match (&e.tls, tls) {
                             (Some(a), Some(b)) => a.same_config(b),
                             (a, b) => a.is_none() && b.is_none(),
@@ -562,13 +586,19 @@ impl Listeners {
             }
         }
         let mut next = Vec::with_capacity(configs.len());
-        for (keep, new) in keeps.iter().zip(opened) {
+        for (i, ((keep, new), config)) in keeps.iter().zip(opened).zip(configs).enumerate() {
             let e = match (keep, new) {
                 (_, Some(e)) => {
                     report.added.extend(e.served());
                     Some(e)
                 }
-                (Some(j), None) => old.get_mut(*j).and_then(Option::take),
+                // Kept: it goes by the new config from here on (its certificates may differ),
+                // which the next reload compares with.
+                (Some(j), None) => old.get_mut(*j).and_then(Option::take).map(|mut e| {
+                    e.tls = self.cell.with(|g| g.tls(i).cloned());
+                    e.config = config;
+                    e
+                }),
                 (None, None) => None,
             };
             next.extend(e);

@@ -290,3 +290,70 @@ fn new_client_authorities_reopen_the_listener() {
     stop(&e, l);
     std::fs::remove_dir_all(&d).unwrap();
 }
+
+/// A TLS listener kept as fit keeps it (`binding.same`, I28): other certificate files, and the
+/// same client authorities from another file, keep the listener and its connections, its next
+/// handshakes served the new certificate; another client authentication mode, or no TLS, opens it
+/// anew.
+#[test]
+fn other_certificate_files_keep_the_listener() {
+    let d = dir("certs-other-files");
+    let ca = Ca::new("akit test ca");
+    let roots = ca.write(&d, "ca.pem");
+    let a = ca.leaf(&d, "a", &["a.example"]);
+    let b = ca.leaf(&d, "b", &["a.example"]);
+    let auth = |file: &Path, mode: &str| {
+        format!(
+            r#", "client_auth": {{"ca_files": ["{}"], "mode": "{mode}"}}"#,
+            s(file)
+        )
+    };
+    let (cell, e, mut l) = serve(&config(&[&a], &auth(&roots, "verify_if_given")));
+    let addr = l.served()[0].address;
+    let (mut open, leaf) = Open::new(addr, &roots);
+    assert_eq!(leaf, leaf_der(&a.0));
+    assert_eq!(open.get(), "hello");
+
+    // Other certificate files, the same authorities from another file: kept.
+    let copy = ca.write(&d, "ca-copy.pem");
+    let r = l
+        .reload(graph(&config(&[&b], &auth(&copy, "verify_if_given"))))
+        .unwrap();
+    assert_eq!((r.kept, r.added.len(), r.removed.len()), (1, 0, 0));
+    assert_eq!(l.served()[0].address, addr);
+    let seen = get_h1(
+        addr,
+        &client(&roots, &[], None),
+        "a.example",
+        "a.example",
+        "/",
+    )
+    .unwrap();
+    assert_eq!((seen.leaf, seen.body.as_str()), (leaf_der(&b.0), "hello"));
+    assert_eq!(open.get(), "hello");
+    cell.collect();
+
+    // The next reload compares with what was kept: the same again is kept.
+    let r = l
+        .reload(graph(&config(&[&b], &auth(&copy, "verify_if_given"))))
+        .unwrap();
+    assert_eq!((r.kept, r.added.len(), r.removed.len()), (1, 0, 0));
+    cell.collect();
+
+    // Another mode: opened anew.
+    let r = l
+        .reload(graph(&config(&[&b], &auth(&copy, "require"))))
+        .unwrap();
+    assert_eq!((r.kept, r.added.len(), r.removed.len()), (0, 1, 1));
+    cell.collect();
+
+    // No TLS: opened anew.
+    let clear = r#"{"listeners": [{"name": "secure", "address": "127.0.0.1:0", "protocols": ["http/1.1"]}],
+        "routes": [{"handler": {"module": "respond", "params": {"body": "hello"}}}]}"#;
+    let r = l.reload(graph(clear)).unwrap();
+    assert_eq!((r.kept, r.added.len(), r.removed.len()), (0, 1, 1));
+    drop(open);
+    cell.collect();
+    stop(&e, l);
+    std::fs::remove_dir_all(&d).unwrap();
+}
