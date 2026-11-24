@@ -1,7 +1,7 @@
 # The compatibility gate's report (docs/compatibility.md), written by make compat-bless;
 # do not edit. The gate fails when a run's outcomes differ from these lines.
 # fit 7daee573, fit-examples 9659d7e4.
-# 80 fixtures: 26 valid, 53 refused only as not supported yet (fields refused: 48), 0 in a format not supported yet, 1 skipped, 0 failed.
+# 80 fixtures: 28 valid, 51 refused only as not supported yet (fields refused: 45), 0 in a format not supported yet, 1 skipped, 0 failed.
 examples/acme-on-demand: not supported yet: acme.on_demand
 examples/acme-on-demand: not supported yet: listeners[].tls.on_demand
 examples/acme-shared-storage: not supported yet: acme.shared_storage
@@ -62,9 +62,8 @@ examples/proxy: not supported yet: limits.max_header_bytes
 examples/proxy: not supported yet: limits.max_pending_bytes
 examples/proxy-protocol: not supported yet: listeners[].proxy_protocol
 examples/rate-limit: valid
-examples/redirect: not supported yet: routes[].middleware[]<redirect>.params.to: a group of regexp ($1, ${name}) in to: akio-regex does not capture groups yet (akio API request A32)
-examples/rewrite: not supported yet: routes[].middleware[]<rewrite>.params.regexp
-examples/rewrite: not supported yet: routes[].middleware[]<rewrite>.params.replacement
+examples/redirect: valid
+examples/rewrite: valid
 examples/routing: valid
 examples/socks: not supported yet: listeners[].protocols: the "socks" protocol
 examples/socks: not supported yet: listeners[].socks

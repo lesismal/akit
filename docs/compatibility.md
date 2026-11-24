@@ -175,7 +175,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 232 supported.
+3821 fields in 121 sections, at fit `7daee573`; 234 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -218,7 +218,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`http.middleware/jwt`](#fields-http-middleware-jwt) | 13 | 13 | 0 |
 | [`http.middleware/rate_limit`](#fields-http-middleware-rate-limit) | 9 | 9 | 0 |
 | [`http.middleware/redirect`](#fields-http-middleware-redirect) | 5 | 5 | 0 |
-| [`http.middleware/rewrite`](#fields-http-middleware-rewrite) | 6 | 4 | 2 |
+| [`http.middleware/rewrite`](#fields-http-middleware-rewrite) | 6 | 6 | 0 |
 | [`http.middleware/wasm`](#fields-http-middleware-wasm) | 18 | 0 | 18 |
 | [`limits`](#fields-limits) | 7 | 3 | 4 |
 | [`listeners`](#fields-listeners) | 30 | 13 | 17 |
@@ -300,7 +300,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 232 | 3589 |
+| **Total** | 3821 | 234 | 3587 |
 
 <a id="fields-access"></a>
 
@@ -1228,8 +1228,8 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `routes[].middleware[]<rewrite>` | `module` | supported |
 | `routes[].middleware[]<rewrite>.params` | `object` | supported |
 | `routes[].middleware[]<rewrite>.params.add_prefix` | `string` | supported |
-| `routes[].middleware[]<rewrite>.params.regexp` | `string` | not supported yet |
-| `routes[].middleware[]<rewrite>.params.replacement` | `string` | not supported yet |
+| `routes[].middleware[]<rewrite>.params.regexp` | `string` | supported |
+| `routes[].middleware[]<rewrite>.params.replacement` | `string` | supported |
 | `routes[].middleware[]<rewrite>.params.strip_prefix` | `array<string>` | supported |
 
 <a id="fields-http-middleware-wasm"></a>

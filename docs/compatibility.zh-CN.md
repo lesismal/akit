@@ -152,7 +152,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 232 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 234 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -195,7 +195,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`http.middleware/jwt`](#fields-http-middleware-jwt) | 13 | 13 | 0 |
 | [`http.middleware/rate_limit`](#fields-http-middleware-rate-limit) | 9 | 9 | 0 |
 | [`http.middleware/redirect`](#fields-http-middleware-redirect) | 5 | 5 | 0 |
-| [`http.middleware/rewrite`](#fields-http-middleware-rewrite) | 6 | 4 | 2 |
+| [`http.middleware/rewrite`](#fields-http-middleware-rewrite) | 6 | 6 | 0 |
 | [`http.middleware/wasm`](#fields-http-middleware-wasm) | 18 | 0 | 18 |
 | [`limits`](#fields-limits) | 7 | 3 | 4 |
 | [`listeners`](#fields-listeners) | 30 | 13 | 17 |
@@ -277,7 +277,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **合计** | 3821 | 232 | 3589 |
+| **合计** | 3821 | 234 | 3587 |
 
 <a id="fields-access"></a>
 
@@ -1205,8 +1205,8 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `routes[].middleware[]<rewrite>` | `module` | 已支持 |
 | `routes[].middleware[]<rewrite>.params` | `object` | 已支持 |
 | `routes[].middleware[]<rewrite>.params.add_prefix` | `string` | 已支持 |
-| `routes[].middleware[]<rewrite>.params.regexp` | `string` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<rewrite>.params.replacement` | `string` | 尚不支持（not supported yet） |
+| `routes[].middleware[]<rewrite>.params.regexp` | `string` | 已支持 |
+| `routes[].middleware[]<rewrite>.params.replacement` | `string` | 已支持 |
 | `routes[].middleware[]<rewrite>.params.strip_prefix` | `array<string>` | 已支持 |
 
 <a id="fields-http-middleware-wasm"></a>

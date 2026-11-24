@@ -192,10 +192,8 @@ admin.max_conns
 # over yet: such an address is still refused.
 admin.token_file
 
-# I40: route middleware: rewrite, redirect and headers, as fit's. rewrite.regexp and
-# rewrite.replacement are refused as not supported yet, and so are groups of redirect.regexp in
-# redirect.to ($1, ${name}): akio-regex does not find or capture where a pattern matches yet (akio
-# API request A32). The request changes of headers reach the proxy's upstream (akio API request
+# I40: route middleware: rewrite, redirect and headers, as fit's (rewrite.regexp, its replacement
+# and redirect.to's groups came with I48). The request changes of headers reach the proxy's upstream (akio API request
 # A33 changes the request itself). The other middleware modules are refused as not supported yet.
 routes[].middleware
 routes[].middleware[].module
@@ -362,3 +360,10 @@ routes[].handler<proxy>.params.tunnel_idle_timeout
 # I50: no new fields: gRPC calls (HTTP/2 or HTTP/3 POSTs of application/grpc) are proxied to h2
 # and h2c upstreams with TE: trailers, grpc-timeout bounding them as the proxy's timeout does,
 # and gRPC's trailers-only answers to the calls the proxy cannot complete.
+
+# I48: the rest of fit's middleware: rewrite.regexp and rewrite.replacement (each match of the
+# decoded path replaced, Go's ReplaceAllString), and groups of redirect.regexp in redirect.to ($1,
+# ${name}), on akio-regex's matches and captures (akio API request A32, ADR-115). Only cache (I67)
+# and wasm (I71) are left.
+routes[].middleware[]<rewrite>.params.regexp
+routes[].middleware[]<rewrite>.params.replacement

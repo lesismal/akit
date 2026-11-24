@@ -937,6 +937,16 @@ fn supported_fields_are_read() {
             |c| rewrite_of(c).strip_prefix == ["/api", "/b/"],
         ),
         (
+            "routes[].middleware[]<rewrite>.params.regexp",
+            rewrite(r#""regexp": "^/old/(.*)$", "replacement": "/new/$1""#),
+            |c| rewrite_of(c).regexp == "^/old/(.*)$",
+        ),
+        (
+            "routes[].middleware[]<rewrite>.params.replacement",
+            rewrite(r#""regexp": "^/old/(.*)$", "replacement": "/new/$1""#),
+            |c| rewrite_of(c).replacement == "/new/$1",
+        ),
+        (
             "routes[].middleware[]<rewrite>.params.add_prefix",
             rewrite(r#""add_prefix": "/v2""#),
             |c| rewrite_of(c).add_prefix == "/v2",
@@ -1786,7 +1796,7 @@ fn akit_config_lists_match_the_inventory() {
         (
             "routes[].middleware[]<rewrite>.params",
             "REWRITE_FIELDS",
-            Some("REWRITE_FIT_ONLY"),
+            None,
         ),
         (
             "routes[].middleware[]<redirect>.params",

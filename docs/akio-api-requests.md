@@ -45,7 +45,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | A24 | An HTTP/1 response that closes its connection, and stops reading a body it refused | requested (I26) | 7, 10, 11 | I26, I27, I41 |
 | A29 | A response hook without an allocation: a listener's observer, called with a few words the request set | requested (I37) | 13 | I21, I37, I64 |
 | A30 | The open connections a listener accepted, apart from dialed ones and UDP peers | requested (I37) | — | I37 |
-| A32 | Where an `akio-regex` pattern matches, its groups, and replacing them | requested (I40) | 19 | I40, I48 |
+| A32 | Where an `akio-regex` pattern matches, its groups, and replacing them | built on akio's branch `claude/a32-regex-captures` (`26c500b5`, ADR-115), pinned, used by I48 | 19 | I40, I48 |
 | A33 | A request's fields and target changed by a middleware (`Context::req_mut`) | requested (I40) | 12, 19 | I40, I43, I44 |
 | A35 | A streamed HTTP/1.1 response framed by its length | requested (I16) | 5 | I16, I67 |
 | A36 | An HTTP client request's response-header and idle timeouts | in akio's main (`4f7169c4`), pinned, used by I17b | 10 | I17b, I18 |
@@ -653,6 +653,10 @@ start, then the slots only for the match):
 **How akit uses it.** `rewrite`'s `regexp` and `replacement` (`replace_all` on the decoded path)
 and `redirect`'s groups in `to` (`captures` on the escaped path, then `expand`), compiled when the
 config is; the not-supported-yet refusals in akit-config go.
+
+**Status.** Built by I48 in akio (ADR-115, `26c500b5`): `find`, `find_at`, `find_iter`, `captures`,
+`expand` and `replace_all` as suggested, with Go's leftmost-first matches and groups (repetitions
+compiled in Go's shapes), checked against Go's `regexp` on 132 000 random cases.
 
 ## A33 A request changed by a middleware: its fields and its target
 

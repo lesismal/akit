@@ -8,9 +8,8 @@
 //! the middleware left them. Others go through the `proxy` handler to a plain upstream, which
 //! reports the request as it arrived.
 //!
-//! What akit cannot do yet is checked to be refused as not supported yet, naming the akio API
-//! request that brings it: the rewrite's `regexp` and `replacement`, and groups of the redirect's
-//! regexp in its `to` (akio-regex does not find or capture where a pattern matches: A32).
+//! The rewrite's `regexp` and `replacement`, and the groups of the redirect's regexp in its `to`,
+//! run on akio-regex's matches and captures (akio API request A32).
 //! fit's `{scheme}` over TLS (`https`) comes from akit-listener's `TLS` local, tested with the TLS
 //! listeners; here it is `http`.
 #![allow(
@@ -403,6 +402,29 @@ fn rewrite() {
             ][..],
         ),
         (
+            "regexp",
+            r#"{"regexp": "^/users/([0-9]+)$", "replacement": "/u?id=$1"}"#,
+            &[
+                ("/users/42", "/u?id=42 /u%3Fid=42"),
+                ("/users/x", "/users/x /users/x"),
+            ][..],
+        ),
+        (
+            "regexp, named groups, every match",
+            r#"{"regexp": "(?P<word>[a-z]+)-", "replacement": "${word}_"}"#,
+            &[("/a-b-c", "/a_b_c /a_b_c")][..],
+        ),
+        (
+            "a replacement that drops the leading /",
+            r#"{"regexp": "^/old", "replacement": ""}"#,
+            &[("/old", "/ /"), ("/oldx", "/x /x")][..],
+        ),
+        (
+            "regexp on the decoded path",
+            r#"{"regexp": "^/a b/(.*)$", "replacement": "/c/$1"}"#,
+            &[("/a%20b/x%2Fy", "/c/x/y /c/x/y")][..],
+        ),
+        (
             "add prefix",
             r#"{"add_prefix": "/v2"}"#,
             &[("/users", "/v2/users /v2/users"), ("/", "/v2/ /v2/")][..],
@@ -411,6 +433,11 @@ fn rewrite() {
             "strip and add, in order",
             r#"{"strip_prefix": ["/api"], "add_prefix": "/internal"}"#,
             &[("/api/v1/users", "/internal/v1/users /internal/v1/users")][..],
+        ),
+        (
+            "all three, in order",
+            r#"{"strip_prefix": ["/api"], "regexp": "^/v1/", "replacement": "/", "add_prefix": "/internal"}"#,
+            &[("/api/v1/users", "/internal/users /internal/users")][..],
         ),
         (
             "escaped afresh",
@@ -432,6 +459,20 @@ fn rewrite() {
             assert_eq!(r.path(), *want, "{name} {target}");
         }
     }
+}
+
+// A path the regexp rewrites goes upstream too.
+#[test]
+fn regexp_rewritten_path_goes_upstream() {
+    let (up, seen) = upstream();
+    let akit = Akit::proxy(
+        r#"[{"module": "rewrite", "params": {"regexp": "^/users/(?P<id>[0-9]+)$", "replacement": "/v2/user/${id}"}}]"#,
+        up,
+    );
+    let r = request(akit.addr, "GET", "/users/7?x=1", &[]);
+    assert_eq!((r.status, r.text()), (200, "up"));
+    let s = seen.recv_timeout(Duration::from_secs(10)).unwrap();
+    assert_eq!(s.request_line(), "GET /v2/user/7?x=1 HTTP/1.1");
 }
 
 // The rewritten path is what the proxy sends upstream, with the query as it came.
@@ -462,8 +503,7 @@ fn middleware_in_order() {
     assert_eq!((r.status, r.path()), (200, "/b /b"));
 }
 
-// fit's TestRedirect, but for the cases whose `to` names a group of the regexp, which akit-config
-// refuses until akio-regex captures (A32): `redirect_groups_not_supported_yet`.
+// fit's TestRedirect.
 #[test]
 fn redirect() {
     for (name, params, target, status, location) in [
@@ -508,6 +548,41 @@ fn redirect() {
             "/other",
             200,
             "",
+        ),
+        (
+            "a group",
+            r#"{"to": "/new/$1{query}", "regexp": "^/old/(.*)$"}"#,
+            "/old/page?x",
+            302,
+            "/new/pagex",
+        ),
+        (
+            "a group, not matched",
+            r#"{"to": "/new/$1", "regexp": "^/old/(.*)$"}"#,
+            "/other",
+            200,
+            "",
+        ),
+        (
+            "groups stay escaped",
+            r#"{"to": "/new/$1", "regexp": "^/old/(.*)$"}"#,
+            "/old/a%20b%2Fc",
+            302,
+            "/new/a%20b%2Fc",
+        ),
+        (
+            "named groups",
+            r#"{"to": "https://{host}/u/${id}?from=$id", "regexp": "^/users/(?P<id>[0-9]+)$"}"#,
+            "/users/42",
+            302,
+            "https://example.com/u/42?from=42",
+        ),
+        (
+            "an unknown group is empty",
+            r#"{"to": "/x/$2$name/${1}y", "regexp": "^/(.*)$"}"#,
+            "/a",
+            302,
+            "/x//ay",
         ),
         (
             "regexp matches escaped",
@@ -575,6 +650,56 @@ fn redirect() {
             302,
             "/go/x%5Cy",
         ),
+        // fit's "/go//evil.com" is made canonical by akit-listener, as "path made canonical".
+        (
+            "group made canonical",
+            r#"{"to": "/$1", "regexp": "^/go/(.*)$"}"#,
+            "/go//evil.com",
+            302,
+            "/evil.com",
+        ),
+        (
+            "group makes //",
+            r#"{"to": "/$1", "regexp": "^(/[a-z.]+)$"}"#,
+            "/evil.com",
+            400,
+            "",
+        ),
+        (
+            "group makes /backslash",
+            r#"{"to": "/$1", "regexp": "^/go/(.*)$"}"#,
+            "/go/%5Cevil.com",
+            400,
+            "",
+        ),
+        (
+            "group makes a scheme",
+            r#"{"to": "$1", "regexp": "^/go/(.*)$"}"#,
+            "/go/https:/evil.com",
+            400,
+            "",
+        ),
+        (
+            "group makes a path",
+            r#"{"to": "$1", "regexp": "^/go(/.*)$"}"#,
+            "/go/a:b",
+            302,
+            "/a:b",
+        ),
+        (
+            "group makes a relative path",
+            r#"{"to": "$1", "regexp": "^/go/(.*)$"}"#,
+            "/go/page",
+            302,
+            "page",
+        ),
+        (
+            "group on another host",
+            r#"{"to": "//cdn.example/$1", "regexp": "^/s/(.*)$"}"#,
+            "/s/x.js",
+            302,
+            "//cdn.example/x.js",
+        ),
         (
             "to starting with $ makes a scheme",
             r#"{"to": "$$https://{host}", "regexp": "^/"}"#,
@@ -601,7 +726,7 @@ fn redirect() {
             "{name}: {}",
             r.text()
         );
-        if status == 400 && name != "raw backslash" {
+        if status == 400 && !matches!(name, "raw backslash" | "group makes /backslash") {
             assert_eq!(r.text(), "400 bad redirect target\n", "{name}");
         }
     }
@@ -774,6 +899,21 @@ fn param_errors() {
             r#""/v2/" does not start with '/', or ends with one"#,
         ),
         (
+            "rewrite",
+            r#"{"regexp": "("}"#,
+            r#"routes[0].middleware[0].params.regexp: "(" is not a valid regular expression"#,
+        ),
+        (
+            "rewrite",
+            r#"{"replacement": "/x"}"#,
+            "routes[0].middleware[0].params.replacement: a replacement needs a regexp",
+        ),
+        (
+            "rewrite",
+            r#"{"strip_prefix": ["/a"], "replacement": "/x"}"#,
+            "a replacement needs a regexp",
+        ),
+        (
             "redirect",
             "{}",
             "routes[0].middleware[0].params.to: missing required field",
@@ -846,26 +986,6 @@ fn param_errors() {
 #[test]
 fn not_supported_yet() {
     for (name, params, want) in [
-        (
-            "rewrite",
-            r#"{"regexp": "^/users/([0-9]+)$", "replacement": "/u?id=$1"}"#,
-            "routes[0].middleware[0].params.regexp: not supported yet",
-        ),
-        (
-            "rewrite",
-            r#"{"strip_prefix": ["/a"], "replacement": "/x"}"#,
-            "routes[0].middleware[0].params.replacement: not supported yet",
-        ),
-        (
-            "redirect",
-            r#"{"to": "/new/$1", "regexp": "^/old/(.*)$"}"#,
-            "routes[0].middleware[0].params.to: not supported yet: a group of regexp",
-        ),
-        (
-            "redirect",
-            r#"{"to": "${name}x", "regexp": "^/(?P<name>.*)$"}"#,
-            "A32",
-        ),
         (
             "wasm",
             "{}",
