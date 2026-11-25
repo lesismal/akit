@@ -12,8 +12,8 @@ listeners
 listeners[].name
 listeners[].address
 listeners[].protocols
-# I09: TLS from files. listeners[].protocols takes "h2" too; tls.max_version takes "1.3" (1.2 is
-# refused as not supported yet); tls.kernel_tls_offload is refused.
+# I09: TLS from files. listeners[].protocols takes "h2" too; tls.max_version takes "1.3" and,
+# since akio API request A9, "1.2" (TLS 1.2 alone over TCP); tls.kernel_tls_offload is refused.
 # I10: listeners[].protocols takes "h3" too (HTTP/3 on the listener's port in UDP, Alt-Svc on TCP).
 # I30: no new fields: certificates are chosen per handshake (a wildcard in any of them); the
 # storage comes with acme.storage in I31.
@@ -199,7 +199,7 @@ telemetry.metrics
 telemetry.metrics.interval
 
 # I26: the Admin API (GET /config, POST /load, GET /versions), on a loopback address: a host that
-# is not loopback needs token_file and TLS (I27); a Unix socket (unix/<path>) waits on akio API
+# is not loopback needs token_file and TLS (I27); a Unix socket (unix/<path>, 0600) since akio API
 # request A23; the token, TLS, access lists, store, console and the rest are refused as not
 # supported yet.
 admin
@@ -483,8 +483,8 @@ routes[].handler<fastcgi>.params.max_header_bytes
 
 # I55: the forward proxy. A listener's "socks" protocol (SOCKS5, SOCKS4 and 4a CONNECT, alone or
 # beside HTTP and tcp on one port) with the rules of its socks, and the forward_proxy handler's
-# HTTP CONNECT tunnels with the same rules (over HTTP/1.1; HTTP/2 and HTTP/3 wait for akio API
-# request A134).
+# HTTP CONNECT tunnels with the same rules (over HTTP/1.1, and since akio API request A134 on
+# HTTP/2 and HTTP/3 streams).
 listeners[].socks
 listeners[].socks.clients
 listeners[].socks.allow

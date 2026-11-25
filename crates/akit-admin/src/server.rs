@@ -10,6 +10,7 @@
 use std::fmt;
 use std::io;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -300,12 +301,15 @@ fn refused(e: &Refused) -> Response {
 pub struct Server {
     engine: Engine,
     addr: SocketAddr,
+    /// The Unix socket's path, when `address` is `unix/<path>` (A23): removed at shutdown.
+    unix: Option<PathBuf>,
 }
 
 impl fmt::Debug for Server {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Server")
             .field("addr", &self.addr)
+            .field("unix", &self.unix)
             .finish_non_exhaustive()
     }
 }
@@ -346,8 +350,15 @@ impl Server {
             None => None,
             Some(file) => Some(read_token(file)?),
         };
-        let addr = resolve(&settings.address)?;
+        // `unix/<path>` (A23): a socket only akit's user reaches, 0600, a stale one replaced and
+        // one in use refused, as fit's; no Host check there.
+        let unix = settings.address.strip_prefix("unix/").map(PathBuf::from);
+        let addr = match &unix {
+            Some(_) => akio::UNIX_ADDR,
+            None => resolve(&settings.address)?,
+        };
         let api = Api(Arc::new(Shared {
+            unix: unix.is_some(),
             configs,
             submit,
             max_body: settings.max_config_bytes,
@@ -370,21 +381,37 @@ impl Server {
         let engine = Engine::builder()
             .config(cfg)
             .listen(
-                Listener::tcp(addr)
-                    .backend(opts.backend.clone())
-                    .threads(1)
-                    .serve(akio_http::serve_with(http, api)),
+                match &unix {
+                    Some(path) => Listener::unix(path).unix_mode(0o600),
+                    None => Listener::tcp(addr),
+                }
+                .backend(opts.backend.clone())
+                .threads(1)
+                .serve(akio_http::serve_with(http, api)),
             )
-            .build()?;
+            .build()
+            .map_err(|e| match &unix {
+                Some(p) => io::Error::new(e.kind(), format!("{}: {e}", p.display())),
+                None => e,
+            })?;
         engine.start()?;
         let addr = engine.local_addrs().first().copied().unwrap_or(addr);
-        Ok(Server { engine, addr })
+        Ok(Server { engine, addr, unix })
     }
 
-    /// Where the API listens.
+    /// Where the API listens: [`akio::UNIX_ADDR`] on a Unix socket.
     #[must_use]
     pub fn addr(&self) -> SocketAddr {
         self.addr
+    }
+
+    /// Where the API listens, as `address` names it: a host and port, or `unix/<path>`.
+    #[must_use]
+    pub fn address(&self) -> String {
+        match &self.unix {
+            Some(p) => format!("unix/{}", p.display()),
+            None => self.addr.to_string(),
+        }
     }
 
     /// Stops the API: no more connections, those open closed once their requests are answered
@@ -393,6 +420,13 @@ impl Server {
     pub fn shutdown(&self) {
         self.engine.shutdown();
         self.engine.wait();
+        // The socket file goes with the API, as Go's listener removes it on close.
+        if let Some(p) = &self.unix {
+            use std::os::unix::fs::FileTypeExt;
+            if std::fs::symlink_metadata(p).is_ok_and(|m| m.file_type().is_socket()) {
+                let _ = std::fs::remove_file(p);
+            }
+        }
     }
 }
 
@@ -420,6 +454,8 @@ pub(crate) struct Shared {
     dashboard: bool,
     /// The token every request must carry, from `token_file`; none asked for without it.
     token: Option<Vec<u8>>,
+    /// On a Unix socket (A23): only akit's user reaches it, so `Host` is not checked.
+    unix: bool,
 }
 
 struct Api(Arc<Shared>);
@@ -473,7 +509,7 @@ const CONFIG_METHODS: &str = "GET, HEAD, PUT, PATCH, DELETE";
 
 impl akio_http::Service for Api {
     fn call(&self, ctx: &mut Context) {
-        if let Some(resp) = guard(ctx, self.0.token.as_deref()) {
+        if let Some(resp) = guard(ctx, self.0.token.as_deref(), self.0.unix) {
             ctx.respond(resp);
             return;
         }
@@ -579,8 +615,9 @@ fn submit(shared: &Shared, ctx: &mut Context, op: Op, mode: Mode) {
 /// without it (401), but for the dashboard's files, which hold no data and ask for the token
 /// themselves (I63); a request from a web page, which a browser marks with `Origin` (but a read
 /// from the API's own origin); and, without a token, one whose `Host` is not a loopback name, as
-/// a web page's is after DNS rebinding.
-fn guard(ctx: &Context, token: Option<&[u8]>) -> Option<Response> {
+/// a web page's is after DNS rebinding, unless it came over the Unix socket (`unix`), which no web
+/// page reaches (fit's `loopback` is false there).
+fn guard(ctx: &Context, token: Option<&[u8]>, unix: bool) -> Option<Response> {
     if let Some(token) = token {
         let valid = ctx
             .header("Authorization")
@@ -607,7 +644,7 @@ fn guard(ctx: &Context, token: Option<&[u8]>) -> Option<Response> {
             return Some(error(403, "requests from web pages are refused"));
         }
     }
-    if token.is_none() && !loopback_host(host) {
+    if token.is_none() && !unix && !loopback_host(host) {
         return Some(error(403, "the Host field must name a loopback host"));
     }
     None

@@ -45,8 +45,9 @@
 //! whose source is the provider; `GET /config`, its pointers, ETags and rollbacks stay about the
 //! base config, as in fit.
 //!
-//! A Unix socket waits on akio API request A23; TLS for the API (`cert_file`, `key_file`), and
-//! with it an address off loopback, is not supported yet.
+//! On `unix/<path>` the API listens on a Unix socket only akit's user reaches (0600; a stale one
+//! replaced, one in use refused; no `Host` check), as fit's. TLS for the API (`cert_file`,
+//! `key_file`), and with it an address off loopback, is not supported yet.
 
 mod cache;
 mod configs;

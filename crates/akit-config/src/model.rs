@@ -186,12 +186,13 @@ pub const DEFAULT_ADMIN_MAX_CONNS: usize = 16;
 
 /// `admin`: the Admin API, as fit's `config.Admin` (decision 006): so far its address, history,
 /// limits and token (I27). Its TLS, access lists, store, console and the rest are refused as not
-/// supported yet; so is a Unix socket (`unix/<path>`, akio API request A23).
+/// supported yet.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Admin {
-    /// `address`: a loopback host and port; [`DEFAULT_ADMIN_ADDRESS`] when left out. A host that
-    /// is not loopback needs a token and TLS, as in fit, and akit does not serve the API over TLS
-    /// yet: it is refused.
+    /// `address`: a loopback host and port, or `unix/` and the path of a Unix socket, made 0600
+    /// (akio API request A23); [`DEFAULT_ADMIN_ADDRESS`] when left out. A host that is not
+    /// loopback needs a token and TLS, as in fit, and akit does not serve the API over TLS yet:
+    /// it is refused.
     pub address: String,
     /// `token_file`: a file holding a token that every request must carry, as
     /// `Authorization: Bearer <token>`, read when akit starts; none asked for when left out.
@@ -1847,7 +1848,7 @@ const CONFIG_FIT_ONLY: &[&str] = &[
     "bittorrent",
 ];
 // I26: the Admin API's address, history and limits; I27: its token; I63: its dashboard. Its TLS waits for the API to
-// be served over TLS, its access lists for fit's access, a Unix socket for akio API request A23.
+// be served over TLS, its access lists for fit's access.
 const ADMIN_FIELDS: &[&str] = &[
     "address",
     "token_file",
@@ -3280,8 +3281,10 @@ fn admin(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Admin> {
     if let Some(v) = o.take("address") {
         let p = o.at("address");
         if let Some(s) = d.string(v, &p).filter(|s| !s.is_empty()) {
-            if s.starts_with("unix/") {
-                d.not_yet(v.off, &p, "a Unix socket (akio API request A23)");
+            if let Some(path) = s.strip_prefix("unix/") {
+                if path.is_empty() {
+                    d.error(v.off, &p, format!("{s:?} has no path after \"unix/\""));
+                }
             } else if let Err(msg) = check_address(&s) {
                 d.error(v.off, &p, msg);
             } else if !loopback_host(&s) {
@@ -3456,11 +3459,8 @@ fn tls_version(d: &mut Decoder<'_>, n: &Node, path: &str) -> TlsVersion {
     };
     match raw {
         "1.3" => TlsVersion::Tls13,
-        "1.2" => {
-            // akio-tls has no public way to cap a server at TLS 1.2 (akio API request A9).
-            d.not_yet(n.off, path, "max_version 1.2 (TLS 1.2 alone)");
-            TlsVersion::Tls12
-        }
+        // TLS 1.2 alone over TCP (akio's `tls12_only`, ADR-121); QUIC stays TLS 1.3.
+        "1.2" => TlsVersion::Tls12,
         other => {
             d.error(
                 n.off,

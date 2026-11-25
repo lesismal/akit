@@ -3,7 +3,8 @@
 //! and by a name whose address decides, the rest refused (403 before the dial, 502 for a name
 //! refused once connected), 400 for a target that is not `host:port`, 405 for other methods, the
 //! idle timeout; and beyond fit's: large transfers with slow peers, a tunnel cut midway, the
-//! connect timeout (504) and HTTP/2 (501 until akio API request A134). On the backend
+//! connect timeout (504) and fit's `TestConnectH2C`, a tunnel on an h2c stream (akio API request
+//! A134). On the backend
 //! `AKIO_TEST_BACKEND` names (epoll by default, `uring`).
 #![allow(
     clippy::unwrap_used,
@@ -15,13 +16,13 @@
 
 use std::io::{ErrorKind, Read, Write};
 use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream};
-use std::sync::Arc;
+use std::sync::{Arc, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use akio::{Backend, Engine, UringConfig};
 use akio_http::client::ClientRequest;
-use akio_http::h2client::{H2Client, H2Options};
+use akio_http::h2client::{H2Client, H2Event, H2Options};
 use akit_runtime::upstream::EngineSlot;
 use akit_runtime::{Env, GraphCell, HandlerParams, Registry, compile};
 
@@ -209,8 +210,8 @@ fn not_connect() {
     );
 }
 
-/// A CONNECT on an h2c stream, which fit tunnels, is answered 501 until akio tunnels CONNECT
-/// over HTTP/2 (akio API request A134).
+/// fit's `TestConnectH2C`: a CONNECT on an h2c stream is tunneled on it (akio API request
+/// A134); and a destination the rules refuse is answered 403 there too.
 #[test]
 fn connect_over_h2c() {
     let target = backend(echo);
@@ -218,17 +219,44 @@ fn connect_over_h2c() {
     let client = Engine::builder().client_threads(1).build().unwrap();
     client.start().unwrap();
     let c = H2Client::dial_blocking(&client, proxy.addr, None, H2Options::default()).unwrap();
-    let mut req =
-        ClientRequest::get(&format!("http://{}/", proxy.addr)).timeout(Duration::from_secs(5));
-    req.method = akio_http::Method::Connect;
-    req.headers.set("host", target.to_string());
-    let r = c.send(req).wait();
-    match r {
-        Ok(r) => assert_eq!(r.status, 501),
-        // A client that cannot send a CONNECT on HTTP/2 without :protocol: nothing to check.
-        Err(e) => eprintln!("h2 CONNECT not sent: {e}"),
+    let open = |dest: String| {
+        let mut req = ClientRequest::get(&format!("http://{}/", proxy.addr));
+        req.method = akio_http::Method::Connect;
+        req.headers.set("host", dest);
+        let (tx, rx) = mpsc::channel::<String>();
+        let up = c.open(req, move |ev| {
+            let _ = tx.send(match ev {
+                H2Event::Head { status, .. } => format!("head {status}"),
+                H2Event::Data(d) => format!("data {}", String::from_utf8_lossy(d)),
+                H2Event::Trailers(_) => "trailers".into(),
+                H2Event::End => "end".into(),
+                H2Event::Error(e) => format!("error {e}"),
+            });
+        });
+        (up, rx)
+    };
+    let wait = Duration::from_secs(10);
+    let (up, rx) = open(target.to_string());
+    assert_eq!(rx.recv_timeout(wait).unwrap(), "head 200");
+    let msg = "h2c ".repeat(1000);
+    assert!(up.write(msg.as_bytes()));
+    let mut got = String::new();
+    while got.len() < msg.len() {
+        let ev = rx.recv_timeout(wait).unwrap();
+        got.push_str(ev.strip_prefix("data ").unwrap_or_else(|| panic!("{ev}")));
     }
-    drop(c);
+    assert_eq!(got, msg);
+    assert!(up.finish());
+    loop {
+        match rx.recv_timeout(wait).unwrap().as_str() {
+            "end" => break,
+            "data " => {}
+            ev => panic!("{ev}"),
+        }
+    }
+    let (_up, rx) = open("192.0.2.1:80".into());
+    assert_eq!(rx.recv_timeout(wait).unwrap(), "head 403");
+    c.close();
     drop(client);
 }
 

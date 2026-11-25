@@ -43,6 +43,8 @@ pub struct Seen {
     pub alt_svc: Option<String>,
     /// The body.
     pub body: String,
+    /// The TLS version negotiated (`TLSv1_2`, `TLSv1_3`).
+    pub version: Option<&'static str>,
 }
 
 /// A GET over TLS to `server_name` (SNI), with `host` as its Host field.
@@ -57,6 +59,7 @@ pub fn get_h1(
     tcp.set_read_timeout(Some(Duration::from_secs(5)))?;
     let mut s = Stream::client(cfg, server_name, tcp)?;
     s.handshake()?;
+    let version = s.conn().version_name();
     let alpn = s
         .conn()
         .alpn()
@@ -89,6 +92,7 @@ pub fn get_h1(
         status: head.lines().next().unwrap().to_owned(),
         alt_svc,
         body: body.to_owned(),
+        version,
     })
 }
 

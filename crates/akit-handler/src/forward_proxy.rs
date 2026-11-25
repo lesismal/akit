@@ -12,12 +12,13 @@
 //! closed. A request that is not a CONNECT, an extended CONNECT among them, is answered 405, and
 //! one whose target is not `host:port` 400.
 //!
-//! akio tunnels CONNECT over HTTP/1.1 alone: a CONNECT on an HTTP/2 or HTTP/3 stream, which fit
-//! tunnels too, is answered 501 until akio does (akio API request A134).
+//! A CONNECT on an HTTP/2 or HTTP/3 stream is tunneled on that stream, as fit's (akio API
+//! request A134): its DATA is the way out, the streamed `200` the way back, with the same checks,
+//! timeouts and backpressure; the client's END_STREAM shuts the destination's side down.
 
 use std::sync::Arc;
 
-use akio_http::{Context, Method, Response, Service, Version};
+use akio_http::{Context, Method, Response, Service};
 use akit_l4::forward::{Rules, Verdict};
 use akit_runtime::{Handler, HandlerParams, Provision, ProvisionError, Provisioned};
 
@@ -44,12 +45,6 @@ impl<S: Service> Service for ForwardProxy<S> {
         if *ctx.method() != Method::Connect || ctx.req().protocol.is_some() {
             return ctx.respond(
                 Response::text(405, "only CONNECT is proxied\n").header("Allow", "CONNECT"),
-            );
-        }
-        if !matches!(ctx.req().version, Version::Http10 | Version::Http11) {
-            return ctx.text(
-                501,
-                "CONNECT is tunneled over HTTP/1.1 alone so far (akio API request A134)\n",
             );
         }
         let verdict = match target(&ctx.req().target) {

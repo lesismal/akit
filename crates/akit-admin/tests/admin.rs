@@ -4,7 +4,7 @@
 //! configs, wrong types, bodies too large, web pages, stale ETags, missing tokens); edits by
 //! pointer; concurrent writers; rollback; reload; dry runs; history; concurrent loads; slow and
 //! cut clients; the connection limit. On the backend `AKIO_TEST_BACKEND` names (epoll by default,
-//! `uring`). Not ported: fit's Unix socket test (akio API request A23), its console, store and
+//! `uring`); fit's Unix socket test (akio API request A23). Not ported: fit's console, store and
 //! `/config/text` cases (not in akit).
 #![allow(
     clippy::unwrap_used,
@@ -1470,4 +1470,49 @@ fn edit_limits_and_cut_clients() {
     assert_eq!(r.status, 200, "{r:?}");
     assert_eq!(f.served(), "v3");
     assert_eq!(f.configs.current().number, 4);
+}
+
+/// fit's `TestUnixSocket`: on `unix/<path>` the API listens on a socket made 0600, a stale one
+/// left by a process that is gone replaced, `Host` not checked; one in use is refused, and the
+/// file goes with the API.
+#[test]
+fn unix_socket() {
+    use std::os::unix::fs::PermissionsExt;
+    use std::os::unix::net::{UnixListener, UnixStream};
+    // A short path: a socket's path is limited to about 100 bytes.
+    let path = std::path::PathBuf::from(format!("/tmp/akit-admin-{}.sock", std::process::id()));
+    let _ = std::fs::remove_file(&path);
+    // A socket left by a process that is gone is replaced.
+    drop(UnixListener::bind(&path).unwrap());
+    let settings = admin(|a| a.address = format!("unix/{}", path.display()));
+    let f = start(&doc("v1"), settings.clone());
+    assert_eq!(f.api.address(), format!("unix/{}", path.display()));
+    let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+    assert_eq!(mode & 0o777, 0o600);
+    // Over the socket, the Host field is not checked.
+    let mut s = UnixStream::connect(&path).unwrap();
+    s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+    s.write_all(b"GET /config HTTP/1.1\r\nHost: fit.example.com\r\nConnection: close\r\n\r\n")
+        .unwrap();
+    let mut raw = Vec::new();
+    let _ = s.read_to_end(&mut raw);
+    let r = parse(&String::from_utf8_lossy(&raw));
+    assert_eq!(r.status, 200, "{r:?}");
+    assert_eq!(r.body, doc("v1"));
+
+    // One that is in use is not.
+    let (submit, _rx) = {
+        let (tx, rx) = mpsc::sync_channel::<Job>(1);
+        let s: akit_admin::Submit = Box::new(move |job| {
+            tx.try_send(job).map_err(|e| match e {
+                mpsc::TrySendError::Full(j) | mpsc::TrySendError::Disconnected(j) => j,
+            })
+        });
+        (s, rx)
+    };
+    let e = Server::start(&settings, f.configs.clone(), submit, &Options::default()).unwrap_err();
+    assert!(e.to_string().contains("in use"), "{e}");
+    assert!(path.exists(), "the socket in use is left alone");
+    drop(f);
+    assert!(!path.exists(), "the socket goes with the API");
 }
