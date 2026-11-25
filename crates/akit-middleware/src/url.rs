@@ -3,15 +3,6 @@
 
 use std::borrow::Cow;
 
-use akio_http::Context;
-use akit_runtime::CANONICAL_PATH;
-
-/// The request's path as the handler goes by it, escaped: the canonical path (akit-listener's,
-/// or a `rewrite` middleware's) when it differs from the one sent, else the one sent.
-pub(crate) fn current_path(ctx: &Context) -> &str {
-    ctx.local(CANONICAL_PATH).unwrap_or_else(|| ctx.path())
-}
-
 /// `p`, an escaped path, as Go's `URL.EscapedPath` gives it: `p` itself when it is a valid
 /// escaping, else `p` decoded and escaped afresh (`\` becomes `%5C`).
 pub(crate) fn escaped_path(p: &str) -> Cow<'_, str> {

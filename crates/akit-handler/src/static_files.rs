@@ -17,8 +17,9 @@
 //! `precompressed` lists (`Files::twins`).
 //!
 //! What this module adds before `Files` sees a request is fit's: only `GET` and `HEAD`, others
-//! answered 405 with `Allow: GET, HEAD`; the canonical path the route matched (akit-listener's
-//! `CANONICAL_PATH`, dot and empty segments removed, as fit's listener gives its handler) with
+//! answered 405 with `Allow: GET, HEAD`; the canonical path the route matched (akit-listener
+//! makes the request's path so, dot and empty segments removed, as fit's listener gives its
+//! handler; a `rewrite` middleware may change it after) with
 //! `strip_prefix` cut from it, a path without the prefix answered 404, the rest given to
 //! `Files::serve`; a path with a `..` segment, a NUL or a backslash, escaped or not, refused with
 //! 400, so no request names a file outside the root; and, with `dotfiles` `deny` (the default), a
@@ -44,9 +45,7 @@ use std::time::Duration;
 use akio_http::files::{Files, MimeTypes};
 use akio_http::{Context, Method, Response};
 use akit_config::Dotfiles;
-use akit_runtime::{
-    CANONICAL_PATH, Handler, HandlerParams, Provision, ProvisionError, Provisioned,
-};
+use akit_runtime::{Handler, HandlerParams, Provision, ProvisionError, Provisioned};
 
 /// The handler: fit's checks, then `Files`.
 struct Static {
@@ -67,12 +66,10 @@ impl akio_http::Service for Static {
             ctx.respond(self.method_not_allowed.clone());
             return;
         }
-        // The canonical path, what the route matched (akit-listener's, when it differs from the
-        // path sent: dot and empty segments removed, as fit's listener removes them before its
-        // handler sees the path).
-        let canonical = ctx.local(CANONICAL_PATH);
-        let as_sent = canonical.is_none();
-        let full = canonical.unwrap_or_else(|| ctx.path());
+        // The canonical path, what the route matched (akit-listener removes dot and empty
+        // segments, as fit's listener does before its handler sees the path), or a `rewrite`
+        // middleware's.
+        let full = ctx.path();
         let Some(path) = full.strip_prefix(self.strip_prefix.as_str()) else {
             ctx.respond(self.not_found.clone());
             return;
@@ -81,13 +78,12 @@ impl akio_http::Service for Static {
             Scan::Unsafe => ctx.respond(self.bad_request.clone()),
             Scan::Hidden if self.hide_dotfiles => ctx.respond(self.not_found.clone()),
             Scan::Hidden | Scan::Plain if self.find_nothing => ctx.respond(self.not_found.clone()),
-            Scan::Hidden | Scan::Plain if as_sent && self.strip_prefix.is_empty() => {
+            Scan::Hidden | Scan::Plain if self.strip_prefix.is_empty() => {
                 self.files.call(ctx);
             }
             Scan::Hidden | Scan::Plain => {
                 // The path is borrowed from the request, which `Files::serve_prefixed` takes
-                // alongside it: a copy, for a handler with a prefix or a path that was not
-                // canonical only. Listings and redirects name the whole canonical path.
+                // alongside it: a copy, for a handler with a prefix only. Listings and redirects name the whole canonical path.
                 let rest = path.to_owned();
                 self.files.serve_prefixed(ctx, &self.strip_prefix, &rest);
             }

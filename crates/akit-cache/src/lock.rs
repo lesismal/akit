@@ -26,7 +26,7 @@ use std::time::{Duration, Instant};
 use akio_http::transport::{BodySink, ConnSink, SharedSink, dispatch_conn};
 use akio_http::{Context, Headers, Method, Request, Response, Suspended};
 use akit_runtime::upstream::timer;
-use akit_runtime::{CANONICAL_PATH, Handler, MAX_BODY_BYTES, TLS};
+use akit_runtime::{Handler, MAX_BODY_BYTES, TLS};
 
 use crate::cache::{Fwd, Miss, Shared, hit_response, usable};
 use crate::clock;
@@ -354,13 +354,13 @@ pub(crate) struct Base {
 
 /// What akit's listener and middleware record on a request that the handlers behind the cache
 /// may read.
-const LOCALS: [&str; 3] = [TLS, CANONICAL_PATH, MAX_BODY_BYTES];
+const LOCALS: [&str; 2] = [TLS, MAX_BODY_BYTES];
 
 impl Base {
     pub(crate) fn of(ctx: &Context, authorized: bool) -> Base {
         Base {
             target: ctx.req().target.clone(),
-            headers: akit_runtime::request::request_headers(ctx).into_owned(),
+            headers: ctx.req().headers.clone(),
             peer: ctx.peer(),
             locals: LOCALS
                 .iter()

@@ -39,8 +39,7 @@ use akio_http::{BodyMode, Context, Headers, Request, Response};
 use akit_config::TokenFrom;
 use akit_config::value::Value;
 use akit_runtime::{
-    Handler, HandlerParams, Middleware, Provision, ProvisionError, Provisioned, request_headers,
-    set_request_headers,
+    Handler, HandlerParams, Middleware, Provision, ProvisionError, Provisioned, set_request_headers,
 };
 
 use crate::auth::{UNAUTHORIZED, header_safe, same_field};
@@ -327,7 +326,7 @@ impl Jwt {
         if self.claim_headers.is_empty() {
             return;
         }
-        let headers = request_headers(ctx);
+        let headers = &ctx.req().headers;
         let mut kept = Headers::with_capacity(headers.len().saturating_add(fields.len()), 0);
         for (n, v) in headers
             .iter()
@@ -340,7 +339,7 @@ impl Jwt {
                 kept.append(field, v);
             }
         }
-        set_request_headers(ctx, &kept);
+        set_request_headers(ctx, kept);
     }
 
     /// Answers 401 with a `Bearer` challenge; `invalid` says a token was sent but did not pass.
@@ -520,8 +519,8 @@ impl akio_http::Service for JwtChecked {
     fn call(&self, ctx: &mut Context) {
         let jwt = &*self.jwt;
         let raw = {
-            let headers = request_headers(ctx);
-            jwt.token(&headers, &ctx.req().target)
+            let req = ctx.req();
+            jwt.token(&req.headers, &req.target)
         };
         let Some(raw) = raw else {
             Jwt::refuse(ctx, false);

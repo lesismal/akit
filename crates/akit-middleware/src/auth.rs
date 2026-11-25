@@ -40,8 +40,7 @@ use akio_crypto::hash::Sha256;
 use akio_crypto::mac::Hmac;
 use akio_http::{BodyMode, Context, Headers, Request, Response};
 use akit_runtime::{
-    Handler, HandlerParams, Middleware, Provision, ProvisionError, Provisioned, request_headers,
-    set_request_headers,
+    Handler, HandlerParams, Middleware, Provision, ProvisionError, Provisioned, set_request_headers,
 };
 
 use crate::url::canonical_key;
@@ -245,7 +244,7 @@ impl Basic {
 /// when `drop_auth`; without any field that passes for `set`'s name, which is set to its value.
 /// The fields are left alone (no copy) when nothing changes.
 fn change_fields(ctx: &mut Context, drop_auth: bool, set: Option<(&str, &str)>) {
-    let fields = request_headers(ctx);
+    let fields = &ctx.req().headers;
     let gone = |n: &str| {
         (drop_auth && n.eq_ignore_ascii_case("authorization"))
             || set.is_some_and(|(h, _)| same_field(n, h))
@@ -260,7 +259,7 @@ fn change_fields(ctx: &mut Context, drop_auth: bool, set: Option<(&str, &str)>) 
     if let Some((h, v)) = set {
         kept.append(h, v);
     }
-    set_request_headers(ctx, &kept);
+    set_request_headers(ctx, kept);
 }
 
 /// The `basic_auth` middleware's handle; the accounts are shared by every handler it wraps.
@@ -304,7 +303,7 @@ fn busy(ctx: &mut Context) {
 
 impl akio_http::Service for BasicAuthed {
     fn call(&self, ctx: &mut Context) {
-        let Some((user, password)) = credentials(&request_headers(ctx)) else {
+        let Some((user, password)) = credentials(&ctx.req().headers) else {
             self.basic.refuse(ctx);
             return;
         };
@@ -492,7 +491,7 @@ impl Handler for CertChecked {}
 
 /// Removes from the request every field that passes for `name`.
 fn remove_field(ctx: &mut Context, name: &str) {
-    let fields = request_headers(ctx);
+    let fields = &ctx.req().headers;
     if !fields.iter().any(|(n, _)| same_field(n, name)) {
         return;
     }
@@ -500,7 +499,7 @@ fn remove_field(ctx: &mut Context, name: &str) {
     for (n, v) in fields.iter().filter(|(n, _)| !same_field(n, name)) {
         kept.append(n, v);
     }
-    set_request_headers(ctx, &kept);
+    set_request_headers(ctx, kept);
 }
 
 /// A chain, weakly, and its leaf's subject.

@@ -17,7 +17,7 @@
     clippy::arithmetic_side_effects
 )]
 
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::Arc;
 use std::thread;
@@ -45,11 +45,21 @@ fn options() -> akit_listener::Options {
 mod held {
     use std::sync::{Arc, Mutex};
 
-    use akio_http::{Context, Detached, Response};
+    use akio_http::{BodyStream, Context, Detached, Headers, Response};
     use akit_runtime::{Handler, HandlerParams, Info, Provision, ProvisionError, Provisioned};
 
     /// The requests kept unanswered, by the path they came for.
     pub(crate) static HELD: Mutex<Vec<(String, Detached)>> = Mutex::new(Vec::new());
+
+    /// The streamed responses kept unfinished, by the path they came for.
+    pub(crate) static STREAMS: Mutex<Vec<(String, BodyStream)>> = Mutex::new(Vec::new());
+
+    /// One stream kept for `path`, taken from the kept.
+    pub(crate) fn take_stream(path: &str) -> BodyStream {
+        let mut s = STREAMS.lock().unwrap();
+        let i = s.iter().position(|(p, _)| p == path).unwrap();
+        s.remove(i).1
+    }
 
     /// How many requests for `path` are kept.
     pub(crate) fn count(path: &str) -> usize {
@@ -75,6 +85,13 @@ mod held {
             if path.starts_with("/hang/") {
                 if let Some(d) = ctx.detach() {
                     HELD.lock().unwrap().push((path, d));
+                }
+                return;
+            }
+            if path.starts_with("/stream/") {
+                if let Some(s) = ctx.stream_response(200, Headers::new()) {
+                    let _ = s.write(b"part");
+                    STREAMS.lock().unwrap().push((path, s));
                 }
                 return;
             }
@@ -425,8 +442,8 @@ fn concurrency_limit() {
     assert_eq!(get(akit.addr, "/now").status, 200);
 }
 
-// fit's TestConcurrencyClientGone, as akit has it: a request whose client hung up holds its
-// place until its handler lets it go (akio API request A48 gives it back when the client goes).
+// fit's TestConcurrencyClientGone: a request whose client hung up gives its place back then,
+// while its handler still keeps it (akio's `Context::on_end`, ADR-127).
 #[test]
 fn concurrency_client_gone() {
     let akit =
@@ -443,12 +460,65 @@ fn concurrency_client_gone() {
             "round {round}: at the limit"
         );
         drop(s);
-        let d = held::take(path);
-        d.respond(akio_http::Response::text(200, "to no one"));
         wait_for("the place given back", || {
             get(akit.addr, "/ok").status == 200
         });
+        // Answered later, to no one: the place is not given back twice.
+        let d = held::take(path);
+        d.respond(akio_http::Response::text(200, "to no one"));
     }
+    let mut s = TcpStream::connect(akit.addr).unwrap();
+    s.write_all(format!("GET {path} HTTP/1.1\r\nHost: x\r\n\r\n").as_bytes())
+        .unwrap();
+    wait_for("the request kept", || held::count(path) == 1);
+    assert_eq!(get(akit.addr, "/ok").status, 503, "one place, once");
+    held::take(path).respond(akio_http::Response::text(200, "done"));
+    drop(s);
+    wait_for("the place given back", || {
+        get(akit.addr, "/ok").status == 200
+    });
+}
+
+// A streamed response keeps its place until its body ends, not only its head (fit's
+// `OnFinish`); one cut short gives it back when its client goes.
+#[test]
+fn concurrency_streamed_response() {
+    let akit =
+        Akit::held(r#"[{"module": "concurrency_limit", "params": {"max": 1, "status": 503}}]"#);
+    let path = "/stream/one";
+    let mut s = TcpStream::connect(akit.addr).unwrap();
+    s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+    s.write_all(format!("GET {path} HTTP/1.1\r\nHost: x\r\n\r\n").as_bytes())
+        .unwrap();
+    let mut got = Vec::new();
+    let mut b = [0u8; 1024];
+    while !got.windows(4).any(|w| w == b"part") {
+        let n = s.read(&mut b).unwrap();
+        assert!(n > 0, "closed early");
+        got.extend_from_slice(&b[..n]);
+    }
+    assert_eq!(
+        get(akit.addr, "/ok").status,
+        503,
+        "its head sent, its body not"
+    );
+    held::take_stream(path).finish();
+    wait_for("the place given back", || {
+        get(akit.addr, "/ok").status == 200
+    });
+    // Cut short: its client goes while the body is kept unfinished.
+    let mut s = TcpStream::connect(akit.addr).unwrap();
+    s.write_all(format!("GET {path} HTTP/1.1\r\nHost: x\r\n\r\n").as_bytes())
+        .unwrap();
+    wait_for("the stream kept", || {
+        held::STREAMS.lock().unwrap().len() == 1
+    });
+    assert_eq!(get(akit.addr, "/ok").status, 503);
+    drop(s);
+    wait_for("the place given back", || {
+        get(akit.addr, "/ok").status == 200
+    });
+    drop(held::take_stream(path));
 }
 
 // fit's TestBody: bodies under, at and over max_bytes, one declaring far more than it sends.

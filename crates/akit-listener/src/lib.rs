@@ -97,7 +97,7 @@ const NOT_FOUND: &str = "404 page not found\n";
 /// fit's answer to a path that has no canonical form ([`akit_router::canonicalize`]).
 const BAD_REQUEST_PATH: &str = "400 bad request path\n";
 
-pub use akit_runtime::{CANONICAL_PATH, MAX_BODY_BYTES, TLS, TRACEPARENT};
+pub use akit_runtime::{MAX_BODY_BYTES, TLS, TRACEPARENT};
 
 /// The akio service of one listener: each request goes to the route the current graph picks for
 /// it on this listener, or is answered 404. Runs on the I/O thread, and only reads the graph.
@@ -197,6 +197,9 @@ impl Dispatcher {
             return;
         }
         let shard = log.map(AccessLog::shard);
+        // The target as it is now, canonical: a `rewrite` middleware changes the request's path
+        // for the handlers, while the line writes the target fit's `RequestURI` keeps.
+        let uri = shard.as_ref().map(|_| ctx.req().target.clone());
         let listener = self.log_name.clone();
         let route = Name::new(route);
         let tls = self.tls;
@@ -205,7 +208,11 @@ impl Dispatcher {
         ctx.add_response_filter(move |resp: &mut Response, req: &Request| {
             let took = start.elapsed();
             akit_observe::upstream(|upstream| {
-                let r = access_record(listener.as_str(), route.as_str(), took, upstream, resp, req);
+                let mut r =
+                    access_record(listener.as_str(), route.as_str(), took, upstream, resp, req);
+                if let Some(uri) = &uri {
+                    r.uri = uri;
+                }
                 if let Some(shard) = &shard {
                     shard.log(&r);
                 }
@@ -404,7 +411,9 @@ impl akio_http::Service for Dispatcher {
                 (route, changed)
             };
             if let Some(p) = changed {
-                ctx.set_local(CANONICAL_PATH, p);
+                // What the handlers and the access log go by, as fit's listener changes the
+                // request's path and `RequestURI` (akio ADR-126).
+                akit_runtime::set_request_path(ctx, &p);
             }
             if self.tls {
                 ctx.set_local(TLS, "");

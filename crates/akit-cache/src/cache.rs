@@ -389,14 +389,14 @@ impl Shared {
             let own = headers.get("if-none-match").is_some()
                 || headers.get("if-modified-since").is_some();
             if !own && (s.etag.is_some() || s.last_modified.is_some()) {
-                let mut fields = akit_runtime::request::request_headers(ctx).into_owned();
-                if let Some(tag) = &s.etag {
-                    fields.set("If-None-Match", tag);
+                if let Some(req) = ctx.req_mut() {
+                    if let Some(tag) = &s.etag {
+                        req.headers.set("If-None-Match", tag);
+                    }
+                    if let Some(lm) = &s.last_modified {
+                        req.headers.set("If-Modified-Since", lm);
+                    }
                 }
-                if let Some(lm) = &s.last_modified {
-                    fields.set("If-Modified-Since", lm);
-                }
-                akit_runtime::request::set_request_headers(ctx, &fields);
                 miss.revalidating = true;
             }
         }
