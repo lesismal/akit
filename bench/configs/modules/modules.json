@@ -1,0 +1,47 @@
+// Every middleware on a route of its own, for bench/modules.sh (I56): the same config served by
+// akit and by fit, each route chosen by its host (<module>.bench) and proxied to the backend
+// (nginx, backend.conf), which answers /api/* with 1 KiB of JSON. "none" is the route without a
+// middleware, the base each middleware's cost is read against; respond answers itself, the base
+// for redirect. modules.sh fills in {{BACKEND}} and {{DIR}} (where the secret and the plugin are).
+{
+  "listeners": [{"name": "web", "address": "127.0.0.1:18080", "protocols": ["http/1.1"]}],
+  "upstreams": [
+    {"name": "app", "addresses": ["{{BACKEND}}"], "max_conns": 4096, "max_pending": 4096,
+     "max_idle_conns": 4096, "idle_timeout": "60s", "connect_timeout": "5s", "max_fails": 0}
+  ],
+  "routes": [
+    {"match": {"host": ["none.bench"]}, "handler": {"module": "proxy", "params": {"upstream": "app"}}},
+    {"match": {"host": ["respond.bench"]},
+     "handler": {"module": "respond", "params": {"headers": {"Content-Type": "text/plain"}, "body": "hello, world"}}},
+    {"match": {"host": ["rewrite.bench"]}, "middleware": [{"module": "rewrite", "params": {"strip_prefix": ["/x"]}}],
+     "handler": {"module": "proxy", "params": {"upstream": "app"}}},
+    {"match": {"host": ["redirect.bench"]}, "middleware": [{"module": "redirect", "params": {"to": "/elsewhere"}}],
+     "handler": {"module": "proxy", "params": {"upstream": "app"}}},
+    {"match": {"host": ["headers.bench"]},
+     "middleware": [{"module": "headers", "params": {"request": {"set": {"X-A": "1"}, "delete": ["X-Drop"]}, "response": {"set": {"X-B": "2"}}}}],
+     "handler": {"module": "proxy", "params": {"upstream": "app"}}},
+    {"match": {"host": ["rate-limit.bench"]}, "middleware": [{"module": "rate_limit", "params": {"rate": 1000000000, "burst": 1000000000}}],
+     "handler": {"module": "proxy", "params": {"upstream": "app"}}},
+    {"match": {"host": ["concurrency-limit.bench"]}, "middleware": [{"module": "concurrency_limit", "params": {"max": 1000000}}],
+     "handler": {"module": "proxy", "params": {"upstream": "app"}}},
+    {"match": {"host": ["body-limit.bench"]}, "middleware": [{"module": "body_limit", "params": {"max_bytes": 1000}}],
+     "handler": {"module": "proxy", "params": {"upstream": "app"}}},
+    {"match": {"host": ["basic-auth.bench"]},
+     "middleware": [{"module": "basic_auth", "params": {"users": [{"username": "me", "password_hash": "$2y$10$3SkIBrvpUNGBD82TTGl9K.YV4QmUWia2l2i.7Tc/Wwn7xM8yhR3vq"}]}}],
+     "handler": {"module": "proxy", "params": {"upstream": "app"}}},
+    {"match": {"host": ["client-cert.bench"]}, "middleware": [{"module": "client_cert", "params": {"optional": true}}],
+     "handler": {"module": "proxy", "params": {"upstream": "app"}}},
+    {"match": {"host": ["forward-auth.bench"]}, "middleware": [{"module": "forward_auth", "params": {"upstream": "app", "uri": "/auth"}}],
+     "handler": {"module": "proxy", "params": {"upstream": "app"}}},
+    {"match": {"host": ["jwt.bench"]}, "middleware": [{"module": "jwt", "params": {"hmac_secret_file": "{{DIR}}/secret", "algorithms": ["HS256"]}}],
+     "handler": {"module": "proxy", "params": {"upstream": "app"}}},
+    {"match": {"host": ["circuit-breaker.bench"]}, "middleware": [{"module": "circuit_breaker", "params": {}}],
+     "handler": {"module": "proxy", "params": {"upstream": "app"}}},
+    {"match": {"host": ["compress.bench"]}, "middleware": [{"module": "compress", "params": {}}],
+     "handler": {"module": "proxy", "params": {"upstream": "app"}}},
+    {"match": {"host": ["cache.bench"]}, "middleware": [{"module": "cache", "params": {"zone": "bench", "default_ttl": "1h"}}],
+     "handler": {"module": "proxy", "params": {"upstream": "app"}}},
+    {"match": {"host": ["wasm.bench"]}, "middleware": [{"module": "wasm", "params": {"path": "{{DIR}}/headers.wasm"}}],
+     "handler": {"module": "proxy", "params": {"upstream": "app"}}}
+  ]
+}

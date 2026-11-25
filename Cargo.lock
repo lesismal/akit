@@ -258,6 +258,7 @@ version = "0.0.1"
 dependencies = [
  "akio",
  "akio-crypto",
+ "akio-deflate",
  "akio-h3",
  "akio-http",
  "akio-quic",
