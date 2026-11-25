@@ -84,6 +84,8 @@
 | A135 | 拨号 Unix 域流套接字，以及在其上的 HTTP 客户端（akio、akio-http、akio-sys） | 已在 akio 的 main（`0f2c419b`），已锁定 | 1、2 | I58 |
 | A148 | 请求到达的地址（监听器的本地地址），HTTP/1.1、h2 和 h3 | 已提出（I75） | — | I75 |
 | A165 | 插件用的 WebAssembly 运行时：沙箱解释器、宿主 API、WASI preview 1、实例池；Proxy-Wasm 需要的响应钩子 | 已在 akio 的 main（`dad77a7a`），已锁定 | 1、4、11 | I71、I72 |
+| A166 | 由别处进行的调用决定时扣住响应头（fit 向 fib 提出的 A41） | 已在 akio 的 main（`dad77a7a`），已锁定 | 1、4 | I72 |
+| A167 | 由别处进行的调用逐次过滤响应 body，trailer 在最后一次调用中（fit 向 fib 提出的 A46） | 已在 akio 的 main（`dad77a7a`），已锁定 | 1、4、5、8 | I72 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -1358,7 +1360,61 @@ fib 提出的 A41 和 A46，在 I72 开始时单独提出。里程碑 W1–W6 �
 的 `wasm` 中间件在 fib 上所做的那样。
 
 **已实现 W1–W4**（akio ADR-125，已接受；分支 `claude/akio-wasm-w4-445f36`，`a2373416`，与 A33 一起合并在
-`claude/i71-akio-base`（`1ae0a05f`）上；akit 锁定其上加了 W6 的 `dad77a7a`，在 akio 分支 `staging-akit-batch13` 上；尚未进入 akio 的 `main`）：解码器和校验器、解释器、宿主
+`claude/i71-akio-base`（`1ae0a05f`）上；akit 锁定其上加了 W6 的 `dad77a7a`，已在 akio 的 `main` 中）：解码器和校验器、解释器、宿主
 API（`Linker`、`Caller`、类型化函数）和 WASI preview 1，以及 `InstancePool`（每个任务有截止时间，队列满时拒绝并
 交回任务，trap 后重建实例）。I71 在其上运行 fit 的 ABI（`akit-plugin`）；W5（测量其开销）和 W6、以及响应钩子
 （H1、H2）留给 I72 和基准测试任务。
+
+## A166 由别处进行的调用决定时扣住响应头
+
+**状态。** 已在 akio 分支 `claude/akio-wasm-w6-afc4f2` 上实现（`dad77a7a`），即 akio 的
+[ADR-128](https://github.com/lesismal/akio/blob/main/docs/adr/128-held-response-heads-and-body-filters.zh-CN.md)，
+ADR-125 的里程碑 W6；已在 akio 的 main（`dad77a7a`），已锁定。
+
+**问题。** fit 在插件的池上调用 Proxy-Wasm 插件的 `proxy_on_response_headers`（决策 023，借助 fib 的 A41
+`OnHeaderAsync`）。akio-http 的响应钩子，即响应过滤器（`add_response_filter`、`add_outer_response_filter`），在
+确定响应头的地方运行（常常是 I/O 线程）并当场决定：akit 不能在那里运行插件（规则 4），也无法扣住响应头直到池应答。
+
+**证据。** 在 akio `1ae0a05f`：`Finish::apply` 在 `Out::send` 和 `start_stream` 中同步运行过滤器，它们一返回响应
+头就发出；没有任何机制扣住它。
+
+**实现。** `Context::hold_response_head(timeout, f: impl FnOnce(HeldHead, &Request) + Send)`。`f` 在响应头本该
+发出的地方运行，在普通响应过滤器和附加字段之后、外层过滤器之前；它把 `HeldHead` 交出去后返回。`HeldHead` 提供
+`status`、`headers`、`headers_mut`、`body`（整体 body）、`is_live`，以及可从任意线程调用的 `resume()`、
+`respond(Response)`（以本地响应取而代之：与 fib 不同，akio 可以做到，因为什么都还没发出）和 `fail()`；被丢弃即失败。
+失败或截止时间会切断响应（关闭 HTTP/1 连接，重置 h2 与 h3 的流，`End::Gone`）。期间整体响应整体等待，流式 body 写入
+的内容最多扣住 4 MiB（计入 `BodyStream::queued_bytes`，按其限速的生产者像遇到慢客户端一样等待）。对 `CONNECT` 和升级
+的响应不经过它，与 fib 相同。HTTP/1.1、h2 和 h3 一致。
+
+**akit 的用法。** 对导出 `proxy_on_response_headers` 的 Proxy-Wasm 插件，`akit-plugin` 为它放行的每个请求注册
+一个扣住钩子，并在钩子中把调用排给持有该请求上下文的实例（`InstancePool::submit_to`），带上响应头的字段；完成回调应用
+插件的修改并恢复，或以 `respond` 发出其本地响应，或按 `on_error` 使响应失败。请求阶段记录的对响应的修改先行应用（与
+现在一样用响应过滤器）。
+
+## A167 由别处进行的调用过滤响应 body
+
+**状态。** 已在 akio 分支 `claude/akio-wasm-w6-afc4f2` 上实现（`dad77a7a`），即 akio 的 ADR-128，ADR-125 的
+里程碑 W6；已在 akio 的 main（`dad77a7a`），已锁定。
+
+**问题。** fit 在 body 写出时于插件的池上调用 `proxy_on_response_body` 和 `proxy_on_response_trailers`（决策
+023，借助 fib 的 A46 `OnBodyFilterAsync`）。akio-http 的 body 钩子，即流编码（ADR-112）和 body tap（ADR-116），在
+写 body 的线程上运行，而 tap 只能看到：没有机制让别处进行的调用替换 body、把它扣到末尾或修改其 trailer。
+
+**证据。** 在 akio `1ae0a05f`：`BodyStream::write` 立即编码并写出；`BodyTap::data` 得到一份拷贝，不返回任何东西。
+
+**实现。** `Context::add_body_filter(impl BodyFilter)`：
+`BodyFilter::filter(&mut self, BodyChunk { data, end, trailers }, done: FilterDone)` 与
+`BodyFilter::abort(&mut self)`；从任意线程调用 `FilterDone::done(data, trailers)` 或 `fail()`。一次一个调用，带上次
+以来写入的全部内容；期间写入的内容被扣住（最多 4 MiB），交给下一次调用。最后一次调用（`end`）带 trailer（没有则为
+空），可以修改或添加。输出交给下一个 body 过滤器，再经过流编码（因此 `compress` 编码的是插件的输出，插件看到未编码的
+body）和 tap；由客户端限速（连接积压超过 256 KiB 时下一次调用等待）。整体响应以流的形式、不带 `Content-Length`，在一次
+最后调用中经过它；文件 body 在磁盘池上读入过滤器。调用失败、`FilterDone` 被丢弃或超过上限都会切断响应；`abort` 得知
+在最后一次调用之前结束的响应。对 `HEAD`、`1xx`、`204`、`304`、`CONNECT` 和升级不调用。`on_end`（A48）在最后一次调用
+的输出发出之后运行，done、log 与 delete 回调就在那时进行。HTTP/1.1、h2 和 h3 一致。
+
+**akit 的用法。** 对导出 `proxy_on_response_body` 或 `proxy_on_response_trailers` 的 Proxy-Wasm 插件
+（`response: all`），`akit-plugin` 添加一个 body 过滤器，其调用排给持有该请求上下文的实例：`proxy_on_response_body`
+处理插件扣住的内容（暂停时以空内容应答，到末尾时以扣住的全部内容应答，最多为插件的 `max_body_bytes`），最后一次调用
+以 trailer 调用 `proxy_on_response_trailers`。`on_end` 把 `proxy_on_done`、`proxy_on_log` 和 `proxy_on_delete`
+排入队列。`response: headers` 不注册 body 过滤器，文件 body 因此仍用 `sendfile`。
+

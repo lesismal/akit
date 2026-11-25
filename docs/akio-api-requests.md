@@ -85,6 +85,8 @@ first; its status here records the branch, then the akio commit akit pins.
 | A135 | Dialing a Unix-domain stream socket, and the HTTP client over one (akio, akio-http, akio-sys) | in akio's main (`0f2c419b`), pinned | 1, 2 | I58 |
 | A148 | The address a request came to (the listener's local address), on HTTP/1.1, h2 and h3 | requested (I75) | — | I75 |
 | A165 | A WebAssembly runtime for plugins: a sandboxed interpreter, its host API, WASI preview 1, a pool of instances; the response hooks Proxy-Wasm needs | in akio's main (`dad77a7a`), pinned | 1, 4, 11 | I71, I72 |
+| A166 | A response's head held while a call made elsewhere decides on it (fit's A41 from fib) | in akio's main (`dad77a7a`), pinned | 1, 4 | I72 |
+| A167 | A response body filtered by calls made elsewhere, one at a time, its trailers in the last (fit's A46 from fib) | in akio's main (`dad77a7a`), pinned | 1, 4, 5, 8 | I72 |
 
 ## A1 TCP listeners on a running engine
 
@@ -1670,9 +1672,79 @@ request (`Context::suspend`, ADR-109) and resumes it from the pool when the call
 `wasm` middleware does with fib.
 
 **Built: W1-W4** (akio ADR-125, accepted; branch `claude/akio-wasm-w4-445f36`, `a2373416`, merged
-with A33 on `claude/i71-akio-base`, `1ae0a05f`; akit pins `dad77a7a`, W6 on top of it, on akio
-branch `staging-akit-batch13`; not on akio's `main` yet): the
+with A33 on `claude/i71-akio-base`, `1ae0a05f`; akit pins `dad77a7a`, W6 on top of it, in akio's
+`main`): the
 decoder and validator, the interpreter, the host API (`Linker`, `Caller`, typed functions) and WASI
 preview 1, and `InstancePool` (deadline per job, a full queue refused with the job handed back,
 instances made again after a trap). I71 runs fit's ABI on it (`akit-plugin`); W5 (its cost
 measured) and the response hooks (H1, H2), are for I72 and the benchmark tasks.
+
+## A166 A response's head held while a call made elsewhere decides on it
+
+**Status.** Built on akio branch `claude/akio-wasm-w6-afc4f2` (`dad77a7a`), as akio's
+[ADR-128](https://github.com/lesismal/akio/blob/main/docs/adr/128-held-response-heads-and-body-filters.md),
+milestone W6 of ADR-125; in akio's main (`dad77a7a`), pinned.
+
+**Problem.** fit calls a Proxy-Wasm plugin's `proxy_on_response_headers` on the plugin's pool
+(decision 023, with fib's A41 `OnHeaderAsync`). akio-http's response hooks, response filters
+(`add_response_filter`, `add_outer_response_filter`), run where the head is settled, often an I/O
+thread, and decide there: akit cannot run the plugin there (rule 4), nor hold the head until the
+pool answers.
+
+**Evidence.** At akio `1ae0a05f`: `Finish::apply` runs the filters synchronously from `Out::send`
+and `start_stream`, and the head goes as soon as they return; nothing holds it.
+
+**As built.** `Context::hold_response_head(timeout, f: impl FnOnce(HeldHead, &Request) + Send)`.
+`f` runs where the head would go, after the ordinary response filters and the extra fields, before
+the outer filters; it hands the `HeldHead` on and returns. `HeldHead` has `status`, `headers`,
+`headers_mut`, `body` (a whole body), `is_live`, and, from any thread, `resume()`,
+`respond(Response)` (a local response in its place: unlike fib, akio can, as nothing has gone)
+and `fail()`; dropped, it fails. A failure or the deadline cuts the response (HTTP/1 connection
+closed, h2 and h3 stream reset, `End::Gone`). Meanwhile a whole response waits whole, and a
+streamed body written meanwhile is held up to 4 MiB (in `BodyStream::queued_bytes`, so a paced
+producer waits as for a slow client). Responses to `CONNECT` and upgrades pass over it, as in fib.
+HTTP/1.1, h2 and h3 alike.
+
+**How akit uses it.** `akit-plugin`, for a Proxy-Wasm plugin that exports
+`proxy_on_response_headers`, registers a hold on each request it lets go on, and from the hook
+queues the call for the instance that has the request's context (`InstancePool::submit_to`),
+with the head's fields; the completion applies the plugin's changes and resumes, or answers its
+local response with `respond`, or fails the response as `on_error` says. The changes the request
+phase recorded for the response are applied before (a response filter, as now).
+
+## A167 A response body filtered by calls made elsewhere
+
+**Status.** Built on akio branch `claude/akio-wasm-w6-afc4f2` (`dad77a7a`), as akio's ADR-128,
+milestone W6 of ADR-125; in akio's main (`dad77a7a`), pinned.
+
+**Problem.** fit calls `proxy_on_response_body` and `proxy_on_response_trailers` on the plugin's
+pool as the body is written (decision 023, with fib's A46 `OnBodyFilterAsync`). akio-http's body
+hooks, a stream coding (ADR-112) and a body tap (ADR-116), run on the thread writing the body,
+and a tap only sees it: nothing lets a call made elsewhere replace the body, hold it to its end, or
+change its trailers.
+
+**Evidence.** At akio `1ae0a05f`: `BodyStream::write` encodes and writes at once; `BodyTap::data`
+gets a copy and returns nothing.
+
+**As built.** `Context::add_body_filter(impl BodyFilter)`:
+`BodyFilter::filter(&mut self, BodyChunk { data, end, trailers }, done: FilterDone)` and
+`BodyFilter::abort(&mut self)`; `FilterDone::done(data, trailers)` or `fail()`, from any thread.
+One call at a time with everything written since the last; what is written meanwhile is held, up
+to 4 MiB, and goes to the next call. The last call (`end`) carries the trailers (empty when none),
+which it may change or add. The output goes on to the next body filter, then through the stream
+coding (so `compress` codes the plugin's output, and the plugin sees the identity body) and any
+tap; it is paced by the client (the next call waits while the connection holds more than
+256 KiB). A whole response goes as a streamed one, without `Content-Length`, in one last call; a
+file body is read on the disk pool into the filter. A failed call, a dropped `FilterDone` or the
+bound cuts the response; `abort` hears a response that ended before its last call. Not called for
+`HEAD`, `1xx`, `204`, `304`, `CONNECT` or upgrades. `on_end` (A48) runs after the last call's
+output went, which is when the done, log and delete callbacks go. HTTP/1.1, h2 and h3 alike.
+
+**How akit uses it.** For a Proxy-Wasm plugin that exports `proxy_on_response_body` or
+`proxy_on_response_trailers` (`response: all`), `akit-plugin` adds a body filter whose calls are
+queued for the instance with the request's context: `proxy_on_response_body` with what the plugin
+holds (it answers with nothing while it pauses, and with all it held at the end, up to the
+plugin's `max_body_bytes`), the last call `proxy_on_response_trailers` with the trailers. `on_end`
+queues `proxy_on_done`, `proxy_on_log` and `proxy_on_delete`. `response: headers` registers no
+body filter, so file bodies keep `sendfile`.
+
