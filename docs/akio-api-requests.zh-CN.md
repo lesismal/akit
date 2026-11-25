@@ -27,7 +27,7 @@
 | A7 | 不转码即可切分文件的 MP4（ISO BMFF）读取器 | 已在 akio 的 main（`a9a620ab`），已锁定 | — | 媒体库 |
 | A8 | TUN 设备 | 已在 akio 的 main（`a9a620ab`），已锁定 | — | VPN |
 | A9 | 把 TLS 服务端限制在 TLS 1.2（`ServerConfigBuilder` 的公开 API） | 已在 akio 的 main（`4989cd8b`），已锁定 | 17 | I09 |
-| A10 | 立即关闭 HTTP 客户端的空闲连接 | 已提出（I14） | 10、11 | I14、I22 |
+| A10 | 立即关闭 HTTP 客户端的空闲连接 | 已在 akio 分支上实现（I38：`claude/a10-close-idle`，`af959290`），未进入 akio 的 main | 10、11 | I14、I22、I38 |
 | A11 | HTTP/1 客户端请求保留自己的 `Host` 字段（给定空 `User-Agent` 时不发送 `User-Agent`） | 已在 akio 的 main（`a9a620ab`），已锁定 | — | I15 |
 | A12 | HTTP 客户端的连接超时也作用于单个地址 | 已提出（I14） | 10 | I14、I35 |
 | A13 | `Files` 服务调用者给出的路径 | 已在 akio 的 main（`a9a620ab`），已锁定 | 19 | I12、I13 |
@@ -188,6 +188,15 @@ TLS 1.2，而它是隐藏的，标明只供测试和互通工具使用。
 
 **akit 的用法。** `Pool::close` 在连接池排空后调用它。在此之前，已关闭连接池的空闲连接最多保持到它的
 `idle_timeout`（记录在 I14 的进度条目中）。
+
+**再次遇到（I38）。** 频繁替换测试：每次修改上游的重载都会替换它的连接池，被替换连接池的空闲连接一直保持到
+`idle_timeout`；每分钟数千次重载会留下数千个打开的上游连接（I38 像 fit 一样把未变上游的连接池交给下一个图共享，
+只剩下改变了的上游）。
+
+**已实现（I38）。** 在 akio 分支 `claude/a10-close-idle` 上，提交 `af959290`（基于 `e79cc740`），未推送、未合并：
+`Client::close_idle` 立即关闭空闲连接，并设置客户端的 `shutting_down` 标志（引擎优雅关闭所用的那个），使收完响应的
+连接关闭而不再回到空闲池；请求路径不变。由 `client` 的 `close_idle_closes_idle_connections_now` 测试（macOS，以及
+gpu51 的 epoll 和 io_uring）。akio 的 main 有了它、akit 的 `rev` 移过去之后，akit 在 `Pool::close` 中调用它。
 
 ## A11 请求自己的 `Host` 字段
 

@@ -138,7 +138,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I35 | Active health checks | I20 | done |
 | I36 | Load balancing v2 | I19 | done |
 | I37 | Prometheus metrics | I15 | done |
-| I38 | M2 exit: churn test and staging certificate | I26–I37 | todo |
+| I38 | M2 exit: churn test and staging certificate | I26–I37 | doing |
 | **M3** | | | |
 | I39 | Matchers v2 and expressions | I11 | done |
 | I40 | Rewrites, redirects, headers | I39 | done |
@@ -236,6 +236,7 @@ commit and result.
 | Response cache | I67, I68, I69 | no | no (memory and disk tiers and purges built, not measured) | Against fit, as I67 built it: hits from memory (a 4 KiB and a 1 MiB body, HTTP/1.1 and h2), misses kept through the proxy (a streamed body copied by the tap) against the proxy alone, the cost on requests the cache passes through (POST, `no-store` responses) against no middleware, the shards' locks under many keys and one hot key. I68: hits read back from disk (64 KiB and 1 MiB, the disk pool's threads and queue under many at once), writes to disk under a miss rate that fills `MAX_PENDING_WRITES`, a stampede of many clients on one key with the lock and with `disable_lock` (the waiters' suspend and resume, the timer per fetch), and stale-while-revalidate's background fetches. akio's ADR-116 tap: a tapped stream against an untapped one. I69: storing tagged responses (none and 32 tags) against untagged ones, and purges of a large zone by prefix and by tag while it serves (the shards' and the disk index's lock hold times). |
 | FastCGI | I75 | no | no (built, not measured) | Against fit and nginx's `fastcgi_pass`, PHP-FPM (or a FastCGI application that answers at once) over TCP and a Unix-domain socket: requests a second and latency for a small page, HTTP/1.1 and h2; a 1 MiB upload and a 16 MiB download (memory per request in flight, the 64 KiB watermarks both ways); keep-alive reuse against a connection a request; the pool's queue under more clients than `max_conns`; the cost of `try_files` (a `stat` on akio's logical pool a candidate) against a route without it; the handler's sweep every 100 ms on akit's timer thread (A45's stopgap) over its exchanges at many requests a second. |
 | WASM plugins | I71, I72 | no | no (I71 and I72 built, not measured) | Against fit (wazero's compiler) and none: a request through fit's `headers` plugin (Go guest) and through a no-op one (`fit_on_request` returning 0), HTTP/1.1 and h2, requests a second and latency, against the route without the middleware (the hand-off to the pool and back, the request copied, the call); the guest call alone on an instance (akio's W5: akio-wasm's interpreter against wazero's interpreter and compiler); the pool under more clients than `instances` (the queue, 503 past it); an instance remade after a trap (a Go guest's `_initialize`). Proxy-Wasm (I72): a request through the Proxy-Wasm Go SDK's `http_routing` (config `1`, the request unchanged) against fit and none, as fit's `BenchmarkProxyWasm`; a response through fit's `response` filter (`upper`) and the SDK's `http_headers`, the head held and the body filtered on the pool, a whole 4 KiB body and a streamed 1 MiB one, HTTP/1.1 and h2, against `response: none` and none. |
+| Config churn under traffic | I38 | no | no (tested, not measured) | The fixed and proxy scenarios, HTTP/1.1 and h2c, while the config is swapped every 10 ms through SIGHUP and the Admin API, against the same run with no swaps: requests a second, p99 latency and errors during the churn, and akit's RSS and descriptors after 100k swaps; the M2 report of the full harness (rule 24, a milestone's end). |
 
 ## M0, foundations
 
@@ -644,6 +645,15 @@ Split from I07 so that the half that needs no config model runs beside I02.
   test.
 - **Done when**: the roadmap's M2 exit criteria hold and the results are in progress.
 - **Touches**: `tests`, `bench`.
+- **Doing**: the churn test (`crates/akit/tests/churn.rs`: 2000 swaps through SIGHUP and the
+  Admin API under `akit run`, and through `Listeners::reload` in process on epoll and io_uring)
+  and the health window test (`health_window.rs`) pass; a config with only a host name gets its
+  certificate from Pebble (in Docker on the benchmark host) and serves HTTPS through `akit run`
+  (`acme_m2.rs`). The churn found that every reload made every upstream's pool again (dialing
+  each anew, its health reset): an unchanged upstream now keeps its pool, as fit's does. Left, the
+  maintainer's step: the same test against Let's Encrypt's staging CA
+  (`AKIT_ACME_STAGING_NAME`), which needs a public name pointing at a reachable host
+  ([progress](progress.md)).
 
 ## M3, gateway features
 
