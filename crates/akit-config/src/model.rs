@@ -3180,6 +3180,11 @@ fn listener(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Listener> {
                 at,
                 "h2c is HTTP/2 in the clear, which a listener with tls does not serve; use h2",
             ),
+            // fit serves HTTP/2 alone then; akio's server always takes HTTP/1.1 as well (akio
+            // API request A168). `akit run` refused it already; `validate` says so too (I25).
+            Protocol::H2c if !protocols.iter().any(|(_, _, p)| *p == Protocol::Http11) => {
+                d.not_yet(*off, at, "protocols h2c without http/1.1");
+            }
             Protocol::Udp if protocols.len() > 1 => d.error(
                 *off,
                 at,

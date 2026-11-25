@@ -43,21 +43,23 @@ Traefik and fit, and returns its id. `bench/run.sh -report ID` fetches it into
 `bench/results/ID` and prints fit's benchreport tables; `-wait ID` waits for it first. Options,
 passed to fitbench: `-servers` (`nginx,caddy,traefik,fit,akit`), `-scenarios`
 (`fixed,static,proxy`, and `cache-hot`, `cache-zipf`, `wasm`), `-protocols`
-(`http/1.1,h2c,https/1.1,h2`), `-idle` (`http1,tls`), and `-args` for any other fitbench flag, as
+(`http/1.1,h2c,https/1.1,h2`), `-idle` (`http1,tls,ws`), and `-args` for any other fitbench flag, as
 `-args '-duration 15s -warmup 5s'`. `BENCH_DIR` (default `/root/akit-bench`) is where on the host
 the scripts stage and run; a session that changes the harness while another runs it sets one of
 its own.
 
 The defaults are what akit serves so far: the fixed, static and proxy scenarios (static since I12,
 from fitbench's files mounted at `/srv/www` as for fit; the proxy since I15, to fitbench's
-backend) over HTTP/1.1, h2c, HTTPS/1.1 and h2 (TLS since I09), and idle HTTP/1.1 and TLS
-connections. akit also serves the cache scenarios (since I76), `cache-hot` and `cache-zipf`, as
+backend) over HTTP/1.1, h2c, HTTPS/1.1 and h2 (TLS since I09), and idle HTTP/1.1, TLS and
+WebSocket connections (WebSockets since I25, proxied to fitbench's WebSocket backend as fit's
+route `ws`). akit also serves the cache scenarios (since I76), `cache-hot` and `cache-zipf`, as
 fit and nginx do: the route `cache`, a 1 GiB zone with the cache lock on, in front of fitbench's
 cache origin, whose fetches give each run's hit ratio; like fit's harness, a run has them only when
 `-scenarios` names them. The other servers run every scenario they serve; akit's other scenarios
 (HTTP/3, the website workloads) are recorded as skipped ("akit cannot serve it"). Each iteration
 adds what it serves to `fitbench/akit.go` and `configs/akit/fit.json`, and the protocols to the
-defaults.
+defaults. For memory at 100k idle connections, as fit's M1 report: `-scenarios fixed -protocols http/1.1
+-idle http1,tls -args '-idle-connections 100000'`.
 
 ## The WASM plugin's cost
 

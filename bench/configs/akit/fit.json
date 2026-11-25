@@ -12,9 +12,10 @@
 // is not in the harness's runs of akit yet.
 //
 // The backend's pool is fit's ("def pool" in fit.conf): {{BACKEND_CONNS}} connections at most, as
-// many requests waiting and as many idle, an idle one closed after 60s, a 5s connect timeout.
-// fit's max_fails 0 and its route's timeout 60s are not settings akit has yet (I20, I17): akit's
-// pool keeps its only backend in rotation anyway, and bounds an exchange by 1h.
+// many requests waiting and as many idle, an idle one closed after 60s, a 5s connect timeout, and
+// a failure never takes the only backend out of rotation (max_fails 0); the proxy route waits 60s
+// for it, as fit's (I25; I20 and I17 built the settings). /ws proxies WebSockets to fitbench's
+// WebSocket backend (I49), for the harness's idle WebSocket connections, as fit's route ws.
 //
 // fit's other aligned settings (engine.backlog, limits.max_conns) are not settings akit has yet:
 // akio's defaults apply (bench/README.md says which).
@@ -30,17 +31,19 @@
   "upstreams": [
     {"name": "backend", "addresses": ["{{BACKEND}}"],
      "max_conns": {{BACKEND_CONNS}}, "max_pending": {{BACKEND_CONNS}}, "max_idle_conns": {{BACKEND_CONNS}},
-     "idle_timeout": "60s", "connect_timeout": "5s"},
+     "idle_timeout": "60s", "connect_timeout": "5s", "max_fails": 0},
     {"name": "cachebackend", "addresses": ["{{CACHEBACKEND}}"],
      "max_conns": {{BACKEND_CONNS}}, "max_pending": {{BACKEND_CONNS}}, "max_idle_conns": {{BACKEND_CONNS}},
-     "idle_timeout": "60s", "connect_timeout": "5s"}
+     "idle_timeout": "60s", "connect_timeout": "5s"},
+    {"name": "wsbackend", "addresses": ["{{WSBACKEND}}"]}
   ],
   "routes": [
     {
       "name": "proxy",
       "match": {"path": ["/proxy", "/proxy/*", "/api/*"]},
-      "handler": {"module": "proxy", "params": {"upstream": "backend"}}
+      "handler": {"module": "proxy", "params": {"upstream": "backend", "timeout": "60s"}}
     },
+    {"name": "ws", "match": {"path": ["/ws"]}, "handler": {"module": "proxy", "params": {"upstream": "wsbackend"}}},
     {
       "name": "fixed",
       "match": {"path": ["/fixed"]},

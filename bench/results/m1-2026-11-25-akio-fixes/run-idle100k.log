@@ -1,0 +1,40 @@
+==> taking fit and idleconn from /root/akit-i25/bench/fit-7daee573b102/bin
+==> building the load generator image
+==> starting the load generators
+==> starting the proxy backend
+==> starting the WebSocket backend
+==> starting the cache backend
+==> starting nginx
+    nginx    fixed      http/1.1        808926 req/s  mean    0.20ms  max     4.40ms  errors 0  cpu 6.35 (7.85us/req)  peak 197MiB
+    nginx    idle-http1  100000 connections       530 bytes each  (anon 208400384 -> 261398528)  closed by server 0
+    nginx    idle-tls    100000 connections     29583 bytes each  (anon 208392192 -> 3166715904)  closed by server 0
+==> starting fit
+    fit      fixed      http/1.1        762889 req/s  mean    0.30ms  max    10.11ms  errors 0  cpu 6.37 (8.35us/req)  peak 19MiB  goroutines 147
+    fit      idle-http1  100000 connections      1441 bytes each  (anon 9347072 -> 153448448)  closed by server 0
+    fit      idle-tls    100000 connections      8593 bytes each  (anon 9502720 -> 868753408)  closed by server 0
+==> starting akit
+    akit     fixed      http/1.1        806017 req/s  mean    0.18ms  max     5.38ms  errors 0  cpu 6.18 (7.66us/req)  peak 4MiB
+    akit     idle-http1  100000 connections      1132 bytes each  (anon 6000640 -> 119230464)  closed by server 0
+    akit     idle-tls    100000 connections     12872 bytes each  (anon 5992448 -> 1293160448)  closed by server 0
+
+req/s                          nginx           fit          akit
+fixed http/1.1                808926        762889        806017
+
+cpu us/req                     nginx           fit          akit
+fixed http/1.1                  7.85          8.35          7.66
+
+peak anon MiB                  nginx           fit          akit
+fixed http/1.1                   197            19             4
+
+req/s per MiB                  nginx           fit          akit
+fixed http/1.1                  4100         39185        180367
+
+bytes/in-flight                nginx           fit          akit
+fixed http/1.1                  1203         48941          1658
+
+bytes/idle conn            nginx           fit          akit
+http1                        530          1441          1132
+tls                        29583          8593         12872
+
+goroutines fit      started 46  under load at most 147  idle-http1 46 -> 44  idle-tls 46 -> 45
+results written to /root/akit-i25/bench/runs/run-20261125-221502-fixed/results-idle100k.json

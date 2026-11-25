@@ -25,9 +25,10 @@ func init() {
 		image: "akit-bench:local",
 		// What akit serves so far (docs/dev-plan.md): the fixed response, a static file (I12),
 		// the proxy (I15) and the cache scenarios (I67-I69, in the harness since I76), over
-		// HTTP/1.1, h2c, HTTPS/1.1 and h2, and idle HTTP/1.1 and TLS connections.
+		// HTTP/1.1, h2c, HTTPS/1.1 and h2, and idle HTTP/1.1, TLS and WebSocket (I49, in the
+		// harness since I25) connections.
 		scenarios: []string{"fixed", "static", "proxy", "cache-hot", "cache-zipf"},
-		idle:      []string{"http1", "tls"},
+		idle:      []string{"http1", "tls", "ws"},
 		mounts:    [][2]string{{"akit/fit.json", "/etc/akit/fit.json"}, {"www", "/srv/www"}, {"certs", "/certs"}},
 		cmd:       []string{"/usr/local/bin/akit", "run", "-c", "/etc/akit/fit.json"},
 		version:   []string{"/usr/local/bin/akit", "version"},

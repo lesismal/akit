@@ -1,0 +1,132 @@
+==> taking fit and idleconn from /root/akit-i25/bench/fit-7daee573b102/bin
+==> building the load generator image
+==> starting the load generators
+==> starting the proxy backend
+==> starting the WebSocket backend
+==> starting the cache backend
+==> starting nginx
+    nginx    fixed      http/1.1        804511 req/s  mean    0.18ms  max     4.29ms  errors 0  cpu 6.40 (7.95us/req)  peak 197MiB
+    nginx    fixed      https/1.1       580643 req/s  mean    0.31ms  max    15.27ms  errors 0  cpu 6.81 (11.73us/req)  peak 209MiB
+    nginx    fixed      h2c             632694 req/s  mean    3.21ms  max     9.17ms  errors 0  cpu 6.99 (11.04us/req)  peak 198MiB
+    nginx    fixed      h2              934085 req/s  mean    2.02ms  max     5.95ms  errors 0  cpu 6.98 (7.48us/req)  peak 201MiB
+    nginx    static     http/1.1        626222 req/s  mean    0.39ms  max     3.40ms  errors 0  cpu 6.98 (11.15us/req)  peak 197MiB
+    nginx    static     https/1.1       508959 req/s  mean    0.48ms  max    16.20ms  errors 0  cpu 6.97 (13.70us/req)  peak 208MiB
+    nginx    static     h2c             492065 req/s  mean    4.18ms  max    15.19ms  errors 0  cpu 6.99 (14.20us/req)  peak 198MiB
+    nginx    static     h2              704611 req/s  mean    2.76ms  max    11.53ms  errors 0  cpu 6.95 (9.86us/req)  peak 201MiB
+    nginx    proxy      http/1.1        267853 req/s  mean    0.94ms  max     5.05ms  errors 0  cpu 4.88 (18.24us/req)  peak 200MiB
+    nginx    proxy      https/1.1       260981 req/s  mean    0.98ms  max    15.98ms  errors 0  cpu 5.97 (22.89us/req)  peak 208MiB
+    nginx    proxy      h2c             255639 req/s  mean    7.98ms  max    22.61ms  errors 0  cpu 5.78 (22.59us/req)  peak 228MiB
+    nginx    proxy      h2              248934 req/s  mean    8.19ms  max    19.54ms  errors 0  cpu 5.81 (23.33us/req)  peak 232MiB
+    nginx    idle-http1   10000 connections       556 bytes each  (anon 208302080 -> 213864448)  closed by server 0
+    nginx    idle-tls     10000 connections     29924 bytes each  (anon 208355328 -> 507592704)  closed by server 0
+    nginx    idle-ws      10000 connections     22275 bytes each  (anon 208338944 -> 431091712)  closed by server 0
+==> starting fit
+    fit      fixed      http/1.1        762172 req/s  mean    0.29ms  max     9.18ms  errors 0  cpu 6.38 (8.37us/req)  peak 19MiB  goroutines 149
+    fit      fixed      https/1.1       598814 req/s  mean    0.28ms  max    19.57ms  errors 0  cpu 5.73 (9.56us/req)  peak 20MiB  goroutines 190
+    fit      fixed      h2c            4352735 req/s  mean    0.39ms  max     5.21ms  errors 0  cpu 6.94 (1.59us/req)  peak 27MiB  goroutines 172
+    fit      fixed      h2             4104327 req/s  mean    0.41ms  max    11.20ms  errors 0  cpu 6.94 (1.69us/req)  peak 24MiB  goroutines 202
+    fit      static     http/1.1        749529 req/s  mean    0.25ms  max    20.54ms  errors 0  cpu 6.80 (9.07us/req)  peak 20MiB  goroutines 224
+    fit      static     https/1.1       561545 req/s  mean    0.34ms  max    22.42ms  errors 0  cpu 5.91 (10.52us/req)  peak 28MiB  goroutines 323
+    fit      static     h2c            3060224 req/s  mean    0.57ms  max     5.00ms  errors 0  cpu 6.98 (2.28us/req)  peak 29MiB  goroutines 176
+    fit      static     h2             2542970 req/s  mean    0.66ms  max     6.89ms  errors 0  cpu 6.96 (2.74us/req)  peak 27MiB  goroutines 195
+    fit      proxy      http/1.1        269244 req/s  mean    0.95ms  max    10.60ms  errors 0  cpu 5.74 (21.32us/req)  peak 30MiB  goroutines 538
+    fit      proxy      https/1.1       266393 req/s  mean    0.96ms  max    21.73ms  errors 0  cpu 5.91 (22.20us/req)  peak 33MiB  goroutines 531
+    fit      proxy      h2c             248381 req/s  mean    8.24ms  max    31.91ms  errors 0  cpu 6.31 (25.42us/req)  peak 70MiB  goroutines 610
+    fit      proxy      h2              240358 req/s  mean    8.49ms  max    35.76ms  errors 0  cpu 6.39 (26.57us/req)  peak 77MiB  goroutines 1023
+    fit      idle-http1   10000 connections      1497 bytes each  (anon 9879552 -> 24846336)  closed by server 0
+    fit      idle-tls     10000 connections      9879 bytes each  (anon 9715712 -> 108507136)  closed by server 0
+    fit      idle-ws      10000 connections      5916 bytes each  (anon 9519104 -> 68681728)  closed by server 0
+==> starting akit
+    akit     fixed      http/1.1        814495 req/s  mean    0.17ms  max     7.16ms  errors 0  cpu 6.26 (7.69us/req)  peak 4MiB
+    akit     fixed      https/1.1       620815 req/s  mean    0.22ms  max    12.90ms  errors 0  cpu 5.39 (8.68us/req)  peak 8MiB
+    akit     fixed      h2c            5531462 req/s  mean    0.31ms  max     3.63ms  errors 0  cpu 6.96 (1.26us/req)  peak 5MiB
+    akit     fixed      h2             5090893 req/s  mean    0.30ms  max     4.65ms  errors 0  cpu 6.83 (1.34us/req)  peak 6MiB
+    akit     static     http/1.1        790917 req/s  mean    0.19ms  max    28.20ms  errors 0  cpu 6.64 (8.39us/req)  peak 5MiB
+    akit     static     https/1.1       588956 req/s  mean    0.24ms  max    17.52ms  errors 0  cpu 5.78 (9.82us/req)  peak 8MiB
+    akit     static     h2c            3002188 req/s  mean    0.61ms  max     4.69ms  errors 0  cpu 6.97 (2.32us/req)  peak 22MiB
+    akit     static     h2             2663410 req/s  mean    0.68ms  max     4.16ms  errors 0  cpu 6.98 (2.62us/req)  peak 24MiB
+    akit     proxy      http/1.1        245079 req/s  mean    1.06ms  max    11.45ms  errors 0  cpu 6.73 (27.48us/req)  peak 11MiB
+    akit     proxy      https/1.1       229628 req/s  mean    1.13ms  max    13.27ms  errors 0  cpu 6.71 (29.22us/req)  peak 13MiB
+    akit     proxy      h2c             238333 req/s  mean    8.57ms  max    30.73ms  errors 0  cpu 6.65 (27.90us/req)  peak 27MiB
+    akit     proxy      h2              220899 req/s  mean    9.26ms  max    44.66ms  errors 0  cpu 6.33 (28.64us/req)  peak 25MiB
+    akit     idle-http1   10000 connections      1144 bytes each  (anon 6053888 -> 17494016)  closed by server 0
+    akit     idle-tls     10000 connections     12942 bytes each  (anon 6057984 -> 135475200)  closed by server 0
+    akit     idle-ws      10000 connections      4452 bytes each  (anon 4374528 -> 48898048)  closed by server 0
+
+req/s                          nginx           fit          akit
+fixed http/1.1                804511        762172        814495
+fixed https/1.1               580643        598814        620815
+fixed h2c                     632694       4352735       5531462
+fixed h2                      934085       4104327       5090893
+static http/1.1               626222        749529        790917
+static https/1.1              508959        561545        588956
+static h2c                    492065       3060224       3002188
+static h2                     704611       2542970       2663410
+proxy http/1.1                267853        269244        245079
+proxy https/1.1               260981        266393        229628
+proxy h2c                     255639        248381        238333
+proxy h2                      248934        240358        220899
+
+cpu us/req                     nginx           fit          akit
+fixed http/1.1                  7.95          8.37          7.69
+fixed https/1.1                11.73          9.56          8.68
+fixed h2c                      11.04          1.59          1.26
+fixed h2                        7.48          1.69          1.34
+static http/1.1                11.15          9.07          8.39
+static https/1.1               13.70         10.52          9.82
+static h2c                     14.20          2.28          2.32
+static h2                       9.86          2.74          2.62
+proxy http/1.1                 18.24         21.32         27.48
+proxy https/1.1                22.89         22.20         29.22
+proxy h2c                      22.59         25.42         27.90
+proxy h2                       23.33         26.57         28.64
+
+peak anon MiB                  nginx           fit          akit
+fixed http/1.1                   197            19             4
+fixed https/1.1                  209            20             8
+fixed h2c                        198            27             5
+fixed h2                         201            24             6
+static http/1.1                  197            20             5
+static https/1.1                 208            28             8
+static h2c                       198            29            22
+static h2                        201            27            24
+proxy http/1.1                   200            30            11
+proxy https/1.1                  208            33            13
+proxy h2c                        228            70            27
+proxy h2                         232            77            25
+
+req/s per MiB                  nginx           fit          akit
+fixed http/1.1                  4078         40405        182744
+fixed https/1.1                 2778         29272         79266
+fixed h2c                       3192        162790       1070336
+fixed h2                        4643        172984        832228
+static http/1.1                 3174         37164        161592
+static https/1.1                2444         20230         73584
+static h2c                      2483        104456        133616
+static h2                       3501         94636        108763
+proxy http/1.1                  1340          9098         23297
+proxy https/1.1                 1253          8161         17680
+proxy h2c                       1122          3565          8715
+proxy h2                        1074          3139          8754
+
+bytes/in-flight                nginx           fit          akit
+fixed http/1.1                  1122         46584          1609
+fixed https/1.1                50013         53784         15653
+fixed h2c                        598          9654           564
+fixed h2                        2130          8488          1048
+static http/1.1                 1382         53557          3446
+static https/1.1               46779         82895         16351
+static h2c                       600         11102          9420
+static h2                       2170         10086         10454
+proxy http/1.1                 12060         92144         26852
+proxy https/1.1                47267        105570         37092
+proxy h2c                      15820         31844         11918
+proxy h2                       17818         35494         10838
+
+bytes/idle conn            nginx           fit          akit
+http1                        556          1497          1144
+tls                        29924          9879         12942
+ws                         22275          5916          4452
+
+goroutines fit      started 46  under load at most 1023  idle-http1 45 -> 44  idle-tls 46 -> 45  idle-ws 46 -> 44
+results written to /root/akit-i25/bench/runs/run-20261125-221502-fixed/results.json

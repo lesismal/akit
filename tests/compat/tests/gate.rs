@@ -532,8 +532,8 @@ fn supported_fields_are_read() {
         }),
         (
             "listeners[].protocols",
-            r#"{"listeners": [{"name": "w", "address": ":1", "protocols": ["h2c"]}]}"#.into(),
-            |c| c.listeners[0].protocols == [Protocol::H2c],
+            r#"{"listeners": [{"name": "w", "address": ":1", "protocols": ["http/1.1", "h2c"]}]}"#.into(),
+            |c| c.listeners[0].protocols == [Protocol::Http11, Protocol::H2c],
         ),
         ("listeners[].tls", tls(""), |c| c.listeners[0].tls.is_some()),
         ("listeners[].tls.certificates", tls(""), |c| {

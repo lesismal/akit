@@ -1,0 +1,49 @@
+stopped: svc gnome-remote-desktop.service pp balanced 
+==> taking fit and idleconn from /root/akit-i25/bench/fit-7daee573b102/bin
+==> building the load generator image
+==> starting the load generators
+==> starting the proxy backend
+==> starting the WebSocket backend
+==> starting the cache backend
+==> starting nginx
+    nginx    fixed      http/1.1        806155 req/s  mean    0.18ms  max     9.27ms  errors 0  cpu 6.40 (7.94us/req)  peak 197MiB
+    nginx    idle-http1  100000 connections       530 bytes each  (anon 208400384 -> 261402624)  closed by server 0
+    nginx    idle-tls    100000 connections     29582 bytes each  (anon 208420864 -> 3166629888)  closed by server 0
+==> starting caddy
+    caddy    fixed      http/1.1        326406 req/s  mean    1.03ms  max    18.28ms  errors 0  cpu 6.34 (19.42us/req)  peak 31MiB
+    caddy    idle-http1  100000 connections     20454 bytes each  (anon 13385728 -> 2058833920)  closed by server 0
+    caddy    idle-tls    100000 connections     38002 bytes each  (anon 12980224 -> 3813183488)  closed by server 0
+    traefik  fixed      http/1.1  skipped: traefik cannot serve it
+    traefik  idle-http1  100000 connections     21864 bytes each  (anon 20488192 -> 2206912512)  closed by server 0
+    traefik  idle-tls    100000 connections     39929 bytes each  (anon 20250624 -> 4013191168)  closed by server 0
+==> starting fit
+    fit      fixed      http/1.1        764048 req/s  mean    0.30ms  max     9.06ms  errors 0  cpu 6.38 (8.35us/req)  peak 20MiB  goroutines 137
+    fit      idle-http1  100000 connections      1489 bytes each  (anon 9756672 -> 158650368)  closed by server 0
+    fit      idle-tls    100000 connections      8523 bytes each  (anon 9273344 -> 861618176)  closed by server 0
+==> starting akit
+    akit     fixed      http/1.1        815380 req/s  mean    0.17ms  max     5.50ms  errors 0  cpu 6.24 (7.65us/req)  peak 4MiB
+    akit     idle-http1  100000 connections      1132 bytes each  (anon 6053888 -> 119291904)  closed by server 34541
+    akit     idle-tls    100000 connections     12889 bytes each  (anon 6053888 -> 1294995456)  closed by server 34513
+
+req/s                          nginx         caddy       traefik           fit          akit
+fixed http/1.1                806155        326406             -        764048        815380
+
+cpu us/req                     nginx         caddy       traefik           fit          akit
+fixed http/1.1                  7.94         19.42             -          8.35          7.65
+
+peak anon MiB                  nginx         caddy       traefik           fit          akit
+fixed http/1.1                   197            31             -            20             4
+
+req/s per MiB                  nginx         caddy       traefik           fit          akit
+fixed http/1.1                  4086         10564             -         37921        183264
+
+bytes/in-flight                nginx         caddy       traefik           fit          akit
+fixed http/1.1                  1187         82034             -         53215          1577
+
+bytes/idle conn            nginx         caddy       traefik           fit          akit
+http1                        530         20454         21864          1489          1132
+tls                        29582         38002         39929          8523         12889
+
+goroutines fit      started 46  under load at most 137  idle-http1 46 -> 44  idle-tls 46 -> 45
+results written to /root/akit-i25/bench/runs/run-20261125-213554/results.json
+restored: svc gnome-remote-desktop.service pp balanced 

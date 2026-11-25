@@ -86,6 +86,11 @@
 | A165 | 插件用的 WebAssembly 运行时：沙箱解释器、宿主 API、WASI preview 1、实例池；Proxy-Wasm 需要的响应钩子 | 已在 akio 的 main（`dad77a7a`），已锁定 | 1、4、11 | I71、I72 |
 | A166 | 由别处进行的调用决定时扣住响应头（fit 向 fib 提出的 A41） | 已在 akio 的 main（`dad77a7a`），已锁定 | 1、4 | I72 |
 | A167 | 由别处进行的调用逐次过滤响应 body，trailer 在最后一次调用中（fit 向 fib 提出的 A46） | 已在 akio 的 main（`dad77a7a`），已锁定 | 1、4、5、8 | I72 |
+| A168 | 只提供先验知识 HTTP/2 的 HTTP 服务端（带 `h2c` 而没有 `http/1.1` 的监听器） | 已提出（I25） | 19 | I05、I25 |
+| A169 | akio 的服务端拒绝 RFC 9112、RFC 9113 和 RFC 9114 规定为畸形的请求：两个 `Host` 字段、HTTP/2 与 HTTP/3 字段名和值中的非法字节、流式 body 的分帧错误以 400 应答 | 已在 akio 分支 `claude/a169-request-checks`（`813f53ea`，最后一部分除外）实现，未进入 akio 的 main | 15、19 | I25 |
+| A171 | HTTP 客户端请求结束时取消其定时器任务，而不是保留到超时时间 | 已在 akio 分支 `claude/a171-client-timer-cancel`（`90adec65`）实现，未进入 akio 的 main | 11、13 | I15、I18、I25 |
+| A172 | TLS 服务端把 server name 为 IP 地址的 ClientHello 视为没有名字，而不是使握手失败 | 已在 akio 分支 `claude/a172-sni-ip-literal`（`d23c9368`）实现，未进入 akio 的 main | 19 | I09、I25 |
+
 | A170 | 不经 `Conn::inner` 读取连接的 TCP 计数（以及未读字节），并通过引擎自己的 API 先写数据再拼接 | 已提出（I51b）；在此之前 akit-l4 使用文档中隐藏的 `Conn::inner` | 1、14 | I51b |
 | A180 | 让 akio-wasm 的调用更便宜，并与 wazero 对比测量（akio 的 W5） | 已提出（I76）：一个修改头部的 Go guest 让 akit 每个请求多花 14.7 µs CPU，fit 6.8 µs | 13 | I71、I72、I76 |
 
@@ -1432,6 +1437,100 @@ body）和 tap；由客户端限速（连接积压超过 256 KiB 时下一次调
 处理插件扣住的内容（暂停时以空内容应答，到末尾时以扣住的全部内容应答，最多为插件的 `max_body_bytes`），最后一次调用
 以 trailer 调用 `proxy_on_response_trailers`。`on_end` 把 `proxy_on_done`、`proxy_on_log` 和 `proxy_on_delete`
 排入队列。`response: headers` 不注册 body 过滤器，文件 body 因此仍用 `sendfile`。
+
+## A168 只提供先验知识的 HTTP/2
+
+**状态。** 已提出（I25）。
+
+**问题。** fit 中 `protocols: [h2c]` 的监听器只提供先验知识的 HTTP/2，不提供其他协议，fit 基准配置的 8081 端口就是这样。
+akio-http 的服务端对不以 HTTP/2 前言开头的连接总是按 HTTP/1.1 处理，因此 akit 在启动时拒绝这样的监听器
+（`not supported yet: protocols h2c without http/1.1`），其基准配置在 `h2c` 旁边还列出了 `http/1.1`。
+
+**证据。** 在 akio `dad77a7a`：`HttpConfig` 有 `h2: Option<H2Config>` 可关闭 HTTP/2，但没有关闭 HTTP/1 的设置；
+`Session` 把没有前言的连接都当作 HTTP/1 读取。
+
+**建议的 API。** `HttpConfig::http1: bool`（默认 `true`）：为 `false` 时，不以 HTTP/2 前言开头的连接被关闭（或者像 Go 的
+仅 h2c 服务端那样，在缺失的前言之后回一个 GOAWAY），`Upgrade: h2c` 请求也不接受。
+
+**akit 将如何使用。** `akit-listener` 的 `http_config` 按监听器是否列出 `http/1.1` 设置 `http1`，并去掉其 "not supported
+yet"。在此之前 `akit validate` 也报告同样的错误（I25 发现它此前并未报告）。
+
+## A169 akio 的服务端拒绝畸形请求
+
+**状态。** 前三部分已在 akio 分支 `claude/a169-request-checks`（`813f53ea`，基于 akio 的 main `dad77a7a`）实现，
+连同测试，在 macOS（kqueue）和基准主机（epoll 与 io_uring）上通过；未进入 akio 的 main，未锁定。第四部分未实现。
+进入 akio 的 main 之前，需要对 HTTP/2 请求路径做一次同轮 A/B（akio 的规则：请求解码时对每个字段字节的检查）。
+
+**问题。** I25 的一致性测试套件（`crates/akit/tests/conformance.rs`）发现，akio 的服务端会把 RFC 规定为畸形的请求交给应用，
+于是 akit 的代理把它们转发给 HTTP/1.1 上游：
+
+1. HTTP/1：带两个 `Host` 字段的请求被正常处理（RFC 9112 第 3.2 节要求 400）。上游可能按另一个路由。
+2. HTTP/2：含 NUL、CR 或 LF 的字段值，以及含 token 以外字节（空格、非 ASCII 字节）的字段名被接受（RFC 9113 第 8.2.1 节
+   规定这样的请求是畸形的）。akio 的 HTTP/1 客户端写给上游时丢掉了 CR 和 LF，但写出了 NUL。
+3. HTTP/3：同上（RFC 9114 第 4.2 节）。
+4. HTTP/1 的流式 body：请求已分派后出现错误的 chunk 大小时，连接被关闭而不作应答；fit 以 400 应答（RFC 9112："SHOULD
+   respond with a 400"）。
+
+**证据。** 在 akio `dad77a7a`：`Session::on_head` 只用一个 bool 记录 `host`；`h2.rs` 的 `build_request` 和 trailer
+解码只检查名字是否含大写字母，不检查值；akio-h3 的 `header_list` 也一样；`Session` 的 `State::Stream` 在 `ChunkDecoder`
+出错时直接关闭。
+
+**实现（第 1–3 部分）。** `Session::on_head` 统计 `Host` 字段数，任何版本中多于一个都以 400 应答。HTTP/2 的请求和 trailer
+字段：普通字段名只能含 0x21–0x40 和 0x5B–0x7E 范围内除 `:` 以外的字节，每个值（伪首部字段的值也算）不能含 NUL、CR 或 LF，
+否则以 `PROTOCOL_ERROR` 重置该流。akio-h3 的请求字段同样处理。
+
+**建议（第 4 部分）。** 流式请求 body 的分帧在响应尚未写出任何内容之前出错时，以 400 应答并关闭连接，并告知 handler 其请求已
+离开（A38 的 `on_gone`），使它放弃对上游的交换。
+
+**akit 如何使用。** 锁定之后，akit-proxy 的临时措施（`headers::outgoing` 中的 `Refused::BadFieldValue` 和
+`Refused::TwoHosts`，在复制字段的循环中以 400 应答）可以像 fit 对字段名的检查那样作为纵深防御保留，也可以去掉；有了第 4 部分，
+一致性测试中错误 chunk 大小的用例将像 fit 一样期望 400。
+
+## A171 客户端请求结束时取消其定时器任务
+
+**状态。** 已在 akio 分支 `claude/a171-client-timer-cancel`（`90adec65`，基于 akio 的 main `e79cc740`）实现，带定时器
+的单元测试，akio-http 的测试通过；未进入 akio 的 main，未锁定。已在基准主机上测量（见下）。进入 akio 的 main 之前
+需要 akio 的同轮 A/B（它涉及每个客户端请求：请求结束时多发一条消息给定时器线程）。
+
+**问题。** I25 的第一次运行测得 akit 的代理在每秒 23 万请求时峰值内存为 1.8 GiB（fit 28–73 MiB，nginx 约 200 MiB）。
+无论连接池的上限如何，内存每个请求增长约 240 字节，负载结束后也不回落：`akio_http::timer::after` 为每个带
+`timeout` 的客户端请求（`Client::request`）以及每个 h2 流的超时和 header、idle 检查（`H2Client`）在唯一的定时器线程上
+排入一个装箱任务，这个任务一直留到延迟过去，并通过其 `Weak` 保留请求的 `Exchange` 内存（对 h2 请求则保留其回调和流
+控制）。按 fit 的 60 秒路由超时，就是一分钟的请求，在这个速率下约 1400 万个；按 akit 对一次交换的默认上限 1 小时，
+就是一小时的请求。这个队列也是无界的（规则 11）。
+
+**证据。** 在 akio `dad77a7a`：`timer.rs` 只有 `after`，没有取消的办法；`client.rs` 的 exchange 为每个请求安排
+`give_up(GaveUp::Timeout)`；`h2client.rs` 为每个请求和每个流的阶段安排任务。在基准主机上，`9d9321e` 的 akit 代理到
+本地后端，wrk 用 256 个连接压 10 秒：锁定的 akio 下，其 RSS 在 2–10 秒依次为 104、198、306、437、518 MiB，负载后
+停在 525 MiB；带 A171 时始终为 17–18 MiB，每秒 24.6 万请求，对比 23.8 万。
+
+**实现。** `timer::after` 返回一个 key，`timer::cancel(key)` 立即丢弃该任务；`Exchange` 在被丢弃时取消其超时任务，
+h2 流的控制取消其待执行的检查和流式请求的超时，完整的 h2 请求在回调运行时取消其超时。已取消任务的堆条目在数量超过
+存活任务后（超过 4096 时）被清理。
+
+**akit 如何使用。** 无需改动；akit 的代理、forward auth、镜像和健康探测都通过 akio 带超时的客户端发送，锁定之后不再
+按请求保留内存。在此之前，akit 的代理在负载下会保留其路由超时窗口内的请求。
+
+## A172 server name 为 IP 地址的 ClientHello
+
+**状态。** 已在 akio 分支 `claude/a172-sni-ip-literal`（`d23c9368`，基于 akio 的 main `e79cc740`）实现，带测试；
+未进入 akio 的 main，未锁定。已在基准主机上用 fit harness 的 wrk 验证。
+
+**问题。** fit 的基准 harness 用 wrk 对 `https://127.0.0.1:8443/` 施加 HTTPS/1.1 负载。wrk（OpenSSL）即使在 URL
+的主机是 IP 地址时也把它放进 ClientHello 的 `server_name`，而 RFC 6066 不允许这样做。akio-tls 的服务端以
+`decode_error` 告警回应这样的 ClientHello，因此所有请求都失败了：I25 的第一次运行中，akit 在每个场景的 HTTPS/1.1
+上都是每秒 0 请求（各约 200 万次连接错误），而 Go、OpenSSL 和 nginx 的服务端——因此 fit、nginx 和 Caddy——都把这样的
+名字视为没有名字。末尾带点的主机名也以同样方式失败。
+
+**证据。** 在 akio `dad77a7a`：`proto/msgs.rs` 的 `parse_host_name` 拒绝能解析为 `IpAddr` 或以 `.` 结尾的名字，
+其单元测试固定了这一行为。`openssl s_client -servername 127.0.0.1` 得到告警 50；用 `-servername localhost`，
+以及 wrk 访问 `https://localhost:...` 时，akit 正常应答。
+
+**实现。** 作为 server name 的 IP 字面量被视为没有名字（握手继续，选用默认证书，`server_name()` 为 `None`）；
+末尾的点被去掉；空名字或非 ASCII 名字仍使握手失败。
+
+**akit 如何使用。** 无需改动：没有 SNI 时 akit 的证书选择本来就回退到默认证书。锁定之后，harness 的 HTTPS/1.1
+场景就能测到 akit。
 
 **I72 起已使用**（`crates/akit-plugin/src/response.rs`）：如上，只是上下文在最后一次调用中关闭（done、log、delete），
 或者在响应的钩子被丢弃时由排队的任务关闭，而不是从 `on_end` 中关闭。
