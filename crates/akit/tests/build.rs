@@ -211,43 +211,57 @@ fn build_errors() {
 
 /// A cargo that runs offline: a script that sets `CARGO_NET_OFFLINE` and runs the cargo that
 /// built this test, with a target directory of its own (never the one the cargo running this test
-/// holds, which `CARGO_TARGET_DIR` may name).
-///
-/// Written once, and returned only once it runs: a child another test forks while the script is
-/// open for writing holds it open until that child execs, and running the script until then fails
-/// with "text file busy" (Linux's `ETXTBSY`), cargo never started.
+/// holds, which `CARGO_TARGET_DIR` may name). Written once, by [`cargo_shim`].
 #[cfg(unix)]
 fn offline_cargo() -> PathBuf {
-    use std::os::unix::fs::PermissionsExt;
     use std::sync::OnceLock;
     static SHIM: OnceLock<PathBuf> = OnceLock::new();
     SHIM.get_or_init(|| {
         let d = dir("offline-cargo");
-        let shim = d.join("cargo");
-        fs::write(
-            &shim,
-            format!(
-                "#!/bin/sh\nCARGO_NET_OFFLINE=true CARGO_TARGET_DIR='{}' exec '{}' \"$@\"\n",
-                d.join("target").display(),
-                env!("CARGO")
+        cargo_shim(
+            &d.join("cargo"),
+            &format!(
+                "CARGO_NET_OFFLINE=true CARGO_TARGET_DIR='{}'",
+                d.join("target").display()
             ),
         )
-        .unwrap();
-        fs::set_permissions(&shim, fs::Permissions::from_mode(0o755)).unwrap();
-        for _ in 0..500 {
-            match Command::new(&shim).arg("--version").output() {
-                Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy => {
-                    std::thread::sleep(Duration::from_millis(10));
-                }
-                r => {
-                    assert!(r.unwrap().status.success(), "{}", shim.display());
-                    break;
-                }
-            }
-        }
-        shim
     })
     .clone()
+}
+
+/// Writes `shim`, a script that runs the cargo that built this test with `env` set, and returns it
+/// once it runs.
+///
+/// A child another test forks while the script is open for writing holds it open until that child
+/// execs, and running the script until then fails with "text file busy" (Linux's `ETXTBSY`),
+/// cargo never started. So the script is run (`cargo --version`) until it is no longer busy.
+#[cfg(unix)]
+fn cargo_shim(shim: &Path, env: &str) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    fs::write(
+        shim,
+        format!("#!/bin/sh\n{env} exec '{}' \"$@\"\n", env!("CARGO")),
+    )
+    .unwrap();
+    fs::set_permissions(shim, fs::Permissions::from_mode(0o755)).unwrap();
+    for _ in 0..1000 {
+        match Command::new(shim).arg("--version").output() {
+            Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy => {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            r => {
+                let o = r.unwrap();
+                assert!(
+                    o.status.success(),
+                    "{}: {}",
+                    shim.display(),
+                    text(&o.stderr)
+                );
+                return shim.to_owned();
+            }
+        }
+    }
+    panic!("{}: still busy after 10s", shim.display());
 }
 
 /// fit's `TestBuildNoWorkingDirectory`: a relative output cannot be made absolute when the working
@@ -390,18 +404,7 @@ fn shared_target_cargo(target: &Path) -> PathBuf {
     let shim = dir("shared-target-cargo").join("cargo");
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
-        fs::write(
-            &shim,
-            format!(
-                "#!/bin/sh\nCARGO_TARGET_DIR='{}' exec '{}' \"$@\"\n",
-                target.display(),
-                env!("CARGO")
-            ),
-        )
-        .unwrap();
-        fs::set_permissions(&shim, fs::Permissions::from_mode(0o755)).unwrap();
-        shim
+        cargo_shim(&shim, &format!("CARGO_TARGET_DIR='{}'", target.display()))
     }
     #[cfg(not(unix))]
     {
