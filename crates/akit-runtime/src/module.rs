@@ -72,6 +72,7 @@ pub struct Env {
     metrics: Option<akit_observe::metrics::Metrics>,
     acme: Option<akit_tls::Acme>,
     tracer: Option<akit_observe::Tracer>,
+    previous: Option<Arc<crate::Previous>>,
 }
 
 impl Env {
@@ -86,7 +87,24 @@ impl Env {
             metrics: None,
             acme: None,
             tracer: None,
+            previous: None,
         }
+    }
+
+    /// The same, compiling a config that is to replace the graph `previous` was taken from
+    /// (fit's `Env.Previous`): the new graph shares its pools for the upstreams whose config and
+    /// TLS files are the same, so that their connections and their backends' health carry over a
+    /// reload.
+    #[must_use]
+    pub fn with_previous(mut self, previous: Option<crate::Previous>) -> Env {
+        self.previous = previous.map(Arc::new);
+        self
+    }
+
+    /// What the graph being replaced has to share, if anything.
+    #[must_use]
+    pub fn previous(&self) -> Option<&crate::Previous> {
+        self.previous.as_deref()
     }
 
     /// The same, with the process's tracer (I64), made from the `telemetry.traces` akit started
@@ -174,6 +192,7 @@ impl Env {
             metrics: self.metrics.clone(),
             acme: self.acme.clone(),
             tracer: self.tracer.clone(),
+            previous: None,
         }
     }
 }

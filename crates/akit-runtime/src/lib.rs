@@ -33,7 +33,8 @@ pub use akit_config as config;
 pub use akit_upstream as upstream;
 pub use cell::{GraphCell, Hold};
 pub use graph::{
-    CompiledRoute, Graph, HandlerParams, METRICS, NO_SLOT, UPSTREAM_POOLS, compile, metrics_name,
+    CompiledRoute, Graph, HandlerParams, METRICS, NO_SLOT, Previous, UPSTREAM_POOLS, compile,
+    metrics_name,
 };
 pub use tls::ListenerCerts;
 

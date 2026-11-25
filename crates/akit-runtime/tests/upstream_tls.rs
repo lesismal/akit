@@ -1,7 +1,7 @@
 //! An h2 upstream's TLS files in the graph (I54): read when the config is compiled, a file that
 //! does not load failing it with the field's path (fit's `TestCompileFails`), and each file
 //! watched with the listeners' certificate files, so that a change compiles a new pool that reads
-//! it again (fit's `TestSharedPools`).
+//! it again; and the pools a reload shares (fit's `TestSharedPools`).
 #![allow(
     clippy::panic,
     clippy::expect_used,
@@ -15,7 +15,8 @@ use std::sync::Arc;
 use akio_http::Context;
 use akit_config::{Config, from_json};
 use akit_runtime::{
-    Env, Handler, HandlerParams, Info, Provision, ProvisionError, Provisioned, Registry, compile,
+    Env, Graph, Handler, HandlerParams, Info, Previous, Provision, ProvisionError, Provisioned,
+    Registry, compile,
 };
 
 struct Nothing;
@@ -148,4 +149,81 @@ fn the_files_are_watched() {
     )
     .unwrap();
     assert!(g.cert_files().is_empty());
+}
+
+/// `config` compiled to replace `prev`, as a reload compiles it.
+fn compile_after(config: &Config, prev: Option<&Graph>) -> Graph {
+    let env = Env::default().with_previous(prev.map(Previous::of));
+    compile(config, &registry(), &env).unwrap()
+}
+
+/// fit's `TestSharedPools`: a graph takes over the pools of the upstreams it leaves as they are,
+/// TLS files included, and each pool closes when the last graph holding it lets go.
+#[test]
+fn unchanged_upstreams_share_their_pools() {
+    let g1 = compile_after(&config(""), None);
+    let g2 = compile_after(&config(r#", "max_conns": 9"#), Some(&g1));
+    let (a1, a2) = (g1.upstream("a").unwrap(), g2.upstream("a").unwrap());
+    let (b1, b2) = (g1.upstream("b").unwrap(), g2.upstream("b").unwrap());
+    assert!(a1.ptr_eq(a2), "a, unchanged, was not shared");
+    assert!(!b1.ptr_eq(b2), "b, changed, was shared");
+    let (a2, b1) = (a2.clone(), b1.clone());
+    // g1 retired: its pool of b closes, the one it shares with g2 does not.
+    drop(g1);
+    assert!(b1.is_closing() && !a2.is_closing());
+
+    let d = dir("runtime-upstream-shared");
+    let (ca, ca_key) = (d.join("ca.pem"), d.join("ca.key"));
+    write_pair("a", &ca, &ca_key);
+    let with_ca = format!(r#", "tls_ca_file": "{}""#, s(&ca));
+    let g3 = compile_after(&config(&with_ca), Some(&g2));
+    let g4 = compile_after(&config(&with_ca), Some(&g3));
+    let b4 = g4.upstream("b").unwrap().clone();
+    assert!(
+        g3.upstream("b").unwrap().ptr_eq(&b4),
+        "an unchanged upstream with a CA file was not shared"
+    );
+    // The CA file changes: a new pool, which reads it again.
+    write_pair("b", &ca, &ca_key);
+    let g5 = compile_after(&config(&with_ca), Some(&g4));
+    assert!(
+        !g5.upstream("b").unwrap().ptr_eq(&b4),
+        "a changed CA file kept the old pool"
+    );
+    assert!(
+        g5.cert_files().contains_key(&s(&ca)),
+        "the CA file is not watched"
+    );
+
+    // A client certificate and its key: new ones make a new pool.
+    let (c, k) = (d.join("client.pem"), d.join("client.key"));
+    write_pair("client", &c, &k);
+    let with_cert = format!(
+        r#"{with_ca}, "tls_cert_file": "{}", "tls_key_file": "{}""#,
+        s(&c),
+        s(&k)
+    );
+    let g6 = compile_after(&config(&with_cert), Some(&g5));
+    assert!(
+        g6.cert_files().contains_key(&s(&k)),
+        "the key file is not watched"
+    );
+    write_pair("other", &c, &k);
+    let g7 = compile_after(&config(&with_cert), Some(&g6));
+    assert!(
+        !g7.upstream("b").unwrap().ptr_eq(g6.upstream("b").unwrap()),
+        "a changed client certificate kept the old pool"
+    );
+    // a, the same throughout, is one pool from g2 to g7; it closes with the last of them.
+    assert!(g7.upstream("a").unwrap().ptr_eq(&a2));
+    for g in [g2, g3, g4, g5, g6] {
+        drop(g);
+        assert!(!a2.is_closing());
+    }
+    assert!(b4.is_closing());
+    drop(g7);
+    assert!(a2.is_closing());
+    // Without a previous graph (a dry run, akit validate), nothing is shared.
+    let g8 = compile_after(&config(""), None);
+    assert!(!g8.upstream("a").unwrap().ptr_eq(&a2));
 }
