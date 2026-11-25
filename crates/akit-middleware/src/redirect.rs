@@ -199,7 +199,7 @@ struct Redirecting {
 impl akio_http::Service for Redirecting {
     fn call(&self, ctx: &mut Context) {
         let location = {
-            let path = url::escaped_path(url::current_path(ctx));
+            let path = url::escaped_path(ctx.path());
             match (&self.rd.regexp, &self.rd.template) {
                 // The groups are taken from the path as escaped, so that what the client wrote
                 // encoded, as `%5C` or `%2F`, stays so in the URL.

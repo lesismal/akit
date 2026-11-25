@@ -159,6 +159,9 @@ fn config(dir: &Path, log: &Path, up: SocketAddr, access: &str) -> PathBuf {
     {{"name": "hi", "match": {{"path": ["/hello"]}},
       "handler": {{"module": "respond", "params": {{"body": "hello"}}}}}},
     {{"name": "api", "match": {{"path": ["/api/*"]}},
+      "handler": {{"module": "proxy", "params": {{"upstream": "app"}}}}}},
+    {{"name": "old", "match": {{"path": ["/old/*"]}},
+      "middleware": [{{"module": "rewrite", "params": {{"strip_prefix": ["/old"], "add_prefix": "/api"}}}}],
       "handler": {{"module": "proxy", "params": {{"upstream": "app"}}}}}}
   ],
   "upstreams": [{{"name": "app", "addresses": ["{up}"]}}],
@@ -198,6 +201,8 @@ fn every_request_has_its_line() {
         "GET /a/../../x HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n",
         "HEAD /hello HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n",
         "GET /hello HTTP/1.0\r\n\r\n",
+        "GET /old/y?z=1 HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n",
+        "GET /x/./../hello HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n",
     ];
     let statuses: Vec<String> = reqs.iter().map(|r| send(addr, r)).collect();
     assert_eq!(
@@ -207,6 +212,8 @@ fn every_request_has_its_line() {
             "HTTP/1.1 200 OK",
             "HTTP/1.1 404 Not Found",
             "HTTP/1.1 400 Bad Request",
+            "HTTP/1.1 200 OK",
+            "HTTP/1.1 200 OK",
             "HTTP/1.1 200 OK",
             "HTTP/1.1 200 OK"
         ]
@@ -276,6 +283,12 @@ fn every_request_has_its_line() {
     );
     let old = by("GET", "/hello", "HTTP/1.0");
     assert_eq!(field(old, "host"), Some("\"\""), "{old}");
+    // The target fit's `RequestURI` keeps: a rewritten path is not written (the upstream got
+    // `/api/y?z=1`), a canonical one is (dot segments removed by the listener).
+    let rewritten = by("GET", "/old/y?z=1", "HTTP/1.1");
+    assert_eq!(field(rewritten, "route"), Some("\"old\""), "{rewritten}");
+    let canonical = by("GET", "/hello", "HTTP/1.1");
+    assert_eq!(field(canonical, "status"), Some("200"), "{canonical}");
 }
 
 #[test]

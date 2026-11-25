@@ -51,9 +51,7 @@ mod echo {
     use std::sync::Arc;
 
     use akio_http::{Context, Response};
-    use akit_runtime::{
-        Handler, HandlerParams, Info, Provision, ProvisionError, Provisioned, request_headers,
-    };
+    use akit_runtime::{Handler, HandlerParams, Info, Provision, ProvisionError, Provisioned};
 
     /// What an application behind CGI reads as field `name`: the values of every field whose
     /// name folds to it, sorted, as the order it would see them in is not known.
@@ -73,11 +71,11 @@ mod echo {
     impl akio_http::Service for Echo {
         fn call(&self, ctx: &mut Context) {
             let body = {
-                let h = request_headers(ctx);
+                let h = &ctx.req().headers;
                 format!(
                     "x-user={} x-subject={} authorization={} body={}",
-                    as_cgi(&h, "X-User"),
-                    as_cgi(&h, "X-Subject"),
+                    as_cgi(h, "X-User"),
+                    as_cgi(h, "X-Subject"),
                     h.get("authorization").unwrap_or(""),
                     ctx.body().len()
                 )

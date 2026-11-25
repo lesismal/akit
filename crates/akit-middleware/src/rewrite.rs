@@ -1,9 +1,9 @@
 //! The `rewrite` middleware, as fit's `middleware/rewrite` `Rewrite`: the request's path changed
 //! before the handler sees it, the route having been picked by the path as it came.
 //!
-//! The path is changed where akit's handlers read it, [`CANONICAL_PATH`] (akio's request target
-//! cannot be changed: akio API request A33): the `proxy` handler sends the new path upstream, the
-//! `static` handler looks it up. As fit's, the rewrite works on the decoded path and writes the
+//! The path is changed in the request's target ([`Context::req_mut`], akio ADR-126), its query
+//! kept: the `proxy` handler sends the new path upstream, the `static` handler looks it up. The
+//! access log writes the target the request had before (fit's `RequestURI`). As fit's, the rewrite works on the decoded path and writes the
 //! new one escaped afresh (`/api/a%2Fb` stripped of `/api` is `/a/b`). The `regexp`, compiled
 //! with the config, replaces each of its matches in the decoded path with `replacement` (Go's
 //! `ReplaceAllString`, on akio-regex's matches and groups: akio API request A32).
@@ -13,7 +13,7 @@ use std::{borrow::Cow, sync::Arc};
 use akio_http::{BodyMode, Context, Request};
 use akio_regex::Regex;
 use akit_runtime::{
-    CANONICAL_PATH, Handler, HandlerParams, Middleware, Provision, ProvisionError, Provisioned,
+    Handler, HandlerParams, Middleware, Provision, ProvisionError, Provisioned, set_request_path,
 };
 
 use crate::url;
@@ -151,11 +151,11 @@ impl akio_http::Service for Rewritten {
     fn call(&self, ctx: &mut Context) {
         // The path the routes matched is canonical (akit-listener answers 400 to one that has
         // none), so decoding it again cannot fail; were it to, the path is left alone.
-        let new = url::decode(url::current_path(ctx).as_bytes())
+        let new = url::decode(ctx.path().as_bytes())
             .and_then(|p| self.rw.path(&p))
             .map(|p| url::escape_path(&p));
         if let Some(p) = new {
-            ctx.set_local(CANONICAL_PATH, p);
+            set_request_path(ctx, &p);
         }
         self.next.call(ctx);
     }

@@ -136,8 +136,8 @@ use akio_http::{BodyMode, Context, Method, Request, Response};
 use akit_config::Network;
 use akit_runtime::upstream::{Error, Keys, Split};
 use akit_runtime::{
-    CANONICAL_PATH, Handler, HandlerParams, Info, MAX_BODY_BYTES, Provision, ProvisionError,
-    Provisioned, TLS, TRACEPARENT,
+    Handler, HandlerParams, Info, MAX_BODY_BYTES, Provision, ProvisionError, Provisioned, TLS,
+    TRACEPARENT,
 };
 
 /// The largest request body the proxy takes whole: a larger one, or one of no declared length,
@@ -240,9 +240,8 @@ impl akio_http::Service for Proxy {
             return;
         }
         // The fields as the middleware before left them (a `headers` middleware's changes).
-        let fields = akit_runtime::request_headers(ctx);
         let client = headers::Client {
-            headers: &fields,
+            headers: &req.headers,
             peer: req.peer,
             tls: ctx.local(TLS).is_some(),
             traceparent: ctx.local(TRACEPARENT),
@@ -256,9 +255,9 @@ impl akio_http::Service for Proxy {
         // response sets, copied only when there is one to set.
         let keys = Keys {
             peer: Some(req.peer.ip()),
-            path: ctx.local(CANONICAL_PATH).unwrap_or_else(|| req.path()),
+            path: req.path(),
             query: req.query().unwrap_or(""),
-            headers: Some(&fields),
+            headers: Some(&req.headers),
         };
         // The upstream, by weight, or the failover (I46).
         let pool = self.split.pick();
@@ -343,10 +342,7 @@ impl akio_http::Service for Proxy {
                     req: out.clone(),
                     idempotent: retry::idempotent(&req.method),
                     peer: req.peer.ip(),
-                    path: ctx
-                        .local(CANONICAL_PATH)
-                        .unwrap_or_else(|| req.path())
-                        .to_owned(),
+                    path: req.path().to_owned(),
                     query: req.query().unwrap_or("").to_owned(),
                     deadline: self.timeout.and_then(|t| start.checked_add(t)),
                     attempt: 0,
@@ -397,19 +393,11 @@ fn declared_length(req: &Request) -> Option<u64> {
 
 impl Handler for Proxy {}
 
-/// The target the upstream is asked for: the request's canonical path, which the route matched
-/// (akit-listener's [`CANONICAL_PATH`] when it differs from the one sent), and its query, as
-/// they came. An absolute-form target (`http://host/path`) is sent in origin form.
+/// The target the upstream is asked for: the request's, its path canonical (akit-listener makes
+/// it so before the route is picked) or as a `rewrite` middleware left it, its query as it came.
+/// An absolute-form target (`http://host/path`) is sent in origin form.
 fn target(ctx: &Context) -> String {
-    let req = ctx.req();
-    let sent = origin_form(&req.target);
-    match ctx.local(CANONICAL_PATH) {
-        Some(path) => match sent.split_once('?') {
-            Some((_, query)) => format!("{path}?{query}"),
-            None => path.to_owned(),
-        },
-        None => sent.into_owned(),
-    }
+    origin_form(&ctx.req().target).into_owned()
 }
 
 /// `target` in origin form: an absolute-form one without its scheme and authority.

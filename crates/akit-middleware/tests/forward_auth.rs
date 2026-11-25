@@ -48,9 +48,7 @@ mod fields {
     use std::sync::Arc;
 
     use akio_http::{Context, Response};
-    use akit_runtime::{
-        Handler, HandlerParams, Info, Provision, ProvisionError, Provisioned, request_headers,
-    };
+    use akit_runtime::{Handler, HandlerParams, Info, Provision, ProvisionError, Provisioned};
 
     /// What an application behind CGI reads as field `name`: fit's `asCGI`.
     fn as_cgi(h: &akio_http::Headers, name: &str) -> String {
@@ -69,11 +67,11 @@ mod fields {
     impl akio_http::Service for Fields {
         fn call(&self, ctx: &mut Context) {
             let body = {
-                let h = request_headers(ctx);
+                let h = &ctx.req().headers;
                 format!(
                     "user={} seen={}",
-                    as_cgi(&h, "X-Auth-User"),
-                    as_cgi(&h, "X-Auth-Seen")
+                    as_cgi(h, "X-Auth-User"),
+                    as_cgi(h, "X-Auth-Seen")
                 )
             };
             ctx.respond(Response::text(200, body));

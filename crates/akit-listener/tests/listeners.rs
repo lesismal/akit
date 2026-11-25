@@ -350,10 +350,7 @@ mod echo {
 
     impl akio_http::Service for Echo {
         fn call(&self, ctx: &mut Context) {
-            let p = ctx
-                .local(akit_listener::CANONICAL_PATH)
-                .unwrap_or(ctx.path())
-                .to_owned();
+            let p = ctx.path().to_owned();
             ctx.text(200, p);
         }
     }

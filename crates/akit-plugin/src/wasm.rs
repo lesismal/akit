@@ -29,8 +29,7 @@ use akio_http::{BodyMode, Context, Headers, Request, Response, Suspended};
 use akio_wasm::{JobError, Pooled, Refusal};
 use akit_config::WasmOnError;
 use akit_runtime::{
-    CANONICAL_PATH, Handler, HandlerParams, Middleware, Provision, ProvisionError, Provisioned,
-    REQUEST_FIELDS, request_headers, set_request_headers,
+    Handler, HandlerParams, Middleware, Provision, ProvisionError, Provisioned, set_request_headers,
 };
 
 use crate::abi::{ACTION_STOP, Call, Host, Op, apply};
@@ -121,9 +120,9 @@ impl Handler for Plugged {}
 
 /// The request as the plugin sees it, copied on the I/O thread.
 fn snapshot(ctx: &Context) -> Call {
-    let headers = request_headers(ctx).into_owned();
+    let headers = ctx.req().headers.clone();
     let req = ctx.req();
-    let escaped = ctx.local(CANONICAL_PATH).unwrap_or_else(|| ctx.path());
+    let escaped = ctx.path();
     let path = akio_http::message::percent_decode(escaped).unwrap_or_else(|| escaped.to_owned());
     Call {
         method: req.method.as_str().to_owned(),
@@ -221,7 +220,8 @@ fn finish(request: Suspended, v: Verdict, next: Arc<dyn Handler>) {
         Verdict::Skip => request.resume(move |ctx| next.call(ctx)),
         Verdict::Apply(ran) => request.resume(move |ctx| {
             if let Some(h) = ran.headers {
-                set_fields(ctx, h);
+                // Through akio's `Context::req_mut` (ADR-126).
+                set_request_headers(ctx, h);
             }
             if let Some((status, body)) = ran.answer {
                 let mut resp = Response::new(status);
@@ -242,19 +242,6 @@ fn finish(request: Suspended, v: Verdict, next: Arc<dyn Handler>) {
             }
             next.call(ctx);
         }),
-    }
-}
-
-/// Makes `h` the request's fields, through akio's `Context::req_mut` (ADR-126). While akit's
-/// stopgap for A33 ([`REQUEST_FIELDS`]) holds fields an earlier middleware changed, it is given
-/// them too, for what reads it.
-fn set_fields(ctx: &mut Context, h: Headers) {
-    if ctx.local(REQUEST_FIELDS).is_some() {
-        set_request_headers(ctx, &h);
-    }
-    match ctx.req_mut() {
-        Some(req) => req.headers = h,
-        None => set_request_headers(ctx, &h),
     }
 }
 

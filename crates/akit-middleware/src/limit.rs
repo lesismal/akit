@@ -12,12 +12,10 @@
 //!   the client's address, or a header's value by its keyed hash (SipHash with a random key,
 //!   which a client cannot aim collisions at), so a lookup allocates nothing.
 //! - `concurrency_limit` counts the requests under way with one atomic, which an exact limit
-//!   needs. A request's place is given back when its response is sent, or when the request ends
-//!   without one (the [`Detached`](akio_http::Detached) a handler kept is dropped). akio has no
-//!   hook yet for a streamed response's end or for a client gone while its request waits (akio
-//!   API request A48): until then a streamed response gives its place back when its head is
-//!   sent, and a request whose client went holds its place until its handler lets it go (the
-//!   proxy's upstream answers or fails).
+//!   needs. A request's place is given back when the request ends ([`Context::on_end`], akio
+//!   ADR-127), as fit's `OnFinish` and `OnCancel` give it back: once its response is sent in
+//!   full (a streamed one's body to its end), or once its client goes, while it waits detached
+//!   (a slow upstream) or streams, or its response is given up.
 //! - `body_limit` answers 413 before the handler runs a request that declares a longer body
 //!   (taking the body as a stream, so none of it is buffered) or whose buffered body is longer.
 //!   One that streams to its handler with no declared length is held to the limit by the
@@ -38,7 +36,6 @@ use akio_http::{BodyMode, Context, Headers, Request, Response};
 use akit_config::{Network, RateKey};
 use akit_runtime::{
     Handler, HandlerParams, MAX_BODY_BYTES, Middleware, Provision, ProvisionError, Provisioned,
-    request_headers,
 };
 
 /// How many shards the buckets are kept in.
@@ -399,8 +396,8 @@ struct RateLimited {
 impl akio_http::Service for RateLimited {
     fn call(&self, ctx: &mut Context) {
         let admitted = {
-            let headers = request_headers(ctx);
-            self.rate.admit(ctx.req().peer, &headers)
+            let req = ctx.req();
+            self.rate.admit(req.peer, &req.headers)
         };
         match admitted {
             Ok(()) => self.next.call(ctx),
@@ -485,11 +482,11 @@ impl akio_http::Service for ConcurrencyLimited {
             ctx.respond(Response::new(self.status));
             return;
         }
-        // Given back when the response is sent, the filter's closure going with it, or when the
-        // request ends without one, its filters dropped with it (akio API request A48 ends it
-        // with a streamed response's body, and when the client goes).
+        // Given back when the request ends: sent in full, or its client gone first. akio runs
+        // the hook exactly once, whatever the handler does with the request; were it refused
+        // (the response taken already, which nothing before this does), the place goes now.
         let place = Place(Arc::clone(&self.in_flight));
-        ctx.add_response_filter(move |_: &mut Response, _: &Request| drop(place));
+        ctx.on_end(move |_| drop(place));
         self.next.call(ctx);
     }
 

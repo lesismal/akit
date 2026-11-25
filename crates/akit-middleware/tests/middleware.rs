@@ -52,24 +52,18 @@ mod echo {
     use std::sync::Arc;
 
     use akio_http::{Context, Response};
-    use akit_runtime::{
-        CANONICAL_PATH, Handler, HandlerParams, Info, Provision, ProvisionError, Provisioned,
-        request_headers,
-    };
+    use akit_runtime::{Handler, HandlerParams, Info, Provision, ProvisionError, Provisioned};
 
     struct Echo(akit_config::Respond);
 
     impl akio_http::Service for Echo {
         fn call(&self, ctx: &mut Context) {
-            let escaped = ctx
-                .local(CANONICAL_PATH)
-                .unwrap_or_else(|| ctx.path())
-                .to_owned();
+            let escaped = ctx.path().to_owned();
             let decoded = akit_router::canonicalize(&escaped)
                 .map(|c| String::from_utf8_lossy(&c.decoded).into_owned())
                 .unwrap_or_default();
             let mut body = format!("{decoded} {escaped}\n");
-            for (n, v) in request_headers(ctx).iter() {
+            for (n, v) in ctx.req().headers.iter() {
                 body.push_str(&format!("{n}: {v}\n"));
             }
             let mut resp = Response::new(self.0.status);

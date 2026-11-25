@@ -35,7 +35,7 @@ use akio_http::{BodyMode, Context, Headers, Method, Request, Response, Suspended
 use akit_runtime::upstream::{Download, Error, Exchange, Head, Keys, Pool};
 use akit_runtime::{
     Handler, HandlerParams, Middleware, Provision, ProvisionError, Provisioned, TLS,
-    request_headers, set_request_headers,
+    set_request_headers,
 };
 
 use crate::auth::same_field;
@@ -142,14 +142,14 @@ impl Forward {
 
     /// The fields of the auth service's request for the one `ctx` serves.
     fn fields(&self, ctx: &Context) -> Headers {
-        let fields = request_headers(ctx);
         let req = ctx.req();
+        let fields = &req.headers;
         let mut h = Headers::with_capacity(fields.len().saturating_add(6), 0);
         let ours = |n: &str| {
             n.eq_ignore_ascii_case("host") || FORWARDED.iter().any(|f| f.eq_ignore_ascii_case(n))
         };
         if self.request_headers.is_empty() {
-            let named = connection_names(&fields);
+            let named = connection_names(fields);
             for (n, v) in fields.iter() {
                 if !ours(n)
                     && sent_by_default(n)
@@ -193,7 +193,7 @@ impl Forward {
         if self.copy_headers.is_empty() {
             return;
         }
-        let fields = request_headers(ctx);
+        let fields = &ctx.req().headers;
         let mut kept = Headers::with_capacity(fields.len().saturating_add(copied.len()), 0);
         for (n, v) in fields
             .iter()
@@ -204,7 +204,7 @@ impl Forward {
         for (n, v) in copied {
             kept.append(n, v);
         }
-        set_request_headers(ctx, &kept);
+        set_request_headers(ctx, kept);
     }
 
     /// The fields of an allowing answer that `copy_headers` names, under their names.
