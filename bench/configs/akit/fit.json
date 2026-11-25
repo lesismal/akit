@@ -6,8 +6,10 @@
 // uses. Port 8443 serves HTTP/1.1 over TLS and 8445 h2 over TLS, as fit's, with fitbench's
 // certificate mounted at /certs (I09). The static and site routes serve fitbench's files, mounted
 // at /srv/www as for fit (I12). The proxy (I15) serves /proxy, /proxy/* and /api/* from
-// fitbench's backend, as fit's does. HTTP/3 (8444) and the cache come with the iterations that
-// build them (I10, I69).
+// fitbench's backend, as fit's does. The cache scenarios (I76) go through the route cache to
+// fitbench's cache backend, as fit's route cache does: a 1 GiB zone, entries up to 2 MiB, so that
+// every response the scenarios ask for can be kept, and the cache lock on (I67-I69). HTTP/3 (8444)
+// is not in the harness's runs of akit yet.
 //
 // The backend's pool is fit's ("def pool" in fit.conf): {{BACKEND_CONNS}} connections at most, as
 // many requests waiting and as many idle, an idle one closed after 60s, a 5s connect timeout.
@@ -28,6 +30,9 @@
   "upstreams": [
     {"name": "backend", "addresses": ["{{BACKEND}}"],
      "max_conns": {{BACKEND_CONNS}}, "max_pending": {{BACKEND_CONNS}}, "max_idle_conns": {{BACKEND_CONNS}},
+     "idle_timeout": "60s", "connect_timeout": "5s"},
+    {"name": "cachebackend", "addresses": ["{{CACHEBACKEND}}"],
+     "max_conns": {{BACKEND_CONNS}}, "max_pending": {{BACKEND_CONNS}}, "max_idle_conns": {{BACKEND_CONNS}},
      "idle_timeout": "60s", "connect_timeout": "5s"}
   ],
   "routes": [
@@ -45,6 +50,12 @@
       }
     },
     {"name": "static", "match": {"path": ["/static/*"]}, "handler": {"module": "static", "params": {"root": "/srv/www"}}},
-    {"name": "site", "match": {"path": ["/site/*"]}, "handler": {"module": "static", "params": {"root": "/srv/www"}}}
+    {"name": "site", "match": {"path": ["/site/*"]}, "handler": {"module": "static", "params": {"root": "/srv/www"}}},
+    {
+      "name": "cache",
+      "match": {"path": ["/cache/*", "/edge/*"]},
+      "middleware": [{"module": "cache", "params": {"zone": "bench", "max_bytes": 1073741824, "max_entry_bytes": 2097152}}],
+      "handler": {"module": "proxy", "params": {"upstream": "cachebackend"}}
+    }
   ]
 }

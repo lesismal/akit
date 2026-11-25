@@ -1,0 +1,18 @@
+// The wasm scenario's route for the akit-wasm server (bench/fitbench/akit.go, I76), merged into
+// fit.json: the fixed response behind the wasm middleware, which runs fit's header-editing test
+// plugin (headers.wasm) with its defaults (an instance a CPU, a queue of 1024, 100ms a call),
+// as fit-wasm.conf does for fit. For /wasm the plugin sets X-Plugin to its config and removes
+// X-Secret from the request, and adds X-Served-By and two X-Count fields to the response.
+{
+  "routes": [
+    {
+      "name": "wasm",
+      "match": {"path": ["/wasm"]},
+      "middleware": [{"module": "wasm", "params": {"path": "/etc/akit/headers.wasm", "config": "c"}}],
+      "handler": {
+        "module": "respond",
+        "params": {"headers": {"Content-Type": "text/plain"}, "body": "hello, world"}
+      }
+    }
+  ]
+}

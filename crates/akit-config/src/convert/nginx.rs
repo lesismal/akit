@@ -260,9 +260,13 @@ struct Converter {
 
 /// Converts an nginx config to fit's native JSON.
 pub(crate) fn convert(src: &str) -> Result<Converted, String> {
-    let ds = parse(src)?;
+    convert_parsed(&parse(src)?)
+}
+
+/// Converts an nginx config read into its directives.
+pub(crate) fn convert_parsed(ds: &[Directive]) -> Result<Converted, String> {
     let mut c = Converter::default();
-    for d in &ds {
+    for d in ds {
         match d.name.as_str() {
             "http" => c.http(d),
             "error_log" => c.error_log(d, "main"),

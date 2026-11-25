@@ -9,8 +9,10 @@
 #
 # Options, passed to fitbench:
 #
-#   -servers LIST     nginx,caddy,traefik,fit,akit       (default: those five)
-#   -scenarios LIST   fixed,static,proxy                 (default: those three)
+#   -servers LIST     nginx,caddy,traefik,fit,akit       (default: those five; akit-wasm and
+#                                                        fit-wasm serve the wasm scenario)
+#   -scenarios LIST   fixed,static,proxy                 (default: those three; also cache-hot,
+#                                                        cache-zipf and wasm)
 #   -protocols LIST   http/1.1,h2c,https/1.1,h2          (default: what akit serves so far)
 #   -idle LIST        http1,tls                          (default: what akit holds so far)
 #   -args FLAGS       more fitbench flags, as '-duration 15s -warmup 5s'
@@ -74,7 +76,7 @@ EOP
 $BENCH_SSH "cat > $dir/run.sh && chmod +x $dir/run.sh" <<EOP
 #!/bin/sh
 cd $dir
-$QUIET run $fit_dir/bin/fitbench -root $fit_dir -bin $fit_dir/bin -akit-image akit-bench:$id \\
+$QUIET run $fit_dir/bin/fitbench -root $fit_dir -bin $fit_dir/bin -akit-image akit-bench:$id -akit-wasm-image akit-bench:$id \\
   -servers $servers -scenarios $scenarios -protocols $protocols -idle "$idle" $args \\
   -label $id -out $dir/results.json > run.log 2>&1
 code=\$?

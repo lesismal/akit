@@ -1,0 +1,51 @@
+stopped: svc gnome-remote-desktop.service ctr fitconf-control-plane pp balanced 
+==> taking fit and idleconn from /root/akit-i76/bench/fit-7daee573b102/bin
+==> building the load generator image
+==> starting the load generators
+==> starting the proxy backend
+==> starting the WebSocket backend
+==> starting the cache backend
+==> starting akit-wasm
+    akit-wasm fixed      http/1.1        831888 req/s  mean    0.17ms  max     3.07ms  errors 0  cpu 6.26 (7.52us/req)  peak 48MiB
+    akit-wasm fixed      h2c            5641785 req/s  mean    0.29ms  max     4.18ms  errors 0  cpu 6.86 (1.22us/req)  peak 49MiB
+    akit-wasm wasm       http/1.1        312679 req/s  mean    0.83ms  max     7.88ms  errors 0  cpu 6.96 (22.25us/req)  peak 81MiB
+    akit-wasm wasm       h2c            2051547 req/s  mean    0.98ms  max    23.35ms  errors 58378083  cpu 6.77 (3.30us/req)  peak 92MiB
+==> starting fit-wasm
+    fit-wasm fixed      http/1.1        785657 req/s  mean    0.32ms  max     7.15ms  errors 0  cpu 6.41 (8.15us/req)  peak 123MiB  goroutines 122
+    fit-wasm fixed      h2c            4534698 req/s  mean    0.39ms  max     3.75ms  errors 0  cpu 6.98 (1.54us/req)  peak 109MiB  goroutines 184
+    fit-wasm wasm       http/1.1        452353 req/s  mean    0.58ms  max    11.50ms  errors 0  cpu 6.75 (14.92us/req)  peak 235MiB  goroutines 1903
+    fit-wasm wasm       h2c            2335396 req/s  mean    0.85ms  max    14.31ms  errors 65941741  cpu 6.98 (2.99us/req)  peak 244MiB  goroutines 410
+
+req/s                      akit-wasm      fit-wasm
+fixed http/1.1                831888        785657
+fixed h2c                    5641785       4534698
+wasm http/1.1                 312679        452353
+wasm h2c                     2051547       2335396
+
+cpu us/req                 akit-wasm      fit-wasm
+fixed http/1.1                  7.52          8.15
+fixed h2c                       1.22          1.54
+wasm http/1.1                  22.25         14.92
+wasm h2c                        3.30          2.99
+
+peak anon MiB              akit-wasm      fit-wasm
+fixed http/1.1                    48           123
+fixed h2c                         49           109
+wasm http/1.1                     81           235
+wasm h2c                          92           244
+
+req/s per MiB              akit-wasm      fit-wasm
+fixed http/1.1                 17275          6412
+fixed h2c                     115451         41664
+wasm http/1.1                   3838          1923
+wasm h2c                       22354          9586
+
+bytes/in-flight            akit-wasm      fit-wasm
+fixed http/1.1                  1577         98954
+fixed h2c                        572           598
+wasm http/1.1                 140207        531765
+wasm h2c                       22528         72706
+
+goroutines fit-wasm started 54  under load at most 1903
+results written to /root/akit-i76/bench/runs/run-20261126-004435/results.json
+restored: svc gnome-remote-desktop.service ctr fitconf-control-plane pp balanced 
