@@ -1,0 +1,29 @@
+stopped: svc gnome-remote-desktop.service pp balanced 
+round 1 akit-epoll none: 227742.55 req/s, p99 2.79 ms, bad 0
+round 1 akit-epoll compress: 222637.88 req/s, p99 2.96 ms, bad 0
+round 1 akit-epoll compress_gzip: 185437.69 req/s, p99 3.49 ms, bad 0
+round 1 akit-uring none: 230634.08 req/s, p99 2.70 ms, bad 0
+round 1 akit-uring compress: 226082.66 req/s, p99 2.64 ms, bad 0
+round 1 akit-uring compress_gzip: 189874.27 req/s, p99 2.73 ms, bad 0
+round 1 fit none: 261986.86 req/s, p99 2.54 ms, bad 0
+round 1 fit compress: 261452.62 req/s, p99 2.93 ms, bad 0
+round 1 fit compress_gzip: 245234.51 req/s, p99 4.03 ms, bad 0
+round 2 akit-uring none: 232844.15 req/s, p99 2.65 ms, bad 0
+round 2 akit-uring compress: 227189.28 req/s, p99 2.66 ms, bad 0
+round 2 akit-uring compress_gzip: 190711.08 req/s, p99 2.62 ms, bad 0
+round 2 fit none: 268767.25 req/s, p99 2.77 ms, bad 0
+round 2 fit compress: 265511.13 req/s, p99 3.12 ms, bad 0
+round 2 fit compress_gzip: 251530.22 req/s, p99 3.93 ms, bad 0
+round 2 akit-epoll none: 227367.12 req/s, p99 2.91 ms, bad 0
+round 2 akit-epoll compress: 220495.25 req/s, p99 2.97 ms, bad 0
+round 2 akit-epoll compress_gzip: 185256.74 req/s, p99 3.05 ms, bad 0
+round 3 fit none: 268142.19 req/s, p99 2.72 ms, bad 0
+round 3 fit compress: 266106.05 req/s, p99 3.25 ms, bad 0
+round 3 fit compress_gzip: 251518.39 req/s, p99 3.93 ms, bad 0
+round 3 akit-epoll none: 225096.65 req/s, p99 2.87 ms, bad 0
+round 3 akit-epoll compress: 219238.47 req/s, p99 3.20 ms, bad 0
+round 3 akit-epoll compress_gzip: 179944.87 req/s, p99 4.09 ms, bad 0
+round 3 akit-uring none: 232934.79 req/s, p99 2.61 ms, bad 0
+round 3 akit-uring compress: 226298.17 req/s, p99 2.66 ms, bad 0
+round 3 akit-uring compress_gzip: 188059.79 req/s, p99 2.73 ms, bad 0
+restored: svc gnome-remote-desktop.service pp balanced 
