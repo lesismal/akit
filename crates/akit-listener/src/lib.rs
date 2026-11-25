@@ -690,6 +690,10 @@ pub fn resolve(address: &str) -> io::Result<SocketAddr> {
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "resolves to no address"))
 }
 
+/// How long a client's HTTP connection may wait for its next request (HTTP/1.1), or carry no
+/// frame with no stream open (HTTP/2), before it is closed: fit's 120s.
+pub const CLIENT_IDLE_TIMEOUT: Duration = Duration::from_secs(120);
+
 /// The akio HTTP settings of a listener serving `protocols`.
 fn http_config(l: &Listener) -> Result<HttpConfig, Error> {
     let h1 = l.protocols.contains(&Protocol::Http11);
@@ -707,6 +711,10 @@ fn http_config(l: &Listener) -> Result<HttpConfig, Error> {
     }
     let mut cfg = HttpConfig::default();
     cfg.max_body_bytes = body_limit(l);
+    // A client connection idle this long is closed: fit's, which keeps fib's default (akio's
+    // is 75s). I25's idle connections at 100k found akit closing a third of them while the rest
+    // were still opening.
+    cfg.keep_alive_timeout = Some(CLIENT_IDLE_TIMEOUT);
     match &mut cfg.h2 {
         Some(h2cfg) if h2c || h2 => h2cfg.max_body_bytes = cfg.max_body_bytes,
         _ => cfg.h2 = None,
@@ -1169,6 +1177,21 @@ mod tests {
     #![allow(clippy::unwrap_used)]
 
     use std::net::SocketAddr;
+
+    /// A client connection idles 120s before it is closed, as fit's (I25).
+    #[test]
+    fn client_idle_timeout_is_fits() {
+        let c = akit_config::from_json(
+            r#"{"listeners": [{"name": "w", "address": "127.0.0.1:0", "protocols": ["http/1.1", "h2c"]}]}"#,
+            None,
+        )
+        .unwrap();
+        let cfg = super::http_config(&c.listeners[0]).unwrap();
+        assert_eq!(
+            cfg.keep_alive_timeout,
+            Some(std::time::Duration::from_secs(120))
+        );
+    }
 
     #[test]
     fn addresses() {
