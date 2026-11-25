@@ -212,22 +212,42 @@ fn build_errors() {
 /// A cargo that runs offline: a script that sets `CARGO_NET_OFFLINE` and runs the cargo that
 /// built this test, with a target directory of its own (never the one the cargo running this test
 /// holds, which `CARGO_TARGET_DIR` may name).
+///
+/// Written once, and returned only once it runs: a child another test forks while the script is
+/// open for writing holds it open until that child execs, and running the script until then fails
+/// with "text file busy" (Linux's `ETXTBSY`), cargo never started.
 #[cfg(unix)]
 fn offline_cargo() -> PathBuf {
     use std::os::unix::fs::PermissionsExt;
-    let d = dir("offline-cargo");
-    let shim = d.join("cargo");
-    fs::write(
-        &shim,
-        format!(
-            "#!/bin/sh\nCARGO_NET_OFFLINE=true CARGO_TARGET_DIR='{}' exec '{}' \"$@\"\n",
-            d.join("target").display(),
-            env!("CARGO")
-        ),
-    )
-    .unwrap();
-    fs::set_permissions(&shim, fs::Permissions::from_mode(0o755)).unwrap();
-    shim
+    use std::sync::OnceLock;
+    static SHIM: OnceLock<PathBuf> = OnceLock::new();
+    SHIM.get_or_init(|| {
+        let d = dir("offline-cargo");
+        let shim = d.join("cargo");
+        fs::write(
+            &shim,
+            format!(
+                "#!/bin/sh\nCARGO_NET_OFFLINE=true CARGO_TARGET_DIR='{}' exec '{}' \"$@\"\n",
+                d.join("target").display(),
+                env!("CARGO")
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(&shim, fs::Permissions::from_mode(0o755)).unwrap();
+        for _ in 0..500 {
+            match Command::new(&shim).arg("--version").output() {
+                Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy => {
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                r => {
+                    assert!(r.unwrap().status.success(), "{}", shim.display());
+                    break;
+                }
+            }
+        }
+        shim
+    })
+    .clone()
 }
 
 /// fit's `TestBuildNoWorkingDirectory`: a relative output cannot be made absolute when the working
