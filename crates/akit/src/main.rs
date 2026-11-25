@@ -118,10 +118,17 @@ const VALIDATE_FLAGS: &[Spec] = &[Spec {
     usage: CONFIG_USAGE,
 }];
 
+/// akit's version: `AKIT_VERSION` when the build set it (scripts/dist.sh and the Dockerfile set
+/// the release's tag, as fit's `-X main.version`), the crate's version otherwise.
+const VERSION: &str = match option_env!("AKIT_VERSION") {
+    Some(v) if !v.is_empty() => v,
+    _ => env!("CARGO_PKG_VERSION"),
+};
+
 fn version() -> String {
     format!(
         "akit {}\nakio {}\n{}/{}",
-        env!("CARGO_PKG_VERSION"),
+        VERSION,
         akit_runtime::AKIO_REV
             .get(..12)
             .unwrap_or(akit_runtime::AKIO_REV),
@@ -776,11 +783,7 @@ fn run(args: &[String]) -> ExitCode {
     let telemetry = config.telemetry.clone();
     let otlp = match &telemetry {
         None => None,
-        Some(t) => match Otlp::new(
-            t,
-            env!("CARGO_PKG_VERSION"),
-            akit_observe::otlp::stderr_log(),
-        ) {
+        Some(t) => match Otlp::new(t, VERSION, akit_observe::otlp::stderr_log()) {
             Ok(o) => Some(o),
             Err(e) => {
                 eprintln!("akit run: telemetry: {e}");

@@ -1,0 +1,9 @@
+# What the image's build does not read: build output, local state and the benchmark harness.
+.git
+.claude
+target
+fuzz/target
+dist
+bench/.work
+bench/results
+**/.DS_Store

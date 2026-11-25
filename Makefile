@@ -1,4 +1,5 @@
-.PHONY: all build check test test-changed lint fmt fmt-check clippy deny docs-check compat-check compat-gate compat-bless
+.PHONY: all build check test test-changed lint fmt fmt-check clippy deny docs-check compat-check compat-gate compat-bless \
+	dist dist-check image packaging-check
 
 CARGO ?= cargo
 BASE ?= origin/main
@@ -8,8 +9,33 @@ all: check build
 build:
 	$(CARGO) build --release -p akit
 
+# The release's archives in dist/, with checksums.txt (scripts/dist.sh, deploy/README.md): static
+# musl binaries for Linux (amd64, arm64) and, on macOS, macOS ones. VERSION names them (git
+# describe when empty); TARGETS narrows them, as TARGETS="linux/amd64".
+VERSION ?=
+dist:
+	scripts/dist.sh $(VERSION)
+	scripts/check-dist.sh
+
+# Checks what dist/ holds: checksums, contents, platforms, static Linux binaries.
+dist-check:
+	scripts/check-dist.sh
+
+# The packaging's shell scripts parse (crates/akit/tests/packaging.rs checks the files' contents in
+# `make test`; CI's packaging job builds and runs them).
+PACKAGING_SCRIPTS = scripts/dist.sh scripts/check-dist.sh deploy/systemd/test.sh
+packaging-check:
+	@for f in $(PACKAGING_SCRIPTS); do sh -n "$$f" || exit 1; done
+	@if command -v shellcheck >/dev/null; then shellcheck $(PACKAGING_SCRIPTS); fi
+	@echo "packaging: scripts parse"
+
+# The container image, for this machine's platform (Dockerfile, deploy/README.md).
+IMAGE ?= akit:local
+image:
+	docker build $(if $(VERSION),--build-arg VERSION=$(VERSION)) -t $(IMAGE) .
+
 # What every change passes before a push (docs/rules.md rules 17, 25, 26).
-check: fmt-check clippy test deny docs-check compat-check
+check: fmt-check clippy test deny docs-check compat-check packaging-check
 
 test:
 	$(CARGO) test --workspace

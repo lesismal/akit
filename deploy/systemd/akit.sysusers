@@ -1,0 +1,3 @@
+# The system user akit runs as: install as /usr/lib/sysusers.d/akit.conf and
+# run systemd-sysusers.
+u akit - "akit" /var/lib/akit
