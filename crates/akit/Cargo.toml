@@ -36,6 +36,7 @@ akit-tls = { workspace = true }
 
 [dev-dependencies]
 akio-crypto = { workspace = true }
+akio-deflate = { workspace = true }
 akio-h3 = { workspace = true }
 akio-http = { workspace = true }
 akio-quic = { workspace = true }

@@ -1,0 +1,1 @@
+servers=akit-wasm,fit-wasm scenarios=fixed,wasm protocols=http/1.1,h2c idle= args= fit=7daee573b102d87837cc10f033e4cc5894769210

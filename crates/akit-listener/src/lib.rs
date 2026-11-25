@@ -785,6 +785,10 @@ pub fn resolve(address: &str) -> io::Result<SocketAddr> {
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "resolves to no address"))
 }
 
+/// How long a client's HTTP connection may wait for its next request (HTTP/1.1), or carry no
+/// frame with no stream open (HTTP/2), before it is closed: fit's 120s.
+pub const CLIENT_IDLE_TIMEOUT: Duration = Duration::from_secs(120);
+
 /// The akio HTTP settings of a listener serving `protocols`.
 fn http_config(l: &Listener) -> Result<HttpConfig, Error> {
     let h1 = l.protocols.contains(&Protocol::Http11);
@@ -802,11 +806,26 @@ fn http_config(l: &Listener) -> Result<HttpConfig, Error> {
     }
     let mut cfg = HttpConfig::default();
     cfg.max_body_bytes = body_limit(l);
+    // fit's limits.max_header_bytes (I79): a larger head is answered 431.
+    cfg.max_header_bytes = header_limit(l);
+    // A client connection idle this long is closed: fit's, which keeps fib's default (akio's
+    // is 75s). I25's idle connections at 100k found akit closing a third of them while the rest
+    // were still opening.
+    cfg.keep_alive_timeout = Some(CLIENT_IDLE_TIMEOUT);
     match &mut cfg.h2 {
-        Some(h2cfg) if h2c || h2 => h2cfg.max_body_bytes = cfg.max_body_bytes,
+        Some(h2cfg) if h2c || h2 => {
+            h2cfg.max_body_bytes = cfg.max_body_bytes;
+            h2cfg.max_header_list = u32::try_from(cfg.max_header_bytes).unwrap_or(u32::MAX);
+        }
         _ => cfg.h2 = None,
     }
     Ok(cfg)
+}
+
+/// The listener's `limits.max_header_bytes` for akio, which answers a request head past it 431,
+/// as fit's listener does (I79).
+fn header_limit(l: &Listener) -> usize {
+    usize::try_from(l.max_header_bytes).unwrap_or(usize::MAX)
 }
 
 /// The listener's `limits.max_body_bytes` for akio, which answers a body past it 413 (one that
@@ -819,7 +838,54 @@ fn body_limit(l: &Listener) -> usize {
 fn h3_config(l: &Listener) -> akio_h3::H3Config {
     let mut cfg = akio_h3::H3Config::default();
     cfg.max_body_bytes = body_limit(l);
+    cfg.max_field_section_bytes = header_limit(l);
     cfg
+}
+
+/// The akio settings of the engine that serves the listeners, from the config's `limits` and
+/// `engine` (I79, decision 028), as fit sets up its listeners' fib engine: what the config
+/// leaves out keeps akio's default (fit's, for the limits). Taken at start, not on a reload.
+fn engine_settings(
+    limits: &akit_config::Limits,
+    e: &akit_config::Engine,
+    cfg: &mut EngineConfig,
+    pool: &mut akio::PoolConfig,
+) {
+    let size = |n: u64| usize::try_from(n).unwrap_or(usize::MAX);
+    // Connections past it are closed as they are accepted, counted as refused (`/metrics`'
+    // fit_connections_refused_total).
+    cfg.max_connections = size(limits.max_conns);
+    cfg.max_queued_bytes = size(limits.max_write_queue_bytes);
+    if e.read_buffer_size > 0 {
+        cfg.read_buffer = e.read_buffer_size;
+    }
+    if e.write_watermark > 0 {
+        cfg.write_high_watermark = e.write_watermark;
+    }
+    if e.backlog > 0 {
+        cfg.backlog = i32::try_from(e.backlog).unwrap_or(i32::MAX);
+    }
+    if e.workers > 0 {
+        pool.max_threads = e.workers;
+    }
+    if e.min_workers > 0 {
+        pool.min_threads = e.min_workers;
+        pool.max_threads = pool.max_threads.max(e.min_workers);
+    }
+    if e.task_queue > 0 {
+        pool.queue_capacity = e.task_queue;
+    }
+}
+
+/// An akio TCP listener at `addr` on `backend`, served by `event_loops` I/O threads (the config's
+/// `engine.event_loops`, I79); akio's one a core when 0.
+fn tcp_engine_listener(addr: SocketAddr, backend: &Backend, event_loops: usize) -> EngineListener {
+    let l = EngineListener::tcp(addr).backend(backend.clone());
+    if event_loops > 0 {
+        l.threads(event_loops)
+    } else {
+        l
+    }
 }
 
 /// How the listeners are served.
@@ -1012,7 +1078,12 @@ fn build(cell: &GraphCell, opts: &Options) -> Result<Engine, (Error, bool)> {
     cfg.write_timeout = Some(cell.with(akit_runtime::Graph::write_stall_timeout));
     // A `udp` service's sessions have its idle timeout, which akio keeps per session (A78); the
     // engine's UDP idle timeout is left to HTTP/3's peers.
-    let mut b = Engine::builder().config(cfg);
+    let mut pool = akio::PoolConfig::default();
+    let event_loops = cell.with(|g| {
+        engine_settings(g.limits(), g.engine_config(), &mut cfg, &mut pool);
+        g.engine_config().event_loops
+    });
+    let mut b = Engine::builder().config(cfg).pool(pool);
     for (l, tls) in &listeners {
         let fail = |e: Error| (e, false);
         let mut addr = resolve(&l.address).map_err(|error| {
@@ -1030,7 +1101,7 @@ fn build(cell: &GraphCell, opts: &Options) -> Result<Engine, (Error, bool)> {
             addr.set_port(port);
         }
         if tcp {
-            let listener = EngineListener::tcp(addr).backend(opts.backend.clone());
+            let listener = tcp_engine_listener(addr, &opts.backend, event_loops);
             b = b.listen(
                 tcp_listener(
                     cell,
@@ -1266,6 +1337,21 @@ mod tests {
     #![allow(clippy::unwrap_used)]
 
     use std::net::SocketAddr;
+
+    /// A client connection idles 120s before it is closed, as fit's (I25).
+    #[test]
+    fn client_idle_timeout_is_fits() {
+        let c = akit_config::from_json(
+            r#"{"listeners": [{"name": "w", "address": "127.0.0.1:0", "protocols": ["http/1.1", "h2c"]}]}"#,
+            None,
+        )
+        .unwrap();
+        let cfg = super::http_config(&c.listeners[0]).unwrap();
+        assert_eq!(
+            cfg.keep_alive_timeout,
+            Some(std::time::Duration::from_secs(120))
+        );
+    }
 
     #[test]
     fn addresses() {

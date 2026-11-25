@@ -1,4 +1,4 @@
-.PHONY: all build check test test-changed lint fmt fmt-check clippy deny docs-check compat-check compat-gate compat-bless \
+.PHONY: all build check test test-changed lint fmt fmt-check clippy deny docs-check reference compat-check compat-gate compat-bless v1-bless \
 	dist dist-check image packaging-check
 
 CARGO ?= cargo
@@ -60,11 +60,24 @@ deny:
 
 docs-check:
 	scripts/check-docs.sh
+	python3 -I tools/config-reference.py --check
+
+# Rewrites the config reference's tables (docs/reference/config.md and its twin) from fit's pinned
+# schema, tests/compat/supported.txt and tools/config-reference-notes.json.
+reference:
+	python3 -I tools/config-reference.py
 
 # The compatibility gate's field inventory and docs/compatibility.md are up to date with the pinned
 # fit schema and tests/compat/supported.txt (docs/compatibility.md).
 compat-check:
 	python3 -I tools/compat-inventory.py --check
+	python3 -I tools/v1-freeze.py
+
+# Marks the config's compatible additions since the v1 freeze in tests/compat/v1/additions.txt
+# (docs/compatibility.md): a field supported, or fit's new optional fields when the pin moves.
+# It refuses to mark anything while a change breaks v1.
+v1-bless:
+	python3 -I tools/v1-freeze.py --bless
 
 # The gate (I07b) runs in `make test` and CI with every other test; this runs it alone and prints
 # its report. The examples' secrets are set to stand-ins as fit-examples' own test sets them, for

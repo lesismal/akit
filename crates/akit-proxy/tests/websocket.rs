@@ -423,6 +423,80 @@ fn websocket_backpressure() {
     }
 }
 
+/// The other way (I56, M3's exit): a client sends far more than an upstream that reads nothing
+/// can take. akit holds the client back, short of what it means to send, and the upstream gets
+/// every byte, in order, once it reads.
+#[test]
+fn websocket_slow_upstream() {
+    let _serial = serial();
+    let (gate_tx, gate) = mpsc::channel::<()>();
+    let gate = Mutex::new(gate);
+    let (got_tx, got) = mpsc::channel::<(u64, bool)>();
+    let got_tx = Mutex::new(got_tx);
+    let up = upgrade_backend(move |s| {
+        let key = "MDEyMzQ1Njc4OWFiY2RlZg==";
+        let mut w = s.try_clone().unwrap();
+        w.write_all(
+            format!(
+                "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Accept: {}\r\n\r\n",
+                akio_http::ws::accept_key(key)
+            )
+            .as_bytes(),
+        )
+        .unwrap();
+        // Reads nothing until the test opens the gate.
+        let _ = gate.lock().unwrap().recv_timeout(WAIT);
+        let mut r = s;
+        r.set_read_timeout(Some(WAIT)).unwrap();
+        let (mut n, mut ordered) = (0u64, true);
+        let mut buf = vec![0; 256 << 10];
+        while n < FLOOD {
+            match r.read(&mut buf) {
+                Ok(0) | Err(_) => break,
+                Ok(k) => {
+                    ordered &= buf[..k]
+                        .iter()
+                        .enumerate()
+                        .all(|(i, &b)| b == ((n + i as u64) % 251) as u8);
+                    n += k as u64;
+                }
+            }
+        }
+        let _ = got_tx.lock().unwrap().send((n, ordered));
+    });
+    let akit = Akit::plain(&up.to_string(), "", "");
+    let (c, _r, head) = ws_dial(akit.tcp(), "/flood", "");
+    assert_eq!(status(&head), 101);
+    let sent = Arc::new(AtomicU64::new(0));
+    let s = sent.clone();
+    let mut w = c.try_clone().unwrap();
+    let writer = thread::spawn(move || {
+        let mut chunk = vec![0u8; 64 << 10];
+        while s.load(Ordering::Relaxed) < FLOOD {
+            let at = s.load(Ordering::Relaxed);
+            for (i, b) in chunk.iter_mut().enumerate() {
+                *b = ((at + i as u64) % 251) as u8;
+            }
+            if w.write_all(&chunk).is_err() {
+                return;
+            }
+            s.fetch_add(chunk.len() as u64, Ordering::Relaxed);
+        }
+    });
+    thread::sleep(Duration::from_secs(1));
+    let held = sent.load(Ordering::Relaxed);
+    assert!(
+        held < FLOOD / 2,
+        "the client wrote {held} bytes to an upstream that read none"
+    );
+    gate_tx.send(()).unwrap();
+    let (n, ordered) = got.recv_timeout(WAIT).expect("the upstream's reads");
+    writer.join().unwrap();
+    assert_eq!(n, FLOOD, "the upstream got {n} bytes");
+    assert!(ordered, "the bytes came out of order");
+    drop(c);
+}
+
 // ---- fit's `upgrade_test.go` ------------------------------------------------------------------
 
 /// An upstream that serves each connection's request that asks to switch with `serve`, and

@@ -105,6 +105,9 @@ pub struct Graph {
     acme_names: Vec<String>,
     /// The upstreams' pools, in the config's order.
     upstreams: Vec<Pool>,
+    /// What decides whether the next graph may share each pool, in the same order: the
+    /// upstream's config and the sums of its TLS files.
+    upstream_keys: Vec<UpstreamKey>,
     /// The layer 4 services (I51), in the config's order.
     services: Vec<akit_l4::Service>,
     /// Per listener, in the order of `listeners`: the services that take its connections, by
@@ -119,6 +122,10 @@ pub struct Graph {
     requests: Option<Requests>,
     /// The config's `limits.write_stall_timeout` (I17b).
     write_stall_timeout: std::time::Duration,
+    /// The config's `limits` (I79): what the engine serving the listeners takes at start.
+    limits: akit_config::Limits,
+    /// The config's `engine` (I79): how that engine is set up, at start.
+    engine_config: akit_config::Engine,
     /// Where the engine connections are dialed through is, or will be: the [`Env`]'s, for what a
     /// listener dials outside the upstream pools (a `socks` listener's tunnels, I55).
     engine: akit_upstream::EngineSlot,
@@ -145,6 +152,20 @@ impl Graph {
     #[must_use]
     pub fn write_stall_timeout(&self) -> std::time::Duration {
         self.write_stall_timeout
+    }
+
+    /// The config's `limits` (I79): akit-listener builds its engine with the graph akit starts
+    /// with's `max_conns` and `max_write_queue_bytes`, which take a restart, as fit's.
+    #[must_use]
+    pub fn limits(&self) -> &akit_config::Limits {
+        &self.limits
+    }
+
+    /// The config's `engine` (I79, decision 028): akit-listener builds its engine with the
+    /// graph akit starts with's, which takes a restart, as fit's.
+    #[must_use]
+    pub fn engine_config(&self) -> &akit_config::Engine {
+        &self.engine_config
     }
 
     /// The listeners, as the config gives them.
@@ -373,6 +394,44 @@ impl fmt::Debug for Graph {
     }
 }
 
+/// What decides whether a reload may share an upstream's pool: its config, and the contents of
+/// its TLS files (CA, certificate and key), as fit's `upstreamKey`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct UpstreamKey {
+    config: akit_config::Upstream,
+    files: std::collections::BTreeMap<String, akit_tls::Sum>,
+}
+
+/// The pools a graph being replaced has to share with the one compiled to replace it
+/// ([`Env::with_previous`](crate::Env::with_previous)), as fit's `Env.Previous`.
+#[derive(Debug, Default)]
+pub struct Previous {
+    upstreams: Vec<(UpstreamKey, Pool)>,
+}
+
+impl Previous {
+    /// What `graph` has to share: its pools, with what each was made from.
+    #[must_use]
+    pub fn of(graph: &Graph) -> Previous {
+        Previous {
+            upstreams: graph
+                .upstream_keys
+                .iter()
+                .cloned()
+                .zip(graph.upstreams.iter().cloned())
+                .collect(),
+        }
+    }
+
+    /// The pool made from `key`, if any.
+    fn pool(&self, key: &UpstreamKey) -> Option<&Pool> {
+        self.upstreams
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, p)| p)
+    }
+}
+
 /// The ID the upstream pools are recorded under among a graph's modules, whose cleanup closes
 /// them.
 pub const UPSTREAM_POOLS: &str = "upstream.pools";
@@ -400,6 +459,7 @@ pub fn compile(
     let mut errors = Vec::new();
     // The files the upstreams' TLS was read from (I54), watched with the listeners'.
     let mut upstream_files = std::collections::BTreeMap::new();
+    let mut upstream_keys = Vec::with_capacity(config.upstreams.len());
     let upstreams: Vec<Pool> = config
         .upstreams
         .iter()
@@ -407,8 +467,10 @@ pub fn compile(
         .map(|(i, u)| {
             // An h2 upstream's CA and client certificate, read here as fit's `upstream.New`
             // reads them: a config whose files do not load fails, `validate` included.
+            let mut files = std::collections::BTreeMap::new();
             let tls = match akit_tls::UpstreamTls::load(u) {
                 Ok(t) => t.map(|t| {
+                    files.clone_from(t.files());
                     upstream_files.extend(t.files().iter().map(|(p, s)| (p.clone(), *s)));
                     t.config().clone()
                 }),
@@ -423,20 +485,37 @@ pub fn compile(
                     None
                 }
             };
-            let pool = Pool::new_with_tls(u, env.engine().clone(), tls);
-            match lease.as_mut() {
-                Some(l) => {
-                    let addrs: Vec<&str> = u.addresses.iter().map(String::as_str).collect();
-                    pool.with_stats(l.upstream(&u.name, &addrs))
+            let key = UpstreamKey {
+                config: u.clone(),
+                files,
+            };
+            // The graph being replaced's pool, when nothing that makes one differs (fit's
+            // `upstreamKey`): its connections, health and probes carry over.
+            let shared = env
+                .previous()
+                .and_then(|p| p.pool(&key))
+                .and_then(Pool::share);
+            let stats = lease.as_mut().map(|l| {
+                let addrs: Vec<&str> = u.addresses.iter().map(String::as_str).collect();
+                l.upstream(&u.name, &addrs)
+            });
+            upstream_keys.push(key);
+            match (shared, stats) {
+                // Its counters are those this graph's lease holds under the same name and
+                // addresses.
+                (Some(pool), _) => pool,
+                (None, Some(stats)) => {
+                    Pool::new_with_tls(u, env.engine().clone(), tls).with_stats(stats)
                 }
-                None => pool,
+                (None, None) => Pool::new_with_tls(u, env.engine().clone(), tls),
             }
         })
         .collect();
     if !upstreams.is_empty() {
-        // Recorded first, so cleaned up last.
+        // Recorded first, so cleaned up last. A pool shared with the next graph closes when the
+        // last graph that holds it lets go.
         let pools = upstreams.clone();
-        modules.push_cleanup(UPSTREAM_POOLS, move || pools.iter().for_each(Pool::close));
+        modules.push_cleanup(UPSTREAM_POOLS, move || pools.iter().for_each(Pool::release));
     }
     let env = &env.with_upstreams(upstreams.clone());
     let mut routes = Vec::with_capacity(config.routes.len());
@@ -627,12 +706,15 @@ pub fn compile(
         acme: env.acme().cloned(),
         acme_names,
         upstreams,
+        upstream_keys,
         services,
         l4,
         access_log: config.access_log.as_ref().and(env.access_log().cloned()),
         tracer: env.tracer().cloned(),
         requests,
         write_stall_timeout: config.limits.write_stall_timeout,
+        limits: config.limits,
+        engine_config: config.engine,
         engine: env.engine().clone(),
         modules: Mutex::new(Some(modules)),
         holds: AtomicUsize::new(0),

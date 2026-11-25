@@ -28,6 +28,32 @@ impl Error {
     }
 }
 
+/// How every warning about an old name starts: the field is read, as fit reads it, until the
+/// next version of the schema.
+pub const DEPRECATED: &str = "deprecated";
+
+/// The warning for an old name of the field `new`, fit's words (`config/decode.go`).
+pub(crate) fn renamed(new: &str) -> String {
+    format!(
+        "{DEPRECATED}: renamed {new:?}, which takes the same value; the old name goes in config version 2"
+    )
+}
+
+/// The warnings a config read with: each an old name of a renamed field, at its file, line,
+/// column and path, as fit prints them. They say nothing about what the config means, so two
+/// configs equal but for their warnings (read from different files, one with an old name) are
+/// equal.
+#[derive(Debug, Clone, Default)]
+pub struct Warnings(pub Vec<Error>);
+
+impl PartialEq for Warnings {
+    fn eq(&self, _: &Warnings) -> bool {
+        true
+    }
+}
+
+impl Eq for Warnings {}
+
 /// How every "fit accepts this, akit does not yet" message starts.
 pub const NOT_SUPPORTED_YET: &str = "not supported yet";
 

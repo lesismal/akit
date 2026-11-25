@@ -1277,7 +1277,7 @@ fn params() {
         (r#"{"max_bytes": -1}"#, "max_bytes"),
         (
             r#"{"max_bytes": 1, "max_size": 1}"#,
-            "renamed \"max_bytes\"",
+            "give only \"max_bytes\"",
         ),
         (r#"{"default_ttl": "soon"}"#, "not a duration"),
         (r#"{"stale_while_revalidate": "soon"}"#, "not a duration"),
@@ -1287,7 +1287,7 @@ fn params() {
         (r#"{"disk": "/tmp/x"}"#, "disk"),
         (
             r#"{"disk": {"path": "x", "max_bytes": 1, "max_size": 1}}"#,
-            "renamed \"max_bytes\"",
+            "give only \"max_bytes\"",
         ),
         (
             r#"{"disk": {"path": "x", "max_entries": -1}}"#,

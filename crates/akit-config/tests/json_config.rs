@@ -188,6 +188,20 @@ fn tls_reads() {
     assert_eq!(c.listeners[0].tls, None);
 }
 
+/// h2c alone is fit's, and not akit's yet (akio API request A168): `validate` says so, as `run`
+/// does (I25).
+#[test]
+fn h2c_alone_is_not_supported_yet() {
+    let errs = lines(r#"{"listeners": [{"name": "w", "address": ":80", "protocols": ["h2c"]}]}"#);
+    assert_eq!(
+        errs,
+        ["1:62: listeners[0].protocols[0]: not supported yet: protocols h2c without http/1.1"]
+    );
+    let c =
+        ok(r#"{"listeners": [{"name": "w", "address": ":80", "protocols": ["h2c", "http/1.1"]}]}"#);
+    assert_eq!(c.listeners[0].protocols, [Protocol::H2c, Protocol::Http11]);
+}
+
 #[test]
 fn tls_problems_as_fit_reports_them() {
     const CERT: &str = r#""certificates": [{"cert_file": "a.pem", "key_file": "a.key"}]"#;

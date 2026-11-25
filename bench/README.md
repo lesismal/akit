@@ -13,15 +13,20 @@ the harness does). The results come only from the benchmark host
 | File | What it is |
 | --- | --- |
 | [`FIT_REV`](FIT_REV) | the fit commit whose harness is used: the one the compatibility fixtures are pinned at |
-| [`fitbench/akit.go`](fitbench/akit.go) | akit as a server of fitbench's: copied into fit's `bench/cmd/fitbench`, it adds akit to the list of servers, run from the image `akit-bench:<tag>` |
+| [`fitbench/akit.go`](fitbench/akit.go) | akit as a server of fitbench's: copied into fit's `bench/cmd/fitbench`, it adds akit to the list of servers, run from the image `akit-bench:<tag>`; and the `wasm` scenario, with the servers `akit-wasm` and `fit-wasm` that serve it |
 | [`configs/akit/fit.json`](configs/akit/fit.json) | akit's config for the harness, copied into fit's `bench/configs/akit`: the routes fit's `bench/configs/fit/fit.conf` serves, as far as akit serves them |
-| [`lib.sh`](lib.sh) | staging, shared by the scripts below |
+| [`configs/akit/wasm.json`](configs/akit/wasm.json), [`configs/akit/fit-wasm.conf`](configs/akit/fit-wasm.conf) | the `wasm` scenario's route, for akit and for fit, each a second config file beside the server's own |
+| [`stampede.sh`](stampede.sh), [`stampede`](stampede) | the stampede check: many clients, one cold key, a slow origin counting its fetches, for nginx, fit and akit |
+| [`lib.sh`](lib.sh) | staging, shared by the scripts |
 | [`run.sh`](run.sh) | a run of the harness |
 | [`ab.sh`](ab.sh), [`abreport.py`](abreport.py) | a same-run comparison of two akit builds |
+| [`modules.sh`](modules.sh), [`modulesreport.py`](modulesreport.py), [`configs/modules`](configs/modules) | each middleware against fit's, akit on epoll and io_uring (I56) |
 | [`results`](results) | the runs checked in, each with its results, report, parameters and the akit commit; a run is fetched into `results/run-<time>` (not checked in) and renamed to keep it, as `baseline-2026-11-24` |
 
 fit's own files are not changed. The scripts upload fit's tree at `FIT_REV` (from the fit
-repository beside akit's, or `FIT_REPO`) to the host once, add akit's two files to it each time,
+repository beside akit's, or `FIT_REPO`; a git worktree of akit sets it) to the host once, add
+akit's files to it each time (with the `wasm` scenario's plugin, unpacked from
+`crates/akit-plugin/tests/guests/headers-go.wasm.gz`),
 and build fitbench, benchreport, idleconn and fit there with Go; they upload akit at the ref asked
 for and build it there with cargo, into an image of its own on `ubuntu:24.04`, the base image fit
 runs on. Builds take the host's `/root/bench.lock` shared; measured runs take it alone, through
@@ -37,16 +42,56 @@ starts a run of akit at `main` (a git ref, or `work` for the working tree), with
 Traefik and fit, and returns its id. `bench/run.sh -report ID` fetches it into
 `bench/results/ID` and prints fit's benchreport tables; `-wait ID` waits for it first. Options,
 passed to fitbench: `-servers` (`nginx,caddy,traefik,fit,akit`), `-scenarios`
-(`fixed,static,proxy`), `-protocols` (`http/1.1,h2c,https/1.1,h2`), `-idle` (`http1,tls`), and `-args` for any
-other fitbench flag, as `-args '-duration 15s -warmup 5s'`.
+(`fixed,static,proxy`, and `cache-hot`, `cache-zipf`, `wasm`), `-protocols`
+(`http/1.1,h2c,https/1.1,h2`), `-idle` (`http1,tls,ws`), and `-args` for any other fitbench flag, as
+`-args '-duration 15s -warmup 5s'`. `BENCH_DIR` (default `/root/akit-bench`) is where on the host
+the scripts stage and run; a session that changes the harness while another runs it sets one of
+its own.
 
 The defaults are what akit serves so far: the fixed, static and proxy scenarios (static since I12,
 from fitbench's files mounted at `/srv/www` as for fit; the proxy since I15, to fitbench's
-backend) over HTTP/1.1, h2c, HTTPS/1.1 and h2 (TLS since I09), and idle HTTP/1.1 and TLS
-connections. The other servers run every scenario they serve; akit's other scenarios are recorded
-as skipped ("akit cannot serve it") until the iterations that build them: HTTP/3 in I10, the cache
-in I69. Each adds what it
-serves to `fitbench/akit.go` and `configs/akit/fit.json`, and the protocols to the defaults.
+backend) over HTTP/1.1, h2c, HTTPS/1.1 and h2 (TLS since I09), and idle HTTP/1.1, TLS and
+WebSocket connections (WebSockets since I25, proxied to fitbench's WebSocket backend as fit's
+route `ws`). akit also serves the cache scenarios (since I76), `cache-hot` and `cache-zipf`, as
+fit and nginx do: the route `cache`, a 1 GiB zone with the cache lock on, in front of fitbench's
+cache origin, whose fetches give each run's hit ratio; like fit's harness, a run has them only when
+`-scenarios` names them. The other servers run every scenario they serve; akit's other scenarios
+(HTTP/3, the website workloads) are recorded as skipped ("akit cannot serve it"). Each iteration
+adds what it serves to `fitbench/akit.go` and `configs/akit/fit.json`, and the protocols to the
+defaults. For memory at 100k idle connections, as fit's M1 report: `-scenarios fixed -protocols http/1.1
+-idle http1,tls -args '-idle-connections 100000'`.
+
+## The WASM plugin's cost
+
+```bash
+bench/run.sh -servers akit-wasm,fit-wasm -scenarios fixed,wasm -protocols http/1.1,h2c -idle "" work
+```
+
+measures what a header-editing WebAssembly plugin costs a request, in akit and in fit, with the
+same `.wasm`: fit's own test plugin (`plugin/wasm/testdata/headers`, built by Go for
+`wasip1`), which sets and removes request fields and adds three response fields. The `wasm`
+scenario is the fixed response behind the `wasm` middleware, with its defaults (an instance a CPU,
+a queue of 1024, 100 ms a call); `fixed` measured in the same container is the baseline. The
+servers `akit-wasm` and `fit-wasm` are akit and fit with their harness configs and a second config
+file each that adds the route `/wasm` ([`configs/akit/wasm.json`](configs/akit/wasm.json),
+[`configs/akit/fit-wasm.conf`](configs/akit/fit-wasm.conf)), so that fit's own config stays as it
+is and a run that does not name them loads no plugin.
+
+## The stampede check
+
+```bash
+bench/stampede.sh work
+```
+
+asks a cache for one cold key with many clients at once (1,000 by default: over HTTP/1.1 a
+connection each, over h2c 100 streams on each of 10 connections), while the origin
+([`stampede/origin.py`](stampede/origin.py)) takes a second to answer; the origin counts the
+fetches that reach it. It runs nginx with `proxy_cache_lock on`, fit, akit, and akit with
+`disable_lock` (the control, whose every client reaches the origin), each alone on the server's
+CPUs, three cold keys a server and protocol, and prints a line a key: the server, the protocol, the
+requests answered 200 and the origin's count. It waits for its end (about two minutes, under the
+host's lock alone) and keeps the lines in `results/stampede-<time>`. Options: `-clients`, `-keys`,
+`-delay`.
 
 ## Comparing two builds
 
@@ -60,6 +105,26 @@ returns an id; `bench/ab.sh -report ID` summarizes what has finished, requests a
 request and p99, marking a change only past 1% (`AB_NOISE`) and the spread of the rounds, with
 fit's abreport; `-wait ID` waits for the end. Options: `-scenarios`, `-protocols`, `-rounds`,
 `-duration`, `-warmup`, `-args`.
+
+## Each middleware against fit's
+
+```bash
+bench/modules.sh main
+```
+
+serves [`configs/modules/modules.json`](configs/modules/modules.json), one config akit and fit
+both run, with each middleware on a route of its own (its host `<module>.bench`) in front of the
+proxy to a backend (nginx, [`configs/modules/backend.conf`](configs/modules/backend.conf), 1 KiB
+of JSON), beside the proxy alone (`none`) and a fixed answer (`respond`). It loads each route with
+wrk, 7 threads and 256 connections, for 8s after 2s of warm-up, on fit's CPU split (the server on
+0-6, wrk on 7-13 in fitbench's loadgen image, the backend on 14-15), 3 rounds with the servers'
+order turned each round. akit runs from its `bench_serve` example
+([`crates/akit/examples/bench_serve.rs`](../crates/akit/examples/bench_serve.rs)), the path
+`akit run` takes, on epoll (`akit-epoll`) and on io_uring (`akit-uring`), which `akit run` cannot
+choose yet; fit from its binary at `FIT_REV`. `bench/modules.sh -report ID` summarizes the run with
+`modulesreport.py`: per module and server the median of the rounds' requests a second, wrk's p99
+and the server's CPU per request (from `/proc/PID/stat`), and what each middleware adds to its
+server's `none`. Options: `-rounds`, `-duration`, `-servers`, `-modules`.
 
 ## Where akit's config differs from fit's
 

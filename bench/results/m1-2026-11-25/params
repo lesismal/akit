@@ -1,0 +1,1 @@
+servers=nginx,caddy,traefik,fit,akit scenarios=fixed,static,proxy protocols=http/1.1,h2c,https/1.1,h2 idle=http1,tls,ws args= fit=7daee573b102d87837cc10f033e4cc5894769210

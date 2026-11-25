@@ -14,8 +14,10 @@
     clippy::arithmetic_side_effects
 )]
 
+use std::collections::BTreeSet;
 use std::io::{Read, Write};
 use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream};
+use std::path::Path;
 use std::sync::{Arc, mpsc};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -1531,4 +1533,253 @@ fn unix_socket() {
     assert!(path.exists(), "the socket in use is left alone");
     drop(f);
     assert!(!path.exists(), "the socket goes with the API");
+}
+
+/// The items of the Admin API v1 as frozen (tests/compat/v1/admin-api.txt) and marked since
+/// (additions.txt): `added` ones in, `retired` ones out.
+fn frozen_v1() -> BTreeSet<Vec<String>> {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/compat/v1");
+    let items = |text: &str| -> Vec<Vec<String>> {
+        text.lines()
+            .filter(|l| !l.is_empty() && !l.starts_with('#'))
+            .map(|l| l.split('\t').map(str::to_owned).collect())
+            .collect()
+    };
+    let mut out: BTreeSet<Vec<String>> =
+        items(&std::fs::read_to_string(dir.join("admin-api.txt")).unwrap())
+            .into_iter()
+            .collect();
+    for line in items(&std::fs::read_to_string(dir.join("additions.txt")).unwrap()) {
+        match (
+            line.first().map(String::as_str),
+            line.get(1).map(String::as_str),
+        ) {
+            (Some("admin"), Some("added")) => {
+                out.insert(line[2..].to_vec());
+            }
+            (Some("admin"), Some("retired")) => {
+                out.remove(&line[2..]);
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+/// Whether `path` is one of `pattern`'s: `{n}` a number, `{path...}` one segment or more.
+fn path_matches(pattern: &str, path: &str) -> bool {
+    let mut p = pattern.split('/');
+    let mut c = path.split('/');
+    loop {
+        match (p.next(), c.next()) {
+            (None, None) => return true,
+            (Some("{path...}"), Some(seg)) => return !seg.is_empty(),
+            (Some("{n}"), Some(seg)) => {
+                if seg.is_empty() || !seg.bytes().all(|b| b.is_ascii_digit()) {
+                    return false;
+                }
+            }
+            (Some(a), Some(b)) if a == b => {}
+            _ => return false,
+        }
+    }
+}
+
+/// The members of `v`, as `a`, `a[].b`, under `prefix`.
+fn members(prefix: &str, v: &Value, out: &mut BTreeSet<String>) {
+    match v {
+        Value::Object(ms) => {
+            for (k, v) in ms {
+                let name = if prefix.is_empty() {
+                    k.clone()
+                } else {
+                    format!("{prefix}.{k}")
+                };
+                out.insert(name.clone());
+                members(&name, v, out);
+            }
+        }
+        Value::Array(items) => {
+            for v in items {
+                members(&format!("{prefix}[]"), v, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// I79, the v1 freeze: the Admin API serves exactly what tests/compat/v1 holds (its v1 baseline
+/// and the additions marked since): every endpoint frozen is served, no method or path past them
+/// is, and the header fields, the query parameter and the members of the answers to a change,
+/// to an error and to `GET /versions` are those frozen. A change not marked fails it: a
+/// compatible addition is marked in additions.txt; anything else waits for a v2.
+#[test]
+fn v1_surface_is_frozen() {
+    let frozen = frozen_v1();
+    let mut seen: BTreeSet<Vec<String>> = BTreeSet::new();
+    let item = |parts: &[&str]| parts.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
+
+    let mut opts = Options::default();
+    opts.metrics = Some(Arc::new(|out: &mut Vec<u8>| {
+        out.extend_from_slice(b"fit_config_version 1\n");
+    }));
+    let f = start_with(&doc("v1"), admin(|_| {}), opts);
+
+    // Endpoints: every method on every path frozen, each path's numbers and pointers filled in.
+    let patterns: BTreeSet<&str> = frozen
+        .iter()
+        .filter(|i| matches!(i[0].as_str(), "endpoint" | "uncovered"))
+        .map(|i| i[2].as_str())
+        .collect();
+    for pattern in &patterns {
+        let path = pattern
+            .replace("{path...}", "listeners/0/name")
+            .replace("{n}", "1");
+        let mut get_served = false;
+        for method in ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"] {
+            let r = request(f.api.addr(), method, &path, &[], None);
+            let served = match method {
+                // A HEAD's 404 has no body to tell an endpoint's from a missing one.
+                "HEAD" => get_served && r.status != 405,
+                _ => {
+                    !(r.status == 405
+                        || r.status == 404 && r.body.contains("there is no such endpoint"))
+                }
+            };
+            if method == "GET" {
+                get_served = served;
+            }
+            if !served {
+                continue;
+            }
+            let mut matched = false;
+            for i in frozen.iter().filter(|i| i[1] == method) {
+                if matches!(i[0].as_str(), "endpoint" | "uncovered") && path_matches(&i[2], &path) {
+                    seen.insert(i.clone());
+                    matched = true;
+                }
+            }
+            if !matched {
+                seen.insert(item(&["endpoint", method, pattern]));
+            }
+        }
+    }
+    // A path the dispatcher names is one frozen, or the stem of one.
+    let src = include_str!("../src/server.rs");
+    let call = src
+        .split_once("fn call(&self, ctx: &mut Context)")
+        .and_then(|(_, rest)| rest.split_once("fn body_mode"))
+        .map(|(body, _)| body)
+        .unwrap();
+    for lit in call.split('"').skip(1).step_by(2) {
+        if lit.starts_with('/') {
+            assert!(
+                patterns
+                    .iter()
+                    .any(|p| *p == lit || lit.ends_with('/') && p.starts_with(lit)),
+                "the Admin API serves {lit}, which tests/compat/v1 does not hold: mark it added"
+            );
+        }
+    }
+
+    // Header fields and the query parameter.
+    let r = f.get("/config");
+    let etag = r.header("ETag").unwrap().to_owned();
+    if r.header(VERSION_HEADER).is_some() {
+        seen.insert(item(&["header", "ETag"]));
+        seen.insert(item(&["header", VERSION_HEADER]));
+    }
+    if f.request_with("GET", "/config", &[("If-None-Match", &etag)])
+        .status
+        == 304
+    {
+        seen.insert(item(&["header", "If-None-Match"]));
+    }
+    if f.load_with(&doc("v1"), &[("If-Match", "\"stale\"")]).status == 412 {
+        seen.insert(item(&["header", "If-Match"]));
+    }
+    if request(f.api.addr(), "POST", "/metrics", &[], None)
+        .header("Allow")
+        .is_some()
+    {
+        seen.insert(item(&["header", "Allow"]));
+    }
+    let r = request(
+        f.api.addr(),
+        "POST",
+        "/load?dry_run=1",
+        &[("Content-Type", "application/json")],
+        Some(&doc("v1")),
+    );
+    if r.status == 200 && r.header(DRY_RUN_HEADER) == Some("1") {
+        seen.insert(item(&["query", "dry_run"]));
+        seen.insert(item(&["header", DRY_RUN_HEADER]));
+    }
+
+    // The members of a change's answer: a dry run that changes nothing, listeners added with a
+    // warning, then removed.
+    let mut change = BTreeSet::new();
+    members(
+        "",
+        &akit_config::value::parse(&r.body).unwrap(),
+        &mut change,
+    );
+    let two = r#"{"listeners": [{"name": "web", "address": "127.0.0.1:0"}, {"name": "extra", "address": "127.0.0.1:0"}],
+  "admin": {"address": "127.0.0.1:1"}}"#;
+    for config in [two, &doc("v3")] {
+        let r = f.load(config);
+        assert_eq!(r.status, 200, "{r:?}");
+        members(
+            "",
+            &akit_config::value::parse(&r.body).unwrap(),
+            &mut change,
+        );
+    }
+    // An error's.
+    let mut error = BTreeSet::new();
+    let r = f.load(r#"{"listeners": 1}"#);
+    assert_eq!(r.status, 400, "{r:?}");
+    members("", &akit_config::value::parse(&r.body).unwrap(), &mut error);
+    // GET /versions'.
+    let mut versions = BTreeSet::new();
+    members(
+        "",
+        &akit_config::value::parse(&f.get("/versions").body).unwrap(),
+        &mut versions,
+    );
+    for (answer, keys) in [("change", change), ("error", error), ("versions", versions)] {
+        for k in keys {
+            seen.insert(item(&["member", answer, &k]));
+        }
+    }
+    drop(f);
+
+    // The bearer token.
+    let file = std::env::temp_dir().join(format!("akit-admin-v1-token-{}", std::process::id()));
+    std::fs::write(&file, "s3cret\n").unwrap();
+    let path = file.to_str().unwrap().to_owned();
+    let f = start(&doc("v1"), admin(|a| a.token_file = Some(path.clone())));
+    if f.get("/config").header("WWW-Authenticate").is_some() {
+        seen.insert(item(&["header", "WWW-Authenticate"]));
+    }
+    if f.request_with("GET", "/config", &[("Authorization", "Bearer s3cret")])
+        .status
+        == 200
+    {
+        seen.insert(item(&["header", "Authorization"]));
+    }
+    drop(f);
+    let _ = std::fs::remove_file(&file);
+
+    let new: Vec<String> = seen.difference(&frozen).map(|i| i.join("\t")).collect();
+    let gone: Vec<String> = frozen.difference(&seen).map(|i| i.join("\t")).collect();
+    assert!(
+        new.is_empty() && gone.is_empty(),
+        "the Admin API differs from its v1 surface (docs/compatibility.md).\n\
+         Not marked (a compatible addition is marked in tests/compat/v1/additions.txt as \
+         `admin<TAB>added<TAB><item>`):\n  {}\n\
+         Gone, which breaks v1:\n  {}",
+        new.join("\n  "),
+        gone.join("\n  ")
+    );
 }

@@ -281,7 +281,8 @@ impl Scrape {
             tel.total.backpressure,
             &[("reason", "watermark")],
         );
-        // akit has no budget of pending bytes across connections yet (limits.max_pending_bytes).
+        // akit has no budget of pending bytes across connections yet (limits.max_pending_bytes,
+        // akio API request A214).
         w.sample_u64("fit_reads_paused_total", 0, &[("reason", "budget")]);
 
         let (tried, failed) = self.config.reloads();

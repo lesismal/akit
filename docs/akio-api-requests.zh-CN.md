@@ -27,7 +27,7 @@
 | A7 | 不转码即可切分文件的 MP4（ISO BMFF）读取器 | 已在 akio 的 main（`a9a620ab`），已锁定 | — | 媒体库 |
 | A8 | TUN 设备 | 已在 akio 的 main（`a9a620ab`），已锁定 | — | VPN |
 | A9 | 把 TLS 服务端限制在 TLS 1.2（`ServerConfigBuilder` 的公开 API） | 已在 akio 的 main（`4989cd8b`），已锁定 | 17 | I09 |
-| A10 | 立即关闭 HTTP 客户端的空闲连接 | 已提出（I14） | 10、11 | I14、I22 |
+| A10 | 立即关闭 HTTP 客户端的空闲连接 | 已在 akio 分支上实现（I38：`claude/a10-close-idle`，`af959290`），未进入 akio 的 main | 10、11 | I14、I22、I38 |
 | A11 | HTTP/1 客户端请求保留自己的 `Host` 字段（给定空 `User-Agent` 时不发送 `User-Agent`） | 已在 akio 的 main（`a9a620ab`），已锁定 | — | I15 |
 | A12 | HTTP 客户端的连接超时也作用于单个地址 | 已在 akio 分支 `claude/akit-open-requests` 上实现（`22e038cc`，akio 的 ADR-154），akit 已使用（尚未移动锁定） | 10 | I14、I35 |
 | A13 | `Files` 服务调用者给出的路径 | 已在 akio 的 main（`a9a620ab`），已锁定 | 19 | I12、I13 |
@@ -86,7 +86,14 @@
 | A165 | 插件用的 WebAssembly 运行时：沙箱解释器、宿主 API、WASI preview 1、实例池；Proxy-Wasm 需要的响应钩子 | 已在 akio 的 main（`dad77a7a`），已锁定 | 1、4、11 | I71、I72 |
 | A166 | 由别处进行的调用决定时扣住响应头（fit 向 fib 提出的 A41） | 已在 akio 的 main（`dad77a7a`），已锁定 | 1、4 | I72 |
 | A167 | 由别处进行的调用逐次过滤响应 body，trailer 在最后一次调用中（fit 向 fib 提出的 A46） | 已在 akio 的 main（`dad77a7a`），已锁定 | 1、4、5、8 | I72 |
+| A168 | 只提供先验知识 HTTP/2 的 HTTP 服务端（带 `h2c` 而没有 `http/1.1` 的监听器） | 已提出（I25） | 19 | I05、I25 |
+| A169 | akio 的服务端拒绝 RFC 9112、RFC 9113 和 RFC 9114 规定为畸形的请求：两个 `Host` 字段、HTTP/2 与 HTTP/3 字段名和值中的非法字节、流式 body 的分帧错误以 400 应答 | 已在 akio 分支 `claude/a169-request-checks`（`813f53ea`，最后一部分除外）实现，未进入 akio 的 main | 15、19 | I25 |
+| A171 | HTTP 客户端请求结束时取消其定时器任务，而不是保留到超时时间 | 已在 akio 分支 `claude/a171-client-timer-cancel`（`90adec65`）实现，未进入 akio 的 main | 11、13 | I15、I18、I25 |
+| A172 | TLS 服务端把 server name 为 IP 地址的 ClientHello 视为没有名字，而不是使握手失败 | 已在 akio 分支 `claude/a172-sni-ip-literal`（`d23c9368`）实现，未进入 akio 的 main | 19 | I09、I25 |
 | A170 | 不经 `Conn::inner` 读取连接的 TCP 计数（以及未读字节），并通过引擎自己的 API 先写数据再拼接 | 已在 akio 分支 `claude/akit-open-requests` 上实现（`22bc4402`，akio 的 ADR-156），akit 已使用（尚未移动锁定） | 1、14 | I51b |
+| A180 | 让 akio-wasm 的调用更便宜，并与 wazero 对比测量（akio 的 W5） | 已提出（I76）：一个修改头部的 Go guest 让 akit 每个请求多花 14.7 µs CPU，fit 6.8 µs | 13 | I71、I72、I76 |
+| A214 | 所有连接合计排队字节的预算，超出时暂停每个连接的读取（fit 的 `limits.max_pending_bytes`） | 已提出（I79） | 8、11 | I79 |
+| A215 | 只计入被接受的连接、不计入引擎拨出的连接的连接上限（fit 的 `limits.max_conns`） | 已提出（I79） | 11 | I79 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -175,6 +182,8 @@ TLS 1.2，而它是隐藏的，标明只供测试和互通工具使用。
 
 ## A10 关闭 HTTP 客户端的空闲连接
 
+**状态。** 已进入 akio 的 main（`0fc8f3a7`，`Client::close_idle`）并锁定。
+
 **问题。** 图退役时，它的上游连接池会排空并关闭（I14，决策 004）。最后一个请求完成后，akio-http 的 `Client`
 保持的空闲连接也应当关闭，就像 fit 的连接池关闭 fib 的客户端那样。akio 的客户端无法关闭它们：它们只在
 `ClientOptions::idle_timeout`（fit 默认 60s）之后、服务端关闭它们时或引擎关闭时才关闭；丢弃 `Client` 也关不掉，
@@ -188,6 +197,15 @@ TLS 1.2，而它是隐藏的，标明只供测试和互通工具使用。
 
 **akit 的用法。** `Pool::close` 在连接池排空后调用它。在此之前，已关闭连接池的空闲连接最多保持到它的
 `idle_timeout`（记录在 I14 的进度条目中）。
+
+**再次遇到（I38）。** 频繁替换测试：每次修改上游的重载都会替换它的连接池，被替换连接池的空闲连接一直保持到
+`idle_timeout`；每分钟数千次重载会留下数千个打开的上游连接（I38 像 fit 一样把未变上游的连接池交给下一个图共享，
+只剩下改变了的上游）。
+
+**已实现（I38）。** 在 akio 分支 `claude/a10-close-idle` 上，提交 `af959290`（基于 `e79cc740`），未推送、未合并：
+`Client::close_idle` 立即关闭空闲连接，并设置客户端的 `shutting_down` 标志（引擎优雅关闭所用的那个），使收完响应的
+连接关闭而不再回到空闲池；请求路径不变。由 `client` 的 `close_idle_closes_idle_connections_now` 测试（macOS，以及
+gpu51 的 epoll 和 io_uring）。akio 的 main 有了它、akit 的 `rev` 移过去之后，akit 在 `Pool::close` 中调用它。
 
 ## A11 请求自己的 `Host` 字段
 
@@ -1451,6 +1469,95 @@ body）和 tap；由客户端限速（连接积压超过 256 KiB 时下一次调
 以 trailer 调用 `proxy_on_response_trailers`。`on_end` 把 `proxy_on_done`、`proxy_on_log` 和 `proxy_on_delete`
 排入队列。`response: headers` 不注册 body 过滤器，文件 body 因此仍用 `sendfile`。
 
+## A168 只提供先验知识的 HTTP/2
+
+**状态。** 已提出（I25）。
+
+**问题。** fit 中 `protocols: [h2c]` 的监听器只提供先验知识的 HTTP/2，不提供其他协议，fit 基准配置的 8081 端口就是这样。
+akio-http 的服务端对不以 HTTP/2 前言开头的连接总是按 HTTP/1.1 处理，因此 akit 在启动时拒绝这样的监听器
+（`not supported yet: protocols h2c without http/1.1`），其基准配置在 `h2c` 旁边还列出了 `http/1.1`。
+
+**证据。** 在 akio `dad77a7a`：`HttpConfig` 有 `h2: Option<H2Config>` 可关闭 HTTP/2，但没有关闭 HTTP/1 的设置；
+`Session` 把没有前言的连接都当作 HTTP/1 读取。
+
+**建议的 API。** `HttpConfig::http1: bool`（默认 `true`）：为 `false` 时，不以 HTTP/2 前言开头的连接被关闭（或者像 Go 的
+仅 h2c 服务端那样，在缺失的前言之后回一个 GOAWAY），`Upgrade: h2c` 请求也不接受。
+
+**akit 将如何使用。** `akit-listener` 的 `http_config` 按监听器是否列出 `http/1.1` 设置 `http1`，并去掉其 "not supported
+yet"。在此之前 `akit validate` 也报告同样的错误（I25 发现它此前并未报告）。
+
+## A169 akio 的服务端拒绝畸形请求
+
+**状态。** 前三部分已进入 akio 的 main（`0fc8f3a7`）并锁定；第四部分未实现。原定进入 akio main 之前做的 HTTP/2 请求路径同轮 A/B 在合并前没有做，作为后续补做（见[待审决策](decisions-pending.zh-CN.md)）。
+
+**问题。** I25 的一致性测试套件（`crates/akit/tests/conformance.rs`）发现，akio 的服务端会把 RFC 规定为畸形的请求交给应用，
+于是 akit 的代理把它们转发给 HTTP/1.1 上游：
+
+1. HTTP/1：带两个 `Host` 字段的请求被正常处理（RFC 9112 第 3.2 节要求 400）。上游可能按另一个路由。
+2. HTTP/2：含 NUL、CR 或 LF 的字段值，以及含 token 以外字节（空格、非 ASCII 字节）的字段名被接受（RFC 9113 第 8.2.1 节
+   规定这样的请求是畸形的）。akio 的 HTTP/1 客户端写给上游时丢掉了 CR 和 LF，但写出了 NUL。
+3. HTTP/3：同上（RFC 9114 第 4.2 节）。
+4. HTTP/1 的流式 body：请求已分派后出现错误的 chunk 大小时，连接被关闭而不作应答；fit 以 400 应答（RFC 9112："SHOULD
+   respond with a 400"）。
+
+**证据。** 在 akio `dad77a7a`：`Session::on_head` 只用一个 bool 记录 `host`；`h2.rs` 的 `build_request` 和 trailer
+解码只检查名字是否含大写字母，不检查值；akio-h3 的 `header_list` 也一样；`Session` 的 `State::Stream` 在 `ChunkDecoder`
+出错时直接关闭。
+
+**实现（第 1–3 部分）。** `Session::on_head` 统计 `Host` 字段数，任何版本中多于一个都以 400 应答。HTTP/2 的请求和 trailer
+字段：普通字段名只能含 0x21–0x40 和 0x5B–0x7E 范围内除 `:` 以外的字节，每个值（伪首部字段的值也算）不能含 NUL、CR 或 LF，
+否则以 `PROTOCOL_ERROR` 重置该流。akio-h3 的请求字段同样处理。
+
+**建议（第 4 部分）。** 流式请求 body 的分帧在响应尚未写出任何内容之前出错时，以 400 应答并关闭连接，并告知 handler 其请求已
+离开（A38 的 `on_gone`），使它放弃对上游的交换。
+
+**akit 如何使用。** 锁定之后，akit-proxy 的临时措施（`headers::outgoing` 中的 `Refused::BadFieldValue` 和
+`Refused::TwoHosts`，在复制字段的循环中以 400 应答）可以像 fit 对字段名的检查那样作为纵深防御保留，也可以去掉；有了第 4 部分，
+一致性测试中错误 chunk 大小的用例将像 fit 一样期望 400。
+
+## A171 客户端请求结束时取消其定时器任务
+
+**状态。** 已进入 akio 的 main（`0fc8f3a7`）并锁定，与 main 上防 panic 的定时器线程合在一起。原定进入 akio main 之前做的同轮 A/B 在合并前没有做，作为后续补做（见[待审决策](decisions-pending.zh-CN.md)）。
+
+**问题。** I25 的第一次运行测得 akit 的代理在每秒 23 万请求时峰值内存为 1.8 GiB（fit 28–73 MiB，nginx 约 200 MiB）。
+无论连接池的上限如何，内存每个请求增长约 240 字节，负载结束后也不回落：`akio_http::timer::after` 为每个带
+`timeout` 的客户端请求（`Client::request`）以及每个 h2 流的超时和 header、idle 检查（`H2Client`）在唯一的定时器线程上
+排入一个装箱任务，这个任务一直留到延迟过去，并通过其 `Weak` 保留请求的 `Exchange` 内存（对 h2 请求则保留其回调和流
+控制）。按 fit 的 60 秒路由超时，就是一分钟的请求，在这个速率下约 1400 万个；按 akit 对一次交换的默认上限 1 小时，
+就是一小时的请求。这个队列也是无界的（规则 11）。
+
+**证据。** 在 akio `dad77a7a`：`timer.rs` 只有 `after`，没有取消的办法；`client.rs` 的 exchange 为每个请求安排
+`give_up(GaveUp::Timeout)`；`h2client.rs` 为每个请求和每个流的阶段安排任务。在基准主机上，`9d9321e` 的 akit 代理到
+本地后端，wrk 用 256 个连接压 10 秒：锁定的 akio 下，其 RSS 在 2–10 秒依次为 104、198、306、437、518 MiB，负载后
+停在 525 MiB；带 A171 时始终为 17–18 MiB，每秒 24.6 万请求，对比 23.8 万。
+
+**实现。** `timer::after` 返回一个 key，`timer::cancel(key)` 立即丢弃该任务；`Exchange` 在被丢弃时取消其超时任务，
+h2 流的控制取消其待执行的检查和流式请求的超时，完整的 h2 请求在回调运行时取消其超时。已取消任务的堆条目在数量超过
+存活任务后（超过 4096 时）被清理。
+
+**akit 如何使用。** 无需改动；akit 的代理、forward auth、镜像和健康探测都通过 akio 带超时的客户端发送，锁定之后不再
+按请求保留内存。在此之前，akit 的代理在负载下会保留其路由超时窗口内的请求。
+
+## A172 server name 为 IP 地址的 ClientHello
+
+**状态。** 已进入 akio 的 main（`0fc8f3a7`）并锁定。
+
+**问题。** fit 的基准 harness 用 wrk 对 `https://127.0.0.1:8443/` 施加 HTTPS/1.1 负载。wrk（OpenSSL）即使在 URL
+的主机是 IP 地址时也把它放进 ClientHello 的 `server_name`，而 RFC 6066 不允许这样做。akio-tls 的服务端以
+`decode_error` 告警回应这样的 ClientHello，因此所有请求都失败了：I25 的第一次运行中，akit 在每个场景的 HTTPS/1.1
+上都是每秒 0 请求（各约 200 万次连接错误），而 Go、OpenSSL 和 nginx 的服务端——因此 fit、nginx 和 Caddy——都把这样的
+名字视为没有名字。末尾带点的主机名也以同样方式失败。
+
+**证据。** 在 akio `dad77a7a`：`proto/msgs.rs` 的 `parse_host_name` 拒绝能解析为 `IpAddr` 或以 `.` 结尾的名字，
+其单元测试固定了这一行为。`openssl s_client -servername 127.0.0.1` 得到告警 50；用 `-servername localhost`，
+以及 wrk 访问 `https://localhost:...` 时，akit 正常应答。
+
+**实现。** 作为 server name 的 IP 字面量被视为没有名字（握手继续，选用默认证书，`server_name()` 为 `None`）；
+末尾的点被去掉；空名字或非 ASCII 名字仍使握手失败。
+
+**akit 如何使用。** 无需改动：没有 SNI 时 akit 的证书选择本来就回退到默认证书。锁定之后，harness 的 HTTPS/1.1
+场景就能测到 akit。
+
 **I72 起已使用**（`crates/akit-plugin/src/response.rs`）：如上，只是上下文在最后一次调用中关闭（done、log、delete），
 或者在响应的钩子被丢弃时由排队的任务关闭，而不是从 `on_end` 中关闭。
 
@@ -1479,3 +1586,64 @@ akio-socks 的拼接隧道（计数、空闲探测、关闭时的排空）作为
 
 **akit 的用法。** akit-l4 的 `sockmap` 模块改用这些 API，不再使用 `Conn::inner`，并且对带 `proxy_protocol` 的监听器的
 连接也进行拼接。
+
+## A180 让 akio-wasm 的调用更便宜，并与 wazero 对比测量（akio 的 W5）
+
+**状态。** 由 I76 提出（2026-11-25），给出 akio 的 W5（ADR-125 第 8 节，"对照 fit（wazero）的性能优化"，在 akio 的
+开发计划中仍未完成）的第一批数字。akit 中没有任何东西等待它：开销有界且已测量，M5 的标准成立。
+
+**问题。** 一个请求经过 `wasm` 中间件，在 akit 中的开销约为同一个 `.wasm` 在 fit 中的两倍。fit 在 wazero 的编译器上运行
+guest；akit 在 akio-wasm 的解释器上运行（没有 `unsafe`，所以没有编译器），插件占了 akit 处理这个请求的大部分开销。
+
+**证据。** [M5 报告](../bench/results/m5-report-2026-11-25.zh-CN.md#修改头部的-wasm-插件)：fit 自己修改头部的测试插件
+（`plugin/wasm/testdata/headers`，Go 的 `wasip1` guest，gzip 后 1.2 MB），固定响应位于使用默认值（7 个实例，队列 1,024）
+的 `wasm` 中间件之后，在基准测试主机上用 fitbench，256 条 HTTP/1.1 连接。akit：每秒 312,679 个请求，每个 22.25 µs
+CPU，同一容器中不带插件时每秒 831,888 个、每个 7.52 µs，所以插件每个请求 14.7 µs。fit：每秒 452,353 个、每个 14.92 µs，
+对比 785,657 个、8.15 µs，即 6.8 µs。带插件时 akit 的内存峰值 81 MiB，是 fit 的 235 MiB 的三分之一。akit 的 14.7 µs 由什么
+组成（交给池再交回、复制请求、guest 自己的指令、宿主调用）还没有分开测量。
+
+**建议的 API。** 无新 API：W5 对 akio-wasm 解释器和 `InstancePool` 的优化，先分开测量（实例上单独一次 guest 调用，对照
+wazero 的解释器和编译器，如 fit 的 `BenchmarkGuestCall`；池的交接与唤醒），再处理剖析指出的部分：分派循环、每个基本块
+的预算检查、宿主调用的参数传递、内存边界检查；以及让进入 Go `wasip1` guest
+的导出函数变得更便宜的办法。
+
+**akit 如何使用。** 原样使用：`akit-plugin` 在 `akio_wasm::InstancePool` 上运行每个 guest；调用变便宜后 akit 无需改动，
+用 `bench/run.sh -servers akit-wasm,fit-wasm -scenarios fixed,wasm` 重新测量。
+
+## A214 所有连接合计排队字节的预算
+
+**状态。** 已提出（I79）。在实现之前，akit 把 `limits.max_pending_bytes` 拒绝为“尚不支持”；fit-examples 的 `limits` 和
+`proxy` 示例只因它被拒绝。
+
+**问题。** fit 的 `limits.max_pending_bytes` 约束所有连接中等待客户端取走的响应字节总量：超出时每个连接都停止读取，直到有一些被取走
+（默认是 fit 可用内存的 "50%"，可以是字节数或比例；对应 fib 的 `Config.MaxPendingBytes`）。它使许多慢客户端合起来不能占用每个连接
+水位所允许的全部内存：100,000 个连接、每个 256 KiB 的水位，最多可排队 25 GiB。
+
+**证据。** 在 akio `dad77a7a`（以及 `main` 的 `111004f8`），`akio_core::Config` 有 `write_high_watermark`（按连接暂停读取）和
+`max_queued_bytes`（按连接拒绝发送），遥测也汇总了排队的字节（`queued_bytes`），但没有任何东西按这个总和暂停读取。akio 的路线图在
+背压下列出了“引擎级的 `max_pending_bytes`”，开发计划也勾选了它，但代码中没有这个名字或含义的设置。akit 无法在其上自行实现：那需要
+从拥有这些连接的 I/O 线程之外暂停每个连接的读取，这是 akio 的职责（规则 21）。
+
+**建议的 API。** `Config::max_pending_bytes: Option<usize>`（默认 `None`，可在运行时重载）：当引擎所有连接排队的字节总数达到或
+超过它时，每个连接在当前这次读取之后暂停读取，就像水位暂停单个连接那样；总数回落到比如四分之三以下时恢复。在水位的计数
+（`backpressure`）旁边增加一个由它引起的暂停计数，以便 akit 的 `fit_reads_paused_total{reason="budget"}` 报告它；再提供一个把内存
+比例换算为字节的辅助函数（机器的内存，或更低的 cgroup 限制），或由 akit 自己换算。
+
+**akit 将如何使用。** `akit-listener` 的 `engine_settings` 在启动时按 `limits.max_pending_bytes` 设置它（字节数，或内存比例，默认
+"50%"，读不到内存时 256 MiB），与 fit 相同；`supported.txt` 标记该字段，`make v1-bless` 标记这项增加，门禁中的 `limits` 和 `proxy`
+示例变为有效。
+
+## A215 只计入被接受连接的连接上限
+
+**状态。** 已提出（I79）。在此之前 akit 用 `Config::max_connections` 实现 `limits.max_conns`，参考文档中有说明。
+
+**问题。** fit 的 `limits.max_conns` 约束“监听器同时保持打开的客户端连接，所有监听器合计”。akit 的上游连接池在为监听器服务的同一个
+引擎上拨号，所以使用 akio 的上限时，繁忙代理的上游连接会占用客户端的名额：在默认的 100,000 下，若有 30,000 个上游连接打开，第
+70,001 个客户端就会被拒绝。
+
+**证据。** 在 akio `dad77a7a`，`Config::max_connections` 的计数是“引擎范围的，包括拨出的连接和 UDP 对端”，虽然超出时只关闭新接受的连接。
+
+**建议的 API。** `Config::max_accepted_connections: usize`（默认 0，即不限制；与 `max_connections` 一样可在运行时重载）：引擎各监听器
+接受的 TCP 连接超过它时，新连接在 `accept` 之后立即关闭并计为 `rejected`，与引擎拨出多少连接无关。
+
+**akit 将如何使用。** `engine_settings` 用 `limits.max_conns` 设置它，取代 `max_connections`，参考文档中关于 `limits.max_conns` 的说明随之删除。

@@ -9,10 +9,12 @@
 #
 # Options, passed to fitbench:
 #
-#   -servers LIST     nginx,caddy,traefik,fit,akit       (default: those five)
-#   -scenarios LIST   fixed,static,proxy                 (default: those three)
+#   -servers LIST     nginx,caddy,traefik,fit,akit       (default: those five; akit-wasm and
+#                                                        fit-wasm serve the wasm scenario)
+#   -scenarios LIST   fixed,static,proxy                 (default: those three; also cache-hot,
+#                                                        cache-zipf and wasm)
 #   -protocols LIST   http/1.1,h2c,https/1.1,h2          (default: what akit serves so far)
-#   -idle LIST        http1,tls                          (default: what akit holds so far)
+#   -idle LIST        http1,tls,ws                       (default: what akit holds so far)
 #   -args FLAGS       more fitbench flags, as '-duration 15s -warmup 5s'
 #
 # The run waits on the host for /root/bench.lock alone (quiet.sh), so it measures a quiet host.
@@ -49,7 +51,7 @@ esac
 servers=nginx,caddy,traefik,fit,akit
 scenarios=fixed,static,proxy
 protocols=http/1.1,h2c,https/1.1,h2
-idle=http1,tls
+idle=http1,tls,ws
 args=
 while [ $# -gt 1 ] || { [ $# -eq 1 ] && case "$1" in -*) true ;; *) false ;; esac; }; do
 	case "$1" in
@@ -74,7 +76,7 @@ EOP
 $BENCH_SSH "cat > $dir/run.sh && chmod +x $dir/run.sh" <<EOP
 #!/bin/sh
 cd $dir
-$QUIET run $fit_dir/bin/fitbench -root $fit_dir -bin $fit_dir/bin -akit-image akit-bench:$id \\
+$QUIET run $fit_dir/bin/fitbench -root $fit_dir -bin $fit_dir/bin -akit-image akit-bench:$id -akit-wasm-image akit-bench:$id \\
   -servers $servers -scenarios $scenarios -protocols $protocols -idle "$idle" $args \\
   -label $id -out $dir/results.json > run.log 2>&1
 code=\$?

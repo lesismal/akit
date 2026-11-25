@@ -1,0 +1,276 @@
+{
+  "started": "2026-11-25T17:01:09.216516376Z",
+  "finished": "2026-11-25T17:06:06.262747118Z",
+  "host": {
+    "architecture": "x86_64",
+    "cores": "8",
+    "cpu(s)": "16",
+    "docker_arch": "x86_64",
+    "docker_cpus": "16",
+    "file_max": "9223372036854775807",
+    "kernel": "Linux 7.0.0-42-generic",
+    "max_mhz": "5053",
+    "memory": "64953076 kB",
+    "model_name": "AMD Ryzen 7 7800X3D 8-Core Processor",
+    "nr_open": "2000500",
+    "numa_nodes": "1",
+    "os": "linux",
+    "port_range": "1024-65535",
+    "rmem_max": "7500000",
+    "somaxconn": "65535",
+    "tcp_mem_pressure_bytes": "1073741824",
+    "threads_per_core": "2"
+  },
+  "params": {
+    "duration": "30s",
+    "warmup": "5s",
+    "connections": 256,
+    "h2_connections": 64,
+    "h2_streams": 32,
+    "idle_connections": 10000,
+    "idle_settle": "5s",
+    "label": "run-20261126-004435",
+    "network": "host",
+    "server_cpus": "0-6",
+    "client_cpus": "7-13",
+    "backend_cpus": "14-15",
+    "aligned": {
+      "backend_conns": 16384,
+      "backend_idle_per_worker": 2341,
+      "backlog": 65535,
+      "nginx_worker_connections": 65536
+    }
+  },
+  "versions": {
+    "akit-wasm": "akit 0.0.1",
+    "docker": "29.1.3",
+    "fit-wasm": "fit (devel); fib v1.9.1; go1.27.4 linux/amd64",
+    "h2load": "h2load nghttp2/1.59.0",
+    "wrk": "wrk debian/4.1.0-4build2 [epoll] Copyright (C) 2012 Will Glozer"
+  },
+  "images": {
+    "akit-wasm": "akit-bench@sha256:ad876a793b5123afa61125b17da57aa656abab8ba8ab7b73e300efeb7fb48be5",
+    "fit-wasm": "ubuntu@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852"
+  },
+  "results": [
+    {
+      "server": "akit-wasm",
+      "scenario": "fixed",
+      "protocol": "http/1.1",
+      "tool": "wrk",
+      "requests_per_sec": 831887.9165523828,
+      "requests": 24979561,
+      "errors": 0,
+      "latency_ms": {
+        "p50": 0.152,
+        "p90": 0.293,
+        "p99": 0.322,
+        "p99.9": 0.332,
+        "mean": 0.16571,
+        "stdev": 0.055060000000000005,
+        "max": 3.066
+      },
+      "cpu_cores": 6.257234443277601,
+      "memory_bytes": 54939648,
+      "anon_bytes": 50495488,
+      "anon_start_bytes": 50098176,
+      "anon_peak_bytes": 50495488,
+      "in_flight": 252,
+      "cpu_us_per_request": 7.521727769781342,
+      "requests_per_sec_per_mib": 17274.76530154202,
+      "bytes_per_in_flight": 1576.6349206349207
+    },
+    {
+      "server": "akit-wasm",
+      "scenario": "fixed",
+      "protocol": "h2c",
+      "tool": "h2load",
+      "requests_per_sec": 5641784.53,
+      "requests": 169253536,
+      "errors": 0,
+      "latency_ms": {
+        "mean": 0.286,
+        "stdev": 0.153,
+        "max": 4.18
+      },
+      "cpu_cores": 6.8552646509752835,
+      "memory_bytes": 55013376,
+      "anon_bytes": 51240960,
+      "anon_start_bytes": 50069504,
+      "anon_peak_bytes": 51240960,
+      "in_flight": 2048,
+      "cpu_us_per_request": 1.215087994680166,
+      "requests_per_sec_per_mib": 115451.38606554757,
+      "bytes_per_in_flight": 572
+    },
+    {
+      "server": "akit-wasm",
+      "scenario": "wasm",
+      "protocol": "http/1.1",
+      "tool": "wrk",
+      "requests_per_sec": 312678.52307537006,
+      "requests": 9391513,
+      "errors": 0,
+      "latency_ms": {
+        "p50": 0.794,
+        "p90": 0.924,
+        "p99": 2.5,
+        "p99.9": 3.648,
+        "mean": 0.82547,
+        "stdev": 0.34216,
+        "max": 7.876
+      },
+      "cpu_cores": 6.956892184594688,
+      "memory_bytes": 89055232,
+      "anon_bytes": 85426176,
+      "anon_start_bytes": 50094080,
+      "anon_peak_bytes": 85426176,
+      "in_flight": 252,
+      "cpu_us_per_request": 22.249344522193976,
+      "requests_per_sec_per_mib": 3838.017928044435,
+      "bytes_per_in_flight": 140206.73015873015
+    },
+    {
+      "server": "akit-wasm",
+      "scenario": "wasm",
+      "protocol": "h2c",
+      "tool": "h2load",
+      "requests_per_sec": 2051546.77,
+      "requests": 61546403,
+      "errors": 58378083,
+      "error_kinds": {
+        "5xx": 58378083,
+        "failed": 58378083
+      },
+      "latency_ms": {
+        "mean": 0.982,
+        "stdev": 2.27,
+        "max": 23.35
+      },
+      "cpu_cores": 6.774072960149389,
+      "memory_bytes": 100327424,
+      "anon_bytes": 96235520,
+      "anon_start_bytes": 50098176,
+      "anon_peak_bytes": 96235520,
+      "in_flight": 2048,
+      "cpu_us_per_request": 3.301934452193546,
+      "requests_per_sec_per_mib": 22353.520881889763,
+      "bytes_per_in_flight": 22528
+    },
+    {
+      "server": "fit-wasm",
+      "scenario": "fixed",
+      "protocol": "http/1.1",
+      "tool": "wrk",
+      "requests_per_sec": 785656.6037039729,
+      "requests": 23594561,
+      "errors": 0,
+      "latency_ms": {
+        "p50": 0.171,
+        "p90": 0.487,
+        "p99": 2.762,
+        "p99.9": 4.034,
+        "mean": 0.3192,
+        "stdev": 0.46932999999999997,
+        "max": 7.148
+      },
+      "cpu_cores": 6.406593888564674,
+      "memory_bytes": 132210688,
+      "anon_bytes": 128483328,
+      "anon_start_bytes": 103546880,
+      "anon_peak_bytes": 128483328,
+      "goroutines_max": 122,
+      "in_flight": 252,
+      "cpu_us_per_request": 8.15444541337886,
+      "requests_per_sec_per_mib": 6411.887609927859,
+      "bytes_per_in_flight": 98954.15873015873
+    },
+    {
+      "server": "fit-wasm",
+      "scenario": "fixed",
+      "protocol": "h2c",
+      "tool": "h2load",
+      "requests_per_sec": 4534698.17,
+      "requests": 136040945,
+      "errors": 0,
+      "latency_ms": {
+        "mean": 0.385,
+        "stdev": 0.23,
+        "max": 3.75
+      },
+      "cpu_cores": 6.981041703891804,
+      "memory_bytes": 117329920,
+      "anon_bytes": 114126848,
+      "anon_start_bytes": 112902144,
+      "anon_peak_bytes": 114126848,
+      "goroutines_max": 184,
+      "in_flight": 2048,
+      "cpu_us_per_request": 1.539472185839395,
+      "requests_per_sec_per_mib": 41663.95332591609,
+      "bytes_per_in_flight": 598
+    },
+    {
+      "server": "fit-wasm",
+      "scenario": "wasm",
+      "protocol": "http/1.1",
+      "tool": "wrk",
+      "requests_per_sec": 452353.40037394455,
+      "requests": 13584468,
+      "errors": 0,
+      "latency_ms": {
+        "p50": 0.519,
+        "p90": 0.694,
+        "p99": 2.447,
+        "p99.9": 4.504,
+        "mean": 0.58424,
+        "stdev": 0.35124,
+        "max": 11.499
+      },
+      "cpu_cores": 6.749698695038401,
+      "memory_bytes": 233136128,
+      "anon_bytes": 229335040,
+      "anon_start_bytes": 112607232,
+      "anon_peak_bytes": 246611968,
+      "goroutines_max": 1903,
+      "in_flight": 252,
+      "cpu_us_per_request": 14.921295362118784,
+      "requests_per_sec_per_mib": 1923.3734801974788,
+      "bytes_per_in_flight": 531764.8253968254
+    },
+    {
+      "server": "fit-wasm",
+      "scenario": "wasm",
+      "protocol": "h2c",
+      "tool": "h2load",
+      "requests_per_sec": 2335395.87,
+      "requests": 70061876,
+      "errors": 65941741,
+      "error_kinds": {
+        "5xx": 65941741,
+        "failed": 65941741
+      },
+      "latency_ms": {
+        "mean": 0.846,
+        "stdev": 1.82,
+        "max": 14.31
+      },
+      "cpu_cores": 6.975812402600962,
+      "memory_bytes": 257789952,
+      "anon_bytes": 253820928,
+      "anon_start_bytes": 106545152,
+      "anon_peak_bytes": 255447040,
+      "goroutines_max": 410,
+      "in_flight": 2048,
+      "cpu_us_per_request": 2.9869935509481573,
+      "requests_per_sec_per_mib": 9586.488298244209,
+      "bytes_per_in_flight": 72706
+    }
+  ],
+  "startup_goroutines": {
+    "fit-wasm": 54
+  },
+  "startup_anon_bytes": {
+    "akit-wasm": 50098176,
+    "fit-wasm": 103546880
+  }
+}

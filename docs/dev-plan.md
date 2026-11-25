@@ -124,7 +124,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I22 | Reload on SIGHUP | I06 | done |
 | I23 | The .conf reader | I02 | done |
 | I24 | The YAML reader | I02 | done |
-| I25 | M1 conformance and report | I09–I24 | todo |
+| I25 | M1 conformance and report | I09–I24 | done |
 | **M2** | | | |
 | I26 | Admin API I: load, read, versions | I22 | done |
 | I27 | Admin API II: patch, rollback, auth | I26 | done |
@@ -138,7 +138,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I35 | Active health checks | I20 | done |
 | I36 | Load balancing v2 | I19 | done |
 | I37 | Prometheus metrics | I15 | done |
-| I38 | M2 exit: churn test and staging certificate | I26–I37 | todo |
+| I38 | M2 exit: churn test and staging certificate | I26–I37 | done |
 | **M3** | | | |
 | I39 | Matchers v2 and expressions | I11 | done |
 | I40 | Rewrites, redirects, headers | I39 | done |
@@ -158,7 +158,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I53 | Many protocols on one port | I52 | done |
 | I54 | Upstream TLS | I18 | done |
 | I55 | SOCKS and CONNECT | I53 | done |
-| I56 | M3 exit | I39–I55 | todo |
+| I56 | M3 exit | I39–I55 | done |
 | **M4** | | | |
 | I57 | Provider framework and the effective config | I29 | done |
 | I58 | Docker provider | I57 | done |
@@ -169,7 +169,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I63 | Dashboard | I37 | done |
 | I64 | OpenTelemetry | I37 | done |
 | I65 | Packaging | I06 | done |
-| I66 | M4 exit | I57–I65 | todo |
+| I66 | M4 exit | I57–I65 | done |
 | **M5** | | | |
 | I67 | Cache I: memory tier and RFC 9111 | I17 | done |
 | I68 | Cache II: disk tier, locks, stale | I67 | done |
@@ -180,11 +180,12 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I73 | `akit adapt` and `akit fmt` | I23, I24 | done |
 | I74 | nginx and Caddyfile converters | I73 | done |
 | I75 | FastCGI | I16 | done |
-| I76 | M5 exit | I67–I75 | todo |
+| I76 | M5 exit | I67–I75 | done |
 | **1.0** | | | |
 | I77 | Fuzzing | I56 | todo |
-| I78 | Config reference and guides | I76 | todo |
-| I79 | v1 freeze and compatibility | I78 | todo |
+| I78 | Config reference and guides | I76 | done |
+| I79 | v1 freeze and compatibility | I78 | done |
+| I79b | The gateway examples the gate still refuses: `limits.max_pending_bytes`, h2c alone, `max_conns` by accepted connections | I79, akio A214, A168, A215 | todo |
 | I80 | Security review readiness | I77, I79 | todo |
 
 ## Benchmark and optimization status
@@ -201,13 +202,13 @@ commit and result.
 | Feature | Iteration | Benchmarked | Optimized | Evidence or what is left |
 | --- | --- | --- | --- | --- |
 | Graph read per request | I04 | yes (2026-11-24, `c9d490a`, `crates/akit-runtime/benches/graph_read.rs`, numbers in [progress](progress.md)) | partial | The per-thread cached read was chosen by measuring it against an `Arc` clone and a mutex (4.06 ns on 1 thread, 8.78 ns on 16); no profile or tuning pass since. |
-| Listeners and `respond`, HTTP/1.1 and h2c; idle connections | I05 | yes (2026-11-24, `7c835ad`, `bench/results/baseline-2026-11-24`) | no | In the first baseline only: first in fixed over HTTP/1.1 and h2c. Left: a profile of both; memory per idle HTTP/1.1 connection (1,068 bytes, nginx 548); idle connections over h2c, and at 100k (I25). |
-| TLS entry points (HTTP/1.1 and h2 over TLS) | I09 | no | no (built, not measured) | Handshakes a second and fixed over TLS against fit and nginx. |
+| Listeners and `respond`, HTTP/1.1 and h2c; idle connections | I05 | yes (2026-11-25, `9d9321e`, `bench/results/m1-2026-11-25-akio-fixes`; first 2026-11-24, `bench/results/baseline-2026-11-24`) | no | The M1 report (I25): fixed first over HTTP/1.1, HTTPS/1.1, h2c and h2; idle HTTP/1.1 1,144 bytes at 10k and 1,132 at 100k (fit 1,497 and 1,441, nginx 556 and 530). Left: a profile of both; fixed over h2c 7–8% below M0's baseline (a same-run A/B of `7c835ad` against `9d9321e`); idle HTTP/1.1 against nginx's; idle connections over h2c. |
+| TLS entry points (HTTP/1.1 and h2 over TLS) | I09 | yes (2026-11-25, `9d9321e` with akio A172, `bench/results/m1-2026-11-25-akio-fixes`) | no | The M1 report: fixed and static first over HTTPS/1.1 and h2; idle TLS 12,942 bytes at 10k and 12,872 at 100k (fit 9,879 and 8,593, nginx 29,924 and 29,583). With akio as pinned (`dad77a7a`) the harness's wrk fails every handshake (A172). Left: handshakes a second against fit and nginx; idle TLS memory against fit's. |
 | HTTP/3 entry point | I10 | no | no (not built yet) | Fixed over h3 against fit and Caddy. |
 | Router v1: host and path lookup | I11 | no | no (built, not measured) | A micro-benchmark of the lookup (no allocation) and same-run A/B of fixed against I05's scan, with many routes. |
-| Static files | I12, I13 | no | no (built, not measured) | The static scenario, HTTP/1.1 and h2c (skipped for akit in the baseline); precompressed twins and `sendfile` for large files; cache hits after akio's ADR-124 (the two-ring cache, `max_cache_bytes` evictions with many files); large files with `compress`, read and encoded on akio's file pool, against fit. |
-| Upstream pools | I14 | no | no (built, not measured) | Through the proxy scenario: connection reuse, waiting for a connection under a limit. |
-| Reverse proxy: HTTP/1.1, streamed bodies, h2 and h2c upstreams | I15–I18 | no | no (built, not measured) | The proxy scenario, HTTP/1.1 and h2c (skipped for akit in the baseline); large bodies both ways, with memory per request in flight; requests with trailers (I17's `Trailer` parsing per request); h2c upstreams (I18): requests a second and CPU a request against an HTTP/1.1 upstream, with many clients multiplexed on few connections, and the per-address lock that leases a stream (`akit_upstream::h2`); I17b's `CancelToken` and `on_gone` per proxied request; over h2c (I18b) akio's per-stream state and its header and idle timers (a clock read per DATA frame, a timer job per request), a held download and a paced upload against HTTP/1.1's. |
+| Static files | I12, I13 | yes (2026-11-25, `9d9321e`, `bench/results/m1-2026-11-25-akio-fixes`) | no | The M1 report: first over HTTP/1.1, HTTPS/1.1 and h2 (1.2 to 3.8 times nginx's), 98% of fit over h2c. Left: precompressed twins and `sendfile` for large files; cache hits after akio's ADR-124 (the two-ring cache, `max_cache_bytes` evictions with many files); large files with `compress`, read and encoded on akio's file pool, against fit. |
+| Upstream pools | I14 | yes (2026-11-25, through the proxy scenario, `bench/results/m1-2026-11-25-akio-fixes`) | no | The M1 report: connections reused, about 220 to the backend for 256 clients over HTTP/1.1. Left: waiting for a connection under a limit. |
+| Reverse proxy: HTTP/1.1, streamed bodies, h2 and h2c upstreams | I15–I18 | yes (2026-11-25, `9d9321e` with akio A171, `bench/results/m1-2026-11-25-akio-fixes`) | no | The M1 report: third behind fit and nginx, 245k requests a second over HTTP/1.1, 230k over HTTPS/1.1, 238k over h2c, 221k over h2 (86–93% of the best), 27.5 µs of CPU a request against nginx's 18.2, p99 3.16 ms over HTTP/1.1 against fit's 2.20; with akio as pinned its memory grows by about 240 bytes a request of the route's timeout window (A171). Left: a profile of the per-request cost; large bodies both ways, with memory per request in flight; requests with trailers (I17's `Trailer` parsing per request); h2c upstreams (I18): requests a second and CPU a request against an HTTP/1.1 upstream, with many clients multiplexed on few connections, and the per-address lock that leases a stream (`akit_upstream::h2`); I17b's `CancelToken` and `on_gone` per proxied request; over h2c (I18b) akio's per-stream state and its header and idle timers (a clock read per DATA frame, a timer job per request), a held download and a paced upload against HTTP/1.1's. |
 | Load balancing v1 and v2 | I19, I36 | no | no (built, not measured) | A micro-benchmark of each policy's pick (fit's `BenchmarkPick` and `BenchmarkPickNew`: the nine policies, a key hashed, a sticky cookie looked up), 1 and 16 threads; proxy A/B against a single server; same-run A/B of the proxy scenario with `round_robin` against `p2c`, `header_hash` and a `sticky_cookie` (the per-request key hashing and, for a first request, the `Set-Cookie` copied). |
 | Passive health checks | I20 | no | no (built, not measured) | A micro-benchmark of recording a result on the request path. |
 | Active health checks | I35 | no | no (built, not measured) | Off the hot path (a pick still reads one atomic per address): the probes' cost on a busy engine, thousands of addresses probed every second (http and tcp), with the probe timer's thread (the stopgap for akio A45); same-run A/B of the proxy scenario with a health check on and off. |
@@ -218,24 +219,32 @@ commit and result.
 | Prometheus metrics | I37 | no | no (built, not measured) | Same-run A/B of the fixed and proxy scenarios with `metrics` on and off (an inline route costs a thread-local read and three atomic adds; a proxied one also a boxed response filter until akio A29), and with the access log on too (one hook for both); a scrape with many routes and 64 threads (the per-thread shards). |
 | OpenTelemetry | I64 | no | no (built, not measured) | Same-run A/B of the fixed and proxy scenarios with `telemetry.traces` off, on with `sample_ratio` 0 (a field lookup a request), and on with 1 (every request: its ids, a `traceparent` local, the span encoded into a thread's buffer and a shard lock); spans dropped at full load with the default 4 MiB queue and a slow collector; the export thread's cost; a micro-benchmark of `Tracer::sample` and `Tracer::end` (fit's `BenchmarkSample`, `BenchmarkEnd`). |
 | Static musl release binaries | I65 | no | no (built, not measured) | The fixed and proxy scenarios with the release's static musl binary (`scripts/dist.sh`, musl's allocator) against a glibc build of the same commit, same-run A/B, alternating rounds: whether musl's allocator costs throughput or memory under many threads, and so whether a global allocator is worth a dependency ([decision 009](decisions/009-packaging.md)). |
+| M4 exit: the full harness at the milestone's end; providers at rest | I66 | no | no | M4 changed no request path. Left for the benchmark task (rule 24's milestone end): the full harness with M4's build against fit, nginx, Caddy and Traefik, ranked as the [M4 report](../bench/results/m4-report-2026-11-25.md) ranks; same-run A/B, alternating rounds, of a serving akit with a Kubernetes or Docker provider watching but idle against the same config without one, and requests' p99 while a provider applies a new version every second. |
 | Matchers v2 and expressions | I39 | no | no (built, not measured) | A micro-benchmark of `find_request` with matchers, expressions and path regexps (no allocation, `tests/no_alloc.rs`); same-run A/B against I39's base on the fixed scenario (one route, no matchers: within noise expected). |
-| Rewrites, redirects, headers | I40 | no | no (built, not measured) | Same-run A/B on the proxy scenario of a route with `headers` (request and response changes) and `rewrite` against the same route without them; the cost per request of the response filter (a boxed closure and an `Arc` clone) and of the request fields kept in a context local (the stopgap until akio API request A33). |
-| Rate, concurrency and size limits | I41 | no | no (built, not measured) | Same-run A/B on the proxy scenario of a route with each limit set high enough never to refuse, against the route without it: `rate_limit` by ip and by header (a shard lock, a SipHash, a map lookup), with 1, 1000 and 1000000 clients' keys and 64 threads (the shards' contention), as fit's `BenchmarkRate`; `concurrency_limit` (two atomic operations on one shared line, and a boxed response filter with an `Arc` clone until akio A48); `body_limit` (nothing per request but a field lookup). |
-| Basic auth and client certificates | I42 | no | no (built, not measured) | Same-run A/B on the proxy scenario of a route with `basic_auth` (a remembered password: a base64 decode, an HMAC-SHA-256 and the request's fields rewritten into a context local until akio A33) and with `client_cert` and `subject_header` (the subject cached per thread), against the route without them, over HTTP/1.1, h2 and h3; the first check of a password (a suspension and a hop to akio's pool and back) at a few hundred new users a second, and a flood of wrong passwords against remembered users' latency. |
-| Forward auth | I43 | no | no (built, not measured) | Same-run A/B on the proxy scenario of a route with `forward_auth` against a fast local auth service, against the route without it, over HTTP/1.1 and h2: the cost of the check (the auth request's fields built, a suspension, one exchange on the auth upstream's pool, the resume on the answer's I/O thread); latency and memory with thousands of requests waiting on a slow auth service, and the fast route's latency meanwhile. |
-| JWT and JWKS | I44 | no | no (built, not measured) | Same-run A/B on the proxy scenario of a route with `jwt` against the route without it, over HTTP/1.1 and h2, by algorithm (HS256, EdDSA, ES256, RS256), with the token kept verified (a SHA-256 and a per-thread map lookup, the claims fields rewritten into a context local until akio A33) and verified anew (many distinct tokens: the signature check on the I/O thread), as fit's `BenchmarkJWT`; the latency of requests waiting for a JWK set fetch, and of other routes meanwhile. |
-| Retries, circuit breakers, route timeouts | I45 | no | no (built, not measured) | Same-run A/B on the proxy scenario of a route with `retry` and with `circuit_breaker` against the route without them, upstreams healthy: per request, the budget's read (a deposit into a full budget writes nothing), the template kept for a replay (a clone of the outgoing fields and of a body up to 64 KiB, a boxed `Again`), the breaker's boxed response filter and its two atomic adds on shared step counters, with 64 threads (the counters' contention); and with an upstream failing half its requests: retries a second against the budget, and the breaker's open path. |
+| Rewrites, redirects, headers | I40 | partial (2026-11-25, `2a1422d`, [M3 report](../bench/results/m3-report-2026-11-25.md): `rewrite` +0.4, `headers` +0.5 µs a request on epoll (fit +0.3, +1.0); `redirect` 815k a second (fit 765k)) | no (built, not measured) | Same-run A/B on the proxy scenario of a route with `headers` (request and response changes) and `rewrite` against the same route without them; the cost per request of the response filter (a boxed closure and an `Arc` clone) and of the request fields kept in a context local (the stopgap until akio API request A33). |
+| Rate, concurrency and size limits | I41 | partial (2026-11-25, `2a1422d`, [M3 report](../bench/results/m3-report-2026-11-25.md): `rate_limit` +0.2, `concurrency_limit` +0.4, `body_limit` -0.1 µs a request on epoll (fit +0.4, +0.4, +0.3), one key, 256 connections) | no (built, not measured) | Same-run A/B on the proxy scenario of a route with each limit set high enough never to refuse, against the route without it: `rate_limit` by ip and by header (a shard lock, a SipHash, a map lookup), with 1, 1000 and 1000000 clients' keys and 64 threads (the shards' contention), as fit's `BenchmarkRate`; `concurrency_limit` (two atomic operations on one shared line, and a boxed response filter with an `Arc` clone until akio A48); `body_limit` (nothing per request but a field lookup). |
+| Basic auth and client certificates | I42 | partial (2026-11-25, `2a1422d`, [M3 report](../bench/results/m3-report-2026-11-25.md): `basic_auth` with a remembered password +0.7 µs, `client_cert` without a certificate +0.0 on epoll (fit +0.6, +0.4), HTTP/1.1) | no (built, not measured) | Same-run A/B on the proxy scenario of a route with `basic_auth` (a remembered password: a base64 decode, an HMAC-SHA-256 and the request's fields rewritten into a context local until akio A33) and with `client_cert` and `subject_header` (the subject cached per thread), against the route without them, over HTTP/1.1, h2 and h3; the first check of a password (a suspension and a hop to akio's pool and back) at a few hundred new users a second, and a flood of wrong passwords against remembered users' latency. |
+| Forward auth | I43 | partial (2026-11-25, `2a1422d`, [M3 report](../bench/results/m3-report-2026-11-25.md): +20.4 µs a request on epoll against fit's +17.0, 97% of fit's requests a second, a fast auth service (nginx)) | no (built, not measured) | Same-run A/B on the proxy scenario of a route with `forward_auth` against a fast local auth service, against the route without it, over HTTP/1.1 and h2: the cost of the check (the auth request's fields built, a suspension, one exchange on the auth upstream's pool, the resume on the answer's I/O thread); latency and memory with thousands of requests waiting on a slow auth service, and the fast route's latency meanwhile. |
+| JWT and JWKS | I44 | partial (2026-11-25, `2a1422d`, [M3 report](../bench/results/m3-report-2026-11-25.md): HS256, a token kept verified: +1.9 µs a request on epoll, +2.4 on io_uring, against fit's +1.1) | no (built, not measured) | Same-run A/B on the proxy scenario of a route with `jwt` against the route without it, over HTTP/1.1 and h2, by algorithm (HS256, EdDSA, ES256, RS256), with the token kept verified (a SHA-256 and a per-thread map lookup, the claims fields rewritten into a context local until akio A33) and verified anew (many distinct tokens: the signature check on the I/O thread), as fit's `BenchmarkJWT`; the latency of requests waiting for a JWK set fetch, and of other routes meanwhile. |
+| Retries, circuit breakers, route timeouts | I45 | partial (2026-11-25, `2a1422d`, [M3 report](../bench/results/m3-report-2026-11-25.md): `circuit_breaker`, upstream healthy: +0.7 µs a request on epoll against fit's +1.1) | no (built, not measured) | Same-run A/B on the proxy scenario of a route with `retry` and with `circuit_breaker` against the route without them, upstreams healthy: per request, the budget's read (a deposit into a full budget writes nothing), the template kept for a replay (a clone of the outgoing fields and of a body up to 64 KiB, a boxed `Again`), the breaker's boxed response filter and its two atomic adds on shared step counters, with 64 threads (the counters' contention); and with an upstream failing half its requests: retries a second against the budget, and the breaker's open path. |
 | Weighted upstreams, mirroring, failover | I46 | no | no (built, not measured) | Same-run A/B on the proxy scenario of a route with `upstreams` (two, by weight) and with `failover` against the route with `upstream`: the draw by weight and `available` read per request; with `mirror` at 100% against a fast mirror (a copy of the fields and body, a second exchange per request) and against a mirror that answers nothing (the bound of 256 held: the requests' latency and akit's memory), over HTTP/1.1 and h2. |
-| Middlewares (the rest) | I48 | no | no (built, not measured) | I56 benchmarks every middleware; same-run A/B of each on the proxy scenario. |
-| Compression | I47 | no | no (built, not measured) | Against fit, each encoding, as I47 asks: the proxy scenario with `compress` in front, a whole JSON body and a stream of server-sent events, over HTTP/1.1 and h2, per encoding at fit's default levels (responses a second, server CPU, bytes on the wire); the cost of the filter on responses it leaves alone (an image) against no middleware; the memory of held compressed streams (1,000 at once); the static handler's copies against fit's (`compress` on a file kept in memory). |
+| Middlewares (the rest) | I48 | yes (2026-11-25, `2a1422d`, [M3 report](../bench/results/m3-report-2026-11-25.md), `bench/modules.sh`) | no | Every middleware against fit's on the proxy scenario over HTTP/1.1, akit on epoll and io_uring, one config both serve: each adds what it adds to fit within a microsecond, but gzip (+6.7 µs against +3.9), `wasm` (+13.6 against +6.4) and `forward_auth` (+20.4 against +17.0). Left: the same over h2 and h3, and a profile of the two that lag. |
+| Compression | I47 | partial (2026-11-25, `8413090`, [M3 report](../bench/results/m3-report-2026-11-25.md): gzip of 1 KiB of JSON at fit's default level: +6.7 µs a request against fit's +3.9; a response left alone +0.8 against +1.2; HTTP/1.1 only) | no (built, not measured) | Against fit, each encoding, as I47 asks: the proxy scenario with `compress` in front, a whole JSON body and a stream of server-sent events, over HTTP/1.1 and h2, per encoding at fit's default levels (responses a second, server CPU, bytes on the wire); the cost of the filter on responses it leaves alone (an image) against no middleware; the memory of held compressed streams (1,000 at once); the static handler's copies against fit's (`compress` on a file kept in memory). |
 | Rewrite and redirect regexps | I48 | no | no (built, not measured) | Against fit: the proxy scenario behind a `rewrite` with a `regexp` and `replacement` (matched and not matched) and a `redirect` with groups in `to`, requests a second and allocations per request, against no middleware; akio-regex's `captures` and `replace_all` on path-sized texts against Go's `regexp`. |
-| WebSocket and gRPC proxying | I49, I50 | no | no (I49 and I50 built, not measured) | Against fit: WebSocket messages a second (small, echoed) and bytes a second (large) through akit from HTTP/1.1, h2 and h3 clients, memory per open WebSocket (idle, and with 64 KiB pending each way), and handshakes a second (a key generated, the upstream connection leaving the pool); I50: gRPC calls a second (unary, h2c and h2 upstreams) and messages a second on a stream each way, against fit. |
+| WebSocket and gRPC proxying | I49, I50 | partly (2026-11-25, idle WebSockets at 10k, `bench/results/m1-2026-11-25-akio-fixes`: 4,452 bytes each, fit 5,916, nginx 22,275) | no (I49 and I50 built) | Against fit: WebSocket messages a second (small, echoed) and bytes a second (large) through akit from HTTP/1.1, h2 and h3 clients, memory per open WebSocket (idle, and with 64 KiB pending each way), and handshakes a second (a key generated, the upstream connection leaving the pool); I50: gRPC calls a second (unary, h2c and h2 upstreams) and messages a second on a stream each way, against fit. |
 | TCP and UDP proxying, SNI routing, many protocols on one port | I51–I53 | no | no (I51–I53 built, not measured) | Against fit and nginx's `stream`, as I51 asks: TCP throughput (fit's `BenchmarkTCPProxy`, 256 KB echoed at a time, direct and through akit), connections a second, memory per idle connection; UDP datagrams a second and sessions at once; the per-service idle sweep on akit's timer thread with 10,000 connections (the stopgap for akio A78); the cost of sniffing on a shared port (I53). I52: connections a second through a listener that routes by SNI (the ClientHello read and parsed before the dial) against one that does not, and with a PROXY header read on accept and one sent upstream; HTTP/1.1 and h2c request rates on a listener with `proxy_protocol` against one without, and akio's ADR-118 cost (a `OnceLock::get` per request) on a listener without. |
 | The eBPF sockmap relay | I51b | no | no (I51b built, not measured) | On the benchmark host as root (Linux 6.15+), against the same listener without `sockmap` and against fit: TCP throughput (fit's `BenchmarkTCPProxy`, 256 KB echoed at a time) and CPU per gigabyte, connections a second (the splice's cost on each: two `TCP_INFO` reads, the map's two inserts and the gate), and the latency of a small echo; the idle sweep on akit's timer thread with 10,000 spliced connections (three syscalls a socket a sweep) and the drain's polling as many close at once. |
 | Forward proxy: SOCKS and HTTP CONNECT | I55 | no | no (built, not measured) | Against fit (and nginx's `stream` for raw throughput): bytes a second through a SOCKS5 tunnel and an HTTP/1.1 CONNECT tunnel (256 KB echoed at a time, as fit's `BenchmarkTCPProxy`), tunnels opened a second (the handshake, the rules' checks, a name resolved on the pool and the `connected` check), memory per idle tunnel; the cost of SOCKS on a shared port (akio-mux's greeting rule beside HTTP and TLS) against HTTP alone; akio-socks's watchdog thread (the connect timeout added to it, ADR-119) with 10,000 tunnels. |
-| Response cache | I67, I68, I69 | no | no (memory and disk tiers and purges built, not measured) | Against fit, as I67 built it: hits from memory (a 4 KiB and a 1 MiB body, HTTP/1.1 and h2), misses kept through the proxy (a streamed body copied by the tap) against the proxy alone, the cost on requests the cache passes through (POST, `no-store` responses) against no middleware, the shards' locks under many keys and one hot key. I68: hits read back from disk (64 KiB and 1 MiB, the disk pool's threads and queue under many at once), writes to disk under a miss rate that fills `MAX_PENDING_WRITES`, a stampede of many clients on one key with the lock and with `disable_lock` (the waiters' suspend and resume, the timer per fetch), and stale-while-revalidate's background fetches. akio's ADR-116 tap: a tapped stream against an untapped one. I69: storing tagged responses (none and 32 tags) against untagged ones, and purges of a large zone by prefix and by tag while it serves (the shards' and the disk index's lock hold times). |
+| Response cache | I67, I68, I69 | partial (2026-11-25, I76, `346ad8b`: the harness's `cache-hot` and `cache-zipf` against nginx and fit, and a stampede of 1,000 clients, in the [M5 report](../bench/results/m5-report-2026-11-25.md)) | no | Measured in I76: hits from memory through the harness (4 KiB; akit first, 1.5 times nginx over HTTP/1.1 and 6.2 times over h2c, 1.75 times for 100,000 paths, 12% to 23% ahead of fit) and one fetch for 1,000 clients on a cold key. Left, against fit, as I67 built it: hits from memory (a 4 KiB and a 1 MiB body, HTTP/1.1 and h2), misses kept through the proxy (a streamed body copied by the tap) against the proxy alone, the cost on requests the cache passes through (POST, `no-store` responses) against no middleware, the shards' locks under many keys and one hot key. I68: hits read back from disk (64 KiB and 1 MiB, the disk pool's threads and queue under many at once), writes to disk under a miss rate that fills `MAX_PENDING_WRITES`, a stampede of many clients on one key with the lock and with `disable_lock` (the waiters' suspend and resume, the timer per fetch), and stale-while-revalidate's background fetches. akio's ADR-116 tap: a tapped stream against an untapped one. I69: storing tagged responses (none and 32 tags) against untagged ones, and purges of a large zone by prefix and by tag while it serves (the shards' and the disk index's lock hold times). |
 | FastCGI | I75 | no | no (built, not measured) | Against fit and nginx's `fastcgi_pass`, PHP-FPM (or a FastCGI application that answers at once) over TCP and a Unix-domain socket: requests a second and latency for a small page, HTTP/1.1 and h2; a 1 MiB upload and a 16 MiB download (memory per request in flight, the 64 KiB watermarks both ways); keep-alive reuse against a connection a request; the pool's queue under more clients than `max_conns`; the cost of `try_files` (a `stat` on akio's logical pool a candidate) against a route without it; the handler's sweep every 100 ms on akit's timer thread (A45's stopgap) over its exchanges at many requests a second. |
+| WASM plugins | I71, I72 | partial (2026-11-25, I76, `346ad8b`: fit's `headers` plugin in akit and fit, HTTP/1.1 and h2c, in the [M5 report](../bench/results/m5-report-2026-11-25.md)) | no | Measured in I76 (`bench/run.sh -servers akit-wasm,fit-wasm -scenarios fixed,wasm`): fit's `headers` plugin costs akit 14.7 µs of CPU a request over HTTP/1.1, fit 6.8 µs (akio-wasm interprets, wazero compiles: akio API request A180, akio's W5); over h2c 2,048 requests in flight overrun the queue of 1,024 and both answer the rest 503 at once. Left: against fit (wazero's compiler) and none: a request through fit's `headers` plugin (Go guest) and through a no-op one (`fit_on_request` returning 0), HTTP/1.1 and h2, requests a second and latency, against the route without the middleware (the hand-off to the pool and back, the request copied, the call); the guest call alone on an instance (akio's W5: akio-wasm's interpreter against wazero's interpreter and compiler); the pool under more clients than `instances` (the queue, 503 past it); an instance remade after a trap (a Go guest's `_initialize`). Proxy-Wasm (I72): a request through the Proxy-Wasm Go SDK's `http_routing` (config `1`, the request unchanged) against fit and none, as fit's `BenchmarkProxyWasm`; a response through fit's `response` filter (`upper`) and the SDK's `http_headers`, the head held and the body filtered on the pool, a whole 4 KiB body and a streamed 1 MiB one, HTTP/1.1 and h2, against `response: none` and none. |
+
+| Response cache | I67, I68, I69 | partial (2026-11-25, `2a1422d`, [M3 report](../bench/results/m3-report-2026-11-25.md): hits from memory (1 KiB, HTTP/1.1): 782k a second against fit's 755k) | no (memory and disk tiers and purges built, not measured) | Against fit, as I67 built it: hits from memory (a 4 KiB and a 1 MiB body, HTTP/1.1 and h2), misses kept through the proxy (a streamed body copied by the tap) against the proxy alone, the cost on requests the cache passes through (POST, `no-store` responses) against no middleware, the shards' locks under many keys and one hot key. I68: hits read back from disk (64 KiB and 1 MiB, the disk pool's threads and queue under many at once), writes to disk under a miss rate that fills `MAX_PENDING_WRITES`, a stampede of many clients on one key with the lock and with `disable_lock` (the waiters' suspend and resume, the timer per fetch), and stale-while-revalidate's background fetches. akio's ADR-116 tap: a tapped stream against an untapped one. I69: storing tagged responses (none and 32 tags) against untagged ones, and purges of a large zone by prefix and by tag while it serves (the shards' and the disk index's lock hold times). |
+| FastCGI | I75 | no | no (built, not measured) | Against fit and nginx's `fastcgi_pass`, PHP-FPM (or a FastCGI application that answers at once) over TCP and a Unix-domain socket: requests a second and latency for a small page, HTTP/1.1 and h2; a 1 MiB upload and a 16 MiB download (memory per request in flight, the 64 KiB watermarks both ways); keep-alive reuse against a connection a request; the pool's queue under more clients than `max_conns`; the cost of `try_files` (a `stat` on akio's logical pool a candidate) against a route without it; the handler's sweep every 100 ms on akit's timer thread (A45's stopgap) over its exchanges at many requests a second. |
+| WASM plugins | I71, I72 | partial (2026-11-25, `2a1422d`, [M3 report](../bench/results/m3-report-2026-11-25.md): fit's Go `headers` plugin, HTTP/1.1: +13.6 µs a request against fit's +6.4 (wazero's compiler), 64% of fit's requests a second) | no (I71 and I72 built, not measured) | Against fit (wazero's compiler) and none: a request through fit's `headers` plugin (Go guest) and through a no-op one (`fit_on_request` returning 0), HTTP/1.1 and h2, requests a second and latency, against the route without the middleware (the hand-off to the pool and back, the request copied, the call); the guest call alone on an instance (akio's W5: akio-wasm's interpreter against wazero's interpreter and compiler); the pool under more clients than `instances` (the queue, 503 past it); an instance remade after a trap (a Go guest's `_initialize`). Proxy-Wasm (I72): a request through the Proxy-Wasm Go SDK's `http_routing` (config `1`, the request unchanged) against fit and none, as fit's `BenchmarkProxyWasm`; a response through fit's `response` filter (`upper`) and the SDK's `http_headers`, the head held and the body filtered on the pool, a whole 4 KiB body and a streamed 1 MiB one, HTTP/1.1 and h2, against `response: none` and none. |
+
 | WASM plugins | I71, I72 | no | no (I71 and I72 built, not measured) | Against fit (wazero's compiler) and none: a request through fit's `headers` plugin (Go guest) and through a no-op one (`fit_on_request` returning 0), HTTP/1.1 and h2, requests a second and latency, against the route without the middleware (the hand-off to the pool and back, the request copied, the call); the guest call alone on an instance (akio's W5: akio-wasm's interpreter against wazero's interpreter and compiler); the pool under more clients than `instances` (the queue, 503 past it); an instance remade after a trap (a Go guest's `_initialize`). Proxy-Wasm (I72): a request through the Proxy-Wasm Go SDK's `http_routing` (config `1`, the request unchanged) against fit and none, as fit's `BenchmarkProxyWasm`; a response through fit's `response` filter (`upper`) and the SDK's `http_headers`, the head held and the body filtered on the pool, a whole 4 KiB body and a streamed 1 MiB one, HTTP/1.1 and h2, against `response: none` and none. |
+| Config churn under traffic | I38 | no | no (tested, not measured) | The fixed and proxy scenarios, HTTP/1.1 and h2c, while the config is swapped every 10 ms through SIGHUP and the Admin API, against the same run with no swaps: requests a second, p99 latency and errors during the churn, and akit's RSS and descriptors after 100k swaps; the M2 report of the full harness (rule 24, a milestone's end). |
 | akio requests moved off their stopgaps (A12, A79, A45, A117, A30, A54, A29, A75, A78, A22, A170, A24, A49, A35, A148) | — (akio requests) | no | no (built, not measured) | Same-run A/B of the fixed and proxy scenarios, HTTP/1.1, h2c and h3, against main before these commits: the access log and metrics through the listener's response observer (`set_observed`, no allocation) against the boxed filter, and `limit_body` called on every request; the proxy's downloads framed by their length on HTTP/1.1 against chunked; layer 4 relays timed out by akio's per-connection idle timeout against akit's sweep (many idle connections); the sockmap relay through `akio::ebpf::Tunnel` (TCP throughput as root, as I51b's row); a health-check probe load on `akio::timer::after_send` against akit's old timer thread. |
 
 ## M0, foundations
@@ -528,6 +537,12 @@ Split from I07 so that the half that needs no config model runs beside I02.
 - **Done when**: the M1 report, with *Where akit stands*, is checked in and the roadmap's M1 exit
   criteria hold.
 - **Touches**: `bench`, `tests`.
+- **Done** ([the M1 report](../bench/results/m1-report-2026-11-25.md)): h2spec 145/145; the
+  conformance suite, `crates/akit/tests/conformance.rs`, passes (with akit-proxy's stopgap for
+  A169); the benchmarks and idle memory at 10k and 100k are published, HTTPS/1.1 and the proxy's
+  memory with akio's A172 and A171 (on akio branches, not pinned yet). Of the performance targets,
+  static files meet theirs; the proxy's throughput and p99 and idle HTTP/1.1 and TLS memory do not
+  yet.
 
 ## M2, dynamic config and TLS
 
@@ -645,6 +660,15 @@ Split from I07 so that the half that needs no config model runs beside I02.
   test.
 - **Done when**: the roadmap's M2 exit criteria hold and the results are in progress.
 - **Touches**: `tests`, `bench`.
+- **Done**: the churn test (`crates/akit/tests/churn.rs`: 2000 swaps through SIGHUP and the
+  Admin API under `akit run`, and through `Listeners::reload` in process on epoll and io_uring)
+  and the health window test (`health_window.rs`) pass; a config with only a host name gets its
+  certificate from Pebble (in Docker on the benchmark host) and serves HTTPS through `akit run`
+  (`acme_m2.rs`). The churn found that every reload made every upstream's pool again (dialing
+  each anew, its health reset): an unchanged upstream now keeps its pool, as fit's does. The same
+  test against Let's Encrypt's staging CA (`AKIT_ACME_STAGING_NAME`) passed on a public host for
+  a public name on 2026-11-26, the certificate issued by `(STAGING) Baloney Bulgur YE2`
+  ([progress](progress.md)).
 
 ## M3, gateway features
 
@@ -804,6 +828,11 @@ Split from I07 so that the half that needs no config model runs beside I02.
 - **Do**: conformance tests and benchmarks for every middleware; the M3 report.
 - **Done when**: the roadmap's M3 exit criteria hold.
 - **Touches**: `tests`, `bench`.
+- **Status**: done (2026-11-25): every criterion holds; the
+  [M3 report](../bench/results/m3-report-2026-11-25.md) has the module benchmarks against fit's
+  (`bench/modules.sh`) and the full harness. `crates/akit/tests/workers.rs` (fit's `test/workers`)
+  checks that no module blocks an I/O thread; the slow-peer tests added are a WebSocket's slow
+  upstream and UDP's. No akio request, no decision note.
 
 ## M4, platform integration
 
@@ -893,6 +922,12 @@ Split from I07 so that the half that needs no config model runs beside I02.
 
 - **Do**: conformance and the Compose example in CI; the M4 report.
 - **Done when**: the roadmap's M4 exit criteria hold.
+- **Status**: done (2026-11-25), with no akit code change and no akio request: the Gateway API's
+  `GATEWAY-HTTP` core passes at v1.3.0 (33 passed, 0 failed, 0 skipped,
+  [the report](../tests/conformance/reports/gateway-http-v1.3.0-2026-11-25.yaml)), and the Docker
+  Compose example ([deploy/compose](../deploy/compose/README.md)) routes by labels as its
+  containers are scaled, stopped and started; both in CI; the
+  [M4 report](../bench/results/m4-report-2026-11-25.md); see the progress log.
 
 ## M5, caching and extensions
 
@@ -963,11 +998,19 @@ Split from I07 so that the half that needs no config model runs beside I02.
 - **Do**: a FastCGI handler with streamed bodies, pools and timeouts.
 - **Done when**: tests against php-fpm pass.
 - **Touches**: `akit-handler`.
+- **Status**: done (2026-11-24); its PHP-FPM test (fit's `TestPHPFPM`) ran in I76 on the benchmark
+  host, against PHP 8.4.28's FPM in the `php:8.4-fpm` image, and passed on epoll and io_uring.
 
 ### I76 M5 exit
 
 - **Do**: the cache against nginx's `proxy_cache`; the WASM cost; converter samples; the M5 report.
 - **Done when**: the roadmap's M5 exit criteria hold.
+- **Status**: done (2026-11-25). The [M5 report](../bench/results/m5-report-2026-11-25.md), with
+  *Where akit stands*: every criterion holds. The cache keeps what nginx's `proxy_cache` keeps at
+  1.5 to 6.2 times its rate and makes one fetch for a stampede of 1,000 (`bench/stampede.sh`); fit's
+  `headers` plugin, the same `.wasm` in both, costs akit 14.7 µs a request, bounded, twice fit's
+  (akio API request A180); every directive fit's nginx samples hold is converted or listed (a probe
+  test). See the progress log.
 
 ## 1.0
 
@@ -982,12 +1025,34 @@ Split from I07 so that the half that needs no config model runs beside I02.
 - **Do**: the config reference generated from the code; getting started; migration from fit, nginx,
   Caddy and Traefik; all bilingual.
 - **Done when**: every field in the model appears in the reference.
+- **Status**: done (2026-11-26). [The config reference](reference/config.md), its tables generated
+  by `tools/config-reference.py` from fit's schema and the fields akit-config reads, held to
+  `model.rs` by `reference_matches_akit_config`; [the guides](guides/README.md), migration from fit,
+  nginx, Caddy and Traefik among them; every config example in the docs run through `akit validate`
+  by `crates/akit/tests/docs_examples.rs`. See the progress log.
 
 ### I79 v1 freeze and compatibility
 
 - **Do**: the config schema and the Admin API frozen as v1, the same as fit's v1; a compatibility
   document saying what stays stable.
 - **Done when**: the compatibility gate passes on every fit template with no unsupported field.
+- **Status**: done (2026-11-26). [The policy](compatibility.md#v1-what-stays-stable), fit's v1 for
+  what akit serves; the v1 surface frozen in `tests/compat/v1` and held by `tools/v1-freeze.py` (the
+  config's) and `v1_surface_is_frozen` (the Admin API's), each failing on a change not marked as a
+  compatible addition ([decision 029](decisions/029-v1-freeze.md)); the old names of fit's renamed
+  fields read with fit's warning; `limits.max_header_bytes`, `max_conns`, `max_write_queue_bytes`
+  and `engine` read ([decision 028](decisions/028-engine-on-akio.md)). Every fit template passes
+  with no field refused (6 of 6, as before); fit-examples' gateway examples that still refuse a
+  field wait for akio (I79b); the rest are the After-1.0 tracks'. See the progress log.
+
+### I79b The gateway examples the gate still refuses
+
+- **Do**: `limits.max_pending_bytes` on akio's budget across connections (A214), so fit-examples'
+  `limits` and `proxy` are valid; a listener of `h2c` alone (A168), so `grpc` is; `limits.max_conns`
+  counting accepted connections only (A215).
+- **Done when**: no fit-examples config outside the After-1.0 tracks is refused (the gate's report
+  lists only `bittorrent`, `console`, `llm`, `logging`, media, `streaming`, `sync`, `tunnel` and
+  `webrtc` examples), each field marked with `make v1-bless`.
 
 ### I80 Security review readiness
 

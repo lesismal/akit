@@ -24,3 +24,5 @@ says whether akit follows it.
 | [009](009-packaging.md) | Packaging: static musl binaries linked by rust-lld, fit's image, chart and units | accepted |
 | [010](010-sockmap-relay.md) | The eBPF sockmap relay, asked for by a listener's `sockmap`, an akit extension | accepted |
 | [011](011-proxy-wasm.md) | Proxy-Wasm's subset, as fit's, on akio's held heads and body filters | accepted |
+| [028](028-engine-on-akio.md) | fit's `engine` read onto akio's engine | accepted |
+| [029](029-v1-freeze.md) | The v1 freeze: baselines, marked changes, and two checks | accepted |

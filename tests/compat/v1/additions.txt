@@ -1,0 +1,10 @@
+# What changed in akit's config schema and Admin API since the v1 freeze (I79), each line
+# marked (docs/compatibility.md): tab-separated, <config|admin> <added|retired> <item>, the item as
+# config.txt or admin-api.txt writes it.
+#   added    a compatible addition: a new optional field, enum value, module, supported field,
+#            extension, endpoint, header, query parameter or member. python3 tools/v1-freeze.py
+#            --bless marks the config's; the Admin API's are written by hand, as the failing test
+#            prints them.
+#   retired  an item a 1.x release changes under the policy (a default tightened to close a
+#            security hole or bound a resource); written by hand, with the reason in a comment
+#            above it and in the release notes.

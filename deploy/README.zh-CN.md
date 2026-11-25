@@ -66,6 +66,17 @@ docker run --rm -p 8080:8080 -v "$PWD/hello.conf:/etc/akit/hello.conf:ro" akit r
 打 `v<semver>` 标签会把 linux/amd64 和 linux/arm64 的镜像发布为 `ghcr.io/lesismal/akit:<version>` 和
 `:<major>.<minor>`（预发布版本，如 `v1.2.0-rc.1`，只发布其版本号标签）。
 
+## Docker Compose
+
+[compose](compose/README.zh-CN.md) 是 fit 的 Compose 示例的 akit 版：由本检出构建的镜像位于一个应用的
+两个副本之前，经由 Docker provider 按应用的标签路由，并在其容器扩缩、停止和启动时跟随变化。它的
+[test.sh](compose/test.sh) 检查每一个回答（M4 的退出标准），由 CI 的 `packaging` 作业运行。
+
+```bash
+cd deploy/compose && docker compose up -d --build
+curl -H 'Host: whoami.localhost' http://127.0.0.1:8080/
+```
+
 ## Helm chart
 
 [helm/akit](helm/akit) 在集群里把 akit 作为 Gateway API 和 Ingress 的控制器运行，使用 Kubernetes provider

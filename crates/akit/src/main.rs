@@ -55,7 +55,7 @@ use akit_observe::metrics::{ConfigStats, Metrics};
 use akit_observe::{AccessLog, Format, MetricsExporter, Otlp, Tracer, Zone};
 use akit_provider::{Kinds, Provider, Updates};
 use akit_runtime::upstream::EngineSlot;
-use akit_runtime::{Env, Graph, GraphCell, HandlerParams, Info, Registry, compile};
+use akit_runtime::{Env, Graph, GraphCell, HandlerParams, Info, Previous, Registry, compile};
 use akit_tls::{FileWatcher, Report};
 use flags::{Spec, Usage};
 
@@ -78,7 +78,7 @@ Commands:
 Run akit <command> -h for a command's flags.
 ";
 
-const CONFIG_USAGE: &str = "a config file, or a directory of them, to use; give -c again for more, which are merged (fit.json when none is given). A file ending in .yaml or .yml is YAML, any other JSON (comments and trailing commas allowed); fit's .conf format comes later; a directory's files are those, in its subdirectories too";
+const CONFIG_USAGE: &str = "a config file, or a directory of them, to use; give -c again for more, which are merged (fit.json when none is given). A file ending in .conf is fit's .conf format, one ending in .yaml or .yml YAML, any other JSON (comments and trailing commas allowed); a directory's files are its .conf, .yaml, .yml and .json files, in its subdirectories too";
 
 const RUN_FLAGS: &[Spec] = &[
     Spec {
@@ -145,6 +145,18 @@ fn version() -> String {
 /// when it has none.
 fn print_errors(name: &str, errs: &Errors) {
     for e in errs.as_slice() {
+        if e.file.is_some() {
+            eprintln!("{e}");
+        } else {
+            eprintln!("{name}: {e}");
+        }
+    }
+}
+
+/// Prints a config's warnings (I79): the old names of renamed fields, at their files, lines and
+/// columns, as fit prints them; `name` names the files of one without a file.
+fn print_warnings(name: &str, w: &akit_config::Warnings) {
+    for e in &w.0 {
         if e.file.is_some() {
             eprintln!("{e}");
         } else {
@@ -228,6 +240,7 @@ fn compile_config(
     metrics: &Metrics,
     acme: Option<&akit_tls::Acme>,
     tracer: Option<&Tracer>,
+    previous: Option<Previous>,
 ) -> Result<Graph, Failure> {
     let modules = BUILD.get().map_or(crate::STANDARD, |(_, m)| m.as_slice());
     let registry: Registry<HandlerParams> =
@@ -236,14 +249,9 @@ fn compile_config(
         .with_access_log(log.cloned())
         .with_metrics(Some(metrics.clone()))
         .with_acme(acme.cloned())
-        .with_tracer(tracer.cloned());
+        .with_tracer(tracer.cloned())
+        .with_previous(previous);
     compile(config, &registry, &env).map_err(Failure::Config)
-}
-
-/// Reads and compiles the config at `paths`, as [`read_config`] and [`compile_config`].
-fn read(paths: &[String], engine: &EngineSlot, log: Option<&AccessLog>) -> Result<Graph, Failure> {
-    let ((config, _, _), _) = read_config(paths)?;
-    compile_config(&config, engine, log, &Metrics::new(), None, None)
 }
 
 /// Opens the access log `c` describes, its times in `zone`, as fit's `NewAccessLogFiles`.
@@ -271,6 +279,8 @@ type CertFiles = std::collections::BTreeMap<String, akit_tls::Sum>;
 /// `-watch-certs` compares the files with.
 struct Runner<'a> {
     slot: &'a EngineSlot,
+    /// The running graph, whose unchanged upstreams' pools the next one shares.
+    cell: &'a GraphCell,
     listeners: &'a mut akit_listener::Listeners,
     log: Option<&'a (AccessLog, akit_config::AccessLog)>,
     admin: Option<&'a akit_config::Admin>,
@@ -291,6 +301,10 @@ struct Runner<'a> {
     tracer: Option<&'a Tracer>,
     /// The `providers` akit started with (I58, I59): a config's take a restart, as fit's.
     providers: &'a [akit_config::Provider],
+    /// The `limits` and `engine` akit started with (I79): `max_conns`,
+    /// `max_write_queue_bytes` and `engine` take a restart, as fit's.
+    limits: akit_config::Limits,
+    engine: akit_config::Engine,
 }
 
 impl Runner<'_> {
@@ -318,6 +332,7 @@ impl Runner<'_> {
             &Metrics::new(),
             None,
             None,
+            None,
         )
         .map_err(failure)?;
         let r = self
@@ -330,7 +345,8 @@ impl Runner<'_> {
     /// The changes in `config` that take a restart, as fit warns of them. With `set`, the access
     /// log takes `config`'s level and time zone (`zone`).
     fn warnings(&self, config: &Config, zone: Option<Zone>, set: bool) -> Vec<String> {
-        let mut warnings = Vec::new();
+        // The old names of renamed fields first, as fit's load returns them (I79).
+        let mut warnings: Vec<String> = config.warnings.0.iter().map(ToString::to_string).collect();
         match (self.log, &config.access_log, zone) {
             (Some((l, first)), Some(c), Some(zone)) => {
                 if set {
@@ -371,6 +387,18 @@ impl Runner<'_> {
         if config.providers != self.providers {
             warnings.push("providers take a restart; the running ones stay".to_owned());
         }
+        let l = &config.limits;
+        if (l.max_conns, l.max_write_queue_bytes)
+            != (self.limits.max_conns, self.limits.max_write_queue_bytes)
+        {
+            warnings.push(
+                "limits.max_conns and limits.max_write_queue_bytes take a restart; the running ones stay"
+                    .to_owned(),
+            );
+        }
+        if config.engine != self.engine {
+            warnings.push("engine takes a restart; the running one stays".to_owned());
+        }
         warnings
     }
 
@@ -379,6 +407,9 @@ impl Runner<'_> {
         &mut self,
         config: &Config,
     ) -> Result<(akit_listener::Reloaded, CertFiles), ApplyError> {
+        // The running graph's pools, for the upstreams that stay as they are (fit's
+        // `Env.Previous`): their connections and health carry over the swap.
+        let previous = self.cell.with(Previous::of);
         let graph = compile_config(
             config,
             self.slot,
@@ -386,6 +417,7 @@ impl Runner<'_> {
             self.metrics,
             Some(self.acme),
             self.tracer,
+            Some(previous),
         )
         .map_err(failure)?;
         let files = graph.cert_files().clone();
@@ -643,7 +675,19 @@ fn validate(args: &[String]) -> ExitCode {
     };
     let paths = config_paths(&flags);
     // No engine: an upstream's pool is made, and never dials.
-    match read(&paths, &EngineSlot::new(), None).map_err(|f| f.print(&paths.join(", "))) {
+    let checked = read_config(&paths).and_then(|((config, _, _), _)| {
+        print_warnings(&paths.join(", "), &config.warnings);
+        compile_config(
+            &config,
+            &EngineSlot::new(),
+            None,
+            &Metrics::new(),
+            None,
+            None,
+            None,
+        )
+    });
+    match checked.map_err(|f| f.print(&paths.join(", "))) {
         Ok(_) => {
             println!("{}: valid", paths.join(", "));
             ExitCode::SUCCESS
@@ -743,6 +787,7 @@ fn run(args: &[String]) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    print_warnings(&name, &config.warnings);
     // Opened before the graph, which writes to it, and closed after the engine, so that every
     // response finished has its line written.
     let log = match (&config.access_log, zone) {
@@ -809,6 +854,7 @@ fn run(args: &[String]) -> ExitCode {
         &metrics,
         Some(&acme),
         tracer.as_ref(),
+        None,
     ) {
         Ok(g) => g,
         Err(f) => {
@@ -818,6 +864,7 @@ fn run(args: &[String]) -> ExitCode {
     };
     let admin = config.admin.clone();
     let provider_configs = config.providers.clone();
+    let (start_limits, start_engine) = (config.limits, config.engine);
     drop(config);
     let cert_files = graph.cert_files().clone();
     let acme_names = graph.acme_names().to_vec();
@@ -947,6 +994,7 @@ fn run(args: &[String]) -> ExitCode {
     }
     let mut runner = Runner {
         slot: &slot,
+        cell: &cell,
         listeners: &mut listeners,
         log: log.as_ref(),
         admin: admin.as_ref(),
@@ -958,6 +1006,8 @@ fn run(args: &[String]) -> ExitCode {
         telemetry: telemetry.as_ref(),
         tracer: tracer.as_ref(),
         providers: &provider_configs,
+        limits: start_limits,
+        engine: start_engine,
     };
     // The certificate files watched (fit's -watch-certs), on this thread, every interval: the
     // running config's version number and the files it loaded tell the watcher what it loaded.
@@ -1152,7 +1202,8 @@ mod tests {
         let v = super::version();
         let lines: Vec<&str> = v.lines().collect();
         assert!(lines[0].starts_with("akit "));
-        assert_eq!(lines[1], "akio dad77a7a0b29");
+        // The akio commit akit is pinned at, short (rule 22: one pin, `AKIO_REV`).
+        assert_eq!(lines[1], format!("akio {}", &akit_runtime::AKIO_REV[..12]));
         assert_eq!(
             lines[2],
             format!("{}/{}", std::env::consts::OS, std::env::consts::ARCH)

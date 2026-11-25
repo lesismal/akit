@@ -1,0 +1,87 @@
+{
+  "_comment": "Read by tools/config-reference.py: akit's extensions to fit's config, and akit's notes on fields it reads differently from fit, in English and Chinese. Each path is a field of fit's inventory (tests/compat/fit-fields.txt) or an extension; the generator refuses any other.",
+  "extensions": {
+    "listeners[].sockmap": {
+      "type": "boolean",
+      "type_zh": "布尔值",
+      "default": "`false`",
+      "since": "I51b",
+      "decision": "010",
+      "file": "010-sockmap-relay",
+      "en": "The connections of the `tcp` services this listener accepts are spliced in the kernel by akio's eBPF sockmap relay where it loads (Linux 6.15 or later, with `CAP_BPF` and `CAP_NET_ADMIN`), and relayed in userspace where it does not. Only for a listener whose protocols include `tcp`. A reload that changes it applies to the connections accepted after it. fit refuses it as an unknown field.",
+      "zh": "该监听器接受的 `tcp` 服务连接，在能加载 akio 的 eBPF sockmap 中继时（Linux 6.15 及以上，具备 `CAP_BPF` 和 `CAP_NET_ADMIN`）在内核中直接拼接，否则在用户态转发。只用于协议包含 `tcp` 的监听器。重载改变它时，只影响此后接受的连接。fit 把它当作未知字段拒绝。",
+      "en_short": "a `tcp` listener's connections spliced in the kernel by akio's eBPF sockmap relay where it loads",
+      "zh_short": "`tcp` 监听器的连接在能加载 akio 的 eBPF sockmap 中继时于内核中拼接"
+    }
+  },
+  "notes": {
+    "listeners[].protocols": {
+      "en": "`h2c` without `http/1.1` is refused as not supported yet: akio's server always takes HTTP/1.1 beside h2c (akio API request A168).",
+      "zh": "只有 `h2c` 而没有 `http/1.1` 时按“尚不支持”拒绝：akio 的服务器在 h2c 之外总是同时接受 HTTP/1.1（akio API 请求 A168）。"
+    },
+    "listeners[].tls.kernel_tls_offload": {
+      "en": "It comes with the `engine` settings.",
+      "zh": "随 `engine` 的设置一起支持。"
+    },
+    "admin.address": {
+      "en": "Only a loopback address or a Unix socket (`unix/<path>`, made 0600): a host that is not loopback needs TLS, which akit's Admin API does not serve yet, so it is refused.",
+      "zh": "只能是回环地址或 Unix 套接字（`unix/<路径>`，权限设为 0600）：非回环地址需要 TLS，而 akit 的 Admin API 尚未提供 TLS，因此被拒绝。"
+    },
+    "admin.token_file": {
+      "en": "Read when akit starts.",
+      "zh": "在 akit 启动时读取。"
+    },
+    "acme.storage": {
+      "en": "akit's own directory, not fit's: the two do not share accounts or certificates unless `storage` names one.",
+      "zh": "不写时为 `$XDG_DATA_HOME/akit` 或 `~/.local/share/akit`：akit 自己的目录，而不是 fit 的；除非 `storage` 指向同一目录，两者不共享账户和证书。"
+    },
+    "routes[].handler<static>.params.disk_io": {
+      "en": "Only `pool`: akit looks at the disk on akio's file pool, never on an I/O thread, and refuses `auto` as not supported yet.",
+      "zh": "只接受 `pool`：akit 只在 akio 的文件池上访问磁盘，从不在 I/O 线程上，`auto` 按“尚不支持”拒绝。"
+    },
+    "routes[].handler<proxy>.params.splice_uploads": {
+      "en": "Not planned yet: `splice(2)` needs `unsafe` or an akio API.",
+      "zh": "暂无计划：`splice(2)` 需要 `unsafe` 或 akio 的 API。"
+    },
+    "routes[].middleware[]<wasm>.params.path": {
+      "en": "The plugin runs on akio-wasm's instance pool, never on an I/O thread; fit's plugins run unchanged.",
+      "zh": "插件在 akio-wasm 的实例池上运行，从不在 I/O 线程上；fit 的插件无需修改即可运行。"
+    },
+    "upstreams[].deny_internal": {
+      "en": "It comes with the Kubernetes provider's ExternalName Services (`allow_external_name_services`).",
+      "zh": "随 Kubernetes provider 的 ExternalName Service（`allow_external_name_services`）一起支持。"
+    },
+    "limits.max_conns": {
+      "en": "akio's engine-wide `max_connections`: the connections akit dials on the listeners' engine (to upstreams) count toward it too, though only accepted ones are closed past it (akio API request A215).",
+      "zh": "即 akio 引擎范围的 `max_connections`：akit 在监听器的引擎上拨出的连接（到上游的连接）也计入其中，但超出时只关闭新接受的连接（akio API 请求 A215）。"
+    },
+    "limits.max_write_queue_bytes": {
+      "en": "akio's `max_queued_bytes`: past it akio refuses the write (`Overloaded`) rather than queue it, where fit closes the connection.",
+      "zh": "即 akio 的 `max_queued_bytes`：超出时 akio 拒绝这次写入（`Overloaded`）而不排队，fit 则关闭连接。"
+    },
+    "engine.event_loops": {
+      "en": "Each listener's akio I/O threads, which run its connections' callbacks too (fib's loops only wait); one a core when left out or 0, where fib has 1 on up to 4 CPUs.",
+      "zh": "每个监听器的 akio I/O 线程数，这些线程也运行连接的回调（fib 的事件循环只负责等待）；省略或为 0 时每个核一个，而 fib 在至多 4 个 CPU 上为 1。"
+    },
+    "engine.workers": {
+      "en": "The most threads of akio's logical pool, which runs only the work that may block (files, plugins, the disk cache), not connections' callbacks; akio's default (8 a core, at least 8) when left out or 0.",
+      "zh": "akio 逻辑池的最大线程数，它只运行可能阻塞的工作（文件、插件、磁盘缓存），不运行连接的回调；省略或为 0 时为 akio 的默认值（每核 8 个，至少 8 个）。"
+    },
+    "engine.min_workers": {
+      "en": "The logical pool's threads kept when idle (akio's `min_threads`).",
+      "zh": "逻辑池空闲时保留的线程数（akio 的 `min_threads`）。"
+    },
+    "engine.task_queue": {
+      "en": "The jobs akio's logical pool holds waiting for a thread; akio's 65,536 when left out or 0. Past it, new work is refused rather than queued.",
+      "zh": "akio 逻辑池中等待线程的任务数；省略或为 0 时为 akio 的 65,536。超出时新的工作被拒绝，而不排队。"
+    },
+    "engine.write_watermark": {
+      "en": "akio's `write_high_watermark`; akio's 256 KiB when left out or 0. Reads resume at a quarter of it.",
+      "zh": "即 akio 的 `write_high_watermark`；省略或为 0 时为 akio 的 256 KiB。降到其四分之一时恢复读取。"
+    },
+    "engine.backlog": {
+      "en": "akio's 1024 when left out or 0, not the system's.",
+      "zh": "省略或为 0 时为 akio 的 1024，而不是系统的值。"
+    }
+  }
+}

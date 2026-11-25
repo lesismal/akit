@@ -9,11 +9,17 @@ engine [fib](https://github.com/lesismal/fib): the same features, the same confi
 three formats, the same Admin API, with no garbage collector, callbacks inline on thread-per-core
 I/O threads, io_uring or epoll chosen per listener, and no `unsafe` of its own.
 
-**Status: planning.** Nothing is built yet. The plan is to reach fit's 1.0 feature set milestone by
-milestone, then fit's tracks beyond the edge proxy.
+**Status: before 1.0.** Milestones M0 to M5 are done: the proxy core, dynamic config and TLS,
+the gateway's features, providers, the cache and WebAssembly plugins ([progress](docs/progress.md)).
+1.0 freezes fit's config and Admin API as v1; fit's tracks beyond the edge proxy come after it.
 
 ## Docs
 
+- [Getting started](docs/guides/getting-started.md), and the [guides](docs/guides/README.md): the
+  reverse proxy, static files, HTTPS, the Admin API, caching, WebAssembly plugins, and moving from
+  fit, nginx, Caddy and Traefik.
+- [Config reference](docs/reference/config.md): every field, its type and default, and where akit
+  differs from fit.
 - [Roadmap](docs/roadmap.md): goals, design principles, milestones, the feature map against fit.
 - [Development plan](docs/dev-plan.md): the milestones broken into iterations, one session each.
 - [Progress](docs/progress.md): what is done, and where to pick up.
@@ -23,10 +29,10 @@ milestone, then fit's tracks beyond the edge proxy.
 - [Decisions](docs/decisions/README.md): dependency policy, config compatibility with fit, and the
   rest as they are made.
 
-## What it will look like
+## What it looks like
 
 A config fit runs, such as fit's [hello](https://github.com/lesismal/fit-examples/blob/main/hello/fit.conf),
-is meant to run unchanged:
+runs unchanged:
 
 ```fit
 listener web {

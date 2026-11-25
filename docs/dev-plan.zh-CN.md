@@ -117,7 +117,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I22 | SIGHUP 重载 | I06 | done |
 | I23 | .conf 读取器 | I02 | done |
 | I24 | YAML 读取器 | I02 | done |
-| I25 | M1 一致性测试与报告 | I09–I24 | todo |
+| I25 | M1 一致性测试与报告 | I09–I24 | done |
 | **M2** | | | |
 | I26 | Admin API I：加载、读取、版本 | I22 | done |
 | I27 | Admin API II：局部修改、回滚、认证 | I26 | done |
@@ -131,7 +131,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I35 | 主动健康检查 | I20 | done |
 | I36 | 负载均衡 v2 | I19 | done |
 | I37 | Prometheus 指标 | I15 | done |
-| I38 | M2 退出：频繁替换测试与 staging 证书 | I26–I37 | todo |
+| I38 | M2 退出：频繁替换测试与 staging 证书 | I26–I37 | done |
 | **M3** | | | |
 | I39 | 匹配器 v2 与表达式 | I11 | done |
 | I40 | 重写、跳转与头处理 | I39 | done |
@@ -151,7 +151,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I53 | 一个端口多种协议 | I52 | done |
 | I54 | 上游 TLS | I18 | done |
 | I55 | SOCKS 与 CONNECT | I53 | done |
-| I56 | M3 退出 | I39–I55 | todo |
+| I56 | M3 退出 | I39–I55 | done |
 | **M4** | | | |
 | I57 | Provider 框架与生效配置 | I29 | done |
 | I58 | Docker provider | I57 | done |
@@ -162,7 +162,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I63 | 仪表盘 | I37 | done |
 | I64 | OpenTelemetry | I37 | done |
 | I65 | 打包 | I06 | done |
-| I66 | M4 退出 | I57–I65 | todo |
+| I66 | M4 退出 | I57–I65 | done |
 | **M5** | | | |
 | I67 | 缓存 I：内存层与 RFC 9111 | I17 | done |
 | I68 | 缓存 II：磁盘层、缓存锁、stale | I67 | done |
@@ -173,11 +173,12 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I73 | `akit adapt` 与 `akit fmt` | I23, I24 | done |
 | I74 | nginx 与 Caddyfile 转换器 | I73 | done |
 | I75 | FastCGI | I16 | done |
-| I76 | M5 退出 | I67–I75 | todo |
+| I76 | M5 退出 | I67–I75 | done |
 | **1.0** | | | |
 | I77 | Fuzz | I56 | todo |
-| I78 | 配置参考与指南 | I76 | todo |
-| I79 | v1 冻结与兼容性 | I78 | todo |
+| I78 | 配置参考与指南 | I76 | done |
+| I79 | v1 冻结与兼容性 | I78 | done |
+| I79b | 门禁仍拒绝的网关示例：`limits.max_pending_bytes`、只有 h2c、按接受的连接计数的 `max_conns` | I79、akio A214、A168、A215 | todo |
 | I80 | 为安全审查做好准备 | I77, I79 | todo |
 
 ## 基准与优化状态
@@ -191,13 +192,13 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | 功能 | 迭代 | 已测 | 已优化 | 依据或剩余工作 |
 | --- | --- | --- | --- | --- |
 | 每个请求读取运行时图 | I04 | 是（2026-11-24，`c9d490a`，`crates/akit-runtime/benches/graph_read.rs`，数据见 [进度](progress.zh-CN.md)） | 部分 | 每线程缓存的读取方式是与 `Arc` 克隆和互斥锁对比测量后选定的（1 线程 4.06 ns，16 线程 8.78 ns）；此后没有剖析或调优。 |
-| 监听器与 `respond`，HTTP/1.1 和 h2c；空闲连接 | I05 | 是（2026-11-24，`7c835ad`，`bench/results/baseline-2026-11-24`） | 否 | 只在第一份基线中：fixed 在 HTTP/1.1 和 h2c 上都排第一。剩余：两者的剖析；每个空闲 HTTP/1.1 连接的内存（1,068 字节，nginx 548）；h2c 空闲连接，以及 10 万连接（I25）。 |
-| TLS 入口（TLS 上的 HTTP/1.1 和 h2） | I09 | 否 | 否（已实现，未测） | 每秒握手数，以及 TLS 上的 fixed，对比 fit 和 nginx。 |
+| 监听器与 `respond`，HTTP/1.1 和 h2c；空闲连接 | I05 | 是（2026-11-25，`9d9321e`，`bench/results/m1-2026-11-25-akio-fixes`；首次 2026-11-24，`bench/results/baseline-2026-11-24`） | 否 | M1 报告（I25）：fixed 在 HTTP/1.1、HTTPS/1.1、h2c 和 h2 上都排第一；空闲 HTTP/1.1 在 1 万时 1,144 字节、10 万时 1,132（fit 1,497 和 1,441，nginx 556 和 530）。剩余：两者的剖析；h2c 上的 fixed 比 M0 基线低 7–8%（`7c835ad` 对 `9d9321e` 的同轮 A/B）；空闲 HTTP/1.1 对照 nginx；h2c 空闲连接。 |
+| TLS 入口（TLS 上的 HTTP/1.1 和 h2） | I09 | 是（2026-11-25，`9d9321e` 带 akio A172，`bench/results/m1-2026-11-25-akio-fixes`） | 否 | M1 报告：fixed 和 static 在 HTTPS/1.1 和 h2 上排第一；空闲 TLS 在 1 万时 12,942 字节、10 万时 12,872（fit 9,879 和 8,593，nginx 29,924 和 29,583）。按锁定的 akio（`dad77a7a`），harness 的 wrk 每次握手都失败（A172）。剩余：每秒握手数对比 fit 和 nginx；空闲 TLS 内存对照 fit。 |
 | HTTP/3 入口 | I10 | 否 | 否（尚未实现） | h3 上的 fixed，对比 fit 和 Caddy。 |
 | 路由 v1：按主机和路径查找 | I11 | 否 | 否（已实现，未测） | 查找的微基准（不分配内存），以及路由较多时 fixed 对比 I05 线性扫描的同轮 A/B。 |
-| 静态文件 | I12、I13 | 否 | 否（已实现，未测） | static 场景，HTTP/1.1 和 h2c（基线中 akit 跳过）；预压缩文件和大文件的 `sendfile`；akio ADR-124 之后的缓存命中（双环缓存、文件很多时 `max_cache_bytes` 的淘汰）；带 `compress` 的大文件（在 akio 文件池上读取并编码）与 fit 对比。 |
-| 上游连接池 | I14 | 否 | 否（已实现，未测） | 通过 proxy 场景测：连接复用，连接数受限时等待连接。 |
-| 反向代理：HTTP/1.1、流式请求体、h2 和 h2c 上游 | I15–I18 | 否 | 否（已实现，未测量） | proxy 场景，HTTP/1.1 和 h2c（基线中 akit 跳过）；双向大请求体，及每个进行中请求占用的内存；带 trailer 的请求（I17 每个请求解析 `Trailer`）；h2c 上游（I18）：与 HTTP/1.1 上游对比每秒请求数和每请求 CPU，许多客户端复用少数连接，以及租用流时的按地址锁（`akit_upstream::h2`）；I17b 每个被代理请求的 `CancelToken` 和 `on_gone`；经 h2c 时（I18b）akio 的每流状态及其响应头与空闲定时器（每个 DATA 帧读一次时钟，每个请求一个定时任务），以及被暂停的下载与有节奏的上传，与 HTTP/1.1 对比。 |
+| 静态文件 | I12、I13 | 是（2026-11-25，`9d9321e`，`bench/results/m1-2026-11-25-akio-fixes`） | 否 | M1 报告：在 HTTP/1.1、HTTPS/1.1 和 h2 上排第一（nginx 的 1.2 到 3.8 倍），h2c 上为 fit 的 98%。剩余：预压缩文件和大文件的 `sendfile`；akio ADR-124 之后的缓存命中（双环缓存、文件很多时 `max_cache_bytes` 的淘汰）；带 `compress` 的大文件（在 akio 文件池上读取并编码）与 fit 对比。 |
+| 上游连接池 | I14 | 是（2026-11-25，通过 proxy 场景，`bench/results/m1-2026-11-25-akio-fixes`） | 否 | M1 报告：连接被复用，HTTP/1.1 上 256 个客户端约用 220 个后端连接。剩余：连接数受限时等待连接。 |
+| 反向代理：HTTP/1.1、流式请求体、h2 和 h2c 上游 | I15–I18 | 是（2026-11-25，`9d9321e` 带 akio A171，`bench/results/m1-2026-11-25-akio-fixes`） | 否 | M1 报告：排在 fit 和 nginx 之后第三，HTTP/1.1 上每秒 24.5 万请求、HTTPS/1.1 23 万、h2c 23.8 万、h2 22.1 万（最佳的 86–93%），每请求 CPU 27.5 µs，nginx 18.2，HTTP/1.1 上 p99 3.16 ms，fit 2.20；按锁定的 akio，其内存按路由超时窗口内的请求每个增长约 240 字节（A171）。剩余：剖析每请求开销；双向大请求体，及每个进行中请求占用的内存；带 trailer 的请求（I17 每个请求解析 `Trailer`）；h2c 上游（I18）：与 HTTP/1.1 上游对比每秒请求数和每请求 CPU，许多客户端复用少数连接，以及租用流时的按地址锁（`akit_upstream::h2`）；I17b 每个被代理请求的 `CancelToken` 和 `on_gone`；经 h2c 时（I18b）akio 的每流状态及其响应头与空闲定时器（每个 DATA 帧读一次时钟，每个请求一个定时任务），以及被暂停的下载与有节奏的上传，与 HTTP/1.1 对比。 |
 | 负载均衡 v1 和 v2 | I19、I36 | 否 | 否（已实现，未测量） | 每种策略选择的微基准（fit 的 `BenchmarkPick` 和 `BenchmarkPickNew`：九种策略、哈希一个键、查找会话保持 cookie），1 线程和 16 线程；对比单个服务器的 proxy A/B；proxy 场景下 `round_robin` 对比 `p2c`、`header_hash` 和 `sticky_cookie` 的同轮 A/B（每个请求的键哈希，以及首个请求复制的 `Set-Cookie`）。 |
 | 被动健康检查 | I20 | 否 | 否（已实现，未测） | 请求路径上记录结果的微基准。 |
 | 主动健康检查 | I35 | 否 | 否（已实现，未测） | 不在热路径上（选择地址仍只读每个地址一个原子量）：繁忙引擎上探测的开销，每秒探测数千个地址（http 和 tcp），连同探测定时器的线程（akio A45 之前的临时方案）；proxy 场景下开关健康检查的同轮 A/B。 |
@@ -208,24 +209,32 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | Prometheus 指标 | I37 | 否 | 否（已实现，未测量） | fixed 和 proxy 场景下开关 `metrics` 的同轮 A/B（inline 路由的代价是一次线程局部读和三次原子加；代理的路由在 akio A29 之前还多一个装箱的应答过滤器），以及同时开启访问日志（两者共用一个钩子）；大量路由、64 个线程时的一次抓取（按线程的分片）。 |
 | OpenTelemetry | I64 | 否 | 否（已实现，未测量） | fixed 和 proxy 场景下 `telemetry.traces` 关闭、开启且 `sample_ratio` 为 0（每个请求一次字段查找）、开启且为 1（每个请求：生成 id、设置 `traceparent` local、把 span 编码进线程自己的缓冲区、一次分片锁）的同轮 A/B；默认 4 MiB 队列、collector 很慢时满负载下丢弃的 span；导出线程的开销；`Tracer::sample` 和 `Tracer::end` 的微基准（fit 的 `BenchmarkSample`、`BenchmarkEnd`）。 |
 | 静态 musl 发布二进制 | I65 | 否 | 否（已实现，未测量） | 用发布的静态 musl 二进制（`scripts/dist.sh`，musl 的分配器）与同一提交的 glibc 构建做 fixed 和 proxy 场景的同轮 A/B、轮次交替：多线程下 musl 的分配器是否损失吞吐量或内存，从而决定全局分配器是否值得引入一个依赖（[决策 009](decisions/009-packaging.zh-CN.md)）。 |
+| M4 退出：里程碑结束时的完整测试框架；空闲的 provider | I66 | 否 | 否 | M4 没有改动请求路径。留给基准测试任务（规则 24 的里程碑结束）：用 M4 的构建与 fit、nginx、Caddy 和 Traefik 跑完整测试框架，按 [M4 报告](../bench/results/m4-report-2026-11-25.zh-CN.md) 的方式排名；对正在服务、带一个监视中但空闲的 Kubernetes 或 Docker provider 的 akit 与不带 provider 的同一配置做同轮 A/B、轮次交替，以及 provider 每秒应用一个新版本时请求的 p99。 |
 | 匹配器 v2 与表达式 | I39 | 否 | 否（已实现，未测） | 带匹配器、表达式和路径正则的 `find_request` 微基准（不分配内存，`tests/no_alloc.rs`）；fixed 场景下对比 I39 基线的同轮 A/B（一条路由、没有匹配器：预期在噪声以内）。 |
-| 重写、跳转与头处理 | I40 | 否 | 否（已实现，未测） | 在 proxy 场景上做同轮 A/B：带 `headers`（请求和响应修改）与 `rewrite` 的路由对比不带它们的同一路由；每个请求上响应过滤器（一个装箱闭包和一次 `Arc` 克隆）的开销，以及把请求字段放在上下文 local 中的开销（在 akio API 需求 A33 之前的临时方案）。 |
-| 限流、并发与大小限制 | I41 | 否 | 否（已实现，未测） | 在 proxy 场景上做同轮 A/B：每种限制设得足够高、从不拒绝的路由对比不带它的同一路由：按 ip 和按头的 `rate_limit`（一把分片锁、一次 SipHash、一次 map 查找），1、1000 和 1000000 个客户端键、64 个线程（分片的争用），与 fit 的 `BenchmarkRate` 一样；`concurrency_limit`（同一共享缓存行上的两次原子操作，以及在 akio A48 之前的一个装箱响应过滤器和一次 `Arc` 克隆）；`body_limit`（每个请求只查一次字段）。 |
-| Basic 认证与客户端证书 | I42 | 否 | 否（已实现，未测） | 在 proxy 场景上做同轮 A/B：带 `basic_auth` 的路由（已记住的密码：一次 base64 解码、一次 HMAC-SHA-256，以及在 akio A33 之前把请求字段改写进上下文本地值）和带 `client_cert` 与 `subject_header` 的路由（主题按线程缓存），对比不带它们的同一路由，覆盖 HTTP/1.1、h2 和 h3；密码的首次校验（一次挂起，到 akio 线程池再回来）在每秒几百个新用户时的开销，以及大量错误密码对已记住用户延迟的影响。 |
-| 转发认证 | I43 | 否 | 否（已实现，未测） | 在 proxy 场景上做同轮 A/B：带 `forward_auth`、认证服务在本机且很快的路由，对比不带它的同一路由，覆盖 HTTP/1.1 和 h2：检查的开销（构造认证请求的字段、一次挂起、认证 upstream 的连接池上的一次交换、在应答所在的 I/O 线程上恢复）；成千上万个请求等待慢认证服务时的延迟和内存，以及此时快路由的延迟。 |
-| JWT 与 JWKS | I44 | 否 | 否（已实现，未测） | proxy 场景上带 `jwt` 的路由与不带它的路由的同轮 A/B，经 HTTP/1.1 和 h2，按算法（HS256、EdDSA、ES256、RS256），令牌已在缓存中（一次 SHA-256 和一次每线程 map 查找，claims 字段在 akio A33 之前改写进上下文局部变量）和重新校验（大量不同令牌：在 I/O 线程上校验签名），同 fit 的 `BenchmarkJWT`；等待 JWK 集获取的请求的延迟，以及期间其他路由的延迟。 |
-| 重试、熔断、按路由超时 | I45 | 否 | 否（已实现，未测量） | 在 proxy 场景上对带 `retry` 和带 `circuit_breaker` 的路由与不带它们的同一路由做同轮 A/B，上游健康：每个请求读取预算的开销（向满的预算存入不写内存），为重放保留的模板（复制出站字段和最多 64 KiB 的 body，一个装箱的 `Again`），熔断器装箱的响应过滤器及其在共享步计数上的两次原子加，64 个线程（计数的争用）；以及上游一半请求失败时：相对预算的每秒重试数，和熔断器的打开路径。 |
+| 重写、跳转与头处理 | I40 | 部分（2026-11-25，`2a1422d`，[M3 报告](../bench/results/m3-report-2026-11-25.zh-CN.md)：`rewrite` 每请求 +0.4、`headers` +0.5 µs（epoll；fit 为 +0.3、+1.0）；`redirect` 每秒 815k（fit 765k）） | 否（已实现，未测） | 在 proxy 场景上做同轮 A/B：带 `headers`（请求和响应修改）与 `rewrite` 的路由对比不带它们的同一路由；每个请求上响应过滤器（一个装箱闭包和一次 `Arc` 克隆）的开销，以及把请求字段放在上下文 local 中的开销（在 akio API 需求 A33 之前的临时方案）。 |
+| 限流、并发与大小限制 | I41 | 部分（2026-11-25，`2a1422d`，[M3 报告](../bench/results/m3-report-2026-11-25.zh-CN.md)：`rate_limit` +0.2、`concurrency_limit` +0.4、`body_limit` -0.1 µs（epoll；fit 为 +0.4、+0.4、+0.3），单个键，256 个连接） | 否（已实现，未测） | 在 proxy 场景上做同轮 A/B：每种限制设得足够高、从不拒绝的路由对比不带它的同一路由：按 ip 和按头的 `rate_limit`（一把分片锁、一次 SipHash、一次 map 查找），1、1000 和 1000000 个客户端键、64 个线程（分片的争用），与 fit 的 `BenchmarkRate` 一样；`concurrency_limit`（同一共享缓存行上的两次原子操作，以及在 akio A48 之前的一个装箱响应过滤器和一次 `Arc` 克隆）；`body_limit`（每个请求只查一次字段）。 |
+| Basic 认证与客户端证书 | I42 | 部分（2026-11-25，`2a1422d`，[M3 报告](../bench/results/m3-report-2026-11-25.zh-CN.md)：记住密码后的 `basic_auth` +0.7 µs、无证书的 `client_cert` +0.0（epoll；fit 为 +0.6、+0.4），HTTP/1.1） | 否（已实现，未测） | 在 proxy 场景上做同轮 A/B：带 `basic_auth` 的路由（已记住的密码：一次 base64 解码、一次 HMAC-SHA-256，以及在 akio A33 之前把请求字段改写进上下文本地值）和带 `client_cert` 与 `subject_header` 的路由（主题按线程缓存），对比不带它们的同一路由，覆盖 HTTP/1.1、h2 和 h3；密码的首次校验（一次挂起，到 akio 线程池再回来）在每秒几百个新用户时的开销，以及大量错误密码对已记住用户延迟的影响。 |
+| 转发认证 | I43 | 部分（2026-11-25，`2a1422d`，[M3 报告](../bench/results/m3-report-2026-11-25.zh-CN.md)：epoll 上每请求 +20.4 µs，fit 为 +17.0，每秒请求数为 fit 的 97%，鉴权服务很快（nginx）） | 否（已实现，未测） | 在 proxy 场景上做同轮 A/B：带 `forward_auth`、认证服务在本机且很快的路由，对比不带它的同一路由，覆盖 HTTP/1.1 和 h2：检查的开销（构造认证请求的字段、一次挂起、认证 upstream 的连接池上的一次交换、在应答所在的 I/O 线程上恢复）；成千上万个请求等待慢认证服务时的延迟和内存，以及此时快路由的延迟。 |
+| JWT 与 JWKS | I44 | 部分（2026-11-25，`2a1422d`，[M3 报告](../bench/results/m3-report-2026-11-25.zh-CN.md)：HS256、令牌已验证并缓存：epoll 上每请求 +1.9 µs，io_uring +2.4，fit 为 +1.1） | 否（已实现，未测） | proxy 场景上带 `jwt` 的路由与不带它的路由的同轮 A/B，经 HTTP/1.1 和 h2，按算法（HS256、EdDSA、ES256、RS256），令牌已在缓存中（一次 SHA-256 和一次每线程 map 查找，claims 字段在 akio A33 之前改写进上下文局部变量）和重新校验（大量不同令牌：在 I/O 线程上校验签名），同 fit 的 `BenchmarkJWT`；等待 JWK 集获取的请求的延迟，以及期间其他路由的延迟。 |
+| 重试、熔断、按路由超时 | I45 | 部分（2026-11-25，`2a1422d`，[M3 报告](../bench/results/m3-report-2026-11-25.zh-CN.md)：`circuit_breaker`、上游健康：epoll 上每请求 +0.7 µs，fit 为 +1.1） | 否（已实现，未测量） | 在 proxy 场景上对带 `retry` 和带 `circuit_breaker` 的路由与不带它们的同一路由做同轮 A/B，上游健康：每个请求读取预算的开销（向满的预算存入不写内存），为重放保留的模板（复制出站字段和最多 64 KiB 的 body，一个装箱的 `Again`），熔断器装箱的响应过滤器及其在共享步计数上的两次原子加，64 个线程（计数的争用）；以及上游一半请求失败时：相对预算的每秒重试数，和熔断器的打开路径。 |
 | 加权上游、镜像、故障转移 | I46 | 否 | 否（已实现，未测量） | 在 proxy 场景上对带 `upstreams`（两个，按权重）和带 `failover` 的路由与带 `upstream` 的路由做同轮 A/B：每个请求按权重抽取和读取 `available` 的开销；`mirror` 为 100% 时，对快的镜像（复制字段和消息体，每个请求多一次交换）和对不回应的镜像（保持 256 的上限：请求的延迟和 akit 的内存），覆盖 HTTP/1.1 和 h2。 |
-| 中间件（其余） | I48 | 否 | 否（已实现，未测量） | I56 对每个中间件做基准；每个中间件在 proxy 场景上的同轮 A/B。 |
-| 压缩 | I47 | 否 | 否（已实现，未测量） | 按 I47 的要求，每种编码对比 fit：代理场景前面加 `compress`，完整的 JSON 消息体和服务端推送事件流，走 HTTP/1.1 和 h2，每种编码用 fit 的默认级别（每秒响应数、服务端 CPU、线上字节数）；过滤器对它不压缩的响应（图片）的开销，与不加中间件对比；同时保持的压缩流（1000 个）的内存；静态处理器的副本与 fit 的对比（内存中文件的 `compress`）。 |
+| 中间件（其余） | I48 | 是（2026-11-25，`2a1422d`，[M3 报告](../bench/results/m3-report-2026-11-25.zh-CN.md)，`bench/modules.sh`） | 否 | 每个中间件在 HTTP/1.1 的 proxy 场景上与 fit 对比，akit 分别在 epoll 和 io_uring 上，二者运行同一份配置：每个中间件增加的开销与 fit 相差不到 1 µs，只有 gzip（+6.7 µs，fit +3.9）、`wasm`（+13.6，fit +6.4）和 `forward_auth`（+20.4，fit +17.0）例外。剩下：h2 和 h3 上的同样测量，以及对落后的两项做剖析。 |
+| 压缩 | I47 | 部分（2026-11-25，`8413090`，[M3 报告](../bench/results/m3-report-2026-11-25.zh-CN.md)：以 fit 的默认级别 gzip 1 KiB JSON：每请求 +6.7 µs，fit 为 +3.9；不压缩的响应 +0.8，fit 为 +1.2；仅 HTTP/1.1） | 否（已实现，未测量） | 按 I47 的要求，每种编码对比 fit：代理场景前面加 `compress`，完整的 JSON 消息体和服务端推送事件流，走 HTTP/1.1 和 h2，每种编码用 fit 的默认级别（每秒响应数、服务端 CPU、线上字节数）；过滤器对它不压缩的响应（图片）的开销，与不加中间件对比；同时保持的压缩流（1000 个）的内存；静态处理器的副本与 fit 的对比（内存中文件的 `compress`）。 |
 | 重写与重定向的正则 | I48 | 否 | 否（已实现，未测量） | 对比 fit：代理场景前面加带 `regexp` 与 `replacement` 的 `rewrite`（匹配与不匹配）和 `to` 中带分组的 `redirect`，每秒请求数和每请求分配次数，与不加中间件对比；akio-regex 的 `captures` 与 `replace_all` 在路径长度文本上对比 Go 的 `regexp`。 |
-| WebSocket 与 gRPC 代理 | I49、I50 | 否 | 否（I49 与 I50 已实现，未测量） | 对比 fit：经 akit 的 WebSocket 每秒消息数（小消息回显）与每秒字节数（大消息），来自 HTTP/1.1、h2 和 h3 客户端；每个打开的 WebSocket 的内存（空闲时，以及每个方向各有 64 KiB 待发时）；每秒握手数（生成密钥、上游连接离开连接池）；I50：对比 fit，每秒 gRPC 调用数（一元调用，h2c 与 h2 上游）与一个流上每个方向的每秒消息数。 |
+| WebSocket 与 gRPC 代理 | I49、I50 | 部分（2026-11-25，1 万个空闲 WebSocket，`bench/results/m1-2026-11-25-akio-fixes`：每个 4,452 字节，fit 5,916，nginx 22,275） | 否（I49 与 I50 已实现） | 对比 fit：经 akit 的 WebSocket 每秒消息数（小消息回显）与每秒字节数（大消息），来自 HTTP/1.1、h2 和 h3 客户端；每个打开的 WebSocket 的内存（空闲时，以及每个方向各有 64 KiB 待发时）；每秒握手数（生成密钥、上游连接离开连接池）；I50：对比 fit，每秒 gRPC 调用数（一元调用，h2c 与 h2 上游）与一个流上每个方向的每秒消息数。 |
 | TCP 和 UDP 代理、SNI 路由、单端口多协议 | I51–I53 | 否 | 否（I51–I53 已实现，未测） | 按 I51 的要求对比 fit 和 nginx 的 `stream`：TCP 吞吐（fit 的 `BenchmarkTCPProxy`，每次回显 256 KB，直连与经 akit 对比）、每秒连接数、每个空闲连接的内存；UDP 每秒数据报数与同时的会话数；10,000 个连接时每个服务在 akit 定时线程上的空闲扫描（akio A78 之前的权宜之计）；共享端口上协议嗅探的开销（I53）。I52：按 SNI 分流的监听器（拨号前读取并解析 ClientHello）与不分流的监听器每秒连接数的对比，以及接受时读 PROXY 头、向上游发送 PROXY 头时的情形；带与不带 `proxy_protocol` 的监听器上 HTTP/1.1 与 h2c 的请求速率，以及不带时 akio ADR-118 的开销（每个请求一次 `OnceLock::get`）。 |
 | eBPF sockmap 中转 | I51b | 否 | 否（I51b 已实现，未测） | 在基准主机上以 root（Linux 6.15+）运行，对比不带 `sockmap` 的同一监听器以及 fit：TCP 吞吐（fit 的 `BenchmarkTCPProxy`，每次回显 256 KB）和每 GB 的 CPU，每秒连接数（每个连接拼接的开销：两次 `TCP_INFO` 读取、映射表的两次插入和闸门），以及小回显的延迟；10,000 个已拼接连接时 akit 定时线程上的空闲扫描（每次扫描每个套接字三次系统调用），以及大量连接同时关闭时排空的轮询。 |
 | 正向代理：SOCKS 与 HTTP CONNECT | I55 | 否 | 否（已实现，未测） | 对比 fit（原始吞吐另对比 nginx 的 `stream`）：经 SOCKS5 隧道和 HTTP/1.1 CONNECT 隧道的每秒字节数（每次回显 256 KB，同 fit 的 `BenchmarkTCPProxy`），每秒建立的隧道数（握手、规则检查、在线程池上解析名字以及 `connected` 检查），每个空闲隧道的内存；共享端口上 SOCKS 的开销（akio-mux 的问候规则与 HTTP、TLS 并列）对比只有 HTTP；10,000 条隧道时 akio-socks 看门狗线程的开销（ADR-119 在其上增加了连接超时）。 |
-| 响应缓存 | I67、I68、I69 | 否 | 否（内存层、磁盘层与清除已实现、未测量） | 对比 fit，按 I67 的实现：内存命中（4 KiB 与 1 MiB 消息体，HTTP/1.1 与 h2），经代理保存的未命中（旁路复制的流式消息体）对比仅代理，缓存直接放行的请求（POST、`no-store` 响应）对比无中间件的开销，大量键与单个热点键下分片锁的表现。I68：从磁盘读回的命中（64 KiB 与 1 MiB，大量并发下磁盘线程池的线程与队列），未命中率高到填满 `MAX_PENDING_WRITES` 时的磁盘写入，大量客户端对同一个键的惊群，开启锁与 `disable_lock` 两种情况（等待者的挂起与恢复、每次获取一个定时器），以及 stale-while-revalidate 的后台获取。akio ADR-116 的旁路：有旁路的流对比无旁路的流。I69：带标签响应（0 与 32 个标签）对比无标签响应的保存开销，以及服务期间对大 zone 按前缀和按标签清除（分片锁与磁盘索引锁的持有时间）。 |
+| 响应缓存 | I67、I68、I69 | 部分（2026-11-25，I76，`346ad8b`：基准框架的 `cache-hot` 和 `cache-zipf` 对照 nginx 和 fit，以及 1,000 个客户端的击穿，见 [M5 报告](../bench/results/m5-report-2026-11-25.zh-CN.md)） | 否 | I76 已测：经基准框架的内存命中（4 KiB；akit 第一，HTTP/1.1 上是 nginx 的 1.5 倍、h2c 上 6.2 倍，100,000 个路径时 1.75 倍，领先 fit 12% 到 23%），以及 1,000 个客户端请求一个冷键时只取一次源站。剩下的，对比 fit，按 I67 的实现：内存命中（4 KiB 与 1 MiB 消息体，HTTP/1.1 与 h2），经代理保存的未命中（旁路复制的流式消息体）对比仅代理，缓存直接放行的请求（POST、`no-store` 响应）对比无中间件的开销，大量键与单个热点键下分片锁的表现。I68：从磁盘读回的命中（64 KiB 与 1 MiB，大量并发下磁盘线程池的线程与队列），未命中率高到填满 `MAX_PENDING_WRITES` 时的磁盘写入，大量客户端对同一个键的惊群，开启锁与 `disable_lock` 两种情况（等待者的挂起与恢复、每次获取一个定时器），以及 stale-while-revalidate 的后台获取。akio ADR-116 的旁路：有旁路的流对比无旁路的流。I69：带标签响应（0 与 32 个标签）对比无标签响应的保存开销，以及服务期间对大 zone 按前缀和按标签清除（分片锁与磁盘索引锁的持有时间）。 |
 | FastCGI | I75 | 否 | 否（已实现，未测量） | 对比 fit 和 nginx 的 `fastcgi_pass`，经 TCP 和 Unix 域套接字连接 PHP-FPM（或立即应答的 FastCGI 应用）：小页面的每秒请求数与延迟，HTTP/1.1 与 h2；1 MiB 上传与 16 MiB 下载（每个进行中请求的内存，双向 64 KiB 水位线）；连接复用对比每个请求一个连接；客户端多于 `max_conns` 时连接池的队列；`try_files` 的开销（每个候选在 akio 逻辑线程池上一次 `stat`）对比不带它的路由；每秒大量请求时，handler 每 100 ms 在 akit 定时器线程（A45 的临时方案）上对其交换的巡检。 |
+| WASM 插件 | I71、I72 | 部分（2026-11-25，I76，`346ad8b`：fit 的 `headers` 插件在 akit 和 fit 中，HTTP/1.1 和 h2c，见 [M5 报告](../bench/results/m5-report-2026-11-25.zh-CN.md)） | 否 | I76 已测（`bench/run.sh -servers akit-wasm,fit-wasm -scenarios fixed,wasm`）：fit 的 `headers` 插件在 HTTP/1.1 上让 akit 每个请求多花 14.7 µs CPU，fit 6.8 µs（akio-wasm 解释执行，wazero 编译执行：akio API 请求 A180，akio 的 W5）；h2c 上 2,048 个同时进行的请求超出 1,024 的队列，两者都立即以 503 回答多出的部分。剩下的：对照 fit（wazero 的编译器）和无插件：请求经过 fit 的 `headers` 插件（Go guest）和一个空插件（`fit_on_request` 返回 0），HTTP/1.1 和 h2，每秒请求数和延迟，对比不带该中间件的路由（交给池再交回、复制请求、调用本身）；实例上单独的 guest 调用（akio 的 W5：akio-wasm 的解释器对比 wazero 的解释器和编译器）；客户端多于 `instances` 时的池（队列，超出后 503）；trap 之后重建实例（Go guest 的 `_initialize`）。Proxy-Wasm（I72）：请求经过 Proxy-Wasm Go SDK 的 `http_routing`（配置 `1`，请求不变），对照 fit 和无插件，如 fit 的 `BenchmarkProxyWasm`；响应经过 fit 的 `response` 过滤器（`upper`）和 SDK 的 `http_headers`，头部在池上挂起、响应体在池上过滤，一个完整的 4 KiB 响应体和一个流式的 1 MiB 响应体，HTTP/1.1 和 h2，对照 `response: none` 和无插件。 |
+
+| 响应缓存 | I67、I68、I69 | 部分（2026-11-25，`2a1422d`，[M3 报告](../bench/results/m3-report-2026-11-25.zh-CN.md)：内存命中（1 KiB，HTTP/1.1）：每秒 782k，fit 755k） | 否（内存层、磁盘层与清除已实现、未测量） | 对比 fit，按 I67 的实现：内存命中（4 KiB 与 1 MiB 消息体，HTTP/1.1 与 h2），经代理保存的未命中（旁路复制的流式消息体）对比仅代理，缓存直接放行的请求（POST、`no-store` 响应）对比无中间件的开销，大量键与单个热点键下分片锁的表现。I68：从磁盘读回的命中（64 KiB 与 1 MiB，大量并发下磁盘线程池的线程与队列），未命中率高到填满 `MAX_PENDING_WRITES` 时的磁盘写入，大量客户端对同一个键的惊群，开启锁与 `disable_lock` 两种情况（等待者的挂起与恢复、每次获取一个定时器），以及 stale-while-revalidate 的后台获取。akio ADR-116 的旁路：有旁路的流对比无旁路的流。I69：带标签响应（0 与 32 个标签）对比无标签响应的保存开销，以及服务期间对大 zone 按前缀和按标签清除（分片锁与磁盘索引锁的持有时间）。 |
+| FastCGI | I75 | 否 | 否（已实现，未测量） | 对比 fit 和 nginx 的 `fastcgi_pass`，经 TCP 和 Unix 域套接字连接 PHP-FPM（或立即应答的 FastCGI 应用）：小页面的每秒请求数与延迟，HTTP/1.1 与 h2；1 MiB 上传与 16 MiB 下载（每个进行中请求的内存，双向 64 KiB 水位线）；连接复用对比每个请求一个连接；客户端多于 `max_conns` 时连接池的队列；`try_files` 的开销（每个候选在 akio 逻辑线程池上一次 `stat`）对比不带它的路由；每秒大量请求时，handler 每 100 ms 在 akit 定时器线程（A45 的临时方案）上对其交换的巡检。 |
+| WASM 插件 | I71、I72 | 部分（2026-11-25，`2a1422d`，[M3 报告](../bench/results/m3-report-2026-11-25.zh-CN.md)：fit 的 Go `headers` 插件，HTTP/1.1：每请求 +13.6 µs，fit 为 +6.4（wazero 编译器），每秒请求数为 fit 的 64%） | 否（I71 和 I72 已实现，未测量） | 对照 fit（wazero 的编译器）和无插件：请求经过 fit 的 `headers` 插件（Go guest）和一个空插件（`fit_on_request` 返回 0），HTTP/1.1 和 h2，每秒请求数和延迟，对比不带该中间件的路由（交给池再交回、复制请求、调用本身）；实例上单独的 guest 调用（akio 的 W5：akio-wasm 的解释器对比 wazero 的解释器和编译器）；客户端多于 `instances` 时的池（队列，超出后 503）；trap 之后重建实例（Go guest 的 `_initialize`）。Proxy-Wasm（I72）：请求经过 Proxy-Wasm Go SDK 的 `http_routing`（配置 `1`，请求不变），对照 fit 和无插件，如 fit 的 `BenchmarkProxyWasm`；响应经过 fit 的 `response` 过滤器（`upper`）和 SDK 的 `http_headers`，头部在池上挂起、响应体在池上过滤，一个完整的 4 KiB 响应体和一个流式的 1 MiB 响应体，HTTP/1.1 和 h2，对照 `response: none` 和无插件。 |
+
 | WASM 插件 | I71、I72 | 否 | 否（I71 和 I72 已实现，未测量） | 对照 fit（wazero 的编译器）和无插件：请求经过 fit 的 `headers` 插件（Go guest）和一个空插件（`fit_on_request` 返回 0），HTTP/1.1 和 h2，每秒请求数和延迟，对比不带该中间件的路由（交给池再交回、复制请求、调用本身）；实例上单独的 guest 调用（akio 的 W5：akio-wasm 的解释器对比 wazero 的解释器和编译器）；客户端多于 `instances` 时的池（队列，超出后 503）；trap 之后重建实例（Go guest 的 `_initialize`）。Proxy-Wasm（I72）：请求经过 Proxy-Wasm Go SDK 的 `http_routing`（配置 `1`，请求不变），对照 fit 和无插件，如 fit 的 `BenchmarkProxyWasm`；响应经过 fit 的 `response` 过滤器（`upper`）和 SDK 的 `http_headers`，头部在池上挂起、响应体在池上过滤，一个完整的 4 KiB 响应体和一个流式的 1 MiB 响应体，HTTP/1.1 和 h2，对照 `response: none` 和无插件。 |
+| 有流量时频繁替换配置 | I38 | 否 | 否（已测试，未测量） | fixed 和 proxy 场景，HTTP/1.1 和 h2c，期间每 10 ms 经 SIGHUP 和 Admin API 替换一次配置，对照同一轮中不替换：替换期间的每秒请求数、p99 延迟和错误，以及替换 10 万次后 akit 的 RSS 和描述符数；完整测试套件的 M2 报告（规则 24，里程碑结束）。 |
 | akio 请求替换掉的权宜实现（A12、A79、A45、A117、A30、A54、A29、A75、A78、A22、A170、A24、A49、A35、A148） | —（akio 请求） | 否 | 否（已实现，未测量） | 对照这些提交之前的 main，同一轮 A/B 测 fixed 和 proxy 场景，HTTP/1.1、h2c 和 h3：访问日志和指标走监听器的响应观察者（`set_observed`，不分配）对比装箱的过滤器，以及每个请求都调用 `limit_body`；代理在 HTTP/1.1 上按长度成帧的下载对比 chunked；第 4 层转发由 akio 的每连接空闲超时关闭对比 akit 的扫描（大量空闲连接）；sockmap 转发经 `akio::ebpf::Tunnel`（以 root 测 TCP 吞吐，同 I51b 一行）；健康检查探测负载走 `akio::timer::after_send` 对比 akit 原来的定时线程。 |
 
 ## M0 基础
@@ -478,6 +487,10 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
   的基准；10k 和 100k 连接时每个空闲连接的内存。
 - **完成标准**：带 *akit 的现状* 的 M1 报告已提交，路线图中 M1 的退出标准满足。
 - **涉及**：`bench`、`tests`。
+- **已完成**（[M1 报告](../bench/results/m1-report-2026-11-25.zh-CN.md)）：h2spec 145/145；一致性测试套件
+  `crates/akit/tests/conformance.rs` 通过（依赖 akit-proxy 对 A169 的临时措施）；基准与 1 万、10 万空闲连接的内存已发布，
+  HTTPS/1.1 和代理内存需要 akio 的 A172 和 A171（在 akio 分支上，尚未锁定）。性能目标中静态文件达到，代理吞吐量、代理 p99
+  以及空闲 HTTP/1.1 和 TLS 内存尚未达到。
 
 ## M2 动态配置与 TLS
 
@@ -581,6 +594,12 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 - **做什么**：有流量时进行数千次替换；一张 Let's Encrypt staging 证书；健康检查时间窗测试。
 - **完成标准**：路线图中 M2 的退出标准满足，结果记录在 progress 中。
 - **涉及**：`tests`、`bench`。
+- **已完成**：频繁替换测试（`crates/akit/tests/churn.rs`：在 `akit run` 下经 SIGHUP 和 Admin API 替换 2000
+  次，以及在进程内经 `Listeners::reload` 在 epoll 和 io_uring 上替换）和健康检查时间窗测试（`health_window.rs`）
+  通过；只写了主机名的配置经 `akit run` 从 Pebble（在基准主机的 Docker 中）取得证书并提供 HTTPS（`acme_m2.rs`）。
+  频繁替换测试发现每次重载都重建所有上游的连接池（逐个重新拨号，健康状态重置）：现在未变的上游像 fit 一样保留连接池。
+  同一测试于 2026-11-26 在一台公网主机上为一个公网域名对 Let's Encrypt 的 staging CA（`AKIT_ACME_STAGING_NAME`）运行
+  通过，证书由 `(STAGING) Baloney Bulgur YE2` 签发（见 [progress](progress.zh-CN.md)）。
 
 ## M3 网关能力
 
@@ -723,6 +742,10 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 - **做什么**：每个中间件的一致性测试和基准；M3 报告。
 - **完成标准**：路线图中 M3 的退出标准满足。
 - **涉及**：`tests`、`bench`。
+- **状态**：已完成（2026-11-25）：每条标准都满足；[M3 报告](../bench/results/m3-report-2026-11-25.zh-CN.md)
+  包含各中间件与 fit 的基准对比（`bench/modules.sh`）和完整的基准套件运行。`crates/akit/tests/workers.rs`
+  （fit 的 `test/workers`）检查没有模块阻塞 I/O 线程；新增的慢对端测试是 WebSocket 的慢上游和 UDP 的。没有
+  akio 需求，没有决策记录。
 
 ## M4 平台集成
 
@@ -807,6 +830,11 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 
 - **做什么**：CI 中运行一致性测试和 Compose 示例；M4 报告。
 - **完成标准**：路线图中 M4 的退出标准满足。
+- **状态**：已完成（2026-11-25），没有改动 akit 代码，也没有 akio 需求：Gateway API 的
+  `GATEWAY-HTTP` core 在 v1.3.0 上通过（通过 33，失败 0，跳过 0，
+  [报告](../tests/conformance/reports/gateway-http-v1.3.0-2026-11-25.yaml)），Docker Compose 示例
+  （[deploy/compose](../deploy/compose/README.zh-CN.md)）在其容器扩缩、停止和启动时按标签路由；两者都
+  在 CI 中运行；[M4 报告](../bench/results/m4-report-2026-11-25.zh-CN.md)；见进度日志。
 
 ## M5 缓存与扩展
 
@@ -874,11 +902,17 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 - **做什么**：FastCGI handler，带流式 body、连接池和超时。
 - **完成标准**：针对 php-fpm 的测试通过。
 - **涉及**：`akit-handler`。
+- **状态**：done（2026-11-24）；它的 PHP-FPM 测试（fit 的 `TestPHPFPM`）在 I76 中于基准测试主机上运行，对照
+  `php:8.4-fpm` 镜像里 PHP 8.4.28 的 FPM，在 epoll 和 io_uring 上都通过。
 
 ### I76 M5 退出
 
 - **做什么**：缓存与 nginx 的 `proxy_cache` 对比；WASM 开销；转换器样例；M5 报告。
 - **完成标准**：路线图中 M5 的退出标准满足。
+- **状态**：done（2026-11-25）。[M5 报告](../bench/results/m5-report-2026-11-25.zh-CN.md)，含 *akit 的位置*：每条标准都成立。
+  缓存保存了 nginx 的 `proxy_cache` 保存的内容，速率是它的 1.5 到 6.2 倍，1,000 个客户端的击穿只取一次
+  （`bench/stampede.sh`）；fit 的 `headers` 插件，两边同一个 `.wasm`，让 akit 每个请求多花 14.7 µs，有界，是 fit 的两倍
+  （akio API 请求 A180）；fit 的 nginx 样例中的每条指令都被转换或列出（探测测试）。见进度日志。
 
 ## 1.0
 
@@ -892,11 +926,26 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 
 - **做什么**：从代码生成的配置参考；入门；从 fit、nginx、Caddy 和 Traefik 迁移；全部中英双语。
 - **完成标准**：模型中的每个字段都出现在参考中。
+- **状态**：已完成（2026-11-26）。[配置参考](reference/config.zh-CN.md)的表格由 `tools/config-reference.py` 根据 fit 的 schema 和
+  akit-config 读取的字段生成，并由 `reference_matches_akit_config` 与 `model.rs` 对应；[指南](guides/README.zh-CN.md)，其中包括从 fit、
+  nginx、Caddy 和 Traefik 迁移；文档中的每个配置示例都由 `crates/akit/tests/docs_examples.rs` 交给 `akit validate` 检查。见开发进度的日志。
 
 ### I79 v1 冻结与兼容性
 
 - **做什么**：配置 schema 和 Admin API 冻结为 v1，与 fit 的 v1 相同；一份说明哪些内容保持稳定的兼容性文档。
 - **完成标准**：兼容性门禁在每个 fit 模板上通过，没有不支持的字段。
+- **状态**：已完成（2026-11-26）。[政策](compatibility.zh-CN.md#v1哪些保持稳定)即 akit 所提供部分的 fit v1；v1 的范围冻结在
+  `tests/compat/v1` 中，由 `tools/v1-freeze.py`（配置）和 `v1_surface_is_frozen`（Admin API）把关，任何未标记为兼容增加的改动都会使其
+  失败（[决定 029](decisions/029-v1-freeze.zh-CN.md)）；fit 改名字段的旧名按 fit 的警告读取；开始读取 `limits.max_header_bytes`、
+  `max_conns`、`max_write_queue_bytes` 和 `engine`（[决定 028](decisions/028-engine-on-akio.zh-CN.md)）。每个 fit 模板都通过且没有被拒绝的
+  字段（6 个中 6 个，与之前相同）；fit-examples 中仍有字段被拒绝的网关示例等待 akio（I79b）；其余属于 1.0 之后的路线。见开发进度的日志。
+
+### I79b 门禁仍拒绝的网关示例
+
+- **做什么**：基于 akio 的跨连接预算（A214）支持 `limits.max_pending_bytes`，使 fit-examples 的 `limits` 和 `proxy` 有效；只有 `h2c`
+  的监听器（A168），使 `grpc` 有效；`limits.max_conns` 只计入被接受的连接（A215）。
+- **完成标准**：1.0 之后路线以外的 fit-examples 配置都不被拒绝（门禁报告只列出 `bittorrent`、`console`、`llm`、`logging`、媒体、
+  `streaming`、`sync`、`tunnel` 和 `webrtc` 的示例），每个字段都用 `make v1-bless` 标记。
 
 ### I80 为安全审查做好准备
 

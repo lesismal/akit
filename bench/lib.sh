@@ -3,10 +3,10 @@
 #
 # The host (BENCH_SSH) has Go, Docker and cargo, so everything is built there: fit's tree at
 # bench/FIT_REV, from the fit repository beside akit's (FIT_REPO), with akit's overlay
-# (bench/fitbench/akit.go) and config (bench/configs/akit) added; fitbench, idleconn and fit
-# built with Go; akit built with cargo, at the ref asked for, into an image of its own,
-# akit-bench:<tag>. Builds take /root/bench.lock shared; measured runs take it alone, through
-# the host's quiet.sh (docs/rules.md, rule 23).
+# (bench/fitbench/akit.go) and configs (bench/configs/akit, and the wasm scenario's plugin) added;
+# fitbench, idleconn and fit built with Go; akit built with cargo, at the ref asked for, into an
+# image of its own, akit-bench:<tag>. Builds take /root/bench.lock shared; measured runs take it
+# alone, through the host's quiet.sh (docs/rules.md, rule 23).
 
 BENCH_SSH=${BENCH_SSH:-"ssh root@gpu51"}
 BENCH_DIR=${BENCH_DIR:-/root/akit-bench}
@@ -35,6 +35,9 @@ stage_fit() {
 	fi
 	COPYFILE_DISABLE=1 tar --no-xattrs -cf - -C "$here" fitbench/akit.go configs/akit |
 		$BENCH_SSH "cd $fit_dir/bench && tar xf - && mv fitbench/akit.go cmd/fitbench/akit.go && rmdir fitbench"
+	# The wasm scenario's plugin (fitbench/akit.go), fit's own test plugin as akit's tests run it.
+	gzip -dc "$root/crates/akit-plugin/tests/guests/headers-go.wasm.gz" |
+		$BENCH_SSH "cat > $fit_dir/bench/configs/akit/headers.wasm"
 	echo "bench: building fitbench, idleconn and fit on the host"
 	$BENCH_SSH "$host_path; cd $fit_dir && mkdir -p bin && flock -s /root/bench.lock sh -c '
 		go build -o bin/fitbench ./bench/cmd/fitbench &&

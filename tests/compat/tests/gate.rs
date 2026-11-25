@@ -524,6 +524,59 @@ fn supported_fields_are_read() {
             format!(r#"{{{L}, "limits": {{"write_stall_timeout": "5s"}}}}"#),
             |c| c.limits.write_stall_timeout == std::time::Duration::from_secs(5),
         ),
+        (
+            "limits.max_header_bytes",
+            format!(r#"{{{L}, "limits": {{"max_header_bytes": 5}}}}"#),
+            |c| c.limits.max_header_bytes == 5 && c.listeners[0].max_header_bytes == 5,
+        ),
+        (
+            "limits.max_conns",
+            format!(r#"{{{L}, "limits": {{"max_conns": 5}}}}"#),
+            |c| c.limits.max_conns == 5,
+        ),
+        (
+            "limits.max_write_queue_bytes",
+            format!(r#"{{{L}, "limits": {{"max_write_queue_bytes": 5}}}}"#),
+            |c| c.limits.max_write_queue_bytes == 5,
+        ),
+        ("engine", r#"{"engine": {}}"#.into(), |c| {
+            c.engine == akit_config::Engine::default()
+        }),
+        (
+            "engine.event_loops",
+            r#"{"engine": {"event_loops": 3}}"#.into(),
+            |c| c.engine.event_loops == 3,
+        ),
+        (
+            "engine.workers",
+            r#"{"engine": {"workers": 3}}"#.into(),
+            |c| c.engine.workers == 3,
+        ),
+        (
+            "engine.min_workers",
+            r#"{"engine": {"min_workers": 3}}"#.into(),
+            |c| c.engine.min_workers == 3,
+        ),
+        (
+            "engine.task_queue",
+            r#"{"engine": {"task_queue": 3}}"#.into(),
+            |c| c.engine.task_queue == 3,
+        ),
+        (
+            "engine.read_buffer_size",
+            r#"{"engine": {"read_buffer_size": 4096}}"#.into(),
+            |c| c.engine.read_buffer_size == 4096,
+        ),
+        (
+            "engine.write_watermark",
+            r#"{"engine": {"write_watermark": 3}}"#.into(),
+            |c| c.engine.write_watermark == 3,
+        ),
+        (
+            "engine.backlog",
+            r#"{"engine": {"backlog": 3}}"#.into(),
+            |c| c.engine.backlog == 3,
+        ),
         ("listeners[].name", format!("{{{L}}}"), |c| {
             c.listeners[0].name == "web"
         }),
@@ -532,8 +585,8 @@ fn supported_fields_are_read() {
         }),
         (
             "listeners[].protocols",
-            r#"{"listeners": [{"name": "w", "address": ":1", "protocols": ["h2c"]}]}"#.into(),
-            |c| c.listeners[0].protocols == [Protocol::H2c],
+            r#"{"listeners": [{"name": "w", "address": ":1", "protocols": ["http/1.1", "h2c"]}]}"#.into(),
+            |c| c.listeners[0].protocols == [Protocol::Http11, Protocol::H2c],
         ),
         ("listeners[].tls", tls(""), |c| c.listeners[0].tls.is_some()),
         ("listeners[].tls.certificates", tls(""), |c| {
@@ -2786,7 +2839,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 62] = [
+    let objects: [(&str, &str, Option<&str>); 63] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         (
             "providers[].kubernetes",
@@ -2806,6 +2859,7 @@ fn akit_config_lists_match_the_inventory() {
         ("acme.shared_storage.etcd", "ETCD_STORAGE_FIELDS", None),
         ("acme.shared_storage.consul", "CONSUL_STORAGE_FIELDS", None),
         ("limits", "LIMITS_FIELDS", Some("LIMITS_FIT_ONLY")),
+        ("engine", "ENGINE_FIELDS", Some("ENGINE_FIT_ONLY")),
         (
             "access_log",
             "ACCESS_LOG_FIELDS",
@@ -3184,7 +3238,7 @@ fn inventory_paths_for_akit_config_paths() {
 fn findings_from_akit_config_errors() {
     let errs = akit_config::from_json(
         r#"{"listeners": [{"name": "w", "address": ":1", "mptcp": true}],
-            "routes": [{"handler": {"module": "hls"}}], "limits": {"max_conns": 10}}"#,
+            "routes": [{"handler": {"module": "hls"}}], "limits": {"max_pending_bytes": 10}}"#,
         None,
     )
     .unwrap_err();
@@ -3196,7 +3250,7 @@ fn findings_from_akit_config_errors() {
     let want: BTreeSet<String> = [
         "listeners[0].mptcp",
         "routes[0].handler<hls>",
-        "limits.max_conns",
+        "limits.max_pending_bytes",
     ]
     .iter()
     .map(|p| format!("not supported yet: {p}"))
@@ -3312,5 +3366,141 @@ fn consul_storage(c: &Config) -> &akit_config::ConsulStorage {
     match &shared_storage(c).kind {
         akit_config::SharedStorageKind::Consul(c) => c,
         other => unreachable!("{other:?}"),
+    }
+}
+
+/// The config reference (docs/reference/config.md and its Chinese twin, I78), whose tables
+/// `tools/config-reference.py` generates, against akit-config: every object akit reads has its
+/// table, each table lists every field fit's object has, a field marked read exactly when
+/// `supported.txt` (held to `model.rs` by `akit_config_lists_match_the_inventory`) marks it, every
+/// handler and middleware module is listed as `model.rs` reads or refuses it, and the extensions
+/// shown are `model.rs`'s `*_AKIT_ONLY` lists. CI's `config-reference.py --check` holds the
+/// tables to the generator; this holds them to the model.
+#[test]
+fn reference_matches_akit_config() {
+    let inventory = fields().unwrap();
+    let supported = supported().unwrap();
+    let src =
+        fs::read_to_string(compat_dir().join("../../crates/akit-config/src/model.rs")).unwrap();
+    let lists = str_lists(&src);
+    let mut extensions = BTreeSet::new();
+    for (prefix, list_name) in AKIT_ONLY {
+        for key in &lists[list_name] {
+            extensions.insert(format!("{prefix}.{key}"));
+        }
+    }
+    // The objects akit reads, each with a table: the top level, and every field read that has
+    // fields of its own (an array's items, `listeners[]`, and a module's params among them).
+    let mut objects = BTreeSet::from([String::new()]);
+    for p in &supported {
+        if p.ends_with('>') {
+            continue;
+        }
+        for obj in [p.clone(), format!("{p}[]")] {
+            if !children(&inventory, &obj).is_empty() {
+                objects.insert(obj);
+            }
+        }
+    }
+    let join = |obj: &str, key: &str| {
+        if obj.is_empty() {
+            key.to_owned()
+        } else {
+            format!("{obj}.{key}")
+        }
+    };
+    for (doc, not_yet, extension) in [
+        ("config.md", "**Not supported yet**", "**akit's extension**"),
+        ("config.zh-CN.md", "**尚不支持**", "**akit 扩展**"),
+    ] {
+        let text = fs::read_to_string(compat_dir().join("../../docs/reference").join(doc)).unwrap();
+        let mut tables = BTreeSet::new();
+        let mut read = BTreeSet::new();
+        let mut refused = BTreeSet::new();
+        let mut extended = BTreeSet::new();
+        let mut rest = text.as_str();
+        while let Some(i) = rest.find("<!-- BEGIN GENERATED: ") {
+            let after = &rest[i + "<!-- BEGIN GENERATED: ".len()..];
+            let (key, after) = after.split_once(" -->").unwrap();
+            let (block, after) = after.split_once("<!-- END GENERATED -->").unwrap();
+            rest = after;
+            let rows = block.lines().filter_map(|l| {
+                let l = l.strip_prefix("| `")?;
+                let (name, cells) = l.split_once("` |")?;
+                Some((name.to_owned(), cells.to_owned()))
+            });
+            if let Some(at) = key.strip_prefix("modules:") {
+                for (m, status) in rows {
+                    let path = format!("{at}<{m}>");
+                    assert!(
+                        inventory.iter().any(|f| f.path == path),
+                        "{doc}: module {path} is not one of fit's"
+                    );
+                    let is_read =
+                        !status.contains("**not supported yet**") && !status.contains(not_yet);
+                    assert_eq!(is_read, supported.contains(&path), "{doc}: module {path}");
+                    tables.insert(format!("modules:{at}"));
+                }
+                continue;
+            }
+            if key == "summary" || key == "extensions" {
+                continue;
+            }
+            let obj = if key == "config" { "" } else { key };
+            assert!(tables.insert(obj.to_owned()), "{doc}: two tables for {key}");
+            let mut keys = BTreeSet::new();
+            for (name, cells) in rows {
+                let path = join(obj, &name);
+                if cells.contains(extension) {
+                    extended.insert(path);
+                    continue;
+                }
+                keys.insert(name);
+                if cells.contains(not_yet) {
+                    refused.insert(path);
+                } else {
+                    read.insert(path);
+                }
+            }
+            assert_eq!(
+                keys,
+                children(&inventory, obj),
+                "{doc}: the table of {key} and fit's fields of it differ"
+            );
+        }
+        let shown: BTreeSet<String> = tables
+            .iter()
+            .filter(|t| !t.starts_with("modules:"))
+            .cloned()
+            .collect();
+        assert_eq!(
+            shown, objects,
+            "{doc}: the tables and the objects akit reads differ"
+        );
+        let fields_read: BTreeSet<String> = supported
+            .iter()
+            .filter(|p| !p.ends_with('>') && !p.ends_with(">.params"))
+            .cloned()
+            .collect();
+        assert_eq!(
+            read, fields_read,
+            "{doc}: the fields shown read and those akit reads differ"
+        );
+        for p in &refused {
+            assert!(
+                !supported.contains(p),
+                "{doc}: {p} is shown refused, and akit reads it"
+            );
+        }
+        assert_eq!(
+            extended, extensions,
+            "{doc}: the extensions shown and model.rs's differ"
+        );
+        for at in ["routes[].handler", "routes[].middleware[]"] {
+            assert!(
+                tables.contains(&format!("modules:{at}")),
+                "{doc}: no list of the modules at {at}"
+            );
+        }
     }
 }

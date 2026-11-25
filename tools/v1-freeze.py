@@ -1,0 +1,268 @@
+#!/usr/bin/env python3
+"""The v1 freeze of akit's config schema and Admin API (docs/compatibility.md, I79).
+
+tests/compat/v1/ holds what akit promises across 1.x:
+
+- config.txt: the config's surface at the freeze, one item a line, tab-separated: every field of
+  fit's schema version 1 (its path, type, whether it is required, its default), the values of its
+  enums, its deprecated (renamed) fields, the fields akit reads (`supported`), and akit's
+  extensions. Generated once, by --write-baseline, and never edited within version 1.
+- admin-api.txt: the Admin API's surface at the freeze: its endpoints (method and path), the
+  header fields and query parameters it reads and writes, and the members of the answers to a
+  change, to an error and to GET /versions. Written by hand at the freeze, never edited after;
+  akit-admin's test `v1_surface_is_frozen` holds the running API to it.
+- additions.txt: what changed since, each line marked: `added` for a compatible addition (a new
+  optional field, enum value, module, supported field, endpoint, header, member), `retired` for
+  an item a 1.x release may change under the policy (a default tightened to close a security
+  hole), with the reason in a comment above it.
+
+This tool checks the config side (and both baselines' checksums):
+
+    python3 tools/v1-freeze.py            # check: fail on any change not marked
+    python3 tools/v1-freeze.py --bless    # mark the compatible additions found as `added`
+
+--bless never marks a removal or a change of an item: those break v1 and wait for version 2.
+The baselines' SHA-256 sums are below: a change to a baseline is a new version, not a 1.x
+change, and fails the check until the sums are changed too, which review will see.
+
+Python 3.8 or later, standard library only.
+"""
+
+import argparse
+import hashlib
+import importlib.util
+import json
+import os
+import re
+import sys
+
+V1 = "tests/compat/v1"
+CONFIG = f"{V1}/config.txt"
+ADMIN = f"{V1}/admin-api.txt"
+ADDITIONS = f"{V1}/additions.txt"
+NOTES = "tools/config-reference-notes.json"
+
+# The baselines as frozen at I79. Changing either is a new version of the schema or the API.
+CONFIG_SHA256 = "65d98273d7a7ee6cc2bcb02cd016039a63c24fd4bb81168a965db973e231e5ad"
+ADMIN_SHA256 = "c702a12814dcf87ea7c491b30ea4f86b7f3bc0fe710fbe2c3890fbe2909b9340"
+
+KINDS = {
+    "config": {"field", "value", "deprecated", "supported", "extension"},
+    "admin": {"endpoint", "uncovered", "header", "query", "member"},
+}
+
+HEADER = {
+    CONFIG: [
+        "# akit's config, schema version 1, as frozen at I79 (docs/compatibility.md); written by",
+        "# python3 tools/v1-freeze.py --write-baseline and never edited within version 1: what",
+        "# changes later is marked in additions.txt. One item a line, tab-separated:",
+        "#   field <path> <type> <required|optional> <default as JSON, or ->",
+        "#   value <path> <one value of the field's enum>",
+        "#   deprecated <path>        an old name, read with a warning until version 2",
+        "#   supported <path>         a field akit reads",
+        "#   extension <path> <type> <default>   akit's own field (docs/reference/config.md)",
+    ],
+}
+
+
+def load_inventory(root):
+    # A tool's run leaves nothing behind in the tree (no __pycache__).
+    sys.dont_write_bytecode = True
+    spec = importlib.util.spec_from_file_location(
+        "compat_inventory", os.path.join(root, "tools", "compat-inventory.py")
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def config_surface(root):
+    """The config's items now: from fit's pinned schema, supported.txt and akit's extensions."""
+    inv = load_inventory(root)
+
+    class Surface(inv.Inventory):
+        def __init__(self, schema):
+            super().__init__(schema)
+            self.defaults = {}
+
+        def add(self, path, section, node, required=False):
+            super().add(path, section, node, required)
+            _, target = self.ref(node)
+            d = node.get("default", target.get("default"))
+            if d is not None:
+                self.defaults[path] = json.dumps(d, sort_keys=True, separators=(",", ":"))
+
+    with open(os.path.join(root, inv.SCHEMA), encoding="utf-8") as f:
+        schema = json.load(f)
+    s = Surface(schema)
+    rows = s.build(schema)
+    items = set()
+    for path, _, typ, flags in rows:
+        values = []
+        for m in re.finditer(r"enum\(([^)]*)\)", typ):
+            values += m.group(1).split("|")
+        typ = re.sub(r"enum\([^)]*\)", "enum", typ)
+        flags = flags.split(",")
+        req = "required" if "required" in flags else "optional"
+        items.add(("field", path, typ, req, s.defaults.get(path, "-")))
+        for v in values:
+            items.add(("value", path, v))
+        if "deprecated" in flags:
+            items.add(("deprecated", path))
+    for path in inv.read_supported(root, {r[0] for r in rows}):
+        items.add(("supported", path))
+    with open(os.path.join(root, NOTES), encoding="utf-8") as f:
+        notes = json.load(f)
+    for path, ext in notes.get("extensions", {}).items():
+        default = ext.get("default", "-").strip("`") or "-"
+        items.add(("extension", path, ext.get("type", "any"), default))
+    return items
+
+
+def read_items(root, rel, surface):
+    """The items of a baseline file; `surface` names whose kinds it may hold."""
+    out = set()
+    with open(os.path.join(root, rel), encoding="utf-8") as f:
+        for n, line in enumerate(f, 1):
+            line = line.rstrip("\n")
+            if not line or line.startswith("#"):
+                continue
+            item = tuple(line.split("\t"))
+            if item[0] not in KINDS[surface]:
+                raise SystemExit(f"{rel}:{n}: {item[0]!r} is not an item of the {surface} surface")
+            out.add(item)
+    return out
+
+
+def read_additions(root):
+    """{surface: {"added": set, "retired": set}} from additions.txt."""
+    out = {s: {"added": set(), "retired": set()} for s in KINDS}
+    path = os.path.join(root, ADDITIONS)
+    with open(path, encoding="utf-8") as f:
+        for n, line in enumerate(f, 1):
+            line = line.rstrip("\n")
+            if not line or line.startswith("#"):
+                continue
+            parts = line.split("\t")
+            if len(parts) < 3 or parts[0] not in KINDS or parts[1] not in ("added", "retired"):
+                raise SystemExit(
+                    f"{ADDITIONS}:{n}: expected <config|admin> <added|retired> <item...>: {line}"
+                )
+            item = tuple(parts[2:])
+            if item[0] not in KINDS[parts[0]]:
+                raise SystemExit(f"{ADDITIONS}:{n}: {item[0]!r} is not an item of {parts[0]}")
+            out[parts[0]][parts[1]].add(item)
+    return out
+
+
+def sha256(root, rel):
+    with open(os.path.join(root, rel), "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+
+def parent(path):
+    """The object a field's path is in: `a.b` in `a`, `a[]` in `a`, `h<m>` in `h`."""
+    for pat in (r"<[^<>]*>$", r"\.\*$", r"\[\]$", r"\.[^.<>\[\]]+$"):
+        m = re.search(pat, path)
+        if m:
+            return path[: m.start()]
+    return ""
+
+
+def compatible(item, new_paths, changed_paths):
+    """Why a new config item is not a compatible addition; None when it is one."""
+    kind = item[0]
+    if kind in ("field", "extension") and item[1] in changed_paths:
+        return "it changes what v1 promised of the field (its type, whether it is required, its default)"
+    if kind == "field":
+        _, path, _, req, _ = item
+        if req == "required" and parent(path) not in new_paths:
+            return "a required field added to an object v1 has breaks the configs that leave it out"
+    return None
+
+
+def fmt(item):
+    return "\t".join(item)
+
+
+def main():
+    here = os.path.dirname(os.path.abspath(__file__))
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("--root", default=os.path.dirname(here))
+    ap.add_argument("--bless", action="store_true", help="mark compatible additions as added")
+    ap.add_argument(
+        "--write-baseline",
+        action="store_true",
+        help="write config.txt from the current surface (the freeze itself only) and print the sums",
+    )
+    args = ap.parse_args()
+    root = args.root
+    now = config_surface(root)
+
+    if args.write_baseline:
+        lines = HEADER[CONFIG] + [fmt(i) for i in sorted(now)]
+        with open(os.path.join(root, CONFIG), "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+        print(f"CONFIG_SHA256 = \"{sha256(root, CONFIG)}\"")
+        print(f"ADMIN_SHA256 = \"{sha256(root, ADMIN)}\"")
+        return 0
+
+    problems = []
+    for rel, want in ((CONFIG, CONFIG_SHA256), (ADMIN, ADMIN_SHA256)):
+        got = sha256(root, rel)
+        if got != want:
+            problems.append(
+                f"{rel} is not the v1 baseline (sha256 {got}): a change to it is a new version "
+                f"of the schema or the API (docs/compatibility.md), not a 1.x change"
+            )
+    base = read_items(root, CONFIG, "config")
+    read_items(root, ADMIN, "admin")
+    adds = read_additions(root)
+    promised = (base | adds["config"]["added"]) - adds["config"]["retired"]
+    stale = adds["config"]["retired"] - base - adds["config"]["added"]
+    for item in sorted(stale):
+        problems.append(f"{ADDITIONS}: retired, but never promised: {fmt(item)}")
+
+    gone = sorted(promised - now)
+    new = sorted(now - promised)
+    for item in gone:
+        problems.append(
+            f"breaks v1: {fmt(item)} was promised and is gone or changed; keep it, or, where the "
+            f"policy allows it (docs/compatibility.md), mark it retired in {ADDITIONS} with why"
+        )
+    new_paths = {i[1] for i in new if i[0] == "field"}
+    changed_paths = {i[1] for i in gone if i[0] in ("field", "extension")}
+    blessable = []
+    for item in new:
+        why = compatible(item, new_paths, changed_paths)
+        if why:
+            problems.append(f"breaks v1: {fmt(item)}: {why}")
+        elif args.bless:
+            blessable.append(item)
+        else:
+            problems.append(
+                f"not marked: {fmt(item)}; a compatible addition is marked by "
+                f"python3 tools/v1-freeze.py --bless"
+            )
+    if args.bless and blessable and not problems:
+        with open(os.path.join(root, ADDITIONS), "a", encoding="utf-8") as f:
+            for item in blessable:
+                f.write(f"config\tadded\t{fmt(item)}\n")
+        print(f"v1 freeze: {len(blessable)} additions marked in {ADDITIONS}")
+    elif blessable and problems:
+        blessable = []
+        problems.append("nothing marked: the changes above break v1")
+    if problems:
+        for p in problems:
+            print(p, file=sys.stderr)
+        return 1
+    n_add = len(adds["config"]["added"]) + len(blessable)
+    print(
+        f"v1 freeze: the config's {len(base)} items of v1 kept, {n_add} additions marked; "
+        f"the Admin API's baseline kept"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

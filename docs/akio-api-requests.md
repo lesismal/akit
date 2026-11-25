@@ -28,7 +28,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | A7 | An MP4 (ISO BMFF) reader for segmenting files without transcoding | in akio's main (`a9a620ab`), pinned | — | media library |
 | A8 | TUN devices | in akio's main (`a9a620ab`), pinned | — | VPN |
 | A9 | A TLS server capped at TLS 1.2 (public `ServerConfigBuilder` API) | in akio's main (`4989cd8b`), pinned | 17 | I09 |
-| A10 | Closing an HTTP client's idle connections now | requested (I14) | 10, 11 | I14, I22 |
+| A10 | Closing an HTTP client's idle connections now | built on an akio branch (I38: `claude/a10-close-idle`, `af959290`), not on akio's main | 10, 11 | I14, I22, I38 |
 | A11 | An HTTP/1 client request that keeps its own `Host` field (and sends no `User-Agent` when given an empty one) | in akio's main (`a9a620ab`), pinned | — | I15 |
 | A12 | The HTTP client's connect timeout for a lone address too | done on akio branch `claude/akit-open-requests` (`22e038cc`, akio's ADR-154), used by akit (pin not moved yet) | 10 | I14, I35 |
 | A13 | `Files` serving a path the caller names | in akio's main (`a9a620ab`), pinned | 19 | I12, I13 |
@@ -87,7 +87,14 @@ first; its status here records the branch, then the akio commit akit pins.
 | A165 | A WebAssembly runtime for plugins: a sandboxed interpreter, its host API, WASI preview 1, a pool of instances; the response hooks Proxy-Wasm needs | in akio's main (`dad77a7a`), pinned | 1, 4, 11 | I71, I72 |
 | A166 | A response's head held while a call made elsewhere decides on it (fit's A41 from fib) | in akio's main (`dad77a7a`), pinned | 1, 4 | I72 |
 | A167 | A response body filtered by calls made elsewhere, one at a time, its trailers in the last (fit's A46 from fib) | in akio's main (`dad77a7a`), pinned | 1, 4, 5, 8 | I72 |
+| A168 | An HTTP server that serves HTTP/2 with prior knowledge alone (a listener with `h2c` and no `http/1.1`) | requested (I25) | 19 | I05, I25 |
+| A169 | Requests RFC 9112, RFC 9113 and RFC 9114 call malformed refused by akio's servers: two `Host` fields, bad bytes in HTTP/2 and HTTP/3 field names and values, a streamed body's bad framing answered 400 | built on akio branch `claude/a169-request-checks` (`813f53ea`, but the last part), not in akio's main | 15, 19 | I25 |
+| A171 | An HTTP client request's timer jobs cancelled when it ends, not held until its timeout would pass | built on akio branch `claude/a171-client-timer-cancel` (`90adec65`), not in akio's main | 11, 13 | I15, I18, I25 |
+| A172 | A TLS server that takes a ClientHello whose server name is an IP address (as no name) rather than failing the handshake | built on akio branch `claude/a172-sni-ip-literal` (`d23c9368`), not in akio's main | 19 | I09, I25 |
 | A170 | A connection's TCP counters (and unread bytes) without reaching into `Conn::inner`, and a splice that writes first through the engine's own API | done on akio branch `claude/akit-open-requests` (`22bc4402`, akio's ADR-156), used by akit (pin not moved yet) | 1, 14 | I51b |
+| A180 | akio-wasm's call made cheaper, measured against wazero (akio's W5) | requested (I76): a header-editing Go guest costs akit 14.7 µs of CPU a request, fit 6.8 µs | 13 | I71, I72, I76 |
+| A214 | A budget of the bytes queued for every connection together, which pauses every connection's reads past it (fit's `limits.max_pending_bytes`) | requested (I79) | 8, 11 | I79 |
+| A215 | A connection limit that counts the connections accepted, not those the engine dials (fit's `limits.max_conns`) | requested (I79) | 11 | I79 |
 
 ## A1 TCP listeners on a running engine
 
@@ -192,6 +199,8 @@ akit-tls sets it from the listener's `tls`.
 
 ## A10 Closing an HTTP client's idle connections
 
+**Status.** On akio's main (`0fc8f3a7`, `Client::close_idle`) and pinned.
+
 **Problem.** When a graph is retired, its upstream pools drain and close (I14, decision 004). Once
 the last request is done, the connections akio-http's `Client` keeps idle should close too, as
 fit's pool closes fib's client. akio's client has no way to close them: they close only after
@@ -209,6 +218,18 @@ connections that are in use from going back idle (each closes once its response 
 
 **How akit uses it.** `Pool::close` calls it once the pool has drained. Until then, a closed pool's
 idle connections stay open up to its `idle_timeout` (recorded in the I14 progress entry).
+
+**Seen again (I38).** The churn test: every reload that changes an upstream replaces its pool, and
+the replaced pool's idle connections stay open up to `idle_timeout`; thousands of reloads a minute
+leave thousands of upstream connections open (I38 shares an unchanged upstream's pool with the next
+graph, as fit does, which leaves only the changed ones).
+
+**Built (I38).** On akio branch `claude/a10-close-idle`, commit `af959290` (off `e79cc740`), not
+pushed or merged: `Client::close_idle` closes the idle connections now and sets the client's
+`shutting_down` flag (the engine's graceful shutdown's), so that a connection whose response is in
+closes rather than going back idle; no change on the request path. Tested by `client`'s
+`close_idle_closes_idle_connections_now` (macOS, and gpu51 epoll and io_uring). akit calls it from
+`Pool::close` once akio's main has it and akit's `rev` moves there.
 
 ## A11 A request's own `Host` field
 
@@ -1782,6 +1803,116 @@ plugin's `max_body_bytes`), the last call `proxy_on_response_trailers` with the 
 queues `proxy_on_done`, `proxy_on_log` and `proxy_on_delete`. `response: headers` registers no
 body filter, so file bodies keep `sendfile`.
 
+## A168 HTTP/2 with prior knowledge alone
+
+**Status.** Requested (I25).
+
+**Problem.** fit's listener with `protocols: [h2c]` serves HTTP/2 with prior knowledge and
+nothing else, as fit's benchmark config's port 8081 does. akio-http's server always takes
+HTTP/1.1 on a connection that does not start with HTTP/2's preface, so akit refuses such a
+listener when it starts (`not supported yet: protocols h2c without http/1.1`) and its benchmark
+config lists `http/1.1` beside `h2c`.
+
+**Evidence.** At akio `dad77a7a`: `HttpConfig` has `h2: Option<H2Config>` to turn HTTP/2 off, and
+no setting to turn HTTP/1 off; `Session` reads any connection without the preface as HTTP/1.
+
+**Suggested API.** `HttpConfig::http1: bool` (default `true`): when `false`, a connection that
+does not begin with the HTTP/2 preface is closed (or answered with a GOAWAY after the preface it
+lacks, as Go's h2c-only server does), and an `Upgrade: h2c` request is not taken either.
+
+**How akit would use it.** `akit-listener`'s `http_config` sets `http1` from whether the listener
+lists `http/1.1`, and drops its "not supported yet". `akit validate` reports the same until then
+(I25 found that it did not).
+
+## A169 Malformed requests refused by akio's servers
+
+**Status.** The first three parts on akio's main (`0fc8f3a7`) and pinned; the fourth is not built. The same-run A/B of the HTTP/2 request path that was to come before akio's main was not run before the merge: it is owed as a follow-up ([decisions waiting for review](decisions-pending.md)).
+
+**Problem.** I25's conformance suite (`crates/akit/tests/conformance.rs`) found requests akio's
+servers hand to the application although the RFCs call them malformed, so that akit's proxy sent
+them on to an HTTP/1.1 upstream:
+
+1. HTTP/1: a request with two `Host` fields was served (RFC 9112 section 3.2 asks for 400). An
+   upstream may route by the other one.
+2. HTTP/2: a field value with a NUL, CR or LF, and a field name with a byte outside a token
+   (a space, a non-ASCII byte) were accepted (RFC 9113 section 8.2.1 makes the request malformed).
+   akio's HTTP/1 client dropped the CR and LF when it wrote them upstream, and wrote the NUL.
+3. HTTP/3: the same (RFC 9114 section 4.2).
+4. HTTP/1, a streamed body: a bad chunk size after the request was dispatched closes the
+   connection without an answer; fit answers 400 (RFC 9112: "SHOULD respond with a 400").
+
+**Evidence.** At akio `dad77a7a`: `Session::on_head` keeps `host` as a bool; `h2.rs`'s
+`build_request` and trailer decoding check names for uppercase only and values not at all;
+akio-h3's `header_list` likewise; `Session`'s `State::Stream` closes on a `ChunkDecoder` error.
+
+**As built (parts 1–3).** `Session::on_head` counts `Host` fields and answers 400 to more than
+one in any version. HTTP/2's request and trailer fields: a regular name must hold only bytes in
+0x21–0x40 and 0x5B–0x7E but `:`, and every value (pseudo-header fields' too) no NUL, CR or LF,
+else the stream is reset with `PROTOCOL_ERROR`. akio-h3's request fields the same.
+
+**Suggested (part 4).** When a streamed request body's framing fails before any of the response
+was written, answer 400 and close, and tell the handler its request is gone (A38's `on_gone`), so
+it gives up its upstream exchange.
+
+**How akit uses it.** Once pinned, akit-proxy's stopgap (`Refused::BadFieldValue` and
+`Refused::TwoHosts` in `headers::outgoing`, which answer 400 in the loop that copies the fields)
+can stay as defence in depth, as fit's check of field names does, or go; with part 4 the
+conformance suite's bad chunk size case expects 400 as fit's.
+
+## A171 Client requests' timer jobs cancelled when they end
+
+**Status.** On akio's main (`0fc8f3a7`) and pinned, merged with main's panic-safe timer thread. The same-run A/B that was to come before akio's main was not run before the merge: it is owed as a follow-up ([decisions waiting for review](decisions-pending.md)).
+
+**Problem.** I25's first run measured akit's proxy at 1.8 GiB peak memory (fit 28–73 MiB, nginx
+about 200 MiB) at 230k requests a second. Memory grew by about 240 bytes a request, whatever the
+pool's bounds, and stayed after the load: `akio_http::timer::after` queues a boxed job on one
+timer thread for every client request with a `timeout` (`Client::request`) and for every h2
+stream's timeout and header and idle checks (`H2Client`), and the job stays until its delay
+passes, holding the request's `Exchange` allocation through its `Weak` (or, for an h2 request,
+its callback and stream control). With fit's 60s route timeout that is a minute of requests,
+about 14 million at that rate; with akit's default bound of an exchange, 1h, an hour of them.
+The queue is unbounded too (rule 11).
+
+**Evidence.** At akio `dad77a7a`: `timer.rs` has `after` and no way to cancel; `client.rs`'s
+exchange schedules `give_up(GaveUp::Timeout)` per request; `h2client.rs` schedules per request
+and per stream phase. On the benchmark host, akit at `9d9321e` proxying to a local backend with
+wrk at 256 connections for 10s: pinned, its RSS rose 104, 198, 306, 437, 518 MiB at 2–10s and
+stayed at 525 MiB after; with A171, 17–18 MiB throughout, and 246k requests a second against
+238k.
+
+**As built.** `timer::after` returns a key and `timer::cancel(key)` drops the job at once; an
+`Exchange` cancels its timeout's job when dropped, an h2 stream's control its pending check and
+streamed request's timeout, and a whole h2 request its timeout when its callback runs. Cancelled
+jobs' heap entries are dropped once they outnumber the live jobs (past 4096).
+
+**How akit uses it.** Nothing to change; akit's proxy, forward auth, mirrors and health probes
+all send through akio's clients with timeouts and stop holding memory per request once it is
+pinned. Until then akit's proxy grows by the requests of its route's timeout window under load.
+
+## A172 A ClientHello whose server name is an IP address
+
+**Status.** On akio's main (`0fc8f3a7`) and pinned.
+
+**Problem.** fit's benchmark harness sends its HTTPS/1.1 load with wrk to
+`https://127.0.0.1:8443/`. wrk (OpenSSL) puts the URL's host in the ClientHello's `server_name`
+even when it is an IP address, which RFC 6066 does not allow. akio-tls's server answered such a
+ClientHello with a `decode_error` alert, so every request failed: I25's first run measured
+akit at 0 requests a second over HTTPS/1.1 in every scenario (2 million connect errors each),
+while Go's, OpenSSL's and nginx's servers, and so fit, nginx and Caddy, take such a name as none.
+A host name with a trailing dot failed the same way.
+
+**Evidence.** At akio `dad77a7a`: `proto/msgs.rs`'s `parse_host_name` refuses a name that parses
+as an `IpAddr` or ends with `.`, and its unit test pins it. `openssl s_client -servername
+127.0.0.1` gets alert 50; with `-servername localhost`, and wrk to `https://localhost:...`, akit
+answers.
+
+**As built.** An IP literal as the server name is taken as no name (the handshake goes on, the
+default certificate is chosen, `server_name()` is `None`); a trailing dot is dropped; an empty or
+non-ASCII name still fails the handshake.
+
+**How akit uses it.** Nothing to change: akit's certificate choice already falls back to the
+default certificate without SNI. Once pinned, the harness's HTTPS/1.1 scenarios measure akit.
+
 **In use since I72** (`crates/akit-plugin/src/response.rs`): as above, except that the context is
 closed (done, logged, deleted) in the last call, or by a job queued when the response's hooks are
 dropped, rather than from `on_end`.
@@ -1817,3 +1948,85 @@ tunnel (the counters, the idle probe and the drain on close) as a public type in
 
 **How akit would use it.** akit-l4's `sockmap` module would call these instead of `Conn::inner`,
 and splice the connections of a listener with `proxy_protocol` too.
+
+## A180 akio-wasm's call made cheaper, measured against wazero (akio's W5)
+
+**Status.** Requested by I76 (2026-11-25), with the first numbers for akio's W5 (ADR-125 section
+8, "a performance pass against fit (wazero)", still open in akio's development plan). Nothing in
+akit waits on it: the cost is bounded and measured, and M5's criterion holds.
+
+**Problem.** A request through the `wasm` middleware costs akit about twice what it costs fit with
+the same `.wasm`. fit runs the guest on wazero's compiler; akit on akio-wasm's interpreter (no
+`unsafe`, so no compiler), and the plugin's share of a request is most of what akit spends on it.
+
+**Evidence.** The [M5 report](../bench/results/m5-report-2026-11-25.md#a-wasm-plugin-that-edits-headers):
+fit's own header-editing test plugin (`plugin/wasm/testdata/headers`, a Go `wasip1` guest of
+1.2 MB gzipped), the fixed response behind the `wasm` middleware with its defaults (7 instances, a
+queue of 1,024), fitbench on the benchmark host, 256 HTTP/1.1 connections. akit: 312,679 requests
+a second at 22.25 µs of CPU each, against 831,888 at 7.52 µs without the plugin in the same
+container, so 14.7 µs a request for the plugin. fit: 452,353 at 14.92 µs against 785,657 at 8.15
+µs, 6.8 µs. akit's peak memory with the plugin, 81 MiB, is a third of fit's 235 MiB. What akit's
+14.7 µs is made of (the hand-off to the pool and back, the request copied in, the guest's own
+instructions, the host calls) is not measured apart yet.
+
+**Suggested API.** None new: W5's pass over akio-wasm's interpreter and `InstancePool`, measured
+first apart (a guest call alone on an instance, against wazero's interpreter and compiler, as fit's
+`BenchmarkGuestCall`; the pool's hand-off and wake-up), then what the profile names: the dispatch
+loop, the per-block budget check, the host calls' argument passing, the memory bounds checks; and
+whatever makes entering a Go `wasip1` guest's export cheap to start.
+
+**How akit would use it.** As it is: `akit-plugin` runs every guest on `akio_wasm::InstancePool`;
+a cheaper call needs no change in akit, which measures it again with
+`bench/run.sh -servers akit-wasm,fit-wasm -scenarios fixed,wasm`.
+
+## A214 A budget of the bytes queued for every connection together
+
+**Status.** Requested (I79). akit refuses `limits.max_pending_bytes` as not supported yet until it
+is built; fit-examples' `limits` and `proxy` examples are refused for it alone.
+
+**Problem.** fit's `limits.max_pending_bytes` bounds the bytes of responses waiting, across every
+connection, for their clients to take them: past it, every connection stops reading until some go
+("50%" of the memory fit may use by default, a number of bytes or a share; fib's
+`Config.MaxPendingBytes`). It is what keeps many slow clients together from holding the memory
+that each one's watermark allows: 100,000 connections at a 256 KiB watermark may queue 25 GiB.
+
+**Evidence.** At akio `dad77a7a` (and `main` at `111004f8`), `akio_core::Config` has
+`write_high_watermark` (reads paused per connection) and `max_queued_bytes` (a send refused per
+connection), and the telemetry sums the bytes queued (`queued_bytes`), but nothing pauses reads on
+that sum. akio's roadmap lists an "engine-wide `max_pending_bytes`" under backpressure, and its dev
+plan checks it, but no setting of that name or meaning is in the code. akit cannot build it on top:
+it would have to hold every connection's reads from outside the I/O threads that own them, which is
+akio's job (rule 21).
+
+**Suggested API.** `Config::max_pending_bytes: Option<usize>` (default `None`, live-reloadable):
+while the bytes queued across the engine's connections are at or past it, every connection's reads
+are paused after its current read, as the watermark pauses one connection's; they resume once the
+sum is back under, say, three quarters of it. A counter of the pauses it caused beside the
+watermark's (`backpressure`), so akit's `fit_reads_paused_total{reason="budget"}` reports it, and a
+helper that turns a share of the memory into bytes (the machine's, or the cgroup's limit where
+lower), or akit computes it.
+
+**How akit would use it.** `akit-listener`'s `engine_settings` sets it from `limits.max_pending_bytes`
+(bytes, or the share of memory, "50%" by default, 256 MiB where the memory cannot be read), at
+start as fit's; `supported.txt` marks the field, `make v1-bless` marks the addition, and the gate's
+`limits` and `proxy` examples are valid.
+
+## A215 A connection limit that counts only the connections accepted
+
+**Status.** Requested (I79). akit uses `Config::max_connections` for `limits.max_conns` meanwhile,
+as the reference notes.
+
+**Problem.** fit's `limits.max_conns` bounds "the client connections the listeners keep open at
+once, across all of them". akit's upstream pools dial on the engine that serves the listeners, so
+with akio's limit a busy proxy's upstream connections take room from its clients: at the default
+100,000 and 30,000 upstream connections open, the 70,001st client is refused.
+
+**Evidence.** At akio `dad77a7a`, `Config::max_connections` counts "engine-wide, dialed
+connections and UDP peers included", though only an accepted connection is closed past it.
+
+**Suggested API.** `Config::max_accepted_connections: usize` (0, no limit, by default;
+live-reloadable as `max_connections` is): accepted TCP connections past it, across the engine's
+listeners, are closed right after `accept` and counted as `rejected`, whatever the engine dials.
+
+**How akit would use it.** `engine_settings` sets it from `limits.max_conns` in place of
+`max_connections`, and the reference's note on `limits.max_conns` goes.

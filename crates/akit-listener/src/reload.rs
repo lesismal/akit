@@ -34,7 +34,7 @@ use std::io;
 use std::net::SocketAddr;
 use std::time::Duration;
 
-use akio::{Engine, Listener as EngineListener, ListenerId, UdpBinding};
+use akio::{Engine, ListenerId, UdpBinding};
 use akit_config::{Listener, Protocol};
 use akit_runtime::{Graph, GraphCell};
 
@@ -209,7 +209,7 @@ impl Entry {
 }
 
 /// Whether a running listener configured as `running` can serve `next` as it is, as fit's
-/// `binding.same` decides (I28): the same name, address, protocols, body limit,
+/// `binding.same` decides (I28): the same name, address, protocols, body and header limits,
 /// `proxy_protocol` (I52) and `socks` rules (I55), TLS or not as `next` has it, and the same newest TLS version and client
 /// authentication mode, each fixed in its engine listener. Its certificates may differ, their files and its ACME names: a kept
 /// listener's manager serves `next`'s per handshake (I30). Its client authorities are compared
@@ -219,6 +219,7 @@ fn same(running: &Listener, next: &Listener) -> bool {
         && running.address == next.address
         && running.protocols == next.protocols
         && running.max_body_bytes == next.max_body_bytes
+        && running.max_header_bytes == next.max_header_bytes
         && running.proxy_protocol == next.proxy_protocol
         && running.socks == next.socks
         && match (&running.tls, &next.tls) {
@@ -275,6 +276,9 @@ pub struct Listeners {
     opts: Options,
     entries: Vec<Entry>,
     view: ServedView,
+    /// The `engine.event_loops` akit started with (I79): the I/O threads of a listener a reload
+    /// adds, as of those it started with.
+    event_loops: usize,
 }
 
 impl fmt::Debug for Listeners {
@@ -318,12 +322,14 @@ impl Listeners {
                 config,
             })
             .collect();
+        let event_loops = cell.with(|g| g.engine_config().event_loops);
         let l = Listeners {
             engine,
             cell,
             opts: opts.clone(),
             entries,
             view: ServedView::default(),
+            event_loops,
         };
         l.view.set(l.served());
         l
@@ -439,7 +445,7 @@ impl Listeners {
                 &self.cell,
                 l,
                 tls,
-                EngineListener::tcp(addr).backend(self.opts.backend.clone()),
+                crate::tcp_engine_listener(addr, &self.opts.backend, self.event_loops),
                 h3_port,
             )
         };

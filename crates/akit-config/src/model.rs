@@ -48,6 +48,13 @@ pub struct Config {
     /// `providers`: sources of config other than the files and the Admin API (I57, I58), merged
     /// into it. Read when akit starts: a change takes a restart, as in fit.
     pub providers: Vec<crate::providers::Provider>,
+    /// `engine` (I79): how akio's engine that serves the listeners is set up; akio's defaults
+    /// for what it leaves out. Read when akit starts: a change takes a restart, as in fit.
+    pub engine: Engine,
+    /// What the config was read with that is said rather than refused (I79): the old names of
+    /// fields renamed in schema version 1, each at its file, line, column and path. Not part of
+    /// what the config means: configs equal but for these are equal.
+    pub warnings: crate::error::Warnings,
 }
 
 /// fit's default `acme.directory`: Let's Encrypt's.
@@ -234,8 +241,17 @@ pub const DEFAULT_MAX_BODY_BYTES: u64 = 16 << 20;
 /// fit's default `limits.write_stall_timeout`: 30s.
 pub const DEFAULT_WRITE_STALL_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// `limits`, as fit's `config.Limits`: so far `max_body_bytes` and `write_stall_timeout`; its
-/// other fields are refused as not supported yet.
+/// fit's default `limits.max_header_bytes`: 1 MiB.
+pub const DEFAULT_MAX_HEADER_BYTES: u64 = 1 << 20;
+
+/// fit's default `limits.max_conns`: the client connections open at once, across every listener.
+pub const DEFAULT_LIMITS_MAX_CONNS: u64 = 100_000;
+
+/// fit's default `limits.max_write_queue_bytes`: 32 MiB.
+pub const DEFAULT_MAX_WRITE_QUEUE_BYTES: u64 = 32 << 20;
+
+/// `limits`, as fit's `config.Limits`: every field but `max_pending_bytes`, which waits for akio
+/// (akio API request A214) and is refused as not supported yet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Limits {
     /// `max_body_bytes`: the largest request body a listener takes, whether it arrives whole or
@@ -246,6 +262,19 @@ pub struct Limits {
     /// it was sent before the client loses it. [`DEFAULT_WRITE_STALL_TIMEOUT`] when left out or
     /// 0. A reload applies it to the connections already open too.
     pub write_stall_timeout: Duration,
+    /// `max_header_bytes` (I79): the largest request header a listener takes; a larger one gets
+    /// 431. [`DEFAULT_MAX_HEADER_BYTES`] when left out or 0. Fixed in each listener's binding,
+    /// as `max_body_bytes` ([`Listener::max_header_bytes`]).
+    pub max_header_bytes: u64,
+    /// `max_conns` (I79): the most client connections the listeners keep open at once, across
+    /// all of them; one past it is closed as soon as it is accepted.
+    /// [`DEFAULT_LIMITS_MAX_CONNS`] when left out or 0. Takes effect at start, not on a reload.
+    pub max_conns: u64,
+    /// `max_write_queue_bytes` (I79): the bytes one connection may have queued for its client
+    /// before akit refuses it more, the bound on a peer that stops reading.
+    /// [`DEFAULT_MAX_WRITE_QUEUE_BYTES`] when left out or 0. Takes effect at start, not on a
+    /// reload.
+    pub max_write_queue_bytes: u64,
 }
 
 impl Default for Limits {
@@ -253,8 +282,47 @@ impl Default for Limits {
         Limits {
             max_body_bytes: DEFAULT_MAX_BODY_BYTES,
             write_stall_timeout: DEFAULT_WRITE_STALL_TIMEOUT,
+            max_header_bytes: DEFAULT_MAX_HEADER_BYTES,
+            max_conns: DEFAULT_LIMITS_MAX_CONNS,
+            max_write_queue_bytes: DEFAULT_MAX_WRITE_QUEUE_BYTES,
         }
     }
+}
+
+/// The most `engine.event_loops`, as fit's schema bounds it.
+pub const MAX_EVENT_LOOPS: usize = 1024;
+
+/// The most `engine.read_buffer_size`, as fit's schema bounds it: 64 MiB.
+pub const MAX_READ_BUFFER_SIZE: usize = 64 << 20;
+
+/// `engine`, as fit's `config.Engine` (I79, [decision 028]): how the engine that serves the
+/// listeners is set up, read onto akio's. Every field is 0 when left out, which keeps akio's
+/// default. `loop_wait`, `poll_batch` and `kernel_tls_offload` are refused as not supported
+/// yet. Read when akit starts: a change takes a restart, as in fit.
+///
+/// [decision 028]: https://github.com/lesismal/akit/blob/main/docs/decisions/028-engine-on-akio.md
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Engine {
+    /// `event_loops`: the I/O threads each listener's connections are served on (akio's
+    /// `Listener::threads`); one a core when 0.
+    pub event_loops: usize,
+    /// `workers`: the most threads of akio's logical pool, which runs the work that may block
+    /// (`PoolConfig::max_threads`); akio's default when 0.
+    pub workers: usize,
+    /// `min_workers`: the pool's threads kept when idle (`PoolConfig::min_threads`); none when 0.
+    pub min_workers: usize,
+    /// `task_queue`: the jobs the pool holds waiting for a thread (`PoolConfig::queue_capacity`);
+    /// akio's default when 0.
+    pub task_queue: usize,
+    /// `read_buffer_size`: the bytes a connection reads at a time (akio's `Config::read_buffer`);
+    /// 64 KiB when 0.
+    pub read_buffer_size: usize,
+    /// `write_watermark`: the bytes a connection may have waiting to be written before it stops
+    /// reading until they drain (akio's `Config::write_high_watermark`); akio's 256 KiB when 0.
+    pub write_watermark: usize,
+    /// `backlog`: the length of each listening socket's queue of connections not yet accepted
+    /// (akio's `Config::backlog`); akio's 1024 when 0.
+    pub backlog: usize,
 }
 
 /// `access_log`: where and how a line is written for each request, as fit's `config.AccessLog`.
@@ -721,6 +789,9 @@ pub struct Listener {
     /// The config's `limits.max_body_bytes`, which fit fixes in each listener's binding: a
     /// reload that changes it changes every listener, as fit's `binding.same` compares it.
     pub max_body_bytes: u64,
+    /// The config's `limits.max_header_bytes` (I79), fixed in each listener's binding as
+    /// `max_body_bytes` is.
+    pub max_header_bytes: u64,
     /// When not 0, the HTTPS port every request this listener in the clear takes is redirected
     /// to with a 308, but for ACME's HTTP-01 challenges; it serves no routes. Only the listener
     /// HTTPS by default makes (`auto_https`, I33) has one; 0 for every listener written.
@@ -1876,11 +1947,11 @@ const CONFIG_FIELDS: &[&str] = &[
     "services",
     "telemetry",
     "providers",
+    "engine",
 ];
 const CONFIG_FIT_ONLY: &[&str] = &[
     "log",
     "access",
-    "engine",
     "pprof",
     "llm",
     "tunnel",
@@ -1914,13 +1985,27 @@ const ADMIN_FIT_ONLY: &[&str] = &[
     "cluster_member",
     "access",
 ];
-const LIMITS_FIELDS: &[&str] = &["max_body_bytes", "write_stall_timeout"];
-const LIMITS_FIT_ONLY: &[&str] = &[
-    "max_pending_bytes",
+// I79: every field but max_pending_bytes, a budget across connections akio has not (A214).
+const LIMITS_FIELDS: &[&str] = &[
+    "max_body_bytes",
+    "write_stall_timeout",
     "max_header_bytes",
     "max_conns",
     "max_write_queue_bytes",
 ];
+const LIMITS_FIT_ONLY: &[&str] = &["max_pending_bytes"];
+// I79: engine, read onto akio's engine (decision 028). How fib's event loops wait and how many
+// events a wait collects have no akio setting; kernel TLS offload waits for akio's kTLS.
+const ENGINE_FIELDS: &[&str] = &[
+    "event_loops",
+    "workers",
+    "min_workers",
+    "task_queue",
+    "read_buffer_size",
+    "write_watermark",
+    "backlog",
+];
+const ENGINE_FIT_ONLY: &[&str] = &["poll_batch", "loop_wait", "kernel_tls_offload"];
 const ACCESS_LOG_FIELDS: &[&str] = &[
     "output",
     "flush_interval",
@@ -2263,6 +2348,8 @@ pub(crate) struct Part {
     auto_https: Option<((crate::AutoHttps, usize), usize)>,
     /// `telemetry`, with the position of its key, when the file gives it.
     telemetry: Option<(Telemetry, usize)>,
+    /// `engine`, with the position of its key, when the file gives it.
+    engine: Option<(Engine, usize)>,
     providers: Vec<At<crate::providers::Provider>>,
     /// The position of the file's top object.
     doc_off: usize,
@@ -2335,6 +2422,9 @@ pub(crate) fn part(d: &mut Decoder<'_>, n: &Node, file: usize) -> Option<Part> {
     let telemetry = o
         .take("telemetry")
         .and_then(|v| telemetry(d, v, "telemetry").map(|t| (t, v.off)));
+    let engine = o
+        .take("engine")
+        .and_then(|v| engine(d, v, "engine").map(|e| (e, v.off)));
     let providers = o
         .take("providers")
         .map(|v| {
@@ -2358,6 +2448,7 @@ pub(crate) fn part(d: &mut Decoder<'_>, n: &Node, file: usize) -> Option<Part> {
         acme,
         auto_https,
         telemetry,
+        engine,
         providers,
         doc_off,
     })
@@ -2384,6 +2475,7 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
     let mut acme: Option<(Acme, usize)> = None;
     let mut auto_https: Option<((crate::AutoHttps, usize), usize)> = None;
     let mut telemetry: Option<(Telemetry, usize)> = None;
+    let mut engine: Option<(Engine, usize)> = None;
     let mut providers = Vec::new();
     for (file, p) in parts.into_iter().enumerate() {
         first_doc.get_or_insert((file, p.doc_off));
@@ -2504,6 +2596,9 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
         if let Some((t, off)) = p.telemetry {
             once(ds, &mut telemetry, t, file, off, "telemetry");
         }
+        if let Some((e, off)) = p.engine {
+            once(ds, &mut engine, e, file, off, "engine");
+        }
         listeners.extend(p.listeners);
         routes.extend(p.routes);
         upstreams.extend(p.upstreams);
@@ -2542,6 +2637,7 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
             .into_iter()
             .map(|l| Listener {
                 max_body_bytes: limits.max_body_bytes,
+                max_header_bytes: limits.max_header_bytes,
                 ..l
             })
             .collect(),
@@ -2556,6 +2652,8 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
         services: services.into_iter().map(|a| a.v).collect(),
         telemetry: telemetry.map(|(t, _)| t),
         providers: providers.into_iter().map(|a| a.v).collect(),
+        engine: engine.map(|(e, _)| e).unwrap_or_default(),
+        warnings: crate::error::Warnings::default(),
     }
 }
 
@@ -3180,6 +3278,11 @@ fn listener(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Listener> {
                 at,
                 "h2c is HTTP/2 in the clear, which a listener with tls does not serve; use h2",
             ),
+            // fit serves HTTP/2 alone then; akio's server always takes HTTP/1.1 as well (akio
+            // API request A168). `akit run` refused it already; `validate` says so too (I25).
+            Protocol::H2c if !protocols.iter().any(|(_, _, p)| *p == Protocol::Http11) => {
+                d.not_yet(*off, at, "protocols h2c without http/1.1");
+            }
             Protocol::Udp if protocols.len() > 1 => d.error(
                 *off,
                 at,
@@ -3243,6 +3346,7 @@ fn listener(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Listener> {
         tls,
         // Set from the config's limits once the files are merged.
         max_body_bytes: DEFAULT_MAX_BODY_BYTES,
+        max_header_bytes: DEFAULT_MAX_HEADER_BYTES,
         redirect_https: 0,
         proxy_protocol,
         socks,
@@ -3461,8 +3565,58 @@ fn limits(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Limits> {
             l.write_stall_timeout = t;
         }
     }
+    // fit's ints, at least 0; 0 is the default.
+    for (key, slot) in [
+        ("max_header_bytes", &mut l.max_header_bytes),
+        ("max_conns", &mut l.max_conns),
+        ("max_write_queue_bytes", &mut l.max_write_queue_bytes),
+    ] {
+        if let Some(v) = o.take(key) {
+            if let Some(n) = d
+                .int(v, &o.at(key), 0, i64::MAX)
+                .and_then(|n| u64::try_from(n).ok())
+                .filter(|n| *n != 0)
+            {
+                *slot = n;
+            }
+        }
+    }
     o.finish(d, LIMITS_FIELDS, LIMITS_FIT_ONLY);
     Some(l)
+}
+
+/// `engine`, as fit's `config.Engine`: each field at least 0, `event_loops` at most
+/// [`MAX_EVENT_LOOPS`] and `read_buffer_size` at most [`MAX_READ_BUFFER_SIZE`], as fit's schema
+/// bounds them; 0 keeps the default.
+fn engine(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Engine> {
+    let mut o = d.object(n, path)?;
+    let mut e = Engine::default();
+    let mut ok = true;
+    for (key, max, slot) in [
+        ("event_loops", MAX_EVENT_LOOPS, &mut e.event_loops),
+        ("workers", usize::MAX, &mut e.workers),
+        ("min_workers", usize::MAX, &mut e.min_workers),
+        ("task_queue", usize::MAX, &mut e.task_queue),
+        (
+            "read_buffer_size",
+            MAX_READ_BUFFER_SIZE,
+            &mut e.read_buffer_size,
+        ),
+        ("write_watermark", usize::MAX, &mut e.write_watermark),
+        ("backlog", usize::MAX, &mut e.backlog),
+    ] {
+        let Some(v) = o.take(key) else { continue };
+        let max = i64::try_from(max).unwrap_or(i64::MAX);
+        match d
+            .int(v, &o.at(key), 0, max)
+            .and_then(|n| usize::try_from(n).ok())
+        {
+            Some(n) => *slot = n,
+            None => ok = false,
+        }
+    }
+    o.finish(d, ENGINE_FIELDS, ENGINE_FIT_ONLY);
+    ok.then_some(e)
 }
 
 fn tls(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Tls> {
@@ -4361,12 +4515,21 @@ pub(crate) fn size_field_at(
     old: &str,
     ok: &mut bool,
 ) -> Option<(u64, usize, String)> {
+    let old_off = o.key_off(old).unwrap_or(o.off);
     let new = o.take(key).map(|v| (v, o.at(key)));
     let was = o.take(old).map(|v| (v, o.at(old)));
-    if let (Some(_), Some((v, at))) = (&new, &was) {
-        d.error(v.off, at, format!("renamed {key:?}, which is also given"));
+    // At the old name's key, as fit's decoder reports both (config/decode.go).
+    if let (Some(_), Some((_, at))) = (&new, &was) {
+        d.error(
+            old_off,
+            at,
+            format!("{old:?} is the old name of {key:?}; give only {key:?}"),
+        );
         *ok = false;
         return None;
+    }
+    if let (None, Some((_, at))) = (&new, &was) {
+        d.renamed(old_off, at, key);
     }
     let (v, at) = new.or(was)?;
     match d
@@ -4436,16 +4599,22 @@ fn compress(d: &mut Decoder<'_>, params: Option<&Node>, path: &str) -> Option<Co
     c.gzip_level = compress_level(d, &mut o, "gzip_level", 9, named[0], &mut ok);
     c.brotli_level = compress_level(d, &mut o, "brotli_level", 11, named[1], &mut ok);
     c.zstd_level = compress_level(d, &mut o, "zstd_level", 22, named[2], &mut ok);
+    let new_name = o.has("min_bytes");
+    if let Some(off) = o.key_off("min_length") {
+        if new_name {
+            // fit's message, at the old name's key (config/decode.go).
+            d.error(
+                off,
+                &o.at("min_length"),
+                "\"min_length\" is the old name of \"min_bytes\"; give only \"min_bytes\"",
+            );
+            ok = false;
+        } else {
+            d.renamed(off, &o.at("min_length"), "min_bytes");
+        }
+    }
     let min_bytes = positive(d, &mut o, "min_bytes", 0, &mut ok);
     let min_length = positive(d, &mut o, "min_length", 0, &mut ok);
-    if let (Some(_), Some(_)) = (min_bytes, min_length) {
-        d.error(
-            n.off,
-            &o.at("min_length"),
-            "renamed \"min_bytes\", which is also given",
-        );
-        ok = false;
-    }
     if let Some(m) = min_bytes.or(min_length) {
         c.min_bytes = m;
     }
@@ -4783,16 +4952,20 @@ fn jwt(d: &mut Decoder<'_>, params: Option<&Node>, off: usize, path: &str) -> Op
     }
     let mut jwks_refresh_interval = DEFAULT_JWKS_REFRESH_INTERVAL;
     let new_name = o.has("jwks_refresh_interval");
+    let old_off = o.key_off("jwks_refresh").unwrap_or(o.off);
     for key in ["jwks_refresh_interval", "jwks_refresh"] {
         let Some(v) = o.take(key) else { continue };
         if key == "jwks_refresh" && new_name {
             d.error(
-                v.off,
+                old_off,
                 &o.at(key),
                 "\"jwks_refresh\" is the old name of \"jwks_refresh_interval\"; give only \"jwks_refresh_interval\"",
             );
             ok = false;
             continue;
+        }
+        if key == "jwks_refresh" {
+            d.renamed(old_off, &o.at(key), "jwks_refresh_interval");
         }
         match d.duration(v, &o.at(key)) {
             Some(t) if !t.is_zero() => jwks_refresh_interval = t,

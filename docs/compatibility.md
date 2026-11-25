@@ -1,19 +1,189 @@
-# fit config compatibility
+# Compatibility
 
 [English](compatibility.md) | [简体中文](compatibility.zh-CN.md)
 
+From 1.0, akit keeps what it promises here: a config that loads keeps loading, and a client of the
+Admin API keeps working, across every 1.x release. akit's v1 is fit's v1: the same config schema,
+version 1, and the same Admin API, v1, for what akit serves of them
+([fit's policy](https://github.com/lesismal/fit/blob/main/docs/compatibility.md)). What changes in
+a way that could break them waits for a new version of the config schema or of the Admin API, and
+comes with a way over.
+
 akit reads fit's config ([decision 002](decisions/002-config-compatibility.md)): the same fields,
 defaults and meanings, in the same three formats. A field akit does not support yet is refused by
-name, "not supported yet: `<path>`", never read and ignored. This page says how that is checked,
-and lists every field of fit's config with whether akit supports it. The list shrinks milestone
-by milestone.
+name, "not supported yet: `<path>`", never read and ignored. The second half of this page says how
+that is checked against fit's templates and examples, and lists every field of fit's config with
+whether akit supports it. The list shrinks milestone by milestone.
 
+- [v1: what stays stable](#v1-what-stays-stable)
+  - [What is covered](#what-is-covered)
+  - [What a 1.x release may do](#what-a-1x-release-may-do)
+  - [The schema's version](#the-schemas-version)
+  - [Renamed fields and deprecations](#renamed-fields-and-deprecations)
+  - [The Admin API, v1](#the-admin-api-v1)
+  - [A new version](#a-new-version)
+  - [How the freeze is checked](#how-the-freeze-is-checked)
 - [The gate](#the-gate)
 - [Reading a result](#reading-a-result)
 - [Refreshing the fixtures](#refreshing-the-fixtures)
 - [Supporting a field](#supporting-a-field)
 - [akit's extensions](#akits-extensions)
 - [The fields](#the-fields)
+
+## v1: what stays stable
+
+### What is covered
+
+| Surface | Version | What it is |
+| --- | --- | --- |
+| The config | schema version 1 | Every field of fit's schema version 1 (the pinned [`fit.schema.json`](../tests/compat/fixtures/fit/schema/fit.schema.json)), the handlers' and middleware's params included: its name, its type, what it means, and its default; and akit's [extensions](#akits-extensions). A field akit reads stays read; one it refuses as not supported yet may become read. `.conf`, YAML and JSON are the same config written three ways. |
+| The Admin API | v1 | Its paths and methods, the bodies they take and give, their status codes, the header fields `ETag`, `If-Match`, `If-None-Match`, `Fit-Config-Version` and `Fit-Dry-Run`, the bearer token, and `?dry_run` ([below](#the-admin-api-v1)). |
+| The command line | 1 | The commands `run`, `validate`, `adapt`, `fmt`, `build` and `version`, their flags, and their exit codes, as fit's. |
+| Metrics | 1 | The names, types and labels of the metrics `/metrics` serves and OTLP exports, fit's, all starting `fit_`. |
+| The access log | 1 | The fields of its JSON lines, fit's. |
+
+Not covered:
+
+- What akit writes for people rather than programs: messages, warnings, the dashboard,
+  `akit adapt`'s output beyond its being a valid config, and the text of errors (their JSON shape
+  is covered).
+- The host functions of WASM plugins (the `fit` import module) and fit's subset of Proxy-Wasm,
+  which are experimental in fit's 1.0 too; the `wasm` middleware's config is covered.
+- The nginx and Caddyfile converters' coverage, which only grows.
+- The Rust API of akit's crates, which modules built with `akit build` use: in 1.0 it may change in
+  any release (fit covers its Go `module` packages; akit does not yet).
+- Performance.
+
+### What a 1.x release may do
+
+- Add config fields, modules, providers and enum values; a field added is optional, and leaving it
+  out keeps the behavior of the release before. Read a field it refused as not supported yet.
+- Add Admin API paths, optional request fields, response fields and response fields' values. A
+  client should ignore fields it does not know.
+- Add metrics, and labels to metrics that had none of that name.
+- Add commands and flags.
+- Tighten a default limit, or change a default, only to close a security hole or a resource that
+  was unbounded; the release notes say so.
+- Rename a field ([below](#renamed-fields-and-deprecations)).
+- Fix behavior that contradicts the docs, fit's behavior, or an RFC akit claims to follow.
+
+A config that a 1.x release refuses, because it was wrong before and went unnoticed (two fields
+that cannot go together, a value out of range), is a bug fix; the release notes list each.
+
+### The schema's version
+
+A config may say which version of the schema it is written for:
+
+```json
+{"schema_version": 1, "listeners": [{"name": "web", "address": ":8080"}], "routes": [{"handler": {"module": "respond"}}]}
+```
+
+It is optional, and a config that leaves it out is read as version 1. akit reads version 1 and
+refuses a config that says another (`schema_version: 2 is greater than the maximum 1`) rather than
+read it wrongly, as fit does.
+
+### Renamed fields and deprecations
+
+A field renamed within a version keeps its old name until the next one. A config that uses the old
+name loads as before, and akit says where, in fit's words:
+
+```text
+fit.json:12:40: routes[0].middleware[0].params.max_size: deprecated: renamed "max_bytes", which takes the same value; the old name goes in config version 2
+```
+
+`akit validate` and `akit run` print it, at the old name's line and column in the file (`.conf`
+and YAML too), both at start and on each reload, and the Admin API returns it in the `warnings` of a
+change's answer. fit's schema keeps the old name, marked `deprecated`. A config may not give both
+names (`"max_size" is the old name of "max_bytes"; give only "max_bytes"`).
+
+These were renamed for fit's 1.0, so that every size in bytes ends in `_bytes` and every period in
+`_interval`, and akit reads both names of each:
+
+| Module | Old name | Name |
+| --- | --- | --- |
+| `cache` | `max_size` | `max_bytes` |
+| `cache` | `max_entry_size` | `max_entry_bytes` |
+| `cache` | `disk.max_size` | `disk.max_bytes` |
+| `compress` | `min_length` | `min_bytes` |
+| `jwt` | `jwks_refresh` | `jwks_refresh_interval` |
+| `wasm` | `max_memory` | `max_memory_bytes` |
+
+fit's seventh, the tunnel's `quic_pin` (now `pin`), belongs to a part akit does not run yet.
+
+A deprecation is how anything leaves v1: the field, value or endpoint stays and works as before,
+warned of where a warning can be given, for the rest of the major version; it goes only in the next
+version of the schema or the API, which says so in its list of changes.
+
+### The Admin API, v1
+
+| Method and path | What it does |
+| --- | --- |
+| `GET`, `HEAD` `/config`, `/config/{path...}` | The running config as it was written, or the part at a path |
+| `PUT`, `PATCH`, `DELETE` on `/config` and `/config/{path...}` | Replace, merge patch (RFC 7396) or delete the config or the part at a path, and apply the result |
+| `POST /load` | Apply a whole config |
+| `GET`, `HEAD` `/config/effective` | The config merged with what providers provide, and where each part came from |
+| `GET`, `HEAD` `/versions`, `/versions/{n}` | The configs applied and kept, and one of them |
+| `POST /rollback/{n}` | Apply a kept config again, as a new version |
+| `POST /reload` | Apply the running config again, as a new version |
+| `GET`, `HEAD` `/status` | The listeners, connections, upstreams and their health, and certificates |
+| `GET`, `HEAD` `/metrics` | Metrics in Prometheus's text format |
+| `GET`, `HEAD` `/cache`, `POST /cache/purge` | The cache's zones, and purges by URL, URL prefix, tag or zone |
+| `GET /dashboard/` | The dashboard, for people (not covered) |
+
+A path in the config is a JSON pointer's tokens. A change answers with the version applied, in the
+body (`version`) and in `Fit-Config-Version`, and with the config's `ETag`; a change sent with
+`If-Match` is applied only to the config that ETag names, and is answered 412 otherwise; one sent
+with `?dry_run=1` is checked, not applied, and answered with `Fit-Dry-Run: 1`. A config that does
+not load is answered 400 with `{"error": ..., "errors": [{"path", "line", "column", "message"}]}`.
+These are fit's names, so that fit's clients work with akit unchanged.
+
+fit's v1 has more endpoints, for the parts akit does not run yet: the link tokens of the tunnel's
+and the LLM roles (`/tokens`), the media libraries and the workbench's media pages (`/media/...`)
+and the streaming role (`/streaming/...`). akit answers them 404 until it runs those parts, and adds
+them then, as fit has them, a compatible addition.
+
+A v2 of the Admin API, if one is needed, would be served under `/v2/` beside v1's paths, which would
+stay for the rest of akit's major version.
+
+### A new version
+
+A change that cannot keep old configs or clients working waits for a new schema or Admin API
+version, fit's first, which comes with:
+
+- a list of every change, and why;
+- for the config, `akit adapt`, which rewrites a config of the version before into the new one,
+  and the new akit reading the version before, with warnings, for at least one release;
+- for the Admin API, the version before served beside the new one for the rest of the major
+  version.
+
+### How the freeze is checked
+
+[tests/compat/v1](../tests/compat/v1) holds the v1 surface as it was frozen (I79), and what changed
+since:
+
+- `config.txt`, the config's: every field of fit's schema version 1 with its type, whether it is
+  required and its default, the values of its enums, its deprecated names, the fields akit reads,
+  and akit's extensions, one item a line;
+- `admin-api.txt`, the Admin API's: its endpoints, header fields, query parameter, and the members
+  of the answers to a change, to an error and to `GET /versions`;
+- `additions.txt`: each change since, marked `added` (a compatible addition) or `retired` (an item
+  a 1.x release changed under this policy, with why).
+
+Two checks fail on any change not marked, in CI and in `make check`:
+
+- `tools/v1-freeze.py` (CI's lint job, `make compat-check`) builds the config's surface from fit's
+  pinned schema, [`supported.txt`](../tests/compat/supported.txt) and the extensions, and compares
+  it with the baseline and the additions. A field read for the first time, or a field fit added when
+  the pin moves, is an addition: `make v1-bless` marks it, and refuses to mark anything while a
+  change breaks v1 (a field gone, its type, default or requiredness changed, a required field added
+  to an object v1 has, a field akit read refused again).
+- `v1_surface_is_frozen` (akit-admin's tests, CI's test jobs) runs the Admin API and probes it:
+  every endpoint frozen is served, no other method of a frozen path is, the paths the dispatcher
+  names are frozen, and the header fields and the answers' members are those frozen. A new one is
+  marked in `additions.txt` by hand, as the failing test prints it.
+
+The baselines themselves are never edited within v1: `tools/v1-freeze.py` holds their SHA-256
+sums, and a change to either is a new version.
 
 ## The gate
 
@@ -157,6 +327,15 @@ languages of this page. Three tests then hold the mark to the code:
   `supported.txt` marks. A new list in `model.rs` is mapped to its inventory path in this test.
 - the gate, whose report changes as the field stops being refused (`make compat-bless`).
 
+The same commit regenerates the [config reference](reference/config.md)'s tables with
+`python3 tools/config-reference.py` (`make reference`), which moves the field from not supported yet
+to read; a note on how akit reads it differently from fit goes in `tools/config-reference-notes.json`.
+`reference_matches_akit_config` (in the same file) fails while the reference's tables and
+akit-config's lists disagree, and CI's `config-reference.py --check` while the tables are not what
+the generator writes. A new extension is listed there too, with its decision. The same commit marks
+the field read as an addition since the v1 freeze with `make v1-bless`
+([how the freeze is checked](#how-the-freeze-is-checked)).
+
 ## akit's extensions
 
 A few fields are akit's own, for what akio can do and fib cannot; each has a decision note, which
@@ -190,7 +369,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 417 supported.
+3821 fields in 121 sections, at fit `7daee573`; 428 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -200,7 +379,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`admin`](#fields-admin) | 105 | 7 | 98 |
 | [`auto_https`](#fields-auto-https) | 5 | 5 | 0 |
 | [`bittorrent`](#fields-bittorrent) | 160 | 0 | 160 |
-| [`engine`](#fields-engine) | 11 | 0 | 11 |
+| [`engine`](#fields-engine) | 11 | 8 | 3 |
 | [`http.handlers/bt_publish`](#fields-http-handlers-bt-publish) | 3 | 0 | 3 |
 | [`http.handlers/bt_stream`](#fields-http-handlers-bt-stream) | 14 | 0 | 14 |
 | [`http.handlers/bt_tracker`](#fields-http-handlers-bt-tracker) | 2 | 0 | 2 |
@@ -235,7 +414,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`http.middleware/redirect`](#fields-http-middleware-redirect) | 5 | 5 | 0 |
 | [`http.middleware/rewrite`](#fields-http-middleware-rewrite) | 6 | 6 | 0 |
 | [`http.middleware/wasm`](#fields-http-middleware-wasm) | 18 | 18 | 0 |
-| [`limits`](#fields-limits) | 7 | 3 | 4 |
+| [`limits`](#fields-limits) | 7 | 6 | 1 |
 | [`listeners`](#fields-listeners) | 30 | 23 | 7 |
 | [`llm`](#fields-llm) | 218 | 0 | 218 |
 | [`log`](#fields-log) | 24 | 0 | 24 |
@@ -315,7 +494,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 417 | 3404 |
+| **Total** | 3821 | 428 | 3393 |
 
 <a id="fields-access"></a>
 
@@ -697,17 +876,17 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `engine` | `object` | not supported yet |
-| `engine.backlog` | `integer` | not supported yet |
-| `engine.event_loops` | `integer` | not supported yet |
+| `engine` | `object` | supported |
+| `engine.backlog` | `integer` | supported |
+| `engine.event_loops` | `integer` | supported |
 | `engine.kernel_tls_offload` | `boolean` | not supported yet |
 | `engine.loop_wait` | `enum(park\|block)` | not supported yet |
-| `engine.min_workers` | `integer` | not supported yet |
+| `engine.min_workers` | `integer` | supported |
 | `engine.poll_batch` | `integer` | not supported yet |
-| `engine.read_buffer_size` | `integer` | not supported yet |
-| `engine.task_queue` | `integer` | not supported yet |
-| `engine.workers` | `integer` | not supported yet |
-| `engine.write_watermark` | `integer` | not supported yet |
+| `engine.read_buffer_size` | `integer` | supported |
+| `engine.task_queue` | `integer` | supported |
+| `engine.workers` | `integer` | supported |
+| `engine.write_watermark` | `integer` | supported |
 
 <a id="fields-http-handlers-bt-publish"></a>
 
@@ -1280,10 +1459,10 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | --- | --- | --- |
 | `limits` | `object` | supported |
 | `limits.max_body_bytes` | `integer` | supported |
-| `limits.max_conns` | `integer` | not supported yet |
-| `limits.max_header_bytes` | `integer` | not supported yet |
+| `limits.max_conns` | `integer` | supported |
+| `limits.max_header_bytes` | `integer` | supported |
 | `limits.max_pending_bytes` | `bytes\|percent` | not supported yet |
-| `limits.max_write_queue_bytes` | `integer` | not supported yet |
+| `limits.max_write_queue_bytes` | `integer` | supported |
 | `limits.write_stall_timeout` | `duration` | supported |
 
 <a id="fields-listeners"></a>
