@@ -192,6 +192,19 @@ pub(crate) enum Refused {
     /// A field name that is not a token: RFC 9112 asks a server to refuse it, and an upstream
     /// could read it differently (fit answers 400).
     BadFieldName,
+    /// A field value with a NUL, CR or LF: RFC 9113 section 8.2.1 and RFC 9114 section 4.2 make
+    /// such a request malformed, and on HTTP/1.1 it would be another request's bytes or a field
+    /// an upstream reads differently. akio's HTTP/1 parser refuses it already; its HTTP/2 server
+    /// lets it through until akio API request A169 is pinned.
+    BadFieldValue,
+    /// More than one `Host` field: RFC 9112 section 3.2 asks for 400, and an upstream could
+    /// route by the other one. A stopgap until akio API request A169 is pinned.
+    TwoHosts,
+}
+
+/// Whether a field value holds a byte no HTTP version lets one carry: NUL, CR or LF.
+fn bad_value(v: &str) -> bool {
+    v.bytes().any(|b| matches!(b, 0 | b'\r' | b'\n'))
 }
 
 /// The fields of the upstream's request for the client's `c`: `Host` first, the client's own
@@ -225,9 +238,19 @@ pub(crate) fn outgoing(
     let (mut kept_proto, mut kept_host) = (false, false);
     let mut user_agent = false;
     let connection = || c.headers.get_all("connection");
+    let mut host = false;
     for (name, value) in c.headers.iter() {
         if !valid_token(name) {
             return Err(Refused::BadFieldName);
+        }
+        if bad_value(value) {
+            return Err(Refused::BadFieldValue);
+        }
+        if name.len() == 4 && name.eq_ignore_ascii_case("host") {
+            if host {
+                return Err(Refused::TwoHosts);
+            }
+            host = true;
         }
         let field = request_field(name);
         if field == Field::Drop
@@ -504,6 +527,40 @@ mod tests {
         };
         assert_eq!(outgoing(&c, &[], "").err(), Some(Refused::BadFieldName));
         assert!(!valid_token(""));
+    }
+
+    /// A field value with a NUL, CR or LF, and a second `Host`, are refused (I25's conformance
+    /// suite, until akio API request A169 is pinned).
+    #[test]
+    fn refused_field_values_and_two_hosts() {
+        for (fields, want) in [
+            (
+                &[("Host", "a"), ("X-A", "a\0b")][..],
+                Refused::BadFieldValue,
+            ),
+            (&[("Host", "a"), ("X-A", "a\rb")], Refused::BadFieldValue),
+            (&[("Host", "a"), ("X-A", "a\nb")], Refused::BadFieldValue),
+            (&[("Host", "a\0")], Refused::BadFieldValue),
+            (&[("Host", "a"), ("host", "b")], Refused::TwoHosts),
+        ] {
+            let h = headers(fields);
+            let c = Client {
+                headers: &h,
+                peer: "127.0.0.1:1".parse().unwrap(),
+                tls: false,
+                traceparent: None,
+            };
+            assert_eq!(outgoing(&c, &[], "").err(), Some(want), "{fields:?}");
+        }
+        // A tab and other bytes a value may hold pass.
+        let h = headers(&[("Host", "a"), ("X-A", "a\tb c\u{e9}")]);
+        let c = Client {
+            headers: &h,
+            peer: "127.0.0.1:1".parse().unwrap(),
+            tls: false,
+            traceparent: None,
+        };
+        assert!(outgoing(&c, &[], "").is_ok());
     }
 
     /// fit's `TestFramedRequestHeader`, on the fields alone.

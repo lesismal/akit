@@ -37,16 +37,19 @@ starts a run of akit at `main` (a git ref, or `work` for the working tree), with
 Traefik and fit, and returns its id. `bench/run.sh -report ID` fetches it into
 `bench/results/ID` and prints fit's benchreport tables; `-wait ID` waits for it first. Options,
 passed to fitbench: `-servers` (`nginx,caddy,traefik,fit,akit`), `-scenarios`
-(`fixed,static,proxy`), `-protocols` (`http/1.1,h2c,https/1.1,h2`), `-idle` (`http1,tls`), and `-args` for any
+(`fixed,static,proxy`), `-protocols` (`http/1.1,h2c,https/1.1,h2`), `-idle` (`http1,tls,ws`), and `-args` for any
 other fitbench flag, as `-args '-duration 15s -warmup 5s'`.
 
 The defaults are what akit serves so far: the fixed, static and proxy scenarios (static since I12,
 from fitbench's files mounted at `/srv/www` as for fit; the proxy since I15, to fitbench's
-backend) over HTTP/1.1, h2c, HTTPS/1.1 and h2 (TLS since I09), and idle HTTP/1.1 and TLS
-connections. The other servers run every scenario they serve; akit's other scenarios are recorded
-as skipped ("akit cannot serve it") until the iterations that build them: HTTP/3 in I10, the cache
-in I69. Each adds what it
-serves to `fitbench/akit.go` and `configs/akit/fit.json`, and the protocols to the defaults.
+backend) over HTTP/1.1, h2c, HTTPS/1.1 and h2 (TLS since I09), and idle HTTP/1.1, TLS and
+WebSocket connections (WebSockets since I25, proxied to fitbench's WebSocket backend as fit's
+route `ws`). The other servers run every scenario they serve; akit's other scenarios (HTTP/3 and
+the cache, which akit has built since I10 and I67–I69 but whose harness routes are not written
+yet) are recorded as skipped ("akit cannot serve it"). Each iteration adds what it serves to
+`fitbench/akit.go` and `configs/akit/fit.json`, and the protocols to the defaults. For memory at
+100k idle connections, as fit's M1 report: `-scenarios fixed -protocols http/1.1 -idle http1,tls
+-args '-idle-connections 100000'`.
 
 ## Comparing two builds
 

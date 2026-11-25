@@ -33,14 +33,16 @@ bench/run.sh main
 启动一次运行：`main` 处的 akit（git ref，或代表工作区的 `work`），以及 nginx、Caddy、Traefik 和 fit，并返回其 id。
 `bench/run.sh -report ID` 把它取回到 `bench/results/ID` 并打印 fit 的 benchreport 表格；`-wait ID` 先等它结束。选项
 传给 fitbench：`-servers`（`nginx,caddy,traefik,fit,akit`）、`-scenarios`（`fixed,static,proxy`）、`-protocols`
-（`http/1.1,h2c,https/1.1,h2`）、`-idle`（`http1,tls`），以及用于其他 fitbench 参数的 `-args`，例如
+（`http/1.1,h2c,https/1.1,h2`）、`-idle`（`http1,tls,ws`），以及用于其他 fitbench 参数的 `-args`，例如
 `-args '-duration 15s -warmup 5s'`。
 
 默认值是 akit 目前能提供的：HTTP/1.1、h2c、HTTPS/1.1 和 h2（TLS 自 I09 起）上的 fixed、static 和 proxy 场景（static
 自 I12 起，与 fit 一样从挂载在 `/srv/www` 的 fitbench 文件提供；proxy 自 I15 起，转发到 fitbench 的后端），以及空闲的
-HTTP/1.1 和 TLS 连接。其他服务器运行它们能提供的所有场景；akit 的其他场景在实现它们的迭代之前记为跳过
-（"akit cannot serve it"）：HTTP/3 在 I10，缓存在 I69。每个迭代把它新提供的内容加到 `fitbench/akit.go` 和 `configs/akit/fit.json`，并把
-协议加入默认值。
+HTTP/1.1、TLS 和 WebSocket 连接（WebSocket 自 I25 起，与 fit 的路由 `ws` 一样代理到 fitbench 的 WebSocket 后端）。其他服务器
+运行它们能提供的所有场景；akit 的其他场景（HTTP/3 和缓存：akit 自 I10 和 I67–I69 起已实现，但其 harness 路由还没写）记为跳过
+（"akit cannot serve it"）。每个迭代把它新提供的内容加到 `fitbench/akit.go` 和 `configs/akit/fit.json`，并把协议加入默认值。
+测 10 万空闲连接的内存（与 fit 的 M1 报告一样）：`-scenarios fixed -protocols http/1.1 -idle http1,tls
+-args '-idle-connections 100000'`。
 
 ## 对比两个构建
 
