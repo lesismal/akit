@@ -1039,7 +1039,8 @@ fn noise(n: usize) -> Vec<u8> {
 }
 
 /// The `compress` middleware in front of the `static` handler: a file kept in memory is
-/// compressed whole; one sent from disk goes as it is (akio API request A92).
+/// compressed whole; one sent from disk is compressed as it is read (akio ADR-124), as fit's
+/// middleware compresses whatever the handler writes.
 #[test]
 fn compress_static_files() {
     let small = js(20_000);
@@ -1068,9 +1069,16 @@ fn compress_static_files() {
         );
         assert!(g.body == small.as_bytes());
         assert!(g.etag.starts_with("W/"), "{client:?}: {}", g.etag);
-        let g = fetch(client, akit.addr, Method::Get, "/big.js", "gzip");
-        assert_eq!(g.encoding, "", "{client:?}: from disk");
-        assert_eq!(g.body.len(), 50_000);
+        for coding in ["gzip", "br", "zstd"] {
+            let g = fetch(client, akit.addr, Method::Get, "/big.js", coding);
+            assert_eq!(g.encoding, coding, "{client:?}: from disk");
+            assert!(g.body == js(50_000).as_bytes(), "{client:?} {coding}");
+            assert!(g.etag.starts_with("W/"), "{client:?}: {}", g.etag);
+        }
+        // HEAD: the head alone.
+        let h = fetch(client, akit.addr, Method::Head, "/big.js", "gzip");
+        assert_eq!(h.vary, "Accept-Encoding", "{client:?}");
+        assert!(h.body.is_empty());
     }
     drop(akit);
     let _ = std::fs::remove_dir_all(&dir);

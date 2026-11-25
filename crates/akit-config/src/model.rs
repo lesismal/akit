@@ -1509,21 +1509,25 @@ pub struct Respond {
     pub body: String,
 }
 
-/// The `static` handler's params, as fit's `handler/static`. akit reads the ones akio-http's
-/// `Files` can act on; the rest are refused as not supported yet (akio API requests A14 and A15
-/// bring them).
+/// The `static` handler's params, as fit's `handler/static`; `disk_io` `auto` is refused as not
+/// supported yet (akit looks at the disk on akio's file pool only).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Static {
     /// `root`: the directory files are served from. Required; that it is a directory is checked
     /// when the handler is provisioned, as fit's.
     pub root: String,
-    /// `index`: the file that stands for a directory. fit takes a list, tried in order,
-    /// `["index.html"]` when left out; akit takes one name so far (a list of other than one is
-    /// refused as not supported yet, akio API request A14).
-    pub index: String,
+    /// `index`: the files that stand for a directory, tried in order; `["index.html"]` when left
+    /// out, and none for `[]`.
+    pub index: Vec<String>,
     /// `max_file_bytes`: the largest file kept in memory, [`DEFAULT_MAX_FILE_BYTES`] when left
     /// out or 0. Larger ones are sent from disk.
     pub max_file_bytes: u64,
+    /// `max_cache_bytes`: how many bytes of files are kept in memory at most,
+    /// [`DEFAULT_MAX_CACHE_BYTES`] when left out or 0.
+    pub max_cache_bytes: u64,
+    /// `default_type`: the `Content-Type` of a file whose extension gives none; when left out,
+    /// such a file's type is sniffed from its first 512 bytes.
+    pub default_type: Option<String>,
     /// `dotfiles`: whether paths with a segment starting with a dot are served.
     pub dotfiles: Dotfiles,
     /// `check_interval`: how long what was learned of a file is trusted before the disk is
@@ -1602,6 +1606,9 @@ fn hides_dotfile(path: &str) -> bool {
 
 /// fit's default `max_file_bytes`: 1 MiB.
 pub const DEFAULT_MAX_FILE_BYTES: u64 = 1 << 20;
+
+/// fit's default `max_cache_bytes`: 64 MiB.
+pub const DEFAULT_MAX_CACHE_BYTES: u64 = 64 << 20;
 /// fit's default `browse_max_entries`.
 pub const DEFAULT_BROWSE_MAX_ENTRIES: usize = 10_000;
 /// fit's default `check_interval`.
@@ -2087,6 +2094,8 @@ const STATIC_FIELDS: &[&str] = &[
     "root",
     "index",
     "max_file_bytes",
+    "max_cache_bytes",
+    "default_type",
     "dotfiles",
     "disk_io",
     "check_interval",
@@ -2097,8 +2106,7 @@ const STATIC_FIELDS: &[&str] = &[
     "strip_prefix",
     "try_files",
 ];
-// max_cache_bytes and default_type wait on akio API requests A15 and A14.
-const STATIC_FIT_ONLY: &[&str] = &["max_cache_bytes", "default_type"];
+const STATIC_FIT_ONLY: &[&str] = &[];
 /// The fields of a `fastcgi` handler's params (I75), read in `fastcgi.rs`.
 pub(crate) const FASTCGI_FIELDS: &[&str] = &[
     "address",
@@ -4963,7 +4971,7 @@ fn static_files(
             }
         }
     };
-    let mut index = String::from("index.html");
+    let mut index = vec![String::from("index.html")];
     if let Some(v) = o.take("index") {
         let p = o.at("index");
         let names = d.strings(v, &p);
@@ -4981,16 +4989,9 @@ fn static_files(
                 );
             }
         }
-        match names.as_slice() {
-            [(_, name)] => index.clone_from(name),
-            // An array of strings with a problem was reported already.
-            _ if !matches!(&v.kind, crate::json::Kind::Array(_)) => {}
-            [] => d.not_yet(v.off, &p, "an empty index list, which serves no index file"),
-            _ => d.not_yet(
-                v.off,
-                &p,
-                "an index list of more than one name, tried in order",
-            ),
+        // An array of strings with a problem was reported already.
+        if matches!(&v.kind, crate::json::Kind::Array(_)) {
+            index = names.into_iter().map(|(_, n)| n).collect();
         }
     }
     let max_file_bytes = o
@@ -4999,6 +5000,22 @@ fn static_files(
         .and_then(|n| u64::try_from(n).ok())
         .filter(|n| *n != 0)
         .unwrap_or(DEFAULT_MAX_FILE_BYTES);
+    let max_cache_bytes = o
+        .take("max_cache_bytes")
+        .and_then(|v| d.int(v, &o.at("max_cache_bytes"), 0, i64::MAX))
+        .and_then(|n| u64::try_from(n).ok())
+        .filter(|n| *n != 0)
+        .unwrap_or(DEFAULT_MAX_CACHE_BYTES);
+    let mut default_type = None;
+    if let Some(v) = o.take("default_type") {
+        let p = o.at("default_type");
+        if let Some(t) = d.string(v, &p).filter(|t| !t.is_empty()) {
+            match media_type_problem(&t) {
+                Some(why) => d.error(v.off, &p, format!("{t:?} is not a media type: {why}")),
+                None => default_type = Some(t),
+            }
+        }
+    }
     if let Some(v) = o.take("disk_io") {
         // akit looks at the disk on akio's file pool only (rules.md rule 4): "pool", fit's
         // default. fit's "auto" looks at it on the worker serving the request.
@@ -5091,6 +5108,8 @@ fn static_files(
         root: root?,
         index,
         max_file_bytes,
+        max_cache_bytes,
+        default_type,
         dotfiles,
         check_interval,
         precompressed,
@@ -5100,6 +5119,35 @@ fn static_files(
         browse,
         browse_max_entries,
     })
+}
+
+/// Why `t` is not a media type as Go's `mime.ParseMediaType` reads one (`type/subtype`, then
+/// `; name=value` parameters), in its words; `None` when it is one.
+fn media_type_problem(t: &str) -> Option<&'static str> {
+    let token = |s: &str| {
+        !s.is_empty()
+            && s.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&b))
+    };
+    let mut parts = t.split(';');
+    let base = parts.next().unwrap_or("").trim();
+    match base.split_once('/') {
+        Some((a, b)) if token(a) && token(b) => {}
+        Some(_) => return Some("expected token after slash"),
+        None if token(base) => return Some("expected slash after first token"),
+        None => return Some("no media type"),
+    }
+    for param in parts {
+        let param = param.trim();
+        if param.is_empty() {
+            continue;
+        }
+        match param.split_once('=') {
+            Some((k, v)) if token(k.trim()) && !v.trim().is_empty() => {}
+            _ => return Some("invalid media parameter"),
+        }
+    }
+    None
 }
 
 /// The `proxy` handler's params, with fit's checks and messages (its `Provision`), but for the

@@ -40,7 +40,8 @@
 //!   ([`ListenerTls::get`]); until then, and for other names, the certificates from files. A
 //!   listener that lists names offers [`ACME_TLS_ALPN`] last in ALPN, so that only a client
 //!   offering it alone, as a CA checking a TLS-ALPN-01 challenge does, negotiates it, and gets the
-//!   challenge's certificate.
+//!   challenge's certificate; such a connection is closed once its handshake is done, and nothing
+//!   it sends is served, as fit's.
 //! - **OCSP stapling** (I32, [`Ocsp`]): the responses of the certificates ACME obtains, and of
 //!   the certificates from files that name a responder, fetched off the I/O threads and stapled
 //!   (see [`ocsp`](crate::ocsp) for which files' are).
@@ -611,6 +612,9 @@ impl ListenerTls {
         let build = |alpn: Vec<&str>, tls13_only: bool| {
             let mut b = ServerConfig::builder_with_resolver(manager.clone())
                 .alpn(alpn)
+                // A connection that negotiates acme-tls/1 is for its handshake alone: closed
+                // once it is done, serving nothing (fit's; akio ADR-123).
+                .handshake_only_alpn([ACME_TLS_ALPN])
                 .session_tickets(true);
             if let Some(t) = self.acme.as_ref().and_then(|a| a.on_demand) {
                 // A handshake waits for its certificate on demand (akio's ADR-098): both
@@ -805,6 +809,78 @@ mod tests {
         // Not offered when acme.challenges leaves TLS-ALPN-01 out.
         let (a, t) = acme_tls(vec![Challenge::Http01]);
         assert_eq!(t.alpn, ["h2", "http/1.1"]);
+        a.close();
+    }
+
+    /// fit's listener closes a connection that negotiated acme-tls/1 once its handshake is
+    /// done (fib serves no HTTP on it): the CA gets the challenge's certificate, and a request
+    /// sent after it is never served (akio ADR-123).
+    #[test]
+    fn acme_tls_connections_serve_nothing() {
+        use akio::tls::stream::Stream;
+        use akio::tls::{ClientConfig, Tls as AkioTls};
+        use akit_config::Challenge;
+        use std::io::{Read, Write};
+        let (a, t) = acme_tls(vec![Challenge::TlsAlpn01]);
+        let challenge =
+            acme::alpn_cert("a.akit.test", "token.thumb").unwrap_or_else(|e| panic!("{e}"));
+        a.set_alpn("a.akit.test", Some(challenge.clone()));
+        let cfg = t
+            .server_configs(Arc::new(t.clone()))
+            .unwrap_or_else(|e| panic!("{e}"))
+            .tcp;
+        let app = akio_http::Router::new().get("/", |ctx: &mut akio_http::Context| {
+            ctx.text(200, "served");
+        });
+        let backend = match std::env::var("AKIO_TEST_BACKEND").as_deref() {
+            Ok("uring") => akio::Backend::IoUring(akio::UringConfig::default()),
+            _ => akio::Backend::Epoll,
+        };
+        let engine = akio::Engine::builder()
+            .listen(
+                akio::Listener::tcp("127.0.0.1:0".parse().unwrap_or_else(|e| panic!("{e}")))
+                    .backend(backend)
+                    .threads(1)
+                    .serve(AkioTls::server(cfg, akio_http::serve(app))),
+            )
+            .build()
+            .unwrap_or_else(|e| panic!("{e}"));
+        engine.start().unwrap_or_else(|e| panic!("{e}"));
+        let addr = engine.local_addrs()[0];
+        let talk = |alpn: &str| {
+            let c = ClientConfig::builder()
+                .insecure_skip_verify()
+                .alpn([alpn])
+                .build()
+                .unwrap_or_else(|e| panic!("{e}"));
+            let tcp = std::net::TcpStream::connect(addr).unwrap_or_else(|e| panic!("{e}"));
+            tcp.set_read_timeout(Some(std::time::Duration::from_secs(5)))
+                .unwrap_or_else(|e| panic!("{e}"));
+            let mut s = Stream::client(&c, "a.akit.test", tcp).unwrap_or_else(|e| panic!("{e}"));
+            s.handshake().unwrap_or_else(|e| panic!("{alpn}: {e}"));
+            let leaf = s.conn().peer_certificates().first().cloned();
+            let _ =
+                s.write_all(b"GET / HTTP/1.1\r\nHost: a.akit.test\r\nConnection: close\r\n\r\n");
+            let _ = s.flush();
+            let mut got = Vec::new();
+            let mut b = [0u8; 1024];
+            loop {
+                match s.read(&mut b) {
+                    Ok(0) => break,
+                    Ok(n) => got.extend_from_slice(&b[..n]),
+                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        panic!("{alpn}: the connection was left open")
+                    }
+                    Err(_) => break,
+                }
+            }
+            (leaf, String::from_utf8_lossy(&got).into_owned())
+        };
+        let (leaf, got) = talk(ACME_TLS_ALPN);
+        assert_eq!(leaf.as_deref(), challenge.chain_der().next());
+        assert!(got.is_empty(), "served {got:?}");
+        engine.shutdown();
+        engine.wait();
         a.close();
     }
 

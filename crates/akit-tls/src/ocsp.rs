@@ -21,10 +21,9 @@
 //! - **Certificates from files** may have been written from what someone else gave, so their
 //!   responders are asked only when their chain verifies against the roots
 //!   [`trust_roots`](Ocsp::trust_roots) gives, and only at a public address (unless those roots
-//!   allow private ones), over `http`, dialled at the address checked. fit checks them against
-//!   the system's roots by default; akio-tls does not expose those to a verification outside a
-//!   handshake yet (akio API request A57), so until then a certificate from files is stapled only
-//!   under roots given.
+//!   allow private ones), over `http`, dialled at the address checked. Without roots given, the
+//!   system's are trusted (akio-tls's `RootCerts::system`, read once, on the stapler's thread),
+//!   as fit's `x509.SystemCertPool` is, with public addresses only.
 
 use std::collections::HashMap;
 use std::fmt;
@@ -609,17 +608,24 @@ impl Ocsp {
         }
     }
 
-    /// Checks that a certificate from files chains to the trusted roots, for any use.
+    /// Checks that a certificate from files chains to the trusted roots, for any use: those
+    /// [`trust_roots`](Ocsp::trust_roots) gave, else the system's. Runs on the stapler's thread.
     fn verify(&self, e: &Entry) -> Result<(), Failure> {
         let trust = lock(&self.inner.trust).clone();
-        let Some((roots, _)) = trust else {
-            return Err(Failure::Unverified(
-                "a certificate from files, and no roots its chain must verify against are \
-                 trusted (the system's are not yet: akio API request A57)"
-                    .into(),
-            ));
+        let system;
+        let roots: &RootStore = match &trust {
+            Some((roots, _)) => roots,
+            None => {
+                system = akio::tls::RootCerts::system().map_err(|err| {
+                    Failure::Unverified(format!(
+                        "a certificate from files, and the system's roots its chain must verify \
+                         against cannot be read ({err})"
+                    ))
+                })?;
+                system.store()
+            }
         };
-        Verifier::new(&roots)
+        Verifier::new(roots)
             .usage(Usage::Any)
             .verify(&e.leaf, &e.intermediates, None)
             .map(drop)

@@ -31,8 +31,8 @@
 | A11 | HTTP/1 客户端请求保留自己的 `Host` 字段（给定空 `User-Agent` 时不发送 `User-Agent`） | 已在 akio 的 main（`a9a620ab`），已锁定 | — | I15 |
 | A12 | HTTP 客户端的连接超时也作用于单个地址 | 已提出（I14） | 10 | I14、I35 |
 | A13 | `Files` 服务调用者给出的路径 | 已在 akio 的 main（`a9a620ab`），已锁定 | 19 | I12、I13 |
-| A14 | `Files` 像网关的静态文件 handler 那样应答 | 已提出（I12） | 19 | I12、I13 |
-| A15 | `Files` 的内存有界，磁盘池有超时 | 已提出（I12） | 4、11 | I12 |
+| A14 | `Files` 像网关的静态文件 handler 那样应答 | 已在 akio 的 main（`4989cd8b`），已锁定 | 19 | I12、I13 |
+| A15 | `Files` 的内存有界，磁盘池有超时 | 已在 akio 的 main（`4989cd8b`），已锁定 | 4、11 | I12 |
 | A16 | `Files` 在配置的编码中按客户端的 q 值选择压缩副本 | 已在 akio 的 main（`a9a620ab`），已锁定 | 19 | I13 |
 | A17 | `Files` 依次尝试候选路径（`try_files`） | 已在 akio 的 main（`a9a620ab`），已锁定 | 19 | I13 |
 | A18 | `Files` 列出没有索引文件的目录 | 已在 akio 的 main（`a9a620ab`），已锁定 | 4、11、19 | I13 |
@@ -57,8 +57,8 @@
 | A52 | `H2Client` 按流的背压：暂停流式响应的读取，报告上传队列 | 已在 akio 的 main（`f6750e93`，ADR-110），已锁定，I18b 已使用 | 8 | I18b、I50 |
 | A53 | `H2Client` 的连接：遵守并报告服务器的流数上限、连接超时、ALPN 回退到 HTTP/1.1 | 已在 akio 的 main（`f6750e93`，ADR-110），已锁定，I18b 已使用 | 10、11 | I18b、I54 |
 | A54 | 空闲的 HTTP/1 连接在宽限期后排空，而非立即关闭 | 已提出（I28） | 10 | I28 |
-| A57 | 握手之外可用的根证书：用系统的根证书校验证书链 | 已提出（I32） | 1、19 | I32 |
-| A58 | HTTP 服务能看到 TLS 连接协商出的 ALPN 协议（或关闭这样的连接） | 已提出（I32） | 19 | I32、I34 |
+| A57 | 握手之外可用的根证书：用系统的根证书校验证书链 | 已在 akio 的 main（`4989cd8b`），已锁定 | 1、19 | I32 |
+| A58 | HTTP 服务能看到 TLS 连接协商出的 ALPN 协议（或关闭这样的连接） | 已在 akio 的 main（`4989cd8b`），已锁定 | 19 | I32、I34 |
 | A63 | `akio-crypto` 中的 bcrypt 密码哈希 | 已在 akio 的 main（`4f7169c4`），已锁定 | 1、4 | I42 |
 | A64 | 每个服务端请求上的客户端已验证证书 | 已在 akio 的 main（`4f7169c4`），已锁定 | — | I42 |
 | A65 | 由中间件挂起、之后带着上下文恢复的请求 | 已在 akio 的 main（`4f7169c4`），已锁定 | 1、3、4 | I42、I43 |
@@ -68,7 +68,7 @@
 | A79 | 带各自连接超时的 `Engine::dial` 与 `dial_udp` | 已提出（I51） | 10 | I51、I54、I55 |
 | A90 | 由调用方自己的响应过滤器设置流式响应的编码，以及保留到响应发出为止的值 | 已在 akio 的 main（`c5cf4353`），已锁定 | 8、11 | I47 |
 | A91 | `Files` 为内存中的文件保存压缩副本 | 已在 akio 的 main（`c5cf4353`），已锁定 | 4、12 | I47 |
-| A92 | 从磁盘文件发送的消息体按流编码压缩 | 已提出（I47） | 1、5 | I47 |
+| A92 | 从磁盘文件发送的消息体按流编码压缩 | 已在 akio 的 main（`4989cd8b`），已锁定 | 1、5 | I47 |
 | A93 | HTTP/1 客户端在 `101 Switching Protocols` 时交出连接 | 已在 akio 的 main（`c5cf4353`），已锁定 | 8、9 | I49、I55 |
 | A94 | 对 HTTP/2 扩展 CONNECT 的流式 `2xx` 应答即两半各自关闭的隧道 | 已在 akio 的 main（`c5cf4353`），已锁定 | 9 | I49 |
 | A105 | 请求的对端是受信任 PROXY 头所指的客户端（akio-http） | 已在 akio 的 main（`e9891b52`），已锁定 | 19 | I52 |
@@ -277,6 +277,13 @@ io_uring）上通过。akit 的 I15 用到这两点；相关测试在 akit 的�
 在此之前，这些差异记录在 I12 的进度条目中，它的测试检查 akit 目前的回答并注明本请求，多于或少于一个名字的 `index`
 列表和 `default_type` 被拒绝为尚不支持。
 
+**已完成**（akio ADR-124，在 akio 的分支 `claude/a57-a58-a14-a15-a92` 的 `7d1b1670`，尚未合并，
+已锁定）：`Files::index_files`、`redirect_directories`、`mime_types`（`MimeTypes::system`，Go 的表加系统的
+`mime.types`）、`default_type`、`sniff`（Go 的 `DetectContentType`）、`error_response` 与
+`serve_prefixed`；不可读的文件回 403，不是普通文件的（从不打开）以及带尾斜杠请求的文件回 404，允许 `:`。
+akit 的 `static` handler 接受 fit 的 `index` 列表与 `default_type`，像 fit 一样重定向，回答 fit 的简短正文，
+并以完整路径为 `strip_prefix` 之下的目录列表命名。
+
 ## A15 `Files` 的内存有界，磁盘池有超时
 
 **问题。** fit 在内存中最多保存 `max_cache_bytes`（默认 64 MiB）的文件，在文件池中等待超过池超时的请求答 503，
@@ -294,6 +301,11 @@ io_uring）上通过。akit 的 I15 用到这两点；相关测试在 akit 的�
 **akit 的用法。** `static` handler 设置 fit 的 `max_cache_bytes`（及其默认值）和池超时；在此之前
 `max_cache_bytes` 被拒绝为尚不支持，`Files` 占用的内存只受根目录下不超过 `max_file_bytes` 的文件总量限制（记录在
 I12 的进度条目中）。
+
+**已完成**（akio ADR-124，分支 `claude/a57-a58-a14-a15-a92` 的 `7d1b1670`，已锁定）：
+`Files::max_cache_bytes`（默认 64 MiB，计入孪生文件与压缩副本，CLOCK 淘汰）与 `Files::disk_timeout`
+（超时回 503 并带 `Retry-After`）。akit 的 `static` handler 接受 fit 的 `max_cache_bytes`，在文件池上最多
+等待 fit 的 10 秒。
 
 ## A16 在配置的编码中按 q 值选择压缩副本
 
@@ -853,6 +865,10 @@ ADR-010 与 ADR-059：macOS 上读钥匙串，其他系统读发行版的证书�
 默认的做法一样；运维给出的根证书（`Ocsp::trust_roots`）仍然是替代。在此之前，来自文件的证书只在给出根证书时装订，
 所以 `akit run` 为 ACME 的证书装订、不为文件中的证书装订（I32 进展记录中的临时方案）。
 
+**已完成**（akio ADR-123，分支 `claude/a57-a58-a14-a15-a92` 的 `7d1b1670`，已锁定）：
+`RootCerts::store()` 与 `From<RootCerts> for RootStore`。akit 的 `Ocsp` 在没有给出根证书（`trust_roots`）时，
+对系统根证书验证来自文件的证书，与 fit 相同。
+
 ## A58 HTTP 服务能看到 TLS 连接协商出的 ALPN 协议
 
 **问题。** 通过 TLS-ALPN-01 获取证书的监听器在 ALPN 中把 `acme-tls/1` 放在最后（RFC 8737），这样只有单独提供它的、
@@ -869,6 +885,10 @@ ADR-010 与 ADR-059：macOS 上读钥匙串，其他系统读发行版的证书�
 
 **akit 的用法。** 分发器不作应答地关闭 ALPN 为 `acme-tls/1` 的连接（或由 akio 关闭），和 fit 的监听器一样；目前它
 被当作 HTTP/1.1 服务。
+
+**已完成**（akio ADR-123，分支 `claude/a57-a58-a14-a15-a92` 的 `7d1b1670`，已锁定），作为 TLS 设置
+`ServerConfigBuilder::handshake_only_alpn`：协商到 `acme-tls/1` 的连接在握手完成后关闭，它发送的内容都不会
+被处理。akit 的 TLS 监听器设置了它。
 
 ## A63 bcrypt 密码哈希
 
@@ -1055,6 +1075,10 @@ ADR-112）上实现，尚未合并。未做：把副本计入缓存的内存上�
 
 **akit 的用法。** `compress` 中间件像对流式消息体一样给文件消息体设置编码。在此之前，来自磁盘的消息体不压缩，进度
 文件把它列为与 fit 的差异。
+
+**已完成**（akio ADR-124，分支 `claude/a57-a58-a14-a15-a92` 的 `7d1b1670`，已锁定）：响应过滤器设置了
+流编码的文件消息体，在磁盘池上以 64 KiB 分片读取、编码并写出，受连接的背压控制。akit 的 `compress` 中间件
+也压缩从磁盘发送的消息体。
 
 ## A93 HTTP/1 客户端在 `101` 时交出连接
 

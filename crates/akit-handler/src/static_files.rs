@@ -27,14 +27,21 @@
 //! prefix or a path that was not canonical. With `deny`, `Files::hide` passes over `try_files`
 //! candidates that such a segment names, as fit's handler does.
 //!
-//! Where `Files` differs from fit's handler, and the akio API requests that will close the gap,
-//! `docs/progress.md` says (I12, I13).
+//! `Files` also answers as fit's handler (akio ADR-124): `index` tried in order, a directory
+//! asked for without its slash redirected (but with `try_files`), a file asked for with one 404,
+//! 403 for a file that may not be read, only regular files opened, Go's content types (the
+//! system's `mime.types` included) with `default_type` or else the type sniffed from the first
+//! 512 bytes, fit's short error bodies, listings and redirects naming the whole path below
+//! `strip_prefix`, at most `max_cache_bytes` kept in memory, and a request the file pool has not
+//! answered within fit's 10 s answered 503.
+//!
+//! Where `Files` still differs from fit's handler, `docs/progress.md` says (I12, I13).
 
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use akio_http::files::Files;
+use akio_http::files::{Files, MimeTypes};
 use akio_http::{Context, Method, Response};
 use akit_config::Dotfiles;
 use akit_runtime::{
@@ -78,10 +85,11 @@ impl akio_http::Service for Static {
                 self.files.call(ctx);
             }
             Scan::Hidden | Scan::Plain => {
-                // The path is borrowed from the request, which `Files::serve` takes alongside it:
-                // a copy, for a handler with a prefix or a path that was not canonical only.
+                // The path is borrowed from the request, which `Files::serve_prefixed` takes
+                // alongside it: a copy, for a handler with a prefix or a path that was not
+                // canonical only. Listings and redirects name the whole canonical path.
                 let rest = path.to_owned();
-                self.files.serve(ctx, &rest);
+                self.files.serve_prefixed(ctx, &self.strip_prefix, &rest);
             }
         }
     }
@@ -126,8 +134,19 @@ fn files(root: PathBuf, s: &akit_config::Static) -> Files {
     let twins: Vec<&str> = s.precompressed.iter().map(|e| e.name()).collect();
     let copies: Vec<&str> = s.compress.iter().map(|e| e.name()).collect();
     let tries: Vec<&str> = s.try_files.iter().flatten().map(String::as_str).collect();
+    let index: Vec<&str> = s.index.iter().map(String::as_str).collect();
     let mut files = Files::new(root)
-        .index(&s.index)
+        .index_files(&index)
+        // fit redirects a directory asked for without its slash, but with try_files, whose
+        // candidates say whether they name one.
+        .redirect_directories(s.try_files.is_none())
+        // Go's types, with the system's mime.types (read here, where the config is compiled).
+        .mime_types(MimeTypes::system())
+        .default_type(s.default_type.as_deref())
+        .sniff(true)
+        .error_response(|status| error(status, &fit_text(status)))
+        .max_cache_bytes(s.max_cache_bytes)
+        .disk_timeout(Some(FILE_TIMEOUT))
         .max_cached_bytes(s.max_file_bytes)
         .check_interval(check)
         .watch(cfg!(target_os = "linux") && !check.is_zero())
@@ -139,6 +158,24 @@ fn files(root: PathBuf, s: &akit_config::Static) -> Files {
         files = files.hide(|path| scan_decoded(path) != Scan::Plain);
     }
     files
+}
+
+/// fit's `DefaultFileTimeout`: how long a request waits on the file pool before it is answered
+/// 503.
+const FILE_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// fit's short text body for `status`: `"404 Not Found\n"`.
+fn fit_text(status: u16) -> String {
+    let reason = match status {
+        301 => "Moved Permanently",
+        400 => "Bad Request",
+        403 => "Forbidden",
+        404 => "Not Found",
+        405 => "Method Not Allowed",
+        503 => "Service Unavailable",
+        _ => "Internal Server Error",
+    };
+    format!("{status} {reason}\n")
 }
 
 /// One of fit's short text answers, built once; each request sends a copy.

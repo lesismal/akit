@@ -951,7 +951,7 @@ fn supported_fields_are_read() {
             |c| respond_of(c).body == "hi",
         ),
         ("routes[].handler<static>", statics(""), |c| {
-            static_of(c).index == "index.html"
+            static_of(c).index == ["index.html"]
         }),
         ("routes[].handler<static>.params", statics(""), |c| {
             static_of(c).root == "/srv/www"
@@ -962,12 +962,22 @@ fn supported_fields_are_read() {
         (
             "routes[].handler<static>.params.index",
             statics(r#", "index": ["default.htm"]"#),
-            |c| static_of(c).index == "default.htm",
+            |c| static_of(c).index == ["default.htm"],
         ),
         (
             "routes[].handler<static>.params.max_file_bytes",
             statics(r#", "max_file_bytes": 4096"#),
             |c| static_of(c).max_file_bytes == 4096,
+        ),
+        (
+            "routes[].handler<static>.params.max_cache_bytes",
+            statics(r#", "max_cache_bytes": 8192"#),
+            |c| static_of(c).max_cache_bytes == 8192,
+        ),
+        (
+            "routes[].handler<static>.params.default_type",
+            statics(r#", "default_type": "application/octet-stream""#),
+            |c| static_of(c).default_type.as_deref() == Some("application/octet-stream"),
         ),
         (
             "routes[].handler<static>.params.dotfiles",
