@@ -46,7 +46,11 @@ data plane that runs inline on akio's I/O threads.
 ## Consequences
 
 - Every module crate exports its `static` list, and `akit build` (I70) composes lists instead of
-  imports.
+  imports. Since I70 the `akit` crate is a library whose `akit::main(version, lists)` the
+  binary, and every binary a build generates, calls with its lists ([modules](../modules.md)); the
+  config model keeps a module it does not know as `Handler::Module`, its params as written, so the
+  registry reports an unknown name at compile time with fit's message, as fit's `module.Load`
+  does, and a module built in decodes its own params.
 - fit's optional interfaces become provided methods on the traits (`Handler` can grow `inline`,
   `unwrapped`, …) or fields on `Provisioned` (a drain hook, I17), not type assertions.
 - `Env` is empty; I04 adds what fit's `module.Env` holds (upstream pools, the engine, the graph

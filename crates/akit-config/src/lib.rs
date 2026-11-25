@@ -50,6 +50,7 @@ pub use fastcgi::{
 };
 pub use json::MAX_DEPTH;
 pub use model::CACHE_SHARDS;
+pub use model::ModuleRef;
 pub use model::{
     AccessLevel, AccessLog, Acme, Admin, BasicAuth, BasicUser, BodyLimit, Cache, CacheDisk,
     Certificate, Challenge, CircuitBreaker, ClientAuth, ClientAuthMode, ClientCert, Compress,

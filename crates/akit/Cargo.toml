@@ -8,10 +8,15 @@ repository.workspace = true
 rust-version.workspace = true
 readme = "../../README.md"
 publish = false
+# src/main.rs is the library's command-line module, not a binary of its own.
+autobins = false
+
+[lib]
+path = "src/lib.rs"
 
 [[bin]]
 name = "akit"
-path = "src/main.rs"
+path = "src/bin/akit.rs"
 
 [dependencies]
 akio = { workspace = true }

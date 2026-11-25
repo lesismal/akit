@@ -315,7 +315,7 @@ fn every_problem_is_reported() {
               {"name": "r", "listeners": ["a", "nope"], "handler": {"module": "respond"}},
               {"name": "r", "handler": {"module": "respond"}},
               {"handler": {"module": ""}},
-              {"handler": {"module": "teleport"}},
+              {"handler": {"module": "teleport"}, "bogus": 1},
               {"handler": {"module": "respond", "params": {"status": 101}}},
               {"handler": {"module": "respond", "params": {"status": 204, "body": "x"}}},
               {"handler": {"module": "respond", "params": {"headers": {"Bad Name": "v", "X": "a\nb"}}}},
@@ -336,7 +336,7 @@ fn every_problem_is_reported() {
         "routes[0].listeners[1]: there is no listener named \"nope\"",
         "routes[1].name: another route is already named \"r\"",
         "routes[2].handler.module: the module name is empty",
-        "routes[3].handler.module: there is no handler module \"teleport\"",
+        "routes[3].bogus: unknown field",
         "routes[4].handler.params.status: 101 is an informational status",
         "routes[5].handler.params.body: a 204 response cannot have a body",
         "routes[6].handler.params.headers: \"Bad Name\" is not a valid header name",
@@ -471,4 +471,53 @@ fn route_matchers() {
         lines(r#"{"listeners": [{"name": "web", "address": ":80"}], "routes": [{"match": {"header": {"X": "v"}, "query": [], "expr": 1}, "handler": {"module": "respond"}}]}"#).len(),
         3
     );
+}
+
+/// A module the config model does not know is kept, with its params as written, for the
+/// registry of a binary `akit build` made (I70) to find and decode, as fit's `module.Load` does;
+/// a name fit has and akit does not yet is still refused as not supported yet.
+#[test]
+fn modules_the_model_does_not_know_are_kept_for_the_registry() {
+    let config = from_json(
+        r#"{"listeners": [{"name": "web", "address": ":8080"}],
+            "routes": [{"middleware": [{"module": "hello", "params": {"greeting": "hi", "n": [1, 2.5]}}],
+                        "handler": {"module": "teleport"}}]}"#,
+        None,
+    )
+    .unwrap();
+    let route = &config.routes[0];
+    let Handler::Module(m) = &route.middleware[0] else {
+        panic!("{:?}", route.middleware[0]);
+    };
+    assert_eq!(m.name, "hello");
+    assert!(m.middleware && route.middleware[0].is_middleware());
+    assert_eq!(route.middleware[0].module(), "hello");
+    let params = m.params.as_ref().unwrap();
+    assert_eq!(
+        params.get("greeting"),
+        Some(&akit_config::value::Value::String("hi".into()))
+    );
+    assert_eq!(
+        params.get("n"),
+        Some(&akit_config::value::Value::Array(vec![
+            akit_config::value::Value::Number("1".into()),
+            akit_config::value::Value::Number("2.5".into()),
+        ]))
+    );
+    assert_eq!(
+        route.handler,
+        Handler::Module(akit_config::ModuleRef {
+            name: "teleport".into(),
+            middleware: false,
+            params: None,
+        })
+    );
+    assert!(!route.handler.is_middleware());
+
+    let l = lines(
+        r#"{"listeners": [{"name": "web", "address": ":8080"}],
+            "routes": [{"handler": {"module": "hls"}}, {"handler": {"module": "respond"}, "middleware": [{"module": "wasm"}]}]}"#,
+    );
+    assert_eq!(l.len(), 2, "{l:?}");
+    assert!(l.iter().all(|e| e.contains("not supported yet")), "{l:?}");
 }

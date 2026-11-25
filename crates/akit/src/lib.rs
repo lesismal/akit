@@ -1,0 +1,43 @@
+#![forbid(unsafe_code)]
+//! akit as a library: its command line, [`main`], with the module lists its registry is made from
+//! given by the binary that calls it. akit's own binary (`src/bin/akit.rs`) gives [`STANDARD`]; one
+//! [`build`] makes (`akit build`, I70, as fit's `fit build`) is the same with the `MODULES` of the
+//! crates it was asked for besides, or fewer of akit's own. A module crate registers nothing by
+//! itself: it exports `pub static MODULES: &[akit_runtime::Info<akit_runtime::HandlerParams>]`
+//! at its root, which a build lists (decision 003); `docs/modules.md` says how to write one.
+//!
+//! Part of [akit](https://github.com/lesismal/akit); see `docs/dev-plan.md` for the iterations that
+//! fill this crate in.
+
+// The command line is `main.rs`, which other changes edit as the binary's root it was until I70.
+#[path = "main.rs"]
+mod cli;
+
+pub mod build;
+
+// What the command line's modules (`adapt.rs`) reach at the crate's root, where they were until I70.
+use cli::{config_paths, flags};
+
+use akit_runtime::{HandlerParams, Info};
+
+pub use cli::main;
+
+// akit's own module crates, which `STANDARD` lists and a build's generated `main` names through
+// these, and the module traits and registry a module crate builds on.
+pub use akit_cache;
+pub use akit_handler;
+pub use akit_middleware;
+pub use akit_proxy;
+pub use akit_runtime;
+
+/// akit's version, as its crate gives it.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// The module lists of akit's own crates, which akit's binary registers, as do the binaries a
+/// build makes unless told to leave some out ([`build::STANDARD`] names them, in this order).
+pub const STANDARD: &[&[Info<HandlerParams>]] = &[
+    akit_handler::MODULES,
+    akit_middleware::MODULES,
+    akit_cache::MODULES,
+    akit_proxy::MODULES,
+];

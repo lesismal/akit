@@ -1043,13 +1043,30 @@ pub enum Handler {
     Jwt(Jwt),
     /// The `cache` middleware: responses kept and answered from by RFC 9111's rules (I67).
     Cache(Cache),
+    /// A module akit's config model does not know: one built in with `akit build` (I70), its
+    /// params kept as written for the module to decode. Whether the binary has it is the
+    /// registry's to say, when the config is compiled, as fit's `module.Load` says.
+    Module(ModuleRef),
+}
+
+/// A module the config model does not know ([`Handler::Module`]): its name and its params, as
+/// written.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModuleRef {
+    /// `module`: the name, which the registry looks up in its kind's namespace.
+    pub name: String,
+    /// Whether it is one of a route's `middleware` rather than its handler.
+    pub middleware: bool,
+    /// `params`, as written; `None` when left out.
+    pub params: Option<crate::value::Value>,
 }
 
 impl Handler {
     /// The module's name, as the config writes it in `module`.
     #[must_use]
-    pub fn module(&self) -> &'static str {
+    pub fn module(&self) -> &str {
         match self {
+            Handler::Module(m) => &m.name,
             Handler::Respond(_) => "respond",
             Handler::Static(_) => "static",
             Handler::Proxy(_) => "proxy",
@@ -1089,6 +1106,10 @@ impl Handler {
                 | Handler::Compress(_)
                 | Handler::Jwt(_)
                 | Handler::Cache(_)
+                | Handler::Module(ModuleRef {
+                    middleware: true,
+                    ..
+                })
         )
     }
 }
@@ -3699,14 +3720,12 @@ fn handler(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Handler> {
             d.not_yet(off, &module_path, &format!("the {m:?} handler"));
             None
         }
-        m => {
-            d.error(
-                off,
-                &module_path,
-                format!("there is no handler module {m:?}"),
-            );
-            None
-        }
+        // One the model does not know is the registry's to find (I70: `akit build`).
+        m => Some(Handler::Module(ModuleRef {
+            name: m.to_owned(),
+            middleware: false,
+            params: params.cloned().map(crate::value::Value::from_node),
+        })),
     }
 }
 
@@ -3745,14 +3764,12 @@ fn middleware(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Handler> {
             d.not_yet(off, &module_path, &format!("the {m:?} middleware"));
             None
         }
-        m => {
-            d.error(
-                off,
-                &module_path,
-                format!("there is no middleware module {m:?}"),
-            );
-            None
-        }
+        // One the model does not know is the registry's to find (I70: `akit build`).
+        m => Some(Handler::Module(ModuleRef {
+            name: m.to_owned(),
+            middleware: true,
+            params: params.cloned().map(crate::value::Value::from_node),
+        })),
     }
 }
 

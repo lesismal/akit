@@ -167,7 +167,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I67 | 缓存 I：内存层与 RFC 9111 | I17 | done |
 | I68 | 缓存 II：磁盘层、缓存锁、stale | I67 | done |
 | I69 | 缓存 III：清除与标签 | I68, I27 | done |
-| I70 | `akit build` | I03 | todo |
+| I70 | `akit build` | I03 | done |
 | I71 | WASM I：运行时与 ABI | I03 | todo |
 | I72 | WASM II：Proxy-Wasm 子集 | I71 | todo |
 | I73 | `akit adapt` 与 `akit fmt` | I23, I24 | done |

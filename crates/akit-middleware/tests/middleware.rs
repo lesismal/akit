@@ -972,12 +972,26 @@ fn param_errors() {
             "{name} {params}: {errors}"
         );
     }
-    let errors = config_errors(
+    // A middleware the config model does not know is the registry's to find (I70), as fit's
+    // `module.Load` finds it, with fit's message.
+    let config = akit_config::from_json(
         r#"{"listeners": [{"name": "web", "address": ":8080"}],
             "routes": [{"middleware": [{"module": "nope"}], "handler": {"module": "respond"}}]}"#,
-    );
+        None,
+    )
+    .unwrap();
+    let Err(errors) = compile(
+        &config,
+        &registry(echo::MODULES),
+        &Env::new(EngineSlot::new()),
+    ) else {
+        panic!("a middleware the registry does not have compiled");
+    };
+    let errors = errors.to_string();
     assert!(
-        errors.contains(r#"routes[0].middleware[0].module: there is no middleware module "nope""#),
+        errors.contains(
+            r#"routes[0].middleware[0].module: there is no module "nope" in http.middleware (it has "basic_auth","#
+        ),
         "{errors}"
     );
 }

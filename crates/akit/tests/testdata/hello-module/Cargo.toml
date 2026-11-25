@@ -1,0 +1,23 @@
+# A module crate built into akit with `akit build`, by the build's test (crates/akit/tests/build.rs):
+# a middleware, hello, that adds a field to every response of its routes. docs/modules.md walks
+# through it.
+#
+#   akit build -with akit-hello=crates/akit/tests/testdata/hello-module
+#
+# and in a route's middleware:
+#
+#   {"module": "hello", "params": {"greeting": "world"}}
+[package]
+name = "akit-hello"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+# Built from this checkout's akit. A crate of your own depends on akit's git repository at the
+# revision it is built for instead (docs/modules.md), and a build from a directory of akit
+# replaces that with the directory.
+akit-runtime = { path = "../../../../akit-runtime" }
+
+# A workspace of its own, not a member of akit's.
+[workspace]
