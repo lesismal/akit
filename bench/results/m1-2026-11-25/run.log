@@ -1,0 +1,176 @@
+stopped: svc gnome-remote-desktop.service pp balanced 
+==> taking fit and idleconn from /root/akit-i25/bench/fit-7daee573b102/bin
+==> building the load generator image
+==> starting the load generators
+==> starting the proxy backend
+==> starting the WebSocket backend
+==> starting the cache backend
+==> starting nginx
+    nginx    fixed      http/1.1        809288 req/s  mean    0.29ms  max     5.30ms  errors 0  cpu 6.21 (7.67us/req)  peak 197MiB
+    nginx    fixed      https/1.1       585703 req/s  mean    0.26ms  max    16.93ms  errors 0  cpu 6.91 (11.80us/req)  peak 209MiB
+    nginx    fixed      h2c             637211 req/s  mean    3.20ms  max     7.19ms  errors 0  cpu 6.99 (10.96us/req)  peak 198MiB
+    nginx    fixed      h2              936479 req/s  mean    2.03ms  max     5.67ms  errors 0  cpu 6.98 (7.46us/req)  peak 201MiB
+    nginx    static     http/1.1        626265 req/s  mean    0.40ms  max     4.33ms  errors 0  cpu 6.98 (11.15us/req)  peak 197MiB
+    nginx    static     https/1.1       513874 req/s  mean    0.48ms  max    19.99ms  errors 0  cpu 6.98 (13.58us/req)  peak 210MiB
+    nginx    static     h2c             489920 req/s  mean    4.19ms  max    12.45ms  errors 0  cpu 6.98 (14.26us/req)  peak 198MiB
+    nginx    static     h2              707871 req/s  mean    2.70ms  max     6.82ms  errors 0  cpu 6.98 (9.87us/req)  peak 201MiB
+    nginx    proxy      http/1.1        267988 req/s  mean    0.94ms  max     4.21ms  errors 0  cpu 4.92 (18.35us/req)  peak 200MiB
+    nginx    proxy      https/1.1       257522 req/s  mean    1.01ms  max    19.39ms  errors 0  cpu 5.85 (22.71us/req)  peak 210MiB
+    nginx    proxy      h2c             258031 req/s  mean    7.91ms  max    22.29ms  errors 0  cpu 5.77 (22.35us/req)  peak 231MiB
+    nginx    proxy      h2              248295 req/s  mean    8.19ms  max    20.29ms  errors 0  cpu 5.84 (23.53us/req)  peak 232MiB
+    nginx    idle-http1   10000 connections       549 bytes each  (anon 208334848 -> 213823488)  closed by server 0
+    nginx    idle-tls     10000 connections     29923 bytes each  (anon 208396288 -> 507621376)  closed by server 0
+    nginx    idle-ws      10000 connections     22266 bytes each  (anon 208351232 -> 431013888)  closed by server 0
+==> starting caddy
+    caddy    fixed      http/1.1        340247 req/s  mean    0.97ms  max    15.67ms  errors 0  cpu 6.54 (19.23us/req)  peak 29MiB
+    caddy    fixed      https/1.1       305563 req/s  mean    1.03ms  max    18.20ms  errors 0  cpu 6.60 (21.61us/req)  peak 34MiB
+    caddy    fixed      h2c             218464 req/s  mean    9.35ms  max   154.91ms  errors 0  cpu 6.81 (31.15us/req)  peak 71MiB
+    caddy    fixed      h2              224923 req/s  mean    9.06ms  max   126.35ms  errors 0  cpu 6.83 (30.38us/req)  peak 68MiB
+    caddy    static     http/1.1        156774 req/s  mean    2.01ms  max    29.21ms  errors 0  cpu 6.86 (43.74us/req)  peak 37MiB
+    caddy    static     https/1.1       139735 req/s  mean    2.28ms  max    38.62ms  errors 0  cpu 6.85 (49.01us/req)  peak 40MiB
+    caddy    static     h2c             113097 req/s  mean   18.09ms  max   246.39ms  errors 0  cpu 6.90 (60.99us/req)  peak 96MiB
+    caddy    static     h2              108116 req/s  mean   18.92ms  max   274.83ms  errors 0  cpu 6.86 (63.47us/req)  peak 84MiB
+    caddy    proxy      http/1.1        126354 req/s  mean    2.08ms  max    18.43ms  errors 0  cpu 6.82 (53.95us/req)  peak 52MiB
+    caddy    proxy      https/1.1       114493 req/s  mean    2.30ms  max    18.96ms  errors 0  cpu 6.82 (59.61us/req)  peak 54MiB
+    caddy    proxy      h2c              88918 req/s  mean   22.97ms  max   147.30ms  errors 0  cpu 6.80 (76.50us/req)  peak 257MiB
+    caddy    proxy      h2               87221 req/s  mean   23.44ms  max   167.37ms  errors 0  cpu 6.86 (78.67us/req)  peak 240MiB
+    caddy    idle-http1   10000 connections     21944 bytes each  (anon 13254656 -> 232697856)  closed by server 0
+    caddy    idle-tls     10000 connections     47482 bytes each  (anon 13692928 -> 488513536)  closed by server 0
+    caddy    idle-ws      10000 connections    103042 bytes each  (anon 13332480 -> 1043755008)  closed by server 0
+    traefik  fixed      http/1.1  skipped: traefik cannot serve it
+    traefik  fixed      https/1.1 skipped: traefik cannot serve it
+    traefik  fixed      h2c       skipped: traefik cannot serve it
+    traefik  fixed      h2        skipped: traefik cannot serve it
+    traefik  static     http/1.1  skipped: traefik cannot serve it
+    traefik  static     https/1.1 skipped: traefik cannot serve it
+    traefik  static     h2c       skipped: traefik cannot serve it
+    traefik  static     h2        skipped: traefik cannot serve it
+==> starting traefik
+    traefik  proxy      http/1.1  error: fitbench-server did not answer at http://127.0.0.1:8080/proxy within 30s; its last logs:
+[90m2026-11-25T13:17:35Z[0m [31mERR[0m [1mCommand error[0m [36merror=[0m[31m[1m"command traefik error: error while building entryPoint h3: error preparing server: error opening listener: listen tcp :8444: bind: address already in use"[0m[0m
+
+    traefik  proxy      https/1.1 error: fitbench-server did not answer at http://127.0.0.1:8080/proxy within 30s; its last logs:
+[90m2026-11-25T13:17:35Z[0m [31mERR[0m [1mCommand error[0m [36merror=[0m[31m[1m"command traefik error: error while building entryPoint h3: error preparing server: error opening listener: listen tcp :8444: bind: address already in use"[0m[0m
+
+    traefik  proxy      h2c       error: fitbench-server did not answer at http://127.0.0.1:8080/proxy within 30s; its last logs:
+[90m2026-11-25T13:17:35Z[0m [31mERR[0m [1mCommand error[0m [36merror=[0m[31m[1m"command traefik error: error while building entryPoint h3: error preparing server: error opening listener: listen tcp :8444: bind: address already in use"[0m[0m
+
+    traefik  proxy      h2        error: fitbench-server did not answer at http://127.0.0.1:8080/proxy within 30s; its last logs:
+[90m2026-11-25T13:17:35Z[0m [31mERR[0m [1mCommand error[0m [36merror=[0m[31m[1m"command traefik error: error while building entryPoint h3: error preparing server: error opening listener: listen tcp :8444: bind: address already in use"[0m[0m
+
+    traefik  idle-http1  error: fitbench-server did not answer at http://127.0.0.1:8080/proxy within 30s; its last logs:
+[90m2026-11-25T13:18:05Z[0m [31mERR[0m [1mCommand error[0m [36merror=[0m[31m[1m"command traefik error: error while building entryPoint h3: error preparing server: error opening listener: listen tcp :8444: bind: address already in use"[0m[0m
+
+    traefik  idle-tls     10000 connections     48546 bytes each  (anon 20094976 -> 505556992)  closed by server 0
+    traefik  idle-ws      10000 connections    121030 bytes each  (anon 19980288 -> 1230282752)  closed by server 0
+==> starting fit
+    fit      fixed      http/1.1        767036 req/s  mean    0.29ms  max    11.49ms  errors 0  cpu 6.41 (8.36us/req)  peak 19MiB  goroutines 141
+    fit      fixed      https/1.1       603443 req/s  mean    0.27ms  max    19.52ms  errors 0  cpu 5.77 (9.57us/req)  peak 21MiB  goroutines 201
+    fit      fixed      h2c            4529623 req/s  mean    0.39ms  max     4.56ms  errors 0  cpu 6.98 (1.54us/req)  peak 27MiB  goroutines 177
+    fit      fixed      h2             4239331 req/s  mean    0.41ms  max     2.58ms  errors 0  cpu 6.98 (1.65us/req)  peak 22MiB  goroutines 196
+    fit      static     http/1.1        749976 req/s  mean    0.25ms  max     9.45ms  errors 0  cpu 6.73 (8.97us/req)  peak 21MiB  goroutines 140
+    fit      static     https/1.1       575381 req/s  mean    0.31ms  max    18.93ms  errors 0  cpu 6.00 (10.42us/req)  peak 29MiB  goroutines 304
+    fit      static     h2c            3080190 req/s  mean    0.56ms  max    24.93ms  errors 0  cpu 6.97 (2.26us/req)  peak 27MiB  goroutines 174
+    fit      static     h2             2538681 req/s  mean    0.67ms  max     4.74ms  errors 0  cpu 6.97 (2.74us/req)  peak 28MiB  goroutines 196
+    fit      proxy      http/1.1        269029 req/s  mean    0.94ms  max    11.53ms  errors 0  cpu 5.74 (21.34us/req)  peak 28MiB  goroutines 532
+    fit      proxy      https/1.1       263444 req/s  mean    0.97ms  max    16.07ms  errors 0  cpu 5.86 (22.26us/req)  peak 34MiB  goroutines 664
+    fit      proxy      h2c             247579 req/s  mean    8.25ms  max    43.05ms  errors 0  cpu 6.32 (25.51us/req)  peak 70MiB  goroutines 954
+    fit      proxy      h2              241897 req/s  mean    8.43ms  max    27.23ms  errors 0  cpu 6.52 (26.93us/req)  peak 73MiB  goroutines 1291
+    fit      idle-http1   10000 connections      1509 bytes each  (anon 9592832 -> 24682496)  closed by server 0
+    fit      idle-tls     10000 connections      9859 bytes each  (anon 9793536 -> 108380160)  closed by server 0
+    fit      idle-ws      10000 connections      6044 bytes each  (anon 9584640 -> 70021120)  closed by server 0
+==> starting akit
+    akit     fixed      http/1.1        818992 req/s  mean    0.17ms  max     9.58ms  errors 0  cpu 6.26 (7.65us/req)  peak 4MiB
+    akit     fixed      https/1.1            0 req/s  mean    0.00ms  max     0.00ms  errors 2062757  cpu 2.69 (0.00us/req)  peak 37MiB
+    akit     fixed      h2c            5618816 req/s  mean    0.28ms  max     1.01ms  errors 0  cpu 6.98 (1.24us/req)  peak 5MiB
+    akit     fixed      h2             5211334 req/s  mean    0.27ms  max     3.86ms  errors 0  cpu 6.90 (1.32us/req)  peak 6MiB
+    akit     static     http/1.1        789385 req/s  mean    0.19ms  max     8.89ms  errors 0  cpu 6.64 (8.41us/req)  peak 5MiB
+    akit     static     https/1.1            0 req/s  mean    0.00ms  max     0.00ms  errors 2055668  cpu 2.68 (0.00us/req)  peak 37MiB
+    akit     static     h2c            3038682 req/s  mean    0.61ms  max     3.66ms  errors 0  cpu 6.98 (2.30us/req)  peak 22MiB
+    akit     static     h2             2751470 req/s  mean    0.64ms  max     4.27ms  errors 0  cpu 6.98 (2.54us/req)  peak 25MiB
+    akit     proxy      http/1.1        238997 req/s  mean    1.07ms  max    15.85ms  errors 0  cpu 6.71 (28.06us/req)  peak 1831MiB
+    akit     proxy      https/1.1            0 req/s  mean    0.00ms  max     0.00ms  errors 2052671  cpu 2.66 (0.00us/req)  peak 37MiB
+    akit     proxy      h2c             240833 req/s  mean    8.56ms  max    38.75ms  errors 0  cpu 6.70 (27.83us/req)  peak 1863MiB
+    akit     proxy      h2              223738 req/s  mean    9.13ms  max    36.36ms  errors 0  cpu 6.47 (28.92us/req)  peak 1875MiB
+    akit     idle-http1   10000 connections      1149 bytes each  (anon 6000640 -> 17485824)  closed by server 0
+    akit     idle-tls     10000 connections     12928 bytes each  (anon 6049792 -> 135331840)  closed by server 0
+    akit     idle-ws      10000 connections      4366 bytes each  (anon 6049792 -> 49704960)  closed by server 0
+
+req/s                          nginx         caddy       traefik           fit          akit
+fixed http/1.1                809288        340247             -        767036        818992
+fixed https/1.1               585703        305563             -        603443             0
+fixed h2c                     637211        218464             -       4529623       5618816
+fixed h2                      936479        224923             -       4239331       5211334
+static http/1.1               626265        156774             -        749976        789385
+static https/1.1              513874        139735             -        575381             0
+static h2c                    489920        113097             -       3080190       3038682
+static h2                     707871        108116             -       2538681       2751470
+proxy http/1.1                267988        126354         error        269029        238997
+proxy https/1.1               257522        114493         error        263444             0
+proxy h2c                     258031         88918         error        247579        240833
+proxy h2                      248295         87221         error        241897        223738
+
+cpu us/req                     nginx         caddy       traefik           fit          akit
+fixed http/1.1                  7.67         19.23             -          8.36          7.65
+fixed https/1.1                11.80         21.61             -          9.57          0.00
+fixed h2c                      10.96         31.15             -          1.54          1.24
+fixed h2                        7.46         30.38             -          1.65          1.32
+static http/1.1                11.15         43.74             -          8.97          8.41
+static https/1.1               13.58         49.01             -         10.42          0.00
+static h2c                     14.26         60.99             -          2.26          2.30
+static h2                       9.87         63.47             -          2.74          2.54
+proxy http/1.1                 18.35         53.95         error         21.34         28.06
+proxy https/1.1                22.71         59.61         error         22.26          0.00
+proxy h2c                      22.35         76.50         error         25.51         27.83
+proxy h2                       23.53         78.67         error         26.93         28.92
+
+peak anon MiB                  nginx         caddy       traefik           fit          akit
+fixed http/1.1                   197            29             -            19             4
+fixed https/1.1                  209            34             -            21            37
+fixed h2c                        198            71             -            27             5
+fixed h2                         201            68             -            22             6
+static http/1.1                  197            37             -            21             5
+static https/1.1                 210            40             -            29            37
+static h2c                       198            96             -            27            22
+static h2                        201            84             -            28            25
+proxy http/1.1                   200            52         error            28          1831
+proxy https/1.1                  210            54         error            34            37
+proxy h2c                        231           257         error            70          1863
+proxy h2                         232           240         error            73          1875
+
+req/s per MiB                  nginx         caddy       traefik           fit          akit
+fixed http/1.1                  4102         11612             -         39951        183592
+fixed https/1.1                 2796          8893             -         29103             0
+fixed h2c                       3216          3072             -        168397       1097191
+fixed h2                        4650          3314             -        190098        865738
+static http/1.1                 3173          4261             -         36356        160383
+static https/1.1                2451          3463             -         19803             0
+static h2c                      2472          1184             -        113311        136068
+static h2                       3519          1285             -         91561        112215
+proxy http/1.1                  1339          2448         error          9680           131
+proxy https/1.1                 1227          2114         error          7679             0
+proxy h2c                       1118           346         error          3531           129
+proxy h2                        1069           363         error          3308           119
+
+bytes/in-flight                nginx         caddy       traefik           fit          akit
+fixed http/1.1                  1122         77564             -         48908          1625
+fixed https/1.1                51818         98499             -         53524             0
+fixed h2c                        554         30756             -          9936           538
+fixed h2                        2234         29220             -          7480           998
+static http/1.1                 1414        108625             -         55068          3527
+static https/1.1               52484        121385             -         91526             0
+static h2c                       632         42684             -         10102          9350
+static h2                       2136         37312             -         10260         10470
+proxy http/1.1                 12776        168277         error         83204       7599965
+proxy https/1.1                53443        180939         error        111161             0
+proxy h2c                      17304        125922         error         31768        951694
+proxy h2                       18044        117400         error         33608        958018
+
+bytes/idle conn            nginx         caddy       traefik           fit          akit
+http1                        549         21944         error          1509          1149
+tls                        29923         47482         48546          9859         12928
+ws                         22266        103042        121030          6044          4366
+
+goroutines fit      started 46  under load at most 1291  idle-http1 45 -> 44  idle-tls 46 -> 45  idle-ws 46 -> 44
+results written to /root/akit-i25/bench/runs/run-20261125-210035/results.json
+restored: svc gnome-remote-desktop.service pp balanced 

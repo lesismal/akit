@@ -89,6 +89,8 @@ first; its status here records the branch, then the akio commit akit pins.
 | A167 | A response body filtered by calls made elsewhere, one at a time, its trailers in the last (fit's A46 from fib) | in akio's main (`dad77a7a`), pinned | 1, 4, 5, 8 | I72 |
 | A168 | An HTTP server that serves HTTP/2 with prior knowledge alone (a listener with `h2c` and no `http/1.1`) | requested (I25) | 19 | I05, I25 |
 | A169 | Requests RFC 9112, RFC 9113 and RFC 9114 call malformed refused by akio's servers: two `Host` fields, bad bytes in HTTP/2 and HTTP/3 field names and values, a streamed body's bad framing answered 400 | built on akio branch `claude/a169-request-checks` (`813f53ea`, but the last part), not in akio's main | 15, 19 | I25 |
+| A171 | An HTTP client request's timer jobs cancelled when it ends, not held until its timeout would pass | built on akio branch `claude/a171-client-timer-cancel` (`90adec65`), not in akio's main | 11, 13 | I15, I18, I25 |
+| A172 | A TLS server that takes a ClientHello whose server name is an IP address (as no name) rather than failing the handshake | built on akio branch `claude/a172-sni-ip-literal` (`d23c9368`), not in akio's main | 19 | I09, I25 |
 
 ## A1 TCP listeners on a running engine
 
@@ -1809,3 +1811,62 @@ it gives up its upstream exchange.
 `Refused::TwoHosts` in `headers::outgoing`, which answer 400 in the loop that copies the fields)
 can stay as defence in depth, as fit's check of field names does, or go; with part 4 the
 conformance suite's bad chunk size case expects 400 as fit's.
+
+## A171 Client requests' timer jobs cancelled when they end
+
+**Status.** Built on akio branch `claude/a171-client-timer-cancel` (`90adec65`, off akio's main
+`e79cc740`), with a unit test of the timer and akio-http's tests; not in akio's main, not pinned.
+Measured on the benchmark host (below). Before akio's main it needs akio's same-run A/B (it
+touches every client request: one more message to the timer thread when a request ends).
+
+**Problem.** I25's first run measured akit's proxy at 1.8 GiB peak memory (fit 28–73 MiB, nginx
+about 200 MiB) at 230k requests a second. Memory grew by about 240 bytes a request, whatever the
+pool's bounds, and stayed after the load: `akio_http::timer::after` queues a boxed job on one
+timer thread for every client request with a `timeout` (`Client::request`) and for every h2
+stream's timeout and header and idle checks (`H2Client`), and the job stays until its delay
+passes, holding the request's `Exchange` allocation through its `Weak` (or, for an h2 request,
+its callback and stream control). With fit's 60s route timeout that is a minute of requests,
+about 14 million at that rate; with akit's default bound of an exchange, 1h, an hour of them.
+The queue is unbounded too (rule 11).
+
+**Evidence.** At akio `dad77a7a`: `timer.rs` has `after` and no way to cancel; `client.rs`'s
+exchange schedules `give_up(GaveUp::Timeout)` per request; `h2client.rs` schedules per request
+and per stream phase. On the benchmark host, akit at `9d9321e` proxying to a local backend with
+wrk at 256 connections for 10s: pinned, its RSS rose 104, 198, 306, 437, 518 MiB at 2–10s and
+stayed at 525 MiB after; with A171, 17–18 MiB throughout, and 246k requests a second against
+238k.
+
+**As built.** `timer::after` returns a key and `timer::cancel(key)` drops the job at once; an
+`Exchange` cancels its timeout's job when dropped, an h2 stream's control its pending check and
+streamed request's timeout, and a whole h2 request its timeout when its callback runs. Cancelled
+jobs' heap entries are dropped once they outnumber the live jobs (past 4096).
+
+**How akit uses it.** Nothing to change; akit's proxy, forward auth, mirrors and health probes
+all send through akio's clients with timeouts and stop holding memory per request once it is
+pinned. Until then akit's proxy grows by the requests of its route's timeout window under load.
+
+## A172 A ClientHello whose server name is an IP address
+
+**Status.** Built on akio branch `claude/a172-sni-ip-literal` (`d23c9368`, off akio's main
+`e79cc740`), with its tests; not in akio's main, not pinned. Checked on the benchmark host with
+fit's harness's wrk.
+
+**Problem.** fit's benchmark harness sends its HTTPS/1.1 load with wrk to
+`https://127.0.0.1:8443/`. wrk (OpenSSL) puts the URL's host in the ClientHello's `server_name`
+even when it is an IP address, which RFC 6066 does not allow. akio-tls's server answered such a
+ClientHello with a `decode_error` alert, so every request failed: I25's first run measured
+akit at 0 requests a second over HTTPS/1.1 in every scenario (2 million connect errors each),
+while Go's, OpenSSL's and nginx's servers, and so fit, nginx and Caddy, take such a name as none.
+A host name with a trailing dot failed the same way.
+
+**Evidence.** At akio `dad77a7a`: `proto/msgs.rs`'s `parse_host_name` refuses a name that parses
+as an `IpAddr` or ends with `.`, and its unit test pins it. `openssl s_client -servername
+127.0.0.1` gets alert 50; with `-servername localhost`, and wrk to `https://localhost:...`, akit
+answers.
+
+**As built.** An IP literal as the server name is taken as no name (the handshake goes on, the
+default certificate is chosen, `server_name()` is `None`); a trailing dot is dropped; an empty or
+non-ASCII name still fails the handshake.
+
+**How akit uses it.** Nothing to change: akit's certificate choice already falls back to the
+default certificate without SNI. Once pinned, the harness's HTTPS/1.1 scenarios measure akit.

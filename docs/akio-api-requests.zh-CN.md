@@ -88,6 +88,8 @@
 | A167 | 由别处进行的调用逐次过滤响应 body，trailer 在最后一次调用中（fit 向 fib 提出的 A46） | 已在 akio 的 main（`dad77a7a`），已锁定 | 1、4、5、8 | I72 |
 | A168 | 只提供先验知识 HTTP/2 的 HTTP 服务端（带 `h2c` 而没有 `http/1.1` 的监听器） | 已提出（I25） | 19 | I05、I25 |
 | A169 | akio 的服务端拒绝 RFC 9112、RFC 9113 和 RFC 9114 规定为畸形的请求：两个 `Host` 字段、HTTP/2 与 HTTP/3 字段名和值中的非法字节、流式 body 的分帧错误以 400 应答 | 已在 akio 分支 `claude/a169-request-checks`（`813f53ea`，最后一部分除外）实现，未进入 akio 的 main | 15、19 | I25 |
+| A171 | HTTP 客户端请求结束时取消其定时器任务，而不是保留到超时时间 | 已在 akio 分支 `claude/a171-client-timer-cancel`（`90adec65`）实现，未进入 akio 的 main | 11、13 | I15、I18、I25 |
+| A172 | TLS 服务端把 server name 为 IP 地址的 ClientHello 视为没有名字，而不是使握手失败 | 已在 akio 分支 `claude/a172-sni-ip-literal`（`d23c9368`）实现，未进入 akio 的 main | 19 | I09、I25 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -1467,3 +1469,49 @@ yet"。在此之前 `akit validate` 也报告同样的错误（I25 发现它此�
 **akit 如何使用。** 锁定之后，akit-proxy 的临时措施（`headers::outgoing` 中的 `Refused::BadFieldValue` 和
 `Refused::TwoHosts`，在复制字段的循环中以 400 应答）可以像 fit 对字段名的检查那样作为纵深防御保留，也可以去掉；有了第 4 部分，
 一致性测试中错误 chunk 大小的用例将像 fit 一样期望 400。
+
+## A171 客户端请求结束时取消其定时器任务
+
+**状态。** 已在 akio 分支 `claude/a171-client-timer-cancel`（`90adec65`，基于 akio 的 main `e79cc740`）实现，带定时器
+的单元测试，akio-http 的测试通过；未进入 akio 的 main，未锁定。已在基准主机上测量（见下）。进入 akio 的 main 之前
+需要 akio 的同轮 A/B（它涉及每个客户端请求：请求结束时多发一条消息给定时器线程）。
+
+**问题。** I25 的第一次运行测得 akit 的代理在每秒 23 万请求时峰值内存为 1.8 GiB（fit 28–73 MiB，nginx 约 200 MiB）。
+无论连接池的上限如何，内存每个请求增长约 240 字节，负载结束后也不回落：`akio_http::timer::after` 为每个带
+`timeout` 的客户端请求（`Client::request`）以及每个 h2 流的超时和 header、idle 检查（`H2Client`）在唯一的定时器线程上
+排入一个装箱任务，这个任务一直留到延迟过去，并通过其 `Weak` 保留请求的 `Exchange` 内存（对 h2 请求则保留其回调和流
+控制）。按 fit 的 60 秒路由超时，就是一分钟的请求，在这个速率下约 1400 万个；按 akit 对一次交换的默认上限 1 小时，
+就是一小时的请求。这个队列也是无界的（规则 11）。
+
+**证据。** 在 akio `dad77a7a`：`timer.rs` 只有 `after`，没有取消的办法；`client.rs` 的 exchange 为每个请求安排
+`give_up(GaveUp::Timeout)`；`h2client.rs` 为每个请求和每个流的阶段安排任务。在基准主机上，`9d9321e` 的 akit 代理到
+本地后端，wrk 用 256 个连接压 10 秒：锁定的 akio 下，其 RSS 在 2–10 秒依次为 104、198、306、437、518 MiB，负载后
+停在 525 MiB；带 A171 时始终为 17–18 MiB，每秒 24.6 万请求，对比 23.8 万。
+
+**实现。** `timer::after` 返回一个 key，`timer::cancel(key)` 立即丢弃该任务；`Exchange` 在被丢弃时取消其超时任务，
+h2 流的控制取消其待执行的检查和流式请求的超时，完整的 h2 请求在回调运行时取消其超时。已取消任务的堆条目在数量超过
+存活任务后（超过 4096 时）被清理。
+
+**akit 如何使用。** 无需改动；akit 的代理、forward auth、镜像和健康探测都通过 akio 带超时的客户端发送，锁定之后不再
+按请求保留内存。在此之前，akit 的代理在负载下会保留其路由超时窗口内的请求。
+
+## A172 server name 为 IP 地址的 ClientHello
+
+**状态。** 已在 akio 分支 `claude/a172-sni-ip-literal`（`d23c9368`，基于 akio 的 main `e79cc740`）实现，带测试；
+未进入 akio 的 main，未锁定。已在基准主机上用 fit harness 的 wrk 验证。
+
+**问题。** fit 的基准 harness 用 wrk 对 `https://127.0.0.1:8443/` 施加 HTTPS/1.1 负载。wrk（OpenSSL）即使在 URL
+的主机是 IP 地址时也把它放进 ClientHello 的 `server_name`，而 RFC 6066 不允许这样做。akio-tls 的服务端以
+`decode_error` 告警回应这样的 ClientHello，因此所有请求都失败了：I25 的第一次运行中，akit 在每个场景的 HTTPS/1.1
+上都是每秒 0 请求（各约 200 万次连接错误），而 Go、OpenSSL 和 nginx 的服务端——因此 fit、nginx 和 Caddy——都把这样的
+名字视为没有名字。末尾带点的主机名也以同样方式失败。
+
+**证据。** 在 akio `dad77a7a`：`proto/msgs.rs` 的 `parse_host_name` 拒绝能解析为 `IpAddr` 或以 `.` 结尾的名字，
+其单元测试固定了这一行为。`openssl s_client -servername 127.0.0.1` 得到告警 50；用 `-servername localhost`，
+以及 wrk 访问 `https://localhost:...` 时，akit 正常应答。
+
+**实现。** 作为 server name 的 IP 字面量被视为没有名字（握手继续，选用默认证书，`server_name()` 为 `None`）；
+末尾的点被去掉；空名字或非 ASCII 名字仍使握手失败。
+
+**akit 如何使用。** 无需改动：没有 SNI 时 akit 的证书选择本来就回退到默认证书。锁定之后，harness 的 HTTPS/1.1
+场景就能测到 akit。
