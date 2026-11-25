@@ -1,0 +1,1 @@
+servers=nginx,fit,akit scenarios=fixed,static,proxy protocols=http/1.1,h2c,https/1.1,h2 idle=http1,tls,ws then 100k http1,tls

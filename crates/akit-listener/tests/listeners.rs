@@ -160,21 +160,20 @@ fn routes_per_listener() {
     e.wait();
 }
 
+/// A listener with h2c and no http/1.1 is fit's, and not akit's yet (akio API request A168): the
+/// config reader refuses it as not supported yet (I25), before a listener is made.
 #[test]
 fn h2c_without_http1_is_not_supported_yet() {
-    let config = akit_config::from_json(
+    let errs = akit_config::from_json(
         r#"{"listeners": [{"name": "web", "address": "127.0.0.1:0", "protocols": ["h2c"]}]}"#,
         None,
     )
-    .unwrap();
-    let registry: Registry<HandlerParams> = Registry::new(&[akit_handler::MODULES]).unwrap();
-    let cell = GraphCell::new(compile(&config, &registry, &Env::default()).unwrap());
-    let err = akit_listener::engine(&cell, &options())
-        .unwrap_err()
-        .to_string();
-    assert_eq!(
-        err,
-        "listener web: not supported yet: protocols h2c without http/1.1"
+    .unwrap_err();
+    assert!(errs.only_not_supported_yet(), "{errs}");
+    assert!(
+        errs.to_string()
+            .contains("not supported yet: protocols h2c without http/1.1"),
+        "{errs}"
     );
 }
 
