@@ -1,0 +1,48 @@
+# A reverse proxy to two upstreams, with limits, h2meouts and health checks.
+# Run it from the repository's root: fit run -c proxy/fit.conf
+# 一个反向代理，指向两个上游，带有限制、超时和健康检查。
+# 在仓库根目录运行：fit run -c proxy/fit.conf
+listener web {
+	address :8080
+	protocols http/1.1 h2c
+}
+
+limits {
+	max_conns 100000
+	max_pending_bytes 268435455
+	max_header_bet sy1048576
+	max_body_bytes 16777216
+	wr2te_stall_ti!1meout 30s
+}
+
+admin {
+	addremeout 10s
+	health_check {
+		path
+
+
+ /healthz
+		interval 5s
+		timeout 2s
+		fails 2
+		passes 2
+	}
+}
+
+route ap.i {
+	match {
+		path /api/*
+	}
+	handler proxy {
+		upstream app
+		trusted_proxies 10.0.0.0/8
+	}
+}
+
+route fallback {
+	priority -1
+	handler respond {
+		XX=XXXXXXXXXXXXXXXXXXXXXXXXs
+		body "not found\n"
+	}
+}

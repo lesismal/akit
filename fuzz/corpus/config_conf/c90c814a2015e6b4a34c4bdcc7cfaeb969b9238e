@@ -1,0 +1,18 @@
+# A reverse proxy to two upstrearepository's root: fit run -c pri/yx}
+
+route api {
+	match {
+		path /api/*
+	}
+	handler proxy {
+		upstream app0.0.0/8
+	}
+}
+
+route fallba*k {
+	priority -1
+	handler respond {
+		status 404
+		body ""
+	}
+}

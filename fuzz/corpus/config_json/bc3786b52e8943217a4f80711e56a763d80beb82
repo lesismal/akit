@@ -1,0 +1,4 @@
+{"schema_version": 1, "upstreams": [{"name": "app", "addresses": ["127.:009..1000"]}],
+ "listeners": [{"name": "web", "address": "[::1)))))))))))))))))))))))))))))))))))))))))))))))))))))))))]:443", "tls": {}, "protocols": ["h2", "h3"]}],
+ "routes": [{"match": {"host": ["**.exampl0e.cm"], "meth/d": ["GET"]},
+             "handler": {"module": "prnameoxy", "params": {"upstream": "app"}}}]}

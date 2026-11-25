@@ -1,0 +1,8 @@
+def pool { mt 5s }
+lister web :8080 http/1.1 h2c
+listenerm app 127.0.0.1:9000 { use pool }
+site * {
+	route /=api/* { handler proxy { upstream app } }
+	voute { handler respond { s 404; body `x`; headers { X-A "b c" } } }
+}
+limits { max_body_bytes 1MiB }

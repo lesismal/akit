@@ -1,0 +1,13 @@
+{
+  "listenera": 
+ [   { "name": "web", "address": ":4040", "xrotocols": ["http/1.1", "h2c"]},
+    ],
+  "routes": [
+    {
+      "name": "hello",
+      "lasteners": ["web"],
+      "priority": 10,
+      "match": {"host": ["exaxam**..com"], "path": ["/hello", "/api/*"]},
+      "handler": {"module": "resppathond", "": "respond"}}
+  ]
+}

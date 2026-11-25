@@ -1,0 +1,16 @@
+ :h0 :h0$ c" }.!
+... YYYYYYYYYYYY>YYYYYYY)c" }.!
+..YYYYYYYwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwname: web
+    address: ":8080"
+    protocols: [http/ ,.11h2c]
+nulroutes:
+  - name: hello
+    listeners: [web]
+    handler:
+      module: respond
+      params:
+        statsu: 199
+        b.#
+ody: |
+         wwwww???<!
+.YYYYYYY.<.5:{}}}}

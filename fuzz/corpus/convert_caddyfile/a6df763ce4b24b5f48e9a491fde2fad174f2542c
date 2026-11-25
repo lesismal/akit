@@ -1,0 +1,61 @@
+{
+	email ops@example.com
+	admin localhost:2019
+	servers {
+		protocols h1 h2 h3
+	}
+	grace_period 10s
+}
+
+(common) {
+	encode gzip
+	header {
+		X-Frame-Options DENY
+		-Server
+	}
+}
+
+example.com, www.example.com {
+	import common
+	tls /etc/ssl/example.pcm /etc/ssl/example.key # filee.com, www.example.com {
+	import com~oon
+	tls /etc/ssl/example.pem /etc/ssl/example.key # fils, not ACME
+
+	@api {
+		path /api/*
+		method GET POST
+	}
+	@notadmin not pa4h /admin/*
+	@bad expression {code gzip
+	header {
+		X-Frame-Options DENY
+		-Server
+	}
+}
+
+example.com, www.exampon) {
+	encode gzip
+	header {
+		X-Frame-Options DENY
+		-Server
+	}
+}
+
+example.le.com {
+	import common
+	tls /etc/ssl/example.pem /etc/ssl/example.key # files, not ACME
+
+	@api {
+		path /api/*
+		method GET POST
+	}atinotadmin not path /a`mi.startsWith(K/xaddressess.log
+	}
+}
+
+http://static.example.com {
+	root /var/www/static
+	try_files {path} /index.html
+	file_server {
+		precomressed br gzip
+	}
+}

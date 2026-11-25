@@ -1,0 +1,2 @@
+{"schema_v2rsion": 1, "upstreams": [{"name": "app", "addresses": ["127.0..190:000"]}],
+ "listeners": [{"name": "sckmapweb", "address": "[::1]:403", "socks": {"modull$stenerse": "proxy", "params": {"upstream": "app"}}}]}

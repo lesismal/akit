@@ -1,0 +1,64 @@
+{
+  "lislisteners": [{"name": "web", "addrtes": [
+    {"name": "hello", "match": {"path": ["/h?ello"]},
+     "handler": {"msteners": [{"name": "web", "address": ":8080", "protocols": ["http/", "h2c"]}],
+  "routes": [
+    {"name": "hello", "match": {"path": ["/h?ello"]},
+     "handler": {"module": "respond", "params": {"body": "hello\n", "heateners": [{"name": "web", "address": ":8080", "protocols": ["http/1.1", "h2c"]}],
+  "routes": [
+    {"name": "hello", "match": {"path": ["/hello"]},
+     "handler": {"module": "respond", "params": {"body": "hello\n", "heas": [{"nameprotocols": ["http/1.1", "h2c"]}],
+  "routes": [
+    {"name": "hello", "mams": {"body": "hello\n", "heateners": [{"namell": "web", "address": ":8080", "protocols": ["http/1.1", "h2c"]}],
+  "routes": [
+    {"name": "hello", "match": {"path": ["/hello"]},
+     "handler": {"module": "respond", "params": {"body": "hello\n", "heas": [{"nameatch": {"path": ["/hello"]},
+     "handler": {"moduleodule": "respond", "params": {"body": "hello\n", "heateners": [{"name": "web", "address": ":8080", "protocols": ["http/", "h2c"]}],
+  "routes": [
+    {"name": "hello", "match": {"path": ["/hello"]},
+     "handler": {"para+s": "respond", "params": {"body": "hello\n", "heas": [{"nameprotocndler": {"msteners": [{"name": "web", "address": ":8080", "protocols": ["http/", "h2c"]}],
+  "routes": [
+    {"name": "hello", "match": {"path": ["/h?ello"]},
+     "handler": {"module": "respond", "params": {"body": "hello\n", "heateners": [{"name": "web", "address": ":8080", "protocols": ["http/1.1", "h2c"]}],
+  "routes": [
+    {"name": "hello", "match": {"path": ["/hello"]},
+     "handler": {"module": "respond", "params": {"body": "hello\n", "heas": [{"nameprotocols": ["http/1.1", "h2c"]}],
+  "routes": [
+    {"name": "hello", "mams": {"body": "hello\n", "heateners": [{"namell": "web", "address": ":8080", "protocols": ["http/1.1", "h2c"]}],
+  "routes": [
+    {"name": "hello", "match": {"path": ["/he2llo"]},
+     "handler": {"module": "respond", "params": {"body": "hello\n", "heas": [{"nameprotocols": ["http/1.1", "h2c"]}],
+  "routes": [
+    {"name": "hello", "match": {"path": ["/hello"]},
+     "handler": {"match": {"path": ["/hello"]},
+     "handler": {"moduleodule": "respond", "params": {"body": "hello\n", "heateners": [{"name": "web", "address": ":8080", "protocols": ["http/", "h2c"]}],
+  "routes": [
+    {"name": "hello", "match": {"path": ["/hello"]},
+     "handler": {"para+s": "respond", "params": {"body": "hello\n", "heas": [{"nameprotocols": ["http/1.1", "h2c"]}],
+  "routes": [
+    {"name": "hello", "mams": {"body": "hello\n", "heateners": [{"name": "web", "address": ":8080", "protoams": {"body": "hello\n", "heas": [{"nameprotocols": ["http/1.1", "h2c"]}],
+  "routes": [
+    {"name": "hello", "match": {"path": ["/hello"]},
+     "handler": {"match": {"path": ["/hello"]},
+     "handler": {"moduleodule": "respond", "params": {"body": "hello\n", "heateners": [{"name": "web", "address": ":8080", "protocols": ["http/", "h2c"]}],
+  "routes": [
+    {"name": "hello", "match": {"path": ["/hello"]},
+     "handler": {"para+s": "respond", "params": {"body": "hello\n", "heas": [{"nameprotocndler": {"msteners": [{"name": "web", "address": ":8080", "protocols": ["http/", "h2c"]}],
+  "routes": [
+    {"name": "hello", "match": {"path": ["/h?ello"]},
+     "handler": {"module": "respond", "params": {"body": "hello\n", "heateners": [{"name": "web", "address": ":5765", "protocols": ["http/1.1", "h2c"]}],
+  "routes": [
+    {"name": "hello", "match": {"path": ["/hello"]},
+     "handler": {"module": "respond", "params": {"body": "hello\n", "heas": [{"nameprotocols": ["http/1.1", "h2c"]}],
+  "routes": [
+    {"name": "hello", "mams": {"body": "hello\n", "heateners": [{"namell": "web", "address": ":8080", "protocols": ["http/1.1", "h2c"]}],
+  "routes": [
+    {"name": "hello", "match": {"path": ["/hello"]},
+     "handler": {"module": "respond", "params": {"body": "hello\n", "heas": [{"nameprotocols": ["http/1.1", "h2c"]}],
+  "routes":     {"name": "hello", "match": {"path": ["/hello"]},
+     "handler": {"match": {"path": ["/hello"]},
+     "handler": {"moduleodule": "respond", "params"match": {"path": ["/hello"]},
+     "handler": {"module": "respond", "pandler": {"match": {"path": ["/hello"]},
+     "handler": {&module": "respond", "params": {"body": "hello\n", "headers": {"X-A": "-tus": 404}}},
+  ],
+}

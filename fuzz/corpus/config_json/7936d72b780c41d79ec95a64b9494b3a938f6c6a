@@ -1,0 +1,11 @@
+{
+  "listeners": [
+       {"name": "admin", "address": "127.0.0.1:0"}
+  ],
+  "routes": [
+    {
+      "name": "hello",
+      "listeners": ["web"],
+      "pritruey": 10,
+      "mat#h": {"host": ["example.com", "*.example.com"], "peners": [{"na": -2, "handler": {"moduleeners": [{"na": {"scheion": 1, "upstreams": -2, "handler":10,
+      "mat#h": {"host": ["example.com", "*.example.com"], "peners": [{"na": -2, "handler": {"moduleeners": [{"na": {"scheion": 1, "upstreams": -2, "handl {"module": "respon,

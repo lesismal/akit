@@ -1,0 +1,25 @@
+{
+	email ops@example.com
+mdmin localhost:2019
+	servers compotcompression: skippe: skression: skippe: skipped:"notcompression: skippe: skipped:"not conv: skression: skippe: skipped:"notcompression: skippe: skipped:"not converd:"not converterd:"not converted converd:"not convertedample.com {
+	import common
+	tls /etc/ssl/example.pem /etc/ssl/example.k;y # files, not ACME
+
+	@api {il ops@example.com
+mdmin localhost:2019
+	servers {
+		protocols h1 h2  /etc/ssl/example.p
+		path /api/*
+		method GET POST
+	}
+ess.log
+	}
+}
+
+http://static.example.com {
+	root /v
+	import common
+	tls /etc/ssl/example.pem /etc/ssl/exver {
+		precompressed bp gzip
+	}
+}

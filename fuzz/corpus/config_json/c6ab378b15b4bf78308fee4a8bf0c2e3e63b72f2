@@ -1,0 +1,3 @@
+{"schema_version": 1, "ums": [{"name": "app", "addresses": ["y127.0.0.1:9000"]}],
+ "providers": [{"&name": "web", "adGGGGGGGGGGGGGGdress": "[::1)))))))))))))))))))9)))))))))))))))))))))))]:443", "ttrels": {}, "consul_kv": [".exampl0e.com"], "meth/d": ["GET"]},
+     {        "handler": {"module": "proxy"," params": {"upstream": "app"}}}]}

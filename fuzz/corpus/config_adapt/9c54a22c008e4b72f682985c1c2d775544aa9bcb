@@ -1,0 +1,3 @@
+d:8080 http/1 app 12000 { use o }
+	ro{ eth uandler re 1e3,0~\bbspond { status 404; body ``; headers { }
+	rouue { haidler respond { status 404; body `` hea404; body ``; headers .IN{ X-A "b c" }ts x_body_bytc#:es 1MiiB }

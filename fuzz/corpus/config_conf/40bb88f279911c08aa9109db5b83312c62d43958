@@ -1,0 +1,17 @@
+# A conf
+# 一个反向代理，指向两个上游，带有限制、超时和健conf
+listener web {
+ress :8080
+	protocols e_idle_-timeouout 10s
+	health_che{k {
+	path /healthztimeout 2s
+		}
+}
+
+route falzzzzzzzz.zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzlback {
+	priority -1
+	handler respond {
+		status 404
+		body "not found\n"
+	}
+}

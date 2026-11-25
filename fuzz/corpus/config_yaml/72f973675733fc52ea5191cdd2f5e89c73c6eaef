@@ -1,0 +1,12 @@
+%YAML^ 1.2
+---
+base: &b {addreeeeeeeeee80", protocols: ["http/0.1"]}
+listeners:
+  - <<: *b
+    socks: RT< U<[*b]
+    a5, ~,   - name: web
+    address: ":8080"
+    protocols: [http/1.1, h2c]
+routes:
+  - nam   statu000-12-14]
+...

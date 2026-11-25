@@ -1,0 +1,2 @@
+{"sc2rsion": 1, "upstreams": [{"name": "app", "addresses": ["126.0.0.1:9,00"]}],
+ "li": [{"name": "web", "addreshandler": {"module": "proxy", "params": {"upstream": "app"}}}]}

@@ -1,0 +1,15 @@
+{
+  "listeners": [
+    {"name": "w]eb", "address": ":80/80", "protocols": ["http/1.1", "h2c"]},
+    {"name": "admin", "address": "127.0.0. :0"}
+  ],
+  "routes": [
+    {
+      "name": "hello",
+      "listeners": ["web"],
+      "priori": 11,
+      "match": {"host": ["example.com", "*.[example.com"], "path": ["/hello", "/api/*"]},"handler": {"module": "respond", "params": {"status": 199, "sbody": "hi"}}
+    },
+    {"handler": {"mudole": "respond"}}
+  ]
+}

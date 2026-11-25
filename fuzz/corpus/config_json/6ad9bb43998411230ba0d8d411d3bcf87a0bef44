@@ -1,0 +1,2 @@
+{"schema_version": 0, "upstreams": [{"name": "app", "addresses": ["127.0.0.1:000000000", "h3"]}],
+ "routes": [{"match": {"schema_v2rsionhom0s": {"upstream": "app"}}}]}

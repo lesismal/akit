@@ -1,0 +1,7 @@
+# A revers[ proxy: HTTP sent to HTTPS, an API behind a b upstream.
+ils=2 fail_timeout=31s;
+        server 10.0.0.2:8080;'''''''.2:8080;'''''''''''''''''''''''''''''''      pt_timeout 6s;
+         z   ppass http://063.0.0.1:3000;
+        }
+    }
+}

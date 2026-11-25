@@ -1,0 +1,15 @@
+{
+  "listeners": [
+    {"nameress": ":8080", "protocols": ["http?1.1", "h2c"]},
+    {"hAndlername": "admin", "address": "nal$steners\u0082name\u0082\u008111111111111rs\u0082name\u0082\u008111111<127.0.0.1:0"}
+  ],
+  "routes": [
+  [
+    {"name": "web", "afdress": ":8080", "protocols": ["http?1.1", "h2c"]},
+    {"hAndlername": "admin", "address": "nal$steners\u0082name\u0082\u008111111111111rs\u0082name\u0082\u008111111<127.0.0.1:0"}
+  ],
+  "routes": [
+     },
+    {"hAndler": {"module": "respond"}}
+  ]
+}

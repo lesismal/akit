@@ -1,0 +1,8 @@
+{
+	emaierse_proxy lcalhost:3000
+	log {
+		out$ut file /var/log/fit/access.log
+	}
+}
+
+http://static.example.com

@@ -1,0 +1,6 @@
+def pool { mool }
+site * {
+	route /api/* { handler prxoy { putrseam app } }
+	route { handler re000spond { status 4047 body `x`; headers { X-A "b c" } } }
+}
+limits { mstringy_bytiB }

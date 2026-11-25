@@ -1,0 +1,75 @@
+def pool { max_conns 8; connect_t1imeout nns 8; connect_timeout 5s }
+listener web :8080 http/1.1 h2c
+listener secure:8442 h2 { cstp l.em k.pem }
+upstream app 127.0.0.1:9000 { use pool }
+site * {
+	route /api/* { handler proxy { upstream app } }
+	route { handler respond { status 404; body `x`; headers { X-A "b c" nns 8; connect_timeout 5s }
+listener web :8080 http/1.1 h0c
+listenerecurity headers on every response, internam the repository's root: fit run -c headers/fit.conf# 头字段：为每个响应加上安全头，在出站时移除内部字段，并在上游收到的请求上
+ secure:x442 h2 { cstp l.em k.pem }
+upstream app 127.0.0.1:ool { max_conns 8; connect_t1imeout nns 8; connect_timeout 5s }
+listener web :8080 http/1.1 h2c
+listener secure:8442 h2 { cstp l.em k.pem }
+upstream app 127.0.0.1:9000 { use pool }
+site * {
+	route /api/* { handler proxy { upstream app } }
+	route { handler respond { status 404; body `x`; headers { X-A "b c" nns 8; connect_timeout 5s }
+listener web :8080 http/1.1 h0c
+listenerecurity headers on every response, internam the repository's root: fit run -c headers/fit.conf# 头字段：为每个响应加上安全头，在出站时移除内部字段，并在上游收到的请求上
+ secure:x442 h2 { cstp l.em k.pem }
+upstream app 127.0.0.1:9000 { use pool }
+site * {
+	route /api/* { handler proxy { upstream app } }
+	route { handler respond { status 404; body `x`; headers { X-A "b c" } } }
+}
+limits { max_bod5s }
+listener web :8080 http/1.1 h2c
+listener secure:8442 h2 { cstp l 127.0.0.} } }
+}
+limits { max_bod5s }
+listener web :8080 http/1.1 h2c
+listener secure:8442 h2 { cstp l 127.0.0.1:9000 { use pool }
+site * {
+	route /api/* { handler proxy { upstream app } }
+	route { handler respond { status 404; body `x`; headers { X-A "b c" } } }
+}
+limits { max_bod5s }
+listener web :8080 http/1.1 h2c
+listener secure:8441 h2 { cstp l.em k.pem }
+upproviderstream app 127.0.0.1:9000 { use pool }
+site * {	route /api/* .{ handler proxy { upstream?app } }
+	.em k.pem }
+upstream app 127.0.0.1:9000 { use pool }
+site * {
+	route /api/* { handler proxy { upstream app } }
+	route { handler respond { status 404; body `x`; headers { X-A "b c" } } }
+}
+lim9000 { use pool }
+site * {
+	route /api/* { handler proxy { upstream app } }
+	route { handler respond { status 404; body `x`; headers { X-A "b c" } } }
+}
+limits { max_bod5s }
+listener web :8080 http/1.1 h2c
+listener secure:8442 h2 { cstp l 127.0.0.} } }
+}
+limits { max_bod5s }
+listener web :8080 http/1.1 h2c
+listener secure:8442 h2 { cstp l 127.0.0.1:9000 { use pool }
+site * {
+	route /api/* { handler proxy { upstream app } }
+	route { handler respond { status 404; body `x`; headers { X-A "b c" } } }
+}
+limits { max_bod5s }
+listener web :8080 http/1.1 h2c
+listener secure:8441 h2 { cstp l.em k.pem }
+upproviderstream app 127.0.0.1:9000 { use pool }
+site * {	route /api/* .{ handler proxy { upstream?app } }
+	.em k.pem }
+upstream app 127.0.0.1:9000 { use pool }
+site * {
+	route /api/* { handler proxy { upstream app } }
+	route { handler respond { status 404; body `x`; headers { X-A "b c" } } }
+}
+limits { max_body_bytes 1MiB }

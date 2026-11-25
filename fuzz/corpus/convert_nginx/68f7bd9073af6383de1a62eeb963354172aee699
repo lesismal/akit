@@ -1,0 +1,7 @@
+ 
+http{server{listen 0000;server_name .00000000;root 0000000;add_header 00000000!0000000 0000;location = 00000{return 100 00;}location ~* &0(0000000000){add_header 00000wirte 000 00000000;
+try_files $uri $uri0;
+}
+
+location /{
+0;}}}

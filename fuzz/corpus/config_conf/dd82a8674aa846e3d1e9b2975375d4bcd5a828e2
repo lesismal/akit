@@ -1,0 +1,3 @@
+def pool { max_cvn '5s }
+listener web :8080 http/1.1 #:给i# A reverse ,roxy to twk upstits,  max_cvn '5s }
+listener ewb :8080 http/1.1 #:给i# A reverse ,roxy to twk upsttimeoutsts

@@ -175,7 +175,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I75 | FastCGI | I16 | done |
 | I76 | M5 退出 | I67–I75 | todo |
 | **1.0** | | | |
-| I77 | Fuzz | I56 | todo |
+| I77 | Fuzz | I56 | done |
 | I78 | 配置参考与指南 | I76 | todo |
 | I79 | v1 冻结与兼容性 | I78 | todo |
 | I80 | 为安全审查做好准备 | I77, I79 | todo |
@@ -226,6 +226,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | 响应缓存 | I67、I68、I69 | 否 | 否（内存层、磁盘层与清除已实现、未测量） | 对比 fit，按 I67 的实现：内存命中（4 KiB 与 1 MiB 消息体，HTTP/1.1 与 h2），经代理保存的未命中（旁路复制的流式消息体）对比仅代理，缓存直接放行的请求（POST、`no-store` 响应）对比无中间件的开销，大量键与单个热点键下分片锁的表现。I68：从磁盘读回的命中（64 KiB 与 1 MiB，大量并发下磁盘线程池的线程与队列），未命中率高到填满 `MAX_PENDING_WRITES` 时的磁盘写入，大量客户端对同一个键的惊群，开启锁与 `disable_lock` 两种情况（等待者的挂起与恢复、每次获取一个定时器），以及 stale-while-revalidate 的后台获取。akio ADR-116 的旁路：有旁路的流对比无旁路的流。I69：带标签响应（0 与 32 个标签）对比无标签响应的保存开销，以及服务期间对大 zone 按前缀和按标签清除（分片锁与磁盘索引锁的持有时间）。 |
 | FastCGI | I75 | 否 | 否（已实现，未测量） | 对比 fit 和 nginx 的 `fastcgi_pass`，经 TCP 和 Unix 域套接字连接 PHP-FPM（或立即应答的 FastCGI 应用）：小页面的每秒请求数与延迟，HTTP/1.1 与 h2；1 MiB 上传与 16 MiB 下载（每个进行中请求的内存，双向 64 KiB 水位线）；连接复用对比每个请求一个连接；客户端多于 `max_conns` 时连接池的队列；`try_files` 的开销（每个候选在 akio 逻辑线程池上一次 `stat`）对比不带它的路由；每秒大量请求时，handler 每 100 ms 在 akit 定时器线程（A45 的临时方案）上对其交换的巡检。 |
 | WASM 插件 | I71、I72 | 否 | 否（I71 和 I72 已实现，未测量） | 对照 fit（wazero 的编译器）和无插件：请求经过 fit 的 `headers` 插件（Go guest）和一个空插件（`fit_on_request` 返回 0），HTTP/1.1 和 h2，每秒请求数和延迟，对比不带该中间件的路由（交给池再交回、复制请求、调用本身）；实例上单独的 guest 调用（akio 的 W5：akio-wasm 的解释器对比 wazero 的解释器和编译器）；客户端多于 `instances` 时的池（队列，超出后 503）；trap 之后重建实例（Go guest 的 `_initialize`）。Proxy-Wasm（I72）：请求经过 Proxy-Wasm Go SDK 的 `http_routing`（配置 `1`，请求不变），对照 fit 和无插件，如 fit 的 `BenchmarkProxyWasm`；响应经过 fit 的 `response` 过滤器（`upper`）和 SDK 的 `http_headers`，头部在池上挂起、响应体在池上过滤，一个完整的 4 KiB 响应体和一个流式的 1 MiB 响应体，HTTP/1.1 和 h2，对照 `response: none` 和无插件。 |
+| 监听器拆开 absolute-form 目标 | I77 | 否 | 否（已实现，未测量） | 路由前每个请求多一次比较（目标是否以 `/` 开头）：在同一轮中对 I77 之前的 main 做 HTTP/1.1 上 fixed 场景的 A/B；预计没有开销。akio 实现 A200 后去掉。 |
 
 ## M0 基础
 
@@ -886,6 +887,9 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 - **做什么**：配置读取器、路由器、代理的头处理、PROXY protocol 和缓存的 fuzz 目标；CI 中跑固定时长，定时任务中
   跑得更久。
 - **完成标准**：每个解析器都有目标，语料已提交。
+- **涉及**：`fuzz/`（自成一个 workspace 的 cargo-fuzz 项目，每个解析器一个目标）、被 fuzz 的每个 crate 中的 `fuzzing`
+  feature 和模块、`.github/workflows/ci.yml` 和 `fuzz.yml`。PROXY protocol 和 ClientHello 的解析器属于 akio-mux，在
+  akio 中 fuzz；akit fuzz 它用这些解析器读到的内容。
 
 ### I78 配置参考与指南
 

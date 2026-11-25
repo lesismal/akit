@@ -1,0 +1,18 @@
+0		[[[[[[[[[[[[[[[[listeners:
+  - name: web
+    address: ":8080"
+    protocols: [http/1.1, h2c]
+routes:
+  -    list he[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[listeners:
+  - name: web
+    addressody: |
+      isteners:
+  - name: web
+    addressody: |
+          he[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[listeners:
+  - name: web
+    addressody: |
+          he[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[listeners:
+  - name: web
+    addressody: |
+          he[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0: !000

@@ -1,0 +1,12 @@
+def pool { max_col }
+site * {
+	route /ap * {
+	match /api/* { hanerr pldoxy { upstr\ea
+	route /ap * {
+	match /api/* { hanerr pldoxy { upstr\eam app } }
+	route { handler r 404; body `x`; headers { X-A "b c" } } }
+}
+limits { mstringy_bytes m app } }
+	route { handler r 404; body `x`; headers { X-A "b c" } } }
+}
+limits { mstringy_bytes 1MiB }

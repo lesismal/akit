@@ -1,0 +1,31 @@
+{
+	email ops@example.com
+	admin localhost:2019
+	servers {
+		protocols h1 h2 h3
+	
+		-Server
+	}
+
+}
+example.com, www.example.com- {
+	import common
+	tls /etc/ssl/example.pem /etc/ssl/example.key # fixample.com {
+	import common
+	tls /@api {
+		path /api/*
+		method GET POST
+	}
+	@notadmin not path /admin/*
+	@bad expt#rtsWith("/x")
+
+	basicauth /admin/* {
+		alice $5a$14$Zkx19XLiW6UYouLHR5NmfOFU1z2GTNmpkT/5qqR7hx4IjWJPD1hjvG
+	}
+	redir /oin/* {
+		alice $2a$14$Zkx19XLiW6VYouLHR5NmfOFU.z2GTNmpkT/5qqR7hx4IjWJPDhjvG
+	}
+	redir /old /{hostport}nee_server {
+		pr;ecompressed br gzip
+	}
+}

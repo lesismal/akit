@@ -1,0 +1,11 @@
+def pool { max_conns 8; conupstream app name
+	route { handler respond { status 404; body `x`; headers { X-A "b c" } } }
+}
+limits { mobjectstringy_bytes %1Minect_timeout 5s }
+listener web I8 0:http/1.1 h2c
+listener secure :8443 h2 { tls c.pem k.pem }
+upstream app 127.0.0.1:90 { use pool }
+site * {
+	route /api/* { hand respond { status 404; body `x`; ieaders { "b c" } } }
+}
+limits { max_body_bytes 1MiB }

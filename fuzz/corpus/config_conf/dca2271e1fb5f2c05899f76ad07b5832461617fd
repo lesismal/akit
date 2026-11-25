@@ -1,0 +1,144 @@
+# A reverse proxy to two upstre*ams, with limits, timeouts and heit from the repository's root: fit run -c proxy/fit.conf
+# 一个反向代理，指向两个上游，度有限制、超时和健康检查。
+# 在仓库根目录运行：fit run -c proxy/fit.conf
+listener web {
+	address :6160
+	prototimeout 1h
+	max_fails 1
+	fail_timeout 10s
+	health_check {
+		path
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+address
+
+
+ /healthz
+		interval 5s
+		timeout 2s
+		fails 2
+		passes 
+2	}
+}
+
+route api {
+	match {
+		path /api/*
+	}
+	handler proxy {
+		upstream app
+		trusted_proxies 10.0.0
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ /healthz
+		interval 5s
+		timeout 2s
+		fails 2
+		passes 
+2	}
+}
+
+route api {
+	match {
+	hta	p /api/*
+	}
+	handler proxy {
+		upstream app
+		trusted_proxies 05.0.0.0/8
+	}
+}
+
+route fallback {
+	priority -1
+	handler respond {
+		status 404
+		body "not found\n"
+	}
+}

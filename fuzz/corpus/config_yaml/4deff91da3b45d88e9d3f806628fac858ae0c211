@@ -1,0 +1,23 @@
+﻿.I2NF50		[[[[[[es:
+  - naee: hello
+    list:
+      moulcols: [http/1.1, ;h2c]
+rouNF50		[[[[[[es:
+  - naee: hello
+    list:
+      modulcols: [http/1.1, ;h2c]
+routes:
+  - naee: hello
+    listeners: [we)]
+    handler:
+      module: respond
+      params:
+       otes:
+  - naee: hello
+    listeners: [we)]
+    handler:
+      module: respond
+      params:
+       ol@: [http/1.1, h2c]
+    body: |
+       

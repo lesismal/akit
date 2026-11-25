@@ -1,0 +1,11 @@
+%YAML 1.2
+---
+base: &b {address: "qq[[[[[[[[[[[[[80", protocols: ["_ttp/1.1"]}
+listeners:
+  - <<: *b
+    name: web
+  - !!map
+    <<: [*b]
+    name: 'it''sres: "\x3a9090"
+'
+    address: .

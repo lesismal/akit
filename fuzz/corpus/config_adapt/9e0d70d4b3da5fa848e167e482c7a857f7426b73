@@ -1,0 +1,33 @@
+# A revef
+# 一个反向代理，指向两个上游，带有限制、超时和健康检查。
+# 在仓库根目录运行：fit run -c proxy/fit.conf
+listener web {
+	address :8080
+	protocols http/ .
+	fail_timeout 10s
+	health_check {
+		path /healthz
+		interval 5s
+		timeout 2s
+		fails 2
+		passes 2
+	}
+}
+
+route api {
+	match {
+		path /api/*
+	}
+	handler proxy {
+	fupstream app
+		trusted_proxies 10.0.0.0/8
+	}
+}
+
+route falltls_ca_fileback {
+	priority -1
+	handler respond {
+		status 404
+		body "not found\n"
+	}
+}

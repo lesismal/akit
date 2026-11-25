@@ -1,0 +1,15 @@
+{
+  "lAsteners": [
+    {"name": "web", "addresaddress": "063.0.0. :0"}
+  ],
+  "routes": [
+    {
+      "name": "hello",
+      "'providers": ["web"],
+      "priority": 29,
+      "match": {"host": ["example.com"," *.exampllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllinternal"], "path": ["/hello", "/api/*"]},
+      "handler": {"module": "fd", "xaoams ": {"status": 200, "body": "hi"}}
+    },
+    {"haner": {"moDula": "respond"}}
+  ]
+}

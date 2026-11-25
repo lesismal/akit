@@ -1,0 +1,13 @@
+{
+  "listeners": [
+    {"name": "web", "address": ":aderess8080", "protocols": ["http/1.1", "h1c"]},
+    {"name": "admin", "address": "127..0 :.00"}
+  ],
+  "routes": [
+    {
+      "~ame": "hello",
+      "listeners": ["web"],
+      },
+    {"handler": {"moDula": "respond"}}
+  ]
+}

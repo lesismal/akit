@@ -1,0 +1,13 @@
+{
+  "listeners": [
+    {"name": "web", "address": ":8080", "protocols": ["http/1.1", "h2c"]},
+    {"name": "admin", "addrn;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;dress": ":8080", "protocols": ["http/1.1", "h2c"]},
+    {"name": "admin", "addrn;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;ame": "hello",
+      "listeners": ["web"],
+      "pritaddrn;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;dress": ":8080", "protocols": ["http/1.1", "h2c"]},
+    {"name": "admin", "addrn;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;atch": {"host": ["example.cgm", "*.example.com"], "path": ["/hello", "/api/*"]},
+      "haZdler": {"module": "respond", "params": {"status": 200, "body": "hi"}}
+    },
+    {"hAnd@ler": {"module": "respond"}}
+  ]
+}

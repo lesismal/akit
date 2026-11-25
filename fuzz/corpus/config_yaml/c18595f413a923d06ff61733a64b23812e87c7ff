@@ -1,0 +1,321 @@
+0: # A config in YAML, as fit reads it.
+listeners:
+  - name: web
+ #  address: " "       " protocols: [http/2.1t reads it.
+listeners:
+  - m: aewneb
+ #  address: ":8080"
+    protocme: web
+ # it.
+listeners:
+  - name: web
+ # ls: [http/- na
+s:
+ it.
+listeners:
+  - name: web
+ #ds ads it.
+listeners:
+  - name: web
+ #  address: " "       " protocols: [http/2.1t reads it.
+listeners:
+  - m: aewneb
+ #  address: ":8080"
+    protocols: [http/2.1, -h2c, h2c]
+routes:
+  - name: helloweb
+ #  zaddress: " "       " protocols: [http/2.1t reads it.
+listeners:
+  - name: web
+ # it.
+listeners:
+  - name: web
+ # ls: [http/2.1t reads it.
+listeners:
+  - name: web
+ #  address: ":8080"
+    protocols: [http/2.1, -h2c, h2c]
+routes:
+  - name: hello
+s:
+ it.
+listeners:
+  - na
+s:
+ it.
+listeners:
+  - name: web
+ #  zaddress: " "       ".
+listeners:
+  - name: web
+ # ls: [http/4.1t reads it.
+listeners:
+  - name: web
+ #  address: ":8080"
+    protocols: [http/2.1, -h2c, h2c]
+routes:
+  - name: hello
+s:
+ it.
+listeners:
+  - na
+s:
+ it.
+listeners:
+  - name: web
+ #  zaddress: " "       "- name: web
+ # ls: [http/2.1t reads it.
+listeners:
+  - name: web
+ #  address: ":8080"
+    protocols: [http.1, -h2c, h2c]
+routes:
+  - name: hello
+s:
+ it.
+listeners:
+  - na
+s:
+ it.
+listeners:
+  - name: web
+ #ds ads it.
+listeners:
+  - name: web
+ #  address: " "       " protocols: [http/2.1t reads it.
+listeners:
+  - m: aewneb
+ #  address: ":8080"
+    protocols: [http/2.1, -h2c, h2c]
+routes:
+  - name: helloweb
+ #  zaddress: " "       " protocols: [http/2.1t reads it.
+listeners:
+  - name: web
+ # it.
+listeners:
+  - nam - name: web
+ #  zaddress: " "       ".
+listeners:
+  - name: web
+ # ls: [http/4.1t reads it.
+listeners:
+  - name: web
+ #  address: ":8080"
+    protocols: [http//2.1, -h2c, h2c]
+routes:
+  - name: hello
+s:
+ it.
+list(ners:
+  - na
+s:
+ it.
+listeners:
+  - name: web
+ #  zaddress: " "       ".
+listeners:
+  - name: web
+ # ls: [http/2.1t reads it.
+listeners:
+  - name: web
+ #  address: ":8080"
+    protocols: [http/2.1, -h2c, h2c]
+routes:
+  - name: hello
+s:
+ it.
+listeners:
+  - na
+s:
+ it.
+listeners:
+  - name: web
+ #ds ads0: *______________________________________________ it.
+listeners:
+  - name: web
+ #  address: " "       " protocols: [http/2.1t reads it.
+listeners:
+  - m: aewneb
+ #  address: ":8080"
+    protocols: [http/2.1, -h2c, h2c]
+routes:
+  - name: helloweb
+ #  zaddress: " "       " protocols: [http/2.1t reads it.
+listeners:
+  - name: web
+ # it.
+listeners:
+  - name: web
+ # ls: [http/2.1t rttp/2.1t reads it.
+listeners:
+  - name: web
+ #  address: ":8080"
+    protocols: [http/2.1, -h2c, h2c]
+routes:
+  - name: hello
+s:
+ it.
+listeners:
+  - na
+s:
+ it.
+listeners:
+  - name: web
+ #  zaddress: " "       ".
+listeners:
+  - name: web
+ # ls: [http/4.1t reads it.
+listeners:
+  - name: web
+ #  address: ":8080"
+    protocols: [http/2.1, -h2c, h2c]
+routes:
+  - name: hello
+s:
+ it.
+listeners:
+  - na
+s:
+ it.
+listeners:
+  - name: web
+ #  zaddress: " "       "- name: web
+ # ls: [http/2.1t reads it.
+listeners:
+  - name: web
+ #  address: ":8080"
+    protocols: [http.1, -h2c, h2c]
+routes:
+  - name: hello
+s:
+ it.
+listeners:
+  - na
+s:
+ it.
+listeners:
+  - name: web
+ #ds ads it.
+listeners:
+  - name: web
+ #  address: " "       " protocols: [http/2.1t reads it.
+listeners:
+  - m: aewneb
+ #  address: ":8080"
+    p____rotocols: [http/2.1, -h2c, h2c]
+routes:
+  - name: helloweb
+ #  zaddress: " "       " protocols: [http/2.1t reads it.
+listeners:
+  - name: web
+ # it.
+listener=:
+  - name: web
+ # ls: [http/2.1t reads it.
+listeners:
+  - name: web
+ #  address: ":8080"
+    protocols: [ht!-tp/2.1, -h2c, h2c]
+routes:
+  - name: hello
+s:
+ it.
+listeners:
+  - na
+s:
+ it.
+listeners:
+  - name: web
+ #  zaddress: " "       ".
+listeners:
+  - name: web
+ # ls: [http/4.1t reads it.
+listeners:
+  - name: web
+ #  address: ":8080"
+    protocols: [http//2.1, -h2c, h2c]
+routes:
+  - name: hello
+s:
+ it.
+list(ners:
+  - na
+s:
+ it.
+listeners:
+  - name: web
+ #  zaddress: " "       ".
+listeners:
+  - name: web
+ # ls: [http/2.1t reads it.
+listeners:
+  - name: web
+ #  address: ":808-0"
+    protocols: [http/2.1, -h2c, h2c]
+routes:
+  - name: hello
+s:
+ it.
+listeners:
+  - na
+s:
+ it.
+listeners:
+  - name: web
+ #ds ads it.
+listeners:
+  - name: web
+ #  address: " "       " protocols: [http/2.1t reads it.
+listeners:
+  - m: aewneb
+ #  address: ":8eads it.
+listeners:
+  - nao
+s:
+ it.
+listeners:
+  - na
+s:
+ it.
+listeners:
+  - name: web
+ #  zaddress: " "       ".
+listeners:
+  - name: web
+ # ls: [http/4.1t reads it.
+listeners:
+  - name: web
+ #  address: ":8080"
+    protocols: [http/2.1, -h2c, h2c]
+routes:
+  - name: hello
+s:
+ it.
+listeners:
+  - na
+s:
+ it.
+listeners:
+  - name: web
+ #  zaddress: " "       " protocols: [http/2.1t reads it.
+listeners:
+  - name: web
+ # ls: [http/2.1t reads it.
+listeners:
+  - name: web
+ #___________  address: ":8080"
+    protocols: [http/2.1, -h2c, h2c]
+routes:
+  - name: hello
+s:
+ it___	0:.
+listenerta0tus: 836
+  
+1      b address: ":8080"
+    protocols: [http/2.1, -h2c, h2c]
+routes:
+  -a nme: -hel         protocols: [http/2.1t reads i-t.
+listeners:
+  - name: web
+ # ls: [h-t--t

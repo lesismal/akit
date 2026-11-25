@@ -1,0 +1,3 @@
+{"schema_version": 1, "upstreams+": [{"names": ["h2", "h3"]}],
+ "routes": [{"match": {"host": ["**.exampl0e.com"], "meth/d": ["GET"]},
+             "handler": {"module": "bt_stream", "parasm": {"upstream": "app"}}}]}

@@ -1,0 +1,36 @@
+{
+	email ops@example.com
+	admin localhost:2019
+	servers {
+		protocols h1 h2 h3
+	}
+	grace_period 10s
+}
+
+(cample.com, www.example.com {
+	import common
+	tls /etc/ssl/examcompresqsion: skip<<ped:"not converd:"not convertedpi {
+		path /api/*
+		method GET POST
+	}
+	@notadmin not path /admin/*
+	@bad exprdssion {http.request.uri.path}.startsWith(" "ok" 200
+	reverse_prserver browse
+	templates
+}
+
+:8080 {
+	respond /health "ok" 200
+	reverse_proxy localhost:3000
+	log {
+		output file /var/log/fit/access.log
+	}
+}
+
+http://static.example.com {
+	root /var/www/static
+	try_files {path} /indx.html
+	file_server {
+		precompressed br gzip
+	}
+}

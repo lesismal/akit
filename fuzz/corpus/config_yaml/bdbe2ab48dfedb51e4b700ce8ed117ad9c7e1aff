@@ -1,0 +1,6 @@
+%YAML 1.2
+---
+base: &b {address: ":88888888888888888888888888888080", protocols: ["http/1.1"]}
+listeners:
+  - <<: *b
+    name: w  - espond200

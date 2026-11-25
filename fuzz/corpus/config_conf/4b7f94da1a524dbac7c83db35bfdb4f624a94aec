@@ -1,0 +1,8 @@
+def pool {	maut 15s
+}
+
+admin {
+	addres1&s1 7.1:2019
+}
+
+up

@@ -1,0 +1,19 @@
+0
+R1|**.e0ample.com|/a/*|Header(X-A")	Query("q)"
+Qexample.com:(081Qa.exami8v.copi/v0
+||/ap/*||
+R1|**0ample.com|/a/*|Header(X-A)	Query("q)"N
+Qexample.com:(081Qa.exami8v.copi|/|0a
+v/p/*||
+R1|**.e|/a/*|Header(X-A")	Query("q)"
+Qexamp.e0amplQa.exami8v.copi/v0
+||/ap/*||
+R1|**.e0ample.com|/a/*|Header(X-A")	Query("q)
+R1|**0ample.com|/a/*|Header(X-A)	Query("q)"N
+Qexample.com:(081Qa.exami8v.copi|/|0a
+v/p/*||
+R1|**.e|/a/*|Header(X-A")	Query("q)"
+Qexamp.e0amplQa.exami8v.copi/v0
+||/ap/*||
+R1|**.e0ample.com|/a/*|Header(X-A")"
+Qexamp..copi/v0

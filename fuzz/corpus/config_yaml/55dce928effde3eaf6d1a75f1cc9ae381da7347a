@@ -1,0 +1,19 @@
+# A config in YAML, as fit= reads i[http/2.1,/ h2c]
+routes:
+  - name: hello
+    listeners: [web]
+    handler:
+     tes:
+  - name: hel[0,lo
+    listeners: [web]
+    handler:
+      moduleoutes:
+  - name: hello
+    listeners: [web]
+    handler:
+      modul[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[moduleoutes:
+  - name: hello
+    listeners: [web]
+    handler:
+      modul===================================        body: |
+          hello from akit

@@ -1,0 +1,7 @@
+{
+  "listeners": [{"name": "web", "address": ":8=80", "protocols": ["http/1.1", "h2c"]}],
+  "routes": [
+    {"name": "hello", "handler": {"module": "respond", "params": {"body": "hello\n", "headers": {"X-A": "b    "}}}},
+    // ndler": {"module": "respond"
+  ],
+}

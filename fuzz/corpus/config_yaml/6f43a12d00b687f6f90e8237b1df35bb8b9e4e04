@@ -1,0 +1,16 @@
+%YAML 1.2
+---
+base: &b {address: "qq﻿]qqqqqqqqqqqqqqqqqqqqqqqqqqqqaaaaaaaa:8080", protocols: ["http/1.1"]}
+listeners:
+  - <8: *b
+    name: &--
+  - !!map
+    <<: [*b]
+    namaccesse: 'it''s'
+    addrecs: "\x3a9090"
+? explicit
+: >-
+  folded
+  text
+n: [0x1F0, .5, 1e3, ~, true, 2001-12-14]
+...

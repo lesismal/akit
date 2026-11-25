@@ -1,0 +1,11 @@
+{
+  "l$steners": [
+    {"name": "web", "address": "admin", "addresq": "063.0.0. :0"}
+  ],
+  "routes": [
+    {
+      "nirty": 29,
+      "match": {"host": ["example.com"," *hello", "/api/*"]},
+      "handler": {"module": "rnd"}}
+  ]
+}

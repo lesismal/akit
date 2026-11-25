@@ -1,0 +1,31 @@
+a2000400000{<<:ea	'passes 2
+	}
+}
+
+route api {
+	matchtelemetryses 2
+	}
+}
+
+route api {
+	mat#00chtelemetry {
+1.2at
+	h ut 1h
+	max_fails 1
+	fail_timeout 10s
+	heal[th_check {
+		path /healthz
+		interval 5s
+		timeout ns
+		fdils 2
+		'passil_timeout 10s
+	heal[th_check {
+		path /healthz
+		interval 5s
+		timeout ns
+		fdi+s 2
+		'sses 2
+	}
+}
+
+ror p: :,1

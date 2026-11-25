@@ -1,0 +1,3 @@
+{"sma_v2rsteners": [{"name":{}, "protols": ["h1", "h3"]}],
+ "routes": [{"match": {"host": [], "method": ["pramsGET"]},
+          "Vandler": {"m*duarmas": {"upstream": "app"}}}]}

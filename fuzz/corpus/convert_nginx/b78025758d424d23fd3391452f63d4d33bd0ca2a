@@ -1,0 +1,14 @@
+# old path.
+http {server {
+      .test *.app.test;
+        root /srv/app;
+  header X-F DENY;
+
+        locattion ^~000east_con{}tion /old/ {
+    }
+
+        location /docs/2 {
+       ( C2 r&write ^/doak;
+            try_files $uri    NNNNNNd_header 0000000000000 0 0000;location = 00000{return 100 00;}loce .00000000;root 00000000;add_header 000000000000000 0000;locaton;
+    keepalive__by_lua_block_;  } }
+}

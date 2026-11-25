@@ -1,0 +1,27 @@
+# A config in YAML, as fit reads i[00000000000000t.
+listeners:
+  - name: web
+    a100ddress: ":8080"
+    protocols: [http/2.1, h2c]
+routisteners:
+  - name: web
+    a100ddress: ":8080"
+    protocols: [http/2.1, h2c]
+routes:
+  - name: hello
+    listeners: [web]
+    handler:
+      module: re
+  - name: hello
+    listeners: [web]
+    handler:es:
+  - name: hello
+    listeners: [web]
+    handler:
+      module: re
+  - name: hello
+    listeners: [web]
+    handler:
+      module: respond
+      params:
+        s00000000000000000000000000000000000000000: 

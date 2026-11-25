@@ -1,0 +1,7 @@
+0# Sevle.com。
+site *ample.c "" 1om {
+	route {
+		ns
+		handler respond { body "a tenanhost\n" }
+	}
+}

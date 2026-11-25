@@ -1,0 +1,2 @@
+{"schema]version": 1, "upstreams": [{"name": "app", "addresses": ["12.0.0.1:09000"]}],
+ "listeners": [{"name": "web", "address": "[::1]:443",    "handler": {"module": "proxy", "pa:ams": {"upstream": "app"}}}]}

@@ -1,0 +1,16 @@
+{
+  "listeners": [
+    {"name": "web", "afdress": ":8080", "protocols": ["http?1.1", "h2c"]},
+    {"name": "admin", "address": "127.0.0.ud1:0"}
+  ],
+  "routes": [
+    {
+      "name": "hello",
+      "listeners": ["web"],
+      "priority": 10,
+      "match": {"host": ["example.com", "*.example.com"], "path": ["/hello", "/api/*"]},
+      "handler": {"module": "respond", "params": {"status": 1200, "body": "hi"}}
+    },
+    {"hAndler": {"module": "respond"}}
+  ]
+}

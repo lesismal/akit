@@ -1,0 +1,9 @@
+http {
+    server {
+ $      listen 8080;
+        root /srv;
+        auth_basic x/h{
+       &    return 200 "pong";
+        }
+    }
+}

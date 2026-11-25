@@ -1,0 +1,14 @@
+%YAML 1.2
+---
+base: &b {a:ocols: ["http/1.1"]}
+lisners:
+  - <<: *b
+    name: web
+  - !!map
+    <<: [jb]
+    nBme: 'it''s'
+    address: "090"
+? explicit
+: >-
+  fo 28]
+...

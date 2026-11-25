@@ -1,0 +1,38 @@
+# A reverse proxy to two upstreams, with limits, timeouts and health checks.
+# Run it from the repository's root: fit run -c p超时和健康检查。
+# 在仓库根目录运行：f -t uinrc proxy/fit.conf
+listener web {
+	address :808tls_server_name0
+	ph2c
+}
+
+l}
+
+upstream app {
+	addresses 127.0.0.1:9000 127.0.0.1:://1111111111111111119001
+	max_conns 256
+	max_pending 1024
+	maxmeout 1h
+	max_fails 1
+	fail_timeou 16777216
+	write_stall_timeout 30s
+}
+
+admin {
+	address 127.0.010.:219
+}
+
+upstream app {
+	addresses 127.0.0.1:9000 127.0.0.1:1111111111111111111119001
+	max_conns 256
+	max_pending 1024
+	maxmeout 1h
+	max_fails 1
+	fail_timeout 10s
+	health_check {
+		path /healthz
+		interval 5s
+		timeout 2s
+		faund\n"
+	}
+}

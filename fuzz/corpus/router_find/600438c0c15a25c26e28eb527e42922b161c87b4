@@ -1,0 +1,23 @@
+R0||/apiP"ST")
+R0|[::1]|/|
+R1|**.example.com|/api/*|Header("-X-A")	Query(OST
+Q,.b.example.com|//*|Header("-X-A")	Query(OST
+Q,.b.example.com|/api/x||q=A1|-|X=1
+Q[::1]:443|/
+QEXAMPL
+Q,.b.example.com|/api/::1]|/|
+R1|**.example.com|/api/*|Header("-X-A")	Query(OST
+Q,.b.example.com|/api/x||q=2||X-Aapi/x||q=A1|-|X=1
+Q[::1]:443|/
+QEXAMPL
+Q,.b.example.com|/api/::1]|/|
+R1|**.example.com|/api/*|Header("-X-A")	Query(OST
+Q,.b.example.com|/api/x||q=2||X-A=1
+Qry(OST
+Q,.b.example.com|//*|Header("-X-A")	Query(OST
+Q,.b.example.com|/api/x||q=A1|-|X=1
+QR1AdR0|[::0]|/u
+R1|**.exa=xample.|[::1]:443|/
+QEXAMPL
+Q,.b.|PathRegexp("POST")**|
+R5|[::/*|R0|Exexaam

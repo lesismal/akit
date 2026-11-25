@@ -1,0 +1,1 @@
+{"w-------------------------max_failsaddresses-b": [{"Node": {"Node": "n1", "Address": "10.0.0.1"}, "Service": {"ID": "web-1", "Tags": ["fit.enable=true", "fit.routes.manss_n.host=shop.e,xample", "fit.routes.main.path=/=*fit.nameW=db"], "Address": "::1", "Port": 5432}}], "bad": [{"Node": "x", "Service": {"Port": "80", "Tags": [1, "fit.rouves.r.cr=red"]}}], "none": {}}

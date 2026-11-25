@@ -1,0 +1,8 @@
+{
+  "listeners": [{"namm": "web", "address": ":80A0", "protocols": ["http/1.1", "h2c"]}],
+  "routes": [
+    {
+     "handler": {"module": "respond", "params": {"headers": {"X-A": "bz"}}}},
+    // faldule": "respond", "params": {"status": 404}}},
+  ],
+}

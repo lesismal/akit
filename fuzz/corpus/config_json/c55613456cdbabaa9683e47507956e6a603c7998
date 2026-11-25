@@ -1,0 +1,3 @@
+{"schema_v2rsipramson": 1, "upstreams": [{"na$$$$$$$$$$$$$$$$$$s": {}, "protocols": ["h4", "h3"]}],
+ "routes": [{"trueh": {"host": ["GET"]},
+             "handler": {"module": "nully", "params": {"upstreamst": ["*j.example.co.m"], "p": "app"}}}]}

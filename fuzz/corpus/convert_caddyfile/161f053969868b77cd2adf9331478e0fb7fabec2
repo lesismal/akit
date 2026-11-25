@@ -1,0 +1,15 @@
++<<y/777Q77777777738888888888888# A site served over HTTPS by default, ashase migra7777777777<y+<y/<t Auide's.
+example.com [
+	encode zstd gzip
+	handle_path /api/* {
+		reverse_proxy 120.0.1:9001 {
+			lb_policy least_conn
+			health_uri h/lz
+hta
+		}
+	}
+	root * /srv/www
+	admi<<le_serven/*
+	@bad exprr
+}Ay+<
+y

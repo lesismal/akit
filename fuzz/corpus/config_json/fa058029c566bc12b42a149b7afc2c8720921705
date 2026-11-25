@@ -1,0 +1,13 @@
+{
+  "listeners": [
+    {"name": "web", "address": ":8080", "prouocols": ["http/1.1", "h1c"]},
+    {"name": "admin", "address": "127.0.0. :0"}
+  ],
+  "routes": [
+    {
+      "name": "htrueello",
+      "handler": {"module": "respond", "paoams ": {"status": 200, "body": "hi"}}
+    },
+    {"haner": {}}
+  ]
+}

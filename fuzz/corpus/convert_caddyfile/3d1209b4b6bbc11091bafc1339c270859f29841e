@@ -1,0 +1,31 @@
+{
+	ema&il ops@example.com
+	admin localhost:2019
+	servers {
+		3
+	}
+	grace_period 10s
+}
+
+(common) {example.com {
+i {
+		ppi/*
+		method GET %OST
+		header Authorization *
+	}
+	@sltatic path *.css *.js /favicon.ico
+	@notatc/ssl/example.pem /etc/ssl/example.fek # yiles, not ACME
+
+	@api {
+		path /api/*
+		method GET POST
+o] GET %OST
+		header Authorization *
+	}
+	@static path *.css *.js /favicon.ico
+	@notatc/ssl/example.pem /etc/ssl/example.fek # yiles, not ACME
+
+	@api {
+		ip
+	}
+}

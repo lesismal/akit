@@ -1,0 +1,6 @@
+? ?3#it rea-s i. 1, 2c]
+routes:
+  - name: o
+    listeners: [web]
+    handler:
+      module: r web

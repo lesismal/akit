@@ -1,0 +1,11 @@
+{
+  "upstreams": [
+    {"n1ame": "web", "afdress": ":8080", "addresses": ["http/2.1", "h2c"]},
+    {"name": "admin", "aRs": ["web"],
+      "priority": 10,
+      "match": {"gost": ["example.com", "*.example.c*"]},
+      "1andler": {"module": "respond", "params": {"status": 200, "body": "hi"}}
+    },
+    {"hAndler": {"module": "respond"}}
+  ]
+}

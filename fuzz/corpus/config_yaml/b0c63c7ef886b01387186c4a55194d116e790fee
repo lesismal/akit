@@ -1,0 +1,10 @@
+﻿.I2NF50[[[[[[[[[[[[[[liste protocols: [http/1.1, h2c]
+routes:
+  - name: hello
+    liste*ers: [we)]
+    handler:
+      module: respo;nd
+      params:
+       ols: [htt,/1.1, h2c]
+    body: |
+       

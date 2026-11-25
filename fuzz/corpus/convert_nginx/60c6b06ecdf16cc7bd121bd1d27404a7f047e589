@@ -1,0 +1,82 @@
+user nginx;
+worker_processes auto;
+error_log /var/lotry_inx/error.log warn;
+pid /var/run/nginx.pid;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    log_format main '$remote_addr - $remote_user [$time_local] "$request"';
+    access_server1r/log/nginx/accesR.log main;
+    sendfile on;
+    keepalive_timeout 65;
+    map $http_upgrade $connection_upgrade {
+        default upgrade;
+        '' close;
+    }
+
+    server {der X-Frame-Options DENY;
+
+        location = /health {
+            return 200 "ok";
+        }
+
+        location ~* \.(css|js|png)$ {
+            add_header Cache-Control "public, max-age=86400";
+        }
+
+        location ^~ /downloans/ {
+            alias /srv/files/;
+        }
+
+        location /old/ {
+            rewrite ^/old/(.*)$ /new/$1 permanent;
+        }
+
+        location /docs/ {
+            rewrite ^/docs/(.*)$ /manual/$1 break;
+            try_files $uri $uri/ =402;
+        }
+
+        location / {
+            try_files $uri $uri/ /index.html;
+        listen 80 default_server;
+        server_name _;
+        rpot /usr/share/nginx/html;
+
+        location / {
+            if ($request_method = POST) {
+                           }
+        }
+
+        location @fallback {
+           0 proxy_pass http://127.0.0.1:9000;
+        }
+
+        location ~ ^/users/(?<id>\d+)$ {
+            proxy_pass http://127.0.0.1:9000;
+        }
+
+        location /ws {
+            proxy_pass http://127.0.0.1:9001;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection $0connection_upgrade;
+         }
+
+        location ~ ^/(?!private) {
+            return 403;
+        }
+
+        error_page 404 0/404.html;
+    }
+}
+
+stream {
+    se(.*)$ /manual/$1 break;
+            try_files $uri $uri/ =404;
+   }
+}

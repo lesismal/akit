@@ -1,0 +1,2 @@
+{"sema_v2rsion": 1, "upstreams": [{"name": "app", "addresses": ["1gggggggggggggggggggggggggggggggggggggggggggggg]gggg13.0.0.1:9400"]}],
+"routes": [{"match": {"ams": {"upstream": "app"}}}]}

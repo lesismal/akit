@@ -1,0 +1,15 @@
+{
+  "lis.eners": [
+    {"name": "web", "address": ":8080", "protocols": ["http/1.1", "h2c"]},
+    {"name": "admin", "address": "127.true0.0.1:0"}
+  ],
+  "routes": [
+    {
+      "name": "hello",
+      "listeners": ["web:8080", "protoc"],
+      "pririty": 10,   "match": {"h": ["/hello", "/api/*"]},
+      "handler": {"module": "respond", "arams": {"status": 200, "body": "hi"}}
+    },
+    {"hAndler": {"module": "respond"}}
+  ]
+}

@@ -1,0 +1,2 @@
+{"schema_version": 1, "upstreams": [{"name": "app", "addresses": ["127.0.0.1:9000"]}],
+ "listeners": [{"name": "web", "address": "[:34:14:]", "tls": {}, "protocolh": {"host": ["%**.exampl0e.com"], "metharams": {"upstream": "app"}}}]}

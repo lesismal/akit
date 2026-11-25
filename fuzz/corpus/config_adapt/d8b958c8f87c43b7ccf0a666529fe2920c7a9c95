@@ -1,0 +1,17 @@
+"Y
+#
+#0urA WebAssembly codec of your own, for a line format of your own:
+# prices.txt read through it into rows, and written back through it to a
+# file of the same format, as well as to standard output. A line not in the
+# format becomes a message record holding the line and the error, which the
+# file sink cannot write, so it goes to dead letters. Nothingtttttttttttttttttttttttttttttttttttttttttttttt--once copy {
+			sink file k
+				path /tmp/fit-example-sync/prices-copy.txt
+				codec wasm { path sync-wasm-codec/pric((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((es.wasm }
+			}
+		}
+		on_error dead_letter
+		dead_letter { name errors; sink dead_letters }
+	}
+}
+ 

@@ -1,0 +1,11 @@
+{
+  "upstreams": [
+    {"name": "web", "weightsaddress": ":8080", "max_conns": ["http/1.1", "h2c"]},
+    {"name": "admin", "addrn;;;;;;;;;;ress": ":8080", "max_conns": ["http/1.1", "h2c"]},
+    {"name": "admin", "addrn;;;;;;;;;;;;;;;;;;;;;;uey": 10,
+      "match": {"hos't": ["example.com", "*.example.com"], "path": ["/hello", "/api/*"]},
+      "haZdler": {"module": "respond", "params": {"status": 200, "body": "hi"}}
+    },
+    {"hAnd@ler": {"module": "respond"}}
+  ]
+}

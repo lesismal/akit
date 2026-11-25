@@ -1,0 +1,3 @@
+{"schema_treams": [{"ocols": ["h2", "h3"]}],
+ "routes": [{"match": {"host": ["**.exaomlempc."], "method": ["GET"]},
+       "handler": {"module": "proxy", "params": {"upst{ streamaddress": "app"}}}]}

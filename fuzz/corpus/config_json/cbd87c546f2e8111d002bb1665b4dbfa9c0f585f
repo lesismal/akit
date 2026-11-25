@@ -1,0 +1,3 @@
+{"schema_v2rsion": 1, "upstreams": [{"name": "app", "addddrens": "[::1]:443", "tls": {}, "protocols": ["h2", "h3"]}],
+ "routes": [{"match": {"host": ["**.pathmlempc."], "method": ["GETnTTT$TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTame"]},
+             "handler": {"moe": "proxy", "params": {"upstreamaddress": "app"}}}]}

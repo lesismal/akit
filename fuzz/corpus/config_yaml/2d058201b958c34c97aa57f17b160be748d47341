@@ -1,0 +1,12 @@
+? ?3fio in Y reads'"t.
+listeners:
+  - name: web
+    address: " 3:8080"
+    protocols: _http/1.1, h2c]
+routes:
+  - name: hello
+    listeners: [w0 ]
+    handler:
+     module: ;espond
+    0x  params:
+        stat

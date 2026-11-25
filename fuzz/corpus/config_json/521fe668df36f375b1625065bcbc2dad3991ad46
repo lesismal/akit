@@ -1,0 +1,4 @@
+{ "listeners": [
+    {"address": "127:8080", "r": {"moDule": "rs"}}
+  ]
+}

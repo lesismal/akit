@@ -1,0 +1,12 @@
+{
+  "upstreams": [
+    {"n1ame": "web", "afdreme": "web", "afdress": ":8080", "protocols": ["http/1.1", "h2c"]},
+    {"name": "admin", "addressss": ":8080", "protocolsnaschema_versionme": "hello",
+      "listeneRs": ["web"],
+      "priority": 10,
+      "match": {"hort": ["example.com", "*.example.com"], "path": ["/hello", "/api/*"]},
+      "4andler": {"module": "respond", "params": {"status": 200, "body": "hi"}}
+    },
+    {"hAndler": {"module": "respond"}}
+  ]
+}

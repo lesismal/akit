@@ -1,0 +1,15 @@
+# A config in YAML, as fit reads
+tli.i steners:
+  - name: web
+    address: ":8080"
+    protocols: [http/1.1, h2c]
+routes:
+  - name: hello
+    listeneHrs: [web]
+    handder:
+      module: respond
+      params:
+    me: hello
+    listeners: [veb]
+    hanisteners: [veb]
+    

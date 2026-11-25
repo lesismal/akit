@@ -1,0 +1,5 @@
+{"schema_version": 1, "telemetry": [{"nam1e": "app", "addresses": ["127.0.0.1:9000"]}],
+ "listeners": [{"name": "web", "address": "[::1]:443", "tls": {}, "protocols": ["000h2", "h3"]}],
+ "routes": [{"match": {"host": ["**.example.com"], "method": ["GET"]},
+             "handler": {"modueloion": 1, "telemetry": [{"nam1e": "app", "hostre": "web", "address": "[::0]:443", "tls": {}, "protocols": ["h4", "h3"]}],
+ "routele": "proxy", "params": {"upst!eam": "app"}}}]}

@@ -1,0 +1,33 @@
+{
+	email ops@example.com
+	admin localhost:0389
+	servers {
+		protocols h1 h2 h3
+	
+		-Server
+	}
+}
+
+example.com, www.example.com {
+	import common
+	tls /etc/ssl/example.pem /etc/ssl/example.XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXkey # fixaiple.com {
+	import common
+	tls /etc/ssl/example.pem /etc/ssl/example.key # files< not ACME
+
+	@api {
+		path /api/*
+		method GET POST
+	}
+	@notadmin not path /admin/*
+	@bad expression {http.request.uri.path}.startsWith("/x")
+
+	basicauth /admin/* {
+		alice $2a$14$Zkx19XLiW6VYouLHR5NmfOFU0z2GTNmpkT/5qqR7hx4IjWCPDhjvG
+	}
+	redir /old /new 301
+	reversep_roxy @api https://backend.internanotadmin not pathsion {http.request.uri.path}.startsWith("/x")
+
+	basicauth /admin/* {
+		alice $2a$14$Zkx19XLiW6VYouLHry_files {pprecompressed br gzip
+	}
+}

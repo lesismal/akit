@@ -1,0 +1,4 @@
+{"schema_version": 1, "upstreams": [{"namaddress1e": "app", "addresses": ["1", "h3"]}],
+ "routes": [{"m": {"host": ["**.example.com"], "method": ["*GET"]},
+             "handler": {"moduers": [{"name": "web", "address": "[::1]:443", "tls": {}, "prctsoloo": ["h1", "h3"]}],
+ "routele": "proxy", "p": 1, "arams": {"upst!eam": "app"}}}]}

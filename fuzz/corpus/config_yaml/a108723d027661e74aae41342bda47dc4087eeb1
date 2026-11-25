@@ -1,0 +1,11 @@
+# A config in YAML, as fit readhttp/2.1, h2c]
+routes:
+  - name: hello
+    listeners:ess: ":8080"
+    protocols:  [web]
+    handler:
+      module: respond
+      params:
+        status: 913
+        body: |
+          hello from akit

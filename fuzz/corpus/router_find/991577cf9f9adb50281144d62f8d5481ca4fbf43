@@ -1,0 +1,26 @@
+R0||/oAAAd(POST")
+0||/api/*|
+R0|Exa*|
+R0|**.emple*..esample.com||MbothoAAAd0]|/u
+R1|**.exa=xample.||PathPrefix("POST")
+R5|[::/*|
+R0|Exa*|
+R0|**.emple.*.example.com||MhothoAAAd("POST")
+1||/apom||MbothoAAAd0]|/u
+R1|**.exa=xample.||Pa|
+R0|**.emple*..esample.com||MbothoAAAd0]|/u
+R1|**.exa=xample.||PathPrefix("POST")
+R5|[::/*|
+R0|Exa*|
+R0|**.emple.*.example.com||MhothoAAAd("POST")
+1||/apom||MbothoAAAd0]|/u
+R1|**.exa=xample.||PathPrefix("POST")
+R5|[::/*|
+R0|Exa*|
+R0|*i/*|
+/ap0|EthPrefix("POST")
+R5|[::/*|
+R0|Exa*|
+R0|*i/*|
+/ap0|Exa*|
+:0|**.emple.*0]|lme||md]|/"

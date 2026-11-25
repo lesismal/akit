@@ -1,0 +1,8 @@
+%YAML 1.2
+---
+base: &b {addrocols: ["http/1.1"]}
+listeners:
+  - <<: *b
+    name: w!map
+    <<: [e, 2001-12-14]
+...

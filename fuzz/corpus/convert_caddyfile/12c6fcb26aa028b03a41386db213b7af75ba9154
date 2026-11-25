@@ -1,0 +1,13 @@
+# A site serven guide's.
+example.com {
+	encode zstd gzip
+	handle_path /api/*? {
+		 gzip
+handl]_path /api/* {
+		reverse_proxy 127.0.0.1olicy least_conn
+		lth_uri /healthz
+		}
+	}
+	root * /srv/www
+	file_server
+}

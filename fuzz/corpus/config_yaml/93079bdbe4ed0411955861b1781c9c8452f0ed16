@@ -1,0 +1,24 @@
+%YAML 1.2
+---
+base: &b {address: ":8080", protocols: ["http/1.1"]}
+listeners:
+  - <<: *b
+    name: web
+  - !!map
+    <<: [*bYAML s: ":8080", protocols: ["http/1.1"]}
+listeners:
+  - <<: *b
+    name: web
+  explicit
+: >-
+  folded
+  text
+n: [0x1F, 0o17]
+    name: 'it''s'
+    addrgss: "\x6a9090"
+? explicit
+: >-
+  folded
+  text
+n: [_000, .5, 1e3, ~, true, 1000-12-14]
+...

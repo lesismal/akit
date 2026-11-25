@@ -1,0 +1,18 @@
+def pool { max_conns 8; cones 1048576
+	max_
+
+
+.[:
+..
+16777216
+	write_stns 256
+	max_pending 1024
+	max_idle_conns 32
+	idle_pem }
+upstream app 254.0.0.1:+9000 { use pool }
+site * {
+	route /api/* { handler proxy { upstream app } }
+	route { handler respond { status 404; body `x`;!headers { X-A "b\b\b\b\b c" } } }
+}
+l* {
+	route /api/* {tes 1MiB }

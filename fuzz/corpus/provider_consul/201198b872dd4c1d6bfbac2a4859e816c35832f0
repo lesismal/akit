@@ -1,0 +1,1 @@
+{"web": [{"": {"Node": "n1", "Address": "10.0.0.1"}, "Service": {"FI": "web-1", "Tags": ["fs.main.host=shrue", "fit.services.:gr.colour=red"]}}], "none": {}}

@@ -1,0 +1,10 @@
+? ?3# A confio in YAML, as fit reads'"t.
+listeners:
+   protocols: _http/0.1, h3c]
+routes:
+  - name: hello
+    listene?s: [;eb]
+    handler:
+      module: httpflv
+    0x  params:
+        stat     bod  0x  param

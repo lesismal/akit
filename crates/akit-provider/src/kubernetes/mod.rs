@@ -1116,6 +1116,174 @@ fn remove_certs(dir: &Path, certs: &BTreeMap<String, Vec<u8>>) {
     }
 }
 
+/// The `provider_kubernetes` fuzz target (feature `fuzzing`; I77): [`crate::fuzzing`].
+#[cfg(any(test, feature = "fuzzing"))]
+pub(crate) mod fuzz {
+    #![allow(
+        clippy::indexing_slicing,
+        clippy::arithmetic_side_effects,
+        clippy::panic
+    )]
+
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use akit_config::{KubernetesIngress, KubernetesProvider, value};
+
+    use super::translate::{Snapshot, Translator};
+    use super::types::{Object, Shape, decode};
+    use super::{GATEWAY_KINDS, INGRESS_KINDS, parse_page};
+
+    const SHAPES: [Shape; 14] = [
+        Shape::IngressClass,
+        Shape::Ingress,
+        Shape::Service,
+        Shape::Slice,
+        Shape::Secret,
+        Shape::Namespace,
+        Shape::GatewayClass,
+        Shape::Gateway,
+        Shape::HttpRoute,
+        Shape::GrpcRoute,
+        Shape::TlsRoute,
+        Shape::TcpRoute,
+        Shape::UdpRoute,
+        Shape::Grant,
+    ];
+
+    /// The cluster every input starts from: fit's GatewayClass and IngressClass, a Gateway
+    /// with an HTTP, a wildcard and an HTTPS listener, and a Service with endpoints.
+    fn world() -> Snapshot {
+        let o = |shape: Shape, doc: &str| -> Arc<Object> {
+            Arc::new(
+                decode(shape, &value::parse(doc).unwrap_or(value::Value::Null))
+                    .unwrap_or_else(|e| panic!("{doc}: {e}")),
+            )
+        };
+        Snapshot {
+            namespaces: vec![o(
+                Shape::Namespace,
+                r#"{"metadata": {"name": "default", "labels": {"gateway": "yes"}}}"#,
+            )],
+            gateway_classes: vec![o(
+                Shape::GatewayClass,
+                r#"{"metadata": {"name": "fit"}, "spec": {"controllerName": "lesismal.github.io/fit"}}"#,
+            )],
+            gateways: vec![o(
+                Shape::Gateway,
+                r#"{"metadata": {"namespace": "default", "name": "gw"}, "spec": {"gatewayClassName": "fit", "listeners": [
+  {"name": "http", "port": 80, "protocol": "HTTP", "allowedRoutes": {"namespaces": {"from": "All"}}},
+  {"name": "web", "port": 8080, "protocol": "HTTP", "hostname": "*.example.com"},
+  {"name": "tls", "port": 443, "protocol": "HTTPS", "tls": {"certificateRefs": [{"name": "cert"}]}},
+  {"name": "tcp", "port": 9000, "protocol": "TCP"}]}}"#,
+            )],
+            ingress_classes: vec![o(
+                Shape::IngressClass,
+                r#"{"metadata": {"name": "fit", "annotations": {"ingressclass.kubernetes.io/is-default-class": "true"}}, "spec": {"controller": "lesismal.github.io/fit"}}"#,
+            )],
+            services: vec![o(
+                Shape::Service,
+                r#"{"metadata": {"namespace": "default", "name": "web"}, "spec": {"clusterIP": "10.96.0.1", "ports": [{"name": "http", "port": 80}]}}"#,
+            )],
+            slices: vec![o(
+                Shape::Slice,
+                r#"{"metadata": {"namespace": "default", "name": "web-abc", "labels": {"kubernetes.io/service-name": "web"}},
+  "addressType": "IPv4", "endpoints": [{"addresses": ["10.0.0.1"], "conditions": {"ready": true}}], "ports": [{"name": "http", "protocol": "TCP", "port": 8000}]}"#,
+            )],
+            ..Snapshot::default()
+        }
+    }
+
+    /// `provider_kubernetes`: what the API server sends the Kubernetes provider (I59, I60).
+    /// `data[0]` picks the options; the rest is NUL-separated documents, each a byte that picks
+    /// its kind and then its JSON: a list page (read as the API server's pages are) when the
+    /// option bit says so, else an object added to the cluster. Whatever the objects, the
+    /// provider writes a part the merge reads.
+    pub(crate) fn kubernetes(data: &[u8]) {
+        let Some((&flags, rest)) = data.split_first() else {
+            return;
+        };
+        let opts = KubernetesProvider {
+            kubeconfig: String::new(),
+            context: String::new(),
+            controller_name: akit_config::DEFAULT_KUBERNETES_CONTROLLER_NAME.to_owned(),
+            namespaces: if flags & 2 != 0 {
+                vec!["default".into()]
+            } else {
+                Vec::new()
+            },
+            listen_host: String::new(),
+            addresses: Vec::new(),
+            backends: if flags & 4 != 0 {
+                akit_config::KubernetesBackends::ClusterIp
+            } else {
+                akit_config::KubernetesBackends::Endpoints
+            },
+            max_objects: 10_000,
+            request_timeout: Duration::from_secs(10),
+            ingress: (flags & 8 != 0).then_some(KubernetesIngress {
+                http_port: 80,
+                https_port: 443,
+            }),
+            certificates_dir: String::new(),
+        };
+        let mut s = world();
+        for doc in rest.split(|&b| b == 0).take(64) {
+            let Some((&k, json)) = doc.split_first() else {
+                continue;
+            };
+            if flags & 1 != 0 {
+                let kinds: Vec<_> = GATEWAY_KINDS.iter().chain(INGRESS_KINDS.iter()).collect();
+                let kind = kinds[usize::from(k) % kinds.len()];
+                if let Ok(page) = parse_page(json, *kind) {
+                    for (_, o) in page.items {
+                        add(&mut s, kind.shape, Arc::new(o));
+                    }
+                }
+                continue;
+            }
+            let shape = SHAPES[usize::from(k) % SHAPES.len()];
+            let Some(v) = std::str::from_utf8(json)
+                .ok()
+                .and_then(|t| value::parse(t).ok())
+            else {
+                continue;
+            };
+            if let Ok(o) = decode(shape, &v) {
+                add(&mut s, shape, Arc::new(o));
+            }
+        }
+        let mut t = Translator::new("kubernetes", &opts, None);
+        let part = t.run(&s);
+        if let Err(e) = crate::merge::parse("kubernetes", &part) {
+            panic!(
+                "the part does not read: {e}\n{}",
+                String::from_utf8_lossy(&part)
+            );
+        }
+    }
+
+    fn add(s: &mut Snapshot, shape: Shape, o: Arc<Object>) {
+        let list = match shape {
+            Shape::IngressClass => &mut s.ingress_classes,
+            Shape::Ingress => &mut s.ingresses,
+            Shape::Service => &mut s.services,
+            Shape::Slice => &mut s.slices,
+            Shape::Secret => &mut s.secrets,
+            Shape::Namespace => &mut s.namespaces,
+            Shape::GatewayClass => &mut s.gateway_classes,
+            Shape::Gateway => &mut s.gateways,
+            Shape::HttpRoute => &mut s.http_routes,
+            Shape::GrpcRoute => &mut s.grpc_routes,
+            Shape::TlsRoute => &mut s.tls_routes,
+            Shape::TcpRoute => &mut s.tcp_routes,
+            Shape::UdpRoute => &mut s.udp_routes,
+            Shape::Grant => &mut s.grants,
+        };
+        list.push(o);
+    }
+}
+
 #[cfg(test)]
 mod gateway_tests;
 #[cfg(test)]

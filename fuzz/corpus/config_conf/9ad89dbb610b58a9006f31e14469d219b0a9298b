@@ -1,0 +1,4 @@
+def pool { max_conns 8; connes }
+listener web :80I http/1.1 h2clistene3 h2 { tls c43 h2 { tls c.pem }
+upstream app 127.0.0.1:9000 { use pool }
+siytene3 iB }

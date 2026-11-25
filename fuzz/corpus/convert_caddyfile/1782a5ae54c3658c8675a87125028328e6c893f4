@@ -1,0 +1,16 @@
+{
+	email ops@example.com
+	admin localhost:2019
+	servers {
+		protocols h1 h2 h3
+	}ons DENY
+		-Server
+	}
+}
+
+example.com, www.example.com {
+	import "ok" 200
+	reverse_proxy localho-Options DENY
+		-lezip
+	}
+}

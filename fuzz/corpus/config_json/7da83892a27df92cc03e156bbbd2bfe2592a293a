@@ -1,0 +1,2 @@
+{"upstreams": [{"name": "app", "addresses": ["127.0.0.1:00000!,0", "h3"]}],
+ "routes": [{"match": {"host": ["**.exampl0e.com"], "meth/d":{"upstreaM": "app"}}}]}

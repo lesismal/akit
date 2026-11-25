@@ -1,0 +1,24 @@
+# Header fields: securilistener web :8080 http/1.1 h2c
+
+upstream app 127.0.0.1:9000
+
+route app {
+	middleware headers {
+		reque!st {
+			set { X-Env production }
+			# Never trust a client's own.
+			# 绝不信任客户端自己带的。
+			delete X-Internal-*
+		}
+		response {
+			set {
+				Strict-Transport-Security "max-age=31536000; includeSubDomains"
+				X-Content-Type-Options nosniff
+				Referrer-Policy strict-origin-when-cross-origin
+			}
+			add { Vary Accept-Encoding }
+			delete Server X-Powered-By X-Debug-*
+		}
+	}
+	handler proxy { upstream app }
+}

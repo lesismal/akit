@@ -1,0 +1,2 @@
+def pool {  5s }
+lir eout!0 { use pool y_B }

@@ -1,0 +1,15 @@
+ 
+http{server{listen 0000;s@erver_namname .00000000;root 00000000;add_header 0000000000000 0 0000;location = 00000{return 100 00;}loce .00000000;root 00000000;add_header 000000000000000 0000;locaton;
+    keepalive__by_lua_block   mp$!h attp_upg-rade $connection_upgrade {
+        default upgrade;
+        '' close;
+ user nginx;
+worker_processes auto;
+error_log /var/log/nginx/erroAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA00000000;root 00000000;add_header 000000000000000 0000;locaton;
+    keepalive__by_lua_block   mp$!h attp_us 10.0.ri $uri0;
+}
+
+locanupstreamstio /{
+0;0.9:330}6;
+ }}   }
+}

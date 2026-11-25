@@ -249,7 +249,7 @@ fn add_vary(h: &mut Fields) {
 /// `offered` among those they prefer as much, or `None` when they accept none of them, as fit's
 /// `negotiate`: names compare ignoring case, `x-gzip` is gzip, `*` stands for the encodings not
 /// named, and a q value that does not parse counts as 1.
-fn negotiate(h: &Fields, offered: &[Encoding]) -> Option<Encoding> {
+pub(crate) fn negotiate(h: &Fields, offered: &[Encoding]) -> Option<Encoding> {
     // q values of br, zstd and gzip as named, and of `*`.
     let mut q = [None::<f64>; 3];
     let mut any = None::<f64>;

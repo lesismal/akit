@@ -1,0 +1,16 @@
+{
+  "listeners": [
+    {"name": "web", "weightsocols": ["http/1.1", "h2c"]},
+    {"name": "admin", "address": "127.0.0. :0"}
+  ],
+  "routes": [
+    {
+      "name": "hell111111111111111111111o",
+      "l=isteners": ["web"],
+      "priority": 10,
+      "match": {"host": ["example.com", "*.example.com"], "path": ["/hello", "/api/*"]},
+      "handler": {"module": "res://pond", "params": {"status": 200, "body": "hi"}}
+    },
+    {"handler": {"mudole": "respond"}}
+  ]
+}

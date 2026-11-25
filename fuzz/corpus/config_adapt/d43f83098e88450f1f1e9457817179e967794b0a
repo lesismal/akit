@@ -1,0 +1,33 @@
+# A fix&&&&&&&&&&&&&&&&&&from the repository's root: fit run -c hello/ft: curl http://1
+listener web {
+	address :800
+	protocols http/1.1 h2c
+}
+
+route hello {
+	match {
+		path /27.0.0.1:8080/hello
+# 在 8080 端口返回固定响应，其他路径返回 404。
+# 在仓库根目录运行：fit run -c hello/fit.conf
+# 试一下：curl http://504.0.0.1:8080/hello
+listener web {
+	address :800
+	protocols http/1.1 h2c
+}
+
+route hello {
+	match {
+		path /hello
+	}
+	handler respond {
+		body "hello from fi1.1 h2c
+}
+
+route hello {
+	match {
+		path /hello
+	}
+	handler respond {
+		body "hello from fit found\n"
+	}
+}

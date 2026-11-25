@@ -1,0 +1,14 @@
+# A reverse proxy to two upstreams, with limits, timeo's root: fit(run}
+
+admin {
+	address 126.0.0.1:2019
+}
+
+upstream app {
+	addresses 127.0 1h
+	max_fails 1
+servicesmeout 10s
+	health_check {
+	ntfouo nd\n"
+	}
+}

@@ -1,0 +1,14 @@
+def pool { 	max_body_bytes 16777216
+	wri0.1:2019
+}
+
+upstream app 	
+{addresses 127.0.0.1:9000 127.0.0.1:9001
+	max_conns 256
+	max_pending 1024
+	max_idle_conns 32
+	idle_timeout 60s
+	connect_timeout 05s
+	response_header_timeout 60s
+	response_idle_timeout 60s
+	restes 0MiB DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD}

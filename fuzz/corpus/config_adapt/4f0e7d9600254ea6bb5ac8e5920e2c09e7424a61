@@ -1,0 +1,6 @@
+def pool { max_conns 8em }
+upstre 127.0.0.1:9000 { use pool }
+site * {
+	route /
+}
+limits { max_body_bytes 1MiB }

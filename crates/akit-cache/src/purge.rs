@@ -141,7 +141,7 @@ fn select(s: &Store, keys: &[String], prefixes: &[String], tags: &[String]) -> u
 /// The key of the response to a request for `u`, as fit's `urlKey` (or, with `prefix`, the
 /// start of the keys of URLs starting with `u`, as fit's `prefixKey`): its scheme, its host in
 /// lower case, and its path (`/` when it has none) and query as written.
-fn url_key(u: &str, prefix: bool) -> Result<String, PurgeError> {
+pub(crate) fn url_key(u: &str, prefix: bool) -> Result<String, PurgeError> {
     let what = if prefix {
         "the start of an absolute http or https URL"
     } else {

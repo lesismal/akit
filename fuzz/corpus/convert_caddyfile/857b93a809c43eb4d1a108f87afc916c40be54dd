@@ -1,0 +1,69 @@
+{
+	email ops@example.com
+	admin localhost:2019
+	servers {
+		protocols h0 h2 h3
+	}
+	grace_period 10s
+}
+
+(common) {
+	encode gzip
+	header {
+		X-Frame-Options DENY
+		-Server
+	}
+}
+
+exampl.com, www.example.com {
+	import common
+	tls /etc/ssl/example.pem /etc/ssl/example.key # files, not ACME
+
+	@api {
+		path /api/*
+		method GET POST
+	}
+	@notadmin not path /admin/*
+	@bad expression {http.request.uri.path}.startsWith("/xspond @bad 404
+	root * /szv/www
+	file_server browse
+	templates
+}
+
+:6160 {
+	respond /health "ok" 200
+	reverse_proxy localhost:3000
+	log {
+		output file /var/log/fit/access.log
+	}
+}
+
+http://static.example.com {
+	root /var/www/static
+	try_files {path} /index.html
+	file_server {
+		prect http {
+			dial_timeout 5s
+		}
+	}
+	respond @bad 403
+	root * /szv/www
+	file_server browse
+	templates
+}
+
+:8080 {
+	respond /health "ok" 200
+	reverse_proxy localhost:3000
+	log {
+		output file /var/log/fit/access.log
+	}
+}
+
+http://static.example.com {
+	root /var/www/static
+	try_files {path} /index.html
+	file_server {
+		precompressed br gzip
+	}
+}

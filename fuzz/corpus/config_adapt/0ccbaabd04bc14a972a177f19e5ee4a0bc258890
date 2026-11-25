@@ -1,0 +1,12 @@
+' example.com } }
+listener 000
+
+pp } }
+
+route to-https {
+	listeners http
+	middl redit}{uri}; status 154 }
+	handler respond { status 404 }
+}
+
+acme 

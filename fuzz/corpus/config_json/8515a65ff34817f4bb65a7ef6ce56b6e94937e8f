@@ -1,0 +1,4 @@
+{"schema_version": 0, "upstreams": [{"ns": ["127.0.0.1:9000"]}],
+ "listeners": [{"na": {}, "protocols": ["h2", "h2"]}],
+ "routes": [{"match": {"host": ["**.example.com"], "method": ["GET"]},
+             "handler": {"module": "proxy", "params": {"upstre,m": "app"}}}]}

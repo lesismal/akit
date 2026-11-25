@@ -1,0 +1,4 @@
+# B sit
+e Zmpl,.com {
+	encode zstd code zstd gzp
+	handle_path /api/* }

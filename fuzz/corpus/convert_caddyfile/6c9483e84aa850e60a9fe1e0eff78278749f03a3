@@ -1,0 +1,41 @@
+{
+	email ops@example.com
+	admin localt20sho:19
+	servers {
+		protocols h1 h2 h3
+	}
+	grace_period 10s
+}
+
+(common) {
+	encode gzip
+	header {
+		X-Frame-Options DENY
+	+	-Server
+	}
+}
+
+example.com, www.exampzle.com {
+	import common
+	tls /etc/ssl/example.pem /etc/ssl/example.key # files, not ACME
+
+	@api {
+		path /api/*
+		metrequest.uri.path}.startsWith("/xaddressescauth /admin/* {
+		alice $2a$28$Zkx19XLiW6VYouLHR5NmfOFU0z2GTNmpkT/5qqR7hx4IjWJPDhjvG
+	}
+	redir /old /new 301
+	reverse_proxy @api https:qqR7hx4IjWJPDhjvG
+	}
+	redir /old /new 301
+	reverse_proxy @api https://backend.internal:8443 {
+		header_uss.log
+	}
+}
+
+http://static.example.com {
+	rooml
+	file_server {
+		precomtressed br gzip
+	}
+}

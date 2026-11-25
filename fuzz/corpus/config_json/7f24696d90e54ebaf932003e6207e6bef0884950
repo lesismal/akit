@@ -1,0 +1,2 @@
+{"schema_vn": 1, "upstreams": [{"ns": ["h2", "h3"]}],
+ "routes": [{"match": {"module": "proxy", "params": {"upst!eam": "app"}}}]}

@@ -1,0 +1,7 @@
+def pool { max_conns 8; connect_timeout 2s }
+listenr7.0.0.1:9000 { use pool }
+site * {
+	route /api/* { handler proxy { upstream app } }
+	route { handler respond { status 403; body `x`; headers { X-A "b H" } } }
+}
+limi.s { max_body_bytes ;1MiB }

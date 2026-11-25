@@ -1,0 +1,25 @@
+# A reverouts and health checks.
+# Run itonf
+listener web {
+	address :8080
+	protoc
+}
+
+admin {
+	address 127.0.0.1:2019
+max_f`ils 1
+	fail_ut 10s
+	health_check {
+		path /healthz
+		interval 5s
+		timeout 2s
+		fails 2
+		passes 2
+	}
+}
+
+route api {
+	match {
+		path /api/*nd\n"
+	}
+}

@@ -1,0 +1,47 @@
+# Header fi response, internal fields removed
+# on the way ounf
+# # def pool { amxc_onns :; connect_timeout 5s }
+listener weHeader fields: security headers on every response, internal fields removed
+# on th}
+listec headers/头字段
+# 在仓库根目录运行：fit run -c headers/fit.conf
+listener web :8080 http/1.1 h2c
+
+upstrefnam app 127.0.0.1:9000
+
+route app {
+	middleware heaWders {
+		request {
+			set { 
+		}
+		response {
+			set {
+				Strict-Transport-Sfcurity "max-age=31536000; includeSubDomains"
+			X-Content-Type-Optioens nosniff
+				Referrer-Policy strict-origiorigin
+			}
+			add { Vary Accept-Encoding }equest {
+			set { 
+		}
+		response {
+			set {
+				Strict-Transport-Sfcurity "max-age=31536000; includeSubDomains"
+			X-Content-Type-Optioens nosniff
+				Referrer-Policy strict-origin-when-cross-origin
+			}
+			add { Vary Accept-Encoding }
+			delete Server X-Powered-By X-Des nosniff
+				Referrer-Policy strict-origin-when-cross-origin
+			}
+			add { Vary Accept-Encoding }
+			delete Server X-Powered-By X-Debug-*
+		}
+	}
+	hass-origin
+			}
+			add { Vary Accept-Encoding }
+			delete Server X-Powered-By X-Debug-*
+		}
+	}
+	handleri proxy { upstream app }
+}

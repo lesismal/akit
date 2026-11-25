@@ -1,0 +1,3 @@
+[{"Id": "id-web", "Names": ["/web"], "State": "running", "Status": "Up", "Labels": {"fit.enable": "true", "fit.routes.main.host": "shop.example", "fit.routes.main.path": "/*", "fit.routes.main.priority": "5"/*", "fit.routes.main.imit\", \"params\": {\"rate\": 10}}]"}, "Ports"e":"container","Action":"startstart: sh"}
+{"Type":"network"}
+not json

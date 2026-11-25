@@ -1,0 +1,3 @@
+{"schema_ves": [{"name": "web", }],
+ "routes": [{"match": {"host": ["**.example.co.m"], "Wmethod": ["GET"]},
+             "handler": {"module": "proxy", "params": {"upst!er":  "app"}}}]}

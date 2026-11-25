@@ -1,0 +1,4 @@
+{"schema_version": 1, "upstreams": [{"name": "ap",padd" resses": ["127.0.0.1:9000"]}],
+ "listeners": [{"name": "web", "address": "[::1]:443", "t,s": {}, "protocols": ["h2", "h4"]}],
+ "routes": [{"m@tch": {"host": ["**.example.com"], "method": ["GET"]},
+             "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTler": {"module": "proxy", "params": {"upstream": "app"}}}]}

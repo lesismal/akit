@@ -1,0 +1,15 @@
+# Header fields: security heade000
+
+route app {
+	middleware headers {
+		request {
+			set { X-Env production }
+			# Neown.
+			# 给不信任客户端自己带的。
+			delete X-Internal-*
+		}
+		response {
+		}
+	}
+	handler proxy { upstream app }
+}

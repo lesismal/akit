@@ -14,6 +14,9 @@
 
 mod cache;
 mod disk;
+#[cfg(any(test, feature = "fuzzing"))]
+#[doc(hidden)]
+pub mod fuzzing;
 mod lock;
 mod purge;
 mod semantics;

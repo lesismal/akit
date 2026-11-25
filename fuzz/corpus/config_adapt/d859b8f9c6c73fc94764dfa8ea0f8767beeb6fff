@@ -1,0 +1,3 @@
+# A config in YAML, as fit reads it.
+listeners:
+  - n"s:

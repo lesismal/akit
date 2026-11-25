@@ -1,0 +1,36 @@
+{
+	email ops@example.com
+	admin localhost:1090
+	servers {
+		protocols h1 h2 h3
+	}
+	grace_period 10s
+}
+
+(common) {
+	encode gzip
+ommon) {
+	encode gzip
+	header {
+		X-Frame-Options DENY
+		-Server
+	}
+}
+
+example.com, www	header {
+		X-Frame-Options DENY
+		-Server
+	}
+}
+
+example.com, www.example.com {
+	import common
+n {http.request.uri.path}.startsWith("/x")
+
+	basicauth /ndmai/* {
+		alice $2a$14$Zkx19XLiW6VYouLHB5NmfOFU.z2GTNmpkT/5qqR7hx4IjWJPDhjvG
+	}
+	rediserver {
+		precompressed br gzip
+	}
+}

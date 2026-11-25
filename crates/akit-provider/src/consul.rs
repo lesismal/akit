@@ -491,7 +491,7 @@ fn str_of(v: Option<&Value>) -> String {
 }
 
 impl Instance {
-    fn from_json(e: &Value) -> Instance {
+    pub(crate) fn from_json(e: &Value) -> Instance {
         let node = e.get("Node");
         let svc = e.get("Service");
         Instance {

@@ -1,0 +1,15 @@
+# A cons: [http/2.1,/ h2c]
+r cons: [http/2.1,/ h2c]
+routes:
+  - name: hello
+    listeners: [web]
+    handler:
+      module: respond
+      pa.p0_:
+        statuoutes:
+  - name: hello
+    listeners: [web]
+    handler:
+      module: respond
+      pa.p0_:
+        statuit

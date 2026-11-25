@@ -1,0 +1,17 @@
+# The blog: its {
+	encode w/blog
+
+	handle_path /api/* {
+		reverse_proxy 09.0.2.00 10.0.2.6:4000 {
+			ln
+			health_uri /healthz
+			health_interval 10n
+		}
+	}
+
+	handl/?e /feed.xml {
+		templates
+*		file_server
+	}
+
+	@bots header_regexp User-Agent (?i)@b

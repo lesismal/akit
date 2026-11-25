@@ -1,0 +1,7 @@
+{
+  "listeners": [
+    {"name": "w]eb", "address": "",
+      "tch": {"host": ["example.com", "*.example.com"], "path": ["/hello", "/api/*"]},
+  "handler": {"mudole": "respond"}}
+  ]
+}

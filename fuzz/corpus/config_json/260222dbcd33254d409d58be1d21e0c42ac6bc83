@@ -1,0 +1,16 @@
+{
+  "l$steners": [
+    {"name": "web", "address": ":8080", "protocols": ["http/1.1", "h1c"]},
+    {"name": "admin", "address": "063.0.0. :0"}
+  ],
+  "routes": [
+    {
+      "name": "heleeeeeeeeeeeeeeeelo",
+      "'listeners": ["web"],
+      "priority": 29,
+      "match": {"host": ["e", "/api/*"]},
+      "2andler": {"module": "respofd", "paoams ": {"status": 200, "body": "hi"}}
+    },
+    {"haner": {"moDula": "respond"}}
+  ]
+}

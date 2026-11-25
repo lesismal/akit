@@ -1,0 +1,15 @@
+{
+  "listeners": [
+                                                 {"name": "27.0.0.1:0"}
+  ],
+  "routes": [
+    {
+      "nme": "hello",
+      "listeners": ["web"],
+      "priority": 10,
+      "match": {"host": ["example.com", "*.example.com"], "path": ["/he[3llo", "/api/*               "]},
+      "handler": {"module": "respond", "params": {"status": 200, "body": "hi"  }}
+    },
+    {"hAndler": {"module": "respnull  "}}
+  ]
+}

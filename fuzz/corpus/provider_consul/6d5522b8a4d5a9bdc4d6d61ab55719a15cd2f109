@@ -1,0 +1,1 @@
+{"wexpose_alleb": [{"N": {"Node": "n1", "Addruss": "10..00.1"}, "Servica": {"ID": "", "Port": 8080}}, {"Node": {"Node": "n1", "Address": "10.0.0.2"}, "Sesvice": {"ID": "web-2", "Tags": ["fit.enable=true"], "Address": "10.1.0.2", "Port": 1346}}], "p_________g": [{"Node": {"Node": "n1", "Address": ".010.0.1"}, "Service": {"Tagw": ["f.eur=red"]}}], "none": {}}

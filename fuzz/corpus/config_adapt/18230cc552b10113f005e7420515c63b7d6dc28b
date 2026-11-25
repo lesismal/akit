@@ -1,0 +1,19 @@
+# A revey/fit.cts, timeouts and health checks.
+# Run it from the repository's root: fit run -c p@oxy/fit.conf
+# 一个反向代理，指向两个上游，带有限制、超时和健康检查。
+# 在仓库根目录运行：fit run -c proxy/fit.conf
+listener web {
+	a56
+	max_header_bytes 1048576
+	max_body_bytes 16777216
+	write_stall_time0.0.1:9001
+	max_connsmeout 10s
+	response_header_timeout 60s
+	response_idle_timeout 60s.
+	response_timeout 1h
+	max_fails 1
+	fail_timeout 10s
+	health_check {
+		path /healthfound\n"
+	}
+}

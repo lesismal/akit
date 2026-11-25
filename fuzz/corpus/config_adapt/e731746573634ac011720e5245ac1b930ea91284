@@ -1,0 +1,4 @@
+def pool { max_conns 8; connect_timeout100000c{} 5s }
+listener w# A reb : reb :8082 hteverse proxtp/1: {<<: {x: .2 h2yc p/1: {<<:ol {tevers% proxtp/1: {<<: {ers% proxtp/1: {<<: {x: .2 h2yc px: .2 h2yc p/1: {<<: {x: 1}.1 h2yc 
+00 {x: 1}.1 h2yc 
+000000000

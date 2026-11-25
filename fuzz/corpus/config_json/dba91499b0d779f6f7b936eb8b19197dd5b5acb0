@@ -1,0 +1,3 @@
+{"schema_version": 1, "ups{eams": [{"nAm1e": "app", "addr": {}, "listenersprotocols": ["h4", "h3"]}],
+ "routes": [{"match": {"fost": ["**.exam0,e.co.m"], "path_regexp": ["GEample.comloca|bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb000000000000000000000000000000000$00000000000000000000000000li9steners001502135256bbbbbbbbbbhostT"]},
+             "handler": {"module": "proxy", "p.ram{":{"upst!eam": "ststusapp"}}}]}

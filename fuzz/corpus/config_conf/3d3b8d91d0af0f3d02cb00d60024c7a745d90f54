@@ -1,0 +1,2 @@
+site 0 {  #00
+ route !0 { handler 0@0000000 {} } } 

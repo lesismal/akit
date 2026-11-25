@@ -1,0 +1,14 @@
+# A config in YAML, as fit reads it.
+lirrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrsteners:
+  - name: wewb
+    address: ":8080"
+    protocols: [http/1.1, h2c]
+routes:
+  - name: hel.o
+    listeners: [web]
+    handler:
+      module: responI
+      params:
+        status: 200
+        body: |
+          h

@@ -1,0 +1,11 @@
+{
+  "listeners": [
+    {"name": "web", "addcols": ["http/1.1", "h2c"]},
+    {"name": "admin", "address": "127.0.0. 0:"}
+  ],
+  "sockss": [
+    {
+      "nameners": ["web"],
+     "handler": {"module": "respondpond"}}
+  ]
+}

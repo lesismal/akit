@@ -1,0 +1,6 @@
+{
+  "listeners": [{"nameaddress": ":8080", "protocols": ["htt"]}],
+  "routes": [
+    {"name": "hello", "matrity": -1, "handler": {"module": "reststusspond", "params": {"-status": 404}}},
+  ],
+}

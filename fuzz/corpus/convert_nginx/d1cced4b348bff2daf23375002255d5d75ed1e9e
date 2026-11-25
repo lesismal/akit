@@ -1,0 +1,8 @@
+# A reverse proxy: HTTP sent to0r/s;
+*.
+    ups																			;																				L					ner {
+    ation / {
+  )         proxy_pass http://127.0.0.1:3000;
+        }
+    }
+}

@@ -1,0 +1,9 @@
+{
+
+  "routes": [
+    {      "name": "hello",
+"handler": {"module": "res`ond", "params": {"": "hi"}}
+    },
+    {"handler": {"module": "reqpond"}}
+  ]
+}

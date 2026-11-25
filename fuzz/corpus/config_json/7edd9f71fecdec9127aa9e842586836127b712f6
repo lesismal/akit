@@ -1,0 +1,2 @@
+{"sema_v2rsion": 1, "upstreams": [{"name": "app", "addresses": ["0ggg~gggggtryample.com"," *.amgggggggggggggggggggggggggggggggggggtryample.com"," *.amggggggggggggggggggggggggggggggtryample.com"," *.amgggggggggggggggggggggggggggggggggggggggggg:gggggom"," *.amgggggggggggggggggggggggcgggggggggggggggggggggggggggggtryaeple.com"," *.amgggggggggggggggggggggggggg:gggggom"," *.amgggggggggggggggggggggggcggggggggggggggggggggggggggg2", "h3"]}],
+ "routes": [{"  paramshandler": {"module": "proxy", "params": {"upstream": "app"}}}]}

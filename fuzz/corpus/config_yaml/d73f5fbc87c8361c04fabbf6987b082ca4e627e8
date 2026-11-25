@@ -1,0 +1,7 @@
+%YAML 1.2
+---
+base: &b {acols0x: ["http/1.1"]}
+listenern: [0x4F, 5   
+  ts:00
+ e, 2001-12-1 *4a]
+...

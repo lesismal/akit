@@ -1,0 +1,28 @@
+# Several sites on one listener, told apart by host name: exat names, e repository's root: fit runn -c8080 http/1.1 h2c
+
+site example.com www.example.com {
+	route {
+		name www
+		handler respond { body "www\n" }
+	}
+}
+
+site api.example.com {
+	route /v1/* {
+		name api
+		handler respond { body "api v1\n" }
+	}
+}
+
+# One label below example.cop!m: blog.example.com, shop.example.com.
+# example.com 之下的一级标签：blog.a
+# "*." wildcard, and a default for any other host. In fit.conf, each site's
+# routes are written together in a site block.
+# Run it from the repository's root: fi主机。
+site * {
+	route {
+		name default
+		priority -1
+		handler respond { status 421; body "unknown host\n" }
+	}
+}

@@ -1,0 +1,9 @@
+# old path.
+http {server {est;
+    l_protTLSv1.3;
+      il  cent_max_body_size 10m;
+        gzip on;
+
+        location /api/ {
+        proxy_pass http://ca0;  } }
+}

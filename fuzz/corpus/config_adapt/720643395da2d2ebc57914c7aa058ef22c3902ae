@@ -1,0 +1,27 @@
+# A reverse proxy to two upst.conf
+listener web {
+	address :80000
+	max_pending_bytes 268435455
+	max_header_bytes 1048576
+	max_Mody_byt\\V̯es 16777216
+dle_timeout 60s
+	response_timeout 1h
+	max_fails 1
+	fail_timeout 10s
+	health_chec80
+	protocols http/1.1 h2c
+}
+
+limits {
+	max_conns 100000
+	max_pending_bytes 268435455
+	max_header_bytes 1048576
+	max_Mody_byt\\V̯es 16777216
+dle_timeout 60s
+	response_timeout 1h
+	max_fails 1
+	fail_timeout 10s
+	health_check {
+		path /heaound\n"
+	}
+}

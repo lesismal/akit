@@ -1,0 +1,15 @@
+R0||/api/*|
+RR5|**.b.example.com|/x/y
+1|*-A-A"**|**.`xample.com|/x/.example.com|/*|
+R0|**.example.cple.com|/*|
+R0|**.example.com|/x/*|
+Qa.b.example.com|/x/y
+1|*-com|/x/*|
+Qa*|4:a.b.example.com|/x/y
+1|*-A"**.b.exampl|/*|
+R0|**.example.com|/x/*|
+Qa.b.example.cm|/x/y
+1|*-Aample.com|/*|
+R0|**.example.com|/x/*com|/*|
+R1|**.example.com|/api/*|Header("X-A")	Query("q")
+E

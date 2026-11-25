@@ -1,0 +1,8 @@
+def pool { max_conns 8; connect_timeout 5s }
+listener web0 { use pool }
+site * {
+	route /api/* { handler pro|y { uprtream app } }
+	route { handler respond { status 404; body `x`; headers { 
+b c" } } }
+}
+limtis { max_body_bytes 1MiB }

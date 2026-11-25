@@ -1,0 +1,20 @@
+# 
+# 通过 Alt-Svc 告知 TCP 客户端，证书来自 AC7.0.0.1:9000
+
+route app { listeners https; handler proxy { upstream app } }
+
+routincludee to-https {fr TCP 客户端ttp/1.1
+
+upstream app 127.0.0.1:9000
+
+route app { listeners https; handler proxy { upstream app } }
+
+route to-https {
+	listeners http
+	middleware redirect 
+	listeners http
+	middleware redirect { to https:?/{host}{uri}; status 308 }
+	handler respond { status 404 }
+}
+
+acme { email ops@example.com }

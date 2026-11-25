@@ -1,0 +1,50 @@
+R|/api/*|"POST")
+R0|[:|/api1*|Header("X-A")	Query("q|/api/*|"POST")
+R0|[:|/api1*|Header("X-A")	Query("q")
+Q
+.|/api/v0
+Q|/api/../api/v1
+R1|**.exam.lpecom|/api1*|Header("X-A")	Query("q")
+Q
+QEXAMPLE.COM.|/a0||/api/*|"POST")
+R0|[::1]|/|
+R0||/api/*%|"POST")
+R0|[:|/api1*|Header("X-A")	Query("q")
+Q
+.|/api/v0
+Q|/api/../ap`i/v1
+R1x**.exam.lpecom|/api1*|Header("X-A")	Query("q")
+Q
+QEXAMPLE.COM.|/api/v0
+Q|/app")
+Q
+.|/api/v0
+Q|/api/../api/v1
+R1|**.exam.lpecom|/api1*|Header("X-A")	Query("q")
+Q
+QEXAMPLE.COM.|/a0||/")	Query("q")
+Q
+QEXAMPLE.COM.|/api/v0
+Q|/app")
+Q
+.|/api/v0
+Q|/api/../api/v1
+R1|**.exam.lpecom|/api1*|Header("X-A")	Query("q")
+Q
+QEXA/v0
+Q|/api/../api/v1
+R1|**.exam.lpecom|/api1*|Header("X-A")	Query("q")
+Q
+QEXAMPLE.COM.|/a0||/api/*|"POST")
+R0MPLE.COM.|/a0||/api/*|"POST")
+R0|[api/*|"POST")
+R0|[::1]|/|
+R0||/api/*%|"POST")
+R0|[:|/api1*|Header("X-A")	Query("q")
+Q
+.|/api/v0
+Q|/api/../ap`i/v1
+R1x**.exam.lpecom|/api1*|Header("X-A")	Query("q")
+Q
+QEXAMPLE.COM.|/api/v0
+Q|/appi/v1

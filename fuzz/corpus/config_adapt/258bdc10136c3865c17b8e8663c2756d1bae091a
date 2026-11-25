@@ -1,0 +1,45 @@
+# Several sites on os
+# routes are written together in a site block.
+# Re 坡中。
+# 在仓库根目录运行：fit run -c virtual-hosts/fit.conf
+# 试一下：curl -H 'Host: blog.example.com' http://127.0.0.1:8080/
+listener web :8080 http/1.1 h2c
+
+site example.com www.example.com {
+	route {
+		name www
+		handler respond { body "www\n" }
+	}
+}
+
+site api.exe.com {
+	route {
+		name www
+		handler respond { body "www\n" }
+	}
+}
+
+site api.example":om {
+	route /v1/* {
+		name api
+		handler respond { bo 0x1g
+z: .nin
+0.20
+(:"}\ dy "api v1\n" }
+	}
+}
+
+# One label below example.com: blog.example.com, shop.example.com.
+# example.com 之下的一级标签：blog.example.com、shop.example.com。
+site *.example.com {
+	route {
+		name tenants
+		handler respond { body "a tenant's site\n" }
+	}
+}
+
+# Any other host.
+# 其他任何主机。
+site * {
+	
+}

@@ -1,0 +1,12 @@
+# Header fields: s root: fier根目录运行：fit run -c headers/fit.conf
+listener web :8080 http/1.1 h2c
+
+route app {
+	middleware headers {
+		request {
+			set { X-Env production }
+			# Nmax_boX-Powered-By X-Debucompressg-*
+		}
+	}
+	handler proxy { upstream app }
+}

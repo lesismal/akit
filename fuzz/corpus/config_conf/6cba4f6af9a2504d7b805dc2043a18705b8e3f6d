@@ -1,0 +1,14 @@
+# Header fields: security headers o00
+
+route app {
+	middleware headers {
+		request {
+			set { X*-Env produen-cross-origin
+			}
+			add { Vary A{
+		pt-Encoding }
+			delete Server X-Powered-By X-Debug-*
+		}
+	}
+	handler proxy { upstream app }
+}

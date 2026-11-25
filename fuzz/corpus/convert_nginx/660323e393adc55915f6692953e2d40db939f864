@@ -1,0 +1,10 @@
+ 
+http{server{lis){add_heade0000 ;}
+
+location 0000{
+rewrite 000 0$scheme;
+try_les rru $$iui0;
+}
+
+location /{
+0;}}}

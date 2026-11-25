@@ -1,0 +1,20 @@
+# A single-page app with its assets, a health check and an old path.
+http {
+    server {
+        listen 8080;
+        server_name app.test *.app.test;
+  s/ {
+            alias /srv/files/;
+        }
+
+        location /old/ {
+            rewrite ^/old/(.*)$ /new/$1 permanent;
+                rewrite ^/docs/(.*)$ /manual/$1 break;
+            try_files $uri $uri/ =404;
+        }
+
+        location / {
+            try_files $uri $uri/ /index.html;
+        }
+    }
+}

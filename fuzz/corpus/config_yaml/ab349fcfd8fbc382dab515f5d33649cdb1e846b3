@@ -1,0 +1,18 @@
+0		[[[[[[[[[[[[[[[[listeners:
+  tes:
+  - name: hello
+    listenertes:
+  - name: hello
+    listeners: [web]
+    handler:
+      du2le: respond
+      params:
+        status: 200
+        body: |
+      A    he[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[s:
+        status: 200
+        body: |
+      A    he[[[[[[[[[[[s:
+        status: 200
+        body: |
+      A    [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0: !000

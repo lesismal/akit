@@ -1,0 +1,3 @@
+{"sema_v2rsion": 1, "upstreams": [{"name": "a.p", "addresses": ["1gggggggggggggggggggggggggggggggggggggggggggggggggggggggg"]}],
+ "routes": [{"match": {"host": ["**.exaomlempc."], "method": ["GET"]}, 
+       }]}

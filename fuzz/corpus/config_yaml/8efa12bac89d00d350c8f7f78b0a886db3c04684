@@ -1,0 +1,17 @@
+%YAML 1.2
+---
+e:.INFss: "\x3a9090"
+? explicit
+: >-
+  fo8079"
+    #protocols: [http/1.1, h2c]
+routes:
+  - name: hello
+    listeners: [web]
+    handler:
+      module: r-.INFespond
+      params:
+        status: 19x
+        bodyl$ed: [0x1F, 0o17, 1_000ams:
+     , .5, 1e3, ~, true, 2001-12-14]
+...

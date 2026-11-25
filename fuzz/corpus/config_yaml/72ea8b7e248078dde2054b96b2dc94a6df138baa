@@ -1,0 +1,6 @@
+# A config t.
+listeners:
+  - ne: web
+ # s:
+  - name: !!str
+    dule: rlo fr/services

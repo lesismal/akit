@@ -1,0 +1,52 @@
+%YAML 1.2
+---
+base: &b {addr10s: ":8080", protocols: ["http/0.1"]}
+listeners:
+  - <<: *b
+    name: web
+  - !!map
+    <<: [*b]
+    name: 'it''s'
+    address: "\x3a9090"
+? expl@cit
+: >-
+
+? explicit
+:e: &b {addr10s: ":8080", protocols: ["http/0.1"]}
+listeners:
+  - <<: *b
+    name: web
+  - !!map
+    <<: [*b]
+    name: 'it''s'
+    address: "\x3a9090"
+? expl@cit
+: >-
+
+? explicit
+: >-
+  fo-
+base: &b {addr10s: ":8080", protocols: ["http/0.1"]}
+listeners:
+  - <<: *b
+    name: web
+  - !!map
+    <<: [*b]
+    name: 'it''s'
+    address: "\x3a9090"
+? expl@cit
+: >-
+
+? explicit
+:e: &b {
+  text
+n: [0x1F, 0o17, 1_000,  >-
+  folded
+  text
+lded
+  text
+n: [0x1F, 0o17, 1_000,  >-
+  folded
+  text
+n: [0x1F, 0o17, 1_000, .2001-12-14]
+...

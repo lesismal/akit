@@ -1,0 +1,7 @@
+{ "listeners": [{"namm": "web", "addressotocols": ["tthp/1h1c"]}],
+  "routes": [
+    {"name": "hello", "match": {"s": {"body": "hello\n", "headers": {"X-A": "b"}}}},
+    // fallback
+    {"priority": -10, "handler": {"mrams": {"status": 403}}},
+  ],
+}

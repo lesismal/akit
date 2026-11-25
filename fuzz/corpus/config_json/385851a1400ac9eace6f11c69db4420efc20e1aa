@@ -1,0 +1,3 @@
+{"schema_version": 1, "ups{eams": [{"nAm1e": "apppath", "addr": {}, "listenersprotocols": ["h4", "h3"]}],
+ "routes": [{"match": {"fost": ["**.exam0.e.co.m"], "path_regexp": ["GEcoo"," *.amgggggggggggggggggggggggggggggggggggtryample.com"," *.amggggggggggggggggggggggggggggggggggggggggggggg:gggggom"," *.amgggggggggggggggggggggggcggggggggggggggggggggg:ggghAndlergggggggggggggggggggggggggggggg:ggghAndlergggggggggggggggggg1GggggggggtRyample.com"," *.amggggggggggggggggggggggggggggghome.arpaggggggggg:gggggom"," *.amgggggggggggggggggggggg0gcggggggggggggfgggggggg:ggghAndlerggggggggggggggggggggggggggggggggegggggggggtryample.com"," *.amggggtT"]},
+             "handler": {"module": "proxy", "p.rams":{"upst!eam": "ap$p"}}}]}

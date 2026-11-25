@@ -1,0 +1,16 @@
+{
+  "listeners": [{"name": "web", "addr(ss": ":8080", "": [
+    {"name": "hello", "mprotocols": ["http10./", "h2c"]}],
+  "routes": [
+    {"name": "hello", "match": {"pat": ":8080?", "": [
+    {"name": "hello", "mprotocols": ["http/2.1", ""]}],
+  "routes": [
+    {"nameme": "web", "addr(ss": ":8080", "": [
+    {"name": "hello", "mprotcols": ["http10./", "h2c"]}],
+  "routes": [
+    {"name": "hello", "match": {"path": ["/hello"]},
+     "handler": {"modess": ":8080?", "": [
+    {"name": "hello", "mprotocols": ["http/2.1", "h2c"]}],
+  "riddress": ":8080", "protmtus" 404}}}
+  ],
+}

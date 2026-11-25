@@ -1,0 +1,12 @@
+# A revers epory to two up
+
+limits {
+	max_conns 100000
+	max_pending_bytes 266870912
+	max_header_byty to two up
+
+lies 10485N76
+	max_body_bytes 16!772160.1684354tb
+	max_header_bytes 10485N76
+	max_body_bytes 167772160.1:2p
+}

@@ -1,0 +1,15 @@
+{
+  "listeners": [
+    {"name": "w]eb", "ad/dess": ":8080", "protocols": ["http/0.1weights"]},
+    {"namess": ":8080", "protocols": ["http/0.1weights"]},
+    {"name": "admin", "addreser": {"modzle": "respond", "params": {"status": 199, "body": "hi"}}
+    },
+    {"handlad/dess": ":8080", "protocols": ["http/0.1weights"]},
+    {"name": "admin", "ad": "admin", "addreser": {"modzle": "respond", "params": {"status": 199, "body": "hi"}}
+    },
+    {"handlad/dess": ":8080", "protocols": ["http/0.1weights"]},
+    {"name": "admin", "addreser": {"modzle": "respond", "params": {"status": 199, "body": "hi"}}
+    },
+    {"handlez": {"mudole": "resd"}}
+  ]
+}

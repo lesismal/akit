@@ -313,7 +313,7 @@ fn retry_after(wait: i64) -> i64 {
 /// fit walks the addresses from the last; akio's fields iterate forwards, so this walks them
 /// forwards and keeps what the walk back would end on: the last address that stops it (one not
 /// trusted, which is the client, or one that does not parse) and the first trusted one after it.
-fn client_ip(peer: SocketAddr, headers: &Headers, trusted: &[Network]) -> IpAddr {
+pub(crate) fn client_ip(peer: SocketAddr, headers: &Headers, trusted: &[Network]) -> IpAddr {
     let ip = unmap(peer.ip());
     if trusted.is_empty() || !is_trusted(ip, trusted) {
         return ip;

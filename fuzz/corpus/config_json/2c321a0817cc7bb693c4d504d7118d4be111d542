@@ -1,0 +1,3 @@
+{"schema_v2rsion": 1, "upstreams": [{"nam,e": "app", "addredresses": ["127.0.0.1:]000"]}],
+ "list%eners": [{"ols": ["h4", "h3"]}],
+ "routes": [{          "handler": {"module": "proxy", "params": {"upeam": "app"}}}]}

@@ -87,6 +87,7 @@
 | A166 | 由别处进行的调用决定时扣住响应头（fit 向 fib 提出的 A41） | 已在 akio 的 main（`dad77a7a`），已锁定 | 1、4 | I72 |
 | A167 | 由别处进行的调用逐次过滤响应 body，trailer 在最后一次调用中（fit 向 fib 提出的 A46） | 已在 akio 的 main（`dad77a7a`），已锁定 | 1、4、5、8 | I72 |
 | A170 | 不经 `Conn::inner` 读取连接的 TCP 计数（以及未读字节），并通过引擎自己的 API 先写数据再拼接 | 已提出（I51b）；在此之前 akit-l4 使用文档中隐藏的 `Conn::inner` | 1、14 | I51b |
+| A200 | 按 RFC 9112 的要求处理 absolute-form 请求目标：以其路径作为请求的路径，以其 authority 作为主机 | 已提出（I77）；在此之前 akit-listener 把这样的请求改写为 origin-form | 15、19 | I77 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -1452,3 +1453,26 @@ akio-socks 的拼接隧道（计数、空闲探测、关闭时的排空）作为
 
 **akit 的用法。** akit-l4 的 `sockmap` 模块改用这些 API，不再使用 `Conn::inner`，并且对带 `proxy_protocol` 的监听器的
 连接也进行拼接。
+
+## A200 按 RFC 9112 的要求处理 absolute-form 请求目标
+
+**状态。** 由 I77 提出（2026-11-26）。在此之前 akit-listener 改写这样的请求，这是一个临时方案，记录在
+[进度](progress.zh-CN.md)中。
+
+**问题。** HTTP/1.1 服务器必须接受 absolute-form 的请求目标（`GET http://a.example/admin/x HTTP/1.1`），并且作为源服务器，
+以目标的 authority 作为请求的主机，忽略 `Host`（RFC 9112 第 3.2.2 节）；Go 的服务器就是这样做的（`r.URL.Path` 是
+`/admin/x`，`r.Host` 是 `a.example`），所以 fit 按其路径为这样的请求选择路由。akio 的 HTTP/1 服务器接受这个目标并把它
+原样保留：`Request::path()` 是 `http://a.example/admin/x`，`Host` 仍是该字段的值。按 `path()` 路由的路由器（akit 的或
+akio-http 自己的）认为请求不属于任何它知道的路径，而把 origin-form 发给上游的代理（akit 的代理就是这样做的，也必须这样
+做）会请求 `/admin/x`：fuzz 发现，这样写的请求绕过了保护 `/admin/*` 的路由，经由兜底路由到达了上游。
+
+**证据。** 在 `dad77a7a`（以及 `111004f8`）：`crates/akio-http/src/message.rs` 中 `Request::path()` 是目标中 `?`
+之前的部分；`crates/akio-http/src/parse.rs` 原样复制请求行中的目标（`new_target`）。在临时方案之前，akit 的测试
+`path_confusion`（`crates/akit-listener/tests/listeners.rs`）对 `GET http://a/admin/secret` 由兜底路由作答（200）。
+
+**建议的 API。** HTTP/1 服务器把 absolute-form 目标拆开：`Request` 的 `target` 为 origin-form（`/admin/x?q`），主机为目标的
+authority（去掉用户信息），设置为 `Host`，或由 `Request::authority()` 给出并优先于 `Host`；需要时为日志保留 absolute-form
+（`Request::raw_target()`）。authority-form 的目标只留给 `CONNECT`。
+
+**akit 的用法。** 去掉 akit-listener 的 `absolute_form` 改写（在 `Dispatcher::call` 和 `body_mode` 中）；路由、代理、缓存键和
+访问日志按 akio 给出的请求读取。

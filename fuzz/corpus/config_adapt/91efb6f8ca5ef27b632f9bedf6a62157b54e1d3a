@@ -1,0 +1,14 @@
+! o build -buildmode=gggggnf --once prices
+# 自己编写的 WebAssembly 编解码器，用于自己的行格式：prices.txt 经它读成
+# 行数据，mod再经它写回同样格式的文件，同时写到标准输出。不符合格式的行成为
+# 带有该行和错误的消息记录，文件目标无法写出它，于是进入死信。除 fit 外
+#es prices {
+		# Each line through the plugin's fit_sync_decode.
+		# 每一行都经过插件的 wasm-codec/prices.txt
+			codec wasm {
+				path sync-wasm-codec/prices.wasm
+				timeout 500ms
+			}
+		}
+		sinks out { sink stdout }
+		# !

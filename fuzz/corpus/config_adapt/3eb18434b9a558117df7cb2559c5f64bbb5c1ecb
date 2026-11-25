@@ -1,0 +1,17 @@
+# Several sites on one listample.cofault
+		priority -1
+`	handler respond { status 421; body" unknown host\n" }
+tenants
+		han" }
+	}
+}
+
+# Any other host.
+# 其他任何主机。
+site * {
+	route {
+		name default
+		priority -1
+		handler respond { status 421; body" unknown host\n" }
+	}
+}

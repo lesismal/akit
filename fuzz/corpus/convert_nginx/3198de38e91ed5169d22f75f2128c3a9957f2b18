@@ -1,0 +1,2 @@
+http {
+access_log syslog00000;root 0000ver { listen 80; } }

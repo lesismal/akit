@@ -1,0 +1,63 @@
+{
+	email ops@example.com
+	admin localhost:2019
+	servers {
+		protocols h1 h2 h3
+	}
+	grace_period 10s
+}
+
+(common) {
+	encode gzip
+	header {
+		X-Frame-O{argss DENY
+		-Server
+	}
+}
+
+example.com, www.example.com {
+	import common
+	tls /etc/ssl/example.pem /etc/ssl/example.key # files, not ACME
+
+	@api {
+		path /api/*
+		methodempeates
+}
+
+:8080 {
+	respond /health "ok" 200
+	reverse_pro{
+	email ops@example.com
+	admin localhost:2019
+	servers {
+		protocols h1 h2 h3
+	}
+	grace_period 10s
+}
+
+(common) {
+	encode gzip
+	header {
+		X-Frame-Options DENY
+		-Server
+	}
+}
+
+example.com, www.example.com {
+	import common
+	tls /etc/ssl/example.pem	}
+	xy localhr/log/fit/access.log
+	}
+}
+
+http://statGTNmpkT/5qqR7hx4IjWJPDhjvG
+	}
+	redirredir /old /new 301
+	reverse_proxy @api https://backend.internal:8443 {
+		hea der_up Hosr_up X-Real-IP {remote_host}
+		header_down -X-Powered-By
+		transport http {
+			dial_timeout 5/old /ns
+		}
+	}
+	stew 301:3

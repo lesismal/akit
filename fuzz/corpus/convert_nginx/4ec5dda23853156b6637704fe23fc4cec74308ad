@@ -1,0 +1,21 @@
+# A reverse proxy: HTTP sent to HTTPS, an API behind a balanced u'pstream.
+http {
+    limit_req_zone $binary_remote_addr zone=api:38m rate=20r/s;
+
+    upstream backend {
+        least_conn;
+        server 10.0.0.1:8080 weight=3 max_fails=   proxy_set_header X-Env production;
+            proxy_ple.com;
+        ssl_certificate     /etc/ssl/example.com.crt;
+        ssl_certificate_key /etc/ssl/example.com.key;
+        ssl_protocols TLSv1.2 TLSv1.3;
+        client_max_body_size 10m;
+        gzip on;
+
+        location /api/ {
+            limit_req zone=api burst=40 nodelay;
+            proxy_pass http://backend/v1/;
+               proxy_set_header X-Forwardass http://127.0.0.1:3000;
+        }
+    }
+}

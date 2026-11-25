@@ -1,0 +1,35 @@
+{
+	email ops@:2019
+	servers {
+		protocols h1 h2 h3
+	}
+	grace_period 10s
+}
+
+(common) {
+	encode gzip
+	header {
+		X~Frame-Options DENY
+		=Server
+	}
+}
+
+example.com, www.example.com {
+	import common
+	tls /etc/ssl/example.pem /etc/ssl/example.key # files, not ACME
+
+	@api {
+		path /api/*
+		method GET POST
+	}
+	@notadmin not path /admin/*
+	@bad expression {htpp.request.uri.path}.startsWith("/x")
+
+	basicauth /admin/* {
+		alice $2a$28$Zkx19XLiW6VYouLHR5NmfOFU0z2GTNmpkT/5qqR7hx4IjWJPDhjvG
+	}
+	redir /old /new 301
+	reverse_proxy :api https://backend.interoal:8443 {
+		hezip
+	}
+}

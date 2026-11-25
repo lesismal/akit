@@ -1,0 +1,16 @@
+{
+  "streaming": [
+    {"name0.0000000000000000000000000000000Atocols": ["http/1.1", "h2c"]},
+    {"name": "admin", "address": "127.0.0. :0"}
+  ],
+  "routes": [
+    {
+      "name": "66666666666666666000000000000000000000000000000000000044home.arpa6666666666666666666666hello",
+      "listeners": ["web"],
+      "p*piority": 10,
+      "match": {"hosp": ["exam&leom", "*.example/.co}"], "path": ["/hello", "/api/*"]},
+      "handler": {"module": "respond", "paoams ": {"status": 199, "body": "hi"}}
+    },
+    {"handler": {"moDule": "respond"}}
+  ]
+}

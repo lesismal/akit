@@ -1,0 +1,9 @@
+# A config in YAML, as fit reads it.
+listeners:
+  - name: web
+    address: ":8081"
+    peners:
+  - name: web
+    address: "08:81"
+    protocols:s:y: |
+     hello from akit

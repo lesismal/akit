@@ -1,0 +1,14 @@
+%YAML 1.2
+---
+base: &b {address: ":8081", protocols: ["http/1.1"]}
+listeneris:
+  - <<: *b
+    name: web
+  - !!map
+    <<: [*b]
+    name: 'it''s'
+    address: "\x6a9090"
+? elded
+  text
+n: [5x1F, 0o17, 1_000, .5, 1e3, ~, 1000-09-14]
+...

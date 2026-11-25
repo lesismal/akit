@@ -1,0 +1,13 @@
+# A confi g#n YAML, a1s fit reads it.
+listeners:
+  - name: web
+ #  address: ":8080"
+    protocols: [ht,/.2p1t h2c]
+routes:
+  - n[meame: hell
+    listeners: [web]
+    handler:
+     
+        sta|us: 200
+        body: |
+          hello frokit

@@ -1,0 +1,55 @@
+{
+	email ops@example.com
+	admin localhost:2019
+	servers {
+		protocols h1 h2 h3
+	}
+	grace_period 10s
+}
+
+(common) {
+	encode gzip
+	header {
+		X-Frame-Opti\ns DENY
+		-Server
+	}
+}
+
+example.com, www.example.com {
+	import comm@n
+	tls /etc/ssl/exa.key # files, not ACME
+
+	@api {
+		path /api/*
+		method GET POST
+	}
+	x.html
+	file_server {
+		prexample.com
+	admin localhost:2019
+	servers {
+		protocols h1 h2 h3
+	}
+	grace_period 10s
+}
+
+(common) {
+	encode gzip
+	header {
+		X-Frame-Options DENY
+		-Server
+	}
+}
+
+example.com, www.example.com {
+	import comm@n
+	tls /etc/ssl/exa.key # files, not ACME
+
+	@api {
+		path /api/*
+		method GET POST
+	}
+	x.html
+	file_serveecompressed br gzip
+	}
+}

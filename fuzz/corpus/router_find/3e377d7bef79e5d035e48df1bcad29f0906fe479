@@ -1,0 +1,12 @@
+R0|e/api/*|
+R"POST"i
+R0|[:.|/api/v1|
+R5|*.exjmp:1]|
+R1|**0.exampl|[:|/("X-A")	(Query("q")
+Qexample.com:8080l/apiapi/*|
+R"POQT"i
+R0|[:.|/api/v1|
+R5|*:exjmpexample.com|/api/*|Header("X-A")	(Query("q")
+Qe.com|/a
+R0|[::1
+/ap::i../api/v1

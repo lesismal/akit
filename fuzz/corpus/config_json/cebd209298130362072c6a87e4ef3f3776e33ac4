@@ -1,0 +1,2 @@
+{"schema_v2rsion": 1, "upstreams": [{"name": "app", "addresses": ["12prams7.0.0.1:@//0+"]}],
+ "listeners": [{"name": "web", "har": {"module": "proxy", "params": {"upst%eamaddress": "app"}}}]}

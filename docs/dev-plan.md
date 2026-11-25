@@ -182,7 +182,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I75 | FastCGI | I16 | done |
 | I76 | M5 exit | I67–I75 | todo |
 | **1.0** | | | |
-| I77 | Fuzzing | I56 | todo |
+| I77 | Fuzzing | I56 | done |
 | I78 | Config reference and guides | I76 | todo |
 | I79 | v1 freeze and compatibility | I78 | todo |
 | I80 | Security review readiness | I77, I79 | todo |
@@ -236,6 +236,7 @@ commit and result.
 | Response cache | I67, I68, I69 | no | no (memory and disk tiers and purges built, not measured) | Against fit, as I67 built it: hits from memory (a 4 KiB and a 1 MiB body, HTTP/1.1 and h2), misses kept through the proxy (a streamed body copied by the tap) against the proxy alone, the cost on requests the cache passes through (POST, `no-store` responses) against no middleware, the shards' locks under many keys and one hot key. I68: hits read back from disk (64 KiB and 1 MiB, the disk pool's threads and queue under many at once), writes to disk under a miss rate that fills `MAX_PENDING_WRITES`, a stampede of many clients on one key with the lock and with `disable_lock` (the waiters' suspend and resume, the timer per fetch), and stale-while-revalidate's background fetches. akio's ADR-116 tap: a tapped stream against an untapped one. I69: storing tagged responses (none and 32 tags) against untagged ones, and purges of a large zone by prefix and by tag while it serves (the shards' and the disk index's lock hold times). |
 | FastCGI | I75 | no | no (built, not measured) | Against fit and nginx's `fastcgi_pass`, PHP-FPM (or a FastCGI application that answers at once) over TCP and a Unix-domain socket: requests a second and latency for a small page, HTTP/1.1 and h2; a 1 MiB upload and a 16 MiB download (memory per request in flight, the 64 KiB watermarks both ways); keep-alive reuse against a connection a request; the pool's queue under more clients than `max_conns`; the cost of `try_files` (a `stat` on akio's logical pool a candidate) against a route without it; the handler's sweep every 100 ms on akit's timer thread (A45's stopgap) over its exchanges at many requests a second. |
 | WASM plugins | I71, I72 | no | no (I71 and I72 built, not measured) | Against fit (wazero's compiler) and none: a request through fit's `headers` plugin (Go guest) and through a no-op one (`fit_on_request` returning 0), HTTP/1.1 and h2, requests a second and latency, against the route without the middleware (the hand-off to the pool and back, the request copied, the call); the guest call alone on an instance (akio's W5: akio-wasm's interpreter against wazero's interpreter and compiler); the pool under more clients than `instances` (the queue, 503 past it); an instance remade after a trap (a Go guest's `_initialize`). Proxy-Wasm (I72): a request through the Proxy-Wasm Go SDK's `http_routing` (config `1`, the request unchanged) against fit and none, as fit's `BenchmarkProxyWasm`; a response through fit's `response` filter (`upper`) and the SDK's `http_headers`, the head held and the body filtered on the pool, a whole 4 KiB body and a streamed 1 MiB one, HTTP/1.1 and h2, against `response: none` and none. |
+| Absolute-form targets taken apart in the listener | I77 | no | no (built, not measured) | One comparison a request (does the target start with `/`) before routing: a same-run A/B of the fixed scenario over HTTP/1.1 against main before I77; no cost is expected. Goes when akio does it (A200). |
 
 ## M0, foundations
 
@@ -975,6 +976,10 @@ Split from I07 so that the half that needs no config model runs beside I02.
 - **Do**: fuzz targets for the config readers, the router, the proxy's header handling, the PROXY
   protocol and the cache; run in CI for a fixed time and longer on a schedule.
 - **Done when**: every parser has a target and the corpus is checked in.
+- **Touches**: `fuzz/` (a cargo-fuzz workspace of its own, a target for each parser), a `fuzzing`
+  feature and module in each crate it fuzzes, `.github/workflows/ci.yml` and `fuzz.yml`. The PROXY
+  protocol and ClientHello parsers are akio-mux's, fuzzed in akio; akit fuzzes what it reads with
+  them.
 
 ### I78 Config reference and guides
 

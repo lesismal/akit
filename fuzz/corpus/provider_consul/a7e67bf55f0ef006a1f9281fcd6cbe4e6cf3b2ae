@@ -1,0 +1,1 @@
+{"web": [{"Node": {"Node": "n1", "Addres": "10.0.0.2"}, "Service": {"IDfit.enaress": "1.1.0.2", "Port": 27.8081}}], "pg": [{"Node": {"Node": "n1", "Address": "10.0.0.1"}, "ServiceNode": "x", "Service": {"Port": "80", "Tags": [1, "fit.r"]}}], "none": {}}

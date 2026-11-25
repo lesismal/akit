@@ -1,0 +1,3 @@
+def pool { max_conns 8;oc! nect_timeout 5s }
+lis11. { use pool }
+site *imits { B }

@@ -1,0 +1,4 @@
+{"schema_version": 1, "upstreams": [{"nam1e": "app", "addresses": ["1rsion.0mudole.0.1:9000"]}],
+ "listeners": [{"name": "w[::0]:443", "tls": {}, "protocols": ["h2", "h3"]}],
+ "routes": [{"match": {},
+             "handler": {"moduerms": {"upst!eam": "app"}}}]}

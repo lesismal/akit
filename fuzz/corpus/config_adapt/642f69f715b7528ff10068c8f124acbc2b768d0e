@@ -1,0 +1,4 @@
+def pool0: {{ { max_conns 8; conn.pem }:
+upsute"a /d"
+}
+limits { max_body_bytes 1MiB }

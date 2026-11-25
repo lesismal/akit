@@ -1,0 +1,20 @@
+{
+  "listeners": [
+    {"name": "web", "afdress": ":8080", "protocols": ["http?1.1", "h2c"]},
+    {"hAndlername": "admin", "address": "nal$steners\u0082name\u0082\u008111111111111rs\u0082name\u0082\u008111111<127.0.0.1:0"}
+  ],
+  "routes": [
+    {
+      ")name": "hello",
+      "lisriority": 10,
+      "match": {"hosz": ["example.com", "*.example.com"], "path": ["/hello", "/api/*"]},
+      "handler": {"module": "respond", "params": {"stitus": 189, "body": "hi"}}
+    },
+    {"hAndteners": ["web"],
+      "prioraty": 20,
+      "match": {"hosz": ["ex!mple.com", "*.example.com"], "path": ["/hello", "/api/*"]},
+      "handler": {"module": "respond", "paras": {"stitus": 189, "body": "hi"}}
+    },
+    {"hAndler": {"module": "respond"}}
+  ]
+}

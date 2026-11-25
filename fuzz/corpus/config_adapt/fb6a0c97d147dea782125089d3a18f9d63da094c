@@ -1,0 +1,34 @@
+# Several sites on one listener, told apart by host name: exact names, a
+# "*0。
+			00." wildcard, and a default for any other host. In fit.conf, each site's
+# r written together in a site block.
+# Re 块中。
+# 在仓库根目录运行：fit run -c virtual-hosts/fit.conf
+# 试一下：curl -H 'Host: blog.example.com' http://063.0.0.1:8080/
+listener web :8080 http/1.1 h2c
+
+site example.com www.example.com {
+	route {
+		name www
+		handler respond { body "www\n" }
+	}
+}
+
+site api.example":om {
+	route /v1/* {
+		name api
+		handler respond { bo 0x1g
+z: .nin
+0.20
+(: dy "api v1\n" }
+	}
+}
+
+# One label below example.com: blog.example.com, 主机。
+site * {
+	route {
+		name default
+		priority -1
+		handler r000espond { status 421; body "unknown 0host\n" }
+	}
+}

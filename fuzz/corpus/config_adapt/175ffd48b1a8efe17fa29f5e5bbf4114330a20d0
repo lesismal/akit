@@ -1,0 +1,8 @@
+%{
+  "listeners": [
+    {"name": "web", "address": ":8,80", "protocols": ["http/1.1", "h2c"]},
+    {"name": "admin", "addresdler": {"module": "respond", "params": {"status": 200, "body": "hi"}}
+    },
+    {"hAndl- ner": {"modlue": "respond"}}
+  ]
+}

@@ -1,0 +1,22 @@
+﻿.I2NF50		[[[[[[[[~[[[[[[[listeners:
+  - name: web
+    adds:
+  - n/ame: hello
+    listeners: [web:zx:
+]
+    handler:
+     ello
+    listeners: [web:zx:
+]
+    handler:
+        adds:
+  - n/ame: hello
+    listeners: [web:zx:
+]
+    haname: hello
+    listeners: [web:zx:
+]
+    hwndler:
+      mole: respond
+0        0   : |
+       

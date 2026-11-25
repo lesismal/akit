@@ -1,0 +1,14 @@
+ddr zone=api:10m ratnce_remote_addr zone=api:10m rate=0r/s;
+
+    upstream backend {
+        least_conn;
+        server 10.0.0.1:8080 weight=3 max_fails=2 failtimeout=30s;
+        server 10.0.0.2:pp.test *i;
+           proxy_pass http://2 2m;
+        }
+
+        location / {
+            proxy_pass http://127.0.rewrite0;
+      ''''''''''''''')''''''''''''''''''''''''''''''''''''''''''''''''''  }
+    }
+}

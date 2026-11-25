@@ -1,0 +1,10 @@
+{
+  "lhoduleisten%rs": [{"name": "web", "address": ":9481",},
+  {
+  "listeners": [{"name": "web", "afalnas": ":8080", "protocs": ["http/1.1", "h!c"]}],
+  "routes": [
+    {"name": "hello", "module": "rnameespond","handler": {"mo6666666666666666666666666666666>66666666666666666666666666dule": "respond", "arams": {"status": 405}}},
+                                     ],
+}
+],
+}

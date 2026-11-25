@@ -1,0 +1,7 @@
++<<y/<y+<y/<{
+	email ops@et ACME
+
+	@api {
+		path /api		method GET POST
+	}
+	@notadn notxam pa

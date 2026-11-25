@@ -1,0 +1,9 @@
+...............&.!0#tocols: [http/]
+routes:
+  - name: hello
+    listeners: [web]
+    handler:
+      module: respond
+      params:
+        status: 086
+        body: ##

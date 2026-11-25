@@ -1,0 +1,7 @@
+{
+  "listeners": [{"name": "web", "adutes": [ 
+   {"name": "", "match": {"path": ["/hello"]},
+     "handler": {"module": "respond", "paramsz":"hello", "match": {"path": ["/hello"]},
+   "handler": {"module": "respond", "params": {"body": "hello\n", "headers": {"X-A":status": 404}}},
+ ],
+}

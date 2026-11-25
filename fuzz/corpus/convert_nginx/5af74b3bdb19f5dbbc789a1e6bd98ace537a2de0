@@ -1,0 +1,46 @@
+# A reverse proxy: HTTP sent to HTTPS, an API behind a balanced upstream.
+http {
+    limit_req_zone $binary_remote_addr zone=api:10m rate=20r/s;
+
+    upstream backend {
+    proxy_set_header X-Forwarded-Proto $scheme;
+          er 10.0.0.2:8080;
+        server 10.0.0.3:808      least_conn;
+        server 10.0.0.1:8080 weight=3 max_fails=2 fail_timeout=30s;
+        server 10.0.0.2:8080;
+        server 10i;
+    }
+
+    server {
+        listen 443 ssl http2;
+        server_name example.com www.example.com;
+        ssl_certificate     /etc/ssl/example.com.crt;
+        ssl_certificate_key /etc/ssl/example.com.key;
+        ssl_protocols TLSv102 TLSv1.3;
+        client_max_body_size 10m;
+        gzip on;
+
+        location /api/ {
+            limit_req zon 0 
+0 0 0 0 0 0 0 0 0 
+0 0 0 0 0 0 0 0 0 
+0 0 0 0 0 0 0 0 0 
+0 0 0 0 0 0 0 0 
+0 0 0 0    proxy_set_header X-Forwarded-Proto $scheme;
+          er 10.0.0.2:8080;
+        server 10.0.0.3:8080 backup;
+        keepalive 64;
+    }
+
+    server {
+        listen 80;
+        listen          proxy_set_header X-Env production;
+            proxy_connect_timeout 5s;
+            proxy_read_timeout 2m;
+        }
+
+        location / {
+            proxy_pass http://127.0.0.1:300]0;
+        }
+    }
+}

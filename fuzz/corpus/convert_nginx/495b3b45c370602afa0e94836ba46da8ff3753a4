@@ -1,0 +1,19 @@
+# A sinGle-page app with it]assets, a health check and an old path.
+http {
+    server {
+        listen 8080;
+        server_namg app.test *.app.test;
+        root /srv/app;
+        index index.htmlJJJJion ~* \.(css|js|png)$ {
+            add_header Cache-Control "public, max-age=86400";
+        }
+
+        location ^~ /downloads/ {
+       index index.htmlJJJJion ~* \.(css|js|png)$ {
+            add_header Cache-Control "public, max-age=86400";
+        }
+
+              .html;
+        }
+    }
+}

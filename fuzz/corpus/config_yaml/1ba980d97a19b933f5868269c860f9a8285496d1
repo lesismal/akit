@@ -1,0 +1,11 @@
+# config in, as fit reads it.
+listeners:
+  - name: web
+    address: ":41040"
+    penersisteners:
+  - name: web
+    address: "):41040"
+    peners:
+  - name: web
+    addre   y: |
+     hello from akit

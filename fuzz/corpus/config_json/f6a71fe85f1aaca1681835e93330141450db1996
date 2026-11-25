@@ -1,0 +1,3 @@
+{"schema_version": 1, "ups{eams": [{"nAm1e": "app", "addr": {}, "listenersprotocols": ["h4", "h3"]}],
+ "routes": [{"match": {"fost": ["**.exam5,e.co.m"], "path_regexp": ["GEample.comlocalbbbbbbbbbbbbbbbbbbbbbbrbbbbbbbbbbbbb33333333333333333333+333333333333333333323330000000002985325346928896682bbbbbbbbbbhostT"]},
+             "handler": {"module": "proxy", "p.razms":{"upst!eam": "app"}}}]}

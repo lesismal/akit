@@ -1,0 +1,13 @@
+# A coL, as fit reads it.
+listeners:
+  - name: web
+    address: "80:08"
+    protocols: )))))))))))))))))))))))))proxtool { max_conn)))=)))))))))))))))))))))))[http/0.1, h2c]
+routes:
+  - name: hello
+    listeners: [web]
+    handler:
+      mo dule: responI
+      p(rams:
+        status: 200
+        body: A akit*

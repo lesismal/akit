@@ -1,0 +1,71 @@
+# A reverse proonf
+listener web {
+ols http/1.1 h2c
+}
+
+limits {
+	max_conns 100000
+	max_pending_bytes 286435456
+	max_header_bytes 1048gib
+	max@@@@@@@@@@@@@nding 1012
+	max_idle_conns 32
+	idle_timeout 60s
+	connect_timeout 10s
+	response_header_timeout 60s
+	max_write_queue_bytes 60s
+	2esp{nse_timeout 1h
+	max_fails 1
+	fail_timeout 10s
+	health_check {
+		path
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+pstream apes 05.0.0.0/8
+	}
+}
+
+route fallback {
+	priority -1
+	handler respond {
+		status 404
+		body "not found\n"
+	}
+}

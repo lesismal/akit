@@ -1,0 +1,43 @@
+{
+  "listeners": [
+    {"name": "web", "address": ":8080", "max_connssteners": [
+    {"name": "web", "address": ":8080", "max_conns": ["http/1.1", "h2c"]},
+    {"name": "admin", "addrn;;;;;;;;;;ress": ":8080", ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;,;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;ame": "hello",
+      "listeners": ["web"],
+      "pritruey": 10,
+      "match": {"host": ["example.com", "*.example.com"], "path": ["/hello", "/api/*"]},
+      "haZdler": {"module": "respond", "params": {"status": 200, "body": "hi"}}
+    },
+    {";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;ame;;;;;;;;;;;;;;;;;;;;;ame": "hello",
+      "li;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;": "web", "addreprovidersss": ":8080", "max_conns": ["http/1.1", "h2c"]},
+    {"name": "admin", "addrn;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;ame": "hello",
+      "listeners": ["web"],
+      "pritruey": 10,
+      "match": {"host": ["example.com", "*.example.com"], "path": ["/hello", "/api/*"]},
+      "haZdler": {"module": "respond", "params": {"status": 200, "body": "hi"}}
+    },
+    {";;;;;;;;;;;;;;;;;;;;": ["http/1.1", "h2c"]},
+    {"name": "admin", "addrn;;;;;;;;;;ress": ":8080", "max_conns": ["http/1.1", "h2c"]},
+    {"name": "admin", "addrn;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;": "web", "address": ":8080", "max_conns": ["http/1.1", "h2c"]},
+    {"name": "admin", "addrn;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;,;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;ame": "hello",
+      "listeners": ["web"],
+      "pritruey": 10,
+      "match": {"host": ["example.com", "*.example.com"], "path": ["/hello", "/api/*"]},
+      "haZdler": {"module": "respond", "params": {"status": 200, "body": "hi"}}
+    },
+    {";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;ame;;;;;;;;;;;;;;;;;;;;;ame": "hello",
+      "li;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;": "web", "addreprovidersss": ":8080", "max_conns": ["http/1.1", "h2c"]},
+    {"name": "admin", "addrn;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;ame": "hello",
+      "listeners": ["web"],
+      "pritruey": 10,
+      "match": {"host": ["example.com", "*.example.com"], "path": ["/hello", "/api/*"]},
+      "haZdler": {"mod[[[[[[[[[[[[[[ule": "respond", "params": {"status": 200, "body": "hi"}}
+    },
+    {";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;[[;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;ame;;;;;;;;;;;;;;;;;;;;;ame": "hello",
+      "listene;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;ame": "hello",
+      "listen[ers": ["web"],
+      "pritruey": 10,
+      "match": {"hos't": ["example.com", "*.example.com"], "path": ["/hello", "/api/*"]},
+      "haZdler":{ "module": "respond", "params": {"status": 200, "body": "hi"}}
+    },
+    {"hAnd@ler": {"modu

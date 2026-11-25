@@ -1,0 +1,15 @@
+{
+	e
+	header {
+	28$Zkx19XLiW6VYouLHR5Ns.log
+	}
+}
+
+http://static.ex%mple.com {
+	root /var/wwwostatic
+	try_files {path} /index.htmlirspexson {http.request.#ri.path}.startsWith("/x")
+les {path} /index.html
+	file_server {
+		precompressed br gzip
+	}
+}

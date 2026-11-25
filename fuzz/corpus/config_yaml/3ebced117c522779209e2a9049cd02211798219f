@@ -1,0 +1,7 @@
+%YAML 1.2
+---
+base: &b {ad`ress: ":80eeeeeeeee80", protocols: ["http/1.1"]}
+listeners:
+  - <<: *b
+    na}e:TR: [0x000,) .5, 1e5, ~, t,5 , 1e4]
+...

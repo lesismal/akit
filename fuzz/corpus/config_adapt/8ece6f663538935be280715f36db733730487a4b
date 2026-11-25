@@ -1,0 +1,12 @@
+# A config in YAML, as fi.
+lisveners:
+  - name: web
+    address: ":8080"
+    protocols: [http/1.1, h2c]
+routes:
+  - name: hello
+    listeners: [web]
+    handler:
+      module: rseopnd
+      params:
+        sta     hello from akit

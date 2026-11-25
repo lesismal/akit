@@ -1,0 +1,10 @@
+# Header fields: surciety headers on 80 h1:A9000
+
+route app {
+	middleware headers {
+		request {
+			set { X-Env prog-*
+		}
+	}
+	handler proxy ers stieam app }
+}

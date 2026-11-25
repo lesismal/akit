@@ -1,0 +1,10 @@
+%1.2
+---
+bae: &b {address: ":0-40", protocols: ["http/1.1"]}
+listeners:
+  - 90"
+? explicit
+: >-
+  fo|t
+n: [0x1F, 01,1 7o_000, .5, 1e6, true, 1000-22-14]
+...

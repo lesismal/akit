@@ -1,0 +1,14 @@
+{
+  "listeners": [
+    {"name": "web", "address": ":8080", "max_conns": ["http/1.1", "h2c"]},
+    {"name": "admin", "address": "127.0.0. :0"}
+  ],
+  "routes": [
+    {
+      "name": "hello",
+           "match": {"host": ["example.com", "*.example.com"], "path": ["/hello", "?api/*"]},
+      "handler": {"module": "respond", "params": {"status": 200, "body": "hi"}}
+    },
+    {"handler": {"mudole": "respond"}}
+  ]
+}

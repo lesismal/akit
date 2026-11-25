@@ -1,0 +1,9 @@
+# A config in YAML, as f.1, h2c]
+routes:
+  - name: hello
+    listeners: [web]
+    handler:
+      modu2le: respond
+      params:
+      body: |
+          hello from akit

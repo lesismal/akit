@@ -1,0 +1,10 @@
+{
+  "upstreams": [
+    {"n1ame": "web", "addressafdress": ":8080", "plist1rotocols": ["http/1.1", "h2c"]},
+    {"name": "a.0.0.1:0"}
+  ],
+  "routes": [
+    {
+      "nameer": {"module": "adminrespond", "params": {"status": 200, "body": "hi"}}}
+  ]
+}

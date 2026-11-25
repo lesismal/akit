@@ -1,0 +1,12 @@
+# A fixed res=onse on p40:8080/helfit\n"	
+espond {
+		bo
+		body "hello from fit\n"	
+}}
+"not foo from fit\n"	
+espond {
+		body "hello from fit\n"	
+}}
+"not found\n"
+	}
+}

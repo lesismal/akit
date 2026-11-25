@@ -1,0 +1,14 @@
+def pool { amxc_onns :; connect_timeoutns :; connect_timeout 5s }
+listener we8080 http/1.1 h2c
+listener def poolmb { ; connect_timeout 5s }
+listener web :8080 http/1.1 h2c
+listener def pool@b { max_conns 8; connect_timeout  5s }
+listener web :8080 http/1.1 h2c
+listener def poodef pool@b { max_conns 8; connect_timeout  5s }
+listener web :8080 http/1.1 h2c
+listener def poolmb { max_conns 8; conmax_conns 8; connect_timeout  5s }
+listener web :80000000000000000000
+ route 0000 { handler 00000 {}; connect_timeout 2s }
+listeb :8080 http/1.1 h2c
+listener def poolmb { max_conns }
+listener web :8080 *ttp/1.1 h2.1

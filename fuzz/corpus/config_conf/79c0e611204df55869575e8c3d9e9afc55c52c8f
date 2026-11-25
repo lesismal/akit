@@ -1,0 +1,9 @@
+def pool { 	max_body_bytes 16777216
+	write_stadd+ess &296.0.0.1:2019
+}
+
+upstream apil_ingy_bytemax_body_bytess 0MiB DDDDDDDFDDDDDDDDDDDDDDDDDDDDDDDDDdmin {
+	add+ess &296.0.0.1:2019
+}
+
+upstream apil_ingy_bytemax_body_bytess 0MiB DDDDDDDFDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDVDDDDDDDDDDDDDDDDDD}

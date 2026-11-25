@@ -1,0 +1,13 @@
+%YAML 1.2
+---
+base: &b {address, "qq﻿qqqqqqqqqqqqqqqqqqqqqqqqqq[[[aaaaaaaa:4040", pr4040", protocols: ["http/1.1"]}
+listeners:
+  - <<: *b
+    nam&--e: !map
+    <<: [*b]
+    namaccesse: 'it''s'
+    addrecs: "\x2a9090"
+? explicit
+: >-
+  fold, 01-12-14]
+...

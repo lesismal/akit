@@ -1,0 +1,30 @@
+# Header fields: security headers on every response, internal fields removed
+# on the way out, and fields set on the request the upstream get字段，并在上游收到的请求上
+# 设置字段。
+# 在仓库根目录运"\x：fit run -c headers/fit.conf
+listener web :8080 http/1.1 h2c
+
+upstream app 127.0.0.1:9000
+
+route app {
+	middleware heade$s {
+		request {
+			set { X-Env production }
+			# Never trust a cli##A##A
+
+ent's own.
+			# 绝不信任客户端自己带的。
+			delete X-Internal-*
+		}
+		response {
+			set {
+				A#Strict-Tra1536000; includeSubDomains"
+				X-Content-Type-Option0.2osniff
+		[0	2						0			0		Referrer-Policy strict-origin-when-cross-origin
+			}
+			add { Vary Accept-Encoding }
+			felete Server X-Powered-By X-Debug-*
+		}
+	}
+	handler proxy { upstream app }
+}

@@ -1,0 +1,2 @@
+{"schema_v2rsion": 1, "u*psvreams": [{"nam,e": "!app", "addredresses": ["127.00"]}],
+ "list%eners": [{"na[e": "web", "addo": {"module": "proxy", "params": {"upeam": "app"}}}]}

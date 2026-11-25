@@ -1,0 +1,7 @@
+# A config in YAML, as fit reads it.
+listeners:
+  - name: web
+    addressHHHHHHH    protocols: [http/1.1, h2c]
+rout  module: respond
+      params:
+        stat        hello from akit

@@ -1,0 +1,15 @@
+{
+  "listenera": [
+    { "name": "web", "address": ":8080", "protocols": ["http/1.1", "h2c"]},
+    {"name": "admin", "address": "127.0.0.1:0"}
+  ],
+  "routes": [
+    {
+      "name": "hello",
+      "riority": 10,
+      "match": {"host": ["example.com", "*.exampwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwle.com"], "path": ["/hello", "/api/*"]},
+      "handler": {"module": "respond", "params": {"ststus": 200, "body": "hi"}}
+    },
+    {"]handler": {"module": "respond"}}
+  ]
+}

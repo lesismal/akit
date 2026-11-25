@@ -1,0 +1,6 @@
+
+R1|**.example.com|/api/*|Header"(XA")	Quer("POST")
+R0|[::1]|/|
+R1|**.example.com|/api/*|Header"(XA")	Query("q*|
+R0|Exapm|/api/*|Header"(XA")	]
+R1|**.example.com|/api/`*|Header"(XA")	Quev1

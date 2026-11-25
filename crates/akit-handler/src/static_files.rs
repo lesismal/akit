@@ -185,7 +185,7 @@ fn error(status: u16, body: &str) -> Response {
 
 /// What a request path holds, as fit's `dotfile.Scan` says it of the decoded path.
 #[derive(Debug, PartialEq, Eq)]
-enum Scan {
+pub(crate) enum Scan {
     /// A `..` segment, a NUL or a backslash, or an escape that is not one: what could name a
     /// file outside the root, or another file on some systems. Answered 400.
     Unsafe,
@@ -201,7 +201,7 @@ const WELL_KNOWN: &[u8] = b".well-known";
 
 /// Looks at the segments of `raw`, a request path as sent, percent-decoding as it goes, in one
 /// pass and without allocating. The whole path is looked at: `Unsafe` wins over `Hidden`.
-fn scan(raw: &str) -> Scan {
+pub(crate) fn scan(raw: &str) -> Scan {
     let mut s = Scanner::default();
     let mut bytes = raw.bytes();
     while let Some(c) = bytes.next() {
@@ -235,7 +235,7 @@ fn scan(raw: &str) -> Scan {
 
 /// [`scan`] of a path already percent-decoded, as `Files::hide` is given: a `%` is a byte as
 /// any other.
-fn scan_decoded(path: &str) -> Scan {
+pub(crate) fn scan_decoded(path: &str) -> Scan {
     let mut s = Scanner::default();
     for b in path.bytes() {
         s.byte(b);

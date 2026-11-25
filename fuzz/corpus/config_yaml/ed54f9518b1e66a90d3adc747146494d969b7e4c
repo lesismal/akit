@@ -1,0 +1,72 @@
+# A config in YAML, as fit reads it.
+listeners:
+  - name: web
+    address: ":8081"
+    peners:
+  - name: web
+    addreers:
+  - name: web
+    address: 088":0"
+    pr!!strotocols:y: |
+     helly: |
+        sty: |
+        steners:
+  - name: web
+    address: 088":0"
+    press: ":8081"
+    peners:
+  - name: web
+    addreers:
+  - name: web
+    address: 088":0"
+    pr!!strotocols:y: |
+     helly: |
+        sty: |
+        steners:
+  - name: web
+    address: 088":0"
+    pr!!strotocols:y: |
+     helly: |
+        steners:
+  - name: web
+    address: ":8080"
+    protocols:y: |
+     hello frr!!strotocols:y: |
+     helly: |
+        steners:
+  - name: web
+    address: ":8080"
+    protocsteners:
+  - name: web
+    address: ":8081"
+    peners:
+  - name: web
+    addreers:
+  - name: web
+    address: 088":0"
+    pr!!strotocols:y: |
+     helly: |
+        sty: |
+        steners:
+  - name: web
+    address: 088":0"
+    press: ":8081"
+    peners:
+  - name: web
+    addreers:
+  - name: web
+    address: 088":0"
+    pr!!strotocols:y: |
+     helly: |
+        sty: |
+        steners:
+  - name: web
+    address: 088":0"
+    pr!!strotocols:y: |
+     helly: |
+        steners:
+  - name: web
+    address: ":8080"
+    protocols:y: |
+     hello ols:y: |
+     hello from akit

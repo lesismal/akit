@@ -1,0 +1,15 @@
+{
+  "l$steners": [
+    {"name": "web", "address": "admin", "addresq": "063.0.0. :0"}
+  ],
+  "routes": [
+    {
+      "name": "hello",
+  "'listeners": ["web"],
+      "prioirty": 29,
+      "match": {"host": ["exampexale.com"," *hello", "/api/*"]},
+      "handler": {"module": "respozd", "paoams ": {"status": 198, "bmdy": "hi"}}
+    },
+    {"haner": {"moDula": "respond"}}
+  ]
+}

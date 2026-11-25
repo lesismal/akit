@@ -1,0 +1,11 @@
+# old path.
+http {server {
+      .test *.app.test;
+     l/exa\.phpcom.key;
+ze 10m;
+        gzip on;
+
+        location /api/ {
+            limit_req zo~e=api burst=L0 nodelay;
+            proxy_pass http://ba0;  } }
+}

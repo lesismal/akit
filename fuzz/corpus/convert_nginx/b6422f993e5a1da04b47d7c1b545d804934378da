@@ -1,0 +1,8 @@
+ 
+http{server{listen 09551615;server_name .00000000;root 0000000000000000 )0000;location {
+rew00000000 00000000;
+try_files $uri $uri0;
+}
+
+location /{
+0;}}}

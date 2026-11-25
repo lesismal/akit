@@ -1,0 +1,12 @@
+R0||/ap2/*|"POST")
+R0|[::1]|/|
+R0||/api/*|"Pr/r0-A")	Query("q",)
+er("X|
+R0||/api/*|"Pr/r0-A")	Query("q",)
+Q
+QEXAMPLE.COMpi/../api/v1
+R1|**.ex/|
+R0||/api/*|"Pr/r0-A")	Query("q",)
+Q
+QEXAMPLE.COMpg*|
+R1|Exiecom/

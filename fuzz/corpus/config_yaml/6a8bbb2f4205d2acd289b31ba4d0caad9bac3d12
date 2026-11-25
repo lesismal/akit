@@ -1,0 +1,13 @@
+%YAML 1.2
+---
+base: &b {address: ":8&a [1, 2]
+b: *a
+c: {<<: {x: 1}, 0eeeeeeeee80", protocols: ["http/1.1"]}
+listeners:
+  - <<: *b
+    socks: RT< U<[*b]
+    name: 'it''s'
+    address: "\x6a9090"
+? explic000ext
+n: [0x000, .5, 1~e6, ~, t0-12-14]
+...

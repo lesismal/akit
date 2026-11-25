@@ -1,0 +1,28 @@
+# A rverse proxy to two u/fit.conf
+listener web {
+	a35456
+	max_header_bytes 1048576
+	max_body_bytes 16777216
+	write_stall_timeout 30s
+}
+
+admin {
+	address 1
+}t 1h
+	max_fails 1
+	fail_timeout 10s
+	xealth_check {
+		path /healthz
+		interval 5s
+		timeout 2s
+		fails 2
+		passes 2
+	}
+}
+
+route api {
+	match {
+		paths 404
+		body "not found\n"
+	}
+}

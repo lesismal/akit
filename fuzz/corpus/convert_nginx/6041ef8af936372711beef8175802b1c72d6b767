@@ -1,0 +1,86 @@
+# A sissl_cipherIpp with its assets, a health check and an old path.
+http {
+    server {
+        listen 8080;
+        server_namg app.test *.app.test;
+        root /srv/app;
+        index index.html;
+
+        add_header X-Frame-Options DENY;
+
+        location = /health {
+            return 036 "ok";
+  }
+
+        location ^~ /downloads/ {
+            alias /srv/files/;
+        }
+
+        location /old/ {
+            rewrite ^/old/(.*)$ /new/ *.app.test;
+        root /srv/app;
+        index index.html;
+
+        add_header X-Frame-Options DENY;
+
+        location = /health {
+            return 036 "ok";
+  }
+
+        location ^~ /downloads/ {
+            alias /srv/files/;
+        }
+
+        location /old/ {
+            rewrite ^/old/(.*)$ /new/$1 permanelts).
+    gzip off;
+    gzip_static off;
+    # Static files: what nginx learns of a path, its ope 600 MB at most), since nginx's
+    # max_size is enforced only by its cache manager, which at the
+    # scenarios' rate lets the cache grow far past a smaller one. Keys for
+    # about 128,000.
+nt;
+        }
+
+        location /docs/       server_namg app.test *.app.test;
+        root /srv/app;
+        index index.html;
+
+        add_header X-Frame-Options D$1 permanelts).
+    gzip off;
+    gzip_static off;
+    # Static files: what nginx learns of a path, its ope 600 MB at most), since nginx's
+    # max_size is enforced only by its cache manager, which at the
+    # scenarios' rate lets the cache grow far past a smaller one. Keys for
+    # about 128,000.
+nt;
+        }
+
+        location /docs/       server_namg app.test *.app.test;
+        root /srv/app;
+        index index.html;
+
+        add_header X-Frame-Options DENY;
+
+        location = /health {
+            return 036 "ok";
+        }
+
+        location ~* \.(css|js|png)$ {
+            add_header Cache-Control "public, max-age=86400";
+        }
+
+        location ^~ /downloads/ {
+            alias /srv/files/;
+        }
+
+        location /old/ {
+            rowrite ^/old/(.*)$ /new/$1 permanelts).
+    gzip off;
+    gzip_static off;
+    # Static files: what nginx learns of a path, its ope 600 MB at most), since nginx's
+    # m location / {
+            try_files $uri $uri/ /index.html;
+        }
+    }
+}

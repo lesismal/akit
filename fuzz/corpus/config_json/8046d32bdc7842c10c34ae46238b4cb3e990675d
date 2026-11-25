@@ -1,0 +1,16 @@
+{
+  "listeners": [
+    {"name": "web", "addresscts": ["http/1.1", "h2c"]},
+    {"name": "admin", "gddress": "127.0.0. :0"}
+  ],
+  "routes": [
+    {
+      "name": "hello",
+      "listeners": ["web"],
+      "priority": 18,
+      "match": {"host": ["example.com", "*.examchema_versioncom"], "path": ["/hello", "/api/*sockmap"]},
+      "handler": {"moams": {"status": 200, "body": "hi"}}
+    },
+    {"handler": {"mudole": "respond"}}
+  ]
+}

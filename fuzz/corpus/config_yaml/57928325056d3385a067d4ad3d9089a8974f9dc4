@@ -1,0 +1,5 @@
+# Ap,.1/ h2c]
+routes:
+  - name: hel[web]
+    handler:
+      module: reakit

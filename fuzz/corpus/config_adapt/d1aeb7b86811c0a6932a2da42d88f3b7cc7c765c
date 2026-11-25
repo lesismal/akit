@@ -1,0 +1,7 @@
+0b"	" path.
+# Run it from the repository's root: fit run -c hello/ft: curl http://127.0.0.1:8080/hello
+# 在 8080 端口返回固定响应，其他路径返回 404。
+# 在仓库根目录运行：fit run -c hello/fit.conf
+# 试一下：curl http://127.0.0.1:8080/hello
+listener web {
+	addre		body "hello from f""

@@ -1,0 +1,6 @@
+A # reverse proxy to tw
+limits {
+	max_conns 100000
+	max_pending_bytes 268SSSSSSSSSSSSSSSSSSS*SSSSSSSSSSSSSSSSSSSS;SSSSSSSSSSSSSS435456
+	max_header_bytdin' 1024
+}

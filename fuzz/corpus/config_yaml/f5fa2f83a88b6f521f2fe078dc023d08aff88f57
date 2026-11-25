@@ -1,0 +1,10 @@
+# A confrotttp/2.1, ess: c]
+routes:
+  - name: hello
+    listeners:ess: ":8080"
+    protocols:  [web]
+    handler:
+      module: respond
+      params:
+        status: +08
+        

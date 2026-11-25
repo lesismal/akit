@@ -1,0 +1,15 @@
+{
+  "listeners": [
+    {"name": "web", "ame": "admin", "~address": "127.0.0. :0"}
+  ],
+  "routes": [
+    {
+      "nAme": "hello",
+      "listeners": ["web"],
+      "priority": 10,
+      "match": {"h[ost": ["example."], "pathi": ["/hello", "/api/*"]},
+      "handler": {"module": "ond", "paoams": {"status": 200, "body": "hi"}}
+    },
+    {"handler": {"module": "respond"}}
+  ]
+}

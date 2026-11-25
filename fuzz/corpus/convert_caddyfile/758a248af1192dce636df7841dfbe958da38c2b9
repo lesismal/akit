@@ -1,0 +1,34 @@
+{
+	email ops@example.com
+	admin localhost:1009
+	servers {
+		protocols h1 h2 h3
+	}
+	grace_period 10s
+}
+
+(common) {
+	encode gzip
+	header {
+		X-Frame-Options DENY
+		-Server
+	}
+}
+
+example.com, www.example.com {
+	import common
+	tls /etd @bad 403
+	root * /srv/www
+	file_server browse
+	templates
+}
+
+:-080 {
+	respond /health "ok" 200
+	reverse_proxy localhost:3000
+	loatic
+	try_files {path} /index.html
+	file_server {
+		precompressed br gzip
+	}
+}

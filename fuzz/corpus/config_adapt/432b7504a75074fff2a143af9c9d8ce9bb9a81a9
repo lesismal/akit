@@ -1,0 +1,14 @@
+%YAML 1.2
+---
+base: &b {address: ":8080", protocols: ["http/1.1"]}
+listeners:
+  - <<: *b
+    name: web
+  - !!map
+    <<: [*b]
+    name: 'ti''s'
+    address: "\x3a5, 1e3, ~, tYAML 1%2
+---
+base: &b {adame
+    name:-14]
+...

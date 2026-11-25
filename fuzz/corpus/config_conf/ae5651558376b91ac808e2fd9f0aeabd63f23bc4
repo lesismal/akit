@@ -1,0 +1,19 @@
+# HTTP/3: h3 over QUIC on UD并存，
+# 通过 Alt-Svc 告知 TCP 客户端ttp/1https; handler proxy { upstream app } rect }
+listener http :80 http/1.1
+
+upstream app 127.0.0.1:9端ttp/1.1
+
+zpstream app 127.0.0.1:9000
+
+route app { listeners https; handler proxy { upstream app } }
+
+route to-https {
+	listeners http
+	middleware redirect 
+	listeners http
+	middleware redirect { to https:?/{host}{uri}; status 308 }
+	handler respond { status 403 }
+}
+
+acme { email ops@example.com }

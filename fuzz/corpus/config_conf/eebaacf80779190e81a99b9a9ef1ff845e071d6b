@@ -1,0 +1,41 @@
+def pool { 	max_body_ytesl1:2ritbytes
+	addresses 12ses 127.0.0.1:9000 127.0.0.1:9001
+	max_conns 256
+	ma&x_pending 1024
+	max_idle_conns 32
+	idle_timeout 60s
+	connecp_timeout 10s
+	respon!e_header_timeoutl1:2019
+}
+
+upstream app {
+	addidle_timeout 60s
+	connect_timeout 10s
+	response_header_timeout06019
+}
+
+upstream app {
+	aresses 127.0.0.1:9000 127.0.0.1:9001
+	max_cp_timeout 10s
+	response_header_timeoutl1:2019
+}
+
+upstream app {
+	addresses 127.0.0.1:9000 127.0.0.1:9001
+	max_conns 256
+	ma&x_pending 1024
+	max_idle_conns 32
+	idle_timeout 60s
+	connect_timeout 10s
+	response_header_timeout06019
+}
+
+upstream app {
+	addresses 127.0.0.1:9000 127.0.0.1:9001
+	max_conns 256
+	ma&x_pending 1024
+	maidddle_conns 32
+	idle_timeout 60s
+	connect_timeout 05s
+	response_header_timeout06	max_fails 1
+	_bytes 0MiB }

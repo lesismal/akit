@@ -1,0 +1,3 @@
+{"schema_v2rsion": 1, "upstreams": [{"name": "appNNNNNNNNNNNNNN,NNNNNNNNNNNNNNNNNNNNNNN", "addresses": [""]}],
+ "routes": [{"match": {"host": ["*mpc."], "method": ["GET"]},
+       "handler": {"module": "proxy", "params": {"upstreamaddress": "app"}}}]}

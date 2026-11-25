@@ -69,12 +69,13 @@ jobs:
       - uses: EmbarkStudios/cargo-deny-action@v2
 
   fuzz:
-    # Each reader fuzzed for a minute (dev-plan I02: "fuzzed for a minute in CI").
-    name: fuzz (${{ matrix.target }}, 60s)
+    # Every cargo-fuzz target (fuzz/, I77) for a minute, four at a time on one build; fuzz.yml
+    # runs them for ten minutes on a schedule. `cargo test` above already replays their seed
+    # corpora on every platform (each crate's `fuzzing::tests`). A crash, leak or timeout fails
+    # the job; its input and the logs are kept.
+    name: fuzz (every target, 60s)
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        target: [config_json, config_conf, config_yaml, config_value]
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
@@ -82,7 +83,15 @@ jobs:
         with:
           workspaces: fuzz
       - run: cargo install cargo-fuzz --locked
-      - run: cargo +nightly fuzz run ${{ matrix.target }} -- -max_total_time=60
+      - run: fuzz/run-all.sh 60 4
+      - name: Keep the failing inputs and the logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-failures
+          path: |
+            fuzz/artifacts
+            fuzz/logs
 
   packaging:
     # What a release ships (deploy/README.md), built and run as it says: the static Linux binary

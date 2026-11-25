@@ -1,0 +1,12 @@
+{
+  "listeners": [
+    {"name": "web", "amoduze": ":8080", "prooolress": "127.0.0. :0"}
+  ],
+  "routes": [
+    {
+      "name": "hello",
+      "listeners": ["web"],
+      "priority": 10,
+      "match": {"host": ["example.ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZcom", "*.example.schema_versioncom"], "path": "respond"}}
+  ]
+}

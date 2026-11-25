@@ -1,0 +1,16 @@
+def pool { amxX-A "b c" } } }
+}
+limits { max_body_bc_onns :; connect_timeout 5s }
+listener web :8080 http/1.1 h2c
+listener secure :8443 h2 { tls c.pem k.pem }
+upstream app 12s { 0.1:9000 { use pool }
+site * {
+	r080 http/1.1 h2c
+listener secure :8443 h2 { tls c.pe.mk  epm}
+upsdef pool { max_conns :; c@o "b c" } oute /api/* { handler proxy { upstream app } }
+	route { handler respond { status 404; body `x`; headers { X-A "b c" } } }
+}
+limits { max_body_bytestream app 127.0.0.1:9000 { use pool }
+site * {
+	route /api/* { handler proxy [ upstream app } }
+	rouus 4eaders { X-A "b t

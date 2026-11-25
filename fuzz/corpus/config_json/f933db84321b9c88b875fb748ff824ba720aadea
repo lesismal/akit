@@ -1,0 +1,5 @@
+{
+  "listeners": [{"namm": "web", "address": "", "match":10000,
+     "haniority": -1, "handler": {"mods": {"status": 404}}},
+  ],
+}
