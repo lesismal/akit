@@ -17,6 +17,7 @@ akit 用 fit 的测试框架测量，而不是它的副本：相同的场景、�
 | [`lib.sh`](lib.sh) | 下面两个脚本共用的部署代码 |
 | [`run.sh`](run.sh) | 一次框架运行 |
 | [`ab.sh`](ab.sh)、[`abreport.py`](abreport.py) | 两个 akit 构建在同一次运行中的对比 |
+| [`modules.sh`](modules.sh)、[`modulesreport.py`](modulesreport.py)、[`configs/modules`](configs/modules) | 每个中间件与 fit 的对比，akit 在 epoll 和 io_uring 上（I56） |
 | [`results`](results) | 入库的运行，每个都带结果、报告、参数和 akit 提交；运行取回到 `results/run-<time>`（不入库），要保留时改名，如 `baseline-2026-11-24` |
 
 fit 自己的文件不做改动。脚本把 `FIT_REV` 处的 fit 源码树（取自 akit 旁边的 fit 仓库，或 `FIT_REPO`）上传到主机
@@ -52,6 +53,22 @@ bench/ab.sh main work
 10s，每一轮都持有锁。它返回一个 id；`bench/ab.sh -report ID` 用 fit 的 abreport 汇总已完成的部分：每秒请求数、每个
 请求的 CPU 和 p99，只有超过 1%（`AB_NOISE`）且超出各轮波动时才标记变化；`-wait ID` 等到结束。选项：`-scenarios`、
 `-protocols`、`-rounds`、`-duration`、`-warmup`、`-args`。
+
+## 每个中间件与 fit 的对比
+
+```bash
+bench/modules.sh main
+```
+
+提供 [`configs/modules/modules.json`](configs/modules/modules.json)：akit 和 fit 运行同一份配置，每个中间件各在
+一条路由上（主机名 `<module>.bench`），放在到后端（nginx，[`configs/modules/backend.conf`](configs/modules/backend.conf)，
+1 KiB JSON）的代理前面，旁边是只有代理的路由（`none`）和固定应答（`respond`）。它用 wrk（7 个线程、256 个连接）对每条路由
+预热 2s 后施压 8s，CPU 划分与 fit 的相同（服务端 0-6，wrk 在 fitbench 的 loadgen 镜像中占 7-13，后端 14-15），共 3 轮，每轮
+轮换服务端的顺序。akit 从它的 `bench_serve` 示例运行（[`crates/akit/examples/bench_serve.rs`](../crates/akit/examples/bench_serve.rs)），
+走的是 `akit run` 的路径，分别在 epoll（`akit-epoll`）和 io_uring（`akit-uring`）上，后者 `akit run` 还不能选择；fit 从
+`FIT_REV` 处的二进制运行。`bench/modules.sh -report ID` 用 `modulesreport.py` 汇总：每个模块、每个服务端各轮的每秒请求数、
+wrk 的 p99 以及服务端每个请求的 CPU（取自 `/proc/PID/stat`）的中位数，以及每个中间件比该服务端的 `none` 多出的开销。
+选项：`-rounds`、`-duration`、`-servers`、`-modules`。
 
 ## akit 的配置与 fit 的不同之处
 

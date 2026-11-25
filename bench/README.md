@@ -18,6 +18,7 @@ the harness does). The results come only from the benchmark host
 | [`lib.sh`](lib.sh) | staging, shared by the scripts below |
 | [`run.sh`](run.sh) | a run of the harness |
 | [`ab.sh`](ab.sh), [`abreport.py`](abreport.py) | a same-run comparison of two akit builds |
+| [`modules.sh`](modules.sh), [`modulesreport.py`](modulesreport.py), [`configs/modules`](configs/modules) | each middleware against fit's, akit on epoll and io_uring (I56) |
 | [`results`](results) | the runs checked in, each with its results, report, parameters and the akit commit; a run is fetched into `results/run-<time>` (not checked in) and renamed to keep it, as `baseline-2026-11-24` |
 
 fit's own files are not changed. The scripts upload fit's tree at `FIT_REV` (from the fit
@@ -60,6 +61,26 @@ returns an id; `bench/ab.sh -report ID` summarizes what has finished, requests a
 request and p99, marking a change only past 1% (`AB_NOISE`) and the spread of the rounds, with
 fit's abreport; `-wait ID` waits for the end. Options: `-scenarios`, `-protocols`, `-rounds`,
 `-duration`, `-warmup`, `-args`.
+
+## Each middleware against fit's
+
+```bash
+bench/modules.sh main
+```
+
+serves [`configs/modules/modules.json`](configs/modules/modules.json), one config akit and fit
+both run, with each middleware on a route of its own (its host `<module>.bench`) in front of the
+proxy to a backend (nginx, [`configs/modules/backend.conf`](configs/modules/backend.conf), 1 KiB
+of JSON), beside the proxy alone (`none`) and a fixed answer (`respond`). It loads each route with
+wrk, 7 threads and 256 connections, for 8s after 2s of warm-up, on fit's CPU split (the server on
+0-6, wrk on 7-13 in fitbench's loadgen image, the backend on 14-15), 3 rounds with the servers'
+order turned each round. akit runs from its `bench_serve` example
+([`crates/akit/examples/bench_serve.rs`](../crates/akit/examples/bench_serve.rs)), the path
+`akit run` takes, on epoll (`akit-epoll`) and on io_uring (`akit-uring`), which `akit run` cannot
+choose yet; fit from its binary at `FIT_REV`. `bench/modules.sh -report ID` summarizes the run with
+`modulesreport.py`: per module and server the median of the rounds' requests a second, wrk's p99
+and the server's CPU per request (from `/proc/PID/stat`), and what each middleware adds to its
+server's `none`. Options: `-rounds`, `-duration`, `-servers`, `-modules`.
 
 ## Where akit's config differs from fit's
 
