@@ -146,7 +146,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I49 | WebSocket 代理 | I17 | done |
 | I50 | gRPC 代理 | I18 | done |
 | I51 | TCP 与 UDP 代理 | I05 | done |
-| I51b | eBPF sockmap 中转 | I51 | todo |
+| I51b | eBPF sockmap 中转 | I51 | done |
 | I52 | SNI 分流与 PROXY protocol | I51, A4, A5 | done |
 | I53 | 一个端口多种协议 | I52 | done |
 | I54 | 上游 TLS | I18 | done |
@@ -221,6 +221,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | 重写与重定向的正则 | I48 | 否 | 否（已实现，未测量） | 对比 fit：代理场景前面加带 `regexp` 与 `replacement` 的 `rewrite`（匹配与不匹配）和 `to` 中带分组的 `redirect`，每秒请求数和每请求分配次数，与不加中间件对比；akio-regex 的 `captures` 与 `replace_all` 在路径长度文本上对比 Go 的 `regexp`。 |
 | WebSocket 与 gRPC 代理 | I49、I50 | 否 | 否（I49 与 I50 已实现，未测量） | 对比 fit：经 akit 的 WebSocket 每秒消息数（小消息回显）与每秒字节数（大消息），来自 HTTP/1.1、h2 和 h3 客户端；每个打开的 WebSocket 的内存（空闲时，以及每个方向各有 64 KiB 待发时）；每秒握手数（生成密钥、上游连接离开连接池）；I50：对比 fit，每秒 gRPC 调用数（一元调用，h2c 与 h2 上游）与一个流上每个方向的每秒消息数。 |
 | TCP 和 UDP 代理、SNI 路由、单端口多协议 | I51–I53 | 否 | 否（I51–I53 已实现，未测） | 按 I51 的要求对比 fit 和 nginx 的 `stream`：TCP 吞吐（fit 的 `BenchmarkTCPProxy`，每次回显 256 KB，直连与经 akit 对比）、每秒连接数、每个空闲连接的内存；UDP 每秒数据报数与同时的会话数；10,000 个连接时每个服务在 akit 定时线程上的空闲扫描（akio A78 之前的权宜之计）；共享端口上协议嗅探的开销（I53）。I52：按 SNI 分流的监听器（拨号前读取并解析 ClientHello）与不分流的监听器每秒连接数的对比，以及接受时读 PROXY 头、向上游发送 PROXY 头时的情形；带与不带 `proxy_protocol` 的监听器上 HTTP/1.1 与 h2c 的请求速率，以及不带时 akio ADR-118 的开销（每个请求一次 `OnceLock::get`）。 |
+| eBPF sockmap 中转 | I51b | 否 | 否（I51b 已实现，未测） | 在基准主机上以 root（Linux 6.15+）运行，对比不带 `sockmap` 的同一监听器以及 fit：TCP 吞吐（fit 的 `BenchmarkTCPProxy`，每次回显 256 KB）和每 GB 的 CPU，每秒连接数（每个连接拼接的开销：两次 `TCP_INFO` 读取、映射表的两次插入和闸门），以及小回显的延迟；10,000 个已拼接连接时 akit 定时线程上的空闲扫描（每次扫描每个套接字三次系统调用），以及大量连接同时关闭时排空的轮询。 |
 | 正向代理：SOCKS 与 HTTP CONNECT | I55 | 否 | 否（已实现，未测） | 对比 fit（原始吞吐另对比 nginx 的 `stream`）：经 SOCKS5 隧道和 HTTP/1.1 CONNECT 隧道的每秒字节数（每次回显 256 KB，同 fit 的 `BenchmarkTCPProxy`），每秒建立的隧道数（握手、规则检查、在线程池上解析名字以及 `connected` 检查），每个空闲隧道的内存；共享端口上 SOCKS 的开销（akio-mux 的问候规则与 HTTP、TLS 并列）对比只有 HTTP；10,000 条隧道时 akio-socks 看门狗线程的开销（ADR-119 在其上增加了连接超时）。 |
 | 响应缓存 | I67、I68、I69 | 否 | 否（内存层、磁盘层与清除已实现、未测量） | 对比 fit，按 I67 的实现：内存命中（4 KiB 与 1 MiB 消息体，HTTP/1.1 与 h2），经代理保存的未命中（旁路复制的流式消息体）对比仅代理，缓存直接放行的请求（POST、`no-store` 响应）对比无中间件的开销，大量键与单个热点键下分片锁的表现。I68：从磁盘读回的命中（64 KiB 与 1 MiB，大量并发下磁盘线程池的线程与队列），未命中率高到填满 `MAX_PENDING_WRITES` 时的磁盘写入，大量客户端对同一个键的惊群，开启锁与 `disable_lock` 两种情况（等待者的挂起与恢复、每次获取一个定时器），以及 stale-while-revalidate 的后台获取。akio ADR-116 的旁路：有旁路的流对比无旁路的流。I69：带标签响应（0 与 32 个标签）对比无标签响应的保存开销，以及服务期间对大 zone 按前缀和按标签清除（分片锁与磁盘索引锁的持有时间）。 |
 | FastCGI | I75 | 否 | 否（已实现，未测量） | 对比 fit 和 nginx 的 `fastcgi_pass`，经 TCP 和 Unix 域套接字连接 PHP-FPM（或立即应答的 FastCGI 应用）：小页面的每秒请求数与延迟，HTTP/1.1 与 h2；1 MiB 上传与 16 MiB 下载（每个进行中请求的内存，双向 64 KiB 水位线）；连接复用对比每个请求一个连接；客户端多于 `max_conns` 时连接池的队列；`try_files` 的开销（每个候选在 akio 逻辑线程池上一次 `stat`）对比不带它的路由；每秒大量请求时，handler 每 100 ms 在 akit 定时器线程（A45 的临时方案）上对其交换的巡检。 |
@@ -676,6 +677,9 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 - **完成标准**：有一个字段开启它（fit 没有：作为 akit 的扩展，或先加进 fit）；在 Linux 6.15+ 上以 root 运行的
   测试覆盖拼接、回退和空闲超时。
 - **涉及**：`akit-l4`、`akit-config`。
+- **状态**：已完成（2026-11-25）：`listeners[].sockmap`，akit 的扩展字段
+  （[决策 010](decisions/010-sockmap-relay.zh-CN.md)）；使用已锁定版本中 akio 的转发，在 akio API 需求 A170 之前通过文档中
+  隐藏的 `Conn::inner` 访问；见进度日志。
 
 ### I52 SNI 分流与 PROXY protocol
 

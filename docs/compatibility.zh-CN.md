@@ -10,6 +10,7 @@ akit 读取 fit 的配置（[决策 002](decisions/002-config-compatibility.zh-C
 - [解读结果](#解读结果)
 - [刷新夹具](#刷新夹具)
 - [支持一个字段](#支持一个字段)
+- [akit 的扩展字段](#akit-的扩展字段)
 - [字段清单](#字段清单)
 
 ## 门禁
@@ -134,6 +135,18 @@ python3 tools/compat-inventory.py
   当作未知字段拒绝），并且 akit-config 读取的字段必须正是 `supported.txt` 标记的字段。`model.rs` 新增的
   列表要在这个测试中映射到它在字段清单中的路径。
 - 门禁本身：字段不再被拒绝时，报告随之变化（`make compat-bless`）。
+
+## akit 的扩展字段
+
+少数字段属于 akit 自己，用于 akio 能做而 fib 不能做的事；每个都有一份决策记录说明原因，并且要向 fit 提出
+（[决策 002](decisions/002-config-compatibility.zh-CN.md)）。akit-config 把它们与 fit 的字段分开列出（`model.rs` 中的
+`*_AKIT_ONLY`），`.conf` 的读取器和写出器从 `crates/akit-config/src/conf/convert.rs` 的 `EXTENSIONS` 取得它们的类型，
+如果 fit 的字段清单中有了其中某个字段，`akit_config_lists_match_the_inventory` 会失败，这时把它移到 fit 字段的列表。
+设置了扩展字段的配置在 fit 采纳之前只属于 akit：fit 会把它当作未知字段拒绝。
+
+| 字段 | 类型 | 引入 | 决策 |
+| --- | --- | --- | --- |
+| `listeners[].sockmap` | `boolean` | I51b | [010](decisions/010-sockmap-relay.zh-CN.md)：`tcp` 监听器的连接在 akio 的 eBPF sockmap 转发能加载的地方于内核中拼接 |
 
 ## 字段清单
 

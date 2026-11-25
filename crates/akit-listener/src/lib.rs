@@ -812,6 +812,16 @@ fn socks_acceptor(cell: &GraphCell, l: &Listener) -> Option<akio_socks::Socks> {
     Some(rules.socks(engine))
 }
 
+/// Loads akit-l4's kernel relay when a listener of `listeners` asks for it (`sockmap`, I51b),
+/// before the listener takes connections: here, on the control thread, as the kernel's verifier
+/// must not run on an I/O thread. Where it cannot be loaded, akit-l4 says so once, and those
+/// listeners' services relay in userspace.
+pub(crate) fn load_sockmap<'a>(mut listeners: impl Iterator<Item = &'a Listener>) {
+    if listeners.any(|l| l.sockmap) {
+        let _ = akit_l4::sockmap::load();
+    }
+}
+
 /// How long akio keeps a UDP peer that sends nothing: at least as long as the longest idle
 /// timeout of the graph's services, which close their sessions themselves. A stopgap for akio
 /// API request A78 (an idle timeout per connection): akio's is the engine's.
@@ -905,6 +915,7 @@ fn build(cell: &GraphCell, opts: &Options) -> Result<Engine, (Error, bool)> {
                 .collect::<Result<_, akit_tls::Error>>()
         })
         .map_err(|e| (tls_error(&e), false))?;
+    load_sockmap(listeners.iter().map(|(l, _)| l));
     let mut probed = false;
     let mut cfg = EngineConfig::default();
     cfg.shutdown_timeout = opts.shutdown_timeout;

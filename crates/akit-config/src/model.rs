@@ -731,6 +731,13 @@ pub struct Listener {
     /// `socks` (I55): who may use the listener's `socks` protocol and where it connects them;
     /// set exactly when its protocols include `socks`.
     pub socks: Option<ForwardProxy>,
+    /// `sockmap` (I51b), an akit extension fit does not have ([decision 010]): the `tcp`
+    /// services' connections this listener accepts are spliced in the kernel (akio's eBPF
+    /// sockmap relay) where the kernel and akit's privileges allow, and relayed in userspace
+    /// otherwise. Only for a listener whose protocols include `tcp`; false when left out.
+    ///
+    /// [decision 010]: https://github.com/lesismal/akit/blob/main/docs/decisions/010-sockmap-relay.md
+    pub sockmap: bool,
 }
 
 /// Who may use a forward proxy, SOCKS (a listener's `socks`) or HTTP CONNECT (the
@@ -1947,6 +1954,8 @@ const LISTENER_FIELDS: &[&str] = &[
     "socks",
 ];
 const LISTENER_FIT_ONLY: &[&str] = &["mptcp", "access"];
+// I51b: akit's extensions, fields fit does not have (decision 010).
+const LISTENER_AKIT_ONLY: &[&str] = &["sockmap"];
 const FORWARD_PROXY_FIELDS: &[&str] = &[
     "clients",
     "allow",
@@ -3145,7 +3154,22 @@ fn listener(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Listener> {
     let socks = socks_at
         .as_ref()
         .and_then(|(_, p, v)| forward_proxy(d, v, p));
-    o.finish(d, LISTENER_FIELDS, LISTENER_FIT_ONLY);
+    // I51b: akit's own field (decision 010), checked against the protocols below.
+    let sockmap_at = o.take("sockmap").map(|v| (v.off, o.at("sockmap"), &v.kind));
+    let sockmap = match &sockmap_at {
+        None => false,
+        Some((_, _, crate::json::Kind::Bool(b))) => *b,
+        Some((off, p, other)) => {
+            d.error(*off, p, format!("expected a boolean, got {}", other.name()));
+            false
+        }
+    };
+    let known: Vec<&str> = LISTENER_FIELDS
+        .iter()
+        .chain(LISTENER_AKIT_ONLY)
+        .copied()
+        .collect();
+    o.finish(d, &known, LISTENER_FIT_ONLY);
     for (off, at, proto) in &protocols {
         match proto {
             Protocol::H2 if tls.is_none() => {
@@ -3202,6 +3226,17 @@ fn listener(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Listener> {
             );
         }
     }
+    // The relay splices a tcp service's connections; written true on a listener without one, it
+    // would be a promise kept for nothing.
+    if let Some((off, p, _)) = sockmap_at.filter(|_| sockmap) {
+        if !protocols.contains(&Protocol::Tcp) {
+            d.error(
+                off,
+                &p,
+                "sockmap splices the connections of tcp services; this listener serves no tcp",
+            );
+        }
+    }
     Some(Listener {
         name: name?,
         address: address?,
@@ -3212,6 +3247,7 @@ fn listener(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Listener> {
         redirect_https: 0,
         proxy_protocol,
         socks,
+        sockmap,
     })
 }
 

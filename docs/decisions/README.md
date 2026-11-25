@@ -22,3 +22,4 @@ says whether akit follows it.
 | [007](007-opentelemetry.md) | OpenTelemetry: fit's tracer, exported through akio's HTTP client | accepted |
 | [008](008-wasm-runtime.md) | WASM plugins on akio-wasm, with fit's ABI | accepted |
 | [009](009-packaging.md) | Packaging: static musl binaries linked by rust-lld, fit's image, chart and units | accepted |
+| [010](010-sockmap-relay.md) | The eBPF sockmap relay, asked for by a listener's `sockmap`, an akit extension | accepted |

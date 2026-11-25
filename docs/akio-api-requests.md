@@ -87,6 +87,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | A165 | A WebAssembly runtime for plugins: a sandboxed interpreter, its host API, WASI preview 1, a pool of instances; the response hooks Proxy-Wasm needs | in akio's main (`dad77a7a`), pinned | 1, 4, 11 | I71, I72 |
 | A166 | A response's head held while a call made elsewhere decides on it (fit's A41 from fib) | in akio's main (`dad77a7a`), pinned | 1, 4 | I72 |
 | A167 | A response body filtered by calls made elsewhere, one at a time, its trailers in the last (fit's A46 from fib) | in akio's main (`dad77a7a`), pinned | 1, 4, 5, 8 | I72 |
+| A170 | A connection's TCP counters (and unread bytes) without reaching into `Conn::inner`, and a splice that writes first through the engine's own API | requested (I51b); akit-l4 uses the doc-hidden `Conn::inner` meanwhile | 1, 14 | I51b |
 
 ## A1 TCP listeners on a running engine
 
@@ -1748,3 +1749,35 @@ plugin's `max_body_bytes`), the last call `proxy_on_response_trailers` with the 
 queues `proxy_on_done`, `proxy_on_log` and `proxy_on_delete`. `response: headers` registers no
 body filter, so file bodies keep `sendfile`.
 
+## A170 A connection's TCP counters, and a splice with a first write
+
+**Status.** Requested by I51b (2026-11-25). akit-l4 reaches the sockets through `Conn::inner`
+meanwhile, a stopgap ([decision 010](decisions/010-sockmap-relay.md)).
+
+**Problem.** A `tcp` service splices each connection with `akio::ebpf::Relay` once its upstream
+opens. A spliced connection's bytes never reach its handlers, so akit reads the sockets' counters
+(`akio::ebpf::byte_counts`) for the idle timeout and to close a side only once the kernel has
+forwarded what the other received. `byte_counts` takes a `&std::net::TcpStream`, and a splice that
+must write first (the service's PROXY header, the ClientHello akit read to pick the service) needs
+`Relay::splice_inner_with`, which takes `&ConnInner`; the only way from a `Conn<H>` to either is
+`Conn::inner`, hidden from akio's docs as being for akio's protocol crates. akio-socks, which does
+the same for `CONNECT` tunnels, keeps its splice control (`SpliceCtl`, its drain thread) private.
+And to know how many bytes the kernel relays for a side, akit counts what userspace read from the
+client; a PROXY header read by akio-mux's `ProxyProtocol` is consumed without saying how long it
+was, so akit relays such connections in userspace.
+
+**Evidence.** At `dad77a7a`: `crates/akio-ebpf/src/relay.rs` has `byte_counts(&TcpStream)` and
+`Relay::splice_inner_with(&ConnInner, &ConnInner, ..)`; `crates/akio-core/src/conn.rs` has
+`#[doc(hidden)] pub fn inner(&self) -> &Arc<ConnInner>` on `Conn`; `akio` does not re-export
+`ConnInner`; `crates/akio-mux/src/proxy.rs` hands off after `skip` bytes without recording `skip`.
+
+**Suggested API.** `Conn::byte_counts() -> io::Result<ByteCounts>` (or
+`ebpf::conn_byte_counts(&Conn<H>)`), with `ByteCounts` gaining `unread` (`SIOCINQ`), so that a
+proxy can take a splice's base as `received - unread` without counting what userspace read;
+`Relay::splice_conns_with(&Conn<A>, &Conn<B>, first: &[u8])`, writing `first` to `b`'s socket
+ahead of the relayed bytes and returning the base counters of both; and the PROXY header's length
+beside the header akio-mux attaches (`ProxyHeader::wire_len`). Better still, akio-socks's spliced
+tunnel (the counters, the idle probe and the drain on close) as a public type in akio-ebpf.
+
+**How akit would use it.** akit-l4's `sockmap` module would call these instead of `Conn::inner`,
+and splice the connections of a listener with `proxy_protocol` too.

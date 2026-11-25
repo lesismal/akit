@@ -9,6 +9,7 @@ use akio::{Acceptor, Conn, Handler};
 use akio_mux::proxy::{self, ProxyHeader};
 use akio_mux::tls::{HelloError, parse_client_hello};
 
+use crate::sockmap::{self, Spliced};
 use crate::{Entry, Inner, MAX_CLIENT_HELLO, OPENING_TIMEOUT, Service, WATERMARK};
 
 /// What a `tcp` or `udp` listener serves its connections with: each goes to a service of the
@@ -62,7 +63,7 @@ where
                 return Client::default();
             };
             return Client {
-                relay: start(s, c, self.udp, Vec::new()),
+                relay: start(s, c, self.udp, Vec::new(), entry.sockmap()),
                 opening: None,
             };
         }
@@ -96,9 +97,16 @@ where
 }
 
 /// Has `s` proxy `c`, a connection one of its listeners accepted or a UDP listener's new
-/// session, `initial` what the client sent before; `None` when `s` takes no more (`max_conns`,
-/// or drained), and `c` is closed.
-fn start(s: &Service, c: &Conn<Client>, udp: bool, initial: Vec<u8>) -> Option<Arc<Relay>> {
+/// session, `initial` what the client sent before, spliced in the kernel when `sockmap` (its
+/// listener's) and the relay allow; `None` when `s` takes no more (`max_conns`, or drained), and
+/// `c` is closed.
+fn start(
+    s: &Service,
+    c: &Conn<Client>,
+    udp: bool,
+    initial: Vec<u8>,
+    sockmap: bool,
+) -> Option<Arc<Relay>> {
     let s = Arc::clone(&s.0);
     if !s.admit() {
         // Past max_conns: closed at once, a UDP session's datagram dropped.
@@ -135,6 +143,12 @@ fn start(s: &Service, c: &Conn<Client>, udp: bool, initial: Vec<u8>) -> Option<A
         ended: AtomicU8::new(0),
         failed: AtomicBool::new(false),
         backend: AtomicUsize::new(usize::MAX),
+        kernel: if udp || !sockmap {
+            None
+        } else {
+            sockmap::relay()
+        },
+        spliced: OnceLock::new(),
         s,
     });
     if !udp {
@@ -210,7 +224,7 @@ impl Handler for Client {
                 return;
             }
             match picked {
-                Some(s) => self.relay = start(&s, c, false, o.buf),
+                Some(s) => self.relay = start(&s, c, false, o.buf, o.entry.sockmap()),
                 None => c.close(),
             }
             return;
@@ -270,6 +284,11 @@ pub(crate) struct Relay {
     failed: AtomicBool,
     /// The address dialed last, or `usize::MAX` before the first.
     backend: AtomicUsize,
+    /// The kernel relay to splice the connection with once the upstream's opens: its
+    /// listener's `sockmap`, when the relay is loaded (I51b).
+    kernel: Option<&'static akio::ebpf::Relay>,
+    /// Set once the connection is spliced: what its counters are read against.
+    spliced: OnceLock<Spliced>,
 }
 
 impl std::fmt::Debug for Relay {
@@ -382,25 +401,91 @@ impl Relay {
             up.close();
             return;
         }
+        // What goes to the upstream first: the service's PROXY header, then what the client sent
+        // meanwhile.
+        let mut first = Vec::new();
         if !self.udp {
             up.set_relayed(true);
-            // The service's PROXY header goes first, before anything the client sent.
             if let Some(v) = self.s.proxy {
                 let h = ProxyHeader::proxy(unmap(self.client_addr), unmap(self.dst));
                 if let Some(b) = h.encode(v) {
-                    let _ = up.send_owned(b);
+                    first.push(b);
                 }
             }
         }
-        for d in std::mem::take(&mut st.datagrams) {
+        let client_read = st.pending;
+        first.append(&mut st.datagrams);
+        st.pending = 0;
+        if let Some(k) = self.kernel {
+            // The client's reads are held, and the upstream's have not begun: nothing is in
+            // flight in userspace but `first`, which the splice writes ahead of the kernel.
+            first = self.splice(k, up, first, client_read);
+        }
+        for d in first {
             let _ = up.send_owned(d);
         }
-        st.pending = 0;
         let _ = self.up.set(up.clone());
         drop(st);
         if !self.udp {
             self.client.hold_reads(false);
         }
+    }
+
+    /// Splices the connection to `up` with the kernel relay `k`, `first` written to the
+    /// upstream ahead of the relayed bytes, `client_read` bytes of it the client's (I51b). What
+    /// is left for userspace to send is returned: nothing once spliced, and all of what was
+    /// not written when the connection cannot be spliced.
+    fn splice(
+        &self,
+        k: &akio::ebpf::Relay,
+        up: &Conn<Upstream>,
+        first: Vec<Vec<u8>>,
+        client_read: usize,
+    ) -> Vec<Vec<u8>> {
+        // A PROXY header the listener read: how long it was is not known, which the counters
+        // need (akio API request A170).
+        if proxy::header(&self.client).is_some() {
+            return first;
+        }
+        let client_read = u64::try_from(client_read).unwrap_or(u64::MAX);
+        match sockmap::splice(k, &self.client, up, first.concat(), client_read) {
+            Ok(sp) => {
+                let _ = self.spliced.set(sp);
+                self.s.spliced.fetch_add(1, Ordering::Relaxed);
+                Vec::new()
+            }
+            Err(rest) if rest.is_empty() => Vec::new(),
+            Err(rest) => vec![rest],
+        }
+    }
+
+    /// Whether the connection is spliced in the kernel.
+    pub(crate) fn is_spliced(&self) -> bool {
+        self.spliced.get().is_some()
+    }
+
+    /// A spliced connection's counters read for its idle timeout: it counts as active when
+    /// either socket received anything since the last read. Off the I/O threads.
+    pub(crate) fn probe(&self) {
+        if let (Some(sp), Some(up)) = (self.spliced.get(), self.up.get()) {
+            if sp.moved(&self.client, up) {
+                self.touch();
+            }
+        }
+    }
+
+    /// Payload read in userspace from a spliced connection, `to` being the other side: while
+    /// it is open, a read that completed before the splice took over, which the kernel's newer
+    /// bytes may have overtaken: both sides are closed rather than the stream reordered. Once
+    /// `to` closed, the kernel hands userspace what has nowhere to go, which is dropped.
+    fn spliced_payload(&self, to_open: bool) -> bool {
+        if !self.is_spliced() {
+            return false;
+        }
+        if to_open {
+            self.abandon();
+        }
+        true
     }
 
     /// Passes what the client sent to the upstream, or keeps a datagram until the upstream's
@@ -429,6 +514,9 @@ impl Relay {
                 }
             }
         };
+        if self.spliced_payload(up.is_open()) {
+            return;
+        }
         self.touch();
         // A datagram that cannot be sent is dropped.
         if up.send(data).is_err() || self.udp {
@@ -447,6 +535,9 @@ impl Relay {
 
     /// Passes what the upstream sent to the client.
     fn from_upstream(self: &Arc<Self>, up: &Conn<Upstream>, data: &[u8]) {
+        if self.spliced_payload(self.client.is_open()) {
+            return;
+        }
         self.touch();
         if self.client.send(data).is_err() || self.udp {
             return;
@@ -464,7 +555,8 @@ impl Relay {
         }
     }
 
-    /// The client closed: the upstream's side ends once what the client sent has gone.
+    /// The client closed: the upstream's side ends once what the client sent has gone (from
+    /// the kernel's relay too, when spliced).
     fn client_closed(&self) {
         let up = {
             let mut st = self.state();
@@ -475,6 +567,8 @@ impl Relay {
         if let Some(up) = up {
             if self.udp {
                 up.close();
+            } else if let Some(sp) = self.spliced.get() {
+                sp.close_after_forward(&self.client, true, up, self.s.idle);
             } else {
                 up.close_after_send();
             }
@@ -492,6 +586,8 @@ impl Relay {
                 self.failed.store(true, Ordering::SeqCst);
             }
             self.client.close();
+        } else if let (Some(sp), Some(up)) = (self.spliced.get(), self.up.get()) {
+            sp.close_after_forward(up, false, self.client.clone(), self.s.idle);
         } else {
             self.client.close_after_send();
         }

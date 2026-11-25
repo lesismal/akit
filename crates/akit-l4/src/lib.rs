@@ -42,6 +42,12 @@
 //! service with `proxy_protocol` sends its upstream a header of its own naming that client and
 //! the address it connected to ([`akio_mux::proxy::ProxyHeader`]).
 //!
+//! I51b: a listener with `sockmap` (akit's own field, decision 010) has its TCP connections
+//! spliced in the kernel by akio's eBPF sockmap relay as their upstream's connection opens, where
+//! the relay loads (Linux 6.15+, with the capabilities it needs), and relayed as above where it
+//! does not; a spliced connection's idle timeout and closes follow its sockets' TCP counters
+//! ([`sockmap`]).
+//!
 //! The idle timeouts are swept per service, on akit's timer thread
 //! ([`akit_upstream::timer`]): a stopgap for akio API requests A45 (a public timer) and A78 (an
 //! idle timeout per connection), which would close each connection on its own I/O thread.
@@ -51,7 +57,7 @@
 
 use std::collections::HashMap;
 use std::fmt;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
 use std::time::{Duration, Instant};
 
@@ -60,6 +66,7 @@ use akit_upstream::Pool;
 mod entry;
 pub mod forward;
 mod relay;
+pub mod sockmap;
 
 pub use akio_mux::proxy::Version as ProxyVersion;
 pub use entry::Entry;
@@ -117,6 +124,8 @@ pub(crate) struct Inner {
     sweeping: AtomicBool,
     /// [`Service::drain`] was called: connections that come after are closed at once.
     drained: AtomicBool,
+    /// Connections spliced in the kernel so far (I51b).
+    pub(crate) spliced: AtomicU64,
 }
 
 impl fmt::Debug for Service {
@@ -150,6 +159,7 @@ impl Service {
             epoch: Instant::now(),
             sweeping: AtomicBool::new(false),
             drained: AtomicBool::new(false),
+            spliced: AtomicU64::new(0),
         }))
     }
 
@@ -193,6 +203,19 @@ impl Service {
     #[must_use]
     pub fn conns(&self) -> usize {
         self.0.conns.load(Ordering::SeqCst)
+    }
+
+    /// How many of its connections have been spliced in the kernel (`sockmap`, I51b), those
+    /// closed since too.
+    #[must_use]
+    pub fn spliced(&self) -> u64 {
+        self.0.spliced.load(Ordering::Relaxed)
+    }
+
+    /// How many of the connections it proxies now are spliced in the kernel.
+    #[must_use]
+    pub fn spliced_now(&self) -> usize {
+        self.0.all().iter().filter(|r| r.is_spliced()).count()
     }
 
     /// Closes the connections and sessions it still proxies, both sides at once, and any that
@@ -299,27 +322,21 @@ impl Inner {
 }
 
 /// Closes the service's connections idle for their timeout, and schedules the next sweep while
-/// any is open. On akit's timer thread: it only closes connections, which returns at once.
+/// any is open. On akit's timer thread: it only reads the counters of the spliced connections
+/// and closes connections, each of which returns at once; the locks are not held meanwhile.
 fn sweep(me: &Weak<Inner>) {
     let Some(s) = me.upgrade() else {
         return;
     };
     let now = s.now();
-    let mut idle = Vec::new();
-    for shard in &s.open {
-        let m = shard.lock().unwrap_or_else(PoisonError::into_inner);
-        idle.extend(
-            m.values()
-                .filter(|r| {
-                    let limit = if r.udp { s.udp_idle } else { s.idle };
-                    let limit = u64::try_from(limit.as_millis()).unwrap_or(u64::MAX);
-                    now.saturating_sub(r.last()) >= limit
-                })
-                .cloned(),
-        );
-    }
-    for r in idle {
-        r.abandon();
+    for r in s.all() {
+        // A spliced connection's bytes never reach it: its sockets' counters say it is active.
+        r.probe();
+        let limit = if r.udp { s.udp_idle } else { s.idle };
+        let limit = u64::try_from(limit.as_millis()).unwrap_or(u64::MAX);
+        if now.saturating_sub(r.last()) >= limit {
+            r.abandon();
+        }
     }
     // Counted after the flag is down: a connection added meanwhile either saw it down and
     // scheduled the sweep itself, or is counted here.
