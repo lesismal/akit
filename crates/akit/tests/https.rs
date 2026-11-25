@@ -99,6 +99,7 @@ fn a_route_over_https_with_http1_h2_and_sni() {
     )
     .unwrap();
     assert_eq!(seen.alpn.as_deref(), Some("http/1.1"));
+    assert_eq!(seen.version, Some("TLSv1_3"), "max_version 1.3");
     assert_eq!(
         (seen.status.as_str(), seen.body.as_str()),
         ("HTTP/1.1 200 OK", "hello from fit\n")
@@ -157,4 +158,45 @@ fn validate_and_run_check_the_certificate_files() {
             "{cmd}: {err}"
         );
     }
+}
+
+/// fit's `TestTLSMaxVersion`: `tls.max_version: "1.2"` caps a listener's TCP connections at
+/// TLS 1.2 (akio's `tls12_only`, akio API request A9), over HTTP/1.1 and HTTP/2 alike; a client
+/// that offers TLS 1.3 alone is refused.
+#[test]
+fn max_version_1_2_caps_tcp_at_tls_1_2() {
+    let d = dir("e2e-https-tls12");
+    let ca = Ca::new("akit e2e ca");
+    let roots = ca.write(&d, "ca.pem");
+    let a = ca.leaf(&d, "a", &["a.example"]);
+    let b = ca.leaf(&d, "b", &["b.example"]);
+    let cfg = config(&d, &a, &b);
+    let json = std::fs::read_to_string(&cfg)
+        .unwrap()
+        .replace(r#""max_version": "1.3""#, r#""max_version": "1.2""#);
+    std::fs::write(&cfg, json).unwrap();
+    let (_akit, addr) = start(&cfg);
+    let seen = get_h1(
+        addr,
+        &client(&roots, &["http/1.1"], None),
+        "a.example",
+        "a.example",
+        "/hello",
+    )
+    .unwrap();
+    assert_eq!(seen.version, Some("TLSv1_2"));
+    assert_eq!(seen.body, "hello from fit\n");
+    assert_eq!(
+        get_h2(addr, &client(&roots, &["h2"], None), "a.example", "/hello"),
+        Ok((200, "hello from fit\n".into()))
+    );
+    let mut roots13 = akio::tls::RootCerts::empty();
+    roots13.add_pem(&std::fs::read(&roots).unwrap()).unwrap();
+    let only13 = akio::tls::ClientConfig::builder()
+        .roots(roots13)
+        .alpn(["http/1.1"])
+        .tls13_only(true)
+        .build()
+        .unwrap();
+    assert!(get_h1(addr, &only13, "a.example", "a.example", "/hello").is_err());
 }

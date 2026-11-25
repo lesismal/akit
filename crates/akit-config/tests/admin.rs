@@ -108,8 +108,8 @@ fn refused() {
             "admin.max_conns: expected an integer",
         ),
         (
-            r#""address": "unix//run/akit.sock""#,
-            "admin.address: not supported yet: a Unix socket (akio API request A23)",
+            r#""address": "unix/""#,
+            r#"admin.address: "unix/" has no path after "unix/""#,
         ),
         (r#""token_file": 1"#, "admin.token_file: expected a string"),
         (

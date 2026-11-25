@@ -272,6 +272,8 @@ pub struct ListenerTls {
     roots: Option<(RootCerts, ClientAuthMode)>,
     alpn: Vec<&'static str>,
     h3: bool,
+    /// `max_version: 1.2`: TLS 1.2 alone over TCP (fit's `MaxVersion`); QUIC is TLS 1.3.
+    tls12: bool,
     /// The SHA-256 of every file read, certificates, keys and authorities, by path.
     files: BTreeMap<String, Sum>,
     /// The SHA-256 of the authority files, in order: what a configuration holds itself.
@@ -328,6 +330,7 @@ impl fmt::Debug for ListenerTls {
             .field("client_auth", &self.roots.as_ref().map(|(_, m)| m))
             .field("alpn", &self.alpn)
             .field("h3", &self.h3)
+            .field("tls12", &self.tls12)
             .finish_non_exhaustive()
     }
 }
@@ -428,6 +431,7 @@ impl ListenerTls {
             roots,
             alpn,
             h3: protocols.contains(&Protocol::H3),
+            tls12: tls.max_version == akit_config::TlsVersion::Tls12,
             files,
             ca_sums,
         };
@@ -590,6 +594,7 @@ impl ListenerTls {
     pub fn same_config(&self, other: &ListenerTls) -> bool {
         self.alpn == other.alpn
             && self.h3 == other.h3
+            && self.tls12 == other.tls12
             && self.acme.as_ref().and_then(|a| a.on_demand)
                 == other.acme.as_ref().and_then(|a| a.on_demand)
             && self.roots.as_ref().map(|(_, m)| m) == other.roots.as_ref().map(|(_, m)| m)
@@ -616,6 +621,8 @@ impl ListenerTls {
             }
             if tls13_only {
                 b = b.tls13_only(true);
+            } else if self.tls12 {
+                b = b.tls12_only(true);
             }
             if let Some((roots, mode)) = &self.roots {
                 b = match mode {
@@ -623,8 +630,6 @@ impl ListenerTls {
                     ClientAuthMode::VerifyIfGiven => b.client_auth_optional(roots.clone()),
                 };
             }
-            // max_version 1.2 is refused by akit-config (akio API request A9): 1.3 is the
-            // default.
             b.build().map_err(|e| Error::new("", e.to_string()))
         };
         let tcp = build(self.alpn.clone(), false)?;

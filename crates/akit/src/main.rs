@@ -881,7 +881,7 @@ fn run(args: &[String]) -> ExitCode {
             api_opts.metrics = Some(Arc::new(move |out: &mut Vec<u8>| scrape.write(out)));
             match akit_admin::Server::start(a, configs.clone(), submit, &api_opts) {
                 Ok(s) => {
-                    println!("akit: admin API on {}", s.addr());
+                    println!("akit: admin API on {}", s.address());
                     Some(s)
                 }
                 Err(e) => {
@@ -1143,7 +1143,7 @@ mod tests {
         let v = super::version();
         let lines: Vec<&str> = v.lines().collect();
         assert!(lines[0].starts_with("akit "));
-        assert_eq!(lines[1], "akio 8453b60cfa7a");
+        assert_eq!(lines[1], "akio 4989cd8b33fa");
         assert_eq!(
             lines[2],
             format!("{}/{}", std::env::consts::OS, std::env::consts::ARCH)

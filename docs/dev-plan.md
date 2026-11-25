@@ -536,8 +536,8 @@ Split from I07 so that the half that needs no config model runs beside I02.
 - **Touches**: `akit-admin`.
 - **fit**: `admin`, decision 005.
 - **Done** (decision 006): on an akio engine of its own, loads applied by the control thread
-  through I22's reload; a Unix socket waits on akio A23, closing a connection after a refused body
-  on A24.
+  through I22's reload; a Unix socket since akio A23 (2026-11-25), closing a connection after a
+  refused body waits on A24.
 
 ### I27 Admin API II: patch, rollback, auth
 
@@ -790,8 +790,8 @@ Split from I07 so that the half that needs no config model runs beside I02.
   client from a trusted PROXY header), added to akio by this iteration.
 - **Split**: "auth" is fit's: its forward proxy authenticates no one, and decides by `clients`
   and the destination rules, as akit does. HTTP CONNECT over HTTP/2 and HTTP/3, which fit's
-  `forward_proxy` tunnels too, waits for akio API request A134; until then such a CONNECT is
-  answered 501.
+  `forward_proxy` tunnels too, came with akio API request A134 (2026-11-25); until then such a
+  CONNECT was answered 501.
 
 ### I56 M3 exit
 

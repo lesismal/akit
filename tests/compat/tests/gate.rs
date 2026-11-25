@@ -852,11 +852,11 @@ fn supported_fields_are_read() {
             auto_https(r#""https_port": 8443"#),
             |c| c.listeners[0].address == ":8443" && c.listeners[1].redirect_https == 8443,
         ),
-        // 1.3, the default; 1.2 is refused as not supported yet (akio API request A9).
+        // 1.2: TLS 1.2 alone over TCP (akio API request A9); 1.3 is the default.
         (
             "listeners[].tls.max_version",
-            tls(r#", "max_version": "1.3""#),
-            |c| c.listeners[0].tls.as_ref().unwrap().max_version == akit_config::TlsVersion::Tls13,
+            tls(r#", "max_version": "1.2""#),
+            |c| c.listeners[0].tls.as_ref().unwrap().max_version == akit_config::TlsVersion::Tls12,
         ),
         ("routes", respond(""), |c| c.routes.len() == 1),
         ("routes[].name", route(r#""name": "r1""#), |c| {

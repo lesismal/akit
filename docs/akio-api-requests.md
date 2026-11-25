@@ -27,7 +27,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | A6 | CSR generation in `akio-x509` (and JWS helpers in `akio-crypto`) | in akio's main (`afbbb521`), pinned | 15 | I31 |
 | A7 | An MP4 (ISO BMFF) reader for segmenting files without transcoding | in akio's main (`a9a620ab`), pinned | — | media library |
 | A8 | TUN devices | in akio's main (`a9a620ab`), pinned | — | VPN |
-| A9 | A TLS server capped at TLS 1.2 (public `ServerConfigBuilder` API) | requested (I09) | 17 | I09 |
+| A9 | A TLS server capped at TLS 1.2 (public `ServerConfigBuilder` API) | in akio's main (`4989cd8b`), pinned | 17 | I09 |
 | A10 | Closing an HTTP client's idle connections now | requested (I14) | 10, 11 | I14, I22 |
 | A11 | An HTTP/1 client request that keeps its own `Host` field (and sends no `User-Agent` when given an empty one) | in akio's main (`a9a620ab`), pinned | — | I15 |
 | A12 | The HTTP client's connect timeout for a lone address too | requested (I14) | 10 | I14, I35 |
@@ -41,7 +41,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | A20 | An HTTP client response delivered as it arrives, its reads held and resumed | in akio's main (`60547435`), pinned, used by I16 | 5, 8 | I16, I17, I18, I67 |
 | A21 | A server request that holds its client's reads and hears when its client drained | in akio's main (`60547435`), pinned, used by I16 | 5, 8 | I16, I47, I75 |
 | A22 | UDP listeners removed and drained on a running engine | requested (I22) | 10, 11 | I22, I28 |
-| A23 | Unix-domain stream listeners (with a socket file mode) | requested (I26) | 11 | I26, I29 |
+| A23 | Unix-domain stream listeners (with a socket file mode) | in akio's main (`4989cd8b`), pinned | 11 | I26, I29 |
 | A24 | An HTTP/1 response that closes its connection, and stops reading a body it refused | requested (I26) | 7, 10, 11 | I26, I27, I41 |
 | A29 | A response hook without an allocation: a listener's observer, called with a few words the request set | requested (I37) | 13 | I21, I37, I64 |
 | A30 | The open connections a listener accepted, apart from dialed ones and UDP peers | requested (I37) | — | I37 |
@@ -81,7 +81,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | A117 | `akio::Pool` and `PoolConfig` together: a bounded pool of an application's own for its blocking work | requested (I68); akit-cache depends on `akio-pool` meanwhile | 4 | I68 |
 | A132 | A proxy tunnel's upstream checked once connected, by the name asked for and both addresses; the SOCKS client a trusted PROXY header names | in akio's main (`8453b60c`), pinned | 1, 19 | I55 |
 | A133 | A proxy's connect timeout of its own, answered (SOCKS5 4, HTTP 504) | in akio's main (`8453b60c`), pinned | 10 | I55 |
-| A134 | CONNECT tunnels over HTTP/2 and HTTP/3 (RFC 9113 §8.5, RFC 9114 §4.4) | requested (I55); a CONNECT on an h2 or h3 stream is answered 501 meanwhile | 9, 19 | I55 |
+| A134 | CONNECT tunnels over HTTP/2 and HTTP/3 (RFC 9113 §8.5, RFC 9114 §4.4) | in akio's main (`4989cd8b`), pinned | 9, 19 | I55 |
 | A135 | Dialing a Unix-domain stream socket, and the HTTP client over one (akio, akio-http, akio-sys) | in akio's main (`0f2c419b`), pinned | 1, 2 | I58 |
 | A148 | The address a request came to (the listener's local address), on HTTP/1.1, h2 and h3 | requested (I75) | — | I75 |
 
@@ -181,6 +181,10 @@ caps a server at TLS 1.2 only with `__tls12_only`, hidden and marked for tests a
 
 **How akit uses it.** I09 reads `max_version` and refuses `1.2` as not supported yet; with the API,
 akit-tls sets it from the listener's `tls`.
+
+**Built** (akio ADR-121): `ServerConfigBuilder::tls12_only(bool)` and
+`ClientConfigBuilder::tls12_only(bool)`. akit-tls sets it on a listener's TCP configuration when
+`max_version` is `1.2`; HTTP/3 stays TLS 1.3.
 
 ## A10 Closing an HTTP client's idle connections
 
@@ -557,6 +561,11 @@ removed by the caller or by an option. On epoll, kqueue and io_uring.
 **How akit uses it.** `akit_admin::Server::start` listens on the path when `admin.address` is
 `unix/<path>`, as fit's `admin.Start`; the Host check is skipped there, as fit skips it, and the
 file provider's control socket (I29) may use it too.
+
+**Built** (akio ADR-121): `Listener::unix(path)`, `Listener::unix_from_std(UnixListener)` and
+`Listener::unix_mode(mode)` (set before `listen`), on epoll, kqueue and io_uring; a stale socket
+file replaced, one in use or a file that is not a socket `AddrInUse`; addresses `UNIX_ADDR`; the
+file left for the caller. akit's Admin API listens there (0600) and removes the file on shutdown.
 
 ## A24 An HTTP/1 response that closes its connection
 
@@ -1575,3 +1584,9 @@ upstream with the same backpressure, timeouts and checks as its HTTP/1.1 tunnels
 
 **How akit uses it.** The `forward_proxy` handler hands every CONNECT to `connect_proxy`; until
 then it answers one on an HTTP/2 or HTTP/3 stream 501 (a stopgap, in the progress log).
+
+**Built** (akio ADR-122): akio-http dispatches an HTTP/2 CONNECT (`:method` and `:authority`
+alone, the target the authority) at once and akio-h3 one at its head; a streamed `2xx` is a
+tunnel. `connect_proxy` relays it on its stream with the HTTP/1.1 tunnel's checks, timeouts and
+statuses and backpressure both ways; the client's END_STREAM shuts the upstream's send direction
+down (the new `Conn::shutdown_write_after_send`). `H2Client` sends such a CONNECT. The 501 is gone.

@@ -161,6 +161,13 @@ fn tls_reads() {
         ClientAuthMode::Require
     );
     assert_eq!(t.max_version, TlsVersion::Tls13);
+    // 1.2: TLS 1.2 alone over TCP (akio API request A9).
+    let c = ok(r#"{"listeners": [{"name": "s", "address": ":443", "tls": {
+        "certificates": [{"cert_file": "a.pem", "key_file": "a.key"}], "max_version": "1.2"}}]}"#);
+    assert_eq!(
+        c.listeners[0].tls.as_ref().unwrap().max_version,
+        TlsVersion::Tls12
+    );
     // h3 (I10), beside TCP's protocols or alone.
     for (protocols, want) in [
         (
@@ -250,23 +257,14 @@ fn tls_problems_as_fit_reports_them() {
 #[test]
 fn tls_fields_akit_lacks_are_not_supported_yet() {
     const CERT: &str = r#""certificates": [{"cert_file": "a.pem", "key_file": "a.key"}]"#;
-    for (tls, path) in [
-        (
-            &format!(r#"{CERT}, "kernel_tls_offload": true"#) as &str,
-            "listeners[0].tls.kernel_tls_offload",
-        ),
-        (
-            &format!(r#"{CERT}, "max_version": "1.2""#),
-            "listeners[0].tls.max_version",
-        ),
-    ] {
-        let e = errs(&format!(
-            r#"{{"listeners": [{{"name": "web", "address": ":443", "tls": {{{tls}}}}}]}}"#
-        ));
-        assert!(e.only_not_supported_yet(), "{tls}: {e}");
-        let paths: Vec<&str> = e.as_slice().iter().map(|e| e.path.as_str()).collect();
-        assert_eq!(paths, [path], "{tls}");
-    }
+    // max_version 1.2 is taken since akio API request A9 (json_config's tls test).
+    let tls = format!(r#"{CERT}, "kernel_tls_offload": true"#);
+    let e = errs(&format!(
+        r#"{{"listeners": [{{"name": "web", "address": ":443", "tls": {{{tls}}}}}]}}"#
+    ));
+    assert!(e.only_not_supported_yet(), "{tls}: {e}");
+    let paths: Vec<&str> = e.as_slice().iter().map(|e| e.path.as_str()).collect();
+    assert_eq!(paths, ["listeners[0].tls.kernel_tls_offload"]);
 }
 
 #[test]

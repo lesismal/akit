@@ -26,7 +26,7 @@
 | A6 | `akio-x509` 中生成 CSR（以及 `akio-crypto` 中的 JWS 辅助函数） | 已在 akio 的 main（`afbbb521`），已锁定 | 15 | I31 |
 | A7 | 不转码即可切分文件的 MP4（ISO BMFF）读取器 | 已在 akio 的 main（`a9a620ab`），已锁定 | — | 媒体库 |
 | A8 | TUN 设备 | 已在 akio 的 main（`a9a620ab`），已锁定 | — | VPN |
-| A9 | 把 TLS 服务端限制在 TLS 1.2（`ServerConfigBuilder` 的公开 API） | 已提出（I09） | 17 | I09 |
+| A9 | 把 TLS 服务端限制在 TLS 1.2（`ServerConfigBuilder` 的公开 API） | 已在 akio 的 main（`4989cd8b`），已锁定 | 17 | I09 |
 | A10 | 立即关闭 HTTP 客户端的空闲连接 | 已提出（I14） | 10、11 | I14、I22 |
 | A11 | HTTP/1 客户端请求保留自己的 `Host` 字段（给定空 `User-Agent` 时不发送 `User-Agent`） | 已在 akio 的 main（`a9a620ab`），已锁定 | — | I15 |
 | A12 | HTTP 客户端的连接超时也作用于单个地址 | 已提出（I14） | 10 | I14、I35 |
@@ -40,7 +40,7 @@
 | A20 | HTTP 客户端响应边到达边交付，可暂停和恢复读取 | 已在 akio 的 main（`60547435`），已固定，I16 已使用 | 5、8 | I16、I17、I18、I67 |
 | A21 | 服务端请求可暂停其客户端的读取，并在客户端排空时得到通知 | 已在 akio 的 main（`60547435`），已固定，I16 已使用 | 5、8 | I16、I47、I75 |
 | A22 | 在运行中的引擎上移除和排空 UDP 监听器 | 已提出（I22） | 10、11 | I22、I28 |
-| A23 | Unix 域流式监听器（可设套接字文件权限） | 已提出（I26） | 11 | I26、I29 |
+| A23 | Unix 域流式监听器（可设套接字文件权限） | 已在 akio 的 main（`4989cd8b`），已锁定 | 11 | I26、I29 |
 | A24 | 关闭连接的 HTTP/1 响应，并停止读取已拒绝的请求体 | 已提出（I26） | 7、10、11 | I26、I27、I41 |
 | A29 | 不分配内存的应答钩子：监听器的观察者，带着请求设下的几个字被调用 | 已提出（I37） | 13 | I21、I37、I64 |
 | A30 | 监听器接受的打开连接数，与拨出的连接和 UDP 对端分开 | 已提出（I37） | — | I37 |
@@ -80,7 +80,7 @@
 | A117 | 从 `akio` 同时取得 `akio::Pool` 与 `PoolConfig`：应用自己的、有上限的阻塞工作线程池 | 已提出（I68）；期间 akit-cache 直接依赖 `akio-pool` | 4 | I68 |
 | A132 | 代理隧道的上游连接建立后，按所请求的名字和两端地址检查；SOCKS 客户端取受信任 PROXY 头所指的客户端 | 已在 akio 的 main（`8453b60c`），已锁定 | 1、19 | I55 |
 | A133 | 代理自己的连接超时，并给出应答（SOCKS5 4、HTTP 504） | 已在 akio 的 main（`8453b60c`），已锁定 | 10 | I55 |
-| A134 | 经 HTTP/2 和 HTTP/3 的 CONNECT 隧道（RFC 9113 §8.5、RFC 9114 §4.4） | 已提出（I55）；期间 h2 或 h3 流上的 CONNECT 应答 501 | 9、19 | I55 |
+| A134 | 经 HTTP/2 和 HTTP/3 的 CONNECT 隧道（RFC 9113 §8.5、RFC 9114 §4.4） | 已在 akio 的 main（`4989cd8b`），已锁定 | 9、19 | I55 |
 | A135 | 拨号 Unix 域流套接字，以及在其上的 HTTP 客户端（akio、akio-http、akio-sys） | 已在 akio 的 main（`0f2c419b`），已锁定 | 1、2 | I58 |
 | A148 | 请求到达的地址（监听器的本地地址），HTTP/1.1、h2 和 h3 | 已提出（I75） | — | I75 |
 
@@ -165,6 +165,9 @@ TLS 1.2，而它是隐藏的，标明只供测试和互通工具使用。
 `tls12_only(bool)`；`ClientConfigBuilder` 上也一样。
 
 **akit 的用法。** I09 读取 `max_version`，把 `1.2` 拒绝为尚不支持；有了这个 API，akit-tls 按监听器的 `tls` 设置它。
+
+**已实现**（akio ADR-121）：`ServerConfigBuilder::tls12_only(bool)` 与 `ClientConfigBuilder::tls12_only(bool)`。
+`max_version` 为 `1.2` 时 akit-tls 在监听器的 TCP 配置上设置它；HTTP/3 仍为 TLS 1.3。
 
 ## A10 关闭 HTTP 客户端的空闲连接
 
@@ -466,6 +469,11 @@ UDP：不再接收新对端，对已有的调用 `on_shutdown`，到期关闭剩
 
 **akit 的用法。** `admin.address` 为 `unix/<path>` 时，`akit_admin::Server::start` 在该路径上监听，与 fit 的
 `admin.Start` 一样；那里不检查 Host，与 fit 一样。文件提供者的控制套接字（I29）也可能用到。
+
+**已实现**（akio ADR-121）：`Listener::unix(path)`、`Listener::unix_from_std(UnixListener)` 与
+`Listener::unix_mode(mode)`（在 `listen` 之前设置），支持 epoll、kqueue 和 io_uring；残留的套接字文件被替换，
+正在使用的或不是套接字的文件返回 `AddrInUse`；地址为 `UNIX_ADDR`；文件留给调用方处理。akit 的 Admin API 在此
+监听（0600），关闭时删除该文件。
 
 ## A24 关闭连接的 HTTP/1 响应
 
@@ -1279,3 +1287,8 @@ SocketAddr) -> bool>`：上游连接打开后在其 I/O 线程上调用，参数
 
 **akit 的用法。** `forward_proxy` 处理器把每个 CONNECT 交给 `connect_proxy`；在此之前，HTTP/2 或 HTTP/3 流上的
 CONNECT 应答 501（权宜之计，记录在进度日志中）。
+
+**已实现**（akio ADR-122）：akio-http 立即分派 HTTP/2 的 CONNECT（只带 `:method` 和 `:authority`，目标为
+authority），akio-h3 在收到头部时分派；流式的 `2xx` 即为隧道。`connect_proxy` 在该流上中继，检查、超时、状态码
+与 HTTP/1.1 隧道相同，双向背压；客户端的 END_STREAM 关闭上游的发送方向（新增的
+`Conn::shutdown_write_after_send`）。`H2Client` 也能发送这样的 CONNECT。501 已去掉。
