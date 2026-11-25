@@ -908,5 +908,5 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | 9 | AI 助手 | I124–I130, I152–I154 | 对话面板、工具、MCP 服务器 |
 | 10 | BitTorrent | I196–I210 | 基于 `akio-bittorrent` 的客户端和 tracker 角色 |
 | 11 | 数据同步 | I163–I194, I211–I222 | 先做流水线核心和检查点，再按 fit 的顺序做连接器 |
-| 12 | Prefork 与 NUMA | fit 中已规划 | 暂停（2026-11-25）：akit 不使用 prefork；akio 已停止测试 `akio-prefork`，以后再决定是否删除。在此决定之前不开始。 |
+| 12 | Prefork 与 NUMA | fit 中已规划 | 取消（2026-11-25）：akit 不使用 prefork，akio 已删除 `akio-prefork`。不再计划。 |
 | 13 | P2P 与 VPN | I84–I103 | 待 fit 的这条路线完成后 |

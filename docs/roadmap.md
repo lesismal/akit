@@ -278,7 +278,7 @@ is akit's config, roles, Admin API and workbench pages, as in fit.
 | AI assistant | the workbench's chat panel and MCP server on the user's model APIs | the HTTP client | planned |
 | BitTorrent | client, `bt_stream`, tracker, publishing ([fit](https://github.com/lesismal/fit/blob/main/docs/bittorrent.md)) | `akio-bittorrent` | planned |
 | Sync | pipelines from sources to sinks with checkpoints, exactly once into transactional sinks ([fit](https://github.com/lesismal/fit/blob/main/docs/sync.md)) | the HTTP client; wire protocols written in akit | planned |
-| Prefork and NUMA | data plane in several processes placed on NUMA nodes | `akio-prefork`, `Engine::numa_status` | on hold (2026-11-25): akit does not use prefork; akio has stopped testing `akio-prefork` and decides later whether to delete it |
+| Prefork and NUMA | data plane in several processes placed on NUMA nodes | — | dropped (2026-11-25): akit does not use prefork, and akio removed `akio-prefork` |
 | P2P and VPN | hosts behind NAT connected through ICE or TURN; an overlay network over TUN | `akio-ice`, `akio-turn`; TUN devices (to request) | follows fit: starts once fit's track is done |
 
 ## Feature map
@@ -316,7 +316,7 @@ whether akio has what the feature needs today: ✓ ready, a request ID from
 | RTMP, RTSP, SRT, FLV, HLS | after 1.0 | `akio-media` | ✓ |
 | VOD from media files | after 1.0 | an MP4 reader | to request |
 | BitTorrent client and tracker | after 1.0 | `akio-bittorrent` | ✓ |
-| Prefork and NUMA | after 1.0, on hold | `akio-prefork` (on hold, not tested) | — |
+| Prefork and NUMA | dropped | — (`akio-prefork` removed) | — |
 
 ## Performance targets
 
