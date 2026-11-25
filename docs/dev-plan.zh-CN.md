@@ -131,7 +131,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I35 | 主动健康检查 | I20 | done |
 | I36 | 负载均衡 v2 | I19 | done |
 | I37 | Prometheus 指标 | I15 | done |
-| I38 | M2 退出：频繁替换测试与 staging 证书 | I26–I37 | doing |
+| I38 | M2 退出：频繁替换测试与 staging 证书 | I26–I37 | done |
 | **M3** | | | |
 | I39 | 匹配器 v2 与表达式 | I11 | done |
 | I40 | 重写、跳转与头处理 | I39 | done |
@@ -581,12 +581,12 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 - **做什么**：有流量时进行数千次替换；一张 Let's Encrypt staging 证书；健康检查时间窗测试。
 - **完成标准**：路线图中 M2 的退出标准满足，结果记录在 progress 中。
 - **涉及**：`tests`、`bench`。
-- **进行中**：频繁替换测试（`crates/akit/tests/churn.rs`：在 `akit run` 下经 SIGHUP 和 Admin API 替换 2000
+- **已完成**：频繁替换测试（`crates/akit/tests/churn.rs`：在 `akit run` 下经 SIGHUP 和 Admin API 替换 2000
   次，以及在进程内经 `Listeners::reload` 在 epoll 和 io_uring 上替换）和健康检查时间窗测试（`health_window.rs`）
   通过；只写了主机名的配置经 `akit run` 从 Pebble（在基准主机的 Docker 中）取得证书并提供 HTTPS（`acme_m2.rs`）。
   频繁替换测试发现每次重载都重建所有上游的连接池（逐个重新拨号，健康状态重置）：现在未变的上游像 fit 一样保留连接池。
-  剩下维护者的一步：用 Let's Encrypt 的 staging CA 跑同一测试（`AKIT_ACME_STAGING_NAME`），需要一个指向可达主机的
-  公网域名（见 [progress](progress.zh-CN.md)）。
+  同一测试于 2026-11-26 在一台公网主机上为一个公网域名对 Let's Encrypt 的 staging CA（`AKIT_ACME_STAGING_NAME`）运行
+  通过，证书由 `(STAGING) Baloney Bulgur YE2` 签发（见 [progress](progress.zh-CN.md)）。
 
 ## M3 网关能力
 

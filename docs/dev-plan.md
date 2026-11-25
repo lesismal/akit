@@ -138,7 +138,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I35 | Active health checks | I20 | done |
 | I36 | Load balancing v2 | I19 | done |
 | I37 | Prometheus metrics | I15 | done |
-| I38 | M2 exit: churn test and staging certificate | I26–I37 | doing |
+| I38 | M2 exit: churn test and staging certificate | I26–I37 | done |
 | **M3** | | | |
 | I39 | Matchers v2 and expressions | I11 | done |
 | I40 | Rewrites, redirects, headers | I39 | done |
@@ -645,14 +645,14 @@ Split from I07 so that the half that needs no config model runs beside I02.
   test.
 - **Done when**: the roadmap's M2 exit criteria hold and the results are in progress.
 - **Touches**: `tests`, `bench`.
-- **Doing**: the churn test (`crates/akit/tests/churn.rs`: 2000 swaps through SIGHUP and the
+- **Done**: the churn test (`crates/akit/tests/churn.rs`: 2000 swaps through SIGHUP and the
   Admin API under `akit run`, and through `Listeners::reload` in process on epoll and io_uring)
   and the health window test (`health_window.rs`) pass; a config with only a host name gets its
   certificate from Pebble (in Docker on the benchmark host) and serves HTTPS through `akit run`
   (`acme_m2.rs`). The churn found that every reload made every upstream's pool again (dialing
-  each anew, its health reset): an unchanged upstream now keeps its pool, as fit's does. Left, the
-  maintainer's step: the same test against Let's Encrypt's staging CA
-  (`AKIT_ACME_STAGING_NAME`), which needs a public name pointing at a reachable host
+  each anew, its health reset): an unchanged upstream now keeps its pool, as fit's does. The same
+  test against Let's Encrypt's staging CA (`AKIT_ACME_STAGING_NAME`) passed on a public host for
+  a public name on 2026-11-26, the certificate issued by `(STAGING) Baloney Bulgur YE2`
   ([progress](progress.md)).
 
 ## M3, gateway features
