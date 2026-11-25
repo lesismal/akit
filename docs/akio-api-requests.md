@@ -87,6 +87,8 @@ first; its status here records the branch, then the akio commit akit pins.
 | A165 | A WebAssembly runtime for plugins: a sandboxed interpreter, its host API, WASI preview 1, a pool of instances; the response hooks Proxy-Wasm needs | in akio's main (`dad77a7a`), pinned | 1, 4, 11 | I71, I72 |
 | A166 | A response's head held while a call made elsewhere decides on it (fit's A41 from fib) | in akio's main (`dad77a7a`), pinned | 1, 4 | I72 |
 | A167 | A response body filtered by calls made elsewhere, one at a time, its trailers in the last (fit's A46 from fib) | in akio's main (`dad77a7a`), pinned | 1, 4, 5, 8 | I72 |
+| A168 | An HTTP server that serves HTTP/2 with prior knowledge alone (a listener with `h2c` and no `http/1.1`) | requested (I25) | 19 | I05, I25 |
+| A169 | Requests RFC 9112, RFC 9113 and RFC 9114 call malformed refused by akio's servers: two `Host` fields, bad bytes in HTTP/2 and HTTP/3 field names and values, a streamed body's bad framing answered 400 | built on akio branch `claude/a169-request-checks` (`813f53ea`, but the last part), not in akio's main | 15, 19 | I25 |
 
 ## A1 TCP listeners on a running engine
 
@@ -1748,3 +1750,62 @@ plugin's `max_body_bytes`), the last call `proxy_on_response_trailers` with the 
 queues `proxy_on_done`, `proxy_on_log` and `proxy_on_delete`. `response: headers` registers no
 body filter, so file bodies keep `sendfile`.
 
+## A168 HTTP/2 with prior knowledge alone
+
+**Status.** Requested (I25).
+
+**Problem.** fit's listener with `protocols: [h2c]` serves HTTP/2 with prior knowledge and
+nothing else, as fit's benchmark config's port 8081 does. akio-http's server always takes
+HTTP/1.1 on a connection that does not start with HTTP/2's preface, so akit refuses such a
+listener when it starts (`not supported yet: protocols h2c without http/1.1`) and its benchmark
+config lists `http/1.1` beside `h2c`.
+
+**Evidence.** At akio `dad77a7a`: `HttpConfig` has `h2: Option<H2Config>` to turn HTTP/2 off, and
+no setting to turn HTTP/1 off; `Session` reads any connection without the preface as HTTP/1.
+
+**Suggested API.** `HttpConfig::http1: bool` (default `true`): when `false`, a connection that
+does not begin with the HTTP/2 preface is closed (or answered with a GOAWAY after the preface it
+lacks, as Go's h2c-only server does), and an `Upgrade: h2c` request is not taken either.
+
+**How akit would use it.** `akit-listener`'s `http_config` sets `http1` from whether the listener
+lists `http/1.1`, and drops its "not supported yet". `akit validate` reports the same until then
+(I25 found that it did not).
+
+## A169 Malformed requests refused by akio's servers
+
+**Status.** The first three parts built on akio branch `claude/a169-request-checks`
+(`813f53ea`, off akio's main `dad77a7a`), with their tests, on macOS (kqueue) and the benchmark
+host (epoll and io_uring); not in akio's main, not pinned. The fourth part is not built. Before it
+goes to akio's main it needs a same-run A/B of the HTTP/2 request path (akio's rules: a check per
+field byte on the request's decode).
+
+**Problem.** I25's conformance suite (`crates/akit/tests/conformance.rs`) found requests akio's
+servers hand to the application although the RFCs call them malformed, so that akit's proxy sent
+them on to an HTTP/1.1 upstream:
+
+1. HTTP/1: a request with two `Host` fields was served (RFC 9112 section 3.2 asks for 400). An
+   upstream may route by the other one.
+2. HTTP/2: a field value with a NUL, CR or LF, and a field name with a byte outside a token
+   (a space, a non-ASCII byte) were accepted (RFC 9113 section 8.2.1 makes the request malformed).
+   akio's HTTP/1 client dropped the CR and LF when it wrote them upstream, and wrote the NUL.
+3. HTTP/3: the same (RFC 9114 section 4.2).
+4. HTTP/1, a streamed body: a bad chunk size after the request was dispatched closes the
+   connection without an answer; fit answers 400 (RFC 9112: "SHOULD respond with a 400").
+
+**Evidence.** At akio `dad77a7a`: `Session::on_head` keeps `host` as a bool; `h2.rs`'s
+`build_request` and trailer decoding check names for uppercase only and values not at all;
+akio-h3's `header_list` likewise; `Session`'s `State::Stream` closes on a `ChunkDecoder` error.
+
+**As built (parts 1–3).** `Session::on_head` counts `Host` fields and answers 400 to more than
+one in any version. HTTP/2's request and trailer fields: a regular name must hold only bytes in
+0x21–0x40 and 0x5B–0x7E but `:`, and every value (pseudo-header fields' too) no NUL, CR or LF,
+else the stream is reset with `PROTOCOL_ERROR`. akio-h3's request fields the same.
+
+**Suggested (part 4).** When a streamed request body's framing fails before any of the response
+was written, answer 400 and close, and tell the handler its request is gone (A38's `on_gone`), so
+it gives up its upstream exchange.
+
+**How akit uses it.** Once pinned, akit-proxy's stopgap (`Refused::BadFieldValue` and
+`Refused::TwoHosts` in `headers::outgoing`, which answer 400 in the loop that copies the fields)
+can stay as defence in depth, as fit's check of field names does, or go; with part 4 the
+conformance suite's bad chunk size case expects 400 as fit's.

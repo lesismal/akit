@@ -86,6 +86,8 @@
 | A165 | 插件用的 WebAssembly 运行时：沙箱解释器、宿主 API、WASI preview 1、实例池；Proxy-Wasm 需要的响应钩子 | 已在 akio 的 main（`dad77a7a`），已锁定 | 1、4、11 | I71、I72 |
 | A166 | 由别处进行的调用决定时扣住响应头（fit 向 fib 提出的 A41） | 已在 akio 的 main（`dad77a7a`），已锁定 | 1、4 | I72 |
 | A167 | 由别处进行的调用逐次过滤响应 body，trailer 在最后一次调用中（fit 向 fib 提出的 A46） | 已在 akio 的 main（`dad77a7a`），已锁定 | 1、4、5、8 | I72 |
+| A168 | 只提供先验知识 HTTP/2 的 HTTP 服务端（带 `h2c` 而没有 `http/1.1` 的监听器） | 已提出（I25） | 19 | I05、I25 |
+| A169 | akio 的服务端拒绝 RFC 9112、RFC 9113 和 RFC 9114 规定为畸形的请求：两个 `Host` 字段、HTTP/2 与 HTTP/3 字段名和值中的非法字节、流式 body 的分帧错误以 400 应答 | 已在 akio 分支 `claude/a169-request-checks`（`813f53ea`，最后一部分除外）实现，未进入 akio 的 main | 15、19 | I25 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -1418,3 +1420,50 @@ body）和 tap；由客户端限速（连接积压超过 256 KiB 时下一次调
 以 trailer 调用 `proxy_on_response_trailers`。`on_end` 把 `proxy_on_done`、`proxy_on_log` 和 `proxy_on_delete`
 排入队列。`response: headers` 不注册 body 过滤器，文件 body 因此仍用 `sendfile`。
 
+## A168 只提供先验知识的 HTTP/2
+
+**状态。** 已提出（I25）。
+
+**问题。** fit 中 `protocols: [h2c]` 的监听器只提供先验知识的 HTTP/2，不提供其他协议，fit 基准配置的 8081 端口就是这样。
+akio-http 的服务端对不以 HTTP/2 前言开头的连接总是按 HTTP/1.1 处理，因此 akit 在启动时拒绝这样的监听器
+（`not supported yet: protocols h2c without http/1.1`），其基准配置在 `h2c` 旁边还列出了 `http/1.1`。
+
+**证据。** 在 akio `dad77a7a`：`HttpConfig` 有 `h2: Option<H2Config>` 可关闭 HTTP/2，但没有关闭 HTTP/1 的设置；
+`Session` 把没有前言的连接都当作 HTTP/1 读取。
+
+**建议的 API。** `HttpConfig::http1: bool`（默认 `true`）：为 `false` 时，不以 HTTP/2 前言开头的连接被关闭（或者像 Go 的
+仅 h2c 服务端那样，在缺失的前言之后回一个 GOAWAY），`Upgrade: h2c` 请求也不接受。
+
+**akit 将如何使用。** `akit-listener` 的 `http_config` 按监听器是否列出 `http/1.1` 设置 `http1`，并去掉其 "not supported
+yet"。在此之前 `akit validate` 也报告同样的错误（I25 发现它此前并未报告）。
+
+## A169 akio 的服务端拒绝畸形请求
+
+**状态。** 前三部分已在 akio 分支 `claude/a169-request-checks`（`813f53ea`，基于 akio 的 main `dad77a7a`）实现，
+连同测试，在 macOS（kqueue）和基准主机（epoll 与 io_uring）上通过；未进入 akio 的 main，未锁定。第四部分未实现。
+进入 akio 的 main 之前，需要对 HTTP/2 请求路径做一次同轮 A/B（akio 的规则：请求解码时对每个字段字节的检查）。
+
+**问题。** I25 的一致性测试套件（`crates/akit/tests/conformance.rs`）发现，akio 的服务端会把 RFC 规定为畸形的请求交给应用，
+于是 akit 的代理把它们转发给 HTTP/1.1 上游：
+
+1. HTTP/1：带两个 `Host` 字段的请求被正常处理（RFC 9112 第 3.2 节要求 400）。上游可能按另一个路由。
+2. HTTP/2：含 NUL、CR 或 LF 的字段值，以及含 token 以外字节（空格、非 ASCII 字节）的字段名被接受（RFC 9113 第 8.2.1 节
+   规定这样的请求是畸形的）。akio 的 HTTP/1 客户端写给上游时丢掉了 CR 和 LF，但写出了 NUL。
+3. HTTP/3：同上（RFC 9114 第 4.2 节）。
+4. HTTP/1 的流式 body：请求已分派后出现错误的 chunk 大小时，连接被关闭而不作应答；fit 以 400 应答（RFC 9112："SHOULD
+   respond with a 400"）。
+
+**证据。** 在 akio `dad77a7a`：`Session::on_head` 只用一个 bool 记录 `host`；`h2.rs` 的 `build_request` 和 trailer
+解码只检查名字是否含大写字母，不检查值；akio-h3 的 `header_list` 也一样；`Session` 的 `State::Stream` 在 `ChunkDecoder`
+出错时直接关闭。
+
+**实现（第 1–3 部分）。** `Session::on_head` 统计 `Host` 字段数，任何版本中多于一个都以 400 应答。HTTP/2 的请求和 trailer
+字段：普通字段名只能含 0x21–0x40 和 0x5B–0x7E 范围内除 `:` 以外的字节，每个值（伪首部字段的值也算）不能含 NUL、CR 或 LF，
+否则以 `PROTOCOL_ERROR` 重置该流。akio-h3 的请求字段同样处理。
+
+**建议（第 4 部分）。** 流式请求 body 的分帧在响应尚未写出任何内容之前出错时，以 400 应答并关闭连接，并告知 handler 其请求已
+离开（A38 的 `on_gone`），使它放弃对上游的交换。
+
+**akit 如何使用。** 锁定之后，akit-proxy 的临时措施（`headers::outgoing` 中的 `Refused::BadFieldValue` 和
+`Refused::TwoHosts`，在复制字段的循环中以 400 应答）可以像 fit 对字段名的检查那样作为纵深防御保留，也可以去掉；有了第 4 部分，
+一致性测试中错误 chunk 大小的用例将像 fit 一样期望 400。
