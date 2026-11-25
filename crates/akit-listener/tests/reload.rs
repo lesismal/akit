@@ -270,12 +270,17 @@ fn what_cannot_be_served_is_refused_with_nothing_changed() {
     wait_closed(free);
     drop(busy);
 
-    // h2c alone is not supported yet.
-    let r = l.reload(graph(&config(
-        &format!(r#"{WEB}, {{"name": "c", "address": "127.0.0.1:0", "protocols": ["h2c"]}}"#),
-        "v2",
-    )));
-    assert!(matches!(r, Err(ReloadError::Listener(_))), "{r:?}");
+    // h2c alone is not supported yet: the config reader refuses it (I25), so no graph with it
+    // reaches a reload.
+    let errs = akit_config::from_json(
+        &config(
+            &format!(r#"{WEB}, {{"name": "c", "address": "127.0.0.1:0", "protocols": ["h2c"]}}"#),
+            "v2",
+        ),
+        None,
+    )
+    .unwrap_err();
+    assert!(errs.only_not_supported_yet(), "{errs}");
 
     assert_eq!(cell.epoch(), epoch);
     assert_eq!(cell.retiring(), 0);
