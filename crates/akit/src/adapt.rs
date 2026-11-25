@@ -1,6 +1,8 @@
 //! `akit adapt` and `akit fmt` (I73): a config converted between fit's formats, `.conf`, YAML
 //! and JSON, and a config's files written again in their own formats, each as fit's `fit adapt`
-//! writes it (`akit_config::adapt`).
+//! writes it (`akit_config::adapt`); and an nginx config or a Caddyfile converted to one of
+//! fit's formats (I74, `akit_config::convert`), as `fit adapt -from nginx` and `-from caddyfile`
+//! convert them, what could not be converted listed as warnings.
 //!
 //! The config is read and checked as `akit validate` reads it, without compiling it; a field akit
 //! does not run yet ("not supported yet") is converted as written, and named in a warning, so that
@@ -19,17 +21,19 @@ pub(crate) const ADAPT_USAGE: &str = "\
 Usage: akit adapt [flags]
 
 Converts a config between fit's formats, .conf, YAML and native JSON, checked as akit validate
-reads it, and writes it as fit adapt writes it. Several files, or directories of them, are merged
-into one config, as akit run merges them. A field akit does not run yet is converted as written,
-with a warning.
+reads it, and writes it as fit adapt writes it, and converts an nginx config (-from nginx) or a
+Caddyfile (-from caddyfile), of which a common subset converts, to help moving to akit: akit run
+loads only fit's formats. What could not be converted is listed on standard error. Several files,
+or directories of them, are merged into one config, as akit run merges them. A field akit does
+not run yet is converted as written, with a warning.
 
 Flags:
 
 	-c path      a config file or a directory of them, or - for standard
 	             input; give -c again for more; fit.json when left out
 	-from name   the format of a single file or of standard input: json,
-	             yaml or fit; by the file's extension when left out, json
-	             for standard input
+	             or an adapter's (caddyfile, fit, nginx, yaml); by the file's
+	             extension when left out, json for standard input
 	-to name     what to write: json, yaml or fit; json when left out
 	-o file      where to write it; standard output when left out
 ";
@@ -59,7 +63,7 @@ const ADAPT_FLAGS: &[Spec] = &[
     Spec {
         name: "from",
         bool: false,
-        usage: "the format of a single file or of standard input: json, yaml or fit",
+        usage: "the format of a single file or of standard input: json, caddyfile, fit, nginx or yaml",
     },
     Spec {
         name: "to",
@@ -119,17 +123,24 @@ fn last<'a>(flags: &'a [(&str, String)], name: &str) -> Option<&'a str> {
         .map(|(_, v)| v.as_str())
 }
 
+/// What `-from` names: one of fit's formats, or another program's config to convert.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Input {
+    Format(Format),
+    Nginx,
+    Caddyfile,
+}
+
 /// The format `-from` names.
-fn from_format(name: &str) -> Result<Format, String> {
+fn from_format(name: &str) -> Result<Input, String> {
     match name {
-        "" | "json" => Ok(Format::Json),
-        "yaml" => Ok(Format::Yaml),
-        "fit" => Ok(Format::Conf),
-        "nginx" | "caddyfile" => Err(format!(
-            "-from {name}: not supported yet (converting nginx configs and Caddyfiles is I74)"
-        )),
+        "" | "json" => Ok(Input::Format(Format::Json)),
+        "yaml" => Ok(Input::Format(Format::Yaml)),
+        "fit" => Ok(Input::Format(Format::Conf)),
+        "nginx" => Ok(Input::Nginx),
+        "caddyfile" => Ok(Input::Caddyfile),
         _ => Err(format!(
-            "there is no adapter {name:?} (there are fit, yaml)"
+            "there is no adapter {name:?} (there are caddyfile, fit, nginx, yaml)"
         )),
     }
 }
@@ -160,16 +171,23 @@ fn sources(files: &[ConfigFile], format: Option<Format>) -> Result<Vec<Source<'_
 /// Checks the config `srcs` hold as `akit validate` reads it: its problems are printed and
 /// false returned; fields akit does not run yet are printed as warnings.
 fn check(cmd: &str, name: &str, srcs: &[Source<'_>]) -> bool {
+    check_mapped(cmd, name, srcs, &|e| e)
+}
+
+/// [`check`], each problem placed by `map` first.
+fn check_mapped(
+    cmd: &str,
+    name: &str,
+    srcs: &[Source<'_>],
+    map: &dyn Fn(Errors) -> Errors,
+) -> bool {
     let Err(errs) = akit_config::from_sources(srcs) else {
         return true;
     };
+    let errs = map(errs);
     let only_unsupported = errs.as_slice().iter().all(Error::is_not_supported_yet);
     for e in errs.as_slice() {
-        let line = if e.file.is_some() {
-            e.to_string()
-        } else {
-            format!("{name}: {e}")
-        };
+        let line = named(name, e);
         if only_unsupported {
             eprintln!("akit {cmd}: warning: {line}; converted as written");
         } else {
@@ -179,13 +197,21 @@ fn check(cmd: &str, name: &str, srcs: &[Source<'_>]) -> bool {
     only_unsupported
 }
 
+/// A problem as fit prints it: with its own file, or with the config's name, `name:line:col: `
+/// when it has a position and `name: ` when not.
+fn named(name: &str, e: &Error) -> String {
+    if e.file.is_some() {
+        e.to_string()
+    } else if e.line > 0 {
+        format!("{name}:{e}")
+    } else {
+        format!("{name}: {e}")
+    }
+}
+
 fn print_errors(name: &str, errs: &Errors) {
     for e in errs.as_slice() {
-        if e.file.is_some() {
-            eprintln!("{e}");
-        } else {
-            eprintln!("{name}: {e}");
-        }
+        eprintln!("{}", named(name, e));
     }
 }
 
@@ -217,7 +243,8 @@ pub(crate) fn adapt(args: &[String]) -> ExitCode {
         None
     } else {
         match from_format(from) {
-            Ok(f) => Some(f),
+            Ok(Input::Format(f)) => Some(f),
+            Ok(other) => return convert(other, &paths, &name, to, last(&flags, "o")),
             Err(e) => {
                 eprintln!("akit adapt: {e}");
                 return ExitCode::FAILURE;
@@ -225,12 +252,13 @@ pub(crate) fn adapt(args: &[String]) -> ExitCode {
         }
     };
     let files = if paths == ["-"] {
-        let mut data = Vec::new();
-        let cap = u64::try_from(MAX_CONFIG_BYTES).unwrap_or(u64::MAX);
-        if let Err(e) = std::io::stdin().take(cap).read_to_end(&mut data) {
-            eprintln!("akit adapt: standard input: {e}");
-            return ExitCode::FAILURE;
-        }
+        let data = match read_stdin() {
+            Ok(d) => d,
+            Err(e) => {
+                eprintln!("akit adapt: standard input: {e}");
+                return ExitCode::FAILURE;
+            }
+        };
         vec![ConfigFile {
             path: "-".into(),
             data,
@@ -271,7 +299,20 @@ pub(crate) fn adapt(args: &[String]) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let written = match last(&flags, "o") {
+    write_out(last(&flags, "o"), &out)
+}
+
+/// Standard input, at most [`MAX_CONFIG_BYTES`].
+fn read_stdin() -> std::io::Result<Vec<u8>> {
+    let mut data = Vec::new();
+    let cap = u64::try_from(MAX_CONFIG_BYTES).unwrap_or(u64::MAX);
+    std::io::stdin().take(cap).read_to_end(&mut data)?;
+    Ok(data)
+}
+
+/// Writes `out` to the file `o` names, or to standard output.
+fn write_out(o: Option<&str>, out: &str) -> ExitCode {
+    let written = match o {
         None | Some("") => std::io::stdout().write_all(out.as_bytes()),
         Some(path) => std::fs::write(path, out.as_bytes()),
     };
@@ -280,6 +321,77 @@ pub(crate) fn adapt(args: &[String]) -> ExitCode {
         return ExitCode::FAILURE;
     }
     ExitCode::SUCCESS
+}
+
+/// `akit adapt -from nginx` or `-from caddyfile`: the single file (or standard input) converted
+/// to fit's native JSON, as fit's converters convert it, checked as `akit validate` reads it,
+/// its problems placed at the source's lines; what the converter could not convert printed as
+/// warnings; and the config written as `to`.
+fn convert(from: Input, paths: &[String], name: &str, to: Target, o: Option<&str>) -> ExitCode {
+    let data = if paths == ["-"] {
+        match read_stdin() {
+            Ok(d) => d,
+            Err(e) => {
+                eprintln!("akit adapt: standard input: {e}");
+                return ExitCode::FAILURE;
+            }
+        }
+    } else {
+        // The file as it is: an nginx config's include, or a Caddyfile's import of a file, is
+        // not followed (and not converted).
+        match akit_config::read_config_file(Path::new(name)) {
+            Ok(f) => f.data,
+            Err(errs) => {
+                print_errors(name, &errs);
+                return ExitCode::FAILURE;
+            }
+        }
+    };
+    let src = match std::str::from_utf8(&data) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!(
+                "{name}: the config is not UTF-8 (at byte {})",
+                e.valid_up_to()
+            );
+            return ExitCode::FAILURE;
+        }
+    };
+    let converted = match from {
+        Input::Nginx => akit_config::convert::nginx(src),
+        Input::Caddyfile => akit_config::convert::caddyfile(src, &|v| std::env::var(v).ok()),
+        Input::Format(_) => return ExitCode::FAILURE,
+    };
+    let converted = match converted {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("{name}: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let srcs = [Source {
+        name: None,
+        format: Format::Json,
+        src: converted.json(),
+    }];
+    if !check_mapped("adapt", name, &srcs, &|e| converted.map_errors(e)) {
+        return ExitCode::FAILURE;
+    }
+    for w in converted.warnings() {
+        eprintln!("{name}: warning: {w}");
+    }
+    let out = match document(&srcs).map(|d| d.write(to)) {
+        Ok(Ok(out)) => out,
+        Ok(Err(e)) => {
+            eprintln!("akit adapt: {e}");
+            return ExitCode::FAILURE;
+        }
+        Err(errs) => {
+            print_errors(name, &errs);
+            return ExitCode::FAILURE;
+        }
+    };
+    write_out(o, &out)
 }
 
 /// `akit fmt`.

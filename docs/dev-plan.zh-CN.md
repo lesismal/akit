@@ -171,7 +171,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I71 | WASM I：运行时与 ABI | I03 | todo |
 | I72 | WASM II：Proxy-Wasm 子集 | I71 | todo |
 | I73 | `akit adapt` 与 `akit fmt` | I23, I24 | done |
-| I74 | nginx 与 Caddyfile 转换器 | I73 | todo |
+| I74 | nginx 与 Caddyfile 转换器 | I73 | done |
 | I75 | FastCGI | I16 | done |
 | I76 | M5 退出 | I67–I75 | todo |
 | **1.0** | | | |

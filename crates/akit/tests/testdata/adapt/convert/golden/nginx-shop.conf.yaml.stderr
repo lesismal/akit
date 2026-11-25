@@ -1,0 +1,5 @@
+crates/akit/tests/testdata/adapt/convert/nginx-shop.conf: warning: line 24: error_page: skipped: not converted
+crates/akit/tests/testdata/adapt/convert/nginx-shop.conf: warning: line 33: allow: skipped: not converted
+crates/akit/tests/testdata/adapt/convert/nginx-shop.conf: warning: line 34: deny: skipped: not converted
+crates/akit/tests/testdata/adapt/convert/nginx-shop.conf: warning: line 40: sub_filter: skipped: not converted
+crates/akit/tests/testdata/adapt/convert/nginx-shop.conf: warning: line 41: sub_filter_once: skipped: not converted

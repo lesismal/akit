@@ -1,0 +1,2 @@
+crates/akit/tests/testdata/adapt/convert/proxy.conf: warning: line 25: ssl_protocols: skipped: fit picks TLS versions and ciphers, and staples OCSP, itself
+crates/akit/tests/testdata/adapt/convert/proxy.conf: warning: line 36: proxy_set_header: skipped: its value has variables, which fit does not expand

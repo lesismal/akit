@@ -101,6 +101,7 @@ func main() {
 	}
 	must(os.WriteFile(writerFile, []byte(w.String()), 0o644))
 	fmt.Fprintf(os.Stderr, "%d CLI inputs, %d writer documents\n", len(inputs()), len(docs))
+	convertGolden(os.Getenv("FIT_DIR"))
 }
 
 func verdict(out []byte, err error) string {

@@ -24,6 +24,7 @@
 pub mod adapt;
 mod auto_https;
 mod conf;
+pub mod convert;
 mod decode;
 pub mod duration;
 mod error;
@@ -397,6 +398,20 @@ pub fn read_config_files<P: AsRef<Path>>(paths: &[P]) -> Result<Vec<ConfigFile>,
         });
     }
     Ok(read)
+}
+
+/// Reads the one file `path` as it is, at most [`MAX_CONFIG_BYTES`], following none of the
+/// files it may name: a config of another program, as an nginx config or a Caddyfile, that
+/// `akit adapt` converts.
+///
+/// # Errors
+///
+/// A file that cannot be read, or is past the limit.
+pub fn read_config_file(path: &Path) -> Result<ConfigFile, Errors> {
+    Ok(ConfigFile {
+        path: path.display().to_string(),
+        data: read_limited(path, MAX_CONFIG_BYTES, false)?,
+    })
 }
 
 /// The config `files` hold, as [`load_files`] reads it from them: each file in the format its

@@ -68,7 +68,8 @@ Usage:
 Commands:
   run        run a config
   validate   check a config, without running it
-  adapt      convert a config between .conf, YAML and native JSON
+  adapt      convert a config between .conf, YAML and native JSON, or an
+             nginx config or a Caddyfile into one of them
   fmt        write a config's files again, each in its own format
   build      build an akit with more modules, or fewer, as akit build -h says
   version    print akit's version and the akio commit it is built on

@@ -1,0 +1,16 @@
+crates/akit/tests/testdata/adapt/convert/full.conf: warning: line 1: user: skipped: fit runs as one process with its own workers
+crates/akit/tests/testdata/adapt/convert/full.conf: warning: line 2: worker_processes: skipped: fit runs as one process with its own workers
+crates/akit/tests/testdata/adapt/convert/full.conf: warning: line 4: pid: skipped: fit runs as one process with its own workers
+crates/akit/tests/testdata/adapt/convert/full.conf: warning: line 6: events: skipped: fit runs as one process with its own workers
+crates/akit/tests/testdata/adapt/convert/full.conf: warning: line 11: include: skipped: not converted: fit's defaults stand in for it
+crates/akit/tests/testdata/adapt/convert/full.conf: warning: line 12: default_type: skipped: not converted: fit's defaults stand in for it
+crates/akit/tests/testdata/adapt/convert/full.conf: warning: line 13: log_format: skipped: fit writes its access log lines as JSON, with fields of its own
+crates/akit/tests/testdata/adapt/convert/full.conf: warning: line 14: access_log: the format main is not converted: fit writes its lines as JSON, text or line, with fields of its own
+crates/akit/tests/testdata/adapt/convert/full.conf: warning: line 15: sendfile: skipped: not converted: fit's defaults stand in for it
+crates/akit/tests/testdata/adapt/convert/full.conf: warning: line 16: keepalive_timeout: skipped: not converted: fit's defaults stand in for it
+crates/akit/tests/testdata/adapt/convert/full.conf: warning: line 17: map: skipped: not converted
+crates/akit/tests/testdata/adapt/convert/full.conf: warning: line 28: if: skipped: if blocks are not converted
+crates/akit/tests/testdata/adapt/convert/full.conf: warning: line 33: location: skipped: named locations, for try_files and error_page, are not converted
+crates/akit/tests/testdata/adapt/convert/full.conf: warning: line 47: location ~ ^/(?!private): skipped: Go's regular expressions do not take it: error parsing regexp: invalid or unsupported Perl syntax: `(?!`
+crates/akit/tests/testdata/adapt/convert/full.conf: warning: line 51: error_page: skipped: not converted
+crates/akit/tests/testdata/adapt/convert/full.conf: warning: line 55: stream: skipped: TCP and UDP proxying is fit's tcp and udp listeners, written by hand

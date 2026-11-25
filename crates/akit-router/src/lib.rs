@@ -36,7 +36,7 @@ mod expr;
 mod matcher;
 mod path;
 
-pub use expr::{Expr, MAX_DEPTH, MAX_EXPR};
+pub use expr::{Expr, MAX_DEPTH, MAX_EXPR, go_quote};
 pub use matcher::{Error, Matcher, Parts, Prefix, Request, parse_prefix, regexp};
 pub use path::{Canonical, canonicalize};
 

@@ -1,0 +1,109 @@
+# Caddy for the fit benchmark harness. fitbench fills in the addresses of the
+# proxy and WebSocket backends.
+#
+# Port 8080 serves HTTP/1.1 and port 8081 h2c (HTTP/2 with prior knowledge),
+# with the same routes on both, /ws proxying WebSockets. Port 8443 is
+# HTTP/1.1 over TLS, port 8445 HTTP/2 over TLS and UDP port 8444 HTTP/3, with
+# the same routes but /ws. Caddy logs no requests unless asked to.
+#
+# The settings every server shares are aligned (bench/README.md, "Aligned
+# settings"): nothing here limits a run of up to 10,000 requests in flight.
+# Caddy, in Go, has 250 HTTP/2 streams a connection and a 1 MiB stream
+# window, which it does not let a config change. Nothing is compressed: no
+# encode directive, and file_server looks for no precompressed files.
+{
+	admin off
+	auto_https off
+	# A client connection idle for 120s is closed, as every server here
+	# does: timeouts idle in each servers block.
+	servers :8080 {
+		protocols h1
+		timeouts {
+			idle 120s
+		}
+	}
+	servers :8081 {
+		protocols h1 h2c
+		timeouts {
+			idle 120s
+		}
+	}
+	servers :8443 {
+		protocols h1
+		timeouts {
+			idle 120s
+		}
+	}
+	servers :8444 {
+		protocols h3
+		timeouts {
+			idle 120s
+		}
+	}
+	# With h2 alone, Caddy drops TLS connections after the client hello;
+	# clients that offer h2 still get it, by ALPN.
+	servers :8445 {
+		protocols h1 h2
+		timeouts {
+			idle 120s
+		}
+	}
+}
+
+# At most {{BACKEND_CONNS}} backend connections, as many kept idle, an idle one
+# closed after 60s; a 5s connect timeout and 60s for a response's header.
+# Caddy, as every proxy here, keeps the client's Host and adds
+# X-Forwarded-For, -Proto and -Host, and has no passive health checks.
+(transport) {
+	transport http {
+		max_conns_per_host {{BACKEND_CONNS}}
+		keepalive 60s
+		keepalive_idle_conns {{BACKEND_CONNS}}
+		keepalive_idle_conns_per_host {{BACKEND_CONNS}}
+		dial_timeout 5s
+		response_header_timeout 60s
+	}
+}
+
+(routes) {
+	# Request bodies of up to 16 MiB, as fit allows.
+	request_body {
+		max_size 16MB
+	}
+	handle /fixed {
+		header Content-Type text/plain
+		respond "hello, world" 200
+	}
+	handle /static/* {
+		root * /srv/www
+		file_server
+	}
+	# The website workload's files.
+	handle /site/* {
+		root * /srv/www
+		file_server
+	}
+	# The proxy scenario, the large download and upload, and the API
+	# workload.
+	@proxied path /proxy /proxy/* /api/*
+	handle @proxied {
+		reverse_proxy {{BACKEND}} {
+			import transport
+		}
+	}
+	handle {
+		respond 404
+	}
+}
+
+http://:8080, http://:8081 {
+	handle /ws {
+		reverse_proxy {{WSBACKEND}}
+	}
+	import routes
+}
+
+https://:8443, https://:8444, https://:8445 {
+	tls /certs/cert.pem /certs/key.pem
+	import routes
+}

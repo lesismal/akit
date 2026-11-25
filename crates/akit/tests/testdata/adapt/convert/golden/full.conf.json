@@ -1,0 +1,86 @@
+{
+  "listeners": [
+    {
+      "name": "http_80",
+      "address": ":80",
+      "protocols": [
+        "http/1.1"
+      ]
+    }
+  ],
+  "upstreams": [
+    {
+      "name": "proxy_127_0_0_1_9000",
+      "addresses": [
+        "127.0.0.1:9000"
+      ]
+    },
+    {
+      "name": "proxy_127_0_0_1_9001",
+      "addresses": [
+        "127.0.0.1:9001"
+      ]
+    }
+  ],
+  "routes": [
+    {
+      "name": "server1",
+      "listeners": [
+        "http_80"
+      ],
+      "match": {
+        "path": [
+          "/*"
+        ]
+      },
+      "handler": {
+        "module": "static",
+        "params": {
+          "root": "/usr/share/nginx/html"
+        }
+      }
+    },
+    {
+      "name": "server1-__users____id__d",
+      "listeners": [
+        "http_80"
+      ],
+      "priority": 9999,
+      "match": {
+        "path_regexp": [
+          "^/users/(?\u003cid\u003e\\d+)$"
+        ]
+      },
+      "handler": {
+        "module": "proxy",
+        "params": {
+          "upstream": "proxy_127_0_0_1_9000"
+        }
+      }
+    },
+    {
+      "name": "server1-ws",
+      "listeners": [
+        "http_80"
+      ],
+      "match": {
+        "path": [
+          "/ws*"
+        ]
+      },
+      "handler": {
+        "module": "proxy",
+        "params": {
+          "upstream": "proxy_127_0_0_1_9001"
+        }
+      }
+    }
+  ],
+  "log": {
+    "level": "warn",
+    "output": "/var/log/nginx/error.log"
+  },
+  "access_log": {
+    "output": "/var/log/nginx/access.log"
+  }
+}

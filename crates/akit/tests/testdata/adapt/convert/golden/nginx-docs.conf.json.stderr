@@ -1,0 +1,5 @@
+crates/akit/tests/testdata/adapt/convert/nginx-docs.conf: warning: line 11: stub_status: skipped: not converted
+crates/akit/tests/testdata/adapt/convert/nginx-docs.conf: warning: line 15: expires: skipped: not converted
+crates/akit/tests/testdata/adapt/convert/nginx-docs.conf: warning: line 23: auth_basic: not converted: what it guards answers 401 until a basic_auth middleware takes its place, with its users' bcrypt hashes (fit hash-password makes one)
+crates/akit/tests/testdata/adapt/convert/nginx-docs.conf: warning: line 24: auth_basic_user_file: skipped: fit does not read htpasswd files: basic_auth's users hold the bcrypt hashes, written in the config
+crates/akit/tests/testdata/adapt/convert/nginx-docs.conf: warning: line 28: content_by_lua_block: skipped: OpenResty's Lua is not converted: fit's plugins are WebAssembly, run by the wasm middleware

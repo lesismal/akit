@@ -1,5 +1,6 @@
 #!/bin/sh
-# The golden files of `akit adapt` and `akit fmt` (I73), written by fit itself: builds
+# The golden files of `akit adapt` and `akit fmt` (I73) and of the nginx and Caddyfile converters
+# (I74, convert.go), written by fit itself: builds
 # tools/adapt-golden/main.go against fit (beside akit or at FIT_DIR, offline from Go's module
 # cache) and runs it from akit's root, with fit's examples' secrets set to the stand-ins the
 # compatibility gate uses. Rerun when the fit pin moves (tests/compat/fixtures/PINS), and copy
@@ -11,7 +12,7 @@ root=$(cd "$(dirname "$0")/../.." && pwd)
 fit=$(cd "${FIT_DIR:-$root/../fit}" && pwd)
 out=$root/target/adapt-golden
 mkdir -p "$out/src"
-cp "$root/tools/adapt-golden/main.go" "$fit/go.sum" "$out/src/"
+cp "$root"/tools/adapt-golden/*.go "$fit/go.sum" "$out/src/"
 cat >"$out/src/go.mod" <<MOD
 module adaptgolden
 
@@ -27,5 +28,5 @@ for v in ES_PASSWORD KAFKA_PASSWORD MYSQL_PASSWORD PG_PASSWORD RABBITMQ_PASSWORD
 	OPENAI_API_KEY QDRANT_API_KEY MILVUS_TOKEN; do
 	export "$v=example-password"
 done
-cd "$root" && "$out/fit-adapt"
+cd "$root" && FIT_DIR=$fit "$out/fit-adapt"
 rm -rf "$out"

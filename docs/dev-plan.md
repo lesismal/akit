@@ -178,7 +178,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I71 | WASM I: runtime and ABI | I03 | todo |
 | I72 | WASM II: the Proxy-Wasm subset | I71 | todo |
 | I73 | `akit adapt` and `akit fmt` | I23, I24 | done |
-| I74 | nginx and Caddyfile converters | I73 | todo |
+| I74 | nginx and Caddyfile converters | I73 | done |
 | I75 | FastCGI | I16 | done |
 | I76 | M5 exit | I67–I75 | todo |
 | **1.0** | | | |

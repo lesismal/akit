@@ -1,0 +1,369 @@
+{
+  "listeners": [
+    {
+      "name": "http_8080",
+      "address": ":8080",
+      "protocols": [
+        "http/1.1"
+      ]
+    },
+    {
+      "name": "http_8081",
+      "address": ":8081",
+      "protocols": [
+        "http/1.1"
+      ]
+    },
+    {
+      "name": "https_8443",
+      "address": ":8443",
+      "protocols": [
+        "http/1.1",
+        "h2"
+      ],
+      "tls": {
+        "certificates": [
+          {
+            "cert_file": "/certs/cert.pem",
+            "key_file": "/certs/key.pem"
+          }
+        ]
+      }
+    },
+    {
+      "name": "https_8444",
+      "address": ":8444",
+      "protocols": [
+        "http/1.1",
+        "h2"
+      ],
+      "tls": {
+        "certificates": [
+          {
+            "cert_file": "/certs/cert.pem",
+            "key_file": "/certs/key.pem"
+          }
+        ]
+      }
+    },
+    {
+      "name": "https_8445",
+      "address": ":8445",
+      "protocols": [
+        "http/1.1",
+        "h2"
+      ],
+      "tls": {
+        "certificates": [
+          {
+            "cert_file": "/certs/cert.pem",
+            "key_file": "/certs/key.pem"
+          }
+        ]
+      }
+    }
+  ],
+  "routes": [
+    {
+      "name": "port8080-default",
+      "listeners": [
+        "http_8080",
+        "http_8081"
+      ],
+      "match": {
+        "path": [
+          "/ws"
+        ]
+      },
+      "middleware": [
+        {
+          "module": "body_limit",
+          "params": {
+            "max_bytes": 16000000
+          }
+        }
+      ],
+      "handler": {
+        "module": "respond"
+      }
+    },
+    {
+      "name": "port8080-fixed",
+      "listeners": [
+        "http_8080",
+        "http_8081"
+      ],
+      "match": {
+        "path": [
+          "/fixed"
+        ]
+      },
+      "middleware": [
+        {
+          "module": "body_limit",
+          "params": {
+            "max_bytes": 16000000
+          }
+        },
+        {
+          "module": "headers",
+          "params": {
+            "response": {
+              "set": {
+                "Content-Type": "text/plain"
+              }
+            }
+          }
+        }
+      ],
+      "handler": {
+        "module": "respond",
+        "params": {
+          "body": "hello, world",
+          "status": 200
+        }
+      }
+    },
+    {
+      "name": "port8080-static",
+      "listeners": [
+        "http_8080",
+        "http_8081"
+      ],
+      "match": {
+        "path": [
+          "/static/*"
+        ]
+      },
+      "middleware": [
+        {
+          "module": "body_limit",
+          "params": {
+            "max_bytes": 16000000
+          }
+        }
+      ],
+      "handler": {
+        "module": "static",
+        "params": {
+          "root": "/srv/www"
+        }
+      }
+    },
+    {
+      "name": "port8080-site",
+      "listeners": [
+        "http_8080",
+        "http_8081"
+      ],
+      "match": {
+        "path": [
+          "/site/*"
+        ]
+      },
+      "middleware": [
+        {
+          "module": "body_limit",
+          "params": {
+            "max_bytes": 16000000
+          }
+        }
+      ],
+      "handler": {
+        "module": "static",
+        "params": {
+          "root": "/srv/www"
+        }
+      }
+    },
+    {
+      "name": "port8080-default-2",
+      "listeners": [
+        "http_8080",
+        "http_8081"
+      ],
+      "match": {
+        "path": [
+          "/proxy",
+          "/proxy/*",
+          "/api/*"
+        ]
+      },
+      "middleware": [
+        {
+          "module": "body_limit",
+          "params": {
+            "max_bytes": 16000000
+          }
+        }
+      ],
+      "handler": {
+        "module": "respond"
+      }
+    },
+    {
+      "name": "port8080",
+      "listeners": [
+        "http_8080",
+        "http_8081"
+      ],
+      "middleware": [
+        {
+          "module": "body_limit",
+          "params": {
+            "max_bytes": 16000000
+          }
+        }
+      ],
+      "handler": {
+        "module": "respond",
+        "params": {
+          "status": 404
+        }
+      }
+    },
+    {
+      "name": "port8443-fixed",
+      "listeners": [
+        "https_8443",
+        "https_8444",
+        "https_8445"
+      ],
+      "match": {
+        "path": [
+          "/fixed"
+        ]
+      },
+      "middleware": [
+        {
+          "module": "body_limit",
+          "params": {
+            "max_bytes": 16000000
+          }
+        },
+        {
+          "module": "headers",
+          "params": {
+            "response": {
+              "set": {
+                "Content-Type": "text/plain"
+              }
+            }
+          }
+        }
+      ],
+      "handler": {
+        "module": "respond",
+        "params": {
+          "body": "hello, world",
+          "status": 200
+        }
+      }
+    },
+    {
+      "name": "port8443-static",
+      "listeners": [
+        "https_8443",
+        "https_8444",
+        "https_8445"
+      ],
+      "match": {
+        "path": [
+          "/static/*"
+        ]
+      },
+      "middleware": [
+        {
+          "module": "body_limit",
+          "params": {
+            "max_bytes": 16000000
+          }
+        }
+      ],
+      "handler": {
+        "module": "static",
+        "params": {
+          "root": "/srv/www"
+        }
+      }
+    },
+    {
+      "name": "port8443-site",
+      "listeners": [
+        "https_8443",
+        "https_8444",
+        "https_8445"
+      ],
+      "match": {
+        "path": [
+          "/site/*"
+        ]
+      },
+      "middleware": [
+        {
+          "module": "body_limit",
+          "params": {
+            "max_bytes": 16000000
+          }
+        }
+      ],
+      "handler": {
+        "module": "static",
+        "params": {
+          "root": "/srv/www"
+        }
+      }
+    },
+    {
+      "name": "port8443-default",
+      "listeners": [
+        "https_8443",
+        "https_8444",
+        "https_8445"
+      ],
+      "match": {
+        "path": [
+          "/proxy",
+          "/proxy/*",
+          "/api/*"
+        ]
+      },
+      "middleware": [
+        {
+          "module": "body_limit",
+          "params": {
+            "max_bytes": 16000000
+          }
+        }
+      ],
+      "handler": {
+        "module": "respond"
+      }
+    },
+    {
+      "name": "port8443",
+      "listeners": [
+        "https_8443",
+        "https_8444",
+        "https_8445"
+      ],
+      "middleware": [
+        {
+          "module": "body_limit",
+          "params": {
+            "max_bytes": 16000000
+          }
+        }
+      ],
+      "handler": {
+        "module": "respond",
+        "params": {
+          "status": 404
+        }
+      }
+    }
+  ],
+  "auto_https": {
+    "disable": true
+  }
+}
