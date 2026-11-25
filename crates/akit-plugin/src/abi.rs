@@ -37,6 +37,8 @@ use std::time::Instant;
 use akio_http::Headers;
 use akio_wasm::{Caller, LinkError, Linker, Trap, TypedFunc};
 
+use crate::proxywasm::{PwInstance, PwShared};
+
 /// The module the host functions are imported from.
 pub(crate) const HOST_MODULE: &str = "fit";
 /// The function a plugin of fit's ABI exports, run for each request.
@@ -155,10 +157,12 @@ impl Call {
 /// What a plugin's instances share: its config, and the bound on its log lines.
 #[derive(Debug)]
 pub(crate) struct Shared {
-    /// `path`, naming the plugin in its log lines.
+    /// `path`, naming the plugin in its log lines (and Proxy-Wasm's `plugin_name`).
     pub(crate) path: String,
-    /// `config`, which `request_get` gives.
+    /// `config`, which `request_get` gives (Proxy-Wasm's plugin configuration).
     pub(crate) config: String,
+    /// A Proxy-Wasm plugin's params.
+    pub(crate) pw: PwShared,
     logs: Mutex<(u64, u32)>,
     started: Instant,
 }
@@ -168,6 +172,7 @@ impl Shared {
         Shared {
             path: path.to_owned(),
             config: config.to_owned(),
+            pw: PwShared::default(),
             logs: Mutex::new((0, 0)),
             started: Instant::now(),
         }
@@ -185,13 +190,14 @@ impl Shared {
     }
 }
 
-/// The state of an instance's store: what its instances share, its `fit_on_request`, and the
-/// call it runs.
+/// The state of an instance's store: what its instances share, and, for a plugin of fit's ABI,
+/// its `fit_on_request` and the call it runs, or a Proxy-Wasm plugin's own.
 #[derive(Debug)]
 pub(crate) struct Host {
     pub(crate) shared: Arc<Shared>,
     pub(crate) on_request: Option<TypedFunc<(), i32>>,
     pub(crate) call: Option<Call>,
+    pub(crate) pw: Option<Box<PwInstance>>,
 }
 
 impl Host {
@@ -200,12 +206,13 @@ impl Host {
             shared,
             on_request: None,
             call: None,
+            pw: None,
         }
     }
 }
 
 /// How a host function fails the call that made it.
-fn abi(msg: &str) -> Trap {
+pub(crate) fn abi(msg: &str) -> Trap {
     Trap::Host(format!("wasm: {msg}").into())
 }
 
@@ -220,7 +227,13 @@ fn call_of<'a>(c: &'a mut Caller<'_, Host>) -> Result<&'a mut Call, Trap> {
 }
 
 /// `n` bytes of the plugin's memory at `ptr`, copied.
-fn bytes(c: &Caller<'_, Host>, ptr: u32, n: u32, max: u32, what: &str) -> Result<Vec<u8>, Trap> {
+pub(crate) fn bytes(
+    c: &Caller<'_, Host>,
+    ptr: u32,
+    n: u32,
+    max: u32,
+    what: &str,
+) -> Result<Vec<u8>, Trap> {
     if n > max {
         return Err(abi(what));
     }
@@ -255,7 +268,7 @@ fn value(c: &Caller<'_, Host>, ptr: u32, n: u32) -> Result<String, Trap> {
 }
 
 /// Whether `b` may be in a token (RFC 9110, section 5.6.2).
-fn is_tchar(b: u8) -> bool {
+pub(crate) fn is_tchar(b: u8) -> bool {
     b.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&b)
 }
 
@@ -387,7 +400,7 @@ pub(crate) fn link(l: &mut Linker<Host>) -> Result<(), LinkError> {
 
 /// Writes a plugin's log line to standard error, its control characters escaped. On the pool's
 /// thread, within the call's time.
-fn write_log(path: &str, level: i32, msg: &[u8]) {
+pub(crate) fn write_log(path: &str, level: i32, msg: &[u8]) {
     let level = match level {
         i32::MIN..=-1 => "DEBUG",
         0..=3 => "INFO",
@@ -456,6 +469,7 @@ mod tests {
                 .map(|(i, (n, p, r))| Func::export(n, *p, *r, encode::forward(i as u32, *p)))
                 .collect(),
             pages: 1,
+            data: Vec::new(),
         };
         Arc::new(Module::new(&m.encode(), &ModuleLimits::default()).unwrap())
     }

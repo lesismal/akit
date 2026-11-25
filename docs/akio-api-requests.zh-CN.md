@@ -1392,6 +1392,10 @@ ADR-125 的里程碑 W6；已在 akio 的 main（`dad77a7a`），已锁定。
 插件的修改并恢复，或以 `respond` 发出其本地响应，或按 `on_error` 使响应失败。请求阶段记录的对响应的修改先行应用（与
 现在一样用响应过滤器）。
 
+**I72 起已使用**（`crates/akit-plugin/src/response.rs`）：如上，只为导出 `proxy_on_response_headers` 的过滤器
+注册扣住，最长 `wait_timeout` + `timeout` + 1 秒；它发出的本地响应用 `HeldHead::respond` 发送
+（[决定 011](decisions/011-proxy-wasm.zh-CN.md)）。
+
 ## A167 由别处进行的调用过滤响应 body
 
 **状态。** 已在 akio 分支 `claude/akio-wasm-w6-afc4f2` 上实现（`dad77a7a`），即 akio 的 ADR-128，ADR-125 的
@@ -1418,6 +1422,9 @@ body）和 tap；由客户端限速（连接积压超过 256 KiB 时下一次调
 处理插件扣住的内容（暂停时以空内容应答，到末尾时以扣住的全部内容应答，最多为插件的 `max_body_bytes`），最后一次调用
 以 trailer 调用 `proxy_on_response_trailers`。`on_end` 把 `proxy_on_done`、`proxy_on_log` 和 `proxy_on_delete`
 排入队列。`response: headers` 不注册 body 过滤器，文件 body 因此仍用 `sendfile`。
+
+**I72 起已使用**（`crates/akit-plugin/src/response.rs`）：如上，只是上下文在最后一次调用中关闭（done、log、delete），
+或者在响应的钩子被丢弃时由排队的任务关闭，而不是从 `on_end` 中关闭。
 
 ## A170 连接的 TCP 计数，以及先写数据再拼接
 

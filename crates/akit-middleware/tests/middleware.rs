@@ -990,30 +990,53 @@ fn param_errors() {
     );
 }
 
-// What fit has and akit does not yet: refused as not supported yet, naming the field.
+// Every middleware of fit's is read (I71), with every param (Proxy-Wasm's since I72): what
+// is refused is refused for its value, naming the field.
 #[test]
 fn not_supported_yet() {
     for (name, params, want) in [
-        // Every middleware of fit's is read (I71); Proxy-Wasm's params of `wasm` are I72's.
         (
             "wasm",
-            r#"{"path": "p.wasm", "vm_config": "v"}"#,
-            "routes[0].middleware[0].params.vm_config: not supported yet",
+            r#"{"path": "p.wasm", "response": "body"}"#,
+            r#"routes[0].middleware[0].params.response: "body" is not one of "all", "headers", "none""#,
         ),
         (
             "wasm",
-            r#"{"path": "p.wasm", "properties": []}"#,
-            "routes[0].middleware[0].params.properties: not supported yet",
+            r#"{"path": "p.wasm", "properties": [{"value": "v"}]}"#,
+            "routes[0].middleware[0].params.properties[0].path: missing required field",
+        ),
+        (
+            "wasm",
+            r#"{"path": "p.wasm", "properties": [{"path": ["a"], "other": 1}]}"#,
+            "routes[0].middleware[0].params.properties[0].other: unknown field",
+        ),
+        (
+            "wasm",
+            r#"{"path": "p.wasm", "max_streams": 65537}"#,
+            "routes[0].middleware[0].params.max_streams: 65537 is greater than the maximum 65536",
+        ),
+        (
+            "wasm",
+            r#"{"path": "p.wasm", "max_body_bytes": -1}"#,
+            "routes[0].middleware[0].params.max_body_bytes: -1 is less than the minimum 0",
         ),
     ] {
         let config = with_middleware(name, params);
         let e = akit_config::from_json(&config, None).unwrap_err();
-        assert!(e.only_not_supported_yet(), "{name} {params}: {e}");
+        assert!(!e.only_not_supported_yet(), "{name} {params}: {e}");
         assert!(
             e.to_string().contains(want),
             "{name} {params}: {e}; want {want:?}"
         );
     }
+    akit_config::from_json(
+        &with_middleware(
+            "wasm",
+            r#"{"path": "p.wasm", "vm_config": "v", "properties": [{"path": ["a", "b"], "value": "c"}], "response": "none", "max_streams": 8, "max_body_bytes": 4096}"#,
+        ),
+        None,
+    )
+    .unwrap();
     // Without a regexp, `$1` is text.
     akit_config::from_json(&with_middleware("redirect", r#"{"to": "/a$1"}"#), None).unwrap();
 }

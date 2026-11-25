@@ -600,9 +600,7 @@ providers[].etcd.request_timeout
 # I71: wasm, a WebAssembly plugin of fit's ABI (fit_on_request and the host module "fit") run for
 # each request on akio-wasm's instance pool (akio ADR-125), never on an I/O thread, the request
 # suspended meanwhile and its fields changed through akio's Context::req_mut (ADR-126); each call
-# bounded by timeout and max_memory_bytes, the queue and wait_timeout answering 503. The fields
-# only a Proxy-Wasm plugin uses (vm_config, properties, response, max_streams, max_body_bytes)
-# are I72's.
+# bounded by timeout and max_memory_bytes, the queue and wait_timeout answering 503.
 routes[].middleware[]<wasm>
 routes[].middleware[]<wasm>.params
 routes[].middleware[]<wasm>.params.path
@@ -614,3 +612,12 @@ routes[].middleware[]<wasm>.params.wait_timeout
 routes[].middleware[]<wasm>.params.max_memory_bytes
 routes[].middleware[]<wasm>.params.max_memory
 routes[].middleware[]<wasm>.params.on_error
+# I72: Proxy-Wasm's subset fit supports: a filter's request phase and its response's callbacks
+# (the head held on akio's A166, the body through A167's body filters), on the same pool.
+routes[].middleware[]<wasm>.params.vm_config
+routes[].middleware[]<wasm>.params.properties
+routes[].middleware[]<wasm>.params.properties[].path
+routes[].middleware[]<wasm>.params.properties[].value
+routes[].middleware[]<wasm>.params.response
+routes[].middleware[]<wasm>.params.max_streams
+routes[].middleware[]<wasm>.params.max_body_bytes

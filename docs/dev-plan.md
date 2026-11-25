@@ -176,7 +176,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I69 | Cache III: purge and tags | I68, I27 | done |
 | I70 | `akit build` | I03 | done |
 | I71 | WASM I: runtime and ABI | I03 | done |
-| I72 | WASM II: the Proxy-Wasm subset | I71 | todo |
+| I72 | WASM II: the Proxy-Wasm subset | I71 | done |
 | I73 | `akit adapt` and `akit fmt` | I23, I24 | done |
 | I74 | nginx and Caddyfile converters | I73 | done |
 | I75 | FastCGI | I16 | done |
@@ -235,7 +235,7 @@ commit and result.
 | Forward proxy: SOCKS and HTTP CONNECT | I55 | no | no (built, not measured) | Against fit (and nginx's `stream` for raw throughput): bytes a second through a SOCKS5 tunnel and an HTTP/1.1 CONNECT tunnel (256 KB echoed at a time, as fit's `BenchmarkTCPProxy`), tunnels opened a second (the handshake, the rules' checks, a name resolved on the pool and the `connected` check), memory per idle tunnel; the cost of SOCKS on a shared port (akio-mux's greeting rule beside HTTP and TLS) against HTTP alone; akio-socks's watchdog thread (the connect timeout added to it, ADR-119) with 10,000 tunnels. |
 | Response cache | I67, I68, I69 | no | no (memory and disk tiers and purges built, not measured) | Against fit, as I67 built it: hits from memory (a 4 KiB and a 1 MiB body, HTTP/1.1 and h2), misses kept through the proxy (a streamed body copied by the tap) against the proxy alone, the cost on requests the cache passes through (POST, `no-store` responses) against no middleware, the shards' locks under many keys and one hot key. I68: hits read back from disk (64 KiB and 1 MiB, the disk pool's threads and queue under many at once), writes to disk under a miss rate that fills `MAX_PENDING_WRITES`, a stampede of many clients on one key with the lock and with `disable_lock` (the waiters' suspend and resume, the timer per fetch), and stale-while-revalidate's background fetches. akio's ADR-116 tap: a tapped stream against an untapped one. I69: storing tagged responses (none and 32 tags) against untagged ones, and purges of a large zone by prefix and by tag while it serves (the shards' and the disk index's lock hold times). |
 | FastCGI | I75 | no | no (built, not measured) | Against fit and nginx's `fastcgi_pass`, PHP-FPM (or a FastCGI application that answers at once) over TCP and a Unix-domain socket: requests a second and latency for a small page, HTTP/1.1 and h2; a 1 MiB upload and a 16 MiB download (memory per request in flight, the 64 KiB watermarks both ways); keep-alive reuse against a connection a request; the pool's queue under more clients than `max_conns`; the cost of `try_files` (a `stat` on akio's logical pool a candidate) against a route without it; the handler's sweep every 100 ms on akit's timer thread (A45's stopgap) over its exchanges at many requests a second. |
-| WASM plugins | I71, I72 | no | no (I71 built, not measured) | Against fit (wazero's compiler) and none: a request through fit's `headers` plugin (Go guest) and through a no-op one (`fit_on_request` returning 0), HTTP/1.1 and h2, requests a second and latency, against the route without the middleware (the hand-off to the pool and back, the request copied, the call); the guest call alone on an instance (akio's W5: akio-wasm's interpreter against wazero's interpreter and compiler); the pool under more clients than `instances` (the queue, 503 past it); an instance remade after a trap (a Go guest's `_initialize`). |
+| WASM plugins | I71, I72 | no | no (I71 and I72 built, not measured) | Against fit (wazero's compiler) and none: a request through fit's `headers` plugin (Go guest) and through a no-op one (`fit_on_request` returning 0), HTTP/1.1 and h2, requests a second and latency, against the route without the middleware (the hand-off to the pool and back, the request copied, the call); the guest call alone on an instance (akio's W5: akio-wasm's interpreter against wazero's interpreter and compiler); the pool under more clients than `instances` (the queue, 503 past it); an instance remade after a trap (a Go guest's `_initialize`). Proxy-Wasm (I72): a request through the Proxy-Wasm Go SDK's `http_routing` (config `1`, the request unchanged) against fit and none, as fit's `BenchmarkProxyWasm`; a response through fit's `response` filter (`upper`) and the SDK's `http_headers`, the head held and the body filtered on the pool, a whole 4 KiB body and a streamed 1 MiB one, HTTP/1.1 and h2, against `response: none` and none. |
 
 ## M0, foundations
 
@@ -940,6 +940,10 @@ Split from I07 so that the half that needs no config model runs beside I02.
 - **Do**: the Proxy-Wasm subset fit supports.
 - **Done when**: fit's Proxy-Wasm tests, ported, pass.
 - **Touches**: `akit-plugin`.
+- **fit**: decisions 018, 023.
+- **Status**: done (2026-11-25), on akio's held heads and body filters (ADR-128, akio API requests
+  A166 and A167), [decision 011](decisions/011-proxy-wasm.md); the cost is left to the benchmark
+  tasks (rule 30, the row above); see the progress log.
 
 ### I73 `akit adapt` and `akit fmt`
 

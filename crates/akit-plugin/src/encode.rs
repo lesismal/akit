@@ -11,16 +11,22 @@ pub const OP_END: u8 = 0x0b;
 pub const OP_CALL: u8 = 0x10;
 pub const OP_LOCAL_GET: u8 = 0x20;
 pub const OP_I32_CONST: u8 = 0x41;
+pub const OP_DROP: u8 = 0x1a;
+pub const OP_I32_LOAD: u8 = 0x28;
+pub const OP_I32_EQZ: u8 = 0x45;
+pub const OP_I64_EXTEND_I32_S: u8 = 0xac;
 pub const BLOCK_EMPTY: u8 = 0x40;
-const TYPE_I32: u8 = 0x7f;
+pub const TYPE_I32: u8 = 0x7f;
+pub const TYPE_I64: u8 = 0x7e;
 
-/// A function a module imports, of i32 params and results.
+/// A function a module imports, of i32 params and results (or the params `param_types` says).
 #[derive(Debug, Clone, Default)]
 pub struct Import {
     pub module: String,
     pub name: String,
     pub params: usize,
     pub results: usize,
+    pub param_types: Vec<u8>,
 }
 
 impl Import {
@@ -32,6 +38,7 @@ impl Import {
             name: name.to_owned(),
             params,
             results,
+            param_types: Vec::new(),
         }
     }
 }
@@ -59,13 +66,14 @@ impl Func {
     }
 }
 
-/// A module: its imports and functions, and a memory of `pages` exported as `memory` unless
-/// `pages` is 0.
+/// A module: its imports and functions, a memory of `pages` exported as `memory` unless `pages`
+/// is 0, and the bytes `data` writes into it at its offsets.
 #[derive(Debug, Clone, Default)]
 pub struct Module {
     pub imports: Vec<Import>,
     pub funcs: Vec<Func>,
     pub pages: u32,
+    pub data: Vec<(u32, Vec<u8>)>,
 }
 
 fn uleb(b: &mut Vec<u8>, mut v: u64) {
@@ -107,11 +115,32 @@ fn section(b: &mut Vec<u8>, id: u8, count: usize, items: &[u8]) {
 }
 
 fn func_type(b: &mut Vec<u8>, params: usize, results: usize) {
+    func_type_of(b, &vec![TYPE_I32; params], results);
+}
+
+fn func_type_of(b: &mut Vec<u8>, params: &[u8], results: usize) {
     b.push(0x60);
-    uleb(b, params as u64);
-    b.extend(std::iter::repeat_n(TYPE_I32, params));
+    uleb(b, params.len() as u64);
+    b.extend_from_slice(params);
     uleb(b, results as u64);
     b.extend(std::iter::repeat_n(TYPE_I32, results));
+}
+
+/// A body that calls function `f` with the i32 constants `args`, dropping what it returns
+/// (`results` of them), then returns `ret`.
+#[must_use]
+pub fn call_with(f: u32, args: &[i32], results: usize, ret: Option<i32>) -> Vec<u8> {
+    let mut b = Vec::new();
+    for &a in args {
+        b.extend(i32_const(a));
+    }
+    b.push(OP_CALL);
+    uleb(&mut b, u64::from(f));
+    b.extend(std::iter::repeat_n(OP_DROP, results));
+    if let Some(r) = ret {
+        b.extend(i32_const(r));
+    }
+    b
 }
 
 /// The instruction `i32.const v`.
@@ -149,7 +178,11 @@ impl Module {
         // One type for each import and function, in that order.
         let mut types = Vec::new();
         for im in &self.imports {
-            func_type(&mut types, im.params, im.results);
+            if im.param_types.is_empty() {
+                func_type(&mut types, im.params, im.results);
+            } else {
+                func_type_of(&mut types, &im.param_types, im.results);
+            }
         }
         for f in &self.funcs {
             func_type(&mut types, f.params, f.results);
@@ -200,6 +233,18 @@ impl Module {
             code.extend_from_slice(&body);
         }
         section(&mut b, 10, self.funcs.len(), &code);
+        if !self.data.is_empty() {
+            let mut data = Vec::new();
+            for (at, bytes) in &self.data {
+                data.push(0x00);
+                data.push(OP_I32_CONST);
+                sleb(&mut data, i64::from(*at as i32));
+                data.push(OP_END);
+                uleb(&mut data, bytes.len() as u64);
+                data.extend_from_slice(bytes);
+            }
+            section(&mut b, 11, self.data.len(), &data);
+        }
         b
     }
 }
