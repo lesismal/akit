@@ -1,0 +1,148 @@
+{
+  "listeners": [
+    {
+      "name": "http_8080",
+      "address": ":8080",
+      "protocols": [
+        "http/1.1"
+      ]
+    }
+  ],
+  "upstreams": [
+    {
+      "name": "proxy_127_0_0_1_7700",
+      "addresses": [
+        "127.0.0.1:7700"
+      ]
+    }
+  ],
+  "routes": [
+    {
+      "name": "docs.example.org-nginx_status",
+      "listeners": [
+        "http_8080"
+      ],
+      "priority": 30000,
+      "match": {
+        "host": [
+          "docs.example.org"
+        ],
+        "path": [
+          "/nginx_status"
+        ]
+      },
+      "handler": {
+        "module": "static",
+        "params": {
+          "root": "/srv/docs"
+        }
+      }
+    },
+    {
+      "name": "docs.example.org-assets",
+      "listeners": [
+        "http_8080"
+      ],
+      "match": {
+        "host": [
+          "docs.example.org"
+        ],
+        "path": [
+          "/assets/*"
+        ]
+      },
+      "handler": {
+        "module": "static",
+        "params": {
+          "root": "/srv/docs"
+        }
+      }
+    },
+    {
+      "name": "docs.example.org-search",
+      "listeners": [
+        "http_8080"
+      ],
+      "match": {
+        "host": [
+          "docs.example.org"
+        ],
+        "path": [
+          "/search*"
+        ]
+      },
+      "handler": {
+        "module": "proxy",
+        "params": {
+          "upstream": "proxy_127_0_0_1_7700"
+        }
+      }
+    },
+    {
+      "name": "docs.example.org-private",
+      "listeners": [
+        "http_8080"
+      ],
+      "match": {
+        "host": [
+          "docs.example.org"
+        ],
+        "path": [
+          "/private/*"
+        ]
+      },
+      "handler": {
+        "module": "respond",
+        "params": {
+          "status": 401
+        }
+      }
+    },
+    {
+      "name": "docs.example.org-counter",
+      "listeners": [
+        "http_8080"
+      ],
+      "priority": 30000,
+      "match": {
+        "host": [
+          "docs.example.org"
+        ],
+        "path": [
+          "/counter"
+        ]
+      },
+      "handler": {
+        "module": "static",
+        "params": {
+          "root": "/srv/docs"
+        }
+      }
+    },
+    {
+      "name": "docs.example.org",
+      "listeners": [
+        "http_8080"
+      ],
+      "match": {
+        "host": [
+          "docs.example.org"
+        ],
+        "path": [
+          "/*"
+        ]
+      },
+      "handler": {
+        "module": "static",
+        "params": {
+          "root": "/srv/docs",
+          "try_files": [
+            "{path}",
+            "{path}/",
+            "/index.html"
+          ]
+        }
+      }
+    }
+  ]
+}

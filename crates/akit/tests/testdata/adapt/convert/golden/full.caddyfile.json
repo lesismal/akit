@@ -1,0 +1,350 @@
+{
+  "listeners": [
+    {
+      "name": "https_443",
+      "address": ":443",
+      "protocols": [
+        "http/1.1",
+        "h2",
+        "h3"
+      ],
+      "tls": {
+        "certificates": [
+          {
+            "cert_file": "/etc/ssl/example.pem",
+            "key_file": "/etc/ssl/example.key"
+          }
+        ]
+      }
+    },
+    {
+      "name": "http_8080",
+      "address": ":8080",
+      "protocols": [
+        "http/1.1"
+      ]
+    },
+    {
+      "name": "http_80",
+      "address": ":80",
+      "protocols": [
+        "http/1.1"
+      ]
+    }
+  ],
+  "routes": [
+    {
+      "name": "example.com-api",
+      "listeners": [
+        "https_443"
+      ],
+      "match": {
+        "host": [
+          "example.com",
+          "www.example.com"
+        ],
+        "path": [
+          "/api/*"
+        ],
+        "method": [
+          "GET",
+          "POST"
+        ]
+      },
+      "middleware": [
+        {
+          "module": "headers",
+          "params": {
+            "response": {
+              "delete": [
+                "Server"
+              ],
+              "set": {
+                "X-Frame-Options": "DENY"
+              }
+            }
+          }
+        },
+        {
+          "module": "compress",
+          "params": {
+            "encodings": [
+              "gzip"
+            ]
+          }
+        },
+        {
+          "module": "headers",
+          "params": {
+            "response": {
+              "delete": [
+                "X-Powered-By"
+              ]
+            }
+          }
+        }
+      ],
+      "handler": {
+        "module": "proxy",
+        "params": {
+          "host_header": "backend.internal:8443",
+          "upstream": "proxy_backend_internal_8443"
+        }
+      }
+    },
+    {
+      "name": "example.com-old",
+      "listeners": [
+        "https_443"
+      ],
+      "match": {
+        "host": [
+          "example.com",
+          "www.example.com"
+        ],
+        "path": [
+          "/old"
+        ]
+      },
+      "middleware": [
+        {
+          "module": "headers",
+          "params": {
+            "response": {
+              "delete": [
+                "Server"
+              ],
+              "set": {
+                "X-Frame-Options": "DENY"
+              }
+            }
+          }
+        },
+        {
+          "module": "redirect",
+          "params": {
+            "status": 301,
+            "to": "/new"
+          }
+        },
+        {
+          "module": "compress",
+          "params": {
+            "encodings": [
+              "gzip"
+            ]
+          }
+        }
+      ],
+      "handler": {
+        "module": "static",
+        "params": {
+          "browse": true,
+          "root": "/srv/www"
+        }
+      }
+    },
+    {
+      "name": "example.com-admin",
+      "listeners": [
+        "https_443"
+      ],
+      "match": {
+        "host": [
+          "example.com",
+          "www.example.com"
+        ],
+        "path": [
+          "/admin/*"
+        ]
+      },
+      "middleware": [
+        {
+          "module": "headers",
+          "params": {
+            "response": {
+              "delete": [
+                "Server"
+              ],
+              "set": {
+                "X-Frame-Options": "DENY"
+              }
+            }
+          }
+        },
+        {
+          "module": "basic_auth",
+          "params": {
+            "users": [
+              {
+                "password_hash": "$2a$14$Zkx19XLiW6VYouLHR5NmfOFU0z2GTNmpkT/5qqR7hx4IjWJPDhjvG",
+                "username": "alice"
+              }
+            ]
+          }
+        },
+        {
+          "module": "compress",
+          "params": {
+            "encodings": [
+              "gzip"
+            ]
+          }
+        }
+      ],
+      "handler": {
+        "module": "static",
+        "params": {
+          "browse": true,
+          "root": "/srv/www"
+        }
+      }
+    },
+    {
+      "name": "example.com",
+      "listeners": [
+        "https_443"
+      ],
+      "match": {
+        "host": [
+          "example.com",
+          "www.example.com"
+        ]
+      },
+      "middleware": [
+        {
+          "module": "headers",
+          "params": {
+            "response": {
+              "delete": [
+                "Server"
+              ],
+              "set": {
+                "X-Frame-Options": "DENY"
+              }
+            }
+          }
+        },
+        {
+          "module": "compress",
+          "params": {
+            "encodings": [
+              "gzip"
+            ]
+          }
+        }
+      ],
+      "handler": {
+        "module": "static",
+        "params": {
+          "browse": true,
+          "root": "/srv/www"
+        }
+      }
+    },
+    {
+      "name": "port8080-health",
+      "listeners": [
+        "http_8080"
+      ],
+      "match": {
+        "path": [
+          "/health"
+        ]
+      },
+      "handler": {
+        "module": "respond",
+        "params": {
+          "body": "ok",
+          "status": 200
+        }
+      }
+    },
+    {
+      "name": "port8080",
+      "listeners": [
+        "http_8080"
+      ],
+      "handler": {
+        "module": "proxy",
+        "params": {
+          "upstream": "proxy_localhost_3000"
+        }
+      }
+    },
+    {
+      "name": "static.example.com",
+      "listeners": [
+        "http_80"
+      ],
+      "match": {
+        "host": [
+          "static.example.com"
+        ]
+      },
+      "handler": {
+        "module": "static",
+        "params": {
+          "precompressed": [
+            "br",
+            "gzip"
+          ],
+          "root": "/var/www/static",
+          "try_files": [
+            "{path}",
+            "/index.html"
+          ]
+        }
+      }
+    },
+    {
+      "name": "redirect-https",
+      "listeners": [
+        "http_80"
+      ],
+      "match": {
+        "host": [
+          "example.com",
+          "www.example.com"
+        ]
+      },
+      "middleware": [
+        {
+          "module": "redirect",
+          "params": {
+            "status": 308,
+            "to": "https://{host}{uri}"
+          }
+        }
+      ],
+      "handler": {
+        "module": "respond"
+      }
+    }
+  ],
+  "upstreams": [
+    {
+      "name": "proxy_backend_internal_8443",
+      "addresses": [
+        "backend.internal:8443"
+      ],
+      "connect_timeout": "5s",
+      "protocol": "h2"
+    },
+    {
+      "name": "proxy_localhost_3000",
+      "addresses": [
+        "localhost:3000"
+      ]
+    }
+  ],
+  "access_log": {
+    "output": "/var/log/fit/access.log"
+  },
+  "admin": {
+    "address": "localhost:2019"
+  },
+  "acme": {
+    "email": "ops@example.com"
+  }
+}

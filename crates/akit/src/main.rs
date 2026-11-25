@@ -63,7 +63,8 @@ Usage:
 Commands:
   run        run a config
   validate   check a config, without running it
-  adapt      convert a config between .conf, YAML and native JSON
+  adapt      convert a config between .conf, YAML and native JSON, or an
+             nginx config or a Caddyfile into one of them
   fmt        write a config's files again, each in its own format
   version    print akit's version and the akio commit it is built on
   help       print this help

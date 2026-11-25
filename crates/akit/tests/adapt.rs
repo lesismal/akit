@@ -146,6 +146,118 @@ fn fits_templates_and_examples_convert_as_fit_converts_them() {
     );
 }
 
+/// fit's nginx configs and Caddyfiles (its converters' samples, its assistant's migration cases
+/// and its benchmark's configs, copied to `testdata/adapt/convert`) converted with `akit adapt
+/// -from nginx` and `-from caddyfile` to each format as `fit adapt` converts them: the exit code,
+/// the output and the warnings byte for byte (I74; golden files fit wrote, with
+/// `tools/adapt-golden/run.sh`).
+#[test]
+fn nginx_configs_and_caddyfiles_convert_as_fit_converts_them() {
+    let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/testdata/adapt/convert");
+    let cases = fs::read_to_string(base.join("../convert-cases.txt")).unwrap();
+    let mut wrong = Vec::new();
+    let mut n = 0;
+    for l in cases.lines() {
+        let c: Vec<&str> = l.split('\t').collect();
+        let (input, from, to, code, golden) = (c[0], c[1], c[2], c[3], c[4]);
+        n += 1;
+        // The environment fit's golden files were written with, for a Caddyfile's {$NAME}.
+        let out = Command::new(env!("CARGO_BIN_EXE_akit"))
+            .current_dir(root())
+            .args(["adapt", "-from", from, "-c", input, "-to", to])
+            .env_clear()
+            .env("FIT_TEST_PORT", "9000")
+            .output()
+            .unwrap();
+        let want_out = fs::read_to_string(base.join(golden)).unwrap();
+        let want_err = fs::read_to_string(base.join(format!("{golden}.stderr"))).unwrap();
+        let got = out.status.code().unwrap().to_string();
+        // akit's warnings of the fields it does not run yet (a converted error_log is fit's log)
+        // come first; the rest is fit's.
+        let stderr = text(&out.stderr);
+        let (akit_warns, rest): (Vec<&str>, Vec<&str>) = stderr
+            .lines()
+            .partition(|l| l.starts_with("akit adapt: warning: "));
+        let rest: String = rest.iter().map(|l| format!("{l}\n")).collect();
+        let only_unsupported = akit_warns
+            .iter()
+            .all(|w| w.ends_with(": not supported yet; converted as written"));
+        if got != code || text(&out.stdout) != want_out || rest != want_err || !only_unsupported {
+            wrong.push(format!(
+                "{input} -from {from} -to {to}: exit {got} (fit: {code})\n--- akit\n{}{}--- fit\n{want_err}{want_out}",
+                text(&out.stderr),
+                text(&out.stdout),
+            ));
+        }
+    }
+    assert!(n >= 30, "only {n} cases");
+    assert!(
+        wrong.is_empty(),
+        "{} of {n} cases differ from fit:\n{}",
+        wrong.len(),
+        wrong.iter().take(3).cloned().collect::<String>()
+    );
+}
+
+/// A converted config's problems are placed at the lines of the nginx config they came from,
+/// as fit places them; the converter's warnings follow, each naming the file.
+#[test]
+fn converted_configs_place_their_problems_at_the_sources_lines() {
+    let d = dir("convert-errors");
+    let bad = write(
+        &d,
+        "bad.conf",
+        "http {\n  server {\n    listen 80;\n    location /a {\n      return 204;\n    }\n    location b {\n      gzip_comp_level 0;\n      return 204;\n    }\n  }\n}\n",
+    );
+    let out = akit(&["adapt", "-from", "nginx", "-c", bad.to_str().unwrap()]);
+    let err = text(&out.stderr);
+    assert_eq!(out.status.code(), Some(1), "{err}");
+    assert_eq!(
+        err,
+        format!(
+            "{}:7:1: routes[1].match.path[0]: \"b*\" does not start with '/'\n",
+            bad.display()
+        )
+    );
+
+    // Standard input, written as fit's .conf.
+    let src = "http { server { listen 8080; server_name a.test; ssl_protocols TLSv1.3; location / { return 200 \"hi\"; } } }\n";
+    let out = akit_in(
+        &root(),
+        &["adapt", "-from", "nginx", "-c", "-", "-to", "fit"],
+        Some(src),
+    );
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out.stderr));
+    assert_eq!(
+        text(&out.stderr),
+        "-: warning: line 1: ssl_protocols: skipped: fit picks TLS versions and ciphers, and staples OCSP, itself\n"
+    );
+    assert!(
+        text(&out.stdout).contains("a.test"),
+        "{}",
+        text(&out.stdout)
+    );
+    let o = d.join("out.yaml");
+    let out = akit_in(
+        &root(),
+        &[
+            "adapt",
+            "-from",
+            "nginx",
+            "-c",
+            "-",
+            "-to",
+            "yaml",
+            "-o",
+            o.to_str().unwrap(),
+        ],
+        Some(src),
+    );
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out.stderr));
+    assert!(fs::read_to_string(&o).unwrap().contains("listeners:"));
+    let _ = fs::remove_dir_all(&d);
+}
+
 #[test]
 fn every_template_and_example_round_trips_through_every_format() {
     let d = dir("round-trips");
@@ -307,11 +419,25 @@ fn flags_and_their_errors() {
             2,
             "-to \"toml\": json, yaml or fit",
         ),
-        (vec!["-c", hello, "-from", "nginx"], 1, "not supported yet"),
+        (
+            vec!["-c", hello, "-from", "nginx"],
+            1,
+            "fit/hello.json: line 5: name does not end with \";\"",
+        ),
+        (
+            vec!["-c", hello, "-from", "caddyfile"],
+            1,
+            "fit/hello.json: line 3: a block that does not end",
+        ),
+        (
+            vec!["-c", hello, "-c", hello, "-from", "nginx"],
+            2,
+            "-from is for a single file",
+        ),
         (
             vec!["-c", hello, "-from", "xml"],
             1,
-            "there is no adapter \"xml\"",
+            "there is no adapter \"xml\" (there are caddyfile, fit, nginx, yaml)",
         ),
     ] {
         let mut a = vec!["adapt"];

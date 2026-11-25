@@ -6333,7 +6333,8 @@ pub(crate) fn check_host(host: &str) -> Result<(), String> {
     }
     if name.trim_matches(['[', ']']).parse::<IpAddr>().is_ok() {
         return if wild {
-            Err(format!("{host:?} puts a wildcard on an IP address"))
+            // fit writes the host between quotes as it is, not escaped.
+            Err(format!("\"{host}\" puts a wildcard on an IP address"))
         } else {
             Ok(())
         };
@@ -6348,7 +6349,7 @@ pub(crate) fn check_host(host: &str) -> Result<(), String> {
     if name.split('.').all(label_ok) {
         Ok(())
     } else {
-        Err(format!("{host:?} is not a valid host name"))
+        Err(format!("\"{host}\" is not a valid host name"))
     }
 }
 

@@ -614,7 +614,7 @@ fn unquote(lit: &[u8]) -> Option<Vec<u8>> {
 
 /// Go's `strconv.Quote` of `s`, whose bytes need not be UTF-8: printable characters as they
 /// are, the rest escaped.
-pub(crate) fn go_quote(s: &[u8]) -> String {
+pub fn go_quote(s: &[u8]) -> String {
     let mut out = String::with_capacity(s.len().saturating_add(2));
     out.push('"');
     for chunk in s.utf8_chunks() {

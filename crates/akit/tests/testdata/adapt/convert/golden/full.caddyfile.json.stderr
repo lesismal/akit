@@ -1,0 +1,4 @@
+crates/akit/tests/testdata/adapt/convert/full.caddyfile: warning: line 7: grace_period: skipped: not converted: fit's defaults stand in for it
+crates/akit/tests/testdata/adapt/convert/full.caddyfile: warning: line 27: @bad: CEL expressions are not converted; what uses it is skipped
+crates/akit/tests/testdata/adapt/convert/full.caddyfile: warning: line 35: header_up X-Real-IP: skipped: fit's proxy sets X-Forwarded-For, -Proto and -Host itself
+crates/akit/tests/testdata/adapt/convert/full.caddyfile: warning: line 44: templates: skipped: not converted

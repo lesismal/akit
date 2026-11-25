@@ -1,0 +1,14 @@
+crates/akit/tests/testdata/adapt/convert/bench.caddyfile: warning: line 19: servers :8080: its options apply to every listener
+crates/akit/tests/testdata/adapt/convert/bench.caddyfile: warning: line 21: timeouts: skipped: not converted: fit's limits and timeouts are set at the top of its config
+crates/akit/tests/testdata/adapt/convert/bench.caddyfile: warning: line 25: servers :8081: its options apply to every listener
+crates/akit/tests/testdata/adapt/convert/bench.caddyfile: warning: line 27: timeouts: skipped: not converted: fit's limits and timeouts are set at the top of its config
+crates/akit/tests/testdata/adapt/convert/bench.caddyfile: warning: line 31: servers :8443: its options apply to every listener
+crates/akit/tests/testdata/adapt/convert/bench.caddyfile: warning: line 33: timeouts: skipped: not converted: fit's limits and timeouts are set at the top of its config
+crates/akit/tests/testdata/adapt/convert/bench.caddyfile: warning: line 37: servers :8444: its options apply to every listener
+crates/akit/tests/testdata/adapt/convert/bench.caddyfile: warning: line 39: timeouts: skipped: not converted: fit's limits and timeouts are set at the top of its config
+crates/akit/tests/testdata/adapt/convert/bench.caddyfile: warning: line 45: servers :8445: its options apply to every listener
+crates/akit/tests/testdata/adapt/convert/bench.caddyfile: warning: line 47: timeouts: skipped: not converted: fit's limits and timeouts are set at the top of its config
+crates/akit/tests/testdata/adapt/convert/bench.caddyfile: warning: line 90: reverse_proxy {{BACKEND}}: skipped: placeholders are not converted
+crates/akit/tests/testdata/adapt/convert/bench.caddyfile: warning: line 90: reverse_proxy: skipped: none of its addresses converted
+crates/akit/tests/testdata/adapt/convert/bench.caddyfile: warning: line 101: reverse_proxy {{WSBACKEND}}: skipped: placeholders are not converted
+crates/akit/tests/testdata/adapt/convert/bench.caddyfile: warning: line 101: reverse_proxy: skipped: none of its addresses converted

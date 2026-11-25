@@ -1,0 +1,147 @@
+listeners:
+  - name: http_8080
+    address: :8080
+    protocols:
+      - http/1.1
+routes:
+  - name: app.test-health
+    listeners:
+      - http_8080
+    priority: 30000
+    match:
+      host:
+        - app.test
+        - '**.app.test'
+      path:
+        - /health
+    middleware:
+      - module: headers
+        params:
+          response:
+            add:
+              X-Frame-Options:
+                - DENY
+    handler:
+      module: respond
+      params:
+        body: ok
+        status: 200
+  - name: app.test-_._css_js_png
+    listeners:
+      - http_8080
+    priority: 9999
+    match:
+      host:
+        - app.test
+        - '**.app.test'
+      path_regexp:
+        - (?i)\.(css|js|png)$
+    middleware:
+      - module: headers
+        params:
+          response:
+            add:
+              Cache-Control:
+                - public, max-age=86400
+    handler:
+      module: static
+      params:
+        root: /srv/app
+  - name: app.test-downloads
+    listeners:
+      - http_8080
+    priority: 20000
+    match:
+      host:
+        - app.test
+        - '**.app.test'
+      path:
+        - /downloads/*
+    middleware:
+      - module: headers
+        params:
+          response:
+            add:
+              X-Frame-Options:
+                - DENY
+    handler:
+      module: static
+      params:
+        root: /srv/files
+        strip_prefix: /downloads
+  - name: app.test-old
+    listeners:
+      - http_8080
+    match:
+      host:
+        - app.test
+        - '**.app.test'
+      path:
+        - /old/*
+    middleware:
+      - module: redirect
+        params:
+          regexp: ^/old/(.*)$
+          status: 301
+          to: /new/$1
+      - module: headers
+        params:
+          response:
+            add:
+              X-Frame-Options:
+                - DENY
+    handler:
+      module: static
+      params:
+        root: /srv/app
+  - name: app.test-docs
+    listeners:
+      - http_8080
+    match:
+      host:
+        - app.test
+        - '**.app.test'
+      path:
+        - /docs/*
+    middleware:
+      - module: rewrite
+        params:
+          regexp: ^/docs/(.*)$
+          replacement: /manual/$1
+      - module: headers
+        params:
+          response:
+            add:
+              X-Frame-Options:
+                - DENY
+    handler:
+      module: static
+      params:
+        root: /srv/app
+        try_files:
+          - '{path}'
+          - '{path}/'
+  - name: app.test
+    listeners:
+      - http_8080
+    match:
+      host:
+        - app.test
+        - '**.app.test'
+      path:
+        - /*
+    middleware:
+      - module: headers
+        params:
+          response:
+            add:
+              X-Frame-Options:
+                - DENY
+    handler:
+      module: static
+      params:
+        root: /srv/app
+        try_files:
+          - '{path}'
+          - '{path}/'
+          - /index.html

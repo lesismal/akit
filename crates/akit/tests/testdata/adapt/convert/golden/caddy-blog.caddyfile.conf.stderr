@@ -1,0 +1,2 @@
+crates/akit/tests/testdata/adapt/convert/caddy-blog.caddyfile: warning: line 20: templates: skipped: not converted
+crates/akit/tests/testdata/adapt/convert/caddy-blog.caddyfile: warning: line 24: @bots: the header_regexp matcher is not converted; what uses it is skipped
