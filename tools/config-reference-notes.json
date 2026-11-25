@@ -1,0 +1,55 @@
+{
+  "_comment": "Read by tools/config-reference.py: akit's extensions to fit's config, and akit's notes on fields it reads differently from fit, in English and Chinese. Each path is a field of fit's inventory (tests/compat/fit-fields.txt) or an extension; the generator refuses any other.",
+  "extensions": {
+    "listeners[].sockmap": {
+      "type": "boolean",
+      "type_zh": "布尔值",
+      "default": "`false`",
+      "since": "I51b",
+      "decision": "010",
+      "file": "010-sockmap-relay",
+      "en": "The connections of the `tcp` services this listener accepts are spliced in the kernel by akio's eBPF sockmap relay where it loads (Linux 6.15 or later, with `CAP_BPF` and `CAP_NET_ADMIN`), and relayed in userspace where it does not. Only for a listener whose protocols include `tcp`. A reload that changes it applies to the connections accepted after it. fit refuses it as an unknown field.",
+      "zh": "该监听器接受的 `tcp` 服务连接，在能加载 akio 的 eBPF sockmap 中继时（Linux 6.15 及以上，具备 `CAP_BPF` 和 `CAP_NET_ADMIN`）在内核中直接拼接，否则在用户态转发。只用于协议包含 `tcp` 的监听器。重载改变它时，只影响此后接受的连接。fit 把它当作未知字段拒绝。",
+      "en_short": "a `tcp` listener's connections spliced in the kernel by akio's eBPF sockmap relay where it loads",
+      "zh_short": "`tcp` 监听器的连接在能加载 akio 的 eBPF sockmap 中继时于内核中拼接"
+    }
+  },
+  "notes": {
+    "listeners[].protocols": {
+      "en": "`h2c` without `http/1.1` is refused as not supported yet: akio's server always takes HTTP/1.1 beside h2c (akio API request A168).",
+      "zh": "只有 `h2c` 而没有 `http/1.1` 时按“尚不支持”拒绝：akio 的服务器在 h2c 之外总是同时接受 HTTP/1.1（akio API 请求 A168）。"
+    },
+    "listeners[].tls.kernel_tls_offload": {
+      "en": "It comes with the `engine` settings.",
+      "zh": "随 `engine` 的设置一起支持。"
+    },
+    "admin.address": {
+      "en": "Only a loopback address or a Unix socket (`unix/<path>`, made 0600): a host that is not loopback needs TLS, which akit's Admin API does not serve yet, so it is refused.",
+      "zh": "只能是回环地址或 Unix 套接字（`unix/<路径>`，权限设为 0600）：非回环地址需要 TLS，而 akit 的 Admin API 尚未提供 TLS，因此被拒绝。"
+    },
+    "admin.token_file": {
+      "en": "Read when akit starts.",
+      "zh": "在 akit 启动时读取。"
+    },
+    "acme.storage": {
+      "en": "akit's own directory, not fit's: the two do not share accounts or certificates unless `storage` names one.",
+      "zh": "不写时为 `$XDG_DATA_HOME/akit` 或 `~/.local/share/akit`：akit 自己的目录，而不是 fit 的；除非 `storage` 指向同一目录，两者不共享账户和证书。"
+    },
+    "routes[].handler<static>.params.disk_io": {
+      "en": "Only `pool`: akit looks at the disk on akio's file pool, never on an I/O thread, and refuses `auto` as not supported yet.",
+      "zh": "只接受 `pool`：akit 只在 akio 的文件池上访问磁盘，从不在 I/O 线程上，`auto` 按“尚不支持”拒绝。"
+    },
+    "routes[].handler<proxy>.params.splice_uploads": {
+      "en": "Not planned yet: `splice(2)` needs `unsafe` or an akio API.",
+      "zh": "暂无计划：`splice(2)` 需要 `unsafe` 或 akio 的 API。"
+    },
+    "routes[].middleware[]<wasm>.params.path": {
+      "en": "The plugin runs on akio-wasm's instance pool, never on an I/O thread; fit's plugins run unchanged.",
+      "zh": "插件在 akio-wasm 的实例池上运行，从不在 I/O 线程上；fit 的插件无需修改即可运行。"
+    },
+    "upstreams[].deny_internal": {
+      "en": "It comes with the Kubernetes provider's ExternalName Services (`allow_external_name_services`).",
+      "zh": "随 Kubernetes provider 的 ExternalName Service（`allow_external_name_services`）一起支持。"
+    }
+  }
+}

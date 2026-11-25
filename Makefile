@@ -1,4 +1,4 @@
-.PHONY: all build check test test-changed lint fmt fmt-check clippy deny docs-check compat-check compat-gate compat-bless \
+.PHONY: all build check test test-changed lint fmt fmt-check clippy deny docs-check reference compat-check compat-gate compat-bless \
 	dist dist-check image packaging-check
 
 CARGO ?= cargo
@@ -60,6 +60,12 @@ deny:
 
 docs-check:
 	scripts/check-docs.sh
+	python3 -I tools/config-reference.py --check
+
+# Rewrites the config reference's tables (docs/reference/config.md and its twin) from fit's pinned
+# schema, tests/compat/supported.txt and tools/config-reference-notes.json.
+reference:
+	python3 -I tools/config-reference.py
 
 # The compatibility gate's field inventory and docs/compatibility.md are up to date with the pinned
 # fit schema and tests/compat/supported.txt (docs/compatibility.md).

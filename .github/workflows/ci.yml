@@ -28,6 +28,8 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: scripts/check-docs.sh
       - run: python3 -I tools/compat-inventory.py --check
+      # The config reference's tables (docs/reference/config.md, I78) are those its generator writes.
+      - run: python3 -I tools/config-reference.py --check
 
   test:
     # Linux with akio's epoll and io_uring backends, and macOS with kqueue (rules.md rule 18).

@@ -3314,3 +3314,139 @@ fn consul_storage(c: &Config) -> &akit_config::ConsulStorage {
         other => unreachable!("{other:?}"),
     }
 }
+
+/// The config reference (docs/reference/config.md and its Chinese twin, I78), whose tables
+/// `tools/config-reference.py` generates, against akit-config: every object akit reads has its
+/// table, each table lists every field fit's object has, a field marked read exactly when
+/// `supported.txt` (held to `model.rs` by `akit_config_lists_match_the_inventory`) marks it, every
+/// handler and middleware module is listed as `model.rs` reads or refuses it, and the extensions
+/// shown are `model.rs`'s `*_AKIT_ONLY` lists. CI's `config-reference.py --check` holds the
+/// tables to the generator; this holds them to the model.
+#[test]
+fn reference_matches_akit_config() {
+    let inventory = fields().unwrap();
+    let supported = supported().unwrap();
+    let src =
+        fs::read_to_string(compat_dir().join("../../crates/akit-config/src/model.rs")).unwrap();
+    let lists = str_lists(&src);
+    let mut extensions = BTreeSet::new();
+    for (prefix, list_name) in AKIT_ONLY {
+        for key in &lists[list_name] {
+            extensions.insert(format!("{prefix}.{key}"));
+        }
+    }
+    // The objects akit reads, each with a table: the top level, and every field read that has
+    // fields of its own (an array's items, `listeners[]`, and a module's params among them).
+    let mut objects = BTreeSet::from([String::new()]);
+    for p in &supported {
+        if p.ends_with('>') {
+            continue;
+        }
+        for obj in [p.clone(), format!("{p}[]")] {
+            if !children(&inventory, &obj).is_empty() {
+                objects.insert(obj);
+            }
+        }
+    }
+    let join = |obj: &str, key: &str| {
+        if obj.is_empty() {
+            key.to_owned()
+        } else {
+            format!("{obj}.{key}")
+        }
+    };
+    for (doc, not_yet, extension) in [
+        ("config.md", "**Not supported yet**", "**akit's extension**"),
+        ("config.zh-CN.md", "**尚不支持**", "**akit 扩展**"),
+    ] {
+        let text = fs::read_to_string(compat_dir().join("../../docs/reference").join(doc)).unwrap();
+        let mut tables = BTreeSet::new();
+        let mut read = BTreeSet::new();
+        let mut refused = BTreeSet::new();
+        let mut extended = BTreeSet::new();
+        let mut rest = text.as_str();
+        while let Some(i) = rest.find("<!-- BEGIN GENERATED: ") {
+            let after = &rest[i + "<!-- BEGIN GENERATED: ".len()..];
+            let (key, after) = after.split_once(" -->").unwrap();
+            let (block, after) = after.split_once("<!-- END GENERATED -->").unwrap();
+            rest = after;
+            let rows = block.lines().filter_map(|l| {
+                let l = l.strip_prefix("| `")?;
+                let (name, cells) = l.split_once("` |")?;
+                Some((name.to_owned(), cells.to_owned()))
+            });
+            if let Some(at) = key.strip_prefix("modules:") {
+                for (m, status) in rows {
+                    let path = format!("{at}<{m}>");
+                    assert!(
+                        inventory.iter().any(|f| f.path == path),
+                        "{doc}: module {path} is not one of fit's"
+                    );
+                    let is_read =
+                        !status.contains("**not supported yet**") && !status.contains(not_yet);
+                    assert_eq!(is_read, supported.contains(&path), "{doc}: module {path}");
+                    tables.insert(format!("modules:{at}"));
+                }
+                continue;
+            }
+            if key == "summary" || key == "extensions" {
+                continue;
+            }
+            let obj = if key == "config" { "" } else { key };
+            assert!(tables.insert(obj.to_owned()), "{doc}: two tables for {key}");
+            let mut keys = BTreeSet::new();
+            for (name, cells) in rows {
+                let path = join(obj, &name);
+                if cells.contains(extension) {
+                    extended.insert(path);
+                    continue;
+                }
+                keys.insert(name);
+                if cells.contains(not_yet) {
+                    refused.insert(path);
+                } else {
+                    read.insert(path);
+                }
+            }
+            assert_eq!(
+                keys,
+                children(&inventory, obj),
+                "{doc}: the table of {key} and fit's fields of it differ"
+            );
+        }
+        let shown: BTreeSet<String> = tables
+            .iter()
+            .filter(|t| !t.starts_with("modules:"))
+            .cloned()
+            .collect();
+        assert_eq!(
+            shown, objects,
+            "{doc}: the tables and the objects akit reads differ"
+        );
+        let fields_read: BTreeSet<String> = supported
+            .iter()
+            .filter(|p| !p.ends_with('>') && !p.ends_with(">.params"))
+            .cloned()
+            .collect();
+        assert_eq!(
+            read, fields_read,
+            "{doc}: the fields shown read and those akit reads differ"
+        );
+        for p in &refused {
+            assert!(
+                !supported.contains(p),
+                "{doc}: {p} is shown refused, and akit reads it"
+            );
+        }
+        assert_eq!(
+            extended, extensions,
+            "{doc}: the extensions shown and model.rs's differ"
+        );
+        for at in ["routes[].handler", "routes[].middleware[]"] {
+            assert!(
+                tables.contains(&format!("modules:{at}")),
+                "{doc}: no list of the modules at {at}"
+            );
+        }
+    }
+}
