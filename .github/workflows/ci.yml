@@ -83,3 +83,51 @@ jobs:
           workspaces: fuzz
       - run: cargo install cargo-fuzz --locked
       - run: cargo +nightly fuzz run ${{ matrix.target }} -- -max_total_time=60
+
+  packaging:
+    # What a release ships (deploy/README.md), built and run as it says: the static Linux binary
+    # from scripts/dist.sh, the systemd units on the runner's systemd, the container image serving
+    # its placeholder config, and the Helm chart's config read by akit.
+    name: packaging (binary, systemd, image, chart)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: azure/setup-helm@v4
+      - name: Static binary
+        run: |
+          TARGETS=linux/amd64 scripts/dist.sh
+          scripts/check-dist.sh
+      - name: systemd units
+        run: |
+          tar -C "$RUNNER_TEMP" -xzf dist/akit_*_linux_amd64.tar.gz
+          sudo deploy/systemd/test.sh "$RUNNER_TEMP"/akit_*_linux_amd64/akit
+      - name: Container image
+        run: |
+          docker build --build-arg VERSION=ci -t akit:ci .
+          docker run --rm akit:ci version | grep -qx 'akit ci'
+          docker run -d --name akit -p 8080:8080 akit:ci
+          trap 'docker logs akit; docker rm -f akit' EXIT
+          for _ in $(seq 20); do
+            curl -sf -m 2 http://127.0.0.1:8080/ | grep -q 'akit is running' && exit 0
+            sleep 0.5
+          done
+          echo "the image's placeholder config never answered" >&2
+          exit 1
+      - name: Helm chart
+        run: |
+          akit=$(echo "$RUNNER_TEMP"/akit_*_linux_amd64/akit)
+          helm lint deploy/helm/akit
+          for set in "" "--set ingress.enabled=false" "--set provider.namespaces={default}"; do
+            # shellcheck disable=SC2086
+            helm template t deploy/helm/akit --api-versions gateway.networking.k8s.io/v1/GatewayClass $set \
+              > "$RUNNER_TEMP/chart.yaml"
+            sed -n '/^  akit.json: |$/,/^---/p' "$RUNNER_TEMP/chart.yaml" | sed '1d;/^---/d;s/^    //' \
+              > "$RUNNER_TEMP/akit.json"
+            cat "$RUNNER_TEMP/akit.json"
+            "$akit" validate -c "$RUNNER_TEMP/akit.json"
+            grep -q 'kind: GatewayClass' "$RUNNER_TEMP/chart.yaml"
+          done

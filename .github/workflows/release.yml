@@ -1,0 +1,143 @@
+name: Release
+
+# A tag v<semver> publishes akit's container image, for linux/amd64 and linux/arm64, as
+# ghcr.io/<owner>/akit:<version> and :<major>.<minor>; the Helm chart's appVersion names the image
+# it runs, and must be the tag's version. It also builds akit's binaries, static musl ones for
+# Linux (amd64, arm64) and macOS ones (amd64, arm64), with scripts/dist.sh, packs the Helm chart,
+# and attaches them to the tag's GitHub Release with their SHA-256 sums in checksums.txt. Run by
+# hand, the workflow only builds the binaries and the chart, kept as a workflow artifact. A tag with
+# a pre-release part (v1.2.0-rc.1) makes a pre-release, and its image is tagged with its version
+# only, not <major>.<minor>. See deploy/README.md. As fit's release.yml.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  binaries:
+    name: Binaries (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          # rust-lld links both musl targets on the x86-64 runner.
+          - os: ubuntu-latest
+            targets: linux/amd64 linux/arm64
+          # Xcode's linker links both macOS targets on the arm64 runner.
+          - os: macos-latest
+            targets: darwin/amd64 darwin/arm64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build and pack
+        env:
+          TARGETS: ${{ matrix.targets }}
+        run: |
+          version=
+          case "$GITHUB_REF" in refs/tags/v*) version=$GITHUB_REF_NAME ;; esac
+          scripts/dist.sh $version
+          scripts/check-dist.sh
+          rm dist/checksums.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: akit-${{ runner.os }}
+          path: dist/*
+
+  pack:
+    name: Checksums and chart
+    needs: binaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: akit-*
+          path: dist
+          merge-multiple: true
+      # A tag's chart runs the tag's image: its appVersion is the tag's version.
+      - name: The chart's version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          app=$(sed -n 's/^appVersion: *"\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' deploy/helm/akit/Chart.yaml)
+          if [ "$app" != "${GITHUB_REF_NAME#v}" ]; then
+            echo "deploy/helm/akit/Chart.yaml's appVersion is $app, not the tag's ${GITHUB_REF_NAME#v}" >&2
+            exit 1
+          fi
+      - name: Pack the chart, sum and check
+        run: |
+          helm lint deploy/helm/akit
+          helm package deploy/helm/akit --destination dist
+          cd dist && sha256sum akit_*.tar.gz akit-*.tgz > checksums.txt && cd ..
+          scripts/check-dist.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: akit-release
+          path: dist/*
+
+  github-release:
+    name: GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: pack
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: akit-release
+          path: dist
+      # A release made for the tag beforehand keeps its notes; the files are added to it,
+      # replacing any of the same name.
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+          else
+            pre=; case "$TAG" in *-*) pre=--prerelease;; esac
+            gh release create "$TAG" dist/* --verify-tag --generate-notes $pre
+          fi
+
+  image:
+    name: Container image
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: pack
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: VERSION=${{ github.ref_name }}

@@ -17,3 +17,4 @@
 | [005](005-yaml-reader.zh-CN.md) | YAML 由 akit 自己的读取器读取 | 已采纳 |
 | [006](006-admin-api.zh-CN.md) | Admin API 运行在自己的 akio 引擎上，由控制线程应用 | 已采纳 |
 | [007](007-opentelemetry.zh-CN.md) | OpenTelemetry：fit 的 tracer，通过 akio 的 HTTP 客户端导出 | 已采纳 |
+| [009](009-packaging.zh-CN.md) | 打包：用 rust-lld 链接的静态 musl 二进制，沿用 fit 的镜像、chart 和 unit | 已采纳 |
