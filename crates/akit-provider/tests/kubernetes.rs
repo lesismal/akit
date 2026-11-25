@@ -1,12 +1,14 @@
-//! The Kubernetes provider (I59) against a fake API server, as fit's `kubernetes_test.go` runs
-//! it (`TestProvider`, `TestProviderIngress`, `TestProviderUnauthorized`,
-//! `TestProviderSetupFails`): nothing is sent until every kind is listed, a kind not served
-//! counts as empty, lists come in pages, watches carry the changes, a watch too old makes a new
-//! list, an ended watch is made again, a refused list is reported and tried again, and an
-//! Ingress's TLS Secret becomes a certificate file. The fake server is akio's HTTP server: over
-//! TLS it speaks HTTP/2 (which the client uses, every request on one connection) or, asked to,
-//! HTTP/1.1 alone; in the clear HTTP/1.1. On the backend `AKIO_TEST_BACKEND` names (epoll by
-//! default, `uring`).
+//! The Kubernetes provider (I59, I60) against a fake API server, as fit's `kubernetes_test.go`
+//! runs it (`TestProvider`, `TestProviderIngress`, `TestProviderUnauthorized`,
+//! `TestProviderSetupFails`, `TestProviderStatus`): nothing is sent until every kind is listed,
+//! a kind not served counts as empty, an older version of a kind is listed when the newer is not
+//! served, lists come in pages, watches carry the changes, a watch too old makes a new list, an
+//! ended watch is made again, a refused list is reported and tried again, an HTTPS listener's or
+//! an Ingress's TLS Secret becomes a certificate file, and the statuses of the Gateway API's
+//! objects are written back, once, and again after a write refused. The fake server is akio's
+//! HTTP server: over TLS it speaks HTTP/2 (which the client uses, every request on one
+//! connection) or, asked to, HTTP/1.1 alone; in the clear HTTP/1.1. On the backend
+//! `AKIO_TEST_BACKEND` names (epoll by default, `uring`).
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -22,6 +24,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use akio::{Backend, Engine, Listener, UringConfig};
+use akio_http::message::Method;
 use akio_http::{BodyStream, Context, Headers, Version};
 use akit_config::value::{Value, parse};
 use akit_config::{KubernetesIngress, KubernetesProvider};
@@ -34,6 +37,10 @@ const CLASSES: &str = "/apis/networking.k8s.io/v1/ingressclasses";
 const SERVICES: &str = "/api/v1/services";
 const SLICES: &str = "/apis/discovery.k8s.io/v1/endpointslices";
 const SECRETS: &str = "/api/v1/secrets";
+const GW: &str = "/apis/gateway.networking.k8s.io/";
+const GATEWAY_CLASSES: &str = "/apis/gateway.networking.k8s.io/v1/gatewayclasses";
+const GATEWAYS: &str = "/apis/gateway.networking.k8s.io/v1/gateways";
+const HTTP_ROUTES: &str = "/apis/gateway.networking.k8s.io/v1/httproutes";
 
 fn backend() -> Backend {
     match std::env::var("AKIO_TEST_BACKEND").as_deref() {
@@ -64,6 +71,110 @@ struct State {
     versions: BTreeSet<&'static str>,
     /// The secrets' field selector, as each list or watch of secrets gave it.
     selectors: BTreeSet<String>,
+    /// Status patches, by collection.
+    patches: HashMap<String, usize>,
+    /// How many status patches are yet to be refused with 409.
+    conflicts: usize,
+}
+
+/// Stores `o` at `path`, or deletes it, with a new resource version, and tells the watches.
+fn store(s: &mut State, path: &str, mut o: Value, deleted: bool) -> String {
+    s.rv += 1;
+    let rv = s.rv;
+    let Value::Object(ms) = &mut o else { panic!() };
+    let Some((_, Value::Object(meta))) = ms.iter_mut().find(|(k, _)| k == "metadata") else {
+        panic!("no metadata")
+    };
+    meta.retain(|(k, _)| k != "resourceVersion");
+    meta.push(("resourceVersion".to_owned(), Value::String(rv.to_string())));
+    let field = |k: &str| match o.get("metadata").and_then(|m| m.get(k)) {
+        Some(Value::String(s)) => s.clone(),
+        _ => String::new(),
+    };
+    let key = format!("{}/{}", field("namespace"), field("name"));
+    let data = compact(&o);
+    let objs = s.objs.entry(path.to_owned()).or_default();
+    let typ = if deleted {
+        objs.remove(&key);
+        "DELETED"
+    } else if objs.insert(key, data.clone()).is_some() {
+        "MODIFIED"
+    } else {
+        "ADDED"
+    };
+    let e = format!(r#"{{"type": "{typ}", "object": {data}}}"#);
+    s.events
+        .entry(path.to_owned())
+        .or_default()
+        .push((rv, e.clone()));
+    if let Some(ws) = s.watchers.get_mut(path) {
+        ws.retain(|w| w.write(format!("{e}\n").as_bytes()).is_ok());
+    }
+    data
+}
+
+/// Applies a JSON merge patch to an object's status, as the API server does: refused with 409
+/// when the patch names another resource version than the object's.
+fn patch(s: &mut State, path: &str, content_type: &str, body: &[u8], ctx: &mut Context) {
+    let Some(path) = path.strip_suffix("/status") else {
+        return ctx.text(400, r#"{"kind":"Status","code":400}"#);
+    };
+    if content_type != "application/merge-patch+json" {
+        return ctx.text(400, r#"{"kind":"Status","code":400}"#);
+    }
+    let (coll, name) = path.rsplit_once('/').unwrap();
+    let (coll, ns) = match coll.split_once("/namespaces/") {
+        Some((before, rest)) => {
+            let (ns, plural) = rest.split_once('/').unwrap();
+            (format!("{before}/{plural}"), ns.to_owned())
+        }
+        None => (coll.to_owned(), String::new()),
+    };
+    let Ok(p) = parse(std::str::from_utf8(body).unwrap_or("")) else {
+        return ctx.text(400, r#"{"kind":"Status","code":400}"#);
+    };
+    *s.patches.entry(coll.clone()).or_default() += 1;
+    let Some(data) = s
+        .objs
+        .get(&coll)
+        .and_then(|o| o.get(&format!("{ns}/{name}")))
+        .cloned()
+    else {
+        return ctx.text(404, r#"{"kind":"Status","code":404}"#);
+    };
+    let mut o = parse(&data).unwrap();
+    let rv = o
+        .get("metadata")
+        .and_then(|m| m.get("resourceVersion"))
+        .cloned();
+    let want = p
+        .get("metadata")
+        .and_then(|m| m.get("resourceVersion"))
+        .cloned();
+    if s.conflicts > 0 || rv != want {
+        s.conflicts = s.conflicts.saturating_sub(1);
+        return ctx.text(
+            409,
+            r#"{"kind":"Status","code":409,"message":"the object has been modified"}"#,
+        );
+    }
+    let Value::Object(ms) = &mut o else { panic!() };
+    if !ms.iter().any(|(k, _)| k == "status") {
+        ms.push(("status".to_owned(), Value::Object(Vec::new())));
+    }
+    let Some((_, Value::Object(status))) = ms.iter_mut().find(|(k, _)| k == "status") else {
+        panic!()
+    };
+    if let Some(Value::Object(ps)) = p.get("status") {
+        for (k, v) in ps {
+            status.retain(|(n, _)| n != k);
+            if *v != Value::Null {
+                status.push((k.clone(), v.clone()));
+            }
+        }
+    }
+    let data = store(s, &coll, o, false);
+    ctx.text(200, data);
 }
 
 /// A fake Kubernetes API server: it lists the objects a test puts, in pages, and streams their
@@ -90,6 +201,9 @@ fn serve(st: &Arc<Mutex<State>>, ctx: &mut Context) {
         "h1"
     };
     let auth = req.headers.get("authorization").unwrap_or("").to_owned();
+    let content_type = req.headers.get("content-type").unwrap_or("").to_owned();
+    let is_patch = req.method == Method::Patch;
+    let body = req.body.clone();
     let (path, q) = req
         .target
         .split_once('?')
@@ -104,6 +218,9 @@ fn serve(st: &Arc<Mutex<State>>, ctx: &mut Context) {
             401,
             r#"{"kind":"Status","code":401,"message":"Unauthorized"}"#,
         );
+    }
+    if is_patch {
+        return patch(&mut s, &path, &content_type, &body, ctx);
     }
     if s.missing.contains(&path) {
         drop(s);
@@ -236,38 +353,26 @@ impl ApiServer {
 
     fn event(&self, path: &str, doc: &str, deleted: bool) {
         let mut s = self.state.lock().unwrap();
-        s.rv += 1;
-        let rv = s.rv;
-        let mut o = parse(doc).unwrap();
-        let Value::Object(ms) = &mut o else { panic!() };
-        let Some((_, Value::Object(meta))) = ms.iter_mut().find(|(k, _)| k == "metadata") else {
-            panic!("no metadata: {doc}")
-        };
-        meta.retain(|(k, _)| k != "resourceVersion");
-        meta.push(("resourceVersion".to_owned(), Value::String(rv.to_string())));
-        let field = |k: &str| match o.get("metadata").and_then(|m| m.get(k)) {
-            Some(Value::String(s)) => s.clone(),
-            _ => String::new(),
-        };
-        let key = format!("{}/{}", field("namespace"), field("name"));
-        let data = compact(&o);
-        let objs = s.objs.entry(path.to_owned()).or_default();
-        let typ = if deleted {
-            objs.remove(&key);
-            "DELETED"
-        } else if objs.insert(key, data.clone()).is_some() {
-            "MODIFIED"
-        } else {
-            "ADDED"
-        };
-        let e = format!(r#"{{"type": "{typ}", "object": {data}}}"#);
-        s.events
-            .entry(path.to_owned())
-            .or_default()
-            .push((rv, e.clone()));
-        if let Some(ws) = s.watchers.get_mut(path) {
-            ws.retain(|w| w.write(format!("{e}\n").as_bytes()).is_ok());
-        }
+        store(&mut s, path, parse(doc).unwrap(), deleted);
+    }
+
+    /// The object at `path` of namespace `ns` and name `name`.
+    fn object(&self, path: &str, ns: &str, name: &str) -> Value {
+        let s = self.state.lock().unwrap();
+        s.objs
+            .get(path)
+            .and_then(|o| o.get(&format!("{ns}/{name}")))
+            .map_or(Value::Null, |d| parse(d).unwrap())
+    }
+
+    fn patch_count(&self, path: &str) -> usize {
+        self.state
+            .lock()
+            .unwrap()
+            .patches
+            .get(path)
+            .copied()
+            .unwrap_or(0)
     }
 
     /// Sends a raw event to the watches of `path`.
@@ -393,6 +498,7 @@ fn opts(kubeconfig: String, ingress: KubernetesIngress) -> KubernetesProvider {
         controller_name: akit_config::DEFAULT_KUBERNETES_CONTROLLER_NAME.to_owned(),
         namespaces: Vec::new(),
         listen_host: String::new(),
+        addresses: Vec::new(),
         backends: akit_config::KubernetesBackends::Endpoints,
         max_objects: 10_000,
         request_timeout: Duration::from_secs(5),
@@ -436,6 +542,10 @@ fn env() -> Env {
 }
 
 fn run(o: KubernetesProvider) -> Running {
+    run_with(o, short())
+}
+
+fn run_with(o: KubernetesProvider, t: Timings) -> Running {
     let lines: Arc<Mutex<Vec<String>>> = Arc::default();
     let l = Arc::clone(&lines);
     let log: Log = Arc::new(move |line: &str| l.lock().unwrap().push(line.to_owned()));
@@ -445,7 +555,7 @@ fn run(o: KubernetesProvider) -> Running {
     });
     let mut p = Kubernetes::new("k8s", o)
         .with_env(env())
-        .with_timings(short())
+        .with_timings(t)
         .with_log(log);
     p.start(ups.update("k8s")).unwrap();
     Running {
@@ -641,7 +751,7 @@ fn provider_http1() {
         let mut r = run(opts(a.kubeconfig(TOKEN), PORTS));
         assert!(list(&r.next(), "routes").is_empty(), "{name}");
         r.wait_log(name, |l| {
-            l.contains("provider k8s: ingressclasses are not served by the API server; looking again every 100ms")
+            l.contains("provider k8s: ingressclasses are not served by the API server (is the Gateway API installed?); looking again every 100ms")
         });
         a.put(INGRESSES, INGRESS);
         // No class: no route yet; once the class is served, the Ingress is akit's.
@@ -833,4 +943,268 @@ fn ingress_tls() {
     assert!(own.exists());
     r.stop();
     assert!(!own.exists(), "{}", own.display());
+}
+
+/// A provider of the Gateway API alone, without Ingresses.
+fn gateway_opts(kubeconfig: String) -> KubernetesProvider {
+    KubernetesProvider {
+        ingress: None,
+        ..opts(kubeconfig, PORTS)
+    }
+}
+
+const GW_CLASS: &str =
+    r#"{"metadata": {"name": "fit"}, "spec": {"controllerName": "lesismal.github.io/fit"}}"#;
+
+/// fit's `TestProvider`, for the Gateway API: nothing is sent until every kind is listed, a
+/// kind served in neither of its versions counts as empty, lists come in pages, a route comes
+/// and goes through its watch, and no Ingresses are watched without `ingress`.
+#[test]
+fn gateway_provider() {
+    let a = ApiServer::start("gateway", Some(&["h2", "http/1.1"]));
+    {
+        let mut s = a.state.lock().unwrap();
+        s.missing.insert(format!("{GW}v1beta1/referencegrants"));
+        s.missing.insert(format!("{GW}v1/referencegrants"));
+    }
+    a.put(GATEWAY_CLASSES, GW_CLASS);
+    a.put(
+        GATEWAYS,
+        r#"{"metadata": {"namespace": "default", "name": "gw"}, "spec": {"gatewayClassName": "fit", "listeners": [{"name": "http", "port": 8000, "protocol": "HTTP"}]}}"#,
+    );
+    a.put(SERVICES, WEB);
+    for i in 0..520 {
+        a.put(
+            SLICES,
+            &slice(
+                &format!("web-{i:03}"),
+                &format!("10.1.{}.{}", i / 250, i % 250),
+            ),
+        );
+    }
+    let mut r = run(gateway_opts(a.kubeconfig(TOKEN)));
+    let first = r.next();
+    assert_eq!(
+        compact(first.get("listeners").unwrap()),
+        r#"[{"name":"k8s-8000","address":":8000","protocols":["http/1.1","h2c"]}]"#
+    );
+    assert!(list(&first, "routes").is_empty() && list(&first, "upstreams").is_empty());
+    assert_eq!(a.counts(SLICES).0, 2, "pages of slices");
+
+    // A route comes: one upstream of every slice's endpoint.
+    let route = r#"{"metadata": {"namespace": "default", "name": "r"}, "spec": {"parentRefs": [{"name": "gw"}], "rules": [{"backendRefs": [{"name": "web", "port": 80}]}]}}"#;
+    a.put(HTTP_ROUTES, route);
+    let p1 = r.next();
+    assert_eq!(list(&p1, "routes").len(), 1, "{}", compact(&p1));
+    let ups = list(&p1, "upstreams");
+    assert_eq!((ups.len(), list(&ups[0], "addresses").len()), (1, 520));
+    // The route goes.
+    a.del(HTTP_ROUTES, route);
+    let p2 = r.next();
+    assert!(list(&p2, "routes").is_empty(), "{}", compact(&p2));
+    r.stop();
+    let logs = r.logs();
+    assert!(
+        logs.contains("provider k8s: referencegrants are not served by the API server"),
+        "{logs}"
+    );
+    // Without ingress, no Ingresses are asked for.
+    assert_eq!(a.counts(INGRESSES), (0, 0));
+    assert_eq!(a.counts(CLASSES), (0, 0));
+}
+
+/// The condition of type `typ` in `cs`, as "status reason"; "" when there is none.
+fn condition(cs: Option<&Value>, typ: &str) -> String {
+    let s = |c: &Value, k: &str| match c.get(k) {
+        Some(Value::String(s)) => s.clone(),
+        _ => String::new(),
+    };
+    match cs {
+        Some(Value::Array(cs)) => cs
+            .iter()
+            .find(|c| s(c, "type") == typ)
+            .map(|c| format!("{} {}", s(c, "status"), s(c, "reason")))
+            .unwrap_or_default(),
+        _ => String::new(),
+    }
+}
+
+/// fit's `TestProviderStatus`: the statuses of the class, the Gateway and its listeners, and
+/// routes, written once and then left; a write refused made again; a TLSRoute at the version
+/// the server has; and an HTTPS listener's certificate written to a file, and removed with its
+/// Secret.
+#[test]
+fn gateway_status() {
+    let a = ApiServer::start("status", Some(&["h2", "http/1.1"]));
+    {
+        let mut s = a.state.lock().unwrap();
+        s.missing.insert(format!("{GW}v1/tlsroutes"));
+        s.missing.insert(format!("{GW}v1alpha3/tlsroutes"));
+    }
+    let tls_path = format!("{GW}v1alpha2/tlsroutes");
+    let (crt, key) = cert(&["a.example.com"]);
+    let b64 = |b: &[u8]| akio_crypto::base64::STANDARD.encode(b);
+    let secret = format!(
+        r#"{{"metadata": {{"namespace": "default", "name": "a"}}, "type": "kubernetes.io/tls", "data": {{"tls.crt": "{}", "tls.key": "{}"}}}}"#,
+        b64(&crt),
+        b64(&key)
+    );
+    a.put(SECRETS, &secret);
+    a.put(GATEWAY_CLASSES, GW_CLASS);
+    a.put(
+        GATEWAYS,
+        r#"{"metadata": {"namespace": "default", "name": "gw", "generation": 1}, "spec": {"gatewayClassName": "fit", "listeners": [
+  {"name": "http", "port": 8000, "protocol": "HTTP"},
+  {"name": "https", "port": 8443, "protocol": "HTTPS", "tls": {"certificateRefs": [{"name": "a"}]}},
+  {"name": "pass", "port": 9443, "protocol": "TLS", "tls": {"mode": "Passthrough"}}]}}"#,
+    );
+    a.put(SERVICES, WEB);
+    a.put(SLICES, &slice("web-1", "10.1.0.1"));
+    a.put(
+        HTTP_ROUTES,
+        r#"{"metadata": {"namespace": "default", "name": "r", "generation": 1}, "spec": {"parentRefs": [{"name": "gw", "sectionName": "http"}],
+  "rules": [{"backendRefs": [{"name": "web", "port": 80}]}]}}"#,
+    );
+    a.put(
+        &tls_path,
+        r#"{"metadata": {"namespace": "default", "name": "db", "generation": 1}, "spec": {"parentRefs": [{"name": "gw"}],
+  "rules": [{"backendRefs": [{"name": "web", "port": 80}]}]}}"#,
+    );
+    let certs = a.dir.join("certs");
+    let mut o = gateway_opts(a.kubeconfig(TOKEN));
+    o.certificates_dir = certs.display().to_string();
+    let resync = Duration::from_millis(200);
+    let mut r = run_with(o, Timings { resync, ..short() });
+
+    let route_status = |path: &str, name: &str| {
+        let o = a.object(path, "default", name);
+        match o.get("status").and_then(|s| s.get("parents")) {
+            Some(Value::Array(ps)) if ps.len() == 1 => {
+                let cs = ps[0].get("conditions");
+                format!(
+                    "{}, {}",
+                    condition(cs, "Accepted"),
+                    condition(cs, "ResolvedRefs")
+                )
+            }
+            _ => String::new(),
+        }
+    };
+    let status_of = |path: &str, ns: &str, name: &str| {
+        a.object(path, ns, name)
+            .get("status")
+            .cloned()
+            .unwrap_or(Value::Null)
+    };
+    wait("the statuses", || {
+        let gs = status_of(GATEWAYS, "default", "gw");
+        let cs = status_of(GATEWAY_CLASSES, "", "fit");
+        condition(gs.get("conditions"), "Programmed") == "True Programmed"
+            && condition(cs.get("conditions"), "Accepted") == "True Accepted"
+            && route_status(HTTP_ROUTES, "r") == "True Accepted, True ResolvedRefs"
+            && route_status(&tls_path, "db") == "True Accepted, True ResolvedRefs"
+    });
+    let gs = status_of(GATEWAYS, "default", "gw");
+    let http = r#"[{"group":"gateway.networking.k8s.io","kind":"HTTPRoute"},{"group":"gateway.networking.k8s.io","kind":"GRPCRoute"}]"#;
+    for l in list(&gs, "listeners") {
+        let name = compact(l.get("name").unwrap());
+        let want = match name.as_str() {
+            r#""http""# => format!("1 {http}"),
+            r#""https""# => format!("0 {http}"),
+            _ => r#"1 [{"group":"gateway.networking.k8s.io","kind":"TLSRoute"}]"#.to_owned(),
+        };
+        let got = format!(
+            "{} {}",
+            compact(l.get("attachedRoutes").unwrap()),
+            compact(l.get("supportedKinds").unwrap())
+        );
+        assert_eq!(got, want, "listener {name}");
+    }
+
+    // The certificate is in a file of its own, which the part names.
+    let fs = files(&certs);
+    assert_eq!(fs.len(), 1, "{fs:?}");
+    assert!(fs[0].starts_with("default.a.") && fs[0].ends_with(".pem"));
+    let file = certs.join(&fs[0]);
+    assert_eq!(
+        std::fs::read(&file).unwrap(),
+        [&crt[..], b"\n", &key[..]].concat()
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        assert_eq!(
+            std::fs::metadata(&file).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+    }
+    let file_s = file.display().to_string();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let p = r.next();
+        let ls = list(&p, "listeners");
+        if ls.len() == 3
+            && compact(ls[1].get("tls").unwrap_or(&Value::Null)).contains(&format!("\"{file_s}\""))
+        {
+            akit_config::from_json(&compact(&p), None).unwrap();
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the HTTPS listener: {}",
+            compact(&p)
+        );
+    }
+
+    // Written once: resyncs and the watches of what was written write nothing more. The writes
+    // are let settle first, two resyncs in a row with none.
+    let count = || {
+        a.patch_count(GATEWAY_CLASSES)
+            + a.patch_count(GATEWAYS)
+            + a.patch_count(HTTP_ROUTES)
+            + a.patch_count(&tls_path)
+    };
+    let mut before = count();
+    let deadline = Instant::now() + resync * 30;
+    let mut quiet = 0;
+    while quiet < 2 {
+        std::thread::sleep(resync);
+        // The parts each resync sends are not read here: drop them.
+        while r.ups.take().is_some() {}
+        let n = count();
+        if n == before {
+            quiet += 1;
+            continue;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "status writes did not settle: {} more",
+            n - before
+        );
+        quiet = 0;
+        before = n;
+    }
+    std::thread::sleep(resync * 3);
+    assert_eq!(count(), before, "status writes with nothing changed");
+
+    // A write refused is made again: the next resync finds the status still to write.
+    a.state.lock().unwrap().conflicts = 1;
+    a.put(
+        HTTP_ROUTES,
+        r#"{"metadata": {"namespace": "default", "name": "r", "generation": 2}, "spec": {"parentRefs": [{"name": "gw", "sectionName": "http"}],
+  "rules": [{"backendRefs": [{"name": "gone", "port": 80}]}]}}"#,
+    );
+    wait("the route's status after a refused write", || {
+        route_status(HTTP_ROUTES, "r") == "True Accepted, False BackendNotFound"
+    });
+
+    // The Secret gone: the listener is not served, and its file goes.
+    a.del(SECRETS, &secret);
+    wait("the certificate file removed", || !file.exists());
+    wait("the HTTPS listener's status", || {
+        compact(&status_of(GATEWAYS, "default", "gw"))
+            .contains(r#""reason":"InvalidCertificateRef""#)
+    });
+    r.stop();
+    assert!(!r.logs().contains("writing the status of"), "{}", r.logs());
 }

@@ -1,6 +1,7 @@
 //! fit's tests of the Kubernetes provider's parts that need no API server: `ingress_test.go`'s
-//! and `edges_test.go`'s Ingresses, `kubernetes_test.go`'s and `runtime_test.go`'s kubeconfigs,
-//! tokens, watch events and certificate files. The provider against a fake API server is in
+//! and `edges_test.go`'s Ingresses (the Gateway API's are in `gateway_tests.rs`),
+//! `kubernetes_test.go`'s and `runtime_test.go`'s kubeconfigs, tokens, watch events and
+//! certificate files. The provider against a fake API server is in
 //! `tests/kubernetes.rs`.
 #![allow(
     clippy::unwrap_used,
@@ -42,7 +43,7 @@ fn b64(b: &[u8]) -> String {
 }
 
 /// A Secret of type kubernetes.io/tls, as the API server writes it.
-fn secret_doc(ns: &str, name: &str, crt: &[u8], key: &[u8]) -> String {
+pub(crate) fn secret_doc(ns: &str, name: &str, crt: &[u8], key: &[u8]) -> String {
     format!(
         r#"{{"metadata": {{"namespace": "{ns}", "name": "{name}"}}, "type": "kubernetes.io/tls", "data": {{"tls.crt": "{}", "tls.key": "{}"}}}}"#,
         b64(crt),
@@ -50,11 +51,17 @@ fn secret_doc(ns: &str, name: &str, crt: &[u8], key: &[u8]) -> String {
     )
 }
 
-fn obj(shape: Shape, doc: &str) -> Arc<Object> {
+pub(crate) fn obj(shape: Shape, doc: &str) -> Arc<Object> {
     Arc::new(decode(shape, &parse(doc).unwrap()).unwrap())
 }
 
-fn service(ns: &str, name: &str, port: u16, port_name: &str, extra: &str) -> Arc<Object> {
+pub(crate) fn service(
+    ns: &str,
+    name: &str,
+    port: u16,
+    port_name: &str,
+    extra: &str,
+) -> Arc<Object> {
     obj(
         Shape::Service,
         &format!(
@@ -64,7 +71,7 @@ fn service(ns: &str, name: &str, port: u16, port_name: &str, extra: &str) -> Arc
     )
 }
 
-fn endpoints(
+pub(crate) fn endpoints(
     ns: &str,
     svc: &str,
     port_name: &str,
@@ -87,28 +94,43 @@ fn endpoints(
     )
 }
 
-/// fit's `base`, its Services and their endpoints, with fit's IngressClass and another's
-/// (`ingressWorld`).
-fn ingress_world(default_class: bool) -> Snapshot {
-    let ann = if default_class {
-        r#", "annotations": {"ingressclass.kubernetes.io/is-default-class": "true"}"#
-    } else {
-        ""
-    };
+/// fit's `base`: a cluster with fit's GatewayClass and another's, a Gateway of each, and
+/// Services with endpoints.
+pub(crate) fn base() -> Snapshot {
     Snapshot {
-        ingress_classes: vec![
+        namespaces: vec![
+            obj(Shape::Namespace, r#"{"metadata": {"name": "default"}}"#),
             obj(
-                Shape::IngressClass,
-                &format!(
-                    r#"{{"metadata": {{"name": "fit"{ann}}}, "spec": {{"controller": "lesismal.github.io/fit"}}}}"#
-                ),
+                Shape::Namespace,
+                r#"{"metadata": {"name": "team", "labels": {"gateway": "yes"}}}"#,
+            ),
+            obj(Shape::Namespace, r#"{"metadata": {"name": "outside"}}"#),
+        ],
+        gateway_classes: vec![
+            obj(
+                Shape::GatewayClass,
+                r#"{"metadata": {"name": "fit"}, "spec": {"controllerName": "lesismal.github.io/fit"}}"#,
             ),
             obj(
-                Shape::IngressClass,
-                r#"{"metadata": {"name": "nginx"}, "spec": {"controller": "k8s.io/ingress-nginx"}}"#,
+                Shape::GatewayClass,
+                r#"{"metadata": {"name": "other"}, "spec": {"controllerName": "example.net/other"}}"#,
             ),
         ],
-        ingresses: Vec::new(),
+        gateways: vec![
+            obj(
+                Shape::Gateway,
+                r#"{"metadata": {"namespace": "default", "name": "gw"}, "spec": {"gatewayClassName": "fit", "listeners": [
+  {"name": "http", "port": 80, "protocol": "HTTP", "allowedRoutes": {"namespaces": {"from": "All"}}},
+  {"name": "web", "port": 8080, "protocol": "HTTP", "hostname": "*.example.com"},
+  {"name": "picky", "port": 8081, "protocol": "HTTP", "allowedRoutes": {"namespaces": {"from": "Selector", "selector": {"matchLabels": {"gateway": "yes"}}}}},
+  {"name": "tls", "port": 443, "protocol": "HTTPS"}]}}"#,
+            ),
+            obj(
+                Shape::Gateway,
+                r#"{"metadata": {"namespace": "default", "name": "theirs"}, "spec": {"gatewayClassName": "other", "listeners": [
+  {"name": "http", "port": 9999, "protocol": "HTTP"}]}}"#,
+            ),
+        ],
         services: vec![
             service(
                 "default",
@@ -133,7 +155,32 @@ fn ingress_world(default_class: bool) -> Snapshot {
             endpoints("default", "empty", "", 80, &[("10.0.2.1", false)]),
             endpoints("team", "shop", "http", 3000, &[("10.0.3.1", true)]),
         ],
-        secrets: Vec::new(),
+        ..Snapshot::default()
+    }
+}
+
+/// fit's `ingressWorld`: `base`'s Services, fit's IngressClass and another's, and no Gateways.
+fn ingress_world(default_class: bool) -> Snapshot {
+    let ann = if default_class {
+        r#", "annotations": {"ingressclass.kubernetes.io/is-default-class": "true"}"#
+    } else {
+        ""
+    };
+    Snapshot {
+        gateways: Vec::new(),
+        ingress_classes: vec![
+            obj(
+                Shape::IngressClass,
+                &format!(
+                    r#"{{"metadata": {{"name": "fit"{ann}}}, "spec": {{"controller": "lesismal.github.io/fit"}}}}"#
+                ),
+            ),
+            obj(
+                Shape::IngressClass,
+                r#"{"metadata": {"name": "nginx"}, "spec": {"controller": "k8s.io/ingress-nginx"}}"#,
+            ),
+        ],
+        ..base()
     }
 }
 
@@ -146,13 +193,14 @@ fn ingress(name: &str, created: &str, annotations: &str, spec: &str) -> Arc<Obje
     )
 }
 
-fn opts(ingress: Option<KubernetesIngress>) -> KubernetesProvider {
+pub(crate) fn opts(ingress: Option<KubernetesIngress>) -> KubernetesProvider {
     KubernetesProvider {
         kubeconfig: String::new(),
         context: String::new(),
         controller_name: akit_config::DEFAULT_KUBERNETES_CONTROLLER_NAME.to_owned(),
         namespaces: Vec::new(),
         listen_host: String::new(),
+        addresses: Vec::new(),
         backends: akit_config::KubernetesBackends::Endpoints,
         max_objects: 10_000,
         request_timeout: Duration::from_secs(10),
@@ -207,13 +255,13 @@ fn write(b: &mut String, v: &Value) {
 }
 
 /// A translated part, checked to be a config akit takes, and why what was left out was.
-struct Part {
-    v: Value,
-    problems: Vec<String>,
+pub(crate) struct Part {
+    pub(crate) v: Value,
+    pub(crate) problems: Vec<String>,
 }
 
 impl Part {
-    fn of(s: &Snapshot, o: &KubernetesProvider, cert_dir: Option<&str>) -> Part {
+    pub(crate) fn of(s: &Snapshot, o: &KubernetesProvider, cert_dir: Option<&str>) -> Part {
         let mut t = Translator::new("k8s", o, cert_dir.map(str::to_owned));
         let data = String::from_utf8(t.run(s)).unwrap();
         // fit's checkPart: akit takes the part as a config of its own; an empty one, which adds
@@ -229,14 +277,14 @@ impl Part {
         }
     }
 
-    fn list(&self, k: &str) -> &[Value] {
+    pub(crate) fn list(&self, k: &str) -> &[Value] {
         match self.v.get(k) {
             Some(Value::Array(a)) => a,
             _ => &[],
         }
     }
 
-    fn names(&self) -> Vec<String> {
+    pub(crate) fn names(&self) -> Vec<String> {
         self.list("routes")
             .iter()
             .map(|r| match r.get("name") {
@@ -247,7 +295,7 @@ impl Part {
     }
 
     /// The route `name`'s fields, compact; "null" for one left out.
-    fn route(&self, name: &str) -> BTreeMap<&'static str, String> {
+    pub(crate) fn route(&self, name: &str) -> BTreeMap<&'static str, String> {
         let r = self
             .list("routes")
             .iter()
@@ -260,7 +308,7 @@ impl Part {
         out
     }
 
-    fn has_problems(&self, want: &[&str]) {
+    pub(crate) fn has_problems(&self, want: &[&str]) {
         for w in want {
             assert!(
                 self.problems.iter().any(|p| p.starts_with(w)),
@@ -481,8 +529,8 @@ fn ingresses() {
     assert!(Part::of(&w, &o, Some("/certs")).names().is_empty());
 }
 
-/// fit's `TestIngressPorts`, but for the Gateway holding a port, which comes with I60: other
-/// ports, and a wildcard host not redirected.
+/// fit's `TestIngressPorts`: other ports, a wildcard host not redirected, and a Gateway's TCP
+/// listener holding the HTTPS port.
 #[test]
 fn ingress_ports() {
     let (crt, key) = test_cert(&["shop.example.com"]);
@@ -513,9 +561,24 @@ fn ingress_ports() {
     );
     p.has_problems(&["ingress default/shop: rule 1: path 0: ssl-redirect: a wildcard or any host is redirected only from port 80 to 443"]);
     assert!(compact(p.v.get("listeners").unwrap()).contains(r#""address":"[::1]:8080""#));
+
+    // A Gateway's TCP listener holds the HTTPS port: HTTP alone, unredirected.
+    w.gateways = vec![obj(
+        Shape::Gateway,
+        r#"{"metadata": {"namespace": "default", "name": "l4"}, "spec": {"gatewayClassName": "fit", "listeners": [
+  {"name": "tcp", "port": 443, "protocol": "TCP"}]}}"#,
+    )];
+    let p = Part::of(&w, &opts(ports(80, 443)), Some("/certs"));
+    assert_eq!(
+        p.route("default.shop.ing.r0.p0")["listeners"],
+        r#"["k8s-80"]"#
+    );
+    p.has_problems(&[
+        "ingress default/shop: port 443 serves tcp already: its rules are not served over HTTPS",
+    ]);
 }
 
-/// fit's `TestIngressEdges`, but for the Gateway holding a port (I60).
+/// fit's `TestIngressEdges`.
 #[test]
 fn ingress_edges() {
     let (crt, key) = test_cert(&["shop.example.com"]);
@@ -595,6 +658,17 @@ fn ingress_edges() {
         "{:?}",
         t.problems
     );
+
+    // A Gateway's TCP listener holds the HTTP port.
+    w.gateways = vec![obj(
+        Shape::Gateway,
+        r#"{"metadata": {"namespace": "default", "name": "l4"}, "spec": {"gatewayClassName": "fit", "listeners": [
+  {"name": "tcp", "port": 80, "protocol": "TCP"}]}}"#,
+    )];
+    let p = Part::of(&w, &opts(ports(80, 443)), Some("/certs"));
+    p.has_problems(&[
+        "ingress default/a: port 80 serves tcp already: its rules are not served over HTTP",
+    ]);
 }
 
 /// Backends: cluster IPs, Services' ports by protocol, ExternalName Services (refused without

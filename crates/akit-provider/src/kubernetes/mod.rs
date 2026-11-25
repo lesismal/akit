@@ -1,26 +1,34 @@
-//! The Kubernetes provider (I59), fit's `provider/kubernetes`: Ingresses, served as routes.
+//! The Kubernetes provider, fit's `provider/kubernetes`: the Gateway API's Gateways and routes
+//! (I60), whose status it writes back, and Ingresses (I59), served as listeners, routes,
+//! services and upstreams.
 //!
 //! It talks to the API server with a client of its own on akio's (fit's decision 011): it lists
-//! each kind it reads, in pages, then watches it from the list's resource version, over HTTP/2
-//! when the server offers it. Each Ingress of an IngressClass whose controller is
-//! `controller_name` (or naming none, when such a class is the default) is a set of routes on
-//! akit's listener of `ingress.http_port` and, for the hosts of its `tls`, of
-//! `ingress.https_port`, with the certificates of the Secrets it names, written to files; each
-//! Service port they send to is an upstream of its ready endpoints or its cluster IP. Ingresses'
-//! annotations under `fit.lesismal.github.io/` ask for redirects to HTTPS, rewrites, h2c
-//! upstreams, rate and body limits, source ranges and timeouts, as fit reads them. What it
-//! leaves out is reported once. The Gateway API comes with I60.
+//! each kind it reads, in pages, at the first of its versions the server serves, then watches it
+//! from the list's resource version, over HTTP/2 when the server offers it. The listeners of the
+//! Gateways of the GatewayClasses whose controllerName is `controller_name` are listeners of
+//! akit's, and their HTTPRoutes, GRPCRoutes, TLSRoutes, TCPRoutes and UDPRoutes routes and
+//! services of akit's ([`gateway`]); the status of each class, Gateway, listener and route is
+//! written back as the API says ([`status`]), on the provider's thread, one write at a time.
+//! With `ingress`, each Ingress of an IngressClass whose controller is `controller_name` (or
+//! naming none, when such a class is the default) is a set of routes on akit's listener of
+//! `ingress.http_port` and, for the hosts of its `tls`, of `ingress.https_port`. The certificates
+//! of the Secrets HTTPS listeners and Ingresses name are written to files; each Service port they
+//! send to is an upstream of its ready endpoints or its cluster IP. Ingresses' annotations under
+//! `fit.lesismal.github.io/` ask for redirects to HTTPS, rewrites, h2c upstreams, rate and body
+//! limits, source ranges and timeouts, as fit reads them. What it leaves out is reported once.
 //!
 //! It runs in the control plane, on a thread of its own, its requests answered on an akio
 //! engine of its own, never on the listeners' I/O threads.
 
 mod client;
+mod gateway;
 mod kubeconfig;
+mod status;
 mod translate;
 mod types;
 mod watch;
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fmt;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -28,7 +36,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use akio::Engine;
 use akio_http::client::CancelToken;
@@ -39,6 +47,7 @@ use akit_config::{KubernetesProvider, ProviderKind};
 use crate::run::{Make, Provider, Update};
 use client::{Api, Failure, PAGE_SIZE, Ready};
 pub use kubeconfig::Env;
+use status::{StatusUpdate, object_path};
 use translate::{Snapshot, Translator};
 use types::{Object, Shape, decode};
 use watch::{Signal, Store, Watch, lock};
@@ -52,7 +61,7 @@ fn make(name: &str, c: &akit_config::Provider) -> Result<(Box<dyn Provider>, Str
         ProviderKind::Kubernetes(k) => Ok((
             Box::new(Kubernetes::new(name, k.clone())),
             format!(
-                "watching Kubernetes for the Ingresses of {}",
+                "watching Kubernetes for GatewayClasses of {}",
                 k.controller_name
             ),
         )),
@@ -95,48 +104,116 @@ impl Default for Timings {
 /// A kind the provider watches.
 #[derive(Debug, Clone, Copy)]
 struct Kind {
-    /// The resource's plural, for messages.
+    /// The resource's plural, for messages, and the kind of the statuses written.
     name: &'static str,
     /// Its path on the API server, across namespaces.
     path: &'static str,
+    /// The paths of the kind's other versions, tried in turn when the API server does not serve
+    /// `path`.
+    older: &'static [&'static str],
     /// What narrows what is listed and watched, a query's.
     query: &'static str,
     shape: Shape,
 }
 
-/// The kinds watched for Ingresses. Only the Secrets of TLS certificates, which Ingresses name.
-const WATCHED: [Kind; 5] = [
+const fn kind(name: &'static str, path: &'static str, shape: Shape) -> Kind {
     Kind {
-        name: "ingressclasses",
-        path: "/apis/networking.k8s.io/v1/ingressclasses",
+        name,
+        path,
+        older: &[],
         query: "",
-        shape: Shape::IngressClass,
-    },
+        shape,
+    }
+}
+
+/// The kinds the provider watches. TLSRoutes, TCPRoutes and UDPRoutes are in the Gateway API's
+/// experimental channel. Only the Secrets of TLS certificates, which HTTPS listeners and
+/// Ingresses name.
+const GATEWAY_KINDS: [Kind; 12] = [
+    kind("namespaces", "/api/v1/namespaces", Shape::Namespace),
+    kind(
+        "gatewayclasses",
+        "/apis/gateway.networking.k8s.io/v1/gatewayclasses",
+        Shape::GatewayClass,
+    ),
+    kind(
+        "gateways",
+        "/apis/gateway.networking.k8s.io/v1/gateways",
+        Shape::Gateway,
+    ),
+    kind(
+        "httproutes",
+        "/apis/gateway.networking.k8s.io/v1/httproutes",
+        Shape::HttpRoute,
+    ),
+    kind(
+        "grpcroutes",
+        "/apis/gateway.networking.k8s.io/v1/grpcroutes",
+        Shape::GrpcRoute,
+    ),
     Kind {
-        name: "ingresses",
-        path: "/apis/networking.k8s.io/v1/ingresses",
-        query: "",
-        shape: Shape::Ingress,
+        older: &[
+            "/apis/gateway.networking.k8s.io/v1alpha3/tlsroutes",
+            "/apis/gateway.networking.k8s.io/v1alpha2/tlsroutes",
+        ],
+        ..kind(
+            "tlsroutes",
+            "/apis/gateway.networking.k8s.io/v1/tlsroutes",
+            Shape::TlsRoute,
+        )
     },
+    kind(
+        "tcproutes",
+        "/apis/gateway.networking.k8s.io/v1alpha2/tcproutes",
+        Shape::TcpRoute,
+    ),
+    kind(
+        "udproutes",
+        "/apis/gateway.networking.k8s.io/v1alpha2/udproutes",
+        Shape::UdpRoute,
+    ),
     Kind {
-        name: "services",
-        path: "/api/v1/services",
-        query: "",
-        shape: Shape::Service,
+        older: &["/apis/gateway.networking.k8s.io/v1/referencegrants"],
+        ..kind(
+            "referencegrants",
+            "/apis/gateway.networking.k8s.io/v1beta1/referencegrants",
+            Shape::Grant,
+        )
     },
+    kind("services", "/api/v1/services", Shape::Service),
+    kind(
+        "endpointslices",
+        "/apis/discovery.k8s.io/v1/endpointslices",
+        Shape::Slice,
+    ),
     Kind {
-        name: "endpointslices",
-        path: "/apis/discovery.k8s.io/v1/endpointslices",
-        query: "",
-        shape: Shape::Slice,
-    },
-    Kind {
-        name: "secrets",
-        path: "/api/v1/secrets",
         query: "fieldSelector=type%3Dkubernetes.io%2Ftls",
-        shape: Shape::Secret,
+        ..kind("secrets", "/api/v1/secrets", Shape::Secret)
     },
 ];
+
+/// The kinds watched for Ingresses too, with `ingress`.
+const INGRESS_KINDS: [Kind; 2] = [
+    kind(
+        "ingresses",
+        "/apis/networking.k8s.io/v1/ingresses",
+        Shape::Ingress,
+    ),
+    kind(
+        "ingressclasses",
+        "/apis/networking.k8s.io/v1/ingressclasses",
+        Shape::IngressClass,
+    ),
+];
+
+/// The kinds a provider of `opts` watches: Ingresses and IngressClasses only with `ingress`.
+fn watched(opts: &KubernetesProvider) -> Vec<Kind> {
+    let mut v = GATEWAY_KINDS.to_vec();
+    if opts.ingress.is_some() {
+        v.extend(INGRESS_KINDS);
+    }
+    v
+}
 
 /// What wakes the provider's thread.
 pub(crate) enum Msg {
@@ -158,6 +235,11 @@ pub(crate) enum Msg {
         seq: u64,
         r: Result<(), Failure>,
     },
+    /// A status was written, or not.
+    StatusWritten {
+        kind: &'static str,
+        r: Result<(), Failure>,
+    },
 }
 
 impl fmt::Debug for Msg {
@@ -168,6 +250,7 @@ impl fmt::Debug for Msg {
             Msg::Dialed(_) => "Dialed",
             Msg::Page { .. } => "Page",
             Msg::WatchEnded { .. } => "WatchEnded",
+            Msg::StatusWritten { .. } => "StatusWritten",
         })
     }
 }
@@ -237,8 +320,10 @@ impl Provider for Kubernetes {
         if self.running.is_some() {
             return Ok(());
         }
-        // One message for each kind's request in flight, the dial's, a change and the stop.
-        let (tx, rx) = mpsc::sync_channel(WATCHED.len().saturating_add(4));
+        // One message for each kind's request in flight, the dial's, the status write's, a
+        // change and the stop.
+        let n = watched(&self.opts).len();
+        let (tx, rx) = mpsc::sync_channel(n.saturating_add(5));
         let stopped = Arc::new(AtomicBool::new(false));
         let run = Run {
             name: self.name.clone(),
@@ -257,6 +342,9 @@ impl Provider for Kubernetes {
             problems: BTreeSet::new(),
             cert_dir: None,
             own_dir: false,
+            writes: VecDeque::new(),
+            writing: None,
+            failing: BTreeSet::new(),
         };
         let h = std::thread::Builder::new()
             .name(format!("akit-provider-{}", self.name))
@@ -284,6 +372,8 @@ impl Drop for Kubernetes {
 /// A kind's state on the provider's thread.
 struct KindState {
     kind: Kind,
+    /// Which of its paths is listed and watched: 0 for `kind.path`, else one of `kind.older`.
+    at: usize,
     store: Arc<Mutex<Store>>,
     /// Counts the requests made, so that the end of one given up is passed over.
     seq: u64,
@@ -333,6 +423,22 @@ struct Run {
     cert_dir: Option<PathBuf>,
     /// The directory is the provider's own, removed when it stops.
     own_dir: bool,
+    /// The statuses still to write, of the last set made, and the write in flight; one at a
+    /// time, so that a slow API server holds up no part.
+    writes: VecDeque<StatusUpdate>,
+    writing: Option<CancelToken>,
+    /// The kinds whose last write failed, and was reported.
+    failing: BTreeSet<&'static str>,
+}
+
+impl KindState {
+    /// The path listed and watched.
+    fn path(&self) -> &'static str {
+        match self.at.checked_sub(1) {
+            None => self.kind.path,
+            Some(i) => self.kind.older.get(i).copied().unwrap_or(self.kind.path),
+        }
+    }
 }
 
 impl Run {
@@ -416,7 +522,7 @@ impl Run {
     /// Makes the directory certificates are written to.
     fn cert_dir(&mut self) {
         if self.opts.certificates_dir.is_empty() {
-            let nanos = std::time::SystemTime::now()
+            let nanos = SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map_or(0, |d| d.subsec_nanos());
             let d = std::env::temp_dir().join(format!(
@@ -449,10 +555,11 @@ impl Run {
     /// (once no more come for `debounce`), and every `resync`.
     fn follow(&mut self, rx: &Receiver<Msg>, mut api: Api) {
         let now = Instant::now();
-        let mut kinds: Vec<KindState> = WATCHED
-            .iter()
+        let mut kinds: Vec<KindState> = watched(&self.opts)
+            .into_iter()
             .map(|k| KindState {
-                kind: *k,
+                kind: k,
+                at: 0,
                 store: Arc::default(),
                 seq: 0,
                 cancel: None,
@@ -537,20 +644,69 @@ impl Run {
                         self.watch_ended(k, r, now);
                     }
                 }
+                Some(Msg::StatusWritten { kind, r }) => {
+                    self.writing = None;
+                    self.written(kind, r);
+                    self.write_next(&mut api, &kinds);
+                }
                 None => {}
             }
             if fire.is_some_and(|f| now >= f) {
                 fire = None;
-                self.send(&mut kinds, false);
+                self.send(&mut api, &mut kinds, false);
             }
             if resync.is_some_and(|r| now >= r) {
                 resync = now.checked_add(self.t.resync);
-                self.send(&mut kinds, true);
+                self.send(&mut api, &mut kinds, true);
             }
         }
         for k in &mut kinds {
             if let Some(c) = k.cancel.take() {
                 c.cancel();
+            }
+        }
+        if let Some(c) = self.writing.take() {
+            c.cancel();
+        }
+    }
+
+    /// Starts writing the next status, when none is being written.
+    fn write_next(&mut self, api: &mut Api, kinds: &[KindState]) {
+        if self.writing.is_some() {
+            return;
+        }
+        let Some(u) = self.writes.pop_front() else {
+            return;
+        };
+        let Some(k) = kinds.iter().find(|k| k.kind.name == u.kind) else {
+            return;
+        };
+        let path = object_path(k.path(), &u.ns, &u.name);
+        let cancel = CancelToken::new();
+        self.writing = Some(cancel.clone());
+        let (signal, kind) = (Arc::clone(&self.signal), u.kind);
+        api.patch_status(&path, u.patch, &cancel, move |r| {
+            signal.post(Msg::StatusWritten { kind, r });
+        });
+    }
+
+    /// A status write ended: one refused because the object changed since, or is gone, is
+    /// left, since the change comes through its watch and makes another set; a failure is
+    /// reported once for its kind, and its recovery.
+    fn written(&mut self, kind: &'static str, r: Result<(), Failure>) {
+        match r {
+            Ok(()) | Err(Failure::Conflict | Failure::NotFound) => {
+                if self.failing.remove(kind) {
+                    self.log(&format!("the status of {kind} is written again"));
+                }
+            }
+            Err(e) => {
+                if self.failing.insert(kind) {
+                    self.log(&format!(
+                        "writing the status of {kind}: {e}; trying again with each change and every {}",
+                        akit_config::duration::format(self.t.resync)
+                    ));
+                }
             }
         }
     }
@@ -569,6 +725,7 @@ impl Run {
         k.cancel = Some(cancel.clone());
         match next {
             Next::List => {
+                k.at = 0;
                 k.phase = Phase::Listing {
                     objs: BTreeMap::new(),
                     truncated: false,
@@ -581,13 +738,13 @@ impl Run {
                     i,
                     k.seq,
                     k.kind.name,
-                    k.kind.path.to_owned(),
+                    k.path().to_owned(),
                     k.kind.shape,
                     Arc::clone(&k.store),
                     self.opts.max_objects,
                     Arc::clone(&self.signal),
                 );
-                api.watch(k.kind.path, k.kind.query, &rv, &cancel, w);
+                api.watch(k.path(), k.kind.query, &rv, &cancel, w);
             }
         }
     }
@@ -604,7 +761,7 @@ impl Run {
         }
         let (signal, seq) = (Arc::clone(&self.signal), k.seq);
         let cancel = k.cancel.clone().unwrap_or_default();
-        api.get(k.kind.path, &q, &cancel, move |r| {
+        api.get(k.path(), &q, &cancel, move |r| {
             signal.post(Msg::Page { kind: i, seq, r });
         });
     }
@@ -622,13 +779,20 @@ impl Run {
         let Some(k) = kinds.get_mut(i) else {
             return false;
         };
+        let first_page = matches!(&k.phase, Phase::Listing { objs, .. } if objs.is_empty());
         let body = match r {
             Ok(b) => b,
+            // The next of its versions, if it has one.
+            Err(Failure::NotFound) if first_page && k.at < k.kind.older.len() => {
+                k.at = k.at.saturating_add(1);
+                self.get_page(api, k, i, "");
+                return false;
+            }
             Err(Failure::NotFound) => {
                 if !k.missing {
                     k.missing = true;
                     self.log(&format!(
-                        "{} are not served by the API server; looking again every {}",
+                        "{} are not served by the API server (is the Gateway API installed?); looking again every {}",
                         k.kind.name,
                         akit_config::duration::format(self.t.max_backoff)
                     ));
@@ -758,8 +922,8 @@ impl Run {
     }
 
     /// Translates what the stores hold and sends it, when it changed or `always` is set, once
-    /// every kind has been listed.
-    fn send(&mut self, kinds: &mut [KindState], always: bool) {
+    /// every kind has been listed; then writes the statuses that changed.
+    fn send(&mut self, api: &mut Api, kinds: &mut [KindState], always: bool) {
         let mut snap = Snapshot::default();
         for k in kinds.iter_mut() {
             let st = lock(&k.store);
@@ -773,19 +937,28 @@ impl Run {
                 self.report_full(k);
             }
             k.full = full;
-            match k.kind.shape {
-                Shape::IngressClass => snap.ingress_classes = objs,
-                Shape::Ingress => snap.ingresses = objs,
-                Shape::Service => snap.services = objs,
-                Shape::Slice => snap.slices = objs,
-                Shape::Secret => snap.secrets = objs,
-            }
+            *match k.kind.shape {
+                Shape::IngressClass => &mut snap.ingress_classes,
+                Shape::Ingress => &mut snap.ingresses,
+                Shape::Service => &mut snap.services,
+                Shape::Slice => &mut snap.slices,
+                Shape::Secret => &mut snap.secrets,
+                Shape::Namespace => &mut snap.namespaces,
+                Shape::GatewayClass => &mut snap.gateway_classes,
+                Shape::Gateway => &mut snap.gateways,
+                Shape::HttpRoute => &mut snap.http_routes,
+                Shape::GrpcRoute => &mut snap.grpc_routes,
+                Shape::TlsRoute => &mut snap.tls_routes,
+                Shape::TcpRoute => &mut snap.tcp_routes,
+                Shape::UdpRoute => &mut snap.udp_routes,
+                Shape::Grant => &mut snap.grants,
+            } = objs;
         }
         let dir = self.cert_dir.as_ref().map(|d| d.display().to_string());
         let mut t = Translator::new(&self.name, &self.opts, dir);
         let part = t.run(&snap);
         let mut reported = BTreeSet::new();
-        for msg in t.problems {
+        for msg in std::mem::take(&mut t.problems) {
             if !self.problems.contains(&msg) {
                 self.log(&msg);
             }
@@ -805,6 +978,9 @@ impl Run {
         if let Some(d) = &self.cert_dir {
             remove_certs(d, &t.certs);
         }
+        // The last set made replaces what was still to write of the one before.
+        self.writes = t.statuses(SystemTime::now()).into();
+        self.write_next(api, kinds);
     }
 }
 
@@ -940,5 +1116,7 @@ fn remove_certs(dir: &Path, certs: &BTreeMap<String, Vec<u8>>) {
     }
 }
 
+#[cfg(test)]
+mod gateway_tests;
 #[cfg(test)]
 mod tests;

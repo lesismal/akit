@@ -156,7 +156,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I57 | Provider 框架与生效配置 | I29 | done |
 | I58 | Docker provider | I57 | done |
 | I59 | Kubernetes Ingress | I57 | done |
-| I60 | Kubernetes Gateway API 与一致性测试 | I59 | todo |
+| I60 | Kubernetes Gateway API 与一致性测试 | I59 | done |
 | I61 | Consul 与 etcd | I57 | done |
 | I62 | 共享证书存储 | I30, I61 | todo |
 | I63 | 仪表盘 | I37 | done |
@@ -750,6 +750,9 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 - **完成标准**：akit 通过 `GATEWAY-HTTP` profile。
 - **涉及**：`akit-provider`。
 - **fit**：决定 012。
+- **状态**：已完成（2026-11-25），没有 akio 需求；移植了 fit 的转换、状态回写及其测试，与 fit 一样针对
+  假 API 服务器；针对 kind 集群运行一致性测试套件的方法写在
+  [tests/conformance](../tests/conformance/README.zh-CN.md) 中，留给维护者运行；见进度日志。
 
 ### I61 Consul 与 etcd
 

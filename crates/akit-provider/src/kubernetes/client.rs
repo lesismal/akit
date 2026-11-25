@@ -1,8 +1,9 @@
-//! akit's own client of the API server (fit's `client.go`, on akio's clients): lists in pages
-//! and watches, over HTTP/2 when the server is `https` and chooses `h2` in ALPN, as the API
-//! server does, its requests multiplexed on one connection; over HTTP/1.1 otherwise, a watch to
-//! a connection. Requests are started on the provider's thread and answered on the I/O thread
-//! of an engine of the provider's own, whose callbacks only decode and hand over, never block.
+//! akit's own client of the API server (fit's `client.go`, on akio's clients): lists in pages,
+//! watches and status patches, over HTTP/2 when the server is `https` and chooses `h2` in ALPN,
+//! as the API server does, its requests multiplexed on one connection; over HTTP/1.1 otherwise,
+//! a watch to a connection. Requests are started on the provider's thread and answered on the
+//! I/O thread of an engine of the provider's own, whose callbacks only decode and hand over,
+//! never block.
 
 use std::fmt;
 use std::fmt::Write as _;
@@ -15,7 +16,7 @@ use akio_http::client::{
     ResponseHandler, ResponseHead,
 };
 use akio_http::h2client::{H2Client, H2Event, H2Options, NotH2};
-use akio_http::message::Headers;
+use akio_http::message::{Headers, Method};
 
 use super::kubeconfig::{RestConfig, Token};
 
@@ -35,6 +36,8 @@ pub(crate) enum Failure {
     NotFound,
     /// 410, or a watch's 410 event: the resource version is too old.
     Gone,
+    /// 409 to a status patch: the object changed since the resource version it names.
+    Conflict,
     /// Anything else, said.
     Other(String),
 }
@@ -44,6 +47,7 @@ impl fmt::Display for Failure {
         match self {
             Failure::NotFound => f.write_str("not found"),
             Failure::Gone => f.write_str("the resource version is too old"),
+            Failure::Conflict => f.write_str("the object changed"),
             Failure::Other(s) => f.write_str(s),
         }
     }
@@ -277,7 +281,16 @@ impl Api {
     }
 
     fn request(&mut self, path_query: &str, cancel: &CancelToken) -> Result<ClientRequest, String> {
-        let mut req = ClientRequest::get(&format!("{}{path_query}", self.server))
+        self.request_of(Method::Get, path_query, cancel)
+    }
+
+    fn request_of(
+        &mut self,
+        method: Method,
+        path_query: &str,
+        cancel: &CancelToken,
+    ) -> Result<ClientRequest, String> {
+        let mut req = ClientRequest::new(method, &format!("{}{path_query}", self.server))
             .header("accept", "application/json")
             .cancel_with(cancel);
         if let Some(t) = &mut self.token {
@@ -309,6 +322,39 @@ impl Api {
                     "GET {path}: a page is larger than {MAX_PAGE_BYTES} bytes"
                 ))),
                 Err(e) => Err(Failure::Other(format!("GET {path}: {e}"))),
+            });
+        };
+        match &self.transport {
+            Transport::H2(c) => c.request(req, cb),
+            _ => self.h1.request(req, cb),
+        }
+    }
+
+    /// Sends a JSON merge patch to the status of the object at `path` (its path on the API
+    /// server, without `/status`), within the request timeout; `done` gets its outcome on an
+    /// I/O thread (or this one, when the request cannot be made): 404 and 409, the object gone
+    /// or changed since the resource version the patch names, by themselves.
+    pub(crate) fn patch_status(
+        &mut self,
+        path: &str,
+        patch: Vec<u8>,
+        cancel: &CancelToken,
+        done: impl FnOnce(Result<(), Failure>) + Send + 'static,
+    ) {
+        let req = match self.request_of(Method::Patch, &format!("{path}/status"), cancel) {
+            Ok(r) => r
+                .header("content-type", "application/merge-patch+json")
+                .body(patch)
+                .timeout(self.timeout),
+            Err(e) => return done(Err(Failure::Other(e))),
+        };
+        let path = path.to_owned();
+        let cb = move |r: Result<akio_http::client::ClientResponse, ClientError>| {
+            done(match r {
+                Ok(r) if r.status == 200 => Ok(()),
+                Ok(r) if r.status == 409 => Err(Failure::Conflict),
+                Ok(r) => Err(failure("PATCH", &path, r.status, &r.reason, &r.body)),
+                Err(e) => Err(Failure::Other(format!("PATCH {path}: {e}"))),
             });
         };
         match &self.transport {

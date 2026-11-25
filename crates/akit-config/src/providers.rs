@@ -1,8 +1,8 @@
 //! `providers`, as fit's `config.Provider` and its checks (`checkProviders`): sources of config
 //! other than the files and the Admin API (I57's framework), each of one kind. Docker (I58),
-//! Kubernetes' Ingresses (I59), and Consul, Consul KV and etcd (I61, their settings in
-//! [`crate::providers_kv`]) are read. A kind is a variant of [`ProviderKind`], an arm of [`decode`] and its own
-//! field lists.
+//! Kubernetes' Gateway API (I60) and Ingresses (I59), and Consul, Consul KV and etcd (I61, their
+//! settings in [`crate::providers_kv`]) are read. A kind is a variant of [`ProviderKind`], an arm
+//! of [`decode`] and its own field lists.
 //!
 //! Read when akit starts: a change takes a restart, as in fit.
 
@@ -33,7 +33,7 @@ pub struct Provider {
 pub enum ProviderKind {
     /// `docker`: routes, upstreams and services from the labels of running Docker containers.
     Docker(DockerProvider),
-    /// `kubernetes` (I59): Ingresses; the Gateway API comes with I60.
+    /// `kubernetes`: the Gateway API's Gateways and routes (I60), and Ingresses (I59).
     Kubernetes(KubernetesProvider),
     /// `consul`: upstreams, routes and services from the services of a Consul catalog (I61).
     Consul(ConsulProvider),
@@ -121,10 +121,11 @@ pub enum KubernetesBackends {
     ClusterIp,
 }
 
-/// `providers[].kubernetes`, as fit's `config.KubernetesProvider`, with its defaults filled in.
-/// akit serves Ingresses (`ingress`, I59); the Gateway API (and with it `addresses`) comes with
-/// I60, and `allow_external_name_services` with the upstreams' `deny_internal`, both refused as
-/// not supported yet.
+/// `providers[].kubernetes`, as fit's `config.KubernetesProvider`, with its defaults filled in:
+/// the Gateway API's Gateways of the GatewayClasses of `controller_name` and their routes (I60),
+/// whose status akit writes back, and with `ingress` Ingresses too (I59).
+/// `allow_external_name_services` waits for the upstreams' `deny_internal`, and is refused as not
+/// supported yet.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KubernetesProvider {
     /// `kubeconfig`: the kubeconfig file the cluster is reached with; when empty, the pod's
@@ -132,13 +133,18 @@ pub struct KubernetesProvider {
     pub kubeconfig: String,
     /// `context`: the kubeconfig's context; its `current-context` when empty.
     pub context: String,
-    /// `controller_name`: the controller of the IngressClasses whose Ingresses akit serves;
-    /// [`DEFAULT_KUBERNETES_CONTROLLER_NAME`] when left out.
+    /// `controller_name`: the controller of the GatewayClasses whose Gateways akit serves, and
+    /// of the IngressClasses whose Ingresses it serves; [`DEFAULT_KUBERNETES_CONTROLLER_NAME`]
+    /// when left out.
     pub controller_name: String,
-    /// `namespaces`: the namespaces whose Ingresses are served; every one when empty.
+    /// `namespaces`: the namespaces whose Gateways, routes and Ingresses are served; every one
+    /// when empty.
     pub namespaces: Vec<String>,
     /// `listen_host`: the address the listeners are bound on; every address when empty.
     pub listen_host: String,
+    /// `addresses`: the addresses, IP addresses or host names, written into each Gateway's
+    /// `status.addresses`; none are written when empty, and those there are kept.
+    pub addresses: Vec<String>,
     /// `backends`: where requests to a Service go.
     pub backends: KubernetesBackends,
     /// `max_objects`: the most objects of each kind kept; [`DEFAULT_KUBERNETES_MAX_OBJECTS`]
@@ -147,9 +153,10 @@ pub struct KubernetesProvider {
     /// `request_timeout`: how long each request to the API server may take, but watches;
     /// [`DEFAULT_KUBERNETES_REQUEST_TIMEOUT`] when left out or 0.
     pub request_timeout: Duration,
-    /// `ingress`: serve Ingresses, on these ports.
+    /// `ingress`: serve Ingresses too, on these ports.
     pub ingress: Option<KubernetesIngress>,
-    /// `certificates_dir`: where the certificates of the Secrets Ingresses name are written;
+    /// `certificates_dir`: where the certificates of the Secrets HTTPS listeners and Ingresses
+    /// name are written;
     /// a directory of akit's own in the system's temporary directory, removed when akit stops,
     /// when empty.
     pub certificates_dir: String,
@@ -189,21 +196,22 @@ const DOCKER_FIELDS: &[&str] = &[
     "request_timeout",
 ];
 
-// I59: Ingresses. addresses is the Gateways' status (I60); allow_external_name_services needs
-// the upstreams' deny_internal.
+// I59: Ingresses; I60: the Gateway API, addresses its Gateways' status.
+// allow_external_name_services needs the upstreams' deny_internal.
 const KUBERNETES_FIELDS: &[&str] = &[
     "kubeconfig",
     "context",
     "controller_name",
     "namespaces",
     "listen_host",
+    "addresses",
     "backends",
     "max_objects",
     "request_timeout",
     "ingress",
     "certificates_dir",
 ];
-const KUBERNETES_FIT_ONLY: &[&str] = &["addresses", "allow_external_name_services"];
+const KUBERNETES_FIT_ONLY: &[&str] = &["allow_external_name_services"];
 const KUBERNETES_INGRESS_FIELDS: &[&str] = &["http_port", "https_port"];
 
 /// One of `providers`, at `path`. A provider of a kind not supported yet is refused by
@@ -461,6 +469,26 @@ fn kubernetes(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<KubernetesPro
             );
         }
     }
+    let addresses = o
+        .take("addresses")
+        .map(|v| {
+            let at = o.at("addresses");
+            let mut out = Vec::new();
+            for (i, (off, a)) in d.strings(v, &at).into_iter().enumerate() {
+                if a.parse::<IpAddr>().is_err()
+                    && (a.starts_with('*') || crate::model::check_host(&a).is_err())
+                {
+                    d.error(
+                        off,
+                        &crate::error::join_index(&at, i),
+                        format!("{a:?} is not an IP address or host name"),
+                    );
+                }
+                out.push(a);
+            }
+            out
+        })
+        .unwrap_or_default();
     let backends = match string(d, &mut o, "backends") {
         None => KubernetesBackends::Endpoints,
         Some((b, off)) => match b.as_str() {
@@ -509,17 +537,7 @@ fn kubernetes(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<KubernetesPro
         })
     });
     let certificates_dir = string(d, &mut o, "certificates_dir").map(|s| s.0);
-    let off = o.off;
     o.finish(d, KUBERNETES_FIELDS, KUBERNETES_FIT_ONLY);
-    if ingress.is_none() {
-        // fit's provider always serves the Gateway API, which comes with I60: until then a
-        // provider without ingress would serve nothing.
-        d.not_yet(
-            off,
-            path,
-            "the Gateway API (I60): set ingress to serve Ingresses",
-        );
-    }
     Some(KubernetesProvider {
         kubeconfig: kubeconfig.unwrap_or_default(),
         context: context.unwrap_or_default(),
@@ -529,6 +547,7 @@ fn kubernetes(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<KubernetesPro
             .unwrap_or_else(|| DEFAULT_KUBERNETES_CONTROLLER_NAME.to_owned()),
         namespaces: namespaces.into_iter().map(|(_, s)| s).collect(),
         listen_host: listen_host.map(|h| h.0).unwrap_or_default(),
+        addresses,
         backends,
         max_objects,
         request_timeout,
@@ -621,7 +640,8 @@ mod tests {
         let c = crate::from_json(
             r#"{"providers": [{"kubernetes": {"ingress": {}}},
               {"name": "b", "kubernetes": {"kubeconfig": "/k", "context": "c", "controller_name": "example.net/x",
-               "namespaces": ["a", "b"], "listen_host": "127.0.0.1", "backends": "cluster_ip", "max_objects": 5,
+               "namespaces": ["a", "b"], "listen_host": "127.0.0.1", "addresses": ["192.0.2.1", "lb.example.com"],
+               "backends": "cluster_ip", "max_objects": 5,
                "request_timeout": "3s", "certificates_dir": "/d", "ingress": {"http_port": 8080, "https_port": 8443}}}]}"#,
             None,
         )
@@ -653,16 +673,23 @@ mod tests {
             (5, Duration::from_secs(3))
         );
         assert_eq!(k.namespaces, ["a", "b"]);
+        assert_eq!(k.addresses, ["192.0.2.1", "lb.example.com"]);
         assert_eq!(k.ingress.unwrap().https_port, 8443);
+        // The Gateway API alone, without Ingresses.
+        let c = crate::from_json(r#"{"providers": [{"kubernetes": {}}]}"#, None).unwrap();
+        let ProviderKind::Kubernetes(k) = &c.providers[0].kind else {
+            panic!("not kubernetes")
+        };
+        assert!(k.ingress.is_none() && k.addresses.is_empty());
 
         for (src, want) in [
             (
-                r#"{"kubernetes": {}}"#,
-                "not supported yet: the Gateway API (I60): set ingress to serve Ingresses",
+                r#"{"kubernetes": {"addresses": ["1.2.3.4", "*.example.com"]}}"#,
+                r#"providers[0].kubernetes.addresses[1]: "*.example.com" is not an IP address or host name"#,
             ),
             (
-                r#"{"kubernetes": {"ingress": {}, "addresses": ["1.2.3.4"]}}"#,
-                "providers[0].kubernetes.addresses: not supported yet",
+                r#"{"kubernetes": {"addresses": ["a_b"]}}"#,
+                "is not an IP address or host name",
             ),
             (
                 r#"{"kubernetes": {"ingress": {}, "allow_external_name_services": true}}"#,

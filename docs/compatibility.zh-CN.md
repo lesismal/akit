@@ -152,7 +152,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 369 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 370 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -205,7 +205,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`media_library`](#fields-media-library) | 24 | 0 | 24 |
 | [`metrics`](#fields-metrics) | 1 | 1 | 0 |
 | [`pprof`](#fields-pprof) | 4 | 0 | 4 |
-| [`providers`](#fields-providers) | 60 | 58 | 2 |
+| [`providers`](#fields-providers) | 60 | 59 | 1 |
 | [`routes`](#fields-routes) | 24 | 19 | 5 |
 | [`schema_version`](#fields-schema-version) | 1 | 1 | 0 |
 | [`services`](#fields-services) | 13 | 8 | 5 |
@@ -277,7 +277,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **合计** | 3821 | 369 | 3452 |
+| **合计** | 3821 | 370 | 3451 |
 
 <a id="fields-access"></a>
 
@@ -1683,7 +1683,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `providers[].etcd.request_timeout` | `duration` | 已支持 |
 | `providers[].etcd.username` | `string` | 已支持 |
 | `providers[].kubernetes` | `object` | 已支持 |
-| `providers[].kubernetes.addresses` | `array<string>` | 尚不支持（not supported yet） |
+| `providers[].kubernetes.addresses` | `array<string>` | 已支持 |
 | `providers[].kubernetes.allow_external_name_services` | `boolean` | 尚不支持（not supported yet） |
 | `providers[].kubernetes.backends` | `enum(endpoints\|cluster_ip)` | 已支持 |
 | `providers[].kubernetes.certificates_dir` | `string` | 已支持 |
