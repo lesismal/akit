@@ -1043,6 +1043,9 @@ pub enum Handler {
     Jwt(Jwt),
     /// The `cache` middleware: responses kept and answered from by RFC 9111's rules (I67).
     Cache(Cache),
+    /// The `wasm` middleware: a WebAssembly plugin of fit's ABI run for each request, on a pool
+    /// of its own (I71).
+    Wasm(crate::wasm::Wasm),
 }
 
 impl Handler {
@@ -1068,6 +1071,7 @@ impl Handler {
             Handler::Compress(_) => "compress",
             Handler::Jwt(_) => "jwt",
             Handler::Cache(_) => "cache",
+            Handler::Wasm(_) => "wasm",
         }
     }
 
@@ -1089,6 +1093,7 @@ impl Handler {
                 | Handler::Compress(_)
                 | Handler::Jwt(_)
                 | Handler::Cache(_)
+                | Handler::Wasm(_)
         )
     }
 }
@@ -2016,7 +2021,27 @@ const FIT_HANDLERS: &[&str] = &[
     "whip",
 ];
 /// fit's middleware modules (its `http.middleware` namespace) that akit does not have yet.
-const FIT_MIDDLEWARE: &[&str] = &["wasm"];
+const FIT_MIDDLEWARE: &[&str] = &[];
+/// The fields of a `wasm` middleware's params (I71), read in `wasm.rs`.
+pub(crate) const WASM_FIELDS: &[&str] = &[
+    "path",
+    "config",
+    "instances",
+    "queue",
+    "timeout",
+    "wait_timeout",
+    "max_memory_bytes",
+    "max_memory",
+    "on_error",
+];
+/// The `wasm` middleware's fields only a Proxy-Wasm plugin uses (I72).
+pub(crate) const WASM_FIT_ONLY: &[&str] = &[
+    "vm_config",
+    "properties",
+    "response",
+    "max_streams",
+    "max_body_bytes",
+];
 const CACHE_FIELDS: &[&str] = &[
     "zone",
     "max_bytes",
@@ -3741,6 +3766,7 @@ fn middleware(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Handler> {
         "compress" => compress(d, params, &params_path).map(Handler::Compress),
         "jwt" => jwt(d, params, off, &params_path).map(Handler::Jwt),
         "cache" => cache(d, params, &params_path).map(Handler::Cache),
+        "wasm" => crate::wasm::wasm(d, params, off, &params_path).map(Handler::Wasm),
         m if FIT_MIDDLEWARE.contains(&m) => {
             d.not_yet(off, &module_path, &format!("the {m:?} middleware"));
             None
@@ -3959,7 +3985,7 @@ fn header_ops(d: &mut Decoder<'_>, n: &Node, path: &str, ok: &mut bool) -> Heade
 
 /// A limit middleware's params object, or the "missing required field" problem of `required`
 /// when there is none.
-fn limit_params<'n>(
+pub(crate) fn limit_params<'n>(
     d: &mut Decoder<'_>,
     params: Option<&'n Node>,
     off: usize,
@@ -4276,7 +4302,7 @@ fn cache_disk(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<CacheDisk> {
 
 /// A size given as `key` or by its old name `old` (not both), at least 0; `None` when left out
 /// or 0. Its offset and path, for an error about it, come along.
-fn size_field_at(
+pub(crate) fn size_field_at(
     d: &mut Decoder<'_>,
     o: &mut Obj<'_>,
     key: &str,

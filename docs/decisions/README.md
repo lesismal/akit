@@ -20,3 +20,4 @@ says whether akit follows it.
 | [005](005-yaml-reader.md) | YAML is read by a reader of akit's own | accepted |
 | [006](006-admin-api.md) | The Admin API on an akio engine of its own, applied by the control thread | accepted |
 | [007](007-opentelemetry.md) | OpenTelemetry: fit's tracer, exported through akio's HTTP client | accepted |
+| [008](008-wasm-runtime.md) | WASM plugins on akio-wasm, with fit's ABI | accepted |

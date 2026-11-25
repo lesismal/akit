@@ -175,7 +175,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 399 supported.
+3821 fields in 121 sections, at fit `7daee573`; 410 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -219,7 +219,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`http.middleware/rate_limit`](#fields-http-middleware-rate-limit) | 9 | 9 | 0 |
 | [`http.middleware/redirect`](#fields-http-middleware-redirect) | 5 | 5 | 0 |
 | [`http.middleware/rewrite`](#fields-http-middleware-rewrite) | 6 | 6 | 0 |
-| [`http.middleware/wasm`](#fields-http-middleware-wasm) | 18 | 0 | 18 |
+| [`http.middleware/wasm`](#fields-http-middleware-wasm) | 18 | 11 | 7 |
 | [`limits`](#fields-limits) | 7 | 3 | 4 |
 | [`listeners`](#fields-listeners) | 30 | 23 | 7 |
 | [`llm`](#fields-llm) | 218 | 0 | 218 |
@@ -300,7 +300,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 399 | 3422 |
+| **Total** | 3821 | 410 | 3411 |
 
 <a id="fields-access"></a>
 
@@ -1238,24 +1238,24 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `routes[].middleware[]<wasm>` | `module` | not supported yet |
-| `routes[].middleware[]<wasm>.params` | `object` | not supported yet |
-| `routes[].middleware[]<wasm>.params.config` | `string` | not supported yet |
-| `routes[].middleware[]<wasm>.params.instances` | `integer` | not supported yet |
+| `routes[].middleware[]<wasm>` | `module` | supported |
+| `routes[].middleware[]<wasm>.params` | `object` | supported |
+| `routes[].middleware[]<wasm>.params.config` | `string` | supported |
+| `routes[].middleware[]<wasm>.params.instances` | `integer` | supported |
 | `routes[].middleware[]<wasm>.params.max_body_bytes` | `integer` | not supported yet |
-| `routes[].middleware[]<wasm>.params.max_memory` | `integer, deprecated` | not supported yet |
-| `routes[].middleware[]<wasm>.params.max_memory_bytes` | `integer` | not supported yet |
+| `routes[].middleware[]<wasm>.params.max_memory` | `integer, deprecated` | supported |
+| `routes[].middleware[]<wasm>.params.max_memory_bytes` | `integer` | supported |
 | `routes[].middleware[]<wasm>.params.max_streams` | `integer` | not supported yet |
-| `routes[].middleware[]<wasm>.params.on_error` | `enum(fail\|skip)` | not supported yet |
-| `routes[].middleware[]<wasm>.params.path` | `string, required` | not supported yet |
+| `routes[].middleware[]<wasm>.params.on_error` | `enum(fail\|skip)` | supported |
+| `routes[].middleware[]<wasm>.params.path` | `string, required` | supported |
 | `routes[].middleware[]<wasm>.params.properties` | `array<object>` | not supported yet |
 | `routes[].middleware[]<wasm>.params.properties[].path` | `array<string>, required` | not supported yet |
 | `routes[].middleware[]<wasm>.params.properties[].value` | `string` | not supported yet |
-| `routes[].middleware[]<wasm>.params.queue` | `integer` | not supported yet |
+| `routes[].middleware[]<wasm>.params.queue` | `integer` | supported |
 | `routes[].middleware[]<wasm>.params.response` | `enum(all\|headers\|none)` | not supported yet |
-| `routes[].middleware[]<wasm>.params.timeout` | `duration` | not supported yet |
+| `routes[].middleware[]<wasm>.params.timeout` | `duration` | supported |
 | `routes[].middleware[]<wasm>.params.vm_config` | `string` | not supported yet |
-| `routes[].middleware[]<wasm>.params.wait_timeout` | `duration` | not supported yet |
+| `routes[].middleware[]<wasm>.params.wait_timeout` | `duration` | supported |
 
 <a id="fields-limits"></a>
 
