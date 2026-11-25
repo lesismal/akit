@@ -289,3 +289,105 @@ fn broken_configs_do_not_panic() {
     }
     assert!(n > 10_000, "only {n} inputs");
 }
+
+/// The paths, by index, of every directive of `ds` that has a block, each before its children's.
+fn blocks_of(ds: &[super::nginx_parse::Directive], at: &mut Vec<usize>, out: &mut Vec<Vec<usize>>) {
+    for (i, d) in ds.iter().enumerate() {
+        at.push(i);
+        if !d.block.is_empty() {
+            out.push(at.clone());
+            blocks_of(&d.block, at, out);
+        }
+        at.pop();
+    }
+}
+
+/// M5's exit criterion (I76): the nginx converter handles fit's sample configs and lists every
+/// directive it skips. Each sample (fit's `adapter/nginx/testdata` and the configs of fit's docs,
+/// guides and benchmark that the CLI's tests convert) converts, every warning names its line, and
+/// a directive no converter knows, put first in every block and at the top, is reported at its own
+/// line, or within a block reported skipped as a whole.
+#[test]
+fn nginx_samples_list_every_skipped_directive() {
+    use super::nginx::convert_parsed;
+    use super::nginx_parse::{Directive, parse};
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../akit/tests/testdata/adapt/convert");
+    let probe = |line| Directive {
+        name: "akit_probe".into(),
+        args: vec!["on".into()],
+        line,
+        block: Vec::new(),
+    };
+    let mut probed_blocks = 0;
+    for name in [
+        "full.conf",
+        "proxy.conf",
+        "static.conf",
+        "bench-nginx.conf",
+        "nginx-docs.conf",
+        "nginx-shop.conf",
+    ] {
+        let mut src = std::fs::read_to_string(dir.join(name)).unwrap();
+        // The benchmark's config as fitbench fills it in.
+        for (k, v) in [
+            ("{{WORKERS}}", "7"),
+            ("{{BACKLOG}}", "2048"),
+            ("{{WORKER_CONNECTIONS}}", "65536"),
+            ("{{BACKEND_CONNS}}", "16384"),
+            ("{{BACKEND_IDLE_PER_WORKER}}", "4096"),
+            ("{{BACKEND}}", "127.0.0.1:9000"),
+            ("{{WSBACKEND}}", "127.0.0.1:9001"),
+            ("{{CACHEBACKEND}}", "127.0.0.1:9003"),
+        ] {
+            src = src.replace(k, v);
+        }
+        let ds = parse(&src).unwrap_or_else(|e| panic!("{name}: {e}"));
+        let base = convert_parsed(&ds).unwrap_or_else(|e| panic!("{name}: {e}"));
+        for w in base.warnings() {
+            let n = w
+                .strip_prefix("line ")
+                .and_then(|r| r.split_once(':'))
+                .map(|(n, _)| n);
+            assert!(
+                n.is_some_and(|n| n.parse::<u32>().is_ok_and(|n| n > 0)),
+                "{name}: a warning without its line: {w}"
+            );
+        }
+        let mut paths = vec![Vec::new()];
+        blocks_of(&ds, &mut Vec::new(), &mut paths);
+        for path in paths {
+            let line = 1_000_000;
+            let mut probed = ds.clone();
+            let mut ancestors = Vec::new();
+            let mut block = &mut probed;
+            for &i in &path {
+                ancestors.push(block[i].line);
+                block = &mut block[i].block;
+            }
+            block.insert(0, probe(line));
+            let got = convert_parsed(&probed)
+                .unwrap_or_else(|e| panic!("{name}: a probe in the block at {ancestors:?}: {e}"));
+            let at = |l: i64| format!("line {l}: ");
+            let listed = got
+                .warnings()
+                .iter()
+                .any(|w| w.starts_with(&at(line)) && w.contains("akit_probe"))
+                || got.warnings().iter().any(|w| {
+                    ancestors.iter().any(|&a| w.starts_with(&at(a)))
+                        && (w.contains("skipped") || w.contains("not converted"))
+                });
+            assert!(
+                listed,
+                "{name}: a directive in the block at lines {ancestors:?} is not listed: {:?}",
+                got.warnings()
+            );
+            assert_eq!(
+                got.json(),
+                base.json(),
+                "{name}: a probe at {ancestors:?} changed the output"
+            );
+            probed_blocks += 1;
+        }
+    }
+    assert!(probed_blocks > 50, "{probed_blocks} blocks probed");
+}

@@ -1,0 +1,18 @@
+// akit-nolock.json is akit.json with the cache lock off (disable_lock), the stampede check's
+// control (bench/stampede.sh): every miss fetches for itself, so the origin counts every client.
+{
+  "listeners": [
+    {"name": "h1", "address": ":19180", "protocols": ["http/1.1"]},
+    {"name": "h2c", "address": ":19181", "protocols": ["http/1.1", "h2c"]}
+  ],
+  "upstreams": [{"name": "origin", "addresses": ["127.0.0.1:19103"]}],
+  "routes": [
+    {"name": "ready", "match": {"path": ["/ready"]}, "handler": {"module": "respond", "params": {"body": "ok"}}},
+    {
+      "name": "stampede",
+      "match": {"path": ["/stampede/*"]},
+      "middleware": [{"module": "cache", "params": {"zone": "stampede", "disable_lock": true}}],
+      "handler": {"module": "proxy", "params": {"upstream": "origin"}}
+    }
+  ]
+}

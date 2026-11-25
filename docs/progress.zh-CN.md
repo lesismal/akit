@@ -10,6 +10,48 @@
 | | |
 | --- | --- |
 | 最后更新 | 2026-11-25 |
+| 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I24、I17b 和 I18b 已完成；M2 的 I26–I37、M3 的 I39–I55（含 I51b）、M4 的 I57–I65 已提前完成；M5 缓存与扩展已完成（I67–I76：[M5 报告](../bench/results/m5-report-2026-11-25.zh-CN.md)）。 |
+| akio | akio `main` 上的 `dad77a7a`（`1.0.0-rc.1`，带 [akio API 需求](akio-api-requests.zh-CN.md) 中所有已锁定的需求，以及 akio-wasm，ADR-125），在 `Cargo.toml` 中按 `rev` 锁定 |
+| fit | 作为规格；本计划基于 `7daee573` 阅读 |
+| 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，按 fit 的写法转换和格式化配置的 `akit adapt` 与 `akit fmt`（I73），把其他 crate 的模块构建进 akit、或少带自带模块的 `akit build`（I70），JSON`akit run` 和 `akit validate`，带 fit 的参数和退出码，按 fit 的写法转换和格式化配置的 `akit adapt` 与 `akit fmt`（I73），按 fit 的方式由 `akit adapt -from` 转换的 nginx 配置与 Caddyfile（I74），JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；基于 akio 的 A1 保留（按 fit 的 `binding.same`：证书文件和 ACME 名字可以变）、增加、修改和排空监听器，包括启动时的监听器，重载可新增 h3 监听器；服务 h3 的启动监听器要重启才能变）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证；按 fit 的方式每次握手选择证书，重载或 `-watch-certs` 替换证书而不关闭监听器）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；路由中间件：`rewrite`（前缀和正则）、`redirect`（含正则的分组）、`headers`、`rate_limit`、`concurrency_limit`、`body_limit`、`basic_auth`（bcrypt，在 akio 的线程池上校验）、`client_cert`（按路由的 mTLS）、`forward_auth`（经 akio 的客户端询问认证服务，期间挂起请求）、`circuit_breaker`、`compress`（按 q 值选择 zstd、brotli 和 gzip，流式消息体逐次写入编码）和 `jwt`（用 akio-crypto 校验 JSON Web Token，密钥来自 PEM 文件、密钥文件或经 akio 的客户端获取并轮换的 JWK 集）；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，内存中文件的压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`、双向流式转发 body 并联动背压，双向透传 trailer，`timeout` 和上游的 `response_timeout`、`response_header_timeout`、`response_idle_timeout`，超时回答 504，客户端无论何时离开都放弃上游请求，带预算的 `retry`，`timeout` 覆盖所有尝试；按权重随机选择的 `upstreams`，所选上游没有地址在轮转中时接管请求的 `failover`，接收消息体完整到达的请求副本的 `mirror`（同时最多 256 个，请求从不等待副本）；经 HTTP/1.1、h2c 和 h2 访问上游，h2 支持 fit 的 `tls_server_name`、`tls_ca_file` 和客户端证书）；所有监听器和代理上的 `limits.max_body_bytes`（413），以及 `limits.write_stall_timeout`（重载也可修改）；fit 的 json、text 和 line 格式的访问日志；上游连接池，fit 的九种负载均衡策略（轮询、加权轮询、最少连接、随机、p2c，以及按客户端 IP、路径、头或 cookie 的一致性哈希）和会话保持 cookie，跳过被被动健康检查（`max_fails`、`fail_timeout`）和主动健康检查（`health_check`：http 和 tcp 探测）下线的地址；回环地址上的 Admin API（`GET /config`，也可按 JSON 指针读取，`POST /load`，用 `PUT`、`PATCH` 和 `DELETE /config` 按指针编辑，`POST /rollback/{n}`，`POST /reload`，都带 `If-Match`，除回滚外都可 `?dry_run=1`，`GET /versions`；有 `token_file` 时每个请求都要带 bearer 令牌），修改与 SIGHUP 一样作为重载应用，两者共用一份历史记录；`run -watch` 在配置文件每次变化时应用它们（fit 的文件 provider，轮询）；Admin API 的 `GET /metrics` 提供 fit 的 Prometheus 指标（有 `metrics` 时按监听器和路由的请求、上游和后端、证书、连接、重载、akio 的引擎）；为监听器在 `tls.acme` 中所列的名字通过 HTTP-01 或 TLS-ALPN-01 用 ACME 获取证书，保存在存储中，按有效期或 CA 的续期信息（ARI）续期，并装订其 OCSP 响应，也在握手时为 ask URL 允许的名字获取证书（`tls.on_demand`，带限流，握手等待时不占住 I/O 线程）Admin API 的 `/dashboard/` 提供 fit 的只读仪表盘，基于 `GET /status` 和 `GET /config/effective`（I63）；为监听器在 `tls.acme` 中所列的名字通过 HTTP-01 或 TLS-ALPN-01 用 ACME 获取证书，保存在存储中，按有效期或 CA 的续期信息（ARI）续期，并装订其 OCSP 响应；默认 HTTPS（`auto_https`）：没有写监听器的配置以其路由主机名的证书经 HTTPS 服务，经 HTTP 重定向（308）到 HTTPS，空的 `tls` 得到其路由的名字；四层 `services`（I51）：`tcp` 和 `udp` 监听器代理到上游的地址，双向联动背压，空闲超时，`max_conns`，重载后排空；在带 `sockmap` 的监听器上（I51b，akit 自己的字段），在 akio 的 eBPF sockmap 转发能加载的地方，其连接在内核中拼接；按 TLS ClientHello 的服务器名共用一个 `tcp` 监听器的服务，不终结 TLS 直接透传（I52），以及 `tcp` 与 HTTP 监听器从受信任代理接收、并向服务的上游发送的 PROXY protocol 头（v1、stale-while-revalidate 与 stale-if-error，在自己的线程池上读写的磁盘层，以及经 Admin API 的 `POST /cache/purge` 按 URLstale-while-revalidate 与 stale-if-error，以及在自己的线程池上读写的磁盘层；`fastcgi` handler（I75）：经 TCP 或 Unix 域套接字连接 PHP-FPM 等 FastCGI 应用，有界连接池，双向流式传输消息体并联动背压，`try_files`、点文件和 fit 的超时；兼容性门禁：80 个夹具，46 个有效，33 个只因暂不支持被拒绝，1 个跳过，没有失败WebSocket 代理（I49）：HTTP/1.1 upgrade 与 HTTP/2OpenTelemetry（I64）：按 `traceparent` 和 `telemetry.traces.sample_ratio` 追踪请求，上游收到 akit 的 span，span 和指标通过 OTLP/HTTP 导出v2）；一个端口上与 HTTP 并列的 `tcp`（I53），按客户端先发的字节区分；正向代理（I55）：监听器 `socks` 上的 SOCKS5、SOCKS4 与 4a CONNECT，单独或在一个端口上与 HTTP、URL 前缀、标签或 zone 清除（I69）；`tcp` 并列，以及 `forward_proxy` 处理器的 HTTP/1.1 CONNECT 隧道，带 fit 对客户端和目的地的规则（地址在连接建立后判定）、连接超时与空闲超时；WebSocket 代理（I49）：HTTP/1.1 upgrade 与 HTTP/2、HTTP/3 扩展 CONNECT 代理到 HTTP/1.1 上游，双向联动背压，`tunnel_idle_timeout`；gRPC 调用代理（I50）到 h2 和 h2c 上游，双向流式传输并带 trailer，受 `grpc-timeout` 约束，失败时以 gRPC 状态应答；响应缓存（I67、I68）：zone 共享的有界内存层上的 RFC 9111，流式消息体在发出的同时保存，缓存锁、stale-while-revalidate 与 stale-if-error，以及在自己的线程池上读写的磁盘层；provider 框架（I57）：provider 提供的部分按 fit 的规则合并进基础配置，各自作为新版本应用，`GET /config/effective` 给出每部分的来源；Consul catalog、Consul KV 与 etcd provider（I61），以阻塞查询和 watch 跟随变化；多台主机上的实例经 Redis、etcd 或 Consul 共享证书（`acme.shared_storage`，I62），带租约锁，挑战由 CA 到达的那个实例应答；OpenTelemetry（I64）：按 `traceparent` 和 `telemetry.traces.sample_ratio` 追踪请求，上游收到 akit 的 span，span 和指标通过 OTLP/HTTP 导出；`wasm` 中间件（I71、I72）：fit ABI 的 WebAssembly 插件和 Proxy-Wasm 过滤器（fit 运行的子集：请求的头部，以及基于 akio 的挂起响应头和响应体过滤器的响应头、响应体和 trailer）原样运行在 akio-wasm 的实例池上，有时间和内存上限，从不在 I/O 线程上运行；兼容性门禁：80 个夹具，46 个有效，33 个只因暂不支持被拒绝，1 个跳过，没有失败；Kubernetes provider（I59、I60）：经 HTTP/2 或 HTTP/1.1 list 并 watch akit 的 GatewayClass 的 Gateway 及其 HTTPRoute、GRPCRoute、TLSRoute、TCPRoute 和 UDPRoute，以及 akit 的 IngressClass 的 Ingress，作为监听器、路由和服务发往其 Service 的就绪端点，其 TLS Secret 写成证书文件，并写回 Gateway API 的状态 |
+| 下一步 | M2 的 I38；M3 的 I56；M4 的 I66；I25（M1 一致性）；Gateway API 一致性测试的运行（tests/conformance，由维护者运行） |
+| akio 需求 | A1–A9、A11、A13–A21、A23、A32、A33、A36–A38、A48、A51–A53、A57、A58、A63–A66、A90–A94、A105、A108、A109、A111–A113、A132–A135、A165–A167 已在 akio 的 main 并已锁定；A10、A12、A22、A24、A29、A30、A35、A45、A49、A54、A75、A78、A79、A117、A148、A170 和 A180 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
+
+## 日志
+
+### 2026-11-25：I76，M5 退出
+
+- **M5 已完成**：[M5 报告](../bench/results/m5-report-2026-11-25.zh-CN.md)（及其[英文版](../bench/results/m5-report-2026-11-25.md)），
+  含 *akit 的位置*；每条退出标准都成立。在基准测试主机上测量，每次运行都独占主机的锁，akit 为本提交的工作区，akio 为
+  `dad77a7a`，fit 为 `7daee573`。
+- **缓存对照 nginx 的 `proxy_cache`**：akit 加入基准框架的 `cache-hot` 和 `cache-zipf`（`bench/fitbench/akit.go`、
+  `bench/configs/akit/fit.json`：路由 `cache`，1 GiB 的区域，与 fit 相同）。命中相同或更多（`cache-zipf` 99.98%，nginx
+  99.86%，fit 99.97%），三者中第一：HTTP/1.1 上每秒 589,973 个请求（nginx 398,691，fit 526,977），h2c 上 2,086,275（nginx
+  337,106，fit 1,694,120），100,000 个路径时 564,220（nginx 322,575，fit 505,880）。
+- **击穿**：`bench/stampede.sh`（新增；`bench/stampede/`）让 1,000 个客户端同时向 nginx（`proxy_cache_lock on`）、fit 和 akit
+  请求一个冷键，慢源站（一秒）统计被取的次数：各取一次，HTTP/1.1 和 h2c 上各三个键，每个客户端都回答 200；对照组
+  `disable_lock` 的 akit 为 1,000 和 829 次。
+- **WASM 开销**：`wasm` 场景和两个服务器 `akit-wasm`、`fit-wasm`，运行 fit 自己的 `headers` 测试插件，同一个 `.wasm`
+  （`bench/configs/akit/wasm.json`、`bench/configs/akit/fit-wasm.conf`，各服务器自己的配置之外的第二个配置文件；`lib.sh`
+  解压 guest；`run.sh` 传入 `-akit-wasm-image`）。HTTP/1.1 上插件让 akit 每个请求多花 14.7 µs CPU（每秒 312,679 个请求，
+  不带插件时 831,888），fit 6.8 µs（452,353 对 785,657）；h2c 上 2,048 个同时进行的请求超出 1,024 的队列，两者都立即以
+  503 回答多出的部分，内存保持平稳。开销是 fit 的两倍：akio-wasm 解释执行，wazero 编译执行，已作为 **A180** 向 akio 提出
+  （akio 的 W5，附这些数字）。
+- **nginx 转换器**：`convert::tests::nginx_samples_list_every_skipped_directive`（`akit-config`）：fit 的三个样例配置和 CLI
+  测试转换的另外三个 nginx 配置全部能转换，每条警告都写明行号，在它们 56 个块的开头和顶层放一条任何转换器都不认识的
+  指令，它总被列出（在其行号处，或在整体略过的块中），输出在其他方面不变；静默丢弃未知指令的转换器无法通过。
+  `nginx::convert` 拆分出 `convert_parsed`，接受已读出的指令。
+- **FastCGI**：I75 的 PHP-FPM 测试（fit 的 `TestPHPFPM`，`php_fpm`）在主机上的 `php:8.4-fpm` 镜像（PHP 8.4.28）中运行，
+  epoll 和 io_uring 上都通过。
+- **akit 的位置**（完整基准框架，所有服务器，HTTP/1.1 和 h2c）：fixed（822,825 和 5,584,430）、HTTP/1.1 上的 static
+  （785,510）和三个缓存运行中第一；h2c 上的 static 第二（fit 的 99%）；proxy 中第三（nginx 的 88% 和 93%），1.8 GiB 的内存
+  峰值来自 akio 的 HTTP/1 客户端定时器，由 I25 发现（A171）；空闲连接在 HTTP/1.1 上次于 nginx（1,136 字节），TLS 上次于
+  fit（12,954）。
+- 基准框架：`BENCH_DIR` 让一个会话在主机上与其他会话分开部署；在 git worktree 中要设置 `FIT_REPO`。开发计划中缓存和 WASM
+  的基准行标为部分已测，并写明剩下的。
+- 已检查：macOS 上的 `cargo fmt`、`cargo clippy --all-targets -D warnings` 和 `cargo deny check`，`akit-config` 和 `akit`
+  的测试；基准测试主机上经 `tools/test-timeout.sh` 在 epoll 和 io_uring 上运行 `akit-config` 和 `akit`。
+
 | 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I24、I17b 和 I18b 已完成；M3 网关功能已完成（I39–I56，含 I51b：[M3 报告](../bench/results/m3-report-2026-11-25.zh-CN.md)）；M2 的 I26–I37、M4 已完成（I57–I66：Gateway API 的 `GATEWAY-HTTP` core 通过，Compose 示例按标签路由）；I67–I75 已提前完成。 |
 | akio | akio `main` 上的 `dad77a7a`（`1.0.0-rc.1`，带 [akio API 需求](akio-api-requests.zh-CN.md) 中所有已锁定的需求，以及 akio-wasm，ADR-125），在 `Cargo.toml` 中按 `rev` 锁定 |
 | fit | 作为规格；本计划基于 `7daee573` 阅读 |

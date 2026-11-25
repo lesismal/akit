@@ -87,6 +87,7 @@
 | A166 | 由别处进行的调用决定时扣住响应头（fit 向 fib 提出的 A41） | 已在 akio 的 main（`dad77a7a`），已锁定 | 1、4 | I72 |
 | A167 | 由别处进行的调用逐次过滤响应 body，trailer 在最后一次调用中（fit 向 fib 提出的 A46） | 已在 akio 的 main（`dad77a7a`），已锁定 | 1、4、5、8 | I72 |
 | A170 | 不经 `Conn::inner` 读取连接的 TCP 计数（以及未读字节），并通过引擎自己的 API 先写数据再拼接 | 已提出（I51b）；在此之前 akit-l4 使用文档中隐藏的 `Conn::inner` | 1、14 | I51b |
+| A180 | 让 akio-wasm 的调用更便宜，并与 wazero 对比测量（akio 的 W5） | 已提出（I76）：一个修改头部的 Go guest 让 akit 每个请求多花 14.7 µs CPU，fit 6.8 µs | 13 | I71、I72、I76 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -1461,3 +1462,26 @@ akio-socks 的拼接隧道（计数、空闲探测、关闭时的排空）作为
 
 **akit 的用法。** akit-l4 的 `sockmap` 模块改用这些 API，不再使用 `Conn::inner`，并且对带 `proxy_protocol` 的监听器的
 连接也进行拼接。
+
+## A180 让 akio-wasm 的调用更便宜，并与 wazero 对比测量（akio 的 W5）
+
+**状态。** 由 I76 提出（2026-11-25），给出 akio 的 W5（ADR-125 第 8 节，"对照 fit（wazero）的性能优化"，在 akio 的
+开发计划中仍未完成）的第一批数字。akit 中没有任何东西等待它：开销有界且已测量，M5 的标准成立。
+
+**问题。** 一个请求经过 `wasm` 中间件，在 akit 中的开销约为同一个 `.wasm` 在 fit 中的两倍。fit 在 wazero 的编译器上运行
+guest；akit 在 akio-wasm 的解释器上运行（没有 `unsafe`，所以没有编译器），插件占了 akit 处理这个请求的大部分开销。
+
+**证据。** [M5 报告](../bench/results/m5-report-2026-11-25.zh-CN.md#修改头部的-wasm-插件)：fit 自己修改头部的测试插件
+（`plugin/wasm/testdata/headers`，Go 的 `wasip1` guest，gzip 后 1.2 MB），固定响应位于使用默认值（7 个实例，队列 1,024）
+的 `wasm` 中间件之后，在基准测试主机上用 fitbench，256 条 HTTP/1.1 连接。akit：每秒 312,679 个请求，每个 22.25 µs
+CPU，同一容器中不带插件时每秒 831,888 个、每个 7.52 µs，所以插件每个请求 14.7 µs。fit：每秒 452,353 个、每个 14.92 µs，
+对比 785,657 个、8.15 µs，即 6.8 µs。带插件时 akit 的内存峰值 81 MiB，是 fit 的 235 MiB 的三分之一。akit 的 14.7 µs 由什么
+组成（交给池再交回、复制请求、guest 自己的指令、宿主调用）还没有分开测量。
+
+**建议的 API。** 无新 API：W5 对 akio-wasm 解释器和 `InstancePool` 的优化，先分开测量（实例上单独一次 guest 调用，对照
+wazero 的解释器和编译器，如 fit 的 `BenchmarkGuestCall`；池的交接与唤醒），再处理剖析指出的部分：分派循环、每个基本块
+的预算检查、宿主调用的参数传递、内存边界检查；以及让进入 Go `wasip1` guest
+的导出函数变得更便宜的办法。
+
+**akit 如何使用。** 原样使用：`akit-plugin` 在 `akio_wasm::InstancePool` 上运行每个 guest；调用变便宜后 akit 无需改动，
+用 `bench/run.sh -servers akit-wasm,fit-wasm -scenarios fixed,wasm` 重新测量。

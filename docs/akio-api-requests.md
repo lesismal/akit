@@ -88,6 +88,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | A166 | A response's head held while a call made elsewhere decides on it (fit's A41 from fib) | in akio's main (`dad77a7a`), pinned | 1, 4 | I72 |
 | A167 | A response body filtered by calls made elsewhere, one at a time, its trailers in the last (fit's A46 from fib) | in akio's main (`dad77a7a`), pinned | 1, 4, 5, 8 | I72 |
 | A170 | A connection's TCP counters (and unread bytes) without reaching into `Conn::inner`, and a splice that writes first through the engine's own API | requested (I51b); akit-l4 uses the doc-hidden `Conn::inner` meanwhile | 1, 14 | I51b |
+| A180 | akio-wasm's call made cheaper, measured against wazero (akio's W5) | requested (I76): a header-editing Go guest costs akit 14.7 µs of CPU a request, fit 6.8 µs | 13 | I71, I72, I76 |
 
 ## A1 TCP listeners on a running engine
 
@@ -1802,3 +1803,33 @@ tunnel (the counters, the idle probe and the drain on close) as a public type in
 
 **How akit would use it.** akit-l4's `sockmap` module would call these instead of `Conn::inner`,
 and splice the connections of a listener with `proxy_protocol` too.
+
+## A180 akio-wasm's call made cheaper, measured against wazero (akio's W5)
+
+**Status.** Requested by I76 (2026-11-25), with the first numbers for akio's W5 (ADR-125 section
+8, "a performance pass against fit (wazero)", still open in akio's development plan). Nothing in
+akit waits on it: the cost is bounded and measured, and M5's criterion holds.
+
+**Problem.** A request through the `wasm` middleware costs akit about twice what it costs fit with
+the same `.wasm`. fit runs the guest on wazero's compiler; akit on akio-wasm's interpreter (no
+`unsafe`, so no compiler), and the plugin's share of a request is most of what akit spends on it.
+
+**Evidence.** The [M5 report](../bench/results/m5-report-2026-11-25.md#a-wasm-plugin-that-edits-headers):
+fit's own header-editing test plugin (`plugin/wasm/testdata/headers`, a Go `wasip1` guest of
+1.2 MB gzipped), the fixed response behind the `wasm` middleware with its defaults (7 instances, a
+queue of 1,024), fitbench on the benchmark host, 256 HTTP/1.1 connections. akit: 312,679 requests
+a second at 22.25 µs of CPU each, against 831,888 at 7.52 µs without the plugin in the same
+container, so 14.7 µs a request for the plugin. fit: 452,353 at 14.92 µs against 785,657 at 8.15
+µs, 6.8 µs. akit's peak memory with the plugin, 81 MiB, is a third of fit's 235 MiB. What akit's
+14.7 µs is made of (the hand-off to the pool and back, the request copied in, the guest's own
+instructions, the host calls) is not measured apart yet.
+
+**Suggested API.** None new: W5's pass over akio-wasm's interpreter and `InstancePool`, measured
+first apart (a guest call alone on an instance, against wazero's interpreter and compiler, as fit's
+`BenchmarkGuestCall`; the pool's hand-off and wake-up), then what the profile names: the dispatch
+loop, the per-block budget check, the host calls' argument passing, the memory bounds checks; and
+whatever makes entering a Go `wasip1` guest's export cheap to start.
+
+**How akit would use it.** As it is: `akit-plugin` runs every guest on `akio_wasm::InstancePool`;
+a cheaper call needs no change in akit, which measures it again with
+`bench/run.sh -servers akit-wasm,fit-wasm -scenarios fixed,wasm`.
