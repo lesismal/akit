@@ -421,6 +421,7 @@ fn supported_fields_are_read() {
     let breaker = |params: &str| mw("circuit_breaker", params);
     let compress = |params: &str| mw("compress", params);
     let cache = |params: &str| mw("cache", params);
+    let wasm = |more: &str| mw("wasm", &format!(r#""path": "p.wasm"{more}"#));
     let jwt = |more: &str| mw("jwt", &format!(r#""hmac_secret_file": "s"{more}"#));
     let service = |fields: &str| {
         format!(
@@ -1616,6 +1617,61 @@ fn supported_fields_are_read() {
             compress(r#""max_in_flight": 8"#),
             |c| compress_of(c).max_in_flight == 8,
         ),
+        ("routes[].middleware[]<wasm>", wasm(""), |c| {
+            matches!(c.routes[0].middleware[0], Handler::Wasm(_))
+        }),
+        ("routes[].middleware[]<wasm>.params", wasm(""), |c| {
+            let w = wasm_of(c);
+            w.instances == 0
+                && w.queue == 1024
+                && w.timeout == std::time::Duration::from_millis(100)
+                && w.wait_timeout == std::time::Duration::from_secs(1)
+                && w.max_memory_bytes == 128 << 20
+                && w.on_error == akit_config::WasmOnError::Fail
+        }),
+        ("routes[].middleware[]<wasm>.params.path", wasm(""), |c| {
+            wasm_of(c).path == "p.wasm"
+        }),
+        (
+            "routes[].middleware[]<wasm>.params.config",
+            wasm(r#", "config": "c""#),
+            |c| wasm_of(c).config == "c",
+        ),
+        (
+            "routes[].middleware[]<wasm>.params.instances",
+            wasm(r#", "instances": 3"#),
+            |c| wasm_of(c).instances == 3,
+        ),
+        (
+            "routes[].middleware[]<wasm>.params.queue",
+            wasm(r#", "queue": 8"#),
+            |c| wasm_of(c).queue == 8,
+        ),
+        (
+            "routes[].middleware[]<wasm>.params.timeout",
+            wasm(r#", "timeout": "50ms""#),
+            |c| wasm_of(c).timeout == std::time::Duration::from_millis(50),
+        ),
+        (
+            "routes[].middleware[]<wasm>.params.wait_timeout",
+            wasm(r#", "wait_timeout": "2s""#),
+            |c| wasm_of(c).wait_timeout == std::time::Duration::from_secs(2),
+        ),
+        (
+            "routes[].middleware[]<wasm>.params.max_memory_bytes",
+            wasm(r#", "max_memory_bytes": 67108864"#),
+            |c| wasm_of(c).max_memory_bytes == 64 << 20,
+        ),
+        (
+            "routes[].middleware[]<wasm>.params.max_memory",
+            wasm(r#", "max_memory": 33554432"#),
+            |c| wasm_of(c).max_memory_bytes == 32 << 20,
+        ),
+        (
+            "routes[].middleware[]<wasm>.params.on_error",
+            wasm(r#", "on_error": "skip""#),
+            |c| wasm_of(c).on_error == akit_config::WasmOnError::Skip,
+        ),
         ("routes[].middleware[]<cache>", cache(""), |c| {
             matches!(c.routes[0].middleware[0], Handler::Cache(_))
         }),
@@ -2575,6 +2631,14 @@ fn breaker_of(c: &Config) -> &akit_config::CircuitBreaker {
     .unwrap()
 }
 
+fn wasm_of(c: &Config) -> &akit_config::Wasm {
+    match c.routes.first().unwrap().middleware.first().unwrap() {
+        Handler::Wasm(w) => Some(w),
+        _ => None,
+    }
+    .unwrap()
+}
+
 fn cache_of(c: &Config) -> &akit_config::Cache {
     match c.routes.first().unwrap().middleware.first().unwrap() {
         Handler::Cache(cm) => Some(cm),
@@ -2678,7 +2742,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 60] = [
+    let objects: [(&str, &str, Option<&str>); 61] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         (
             "providers[].kubernetes",
@@ -2831,6 +2895,11 @@ fn akit_config_lists_match_the_inventory() {
         ("routes[].middleware[]<jwt>.params", "JWT_FIELDS", None),
         ("routes[].middleware[]<cache>.params", "CACHE_FIELDS", None),
         (
+            "routes[].middleware[]<wasm>.params",
+            "WASM_FIELDS",
+            Some("WASM_FIT_ONLY"),
+        ),
+        (
             "routes[].middleware[]<cache>.params.disk",
             "CACHE_DISK_FIELDS",
             None,
@@ -2933,6 +3002,7 @@ fn akit_config_lists_match_the_inventory() {
         "compress",
         "jwt",
         "cache",
+        "wasm",
     ] {
         assert!(middleware.insert(m.to_owned()), "FIT_MIDDLEWARE lists {m}");
         read.insert(format!("routes[].middleware[]<{m}>"));

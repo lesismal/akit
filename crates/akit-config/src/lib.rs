@@ -35,6 +35,7 @@ mod providers;
 mod providers_kv;
 mod shared_storage;
 pub mod value;
+mod wasm;
 mod yaml;
 
 use std::path::{Path, PathBuf};
@@ -104,6 +105,11 @@ pub use shared_storage::{
     ConsulStorage, DEFAULT_REDIS_ADDRESS, DEFAULT_SHARED_STORAGE_LOCK_TTL,
     DEFAULT_SHARED_STORAGE_PREFIX, DEFAULT_SHARED_STORAGE_TIMEOUT, EtcdStorage,
     MIN_SHARED_STORAGE_LOCK_TTL, RedisStorage, SharedStorage, SharedStorageKind,
+};
+pub use wasm::{
+    DEFAULT_WASM_MAX_MEMORY_BYTES, DEFAULT_WASM_QUEUE, DEFAULT_WASM_TIMEOUT,
+    DEFAULT_WASM_WAIT_TIMEOUT, MAX_WASM_INSTANCES, MAX_WASM_MEMORY_BYTES, MAX_WASM_QUEUE, Wasm,
+    WasmOnError,
 };
 
 /// The largest config document read, in bytes: fit's own configs are kilobytes; this bounds

@@ -994,12 +994,17 @@ fn param_errors() {
 #[test]
 fn not_supported_yet() {
     for (name, params, want) in [
+        // Every middleware of fit's is read (I71); Proxy-Wasm's params of `wasm` are I72's.
         (
             "wasm",
-            "{}",
-            "routes[0].middleware[0].module: not supported yet",
+            r#"{"path": "p.wasm", "vm_config": "v"}"#,
+            "routes[0].middleware[0].params.vm_config: not supported yet",
         ),
-        ("wasm", "{}", "not supported yet: the \"wasm\" middleware"),
+        (
+            "wasm",
+            r#"{"path": "p.wasm", "properties": []}"#,
+            "routes[0].middleware[0].params.properties: not supported yet",
+        ),
     ] {
         let config = with_middleware(name, params);
         let e = akit_config::from_json(&config, None).unwrap_err();

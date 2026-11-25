@@ -27,6 +27,7 @@ pub use cli::main;
 pub use akit_cache;
 pub use akit_handler;
 pub use akit_middleware;
+pub use akit_plugin;
 pub use akit_proxy;
 pub use akit_runtime;
 
@@ -43,5 +44,6 @@ pub const STANDARD: &[&[Info<HandlerParams>]] = &[
     akit_handler::MODULES,
     akit_middleware::MODULES,
     akit_cache::MODULES,
+    akit_plugin::MODULES,
     akit_proxy::MODULES,
 ];

@@ -45,13 +45,13 @@
 | A29 | 不分配内存的应答钩子：监听器的观察者，带着请求设下的几个字被调用 | 已提出（I37） | 13 | I21、I37、I64 |
 | A30 | 监听器接受的打开连接数，与拨出的连接和 UDP 对端分开 | 已提出（I37） | — | I37 |
 | A32 | `akio-regex` 模式在哪里匹配、它的分组，以及替换 | 已在 akio 的 main（`e9891b52`），已锁定 | 19 | I40、I48 |
-| A33 | 被中间件修改的请求字段和请求目标（`Context::req_mut`） | 已在 akio 分支 `claude/a33-a48` 实现（`2afb267b`，ADR-126），已锁定，I40、I43、I44 已使用 | 12、19 | I40、I43、I44 |
+| A33 | 被中间件修改的请求字段和请求目标（`Context::req_mut`） | 已在 akio 的 main（`dad77a7a`），已锁定 | 12、19 | I40、I43、I44、I71 |
 | A35 | 按长度分帧的流式 HTTP/1.1 响应 | 已提出（I16） | 5 | I16、I67 |
 | A36 | HTTP 客户端请求的响应头超时和空闲超时 | 已在 akio 的 main（`4f7169c4`），已锁定，I17b 已使用 | 10 | I17b、I18 |
 | A37 | 可在任意时刻取消的 HTTP 客户端请求 | 已在 akio 的 main（`4f7169c4`），已锁定，I17b 已使用 | 3 | I17b、I45 |
 | A38 | 能得知客户端离开的分离服务端请求；可在运行时修改的写停滞超时 | 已在 akio 的 main（`4f7169c4`），已锁定，I17b 已使用 | 3、10 | I17b、I49 |
 | A45 | 公开的定时器：延迟过后运行一次回调，可从任何线程调度 | 已提出（I35） | 1、11 | I35、I31、I52、I54 |
-| A48 | 获知请求的结束：响应已完整发出，或等待中客户端已离开 | 已在 akio 分支 `claude/a33-a48` 实现（`2afb267b`，ADR-127），已锁定，I41 已使用 | 3、11、13 | I41、I17、I21、I37 |
+| A48 | 获知请求的结束：响应已完整发出，或等待中客户端已离开 | 已在 akio 的 main（`dad77a7a`），已锁定 | 3、11、13 | I41、I17、I21、I37 |
 | A49 | 由中间件限制请求体大小，无论谁读取请求体 | 已提出（I41） | 7、11 | I41 |
 | A51 | `H2Client` 的流式请求：重置、超时、请求 trailer，以及遇到 `GOAWAY` 时报告失败而不是被遗忘 | 已在 akio 的 main（`f6750e93`，ADR-110），已锁定，I18b 已使用 | 3、10 | I18b、I50 |
 | A52 | `H2Client` 按流的背压：暂停流式响应的读取，报告上传队列 | 已在 akio 的 main（`f6750e93`，ADR-110），已锁定，I18b 已使用 | 8 | I18b、I50 |
@@ -83,7 +83,7 @@
 | A134 | 经 HTTP/2 和 HTTP/3 的 CONNECT 隧道（RFC 9113 §8.5、RFC 9114 §4.4） | 已在 akio 的 main（`4989cd8b`），已锁定 | 9、19 | I55 |
 | A135 | 拨号 Unix 域流套接字，以及在其上的 HTTP 客户端（akio、akio-http、akio-sys） | 已在 akio 的 main（`0f2c419b`），已锁定 | 1、2 | I58 |
 | A148 | 请求到达的地址（监听器的本地地址），HTTP/1.1、h2 和 h3 | 已提出（I75） | — | I75 |
-| A165 | 插件用的 WebAssembly 运行时：沙箱解释器、宿主 API、WASI preview 1、实例池；Proxy-Wasm 需要的响应钩子 | 已提出（I71）；在 akio 的 ADR-125 中设计（提议中，分支 `claude/wasm-design-95c5ec`） | 1、4、11 | I71、I72 |
+| A165 | 插件用的 WebAssembly 运行时：沙箱解释器、宿主 API、WASI preview 1、实例池；Proxy-Wasm 需要的响应钩子 | 已在 akio 的 main（`dad77a7a`），已锁定 | 1、4、11 | I71、I72 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -605,6 +605,7 @@ Option<&mut Request>`，请求被共享（`detach`、升级）之后返回 `None
 把请求目标的路径规范化，于是 `REQUEST_FIELDS`、`request_headers` 和 `CANONICAL_PATH` 都去掉了：handler 读取
 `ctx.req()` 和 `ctx.path()`。访问日志写的是 listener 留下的请求目标（fit 的 `RequestURI`，它的 `rewrite` 不改动它），
 只为记录日志的请求复制一份。
+I71 的 `wasm` 中间件在从插件的池恢复的请求上，通过它设置插件修改过的请求字段。
 
 ## A35 按长度分帧的流式 HTTP/1.1 响应
 
@@ -1355,3 +1356,9 @@ fib 提出的 A41 和 A46，在 I72 开始时单独提出。里程碑 W1–W6 �
 **akit 的用法。** `akit-plugin` 在 `akio-wasm` 的安全 API 上实现 fit 的 ABI（模块 `fit`，`fit_sync` 的名字被调用
 时 trap）和 Proxy-Wasm 的宿主函数，挂起每个请求（`Context::suspend`，ADR-109），调用返回时从池上恢复它，就像 fit
 的 `wasm` 中间件在 fib 上所做的那样。
+
+**已实现 W1–W4**（akio ADR-125，已接受；分支 `claude/akio-wasm-w4-445f36`，`a2373416`，与 A33 一起合并在
+`claude/i71-akio-base`（`1ae0a05f`）上；akit 锁定其上加了 W6 的 `dad77a7a`，在 akio 分支 `staging-akit-batch13` 上；尚未进入 akio 的 `main`）：解码器和校验器、解释器、宿主
+API（`Linker`、`Caller`、类型化函数）和 WASI preview 1，以及 `InstancePool`（每个任务有截止时间，队列满时拒绝并
+交回任务，trap 后重建实例）。I71 在其上运行 fit 的 ABI（`akit-plugin`）；W5（测量其开销）和 W6、以及响应钩子
+（H1、H2）留给 I72 和基准测试任务。

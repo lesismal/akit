@@ -24,6 +24,7 @@ akio-sys = { workspace = true }
 akit-admin = { workspace = true }
 akit-provider = { workspace = true }
 akit-cache = { workspace = true }
+akit-plugin = { workspace = true }
 akit-config = { workspace = true }
 akit-observe = { workspace = true }
 akit-handler = { workspace = true }

@@ -46,13 +46,13 @@ first; its status here records the branch, then the akio commit akit pins.
 | A29 | A response hook without an allocation: a listener's observer, called with a few words the request set | requested (I37) | 13 | I21, I37, I64 |
 | A30 | The open connections a listener accepted, apart from dialed ones and UDP peers | requested (I37) | — | I37 |
 | A32 | Where an `akio-regex` pattern matches, its groups, and replacing them | in akio's main (`e9891b52`), pinned | 19 | I40, I48 |
-| A33 | A request's fields and target changed by a middleware (`Context::req_mut`) | built on akio branch `claude/a33-a48` (`2afb267b`, ADR-126), pinned, used by I40, I43, I44 | 12, 19 | I40, I43, I44 |
+| A33 | A request's fields and target changed by a middleware (`Context::req_mut`) | in akio's main (`dad77a7a`), pinned | 12, 19 | I40, I43, I44, I71 |
 | A35 | A streamed HTTP/1.1 response framed by its length | requested (I16) | 5 | I16, I67 |
 | A36 | An HTTP client request's response-header and idle timeouts | in akio's main (`4f7169c4`), pinned, used by I17b | 10 | I17b, I18 |
 | A37 | An HTTP client request cancelled at any point | in akio's main (`4f7169c4`), pinned, used by I17b | 3 | I17b, I45 |
 | A38 | A detached server request that hears its client went; a write stall timeout changed at run time | in akio's main (`4f7169c4`), pinned, used by I17b | 3, 10 | I17b, I49 |
 | A45 | A public timer: a callback run once a delay has passed, from any thread | requested (I35) | 1, 11 | I35, I31, I52, I54 |
-| A48 | A request's end heard: its response sent in full, or its client gone while it waits | built on akio branch `claude/a33-a48` (`2afb267b`, ADR-127), pinned, used by I41 | 3, 11, 13 | I41, I17, I21, I37 |
+| A48 | A request's end heard: its response sent in full, or its client gone while it waits | in akio's main (`dad77a7a`), pinned | 3, 11, 13 | I41, I17, I21, I37 |
 | A49 | A request body limited by a middleware, whoever reads the body | requested (I41) | 7, 11 | I41 |
 | A51 | `H2Client`'s streamed requests: reset, timeout, request trailers, and failed rather than forgotten on a `GOAWAY` | in akio's main (`f6750e93`, ADR-110), pinned, used by I18b 3, 10 | I18b, I50 |
 | A52 | `H2Client` backpressure per stream: a streamed response's reads held, an upload's queue reported | in akio's main (`f6750e93`, ADR-110), pinned, used by I18b 8 | I18b, I50 |
@@ -84,7 +84,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | A134 | CONNECT tunnels over HTTP/2 and HTTP/3 (RFC 9113 §8.5, RFC 9114 §4.4) | in akio's main (`4989cd8b`), pinned | 9, 19 | I55 |
 | A135 | Dialing a Unix-domain stream socket, and the HTTP client over one (akio, akio-http, akio-sys) | in akio's main (`0f2c419b`), pinned | 1, 2 | I58 |
 | A148 | The address a request came to (the listener's local address), on HTTP/1.1, h2 and h3 | requested (I75) | — | I75 |
-| A165 | A WebAssembly runtime for plugins: a sandboxed interpreter, its host API, WASI preview 1, a pool of instances; the response hooks Proxy-Wasm needs | requested (I71); designed in akio's ADR-125 (proposed, branch `claude/wasm-design-95c5ec`) | 1, 4, 11 | I71, I72 |
+| A165 | A WebAssembly runtime for plugins: a sandboxed interpreter, its host API, WASI preview 1, a pool of instances; the response hooks Proxy-Wasm needs | in akio's main (`dad77a7a`), pinned | 1, 4, 11 | I71, I72 |
 
 ## A1 TCP listeners on a running engine
 
@@ -726,6 +726,8 @@ the cache change the request's fields in place (`akit_runtime::set_request_heade
 canonical, so `REQUEST_FIELDS`, `request_headers` and `CANONICAL_PATH` are gone: the handlers read
 `ctx.req()` and `ctx.path()`. The access log writes the target the listener left (fit's
 `RequestURI`, which its `rewrite` leaves alone), copied for a logged request.
+I71's `wasm` middleware sets the request's fields as its plugin changed them through it, on the
+request resumed from the plugin's pool.
 
 ## A35 A streamed HTTP/1.1 response framed by its length
 
@@ -1666,3 +1668,11 @@ W1-W6 in the ADR; I71 needs W1-W4 and A33.
 trapping if called) and Proxy-Wasm's host functions on `akio-wasm`'s safe API, suspends each
 request (`Context::suspend`, ADR-109) and resumes it from the pool when the call returns, as fit's
 `wasm` middleware does with fib.
+
+**Built: W1-W4** (akio ADR-125, accepted; branch `claude/akio-wasm-w4-445f36`, `a2373416`, merged
+with A33 on `claude/i71-akio-base`, `1ae0a05f`; akit pins `dad77a7a`, W6 on top of it, on akio
+branch `staging-akit-batch13`; not on akio's `main` yet): the
+decoder and validator, the interpreter, the host API (`Linker`, `Caller`, typed functions) and WASI
+preview 1, and `InstancePool` (deadline per job, a full queue refused with the job handed back,
+instances made again after a trap). I71 runs fit's ABI on it (`akit-plugin`); W5 (its cost
+measured) and the response hooks (H1, H2), are for I72 and the benchmark tasks.

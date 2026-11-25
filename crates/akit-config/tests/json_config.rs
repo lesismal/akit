@@ -92,12 +92,13 @@ fn defaults() {
 
 #[test]
 fn not_supported_yet_is_not_wrong() {
-    // fit's JSON template, as written out, with a proxy param akit does not read yet. Its empty
+    // fit's JSON template, as written out, with a proxy param akit does not read yet and a
+    // Proxy-Wasm param of the wasm middleware (I72). Its empty
     // tls gets the routes' host names (auto_https).
     let e = errs(
         r#"{"schema_version": 1,
             "listeners": [{"name": "web", "address": ":8080", "protocols": ["http/1.1", "h2", "h3"], "tls": {}}],
-            "routes": [{"name": "hello", "match": {"host": ["www.example.com"]}, "middleware": [{"module": "wasm"}], "handler": {"module": "proxy", "params": {"upstream": "app", "splice_uploads": true}}},
+            "routes": [{"name": "hello", "match": {"host": ["www.example.com"]}, "middleware": [{"module": "wasm", "params": {"path": "p.wasm", "vm_config": "v"}}], "handler": {"module": "proxy", "params": {"upstream": "app", "splice_uploads": true}}},
                        {"access": {}, "handler": {"module": "respond"}}],
             "upstreams": [{"name": "app", "addresses": ["127.0.0.1:9000"], "deny_internal": true}]}"#,
     );
@@ -106,7 +107,7 @@ fn not_supported_yet_is_not_wrong() {
     assert_eq!(
         paths,
         [
-            "routes[0].middleware[0].module",
+            "routes[0].middleware[0].params.vm_config",
             "routes[0].handler.params.splice_uploads",
             "routes[1].access",
             "upstreams[0].deny_internal",
@@ -516,7 +517,7 @@ fn modules_the_model_does_not_know_are_kept_for_the_registry() {
 
     let l = lines(
         r#"{"listeners": [{"name": "web", "address": ":8080"}],
-            "routes": [{"handler": {"module": "hls"}}, {"handler": {"module": "respond"}, "middleware": [{"module": "wasm"}]}]}"#,
+            "routes": [{"handler": {"module": "hls"}}, {"handler": {"module": "vod"}}]}"#,
     );
     assert_eq!(l.len(), 2, "{l:?}");
     assert!(l.iter().all(|e| e.contains("not supported yet")), "{l:?}");

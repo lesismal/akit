@@ -37,6 +37,7 @@ pub const STANDARD: &[&str] = &[
     "akit-handler",
     "akit-middleware",
     "akit-cache",
+    "akit-plugin",
     "akit-proxy",
 ];
 
@@ -662,7 +663,13 @@ mod tests {
         .unwrap();
         assert_eq!(
             got,
-            ["akit-handler", "akit-middleware", "akit-proxy", "akit-a"]
+            [
+                "akit-handler",
+                "akit-middleware",
+                "akit-plugin",
+                "akit-proxy",
+                "akit-a"
+            ]
         );
         let e = crates(&[], &["example".into()]).unwrap_err().to_string();
         assert!(
@@ -768,6 +775,7 @@ not json "executable":"akit-build"
             akit_handler::MODULES,
             akit_middleware::MODULES,
             akit_cache::MODULES,
+            akit_plugin::MODULES,
             akit_proxy::MODULES,
         ];
         assert_eq!(crate::STANDARD.len(), STANDARD.len());
