@@ -248,7 +248,7 @@ fit 在边缘代理之外的路线，按 akit 接手的顺序排列。每条路�
 | AI 助手 | workbench 的对话面板和 MCP 服务器，基于用户自己的模型 API | HTTP 客户端 | 计划中 |
 | BitTorrent | 客户端、`bt_stream`、tracker、发布（[fit](https://github.com/lesismal/fit/blob/main/docs/bittorrent.zh-CN.md)） | `akio-bittorrent` | 计划中 |
 | 数据同步 | 从源到目标的管道，带检查点，对事务目标精确一次（[fit](https://github.com/lesismal/fit/blob/main/docs/sync.zh-CN.md)） | HTTP 客户端；线协议在 akit 中实现 | 计划中 |
-| Prefork 与 NUMA | 数据面由多个进程服务，并按 NUMA 节点放置 | `akio-prefork`、`Engine::numa_status` | 暂停（2026-11-25）：akit 不使用 prefork；akio 已停止测试 `akio-prefork`，以后再决定是否删除 |
+| Prefork 与 NUMA | 数据面由多个进程服务，并按 NUMA 节点放置 | — | 取消（2026-11-25）：akit 不使用 prefork，akio 已删除 `akio-prefork` |
 | P2P 与 VPN | NAT 后的主机通过 ICE 或 TURN 相连；基于 TUN 的覆盖网络 | `akio-ice`、`akio-turn`；TUN 设备（待申请） | 跟随 fit：fit 的路线完成后开始 |
 
 ## 功能对照
@@ -286,7 +286,7 @@ akio 目前是否已具备该功能所需的能力：✓ 表示就绪，或填�
 | RTMP、RTSP、SRT、FLV、HLS | 1.0 之后 | `akio-media` | ✓ |
 | 媒体文件点播 | 1.0 之后 | MP4 读取器 | 待申请 |
 | BitTorrent 客户端与 tracker | 1.0 之后 | `akio-bittorrent` | ✓ |
-| Prefork 与 NUMA | 1.0 之后，暂停 | `akio-prefork`（暂停维护，不再测试） | — |
+| Prefork 与 NUMA | 取消 | —（`akio-prefork` 已删除） | — |
 
 ## 性能目标
 
