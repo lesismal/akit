@@ -55,7 +55,7 @@ use akit_observe::metrics::{ConfigStats, Metrics};
 use akit_observe::{AccessLog, Format, MetricsExporter, Otlp, Tracer, Zone};
 use akit_provider::{Kinds, Provider, Updates};
 use akit_runtime::upstream::EngineSlot;
-use akit_runtime::{Env, Graph, GraphCell, HandlerParams, Info, Registry, compile};
+use akit_runtime::{Env, Graph, GraphCell, HandlerParams, Info, Previous, Registry, compile};
 use akit_tls::{FileWatcher, Report};
 use flags::{Spec, Usage};
 
@@ -228,6 +228,7 @@ fn compile_config(
     metrics: &Metrics,
     acme: Option<&akit_tls::Acme>,
     tracer: Option<&Tracer>,
+    previous: Option<Previous>,
 ) -> Result<Graph, Failure> {
     let modules = BUILD.get().map_or(crate::STANDARD, |(_, m)| m.as_slice());
     let registry: Registry<HandlerParams> =
@@ -236,14 +237,15 @@ fn compile_config(
         .with_access_log(log.cloned())
         .with_metrics(Some(metrics.clone()))
         .with_acme(acme.cloned())
-        .with_tracer(tracer.cloned());
+        .with_tracer(tracer.cloned())
+        .with_previous(previous);
     compile(config, &registry, &env).map_err(Failure::Config)
 }
 
 /// Reads and compiles the config at `paths`, as [`read_config`] and [`compile_config`].
 fn read(paths: &[String], engine: &EngineSlot, log: Option<&AccessLog>) -> Result<Graph, Failure> {
     let ((config, _, _), _) = read_config(paths)?;
-    compile_config(&config, engine, log, &Metrics::new(), None, None)
+    compile_config(&config, engine, log, &Metrics::new(), None, None, None)
 }
 
 /// Opens the access log `c` describes, its times in `zone`, as fit's `NewAccessLogFiles`.
@@ -271,6 +273,8 @@ type CertFiles = std::collections::BTreeMap<String, akit_tls::Sum>;
 /// `-watch-certs` compares the files with.
 struct Runner<'a> {
     slot: &'a EngineSlot,
+    /// The running graph, whose unchanged upstreams' pools the next one shares.
+    cell: &'a GraphCell,
     listeners: &'a mut akit_listener::Listeners,
     log: Option<&'a (AccessLog, akit_config::AccessLog)>,
     admin: Option<&'a akit_config::Admin>,
@@ -316,6 +320,7 @@ impl Runner<'_> {
             &EngineSlot::new(),
             None,
             &Metrics::new(),
+            None,
             None,
             None,
         )
@@ -379,6 +384,9 @@ impl Runner<'_> {
         &mut self,
         config: &Config,
     ) -> Result<(akit_listener::Reloaded, CertFiles), ApplyError> {
+        // The running graph's pools, for the upstreams that stay as they are (fit's
+        // `Env.Previous`): their connections and health carry over the swap.
+        let previous = self.cell.with(Previous::of);
         let graph = compile_config(
             config,
             self.slot,
@@ -386,6 +394,7 @@ impl Runner<'_> {
             self.metrics,
             Some(self.acme),
             self.tracer,
+            Some(previous),
         )
         .map_err(failure)?;
         let files = graph.cert_files().clone();
@@ -809,6 +818,7 @@ fn run(args: &[String]) -> ExitCode {
         &metrics,
         Some(&acme),
         tracer.as_ref(),
+        None,
     ) {
         Ok(g) => g,
         Err(f) => {
@@ -947,6 +957,7 @@ fn run(args: &[String]) -> ExitCode {
     }
     let mut runner = Runner {
         slot: &slot,
+        cell: &cell,
         listeners: &mut listeners,
         log: log.as_ref(),
         admin: admin.as_ref(),

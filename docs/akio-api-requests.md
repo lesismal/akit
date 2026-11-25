@@ -28,7 +28,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | A7 | An MP4 (ISO BMFF) reader for segmenting files without transcoding | in akio's main (`a9a620ab`), pinned | — | media library |
 | A8 | TUN devices | in akio's main (`a9a620ab`), pinned | — | VPN |
 | A9 | A TLS server capped at TLS 1.2 (public `ServerConfigBuilder` API) | in akio's main (`4989cd8b`), pinned | 17 | I09 |
-| A10 | Closing an HTTP client's idle connections now | requested (I14) | 10, 11 | I14, I22 |
+| A10 | Closing an HTTP client's idle connections now | built on an akio branch (I38: `claude/a10-close-idle`, `af959290`), not on akio's main | 10, 11 | I14, I22, I38 |
 | A11 | An HTTP/1 client request that keeps its own `Host` field (and sends no `User-Agent` when given an empty one) | in akio's main (`a9a620ab`), pinned | — | I15 |
 | A12 | The HTTP client's connect timeout for a lone address too | requested (I14) | 10 | I14, I35 |
 | A13 | `Files` serving a path the caller names | in akio's main (`a9a620ab`), pinned | 19 | I12, I13 |
@@ -209,6 +209,18 @@ connections that are in use from going back idle (each closes once its response 
 
 **How akit uses it.** `Pool::close` calls it once the pool has drained. Until then, a closed pool's
 idle connections stay open up to its `idle_timeout` (recorded in the I14 progress entry).
+
+**Seen again (I38).** The churn test: every reload that changes an upstream replaces its pool, and
+the replaced pool's idle connections stay open up to `idle_timeout`; thousands of reloads a minute
+leave thousands of upstream connections open (I38 shares an unchanged upstream's pool with the next
+graph, as fit does, which leaves only the changed ones).
+
+**Built (I38).** On akio branch `claude/a10-close-idle`, commit `af959290` (off `e79cc740`), not
+pushed or merged: `Client::close_idle` closes the idle connections now and sets the client's
+`shutting_down` flag (the engine's graceful shutdown's), so that a connection whose response is in
+closes rather than going back idle; no change on the request path. Tested by `client`'s
+`close_idle_closes_idle_connections_now` (macOS, and gpu51 epoll and io_uring). akit calls it from
+`Pool::close` once akio's main has it and akit's `rev` moves there.
 
 ## A11 A request's own `Host` field
 

@@ -556,6 +556,10 @@ struct Inner {
     /// Its response times and its backends' counts (I37): its own, or shared with the other
     /// graphs that have the upstream ([`Pool::with_stats`]).
     stats: UpstreamStats,
+    /// The graphs that hold the pool (fit's `Acquire`): one when it is made, one more for each
+    /// graph a reload shares it with ([`Pool::share`]); each lets go with [`Pool::release`], and
+    /// the last one closes it.
+    holders: AtomicUsize,
     closing: AtomicBool,
     closed: AtomicBool,
     on_closed: Mutex<Vec<Box<dyn FnOnce() + Send>>>,
@@ -683,6 +687,7 @@ impl Pool {
                 client: OnceLock::new(),
                 in_flight: AtomicUsize::new(0),
                 stats: UpstreamStats::new(u.addresses.len()),
+                holders: AtomicUsize::new(1),
                 closing: AtomicBool::new(false),
                 closed: AtomicBool::new(false),
                 on_closed: Mutex::new(Vec::new()),
@@ -1082,6 +1087,56 @@ impl Pool {
         }
         if self.inner.in_flight.load(Ordering::SeqCst) == 0 {
             self.inner.mark_closed();
+        }
+    }
+
+    /// The same pool, held by one more graph (fit's `Pool.Acquire`): a reload gives the new
+    /// graph the running one's pool of an upstream whose config and TLS files are the same, so
+    /// that its connections, its backends' health and its probes carry over. `None` once the
+    /// pool is closing: a new pool is made instead.
+    #[must_use]
+    pub fn share(&self) -> Option<Pool> {
+        let mut n = self.inner.holders.load(Ordering::SeqCst);
+        loop {
+            if n == 0 || self.is_closing() {
+                return None;
+            }
+            match self.inner.holders.compare_exchange(
+                n,
+                n.saturating_add(1),
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            ) {
+                Ok(_) => return Some(self.clone()),
+                Err(now) => n = now,
+            }
+        }
+    }
+
+    /// Whether `other` is this same pool (a clone, or one [shared](Self::share)).
+    #[must_use]
+    pub fn ptr_eq(&self, other: &Pool) -> bool {
+        Arc::ptr_eq(&self.inner, &other.inner)
+    }
+
+    /// Lets go of the pool for one graph that held it (its cleanup); the last to let go closes
+    /// it ([`close`](Self::close)). Never blocks.
+    pub fn release(&self) {
+        let mut n = self.inner.holders.load(Ordering::SeqCst);
+        loop {
+            if n == 0 {
+                return;
+            }
+            match self.inner.holders.compare_exchange(
+                n,
+                n.saturating_sub(1),
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            ) {
+                Ok(1) => return self.close(),
+                Ok(_) => return,
+                Err(now) => n = now,
+            }
         }
     }
 
