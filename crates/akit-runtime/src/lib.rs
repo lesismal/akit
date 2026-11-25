@@ -31,18 +31,10 @@ pub use graph::{
 pub use tls::ListenerCerts;
 
 pub use module::{Env, Info, LoadError, Modules, Provision, ProvisionError, Provisioned, Registry};
-pub use request::{REQUEST_FIELDS, request_headers, set_request_headers};
+pub use request::{set_request_headers, set_request_path, with_path};
 pub use traits::{
     Handler, HandlerService, Listener, Matcher, Middleware, Router, Service, Upstream,
 };
-
-/// The [`akio_http::Context::local`] that holds a request's canonical path, escaped, when it
-/// differs from the path sent (dot or empty segments were removed): what the routes matched, and
-/// what handlers go by (akio's request target cannot be rewritten: akio API request A33).
-/// akit-listener sets it; it is unset for nearly every request, whose path is canonical already.
-/// A middleware that rewrites the path (`rewrite`, I40) sets it to the new path, which the
-/// middleware and handler after it go by.
-pub const CANONICAL_PATH: &str = "akit.canonical_path";
 
 /// The [`akio_http::Context::local`] set (to `""`) on a request that came over TLS, by
 /// akit-listener; unset in the clear. akio's context does not say yet.
@@ -59,4 +51,4 @@ pub const MAX_BODY_BYTES: &str = "akit.max_body_bytes";
 pub const TRACEPARENT: &str = "akit.traceparent";
 
 /// The akio commit akit is built against (rule 22: akio is pinned by commit hash).
-pub const AKIO_REV: &str = "4989cd8b33fae98ac601c9f30d6eeefd9c85edba";
+pub const AKIO_REV: &str = "2afb267b71f6c7b7df5594859f1b5dec28f1d484";

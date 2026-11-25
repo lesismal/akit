@@ -5,19 +5,15 @@
 //! Names are made canonical (`x-a` is `X-A`, as Go writes it) when the config is compiled. The
 //! response's changes are made by a response filter (akio's
 //! [`Context::add_response_filter`]), so they apply to every response of the request: one the
-//! handler answers at once, later (a proxied one) or as a stream. The request's changes reach the
-//! handlers through [`akit_runtime::request_headers`]: akio's request cannot be changed yet (akio
-//! API request A33), so the `proxy` handler sends upstream the changed fields, while what akio
-//! itself reads of the request (the `static` handler's conditional and range fields) is as the
-//! client sent it.
+//! handler answers at once, later (a proxied one) or as a stream. The request's changes are made
+//! on the request itself ([`Context::req_mut`], akio ADR-126): the handlers after it, the fields the
+//! `proxy` handler sends upstream and what akio reads of the request (the `static` handler's
+//! conditional and range fields) see them.
 
 use std::sync::Arc;
 
 use akio_http::{BodyMode, Context, Headers as Fields, Request, Response};
-use akit_runtime::{
-    Handler, HandlerParams, Middleware, Provision, ProvisionError, Provisioned, request_headers,
-    set_request_headers,
-};
+use akit_runtime::{Handler, HandlerParams, Middleware, Provision, ProvisionError, Provisioned};
 
 use crate::url::canonical_key;
 
@@ -133,9 +129,9 @@ struct Changed {
 impl akio_http::Service for Changed {
     fn call(&self, ctx: &mut Context) {
         if let Some(ops) = &self.request {
-            let mut fields = request_headers(ctx).into_owned();
-            ops.apply(&mut fields);
-            set_request_headers(ctx, &fields);
+            if let Some(req) = ctx.req_mut() {
+                ops.apply(&mut req.headers);
+            }
         }
         if let Some(ops) = &self.response {
             let ops = Arc::clone(ops);

@@ -32,8 +32,7 @@ use std::sync::Arc;
 use akio_http::{BodyEvent, BodyMode, Context, Method, Request};
 use akit_config::{FastCgi, Scan};
 use akit_runtime::{
-    CANONICAL_PATH, Handler, HandlerParams, MAX_BODY_BYTES, Provision, ProvisionError, Provisioned,
-    TLS,
+    Handler, HandlerParams, MAX_BODY_BYTES, Provision, ProvisionError, Provisioned, TLS,
 };
 
 use exchange::{Exchange, Failure, Parts, error_response};
@@ -191,7 +190,7 @@ impl akio_http::Service for FastCgiHandler {
     fn call(&self, ctx: &mut Context) {
         let h = &self.h;
         let req = ctx.req();
-        let escaped = ctx.local(CANONICAL_PATH).unwrap_or_else(|| req.path());
+        let escaped = req.path();
         let Some(path) = unescape(escaped) else {
             ctx.respond(error_response(400));
             return;
@@ -219,14 +218,14 @@ impl akio_http::Service for FastCgiHandler {
             (_, l) => l,
         };
         let target = origin_form(&req.target);
-        let fields = akit_runtime::request_headers(ctx);
+        let fields = &req.headers;
         let params = Params::new(
             &params::Request {
                 method: &req.method,
                 target: &target,
                 path: &path,
                 version: req.version,
-                headers: &fields,
+                headers: fields,
                 peer: req.peer,
                 tls: ctx.local(TLS).is_some(),
                 length,

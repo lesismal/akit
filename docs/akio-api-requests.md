@@ -46,13 +46,13 @@ first; its status here records the branch, then the akio commit akit pins.
 | A29 | A response hook without an allocation: a listener's observer, called with a few words the request set | requested (I37) | 13 | I21, I37, I64 |
 | A30 | The open connections a listener accepted, apart from dialed ones and UDP peers | requested (I37) | — | I37 |
 | A32 | Where an `akio-regex` pattern matches, its groups, and replacing them | in akio's main (`e9891b52`), pinned | 19 | I40, I48 |
-| A33 | A request's fields and target changed by a middleware (`Context::req_mut`) | requested (I40) | 12, 19 | I40, I43, I44 |
+| A33 | A request's fields and target changed by a middleware (`Context::req_mut`) | built on akio branch `claude/a33-a48` (`2afb267b`, ADR-126), pinned, used by I40, I43, I44 | 12, 19 | I40, I43, I44 |
 | A35 | A streamed HTTP/1.1 response framed by its length | requested (I16) | 5 | I16, I67 |
 | A36 | An HTTP client request's response-header and idle timeouts | in akio's main (`4f7169c4`), pinned, used by I17b | 10 | I17b, I18 |
 | A37 | An HTTP client request cancelled at any point | in akio's main (`4f7169c4`), pinned, used by I17b | 3 | I17b, I45 |
 | A38 | A detached server request that hears its client went; a write stall timeout changed at run time | in akio's main (`4f7169c4`), pinned, used by I17b | 3, 10 | I17b, I49 |
 | A45 | A public timer: a callback run once a delay has passed, from any thread | requested (I35) | 1, 11 | I35, I31, I52, I54 |
-| A48 | A request's end heard: its response sent in full, or its client gone while it waits | requested (I41) | 3, 11, 13 | I41, I17, I21, I37 |
+| A48 | A request's end heard: its response sent in full, or its client gone while it waits | built on akio branch `claude/a33-a48` (`2afb267b`, ADR-127), pinned, used by I41 | 3, 11, 13 | I41, I17, I21, I37 |
 | A49 | A request body limited by a middleware, whoever reads the body | requested (I41) | 7, 11 | I41 |
 | A51 | `H2Client`'s streamed requests: reset, timeout, request trailers, and failed rather than forgotten on a `GOAWAY` | in akio's main (`f6750e93`, ADR-110), pinned, used by I18b 3, 10 | I18b, I50 |
 | A52 | `H2Client` backpressure per stream: a streamed response's reads held, an upload's queue reported | in akio's main (`f6750e93`, ADR-110), pinned, used by I18b 8 | I18b, I50 |
@@ -717,6 +717,16 @@ rewritten path kept in `CANONICAL_PATH` (which stays for I11's canonical path on
 Until then the changed fields reach the `proxy` handler's upstream only (recorded in the I40
 progress entry).
 
+**Done** (akio ADR-126, branch `claude/a33-a48` at `2afb267b`, pinned): `Context::req_mut() ->
+Option<&mut Request>`, `None` once the request is shared (`detach`, an upgrade); route parameters
+keep reading the path they were matched in; a suspended request is resumed with its request whole,
+to change. akit's `headers`, `basic_auth`, client-certificate, ForwardAuth and JWT middlewares and
+the cache change the request's fields in place (`akit_runtime::set_request_headers` replaces them);
+`rewrite` changes its target (`set_request_path`), and akit-listener makes the target's path
+canonical, so `REQUEST_FIELDS`, `request_headers` and `CANONICAL_PATH` are gone: the handlers read
+`ctx.req()` and `ctx.path()`. The access log writes the target the listener left (fit's
+`RequestURI`, which its `rewrite` leaves alone), copied for a logged request.
+
 ## A35 A streamed HTTP/1.1 response framed by its length
 
 **Problem.** A proxy that streams an upstream's response of a known length should send it with
@@ -796,6 +806,16 @@ handler that waits give up its upstream work when the client goes.
 request is dropped unanswered (the stopgap recorded in the I41 progress entry). The proxy (I17)
 cancels its upstream request on `Gone`; the access log (I21) and metrics (I37) can count a
 streamed response's duration to its end.
+
+**Done** (akio ADR-127, branch `claude/a33-a48` at `2afb267b`, pinned): `Context::on_end(f) ->
+bool`, `Detached::on_end(f)` and `End { Sent, Gone }`, each hook run exactly once (`Sent` once the
+response was handed to the connection in full, a streamed one's at its finish; `Gone` when the
+client went first, heard while the request waits or streams, or the response was given up);
+`on_gone` lives beside them. `concurrency_limit` gives its place back from `on_end`. The proxy
+already cancels its upstream from `on_gone` (A38). Still open: the access log, metrics and spans
+time a streamed response to its head, and write its `Content-Length` as its size; fit writes them at
+`OnFinish`, with the bytes written, which `End` does not carry (a body tap could count them, at a
+cost per streamed response): a follow-up.
 
 ## A49 A request body limited by a middleware
 

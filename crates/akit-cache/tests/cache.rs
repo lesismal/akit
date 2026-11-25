@@ -101,7 +101,6 @@ mod origin {
     use std::time::Duration;
 
     use akio_http::{Context, Headers, Response};
-    use akit_runtime::request::request_headers;
     use akit_runtime::{Handler, HandlerParams, Info, Provision, ProvisionError, Provisioned};
 
     static HITS: Mutex<Option<HashMap<String, u64>>> = Mutex::new(None);
@@ -168,7 +167,7 @@ mod origin {
             h.append("Date", &date);
             let mut body = format!("{path} {n}").into_bytes();
             let mut status = 200;
-            let fields = request_headers(ctx).into_owned();
+            let fields = ctx.req().headers.clone();
             if ctx.req().method.as_str() == "POST" {
                 if path.starts_with("/custom") {
                     let mut r = Response::new(201);
