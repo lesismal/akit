@@ -2,7 +2,8 @@
 // akit and by fit, each route chosen by its host (<module>.bench) and proxied to the backend
 // (nginx, backend.conf), which answers /api/* with 1 KiB of JSON. "none" is the route without a
 // middleware, the base each middleware's cost is read against; respond answers itself, the base
-// for redirect. modules.sh fills in {{BACKEND}} and {{DIR}} (where the secret and the plugin are).
+// for redirect. compress leaves the 1 KiB alone (below its default min_bytes, 1400), compress_gzip
+// compresses it (min_bytes 512), with gzip as wrk asks. modules.sh fills in {{BACKEND}} and {{DIR}} (where the secret and the plugin are).
 {
   "listeners": [{"name": "web", "address": "127.0.0.1:18080", "protocols": ["http/1.1"]}],
   "upstreams": [
@@ -38,6 +39,8 @@
     {"match": {"host": ["circuit-breaker.bench"]}, "middleware": [{"module": "circuit_breaker", "params": {}}],
      "handler": {"module": "proxy", "params": {"upstream": "app"}}},
     {"match": {"host": ["compress.bench"]}, "middleware": [{"module": "compress", "params": {}}],
+     "handler": {"module": "proxy", "params": {"upstream": "app"}}},
+    {"match": {"host": ["compress-gzip.bench"]}, "middleware": [{"module": "compress", "params": {"min_bytes": 512}}],
      "handler": {"module": "proxy", "params": {"upstream": "app"}}},
     {"match": {"host": ["cache.bench"]}, "middleware": [{"module": "cache", "params": {"zone": "bench", "default_ttl": "1h"}}],
      "handler": {"module": "proxy", "params": {"upstream": "app"}}},

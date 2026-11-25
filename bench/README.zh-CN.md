@@ -68,7 +68,7 @@ bench/modules.sh main
 走的是 `akit run` 的路径，分别在 epoll（`akit-epoll`）和 io_uring（`akit-uring`）上，后者 `akit run` 还不能选择；fit 从
 `FIT_REV` 处的二进制运行。`bench/modules.sh -report ID` 用 `modulesreport.py` 汇总：每个模块、每个服务端各轮的每秒请求数、
 wrk 的 p99 以及服务端每个请求的 CPU（取自 `/proc/PID/stat`）的中位数，以及每个中间件比该服务端的 `none` 多出的开销。
-选项：`-rounds`、`-duration`、`-servers`。
+选项：`-rounds`、`-duration`、`-servers`、`-modules`。
 
 ## akit 的配置与 fit 的不同之处
 

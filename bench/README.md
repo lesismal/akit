@@ -80,7 +80,7 @@ order turned each round. akit runs from its `bench_serve` example
 choose yet; fit from its binary at `FIT_REV`. `bench/modules.sh -report ID` summarizes the run with
 `modulesreport.py`: per module and server the median of the rounds' requests a second, wrk's p99
 and the server's CPU per request (from `/proc/PID/stat`), and what each middleware adds to its
-server's `none`. Options: `-rounds`, `-duration`, `-servers`.
+server's `none`. Options: `-rounds`, `-duration`, `-servers`, `-modules`.
 
 ## Where akit's config differs from fit's
 

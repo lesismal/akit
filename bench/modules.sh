@@ -12,6 +12,7 @@
 #   -rounds N       rounds, the servers' order turned each round        (default 3)
 #   -duration S     seconds each module is loaded, after 2s of warm-up  (default 8)
 #   -servers LIST   akit-epoll,akit-uring,fit                           (default: those three)
+#   -modules LIST   the modules to load, as none,compress               (default: every one)
 #
 # Every server serves configs/modules/modules.json, each middleware on a route of its own
 # (host <module>.bench) proxied to the backend, nginx answering 1 KiB of JSON
@@ -54,11 +55,13 @@ esac
 rounds=3
 duration=8
 servers=akit-epoll,akit-uring,fit
+only=all
 while [ $# -gt 1 ] || { [ $# -eq 1 ] && case "$1" in -*) true ;; *) false ;; esac; }; do
 	case "$1" in
 	-rounds) rounds=$2 ;;
 	-duration) duration=$2 ;;
 	-servers) servers=$2 ;;
+	-modules) only=$2 ;;
 	*) die "unknown option $1" ;;
 	esac
 	shift 2
@@ -89,15 +92,15 @@ $BENCH_SSH "$host_path; cd $src && flock -s /root/bench.lock \
 	printf 'a secret of the bench, 32 bytes or more' > $dir/secret" ||
 	die "building akit $desc on the host failed"
 $BENCH_SSH "rm -rf $src"
-$BENCH_SSH "cd $dir && echo '$desc' > ref && echo 'rounds=$rounds duration=$duration servers=$servers fit=$fit_rev' > params"
+$BENCH_SSH "cd $dir && echo '$desc' > ref && echo 'rounds=$rounds duration=$duration servers=$servers modules=$only fit=$fit_rev' > params"
 
 # The run itself, on the host.
 $BENCH_SSH "cat > $dir/run.sh && chmod +x $dir/run.sh" <<'EOP'
 #!/bin/bash
-# Arguments: rounds duration servers.
+# Arguments: rounds duration servers modules (all, or a list).
 set -u
 cd "$(dirname "$0")"
-rounds=$1 duration=$2 servers=${3//,/ }
+rounds=$1 duration=$2 servers=${3//,/ } only=,$4,
 SERVER_CPUS=0-6 CLIENT_CPUS=7-13 BACKEND_CPUS=14-15
 api=$(python3 -c 'print("{\"items\": \"" + "x" * 1009 + "\"}", end="")')
 sed "s|{{APIBODY}}|$api|" backend.conf > backend.run.conf
@@ -125,6 +128,7 @@ modules=(
 	"jwt /api/bench Authorization:_Bearer_eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJtZSIsImV4cCI6NDEwMjQ0NDgwMH0.uUoQmkIKX2PFsRxppW-TjojteRvpAHvOxqo5Af-QK04"
 	"circuit_breaker /api/bench"
 	"compress /api/bench Accept-Encoding:_gzip"
+	"compress_gzip /api/bench Accept-Encoding:_gzip"
 	"cache /api/bench"
 	"wasm /api/bench"
 )
@@ -150,6 +154,7 @@ for ((r = 1; r <= rounds; r++)); do
 			set -- $m
 			name=$1 path=$2
 			shift 2
+			[ "$only" = ,all, ] || [ "${only#*,$name,}" != "$only" ] || continue
 			hdr=()
 			for h in "$@"; do hdr+=(-H "${h//_/ }"); done
 			host="${name//_/-}.bench"
@@ -174,5 +179,5 @@ for ((r = 1; r <= rounds; r++)); do
 	done
 done
 EOP
-$BENCH_SSH "cd $dir && setsid nohup sh -c '$QUIET run ./run.sh $rounds $duration $servers >> run.log 2>&1; echo \"exit \$?\" > status; rm -f bench_serve fit headers.wasm' > /dev/null 2>&1 < /dev/null &" < /dev/null
+$BENCH_SSH "cd $dir && setsid nohup sh -c '$QUIET run ./run.sh $rounds $duration $servers $only >> run.log 2>&1; echo \"exit \$?\" > status; rm -f bench_serve fit headers.wasm' > /dev/null 2>&1 < /dev/null &" < /dev/null
 echo "bench: started $id on the benchmark host; bench/modules.sh -report $id (or -wait $id)"
