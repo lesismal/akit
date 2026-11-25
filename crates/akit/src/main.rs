@@ -1202,7 +1202,8 @@ mod tests {
         let v = super::version();
         let lines: Vec<&str> = v.lines().collect();
         assert!(lines[0].starts_with("akit "));
-        assert_eq!(lines[1], "akio dad77a7a0b29");
+        // The akio commit akit is pinned at, short (rule 22: one pin, `AKIO_REV`).
+        assert_eq!(lines[1], format!("akio {}", &akit_runtime::AKIO_REV[..12]));
         assert_eq!(
             lines[2],
             format!("{}/{}", std::env::consts::OS, std::env::consts::ARCH)
