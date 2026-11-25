@@ -59,6 +59,9 @@
 - Traefik 在 proxy 场景中没有启动：主机上另一个进程占用了 8444 端口。
 - `akit-proxy` 的 `split::failover` 在 io_uring 上失败过一次（failover 的第一个请求得到 502），单独重跑十次都通过：被动健康
   检查中一个罕见的竞争，与 I25 无关。
+- 在基准主机上检查：所改 crate 的测试经 `tools/test-timeout.sh` 在 epoll 和 io_uring 上运行，全部通过，只有 `akit` 的
+  `reloads_under_traffic_with_no_failed_request`（I22 的）在其他会话的基准占用主机时于 epoll 上 6 次失败 3 次，基线
+  `2a10480` 同样 8 次失败 1 次；在较空闲的主机上与基线交替运行，各 10 次全部通过。
 ### 2026-11-25：I71，WASM I：运行时与 fit 的 ABI
 
 - akio：akit 锁定到 akio `main` 的 `dad77a7a`：在 `1ae0a05f`

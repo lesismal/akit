@@ -72,6 +72,10 @@ Differences from the plan:
 - Traefik did not start in the proxy scenario: another process held port 8444 on the host.
 - `akit-proxy`'s `split::failover` failed once on io_uring (502 for the failover's first request)
   and passed ten times alone: a rare race in the passive health check, not I25's.
+- Checked on the benchmark host, the touched crates' tests on epoll and io_uring through
+  `tools/test-timeout.sh`: all passing but `akit`'s `reloads_under_traffic_with_no_failed_request`
+  (I22's), which failed 3 runs in 6 on epoll while other sessions' benchmarks loaded the host, as
+  the base `2a10480` did 1 in 8; alternated with the base on a quieter host, 10 of 10 each.
 ### 2026-11-25: I71, WASM I: the runtime and fit's ABI
 
 - akio: akit is pinned to `dad77a7a`, akio's `main`:
