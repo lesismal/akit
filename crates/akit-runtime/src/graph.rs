@@ -628,12 +628,16 @@ fn serves(l: &Listener, r: &CompiledRoute) -> bool {
 }
 
 /// The error of a module at `path` (a route's handler or one of its middleware) that failed to
-/// load: at its params' field, when the error names one.
+/// load: at its params' field, when the error names one; at its `module`, as fit's, when the
+/// binary has no module of that name.
 fn load_error(mut path: String, e: &crate::LoadError) -> Error {
-    if let crate::LoadError::Provision { error, .. } = e {
-        if let Some(field) = error.field_name() {
-            path = format!("{path}.params.{field}");
+    match e {
+        crate::LoadError::Provision { error, .. } => {
+            if let Some(field) = error.field_name() {
+                path = format!("{path}.params.{field}");
+            }
         }
+        crate::LoadError::Unknown { .. } => path.push_str(".module"),
     }
     Error {
         file: None,

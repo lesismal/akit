@@ -149,7 +149,7 @@ fn a_failed_compile_cleans_up_and_names_the_field() {
     let e = compile(&config(&["c2b"]), &empty, &Env::default()).unwrap_err();
     assert_eq!(
         e.to_string(),
-        "routes[0].handler: there is no module \"respond\" in http.handlers"
+        "routes[0].handler.module: there is no module \"respond\" in http.handlers"
     );
 }
 

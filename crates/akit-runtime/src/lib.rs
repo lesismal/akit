@@ -22,6 +22,13 @@ pub mod request;
 pub mod tls;
 pub mod traits;
 
+/// akio's HTTP crate, at akit's akio commit: what a module's handler is built on
+/// ([`Handler`] is an [`akio_http::Service`]). A module crate built in with `akit build` (I70)
+/// takes it from here, so that its akio is always akit's.
+pub use akio_http;
+/// The config model, whose [`HandlerParams`] a module's constructor is given: a module akit's
+/// model does not know gets [`config::Handler::Module`], its params as written (I70).
+pub use akit_config as config;
 /// The upstream pools (I14), which [`Env`] and [`Graph`] hold.
 pub use akit_upstream as upstream;
 pub use cell::{GraphCell, Hold};

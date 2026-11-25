@@ -401,9 +401,7 @@ fn loads_refused() {
             "application/json",
             r#"{"listeners": [{"name": "web", "address": "127.0.0.1:0"}], "routes": [{"handler": {"module": "nope"}}]}"#.into(),
             400,
-            // akit's message (akit-config checks the module's namespace): fit says "there is no
-            // module \"nope\"".
-            r#"there is no handler module \"nope\""#.into(),
+            r#"there is no module \"nope\""#.into(),
         ),
         (
             "not bound",
@@ -849,7 +847,7 @@ fn edits_refused() {
             "application/json",
             r#""nope""#,
             400,
-            r#"there is no handler module \"nope\""#,
+            r#"there is no module \"nope\""#,
         ),
         (
             "DELETE",

@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
-//! The `akit` command, with fit's commands, flags and exit codes: 0 when it worked, 1 when it did
+//! The `akit` command line, which the library holds as its `cli` module and calls from
+//! [`main`] (the binary is `src/bin/akit.rs`, and one `akit build` makes is the same with modules
+//! of its own besides), with fit's commands, flags and exit codes: 0 when it worked, 1 when it did
 //! not (a config with errors, a shutdown that ran out of time), 2 when it was used wrongly.
 //!
 //! - `run`: reads the config (`-c`, repeated, files and directories, merged), compiles it,
@@ -31,14 +33,17 @@
 //! - `validate`: reads and compiles the config, as `run` would, and says whether it is valid.
 //! - `adapt` and `fmt` (I73): convert a config between `.conf`, YAML and JSON, and write a
 //!   config's files again in their own formats, as fit writes them ([`adapt`]).
+//! - `build` (I70): builds an akit with more modules, or fewer, into a binary ([`build_cli`],
+//!   [`crate::build`]), as fit's `fit build`.
 //! - `version`, `help`.
 
 mod adapt;
-mod flags;
+mod build_cli;
+pub(crate) mod flags;
 
 use std::io::Read;
 use std::process::ExitCode;
-use std::sync::{Arc, mpsc};
+use std::sync::{Arc, OnceLock, mpsc};
 use std::time::{Duration, Instant};
 
 use akit_admin::{
@@ -50,7 +55,7 @@ use akit_observe::metrics::{ConfigStats, Metrics};
 use akit_observe::{AccessLog, Format, MetricsExporter, Otlp, Tracer, Zone};
 use akit_provider::{Kinds, Provider, Updates};
 use akit_runtime::upstream::EngineSlot;
-use akit_runtime::{Env, Graph, GraphCell, HandlerParams, Registry, compile};
+use akit_runtime::{Env, Graph, GraphCell, HandlerParams, Info, Registry, compile};
 use akit_tls::{FileWatcher, Report};
 use flags::{Spec, Usage};
 
@@ -65,6 +70,7 @@ Commands:
   validate   check a config, without running it
   adapt      convert a config between .conf, YAML and native JSON
   fmt        write a config's files again, each in its own format
+  build      build an akit with more modules, or fewer, as akit build -h says
   version    print akit's version and the akio commit it is built on
   help       print this help
 
@@ -118,17 +124,14 @@ const VALIDATE_FLAGS: &[Spec] = &[Spec {
     usage: CONFIG_USAGE,
 }];
 
-/// akit's version: `AKIT_VERSION` when the build set it (scripts/dist.sh and the Dockerfile set
-/// the release's tag, as fit's `-X main.version`), the crate's version otherwise.
-const VERSION: &str = match option_env!("AKIT_VERSION") {
-    Some(v) if !v.is_empty() => v,
-    _ => env!("CARGO_PKG_VERSION"),
-};
+/// The version [`main`] was given, and the module lists the registry is made from: set once,
+/// when the process starts, before any config is read.
+static BUILD: OnceLock<(String, Vec<&'static [Info<HandlerParams>]>)> = OnceLock::new();
 
 fn version() -> String {
     format!(
         "akit {}\nakio {}\n{}/{}",
-        VERSION,
+        BUILD.get().map_or(crate::VERSION, |(v, _)| v.as_str()),
         akit_runtime::AKIO_REV
             .get(..12)
             .unwrap_or(akit_runtime::AKIO_REV),
@@ -150,7 +153,7 @@ fn print_errors(name: &str, errs: &Errors) {
 }
 
 /// The config files the flags name, `fit.json` when none.
-fn config_paths(flags: &[(&str, String)]) -> Vec<String> {
+pub(crate) fn config_paths(flags: &[(&str, String)]) -> Vec<String> {
     let paths: Vec<String> = flags
         .iter()
         .filter(|(n, _)| *n == "c")
@@ -225,13 +228,9 @@ fn compile_config(
     acme: Option<&akit_tls::Acme>,
     tracer: Option<&Tracer>,
 ) -> Result<Graph, Failure> {
-    let registry: Registry<HandlerParams> = Registry::new(&[
-        akit_handler::MODULES,
-        akit_middleware::MODULES,
-        akit_cache::MODULES,
-        akit_proxy::MODULES,
-    ])
-    .map_err(|e| Failure::Registry(e.to_string()))?;
+    let modules = BUILD.get().map_or(crate::STANDARD, |(_, m)| m.as_slice());
+    let registry: Registry<HandlerParams> =
+        Registry::new(modules).map_err(|e| Failure::Registry(e.to_string()))?;
     let env = Env::new(engine.clone())
         .with_access_log(log.cloned())
         .with_metrics(Some(metrics.clone()))
@@ -783,7 +782,7 @@ fn run(args: &[String]) -> ExitCode {
     let telemetry = config.telemetry.clone();
     let otlp = match &telemetry {
         None => None,
-        Some(t) => match Otlp::new(t, VERSION, akit_observe::otlp::stderr_log()) {
+        Some(t) => match Otlp::new(t, crate::VERSION, akit_observe::otlp::stderr_log()) {
             Ok(o) => Some(o),
             Err(e) => {
                 eprintln!("akit run: telemetry: {e}");
@@ -1110,7 +1109,12 @@ fn close_telemetry(exporter: Option<&MetricsExporter>, tracer: Option<&Tracer>) 
     }
 }
 
-fn main() -> ExitCode {
+/// Runs the command the process's arguments name, as an akit whose version is `akit_version` and
+/// whose registry has the modules of `modules` (the binary's: [`crate::STANDARD`]; one `akit
+/// build` makes adds its own, I70), and returns the exit code: 0 when it worked, 1 when it did
+/// not, 2 when it was used wrongly. Called once, by the binary's `main`.
+pub fn main(akit_version: &str, modules: &[&'static [Info<HandlerParams>]]) -> ExitCode {
+    let _ = BUILD.set((akit_version.to_owned(), modules.to_vec()));
     let args: Vec<String> = std::env::args().skip(1).collect();
     let Some((cmd, rest)) = args.split_first() else {
         eprint!("{USAGE}");
@@ -1121,6 +1125,7 @@ fn main() -> ExitCode {
         "validate" => validate(rest),
         "adapt" => adapt::adapt(rest),
         "fmt" => adapt::fmt(rest),
+        "build" => build_cli::build(rest),
         "version" | "-V" | "--version" => {
             if let Err(u) = flags::parse("version", rest, &[]) {
                 return usage_error(&u);

@@ -174,7 +174,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I67 | Cache I: memory tier and RFC 9111 | I17 | done |
 | I68 | Cache II: disk tier, locks, stale | I67 | done |
 | I69 | Cache III: purge and tags | I68, I27 | done |
-| I70 | `akit build` | I03 | todo |
+| I70 | `akit build` | I03 | done |
 | I71 | WASM I: runtime and ABI | I03 | todo |
 | I72 | WASM II: the Proxy-Wasm subset | I71 | todo |
 | I73 | `akit adapt` and `akit fmt` | I23, I24 | done |

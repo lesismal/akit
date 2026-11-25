@@ -39,7 +39,10 @@ MSRV（1.85）下也不能把一个 trait 对象向上转换为另一个；akit 
 
 ## 影响
 
-- 每个模块 crate 导出它的 `static` 列表，`akit build`（I70）组合列表而不是 import。
+- 每个模块 crate 导出它的 `static` 列表，`akit build`（I70）组合列表而不是 import。自 I70 起，`akit` crate 是一个库，
+  可执行文件以及构建生成的每个可执行文件都用自己的列表调用它的 `akit::main(version, lists)`（[模块](../modules.zh-CN.md)）；
+  配置模型把不认识的模块保存为 `Handler::Module`，参数保持书写时的样子，因此注册表在编译时用 fit 的消息报告未知的名字，
+  与 fit 的 `module.Load` 一致，而构建进去的模块自己解码参数。
 - fit 的可选接口变成 trait 上带默认实现的方法（`Handler` 可增加 `inline`、`unwrapped` 等）或 `Provisioned` 上的字段
   （drain 钩子，I17），而不是类型断言。
 - `Env` 目前为空；I04 随需要它们的迭代加入 fit 的 `module.Env` 所含内容（上游池、引擎、对图的持有）。
