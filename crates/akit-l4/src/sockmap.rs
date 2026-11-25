@@ -213,7 +213,7 @@ struct Drain<H: Handler> {
 }
 
 /// Closes the side once it has been written everything, or has stalled; else reads it again
-/// later, on akit's timer thread. Never waits: a read of its counters returns at once.
+/// later, on akio's timer thread. Never waits: a read of its counters returns at once.
 fn poll<H: Handler>(mut d: Drain<H>) {
     if !d.to.is_open() {
         return;
@@ -232,7 +232,7 @@ fn poll<H: Handler>(mut d: Drain<H>) {
     }
     d.wait = d.wait.saturating_mul(2).min(MAX_POLL);
     let to = d.to.clone();
-    if !akit_upstream::timer::after(d.wait, move || poll(d)) {
+    if akio::timer::after_send(d.wait, move || poll(d)).is_err() {
         // The timers are full: closed as a userspace relay closes it.
         to.close_after_send();
     }

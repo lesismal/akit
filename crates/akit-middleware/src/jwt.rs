@@ -16,15 +16,14 @@
 //! - A token naming a `kid` the JWK set does not have, as a key rotation brings, or any token
 //!   before the first fetch is done, waits for a fetch: the request is suspended (akio's
 //!   `Context::suspend`, ADR-109) and verified again when it is done, holding no thread
-//!   meanwhile. akio cannot suspend a request whose body streams to its handler: for one that
-//!   may wait, the middleware asks for its body whole, within the listener's `max_body_bytes`
-//!   (akio API request A75 would let it stream).
+//!   meanwhile. A body that streams is held meanwhile (akio's ADR-159) and streams to the
+//!   handler once the token passed.
 //! - A field `claims_headers` sets is first removed in every spelling a client could send to pass
 //!   for it behind CGI, with or without the claim, as `basic_auth`'s `user_header` is.
 //!
 //! Who a request was authenticated as (`sub`) and its claims go into fit's access log and to
-//! fit's later middleware (`ClaimsOf`); akit's access log cannot carry what a request set yet
-//! (akio API request A29), so they do not.
+//! fit's later middleware (`ClaimsOf`); akit's access log does not carry them yet: akio's
+//! response observer (A29) is told two words a request set, not a name.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -384,34 +383,6 @@ impl Jwt {
             c.insert((self.id, sum), v.clone());
         });
     }
-
-    /// Whether a request with fields `headers` and target `target` may wait for a JWK set to be
-    /// fetched: with a token whose `kid` the current set does not have, or before a set was.
-    fn may_wait(&self, headers: &Headers, target: &str) -> bool {
-        let Keys::Jwks(jwks) = &self.keys else {
-            return false;
-        };
-        let Some(raw) = self.token(headers, target) else {
-            return false;
-        };
-        let generation = jwks.generation();
-        if generation == 0 {
-            return true;
-        }
-        if self
-            .cached(&Sha256::digest(raw.as_bytes()), generation)
-            .is_some()
-        {
-            return false;
-        }
-        let Ok(t) = parse_token(&raw) else {
-            return false;
-        };
-        if Alg::from_name(&t.alg).is_none_or(|a| self.allowed & a.bit() == 0) {
-            return false;
-        }
-        jwks.current().is_none_or(|k| !k.lookup(&t.kid).1)
-    }
 }
 
 thread_local! {
@@ -493,7 +464,7 @@ impl JwtChecked {
     /// Waits for the JWK set to be fetched, the request suspended, then verifies `t` again.
     fn wait(&self, ctx: &mut Context, jwks: &Jwks, t: Token, sum: [u8; 32], seen: u64) {
         let Some(suspended) = ctx.suspend() else {
-            // Its body streams (`body_mode` asked for it whole, but the keys changed since).
+            // A resumed request already taking its streamed body.
             Jwt::refuse(ctx, true);
             return;
         };
@@ -565,14 +536,8 @@ impl akio_http::Service for JwtChecked {
         }
     }
 
-    /// The handler's, except that a request that may wait for the JWK set has its body whole,
-    /// so that it can be suspended.
     fn body_mode(&self, req: &Request) -> BodyMode {
-        let mode = self.next.body_mode(req);
-        if mode == BodyMode::Stream && self.jwt.may_wait(&req.headers, &req.target) {
-            return BodyMode::Buffered;
-        }
-        mode
+        self.next.body_mode(req)
     }
 
     fn streams_bodies(&self) -> bool {

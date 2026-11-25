@@ -9,6 +9,8 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
+# akio's timer thread (`akio::timer::after_send`) for the tunnels' idle timeouts.
+akio = { workspace = true }
 akio-crypto = { workspace = true }
 akio-http = { workspace = true }
 akit-config = { workspace = true }
@@ -16,7 +18,6 @@ akit-observe = { workspace = true }
 akit-runtime = { workspace = true }
 
 [dev-dependencies]
-akio = { workspace = true }
 # A gRPC client and server for the gRPC tests (I50).
 akio-grpc = { workspace = true }
 # For akit-listener's test support, which the TLS tests share (its HTTP/3 client, I10).

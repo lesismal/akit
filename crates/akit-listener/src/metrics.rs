@@ -14,8 +14,8 @@
 //! - `fit_tls_certificate_not_after_seconds`, by listener, name and serial;
 //! - the listeners' connections: `fit_connections_open`, `fit_connections_refused_total`,
 //!   `fit_pending_bytes`, `fit_reads_paused_total`, from akio's engine telemetry
-//!   (`fit_connections_open` counts the upstream connections dialed on the engine too, until
-//!   akio can tell them apart: akio API request A30; `reason="budget"` is 0, akit having no
+//!   (`fit_connections_open` counts the accepted TCP connections only, akio's `open_accepted`,
+//!   not the upstream connections dialed on the engine; `reason="budget"` is 0, akit having no
 //!   `limits.max_pending_bytes` yet);
 //! - `fit_config_reloads_total`, `fit_config_version` and
 //!   `fit_config_last_applied_timestamp_seconds`;
@@ -258,7 +258,7 @@ impl Scrape {
             "gauge",
             "Client connections open on the listeners.",
         );
-        w.sample_u64("fit_connections_open", tel.open_connections as u64, &[]);
+        w.sample_u64("fit_connections_open", tel.open_accepted as u64, &[]);
         w.family(
             "fit_connections_refused_total",
             "counter",

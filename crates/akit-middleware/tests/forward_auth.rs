@@ -490,8 +490,8 @@ fn forward_auth_slow_service() {
     );
 }
 
-/// With `request_headers`, the auth service gets those fields alone (and its own); a body is
-/// read whole before the check, and reaches the handler.
+/// With `request_headers`, the auth service gets those fields alone (and its own); a body that
+/// streams waits for the check, and the handler is answered.
 #[test]
 fn forward_auth_request_headers() {
     let a = AuthService::start();
@@ -523,7 +523,7 @@ fn forward_auth_request_headers() {
 }
 
 /// fit's `examples/forward-auth`: `forward_auth` in front of the `proxy` handler. The app gets
-/// the auth service's field, and a body larger than the proxy streams, read whole for the check.
+/// the auth service's field, and a body larger than the proxy streams.
 #[test]
 fn forward_auth_then_proxy() {
     let a = AuthService::start();
@@ -578,6 +578,83 @@ fn forward_auth_then_proxy() {
         (head.target.as_str(), String::from_utf8(body).unwrap()),
         ("200", format!("user=alice body={n}"))
     );
+}
+
+/// A body that streams waits with the request while the auth service checks it (akio's
+/// suspension with its reads held, ADR-159), then streams to the proxy's upstream, whole and in
+/// order: the upstream has the request's head before the client sent the second half of its
+/// body, which it would not if the body were read whole for the check.
+#[test]
+fn forward_auth_streams_the_body() {
+    let a = AuthService::start();
+    let app = TcpListener::bind("127.0.0.1:0").unwrap();
+    let app_addr = app.local_addr().unwrap();
+    let (heads, got_head) = std::sync::mpsc::channel::<()>();
+    thread::spawn(move || {
+        for s in app.incoming().flatten() {
+            let heads = heads.clone();
+            thread::spawn(move || {
+                s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+                let mut r = BufReader::new(s.try_clone().unwrap());
+                let mut w = s;
+                while let Some(req) = read_head(&mut r) {
+                    let _ = heads.send(());
+                    let n: usize = req.get("Content-Length").parse().unwrap_or(0);
+                    let mut body = vec![0; n];
+                    if r.read_exact(&mut body).is_err() {
+                        return;
+                    }
+                    let in_order = body.iter().enumerate().all(|(i, &b)| b == pattern(i));
+                    let text = format!(
+                        "user={} body={n} in_order={in_order}",
+                        req.get("X-Auth-User")
+                    );
+                    if answer(&mut w, 200, &[], text.as_bytes()).is_err() {
+                        return;
+                    }
+                }
+            });
+        }
+    });
+    let akit = Akit::start(&format!(
+        r#"{{"listeners": [{{"name": "web", "address": "127.0.0.1:0"}}],
+            "upstreams": [{{"name": "auth", "addresses": ["{}"]}}, {{"name": "app", "addresses": ["{app_addr}"]}}],
+            "routes": [{{"middleware": [{{"module": "forward_auth", "params": {{"upstream": "auth",
+                           "request_headers": ["Authorization"], "copy_headers": ["X-Auth-User"]}}}}],
+                         "handler": {{"module": "proxy", "params": {{"upstream": "app"}}}}}}]}}"#,
+        a.addr
+    ));
+    // 1 MiB, past the proxy's stream threshold, the second half sent once the upstream has the
+    // request's head.
+    let n = 1 << 20;
+    let body: Vec<u8> = (0..n).map(pattern).collect();
+    let s = TcpStream::connect(akit.addr).unwrap();
+    s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+    s.set_write_timeout(Some(Duration::from_secs(10))).unwrap();
+    let head = format!(
+        "POST /p HTTP/1.1\r\nHost: example.com\r\nAuthorization: Bearer good\r\nContent-Length: {n}\r\n\r\n"
+    );
+    (&s).write_all(head.as_bytes()).unwrap();
+    let (first, rest) = body.split_at(n / 2);
+    (&s).write_all(first).unwrap();
+    got_head
+        .recv_timeout(Duration::from_secs(10))
+        .expect("the upstream never had the request before the whole body was sent");
+    (&s).write_all(rest).unwrap();
+    let mut r = BufReader::new(s);
+    let head = read_head(&mut r).unwrap();
+    let len: usize = head.get("Content-Length").parse().unwrap();
+    let mut answer = vec![0; len];
+    r.read_exact(&mut answer).unwrap();
+    assert_eq!(
+        (head.target.as_str(), String::from_utf8(answer).unwrap()),
+        ("200", format!("user=alice body={n} in_order=true"))
+    );
+}
+
+/// Byte `i` of a test body: a pattern a reordered or lost part breaks.
+fn pattern(i: usize) -> u8 {
+    u8::try_from(i % 251).unwrap()
 }
 
 // fit's TestForwardAuthParams, and akit-config's checks.

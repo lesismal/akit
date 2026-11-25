@@ -22,10 +22,8 @@
 //! - A client that goes while its request waits cancels the auth service's request (akio's
 //!   `on_gone` and `CancelToken`, ADR-108), which does not count against the auth service's
 //!   health.
-//!
-//! akio cannot suspend a request whose body streams to its handler (ADR-109): as `basic_auth`
-//! does, the middleware asks for such a body whole, within the listener's `max_body_bytes`, and
-//! the handler then has it whole (akio API request A75 would let it stream after the check).
+//! - A request whose body streams waits suspended with its body's reads held (akio's ADR-159),
+//!   and streams to the handler once the check let it through, nothing of it read whole.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -317,7 +315,7 @@ impl akio_http::Service for ForwardAuthed {
         let gone = token.clone();
         ctx.on_gone(move || gone.cancel());
         let Some(suspended) = ctx.suspend() else {
-            // Not with a body that streams, which `body_mode` asks for whole.
+            // A resumed request already taking its streamed body.
             ctx.respond(Response::new(500));
             return;
         };
@@ -334,13 +332,8 @@ impl akio_http::Service for ForwardAuthed {
         );
     }
 
-    /// The handler's, except that a body that would stream comes whole, so that the request can
-    /// be suspended.
     fn body_mode(&self, req: &Request) -> BodyMode {
-        match self.next.body_mode(req) {
-            BodyMode::Stream => BodyMode::Buffered,
-            mode => mode,
-        }
+        self.next.body_mode(req)
     }
 
     fn streams_bodies(&self) -> bool {

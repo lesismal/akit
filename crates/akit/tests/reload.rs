@@ -175,17 +175,14 @@ fn connect(addr: SocketAddr) -> Result<BufReader<TcpStream>, String> {
 #[derive(Default)]
 struct Seen {
     ok: AtomicUsize,
-    /// Requests a draining listener's server closed the idle keep-alive connection under before
-    /// reading them (`status ""`): sent again on a new connection, as HTTP clients do with an
-    /// idempotent request (RFC 9112 section 9.3.1).
-    retried: AtomicUsize,
     failed: Mutex<Vec<String>>,
     last: Mutex<String>,
 }
 
 /// A client loop: keep-alive connections of 20 requests each (the last closing it, or the
-/// server's `Connection: close`), until `stop`. A reused connection closed before any byte of
-/// the answer is a retry on a new connection, not a failure.
+/// server's `Connection: close`), until `stop`. Every error is a failure: a draining listener
+/// answers a request on an idle keep-alive connection with `Connection: close` within its grace
+/// (akio's `HttpConfig::idle_drain_grace`) rather than closing the connection under it.
 fn client(addr: SocketAddr, seen: Arc<Seen>, stop: Arc<AtomicBool>) {
     while !stop.load(SeqCst) {
         let mut s = match connect(addr) {
@@ -203,10 +200,6 @@ fn client(addr: SocketAddr, seen: Arc<Seen>, stop: Arc<AtomicBool>) {
                     if closing {
                         break;
                     }
-                }
-                Err(e) if i > 0 && e == "status \"\"" => {
-                    seen.retried.fetch_add(1, SeqCst);
-                    break;
                 }
                 Err(e) => {
                     seen.failed.lock().unwrap().push(e);
@@ -281,7 +274,7 @@ fn reloads_under_traffic_with_no_failed_request() {
     // The listener akit started with, changed at its address: replaced (akio's add_listener and
     // shutdown_listener, A1). Linux shares the port between the two while the old one drains;
     // elsewhere the old one stops first, and connections in that gap would be refused. The old
-    // one's idle keep-alive connections close at once: a request already sent on one is retried.
+    // one's idle keep-alive connections answer their next request with `Connection: close`.
     if cfg!(target_os = "linux") {
         std::fs::write(&path, config(web, r#""http/1.1""#, "v2b", true)).unwrap();
         akit.signal(SIGHUP);
@@ -335,9 +328,6 @@ fn reloads_under_traffic_with_no_failed_request() {
     }
     let failed = seen.failed.lock().unwrap();
     assert!(failed.is_empty(), "failed requests: {failed:?}");
-    // At most once per client for each removal of a listener it was on (web, replaced twice).
-    let retried = seen.retried.load(SeqCst);
-    assert!(retried <= 4 * 2, "{retried} requests sent again");
     assert!(seen.ok.load(SeqCst) >= 400, "{}", seen.ok.load(SeqCst));
 
     akit.signal(SIGTERM);

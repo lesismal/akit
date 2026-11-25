@@ -17,9 +17,8 @@
 //! - **`max_idle_conns`** and **`idle_timeout`**: akio's client keeps that many idle connections
 //!   per address, each until it has been idle that long.
 //! - **`connect_timeout`**: how long one attempt to connect may take: akio's Happy Eyeballs
-//!   `connect_timeout`, per address tried, when the address resolves to several; akio dials a
-//!   lone one with its engine's `connect_timeout` instead (akio API request A12), which
-//!   `akit_listener::engine` sets to the shortest of the upstreams' as a stopgap.
+//!   `connect_timeout`, per address tried, for a lone address too (each attempt dialed with
+//!   `Engine::dial_with`), whatever the engine's own connect timeout.
 //! - **`response_timeout`** (I17): every exchange is bounded in all, from the request's start,
 //!   waiting for a connection included, to the end of its response's body; fit's default,
 //!   [`DEFAULT_RESPONSE_TIMEOUT`], when the config leaves it out. A request may ask for less
@@ -108,7 +107,6 @@ pub mod health;
 pub mod probe;
 pub mod split;
 pub mod sticky;
-pub mod timer;
 
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;

@@ -71,6 +71,15 @@ impl akio_http::Service for HandlerService {
 pub trait Middleware: Send + Sync + 'static {
     /// Returns the handler that runs this middleware around `next`.
     fn wrap(&self, next: Arc<dyn Handler>) -> Arc<dyn Handler>;
+
+    /// Whether the handler it returns may change the request's target (its path or query) for
+    /// the handlers after it, as `rewrite` and `wasm` do. The access log writes the target the
+    /// listener dispatched (fit's `RequestURI`): a route with such a middleware has it kept
+    /// for its line, which costs an allocation a request; others read it off the request as it
+    /// is when the response goes (akio's response observer). False unless the middleware says so.
+    fn changes_target(&self) -> bool {
+        false
+    }
 }
 
 /// Wraps `handler` in `middleware`, the first outermost: a request goes through `middleware` in

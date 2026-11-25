@@ -48,9 +48,9 @@
 //! does not; a spliced connection's idle timeout and closes follow its sockets' TCP counters
 //! ([`sockmap`]).
 //!
-//! The idle timeouts are swept per service, on akit's timer thread
-//! ([`akit_upstream::timer`]): a stopgap for akio API requests A45 (a public timer) and A78 (an
-//! idle timeout per connection), which would close each connection on its own I/O thread.
+//! The idle timeouts are swept per service, on akio's timer thread ([`akio::timer::after_send`]):
+//! a stopgap for akio API request A78 (an idle timeout per connection), which would close each
+//! connection on its own I/O thread.
 //!
 //! Part of [akit](https://github.com/lesismal/akit); see `docs/dev-plan.md` for the iterations that
 //! fill this crate in.
@@ -314,7 +314,7 @@ impl Inner {
             return;
         }
         let me = Arc::downgrade(self);
-        if !akit_upstream::timer::after(self.sweep_every(), move || sweep(&me)) {
+        if akio::timer::after_send(self.sweep_every(), move || sweep(&me)).is_err() {
             // The timers are full: the next connection tries again.
             self.sweeping.store(false, Ordering::SeqCst);
         }
@@ -322,7 +322,7 @@ impl Inner {
 }
 
 /// Closes the service's connections idle for their timeout, and schedules the next sweep while
-/// any is open. On akit's timer thread: it only reads the counters of the spliced connections
+/// any is open. On akio's timer thread: it only reads the counters of the spliced connections
 /// and closes connections, each of which returns at once; the locks are not held meanwhile.
 fn sweep(me: &Weak<Inner>) {
     let Some(s) = me.upgrade() else {

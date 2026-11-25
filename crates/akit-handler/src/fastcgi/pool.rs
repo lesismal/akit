@@ -5,8 +5,8 @@
 //! (`connect_timeout`), and an idle connection is closed after `idle_timeout`.
 //!
 //! Every deadline of the handler's (its exchanges', its idle connections', its dials') is checked
-//! by one sweep every [`TICK`], a job on akit's timer thread (`akit_upstream::timer`, the stopgap
-//! for akio API request A45) that runs while the handler has anything to watch: one job a
+//! by one sweep every [`TICK`], a job on akio's timer thread ([`akio::timer::after_send`]) that
+//! runs while the handler has anything to watch: one job a
 //! handler, whatever its rate of requests, not one a request in a table all share.
 //!
 //! Nothing here blocks: a host name is resolved off the I/O threads by akio's resolver, and a
@@ -23,7 +23,7 @@ use std::time::{Duration, Instant};
 
 use akio::{Acceptor, Conn};
 use akit_config::FastCgiAddress;
-use akit_upstream::{EngineSlot, timer};
+use akit_upstream::EngineSlot;
 
 use super::exchange::Exchange;
 use super::record::Reader;
@@ -217,11 +217,12 @@ impl Pool {
             return true;
         }
         let pool = self.me.clone();
-        st.ticking = timer::after(TICK, move || {
+        st.ticking = akio::timer::after_send(TICK, move || {
             if let Some(p) = pool.upgrade() {
                 p.tick();
             }
-        });
+        })
+        .is_ok();
         st.ticking
     }
 

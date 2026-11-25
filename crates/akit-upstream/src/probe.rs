@@ -14,11 +14,11 @@
 //!   timer of the prober's, as for tcp. An `h2` address whose server chooses HTTP/1.1 in ALPN
 //!   (I18b) is probed over HTTP/1.1 on TLS, as the pool's requests go to it.
 //! - **tcp** passes once a connection opens ([`HappyEyeballs::connect`]), and closes it at once.
-//!   akio dials a lone address with its engine's connect timeout (akio API request A12), so the
-//!   check's timeout is kept by a timer of the prober's.
+//!   Each attempt is dialed within the check's timeout; the check's timeout in all, the name's
+//!   resolution included, is kept by a timer of the prober's, cancelled once the probe settles.
 //!
-//! No thread waits for a probe: each is started by a job of akit's probe timer ([`crate::timer`],
-//! the stopgap for akio API request A45) and finished in akio's callback, on an I/O thread (or
+//! No thread waits for a probe: each is started by a job of akio's timer thread
+//! ([`akio::timer::after_send`]) and finished in akio's callback, on an I/O thread (or
 //! the resolver's, or a timer's), which records the result and schedules the next probe: one
 //! address's probes follow one another. The prober holds its pool weakly: once the pool is
 //! closed (its graph retired) or dropped, no probe starts and the result of one under way is
@@ -26,10 +26,11 @@
 
 use std::hash::BuildHasher;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex, PoisonError, Weak};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
 use std::time::{Duration, Instant};
 
 use akio::dns::HappyEyeballs;
+use akio::timer::{SendTimer, after_send};
 use akio::{Conn, Engine, Handler};
 use akio_http::Headers;
 use akio_http::client::{
@@ -40,7 +41,6 @@ use akit_config::{HealthCheck, HealthCheckType};
 
 use crate::Inner;
 use crate::health::Health;
-use crate::timer;
 
 /// The `User-Agent` of http probes.
 pub const USER_AGENT: &str = "akit-health-check";
@@ -143,7 +143,7 @@ pub(crate) fn start(pool: &Arc<Inner>, engine: &Arc<Engine>) {
     });
     for i in 0..pr.targets.len() {
         let me = Arc::clone(&pr);
-        timer::after(pr.spread(), move || me.probe(i));
+        let _ = after_send(pr.spread(), move || me.probe(i));
     }
 }
 
@@ -218,8 +218,7 @@ impl Prober {
         done: Done,
     ) {
         let once = Once::new(done);
-        let late = once.clone();
-        timer::after(self.check.timeout, move || late.settle(false));
+        once.arm(self.check.timeout);
         let tls = match tls {
             None => None,
             Some(Ok(cfg)) => Some(cfg),
@@ -296,7 +295,7 @@ impl Prober {
             .saturating_sub(began.elapsed())
             .saturating_add(self.spread());
         let me = Arc::clone(&self);
-        timer::after(next, move || me.probe(i));
+        let _ = after_send(next, move || me.probe(i));
     }
 
     /// Counts a probe's result: `fails` failures in a row take the address out of rotation, and
@@ -325,9 +324,8 @@ impl Prober {
     /// Passes once a connection to `t` opens, and closes it at once.
     fn probe_tcp(&self, t: &Target, done: Done) {
         let once = Once::new(done);
-        let late = once.clone();
-        // Refused only past the timers' bound: akio's connect timeout then ends the probe.
-        timer::after(self.check.timeout, move || late.settle(false));
+        // Unarmed only past the timers' bound: each attempt's connect timeout then ends it.
+        once.arm(self.check.timeout);
         let opened = once.clone();
         let failed = once;
         let mut dial = HappyEyeballs::default();
@@ -366,15 +364,53 @@ impl Prober {
 /// A probe's result, given once by whichever comes first: the connection, its failure, or the
 /// timeout.
 #[derive(Clone)]
-struct Once(Arc<Mutex<Option<Done>>>);
+struct Once(Arc<Mutex<Settle>>);
+
+/// What a probe's result is waiting on.
+struct Settle {
+    done: Option<Done>,
+    /// The probe's timeout, cancelled once the probe settles first.
+    timeout: Option<SendTimer>,
+}
 
 impl Once {
     fn new(done: Done) -> Once {
-        Once(Arc::new(Mutex::new(Some(done))))
+        Once(Arc::new(Mutex::new(Settle {
+            done: Some(done),
+            timeout: None,
+        })))
+    }
+
+    fn lock(&self) -> MutexGuard<'_, Settle> {
+        self.0.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Fails the probe once `timeout` has passed, unless it settles first. Past the timers'
+    /// bound it is not armed.
+    fn arm(&self, timeout: Duration) {
+        let late = self.clone();
+        let Ok(t) = after_send(timeout, move || late.settle(false)) else {
+            return;
+        };
+        let mut st = self.lock();
+        if st.done.is_some() {
+            st.timeout = Some(t);
+        } else {
+            // Settled already: the timer is moot.
+            drop(st);
+            t.cancel();
+        }
     }
 
     fn settle(&self, passed: bool) {
-        let done = self.0.lock().unwrap_or_else(PoisonError::into_inner).take();
+        let (done, timeout) = {
+            let mut st = self.lock();
+            (st.done.take(), st.timeout.take())
+        };
+        // Its job (a clone of this) dropped now, not when it is due.
+        if let Some(t) = timeout {
+            t.cancel();
+        }
         if let Some(done) = done {
             done(passed);
         }

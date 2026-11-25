@@ -21,10 +21,10 @@
 //!   call that trapped (a panic, memory past its bound, its deadline passed) or broke the ABI is
 //!   answered 500, or goes on without the plugin with `on_error: skip`.
 //! - A client that goes while its request waits leaves its call unrun.
-//!
-//! akio cannot suspend a request whose body streams to its handler (ADR-109): as `forward_auth`
-//! does, the middleware asks for such a body whole, within the listener's `max_body_bytes`
-//! (akio API request A75 would let it stream after the call).
+//! - A request whose body streams waits suspended with its body's reads held (akio's ADR-159),
+//!   and streams to the handler once the plugin let it through; the plugin is not handed the
+//!   request's body (fit's subset), only whether it has one, as fit tells it (`Content-Length`
+//!   above 0 or a `Transfer-Encoding`, or a body already read).
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -74,6 +74,11 @@ impl Middleware for WasmMiddleware {
             next,
         })
     }
+
+    /// A plugin may set the request's path (fit's ABI, Proxy-Wasm's `:path`).
+    fn changes_target(&self) -> bool {
+        true
+    }
 }
 
 /// A route's handler behind the plugin.
@@ -93,7 +98,7 @@ impl akio_http::Service for Plugged {
         let g = Arc::clone(&gone);
         ctx.on_gone(move || g.store(true, Ordering::Release));
         let Some(request) = ctx.suspend() else {
-            // Not with a body that streams, which `body_mode` asks for whole.
+            // A resumed request already taking its streamed body.
             ctx.respond(Response::new(500));
             return;
         };
@@ -118,13 +123,8 @@ impl akio_http::Service for Plugged {
         }
     }
 
-    /// The handler's, except that a body that would stream comes whole, so that the request can
-    /// be suspended.
     fn body_mode(&self, req: &Request) -> BodyMode {
-        match self.next.body_mode(req) {
-            BodyMode::Stream => BodyMode::Buffered,
-            mode => mode,
-        }
+        self.next.body_mode(req)
     }
 
     fn streams_bodies(&self) -> bool {
@@ -165,8 +165,20 @@ fn snapshot_pw(ctx: &Context, follows: bool) -> PwRequest {
         remote: req.peer.to_string(),
         headers,
         follows: follows && !tunnel,
-        has_body: !req.body.is_empty(),
+        has_body: has_body(req),
     }
+}
+
+/// Whether `req` has a body, as fit tells a Proxy-Wasm filter (`end_of_stream` its opposite):
+/// one read already, or one its fields declare, since a body that streams is not read yet.
+fn has_body(req: &Request) -> bool {
+    !req.body.is_empty()
+        || req.headers.get("transfer-encoding").is_some()
+        || req
+            .headers
+            .get("content-length")
+            .and_then(|v| v.trim().parse::<u64>().ok())
+            .is_some_and(|n| n > 0)
 }
 
 /// The request as the plugin sees it, copied on the I/O thread.

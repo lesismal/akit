@@ -15,9 +15,8 @@
 //!   waited past [`MAX_WAIT`] is answered 503, so that a flood of wrong passwords takes at most
 //!   the pool, while remembered users are let in meanwhile.
 //!
-//!   akio cannot suspend a request whose body streams to its handler (ADR-109): for a request
-//!   with a body whose password is not remembered yet, the middleware asks for the body whole,
-//!   within the listener's `max_body_bytes`, and streams the rest as its handler asks.
+//!   A request whose body streams is suspended with its body's reads held (akio's ADR-159): the
+//!   body streams to the handler once the password passed, as the handler asks.
 //! - `client_cert` lets a request through only when its client sent a certificate the listener
 //!   verified (akio's `Request::peer_certificates`), and may pass its subject on, as Go writes a
 //!   distinguished name.
@@ -27,7 +26,8 @@
 //! reads `_` as `-` (CGI, FastCGI and the frameworks behind them), as fit's `fieldSet` removes it.
 //!
 //! Who a request was authenticated as goes into fit's access log line as `user`; akit's line
-//! cannot carry what a request set yet (akio API request A29), so it does not.
+//! does not carry it yet: akio's response observer (A29) is told two words a request set, not a
+//! name.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -335,25 +335,15 @@ impl akio_http::Service for BasicAuthed {
                 }
             });
         });
-        // Not suspended: the pool had no room (answered 503), or the request cannot be (its body
-        // streams, which `body_mode` asks against unless the password was remembered then).
+        // Not suspended: the pool had no room (answered 503), or the request cannot be (a
+        // resumed one already taking its streamed body).
         if !suspended && !ctx.responded() {
             busy(ctx);
         }
     }
 
-    /// The handler's, except that a request with a body whose password is not remembered has it
-    /// whole, so that it can be suspended for the check.
     fn body_mode(&self, req: &Request) -> BodyMode {
-        let mode = self.next.body_mode(req);
-        if mode == BodyMode::Stream {
-            if let Some((user, password)) = credentials(&req.headers) {
-                if !self.basic.remembers(&user, &password) {
-                    return BodyMode::Buffered;
-                }
-            }
-        }
-        mode
+        self.next.body_mode(req)
     }
 
     fn streams_bodies(&self) -> bool {

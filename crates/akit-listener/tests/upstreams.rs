@@ -99,6 +99,9 @@ fn unanswered() -> Option<(SocketAddr, Vec<TcpStream>, Option<TcpListener>)> {
     }
 }
 
+/// Each upstream's `connect_timeout` bounds its own dials, a lone address's included: the one
+/// shorter than the engine's (akio's 10s) is not stretched to it, and the longer one is not cut
+/// to the shorter (each dial carries its timeout, `Engine::dial_with`).
 #[test]
 fn connect_timeout() {
     let Some((target, _held, _listener)) = unanswered() else {
@@ -106,23 +109,34 @@ fn connect_timeout() {
         return;
     };
     let (engine, cell) = serve(&format!(
-        r#"{{"name": "app", "addresses": ["{target}"], "connect_timeout": "300ms"}}"#
+        r#"{{"name": "app", "addresses": ["{target}"], "connect_timeout": "300ms"}},
+           {{"name": "slow", "addresses": ["{target}"], "connect_timeout": "1500ms"}}"#
     ));
-    let pool = cell.with(|g| g.upstream("app").unwrap().clone());
     let (tx, rx) = channel();
     let start = Instant::now();
-    pool.request(ClientRequest::get("/"), move |r| {
-        let _ = tx.send(r);
-    });
-    let r = rx.recv_timeout(Duration::from_secs(10)).unwrap();
-    let took = start.elapsed();
-    let e = r.unwrap_err();
-    assert!(
-        matches!(e, Error::Client(_)) && e.is_upstream_failure(),
-        "{e}"
-    );
+    for name in ["app", "slow"] {
+        let pool = cell.with(|g| g.upstream(name).unwrap().clone());
+        let tx = tx.clone();
+        pool.request(ClientRequest::get("/"), move |r| {
+            let _ = tx.send((name, r, start.elapsed()));
+        });
+    }
+    let mut took = std::collections::HashMap::new();
+    for _ in 0..2 {
+        let (name, r, t) = rx.recv_timeout(Duration::from_secs(10)).unwrap();
+        let e = r.unwrap_err();
+        assert!(
+            matches!(e, Error::Client(_)) && e.is_upstream_failure(),
+            "{name}: {e}"
+        );
+        took.insert(name, t);
+    }
     // Its connect_timeout, not akio's 10s default.
-    assert!(took >= Duration::from_millis(250), "took {took:?}");
-    assert!(took < Duration::from_secs(5), "took {took:?}");
+    let (fast, slow) = (took["app"], took["slow"]);
+    assert!(fast >= Duration::from_millis(250), "app took {fast:?}");
+    assert!(fast < Duration::from_millis(1300), "app took {fast:?}");
+    // Its own, not the shorter one of the other upstream.
+    assert!(slow >= Duration::from_millis(1400), "slow took {slow:?}");
+    assert!(slow < Duration::from_secs(5), "slow took {slow:?}");
     drop(engine);
 }

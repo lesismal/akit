@@ -16,9 +16,11 @@
 //! `Alt-Svc`, as fit's do.
 //!
 //! I21: a graph with an access log has every request's line written once its response is done,
-//! by a response filter the [`Dispatcher`] registers: it runs on the thread that sends the
-//! response (the I/O thread, or the one a detached handler answers from), and builds the line
-//! there, from the request and the response ([`access_record`]).
+//! by the listener's response observer (akio's ADR-158, [`Dispatcher::observer`]), or a response
+//! filter the [`Dispatcher`] registers for a request traced or whose route may change its target:
+//! either runs on the thread that sends the response (the I/O thread, or the one a detached
+//! handler answers from), and builds the line there, from the request and the response
+//! ([`access_record`]).
 //!
 //! I22: [`Listeners::reload`] publishes a new graph and moves the listeners to its (see
 //! [`reload`]).
@@ -26,7 +28,8 @@
 //! I37: a graph whose config has `metrics` has each request counted by listener and route
 //! (`fit_http_requests_total`, `fit_http_request_duration_seconds`): one answered before its
 //! handler returns (an inline handler's, the 404, the 400) once the call returns, with no hook;
-//! any other by a response filter, the access log's when there is one. [`metrics::Scrape`] writes
+//! any other by the listener's response observer (or response filter), the access log's when
+//! there is one. [`metrics::Scrape`] writes
 //! every metric, in fit's names, for the Admin API's `/metrics`.
 //!
 //! I16: each listener takes request bodies up to the config's `limits.max_body_bytes` (fit's
@@ -80,11 +83,12 @@ use std::time::{Duration, Instant, SystemTime};
 
 use akio::tls::Tls;
 use akio::{AnyAcceptor, Backend, Config as EngineConfig, Engine, Listener as EngineListener};
-use akio_http::{BodyMode, Context, HttpConfig, Method, Request, Response, Version};
+use akio_http::{
+    BodyMode, Context, HttpConfig, Method, Request, Response, ResponseObserver, Version,
+};
 use akit_config::{Listener, Protocol};
-use akit_observe::metrics::Shard as MetricsShard;
 use akit_observe::{AccessLog, Name, Record, SpanEnd, Trace, Tracer};
-use akit_runtime::GraphCell;
+use akit_runtime::{CompiledRoute, GraphCell, NO_SLOT};
 
 pub mod metrics;
 pub mod reload;
@@ -172,22 +176,46 @@ impl fmt::Debug for Dispatcher {
 }
 
 impl Dispatcher {
-    /// Has `log` write the request's line, `count` count it (I37), and `traced` record its span
-    /// (I64), once its response is done, from the thread that sends it, as fit's `logRequest`:
-    /// one hook for the three. A request whose response is never sent (its connection went
-    /// first) has no line, is not counted and has no span.
+    /// The listener's response observer, which writes the lines and counts of the requests
+    /// [`track`](Self::track) has it observe: give it to akio with the dispatcher
+    /// (`HttpAcceptor::observer`, `akio_h3::serve_with_observer`). Without it, every request
+    /// tracked is so with a response filter.
+    #[must_use]
+    pub fn observer(&self) -> Arc<dyn ResponseObserver> {
+        Arc::new(Observer {
+            cell: self.cell.clone(),
+            listener: self.log_name.clone(),
+        })
+    }
+
+    /// Has the request's line written to `log`, its count in `slot` (I37), and its span recorded
+    /// (`traced`, I64), once its response goes, from the thread that sends it, as fit's
+    /// `logRequest`. A request whose response is never sent (its connection went first) has no
+    /// line, is not counted and has no span. `route` is the request's route in `g`, by index.
     ///
-    /// The hook is a boxed closure, one allocation a request, until akio can call a listener's
-    /// observer with a few words of the request's own (akio API request A29).
+    /// The listener's [`Observer`] does it (akio's `Context::set_observed`, ADR-158), with a
+    /// few words the request carries inline and no allocation, unless the request is traced
+    /// (its span's IDs do not fit in the words) or its line needs the target the listener
+    /// dispatched and its route may change it ([`CompiledRoute::keeps_target`]): those have a
+    /// response filter of their own, a boxed closure, as every request had before.
     fn track(
         &self,
         ctx: &mut Context,
+        g: &akit_runtime::Graph,
         log: Option<&AccessLog>,
-        count: Option<(Arc<MetricsShard>, u32)>,
-        route: &str,
+        slot: Option<u32>,
+        route: Option<(usize, &CompiledRoute)>,
         traced: Option<(Tracer, Trace)>,
     ) {
+        let keeps_target = log.is_none() || route.is_none_or(|(_, r)| r.keeps_target);
+        if traced.is_none() && keeps_target {
+            let words = observed(g.id(), slot, route.map(|(i, _)| i), log.is_some());
+            if words.is_some_and(|w| ctx.set_observed(w)) {
+                return;
+            }
+        }
         let start = Instant::now();
+        let count = slot.and_then(|s| g.metrics()?.shard().map(|m| (m, s)));
         if log.is_none() && traced.is_none() {
             if let Some((m, slot)) = count {
                 ctx.add_response_filter(move |resp: &mut Response, _: &Request| {
@@ -201,7 +229,7 @@ impl Dispatcher {
         // for the handlers, while the line writes the target fit's `RequestURI` keeps.
         let uri = shard.as_ref().map(|_| ctx.req().target.clone());
         let listener = self.log_name.clone();
-        let route = Name::new(route);
+        let route = Name::new(route_name(route.map(|(_, r)| r)));
         let tls = self.tls;
         // When the span began, in the time it is exported in: read for a traced request alone.
         let began = traced.as_ref().map(|_| SystemTime::now());
@@ -223,6 +251,75 @@ impl Dispatcher {
             if let Some((m, slot)) = count {
                 m.observe(slot, resp.status, took);
             }
+        });
+    }
+}
+
+/// The name a route's requests are logged under: its own, or none.
+fn route_name(route: Option<&CompiledRoute>) -> &str {
+    route.and_then(|r| r.name.as_deref()).unwrap_or("")
+}
+
+/// Bit 63 of an observed request's second word: it has an access log line.
+const OBSERVED_LOGGED: u64 = 1 << 63;
+/// The largest route index plus one an observed request's second word holds (bits 32 to 62).
+const OBSERVED_ROUTES: u64 = (1 << 31) - 1;
+
+/// The words a request observed by its listener's [`Observer`] carries: the ID of the graph it
+/// was dispatched on; then its metrics slot (bits 0 to 31, [`NO_SLOT`] when the observer does
+/// not count it), its route's index plus one (bits 32 to 62, 0 for none) and whether it has an
+/// access log line (bit 63). `None` for a route index past what the words hold.
+fn observed(graph: u64, slot: Option<u32>, route: Option<usize>, logged: bool) -> Option<[u64; 2]> {
+    let route = match route {
+        None => 0,
+        Some(i) => u64::try_from(i)
+            .ok()
+            .and_then(|i| i.checked_add(1))
+            .filter(|&i| i <= OBSERVED_ROUTES)?,
+    };
+    let mut w = u64::from(slot.unwrap_or(NO_SLOT)) | (route << 32);
+    if logged {
+        w |= OBSERVED_LOGGED;
+    }
+    Some([graph, w])
+}
+
+/// A listener's response observer (akio's ADR-158): writes the access log line of each request
+/// [`Dispatcher::track`] had observed, and counts it, from the words it carries
+/// ([`observed`]), with the graph it was dispatched on. That graph is the current one but for a
+/// request a reload overtook, which finds it among those not yet dropped; one dispatched on a
+/// graph dropped since is counted and logged with the current graph's log and registry, under no
+/// route name.
+struct Observer {
+    cell: GraphCell,
+    listener: Name,
+}
+
+impl ResponseObserver for Observer {
+    fn on_response(&self, resp: &Response, req: &Request, words: [u64; 2], started: Instant) {
+        let took = started.elapsed();
+        let [graph, w] = words;
+        let slot = u32::try_from(w & u64::from(u32::MAX)).unwrap_or(NO_SLOT);
+        let route = usize::try_from((w >> 32) & OBSERVED_ROUTES)
+            .ok()
+            .and_then(|i| i.checked_sub(1));
+        let logged = w & OBSERVED_LOGGED != 0;
+        let emit = |g: &akit_runtime::Graph, route: &str| {
+            if let Some(log) = g.access_log().filter(|_| logged) {
+                akit_observe::upstream(|upstream| {
+                    let r = access_record(self.listener.as_str(), route, took, upstream, resp, req);
+                    log.log(&r);
+                });
+            }
+            if slot != NO_SLOT {
+                if let Some(m) = g.metrics() {
+                    m.observe(slot, resp.status, took);
+                }
+            }
+        };
+        self.cell.with_id(graph, |g| match g {
+            Some(g) => emit(g, route_name(route.and_then(|i| g.routes().get(i)))),
+            None => self.cell.with(|g| emit(g, "")),
         });
     }
 }
@@ -358,7 +455,7 @@ impl akio_http::Service for Dispatcher {
                 let Some(path) = akit_router::canonicalize(ctx.path()) else {
                     let slot = metrics.zip(listener.and_then(|i| g.request_slot(i, None)));
                     if log.is_some() || traced.is_some() {
-                        self.track(ctx, log, None, "", traced);
+                        self.track(ctx, g, log, None, None, traced);
                     }
                     let start = Instant::now();
                     ctx.text(400, BAD_REQUEST_PATH);
@@ -429,25 +526,19 @@ impl akio_http::Service for Dispatcher {
             // A request logged or traced has one hook for its line, its span and its count.
             let hook = log.is_some() || traced.is_some();
             let hooked = match slot {
-                Some((m, slot)) if !inline || hook => m.shard().map(|s| (s, slot)),
+                Some((_, slot)) if !inline || hook => Some(slot),
                 _ => None,
             };
             let start = Instant::now();
             if hook {
-                self.track(
-                    ctx,
-                    log,
-                    hooked,
-                    route.and_then(|(_, r)| r.name.as_deref()).unwrap_or(""),
-                    traced,
-                );
+                self.track(ctx, g, log, hooked, route, traced);
                 match route {
                     Some((_, r)) => akit_observe::dispatch_logged(|| r.handler.call(ctx)),
                     None => unmatched(ctx, redirect_port(g, listener)),
                 }
             } else {
                 if hooked.is_some() {
-                    self.track(ctx, None, hooked, "", None);
+                    self.track(ctx, g, None, hooked, None, None);
                 }
                 match route {
                     Some((_, r)) => r.handler.call(ctx),
@@ -919,13 +1010,9 @@ fn build(cell: &GraphCell, opts: &Options) -> Result<Engine, (Error, bool)> {
     let mut probed = false;
     let mut cfg = EngineConfig::default();
     cfg.shutdown_timeout = opts.shutdown_timeout;
-    // The upstream pools dial on this engine. akio's client honours an upstream's
-    // connect_timeout only for a name that resolves to several addresses, and dials a lone one
-    // with the engine's (akio API request A12): until then the engine's is the shortest of the
-    // upstreams', which is each one's own when they agree (fit's default, 10s, when none sets it).
-    if let Some(t) = cell.with(|g| g.upstreams().iter().map(|p| p.connect_timeout()).min()) {
-        cfg.connect_timeout = Some(t);
-    }
+    // The upstream pools dial on this engine, each dial within its upstream's own
+    // connect_timeout (akio's `Engine::dial_with`, through `HappyEyeballs` for any number of
+    // addresses), so the engine's own connect timeout is left at akio's default.
     // fit's limits.write_stall_timeout is akio's write timeout: a connection whose queued output
     // makes no progress for it is closed (a reload changes it, `Listeners::reload`).
     cfg.write_timeout = Some(cell.with(akit_runtime::Graph::write_stall_timeout));
@@ -999,7 +1086,8 @@ fn tcp_listener(
         if let Some(port) = h3_port {
             d = d.with_alt_svc(alt_svc(port));
         }
-        let http = akio_http::serve_with(http_config(l)?, d);
+        let observer = d.observer();
+        let http = akio_http::serve_with(http_config(l)?, d).observer(observer);
         Some(match (&l.tls, tls) {
             (None, _) => AnyAcceptor::new(http),
             (Some(_), Some(cfg)) => AnyAcceptor::new(Tls::server(cfg.clone(), http)),
@@ -1121,13 +1209,16 @@ fn h3_acceptor(
     };
     let quic = akio_quic::server_config_from(tls)
         .map_err(|e| Error::Engine(io::Error::other(e.to_string())))?;
-    Ok(akio_h3::serve_with(
+    // HTTP/3 is always over TLS.
+    let d = Dispatcher::new(cell.clone(), l.name.clone())
+        .tls(true)
+        .max_body_bytes(l.max_body_bytes);
+    let observer = d.observer();
+    Ok(akio_h3::serve_with_observer(
         quic,
         h3_config(l),
-        // HTTP/3 is always over TLS.
-        Dispatcher::new(cell.clone(), l.name.clone())
-            .tls(true)
-            .max_body_bytes(l.max_body_bytes),
+        d,
+        observer,
     ))
 }
 

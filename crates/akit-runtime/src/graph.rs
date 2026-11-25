@@ -6,7 +6,7 @@
 //! to it is dropped.
 
 use std::fmt;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use akit_config::{Config, Error, Errors, Listener};
@@ -39,6 +39,10 @@ pub struct CompiledRoute {
     /// The handler, its middleware chain built around it (I40), the first middleware outermost;
     /// provisioned.
     pub handler: Arc<dyn Handler>,
+    /// Whether no middleware of the chain changes the request's target
+    /// ([`Middleware::changes_target`](crate::Middleware::changes_target)): the target its
+    /// handlers leave is the one the listener dispatched.
+    pub keeps_target: bool,
 }
 
 impl fmt::Debug for CompiledRoute {
@@ -77,8 +81,13 @@ pub fn metrics_name(name: Option<&str>, index: usize) -> String {
     }
 }
 
+/// The IDs of graphs, to tell them apart ([`Graph::id`]).
+static NEXT_GRAPH: AtomicU64 = AtomicU64::new(1);
+
 /// A config, compiled: immutable, shared by every I/O thread, its modules provisioned.
 pub struct Graph {
+    /// Its ID, unique in the process.
+    id: u64,
     listeners: Vec<Listener>,
     routes: Vec<CompiledRoute>,
     /// Per listener, in the order of `listeners`: its routes' router, to indices of `routes`.
@@ -124,6 +133,13 @@ pub struct Graph {
 }
 
 impl Graph {
+    /// Its ID, unique in the process: what a request carries to find the graph it was
+    /// dispatched on ([`GraphCell::with_id`](crate::GraphCell::with_id)).
+    #[must_use]
+    pub fn id(&self) -> u64 {
+        self.id
+    }
+
     /// The config's `limits.write_stall_timeout`: how long a response may wait for its client to
     /// take what it was sent, which is akio's engine `write_timeout` (akit-listener sets it).
     #[must_use]
@@ -442,6 +458,7 @@ pub fn compile(
         if middleware.len() != r.middleware.len() {
             continue;
         }
+        let keeps_target = !middleware.iter().any(|m| m.changes_target());
         let handler = crate::traits::chain(&middleware, handler);
         let (host, path) = r
             .matcher
@@ -470,6 +487,7 @@ pub fn compile(
             path,
             matchers,
             handler,
+            keeps_target,
         });
     }
     // Each TLS listener's certificates, read from their files, as fit's graph loads them: a
@@ -600,6 +618,7 @@ pub fn compile(
         })
         .collect();
     Ok(Graph {
+        id: NEXT_GRAPH.fetch_add(1, Ordering::Relaxed),
         listeners: config.listeners.clone(),
         routes,
         routers,

@@ -5,6 +5,7 @@ use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
 
+use akio::timer::SendTimer;
 use akio::{Acceptor, Conn, Handler};
 use akio_mux::proxy::{self, ProxyHeader};
 use akio_mux::tls::{HelloError, parse_client_hello};
@@ -71,22 +72,23 @@ where
         // opening timeout, which closes it unless a service took it first.
         let waiting = Arc::new(Mutex::new(Some(c.clone())));
         let w = Arc::clone(&waiting);
-        let armed = akit_upstream::timer::after(OPENING_TIMEOUT, move || {
+        let armed = akio::timer::after_send(OPENING_TIMEOUT, move || {
             if let Some(c) = w.lock().unwrap_or_else(PoisonError::into_inner).take() {
                 c.close();
             }
         });
-        if !armed {
+        let Ok(timer) = armed else {
             // The timers are full: a connection that could wait forever is not taken.
             c.close();
             return Client::default();
-        }
+        };
         Client {
             relay: None,
             opening: Some(Box::new(Opening {
                 entry,
                 buf: Vec::new(),
                 waiting,
+                timer,
             })),
         }
     }
@@ -168,6 +170,8 @@ struct Opening {
     buf: Vec<u8>,
     /// The connection, until a service takes it or the opening timeout closes it.
     waiting: Arc<Mutex<Option<Conn<Client>>>>,
+    /// The opening timeout, cancelled once the connection is taken or closed.
+    timer: SendTimer,
 }
 
 impl Opening {
@@ -186,11 +190,15 @@ impl Opening {
 
     /// Disarms the opening timeout: false when it closed the connection already.
     fn settle(&self) -> bool {
-        self.waiting
+        let taken = self
+            .waiting
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .take()
-            .is_some()
+            .is_some();
+        // Its job, and the connection it holds, are dropped now rather than when it is due.
+        self.timer.cancel();
+        taken
     }
 }
 
@@ -342,8 +350,8 @@ impl Relay {
         });
     }
 
-    /// Dials `addr`: an IP literal of the upstream's, dialed within the engine's connect
-    /// timeout (the shortest of the upstreams', as for HTTP: akio API request A12).
+    /// Dials `addr`: an IP literal of the upstream's, a TCP one within the upstream's connect
+    /// timeout (`Engine::dial_with`); UDP has no handshake to time.
     fn connect(me: &Arc<Relay>, addr: SocketAddr) {
         let Some(engine) = me.s.pool.engine() else {
             return Relay::dial_failed(me);
@@ -356,7 +364,8 @@ impl Relay {
         if me.udp {
             engine.dial_udp(addr, up, failed);
         } else {
-            engine.dial(addr, up, failed);
+            let opts = akio::DialOptions::new().connect_timeout(me.s.pool.connect_timeout());
+            engine.dial_with(addr, opts, up, failed);
         }
     }
 

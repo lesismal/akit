@@ -5,8 +5,8 @@
 //! - The set is fetched with akio's asynchronous client on akit's engine (rule 2), as the
 //!   upstream pools' requests are: the request is bounded ([`MAX_JWKS_BYTES`], a 200 answer
 //!   only, [`JWKS_TIMEOUT`]) and its answer parsed in the client's callback, on the I/O thread it
-//!   arrives on; nothing waits for it. The refresh and the delayed fetches are jobs on akit's
-//!   timer thread (`akit_upstream::timer`), which only start a fetch.
+//!   arrives on; nothing waits for it. The refresh and the delayed fetches are jobs on akio's
+//!   timer thread ([`akio::timer::after_send`]), which only start a fetch.
 //! - A fetch that fails keeps the keys there were, and says why ([`Jwks::last_error`]).
 //! - Requests whose token names a `kid` the set does not have wait for the next fetch, at most
 //!   [`MAX_KEY_WAITERS`] at once; each waits suspended (akio's `Context::suspend`, ADR-109),
@@ -20,10 +20,11 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError, Weak};
 use std::time::{Duration, Instant};
 
+use akio::timer::after_send;
 use akio_http::client::{
     CancelToken, Client, ClientError, ClientOptions, ClientRequest, ClientResponse, RedirectPolicy,
 };
-use akit_runtime::upstream::{EngineSlot, timer};
+use akit_runtime::upstream::EngineSlot;
 
 use crate::jws::{Key, KeySet, parse_jwks};
 
@@ -197,7 +198,7 @@ impl Jwks {
                 Inner::fetch(&inner);
             }
         };
-        if delay.is_zero() || !timer::after(delay, job) {
+        if delay.is_zero() || after_send(delay, job).is_err() {
             // No timer: fetched now rather than never.
             inner.lock().refetch_due = false;
             Inner::fetch(inner);
@@ -282,7 +283,7 @@ impl Inner {
             let weak: Weak<Inner> = Arc::downgrade(inner);
             // Past the timers' bound the set is no longer refreshed, but still fetched when a
             // token names a kid it does not have.
-            let _ = timer::after(inner.refresh, move || {
+            let _ = after_send(inner.refresh, move || {
                 if let Some(inner) = weak.upgrade() {
                     let due = {
                         let st = inner.lock();

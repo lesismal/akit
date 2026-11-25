@@ -56,9 +56,6 @@ akio-zstd = { git = "https://github.com/lesismal/akio", rev = "dad77a7a0b2936d95
 # gRPC's client and server, for akit-proxy's gRPC tests (I50).
 akio-grpc = { git = "https://github.com/lesismal/akio", rev = "dad77a7a0b2936d95d17e20980a60d3886a29044" }
 
-# The cache's disk pool (akit-cache, I68): akio's bounded thread pool, which the `akio` facade
-# does not re-export at this commit (akio API request A117).
-akio-pool = { git = "https://github.com/lesismal/akio", rev = "dad77a7a0b2936d95d17e20980a60d3886a29044" }
 # WASM plugins (akit-plugin, I71): akio's WebAssembly runtime (akio ADR-125, decision 008).
 akio-wasm = { git = "https://github.com/lesismal/akio", rev = "dad77a7a0b2936d95d17e20980a60d3886a29044" }
 

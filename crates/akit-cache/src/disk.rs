@@ -23,8 +23,8 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock, PoisonError, Weak};
 use std::time::{Duration, Instant, SystemTime};
 
+use akio::{Pool, PoolConfig};
 use akio_http::Headers;
-use akio_pool::{Pool, PoolConfig};
 use akit_config::CacheDisk;
 
 use crate::store::{Entry, MAX_VARIANTS, TagIndex};

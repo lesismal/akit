@@ -447,9 +447,9 @@ impl Shared {
         // Whichever takes it first answers: the read, or the timeout.
         let slot: Arc<Reading> = Arc::new(Mutex::new(Some((request, miss, Arc::clone(next)))));
         let (s1, s2) = (Arc::clone(&slot), Arc::clone(&slot));
-        if !akit_runtime::upstream::timer::after(disk::timeout(), move || as_miss(&s1)) {
+        let Ok(timer) = akio::timer::after_send(disk::timeout(), move || as_miss(&s1)) else {
             return as_miss(&slot);
-        }
+        };
         let me = Arc::clone(self);
         let run = move || {
             if gone.load(Ordering::Acquire) {
@@ -461,6 +461,8 @@ impl Shared {
             let Some((request, miss, next)) = take(&s2) else {
                 return;
             };
+            // The read answers: the timeout is moot.
+            timer.cancel();
             let e = match read {
                 Ok(e) => e,
                 Err(_) => {

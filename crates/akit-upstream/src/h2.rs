@@ -10,8 +10,8 @@
 //! timeouts and cancel applying meanwhile). The pool's slots bound the streams under way to an
 //! address at `max_conns` times [`STREAMS_PER_CONN`]. A connection that has carried its last
 //! stream stays for the next request, as an HTTP/1 one does: at most `max_idle_conns` of them to
-//! an address, each for `idle_timeout`, closed by a job of akit's timer thread ([`crate::timer`])
-//! that runs every [`TICK`] while the address has an idle connection. A connection that is no
+//! an address, each for `idle_timeout`, closed by a job of akio's timer thread
+//! ([`akio::timer::after_send`]) that runs every [`TICK`] while the address has an idle connection. A connection that is no
 //! longer open (closed, or after the server's `GOAWAY`: [`H2Client::is_open`]) takes no more
 //! streams and is closed once its last is over.
 //!
@@ -31,8 +31,7 @@
 //!   (`H2Upload::queued_bytes`, `on_drain`), as over HTTP/1.1.
 //! - **Request trailers** end the body (`H2Upload::finish_with_trailers`).
 //! - **The dial** is bounded by the upstream's `connect_timeout` (`H2Options::happy_eyeballs`), per
-//!   address raced when its name resolves to several; a lone address is dialed within the
-//!   engine's, as over HTTP/1.1 (akio API request A12). With `h2`, the TLS handshake offers `h2` and `http/1.1` in ALPN, as fit's does: when the
+//!   address tried, a lone one too, as over HTTP/1.1. With `h2`, the TLS handshake offers `h2` and `http/1.1` in ALPN, as fit's does: when the
 //!   server chooses `http/1.1` (or nothing), akio fails the dial with [`NotH2`], and the address
 //!   is spoken HTTP/1.1 over TLS by the pool's HTTP/1 client from then on, the requests that
 //!   waited for the dial included.
@@ -321,8 +320,8 @@ impl Inner {
             }
         };
         let me = Arc::clone(self);
-        // akio resolves a name off this thread, and races its addresses within the upstream's
-        // connect timeout (`t.opts.happy_eyeballs`; a lone one, the engine's: A12).
+        // akio resolves a name off this thread, and dials its addresses, each within the
+        // upstream's connect timeout (`t.opts.happy_eyeballs`).
         H2Client::connect(
             &Arc::clone(engine) as &Arc<Engine>,
             host,
@@ -436,12 +435,12 @@ impl Inner {
 
     fn schedule_tick(self: &Arc<Self>, backend: usize) {
         let weak: Weak<Inner> = Arc::downgrade(self);
-        let scheduled = crate::timer::after(TICK, move || {
+        let scheduled = akio::timer::after_send(TICK, move || {
             if let Some(inner) = weak.upgrade() {
                 inner.tick(backend);
             }
         });
-        if !scheduled {
+        if scheduled.is_err() {
             // The timers are full: the next connection that goes idle tries again.
             if let Some(b) = self.backends.get(backend) {
                 lock(&b.h2.state).ticking = false;

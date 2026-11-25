@@ -639,9 +639,10 @@ impl Listeners {
             let drain = self.opts.shutdown_timeout;
             let left = services.clone();
             // The timers full: drained at once rather than never.
-            if !akit_upstream::timer::after(drain, move || {
+            let timer = akio::timer::after_send(drain, move || {
                 left.iter().for_each(akit_l4::Service::drain);
-            }) {
+            });
+            if timer.is_err() {
                 services.iter().for_each(akit_l4::Service::drain);
             }
         }

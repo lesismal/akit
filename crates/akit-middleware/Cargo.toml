@@ -9,6 +9,8 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
+# akio's timer thread (`akio::timer::after_send`) for the JWK sets' fetches.
+akio = { workspace = true }
 akio-brotli = { workspace = true }
 akio-crypto = { workspace = true }
 akio-deflate = { workspace = true }
@@ -21,7 +23,6 @@ akit-router = { workspace = true }
 akit-runtime = { workspace = true }
 
 [dev-dependencies]
-akio = { workspace = true }
 akio-h3 = { workspace = true }
 akio-quic = { workspace = true }
 akit-handler = { workspace = true }

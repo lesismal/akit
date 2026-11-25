@@ -139,6 +139,10 @@ impl Middleware for Rewrite {
             next,
         })
     }
+
+    fn changes_target(&self) -> bool {
+        true
+    }
 }
 
 /// A handler behind a rewrite.

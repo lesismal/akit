@@ -230,6 +230,33 @@ impl GraphCell {
         self.with_arc(|g| f(g))
     }
 
+    /// Runs `f` with the graph whose [`id`](Graph::id) is `id`: the current one, as [`with`]
+    /// reads it, or else (a request that a swap overtook) one replaced and not yet dropped,
+    /// looked up under the cell's locks; `None` when it is gone.
+    ///
+    /// [`with`]: Self::with
+    pub fn with_id<R>(&self, id: u64, f: impl FnOnce(Option<&Graph>) -> R) -> R {
+        let current = self.with(|g| if g.id() == id { Ok(f(Some(g))) } else { Err(f) });
+        match current {
+            Ok(r) => r,
+            Err(f) => {
+                let found = {
+                    let current = lock(&self.shared.current);
+                    if current.id() == id {
+                        Some(Arc::clone(&current))
+                    } else {
+                        drop(current);
+                        lock(&self.shared.retiring)
+                            .iter()
+                            .find(|(_, g)| g.id() == id)
+                            .map(|(_, g)| Arc::clone(g))
+                    }
+                };
+                f(found.as_deref())
+            }
+        }
+    }
+
     fn with_arc<R, F: FnOnce(&Arc<Graph>) -> R>(&self, f: F) -> R {
         let cached = CACHE.with(|cache| -> Result<R, F> {
             if !cache.borrow().iter().any(|e| e.id == self.shared.id) {

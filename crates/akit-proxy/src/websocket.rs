@@ -40,7 +40,7 @@ use std::time::{Duration, Instant};
 use akio_http::client::{CancelToken, ClientRequest};
 use akio_http::{BodyEvent, BodyReads, BodyStream, Context, Detached, Headers, Method, Request};
 use akit_runtime::upstream::{
-    Download, Error, Exchange, Head, Pool, RawConn, RawHandler, UpstreamProtocol, timer,
+    Download, Error, Exchange, Head, Pool, RawConn, RawHandler, UpstreamProtocol,
 };
 
 use crate::headers;
@@ -580,7 +580,9 @@ impl RawHandler for UpConn {
 /// Closes `t` once it carried nothing either way for its idle timeout, looking again `after`.
 fn arm_idle(t: &Arc<Tunnel>, after: Duration) {
     let weak = Arc::downgrade(t);
-    timer::after(after, move || {
+    // Past the timers' bound the tunnel is not timed out, as before akio's timer thread was
+    // full; its connections' own write timeouts still apply.
+    let _ = akio::timer::after_send(after, move || {
         let Some(t) = weak.upgrade() else { return };
         if t.lock().over {
             return;

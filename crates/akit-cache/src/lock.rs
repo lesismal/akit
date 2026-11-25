@@ -4,8 +4,8 @@
 //! `lock_timeout`, and is answered from what it keeps, so that many requests for a response not
 //! kept make one fetch. It waits suspended (akio's `Context::suspend`, ADR-109), holding no
 //! thread: the fetch's end resumes it on whichever thread ends the fetch, and the timeout on
-//! akit's timer thread (`akit_upstream::timer`, akio API request A45's stopgap), one timer per
-//! fetch.
+//! akio's timer thread ([`akio::timer::after_send`]), one timer per fetch, cancelled when the
+//! fetch ends.
 //!
 //! A stale response with validators, or one `stale-if-error` allows, is fetched again by the
 //! cache itself, with a request of its own (akio's `transport::dispatch_conn` to a sink that
@@ -23,9 +23,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
+use akio::timer::{SendTimer, after_send};
 use akio_http::transport::{BodySink, ConnSink, SharedSink, dispatch_conn};
 use akio_http::{Context, Headers, Method, Request, Response, Suspended};
-use akit_runtime::upstream::timer;
 use akit_runtime::{Handler, MAX_BODY_BYTES, TLS};
 
 use crate::cache::{Fwd, Miss, Shared, hit_response, usable};
@@ -74,8 +74,8 @@ impl std::fmt::Debug for Fetch {
 struct FetchState {
     done: Option<FetchResult>,
     waiters: Vec<Waiter>,
-    /// The fetch's timer is set.
-    timer: bool,
+    /// The fetch's timer, while one is set.
+    timer: Option<SendTimer>,
 }
 
 impl Fetch {
@@ -118,14 +118,18 @@ impl Store {
                 sh.fetches.remove(&f.key);
             }
         }
-        let waiters = {
+        let (waiters, timer) = {
             let mut st = f.lock();
             if st.done.is_some() {
                 return;
             }
             st.done = Some(r);
-            std::mem::take(&mut st.waiters)
+            (std::mem::take(&mut st.waiters), st.timer.take())
         };
+        // No waiter is left for it: its job, holding the fetch, is dropped now.
+        if let Some(t) = timer {
+            t.cancel();
+        }
         for w in waiters {
             w.request.resume(move |ctx| w.wait.answer(ctx, r));
         }
@@ -218,13 +222,13 @@ impl Shared {
             drop(st);
             return self.forward(ctx, wait.miss, &wait.next);
         }
-        if !st.timer {
+        if st.timer.is_none() {
             let (f2, timeout) = (Arc::clone(f), self.lock_timeout);
-            if !timer::after(timeout, move || expire(&f2, timeout)) {
+            let Ok(t) = after_send(timeout, move || expire(&f2, timeout)) else {
                 drop(st);
                 return self.forward(ctx, wait.miss, &wait.next);
-            }
-            st.timer = true;
+            };
+            st.timer = Some(t);
         }
         let Some(request) = ctx.suspend() else {
             drop(st);
@@ -478,15 +482,13 @@ fn expire(f: &Arc<Fetch>, timeout: Duration) {
             .into_iter()
             .partition(|w| now.saturating_duration_since(w.since) >= timeout);
         st.waiters = keep;
-        st.timer = false;
+        st.timer = None;
         if let Some(first) = st.waiters.iter().map(|w| w.since).min() {
             let left = timeout.saturating_sub(now.saturating_duration_since(first));
             let f2 = Arc::clone(f);
-            if timer::after(left, move || expire(&f2, timeout)) {
-                st.timer = true;
-            }
+            st.timer = after_send(left, move || expire(&f2, timeout)).ok();
         }
-        if st.timer {
+        if st.timer.is_some() {
             due
         } else {
             // No timer: none waits any longer.

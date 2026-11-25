@@ -29,7 +29,7 @@
 | A9 | 把 TLS 服务端限制在 TLS 1.2（`ServerConfigBuilder` 的公开 API） | 已在 akio 的 main（`4989cd8b`），已锁定 | 17 | I09 |
 | A10 | 立即关闭 HTTP 客户端的空闲连接 | 已提出（I14） | 10、11 | I14、I22 |
 | A11 | HTTP/1 客户端请求保留自己的 `Host` 字段（给定空 `User-Agent` 时不发送 `User-Agent`） | 已在 akio 的 main（`a9a620ab`），已锁定 | — | I15 |
-| A12 | HTTP 客户端的连接超时也作用于单个地址 | 已提出（I14） | 10 | I14、I35 |
+| A12 | HTTP 客户端的连接超时也作用于单个地址 | 已在 akio 分支 `claude/akit-open-requests` 上实现（`22e038cc`，akio 的 ADR-154），akit 已使用（尚未移动锁定） | 10 | I14、I35 |
 | A13 | `Files` 服务调用者给出的路径 | 已在 akio 的 main（`a9a620ab`），已锁定 | 19 | I12、I13 |
 | A14 | `Files` 像网关的静态文件 handler 那样应答 | 已在 akio 的 main（`4989cd8b`），已锁定 | 19 | I12、I13 |
 | A15 | `Files` 的内存有界，磁盘池有超时 | 已在 akio 的 main（`4989cd8b`），已锁定 | 4、11 | I12 |
@@ -42,30 +42,30 @@
 | A22 | 在运行中的引擎上移除和排空 UDP 监听器 | 已提出（I22） | 10、11 | I22、I28 |
 | A23 | Unix 域流式监听器（可设套接字文件权限） | 已在 akio 的 main（`4989cd8b`），已锁定 | 11 | I26、I29 |
 | A24 | 关闭连接的 HTTP/1 响应，并停止读取已拒绝的请求体 | 已提出（I26） | 7、10、11 | I26、I27、I41 |
-| A29 | 不分配内存的应答钩子：监听器的观察者，带着请求设下的几个字被调用 | 已提出（I37） | 13 | I21、I37、I64 |
-| A30 | 监听器接受的打开连接数，与拨出的连接和 UDP 对端分开 | 已提出（I37） | — | I37 |
+| A29 | 不分配内存的应答钩子：监听器的观察者，带着请求设下的几个字被调用 | 已在 akio 分支 `claude/akit-open-requests` 上实现（`8caab91c`，akio 的 ADR-158），akit 已使用（尚未移动锁定） | 13 | I21、I37、I64 |
+| A30 | 监听器接受的打开连接数，与拨出的连接和 UDP 对端分开 | 已在 akio 分支 `claude/akit-open-requests` 上实现（`57a942af`），akit 已使用（尚未移动锁定） | — | I37 |
 | A32 | `akio-regex` 模式在哪里匹配、它的分组，以及替换 | 已在 akio 的 main（`e9891b52`），已锁定 | 19 | I40、I48 |
 | A33 | 被中间件修改的请求字段和请求目标（`Context::req_mut`） | 已在 akio 的 main（`dad77a7a`），已锁定 | 12、19 | I40、I43、I44、I71 |
 | A35 | 按长度分帧的流式 HTTP/1.1 响应 | 已提出（I16） | 5 | I16、I67 |
 | A36 | HTTP 客户端请求的响应头超时和空闲超时 | 已在 akio 的 main（`4f7169c4`），已锁定，I17b 已使用 | 10 | I17b、I18 |
 | A37 | 可在任意时刻取消的 HTTP 客户端请求 | 已在 akio 的 main（`4f7169c4`），已锁定，I17b 已使用 | 3 | I17b、I45 |
 | A38 | 能得知客户端离开的分离服务端请求；可在运行时修改的写停滞超时 | 已在 akio 的 main（`4f7169c4`），已锁定，I17b 已使用 | 3、10 | I17b、I49 |
-| A45 | 公开的定时器：延迟过后运行一次回调，可从任何线程调度 | 已提出（I35） | 1、11 | I35、I31、I52、I54 |
+| A45 | 公开的定时器：延迟过后运行一次回调，可从任何线程调度 | 已在 akio 分支 `claude/akit-open-requests` 上实现（`22e038cc`，akio 的 ADR-154），akit 已使用（尚未移动锁定） | 1、11 | I35、I31、I52、I54 |
 | A48 | 获知请求的结束：响应已完整发出，或等待中客户端已离开 | 已在 akio 的 main（`dad77a7a`），已锁定 | 3、11、13 | I41、I17、I21、I37 |
 | A49 | 由中间件限制请求体大小，无论谁读取请求体 | 已提出（I41） | 7、11 | I41 |
 | A51 | `H2Client` 的流式请求：重置、超时、请求 trailer，以及遇到 `GOAWAY` 时报告失败而不是被遗忘 | 已在 akio 的 main（`f6750e93`，ADR-110），已锁定，I18b 已使用 | 3、10 | I18b、I50 |
 | A52 | `H2Client` 按流的背压：暂停流式响应的读取，报告上传队列 | 已在 akio 的 main（`f6750e93`，ADR-110），已锁定，I18b 已使用 | 8 | I18b、I50 |
 | A53 | `H2Client` 的连接：遵守并报告服务器的流数上限、连接超时、ALPN 回退到 HTTP/1.1 | 已在 akio 的 main（`f6750e93`，ADR-110），已锁定，I18b 已使用 | 10、11 | I18b、I54 |
-| A54 | 空闲的 HTTP/1 连接在宽限期后排空，而非立即关闭 | 已提出（I28） | 10 | I28 |
+| A54 | 空闲的 HTTP/1 连接在宽限期后排空，而非立即关闭 | 已在 akio 分支 `claude/akit-open-requests` 上实现（`8caab91c`），akit 已使用（尚未移动锁定） | 10 | I28 |
 | A57 | 握手之外可用的根证书：用系统的根证书校验证书链 | 已在 akio 的 main（`4989cd8b`），已锁定 | 1、19 | I32 |
 | A58 | HTTP 服务能看到 TLS 连接协商出的 ALPN 协议（或关闭这样的连接） | 已在 akio 的 main（`4989cd8b`），已锁定 | 19 | I32、I34 |
 | A63 | `akio-crypto` 中的 bcrypt 密码哈希 | 已在 akio 的 main（`4f7169c4`），已锁定 | 1、4 | I42 |
 | A64 | 每个服务端请求上的客户端已验证证书 | 已在 akio 的 main（`4f7169c4`），已锁定 | — | I42 |
 | A65 | 由中间件挂起、之后带着上下文恢复的请求 | 已在 akio 的 main（`4f7169c4`），已锁定 | 1、3、4 | I42、I43 |
 | A66 | `H2Client` 的请求遵守 `response_header_timeout`、`response_idle_timeout` 和 `CancelToken` | 已在 akio 的 main（`d27e6a20`，ADR-111），已锁定，I18b 已使用 | 3、10 | I17b、I18b |
-| A75 | 挂起消息体流式读取的请求，并暂停其消息体的读取直到恢复 | 已提出（I43） | 5、7、8 | I42、I43、I44 |
+| A75 | 挂起消息体流式读取的请求，并暂停其消息体的读取直到恢复 | 已在 akio 分支 `claude/akit-open-requests` 上实现（`a88c5d7b`，akio 的 ADR-159），akit 已使用（尚未移动锁定） | 5、7、8 | I42、I43、I44 |
 | A78 | 每个连接（TCP 或 UDP 对端）各自的空闲超时，由其处理器设置 | 已提出（I51） | 10、11 | I51、I55 |
-| A79 | 带各自连接超时的 `Engine::dial` 与 `dial_udp` | 已提出（I51） | 10 | I51、I54、I55 |
+| A79 | 带各自连接超时的 `Engine::dial` 与 `dial_udp` | 已在 akio 分支 `claude/akit-open-requests` 上实现（`22e038cc`，akio 的 ADR-154），akit 已使用（尚未移动锁定） | 10 | I51、I54、I55 |
 | A90 | 由调用方自己的响应过滤器设置流式响应的编码，以及保留到响应发出为止的值 | 已在 akio 的 main（`c5cf4353`），已锁定 | 8、11 | I47 |
 | A91 | `Files` 为内存中的文件保存压缩副本 | 已在 akio 的 main（`c5cf4353`），已锁定 | 4、12 | I47 |
 | A92 | 从磁盘文件发送的消息体按流编码压缩 | 已在 akio 的 main（`4989cd8b`），已锁定 | 1、5 | I47 |
@@ -77,7 +77,7 @@
 | A111 | 响应过滤器看到流式消息体发出的字节及其结束方式（消息体旁路） | 已在 akio 的 main（`e9891b52`），已锁定 | 5、6 | I67 |
 | A112 | 按 RFC 9110 要求接收方接受的三种格式解析 HTTP 日期 | 已在 akio 的 main（`e9891b52`，ADR-116），已锁定 | 15 | I67 |
 | A113 | 在内层过滤器之后运行的响应过滤器（外层过滤器） | 已在 akio 的 main（`e9891b52`，ADR-116），已锁定 | 5 | I67 |
-| A117 | 从 `akio` 同时取得 `akio::Pool` 与 `PoolConfig`：应用自己的、有上限的阻塞工作线程池 | 已提出（I68）；期间 akit-cache 直接依赖 `akio-pool` | 4 | I68 |
+| A117 | 从 `akio` 同时取得 `akio::Pool` 与 `PoolConfig`：应用自己的、有上限的阻塞工作线程池 | 已在 akio 分支 `claude/akit-open-requests` 上实现（`57a942af`），akit 已使用（尚未移动锁定） | 4 | I68 |
 | A132 | 代理隧道的上游连接建立后，按所请求的名字和两端地址检查；SOCKS 客户端取受信任 PROXY 头所指的客户端 | 已在 akio 的 main（`8453b60c`），已锁定 | 1、19 | I55 |
 | A133 | 代理自己的连接超时，并给出应答（SOCKS5 4、HTTP 504） | 已在 akio 的 main（`8453b60c`），已锁定 | 10 | I55 |
 | A134 | 经 HTTP/2 和 HTTP/3 的 CONNECT 隧道（RFC 9113 §8.5、RFC 9114 §4.4） | 已在 akio 的 main（`4989cd8b`），已锁定 | 9、19 | I55 |
@@ -209,6 +209,8 @@ TLS 1.2，而它是隐藏的，标明只供测试和互通工具使用。
 io_uring）上通过。akit 的 I15 用到这两点；相关测试在 akit 的固定版本移到含 A11 的 akio 提交之前保持忽略。
 
 ## A12 HTTP 客户端的连接超时作用于每次连接
+
+**状态。** 已在 akio 分支 `claude/akit-open-requests` 上实现（`22e038cc`，akio 的 ADR-154）；akit 已使用，尚未移动锁定。`akio::dns::HappyEyeballs` 用 `Engine::dial_with` 和它的 `connect_timeout` 拨出每一次尝试，单个地址也不例外，所以 akio-http 的 `Client` 与 `H2Client` 对任意数目的地址都遵守各自的连接超时。akit 不再把引擎的 `connect_timeout` 设为各上游中最短的那个（akit-listener 的 `build`）；akit-listener 的 `upstreams` 测试中的 `connect_timeout` 检查单个地址的上游受自己的超时约束，无论比另一个上游的短还是长。
 
 **问题。** fit 按每个上游的 `connect_timeout` 限制建立到上游的连接所用的时间。akio-http 的客户端通过
 `ClientOptions::happy_eyeballs.connect_timeout` 接受这个值，但 Happy Eyeballs 竞速器只在一个名字解析出两个及以上
@@ -513,6 +515,8 @@ UDP：不再接收新对端，对已有的调用 `on_shutdown`，到期关闭剩
 
 ## A29 不分配内存的应答钩子
 
+**状态。** 已在 akio 分支 `claude/akit-open-requests` 上实现（`8caab91c`，akio 的 ADR-158）；akit 已使用，尚未移动锁定。`akio_http::ResponseObserver`、`HttpAcceptor::observer`、`Context::set_observed` 与 `akio_h3::serve_with_observer`。akit-listener 的 `Dispatcher::track` 让监听器的观察者凭两个字（图的 ID；指标槽位、路由下标和是否记日志）写访问日志行并计数，不分配内存。被追踪的请求（其 span 的 ID 放不进两个字）和路由可能改写目标的记日志请求（`rewrite`、`wasm`：`Middleware::changes_target`；日志行写的是监听器分派时的目标）仍用应答过滤器。认证出的 `user` 仍不记入日志：两个字装不下名字。
+
 **问题。** 访问日志（I21）和指标（I37）要在发送应答的线程上得知每个应答，不论是哪个线程（代理的请求在上游
 完成后才应答）。唯一的办法是 `Context::add_response_filter`，它把闭包装箱：带着任何东西（开始时间、指标槽、
 日志分片）的闭包每个请求都要分配一次内存，而规则 13 要求热路径避免这样。fit 的分发器也用钩子计数，但 Go 的闭包
@@ -541,6 +545,8 @@ ctx.set_observed(words: [u64; 2]); // 不分配；此时记下 started
 同一个钩子。
 
 ## A30 监听器接受的打开连接数
+
+**状态。** 已在 akio 分支 `claude/akit-open-requests` 上实现（`57a942af`）；akit 已使用，尚未移动锁定。`Telemetry::open_accepted`（及 `Metrics::open_accepted`）：akit-listener 的抓取据此写 `fit_connections_open`，只计接受的连接。
 
 **问题。** fit 的 `fit_connections_open` 统计监听器上打开的客户端连接。akio 的 `Telemetry::open_connections`
 统计所有打开的连接，包括引擎拨出的（akit 在监听器的引擎上拨出的上游连接池连接）和 UDP 对端，所以 akit 的这个
@@ -629,6 +635,8 @@ I71 的 `wasm` 中间件在从插件的池恢复的请求上，通过它设置�
 按 chunked 发送，去掉该字段：记录在 I16 的进度条目中）。缓存（I67）在边读边提供已存储的响应时也会用到。
 
 ## A45 公开的定时器
+
+**状态。** 已在 akio 分支 `claude/akit-open-requests` 上实现（`22e038cc`，akio 的 ADR-154）；akit 已使用，尚未移动锁定。`akio::timer::after_send` 与 `SendTimer::cancel`，akio 的一个有上限的定时器线程。akit 自己的定时器线程（`akit_upstream::timer`）已删除：探测、h2 连接池的空闲清扫、缓存的锁与磁盘超时、JWK 集的获取、FastCGI 的清扫、WebSocket 隧道的空闲超时、四层服务的开场超时、清扫与排空以及 sockmap 的排空都改用 akio 的，并在等待的事已无意义时取消定时器（探测已有结果、连接已被接走、获取已结束、磁盘读取已完成）。
 
 **问题。** 主动健康检查（I35）每个 interval 探测上游的每个地址一次，TCP 探测还必须在超时到达时判为失败：需要有东西在
 一段延迟之后运行回调。akio 有定时器，但在锁定的提交上没有一个是公开的：I/O 循环的时间轮（`akio-timer`）是内部的，
@@ -758,6 +766,8 @@ I17 的 `Fit-Error` 尾部字段结束）。
 写超时。I49 的 WebSocket 和隧道转发也用同样的方式得知客户端离开。
 
 ## A54 空闲的 HTTP/1 连接在宽限期后排空，而非立即关闭
+
+**状态。** 已在 akio 分支 `claude/akit-open-requests` 上实现（`8caab91c`）；akit 已使用，尚未移动锁定。`HttpConfig::idle_drain_grace`（默认 250 ms；fit 没有这个选项，akit 用默认值）。akit 的重载测试（`crates/akit/tests/reload.rs`）不再把在排空中的监听器的空闲连接上发出的请求算作重试：客户端的任何错误都算失败。
 
 **问题。** 监听器排空时（`Engine::shutdown_listener`、`Engine::shutdown`），akio-http 立即关闭空闲的 HTTP/1
 keep-alive 连接。客户端可能已经在这条连接上发出了下一个请求，或者正在发：请求遇到关闭而得不到应答，客户端看到的是
@@ -972,6 +982,8 @@ fit 在线程池里校验，请求在此期间等待，之后继续执行下一�
 
 ## A75 挂起消息体流式读取的请求
 
+**状态。** 已在 akio 分支 `claude/akit-open-requests` 上实现（`a88c5d7b`，akio 的 ADR-159）；akit 已使用，尚未移动锁定。`Context::suspend` 暂停流式消息体的读取，直到恢复后的处理器接手。`forward_auth`、`basic_auth`、`jwt` 与 `wasm` 不再为挂起请求而要求完整读取消息体；akit-middleware 测试中的 `forward_auth_streams_the_body` 检查 1 MiB 的上传流式到达代理的上游，完整且有序，上游在客户端发出后一半之前就已收到请求。
+
 **问题。** `forward_auth`（I43）和 `basic_auth`（I42）在等待期间挂起请求（`Context::suspend`，A65），之后
 恢复它进入下一个中间件和处理器。akio 不能挂起消息体流式交给处理器的请求（`BodyMode::Stream`）：它在 `call`
 之后把消息体交给该上下文，上下文因此不能移动。于是这两个中间件都要求整体读取这样的消息体（在监听器的
@@ -1034,6 +1046,8 @@ TCP 10 分钟、UDP 1 分钟，每个服务各自设定。akio 只有整个引�
 （`Live::set_udp_idle_timeout`，每次重载时更新），以免 akio 先关闭会话。
 
 ## A79 带各自连接超时的 `Engine::dial`
+
+**状态。** 已在 akio 分支 `claude/akit-open-requests` 上实现（`22e038cc`，akio 的 ADR-154）；akit 已使用，尚未移动锁定。`akio::DialOptions` 与 `Engine::dial_with`：akit-l4 以上游的 `connect_timeout` 拨出 TCP 上游的 IP 字面量（`dial_udp` 不需要：UDP 没有握手）。
 
 **问题。** 四层服务（I51）像 fit 那样在上游的 `connect_timeout` 内拨号上游地址。`Engine::dial` 和
 `Engine::dial_udp` 用的是引擎的 `Config::connect_timeout`，所有拨号共用一个；`akio::dns::HappyEyeballs` 每次
@@ -1222,6 +1236,8 @@ acceptor)`）；`Client`、`ClientOptions`、`ClientRequest` 都无法设置该�
 完成（ADR-118，分支 `claude/a105-proxy-peer`，`e3f03a32`），待合并到 akio 的 main。
 
 ## A117 从 `akio` 门面取得应用自己的有界线程池
+
+**状态。** 已在 akio 分支 `claude/akit-open-requests` 上实现（`57a942af`）；akit 已使用，尚未移动锁定。从门面取得 `akio::{Pool, PoolConfig, Rejected, Job}`：akit-cache 的磁盘池使用 `akio::Pool`，akit 不再依赖 `akio-pool`。
 
 **问题。** 规则 4 要求会阻塞的工作在 akio 的逻辑线程池或 akit 自己的有界线程池上运行。缓存的磁盘层（I68）需要
 一个与逻辑线程池分开的线程池，这样卡住的磁盘既不会拖住逻辑线程池上的处理器，也不会拖住其他东西，正如 fit 的

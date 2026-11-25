@@ -10,15 +10,73 @@ done and where the work differs from the plan.
 
 | | |
 | --- | --- |
-| Last updated | 2026-11-25 |
+| Last updated | 2026-11-26 |
 | Milestone | M0, foundations, done (I01–I08); M1, the proxy core: I09–I24, I17b and I18b done; M2's I26–I37, M3's I39–I55 (with I51b) and M4's I57–I65 done early, with I67–I75. |
 | akio | `dad77a7a` on akio's `main` (`1.0.0-rc.1`, with every request akit pins in [akio API requests](akio-api-requests.md), and akio-wasm, ADR-125), pinned by `rev` in `Cargo.toml` |
 | fit | the specification; read at `7daee573` for this plan |
 | What works | `akit run` and `akit validate` with fit's flags and exit codes, `akit adapt` and `akit fmt` writing configs as fit writes them (I73), `akit build` building akit with the modules of other crates, or fewer of its own (I70)nginx configs and Caddyfiles converted by `akit adapt -from` as fit converts them (I74), configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept (as fit's `binding.same`: certificate files and ACME names may change), added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication; certificates chosen per handshake as fit's, replaced by a reload or by `-watch-certs` without closing the listener) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; route middleware: `rewrite` (prefixes and regexps), `redirect` (with the regexp's groups), `headers`, `rate_limit`, `concurrency_limit`, `body_limit`, `basic_auth` (bcrypt, checked on akio's pool), `client_cert` (mTLS per route), `forward_auth` (an auth service asked on akio's client, the request suspended meanwhile), `circuit_breaker`, `compress` (zstd, brotli and gzip by q value, streamed bodies encoded write by write) and `jwt` (JSON Web Tokens verified with akio-crypto, keys from PEM files, a secret or a JWK set fetched by akio's client and rotated); the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, compressed copies of files kept in memory, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`, bodies streamed both ways with linked backpressure, trailers both ways, `timeout` and the upstream's `response_timeout`, `response_header_timeout` and `response_idle_timeout`, 504 for timeouts, the upstream request given up whenever the client goes, `retry` with its budget, the `timeout` bounding the attempts together; `upstreams` chosen at random by weight, a `failover` taking the requests while the chosen upstream has no address in rotation, a `mirror` getting copies of requests whose bodies came whole, at most 256 under way, never waited for; upstreams over HTTP/1.1, h2c and h2, h2 with fit's `tls_server_name`, `tls_ca_file` and client certificate); `limits.max_body_bytes` on every listener (413) and in the proxy, and `limits.write_stall_timeout` (changed by a reload too); access logs in fit's json, text and line formats; upstream pools with fit's nine load balancing policies (round robin, weighted round robin, least connections, random, p2c, and consistent hashing of the client's IP, the path, a header or a cookie) and sticky cookies, passing over addresses taken out by passive health checks (`max_fails`, `fail_timeout`) and by active ones (`health_check`: http and tcp probes); the Admin API on loopback (`GET /config`, by JSON pointer too, `POST /load`, edits by pointer with `PUT`, `PATCH` and `DELETE /config`, `POST /rollback/{n}`, `POST /reload`, each with `If-Match` and all but a rollback with `?dry_run=1`, `GET /versions`; with `token_file`, a bearer token on every request), changes applied as SIGHUP's reloads, one history for both; `run -watch` applying the config's files each time they change (fit's file provider, polled); Prometheus metrics at the Admin API's `GET /metrics` (requests by listener and route with `metrics`, upstreams and backends, certificates, connections, reloads, akio's engine); fit's read-only dashboard at the Admin API's `/dashboard/`, on `GET /status` and `GET /config/effective` (I63); certificates obtained with ACME through HTTP-01 or TLS-ALPN-01 for the names listeners list in `tls.acme`, kept in a storage and renewed by their lifetime or the CA's renewal information (ARI), their OCSP responses stapled, and obtained during handshakes for the names an ask URL allows (`tls.on_demand`, rate limited, the handshakes waiting without holding an I/O thread); HTTPS by default (`auto_https`): a config that writes no listeners served on HTTPS with its routes' host names' certificates and on HTTP redirected to it (308), an empty `tls` given its routes' names; layer 4 `services` (I51): `tcp` and `udp` listeners proxied to an upstream's addresses, backpressure linked both ways, idle timeouts, `max_conns`, drained after a reload; their connections spliced in the kernel by akio's eBPF sockmap relay on a listener with `sockmap` (I51b, akit's own field), where the relay loads; services sharing a `tcp` listener by the server names of their TLS ClientHellos, passed through without terminating them (I52), and PROXY protocol headers (v1, v2) taken from a listener's trusted proxies, on `tcp` and HTTP listeners, and sent to a service's upstream; `tcp` beside HTTP on one port (I53), told apart by what a client sends first; the forward proxy (I55): SOCKS5, SOCKS4 and 4a CONNECT on a listener's `socks`, alone or beside HTTP and `tcp` on one port, and HTTP/1.1 CONNECT tunnels by the `forward_proxy` handler, with fit's rules for clients and destinations (an address decided once connected), connect and idle timeouts; WebSockets proxied (I49) from HTTP/1.1 upgrades and HTTP/2 and HTTP/3 extended CONNECTs to HTTP/1.1 upstreams, backpressure linked both ways, `tunnel_idle_timeout`; gRPC calls proxied (I50) to h2 and h2c upstreams, streamed both ways with their trailers, bounded by `grpc-timeout`, answered with gRPC statuses when they fail; the response cache (I67, I68): RFC 9111 in a bounded memory tier shared by a zone, streamed bodies kept as they go, the cache lock, stale-while-revalidate and stale-if-error, a disk tier on a pool of its own, and purges by URL, URL prefix, tag or zone at the Admin API's `POST /cache/purge` (I69); the provider framework (I57): providers' parts merged into the base config by fit's rules, applied as versions of their own, `GET /config/effective` with where each part came from; the Docker provider (I58): routes, upstreams and services from the labels of running containers, followed through the daemon's events on akio's HTTP client over its Unix socket (or TCP); the Kubernetes provider (I59, I60): the Gateway API's Gateways of akit's GatewayClasses and their HTTPRoutes, GRPCRoutes, TLSRoutes, TCPRoutes and UDPRoutes, and the Ingresses of akit's IngressClasses, listed and watched over HTTP/2 or HTTP/1.1, served as listeners, routes and services to their Services' ready endpoints, their TLS Secrets written as certificate files, the Gateway API's statuses written back; the Consul catalog, Consul KV and etcd providers (I61), followed with blocking queries and watches; certificates shared by instances on several hosts through Redis, etcd or Consul (`acme.shared_storage`, I62), with leased locks and challenges answered by whichever instance the CA reaches; OpenTelemetry (I64): requests traced by their `traceparent` and `telemetry.traces.sample_ratio`, the upstream sent akit's span, spans and metrics exported over OTLP/HTTP; the `fastcgi` handler (I75): PHP-FPM and other FastCGI applications over TCP or a Unix-domain socket, a bounded pool of connections, bodies streamed both ways with linked backpressure, `try_files`, dotfiles and fit's timeouts; the `wasm` middleware (I71, I72): fit's WebAssembly plugins of fit's ABI and Proxy-Wasm filters (the subset fit runs: a request's headers, and the response's head, body and trailer on akio's held heads and body filters), run unchanged on akio-wasm's instance pool, bounded in time and memory, never on an I/O thread; the compatibility gate: 80 fixtures, 46 valid, 33 refused only as not supported yet, 1 skipped, none failed |
 | Next | M2's I38; I25 (M1 conformance); the Gateway API's conformance run (tests/conformance, the maintainer's) |
-| akio requests | A1–A9, A11, A13–A21, A23, A32, A33, A36–A38, A48, A51–A53, A57, A58, A63–A66, A90–A94, A105, A108, A109, A111–A113, A132–A135 and A165–A167 on akio's main and pinned; A10, A12, A22, A24, A29, A30, A35, A45, A49, A54, A75, A78, A79, A117, A148 and A170 requested ([akio API requests](akio-api-requests.md)) |
+| akio requests | A1–A9, A11, A13–A21, A23, A32, A33, A36–A38, A48, A51–A53, A57, A58, A63–A66, A90–A94, A105, A108, A109, A111–A113, A132–A135 and A165–A167 on akio's main and pinned; A12, A29, A30, A45, A54, A75, A79 and A117 built on akio branch `claude/akit-open-requests`, not pinned yet; A10, A22, A24, A35, A49, A78, A148 and A170 requested ([akio API requests](akio-api-requests.md)) |
 
 ## Log
+
+### 2026-11-26: akio requests A12, A79, A45, A117, A30, A54, A29, A75 built, their stopgaps dropped
+
+- akio: built on akio branch `claude/akit-open-requests` (`57a942af`, `22e038cc`, `8caab91c`,
+  `a88c5d7b`; ADR-154, ADR-158, ADR-159), not on `main` yet. akit uses them; the `rev` in
+  `Cargo.toml` stays at `dad77a7a` until that branch is on akio's main, so this commit builds only
+  against the branch (the coordinator moves the pin).
+- A117: akit-cache's disk pool is `akio::Pool` (`akio::{Pool, PoolConfig}` from the facade); the
+  `akio-pool` dependency is gone from the workspace and akit-cache.
+- A30: `fit_connections_open` is akio's `open_accepted`: the accepted connections alone, no longer
+  the upstream connections dialed on the engine too.
+- A12, A79: every dial carries its own connect timeout (`Engine::dial_with`; `HappyEyeballs` dials
+  a lone address with its `connect_timeout` too), so akit-listener no longer sets the engine's
+  `connect_timeout` to the shortest of the upstreams'; an upstream with a longer one is no longer
+  cut to it. akit-l4 dials a TCP upstream's IP literal with `dial_with` and the upstream's
+  `connect_timeout`; the probes keep their timer for the check's timeout in all (resolution
+  included).
+- A45: `akit_upstream::timer`, akit's own timer thread, is deleted; its callers use
+  `akio::timer::after_send`: the health probes, the h2 pools' idle sweeps, the cache's lock and
+  disk-read timeouts, the JWK sets' refreshes and refetches, the FastCGI sweep, the WebSocket
+  tunnels' idle timeouts, the layer 4 services' opening timeouts and idle sweeps, the drain of the
+  services a reload removes, and the sockmap drain (which A170 may replace). A timer whose job is
+  moot is cancelled (`SendTimer::cancel`): a probe's timeout once it settles, a layer 4 opening
+  timeout once a service takes the connection or it closes, the cache lock's once its fetch ends,
+  a disk read's once it answers. akit-middleware and akit-proxy depend on `akio` for it (it was a
+  dev-dependency of theirs).
+- A54: a drained listener's idle HTTP/1 connection answers a request within akio's
+  `HttpConfig::idle_drain_grace` (250 ms, akio's default; fit has no knob for it) with
+  `Connection: close`: `crates/akit/tests/reload.rs` counts every client error as a failure, the
+  retry counting gone.
+- A75: `forward_auth`, `basic_auth`, `jwt` and `wasm` no longer ask for a streamed body whole to
+  suspend its request: the body's reads are held while it waits and it streams to the handler
+  after (the `jwt` middleware's `may_wait` goes with it). A Proxy-Wasm filter's `end_of_stream` is
+  told from the fields for a body not read yet, as fit tells it (`Content-Length` above 0 or a
+  `Transfer-Encoding`).
+- A29: a request's access log line and its count are written by the listener's response observer
+  (`HttpAcceptor::observer`, `akio_h3::serve_with_observer`) from two words it carries
+  (`Context::set_observed`: the graph's ID; its metrics slot, its route's index and whether it is
+  logged), with no allocation; `GraphCell::with_id` finds the graph a request was dispatched on
+  when a reload overtook it (one dropped since: the current graph's log and registry, no route
+  name). Kept on a response filter: a traced request (I64: its span's IDs and the tracer do not fit
+  in two words) and a logged request whose route may change its target (`rewrite`, `wasm`:
+  `Middleware::changes_target`, `CompiledRoute::keeps_target`), whose line writes the target the
+  listener dispatched (fit's `RequestURI`), copied as before. The observer sees the response after
+  every filter, as it goes. The authenticated `user` is still not logged (two words carry no name).
+- Tests: `connect_timeout` in akit-listener's `upstreams` (a lone address held to 300 ms with the
+  engine's 10 s, and another upstream's 1.5 s not cut to it); `forward_auth_streams_the_body` in
+  akit-middleware's `forward_auth` (1 MiB streamed through `forward_auth` to the proxy's upstream,
+  whole and in order, the upstream having the request before the second half is sent; it fails
+  with the old whole-body override); the reload test without retries; the access log, metrics and
+  tracing tests on both paths. The workspace on macOS
+  against that akio branch (a cargo `[patch]` passed on the command line, not committed): 1131
+  passed, 1 ignored; `build_with_a_module_and_serve` (`crates/akit/tests/build.rs`) fails, as it
+  builds a package of its own against the pinned akio, which lacks these APIs, until the pin moves.
+  fmt and clippy pass.
+- To measure (benchmark task, rule 30): the proxy and static scenarios with the access log on, and
+  with `metrics` on, against `dad77a7a` (the observer in place of a boxed filter a request); a
+  load spanning reloads (the observer's lookup of an overtaken graph takes the cell's locks).
 
 ### 2026-11-25: I72, WASM II: the Proxy-Wasm subset
 
