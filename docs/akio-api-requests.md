@@ -32,8 +32,8 @@ first; its status here records the branch, then the akio commit akit pins.
 | A11 | An HTTP/1 client request that keeps its own `Host` field (and sends no `User-Agent` when given an empty one) | in akio's main (`a9a620ab`), pinned | — | I15 |
 | A12 | The HTTP client's connect timeout for a lone address too | requested (I14) | 10 | I14, I35 |
 | A13 | `Files` serving a path the caller names | in akio's main (`a9a620ab`), pinned | 19 | I12, I13 |
-| A14 | `Files` answering as a gateway's static handler does | requested (I12) | 19 | I12, I13 |
-| A15 | `Files` bounded in memory, its disk pool with a timeout | requested (I12) | 4, 11 | I12 |
+| A14 | `Files` answering as a gateway's static handler does | on akio's branch `claude/a57-a58-a14-a15-a92` (`7d1b1670`, ADR-124), pinned, used by I12 | 19 | I12, I13 |
+| A15 | `Files` bounded in memory, its disk pool with a timeout | on akio's branch `claude/a57-a58-a14-a15-a92` (`7d1b1670`, ADR-124), pinned, used by I12 | 4, 11 | I12 |
 | A16 | `Files` choosing a compressed twin by the client's q values, among the encodings configured | in akio's main (`a9a620ab`), pinned | 19 | I13 |
 | A17 | `Files` trying candidate paths in turn (`try_files`) | in akio's main (`a9a620ab`), pinned | 19 | I13 |
 | A18 | `Files` listing a directory that has no index file | in akio's main (`a9a620ab`), pinned | 4, 11, 19 | I13 |
@@ -58,8 +58,8 @@ first; its status here records the branch, then the akio commit akit pins.
 | A52 | `H2Client` backpressure per stream: a streamed response's reads held, an upload's queue reported | in akio's main (`f6750e93`, ADR-110), pinned, used by I18b 8 | I18b, I50 |
 | A53 | `H2Client`'s connection: the server's stream limit heeded and reported, the connect timeout, ALPN's HTTP/1.1 fallback | in akio's main (`f6750e93`, ADR-110), pinned, used by I18b 10, 11 | I18b, I54 |
 | A54 | An idle HTTP/1 connection drained after a grace, not at once | requested (I28) | 10 | I28 |
-| A57 | Root certificates usable outside a handshake: the system's, to verify a chain against | requested (I32) | 1, 19 | I32 |
-| A58 | The ALPN protocol a TLS connection negotiated, seen by an HTTP service (or such a connection closed) | requested (I32) | 19 | I32, I34 |
+| A57 | Root certificates usable outside a handshake: the system's, to verify a chain against | on akio's branch `claude/a57-a58-a14-a15-a92` (`7d1b1670`, ADR-123), pinned, used by I32 | 1, 19 | I32 |
+| A58 | The ALPN protocol a TLS connection negotiated, seen by an HTTP service (or such a connection closed) | on akio's branch `claude/a57-a58-a14-a15-a92` (`7d1b1670`, ADR-123), pinned, used by I32, I34 | 19 | I32, I34 |
 | A63 | bcrypt password hashes in `akio-crypto` | in akio's main (`4f7169c4`), pinned | 1, 4 | I42 |
 | A64 | The client's verified certificate on each server request | in akio's main (`4f7169c4`), pinned | — | I42 |
 | A65 | A request suspended by a middleware and resumed with its context | in akio's main (`4f7169c4`), pinned | 1, 3, 4 | I42, I43 |
@@ -69,7 +69,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | A79 | `Engine::dial` and `dial_udp` with a connect timeout of their own | requested (I51) | 10 | I51, I54, I55 |
 | A90 | A streamed response's coding set by a response filter of the caller's own, and a value kept until the response is sent | in akio's main (`c5cf4353`), pinned | 8, 11 | I47 |
 | A91 | `Files` keeping compressed copies of the files it holds in memory | in akio's main (`c5cf4353`), pinned | 4, 12 | I47 |
-| A92 | A body sent from a file on disk encoded by a stream coding | requested (I47) | 1, 5 | I47 |
+| A92 | A body sent from a file on disk encoded by a stream coding | on akio's branch `claude/a57-a58-a14-a15-a92` (`7d1b1670`, ADR-124), pinned, used by I47 | 1, 5 | I47 |
 | A93 | The HTTP/1 client hands a connection over on `101 Switching Protocols` | in akio's main (`c5cf4353`), pinned | 8, 9 | I49, I55 |
 | A94 | A streamed `2xx` to an HTTP/2 extended CONNECT is a tunnel whose halves close separately | in akio's main (`c5cf4353`), pinned | 9 | I49 |
 | A105 | A request's peer is the client a trusted PROXY header names (akio-http) | in akio's main (`e9891b52`), pinned | 19 | I52 |
@@ -316,6 +316,14 @@ for the short answers.
 progress entry, its tests check akit's present answers naming this request, and `index` lists of
 other than one name and `default_type` are refused as not supported yet.
 
+**Done** (akio ADR-124, on akio's branch `claude/a57-a58-a14-a15-a92` at `7d1b1670`, not merged
+yet, pinned): `Files::index_files`, `redirect_directories`, `mime_types` (`MimeTypes::system`, Go's
+table with the system's `mime.types`), `default_type`, `sniff` (Go's `DetectContentType`),
+`error_response` and `serve_prefixed`; 403 for a file that may not be read, 404 for what is not a
+regular file (never opened) and for a file asked for with a trailing slash, `:` allowed. akit's
+`static` handler takes fit's `index` lists and `default_type`, redirects as fit's, answers fit's
+short bodies, and titles listings below `strip_prefix` by the whole path.
+
 ## A15 `Files` bounded in memory, its disk pool with a timeout
 
 **Problem.** fit keeps at most `max_cache_bytes` (64 MiB by default) of files in memory, and a
@@ -338,6 +346,11 @@ nothing.
 timeout; until then `max_cache_bytes` is refused as not supported yet, and the memory `Files` keeps
 is bounded only by the files under the root of at most `max_file_bytes` (recorded in the I12
 progress entry).
+
+**Done** (akio ADR-124, branch `claude/a57-a58-a14-a15-a92` at `7d1b1670`, pinned):
+`Files::max_cache_bytes` (64 MiB by default, twins and compressed copies counted, CLOCK eviction)
+and `Files::disk_timeout` (503 with `Retry-After` past it). akit's `static` handler takes fit's
+`max_cache_bytes` and waits on the file pool for fit's 10 s.
 
 ## A16 A compressed twin chosen by q values, among the encodings configured
 
@@ -1045,6 +1058,10 @@ store, on its own worker thread, as fit's `OCSP` does by default; the roots an o
 under roots given, so `akit run` staples ACME's certificates and none from files (the stopgap
 recorded in the I32 progress entry).
 
+**Done** (akio ADR-123, branch `claude/a57-a58-a14-a15-a92` at `7d1b1670`, pinned):
+`RootCerts::store()` and `From<RootCerts> for RootStore`. akit's `Ocsp` verifies a certificate from
+files against the system's roots unless roots are given (`trust_roots`), as fit's does.
+
 ## A58 The ALPN protocol a TLS connection negotiated, seen by an HTTP service
 
 **Problem.** A listener that obtains certificates through TLS-ALPN-01 offers `acme-tls/1` last
@@ -1066,6 +1083,10 @@ its handshake is done.
 
 **How akit uses it.** The dispatcher closes a connection whose ALPN is `acme-tls/1` without
 answering (or akio closes it), as fit's listener does; today it is served as HTTP/1.1.
+
+**Done** (akio ADR-123, branch `claude/a57-a58-a14-a15-a92` at `7d1b1670`, pinned), as the
+TLS setting `ServerConfigBuilder::handshake_only_alpn`: a connection negotiating `acme-tls/1` is
+closed once its handshake is done and nothing it sends is served. akit's TLS listeners set it.
 
 ## A63 bcrypt password hashes
 
@@ -1297,6 +1318,11 @@ next piece read once the queue drains), its `Content-Length` dropped.
 **How akit uses it.** The `compress` middleware sets the coding on a file body as on a streamed one.
 Until then a body from disk goes uncompressed, which the progress files list as a difference from
 fit.
+
+**Done** (akio ADR-124, branch `claude/a57-a58-a14-a15-a92` at `7d1b1670`, pinned): a file
+body a response filter gives a stream coding is read, encoded and written in 64 KiB pieces on the
+disk pool, under the connection's backpressure. akit's `compress` middleware compresses bodies
+from disk.
 
 ## A93 The HTTP/1 client hands a connection over on `101`
 

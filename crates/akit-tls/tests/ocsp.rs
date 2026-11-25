@@ -307,6 +307,9 @@ fn certificates_from_files_not_trusted_are_not_asked() {
     eventually("report", Duration::from_secs(5), || {
         lines.count("no response stapled") == 1
     });
+    // Without roots given, the chain was verified against the system's (fit's
+    // x509.SystemCertPool), which do not hold this test CA.
+    assert_eq!(lines.count("does not verify against the trusted roots"), 1);
     // Another CA's roots: still not.
     let mut roots = RootStore::new();
     roots.add(support::certs::Ca::new("another CA").cert);

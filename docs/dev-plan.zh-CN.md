@@ -195,7 +195,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | TLS 入口（TLS 上的 HTTP/1.1 和 h2） | I09 | 否 | 否（已实现，未测） | 每秒握手数，以及 TLS 上的 fixed，对比 fit 和 nginx。 |
 | HTTP/3 入口 | I10 | 否 | 否（尚未实现） | h3 上的 fixed，对比 fit 和 Caddy。 |
 | 路由 v1：按主机和路径查找 | I11 | 否 | 否（已实现，未测） | 查找的微基准（不分配内存），以及路由较多时 fixed 对比 I05 线性扫描的同轮 A/B。 |
-| 静态文件 | I12、I13 | 否 | 否（已实现，未测） | static 场景，HTTP/1.1 和 h2c（基线中 akit 跳过）；预压缩文件和大文件的 `sendfile`。 |
+| 静态文件 | I12、I13 | 否 | 否（已实现，未测） | static 场景，HTTP/1.1 和 h2c（基线中 akit 跳过）；预压缩文件和大文件的 `sendfile`；akio ADR-124 之后的缓存命中（双环缓存、文件很多时 `max_cache_bytes` 的淘汰）；带 `compress` 的大文件（在 akio 文件池上读取并编码）与 fit 对比。 |
 | 上游连接池 | I14 | 否 | 否（已实现，未测） | 通过 proxy 场景测：连接复用，连接数受限时等待连接。 |
 | 反向代理：HTTP/1.1、流式请求体、h2 和 h2c 上游 | I15–I18 | 否 | 否（已实现，未测量） | proxy 场景，HTTP/1.1 和 h2c（基线中 akit 跳过）；双向大请求体，及每个进行中请求占用的内存；带 trailer 的请求（I17 每个请求解析 `Trailer`）；h2c 上游（I18）：与 HTTP/1.1 上游对比每秒请求数和每请求 CPU，许多客户端复用少数连接，以及租用流时的按地址锁（`akit_upstream::h2`）；I17b 每个被代理请求的 `CancelToken` 和 `on_gone`；经 h2c 时（I18b）akio 的每流状态及其响应头与空闲定时器（每个 DATA 帧读一次时钟，每个请求一个定时任务），以及被暂停的下载与有节奏的上传，与 HTTP/1.1 对比。 |
 | 负载均衡 v1 和 v2 | I19、I36 | 否 | 否（已实现，未测量） | 每种策略选择的微基准（fit 的 `BenchmarkPick` 和 `BenchmarkPickNew`：九种策略、哈希一个键、查找会话保持 cookie），1 线程和 16 线程；对比单个服务器的 proxy A/B；proxy 场景下 `round_robin` 对比 `p2c`、`header_hash` 和 `sticky_cookie` 的同轮 A/B（每个请求的键哈希，以及首个请求复制的 `Set-Cookie`）。 |

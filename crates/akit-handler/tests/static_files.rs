@@ -19,8 +19,7 @@ use std::fs;
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, OnceLock};
+use std::sync::OnceLock;
 use std::time::{Duration, SystemTime};
 
 use akio::{Backend, Engine, UringConfig};
@@ -184,10 +183,11 @@ fn serve_files() {
             ("docs/index.html", "<p>docs</p>"),
             ("docs/a b.txt", "spaced"),
             ("nested/deep/x.js", "1"),
+            ("other/default.htm", "default"),
             ("plain/readme.txt", "no index here"),
         ],
     );
-    let srv = serve(&root, "");
+    let srv = serve(&root, r#", "index": ["index.html", "default.htm"]"#);
     // (method, target, status, content type, body, Location)
     let cases: &[(&str, &str, u16, &str, &str, &str)] = &[
         ("GET", "/hello.txt", 200, TEXT, "hello\n", ""),
@@ -213,9 +213,26 @@ fn serve_files() {
         ("GET", "/docs/", 200, HTML, "<p>docs</p>", ""),
         ("GET", "/./hello.txt", 200, TEXT, "hello\n", ""),
         ("GET", "//hello.txt", 200, TEXT, "hello\n", ""),
-        // fit: "404 Not Found\n" from the handler; Files' own text (A14).
-        ("GET", "/plain/", 404, TEXT, "Not Found", ""),
-        ("GET", "/missing.txt", 404, TEXT, "Not Found", ""),
+        ("GET", "/other/", 200, HTML, "default", ""),
+        (
+            "GET",
+            "/docs",
+            301,
+            TEXT,
+            "301 Moved Permanently\n",
+            "/docs/",
+        ),
+        (
+            "GET",
+            "/docs?a=1",
+            301,
+            TEXT,
+            "301 Moved Permanently\n",
+            "/docs/?a=1",
+        ),
+        ("GET", "/plain/", 404, TEXT, "404 Not Found\n", ""),
+        ("GET", "/missing.txt", 404, TEXT, "404 Not Found\n", ""),
+        ("GET", "/hello.txt/", 404, TEXT, "404 Not Found\n", ""),
         (
             "POST",
             "/hello.txt",
@@ -224,20 +241,15 @@ fn serve_files() {
             "405 Method Not Allowed\n",
             "",
         ),
-        // fit sniffs the type from the first bytes, text/html here; Files' table has no type
-        // for a file without an extension (A14).
+        // Sniffed from the first bytes, as fit's.
         (
             "GET",
             "/noext",
             200,
-            "application/octet-stream",
+            HTML,
             "<html><body>x</body></html>",
             "",
         ),
-        // fit redirects a directory asked for without its slash (301, Location /docs/), and
-        // answers a file asked for with one 404; Files serves both (A14).
-        ("GET", "/docs", 200, HTML, "<p>docs</p>", ""),
-        ("GET", "/hello.txt/", 200, TEXT, "hello\n", ""),
     ];
     for &(method, target, status, ty, body, location) in cases {
         // Twice: the second time from what Files keeps.
@@ -267,7 +279,7 @@ fn serve_files() {
     }
 }
 
-/// fit's TestServe's other index file, one name (a list of several waits on A14).
+/// fit's TestServe's other index file, one name; and fit's TestNoIndex.
 #[test]
 fn index_file() {
     let root = tree(
@@ -279,6 +291,91 @@ fn index_file() {
     assert_eq!((r.status, r.text()), (200, "default"));
     assert_eq!(r.header("Content-Type"), Some(HTML));
     assert_eq!(get(srv.addr, "/").status, 404);
+    drop(srv);
+    let srv = serve(&root, r#", "index": []"#);
+    assert_eq!(get(srv.addr, "/").status, 404);
+    assert_eq!(get(srv.addr, "/other/default.htm").text(), "default");
+}
+
+/// fit's TestPermission: a file that may not be read is 403 (not for root, who reads all).
+#[test]
+fn permission() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = tree("perm", &[("locked/a.txt", "a")]);
+    let locked = root.join("locked");
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
+    let readable = fs::metadata(locked.join("a.txt")).is_ok();
+    let srv = serve(&root, "");
+    let r = get(srv.addr, "/locked/a.txt");
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).unwrap();
+    if !readable {
+        assert_eq!((r.status, r.text()), (403, "403 Forbidden\n"));
+    }
+}
+
+/// fit's TestCacheLimits: files above max_file_bytes go from disk, and at most max_cache_bytes
+/// are kept in memory; every answer is whole either way.
+#[test]
+fn cache_limits() {
+    let root = tree(
+        "cache-limits",
+        &[
+            ("a.txt", "aaaa"),
+            ("b.txt", "bbbb"),
+            ("big.txt", "0123456789"),
+        ],
+    );
+    let srv = serve(&root, r#", "max_file_bytes": 8, "max_cache_bytes": 6"#);
+    for name in ["a.txt", "b.txt", "big.txt"] {
+        for _ in 0..2 {
+            let r = get(srv.addr, &format!("/{name}"));
+            assert_eq!(r.status, 200, "{name}");
+            assert!(!r.body.is_empty() && r.header("ETag").is_some());
+            assert_eq!(r.header("Content-Type"), Some(TEXT), "{name}");
+        }
+    }
+}
+
+/// fit's TestDefaultType: default_type types a file whose extension gives none, from memory, from
+/// disk and for a range; without it the type is sniffed.
+#[test]
+fn default_type() {
+    let html = "<html><body>sniffed as text/html</body></html>";
+    let mid = format!("{html}{}", "m".repeat(16 << 10));
+    let root = tree(
+        "default-type",
+        &[("small", html), ("big", &mid), ("a.css", "body{}")],
+    );
+    const DT: &str = "application/x-default";
+    for extra in [
+        format!(r#", "default_type": "{DT}""#),
+        format!(r#", "default_type": "{DT}", "max_file_bytes": 4"#),
+    ] {
+        let srv = serve(&root, &extra);
+        for target in ["/small", "/big"] {
+            for range in [None, Some("bytes=0-9")] {
+                let headers: Vec<(&str, &str)> = range.map(|r| ("Range", r)).into_iter().collect();
+                let r = request(srv.addr, "GET", target, &headers);
+                assert!(
+                    r.status == 200 || r.status == 206,
+                    "{extra} {target}: {r:?}"
+                );
+                assert_eq!(r.header("Content-Type"), Some(DT), "{extra} {target}");
+            }
+        }
+        assert_eq!(
+            get(srv.addr, "/a.css").header("Content-Type"),
+            Some("text/css; charset=utf-8")
+        );
+    }
+    let srv = serve(&root, r#", "max_file_bytes": 4"#);
+    for target in ["/small", "/big"] {
+        assert_eq!(
+            get(srv.addr, target).header("Content-Type"),
+            Some(HTML),
+            "{target}"
+        );
+    }
 }
 
 /// fit's TestTraversal, through akit's listener: what climbs above the root is refused by the
@@ -839,9 +936,8 @@ fn strip_prefix() {
         ("/assets/a.txt", 200, "a"),
         // The root has no index.html.
         ("/assets/", 404, ""),
-        // fit redirects a directory asked for without its slash (301, Location /assets/sub/);
-        // Files serves it (A14).
-        ("/assets/sub", 200, "i"),
+        // Redirected to its slash, the prefix included.
+        ("/assets/sub", 301, ""),
         ("/assets/sub/", 200, "i"),
         ("/a.txt", 404, ""),
         // fit's handler alone answers 400; through the listener, as through fit's, the path is
@@ -857,16 +953,22 @@ fn strip_prefix() {
             assert_eq!(r.text(), body, "{target}");
         }
     }
+    assert_eq!(
+        get(srv.addr, "/assets/sub").header("Location"),
+        Some("/assets/sub/")
+    );
     drop(srv);
-    // A listing below a prefix: fit titles it by the request's whole path, with a ../ link at the
-    // prefix; Files by the path below the prefix (A14).
+    // A listing below a prefix: titled by the request's whole path, with a ../ link at the
+    // prefix, as fit's.
     let srv = serve(
         &root,
         r#", "strip_prefix": "/assets", "browse": true, "index": ["none.html"]"#,
     );
     let r = get(srv.addr, "/assets/");
     assert!(
-        r.status == 200 && r.text().contains("<title>Index of /</title>"),
+        r.status == 200
+            && r.text().contains("<title>Index of /assets/</title>")
+            && r.text().contains(r#"href="../""#),
         "{r:?}"
     );
 }
@@ -1020,20 +1122,19 @@ fn config_errors() {
     assert!(
         compile_err(&format!(r#"{{"root": {}}}"#, quote(&root.join("none")))).contains("os error")
     );
-    // fit's index:[] is no index file.
-    for (params, field) in [
-        (
-            format!(r#"{{"root": {r}, "max_cache_bytes": 6}}"#),
-            "max_cache_bytes",
-        ),
-        (
-            format!(r#"{{"root": {r}, "default_type": "a/b"}}"#),
-            "default_type",
-        ),
-        (format!(r#"{{"root": {r}, "index": []}}"#), "index"),
-        (format!(r#"{{"root": {r}, "index": ["a", "b"]}}"#), "index"),
-        (format!(r#"{{"root": {r}, "disk_io": "auto"}}"#), "disk_io"),
-    ] {
+    // fit's TestDefaultType's refusal.
+    let err = compile_err(&format!(r#"{{"root": {r}, "default_type": "not a type"}}"#));
+    assert!(
+        err.contains(r#"routes[0].handler.params.default_type: "not a type" is not a media type"#),
+        "{err}"
+    );
+    let err = compile_err(&format!(r#"{{"root": {r}, "max_cache_bytes": -1}}"#));
+    assert!(
+        err.contains("routes[0].handler.params.max_cache_bytes: -1 is less than the minimum 0"),
+        "{err}"
+    );
+    {
+        let (params, field) = (format!(r#"{{"root": {r}, "disk_io": "auto"}}"#), "disk_io");
         let json = format!(
             r#"{{"listeners": [{{"name": "web", "address": ":0"}}], "routes": [{{"handler": {{"module": "static", "params": {params}}}}}]}}"#
         );
@@ -1047,6 +1148,10 @@ fn config_errors() {
     }
     for params in [
         format!(r#"{{"root": {r}, "index": [".hidden"], "dotfiles": "allow"}}"#),
+        format!(r#"{{"root": {r}, "index": []}}"#),
+        format!(r#"{{"root": {r}, "index": ["a", "b"]}}"#),
+        format!(r#"{{"root": {r}, "max_cache_bytes": 6, "default_type": "a/b; q=1"}}"#),
+        format!(r#"{{"root": {r}, "max_cache_bytes": 0}}"#),
         format!(
             r#"{{"root": {r}, "disk_io": "pool", "check_interval": "1s", "max_file_bytes": 0}}"#
         ),
@@ -1097,9 +1202,10 @@ fn routes_share_a_root() {
     assert_eq!(get(srv.addr, "/other").text(), "404 page not found\n");
 }
 
-/// A file the disk takes forever to open (a FIFO no one writes to) holds a thread of Files'
-/// file pool, not an I/O thread: files Files knows are still served at once, on every
-/// connection; and the requests waiting on the disk are answered once it answers.
+/// What is not a regular file (a FIFO no one writes to, which would hold a thread of the file
+/// pool until a writer came) is not opened: answered 404 at once, as fit's handler answers it,
+/// while known files are served as ever. (A request the file pool does not answer within fit's
+/// 10 s is answered 503: akio's tests of `Files::disk_timeout`, which needs a disk that hangs.)
 #[test]
 fn a_hung_disk_holds_no_io_thread() {
     let root = tree("hung", &[("hello.txt", "hello\n")]);
@@ -1112,47 +1218,19 @@ fn a_hung_disk_holds_no_io_thread() {
     assert!(ok, "mkfifo");
     let srv = serve(&root, "");
     assert_eq!(get(srv.addr, "/hello.txt").text(), "hello\n");
-    // Few, as the file pool is shared by the tests of this binary.
-    let hung: Vec<TcpStream> = (0..3)
-        .map(|_| {
-            let mut s = TcpStream::connect(srv.addr).unwrap();
-            s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
-            s.write_all(b"GET /fifo HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
-                .unwrap();
-            s
-        })
-        .collect();
-    std::thread::sleep(Duration::from_millis(200));
+    let started = std::time::Instant::now();
     for _ in 0..16 {
         let mut s = TcpStream::connect(srv.addr).unwrap();
-        s.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
-        s.write_all(b"GET /hello.txt HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
+        s.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+        s.write_all(b"GET /fifo HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
             .unwrap();
         let mut raw = Vec::new();
-        s.read_to_end(&mut raw)
-            .expect("a known file waits on no disk");
-        assert_eq!(parse(&raw).text(), "hello\n");
+        s.read_to_end(&mut raw).expect("a FIFO is not waited on");
+        let r = parse(&raw);
+        assert_eq!((r.status, r.text()), (404, "404 Not Found\n"));
+        assert_eq!(get(srv.addr, "/hello.txt").text(), "hello\n");
     }
-    // The disk answers: a writer opens the FIFO and closes it, which the readers see as its
-    // end, until every hung request is answered.
-    let done = Arc::new(AtomicBool::new(false));
-    let writer = {
-        let (done, fifo) = (done.clone(), fifo.clone());
-        std::thread::spawn(move || {
-            while !done.load(Ordering::Relaxed) {
-                // Blocks until a reader opens it: left blocked when the test ends, harmless.
-                drop(fs::OpenOptions::new().write(true).open(&fifo));
-                std::thread::sleep(Duration::from_millis(10));
-            }
-        })
-    };
-    for mut s in hung {
-        let mut raw = Vec::new();
-        s.read_to_end(&mut raw).unwrap();
-        assert_eq!(parse(&raw).status, 200);
-    }
-    done.store(true, Ordering::Relaxed);
-    drop(writer);
+    assert!(started.elapsed() < Duration::from_secs(5));
 }
 
 /// A file larger than max_file_bytes, to a client that reads slowly, arrives whole; a client

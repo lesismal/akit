@@ -9,15 +9,38 @@
 
 | | |
 | --- | --- |
-| 最后更新 | 2026-11-24 |
+| 最后更新 | 2026-11-25 |
 | 里程碑 | M0 基础已完成（I01–I08）；M1 代理核心：I09–I24、I17b 和 I18b 已完成；M2 的 I26–I37、M3 的 I39–I55、M4 的 I57–I59、I61、I63、I64 已提前完成，另有 I67–I69、I75。 |
-| akio | akio `main` 上的 `8453b60c`（`1.0.0-rc.1`，带 [akio API 需求](akio-api-requests.zh-CN.md) 中所有已锁定的需求），在 `Cargo.toml` 中按 `rev` 锁定 |
+| akio | akio 分支 `claude/a57-a58-a14-a15-a92` 上的 `7d1b1670`（`main` 的 `8453b60c` 加 ADR-123 与 ADR-124；`1.0.0-rc.1`，带 [akio API 需求](akio-api-requests.zh-CN.md) 中所有已锁定的需求），在 `Cargo.toml` 中按 `rev` 锁定 |
 | fit | 作为规格；本计划基于 `7daee573` 阅读 |
 | 可用功能 | `akit run` 和 `akit validate`，带 fit 的参数和退出码，JSON、`.conf` 和 YAML 配置，文件和目录合并；SIGHUP 重载配置（错误的配置保留正在运行的配置；基于 akio 的 A1 保留（按 fit 的 `binding.same`：证书文件和 ACME 名字可以变）、增加、修改和排空监听器，包括启动时的监听器，重载可新增 h3 监听器；服务 h3 的启动监听器要重启才能变）；SIGINT 和 SIGTERM 时优雅关闭；HTTP/1.1、h2c、TLS（SNI、ALPN、客户端认证；按 fit 的方式每次握手选择证书，重载或 `-watch-certs` 替换证书而不关闭监听器）和 HTTP/3 监听器，TCP 一侧带 `Alt-Svc`；基于规范化路径的路由器 v1，带 fit 的匹配器（方法、头、query、远端 IP、路径正则）和表达式；路由中间件：`rewrite`（前缀和正则）、`redirect`（含正则的分组）、`headers`、`rate_limit`、`concurrency_limit`、`body_limit`、`basic_auth`（bcrypt，在 akio 的线程池上校验）、`client_cert`（按路由的 mTLS）、`forward_auth`（经 akio 的客户端询问认证服务，期间挂起请求）、`circuit_breaker`、`compress`（按 q 值选择 zstd、brotli 和 gzip，流式消息体逐次写入编码）和 `jwt`（用 akio-crypto 校验 JSON Web Token，密钥来自 PEM 文件、密钥文件或经 akio 的客户端获取并轮换的 JWK 集）；`respond`、`static`（条件请求和范围请求，文件在 akio 的线程池上打开，按 q 值选择预压缩副本，内存中文件的压缩副本，`try_files`，目录列表，`strip_prefix`）和 `proxy` handler（fit 的转发字段、可信代理、客户端的 `Host`、双向流式转发 body 并联动背压，双向透传 trailer，`timeout` 和上游的 `response_timeout`、`response_header_timeout`、`response_idle_timeout`，超时回答 504，客户端无论何时离开都放弃上游请求，带预算的 `retry`，`timeout` 覆盖所有尝试；按权重随机选择的 `upstreams`，所选上游没有地址在轮转中时接管请求的 `failover`，接收消息体完整到达的请求副本的 `mirror`（同时最多 256 个，请求从不等待副本）；经 HTTP/1.1、h2c 和 h2 访问上游，h2 支持 fit 的 `tls_server_name`、`tls_ca_file` 和客户端证书）；所有监听器和代理上的 `limits.max_body_bytes`（413），以及 `limits.write_stall_timeout`（重载也可修改）；fit 的 json、text 和 line 格式的访问日志；上游连接池，fit 的九种负载均衡策略（轮询、加权轮询、最少连接、随机、p2c，以及按客户端 IP、路径、头或 cookie 的一致性哈希）和会话保持 cookie，跳过被被动健康检查（`max_fails`、`fail_timeout`）和主动健康检查（`health_check`：http 和 tcp 探测）下线的地址；回环地址上的 Admin API（`GET /config`，也可按 JSON 指针读取，`POST /load`，用 `PUT`、`PATCH` 和 `DELETE /config` 按指针编辑，`POST /rollback/{n}`，`POST /reload`，都带 `If-Match`，除回滚外都可 `?dry_run=1`，`GET /versions`；有 `token_file` 时每个请求都要带 bearer 令牌），修改与 SIGHUP 一样作为重载应用，两者共用一份历史记录；`run -watch` 在配置文件每次变化时应用它们（fit 的文件 provider，轮询）；Admin API 的 `GET /metrics` 提供 fit 的 Prometheus 指标（有 `metrics` 时按监听器和路由的请求、上游和后端、证书、连接、重载、akio 的引擎）；为监听器在 `tls.acme` 中所列的名字通过 HTTP-01 或 TLS-ALPN-01 用 ACME 获取证书，保存在存储中，按有效期或 CA 的续期信息（ARI）续期，并装订其 OCSP 响应，也在握手时为 ask URL 允许的名字获取证书（`tls.on_demand`，带限流，握手等待时不占住 I/O 线程）Admin API 的 `/dashboard/` 提供 fit 的只读仪表盘，基于 `GET /status` 和 `GET /config/effective`（I63）；为监听器在 `tls.acme` 中所列的名字通过 HTTP-01 或 TLS-ALPN-01 用 ACME 获取证书，保存在存储中，按有效期或 CA 的续期信息（ARI）续期，并装订其 OCSP 响应；默认 HTTPS（`auto_https`）：没有写监听器的配置以其路由主机名的证书经 HTTPS 服务，经 HTTP 重定向（308）到 HTTPS，空的 `tls` 得到其路由的名字；四层 `services`（I51）：`tcp` 和 `udp` 监听器代理到上游的地址，双向联动背压，空闲超时，`max_conns`，重载后排空；按 TLS ClientHello 的服务器名共用一个 `tcp` 监听器的服务，不终结 TLS 直接透传（I52），以及 `tcp` 与 HTTP 监听器从受信任代理接收、并向服务的上游发送的 PROXY protocol 头（v1、stale-while-revalidate 与 stale-if-error，在自己的线程池上读写的磁盘层，以及经 Admin API 的 `POST /cache/purge` 按 URLstale-while-revalidate 与 stale-if-error，以及在自己的线程池上读写的磁盘层；`fastcgi` handler（I75）：经 TCP 或 Unix 域套接字连接 PHP-FPM 等 FastCGI 应用，有界连接池，双向流式传输消息体并联动背压，`try_files`、点文件和 fit 的超时；兼容性门禁：80 个夹具，38 个有效，41 个只因暂不支持被拒绝，1 个跳过，没有失败WebSocket 代理（I49）：HTTP/1.1 upgrade 与 HTTP/2OpenTelemetry（I64）：按 `traceparent` 和 `telemetry.traces.sample_ratio` 追踪请求，上游收到 akit 的 span，span 和指标通过 OTLP/HTTP 导出v2）；一个端口上与 HTTP 并列的 `tcp`（I53），按客户端先发的字节区分；正向代理（I55）：监听器 `socks` 上的 SOCKS5、SOCKS4 与 4a CONNECT，单独或在一个端口上与 HTTP、URL 前缀、标签或 zone 清除（I69）；`tcp` 并列，以及 `forward_proxy` 处理器的 HTTP/1.1 CONNECT 隧道，带 fit 对客户端和目的地的规则（地址在连接建立后判定）、连接超时与空闲超时；WebSocket 代理（I49）：HTTP/1.1 upgrade 与 HTTP/2、HTTP/3 扩展 CONNECT 代理到 HTTP/1.1 上游，双向联动背压，`tunnel_idle_timeout`；gRPC 调用代理（I50）到 h2 和 h2c 上游，双向流式传输并带 trailer，受 `grpc-timeout` 约束，失败时以 gRPC 状态应答；响应缓存（I67、I68）：zone 共享的有界内存层上的 RFC 9111，流式消息体在发出的同时保存，缓存锁、stale-while-revalidate 与 stale-if-error，以及在自己的线程池上读写的磁盘层；provider 框架（I57）：provider 提供的部分按 fit 的规则合并进基础配置，各自作为新版本应用，`GET /config/effective` 给出每部分的来源；Consul catalog、Consul KV 与 etcd provider（I61），以阻塞查询和 watch 跟随变化；OpenTelemetry（I64）：按 `traceparent` 和 `telemetry.traces.sample_ratio` 追踪请求，上游收到 akit 的 span，span 和指标通过 OTLP/HTTP 导出；兼容性门禁：80 个夹具，35 个有效，44 个只因暂不支持被拒绝，1 个跳过，没有失败；Kubernetes provider（I59）：经 HTTP/2 或 HTTP/1.1 list 并 watch akit 的 IngressClass 的 Ingress，作为路由发往其 Service 的就绪端点，其 TLS Secret 写成证书文件 |
 | 下一步 | I61（进行中）；I60、I62、I65；M2 的 I38；I25（M1 一致性） |
-| akio 需求 | A1–A8、A11、A13、A16–A21、A32、A36–A38、A51–A53、A63–A66、A90、A91、A93、A94、A105、A108、A109、A111–A113、A132、A133、A135 已在 akio 的 main 并已锁定；A9、A10、A12、A14、A15、A22–A24、A29、A30、A33、A35、A45、A48、A49、A54、A57、A58、A75、A78、A79、A92、A117、A134 和 A148 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
+| akio 需求 | A1–A8、A11、A13、A16–A21、A32、A36–A38、A51–A53、A63–A66、A90、A91、A93、A94、A105、A108、A109、A111–A113、A132、A133、A135 已在 akio 的 main 并已锁定；A14、A15、A57、A58 和 A92 在 akio 的分支 `claude/a57-a58-a14-a15-a92` 并已锁定；A9、A10、A12、A22–A24、A29、A30、A33、A35、A45、A48、A49、A54、A75、A78、A79、A117、A134 和 A148 已提出（[akio API 需求](akio-api-requests.zh-CN.md)） |
 
 ## 日志
+
+### 2026-11-25：实现 akio 需求 A57、A58、A14、A15 与 A92，解除相应的拒绝
+
+- akio（分支 `claude/a57-a58-a14-a15-a92`，`7d1b1670`，ADR-123 与 ADR-124，尚未进入 `main`）：
+  `RootCerts::store()`（A57）；`ServerConfigBuilder::handshake_only_alpn`（A58）；`Files` 的
+  `index_files`、`redirect_directories`、`mime_types`（`MimeTypes::system`）、`default_type`、`sniff`、
+  `error_response`、`serve_prefixed`，以及 403、只打开普通文件、带尾斜杠的文件回 404、允许 `:`（A14）；
+  `max_cache_bytes` 与 `disk_timeout`（A15）；设置了流编码的文件消息体在磁盘池上编码（A92）。akit 锁定到它。
+- `static`（I12、I13）：`index` 接受 fit 的列表（`[]` 表示没有），读取 `max_cache_bytes`（64 MiB）与
+  `default_type`（按 Go 的 `mime.ParseMediaType` 检查）；不带斜杠的目录被重定向（301，保留查询串，
+  `try_files` 时不重定向），带斜杠的文件回 404，不可读的文件回 403，FIFO 立即回 404（从不打开），类型用
+  Go 的表加系统的 `mime.types`，没有 `default_type` 时嗅探，错误正文是 fit 的（`404 Not Found\n`），
+  `strip_prefix` 之下的目录列表以完整路径为标题，文件池在 fit 的 10 秒内未回答的请求回 503。测试移植自
+  fit 的 `TestServe`、`TestNoIndex`、`TestPermission`、`TestCacheLimits`、`TestDefaultType`、
+  `TestStripPrefix` 与 `TestErrors`。
+- I32：没有给出根证书时，`Ocsp` 对系统根证书验证来自文件的证书，与 fit 的 `x509.SystemCertPool`
+  相同；TLS 监听器上协商 `acme-tls/1` 的连接在握手完成后关闭、不提供任何服务（I32、I34），在真实引擎上测试。
+- I47：`compress` 也压缩从磁盘发送的静态文件（三种编码，HTTP/1.1 与 HTTP/2），直到消息体发送完才释放名额。
+- 兼容性：支持 `max_cache_bytes` 与 `default_type`（371 个字段）。
+- 与 fit 仍有的差别：文件池超时的 503 在 akio 中测试（挂起的磁盘），没有通过 akit 测试；重定向的
+  `Location` 是原样发送的路径，没有解码。
+- 待测量（基准任务，规则 30）：带 `compress` 从磁盘发送静态文件（分片在文件池上读取并编码）与 fit 对比；
+  `Files` 改动后静态 handler 的热路径（缓存命中、双环缓存）。
 
 ### 2026-11-24：I61，Consul 与 etcd provider
 

@@ -18,8 +18,10 @@
 //! ends, or its client goes (akio's `Response::keep_until_sent`); a whole one gives it back once
 //! its body is compressed.
 //!
-//! A body akio sends from a file on disk (a static file larger than `max_file_bytes`) goes as it
-//! is: akio does not encode file bodies yet (akio API request A92).
+//! A body akio sends from a file on disk (a static file larger than `max_file_bytes`) is given
+//! the coding as a streamed one is: akio reads it in pieces on its file pool and encodes them
+//! there, under the connection's backpressure (akio ADR-124), and it holds its place until it is
+//! sent.
 
 use std::sync::{
     Arc,
@@ -132,15 +134,13 @@ impl Shared {
         let Some(encoding) = negotiate(&req.headers, &self.encodings) else {
             return;
         };
-        if resp.file.is_some() {
-            return; // a body from disk goes as it is (akio API request A92)
-        }
         if self.in_flight.fetch_add(1, Ordering::AcqRel) >= self.max_in_flight {
             self.in_flight.fetch_sub(1, Ordering::AcqRel);
             return;
         }
         let place = Place(Arc::clone(self));
-        if resp.is_streaming() {
+        if resp.is_streaming() || resp.file.is_some() {
+            // A body from disk is read and encoded on akio's file pool (akio ADR-124).
             resp.set_stream_coding(Some(self.coding(encoding)));
             resp.keep_until_sent(place);
         } else {

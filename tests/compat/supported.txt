@@ -48,13 +48,15 @@ routes[].handler<respond>.params.status
 routes[].handler<respond>.params.headers
 routes[].handler<respond>.params.body
 #
-# I12: the static handler on akio-http's Files. index takes one name; disk_io takes "pool" ("auto"
-# is refused). max_cache_bytes and default_type wait on akio API requests A15 and A14.
+# I12: the static handler on akio-http's Files. disk_io takes "pool" ("auto" is refused). index
+# lists, max_cache_bytes and default_type since akio's ADR-124 (akio API requests A14, A15).
 routes[].handler<static>
 routes[].handler<static>.params
 routes[].handler<static>.params.root
 routes[].handler<static>.params.index
 routes[].handler<static>.params.max_file_bytes
+routes[].handler<static>.params.max_cache_bytes
+routes[].handler<static>.params.default_type
 routes[].handler<static>.params.dotfiles
 routes[].handler<static>.params.disk_io
 routes[].handler<static>.params.check_interval
@@ -297,7 +299,7 @@ routes[].middleware[]<forward_auth>.params.timeout
 # I47: compress, responses compressed with zstd, brotli or gzip as they are written: a streamed
 # (proxied) body write by write, flushed, by akio's encoder (ADR-112), a whole one whole; fit's
 # negotiation, eligibility and max_in_flight. A body akio sends from disk (a static file larger
-# than max_file_bytes) goes uncompressed (akio API request A92). The static handler's compress
+# than max_file_bytes) is encoded on akio's file pool (ADR-124, A92). The static handler's compress
 # keeps copies of files held in memory, made once on akio's disk pool (A91).
 routes[].middleware[]<compress>
 routes[].middleware[]<compress>.params
