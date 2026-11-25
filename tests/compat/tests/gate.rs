@@ -2718,6 +2718,10 @@ fn kube(c: &Config) -> &akit_config::KubernetesProvider {
 /// handler module, or protocol) of the inventory, together they cover every field fit has at each
 /// object akit-config reads (so no field fit accepts is refused as unknown), and what akit-config
 /// reads is what `supported.txt` marks.
+/// The lists of akit's extensions in `model.rs`, each with the inventory path of its object:
+/// fields fit does not have, which akit-config reads (decision 010).
+const AKIT_ONLY: [(&str, &str); 1] = [("listeners[]", "LISTENER_AKIT_ONLY")];
+
 #[test]
 fn akit_config_lists_match_the_inventory() {
     // The model, and the providers' and shared storage's lists, in modules of their own (I58,
@@ -2910,6 +2914,7 @@ fn akit_config_lists_match_the_inventory() {
         .flat_map(|(_, r, n)| [Some(*r), *n])
         .flatten()
         .chain(["FIT_HANDLERS", "FIT_MIDDLEWARE"])
+        .chain(AKIT_ONLY.iter().map(|(_, l)| *l))
         .collect();
     for name in lists.keys() {
         assert!(
@@ -2948,6 +2953,17 @@ fn akit_config_lists_match_the_inventory() {
             covered, fit,
             "at {prefix:?}, model.rs's lists and fit's fields differ"
         );
+    }
+    // akit's extensions (decision 010): fields fit does not have, read by akit-config. One fit
+    // comes to have moves to the object's list of fields read.
+    for (prefix, list_name) in AKIT_ONLY {
+        for key in list(list_name) {
+            let path = join(prefix, key);
+            assert!(
+                !known.contains(path.as_str()),
+                "model.rs {list_name}: {path} is a field fit has now: list it with fit's"
+            );
+        }
     }
     // Handler modules: respond and proxy, which akit reads, and FIT_HANDLERS, which it refuses.
     let mut handlers: BTreeSet<String> = list("FIT_HANDLERS").iter().cloned().collect();

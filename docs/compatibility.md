@@ -12,6 +12,7 @@ by milestone.
 - [Reading a result](#reading-a-result)
 - [Refreshing the fixtures](#refreshing-the-fixtures)
 - [Supporting a field](#supporting-a-field)
+- [akit's extensions](#akits-extensions)
 - [The fields](#the-fields)
 
 ## The gate
@@ -155,6 +156,20 @@ languages of this page. Three tests then hold the mark to the code:
   inventory (no field fit accepts refused as unknown), and what akit-config reads must be what
   `supported.txt` marks. A new list in `model.rs` is mapped to its inventory path in this test.
 - the gate, whose report changes as the field stops being refused (`make compat-bless`).
+
+## akit's extensions
+
+A few fields are akit's own, for what akio can do and fib cannot; each has a decision note, which
+says why, and is to be proposed to fit ([decision 002](decisions/002-config-compatibility.md)).
+akit-config lists them apart from fit's fields (`*_AKIT_ONLY` in `model.rs`), the `.conf` reader
+and writer take their types from `EXTENSIONS` in `crates/akit-config/src/conf/convert.rs`, and
+`akit_config_lists_match_the_inventory` fails for one that fit's inventory has, which then moves to
+fit's list. A config that sets one is akit's alone until fit takes it: fit refuses it as an unknown
+field.
+
+| Field | Type | Since | Decision |
+| --- | --- | --- | --- |
+| `listeners[].sockmap` | `boolean` | I51b | [010](decisions/010-sockmap-relay.md): a `tcp` listener's connections spliced in the kernel by akio's eBPF sockmap relay where it loads |
 
 ## The fields
 

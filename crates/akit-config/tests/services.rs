@@ -353,3 +353,87 @@ fn tcp_beside_other_protocols() {
         assert!(c.listeners[0].protocols.len() > 2, "{listener}");
     }
 }
+
+/// I51b: a listener's `sockmap`, akit's own field (decision 010): read as a boolean in each
+/// format, false when left out, and only for a listener serving `tcp`.
+#[test]
+fn sockmap() {
+    let c = ok(r#"{"listeners": [
+            {"name": "t", "address": ":7000", "protocols": ["tcp"], "sockmap": true},
+            {"name": "t2", "address": ":7002", "protocols": ["http/1.1", "tcp"], "sockmap": true},
+            {"name": "t3", "address": ":7003", "protocols": ["tcp"], "sockmap": false}],
+        "upstreams": [{"name": "app", "addresses": ["127.0.0.1:9000"]}],
+        "services": [{"name": "a", "listeners": ["t", "t2"], "upstream": "app"},
+                     {"name": "c", "listeners": ["t3"], "upstream": "app"}],
+        "routes": [{"listeners": ["t2"], "handler": {"module": "respond"}}]}"#);
+    let by = |n: &str| c.listeners.iter().find(|l| l.name == n).unwrap().sockmap;
+    assert!(by("t") && by("t2"));
+    assert!(!by("t3"));
+    let y = akit_config::from_yaml(
+        "listeners:\n  - {name: t, address: \":7000\", protocols: [tcp], sockmap: true}\nupstreams:\n  - {name: app, addresses: [\"127.0.0.1:9000\"]}\nservices:\n  - {name: a, listeners: [t], upstream: app}\n",
+        None,
+    )
+    .unwrap();
+    assert!(y.listeners[0].sockmap);
+    let conf = akit_config::from_conf(
+        "listener t :7000 tcp {\n\tsockmap true\n}\nupstream app 127.0.0.1:9000\nservice a {\n\tlisteners t\n\tupstream app\n}\n",
+        None,
+    );
+    match conf {
+        Ok(c) => assert!(c.listeners[0].sockmap),
+        Err(e) => panic!("{e}"),
+    }
+    // Written back as `akit adapt` and `akit fmt` write a `.conf` file: a boolean.
+    let out = akit_config::adapt::conf_from_json(
+        r#"{"listeners": [{"name": "t", "address": ":7000", "protocols": ["tcp"], "sockmap": true}]}"#,
+    )
+    .unwrap();
+    assert!(out.contains("sockmap true"), "{out}");
+    // Left out, written false, or written on a listener without tcp.
+    assert!(
+        !ok(&doc(
+            TCP,
+            r#"{"name": "a", "listeners": ["t"], "upstream": "app"}"#
+        ))
+        .listeners[0]
+            .sockmap
+    );
+    assert_eq!(
+        problems(&doc(
+            r#"{"name": "t", "address": ":7000", "protocols": ["tcp"], "sockmap": "yes"}"#,
+            r#"{"name": "a", "listeners": ["t"], "upstream": "app"}"#,
+        )),
+        ["listeners[0].sockmap: expected a boolean, got a string"]
+    );
+    for listener in [
+        r#"{"name": "u", "address": ":7001", "protocols": ["udp"], "sockmap": true}"#,
+        r#"{"name": "h", "address": ":7004", "sockmap": true}"#,
+    ] {
+        let src = format!(
+            r#"{{"listeners": [{listener}, {TCP}],
+                "upstreams": [{{"name": "app", "addresses": ["127.0.0.1:9000"]}}],
+                "services": [{{"name": "a", "listeners": ["t"], "upstream": "app"}}{}],
+                "routes": [{{"handler": {{"module": "respond"}}}}]}}"#,
+            if listener.contains("udp") {
+                r#", {"name": "b", "listeners": ["u"], "upstream": "app"}"#
+            } else {
+                ""
+            }
+        );
+        assert_eq!(
+            problems(&src),
+            [
+                "listeners[0].sockmap: sockmap splices the connections of tcp services; this listener serves no tcp"
+            ],
+            "{listener}"
+        );
+    }
+    // A typo is still an unknown field, with the name it meant.
+    assert_eq!(
+        problems(&doc(
+            r#"{"name": "t", "address": ":7000", "protocols": ["tcp"], "sockMap": true}"#,
+            r#"{"name": "a", "listeners": ["t"], "upstream": "app"}"#,
+        )),
+        [r#"listeners[0].sockMap: unknown field (did you mean "sockmap"?)"#]
+    );
+}

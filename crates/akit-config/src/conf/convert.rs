@@ -19,8 +19,15 @@ use crate::json::{Kind, Member, Node, ParseError};
 /// fit's field inventory: path, section, type and flags, tab-separated, one field a line.
 const INVENTORY: &str = include_str!("../../../../tests/compat/fit-fields.txt");
 
+/// The fields akit has that fit does not, with their types as the inventory would write them:
+/// akit's extensions, each with its decision note.
+const EXTENSIONS: &[(&str, &str)] = &[
+    // I51b, decision 010: the eBPF sockmap relay of a listener's tcp services.
+    ("listeners[].sockmap", "boolean"),
+];
+
 /// Each field's type, by its inventory path (`a.b` a field, `a[]` a list's elements, `a.*` a map's
-/// values, `a<m>` the object whose module is `m`).
+/// values, `a<m>` the object whose module is `m`): fit's, and akit's [`EXTENSIONS`].
 fn types() -> &'static HashMap<&'static str, &'static str> {
     static TYPES: OnceLock<HashMap<&'static str, &'static str>> = OnceLock::new();
     TYPES.get_or_init(|| {
@@ -33,6 +40,7 @@ fn types() -> &'static HashMap<&'static str, &'static str> {
                 let _section = cols.next()?;
                 Some((path, cols.next()?))
             })
+            .chain(EXTENSIONS.iter().copied())
             .collect()
     })
 }

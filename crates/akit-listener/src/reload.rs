@@ -587,6 +587,7 @@ impl Listeners {
     pub fn reload(&mut self, graph: Graph) -> Result<Reloaded, ReloadError> {
         let configs = graph.listeners().to_vec();
         let (keeps, kept) = self.keeps(&graph)?;
+        crate::load_sockmap(configs.iter());
         // The running listeners not kept, by index, and whether they stopped already.
         let mut room: Vec<(usize, bool)> = kept
             .iter()

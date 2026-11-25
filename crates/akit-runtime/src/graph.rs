@@ -596,7 +596,7 @@ pub fn compile(
                     Some((s.clone(), c.server_names.as_slice()))
                 })
                 .collect();
-            (!mine.is_empty()).then(|| akit_l4::Entry::of(mine))
+            (!mine.is_empty()).then(|| akit_l4::Entry::of_listener(mine, l.sockmap))
         })
         .collect();
     Ok(Graph {

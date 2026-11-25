@@ -21,12 +21,16 @@ struct Inner {
     exact: HashMap<String, Service>,
     /// The services of names `*.d`, by `d` in lower case.
     wild: HashMap<String, Service>,
+    /// The listener's `sockmap` (I51b): its TCP connections are spliced in the kernel where
+    /// the relay is loaded ([`crate::sockmap`]).
+    sockmap: bool,
 }
 
 impl fmt::Debug for Entry {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Entry")
             .field("fallback", &self.0.fallback.as_ref().map(Service::name))
+            .field("sockmap", &self.0.sockmap)
             .field(
                 "names",
                 &self.0.exact.len().saturating_add(self.0.wild.len()),
@@ -52,7 +56,19 @@ impl Entry {
     /// config's checks make sure does not happen.
     #[must_use]
     pub fn of<'a>(services: impl IntoIterator<Item = (Service, &'a [String])>) -> Entry {
-        let mut inner = Inner::default();
+        Entry::of_listener(services, false)
+    }
+
+    /// [`of`](Self::of), for a listener whose `sockmap` is `sockmap` (I51b).
+    #[must_use]
+    pub fn of_listener<'a>(
+        services: impl IntoIterator<Item = (Service, &'a [String])>,
+        sockmap: bool,
+    ) -> Entry {
+        let mut inner = Inner {
+            sockmap,
+            ..Inner::default()
+        };
         for (s, names) in services {
             if names.is_empty() {
                 inner.fallback = Some(s);
@@ -67,6 +83,13 @@ impl Entry {
             }
         }
         Entry(Arc::new(inner))
+    }
+
+    /// Whether its listener asks for its TCP connections to be spliced in the kernel
+    /// (`sockmap`, I51b).
+    #[must_use]
+    pub fn sockmap(&self) -> bool {
+        self.0.sockmap
     }
 
     /// Whether it picks services by the ClientHello's server name: one of them has

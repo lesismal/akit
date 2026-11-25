@@ -245,6 +245,7 @@ pub(crate) fn effective(
         redirect_https: 0,
         proxy_protocol: None,
         socks: None,
+        sockmap: false,
     }];
     if auto.redirects() {
         listeners.push(Listener {
@@ -256,6 +257,7 @@ pub(crate) fn effective(
             redirect_https: auto.https_port,
             proxy_protocol: None,
             socks: None,
+            sockmap: false,
         });
     }
     Effective::Made(listeners)

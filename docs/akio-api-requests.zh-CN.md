@@ -86,6 +86,7 @@
 | A165 | 插件用的 WebAssembly 运行时：沙箱解释器、宿主 API、WASI preview 1、实例池；Proxy-Wasm 需要的响应钩子 | 已在 akio 的 main（`dad77a7a`），已锁定 | 1、4、11 | I71、I72 |
 | A166 | 由别处进行的调用决定时扣住响应头（fit 向 fib 提出的 A41） | 已在 akio 的 main（`dad77a7a`），已锁定 | 1、4 | I72 |
 | A167 | 由别处进行的调用逐次过滤响应 body，trailer 在最后一次调用中（fit 向 fib 提出的 A46） | 已在 akio 的 main（`dad77a7a`），已锁定 | 1、4、5、8 | I72 |
+| A170 | 不经 `Conn::inner` 读取连接的 TCP 计数（以及未读字节），并通过引擎自己的 API 先写数据再拼接 | 已提出（I51b）；在此之前 akit-l4 使用文档中隐藏的 `Conn::inner` | 1、14 | I51b |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -1418,3 +1419,29 @@ body）和 tap；由客户端限速（连接积压超过 256 KiB 时下一次调
 以 trailer 调用 `proxy_on_response_trailers`。`on_end` 把 `proxy_on_done`、`proxy_on_log` 和 `proxy_on_delete`
 排入队列。`response: headers` 不注册 body 过滤器，文件 body 因此仍用 `sendfile`。
 
+## A170 连接的 TCP 计数，以及先写数据再拼接
+
+**状态。** 由 I51b 提出（2026-11-25）。在此之前 akit-l4 通过 `Conn::inner` 拿到套接字，这是一个临时方案
+（[决策 010](decisions/010-sockmap-relay.zh-CN.md)）。
+
+**问题。** `tcp` 服务在上游连接打开后用 `akio::ebpf::Relay` 拼接每个连接。已拼接连接的字节不会到达它的处理器，因此
+akit 读取套接字的计数（`akio::ebpf::byte_counts`）来判断空闲超时，并且只在内核把一侧收到的数据都转发完之后才关闭另一侧。
+`byte_counts` 接受 `&std::net::TcpStream`；需要先写数据的拼接（服务的 PROXY 头、akit 为选择服务而读取的 ClientHello）
+要用 `Relay::splice_inner_with`，它接受 `&ConnInner`；从 `Conn<H>` 到这两者的唯一途径是 `Conn::inner`，它在 akio 的
+文档中被隐藏，用途是 akio 自己的协议 crate。为 `CONNECT` 隧道做同样事情的 akio-socks 把它的拼接控制（`SpliceCtl` 及其
+排空线程）保持为私有。此外，为了知道内核为一侧转发了多少字节，akit 统计用户态从客户端读取的字节；akio-mux 的
+`ProxyProtocol` 读取的 PROXY 头被消耗掉了，却没有说明它有多长，所以 akit 对这样的连接在用户态转发。
+
+**证据。** 在 `dad77a7a`：`crates/akio-ebpf/src/relay.rs` 有 `byte_counts(&TcpStream)` 和
+`Relay::splice_inner_with(&ConnInner, &ConnInner, ..)`；`crates/akio-core/src/conn.rs` 在 `Conn` 上有
+`#[doc(hidden)] pub fn inner(&self) -> &Arc<ConnInner>`；`akio` 没有重新导出 `ConnInner`；
+`crates/akio-mux/src/proxy.rs` 跳过 `skip` 字节后移交连接，却没有记录 `skip`。
+
+**建议的 API。** `Conn::byte_counts() -> io::Result<ByteCounts>`（或 `ebpf::conn_byte_counts(&Conn<H>)`），
+并给 `ByteCounts` 增加 `unread`（`SIOCINQ`），这样代理可以把拼接时的基准取为 `received - unread`，而不必统计用户态读了
+多少；`Relay::splice_conns_with(&Conn<A>, &Conn<B>, first: &[u8])`，在转发的字节之前把 `first` 写到 `b` 的套接字，
+并返回两侧的基准计数；以及 akio-mux 附加的 PROXY 头旁边给出它在线上的长度（`ProxyHeader::wire_len`）。更好的做法是把
+akio-socks 的拼接隧道（计数、空闲探测、关闭时的排空）作为公开类型放进 akio-ebpf。
+
+**akit 的用法。** akit-l4 的 `sockmap` 模块改用这些 API，不再使用 `Conn::inner`，并且对带 `proxy_protocol` 的监听器的
+连接也进行拼接。
