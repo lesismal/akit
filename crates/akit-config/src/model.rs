@@ -2054,15 +2054,14 @@ pub(crate) const WASM_FIELDS: &[&str] = &[
     "max_memory_bytes",
     "max_memory",
     "on_error",
-];
-/// The `wasm` middleware's fields only a Proxy-Wasm plugin uses (I72).
-pub(crate) const WASM_FIT_ONLY: &[&str] = &[
     "vm_config",
     "properties",
     "response",
     "max_streams",
     "max_body_bytes",
 ];
+/// The fields of one of the `wasm` middleware's `properties`.
+pub(crate) const WASM_PROPERTY_FIELDS: &[&str] = &["path", "value"];
 const CACHE_FIELDS: &[&str] = &[
     "zone",
     "max_bytes",

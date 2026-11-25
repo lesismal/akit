@@ -19,3 +19,4 @@
 | [007](007-opentelemetry.zh-CN.md) | OpenTelemetry：fit 的 tracer，通过 akio 的 HTTP 客户端导出 | 已采纳 |
 | [008](008-wasm-runtime.zh-CN.md) | WASM 插件运行在 akio-wasm 上，使用 fit 的 ABI | 已采纳 |
 | [009](009-packaging.zh-CN.md) | 打包：用 rust-lld 链接的静态 musl 二进制，沿用 fit 的镜像、chart 和 unit | 已采纳 |
+| [011](011-proxy-wasm.zh-CN.md) | Proxy-Wasm 子集，与 fit 相同，运行在 akio 的挂起响应头和响应体过滤器上 | 已采纳 |

@@ -169,7 +169,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I69 | 缓存 III：清除与标签 | I68, I27 | done |
 | I70 | `akit build` | I03 | done |
 | I71 | WASM I：运行时与 ABI | I03 | done |
-| I72 | WASM II：Proxy-Wasm 子集 | I71 | todo |
+| I72 | WASM II：Proxy-Wasm 子集 | I71 | done |
 | I73 | `akit adapt` 与 `akit fmt` | I23, I24 | done |
 | I74 | nginx 与 Caddyfile 转换器 | I73 | done |
 | I75 | FastCGI | I16 | done |
@@ -224,7 +224,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | 正向代理：SOCKS 与 HTTP CONNECT | I55 | 否 | 否（已实现，未测） | 对比 fit（原始吞吐另对比 nginx 的 `stream`）：经 SOCKS5 隧道和 HTTP/1.1 CONNECT 隧道的每秒字节数（每次回显 256 KB，同 fit 的 `BenchmarkTCPProxy`），每秒建立的隧道数（握手、规则检查、在线程池上解析名字以及 `connected` 检查），每个空闲隧道的内存；共享端口上 SOCKS 的开销（akio-mux 的问候规则与 HTTP、TLS 并列）对比只有 HTTP；10,000 条隧道时 akio-socks 看门狗线程的开销（ADR-119 在其上增加了连接超时）。 |
 | 响应缓存 | I67、I68、I69 | 否 | 否（内存层、磁盘层与清除已实现、未测量） | 对比 fit，按 I67 的实现：内存命中（4 KiB 与 1 MiB 消息体，HTTP/1.1 与 h2），经代理保存的未命中（旁路复制的流式消息体）对比仅代理，缓存直接放行的请求（POST、`no-store` 响应）对比无中间件的开销，大量键与单个热点键下分片锁的表现。I68：从磁盘读回的命中（64 KiB 与 1 MiB，大量并发下磁盘线程池的线程与队列），未命中率高到填满 `MAX_PENDING_WRITES` 时的磁盘写入，大量客户端对同一个键的惊群，开启锁与 `disable_lock` 两种情况（等待者的挂起与恢复、每次获取一个定时器），以及 stale-while-revalidate 的后台获取。akio ADR-116 的旁路：有旁路的流对比无旁路的流。I69：带标签响应（0 与 32 个标签）对比无标签响应的保存开销，以及服务期间对大 zone 按前缀和按标签清除（分片锁与磁盘索引锁的持有时间）。 |
 | FastCGI | I75 | 否 | 否（已实现，未测量） | 对比 fit 和 nginx 的 `fastcgi_pass`，经 TCP 和 Unix 域套接字连接 PHP-FPM（或立即应答的 FastCGI 应用）：小页面的每秒请求数与延迟，HTTP/1.1 与 h2；1 MiB 上传与 16 MiB 下载（每个进行中请求的内存，双向 64 KiB 水位线）；连接复用对比每个请求一个连接；客户端多于 `max_conns` 时连接池的队列；`try_files` 的开销（每个候选在 akio 逻辑线程池上一次 `stat`）对比不带它的路由；每秒大量请求时，handler 每 100 ms 在 akit 定时器线程（A45 的临时方案）上对其交换的巡检。 |
-| WASM 插件 | I71、I72 | 否 | 否（I71 已实现，未测量） | 对照 fit（wazero 的编译器）和无插件：请求经过 fit 的 `headers` 插件（Go guest）和一个空插件（`fit_on_request` 返回 0），HTTP/1.1 和 h2，每秒请求数和延迟，对比不带该中间件的路由（交给池再交回、复制请求、调用本身）；实例上单独的 guest 调用（akio 的 W5：akio-wasm 的解释器对比 wazero 的解释器和编译器）；客户端多于 `instances` 时的池（队列，超出后 503）；trap 之后重建实例（Go guest 的 `_initialize`）。 |
+| WASM 插件 | I71、I72 | 否 | 否（I71 和 I72 已实现，未测量） | 对照 fit（wazero 的编译器）和无插件：请求经过 fit 的 `headers` 插件（Go guest）和一个空插件（`fit_on_request` 返回 0），HTTP/1.1 和 h2，每秒请求数和延迟，对比不带该中间件的路由（交给池再交回、复制请求、调用本身）；实例上单独的 guest 调用（akio 的 W5：akio-wasm 的解释器对比 wazero 的解释器和编译器）；客户端多于 `instances` 时的池（队列，超出后 503）；trap 之后重建实例（Go guest 的 `_initialize`）。Proxy-Wasm（I72）：请求经过 Proxy-Wasm Go SDK 的 `http_routing`（配置 `1`，请求不变），对照 fit 和无插件，如 fit 的 `BenchmarkProxyWasm`；响应经过 fit 的 `response` 过滤器（`upper`）和 SDK 的 `http_headers`，头部在池上挂起、响应体在池上过滤，一个完整的 4 KiB 响应体和一个流式的 1 MiB 响应体，HTTP/1.1 和 h2，对照 `response: none` 和无插件。 |
 
 ## M0 基础
 
@@ -848,6 +848,9 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 - **做什么**：fit 支持的 Proxy-Wasm 子集。
 - **完成标准**：移植过来的 fit Proxy-Wasm 测试通过。
 - **涉及**：`akit-plugin`。
+- **fit**：决定 018、023。
+- **状态**：已完成（2026-11-25），基于 akio 的挂起响应头和响应体过滤器（ADR-128，akio API 需求 A166 和 A167），
+  见[决定 011](decisions/011-proxy-wasm.zh-CN.md)；开销留给基准测试任务（规则 30，见上表）；见进度日志。
 
 ### I73 `akit adapt` 与 `akit fmt`
 

@@ -1628,6 +1628,11 @@ fn supported_fields_are_read() {
                 && w.wait_timeout == std::time::Duration::from_secs(1)
                 && w.max_memory_bytes == 128 << 20
                 && w.on_error == akit_config::WasmOnError::Fail
+                && w.response == akit_config::WasmResponse::All
+                && w.max_streams == 1024
+                && w.max_body_bytes == 1 << 20
+                && w.vm_config.is_empty()
+                && w.properties.is_empty()
         }),
         ("routes[].middleware[]<wasm>.params.path", wasm(""), |c| {
             wasm_of(c).path == "p.wasm"
@@ -1671,6 +1676,41 @@ fn supported_fields_are_read() {
             "routes[].middleware[]<wasm>.params.on_error",
             wasm(r#", "on_error": "skip""#),
             |c| wasm_of(c).on_error == akit_config::WasmOnError::Skip,
+        ),
+        (
+            "routes[].middleware[]<wasm>.params.vm_config",
+            wasm(r#", "vm_config": "v""#),
+            |c| wasm_of(c).vm_config == "v",
+        ),
+        (
+            "routes[].middleware[]<wasm>.params.properties",
+            wasm(r#", "properties": [{"path": ["a", "b"], "value": "v"}]"#),
+            |c| wasm_of(c).properties.len() == 1,
+        ),
+        (
+            "routes[].middleware[]<wasm>.params.properties[].path",
+            wasm(r#", "properties": [{"path": ["a", "b"]}]"#),
+            |c| wasm_of(c).properties[0].path == ["a", "b"],
+        ),
+        (
+            "routes[].middleware[]<wasm>.params.properties[].value",
+            wasm(r#", "properties": [{"path": ["a"], "value": "v"}]"#),
+            |c| wasm_of(c).properties[0].value == "v",
+        ),
+        (
+            "routes[].middleware[]<wasm>.params.response",
+            wasm(r#", "response": "headers""#),
+            |c| wasm_of(c).response == akit_config::WasmResponse::Headers,
+        ),
+        (
+            "routes[].middleware[]<wasm>.params.max_streams",
+            wasm(r#", "max_streams": 8"#),
+            |c| wasm_of(c).max_streams == 8,
+        ),
+        (
+            "routes[].middleware[]<wasm>.params.max_body_bytes",
+            wasm(r#", "max_body_bytes": 4096"#),
+            |c| wasm_of(c).max_body_bytes == 4096,
         ),
         ("routes[].middleware[]<cache>", cache(""), |c| {
             matches!(c.routes[0].middleware[0], Handler::Cache(_))
@@ -2742,7 +2782,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 61] = [
+    let objects: [(&str, &str, Option<&str>); 62] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         (
             "providers[].kubernetes",
@@ -2894,10 +2934,11 @@ fn akit_config_lists_match_the_inventory() {
         ),
         ("routes[].middleware[]<jwt>.params", "JWT_FIELDS", None),
         ("routes[].middleware[]<cache>.params", "CACHE_FIELDS", None),
+        ("routes[].middleware[]<wasm>.params", "WASM_FIELDS", None),
         (
-            "routes[].middleware[]<wasm>.params",
-            "WASM_FIELDS",
-            Some("WASM_FIT_ONLY"),
+            "routes[].middleware[]<wasm>.params.properties[]",
+            "WASM_PROPERTY_FIELDS",
+            None,
         ),
         (
             "routes[].middleware[]<cache>.params.disk",

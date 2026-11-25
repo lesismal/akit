@@ -498,7 +498,11 @@ fn errors() {
             "",
             "exports neither fit_on_request",
         ),
-        (temp_file("pw.wasm", &proxy_wasm), "", "Proxy-Wasm filter"),
+        (
+            temp_file("pw.wasm", &proxy_wasm),
+            "",
+            "the Proxy-Wasm plugin does not export proxy_on_context_create",
+        ),
     ] {
         let json = config(&wasm(&path, params));
         let config = akit_config::from_json(&json, None).unwrap();
@@ -510,7 +514,7 @@ fn errors() {
     }
     for (params, want) in [
         (r#""on_error": "ignore","#, r#""ignore" is not one of"#),
-        (r#""vm_config": "x","#, "not supported yet"),
+        (r#""response": "body","#, r#""body" is not one of"#),
         (r#""instances": -1,"#, "instances"),
     ] {
         let err = akit_config::from_json(&config(&wasm("x.wasm", params)), None)

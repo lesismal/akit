@@ -152,7 +152,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 410 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 417 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -196,7 +196,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`http.middleware/rate_limit`](#fields-http-middleware-rate-limit) | 9 | 9 | 0 |
 | [`http.middleware/redirect`](#fields-http-middleware-redirect) | 5 | 5 | 0 |
 | [`http.middleware/rewrite`](#fields-http-middleware-rewrite) | 6 | 6 | 0 |
-| [`http.middleware/wasm`](#fields-http-middleware-wasm) | 18 | 11 | 7 |
+| [`http.middleware/wasm`](#fields-http-middleware-wasm) | 18 | 18 | 0 |
 | [`limits`](#fields-limits) | 7 | 3 | 4 |
 | [`listeners`](#fields-listeners) | 30 | 23 | 7 |
 | [`llm`](#fields-llm) | 218 | 0 | 218 |
@@ -277,7 +277,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **合计** | 3821 | 410 | 3411 |
+| **合计** | 3821 | 417 | 3404 |
 
 <a id="fields-access"></a>
 
@@ -1219,19 +1219,19 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `routes[].middleware[]<wasm>.params` | `object` | 已支持 |
 | `routes[].middleware[]<wasm>.params.config` | `string` | 已支持 |
 | `routes[].middleware[]<wasm>.params.instances` | `integer` | 已支持 |
-| `routes[].middleware[]<wasm>.params.max_body_bytes` | `integer` | 尚不支持（not supported yet） |
+| `routes[].middleware[]<wasm>.params.max_body_bytes` | `integer` | 已支持 |
 | `routes[].middleware[]<wasm>.params.max_memory` | `integer, deprecated` | 已支持 |
 | `routes[].middleware[]<wasm>.params.max_memory_bytes` | `integer` | 已支持 |
-| `routes[].middleware[]<wasm>.params.max_streams` | `integer` | 尚不支持（not supported yet） |
+| `routes[].middleware[]<wasm>.params.max_streams` | `integer` | 已支持 |
 | `routes[].middleware[]<wasm>.params.on_error` | `enum(fail\|skip)` | 已支持 |
 | `routes[].middleware[]<wasm>.params.path` | `string, required` | 已支持 |
-| `routes[].middleware[]<wasm>.params.properties` | `array<object>` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<wasm>.params.properties[].path` | `array<string>, required` | 尚不支持（not supported yet） |
-| `routes[].middleware[]<wasm>.params.properties[].value` | `string` | 尚不支持（not supported yet） |
+| `routes[].middleware[]<wasm>.params.properties` | `array<object>` | 已支持 |
+| `routes[].middleware[]<wasm>.params.properties[].path` | `array<string>, required` | 已支持 |
+| `routes[].middleware[]<wasm>.params.properties[].value` | `string` | 已支持 |
 | `routes[].middleware[]<wasm>.params.queue` | `integer` | 已支持 |
-| `routes[].middleware[]<wasm>.params.response` | `enum(all\|headers\|none)` | 尚不支持（not supported yet） |
+| `routes[].middleware[]<wasm>.params.response` | `enum(all\|headers\|none)` | 已支持 |
 | `routes[].middleware[]<wasm>.params.timeout` | `duration` | 已支持 |
-| `routes[].middleware[]<wasm>.params.vm_config` | `string` | 尚不支持（not supported yet） |
+| `routes[].middleware[]<wasm>.params.vm_config` | `string` | 已支持 |
 | `routes[].middleware[]<wasm>.params.wait_timeout` | `duration` | 已支持 |
 
 <a id="fields-limits"></a>
