@@ -2,7 +2,8 @@
 
 [English](010-sockmap-relay.md) | [简体中文](010-sockmap-relay.zh-CN.md)
 
-Status: accepted in I51b (2026-11-25).
+Status: accepted in I51b (2026-11-25); the counters and the splice through akio's own API since
+2026-11-26 (akio API request A170, akio's ADR-156).
 
 ## Context
 
@@ -39,11 +40,16 @@ to fit, which may accept it and ignore it.
   relay cannot take. The config does not change meaning with the host: the bytes, their order, the
   timeouts and the closes are the same either way.
 - **akio's relay, read by its counters.** The relay is akio's, loaded once per process where
-  listeners are bound or reloaded, never on an I/O thread. akit reads a spliced connection's TCP
-  counters for its idle timeout and to close a side only once the kernel has forwarded what the
-  other received. akio has no public way to reach a connection's socket for those counters yet:
-  akit uses the doc-hidden `Conn::inner`, a stopgap recorded with
-  [akio API request A170](../akio-api-requests.md#a170-a-connections-tcp-counters-and-a-splice-with-a-first-write).
+  listeners are bound or reloaded, never on an I/O thread. A connection is spliced with
+  `Relay::tunnel`, which writes what goes first (the service's PROXY header, what the client sent
+  before) ahead of the relayed bytes; what it could not write goes through the engine. The
+  `Tunnel` it gives reads the sockets' TCP counters against its base: for the idle timeout
+  (`Tunnel::moved`, read by the service's sweep; akio's own idle timeout, which never sees the
+  bytes, is turned off for a spliced connection) and to close a side only once the kernel has
+  forwarded what the other received (`Tunnel::close_after_forward`, on akio-ebpf's drain thread).
+  Until 2026-11-26 akit read the counters through the doc-hidden `Conn::inner`, a stopgap
+  [akio API request A170](../akio-api-requests.md#a170-a-connections-tcp-counters-and-a-splice-with-a-first-write)
+  replaced.
 
 ## Consequences
 
@@ -53,6 +59,11 @@ to fit, which may accept it and ignore it.
 - A config with `sockmap` is not a fit config until fit adopts the field; one without it is
   unchanged. Moving between fit and akit stays a binary swap for configs that do not use it.
 - What a spliced connection does is only seen through counters: its idle timeout is checked by the
-  service's sweep (a quarter of the timeout, at most a second), not by each byte.
-- Connections whose PROXY header the listener read are relayed in userspace until akio says how
-  long the header was (A170).
+  service's sweep (a quarter of the timeout, at most a second), not by each byte. Connections
+  relayed in userspace are closed when idle by akio itself (A78), the sweep running only while a
+  service has spliced connections.
+- Connections whose PROXY header the listener read are spliced too: the tunnel's base counts what
+  userspace read of the client's socket, the header included. As akio's ordering contract asks, a
+  connection is spliced only after userspace read all of what had arrived or none of it: its
+  reads are held from the accept, or from the read that brought its ClientHello, and akio reads
+  all a socket holds unless a read fills its buffer (64 KiB).

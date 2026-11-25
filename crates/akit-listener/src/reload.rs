@@ -17,11 +17,13 @@
 //!   then fails.
 //! - **Removed**, the changed ones too, after the swap: [`Engine::shutdown_listener`] stops it
 //!   accepting and drains its connections for [`Options::shutdown_timeout`] (each is asked to
-//!   close, an HTTP/1 one after its response, an HTTP/2 one with `GOAWAY`); HTTP/3 bound by a
-//!   reload is closed with its connections.
-//! - A listener serving HTTP/3 or `udp` that the engine was built with cannot be removed or
-//!   changed: akio removes TCP listeners only, not a UDP one of a running engine (akio API
-//!   request A22). Such a reload is refused and the running config stays.
+//!   close, an HTTP/1 one after its response, an HTTP/2 one with `GOAWAY`). Its UDP side (HTTP/3,
+//!   or a `udp` service's) is drained alike (akio's A22, ADR-155): the engine's own UDP listener
+//!   with [`Engine::shutdown_listener`], a socket a reload bound with [`UdpBinding::shutdown`];
+//!   new peers are dropped, HTTP/3 connections get `GOAWAY` and finish their requests. While a
+//!   UDP listener drains beside its replacement on the same address, the kernel still hands part
+//!   of the new peers to the old sockets, which drop them: such a drain lasts at most
+//!   [`UDP_REPLACED_DRAIN`], a removed one without a replacement the whole drain timeout.
 //!
 //! A kept `tcp` or `udp` listener (I51) hands its new connections to the new graph's service from
 //! the swap on; those the old graph's services still proxy are closed once
@@ -30,6 +32,7 @@
 use std::fmt;
 use std::io;
 use std::net::SocketAddr;
+use std::time::Duration;
 
 use akio::{Engine, Listener as EngineListener, ListenerId, UdpBinding};
 use akit_config::{Listener, Protocol};
@@ -95,18 +98,17 @@ pub struct Reloaded {
     pub kept: usize,
 }
 
+/// The longest a removed UDP listener (HTTP/3, or a `udp` service's) drains while another
+/// listens on its address: the new peers the kernel hashes to its sockets go unanswered
+/// meanwhile (akio's ADR-155), so its HTTP/3 requests in flight get this long to finish, not
+/// the whole drain timeout. A QUIC client whose first packets were dropped sends them again.
+pub const UDP_REPLACED_DRAIN: Duration = Duration::from_secs(2);
+
 /// Why a reload was refused; the running graph and listeners are as they were (but see
 /// [`Listeners::reload`] on a system without `SO_REUSEPORT`).
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum ReloadError {
-    /// It removes or changes a listener serving HTTP/3, or `udp`, that the engine was built
-    /// with: akio cannot remove a UDP listener of a running engine.
-    Udp {
-        /// The listener's name.
-        listener: String,
-        /// Where it listens.
-        address: SocketAddr,
-    },
     /// A new listener cannot be set up (its address does not resolve or is in use, or it asks for
     /// what akit does not support yet).
     Listener(Error),
@@ -115,12 +117,6 @@ pub enum ReloadError {
 impl fmt::Display for ReloadError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ReloadError::Udp { listener, address } => write!(
-                f,
-                "listener {listener:?} on {address} serves UDP (h3 or udp) and is removed or \
-                 changed, which needs a restart: akio cannot remove the UDP listener akit started \
-                 it with"
-            ),
             ReloadError::Listener(e) => e.fmt(f),
         }
     }
@@ -129,7 +125,6 @@ impl fmt::Display for ReloadError {
 impl std::error::Error for ReloadError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            ReloadError::Udp { .. } => None,
             ReloadError::Listener(e) => Some(e),
         }
     }
@@ -138,8 +133,8 @@ impl std::error::Error for ReloadError {
 /// A listener's UDP socket: its HTTP/3, or its `udp` service's.
 #[derive(Debug)]
 enum Udp {
-    /// A UDP listener the engine was built with, which akio cannot remove.
-    Builder(SocketAddr),
+    /// A UDP listener the engine was built with, and where it listens.
+    Builder(ListenerId, SocketAddr),
     /// Bound by a reload.
     Bound(UdpBinding),
 }
@@ -147,7 +142,7 @@ enum Udp {
 impl Udp {
     fn address(&self) -> SocketAddr {
         match self {
-            Udp::Builder(a) => *a,
+            Udp::Builder(_, a) => *a,
             Udp::Bound(b) => b.local_addr(),
         }
     }
@@ -181,19 +176,35 @@ impl Entry {
         })
     }
 
-    /// Stops it listening; `drain`: its TCP connections are drained for that long (none: they
-    /// are left to finish). Its HTTP/3, if a reload bound it, is closed with its connections.
-    fn remove(&self, engine: &Engine, drain: Option<std::time::Duration>) {
+    /// Stops it listening; `drain`: its TCP connections are drained for that long, and its UDP
+    /// side's peers (HTTP/3 connections, `udp` sessions) for `udp_drain` (none: the TCP ones are
+    /// left to finish, the UDP ones closed at once, which frees the address: a UDP listener's
+    /// sockets stay open while it has peers).
+    fn remove(&self, engine: &Engine, drain: Option<Duration>, udp_drain: Option<Duration>) {
         if let Some((id, _)) = self.tcp {
-            // Only `NotFound` (removed already) or `Unsupported` (not TCP) can come back.
+            // Only `NotFound` (removed already) can come back.
             let _ = match drain {
                 Some(d) => engine.shutdown_listener(id, d),
                 None => engine.remove_listener(id),
             };
         }
-        if let Some(Udp::Bound(b)) = &self.udp {
-            b.close();
+        match (&self.udp, udp_drain) {
+            (Some(Udp::Builder(id, _)), Some(d)) => {
+                let _ = engine.shutdown_listener(*id, d);
+            }
+            (Some(Udp::Builder(id, _)), None) => {
+                let _ = engine.shutdown_listener(*id, Duration::ZERO);
+            }
+            (Some(Udp::Bound(b)), Some(d)) => b.shutdown(d),
+            (Some(Udp::Bound(b)), None) => b.close(),
+            (None, _) => {}
         }
+    }
+
+    /// [`remove`](Self::remove) at once, for a listener that never served (opened for a reload
+    /// that failed) or that makes room for its replacement.
+    fn stop(&self, engine: &Engine) {
+        self.remove(engine, None, None);
     }
 }
 
@@ -254,7 +265,7 @@ fn retry<T>(f: impl Fn() -> Result<T, Error>) -> Result<T, Error> {
 
 /// How long [`retry`] waits for an address: 100 tries, 10 ms apart.
 const ROOM_TRIES: u32 = 100;
-const ROOM_WAIT: std::time::Duration = std::time::Duration::from_millis(10);
+const ROOM_WAIT: Duration = Duration::from_millis(10);
 
 /// The listeners of a running engine, moved to each graph [`reload`](Listeners::reload)
 /// publishes.
@@ -300,7 +311,7 @@ impl Listeners {
                     None
                 },
                 udp: if udp_side(&config) {
-                    bound.next().map(|i| Udp::Builder(i.local_addr))
+                    bound.next().map(|i| Udp::Builder(i.id, i.local_addr))
                 } else {
                     None
                 },
@@ -381,7 +392,7 @@ impl Listeners {
                 match self.bind_h3(tls.as_ref().and_then(|c| c.h3.as_ref()), l, addr, room) {
                     Ok(b) => entry.udp = Some(Udp::Bound(b)),
                     Err(e) => {
-                        entry.remove(&self.engine, None);
+                        entry.stop(&self.engine);
                         match e {
                             Error::Address { error, .. } if probed && in_use(&error) => {
                                 last = Some(error);
@@ -399,13 +410,16 @@ impl Listeners {
         ))
     }
 
-    /// Stops listening at once (its connections left to finish) the first running listener of
-    /// `room` not stopped yet that `at` picks; whether there was one.
+    /// Stops listening at once the first running listener of `room` not stopped yet that `at`
+    /// picks; whether there was one, or one stopped already (its TCP side making room before
+    /// its UDP side: a UDP listener's sockets close at its threads' next look, not at once).
     fn make_room(&self, room: &mut [(usize, bool)], at: impl Fn(&Entry) -> bool) -> bool {
         for (j, stopped) in room.iter_mut() {
-            if let Some(e) = self.entries.get(*j).filter(|e| !*stopped && at(e)) {
-                e.remove(&self.engine, None);
-                *stopped = true;
+            if let Some(e) = self.entries.get(*j).filter(|e| at(e)) {
+                if !*stopped {
+                    e.stop(&self.engine);
+                    *stopped = true;
+                }
                 return true;
             }
         }
@@ -471,10 +485,9 @@ impl Listeners {
         match bind() {
             Err(Error::Address { error: e, .. })
                 if in_use(&e)
-                    && self.make_room(
-                        room,
-                        |g| matches!(&g.udp, Some(Udp::Bound(b)) if b.local_addr() == addr),
-                    ) =>
+                    && self.make_room(room, |g| {
+                        g.udp.as_ref().is_some_and(|u| u.address() == addr)
+                    }) =>
             {
                 retry(bind)
             }
@@ -485,9 +498,8 @@ impl Listeners {
     /// Per listener of `graph`, the running one it keeps; and per running listener, whether it
     /// is kept: the first not kept yet that is [`same`] and whose loaded TLS is the same but for
     /// its certificates. A TLS listener whose certificates changed (their files, their contents,
-    /// its ACME names) is kept: its manager serves the new ones from the swap on. Refused when a
-    /// listener serving HTTP/3 that the engine was built with would not be kept.
-    fn keeps(&self, graph: &Graph) -> Result<(Vec<Option<usize>>, Vec<bool>), ReloadError> {
+    /// its ACME names) is kept: its manager serves the new ones from the swap on.
+    fn keeps(&self, graph: &Graph) -> (Vec<Option<usize>>, Vec<bool>) {
         let mut kept = vec![false; self.entries.len()];
         let keeps: Vec<Option<usize>> = graph
             .listeners()
@@ -504,19 +516,7 @@ impl Listeners {
                 })
             })
             .collect();
-        let unspecified = SocketAddr::from(([0, 0, 0, 0], 0));
-        if let Some((e, _)) = self
-            .entries
-            .iter()
-            .zip(&kept)
-            .find(|(e, k)| !**k && matches!(e.udp, Some(Udp::Builder(_))))
-        {
-            return Err(ReloadError::Udp {
-                listener: e.config.name.clone(),
-                address: e.address().unwrap_or(unspecified),
-            });
-        }
-        Ok((keeps, kept))
+        (keeps, kept)
     }
 
     /// What [`reload`](Listeners::reload) would do with `graph`, done without changing anything,
@@ -529,9 +529,9 @@ impl Listeners {
     /// # Errors
     ///
     /// As [`reload`](Listeners::reload)'s: a new listener's address that does not resolve or is
-    /// taken, or a listener serving HTTP/3 that the engine was built with removed or changed.
+    /// taken.
     pub fn plan(&self, graph: &Graph) -> Result<Reloaded, ReloadError> {
-        let (keeps, kept) = self.keeps(graph)?;
+        let (keeps, kept) = self.keeps(graph);
         let mut report = Reloaded {
             kept: keeps.iter().filter(|k| k.is_some()).count(),
             ..Reloaded::default()
@@ -580,13 +580,12 @@ impl Listeners {
     ///
     /// # Errors
     ///
-    /// When a new listener cannot be set up, or a listener serving HTTP/3 that the engine was
-    /// built with is removed or changed; nothing changes then, and `graph` is dropped (its
+    /// When a new listener cannot be set up; nothing changes then, and `graph` is dropped (its
     /// modules cleaned up). Except: a listener that had to stop listening to make room for its
     /// replacement on a system that does not share ports stays stopped, as in fit.
     pub fn reload(&mut self, graph: Graph) -> Result<Reloaded, ReloadError> {
         let configs = graph.listeners().to_vec();
-        let (keeps, kept) = self.keeps(&graph)?;
+        let (keeps, kept) = self.keeps(&graph);
         crate::load_sockmap(configs.iter());
         // The running listeners not kept, by index, and whether they stopped already.
         let mut room: Vec<(usize, bool)> = kept
@@ -609,7 +608,7 @@ impl Listeners {
                     // Nothing changes: the listeners opened for it are closed again; those that
                     // stopped to make room stay stopped.
                     for e in opened.iter().flatten() {
-                        e.remove(&self.engine, None);
+                        e.stop(&self.engine);
                     }
                     let stopped: Vec<usize> =
                         room.iter().filter(|(_, s)| *s).map(|(j, _)| *j).collect();
@@ -625,10 +624,9 @@ impl Listeners {
         }
 
         // The old graph's layer 4 services, whose connections are closed after the drain
-        // timeout (I51), and akio's UDP idle timeout made long enough for the new graph's.
+        // timeout (I51).
         let services: Vec<akit_l4::Service> = self.cell.with(|g| g.services().to_vec());
         let live = self.engine.telemetry().live();
-        live.set_udp_idle_timeout(crate::udp_idle(&graph, live.udp_idle_timeout()));
 
         // The swap: requests go to the new graph from here on, and its write stall timeout to
         // every connection, those open included (akio's live write timeout, ADR-108).
@@ -653,10 +651,22 @@ impl Listeners {
             ..Reloaded::default()
         };
         let drain = self.opts.shutdown_timeout;
+        // The UDP addresses the new listeners took: an old UDP listener there drains briefly.
+        let taken: Vec<SocketAddr> = opened
+            .iter()
+            .flatten()
+            .filter_map(|e| e.udp.as_ref().map(Udp::address))
+            .collect();
         for (j, stopped) in room {
             if let Some(e) = old.get_mut(j).and_then(Option::take) {
                 if !stopped {
-                    e.remove(&self.engine, Some(drain));
+                    let replaced = e.udp.as_ref().is_some_and(|u| taken.contains(&u.address()));
+                    let udp_drain = if replaced {
+                        drain.min(UDP_REPLACED_DRAIN)
+                    } else {
+                        drain
+                    };
+                    e.remove(&self.engine, Some(drain), Some(udp_drain));
                 }
                 report.removed.extend(e.served());
             }

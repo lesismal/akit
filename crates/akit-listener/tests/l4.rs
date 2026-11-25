@@ -432,6 +432,50 @@ fn tcp_idle_timeout() {
     a.wait_conns(1, Duration::from_secs(1));
 }
 
+/// A relay that carries data one way only is not idle, whichever way it goes: a download (the
+/// client never sends) and an upload (the client never receives) outlive the idle timeout
+/// many times over, as each side's own data counts (akio's per-connection idle timeout with
+/// writes counted, A78); both close once quiet.
+#[test]
+fn tcp_one_way_is_not_idle() {
+    let _files = shared();
+    // On "d", sends a byte every 50 ms until the client goes; anything else is read and dropped.
+    let up = backend(|mut s| {
+        let mut b = [0u8; 64];
+        loop {
+            match s.read(&mut b) {
+                Ok(0) | Err(_) => return,
+                Ok(n) if &b[..n] == b"d" => {
+                    while s.write_all(b".").is_ok() {
+                        thread::sleep(Duration::from_millis(50));
+                    }
+                    return;
+                }
+                Ok(_) => {}
+            }
+        }
+    });
+    let a = Akit::start(&tcp_config(r#", "idle_timeout": "300ms""#, &[&up]));
+    let mut down = a.dial();
+    down.write_all(b"d").unwrap();
+    down.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
+    let mut up_only = a.dial();
+    let start = Instant::now();
+    let mut b = [0u8; 1];
+    while start.elapsed() < Duration::from_millis(1200) {
+        down.read_exact(&mut b)
+            .unwrap_or_else(|e| panic!("the download after {:?}: {e}", start.elapsed()));
+        up_only
+            .write_all(b"u")
+            .unwrap_or_else(|e| panic!("the upload after {:?}: {e}", start.elapsed()));
+    }
+    assert_eq!(a.conns(), 2);
+    drop(down);
+    // Quiet now: closed within the idle timeout and an eighth of it (writes are sampled).
+    expect_closed(&mut up_only, Duration::from_secs(2));
+    a.wait_conns(0, Duration::from_secs(2));
+}
+
 /// A connection past the service's `max_conns` is closed at once, and another taken once one
 /// has ended.
 #[test]
@@ -724,6 +768,31 @@ fn udp_reload() {
         b"new",
         "the old client, once drained"
     );
+}
+
+/// A `udp` listener akit started with, removed by a reload (akio's A22): the reload succeeds,
+/// the listener's sessions end, and its address takes no new client.
+#[test]
+fn udp_listener_removed() {
+    let _files = shared();
+    let (up, _) = udp_backend(|_, d| Some(d.to_vec()));
+    let mut a = Akit::start_with(&udp_config("", &[&up]), Duration::from_millis(500), true);
+    let wait = Duration::from_secs(1);
+    let old = a.dial_udp();
+    assert_eq!(exchange(&old, b"x", wait).unwrap(), b"x");
+    a.reload(&tcp_config("", &[&backend(echo)]));
+    // A session's peer gets on_shutdown, which closes it: the socket closes once none is left.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let c = a.dial_udp();
+        if exchange(&c, b"y", Duration::from_millis(100)).is_err() {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the removed udp listener still answers"
+        );
+    }
 }
 
 /// The connections a service proxies are counted until both their sides are over, and the

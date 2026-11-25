@@ -626,11 +626,13 @@ fn guard(ctx: &Context, token: Option<&[u8]>, unix: bool) -> Option<Response> {
         let dashboard = matches!(ctx.method(), Method::Get | Method::Head)
             && dashboard::is_dashboard(ctx.path());
         if !valid && !dashboard {
-            // fit closes the connection too, so that a client cannot try again on it: akio-http
-            // cannot close a connection after a response yet (akio API request A24).
+            // Nothing more is taken on the connection, as fit's: a client cannot try again on
+            // it, and the body it sends is not read (akio closes an HTTP/1 connection after a
+            // response that says `Connection: close`).
             return Some(
                 error(401, "a valid bearer token is needed")
-                    .header("WWW-Authenticate", "Bearer realm=\"akit admin\""),
+                    .header("WWW-Authenticate", "Bearer realm=\"akit admin\"")
+                    .header("Connection", "close"),
             );
         }
     }
@@ -717,13 +719,14 @@ pub(crate) fn read_body(
         ));
     }
     let max = shared.max_body;
-    // What more the client sends is read and dropped, within the body timeout: akio-http cannot
-    // close a connection after a response that refuses its body yet (akio API request A24).
+    // The connection closes after it, the rest of the body not read, as Go's server closes one
+    // whose body passed `MaxBytesReader`'s limit (akio honours `Connection: close`).
     let too_large = move || {
         error(
             413,
             &format!("the body is larger than max_config_bytes, {max}"),
         )
+        .header("Connection", "close")
     };
     let declared = ctx
         .header("Content-Length")
@@ -759,6 +762,8 @@ pub(crate) fn read_body(
                     done(ctx, std::mem::take(&mut data));
                 }
             }
+            // Refused by a bound of akio's (`Context::limit_body`), which answered it.
+            BodyEvent::TooLarge => over = true,
         }
     });
 }

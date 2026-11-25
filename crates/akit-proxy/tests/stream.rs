@@ -836,8 +836,20 @@ fn stream_download() {
         } else {
             let (head, n) = h1_download(akit.addr, length);
             assert!(head.starts_with("HTTP/1.1 200"), "{name}: {head}");
-            // akio streams an HTTP/1.1 response chunked, whatever its length (akio API A35).
-            assert_eq!(field(&head, "transfer-encoding"), Some("chunked"), "{name}");
+            // A streamed HTTP/1.1 response is framed by its length when it has one (akio's
+            // ADR-157), chunked otherwise.
+            if length {
+                let size = SIZE.to_string();
+                assert_eq!(
+                    field(&head, "content-length"),
+                    Some(size.as_str()),
+                    "{name}"
+                );
+                assert_eq!(field(&head, "transfer-encoding"), None, "{name}");
+            } else {
+                assert_eq!(field(&head, "transfer-encoding"), Some("chunked"), "{name}");
+                assert_eq!(field(&head, "content-length"), None, "{name}");
+            }
             n
         };
         assert_eq!(n, SIZE, "{name}");
@@ -952,8 +964,10 @@ fn stream_upload_to_h2c() {
     }
 }
 
-/// fit's `TestUpstreamBreaksMidBody` (`failure_test.go`), over HTTP/1.1: a body that breaks off: once the response has begun, the
-/// client's connection is closed short of the body's end, which is how an HTTP/1.1 client tells.
+/// fit's `TestUpstreamBreaksMidBody` (`failure_test.go`), over HTTP/1.1: a body that breaks off
+/// once the response has begun: the client's connection is closed short of the length the
+/// response declares (akio frames a streamed HTTP/1.1 response by it, ADR-157), which is how an
+/// HTTP/1.1 client tells.
 #[test]
 fn broken_download() {
     let _serial = SERIAL
@@ -967,14 +981,16 @@ fn broken_download() {
     let mut r = BufReader::new(s);
     let head = read_head(&mut r).unwrap();
     assert!(head.starts_with("HTTP/1.1 200"), "{head}");
-    assert_eq!(field(&head, "transfer-encoding"), Some("chunked"));
-    let mut rest = Vec::new();
-    // Read to the end: the connection closes.
-    r.read_to_end(&mut rest).unwrap();
-    assert!(rest.len() >= 1 << 20, "{} bytes", rest.len());
-    assert!(rest.len() < SIZE);
-    assert!(
-        !rest.ends_with(b"0\r\n\r\n"),
-        "the body was ended as if whole"
+    let size = SIZE.to_string();
+    assert_eq!(
+        field(&head, "content-length"),
+        Some(size.as_str()),
+        "{head}"
     );
+    assert_eq!(field(&head, "transfer-encoding"), None, "{head}");
+    let mut rest = Vec::new();
+    // Read to the end: the connection closes, short of the length.
+    r.read_to_end(&mut rest).unwrap();
+    assert_eq!(rest.len(), 1 << 20);
+    assert!(rest.len() < SIZE);
 }

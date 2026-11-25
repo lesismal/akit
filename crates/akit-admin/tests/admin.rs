@@ -450,18 +450,21 @@ fn loads_refused() {
     let mut s = TcpStream::connect(f.api.addr()).unwrap();
     s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
     let chunk = " ".repeat(2048);
-    write!(
-        s,
+    // One write, which the server reads whole: what it refuses is not left unread, which could
+    // make the close a reset that overtakes the answer.
+    let head = format!(
         "POST /load HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\n\r\n{:x}\r\n{chunk}\r\n",
         chunk.len()
-    )
-    .unwrap();
-    let _ = write!(s, "0\r\n\r\n");
-    // The rest of the body is read and dropped, and the connection kept (akio API request A24
-    // would close it, as fit does): the answer is read by its length.
+    );
+    s.write_all(head.as_bytes()).unwrap();
+    // Answered, and the connection closed rather than the rest of the body read, as fit's.
     let r = read_response(&mut s);
     assert_eq!(r.status, 413, "{r:?}");
     assert!(r.body.contains("max_config_bytes, 1024"), "{}", r.body);
+    assert_eq!(r.header("Connection"), Some("close"), "{r:?}");
+    let mut rest = Vec::new();
+    let _ = s.read_to_end(&mut rest);
+    assert!(rest.is_empty(), "{rest:?}");
 
     let r = request(
         f.api.addr(),
@@ -1393,6 +1396,21 @@ fn token() {
             );
         }
     }
+    // A connection that asks without it is closed after the 401, as fit's: the request
+    // pipelined behind it, with the token, is not served.
+    let mut s = TcpStream::connect(f.api.addr()).unwrap();
+    s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+    s.write_all(
+        b"GET /config HTTP/1.1\r\nHost: localhost\r\n\r\n\
+          GET /config HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer s3cret\r\n\r\n",
+    )
+    .unwrap();
+    let r = read_response(&mut s);
+    assert_eq!(r.status, 401, "{r:?}");
+    assert_eq!(r.header("Connection"), Some("close"), "{r:?}");
+    let mut rest = Vec::new();
+    let _ = s.read_to_end(&mut rest);
+    assert!(rest.is_empty(), "{}", String::from_utf8_lossy(&rest));
     // Every endpoint asks for it; with it, a change is applied.
     let r = request(f.api.addr(), "POST", "/rollback/1", &[], None);
     assert_eq!(r.status, 401);

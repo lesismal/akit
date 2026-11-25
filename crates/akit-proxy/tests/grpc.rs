@@ -35,7 +35,7 @@ use akio_http::client::ClientRequest;
 use akio_http::h2client::{H2Client, H2Event, H2Options};
 use akio_http::{BodyEvent, BodyMode, BodyReads, Context, Headers, Request};
 use akit_runtime::upstream::{EngineSlot, Pool};
-use akit_runtime::{Env, GraphCell, Handler, HandlerParams, MAX_BODY_BYTES, Modules, Registry};
+use akit_runtime::{Env, GraphCell, Handler, HandlerParams, Modules, Registry};
 
 fn backend() -> Backend {
     match std::env::var("AKIO_TEST_BACKEND").as_deref() {
@@ -165,7 +165,9 @@ struct Alone(Arc<dyn Handler>);
 
 impl akio_http::Service for Alone {
     fn call(&self, ctx: &mut Context) {
-        ctx.set_local(MAX_BODY_BYTES, "4294967296".to_owned());
+        if ctx.body_reads().is_some() {
+            let _ = ctx.limit_body(4 << 30);
+        }
         self.0.call(ctx);
     }
 
@@ -371,6 +373,7 @@ fn up(ctx: &mut Context, state: &Arc<State>) {
                 stream.finish_with_trailers(t);
             }
         }
+        BodyEvent::TooLarge => {}
     });
 }
 

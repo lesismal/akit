@@ -35,8 +35,11 @@
 //! I16: each listener takes request bodies up to the config's `limits.max_body_bytes` (fit's
 //! 16 MiB by default) over HTTP/1.1, HTTP/2 and HTTP/3, and answers a larger one 413. A request
 //! whose route's handler takes its body as it arrives (`body_mode`, the proxy's) gets it so,
-//! with [`MAX_BODY_BYTES`] telling the handler the limit, which it holds the body to; one that
-//! declares a length past it is answered 413 before its handler runs, as before.
+//! bounded by akio's `Context::limit_body`: past it, the handler's sink hears
+//! `BodyEvent::TooLarge` and the request is answered 413 (by the handler when it took its
+//! response). One that declares a length past it is answered 413 before its handler runs, as
+//! before. A CONNECT's stream (a tunnel, an extended CONNECT's WebSocket) is not bounded: it is
+//! no body.
 //!
 //! I17b: the config's `limits.write_stall_timeout` (fit's 30s by default) is the engine's write
 //! timeout: a connection whose queued output makes no progress for that long is closed, between
@@ -101,7 +104,7 @@ const NOT_FOUND: &str = "404 page not found\n";
 /// fit's answer to a path that has no canonical form ([`akit_router::canonicalize`]).
 const BAD_REQUEST_PATH: &str = "400 bad request path\n";
 
-pub use akit_runtime::{MAX_BODY_BYTES, TLS, TRACEPARENT};
+pub use akit_runtime::{TLS, TRACEPARENT};
 
 /// The akio service of one listener: each request goes to the route the current graph picks for
 /// it on this listener, or is answered 404. Runs on the I/O thread, and only reads the graph.
@@ -114,8 +117,7 @@ pub struct Dispatcher {
     /// The `Alt-Svc` value every response gets, for the TCP side of a listener that also serves
     /// HTTP/3; made once, when the listener is set up.
     alt_svc: Option<String>,
-    /// The listener's `max_body_bytes`, as [`MAX_BODY_BYTES`] gives it to a handler that takes
-    /// its body as it arrives.
+    /// The listener's `max_body_bytes`, which bounds a body that streams to its handler.
     max_body_bytes: u64,
 }
 
@@ -142,8 +144,8 @@ impl Dispatcher {
     }
 
     /// The listener's `max_body_bytes`: a request body streamed to its handler is held to it
-    /// ([`MAX_BODY_BYTES`]), and one that declares a length past it is answered 413 by akio
-    /// before its handler runs. fit's 16 MiB unless set.
+    /// (akio's `Context::limit_body`), and one that declares a length past it is answered 413 by
+    /// akio before its handler runs. fit's 16 MiB unless set.
     #[must_use]
     pub fn max_body_bytes(mut self, n: u64) -> Dispatcher {
         self.max_body_bytes = n;
@@ -515,9 +517,11 @@ impl akio_http::Service for Dispatcher {
             if self.tls {
                 ctx.set_local(TLS, "");
             }
-            if ctx.body_reads().is_some() {
-                // Its body streams (`body_mode`): the handler holds it to the limit.
-                ctx.set_local(MAX_BODY_BYTES, self.max_body_bytes.to_string());
+            if ctx.req().method != Method::Connect {
+                // A body that streams (`body_mode`) is held to the limit by akio, whoever reads
+                // it. Never refused here: `body_mode` buffers a body declared past it, and a
+                // buffered one is within it already (`http_config`).
+                let _ = ctx.limit_body(self.max_body_bytes);
             }
             let slot = metrics.zip(listener.and_then(|i| g.request_slot(i, route.map(|(i, _)| i))));
             // A request answered before its handler returns (fit's inline ones, and the 404) is
@@ -913,16 +917,6 @@ pub(crate) fn load_sockmap<'a>(mut listeners: impl Iterator<Item = &'a Listener>
     }
 }
 
-/// How long akio keeps a UDP peer that sends nothing: at least as long as the longest idle
-/// timeout of the graph's services, which close their sessions themselves. A stopgap for akio
-/// API request A78 (an idle timeout per connection): akio's is the engine's.
-fn udp_idle(g: &akit_runtime::Graph, now: Duration) -> Duration {
-    g.services()
-        .iter()
-        .map(akit_l4::Service::udp_idle_timeout)
-        .fold(now, Duration::max)
-}
-
 /// How many ports [`engine`] tries for listeners at port 0 that serve HTTP/3 beside TCP, whose
 /// UDP port is the one TCP gets and may be taken (fit's `maxPortZeroBinds`).
 const MAX_PORT_ZERO_BINDS: usize = 8;
@@ -1016,7 +1010,8 @@ fn build(cell: &GraphCell, opts: &Options) -> Result<Engine, (Error, bool)> {
     // fit's limits.write_stall_timeout is akio's write timeout: a connection whose queued output
     // makes no progress for it is closed (a reload changes it, `Listeners::reload`).
     cfg.write_timeout = Some(cell.with(akit_runtime::Graph::write_stall_timeout));
-    cfg.udp_idle_timeout = cell.with(|g| udp_idle(g, cfg.udp_idle_timeout));
+    // A `udp` service's sessions have its idle timeout, which akio keeps per session (A78); the
+    // engine's UDP idle timeout is left to HTTP/3's peers.
     let mut b = Engine::builder().config(cfg);
     for (l, tls) in &listeners {
         let fail = |e: Error| (e, false);

@@ -168,6 +168,7 @@ impl akio_http::Service for Service {
                 let _ = tx.send(seen.clone());
                 reply(ctx, &seen);
             }
+            BodyEvent::TooLarge => {}
         });
     }
 

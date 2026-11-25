@@ -32,14 +32,15 @@
 //!   HTTP/2 and HTTP/3 without `Content-Length`), reaches the proxy as it arrives
 //!   ([`BodyMode::Stream`]) and goes up as it does, framed as it came: by its length, or chunked.
 //!   While the upstream is behind, the client's reads are held. A smaller one arrives whole and
-//!   goes up whole. Either is held to the listener's `limits.max_body_bytes`: one that declares
-//!   a length past it is answered 413 before the handler runs, and one that grows past it 413
-//!   when it does, as fit answers both.
+//!   goes up whole. Either is held to the listener's `limits.max_body_bytes` (and a
+//!   `body_limit`'s, akio's `Context::limit_body`): one that declares a length past it is
+//!   answered 413 before the handler runs, and one that grows past it 413 when it does (its
+//!   response cut short if it began), as fit answers both.
 //! - A response body of a length within 64 KiB is sent whole; any other as it arrives, the
-//!   upstream's reads held while the client is behind. akio sends an HTTP/1.1 response that
-//!   streams chunked, its length dropped, until it can frame one by its length (akio API request
-//!   A35); HTTP/2 and HTTP/3 keep it. A response that breaks off mid-body closes the client's
-//!   connection, which tells the client its body is short.
+//!   upstream's reads held while the client is behind. A streamed response keeps its length on
+//!   every version (on HTTP/1.1 akio frames it by it, ADR-157), but on HTTP/1.1 one with
+//!   trailers, which goes chunked to carry them. A response that breaks off mid-body closes the
+//!   client's connection, which tells the client its body is short.
 //!
 //! I17 brings timeouts, cancellation and trailers, as fit's proxy has them:
 //!
@@ -136,8 +137,7 @@ use akio_http::{BodyMode, Context, Method, Request, Response};
 use akit_config::Network;
 use akit_runtime::upstream::{Error, Keys, Split};
 use akit_runtime::{
-    Handler, HandlerParams, Info, MAX_BODY_BYTES, Provision, ProvisionError, Provisioned, TLS,
-    TRACEPARENT,
+    Handler, HandlerParams, Info, Provision, ProvisionError, Provisioned, TLS, TRACEPARENT,
 };
 
 /// The largest request body the proxy takes whole: a larger one, or one of no declared length,
@@ -285,10 +285,6 @@ impl akio_http::Service for Proxy {
         let head = req.method == Method::Head;
         let version = req.version;
         let length = declared_length(req);
-        let limit = ctx
-            .local(MAX_BODY_BYTES)
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(akit_config::DEFAULT_MAX_BODY_BYTES);
         if asked != websocket::Asked::No {
             let log = akit_observe::logged().then(|| relay::Logged {
                 addr: pool.addresses().nth(backend).unwrap_or_default().to_owned(),
@@ -312,8 +308,7 @@ impl akio_http::Service for Proxy {
         let announced = !names.is_empty();
         // A body that streams goes up chunked when it came so or carries trailers.
         let chunked = length.is_none() || announced;
-        let Some((client, streamed)) = relay::start(ctx, limit, chunked, names, cancel, grpc)
-        else {
+        let Some((client, streamed)) = relay::start(ctx, chunked, names, cancel, grpc) else {
             // Answered already: nothing left to do.
             return;
         };

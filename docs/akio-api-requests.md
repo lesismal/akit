@@ -40,20 +40,20 @@ first; its status here records the branch, then the akio commit akit pins.
 | A19 | An HTTP client request whose body is sent as it is produced, with backpressure | in akio's main (`60547435`), pinned, used by I16 | 5, 8 | I16, I17, I18, I49, I75 |
 | A20 | An HTTP client response delivered as it arrives, its reads held and resumed | in akio's main (`60547435`), pinned, used by I16 | 5, 8 | I16, I17, I18, I67 |
 | A21 | A server request that holds its client's reads and hears when its client drained | in akio's main (`60547435`), pinned, used by I16 | 5, 8 | I16, I47, I75 |
-| A22 | UDP listeners removed and drained on a running engine | requested (I22) | 10, 11 | I22, I28 |
+| A22 | UDP listeners removed and drained on a running engine | done on akio branch `claude/akit-open-requests` (`22bc4402`, akio's ADR-155), used by akit (pin not moved yet) | 10, 11 | I22, I28 |
 | A23 | Unix-domain stream listeners (with a socket file mode) | in akio's main (`4989cd8b`), pinned | 11 | I26, I29 |
-| A24 | An HTTP/1 response that closes its connection, and stops reading a body it refused | requested (I26) | 7, 10, 11 | I26, I27, I41 |
+| A24 | An HTTP/1 response that closes its connection, and stops reading a body it refused | done on akio branch `claude/akit-open-requests` (`22bc4402`, akio's ADR-157), used by akit (pin not moved yet) | 7, 10, 11 | I26, I27, I41 |
 | A29 | A response hook without an allocation: a listener's observer, called with a few words the request set | done on akio branch `claude/akit-open-requests` (`8caab91c`, akio's ADR-158), used by akit (pin not moved yet) | 13 | I21, I37, I64 |
 | A30 | The open connections a listener accepted, apart from dialed ones and UDP peers | done on akio branch `claude/akit-open-requests` (`57a942af`), used by akit (pin not moved yet) | — | I37 |
 | A32 | Where an `akio-regex` pattern matches, its groups, and replacing them | in akio's main (`e9891b52`), pinned | 19 | I40, I48 |
 | A33 | A request's fields and target changed by a middleware (`Context::req_mut`) | in akio's main (`dad77a7a`), pinned | 12, 19 | I40, I43, I44, I71 |
-| A35 | A streamed HTTP/1.1 response framed by its length | requested (I16) | 5 | I16, I67 |
+| A35 | A streamed HTTP/1.1 response framed by its length | done on akio branch `claude/akit-open-requests` (`22bc4402`, akio's ADR-157), used by akit (pin not moved yet) | 5 | I16, I67 |
 | A36 | An HTTP client request's response-header and idle timeouts | in akio's main (`4f7169c4`), pinned, used by I17b | 10 | I17b, I18 |
 | A37 | An HTTP client request cancelled at any point | in akio's main (`4f7169c4`), pinned, used by I17b | 3 | I17b, I45 |
 | A38 | A detached server request that hears its client went; a write stall timeout changed at run time | in akio's main (`4f7169c4`), pinned, used by I17b | 3, 10 | I17b, I49 |
 | A45 | A public timer: a callback run once a delay has passed, from any thread | done on akio branch `claude/akit-open-requests` (`22e038cc`, akio's ADR-154), used by akit (pin not moved yet) | 1, 11 | I35, I31, I52, I54 |
 | A48 | A request's end heard: its response sent in full, or its client gone while it waits | in akio's main (`dad77a7a`), pinned | 3, 11, 13 | I41, I17, I21, I37 |
-| A49 | A request body limited by a middleware, whoever reads the body | requested (I41) | 7, 11 | I41 |
+| A49 | A request body limited by a middleware, whoever reads the body | done on akio branch `claude/akit-open-requests` (`22bc4402`, akio's ADR-157), used by akit (pin not moved yet) | 7, 11 | I41 |
 | A51 | `H2Client`'s streamed requests: reset, timeout, request trailers, and failed rather than forgotten on a `GOAWAY` | in akio's main (`f6750e93`, ADR-110), pinned, used by I18b 3, 10 | I18b, I50 |
 | A52 | `H2Client` backpressure per stream: a streamed response's reads held, an upload's queue reported | in akio's main (`f6750e93`, ADR-110), pinned, used by I18b 8 | I18b, I50 |
 | A53 | `H2Client`'s connection: the server's stream limit heeded and reported, the connect timeout, ALPN's HTTP/1.1 fallback | in akio's main (`f6750e93`, ADR-110), pinned, used by I18b 10, 11 | I18b, I54 |
@@ -65,7 +65,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | A65 | A request suspended by a middleware and resumed with its context | in akio's main (`4f7169c4`), pinned | 1, 3, 4 | I42, I43 |
 | A66 | `H2Client`'s requests heeding `response_header_timeout`, `response_idle_timeout` and a `CancelToken` | in akio's main (`d27e6a20`, ADR-111), pinned, used by I18b | 3, 10 | I17b, I18b |
 | A75 | A request whose body streams suspended, its body's reads held until it is resumed | done on akio branch `claude/akit-open-requests` (`a88c5d7b`, akio's ADR-159), used by akit (pin not moved yet) | 5, 7, 8 | I42, I43, I44 |
-| A78 | An idle timeout per connection, TCP or a UDP peer, set by its handler | requested (I51) | 10, 11 | I51, I55 |
+| A78 | An idle timeout per connection, TCP or a UDP peer, set by its handler | done on akio branch `claude/akit-open-requests` (`22bc4402`, akio's ADR-155), used by akit (pin not moved yet) | 10, 11 | I51, I55 |
 | A79 | `Engine::dial` and `dial_udp` with a connect timeout of their own | done on akio branch `claude/akit-open-requests` (`22e038cc`, akio's ADR-154), used by akit (pin not moved yet) | 10 | I51, I54, I55 |
 | A90 | A streamed response's coding set by a response filter of the caller's own, and a value kept until the response is sent | in akio's main (`c5cf4353`), pinned | 8, 11 | I47 |
 | A91 | `Files` keeping compressed copies of the files it holds in memory | in akio's main (`c5cf4353`), pinned | 4, 12 | I47 |
@@ -83,11 +83,11 @@ first; its status here records the branch, then the akio commit akit pins.
 | A133 | A proxy's connect timeout of its own, answered (SOCKS5 4, HTTP 504) | in akio's main (`8453b60c`), pinned | 10 | I55 |
 | A134 | CONNECT tunnels over HTTP/2 and HTTP/3 (RFC 9113 §8.5, RFC 9114 §4.4) | in akio's main (`4989cd8b`), pinned | 9, 19 | I55 |
 | A135 | Dialing a Unix-domain stream socket, and the HTTP client over one (akio, akio-http, akio-sys) | in akio's main (`0f2c419b`), pinned | 1, 2 | I58 |
-| A148 | The address a request came to (the listener's local address), on HTTP/1.1, h2 and h3 | requested (I75) | — | I75 |
+| A148 | The address a request came to (the listener's local address), on HTTP/1.1, h2 and h3 | done on akio branch `claude/akit-open-requests` (`22bc4402`, akio's ADR-157), used by akit (pin not moved yet) | — | I75 |
 | A165 | A WebAssembly runtime for plugins: a sandboxed interpreter, its host API, WASI preview 1, a pool of instances; the response hooks Proxy-Wasm needs | in akio's main (`dad77a7a`), pinned | 1, 4, 11 | I71, I72 |
 | A166 | A response's head held while a call made elsewhere decides on it (fit's A41 from fib) | in akio's main (`dad77a7a`), pinned | 1, 4 | I72 |
 | A167 | A response body filtered by calls made elsewhere, one at a time, its trailers in the last (fit's A46 from fib) | in akio's main (`dad77a7a`), pinned | 1, 4, 5, 8 | I72 |
-| A170 | A connection's TCP counters (and unread bytes) without reaching into `Conn::inner`, and a splice that writes first through the engine's own API | requested (I51b); akit-l4 uses the doc-hidden `Conn::inner` meanwhile | 1, 14 | I51b |
+| A170 | A connection's TCP counters (and unread bytes) without reaching into `Conn::inner`, and a splice that writes first through the engine's own API | done on akio branch `claude/akit-open-requests` (`22bc4402`, akio's ADR-156), used by akit (pin not moved yet) | 1, 14 | I51b |
 
 ## A1 TCP listeners on a running engine
 
@@ -543,6 +543,8 @@ HTTP/1.1, HTTP/2 and HTTP/3); I16 does as above.
 
 ## A22 Removing a UDP listener of a running engine
 
+**Status.** Built on akio branch `claude/akit-open-requests` (`22bc4402`, akio's ADR-155); used by akit, the pin not moved yet. `Engine::remove_listener` and `Engine::shutdown_listener` take per-peer UDP listeners (new peers dropped, the others drained, closed at the deadline), `UdpBinding::shutdown` drains a socket bound at run time, and akio-h3 sends `GOAWAY` to a draining listener's connections. akit-listener's reload removes and changes listeners serving `h3` or `udp` as it does TCP ones: the refusal (`ReloadError::Udp`) is gone; the engine's own UDP listener is drained with `shutdown_listener`, one a reload bound with `UdpBinding::shutdown`. A UDP listener replaced on its own address drains for at most `UDP_REPLACED_DRAIN` (2 s), since the new peers the kernel hashes to its sockets go unanswered meanwhile; one removed with nothing in its place drains for the whole drain timeout. Tests: `reload_knows_h3_listeners` and `reload_drains_h3` in akit-listener's `h3` (a startup h3 listener removed, and replaced on its address; a request in flight answered), `udp_listener_removed` in its `l4`.
+
 **Problem.** A1 adds, removes and drains TCP listeners at run time; a UDP listener given to the
 builder cannot be removed (`Engine::remove_listener` answers `Unsupported`). akit serves HTTP/3
 on such a listener, so a reload (or an Admin API change) that removes or changes a listener
@@ -587,6 +589,8 @@ file replaced, one in use or a file that is not a socket `AddrInUse`; addresses 
 file left for the caller. akit's Admin API listens there (0600) and removes the file on shutdown.
 
 ## A24 An HTTP/1 response that closes its connection
+
+**Status.** Built on akio branch `claude/akit-open-requests` (`22bc4402`, akio's ADR-157); used by akit, the pin not moved yet. An HTTP/1 response that says `Connection: close` closes its connection once sent, from any path, holds its reads (the body it refused is not read) and serves no request pipelined behind it. The Admin API's 401 (`guard`) and `read_body`'s 413s say `Connection: close`, as fit's do; so does `body_limit`'s 413 for a body that streams. Tests: akit-admin's `token` (a request pipelined behind a 401 not served) and `loads_refused` (the connection closed after a 413, the rest of the body not read), akit-middleware's `body_limit_closes_http1`.
 
 **Problem.** A service that refuses a request before reading its body (413 for a body past a
 limit it found mid-stream, or one whose `Content-Length` is already too large on a streamed
@@ -740,6 +744,8 @@ request resumed from the plugin's pool.
 
 ## A35 A streamed HTTP/1.1 response framed by its length
 
+**Status.** Built on akio branch `claude/akit-open-requests` (`22bc4402`, akio's ADR-157); used by akit, the pin not moved yet. `stream_response` frames an HTTP/1.1 body by the `Content-Length` its head gives: a body short of it closes the connection, a write past it is refused, and a stream coding or a body filter drops the length and goes chunked. The proxy keeps an upstream's length on every version (but on HTTP/1.1 a response with trailers goes chunked, which alone carries them), and the FastCGI handler keeps the application's (one that is not a number is dropped). Tests: `stream_download` and `broken_download` in akit-proxy's `stream` (framed by its length; cut short of it, the connection closed).
+
 **Problem.** A proxy that streams an upstream's response of a known length should send it with
 that length, as fit does: the client then knows how much is coming (a download's progress, a
 range's end) and can tell a body cut short from a whole one by its framing. akio-http's server
@@ -831,6 +837,8 @@ time a streamed response to its head, and write its `Content-Length` as its size
 cost per streamed response): a follow-up.
 
 ## A49 A request body limited by a middleware
+
+**Status.** Built on akio branch `claude/akit-open-requests` (`22bc4402`, akio's ADR-157); used by akit, the pin not moved yet. `Context::limit_body` bounds a request's body for whoever reads it. Past it, a streamed body's sink hears the new `BodyEvent::TooLarge` and is dropped, and the request is answered 413 unless its handler took the response. `BodyEvent` gaining a variant is a breaking change of akio's (the enum is exhaustive): every sink of akit's matches it (the proxy's, the WebSocket tunnel's, the FastCGI handler's, the Admin API's, the tests'). akit-listener bounds every streamed body with `limit_body(max_body_bytes)`, but a CONNECT's (a tunnel's or an extended CONNECT's stream, which is no body); `body_limit` calls `limit_body(max_bytes)` for every request, after answering itself, in fit's words, a body declared past it or buffered past it (akio's own 413 says "Payload Too Large"); the proxy and the FastCGI handler hear `TooLarge` and answer 413, or cut the response short if it began, giving the upstream request up. akit-runtime's `MAX_BODY_BYTES` local, which the handlers held a streamed body to, is gone. Tests: akit-middleware's `body_limit`, `body_limit_streamed`, `body_limit_h2` (h2c: under, at and over, declared and growing, to a buffering handler and to the proxy) and `body_limit_closes_http1`; akit-handler's `streamed_body_limit` (the FastCGI handler over HTTP/1.1 and h2c).
 
 **Problem.** fit's `body_limit` (fib's `Context.LimitBody`) bounds a request's body for whatever
 handler reads it: a streamed body that grows past the limit fails in the handler's `OnBody` with
@@ -1262,6 +1270,8 @@ once with `HeaderTimeout`, `IdleTimeout` or `Cancelled`. I18b drops the per-addr
 
 ## A78 An idle timeout per connection
 
+**Status.** Built on akio branch `claude/akit-open-requests` (`22bc4402`, akio's ADR-155); used by akit, the pin not moved yet. `Conn::set_idle_timeout` and `Conn::set_idle_counts_writes`. akit-l4 gives each relay's client and upstream connections, and each UDP session's two sides, the service's idle timeout with the data they send counted, and akio closes them on their I/O threads. The service's sweep of every connection is gone; it stays for spliced connections alone, whose bytes akio never sees (their akio idle timeout turned off; A170's `Tunnel::moved`). akit-listener no longer raises the engine's UDP idle timeout to the longest of the services' (`udp_idle`, at start and on reload): it is HTTP/3's peers' alone. Tests: `tcp_one_way_is_not_idle` (a download and an upload outlive the idle timeout, and close once quiet) besides `tcp_idle_timeout` and `udp_sessions_expire` in akit-listener's `l4`.
+
 **Problem.** fit's layer 4 services (I51) close a connection, or a UDP session, that carries
 nothing either way for the service's `idle_timeout`: 10 minutes for TCP and 1 for UDP by default,
 each service its own. akio has idle timeouts for the whole engine only: `Config::idle_timeout`
@@ -1571,6 +1581,8 @@ to be merged onto akio's main.
 
 ## A148 The address a request came to
 
+**Status.** Built on akio branch `claude/akit-open-requests` (`22bc4402`, akio's ADR-157); used by akit, the pin not moved yet. `Request::local` and `Context::local_addr`. The FastCGI handler's `SERVER_ADDR` and `SERVER_PORT` are the address the request came to, as fit's are from its TCP connection; with none (port 0: a Unix-domain socket), as before, empty and the `Host` field's port. Over HTTP/3 akio gives the UDP socket's address, which akit uses where fit (whose address comes from a TCP connection only) leaves `SERVER_ADDR` empty. Tests: `server_address` in the handler's `params` and `params` in akit-handler's `fastcgi`.
+
 **Problem.** A FastCGI application reads the address and port a request came to as CGI's
 `SERVER_ADDR` and `SERVER_PORT` (PHP's `$_SERVER['SERVER_ADDR']`), which fit fills from its
 connection's local address. A handler on akio's `Context` sees the request's peer
@@ -1776,8 +1788,7 @@ dropped, rather than from `on_end`.
 
 ## A170 A connection's TCP counters, and a splice with a first write
 
-**Status.** Requested by I51b (2026-11-25). akit-l4 reaches the sockets through `Conn::inner`
-meanwhile, a stopgap ([decision 010](decisions/010-sockmap-relay.md)).
+**Status.** Built on akio branch `claude/akit-open-requests` (`22bc4402`, akio's ADR-156); used by akit, the pin not moved yet. `akio::ebpf::{Relay::tunnel, Tunnel, TunnelSide, conn_byte_counts, ByteCounts::unread, ByteCounts::consumed, SpliceError}` and akio-mux's `ProxyHeader::wire_len`. akit-l4 splices with `Relay::tunnel` (what of `first` the splice did not write goes through the engine, by `SpliceError::written`), and follows a spliced connection with `Tunnel::moved` (its idle timeout, by the service's sweep), `Tunnel::close_after_forward` (a side's end, on akio-ebpf's drain thread) and `Tunnel::late_payload`; `Conn::inner`, akit's own counters and its drain on akio's timer are gone. A connection that began with a PROXY header the listener read is spliced too: the tunnel's base counts what userspace read. [Decision 010](decisions/010-sockmap-relay.md) says so. Tests: akit-listener's `sockmap`, run as root on Linux (`client_proxy_header_spliced` now expects a splice).
 
 **Problem.** A `tcp` service splices each connection with `akio::ebpf::Relay` once its upstream
 opens. A spliced connection's bytes never reach its handlers, so akit reads the sockets' counters

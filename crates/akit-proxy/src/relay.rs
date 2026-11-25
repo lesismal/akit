@@ -6,8 +6,10 @@
 //!   in the upstream connection's queue, the client's reads are held ([`BodyReads`]), and resumed
 //!   once the queue has drained: the client waits in TCP (or for HTTP/2 and HTTP/3 window), not
 //!   in akit's memory. What arrives before the upstream connection is ready waits here, the
-//!   client's reads held meanwhile: one read's worth at most. A body that grows past the
-//!   listener's `max_body_bytes` is answered 413, as fit answers it.
+//!   client's reads held meanwhile: one read's worth at most. A body that grows past its bound
+//!   (the listener's `max_body_bytes`, or a `body_limit`'s: akio's `Context::limit_body`, which
+//!   tells the sink [`BodyEvent::TooLarge`]) is answered 413, as fit answers it, or its response
+//!   cut short if it began; the upstream request is given up either way.
 //! - **Down.** A response of a length within [`WHOLE_RESPONSE`] is collected and sent whole, as
 //!   fit sends one that arrived complete; any other is sent as it arrives
 //!   ([`Detached::stream_response`]). While more than [`DOWNLOAD_PENDING`] of it waits for the
@@ -66,6 +68,9 @@ struct Shared {
     /// The client went (before its body ended, or before the response was over): the upstream
     /// request was given up for it.
     gone: bool,
+    /// The client's body passed its bound: the upstream request was given up for it, which is
+    /// no failure of the address's.
+    refused: bool,
     /// The request's content type when it is a gRPC call (I50), whose failures are answered as
     /// gRPC answers them.
     grpc: Option<String>,
@@ -81,7 +86,7 @@ struct Upload {
     pending: Vec<u8>,
     /// The client's body ended (with these trailers) before `body` was there.
     end: Option<Headers>,
-    /// Given up: past the limit, or the exchange is over. What still arrives is dropped.
+    /// Given up: past its bound, or the exchange is over. What still arrives is dropped.
     done: bool,
 }
 
@@ -124,12 +129,11 @@ pub(crate) struct Client {
 }
 
 /// Starts relaying `ctx`'s request: takes its body's reads when it streams (registering its body
-/// sink, held to `limit`, sent up `chunked` with the trailers of `names`), has `cancel`
-/// cancelled when its client goes, and detaches it. `grpc` is the request's content type when it
-/// is a gRPC call. `None` when it was answered already.
+/// sink, sent up `chunked` with the trailers of `names`), has `cancel` cancelled when its client
+/// goes or its body passes its bound, and detaches it. `grpc` is the request's content type when
+/// it is a gRPC call. `None` when it was answered already.
 pub(crate) fn start(
     ctx: &mut Context,
-    limit: u64,
     chunked: bool,
     names: Vec<String>,
     cancel: CancelToken,
@@ -141,12 +145,14 @@ pub(crate) fn start(
         answer: None,
         up: Upload::default(),
         gone: false,
+        refused: false,
         grpc,
     }));
     // The client gone, whenever: the upstream request given up, wherever it is. Weak: akio keeps
     // the callback with the answer, which `shared` holds. Run at once if it went already, before
     // the answer is put there (the lock is not held).
     let weak = Arc::downgrade(&shared);
+    let refuse = cancel.clone();
     ctx.on_gone(move || {
         if let Some(s) = weak.upgrade() {
             lock(&s).gone = true;
@@ -159,8 +165,7 @@ pub(crate) fn start(
         let mut sink = Sink {
             shared: shared.clone(),
             reads: reads.clone(),
-            limit,
-            received: 0,
+            cancel: refuse,
             chunked,
             names: names.clone(),
             ended: false,
@@ -189,6 +194,7 @@ impl Client {
                     ..Upload::default()
                 },
                 gone: false,
+                refused: false,
                 grpc: None,
             })),
             reads: None,
@@ -209,8 +215,8 @@ impl Client {
 struct Sink {
     shared: Arc<Mutex<Shared>>,
     reads: BodyReads,
-    limit: u64,
-    received: u64,
+    /// The upstream request's, given up when the body passes its bound.
+    cancel: CancelToken,
     chunked: bool,
     /// The trailers the request announced: only those go up.
     names: Vec<String>,
@@ -223,14 +229,11 @@ impl Sink {
         match ev {
             BodyEvent::Chunk(data) => self.chunk(data),
             BodyEvent::End(trailers) => self.end(trailers),
+            BodyEvent::TooLarge => self.too_large(),
         }
     }
 
     fn chunk(&mut self, data: &[u8]) {
-        self.received = self.received.saturating_add(data.len() as u64);
-        if self.received > self.limit {
-            return self.too_large();
-        }
         let body = {
             let s = lock(&self.shared);
             if s.up.done {
@@ -285,25 +288,31 @@ impl Sink {
         finish(body, &trailers, self.chunked);
     }
 
-    /// The body grew past the listener's `max_body_bytes`: answered 413, as fit answers it, and
-    /// the upstream request given up.
+    /// The body grew past its bound (akio's `Context::limit_body`: the listener's
+    /// `max_body_bytes`, or a `body_limit`'s), and akio reads no more of it: answered 413, as fit
+    /// answers it, when the response has not begun, and the upstream request given up, which
+    /// cuts short a response that has (fit's upload failing under it).
     fn too_large(&mut self) {
         self.ended = true;
         let (body, answer, grpc) = {
             let mut s = lock(&self.shared);
-            if s.up.done {
-                return;
-            }
-            s.up.done = true;
-            s.up.pending = Vec::new();
-            (s.up.body.take(), s.answer.take(), s.grpc.clone())
+            s.refused = true;
+            let body = if s.up.done {
+                None
+            } else {
+                s.up.done = true;
+                s.up.pending = Vec::new();
+                s.up.end = None;
+                s.up.body.take()
+            };
+            (body, s.answer.take(), s.grpc.clone())
         };
         // Unfinished, it closes the upstream connection.
         drop(body);
-        self.reads.hold(false);
         if let Some(answer) = answer {
             answer.respond(crate::failure(413, grpc.as_deref()));
         }
+        self.cancel.cancel();
     }
 }
 
@@ -593,21 +602,22 @@ impl Exchange for Relay {
             return;
         }
         let Some(answer) = self.answer() else {
-            // Answered already (a body past the limit): the response is not wanted.
+            // Answered already (a body past its bound): the response is not wanted.
             up.cancel();
             self.out = Out::Done;
             return;
         };
-        // HTTP/2 and HTTP/3 keep the length; akio sends an HTTP/1.1 response that streams
-        // chunked, and has no way yet to send it framed by its length (akio API request A35).
-        let keep_length =
-            length.is_some() && matches!(self.version, Version::Http2 | Version::Http3);
+        // Its trailers follow it, as their announcement does (fit's `begin`).
+        let names = headers::trailer_names(&head.headers);
+        // The length is kept: akio frames an HTTP/1.1 response that streams by it (ADR-157),
+        // and its client can tell a body cut short. But on HTTP/1.1 a response with trailers is
+        // sent chunked, which alone carries them; HTTP/2 and HTTP/3 carry both.
+        let keep_length = length.is_some()
+            && (names.is_empty() || matches!(self.version, Version::Http2 | Version::Http3));
         let mut fields = headers::incoming(&head.headers, keep_length);
         if let Some(c) = self.set_cookie.take() {
             fields.append("Set-Cookie", c);
         }
-        // Its trailers follow it, as their announcement does (fit's `begin`).
-        let names = headers::trailer_names(&head.headers);
         if !names.is_empty() {
             fields.append("Trailer", names.join(", "));
         }
@@ -617,7 +627,7 @@ impl Exchange for Relay {
                 self.out = Out::Stream {
                     stream,
                     up,
-                    framed: length.is_some(),
+                    framed: keep_length,
                 }
             }
             None => {
@@ -727,9 +737,10 @@ impl Exchange for Relay {
         }
     }
 
-    /// The client gone, or the proxy's own timeout passed (fit's `timedOut`): neither is the
-    /// address's failure.
+    /// The client gone, its body refused, or the proxy's own timeout passed (fit's `timedOut`):
+    /// none is the address's failure.
     fn gave_up(&self) -> bool {
-        lock(&self.shared).gone || self.timed_out()
+        let s = lock(&self.shared);
+        s.gone || s.refused || self.timed_out()
     }
 }

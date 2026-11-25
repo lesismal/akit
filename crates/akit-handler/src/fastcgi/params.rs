@@ -38,6 +38,9 @@ pub(crate) struct Request<'a> {
     pub(crate) version: Version,
     pub(crate) headers: &'a Headers,
     pub(crate) peer: SocketAddr,
+    /// The address the request came to: unspecified, port 0, where there is none (a
+    /// Unix-domain socket).
+    pub(crate) local: SocketAddr,
     pub(crate) tls: bool,
     /// The body's length when known: declared, or the whole body's.
     pub(crate) length: Option<u64>,
@@ -71,7 +74,7 @@ impl Params {
             ("http", "80")
         };
         let host = r.headers.get("host").unwrap_or("");
-        let (server_name, port) = split_host(host);
+        let (server_name, host_port) = split_host(host);
         let query = r.target.split_once('?').map_or("", |(_, q)| q);
         let protocol = match r.version {
             Version::Http10 => "HTTP/1.0",
@@ -84,10 +87,19 @@ impl Params {
         add(&mut head, "SERVER_SOFTWARE", "akit");
         add(&mut head, "SERVER_PROTOCOL", protocol);
         add(&mut head, "SERVER_NAME", server_name);
-        // The address the request came to is not known yet (akio API request A148): as fit's
-        // when its connection is not TCP, empty, and the port the Host field names.
-        add(&mut head, "SERVER_ADDR", "");
-        add(&mut head, "SERVER_PORT", port.unwrap_or(default_port));
+        // The address the request came to, as fit's from its TCP connection's; where there is
+        // none (a Unix-domain socket), empty, and the port the Host field names, as fit's.
+        if r.local.port() == 0 {
+            add(&mut head, "SERVER_ADDR", "");
+            add(&mut head, "SERVER_PORT", host_port.unwrap_or(default_port));
+        } else {
+            add(
+                &mut head,
+                "SERVER_ADDR",
+                &r.local.ip().to_canonical().to_string(),
+            );
+            add(&mut head, "SERVER_PORT", &r.local.port().to_string());
+        }
         add(&mut head, "REQUEST_SCHEME", scheme);
         if r.tls {
             add(&mut head, "HTTPS", "on");
@@ -265,6 +277,7 @@ mod tests {
             version: Version::Http11,
             headers: &h,
             peer: "10.0.0.1:5555".parse().unwrap(),
+            local: "0.0.0.0:0".parse().unwrap(),
             tls: true,
             length: Some(3),
         };
@@ -306,6 +319,7 @@ mod tests {
             version: Version::Http2,
             headers: &h,
             peer: "[::1]:1".parse().unwrap(),
+            local: "0.0.0.0:0".parse().unwrap(),
             tls: false,
             length: Some(0),
         };
@@ -317,6 +331,38 @@ mod tests {
         assert_eq!(get(&m, "CONTENT_LENGTH"), Some(""));
         assert_eq!(get(&m, "PATH_TRANSLATED"), None);
         assert_eq!(get(&m, "REMOTE_ADDR"), Some("::1"));
+    }
+
+    /// The address the request came to, as fit's from its TCP connection's: `SERVER_PORT` is
+    /// its port, not the `Host` field's; an IPv4 address mapped into IPv6 written as IPv4. With
+    /// none (unspecified, port 0, as over a Unix-domain socket), empty and the `Host` field's
+    /// port, as fit's.
+    #[test]
+    fn server_address() {
+        let mut h = Headers::new();
+        h.append("Host", "example.com:9999");
+        for (local, addr, port) in [
+            ("192.0.2.7:8443", "192.0.2.7", "8443"),
+            ("[::ffff:192.0.2.7]:80", "192.0.2.7", "80"),
+            ("[2001:db8::1]:443", "2001:db8::1", "443"),
+            ("0.0.0.0:0", "", "9999"),
+        ] {
+            let r = Request {
+                method: &Method::Get,
+                target: "/",
+                path: "/",
+                version: Version::Http11,
+                headers: &h,
+                peer: "10.0.0.1:5555".parse().unwrap(),
+                local: local.parse().unwrap(),
+                tls: false,
+                length: None,
+            };
+            let m = decode(&Params::new(&r, "/srv", &[]).encode("/srv", "/index.php", ""));
+            assert_eq!(get(&m, "SERVER_ADDR"), Some(addr), "{local}");
+            assert_eq!(get(&m, "SERVER_PORT"), Some(port), "{local}");
+            assert_eq!(get(&m, "SERVER_NAME"), Some("example.com"), "{local}");
+        }
     }
 
     #[test]

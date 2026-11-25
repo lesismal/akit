@@ -5,7 +5,8 @@
 //!   more than [`WATERMARK`] of it waits in the connection's queue, the client's reads are held
 //!   ([`BodyReads`]), and resumed once the queue drained. What arrives before the connection is
 //!   there waits here, the client's reads held meanwhile: one read's worth at most. A body past
-//!   the listener's `max_body_bytes` is answered 413.
+//!   its bound (the listener's `max_body_bytes`, or a `body_limit`'s: akio's
+//!   `Context::limit_body`) is answered 413, or its response cut short if it began.
 //! - **Down.** The response's CGI header (`STDOUT` up to the blank line, at most
 //!   `max_header_bytes`) gives its status and fields. A response whose end comes in the same
 //!   read as its header is sent whole; any other is sent as it arrives
@@ -97,7 +98,6 @@ struct Up {
     ended: bool,
     /// The empty `STDIN` record that ends it was sent.
     sent_end: bool,
-    received: u64,
 }
 
 struct State {
@@ -124,8 +124,6 @@ pub(crate) struct Exchange {
     /// The request may be sent again on a new connection (no body, a method safe to repeat).
     replayable: bool,
     version: Version,
-    /// The listener's `max_body_bytes`, for a streamed body.
-    limit: u64,
     /// The connection's reads are held for the client.
     held: Arc<AtomicBool>,
     /// The last time the client let the response go on, in milliseconds since `born`: the idle
@@ -171,7 +169,6 @@ pub(crate) struct Parts {
     pub(crate) reads: Option<BodyReads>,
     pub(crate) replayable: bool,
     pub(crate) version: Version,
-    pub(crate) limit: u64,
     /// The whole body, when it is not streamed.
     pub(crate) body: Option<Vec<u8>>,
 }
@@ -199,7 +196,6 @@ impl Exchange {
             reads: p.reads,
             replayable: p.replayable,
             version: p.version,
-            limit: p.limit,
             held: Arc::new(AtomicBool::new(false)),
             born: now,
             resumed: Arc::new(AtomicU64::new(0)),
@@ -356,11 +352,6 @@ impl Exchange {
         if st.done {
             return;
         }
-        st.up.received = st.up.received.saturating_add(data.len() as u64);
-        if st.up.received > self.limit {
-            drop(st);
-            return self.fail(Failure::Status(413));
-        }
         let Some(fc) = st.conn.clone() else {
             // Not connected yet: kept, the reads held until it is sent.
             st.up.pending.extend_from_slice(data);
@@ -483,13 +474,10 @@ impl Exchange {
             };
             (answer, status, headers, body, declared)
         };
-        // HTTP/2 and HTTP/3 keep the length; akio sends an HTTP/1.1 response that streams
-        // chunked, and has no way yet to frame it by its length (akio API request A35).
-        let keep_length = declared && matches!(self.version, Version::Http2 | Version::Http3);
-        let mut headers = headers;
-        if !keep_length {
-            headers.remove("content-length");
-        }
+        // The length is kept on every version: akio frames an HTTP/1.1 response that streams by
+        // it (ADR-157), and closes the connection if the application ends it short; it refuses
+        // a write past it, which cuts the response short too.
+        let keep_length = declared;
         let stream = answer.stream_response(status, headers);
         let mut st = lock(&self.st);
         let Some(stream) = stream else {
@@ -714,6 +702,10 @@ fn parse_head(head: &[u8]) -> Result<(u16, Headers, bool), Failure> {
             location = true;
         }
         if name.eq_ignore_ascii_case("content-length") {
+            // One that is no length is dropped: a streamed response is framed by it.
+            if value.parse::<u64>().is_err() {
+                continue;
+            }
             declared = true;
         }
         headers.append(name, value);

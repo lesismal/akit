@@ -402,10 +402,11 @@ fn proxy_header_goes_first() {
     }
 }
 
-/// A connection that began with a PROXY header the listener read is relayed in userspace:
-/// akio does not say how long the header was, which the counters need (akio A170).
+/// A connection that began with a PROXY header the listener read is spliced too: the tunnel's
+/// base counters count the header userspace read (akio A170), and the kernel relays only what
+/// follows it.
 #[test]
-fn client_proxy_header_stays_in_userspace() {
+fn client_proxy_header_spliced() {
     let up = backend(echo);
     let a = Akit::start(&config(
         r#", "sockmap": true, "proxy_protocol": {"trusted": ["127.0.0.1"]}"#,
@@ -416,8 +417,12 @@ fn client_proxy_header_stays_in_userspace() {
     c.write_all(b"PROXY TCP4 203.0.113.9 198.51.100.1 5555 443\r\n")
         .unwrap();
     assert_eq!(round_trip(&mut c, b"via a proxy"), b"via a proxy");
-    kernel();
-    assert_eq!(a.spliced("svc"), 0);
+    let more = pattern(256 << 10, 7);
+    assert!(
+        round_trip(&mut c, &more) == more,
+        "the echo came back otherwise"
+    );
+    assert_eq!(a.spliced("svc"), if_kernel(1));
 }
 
 /// A TLS connection routed by the server name of its ClientHello is spliced once its upstream

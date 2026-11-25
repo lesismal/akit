@@ -403,6 +403,8 @@ fn answer(side: &AppSide, r: &mut Records, conn: &Sock, q: &mut Req, script: &st
                 "HTTP_X_TEST",
                 "HTTP_PROXY",
                 "REMOTE_ADDR",
+                "SERVER_ADDR",
+                "SERVER_PORT",
                 "SERVER_PROTOCOL",
                 "CONTENT_LENGTH",
             ] {
@@ -909,9 +911,14 @@ fn params() {
         &[("x-test", "yes"), ("proxy", "http://evil")],
         &[],
     );
+    // The address the request came to (akio's `Request::local`), as fit's from its TCP
+    // connection: the listener's, its port too, not the Host field's.
+    let server_port = format!("SERVER_PORT={}\n", s.addr.port());
     for (proto, got) in [("http/1.1", one), ("h2c", two)] {
         let body = got.text();
         for want in [
+            "SERVER_ADDR=127.0.0.1\n",
+            server_port.as_str(),
             "SCRIPT_FILENAME=/srv/www/env.php\n",
             "PATH_TRANSLATED=/srv/www/extra/path\n",
             "PATH_INFO=/extra/path\n",
@@ -1770,4 +1777,50 @@ fn php_fpm() {
     drop(s);
     drop(fpm);
     let _ = std::fs::remove_dir_all(&root);
+}
+
+/// A streamed body under, at and over the listener's `max_body_bytes`, over HTTP/1.1 (chunked)
+/// and h2c (no length): akio bounds it (`Context::limit_body`), and past it the handler answers
+/// 413 and gives the application's request up; HTTP/1 closes the connection rather than read
+/// the rest.
+#[test]
+fn streamed_body_limit() {
+    let a = app();
+    let s = serve_top(
+        r#""limits": {"max_body_bytes": 1024},"#,
+        &format!(r#"{{"address": "{}", "root": "/srv"}}"#, a.addr()),
+    );
+    let body = b"x".repeat(4096);
+    let chunked = |n: usize| {
+        let mut b = format!("{n:x}\r\n").into_bytes();
+        b.extend_from_slice(&body[..n]);
+        b.extend_from_slice(b"\r\n0\r\n\r\n");
+        b
+    };
+    for n in [1000, 1024] {
+        let piece = &body[..n];
+        let got = h1(
+            s.addr,
+            "POST /echo.php HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked",
+            &chunked(n),
+        );
+        assert_eq!(got.status, 200, "http/1.1 {n}");
+        assert_eq!(got.text(), format!("{n} {}", digest(piece)), "http/1.1 {n}");
+        let got = h2(s.addr, Method::Post, "/echo.php", &[], piece);
+        assert_eq!(got.text(), format!("{n} {}", digest(piece)), "h2c {n}");
+    }
+    let mut c = TcpStream::connect(s.addr).unwrap();
+    c.set_read_timeout(Some(Duration::from_secs(30))).unwrap();
+    let mut req =
+        b"POST /echo.php HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\n".to_vec();
+    req.extend_from_slice(&chunked(2048));
+    c.write_all(&req).unwrap();
+    let mut r = BufReader::new(c);
+    let got = h1_response(&mut r, false);
+    assert_eq!(got.status, 413, "http/1.1 over");
+    let mut rest = Vec::new();
+    let _ = r.read_to_end(&mut rest);
+    assert!(rest.is_empty(), "http/1.1 over: the connection stays");
+    let got = h2(s.addr, Method::Post, "/echo.php", &[], &body[..2048]);
+    assert_eq!(got.status, 413, "h2c over");
 }

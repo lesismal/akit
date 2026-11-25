@@ -47,11 +47,6 @@ pub use traits::{
 /// akit-listener; unset in the clear. akio's context does not say yet.
 pub const TLS: &str = "akit.tls";
 
-/// The [`akio_http::Context::local`] that holds the listener's `limits.max_body_bytes`, in
-/// decimal, on a request whose body streams to its handler (`body_mode`, I16): akio holds a
-/// streamed body to no limit, so the handler does. akit-listener sets it.
-pub const MAX_BODY_BYTES: &str = "akit.max_body_bytes";
-
 /// The [`akio_http::Context::local`] that holds the `traceparent` field naming the span akit
 /// began for a request it traces (I64): the proxy sends it to the upstream in place of the
 /// client's. akit-listener sets it; unset for a request not traced.

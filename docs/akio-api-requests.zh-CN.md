@@ -39,20 +39,20 @@
 | A19 | HTTP 客户端请求的请求体边产生边发送，带背压 | 已在 akio 的 main（`60547435`），已固定，I16 已使用 | 5、8 | I16、I17、I18、I49、I75 |
 | A20 | HTTP 客户端响应边到达边交付，可暂停和恢复读取 | 已在 akio 的 main（`60547435`），已固定，I16 已使用 | 5、8 | I16、I17、I18、I67 |
 | A21 | 服务端请求可暂停其客户端的读取，并在客户端排空时得到通知 | 已在 akio 的 main（`60547435`），已固定，I16 已使用 | 5、8 | I16、I47、I75 |
-| A22 | 在运行中的引擎上移除和排空 UDP 监听器 | 已提出（I22） | 10、11 | I22、I28 |
+| A22 | 在运行中的引擎上移除和排空 UDP 监听器 | 已在 akio 分支 `claude/akit-open-requests` 上实现（`22bc4402`，akio 的 ADR-155），akit 已使用（尚未移动锁定） | 10、11 | I22、I28 |
 | A23 | Unix 域流式监听器（可设套接字文件权限） | 已在 akio 的 main（`4989cd8b`），已锁定 | 11 | I26、I29 |
-| A24 | 关闭连接的 HTTP/1 响应，并停止读取已拒绝的请求体 | 已提出（I26） | 7、10、11 | I26、I27、I41 |
+| A24 | 关闭连接的 HTTP/1 响应，并停止读取已拒绝的请求体 | 已在 akio 分支 `claude/akit-open-requests` 上实现（`22bc4402`，akio 的 ADR-157），akit 已使用（尚未移动锁定） | 7、10、11 | I26、I27、I41 |
 | A29 | 不分配内存的应答钩子：监听器的观察者，带着请求设下的几个字被调用 | 已在 akio 分支 `claude/akit-open-requests` 上实现（`8caab91c`，akio 的 ADR-158），akit 已使用（尚未移动锁定） | 13 | I21、I37、I64 |
 | A30 | 监听器接受的打开连接数，与拨出的连接和 UDP 对端分开 | 已在 akio 分支 `claude/akit-open-requests` 上实现（`57a942af`），akit 已使用（尚未移动锁定） | — | I37 |
 | A32 | `akio-regex` 模式在哪里匹配、它的分组，以及替换 | 已在 akio 的 main（`e9891b52`），已锁定 | 19 | I40、I48 |
 | A33 | 被中间件修改的请求字段和请求目标（`Context::req_mut`） | 已在 akio 的 main（`dad77a7a`），已锁定 | 12、19 | I40、I43、I44、I71 |
-| A35 | 按长度分帧的流式 HTTP/1.1 响应 | 已提出（I16） | 5 | I16、I67 |
+| A35 | 按长度分帧的流式 HTTP/1.1 响应 | 已在 akio 分支 `claude/akit-open-requests` 上实现（`22bc4402`，akio 的 ADR-157），akit 已使用（尚未移动锁定） | 5 | I16、I67 |
 | A36 | HTTP 客户端请求的响应头超时和空闲超时 | 已在 akio 的 main（`4f7169c4`），已锁定，I17b 已使用 | 10 | I17b、I18 |
 | A37 | 可在任意时刻取消的 HTTP 客户端请求 | 已在 akio 的 main（`4f7169c4`），已锁定，I17b 已使用 | 3 | I17b、I45 |
 | A38 | 能得知客户端离开的分离服务端请求；可在运行时修改的写停滞超时 | 已在 akio 的 main（`4f7169c4`），已锁定，I17b 已使用 | 3、10 | I17b、I49 |
 | A45 | 公开的定时器：延迟过后运行一次回调，可从任何线程调度 | 已在 akio 分支 `claude/akit-open-requests` 上实现（`22e038cc`，akio 的 ADR-154），akit 已使用（尚未移动锁定） | 1、11 | I35、I31、I52、I54 |
 | A48 | 获知请求的结束：响应已完整发出，或等待中客户端已离开 | 已在 akio 的 main（`dad77a7a`），已锁定 | 3、11、13 | I41、I17、I21、I37 |
-| A49 | 由中间件限制请求体大小，无论谁读取请求体 | 已提出（I41） | 7、11 | I41 |
+| A49 | 由中间件限制请求体大小，无论谁读取请求体 | 已在 akio 分支 `claude/akit-open-requests` 上实现（`22bc4402`，akio 的 ADR-157），akit 已使用（尚未移动锁定） | 7、11 | I41 |
 | A51 | `H2Client` 的流式请求：重置、超时、请求 trailer，以及遇到 `GOAWAY` 时报告失败而不是被遗忘 | 已在 akio 的 main（`f6750e93`，ADR-110），已锁定，I18b 已使用 | 3、10 | I18b、I50 |
 | A52 | `H2Client` 按流的背压：暂停流式响应的读取，报告上传队列 | 已在 akio 的 main（`f6750e93`，ADR-110），已锁定，I18b 已使用 | 8 | I18b、I50 |
 | A53 | `H2Client` 的连接：遵守并报告服务器的流数上限、连接超时、ALPN 回退到 HTTP/1.1 | 已在 akio 的 main（`f6750e93`，ADR-110），已锁定，I18b 已使用 | 10、11 | I18b、I54 |
@@ -64,7 +64,7 @@
 | A65 | 由中间件挂起、之后带着上下文恢复的请求 | 已在 akio 的 main（`4f7169c4`），已锁定 | 1、3、4 | I42、I43 |
 | A66 | `H2Client` 的请求遵守 `response_header_timeout`、`response_idle_timeout` 和 `CancelToken` | 已在 akio 的 main（`d27e6a20`，ADR-111），已锁定，I18b 已使用 | 3、10 | I17b、I18b |
 | A75 | 挂起消息体流式读取的请求，并暂停其消息体的读取直到恢复 | 已在 akio 分支 `claude/akit-open-requests` 上实现（`a88c5d7b`，akio 的 ADR-159），akit 已使用（尚未移动锁定） | 5、7、8 | I42、I43、I44 |
-| A78 | 每个连接（TCP 或 UDP 对端）各自的空闲超时，由其处理器设置 | 已提出（I51） | 10、11 | I51、I55 |
+| A78 | 每个连接（TCP 或 UDP 对端）各自的空闲超时，由其处理器设置 | 已在 akio 分支 `claude/akit-open-requests` 上实现（`22bc4402`，akio 的 ADR-155），akit 已使用（尚未移动锁定） | 10、11 | I51、I55 |
 | A79 | 带各自连接超时的 `Engine::dial` 与 `dial_udp` | 已在 akio 分支 `claude/akit-open-requests` 上实现（`22e038cc`，akio 的 ADR-154），akit 已使用（尚未移动锁定） | 10 | I51、I54、I55 |
 | A90 | 由调用方自己的响应过滤器设置流式响应的编码，以及保留到响应发出为止的值 | 已在 akio 的 main（`c5cf4353`），已锁定 | 8、11 | I47 |
 | A91 | `Files` 为内存中的文件保存压缩副本 | 已在 akio 的 main（`c5cf4353`），已锁定 | 4、12 | I47 |
@@ -82,11 +82,11 @@
 | A133 | 代理自己的连接超时，并给出应答（SOCKS5 4、HTTP 504） | 已在 akio 的 main（`8453b60c`），已锁定 | 10 | I55 |
 | A134 | 经 HTTP/2 和 HTTP/3 的 CONNECT 隧道（RFC 9113 §8.5、RFC 9114 §4.4） | 已在 akio 的 main（`4989cd8b`），已锁定 | 9、19 | I55 |
 | A135 | 拨号 Unix 域流套接字，以及在其上的 HTTP 客户端（akio、akio-http、akio-sys） | 已在 akio 的 main（`0f2c419b`），已锁定 | 1、2 | I58 |
-| A148 | 请求到达的地址（监听器的本地地址），HTTP/1.1、h2 和 h3 | 已提出（I75） | — | I75 |
+| A148 | 请求到达的地址（监听器的本地地址），HTTP/1.1、h2 和 h3 | 已在 akio 分支 `claude/akit-open-requests` 上实现（`22bc4402`，akio 的 ADR-157），akit 已使用（尚未移动锁定） | — | I75 |
 | A165 | 插件用的 WebAssembly 运行时：沙箱解释器、宿主 API、WASI preview 1、实例池；Proxy-Wasm 需要的响应钩子 | 已在 akio 的 main（`dad77a7a`），已锁定 | 1、4、11 | I71、I72 |
 | A166 | 由别处进行的调用决定时扣住响应头（fit 向 fib 提出的 A41） | 已在 akio 的 main（`dad77a7a`），已锁定 | 1、4 | I72 |
 | A167 | 由别处进行的调用逐次过滤响应 body，trailer 在最后一次调用中（fit 向 fib 提出的 A46） | 已在 akio 的 main（`dad77a7a`），已锁定 | 1、4、5、8 | I72 |
-| A170 | 不经 `Conn::inner` 读取连接的 TCP 计数（以及未读字节），并通过引擎自己的 API 先写数据再拼接 | 已提出（I51b）；在此之前 akit-l4 使用文档中隐藏的 `Conn::inner` | 1、14 | I51b |
+| A170 | 不经 `Conn::inner` 读取连接的 TCP 计数（以及未读字节），并通过引擎自己的 API 先写数据再拼接 | 已在 akio 分支 `claude/akit-open-requests` 上实现（`22bc4402`，akio 的 ADR-156），akit 已使用（尚未移动锁定） | 1、14 | I51b |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -455,6 +455,8 @@ sink。`crates/akio-http/src/h2.rs` 的 `on_data`：无论 sink 是否跟得上�
 
 ## A22 移除运行中引擎的 UDP 监听器
 
+**状态。** 已在 akio 分支 `claude/akit-open-requests` 上实现（`22bc4402`，akio 的 ADR-155）；akit 已使用，尚未移动锁定。`Engine::remove_listener` 与 `Engine::shutdown_listener` 接受按对端区分的 UDP 监听器（新对端被丢弃，已有对端被排空，到期关闭），`UdpBinding::shutdown` 排空运行时绑定的套接字，akio-h3 向正在排空的监听器上的连接发送 `GOAWAY`。akit-listener 的重载像对待 TCP 监听器一样移除和修改服务 `h3` 或 `udp` 的监听器：拒绝（`ReloadError::Udp`）已去掉；引擎自己的 UDP 监听器用 `shutdown_listener` 排空，重载绑定的用 `UdpBinding::shutdown` 排空。在原地址上被替换的 UDP 监听器最多排空 `UDP_REPLACED_DRAIN`（2 秒），因为这期间内核散列到它的套接字上的新对端得不到应答；没有替代者的被移除监听器排空整个排空超时。测试：akit-listener 的 `h3` 中的 `reload_knows_h3_listeners` 与 `reload_drains_h3`（移除启动时的 h3 监听器，以及在原地址上替换它；进行中的请求得到应答），以及其 `l4` 中的 `udp_listener_removed`。
+
 **问题。** A1 能在运行时添加、移除和排空 TCP 监听器；交给 builder 的 UDP 监听器不能移除
 （`Engine::remove_listener` 返回 `Unsupported`）。akit 在这样的监听器上提供 HTTP/3，所以移除或修改 akit 启动时就服务
 `h3` 的监听器的重载（或 Admin API 修改）在重启之前都被拒绝。运行时新增的 HTTP/3 用 `Engine::bind_udp`，其
@@ -494,6 +496,8 @@ UDP：不再接收新对端，对已有的调用 `on_shutdown`，到期关闭剩
 监听（0600），关闭时删除该文件。
 
 ## A24 关闭连接的 HTTP/1 响应
+
+**状态。** 已在 akio 分支 `claude/akit-open-requests` 上实现（`22bc4402`，akio 的 ADR-157）；akit 已使用，尚未移动锁定。带 `Connection: close` 的 HTTP/1 响应无论从哪条路径发出，发送后都会关闭连接、暂停读取（不再读取被拒绝的请求体），也不再处理排在它后面的流水线请求。Admin API 的 401（`guard`）和 `read_body` 的 413 都带 `Connection: close`，与 fit 相同；`body_limit` 对流式请求体的 413 也是如此。测试：akit-admin 的 `token`（排在 401 后面的流水线请求不被处理）与 `loads_refused`（413 之后关闭连接，不再读取其余请求体），以及 akit-middleware 的 `body_limit_closes_http1`。
 
 **问题。** 服务在读完请求体之前拒绝请求（流式读取中发现请求体超限而回 413，或流式路由上 `Content-Length` 已经超限），
 无法在回答后关闭连接：akio-http 只根据请求决定是否保持连接，继续读取请求体的剩余部分（交给没人读的 sink 或丢弃），
@@ -618,6 +622,8 @@ I71 的 `wasm` 中间件在从插件的池恢复的请求上，通过它设置�
 
 ## A35 按长度分帧的流式 HTTP/1.1 响应
 
+**状态。** 已在 akio 分支 `claude/akit-open-requests` 上实现（`22bc4402`，akio 的 ADR-157）；akit 已使用，尚未移动锁定。`stream_response` 按响应头给出的 `Content-Length` 为 HTTP/1.1 响应体分帧：不足该长度的响应体会关闭连接，超出长度的写入被拒绝，流式编码或响应体过滤器会去掉该长度并改用分块。代理在所有版本上都保留上游给出的长度（但在 HTTP/1.1 上带尾部字段的响应仍分块发送，只有分块才能携带尾部字段），FastCGI 处理器也保留应用给出的长度（不是数字的长度会被去掉）。测试：akit-proxy 的 `stream` 中的 `stream_download` 与 `broken_download`（按长度分帧；不足长度时被截断并关闭连接）。
+
 **问题。** 流式转发长度已知的上游响应时，代理应像 fit 那样带着这个长度发出：客户端由此知道还有多少（下载进度、范围的
 结尾），并能从分帧上分辨被截断的响应体和完整的响应体。akio-http 的服务端在 keep-alive 连接上把每个流式 HTTP/1.1 响应
 （`stream_response`）都按 chunked 发送；随它给出的 `Content-Length` 字段会和 `Transfer-Encoding: chunked` 一起发出，
@@ -684,6 +690,8 @@ internals ... (use `akio`)"），没有任何地方重新导出。akio 的 `clau
 （body tap 可以计数，但每个流式响应都要付出代价）：留作后续。
 
 ## A49 由中间件限制请求体大小
+
+**状态。** 已在 akio 分支 `claude/akit-open-requests` 上实现（`22bc4402`，akio 的 ADR-157）；akit 已使用，尚未移动锁定。`Context::limit_body` 为读取请求体的任何一方限制请求体。超过限制时，流式请求体的 sink 收到新增的 `BodyEvent::TooLarge` 后被丢弃，请求以 413 应答，除非处理器已经拿走了响应。`BodyEvent` 新增变体是 akio 的破坏性变更（该枚举是穷尽的）：akit 的每个 sink 都匹配了它（代理、WebSocket 隧道、FastCGI 处理器、Admin API 和测试中的 sink）。akit-listener 用 `limit_body(max_body_bytes)` 限制每个流式请求体，但 CONNECT 的除外（隧道或扩展 CONNECT 的流不是请求体）；`body_limit` 对每个请求调用 `limit_body(max_bytes)`，在此之前由自己用 fit 的措辞应答声明长度超限或缓冲后超限的请求体（akio 自己的 413 写的是 "Payload Too Large"）；代理和 FastCGI 处理器收到 `TooLarge` 后应答 413，若响应已开始则截断响应，并放弃上游请求。akit-runtime 的局部值 `MAX_BODY_BYTES`（处理器曾据此限制流式请求体）已去掉。测试：akit-middleware 的 `body_limit`、`body_limit_streamed`、`body_limit_h2`（h2c：低于、等于和超过限制，声明长度和逐渐增长，发给缓冲请求体的处理器和代理）与 `body_limit_closes_http1`；akit-handler 的 `streamed_body_limit`（FastCGI 处理器，HTTP/1.1 和 h2c）。
 
 **问题。** fit 的 `body_limit`（fib 的 `Context.LimitBody`）为读取请求体的任何处理器限制请求体：流式请求体超过限制时，
 在处理器的 `OnBody` 中以 `ErrBodyTooLarge` 失败并回 413，HTTP/1 连接关闭而不是继续读剩下的部分。在 akio-http 中，只有
@@ -1027,6 +1035,8 @@ fit 在线程池里校验，请求在此期间等待，之后继续执行下一�
 
 ## A78 每个连接各自的空闲超时
 
+**状态。** 已在 akio 分支 `claude/akit-open-requests` 上实现（`22bc4402`，akio 的 ADR-155）；akit 已使用，尚未移动锁定。`Conn::set_idle_timeout` 与 `Conn::set_idle_counts_writes`。akit-l4 给每个中继的客户端连接和上游连接、每个 UDP 会话的两侧设置服务的空闲超时，并把它们发出的数据也算作活动，由 akio 在各自的 I/O 线程上关闭它们。服务对所有连接的扫描已去掉，只为已拼接的连接保留（akio 看不到它们的字节；它们在 akio 中的空闲超时被关闭；A170 的 `Tunnel::moved`）。akit-listener 不再把引擎的 UDP 空闲超时提高到各服务中最长的那个（`udp_idle`，启动时和重载时）：它只用于 HTTP/3 的对端。测试：akit-listener 的 `l4` 中除 `tcp_idle_timeout` 与 `udp_sessions_expire` 外新增的 `tcp_one_way_is_not_idle`（只下载和只上传的连接都能活过空闲超时，安静下来后关闭）。
+
 **问题。** fit 的四层服务（I51）会关闭在服务的 `idle_timeout` 内两个方向都没有数据的连接或 UDP 会话：默认
 TCP 10 分钟、UDP 1 分钟，每个服务各自设定。akio 只有整个引擎的空闲超时：`Config::idle_timeout`（TCP，只算
 入站数据）和 `Config::udp_idle_timeout`（UDP 对端，监听器的和 `dial_udp` 的都算），后者也约束 HTTP/3 监听器的
@@ -1278,6 +1288,8 @@ akio 的引擎只能拨 TCP，它的 HTTP 客户端会解析 URL 的主机名，
 
 ## A148 请求到达的地址
 
+**状态。** 已在 akio 分支 `claude/akit-open-requests` 上实现（`22bc4402`，akio 的 ADR-157）；akit 已使用，尚未移动锁定。`Request::local` 与 `Context::local_addr`。FastCGI 处理器的 `SERVER_ADDR` 和 `SERVER_PORT` 是请求到达的地址，与 fit 取自 TCP 连接的相同；没有该地址时（端口为 0：Unix 域套接字）照旧为空，端口取 `Host` 字段的端口。在 HTTP/3 上 akio 给出 UDP 套接字的地址，akit 会使用它，而 fit（只从 TCP 连接取地址）此时 `SERVER_ADDR` 为空。测试：处理器 `params` 中的 `server_address`，以及 akit-handler 的 `fastcgi` 中的 `params`。
+
 **问题。** FastCGI 应用通过 CGI 的 `SERVER_ADDR` 和 `SERVER_PORT`（PHP 的 `$_SERVER['SERVER_ADDR']`）读取请求到达
 的地址和端口，fit 从连接的本地地址取得它们。基于 akio `Context` 的 handler 能看到请求的对端（`Request::peer`），
 却看不到请求所在连接的本地地址，所以 akit 的 `fastcgi` handler（I75）发送空的 `SERVER_ADDR`，`SERVER_PORT` 取自
@@ -1444,8 +1456,7 @@ body）和 tap；由客户端限速（连接积压超过 256 KiB 时下一次调
 
 ## A170 连接的 TCP 计数，以及先写数据再拼接
 
-**状态。** 由 I51b 提出（2026-11-25）。在此之前 akit-l4 通过 `Conn::inner` 拿到套接字，这是一个临时方案
-（[决策 010](decisions/010-sockmap-relay.zh-CN.md)）。
+**状态。** 已在 akio 分支 `claude/akit-open-requests` 上实现（`22bc4402`，akio 的 ADR-156）；akit 已使用，尚未移动锁定。`akio::ebpf::{Relay::tunnel, Tunnel, TunnelSide, conn_byte_counts, ByteCounts::unread, ByteCounts::consumed, SpliceError}` 以及 akio-mux 的 `ProxyHeader::wire_len`。akit-l4 用 `Relay::tunnel` 拼接（`first` 中拼接未写出的部分按 `SpliceError::written` 经引擎发送），并用 `Tunnel::moved`（空闲超时，由服务的扫描读取）、`Tunnel::close_after_forward`（一侧结束，在 akio-ebpf 的排空线程上）和 `Tunnel::late_payload` 跟踪已拼接的连接；`Conn::inner`、akit 自己的计数和它在 akio 定时器上的排空都已去掉。以监听器读取的 PROXY 头开始的连接也会被拼接：隧道的基准计数包含了用户态读取的字节。[决策 010](decisions/010-sockmap-relay.zh-CN.md) 已相应更新。测试：akit-listener 的 `sockmap`，在 Linux 上以 root 运行（`client_proxy_header_spliced` 现在期望拼接）。
 
 **问题。** `tcp` 服务在上游连接打开后用 `akio::ebpf::Relay` 拼接每个连接。已拼接连接的字节不会到达它的处理器，因此
 akit 读取套接字的计数（`akio::ebpf::byte_counts`）来判断空闲超时，并且只在内核把一侧收到的数据都转发完之后才关闭另一侧。

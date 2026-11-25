@@ -17,9 +17,10 @@
 //! read, dots and all. `try_files` looks at the disk on akio's logical pool, never on an I/O
 //! thread.
 //!
-//! Where akit differs from fit's handler, and the akio API requests that close the gaps (A147, a
-//! Unix-domain socket dialed; A148, the address a request came to), `docs/progress.md` says
-//! (I75).
+//! `SERVER_ADDR` and `SERVER_PORT` are the address the request came to (akio's
+//! `Request::local`, A148), as fit's from its TCP connection's. Where akit differs from fit's
+//! handler, and the akio API requests that close the gaps (A147, a Unix-domain socket dialed),
+//! `docs/progress.md` says (I75).
 
 mod exchange;
 mod params;
@@ -31,9 +32,7 @@ use std::sync::Arc;
 
 use akio_http::{BodyEvent, BodyMode, Context, Method, Request};
 use akit_config::{FastCgi, Scan};
-use akit_runtime::{
-    Handler, HandlerParams, MAX_BODY_BYTES, Provision, ProvisionError, Provisioned, TLS,
-};
+use akit_runtime::{Handler, HandlerParams, Provision, ProvisionError, Provisioned, TLS};
 
 use exchange::{Exchange, Failure, Parts, error_response};
 use params::Params;
@@ -172,6 +171,13 @@ impl Sink {
                 self.ended = true;
                 self.x.body_end();
             }
+            // Past its bound (akio's `Context::limit_body`: the listener's `max_body_bytes`, or a
+            // `body_limit`'s): 413, or the response cut short if it began, and the application
+            // is not waited for.
+            BodyEvent::TooLarge => {
+                self.ended = true;
+                self.x.fail(Failure::Status(413));
+            }
         }
     }
 }
@@ -227,6 +233,7 @@ impl akio_http::Service for FastCgiHandler {
                 version: req.version,
                 headers: fields,
                 peer: req.peer,
+                local: req.local,
                 tls: ctx.local(TLS).is_some(),
                 length,
             },
@@ -240,10 +247,6 @@ impl akio_http::Service for FastCgiHandler {
             }
             _ => false,
         };
-        let limit = ctx
-            .local(MAX_BODY_BYTES)
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(akit_config::DEFAULT_MAX_BODY_BYTES);
         let version = req.version;
         let streamed = reads.is_some();
         // The pool try_files looks at the disk on, taken before the request is detached.
@@ -264,7 +267,6 @@ impl akio_http::Service for FastCgiHandler {
             reads,
             replayable,
             version,
-            limit,
             body,
         });
         // The client gone, whenever: the exchange ends, its connection closed. Weak: akio keeps

@@ -19,11 +19,15 @@
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
-use std::sync::Arc;
+use std::sync::mpsc::channel;
+use std::sync::{Arc, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use akio::{Backend, Engine, UringConfig};
+use akio_http::Method;
+use akio_http::client::ClientRequest;
+use akio_http::h2client::{H2Client, H2Event, H2Options};
 use akit_runtime::upstream::EngineSlot;
 use akit_runtime::{Env, GraphCell, HandlerParams, Info, Registry, compile};
 
@@ -139,7 +143,7 @@ impl Akit {
     fn held(middleware: &str) -> Akit {
         Akit::start(
             &format!(
-                r#"{{"listeners": [{{"name": "web", "address": "127.0.0.1:0"}}],
+                r#"{{"listeners": [{{"name": "web", "address": "127.0.0.1:0", "protocols": ["http/1.1", "h2c"]}}],
                     "routes": [{{"middleware": {middleware}, "handler": {{"module": "respond"}}}}]}}"#
             ),
             held::MODULES,
@@ -150,7 +154,7 @@ impl Akit {
     fn proxy(middleware: &str, up: SocketAddr) -> Akit {
         Akit::start(
             &format!(
-                r#"{{"listeners": [{{"name": "web", "address": "127.0.0.1:0"}}],
+                r#"{{"listeners": [{{"name": "web", "address": "127.0.0.1:0", "protocols": ["http/1.1", "h2c"]}}],
                     "upstreams": [{{"name": "app", "addresses": ["{up}"]}}],
                     "routes": [{{"middleware": {middleware},
                                  "handler": {{"module": "proxy", "params": {{"upstream": "app"}}}}}}]}}"#
@@ -594,6 +598,135 @@ fn body_limit_streamed() {
         exchange(wide.addr, "POST", "/", &[], Body::Chunked(300_000)).body,
         "300000"
     );
+}
+
+/// What a 413 refusing a body that streams does to its HTTP/1.1 connection, as fit's: the rest
+/// of the body is not read, and the connection closes after the answer. Through the proxy
+/// (whose body streams), a body that declares a length past the limit and one that grows past
+/// it (refused by akio's `Context::limit_body`, answered by the proxy).
+#[test]
+fn body_limit_closes_http1() {
+    let mw = r#"[{"module": "body_limit", "params": {"max_bytes": 100000}}]"#;
+    let proxied = Akit::proxy(mw, counting_upstream());
+    for (framing, what) in [
+        ("Content-Length: 1000000", "declared"),
+        ("Transfer-Encoding: chunked", "growing"),
+    ] {
+        let s = TcpStream::connect(proxied.addr).unwrap();
+        s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+        let mut w = s.try_clone().unwrap();
+        let chunked = framing.starts_with("Transfer");
+        let writer = thread::spawn(move || {
+            w.write_all(format!("POST / HTTP/1.1\r\nHost: x\r\n{framing}\r\n\r\n").as_bytes())?;
+            // 200 KiB, past the limit, in 16 KiB pieces: what the server does not read waits.
+            for _ in 0..(200 << 10) / (16 << 10) {
+                if chunked {
+                    w.write_all(format!("{:x}\r\n", 16 << 10).as_bytes())?;
+                }
+                w.write_all(&[b'x'; 16 << 10])?;
+                if chunked {
+                    w.write_all(b"\r\n")?;
+                }
+            }
+            Ok::<(), std::io::Error>(())
+        });
+        let mut r = BufReader::new(s);
+        let resp = read_response(&mut r);
+        assert_eq!(resp.status, 413, "{what}");
+        // fit's words: the middleware's for a declared length, the proxy's for one that grew.
+        assert!(
+            resp.body.contains("Request Entity Too Large"),
+            "{what}: {}",
+            resp.body
+        );
+        // Closed, and not after reading the rest: the read ends (or is reset), it does not
+        // time out.
+        let start = Instant::now();
+        let mut rest = Vec::new();
+        let _ = r.read_to_end(&mut rest);
+        assert!(rest.is_empty(), "{what}: more after the answer");
+        assert!(
+            start.elapsed() < Duration::from_secs(5),
+            "{what}: not closed"
+        );
+        let _ = writer.join();
+    }
+}
+
+/// The client engine of the h2c requests.
+fn clients() -> Arc<Engine> {
+    static E: OnceLock<Arc<Engine>> = OnceLock::new();
+    E.get_or_init(|| {
+        let e = Engine::builder().client_threads(2).build().unwrap();
+        e.start().unwrap();
+        Arc::new(e)
+    })
+    .clone()
+}
+
+/// A POST over h2c (prior knowledge) of `size` bytes, declaring `length` when given, written
+/// in pieces after its head: the status and the body the server answered with.
+fn h2_post(addr: SocketAddr, length: Option<u64>, size: usize) -> (u16, String) {
+    let c = H2Client::dial_blocking(&clients(), addr, None, H2Options::default()).unwrap();
+    let mut req = ClientRequest::new(Method::Post, &format!("http://{addr}/"));
+    if let Some(n) = length {
+        req.headers.append("content-length", n.to_string());
+    }
+    let (tx, rx) = channel();
+    let (mut status, mut got) = (0, Vec::new());
+    let up = c.open(req, move |e| match e {
+        H2Event::Head { status: s, .. } => status = s,
+        H2Event::Data(d) => got.extend_from_slice(d),
+        H2Event::Trailers(_) => {}
+        H2Event::End | H2Event::Error(_) => {
+            let _ = tx.send((status, std::mem::take(&mut got)));
+        }
+    });
+    let piece = vec![b'x'; 16 << 10];
+    let mut left = size;
+    while left > 0 {
+        let n = left.min(piece.len());
+        // Refused, the stream takes no more.
+        if !up.write(&piece[..n]) {
+            break;
+        }
+        left -= n;
+    }
+    up.finish();
+    let (status, body) = rx.recv_timeout(Duration::from_secs(10)).unwrap();
+    c.close();
+    (status, String::from_utf8(body).unwrap())
+}
+
+/// fit's `TestBodyOverNetwork` over h2c: bodies under, at and over the limit, of no declared
+/// length (growing past it) and declaring theirs, to a handler that takes the body whole and to
+/// the proxy, which streams it.
+#[test]
+fn body_limit_h2() {
+    let mw = r#"[{"module": "body_limit", "params": {"max_bytes": 100000}}]"#;
+    let up = counting_upstream();
+    let proxied = Akit::proxy(mw, up);
+    let whole = Akit::held(mw);
+    for (akit, name) in [(&proxied, "proxy"), (&whole, "whole")] {
+        for (length, size, want) in [
+            (None, 1000, 200),
+            (None, 100_000, 200),
+            (None, 100_001, 413),
+            (None, 1 << 20, 413),
+            (Some(100_000), 100_000, 200),
+            (Some(100_001), 100_001, 413),
+            (Some(1 << 20), 1000, 413),
+        ] {
+            let what = format!("{name}: {size} bytes, length {length:?}");
+            let (status, body) = h2_post(akit.addr, length, size);
+            assert_eq!(status, want, "{what}");
+            if want == 200 {
+                assert_eq!(body, size.to_string(), "{what}: the handler saw");
+            } else {
+                assert!(body.contains("Request Entity Too Large"), "{what}: {body}");
+            }
+        }
+    }
 }
 
 // fit's TestParamErrors.

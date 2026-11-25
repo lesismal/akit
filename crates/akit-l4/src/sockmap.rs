@@ -16,35 +16,41 @@
 //!   to either side but what the client sent before (its ClientHello on a listener routing by
 //!   server name, a read that came before the hold) and the service's PROXY header: those are
 //!   written to the upstream's socket first, directly, once both sockets are in the map and
-//!   before the kernel relays any byte ([`akio::ebpf::Relay::splice_inner_with`]);
+//!   before the kernel relays any byte (akio's [`akio::ebpf::Relay::tunnel`]);
 //! - neither connection has a transport layer (TLS, which a `tcp` listener never terminates);
-//! - the client's connection did not begin with a PROXY header read by the listener: akio-mux
-//!   reads it in userspace without saying how long it was, which the byte counts below need
-//!   (akio API request A170);
 //! - the relay has room ([`akio::ebpf::DEFAULT_PAIRS`] pairs).
 //!
-//! Otherwise, or when the splice fails, nothing is lost: what was to be written first is sent
-//! as before, and the connection is relayed in userspace.
+//! A connection that began with a PROXY header the listener read is spliced too: the tunnel's
+//! base counters count what userspace read from the client socket, whatever layer read it (the
+//! header, a ClientHello), and the kernel relays only what comes after. akio's ordering contract
+//! asks that userspace have read all of what had arrived or none of it (the kernel relays a
+//! partly read segment again from its start): the client's reads are held from the accept, or
+//! from the read that brought its ClientHello, and what akio reads before a hold takes effect is
+//! everything the socket had, unless a read filled akio's read buffer (64 KiB), which a
+//! ClientHello and a PROXY header do not.
 //!
-//! A spliced connection's bytes never reach its handlers, so its progress is read from the
-//! sockets' TCP counters ([`akio::ebpf::byte_counts`]): its idle timeout is kept by the bytes
-//! the two sockets received, read by each sweep of the service, and a side that ends has the
-//! other closed only once everything it received has reached the other's send queue (closing a
-//! socket drops what the kernel's relay still holds for it), or once that makes no progress for
-//! the service's idle timeout. A payload a handler still reads from a spliced connection while
-//! both sides are open can only be a read that completed before the splice took over (io_uring),
-//! which the kernel's newer bytes may have overtaken: both sides are closed rather than the
-//! stream reordered.
+//! Otherwise, or when the splice fails, nothing is lost: what was not written first is sent
+//! through the engine (akio's `SpliceError::written` says how much was), and the connection is
+//! relayed in userspace.
+//!
+//! A spliced connection's bytes never reach its handlers, nor akio's idle timer (its idle
+//! timeout is turned off), so its progress is read from the sockets' TCP counters, through
+//! akio's [`akio::ebpf::Tunnel`] (the client is its side A, the upstream B): its idle timeout is
+//! kept by [`Tunnel::moved`](akio::ebpf::Tunnel::moved), read by each sweep of the service, and a
+//! side that ends has the other closed only once everything it received has reached the other's
+//! send queue (closing a socket drops what the kernel's relay still holds for it), or once that
+//! makes no progress for the service's idle timeout
+//! ([`Tunnel::close_after_forward`](akio::ebpf::Tunnel::close_after_forward), on akio-ebpf's
+//! drain thread). A payload a handler still reads from a spliced connection while both sides
+//! are open can only be a read that completed before the splice took over (io_uring), which the
+//! kernel's newer bytes may have overtaken: both sides are closed rather than the stream
+//! reordered ([`Tunnel::late_payload`](akio::ebpf::Tunnel::late_payload)).
 //!
 //! [`MIN_KERNEL`]: akio::ebpf::MIN_KERNEL
 
-use std::io::{self, Write};
 use std::sync::OnceLock;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{Duration, Instant};
 
-use akio::ebpf::{ByteCounts, Relay, byte_counts};
-use akio::{Conn, Handler};
+use akio::ebpf::Relay;
 
 /// The process's relay, or why it could not be loaded.
 static RELAY: OnceLock<Result<Relay, String>> = OnceLock::new();
@@ -87,153 +93,4 @@ pub fn relay() -> Option<&'static Relay> {
 #[must_use]
 pub fn available() -> bool {
     relay().is_some()
-}
-
-/// What a spliced connection's counters are read against: what userspace took from each socket,
-/// and what had been written to each, as the kernel began relaying.
-#[derive(Debug)]
-pub(crate) struct Spliced {
-    /// Bytes userspace read from the client, all written to the upstream before splicing.
-    client_read: u64,
-    /// The upstream's written count once those (and the PROXY header) were written.
-    up_written: u64,
-    /// The client's written count as it was spliced (userspace read nothing of the upstream's).
-    client_written: u64,
-    /// Bytes both sockets have received, as the last sweep read them.
-    activity: AtomicU64,
-}
-
-/// Splices `client` and `up`, first writing `first` (the PROXY header and what the client sent
-/// before, `client_read` bytes of it the client's) to the upstream's socket directly. What of
-/// `first` is left unwritten when the splice fails is returned, for userspace to send.
-///
-/// The sockets are reached through akio's `Conn::inner`, hidden in its docs: akio has no public
-/// way to read a connection's counters yet (akio API request A170).
-pub(crate) fn splice<A: Handler, B: Handler>(
-    relay: &Relay,
-    client: &Conn<A>,
-    up: &Conn<B>,
-    first: Vec<u8>,
-    client_read: u64,
-) -> Result<Spliced, Vec<u8>> {
-    let (client, up) = (client.inner(), up.inner());
-    let (Some(cs), Some(us)) = (client.tcp_stream(), up.tcp_stream()) else {
-        return Err(first);
-    };
-    let (Ok(c), Ok(u)) = (byte_counts(cs), byte_counts(us)) else {
-        return Err(first);
-    };
-    let mut written = 0;
-    let r = relay.splice_inner_with(client, up, || {
-        if first.is_empty() {
-            return Ok(());
-        }
-        // The socket is non-blocking: a full send buffer fails the splice, which is undone.
-        written = (&*us).write(&first)?;
-        if written == first.len() {
-            Ok(())
-        } else {
-            Err(io::ErrorKind::WriteZero.into())
-        }
-    });
-    match r {
-        // Dropping the splice leaves it in place, until either socket closes.
-        Ok(_) => Ok(Spliced {
-            client_read,
-            up_written: u.written.saturating_add(first.len() as u64),
-            client_written: c.written,
-            activity: AtomicU64::new(c.received.wrapping_add(u.received)),
-        }),
-        Err(_) => Err(first.get(written..).map(<[u8]>::to_vec).unwrap_or_default()),
-    }
-}
-
-/// The counters of `c`'s socket, or `None` when they cannot be read.
-fn counts<H: Handler>(c: &Conn<H>) -> Option<ByteCounts> {
-    c.inner().tcp_stream().and_then(|s| byte_counts(s).ok())
-}
-
-impl Spliced {
-    /// Reads the sockets' counters: true when either received anything since the last call.
-    /// Off the I/O threads, by the service's sweep; two `getsockopt`s and an `ioctl` a socket.
-    pub(crate) fn moved<A: Handler, B: Handler>(&self, client: &Conn<A>, up: &Conn<B>) -> bool {
-        if !client.is_open() || !up.is_open() {
-            return false;
-        }
-        let (Some(c), Some(u)) = (counts(client), counts(up)) else {
-            return false;
-        };
-        let now = c.received.wrapping_add(u.received);
-        self.activity.swap(now, Ordering::Relaxed) != now
-    }
-
-    /// `from` ended (`from_client`: the client did): `to` is closed once everything `from`
-    /// received has been written to `to`'s send queue, or once that makes no progress for
-    /// `stall`.
-    pub(crate) fn close_after_forward<A: Handler, B: Handler>(
-        &self,
-        from: &Conn<A>,
-        from_client: bool,
-        to: Conn<B>,
-        stall: Duration,
-    ) {
-        let Some(rx) = counts(from) else {
-            return to.close_after_send();
-        };
-        let target = if from_client {
-            self.up_written
-                .saturating_add(rx.received.saturating_sub(self.client_read))
-        } else {
-            self.client_written.saturating_add(rx.received)
-        };
-        poll(Drain {
-            to,
-            target,
-            last: 0,
-            since: Instant::now(),
-            stall,
-            wait: FIRST_POLL,
-        });
-    }
-}
-
-/// How long a side waiting for the kernel's relay to forward to it waits first, and at most,
-/// between two reads of its counters.
-const FIRST_POLL: Duration = Duration::from_millis(1);
-const MAX_POLL: Duration = Duration::from_millis(100);
-
-/// A side to be closed once the kernel's relay has written `target` bytes to it.
-struct Drain<H: Handler> {
-    to: Conn<H>,
-    target: u64,
-    last: u64,
-    since: Instant,
-    stall: Duration,
-    wait: Duration,
-}
-
-/// Closes the side once it has been written everything, or has stalled; else reads it again
-/// later, on akio's timer thread. Never waits: a read of its counters returns at once.
-fn poll<H: Handler>(mut d: Drain<H>) {
-    if !d.to.is_open() {
-        return;
-    }
-    let Some(b) = counts(&d.to) else {
-        return d.to.close_after_send();
-    };
-    if b.written >= d.target {
-        return d.to.close_after_send();
-    }
-    if b.written != d.last {
-        d.last = b.written;
-        d.since = Instant::now();
-    } else if d.since.elapsed() >= d.stall {
-        return d.to.close();
-    }
-    d.wait = d.wait.saturating_mul(2).min(MAX_POLL);
-    let to = d.to.clone();
-    if akio::timer::after_send(d.wait, move || poll(d)).is_err() {
-        // The timers are full: closed as a userspace relay closes it.
-        to.close_after_send();
-    }
 }

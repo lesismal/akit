@@ -468,6 +468,10 @@ impl Sink {
                     up.close_after_send();
                 }
             }
+            // Bounded by a `body_limit` (akio's `Context::limit_body`; the listener bounds no
+            // tunnel): akio stops the stream, and the sink, dropped next, ends the tunnel as a
+            // client gone.
+            BodyEvent::TooLarge => {}
         }
     }
 }

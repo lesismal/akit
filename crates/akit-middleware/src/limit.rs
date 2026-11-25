@@ -16,13 +16,14 @@
 //!   ADR-127), as fit's `OnFinish` and `OnCancel` give it back: once its response is sent in
 //!   full (a streamed one's body to its end), or once its client goes, while it waits detached
 //!   (a slow upstream) or streams, or its response is given up.
-//! - `body_limit` answers 413 before the handler runs a request that declares a longer body
-//!   (taking the body as a stream, so none of it is buffered) or whose buffered body is longer.
-//!   One that streams to its handler with no declared length is held to the limit by the
-//!   handler, as the listener's `max_body_bytes` is (akit-runtime's [`MAX_BODY_BYTES`], which
-//!   the proxy reads): the middleware lowers it. akio cannot limit a body a middleware does not
-//!   read itself yet (akio API request A49), nor close the connection after a 413 rather than
-//!   read the rest of the body (A24).
+//! - `body_limit` bounds a request's body for whatever handler reads it, as fit's does with
+//!   fib's `LimitBody`: akio's `Context::limit_body` (A49). A request that declares a longer
+//!   body (taken as a stream, so none of it is buffered) or whose buffered body is longer is
+//!   answered 413 before the handler runs, in fit's words; a streamed one then closes its
+//!   HTTP/1 connection rather than read the rest of the body (`Connection: close`, A24). One
+//!   that streams to its handler and grows past the limit is refused by akio when it does: the
+//!   handler's sink hears `BodyEvent::TooLarge`, and the request is answered 413 (by the
+//!   handler when it took its response).
 
 use std::collections::HashMap;
 use std::collections::hash_map::RandomState;
@@ -34,9 +35,7 @@ use std::time::Instant;
 
 use akio_http::{BodyMode, Context, Headers, Request, Response};
 use akit_config::{Network, RateKey};
-use akit_runtime::{
-    Handler, HandlerParams, MAX_BODY_BYTES, Middleware, Provision, ProvisionError, Provisioned,
-};
+use akit_runtime::{Handler, HandlerParams, Middleware, Provision, ProvisionError, Provisioned};
 
 /// How many shards the buckets are kept in.
 const SHARDS: usize = 64;
@@ -523,18 +522,12 @@ struct Body(u64);
 
 impl Middleware for Body {
     fn wrap(&self, next: Arc<dyn Handler>) -> Arc<dyn Handler> {
-        Arc::new(BodyLimited {
-            max: self.0,
-            max_text: self.0.to_string(),
-            next,
-        })
+        Arc::new(BodyLimited { max: self.0, next })
     }
 }
 
 struct BodyLimited {
     max: u64,
-    /// `max`, written once, for [`MAX_BODY_BYTES`].
-    max_text: String,
     next: Arc<dyn Handler>,
 }
 
@@ -545,38 +538,32 @@ fn declared_length(req: &Request) -> Option<u64> {
         .and_then(|v| v.trim().parse().ok())
 }
 
-impl BodyLimited {
-    fn refuse(ctx: &mut Context) {
-        ctx.respond(Response::with_body(
-            413,
-            "text/plain; charset=utf-8",
-            TOO_LARGE.as_bytes().to_vec(),
-        ));
-    }
-}
-
 impl akio_http::Service for BodyLimited {
     fn call(&self, ctx: &mut Context) {
-        let declared = declared_length(ctx.req());
-        if declared.is_some_and(|n| n > self.max) {
-            Self::refuse(ctx);
+        let streams = ctx.body_reads().is_some();
+        let over = declared_length(ctx.req()).is_some_and(|n| n > self.max)
+            || !streams && u64::try_from(ctx.body().len()).unwrap_or(u64::MAX) > self.max;
+        if over {
+            // Answered here in fit's words (akio's own 413 says "Payload Too Large"). A body
+            // that streams is not read on: its HTTP/1 connection closes after the answer, as
+            // fib's does, and `limit_body` stops its stream on HTTP/2 and HTTP/3.
+            let mut resp = Response::with_body(
+                413,
+                "text/plain; charset=utf-8",
+                TOO_LARGE.as_bytes().to_vec(),
+            );
+            if streams {
+                resp.headers.set("Connection", "close");
+            }
+            ctx.respond(resp);
+            if streams {
+                let _ = ctx.limit_body(self.max);
+            }
             return;
         }
-        match ctx.local(MAX_BODY_BYTES) {
-            // The body streams to the handler, which holds it to MAX_BODY_BYTES; one that
-            // declares its length cannot outgrow it.
-            Some(limit) => {
-                let lower = limit.parse::<u64>().map_or(true, |l| self.max < l);
-                if declared.is_none() && lower {
-                    ctx.set_local(MAX_BODY_BYTES, self.max_text.as_str());
-                }
-            }
-            None => {
-                if u64::try_from(ctx.body().len()).unwrap_or(u64::MAX) > self.max {
-                    Self::refuse(ctx);
-                    return;
-                }
-            }
+        // Whoever reads the body is held to the limit: past it, akio refuses it.
+        if !ctx.limit_body(self.max) {
+            return;
         }
         self.next.call(ctx);
     }

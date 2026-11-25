@@ -6,7 +6,8 @@
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::panic,
-    clippy::indexing_slicing
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects
 )]
 
 mod support;
@@ -265,12 +266,12 @@ fn datagrams_that_are_not_quic_do_not_disturb_others() {
 /// Reload (I22) beside HTTP/3 (I10): a listener serving h3 has a UDP listener of its own in the
 /// engine, so the listeners after it are still reported at their own addresses; a reload adds
 /// one (its TCP side with akio's `add_listener`, A1, its HTTP/3 with `bind_udp`) and removes it
-/// again, but cannot remove one akit started with (akio removes no UDP listener at run time).
+/// again, and removes one akit started with (akio's A22: a UDP listener removed at run time).
 #[test]
 fn reload_knows_h3_listeners() {
     use std::sync::Arc;
 
-    use akit_listener::{Listeners, ReloadError};
+    use akit_listener::Listeners;
 
     let p = pki("h3-reload");
     let tls = |name: &str, protocols: &str| {
@@ -340,20 +341,159 @@ fn reload_knows_h3_listeners() {
     let want = akit_listener::alt_svc(more.port());
     assert_eq!(seen.alt_svc.as_deref(), Some(want.as_str()));
 
-    // Removing the h3 listener akit started with is refused (akio removes no UDP listener of a
-    // running engine); the graph is not swapped.
-    let epoch = cell.epoch();
+    // The h3 listener akit started with is removed (akio's A22), its TCP and UDP sides both.
+    let secure = addrs[0];
     let (g, _) = compiled(&json(&[plain.clone(), tls("more", ALL)]));
-    let err = l.reload(g).unwrap_err();
-    assert!(matches!(err, ReloadError::Udp { .. }), "{err}");
-    assert!(err.to_string().contains("\"secure\""), "{err}");
-    assert_eq!(cell.epoch(), epoch);
-
-    // The one a reload added goes.
-    let (g, _) = compiled(&json(&[tls("secure", ALL), plain]));
     let r = l.reload(g).unwrap();
     assert_eq!((r.kept, r.added.len(), r.removed.len()), (2, 0, 1));
-    assert!(h3::get(more, h3::client(&p.ca, None), "a.example", "/").is_err());
+    assert_eq!(r.removed[0].name, "secure");
+    assert!(std::net::TcpStream::connect(secure.tcp.unwrap()).is_err());
+    wait_h3_gone(secure.udp.unwrap(), &p.ca);
+    // The one a reload added stays, and goes with the next.
+    let seen = h3::get(more, h3::client(&p.ca, None), "a.example", "/").unwrap();
+    assert_eq!(seen.status, 200);
+    let (g, _) = compiled(&json(&[plain]));
+    let r = l.reload(g).unwrap();
+    assert_eq!((r.kept, r.added.len(), r.removed.len()), (1, 0, 1));
+    wait_h3_gone(more, &p.ca);
+    e.shutdown();
+    e.wait();
+}
+
+/// A port free in TCP and UDP both.
+fn free_port() -> u16 {
+    loop {
+        let t = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = t.local_addr().unwrap().port();
+        if std::net::UdpSocket::bind(("127.0.0.1", port)).is_ok() {
+            return port;
+        }
+    }
+}
+
+/// Waits for HTTP/3 at `udp` to answer no more, within 15 seconds: a removed listener's UDP
+/// sockets close once its last peer is gone, or at its drain's end.
+fn wait_h3_gone(udp: std::net::SocketAddr, ca: &Path) {
+    let deadline = std::time::Instant::now() + Duration::from_secs(15);
+    while h3::get(udp, h3::client(ca, None), "a.example", "/").is_ok() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "{udp} still answers HTTP/3"
+        );
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
+/// A handler that answers `/slow` a second after it came, and anything else at once, and says
+/// when a `/slow` request came.
+mod slow {
+    use std::sync::mpsc::Sender;
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
+
+    use akio_http::{Context, Response};
+    use akit_runtime::{Handler, HandlerParams, Info, Provision, ProvisionError, Provisioned};
+
+    pub(crate) static CAME: Mutex<Option<Sender<()>>> = Mutex::new(None);
+
+    struct Slow;
+
+    impl akio_http::Service for Slow {
+        fn call(&self, ctx: &mut Context) {
+            if ctx.path() != "/slow" {
+                return ctx.respond(Response::text(200, "hi"));
+            }
+            let Some(d) = ctx.detach() else { return };
+            if let Some(tx) = CAME.lock().unwrap().as_ref() {
+                let _ = tx.send(());
+            }
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_secs(1));
+                d.respond(Response::text(200, "slow"));
+            });
+        }
+    }
+
+    impl Handler for Slow {}
+
+    fn new(_: &Provision<'_, HandlerParams>) -> Result<Provisioned<dyn Handler>, ProvisionError> {
+        Ok(Provisioned::new(Arc::new(Slow) as Arc<dyn Handler>))
+    }
+
+    pub(crate) static MODULES: &[Info<HandlerParams>] = &[Info::handler(
+        "http.handlers.slow",
+        "Answers /slow late.",
+        new,
+    )];
+}
+
+/// A reload that changes or removes a listener serving h3 drains its HTTP/3 as its TCP side
+/// (akio's A22): the one akit started with replaced by another on its address, whose HTTP/3
+/// serves once the old one's short drain (`UDP_REPLACED_DRAIN`) is over at the latest; that one
+/// removed while a request is in flight on it, which is answered, the address answering no
+/// more after.
+#[test]
+fn reload_drains_h3() {
+    use std::sync::Arc;
+    use std::sync::mpsc::channel;
+
+    use akit_listener::Listeners;
+
+    let p = pki("h3-drain");
+    let port = free_port();
+    let listener = |name: &str, body: &str| {
+        format!(
+            r#"{{"listeners": [{{"name": "{name}", "address": "127.0.0.1:{port}", "protocols": [{ALL}],
+                "tls": {{"certificates": [{{"cert_file": "{}", "key_file": "{}"}}]}}}}],
+              "routes": [{{"handler": {{"module": "{body}"}}}}]}}"#,
+            s(&p.a.0),
+            s(&p.a.1)
+        )
+    };
+    let registry: Registry<HandlerParams> =
+        Registry::new(&[akit_handler::MODULES, slow::MODULES]).unwrap();
+    let compiled = |j: &str| {
+        let c = akit_config::from_json(j, None).unwrap();
+        compile(&c, &registry, &Env::default()).unwrap()
+    };
+    let cell = GraphCell::new(compiled(&listener("one", "slow")));
+    let e = Arc::new(akit_listener::engine(&cell, &options()).unwrap());
+    e.start().unwrap();
+    let mut l = Listeners::new(Arc::clone(&e), cell.clone(), &options());
+    let udp: std::net::SocketAddr = format!("127.0.0.1:{port}").parse().unwrap();
+
+    let seen = h3::get(udp, h3::client(&p.ca, None), "a.example", "/").unwrap();
+    assert_eq!(seen.body, "hi");
+    // Changed (renamed), on the same address: the old one drains, the new one serves. The
+    // kernel may hash a new peer to the old sockets while they drain, which drop it: tried
+    // again until they are gone.
+    let r = l.reload(compiled(&listener("two", "slow"))).unwrap();
+    assert_eq!((r.kept, r.added.len(), r.removed.len()), (0, 1, 1));
+    let deadline = std::time::Instant::now() + Duration::from_secs(15);
+    let seen = loop {
+        match h3::get(udp, h3::client(&p.ca, None), "a.example", "/") {
+            Ok(seen) => break seen,
+            Err(e) => assert!(std::time::Instant::now() < deadline, "{e}"),
+        }
+    };
+    assert_eq!(seen.body, "hi");
+
+    // Removed, with nothing in its place, while a request is in flight on it: the request is
+    // answered, then the address answers no more.
+    let (tx, came) = channel();
+    *slow::CAME.lock().unwrap() = Some(tx);
+    let ca = p.ca.clone();
+    let inflight =
+        std::thread::spawn(move || h3::get(udp, h3::client(&ca, None), "a.example", "/slow"));
+    came.recv_timeout(Duration::from_secs(10)).unwrap();
+    let plain = r#"{"listeners": [{"name": "plain", "address": "127.0.0.1:0"}],
+            "routes": [{"handler": {"module": "slow"}}]}"#;
+    let r = l.reload(compiled(plain)).unwrap();
+    assert_eq!((r.kept, r.added.len(), r.removed.len()), (0, 1, 1));
+    let seen = inflight.join().unwrap().unwrap();
+    assert_eq!((seen.status, seen.body.as_str()), (200, "slow"));
+    wait_h3_gone(udp, &p.ca);
+    *slow::CAME.lock().unwrap() = None;
     e.shutdown();
     e.wait();
 }

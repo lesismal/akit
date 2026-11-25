@@ -27,8 +27,10 @@
 //!
 //! A side that ends ends the other once what it sent has gone. A connection or session that
 //! carries nothing either way for the service's idle timeout is closed (10 minutes for TCP and 1
-//! for UDP by default), and so is one still open when the graph it started on has been replaced
-//! for the drain timeout ([`Service::drain`]). At most `max_conns` are proxied at once by a
+//! for UDP by default): akio closes it, on its own I/O thread, each side of the relay having the
+//! service's idle timeout with the data it sends counted too ([`akio::Conn::set_idle_timeout`],
+//! [`akio::Conn::set_idle_counts_writes`]). So is one still open when the graph it started on has
+//! been replaced for the drain timeout ([`Service::drain`]). At most `max_conns` are proxied at once by a
 //! service; one past it is closed as soon as it is accepted (a UDP session's datagrams dropped).
 //!
 //! I52: services may share a `tcp` listener, each taking the TLS connections whose ClientHello
@@ -46,11 +48,9 @@
 //! spliced in the kernel by akio's eBPF sockmap relay as their upstream's connection opens, where
 //! the relay loads (Linux 6.15+, with the capabilities it needs), and relayed as above where it
 //! does not; a spliced connection's idle timeout and closes follow its sockets' TCP counters
-//! ([`sockmap`]).
-//!
-//! The idle timeouts are swept per service, on akio's timer thread ([`akio::timer::after_send`]):
-//! a stopgap for akio API request A78 (an idle timeout per connection), which would close each
-//! connection on its own I/O thread.
+//! ([`sockmap`]). Its bytes never reach akio, so its idle timeout is the service's to keep: the
+//! service sweeps its spliced connections on akio's timer thread ([`akio::timer::after_send`])
+//! while it has any, reading their counters ([`akio::ebpf::Tunnel::moved`]).
 //!
 //! Part of [akit](https://github.com/lesismal/akit); see `docs/dev-plan.md` for the iterations that
 //! fill this crate in.
@@ -92,8 +92,8 @@ pub const MAX_ATTEMPTS: usize = 3;
 /// different I/O threads rarely meet on one lock.
 const SHARDS: usize = 16;
 
-/// The shortest and the longest wait between two sweeps of a service's idle connections: a
-/// quarter of its shorter idle timeout, within these.
+/// The shortest and the longest wait between two sweeps of a service's spliced connections: a
+/// quarter of its idle timeout, within these.
 const MIN_SWEEP: Duration = Duration::from_millis(10);
 const MAX_SWEEP: Duration = Duration::from_secs(1);
 
@@ -116,11 +116,11 @@ pub(crate) struct Inner {
     pub(crate) attempts: usize,
     /// Connections and sessions proxied now.
     conns: AtomicUsize,
-    /// The open ones, by their client connection's ID, for the sweep and the drain.
+    /// The open ones, by their client connection's ID, for the drain and the sweep.
     open: [Mutex<HashMap<u64, Arc<relay::Relay>>>; SHARDS],
     /// What [`Inner::now`] counts from.
     epoch: Instant,
-    /// A sweep of the idle connections is scheduled.
+    /// A sweep of the spliced connections is scheduled.
     sweeping: AtomicBool,
     /// [`Service::drain`] was called: connections that come after are closed at once.
     drained: AtomicBool,
@@ -271,10 +271,18 @@ impl Inner {
         self.conns.fetch_sub(1, Ordering::SeqCst);
     }
 
-    /// Records `r` among the open connections, and has the idle ones swept.
-    pub(crate) fn add(self: &Arc<Self>, r: &Arc<relay::Relay>) {
+    /// Has akio close `c`, a side of a relay (a UDP session's when `udp`), once neither side
+    /// sent anything for the service's idle timeout: the data it sends counts as activity, as
+    /// what it receives does. Where akio cannot (DPDK, TUN) the engine's timeout applies.
+    pub(crate) fn idle_timeout<H: akio::Handler>(&self, c: &akio::Conn<H>, udp: bool) {
+        let idle = if udp { self.udp_idle } else { self.idle };
+        let _ = c.set_idle_timeout(Some(idle));
+        let _ = c.set_idle_counts_writes(true);
+    }
+
+    /// Records `r` among the open connections.
+    pub(crate) fn add(&self, r: &Arc<relay::Relay>) {
         self.shard(r.id).insert(r.id, Arc::clone(r));
-        self.arm_sweep();
         // A drain that ran between `admit` and here did not see it.
         if self.drained.load(Ordering::SeqCst) {
             r.abandon();
@@ -302,14 +310,14 @@ impl Inner {
     /// How long a sweep waits for the next.
     fn sweep_every(&self) -> Duration {
         self.idle
-            .min(self.udp_idle)
             .checked_div(4)
             .unwrap_or(MIN_SWEEP)
             .clamp(MIN_SWEEP, MAX_SWEEP)
     }
 
-    /// Schedules a sweep, unless one is.
-    fn arm_sweep(self: &Arc<Self>) {
+    /// Schedules a sweep of the spliced connections, unless one is: for a connection just
+    /// spliced, whose idle timeout the sweep keeps from then on.
+    pub(crate) fn arm_sweep(self: &Arc<Self>) {
         if self.sweeping.swap(true, Ordering::SeqCst) {
             return;
         }
@@ -321,31 +329,28 @@ impl Inner {
     }
 }
 
-/// Closes the service's connections idle for their timeout, and schedules the next sweep while
-/// any is open. On akio's timer thread: it only reads the counters of the spliced connections
+/// Closes the service's spliced connections idle for its timeout, and schedules the next sweep
+/// while any is open. On akio's timer thread: it only reads the spliced connections' counters
 /// and closes connections, each of which returns at once; the locks are not held meanwhile.
+/// Connections relayed in userspace are akio's to close when idle.
 fn sweep(me: &Weak<Inner>) {
     let Some(s) = me.upgrade() else {
         return;
     };
     let now = s.now();
-    for r in s.all() {
-        // A spliced connection's bytes never reach it: its sockets' counters say it is active.
+    let limit = u64::try_from(s.idle.as_millis()).unwrap_or(u64::MAX);
+    let spliced: Vec<_> = s.all().into_iter().filter(|r| r.is_spliced()).collect();
+    for r in &spliced {
+        // Its bytes never reach akio: its sockets' counters say whether it is active.
         r.probe();
-        let limit = if r.udp { s.udp_idle } else { s.idle };
-        let limit = u64::try_from(limit.as_millis()).unwrap_or(u64::MAX);
         if now.saturating_sub(r.last()) >= limit {
             r.abandon();
         }
     }
-    // Counted after the flag is down: a connection added meanwhile either saw it down and
+    // Counted after the flag is down: a connection spliced meanwhile either saw it down and
     // scheduled the sweep itself, or is counted here.
     s.sweeping.store(false, Ordering::SeqCst);
-    let open = s
-        .open
-        .iter()
-        .any(|m| !m.lock().unwrap_or_else(PoisonError::into_inner).is_empty());
-    if open {
+    if s.all().iter().any(|r| r.is_spliced()) {
         s.arm_sweep();
     }
 }
