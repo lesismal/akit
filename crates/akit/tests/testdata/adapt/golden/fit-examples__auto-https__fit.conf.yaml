@@ -1,0 +1,24 @@
+routes:
+  - name: site
+    match:
+      host:
+        - example.com
+        - www.example.com
+    handler:
+      module: respond
+      params:
+        body: |
+          hello over HTTPS
+  - name: api
+    match:
+      host:
+        - api.example.com
+    handler:
+      module: respond
+      params:
+        body: |
+          api
+acme:
+  email: ops@example.com
+  directory: https://acme-staging-v02.api.letsencrypt.org/directory
+  storage: /var/lib/fit/acme

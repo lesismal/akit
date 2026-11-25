@@ -1,0 +1,108 @@
+listeners:
+  - name: web
+    address: :8080
+    protocols:
+      - http/1.1
+      - h2c
+admin:
+  address: 127.0.0.1:2019
+media_library:
+  - name: films
+    roots:
+      - bittorrent/downloads/films
+media_auth:
+  - name: members
+    secret: replace-me-with-a-long-random-secret
+    tokens:
+      - name: seeder
+        token: seeder-passkey-replace-me
+        play:
+          - bittorrent/*
+    users:
+      - name: alice
+        password: alice-password
+        play:
+          - bittorrent/*
+  - name: viewers
+    tokens:
+      - name: player
+        token: player-token-replace-me
+        play:
+          - bt/*
+        publish:
+          - bt/*
+bittorrent:
+  client:
+    listen: :6881
+    data_dir: bittorrent/data
+    download_dir: bittorrent/downloads
+    watch_dir: bittorrent/watch
+    encryption: prefer
+    limits:
+      upload_rate: 1048576
+      download_rate: 8388608
+      seed_ratio: 2
+      max_active_downloads: 3
+      max_active_seeds: 5
+      min_free_bytes: 10737418240
+    categories:
+      - name: films
+        dir: films
+        media_library: films
+        limits:
+          seed_ratio: 1
+      - name: iso
+        dir: iso
+        limits:
+          upload_rate: 4194304
+    alt_speed:
+      upload_rate: 131072
+      download_rate: 524288
+      schedules:
+        - days:
+            - weekdays
+          from: 08:00
+          to: 18:00
+    publish:
+      - name: releases
+        dir: bittorrent/releases
+        web_seed: http://127.0.0.1:8080/releases/
+        announce:
+          - http://127.0.0.1:8080/tracker/seeder-passkey-replace-me/announce
+  tracker:
+    listen: :6969
+    auth: members
+routes:
+  - name: tracker
+    match:
+      path:
+        - /tracker/*
+    handler:
+      module: bt_tracker
+  - name: torrents
+    match:
+      path:
+        - /torrents/*
+    handler:
+      module: bt_publish
+      params:
+        publish:
+          - releases
+  - name: releases
+    match:
+      path:
+        - /releases/*
+    handler:
+      module: static
+      params:
+        root: bittorrent/releases
+        strip_prefix: /releases
+  - name: stream
+    match:
+      path:
+        - /bt/*
+    handler:
+      module: bt_stream
+      params:
+        auth: viewers
+        magnet: true

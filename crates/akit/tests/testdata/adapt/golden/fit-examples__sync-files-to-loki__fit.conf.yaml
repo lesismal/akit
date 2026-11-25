@@ -1,0 +1,36 @@
+sync:
+  state_dir: /tmp/fit-example-sync
+  pipelines:
+    - name: app-logs
+      source:
+        module: file
+        params:
+          paths:
+            - /var/log/app/*.log
+          codec:
+            module: json
+      sinks:
+        - name: loki
+          sink:
+            module: loki
+            params:
+              urls:
+                - http://loki.internal:3100
+              labels:
+                app: shop
+                level: '{level}'
+          batch:
+            max_wait: 1s
+        - name: otlp
+          sink:
+            module: otlp_logs
+            params:
+              urls:
+                - http://otel-collector.internal:4318
+              service_name: shop
+              body: row
+              severity_field: level
+          batch:
+            max_wait: 1s
+admin:
+  address: 127.0.0.1:2019

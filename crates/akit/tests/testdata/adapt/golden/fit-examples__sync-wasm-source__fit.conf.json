@@ -1,0 +1,56 @@
+{
+  "listeners": [
+    {
+      "name": "api",
+      "address": "127.0.0.1:8091",
+      "protocols": [
+        "http/1.1"
+      ]
+    }
+  ],
+  "routes": [
+    {
+      "name": "api",
+      "match": {
+        "path": [
+          "/api/*"
+        ]
+      },
+      "handler": {
+        "module": "static",
+        "params": {
+          "root": "sync-wasm-source",
+          "check_interval": "0s"
+        }
+      }
+    }
+  ],
+  "sync": {
+    "state_dir": "/tmp/fit-example-sync",
+    "pipelines": [
+      {
+        "name": "tickets",
+        "source": {
+          "module": "wasm",
+          "params": {
+            "path": "sync-wasm-source/pages.wasm",
+            "config": "{\"url\": \"http://127.0.0.1:8091/api/\", \"first\": \"page-1.json\"}",
+            "allow_hosts": [
+              "127.0.0.1:8091"
+            ],
+            "poll_interval": "5s",
+            "timeout": "10s"
+          }
+        },
+        "sinks": [
+          {
+            "name": "out",
+            "sink": {
+              "module": "stdout"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

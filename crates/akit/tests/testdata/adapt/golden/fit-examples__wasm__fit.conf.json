@@ -1,0 +1,38 @@
+{
+  "listeners": [
+    {
+      "name": "web",
+      "address": ":8080",
+      "protocols": [
+        "http/1.1",
+        "h2c"
+      ]
+    }
+  ],
+  "routes": [
+    {
+      "name": "filtered",
+      "middleware": [
+        {
+          "module": "wasm",
+          "params": {
+            "path": "wasm/continue.wasm",
+            "config": "{\"deny\": [\"/admin\"]}",
+            "instances": 4,
+            "max_memory_bytes": 67108864,
+            "queue": 1024,
+            "timeout": "50ms",
+            "wait_timeout": "1s",
+            "on_error": "skip"
+          }
+        }
+      ],
+      "handler": {
+        "module": "respond",
+        "params": {
+          "body": "passed the plugin\n"
+        }
+      }
+    }
+  ]
+}

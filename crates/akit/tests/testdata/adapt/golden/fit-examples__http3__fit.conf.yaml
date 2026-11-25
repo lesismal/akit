@@ -1,0 +1,40 @@
+listeners:
+  - name: https
+    address: :443
+    protocols:
+      - http/1.1
+      - h2
+      - h3
+    tls:
+      acme:
+        - example.com
+  - name: http
+    address: :80
+    protocols:
+      - http/1.1
+upstreams:
+  - name: app
+    addresses:
+      - 127.0.0.1:9000
+routes:
+  - name: app
+    listeners:
+      - https
+    handler:
+      module: proxy
+      params:
+        upstream: app
+  - name: to-https
+    listeners:
+      - http
+    middleware:
+      - module: redirect
+        params:
+          to: https://{host}{uri}
+          status: 308
+    handler:
+      module: respond
+      params:
+        status: 404
+acme:
+  email: ops@example.com

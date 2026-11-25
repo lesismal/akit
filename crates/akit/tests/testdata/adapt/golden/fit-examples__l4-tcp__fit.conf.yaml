@@ -1,0 +1,43 @@
+listeners:
+  - name: postgres
+    address: :5432
+    protocols:
+      - tcp
+  - name: tls
+    address: :443
+    protocols:
+      - tcp
+upstreams:
+  - name: db
+    addresses:
+      - 10.0.0.21:5432
+      - 10.0.0.22:5432
+    connect_timeout: 3s
+    health_check:
+      type: tcp
+      interval: 5s
+  - name: mail
+    addresses:
+      - 10.0.0.31:443
+  - name: web
+    addresses:
+      - 10.0.0.41:443
+      - 10.0.0.42:443
+services:
+  - name: postgres
+    listeners:
+      - postgres
+    upstream: db
+    idle_timeout: 1h
+    max_conns: 2000
+  - name: mail
+    listeners:
+      - tls
+    upstream: mail
+    server_names:
+      - mail.example.com
+  - name: web
+    listeners:
+      - tls
+    upstream: web
+    proxy_protocol: v2

@@ -1,0 +1,43 @@
+listeners:
+  - name: https
+    address: :443
+    protocols:
+      - http/1.1
+      - h2
+    tls:
+      certificates:
+        - cert_file: /etc/fit/certs/example.com.pem
+          key_file: /etc/fit/certs/example.com.key
+        - cert_file: /etc/fit/certs/example.org.pem
+          key_file: /etc/fit/certs/example.org.key
+  - name: http
+    address: :80
+    protocols:
+      - http/1.1
+routes:
+  - name: to-https
+    listeners:
+      - http
+    middleware:
+      - module: redirect
+        params:
+          to: https://{host}{uri}
+          status: 308
+    handler:
+      module: respond
+      params:
+        status: 404
+  - name: site
+    listeners:
+      - https
+    middleware:
+      - module: headers
+        params:
+          response:
+            set:
+              Strict-Transport-Security: max-age=31536000
+    handler:
+      module: respond
+      params:
+        body: |
+          hello over HTTPS

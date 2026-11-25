@@ -1,0 +1,38 @@
+sync:
+  state_dir: /tmp/fit-example-sync
+  pipelines:
+    - name: shop-cdc
+      source:
+        module: mssql
+        params:
+          address: mssql.internal:1433
+          username: fit_cdc
+          password_env: MSSQL_PASSWORD
+          database: shop
+          encrypt: on
+          tables:
+            - dbo.orders
+            - dbo.order_items
+          mode: cdc
+          snapshot: initial
+          poll_interval: 1s
+      sinks:
+        - name: kafka
+          sink:
+            module: kafka
+            params:
+              brokers:
+                - kafka-1:9093
+                - kafka-2:9093
+              tls: true
+              sasl: SCRAM-SHA-512
+              username: fit
+              password_env: KAFKA_PASSWORD
+              topic: cdc.{namespace}
+              codec:
+                module: debezium
+          batch:
+            max_records: 2000
+            max_wait: 200ms
+admin:
+  address: 127.0.0.1:2019

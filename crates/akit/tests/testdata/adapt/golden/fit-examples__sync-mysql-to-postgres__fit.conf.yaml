@@ -1,0 +1,34 @@
+sync:
+  state_dir: /tmp/fit-example-sync
+  pipelines:
+    - name: shop-replica
+      source:
+        module: mysql
+        params:
+          address: mysql.internal:3306
+          username: fit_repl
+          password_env: MYSQL_PASSWORD
+          tls: true
+          server_id: 4101
+          tables:
+            - shop.*
+          exclude:
+            - shop.tmp_*
+          snapshot: initial
+      sinks:
+        - name: replica
+          sink:
+            module: postgres
+            params:
+              address: pg.internal:5432
+              user: fit
+              password_env: PG_PASSWORD
+              database: replica
+              table: '{namespace}'
+              checkpoint: sink
+              transactions: source
+          batch:
+            max_records: 1000
+            max_wait: 200ms
+admin:
+  address: 127.0.0.1:2019

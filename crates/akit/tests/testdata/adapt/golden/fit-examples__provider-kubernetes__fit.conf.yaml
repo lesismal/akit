@@ -1,0 +1,32 @@
+listeners:
+  - name: health
+    address: :8081
+    protocols:
+      - http/1.1
+routes:
+  - name: healthz
+    listeners:
+      - health
+    match:
+      path:
+        - /healthz
+    handler:
+      module: respond
+      params:
+        body: |
+          ok
+providers:
+  - name: k8s
+    kubernetes:
+      controller_name: lesismal.github.io/fit
+      namespaces:
+        - default
+        - apps
+      backends: endpoints
+      max_objects: 10000
+      addresses:
+        - 203.0.113.10
+      ingress:
+        http_port: 80
+        https_port: 443
+      certificates_dir: /var/lib/fit/k8s-certs

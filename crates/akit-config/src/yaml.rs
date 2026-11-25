@@ -38,6 +38,12 @@ const MAX_EXPAND_DEPTH: usize = 256;
 /// Parses `src` as one YAML document into the tree the JSON reader produces. An empty
 /// document, or one of comments alone, is an empty object, as fit reads it.
 pub(crate) fn parse(src: &str) -> Result<Node, ParseError> {
+    parse_noting_comments(src).map(|(n, _)| n)
+}
+
+/// [`parse`], and whether `src` holds a comment, which writing the document again loses
+/// (`akit fmt`, I73).
+pub(crate) fn parse_noting_comments(src: &str) -> Result<(Node, bool), ParseError> {
     check_chars(src)?;
     let bom = if src.starts_with('\u{feff}') { 3 } else { 0 };
     let mut p = Parser {
@@ -50,14 +56,16 @@ pub(crate) fn parse(src: &str) -> Result<Node, ParseError> {
         line: Cell::new((bom, bom)),
         flow_parent: -1,
         anchors: HashMap::new(),
+        comments: false,
     };
     let Some(root) = p.document()? else {
-        return Ok(Node {
+        let empty = Node {
             off: 0,
             kind: Kind::Object(Vec::new()),
-        });
+        };
+        return Ok((empty, p.comments));
     };
-    Conv { nodes: 0, bytes: 0 }.value(&root, 0)
+    Ok((Conv { nodes: 0, bytes: 0 }.value(&root, 0)?, p.comments))
 }
 
 /// Refuses what YAML does not allow in a stream: control characters other than tab, line feed
@@ -155,6 +163,8 @@ struct Parser<'a> {
     flow_parent: isize,
     /// Each anchor's node, with where its properties start.
     anchors: HashMap<String, (usize, Rc<Y>)>,
+    /// Whether a comment was passed.
+    comments: bool,
 }
 
 fn blank(c: Option<u8>) -> bool {
@@ -279,6 +289,7 @@ impl Parser<'_> {
         }
         // Between tokens, '#' starts a comment.
         if self.peek() == Some(b'#') {
+            self.comments = true;
             self.skip_to_eol();
         }
         Ok(())

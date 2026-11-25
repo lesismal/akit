@@ -1,0 +1,107 @@
+listeners:
+  - name: web
+    address: :8080
+    protocols:
+      - http/1.1
+      - h2c
+media_library:
+  - name: films
+    roots:
+      - video-site/media
+media_auth:
+  - name: site
+    secret_file: video-site/secret
+    users:
+      - name: staff
+        password_hash: $2a$10$gkDJyGagxp1q7R24F0rSjulsgZOFL55Zm6JK2RcxTCLDk23szhZA2
+        play:
+          - '*'
+    url_signing:
+      ttl: 2m
+      play_grace: 30m
+      max_sessions: 2
+      on_limit: end_oldest
+streaming:
+  channels:
+    - name: tv/films
+      library: films
+      items:
+        - films/testcard
+        - films/bars
+upstreams:
+  - name: site-api
+    addresses:
+      - 127.0.0.1:8090
+routes:
+  - name: vod
+    match:
+      path:
+        - /vod/*
+    handler:
+      module: vod
+      params:
+        library: films
+        auth: site
+        segment_duration: 4s
+  - name: channels
+    match:
+      path:
+        - /hls/*
+    handler:
+      module: hls
+      params:
+        prefix: /hls/
+        auth: site
+  - name: tokens
+    match:
+      path:
+        - /media-tokens
+        - /media-tokens/*
+      remote_ip:
+        - 127.0.0.1/32
+        - ::1/128
+    middleware:
+      - module: basic_auth
+        params:
+          users:
+            - username: site-api
+              password_hash: $2a$10$gkDJyGagxp1q7R24F0rSjulsgZOFL55Zm6JK2RcxTCLDk23szhZA2
+    handler:
+      module: media_tokens
+      params:
+        auth: site
+        url_prefixes:
+          - /vod/films/
+          - /hls/tv/
+        max_ttl: 1h
+  - name: api
+    match:
+      path:
+        - /api/*
+    handler:
+      module: proxy
+      params:
+        upstream: site-api
+  - name: staff
+    match:
+      path:
+        - /media
+        - /media/*
+    handler:
+      module: media_pages
+      params:
+        auth: site
+        login: true
+        title: Video site staff
+        libraries:
+          - films
+        channels: true
+        hls: /hls/{stream}/index.m3u8
+  - name: site
+    priority: -1
+    handler:
+      module: static
+      params:
+        root: video-site/web
+        index:
+          - index.html

@@ -1,0 +1,50 @@
+{
+  "listeners": [
+    {
+      "name": "proxy",
+      "address": ":3128",
+      "protocols": [
+        "http/1.1"
+      ]
+    }
+  ],
+  "routes": [
+    {
+      "name": "connect",
+      "match": {
+        "method": [
+          "CONNECT"
+        ]
+      },
+      "handler": {
+        "module": "forward_proxy",
+        "params": {
+          "clients": [
+            "127.0.0.1/32",
+            "10.0.0.0/8"
+          ],
+          "deny": [
+            "169.254.169.254",
+            "10.0.0.0/8"
+          ],
+          "ports": [
+            443
+          ],
+          "connect_timeout": "10s",
+          "idle_timeout": "5m"
+        }
+      }
+    },
+    {
+      "name": "not-connect",
+      "priority": -1,
+      "handler": {
+        "module": "respond",
+        "params": {
+          "status": 405,
+          "body": "CONNECT only\n"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "listeners": [
+    {
+      "name": "web",
+      "address": ":8080",
+      "protocols": [
+        "http/1.1",
+        "h2c"
+      ]
+    }
+  ],
+  "routes": [
+    {
+      "name": "hello",
+      "handler": {
+        "module": "respond",
+        "params": {
+          "body": "hello\n"
+        }
+      }
+    }
+  ],
+  "admin": {
+    "address": "unix//tmp/fit-admin.sock",
+    "history": 20,
+    "max_config_bytes": 4194304,
+    "max_conns": 16
+  }
+}

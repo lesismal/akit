@@ -1,0 +1,27 @@
+{
+  "webrtc": {
+    "turn": {
+      "listen": [
+        ":3478"
+      ],
+      "listen_tcp": [
+        ":3478"
+      ],
+      "realm": "example.com",
+      "users": [
+        {
+          "name": "alice",
+          "password": "a-password"
+        }
+      ],
+      "secret": "a-secret-shared-with-the-web-service",
+      "relay_ip": "10.0.0.5",
+      "public_ip": "203.0.113.5",
+      "port_min": 49152,
+      "port_max": 49999,
+      "max_allocations": 1024,
+      "max_allocations_per_user": 16,
+      "user_bandwidth": 2097152
+    }
+  }
+}

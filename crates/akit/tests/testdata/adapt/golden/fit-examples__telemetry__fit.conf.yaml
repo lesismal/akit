@@ -1,0 +1,26 @@
+listeners:
+  - name: web
+    address: :8080
+    protocols:
+      - http/1.1
+      - h2c
+upstreams:
+  - name: app
+    addresses:
+      - 127.0.0.1:9000
+routes:
+  - name: app
+    handler:
+      module: proxy
+      params:
+        upstream: app
+telemetry:
+  endpoint: http://127.0.0.1:4318
+  service_name: edge-gateway
+  timeout: 10s
+  traces:
+    sample_ratio: 0.1
+    max_queue_bytes: 4194304
+    interval: 5s
+  metrics:
+    interval: 30s

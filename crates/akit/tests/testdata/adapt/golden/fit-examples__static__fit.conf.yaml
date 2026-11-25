@@ -1,0 +1,24 @@
+listeners:
+  - name: web
+    address: :8080
+    protocols:
+      - http/1.1
+      - h2c
+routes:
+  - name: files
+    middleware:
+      - module: compress
+    handler:
+      module: static
+      params:
+        root: static/www
+        index:
+          - index.html
+        precompressed:
+          - br
+          - zstd
+          - gzip
+        browse: true
+        max_file_bytes: 262144
+        max_cache_bytes: 33554432
+        check_interval: 2s

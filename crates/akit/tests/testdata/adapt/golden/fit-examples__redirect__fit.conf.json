@@ -1,0 +1,56 @@
+{
+  "listeners": [
+    {
+      "name": "web",
+      "address": ":8080",
+      "protocols": [
+        "http/1.1",
+        "h2c"
+      ]
+    }
+  ],
+  "routes": [
+    {
+      "name": "old-host",
+      "match": {
+        "host": [
+          "old.example.com"
+        ]
+      },
+      "middleware": [
+        {
+          "module": "redirect",
+          "params": {
+            "to": "https://www.example.com{uri}",
+            "status": 301
+          }
+        }
+      ],
+      "handler": {
+        "module": "respond",
+        "params": {
+          "status": 404
+        }
+      }
+    },
+    {
+      "name": "moved",
+      "middleware": [
+        {
+          "module": "redirect",
+          "params": {
+            "regexp": "^/blog/(.*)$",
+            "to": "/articles/$1",
+            "status": 308
+          }
+        }
+      ],
+      "handler": {
+        "module": "respond",
+        "params": {
+          "body": "not moved\n"
+        }
+      }
+    }
+  ]
+}

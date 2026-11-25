@@ -1,0 +1,25 @@
+{
+  "listeners": [
+    {
+      "name": "web",
+      "address": ":8080",
+      "protocols": [
+        "http/1.1",
+        "h2c"
+      ]
+    }
+  ],
+  "providers": [
+    {
+      "name": "consul",
+      "consul": {
+        "endpoint": "http://127.0.0.1:8500",
+        "datacenter": "dc1",
+        "token_file": "/etc/fit/consul-token",
+        "tag_prefix": "fit",
+        "max_services": 1000,
+        "refresh_interval": "30s"
+      }
+    }
+  ]
+}

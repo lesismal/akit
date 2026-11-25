@@ -1,0 +1,19 @@
+llm:
+  proxy:
+    id: proxy-7a3e91c04d5b2f68
+    name: laptop
+    console:
+      address: 127.0.0.1:9300
+      users:
+        - username: admin
+          password_hash: $2a$10$gkDJyGagxp1q7R24F0rSjulsgZOFL55Zm6JK2RcxTCLDk23szhZA2
+    peers:
+      - address: 127.0.0.1:9210
+        password: mesh-secret
+        role: hub
+    api:
+      address: 127.0.0.1:9301
+      max_body_bytes: 33554432
+      max_inflight: 64
+      first_byte_timeout: 5m
+      timeout: 30m

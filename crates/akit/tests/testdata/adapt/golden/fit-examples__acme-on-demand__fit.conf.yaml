@@ -1,0 +1,43 @@
+listeners:
+  - name: https
+    address: :443
+    protocols:
+      - http/1.1
+      - h2
+    tls:
+      acme:
+        - app.example.com
+      on_demand: true
+  - name: http
+    address: :80
+    protocols:
+      - http/1.1
+routes:
+  - name: tenants
+    listeners:
+      - https
+    handler:
+      module: respond
+      params:
+        body: |
+          a customer's site
+  - name: to-https
+    listeners:
+      - http
+    middleware:
+      - module: redirect
+        params:
+          to: https://{host}{uri}
+          status: 308
+    handler:
+      module: respond
+      params:
+        status: 404
+acme:
+  email: ops@example.com
+  on_demand:
+    ask: http://127.0.0.1:5555/allowed
+    rate: 10
+    interval: 1m
+    max_names: 5000
+    idle_timeout: 168h

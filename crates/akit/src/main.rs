@@ -29,8 +29,11 @@
 //!   OTLP/HTTP, by threads of their own, from the `telemetry` akit starts with: a change takes a
 //!   restart.
 //! - `validate`: reads and compiles the config, as `run` would, and says whether it is valid.
+//! - `adapt` and `fmt` (I73): convert a config between `.conf`, YAML and JSON, and write a
+//!   config's files again in their own formats, as fit writes them ([`adapt`]).
 //! - `version`, `help`.
 
+mod adapt;
 mod flags;
 
 use std::io::Read;
@@ -60,6 +63,8 @@ Usage:
 Commands:
   run        run a config
   validate   check a config, without running it
+  adapt      convert a config between .conf, YAML and native JSON
+  fmt        write a config's files again, each in its own format
   version    print akit's version and the akio commit it is built on
   help       print this help
 
@@ -1111,6 +1116,8 @@ fn main() -> ExitCode {
     match cmd.as_str() {
         "run" => run(rest),
         "validate" => validate(rest),
+        "adapt" => adapt::adapt(rest),
+        "fmt" => adapt::fmt(rest),
         "version" | "-V" | "--version" => {
             if let Err(u) = flags::parse("version", rest, &[]) {
                 return usage_error(&u);

@@ -1,0 +1,25 @@
+listeners:
+  - name: web
+    address: :8080
+    protocols:
+      - http/1.1
+      - h2c
+upstreams:
+  - name: reports
+    addresses:
+      - 127.0.0.1:9000
+    response_timeout: 5m
+routes:
+  - name: reports
+    match:
+      path:
+        - /reports/*
+    middleware:
+      - module: concurrency_limit
+        params:
+          max: 50
+          status: 503
+    handler:
+      module: proxy
+      params:
+        upstream: reports
