@@ -28,6 +28,9 @@ the gateway's features, providers, the cache and WebAssembly plugins ([progress]
 - [akio API requests](docs/akio-api-requests.md): what akit needs from akio that it lacks.
 - [Decisions](docs/decisions/README.md): dependency policy, config compatibility with fit, and the
   rest as they are made.
+- [Security policy](SECURITY.md): reporting a vulnerability, supported versions; the
+  [threat model](docs/security/threat-model.md) and the external review's
+  [scope](docs/security/review-scope.md).
 
 ## What it looks like
 

@@ -12,6 +12,9 @@ targets = [
 all-features = true
 
 [advisories]
+# No advisory is ignored. An exception goes here and into .cargo/audit.toml together, each with its
+# reason and the crate's path to akit (decision 030); CI runs both tools daily
+# (.github/workflows/security.yml).
 yanked = "deny"
 unmaintained = "all"
 ignore = []
@@ -20,6 +23,10 @@ ignore = []
 # Widened only with a decision note for the dependency that needs it.
 allow = ["Apache-2.0", "MIT"]
 confidence-threshold = 0.8
+# Every locked crate today is MIT, or offers MIT beside Apache-2.0 and is counted as MIT, so the
+# Apache-2.0 allowance matches nothing; it stays allowed (decision 001) without a warning on each
+# run (I80, decision 030).
+unused-allowed-license = "allow"
 
 [licenses.private]
 # akit's own crates are not published.
