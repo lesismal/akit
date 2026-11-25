@@ -33,7 +33,7 @@ dependency rule 21 sends to akio instead.
   akio's, it needs no exception to decision 001 and no trait of akit's in front of it.
 - **The ABI is fit's** (`fit_on_request` and the host module `fit`), implemented in `akit-plugin`
   on `akio-wasm`'s `Linker`, so that fit's plugins run unchanged; fit's Go test plugin is run by
-  akit's tests. Proxy-Wasm, fit's decision 018, is I72's.
+  akit's tests. Proxy-Wasm, fit's decision 018, came in I72 ([decision 011](011-proxy-wasm.md)).
 - **Requests wait suspended** (`Context::suspend`, ADR-109) while their call waits for and runs on
   an instance, and go on from the pool's completion; their fields are changed through
   `Context::req_mut` (A33).

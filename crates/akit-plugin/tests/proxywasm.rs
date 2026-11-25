@@ -243,7 +243,7 @@ impl Drop for Akit {
 
 fn config(path: &str, params: &str) -> String {
     format!(
-        r#"{{"listeners": [{{"name": "web", "address": "127.0.0.1:0"}}],
+        r#"{{"listeners": [{{"name": "web", "address": "127.0.0.1:0", "protocols": ["http/1.1", "h2c"]}}],
             "routes": [{{"middleware": [{{"module": "wasm", "params": {{{params} "path": "{path}"}}}}],
                          "handler": {{"module": "respond"}}}}]}}"#
     )
@@ -1030,4 +1030,86 @@ fn max_body_bytes() {
         }
         settled(a.addr);
     }
+}
+
+/// An engine for the tests' HTTP/2 clients.
+fn clients() -> Arc<Engine> {
+    static E: std::sync::OnceLock<Arc<Engine>> = std::sync::OnceLock::new();
+    E.get_or_init(|| {
+        let e = Engine::builder().client_threads(2).build().unwrap();
+        e.start().unwrap();
+        Arc::new(e)
+    })
+    .clone()
+}
+
+/// `GET path` over h2c to `addr`, with `fields`: the response, or `None` when its stream was
+/// reset.
+fn h2_get(addr: SocketAddr, path: &str, fields: &[(&str, &str)]) -> Option<Resp> {
+    use akio_http::client::ClientRequest;
+    use akio_http::h2client::{H2Client, H2Event, H2Options};
+    let c = H2Client::dial_blocking(&clients(), addr, None, H2Options::default()).unwrap();
+    let mut req = ClientRequest::new(akio_http::Method::Get, &format!("http://example.com{path}"));
+    for (n, v) in fields {
+        req.headers.append(n, v);
+    }
+    let (tx, rx) = std::sync::mpsc::channel();
+    let mut got = Resp::default();
+    let pairs = |h: &akio_http::Headers| -> Vec<(String, String)> {
+        h.iter()
+            .map(|(n, v)| (n.to_owned(), v.to_owned()))
+            .collect()
+    };
+    let up = c.open(req, move |e| match e {
+        H2Event::Head { status, headers } => {
+            got.status = status;
+            got.headers = pairs(headers);
+        }
+        H2Event::Data(d) => got.body.extend_from_slice(d),
+        H2Event::Trailers(t) => got.trailers = pairs(t),
+        H2Event::End => {
+            let _ = tx.send(Some(std::mem::take(&mut got)));
+        }
+        H2Event::Error(_) => {
+            let _ = tx.send(None);
+        }
+    });
+    up.finish();
+    let got = rx.recv_timeout(Duration::from_secs(30)).unwrap();
+    c.close();
+    got
+}
+
+/// The filters over HTTP/2: `:authority` rewritten, a request field changed and response fields
+/// added in the held head, a streamed body upper-cased with its trailer changed, and a local response in the held head's
+/// place; a response that fails resets its stream.
+#[test]
+fn h2() {
+    let a = Akit::filter("http_routing", r#""config": "2","#);
+    let r = h2_get(a.addr, "/host", &[]).unwrap();
+    assert_eq!((r.status, r.text()), (200, "example.com-canary"));
+    let a = Akit::filter(
+        "http_headers",
+        &format!(r#""config": "{{\"header\": \"x-config\", \"value\": \"v\"}}", {ONE}"#),
+    );
+    let r = h2_get(a.addr, "/echo", &[]).unwrap();
+    assert_eq!((r.status, r.text()), (200, "[initial body]best"));
+    assert_eq!(r.header("x-config"), Some("v"));
+    settled(a.addr);
+    let a = Akit::filter("response", &format!(r#""config": "upper", {ONE}"#));
+    let r = h2_get(a.addr, "/streamed", &[]).unwrap();
+    assert_eq!((r.status, r.text()), (201, "ONE TWO THREE"), "{r:?}");
+    assert_eq!(r.trailer("x-body-bytes"), Some("13"), "{r:?}");
+    assert_eq!(r.trailer("x-upstream-seen"), Some("up"), "{r:?}");
+    settled(a.addr);
+    let a = Akit::filter("response", &format!(r#""config": "answer", {ONE}"#));
+    let r = h2_get(a.addr, "/echo", &[]).unwrap();
+    assert_eq!((r.status, r.text()), (418, "too late"));
+    settled(a.addr);
+    let a = Akit::plugin(&pw_module(&[("proxy_on_response_body", trap())]), ONE);
+    assert!(
+        h2_get(a.addr, "/echo", &[]).is_none_or(|r| r.text() != "[initial body]"),
+        "a failed response goes"
+    );
+    settled(a.addr);
 }

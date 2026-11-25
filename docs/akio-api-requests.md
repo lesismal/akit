@@ -1712,6 +1712,11 @@ with the head's fields; the completion applies the plugin's changes and resumes,
 local response with `respond`, or fails the response as `on_error` says. The changes the request
 phase recorded for the response are applied before (a response filter, as now).
 
+**In use since I72** (`crates/akit-plugin/src/response.rs`): as above, the hold registered only
+for a filter that exports `proxy_on_response_headers`, for at most `wait_timeout` + `timeout` +
+1 s; a local response from it is sent with `HeldHead::respond`
+([decision 011](decisions/011-proxy-wasm.md)).
+
 ## A167 A response body filtered by calls made elsewhere
 
 **Status.** Built on akio branch `claude/akio-wasm-w6-afc4f2` (`dad77a7a`), as akio's ADR-128,
@@ -1748,3 +1753,6 @@ plugin's `max_body_bytes`), the last call `proxy_on_response_trailers` with the 
 queues `proxy_on_done`, `proxy_on_log` and `proxy_on_delete`. `response: headers` registers no
 body filter, so file bodies keep `sendfile`.
 
+**In use since I72** (`crates/akit-plugin/src/response.rs`): as above, except that the context is
+closed (done, logged, deleted) in the last call, or by a job queued when the response's hooks are
+dropped, rather than from `on_end`.
