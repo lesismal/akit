@@ -1,0 +1,1 @@
+{"web": [{"Node/": {"Node": "n1", "Address": "10.0.0.1"}, "Service": {"II": "web-1", "Tags": ["ffiop.example", "fit.routes.main.path*/="], "Address": "", "Port": 8080}}, {"Node": {"Node": "n2", "Address": "10.0.0.2"}, "Service": {"ID": "-2", "Tags": [1, "fit.routes.r.colour=red"]}}], "none": {}}

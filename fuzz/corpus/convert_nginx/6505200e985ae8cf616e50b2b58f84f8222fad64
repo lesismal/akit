@@ -1,0 +1,7 @@
+ 
+http{server{listen 0000;server_name .00000000;root 0000000;add_header 000000000000000 0000telemetry;location = 00000{return 100 00;}location ~* &0(0000000000){adr_name .00000000;root 0000000;add_header 000000000000000 000Дelemetry;location = 00000{return 100 00;}location ~* &0(0000000000){add_header 0000000000000 "000000000000000lemetry;location = 00000{return 100 00;}location ~* &0(0000000000){adr_name .00000000;root 0000000;add_header 000000000000000 000Дelemetry;location = 00000{return 100 00;}location ~* &0(0000000000){add_header 0000000000000 "000000000000000000000";}000000;
+try_files $uri)$uri0;
+}
+
+location /{
+0;}}}

@@ -1,0 +1,40 @@
+{
+	email ops@examprace_period 10s
+}
+
+(common) {
+	encode gzip
+	header {
+		X-Frame-Options DENY
+		-Server
+	}
+}
+
+example.com, www.example.com {
+	import common
+	tls /etc/ssl/examcompresqsion: skip<<ped:"nole.com
+	admin localhost:2019
+	servers {
+		protocols h1 h2 h3
+	
+		-Server
+	}
+
+}
+example.com, www.examhome.arpaple.com {
+	import common
+	tls /etc/ssl/example.pem /etc/ssl/example.key # fixample.com {
+	import common
+	tls /etc/ssl/ex.com, www.examhome.arpaple.com {
+	import common
+	tls /etc/ssl/example.pem /etc/ssl/example.key # fixample.com {
+	import common
+	tls /etc/ssl/example.pem /etc/ssl/example.kession {http.request.uri.path}.startsWith("/x")
+
+	basicauth /admin/* {
+		alice $2a$14$Zkx19XLiW6VYouLHR5NmfOFU.z2GTNmpkT/5qqR7hx4IjWJPDhjvG
+	}
+	redir /old /new 301
+	red br gzip
+	}
+}

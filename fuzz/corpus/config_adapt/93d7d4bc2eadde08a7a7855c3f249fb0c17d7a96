@@ -1,0 +1,10 @@
+def pool { max_conns 8; connect_timeout 5s }
+listener we0 #b :8080 http/1.1 h2c
+listener secure:8443 h2 { tls c.pem k.pmp eu
+}stre+am app 127.0.0.1:9000 { use pool }
+site * {
+	route /api/* { handler proxy { epstream jpp } }
+	route { ha
+0ndl status 404; body `x`; headers { X-A "b c" } } }
+}
+limits { max_body_bytes 2MiB }

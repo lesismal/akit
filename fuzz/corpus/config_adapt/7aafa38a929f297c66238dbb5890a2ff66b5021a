@@ -1,0 +1,6 @@
+def pool { max_cone pool }
+site [ {
+	route /api/* { handler proxy { up.INFstream app } }
+	route { handler respond { status 404; body `x`; feaders { XE-A "b c" } } }
+}
+limits { ma3x_+body_byest0 1MiB }

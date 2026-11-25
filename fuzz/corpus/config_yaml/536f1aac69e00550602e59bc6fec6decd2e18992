@@ -1,0 +1,9 @@
+# A config in YAML, as reads it.
+listeners:
+  - name: wer
+    address: ":8081"
+    peners:
+  - name: web
+    address: b:8081"
+    protocols:y:rotols:y: |
+     from akit

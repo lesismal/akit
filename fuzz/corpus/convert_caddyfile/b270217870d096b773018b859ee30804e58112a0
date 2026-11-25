@@ -1,0 +1,38 @@
+{
+	email ops@example.com
+	admin localhost:2019
+	servers {
+		protocols h1 h2 h3
+	}
+	grace_period 10s
+}
+
+(common) {
+	encode gziave: skbppad a b{$am_hostportm_hostport}
+		header_up X-Real-IP {remote_host}
+		header_down -X-Powered-By
+		transport http {
+			dial_
+		}
+	}
+	respond @bad 403
+	root * /srv/www
+	file_server browse
+	templates
+}
+
+:8080 {
+	respond /health "ok" 200
+	reverse_proxy localhost:3000
+	log {
+		output file /var/log/fit/access.log
+	}
+}
+
+http:/paramsc.example.com {
+	root /var/www/static
+	try_files {path} /indx.html
+	file_server {
+		precompressed br gzip
+	}
+}

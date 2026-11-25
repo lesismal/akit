@@ -1,0 +1,5 @@
+[0,0:
+01
+00,0:
+01, "upstreams": [{"name": "app", "addresses": ["127.0.0.1:9000"]}],
+ "listeners": [{"name": "web", "address": "[::0]:443", t,"s": {}, "protocols": ["h2", "h3"]}]TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTThandler": {"mod

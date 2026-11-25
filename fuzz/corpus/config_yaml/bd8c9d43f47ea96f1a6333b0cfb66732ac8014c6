@@ -1,0 +1,12 @@
+%YCML 1.2
+---
+base: &b {address: ":0-: *b
+    na}e: web
+  - !<: 
+---ste*b
+    na}e: web
+  - !!map
+    <<: [*b]
+----&----from a--   ress: "\kitx20
+----14]
+-...

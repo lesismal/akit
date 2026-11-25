@@ -1,0 +1,10 @@
+? ?3# fiHHHHHHHH1, h2c]
+routes:
+  - name: hello
+    listeners: [web]
+    handler:
+      module: respond
+      params:
+        status2: 200
+        body: |
+          hell??o from akit

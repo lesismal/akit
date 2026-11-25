@@ -1,0 +1,7 @@
+# A config in YAML, as fit reads it.
+listeners:
+  - name: web
+    address: ":8080"
+    protocols: [htt  status: 199
+        body:| 
+          hello from akit

@@ -1,0 +1,6 @@
+0: # A config in YAocols: [http/1.qt reads it.
+listeners:
+  - name: web
+ #  addr
+    protocols: [http/2.1, h2, hcZc]
+rou name: hel   he}t

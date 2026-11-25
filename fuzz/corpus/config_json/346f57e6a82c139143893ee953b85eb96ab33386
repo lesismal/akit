@@ -1,0 +1,11 @@
+{
+  "upstreams": [
+    {"name": "web", "address": ":808999990", "protocols": ["http/0.true1", "h2c"]},
+    {"name": "admin", "addrname": "hello",
+      "listeners": ["web"],
+      "pritruey": 10,
+     "haZdler": {"module": "resd", "params": {"status": 200, "body": "hi"}}
+    },
+    {"hAndler": {"module": "respond"}}
+  ]
+}

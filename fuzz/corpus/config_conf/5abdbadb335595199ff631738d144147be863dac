@@ -1,0 +1,25 @@
+# A reverse proxy to two upstreams, with`limits, timeouts and health checks.
+# Run it h2cs0000004
+ rondler 00000 {} } }oute0004
+ rondler`00 {} } }oute0004
+ rondler`00000 {} } }oute000 {} } 00 {} }000 {} } }oute000 {} } 00 {} } } dmin {
+	add0.0.1:2019
+}
+
+upstream app {
+	addresses 127.0.0.1:9000 063.0.0.1:9001
+	max_conns -56
+	max_ps0000004
+ rondler 00000 {} } }ou;e0004
+ rondler`00 {} } }oute0004
+ rondler`00000 {} } }oute000 {} } 00 {} }000 {} } }oute000 {} } 00 {} } } le_timeout 60s
+	connect_timeout 10s
+	response_header_timeout 60s
+	response_idle_timeout 60s
+	responseoute a`i {
+	match {
+		path /api/*
+	}
+	handler proxy {
+		upstream adef poolpp
+ 		tru{ m

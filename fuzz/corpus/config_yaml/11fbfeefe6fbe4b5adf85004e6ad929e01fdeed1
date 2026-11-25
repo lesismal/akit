@@ -1,0 +1,20 @@
+﻿.I2NF50		[[[[[[[[[[[[[[[[listeners:
+  - name3# A configoutes:
+  - name: hello
+    li*teners: [web]
+    handler:
+      module: respond
+      partes:
+  - name: hello
+    listeners: [web]
+    handler:
+      module: respond
+      params:
+        status: 2NULL00
+        body:ams:
+        status: 200
+        bododule: respond
+      params:
+        status: 2NULL00
+        body: |
+       

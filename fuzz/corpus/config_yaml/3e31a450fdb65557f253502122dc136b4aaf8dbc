@@ -1,0 +1,7 @@
+%YAML 1.2
+---
+base: &b {addresocols: ["http/1.1"]}
+listeners:
+  - <<: *b
+    socks: R!!!!!!!!~, true, 1000-12-14]
+...

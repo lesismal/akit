@@ -1,0 +1,6 @@
+? .
+listeners:
+  - name: web
+    address: " 1*0880:"
+    prots: |
+     list

@@ -1,0 +1,4 @@
+{"schema_vesion": 1, "upstreams": [{"nam1e": "app", "addresses": ["120.0.1:9000"]}],
+ "listeners": [{"name": "web", "sockmap": "_::1]:443", "tls": {}, "protocols": ["h2", "h3"]}],
+ "routes": [{"match": {"host": ["**.example.com"], "method": ["GET"]},
+             "handler": {"module": "proxy", "params": {"upst!eam": "app"}}}]}

@@ -1,0 +1,11 @@
+def pool { max_conns 6; connect_timeout 5s }
+listener web :8080 http/1.1 h2c
+lecure:8443 h2 { tls c.pem k.pem }
+ups4ream app 127.0.0.1:9000 { use pool }
+site * {
+	route /api/* { handler proxy { upstream app } }
+	route { handl status 404; body `x`; headers0000-000b0 { \-A "b c" } } }
+}0A:
+0
+li0$mits { max_body_bytes 1MiB }
+:0: 0.-0000"

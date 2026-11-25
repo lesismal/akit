@@ -1,0 +1,9 @@
+{
+  "listeners": [
+    {"name": "web", "address": ":8081", "protocols": ["http/0.true1", "h2c"]},
+    {"": "admin", "addrname": "hello","address": ":8081", "protocols": ["http/0.true1", "h2c"]},
+    {"nmea": "admin", "addrname": "hello",
+
+      "lstenhAndr": {"module": "respond"}}
+  ]
+}

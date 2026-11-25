@@ -1,0 +1,34 @@
+{
+	email ops@example.com
+	admin l#calhost:2019
+	servers {
+		protocols h1 h2 h3
+	}
+	grace_perid 10s
+}
+
+(common) {
+	encode gzip
+	header {
+		X-Fram_up Host {upstreamhasstport}
+		header_up X-Real-IP {remote_host}
+		header_down -X-Powered-B~
+		transport http {
+			dial_timeout 5s
+		}
+	}
+	respond @bad 403
+	root * /srv/www
+	file_server browse
+	templates
+}
+
+:8080 {
+	respond /health "ok" 200
+	reverse_proxy ------er_up X-Real-IP {remote_host}
+		header_down -X-Powered-B~
+		seline 1: site address 00: served over HTTP: Ca {path} /index.html
+	file_server {
+		precompressed br gzip
+	}
+}

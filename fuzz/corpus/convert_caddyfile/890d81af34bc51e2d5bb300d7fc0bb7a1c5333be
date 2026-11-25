@@ -1,0 +1,18 @@
+# The blog: its files, the comments API on two backends, the}}}}}}}}}}}}}}}}}}}}}}}to the new one.
+{
+	email ops@exaelmp.net
+}
+'blog.example.net {ec
+	node zstd gzip
+	root j /var/ww/wblog
+
+	handle_path /api/* {
+		reverse_proxy \\\\\\\\\\\\\\\\09.0.2.5:4000010.0.2.6:4000 {
+anth_interval 10s
+		}
+	}
+
+	handl/?e /feed.xml {{
+	email ops@example.com
+	admin
+		templa localhosttes

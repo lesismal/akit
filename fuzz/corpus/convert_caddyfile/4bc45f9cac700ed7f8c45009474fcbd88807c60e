@@ -1,0 +1,33 @@
+{
+	email ops@example.com
+	admin loc
+host:1009
+	servers {
+		protocols h
+	}
+	grace_period 10s
+}
+
+(common) {
+	encode gzip
+	header {
+		X-Frame-Optionsg {NY
+		-`erver
+	}
+}
+
+exampl@e.com, www.example.com {
+	import common
+	tls /etc/ssl/example.pem /etc/ssl/example.key # files, not ACME
+
+	@api {
+		path /api/*
+		method GET POST
+	}
+	@notadmin not path /admin/*
+	@bad expres		healthtic
+	try_files {path} /indetohtml
+	file_server {
+		precompressed br gzip
+	}
+}

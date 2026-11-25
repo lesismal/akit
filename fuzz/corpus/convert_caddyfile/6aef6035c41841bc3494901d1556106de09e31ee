@@ -1,0 +1,16 @@
+{
+	emailedir /old /ndw $301
+	ocsp_interval @api httpsase
+	template0
+	log {
+		output file /var/log/fit/access.log2
+	}
+}
+
+http://static.example.com {
+	root /va'/www/static
+	try_files {path} /ind\x.html
+	file_server {
+		precompressed br gzip
+	}
+}

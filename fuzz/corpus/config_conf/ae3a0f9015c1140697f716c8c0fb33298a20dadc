@@ -1,0 +1,27 @@
+# Header fields: s root: fiers/fit.conf
+# 头字段
+# 在仓库根ields: s root: fiers/fit.conf
+# 头字段
+# 在仓库根目录运行：fit run -c headers/fit.conf
+listener web :8080 http/1.1 h2c
+
+route app {
+	middleware headers {
+		request {
+			set { X-Env production }
+			# Nmax_boX-Powered-By X-Debucompressg-*
+		}
+	}
+	handler proxy { upstream app }
+}
+目录运行：fit run -c header2c
+
+route app {
+	middleware headers {
+		request {
+			set { X-Env production }
+			# Nmax_boX-Powered-By X-Debucompressg-*
+		}
+	}
+	handler proxy { upstream app }
+}

@@ -1,0 +1,61 @@
+# Fuzzing on a schedule (I77), as fit's fuzz.yml: every cargo-fuzz target for ten minutes once a
+# week (Sunday) and on each release tag, in four shards; the corpus each run grows is carried to
+# the next in the Actions cache, beside the seeds checked in under fuzz/corpus. A failing input
+# is kept as an artifact: add it to fuzz/corpus/<target> with its fix and a regression test
+# (`cargo test` replays the corpus through each crate's `fuzzing::tests`). ci.yml runs every
+# target for a minute on each push.
+name: Fuzz
+
+on:
+  schedule:
+    - cron: "17 3 * * 0"
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: How long each target runs, in seconds
+        default: "600"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fuzz:
+    name: fuzz (shard ${{ matrix.shard }} of 4)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: fuzz
+          shared-key: fuzz
+      - run: cargo install cargo-fuzz --locked
+      - uses: actions/cache@v4
+        with:
+          path: fuzz/corpus-new
+          key: fuzz-corpus-${{ matrix.shard }}-${{ github.run_id }}
+          restore-keys: fuzz-corpus-${{ matrix.shard }}-
+      - name: Fuzz this shard's targets
+        run: |
+          targets=$(cd fuzz && cargo +nightly fuzz list | awk -v s=${{ matrix.shard }} '(NR - 1) % 4 == s')
+          echo "targets: $targets"
+          # shellcheck disable=SC2086
+          fuzz/run-all.sh "${{ inputs.seconds || '600' }}" 4 $targets
+      - name: Keep the failing inputs and the logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-failures-${{ matrix.shard }}
+          path: |
+            fuzz/artifacts
+            fuzz/logs

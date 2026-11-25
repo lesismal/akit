@@ -1,0 +1,10 @@
+%YAML 1.2
+---
+base: &b {adZocols: ["ht=tp/1.1"]}
+listeners:
+  - <<0002: *b
+   
+    <<: []
+   
+? e4@
+...

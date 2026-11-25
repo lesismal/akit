@@ -30,6 +30,9 @@
 //! fill this crate in.
 
 mod format;
+#[cfg(any(test, feature = "fuzzing"))]
+#[doc(hidden)]
+pub mod fuzzing;
 mod log;
 pub mod metrics;
 pub mod otlp;

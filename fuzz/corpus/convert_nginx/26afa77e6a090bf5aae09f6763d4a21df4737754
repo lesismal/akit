@@ -1,0 +1,8 @@
+ 
+http{server{listen 00000000;server_name .00000000;root 00000000;add_header 00
+000){add_header 0000000000000 "000000000000000000000";}location ^~000000000000{al0i s0a00000000;}location 00001{ewrite 000 00000000;
+try_files $uri $uri0;
+}
+
+location /{
+0;}}}

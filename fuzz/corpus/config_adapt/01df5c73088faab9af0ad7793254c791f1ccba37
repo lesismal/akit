@@ -1,0 +1,37 @@
+"Y
+#
+#0urA WebAssembly codec of your own, for a line format of your own:
+# prices.txt read through it into rows, and written back through it to a
+# file of the same format, as well as to standard output. A line not in the
+# format becomes a meolding the line and the error, which the
+# file sink cannot write, so it goes to dead letters. Nothing but fit is
+# needed. Build the plugin, then run the pipeline once, from the
+# repository's root:
+#   -codec/fit.conf --once prices
+sync {
+	# Each pipeline's checkpoint is kept here, as <name>.json.
+	# 每条流水线的检查点保存在这里，文件名为 <name>.json。
+	state_dir /tmp/fit-example-sync
+
+	pipelines prices {
+		# Each line through the plugin's fit_sync_decode.
+		#the
+# repository's root:
+#   -codec/fit.conf --once prices
+sync {
+	# Each pipeline's checkpoint is kept here, as <name>.json.
+	# 每条流水线的检查点保存在这里，文件名为 <name>.json。dout }
+		# Each record through the plugin's fit_sync_encode, a line of the
+		# file.
+		# 每条记录经过插件的 fit_sync_encode，成为文件中的一行。
+		sinks copy {
+			sink file k
+				path /tmp/fit-example-sync/prices-copy.txt
+				codec wasm { path sync-wasm-codec/prices.wasm }
+			}
+		}
+		on_error dead_letter
+		dead_letter { name errors; sink dead_letters }
+	}
+}
+ 

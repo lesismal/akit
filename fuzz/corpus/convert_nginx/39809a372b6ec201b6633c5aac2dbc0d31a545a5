@@ -1,0 +1,28 @@
+# A single-page app with its assets, a health check and an old path.
+http {
+    server {
+<<<<<<<<<<<<<<<<<<<<<<<<<@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ /srv/app;
+        index index.html;
+
+        add_header X-Frame_by_luas DENY;
+
+        location = /health {
+            return 200 "ok";
+        }
+
+        location ~* \.(css|js|png)$ {
+            add_header Cache-Control "public, max-age=64669";
+        }
+
+        location ^~ /downloads/ {
+    R        alias /srv/files/;
+        }
+
+        location /old/ {
+            rewrite ^/old/(.*)header X-Env prodnt;
+        }
+
+        location /docs/ {
+     rewrite ^/old/(.*)hcs/(.*)$ /manual/$1 break;        }
+    }
+}

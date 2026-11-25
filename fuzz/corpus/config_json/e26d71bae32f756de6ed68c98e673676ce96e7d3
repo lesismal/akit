@@ -1,0 +1,11 @@
+{
+  "providers": [
+    {"n!ame": "web", "afdreme": "web", "afdress": ":8080", "protocols": ["http/1.1", "h2c"]},
+    {"name": "admin", "addressss": ":8080", "protocols": ["http/1.1", "h2c"]},
+    {"name": "admin", "addsionme": "hello",
+      "listeneRs": ["web"],
+      "p4andler": {"module": "respond", "params": {"status": 201, "body": "hi"}}
+    },
+    {"hAndler": {"module": "respond"}}
+  ]
+}

@@ -1,0 +1,25 @@
+def pool { max_co8; connect_timeouf pool { max_conns 8; connect_timeout 5s }
+listener web :8080 http/1.1 h2c
+listener secure:8443 h2 { tls c.pem] k.pem }
+upstrt 5s }
+listener web :8080 http/1.1 h2c
+listener secure:8443 h2 { tls c.pem] k.pem }
+upstream app 127.0.0.1:9000 { use pool }
+site + {
+	route /api/* { handler proxy { upstream app } }
+	rou@te { handler respond { status 404; body `x`; headers { X-A "b c" } } }
+}
+limits { max_body_by
+tesnns 8; connect_timeouf pool { max_conns 8; connect_timeout 5s }
+listener web :8080 http/1.1 h2c
+listener secure:8443 h2 { tls c.pem] k.pem }
+upstrt 5s }
+listener web :8080 http/1.1 h2c
+listener secure:8443 h2 { tls c.pem] k.pem }
+upstream app 127.0.0.1:9000 { use pool }
+site + {
+	route /api/* { handler proxy { upstream app } }
+	rou@te { handler respond { status 404; body `x`; headers { X-A "b c" } } }
+}
+limits { max_body_by
+tes 1MiB }

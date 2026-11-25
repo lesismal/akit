@@ -1,0 +1,15 @@
+%YAML 1.2
+---
+base: &b {address: "qq﻿qqqqqqqq:8080											", protocols: ["http/1.1"]}
+listeners:
+  - <<: *b
+    nam&'-e: web
+  - !!map
+    <<: [*b]
+    namaccesse: 'it''s'
+    addrecs: "\x6a9090"
+?  >-
+  fol
+  text
+n: 021-4]
+...

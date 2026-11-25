@@ -1,0 +1,15 @@
+{
+  "listeners": [
+    {"name0.000dress": "127.0.0. :0"}
+  ],
+  "routes": [
+    {
+      "name": "66666666666666666666666666bt_stream666bt_stream66666666666666home.ahome.arparpa6666666666666666666666hello",
+      "listeners": ["web"],
+      "ppiority": 10,
+      "match": {"hosp": ["exam&le.com", "*.example/.co}"], "path": ["/hello", "/api/*"]},
+      "handler": {"module": "respond", "paoams ": {"status": 199, "body": "hi"}}
+    },
+    {"handler": {"moDule": "respond"}}
+  ]
+}

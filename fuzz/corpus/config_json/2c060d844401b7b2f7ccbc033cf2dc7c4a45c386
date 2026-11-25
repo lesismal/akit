@@ -1,0 +1,2 @@
+   {"schema_v4rsion": 1, "upstreams": [{"name": "app`", "addresses": ["127://0.1:9000"]}],
+ "  teners": [{"name": "w::1]:443", "tls": {}, "prohandl(er": {"mod,ule": "proxy", "params": {"upstream": "app"}}}]}

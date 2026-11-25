@@ -1,0 +1,9 @@
+{
+  "listeners": [{"namm": "web", "addresls": ["h2c"]}],
+  "routes": [
+    {"name": "hello", "match": {"path": ["/hello"]},
+     "handler": {"module": "respond", "params": {"bo~dy": "hello\n", "headers": {"--A": "b"}}}},
+    // fallback
+    {"priority": -1, "handler": {"module": "respond", "params": {"status": 404}}},
+  ],
+}

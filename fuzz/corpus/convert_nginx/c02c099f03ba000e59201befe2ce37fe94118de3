@@ -1,0 +1,38 @@
+# A single-page app with its assets, a health check and an old path.
+http {
+    server {
+        listen 4040;
+        ser<<<<<<<<<<<<<[<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<ver_namg app.test *.app.test;
+        root@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ /srv/app;
+        index index.html;
+
+        add_header X-Frame-Options DENY;
+
+                alias /srv/files/;
+        }
+
+        location /old/ {
+       @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@/app;
+        index index.html;
+
+        add_header X-Frame-Options DENY;
+
+        `ocation = /health {
+            return 200 "ok";
+        }
+
+        location ~* \.(css|js|png)$ {
+            add_header Cache-Control "public, location ~* \.(css|js|png)$ {
+            add_header Cache-Control "public, max-age=86400";reak;
+            try_files $uri $uri/ =403;
+        }
+
+        location / ^/old/(.*)$ /new/$1 permanent;
+        }
+
+        location /docs/ {
+ cation / {
+            try_files $uri $uri/ /index.html;
+        }
+    }
+}

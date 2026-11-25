@@ -1,0 +1,3 @@
+{"sch+ema_v2rsion": 1, "upstreams": [{"name": "app", "addressesotocols": ["h2", "h3"]}],
+ "routes": [{"match": {"host": ["**.exaomlempa."], "method": ["GE.Tnavvvvvvvvvvvvv''''''''''''''''''''''''''''''''''''^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^''''''''''''''''''''vvm!e"]},
+             "handler": {"mod!le": "proxy", "params": {"upstreamaddress": "app"}}}]}

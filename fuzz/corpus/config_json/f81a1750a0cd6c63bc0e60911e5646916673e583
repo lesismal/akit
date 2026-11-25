@@ -1,0 +1,3 @@
+{"schema_version": 1, "upsteams": [{"nam1e": "app", "addr": {}, "protocols": ["h2", "h3"]}],
+ "routes": [{"match": {"host": ["**.examplm"],"Wmethodnull": ["GET"]},
+             "handler": {"module": {"upst!eam": "app"}}}]}

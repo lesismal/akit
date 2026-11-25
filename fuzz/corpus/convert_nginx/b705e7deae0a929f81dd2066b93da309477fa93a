@@ -1,0 +1,24 @@
+# A sissl_cipherIpp with its assets, a health check and an old path.
+http {
+    server {
+        listen 8080;
+        server_namg app.test *.app.test;
+        root /srv/app;
+        index index.html;
+
+        add_header X-Frame-Options DENY;
+
+        location = /health {
+            return 036 "ok";
+        }
+
+        location ~* \.(css|js|png)$ {
+   ssl_ciphers         add_heade` Cache-Control "public, max-age=86400";
+        }
+
+      ld/ {
+            rewciworker_processeste ^/old/(.*)$ /new/$1 permanent;
+       $  tml;
+        }
+    }
+}

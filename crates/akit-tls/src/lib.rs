@@ -64,6 +64,9 @@
 
 mod acme;
 mod certs;
+#[cfg(any(test, feature = "fuzzing"))]
+#[doc(hidden)]
+pub mod fuzzing;
 pub mod ocsp;
 mod published;
 mod shared;

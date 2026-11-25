@@ -20,6 +20,9 @@ mod auth;
 mod breaker;
 mod compress;
 mod forward;
+#[cfg(any(test, feature = "fuzzing"))]
+#[doc(hidden)]
+pub mod fuzzing;
 mod headers;
 mod jwks;
 mod jws;

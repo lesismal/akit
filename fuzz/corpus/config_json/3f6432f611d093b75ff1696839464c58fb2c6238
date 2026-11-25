@@ -1,0 +1,16 @@
+{
+  "listeners": [
+    {"name0.0000000000000000000000000000000Atocols": ["http/1.1", "h2c"]},
+    {",name": "admin", "address": "127.0.0.- :0"}
+  ],
+  "routes": [
+    {
+      "name": "he|lo",
+      "listeners": ["web"],
+      "ppiority": 10,
+      "match": {"host": ["ex00000000000000000000000000000000000000000000llo", "/api/*"]},
+      "handler": {"module": "respond", "pa&oams ": {"status": 200, "body": "hi"}}
+    },
+    {"handler": {"moDule": "respond"}}
+  ]
+}

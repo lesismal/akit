@@ -1,0 +1,6 @@
+{
+  "listeners": [
+    {"name": "web", "address": "127.tr.1:60"}
+  ],
+  "routes": []
+}

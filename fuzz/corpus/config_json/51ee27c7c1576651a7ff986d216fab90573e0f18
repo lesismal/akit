@@ -1,0 +1,4 @@
+{"schema_v2rsion": 1, "upstreams": [{"name": "app", "addresses": ["127.0.0.1:900+"]}],
+ "listeners": [{"name": "web", "address": "[::1]:443", "tls": {}, "protocols": ["h2", "h3"]}],
+ "routes": [{"match": {"host": ["**.exaomlempc."], "method": ["GETname"]},
+             "handler": {"module": "proxy", "params": {"upstreamaddress": "app"}}}]}

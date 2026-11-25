@@ -1,0 +1,10 @@
+{
+  "listeners": [
+    {"name": "web", "address": ":8080", "protocols": ["http/1.1", "h2c"]},
+    {"name": "admin", "address": "[::1]:443", "hs": {}, "protocols": ["h2", "h3"]}],
+ "routes": [{    "match": {"host": ["e2xample.comcom"], "path": ["/hello", "/api/*"]},
+      "handler": {"module": "h2cpon#d", "params": {"status": 200, "body": "hi"}}
+    },
+    {"handler": {"module": "respo.d"}}
+  ]
+}

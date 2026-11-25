@@ -1,5 +1,7 @@
-# cargo-fuzz targets (nightly): `cargo +nightly fuzz run <target>`. A workspace of its own, so
-# that libfuzzer-sys never reaches akit's lock file or cargo-deny's graph.
+# cargo-fuzz targets (nightly): `cargo +nightly fuzz run <target>`, or `fuzz/run-all.sh` for all of
+# them. A workspace of its own, so that libfuzzer-sys never reaches akit's lock file or
+# cargo-deny's graph. Each target calls its crate's `fuzzing` module (feature `fuzzing`), whose
+# tests replay `corpus/<target>` on stable (I77).
 [package]
 name = "akit-fuzz"
 version = "0.0.0"
@@ -11,7 +13,19 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
-akit-config = { path = "../crates/akit-config" }
+akit-config = { path = "../crates/akit-config", features = ["fuzzing"] }
+akit-router = { path = "../crates/akit-router", features = ["fuzzing"] }
+akit-proxy = { path = "../crates/akit-proxy", features = ["fuzzing"] }
+akit-cache = { path = "../crates/akit-cache", features = ["fuzzing"] }
+akit-l4 = { path = "../crates/akit-l4", features = ["fuzzing"] }
+akit-handler = { path = "../crates/akit-handler", features = ["fuzzing"] }
+akit-middleware = { path = "../crates/akit-middleware", features = ["fuzzing"] }
+akit-observe = { path = "../crates/akit-observe", features = ["fuzzing"] }
+akit-tls = { path = "../crates/akit-tls", features = ["fuzzing"] }
+akit-provider = { path = "../crates/akit-provider", features = ["fuzzing"] }
+akit-admin = { path = "../crates/akit-admin", features = ["fuzzing"] }
+akit-upstream = { path = "../crates/akit-upstream", features = ["fuzzing"] }
+akit-plugin = { path = "../crates/akit-plugin", features = ["fuzzing"] }
 
 [workspace]
 members = ["."]
@@ -40,6 +54,223 @@ bench = false
 [[bin]]
 name = "config_value"
 path = "fuzz_targets/config_value.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "convert_nginx"
+path = "fuzz_targets/convert_nginx.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "convert_caddyfile"
+path = "fuzz_targets/convert_caddyfile.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "config_adapt"
+path = "fuzz_targets/config_adapt.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "router_expr"
+path = "fuzz_targets/router_expr.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "router_path"
+path = "fuzz_targets/router_path.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "router_find"
+path = "fuzz_targets/router_find.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "proxy_headers"
+path = "fuzz_targets/proxy_headers.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "proxy_grpc_timeout"
+path = "fuzz_targets/proxy_grpc_timeout.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "cache_semantics"
+path = "fuzz_targets/cache_semantics.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "cache_disk"
+path = "fuzz_targets/cache_disk.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "l4_hello"
+path = "fuzz_targets/l4_hello.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "l4_forward"
+path = "fuzz_targets/l4_forward.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fastcgi_response"
+path = "fuzz_targets/fastcgi_response.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fastcgi_paths"
+path = "fuzz_targets/fastcgi_paths.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "static_path"
+path = "fuzz_targets/static_path.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "jwt_token"
+path = "fuzz_targets/jwt_token.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "jwks_keys"
+path = "fuzz_targets/jwks_keys.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "middleware_fields"
+path = "fuzz_targets/middleware_fields.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "observe_access_log"
+path = "fuzz_targets/observe_access_log.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "observe_escapes"
+path = "fuzz_targets/observe_escapes.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "observe_tzif"
+path = "fuzz_targets/observe_tzif.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "tls_redis_reply"
+path = "fuzz_targets/tls_redis_reply.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "tls_acme"
+path = "fuzz_targets/tls_acme.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "provider_kubernetes"
+path = "fuzz_targets/provider_kubernetes.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "provider_docker"
+path = "fuzz_targets/provider_docker.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "provider_consul"
+path = "fuzz_targets/provider_consul.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "provider_kv"
+path = "fuzz_targets/provider_kv.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "provider_merge"
+path = "fuzz_targets/provider_merge.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "admin_pointer"
+path = "fuzz_targets/admin_pointer.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "upstream_keys"
+path = "fuzz_targets/upstream_keys.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "plugin_pairs"
+path = "fuzz_targets/plugin_pairs.rs"
 test = false
 doc = false
 bench = false

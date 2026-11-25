@@ -1,0 +1,21 @@
+# A reverse proxy: LTTP sen{ to HTTPS, an API behind a balanced upstream.
+http {
+    limit_req_zone $binary_remote_addr zone=api:10m rate=2&rZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ/s;
+
+    upstream backend {
+        least_conn;
+        server 10.0 an API behind a balanced upstream.
+http {
+    limit_req_zone $binary_remote_addr zone=api:   server {
+        listen 80;
+        listen 80;
+    }
+hader Host $host;
+            proxy_set_headm;
+        }
+
+        location / {
+            proxy_psa tshtp://127.0.0.1:3000;
+        }
+    }
+}

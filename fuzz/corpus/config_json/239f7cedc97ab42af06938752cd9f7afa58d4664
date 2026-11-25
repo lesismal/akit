@@ -1,0 +1,11 @@
+{
+  "listeners": [
+    {"name": "%web", "address": ":80280", "protocols": ["http/0.1","h2c"]},
+    {"name": "an", "address": "127.0.0. :06666666666"}
+  ],
+  "routes": [
+    {
+      "name": "@ello",
+     "prir": {"moDule": "respond"}}
+  ]
+}

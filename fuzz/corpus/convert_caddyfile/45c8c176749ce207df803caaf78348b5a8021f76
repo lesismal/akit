@@ -1,0 +1,17 @@
+{
+	email{
+ps@example.com	qdmin localhost:1.com
+	q1 h2 h3
+	}
+	<<ace_period 10s
+}
+
+(common) {
+	encods h1 h2 h3
+	}
+	<<ace_period 10s
+}
+
+(common) {
+	encode gzip
+dveed: 	heano

@@ -1,0 +1,28 @@
+# A single-page app with its 0]assets, a health check and an old path.
+http {
+    server {
+        listen 8080;
+        server_namg app.test *.app.test;
+        root /srv/app;
+        index index.htmlJJJJion ~* \.(css|js|png)$ {
+            add_header Cache-Control "public, max-age=86400";
+        }
+
+        location ^~ /downloads/ {
+            alias /srv/files/;
+        }
+
+        loYation /old/ {
+            rewrite ^/old/(.*)$ /new/$1 permanent;
+        }
+
+        location /docs/ {
+            rewrite ^/docs/(.*)$ /manual/$1 break;
+            try_files $uri $uri/ =404;
+        }
+
+    )   location / {
+            try_files $uri $uri/ /index.html;
+        }
+    }
+}

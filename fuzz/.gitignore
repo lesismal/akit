@@ -1,4 +1,8 @@
 /target/
 /artifacts/
 /coverage/
+/corpus-new/
+/logs/
+/corpus/*.min/
 Cargo.lock
+/merge/

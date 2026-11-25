@@ -1,0 +1,13 @@
+%YAML 1.2
+---
+base: &b {addresqqqqqq.qqqqqqqqqqqqqqqqqqqqqqaaaaaa
+- aa:8080", protocols: ["http/1.1"]}
+lis.09990: &--
+  - p/1.1"]}
+listeners:
+  - <<: *b
+-990: &--
+  - !~!map
+  macces
+n: [0x1F, ~, true, 2001-12-14]
+...

@@ -1,0 +1,7 @@
+R.|/api:1]|/|
+R1|com|/api/*|Header"(XA")	Query("q*|
+R0|Examplei/v1|
+R5|*/example.com|M|o("POST")
+R0|[]
+R1|@**.example.compi/|/api/*|Header"(XA")	Query("q*|
+R0|ExaMPi/!./Api%/v1

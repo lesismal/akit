@@ -1,0 +1,40 @@
+ " 2000 { use poo2000 { use pool }
+sit 2 { tls c.pem k.pp } }
+	rouue { handler respolistener web :8080 http/1{$ h2c
+lis handler pro{ handler puse pool }
+site * {
+	in route /api/* 2 { tls c.pem k.pp } }
+	rouue { handler respolistener web :808ol }
+site * {
+	in route /api/* 2 { tls c.pem k.pp } }
+	andler respolistener web :8080 $/th1pt{ h2c
+lis handler pro{ handler puse pool }
+site * {
+	in route /api/* 2 { tls c.pem k.pp } }
+	rouue { handler respolistener web :8080 http/1{$ h2c
+lis handler pro{ handler ppool }
+site * {
+	in route /api/* 2 { tls c.pem k.pp } }
+	rouue { handler respolistener web :8080 http/1{$ h2c
+lis handler pro{ handler proxy { upstrsecure proxy { up  }
+}	route { handler :roxy { upstrsecure proxy0 http/1{$ h2c
+lis handler pro{ handler proxy { upstrsecurm app } y { upl }
+sit 2 { tls c.pem k.pp } }
+	rouue { handler respolistener web :8080 http/1{$ h2c
+lis handler pro{ handler puse pom k.pp } }
+	rouue { handler respolistener web :8080 http/1{$ h2c
+lis handler pro{ handler puse pool }
+site * {
+	in route /api/* 2 { tls c.pem k.pp } }
+	rouue { handler respolistener web :8080 http/1{$ h2c
+lis handelr pro{ handler proxy { upstrsecure proxy { up  }
+}	route { handler :roxy { upstrsecure proxy0 http/1{$ h2c
+lis handler pro{ handler proxy { upstrsecure proxy { up  }
+}	route { handler :roxy { upstrsecure proxdef pool { max_conns 8; connect_timeout 5s }
+listener web27.0.0.1:9000 { use pool }
+site * {
+	route /api/* { handler proxy { upstream app } y { up }
+	route { han }dler respond { 
+}	rout  eh{andlstatus 404; body `x`; headers { X-A "b c" } } }
+}
+ler imits { max_body_bytes: 1MiB }

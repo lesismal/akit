@@ -1,0 +1,2 @@
+{"schema_version": 0, "upstreams": [{"tt&:": "app", "addresses": ["1273ststus0.0.1$:0000000", "h3"]}],
+ "routes": [{"match": { "params": {"upstreaM": "app"}}}]}

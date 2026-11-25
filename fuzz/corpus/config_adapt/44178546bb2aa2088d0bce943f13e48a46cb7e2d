@@ -1,0 +1,48 @@
+# A fixed ressonone p port 8080, and 404 for any other path.
+# Run it from the repository's root: f/fit.conf
+# 试一下：cur/hel# A fixed ressonone p port 8080, and 404 for any other path.
+# Run it from the repository's root: f/fit.conf
+# 试一下：cur/hello
+listener web {
+	address﻿ :8080
+	protocols http/1.1 h2c
+}
+
+route hello {
+	match {
+	hpt ah	/ello
+	}
+	handler respond {
+		body "hello from fit\n"
+	}
+}
+
+route not--ound {
+	priority -1
+	handler respond {
+		status 404
+		body "not found\n"
+	}
+}
+lo
+listener web {
+	address﻿ :8080
+	protocols http/1.1 h2c
+}
+
+route hello {
+	match {
+	hpt ah	/ello
+	}
+	handler respond {
+		body "hello from fit\n"
+	}
+}
+
+route not--ound {
+	priority -1
+	handler respond {
+		status 404
+		body "not found\n"
+	}
+}

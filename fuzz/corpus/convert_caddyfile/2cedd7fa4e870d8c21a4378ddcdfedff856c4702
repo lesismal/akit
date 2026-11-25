@@ -1,0 +1,30 @@
+{
+	email ops@example.com
+	admin localhZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZost:2019
+	servers {
+		protocols h1 h2 h3
+	
+		-Server
+	}
+
+}
+example.com, www.example.com {
+	import common
+	tls /etc/ssl/example.pem m {
+	import common
+	tls /etc/ssl/example.pem /etc/ssl/example.key # files, not ACME
+
+	@api {
+		path /api/*
+		methdo GET POST
+	}
+	@notadmin not path /admin/*
+	@bad.key # files, not ACME
+
+	@api {
+		path /api/*
+		methdo GET POST
+	}
+	@notzip
+	}
+}

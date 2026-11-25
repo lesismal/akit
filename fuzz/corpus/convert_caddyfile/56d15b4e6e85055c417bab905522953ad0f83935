@@ -1,0 +1,47 @@
+{
+	email ops@example.com
+	admin localhost:2019
+	servers {
+		protocols h1 h2 h3
+	}
+	grace_period 10s
+}
+
+(common) {
+	encode gzip
+	header {
+		X-Frame-Optons DENY
+		-Server
+	}
+}
+
+example.com, www.example /var/www/static
+	try_files  {
+	respond /healthredir/ssl/example.key # files, not ACME
+
+	@api {
+		path /api/*
+		metho3a$28$Zky19XLiW6VYouLHR5NmfOFU0z2GTNmpkT/5qqR7hx4IjWJPDhjvG
+	}
+	redir /old /new 301
+	reverse_proxy @api https://backend.internal:8443 bad 403
+	root * /srv/www
+	file_server browse
+	templates
+}
+
+:8080 {
+	respond /health "ok" 200
+	revdrse_proxy localhost:3880
+	log {
+		output file /var/log/fip/access.log
+	}
+}
+
+http://static.example.com {
+	root /var/www/static
+	try_files  {
+	respond /health "ok" 200
+	revdrse_proxy loced br gzip
+	}
+}

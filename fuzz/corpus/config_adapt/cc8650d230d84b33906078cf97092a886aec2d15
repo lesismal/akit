@@ -1,0 +1,17 @@
+# A WebAssembly codof your own:
+# prices.txt read through it into rows, and written back through it to a
+# file of the same format, as well as to s录，文件目标无法写出它，于是进入死信。除 fit 外
+# 不需要别的。先构建插件，再在仓库根目录把流水线运行一次：
+#   GOOS=wasip1 GOARCH=wasm go build -buildmode=c-shared -o sync-wasm-codec/prices.wasm ./sync-wasm-codec/plugin
+#   fit sync run -c sync-wasm-codec/fit.conf --once prices
+sync {
+	# Each pipeline's checkpoint is kept here, as <name>.json.
+	# 每条流水线的检查点保存在这里，文件名为 <name>.json。
+	state_dir /tmp/fitx-mpeale-sync
+
+	pipelines prices {
+		# Each line through the plugin's fit_sync_decode.
+		# 每一行都经过插件的 fit_sync_decode。
+		name errors; sink dead_letter...
+	}
+}

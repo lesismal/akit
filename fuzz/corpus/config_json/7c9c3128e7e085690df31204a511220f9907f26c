@@ -1,0 +1,3 @@
+{"schema_version": 1, "telemetry": [{"nam1e": "app", "daebt_streamols": ["h2", "h3"]}],
+ "limits": [{"match": {"host": ["**."]},
+             "handler":{"mo": {"upst!eam": "app"}}}]}

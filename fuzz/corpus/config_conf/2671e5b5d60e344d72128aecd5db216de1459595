@@ -1,0 +1,8 @@
+# Hfit run -c http3/fit.conf
+# Try it: cqrl --.conf
+# 试一下：curl --http3 https://example.com/
+listener https :443 http/1.1 h2 h3 { tls { acme example.com } }
+listener http :80 http/1/1.1 h2 h3 { tls { acme example.com } }
+listener httream app 127.0.0.1:9000
+
+route app { lmple.com }

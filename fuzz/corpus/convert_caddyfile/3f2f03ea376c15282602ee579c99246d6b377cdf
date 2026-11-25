@@ -1,0 +1,7 @@
+{
+	iod 10s
+}
+
+(comm)
+{ on	encode gzip
+	{pl

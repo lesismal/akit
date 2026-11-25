@@ -1,0 +1,1 @@
+{"web": [{"Node": {"N~de": "n1", "Adlress": "10.0.0.1"}, "Service": {"ID": "web-1", "Tags": ["fit.enable=true", "fit.routes.main.host=55555-------------555555\\t\rueport=5432", "ft.name=db"], "Address": "::1", "Port": 5432}}], "bad": [{"Node": "x", "Service": {"Pgs": [1, "fit.routes.r.colour-red"]}}], "none": {}}

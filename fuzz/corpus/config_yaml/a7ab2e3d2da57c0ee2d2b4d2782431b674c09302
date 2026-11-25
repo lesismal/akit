@@ -1,0 +1,11 @@
+%YAML 1.2
+---
+base: &b {addr 1e17, 1_000, .5, 1e6ess: ":80eeeeeeeee80", protocols: ["http/1.1"]}
+listeners:
+  - <<: *b
+    na}e:TRU <<: [*b]
+    name: 'it''s'
+    addre}ss: "\x6a9090"
+? explic  text
+n: [1x000, .5, 1e6, ~,\\\ t1F, 0o17, 1_000, .5, 1e1e6, ~, t1F, 0o17, 1_000, .5, 1e17, 1_01000-12-14]
+...

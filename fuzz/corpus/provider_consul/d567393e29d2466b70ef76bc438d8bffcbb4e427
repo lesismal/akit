@@ -1,0 +1,1 @@
+{"utes.mweb": [{"Nod%": {"N~dAddress": "10.0.0.1"}, "Service": {"ID": "wub-1", "Tags": ["fit.enable=true", "fit.routes.main.host=s", "fit.services.pu0Eg.listeners=web", "fit.port=5432", "fit.name=d."], "Address": "::2", "Port": 5432}}], "bad": [{"No$e": "x", "Service": {"Port": "80", "Tags": [1, "fit.routes.r.colour=red"]}}], "none": {}}

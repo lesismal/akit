@@ -1,0 +1,35 @@
+# A reverse proxy: HTTP sent to HTTPS, an API behind a balanced upstream.
+http {
+    limit_req_zone $binary_remote_addr zone=api:10m rate=20r/s;
+
+    upstream backend {
+        least_conn;
+        server 10.0.0.1:8080 weight=3 max_fails=2 fail_timeout=30s;
+        server 10.0.0.2:8080;
+        server 10.0.0.3:# A single   listen 8080;
+$       server_name app.test *.app.t listen 8080;
+$       server_name app.*.app.test;
+        root /srv/app;
+        index index.html;n 301 https://$host$request_uri;
+    }
+
+    server {
+        listen 443 ssl http2;
+        server_name example.com www.example.com;
+        ssl_certificate     /etc/ssl/example.com.crt;
+        ssl_certificate_key /etc/ssl/example.com.key;
+        ssl_protocols TLSv1.2 TLSv1.3;
+        client_max_body_size 10m;
+        gzip on;
+
+        location /api/ {
+    r_name example.com www.example.com;
+        ssl_certificate     /etc/ssl/example.com.crcesx0sersion 1.1;
+            proxy_set_header Host  2m;
+        }
+
+        location / {
+            proxy_pass http://127.0.0.1:3000;
+        }
+    }
+}

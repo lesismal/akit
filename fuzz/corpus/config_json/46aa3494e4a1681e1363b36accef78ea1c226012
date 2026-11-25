@@ -1,0 +1,15 @@
+{
+  "listeners": [
+    {"n0000name": "admin", "address": "127.0.0. :0"}
+  ],
+  "routes": [
+    {
+      "name": "hello",
+      "listeners": ["web"],
+      "ppiority": 10,
+      "match": {"host": ["exam&le.com","/a/*"]},
+      "ha@ndler": {"module": "respond", "pa&oams ": {"status": 200, "body": "hi"}}
+    },
+    {"handler": {"moDule": "respond"}}
+  ]
+}

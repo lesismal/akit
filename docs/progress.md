@@ -11,14 +11,100 @@ done and where the work differs from the plan.
 | | |
 | --- | --- |
 | Last updated | 2026-11-26 |
-| Milestone | M0, foundations, done (I01–I08); M1, the proxy core, done (I09–I25, I17b, I18b; [the M1 report](../bench/results/m1-report-2026-11-25.md)); M2, dynamic config and TLS, done (I26–I38); M3, gateway features, done (I39–I56, I51b; [the M3 report](../bench/results/m3-report-2026-11-25.md)); M4, platform integration, done (I57–I66; [the M4 report](../bench/results/m4-report-2026-11-25.md)); M5, caching and extensions, done (I67–I76; [the M5 report](../bench/results/m5-report-2026-11-25.md)); 1.0: I78 and I79 done, I77, I80 and I79b to do. |
+| Milestone | M0, foundations, done (I01–I08); M1, the proxy core, done (I09–I25, I17b, I18b; [the M1 report](../bench/results/m1-report-2026-11-25.md)); M2, dynamic config and TLS, done (I26–I38); M3, gateway features, done (I39–I56, I51b; [the M3 report](../bench/results/m3-report-2026-11-25.md)); M4, platform integration, done (I57–I66; [the M4 report](../bench/results/m4-report-2026-11-25.md)); M5, caching and extensions, done (I67–I76; [the M5 report](../bench/results/m5-report-2026-11-25.md)); 1.0: I77, I78 and I79 done, I80 and I79b to do. |
 | akio | `0fc8f3a7` on akio's `main` (`1.0.0-rc.1`, with every request akit pins in [akio API requests](akio-api-requests.md), akio-wasm, ADR-125, and the shared I/O groups of ADR-130), pinned by `rev` in `Cargo.toml` |
 | fit | the specification; read at `7daee573` for this plan |
 | What works | `akit run` and `akit validate` with fit's flags and exit codes, `akit adapt` and `akit fmt` writing configs as fit writes them (I73), `akit build` building akit with the modules of other crates, or fewer of its own (I70)nginx configs and Caddyfiles converted by `akit adapt -from` as fit converts them (I74), configs in JSON, `.conf` and YAML merged from files and directories; SIGHUP reloads the config (a broken one keeps the running one; listeners kept (as fit's `binding.same`: certificate files and ACME names may change), added, changed and drained on akio's A1, those it started with too, h3 ones added by a reload; a startup h3 listener stays until a restart); a graceful shutdown on SIGINT and SIGTERM; HTTP/1.1, h2c, TLS (SNI, ALPN, client authentication; certificates chosen per handshake as fit's, replaced by a reload or by `-watch-certs` without closing the listener) and HTTP/3 listeners, `Alt-Svc` on the TCP side; router v1 on canonical paths, with fit's matchers (method, header, query, remote IP, path regexps) and expressions; route middleware: `rewrite` (prefixes and regexps), `redirect` (with the regexp's groups), `headers`, `rate_limit`, `concurrency_limit`, `body_limit`, `basic_auth` (bcrypt, checked on akio's pool), `client_cert` (mTLS per route), `forward_auth` (an auth service asked on akio's client, the request suspended meanwhile), `circuit_breaker`, `compress` (zstd, brotli and gzip by q value, streamed bodies encoded write by write) and `jwt` (JSON Web Tokens verified with akio-crypto, keys from PEM files, a secret or a JWK set fetched by akio's client and rotated); the `respond`, `static` (conditional and range requests, files opened on akio's pool, precompressed twins by q value, compressed copies of files kept in memory, `try_files`, listings, `strip_prefix`) and `proxy` handlers (fit's forwarding fields, trusted proxies, the client's `Host`, bodies streamed both ways with linked backpressure, trailers both ways, `timeout` and the upstream's `response_timeout`, `response_header_timeout` and `response_idle_timeout`, 504 for timeouts, the upstream request given up whenever the client goes, `retry` with its budget, the `timeout` bounding the attempts together; `upstreams` chosen at random by weight, a `failover` taking the requests while the chosen upstream has no address in rotation, a `mirror` getting copies of requests whose bodies came whole, at most 256 under way, never waited for; upstreams over HTTP/1.1, h2c and h2, h2 with fit's `tls_server_name`, `tls_ca_file` and client certificate); `limits.max_body_bytes` on every listener (413) and in the proxy, and `limits.write_stall_timeout` (changed by a reload too); access logs in fit's json, text and line formats; upstream pools with fit's nine load balancing policies (round robin, weighted round robin, least connections, random, p2c, and consistent hashing of the client's IP, the path, a header or a cookie) and sticky cookies, passing over addresses taken out by passive health checks (`max_fails`, `fail_timeout`) and by active ones (`health_check`: http and tcp probes), an unchanged upstream's pool, connections and health kept across reloads (I38); the Admin API on loopback (`GET /config`, by JSON pointer too, `POST /load`, edits by pointer with `PUT`, `PATCH` and `DELETE /config`, `POST /rollback/{n}`, `POST /reload`, each with `If-Match` and all but a rollback with `?dry_run=1`, `GET /versions`; with `token_file`, a bearer token on every request), changes applied as SIGHUP's reloads, one history for both; `run -watch` applying the config's files each time they change (fit's file provider, polled); Prometheus metrics at the Admin API's `GET /metrics` (requests by listener and route with `metrics`, upstreams and backends, certificates, connections, reloads, akio's engine); fit's read-only dashboard at the Admin API's `/dashboard/`, on `GET /status` and `GET /config/effective` (I63); certificates obtained with ACME through HTTP-01 or TLS-ALPN-01 for the names listeners list in `tls.acme`, kept in a storage and renewed by their lifetime or the CA's renewal information (ARI), their OCSP responses stapled, and obtained during handshakes for the names an ask URL allows (`tls.on_demand`, rate limited, the handshakes waiting without holding an I/O thread); HTTPS by default (`auto_https`): a config that writes no listeners served on HTTPS with its routes' host names' certificates and on HTTP redirected to it (308), an empty `tls` given its routes' names; layer 4 `services` (I51): `tcp` and `udp` listeners proxied to an upstream's addresses, backpressure linked both ways, idle timeouts, `max_conns`, drained after a reload; services sharing a `tcp` listener by the server names of their TLS ClientHellos, passed through without terminating them (I52), and PROXY protocol headers (v1, v2) taken from a listener's trusted proxies, on `tcp` and HTTP listeners, and sent to a service's upstream; `tcp` beside HTTP on one port (I53), told apart by what a client sends first; the forward proxy (I55): SOCKS5, SOCKS4 and 4a CONNECT on a listener's `socks`, alone or beside HTTP and `tcp` on one port, and HTTP/1.1 CONNECT tunnels by the `forward_proxy` handler, with fit's rules for clients and destinations (an address decided once connected), connect and idle timeouts; WebSockets proxied (I49) from HTTP/1.1 upgrades and HTTP/2 and HTTP/3 extended CONNECTs to HTTP/1.1 upstreams, backpressure linked both ways, `tunnel_idle_timeout`; gRPC calls proxied (I50) to h2 and h2c upstreams, streamed both ways with their trailers, bounded by `grpc-timeout`, answered with gRPC statuses when they fail; the response cache (I67, I68): RFC 9111 in a bounded memory tier shared by a zone, streamed bodies kept as they go, the cache lock, stale-while-revalidate and stale-if-error, a disk tier on a pool of its own, and purges by URL, URL prefix, tag or zone at the Admin API's `POST /cache/purge` (I69); the provider framework (I57): providers' parts merged into the base config by fit's rules, applied as versions of their own, `GET /config/effective` with where each part came from; the Docker provider (I58): routes, upstreams and services from the labels of running containers, followed through the daemon's events on akio's HTTP client over its Unix socket (or TCP); the Kubernetes provider (I59, I60): the Gateway API's Gateways of akit's GatewayClasses and their HTTPRoutes, GRPCRoutes, TLSRoutes, TCPRoutes and UDPRoutes, and the Ingresses of akit's IngressClasses, listed and watched over HTTP/2 or HTTP/1.1, served as listeners, routes and services to their Services' ready endpoints, their TLS Secrets written as certificate files, the Gateway API's statuses written back; the Consul catalog, Consul KV and etcd providers (I61), followed with blocking queries and watches; certificates shared by instances on several hosts through Redis, etcd or Consul (`acme.shared_storage`, I62), with leased locks and challenges answered by whichever instance the CA reaches; OpenTelemetry (I64): requests traced by their `traceparent` and `telemetry.traces.sample_ratio`, the upstream sent akit's span, spans and metrics exported over OTLP/HTTP; the `fastcgi` handler (I75): PHP-FPM and other FastCGI applications over TCP or a Unix-domain socket, a bounded pool of connections, bodies streamed both ways with linked backpressure, `try_files`, dotfiles and fit's timeouts; the `wasm` middleware (I71): fit's WebAssembly plugins of fit's ABI, run unchanged on akio-wasm's instance pool, bounded in time and memory, never on an I/O thread; the compatibility gate: 80 fixtures, 45 valid, 34 refused only as not supported yet (26 fields), 1 skipped, none failed, every fit template valid; the config schema and the Admin API frozen as v1 (I79, [the policy](compatibility.md#v1-what-stays-stable)), checked by `tools/v1-freeze.py` and `v1_surface_is_frozen`; the old names of fit's renamed fields read with fit's warning; `limits.max_header_bytes`, `max_conns`, `max_write_queue_bytes` and `engine` (decision 028); the proxy conformance suite and h2spec (I25) |
-| Next | I80 (security review readiness, once I77 is done); I79b when akio has A214, A168 and A215; the open akio requests A12, A22, A24, A29, A30, A35, A45, A49, A54, A75, A78, A79, A117, A148 and A170 (built on akio branch `claude/akit-open-requests`, not pinned yet); the Gateway API's conformance run (tests/conformance, the maintainer's) |
+| Next | I80 (security review readiness); I79b when akio has A214, A168 and A215; the open akio requests A12, A22, A24, A29, A30, A35, A45, A49, A54, A75, A78, A79, A117, A148 and A170 (built on akio branch `claude/akit-open-requests`, not pinned yet); the Gateway API's conformance run (tests/conformance, the maintainer's) |
 | akio requests | A1–A11, A13–A21, A23, A32, A33, A36–A38, A48, A51–A53, A57, A58, A63–A66, A90–A94, A105, A108, A109, A111–A113, A132–A135, A165–A167, A169, A171 and A172 on akio's main and pinned; A12, A22, A24, A29, A30, A35, A45, A49, A54, A75, A78, A79, A117, A148 and A170 built on an akio branch, not pinned; A168, A180, A214 and A215 requested ([akio API requests](akio-api-requests.md)) |
 
 ## Log
+
+### 2026-11-26: I77, fuzzing
+
+- akio: unchanged, `dad77a7a`. One request, **A200** (an absolute-form request target taken as
+  RFC 9112 asks), requested only; akit-listener's rewrite below is its stopgap.
+- `fuzz/` (cargo-fuzz, a workspace of its own, nightly): **35 targets**, one or more for each
+  parser akit owns, each calling its crate's `fuzzing` module (feature `fuzzing`, `#[doc(hidden)]`,
+  never in a release build). As in akio, each crate's `fuzzing::tests` replays `fuzz/corpus/<target>`
+  on stable, so `cargo test` checks every seed and every input that once failed, on every platform.
+  - Config readers (fit's `FuzzLoad`, `FuzzAdapt`, `FuzzConvert`): `config_json`, `config_conf`,
+    `config_yaml`, `config_value` (I02–I26's, moved onto the crate's module), `convert_nginx` and
+    `convert_caddyfile` (JSON out, warnings with their line, read without a panic),
+    `config_adapt` (`akit adapt`: a config written in every format reads as the same config).
+  - Router (`FuzzParseExpr`): `router_expr` (an expression prints back to one that parses to the
+    same and matches the same requests), `router_path` (a canonical path is a fixed point, with no
+    dot or empty segment), `router_find` (the router against a reference that tries every route).
+  - Proxy (`FuzzHopByHop`, `FuzzForwarded`, `FuzzGRPCTimeout`): `proxy_headers` (no hop-by-hop
+    field or one `Connection` names either way, the forwarding fields the proxy's own, a
+    `Forwarded` element without control characters, no line broken), `proxy_grpc_timeout`.
+  - Cache (`FuzzDirectives`): `cache_semantics` (directives, `Vary`, tags, freshness, the
+    preconditions, the locations invalidated, purge keys), `cache_disk` (the disk tier's files
+    both ways).
+  - L4 (`FuzzReadSNI`): `l4_hello` (the service a ClientHello picks, however it is split),
+    `l4_forward` (the forward proxy's rules: an internal address or the host's own never let
+    through unless `allow` holds it). The PROXY protocol and ClientHello parsers are akio-mux's,
+    fuzzed in akio (`proxy_header`, `mux_tls_hello`).
+  - Handlers (`FuzzReader`): `fastcgi_response` (records read whole or in pieces, the CGI header),
+    `fastcgi_paths` (`SCRIPT_FILENAME` and `PATH_TRANSLATED` under the root), `static_path` (the
+    static handler's scan of a raw path agrees with the decoded one; CONNECT targets).
+  - Middleware: `jwt_token` (tokens from every place, and claims signed with the test secret so
+    that they are checked), `jwks_keys` (JWK sets and PEM keys), `middleware_fields` (Basic
+    credentials, the rate limiter's client against fit's walk back over `X-Forwarded-For`,
+    `Accept-Encoding`, path escapes, a rewrite of any bytes).
+  - And: `observe_access_log` (a log line is one line, its JSON an object), `observe_escapes`
+    (JSON, Go and logfmt quoting, `traceparent`), `observe_tzif`; `tls_redis_reply`, `tls_acme`
+    (stored certificates, ARI times); `provider_kubernetes`, `provider_docker`, `provider_consul`,
+    `provider_kv`, `provider_merge` (whatever the API sends, a part the merge reads, merged onto a
+    config akit reads); `admin_pointer` (JSON pointers, merge patches); `upstream_keys` (hash
+    policies and sticky cookies pick an address that is up); `plugin_pairs` (Proxy-Wasm's
+    serialized header maps).
+- Seed corpora checked in (`fuzz/corpus`): hand-written seeds per target, fit's own fuzz corpora
+  (`testdata/fuzz`, decoded), fit's converter test files and akit's converter tables, akio's
+  `mux_tls_hello` hellos; then what the runs below found, minimized with libFuzzer's `-set_cover_merge=1`, the
+  hand-written and regression seeds kept as they are: 22,682 files, 12 MB. `fuzz/run-all.sh [SECS] [PAR] [targets]`
+  runs them (`merge` folds a run's finds back).
+- CI: `ci.yml`'s fuzz job runs every target for 60 s, four at a time; the new `fuzz.yml` runs each
+  for ten minutes every Sunday and on release tags, in four shards, carrying the grown corpus in
+  the Actions cache, the failing inputs kept as artifacts (fit's `fuzz.yml`).
+- Run: on gpu51 (`flock -s`), every target for 300 s, eight at a time (2026-11-26), from 66 k
+  executions (`router_expr`, which compiles path regexps) to 86 M (`proxy_grpc_timeout`); no
+  crash, leak or timeout in akit's code; after the oracle of `admin_pointer` was corrected, it
+  and the new `plugin_pairs` ran 300 s more (9.4 M and 50.5 M executions). Locally on macOS,
+  every target for 15 s before.
+- Findings, each fixed with its regression test:
+  - **A route-protection bypass**: a request whose target is in absolute form
+    (`GET http://a/admin/x HTTP/1.1`) was routed by the whole target, which no path route matches,
+    so a catch-all route took it, while the proxy asks its upstream for `/admin/x`. fit (Go's
+    server) routes it by its path and takes its host (RFC 9112 section 3.2.2). The listener now
+    rewrites such a request to origin form with the target's host before routing, in `call` and
+    `body_mode` (`absolute_form`); `path_confusion` gains absolute-form targets,
+    `absolute_form_targets_name_their_host` and the unit test `absolute_form_targets`. Found when
+    `cache_semantics` was given a request path that was not one. A stopgap until akio does it
+    (A200); a benchmark-status row names the same-run A/B left to the benchmark tasks.
+  - **`rewrite` corrupted a path**: one with a byte that is not UTF-8 and a character of the
+    block its stand-ins took (U+10FF80 to U+10FFFF) came out with the character turned into a byte.
+    The stand-ins now take a block of private use planes 15 and 16 that neither the path nor the
+    replacement uses (`stand_in_base`); a path holding every one is left as it is.
+    `characters_of_the_stand_ins_block_are_kept`; found by `middleware_fields`.
+  - Not a bug, recorded: when a host matches two `**.` patterns of the same priority, the router
+    tries the longer suffix first and passes over a longer path prefix of the shorter one, though
+    an exact path of the shorter still wins; fit does the same (`router.go`'s early `break`), so
+    akit keeps it (rule 19) and `router_find` checks only that the route picked matches. Worth a
+    look in fit.
+  - The rest were the targets' own oracles, corrected: fit (as Go) writes one U+FFFD per invalid
+    byte; a TZif offset past a day is allowed (RFC 8536 only asks it), the log's times saturate;
+    `-` names a member of an object (RFC 6901).
+- Made `pub(crate)` for the targets: the cache's `same_origin`, `url_key`, disk `encode` and
+  `decode`; FastCGI's `header_end`, `parse_head`, `origin_form`, `unescape`, and `try_files`'s
+  pure step `candidate`; the static handler's `scan`; the forward proxy's `target`; the
+  middlewares' `credentials`, `client_ip`, `negotiate`, `Rewrite::path`; akit-l4's `Opening`;
+  Consul's `Instance::from_json`, etcd's `watch_message`; the Admin API's pointer `string`;
+  Proxy-Wasm's `window`. No new dependency (libfuzzer-sys stays in `fuzz/`).
+- Checked: `cargo test` of the 13 crates touched (macOS), fmt, clippy with and without
+  `fuzzing`, `cargo deny`, the docs check.
+- What should be measured (rule 30): the listener's absolute-form check, a same-run A/B of the
+  fixed scenario over HTTP/1.1 (one comparison a request; no cost expected).
 
 ### 2026-11-26: I79, v1 freeze and compatibility
 

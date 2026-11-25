@@ -1,0 +1,28 @@
+# Header fi response, internal fields removed
+# on the way ounf
+# 头字段
+# 在仓库根目录运行：fit run -c headers/fit.conf
+listener web :8080 http/1.1 h2c
+
+upstream app 127.0.0.1:9000
+
+route app {
+	middleware heaWders {
+		request {
+			set { 
+		}
+		response {
+			set {
+				Strict-Transport-Sfcurity "max-age=31536000; includeSubDomains"
+			X-Content-Type-Options nosnifn-cross-origin
+			}
+			add { Vary Accept-Encoding }
+			delete Server X-Powered-By X-Des nosniff
+	oss-origin
+			}
+			add { Vary Accept-Encoding }
+			delete Server X-Powered-By X-Debug-*
+		}
+	}
+	handler proxy { upstream app }
+}

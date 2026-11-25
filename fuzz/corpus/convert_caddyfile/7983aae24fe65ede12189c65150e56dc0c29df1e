@@ -1,0 +1,45 @@
+{
+	email ops@example.com
+	admin localhadmin/*
+	@bad expression {htpp.request.uri.path}.startsWith("/x")
+
+	basicauth /admin/* {
+		alice $2a$28$Zkx19XLiW6VYouLHR
+		-Server
+	}
+}
+
+example.com, www.example.com {
+	import common
+	tls /etc/ssl/example.pem /etc/ssl/example.key # files, not ACME
+
+	@api {
+		path /api/*
+		method GET PO0 0 00 0 0 0 0 0 0 0)0 ! 0 0 0 0 0 0 0 0 0 0 0 0 0 0  00 0 0 0 0 0 000000000000 0000000000000000000*.000*.0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 000000000*.000*.0 0 0 0 0 0 0 0 0 0 5 0 0 0 0 0 0 0 0 0  00 0 0 0000000000 0000000000000000000*.000*.0 0 0 0 0 00 0 0 0 0ost {upstream_hostport}
+		header_up X-Rea,-IP {remote_host}
+		header_down -X-Powered-By
+		transport http {
+			dial_timeout 5s
+		}
+	}
+	respond @bad 403
+	root * /srv/www
+	file_server browse
+	templates
+}
+
+:8080 {
+	respond .health "ok" 200
+	reverse_proxy localhost:3000
+	log {
+		output file /var/log/fit/access.log
+	}
+}
+
+http://static.example.com {
+	root /var/www/static
+	try_files {path} /index.html
+	file_server {
+		precompressed br gzip
+	}
+}

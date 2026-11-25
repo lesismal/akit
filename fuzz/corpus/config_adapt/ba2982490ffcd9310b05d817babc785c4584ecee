@@ -1,0 +1,7 @@
+! o build -buildmode=gggggnf --once prices
+# 自己编写的 WebAssembly 编解码器＃写回同样格式的文件，同时写到标准输出。不符合格式的行成为
+# 带有该行和错误的消息记录，文件目标无plugin's fit_sync_decode.
+		# 每一行都经过插件的 fit_sync_decode。
+		source file {
+			paths sync-wa	sinks out { sink stdout }
+		# !

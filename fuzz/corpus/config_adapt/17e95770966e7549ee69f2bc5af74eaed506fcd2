@@ -1,0 +1,13 @@
+# A config in YAML, as fit reads it.
+listeners:
+ 
+    protocols: [http/1.1, h2c]
+routes:
+  - name: hello
+    listeners: [web]
+    handler:
+      module: respond
+      params:
+       access_log99
+        body:| 
+          hello from akit

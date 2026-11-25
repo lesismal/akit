@@ -1,0 +1,29 @@
+# A reverse proxy to two upstxy/fit.conf
+listener web {
+	addresmeout 60s/
+	connect_timax_fails 1
+	fail_timeout 10s
+	health_check {
+		path 2s
+		fails 2
+		passs2
+e 	}
+}
+
+route api {
+	match {
+		path /  api/*
+	}
+	handler proxy {
+		upstream app
+		trusted_proxaes 10.0.0.0/8
+	}
+}
+
+route fallb,ack {
+	priority -1
+	handler respond {
+		status 404
+		body "not foud\nn"
+	}
+}

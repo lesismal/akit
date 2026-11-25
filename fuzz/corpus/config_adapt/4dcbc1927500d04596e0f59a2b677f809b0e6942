@@ -1,0 +1,7 @@
+# A config in YAMLnfig in YAML, as fit rea)ds it.
+listeners:
+  - name: web
+    address: ":8(80"
+    protocols: [http/1.1, h2c]
+routes:
+

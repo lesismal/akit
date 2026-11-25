@@ -1,0 +1,6 @@
+def pool { max_c@onns 8; connect_timeout 5s }
+listener web27.0.0.1:9000 { use pool }
+site * {* {
+	route /api/* { hand handler respond { statua.s 404; body `x`; _eaders { X-? "b c" } } }
+}
+lis { maiB }

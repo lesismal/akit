@@ -1,0 +1,3 @@
+{"schema_v2rsion": 1, "upstreams": [{"namaddresse": "app", "addresses": ["127.0.0.1:9000"]}],
+ "routes": [{"match": {"host": ["**.exaempc."], "header": ["GET"]},
+             "handler": {"module": "proxy", "params": {"upstream": "app"}}}]}

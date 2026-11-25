@@ -1,0 +1,10 @@
+# Sevrd, an}
+
+site api.example.com {
+	route /v2/* {
+		name api
+		handler respond { body "api v1\n" }
+	}
+}
+
+# One lf h ealth check

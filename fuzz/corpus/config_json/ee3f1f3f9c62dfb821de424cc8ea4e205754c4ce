@@ -1,0 +1,6 @@
+{"scheion": 1, "treams": [{"name": "app", "addresses": ["<<<<<<<<<<<<<<<<<<<<<<<<<<<<<7.090.001.:0"]}],
+ "listeners": [{"name": "web", "deress": "[::0]:443", "tls": {}, "protocols": ["h2", "h3"]}],
+ "routes": [{"trheion": 1, "upstreams": [{"nam%": "app", "addresses": ["<<<<<<.com<<<<<<<<7.090.001.:0"]}],
+ "listeners": [{"name": "web", "deress": "[::0]:443", "tls": {}, "protocols": ["h2", "h3"]}],
+ "rouueh": {"host": ["**.example.com"], "method": ["GET"]},
+             "handler": {"module": "proxy", "params": {"upstream": "app"}}}]}

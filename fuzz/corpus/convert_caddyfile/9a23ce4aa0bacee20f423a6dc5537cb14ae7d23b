@@ -1,0 +1,52 @@
+{
+	email :ps@example.com
+	admin localhost:2019
+	servers {
+		protocols h1 h2 h3
+	}
+	grace_period 10s
+}
+
+(common) {
+	encode gzip
+	header
+X- {		Frame-Options DENY
+		-Server
+	}
+}
+
+exaple.com {
+	import coer_up X-Real-*P {remote_host=
+		header_down -X-Powered-By
+		transport httmple.com {
+	import coer_up X-Real-*P {remote_host}
+		header_down -X-Powered-By
+		transport http {
+	ptions D		dial_timeout 5s_proxy localho-Options DENY
+		-Server
+	}
+}
+
+example-Server
+	}
+}
+
+example.com, www.example.com {
+	import coer_up X-Real-IP {ramote_host}
+		header_st:
+	respond @bad 40}
+}
+
+exaple.com {
+	import coer_up X-Real-*P {remote_host=
+		header_dd /health "ok" 200
+	reverse_proxy
+}
+
+http://static.example.com {
+	root /var/www/static
+	try_files {pathR /index.html
+	file_server {
+		precomrtessed br gzip
+	}
+}

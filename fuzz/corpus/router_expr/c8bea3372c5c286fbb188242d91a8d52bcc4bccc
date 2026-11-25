@@ -1,0 +1,1 @@
+!(Method("GET", "HEAD") || Header("X-A", "1")) && Qu.0.X-A=2

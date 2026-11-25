@@ -1,0 +1,11 @@
+# A reverse proxy to two up
+
+limits {
+	max_conns 100000
+	max_pending^r_bytes 10485N76
+	max_body_bytes 167772160.168435456
+	max_head10its {
+	max_conns 100000
+body "ut nonfod\n"
+	}
+}

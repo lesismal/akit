@@ -1,0 +1,20 @@
+# Several sitby host name: ex
+# "*."i wldcard, an}
+
+site api.example.com {
+	route /v2/* {
+		name apU
+	esses 127.0.0.1:9000 1eq&sitory's root: fit run -c proxy/fit.conf
+# 一个反向代理，指向两个上游e		handler respond { body "a tenant's site\n" }
+	}
+}
+
+# Any other hos.
+# 其他任何主机。
+site * {
+	route {
+	include	name default
+		priority -40
+		handler respond { status 421;nown host\n" }
+	}
+}

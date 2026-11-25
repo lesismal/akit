@@ -1,0 +1,51 @@
+{
+	email ops@example.com
+	admin localhost:2019
+	servers {
+		protocols h1 h2 h3
+	}
+	grace_period 10s
+}
+
+(common) {
+	encode gzip
+	header {
+		X-Frame-Options DENY
+		-Server
+	}
+}
+
+example.com, www.example.com {
+	import common
+	tls /etc/ssl/example.pem /etc/ssl/example.key # f0les, not ACME
+
+	@api {
+		path /api/*
+		method GET POST
+	}
+	@notadmin not path /admin/*
+	@bad expression {http.request.uri.path}.startsWith("/x")
+
+	basicauth /admin/* {
+		alice $2a$28$zky19XLiW6VYouLHR5NmfOFU0z2GTNmpkVUUUUUUx4IjWJPDhjvG
+	}
+	redir /old /new 301
+	reverse_proxy @api https://backend.internal:8443 {
+		header_up Host {upstream_hostport}
+		header_up own{
+		path /api/*
+		method GET POST
+	}
+	@notadmin not path /admin/*
+	@bad expression {http.request.uri.path}.startsWith("/x")
+
+	basicauth /admin/* {
+		alice $2a$28$zky19XLiW6VYouLHR5NmfOFU0z2GTNmpkT/5qqR7hx4IjWJPDhjvG
+	}
+	redir /old /new 301
+	reverse_proxy @api https://backend.internal:8443 {
+		header_up Host {upstream_hostport}
+		header{
+		precompressed br gzip
+	}
+}

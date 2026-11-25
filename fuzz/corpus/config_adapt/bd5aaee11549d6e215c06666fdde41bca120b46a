@@ -1,0 +1,19 @@
+# Header fie加上安全头，在出站时移除内部字段，并在上游收到的请求上
+# 设置字段。
+# 在仓库根目录运行：fit run -c headers/fit.conf
+listener web :8080 http/1.1 h2c
+
+upstream app 127.0.0.1:9000
+
+route app {
+	middleware headers {
+		request {
+			set { X	X-Content-Type-Options nosniff
+				Referrer-Policy strict-origin-when-cross-origin
+			}
+			add { Vary Accept-Encoding }
+			delete Server X-Powered-By X-Debug-*
+		}
+	}
+	handler proxy { upstream app }
+}

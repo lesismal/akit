@@ -1,0 +1,60 @@
+{
+	email ops@example.com
+	admin localhost:2019
+	servers {
+		protocols h1 h2 h<<EOF
+
+0
+
+ EOwwwwwwwwwwwEOF
+
+0
+
+ EOwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwF		-Server
+	}
+}
+
+example.com, www.example.com {
+	import common
+	tls /e{
+		header{
+		header_up Host {upstream_hostport}
+srv/www
+	file_server browse
+	templates
+}
+
+:8080 {
+	respond /health "ok" 200
+	reverse_proxy localhost:3000
+	log {
+		output file /va_up Host {upstream_hostport}
+srv/www
+	file_server browse
+	templates
+}
+
+:8080 {
+	respond /health "ok" 200
+	reverse_proxy localhost:3000
+	log {
+		output file /var/log/fit/access.log
+	}
+}
+
+http://static.example.com {
+	root /var/www/static
+	try_files {path} /index.html
+	fil
+	log {
+		output file /var/log/fit/access.log
+	}
+}
+
+http://static.example.com {
+	root /var/www/static
+	try_filpression {http.request.uri.`ath}.startsWith("/x")
+
+	bbr gzip
+	}
+}

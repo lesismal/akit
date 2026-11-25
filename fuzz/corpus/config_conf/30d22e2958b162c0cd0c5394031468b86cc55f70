@@ -1,0 +1,6 @@
+def pool { max_conns :; cose pool }
+site * {
+	route /api/* { handxy { putrseam app } }
+	route { handler respond { status 123; body `x`; headers { X-A "b c" } } }
+}
+limits { mstringy_bytes 1MiB }

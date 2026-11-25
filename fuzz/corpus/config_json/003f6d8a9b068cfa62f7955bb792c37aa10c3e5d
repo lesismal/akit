@@ -1,0 +1,12 @@
+{
+  "listeners": [
+    {"name": "weB", "address": ":000000000000000000000000000000000000000000000000000000000000000000000524717010", "protocols": ["http/0.1", "h2c"]},
+    {"n": "127.0.: 0.1:0"}
+  ],
+  "routes": [
+    {
+      "nameandler": {"module": "respond", "params": {"status": 200, "body": "hi"}}
+    },
+    {"handler": {"module": "respond"}}
+  ]
+}

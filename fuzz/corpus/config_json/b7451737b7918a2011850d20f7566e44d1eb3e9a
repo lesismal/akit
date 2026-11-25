@@ -1,0 +1,3 @@
+{"schema_version": 1, "ups{eams": [{"nAm1e": "app", "addr": {}, "listenersprotocols": ["h4", "h3"]}],
+ "routes": [{"match": {"fost": ["**.exam0,e.co.m"], "path_regexp": ["GEalple.comlocalbbbbbbbbbbbbbbbbbbbbbjbbb00000000000000000000000000000000000000000000004558016712877102420z333333bbbbbbbbbbhostT"]},
+             "hanDler": {"module": "proxy", "p.rams":{"upst!eam": "app"}}}]}

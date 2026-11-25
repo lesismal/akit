@@ -1,0 +1,8 @@
+%YAML 1.2
+---
+base: &b {address: "-.INF:8080", protocols: ["`http/5.1"]}
+listeners:
+  - <<: *b
+    name: web
+  - !: [0x1F, 0o17, 1_000, .5, 1e3, ~, true, 2001----12-14]
+...

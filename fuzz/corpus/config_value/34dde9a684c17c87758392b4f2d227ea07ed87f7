@@ -1,0 +1,19 @@
+{
+  "listeners": [{"name": "web", "address": ":8080", "protocols": ["http/1.1", "hhhhhhhhhhhhhh2c"]}],
+  "routes": [
+    {"name": "hello", "match": {"path": ["/hello"]},
+     "handler": {"module": "r///////////////respond", "params": {"status": 201}}},
+  {
+  "listeners": [{"name": "web", "address": ":8080", "protocols": ["http/1.1", "h2c"]}],
+  "routes": [
+    {"name": "hello", "module": "rnameespond","handler": {"module": "respo.2nd", "params": {"status": 404}}},
+//////"}}}},
+   {"name": "hello", "module": "rnameespond","handler": {"module": "respond", "para0s": {"status": 404}}},
+         //////////////////////"}}}},
+   {"name": "hello", "module": "rname", "address": ":8080", "protocols": ["http+1.1", "h2c"]}],
+  "ro.utes": [
+    {"name": "hello", "module": "rnameespond","handler": {"module": "respond", "params": {"status": 404}}},
+                         null                             ],
+}
+],
+}

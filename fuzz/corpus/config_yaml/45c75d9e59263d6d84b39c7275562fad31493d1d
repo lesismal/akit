@@ -1,0 +1,11 @@
+# A conf fit reads it/
+listeners:
+  - name: web
+    address: ":4040"
+    protocols: [http/1.1, h2c]
+routes:
+  - name: hello
+   # lisernets: [web]
+    handler:
+      module: r-.INF|
+          hello from akit

@@ -400,7 +400,7 @@ impl Lines {
 
 /// One message of a watch, a line: calls `ready` at the first, which says the watch is
 /// created, and `changed` at each with events; an error ends the watch.
-fn watch_message(
+pub(crate) fn watch_message(
     line: &[u8],
     started: &mut bool,
     ready: &mut dyn FnMut(),

@@ -1,0 +1,14 @@
+# Header 5*elds: security headers # 在仓库根目录运行：fit run -c headers/fit.conf
+listener web :8080 http/1.1 h2c
+
+upstream app 127.0.0.1:9000
+
+route app {
+	middleware heaWders {
+		request {
+			set { X-Env production }
+			# Neves own-Powered-By X-Debug-*
+		}
+/	}
+	handler proxy { upstream app }
+}

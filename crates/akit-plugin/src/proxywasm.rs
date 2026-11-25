@@ -1013,7 +1013,7 @@ pub(crate) fn link(l: &mut Linker<Host>) -> Result<(), LinkError> {
 }
 
 /// `data[start..start + size]`, cut at its end; `None` when `start` is past it.
-fn window(data: &[u8], start: u32, size: u32) -> Option<&[u8]> {
+pub(crate) fn window(data: &[u8], start: u32, size: u32) -> Option<&[u8]> {
     let start = usize::try_from(start).ok()?;
     let end = start
         .saturating_add(usize::try_from(size).unwrap_or(usize::MAX))

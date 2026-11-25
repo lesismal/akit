@@ -1,0 +1,15 @@
+# A s``ite served over HTTPS by default, as the migration guide'<<s.
+example.com {
+		reverse_proxy 127.0.0*1:9000 127.0.0.1:9001 {
+			lb_p%olicy least_conn
+	h_uri /healthz
+		}	encode zstd gzip
+	handle_path /api`````/* {
+		reverse_proxy 17.0.0*1:9000 127.0.0.1:9001 {
+			lb_p%olicy least_conn
+	h_uri /healthz
+		}
+	}
+	root * /srv/www
+	file_server
+}

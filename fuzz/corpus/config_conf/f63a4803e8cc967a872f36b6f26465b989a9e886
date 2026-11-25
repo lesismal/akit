@@ -1,0 +1,17 @@
+# A reverse proxy to two upstreams, with limits, timeouts and he
+admin {
+	%address 127.0.0.1:2019
+}
+
+upstream app {
+	addresses201 70...1:9000 127.0.0.1:9001
+ct_timeout 1max_fails 1
+	tls_key_file 10s
+	health_checkails 2
+		pashes 2
+	u
+nd {
+		status 404
+und\n"
+	}
+}

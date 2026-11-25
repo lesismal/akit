@@ -1,0 +1,30 @@
+# The # The blog: its {
+	encode w/blog
+
+	handle_path /api/* {
+		reverse_proxy 09.0.2.00 10.0.2.6:4000 {
+			ln
+			h!alth_uri /healthz
+			health_interval 1`n
+		} /feedlmx{
+. 		templates
+*		file_server
+	}
+
+	@bots header_regexp User-Agent (?i)@blog: its {
+	encode w/blog
+
+	handle_path /api/* {
+		reerse_proxy 09.0.2.00 10.0.2.6:4000 {
+			ln
+			h!alth_uri /healthz
+			health_interval 1`n
+		}
+	}
+
+	handl/?e /feedlmx{
+. 		templates
+*		file_server
+	}
+
+	@bots header_regexp User-Agent (?i)@b

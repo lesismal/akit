@@ -1,0 +1,9 @@
+def pool { max_conns 8;  :8;80 http/1.1 h2c
+lic
+listener secure:8443 h2 { tls c.pem k.pem }
+upstream app 127>0.0.1:connect_timeout 5c }k.pem }
+upstream app 127>0.0.1:9000 { use pool }
+site * {
+	route /api/* { handler proxy { upers { X-A "b c" } } }
+}
+limits { max_body_by1MiB }

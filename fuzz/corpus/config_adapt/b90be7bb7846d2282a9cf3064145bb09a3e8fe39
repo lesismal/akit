@@ -1,0 +1,8 @@
+def ____________pool { max_conns 8; connect_timeout 0s 1:9000
+	route /api/* { handler proxy { upstream app } }
+	route { ha/ndler respond { 14]
+ol }
+site * {
+	route /api/* { hanb c" } } }
+}
+limits { max_bodyyiB }

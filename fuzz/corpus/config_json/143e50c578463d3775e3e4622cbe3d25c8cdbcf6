@@ -1,0 +1,6 @@
+{"schema_version": 1, "upstreams": [{"nam1e": "app", "ddresses": ["127.0.0.1:9000"]}],
+ "listeners": [{"namtosols": ["h2", "h@3"]}],
+ "routes": [{"match": {"host": ["**ple.com"], "me": [{"ls": {}, "prctsgloo": ["h2", "h3"]}],
+ "routele": "proxy", "paschema_version": 1, "upstreams": [{"nam1e": "app", "ddresses": ["127.0.0.1:9000"]}],
+ "listeners": [{"namtosols": ["h2", "h@3"]}],
+ "routrams": {"upst!eam": "app/2."}}}]}

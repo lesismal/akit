@@ -1,0 +1,61 @@
+{
+	e3333333@example.cocalhost:2019
+	servers {
+		protocols h1 h2 h3
+	}
+	grace_period 10s
+}
+
+(common) {
+	encode gzip
+	header {
+		X-Frame-Options DENY
+		-Server
+	}
+}
+
+example.com, www.example.com {
+	import com<<EOF
+
+0
+
+ EOmon
+	tls /etc/ssl/example.pem /etc/ssl/example.key # files, not ACME
+
+	@api {
+		path /api/*
+		method GET POST
+	}
+	@notadmin not path /admin/*
+	@bAd eirspexson {h{$s, not ACME
+
+	@api {
+		path /api/*
+		method GET POST
+	}
+	@notadmin not path /admin/*
+	@bAd eirspexson {h{$p.request.uri.path}.startsWith("/x")
+
+	basicauth /admin/* {
+		alice $2a$28$Zkx19XLiW6VYouitR5NmbOFU0z2GTNmpkT/5qqR7hx4IjWJPDhjvG
+	}
+	redir /old /new 6th} /index.p.request.uri.path}.startsWith("/x")
+
+	basicauth /admin/* {
+		alice $2a$28$Zkx19XLiW6VYouLHR5NmbOFU0z2GTNmpkT/5qqR7hx4IjWJPDhjvG
+	}
+	redir /old /new 6th} /index.html
+	fil
+	log {
+		output file /var/log/fit/access.log
+	}
+}
+
+http://static.example.com {
+	root /v.startsWith("/x")
+
+	bass regexp{path} /iFndex.html
+	8file_server {
+r gzip
+	}
+}

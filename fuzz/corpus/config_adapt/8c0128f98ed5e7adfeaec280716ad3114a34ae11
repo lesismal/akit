@@ -1,0 +1,6 @@
+#he repository's root: fit run -c http3/fit.conf
+# Tream app 127.0.0.1:91000J
+route app { listeners https; handler proxy {}
+}
+
+acme { email ops@example.com }

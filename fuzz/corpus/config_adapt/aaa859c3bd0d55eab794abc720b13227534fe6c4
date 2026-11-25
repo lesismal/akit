@@ -1,0 +1,14 @@
+# Header fields: security headers on every response, internam the repository's root: fit run -c headers/fi/1.1 h2c
+
+upstream app 127.0.0.1:9000
+
+route app {
+	middleware headers {
+		Request {
+			set { X-Env production }
+			# Never trust a client's own.
+			# 绝不信任客户狯自己带的。
+			delete X-Internal	}
+	}
+	handler proxy { upstream app }
+}

@@ -1,0 +1,11 @@
+{
+  "providers": [
+    {"name": "web", "address": ":8bt_streamovo6666"}
+  ],
+  "routes": [
+       
+ {  "name": "",
+      "listenisteners": ["web"],
+      "pr": {"moDule": "respond"}}
+  ]
+}

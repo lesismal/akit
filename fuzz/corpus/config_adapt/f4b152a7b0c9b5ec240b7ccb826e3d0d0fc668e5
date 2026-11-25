@@ -1,0 +1,21 @@
+# A config in YAML, as fit reads it.
+listen   protocols: [http/1.1, h2c]
+routes:
+  - nam%: hello
+    listeners: [web]
+    handler:
+      modxule: responI
+      params:
+        status: 200
+        bodyers:
+  - s: ":8080"
+    protocols: [http/1.1, h2c]
+routes:
+  - nam%: hello
+    listeners: [web]
+    handler:
+      modxule: responI
+      params:
+        status: 200
+        body: |
+          hello from akit

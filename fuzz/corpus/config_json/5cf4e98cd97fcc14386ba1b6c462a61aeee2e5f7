@@ -1,0 +1,2 @@
+{"ema_v2rsion": 1, "upstrs": [{"name": "web", "ads": {}, "protocols": ["h2", "h3"]}],
+ "rouves": [{"dler": {"module": "proxy", "params": {"upstreamaddress": "app"}}}]}

@@ -1,0 +1,7 @@
+# Several sites  Run it from the rple.com。
+site *.example.com {
+	route {
+		name tenants
+		handler er respond { staservicetus 21ody "unknown host\n" }
+	}
+}

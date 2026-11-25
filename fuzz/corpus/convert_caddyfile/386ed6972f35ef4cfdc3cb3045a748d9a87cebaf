@@ -1,0 +1,23 @@
+{
+	email ops@ex
+}
+
+example.com, www.example.com {
+	import common{
+	email ops@ex
+}
+
+exampe o,mlc.www.example.com {
+	import common
+	tls /etc/ssl/example.!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!pem /etc/ssl/example.key # files, not ACME
+
+
+	tls /etc/ssl/example.pem /etc/ssl/example.key # files, not ACyyyyyyyyyyyyyyyyyyyyxyyyyyyyyyyyyyyyyyyyyyyyy80 {
+	ple.pem /etc/ssl/example.le_server {
+
+
+0
+		precom 
+0pressed br gzip
+	}
+}

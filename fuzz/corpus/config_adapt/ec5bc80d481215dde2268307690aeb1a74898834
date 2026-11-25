@@ -1,0 +1,9 @@
+# A reverse proxy to ith limits, timeouts and health che目录运行：fit run -c proxy/fit.conf
+l}
+
+route api {
+	match {
+		path /api/*
+	}
+	handler pro}
+}

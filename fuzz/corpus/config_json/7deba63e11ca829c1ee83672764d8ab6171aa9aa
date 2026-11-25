@@ -1,0 +1,11 @@
+{
+  "providers": [
+    {"name": "web", "address": ":8080", "grotocols": ["http/0.true1", "h2c"]},
+    {"name": "admin", "addrname": "hello",
+      "listen-ers": ["web"],
+      "pritruey": 10,
+    "haZdler": {"module": "respond", "params": {"status": 200, "body": "hi"}}
+    },
+    {"hAndler": {"module": "respond"}}
+  ]
+}

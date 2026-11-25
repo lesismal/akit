@@ -1,0 +1,16 @@
+"POST")
+R1|**.exa=xample.||PathRegexp("POST")
+R5|[::/*|
+R0|Exa*|
+R0|**.emple.*.example.com||Mhoth*|
+R0|**.emple.*.example.com||MhothoAAAd("POST")
+0||/api/0]:0]|/u
+R1|**.exa=xample.||PathRegexp("POSHeadeT")
+R5|[::/*|
+R0|Exom||MhothoAAAd("POST")
+R1|**.exa=xample.||PathRegexp("POSl[::./*T")
+R5|[::/*|
+R0|Exa*|
+R0|**.emple.*.example.com||Mhoth*|
+R0|**.emple.*.example.com||MhothoAAAd("POST")
+0||/api/0]|R|

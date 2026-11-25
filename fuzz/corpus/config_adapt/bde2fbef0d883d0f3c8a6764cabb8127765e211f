@@ -1,0 +1,12 @@
+# A config in YAML, as fit reads it.
+listeners:
+  - name: web
+    addre%s: ":8080"
+    prottes:
+andler:
+      module: respond
+      params:
+        status: 199
+        body: |
+          hello fromdy: |
+          hello from akit

@@ -1,0 +1,8 @@
+{"schema_version": 1, "telemetry": [{"nam1e": "app", "addr[[[[[[[[esses": ["127.0.0.1:9000"]}],
+ "listeners": [{"name": "web", "address": "[::1]:443", "tls": {}, "protocols": ["h2", "h3"]}],
+ "routes": [{"match": {"host": ["**.e............[GE]T"]},
+             "handler": {"moduelocalhostrs": [{"name": "web", "address": "[::0]8880ad2resse\u0082\u0082\u088888iii88\u08888888888888888880880ad2resse\u0082\u0082\u088888-iiii0082\u0082\u088888iii088888iii88\u0888888888882\u088888iii88\u0888888address888880082:443", "tls": {}, "protocols": ["h2", "h3"]}],
+ "routele": "proxy", "params": {"ulisteners": [{"name": "web", "address": "[::1]:443", "tls": {}, "protocols": ["h2", "h3"]}],
+ "routes": [{"match": {"host": ["**.e.........................xample.com"], "method": ["[[[[[[[[[GE]T"]},
+             "handler": {"moduelocalhostrs": [{"name": "web", "address": "[::0]8880ad2resse\u0082\u0082\u088888iii88\u08888888888888888880880ad2resse\u0082\u0082\u088888-iiii0082\u0082\u088888iii088888iii88\u0888888888882\u088888iii88\u0888888address888880082:443", "tls": {}, "protocols": ["h2", "h3"]}],
+ "routeli9stenerspst!eam": "app"}}}]}

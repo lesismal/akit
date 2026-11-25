@@ -1,0 +1,2 @@
+{"sema_v2rsion": 1, "upstreams": [{"name": "app", "addresses": ["127.*0.0.1:900[0"]}],
+ "listeners": [{"name": "w[:q1]:443", "lts": {}, "pror": {"module": "proxy", "params": {"upstream": "aPp"}}}]}

@@ -415,5 +415,62 @@ impl Drop for SharedStore {
     }
 }
 
+/// The `tls_redis_reply` fuzz target (feature `fuzzing`; I77): [`crate::fuzzing`].
+#[cfg(any(test, feature = "fuzzing"))]
+pub(crate) mod fuzz {
+    #![allow(
+        clippy::indexing_slicing,
+        clippy::arithmetic_side_effects,
+        clippy::panic
+    )]
+
+    use super::redis::{RedisError, Reply, parse};
+
+    /// `r` as RESP2 writes it.
+    fn encode(r: &Reply, out: &mut Vec<u8>) {
+        match r {
+            Reply::Simple(s) => out.extend_from_slice(format!("+{s}\r\n").as_bytes()),
+            Reply::Error(s) => out.extend_from_slice(format!("-{s}\r\n").as_bytes()),
+            Reply::Int(n) => out.extend_from_slice(format!(":{n}\r\n").as_bytes()),
+            Reply::Bulk(b) => {
+                out.extend_from_slice(format!("${}\r\n", b.len()).as_bytes());
+                out.extend_from_slice(b);
+                out.extend_from_slice(b"\r\n");
+            }
+            Reply::Nil => out.extend_from_slice(b"$-1\r\n"),
+            Reply::Array(items) => {
+                out.extend_from_slice(format!("*{}\r\n", items.len()).as_bytes());
+                for i in items {
+                    encode(i, out);
+                }
+            }
+        }
+    }
+
+    /// `tls_redis_reply`: a Redis server's replies to the shared certificate storage (I32). A
+    /// reply read took no more bytes than it was given, no prefix of them reads as a reply,
+    /// and written back it reads as itself.
+    pub(crate) fn redis_reply(data: &[u8]) {
+        let (reply, used) = match parse(data, 0) {
+            Ok(Some(r)) => r,
+            Ok(None) | Err(RedisError::Answered(_)) | Err(RedisError::Conn(_)) => return,
+        };
+        assert!(used <= data.len() && used >= 3, "{used} of {}", data.len());
+        let step = (used / 64).max(1);
+        for n in (0..used).step_by(step) {
+            match parse(&data[..n], 0) {
+                Ok(None) => {}
+                other => panic!("the first {n} of {used} bytes read as {other:?}"),
+            }
+        }
+        if matches!(reply, Reply::Simple(ref s) | Reply::Error(ref s) if s.contains(['\r', '\n'])) {
+            return;
+        }
+        let mut out = Vec::new();
+        encode(&reply, &mut out);
+        assert_eq!(parse(&out, 0), Ok(Some((reply, out.len()))));
+    }
+}
+
 #[cfg(test)]
 mod tests;

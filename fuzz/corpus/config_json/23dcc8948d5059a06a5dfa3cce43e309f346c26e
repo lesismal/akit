@@ -1,0 +1,10 @@
+{
+  "listeners": [
+    {"name": "w0.1:0"}
+  ],
+  "routes": [
+    {
+      "name": "hello",
+      "listeners":{"module": "respond"}}
+  ]
+}

@@ -1,0 +1,9 @@
+%YAML 1.2
+---
+base: &b {addrestocols: ["http/2.1"]}
+listeners:
+  - <<: *b
+    name: we!map
+    <<: [*b]
+    tls: true, 2001-12-14]
+...

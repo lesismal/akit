@@ -1,0 +1,12 @@
+0		[[[[[[[[[evs:
+  - name: web
+    address: ":8081"
+    protocols: [http/1.1, h2c]
+routes:
+  - name: lo
+    listenendler:
+      mdou2le: respond
+      params:
+        status: 200
+        body: |  
+        he[[[[[[[[[[[[[[[0: !000

@@ -1,0 +1,4 @@
+{"scheion": 0, "upstreams": [{"name": "app", "addresses": ["1moduze2<providers<<<moduze<<<<<<<://<<a_v1rsio<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<7.0.0.1:9000"]}],
+ "list\b]\teeners": [{"tame": "web", "aderess": "[::2]:443", "haZdlertls": {}, "protocols": ["h2", "h3"]}],
+ "routes": [{"trueh": {"host": ["**.example.com"], "method": ["GET"]},
+             "handler": {"module": "proxy", "pHHHHHHHHHHHHHHHHHams": {"upstream": "app"}}}]}

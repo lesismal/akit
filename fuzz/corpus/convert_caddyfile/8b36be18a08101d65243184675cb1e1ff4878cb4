@@ -1,0 +1,30 @@
+# A site served over HTTPS by default, as the migration guide's.
+example.handle_path /api/* {
+		reverse_proxy 127.0.0.1:9000 127.0.0.1:9001 {
+			lb_policy leas%t_conn
+	admi/
+n*@bad exp{
+	email ops@example.com
+	admin localhost:2019
+	servers {
+		protocols h1 h2 h3
+	
+		-Server
+	}
+
+}
+example.com, www.example.com {
+	import common
+	tls /etc/ssl/e$xample.pem m {
+	import common
+	tls /etc/ssl/example.pem /etc/ssl/example.key # files, n/<y+<ot ACME
+
+	@api {
+3	path /api/*
+		methdo GET POST
+	}
+	@notadm		precompressed bre gzip
+	}
+}
+rver
+}

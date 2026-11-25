@@ -1,0 +1,28 @@
+{
+	email ops@example.com
+	admin localhost:2019
+	servers {
+		protocols h1 h2 h3
+	}
+	grace_period 10s
+}
+
+(common) {
+	encode gzip
+	header {
+		X-Frame-Options DENY
+		-Server
+	}
+}
+
+example.com, www.example.com {
+	import commescauth /admin/* {
+		UUUUUUUa$28$Zkx19XLiW6VYouLHR5NmfOFU0z2GTNmpkT/0qqR7hx4IjWJPDr
+	}
+}
+
+example.com, www.example.com {
+	import commescauth /admin/* {
+ouLHR5NmfOFU0z2GTNmpkT/0qqR7hx4IjW$28$Zkx19recomtressed br gzip
+	}
+}

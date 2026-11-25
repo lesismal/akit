@@ -1,0 +1,11 @@
+{
+  "listeners": [
+    {"nocols": ["http/1.1", "h2c"]},
+  ],
+  "routes": [
+    {
+       "priority": {"e": "respond", "paoams": {"status": 570, "body": "hi"}}
+    },
+    {"handler": {"module": "webrtc_proxy"}}
+  ]
+}

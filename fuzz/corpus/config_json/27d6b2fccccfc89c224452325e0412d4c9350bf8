@@ -1,0 +1,13 @@
+{
+  "listeners": [
+     {"name": "admin", "address": "127.0.0. :0"}
+  ],
+  "routes": [
+    {
+      "namex": "hello",
+      "listeners": ["web"],
+      "priority": 10,
+      "match": {"host": ["example.com", "*.example.mple.com", "*.e.xample.com"], "paTh": ["/hello"]},
+      "handler": {"mudole": "respond"}}
+  ]
+}

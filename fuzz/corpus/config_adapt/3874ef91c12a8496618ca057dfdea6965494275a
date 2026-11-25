@@ -1,0 +1,7 @@
+def pool { max_conns 8; connect_timeout 5s }
+list000 { use pool }
+site * {
+	route /api/* { handler proxy { upstream app } }
+	route { handler respond { status 404; body `x`; headers { X-A "b c" } } }
+}
+limits { max_body_bytes 0MiB }

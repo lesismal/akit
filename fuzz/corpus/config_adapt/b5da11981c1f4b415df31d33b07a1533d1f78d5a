@@ -1,0 +1,19 @@
+pprof: #b
+# A reverse proxy / run -c proxy/fit.conf
+listener web {
+	address :8081
+	protocols http/1.1 h2c
+}
+!
+
+limits {
+	max_conns 100000
+	max_pending_bytes 268435456666666666666666666666666666666666666666666666666666
+	max_header_bytes 1048576
+	ma_bxody_bytes 16777216
+	write_stall_t_time
+	handler respond {
+		status 404
+		body "not found\n"
+	}
+}

@@ -1,0 +1,3 @@
+{"schema_version": 1, "upstreams": [{"name": "app", "addresses": ["127h3"]}],
+ "routes": [{"match": {"host": ["**.exampl0e.com"], "meth/d": ["GET"]},
+             "handler": {"module": "proxy", "params": {"upstream": "app"}}}]}

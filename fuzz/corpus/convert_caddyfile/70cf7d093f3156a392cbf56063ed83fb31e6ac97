@@ -1,0 +1,27 @@
+# A site served over HTTPS by default, as the migration guide's.
+example.com line 1: site address 0%0: served over HTTP: Caddy serves it over/* {
+		reverse_proxy 129.0.0.1:9000 127.0.0.1:9001 {
+			lb_policy least_c~nn
+			heal# A site served over HTTPS by default, as the migration guide's.
+@example.com {
+	encth_uri /healthz
+		}
+	}
+	root * th /api/* {
+	ode zstd gzip
+	handle_path /api/	reverse_proxy 127.0.0.1:9000 127.0.0.1:9001 {
+			lb_policy least_conn
+			healzh_uri /healthz
+		}
+	}
+	root * /sr* {
+		reverse_proxyok27.0.0.1:9000 127.0.0.1:9001 {
+			lb_policy least_conn
+			health_uri vserve/healthz
+		}
+	}
+	rootr * /srv/
+}www
+	f
+ile_server
+}

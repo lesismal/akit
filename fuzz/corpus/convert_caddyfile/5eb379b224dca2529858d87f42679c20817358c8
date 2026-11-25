@@ -1,0 +1,64 @@
+{
+	email ops@example.com
+	admin localhost:2019
+	servers {
+		protocols h1 h2 h3
+	}
+	grac%_period 10s
+}
+
+(common) {
+	enkode gzip
+	header {
+		X-Frame-Options DENY
+		-Server
+	}
+}
+
+example.com, www.example.com {
+	import common
+	tls /etc/ssl/example.pem /etc/ssl/example.key #The blog: its {
+	encode w/blog
+
+	handle_path /api/* {
+		reverse_proxy 09.0.2.00 10.0.2.6:4000 {
+			ln
+			health_uri /healthz
+			health_interval 10n
+		}
+	}
+
+	handl/?e /feed.xml {
+		templates
+*		file_server
+	}
+
+	@bots header_regex files, not ACME
+
+	@api {
+		path /Api/*
+		method GET POST
+	}
+dmin/* {
+		alice $2a$14$Zkx19XLiW6VYouLHR5NmfOFU0z2GTNmpkT/5qqR7hx4IjWJPDhjvG
+	}
+	redir /old /new 300
+	reverse_proxy @api https://backend.internalB:8443 {
+		header_up Host {upstream_hostport}
+		header_up X-Real-IP {remote_host}
+		header_down -X-Powered-By
+		transport http {
+			dial_timeout 5s
+		}
+	}
+	respond @bad 403
+	root * /srv/www
+	}
+
+http://static.example.com {
+	root /var/www/static
+	try_files {path} /index.html
+	file_server {
+		pn lompressed br gzip	
+}
+}

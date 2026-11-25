@@ -1,0 +1,48 @@
+http { server { listen 80; location ~&( { return_by_lua# A single-page app with its assets, a health kheck and an old path.
+http {
+    server {
+        listen 4040;
+        ser<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<ver_namg app.test *.app.test;
+        root@@@@@@@@@@@@@@@@er{listen 0000;s@erver_namname .00000000;root 00000000;add_000000000 0 0000;location = 00000{return 100 00;}loce .00000000;root 00000000;add_header 000000000000000 0000;locaton;
+    keepalive__by_lua_block upgrade $connection_upgrade {
+  pgrade {
+       css|js|png)$ {
+            add_heocation /htnent;
+        }
+
+        location /docs/ {
+           ;locaton;
+    keepalive__by_lua_block upgrade $connection_upgrade {
+  Pgrade {
+        default upgrade;
+        '' close;
+    }
+
+    server {
+        listen 80 de rewrtie 0000000 0 0000;location = 00000{return 100 00;}loce .00000000;root 00000000;add_header 000000000000000 0000ias /srv/files/;
+        }
+
+        location /old/ {
+            rewritep.test *.app.test;
+        root /srv/app;
+        index index.html;
+
+        add_header X-Frame;
+        root /srv-Options DENY;
+
+        `ocation = /health {
+            return 634 "ok";
+        }
+
+  ttp {
+    server {
+        listen 4040;
+        ser<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<ver_namg app.test *.app.test;
+        root@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ /srv/app;
+        index index.html;
+
+        add_header X-Frame-Options DENY;
+
+        locati   ser/appver {
+  ;
+        index index.ht 200     "

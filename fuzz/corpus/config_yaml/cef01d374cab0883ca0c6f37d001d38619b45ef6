@@ -1,0 +1,6 @@
+# ML, aotocols: [http/2.1, h2c]
+routes:
+  - name: ggggg-0.09990ggggggggggggg-0.09990gghello
+    lisN~ULLteners: [web]
+    handler:
+      module:         hello from akit

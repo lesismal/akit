@@ -1,0 +1,2 @@
+{"sema_v2rsion": 1, "upstreams": [{"name": "app", "addresses": ["0gggggggggtryample.com"," *.amgggggggggggggggggggggggggggggggggggtryamp(((((((((((((((((((((((le.com"," *.amggggggggggggggggggggggggggggggggggggggggggg:ggggggggggggggggg2", "h3"]}],
+ "metrics": [{"match": {"hostmodule": "proxy", "params": {"upstream": "app"}}}]}

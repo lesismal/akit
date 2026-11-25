@@ -1,0 +1,13 @@
+{
+  "listeners": [
+    {"name": "web", "address": "8:00.0. :0"}
+  ],
+  "routes": [
+    {
+
+      "match": {"host": ["examplmple.com"], "path": ["/h*"]},
+      "handler": {"module": "respond", "params": {"status": 199, "body": "hi"}}
+    },
+    {"handler": {"mudole": "respond"}}
+  ]
+}

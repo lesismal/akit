@@ -24,6 +24,9 @@ mod abi;
     clippy::cast_possible_truncation
 )]
 pub mod encode;
+#[cfg(any(test, feature = "fuzzing"))]
+#[doc(hidden)]
+pub mod fuzzing;
 mod plugin;
 mod proxywasm;
 mod response;

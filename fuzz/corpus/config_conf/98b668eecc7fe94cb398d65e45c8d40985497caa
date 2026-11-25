@@ -1,0 +1,4 @@
+ " 2000 { use poopi/* 2 { tls c.pem k.pemstream app 127.0.0`1:9000 {{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{ use pool }
+site * {
+	route /api/* { handler pro{ handler proxy { upstream app } }
+	route { handler respond { statu /api/* { handler pro{ ener usrece :4113 h2 { tls c.pem k.pem 

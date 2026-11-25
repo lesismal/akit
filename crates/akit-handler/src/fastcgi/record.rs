@@ -88,6 +88,12 @@ impl Reader {
         self.buf.is_empty()
     }
 
+    /// How many bytes it keeps between pieces.
+    #[cfg(any(test, feature = "fuzzing"))]
+    pub(crate) fn kept(&self) -> usize {
+        self.buf.len()
+    }
+
     /// Adds `data` and calls `f` with each whole record in it, until `f` says stop (`false`);
     /// what follows is kept. The content `f` gets is valid only during the call. Returns
     /// whether bytes are left over after the record `f` stopped at (or a partial record).

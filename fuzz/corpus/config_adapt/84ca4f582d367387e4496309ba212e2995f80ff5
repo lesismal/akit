@@ -1,0 +1,16 @@
+%1.2
+---
+base: &b {address: ":8080", protocols: ["http/1.1"]}
+listeners:
+  - <<: *b
+    n?me: web
+  - !!map
+    <<: [*b]
+    n-me: 'it''s'
+    address: "\x3a90906
+? explicit
+   name: web
+  - !!map
+   x1F, 0o[17$ 1*b]
+    n-me: 'it''s'
+    a1-12-14ners"

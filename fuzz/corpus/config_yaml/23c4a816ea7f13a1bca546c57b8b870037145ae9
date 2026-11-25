@@ -1,0 +1,7 @@
+%YAML 1.2
+---
+base: &b {address: "qq[[[[[[:8079", protocols: ["http/1.1"]}
+listeners:
+  - <<: *b
+    name: web12-14]
+...

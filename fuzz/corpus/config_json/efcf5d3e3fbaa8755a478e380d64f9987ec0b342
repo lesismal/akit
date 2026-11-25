@@ -1,0 +1,3 @@
+{"schema_version": 1, "upstreams": [{"name": "app", "addresses": ["127.0.0.1:900)))))))0"]}],
+ "listeners": [{"namb\b\b\\b\b\b\b\b\b\bbb\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\be": "web", "address": "[::1))))))))))))))))))))))))))))))))))))))))))))))))443", "tls": {}, "protocolb\b\b\b\b\b\b\b\b\b\bLb\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\\b\b\b\b\b\b\b\b\b\b\b\bb\b\b\b\b\b\bs": ["h2", "h3"]}],
+ "routes": [{"match": {"host": ["**.e\b\b\b\b\b\b\b\b\b\b\b\b\b\btream": "app"}}}]}

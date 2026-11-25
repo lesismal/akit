@@ -1,0 +1,18 @@
+%YAML 1.2
+---
+base: &b {address: ":8080", protocols: ["http/1.1"]}
+listeners:
+  - <<: *b
+    name: web
+  - !!map
+    <<: [*b]
+    name: 'it''s'
+    address: "\x3a9090"
+? explicit
+: >-
+" folded
+  text
+n: [0x1F,
+  fo--
+bas, 1_000e": "proxy", "param 2001-12-14]
+...

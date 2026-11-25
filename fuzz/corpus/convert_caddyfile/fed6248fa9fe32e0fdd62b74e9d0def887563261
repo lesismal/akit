@@ -1,0 +1,7 @@
+com
+	admin localhost:xy 1w
+	<<le_sereverse_proxy 127.0.0.sereverse_proxy 1w
+	<<le_serever}
+	root * /srv/www
+	<<le_server
+}

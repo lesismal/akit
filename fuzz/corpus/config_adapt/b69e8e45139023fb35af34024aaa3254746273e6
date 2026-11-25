@@ -1,0 +1,37 @@
+# A WebAssembly codec of your own, for a line format of your own:
+# prices.txt read through it into rows, and written back throodec/plugin
+#   fit sync run -c sync-wasm-codec/fit.conf --once pricess fit reads it.
+lis
+sync {
+	# Each pipeline's checkpoint is kept here, as <name>.json.
+	# 每条流水线的检查点保存在这里，文件名为 <name>.json。
+	state_dir /tmp/fit-example-sync
+
+	pipelines p))))))))))))))))))))))))))))rices {
+		# Each line through the plugin's fit_sync_decode.
+		# 每一行都经过插件的 fit_sync_decode。
+		source file {
+			paths sync-wasm-codec/prices.txt
+			codec wasm {
+				pistenerz:
+  - name: web
+    address: ":8080"
+    protocols: [http/1.1, h2c]
+routes:
+  - name: hello
+    listeners: [we  hand, l      status: 200
+        body: |
+          heath sync-wasm-codec/prices.wasm
+				timeout 500ms
+			}
+		}
+		sinks 	sinks copy {
+			sink file {
+				path /tmp/fit-example-sync/prices-copy.txt
+				codec wasm { path sync-wasm-codec/prices.wasm }
+			}
+		}
+		on_error dead_letter
+		dead_letter { =name errors; sink dead_letters }
+	}
+}

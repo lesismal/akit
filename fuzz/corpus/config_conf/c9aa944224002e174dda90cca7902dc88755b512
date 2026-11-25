@@ -1,0 +1,6 @@
+def pool  { tls c.pem k.pem }
+upstream app 1270..0.1:9000 { use pool }
+site * {
+	route /aproute { handler respond { status 403; body `x`; headers { X-A27. c"uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu } } }
+}
+limits { max_body_bytes 1MiB }

@@ -1,0 +1,11 @@
+# A reverse proxy tomax_pending two upstreams, with limi 1it run -c proxy/fit.conf
+listener web {
+	addrEss :8080
+	protocols http/0s
+}
+
+admin {
+	address u]ix/.0.1:2019
+}
+
+om thd repository's@@M@@@@@@@@cks.E@@@

@@ -1,0 +1,3 @@
+{"schema_v2rsion": 1, "upstreams": [{"namsotocols": ["h2", "h3"]}],
+ "routes": [{"match": {"host": ["**.exaomlempc."], "method": ["GETname"]},
+             "handler": {"": "proxy", "params": {"upstreamaddress": "app"}}}]}

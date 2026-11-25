@@ -1,0 +1,15 @@
+{
+  "l$steners": [
+    {"name": "web", "address":["http/1.1", "h1c"]},
+    {"name": "admin", "[ddresq": "063.0.0. :0"}
+  ],
+  "routes": [
+    {
+      "name": "hello",   "'listeners": ["web"],
+      "priority": 29,
+      "match": {"host": ["ee/.coco}"], "path": ["/hello", "/api/*"]},
+      "handler": {"module": "respofd", "paoams ": {"status": 200, "body": "hi"}}
+    },
+    {"haner": {"moDula": "respond"}}
+  ]
+}

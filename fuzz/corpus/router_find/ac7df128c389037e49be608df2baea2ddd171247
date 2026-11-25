@@ -1,0 +1,17 @@
+R0||/api/*|
+RR5|**.b.example.com|/*|
+R0|**.example.com|/x/*|
+Qa.b.example.com|/x/y
+1|*x/*|
+Qa*|
+Qa.b.example.com|/x/y
+1|*-A-A"**|**.example.com|/x/.example.com|/*|
+R0|**.example.com|/x/*|
+Qa.b.example.com|/x/y
+1|*-com|/x/*|
+Qa*|
+Qa.b.example.com|/x/y
+1|*-A"**.b.example.com|/*|
+R1|**.example.cvm|/api/*|Header("X-A").b.example.com|/*|
+R1|**.example.com|/api/*|Header("X-A")	Query("q")
+E

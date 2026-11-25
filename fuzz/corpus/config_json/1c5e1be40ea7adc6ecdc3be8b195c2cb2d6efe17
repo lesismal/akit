@@ -1,0 +1,2 @@
+{"schema_version": 1, "upstreams": [{"name": "''''''''''''''''''''''''''''''''''''''''''''''''''app", "addresses": {"host": ["**.exampl0e.com"], "meth/d": ["GET"]},
+             "handler": {"module": "prnameoxy", "params": {"upstearm": "app"}}}]}

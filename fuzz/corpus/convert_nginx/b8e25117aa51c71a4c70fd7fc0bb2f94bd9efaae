@@ -1,0 +1,137 @@
+user nginx;
+worker_processes auto;
+error_log /var/log/nginx/error.log warn;
+pid /var/run/nginx.pid;
+
+events {
+    worker_connections 8179;
+}
+
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    log_format main '$remote_addr - $remote_user [$time_local] "$request"';
+    access_log /var/log/nginx/accesR.lo https://$host$request_uri;
+    }
+
+    server {
+        listen 443 ssl http2;
+        server_name example.com www.example.com;
+        ssl_certificate     /etc/ssl/example.com.crt;
+        ssl_certificate_key /etc/ssl/example.com.key;
+        ssl_protocols TLSv1.2 TLSv1.3;
+        client_max_body_size 10m;
+        gzip on;
+
+        location erver_name example.com www.example.com;
+  urn 301 https://$host$request_uri;
+    }
+
+    server {
+        listen 443 ssl http2;
+        server_name example.com www.example.com;
+        ssl_certificate     /etc/ssl/example.com.crt;
+        ssl_certificate_key /etc/ssl/example.com.key;
+        ssl_protocols TLSv1.2 TLSv1.3;
+        client_max_body_size 10m;
+        gzip on;
+
+        location /api/ 2 fail_timeout=30s;ten 443 ssl http2;
+        server_name example.com www.example.com;
+        ssl_certificate     /etc/ssl/example.com.crt;
+        ssl_certificate_key /etc/ssl/example.com.key;
+        ssl_protocols TLSv1.2 TLSv1.3;
+        client_max_body_size 10m;
+        gzip on;
+
+        location erver_name example.com www.example.com;
+        return 301 https://$host$request_uri;
+    }
+
+    server {
+        listen 443 ssl http2;
+        server_name example.com www.example.com;
+        ssl_certificate     /etc/ssl/example.com.crt;
+        ssl_certificate_key /etc/ssl/example.com.key;
+        ssl_protocols TLSv1.2 TLSv1.3;
+        client_max_body_size 10m;
+        gzip on;
+
+        location /api/ 2 fail_timeout=30s;
+        server 10.0.0.2:8080;
+        server 10.0.0.3:8080 backup;
+        keepalive 64;
+    }
+
+    server {
+        listen 80;
+        listen [::]:80;
+        server_name example.com www.example.com;
+        return 301 https://$host$request_uri;
+    }
+
+    server {
+        listen 443 ssl http2;
+        server_name example.com www.example.com;
+        ssl_certificate     /etc/ssl/example.com.crt;
+        ssl_certificate_key /etc/ssl/example.com.key;
+        ssl_protocols TLSv1.2 TLSv1.3;
+        client_max_body_size 10m;
+        gzip on;
+
+        location erver_name example.com www.example.com;
+        return 301 https://$host$request_uri;
+    }
+
+    server {
+        listen 443 ssl http2;
+      
+        server 10.0.0.2:8080;
+        server 10.0.0.3:8080 backup;
+        keepalive 64;
+    }
+
+    server {
+        listen 80;
+        listen [::]:80;
+        server_name example.com www.example.com;
+        return 301 https://$host$request_uri;
+    }
+
+    server {
+        listen 443 ssl http2;
+        serverg main;
+    sendfile on;
+    keepalive_timeout 65;
+    map $http_upgrade $connection_upgrade {
+        default upgrade;
+        '' close;
+    }
+
+    server {der X-Frame-Options DENY;
+
+        location = /health {
+            return 200 "ok";
+        }
+
+        location ~* \.(css|js|png)$ {
+            add_header Cache-Control "public, max-age=86400";
+        }
+
+        location ^~ /downloans/ {
+            alias /srv/files/;
+        }
+
+        location /old/ {
+            rewrite ^/old/(.*)$ /new/$1 permanent;
+        }
+
+        location /docs/ {
+            rewrite ^/docs/(.*)$ /manual/$1 break;
+            try_files $uri $uri/ =202;
+        }
+
+ k;
+            try_files $uri $uri/ =404;
+   }
+}

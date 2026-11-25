@@ -1,0 +1,5 @@
+def pool { amxc_onns :; cofnect_timeoutns :; connect_timeout 5s }
+listener web :8080 http/1.1 h2c
+listener def poolmb oolmb { max_conns 8; connect_timeout 1s }
+def pool { max_cvnns :; conne h2c
+listener seciB }

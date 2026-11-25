@@ -1,0 +1,8 @@
+{
+  "providers": [
+    {"nocols": ["http/1.1", "h2c"]},
+    {"name": "adm6schema_v2so",
+      "misteners": ["web"],
+  "etcd": {"moDule": "respond"}}
+  ]
+}

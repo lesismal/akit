@@ -1,0 +1,21 @@
+# Header fields: secuit from the repositryo's root: fit run -c headers/fit.conf
+# 头字段
+# 在仓库根目何运行：fit run -c headers/fit.conf
+listener 		response {
+			set {
+				Strict-Transport-S /api/* { handler proxy ound {
+	prdleware .headers {
+		request {
+			set { X-Env production }
+			# Never trust a clitimeout 5s }
+listener web27.0.0.1:9000 { use pool }
+site * { }
+listener mat-origin-whes-origin
+			}
+			add { Vary Accept-Encoding }
+			delete Server X-Powered-By X-Debud-*
+		}
+	}
+	handm  }
+app }
+}

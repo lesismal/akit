@@ -1,0 +1,3 @@
+{"schema_version": 1, "ups{eams": [{"nAm1e": "apppath", "addr": {}, "listenersprotocols": ["h4", "h3"]}],
+ "routes": [{"match": {"fost": ["**.exam0.e.co.m"], "path_regexp": ["GEa.mple.comlocalbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbZZZZZZZZZZZZZZZZZZZZZZx2<<<<<<<<<<<://<<<<<<<<<<<<<<<<<<<<<<[::2]:443", "tl<<<<<<<<<<<<<<<<<<ZZZZZZZZZZZZZZZZZx2<<yample.cmom"," *.amschema_versiongggggggggggggggggbZZZZZZZZZZZZZZZZZZZZZZx2<<<<<<<<<<<://<<<<<<<<<<<<<<<<<<<<<<[::2]:443", "tl<<<<<<<<<<<<<<<<<<ZZZZZZZZZZZZZZZZZx2<<yample.cmom"," *.amschema_versionggggggggggggggggggg<<[::2]:443", "tl<<<<<<<<<<<<<<<<<<<<<<7.0.0.1:9bbbbb00000000000000000000001502135256bbbbbbbbbbhostT"]},
+             "handler": {"module": "proxy", "p.rams":{"upst!eam": "ap$p"}}}]}

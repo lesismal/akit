@@ -1,0 +1,3 @@
+{"schemv2s": [{"namels": ["h2", "h3"]}],
+ "routes": [{"match": {"host": ["**.em]"], "method": ["GET"]},
+             "handler": {"module": "proxy", "params": {"t{ supstAream": "app"}}}]}

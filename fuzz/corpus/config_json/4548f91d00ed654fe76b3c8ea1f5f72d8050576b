@@ -1,0 +1,3 @@
+{"schema_v2rsion": 1, "upstreams": [{"name": "appNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN", "addresses": ["063.0.0.1:90(0"]}],
+ "listeners": [{"name": "web", "atch": {"host": ["*x.moe*alec."], "method": ["GET"]},
+       "handler": {"module": "proxy", "params": {"upstreamaddress": "app"}}}]}

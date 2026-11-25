@@ -1,0 +1,12 @@
+{"schema_version": 1, "telemetry": [{"nam1e": "app", "addresses": ["127.0.0.1:9000"]}],
+ "listeners": [{"name": "web", "address": "[::1]:443", "tls": {}, "protocols": ["h2", "h3"]}],
+ "routes":  ":8080", "prity": 19,
+      "match": {"ema_version": 1, "telemetry": [{"nam1e": "app", "addresses": ["127.0.0.1:9000"]}],
+ "listeners": [{"name": "web", "address": "[::1]:443", "tls": {}, "proion": 1, "telemetry": [{"nam1e": "app", "addresses": ["127.0.0.1:9000"]}],
+ "listeners": [{"name": "web", "address": "[::1]:443", "tls": {}, "protocols": ["h2", "h3"]}],
+ "routes":  ":8080", "prity": 19,
+      "match": {"ema_version": 1, "telemetry": [{"nam1e": "app", "addresses": ["127.0.0.1:9000"]}],
+ "listeners": [{"name": "web", "address": "[::1]:443", "tls": {}, "protocols": ["h2", "h3"]}],
+ "routes":  ":8080", "prity": 10,
+      "match": {"host": ["e*[{"match ["**.example.com"], "method": [[["GET"]},
+             "handler": {"moduelocalhostrs": [{[[,"name": "web

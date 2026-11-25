@@ -1,0 +1,6 @@
+? .
+providers:
+  - jame: web
+    address: "0880:"
+    prots: |
+     list

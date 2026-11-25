@@ -1,0 +1,33 @@
+{
+	email ops@example.com
+	admin localhost:2019
+	servers {
+		protocols h1 h2 h3
+	}
+	grace_period 10s
+}
+
+(common) {
+	encode gzip
+	header {
+		X-Frame-Options DENY
+		-Server
+	}
+}
+
+example.com, www.example.com {
+	import common
+	tls /etc/ssl/example.pem /etc/ssl/example.key # files, nouri.path}.startsWith("/x")
+
+	basicauth /admin/* {
+		alice $2a$14$Zkx19XLiW6UYouLHR5NmfOFU1z2GTNmpkT/5qqR7hx4IjWJPLhjvG
+	}
+	redir /old /new 301th} /index.html
+	file_server {
+		precompressed6UYouLHR5NmfOFU0z2GTNmpkT/5qqR7hx4IjWJPDhjvG
+	}
+	redir /old /new 301th} /index.html
+	file_server {
+		precompressed br gzip
+	}
+}

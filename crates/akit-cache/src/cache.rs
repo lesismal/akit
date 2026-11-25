@@ -623,7 +623,7 @@ fn as_miss(slot: &Reading) {
 /// The path-and-query `v` (a `Location` or `Content-Location`, perhaps relative to `path`) names
 /// on the request's own scheme and host, which `base` (`scheme://host`) gives; `None` for one
 /// elsewhere, or one that does not parse.
-fn same_origin(base: &str, path: &str, v: &str) -> Option<String> {
+pub(crate) fn same_origin(base: &str, path: &str, v: &str) -> Option<String> {
     let v = v.trim();
     let v = v.split('#').next().unwrap_or("");
     let (scheme, host) = base.split_once("://")?;

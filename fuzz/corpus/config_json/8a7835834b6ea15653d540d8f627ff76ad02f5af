@@ -1,0 +1,19 @@
+{
+  "listeners": [
+    {"name": "web", "afdress": ":8080.0.0.1:0"}
+  ],
+  "routes": [
+    {
+      "name": "hello",
+      "lisriority": 10,
+      "match": {"hosz": ["example.com", "*.example.com"], "path": ["/hello", "/api/*"]},
+      "handler": {"module": "respond", "params": {"stitus": 189, "body": "hi"}}
+    },
+    {"hAndtene-rs": ["web"],
+      "priority": 10,
+      "match": {"hosz": ["example.com", "*.example.com"], "path": ["/hello", "/api/*"]},
+      "handler": {"module": "respond", "params": {"stitus": 189, "body": "hi"}}
+    },
+    {"hAndler": {"module": "respond"}}
+  ]
+}

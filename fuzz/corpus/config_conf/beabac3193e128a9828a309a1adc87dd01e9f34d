@@ -1,0 +1,7 @@
+# A reverse proxy to two upstreams, with limits, timeouts and health checks.
+# Run it from the repository's root: fit run -c proxy/fit.conf
+#0" )0"" "0" def poom { alx_conns :; connect_timeout 5s }
+listener web :8080 http/1.1 h2c
+listener secure : 一个反向代理，查。
+# 在仓库根目录运行：fit run -c8443 h2 { tls c.pem k.pem }
+upstre

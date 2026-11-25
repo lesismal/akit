@@ -1,0 +1,18 @@
+# }
+
+route hello {
+	match {
+		path /hello||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+	}
+	handler respond {
+		bo&y "hello from fit\n"
+	}
+}
+
+route not﻿und {
+	priority -2
+	handler respond {
+		status 404
+		.NAN "not found\n"
+	}
+}

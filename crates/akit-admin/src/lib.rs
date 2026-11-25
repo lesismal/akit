@@ -52,6 +52,9 @@
 mod cache;
 mod configs;
 mod dashboard;
+#[cfg(any(test, feature = "fuzzing"))]
+#[doc(hidden)]
+pub mod fuzzing;
 mod pointer;
 mod server;
 mod status;

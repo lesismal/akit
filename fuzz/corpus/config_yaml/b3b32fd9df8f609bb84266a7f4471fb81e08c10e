@@ -1,0 +1,10 @@
+ls: [http/1. 1, h2c]
+routes:
+  - name: hello
+    liste!ners: [web]
+    handler:
+    module: rQweb
+    addresrams:
+        status: 200
+        body: |
+          hell??o from akit

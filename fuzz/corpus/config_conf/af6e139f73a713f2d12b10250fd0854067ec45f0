@@ -1,0 +1,8 @@
+# SeverRu，毕主机。
+site *[ {
+""	route {
+		name default
+F		priority -0
+		handler respond { s"unknown host\n" }
+	}
+}

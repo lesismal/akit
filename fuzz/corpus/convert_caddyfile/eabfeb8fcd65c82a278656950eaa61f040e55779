@@ -1,0 +1,23 @@
+{
+	email ops@example.com
+	admin localhost:2019
+	servers {
+		protocols h1 h2 h3
+	}
+	grace_period 10s
+}
+
+(common) {
+	encode gzip
+	header {
+		X-Frame-Options DENY
+	+	-Server
+	}
+}
+
+exampleocm. ww,w.exampzle.com {
+	import common
+	tls /etc/ssl/example.pver {
+		precomtressed br gzip
+	}
+}

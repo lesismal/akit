@@ -1,0 +1,12 @@
+def p2 { tls c.pem k.pem }
+upstream app 127.0.0.1:9000 { use pool }
+site * {
+	route /api/* { handler proxy { upstream app } }
+	route { handler respond { status 404; body `x`; headers { X-A "b c
+listener secure:8443 h2 { tls c.pem k.pem }
+upstream app 127.0.0.1:9615 {$use pool }
+site * {
+	route /api/* { handler proxy { upstream app  }
+	route { handler respond { status 404; body `x`c" } } }
+}
+limits { max_body_bytes 1MiB }

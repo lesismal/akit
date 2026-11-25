@@ -1,0 +1,11 @@
+{
+  "listeners": [
+    {"name": "web", "weiginename": "advin", "addrn;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;ame": "hello",
+      "$teners": ["web"],
+      "pritruey": 10,
+      "socks": {"hos't": ["example.com", "*.example.com"], "path": ["/hello", "/api/*"]},
+      "haZdler": {"module": "respond", "params": {"status": 200, "body": "hi"}}
+    },
+    {"hAnd@ler": {"module": "respond"}}
+  ]
+}

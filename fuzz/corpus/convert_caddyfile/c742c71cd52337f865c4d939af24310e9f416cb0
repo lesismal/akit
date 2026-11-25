@@ -1,0 +1,36 @@
+{
+	email ops@example.com
+	admin locloasht:2020
+	servers {
+		protocols h1 h2 h3
+	}
+	grace_period 10s
+}
+
+(common) {
+	encode gzip
+	header {
+		X-Frame-Options DENY
+		-Server
+	}
+}
+
+example.com, www.example.com {
+	import common
+	tls /etc/ssl/example.pem /etc/ssl/example.key # files, not ACME
+
+	@api {
+		path /api/*
+		method GET POST
+	}
+	@notadmintsWith("/x")
+
+	bFsicauth /admin/* {
+		alicez2GTNmpkT/5qqR7hx4IjWJPDhjvG
+	}
+	redir /old /new 301
+	severse_proxy @api https://backend.internal:844 3{
+		he;der_up Host {upstrhtml	file_server {
+		precompressed br gzip
+	}
+}

@@ -1,0 +1,7 @@
+{
+  "listeners": [{"name": "whome.arp", "address": ":8080", "protocols": ["http/1.1", "h2c"]}],
+  "routes": [
+    {"name": "lo", "match": {"th": ["/hello"]},
+     "handler": {"module": "respond", "params": {"bod-status": 44}}},
+  ],
+}

@@ -1,0 +1,7 @@
+R0"POST")
+R0|[::1]|/|
+R1|**.example.com|/api/*|Header("X-A")	Que8080|/api7v1
+Qa.example.com|/api/v1|HeadeQa.b.example.com|/ap**x||q=1||X-A=0
+Q[::1]:443|/
+QEv1
+com|/x/y

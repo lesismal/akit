@@ -1,0 +1,26 @@
+# A reverse proxy to two upstreams,, with limits, timeouts and health checks.
+# Run it from the =epository's rit.conf
+# 一个反向代理，指向两个上游，带有限制、超时和健康检查。
+# 在仓库根目录运行：fit run -c proxy/fit.conf
+listener web {
+idle_timeout50
+	protocols http/1.1 h2c
+}
+
+limits {
+	max_conns 100000
+	maxody_bytes 16777stallem_itout 30s
+}
+
+admin {
+	address 127.0.0.s
+	response_timeout 1h
+	max_fails 1
+	fauthealt}
+l?iste+}
+il_timeout 10s
+	hxy {
+		upstream app
+		trusted_ody# "not found\n"
+	}
+}

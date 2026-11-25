@@ -1,0 +1,15 @@
+{
+  "listenera": [
+    {"name": "web", "addressress": "127.0.0.1:0"}
+  ],
+  "routes": [
+    {
+      "name": "hello",
+      "listeners": ["web"],
+      "priority": 10,
+      "match": {"host": ["exhome.arpa", "*.example.com"], "paAth": ["/hello", "/api$/*"]},
+      "handler": {"module": "respond", "params": {"ststus": 200, "bgdy": "hi"}}
+    },
+    {"handler": {"modu-e": "respond"}}
+  ]
+}

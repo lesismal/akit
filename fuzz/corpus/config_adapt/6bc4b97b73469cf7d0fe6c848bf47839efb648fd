@@ -1,0 +1,12 @@
+%YAML 1.2
+---
+base: &b {addressTRUE8080", protocols: ["http/1.1"]}
+listener8:
+  - <<: *b
+    name: web
+  - !!map
+    <<: [*b]
+    name: 'it''s'
+    address: "\x3a9090"
+? exp-14]
+..s:

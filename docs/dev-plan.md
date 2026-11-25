@@ -182,7 +182,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I75 | FastCGI | I16 | done |
 | I76 | M5 exit | I67–I75 | done |
 | **1.0** | | | |
-| I77 | Fuzzing | I56 | todo |
+| I77 | Fuzzing | I56 | done |
 | I78 | Config reference and guides | I76 | done |
 | I79 | v1 freeze and compatibility | I78 | done |
 | I79b | The gateway examples the gate still refuses: `limits.max_pending_bytes`, h2c alone, `max_conns` by accepted connections | I79, akio A214, A168, A215 | todo |
@@ -245,6 +245,7 @@ commit and result.
 
 | WASM plugins | I71, I72 | no | no (I71 and I72 built, not measured) | Against fit (wazero's compiler) and none: a request through fit's `headers` plugin (Go guest) and through a no-op one (`fit_on_request` returning 0), HTTP/1.1 and h2, requests a second and latency, against the route without the middleware (the hand-off to the pool and back, the request copied, the call); the guest call alone on an instance (akio's W5: akio-wasm's interpreter against wazero's interpreter and compiler); the pool under more clients than `instances` (the queue, 503 past it); an instance remade after a trap (a Go guest's `_initialize`). Proxy-Wasm (I72): a request through the Proxy-Wasm Go SDK's `http_routing` (config `1`, the request unchanged) against fit and none, as fit's `BenchmarkProxyWasm`; a response through fit's `response` filter (`upper`) and the SDK's `http_headers`, the head held and the body filtered on the pool, a whole 4 KiB body and a streamed 1 MiB one, HTTP/1.1 and h2, against `response: none` and none. |
 | Config churn under traffic | I38 | no | no (tested, not measured) | The fixed and proxy scenarios, HTTP/1.1 and h2c, while the config is swapped every 10 ms through SIGHUP and the Admin API, against the same run with no swaps: requests a second, p99 latency and errors during the churn, and akit's RSS and descriptors after 100k swaps; the M2 report of the full harness (rule 24, a milestone's end). |
+| Absolute-form targets taken apart in the listener | I77 | no | no (built, not measured) | One comparison a request (does the target start with `/`) before routing: a same-run A/B of the fixed scenario over HTTP/1.1 against main before I77; no cost is expected. Goes when akio does it (A200). |
 
 ## M0, foundations
 
@@ -1018,6 +1019,10 @@ Split from I07 so that the half that needs no config model runs beside I02.
 - **Do**: fuzz targets for the config readers, the router, the proxy's header handling, the PROXY
   protocol and the cache; run in CI for a fixed time and longer on a schedule.
 - **Done when**: every parser has a target and the corpus is checked in.
+- **Touches**: `fuzz/` (a cargo-fuzz workspace of its own, a target for each parser), a `fuzzing`
+  feature and module in each crate it fuzzes, `.github/workflows/ci.yml` and `fuzz.yml`. The PROXY
+  protocol and ClientHello parsers are akio-mux's, fuzzed in akio; akit fuzzes what it reads with
+  them.
 
 ### I78 Config reference and guides
 

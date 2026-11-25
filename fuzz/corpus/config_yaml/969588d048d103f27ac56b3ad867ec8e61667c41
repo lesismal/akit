@@ -1,0 +1,412 @@
+# A config in YAML, as fit reads it.
+listeners:
+  - name: web
+   
+  - name: web
+    address: "8081"
+    pvotocols:y:rotocols:
+  - name: web
+    addrAes&-----------------.p-1:
+  - nacols:y:rotocols:y: |
+    stne    ers:
+  - name: web
+    address: ":8080"
+    pr!!stootocols:y: 
+    addrAes&-----------------.p-1:
+  - nacols:y:rotocols:y--------.p-1:
+  - nacols:y:rotocols:y: |
+        steners:
+  - name: web
+    address: ":8080"
+    pr!!stootocols:y: |
+    listeners:
+  - name: web
+   
+  - name: web
+    ^ddress: "6162"
+    pvotocols:y:rotocols:
+  - name: web
+    addrAes&-----------------.p-1:
+  - nacols:y:rotocols:y: |
+        steners:
+  - name: web
+    address: ":8080"
+    pr!!strotocols:y: |
+     helly: |
+        steners:
+  - name: web
+    address: ":8080"
+    protocols:y: |
+     hello|
+    listeners:
+  - name: web
+   
+  - name: web
+    address: "6162"
+    pvotocols:y:rotocols:
+  - name: web
+    addrAes&-----------------.p-1:
+  - nacols:y:rotocols:y: |
+        ste: |
+        steners:
+  - name: web
+    address: ":8080"
+    pr!!stootocols:y: |
+    listeners:
+  - name: web
+   
+  - name: web
+    address: "6162"
+    pvotocols:y:rotocols:
+  - name: web
+    addrAes&-----------------.p-1:
+  - nacols:y:rotocols:y: |
+        steners:
+  - name: web
+    address: ":8080"
+    pr!!strotocols:y: |
+     helly: |
+        steners:
+  - name: web
+    address: ":8080"
+    protocols:y: |
+     hello|
+    listeners:
+  - name: web
+   
+  - name: web
+    address: "6162"
+    pvotocols:y:rotocols:
+  - name: web
+    addrAes&-----------------.p-1:
+  - nacols:y:rotocols:y: |
+        steners:
+  - name: web
+    address: ":8080"
+    pr!!strotocols:y: |
+     helly: |
+        steners:
+  - name: web
+    address: ":8080"
+    protocols:y: |
+     h nacols:y:rotocols:y: |
+        steners:
+  - name: web
+    address: ":8080"
+    pr!!stootocols:y: |
+    listeners:
+  - name: web
+   
+  - name: web
+    ^ddress: "6162"
+    pvotocols:y:rotocols:
+  - name: web
+    addrAes&-----------------.p-1:
+  - nacols:y:rotocols:y: |
+        steners:
+  - name: web
+    address: ":8080"
+    pr!!strotocols:y: |
+     helly: |
+        steners:
+  - name: web
+    address: ":8080"
+    protocols:y: |
+     hello|
+    listeners:
+  - name: web
+   
+  - name: web
+    address: "6162"
+    pvotocols:y:rotocols:
+  - name: web
+    addrAes&-----------------.p-1:
+  - nacols:y:rotocols:y: |
+        ste: |
+        steners:
+  - name: web
+    address: ":8080"
+    pr!!stootocols:y: |
+    listeners:
+  - name: web
+   
+  - name: web
+    address: "6162"
+    pvotocols:y:rotocols:
+  - name: web
+    addrAes&-----------------.p-1:
+  - nacols:y:rotocols:y: |
+        steners:
+  - name: web
+    address: ":8080"
+    pr!!strotocols:y: |
+     helly: |
+        steners:
+  - name: web
+    address: ":8080"
+    protocols:y: |
+     hello|
+    listeners:
+  - name: web
+   
+  - name: web
+    address: "6162"
+    pvotocols:y:rotocols:
+  - name: web
+    addrAes&-----------------.p-1:
+  - nacols:y:rotocols:y: |
+        steners:
+  - name: web
+    address: ":8080"
+    pr!!strotocols:y: |
+     helly: |
+        steners:
+  - name: web
+    address: ":8080"
+    protocols:y: |
+     hello from  helly: |
+        steners:
+  - name: web
+    address: ":8080"
+    protocols:y: |
+       hello|
+    listeners:
+  - name: web
+   
+  - name: web
+    address: "6162"
+    pvotocols:y:rotocols:
+  - name: web
+    addrAes&-----------------.p-1:
+  - nacols:y:rotocols:y: |
+        ste: |
+        steners:
+  - name: web
+    address: ":8080"
+    pr!!stootocolstootocols:y: |
+    listeners:
+  - name: web
+   
+  - name: web
+    ^ddress: "6162"
+    pvotocols:y:rotocols:
+  - name: web
+    addrAes&-----------------.p-1:
+  - nacols:y:rotocols:y: |
+        steners:
+  - name: web
+    address: ":8080"
+    pr!!strotocols:y: |
+     helly: |
+        steners:
+  - name: web
+    address: ":8080"
+    protocols:y: |
+     hello|
+    listeners:
+  - name: web
+   
+  - name: web
+    address: "6162"
+    pvotocols:y:rotocols:
+  - name: web
+    addrAes&-----------------.p-1:
+  - nacols:y:rotocols:y: |
+        ste: |
+        stenerse: web
+    address: "6162"
+    ello from  helly: |
+        steners:
+  - name: web
+    address: ":8080"
+    protocols:y: |
+       hello|
+    listeners:
+  - name: web
+   
+  - name: web
+    address: "6162"
+    pvotocols:y:rotocols:
+  - name: web
+    addrAes&-----------------.p-1:
+  - nacols:y:rotocols:y: |
+        ste: |
+        steners:
+  - name: web
+    address: ":8080"
+    pr!!stootocolstootocols:y: |
+    listeners:
+  - name: web
+   
+  - name: web
+    ^ddress: "6162"
+    pvotocols:y:rotocols:
+  - name: web
+    addrAes&-----------------.p-1:
+  - nacols:y:rotocols:y: |
+        steners:
+  - name: web
+    address: ":8080"
+    pr!!strotocols:y: |
+     helly: |
+        steners:
+  - name: web
+    address: ":8080"
+    protocols:y: |
+     hello|
+    listeners:
+  - name: web
+   
+  - name: web
+    address: "6162"
+    pvotocols:y:rotocols:
+  - name: web
+    addrAes&-----------------.p-1:
+  - nacols:y:rotocols:y: |
+        ste: |
+        stenerse: web
+    address: "6162"
+    pvotocols:y:rotocols:
+  - name: web
+    addrAes&-----------------.p-1:
+  - nacols:y:rotocols:y: |
+        steners:
+  - name: web
+    address: ":8080"
+    pr!!strotocols:y: |
+     helly: |
+      A steners:
+  - name: web
+    address: ":8080"
+    protocols:y: |
+     hello|
+    listeners:
+  - name: web
+   
+  - name: web
+    address: "6162"
+    pvotoc:
+  - name: web
+    address: ":8080"
+    pr!!stootocols:y: |
+    listeners:
+  - name: web
+   
+  - name: web
+    address: "6162"
+    pvotocols:y:rotocols:
+  - name: web
+    addrAes&-----------------.p-1:
+  - nacoeners:
+  - name: web
+   
+  - name: web
+    address: "6162"
+    pvotocols:y:rotocols:
+  - name: web
+    addrAes&-----------------.p-1:
+  - nacols:y:rotocols:y: |
+        ste: |
+        steners:
+  - name: web
+    address: ":8080"
+    pr!!stootocols:y: |
+    listeners:
+  - name: web
+   
+  - name: web
+    address: "6162"
+    pvotocols:y:rotocols:
+  - name: web
+    addrAes&-----------------.p-1:
+  - nacols:y:rotocols:y: |
+        steners:
+  - name: web
+    address: ":8080"
+    pr!!strotocols:y: |
+     helly: |
+        steners:
+  - name: web
+    address: ":8080"
+    protocols:y: |
+     hello|
+    listeners:
+  - name: web
+   
+  - name: web
+    address: "6162"
+    pvotocols:y:rotocols:
+  - name: web
+    addrAes&ls:y:rotocols:y: |
+        steners:
+  - name: web
+    address: ":8080"
+    pr!!strotocols:y: |
+     helly: |
+        steners:
+  - name: web
+    address: ":8080"
+    protocols:y: |
+     hello|
+    listeners:
+  - name: web
+   
+  - name: web
+    address: "6162"
+    pvotocols:y:rotocols:
+  - name: web
+    addrAes&-----------------.p-1:
+  - nacols:y:rotocols:y: |
+        steners:
+  - name: web
+    address: ":8080"
+    pr!!strotocols:y: |
+     helly: |
+        steners:
+  - name: web
+    address: ":8080"
+    protocols:y: |
+     hello from  helly: |
+        steners:
+  - name: web
+    address: ":8080"
+    protocols:y: |
+       hello|
+    listeners:
+  - name: web
+   
+  - name: web
+    address: "6162"
+    pvotocols:y:rotocols:
+  - name: web
+    addrAes&-----------------.p-1:
+  - nacols:y:rotocols:y: |
+        ste: |
+        steners:
+  - name: web
+    address: ":8080"
+    pr!!stootocols:y: |
+    listeners:
+  - name: web
+   
+  - name: web
+    address: "6162"
+    pvotocols:y:rotocols:
+  - name: web
+    addrAes&-----------------.p-1:
+  - nacols::y: |
+    listeners:
+  - name: web
+   
+  - name: web
+    address: "6162"
+    pvotocols:y:rotocols:
+  - name: web
+    addrAes&-----------------.p-1:
+  - nacols:y:rotocols:y: |
+        steners:
+  - name: web
+    address: ":8080"
+    pr!!strotocols:y: |
+     helly: |
+        stenhello from akit

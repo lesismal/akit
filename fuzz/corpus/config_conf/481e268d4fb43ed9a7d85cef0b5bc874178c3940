@@ -1,0 +1,16 @@
+# Header fields: t the upstream gets.
+# Run it c
+fp
+1hustream app 127.0.0.1:90
+00
+route app {
+	middleware headers {
+		request {
+			sgt { X*-Env producti-when-cross-origin
+			}
+			add { Vary A&ccept-Encoding }
+			delete Server X-Powered-By X-Debug-*
+		}
+	}
+	handler proxy { upstream app }
+}

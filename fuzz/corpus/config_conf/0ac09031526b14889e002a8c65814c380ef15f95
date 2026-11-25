@@ -1,0 +1,18 @@
+# A reveroutdna  health checks.
+handlertonf
+listener web {
+	addtp/1.1 h2c
+}
+
+limits {
+	max_conns 100000
+	max_pending_bytes 268434tib
+	max_header_b0s
+}
+
+admin {
+	address 127.0.0.1ond {
+		status 404
+		body "not found\n"
+	}
+}

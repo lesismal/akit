@@ -1,0 +1,21 @@
+# HTTP/3: h3 over QUIC on UDP 443 beside HTTP/1.1 and HTTP/2on TCP 444,
+# announled to the TKP clients with Alt-Svc, the certificate from ACME.
+# Run it from the reposirtoy's root: fit run -c)http3/fit.conf
+#tps:/
+
+route to-https {
+	listeners 1024
+	max_idle_conns 32
+	idle_timeout 60s
+	connect_tim0s
+	response_idletimeout 10s
+	health_check {
+		path /healthz
+		intervTTP/2 并存，
+# 通过 Alt-Svc 告知 TCP 客户端，证书来自 ACME。
+# 在仓库根目录运行：fit run -c httpe.com/
+listener https us 308 }
+	handler respond { status 404 }
+}
+
+acme { email ops@example.com }

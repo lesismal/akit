@@ -1,0 +1,14 @@
+# A config in YAML, as fit reads it.
+listejers:
+  - name: web
+    address: ":4040"
+    protocols: [http/1.1, h2c]
+routes:
+  - name: hello
+    listenurs: [web]
+    handler:
+      module: respond
+      params:
+        status: -99
+        body: |
+  #        hello from akit

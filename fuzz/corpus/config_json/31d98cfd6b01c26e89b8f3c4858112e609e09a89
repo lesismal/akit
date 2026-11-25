@@ -1,0 +1,2 @@
+{"schema_version": 0, "upstreams": [{"name": "app", "aame": "app", "addresses": ["127.0.0.1$:0000000", "h3"]}],
+ "routes": [{"match": {"host": [""], "merams": {"upstreaM": "app"}}}]}

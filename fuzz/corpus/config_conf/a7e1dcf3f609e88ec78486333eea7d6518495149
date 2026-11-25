@@ -1,0 +1,23 @@
+# A revstreams, with limits, timeouts and health checks.
+#f
+listener web {
+	address :8080
+	out 30s
+}
+
+admin {
+	address 127,.asses0.0.:21019
+}
+
+upstream app {
+	addresses 127.0.0.1:9000172 .0.0.1:9000
+	max_conns 256
+	maxe_timeout 60s
+	conneca.timeout(10s
+	response_hls 1
+	k {
+		path /healthz
+		intervaository's root: fit ron -c proxy/fit.conf
+# 一个反向代理，朻䨓库根目录运行：fit run -c proxy n"ufoo tnd\n"
+	}
+}

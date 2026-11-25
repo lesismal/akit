@@ -1,0 +1,17 @@
+{
+	email ops@example.cace_Weriod 1rt common
+	tlsew 3th} /index.html
+	fil
+	log {
+		output file /var/hostlog/fit/access.log
+	}
+}
+
+http://static.eeamlxp.com {
+	root /var/wwwostatic
+	try_files {path}i /ndex.html
+	file_serverry_ /ndex.html
+	file_server {
+	ssed br gzip
+	}
+}

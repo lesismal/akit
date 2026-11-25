@@ -1,0 +1,7 @@
+%Y1.2
+---
+base: &b {addre: ":4040", protocols: [""]}
+listeners:
+  - <<: *b
+    name: web
+  

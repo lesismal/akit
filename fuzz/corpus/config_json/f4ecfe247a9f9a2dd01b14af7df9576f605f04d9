@@ -1,0 +1,2 @@
+{"schema_v1rsion": 1, "upstreams": [{"name": "app", "addresses": ["12\u0082\u08827.0.0.1:90(0"]}],
+ "listeners": [{"name": "web", "adrdler": {"module": "roxy", "paramj": {"upstreamaddress": "app"}}}]}

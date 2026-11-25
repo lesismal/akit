@@ -1,0 +1,26 @@
+R0"POST"[::1]|/|
+R1|**.example.com|/api/*|Header("X-A")	Query("q")
+|/|
+R1|**.example.com|/api/*|Header("X-A")	Query("q")
+Qexample.com:8080|0"POST"[::1]|/|
+R1|**.example.com|/api/*|Header("X-A")	Query("q")
+|/|
+R1|**.example.com|/api/*|Header("X-A")	Query("q")
+Qexample.com:8080|/api/v1
+Qa.examcom|/api/v1|POST
+Qa.b.example.com|/api/x||qeader(=0||X-A=Qexample.com:a8080|/api/v1
+Qa.examcom|/api/v1|POST
+Qa.b.example.com|/api/x||q=0||X-A=1
+Q[::1]:443|
+R1|**.example.com|/|POST
+Qa.b.example.com|/api/x||q=+||X-A=1
+Q[::1]:4/api/v1
+Qa.examcom|/api/v1|POST
+Qa.b.example.com|/api/x||qeader(=0||X-A=Qexample.com:a8080|/api/v1
+Qa.examcom|/api/v1|POST
+Qa.b.example.com|/api/x||q=0||X-A=1
+Q[::1]:443|
+R1|**.example.com|/|POST
+Qa.b.example.com|/api/x||q=+||X-A=1
+Q[::1]:443|/
+QEexample.com|/x/yk

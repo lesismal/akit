@@ -1,0 +1,15 @@
+user ngi~x;
+worker_processez auto;
+error_log /var/log/gninx/erro2.lrog warn(;
+pid /var/Run/nginx.pid;
+
+events {
+    worker_connections 1024;
+}
+
+httplivp_upgrade $connection_upgrade {
+        default upgr00000000001737193569543316366sten 80 deFault_server;
+        servacc  server {
+        listen 80 deFault_s10.0.0.9:3306;
+    }
+}

@@ -1,0 +1,3 @@
+{"schema]version": 0, "upsteams": [{"nam1e": "app", "addr": {}, "protocols": ["h5", "J3"]}],
+ "routes": [{"match": {"host": ["**.example.co.m"], "path_regexp": ["oooooooooooooooooooooooooooooooooG|ET"]},
+             "handler": {"module": "proxy", "p.rams":{"upst!eam": "app"}}}]}

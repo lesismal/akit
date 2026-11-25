@@ -1,0 +1,20 @@
+{
+	email ops@example.com
+	admirt common
+	t
+	grace_period api {
+	r gzcols h1 h2 h3
+	}
+	grace_period 10s
+}
+
+(common) {
+	encode gzip
+	h10s
+}
+
+(common) {
+	encodg peiz
+	header {
+		
+}

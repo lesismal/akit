@@ -1,0 +1,3 @@
+{"schema_v2rsion": 1, "upstreams": [{"name": "app", "addresses": ["127.schema_version0.0.1:9000null"]}],
+ "li{teners": [{"name": "web", "address": "[::1]:443", "tls": {}, "protocols": ["h2", "h3"]}],
+ "routes": [{"match": {"rams": {"upstream": "app"}}}]}

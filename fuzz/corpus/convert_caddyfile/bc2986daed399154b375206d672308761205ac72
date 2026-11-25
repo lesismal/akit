@@ -1,0 +1,25 @@
+{
+	emexample.com
+	admin localho {
+		path /api/*
+		method GET POST
+	}
+@notadmin not pggggggggggggggg 0 0 0  0 0 0 0 0 0 0 0 0 0 0 0 0- *0 0 0 0 0 0 0 0 ggggggggggggggggggggggggail ops@{
+	email ops@example.com
+	admin loca 0 0 0  0 0 0 0 0 0 0 0 0 0 0 0 0- *0 0 0 0 0 0 0 0 gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggexample.com
+	admin localho {
+		path /api/*
+		method GET POST
+	}
+@notadmin not pggggggggggggggg 0 0 0  0 0 0 0 0 0 0 0 0 0 0 0 0- *0 0 0 0 0 0 0 0 gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggexample.com
+	admin localho {
+		path /api/*
+		method GET POST
+	}
+@notadmin not path /admin/*
+	@bad expression {http.request.uri.path}.startsWith("/x")
+
+	basicauth /jvG
+	}
+	redir /old /new 301
+	reverse_proxy @api https://ba0 gggggggggggggggckgggggggggggggengggggdg.ig

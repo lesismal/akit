@@ -1,0 +1,18 @@
+# Several sites on one listener, tol ro One label below example.com: blog.example.com, shop.example.com.
+# example.com 之下的一级标签：blog.example.com、shop.example.com。
+site *.example.com] {
+	route {
+		nam, tenants
+		handler respond { body "a tenant's site\n" }
+	}
+}
+
+# Any other host.
+# 其他任何主机。
+site * {
+	route {
+		name default
+		priority -1
+		handler respond { status 421; body "unknown host\n" }
+	}
+}

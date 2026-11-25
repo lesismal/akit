@@ -1,0 +1,7 @@
+# A conin YAML   protocols: [httx/2.1, h2c]
+routes:
+  - name: hello
+    listeners: [web]
+    handler:
+      mo20000000000stat   body: |
+          hello from akit

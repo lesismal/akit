@@ -1,0 +1,14 @@
+)
+R0|[::0]|.|
+R1|-*e.a=amxxpR0|[::0]|/u
+R1|**.exa=xample.||PathRegexp("PO/ST")
+R5|[::/*|
+R0|Exa*|?R0|**.ee.*.example.com||Mhd("POST")
+R0|[::0]|.|
+R1|-*.exa=xampR0|[::0]|/u
+R1|**.exa=xample.||PathRegexp("POST")
+R5t[::/*|
+R0|Exa*|
+R0|
+*.emple.*ғxample.co/*|
+m||M*0]|lem||Md(et"

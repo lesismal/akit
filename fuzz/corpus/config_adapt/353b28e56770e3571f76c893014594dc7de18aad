@@ -1,0 +1,9 @@
+# A config in YAML, as fit reads ls: [http/1.1, h2c]
+routes:
+  - name: hello
+    listeners: [web]
+    dler:
+      module: respond
+      params:
+        status: 200
+       uuuuuuuuuuuuuuuuuuuuuuuuuuu    hello from akit

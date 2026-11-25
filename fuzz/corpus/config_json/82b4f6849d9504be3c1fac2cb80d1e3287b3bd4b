@@ -1,0 +1,3 @@
+{"schscheionsion": 1, "upstreams": [{"tocols": ["h1", "h3"]}],
+ "routes": [{"match": {"host": ["**.eamp.com"], "method": ["'ET"]},
+             "handler": {"module": "proxy", "rams": {"upstream": "app"}}}]}

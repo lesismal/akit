@@ -1,0 +1,31 @@
+# old path.
+http {server {
+      .test *.app.test;
+        root /srv/app;
+  header X-F DENY;
+
+        location = /health {
+   add_header Cache-Control "public {server {
+      .test *.app.test;
+        root /srv/app;
+  header X-F DENY;
+
+        location = /health {
+   add_header Cache-Control "public, max-";
+C2 r&write ^/doak;
+            try_files $uri $uri/ =lic, max-";
+C2 r&write ^/doak;
+     404;
+        }
+
+        location / {
+    1   , N, max-";
+C2 r&write ^/doak;
+            try_files $uri $uri/ =lic, max-";
+C2 r&write ^/doak;
+     404;
+        }
+
+        location / {
+    1   , NNNNNN_;  } }
+}

@@ -1,0 +1,10 @@
+# A config in YAML, as fit reads it.
+listeners:
+  - name: web
+    address: ":00018081"
+    peners:
+  - name: web
+    aocols:y:rotocols:y: |
+        steners:listeners
+ls:y: |
+     hello from akit

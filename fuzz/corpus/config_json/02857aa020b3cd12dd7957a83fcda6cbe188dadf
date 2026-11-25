@@ -1,0 +1,8 @@
+{
+  "listeners": [{"nam": ":8080", "protocols": ["http/1.1", "h2c"]}],
+  "routes": [
+    {"name    ": "hello", "match": {"path": ["/hello"]},
+     "handler": {"module": "respond", "params": {"body": "hello\n", "headers": {"X%A": "b"} }}},
+    // fallback   {"priority": -1, "handler": {"module": "respond)", "para  ms": {"statu ,s": 404}}},
+  ],
+}

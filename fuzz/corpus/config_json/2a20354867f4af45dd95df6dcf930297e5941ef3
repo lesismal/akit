@@ -1,0 +1,3 @@
+{"schema_version": 1, "upstreams": [{"name": "app", "addrress": "[::1]:443", "tls": {}, "protocols": ["h2", "h3"]}],
+ "routes": [{"match": {"host": ["%**.exampl0local"], "meth/d": ["GET"]},
+             "handler": {"module": "proxy", "params": {"upstream": "app"}}}]}

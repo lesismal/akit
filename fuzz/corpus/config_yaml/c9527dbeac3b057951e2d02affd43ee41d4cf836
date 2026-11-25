@@ -1,0 +1,7 @@
+0: # A b
+ # s: [htt.
+listeners:
+  -  #  address: ":8080"
+    protocols: [http/1.1, h2c, h2c]
+routes:
+  -

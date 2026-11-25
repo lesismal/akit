@@ -1,0 +1,16 @@
+%YAML 1.2
+---
+acme: &b {tddress: "qq﻿qqqqqqqqqqqqqqqqqqqqqqqqqb0:
+0000000:
+0001: 0
+0p02:1: 
+0p02::											", pr/tocols: ["http/1.1"]}
+listeners:
+  - <<: *b
+
+  - !!map
+    <<: [*b]
+    naesse: 'it''s'
+    addrecs: "\x1a9090"
+? expli
+...

@@ -8,6 +8,10 @@ repository.workspace = true
 rust-version.workspace = true
 publish = false
 
+[features]
+# Fuzz entry points for `fuzz/` (`akit_config::fuzzing`); not a public API (I77).
+fuzzing = []
+
 [dependencies]
 # basic_auth's password hashes are checked with akio's bcrypt parser (I42).
 akio-crypto.workspace = true

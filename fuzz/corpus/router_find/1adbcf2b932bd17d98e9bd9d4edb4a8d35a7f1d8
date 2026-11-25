@@ -1,0 +1,9 @@
+R0||/api/.COM.|/api/v1|
+R5|*.example.com||Method("POST")
+R0|[::1]|/|
+R0|**.example.com|/api/*|Header("X-	Query"q")
+Qexamplea.example.com|/api/v1|POST
+Qa.b.exam:8080|/api/v1
+Qa,example.com|/api/v1|POST
+Qa.b.example.com|/y
+Q|/api/../api/v1

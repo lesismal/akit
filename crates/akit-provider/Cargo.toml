@@ -8,6 +8,10 @@ repository.workspace = true
 rust-version.workspace = true
 publish = false
 
+[features]
+# Fuzz entry points for `fuzz/` (`akit_provider::fuzzing`); not a public API (I77).
+fuzzing = []
+
 [dependencies]
 akit-config = { workspace = true }
 # The Kubernetes provider's regular expressions (I60), checked as routes' path_regexp is.

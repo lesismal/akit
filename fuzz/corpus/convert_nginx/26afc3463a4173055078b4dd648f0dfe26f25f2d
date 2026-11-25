@@ -1,0 +1,10 @@
+ 
+http{server{lis){add_header 0000000000000 "000000000000000000000";}location ^~0000000000 *0{alias 0A000000000;}location 0000?{rewrite 0 0000000 ;}
+
+location 0000{
+rewrite 000 00000000;
+try_files rru $$iui0CCCCCCCCCCCCCCC;
+}
+
+socation /{
+0;}}}

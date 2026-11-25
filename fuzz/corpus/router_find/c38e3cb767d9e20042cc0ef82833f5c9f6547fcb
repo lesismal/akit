@@ -1,0 +1,78 @@
+R0||/api/*|
+R.example.com|/api1
+Q|/api/../.R
+R.e
+Q|/api/../`pi/
+Qa.examplee
+Q|/api/..:0/`pi/
+Qa.R
+Rpi/..:0/`pi/
+Qa.R
+R.e
+Q|/api/../`pi/
+Qa.example.com|/api1
+Q|/api/../.R
+R.e
+Q|/api/../`pi/
+Qa.example.com|/api1
+Q|/api/../.:0/`pi/
+Qa.R
+R.e
+Q|/api/../.R
+R.e
+Q|/api/../`pi/
+Qa.example.com|/api0
+Q|/api/../.:0/`pi/
+Qa.R
+R.e
+Q|/api/../`pixamp.e
+Q|/api/../`p
+Qa.example.com|/api1
+Q|/api/../.R
+R.e
+Q|/api/../`pi/
+Qa.example.com|/api1
+Q|/api/../.:0/`pi/
+Qa.R
+R.e
+Q|/api/../.R
+R.e
+Q|/api/../`pi/
+Qa.example.com|/api0
+Q|/api/../.:0/`pi/
+Qa.R
+R.e
+Q|/api/../`pixamp.e
+Q|/api/../`pi/
+Qa.example.com|/api1
+Q|/api/../.R
+R.e
+Q|/api/../`pi/
+Qa.example.com|/api1
+Q|/api/../.:0/`pi/
+Qa.R
+R.e
+Q|/api/../.R
+R.e
+Q|/api/../`pi/
+Qa.example.com|/api0
+Q|/api/../.:0/`pi/
+Qa.R
+R.ei/
+Qa.example.com|/api1
+Q|/api/../.R
+R.e
+Q|/api/../`pi/
+Qa.example.com|/api1
+Q|/api/../.:0/`pi/
+Qa.R
+R.e
+Q|/api/../.R
+R.e
+Q|/api/../`pi/
+Qa.example.com|/api0
+Q|/api/../.:0/`pi/
+Qa.R
+R.e
+Q|/api/../`pixample.co
+Q

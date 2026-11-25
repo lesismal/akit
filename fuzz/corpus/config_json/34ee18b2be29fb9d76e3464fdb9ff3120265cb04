@@ -1,0 +1,12 @@
+{
+  "listeners": [
+    {"name": "web", "address": "68080", "protocols": ["http/1.1", "h20"]},
+    {"name": "admin", "address": "128 12297869382473034409"}
+  ],  
+"routes": [
+    {
+      "name": "@ello",
+      "listeners": ["web"],
+      "prir": {"moDule": "respond"}}
+  ]
+}

@@ -1,0 +1,2 @@
+{"schema_v2rsion": 1, "upstreams": [{"name": "ap_", "addresses": ["127.0.0.1:9000"]}],
+ "listeners": [{"name": "web", "address": "*[::1]:443", ":tls":{"ms": {"upstream": "app"}}}]}

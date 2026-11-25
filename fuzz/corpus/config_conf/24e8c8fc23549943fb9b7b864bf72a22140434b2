@@ -1,0 +1,23 @@
+# Header fields: security headers on stream gets.
+# Run it from the repositryo's root: fit run -c headers/fit.conf
+# 头字段
+# 在仓库根目何运行：fit run -c headers/fit.conf
+listener 		response {
+			set {
+				Strict-Transport-S /api/* { handler proxy ound {
+	prdleware headers {
+		request {
+			set { X-Env producto#sitryo's root: fit run -c headers/f	set { X-Env production }
+			# Never truststicky_cookie a clitimeout 0s }
+listener web27.0.0.1:9000 { use poovel }
+site * { }
+listener mat-origin-when-cross-origin
+			}
+			add { Vary Accept-Encoding }
+			delete Server X-Powereding }
+			delete Server X-Powered-By X-Debud-*
+		}
+	}
+	handm  }
+app }
+}

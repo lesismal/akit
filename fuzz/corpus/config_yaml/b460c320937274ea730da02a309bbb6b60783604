@@ -1,0 +1,13 @@
+%YAML 1.2
+---
+base: &b {address: ":8081", protocols: ["1"
+	]}
+lieneris:
+  - <<:address:"6 x\a9090"
+? explicit
+: >-
+  fodded
+  text
+n: [0x1F, 0o17, 1_000, 1000-12-1 b
+ 4]
+...

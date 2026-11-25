@@ -1336,6 +1336,57 @@ impl Storage for NoStorage {
     }
 }
 
+/// The `tls_acme` fuzz target (feature `fuzzing`; I77): [`crate::fuzzing`].
+#[cfg(any(test, feature = "fuzzing"))]
+pub(crate) mod fuzz {
+    #![allow(clippy::indexing_slicing, clippy::arithmetic_side_effects)]
+
+    use std::time::Duration;
+
+    use super::{ari, parse_stored, shared};
+
+    /// `tls_acme`: what a CA or the shared storage hands the ACME manager. `data[0]` picks: a
+    /// stored certificate and key (a PEM another instance wrote), or the times of renewal
+    /// information (RFC 9773: its window's RFC 3339 times, `Retry-After`), which are kept in
+    /// bounds.
+    pub(crate) fn acme(data: &[u8]) {
+        let Some((&which, rest)) = data.split_first() else {
+            return;
+        };
+        if which & 1 == 0 {
+            if let Ok(s) = parse_stored(rest, "example.com") {
+                assert!(!s.serial.is_empty(), "a certificate with no serial number");
+            }
+            let _ = shared::parse_alpn(rest);
+            return;
+        }
+        let Ok(text) = std::str::from_utf8(rest) else {
+            return;
+        };
+        let mut p = text.split('\0');
+        let (start, end, retry) = (
+            p.next().unwrap_or(""),
+            p.next().unwrap_or(""),
+            p.next().unwrap_or(""),
+        );
+        let now = 1_700_000_000;
+        if let (Some(s), Some(e)) = (ari::rfc3339(start), ari::rfc3339(end)) {
+            if let Some(t) = ari::pick(s, e, now) {
+                assert!(e > s);
+                assert!(
+                    t == now && now >= s || (s..=e).contains(&t),
+                    "{t} in {s}..{e}"
+                );
+            }
+        }
+        let (least, most) = (Duration::from_secs(60), Duration::from_secs(86_400));
+        let d = ari::retry_after(Some(retry), now, least, most);
+        assert!(d >= least && d <= most, "{d:?}");
+        let _ = ari::http_date(retry);
+        let _ = ari::cert_id(Some(start.as_bytes()), end.as_bytes());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::panic)]

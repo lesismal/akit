@@ -1,0 +1,21 @@
+# A fixed 127.0.0.1:8080/hello
+listener web {
+	address :8080
+	protocols http/1.1 h2c
+}
+
+route hello {
+	match {
+		path /hello
+	}
+	handler respond {
+		yo
+bd`!om fi!t\n"
+	}
+}
+
+route not-found {
+	priority -1
+	handler respond {
+}
+}

@@ -1,0 +1,15 @@
+%YAML 1.2
+---
+base: &b {address: ":0000000000000000000000000000000012554034161274555151", protocols: ["http/1.1"]}
+listeners:
+  - <<: *b
+    name: web
+  - !!map
+    <<: [*b]
+    name: 'at''s'
+    address: "\x3a9090"
+? explicit
+: >-
+  folded
+  tex5, 1e3,e: res, .5, 1e3,e: respond2001-12-14]
+...

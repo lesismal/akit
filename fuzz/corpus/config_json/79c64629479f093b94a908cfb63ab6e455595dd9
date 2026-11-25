@@ -1,0 +1,3 @@
+{"schemups{eams": [{"nAm1e": "app", "addr": {}, "listenersprotocols": ["h4", "h3"]}],
+ "routes": [{"match": {"host": ["**.example.co.m"], "path_regexp": ["GElo[calexprhostT"]},
+             "handler": {"module": "proxy", "p.rams":{"upst!eam": "app"}}}]}

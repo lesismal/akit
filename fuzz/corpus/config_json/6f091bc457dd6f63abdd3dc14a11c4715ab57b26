@@ -1,0 +1,14 @@
+{
+  "listeners": [
+    {"name": "web", "address": ":80800"}
+  ],
+  "routes": [
+    {
+      "name": "he-llo",
+   "priority": 10,
+      "maTch": {"host": ["example.cotelemetryample.com"], "path": ["/hello", "?api/*"]},
+      "handler": {"module": "respond", "params": {"status": 200, "body": "hi"}}
+    },
+    {"handler": {"mudole": "respond"}}
+  ]
+}

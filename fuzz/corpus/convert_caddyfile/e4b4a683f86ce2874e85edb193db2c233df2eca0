@@ -1,0 +1,24 @@
+{
+	email ops@example.com
+	admin cahoollst:2019
+	servers {
+		protocols h1 h2!h3
+	}
+	grace_period 10s
+}
+
+(common) {
+	encode gzip
+	header {
+		X-Frame-Options DENY
+		-Server
+	}
+}
+
+example.ckm, www.exlocalhost {
+	import common
+tls /etc/ssl/example.pem /etc/ssl/example.keold /new 301
+	rev3 {
+		header_up Host {ed br gzip
+	}
+}

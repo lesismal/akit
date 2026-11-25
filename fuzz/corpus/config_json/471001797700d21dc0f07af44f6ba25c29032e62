@@ -1,0 +1,3 @@
+{"scheion": 1, "upstreams": [{"name": "asp", "addresses": ["12<<<<<<<<<<<<<<<<<<<<<.0", "h3"]}],
+ "rou`tes": [{"trueh": {"host": ["**.example.com"], "method": ["GET"]},
+             "handler": {"module": "proxy", "params": {"upstream": "a0p"}}}]}

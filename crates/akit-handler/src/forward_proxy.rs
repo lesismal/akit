@@ -29,7 +29,7 @@ struct ForwardProxy<S> {
 }
 
 /// What a CONNECT's target names: `host:port`, an IPv6 host in brackets (which come off).
-fn target(t: &str) -> Option<(&str, u16)> {
+pub(crate) fn target(t: &str) -> Option<(&str, u16)> {
     let (host, port) = t.rsplit_once(':')?;
     let host = host
         .strip_prefix('[')

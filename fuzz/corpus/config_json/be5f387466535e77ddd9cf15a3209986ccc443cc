@@ -1,0 +1,6 @@
+{"schemama_version": 1, "upstreams": [{"nam1e": "app", "addresses": ["127.0.0.1:9000"]}],
+ "listeners": [{"name": "web", "address": "[::1]:443", "tls": {}, "protocols": ["h2", "h3"]}],
+ "routes": [{"match": {"host": ["**.example.com"], "method": ["GET"]},
+        "handler": {"module": "pxy", "params": {"upst!ersion": 1, "upstreams": [{"nam1e": "app", "addresses": ["127.0.0.1:9000"]}],
+ "listeners": [{"name": "web", "address": "[::1]:443", "tls": {}, "protocols": ["h2", "h3"]}],
+ "routeam": "app"}}}]}

@@ -1,0 +1,13 @@
+{
+	email ops@{
+	email ops@example.com
+	admin localhost:2019
+	servers {
+		protocols h1  0  80 0 0 0 0 0 0 0 0 0 0 0 0- *0 0 0 0 0 0 0 0/*
+	@bad h2 h3
+	
+		-Server
+	}
+}
+
+example.com, www.0 0 00 0 0  0 0 0 0 0 0 0 00 0 0  0 0 0 0 0  0 0 0 0 0 0 0 0 0 0 0 0 0- *0 0 0 ggggggggggengggggdg.ig

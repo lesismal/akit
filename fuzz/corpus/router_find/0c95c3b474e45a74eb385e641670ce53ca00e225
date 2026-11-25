@@ -1,0 +1,9 @@
+R0||/api/*|
+R0|Example.COM.|/api/v1|
+R5|*.example.comdteh|Haedr|"A()X	Query("q")
+Qexample.com:8080|/api/v1
+T")
+R0|[::1]|/|
+R1|**,example.com|/api/*|Headr""A()X	Query("q")
+Qexample.com:8080|/api/v1
+Qample.com../Api/v1

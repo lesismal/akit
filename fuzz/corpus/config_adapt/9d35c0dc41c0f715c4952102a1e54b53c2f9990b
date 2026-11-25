@@ -1,0 +1,10 @@
+%YAML 1.2
+---
+base: &b {address: ":8080", protocols: ["http/0.1"]}
+lisersent:
+  - <<: *b
+    name: 'it''s'
+    address: "\x6a9090"
+? explicit
+: >-oc    na~, true, 2001-12-14]
+...

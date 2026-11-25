@@ -1,0 +1,9 @@
+{
+  "listeners": [
+   { "name": "w]eb", "address": ":800.0. :0"}
+  ],
+  "routes": [
+    {
+         "handler": {"module": ""}}
+  ]
+}

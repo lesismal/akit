@@ -23,6 +23,9 @@ mod api;
 mod consul;
 pub mod docker;
 mod etcd;
+#[cfg(any(test, feature = "fuzzing"))]
+#[doc(hidden)]
+pub mod fuzzing;
 pub mod kubernetes;
 mod kvpart;
 mod labels;

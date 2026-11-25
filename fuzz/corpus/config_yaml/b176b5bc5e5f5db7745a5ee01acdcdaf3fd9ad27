@@ -1,0 +1,11 @@
+0		[[[[[[[[[[[[[[[[listeners:
+  - n  - name: hello
+    listeners: [web]
+    handler:
+      mo[[[[[[[[[[[[[[[[[[[[[[[ners: [web]
+    handler:
+      modu2le: respond
+      params:
+        status:
+---
+base: &b {address: "qq￻qqqqqqaaa name: w1-12-14@0

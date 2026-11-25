@@ -1,0 +1,8 @@
+def pool { max_conns 8; conne_titcmeout 5s }
+listener web :8080 http/1.1 h2c
+listener secure:8442 h2 { cstp l.em k.pem }
+upstreamap p 127.0.0.1:9000 { use * {
+	route /api/* { handler proxy { upp } }
+	route { handler respond { status 404; body `x`; headers { X-A "b c" } } }
+}
+limits {zmax_body_bytes 1MiB }

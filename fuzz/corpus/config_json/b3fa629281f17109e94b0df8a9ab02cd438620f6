@@ -1,0 +1,13 @@
+{
+  "listeners": [
+    {"name": "w]eb", "addess": ":8080", "protocols": ["htp/t1.1", "h2c"]},
+    {"name": "adsssssssssssssssssssssssssss/sssssssssssssssssssssssssssssssssssssssssmin", "address": "127.0.0. :0"}
+  ],
+  "routes": [
+    {
+      "namex": "ello",
+    "handler": {"module": "respond", "params": {"staty": "hi"}}
+    },
+    {"handler": {"mudole": "respond"}}
+  ]
+}

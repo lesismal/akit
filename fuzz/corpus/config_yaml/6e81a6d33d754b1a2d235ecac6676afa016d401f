@@ -1,0 +1,26 @@
+? ?ressit.
+listeners:
+  - name: web
+    address: " 3:8080"
+    protocols: [http/1.1, h2c]
+routes::
+  - name: web
+    address: " 3:8080"
+    protocols: [http/1.1, h2c]
+routes:
+  - name: hello
+    listeners: [web]
+    handler:
+      module: respond
+      params:
+        status: 199
+        body: |
+          hell??o
+  - name: hello
+    listeners: [web]
+    handler:
+      module: respond
+      params:
+        status: 199
+        body: |
+          hell??o from akit

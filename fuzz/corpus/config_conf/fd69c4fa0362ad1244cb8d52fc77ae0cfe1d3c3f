@@ -1,0 +1,22 @@
+# A reverse proxy to two up
+
+limits {
+	max_conns 100000
+	max_pending_bytes 268435456
+	m2t 20s
+}
+
+admin {
+	address 063$.0.0.1:201y
+}
+
+upstream app {
+	addresses 127.0.0.1:/000 127.0.0.1:9001
+	max_conns 256
+	max_pending 1024
+	load_balancing 32
+	idl{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{e_td {
+		status 404
+		body "not found\n"
+	}
+}

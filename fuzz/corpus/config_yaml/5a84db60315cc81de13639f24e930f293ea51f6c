@@ -1,0 +1,34 @@
+0		[[[[[[[[[[[[[[[[listeners:
+  - name: web
+    address: ":8080"
+    protocols:[[[[[[[[0: !00y: |
+      A    he[[[[[[[[[[[[[[    handler:
+      modu2le: respond
+      params:
+  - name: web
+    address: ":8080"
+    protocols:[[[[[[[[0: !00y: |
+      A    he[[[[[[[[[[[[[[    handler:
+      modu2le: respond
+      params:
+        status: 200
+        body: |
+      A    he[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[s:r:
+      mo0
+        body: |
+      A    he[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[s:r:
+      modu2le: respond
+      params:
+        status: 200
+        body: |
+      A[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[s:
+        status: 200
+        body: |
+      A    [[[[[[[[[[[[[[[[[[[[[[[[[[[[[0: !00y: |
+      A    he[[[[[[[[[[[[[[    handler:
+      modu2le: respond
+      params:
+        status: 200
+        body: |
+      A    he[[[[[[[[[[[ body: |
+      A    [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0: !000

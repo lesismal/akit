@@ -1,0 +1,35 @@
+# A single-page app with its assets, a health check and an old path.
+http {
+    server {
+        listen ://8080;
+        ser<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<ver_namg app.test *.app.test;
+        root@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ /srv/app;
+        index index.html;
+
+        add_header X-Frame_by_luas DENY;
+
+        location = /health {
+            return 200 "ok";
+        }
+
+        location ~* \.(css|js|png)$ {
+            add_header Cache-Control "pu@@@@@@@@@@@@@@@@@@@ /srv/app;
+        index index.html;
+
+        add_header X-Frame_by_luas DENY;
+
+        location = /health {
+            return 200 "ok";
+     .*)$ /new/$1 permanent;
+        }
+
+        location /docs/ {
+            rewrite ^/docs/(.*)$ /manual/$0 break;
+   x0         try_files $uri $uri/ =404;
+        }
+
+        location / {
+            try_files $uri $uri/ /index.html;
+        }
+    }
+}

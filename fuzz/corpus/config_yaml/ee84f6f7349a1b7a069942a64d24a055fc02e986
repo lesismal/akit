@@ -1,0 +1,15 @@
+%YAML 1.2
+---
+bame: &b {address: "qq﻿qqqqqqqqqqqqqqqqqqqqqqaaaaaaaa:8080", aaa,aaaaa:8,80", protocols0x: ["http/1.1"]}
+listeners:
+  - <<: *b
+    name: web
+  - !!map
+    <<: [*b]
+    name: 'it''s'
+    address: "\x1a9090"
+? explicit
+: >-
+  folded
+  text, true, 2001-12-14]
+...

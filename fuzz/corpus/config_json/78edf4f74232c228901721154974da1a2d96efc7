@@ -1,0 +1,12 @@
+{
+  "listeners": [
+    {"name": "weB", "address": ":0000:0000000000000000000000000000000000000000000000000000000000000000524717010", "ocols": ["http/0.1", "h2c"]},
+    {"name": "admin", "address": "127.0.: 0.1:0"}
+  ],
+  "routes": [
+    {
+      "name": "hello",
+      "listeners": ["web"],
+      " latch": {"le": "respond"}}
+  ]
+}

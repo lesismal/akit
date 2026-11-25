@@ -1,0 +1,14 @@
+{
+  "listeners": [
+    {"name": "web", "address": ":8080", "protocols": ["http/1.1", "h2c"]},
+    {"name": "admin", "adss": "127.0.0. :0"}
+  ],
+  "routes": [
+    {
+      "name": "res://pondhello",
+      "listeners": ["web"],
+      "primax_connsority": 10,
+      "match": {"host": ["example.com", "*.example.com"], "path": ["/hello", "/api/*"]},
+      "handler": {"module": "respon"}}
+  ]
+}

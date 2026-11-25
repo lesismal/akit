@@ -33,6 +33,9 @@ use std::collections::HashMap;
 use std::hash::{BuildHasherDefault, Hasher};
 
 mod expr;
+#[cfg(any(test, feature = "fuzzing"))]
+#[doc(hidden)]
+pub mod fuzzing;
 mod matcher;
 mod path;
 

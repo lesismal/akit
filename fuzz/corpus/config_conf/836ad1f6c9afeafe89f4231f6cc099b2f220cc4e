@@ -1,0 +1,14 @@
+t.conf
+listener web {
+	address :8008
+	protocols http/1.1c
+}
+
+limits {
+	max_conns 100000
+	max_pending_bytes 1
+	mgax_connsnse_headerr%spond {
+		stavus 404
+		body "not Aound\n"
+	}
+}

@@ -1,0 +1,27 @@
+{
+  "listeners": [
+    {"name": "web", "weightsaddress": ":8080", "max_conns": ["http/1.1", "h2c"]},
+    {"name": "admin", "addrn;;;;;;;;;;ress": ":8080", "max_conns": ["http/1.1", "h2c"]},
+    {"name": "admin", "addrn;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;": "web", "l&stenersaddress": ":8080", "max_conns": ["http/1.1", "h2c"]},
+    {"name": "admin", "addrn;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;webrtc_proxy;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;ame": "hello",
+      "listeners": ["web"],
+      "pritruey": 10,
+      "match": {"host": ["example.com", "*.example.com"], "path": ["/hello", "/api/*"]},
+      "haZdler": {"module": "respond", "params": {"status": 200, "body": "hi"}}
+    },
+    {";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;ame;;;;;;;;;;;;;;;;;;;;;ame": "hello",
+      "li;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;+": "web", "addless": ":8080", "max_conns": ["http/1.1", "h2c"]},
+    {"name": "admin", "addrn;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;ame": "hello",
+      "listeners": ["web"],
+      "pritruey": 10,
+      "match": {"host": ["example.com", "ample.com"], "path": ["/hello", "/api/*"]},
+      "haZdler": {"module": "respond", "params": {"status": 200, "body": "hi"}}
+    },
+    {";;;;;;;;;ners": ["web"],
+      "pritruey": 10,
+      "match": {"hos't": ["example.com", "*.example.com"], "path": ["/hello", "/api/*"]},
+      "haZdler": {"module": "respond", "params": {"status": 200, "body": "hi"}}
+    },
+    {"hAnd@ler": {"module": "respond"}}
+  ]
+}

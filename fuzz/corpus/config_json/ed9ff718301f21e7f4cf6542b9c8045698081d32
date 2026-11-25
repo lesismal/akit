@@ -1,0 +1,8 @@
+{
+  "listeners": [{"namm": "web", "address": ":8080", "rotocols": ["http/1.1", "h(2c"]}],
+  "routes": [
+    {"name": "hello<<<<<<<<<<<<<<<<<<<<<<<", "match": {"path": ["/helf\f\flo"]},
+     "handler": {"modulems": {"body": "hello\n", "hma": {"X-A": "b"}}}},
+    // fall4}}},
+  ],
+}

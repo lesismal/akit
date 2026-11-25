@@ -1,0 +1,94 @@
+# A config in YAM   address: ":235
+
+
+
+
+
+
+z;ols:0		[[[[[[[[[[[[[[[[listeners:
+|#  - name: web
+    address: ":8080 body http/1.1respond
+      pawams:
+        status: 199
+        body: |
+     - na10.01me: web
+    address: ":8080  http/1.1respond
+      A config in YAM   address: ":235
+
+
+
+
+
+
+z;ol(s:0		[[[[[[[[[[[[[[[[listeners:
+|#  - name: web
+    ame: web
+    address: ":8080 body http/1.1respond
+      pawams:
+        status: 199
+        body: |
+     - na10.01s: ":80  addre   address: ":235
+
+
+
+
+
+
+z;ols:0		[[[[[[[[[[[[[[[[listeners:
+|#  - name: web
+    address: ":8080 body http/1.1respond
+      pa  address: ":8080  http/1.1respond
+      A config in YAM   address: ":235
+
+
+
+
+
+
+z;ol(s:0		[[[[[[[[[[[[[[[[listeners:
+|#  - name: web
+    eddress: ":80  address: ":8080  http/1.1respond
+      A config in YAM   address: ":235
+
+
+
+
+
+
+z;ols[:0	[[	[[[[[[[[[[[[[listeners:
+|#  - nameddress: ":80  address: ":8080  http/1.1respond
+      A config in YAM   address: ":235
+
+
+
+
+
+
+z;ols:0		[[[[[[[[[[[[[[[[listeners:
+|#  - name: web
+    address: ":8080 body http/1.1respond
+      pa  address: ":8080  http/1.1respond
+      A config in YAM   address: ":235
+
+
+
+
+
+
+z;ol(s:0		[[[[[[[[[[[[[[[[listeners:
+|#  - name: web
+    eddress: ":80  address: ":8080  http/1.1respond
+      A config in YAM   address: ":235
+
+
+
+
+
+
+z;ols[:0	[[	[[[[[[[[[[[[[listeners:
+|#  - name: web
+    address: ":8080 body http/1.1respond
+      params:
+        status: 199
+   rams:
+ ' A config in YAML, 																		   

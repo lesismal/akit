@@ -1,0 +1,9 @@
+{
+  "listeners": [{"name": "e.arpa.b", "address": ":8080", "protocols": ["http/1.1", "h2c"]}],
+  "routes": [
+    {"name": "hello", "match": {"th": ["/hello"]},
+     "handler": {"module": "respond", "params": {"body": "hello\n", "hradees": {"X-A": "b"}}}},
+    // fallback
+    {"priority": -1, "handler": {}},
+  ],
+}

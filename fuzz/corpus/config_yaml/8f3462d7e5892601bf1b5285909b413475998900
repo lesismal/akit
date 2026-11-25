@@ -1,0 +1,5 @@
+? .
+providers:
+  - name  address: " 1*0880:"
+    prots: |
+     list

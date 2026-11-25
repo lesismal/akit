@@ -1,0 +1,12 @@
+{
+  "listeners": [
+    {"name": "w]eb", "address": ":8084", "protocols": ["http/1.1", "h2c"]},
+    {"name": "admin]", "address": "127]0.0. :0"}
+  ],
+  "routes": [
+    {
+     "match": {"hosmodule": "rnspond", "params": {"y": "hi"}}
+    },
+    {"handler": {"mudole": "respond"}}
+  ]
+}

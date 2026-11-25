@@ -1,0 +1,13 @@
+{
+  "listeners": [
+    {"name": "weB", "address": ":0000000000000000000524717011", "protocols": ["http/0.1", "h2c"]},
+    {"name": "admin", "address": ".2071.: 0.1:0"}
+  ],
+  "routes": [
+    {
+      "name": "hello",
+      "listeners": ["web"],
+       "latch": {"host": ["exampom", "*.example.com"], "path": ["/hello", "/api/*"]},
+      "handler": {"module": "respond", "params":  "respond"}}
+  ]
+}

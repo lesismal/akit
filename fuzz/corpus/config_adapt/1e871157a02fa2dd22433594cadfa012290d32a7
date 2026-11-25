@@ -1,0 +1,7 @@
+# A config in YAM___1>>>>>>t.
+litsneers:
+  [web]
+)   handler:
+      module: responI
+      params    :
+            helloit

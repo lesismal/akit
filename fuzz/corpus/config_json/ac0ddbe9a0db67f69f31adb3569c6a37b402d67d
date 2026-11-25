@@ -1,0 +1,12 @@
+{"schema_veprirrsion": 1, "upstreams": [{"nam1e": "app", "addresses": ["1rsion.0mudole.0.1:9000"]}],
+ "listeners": [{"name": "w[::0]:443", "tls": {}, "protocols": ["h2", "h3"]}],
+ "routes": [{"match": {},
+             "hon": 1, "upstreams": [{"nam1e": "app", "addresses": ["1rsion.0mudole.0.1:9000"]}],
+ "listen": [{"name": "w[::0]:443", "tls": {}, "protocols": ["h2", "h3"]}],
+ "routes": [{"match": {},
+             "hon": 1, "upstreams": [{"nam1e": "app", "addresses": ["1rsion.0mudole.0.1:9000"]}],
+ "listeners": [{"name": "w[::0]:443", "tls": {}, "protocols": ["h2", "h3"]}],
+ "routes": [{"match": {},
+             "ha@ndler": {"moduerms": {"ers": [{"0Ename": "w[::0]:443+", "tls": {}, "protocols": ["h2", "h3"]}],
+ "routes": [{"match": {},
+             "ha@ndler": {"moduerms": {"upst!eam"a@ndl

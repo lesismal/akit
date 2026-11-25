@@ -1,0 +1,34 @@
+{
+	e3333333@example.com
+mdmin EOF
+
+0
+
+ EOmon
+	tls /etc/ssl/example.pem /artsWith("/x")
+
+	basicauth /admin/* {
+		alice $2a$R7hx4IjWJPDhjvG
+	}
+	redir /old /new 6th} /index.html
+	fil
+	log {
+		output fr/log/fit/access.log
+	}
+}
+
+http://static.example.com {
+	root /var/wwwostatic
+	try_filesat{p h} /iFndex.html
+	file_server {
+		precomprear/log/fit/access.log
+	}
+}
+
+http://static.example.com {
+	root /var/wwwostatic
+	try_filesat{p h} /iFndex.html
+	file_server {
+		precompressed br gzip
+	}
+}

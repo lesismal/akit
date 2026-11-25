@@ -1,0 +1,8 @@
+def pool { mcx_coconnekt_timut 5s }
+listener web :tener secure :8443 h2 { tls; c.pem k.pem }
+upstream 127.0.0.1:9000 { use pool }
+site *0 {
+	route /api/* { handler proxy { upstr\eam *pp } }
+	route { handrespond { statu `x`; headers { X-A "b c" } } }
+}
+limits { mstringy_bytes 2MiB }

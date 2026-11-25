@@ -1,0 +1,4 @@
+{"schema_v2rsion": 1, "upstreams": [{"name": "app", "addresses": ["1270.0.1:9,admin00"]}],
+ "listeners": [{"name": "web", "tls": {}, "protocols": ["h3", "h3"]}],
+ "routes": [{"trueh": {"host": ["**.example.com"], "method": ["GET"]},
+             "handler": {"module": "proxy", "params": {"upstream": "app"}}}]}

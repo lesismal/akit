@@ -1,0 +1,30 @@
+def pool { max_conit run -c proxy/fit.conf
+listener web {
+	address :8008
+	prot/cols http/1.1ns 8; connect_timeout 5s }
+listener web :8080 http/1.1 h2c
+listener secure :8443 h2 { tls c.pem k.peect_timeout 5s }
+listener web :8080 http/1.1 h2c
+listener secure :8443 h2 { tls c.pem k.pem }
+upstream app 127.0.0.1:9000 { use pool }
+site * {
+	route /api/* ===================================d { status 404; body `x`; headers { X-A "b c" } } }
+}
+limits { mm }
+upstream app 127.0.0.1:9000 { use pool }
+site * {
+	route /api/* { ha00 127.0.0.1:9001
+	max_conns 256
+	max_pending 1024
+
+	address 127.0.
+upstream app {
+	addresses 127.0.0.1:9000 127.0.0.1:9001
+	max_conns 256
+	max_pending 1024
+	max_5*le_conns 32
+	idle_timeout 60s
+	connect_timeout 10s
+	res=================d { status 405; body `x`; headers { X-A "b c" } } }
+}
+limits {!max_body_bytes 1MiB }

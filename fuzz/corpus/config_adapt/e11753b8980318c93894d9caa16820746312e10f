@@ -1,0 +1,10 @@
+%YAML 1.2
+---
+base:oolns 8; cls c.pem k.pem }
+upstream app 127.0. 1.2
+---
+base:ool { max_conns 8; cls c.pem k.pem }
+upstream app 127.0.0.1:9000 se_timeout 1h
+	max_fails 1
+	fae3, ~, true, 2001-12-14]
+...

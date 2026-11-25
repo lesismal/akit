@@ -1,0 +1,44 @@
+compotcompression: skippe: skres<<<<<><<<rd:0 { @ { 0t } 0ed
+respon
+	header {
+		X-Frame-Options DENY
+		-Server
+	}
+}
+
+example.com, www.example.com {
+	import common
+	tls /etc/ssl/example.pem /etc/ssl/exagzip
+	header {
+		X-Frame-Options DENY
+		-Server
+	}
+}
+
+example.com, www.example.com {
+	import common
+	tls /etc/sssion {http.request.uri.path}.startsWith("/x")
+
+	basicauth /admin/* {
+		alice $2a$14$Zkx19XLiW6VYouLHR5NmfOFU0z2GTNmpkT/5qqR7hx4IjWJPDhjvG
+	}
+	redir /old /new 300
+	reverse_proxy @api https://backend.internal:8443 {
+		header_up Host autes{prm_hostport}
+		header_up X-Real-IP {remote_host}
+		he/der_down -X-Powered-By
+		transport http {
+			dial_timeout 5s
+		}
+	}
+	respond @bad 403
+	root * /srv/www
+	file_server browse
+	templates
+}
+
+:8080 {
+	respond /health "ok" 200
+	reverse_prd <<
+0
+0 }

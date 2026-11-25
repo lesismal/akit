@@ -94,6 +94,7 @@ first; its status here records the branch, then the akio commit akit pins.
 
 | A170 | A connection's TCP counters (and unread bytes) without reaching into `Conn::inner`, and a splice that writes first through the engine's own API | requested (I51b); akit-l4 uses the doc-hidden `Conn::inner` meanwhile | 1, 14 | I51b |
 | A180 | akio-wasm's call made cheaper, measured against wazero (akio's W5) | requested (I76): a header-editing Go guest costs akit 14.7 µs of CPU a request, fit 6.8 µs | 13 | I71, I72, I76 |
+| A200 | A request target in absolute form taken as RFC 9112 asks: its path as the request's path, its authority as its host | requested (I77); akit-listener rewrites such a request to origin form meanwhile | 15, 19 | I77 |
 | A214 | A budget of the bytes queued for every connection together, which pauses every connection's reads past it (fit's `limits.max_pending_bytes`) | requested (I79) | 8, 11 | I79 |
 | A215 | A connection limit that counts the connections accepted, not those the engine dials (fit's `limits.max_conns`) | requested (I79) | 11 | I79 |
 
@@ -1952,6 +1953,38 @@ whatever makes entering a Go `wasip1` guest's export cheap to start.
 **How akit would use it.** As it is: `akit-plugin` runs every guest on `akio_wasm::InstancePool`;
 a cheaper call needs no change in akit, which measures it again with
 `bench/run.sh -servers akit-wasm,fit-wasm -scenarios fixed,wasm`.
+
+## A200 A request target in absolute form, taken as RFC 9112 asks
+
+**Status.** Requested by I77 (2026-11-26). akit-listener rewrites such a request meanwhile, a
+stopgap recorded in [progress](progress.md).
+
+**Problem.** An HTTP/1.1 server must accept a request target in absolute form
+(`GET http://a.example/admin/x HTTP/1.1`) and, as an origin server, take the target's authority
+as the request's host, ignoring `Host` (RFC 9112 section 3.2.2); Go's server does (`r.URL.Path`
+is `/admin/x`, `r.Host` is `a.example`), and so fit routes such a request by its path. akio's
+HTTP/1 server accepts the target and keeps it whole: `Request::path()` is
+`http://a.example/admin/x`, and `Host` stays what the field said. A router that goes by
+`path()`, akit's or akio-http's own, takes the request for no path it knows, while a proxy that
+sends its upstream the origin form (akit's does, as it must) asks for `/admin/x`: fuzzing found
+that a request spelled so missed a route protecting `/admin/*` and reached the upstream through a
+catch-all route.
+
+**Evidence.** At `dad77a7a` (and `111004f8`): `crates/akio-http/src/message.rs`,
+`Request::path()` is the target up to its `?`; `crates/akio-http/src/parse.rs` copies the
+request line's target as it is (`new_target`). akit's test `path_confusion`
+(`crates/akit-listener/tests/listeners.rs`) answered `GET http://a/admin/secret` from the
+catch-all (200) before the stopgap.
+
+**Suggested API.** The HTTP/1 server parses an absolute-form target into its parts: the
+`Request`'s `target` in origin form (`/admin/x?q`) and its host the target's authority (without
+user information), set as `Host` or given by a `Request::authority()` that `Host` defers to; the
+absolute form kept for logs if wanted (`Request::raw_target()`). A target in authority form stays
+for `CONNECT` alone.
+
+**How akit would use it.** akit-listener's `absolute_form` rewrite (in `Dispatcher::call` and
+`body_mode`) goes; routing, the proxy, the cache's keys and the access log read the request as
+akio gives it.
 
 ## A214 A budget of the bytes queued for every connection together
 

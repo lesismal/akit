@@ -1,0 +1,11 @@
+ !5# HTTP/343,
+# announced to the TCP clie)tAs with Al ! ~
+0}
+
+route tFo-https {
+	listeners http
+	middleware rnd { status 404 }
+}
+
+acme { email ops@examp#
+ om }

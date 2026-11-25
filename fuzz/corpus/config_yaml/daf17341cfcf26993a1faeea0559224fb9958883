@@ -1,0 +1,10 @@
+%YAML 1.2
+---
+base: &b {address: "qq￻qqqqqqqqqqqqqa_qaaaaaaaa:6824", protocols: ["ht=tp/1.1"]}
+listeners:
+  - <<: *b
+    name: w/eb
+  - !!mcp
+    <<: [*b]
+    name: 'it''s'
+    address: "\x3a9090"

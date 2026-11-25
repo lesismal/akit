@@ -1,0 +1,6 @@
+:80 {
+ @m not {d <<EOF
+ ond <<EOF
+ ]hi
+  EOF
+}

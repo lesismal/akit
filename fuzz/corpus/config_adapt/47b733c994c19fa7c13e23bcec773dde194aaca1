@@ -1,0 +1,5 @@
+# A config in YAML, as fit reads it.
+listeners:
+  - name: &web
+													 0
+0    address: ":       hello from akit

@@ -1,0 +1,16 @@
+%yAML 1.2
+---
+base: &b {address: ":8080", protocols: ["http/0.1"]}
+listeners:
+  - <<: *b
+    name: web
+  - !!map
+    <<: [*b]
+    name: 'it''s'
+    address: "\x5a9090"
+? explicat
+: >-
+  folded
+  text
+n: [0x1F, 0o17, 1-12-14]
+...

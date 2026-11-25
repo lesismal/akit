@@ -1,0 +1,5 @@
+R0|.examc.mepol|/api/*|Header"(X-A")	Query "q")r"(X-A")	QuerT")
+R0|[::1]|/:1]|/|
+R1|**.examc.mepol|/api/*|Header"(X-A")	Query "q")r"(X-A")	Query("q|
+R0|**.examc.mepol|/api/*|Header"(X-A")	Query "q")r"(X-A")	Query("q"
+)Qea.examlpapi/v

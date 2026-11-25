@@ -1,0 +1,10 @@
+R0|.mc.mepol|/api/*|Header"(X-A")	Query "q")r"(X-A")	QuerT")
+R0|[::1]|/:1]|/|
+R1|**.examc.mepol|/api/*|Header"(X-A")	Query "q")r"(X-A")	Query("q|
+R0|**.examc.mepol|/api/*|Header"(X-A")	Query "q")r"("q|
+R0|**.examc.mepol|/api/*|Header"(X-A")	Query "q")Q"a)"em.examc.mepol|/api/*|Header"(X-A")	Query "q")r"(X-A")	QuerT")
+R0|[::1]|/:1]|/|
+R1|**.examc.mepol|/api/*|Header"(X-A")	Query "q")r"(X-A")	Quer|
+R0|**.examc.mepol|/api/*|Header"(X-A")	Query "qy("q|
+R0|**.examc.mepol|/api/*|Header"(X-A")	Query "q")r"("q|
+R0|**.examc.mepol|/api/*|Header"(X-A")	Query "q")Q"a)"em.lpecom|b.examp.examlpapi/v

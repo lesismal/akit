@@ -1,0 +1,4 @@
+R0||
+R1|**.epol||
+R1|.examc.mepol|/api/*|RemoteIP|/api/*|Header"(X-A")	Qe||
+R1|.examc.mepol|/api/*|RemoteIP|/api/*|

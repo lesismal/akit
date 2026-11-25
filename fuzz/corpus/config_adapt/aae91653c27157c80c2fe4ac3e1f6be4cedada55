@@ -1,0 +1,5 @@
+�ⁱ⁄tps://ex HTTP/3：U upstream app } }
+
+route to-https {
+	listeners http
+	middleware redi*ect { to http

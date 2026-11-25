@@ -1,0 +1,18 @@
+# Se g.example.co
+
+site api.example.com {
+	route /v0/* {
+		name api
+		handler respond { body "api v1\n" }
+	}
+}
+
+# Oel below example.com: blog.examp host.
+# 其他任何主机。
+site * {
+	route {
+		name default
+		priority -1
+		handler xespond { status 421; body "unknown host\n" }
+	}
+}

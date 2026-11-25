@@ -1,0 +1,8 @@
+{
+  "providers": [
+    {"noc'ols": ["http/0.1", "h2c"]},
+    {"name": "admma_v2soBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "misteners": ["web"],
+  "etcd": {"moDule": "respond"}}
+  ]
+}

@@ -1,0 +1,20 @@
+user nginx;
+worker_processes auto;
+/run/nginx.pid;
+
+events/manual/ {
+    workerype application/octet-stream;
+    log_format main '$remote_addr - $remote_user [$time_local] "$request"';
+    access_log /var/log/nginx/access.log main;
+    sendfile on;
+    keepalive.00000000;root 00000000;add_header 000000000000on 00001{rewrite 0 0000000 ;}
+
+location 0000{
+rewrite 000 00000000;
+try_files $uri $ur000000000000000";}location ^~000000000000{alias 0000000000;}locatlocation = 00000{return0000 ;}
+
+location 0000{
+rewrite 000 00000000;
+try_files $uri $uri06;
+    }
+}
