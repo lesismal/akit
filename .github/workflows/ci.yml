@@ -87,8 +87,9 @@ jobs:
   packaging:
     # What a release ships (deploy/README.md), built and run as it says: the static Linux binary
     # from scripts/dist.sh, the systemd units on the runner's systemd, the container image serving
-    # its placeholder config, and the Helm chart's config read by akit.
-    name: packaging (binary, systemd, image, chart)
+    # its placeholder config and the Docker Compose example (deploy/compose) on it, and the Helm
+    # chart's config read by akit.
+    name: packaging (binary, systemd, image, Compose, chart)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -117,6 +118,10 @@ jobs:
           done
           echo "the image's placeholder config never answered" >&2
           exit 1
+      - name: Docker Compose example
+        # M4's exit criterion: the Docker provider routes the app's containers by their labels
+        # and follows them as they are scaled, stopped and started (deploy/compose/README.md).
+        run: AKIT_IMAGE=akit:ci deploy/compose/test.sh
       - name: Helm chart
         run: |
           akit=$(echo "$RUNNER_TEMP"/akit_*_linux_amd64/akit)
@@ -131,3 +136,60 @@ jobs:
             "$akit" validate -c "$RUNNER_TEMP/akit.json"
             grep -q 'kind: GatewayClass' "$RUNNER_TEMP/chart.yaml"
           done
+
+  conformance:
+    # The Gateway API's conformance suite, the GATEWAY-HTTP profile akit claims (M4's exit
+    # criterion), as fit's CI job of the same name runs it: fit's suite module, akit outside a
+    # kind cluster with the Kubernetes provider, Gateways on 127.0.0.1's ports 80 and 443
+    # (tests/conformance/README.md).
+    name: Gateway API conformance (kind)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          # fit's commit akit reads as its specification (docs/progress.md); its test/conformance
+          # module requires sigs.k8s.io/gateway-api v1.3.0.
+          repository: lesismal/fit
+          ref: 7daee573b102d87837cc10f033e4cc5894769210
+          path: .fit
+          sparse-checkout: test/conformance
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: .fit/test/conformance/go.mod
+          cache-dependency-path: .fit/test/conformance/go.sum
+      - name: Create a kind cluster
+        run: |
+          if ! command -v kind >/dev/null; then
+            go install sigs.k8s.io/kind@v0.30.0
+            echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+            export PATH="$(go env GOPATH)/bin:$PATH"
+          fi
+          kind create cluster --name akit --wait 120s --kubeconfig "$RUNNER_TEMP/kubeconfig"
+          echo "KUBECONFIG=$RUNNER_TEMP/kubeconfig" >> "$GITHUB_ENV"
+      - name: Install the Gateway API's CRDs
+        run: kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.3.0/experimental-install.yaml
+      - name: Route the pod network through the node
+        run: |
+          node=$(docker inspect -f '{{.NetworkSettings.Networks.kind.IPAddress}}' akit-control-plane)
+          cidr=$(kubectl get node akit-control-plane -o jsonpath='{.spec.podCIDR}')
+          sudo ip route add "$cidr" via "$node"
+      - name: Build akit and the suite
+        run: |
+          cargo build --release -p akit
+          cp target/release/akit "$RUNNER_TEMP/akit"
+          sudo setcap cap_net_bind_service=+ep "$RUNNER_TEMP/akit"
+          cd .fit/test/conformance && go test -c -o "$RUNNER_TEMP/conformance.test" .
+      - name: Run the suite
+        run: REPORT="$RUNNER_TEMP/report.yaml" AKIT_LOG="$RUNNER_TEMP/akit.log" tests/conformance/run.sh "$RUNNER_TEMP/akit" "$RUNNER_TEMP/conformance.test"
+      - name: Keep the report and akit's log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: conformance
+          path: |
+            ${{ runner.temp }}/report.yaml
+            ${{ runner.temp }}/akit.log

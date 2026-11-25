@@ -162,7 +162,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I63 | 仪表盘 | I37 | done |
 | I64 | OpenTelemetry | I37 | done |
 | I65 | 打包 | I06 | done |
-| I66 | M4 退出 | I57–I65 | todo |
+| I66 | M4 退出 | I57–I65 | done |
 | **M5** | | | |
 | I67 | 缓存 I：内存层与 RFC 9111 | I17 | done |
 | I68 | 缓存 II：磁盘层、缓存锁、stale | I67 | done |
@@ -208,6 +208,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | Prometheus 指标 | I37 | 否 | 否（已实现，未测量） | fixed 和 proxy 场景下开关 `metrics` 的同轮 A/B（inline 路由的代价是一次线程局部读和三次原子加；代理的路由在 akio A29 之前还多一个装箱的应答过滤器），以及同时开启访问日志（两者共用一个钩子）；大量路由、64 个线程时的一次抓取（按线程的分片）。 |
 | OpenTelemetry | I64 | 否 | 否（已实现，未测量） | fixed 和 proxy 场景下 `telemetry.traces` 关闭、开启且 `sample_ratio` 为 0（每个请求一次字段查找）、开启且为 1（每个请求：生成 id、设置 `traceparent` local、把 span 编码进线程自己的缓冲区、一次分片锁）的同轮 A/B；默认 4 MiB 队列、collector 很慢时满负载下丢弃的 span；导出线程的开销；`Tracer::sample` 和 `Tracer::end` 的微基准（fit 的 `BenchmarkSample`、`BenchmarkEnd`）。 |
 | 静态 musl 发布二进制 | I65 | 否 | 否（已实现，未测量） | 用发布的静态 musl 二进制（`scripts/dist.sh`，musl 的分配器）与同一提交的 glibc 构建做 fixed 和 proxy 场景的同轮 A/B、轮次交替：多线程下 musl 的分配器是否损失吞吐量或内存，从而决定全局分配器是否值得引入一个依赖（[决策 009](decisions/009-packaging.zh-CN.md)）。 |
+| M4 退出：里程碑结束时的完整测试框架；空闲的 provider | I66 | 否 | 否 | M4 没有改动请求路径。留给基准测试任务（规则 24 的里程碑结束）：用 M4 的构建与 fit、nginx、Caddy 和 Traefik 跑完整测试框架，按 [M4 报告](../bench/results/m4-report-2026-11-25.zh-CN.md) 的方式排名；对正在服务、带一个监视中但空闲的 Kubernetes 或 Docker provider 的 akit 与不带 provider 的同一配置做同轮 A/B、轮次交替，以及 provider 每秒应用一个新版本时请求的 p99。 |
 | 匹配器 v2 与表达式 | I39 | 否 | 否（已实现，未测） | 带匹配器、表达式和路径正则的 `find_request` 微基准（不分配内存，`tests/no_alloc.rs`）；fixed 场景下对比 I39 基线的同轮 A/B（一条路由、没有匹配器：预期在噪声以内）。 |
 | 重写、跳转与头处理 | I40 | 否 | 否（已实现，未测） | 在 proxy 场景上做同轮 A/B：带 `headers`（请求和响应修改）与 `rewrite` 的路由对比不带它们的同一路由；每个请求上响应过滤器（一个装箱闭包和一次 `Arc` 克隆）的开销，以及把请求字段放在上下文 local 中的开销（在 akio API 需求 A33 之前的临时方案）。 |
 | 限流、并发与大小限制 | I41 | 否 | 否（已实现，未测） | 在 proxy 场景上做同轮 A/B：每种限制设得足够高、从不拒绝的路由对比不带它的同一路由：按 ip 和按头的 `rate_limit`（一把分片锁、一次 SipHash、一次 map 查找），1、1000 和 1000000 个客户端键、64 个线程（分片的争用），与 fit 的 `BenchmarkRate` 一样；`concurrency_limit`（同一共享缓存行上的两次原子操作，以及在 akio A48 之前的一个装箱响应过滤器和一次 `Arc` 克隆）；`body_limit`（每个请求只查一次字段）。 |
@@ -813,6 +814,11 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 
 - **做什么**：CI 中运行一致性测试和 Compose 示例；M4 报告。
 - **完成标准**：路线图中 M4 的退出标准满足。
+- **状态**：已完成（2026-11-25），没有改动 akit 代码，也没有 akio 需求：Gateway API 的
+  `GATEWAY-HTTP` core 在 v1.3.0 上通过（通过 33，失败 0，跳过 0，
+  [报告](../tests/conformance/reports/gateway-http-v1.3.0-2026-11-25.yaml)），Docker Compose 示例
+  （[deploy/compose](../deploy/compose/README.zh-CN.md)）在其容器扩缩、停止和启动时按标签路由；两者都
+  在 CI 中运行；[M4 报告](../bench/results/m4-report-2026-11-25.zh-CN.md)；见进度日志。
 
 ## M5 缓存与扩展
 
