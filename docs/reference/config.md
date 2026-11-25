@@ -16,7 +16,7 @@ YAML or JSON, any of them split across several files. Where akit differs from fi
 so in a note marked **akit:**.
 
 <!-- BEGIN GENERATED: summary -->
-akit reads **417** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 62 objects akit reads, each has its table below.
+akit reads **428** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 63 objects akit reads, each has its table below.
 <!-- END GENERATED -->
 
 How to read the tables:
@@ -49,6 +49,7 @@ is not there, a plugin that does not compile are errors.
 - [Access log](#access-log)
 - [Telemetry](#telemetry)
 - [Limits](#limits)
+- [Engine](#engine)
 - [Admin API](#admin-api)
 - [HTTPS by default](#https-by-default)
 - [Metrics](#metrics)
@@ -122,7 +123,7 @@ name every file on the command line (`-c` may be given again, or name a director
 | `admin` | [object](#cfg-admin) |  | The Admin API, through which the running config is read and replaced, and which serves metrics in Prometheus's text format at /metrics; off when left out. Its settings are read when akit starts: a change to them takes effect when akit restarts. |
 | `auto_https` | [object](#cfg-auto-https) |  | HTTPS by default: a config that writes no listeners is served over HTTPS on port 443, with certificates obtained with acme for the host names its routes match, and over HTTP on port 80 only to be redirected; a listener whose tls is empty gets certificates for the host names of the routes it serves. On when left out. |
 | `bittorrent` | object |  | **Not supported yet**: refused by name. fit's BitTorrent roles, beside the gateway on its engine: a client that downloads and seeds torrents on one port for TCP and UDP, and a tracker. None when left out: no BitTorrent port and no state on disk. |
-| `engine` | object |  | **Not supported yet**: refused by name. How fib, the network engine fit serves and dials on, is set up: its event loops, workers and buffers. fib's own defaults for what is left out, and for all of it when engine is. Read when fit starts: a change takes effect when fit restarts. |
+| `engine` | [object](#cfg-engine) |  | How akio, the network engine akit serves and dials on, is set up: its event loops, workers and buffers. akio's own defaults for what is left out, and for all of it when engine is. Read when akit starts: a change takes effect when akit restarts. |
 | `limits` | [object](#cfg-limits) |  | Limits that apply to every listener. |
 | `listeners` | list of [object](#cfg-listeners) |  | The addresses akit listens on, and the protocols each one serves. When left out, HTTPS by default makes them from the routes' host names; see auto_https. |
 | `llm` | object |  | **Not supported yet**: refused by name. The LLM feature's roles to run beside the gateway, on its engine: a hub, a node and a proxy, which share AI models among machines and serve them to agents. None when left out. What their web pages change is written back here. |
@@ -620,19 +621,24 @@ telemetry {
 
 ## Limits
 
-Limits on what clients can make akit hold, on every listener. akit reads `max_body_bytes` (a
-request body past it is answered 413) and `write_stall_timeout` (how long a client may leave a
-response unread); the rest of fit's limits are not supported yet, and akit's own bounds hold in
-their place: akio's per-connection watermarks, linked backpressure, and the limits of each
-upstream, route and listener. The [`body_limit`](#body_limit) middleware limits a route's bodies
-further.
+Limits on what clients can make akit hold, on every listener: the largest request head
+(`max_header_bytes`, answered 431) and body (`max_body_bytes`, answered 413), the client
+connections open at once (`max_conns`), the bytes one connection may have queued for its client
+(`max_write_queue_bytes`) and how long a client may leave a response unread
+(`write_stall_timeout`). `max_conns` and `max_write_queue_bytes` take effect at start; a reload
+that changes them is warned of. `max_pending_bytes`, a budget of the bytes waiting for every
+client together, is not supported yet: akio has no such budget (akio API request A214), and its
+per-connection watermark and linked backpressure bound each connection meanwhile. The
+[`body_limit`](#body_limit) middleware limits a route's bodies further.
 
 ```fit
 listener web :8080
 route { handler respond }
 
 limits {
+	max_header_bytes 64KiB
 	max_body_bytes 100MiB
+	max_conns 50000
 	write_stall_timeout 1m
 }
 ```
@@ -645,11 +651,52 @@ limits {
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
 | `max_body_bytes` | integer, 0 or more | `16777216` | The largest request body a listener takes, whether it arrives whole or streams through; a larger one gets 413, or, once it has begun to stream, its connection or stream is ended. 16 MiB when left out or 0. |
-| `max_conns` | integer, 0 or more | `100000` | **Not supported yet**: refused by name. The most client connections the listeners keep open at once, across all of them; one past it is closed as soon as it is accepted. Takes effect at start, not on a reload. 100000 when left out or 0. |
-| `max_header_bytes` | integer, 0 or more | `1048576` | **Not supported yet**: refused by name. The largest request header a listener takes; a larger one gets 431. 1 MiB when left out or 0. |
+| `max_conns` | integer, 0 or more | `100000` | The most client connections the listeners keep open at once, across all of them; one past it is closed as soon as it is accepted. Takes effect at start, not on a reload. 100000 when left out or 0. **akit:** akio's engine-wide `max_connections`: the connections akit dials on the listeners' engine (to upstreams) count toward it too, though only accepted ones are closed past it (akio API request A215). |
+| `max_header_bytes` | integer, 0 or more | `1048576` | The largest request header a listener takes; a larger one gets 431. 1 MiB when left out or 0. |
 | `max_pending_bytes` | bytes or percent | `"50%"` | **Not supported yet**: refused by name. How many bytes of responses may wait, across every connection, for clients to take them, the backpressure on them all; past it, every connection stops reading until some go. A number of bytes, or a share of the memory fit may use, such as "25%": the machine's, or the container's memory limit where that is lower. Takes effect at start, not on a reload. "50%" when left out or 0; 256 MiB where the memory cannot be read. |
-| `max_write_queue_bytes` | integer, 0 or more | `33554432` | **Not supported yet**: refused by name. The bytes one connection may have queued for its client before fit closes it, the bound on a peer that stops reading. 32 MiB when left out or 0. Takes effect at start, not on a reload. |
+| `max_write_queue_bytes` | integer, 0 or more | `33554432` | The bytes one connection may have queued for its client before akit closes it, the bound on a peer that stops reading. 32 MiB when left out or 0. Takes effect at start, not on a reload. **akit:** akio's `max_queued_bytes`: past it akio refuses the write (`Overloaded`) rather than queue it, where fit closes the connection. |
 | `write_stall_timeout` | duration | `"30s"` | How long a response may wait for its client to take what it was sent, each time it waits, before the client loses it: its HTTP/1 connection closed, its HTTP/2 or HTTP/3 stream reset. A client that keeps reading, however slowly, is not cut off, and nor is a response that has nothing to send. 30s when left out. |
+<!-- END GENERATED -->
+
+## Engine
+
+How the engine that serves the listeners is set up, read onto akio's
+([decision 028](../decisions/028-engine-on-akio.md)): `event_loops` is the number of I/O threads
+each listener's connections are served on (one a core when left out), `workers`, `min_workers` and
+`task_queue` size akio's logical pool, which runs the work that may block (files, plugins, the disk
+cache), and `read_buffer_size`, `write_watermark` and `backlog` are akio's own settings of the same
+meaning. What is left out, or 0, keeps akio's default. fib's `loop_wait` and `poll_batch`, which
+have no akio setting, and `kernel_tls_offload` are not supported yet. The engine is set up when
+akit starts: a reload that changes it is warned of, and the running one stays.
+
+```fit
+listener web :8080
+route { handler respond }
+
+engine {
+	event_loops 4
+	workers 64
+	read_buffer_size 64KiB
+}
+```
+
+### `engine`
+
+<!-- BEGIN GENERATED: engine -->
+<a id="cfg-engine"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `backlog` | integer, 0 or more |  | The length of each listening socket's queue of connections not yet accepted. The system's when left out or 0. **akit:** akio's 1024 when left out or 0, not the system's. |
+| `event_loops` | integer, 0 to 1024 |  | How many event loops each engine waits for its connections' events on, which spread the waits, accepts and wake-ups over cores; the connections' work runs on the workers either way. akio's default when left out or 0: 1 on up to 4 CPUs, 2 on up to 16, and the CPUs divided by 8 on more. Windows has one loop whatever this says. **akit:** Each listener's akio I/O threads, which run its connections' callbacks too (fib's loops only wait); one a core when left out or 0, where fib has 1 on up to 4 CPUs. |
+| `kernel_tls_offload` | boolean |  | **Not supported yet**: refused by name. Hand the encryption of what each TLS listener's connection sends to the kernel's TLS (kTLS) right after its handshake, for a network card that encrypts TLS records itself, such as NVIDIA (Mellanox) ConnectX-6 Dx and later with tls-hw-tx-offload on (ethtool -K <nic> tls-hw-tx-offload on; TlsTxDevice in /proc/net/tls_stat counts what the card took). Without such a card the kernel encrypts small responses at more CPU than fit does, so it is off by default, and a connection then hands its encryption to the kernel only when it sends a large file, which goes by sendfile. Linux, AES-GCM suites of TLS 1.2 and 1.3, though the card takes TLS 1.2 connections only, Linux's offload having none for 1.3: the kernel encrypts TLS 1.3 ones itself (TlsTxSw), so a listener meant for the card sets tls.max_version 1.2. ChaCha20-Poly1305 and other systems keep the encryption in fit. Receiving stays in fit either way. A listener's tls.kernel_tls_offload, when set, decides for that listener instead. Listeners only: the console, the tunnel and the other TLS servers fit runs keep the default. |
+| `loop_wait` | string: `park`, `block` | `"park"` | **Not supported yet**: refused by name. How each event loop waits while none of its connections has an event ready: park, in Go's network poller, which gives the loop's CPU to other work at once, but on a busy server looks for the loop's events only when a CPU runs out of work or every 10ms; or block, in epoll_wait, which wakes the loop as soon as one arrives. Choose block for a shorter latency tail near saturation over HTTP/1.1, at the cost of the median and a little h2 throughput: proxying an API at 200,000 requests a second on 6 CPUs, block took the HTTP/1.1 p99 from 4.3 to 2.9-3.9ms and the median from 0.95 to 1.57ms, left h2 and the maximum as they were, and served h2 0.9% less at saturation. Linux only. park when left out. |
+| `min_workers` | integer, 0 or more |  | How many workers an idle pool keeps, rather than retiring every one and starting them again when work arrives. None when left out or 0. **akit:** The logical pool's threads kept when idle (akio's `min_threads`). |
+| `poll_batch` | integer, 0 or more | `1024` | **Not supported yet**: refused by name. The most events one wait of an event loop collects; the rest wait for the next. 1024 when left out or 0. |
+| `read_buffer_size` | integer, 0 to 67108864 | `65536` | The bytes a connection reads its socket into at a time, which is also the most a proxied body is passed on in one write. 64 KiB when left out or 0. |
+| `task_queue` | integer, 0 or more |  | How many tasks each engine's pool holds waiting for a worker. akio's default, which follows its workers, when left out or 0. **akit:** The jobs akio's logical pool holds waiting for a thread; akio's 65,536 when left out or 0. Past it, new work is refused rather than queued. |
+| `workers` | integer, 0 or more |  | The most workers each engine's pool runs connections' reads and callbacks on at once. 100 for each CPU akit may use, and at least min_workers, when left out or 0. **akit:** The most threads of akio's logical pool, which runs only the work that may block (files, plugins, the disk cache), not connections' callbacks; akio's default (8 a core, at least 8) when left out or 0. |
+| `write_watermark` | integer, 0 or more |  | The bytes a connection may have waiting to be written before it stops reading until they drain, the backpressure on one connection; limits.max_pending_bytes bounds them all together. When left out or 0, akio sizes it from read_buffer_size and the machine: four read buffers, at least 64 KiB and at most 256 KiB, so 256 KiB at the default 64 KiB read buffer on a machine with enough memory. **akit:** akio's `write_high_watermark`; akio's 256 KiB when left out or 0. Reads resume at a quarter of it. |
 <!-- END GENERATED -->
 
 ## Admin API
@@ -1813,7 +1860,7 @@ it, since fit refuses it as an unknown field.
 ## What akit does not read yet
 
 These parts of fit's config are refused whole, by name, as not supported yet: `log`, `access`,
-`engine`, `pprof`, `llm`, `tunnel`, `webrtc`, `media_auth`, `streaming`, `media_library`, `sync`
+`pprof`, `llm`, `tunnel`, `webrtc`, `media_auth`, `streaming`, `media_library`, `sync`
 and `bittorrent`, with fit's handlers for media, BitTorrent and sync. Within the parts akit reads,
 the fields marked **Not supported yet** in the tables above are refused the same way. The
 [roadmap](../roadmap.md) says when each comes, and the [compatibility page](../compatibility.md)

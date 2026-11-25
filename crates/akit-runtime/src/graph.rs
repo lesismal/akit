@@ -113,6 +113,10 @@ pub struct Graph {
     requests: Option<Requests>,
     /// The config's `limits.write_stall_timeout` (I17b).
     write_stall_timeout: std::time::Duration,
+    /// The config's `limits` (I79): what the engine serving the listeners takes at start.
+    limits: akit_config::Limits,
+    /// The config's `engine` (I79): how that engine is set up, at start.
+    engine_config: akit_config::Engine,
     /// Where the engine connections are dialed through is, or will be: the [`Env`]'s, for what a
     /// listener dials outside the upstream pools (a `socks` listener's tunnels, I55).
     engine: akit_upstream::EngineSlot,
@@ -132,6 +136,20 @@ impl Graph {
     #[must_use]
     pub fn write_stall_timeout(&self) -> std::time::Duration {
         self.write_stall_timeout
+    }
+
+    /// The config's `limits` (I79): akit-listener builds its engine with the graph akit starts
+    /// with's `max_conns` and `max_write_queue_bytes`, which take a restart, as fit's.
+    #[must_use]
+    pub fn limits(&self) -> &akit_config::Limits {
+        &self.limits
+    }
+
+    /// The config's `engine` (I79, decision 028): akit-listener builds its engine with the
+    /// graph akit starts with's, which takes a restart, as fit's.
+    #[must_use]
+    pub fn engine_config(&self) -> &akit_config::Engine {
+        &self.engine_config
     }
 
     /// The listeners, as the config gives them.
@@ -676,6 +694,8 @@ pub fn compile(
         tracer: env.tracer().cloned(),
         requests,
         write_stall_timeout: config.limits.write_stall_timeout,
+        limits: config.limits,
+        engine_config: config.engine,
         engine: env.engine().clone(),
         modules: Mutex::new(Some(modules)),
         holds: AtomicUsize::new(0),

@@ -161,6 +161,65 @@ fn loads_through_the_admin_api_and_sighup_share_one_history() {
     until(&akit.out, "akit: stopped");
 }
 
+/// I79: a load with the old name of a renamed field is applied, its warning returned in the
+/// answer's `warnings` at its path, as fit's; a load that changes `engine` or the limits taken at
+/// start is applied, and says they take a restart.
+#[test]
+fn loads_return_warnings() {
+    let path = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("admin-warnings.json");
+    let (web, api) = (free(), free());
+    std::fs::write(&path, config(web, api, "v1")).unwrap();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_akit"))
+        .args(["run", "-shutdown-timeout", "5s", "-c"])
+        .arg(&path)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let stdout = child.stdout.take().unwrap();
+    let (tx, out) = mpsc::channel();
+    std::thread::spawn(move || {
+        for line in BufReader::new(stdout).lines() {
+            let Ok(line) = line else { break };
+            if tx.send(line).is_err() {
+                break;
+            }
+        }
+    });
+    let akit = Akit { child, out };
+    until(&akit.out, "akit: admin API on");
+    let renamed = format!(
+        r#"{{"admin": {{"address": "{api}", "history": 5}},
+            "listeners": [{{"name": "web", "address": "{web}"}}],
+            "routes": [{{"middleware": [{{"module": "compress", "params": {{"min_length": 10}}}}],
+                         "handler": {{"module": "respond", "params": {{"body": "v2"}}}}}}]}}"#
+    );
+    let (status, version, body) = request(api, "POST", "/load", Some(&renamed));
+    assert_eq!((status, version.as_str()), (200, "2"), "{body}");
+    assert!(
+        body.contains(
+            r#""warnings":["3:74: routes[0].middleware[0].params.min_length: deprecated: renamed \"min_bytes\", which takes the same value; the old name goes in config version 2"]"#
+        ),
+        "{body}"
+    );
+    assert_eq!(request(web, "GET", "/", None).2, "v2");
+    let restart = format!(
+        r#"{{"admin": {{"address": "{api}", "history": 5}},
+            "listeners": [{{"name": "web", "address": "{web}"}}],
+            "limits": {{"max_conns": 10}}, "engine": {{"event_loops": 1}},
+            "routes": [{{"handler": {{"module": "respond", "params": {{"body": "v3"}}}}}}]}}"#
+    );
+    let (status, version, body) = request(api, "POST", "/load", Some(&restart));
+    assert_eq!((status, version.as_str()), (200, "3"), "{body}");
+    assert!(
+        body.contains("limits.max_conns and limits.max_write_queue_bytes take a restart")
+            && body.contains("engine takes a restart"),
+        "{body}"
+    );
+    akit_signal(&akit, SIGTERM);
+    until(&akit.out, "akit: stopped");
+}
+
 fn akit_signal(akit: &Akit, sig: i32) {
     kill(akit.child.id(), sig).unwrap();
 }

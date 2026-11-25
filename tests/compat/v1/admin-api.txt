@@ -1,0 +1,73 @@
+# akit's Admin API, v1, as frozen at I79 (docs/compatibility.md#the-admin-api-v1): fit's v1 for
+# what akit serves. Written by hand at the freeze and never edited within v1: what changes later
+# is marked in additions.txt. akit-admin's test v1_surface_is_frozen holds the running API to
+# this file and those additions. One item a line, tab-separated:
+#   endpoint <method> <path>     a path's {n} is a number, {path...} JSON pointer tokens
+#   uncovered <method> <path>    served, for people, and not covered (the dashboard)
+#   header <name>                a header field the API reads or writes
+#   query <name>                 a query parameter it reads
+#   member <answer> <member>     a member of the JSON answer to a change, an error, or GET /versions
+endpoint	DELETE	/config
+endpoint	DELETE	/config/{path...}
+endpoint	GET	/cache
+endpoint	GET	/config
+endpoint	GET	/config/effective
+endpoint	GET	/config/{path...}
+endpoint	GET	/metrics
+endpoint	GET	/status
+endpoint	GET	/versions
+endpoint	GET	/versions/{n}
+endpoint	HEAD	/cache
+endpoint	HEAD	/config
+endpoint	HEAD	/config/effective
+endpoint	HEAD	/config/{path...}
+endpoint	HEAD	/metrics
+endpoint	HEAD	/status
+endpoint	HEAD	/versions
+endpoint	HEAD	/versions/{n}
+endpoint	PATCH	/config
+endpoint	PATCH	/config/{path...}
+endpoint	POST	/cache/purge
+endpoint	POST	/load
+endpoint	POST	/reload
+endpoint	POST	/rollback/{n}
+endpoint	PUT	/config
+endpoint	PUT	/config/{path...}
+header	Allow
+header	Authorization
+header	ETag
+header	Fit-Config-Version
+header	Fit-Dry-Run
+header	If-Match
+header	If-None-Match
+header	WWW-Authenticate
+member	change	dry_run
+member	change	etag
+member	change	listeners_added
+member	change	listeners_added[].address
+member	change	listeners_added[].name
+member	change	listeners_added[].protocols
+member	change	listeners_removed
+member	change	listeners_removed[].address
+member	change	listeners_removed[].name
+member	change	listeners_removed[].protocols
+member	change	new_etag
+member	change	unchanged
+member	change	version
+member	change	warnings
+member	error	error
+member	error	errors
+member	error	errors[].column
+member	error	errors[].line
+member	error	errors[].message
+member	error	errors[].path
+member	versions	current
+member	versions	versions
+member	versions	versions[].applied
+member	versions	versions[].bytes
+member	versions	versions[].etag
+member	versions	versions[].source
+member	versions	versions[].version
+query	dry_run
+uncovered	GET	/dashboard/
+uncovered	HEAD	/dashboard/

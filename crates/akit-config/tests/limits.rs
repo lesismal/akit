@@ -1,5 +1,6 @@
-//! `limits` (I16, I17b): `max_body_bytes` read as fit reads it, carried by every listener, and
-//! `write_stall_timeout`; its other fields refused as not supported yet; given by one file only.
+//! `limits` (I16, I17b, I79): `max_body_bytes` and `max_header_bytes` read as fit reads them,
+//! carried by every listener, `write_stall_timeout`, `max_conns` and `max_write_queue_bytes`;
+//! `max_pending_bytes` refused as not supported yet; given by one file only.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use std::fs;
@@ -67,6 +68,50 @@ fn write_stall_timeout() {
     );
 }
 
+/// `max_header_bytes`, `max_conns` and `max_write_queue_bytes` (I79): fit's defaults when left
+/// out or 0; `max_header_bytes` carried by every listener, as `max_body_bytes` is.
+#[test]
+fn header_conns_and_queue() {
+    use akit_config::{
+        DEFAULT_LIMITS_MAX_CONNS, DEFAULT_MAX_HEADER_BYTES, DEFAULT_MAX_WRITE_QUEUE_BYTES,
+    };
+    assert_eq!(DEFAULT_MAX_HEADER_BYTES, 1 << 20);
+    assert_eq!(DEFAULT_LIMITS_MAX_CONNS, 100_000);
+    assert_eq!(DEFAULT_MAX_WRITE_QUEUE_BYTES, 32 << 20);
+    for fields in [
+        "",
+        r#""max_header_bytes": 0, "max_conns": 0, "max_write_queue_bytes": 0"#,
+    ] {
+        let c = limits(fields).unwrap();
+        assert_eq!(c.limits.max_header_bytes, DEFAULT_MAX_HEADER_BYTES);
+        assert_eq!(c.limits.max_conns, DEFAULT_LIMITS_MAX_CONNS);
+        assert_eq!(
+            c.limits.max_write_queue_bytes,
+            DEFAULT_MAX_WRITE_QUEUE_BYTES
+        );
+        assert!(
+            c.listeners
+                .iter()
+                .all(|l| l.max_header_bytes == DEFAULT_MAX_HEADER_BYTES)
+        );
+    }
+    let c = limits(r#""max_header_bytes": 4096, "max_conns": 7, "max_write_queue_bytes": 65536"#)
+        .unwrap();
+    assert_eq!(c.limits.max_header_bytes, 4096);
+    assert!(c.listeners.iter().all(|l| l.max_header_bytes == 4096));
+    assert_eq!(c.limits.max_conns, 7);
+    assert_eq!(c.limits.max_write_queue_bytes, 65536);
+    for key in ["max_header_bytes", "max_conns", "max_write_queue_bytes"] {
+        let e = limits(&format!(r#""{key}": -1"#)).unwrap_err();
+        assert!(!e.only_not_supported_yet(), "{e}");
+        assert!(
+            e.to_string()
+                .contains(&format!("limits.{key}: -1 is less than the minimum 0")),
+            "{e}"
+        );
+    }
+}
+
 #[test]
 fn other_fields_not_supported_yet() {
     let e = limits(
@@ -75,17 +120,9 @@ fn other_fields_not_supported_yet() {
     )
     .unwrap_err();
     assert!(e.only_not_supported_yet(), "{e}");
-    let mut paths: Vec<&str> = e.as_slice().iter().map(|e| e.path.as_str()).collect();
-    paths.sort_unstable();
-    assert_eq!(
-        paths,
-        [
-            "limits.max_conns",
-            "limits.max_header_bytes",
-            "limits.max_pending_bytes",
-            "limits.max_write_queue_bytes",
-        ]
-    );
+    let paths: Vec<&str> = e.as_slice().iter().map(|e| e.path.as_str()).collect();
+    // A budget across connections waits for akio (akio API request A214).
+    assert_eq!(paths, ["limits.max_pending_bytes"]);
     // A field fit does not have is wrong, not "not supported yet".
     let e = limits(r#""max_bodies": 1"#).unwrap_err();
     assert!(!e.only_not_supported_yet(), "{e}");

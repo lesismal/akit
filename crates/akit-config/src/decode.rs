@@ -13,6 +13,8 @@ pub(crate) struct Decoder<'s> {
     src: &'s str,
     file: Option<String>,
     pub(crate) errors: Vec<Error>,
+    /// What is read but said (fit's `Config.Warnings`): an old name of a renamed field.
+    pub(crate) warnings: Vec<Error>,
 }
 
 impl<'s> Decoder<'s> {
@@ -21,6 +23,7 @@ impl<'s> Decoder<'s> {
             src,
             file: file.map(str::to_owned),
             errors: Vec::new(),
+            warnings: Vec::new(),
         }
     }
 
@@ -38,6 +41,20 @@ impl<'s> Decoder<'s> {
             line,
             col,
             msg: msg.into(),
+        });
+    }
+
+    /// Records that the field at `path`, its key at byte `off`, is the old name of `new`, a field
+    /// renamed in schema version 1 (fit's `renamed` tag): read as `new`, and said, as fit says
+    /// it.
+    pub(crate) fn renamed(&mut self, off: usize, path: &str, new: &str) {
+        let (line, col) = position(self.src, off);
+        self.warnings.push(Error {
+            file: self.file.clone(),
+            path: path.to_owned(),
+            line,
+            col,
+            msg: crate::error::renamed(new),
         });
     }
 
@@ -214,6 +231,14 @@ impl<'n> Obj<'n> {
     /// Whether there is a member named `key`; it does not count as read.
     pub(crate) fn has(&self, key: &str) -> bool {
         self.members.iter().any(|m| m.key == key)
+    }
+
+    /// Where the key of the member named `key` is, if present: fit reports an old name there.
+    pub(crate) fn key_off(&self, key: &str) -> Option<usize> {
+        self.members
+            .iter()
+            .find(|m| m.key == key)
+            .map(|m| m.key_off)
     }
 
     /// The member named `key`, or a "missing required field" problem.

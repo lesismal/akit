@@ -29,13 +29,15 @@ that validates runs as fit runs it, within what akit supports.
 ## What akit does not run yet
 
 - **Whole parts**: `log` (akit writes its own messages to standard output and standard error),
-  `access` (allow and deny lists), `engine` (akio's settings are akit's own), `pprof`, and the roles
+  `access` (allow and deny lists), `pprof`, and the roles
   beside the gateway: `llm`, `tunnel`, `webrtc`, `media_auth`, `streaming`, `media_library`, `sync`
   and `bittorrent`. The [roadmap](../roadmap.md) says when each comes.
 - **Handlers** for media, BitTorrent and sync: `hls`, `httpflv`, `vod`, `whip`, `whep`,
   `stream_whip`, `stream_whep`, `webrtc_proxy`, `websockify`, `media_pages`, `media_tokens`,
   `bt_publish`, `bt_stream`, `bt_tracker` and `sync_ingest`. Every middleware of fit's is supported.
-- **Fields of parts akit reads**: `limits` but `max_body_bytes` and `write_stall_timeout`;
+- **Fields of parts akit reads**: `limits.max_pending_bytes` (akio has no budget across
+  connections yet); `engine`'s `loop_wait`, `poll_batch` and `kernel_tls_offload` (the rest of
+  `engine` is read onto akio's engine, as the [reference](../reference/config.md#engine) says);
   `access_log.rotate`; every `access` and `mptcp`; `tls.kernel_tls_offload`; `upstreams[].deny_internal`;
   the proxy's `splice_uploads`; the Kubernetes provider's `allow_external_name_services`; and in
   `admin`, everything but `address`, `token_file`, `history`, `max_config_bytes`, `max_conns` and

@@ -153,6 +153,18 @@ fn print_errors(name: &str, errs: &Errors) {
     }
 }
 
+/// Prints a config's warnings (I79): the old names of renamed fields, at their files, lines and
+/// columns, as fit prints them; `name` names the files of one without a file.
+fn print_warnings(name: &str, w: &akit_config::Warnings) {
+    for e in &w.0 {
+        if e.file.is_some() {
+            eprintln!("{e}");
+        } else {
+            eprintln!("{name}: {e}");
+        }
+    }
+}
+
 /// The config files the flags name, `fit.json` when none.
 pub(crate) fn config_paths(flags: &[(&str, String)]) -> Vec<String> {
     let paths: Vec<String> = flags
@@ -242,12 +254,6 @@ fn compile_config(
     compile(config, &registry, &env).map_err(Failure::Config)
 }
 
-/// Reads and compiles the config at `paths`, as [`read_config`] and [`compile_config`].
-fn read(paths: &[String], engine: &EngineSlot, log: Option<&AccessLog>) -> Result<Graph, Failure> {
-    let ((config, _, _), _) = read_config(paths)?;
-    compile_config(&config, engine, log, &Metrics::new(), None, None, None)
-}
-
 /// Opens the access log `c` describes, its times in `zone`, as fit's `NewAccessLogFiles`.
 fn open_access_log(c: &akit_config::AccessLog, zone: Zone) -> std::io::Result<AccessLog> {
     let out = akit_observe::open_output(&c.output)?;
@@ -295,6 +301,10 @@ struct Runner<'a> {
     tracer: Option<&'a Tracer>,
     /// The `providers` akit started with (I58, I59): a config's take a restart, as fit's.
     providers: &'a [akit_config::Provider],
+    /// The `limits` and `engine` akit started with (I79): `max_conns`,
+    /// `max_write_queue_bytes` and `engine` take a restart, as fit's.
+    limits: akit_config::Limits,
+    engine: akit_config::Engine,
 }
 
 impl Runner<'_> {
@@ -335,7 +345,8 @@ impl Runner<'_> {
     /// The changes in `config` that take a restart, as fit warns of them. With `set`, the access
     /// log takes `config`'s level and time zone (`zone`).
     fn warnings(&self, config: &Config, zone: Option<Zone>, set: bool) -> Vec<String> {
-        let mut warnings = Vec::new();
+        // The old names of renamed fields first, as fit's load returns them (I79).
+        let mut warnings: Vec<String> = config.warnings.0.iter().map(ToString::to_string).collect();
         match (self.log, &config.access_log, zone) {
             (Some((l, first)), Some(c), Some(zone)) => {
                 if set {
@@ -375,6 +386,18 @@ impl Runner<'_> {
         }
         if config.providers != self.providers {
             warnings.push("providers take a restart; the running ones stay".to_owned());
+        }
+        let l = &config.limits;
+        if (l.max_conns, l.max_write_queue_bytes)
+            != (self.limits.max_conns, self.limits.max_write_queue_bytes)
+        {
+            warnings.push(
+                "limits.max_conns and limits.max_write_queue_bytes take a restart; the running ones stay"
+                    .to_owned(),
+            );
+        }
+        if config.engine != self.engine {
+            warnings.push("engine takes a restart; the running one stays".to_owned());
         }
         warnings
     }
@@ -652,7 +675,19 @@ fn validate(args: &[String]) -> ExitCode {
     };
     let paths = config_paths(&flags);
     // No engine: an upstream's pool is made, and never dials.
-    match read(&paths, &EngineSlot::new(), None).map_err(|f| f.print(&paths.join(", "))) {
+    let checked = read_config(&paths).and_then(|((config, _, _), _)| {
+        print_warnings(&paths.join(", "), &config.warnings);
+        compile_config(
+            &config,
+            &EngineSlot::new(),
+            None,
+            &Metrics::new(),
+            None,
+            None,
+            None,
+        )
+    });
+    match checked.map_err(|f| f.print(&paths.join(", "))) {
         Ok(_) => {
             println!("{}: valid", paths.join(", "));
             ExitCode::SUCCESS
@@ -752,6 +787,7 @@ fn run(args: &[String]) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    print_warnings(&name, &config.warnings);
     // Opened before the graph, which writes to it, and closed after the engine, so that every
     // response finished has its line written.
     let log = match (&config.access_log, zone) {
@@ -828,6 +864,7 @@ fn run(args: &[String]) -> ExitCode {
     };
     let admin = config.admin.clone();
     let provider_configs = config.providers.clone();
+    let (start_limits, start_engine) = (config.limits, config.engine);
     drop(config);
     let cert_files = graph.cert_files().clone();
     let acme_names = graph.acme_names().to_vec();
@@ -969,6 +1006,8 @@ fn run(args: &[String]) -> ExitCode {
         telemetry: telemetry.as_ref(),
         tracer: tracer.as_ref(),
         providers: &provider_configs,
+        limits: start_limits,
+        engine: start_engine,
     };
     // The certificate files watched (fit's -watch-certs), on this thread, every interval: the
     // running config's version number and the files it loaded tell the watcher what it loaded.

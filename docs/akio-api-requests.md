@@ -94,6 +94,8 @@ first; its status here records the branch, then the akio commit akit pins.
 
 | A170 | A connection's TCP counters (and unread bytes) without reaching into `Conn::inner`, and a splice that writes first through the engine's own API | requested (I51b); akit-l4 uses the doc-hidden `Conn::inner` meanwhile | 1, 14 | I51b |
 | A180 | akio-wasm's call made cheaper, measured against wazero (akio's W5) | requested (I76): a header-editing Go guest costs akit 14.7 µs of CPU a request, fit 6.8 µs | 13 | I71, I72, I76 |
+| A214 | A budget of the bytes queued for every connection together, which pauses every connection's reads past it (fit's `limits.max_pending_bytes`) | requested (I79) | 8, 11 | I79 |
+| A215 | A connection limit that counts the connections accepted, not those the engine dials (fit's `limits.max_conns`) | requested (I79) | 11 | I79 |
 
 ## A1 TCP listeners on a running engine
 
@@ -1957,3 +1959,55 @@ whatever makes entering a Go `wasip1` guest's export cheap to start.
 **How akit would use it.** As it is: `akit-plugin` runs every guest on `akio_wasm::InstancePool`;
 a cheaper call needs no change in akit, which measures it again with
 `bench/run.sh -servers akit-wasm,fit-wasm -scenarios fixed,wasm`.
+
+## A214 A budget of the bytes queued for every connection together
+
+**Status.** Requested (I79). akit refuses `limits.max_pending_bytes` as not supported yet until it
+is built; fit-examples' `limits` and `proxy` examples are refused for it alone.
+
+**Problem.** fit's `limits.max_pending_bytes` bounds the bytes of responses waiting, across every
+connection, for their clients to take them: past it, every connection stops reading until some go
+("50%" of the memory fit may use by default, a number of bytes or a share; fib's
+`Config.MaxPendingBytes`). It is what keeps many slow clients together from holding the memory
+that each one's watermark allows: 100,000 connections at a 256 KiB watermark may queue 25 GiB.
+
+**Evidence.** At akio `dad77a7a` (and `main` at `111004f8`), `akio_core::Config` has
+`write_high_watermark` (reads paused per connection) and `max_queued_bytes` (a send refused per
+connection), and the telemetry sums the bytes queued (`queued_bytes`), but nothing pauses reads on
+that sum. akio's roadmap lists an "engine-wide `max_pending_bytes`" under backpressure, and its dev
+plan checks it, but no setting of that name or meaning is in the code. akit cannot build it on top:
+it would have to hold every connection's reads from outside the I/O threads that own them, which is
+akio's job (rule 21).
+
+**Suggested API.** `Config::max_pending_bytes: Option<usize>` (default `None`, live-reloadable):
+while the bytes queued across the engine's connections are at or past it, every connection's reads
+are paused after its current read, as the watermark pauses one connection's; they resume once the
+sum is back under, say, three quarters of it. A counter of the pauses it caused beside the
+watermark's (`backpressure`), so akit's `fit_reads_paused_total{reason="budget"}` reports it, and a
+helper that turns a share of the memory into bytes (the machine's, or the cgroup's limit where
+lower), or akit computes it.
+
+**How akit would use it.** `akit-listener`'s `engine_settings` sets it from `limits.max_pending_bytes`
+(bytes, or the share of memory, "50%" by default, 256 MiB where the memory cannot be read), at
+start as fit's; `supported.txt` marks the field, `make v1-bless` marks the addition, and the gate's
+`limits` and `proxy` examples are valid.
+
+## A215 A connection limit that counts only the connections accepted
+
+**Status.** Requested (I79). akit uses `Config::max_connections` for `limits.max_conns` meanwhile,
+as the reference notes.
+
+**Problem.** fit's `limits.max_conns` bounds "the client connections the listeners keep open at
+once, across all of them". akit's upstream pools dial on the engine that serves the listeners, so
+with akio's limit a busy proxy's upstream connections take room from its clients: at the default
+100,000 and 30,000 upstream connections open, the 70,001st client is refused.
+
+**Evidence.** At akio `dad77a7a`, `Config::max_connections` counts "engine-wide, dialed
+connections and UDP peers included", though only an accepted connection is closed past it.
+
+**Suggested API.** `Config::max_accepted_connections: usize` (0, no limit, by default;
+live-reloadable as `max_connections` is): accepted TCP connections past it, across the engine's
+listeners, are closed right after `accept` and counted as `rejected`, whatever the engine dials.
+
+**How akit would use it.** `engine_settings` sets it from `limits.max_conns` in place of
+`max_connections`, and the reference's note on `limits.max_conns` goes.

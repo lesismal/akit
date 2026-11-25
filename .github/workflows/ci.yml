@@ -28,6 +28,9 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: scripts/check-docs.sh
       - run: python3 -I tools/compat-inventory.py --check
+      # The v1 freeze (I79): the config's surface is v1's with only marked additions; the Admin
+      # API's is held by akit-admin's v1_surface_is_frozen in the test jobs.
+      - run: python3 -I tools/v1-freeze.py
       # The config reference's tables (docs/reference/config.md, I78) are those its generator writes.
       - run: python3 -I tools/config-reference.py --check
 

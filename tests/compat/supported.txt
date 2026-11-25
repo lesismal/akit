@@ -622,3 +622,21 @@ routes[].middleware[]<wasm>.params.properties[].value
 routes[].middleware[]<wasm>.params.response
 routes[].middleware[]<wasm>.params.max_streams
 routes[].middleware[]<wasm>.params.max_body_bytes
+
+# I79: limits' other fields but max_pending_bytes, a budget of bytes across connections akio has
+# not yet (akio API request A214): max_header_bytes on akio's HTTP/1, HTTP/2 and HTTP/3 servers
+# (431), max_conns and max_write_queue_bytes on akio's engine, at start. engine read onto akio's
+# engine (decision 028): event_loops as each listener's I/O threads, workers, min_workers and
+# task_queue as its logical pool, read_buffer_size, write_watermark and backlog as akio's own;
+# loop_wait, poll_batch (fib's event loops) and kernel_tls_offload are refused.
+limits.max_header_bytes
+limits.max_conns
+limits.max_write_queue_bytes
+engine
+engine.event_loops
+engine.workers
+engine.min_workers
+engine.task_queue
+engine.read_buffer_size
+engine.write_watermark
+engine.backlog

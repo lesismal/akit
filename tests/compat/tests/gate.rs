@@ -524,6 +524,59 @@ fn supported_fields_are_read() {
             format!(r#"{{{L}, "limits": {{"write_stall_timeout": "5s"}}}}"#),
             |c| c.limits.write_stall_timeout == std::time::Duration::from_secs(5),
         ),
+        (
+            "limits.max_header_bytes",
+            format!(r#"{{{L}, "limits": {{"max_header_bytes": 5}}}}"#),
+            |c| c.limits.max_header_bytes == 5 && c.listeners[0].max_header_bytes == 5,
+        ),
+        (
+            "limits.max_conns",
+            format!(r#"{{{L}, "limits": {{"max_conns": 5}}}}"#),
+            |c| c.limits.max_conns == 5,
+        ),
+        (
+            "limits.max_write_queue_bytes",
+            format!(r#"{{{L}, "limits": {{"max_write_queue_bytes": 5}}}}"#),
+            |c| c.limits.max_write_queue_bytes == 5,
+        ),
+        ("engine", r#"{"engine": {}}"#.into(), |c| {
+            c.engine == akit_config::Engine::default()
+        }),
+        (
+            "engine.event_loops",
+            r#"{"engine": {"event_loops": 3}}"#.into(),
+            |c| c.engine.event_loops == 3,
+        ),
+        (
+            "engine.workers",
+            r#"{"engine": {"workers": 3}}"#.into(),
+            |c| c.engine.workers == 3,
+        ),
+        (
+            "engine.min_workers",
+            r#"{"engine": {"min_workers": 3}}"#.into(),
+            |c| c.engine.min_workers == 3,
+        ),
+        (
+            "engine.task_queue",
+            r#"{"engine": {"task_queue": 3}}"#.into(),
+            |c| c.engine.task_queue == 3,
+        ),
+        (
+            "engine.read_buffer_size",
+            r#"{"engine": {"read_buffer_size": 4096}}"#.into(),
+            |c| c.engine.read_buffer_size == 4096,
+        ),
+        (
+            "engine.write_watermark",
+            r#"{"engine": {"write_watermark": 3}}"#.into(),
+            |c| c.engine.write_watermark == 3,
+        ),
+        (
+            "engine.backlog",
+            r#"{"engine": {"backlog": 3}}"#.into(),
+            |c| c.engine.backlog == 3,
+        ),
         ("listeners[].name", format!("{{{L}}}"), |c| {
             c.listeners[0].name == "web"
         }),
@@ -2786,7 +2839,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 62] = [
+    let objects: [(&str, &str, Option<&str>); 63] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         (
             "providers[].kubernetes",
@@ -2806,6 +2859,7 @@ fn akit_config_lists_match_the_inventory() {
         ("acme.shared_storage.etcd", "ETCD_STORAGE_FIELDS", None),
         ("acme.shared_storage.consul", "CONSUL_STORAGE_FIELDS", None),
         ("limits", "LIMITS_FIELDS", Some("LIMITS_FIT_ONLY")),
+        ("engine", "ENGINE_FIELDS", Some("ENGINE_FIT_ONLY")),
         (
             "access_log",
             "ACCESS_LOG_FIELDS",
@@ -3184,7 +3238,7 @@ fn inventory_paths_for_akit_config_paths() {
 fn findings_from_akit_config_errors() {
     let errs = akit_config::from_json(
         r#"{"listeners": [{"name": "w", "address": ":1", "mptcp": true}],
-            "routes": [{"handler": {"module": "hls"}}], "limits": {"max_conns": 10}}"#,
+            "routes": [{"handler": {"module": "hls"}}], "limits": {"max_pending_bytes": 10}}"#,
         None,
     )
     .unwrap_err();
@@ -3196,7 +3250,7 @@ fn findings_from_akit_config_errors() {
     let want: BTreeSet<String> = [
         "listeners[0].mptcp",
         "routes[0].handler<hls>",
-        "limits.max_conns",
+        "limits.max_pending_bytes",
     ]
     .iter()
     .map(|p| format!("not supported yet: {p}"))

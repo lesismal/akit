@@ -13,7 +13,7 @@ akit 配置的每个字段：配置的每一部分是做什么的、一个示例
 akit 与 fit 不同之处，在表格中以 **akit：** 标出。
 
 <!-- BEGIN GENERATED: summary -->
-fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **417** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 62 个对象，下文各有一张表。
+fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **428** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 63 个对象，下文各有一张表。
 <!-- END GENERATED -->
 
 字段说明来自 fit 代码中的 `doc` 标签，是英文的，所以每个字段的完整说明在[英文版](config.md)的同一张表中；本页的表格给出每个字段的
@@ -43,6 +43,7 @@ fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../co
 - [访问日志](#访问日志)
 - [遥测](#遥测)
 - [上限](#上限)
+- [引擎](#引擎)
 - [Admin API](#admin-api)
 - [默认 HTTPS](#默认-https)
 - [指标](#指标)
@@ -115,7 +116,7 @@ routes:
 | `admin` | [对象](#cfg-admin) |  |  |
 | `auto_https` | [对象](#cfg-auto-https) |  |  |
 | `bittorrent` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
-| `engine` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `engine` | [对象](#cfg-engine) |  |  |
 | `limits` | [对象](#cfg-limits) |  |  |
 | `listeners` | [对象](#cfg-listeners)的列表 |  |  |
 | `llm` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
@@ -626,16 +627,21 @@ telemetry {
 
 ## 上限
 
-限制客户端能让 akit 为其保留多少资源，作用于所有监听器。akit 读取 `max_body_bytes`（超出的请求体答 413）和
-`write_stall_timeout`（客户端可以不读响应多久）；fit 的其余上限尚不支持，由 akit 自己的界限代替：akio 每个连接的水位、联动的
-背压，以及每个上游、路由和监听器的上限。[`body_limit`](#body_limit) 中间件可以进一步限制某条路由的请求体。
+限制客户端能让 akit 为其保留多少资源，作用于所有监听器：最大的请求头（`max_header_bytes`，超出答 431）和请求体
+（`max_body_bytes`，超出答 413）、同时打开的客户端连接数（`max_conns`）、一个连接可为其客户端排队的字节数
+（`max_write_queue_bytes`），以及客户端可以不读响应多久（`write_stall_timeout`）。`max_conns` 和 `max_write_queue_bytes`
+在启动时生效；重载改变它们时会给出警告。`max_pending_bytes` 是所有客户端合计等待字节的预算，尚不支持：akio 没有这样的预算
+（akio API 请求 A214），在此之前由 akio 每个连接的水位和联动的背压约束每个连接。[`body_limit`](#body_limit) 中间件可以进一步
+限制某条路由的请求体。
 
 ```fit
 listener web :8080
 route { handler respond }
 
 limits {
+	max_header_bytes 64KiB
 	max_body_bytes 100MiB
+	max_conns 50000
 	write_stall_timeout 1m
 }
 ```
@@ -650,11 +656,51 @@ limits {
 | 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
 | `max_body_bytes` | 整数，≥ 0 | `16777216` |  |
-| `max_conns` | 整数，≥ 0 | `100000` | **尚不支持**（not supported yet）：按名称拒绝。 |
-| `max_header_bytes` | 整数，≥ 0 | `1048576` | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `max_conns` | 整数，≥ 0 | `100000` | **akit：**即 akio 引擎范围的 `max_connections`：akit 在监听器的引擎上拨出的连接（到上游的连接）也计入其中，但超出时只关闭新接受的连接（akio API 请求 A215）。 |
+| `max_header_bytes` | 整数，≥ 0 | `1048576` |  |
 | `max_pending_bytes` | 字节数或百分比 | `"50%"` | **尚不支持**（not supported yet）：按名称拒绝。 |
-| `max_write_queue_bytes` | 整数，≥ 0 | `33554432` | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `max_write_queue_bytes` | 整数，≥ 0 | `33554432` | **akit：**即 akio 的 `max_queued_bytes`：超出时 akio 拒绝这次写入（`Overloaded`）而不排队，fit 则关闭连接。 |
 | `write_stall_timeout` | 时长 | `"30s"` |  |
+<!-- END GENERATED -->
+
+## 引擎
+
+为监听器提供服务的引擎如何设置，映射到 akio 的引擎上（[决定 028](../decisions/028-engine-on-akio.zh-CN.md)）：`event_loops`
+是每个监听器的连接所用的 I/O 线程数（省略时每个核一个），`workers`、`min_workers` 和 `task_queue` 设定 akio 的逻辑池的大小，
+它运行可能阻塞的工作（文件、插件、磁盘缓存），`read_buffer_size`、`write_watermark` 和 `backlog` 是 akio 自己含义相同的设置。
+省略或为 0 时保持 akio 的默认值。fib 的 `loop_wait` 和 `poll_batch` 在 akio 中没有对应的设置，它们和 `kernel_tls_offload`
+一样尚不支持。引擎在 akit 启动时设置：重载改变它时会给出警告，正在运行的设置保持不变。
+
+```fit
+listener web :8080
+route { handler respond }
+
+engine {
+	event_loops 4
+	workers 64
+	read_buffer_size 64KiB
+}
+```
+
+### `engine`
+
+<!-- BEGIN GENERATED: engine -->
+<a id="cfg-engine"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-engine)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `backlog` | 整数，≥ 0 |  | **akit：**省略或为 0 时为 akio 的 1024，而不是系统的值。 |
+| `event_loops` | 整数，0 到 1024 |  | **akit：**每个监听器的 akio I/O 线程数，这些线程也运行连接的回调（fib 的事件循环只负责等待）；省略或为 0 时每个核一个，而 fib 在至多 4 个 CPU 上为 1。 |
+| `kernel_tls_offload` | 布尔值 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `loop_wait` | 字符串：`park`、`block` | `"park"` | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `min_workers` | 整数，≥ 0 |  | **akit：**逻辑池空闲时保留的线程数（akio 的 `min_threads`）。 |
+| `poll_batch` | 整数，≥ 0 | `1024` | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `read_buffer_size` | 整数，0 到 67108864 | `65536` |  |
+| `task_queue` | 整数，≥ 0 |  | **akit：**akio 逻辑池中等待线程的任务数；省略或为 0 时为 akio 的 65,536。超出时新的工作被拒绝，而不排队。 |
+| `workers` | 整数，≥ 0 |  | **akit：**akio 逻辑池的最大线程数，它只运行可能阻塞的工作（文件、插件、磁盘缓存），不运行连接的回调；省略或为 0 时为 akio 的默认值（每核 8 个，至少 8 个）。 |
+| `write_watermark` | 整数，≥ 0 |  | **akit：**即 akio 的 `write_high_watermark`；省略或为 0 时为 akio 的 256 KiB。降到其四分之一时恢复读取。 |
 <!-- END GENERATED -->
 
 ## Admin API
@@ -1861,7 +1907,7 @@ route {
 
 ## akit 尚不读取的部分
 
-fit 配置的以下部分被整体按名称拒绝为“尚不支持”：`log`、`access`、`engine`、`pprof`、`llm`、`tunnel`、`webrtc`、`media_auth`、
+fit 配置的以下部分被整体按名称拒绝为“尚不支持”：`log`、`access`、`pprof`、`llm`、`tunnel`、`webrtc`、`media_auth`、
 `streaming`、`media_library`、`sync` 和 `bittorrent`，以及 fit 的媒体、BitTorrent 和 sync 处理器。在 akit 读取的部分中，上面
 表格里标为 **尚不支持** 的字段也同样被拒绝。[路线图](../roadmap.zh-CN.md)说明各部分何时到来，[兼容性页面](../compatibility.zh-CN.md)
 列出每个字段。

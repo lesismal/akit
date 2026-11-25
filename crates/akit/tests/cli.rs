@@ -114,6 +114,33 @@ fn validate_merges_files_and_reports_errors() {
     );
 }
 
+/// I79: an old name of a field renamed in schema version 1 is read, and `validate` says so at
+/// its place in the file, as fit's does; the config is still valid.
+#[test]
+fn validate_warns_of_renamed_fields() {
+    let d = dir("renamed");
+    let c = write(
+        &d,
+        "fit.conf",
+        "listener web 127.0.0.1:0\nroute {\n\tmiddleware compress { min_length 10 }\n\thandler respond\n}\n",
+    );
+    let out = akit(&["validate", "-c", s(&c)]);
+    assert_eq!(out.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8(out.stdout).unwrap(),
+        format!("{}: valid\n", c.display())
+    );
+    let err = String::from_utf8(out.stderr).unwrap();
+    assert_eq!(
+        err,
+        format!(
+            "{}:3:24: routes[0].middleware[0].params.min_length: deprecated: renamed \"min_bytes\", \
+             which takes the same value; the old name goes in config version 2\n",
+            c.display()
+        )
+    );
+}
+
 #[test]
 fn usage_errors_exit_2() {
     for args in [

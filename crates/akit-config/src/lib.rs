@@ -44,7 +44,7 @@ pub use auto_https::{
     AUTO_HTTP_LISTENER, AUTO_HTTPS_LISTENER, AutoHttps, DEFAULT_HTTP_PORT, DEFAULT_HTTPS_PORT,
     auto_https_name,
 };
-pub use error::{Error, Errors, NOT_SUPPORTED_YET};
+pub use error::{DEPRECATED, Error, Errors, NOT_SUPPORTED_YET, Warnings};
 pub use fastcgi::{
     DEFAULT_FASTCGI_CONNECT_TIMEOUT, DEFAULT_FASTCGI_IDLE_TIMEOUT, DEFAULT_FASTCGI_MAX_CONNS,
     DEFAULT_FASTCGI_MAX_HEADER_BYTES, DEFAULT_FASTCGI_MAX_IDLE_CONNS, DEFAULT_FASTCGI_MAX_PENDING,
@@ -73,15 +73,19 @@ pub use model::{
     DEFAULT_RESPONSE_HEADER_TIMEOUT, DEFAULT_RESPONSE_IDLE_TIMEOUT, DEFAULT_RESPONSE_TIMEOUT,
     DEFAULT_SERVICE_IDLE_TIMEOUT, DEFAULT_SERVICE_MAX_CONNS, DEFAULT_SERVICE_UDP_IDLE_TIMEOUT,
     DEFAULT_STICKY_COOKIE_NAME, DEFAULT_TLS_PROTOCOLS, DEFAULT_TUNNEL_IDLE_TIMEOUT,
-    DEFAULT_WRITE_STALL_TIMEOUT, Dotfiles, Encoding, ForwardAuth, Handler, HeaderOps, Headers,
-    HealthCheck, HealthCheckType, JWT_ALGORITHMS, Jwt, Limits, Listener, ListenerProxyProtocol,
-    LoadBalancing, LogFormat, MAX_MIRRORED, MAX_WEIGHT, Match, Metrics, Mirror, Network, OnDemand,
-    Protocol, Proxy, ProxyVersion, RateKey, RateLimit, Redirect, Respond, Retry, Rewrite, Route,
-    SCHEMA_VERSION, Service, Split, Static, StickyCookie, Tls, TlsVersion, TokenFrom, Upstream,
-    UpstreamProtocol,
+    DEFAULT_WRITE_STALL_TIMEOUT, Dotfiles, Encoding, Engine, ForwardAuth, Handler, HeaderOps,
+    Headers, HealthCheck, HealthCheckType, JWT_ALGORITHMS, Jwt, Limits, Listener,
+    ListenerProxyProtocol, LoadBalancing, LogFormat, MAX_MIRRORED, MAX_WEIGHT, Match, Metrics,
+    Mirror, Network, OnDemand, Protocol, Proxy, ProxyVersion, RateKey, RateLimit, Redirect,
+    Respond, Retry, Rewrite, Route, SCHEMA_VERSION, Service, Split, Static, StickyCookie, Tls,
+    TlsVersion, TokenFrom, Upstream, UpstreamProtocol,
 };
 pub use model::{
     DEFAULT_FORWARD_CONNECT_TIMEOUT, DEFAULT_FORWARD_IDLE_TIMEOUT, Destination, ForwardProxy,
+};
+pub use model::{
+    DEFAULT_LIMITS_MAX_CONNS, DEFAULT_MAX_HEADER_BYTES, DEFAULT_MAX_WRITE_QUEUE_BYTES,
+    MAX_EVENT_LOOPS, MAX_READ_BUFFER_SIZE,
 };
 pub use model::{
     DEFAULT_METRICS_INTERVAL, DEFAULT_TELEMETRY_ENDPOINT, DEFAULT_TELEMETRY_SERVICE_NAME,
@@ -241,7 +245,8 @@ pub fn from_sources(srcs: &[Source<'_>]) -> Result<Config, Errors> {
         }
         return Err(collect(ds));
     }
-    let config = model::merge(&mut ds, parts);
+    let mut config = model::merge(&mut ds, parts);
+    config.warnings = Warnings(ds.iter_mut().flat_map(|d| d.warnings.drain(..)).collect());
     let errs = collect(ds);
     if errs.0.is_empty() {
         Ok(config)

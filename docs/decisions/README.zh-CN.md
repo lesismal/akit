@@ -21,3 +21,5 @@
 | [009](009-packaging.zh-CN.md) | 打包：用 rust-lld 链接的静态 musl 二进制，沿用 fit 的镜像、chart 和 unit | 已采纳 |
 | [010](010-sockmap-relay.zh-CN.md) | eBPF sockmap 转发，由监听器的 `sockmap` 开启，属于 akit 扩展 | 已采纳 |
 | [011](011-proxy-wasm.zh-CN.md) | Proxy-Wasm 子集，与 fit 相同，运行在 akio 的挂起响应头和响应体过滤器上 | 已采纳 |
+| [028](028-engine-on-akio.zh-CN.md) | 把 fit 的 `engine` 映射到 akio 的引擎上 | 已采纳 |
+| [029](029-v1-freeze.zh-CN.md) | v1 冻结：基线、标记的改动和两项检查 | 已采纳 |

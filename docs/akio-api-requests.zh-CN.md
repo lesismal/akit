@@ -93,6 +93,8 @@
 
 | A170 | 不经 `Conn::inner` 读取连接的 TCP 计数（以及未读字节），并通过引擎自己的 API 先写数据再拼接 | 已提出（I51b）；在此之前 akit-l4 使用文档中隐藏的 `Conn::inner` | 1、14 | I51b |
 | A180 | 让 akio-wasm 的调用更便宜，并与 wazero 对比测量（akio 的 W5） | 已提出（I76）：一个修改头部的 Go guest 让 akit 每个请求多花 14.7 µs CPU，fit 6.8 µs | 13 | I71、I72、I76 |
+| A214 | 所有连接合计排队字节的预算，超出时暂停每个连接的读取（fit 的 `limits.max_pending_bytes`） | 已提出（I79） | 8、11 | I79 |
+| A215 | 只计入被接受的连接、不计入引擎拨出的连接的连接上限（fit 的 `limits.max_conns`） | 已提出（I79） | 11 | I79 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -1584,3 +1586,41 @@ wazero 的解释器和编译器，如 fit 的 `BenchmarkGuestCall`；池的交�
 
 **akit 如何使用。** 原样使用：`akit-plugin` 在 `akio_wasm::InstancePool` 上运行每个 guest；调用变便宜后 akit 无需改动，
 用 `bench/run.sh -servers akit-wasm,fit-wasm -scenarios fixed,wasm` 重新测量。
+
+## A214 所有连接合计排队字节的预算
+
+**状态。** 已提出（I79）。在实现之前，akit 把 `limits.max_pending_bytes` 拒绝为“尚不支持”；fit-examples 的 `limits` 和
+`proxy` 示例只因它被拒绝。
+
+**问题。** fit 的 `limits.max_pending_bytes` 约束所有连接中等待客户端取走的响应字节总量：超出时每个连接都停止读取，直到有一些被取走
+（默认是 fit 可用内存的 "50%"，可以是字节数或比例；对应 fib 的 `Config.MaxPendingBytes`）。它使许多慢客户端合起来不能占用每个连接
+水位所允许的全部内存：100,000 个连接、每个 256 KiB 的水位，最多可排队 25 GiB。
+
+**证据。** 在 akio `dad77a7a`（以及 `main` 的 `111004f8`），`akio_core::Config` 有 `write_high_watermark`（按连接暂停读取）和
+`max_queued_bytes`（按连接拒绝发送），遥测也汇总了排队的字节（`queued_bytes`），但没有任何东西按这个总和暂停读取。akio 的路线图在
+背压下列出了“引擎级的 `max_pending_bytes`”，开发计划也勾选了它，但代码中没有这个名字或含义的设置。akit 无法在其上自行实现：那需要
+从拥有这些连接的 I/O 线程之外暂停每个连接的读取，这是 akio 的职责（规则 21）。
+
+**建议的 API。** `Config::max_pending_bytes: Option<usize>`（默认 `None`，可在运行时重载）：当引擎所有连接排队的字节总数达到或
+超过它时，每个连接在当前这次读取之后暂停读取，就像水位暂停单个连接那样；总数回落到比如四分之三以下时恢复。在水位的计数
+（`backpressure`）旁边增加一个由它引起的暂停计数，以便 akit 的 `fit_reads_paused_total{reason="budget"}` 报告它；再提供一个把内存
+比例换算为字节的辅助函数（机器的内存，或更低的 cgroup 限制），或由 akit 自己换算。
+
+**akit 将如何使用。** `akit-listener` 的 `engine_settings` 在启动时按 `limits.max_pending_bytes` 设置它（字节数，或内存比例，默认
+"50%"，读不到内存时 256 MiB），与 fit 相同；`supported.txt` 标记该字段，`make v1-bless` 标记这项增加，门禁中的 `limits` 和 `proxy`
+示例变为有效。
+
+## A215 只计入被接受连接的连接上限
+
+**状态。** 已提出（I79）。在此之前 akit 用 `Config::max_connections` 实现 `limits.max_conns`，参考文档中有说明。
+
+**问题。** fit 的 `limits.max_conns` 约束“监听器同时保持打开的客户端连接，所有监听器合计”。akit 的上游连接池在为监听器服务的同一个
+引擎上拨号，所以使用 akio 的上限时，繁忙代理的上游连接会占用客户端的名额：在默认的 100,000 下，若有 30,000 个上游连接打开，第
+70,001 个客户端就会被拒绝。
+
+**证据。** 在 akio `dad77a7a`，`Config::max_connections` 的计数是“引擎范围的，包括拨出的连接和 UDP 对端”，虽然超出时只关闭新接受的连接。
+
+**建议的 API。** `Config::max_accepted_connections: usize`（默认 0，即不限制；与 `max_connections` 一样可在运行时重载）：引擎各监听器
+接受的 TCP 连接超过它时，新连接在 `accept` 之后立即关闭并计为 `rejected`，与引擎拨出多少连接无关。
+
+**akit 将如何使用。** `engine_settings` 用 `limits.max_conns` 设置它，取代 `max_connections`，参考文档中关于 `limits.max_conns` 的说明随之删除。

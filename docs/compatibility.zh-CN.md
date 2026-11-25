@@ -1,17 +1,155 @@
-# fit 配置兼容性
+# 兼容性
 
 [English](compatibility.md) | [简体中文](compatibility.zh-CN.md)
 
+从 1.0 起，akit 遵守这里的承诺：能加载的配置继续能加载，Admin API 的客户端继续能工作，在每个 1.x 版本中都是如此。akit 的 v1
+就是 fit 的 v1：同样的配置 schema 版本 1、同样的 Admin API v1，限于 akit 提供的部分（[fit 的政策](https://github.com/lesismal/fit/blob/main/docs/compatibility.zh-CN.md)）。
+可能破坏它们的改动要等到配置 schema 或 Admin API 的新版本，并附带迁移的办法。
+
 akit 读取 fit 的配置（[决策 002](decisions/002-config-compatibility.zh-CN.md)）：同样的字段、默认值和
 含义，同样的三种格式。akit 尚不支持的字段会按名称拒绝——"not supported yet: `<path>`"——绝不读取后
-忽略。本页说明这一点如何检查，并列出 fit 配置的每个字段及 akit 是否支持。这份清单会随里程碑逐步缩短。
+忽略。本页后半部分说明这一点如何对照 fit 的模板和示例检查，并列出 fit 配置的每个字段及 akit 是否支持。这份清单会随里程碑逐步缩短。
 
+- [v1：哪些保持稳定](#v1哪些保持稳定)
+  - [覆盖的范围](#覆盖的范围)
+  - [1.x 版本可以做什么](#1x-版本可以做什么)
+  - [schema 的版本](#schema-的版本)
+  - [改名的字段与弃用](#改名的字段与弃用)
+  - [Admin API v1](#admin-api-v1)
+  - [新版本](#新版本)
+  - [冻结如何检查](#冻结如何检查)
 - [门禁](#门禁)
 - [解读结果](#解读结果)
 - [刷新夹具](#刷新夹具)
 - [支持一个字段](#支持一个字段)
 - [akit 的扩展字段](#akit-的扩展字段)
 - [字段清单](#字段清单)
+
+## v1：哪些保持稳定
+
+### 覆盖的范围
+
+| 范围 | 版本 | 内容 |
+| --- | --- | --- |
+| 配置 | schema 版本 1 | fit 的 schema 版本 1（固定的 [`fit.schema.json`](../tests/compat/fixtures/fit/schema/fit.schema.json)）中的每个字段，包括处理器和中间件的参数：名称、类型、含义和默认值；以及 akit 的[扩展字段](#akit-的扩展字段)。akit 读取的字段会一直被读取；按“尚不支持”拒绝的字段以后可能变为读取。`.conf`、YAML 和 JSON 是同一份配置的三种写法。 |
+| Admin API | v1 | 路径和方法、它们接受和返回的内容、状态码、头字段 `ETag`、`If-Match`、`If-None-Match`、`Fit-Config-Version` 和 `Fit-Dry-Run`、bearer token，以及 `?dry_run`（[见下文](#admin-api-v1)）。 |
+| 命令行 | 1 | 命令 `run`、`validate`、`adapt`、`fmt`、`build` 和 `version`，它们的参数和退出码，与 fit 相同。 |
+| 指标 | 1 | `/metrics` 提供和 OTLP 导出的指标的名称、类型和标签，与 fit 相同，都以 `fit_` 开头。 |
+| 访问日志 | 1 | 其 JSON 行的字段，与 fit 相同。 |
+
+不覆盖：
+
+- akit 写给人看而不是给程序读的东西：消息、警告、仪表盘、`akit adapt` 的输出（除了它是有效配置这一点），以及错误的文字
+  （错误的 JSON 结构是覆盖的）。
+- WASM 插件的宿主函数（`fit` 导入模块）和 fit 的 Proxy-Wasm 子集，它们在 fit 的 1.0 中也是实验性的；`wasm` 中间件的配置是覆盖的。
+- nginx 和 Caddyfile 转换器的覆盖范围，它只会增长。
+- akit 各 crate 的 Rust API（`akit build` 构建的模块使用它）：在 1.0 中它可能在任何版本中改变（fit 覆盖其 Go 的 `module`
+  包；akit 暂不覆盖）。
+- 性能。
+
+### 1.x 版本可以做什么
+
+- 增加配置字段、模块、provider 和枚举值；增加的字段是可选的，省略它时保持前一版本的行为。开始读取原先按“尚不支持”拒绝的字段。
+- 增加 Admin API 的路径、可选的请求字段、响应字段和响应字段的取值。客户端应忽略它不认识的字段。
+- 增加指标，以及给原先没有该名称标签的指标增加标签。
+- 增加命令和参数。
+- 只为堵住安全漏洞或约束原本无界的资源，收紧默认上限或改变默认值；发布说明会写明。
+- 给字段改名（[见下文](#改名的字段与弃用)）。
+- 修正与文档、fit 的行为或 akit 声明遵循的 RFC 相矛盾的行为。
+
+1.x 版本拒绝的配置，如果是因为它原本就有错而未被发现（两个不能同时出现的字段、超出范围的值），属于缺陷修复；发布说明会逐条列出。
+
+### schema 的版本
+
+配置可以说明它按哪个 schema 版本编写：
+
+```json
+{"schema_version": 1, "listeners": [{"name": "web", "address": ":8080"}], "routes": [{"handler": {"module": "respond"}}]}
+```
+
+它是可选的，省略时按版本 1 读取。akit 读取版本 1，对于写着其他版本的配置（`schema_version: 2 is greater than the maximum 1`），
+akit 会拒绝而不是错误地读取，与 fit 相同。
+
+### 改名的字段与弃用
+
+在一个版本内改名的字段，在下一个版本之前保留旧名。使用旧名的配置照常加载，akit 会用 fit 的原话指出位置：
+
+```text
+fit.json:12:40: routes[0].middleware[0].params.max_size: deprecated: renamed "max_bytes", which takes the same value; the old name goes in config version 2
+```
+
+`akit validate` 和 `akit run` 在启动和每次重载时打印它，位置是旧名在文件中的行和列（`.conf` 和 YAML 同样如此），Admin API 在变更
+应答的 `warnings` 中返回它。fit 的 schema 保留旧名并标记为 `deprecated`。配置不能同时给出两个名字
+（`"max_size" is the old name of "max_bytes"; give only "max_bytes"`）。
+
+以下字段为 fit 的 1.0 改名，使表示字节数的字段都以 `_bytes` 结尾、表示周期的都以 `_interval` 结尾，akit 两个名字都读取：
+
+| 模块 | 旧名 | 名称 |
+| --- | --- | --- |
+| `cache` | `max_size` | `max_bytes` |
+| `cache` | `max_entry_size` | `max_entry_bytes` |
+| `cache` | `disk.max_size` | `disk.max_bytes` |
+| `compress` | `min_length` | `min_bytes` |
+| `jwt` | `jwks_refresh` | `jwks_refresh_interval` |
+| `wasm` | `max_memory` | `max_memory_bytes` |
+
+fit 的第七个，tunnel 的 `quic_pin`（现为 `pin`），属于 akit 尚未运行的部分。
+
+任何东西离开 v1 都要经过弃用：字段、取值或端点保留下来并照常工作，在能给出警告的地方给出警告，直到主版本结束；只有在 schema 或
+API 的下一个版本中才会去掉，并在其改动清单中写明。
+
+### Admin API v1
+
+| 方法和路径 | 作用 |
+| --- | --- |
+| `GET`、`HEAD` `/config`、`/config/{path...}` | 正在运行的配置（按写入时的样子），或某个路径处的部分 |
+| 对 `/config` 和 `/config/{path...}` 的 `PUT`、`PATCH`、`DELETE` | 替换、合并补丁（RFC 7396）或删除整个配置或某个路径处的部分，并应用结果 |
+| `POST /load` | 应用一份完整的配置 |
+| `GET`、`HEAD` `/config/effective` | 合并了 provider 所提供内容的配置，以及每部分的来源 |
+| `GET`、`HEAD` `/versions`、`/versions/{n}` | 已应用并保留的配置，以及其中之一 |
+| `POST /rollback/{n}` | 把保留的某个配置作为新版本再次应用 |
+| `POST /reload` | 把正在运行的配置作为新版本再次应用 |
+| `GET`、`HEAD` `/status` | 监听器、连接、上游及其健康状态，以及证书 |
+| `GET`、`HEAD` `/metrics` | Prometheus 文本格式的指标 |
+| `GET`、`HEAD` `/cache`、`POST /cache/purge` | 缓存的区域，以及按 URL、URL 前缀、标签或区域清除 |
+| `GET /dashboard/` | 仪表盘，给人看（不覆盖） |
+
+配置中的路径是 JSON pointer 的各个 token。变更的应答给出所应用的版本，在内容中（`version`）和 `Fit-Config-Version` 中，并给出配置的
+`ETag`；带 `If-Match` 的变更只应用于该 ETag 所指的配置，否则答 412；带 `?dry_run=1` 的变更只检查不应用，应答带
+`Fit-Dry-Run: 1`。无法加载的配置答 400，内容为 `{"error": ..., "errors": [{"path", "line", "column", "message"}]}`。
+这些都是 fit 的名称，fit 的客户端不加改动即可用于 akit。
+
+fit 的 v1 还有更多端点，用于 akit 尚未运行的部分：tunnel 和 LLM 角色的链接令牌（`/tokens`）、媒体库和工作台的媒体页面
+（`/media/...`），以及流媒体角色（`/streaming/...`）。akit 在运行这些部分之前对它们答 404，届时按 fit 的样子加入，属于兼容的增加。
+
+如果需要 Admin API 的 v2，它会在 `/v2/` 下与 v1 的路径并存，v1 的路径在 akit 的整个主版本内保留。
+
+### 新版本
+
+无法保持旧配置或旧客户端继续工作的改动，要等待新的 schema 或 Admin API 版本（先由 fit 推出），它附带：
+
+- 每项改动及其原因的清单；
+- 对配置：`akit adapt`，把前一版本的配置改写为新版本；新的 akit 至少在一个发布中仍读取前一版本，并给出警告；
+- 对 Admin API：前一版本与新版本并存，直到主版本结束。
+
+### 冻结如何检查
+
+[tests/compat/v1](../tests/compat/v1) 保存冻结时（I79）的 v1 范围，以及此后的改动：
+
+- `config.txt`，配置的范围：fit 的 schema 版本 1 的每个字段及其类型、是否必填和默认值，枚举的取值，弃用的旧名，akit 读取的字段，
+  以及 akit 的扩展字段，每行一项；
+- `admin-api.txt`，Admin API 的范围：端点、头字段、查询参数，以及变更、错误和 `GET /versions` 的应答成员；
+- `additions.txt`：此后的每项改动，标为 `added`（兼容的增加）或 `retired`（1.x 版本按本政策改变的项，附原因）。
+
+两项检查在任何未标记的改动上失败，在 CI 和 `make check` 中运行：
+
+- `tools/v1-freeze.py`（CI 的 lint 任务，`make compat-check`）从 fit 的固定 schema、[`supported.txt`](../tests/compat/supported.txt)
+  和扩展字段构建配置的范围，与基线和增加项比较。首次读取的字段，或固定提交移动时 fit 新增的字段，属于增加：`make v1-bless` 会标记它；
+  只要有破坏 v1 的改动（字段消失，类型、默认值或必填性改变，给 v1 已有的对象增加必填字段，akit 原本读取的字段又被拒绝），它就拒绝标记任何东西。
+- `v1_surface_is_frozen`（akit-admin 的测试，CI 的测试任务）运行 Admin API 并逐一探测：冻结的每个端点都提供服务，冻结路径的其他方法都不提供，
+  分发器中出现的路径都在冻结范围内，头字段和应答成员与冻结的一致。新增的项按失败的测试打印的内容，手工标记在 `additions.txt` 中。
+
+基线文件本身在 v1 内从不修改：`tools/v1-freeze.py` 保存它们的 SHA-256，改动任何一个都意味着新版本。
 
 ## 门禁
 
@@ -139,7 +277,8 @@ python3 tools/compat-inventory.py
 同一个提交还要以 `python3 tools/config-reference.py`（`make reference`）重新生成[配置参考](reference/config.zh-CN.md)的表格，
 把该字段从“尚不支持”改为已读取；akit 读取它的方式与 fit 不同时，在 `tools/config-reference-notes.json` 中写一条说明。参考的表格与
 akit-config 的列表不一致时，`reference_matches_akit_config`（同一文件）会失败；表格不是生成器写出的内容时，CI 的
-`config-reference.py --check` 会失败。新的扩展字段也要连同其决定列在那里。
+`config-reference.py --check` 会失败。新的扩展字段也要连同其决定列在那里。同一个提交还要用 `make v1-bless` 把新读取的字段标记为 v1
+冻结之后的增加（[冻结如何检查](#冻结如何检查)）。
 
 ## akit 的扩展字段
 
@@ -170,7 +309,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 417 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 428 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -180,7 +319,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`admin`](#fields-admin) | 105 | 7 | 98 |
 | [`auto_https`](#fields-auto-https) | 5 | 5 | 0 |
 | [`bittorrent`](#fields-bittorrent) | 160 | 0 | 160 |
-| [`engine`](#fields-engine) | 11 | 0 | 11 |
+| [`engine`](#fields-engine) | 11 | 8 | 3 |
 | [`http.handlers/bt_publish`](#fields-http-handlers-bt-publish) | 3 | 0 | 3 |
 | [`http.handlers/bt_stream`](#fields-http-handlers-bt-stream) | 14 | 0 | 14 |
 | [`http.handlers/bt_tracker`](#fields-http-handlers-bt-tracker) | 2 | 0 | 2 |
@@ -215,7 +354,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`http.middleware/redirect`](#fields-http-middleware-redirect) | 5 | 5 | 0 |
 | [`http.middleware/rewrite`](#fields-http-middleware-rewrite) | 6 | 6 | 0 |
 | [`http.middleware/wasm`](#fields-http-middleware-wasm) | 18 | 18 | 0 |
-| [`limits`](#fields-limits) | 7 | 3 | 4 |
+| [`limits`](#fields-limits) | 7 | 6 | 1 |
 | [`listeners`](#fields-listeners) | 30 | 23 | 7 |
 | [`llm`](#fields-llm) | 218 | 0 | 218 |
 | [`log`](#fields-log) | 24 | 0 | 24 |
@@ -295,7 +434,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **合计** | 3821 | 417 | 3404 |
+| **合计** | 3821 | 428 | 3393 |
 
 <a id="fields-access"></a>
 
@@ -677,17 +816,17 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
-| `engine` | `object` | 尚不支持（not supported yet） |
-| `engine.backlog` | `integer` | 尚不支持（not supported yet） |
-| `engine.event_loops` | `integer` | 尚不支持（not supported yet） |
+| `engine` | `object` | 已支持 |
+| `engine.backlog` | `integer` | 已支持 |
+| `engine.event_loops` | `integer` | 已支持 |
 | `engine.kernel_tls_offload` | `boolean` | 尚不支持（not supported yet） |
 | `engine.loop_wait` | `enum(park\|block)` | 尚不支持（not supported yet） |
-| `engine.min_workers` | `integer` | 尚不支持（not supported yet） |
+| `engine.min_workers` | `integer` | 已支持 |
 | `engine.poll_batch` | `integer` | 尚不支持（not supported yet） |
-| `engine.read_buffer_size` | `integer` | 尚不支持（not supported yet） |
-| `engine.task_queue` | `integer` | 尚不支持（not supported yet） |
-| `engine.workers` | `integer` | 尚不支持（not supported yet） |
-| `engine.write_watermark` | `integer` | 尚不支持（not supported yet） |
+| `engine.read_buffer_size` | `integer` | 已支持 |
+| `engine.task_queue` | `integer` | 已支持 |
+| `engine.workers` | `integer` | 已支持 |
+| `engine.write_watermark` | `integer` | 已支持 |
 
 <a id="fields-http-handlers-bt-publish"></a>
 
@@ -1260,10 +1399,10 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | --- | --- | --- |
 | `limits` | `object` | 已支持 |
 | `limits.max_body_bytes` | `integer` | 已支持 |
-| `limits.max_conns` | `integer` | 尚不支持（not supported yet） |
-| `limits.max_header_bytes` | `integer` | 尚不支持（not supported yet） |
+| `limits.max_conns` | `integer` | 已支持 |
+| `limits.max_header_bytes` | `integer` | 已支持 |
 | `limits.max_pending_bytes` | `bytes\|percent` | 尚不支持（not supported yet） |
-| `limits.max_write_queue_bytes` | `integer` | 尚不支持（not supported yet） |
+| `limits.max_write_queue_bytes` | `integer` | 已支持 |
 | `limits.write_stall_timeout` | `duration` | 已支持 |
 
 <a id="fields-listeners"></a>

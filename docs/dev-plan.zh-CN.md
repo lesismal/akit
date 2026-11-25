@@ -177,7 +177,8 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | **1.0** | | | |
 | I77 | Fuzz | I56 | todo |
 | I78 | 配置参考与指南 | I76 | done |
-| I79 | v1 冻结与兼容性 | I78 | todo |
+| I79 | v1 冻结与兼容性 | I78 | done |
+| I79b | 门禁仍拒绝的网关示例：`limits.max_pending_bytes`、只有 h2c、按接受的连接计数的 `max_conns` | I79、akio A214、A168、A215 | todo |
 | I80 | 为安全审查做好准备 | I77, I79 | todo |
 
 ## 基准与优化状态
@@ -932,6 +933,18 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 
 - **做什么**：配置 schema 和 Admin API 冻结为 v1，与 fit 的 v1 相同；一份说明哪些内容保持稳定的兼容性文档。
 - **完成标准**：兼容性门禁在每个 fit 模板上通过，没有不支持的字段。
+- **状态**：已完成（2026-11-26）。[政策](compatibility.zh-CN.md#v1哪些保持稳定)即 akit 所提供部分的 fit v1；v1 的范围冻结在
+  `tests/compat/v1` 中，由 `tools/v1-freeze.py`（配置）和 `v1_surface_is_frozen`（Admin API）把关，任何未标记为兼容增加的改动都会使其
+  失败（[决定 029](decisions/029-v1-freeze.zh-CN.md)）；fit 改名字段的旧名按 fit 的警告读取；开始读取 `limits.max_header_bytes`、
+  `max_conns`、`max_write_queue_bytes` 和 `engine`（[决定 028](decisions/028-engine-on-akio.zh-CN.md)）。每个 fit 模板都通过且没有被拒绝的
+  字段（6 个中 6 个，与之前相同）；fit-examples 中仍有字段被拒绝的网关示例等待 akio（I79b）；其余属于 1.0 之后的路线。见开发进度的日志。
+
+### I79b 门禁仍拒绝的网关示例
+
+- **做什么**：基于 akio 的跨连接预算（A214）支持 `limits.max_pending_bytes`，使 fit-examples 的 `limits` 和 `proxy` 有效；只有 `h2c`
+  的监听器（A168），使 `grpc` 有效；`limits.max_conns` 只计入被接受的连接（A215）。
+- **完成标准**：1.0 之后路线以外的 fit-examples 配置都不被拒绝（门禁报告只列出 `bittorrent`、`console`、`llm`、`logging`、媒体、
+  `streaming`、`sync`、`tunnel` 和 `webrtc` 的示例），每个字段都用 `make v1-bless` 标记。
 
 ### I80 为安全审查做好准备
 

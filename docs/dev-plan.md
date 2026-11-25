@@ -184,7 +184,8 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | **1.0** | | | |
 | I77 | Fuzzing | I56 | todo |
 | I78 | Config reference and guides | I76 | done |
-| I79 | v1 freeze and compatibility | I78 | todo |
+| I79 | v1 freeze and compatibility | I78 | done |
+| I79b | The gateway examples the gate still refuses: `limits.max_pending_bytes`, h2c alone, `max_conns` by accepted connections | I79, akio A214, A168, A215 | todo |
 | I80 | Security review readiness | I77, I79 | todo |
 
 ## Benchmark and optimization status
@@ -1034,6 +1035,23 @@ Split from I07 so that the half that needs no config model runs beside I02.
 - **Do**: the config schema and the Admin API frozen as v1, the same as fit's v1; a compatibility
   document saying what stays stable.
 - **Done when**: the compatibility gate passes on every fit template with no unsupported field.
+- **Status**: done (2026-11-26). [The policy](compatibility.md#v1-what-stays-stable), fit's v1 for
+  what akit serves; the v1 surface frozen in `tests/compat/v1` and held by `tools/v1-freeze.py` (the
+  config's) and `v1_surface_is_frozen` (the Admin API's), each failing on a change not marked as a
+  compatible addition ([decision 029](decisions/029-v1-freeze.md)); the old names of fit's renamed
+  fields read with fit's warning; `limits.max_header_bytes`, `max_conns`, `max_write_queue_bytes`
+  and `engine` read ([decision 028](decisions/028-engine-on-akio.md)). Every fit template passes
+  with no field refused (6 of 6, as before); fit-examples' gateway examples that still refuse a
+  field wait for akio (I79b); the rest are the After-1.0 tracks'. See the progress log.
+
+### I79b The gateway examples the gate still refuses
+
+- **Do**: `limits.max_pending_bytes` on akio's budget across connections (A214), so fit-examples'
+  `limits` and `proxy` are valid; a listener of `h2c` alone (A168), so `grpc` is; `limits.max_conns`
+  counting accepted connections only (A215).
+- **Done when**: no fit-examples config outside the After-1.0 tracks is refused (the gate's report
+  lists only `bittorrent`, `console`, `llm`, `logging`, media, `streaming`, `sync`, `tunnel` and
+  `webrtc` examples), each field marked with `make v1-bless`.
 
 ### I80 Security review readiness
 
