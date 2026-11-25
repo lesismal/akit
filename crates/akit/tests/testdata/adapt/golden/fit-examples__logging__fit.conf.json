@@ -1,0 +1,42 @@
+{
+  "listeners": [
+    {
+      "name": "web",
+      "address": ":8080",
+      "protocols": [
+        "http/1.1",
+        "h2c"
+      ]
+    }
+  ],
+  "routes": [
+    {
+      "name": "hello",
+      "handler": {
+        "module": "respond",
+        "params": {
+          "body": "hello\n"
+        }
+      }
+    }
+  ],
+  "log": {
+    "level": "info",
+    "levels": {
+      "tls": "debug"
+    },
+    "format": "json",
+    "loggers": {
+      "engine": {
+        "output": "/var/log/fit/engine.log",
+        "format": "line"
+      }
+    }
+  },
+  "access_log": {
+    "output": "stdout",
+    "format": "json",
+    "flush_interval": "1s",
+    "buffer_bytes": 1048576
+  }
+}

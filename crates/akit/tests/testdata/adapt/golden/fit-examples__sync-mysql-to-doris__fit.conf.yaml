@@ -1,0 +1,53 @@
+sync:
+  state_dir: /tmp/fit-example-sync
+  pipelines:
+    - name: shop-to-doris
+      source:
+        module: mysql
+        params:
+          address: mysql.internal:3306
+          username: repl
+          password_env: MYSQL_PASSWORD
+          server_id: 4301
+          tables:
+            - shop.orders
+            - shop.order_items
+      sinks:
+        - name: doris
+          sink:
+            module: doris
+            params:
+              urls:
+                - http://doris-fe-1:8030
+                - http://doris-fe-2:8030
+              username: fit
+              password_env: DORIS_PASSWORD
+              flavor: doris
+              table: '{namespace}'
+              format: json
+          batch:
+            max_records: 20000
+            max_wait: 2s
+    - name: report-copy
+      source:
+        module: doris
+        params:
+          address: doris-fe-1:9030
+          username: fit
+          password_env: DORIS_PASSWORD
+          table: report.daily
+          key:
+            - day
+            - region
+          cursor: updated_at
+          poll_interval: 1m
+      sinks:
+        - name: out
+          sink:
+            module: file
+            params:
+              path: /tmp/fit-example-sync/daily.jsonl
+              codec:
+                module: json
+admin:
+  address: 127.0.0.1:2019

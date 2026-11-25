@@ -1,0 +1,30 @@
+schema_version: 1
+listeners:
+  - name: web
+    address: :8080
+    protocols:
+      - http/1.1
+      - h2c
+routes:
+  - name: api
+    match:
+      host:
+        - api.example.com
+    handler:
+      module: proxy
+      params:
+        upstream: api
+  - name: example.com
+    match:
+      host:
+        - example.com
+        - www.example.com
+    handler:
+      module: respond
+      params:
+        body: |
+          hello from fit
+upstreams:
+  - name: api
+    addresses:
+      - 127.0.0.1:9000

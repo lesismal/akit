@@ -72,12 +72,18 @@ fn ty(t: &str) -> Ty<'_> {
     }
 }
 
+/// The type fit's field inventory gives the field at `path`, as it writes it (`string`,
+/// `array<object>`, ...), for the `.conf` writer (I73).
+pub(crate) fn inventory_type(path: &str) -> Option<&'static str> {
+    types().get(path).copied()
+}
+
 fn type_at(path: &str) -> Option<Ty<'static>> {
     types().get(path).map(|t| ty(t))
 }
 
 /// Whether the object at `path` names a module, whose params depend on it.
-fn is_module(path: &str) -> bool {
+pub(crate) fn is_module(path: &str) -> bool {
     types()
         .get(format!("{path}.module").as_str())
         .is_some_and(|t| t.starts_with("enum("))
@@ -557,8 +563,9 @@ fn infer(a: &Tok) -> Node {
     string(a)
 }
 
-/// Whether `s` is a JSON number, at most 64 bytes long.
-fn is_number(s: &str) -> bool {
+/// Whether `s` is a JSON number, at most 64 bytes long, that a float64 holds, as fit's `isNumber`
+/// reads it into one: `1e400` is not.
+pub(crate) fn is_number(s: &str) -> bool {
     if s.is_empty() || s.len() > 64 {
         return false;
     }
@@ -593,7 +600,7 @@ fn is_number(s: &str) -> bool {
             return false;
         }
     }
-    i == b.len()
+    i == b.len() && s.parse::<f64>().is_ok_and(f64::is_finite)
 }
 
 /// A whole number of bytes in a unit, as `16MiB` or `2gb`: powers of 1024 and of 1000, the case of
@@ -633,10 +640,12 @@ mod tests {
 
     #[test]
     fn numbers() {
-        for ok in ["0", "-1", "1.5", "2e3", "-0.5E-2", "10"] {
+        for ok in ["0", "-1", "1.5", "2e3", "-0.5E-2", "10", "1e308", "1e-400"] {
             assert!(is_number(ok), "{ok}");
         }
-        for bad in ["", "-", "01", "1.", ".5", "1e", "+1", "0x10", "1/2", "NaN"] {
+        for bad in [
+            "", "-", "01", "1.", ".5", "1e", "+1", "0x10", "1/2", "NaN", "1e400",
+        ] {
             assert!(!is_number(bad), "{bad}");
         }
     }

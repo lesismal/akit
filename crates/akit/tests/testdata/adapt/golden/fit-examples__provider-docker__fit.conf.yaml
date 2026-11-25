@@ -1,0 +1,23 @@
+listeners:
+  - name: web
+    address: :8080
+    protocols:
+      - http/1.1
+      - h2c
+routes:
+  - name: not-found
+    priority: -1
+    handler:
+      module: respond
+      params:
+        status: 404
+        body: |
+          no container serves this
+providers:
+  - name: docker
+    docker:
+      endpoint: unix:///var/run/docker.sock
+      network: web
+      label_prefix: fit
+      max_containers: 1000
+      refresh_interval: 30s

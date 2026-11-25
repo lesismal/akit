@@ -1,0 +1,60 @@
+sync:
+  state_dir: /tmp/fit-example-sync
+  pipelines:
+    - name: articles-to-vectors
+      source:
+        module: postgres
+        params:
+          address: db.internal:5432
+          user: repl
+          password_env: PG_PASSWORD
+          database: cms
+          create: true
+          publication: fit_articles
+          slot: fit_articles
+          tables:
+            - public.articles
+      transforms:
+        - module: embed
+          params:
+            url: https://api.openai.com/v1
+            model: text-embedding-3-small
+            api_key_env: OPENAI_API_KEY
+            fields:
+              - title
+              - body
+            into: embedding
+            batch_records: 64
+            max_parallel: 4
+      sinks:
+        - name: qdrant
+          sink:
+            module: qdrant
+            params:
+              url: https://qdrant.internal:6333
+              api_key_env: QDRANT_API_KEY
+              collection: articles
+              payload:
+                - id
+                - title
+                - author
+          batch:
+            max_records: 256
+            max_wait: 500ms
+        - name: milvus
+          sink:
+            module: milvus
+            params:
+              url: https://milvus.internal:19530
+              token_env: MILVUS_TOKEN
+              collection: articles
+              primary_key: id
+              fields:
+                - title
+                - author
+                - embedding
+          batch:
+            max_records: 256
+            max_wait: 500ms
+admin:
+  address: 127.0.0.1:2019

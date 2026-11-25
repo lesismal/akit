@@ -1,0 +1,18 @@
+tunnel:
+  proxy:
+    name: alice
+    hubs:
+      - name: hub
+        endpoints:
+          - address: 127.0.0.1:7000
+        password: a-registration-password
+        body_password: a-body-password
+    forwards:
+      - listen: 127.0.0.1:2222
+        node: lab
+        service: ssh
+      - listen: 127.0.0.1:8888
+        node: lab
+        service: web
+    open_timeout: 20s
+    max_tunnels: 1024

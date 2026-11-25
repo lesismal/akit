@@ -1,0 +1,32 @@
+{
+  "listeners": [
+    {
+      "name": "dns",
+      "address": ":5353",
+      "protocols": [
+        "udp"
+      ]
+    }
+  ],
+  "upstreams": [
+    {
+      "name": "resolvers",
+      "addresses": [
+        "10.0.0.53:53",
+        "10.0.1.53:53"
+      ],
+      "load_balancing": "ip_hash"
+    }
+  ],
+  "services": [
+    {
+      "name": "dns",
+      "listeners": [
+        "dns"
+      ],
+      "upstream": "resolvers",
+      "idle_timeout": "30s",
+      "max_conns": 10000
+    }
+  ]
+}

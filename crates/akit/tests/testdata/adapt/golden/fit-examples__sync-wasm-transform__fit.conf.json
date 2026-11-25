@@ -1,0 +1,55 @@
+{
+  "sync": {
+    "state_dir": "/tmp/fit-example-sync",
+    "pipelines": [
+      {
+        "name": "users",
+        "source": {
+          "module": "file",
+          "params": {
+            "paths": [
+              "sync-wasm-transform/users.ndjson"
+            ],
+            "codec": {
+              "module": "json"
+            }
+          }
+        },
+        "transforms": [
+          {
+            "module": "key",
+            "params": {
+              "fields": [
+                "id"
+              ]
+            }
+          },
+          {
+            "module": "wasm",
+            "params": {
+              "path": "sync-wasm-transform/users.wasm",
+              "config": "{\"drop_domain\": \"example.test\"}",
+              "instances": 2,
+              "timeout": "500ms"
+            }
+          }
+        ],
+        "sinks": [
+          {
+            "name": "out",
+            "sink": {
+              "module": "stdout"
+            }
+          }
+        ],
+        "on_error": "dead_letter",
+        "dead_letter": {
+          "name": "errors",
+          "sink": {
+            "module": "dead_letters"
+          }
+        }
+      }
+    ]
+  }
+}

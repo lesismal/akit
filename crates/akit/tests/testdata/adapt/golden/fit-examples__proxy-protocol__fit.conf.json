@@ -1,0 +1,38 @@
+{
+  "listeners": [
+    {
+      "name": "web",
+      "address": ":8080",
+      "protocols": [
+        "http/1.1",
+        "h2c"
+      ],
+      "proxy_protocol": {
+        "trusted": [
+          "10.0.0.0/8",
+          "127.0.0.1/32"
+        ]
+      }
+    }
+  ],
+  "routes": [
+    {
+      "name": "who",
+      "middleware": [
+        {
+          "module": "rate_limit",
+          "params": {
+            "rate": 20,
+            "burst": 40
+          }
+        }
+      ],
+      "handler": {
+        "module": "respond",
+        "params": {
+          "body": "hello\n"
+        }
+      }
+    }
+  ]
+}

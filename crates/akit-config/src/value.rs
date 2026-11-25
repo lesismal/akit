@@ -32,7 +32,7 @@ pub enum Value {
 }
 
 impl Value {
-    fn from_node(n: Node) -> Value {
+    pub(crate) fn from_node(n: Node) -> Value {
         match n.kind {
             Kind::Null => Value::Null,
             Kind::Bool(b) => Value::Bool(b),
@@ -114,10 +114,19 @@ impl Value {
 /// Appends `s` as a JSON string, escaped as Go's `encoding/json` escapes it with HTML escaping
 /// off: `"`, `\`, the control characters, U+2028 and U+2029.
 pub fn write_string(b: &mut String, s: &str) {
+    write_go_string(b, s, false);
+}
+
+/// Appends `s` as a JSON string as Go's `encoding/json` writes it; `html` says with its HTML
+/// escaping on, as `json.Marshal` has it: `<`, `>` and `&` as `\u003c`, `\u003e` and `\u0026`.
+pub(crate) fn write_go_string(b: &mut String, s: &str, html: bool) {
     const HEX: &[u8; 16] = b"0123456789abcdef";
     b.push('"');
     for c in s.chars() {
         match c {
+            '<' if html => b.push_str("\\u003c"),
+            '>' if html => b.push_str("\\u003e"),
+            '&' if html => b.push_str("\\u0026"),
             '"' => b.push_str("\\\""),
             '\\' => b.push_str("\\\\"),
             '\n' => b.push_str("\\n"),

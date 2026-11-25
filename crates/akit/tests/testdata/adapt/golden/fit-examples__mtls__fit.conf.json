@@ -1,0 +1,66 @@
+{
+  "listeners": [
+    {
+      "name": "https",
+      "address": ":443",
+      "protocols": [
+        "http/1.1",
+        "h2"
+      ],
+      "tls": {
+        "acme": [
+          "internal-api.example.com"
+        ],
+        "client_auth": {
+          "ca_files": [
+            "mtls/clients-ca.pem"
+          ],
+          "mode": "require"
+        }
+      }
+    },
+    {
+      "name": "http",
+      "address": ":80",
+      "protocols": [
+        "http/1.1"
+      ]
+    }
+  ],
+  "upstreams": [
+    {
+      "name": "api",
+      "addresses": [
+        "127.0.0.1:9000"
+      ]
+    }
+  ],
+  "routes": [
+    {
+      "name": "api",
+      "listeners": [
+        "https"
+      ],
+      "middleware": [
+        {
+          "module": "client_cert",
+          "params": {
+            "subject_header": "X-Client-Subject"
+          }
+        }
+      ],
+      "handler": {
+        "module": "proxy",
+        "params": {
+          "upstream": "api"
+        }
+      }
+    }
+  ],
+  "acme": {
+    "email": "ops@example.com",
+    "challenges": [
+      "http-01"
+    ]
+  }
+}

@@ -1,0 +1,44 @@
+sync:
+  state_dir: /tmp/fit-example-sync
+  pipelines:
+    - name: shop-cdc
+      source:
+        module: postgres
+        params:
+          address: db.internal:5432
+          user: repl
+          password_env: PG_PASSWORD
+          database: shop
+          sslmode: verify-full
+          create: true
+          publication: fit_shop
+          slot: fit_shop
+          tables:
+            - public.orders
+            - public.order_items
+          snapshot: initial
+          lag_warning: 1073741824
+      sinks:
+        - name: kafka
+          sink:
+            module: kafka
+            params:
+              brokers:
+                - kafka-1:9093
+                - kafka-2:9093
+              tls: true
+              sasl: SCRAM-SHA-512
+              username: fit
+              password_env: KAFKA_PASSWORD
+              topic: cdc.{namespace}
+              codec:
+                module: debezium
+              compression: zstd
+              create_topics:
+                partitions: 6
+                replication_factor: 3
+          batch:
+            max_records: 2000
+            max_wait: 200ms
+admin:
+  address: 127.0.0.1:2019

@@ -1,0 +1,74 @@
+{
+  "sync": {
+    "state_dir": "/tmp/fit-example-sync",
+    "pipelines": [
+      {
+        "name": "events-to-search",
+        "source": {
+          "module": "pulsar",
+          "params": {
+            "url": "pulsar+ssl://pulsar.internal:6651",
+            "token_env": "PULSAR_TOKEN",
+            "topics": [
+              "persistent://public/default/events"
+            ],
+            "mode": "reader",
+            "codec": {
+              "module": "json"
+            }
+          }
+        },
+        "sinks": [
+          {
+            "name": "search",
+            "sink": {
+              "module": "elasticsearch",
+              "params": {
+                "urls": [
+                  "https://es-1:9200"
+                ],
+                "username": "fit",
+                "password_env": "ES_PASSWORD",
+                "index": "events"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "name": "shop-to-pulsar",
+        "source": {
+          "module": "mysql",
+          "params": {
+            "address": "mysql.internal:3306",
+            "username": "repl",
+            "password_env": "MYSQL_PASSWORD",
+            "server_id": 4201,
+            "tables": [
+              "shop.orders"
+            ]
+          }
+        },
+        "sinks": [
+          {
+            "name": "pulsar",
+            "sink": {
+              "module": "pulsar",
+              "params": {
+                "url": "pulsar+ssl://pulsar.internal:6651",
+                "token_env": "PULSAR_TOKEN",
+                "topic": "persistent://public/default/shop-orders",
+                "codec": {
+                  "module": "debezium"
+                }
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "admin": {
+    "address": "127.0.0.1:2019"
+  }
+}

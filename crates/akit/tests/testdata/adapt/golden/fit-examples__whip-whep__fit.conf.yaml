@@ -1,0 +1,40 @@
+listeners:
+  - name: web
+    address: :8080
+    protocols:
+      - http/1.1
+      - h2c
+routes:
+  - name: publish
+    match:
+      path:
+        - /whip/*
+    middleware:
+      - module: jwt
+        params:
+          jwks_url: https://auth.example.com/.well-known/jwks.json
+          audience:
+            - whip
+    handler:
+      module: whip
+  - name: play
+    match:
+      path:
+        - /whep/*
+    handler:
+      module: whep
+webrtc:
+  media:
+    listen: :8189
+    public_ips:
+      - 203.0.113.5
+    ice_servers:
+      - urls:
+          - stun:stun.l.google.com:19302
+    codecs:
+      - opus
+      - VP8
+      - H264
+    max_streams: 16
+    max_viewers: 100
+    max_bitrate: 4000000

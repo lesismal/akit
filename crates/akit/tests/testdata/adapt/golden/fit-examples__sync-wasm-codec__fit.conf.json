@@ -1,0 +1,55 @@
+{
+  "sync": {
+    "state_dir": "/tmp/fit-example-sync",
+    "pipelines": [
+      {
+        "name": "prices",
+        "source": {
+          "module": "file",
+          "params": {
+            "paths": [
+              "sync-wasm-codec/prices.txt"
+            ],
+            "codec": {
+              "module": "wasm",
+              "params": {
+                "path": "sync-wasm-codec/prices.wasm",
+                "timeout": "500ms"
+              }
+            }
+          }
+        },
+        "sinks": [
+          {
+            "name": "out",
+            "sink": {
+              "module": "stdout"
+            }
+          },
+          {
+            "name": "copy",
+            "sink": {
+              "module": "file",
+              "params": {
+                "path": "/tmp/fit-example-sync/prices-copy.txt",
+                "codec": {
+                  "module": "wasm",
+                  "params": {
+                    "path": "sync-wasm-codec/prices.wasm"
+                  }
+                }
+              }
+            }
+          }
+        ],
+        "on_error": "dead_letter",
+        "dead_letter": {
+          "name": "errors",
+          "sink": {
+            "module": "dead_letters"
+          }
+        }
+      }
+    ]
+  }
+}

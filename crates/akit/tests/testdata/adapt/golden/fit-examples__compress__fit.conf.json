@@ -1,0 +1,46 @@
+{
+  "listeners": [
+    {
+      "name": "web",
+      "address": ":8080",
+      "protocols": [
+        "http/1.1",
+        "h2c"
+      ]
+    }
+  ],
+  "upstreams": [
+    {
+      "name": "app",
+      "addresses": [
+        "127.0.0.1:9000"
+      ]
+    }
+  ],
+  "routes": [
+    {
+      "name": "app",
+      "middleware": [
+        {
+          "module": "compress",
+          "params": {
+            "encodings": [
+              "zstd",
+              "br",
+              "gzip"
+            ],
+            "level": "default",
+            "min_bytes": 1024,
+            "max_in_flight": 512
+          }
+        }
+      ],
+      "handler": {
+        "module": "proxy",
+        "params": {
+          "upstream": "app"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,86 @@
+{
+  "sync": {
+    "state_dir": "/tmp/fit-example-sync",
+    "pipelines": [
+      {
+        "name": "shop-to-nats",
+        "source": {
+          "module": "postgres",
+          "params": {
+            "address": "db.internal:5432",
+            "user": "repl",
+            "password_env": "PG_PASSWORD",
+            "database": "shop",
+            "create": true,
+            "publication": "fit_shop_nats",
+            "slot": "fit_shop_nats",
+            "tables": [
+              "public.orders"
+            ]
+          }
+        },
+        "sinks": [
+          {
+            "name": "nats",
+            "sink": {
+              "module": "nats",
+              "params": {
+                "servers": [
+                  "nats-1:4222",
+                  "nats-2:4222",
+                  "nats-3:4222"
+                ],
+                "username": "fit",
+                "password_env": "NATS_PASSWORD",
+                "subject": "cdc.{namespace}",
+                "codec": {
+                  "module": "debezium"
+                }
+              }
+            }
+          }
+        ]
+      },
+      {
+        "name": "nats-to-search",
+        "source": {
+          "module": "nats",
+          "params": {
+            "servers": [
+              "nats-1:4222",
+              "nats-2:4222",
+              "nats-3:4222"
+            ],
+            "username": "fit",
+            "password_env": "NATS_PASSWORD",
+            "stream": "CDC",
+            "consumer": "fit-search",
+            "create_consumer": true,
+            "codec": {
+              "module": "debezium"
+            }
+          }
+        },
+        "sinks": [
+          {
+            "name": "search",
+            "sink": {
+              "module": "elasticsearch",
+              "params": {
+                "urls": [
+                  "https://es-1:9200"
+                ],
+                "username": "fit",
+                "password_env": "ES_PASSWORD",
+                "index": "{namespace}"
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "admin": {
+    "address": "127.0.0.1:2019"
+  }
+}

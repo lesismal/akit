@@ -1,0 +1,42 @@
+listeners:
+  - name: https
+    address: :443
+    protocols:
+      - http/1.1
+      - h2
+    tls:
+      acme:
+        - example.com
+      client_auth:
+        ca_files:
+          - client-cert/clients-ca.pem
+        mode: verify_if_given
+upstreams:
+  - name: app
+    addresses:
+      - 127.0.0.1:9000
+routes:
+  - name: admin
+    match:
+      path:
+        - /admin/*
+    middleware:
+      - module: client_cert
+        params:
+          subject_header: X-Client-Subject
+    handler:
+      module: proxy
+      params:
+        upstream: app
+  - name: public
+    middleware:
+      - module: client_cert
+        params:
+          optional: true
+          subject_header: X-Client-Subject
+    handler:
+      module: proxy
+      params:
+        upstream: app
+acme:
+  email: ops@example.com

@@ -16,9 +16,12 @@
 //! 005): each read into the same tree as JSON and decoded by the same code, so the model reads
 //! all three alike and problems point into the file as written.
 //!
+//! I73 converts a config between the three, written as fit's `fit adapt` writes it ([`adapt`]).
+//!
 //! Reading a file blocks: this is control plane code, never called on an I/O thread
 //! (rules.md rule 1).
 
+pub mod adapt;
 mod auto_https;
 mod conf;
 mod decode;

@@ -1,0 +1,24 @@
+listeners:
+  - name: web
+    address: :8080
+    protocols:
+      - http/1.1
+      - h2c
+routes:
+  - name: private
+    match:
+      path:
+        - /private/*
+    middleware:
+      - module: basic_auth
+        params:
+          realm: staff
+          users:
+            - username: alice
+              password_hash: $2a$10$gkDJyGagxp1q7R24F0rSjulsgZOFL55Zm6JK2RcxTCLDk23szhZA2
+          user_header: X-User
+    handler:
+      module: respond
+      params:
+        body: |
+          hello, you are logged in

@@ -1,0 +1,83 @@
+{
+  "listeners": [
+    {
+      "name": "web",
+      "address": ":8080",
+      "protocols": [
+        "http/1.1",
+        "h2c"
+      ]
+    }
+  ],
+  "limits": {
+    "max_body_bytes": 16777216
+  },
+  "upstreams": [
+    {
+      "name": "app",
+      "addresses": [
+        "127.0.0.1:9000"
+      ]
+    }
+  ],
+  "routes": [
+    {
+      "name": "uploads",
+      "match": {
+        "path": [
+          "/upload/*"
+        ],
+        "method": [
+          "POST",
+          "PUT"
+        ]
+      },
+      "middleware": [
+        {
+          "module": "body_limit",
+          "params": {
+            "max_bytes": 104857600
+          }
+        }
+      ],
+      "handler": {
+        "module": "proxy",
+        "params": {
+          "upstream": "app"
+        }
+      }
+    },
+    {
+      "name": "api",
+      "match": {
+        "path": [
+          "/api/*"
+        ]
+      },
+      "middleware": [
+        {
+          "module": "body_limit",
+          "params": {
+            "max_bytes": 65536
+          }
+        }
+      ],
+      "handler": {
+        "module": "proxy",
+        "params": {
+          "upstream": "app"
+        }
+      }
+    },
+    {
+      "name": "rest",
+      "priority": -1,
+      "handler": {
+        "module": "proxy",
+        "params": {
+          "upstream": "app"
+        }
+      }
+    }
+  ]
+}

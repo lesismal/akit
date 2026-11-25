@@ -1,0 +1,74 @@
+{
+  "sync": {
+    "state_dir": "/tmp/fit-example-sync",
+    "pipelines": [
+      {
+        "name": "app-logs",
+        "source": {
+          "module": "file",
+          "params": {
+            "paths": [
+              "/var/log/app/*.log"
+            ],
+            "codec": {
+              "module": "json"
+            },
+            "multiline": {
+              "start": "^\\{"
+            }
+          }
+        },
+        "transforms": [
+          {
+            "module": "filter",
+            "params": {
+              "action": "drop",
+              "where": [
+                {
+                  "field": "level",
+                  "equals": "debug"
+                }
+              ]
+            }
+          }
+        ],
+        "sinks": [
+          {
+            "name": "search",
+            "sink": {
+              "module": "elasticsearch",
+              "params": {
+                "urls": [
+                  "https://es1:9200",
+                  "https://es2:9200"
+                ],
+                "username": "fit",
+                "password_env": "ES_PASSWORD",
+                "index": "app-logs-{yyyy.MM.dd}"
+              }
+            },
+            "batch": {
+              "max_records": 1000,
+              "max_bytes": 5242880,
+              "max_wait": "1s"
+            }
+          }
+        ],
+        "on_error": "dead_letter",
+        "dead_letter": {
+          "name": "refused",
+          "sink": {
+            "module": "dead_letters"
+          }
+        },
+        "queue": {
+          "max_records": 20000,
+          "max_bytes": 67108864
+        }
+      }
+    ]
+  },
+  "admin": {
+    "address": "127.0.0.1:2019"
+  }
+}

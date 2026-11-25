@@ -1,0 +1,45 @@
+listeners:
+  - name: web
+    address: :8080
+    protocols:
+      - http/1.1
+      - h2c
+routes:
+  - match:
+      host:
+        - example.com
+        - www.example.com
+    name: www
+    handler:
+      module: respond
+      params:
+        body: |
+          www
+  - match:
+      host:
+        - api.example.com
+      path:
+        - /v1/*
+    name: api
+    handler:
+      module: respond
+      params:
+        body: |
+          api v1
+  - match:
+      host:
+        - '*.example.com'
+    name: tenants
+    handler:
+      module: respond
+      params:
+        body: |
+          a tenant's site
+  - name: default
+    priority: -1
+    handler:
+      module: respond
+      params:
+        status: 421
+        body: |
+          unknown host

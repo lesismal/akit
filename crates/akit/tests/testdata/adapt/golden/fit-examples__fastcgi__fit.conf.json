@@ -1,0 +1,40 @@
+{
+  "listeners": [
+    {
+      "name": "web",
+      "address": ":8080",
+      "protocols": [
+        "http/1.1",
+        "h2c"
+      ]
+    }
+  ],
+  "routes": [
+    {
+      "name": "php",
+      "handler": {
+        "module": "fastcgi",
+        "params": {
+          "address": "unix//run/php/php-fpm.sock",
+          "root": "/srv/app/public",
+          "split_path": [
+            ".php"
+          ],
+          "try_files": [
+            "{path}",
+            "{path}/index.php",
+            "/index.php"
+          ],
+          "env": {
+            "APP_ENV": "production"
+          },
+          "max_conns": 32,
+          "max_idle_conns": 8,
+          "max_pending": 512,
+          "response_header_timeout": "60s",
+          "timeout": "5m"
+        }
+      }
+    }
+  ]
+}

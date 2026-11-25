@@ -1,0 +1,74 @@
+listeners:
+  - name: web
+    address: :8080
+    protocols:
+      - http/1.1
+      - h2c
+routes:
+  - name: api-write
+    match:
+      path:
+        - /api/*
+      method:
+        - POST
+        - PUT
+        - DELETE
+    handler:
+      module: respond
+      params:
+        body: |
+          api write
+  - name: beta
+    match:
+      path:
+        - /api/*
+      header:
+        X-Channel:
+          - beta
+          - canary
+      query:
+        preview: []
+    handler:
+      module: respond
+      params:
+        body: |
+          beta
+  - name: internal
+    match:
+      path:
+        - /internal/*
+      remote_ip:
+        - 127.0.0.0/8
+        - 10.0.0.0/8
+    handler:
+      module: respond
+      params:
+        body: |
+          internal
+  - name: versioned
+    match:
+      path_regexp:
+        - ^/v[0-9]+/
+    handler:
+      module: respond
+      params:
+        body: |
+          versioned
+  - name: expr
+    priority: 10
+    match:
+      expr: PathPrefix("/admin/") && !RemoteIP("10.0.0.0/8")
+    handler:
+      module: respond
+      params:
+        status: 403
+        body: |
+          admin is internal only
+  - name: not-found
+    priority: -1
+    handler:
+      module: respond
+      params:
+        status: 404
+        body: |
+          not found

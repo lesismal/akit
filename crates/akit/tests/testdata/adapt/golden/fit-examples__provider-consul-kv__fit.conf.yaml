@@ -1,0 +1,12 @@
+listeners:
+  - name: web
+    address: :8080
+    protocols:
+      - http/1.1
+      - h2c
+providers:
+  - name: consul-kv
+    consul_kv:
+      endpoint: http://127.0.0.1:8500
+      prefix: fit/
+      max_keys: 1000

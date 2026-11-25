@@ -1,0 +1,70 @@
+{
+  "listeners": [
+    {
+      "name": "hooks",
+      "address": "127.0.0.1:8092",
+      "protocols": [
+        "http/1.1"
+      ]
+    }
+  ],
+  "routes": [
+    {
+      "name": "ingest",
+      "match": {
+        "path": [
+          "/ingest"
+        ],
+        "method": [
+          "POST"
+        ]
+      },
+      "handler": {
+        "module": "respond",
+        "params": {
+          "status": 202,
+          "body": "accepted\n"
+        }
+      }
+    }
+  ],
+  "sync": {
+    "state_dir": "/tmp/fit-example-sync",
+    "pipelines": [
+      {
+        "name": "events",
+        "source": {
+          "module": "file",
+          "params": {
+            "paths": [
+              "sync-wasm-sink/events.ndjson"
+            ],
+            "codec": {
+              "module": "json"
+            }
+          }
+        },
+        "sinks": [
+          {
+            "name": "webhook",
+            "sink": {
+              "module": "wasm",
+              "params": {
+                "path": "sync-wasm-sink/webhook.wasm",
+                "config": "{\"url\": \"http://127.0.0.1:8092/ingest\", \"token\": \"example-token\"}",
+                "allow_hosts": [
+                  "127.0.0.1:8092"
+                ],
+                "timeout": "10s"
+              }
+            },
+            "batch": {
+              "max_records": 100,
+              "max_wait": "1s"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

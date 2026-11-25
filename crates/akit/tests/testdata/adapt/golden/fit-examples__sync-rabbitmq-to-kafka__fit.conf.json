@@ -1,0 +1,102 @@
+{
+  "sync": {
+    "state_dir": "/tmp/fit-example-sync",
+    "pipelines": [
+      {
+        "name": "orders-to-kafka",
+        "source": {
+          "module": "rabbitmq",
+          "params": {
+            "addresses": [
+              "rabbit-1:5671",
+              "rabbit-2:5671"
+            ],
+            "tls": true,
+            "username": "fit",
+            "password_env": "RABBITMQ_PASSWORD",
+            "queues": [
+              "orders"
+            ],
+            "prefetch": 1000,
+            "codec": {
+              "module": "raw"
+            }
+          }
+        },
+        "sinks": [
+          {
+            "name": "kafka",
+            "sink": {
+              "module": "kafka",
+              "params": {
+                "brokers": [
+                  "kafka-1:9093",
+                  "kafka-2:9093"
+                ],
+                "tls": true,
+                "sasl": "SCRAM-SHA-512",
+                "username": "fit",
+                "password_env": "KAFKA_PASSWORD",
+                "topic": "orders",
+                "codec": {
+                  "module": "raw"
+                }
+              }
+            },
+            "batch": {
+              "max_records": 1000,
+              "max_wait": "100ms"
+            }
+          }
+        ]
+      },
+      {
+        "name": "shipments-to-rabbitmq",
+        "source": {
+          "module": "kafka",
+          "params": {
+            "brokers": [
+              "kafka-1:9093",
+              "kafka-2:9093"
+            ],
+            "tls": true,
+            "sasl": "SCRAM-SHA-512",
+            "username": "fit",
+            "password_env": "KAFKA_PASSWORD",
+            "topics": [
+              "shipments"
+            ],
+            "codec": {
+              "module": "raw"
+            }
+          }
+        },
+        "sinks": [
+          {
+            "name": "rabbitmq",
+            "sink": {
+              "module": "rabbitmq",
+              "params": {
+                "addresses": [
+                  "rabbit-1:5671",
+                  "rabbit-2:5671"
+                ],
+                "tls": true,
+                "username": "fit",
+                "password_env": "RABBITMQ_PASSWORD",
+                "exchange": "events",
+                "routing_key": "shipments.{namespace}",
+                "codec": {
+                  "module": "raw"
+                }
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "admin": {
+    "address": "127.0.0.1:2019"
+  }
+}

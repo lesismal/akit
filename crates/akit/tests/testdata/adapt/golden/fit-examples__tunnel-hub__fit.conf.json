@@ -1,0 +1,31 @@
+{
+  "tunnel": {
+    "hub": {
+      "name": "hub",
+      "password": "a-registration-password",
+      "body_password": "a-body-password",
+      "listeners": [
+        {
+          "protocol": "tcp",
+          "address": ":7000"
+        },
+        {
+          "protocol": "ws",
+          "address": ":7001",
+          "path": "/tunnel"
+        }
+      ],
+      "console": {
+        "address": "127.0.0.1:7080",
+        "users": [
+          {
+            "username": "admin",
+            "password_hash": "$2a$10$gkDJyGagxp1q7R24F0rSjulsgZOFL55Zm6JK2RcxTCLDk23szhZA2"
+          }
+        ]
+      },
+      "max_peers": 1024,
+      "max_tunnels": 16384
+    }
+  }
+}

@@ -1,0 +1,122 @@
+{
+  "listeners": [
+    {
+      "name": "web",
+      "address": ":8080",
+      "protocols": [
+        "http/1.1",
+        "h2c"
+      ]
+    }
+  ],
+  "media_auth": [
+    {
+      "name": "live",
+      "public": [
+        "play"
+      ],
+      "tokens": [
+        {
+          "name": "studio",
+          "token_sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+          "publish": [
+            "live/*"
+          ]
+        }
+      ],
+      "users": [
+        {
+          "name": "alice",
+          "password": "alice-password",
+          "publish": [
+            "alice/*"
+          ],
+          "play": [
+            "*"
+          ]
+        }
+      ]
+    }
+  ],
+  "streaming": {
+    "max_streams": 32,
+    "max_players": 200,
+    "rtmp": {
+      "listen": ":1935",
+      "auth": "live"
+    },
+    "rtsp": {
+      "listen": ":8554",
+      "auth": "live"
+    },
+    "srt": {
+      "listen": ":8890",
+      "auth": "live",
+      "latency": "200ms"
+    },
+    "webrtc": {
+      "listen": ":8188"
+    }
+  },
+  "routes": [
+    {
+      "name": "flv",
+      "match": {
+        "path": [
+          "/live/*",
+          "/alice/*"
+        ]
+      },
+      "handler": {
+        "module": "httpflv",
+        "params": {
+          "auth": "live",
+          "cors": "*"
+        }
+      }
+    },
+    {
+      "name": "hls",
+      "match": {
+        "path": [
+          "/hls/*"
+        ]
+      },
+      "handler": {
+        "module": "hls",
+        "params": {
+          "prefix": "/hls/",
+          "auth": "live"
+        }
+      }
+    },
+    {
+      "name": "whip",
+      "match": {
+        "path": [
+          "/whip/*"
+        ]
+      },
+      "handler": {
+        "module": "stream_whip",
+        "params": {
+          "auth": "live"
+        }
+      }
+    },
+    {
+      "name": "whep",
+      "match": {
+        "path": [
+          "/whep/*"
+        ]
+      },
+      "handler": {
+        "module": "stream_whep",
+        "params": {
+          "auth": "live"
+        }
+      }
+    }
+  ]
+}

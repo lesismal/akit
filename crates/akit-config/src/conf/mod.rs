@@ -16,7 +16,7 @@
 // lexer and parser below cannot overflow.
 #![allow(clippy::arithmetic_side_effects)]
 
-mod convert;
+pub(crate) mod convert;
 mod reader;
 
 use crate::json::{Node, ParseError};
@@ -37,6 +37,46 @@ pub(crate) fn parse(src: &str, env: Env<'_>) -> Result<Node, ParseError> {
     let ds = reader::Reader::new(words).splice(ds, true)?;
     let ds = reader::expand_sites(ds)?;
     convert::root(ds)
+}
+
+/// The directives `src` holds as written, as fit's `parse`: no `def`, `use` or `site` read, and
+/// `{$NAME}` read as empty, for writing a file again (`akit adapt`, I73).
+pub(crate) fn directives(src: &str) -> Result<Vec<Directive>, ParseError> {
+    parse_items(lex(src, &|_| None)?)
+}
+
+/// Whether `src` holds a comment, as the lexer reads one: a `#` beginning a word, to the end of
+/// its line. Writing the file again loses it (`akit fmt`, I73).
+pub(crate) fn has_comment(src: &str) -> bool {
+    let b = src.as_bytes();
+    let mut i = 0;
+    while let Some(&c) = b.get(i) {
+        match c {
+            b'#' => return true,
+            b'\n' | b';' | b' ' | b'\t' | b'\r' => i += 1,
+            b'"' => {
+                i += 1;
+                while let Some(&c) = b.get(i) {
+                    i += 1;
+                    match c {
+                        b'\\' => i += 1,
+                        b'"' => break,
+                        _ => {}
+                    }
+                }
+            }
+            b'`' => i = find(b, i + 1, b'`').map_or(b.len(), |e| e + 1),
+            _ => {
+                while b
+                    .get(i)
+                    .is_some_and(|c| !matches!(c, b' ' | b'\t' | b'\r' | b'\n'))
+                {
+                    i += 1;
+                }
+            }
+        }
+    }
+    false
 }
 
 /// A word of the file: a directive's name or one of its arguments.

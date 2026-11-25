@@ -1,0 +1,78 @@
+{
+  "listeners": [
+    {
+      "name": "web",
+      "address": ":8080",
+      "protocols": [
+        "http/1.1",
+        "h2c"
+      ]
+    }
+  ],
+  "upstreams": [
+    {
+      "name": "api",
+      "addresses": [
+        "127.0.0.1:9000"
+      ]
+    }
+  ],
+  "routes": [
+    {
+      "name": "login",
+      "match": {
+        "path": [
+          "/api/login"
+        ]
+      },
+      "middleware": [
+        {
+          "module": "rate_limit",
+          "params": {
+            "rate": 0.5,
+            "burst": 5,
+            "key": "header:X-Api-Key",
+            "trusted_proxies": [
+              "10.0.0.0/8"
+            ]
+          }
+        }
+      ],
+      "handler": {
+        "module": "proxy",
+        "params": {
+          "upstream": "api"
+        }
+      }
+    },
+    {
+      "name": "api",
+      "match": {
+        "path": [
+          "/api/*"
+        ]
+      },
+      "middleware": [
+        {
+          "module": "rate_limit",
+          "params": {
+            "rate": 10,
+            "burst": 20,
+            "key": "ip",
+            "trusted_proxies": [
+              "10.0.0.0/8"
+            ],
+            "max_keys": 100000,
+            "status": 429
+          }
+        }
+      ],
+      "handler": {
+        "module": "proxy",
+        "params": {
+          "upstream": "api"
+        }
+      }
+    }
+  ]
+}
