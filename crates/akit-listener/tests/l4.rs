@@ -596,6 +596,86 @@ fn udp_echo_sessions() {
     drop(clients);
 }
 
+/// Slow peers over UDP (I56, M3's exit): an upstream that answers one session late holds no
+/// other session back, and a client that reads nothing while its upstream floods it costs akit
+/// only the datagrams the kernel keeps for it: the session still carries the client's next
+/// datagram and its answer.
+#[test]
+fn udp_slow_peers() {
+    let _files = shared();
+    let s = UdpSocket::bind("127.0.0.1:0").unwrap();
+    let up = s.local_addr().unwrap().to_string();
+    thread::spawn(move || {
+        let mut buf = vec![0u8; 65536];
+        loop {
+            let Ok((n, from)) = s.recv_from(&mut buf) else {
+                return;
+            };
+            match &buf[..n] {
+                b"slow" => {
+                    let s = s.try_clone().unwrap();
+                    thread::spawn(move || {
+                        thread::sleep(Duration::from_millis(600));
+                        let _ = s.send_to(b"late", from);
+                    });
+                }
+                b"flood" => {
+                    let chunk = vec![b'f'; 1400];
+                    for _ in 0..20_000 {
+                        let _ = s.send_to(&chunk, from);
+                    }
+                }
+                d => {
+                    let _ = s.send_to(d, from);
+                }
+            }
+        }
+    });
+    let a = Akit::start(&udp_config("", &[&up]));
+
+    // The slow session's answer comes late; another session's meanwhile at once.
+    let slow = a.dial_udp();
+    let fast = a.dial_udp();
+    let start = Instant::now();
+    slow.send(b"slow").unwrap();
+    thread::sleep(Duration::from_millis(50));
+    assert_eq!(
+        exchange(&fast, b"fast", Duration::from_millis(200)).unwrap(),
+        b"fast"
+    );
+    assert!(
+        start.elapsed() < Duration::from_millis(500),
+        "another session waited {:?} on the slow one",
+        start.elapsed()
+    );
+    let mut buf = vec![0u8; 65536];
+    slow.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+    let n = slow.recv(&mut buf).unwrap();
+    assert_eq!(&buf[..n], b"late");
+    assert!(start.elapsed() >= Duration::from_millis(500));
+
+    // A client that reads nothing while its upstream floods it.
+    let c = a.dial_udp();
+    c.send(b"flood").unwrap();
+    thread::sleep(Duration::from_secs(1));
+    c.set_read_timeout(Some(Duration::from_millis(200)))
+        .unwrap();
+    let mut flooded = 0usize;
+    while let Ok(n) = c.recv(&mut buf) {
+        assert_eq!(n, 1400, "a datagram of the flood");
+        flooded += 1;
+    }
+    assert!(flooded > 0, "none of the flood came");
+    assert_eq!(
+        exchange(&c, b"after", Duration::from_secs(1)).unwrap(),
+        b"after"
+    );
+    assert_eq!(
+        exchange(&fast, b"again", Duration::from_secs(1)).unwrap(),
+        b"again"
+    );
+}
+
 /// A session that carries nothing for the idle timeout ends, one that does is kept, and an
 /// expired client that sends again gets a new session, from a new socket.
 #[test]
