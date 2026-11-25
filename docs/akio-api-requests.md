@@ -200,6 +200,8 @@ akit-tls sets it from the listener's `tls`.
 
 ## A10 Closing an HTTP client's idle connections
 
+**Status.** On akio's main (`0fc8f3a7`, `Client::close_idle`) and pinned.
+
 **Problem.** When a graph is retired, its upstream pools drain and close (I14, decision 004). Once
 the last request is done, the connections akio-http's `Client` keeps idle should close too, as
 fit's pool closes fib's client. akio's client has no way to close them: they close only after
@@ -1797,11 +1799,7 @@ lists `http/1.1`, and drops its "not supported yet". `akit validate` reports the
 
 ## A169 Malformed requests refused by akio's servers
 
-**Status.** The first three parts built on akio branch `claude/a169-request-checks`
-(`813f53ea`, off akio's main `dad77a7a`), with their tests, on macOS (kqueue) and the benchmark
-host (epoll and io_uring); not in akio's main, not pinned. The fourth part is not built. Before it
-goes to akio's main it needs a same-run A/B of the HTTP/2 request path (akio's rules: a check per
-field byte on the request's decode).
+**Status.** The first three parts on akio's main (`0fc8f3a7`) and pinned; the fourth is not built. The same-run A/B of the HTTP/2 request path that was to come before akio's main was not run before the merge: it is owed as a follow-up ([decisions waiting for review](decisions-pending.md)).
 
 **Problem.** I25's conformance suite (`crates/akit/tests/conformance.rs`) found requests akio's
 servers hand to the application although the RFCs call them malformed, so that akit's proxy sent
@@ -1836,10 +1834,7 @@ conformance suite's bad chunk size case expects 400 as fit's.
 
 ## A171 Client requests' timer jobs cancelled when they end
 
-**Status.** Built on akio branch `claude/a171-client-timer-cancel` (`90adec65`, off akio's main
-`e79cc740`), with a unit test of the timer and akio-http's tests; not in akio's main, not pinned.
-Measured on the benchmark host (below). Before akio's main it needs akio's same-run A/B (it
-touches every client request: one more message to the timer thread when a request ends).
+**Status.** On akio's main (`0fc8f3a7`) and pinned, merged with main's panic-safe timer thread. The same-run A/B that was to come before akio's main was not run before the merge: it is owed as a follow-up ([decisions waiting for review](decisions-pending.md)).
 
 **Problem.** I25's first run measured akit's proxy at 1.8 GiB peak memory (fit 28–73 MiB, nginx
 about 200 MiB) at 230k requests a second. Memory grew by about 240 bytes a request, whatever the
@@ -1869,9 +1864,7 @@ pinned. Until then akit's proxy grows by the requests of its route's timeout win
 
 ## A172 A ClientHello whose server name is an IP address
 
-**Status.** Built on akio branch `claude/a172-sni-ip-literal` (`d23c9368`, off akio's main
-`e79cc740`), with its tests; not in akio's main, not pinned. Checked on the benchmark host with
-fit's harness's wrk.
+**Status.** On akio's main (`0fc8f3a7`) and pinned.
 
 **Problem.** fit's benchmark harness sends its HTTPS/1.1 load with wrk to
 `https://127.0.0.1:8443/`. wrk (OpenSSL) puts the URL's host in the ClientHello's `server_name`

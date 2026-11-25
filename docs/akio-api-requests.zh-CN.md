@@ -183,6 +183,8 @@ TLS 1.2，而它是隐藏的，标明只供测试和互通工具使用。
 
 ## A10 关闭 HTTP 客户端的空闲连接
 
+**状态。** 已进入 akio 的 main（`0fc8f3a7`，`Client::close_idle`）并锁定。
+
 **问题。** 图退役时，它的上游连接池会排空并关闭（I14，决策 004）。最后一个请求完成后，akio-http 的 `Client`
 保持的空闲连接也应当关闭，就像 fit 的连接池关闭 fib 的客户端那样。akio 的客户端无法关闭它们：它们只在
 `ClientOptions::idle_timeout`（fit 默认 60s）之后、服务端关闭它们时或引擎关闭时才关闭；丢弃 `Client` 也关不掉，
@@ -1459,9 +1461,7 @@ yet"。在此之前 `akit validate` 也报告同样的错误（I25 发现它此�
 
 ## A169 akio 的服务端拒绝畸形请求
 
-**状态。** 前三部分已在 akio 分支 `claude/a169-request-checks`（`813f53ea`，基于 akio 的 main `dad77a7a`）实现，
-连同测试，在 macOS（kqueue）和基准主机（epoll 与 io_uring）上通过；未进入 akio 的 main，未锁定。第四部分未实现。
-进入 akio 的 main 之前，需要对 HTTP/2 请求路径做一次同轮 A/B（akio 的规则：请求解码时对每个字段字节的检查）。
+**状态。** 前三部分已进入 akio 的 main（`0fc8f3a7`）并锁定；第四部分未实现。原定进入 akio main 之前做的 HTTP/2 请求路径同轮 A/B 在合并前没有做，作为后续补做（见[待审决策](decisions-pending.zh-CN.md)）。
 
 **问题。** I25 的一致性测试套件（`crates/akit/tests/conformance.rs`）发现，akio 的服务端会把 RFC 规定为畸形的请求交给应用，
 于是 akit 的代理把它们转发给 HTTP/1.1 上游：
@@ -1490,9 +1490,7 @@ yet"。在此之前 `akit validate` 也报告同样的错误（I25 发现它此�
 
 ## A171 客户端请求结束时取消其定时器任务
 
-**状态。** 已在 akio 分支 `claude/a171-client-timer-cancel`（`90adec65`，基于 akio 的 main `e79cc740`）实现，带定时器
-的单元测试，akio-http 的测试通过；未进入 akio 的 main，未锁定。已在基准主机上测量（见下）。进入 akio 的 main 之前
-需要 akio 的同轮 A/B（它涉及每个客户端请求：请求结束时多发一条消息给定时器线程）。
+**状态。** 已进入 akio 的 main（`0fc8f3a7`）并锁定，与 main 上防 panic 的定时器线程合在一起。原定进入 akio main 之前做的同轮 A/B 在合并前没有做，作为后续补做（见[待审决策](decisions-pending.zh-CN.md)）。
 
 **问题。** I25 的第一次运行测得 akit 的代理在每秒 23 万请求时峰值内存为 1.8 GiB（fit 28–73 MiB，nginx 约 200 MiB）。
 无论连接池的上限如何，内存每个请求增长约 240 字节，负载结束后也不回落：`akio_http::timer::after` 为每个带
@@ -1515,8 +1513,7 @@ h2 流的控制取消其待执行的检查和流式请求的超时，完整的 h
 
 ## A172 server name 为 IP 地址的 ClientHello
 
-**状态。** 已在 akio 分支 `claude/a172-sni-ip-literal`（`d23c9368`，基于 akio 的 main `e79cc740`）实现，带测试；
-未进入 akio 的 main，未锁定。已在基准主机上用 fit harness 的 wrk 验证。
+**状态。** 已进入 akio 的 main（`0fc8f3a7`）并锁定。
 
 **问题。** fit 的基准 harness 用 wrk 对 `https://127.0.0.1:8443/` 施加 HTTPS/1.1 负载。wrk（OpenSSL）即使在 URL
 的主机是 IP 地址时也把它放进 ClientHello 的 `server_name`，而 RFC 6066 不允许这样做。akio-tls 的服务端以
