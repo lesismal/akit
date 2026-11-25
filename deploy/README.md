@@ -73,6 +73,18 @@ A tag `v<semver>` publishes the image for linux/amd64 and linux/arm64 as
 `ghcr.io/lesismal/akit:<version>` and `:<major>.<minor>` (a pre-release, `v1.2.0-rc.1`, only as
 its version).
 
+## Docker Compose
+
+[compose](compose/README.md) is fit's Compose example for akit: the image built from this checkout
+in front of two replicas of an app, routed by the app's labels through the Docker provider and
+followed as its containers are scaled, stopped and started. Its [test.sh](compose/test.sh), which
+CI's `packaging` job runs, checks each of those answers (M4's exit criterion).
+
+```bash
+cd deploy/compose && docker compose up -d --build
+curl -H 'Host: whoami.localhost' http://127.0.0.1:8080/
+```
+
 ## The Helm chart
 
 [helm/akit](helm/akit) runs akit in a cluster as a controller of the Gateway API and of Ingresses,

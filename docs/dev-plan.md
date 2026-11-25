@@ -169,7 +169,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I63 | Dashboard | I37 | done |
 | I64 | OpenTelemetry | I37 | done |
 | I65 | Packaging | I06 | done |
-| I66 | M4 exit | I57–I65 | todo |
+| I66 | M4 exit | I57–I65 | done |
 | **M5** | | | |
 | I67 | Cache I: memory tier and RFC 9111 | I17 | done |
 | I68 | Cache II: disk tier, locks, stale | I67 | done |
@@ -218,6 +218,7 @@ commit and result.
 | Prometheus metrics | I37 | no | no (built, not measured) | Same-run A/B of the fixed and proxy scenarios with `metrics` on and off (an inline route costs a thread-local read and three atomic adds; a proxied one also a boxed response filter until akio A29), and with the access log on too (one hook for both); a scrape with many routes and 64 threads (the per-thread shards). |
 | OpenTelemetry | I64 | no | no (built, not measured) | Same-run A/B of the fixed and proxy scenarios with `telemetry.traces` off, on with `sample_ratio` 0 (a field lookup a request), and on with 1 (every request: its ids, a `traceparent` local, the span encoded into a thread's buffer and a shard lock); spans dropped at full load with the default 4 MiB queue and a slow collector; the export thread's cost; a micro-benchmark of `Tracer::sample` and `Tracer::end` (fit's `BenchmarkSample`, `BenchmarkEnd`). |
 | Static musl release binaries | I65 | no | no (built, not measured) | The fixed and proxy scenarios with the release's static musl binary (`scripts/dist.sh`, musl's allocator) against a glibc build of the same commit, same-run A/B, alternating rounds: whether musl's allocator costs throughput or memory under many threads, and so whether a global allocator is worth a dependency ([decision 009](decisions/009-packaging.md)). |
+| M4 exit: the full harness at the milestone's end; providers at rest | I66 | no | no | M4 changed no request path. Left for the benchmark task (rule 24's milestone end): the full harness with M4's build against fit, nginx, Caddy and Traefik, ranked as the [M4 report](../bench/results/m4-report-2026-11-25.md) ranks; same-run A/B, alternating rounds, of a serving akit with a Kubernetes or Docker provider watching but idle against the same config without one, and requests' p99 while a provider applies a new version every second. |
 | Matchers v2 and expressions | I39 | no | no (built, not measured) | A micro-benchmark of `find_request` with matchers, expressions and path regexps (no allocation, `tests/no_alloc.rs`); same-run A/B against I39's base on the fixed scenario (one route, no matchers: within noise expected). |
 | Rewrites, redirects, headers | I40 | no | no (built, not measured) | Same-run A/B on the proxy scenario of a route with `headers` (request and response changes) and `rewrite` against the same route without them; the cost per request of the response filter (a boxed closure and an `Arc` clone) and of the request fields kept in a context local (the stopgap until akio API request A33). |
 | Rate, concurrency and size limits | I41 | no | no (built, not measured) | Same-run A/B on the proxy scenario of a route with each limit set high enough never to refuse, against the route without it: `rate_limit` by ip and by header (a shard lock, a SipHash, a map lookup), with 1, 1000 and 1000000 clients' keys and 64 threads (the shards' contention), as fit's `BenchmarkRate`; `concurrency_limit` (two atomic operations on one shared line, and a boxed response filter with an `Arc` clone until akio A48); `body_limit` (nothing per request but a field lookup). |
@@ -892,6 +893,12 @@ Split from I07 so that the half that needs no config model runs beside I02.
 
 - **Do**: conformance and the Compose example in CI; the M4 report.
 - **Done when**: the roadmap's M4 exit criteria hold.
+- **Status**: done (2026-11-25), with no akit code change and no akio request: the Gateway API's
+  `GATEWAY-HTTP` core passes at v1.3.0 (33 passed, 0 failed, 0 skipped,
+  [the report](../tests/conformance/reports/gateway-http-v1.3.0-2026-11-25.yaml)), and the Docker
+  Compose example ([deploy/compose](../deploy/compose/README.md)) routes by labels as its
+  containers are scaled, stopped and started; both in CI; the
+  [M4 report](../bench/results/m4-report-2026-11-25.md); see the progress log.
 
 ## M5, caching and extensions
 

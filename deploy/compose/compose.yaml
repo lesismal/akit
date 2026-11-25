@@ -1,0 +1,40 @@
+# akit in front of an app's containers, which it finds by their labels with the Docker provider
+# and follows as they start and stop: fit's docker-compose example (lesismal/fit-examples) for
+# akit. See README.md.
+# akit 位于应用的容器之前，它通过 Docker provider 按标签发现这些容器，并在它们启动和停止时跟随
+# 变化：fit 的 docker-compose 示例（lesismal/fit-examples）的 akit 版。见 README.md。
+name: akit-example
+
+services:
+  akit:
+    # Built from this checkout's Dockerfile; AKIT_IMAGE names an image built elsewhere, which
+    # `docker compose up --no-build` then runs.
+    # 由本检出的 Dockerfile 构建；AKIT_IMAGE 可指定在别处构建的镜像，此时用
+    # `docker compose up --no-build` 运行它。
+    build: ../..
+    image: ${AKIT_IMAGE:-akit:local}
+    # The Docker socket is root's, so akit reads it as root here. A socket proxy, as the
+    # provider's endpoint "tcp://...", lets akit keep the image's own user.
+    # Docker socket 属于 root，所以这里 akit 以 root 读取它。使用 socket 代理，作为 provider
+    # 的 endpoint "tcp://..."，可让 akit 保持镜像自己的用户。
+    user: root
+    ports:
+      - "${AKIT_PORT:-8080}:8080"
+    volumes:
+      - ./akit.conf:/etc/akit/akit.conf:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: ["run", "-c", "/etc/akit/akit.conf"]
+    restart: unless-stopped
+
+  # Two replicas, one upstream: akit balances between them and checks their health. Its labels
+  # are the whole of its routing.
+  # 两个副本，一个上游：akit 在它们之间负载均衡并检查其健康。它的标签就是它的全部路由。
+  whoami:
+    image: traefik/whoami:v1.11.0
+    deploy:
+      replicas: 2
+    labels:
+      akit.enable: "true"
+      akit.port: "80"
+      akit.routes.web.host: whoami.localhost
+      akit.upstream: '{"health_check": {"path": "/health", "interval": "5s"}}'
