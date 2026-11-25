@@ -16,7 +16,7 @@ YAML or JSON, any of them split across several files. Where akit differs from fi
 so in a note marked **akit:**.
 
 <!-- BEGIN GENERATED: summary -->
-akit reads **379** of the 3129 fields of fit's config (fit `7daee573`), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 62 objects akit reads, each has its table below.
+akit reads **417** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 62 objects akit reads, each has its table below.
 <!-- END GENERATED -->
 
 How to read the tables:
@@ -34,7 +34,8 @@ How to read the tables:
 Every example on this page is a whole config, checked by a test that runs `akit validate` on it.
 Files they name are relative to the directory akit runs in: `public/` (a directory to serve),
 `certs/example.com.pem` and `certs/example.com.key` (a certificate and its key), `certs/ca.pem` (a
-CA), `admin.token` (a token) and `plugins/headers.wasm` (a WebAssembly plugin). `akit validate`
+CA), `admin.token` (a token), and `plugins/headers.wasm` and `plugins/http_headers.wasm` (WebAssembly plugins
+of fit's ABI and of Proxy-Wasm's). `akit validate`
 opens what a config names, as `akit run` does: a certificate that does not load, a static root that
 is not there, a plugin that does not compile are errors.
 
@@ -654,8 +655,8 @@ limits {
 ## Admin API
 
 The Admin API reads and replaces the running config: `GET`, `PUT`, `PATCH` and `DELETE` on
-`/config/` and a JSON pointer into it, `POST /load` for a whole config, `POST /reload` to read the
-config's files again, ETags against lost updates (`If-Match`), the configs applied (`/versions`)
+`/config/` and a JSON pointer into it, `POST /load` for a whole config, `POST /reload` to apply the
+running config again, ETags against lost updates (`If-Match`), the configs applied (`/versions`)
 and `POST /rollback/{n}` to one of them. A change sent with `?dry_run=1` is checked through the
 whole path an apply takes, and answered as an apply would answer it, with nothing applied. It also
 serves metrics at `/metrics`, the effective config with providers merged at `/config/effective`, the
@@ -1770,7 +1771,7 @@ route {
 
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
-| `path` | string | required | The plugin: a WebAssembly module that exports fit_on_request, as a WASI reactor; package plugin/wasm/guest builds one from Go with GOOS=wasip1 GOARCH=wasm go build -buildmode=c-shared. **akit:** The plugin runs on akio-wasm's instance pool, never on an I/O thread; fit's plugins run unchanged. |
+| `path` | string | required | The plugin: a WebAssembly module that exports fit_on_request, as a WASI reactor; fit's package plugin/wasm/guest builds one from Go with GOOS=wasip1 GOARCH=wasm go build -buildmode=c-shared. **akit:** The plugin runs on akio-wasm's instance pool, never on an I/O thread; fit's plugins run unchanged. |
 | `config` | string |  | A string the plugin reads, for settings of its own. |
 | `instances` | integer, 0 or more |  | How many instances of the plugin run calls at once, each with its own memory: the CPUs akit has, at most 16, when left out or 0. |
 | `max_body_bytes` | integer, 0 or more | `1048576` | For a Proxy-Wasm plugin given the response's body, how much of it the plugin may hold, pausing it to see more, or make it; past it the response fails, or goes on without the plugin when on_error is skip. 1 MiB when left out or 0. |

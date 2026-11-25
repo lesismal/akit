@@ -102,7 +102,8 @@ TEXT = {
         "sep": ", ",
         "describe": "",
         "summary": (
-            "akit reads **{read}** of the {total} fields of fit's config (fit `{pin}`), "
+            "akit reads **{read}** of the {total} fields of fit's config (fit `{pin}`, counted as "
+            "[the compatibility page](../compatibility.md) counts them), "
             "refuses the rest by name as not supported yet, and adds **{ext}** of its own. "
             "Of the {objects} objects akit reads, each has its table below."
         ),
@@ -136,7 +137,8 @@ TEXT = {
         "sep": "、",
         "describe": "各字段的说明见英文版的[同一张表](config.md#{anchor})。",
         "summary": (
-            "fit 的配置共有 {total} 个字段（fit `{pin}`），akit 读取其中 **{read}** 个，"
+            "fit 的配置共有 {total} 个字段（fit `{pin}`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），"
+            "akit 读取其中 **{read}** 个，"
             "其余按名称拒绝为“尚不支持”（not supported yet），另有 **{ext}** 个 akit 自己的字段。"
             "akit 读取的 {objects} 个对象，下文各有一张表。"
         ),
@@ -168,6 +170,9 @@ PHRASES = [
     ("goroutine", "thread"),
 ]
 
+# What stays fit's after the text is said of akit: fit's own tools.
+AFTER = [("package plugin/wasm/guest builds one", "fit's package plugin/wasm/guest builds one")]
+
 
 def as_akit(text, default=None):
     """fit's description of a field akit reads, said of akit. akit keeps fit's default names (a
@@ -185,6 +190,8 @@ def as_akit(text, default=None):
     text = re.sub(r"(?<![/\w.-])fib(?![/\w-])", "akio", text)
     for k in keep:
         text = text.replace("\0", k)
+    for old, new in AFTER:
+        text = text.replace(old, new)
     return text
 
 
@@ -365,10 +372,10 @@ class Reference:
         return out
 
     def summary_block(self, lang):
-        read = sum(1 for p in self.supported if not (p.endswith(">") or p.endswith(">.params")))
+        # Counted as the compatibility page counts them: a module and its params are paths too.
         text = TEXT[lang]["summary"].format(
-            read=read,
-            total=sum(1 for p in self.paths if not (p.endswith(">") or p.endswith(">.params"))),
+            read=len(self.supported),
+            total=len(self.paths),
             pin=self.pin,
             ext=len(self.extensions),
             objects=len(self.objects),

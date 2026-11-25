@@ -183,7 +183,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I76 | M5 exit | I67–I75 | done |
 | **1.0** | | | |
 | I77 | Fuzzing | I56 | todo |
-| I78 | Config reference and guides | I76 | todo |
+| I78 | Config reference and guides | I76 | done |
 | I79 | v1 freeze and compatibility | I78 | todo |
 | I80 | Security review readiness | I77, I79 | todo |
 
@@ -1023,6 +1023,11 @@ Split from I07 so that the half that needs no config model runs beside I02.
 - **Do**: the config reference generated from the code; getting started; migration from fit, nginx,
   Caddy and Traefik; all bilingual.
 - **Done when**: every field in the model appears in the reference.
+- **Status**: done (2026-11-26). [The config reference](reference/config.md), its tables generated
+  by `tools/config-reference.py` from fit's schema and the fields akit-config reads, held to
+  `model.rs` by `reference_matches_akit_config`; [the guides](guides/README.md), migration from fit,
+  nginx, Caddy and Traefik among them; every config example in the docs run through `akit validate`
+  by `crates/akit/tests/docs_examples.rs`. See the progress log.
 
 ### I79 v1 freeze and compatibility
 

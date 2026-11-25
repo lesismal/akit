@@ -157,6 +157,13 @@ languages of this page. Three tests then hold the mark to the code:
   `supported.txt` marks. A new list in `model.rs` is mapped to its inventory path in this test.
 - the gate, whose report changes as the field stops being refused (`make compat-bless`).
 
+The same commit regenerates the [config reference](reference/config.md)'s tables with
+`python3 tools/config-reference.py` (`make reference`), which moves the field from not supported yet
+to read; a note on how akit reads it differently from fit goes in `tools/config-reference-notes.json`.
+`reference_matches_akit_config` (in the same file) fails while the reference's tables and
+akit-config's lists disagree, and CI's `config-reference.py --check` while the tables are not what
+the generator writes. A new extension is listed there too, with its decision.
+
 ## akit's extensions
 
 A few fields are akit's own, for what akio can do and fib cannot; each has a decision note, which

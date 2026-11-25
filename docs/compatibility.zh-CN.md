@@ -136,6 +136,11 @@ python3 tools/compat-inventory.py
   列表要在这个测试中映射到它在字段清单中的路径。
 - 门禁本身：字段不再被拒绝时，报告随之变化（`make compat-bless`）。
 
+同一个提交还要以 `python3 tools/config-reference.py`（`make reference`）重新生成[配置参考](reference/config.zh-CN.md)的表格，
+把该字段从“尚不支持”改为已读取；akit 读取它的方式与 fit 不同时，在 `tools/config-reference-notes.json` 中写一条说明。参考的表格与
+akit-config 的列表不一致时，`reference_matches_akit_config`（同一文件）会失败；表格不是生成器写出的内容时，CI 的
+`config-reference.py --check` 会失败。新的扩展字段也要连同其决定列在那里。
+
 ## akit 的扩展字段
 
 少数字段属于 akit 自己，用于 akio 能做而 fib 不能做的事；每个都有一份决策记录说明原因，并且要向 fit 提出

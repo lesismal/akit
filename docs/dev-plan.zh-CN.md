@@ -176,7 +176,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I76 | M5 退出 | I67–I75 | done |
 | **1.0** | | | |
 | I77 | Fuzz | I56 | todo |
-| I78 | 配置参考与指南 | I76 | todo |
+| I78 | 配置参考与指南 | I76 | done |
 | I79 | v1 冻结与兼容性 | I78 | todo |
 | I80 | 为安全审查做好准备 | I77, I79 | todo |
 
@@ -924,6 +924,9 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 
 - **做什么**：从代码生成的配置参考；入门；从 fit、nginx、Caddy 和 Traefik 迁移；全部中英双语。
 - **完成标准**：模型中的每个字段都出现在参考中。
+- **状态**：已完成（2026-11-26）。[配置参考](reference/config.zh-CN.md)的表格由 `tools/config-reference.py` 根据 fit 的 schema 和
+  akit-config 读取的字段生成，并由 `reference_matches_akit_config` 与 `model.rs` 对应；[指南](guides/README.zh-CN.md)，其中包括从 fit、
+  nginx、Caddy 和 Traefik 迁移；文档中的每个配置示例都由 `crates/akit/tests/docs_examples.rs` 交给 `akit validate` 检查。见开发进度的日志。
 
 ### I79 v1 冻结与兼容性
 

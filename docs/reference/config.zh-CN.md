@@ -13,7 +13,7 @@ akit 配置的每个字段：配置的每一部分是做什么的、一个示例
 akit 与 fit 不同之处，在表格中以 **akit：** 标出。
 
 <!-- BEGIN GENERATED: summary -->
-fit 的配置共有 3129 个字段（fit `7daee573`），akit 读取其中 **379** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 62 个对象，下文各有一张表。
+fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **417** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 62 个对象，下文各有一张表。
 <!-- END GENERATED -->
 
 字段说明来自 fit 代码中的 `doc` 标签，是英文的，所以每个字段的完整说明在[英文版](config.md)的同一张表中；本页的表格给出每个字段的
@@ -29,8 +29,8 @@ fit 的配置共有 3129 个字段（fit `7daee573`），akit 读取其中 **379
 - **akit 扩展**：fit 没有的字段（[见下文](#akit-的扩展)）。
 
 本页每个示例都是完整的配置，由一个测试以 `akit validate` 检查。示例中的文件相对于 akit 运行时所在的目录：`public/`（要提供的目录）、
-`certs/example.com.pem` 和 `certs/example.com.key`（证书及其私钥）、`certs/ca.pem`（CA）、`admin.token`（令牌）和
-`plugins/headers.wasm`（WebAssembly 插件）。`akit validate` 与 `akit run` 一样打开配置中指定的文件：证书无法加载、静态根目录不存在、
+`certs/example.com.pem` 和 `certs/example.com.key`（证书及其私钥）、`certs/ca.pem`（CA）、`admin.token`（令牌），以及
+`plugins/headers.wasm` 和 `plugins/http_headers.wasm`（fit ABI 和 Proxy-Wasm 的 WebAssembly 插件）。`akit validate` 与 `akit run` 一样打开配置中指定的文件：证书无法加载、静态根目录不存在、
 插件无法编译都是错误。
 
 ## 目录
@@ -660,7 +660,7 @@ limits {
 ## Admin API
 
 Admin API 读取和替换运行中的配置：对 `/config/` 及其后的 JSON 指针执行 `GET`、`PUT`、`PATCH` 和 `DELETE`，以 `POST /load`
-替换整个配置，以 `POST /reload` 重新读取配置文件，用 ETag（`If-Match`）防止更新丢失，查看已应用的配置（`/versions`），并以
+替换整个配置，以 `POST /reload` 重新应用运行中的配置，用 ETag（`If-Match`）防止更新丢失，查看已应用的配置（`/versions`），并以
 `POST /rollback/{n}` 回滚到其中之一。带 `?dry_run=1` 的修改走完应用的完整流程，像真正应用一样应答，但不应用任何东西。它还在
 `/metrics` 提供指标，在 `/config/effective` 提供合并了 provider 的生效配置，在 `/status` 提供状态，以 `POST /cache/purge` 清除
 缓存，并在 `/dashboard/` 提供只读的仪表盘。不写 `admin` 时它关闭；不写地址时监听 `127.0.0.1:2019`。经 API 的修改与 SIGHUP

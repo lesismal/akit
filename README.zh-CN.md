@@ -8,11 +8,14 @@ akio 是 fit 的引擎 [fib](https://github.com/lesismal/fib) 在 Rust 中的对
 Admin API 相同；没有垃圾回收，回调直接运行在每核一线程的 I/O 线程上，每个监听器各自选择 io_uring 或 epoll，自身没有
 一行 `unsafe`。
 
-**状态：规划中。** 还没有构建任何东西。计划是逐个里程碑达到 fit 1.0 的功能集，然后再做 fit 在边缘代理之外的各条
-路线。
+**状态：1.0 之前。** 里程碑 M0 到 M5 已完成：代理核心、动态配置与 TLS、网关功能、provider、缓存和 WebAssembly
+插件（[开发进度](docs/progress.zh-CN.md)）。1.0 把 fit 的配置和 Admin API 冻结为 v1；fit 在边缘代理之外的各条路线在其后。
 
 ## 文档
 
+- [入门](docs/guides/getting-started.zh-CN.md)和[指南](docs/guides/README.zh-CN.md)：反向代理、静态文件、HTTPS、
+  Admin API、缓存、WebAssembly 插件，以及从 fit、nginx、Caddy 和 Traefik 迁移。
+- [配置参考](docs/reference/config.zh-CN.md)：每个字段、其类型和默认值，以及 akit 与 fit 的不同之处。
 - [路线图](docs/roadmap.zh-CN.md)：目标、设计原则、里程碑，以及与 fit 对照的功能地图。
 - [开发计划](docs/dev-plan.zh-CN.md)：拆分成迭代的里程碑，每个迭代一次会话。
 - [开发进度](docs/progress.zh-CN.md)：已完成的内容，以及从哪里继续。
@@ -21,10 +24,10 @@ Admin API 相同；没有垃圾回收，回调直接运行在每核一线程的 
 - [akio API 需求](docs/akio-api-requests.zh-CN.md)：akit 需要而 akio 还没有的东西。
 - [决定](docs/decisions/README.zh-CN.md)：依赖策略、与 fit 的配置兼容，以及之后做出的其他决定。
 
-## 预期的样子
+## 它的样子
 
 fit 能运行的配置，例如 fit 的 [hello](https://github.com/lesismal/fit-examples/blob/main/hello/fit.conf)，
-应当不加修改就能运行：
+不加修改就能运行：
 
 ```fit
 listener web {

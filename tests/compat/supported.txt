@@ -1,7 +1,8 @@
 # The fit config fields akit supports, one path a line, in the notation of fit-fields.txt.
 # An iteration that makes akit read a field (and act on it: a field read and then ignored fails
 # the gate) adds its path here in the same commit, then reruns python3 tools/compat-inventory.py,
-# which checks every path is one fit accepts and regenerates docs/compatibility.md.
+# which checks every path is one fit accepts and regenerates docs/compatibility.md, and
+# python3 tools/config-reference.py, which regenerates the config reference's tables (I78).
 # The gate's tests check that akit-config reads each field listed here (supported_fields_are_read)
 # and that these are exactly the fields its model reads (akit_config_lists_match_the_inventory).
 #

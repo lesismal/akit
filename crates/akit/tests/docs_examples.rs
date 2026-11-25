@@ -10,11 +10,18 @@
 //!
 //! The examples name files relative to the directory akit runs in; the test runs them in a
 //! directory that holds them ([`sandbox`]): `public/`, `certs/example.com.pem`,
-//! `certs/example.com.key`, `certs/ca.pem`, `admin.token` and `plugins/headers.wasm`.
+//! `certs/example.com.key`, `certs/ca.pem`, `admin.token`, and `plugins/headers.wasm` and
+//! `plugins/http_headers.wasm` (a plugin of fit's ABI and a Proxy-Wasm one).
 //!
 //! A document and its Chinese twin show the same examples, in the same order: that is checked
 //! too, so that an example changed in one language is changed in the other.
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects
+)]
 
 mod support;
 
@@ -132,14 +139,21 @@ fn sandbox() -> PathBuf {
         &["example.com", "www.example.com"],
     );
     fs::write(d.join("admin.token"), "an-admin-token\n").unwrap();
-    let gz = fs::read(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../akit-plugin/tests/guests/headers-go.wasm.gz"),
-    )
-    .unwrap();
-    let wasm = akio_deflate::decompress(akio_deflate::Format::Gzip, &gz, 64 << 20).unwrap();
+    // fit's `headers` plugin (fit's ABI), and the Proxy-Wasm Go SDK's `http_headers`.
     fs::create_dir_all(d.join("plugins")).unwrap();
-    fs::write(d.join("plugins/headers.wasm"), wasm).unwrap();
+    for (guest, name) in [
+        ("headers-go.wasm.gz", "headers.wasm"),
+        ("pw-http_headers.wasm.gz", "http_headers.wasm"),
+    ] {
+        let gz = fs::read(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../akit-plugin/tests/guests")
+                .join(guest),
+        )
+        .unwrap();
+        let wasm = akio_deflate::decompress(akio_deflate::Format::Gzip, &gz, 64 << 20).unwrap();
+        fs::write(d.join("plugins").join(name), wasm).unwrap();
+    }
     d
 }
 
