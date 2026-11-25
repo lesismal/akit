@@ -124,17 +124,13 @@ impl Gate {
 
     /// Takes a lookup's slot, unless every one is taken.
     fn take_slot(&self) -> bool {
-        self.lookups
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| {
-                (n < MAX_SHARED_LOOKUPS).then_some(n.saturating_add(1))
-            })
-            .is_ok()
+        update(&self.lookups, |n| {
+            (n < MAX_SHARED_LOOKUPS).then_some(n.saturating_add(1))
+        })
     }
 
     fn free_slot(&self) {
-        let _ = self
-            .lookups
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| n.checked_sub(1));
+        update(&self.lookups, |n| n.checked_sub(1));
     }
 }
 
@@ -212,12 +208,26 @@ struct Slots {
     client: Option<usize>,
 }
 
+/// Sets `a` to what `f` makes of it, unless `f` makes nothing; whether it did. As
+/// `fetch_update`, which newer Rust deprecates for `try_update`, a name the oldest Rust akit
+/// builds with (its `rust-version`) does not have.
+fn update(a: &AtomicUsize, f: impl Fn(usize) -> Option<usize>) -> bool {
+    let mut n = a.load(Ordering::Acquire);
+    loop {
+        let Some(m) = f(n) else { return false };
+        match a.compare_exchange_weak(n, m, Ordering::AcqRel, Ordering::Acquire) {
+            Ok(_) => return true,
+            Err(now) => n = now,
+        }
+    }
+}
+
 impl Drop for Slots {
     fn drop(&mut self) {
         let g = &self.acme.inner.gate;
         g.free_slot();
         if let Some(c) = self.client.and_then(|i| g.clients.get(i)) {
-            let _ = c.fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| n.checked_sub(1));
+            update(c, |n| n.checked_sub(1));
         }
     }
 }
