@@ -83,6 +83,7 @@
 | A134 | 经 HTTP/2 和 HTTP/3 的 CONNECT 隧道（RFC 9113 §8.5、RFC 9114 §4.4） | 已在 akio 的 main（`4989cd8b`），已锁定 | 9、19 | I55 |
 | A135 | 拨号 Unix 域流套接字，以及在其上的 HTTP 客户端（akio、akio-http、akio-sys） | 已在 akio 的 main（`0f2c419b`），已锁定 | 1、2 | I58 |
 | A148 | 请求到达的地址（监听器的本地地址），HTTP/1.1、h2 和 h3 | 已提出（I75） | — | I75 |
+| A165 | 插件用的 WebAssembly 运行时：沙箱解释器、宿主 API、WASI preview 1、实例池；Proxy-Wasm 需要的响应钩子 | 已提出（I71）；在 akio 的 ADR-125 中设计（提议中，分支 `claude/wasm-design-95c5ec`） | 1、4、11 | I71、I72 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -1316,3 +1317,26 @@ CONNECT 应答 501（权宜之计，记录在进度日志中）。
 authority），akio-h3 在收到头部时分派；流式的 `2xx` 即为隧道。`connect_proxy` 在该流上中继，检查、超时、状态码
 与 HTTP/1.1 隧道相同，双向背压；客户端的 END_STREAM 关闭上游的发送方向（新增的
 `Conn::shutdown_write_after_send`）。`H2Client` 也能发送这样的 CONNECT。501 已去掉。
+
+## A165 插件用的 WebAssembly 运行时
+
+**问题。** fit 在路由的每个请求上运行 WASM 插件（决策 017：wazero，fit 自己的 ABI；决策 018 和 023：Proxy-Wasm
+子集，其请求和响应回调），在自己的池上运行，有时间和内存上限。akit 不使用 `unsafe`，也没有异步运行时（规则 1 和
+21），无法自带 WebAssembly 运行时，而 akio 还没有。
+
+**证据。** 在 `8453b60c`：akio 中没有任何 crate 解码或运行 WebAssembly；akio-http 有同步的响应过滤器
+（`add_response_filter`）和 body tap（ADR-116），但没有能扣住响应头、或让响应 body 经过别处进行的调用、直到该
+调用应答的机制。
+
+**建议的 API。** 在 akio 的
+[ADR-125](https://github.com/lesismal/akio/blob/main/docs/adr/125-wasm-runtime-for-plugins.zh-CN.md)
+中设计（提议中；合并前在 akio 分支 `claude/wasm-design-95c5ec` 上）：新 crate `akio-wasm`，
+`#![forbid(unsafe_code)]`，无依赖，一个 WebAssembly 2.0 核心（不含 SIMD）的解释器（即 Go、TinyGo 和 Rust guest
+生成的内容）；`Module`、`Linker`、`Instance`，有内存和栈上限，以及按基本块检查的每次调用预算（截止时间、fuel、
+中断）；WASI preview 1 子集；`InstancePool`，即拥有实例的线程，带有界的共享队列和每实例队列。I72 的响应阶段需要
+akio-http 的两个钩子（H1：扣住响应头，直到别处的调用把它交回；H2：流式 body 由别处进行的调用逐次过滤），即 fit 向
+fib 提出的 A41 和 A46，在 I72 开始时单独提出。里程碑 W1–W6 见 ADR；I71 需要 W1–W4 和 A33。
+
+**akit 的用法。** `akit-plugin` 在 `akio-wasm` 的安全 API 上实现 fit 的 ABI（模块 `fit`，`fit_sync` 的名字被调用
+时 trap）和 Proxy-Wasm 的宿主函数，挂起每个请求（`Context::suspend`，ADR-109），调用返回时从池上恢复它，就像 fit
+的 `wasm` 中间件在 fib 上所做的那样。

@@ -84,6 +84,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | A134 | CONNECT tunnels over HTTP/2 and HTTP/3 (RFC 9113 §8.5, RFC 9114 §4.4) | in akio's main (`4989cd8b`), pinned | 9, 19 | I55 |
 | A135 | Dialing a Unix-domain stream socket, and the HTTP client over one (akio, akio-http, akio-sys) | in akio's main (`0f2c419b`), pinned | 1, 2 | I58 |
 | A148 | The address a request came to (the listener's local address), on HTTP/1.1, h2 and h3 | requested (I75) | — | I75 |
+| A165 | A WebAssembly runtime for plugins: a sandboxed interpreter, its host API, WASI preview 1, a pool of instances; the response hooks Proxy-Wasm needs | requested (I71); designed in akio's ADR-125 (proposed, branch `claude/wasm-design-95c5ec`) | 1, 4, 11 | I71, I72 |
 
 ## A1 TCP listeners on a running engine
 
@@ -1616,3 +1617,32 @@ alone, the target the authority) at once and akio-h3 one at its head; a streamed
 tunnel. `connect_proxy` relays it on its stream with the HTTP/1.1 tunnel's checks, timeouts and
 statuses and backpressure both ways; the client's END_STREAM shuts the upstream's send direction
 down (the new `Conn::shutdown_write_after_send`). `H2Client` sends such a CONNECT. The 501 is gone.
+
+## A165 A WebAssembly runtime for plugins
+
+**Problem.** fit runs WASM plugins on each request of a route (decision 017: wazero, fit's own
+ABI; decisions 018 and 023: the Proxy-Wasm subset, its request and response callbacks), on a pool
+of its own with time and memory limits. akit has no `unsafe` and no async runtime (rules 1 and
+21), so it cannot carry a WebAssembly runtime itself, and akio has none.
+
+**Evidence.** At `8453b60c`: no crate of akio decodes or runs WebAssembly; akio-http has
+synchronous response filters (`add_response_filter`) and body taps (ADR-116), but nothing that
+holds a response's head, or passes its body through a call made elsewhere, until that call
+answers.
+
+**Suggested API.** Designed in akio's
+[ADR-125](https://github.com/lesismal/akio/blob/main/docs/adr/125-wasm-runtime-for-plugins.md)
+(proposed; on akio branch `claude/wasm-design-95c5ec` until merged): a new crate `akio-wasm`,
+`#![forbid(unsafe_code)]` and without dependencies, an interpreter of WebAssembly 2.0's core
+without SIMD (what Go, TinyGo and Rust guests emit); `Module`, `Linker`, `Instance` with memory
+and stack limits and a per-call budget (deadline, fuel, interrupt) checked per basic block; a
+WASI preview 1 subset; `InstancePool`, threads that own instances, with bounded shared and
+per-instance queues. For I72's response phase, two akio-http hooks (H1: a response's head held
+until a call elsewhere hands it back; H2: a streamed body filtered by calls made elsewhere, one at
+a time), fit's A41 and A46 from fib, to be requested on their own when I72 starts. Milestones
+W1-W6 in the ADR; I71 needs W1-W4 and A33.
+
+**How akit uses it.** `akit-plugin` implements fit's ABI (module `fit`, with `fit_sync`'s names
+trapping if called) and Proxy-Wasm's host functions on `akio-wasm`'s safe API, suspends each
+request (`Context::suspend`, ADR-109) and resumes it from the pool when the call returns, as fit's
+`wasm` middleware does with fib.
