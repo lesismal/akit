@@ -367,6 +367,30 @@ impl akio_http::Service for Dispatcher {
                         ctx.bytes(200, "text/plain", answer.into_bytes());
                         return;
                     }
+                    // With a shared storage (I62), another instance's, looked up off this
+                    // thread: the request is answered later, 404 when there is none, as fit's.
+                    if let Some((a, token)) = g.acme().filter(|a| a.shared()).and_then(|a| {
+                        path.decoded
+                            .strip_prefix(akit_tls::ACME_CHALLENGE_PREFIX.as_bytes())
+                            .and_then(|t| std::str::from_utf8(t).ok())
+                            .map(|t| (a, t.to_owned()))
+                    }) {
+                        let client = ctx.req().peer.ip();
+                        let Some(reply) = ctx.detach() else { return };
+                        a.lookup_http_challenge(
+                            &token,
+                            Some(client),
+                            Box::new(move |answer| {
+                                reply.respond(match answer {
+                                    Some(a) => {
+                                        Response::with_body(200, "text/plain", a.into_bytes())
+                                    }
+                                    None => Response::text(404, NOT_FOUND),
+                                });
+                            }),
+                        );
+                        return;
+                    }
                 }
                 let req = RouterRequest {
                     req: ctx.req(),

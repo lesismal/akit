@@ -35,6 +35,9 @@ mod ari;
 mod jws;
 mod on_demand;
 mod protocol;
+mod shared;
+
+pub use shared::{MAX_CLIENT_LOOKUPS, MAX_MISSES, MAX_SHARED_LOOKUPS};
 
 pub use on_demand::{
     ASK_BURST, ASK_EVERY, MAX_ASKS, MAX_REFUSED, MAX_WAITERS, OnDemandError, REFUSED_FOR, Waiter,
@@ -55,6 +58,7 @@ use akit_config::Challenge;
 
 use crate::ocsp::{Ocsp, Staple};
 use crate::published::Published;
+use crate::shared::SharedStore;
 use crate::storage::{FileStorage, Storage, StorageError};
 
 use ari::AriState;
@@ -144,6 +148,12 @@ struct State {
 
 struct Inner {
     storage: Arc<dyn Storage>,
+    /// Whether the storage is shared between hosts (I62): challenges are kept there too.
+    shared: bool,
+    /// The challenges other instances have in progress, and the lookups of them (I62).
+    gate: shared::Gate,
+    /// The storage, when the manager made it from `acme.shared_storage`: closed with it.
+    own_store: Option<Arc<SharedStore>>,
     directory: String,
     email: String,
     roots: Option<RootCerts>,
@@ -315,7 +325,13 @@ struct Stored {
 /// The certificate that answers the TLS-ALPN-01 challenge of `name` whose key authorization is
 /// `key_auth` (RFC 8737 section 3): self-signed, for `name` alone, with the critical
 /// acmeIdentifier extension holding the authorization's SHA-256, on a key of its own.
+#[cfg(test)]
 pub(crate) fn alpn_cert(name: &str, key_auth: &str) -> Result<CertifiedKey, String> {
+    alpn_cert_pem(name, key_auth).map(|(k, _)| k)
+}
+
+/// [`alpn_cert`], with its chain and key as one PEM, as the shared storage keeps it.
+pub(crate) fn alpn_cert_pem(name: &str, key_auth: &str) -> Result<(CertifiedKey, String), String> {
     let key = akio_crypto::p256::SecretKey::generate().map_err(|e| e.to_string())?;
     let key = akio_crypto::pkey::PrivateKey::P256(key);
     let mut p = CertificateParams::new([name]);
@@ -328,11 +344,17 @@ pub(crate) fn alpn_cert(name: &str, key_auth: &str) -> Result<CertifiedKey, Stri
         value,
     });
     let cert = p.self_signed(&key).map_err(|e| e.to_string())?;
-    CertifiedKey::new(
+    let pem = format!(
+        "{}{}",
+        cert.to_pem(),
+        akio_crypto::pem::encode("PRIVATE KEY", &key.to_pkcs8_der())
+    );
+    let k = CertifiedKey::new(
         vec![Certificate::from_der(cert.as_der().to_vec())],
         PrivateKey::from_pkcs8_der(key.to_pkcs8_der()),
     )
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?;
+    Ok((k, pem))
 }
 
 /// A challenge's answer under way, given back when it is dropped: the key authorization of an
@@ -359,6 +381,17 @@ impl Acme {
     ///
     /// An `acme.ca_file` that cannot be read or holds no certificate.
     pub fn new(config: &akit_config::Acme) -> Result<Acme, crate::Error> {
+        if let Some(c) = &config.shared_storage {
+            let store = Arc::new(
+                SharedStore::new(c).map_err(|e| crate::Error::new("acme.shared_storage", e))?,
+            );
+            let storage: Arc<dyn Storage> = Arc::clone(&store) as Arc<dyn Storage>;
+            let a = Acme::make(config, storage, Some(Arc::clone(&store)));
+            if a.is_err() {
+                store.close();
+            }
+            return a;
+        }
         let storage: Arc<dyn Storage> = match (config.storage.is_empty(), default_root()) {
             (false, _) => Arc::new(FileStorage::new(&config.storage)),
             (true, Some(root)) => Arc::new(FileStorage::new(root)),
@@ -376,6 +409,14 @@ impl Acme {
     pub fn with_storage(
         config: &akit_config::Acme,
         storage: Arc<dyn Storage>,
+    ) -> Result<Acme, crate::Error> {
+        Acme::make(config, storage, None)
+    }
+
+    fn make(
+        config: &akit_config::Acme,
+        storage: Arc<dyn Storage>,
+        own_store: Option<Arc<SharedStore>>,
     ) -> Result<Acme, crate::Error> {
         let roots = if config.ca_file.is_empty() {
             None
@@ -403,6 +444,9 @@ impl Acme {
             .transpose()?;
         let a = Acme {
             inner: Arc::new(Inner {
+                shared: storage.shared(),
+                gate: shared::Gate::new(),
+                own_store,
                 storage,
                 directory: config.directory.clone(),
                 email: config.email.clone(),
@@ -442,6 +486,9 @@ impl Acme {
     /// default).
     pub fn set_log(&self, log: Log) {
         self.inner.ocsp.set_log(Arc::clone(&log));
+        if let Some(s) = &self.inner.own_store {
+            s.set_log(Arc::clone(&log));
+        }
         *lock(&self.inner.log) = log;
     }
 
@@ -688,6 +735,10 @@ impl Acme {
             od.close();
         }
         self.inner.ocsp.close();
+        if let Some(s) = &self.inner.own_store {
+            // Gives back the locks still held, and closes its connections.
+            s.close();
+        }
     }
 
     /// A worker: takes a name that is due and not being worked on, works on it, and sleeps
@@ -1181,19 +1232,39 @@ impl Acme {
             return Err(format!("the challenge's token {token:?} is not base64url"));
         }
         let key_auth = key.key_authorization(token);
-        let _answering = match typ {
+        // With a shared storage, the marker first, so that an instance that looks for the answer
+        // finds the marker good; the answer kept there too (I62). Dropped in reverse: the shared
+        // answer removed, then the one in memory, then the marker no longer kept.
+        let _marker = self.inner.shared.then(|| self.mark_in_progress(deadline));
+        let (_answering, _shared) = match typ {
             Challenge::Http01 => {
+                let shared = self.inner.shared.then(|| {
+                    self.share_challenge(
+                        self.http_challenge_key(token),
+                        key_auth.as_bytes(),
+                        deadline,
+                    )
+                });
                 self.set_token(token, Some(key_auth));
-                Answering::Token(self, token.to_owned())
+                (Answering::Token(self, token.to_owned()), shared)
             }
             Challenge::TlsAlpn01 => {
                 let name = normalize(ident);
-                let cert = alpn_cert(&name, &key_auth)
+                let (cert, pem) = alpn_cert_pem(&name, &key_auth)
                     .map_err(|e| format!("the tls-alpn-01 certificate: {e}"))?;
                 self.set_alpn(&name, Some(cert));
-                Answering::Alpn(self, name)
+                let answering = Answering::Alpn(self, name.clone());
+                let shared = (self.inner.shared && shared::name_ok(&name)).then(|| {
+                    self.share_challenge(self.alpn_challenge_key(&name), pem.as_bytes(), deadline)
+                });
+                (answering, shared)
             }
         };
+        if self.inner.shared {
+            // Until no instance holds what it read of the storage before the answer was there,
+            // which the CA's check might otherwise meet.
+            self.settle_shared(deadline)?;
+        }
         ca.accept(key, kid, chal_url, deadline)
             .map_err(|e| format!("accepting the challenge: {e}"))?;
         ca.poll(key, kid, url, &["valid"], None, deadline)

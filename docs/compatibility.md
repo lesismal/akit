@@ -175,13 +175,13 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 370 supported.
+3821 fields in 121 sections, at fit `7daee573`; 397 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
 | [`access`](#fields-access) | 5 | 0 | 5 |
 | [`access_log`](#fields-access-log) | 14 | 7 | 7 |
-| [`acme`](#fields-acme) | 43 | 16 | 27 |
+| [`acme`](#fields-acme) | 43 | 43 | 0 |
 | [`admin`](#fields-admin) | 105 | 7 | 98 |
 | [`auto_https`](#fields-auto-https) | 5 | 5 | 0 |
 | [`bittorrent`](#fields-bittorrent) | 160 | 0 | 160 |
@@ -300,7 +300,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 370 | 3451 |
+| **Total** | 3821 | 397 | 3424 |
 
 <a id="fields-access"></a>
 
@@ -355,33 +355,33 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `acme.on_demand.rate` | `integer` | supported |
 | `acme.on_demand.timeout` | `duration` | supported |
 | `acme.request_timeout` | `duration` | supported |
-| `acme.shared_storage` | `object` | not supported yet |
-| `acme.shared_storage.consul` | `object` | not supported yet |
-| `acme.shared_storage.consul.ca_file` | `string` | not supported yet |
-| `acme.shared_storage.consul.cert_file` | `string` | not supported yet |
-| `acme.shared_storage.consul.datacenter` | `string` | not supported yet |
-| `acme.shared_storage.consul.endpoint` | `string` | not supported yet |
-| `acme.shared_storage.consul.key_file` | `string` | not supported yet |
-| `acme.shared_storage.consul.token_file` | `string` | not supported yet |
-| `acme.shared_storage.etcd` | `object` | not supported yet |
-| `acme.shared_storage.etcd.ca_file` | `string` | not supported yet |
-| `acme.shared_storage.etcd.cert_file` | `string` | not supported yet |
-| `acme.shared_storage.etcd.endpoints` | `array<string>` | not supported yet |
-| `acme.shared_storage.etcd.key_file` | `string` | not supported yet |
-| `acme.shared_storage.etcd.password_file` | `string` | not supported yet |
-| `acme.shared_storage.etcd.username` | `string` | not supported yet |
-| `acme.shared_storage.lock_ttl` | `duration` | not supported yet |
-| `acme.shared_storage.prefix` | `string` | not supported yet |
-| `acme.shared_storage.redis` | `object` | not supported yet |
-| `acme.shared_storage.redis.address` | `string` | not supported yet |
-| `acme.shared_storage.redis.ca_file` | `string` | not supported yet |
-| `acme.shared_storage.redis.cert_file` | `string` | not supported yet |
-| `acme.shared_storage.redis.db` | `integer` | not supported yet |
-| `acme.shared_storage.redis.key_file` | `string` | not supported yet |
-| `acme.shared_storage.redis.password_file` | `string` | not supported yet |
-| `acme.shared_storage.redis.tls` | `boolean` | not supported yet |
-| `acme.shared_storage.redis.username` | `string` | not supported yet |
-| `acme.shared_storage.request_timeout` | `duration` | not supported yet |
+| `acme.shared_storage` | `object` | supported |
+| `acme.shared_storage.consul` | `object` | supported |
+| `acme.shared_storage.consul.ca_file` | `string` | supported |
+| `acme.shared_storage.consul.cert_file` | `string` | supported |
+| `acme.shared_storage.consul.datacenter` | `string` | supported |
+| `acme.shared_storage.consul.endpoint` | `string` | supported |
+| `acme.shared_storage.consul.key_file` | `string` | supported |
+| `acme.shared_storage.consul.token_file` | `string` | supported |
+| `acme.shared_storage.etcd` | `object` | supported |
+| `acme.shared_storage.etcd.ca_file` | `string` | supported |
+| `acme.shared_storage.etcd.cert_file` | `string` | supported |
+| `acme.shared_storage.etcd.endpoints` | `array<string>` | supported |
+| `acme.shared_storage.etcd.key_file` | `string` | supported |
+| `acme.shared_storage.etcd.password_file` | `string` | supported |
+| `acme.shared_storage.etcd.username` | `string` | supported |
+| `acme.shared_storage.lock_ttl` | `duration` | supported |
+| `acme.shared_storage.prefix` | `string` | supported |
+| `acme.shared_storage.redis` | `object` | supported |
+| `acme.shared_storage.redis.address` | `string` | supported |
+| `acme.shared_storage.redis.ca_file` | `string` | supported |
+| `acme.shared_storage.redis.cert_file` | `string` | supported |
+| `acme.shared_storage.redis.db` | `integer` | supported |
+| `acme.shared_storage.redis.key_file` | `string` | supported |
+| `acme.shared_storage.redis.password_file` | `string` | supported |
+| `acme.shared_storage.redis.tls` | `boolean` | supported |
+| `acme.shared_storage.redis.username` | `string` | supported |
+| `acme.shared_storage.request_timeout` | `duration` | supported |
 | `acme.storage` | `string` | supported |
 | `acme.timeout` | `duration` | supported |
 

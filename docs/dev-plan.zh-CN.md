@@ -158,7 +158,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I59 | Kubernetes Ingress | I57 | done |
 | I60 | Kubernetes Gateway API 与一致性测试 | I59 | done |
 | I61 | Consul 与 etcd | I57 | done |
-| I62 | 共享证书存储 | I30, I61 | todo |
+| I62 | 共享证书存储 | I30, I61 | done |
 | I63 | 仪表盘 | I37 | done |
 | I64 | OpenTelemetry | I37 | done |
 | I65 | 打包 | I06 | todo |
@@ -769,6 +769,9 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 - **做什么**：证书存储在 Redis、etcd 或 Consul 中并带锁，让多个实例共享签发。
 - **完成标准**：两个实例共享一张证书，只签发一次。
 - **涉及**：`akit-tls`。
+- **fit**：决策 014。
+- **状态**：已完成（2026-11-25），没有 akio 请求：经 akio 的连接以 RESP2 访问 Redis，经 akio 的 HTTP
+  客户端访问 etcd 和 Consul；挑战在 fit 的“挑战进行中”标记之后共享；见进度日志。
 
 ### I63 仪表盘
 

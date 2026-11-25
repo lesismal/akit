@@ -153,7 +153,11 @@ pub struct EtcdProvider {
 }
 
 /// A string member with its position.
-fn string_at(d: &mut Decoder<'_>, o: &mut Obj<'_>, key: &str) -> Option<(String, usize)> {
+pub(crate) fn string_at(
+    d: &mut Decoder<'_>,
+    o: &mut Obj<'_>,
+    key: &str,
+) -> Option<(String, usize)> {
     o.take(key)
         .and_then(|v| Some((d.string(v, &o.at(key))?, v.off)))
 }
@@ -176,7 +180,12 @@ fn duration_at(d: &mut Decoder<'_>, o: &mut Obj<'_>, key: &str, default: Duratio
 }
 
 /// An endpoint member, checked by fit's `checkEndpoint`: `default` when left out or empty.
-fn endpoint_at(d: &mut Decoder<'_>, o: &mut Obj<'_>, key: &str, default: &str) -> String {
+pub(crate) fn endpoint_at(
+    d: &mut Decoder<'_>,
+    o: &mut Obj<'_>,
+    key: &str,
+    default: &str,
+) -> String {
     match string_at(d, o, key) {
         Some((ep, off)) if !ep.is_empty() => {
             if let Err(msg) = check_endpoint(&ep) {
@@ -189,7 +198,7 @@ fn endpoint_at(d: &mut Decoder<'_>, o: &mut Obj<'_>, key: &str, default: &str) -
 }
 
 /// `ca_file`, `cert_file` and `key_file`, with fit's `checkTLSFiles`.
-fn client_tls_files(d: &mut Decoder<'_>, o: &mut Obj<'_>) -> ClientTlsFiles {
+pub(crate) fn client_tls_files(d: &mut Decoder<'_>, o: &mut Obj<'_>) -> ClientTlsFiles {
     let ca_file = string_at(d, o, "ca_file").map(|s| s.0).unwrap_or_default();
     let cert_file = string_at(d, o, "cert_file");
     let key_file = string_at(d, o, "key_file");

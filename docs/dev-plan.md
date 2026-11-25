@@ -165,7 +165,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I59 | Kubernetes Ingress | I57 | done |
 | I60 | Kubernetes Gateway API and conformance | I59 | done |
 | I61 | Consul and etcd | I57 | done |
-| I62 | Shared certificate storage | I30, I61 | todo |
+| I62 | Shared certificate storage | I30, I61 | done |
 | I63 | Dashboard | I37 | done |
 | I64 | OpenTelemetry | I37 | done |
 | I65 | Packaging | I06 | todo |
@@ -853,6 +853,10 @@ Split from I07 so that the half that needs no config model runs beside I02.
 - **Do**: certificate storage in Redis, etcd or Consul with locks, so instances share issuance.
 - **Done when**: two instances share one certificate with one issuance.
 - **Touches**: `akit-tls`.
+- **fit**: decision 014.
+- **Status**: done (2026-11-25), with no akio request: Redis spoken in RESP2 over akio's
+  connections, etcd and Consul over akio's HTTP client; challenges shared behind fit's marker of
+  challenges in progress; see the progress log.
 
 ### I63 Dashboard
 

@@ -70,8 +70,8 @@ pub enum Challenge {
 }
 
 /// `acme`, as fit's `config.ACME` (decision 007): where certificates are obtained and kept, and
-/// how fast, and how names are taken on during handshakes (`on_demand`, I34). `shared_storage`
-/// is refused as not supported yet.
+/// how fast, how names are taken on during handshakes (`on_demand`, I34), and the store
+/// instances on several hosts share them in (`shared_storage`, I62).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Acme {
     /// `directory`: the URL of the CA's ACME directory; [`DEFAULT_ACME_DIRECTORY`] when left out.
@@ -99,6 +99,9 @@ pub struct Acme {
     /// `on_demand`: how certificates are obtained during handshakes, for the listeners whose
     /// `tls.on_demand` is set (I34).
     pub on_demand: Option<OnDemand>,
+    /// `shared_storage`: where instances on several hosts keep what ACME obtains, in place of
+    /// `storage`, with the locks and challenge answers that let them share it (I62).
+    pub shared_storage: Option<crate::SharedStorage>,
 }
 
 /// fit's default `acme.on_demand.rate`: certificates obtained on demand every `interval`.
@@ -165,6 +168,7 @@ impl Default for Acme {
             request_timeout: DEFAULT_ACME_REQUEST_TIMEOUT,
             challenges: vec![Challenge::Http01, Challenge::TlsAlpn01],
             on_demand: None,
+            shared_storage: None,
         }
     }
 }
@@ -1938,7 +1942,7 @@ const TLS_FIELDS: &[&str] = &[
 ];
 // kernel_tls_offload comes with engine's.
 const TLS_FIT_ONLY: &[&str] = &["kernel_tls_offload"];
-// I31: shared_storage comes with fit's shared storage.
+// I62: shared_storage, in shared_storage.rs.
 const ACME_FIELDS: &[&str] = &[
     "directory",
     "email",
@@ -1949,6 +1953,7 @@ const ACME_FIELDS: &[&str] = &[
     "request_timeout",
     "challenges",
     "on_demand",
+    "shared_storage",
 ];
 const ON_DEMAND_FIELDS: &[&str] = &[
     "ask",
@@ -1960,7 +1965,7 @@ const ON_DEMAND_FIELDS: &[&str] = &[
 ];
 // I33: HTTPS by default (crate::auto_https).
 const AUTO_HTTPS_FIELDS: &[&str] = &["disable", "disable_redirects", "http_port", "https_port"];
-const ACME_FIT_ONLY: &[&str] = &["shared_storage"];
+const ACME_FIT_ONLY: &[&str] = &[];
 const CERTIFICATE_FIELDS: &[&str] = &["cert_file", "key_file"];
 const CLIENT_AUTH_FIELDS: &[&str] = &["ca_files", "mode"];
 const ROUTE_FIELDS: &[&str] = &[
@@ -2610,9 +2615,10 @@ fn acme(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Acme> {
     if let Some((_, s)) = string(&mut o, d, "ca_file") {
         a.ca_file = s;
     }
-    if let Some((_, s)) = string(&mut o, d, "storage") {
+    let storage_off = string(&mut o, d, "storage").map(|(off, s)| {
         a.storage = s;
-    }
+        off
+    });
     if let Some(v) = o.take("max_concurrent") {
         // fit's int, at least 0; 0 is the default.
         if let Some(n) = d
@@ -2663,6 +2669,16 @@ fn acme(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Acme> {
     }
     if let Some(v) = o.take("on_demand") {
         a.on_demand = on_demand(d, v, &o.at("on_demand"));
+    }
+    if let Some(v) = o.take("shared_storage") {
+        if let Some(off) = storage_off.filter(|_| !a.storage.is_empty()) {
+            d.error(
+                off,
+                &o.at("storage"),
+                "storage and shared_storage are two places to keep certificates: set one",
+            );
+        }
+        a.shared_storage = crate::shared_storage::shared_storage(d, v, &o.at("shared_storage"));
     }
     o.finish(d, ACME_FIELDS, ACME_FIT_ONLY);
     Some(a)

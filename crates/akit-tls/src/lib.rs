@@ -65,16 +65,18 @@ mod acme;
 mod certs;
 pub mod ocsp;
 mod published;
+mod shared;
 mod storage;
 mod upstream;
 mod watch;
 
 pub use acme::{
     ACME_CHALLENGE_PREFIX, ACME_TLS_ALPN, ASK_BURST, ASK_EVERY, Acme, DEFAULT_RETRY_BASE,
-    DEFAULT_RETRY_MAX, Log, MAX_ASKS, MAX_NAMES, MAX_REFUSED, MAX_WAITERS, OnDemandError,
-    REFUSED_FOR, Waiter,
+    DEFAULT_RETRY_MAX, Log, MAX_ASKS, MAX_CLIENT_LOOKUPS, MAX_MISSES, MAX_NAMES, MAX_REFUSED,
+    MAX_SHARED_LOOKUPS, MAX_WAITERS, OnDemandError, REFUSED_FOR, Waiter,
 };
 pub use ocsp::{Ocsp, Staple};
+pub use shared::{DEFAULT_LOCK_POLL as SHARED_LOCK_POLL, MAX_KEYS, REDIS_CONNS, SharedStore};
 
 pub use certs::{Certs, Sum};
 pub use storage::{
@@ -293,6 +295,9 @@ const ON_DEMAND_HANDSHAKE_EXTRA: std::time::Duration = std::time::Duration::from
 enum Pick {
     Key(Option<CertifiedKey>),
     OnDemand(String),
+    /// A TLS-ALPN-01 challenge for this name, under way at another instance, maybe: looked up in
+    /// the shared storage (I62).
+    SharedAlpn(String),
 }
 
 /// A handshake waiting for a certificate on demand: akio-tls's answer.
@@ -473,7 +478,9 @@ impl ListenerTls {
     /// Read from memory, in the handshake's call. `None` when there is none to give.
     ///
     /// A handshake offering [`ACME_TLS_ALPN`] alone is a CA checking a TLS-ALPN-01 challenge: it
-    /// gets the challenge's certificate, for a name this listener lists, or nothing.
+    /// gets the challenge's certificate, for a name this listener lists, or nothing. Here, only
+    /// one in memory; [`resolve`](Self::resolve) looks one another instance has under way up in a
+    /// shared storage too (I62).
     #[must_use]
     pub fn get(&self, hello: &ClientHelloInfo<'_>) -> Option<CertifiedKey> {
         self.get_hello(&certs::Hello::from(hello))
@@ -482,7 +489,7 @@ impl ListenerTls {
     pub(crate) fn get_hello(&self, hello: &certs::Hello<'_>) -> Option<CertifiedKey> {
         match self.pick(hello) {
             Pick::Key(k) => k,
-            Pick::OnDemand(_) => None,
+            Pick::OnDemand(_) | Pick::SharedAlpn(_) => None,
         }
     }
 
@@ -496,6 +503,16 @@ impl ListenerTls {
             Pick::Key(None) => done.fail(CertAlert::UnrecognizedName),
             Pick::OnDemand(name) => match &self.acme {
                 Some(a) => a.acme.on_demand(&name, Box::new(Handshake(done))),
+                None => done.fail(CertAlert::UnrecognizedName),
+            },
+            Pick::SharedAlpn(name) => match &self.acme {
+                Some(a) => a.acme.lookup_alpn_challenge(
+                    &name,
+                    Box::new(move |k| match k {
+                        Some(k) => done.complete(k),
+                        None => done.fail(CertAlert::UnrecognizedName),
+                    }),
+                ),
                 None => done.fail(CertAlert::UnrecognizedName),
             },
         }
@@ -516,7 +533,11 @@ impl ListenerTls {
                 if !a.names.contains(&name) && a.on_demand.is_none() {
                     return Pick::Key(None);
                 }
-                return Pick::Key(a.acme.alpn_challenge(&name));
+                return match a.acme.alpn_challenge(&name) {
+                    // Another instance's, from the shared storage (I62), what is in memory first.
+                    None if a.acme.shared() => Pick::SharedAlpn(name),
+                    k => Pick::Key(k),
+                };
             }
         }
         {

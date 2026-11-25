@@ -128,6 +128,15 @@ pub trait Storage: Send + Sync + fmt::Debug {
     ///
     /// A lock not held here, or the store's failure.
     fn unlock(&self, name: &str) -> Result<(), StorageError>;
+    /// Whether it is shared between hosts (fit's `Shared`), as a [`SharedStore`](crate::SharedStore)
+    /// is: what an instance needs another to answer, a challenge, is kept there then. False by
+    /// default.
+    fn shared(&self) -> bool {
+        false
+    }
+    /// Gives back the locks still held and closes its connections; what made it calls it when it
+    /// is done with it. Nothing by default.
+    fn close(&self) {}
 }
 
 /// The directory under [`FileStorage::root`] its locks are kept in; not a key `list` returns.
@@ -239,7 +248,7 @@ impl FileStorage {
     }
 }
 
-fn check(deadline: Instant) -> Result<(), StorageError> {
+pub(crate) fn check(deadline: Instant) -> Result<(), StorageError> {
     if Instant::now() >= deadline {
         return Err(StorageError::Timeout);
     }

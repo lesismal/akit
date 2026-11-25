@@ -1,6 +1,6 @@
 //! `acme` and `tls.acme` (I31): read as fit reads them, with fit's checks of the names;
-//! `acme.on_demand` and `tls.on_demand` (I34) with fit's checks; what akit does not do yet
-//! (shared storage) refused as not supported yet; `acme` given by one file only.
+//! `acme.on_demand` and `tls.on_demand` (I34) with fit's checks; `acme` given by one file only.
+//! `acme.shared_storage` (I62) is in shared_storage.rs.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -127,13 +127,6 @@ fn refused() {
         assert!(got.starts_with(want), "{fields}: {e:?}");
         assert!(!e[0].contains("not supported yet"), "{fields}: {e:?}");
     }
-}
-
-#[test]
-fn not_supported_yet() {
-    let e = from_json(r#"{"acme": {"shared_storage": {}}}"#, None).unwrap_err();
-    assert!(e.only_not_supported_yet(), "{e}");
-    assert_eq!(e.as_slice()[0].path, "acme.shared_storage");
 }
 
 #[test]
