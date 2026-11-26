@@ -28,9 +28,9 @@ first; its status here records the branch, then the akio commit akit pins.
 | A7 | An MP4 (ISO BMFF) reader for segmenting files without transcoding | in akio's main (`a9a620ab`), pinned | — | media library |
 | A8 | TUN devices | in akio's main (`a9a620ab`), pinned | — | VPN |
 | A9 | A TLS server capped at TLS 1.2 (public `ServerConfigBuilder` API) | in akio's main (`4989cd8b`), pinned | 17 | I09 |
-| A10 | Closing an HTTP client's idle connections now | built on an akio branch (I38: `claude/a10-close-idle`, `af959290`), not on akio's main | 10, 11 | I14, I22, I38 |
+| A10 | Closing an HTTP client's idle connections now | on akio's main and pinned (since `0fc8f3a7`) | 10, 11 | I14, I22, I38 |
 | A11 | An HTTP/1 client request that keeps its own `Host` field (and sends no `User-Agent` when given an empty one) | in akio's main (`a9a620ab`), pinned | — | I15 |
-| A12 | The HTTP client's connect timeout for a lone address too | done on akio branch `claude/akit-open-requests` (`22e038cc`, akio's ADR-154), used by akit (pin not moved yet) | 10 | I14, I35 |
+| A12 | The HTTP client's connect timeout for a lone address too | on akio's main and pinned (since `6bcd8ad6`, akio's ADR-154) | 10 | I14, I35 |
 | A13 | `Files` serving a path the caller names | in akio's main (`a9a620ab`), pinned | 19 | I12, I13 |
 | A14 | `Files` answering as a gateway's static handler does | in akio's main (`4989cd8b`), pinned | 19 | I12, I13 |
 | A15 | `Files` bounded in memory, its disk pool with a timeout | in akio's main (`4989cd8b`), pinned | 4, 11 | I12 |
@@ -40,33 +40,33 @@ first; its status here records the branch, then the akio commit akit pins.
 | A19 | An HTTP client request whose body is sent as it is produced, with backpressure | in akio's main (`60547435`), pinned, used by I16 | 5, 8 | I16, I17, I18, I49, I75 |
 | A20 | An HTTP client response delivered as it arrives, its reads held and resumed | in akio's main (`60547435`), pinned, used by I16 | 5, 8 | I16, I17, I18, I67 |
 | A21 | A server request that holds its client's reads and hears when its client drained | in akio's main (`60547435`), pinned, used by I16 | 5, 8 | I16, I47, I75 |
-| A22 | UDP listeners removed and drained on a running engine | done on akio branch `claude/akit-open-requests` (`22bc4402`, akio's ADR-155), used by akit (pin not moved yet) | 10, 11 | I22, I28 |
+| A22 | UDP listeners removed and drained on a running engine | on akio's main and pinned (since `6bcd8ad6`, akio's ADR-155) | 10, 11 | I22, I28 |
 | A23 | Unix-domain stream listeners (with a socket file mode) | in akio's main (`4989cd8b`), pinned | 11 | I26, I29 |
-| A24 | An HTTP/1 response that closes its connection, and stops reading a body it refused | done on akio branch `claude/akit-open-requests` (`22bc4402`, akio's ADR-157), used by akit (pin not moved yet) | 7, 10, 11 | I26, I27, I41 |
-| A29 | A response hook without an allocation: a listener's observer, called with a few words the request set | done on akio branch `claude/akit-open-requests` (`8caab91c`, akio's ADR-158), used by akit (pin not moved yet) | 13 | I21, I37, I64 |
-| A30 | The open connections a listener accepted, apart from dialed ones and UDP peers | done on akio branch `claude/akit-open-requests` (`57a942af`), used by akit (pin not moved yet) | — | I37 |
+| A24 | An HTTP/1 response that closes its connection, and stops reading a body it refused | on akio's main and pinned (since `6bcd8ad6`, akio's ADR-157) | 7, 10, 11 | I26, I27, I41 |
+| A29 | A response hook without an allocation: a listener's observer, called with a few words the request set | on akio's main and pinned (since `6bcd8ad6`, akio's ADR-158) | 13 | I21, I37, I64 |
+| A30 | The open connections a listener accepted, apart from dialed ones and UDP peers | on akio's main and pinned (since `6bcd8ad6`) | — | I37 |
 | A32 | Where an `akio-regex` pattern matches, its groups, and replacing them | in akio's main (`e9891b52`), pinned | 19 | I40, I48 |
 | A33 | A request's fields and target changed by a middleware (`Context::req_mut`) | in akio's main (`dad77a7a`), pinned | 12, 19 | I40, I43, I44, I71 |
-| A35 | A streamed HTTP/1.1 response framed by its length | done on akio branch `claude/akit-open-requests` (`22bc4402`, akio's ADR-157), used by akit (pin not moved yet) | 5 | I16, I67 |
+| A35 | A streamed HTTP/1.1 response framed by its length | on akio's main and pinned (since `6bcd8ad6`, akio's ADR-157) | 5 | I16, I67 |
 | A36 | An HTTP client request's response-header and idle timeouts | in akio's main (`4f7169c4`), pinned, used by I17b | 10 | I17b, I18 |
 | A37 | An HTTP client request cancelled at any point | in akio's main (`4f7169c4`), pinned, used by I17b | 3 | I17b, I45 |
 | A38 | A detached server request that hears its client went; a write stall timeout changed at run time | in akio's main (`4f7169c4`), pinned, used by I17b | 3, 10 | I17b, I49 |
-| A45 | A public timer: a callback run once a delay has passed, from any thread | done on akio branch `claude/akit-open-requests` (`22e038cc`, akio's ADR-154), used by akit (pin not moved yet) | 1, 11 | I35, I31, I52, I54 |
+| A45 | A public timer: a callback run once a delay has passed, from any thread | on akio's main and pinned (since `6bcd8ad6`, akio's ADR-154) | 1, 11 | I35, I31, I52, I54 |
 | A48 | A request's end heard: its response sent in full, or its client gone while it waits | in akio's main (`dad77a7a`), pinned | 3, 11, 13 | I41, I17, I21, I37 |
-| A49 | A request body limited by a middleware, whoever reads the body | done on akio branch `claude/akit-open-requests` (`22bc4402`, akio's ADR-157), used by akit (pin not moved yet) | 7, 11 | I41 |
+| A49 | A request body limited by a middleware, whoever reads the body | on akio's main and pinned (since `6bcd8ad6`, akio's ADR-157) | 7, 11 | I41 |
 | A51 | `H2Client`'s streamed requests: reset, timeout, request trailers, and failed rather than forgotten on a `GOAWAY` | in akio's main (`f6750e93`, ADR-110), pinned, used by I18b 3, 10 | I18b, I50 |
 | A52 | `H2Client` backpressure per stream: a streamed response's reads held, an upload's queue reported | in akio's main (`f6750e93`, ADR-110), pinned, used by I18b 8 | I18b, I50 |
 | A53 | `H2Client`'s connection: the server's stream limit heeded and reported, the connect timeout, ALPN's HTTP/1.1 fallback | in akio's main (`f6750e93`, ADR-110), pinned, used by I18b 10, 11 | I18b, I54 |
-| A54 | An idle HTTP/1 connection drained after a grace, not at once | done on akio branch `claude/akit-open-requests` (`8caab91c`), used by akit (pin not moved yet) | 10 | I28 |
+| A54 | An idle HTTP/1 connection drained after a grace, not at once | on akio's main and pinned (since `6bcd8ad6`) | 10 | I28 |
 | A57 | Root certificates usable outside a handshake: the system's, to verify a chain against | in akio's main (`4989cd8b`), pinned | 1, 19 | I32 |
 | A58 | The ALPN protocol a TLS connection negotiated, seen by an HTTP service (or such a connection closed) | in akio's main (`4989cd8b`), pinned | 19 | I32, I34 |
 | A63 | bcrypt password hashes in `akio-crypto` | in akio's main (`4f7169c4`), pinned | 1, 4 | I42 |
 | A64 | The client's verified certificate on each server request | in akio's main (`4f7169c4`), pinned | — | I42 |
 | A65 | A request suspended by a middleware and resumed with its context | in akio's main (`4f7169c4`), pinned | 1, 3, 4 | I42, I43 |
 | A66 | `H2Client`'s requests heeding `response_header_timeout`, `response_idle_timeout` and a `CancelToken` | in akio's main (`d27e6a20`, ADR-111), pinned, used by I18b | 3, 10 | I17b, I18b |
-| A75 | A request whose body streams suspended, its body's reads held until it is resumed | done on akio branch `claude/akit-open-requests` (`a88c5d7b`, akio's ADR-159), used by akit (pin not moved yet) | 5, 7, 8 | I42, I43, I44 |
-| A78 | An idle timeout per connection, TCP or a UDP peer, set by its handler | done on akio branch `claude/akit-open-requests` (`22bc4402`, akio's ADR-155), used by akit (pin not moved yet) | 10, 11 | I51, I55 |
-| A79 | `Engine::dial` and `dial_udp` with a connect timeout of their own | done on akio branch `claude/akit-open-requests` (`22e038cc`, akio's ADR-154), used by akit (pin not moved yet) | 10 | I51, I54, I55 |
+| A75 | A request whose body streams suspended, its body's reads held until it is resumed | on akio's main and pinned (since `6bcd8ad6`, akio's ADR-159) | 5, 7, 8 | I42, I43, I44 |
+| A78 | An idle timeout per connection, TCP or a UDP peer, set by its handler | on akio's main and pinned (since `6bcd8ad6`, akio's ADR-155) | 10, 11 | I51, I55 |
+| A79 | `Engine::dial` and `dial_udp` with a connect timeout of their own | on akio's main and pinned (since `6bcd8ad6`, akio's ADR-154) | 10 | I51, I54, I55 |
 | A90 | A streamed response's coding set by a response filter of the caller's own, and a value kept until the response is sent | in akio's main (`c5cf4353`), pinned | 8, 11 | I47 |
 | A91 | `Files` keeping compressed copies of the files it holds in memory | in akio's main (`c5cf4353`), pinned | 4, 12 | I47 |
 | A92 | A body sent from a file on disk encoded by a stream coding | in akio's main (`4989cd8b`), pinned | 1, 5 | I47 |
@@ -78,24 +78,24 @@ first; its status here records the branch, then the akio commit akit pins.
 | A111 | A response filter sees a streamed body as it is sent, and how it ended (a body tap) | in akio's main (`e9891b52`), pinned | 5, 6 | I67 |
 | A112 | An HTTP-date parsed in all three formats RFC 9110 has recipients accept | in akio's main (`e9891b52`, ADR-116), pinned | 15 | I67 |
 | A113 | A response filter that runs after the inner ones (an outer filter) | in akio's main (`e9891b52`, ADR-116), pinned | 5 | I67 |
-| A117 | `akio::Pool` and `PoolConfig` together: a bounded pool of an application's own for its blocking work | done on akio branch `claude/akit-open-requests` (`57a942af`), used by akit (pin not moved yet) | 4 | I68 |
+| A117 | `akio::Pool` and `PoolConfig` together: a bounded pool of an application's own for its blocking work | on akio's main and pinned (since `6bcd8ad6`) | 4 | I68 |
 | A132 | A proxy tunnel's upstream checked once connected, by the name asked for and both addresses; the SOCKS client a trusted PROXY header names | in akio's main (`8453b60c`), pinned | 1, 19 | I55 |
 | A133 | A proxy's connect timeout of its own, answered (SOCKS5 4, HTTP 504) | in akio's main (`8453b60c`), pinned | 10 | I55 |
 | A134 | CONNECT tunnels over HTTP/2 and HTTP/3 (RFC 9113 §8.5, RFC 9114 §4.4) | in akio's main (`4989cd8b`), pinned | 9, 19 | I55 |
 | A135 | Dialing a Unix-domain stream socket, and the HTTP client over one (akio, akio-http, akio-sys) | in akio's main (`0f2c419b`), pinned | 1, 2 | I58 |
-| A148 | The address a request came to (the listener's local address), on HTTP/1.1, h2 and h3 | done on akio branch `claude/akit-open-requests` (`22bc4402`, akio's ADR-157), used by akit (pin not moved yet) | — | I75 |
+| A148 | The address a request came to (the listener's local address), on HTTP/1.1, h2 and h3 | on akio's main and pinned (since `6bcd8ad6`, akio's ADR-157) | — | I75 |
 | A165 | A WebAssembly runtime for plugins: a sandboxed interpreter, its host API, WASI preview 1, a pool of instances; the response hooks Proxy-Wasm needs | in akio's main (`dad77a7a`), pinned | 1, 4, 11 | I71, I72 |
 | A166 | A response's head held while a call made elsewhere decides on it (fit's A41 from fib) | in akio's main (`dad77a7a`), pinned | 1, 4 | I72 |
 | A167 | A response body filtered by calls made elsewhere, one at a time, its trailers in the last (fit's A46 from fib) | in akio's main (`dad77a7a`), pinned | 1, 4, 5, 8 | I72 |
-| A168 | An HTTP server that serves HTTP/2 with prior knowledge alone (a listener with `h2c` and no `http/1.1`) | built on akio branch `claude/i79b-akio` (I79b, ADR-174, `HttpConfig::http1`), not in akio's main; used by akit's I79b branch | 19 | I05, I25, I79b |
-| A169 | Requests RFC 9112, RFC 9113 and RFC 9114 call malformed refused by akio's servers: two `Host` fields, bad bytes in HTTP/2 and HTTP/3 field names and values, a streamed body's bad framing answered 400 | built on akio branch `claude/a169-request-checks` (`813f53ea`, but the last part), not in akio's main | 15, 19 | I25 |
-| A171 | An HTTP client request's timer jobs cancelled when it ends, not held until its timeout would pass | built on akio branch `claude/a171-client-timer-cancel` (`90adec65`), not in akio's main | 11, 13 | I15, I18, I25 |
-| A172 | A TLS server that takes a ClientHello whose server name is an IP address (as no name) rather than failing the handshake | built on akio branch `claude/a172-sni-ip-literal` (`d23c9368`), not in akio's main | 19 | I09, I25 |
-| A170 | A connection's TCP counters (and unread bytes) without reaching into `Conn::inner`, and a splice that writes first through the engine's own API | done on akio branch `claude/akit-open-requests` (`22bc4402`, akio's ADR-156), used by akit (pin not moved yet) | 1, 14 | I51b |
+| A168 | An HTTP server that serves HTTP/2 with prior knowledge alone (a listener with `h2c` and no `http/1.1`) | on akio's main and pinned (since `6bcd8ad6`, akio's ADR-174) | 19 | I05, I25, I79b |
+| A169 | Requests RFC 9112, RFC 9113 and RFC 9114 call malformed refused by akio's servers: two `Host` fields, bad bytes in HTTP/2 and HTTP/3 field names and values, a streamed body's bad framing answered 400 | on akio's main and pinned (since `0fc8f3a7`) | 15, 19 | I25 |
+| A171 | An HTTP client request's timer jobs cancelled when it ends, not held until its timeout would pass | on akio's main and pinned (since `0fc8f3a7`) | 11, 13 | I15, I18, I25 |
+| A172 | A TLS server that takes a ClientHello whose server name is an IP address (as no name) rather than failing the handshake | on akio's main and pinned (since `0fc8f3a7`) | 19 | I09, I25 |
+| A170 | A connection's TCP counters (and unread bytes) without reaching into `Conn::inner`, and a splice that writes first through the engine's own API | on akio's main and pinned (since `6bcd8ad6`, akio's ADR-156) | 1, 14 | I51b |
 | A180 | akio-wasm's call made cheaper, measured against wazero (akio's W5) | requested (I76): a header-editing Go guest costs akit 14.7 µs of CPU a request, fit 6.8 µs | 13 | I71, I72, I76 |
 | A200 | A request target in absolute form taken as RFC 9112 asks: its path as the request's path, its authority as its host | requested (I77); akit-listener rewrites such a request to origin form meanwhile | 15, 19 | I77 |
-| A214 | A budget of the bytes queued for every connection together, which pauses every connection's reads past it (fit's `limits.max_pending_bytes`) | built on akio branch `claude/i79b-akio` (I79b, ADR-172, `Config::max_pending_bytes`), not in akio's main; used by akit's I79b branch | 8, 11 | I79, I79b |
-| A215 | A connection limit that counts the connections accepted, not those the engine dials (fit's `limits.max_conns`) | built on akio branch `claude/i79b-akio` (I79b, ADR-173, `Config::max_accepted_connections`), not in akio's main; used by akit's I79b branch | 11 | I79, I79b |
+| A214 | A budget of the bytes queued for every connection together, which pauses every connection's reads past it (fit's `limits.max_pending_bytes`) | on akio's main and pinned (since `6bcd8ad6`, akio's ADR-172) | 8, 11 | I79, I79b |
+| A215 | A connection limit that counts the connections accepted, not those the engine dials (fit's `limits.max_conns`) | on akio's main and pinned (since `6bcd8ad6`, akio's ADR-173) | 11 | I79, I79b |
 
 ## A1 TCP listeners on a running engine
 

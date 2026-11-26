@@ -27,9 +27,9 @@
 | A7 | 不转码即可切分文件的 MP4（ISO BMFF）读取器 | 已在 akio 的 main（`a9a620ab`），已锁定 | — | 媒体库 |
 | A8 | TUN 设备 | 已在 akio 的 main（`a9a620ab`），已锁定 | — | VPN |
 | A9 | 把 TLS 服务端限制在 TLS 1.2（`ServerConfigBuilder` 的公开 API） | 已在 akio 的 main（`4989cd8b`），已锁定 | 17 | I09 |
-| A10 | 立即关闭 HTTP 客户端的空闲连接 | 已在 akio 分支上实现（I38：`claude/a10-close-idle`，`af959290`），未进入 akio 的 main | 10、11 | I14、I22、I38 |
+| A10 | 立即关闭 HTTP 客户端的空闲连接 | 已进入 akio 的 main 并锁定（自 `0fc8f3a7` 起） | 10、11 | I14、I22、I38 |
 | A11 | HTTP/1 客户端请求保留自己的 `Host` 字段（给定空 `User-Agent` 时不发送 `User-Agent`） | 已在 akio 的 main（`a9a620ab`），已锁定 | — | I15 |
-| A12 | HTTP 客户端的连接超时也作用于单个地址 | 已在 akio 分支 `claude/akit-open-requests` 上实现（`22e038cc`，akio 的 ADR-154），akit 已使用（尚未移动锁定） | 10 | I14、I35 |
+| A12 | HTTP 客户端的连接超时也作用于单个地址 | 已进入 akio 的 main 并锁定（自 `6bcd8ad6` 起，akio 的 ADR-154） | 10 | I14、I35 |
 | A13 | `Files` 服务调用者给出的路径 | 已在 akio 的 main（`a9a620ab`），已锁定 | 19 | I12、I13 |
 | A14 | `Files` 像网关的静态文件 handler 那样应答 | 已在 akio 的 main（`4989cd8b`），已锁定 | 19 | I12、I13 |
 | A15 | `Files` 的内存有界，磁盘池有超时 | 已在 akio 的 main（`4989cd8b`），已锁定 | 4、11 | I12 |
@@ -39,33 +39,33 @@
 | A19 | HTTP 客户端请求的请求体边产生边发送，带背压 | 已在 akio 的 main（`60547435`），已固定，I16 已使用 | 5、8 | I16、I17、I18、I49、I75 |
 | A20 | HTTP 客户端响应边到达边交付，可暂停和恢复读取 | 已在 akio 的 main（`60547435`），已固定，I16 已使用 | 5、8 | I16、I17、I18、I67 |
 | A21 | 服务端请求可暂停其客户端的读取，并在客户端排空时得到通知 | 已在 akio 的 main（`60547435`），已固定，I16 已使用 | 5、8 | I16、I47、I75 |
-| A22 | 在运行中的引擎上移除和排空 UDP 监听器 | 已在 akio 分支 `claude/akit-open-requests` 上实现（`22bc4402`，akio 的 ADR-155），akit 已使用（尚未移动锁定） | 10、11 | I22、I28 |
+| A22 | 在运行中的引擎上移除和排空 UDP 监听器 | 已进入 akio 的 main 并锁定（自 `6bcd8ad6` 起，akio 的 ADR-155） | 10、11 | I22、I28 |
 | A23 | Unix 域流式监听器（可设套接字文件权限） | 已在 akio 的 main（`4989cd8b`），已锁定 | 11 | I26、I29 |
-| A24 | 关闭连接的 HTTP/1 响应，并停止读取已拒绝的请求体 | 已在 akio 分支 `claude/akit-open-requests` 上实现（`22bc4402`，akio 的 ADR-157），akit 已使用（尚未移动锁定） | 7、10、11 | I26、I27、I41 |
-| A29 | 不分配内存的应答钩子：监听器的观察者，带着请求设下的几个字被调用 | 已在 akio 分支 `claude/akit-open-requests` 上实现（`8caab91c`，akio 的 ADR-158），akit 已使用（尚未移动锁定） | 13 | I21、I37、I64 |
-| A30 | 监听器接受的打开连接数，与拨出的连接和 UDP 对端分开 | 已在 akio 分支 `claude/akit-open-requests` 上实现（`57a942af`），akit 已使用（尚未移动锁定） | — | I37 |
+| A24 | 关闭连接的 HTTP/1 响应，并停止读取已拒绝的请求体 | 已进入 akio 的 main 并锁定（自 `6bcd8ad6` 起，akio 的 ADR-157） | 7、10、11 | I26、I27、I41 |
+| A29 | 不分配内存的应答钩子：监听器的观察者，带着请求设下的几个字被调用 | 已进入 akio 的 main 并锁定（自 `6bcd8ad6` 起，akio 的 ADR-158） | 13 | I21、I37、I64 |
+| A30 | 监听器接受的打开连接数，与拨出的连接和 UDP 对端分开 | 已进入 akio 的 main 并锁定（自 `6bcd8ad6` 起） | — | I37 |
 | A32 | `akio-regex` 模式在哪里匹配、它的分组，以及替换 | 已在 akio 的 main（`e9891b52`），已锁定 | 19 | I40、I48 |
 | A33 | 被中间件修改的请求字段和请求目标（`Context::req_mut`） | 已在 akio 的 main（`dad77a7a`），已锁定 | 12、19 | I40、I43、I44、I71 |
-| A35 | 按长度分帧的流式 HTTP/1.1 响应 | 已在 akio 分支 `claude/akit-open-requests` 上实现（`22bc4402`，akio 的 ADR-157），akit 已使用（尚未移动锁定） | 5 | I16、I67 |
+| A35 | 按长度分帧的流式 HTTP/1.1 响应 | 已进入 akio 的 main 并锁定（自 `6bcd8ad6` 起，akio 的 ADR-157） | 5 | I16、I67 |
 | A36 | HTTP 客户端请求的响应头超时和空闲超时 | 已在 akio 的 main（`4f7169c4`），已锁定，I17b 已使用 | 10 | I17b、I18 |
 | A37 | 可在任意时刻取消的 HTTP 客户端请求 | 已在 akio 的 main（`4f7169c4`），已锁定，I17b 已使用 | 3 | I17b、I45 |
 | A38 | 能得知客户端离开的分离服务端请求；可在运行时修改的写停滞超时 | 已在 akio 的 main（`4f7169c4`），已锁定，I17b 已使用 | 3、10 | I17b、I49 |
-| A45 | 公开的定时器：延迟过后运行一次回调，可从任何线程调度 | 已在 akio 分支 `claude/akit-open-requests` 上实现（`22e038cc`，akio 的 ADR-154），akit 已使用（尚未移动锁定） | 1、11 | I35、I31、I52、I54 |
+| A45 | 公开的定时器：延迟过后运行一次回调，可从任何线程调度 | 已进入 akio 的 main 并锁定（自 `6bcd8ad6` 起，akio 的 ADR-154） | 1、11 | I35、I31、I52、I54 |
 | A48 | 获知请求的结束：响应已完整发出，或等待中客户端已离开 | 已在 akio 的 main（`dad77a7a`），已锁定 | 3、11、13 | I41、I17、I21、I37 |
-| A49 | 由中间件限制请求体大小，无论谁读取请求体 | 已在 akio 分支 `claude/akit-open-requests` 上实现（`22bc4402`，akio 的 ADR-157），akit 已使用（尚未移动锁定） | 7、11 | I41 |
+| A49 | 由中间件限制请求体大小，无论谁读取请求体 | 已进入 akio 的 main 并锁定（自 `6bcd8ad6` 起，akio 的 ADR-157） | 7、11 | I41 |
 | A51 | `H2Client` 的流式请求：重置、超时、请求 trailer，以及遇到 `GOAWAY` 时报告失败而不是被遗忘 | 已在 akio 的 main（`f6750e93`，ADR-110），已锁定，I18b 已使用 | 3、10 | I18b、I50 |
 | A52 | `H2Client` 按流的背压：暂停流式响应的读取，报告上传队列 | 已在 akio 的 main（`f6750e93`，ADR-110），已锁定，I18b 已使用 | 8 | I18b、I50 |
 | A53 | `H2Client` 的连接：遵守并报告服务器的流数上限、连接超时、ALPN 回退到 HTTP/1.1 | 已在 akio 的 main（`f6750e93`，ADR-110），已锁定，I18b 已使用 | 10、11 | I18b、I54 |
-| A54 | 空闲的 HTTP/1 连接在宽限期后排空，而非立即关闭 | 已在 akio 分支 `claude/akit-open-requests` 上实现（`8caab91c`），akit 已使用（尚未移动锁定） | 10 | I28 |
+| A54 | 空闲的 HTTP/1 连接在宽限期后排空，而非立即关闭 | 已进入 akio 的 main 并锁定（自 `6bcd8ad6` 起） | 10 | I28 |
 | A57 | 握手之外可用的根证书：用系统的根证书校验证书链 | 已在 akio 的 main（`4989cd8b`），已锁定 | 1、19 | I32 |
 | A58 | HTTP 服务能看到 TLS 连接协商出的 ALPN 协议（或关闭这样的连接） | 已在 akio 的 main（`4989cd8b`），已锁定 | 19 | I32、I34 |
 | A63 | `akio-crypto` 中的 bcrypt 密码哈希 | 已在 akio 的 main（`4f7169c4`），已锁定 | 1、4 | I42 |
 | A64 | 每个服务端请求上的客户端已验证证书 | 已在 akio 的 main（`4f7169c4`），已锁定 | — | I42 |
 | A65 | 由中间件挂起、之后带着上下文恢复的请求 | 已在 akio 的 main（`4f7169c4`），已锁定 | 1、3、4 | I42、I43 |
 | A66 | `H2Client` 的请求遵守 `response_header_timeout`、`response_idle_timeout` 和 `CancelToken` | 已在 akio 的 main（`d27e6a20`，ADR-111），已锁定，I18b 已使用 | 3、10 | I17b、I18b |
-| A75 | 挂起消息体流式读取的请求，并暂停其消息体的读取直到恢复 | 已在 akio 分支 `claude/akit-open-requests` 上实现（`a88c5d7b`，akio 的 ADR-159），akit 已使用（尚未移动锁定） | 5、7、8 | I42、I43、I44 |
-| A78 | 每个连接（TCP 或 UDP 对端）各自的空闲超时，由其处理器设置 | 已在 akio 分支 `claude/akit-open-requests` 上实现（`22bc4402`，akio 的 ADR-155），akit 已使用（尚未移动锁定） | 10、11 | I51、I55 |
-| A79 | 带各自连接超时的 `Engine::dial` 与 `dial_udp` | 已在 akio 分支 `claude/akit-open-requests` 上实现（`22e038cc`，akio 的 ADR-154），akit 已使用（尚未移动锁定） | 10 | I51、I54、I55 |
+| A75 | 挂起消息体流式读取的请求，并暂停其消息体的读取直到恢复 | 已进入 akio 的 main 并锁定（自 `6bcd8ad6` 起，akio 的 ADR-159） | 5、7、8 | I42、I43、I44 |
+| A78 | 每个连接（TCP 或 UDP 对端）各自的空闲超时，由其处理器设置 | 已进入 akio 的 main 并锁定（自 `6bcd8ad6` 起，akio 的 ADR-155） | 10、11 | I51、I55 |
+| A79 | 带各自连接超时的 `Engine::dial` 与 `dial_udp` | 已进入 akio 的 main 并锁定（自 `6bcd8ad6` 起，akio 的 ADR-154） | 10 | I51、I54、I55 |
 | A90 | 由调用方自己的响应过滤器设置流式响应的编码，以及保留到响应发出为止的值 | 已在 akio 的 main（`c5cf4353`），已锁定 | 8、11 | I47 |
 | A91 | `Files` 为内存中的文件保存压缩副本 | 已在 akio 的 main（`c5cf4353`），已锁定 | 4、12 | I47 |
 | A92 | 从磁盘文件发送的消息体按流编码压缩 | 已在 akio 的 main（`4989cd8b`），已锁定 | 1、5 | I47 |
@@ -77,24 +77,24 @@
 | A111 | 响应过滤器看到流式消息体发出的字节及其结束方式（消息体旁路） | 已在 akio 的 main（`e9891b52`），已锁定 | 5、6 | I67 |
 | A112 | 按 RFC 9110 要求接收方接受的三种格式解析 HTTP 日期 | 已在 akio 的 main（`e9891b52`，ADR-116），已锁定 | 15 | I67 |
 | A113 | 在内层过滤器之后运行的响应过滤器（外层过滤器） | 已在 akio 的 main（`e9891b52`，ADR-116），已锁定 | 5 | I67 |
-| A117 | 从 `akio` 同时取得 `akio::Pool` 与 `PoolConfig`：应用自己的、有上限的阻塞工作线程池 | 已在 akio 分支 `claude/akit-open-requests` 上实现（`57a942af`），akit 已使用（尚未移动锁定） | 4 | I68 |
+| A117 | 从 `akio` 同时取得 `akio::Pool` 与 `PoolConfig`：应用自己的、有上限的阻塞工作线程池 | 已进入 akio 的 main 并锁定（自 `6bcd8ad6` 起） | 4 | I68 |
 | A132 | 代理隧道的上游连接建立后，按所请求的名字和两端地址检查；SOCKS 客户端取受信任 PROXY 头所指的客户端 | 已在 akio 的 main（`8453b60c`），已锁定 | 1、19 | I55 |
 | A133 | 代理自己的连接超时，并给出应答（SOCKS5 4、HTTP 504） | 已在 akio 的 main（`8453b60c`），已锁定 | 10 | I55 |
 | A134 | 经 HTTP/2 和 HTTP/3 的 CONNECT 隧道（RFC 9113 §8.5、RFC 9114 §4.4） | 已在 akio 的 main（`4989cd8b`），已锁定 | 9、19 | I55 |
 | A135 | 拨号 Unix 域流套接字，以及在其上的 HTTP 客户端（akio、akio-http、akio-sys） | 已在 akio 的 main（`0f2c419b`），已锁定 | 1、2 | I58 |
-| A148 | 请求到达的地址（监听器的本地地址），HTTP/1.1、h2 和 h3 | 已在 akio 分支 `claude/akit-open-requests` 上实现（`22bc4402`，akio 的 ADR-157），akit 已使用（尚未移动锁定） | — | I75 |
+| A148 | 请求到达的地址（监听器的本地地址），HTTP/1.1、h2 和 h3 | 已进入 akio 的 main 并锁定（自 `6bcd8ad6` 起，akio 的 ADR-157） | — | I75 |
 | A165 | 插件用的 WebAssembly 运行时：沙箱解释器、宿主 API、WASI preview 1、实例池；Proxy-Wasm 需要的响应钩子 | 已在 akio 的 main（`dad77a7a`），已锁定 | 1、4、11 | I71、I72 |
 | A166 | 由别处进行的调用决定时扣住响应头（fit 向 fib 提出的 A41） | 已在 akio 的 main（`dad77a7a`），已锁定 | 1、4 | I72 |
 | A167 | 由别处进行的调用逐次过滤响应 body，trailer 在最后一次调用中（fit 向 fib 提出的 A46） | 已在 akio 的 main（`dad77a7a`），已锁定 | 1、4、5、8 | I72 |
-| A168 | 只提供先验知识 HTTP/2 的 HTTP 服务端（带 `h2c` 而没有 `http/1.1` 的监听器） | 已在 akio 分支 `claude/i79b-akio` 上实现（I79b，ADR-174，`HttpConfig::http1`），尚未进入 akio 的 main；akit 的 I79b 分支已使用 | 19 | I05、I25、I79b |
-| A169 | akio 的服务端拒绝 RFC 9112、RFC 9113 和 RFC 9114 规定为畸形的请求：两个 `Host` 字段、HTTP/2 与 HTTP/3 字段名和值中的非法字节、流式 body 的分帧错误以 400 应答 | 已在 akio 分支 `claude/a169-request-checks`（`813f53ea`，最后一部分除外）实现，未进入 akio 的 main | 15、19 | I25 |
-| A171 | HTTP 客户端请求结束时取消其定时器任务，而不是保留到超时时间 | 已在 akio 分支 `claude/a171-client-timer-cancel`（`90adec65`）实现，未进入 akio 的 main | 11、13 | I15、I18、I25 |
-| A172 | TLS 服务端把 server name 为 IP 地址的 ClientHello 视为没有名字，而不是使握手失败 | 已在 akio 分支 `claude/a172-sni-ip-literal`（`d23c9368`）实现，未进入 akio 的 main | 19 | I09、I25 |
-| A170 | 不经 `Conn::inner` 读取连接的 TCP 计数（以及未读字节），并通过引擎自己的 API 先写数据再拼接 | 已在 akio 分支 `claude/akit-open-requests` 上实现（`22bc4402`，akio 的 ADR-156），akit 已使用（尚未移动锁定） | 1、14 | I51b |
+| A168 | 只提供先验知识 HTTP/2 的 HTTP 服务端（带 `h2c` 而没有 `http/1.1` 的监听器） | 已进入 akio 的 main 并锁定（自 `6bcd8ad6` 起，akio 的 ADR-174） | 19 | I05、I25、I79b |
+| A169 | akio 的服务端拒绝 RFC 9112、RFC 9113 和 RFC 9114 规定为畸形的请求：两个 `Host` 字段、HTTP/2 与 HTTP/3 字段名和值中的非法字节、流式 body 的分帧错误以 400 应答 | 已进入 akio 的 main 并锁定（自 `0fc8f3a7` 起） | 15、19 | I25 |
+| A171 | HTTP 客户端请求结束时取消其定时器任务，而不是保留到超时时间 | 已进入 akio 的 main 并锁定（自 `0fc8f3a7` 起） | 11、13 | I15、I18、I25 |
+| A172 | TLS 服务端把 server name 为 IP 地址的 ClientHello 视为没有名字，而不是使握手失败 | 已进入 akio 的 main 并锁定（自 `0fc8f3a7` 起） | 19 | I09、I25 |
+| A170 | 不经 `Conn::inner` 读取连接的 TCP 计数（以及未读字节），并通过引擎自己的 API 先写数据再拼接 | 已进入 akio 的 main 并锁定（自 `6bcd8ad6` 起，akio 的 ADR-156） | 1、14 | I51b |
 | A180 | 让 akio-wasm 的调用更便宜，并与 wazero 对比测量（akio 的 W5） | 已提出（I76）：一个修改头部的 Go guest 让 akit 每个请求多花 14.7 µs CPU，fit 6.8 µs | 13 | I71、I72、I76 |
 | A200 | 按 RFC 9112 的要求处理 absolute-form 请求目标：以其路径作为请求的路径，以其 authority 作为主机 | 已提出（I77）；在此之前 akit-listener 把这样的请求改写为 origin-form | 15、19 | I77 |
-| A214 | 所有连接合计排队字节的预算，超出时暂停每个连接的读取（fit 的 `limits.max_pending_bytes`） | 已在 akio 分支 `claude/i79b-akio` 上实现（I79b，ADR-172，`Config::max_pending_bytes`），尚未进入 akio 的 main；akit 的 I79b 分支已使用 | 8、11 | I79、I79b |
-| A215 | 只计入被接受的连接、不计入引擎拨出的连接的连接上限（fit 的 `limits.max_conns`） | 已在 akio 分支 `claude/i79b-akio` 上实现（I79b，ADR-173，`Config::max_accepted_connections`），尚未进入 akio 的 main；akit 的 I79b 分支已使用 | 11 | I79、I79b |
+| A214 | 所有连接合计排队字节的预算，超出时暂停每个连接的读取（fit 的 `limits.max_pending_bytes`） | 已进入 akio 的 main 并锁定（自 `6bcd8ad6` 起，akio 的 ADR-172） | 8、11 | I79、I79b |
+| A215 | 只计入被接受的连接、不计入引擎拨出的连接的连接上限（fit 的 `limits.max_conns`） | 已进入 akio 的 main 并锁定（自 `6bcd8ad6` 起，akio 的 ADR-173） | 11 | I79、I79b |
 
 ## A1 运行中引擎上的 TCP 监听器
 
