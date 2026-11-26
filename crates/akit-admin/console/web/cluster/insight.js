@@ -1,3 +1,4 @@
+// Changed by akit: names renamed by tools/console-pages.py (decision 037); see ../../CHANGES.
 // Cluster → Metrics, Logs and Certificates (I150), and the Overview's sparklines.
 //   Metrics       #/cluster/metrics?m=<metric>&node=a,b&points=90: the series the manager keeps from each poll
 //                 (GET /api/m/cluster/metrics): requests, 4xx and 5xx a second, connections, bytes queued for clients
@@ -9,7 +10,7 @@
 //   Certificates  #/cluster/certificates?within=30: every member's certificates, the soonest to expire first
 //                 (GET /api/m/cluster/certificates), with their names, issuer and days left; members not read listed apart
 //   Overview      a sparkline of each member's requests a second (or its connections, when it counts no requests) beside
-//                 its state, from one read of the series every poll interval (FitCluster.rowExtra)
+//                 its state, from one read of the series every poll interval (AkitCluster.rowExtra)
 // The series and the inventory are any role's to read, as the members' states are; a member's logs need a role on it,
 // and the Logs page offers only those members. Needs shared.js and groups.js (FC.groups); before cluster.js.
 //
@@ -21,12 +22,12 @@
 //         来自各成员的日志环）；跟随时每 2 秒带着管理端应答的游标读取；页面最多保留 MAX_LINES 行；无法读取的成员单独说明
 //   证书  #/cluster/certificates?within=30：各成员的证书，最早到期的在前（GET /api/m/cluster/certificates），含名称、签发者与剩余
 //         天数；尚未读取的成员单独列出
-//   概览  每个成员状态旁的每秒请求迷你走势图（成员不统计请求时为连接数），每个轮询间隔读取一次序列（FitCluster.rowExtra）
+//   概览  每个成员状态旁的每秒请求迷你走势图（成员不统计请求时为连接数），每个轮询间隔读取一次序列（AkitCluster.rowExtra）
 // 序列与证书清单任何角色都可读取，与成员状态相同；成员的日志需要在该成员上有角色，日志页只提供这些成员。依赖 shared.js 与
 // groups.js（FC.groups）；在 cluster.js 之前加载。
 (function () {
   'use strict';
-  var FC = window.FitCluster;
+  var FC = window.AkitCluster;
   FC.WORDS.push(
     ['n.metrics', 'Metrics', '指标'], ['n.logs', 'Logs', '日志'], ['n.certs', 'Certificates', '证书'],
     // Metrics / 指标

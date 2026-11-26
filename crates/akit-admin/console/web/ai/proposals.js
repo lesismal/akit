@@ -1,3 +1,4 @@
+// Changed by akit: names renamed by tools/console-pages.py (decision 037); see ../../CHANGES.
 // The assistant's proposals: what the propose tools made of a conversation's change, checked on the running config
 // (GET /api/proposals/{conversation}), drawn as a card with each step, the members it changes, its errors, and its
 // diff in .conf, .yaml and .json; Apply opens a dialog with the whole diff, and only its confirm sends
@@ -267,6 +268,6 @@
     }, function (e) { UI.mount(el, h('div.callout.callout--danger', e.message)); });
   }
 
-  window.FitAI = window.FitAI || {};
-  window.FitAI.proposal = { card: card, page: proposalsPage, diff: diffView };
+  window.AkitAI = window.AkitAI || {};
+  window.AkitAI.proposal = { card: card, page: proposalsPage, diff: diffView };
 })();

@@ -1,3 +1,4 @@
+// Changed by akit: names renamed by tools/console-pages.py (decision 037); see ../../CHANGES.
 // The assistant's MCP page (GET /api/mcp): the MCP server at /mcp on the console's address, on or off, its settings
 // (admin.assistant.mcp, saved with the assistant's settings through PUT /api/settings), how to connect a client, and
 // the user's MCP tokens (everyone's for a user whose level is apply): made with POST /api/mcp/tokens and shown once,
@@ -13,8 +14,8 @@
 
   var WORDS = [
     ['n.mcp', 'MCP', 'MCP'],
-    ['mc.note', 'Outside agents (Claude Code, Cursor, an SDK\'s client) reach this fit\'s assistant over MCP: they call the tools the panel calls, read the config, the schema, the versions and the reference as resources, and use the enabled skills as prompts. Each needs a token of yours, which has your level, at most propose: its proposals wait on the Proposals page, and only a person whose level is apply applies them there. The page tools and ask_user are not served.',
-      '外部代理（Claude Code、Cursor、SDK 的客户端）可通过 MCP 使用本 fit 的助手：调用面板所用的工具，以资源形式读取配置、schema、版本与参考文档，并把已启用的技能用作提示词。每个代理都需要你的一个令牌，令牌具有你的级别，最高为 propose：其提案在提案页等待，只有级别为 apply 的人才能在那里应用。页面工具与 ask_user 不对外提供。'],
+    ['mc.note', 'Outside agents (Claude Code, Cursor, an SDK\'s client) reach this akit\'s assistant over MCP: they call the tools the panel calls, read the config, the schema, the versions and the reference as resources, and use the enabled skills as prompts. Each needs a token of yours, which has your level, at most propose: its proposals wait on the Proposals page, and only a person whose level is apply applies them there. The page tools and ask_user are not served.',
+      '外部代理（Claude Code、Cursor、SDK 的客户端）可通过 MCP 使用本 akit 的助手：调用面板所用的工具，以资源形式读取配置、schema、版本与参考文档，并把已启用的技能用作提示词。每个代理都需要你的一个令牌，令牌具有你的级别，最高为 propose：其提案在提案页等待，只有级别为 apply 的人才能在那里应用。页面工具与 ask_user 不对外提供。'],
     ['mc.on', 'on', '已开启'], ['mc.off', 'off', '已关闭'],
     ['mc.server', 'Server', '服务器'], ['mc.endpoint', 'Endpoint', '端点'], ['mc.versions', 'Protocol versions', '协议版本'],
     ['mc.offNote', 'The MCP server is off: turn it on below, or set admin.assistant.mcp in the config.', 'MCP 服务器已关闭：可在下方开启，或在配置中设置 admin.assistant.mcp。'],
@@ -25,15 +26,15 @@
     ['mc.max_request_bytes', 'Request bytes', '请求字节数'], ['mc.max_concurrent_calls', 'Requests at once per token', '每令牌并发请求数'],
     ['mc.max_calls_per_minute', 'Requests a minute per token', '每令牌每分钟请求数'],
     ['mc.save', 'Save settings', '保存设置'], ['mc.saved', 'Settings saved', '设置已保存'],
-    ['mc.noStore', 'Without admin.store these settings are admin.assistant.mcp in the config file, and tokens last until fit restarts.',
-      '未配置 admin.store：这些设置即配置文件中的 admin.assistant.mcp，令牌在 fit 重启后失效。'],
+    ['mc.noStore', 'Without admin.store these settings are admin.assistant.mcp in the config file, and tokens last until akit restarts.',
+      '未配置 admin.store：这些设置即配置文件中的 admin.assistant.mcp，令牌在 akit 重启后失效。'],
     ['mc.tokens', 'Tokens', '令牌'], ['mc.make', 'Make a token', '创建令牌'], ['mc.name', 'Name', '名称'], ['mc.level', 'Level', '级别'],
     ['mc.days', 'Days', '天数'], ['mc.tokAllow', 'Only from (optional)', '仅限来源（可选）'], ['mc.user', 'User', '用户'],
     ['mc.created', 'Made', '创建于'], ['mc.expires', 'Expires', '过期于'], ['mc.expired', 'expired', '已过期'], ['mc.last', 'Last used', '最近使用'],
     ['mc.effective', 'now {level}', '当前 {level}'], ['mc.revoke', 'Revoke', '吊销'], ['mc.none', 'No tokens.', '没有令牌。'],
     ['mc.revokeQ', 'Revoke the token {name}? A client using it is refused from its next request.', '吊销令牌 {name}？使用它的客户端从下一个请求起会被拒绝。'],
     ['mc.shown', 'Your new token', '你的新令牌'],
-    ['mc.once', 'This is the only time the token is shown: fit keeps only its hash. Copy it now.', '令牌只显示这一次：fit 只保存其哈希。请立即复制。'],
+    ['mc.once', 'This is the only time the token is shown: akit keeps only its hash. Copy it now.', '令牌只显示这一次：akit 只保存其哈希。请立即复制。'],
     ['mc.copy', 'Copy', '复制'],
     ['mc.connect', 'Connect a client', '连接客户端'],
     ['mc.claude', 'Claude Code: run this in a terminal, with your token in place of <token>.', 'Claude Code：在终端中运行以下命令，用你的令牌替换 <token>。'],
@@ -48,10 +49,10 @@
 
   // claudeCommand is how Claude Code adds the server. / Claude Code 添加该服务器的命令。
   function claudeCommand(endpoint, token) {
-    return 'claude mcp add --transport http fit ' + endpoint + ' --header "Authorization: Bearer ' + (token || '<token>') + '"';
+    return 'claude mcp add --transport http akit ' + endpoint + ' --header "Authorization: Bearer ' + (token || '<token>') + '"';
   }
   function clientJSON(endpoint, token) {
-    return JSON.stringify({ mcpServers: { fit: { type: 'http', url: endpoint, headers: { Authorization: 'Bearer ' + (token || '<token>') } } } }, null, 2);
+    return JSON.stringify({ mcpServers: { akit: { type: 'http', url: endpoint, headers: { Authorization: 'Bearer ' + (token || '<token>') } } } }, null, 2);
   }
 
   // mcpPage draws the page into the shell sh. / 在外框 sh 中绘制本页。
@@ -155,6 +156,6 @@
     }, fail);
   }
 
-  window.FitAI = window.FitAI || {};
-  window.FitAI.mcpPage = mcpPage;
+  window.AkitAI = window.AkitAI || {};
+  window.AkitAI.mcpPage = mcpPage;
 })();

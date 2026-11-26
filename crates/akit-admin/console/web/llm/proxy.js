@@ -1,8 +1,9 @@
-// fit llm proxy console: overview (agent API + quick start + stats), models (catalog with routes), the nodes behind
+// Changed by akit: names renamed by tools/console-pages.py (decision 037); see ../../CHANGES.
+// akit llm proxy console: overview (agent API + quick start + stats), models (catalog with routes), the nodes behind
 // its hubs (to see, never to manage), traffic (the link map), API keys, connections and settings. Needs ui.js,
 // peers.js, flow.js and forms.js.
 //
-// fit llm proxy 控制台：概览（agent 接口 + 接入示例 + 统计）、模型（目录与路由）、hub 背后的节点（只读，不能管理）、流量
+// akit llm proxy 控制台：概览（agent 接口 + 接入示例 + 统计）、模型（目录与路由）、hub 背后的节点（只读，不能管理）、流量
 // （链路图）、API Key、连接与设置。依赖 ui.js、peers.js、flow.js 与 forms.js。
 (function () {
   'use strict';
@@ -112,9 +113,9 @@
           ['claude', 'Claude Code', '# ANTHROPIC_BASE_URL has no /v1: the SDK appends /v1/messages\n' +
             'export ANTHROPIC_BASE_URL=' + origin + '\nexport ANTHROPIC_AUTH_TOKEN=<API_KEY>   # or ANTHROPIC_API_KEY=<API_KEY>\n' +
             'export ANTHROPIC_MODEL=' + an + '\nexport ANTHROPIC_SMALL_FAST_MODEL=' + an + '\nclaude'],
-          ['codex', 'Codex', '# ~/.codex/config.toml\nmodel = "' + oa + '"\nmodel_provider = "fit_llm"\n\n[model_providers.fit_llm]\n' +
-            'name = "fit llm"\nbase_url = "' + origin + '/v1"\nenv_key = "FIT_LLM_API_KEY"\nwire_api = "chat"   # or "responses"\n\n' +
-            '# then: export FIT_LLM_API_KEY=<API_KEY>; codex'],
+          ['codex', 'Codex', '# ~/.codex/config.toml\nmodel = "' + oa + '"\nmodel_provider = "akit_llm"\n\n[model_providers.akit_llm]\n' +
+            'name = "akit llm"\nbase_url = "' + origin + '/v1"\nenv_key = "AKIT_LLM_API_KEY"\nwire_api = "chat"   # or "responses"\n\n' +
+            '# then: export AKIT_LLM_API_KEY=<API_KEY>; codex'],
           ['curl', 'curl', 'curl ' + origin + '/v1/chat/completions \\\n  -H "Authorization: Bearer <API_KEY>" \\\n  -H "Content-Type: application/json" \\\n' +
             '  -d \'{"model": "' + oa + '", "stream": true, "messages": [{"role": "user", "content": "Hello"}]}\'\n\n' +
             'curl ' + origin + '/v1/messages \\\n  -H "x-api-key: <API_KEY>" -H "anthropic-version: 2023-06-01" \\\n  -H "Content-Type: application/json" \\\n' +

@@ -1,3 +1,4 @@
+// Changed by akit: names renamed by tools/console-pages.py (decision 037); see ../../CHANGES.
 // The assistant's Functions page: every tool of the registry (GET /api/tools), by group, with the level a user needs
 // for it, whether this user may call it under the settings in use and why not, what it does, and the JSON Schema of
 // its arguments. The model is told what a tool does in English; the page says it in the workbench's language.
@@ -12,8 +13,8 @@
     ['fn.title', 'Functions', '功能'], ['fn.level', 'Your level: {level}', '你的级别：{level}'],
     ['fn.model', 'Model: {model}', '模型：{model}'], ['fn.noModel', 'No model is set yet.', '尚未设置模型。'],
     ['fn.useTools', 'calls tools', '调用工具'], ['fn.noTools', 'calls no tools', '不调用工具'],
-    ['fn.note', 'The tools the assistant may call. Each reads what this fit runs, on the console\'s pool, through the Admin API in process; secrets are redacted from every result, and each result is bounded. None writes the config, a version or the store: the page tools only draft into the open page, which you save yourself, and the propose tools only add steps to a proposal, which a person whose level is apply applies after a second confirm.',
-      '助手可以调用的工具。每个工具都在控制台的线程池上、经进程内的 Admin API 读取本 fit 的运行情况；每个结果都会脱敏并受大小限制。没有任何工具会写入配置、版本或 store：页面工具只在打开的页面上起草，由你自己保存；提案工具只向提案加入步骤，由级别为 apply 的人再次确认后应用。'],
+    ['fn.note', 'The tools the assistant may call. Each reads what this akit runs, on the console\'s pool, through the Admin API in process; secrets are redacted from every result, and each result is bounded. None writes the config, a version or the store: the page tools only draft into the open page, which you save yourself, and the propose tools only add steps to a proposal, which a person whose level is apply applies after a second confirm.',
+      '助手可以调用的工具。每个工具都在控制台的线程池上、经进程内的 Admin API 读取本 akit 的运行情况；每个结果都会脱敏并受大小限制。没有任何工具会写入配置、版本或 store：页面工具只在打开的页面上起草，由你自己保存；提案工具只向提案加入步骤，由级别为 apply 的人再次确认后应用。'],
     ['fn.name', 'Tool', '工具'], ['fn.needs', 'Level', '级别'], ['fn.state', 'State', '状态'], ['fn.what', 'What it does', '作用'],
     ['fn.on', 'enabled', '已启用'], ['fn.off', 'disabled', '未启用'], ['fn.schema', 'Arguments', '参数'],
     ['g.config', 'Config', '配置'], ['g.runtime', 'Runtime', '运行时'], ['g.roles', 'Roles', '角色'], ['g.media', 'Media', '媒体'], ['g.sync', 'Sync', '数据同步'], ['g.bittorrent', 'BitTorrent', 'BitTorrent'], ['g.cluster', 'Cluster', '集群'], ['g.logs', 'Logs', '日志'],
@@ -23,7 +24,7 @@
     ['why.the model does not call tools', 'the model calls no tools', '该模型不调用工具'],
     ['t.config_get', 'Reads the base or the effective config, whole or by top-level members, as JSON, .conf or YAML, redacted.', '读取基础配置或生效配置（整体或按顶层成员），格式为 JSON、.conf 或 YAML，已脱敏。'],
     ['t.schema_describe', 'Describes a member of the config from its schema: type, values, default and members, in English or Chinese.', '根据 schema 描述配置的某个成员：类型、取值、默认值与子成员，英文或中文。'],
-    ['t.config_validate', 'Checks config text, or a patch over the running config, as fit validate does, with each error\'s line and column.', '像 fit validate 一样检查配置文本或基于运行配置的补丁，给出每个错误的行与列。'],
+    ['t.config_validate', 'Checks config text, or a patch over the running config, as akit validate does, with each error\'s line and column.', '像 akit validate 一样检查配置文本或基于运行配置的补丁，给出每个错误的行与列。'],
     ['t.versions_diff', 'Lists the kept versions, and what changed between two of them.', '列出保存的版本，以及两个版本之间的变化。'],
     ['t.status_get', 'What runs now: version, listeners, connections, upstreams, roles, engine limits and uptime.', '当前运行情况：版本、监听器、连接、上游、角色、引擎限制与运行时长。'],
     ['t.metrics_query', 'The metrics as they stand, filtered by name, route, upstream or listener.', '当前指标，可按名称、路由、上游或监听器筛选。'],
@@ -31,9 +32,9 @@
     ['t.consistency_check', 'The differences between what runs and the config, as the Consistency page shows them.', '运行状态与配置之间的差异，与一致性页面相同。'],
     ['t.certs_list', 'The certificates served, their names, issuers and days left, with the ACME settings.', '提供的证书、名称、签发者与剩余天数，以及 ACME 设置。'],
     ['t.cache_zones', 'The cache\'s zones, their sizes and hit rates.', '缓存区、大小与命中率。'],
-    ['t.log_tail', 'The latest lines of fit\'s own log, from a bounded ring in memory, by logger, level and text.', 'fit 自身日志的最新行（来自内存中的有界环形缓冲），可按记录器、级别与文字筛选。'],
+    ['t.log_tail', 'The latest lines of akit\'s own log, from a bounded ring in memory, by logger, level and text.', 'akit 自身日志的最新行（来自内存中的有界环形缓冲），可按记录器、级别与文字筛选。'],
     ['t.access_log_sample', 'Recent lines of the access log\'s file matching a route, status, client or text.', '访问日志文件中与路由、状态码、客户端或文字匹配的最近行。'],
-    ['t.adapt_convert', 'Converts nginx or Caddyfile text to fit\'s config, as fit adapt does, with what it could not convert.', '像 fit adapt 一样把 nginx 或 Caddyfile 文本转换为 fit 配置，并列出无法转换的部分。'],
+    ['t.adapt_convert', 'Converts nginx or Caddyfile text to akit\'s config, as akit adapt does, with what it could not convert.', '像 akit adapt 一样把 nginx 或 Caddyfile 文本转换为 akit 配置，并列出无法转换的部分。'],
     ['t.ask_user', 'Asks you a question with options, shown as buttons in the panel; your choice is the result.', '向你提出带选项的问题（在面板中显示为按钮），你的选择即为结果。'],
     ['t.skill_load', 'Loads an enabled skill the assistant picked from the catalog: its whole prompt, and from then on only the tools it names that your level allows.',
       '加载助手从目录中选出的已启用技能：其完整提示词；此后只使用它所列且你的级别允许的工具。'],
@@ -120,6 +121,6 @@
     }, function (e) { UI.mount(el, h('div.callout.callout--danger', e.message)); });
   }
 
-  window.FitAI = window.FitAI || {};
-  window.FitAI.functionsPage = functionsPage;
+  window.AkitAI = window.AkitAI || {};
+  window.AkitAI.functionsPage = functionsPage;
 })();

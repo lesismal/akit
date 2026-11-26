@@ -1,10 +1,11 @@
+// Changed by akit: names renamed by tools/console-pages.py (decision 037); see ../../CHANGES.
 // The config's shared draft and its schema-driven form editor, for the gateway's and the system's modules (the admin
 // server module). Every page that edits the config edits the same draft, read once with its ETag, and one bar in
 // the top bar saves it whole (PUT /config with If-Match), checks it without applying it (Check: the same request with
 // ?dry_run=1, which the server loads and compiles as an apply does), or discards it; the problems of a save or a check
-// link to the page and the field they are about. admin is left out of the forms: it is set in the file fit was started with.
+// link to the page and the field they are about. admin is left out of the forms: it is set in the file akit was started with.
 //
-//   var C = FitConfig.with(UI)          the store, sharing one draft whoever asks
+//   var C = AkitConfig.with(UI)          the store, sharing one draft whoever asks
 //   C.ensure() → Promise                 the schema and the config read (again when it changed and nothing is unsaved)
 //   C.page(el, sh, render, opts)         a page of the editor: the bar in sh.tools, render(body) drawn now and after
 //                                        each save, discard or reload; opts.members are the top-level config members
@@ -32,7 +33,7 @@
 //
 // 配置的共享草稿及由 schema 生成的表单编辑器，供网关与系统各模块（admin 服务端模块）使用。所有编辑配置的页面都编辑同一份
 // 草稿（连同 ETag 只读取一次），顶栏中的同一个保存栏整体保存（带 If-Match 的 PUT /config）、只检查而不应用（“检查”：
-// 同一请求带上 ?dry_run=1，服务端像应用时一样加载并编译）或放弃修改；保存或检查发现的问题链接到其所在的页面与字段。表单不含 admin：它在 fit 启动时所用的配置文件中设置。带 opts.members 的页面另外还有 UI、
+// 同一请求带上 ?dry_run=1，服务端像应用时一样加载并编译）或放弃修改；保存或检查发现的问题链接到其所在的页面与字段。表单不含 admin：它在 akit 启动时所用的配置文件中设置。带 opts.members 的页面另外还有 UI、
 // .conf、.yaml、.json 四个标签页：后三者编辑该页所管配置成员在对应格式下的文本，保存时经 /config/text 整体校验后应用。
 // 带 opts.members 的页面还会通过 WB.editor 登记其编辑器（I154），供助手的页面工具使用：page_get 读取本页在草稿中的部分，
 // page_edit 把修改写入草稿（整体设置成员、按 JSON 指针的操作，或某个标签页格式的文本，像手工输入的文本一样经 /config/parse
@@ -109,11 +110,11 @@
     ['cf.ie.export.title', 'Export {what}', '导出{what}'], ['cf.ie.import.title', 'Import {what}', '导入{what}'],
     ['cf.ie.whole', 'the whole config', '整个配置'], ['cf.ie.part', 'this page\'s part ({m})', '本页的部分（{m}）'],
     ['cf.ie.format', 'Format', '格式'],
-    ['cf.ie.f.conf', '.conf (fit\'s config syntax)', '.conf（fit 配置语法）'], ['cf.ie.f.yaml', '.yaml', '.yaml'], ['cf.ie.f.json', '.json', '.json'],
+    ['cf.ie.f.conf', '.conf (akit\'s config syntax)', '.conf（akit 配置语法）'], ['cf.ie.f.yaml', '.yaml', '.yaml'], ['cf.ie.f.json', '.json', '.json'],
     ['cf.ie.f.store', '.store (encrypted fitstore)', '.store（加密的 fitstore）'],
     ['cf.ie.password', 'Store password', 'store 密码'],
-    ['cf.ie.export.pw.hint', 'Seals the file with this password, to open it with the same password. Left empty, the file is sealed with the running store\'s key: opening it elsewhere then needs that store\'s key file or FIT_STORE_PASSWORD.',
-      '用此密码加密文件，之后用同一密码打开。留空则用运行中 store 的密钥加密：在别处打开时需要该 store 的密钥文件或 FIT_STORE_PASSWORD。'],
+    ['cf.ie.export.pw.hint', 'Seals the file with this password, to open it with the same password. Left empty, the file is sealed with the running store\'s key: opening it elsewhere then needs that store\'s key file or AKIT_STORE_PASSWORD.',
+      '用此密码加密文件，之后用同一密码打开。留空则用运行中 store 的密钥加密：在别处打开时需要该 store 的密钥文件或 AKIT_STORE_PASSWORD。'],
     ['cf.ie.import.pw.hint', 'The password the file was sealed with. Leave it empty for a file sealed with the running store\'s key.',
       '文件加密时所用的密码。若文件是用运行中 store 的密钥加密的，请留空。'],
     ['cf.ie.pw.ascii', 'The store password must be printable ASCII here (it is sent in a request header).', '此处的 store 密码只能是可打印的 ASCII 字符（它在请求头中发送）。'],
@@ -133,8 +134,8 @@
     ['cf.ie.page', 'Import / Export', '导入 / 导出'],
     ['cf.ie.page.note', 'Export the whole config to a file, or import a file that replaces it. A page that edits part of the config has its own Export and Import buttons, next to its format tabs, for that part only.',
       '把整个配置导出为文件，或导入文件替换整个配置。编辑部分配置的页面在其格式标签旁另有“导出”与“导入”按钮，只针对该部分。'],
-    ['cf.ie.formats', 'Text formats (.conf, .yaml, .json) are readable and editable; .store is fit\'s encrypted binary format, as admin.store keeps the config.',
-      '文本格式（.conf、.yaml、.json）可读可编辑；.store 是 fit 的加密二进制格式，与 admin.store 保存配置的格式相同。']
+    ['cf.ie.formats', 'Text formats (.conf, .yaml, .json) are readable and editable; .store is akit\'s encrypted binary format, as admin.store keeps the config.',
+      '文本格式（.conf、.yaml、.json）可读可编辑；.store 是 akit 的加密二进制格式，与 admin.store 保存配置的格式相同。']
   ];
   var en = {}, zh = {};
   WORDS.forEach(function (w) { en[w[0]] = w[1]; zh[w[0]] = w[2]; });
@@ -176,7 +177,7 @@
       return readJSON(r).then(function (body) {
         if (!r.ok) { var e = new Error(body.error || r.status + ' ' + r.statusText); e.status = r.status; throw e; }
         S.etag = r.headers.get('ETag') || '';
-        S.version = r.headers.get('Fit-Config-Version') || '';
+        S.version = r.headers.get('Akit-Config-Version') || '';
         S.draft = body && typeof body === 'object' ? body : {};
         S.baseDraft = JSON.parse(JSON.stringify(S.draft));
         S.errors = []; S.rawText = null; S.rawError = '';
@@ -184,7 +185,7 @@
         clearRaw();
         setDirty(false);
         // A new draft is in: the Engine menu follows it. / 新的草稿已就绪：引擎菜单随之更新。
-        try { window.dispatchEvent(new Event('fit:config')); } catch (e) { /* ignore / 忽略 */ }
+        try { window.dispatchEvent(new Event('akit:config')); } catch (e) { /* ignore / 忽略 */ }
         return true;
       });
     });
@@ -371,7 +372,7 @@
   }
 
   function downloadRaw(r) {
-    var name = 'fit-' + (r.members || []).join('-') + '-' + (S.version || 'draft') + '.' + r.fmt;
+    var name = 'akit-' + (r.members || []).join('-') + '-' + (S.version || 'draft') + '.' + r.fmt;
     var a = h('a', { href: URL.createObjectURL(new Blob([r.text], { type: 'text/plain; charset=utf-8' })), download: name });
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
@@ -463,11 +464,11 @@
 
   // ---- import / export / 导入与导出 ----
   // Export: POST /config/export {format, members?, password?} answers the file, named by its Content-Disposition.
-  // Import: POST /config/import?format=…&members=… with the file as the body (Fit-Store-Password for a store sealed
+  // Import: POST /config/import?format=…&members=… with the file as the body (Akit-Store-Password for a store sealed
   // with its own password, If-Match the draft's ETag) answers as PUT /config/text does. members, when given, are the
   // top-level members taken from the file (the page's part); without them the file is the whole config.
   // 导出：POST /config/export {format, members?, password?} 应答文件，文件名取自 Content-Disposition。
-  // 导入：POST /config/import?format=…&members=…，请求体为文件（自带密码加密的 store 用 Fit-Store-Password，If-Match 为草稿的
+  // 导入：POST /config/import?format=…&members=…，请求体为文件（自带密码加密的 store 用 Akit-Store-Password，If-Match 为草稿的
   // ETag），应答同 PUT /config/text。给出 members 时只取文件中的这些顶层成员（本页的部分）；否则文件即整个配置。
   var IE_FORMATS = ['conf', 'yaml', 'json', 'store'];
   var IE_EXT = { conf: 'conf', yaml: 'yaml', yml: 'yaml', json: 'json', store: 'store' };
@@ -518,7 +519,7 @@
           });
         }
         return r.blob().then(function (b) {
-          var name = fileName(r.headers.get('Content-Disposition')) || 'fit-' + (members.length ? members.join('-') : 'config') + '.' + f;
+          var name = fileName(r.headers.get('Content-Disposition')) || 'akit-' + (members.length ? members.join('-') : 'config') + '.' + f;
           saveBlob(b, name);
           UI.toast(t('cf.ie.exported', { name: name }));
         });
@@ -560,7 +561,7 @@
         var q = '/config/import?format=' + encodeURIComponent(fmt) + (members.length ? '&members=' + encodeURIComponent(members.join(',')) : '');
         var hd = { 'Content-Type': fmt === 'store' ? 'application/octet-stream' : 'text/plain; charset=utf-8' };
         if (S.etag) hd['If-Match'] = S.etag;
-        if (fmt === 'store' && pw.value) hd['Fit-Store-Password'] = pw.value;
+        if (fmt === 'store' && pw.value) hd['Akit-Store-Password'] = pw.value;
         return call('POST', q, f, hd).then(function (r) {
           return readJSON(r).then(function (res) {
             if (r.ok) {
@@ -734,7 +735,7 @@
 
   // ---- Ask AI (I128) / 问 AI ----
   // askBtn is an Ask AI button (ai/ask.js), or null without the assistant. / “问 AI”按钮（ai/ask.js），没有助手时为 null。
-  function askBtn(spec, o) { return window.FitAI && FitAI.askButton ? FitAI.askButton(spec, o) : null; }
+  function askBtn(spec, o) { return window.AkitAI && AkitAI.askButton ? AkitAI.askButton(spec, o) : null; }
   // pathTokens splits an error path, a.b[0]["key"], into its members and indexes. / 把错误路径拆分为成员与下标。
   function pathTokens(path) {
     var out = [], re = /\.?([A-Za-z_][\w-]*)|\[(\d+)\]|\["((?:[^"\\]|\\.)*)"\]/g, m;
@@ -1248,7 +1249,7 @@
   var RENAMED = /^Renamed (\S+); the old name goes in config version 2\.$/;
   function doc(text) {
     if (!text || !UI.zh()) return text;
-    var zh = window.FitSchemaZh && window.FitSchemaZh[text];
+    var zh = window.AkitSchemaZh && window.AkitSchemaZh[text];
     if (zh) return zh;
     var m = RENAMED.exec(text);
     return m ? '已更名为 ' + m[1] + '；旧名称将在配置版本 2 中移除。' : text;
@@ -1310,7 +1311,7 @@
       }
     };
   }
-  // join builds an error path as fit's config errors write it: a.b[0]["key"]. / 按 fit 配置错误的格式拼接路径。
+  // join builds an error path as akit's config errors write it: a.b[0]["key"]. / 按 akit 配置错误的格式拼接路径。
   function join(path, key, isKey) {
     if (typeof key === 'number') return path + '[' + key + ']';
     if (isKey) return path + '[' + JSON.stringify(key) + ']';
@@ -1718,7 +1719,7 @@
     ], list, { empty: t('cf.c.none') });
   }
 
-  window.FitConfig = {
+  window.AkitConfig = {
     with: function (ui) {
       if (!S.ui) S.ui = ui;
       return api;

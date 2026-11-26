@@ -1,4 +1,5 @@
-// The Cluster menu's shared parts (I142), for a fit with admin.cluster, the manager of other fits: its words, the
+// Changed by akit: names renamed by tools/console-pages.py (decision 037); see ../../CHANGES.
+// The Cluster menu's shared parts (I142), for an akit with admin.cluster, the manager of other akits: its words, the
 // colours of a member's state, the words of each kind of problem, the requests to the manager's module cluster
 // (/api/m/cluster/, with the members' ETag as If-Match on every change), the member's form (add and edit, its
 // credentials written once and never shown), a test's result with the certificate a person trusts by its fingerprint,
@@ -6,18 +7,18 @@
 // Every function takes the module's scoped UI, whose requests go to the module's API and whose words are its own.
 //
 // Where later iterations add to these pages, without editing them:
-//   FitCluster.addAction(fn)  fn(UI, ctx) → a button for the Nodes page's bar, beside Add a node (I149's Add by
+//   AkitCluster.addAction(fn)  fn(UI, ctx) → a button for the Nodes page's bar, beside Add a node (I149's Add by
 //                             enrollment), or null; ctx is {readOnly, reload()}
-//   FitCluster.rowExtra(fn)   fn(UI, member, state) → a node shown beside a member's state on the Overview's cards and
+//   AkitCluster.rowExtra(fn)   fn(UI, member, state) → a node shown beside a member's state on the Overview's cards and
 //                             rows and the Nodes page's rows (I149's linked or waiting), or null
-//   FitCluster.overviewCard(fn) fn(UI) → a node shown on the Overview above its filter (I206's BitTorrent card), or null
+//   AkitCluster.overviewCard(fn) fn(UI) → a node shown on the Overview above its filter (I206's BitTorrent card), or null
 //
-// Cluster 菜单的共用部分（I142），供设置了 admin.cluster 的 fit（其他 fit 的管理端）使用：词条、成员状态的颜色、各类问题的
+// Cluster 菜单的共用部分（I142），供设置了 admin.cluster 的 akit（其他 akit 的管理端）使用：词条、成员状态的颜色、各类问题的
 // 说明、对管理端模块 cluster 的请求（/api/m/cluster/，每次修改以成员列表的 ETag 作为 If-Match）、成员表单（添加与编辑；凭据
 // 只写入一次，从不显示）、测试结果及供人按指纹信任的证书，以及删除前的确认。页面在 overview.js、nodes.js 与 member.js 中；
 // cluster.js 注册模块。每个函数都接收模块限定的 UI，其请求发往模块的 API，词条为模块自己的。
-// 后续迭代的扩展点（无需修改这些页面）：FitCluster.addAction(fn) 在节点页的工具栏“添加节点”旁加按钮（I149 的“通过注册添加”）；
-// FitCluster.rowExtra(fn) 在概览卡片与行、节点页的行中成员状态旁加内容（I149 的已连接或等待中）。
+// 后续迭代的扩展点（无需修改这些页面）：AkitCluster.addAction(fn) 在节点页的工具栏“添加节点”旁加按钮（I149 的“通过注册添加”）；
+// AkitCluster.rowExtra(fn) 在概览卡片与行、节点页的行中成员状态旁加内容（I149 的已连接或等待中）。
 (function () {
   'use strict';
 
@@ -55,17 +56,17 @@
     ['k.forbidden', 'Forbidden', '被禁止'],
     ['k.forbidden.hint', 'The member refused the call (403).', '成员拒绝了该调用（403）。'],
     ['k.unsupported', 'Not supported', '不支持'],
-    ['k.unsupported.hint', 'The member does not serve what the manager reads: it is not a fit, or a fit older than cluster management.',
-      '成员不提供管理端读取的接口：它不是 fit，或是早于集群管理的 fit。'],
+    ['k.unsupported.hint', 'The member does not serve what the manager reads: it is not an akit, or an akit older than cluster management.',
+      '成员不提供管理端读取的接口：它不是 akit，或是早于集群管理的 akit。'],
     ['k.http_status', 'Unexpected status', '意外的状态码'],
     ['k.http_status.hint', 'The member answered a status the manager did not expect. Is the URL the member\'s console, or its Admin API for a token?',
       '成员应答了管理端未预期的状态码。URL 是否为成员的控制台地址（使用令牌时为其 Admin API 地址）？'],
     ['k.bad_answer', 'Bad answer', '应答无效'],
-    ['k.bad_answer.hint', 'The member\'s answer is not the JSON a fit answers.', '成员的应答不是 fit 应答的 JSON。'],
+    ['k.bad_answer.hint', 'The member\'s answer is not the JSON an akit answers.', '成员的应答不是 akit 应答的 JSON。'],
     ['k.too_large', 'Answer too large', '应答过大'],
     ['k.too_large.hint', 'The member\'s answer is larger than admin.cluster.max_response_bytes.', '成员的应答大于 admin.cluster.max_response_bytes。'],
     // Facts / 信息
-    ['f.health', 'Health', '健康'], ['f.fit', 'fit', 'fit'], ['f.config', 'Config version', '配置版本'], ['f.drift', 'Drift', '不一致'],
+    ['f.health', 'Health', '健康'], ['f.akit', 'akit', 'akit'], ['f.config', 'Config version', '配置版本'], ['f.drift', 'Drift', '不一致'],
     ['f.cert', 'Nearest certificate', '最近到期的证书'], ['f.conns', 'Connections', '连接'], ['f.latency', 'Latency', '延迟'],
     ['f.polled', 'Read', '最近读取'], ['f.since', 'since {ago}', '{ago}起'], ['f.failures', '{n} failed polls in a row', '连续 {n} 次读取失败'],
     ['f.asof', 'The values below are as last read, {ago}.', '以下数值为最后一次成功读取时（{ago}）的值。'],
@@ -99,7 +100,7 @@
     ['fm.stale', 'The members changed since this page read them: they were read again. Check and save again.',
       '本页读取后成员已变化：已重新读取。请检查后再次保存。'],
     // Tests and certificates / 测试与证书
-    ['ts.ok', 'Reached in {ms} ms: fit {fit} on {host}.', '{ms} 毫秒内连通：{host} 上的 fit {fit}。'],
+    ['ts.ok', 'Reached in {ms} ms: akit {akit} on {host}.', '{ms} 毫秒内连通：{host} 上的 akit {akit}。'],
     ['ts.failed', 'The test failed', '测试失败'], ['ts.node', 'Node ID', '节点 ID'],
     ['ts.mustchange', 'The member asks for its temporary password to be changed first.', '成员要求先修改其临时密码。'],
     ['ct.title', 'The member\'s certificate', '成员的证书'], ['ct.fp', 'SHA-256 fingerprint', 'SHA-256 指纹'],
@@ -255,15 +256,15 @@
   // askMember is the Ask AI spec of a member in trouble: the skill diagnose, the member's state as the selection
   // (never a credential: the state holds none). / 成员出问题时“问 AI”的 spec：技能 diagnose，成员状态作为选中项（状态中没有凭据）。
   function askMember(UI, st) {
-    if (!st || !st.error || !(window.FitAI && FitAI.askButton)) return null;
-    return FitAI.askButton(function () {
+    if (!st || !st.error || !(window.AkitAI && AkitAI.askButton)) return null;
+    return AkitAI.askButton(function () {
       var e = st.error || {};
       return {
         skill: 'diagnose',
         message: UI.t('ask.member', { name: st.name, status: stateWord(UI, st.status), kind: kindWord(UI, e.kind), message: e.message || '' }),
         selection: { cluster_member: { name: st.name, url: st.url, access: st.access, status: st.status, since: st.since,
           failures: st.failures, reachable: st.reachable, error: { kind: e.kind, message: e.message, status: e.status, retry_after: e.retry_after },
-          certificate: e.certificate || st.tls || undefined, fit_version: st.node && st.node.fit_version, polled: st.polled, seen: st.seen } }
+          certificate: e.certificate || st.tls || undefined, akit_version: st.node && st.node.akit_version, polled: st.polled, seen: st.seen } }
       };
     });
   }
@@ -316,7 +317,7 @@
     var head;
     if (res.ok) {
       var n = res.node || {};
-      head = UI.h('div.callout.callout--ok', UI.icon('check'), ' ', UI.t('ts.ok', { ms: res.latency_ms, fit: n.fit_version || '?', host: n.hostname || '?' }),
+      head = UI.h('div.callout.callout--ok', UI.icon('check'), ' ', UI.t('ts.ok', { ms: res.latency_ms, akit: n.akit_version || '?', host: n.hostname || '?' }),
         n.id ? UI.h('div.small.muted', UI.t('ts.node') + ': ', UI.h('code', n.id)) : null);
     } else {
       head = problemBox(UI, e || { kind: '', message: UI.t('ts.failed') });
@@ -336,7 +337,7 @@
     function input(attrs) { return h('input.input', attrs); }
     var name = input({ name: 'cluster-name', value: mem.name, autocomplete: 'off', spellcheck: 'false', placeholder: 'edge-1' });
     var labels = h('input.input', { name: 'cluster-labels', value: labelsText(mem.labels), autocomplete: 'off', spellcheck: 'false', placeholder: 'env=prod, region=eu' });
-    var url = input({ name: 'cluster-url', value: mem.url, type: 'url', autocomplete: 'off', spellcheck: 'false', placeholder: 'https://fit-1.example.com:2020' });
+    var url = input({ name: 'cluster-url', value: mem.url, type: 'url', autocomplete: 'off', spellcheck: 'false', placeholder: 'https://akit-1.example.com:2020' });
     var access = h('select.select', { name: 'cluster-access' },
       ['console', 'admin_api'].map(function (a) { return h('option', { value: a, selected: mem.access === a }, t('fm.access.' + a)); }));
     var username = input({ name: 'cluster-username', value: mem.username || '', autocomplete: 'off', spellcheck: 'false', placeholder: 'admin' });
@@ -506,7 +507,7 @@
     }, function (e) { UI.mount(box, UI.h('div.callout.callout--danger', e.message)); });
   }
 
-  window.FitCluster = {
+  window.AkitCluster = {
     WORDS: WORDS, KINDS: KINDS, STATE_KIND: STATE_KIND, ORDER: ORDER, pages: {},
     call: call, members: members, nodePath: nodePath,
     stateWord: stateWord, stateBadge: stateBadge, kindWord: kindWord, kindHint: kindHint, sec: sec, when: when,

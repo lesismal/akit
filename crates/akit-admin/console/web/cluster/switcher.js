@@ -1,19 +1,20 @@
-// The node switcher (I143), in the header of a manager's workbench (a fit with admin.cluster): a member chosen there
+// Changed by akit: names renamed by tools/console-pages.py (decision 037); see ../../CHANGES.
+// The node switcher (I143), in the header of a manager's workbench (an akit with admin.cluster): a member chosen there
 // opens the workbench's own pages, from this bundle, against that member: the page's URL gets ?node=<member>, and
 // every request of its modules goes to /api/n/<member>/m/<module>/ on the manager, which passes it on to the member
 // with the credentials it keeps (core/ui.js, the manager's cluster/passthrough.go). The page then names the member
-// before its title and in a band above it, in a colour of the member's own, so that no one edits the wrong fit; the
+// before its title and in a band above it, in a colour of the member's own, so that no one edits the wrong akit; the
 // menu is the member's modules the manager opens, without the manager's own (its Cluster menu, the account pages, the
 // assistant). A member whose version is not the manager's opens read-only: its writes are refused here and on the
 // manager. Choosing the manager again loads its own pages, with nothing of the member's left on them. Every member's
-// row and page in the Cluster menu also has Open (FitCluster.rowExtra), which does the same.
+// row and page in the Cluster menu also has Open (AkitCluster.rowExtra), which does the same.
 //
-// 节点切换器（I143），位于管理端（设置了 admin.cluster 的 fit）工作台的页眉：在此选择成员后，以本页面包中的工作台页面针对该成员
+// 节点切换器（I143），位于管理端（设置了 admin.cluster 的 akit）工作台的页眉：在此选择成员后，以本页面包中的工作台页面针对该成员
 // 打开：页面 URL 加上 ?node=<成员>，模块的每个请求都发往管理端的 /api/n/<成员>/m/<模块>/，由管理端以其保存的凭据转给成员
-// （core/ui.js，管理端的 cluster/passthrough.go）。页面在标题前与其上方的横条中以该成员专属的颜色标出成员名，以免误改其他 fit；
+// （core/ui.js，管理端的 cluster/passthrough.go）。页面在标题前与其上方的横条中以该成员专属的颜色标出成员名，以免误改其他 akit；
 // 菜单为管理端可打开的成员模块，不含管理端自己的模块（集群菜单、账户页面、助手）。版本与管理端不同的成员以只读方式打开：其写操作
 // 在此与管理端都会被拒绝。再次选择管理端即加载其自己的页面，不留下成员的任何数据。集群菜单中每个成员的行与成员页也有“打开”
-// （FitCluster.rowExtra），作用相同。
+// （AkitCluster.rowExtra），作用相同。
 (function () {
   'use strict';
   var h = UI.h, t = UI.t;
@@ -24,12 +25,12 @@
       'sw.member': 'Member', 'sw.back': 'Back to the manager', 'sw.readonly': 'Read-only',
       'sw.via': 'through the manager, by {access}', 'sw.access.console': 'its console', 'sw.access.admin_api': 'its Admin API\'s token',
       'sw.access.link': 'its link',
-      'sw.version': 'fit {v}', 'sw.host': 'host {h}',
+      'sw.version': 'akit {v}', 'sw.host': 'host {h}',
       'sw.error': '{name} cannot be opened: {error}',
       'sw.open': 'Open', 'sw.open.title': 'Open {name}\'s own pages through this manager',
       'sw.load': 'Members could not be listed: {error}',
       'sw.ro.not_read': 'The manager has not read it yet, so its version is not known: its pages are read-only until it has (open it again in a moment).',
-      'sw.ro.version': 'It runs another version of fit (config schema {member}; this manager\'s {manager}), whose pages this manager\'s do not know: they are read-only.',
+      'sw.ro.version': 'It runs another version of akit (config schema {member}; this manager\'s {manager}), whose pages this manager\'s do not know: they are read-only.',
       'sw.ro.manager': 'This manager\'s members cannot be written, so a change through it could not be recorded in its audit log: the pages are read-only.',
       'nd.a.node.api': 'changed through the node switcher',
       'sw.st.up': 'up', 'sw.st.down': 'down', 'sw.st.error': 'error', 'sw.st.unknown': 'not read yet',
@@ -43,12 +44,12 @@
       'sw.member': '成员', 'sw.back': '返回管理端', 'sw.readonly': '只读',
       'sw.via': '经由管理端，通过{access}', 'sw.access.console': '其控制台', 'sw.access.admin_api': '其 Admin API 的令牌',
       'sw.access.link': '其连接',
-      'sw.version': 'fit {v}', 'sw.host': '主机 {h}',
+      'sw.version': 'akit {v}', 'sw.host': '主机 {h}',
       'sw.error': '无法打开 {name}：{error}',
       'sw.open': '打开', 'sw.open.title': '通过本管理端打开 {name} 自己的页面',
       'sw.load': '无法列出成员：{error}',
       'sw.ro.not_read': '管理端尚未读取该成员，其版本未知：读取之前其页面只读（稍后再次打开即可）。',
-      'sw.ro.version': '它运行的是另一版本的 fit（配置 schema {member}；本管理端为 {manager}），本管理端的页面不认识其页面：只读。',
+      'sw.ro.version': '它运行的是另一版本的 akit（配置 schema {member}；本管理端为 {manager}），本管理端的页面不认识其页面：只读。',
       'sw.ro.manager': '本管理端的成员数据不能写入，通过它所做的修改无法记入其审计日志：页面只读。',
       'nd.a.node.api': '经节点切换器修改',
       'sw.st.up': '正常', 'sw.st.down': '离线', 'sw.st.error': '错误', 'sw.st.unknown': '尚未读取',
@@ -117,7 +118,7 @@
   function band(target, mem) {
     var bits = [];
     if (mem.hostname) bits.push(t('sw.host', { h: mem.hostname }));
-    if (mem.fit_version) bits.push(t('sw.version', { v: mem.fit_version }));
+    if (mem.akit_version) bits.push(t('sw.version', { v: mem.akit_version }));
     if (mem.access) bits.push(t('sw.via', { access: t('sw.access.' + mem.access) }));
     var back = h('a.btn.btn--sm.sw-back', { href: UI.targetURL('', location.hash), onclick: function (e) { e.preventDefault(); open(''); } },
       UI.icon('undo'), t('sw.back'));
@@ -163,8 +164,8 @@
   });
 
   // Open, on every member's row and page of the Cluster menu. / 集群菜单中每个成员的行与成员页上的“打开”。
-  if (window.FitCluster) {
-    FitCluster.rowExtra(function (_, mem, st) {
+  if (window.AkitCluster) {
+    AkitCluster.rowExtra(function (_, mem, st) {
       var name = (mem && mem.name) || (st && st.name);
       if (!name) return null;
       return h('a.btn.btn--ghost.btn--sm.sw-open', { href: UI.targetURL(name, FIRST), title: t('sw.open.title', { name: name }) },
@@ -172,5 +173,5 @@
     });
   }
 
-  window.FitSwitcher = { open: open, colour: colour };
+  window.AkitSwitcher = { open: open, colour: colour };
 })();

@@ -1,9 +1,10 @@
+// Changed by akit: names renamed by tools/console-pages.py (decision 037); see ../../CHANGES.
 // The tunnel node's module: overview, the hubs it links to (added, changed and removed here), the services it
 // reaches (edited here and told to the hubs) and its tunnels (with the tunnel map and each tunnel's path). What it
-// changes is written into tunnel.node in fit's config. Needs ui.js and tunnel/shared.js.
+// changes is written into tunnel.node in akit's config. Needs ui.js and tunnel/shared.js.
 //
 // 隧道 node 模块：概览、所连的 hub（可在此添加、修改与移除）、可访问的服务（在此编辑并通知 hub）与隧道（含隧道全景图与
-// 每条隧道的链路）。所做修改写入 fit 配置的 tunnel.node。依赖 ui.js 与 tunnel/shared.js。
+// 每条隧道的链路）。所做修改写入 akit 配置的 tunnel.node。依赖 ui.js 与 tunnel/shared.js。
 (function () {
   'use strict';
   // [key, en, zh] / [键, 英文, 中文]

@@ -1,9 +1,10 @@
 <!doctype html>
+<!-- Changed by akit: names renamed by tools/console-pages.py (decision 037); see ../CHANGES. -->
 <html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>fit</title>
+  <title>akit</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='4' fill='%236e6ef0'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="core/ui.css">
   <link rel="stylesheet" href="gateway/config.css">
@@ -50,12 +51,12 @@
        BitTorrent 菜单：客户端的种子及其文件、peer 与 tracker，添加对话框与备用速率，tracker 的总计与 passkey，发布；
        通过客户端的事件流实时更新（I204）。 -->
   <script src="bittorrent/bittorrent.js"></script>
-  <!-- The consistency check: what fit runs compared with the config it runs from. / 一致性检查：运行状态与配置的比较。 -->
+  <!-- The consistency check: what akit runs compared with the config it runs from. / 一致性检查：运行状态与配置的比较。 -->
   <script src="gateway/check.js"></script>
-  <!-- The logs: the files fit's log and the access log write, and their rotation and retention. / 日志：fit 日志与访问日志的文件及其切割与保留。 -->
+  <!-- The logs: the files akit's log and the access log write, and their rotation and retention. / 日志：akit 日志与访问日志的文件及其切割与保留。 -->
   <script src="gateway/logs.js"></script>
-  <!-- What a cluster manager owns in this fit's config, marked on its config pages, asked about before a change (I145). /
-       集群管理端在本 fit 配置中拥有的部分：在配置页面上标出，修改前先询问（I145）。 -->
+  <!-- What a cluster manager owns in this akit's config, marked on its config pages, asked about before a change (I145). /
+       集群管理端在本 akit 配置中拥有的部分：在配置页面上标出，修改前先询问（I145）。 -->
   <script src="gateway/managed.js"></script>
   <!-- The account pages: the console users' own and each other's passwords. / 账户页面：控制台用户自己的及彼此的密码。 -->
   <script src="account/account.js"></script>

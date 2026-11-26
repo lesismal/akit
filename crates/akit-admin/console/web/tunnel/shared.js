@@ -1,3 +1,4 @@
+// Changed by akit: names renamed by tools/console-pages.py (decision 037); see ../../CHANGES.
 // TunnelKit: what the tunnel's three role modules (hub, node, proxy) share: the formatting of latencies, bytes, ages,
 // states and protocols, the editor of a node's services, the editor of a hub a node or proxy links to, the calls that
 // change the config, and the tunnel diagrams (the map of every tunnel, and one tunnel's whole path). Needs ui.js.
@@ -49,7 +50,7 @@
     ['tk.services_saved_node', 'Services saved on the node', '服务已保存到节点'], ['tk.disconnect_q', 'Disconnect from {name}?', '断开与 {name} 的连接？'],
     ['tk.kick_q', 'Kick {name}?', '踢出 {name}？'], ['tk.close_q', 'Close tunnel {id}?', '关闭隧道 {id}？'],
     ['tk.pool', 'Pool size', '连接池大小'], ['tk.password', 'Shared password (deprecated)', '共享密码（已弃用）'],
-    ['tk.token', 'Token the hub issued', 'hub 签发的令牌'], ['tk.token_ph', 'fitt1.…, from the hub\'s Tokens page', 'fitt1.…，来自 hub 的“令牌”页'],
+    ['tk.token', 'Token the hub issued', 'hub 签发的令牌'], ['tk.token_ph', 'akitt1.…, from the hub\'s Tokens page', 'akitt1.…，来自 hub 的“令牌”页'],
     ['tk.token_keep', 'keep token {id}', '保留令牌 {id}'], ['tk.cred_need', 'A token, or the hub\'s password', '需要令牌或 hub 的密码'],
     ['tk.token_note', 'A token replaces the password, and a password the token.', '令牌会替换密码，密码也会替换令牌。'], ['tk.body_pw', 'Body AES password', '消息体 AES 密码'],
     ['tk.clear_body', 'Remove the body password', '移除消息体密码'], ['tk.eps', 'Protocols, in the order they are tried', '协议（按尝试顺序）'],
@@ -76,8 +77,8 @@
     ['tk.k.app', 'Local app', '本地应用'], ['tk.k.proxy', 'Proxy', 'proxy'], ['tk.k.forward', 'Forward', '转发'], ['tk.k.hub', 'Hub', 'hub'],
     ['tk.k.pod', 'Node', '节点'], ['tk.k.node', 'Service', '服务'],
     ['tk.lat.parts', 'last {last} · min {min} · avg {avg}', '最近 {last} · 最小 {min} · 平均 {avg}'],
-    ['tk.config.note', 'This role\'s settings live in fit\'s config, as the tunnel.{role} member: what these pages change is written back into it and applies at once, without a restart, and is kept encrypted when fit keeps its config in admin.store.',
-      '本角色的配置保存在 fit 配置的 tunnel.{role} 成员中：在这些页面上的修改会写回该配置并立即生效，无需重启；当 fit 把配置保存在 admin.store 中时，配置以加密方式保存。']
+    ['tk.config.note', 'This role\'s settings live in akit\'s config, as the tunnel.{role} member: what these pages change is written back into it and applies at once, without a restart, and is kept encrypted when akit keeps its config in admin.store.',
+      '本角色的配置保存在 akit 配置的 tunnel.{role} 成员中：在这些页面上的修改会写回该配置并立即生效，无需重启；当 akit 把配置保存在 admin.store 中时，配置以加密方式保存。']
   ];
   var en = {}, zh = {};
   WORDS.forEach(function (w) { en[w[0]] = w[1]; zh[w[0]] = w[2]; });
@@ -523,10 +524,10 @@
       function refresh() { if (cur && document.body.contains(cur.canvas)) draw(); }
       function draw() {
         var one = cur.view !== undefined && cur.view !== null, g = one ? o.one(cur.view) : o.all();
-        var me = cur, ask = g && window.FitAI && FitAI.askButton ? FitAI.askButton(function () {
+        var me = cur, ask = g && window.AkitAI && AkitAI.askButton ? AkitAI.askButton(function () {
           var spec = askSpec(g, one ? me.view : null, me.sel);
           // The diagram is closed so that the panel beside the page is seen. / 关闭隧道图，以便看到页面旁的面板。
-          if (spec && FitAI.available() && me.close) me.close();
+          if (spec && AkitAI.available() && me.close) me.close();
           return spec;
         }) : null;
         UI.mount(cur.head, h('div', h('h3', one ? t('tk.path') : t('tk.map')),

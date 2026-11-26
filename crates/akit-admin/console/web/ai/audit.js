@@ -1,3 +1,4 @@
+// Changed by akit: names renamed by tools/console-pages.py (decision 037); see ../../CHANGES.
 // The assistant's audit log (GET /api/audit): what it did for each user, the latest first: an answer's tool calls, a
 // proposal applied (with the config version it made), refused, stale or discarded, a media library's files changed
 // on the workbench's pages (I139), with the conversation, the skill and
@@ -15,7 +16,7 @@
     ['au.note', 'What the assistant did for each user: the tools an answer called, and each proposal applied, refused, offered again or discarded; and the media library files each user changed on the workbench\'s pages. Arguments are redacted and cut.',
       '助手为每个用户做过的事：每次回答调用的工具，以及每个提案的应用、拒绝、重新提供或丢弃；以及每个用户在工作台页面上修改的媒体库文件。参数已脱敏并截断。'],
     ['au.kept', 'Kept in the store, the latest {max} entries.', '保存在 store 中，最多 {max} 条。'],
-    ['au.notKept', 'Without admin.store, the log lasts until fit restarts; the latest {max} entries.', '未配置 admin.store：日志只保留到 fit 重启，最多 {max} 条。'],
+    ['au.notKept', 'Without admin.store, the log lasts until akit restarts; the latest {max} entries.', '未配置 admin.store：日志只保留到 akit 重启，最多 {max} 条。'],
     ['au.time', 'Time', '时间'], ['au.user', 'User', '用户'], ['au.kind', 'Kind', '类型'], ['au.conv', 'Conversation', '对话'],
     ['au.calls', 'Tool calls', '工具调用'], ['au.proposal', 'Proposal', '提案'], ['au.outcome', 'Outcome', '结果'], ['au.version', 'Version', '版本'],
     ['au.all', 'All', '全部'], ['au.more', 'Older entries', '更早的记录'], ['au.none', 'No entries.', '没有记录。'],
@@ -105,6 +106,6 @@
     load(true);
   }
 
-  window.FitAI = window.FitAI || {};
-  window.FitAI.auditPage = auditPage;
+  window.AkitAI = window.AkitAI || {};
+  window.AkitAI.auditPage = auditPage;
 })();

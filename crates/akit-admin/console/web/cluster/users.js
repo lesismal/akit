@@ -1,3 +1,4 @@
+// Changed by akit: names renamed by tools/console-pages.py (decision 037); see ../../CHANGES.
 // Cluster → Users and audit (I148): the manager's console users and their roles, and the audit log of every cluster
 // action. #/cluster/users: each user's role cluster-wide (viewer reads, operator also runs operations and rollouts of the
 // templates there are, admin also changes members, their credentials, templates, groups and the roles), its roles on
@@ -15,15 +16,15 @@
 // cluster.js 之前加载。
 (function () {
   'use strict';
-  var FC = window.FitCluster;
+  var FC = window.AkitCluster;
   FC.WORDS.push(
     ['n.users', 'Users and audit', '用户与审计'],
     ['us.users', 'Users and roles', '用户与角色'], ['us.audit', 'Audit log', '审计日志'],
     ['us.user', 'User', '用户'], ['us.console', 'Console user', '控制台用户'], ['us.role', 'Cluster-wide', '集群范围'],
     ['us.groups', 'On groups', '分组上'], ['us.assistant', 'Assistant', '助手'],
     ['us.notconsole', 'not a console user', '不是控制台用户'], ['us.fixed', 'admin.cluster.admins', 'admin.cluster.admins'],
-    ['us.fixed.title', 'Named in admin.cluster.admins: an admin of the cluster whatever the roles say, until the config changes and fit restarts.',
-      '由 admin.cluster.admins 指定：无论角色如何都是集群管理员，直到修改配置并重启 fit。'],
+    ['us.fixed.title', 'Named in admin.cluster.admins: an admin of the cluster whatever the roles say, until the config changes and akit restarts.',
+      '由 admin.cluster.admins 指定：无论角色如何都是集群管理员，直到修改配置并重启 akit。'],
     ['us.open', 'No roles are set: every console user is an admin of the cluster, as before roles were. Set them here; once saved, each user does only what its roles let it, and only a cluster-wide admin changes this manager\'s own config.',
       '尚未设置角色：每个控制台用户都是集群管理员，与引入角色之前相同。在此设置；保存后，每个用户只能做其角色允许的事，且只有集群范围的管理员才能修改本管理端自己的配置。'],
     ['us.roles.hint', 'viewer reads; operator also runs operations and rollouts of the templates there are; admin also changes members and their credentials, writes through the node switcher and copies config between members, and, cluster-wide, changes groups, templates and these roles. A role on a group is a role on its members.',

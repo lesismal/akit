@@ -1,3 +1,4 @@
+// Changed by akit: names renamed by tools/console-pages.py (decision 037); see ../../CHANGES.
 // The Sync pages (I190): one module in the menu for the sync role's pipelines (I163-I189). They read the Admin API's
 // /sync endpoints (I188, I189) and edit the config's shared draft:
 //
@@ -127,7 +128,7 @@
   ];
 
   var enc = encodeURIComponent;
-  function askOf(spec, o) { return window.FitAI && FitAI.askButton ? FitAI.askButton(spec, o) : null; }
+  function askOf(spec, o) { return window.AkitAI && AkitAI.askButton ? AkitAI.askButton(spec, o) : null; }
   function pretty(v) { try { return JSON.stringify(v, null, 2); } catch (e) { return String(v); } }
   function fmtBytes(n) {
     n = +n || 0;
@@ -178,7 +179,7 @@
   }
 
   // ---- places of a save's problems / 保存问题的位置 ----
-  FitConfig.with(UI.scope('admin', ID)).place(function (path, d) {
+  AkitConfig.with(UI.scope('admin', ID)).place(function (path, d) {
     var m = /^sync(?:\.pipelines\[(\d+)\])?/.exec(path || '');
     if (!m) return null;
     var p = m[1] != null && d && d.sync && (d.sync.pipelines || [])[+m[1]];
@@ -190,7 +191,7 @@
     nav: [{ id: 'pipelines', icon: 'swap', label: 'n.pipelines' }, { id: 'config', icon: 'settings', label: 'n.config' }],
     setup: function (ui, sh) {
       var h = ui.h, t = ui.t;
-      var C = FitConfig.with(ui);
+      var C = AkitConfig.with(ui);
       function api(method, path, body) { return ui.api(method, '/api' + path, body); }
       function fail(el, e) { UI.mount(el, h('div.callout.callout--danger', UI.icon('alert'), ' ', (e && e.message) || String(e))); }
       function stateBadge(st) {
@@ -292,7 +293,7 @@
           var src = h('select.select', sources.map(function (m) { return h('option', { value: m, selected: m === 'generate' }, m); }));
           var snk = h('select.select', sinks.map(function (m) { return h('option', { value: m, selected: m === 'memory' }, m); }));
           var hasSync = !!(C.draft && C.draft.sync);
-          var dir = hasSync ? null : UI.fillable(h('input.input', { placeholder: '/var/lib/fit/sync' }));
+          var dir = hasSync ? null : UI.fillable(h('input.input', { placeholder: '/var/lib/akit/sync' }));
           var err = h('div.callout.callout--danger', { hidden: true });
           UI.modal({
             title: t('nw.title'),
@@ -301,7 +302,7 @@
             actions: [{ label: t('cancel') }, { label: t('nw.make'), kind: 'primary', onclick: function () {
               var v = name.value.trim();
               if (!NAME.test(v) || taken[v]) { err.textContent = t('nw.bad'); err.hidden = false; return false; }
-              if (!C.draft.sync) C.draft.sync = { state_dir: (dir && dir.value.trim()) || '/var/lib/fit/sync', pipelines: [] };
+              if (!C.draft.sync) C.draft.sync = { state_dir: (dir && dir.value.trim()) || '/var/lib/akit/sync', pipelines: [] };
               if (!C.draft.sync.pipelines) C.draft.sync.pipelines = [];
               C.draft.sync.pipelines.push({ name: v, source: { module: src.value }, sinks: [{ name: snk.value, sink: { module: snk.value } }] });
               C.changed();

@@ -1,3 +1,4 @@
+// Changed by akit: names renamed by tools/console-pages.py (decision 037); see ../../CHANGES.
 // The media library's pages (I138): one module in the flat menu, beside streaming and media auth, for the whole video
 // on demand and channels track (I132-I136). Its pages read the Admin API and edit the config's shared draft:
 //
@@ -75,8 +76,8 @@
     ['it.name', 'Name', '名称'], ['it.file', 'File', '文件'], ['it.bitrate', 'Bit rate', '码率'], ['it.tracks', 'Tracks', '轨道'],
     ['it.lang', 'Language', '语言'], ['it.format', 'Format', '格式'], ['it.default', 'default', '默认'], ['it.forced', 'forced', '强制'],
     ['it.error', 'Probe error', '探测错误'],
-    ['it.ask', 'The media file {path} of the library {lib} failed: “{error}”. Explain why, and how to make a file fit can serve.',
-      '媒体库 {lib} 中的媒体文件 {path} 出错：“{error}”。请解释原因，以及如何制作 fit 能提供的文件。'],
+    ['it.ask', 'The media file {path} of the library {lib} failed: “{error}”. Explain why, and how to make a file akit can serve.',
+      '媒体库 {lib} 中的媒体文件 {path} 出错：“{error}”。请解释原因，以及如何制作 akit 能提供的文件。'],
     ['tr.kind', 'Kind', '类型'], ['tr.codec', 'Codec', '编码'], ['tr.detail', 'Detail', '详情'], ['tr.samples', 'Samples', '采样数'],
     ['tr.table', 'Sample table', '采样表'],
     // preview / 预览
@@ -149,7 +150,7 @@
     ['u.end.done', 'Session ended.', '会话已结束。'], ['u.filter', 'Subject', '主体'], ['u.refusals', 'Refused URLs by reason', '按原因统计的被拒 URL'],
     ['u.sessions.n', '{n} sessions, {s} subjects', '{n} 个会话，{s} 个主体'],
     // metrics / 指标
-    ['x.note', 'Counted by fit since it started; the rates are over the last refresh, every {s}s.', '自 fit 启动以来的计数；速率为最近一次刷新（每 {s} 秒）间的变化。'],
+    ['x.note', 'Counted by akit since it started; the rates are over the last refresh, every {s}s.', '自 akit 启动以来的计数；速率为最近一次刷新（每 {s} 秒）间的变化。'],
     ['x.libraries', 'Libraries', '媒体库'], ['x.vod', 'Video on demand', '点播'], ['x.policies', 'Playback URLs', '播放 URL'],
     ['x.channels', 'Channels', '频道'], ['x.none', 'Nothing to count yet.', '暂无可统计的内容。'],
     ['x.queue', 'File pool', '文件池'], ['x.queue.v', '{busy} busy · {queued} queued of {queue}', '{busy} 忙 · 排队 {queued}/{queue}'],
@@ -253,7 +254,7 @@
     if (!names[base]) return base;
     for (var i = 2; ; i++) if (!names[base + i]) return base + i;
   }
-  function askOf(spec, o) { return window.FitAI && FitAI.askButton ? FitAI.askButton(spec, o) : null; }
+  function askOf(spec, o) { return window.AkitAI && AkitAI.askButton ? AkitAI.askButton(spec, o) : null; }
 
   // ---- hls.js, loaded when a player first needs it / hls.js：播放器首次需要时加载 ----
   var hlsLoading = null;
@@ -283,8 +284,8 @@
     return (m ? m[1] : s).slice(0, 200) || '—';
   }
 
-  // bodyOf is the body of hls.js's failed request, its XMLHttpRequest, as text: the refusal's reason fit wrote.
-  // bodyOf 返回 hls.js 失败请求（其 XMLHttpRequest）的应答体文本：fit 写入的拒绝原因。
+  // bodyOf is the body of hls.js's failed request, its XMLHttpRequest, as text: the refusal's reason akit wrote.
+  // bodyOf 返回 hls.js 失败请求（其 XMLHttpRequest）的应答体文本：akit 写入的拒绝原因。
   function bodyOf(xhr) {
     try {
       if (!xhr || typeof xhr !== 'object') return '';
@@ -377,7 +378,7 @@
   // ---- places of a save's problems / 保存问题的位置 ----
   // Registered now, before features.js and modules.js register theirs: the media members' problems link here.
   // 现在注册，早于 features.js 与 modules.js：媒体相关成员的问题链接到这里。
-  FitConfig.with(UI.scope('admin', ID)).place(function (path, d) {
+  AkitConfig.with(UI.scope('admin', ID)).place(function (path, d) {
     var m = /^([A-Za-z_]+)(?:\[(\d+)\])?(?:\.([A-Za-z_]+))?/.exec(path || '');
     if (!m) return null;
     if (m[1] === 'media_library') return '#/' + ID + '/config';
@@ -401,7 +402,7 @@
     ],
     setup: function (ui, sh) {
       var h = ui.h, t = ui.t;
-      var C = FitConfig.with(ui);
+      var C = AkitConfig.with(ui);
       function api(method, path, body) { return ui.api(method, '/api' + path, body); }
       function fail(el, e) { UI.mount(el, h('div.callout.callout--danger', UI.icon('alert'), ' ', (e && e.message) || String(e))); }
 
@@ -1032,14 +1033,14 @@
               rm.setAttribute('aria-label', t('cf.remove'));
               var row = h('div.md-row' + (id === nowId ? '.is-now' : ''), {
                 draggable: 'true', 'data-index': k, 'data-item': id, 'data-path': path + '.items[' + k + ']', title: t('c.drag'),
-                ondragstart: function (e) { drag = k; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', 'fit-row:' + k); },
+                ondragstart: function (e) { drag = k; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', 'akit-row:' + k); },
                 ondragover: function (e) { e.preventDefault(); row.classList.add('is-over'); },
                 ondragleave: function () { row.classList.remove('is-over'); },
                 ondrop: function (e) {
                   e.preventDefault(); e.stopPropagation();
                   row.classList.remove('is-over');
                   var data = e.dataTransfer.getData('text/plain') || '';
-                  if (data.indexOf('fit-item:') === 0) { items.splice(k, 0, data.slice(9)); ch.items = items; changed(); return; }
+                  if (data.indexOf('akit-item:') === 0) { items.splice(k, 0, data.slice(9)); ch.items = items; changed(); return; }
                   if (drag == null || drag === k) return;
                   var x = items.splice(drag, 1)[0];
                   items.splice(k, 0, x);
@@ -1058,7 +1059,7 @@
                 e.preventDefault();
                 drop.classList.remove('is-over');
                 var data = e.dataTransfer.getData('text/plain') || '';
-                if (data.indexOf('fit-item:') === 0) { ch.items = items; items.push(data.slice(9)); changed(); }
+                if (data.indexOf('akit-item:') === 0) { ch.items = items; items.push(data.slice(9)); changed(); }
                 else if (drag != null) { items.push(items.splice(drag, 1)[0]); drag = null; changed(); }
               }
             }, t('c.list.drop'));
@@ -1089,7 +1090,7 @@
             day.addEventListener('drop', function (e) {
               e.preventDefault();
               var data = e.dataTransfer.getData('text/plain') || '';
-              if (data.indexOf('fit-item:') !== 0) return;
+              if (data.indexOf('akit-item:') !== 0) return;
               var r = day.getBoundingClientRect();
               var min = Math.round(Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * 1440 / 5) * 5 % 1440;
               ch.schedule = slots;
@@ -1142,7 +1143,7 @@
                 plus.setAttribute('aria-label', t('c.picker.add'));
                 plus.title = t('c.picker.add');
                 return h('div.md-pick', { draggable: 'true', 'data-item': it.id,
-                  ondragstart: function (e) { e.dataTransfer.effectAllowed = 'copy'; e.dataTransfer.setData('text/plain', 'fit-item:' + it.id); } },
+                  ondragstart: function (e) { e.dataTransfer.effectAllowed = 'copy'; e.dataTransfer.setData('text/plain', 'akit-item:' + it.id); } },
                 h('span.md-grip', '⋮⋮'), h('div.md-pick__text', h('div.ellipsis', it.title || it.id), h('div.small.muted.ellipsis', it.id + ' · ' + fmtClock(it.duration))), plus);
               }) : UI.empty(t('i.none')));
             });

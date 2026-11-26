@@ -1,3 +1,4 @@
+// Changed by akit: names renamed by tools/console-pages.py (decision 037); see ../../CHANGES.
 // The BitTorrent pages (I204): one module in the menu for the bittorrent.client and bittorrent.tracker roles (I197-I203).
 // They read and change the roles through the Admin API's /bittorrent endpoints (I203), passed on by the console, and
 // edit the config's shared draft:
@@ -90,7 +91,7 @@
     ['ev.fromTo', '{from} → {to}', '{from} → {to}'], ['ev.dataDeleted', 'with its data', '连同数据'],
     // the add dialog / 添加对话框
     ['a.title', 'Add a torrent', '添加种子'], ['a.magnet', 'Magnet link', '磁力链接'], ['a.file', '.torrent file', '.torrent 文件'], ['a.url', 'URL', 'URL'],
-    ['a.magnetHint', 'magnet:?xt=urn:btih:…', 'magnet:?xt=urn:btih:…'], ['a.urlHint', 'The http or https URL of a .torrent file, which fit downloads.', 'http 或 https 的 .torrent 文件 URL，由 fit 下载。'],
+    ['a.magnetHint', 'magnet:?xt=urn:btih:…', 'magnet:?xt=urn:btih:…'], ['a.urlHint', 'The http or https URL of a .torrent file, which akit downloads.', 'http 或 https 的 .torrent 文件 URL，由 akit 下载。'],
     ['a.fileHint', 'At most 32 MiB.', '最大 32 MiB。'], ['a.category', 'Category', '分类'], ['a.paused', 'Add it paused', '添加后暂停'],
     ['a.sequential', 'Download its pieces in order (to play while it downloads)', '按顺序下载分片（便于边下边播）'],
     ['a.add', 'Add', '添加'], ['a.need', 'Give a magnet link, a .torrent file or a URL.', '请提供磁力链接、.torrent 文件或 URL。'],
@@ -219,7 +220,7 @@
   }
 
   // ---- places of a save's problems / 保存问题的位置 ----
-  FitConfig.with(UI.scope('admin', ID)).place(function (path) {
+  AkitConfig.with(UI.scope('admin', ID)).place(function (path) {
     return /^bittorrent\b/.test(path || '') ? '#/' + ID + '/config' : null;
   });
 
@@ -229,7 +230,7 @@
       { id: 'rss', icon: 'activity', label: 'n.rss' }, { id: 'publish', icon: 'upload', label: 'n.publish' }, { id: 'config', icon: 'settings', label: 'n.config' }],
     setup: function (ui, sh) {
       var h = ui.h, t = ui.t;
-      var C = FitConfig.with(ui);
+      var C = AkitConfig.with(ui);
       function api(method, path, body) { return ui.api(method, '/api' + path, body); }
       function fail(el, e) { UI.mount(el, h('div.callout.callout--danger', UI.icon('alert'), ' ', (e && e.message) || String(e))); }
       // off draws the callout of a role that does not run here. / 绘制角色未在此运行的提示。
@@ -304,8 +305,8 @@
           if (last) headers['Last-Event-ID'] = last;
           fetch(ui.base + '/bittorrent/events', { headers: headers, credentials: 'same-origin', signal: ac.signal }).then(function (r) {
             if (!r.ok || (r.headers.get('Content-Type') || '').indexOf('text/event-stream') < 0) {
-              // Not streamable here (no role, the bound of streams, an older fit): the page polls.
-              // 此处无法流式接收（无角色、流数已达上限或较旧的 fit）：页面改为轮询。
+              // Not streamable here (no role, the bound of streams, an older akit): the page polls.
+              // 此处无法流式接收（无角色、流数已达上限或较旧的 akit）：页面改为轮询。
               onState(false);
               if (r.status === 503) setTimeout(open, 15000);
               return;

@@ -1,16 +1,17 @@
+// Changed by akit: names renamed by tools/console-pages.py (decision 037); see ../../CHANGES.
 // The account module: the signed-in console user's own password, and the console users' passwords. Both pages read
 // GET /api/users first, which says who the session belongs to and whether a store keeps the users (store: true): a
 // change needs one, because the console users are saved in admin.store, not in the config. Passwords are changed with
 // POST /api/account/password (self) and POST /api/users/password (another account); the browser never sees a hash.
 // Every console user is an administrator, so a reset changes another account's password at once. The node page reads
-// GET /api/node: who this fit is (its node ID, made once and kept in the store or beside the config), its host, the
-// versions of fit and fib, and what the API offers a manager.
+// GET /api/node: who this akit is (its node ID, made once and kept in the store or beside the config), its host, the
+// versions of akit and fib, and what the API offers a manager.
 //
 // 账户模块：当前控制台用户的密码，以及各控制台用户的密码。两个页面都先读取 GET /api/users，它给出会话所属用户以及
 // 用户是否由 store 保存（store: true）：修改需要 store，因为控制台用户保存在 admin.store 中而非配置里。修改密码使用
 // POST /api/account/password（自己）与 POST /api/users/password（其他账户）；浏览器不会看到哈希。每个控制台用户都是
-// 管理员，因此重置会立即修改对方账户的密码。节点页读取 GET /api/node：本 fit 是谁（节点 ID，只生成一次，保存在 store 或配置
-// 旁的文件中）、主机、fit 与 fib 的版本，以及 API 向管理端提供的能力。
+// 管理员，因此重置会立即修改对方账户的密码。节点页读取 GET /api/node：本 akit 是谁（节点 ID，只生成一次，保存在 store 或配置
+// 旁的文件中）、主机、akit 与 fib 的版本，以及 API 向管理端提供的能力。
 (function () {
   'use strict';
 
@@ -26,8 +27,8 @@
     ['pw.submit', 'Change password', '修改密码'], ['pw.done', 'Password changed for {user}.', '{user} 的密码已修改。'],
     ['pw.need', 'Enter the current password and the new one.', '请输入当前密码和新密码。'],
     ['pw.mismatch', 'The new passwords do not match.', '两次输入的新密码不一致。'],
-    ['store.off', 'Password changes need a store: this fit runs without admin.store, so a changed console password would not be saved. Start fit with admin.store to change passwords here.',
-      '修改密码需要 store：本 fit 未配置 admin.store，修改后的控制台密码无法保存。请以 admin.store 启动 fit 后再在此修改密码。'],
+    ['store.off', 'Password changes need a store: this akit runs without admin.store, so a changed console password would not be saved. Start akit with admin.store to change passwords here.',
+      '修改密码需要 store：本 akit 未配置 admin.store，修改后的控制台密码无法保存。请以 admin.store 启动 akit 后再在此修改密码。'],
     ['u.title', 'Console users', '控制台用户'], ['u.user', 'Username', '用户名'], ['u.you', 'you', '当前'],
     ['u.reset', 'Reset password', '重置密码'], ['u.reset.title', 'Reset the password of {user}', '重置 {user} 的密码'],
     ['u.note', 'Every console user is an administrator: a reset changes that account\'s password at once and ends its sessions.',
@@ -43,7 +44,7 @@
     ['nd.kept.file', 'a file beside the config', '配置旁的文件'],
     ['nd.kept.memory', 'memory only: a new ID after each restart', '仅内存：每次重启后会生成新的 ID'],
     ['nd.host', 'Host name', '主机名'], ['nd.started', 'Started', '启动时间'], ['nd.uptime', 'Uptime', '运行时长'],
-    ['nd.fit', 'fit', 'fit'], ['nd.fib', 'fib', 'fib'], ['nd.go', 'Go and platform', 'Go 与平台'],
+    ['nd.akit', 'akit', 'akit'], ['nd.fib', 'fib', 'fib'], ['nd.go', 'Go and platform', 'Go 与平台'],
     ['nd.version', 'Version', '版本'], ['nd.etag', 'ETag', 'ETag'], ['nd.applied', 'Applied', '应用时间'], ['nd.source', 'Source', '来源'],
     ['nd.roles', 'Roles running', '运行中的角色'], ['nd.noroles', 'none', '无'],
     ['nd.schema', 'Config schema', '配置 schema'], ['nd.caps', 'Capabilities', '能力'],
@@ -179,7 +180,7 @@
             [t('nd.uptime'), UI.fmtDur(n.uptime_seconds)]
           ])),
           UI.card(t('nd.versions'), UI.kv([
-            [t('nd.fit'), h('code', n.fit_version || '—')],
+            [t('nd.akit'), h('code', n.akit_version || '—')],
             [t('nd.fib'), h('code', n.fib_version || '—')],
             [t('nd.go'), (n.go_version || '') + ' ' + (n.os || '') + '/' + (n.arch || '')]
           ])),

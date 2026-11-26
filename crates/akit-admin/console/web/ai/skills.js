@@ -1,3 +1,4 @@
+// Changed by akit: names renamed by tools/console-pages.py (decision 037); see ../../CHANGES.
 // The assistant's Skills page: every skill (GET /api/skills), the built-in ones and those users added, each with its
 // title and what it is for in the workbench's language, the tools it names and whether this user may call them, and
 // whether it is enabled. A skill is Markdown with YAML front matter (name, title, title_zh, description,
@@ -23,7 +24,7 @@
       '技能是一个命名的任务：何时使用、说明做法的提示词，以及它可调用的工具（永远不超过你的级别）。在对话中用 /name 运行某个技能；不指定时，助手会根据已启用技能的描述选出一个并加载。'],
     ['sk.change', 'A user whose level is {level} adds, edits, enables and disables skills; yours is {mine}.', '级别为 {level} 的用户才能添加、编辑、启用与停用技能；你的级别为 {mine}。'],
     ['sk.kept', 'Skills you add are kept in the store, encrypted; at most {max}.', '你添加的技能加密保存在 store 中；最多 {max} 个。'],
-    ['sk.notKept', 'Without admin.store, skills you add last until fit restarts; at most {max}.', '未配置 admin.store：你添加的技能只保留到 fit 重启；最多 {max} 个。'],
+    ['sk.notKept', 'Without admin.store, skills you add last until akit restarts; at most {max}.', '未配置 admin.store：你添加的技能只保留到 akit 重启；最多 {max} 个。'],
     ['sk.skill', 'Skill', '技能'], ['sk.what', 'What it is for', '用途'], ['sk.tools', 'Tools', '工具'], ['sk.on', 'Enabled', '启用'],
     ['sk.builtin', 'built in', '内置'], ['sk.added', 'added', '已添加'], ['sk.by', 'by {user}', '由 {user}'],
     ['sk.add', 'Add skill', '添加技能'], ['sk.import', 'Import', '导入'], ['sk.export', 'Export', '导出'], ['sk.view', 'View', '查看'],
@@ -37,7 +38,7 @@
     ['sk.toolOff', 'not for you: {why}', '你不可用：{why}'], ['sk.noTools', 'no tools: it answers from what it is told', '无工具：只根据所给信息回答'],
     ['sk.imported', '{n} imported', '已导入 {n} 个'], ['sk.importErrs', 'Not imported', '未导入'], ['sk.tooBig', 'larger than {max} bytes', '超过 {max} 字节'],
     ['sk.saved', 'Skill {name} saved', '技能 {name} 已保存'], ['sk.enabled', '{name} enabled', '{name} 已启用'], ['sk.disabled', '{name} disabled', '{name} 已停用'],
-    ['why.this fit has no such tool', 'this fit has no such tool', '本 fit 没有此工具']
+    ['why.this akit has no such tool', 'this akit has no such tool', '本 akit 没有此工具']
   ];
   var en = {}, zh = {};
   WORDS.forEach(function (w) { en[w[0]] = w[1]; zh[w[0]] = w[2]; });
@@ -150,7 +151,7 @@
     function view(name) {
       get(name).then(function (s) {
         var w = words(UI, s);
-        var use = function (msg) { if (window.FitAI && FitAI.useSkill) { UI.closeModals(); FitAI.useSkill(s.name, { message: msg }); } };
+        var use = function (msg) { if (window.AkitAI && AkitAI.useSkill) { UI.closeModals(); AkitAI.useSkill(s.name, { message: msg }); } };
         var body = h('div.stack',
           h('div.row', h('code', '/' + s.name), UI.badge(s.builtin ? t('sk.builtin') : t('sk.added')),
             UI.badge(s.enabled ? t('fn.on') : t('fn.off'), s.enabled ? 'ok' : '', true), s.model ? h('span.small.muted', t('sk.model', { model: s.model })) : null),
@@ -162,7 +163,7 @@
           s.examples && s.examples.length ? UI.field(t('sk.examples'), h('ul.small.ai-skill__list', s.examples.map(function (x) {
             return h('li', x, ' ', s.enabled ? h('button.btn.btn--ghost.btn--sm', { type: 'button', onclick: function () { use(x); } }, t('sk.try')) : null);
           }))) : null,
-          h('details.ai-fold', { open: true }, h('summary', UI.icon('book'), ' ', t('sk.prompt')), h('div.ai-skill__prompt', FitAI.markdown(UI, s.prompt))),
+          h('details.ai-fold', { open: true }, h('summary', UI.icon('book'), ' ', t('sk.prompt')), h('div.ai-skill__prompt', AkitAI.markdown(UI, s.prompt))),
           h('details.ai-fold', h('summary', UI.icon('code'), ' ', t('sk.source')), h('pre.ai-pre', s.source)));
         var acts = [{ label: t('sk.export'), onclick: function () { download(s.name + '.md', s.source); return false; } }];
         if (s.enabled) acts.push({ label: t('sk.use'), kind: 'primary', onclick: function () { use(''); } });
@@ -223,7 +224,7 @@
     load();
   }
 
-  window.FitAI = window.FitAI || {};
-  window.FitAI.skillsPage = skillsPage;
-  window.FitAI.skillWords = words;
+  window.AkitAI = window.AkitAI || {};
+  window.AkitAI.skillsPage = skillsPage;
+  window.AkitAI.skillWords = words;
 })();

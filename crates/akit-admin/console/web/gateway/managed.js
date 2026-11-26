@@ -1,4 +1,5 @@
-// What a manager of many fits owns in this fit's config (I145), on this fit's own config pages: GET
+// Changed by akit: names renamed by tools/console-pages.py (decision 037); see ../../CHANGES.
+// What a manager of many akits owns in this akit's config (I145), on this akit's own config pages: GET
 // /api/m/admin/node/managed, which the manager keeps up to date (its PUT /node/managed), lists the parts its templates
 // own here, a top-level member whole (log, media_auth, ...) or an element of listeners, routes, services or upstreams
 // by name, each with whether it changed here since the manager saw it in sync. The forms mark those parts (a bar on
@@ -7,7 +8,7 @@
 // apply with a change to one not asked about. Asked once per part until the config is read again. Nothing here stops
 // a change: the member stays its own, and the manager reports what changed.
 //
-// 成员的配置页面上，管理端（集群管理）在本 fit 配置中拥有的部分（I145）：GET /api/m/admin/node/managed（由管理端通过
+// 成员的配置页面上，管理端（集群管理）在本 akit 配置中拥有的部分（I145）：GET /api/m/admin/node/managed（由管理端通过
 // PUT /node/managed 保持最新）列出其模板在此拥有的部分——整个顶层成员（log、media_auth 等），或 listeners、routes、
 // services、upstreams 中按名称的元素——以及每个部分在管理端看到其同步之后是否在此被修改。表单标出这些部分（左侧色条与
 // 徽标；在此修改过的为琥珀色，管理端将其显示为冲突），修改前先询问：聚焦其字段、点击其按钮、编辑包含它的页面的原始文本
@@ -34,7 +35,7 @@
 
   var rec = null, base = null, allowed = {}, asking = false, bypass = false, queued = false;
 
-  function cfg() { return window.FitConfig && FitConfig.with ? FitConfig.with(UI) : null; }
+  function cfg() { return window.AkitConfig && AkitConfig.with ? AkitConfig.with(UI) : null; }
   function draft() { var c = cfg(); return c ? c.draft || {} : {}; }
   function clone(v) { return v === undefined ? undefined : JSON.parse(JSON.stringify(v)); }
   function keyOf(p) { return p.name ? p.member + '[' + p.name + ']' : p.member; }
@@ -167,11 +168,11 @@
   }, true);
   // A new draft read: what the manager owns read again, and the base to compare a save with. / 读取了新的草稿：重新读取
   // 被管理的部分，以及保存时比较的基准。
-  window.addEventListener('fit:config', function () { base = clone(draft()); read(); });
+  window.addEventListener('akit:config', function () { base = clone(draft()); read(); });
   window.addEventListener('hashchange', schedule);
   document.addEventListener('DOMContentLoaded', function () {
     if (window.MutationObserver) new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true });
   });
 
-  window.FitManaged = { read: read, record: function () { return rec; } };
+  window.AkitManaged = { read: read, record: function () { return rec; } };
 })();

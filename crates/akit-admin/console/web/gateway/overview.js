@@ -1,4 +1,5 @@
-// The gateway's overview: what fit runs now, read only, from the Admin API's GET endpoints (/status,
+// Changed by akit: names renamed by tools/console-pages.py (decision 037); see ../../CHANGES.
+// The gateway's overview: what akit runs now, read only, from the Admin API's GET endpoints (/status,
 // /config/effective, /versions): the running config's version, reloads, connections, the listeners, the upstreams'
 // backends and their health, the routes and services and where each came from, the certificates. Needs ui.js,
 // workbench.js and config.js (for the certificate table). Ask AI (I128): an upstream with backends down, and a spike
@@ -57,7 +58,7 @@
       var auto = true;
 
       // ---- Ask AI (I128) / 问 AI ----
-      function askOf(spec) { return window.FitAI && FitAI.askButton ? FitAI.askButton(spec, { label: false }) : null; }
+      function askOf(spec) { return window.AkitAI && AkitAI.askButton ? AkitAI.askButton(spec, { label: false }) : null; }
       // routesTo is the names of the routes proxying to upstream name. / 代理到上游 name 的路由名称。
       function routesTo(cfg, name) {
         return (cfg.routes || []).filter(function (r) {
@@ -257,7 +258,7 @@
               { label: t('source'), render: function (s) { return UI.badge(srcs['/services/' + s._i] || '?'); } }
             ], (cfg.services || []).map(function (s, i) { var o = Object.create(s); o._i = i; return o; }), { empty: t('no.services') }));
 
-            UI.mount(certBox, FitConfig.certTable(UI, certs));
+            UI.mount(certBox, AkitConfig.certTable(UI, certs));
 
             UI.mount(verBox, UI.table([
               { label: t('version'), render: function (v) { return h('span', h('b', String(v.version)), v.version === vs.current ? [' ', UI.badge(t('running'), 'ok', true)] : null); } },

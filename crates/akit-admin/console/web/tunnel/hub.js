@@ -1,9 +1,10 @@
+// Changed by akit: names renamed by tools/console-pages.py (decision 037); see ../../CHANGES.
 // The tunnel hub's module: overview, the nodes and proxies linked to it, its tunnels (with the tunnel map and each
 // tunnel's path), its listeners and its settings (passwords, the console socket, the hub's certificate). What it
-// changes is written into tunnel.hub in fit's config. Needs ui.js and tunnel/shared.js.
+// changes is written into tunnel.hub in akit's config. Needs ui.js and tunnel/shared.js.
 //
 // 隧道 hub 模块：概览、连到本 hub 的节点与 proxy、隧道（含隧道全景图与每条隧道的链路）、监听与设置（各密码、控制台
-// WebSocket、hub 证书）。所做修改写入 fit 配置的 tunnel.hub。依赖 ui.js 与 tunnel/shared.js。
+// WebSocket、hub 证书）。所做修改写入 akit 配置的 tunnel.hub。依赖 ui.js 与 tunnel/shared.js。
 (function () {
   'use strict';
   // [key, en, zh] / [键, 英文, 中文]

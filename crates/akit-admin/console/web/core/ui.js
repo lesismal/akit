@@ -1,4 +1,5 @@
-// fit workbench UI core, shared by every module of the workbench. Vanilla JS, no build step.
+// Changed by akit: names renamed by tools/console-pages.py (decision 037); see ../../CHANGES.
+// akit workbench UI core, shared by every module of the workbench. Vanilla JS, no build step.
 // Load it synchronously in <head>: it applies the saved theme before the first paint.
 // Never put user data into innerHTML: build nodes with UI.h (text is always set as text).
 // A module gets UI.scope(server, ns): the same library, whose requests go to its server module's API, /api/m/<server>/,
@@ -6,7 +7,7 @@
 // I143: the page's URL has ?node=<member>) sends them to /api/n/<member>/m/<server>/ instead, which the manager passes
 // on to that member; UI.target() names the member ('' for the manager's own pages).
 //
-// fit workbench UI 核心库，workbench 各模块共用。原生 JS，无构建步骤。
+// akit workbench UI 核心库，workbench 各模块共用。原生 JS，无构建步骤。
 // 在 <head> 中同步加载：首帧渲染前即应用已保存的主题。
 // 禁止把用户数据放进 innerHTML：用 UI.h 构建节点（文本始终以文本方式设置）。
 // 模块拿到 UI.scope(server, ns)：同一套库，其请求发往服务端模块的 API /api/m/<server>/，其词条先在其命名空间中查找。
@@ -15,7 +16,7 @@
 (function () {
   'use strict';
 
-  var THEME_KEY = 'fit_theme', LANG_KEY = 'fit_lang';
+  var THEME_KEY = 'akit_theme', LANG_KEY = 'akit_lang';
   // "system" follows prefers-color-scheme (no data-theme attribute). / "system" 跟随系统（不设 data-theme）。
   var THEMES = [
     ['system', 'linear-gradient(135deg,#fff 50%,#161923 50%)'], ['light', '#f5f6fa'], ['dark', '#161923'],
@@ -52,7 +53,7 @@
       'ago.s': '{n}s ago', 'ago.m': '{n}m ago', 'ago.h': '{n}h ago', 'ago.d': '{n}d ago', 'never': 'never',
       'copy': 'Copy', 'copied': 'Copied', 'search': 'Search…', 'menu': 'Menu', 'actions': 'Actions',
       'fill.hint': 'Tab fills in {v}',
-      'config.note': 'This role\'s settings live in fit\'s config, as the llm.{role} member: what these pages change is written back into it, and kept encrypted when fit keeps its config in admin.store.'
+      'config.note': 'This role\'s settings live in akit\'s config, as the llm.{role} member: what these pages change is written back into it, and kept encrypted when akit keeps its config in admin.store.'
     },
     'zh-CN': {
       'theme': '主题', 'lang': '语言', 'theme.system': '跟随系统', 'theme.light': '浅色', 'theme.dark': '深色',
@@ -65,7 +66,7 @@
       'ago.s': '{n} 秒前', 'ago.m': '{n} 分钟前', 'ago.h': '{n} 小时前', 'ago.d': '{n} 天前', 'never': '从未',
       'copy': '复制', 'copied': '已复制', 'search': '搜索…', 'menu': '菜单', 'actions': '操作',
       'fill.hint': '按 Tab 填入 {v}',
-      'config.note': '本角色的配置保存在 fit 配置的 llm.{role} 成员中：在这些页面上的修改会写回该配置；当 fit 把配置保存在 admin.store 中时，配置以加密方式保存。'
+      'config.note': '本角色的配置保存在 akit 配置的 llm.{role} 成员中：在这些页面上的修改会写回该配置；当 akit 把配置保存在 admin.store 中时，配置以加密方式保存。'
     }
   };
   // addI18n(dict, ns): ns, when given, keeps the words to the module that adds them (see scope).
@@ -186,11 +187,11 @@
   }
 
   // ---- HTTP ----
-  // Every request that is not GET/HEAD carries the CSRF header X-Fit-Csrf with the token the server handed out at
+  // Every request that is not GET/HEAD carries the CSRF header X-Akit-Csrf with the token the server handed out at
   // login (or in GET /api/session). The token lives only in this variable, never in storage.
-  // 每个非 GET/HEAD 请求都带 CSRF 请求头 X-Fit-Csrf，值为服务端在登录（或 GET /api/session）时下发的令牌。
+  // 每个非 GET/HEAD 请求都带 CSRF 请求头 X-Akit-Csrf，值为服务端在登录（或 GET /api/session）时下发的令牌。
   // 令牌只保存在此变量中，不写入任何存储。
-  var CSRF = 'X-Fit-Csrf';
+  var CSRF = 'X-Akit-Csrf';
   var csrfToken = '';
   var onUnauthorized = null;
   // onMustChange is called when a reply says the session must change its default password first (403
@@ -200,11 +201,11 @@
 
   // ---- The member the pages are drawn against (I143) / 页面所针对的成员（I143） ----
   // target is the member the URL's ?node= names, '' for the manager's own pages; it changes only by loading another
-  // URL, so that nothing of one fit's pages is left on another's. readOnly: the member's version is not the
+  // URL, so that nothing of one akit's pages is left on another's. readOnly: the member's version is not the
   // manager's, whose pages it opens read-only (GET /api/n/<member>/workbench says), and a page's writes are refused
   // here as the manager refuses them: anything but a GET or a HEAD, the text conversions and a dry run.
-  // target 为 URL 中 ?node= 所指的成员（管理端自己的页面为 ''）；只有加载另一个 URL 才会改变，因此一个 fit 的页面数据不会
-  // 留在另一个 fit 的页面上。readOnly：成员的版本与管理端不同，其页面只读打开（由 GET /api/n/<成员>/workbench 告知），页面的
+  // target 为 URL 中 ?node= 所指的成员（管理端自己的页面为 ''）；只有加载另一个 URL 才会改变，因此一个 akit 的页面数据不会
+  // 留在另一个 akit 的页面上。readOnly：成员的版本与管理端不同，其页面只读打开（由 GET /api/n/<成员>/workbench 告知），页面的
   // 写操作在此即被拒绝，与管理端的拒绝一致：GET、HEAD、文本转换与试运行（dry run）之外的请求。
   var target = '';
   try { target = new URLSearchParams(location.search).get('node') || ''; } catch (e) { target = ''; }
@@ -374,21 +375,21 @@
   // GET /api/session → {user, csrf, must_change_password, password_expires?} (401 when not logged in); POST /api/login
   // {username, password} → the same (a 401 with password_expired: true for the expired default password);
   // POST /api/logout → 204; GET /api/me → {user, identity, api_url?}. session and login remember the CSRF token.
-  // must_change_password: the session runs on the default password of `fit run -admin`, which must be changed before
+  // must_change_password: the session runs on the default password of `akit run -admin`, which must be changed before
   // anything else, by password_expires (RFC 3339).
   // GET /api/session → {user, csrf, must_change_password, password_expires?}（未登录时 401）；POST /api/login
   // {username, password} → 同上（默认密码已过期时为带 password_expired: true 的 401）；POST /api/logout → 204；
   // GET /api/me → {user, identity, api_url?}。session 与 login 会记住 CSRF 令牌。must_change_password：会话使用的是
-  // `fit run -admin` 的默认密码，须在 password_expires（RFC 3339）之前修改，修改前不能做其他操作。
+  // `akit run -admin` 的默认密码，须在 password_expires（RFC 3339）之前修改，修改前不能做其他操作。
   function remember(s) { setCsrf(s && s.csrf); return s; }
   function session() { return api('GET', '/api/session', undefined, true).then(remember); }
   function login(user, pass) { return api('POST', '/api/login', { username: user, password: pass }, true).then(remember); }
   function logout() { return api('POST', '/api/logout', {}).then(function (v) { setCsrf(''); return v; }, function (e) { setCsrf(''); throw e; }); }
   function me() { return (this && this.api ? this : UI).api('GET', '/api/me'); }
   // GET /api/workbench → {user, modules: [the IDs of the server modules served]}; against a member, GET
-  // /api/n/<member>/workbench, the member's modules the manager opens, and member: {name, access, fit_version,
+  // /api/n/<member>/workbench, the member's modules the manager opens, and member: {name, access, akit_version,
   // read_only, reason, ...}. / 已登录用户与服务端模块 ID 列表；针对成员时为 GET /api/n/<成员>/workbench：管理端可打开的
-  // 成员模块，以及 member：{name, access, fit_version, read_only, reason, ...}。
+  // 成员模块，以及 member：{name, access, akit_version, read_only, reason, ...}。
   function workbench() {
     if (!target) {
       return api('GET', '/api/workbench').then(function (wb) {
@@ -603,8 +604,8 @@
       h('div.card', h('div.card__body', { style: { padding: '26px' } }, form)))));
   }
 
-  // configNote(role): where the role's settings are kept (the llm.<role> member of fit's config).
-  // configNote(role)：角色配置的保存位置（fit 配置中的 llm.<role> 成员）。
+  // configNote(role): where the role's settings are kept (the llm.<role> member of akit's config).
+  // configNote(role)：角色配置的保存位置（akit 配置中的 llm.<role> 成员）。
   function configNote(role) { return h('div.callout', icon('info'), ' ', t('config.note', { role: role || '<role>' })); }
 
   // scope(server, ns) → the library for a module: requests to /api/... go to /api/m/<server>/..., and t looks up ns's

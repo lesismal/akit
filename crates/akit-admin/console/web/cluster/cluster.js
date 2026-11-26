@@ -1,5 +1,6 @@
+// Changed by akit: names renamed by tools/console-pages.py (decision 037); see ../../CHANGES.
 // The Cluster menu (I142): a first-level entry of the workbench, shown when the console serves the module cluster,
-// which a fit with admin.cluster runs (the manager of other fits): Overview, every member's state; Nodes, the members
+// which an akit with admin.cluster runs (the manager of other akits): Overview, every member's state; Nodes, the members
 // added, tested, trusted, edited and removed; and a member's page, #/cluster/node/<name>, opened from both. The pages
 // are overview.js, nodes.js and member.js, on shared.js; docs/cluster.md describes them and the API they call.
 // Groups (I144, groups.js): resource groups, a group's page with its members and the operations on them
@@ -8,21 +9,21 @@
 // progress batch by batch and the history. Drift and alerts (I147, alerts.js): members out of sync with their diffs and
 // a Fix that plans a rollout, the alert rules, webhooks, alerts and silences, and the menu's badge while alerts fire.
 // Users and audit (I148, users.js): the users' roles and the audit log; every page is drawn once the user's roles are
-// read, and shows only what they allow (FitCluster.can*). Metrics, Logs and Certificates (I150, insight.js): the series
+// read, and shows only what they allow (AkitCluster.can*). Metrics, Logs and Certificates (I150, insight.js): the series
 // the manager keeps per member and group, the members' logs merged by time, and the certificate inventory. BitTorrent
 // (I206, bittorrent.js): the members' BitTorrent roles, and distributions of a published file to members over BitTorrent.
 //
-// 集群菜单（I142）：工作台的一级入口，在控制台提供模块 cluster 时显示（设置了 admin.cluster 的 fit，即其他 fit 的管理端）：
+// 集群菜单（I142）：工作台的一级入口，在控制台提供模块 cluster 时显示（设置了 admin.cluster 的 akit，即其他 akit 的管理端）：
 // 概览，各成员的状态；节点，添加、测试、信任、编辑与删除成员；以及成员页 #/cluster/node/<name>，两者都可打开。页面在
 // overview.js、nodes.js 与 member.js 中，基于 shared.js；docs/cluster.md 介绍这些页面及其调用的 API。分组、模板、发布、
 // 漂移与告警、用户与审计（I145–I148）将作为本菜单的更多页面加入。分组（I144，groups.js）：资源分组、分组页及对其成员的操作
 // （#/cluster/group/<name>），以及覆盖全部成员的同一页面（#/cluster/ops）。发布（I146，rollouts.js）：规划、策略、逐批进度与历史。
 // 漂移与告警（I147，alerts.js）：未同步的成员及其差异、规划发布的“修复”，告警规则、Webhook、告警与静默，以及告警触发时菜单上的徽标。
-// 用户与审计（I148，users.js）：用户的角色与审计日志；每个页面在读取用户角色后绘制，只显示角色允许的内容（FitCluster.can*）。
+// 用户与审计（I148，users.js）：用户的角色与审计日志；每个页面在读取用户角色后绘制，只显示角色允许的内容（AkitCluster.can*）。
 // 指标、日志与证书（I150，insight.js）：管理端按成员与分组保存的序列、按时间合并的成员日志，以及证书清单。
 (function () {
   'use strict';
-  var FC = window.FitCluster;
+  var FC = window.AkitCluster;
   WB.module({
     id: 'cluster', server: 'cluster', icon: 'hub', label: 'm.cluster', words: FC.WORDS,
     nav: [{ id: 'overview', icon: 'dashboard', label: 'n.overview' }, { id: 'nodes', icon: 'server', label: 'n.nodes' },

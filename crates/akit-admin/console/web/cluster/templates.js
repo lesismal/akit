@@ -1,5 +1,6 @@
+// Changed by akit: names renamed by tools/console-pages.py (decision 037); see ../../CHANGES.
 // Cluster → Templates (I145): config the manager owns on the members of the groups a template is attached to. A
-// template is a fragment of fit's config: its top-level members owned whole (log, media_auth, ...), and the elements of
+// template is a fragment of akit's config: its top-level members owned whole (log, media_auth, ...), and the elements of
 // listeners, routes, services and upstreams owned one by one, by name; its strings may use variables, ${node.name},
 // ${node.id}, ${node.hostname}, ${node.labels.<key>} and a group's ${<name>}. A member's desired config is its own with
 // the parts its templates own taken from them, a template of a higher order winning a part two own.
@@ -15,7 +16,7 @@
 // PUT /node/managed), which its own pages mark; rollouts (I146, rollouts.js) apply, opened by Roll out on a template's
 // page and Sync this node on a rendered result. Needs shared.js; before cluster.js.
 //
-// 集群 → 模板（I145）：管理端在模板所关联分组的成员上拥有的配置。模板是 fit 配置的片段：其顶层成员整体拥有（log、
+// 集群 → 模板（I145）：管理端在模板所关联分组的成员上拥有的配置。模板是 akit 配置的片段：其顶层成员整体拥有（log、
 // media_auth 等），listeners、routes、services、upstreams 的元素按名称逐个拥有；字符串可使用变量 ${node.name}、
 // ${node.id}、${node.hostname}、${node.labels.<key>} 与分组变量 ${<name>}。成员的期望配置是其自身配置，再用模板拥有的部分
 // 替换；两个模板拥有同一部分时，order 较大的模板胜出。
@@ -28,7 +29,7 @@
 // 应用由发布（I146）完成。依赖 shared.js；在 cluster.js 之前加载。
 (function () {
   'use strict';
-  var FC = window.FitCluster;
+  var FC = window.AkitCluster;
   FC.WORDS.push(
     ['n.templates', 'Templates', '模板'], ['n.compare', 'Compare', '对比'],
     ['tp.add', 'Add a template', '添加模板'], ['tp.import', 'Import from a node', '从节点导入'], ['tp.compare', 'Compare two nodes', '对比两个节点'],
@@ -43,8 +44,8 @@
     ['tp.groups.hint', 'The members of these groups get the template. Their variables are the template\'s ${name}s, a later group\'s winning.',
       '这些分组的成员使用该模板。分组变量即模板中的 ${name}，靠后的分组优先。'],
     ['tp.config', 'Config', '配置'],
-    ['tp.config.hint', 'A part of fit\'s config, as in a config file: top-level members are owned whole; listeners, routes, services and upstreams element by element, each named. Strings may use ${node.name}, ${node.id}, ${node.hostname}, ${node.labels.<key>} and the groups\' ${<name>}; $${ writes ${. [secret] stands for a secret the manager keeps.',
-      'fit 配置的一部分，写法同配置文件：顶层成员整体拥有；listeners、routes、services、upstreams 按元素拥有，每个元素须有名称。字符串可使用 ${node.name}、${node.id}、${node.hostname}、${node.labels.<key>} 与分组的 ${<name>}；$${ 表示字面的 ${。[secret] 代表管理端保存的密钥。'],
+    ['tp.config.hint', 'A part of akit\'s config, as in a config file: top-level members are owned whole; listeners, routes, services and upstreams element by element, each named. Strings may use ${node.name}, ${node.id}, ${node.hostname}, ${node.labels.<key>} and the groups\' ${<name>}; $${ writes ${. [secret] stands for a secret the manager keeps.',
+      'akit 配置的一部分，写法同配置文件：顶层成员整体拥有；listeners、routes、services、upstreams 按元素拥有，每个元素须有名称。字符串可使用 ${node.name}、${node.id}、${node.hostname}、${node.labels.<key>} 与分组的 ${<name>}；$${ 表示字面的 ${。[secret] 代表管理端保存的密钥。'],
     ['tp.ro', 'Only an admin of the whole cluster changes templates: this one is shown as it is.', '只有集群范围的管理员才能修改模板：此处按原样显示。'],
     ['tp.save', 'Save', '保存'], ['tp.saved', 'The template {name} saved.', '已保存模板 {name}。'], ['tp.added', 'The template {name} added.', '已添加模板 {name}。'],
     ['tp.rm.ask', 'Remove the template {name}? Its members keep what it gave them; the manager no longer owns it there, and tells them so.',
@@ -73,7 +74,7 @@
     ['sy.r.own_value', 'the member\'s own value, from before the template owned it', '成员自己的值，早于模板拥有该部分'],
     ['sy.counts', '{s} in sync, {o} out of sync, {c} in conflict', '{s} 个已同步，{o} 个未同步，{c} 个冲突'],
     ['sy.told', 'told what it owns', '已告知其被管理的部分'], ['sy.kept', 'knows what it owns', '已知其被管理的部分'],
-    ['sy.unsupported', 'an older fit: its pages cannot mark what the manager owns', '较旧的 fit：其页面无法标出管理端拥有的部分'],
+    ['sy.unsupported', 'an older akit: its pages cannot mark what the manager owns', '较旧的 akit：其页面无法标出管理端拥有的部分'],
     ['sy.failed', 'not told what it owns: {e}', '未能告知其被管理的部分：{e}'],
     ['sy.overrides', 'overrides {names}', '覆盖 {names}'], ['sy.released', 'No longer owned: {parts}', '不再拥有：{parts}'],
     ['sy.part', 'Part', '部分'], ['sy.template', 'Template', '模板'], ['sy.state', 'State', '状态'], ['sy.why', 'Why', '原因'],
@@ -158,7 +159,7 @@
     }
     return schemaP;
   }
-  function docOf(text) { return UI.zh() && window.FitSchemaZh && window.FitSchemaZh[text] ? window.FitSchemaZh[text] : (text || ''); }
+  function docOf(text) { return UI.zh() && window.AkitSchemaZh && window.AkitSchemaZh[text] ? window.AkitSchemaZh[text] : (text || ''); }
 
   // form is a schema-driven form over model, a template's config: a card per top-level member, an element of the named
   // lists a box each, fields set shown with a control each and the others offered in "Add a field…"; what has no plain

@@ -1,3 +1,4 @@
+// Changed by akit: names renamed by tools/console-pages.py (decision 037); see ../../CHANGES.
 // Cluster → a member's page (I142), #/cluster/node/<name>: the member as the manager keeps it and its state (GET
 // /api/m/cluster/nodes/<name>), with Test, Trust, Edit and Remove; then what the member itself answers, read through
 // the manager (GET .../nodes/<name>/read/<what>, which passes on the member's GET /node, /status, /versions and
@@ -12,14 +13,14 @@
 // 的证书、保存的配置版本与一致性检查。成员无法读取时，各部分显示各自的问题。I143 的节点切换器从这里打开成员自己的页面。
 (function () {
   'use strict';
-  var FC = window.FitCluster;
+  var FC = window.AkitCluster;
   FC.WORDS.push(
     ['mb.member', 'Member', '成员'], ['mb.state', 'State', '状态'], ['mb.node', 'Node', '节点'],
     ['mb.config', 'Running config', '运行中的配置'], ['mb.listeners', 'Listeners', '监听'],
     ['mb.upstreams', 'Upstreams and backends', '上游与后端'], ['mb.certs', 'Certificates', '证书'],
     ['mb.versions', 'Versions', '配置版本'], ['mb.check', 'Consistency', '一致性检查'], ['mb.tls', 'The certificate it presents', '其出示的证书'],
     ['mb.missing', 'No member is named {name}.', '没有名为 {name} 的成员。'], ['mb.back', 'All nodes', '全部节点'],
-    ['mb.id', 'Node ID', '节点 ID'], ['mb.host', 'Host', '主机'], ['mb.versions.sw', 'fit · fib · Go', 'fit · fib · Go'],
+    ['mb.id', 'Node ID', '节点 ID'], ['mb.host', 'Host', '主机'], ['mb.versions.sw', 'akit · fib · Go', 'akit · fib · Go'],
     ['mb.platform', 'Platform', '平台'], ['mb.started', 'Started', '启动时间'], ['mb.uptime', 'Uptime', '运行时长'],
     ['mb.roles', 'Roles', '角色'], ['mb.schema', 'Schema', 'Schema'], ['mb.caps', 'Capabilities', '能力'],
     ['mb.version', 'Version', '版本'], ['mb.etag', 'ETag', 'ETag'], ['mb.applied', 'Applied', '应用时间'], ['mb.source', 'Source', '来源'],
@@ -109,7 +110,7 @@
       UI.mount(box, UI.kv([
         [t('mb.id'), h('code', n.id || '—')],
         [t('mb.host'), n.hostname],
-        [t('mb.versions.sw'), h('code', [n.fit_version, n.fib_version, n.go_version].map(function (v) { return v || '?'; }).join(' · '))],
+        [t('mb.versions.sw'), h('code', [n.akit_version, n.fib_version, n.go_version].map(function (v) { return v || '?'; }).join(' · '))],
         [t('mb.platform'), (n.os || '?') + '/' + (n.arch || '?')],
         [t('mb.started'), FC.when(n.started)], [t('mb.uptime'), UI.fmtDur(n.uptime_seconds)],
         [t('mb.roles'), n.roles && n.roles.length ? h('span.btn-row', n.roles.map(function (r) { return UI.badge(r); })) : t('mb.none')],

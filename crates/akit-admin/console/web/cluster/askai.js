@@ -1,15 +1,16 @@
+// Changed by akit: names renamed by tools/console-pages.py (decision 037); see ../../CHANGES.
 // Ask AI on the Cluster pages (I153): the Overview's fleet and each member's card ask fleet-health, a failed batch of a
 // rollout asks rollout-planner, and a drifting member on the Drift page asks cluster-drift. Each opens the assistant's
 // panel with the skill, its inputs and a question filled in, and what the page shows of the thing as the selection:
 // members' states, a batch's gates, a member's drift, never a credential (the pages hold none). The pages call these
-// where they draw; each returns null while the assistant is off for the user (FitAI.askButton).
+// where they draw; each returns null while the assistant is off for the user (AkitAI.askButton).
 //
 // 集群页面上的“问 AI”（I153）：概览中的集群与每张成员卡片询问 fleet-health，发布中失败的批次询问 rollout-planner，漂移页上
 // 漂移的成员询问 cluster-drift。点击后以技能、输入与预填的问题打开助手面板，把页面所示的对象作为选中项（成员状态、批次的健康
-// 检查、成员的漂移，从不含凭据：页面中没有凭据）。页面在绘制处调用这些函数；用户的助手关闭时它们返回 null（FitAI.askButton）。
+// 检查、成员的漂移，从不含凭据：页面中没有凭据）。页面在绘制处调用这些函数；用户的助手关闭时它们返回 null（AkitAI.askButton）。
 (function () {
   'use strict';
-  var FC = window.FitCluster;
+  var FC = window.AkitCluster;
   FC.WORDS.push(
     ['ask.fleet', 'How is the fleet? Who is down, behind, drifting or near a certificate\'s expiry, and what should I look at first?',
       '集群状况如何？哪些成员宕机、版本落后、配置漂移或证书即将过期，应先处理什么？'],
@@ -27,7 +28,7 @@
     return {
       name: s.name, status: s.status, since: s.since, groups: s.groups, labels: s.labels,
       error: s.error ? { kind: e.kind, message: e.message } : undefined,
-      fit_version: s.node && s.node.fit_version, config_version: s.config && s.config.version,
+      akit_version: s.node && s.node.akit_version, config_version: s.config && s.config.version,
       drift: s.drift ? s.drift.count : undefined,
       cert_expiry: s.certificates ? s.certificates.nearest_expiry : undefined,
       backends_down: s.upstreams ? s.upstreams.backends_down : undefined, reloads_failed: s.reloads ? s.reloads.failed : undefined
@@ -37,8 +38,8 @@
   // askFleet is the Overview's Ask AI: fleet-health on the members shown, rows() returning them and the group filtered
   // by. / 概览的“问 AI”：对所示成员询问 fleet-health；rows() 返回成员与筛选的分组。
   FC.askFleet = function (UI, rows) {
-    if (!(window.FitAI && FitAI.askButton)) return null;
-    return FitAI.askButton(function () {
+    if (!(window.AkitAI && AkitAI.askButton)) return null;
+    return AkitAI.askButton(function () {
       var r = rows(), counts = {};
       r.nodes.forEach(function (s) { counts[s.status] = (counts[s.status] || 0) + 1; });
       return {
@@ -52,8 +53,8 @@
 
   // askCard is a member card's Ask AI: fleet-health on that member. / 成员卡片的“问 AI”：就该成员询问 fleet-health。
   FC.askCard = function (UI, s) {
-    if (!(window.FitAI && FitAI.askButton)) return null;
-    return FitAI.askButton(function () {
+    if (!(window.AkitAI && AkitAI.askButton)) return null;
+    return AkitAI.askButton(function () {
       return { skill: 'fleet-health', message: UI.t('ask.fleet.member', { name: s.name }), inputs: { member: s.name },
         selection: { cluster_member: brief(s) } };
     }, { label: false });
@@ -62,8 +63,8 @@
   // askBatch is a failed batch's Ask AI: rollout-planner on the rollout and the batch, its members' gates and errors as
   // the selection. / 失败批次的“问 AI”：就该发布与批次询问 rollout-planner，成员的健康检查与错误作为选中项。
   FC.askBatch = function (UI, r, b) {
-    if (!(window.FitAI && FitAI.askButton) || (b.state !== 'failed' && b.state !== 'rolled_back')) return null;
-    return FitAI.askButton(function () {
+    if (!(window.AkitAI && AkitAI.askButton) || (b.state !== 'failed' && b.state !== 'rolled_back')) return null;
+    return AkitAI.askButton(function () {
       var by = {};
       (r.members || []).forEach(function (x) { by[x.node] = x; });
       var why = [];
@@ -85,8 +86,8 @@
 
   // askDrift is a drifting member's Ask AI on the Drift page: cluster-drift on it. / 漂移页上漂移成员的“问 AI”：就其询问 cluster-drift。
   FC.askDrift = function (UI, n) {
-    if (!(window.FitAI && FitAI.askButton) || !n.drifted) return null;
-    return FitAI.askButton(function () {
+    if (!(window.AkitAI && AkitAI.askButton) || !n.drifted) return null;
+    return AkitAI.askButton(function () {
       var what = [];
       if (n.templates && n.templates.state !== 'in_sync') what.push(UI.t('ask.drift.tpl', { state: n.templates.state }));
       if (n.consistency && n.consistency.count) what.push(UI.t('ask.drift.check', { n: n.consistency.count }));

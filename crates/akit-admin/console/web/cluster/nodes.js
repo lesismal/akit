@@ -1,19 +1,20 @@
+// Changed by akit: names renamed by tools/console-pages.py (decision 037); see ../../CHANGES.
 // Cluster → Nodes (I142): the members the manager keeps (GET /api/m/cluster/nodes, with its ETag) beside their states
 // (GET state): their names, labels, URLs, access, credentials (only whether one is saved: never their values), how
 // their certificates are trusted, and their states; Add a node (the form, with Test and Trust), and for each member
 // Test, Trust (a certificate not trusted, or not the one pinned), Edit and Remove, each change sent with the ETag the
-// page read as If-Match. The bar's place beside Add a node takes what later iterations add (FitCluster.addAction:
+// page read as If-Match. The bar's place beside Add a node takes what later iterations add (AkitCluster.addAction:
 // I149's Add by enrollment). The manager's recent changes (GET audit) close the page. #/cluster/nodes?add=1 opens the
 // form at once.
 //
 // 集群 → 节点（I142）：管理端保存的成员（GET /api/m/cluster/nodes 及其 ETag）及其状态（GET state）：名称、标签、URL、
 // 访问方式、凭据（只显示是否已保存，从不显示其值）、证书的信任方式与状态；“添加节点”（表单，带测试与信任），每个成员可
 // 测试、信任（不受信任或不是已固定的证书）、编辑与删除，每次修改以页面读到的 ETag 作为 If-Match。工具栏中“添加节点”旁的
-// 位置留给后续迭代（FitCluster.addAction：I149 的“通过注册添加”）。页面末尾为管理端最近的修改（GET audit）。
+// 位置留给后续迭代（AkitCluster.addAction：I149 的“通过注册添加”）。页面末尾为管理端最近的修改（GET audit）。
 // #/cluster/nodes?add=1 直接打开表单。
 (function () {
   'use strict';
-  var FC = window.FitCluster;
+  var FC = window.AkitCluster;
   FC.WORDS.push(
     ['nd.count', '{n} of at most {max} members (max_nodes)', '{n} 个成员，最多 {max} 个（max_nodes）'],
     ['nd.access', 'Access', '访问方式'], ['nd.creds', 'Credentials', '凭据'], ['nd.tls', 'Certificate', '证书'],
@@ -22,8 +23,8 @@
     ['nd.set', 'saved', '已保存'], ['nd.unset', 'missing', '缺失'],
     ['nd.http', 'http (loopback)', 'http（回环）'],
     ['nd.tls.system', 'System CAs', '系统 CA'], ['nd.tls.ca', 'Its CA', '指定 CA'], ['nd.tls.pin', 'Pinned', '已固定'],
-    ['nd.none', 'No members yet. Add the fits this one manages: their console\'s URL and a user\'s name and password, or their Admin API\'s URL and token.',
-      '还没有成员。请添加本 fit 管理的其他 fit：其控制台 URL 与用户名、密码，或其 Admin API 的 URL 与令牌。'],
+    ['nd.none', 'No members yet. Add the akits this one manages: their console\'s URL and a user\'s name and password, or their Admin API\'s URL and token.',
+      '还没有成员。请添加本 akit 管理的其他 akit：其控制台 URL 与用户名、密码，或其 Admin API 的 URL 与令牌。'],
     ['nd.audit', 'Recent changes', '最近的修改'], ['nd.audit.none', 'No changes yet.', '还没有修改。'],
     ['nd.when', 'When', '时间'], ['nd.who', 'Who', '用户'], ['nd.what', 'What', '操作'], ['nd.detail', 'Detail', '详情'],
     ['nd.a.node.add', 'added', '添加'], ['nd.a.node.update', 'changed', '修改'], ['nd.a.node.remove', 'removed', '删除']
@@ -98,8 +99,8 @@
       if (!list || !document.body.contains(el)) return;
       var addBtn = FC.canAny('admin') ? UI.btn(t('fm.add'), 'plus', add, 'primary') : null;
       if (addBtn) addBtn.disabled = !!readOnly || list.nodes.length >= list.maxNodes;
-      // The bar: Add a node, then what later iterations add beside it (FitCluster.addAction).
-      // 工具栏：“添加节点”，以及后续迭代在其旁加入的按钮（FitCluster.addAction）。
+      // The bar: Add a node, then what later iterations add beside it (AkitCluster.addAction).
+      // 工具栏：“添加节点”，以及后续迭代在其旁加入的按钮（AkitCluster.addAction）。
       var more = FC.addActions(UI, { readOnly: !!readOnly, reload: read });
       UI.mount(head, h('span.btn-row.cl-add', addBtn, more), h('span.small.muted', t('nd.count', { n: list.nodes.length, max: list.maxNodes })));
       var parts = [];

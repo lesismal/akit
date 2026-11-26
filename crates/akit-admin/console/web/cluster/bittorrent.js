@@ -1,3 +1,4 @@
+// Changed by akit: names renamed by tools/console-pages.py (decision 037); see ../../CHANGES.
 // Cluster → BitTorrent (I206): the members' BitTorrent roles and the distributions of a file to members over BitTorrent.
 //   BitTorrent      #/cluster/bittorrent: every member's client and tracker as the manager reads them now
 //                   (GET /api/m/cluster/bittorrent, each member's GET /bittorrent/summary, one read every 2s at most for
@@ -6,7 +7,7 @@
 //                   switcher; and the distributions, the latest first, with New distribution for an operator
 //   Distribution    #/cluster/distribution/<id>: its source, publish entry and torrent, each target's status, progress,
 //                   rate, peers and error, read every 2s while it runs, with Cancel
-//   Overview        a card of the sums and the distributions under way (FitCluster.overviewCard)
+//   Overview        a card of the sums and the distributions under way (AkitCluster.overviewCard)
 // A distribution spreads a torrent a member's private publish entry seeds to other members, which add it with the source and
 // each other as their only peers, into a category of their own (its directory); docs/cluster.md says how. Needs shared.js
 // and groups.js (FC.groups); before cluster.js.
@@ -18,12 +19,12 @@
 //               列表（最新的在前），操作员可“新建分发”
 //   分发        #/cluster/distribution/<id>：其源、发布条目与种子，各目标的状态、进度、速率、对端与错误；运行期间每 2 秒
 //               读取一次，可“取消”
-//   概览        合计与进行中的分发的卡片（FitCluster.overviewCard）
+//   概览        合计与进行中的分发的卡片（AkitCluster.overviewCard）
 // 分发把某成员私有发布条目做种的种子传给其他成员：它们以源和彼此作为唯一的对端添加该种子，放入自己的某个分类（其目录）；
 // 详见 docs/cluster.md。依赖 shared.js 与 groups.js（FC.groups）；在 cluster.js 之前加载。
 (function () {
   'use strict';
-  var FC = window.FitCluster;
+  var FC = window.AkitCluster;
   FC.WORDS.push(
     ['n.bittorrent', 'BitTorrent', 'BitTorrent'],
     ['bt.intro', 'Each member\'s BitTorrent roles, read from it now (at most every 2s for every viewer). A member down, or one older than this view, is said so.',

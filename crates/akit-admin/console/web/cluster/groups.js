@@ -1,3 +1,4 @@
+// Changed by akit: names renamed by tools/console-pages.py (decision 037); see ../../CHANGES.
 // Cluster → Groups (I144): resource groups of members, by a label selector (env=prod, region, tier!=db, !canary), by
 // name, or both (GET/POST/PUT/DELETE /api/m/cluster/groups[/<name>], with the document's ETag as If-Match); a member is
 // in any number of groups. The list shows each group's selector, its members by name and how many members it has now,
@@ -19,7 +20,7 @@
 // 在 cluster.js 之前加载。
 (function () {
   'use strict';
-  var FC = window.FitCluster;
+  var FC = window.AkitCluster;
   FC.WORDS.push(
     ['n.groups', 'Groups', '分组'],
     // The list / 列表
@@ -62,8 +63,8 @@
     ['op.select', 'Select', '选择'], ['op.selectall', 'Select all', '全选'], ['op.nosel', 'Select the members to run on.', '请选择要操作的成员。'],
     ['op.zone', 'Zone', 'Zone'], ['op.zone.hint', 'The cache zone (the cache middleware\'s zone); every zone when empty.', '缓存 zone（cache 中间件的 zone）；留空表示全部 zone。'],
     ['op.keys', 'Keys (URLs)', '键（URL）'], ['op.keys.hint', 'Absolute URLs as clients request them, one a line: https://example.com/a?b=1.', '客户端请求的绝对 URL，每行一个：https://example.com/a?b=1。'],
-    ['op.prefixes', 'Prefixes', '前缀'], ['op.prefixes.hint', 'Every URL starting with one of these, one a line: https://example.com/img/. Needs fit with cache.prefix.',
-      '以其中任一开头的全部 URL，每行一个：https://example.com/img/。需要支持 cache.prefix 的 fit。'],
+    ['op.prefixes', 'Prefixes', '前缀'], ['op.prefixes.hint', 'Every URL starting with one of these, one a line: https://example.com/img/. Needs akit with cache.prefix.',
+      '以其中任一开头的全部 URL，每行一个：https://example.com/img/。需要支持 cache.prefix 的 akit。'],
     ['op.tags', 'Tags', '标签'], ['op.tags.hint', 'Cache-Tag or Surrogate-Key values, separated by spaces or lines.', 'Cache-Tag 或 Surrogate-Key 的值，以空格或换行分隔。'],
     ['op.purgeall', 'Everything in the zone (or every zone)', 'zone（或全部 zone）中的全部内容'],
     ['op.purge.empty', 'Name keys, prefixes or tags, or purge everything.', '请填写键、前缀或标签，或选择清除全部。'],
@@ -469,7 +470,7 @@
         { label: t('ov.state'), render: function (s) {
           return h('div', FC.stateBadge(UI, s.status), s.error ? h('div.small.muted.cl-msg', { title: s.error.message }, FC.kindWord(UI, s.error.kind)) : null);
         } },
-        { label: t('f.fit'), render: function (s) { return s.node ? h('code', s.node.fit_version || '—') : '—'; } },
+        { label: t('f.akit'), render: function (s) { return s.node ? h('code', s.node.akit_version || '—') : '—'; } },
         { label: t('f.config'), render: function (s) { return s.config ? 'v' + s.config.version : '—'; } },
         { label: t('f.drift'), render: function (s) {
           return s.drift ? (s.drift.count ? UI.badge(t('f.drift.n', { n: s.drift.count }), 'warn') : UI.badge(t('f.drift.none'), 'ok')) : '—';

@@ -1,3 +1,4 @@
+// Changed by akit: names renamed by tools/console-pages.py (decision 037); see ../../CHANGES.
 // PeersPanel: the mesh of a process — its identity, its rpc listener, who it is connected to (in / out) and the
 // addresses it dials. Shared by the node, hub and proxy consoles. Needs ui.js.
 //
@@ -33,7 +34,7 @@
         'pp.self_signed': 'TLS with a self-signed certificate this process makes', 'pp.self_signed_hint': 'Peers pin it by the fingerprint shown here; it is kept across restarts',
         'pp.cert_file': 'Certificate file', 'pp.key_file': 'Key file', 'pp.cert_hint': 'PEM files on this machine; with both, links are taken over TLS. A listener off loopback needs TLS',
         'pp.fingerprint': 'Fingerprint (SHA-256)', 'pp.tls_self': 'TLS, self-signed', 'pp.tls_file': 'TLS, certificate file',
-        'pp.token': 'Token the peer\'s listener issued', 'pp.token_hint': 'fitt1.…, from the peer\'s Links page, its Admin API or fit token; it replaces the password',
+        'pp.token': 'Token the peer\'s listener issued', 'pp.token_hint': 'akitt1.…, from the peer\'s Links page, its Admin API or akit token; it replaces the password',
         'pp.password_old': 'Or the shared password of the peer\'s listener (deprecated)', 'pp.cred_need': 'A token, or the peer\'s password',
         'pp.auth': 'Credential', 'pp.auth_token': 'token {id}', 'pp.auth_password': 'shared password',
         'pp.clear_pw': 'Remove every password: only tokens link', 'pp.tokens_only': 'tokens only'
@@ -59,7 +60,7 @@
         'pp.self_signed': '以本进程生成的自签名证书走 TLS', 'pp.self_signed_hint': '对端按此处显示的指纹固定它；重启后保持不变',
         'pp.cert_file': '证书文件', 'pp.key_file': '私钥文件', 'pp.cert_hint': '本机上的 PEM 文件；两者都设置时以 TLS 接受连接。非回环的监听需要 TLS',
         'pp.fingerprint': '指纹（SHA-256）', 'pp.tls_self': 'TLS，自签名', 'pp.tls_file': 'TLS，证书文件',
-        'pp.token': '对端监听签发的令牌', 'pp.token_hint': 'fitt1.…，来自对端的“连接”页、Admin API 或 fit token；它会替换密码',
+        'pp.token': '对端监听签发的令牌', 'pp.token_hint': 'akitt1.…，来自对端的“连接”页、Admin API 或 akit token；它会替换密码',
         'pp.password_old': '或对端监听的共享密码（已弃用）', 'pp.cred_need': '需要令牌或对端的密码',
         'pp.auth': '凭据', 'pp.auth_token': '令牌 {id}', 'pp.auth_password': '共享密码',
         'pp.clear_pw': '移除全部密码：只接受令牌连接', 'pp.tokens_only': '只接受令牌'
@@ -106,10 +107,10 @@
       // A process connects to the other two roles only. / 进程只连接另外两种角色。
       function add() {
         var a = h('input.input', { placeholder: '192.168.1.10:9201', 'data-fill': true }), p = h('input.input', { type: 'password', autocomplete: 'new-password' });
-        var tok = h('input.input.mono', { type: 'password', autocomplete: 'new-password', spellcheck: 'false', placeholder: 'fitt1.…' });
+        var tok = h('input.input.mono', { type: 'password', autocomplete: 'new-password', spellcheck: 'false', placeholder: 'akitt1.…' });
         var role = h('select.select', ROLES.filter(function (r) { return r !== selfRole; }).map(function (r) { return h('option', { value: r }, r); }));
         var pin = h('input.input.mono', { autocomplete: 'off', spellcheck: 'false' });
-        var ca = h('input.input.mono', { autocomplete: 'off', spellcheck: 'false', placeholder: '/etc/fit/ca.pem' });
+        var ca = h('input.input.mono', { autocomplete: 'off', spellcheck: 'false', placeholder: '/etc/akit/ca.pem' });
         var sn = h('input.input.mono', { autocomplete: 'off', spellcheck: 'false' });
         UI.modal({
           title: t('pp.add_title'),

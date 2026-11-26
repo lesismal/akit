@@ -1,25 +1,26 @@
+// Changed by akit: names renamed by tools/console-pages.py (decision 037); see ../../CHANGES.
 // Cluster → Nodes → Add by enrollment (I149): members behind NAT, or with no port open to the manager, link out to it
 // (admin.cluster_member on the member) and are managed through their link. Add by enrollment names the member, gives
 // its token's lifetime and the URL the member reaches the manager's link listener at (admin.cluster.link_address),
 // and shows, once, the token and the config line to paste into the member's admin; a member enrolled already is made
 // a new token from its row. Each linked member's row says whether it is linked or waiting, and why it waits. It hosts
-// itself in the Nodes page's bar and rows (FitCluster.addAction, FitCluster.rowExtra), and edits a linked member's
-// name and labels (FitCluster.linkForm), the only things of it a person changes. Needs shared.js; before cluster.js.
+// itself in the Nodes page's bar and rows (AkitCluster.addAction, AkitCluster.rowExtra), and edits a linked member's
+// name and labels (AkitCluster.linkForm), the only things of it a person changes. Needs shared.js; before cluster.js.
 //
 // 集群 → 节点 → 通过注册添加（I149）：位于 NAT 之后、或未向管理端开放端口的成员主动连接管理端（成员上的
 // admin.cluster_member），并通过这条连接被管理。“通过注册添加”填写成员名称、令牌有效期与成员访问管理端连接监听
 // （admin.cluster.link_address）所用的 URL，并只显示一次令牌及要粘贴到成员 admin 中的配置行；已注册的成员可在其行上
 // 重新生成令牌。每个连接型成员的行显示“已连接”或“等待中”及等待的原因。本文件挂在节点页的工具栏与行上
-// （FitCluster.addAction、FitCluster.rowExtra），并编辑连接型成员的名称与标签（FitCluster.linkForm），这是此类成员
+// （AkitCluster.addAction、AkitCluster.rowExtra），并编辑连接型成员的名称与标签（AkitCluster.linkForm），这是此类成员
 // 唯一可由人修改的内容。依赖 shared.js；在 cluster.js 之前加载。
 (function () {
   'use strict';
-  var FC = window.FitCluster;
+  var FC = window.AkitCluster;
   FC.WORDS.push(
     ['ce.add', 'Add by enrollment', '通过注册添加'],
     ['ce.title', 'Add a member by enrollment', '通过注册添加成员'],
-    ['ce.note', 'For a fit behind NAT, or with no port open to this manager: it links out to the manager with a token made here, used once for a credential of its own, and is managed through its link as the others are over HTTP.',
-      '用于位于 NAT 之后、或未向本管理端开放端口的 fit：它用这里生成的令牌主动连接管理端，令牌只用一次，换取它自己的凭据，之后通过这条连接被管理，如同其他成员通过 HTTP 被管理。'],
+    ['ce.note', 'For an akit behind NAT, or with no port open to this manager: it links out to the manager with a token made here, used once for a credential of its own, and is managed through its link as the others are over HTTP.',
+      '用于位于 NAT 之后、或未向本管理端开放端口的 akit：它用这里生成的令牌主动连接管理端，令牌只用一次，换取它自己的凭据，之后通过这条连接被管理，如同其他成员通过 HTTP 被管理。'],
     ['ce.off', 'This manager takes no links: set admin.cluster.link_address, and restart it.', '本管理端不接受连接：请设置 admin.cluster.link_address 并重启。'],
     ['ce.name', 'Name', '名称'], ['ce.labels', 'Labels', '标签'],
     ['ce.ttl', 'Token lifetime', '令牌有效期'], ['ce.ttl.hint', 'As 24h or 7d; 24h when empty, 30d at most.', '如 24h 或 7d；留空为 24h，最长 30d。'],

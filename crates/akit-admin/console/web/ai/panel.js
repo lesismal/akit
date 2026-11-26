@@ -1,3 +1,4 @@
+// Changed by akit: names renamed by tools/console-pages.py (decision 037); see ../../CHANGES.
 // The assistant's chat panel: a button in the top bar of every page, while the console serves the module ai and the
 // user's level is not off, opens a panel beside the page. A message goes to POST /api/chat with the page shown (WB.page)
 // and the text selected on it as context, and the answer streams back as SSE events (text, thinking, tool_call,
@@ -10,7 +11,7 @@
 // again in a dialog with the whole diff, and Discard (ai/proposals.js). A skill (I127) is picked with the Skills button or
 // by typing /name at the start of the message, which shows the enabled skills that match: the chip above the composer
 // says which the conversation runs, its × stops it, and the message goes with "skill" when the chip changed it. A skill
-// the assistant loads itself (skill_load) comes as the event skill and sets the chip. FitAI.useSkill(name, {message,
+// the assistant loads itself (skill_load) comes as the event skill and sets the chip. AkitAI.useSkill(name, {message,
 // inputs, send}) opens the panel on a new conversation with a skill picked, and with send sends the message at once,
 // for the pages' Ask AI buttons (I128, ai/ask.js), which the panel shows or hides with the user's level. The page's
 // editor, when it has one (WB.editor), goes with the page as editable; a page tool's call (I154) comes as the event
@@ -25,7 +26,7 @@
 // 以 DOM 节点构建，从不作为 HTML 插入，模型写的任何内容都不会在页面上执行。对话的待处理提案（提案工具的各步骤，I126）显示在
 // 输入框上方，带“应用”（会再弹出含完整差异的对话框确认）与“丢弃”（ai/proposals.js）。技能（I127）可用“技能”按钮选择，或在
 // 消息开头输入 /name，面板会列出匹配的已启用技能：输入框上方的标签显示对话运行的技能，点 × 停止使用；标签有变化时消息带上 "skill"。
-// 助手自行加载的技能（skill_load）以 skill 事件到达并更新标签。FitAI.useSkill(name, {message, inputs, send}) 以选好的技能打开面板并
+// 助手自行加载的技能（skill_load）以 skill 事件到达并更新标签。AkitAI.useSkill(name, {message, inputs, send}) 以选好的技能打开面板并
 // 新建对话，带 send 时立即发送消息，供各页面的“问 AI”按钮使用（I128，ai/ask.js），面板按用户级别显示或隐藏这些按钮。页面有编辑器时（WB.editor），其声明作为 editable 随页面发送；页面工具的调用
 // （I154）以 page_call 事件到达，在当前页面上执行（WB.pageTool）：只起草到页面的编辑器与表单、从不保存，其应答经
 // POST /api/chat/page 作为该调用的结果返回。
@@ -36,17 +37,17 @@
     'en': {
       'p.open': 'Assistant', 'p.close': 'Close the assistant', 'p.new': 'New conversation', 'p.delete': 'Delete this conversation',
       'p.deleteQ': 'Delete the conversation “{title}”?', 'p.pick': 'Conversations', 'p.untitled': 'New conversation',
-      'p.placeholder': 'Ask about this fit: a route, an upstream, a log error…  (Enter sends, Shift+Enter a new line)',
+      'p.placeholder': 'Ask about this akit: a route, an upstream, a log error…  (Enter sends, Shift+Enter a new line)',
       'p.send': 'Send', 'p.stop': 'Stop', 'p.retry': 'Retry', 'p.page': 'Send this page as context: {title}',
       'p.pageNone': 'Send this page as context', 'p.today': '{n} tokens today', 'p.model': 'Model: {model}',
       'p.noModel': 'No model is set: add a provider and a model on the Settings page.', 'p.off': 'The assistant is off for you.',
-      'p.noTools': 'This model calls no tools: it answers without reading this fit.',
-      'p.empty': 'Ask about what this fit runs: the assistant reads the config, its status, metrics and logs through read-only tools, and never changes anything itself.',
+      'p.noTools': 'This model calls no tools: it answers without reading this akit.',
+      'p.empty': 'Ask about what this akit runs: the assistant reads the config, its status, metrics and logs through read-only tools, and never changes anything itself.',
       'p.thinking': 'Thinking', 'p.args': 'Arguments', 'p.result': 'Result', 'p.running': 'running…', 'p.waiting': 'waiting for your choice', 'p.failed': 'failed',
       'p.cut': 'cut to its bound', 'p.stopped': 'Stopped.', 'p.summary': 'The earlier turns are summarized for the model from here on.',
       'p.summarized': 'The turns above are summarized for the model.', 'p.chose': 'Chose: {choice}', 'p.limit.max_tool_calls': 'The answer reached its limit of tool calls.',
       'p.limit.max_tokens_per_day': 'Today\'s tokens are spent.', 'p.kept': 'Conversations are kept in the store, encrypted.',
-      'p.notKept': 'Without admin.store, conversations last until fit restarts.', 'p.copy': 'Copy', 'p.you': 'You',
+      'p.notKept': 'Without admin.store, conversations last until akit restarts.', 'p.copy': 'Copy', 'p.you': 'You',
       'p.step': 'Added to the proposal — {tool}: {summary}',
       'p.skills': 'Skills', 'p.skillsHint': 'Pick a skill, or type /name at the start of a message', 'p.noSkill': 'No skill: the assistant picks one when it fits',
       'p.clearSkill': 'Stop using this skill', 'p.skillLoaded': 'The assistant loaded the skill {skill}.', 'p.noMatch': 'No enabled skill matches.',
@@ -57,17 +58,17 @@
     'zh-CN': {
       'p.open': '助手', 'p.close': '关闭助手', 'p.new': '新对话', 'p.delete': '删除此对话',
       'p.deleteQ': '删除对话“{title}”？', 'p.pick': '对话', 'p.untitled': '新对话',
-      'p.placeholder': '询问本 fit 的情况：某个路由、上游、日志错误……（Enter 发送，Shift+Enter 换行）',
+      'p.placeholder': '询问本 akit 的情况：某个路由、上游、日志错误……（Enter 发送，Shift+Enter 换行）',
       'p.send': '发送', 'p.stop': '停止', 'p.retry': '重试', 'p.page': '将本页作为上下文发送：{title}',
       'p.pageNone': '将本页作为上下文发送', 'p.today': '今日已用 {n} 个 token', 'p.model': '模型：{model}',
       'p.noModel': '尚未设置模型：请在设置页添加提供方与模型。', 'p.off': '你的助手级别为关闭。',
-      'p.noTools': '此模型不调用工具：它不读取本 fit 的情况就回答。',
-      'p.empty': '询问本 fit 运行的情况：助手通过只读工具读取配置、状态、指标与日志，自己从不做任何修改。',
+      'p.noTools': '此模型不调用工具：它不读取本 akit 的情况就回答。',
+      'p.empty': '询问本 akit 运行的情况：助手通过只读工具读取配置、状态、指标与日志，自己从不做任何修改。',
       'p.thinking': '思考', 'p.args': '参数', 'p.result': '结果', 'p.running': '运行中…', 'p.waiting': '等待你的选择', 'p.failed': '失败',
       'p.cut': '已截断至上限', 'p.stopped': '已停止。', 'p.summary': '从这里起，之前的轮次以摘要提供给模型。',
       'p.summarized': '以上轮次以摘要提供给模型。', 'p.chose': '已选择：{choice}', 'p.limit.max_tool_calls': '本次回答已达到工具调用次数上限。',
       'p.limit.max_tokens_per_day': '今日的 token 已用完。', 'p.kept': '对话加密保存在 store 中。',
-      'p.notKept': '未配置 admin.store：对话只保留到 fit 重启。', 'p.copy': '复制', 'p.you': '你',
+      'p.notKept': '未配置 admin.store：对话只保留到 akit 重启。', 'p.copy': '复制', 'p.you': '你',
       'p.step': '已加入提案 — {tool}：{summary}',
       'p.skills': '技能', 'p.skillsHint': '选择一个技能，或在消息开头输入 /name', 'p.noSkill': '未选技能：合适时助手会自行选择',
       'p.clearSkill': '停止使用此技能', 'p.skillLoaded': '助手加载了技能 {skill}。', 'p.noMatch': '没有匹配的已启用技能。',
@@ -182,7 +183,7 @@
     try { return JSON.stringify(JSON.parse(s), null, 2); } catch (e) { return s; }
   }
 
-  var CONV_KEY = 'fit_ai_conv';
+  var CONV_KEY = 'akit_ai_conv';
   function load(k) { try { return sessionStorage.getItem(k) || ''; } catch (e) { return ''; } }
   function save(k, v) { try { if (v) sessionStorage.setItem(k, v); else sessionStorage.removeItem(k); } catch (e) { /* ignore / 忽略 */ } }
 
@@ -234,11 +235,11 @@
 
     // The button is hidden for a user whose level is off, and so are the pages' Ask AI buttons (ai/ask.js).
     // 级别为 off 的用户看不到按钮，各页面的“问 AI”按钮也一样（ai/ask.js）。
-    if (window.FitAI.setAvailable) FitAI.setAvailable(null, shell);
+    if (window.AkitAI.setAvailable) AkitAI.setAvailable(null, shell);
     UI.api('GET', '/api/tools').then(function (info) {
       st.info = info;
       button.hidden = info.level === 'off';
-      if (window.FitAI.setAvailable) FitAI.setAvailable(info.level !== 'off', shell);
+      if (window.AkitAI.setAvailable) AkitAI.setAvailable(info.level !== 'off', shell);
       showInfo();
     }, function () { /* the panel says so when opened / 打开面板时再提示 */ });
 
@@ -275,7 +276,7 @@
       }, function () { st.skills = st.skills || []; });
     }
     function skillOf(name) { return (st.skills || []).filter(function (s) { return s.name === name; })[0]; }
-    function skillTitle(name) { var s = skillOf(name); return s && FitAI.skillWords ? FitAI.skillWords(UI, s).title : name; }
+    function skillTitle(name) { var s = skillOf(name); return s && AkitAI.skillWords ? AkitAI.skillWords(UI, s).title : name; }
     function drawChip() {
       if (!st.skill) { UI.mount(chip, h('span.muted', t('p.noSkill'))); return; }
       UI.mount(chip, h('span.badge.ai-skillchip__on', { title: '/' + st.skill }, UI.icon('book'), ' ', skillTitle(st.skill),
@@ -286,12 +287,12 @@
     function showPicker(filter) {
       var f = String(filter || '').toLowerCase();
       st.matches = (st.skills || []).filter(function (s) {
-        var w = FitAI.skillWords ? FitAI.skillWords(UI, s) : s;
+        var w = AkitAI.skillWords ? AkitAI.skillWords(UI, s) : s;
         return !f || s.name.indexOf(f) >= 0 || String(w.title).toLowerCase().indexOf(f) >= 0;
       });
       if (st.pickAt >= st.matches.length) st.pickAt = st.matches.length - 1;
       UI.mount(picker, st.matches.length ? st.matches.map(function (s, i) {
-        var w = FitAI.skillWords ? FitAI.skillWords(UI, s) : s;
+        var w = AkitAI.skillWords ? AkitAI.skillWords(UI, s) : s;
         return h('button.ai-skillpick__item' + (i === st.pickAt ? '.is-active' : ''), { type: 'button', role: 'option', 'aria-selected': i === st.pickAt ? 'true' : 'false',
           onmousedown: function (e) { e.preventDefault(); }, onclick: function () { choose(s); } },
           h('div', h('b', w.title), ' ', h('code.small', '/' + s.name)), h('div.small.muted', w.description));
@@ -355,7 +356,7 @@
       }
       return true;
     }
-    window.FitAI.useSkill = useSkill;
+    window.AkitAI.useSkill = useSkill;
     // context shows which page goes as context. / 显示作为上下文发送的页面。
     function context() {
       var p = window.WB && WB.page ? WB.page() : {};
@@ -407,14 +408,14 @@
     // refreshProposal 读取对话的待处理提案（已在运行中的配置上检查）并绘制。
     function refreshProposal() {
       var conv = st.conv;
-      if (!conv || !window.FitAI.proposal) { drawProposal(null); return; }
+      if (!conv || !window.AkitAI.proposal) { drawProposal(null); return; }
       UI.api('GET', '/api/proposals/' + encodeURIComponent(conv)).then(function (b) {
         if (conv === st.conv) drawProposal(b && b.proposal);
       }, function () { /* the card stays as it was / 卡片保持原样 */ });
     }
     function drawProposal(v) {
       if (!v) { UI.clear(propBox); propBox.hidden = true; return; }
-      UI.mount(propBox, FitAI.proposal.card(UI, v, {
+      UI.mount(propBox, AkitAI.proposal.card(UI, v, {
         busy: function () { return st.streaming; },
         done: function (view, msg, kind) {
           if (msg) {
@@ -481,7 +482,7 @@
           x.d.classList.toggle('is-error', !!isErr);
           // A rollout plan or an operation a cluster propose tool made, linked to where it starts (ai/plans.js, I153).
           // 集群提案工具生成的发布规划或操作，链接到启动之处（ai/plans.js，I153）。
-          var card = window.FitAI && FitAI.resultCard ? FitAI.resultCard(UI, name, content, isErr) : null;
+          var card = window.AkitAI && AkitAI.resultCard ? AkitAI.resultCard(UI, name, content, isErr) : null;
           if (card) x.d.parentNode.insertBefore(card, x.d.nextSibling);
         },
         ask: function (ev, live) {
@@ -657,7 +658,7 @@
     return button;
   }
 
-  window.FitAI = window.FitAI || {};
-  window.FitAI.panel = panel;
-  window.FitAI.markdown = markdown;
+  window.AkitAI = window.AkitAI || {};
+  window.AkitAI.panel = panel;
+  window.AkitAI.markdown = markdown;
 })();

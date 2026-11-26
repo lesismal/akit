@@ -1,3 +1,4 @@
+// Changed by akit: names renamed by tools/console-pages.py (decision 037); see ../../CHANGES.
 // The workbench: a login, then a menu on the left whose first level is the modules themselves — the gateway's global
 // pages, the account pages, the protocol and feature modules, the tunnel's and the LLM feature's roles — each module's
 // pages as its second level, and the page picked on the right. A module is shown when the console serves its server
@@ -68,7 +69,7 @@
       'tag.streaming': 'RTMP / RTSP / SRT', 'tag.mediaauth': 'media tokens', 'tag.webrtc': 'WebRTC',
       'tag.tunnel': 'Tunnel', 'tag.llm': 'LLM',
       'dp.title': 'Change the default password',
-      'dp.note': 'You signed in as {user} with the default password fit run -admin set. It is temporary: change it now, before anything else. Until it is changed, the console does nothing else.',
+      'dp.note': 'You signed in as {user} with the default password akit run -admin set. It is temporary: change it now, before anything else. Until it is changed, the console does nothing else.',
       'dp.left': 'The default password stops working in {left}.',
       'dp.at': 'It stops working at {at}.',
       'dp.current': 'Current (default) password', 'dp.new': 'New password', 'dp.confirm': 'Confirm the new password',
@@ -77,7 +78,7 @@
       'dp.mismatch': 'The new passwords do not match.',
       'dp.same': 'The new password must differ from the current one.',
       'dp.submit': 'Change password and continue', 'dp.done': 'Password changed for {user}.',
-      'dp.expired': 'The default password has expired and no longer works. Restart fit with -admin to get a new one, then sign in and change it in time.'
+      'dp.expired': 'The default password has expired and no longer works. Restart akit with -admin to get a new one, then sign in and change it in time.'
     },
     'zh-CN': {
       'wb.sub': '工作台', 'wb.filter': '筛选菜单', 'wb.fold': '收起菜单', 'wb.none': '没有匹配项',
@@ -87,7 +88,7 @@
       'tag.streaming': 'RTMP / RTSP / SRT', 'tag.mediaauth': '媒体令牌', 'tag.webrtc': 'WebRTC',
       'tag.tunnel': '隧道', 'tag.llm': 'LLM',
       'dp.title': '修改默认密码',
-      'dp.note': '你以 {user} 身份使用 fit run -admin 设置的默认密码登录。该密码是临时的：请先修改它。修改之前，控制台不能进行其他操作。',
+      'dp.note': '你以 {user} 身份使用 akit run -admin 设置的默认密码登录。该密码是临时的：请先修改它。修改之前，控制台不能进行其他操作。',
       'dp.left': '默认密码将在 {left} 后失效。',
       'dp.at': '失效时间：{at}。',
       'dp.current': '当前（默认）密码', 'dp.new': '新密码', 'dp.confirm': '确认新密码',
@@ -96,7 +97,7 @@
       'dp.mismatch': '两次输入的新密码不一致。',
       'dp.same': '新密码必须与当前密码不同。',
       'dp.submit': '修改密码并继续', 'dp.done': '{user} 的密码已修改。',
-      'dp.expired': '默认密码已过期，不能再使用。请以 -admin 重新启动 fit 获取新的默认密码，然后登录并及时修改。'
+      'dp.expired': '默认密码已过期，不能再使用。请以 -admin 重新启动 akit 获取新的默认密码，然后登录并及时修改。'
     }
   });
 
@@ -115,7 +116,7 @@
   // MANAGER_ONLY 为管理端自己的模块（另有带 managerOnly 的模块），从不针对成员绘制。
   var MANAGER_ONLY = ['account'];
   var defs = [], frames = [];
-  var OPEN_KEY = 'fit_wb_open', MINI_KEY = 'fit_wb_mini';
+  var OPEN_KEY = 'akit_wb_open', MINI_KEY = 'akit_wb_mini';
 
   function load(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function save(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* ignore / 忽略 */ } }
@@ -284,7 +285,7 @@
   // askOf is the Ask AI button of a menu item's ask (I128), or null without one or without the assistant.
   // askOf 返回菜单项 ask 的“问 AI”按钮（I128）；没有 ask 或没有助手时为 null。
   function askOf(spec) {
-    var b = spec && window.FitAI && FitAI.askButton ? FitAI.askButton(spec, { label: false, cls: 'tree__ask' }) : null;
+    var b = spec && window.AkitAI && AkitAI.askButton ? AkitAI.askButton(spec, { label: false, cls: 'tree__ask' }) : null;
     return b || null;
   }
   // portNode is a collapsible node (one listener port): its head toggles it, its kids are the third level; a port is
@@ -400,7 +401,7 @@
         if (m.nav.length > 1 && nav) where.push(navLabel(m, nav.label));
         titleEl.textContent = title || '';
         crumbEl.textContent = crumb || where.join(' / ');
-        document.title = (UI.target() ? '[' + UI.target() + '] ' : '') + (title ? title + ' · ' : '') + 'fit';
+        document.title = (UI.target() ? '[' + UI.target() + '] ' : '') + (title ? title + ' · ' : '') + 'akit';
         UI.clear(toolsEl);
         return UI.clear(content);
       }
@@ -519,7 +520,7 @@
     } }, UI.icon('fold'));
     var foot = h('div.sidebar__foot', h('div.row', UI.icon('users'), h('span.ellipsis', wb.user || '')),
       h('a.nav__item', { href: '#', onclick: function (e) { e.preventDefault(); logout(); } }, UI.icon('logout'), h('span', t('logout'))));
-    var side = h('aside.sidebar', h('div.brand', h('div.brand__logo', UI.icon('logo')), h('div.brand__text', h('div.brand__name', 'fit'), h('div.brand__sub', t('wb.sub'))), fold),
+    var side = h('aside.sidebar', h('div.brand', h('div.brand__logo', UI.icon('logo')), h('div.brand__text', h('div.brand__name', 'akit'), h('div.brand__sub', t('wb.sub'))), fold),
       filterEl, navEl, foot);
     var menu = h('button.btn.btn--ghost.btn--icon.menu-btn', { type: 'button', 'aria-label': t('menu'), onclick: function () { root.classList.toggle('nav-open'); } }, UI.icon('menu'));
     var extra = h('div.row.topbar__extra');
@@ -560,10 +561,10 @@
     return (hh ? hh + ':' + p(mm) : mm) + ':' + p(ss);
   }
 
-  // changePage is the full page a session on the default password of `fit run -admin` gets instead of the workbench:
+  // changePage is the full page a session on the default password of `akit run -admin` gets instead of the workbench:
   // the current and a new password, and the time left before the default password stops working. It looks like the
   // login page. o: {session, onDone(), onLogout()}; it returns a function that stops its countdown.
-  // changePage 是使用 `fit run -admin` 默认密码的会话看到的整页（代替工作台）：当前密码与新密码，以及默认密码失效前的
+  // changePage 是使用 `akit run -admin` 默认密码的会话看到的整页（代替工作台）：当前密码与新密码，以及默认密码失效前的
   // 剩余时间，外观同登录页。o：{session, onDone(), onLogout()}；返回停止其倒计时的函数。
   function changePage(el, o) {
     var s = o.session || {}, user = s.user || '';
@@ -609,7 +610,7 @@
     }
     function stop() { if (timer) clearInterval(timer); timer = null; }
     UI.mount(el, h('div.login', h('div.login__prefs', UI.prefs()), h('div.login__box',
-      h('div.login__brand', h('div.brand__logo', UI.icon('logo')), h('div', h('div.brand__name', 'fit'), h('div.brand__sub.muted', t('dp.title')))),
+      h('div.login__brand', h('div.brand__logo', UI.icon('logo')), h('div', h('div.brand__name', 'akit'), h('div.brand__sub.muted', t('dp.title')))),
       h('div.card', body))));
     tick();
     if (!isNaN(until) && until > Date.now()) timer = setInterval(tick, 1000);
@@ -628,7 +629,7 @@
       unlock();
       UI.stopTimers();
       UI.closeModals();
-      UI.loginPage(app, { brand: 'fit', sub: t('wb.sub'), username: 'admin', onSubmit: function (u, p) { return UI.login(u, p).then(enter); } });
+      UI.loginPage(app, { brand: 'akit', sub: t('wb.sub'), username: 'admin', onSubmit: function (u, p) { return UI.login(u, p).then(enter); } });
     }
     function logout() { unlock(); UI.logout().then(showLogin, showLogin); }
     // enter goes on with a session: to the change page while its default password must be changed, else to the

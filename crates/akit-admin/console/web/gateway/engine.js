@@ -1,3 +1,4 @@
+// Changed by akit: names renamed by tools/console-pages.py (decision 037); see ../../CHANGES.
 // The Engine menu: one first-level entry whose submenus are the listener ports, each listing the features that port
 // serves and the page that edits each one, in a fixed order: the handlers of its routes, the reverse and forward proxy
 // routes, the cache and other middleware, the streaming handlers (with the port's vod routes and the channels its
@@ -5,7 +6,7 @@
 // protocol, PROXY protocol, HTTP/3, on-demand, client-certificate and VOD badges are small
 // tags rather than entries, and its last entry opens the listener form. The module has no page of its own: every entry
 // is a link into a page of another module. Its data comes from config.js's shared draft, plus GET /api/status for the
-// addresses the kernel bound and the listeners HTTPS by default makes; a config change (the fit:config event) or a
+// addresses the kernel bound and the listeners HTTPS by default makes; a config change (the akit:config event) or a
 // refresh rebuilds the menu without losing the page shown. Each port, and each entry that lists routes, has an Ask AI
 // button (I128) that asks the skill diagnose about it, its routes' names as the skill's input route.
 //
@@ -13,7 +14,7 @@
 // 正向代理路由、缓存与其他中间件、流媒体与 WebRTC 处理器，以及四层服务、SOCKS、TLS、ACME 与自动 HTTPS 的设置；其协议、
 // PROXY 协议、HTTP/3、按需证书与客户端证书以小标记显示而非条目，最后一项打开监听表单。本模块没有自己的页面：每个条目都
 // 链接到其他模块的页面。数据取自 config.js 的共享草稿，另用 GET /api/status 补充内核实际绑定的地址与自动 HTTPS 生成的监听；
-// 配置变化（fit:config 事件）或刷新时重建菜单，且不丢失当前页面。每个端口及每个列出路由的条目都有“问 AI”按钮（I128），
+// 配置变化（akit:config 事件）或刷新时重建菜单，且不丢失当前页面。每个端口及每个列出路由的条目都有“问 AI”按钮（I128），
 // 以技能 diagnose 诊断它，其路由名称作为技能输入 route。依赖 ui.js、workbench.js 与 config.js。
 (function () {
   'use strict';
@@ -64,7 +65,7 @@
   var ui = UI.scope('admin', 'engine');
   var h = ui.h, t = ui.t;
   // C is config.js's shared draft, the same one the editing pages use. / C 是 config.js 的共享草稿，与编辑页面相同。
-  var C = FitConfig.with(ui);
+  var C = AkitConfig.with(ui);
 
   // The menu's data: the draft as last read, the status answer (null when it could not be read), and whether the
   // first read is done (before it, the menu says it is loading). / 菜单数据：上次读取的草稿、status 应答（读取失败为 null），
@@ -118,7 +119,7 @@
   }
 
   // load reads the draft and the running addresses once, then draws the menu; boot calls it and a config change
-  // listens to fit:config. / load 读取草稿与运行地址并绘制菜单；boot 调用它，配置变化监听 fit:config。
+  // listens to akit:config. / load 读取草稿与运行地址并绘制菜单；boot 调用它，配置变化监听 akit:config。
   function load() {
     return C.ensure().then(function () {
       S.draft = C.draft || {};
@@ -136,7 +137,7 @@
       throw e;
     });
   }
-  // changed refreshes the cached draft from the shared one (config.js dispatches fit:config after every read) and
+  // changed refreshes the cached draft from the shared one (config.js dispatches akit:config after every read) and
   // the running addresses best-effort. / changed 从共享草稿刷新缓存，并尽力重读运行地址。
   function changed() {
     if (!S.loaded) return;
@@ -146,7 +147,7 @@
     readStatus().then(menu);
   }
   function menu() { if (window.WB && WB.refreshMenu) WB.refreshMenu(); }
-  window.addEventListener('fit:config', changed);
+  window.addEventListener('akit:config', changed);
 
   // ---- the ports / 端口 ----
   // ports is the Engine menu: the configured listeners in the order written; or, when none are written and HTTPS by

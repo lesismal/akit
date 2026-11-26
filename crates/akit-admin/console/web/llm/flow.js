@@ -1,3 +1,4 @@
+// Changed by akit: names renamed by tools/console-pages.py (decision 037); see ../../CHANGES.
 // LinkMap: a role's links and traffic, drawn as a diagram of columns (who calls → this role → whom it calls → what it
 // serves) over a table of the same links. A page builds a graph with LinkMap.graph from its status (/mesh/status and
 // its role's lists) and LinkMap.mount polls it: the bytes each link carried are totals, and the rates are worked out
@@ -276,7 +277,7 @@
     var prev = {}, sel = null, last = null;
     var note = h('div'), canvas = h('div.lm-canvas'), sideEl = h('aside.lm-side'), tbl = h('div');
     var legend = h('div.lm-legend.small.muted', t('lm.legend'), h('span.rtt-good', t('lm.good')), ' / ', h('span.rtt-fair', t('lm.fair')), ' / ', h('span.rtt-poor', t('lm.poor')));
-    var ask = window.FitAI && FitAI.askButton ? FitAI.askButton(function () { return askSpec(last, sel); }) : null;
+    var ask = window.AkitAI && AkitAI.askButton ? AkitAI.askButton(function () { return askSpec(last, sel); }) : null;
     UI.mount(el, h('div.stack', note,
       UI.card(t('lm.map'), h('div.stack', legend, h('div.lm-body', canvas, sideEl)), h('div.row', ask, UI.btn(t('refresh'), 'refresh', function () { load(); }, 'sm'))),
       UI.card(t('lm.links'), tbl, null, true)));

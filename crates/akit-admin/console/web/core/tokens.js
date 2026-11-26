@@ -1,3 +1,4 @@
+// Changed by akit: names renamed by tools/console-pages.py (decision 037); see ../../CHANGES.
 // TokensPanel: the link tokens a listener issues (decision 035), which the tunnel's nodes and proxies and the LLM
 // mesh's peers link with in place of a shared password: issue one (its token shown once), list them with their
 // expiry, last use, members and links, change a token's expiry, and revoke one, which closes its links at once.
@@ -16,7 +17,7 @@
     UI.addI18n({
       'en': {
         'lt.title': 'Link tokens', 'lt.issue': 'Issue token', 'lt.name': 'Name', 'lt.note': 'Note', 'lt.id': 'ID', 'lt.expires': 'Expires',
-        'lt.never': 'never', 'lt.expired': 'expired', 'lt.last_used': 'Last used', 'lt.unused': 'not since fit started',
+        'lt.never': 'never', 'lt.expired': 'expired', 'lt.last_used': 'Last used', 'lt.unused': 'not since akit started',
         'lt.members': 'Bound members', 'lt.links': 'Links', 'lt.expiry': 'Expiry', 'lt.revoke': 'Revoke',
         'lt.none': 'No token yet: issue one for each node, proxy or peer that links here.',
         'lt.ttl': 'Lifetime', 'lt.ttl_hint': 'From now, as 720h or 30d; empty: never expires', 'lt.at': 'Or expires at',
@@ -28,7 +29,7 @@
       },
       'zh-CN': {
         'lt.title': '连接令牌', 'lt.issue': '签发令牌', 'lt.name': '名称', 'lt.note': '备注', 'lt.id': 'ID', 'lt.expires': '过期时间',
-        'lt.never': '永不过期', 'lt.expired': '已过期', 'lt.last_used': '最近使用', 'lt.unused': 'fit 启动以来未使用',
+        'lt.never': '永不过期', 'lt.expired': '已过期', 'lt.last_used': '最近使用', 'lt.unused': 'akit 启动以来未使用',
         'lt.members': '绑定成员', 'lt.links': '连接', 'lt.expiry': '过期时间', 'lt.revoke': '吊销',
         'lt.none': '暂无令牌：为每个连接到这里的节点、proxy 或对端签发一个。',
         'lt.ttl': '有效期', 'lt.ttl_hint': '从现在起计算，如 720h 或 30d；留空表示永不过期', 'lt.at': '或在此时过期',

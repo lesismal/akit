@@ -1,9 +1,10 @@
+// Changed by akit: names renamed by tools/console-pages.py (decision 037); see ../../CHANGES.
 // The tunnel proxy's module: overview, the hubs it links to (each with the console its web proxy serves), the nodes
 // and services they have, its forwards, its tunnels (with the tunnel map and each tunnel's path) and the info it
-// tells the hubs. What it changes is written into tunnel.proxy in fit's config. Needs ui.js and tunnel/shared.js.
+// tells the hubs. What it changes is written into tunnel.proxy in akit's config. Needs ui.js and tunnel/shared.js.
 //
 // 隧道 proxy 模块：概览、所连的 hub（各带其 Web 代理所提供的控制台）、hub 上的节点与服务、转发、隧道（含隧道全景图与
-// 每条隧道的链路）以及告知 hub 的信息。所做修改写入 fit 配置的 tunnel.proxy。依赖 ui.js 与 tunnel/shared.js。
+// 每条隧道的链路）以及告知 hub 的信息。所做修改写入 akit 配置的 tunnel.proxy。依赖 ui.js 与 tunnel/shared.js。
 (function () {
   'use strict';
   // [key, en, zh] / [键, 英文, 中文]

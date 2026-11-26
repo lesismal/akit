@@ -1,3 +1,4 @@
+// Changed by akit: names renamed by tools/console-pages.py (decision 037); see ../../CHANGES.
 // The gateway's feature pages: the config's streaming, media-auth, WebRTC, tunnel-role and LLM-role members, each on a
 // page of its own in the menu instead of under Global. Each page edits one top-level member through config.js's shared
 // draft, and so has the UI/.conf/.yaml/.json tabs; a problem of a save links to the page where that member is edited,
@@ -29,7 +30,7 @@
     streaming: '#/gw.streaming/streaming', media_auth: '#/gw.mediaauth/media_auth', webrtc: '#/gw.webrtc/webrtc',
     tunnel: '#/gw.tunnel/tunnel', llm: '#/gw.llm/llm'
   };
-  FitConfig.with(UI.scope('admin', 'gw.features')).place(function (path) {
+  AkitConfig.with(UI.scope('admin', 'gw.features')).place(function (path) {
     var m = /^([A-Za-z_]+)/.exec(path || '');
     return m && PAGES[m[1]] ? PAGES[m[1]] : null;
   });
@@ -47,7 +48,7 @@
   // drawPage draws a feature page: the note that belongs to the member, then its form (and raw tabs, from C.page).
   // drawPage 绘制一个功能页面：该成员对应的提示，然后是其表单（及 C.page 提供的原始文本标签页）。
   function drawPage(UI, sh, def) {
-    var h = UI.h, t = UI.t, C = FitConfig.with(UI);
+    var h = UI.h, t = UI.t, C = AkitConfig.with(UI);
     var el = sh.page(def.page, t(def.label));
     return C.page(el, sh, function (body) {
       if (def.member === 'tunnel' || def.member === 'llm') {

@@ -1,5 +1,6 @@
+// Changed by akit: names renamed by tools/console-pages.py (decision 037); see ../../CHANGES.
 // Cluster → Overview (I142): every member's state as the manager's poller last read it (GET /api/m/cluster/state),
-// as cards or a table: its state coloured, how long it has been so and why, fit's version, the running config's
+// as cards or a table: its state coloured, how long it has been so and why, akit's version, the running config's
 // version, the drift its consistency check counts, the certificate that expires first, the connections, upstream
 // backends down and the latency of its GET /node. Filtered by a text, a label selector (env=prod, region, tier!=db)
 // and a state, sorted, and read again as often as the poller reads, while the page is shown. A member in trouble has
@@ -8,28 +9,28 @@
 // the manager has them now, by its selector and its names.
 //
 // 集群 → 概览（I142）：管理端轮询器最后一次读到的各成员状态（GET /api/m/cluster/state），以卡片或表格显示：着色的状态、
-// 持续时长与原因、fit 版本、运行配置的版本、一致性检查统计的不一致数、最早到期的证书、连接数、不可用的上游后端以及其
+// 持续时长与原因、akit 版本、运行配置的版本、一致性检查统计的不一致数、最早到期的证书、连接数、不可用的上游后端以及其
 // GET /node 的延迟。可按文本、标签选择器（env=prod, region, tier!=db）与状态筛选、排序；页面显示期间按轮询的频率重新读取。
 // 出问题的成员带“问 AI”（diagnose）。筛选条件保存在 URL 中（#/cluster/overview?label=...&state=...），在任何地方点击标签
 // 即打开按其筛选的概览。分组（I144）也可筛选（#/cluster/overview?group=...）：管理端当前按其选择器与名称确定的成员。
 (function () {
   'use strict';
-  var FC = window.FitCluster;
+  var FC = window.AkitCluster;
   FC.WORDS.push(
     ['ov.total', 'Members', '成员'], ['ov.cards', 'Cards', '卡片'], ['ov.table', 'Table', '表格'],
     ['ov.search', 'Name or URL', '名称或 URL'], ['ov.label', 'Labels: env=prod, region, tier!=db', '标签：env=prod, region, tier!=db'],
     ['ov.sort', 'Sort', '排序'], ['ov.sort.state', 'State, worst first', '状态（严重的在前）'], ['ov.sort.name', 'Name', '名称'],
     ['ov.sort.latency', 'Latency, slowest first', '延迟（慢的在前）'], ['ov.sort.cert', 'Certificate expiry, soonest first', '证书到期（早的在前）'],
     ['ov.sort.drift', 'Drift, most first', '不一致（多的在前）'], ['ov.sort.conns', 'Connections, most first', '连接（多的在前）'],
-    ['ov.sort.version', 'fit version', 'fit 版本'],
-    ['ov.none', 'No members yet: add the fits this one manages on the Nodes page.', '还没有成员：请在“节点”页添加本 fit 管理的其他 fit。'],
+    ['ov.sort.version', 'akit version', 'akit 版本'],
+    ['ov.none', 'No members yet: add the akits this one manages on the Nodes page.', '还没有成员：请在“节点”页添加本 akit 管理的其他 akit。'],
     ['ov.nomatch', 'No member matches the filter.', '没有符合筛选条件的成员。'], ['ov.clear', 'Clear the filter', '清除筛选'],
     ['ov.shown', '{n} of {all} shown', '显示 {all} 个中的 {n} 个'],
     ['ov.every', 'Read every {s}s, as the manager polls', '每 {s} 秒读取一次，与管理端轮询一致'],
     ['ov.open', 'Open', '打开'], ['ov.name', 'Member', '成员'], ['ov.state', 'State', '状态']
   );
 
-  var VIEW_KEY = 'fit_cluster_view';
+  var VIEW_KEY = 'akit_cluster_view';
   function load(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function save(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* ignore / 忽略 */ } }
 
@@ -64,7 +65,7 @@
       });
     };
   }
-  // numbers of a fit version, for sorting: v1.2.3 → [1, 2, 3]. / 版本号的数字，用于排序。
+  // numbers of an akit version, for sorting: v1.2.3 → [1, 2, 3]. / 版本号的数字，用于排序。
   function vnums(v) { return String(v || '').replace(/^v/, '').split(/[.+-]/).map(function (x) { return parseInt(x, 10) || 0; }); }
   function cmpVersion(a, b) {
     var x = vnums(a), y = vnums(b);
@@ -82,7 +83,7 @@
     cert: function (a, b) { return expiryMs(a) - expiryMs(b); },
     drift: function (a, b) { return ((b.drift && b.drift.count) || 0) - ((a.drift && a.drift.count) || 0); },
     conns: function (a, b) { return ((b.connections && b.connections.open) || 0) - ((a.connections && a.connections.open) || 0); },
-    version: function (a, b) { return cmpVersion(a.node && a.node.fit_version, b.node && b.node.fit_version); }
+    version: function (a, b) { return cmpVersion(a.node && a.node.akit_version, b.node && b.node.akit_version); }
   };
 
   FC.pages.overview = function (UI, sh) {
@@ -138,7 +139,7 @@
     // Ask AI about the members shown (I153, askai.js). / 就所示成员“问 AI”（I153，askai.js）。
     var askFleet = FC.askFleet ? FC.askFleet(UI, function () { return { nodes: shown((data && data.nodes) || []), group: f.group }; }) : null;
     UI.mount(sh.tools, askFleet, h('span.btn-row', cardsBtn, tableBtn), UI.btn(t('refresh'), 'refresh', function () { read(); }, 'ghost sm'));
-    // The cards of later pages (I206's BitTorrent), FitCluster.overviewCard. / 后续页面的卡片（I206 的 BitTorrent）。
+    // The cards of later pages (I206's BitTorrent), AkitCluster.overviewCard. / 后续页面的卡片（I206 的 BitTorrent）。
     var extra = FC.overviewCards(UI);
     UI.mount(el, h('div.stack', info, stats, extra.length ? h('div.cl-ovcards', extra) : null, h('div.cl-filter', text, label, group, state, sort), list, note));
     UI.mount(list, h('div.row', h('span.spinner'), h('span.muted', t('loading'))));
@@ -175,7 +176,7 @@
         ' ', h('span.small.muted', (s.certificates.nearest_names || []).join(', '))) : h('span.muted', t('f.nocert'));
       var down = s.upstreams && s.upstreams.backends_down ? UI.badge(t('f.backends.down', { n: s.upstreams.backends_down, all: s.upstreams.backends }), 'warn') : null;
       return {
-        fit: s.node ? h('code', s.node.fit_version || '—') : '—',
+        akit: s.node ? h('code', s.node.akit_version || '—') : '—',
         config: s.config ? h('span', 'v' + s.config.version, s.config.source ? h('span.small.muted', ' · ' + s.config.source) : null) : '—',
         drift: drift, cert: cert,
         conns: s.connections ? h('span', String(s.connections.open), down ? [' ', down] : null) : '—',
@@ -200,7 +201,7 @@
           FC.labelChips(UI, s.labels),
           s.error ? FC.problemBox(UI, s.error, FC.askMember(UI, s)) : null,
           x.stale,
-          UI.kv([[t('f.fit'), x.fit], [t('f.config'), x.config], [t('f.drift'), x.drift], [t('f.cert'), x.cert],
+          UI.kv([[t('f.akit'), x.akit], [t('f.config'), x.config], [t('f.drift'), x.drift], [t('f.cert'), x.cert],
             [t('f.conns'), x.conns], [t('f.latency'), x.latency],
             [t('f.polled'), s.polled ? UI.ago(FC.sec(s.polled)) : t('st.unknown')]])));
     }
@@ -213,7 +214,7 @@
           var ask = FC.askMember(UI, s);
           return h('div', health(s), s.error ? h('div.small.muted.cl-msg', { title: s.error.message }, s.error.message) : null, ask);
         } },
-        { label: t('f.fit'), render: function (s) { return facts(s).fit; } },
+        { label: t('f.akit'), render: function (s) { return facts(s).akit; } },
         { label: t('f.config'), render: function (s) { return facts(s).config; } },
         { label: t('f.drift'), render: function (s) { return facts(s).drift; } },
         { label: t('f.cert'), render: function (s) { return facts(s).cert; } },

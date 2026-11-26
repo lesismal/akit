@@ -1,3 +1,4 @@
+// Changed by akit: names renamed by tools/console-pages.py (decision 037); see ../../CHANGES.
 // The cards of what the cluster's propose tools made (I153): rollout_propose and drift_fix_propose plan a rollout,
 // cluster_op_propose checks an operation, on the manager, and none joins the conversation's proposal: Apply never starts
 // them. Under the tool's result the panel draws a card with the link the result names, to the rollout's plan on the
@@ -29,9 +30,9 @@
     try { return JSON.parse('"' + m[1] + '"'); } catch (e) { return ''; }
   }
 
-  window.FitAI = window.FitAI || {};
+  window.AkitAI = window.AkitAI || {};
   // resultCard returns the card of a cluster propose tool's result, or null. / 返回集群提案工具结果的卡片，或 null。
-  FitAI.resultCard = function (UI, name, content, isErr) {
+  AkitAI.resultCard = function (UI, name, content, isErr) {
     var h = UI.h, t = UI.t, key = TITLE[name], link = linkOf(content);
     if (!key || isErr || !link) return null;
     var st = /"state":"([a-z_]+)"/.exec(content || '');
@@ -42,5 +43,5 @@
       st && !op ? h('div', t('pl.state', { s: st[1] })) : null,
       h('div.muted', t(op ? 'pl.noteOp' : 'pl.note')));
   };
-  FitAI.planLink = linkOf;
+  AkitAI.planLink = linkOf;
 })();

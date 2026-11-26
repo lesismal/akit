@@ -1,3 +1,4 @@
+// Changed by akit: names renamed by tools/console-pages.py (decision 037); see ../../CHANGES.
 // Cluster → Rollouts (I146): one change applied to many members in stages. A rollout is planned from a template's change
 // (its members' desired configs), a sync of members with their templates, or parts of one member's config copied to
 // others; the plan reads each member, takes its diff and has the member check it by its own dry run (PUT /config?dry_run=1
@@ -25,7 +26,7 @@
 // templates.js（其并排差异）；在 cluster.js 之前加载。
 (function () {
   'use strict';
-  var FC = window.FitCluster;
+  var FC = window.AkitCluster;
   FC.WORDS.push(
     ['n.rollouts', 'Rollouts', '发布'],
     ['ro.new', 'New rollout', '新建发布'], ['ro.back', 'All rollouts', '全部发布'],

@@ -1,11 +1,12 @@
-// The Logs page: the file outputs of fit's own log and of the access log, what each rotates and keeps, the files on
+// Changed by akit: names renamed by tools/console-pages.py (decision 037); see ../../CHANGES.
+// The Logs page: the file outputs of akit's own log and of the access log, what each rotates and keeps, the files on
 // disk, and a rotation and a cleanup a person runs now. The settings themselves are edited in the forms below, over the
 // config's shared draft: time_zone, rotate and the rest of log and access_log, with the same save bar and raw tabs as
 // any page (config.js). GET /api/logs reads the outputs and their files; POST /api/logs/rotate and POST /api/logs/cleanup
 // rotate one output now and remove what retention says, the second previewing the files first. Needs ui.js,
 // workbench.js and config.js.
 //
-// 日志页面：fit 自身日志与访问日志的文件输出、各自的切割与保留设置、磁盘上的文件，以及由人立即执行的切割与清理。设置本身在
+// 日志页面：akit 自身日志与访问日志的文件输出、各自的切割与保留设置、磁盘上的文件，以及由人立即执行的切割与清理。设置本身在
 // 下方的表单中编辑，走配置的共享草稿：time_zone、rotate 以及 log 与 access_log 的其余字段，保存栏与原始文本标签页与其他页面
 // 相同（config.js）。GET /api/logs 读取各输出及其文件；POST /api/logs/rotate 与 POST /api/logs/cleanup 立即切割一个输出、
 // 删除超过保留的文件，后者先预览要删除的文件。依赖 ui.js、workbench.js 与 config.js。
@@ -15,8 +16,8 @@
   // [key, en, zh] / [键, 英文, 中文]
   var WORDS = [
     ['m.logs', 'Logs', '日志'],
-    ['l.note', 'The files fit\'s own log and the access log write, their rotation and retention, and the workbench\'s Logs page. A file output with no rotate grows without bound, as it did before rotation.',
-      'fit 自身日志与访问日志写出的文件、各自的切割与保留，以及 workbench 的日志页面。没有 rotate 的文件输出会像引入切割之前一样无限增长。'],
+    ['l.note', 'The files akit\'s own log and the access log write, their rotation and retention, and the workbench\'s Logs page. A file output with no rotate grows without bound, as it did before rotation.',
+      'akit 自身日志与访问日志写出的文件、各自的切割与保留，以及 workbench 的日志页面。没有 rotate 的文件输出会像引入切割之前一样无限增长。'],
     ['l.loading', 'Reading the log files…', '正在读取日志文件…'],
     ['l.none', 'No log writes to a file: set log.output or access_log.output in the forms below.', '没有日志写文件：请在下方表单设置 log.output 或 access_log.output。'],
     ['l.failed', 'The log files could not be read: {e}', '无法读取日志文件：{e}'],
@@ -40,7 +41,7 @@
     ['l.cleanup.title', 'Clean up the rotated files', '清理切割文件'],
     ['l.done', 'Removed {n} files ({size}).', '已删除 {n} 个文件（{size}）。'],
     ['l.settings', 'Settings', '设置'],
-    ['l.log', 'fit\'s own log', 'fit 自身的日志'],
+    ['l.log', 'akit\'s own log', 'akit 自身的日志'],
     ['l.access', 'Access log', '访问日志'],
     ['l.zone', 'time zone {z}', '时区 {z}']
   ];
@@ -138,7 +139,7 @@
 
       // page draws the outputs and the forms of log and access_log. / 绘制各输出以及 log 与 access_log 的表单。
       function page() {
-        var C = FitConfig.with(UI);
+        var C = AkitConfig.with(UI);
         var el = sh.page('logs', t('m.logs'));
         C.page(el, sh, function (body) {
           body.appendChild(h('div.callout', UI.icon('info'), ' ', t('l.note')));

@@ -1,3 +1,4 @@
+// Changed by akit: names renamed by tools/console-pages.py (decision 037); see ../../CHANGES.
 // Cluster → Drift and alerts (I147). Drift: each member's sync state against its templates, as the manager's drift reads
 // took it after its polls, and its own consistency check; a member out of sync shows its diff, part by part, read now
 // (GET /api/m/cluster/desired/<name>), and Fix plans a sync rollout of it (POST drift/fix), which opens the rollout's
@@ -26,7 +27,7 @@
 // （见 docs/cluster.md）。依赖 shared.js、templates.js（并排差异）与 groups.js（操作的确认）；在 cluster.js 之前加载。
 (function () {
   'use strict';
-  var FC = window.FitCluster;
+  var FC = window.AkitCluster;
   FC.WORDS.push(
     ['n.alerts', 'Drift and alerts', '漂移与告警'],
     ['al.tab.drift', 'Drift', '漂移'], ['al.tab.alerts', 'Alerts', '告警'], ['al.tab.rules', 'Rules', '规则'],
@@ -95,17 +96,17 @@
     ['wh.name', 'Name', '名称'], ['wh.format', 'Format', '格式'], ['wh.url', 'URL', 'URL'], ['wh.secret', 'Secret', '密钥'],
     ['wh.url.hint', 'https, or http to a loopback address. Written once, kept encrypted in the manager\'s store, and never shown again: a chat service\'s URL holds its token.',
       'https，或仅限回环地址的 http。只写入一次，加密保存在管理端的 store 中，之后不再显示：聊天服务的 URL 含有其令牌。'],
-    ['wh.secret.hint', 'Signs each notification: fit\'s X-Fit-Signature (HMAC-SHA256 of the timestamp, a dot and the body), or Feishu\'s and DingTalk\'s own signatures. Written once, never shown.',
-      '为每条通知签名：fit 的 X-Fit-Signature（时间戳、点号与消息体的 HMAC-SHA256），或飞书与钉钉自己的签名。只写入一次，从不显示。'],
+    ['wh.secret.hint', 'Signs each notification: akit\'s X-Akit-Signature (HMAC-SHA256 of the timestamp, a dot and the body), or Feishu\'s and DingTalk\'s own signatures. Written once, never shown.',
+      '为每条通知签名：akit 的 X-Akit-Signature（时间戳、点号与消息体的 HMAC-SHA256），或飞书与钉钉自己的签名。只写入一次，从不显示。'],
     ['wh.kept', 'Saved — leave empty to keep it', '已保存——留空则保留'], ['wh.clear', 'Remove the secret', '删除密钥'],
     ['wh.template', 'Template', '模板'],
-    ['wh.template.line', 'Each alert\'s line: ${severity} ${rule} ${kind} ${node} ${subject} ${on} ${status} ${summary} ${since} ${id}. Empty: fit\'s own.',
-      '每个告警一行：${severity} ${rule} ${kind} ${node} ${subject} ${on} ${status} ${summary} ${since} ${id}。留空则使用 fit 的默认格式。'],
+    ['wh.template.line', 'Each alert\'s line: ${severity} ${rule} ${kind} ${node} ${subject} ${on} ${status} ${summary} ${since} ${id}. Empty: akit\'s own.',
+      '每个告警一行：${severity} ${rule} ${kind} ${node} ${subject} ${on} ${status} ${summary} ${since} ${id}。留空则使用 akit 的默认格式。'],
     ['wh.template.custom', 'The whole body, JSON: ${text} ${status} ${manager} (in a string), ${count} and ${alerts} (as values).',
       '完整消息体（JSON）：${text} ${status} ${manager}（放在字符串中），${count} 与 ${alerts}（作为值）。'],
-    ['wh.template.json', 'fit\'s own JSON: version, source, manager, status, sent, text and the alerts with their states and times.',
-      'fit 自己的 JSON：version、source、manager、status、sent、text 以及各告警的状态与时间。'],
-    ['wh.f.json', 'JSON (fit\'s own)', 'JSON（fit 格式）'], ['wh.f.slack', 'Slack, Mattermost, Rocket.Chat', 'Slack、Mattermost、Rocket.Chat'],
+    ['wh.template.json', 'akit\'s own JSON: version, source, manager, status, sent, text and the alerts with their states and times.',
+      'akit 自己的 JSON：version、source、manager、status、sent、text 以及各告警的状态与时间。'],
+    ['wh.f.json', 'JSON (akit\'s own)', 'JSON（akit 格式）'], ['wh.f.slack', 'Slack, Mattermost, Rocket.Chat', 'Slack、Mattermost、Rocket.Chat'],
     ['wh.f.discord', 'Discord', 'Discord'], ['wh.f.feishu', 'Feishu (Lark)', '飞书'], ['wh.f.dingtalk', 'DingTalk', '钉钉'],
     ['wh.f.wecom', 'WeCom', '企业微信'], ['wh.f.custom', 'A body of your own', '自定义消息体'],
     ['wh.timeout', 'Timeout (s)', '超时（秒）'], ['wh.resolved', 'Send resolved alerts', '发送已恢复的告警'], ['wh.disabled', 'Turned off', '已关闭'],

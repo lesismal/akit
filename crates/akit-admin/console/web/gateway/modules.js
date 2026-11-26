@@ -1,3 +1,4 @@
+// Changed by akit: names renamed by tools/console-pages.py (decision 037); see ../../CHANGES.
 // The gateway's and the system's modules that edit the config (the admin server module): listeners, the reverse
 // proxy (routes and upstreams), the forward proxy, layer 4 services, TLS, the cache zones, then the rest of the
 // config's members, the config as JSON and its versions. They share config.js's draft and its save bar.
@@ -59,8 +60,8 @@
       '设置 pprof 后，Admin API 在其自己的地址（admin.address，默认 127.0.0.1:2019）的 /debug/pprof/ 上提供 Go 运行时的性能剖析数据，需其令牌访问；控制台不提供。“保存并应用”后立即开启或关闭，无需重启；用完后移除 pprof。例如：go tool pprof http://127.0.0.1:2019/debug/pprof/profile?seconds=30'],
     ['other.none', 'Every member of the config has its own page.', '配置的每个成员都有自己的页面。'],
     ['j.draft', 'Draft', '草稿'], ['j.effective', 'Effective', '生效配置'],
-    ['j.note', 'The whole config as JSON, admin aside when fit keeps its config in admin.store. Edits here are the same draft the forms edit; Save and apply checks it and applies it as one.',
-      '整个配置的 JSON（fit 使用 admin.store 保存配置时不含 admin）。这里的修改与各表单编辑的是同一份草稿；“保存并应用”会校验并整体应用。'],
+    ['j.note', 'The whole config as JSON, admin aside when akit keeps its config in admin.store. Edits here are the same draft the forms edit; Save and apply checks it and applies it as one.',
+      '整个配置的 JSON（akit 使用 admin.store 保存配置时不含 admin）。这里的修改与各表单编辑的是同一份草稿；“保存并应用”会校验并整体应用。'],
     ['j.bad', 'Does not parse: {e}', '无法解析：{e}'], ['j.import', 'Open file', '打开文件'], ['j.export', 'Download', '下载'],
     ['j.format', 'Format', '格式化'], ['j.eff.note', 'The config as it runs: the base config with what the providers provide, read only.', '实际运行的配置：基础配置加上各配置来源提供的内容，只读。'],
     ['j.precedence', 'Precedence', '优先级'], ['j.sources', 'Sources', '来源'], ['j.path', 'Path', '路径'], ['j.source', 'Source', '来源'],
@@ -69,8 +70,8 @@
     ['v.title', 'Version {n}', '版本 {n}'], ['v.rollback.q', 'Apply version {n} again, as a new version?', '将版本 {n} 重新应用为一个新版本？'],
     ['v.dirty.q', 'Rolling back discards the changes not saved. Go on?', '回滚会放弃尚未保存的修改。继续？'],
     ['v.done', 'Version {n} applied again as version {v}.', '版本 {n} 已重新应用为版本 {v}。'],
-    ['v.note', 'The configs applied, newest first, as many as fit keeps. Rolling back applies an old one again as a new version.',
-      '已应用的配置，最新的在前，保留数量由 fit 决定。回滚即把旧版本重新应用为新版本。']
+    ['v.note', 'The configs applied, newest first, as many as akit keeps. Rolling back applies an old one again as a new version.',
+      '已应用的配置，最新的在前，保留数量由 akit 决定。回滚即把旧版本重新应用为新版本。']
   ];
 
   var ROLES = { tunnel: 1, llm: 1 };
@@ -124,7 +125,7 @@
   // edit is the route of a page that edits the config; opts.members are the config members it edits (for the
   // UI/.conf/.yaml/.json tabs), opts.rawNote a note shown above the raw text. / 编辑配置的页面路由；opts 见 config.js 的 page。
   function edit(UI, sh, nav, title, render, opts) {
-    var C = FitConfig.with(UI);
+    var C = AkitConfig.with(UI);
     places(C);
     var el = sh.page(nav, title);
     return C.page(el, sh, render, opts);
@@ -134,7 +135,7 @@
   function chips(UI, list) { return list.filter(Boolean).map(function (x) { return typeof x === 'string' ? UI.h('span.muted.small', x) : x; }); }
 
   // askOf is an Ask AI button (ai/ask.js), or null without the assistant. / “问 AI”按钮，没有助手时为 null。
-  function askOf(spec, o) { return window.FitAI && FitAI.askButton ? FitAI.askButton(spec, o) : null; }
+  function askOf(spec, o) { return window.AkitAI && AkitAI.askButton ? AkitAI.askButton(spec, o) : null; }
   // routeAsk asks diagnose about a route: its name as the input route, its match, handler and upstream as the
   // selection. / routeAsk 让 diagnose 诊断一条路由：名称为输入 route，匹配、处理器与上游为选中项。
   function routeAsk(UI, r) {
@@ -185,7 +186,7 @@
         routes: {
           'listeners': function () {
             edit(UI, sh, 'listeners', t('s.listeners'), function (body) {
-              var C = FitConfig.with(UI);
+              var C = AkitConfig.with(UI);
               // Each port's features are in the Engine menu; the listener form is what this page edits.
               // 各端口的功能在引擎菜单中；本页编辑监听表单。
               body.appendChild(h('div.callout', UI.icon('info'), ' ', t('l.engine.note')));
@@ -219,7 +220,7 @@
       function routesPage() {
         deep = null;
         edit(UI, sh, 'routes', t('s.routes'), function (body) {
-          var C = FitConfig.with(UI);
+          var C = AkitConfig.with(UI);
           var rs = (C.draft.routes || []).filter(function (r) { return !isForward(r); });
           var mods = {};
           rs.forEach(function (r) { if (r && r.handler && r.handler.module) mods[r.handler.module] = (mods[r.handler.module] || 0) + 1; });
@@ -258,7 +259,7 @@
               backends: u.backends.map(function (b) { return { address: b.address, up: b.up, probed_down: b.probed_down, in_flight: b.in_flight, succeeded: b.succeeded, failed: b.failed }; }) };
           });
         }).catch(function () { /* health is extra / 健康状态只是附加信息 */ }).then(function () {
-          var C = FitConfig.with(UI);
+          var C = AkitConfig.with(UI);
           places(C);
           C.page(el, sh, function (body) {
             body.appendChild(C.section('upstreams', {
@@ -291,7 +292,7 @@
         routes: {
           'routes': function () {
             edit(UI, sh, 'routes', t('m.forward'), function (body) {
-              var C = FitConfig.with(UI);
+              var C = AkitConfig.with(UI);
               body.appendChild(h('div.callout', UI.icon('info'), ' ', t('fw.note')));
               var socks = (C.draft.listeners || []).filter(function (l) { return l && (l.socks || (l.protocols || []).indexOf('socks') >= 0); });
               if (socks.length) {
@@ -329,7 +330,7 @@
         routes: {
           'services': function () {
             edit(UI, sh, 'services', t('s.services'), function (body) {
-              var C = FitConfig.with(UI);
+              var C = AkitConfig.with(UI);
               body.appendChild(C.section('services', {
                 addLabel: t('sv.add'),
                 make: function (arr) {
@@ -360,14 +361,14 @@
         var box = h('div');
         UI.mount(el, h('div.callout', UI.icon('info'), ' ', t('c.note')), UI.card(t('s.certs'), box, null, true));
         function load() {
-          UI.api('GET', '/api/status').then(function (st) { UI.mount(box, FitConfig.certTable(UI, st.certificates || [])); }).catch(UI.fail);
+          UI.api('GET', '/api/status').then(function (st) { UI.mount(box, AkitConfig.certTable(UI, st.certificates || [])); }).catch(UI.fail);
         }
         load();
         UI.every(30000, load);
       }
       function sec(name) {
         return function () {
-          edit(UI, sh, name, t('s.' + name), function (body) { body.appendChild(FitConfig.with(UI).section(name)); }, members([name]));
+          edit(UI, sh, name, t('s.' + name), function (body) { body.appendChild(AkitConfig.with(UI).section(name)); }, members([name]));
         };
       }
       return { routes: { 'certs': certs, 'auto_https': sec('auto_https'), 'acme': sec('acme') } };
@@ -448,23 +449,23 @@
               body.appendChild(h('div.callout.callout--warn', UI.icon('info'), ' ', t('role.note')));
             }
             if (name === 'pprof') body.appendChild(h('div.callout', UI.icon('info'), ' ', t('pprof.note')));
-            body.appendChild(FitConfig.with(UI).section(name));
+            body.appendChild(AkitConfig.with(UI).section(name));
           }, members([name]));
         };
       });
       routes.other = function () {
         edit(UI, sh, 'other', t('s.other'), function (body) {
-          var C = FitConfig.with(UI);
+          var C = AkitConfig.with(UI);
           var rest = restMembers(C);
           if (!rest.length) { body.appendChild(UI.empty(t('other.none'))); return; }
           rest.forEach(function (s) { body.appendChild(h('h3', { style: { margin: '8px 0 0' } }, h('code', s))); body.appendChild(C.section(s)); });
-        }, { members: function () { return restMembers(FitConfig.with(UI)); } });
+        }, { members: function () { return restMembers(AkitConfig.with(UI)); } });
       };
       // transfer: the whole config to a file and back; each page with format tabs does the same for its part.
       // transfer：整个配置导出为文件或从文件导入；带格式标签的页面对其部分做同样的事。
       routes.transfer = function () {
         edit(UI, sh, 'transfer', t('cf.ie.page'), function (body) {
-          var C = FitConfig.with(UI);
+          var C = AkitConfig.with(UI);
           body.appendChild(h('div.callout', UI.icon('info'), ' ', t('cf.ie.page.note')));
           body.appendChild(UI.card(t('cf.ie.export.title', { what: t('cf.ie.whole') }), h('div.stack',
             h('div.small.muted', t('cf.ie.export.note')), h('div.small.muted', t('cf.ie.formats')),
@@ -515,7 +516,7 @@
           UI.btn(t('copy'), 'copy', function () { UI.copy(ta.value); }, 'ghost sm'),
           UI.btn(t('j.import'), 'upload', function () { file.click(); }, 'ghost sm'),
           UI.btn(t('j.export'), 'download', function () {
-            var a = h('a', { href: URL.createObjectURL(new Blob([ta.value], { type: 'application/json' })), download: 'fit-config-' + (C.version || 'draft') + '.json' });
+            var a = h('a', { href: URL.createObjectURL(new Blob([ta.value], { type: 'application/json' })), download: 'akit-config-' + (C.version || 'draft') + '.json' });
             document.body.appendChild(a); a.click(); a.remove();
             setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
           }, 'ghost sm'));
@@ -542,7 +543,7 @@
         routes: {
           'json': function () {
             edit(UI, sh, 'json', t('s.json'), function (body) {
-              var C = FitConfig.with(UI);
+              var C = AkitConfig.with(UI);
               body.appendChild(UI.tabs([['draft', t('j.draft')], ['effective', t('j.effective')]], tab, function (k) { tab = k; C.redraw(); }));
               if (tab === 'draft') draftTab(body, C); else effectiveTab(body);
             });
@@ -560,7 +561,7 @@
       var h = UI.h, t = UI.t;
       function bytes(n) { return n < 1024 ? n + ' B' : (n / 1024).toFixed(1) + ' KiB'; }
       function rollback(n, after) {
-        var C = FitConfig.with(UI);
+        var C = AkitConfig.with(UI);
         return (C.dirty ? UI.confirm(t('v.dirty.q'), t('v.rollback'), true) : Promise.resolve(true)).then(function (ok) {
           return ok && UI.confirm(t('v.rollback.q', { n: n }), t('v.rollback'), true);
         }).then(function (ok) {
@@ -583,7 +584,7 @@
       }
       function page() {
         var el = sh.page('versions', t('s.versions'));
-        var C = FitConfig.with(UI);
+        var C = AkitConfig.with(UI);
         places(C);
         C.page(el, sh, function (body) {
           var box = h('div', h('div.muted', t('loading')));

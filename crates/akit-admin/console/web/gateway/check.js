@@ -1,11 +1,12 @@
-// The consistency check: what fit runs compared with the config it runs from, read from the Admin API's
+// Changed by akit: names renamed by tools/console-pages.py (decision 037); see ../../CHANGES.
+// The consistency check: what akit runs compared with the config it runs from, read from the Admin API's
 // GET /config/check. Every difference is shown under its category. A drift is actionable: the server suggests one or
 // more fixes, and the user confirms one fix per difference with a select and ticks the ones to apply; the selected
 // fixes are applied together through POST /config/reconcile with the check's ETag, and the check runs again. An info
 // item is a known runtime fact, not an inconsistency, and has no fix. Each difference has an Ask AI button (I128) that
 // asks the skill drift-explain about it, its ID as the skill's input difference. Needs ui.js and workbench.js.
 //
-// 一致性检查：运行中的 fit 与其运行所依据的配置的比较，来自 Admin API 的 GET /config/check。每处差异按类别显示。
+// 一致性检查：运行中的 akit 与其运行所依据的配置的比较，来自 Admin API 的 GET /config/check。每处差异按类别显示。
 // “不一致”项可以处理：服务端给出一种或多种修复，用户用下拉框为每处差异确认一种修复，并勾选要应用的项；所选修复
 // 通过 POST /config/reconcile（带本次检查的 ETag）一起应用，然后重新检查。“说明”项是已知的运行事实，不是不一致，
 // 没有修复。每处差异都有“问 AI”按钮（I128），以技能 drift-explain 说明它，其 ID 作为技能输入 difference。
@@ -24,7 +25,7 @@
     ['drift.n', '{n} drift', '{n} 处不一致'], ['info.n', '{n} info', '{n} 处说明'],
     ['drift', 'drift', '不一致'], ['info', 'info', '说明'],
     ['ok.title', 'The running service and its config agree', '运行中的服务与其配置一致'],
-    ['ok.detail', 'Nothing fit runs contradicts the config it runs from.', 'fit 运行的各项都与其配置一致。'],
+    ['ok.detail', 'Nothing akit runs contradicts the config it runs from.', 'akit 运行的各项都与其配置一致。'],
     ['config.val', 'Config', '配置'], ['running.val', 'Running', '运行中'],
     ['fix', 'Fix', '修复方式'],
     ['apply.this', 'Apply this fix', '应用此修复'],
@@ -52,8 +53,8 @@
     // Ask AI (I128) / 问 AI
     ['ask.drift', 'Explain the difference {name}: why does what runs differ from the config, and which fix should I take?',
       '说明差异 {name}：为什么运行状态与配置不同？应该采用哪种修复？'],
-    ['ask.info', 'Explain {name} on the Consistency page: what does it mean for this fit?',
-      '说明一致性检查中的 {name}：它对本 fit 意味着什么？']
+    ['ask.info', 'Explain {name} on the Consistency page: what does it mean for this akit?',
+      '说明一致性检查中的 {name}：它对本 akit 意味着什么？']
   ];
 
   // CATS is the order of the categories, the order the Admin API sorts them in. / 类别顺序，与 Admin API 的排序一致。
@@ -214,9 +215,9 @@
       // shows of it, its values aside (the skill reads them redacted), as the selection. / ask 是差异的“问 AI”按钮：
       // drift-explain，以差异的 ID 为输入，页面显示的差异信息（不含其值，技能会读取脱敏后的值）作为选中项。
       function ask(d) {
-        if (!window.FitAI || !FitAI.askButton) return null;
+        if (!window.AkitAI || !AkitAI.askButton) return null;
         var name = d.name || d.id || '';
-        return FitAI.askButton({
+        return AkitAI.askButton({
           skill: 'drift-explain', message: t(d.kind === 'drift' ? 'ask.drift' : 'ask.info', { name: name }),
           inputs: { difference: d.id || '' },
           selection: { difference: { id: d.id, name: d.name, kind: d.kind, category: d.category, detail: d.detail,

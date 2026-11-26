@@ -1,5 +1,6 @@
 // Written by tools/console-pages.py from fit's app/workbench/web at the commit below; do not
-// edit. The files are fit's, unchanged, under fit's licence (../../console/LICENSE).
+// edit. The files are fit's, under fit's licence (../../console/LICENSE), with fit's names
+// renamed as akit names them (../../console/CHANGES, decision 037).
 
 /// The fit commit the files were copied from: the compatibility gate's pin.
 pub(crate) const FIT_COMMIT: &str = "7daee573b102d87837cc10f033e4cc5894769210";

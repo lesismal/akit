@@ -1,3 +1,4 @@
+// Changed by akit: names renamed by tools/console-pages.py (decision 037); see ../../CHANGES.
 // The assistant's module (ai): its Settings page, shown when the console serves the module ai, which it does only while
 // admin.assistant is set. GET /api/settings reads the settings in use (admin.assistant's, or the store's once saved),
 // whether a store keeps them, and each provider's key as the pages may see it: set or not, where from, and its last four
@@ -19,8 +20,8 @@
     ['src.store', 'These settings are kept in the store, with the providers\' keys.', '这些设置与各提供方的密钥一起保存在 store 中。'],
     ['src.config', 'These settings are admin.assistant\'s from the config file. Saving keeps them in the store from then on, keys included; the file\'s are then only the first ones.',
       '这些设置来自配置文件中的 admin.assistant。保存后改由 store 保存（包括密钥）；此后文件中的设置只是最初的设置。'],
-    ['src.nostore', 'This fit runs without admin.store: the settings are admin.assistant\'s in the config file and cannot be saved here, and keys come from api_key_env. A provider can still be tested.',
-      '本 fit 未配置 admin.store：设置来自配置文件中的 admin.assistant，无法在此保存，密钥来自 api_key_env。仍可测试提供方。'],
+    ['src.nostore', 'This akit runs without admin.store: the settings are admin.assistant\'s in the config file and cannot be saved here, and keys come from api_key_env. A provider can still be tested.',
+      '本 akit 未配置 admin.store：设置来自配置文件中的 admin.assistant，无法在此保存，密钥来自 api_key_env。仍可测试提供方。'],
     ['c.providers', 'Providers', '提供方'], ['c.model', 'Model and parameters', '模型与参数'], ['c.limits', 'Limits', '限制'],
     ['c.data', 'Data sent to models', '发送给模型的数据'], ['c.users', 'Users', '用户'],
     ['p.add', 'Add provider', '添加提供方'], ['p.remove', 'Remove', '删除'], ['p.edit', 'Edit provider', '编辑提供方'], ['p.none', 'No providers yet: add one to use the assistant.', '尚无提供方：添加一个才能使用助手。'],
@@ -36,8 +37,8 @@
     ['p.idle', 'Idle', '空闲'], ['p.timeout', 'Whole call', '整个调用'], ['p.retries', 'Retries', '重试次数'],
     ['p.modelsHint', 'Each the model\'s ID; the context window in tokens and whether it calls tools are optional.', '每项为模型 ID；上下文窗口（token 数）与是否调用工具可选。'],
     ['p.addModel', 'Add model', '添加模型'], ['p.fetch', 'Read the provider\'s list', '读取提供方的模型列表'], ['p.ctx', 'Context', '上下文'],
-    ['p.tools', 'Calls tools', '调用工具'], ['p.proxyAt', 'Calls this fit\'s llm.proxy at {addr}{tls}.', '调用本 fit 的 llm.proxy，地址 {addr}{tls}。'],
-    ['p.proxyNone', 'This fit runs no llm.proxy with an api: an llm_proxy provider has nothing to call.', '本 fit 没有运行带 api 的 llm.proxy：llm_proxy 提供方无可调用的对象。'],
+    ['p.tools', 'Calls tools', '调用工具'], ['p.proxyAt', 'Calls this akit\'s llm.proxy at {addr}{tls}.', '调用本 akit 的 llm.proxy，地址 {addr}{tls}。'],
+    ['p.proxyNone', 'This akit runs no llm.proxy with an api: an llm_proxy provider has nothing to call.', '本 akit 没有运行带 api 的 llm.proxy：llm_proxy 提供方无可调用的对象。'],
     ['p.tls', ', over TLS with its certificate pinned', '，经 TLS 并固定其证书'],
     ['t.test', 'Test', '测试'], ['t.running', 'Testing…', '测试中…'], ['t.ok', 'Works', '可用'], ['t.fail', 'Fails', '失败'],
     ['t.models', 'Models listed: {n}, in {ms} ms', '列出的模型：{n} 个，用时 {ms} ms'], ['t.modelsErr', 'Model list: {err}', '模型列表：{err}'],
@@ -50,7 +51,7 @@
     ['l.max_tool_result_bytes', 'Bytes per tool result', '每个工具结果的字节数'], ['l.max_conversations', 'Conversations kept per user', '每个用户保留的对话数'],
     ['l.max_concurrent_chats', 'Answers at once', '同时生成的回答数'], ['l.max_tokens_per_day', 'Tokens per user per day', '每个用户每天的 token 数'],
     ['l.max_stream_bytes', 'Bytes per model answer', '每次模型回答的字节数'], ['l.max_audit_entries', 'Audit entries kept', '保留的审计条目数'],
-    ['a.logs', 'Send lines of fit\'s own log, redacted', '发送 fit 自身日志的行（已脱敏）'],
+    ['a.logs', 'Send lines of akit\'s own log, redacted', '发送 akit 自身日志的行（已脱敏）'],
     ['a.access', 'Send lines of the access log, redacted', '发送访问日志的行（已脱敏）'],
     ['a.subjects', 'Send playback sessions\' subjects as they are, not hashed', '原样发送播放会话的主体（不做哈希）'],
     ['a.records', 'Send the records of sync dry runs and dead letters as they are, not as kinds', '原样发送同步试运行与死信中的记录（而不只是类型）'],
@@ -79,7 +80,7 @@
     nav: [{ id: 'functions', icon: 'code', label: 'n.functions' }, { id: 'skills', icon: 'book', label: 'n.skills' }, { id: 'proposals', icon: 'layers', label: 'n.proposals' },
       { id: 'audit', icon: 'history', label: 'n.audit' }, { id: 'mcp', icon: 'plug', label: 'n.mcp' }, { id: 'settings', icon: 'settings', label: 'n.settings' }],
     // The chat panel, opened from the top bar of every page (ai/panel.js). / 对话面板，从每个页面的顶栏打开（ai/panel.js）。
-    topbar: function (UI, shell) { return window.FitAI && FitAI.panel ? FitAI.panel(UI, shell) : null; },
+    topbar: function (UI, shell) { return window.AkitAI && AkitAI.panel ? AkitAI.panel(UI, shell) : null; },
     setup: function (UI, sh) {
       var h = UI.h, t = UI.t;
 
@@ -428,10 +429,10 @@
 
       // The Functions, Skills, Proposals and Audit log pages are ai/functions.js's, ai/skills.js's, ai/proposals.js's and
       // ai/audit.js's. / 功能页、技能页、提案页与审计日志页分别由 ai/functions.js、ai/skills.js、ai/proposals.js 与 ai/audit.js 提供。
-      return { routes: { settings: settingsPage, functions: function () { FitAI.functionsPage(UI, sh); }, skills: function () { FitAI.skillsPage(UI, sh); },
-        proposals: function () { FitAI.proposal.page(UI, sh); }, audit: function () { FitAI.auditPage(UI, sh); },
+      return { routes: { settings: settingsPage, functions: function () { AkitAI.functionsPage(UI, sh); }, skills: function () { AkitAI.skillsPage(UI, sh); },
+        proposals: function () { AkitAI.proposal.page(UI, sh); }, audit: function () { AkitAI.auditPage(UI, sh); },
         // The MCP page is ai/mcp.js's. / MCP 页由 ai/mcp.js 提供。
-        mcp: function () { FitAI.mcpPage(UI, sh); } } };
+        mcp: function () { AkitAI.mcpPage(UI, sh); } } };
     }
   });
 })();

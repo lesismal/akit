@@ -1,7 +1,9 @@
 //! The files the console serves (I91): fit's workbench, `app/workbench/web` at the fit commit the
-//! compatibility gate pins, copied unchanged by `tools/console-pages.py` and built into akit
-//! ([`files`]), served from memory as fit embeds them; and fit's config schema, the gate's
-//! `fit.schema.json`, which the pages' forms are made from ([decision 036](../../../../docs/decisions/036-console.md)).
+//! compatibility gate pins, copied by `tools/console-pages.py` with fit's names renamed as akit
+//! names them (`console/CHANGES`) and built into akit ([`files`]), served from memory as fit embeds
+//! them; and fit's config schema, the gate's `fit.schema.json` renamed alike, which the pages'
+//! forms are made from ([decisions 036](../../../../docs/decisions/036-console.md) and
+//! [037](../../../../docs/decisions/037-akit-names.md)).
 
 use akio_http::{Method, Response};
 
@@ -10,9 +12,9 @@ mod files;
 
 pub(crate) use files::FIT_COMMIT;
 
-/// fit's config schema at the gate's pin, as `GET /api/m/admin/schema` answers it.
-pub(crate) const SCHEMA: &[u8] =
-    include_bytes!("../../../../tests/compat/fixtures/fit/schema/fit.schema.json");
+/// fit's config schema at the gate's pin, renamed as the pages are, as `GET /api/m/admin/schema`
+/// answers it.
+pub(crate) const SCHEMA: &[u8] = include_bytes!("../../console/schema.json");
 
 /// The content type of a file, by its extension, as Go's `mime.TypeByExtension` gives it.
 fn content_type(path: &str) -> &'static str {
@@ -111,5 +113,39 @@ mod tests {
         assert!(file("/../Cargo.toml").is_none());
         assert_eq!(serve(&Method::Post, "/").status, 405);
         assert!(SCHEMA.starts_with(b"{"));
+    }
+
+    /// The names the server and the pages share are the server's: the CSRF header the pages
+    /// send, the version header they read; fit's are nowhere (decision 037).
+    #[test]
+    fn the_pages_use_akits_names() {
+        let text = |p: &str| String::from_utf8(file(p).unwrap().1.to_vec()).unwrap();
+        let ui = text("/core/ui.js");
+        assert!(ui.contains(&format!(
+            "var CSRF = '{}';",
+            crate::console::server::CSRF_HEADER
+        )));
+        assert!(text("/gateway/config.js").contains(&format!(
+            "r.headers.get('{}')",
+            crate::server::VERSION_HEADER
+        )));
+        assert!(text("/index.html").contains("<title>akit</title>"));
+        for (p, data) in files::FILES {
+            if p.starts_with("/vendor/") {
+                continue;
+            }
+            let t = String::from_utf8_lossy(data);
+            for old in [
+                "X-Fit-Csrf",
+                "Fit-Config-Version",
+                "fit_console",
+                "fit_on_request",
+            ] {
+                assert!(!t.contains(old), "{p} holds {old}");
+            }
+        }
+        let schema = String::from_utf8_lossy(SCHEMA);
+        assert!(schema.contains(r#""default": "akit_sticky""#));
+        assert!(!schema.contains(r#""default": "fit""#));
     }
 }
