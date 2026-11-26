@@ -98,6 +98,8 @@ first; its status here records the branch, then the akio commit akit pins.
 | A215 | A connection limit that counts the connections accepted, not those the engine dials (fit's `limits.max_conns`) | on akio's main and pinned (since `6bcd8ad6`, akio's ADR-173) | 11 | I79, I79b |
 | A220 | An accept filter on UDP and datagram listeners: a refused peer's datagrams dropped before a connection (a `udp` session, a QUIC connection) is made for it | requested (I85) | 1, 11 | I85, I86 |
 | A225 | An external security review of akio-crypto, akio-tls (with akio-x509), akio-http's HTTP/1 and HTTP/2 parsers and akio-wasm (no API) | requested (I80b): the threat model's L15 | 15 | I80, I80b |
+| A230 | Argon2id (RFC 9106), with BLAKE2b, in akio-crypto: the key derivation of fit's `fitstore` format | requested (I93): I93 waits for it | 15, 20 | I93 |
+| A231 | XChaCha20-Poly1305 (HChaCha20 and a 24-byte nonce) in akio-crypto: the AEAD of fit's `fitstore` format | requested (I93): I93 waits for it | 15, 20 | I93 |
 
 ## A1 TCP listeners on a running engine
 
@@ -2135,3 +2137,59 @@ says, and the report linked from akio's docs.
 
 **How akit would use it.** It pins the akio commit with the fixes (rule 22), and the threat model's
 L15 is closed, with the report linked from it and from the review scope.
+
+## A230 Argon2id in akio-crypto
+
+**Status.** Requested by I93 (2026-11-26). I93, the encrypted store, waits for it: fit's store
+format cannot be read without it.
+
+**Problem.** fit keeps its config sealed in a file of its own format, `fitstore` (fit's decision
+027, `admin/store`), and akit is to read and write the same files, so that a store moves between
+fit and akit (`admin.store`, `akit store export` and `import`). The key is derived from the store's
+password with Argon2id (RFC 9106), with the time, memory and threads the file's header names (fit
+writes time 3, 64 MiB and 4 threads, RFC 9106's second recommended setting, and reads up to time
+16 and 1 GiB). akio-crypto has HKDF and PBKDF2 (`kdf`) and bcrypt, but no
+Argon2 and no BLAKE2b, which Argon2 is built on.
+
+**Evidence.** At akio `077a6710`: `crates/akio-crypto/src/kdf.rs` has `hkdf`, `hkdf_extract`,
+`hkdf_expand` and `pbkdf2_hmac`; nothing in akio's tree names Argon2 or BLAKE2. fit's
+`admin/store/store.go` calls `argon2.IDKey(password, salt, time, memoryKiB, threads, 32)` from
+`golang.org/x/crypto/argon2`.
+
+**Suggested API.** In `akio_crypto::kdf`: `argon2id(password: &[u8], salt: &[u8], time: u32,
+memory_kib: u32, lanes: u8, out: &mut [u8]) -> Result<(), Error>` (Argon2 version 0x13, RFC 9106,
+no secret or associated data, as Go's `IDKey`), checking RFC 9106's bounds (a salt of 8 bytes or
+more, `memory_kib` at least 8 a lane, `time` at least 1) and erroring rather than panicking; its
+memory allocated once, fallibly, so that a huge `memory_kib` is an error, not an abort; the lanes
+computed one after another or on threads, the result the same. BLAKE2b (RFC 7693) with it, as
+`hash::Blake2b` (variable output, as Argon2's H' needs). Tested against RFC 9106's test vector and
+Go's `argon2.IDKey` outputs for fit's parameters, and constant-time where the password is read.
+
+**How akit would use it.** akit-admin's `store` derives the store's key once at start, on the
+control thread (a fair share of a second and 64 MiB, never on an I/O thread), after checking the
+header's settings against fit's bounds; an import sent to the Admin API is bounded to twice fit's
+cost before anything is derived, as fit's `Unseal`.
+
+## A231 XChaCha20-Poly1305 in akio-crypto
+
+**Status.** Requested by I93 (2026-11-26), with A230. I93 waits for it.
+
+**Problem.** `fitstore` seals its payload with XChaCha20-Poly1305 (a 24-byte nonce, random for
+each write, the 59-byte header as additional data). akio-crypto has ChaCha20-Poly1305 with a
+12-byte nonce (RFC 8439, `chacha::ChaCha20Poly1305`) but not the extended-nonce construction
+(HChaCha20 then ChaCha20-Poly1305), so a fit store can neither be opened nor written.
+
+**Evidence.** At akio `077a6710`: `crates/akio-crypto/src/chacha/mod.rs` has `NONCE_LEN = 12`,
+`ChaCha20`, `Poly1305` and `ChaCha20Poly1305`, and no HChaCha20 or XChaCha20. fit's store calls
+`chacha20poly1305.NewX(key)` (`golang.org/x/crypto/chacha20poly1305`).
+
+**Suggested API.** `chacha::hchacha20(key: &[u8; 32], nonce: &[u8; 16]) -> [u8; 32]` and
+`chacha::XChaCha20Poly1305` with `new(&[u8; 32])`, `XNONCE_LEN = 24` and the same `encrypt`,
+`decrypt` and in-place methods as `ChaCha20Poly1305` (the subkey from HChaCha20 over the nonce's
+first 16 bytes, the inner nonce four zero bytes and its last 8), as draft-irtf-cfrg-xchacha and
+Go's `NewX`. Tested against the draft's vectors, Wycheproof's `xchacha20_poly1305_test.json` and
+Go's output.
+
+**How akit would use it.** akit-admin's `store` opens a store with the key A230 derives, the header
+as additional data, and seals each write with a new random nonce (`akio_crypto::rand`), as fit's
+`Store.seal`.

@@ -97,6 +97,8 @@
 | A215 | 只计入被接受的连接、不计入引擎拨出的连接的连接上限（fit 的 `limits.max_conns`） | 已进入 akio 的 main 并锁定（自 `6bcd8ad6` 起，akio 的 ADR-173） | 11 | I79、I79b |
 | A220 | UDP 和数据报监听器上的 accept 过滤器：在为被拒绝的对端建立连接（`udp` 会话、QUIC 连接）之前丢弃它的数据报 | 已提出（I85） | 1、11 | I85、I86 |
 | A225 | 对 akio-crypto、akio-tls（连同 akio-x509）、akio-http 的 HTTP/1 和 HTTP/2 解析器以及 akio-wasm 的外部安全审查（不是 API） | 已提出（I80b）：威胁模型的 L15 | 15 | I80、I80b |
+| A230 | akio-crypto 中的 Argon2id（RFC 9106）及 BLAKE2b：fit 的 `fitstore` 格式的密钥派生 | 已提出（I93）：I93 等待它 | 15、20 | I93 |
+| A231 | akio-crypto 中的 XChaCha20-Poly1305（HChaCha20 和 24 字节 nonce）：fit 的 `fitstore` 格式的 AEAD | 已提出（I93）：I93 等待它 | 15、20 | I93 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -1725,3 +1727,44 @@ QUIC，以及 HTTP/1 和 HTTP/2 解析器（akio-http），每个 `wasm` 插件�
 其发现按 akio 的安全策略在 akio 中修复，报告从 akio 的文档中链接。
 
 **akit 将如何使用。** 锁定带有修复的 akio 提交（规则 22），关闭威胁模型的 L15，并从威胁模型和审查范围链接报告。
+
+## A230 akio-crypto 中的 Argon2id
+
+**状态。** 由 I93 提出（2026-11-26）。I93（加密的 store）等待它：没有它就无法读取 fit 的 store 格式。
+
+**问题。** fit 以自己的文件格式 `fitstore` 密封保存其配置（fit 的决定 027、`admin/store`），akit 要读写同样的文件，使 store 能在
+fit 和 akit 之间迁移（`admin.store`、`akit store export` 和 `import`）。密钥由 store 的密码通过 Argon2id（RFC 9106）派生，使用文件头
+中写明的时间、内存和线程数（fit 写入时间 3、64 MiB、4 线程，即 RFC 9106 的第二推荐设置，读取时最多接受时间 16、1 GiB）。
+akio-crypto 有 HKDF 和 PBKDF2（`kdf`）、bcrypt，但没有 Argon2，也没有 Argon2 所依赖的 BLAKE2b。
+
+**证据。** 在 akio `077a6710` 中：`crates/akio-crypto/src/kdf.rs` 有 `hkdf`、`hkdf_extract`、`hkdf_expand` 和 `pbkdf2_hmac`；akio
+的代码中没有任何地方提到 Argon2 或 BLAKE2。fit 的 `admin/store/store.go` 调用 `golang.org/x/crypto/argon2` 的
+`argon2.IDKey(password, salt, time, memoryKiB, threads, 32)`。
+
+**建议的 API。** 在 `akio_crypto::kdf` 中：`argon2id(password: &[u8], salt: &[u8], time: u32, memory_kib: u32, lanes: u8,
+out: &mut [u8]) -> Result<(), Error>`（Argon2 版本 0x13，RFC 9106，无密钥和关联数据，同 Go 的 `IDKey`），检查 RFC 9106 的边界
+（盐至少 8 字节、每个 lane 至少 8 KiB 内存、`time` 至少为 1），出错时返回错误而非 panic；内存一次性、可失败地分配，使过大的
+`memory_kib` 成为错误而不是中止；各 lane 依次或在线程上计算，结果相同。同时提供 BLAKE2b（RFC 7693），即 `hash::Blake2b`
+（可变输出长度，Argon2 的 H' 需要）。用 RFC 9106 的测试向量和 Go 的 `argon2.IDKey` 在 fit 参数下的输出测试，读取密码的部分为常数时间。
+
+**akit 将如何使用。** akit-admin 的 `store` 在启动时于控制线程上派生一次 store 的密钥（不到一秒、64 MiB，从不在 I/O 线程上），
+派生前按 fit 的边界检查文件头中的参数；发给 Admin API 的导入文件在派生任何东西之前被限制在 fit 代价的两倍以内，同 fit 的 `Unseal`。
+
+## A231 akio-crypto 中的 XChaCha20-Poly1305
+
+**状态。** 由 I93 与 A230 一起提出（2026-11-26）。I93 等待它。
+
+**问题。** `fitstore` 用 XChaCha20-Poly1305 密封其内容（24 字节的 nonce，每次写入随机生成，59 字节的文件头作为附加数据）。
+akio-crypto 有 12 字节 nonce 的 ChaCha20-Poly1305（RFC 8439，`chacha::ChaCha20Poly1305`），但没有扩展 nonce 的构造
+（先 HChaCha20 再 ChaCha20-Poly1305），因此既不能打开也不能写入 fit 的 store。
+
+**证据。** 在 akio `077a6710` 中：`crates/akio-crypto/src/chacha/mod.rs` 有 `NONCE_LEN = 12`、`ChaCha20`、`Poly1305` 和
+`ChaCha20Poly1305`，没有 HChaCha20 或 XChaCha20。fit 的 store 调用 `golang.org/x/crypto/chacha20poly1305` 的 `chacha20poly1305.NewX(key)`。
+
+**建议的 API。** `chacha::hchacha20(key: &[u8; 32], nonce: &[u8; 16]) -> [u8; 32]`，以及 `chacha::XChaCha20Poly1305`：
+`new(&[u8; 32])`、`XNONCE_LEN = 24`，和 `ChaCha20Poly1305` 相同的 `encrypt`、`decrypt` 及原地方法（子密钥由 HChaCha20 对 nonce
+前 16 字节计算，内部 nonce 为四个零字节加其后 8 字节），同 draft-irtf-cfrg-xchacha 和 Go 的 `NewX`。用该草案的测试向量、
+Wycheproof 的 `xchacha20_poly1305_test.json` 和 Go 的输出测试。
+
+**akit 将如何使用。** akit-admin 的 `store` 用 A230 派生的密钥打开 store，以文件头作为附加数据，每次写入用新的随机 nonce
+（`akio_crypto::rand`）密封，同 fit 的 `Store.seal`。
