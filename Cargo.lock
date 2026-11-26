@@ -278,6 +278,7 @@ dependencies = [
  "akit-roles",
  "akit-runtime",
  "akit-tls",
+ "akit-tunnel",
 ]
 
 [[package]]
@@ -512,6 +513,18 @@ dependencies = [
  "akio-x509",
  "akit-config",
  "akit-observe",
+]
+
+[[package]]
+name = "akit-tunnel"
+version = "0.0.1"
+dependencies = [
+ "akio",
+ "akio-crypto",
+ "akit-access",
+ "akit-config",
+ "akit-observe",
+ "akit-roles",
 ]
 
 [[package]]

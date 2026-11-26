@@ -1209,6 +1209,11 @@ fn build(cell: &GraphCell, opts: &Options) -> Result<Engine, (Error, bool)> {
     if !listeners.iter().any(|(l, _, _)| udp_side(l)) {
         b = b.udp_client_threads(1);
     }
+    // The roles beside the gateway dial on this engine (I100): with no TCP listener it has no
+    // I/O thread to dial on, so it gets one of its own; with one, dials go where they always did.
+    if !listeners.iter().any(|(l, _, _)| tcp_side(l)) {
+        b = b.client_threads(1);
+    }
     b.build().map_err(|e| (Error::Engine(e), probed))
 }
 

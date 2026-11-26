@@ -20,6 +20,49 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-27: I101, the tunnel's links, registration and tunnels over TCP
+
+- A new crate, `akit-tunnel` (fit's `tunnel`): `crypt` (fit's `bodycrypt`), `msg` (fit's
+  `proto`: the methods, the messages as JSON with fit's names, the password's MAC and the hub's
+  proof, the tokens' transcript), `link` (fit's `link`: frames, calls, replies, notifies, hellos of
+  versions 3 and 4, sealed bodies), `end` (fit's `tunnel`: each tunnel's end, its 4 MiB window,
+  acknowledgements every 256 KiB once the connection's queue is under 1 MiB), `uplink` (a node's
+  or proxy's pool of links to a hub: dial in order, register by token or password, check the
+  hub's proof before serving it, ping, redial after `retry_interval`), `hub`, `node` and `proxy`.
+  `akit run` runs the three (`akit::ROLES`); a config of roles alone gets an I/O thread to dial on.
+- On akio: everything is a callback. A link is read in its connection's `on_data`; a call that
+  waits (a node's dial of a service, a hub's open through a node, a proxy's open through a hub) is
+  answered from the callback that ends the wait, with a `Responder`; calls' timeouts, retries,
+  pings, idle sweeps and the tokens' expiry run on akio's timer thread (`after_send`); dials go
+  through akio's resolver and Happy Eyeballs. Links and tunnels' connections are akio's "relayed"
+  connections (`set_relayed`, fit's `SetWriteBackpressure(false)`): without it, two ends of a link
+  each writing to the other stopped reading at akio's write watermark and waited for each other
+  (found by the sealed-token test, which stalled at 64 KiB). Pacing is the windows and the link's
+  high water instead: a link with more than 8 MiB queued holds what feeds it (a tunnel's
+  connection, or the link the hub reads from) until it drains (`on_drain`).
+- Where akit differs: fit raises a link's send-queue bound to the windows of its 64 tunnels
+  (260 MiB); akio has one bound for the engine (`limits.max_write_queue_bytes`, 32 MiB), so a link
+  holds its feeders past 8 MiB instead (written up as akio API request A234, a connection's own
+  bound; nothing waits on it). TLS, WebSocket and QUIC links are I102's: a listener or endpoint of
+  those is a warning when the role applies and is skipped. A hub's calls on peers (query, set
+  services, kick), token expiry's links closed at expiry and the console socket are I103's; a
+  revoked token's links close at once here already (the registry's closers).
+- Interoperability (decision 038), checked by hand against fit's own binary at `7daee573` (a
+  script in the session's scratchpad, not in CI): a fit hub with an akit node and proxy, and an
+  akit hub with a fit node and proxy, over TCP with tokens, plain and sealed by `body_password`:
+  a megabyte echoed through each.
+- Tests: fit's `bodycrypt` and `proto.Prove` vectors (a body sealed under a password and under a
+  token, a hub's proof) matched byte for byte; links in memory (calls, notifies, plain and sealed,
+  mismatched sides, frames past the limit); end to end on one akio engine
+  (`tests/e2e.rs`): 16 MiB and 8 tunnels at once with the password, 8 MiB sealed, tokens plain
+  and sealed with their members bound, a wrong password, a token shared by two members; through
+  the binary (`crates/akit/tests/tunnel.rs`): `akit run` with the Admin API and a hub,
+  `akit token create` for a node and a proxy run by a second `akit run`, a tunnel through them,
+  `akit token list` with the members bound, `akit token revoke` closing the proxy's links.
+- To measure (rule 30, the benchmark table's new row): throughput of one and of 64 tunnels,
+  tunnels opened a second, the hub's CPU per gigabyte, memory per tunnel and link, against fit.
+- Next: I102, TLS, WebSocket and QUIC links.
+
 ### 2026-11-27: I100, the roles in `akit run`
 
 - `akit-roles`'s `host`, fit's `app`: a `Manager` that, on every config applied and after the

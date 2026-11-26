@@ -135,8 +135,8 @@
       "zh": "文件变化时重新读取，与 `admin.cert_file` 相同（I94）：续期的证书无需重启即提供给新连接；fit 只在启动时读取。"
     },
     "tunnel": {
-      "en": "Read and checked as fit's (I98). `akit run` refuses a config that sets a role until the tunnel's iterations run it (I100–I103).",
-      "zh": "像 fit 一样读取并检查（I98）。在隧道的迭代运行这些角色之前（I100–I103），`akit run` 拒绝设置了角色的配置。"
+      "en": "Read and checked as fit's (I98); `akit run` runs the three roles (I101) on the listeners' engine, their links speaking fit's protocol byte for byte, so that akit's hub, nodes and proxies link with fit's (decision 038). Links go over `tcp` and `tcp://` for now: a `tls`, `wss`, `ws` or `quic` listener or endpoint is a warning when the role applies, and is skipped, until I102.",
+      "zh": "像 fit 一样读取并检查（I98）；`akit run` 在监听器的引擎上运行这三个角色（I101），其链路与 fit 的协议逐字节相同，使 akit 的 hub、node 和 proxy 能与 fit 的互连（决定 038）。目前链路只走 `tcp` 和 `tcp://`：`tls`、`wss`、`ws` 或 `quic` 的监听器或端点在角色应用时给出警告并被跳过，直到 I102。"
     },
     "llm": {
       "en": "Read and checked as fit's (I98). `akit run` refuses a config that sets a role until the LLM iterations run it (I104–I109).",

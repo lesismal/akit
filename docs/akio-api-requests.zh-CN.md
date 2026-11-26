@@ -101,6 +101,7 @@
 | A231 | akio-crypto 中的 XChaCha20-Poly1305（HChaCha20 和 24 字节 nonce）：fit 的 `fitstore` 格式的 AEAD | 已提出（I93）：I93 等待它 | 15、20 | I93 |
 | A232 | 由处理函数设置 HTTP 连接的空闲超时并关闭它，并把已接受的连接告诉应用：fit 对未登录连接的限制 | 已提出（I90）：在此之前控制台像 Admin API 一样受限 | 10、11 | I90 |
 | A233 | 关闭终端回显（原始模式）以读取密码 | 已提出（I89）：在此之前密码按输入显示，提示中说明 | 14 | I89 |
+| A234 | 单个连接自己的发送队列上限，可高于或低于引擎的 `max_queued_bytes` | 已提出（I101）：在此之前链路在超过 8 MiB 时压住喂给它的一方 | 8, 11 | I101, I104 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -1809,3 +1810,23 @@ akio-sys 中没有任何地方提到 `termios`。
 （或关闭 `ECHO` 和 `ICANON`），在 guard 被丢弃时恢复，对不是终端的描述符返回错误。
 
 **akit 将如何使用。** `akit hash-password` 像 fit 那样在关闭回显的情况下从终端读取密码，每个字符写一个 `*`，关于密码被显示的说明随之去掉。
+
+## A234 单个连接自己的发送队列上限
+
+**状态。** 由 I101 提出（2026-11-27）。没有工作在等待它：在此之前隧道链路用自己的高水位调节喂给它的一方（记录在
+[进度](progress.zh-CN.md)中的临时做法）。
+
+**问题。** fit 把每条隧道链路的发送队列上限提高到其隧道可能在途的量：64 条隧道各 4 MiB 的窗口加上控制消息的余量
+（`proto.LinkQueue`，约 260 MiB，fib 的 `SetQueueLimit`），使链路永远不会让其隧道窗口允许的发送失败。akio 对一个引擎的所有
+连接只有一个上限 `Config::max_queued_bytes`，akit 用 `limits.max_write_queue_bytes`（默认 32 MiB）设置它：网关的客户端和隧道
+链路共用它，超过它的链路发送失败并关闭。LLM mesh 的链路（I104）承载每个 256 KiB 窗口的流，最多 `limits.max_inflight` 条，
+也会遇到同样的上限。
+
+**证据。** 在 akio `077a6710` 中，`akio-core/src/config.rs` 有 `max_queued_bytes`（默认 64 MiB），`ConnInner::send` 超过它时以
+`Overloaded` 失败；`Conn` 和 `ConnInner` 都没有设置单个连接上限的方法。
+
+**建议的 API。** `Conn::set_max_queued_bytes(&self, n: Option<usize>)`（以及 `ConnInner` 上的同名方法）：用该连接自己的上限
+代替引擎的，`None` 恢复为引擎的；从下一次发送起生效。
+
+**akit 如何使用。** 隧道链路的连接取 fit 的 `LinkQueue`，去掉其 8 MiB 高水位（`akit_tunnel::link::HIGH_WATER`），使其隧道只由
+窗口调节，与 fit 相同；LLM 链路取其流的窗口乘以 `max_inflight`。

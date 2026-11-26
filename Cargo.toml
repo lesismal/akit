@@ -21,6 +21,7 @@ members = [
     "crates/akit-plugin",
     "crates/akit-access",
     "crates/akit-roles",
+    "crates/akit-tunnel",
     "tests/compat",
 ]
 
@@ -85,6 +86,7 @@ akit-cache = { path = "crates/akit-cache" }
 akit-plugin = { path = "crates/akit-plugin" }
 akit-access = { path = "crates/akit-access" }
 akit-roles = { path = "crates/akit-roles" }
+akit-tunnel = { path = "crates/akit-tunnel" }
 
 [workspace.lints.rust]
 # No unsafe in akit (rules.md rule 14); every crate also says #![forbid(unsafe_code)].

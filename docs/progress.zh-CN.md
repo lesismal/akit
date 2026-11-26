@@ -19,6 +19,35 @@
 
 ## 日志
 
+### 2026-11-27：I101，基于 TCP 的隧道链路、注册和隧道
+
+- 新 crate `akit-tunnel`（fit 的 `tunnel`）：`crypt`（fit 的 `bodycrypt`）、`msg`（fit 的 `proto`：方法、以 fit 的字段名编码为 JSON
+  的消息、密码的 MAC 和 hub 的证明、token 的记录）、`link`（fit 的 `link`：帧、调用、回复、通知、版本 3 和 4 的 hello、密封的
+  正文）、`end`（fit 的 `tunnel`：每条隧道的一端，4 MiB 窗口，连接队列低于 1 MiB 时每 256 KiB 确认一次）、`uplink`（node 或
+  proxy 到 hub 的链路池：按顺序拨号，用 token 或密码注册，在为 hub 服务之前检查 hub 的证明，ping，`retry_interval` 后重拨）、
+  `hub`、`node` 和 `proxy`。`akit run` 运行这三个角色（`akit::ROLES`）；只有角色的配置会得到一个用于拨号的 I/O 线程。
+- 基于 akio：一切都是回调。链路在其连接的 `on_data` 中读取；需要等待的调用（node 拨号服务、hub 经 node 打开隧道、proxy 经
+  hub 打开隧道）由结束等待的回调通过 `Responder` 回答；调用的超时、重试、ping、空闲清理和 token 过期都运行在 akio 的定时器
+  线程上（`after_send`）；拨号经过 akio 的解析器和 Happy Eyeballs。链路和隧道的连接是 akio 的“中继”连接（`set_relayed`，即 fit
+  的 `SetWriteBackpressure(false)`）：否则链路两端互相写时，各自在 akio 的写水位处停止读取并互相等待（由密封 token 的测试发现，
+  它在 64 KiB 处卡住）。改由窗口和链路的高水位来调节：排队超过 8 MiB 的链路会压住喂给它的一方（隧道的连接，或 hub 读取的那条
+  链路），直到它排空（`on_drain`）。
+- 与 fit 的不同：fit 把链路的发送队列上限提高到其 64 条隧道的窗口之和（260 MiB）；akio 对整个引擎只有一个上限
+  （`limits.max_write_queue_bytes`，32 MiB），所以链路在超过 8 MiB 时压住喂给它的一方（已写成 akio API 请求 A234，即单个连接
+  自己的上限；不阻塞任何工作）。TLS、WebSocket 和 QUIC 链路属于 I102：这些协议的监听器或端点在角色应用时给出警告并被跳过。
+  hub 对对端的调用（查询、设置服务、踢掉）、token 过期时关闭其链路以及控制台套接字属于 I103；被撤销的 token 的链路在这里已经
+  立即关闭（登记表的关闭回调）。
+- 互通性（决定 038），用 fit 自己在 `7daee573` 的二进制手工检查（会话临时目录中的一个脚本，不在 CI 中）：fit 的 hub 配 akit 的
+  node 和 proxy，以及 akit 的 hub 配 fit 的 node 和 proxy，基于 TCP、使用 token，明文和 `body_password` 密封：各自回显一兆字节。
+- 测试：fit 的 `bodycrypt` 和 `proto.Prove` 向量（密码和 token 下密封的正文、hub 的证明）逐字节一致；内存中的链路（调用、通知、
+  明文和密封、两端不匹配、超过上限的帧）；在一个 akio 引擎上的端到端测试（`tests/e2e.rs`）：密码下 16 MiB 和同时 8 条隧道、
+  密封下 8 MiB、明文和密封的 token 及其成员绑定、错误的密码、两个成员共用的 token；经由二进制
+  （`crates/akit/tests/tunnel.rs`）：带 Admin API 和 hub 的 `akit run`，用 `akit token create` 为由第二个 `akit run` 运行的 node 和
+  proxy 签发 token，经它们的隧道，`akit token list` 显示绑定的成员，`akit token revoke` 关闭 proxy 的链路。
+- 需要测量（规则 30，基准表中的新行）：一条和 64 条隧道的吞吐、每秒打开的隧道、hub 每 GB 的 CPU、每条隧道和链路的内存，
+  对比 fit。
+- 下一步：I102，TLS、WebSocket 和 QUIC 链路。
+
 ### 2026-11-27：I100，`akit run` 中的角色
 
 - `akit-roles` 的 `host`，即 fit 的 `app`：一个 `Manager`，在每次应用配置时于监听器之后，启动配置设置的每个角色，把配置

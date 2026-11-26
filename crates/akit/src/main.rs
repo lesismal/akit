@@ -1159,6 +1159,9 @@ fn run(args: &[String]) -> ExitCode {
     for w in roles.apply(&start_config) {
         eprintln!("akit run: {w}");
     }
+    for id in roles.running() {
+        println!("akit: running {id}");
+    }
     drop(start_config);
     acme.manage(&acme_names);
     let api = match &admin {

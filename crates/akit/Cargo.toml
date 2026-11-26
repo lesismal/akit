@@ -37,6 +37,8 @@ akit-proxy = { workspace = true }
 akit-runtime = { workspace = true }
 # The host of fit's roles (I100).
 akit-roles = { workspace = true }
+# The tunnel's roles (I101).
+akit-tunnel = { workspace = true }
 akit-tls = { workspace = true }
 
 [dev-dependencies]

@@ -102,6 +102,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | A231 | XChaCha20-Poly1305 (HChaCha20 and a 24-byte nonce) in akio-crypto: the AEAD of fit's `fitstore` format | requested (I93): I93 waits for it | 15, 20 | I93 |
 | A232 | An HTTP connection's idle timeout and close from its handler, and the connections accepted told to the application: fit's bounds on connections without a login | requested (I90): the console bounded as the Admin API meanwhile | 10, 11 | I90 |
 | A233 | A terminal's echo turned off (raw mode), to read a password | requested (I89): the password shown as typed meanwhile, the prompt says so | 14 | I89 |
+| A234 | A connection's own bound of the bytes queued for it, past the engine's `max_queued_bytes` or below it | requested (I101): a link holds what feeds it past 8 MiB meanwhile | 8, 11 | I101, I104 |
 
 ## A1 TCP listeners on a running engine
 
@@ -2248,3 +2249,28 @@ when the guard is dropped, an error for a descriptor that is not a terminal.
 
 **How akit would use it.** `akit hash-password` reads the password from a terminal with echo off,
 as fit does, a `*` written for each character, and the note about the shown password goes.
+
+## A234 A connection's own bound of the bytes queued for it
+
+**Status.** Requested by I101 (2026-11-27). Nothing waits for it: the tunnel's links pace what
+feeds them by their own high water meanwhile (a stopgap recorded in [progress](progress.md)).
+
+**Problem.** fit raises the send-queue bound of each tunnel link to what its tunnels may have in
+flight: 64 tunnels' 4 MiB windows and room for control messages (`proto.LinkQueue`, about
+260 MiB, fib's `SetQueueLimit`), so that a link never fails a send its tunnels' windows allow.
+akio has one bound for every connection of an engine, `Config::max_queued_bytes`, which akit sets
+from `limits.max_write_queue_bytes` (32 MiB by default): the gateway's clients and the tunnel's
+links share it, and a link past it fails its send and closes. The LLM mesh's links (I104) carry
+streams with 256 KiB windows each, up to `limits.max_inflight` of them, and meet the same bound.
+
+**Evidence.** At akio `077a6710`, `akio-core/src/config.rs` has `max_queued_bytes` (64 MiB by
+default) and `ConnInner::send` fails with `Overloaded` past it; neither `Conn` nor `ConnInner` has
+a setter of a connection's own.
+
+**Suggested API.** `Conn::set_max_queued_bytes(&self, n: Option<usize>)` (and on `ConnInner`):
+this connection's bound in place of the engine's, `None` back to the engine's; effective for the
+next send.
+
+**How akit would use it.** A tunnel link's connection gets fit's `LinkQueue` and drops its 8 MiB
+high water (`akit_tunnel::link::HIGH_WATER`), so that its tunnels are paced by their windows alone,
+as fit's are; an LLM link gets its streams' windows times `max_inflight`.
