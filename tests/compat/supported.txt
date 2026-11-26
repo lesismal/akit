@@ -664,3 +664,12 @@ routes[].access.allow
 routes[].access.deny
 routes[].access.allow_files
 routes[].access.deny_files
+
+# I86: a service's access: at accept for a tcp listener of one service without server names, on a
+# port of its own and without PROXY headers; otherwise once akit-l4's entry knows the service. A
+# udp session is refused as it opens (A220); a listener's socks checks its clients at their request.
+services[].access
+services[].access.allow
+services[].access.deny
+services[].access.allow_files
+services[].access.deny_files

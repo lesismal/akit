@@ -355,6 +355,7 @@ dependencies = [
  "akio",
  "akio-mux",
  "akio-socks",
+ "akit-access",
  "akit-config",
  "akit-upstream",
 ]

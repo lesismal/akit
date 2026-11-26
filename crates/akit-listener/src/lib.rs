@@ -1066,14 +1066,29 @@ fn l4_acceptor(
 
 /// The SOCKS server of a listener serving `socks` (I55): its `socks` rules, fixed for as long as
 /// the listener runs (a reload that changes them binds the listener anew, as fit's does), its
-/// tunnels dialed through the engine the graph's slot is filled with once `akit run` has built
-/// it. `None` for a listener without `socks`, which akit-config refuses for one serving it.
+/// clients checked against the current graph's access lists when the listener decides later
+/// (I86), its tunnels dialed through the engine the graph's slot is filled with once `akit run`
+/// has built it. `None` for a listener without `socks`, which akit-config refuses for one serving it.
 fn socks_acceptor(cell: &GraphCell, l: &Listener) -> Option<akio_socks::Socks> {
     let rules = akit_l4::forward::Rules::new(l.socks.as_ref()?);
     let engine = akio::EngineRef::new();
     let set = engine.clone();
     cell.with(|g| g.engine().when_set(move |e| set.set(e)));
-    Some(rules.socks(engine))
+    // The access lists, at a client's request, when the current graph's listener does not check
+    // at accept (I86, fit's `SOCKSAccess`).
+    let (c, name) = (cell.clone(), l.name.clone());
+    let gate = move |ip: IpAddr| {
+        c.with(|g| {
+            akit_access::allows(
+                g.listener_index(&name)
+                    .and_then(|i| g.access(i))
+                    .and_then(|a| a.socks())
+                    .map(AsRef::as_ref),
+                ip,
+            )
+        })
+    };
+    Some(rules.socks_gated(engine, gate))
 }
 
 /// Loads akit-l4's kernel relay when a listener of `listeners` asks for it (`sockmap`, I51b),

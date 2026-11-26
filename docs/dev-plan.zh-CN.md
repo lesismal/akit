@@ -184,7 +184,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I80b | 安全加固：威胁模型的局限与审查的发现 | I80、审查 | todo |
 | **1.0 之后：访问控制列表** | | | |
 | I85 | 访问控制列表 I：列表、监听器和路由 | I79、akio A3 | done |
-| I86 | 访问控制列表 II：服务与正向代理 | I85 | todo |
+| I86 | 访问控制列表 II：服务与正向代理 | I85 | done |
 | I87 | 访问控制列表 III：Admin API 与配置参考 | I85 | todo |
 
 ## 基准与优化状态
@@ -1046,6 +1046,8 @@ fit 的各个角色（`streaming`、`webrtc`、`tunnel`、`llm`、`bittorrent`�
   另有 `udp` 服务、按服务器名挑选的服务和共用端口上的 SOCKS；在 epoll 和 io_uring 上。
 - **涉及**：`akit-config`、`akit-runtime`、`akit-l4`、`akit-listener`、`tests/compat`。
 - **fit**：`l4/entry.go`（`SetAccess`、`CheckAccess`）、`l4/forward.go`（`NewSOCKS`）、I195。
+- **状态**：已完成（2026-11-26）。`services[].access`；只有一个服务的 `tcp` 监听器在 accept 时决定，其他由 akit-l4 的入口在知道服务后决定，
+  包括接受 PROXY 头的监听器；在 akio 的 A220 之前，`udp` 会话在打开时关闭；SOCKS 客户端在发出请求时检查。见进度日志。
 
 ### I87 访问控制列表 III：Admin API 与配置参考
 

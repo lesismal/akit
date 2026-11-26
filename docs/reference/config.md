@@ -16,7 +16,7 @@ YAML or JSON, any of them split across several files. Where akit differs from fi
 so in a note marked **akit:**.
 
 <!-- BEGIN GENERATED: summary -->
-akit reads **444** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 66 objects akit reads, each has its table below.
+akit reads **449** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 67 objects akit reads, each has its table below.
 <!-- END GENERATED -->
 
 How to read the tables:
@@ -46,7 +46,7 @@ is not there, a plugin that does not compile are errors.
 - [Routes](#routes): [`routes[]`](#cfg-routes), [`match`](#cfg-routes-match), [`handler`](#cfg-routes-handler), [`middleware[]`](#cfg-routes-middleware)
 - [Upstreams](#upstreams): [`upstreams[]`](#cfg-upstreams), [`sticky_cookie`](#cfg-upstreams-sticky-cookie), [`health_check`](#cfg-upstreams-health-check)
 - [Services](#services)
-- [Access lists](#access-lists): [`access`](#cfg-access), [`listeners[].access`](#cfg-listeners-access), [`routes[].access`](#cfg-routes-access)
+- [Access lists](#access-lists): [`access`](#cfg-access), [`listeners[].access`](#cfg-listeners-access), [`routes[].access`](#cfg-routes-access), [`services[].access`](#cfg-services-access)
 - [Access log](#access-log)
 - [Telemetry](#telemetry)
 - [Limits](#limits)
@@ -515,7 +515,7 @@ service mail { listeners tls; upstream mail; server_names mail.example.com }
 | `listeners` | list of string | required | The names of the listeners whose connections the service takes: those that serve tcp, alone or beside other protocols, and udp listeners, each one service's. A udp listener's session is a client's address: the datagrams it sends go to one upstream address, from a socket of the session's own, and what comes back to that socket goes to the client. |
 | `name` | string | required | A name unique among the services. |
 | `upstream` | string | required | The name of the upstream connections go to: one of its addresses, picked by its load_balancing (ip_hash by the client's address; header, cookie and URI hashes, which a connection has none of, in turn), out of rotation for its max_fails and health checks as for HTTP, dialed within its connect_timeout. A connect that fails is tried on the next address picked, up to three addresses. Its protocol and HTTP settings are not used. |
-| `access` | object |  | **Not supported yet**: refused by name. The client addresses the service takes, deciding before its listener's access and the global one: a connection it refuses is closed, once its PROXY header and ClientHello are read when the listener needs them, and the datagrams of a udp session it refuses are dropped. |
+| `access` | [object](#cfg-services-access) |  | The client addresses the service takes, deciding before its listener's access and the global one: a connection it refuses is closed, once its PROXY header and ClientHello are read when the listener needs them, and the datagrams of a udp session it refuses are dropped. **akit:** A `udp` session from a client it refuses is closed as it opens, its first datagram dropped and each later one opening another, where fit drops the datagrams before a session is made: akio's UDP listeners take no accept filter yet (akit's request A220). |
 | `idle_timeout` | duration |  | How long a connection or a udp session may carry nothing either way before both sides are closed; 10m for a connection and 1m for a udp session when left out. |
 | `max_conns` | integer, 0 or more | `10000` | The most connections and udp sessions the service proxies at once; a connection past it is closed as soon as it is accepted, and the datagrams of a session past it are dropped. 10000 when left out or 0. |
 | `proxy_protocol` | string: `v1`, `v2` |  | Send each upstream connection a PROXY protocol header of this version (v1, text, or v2, binary) first, naming the client's address and the one it connected to. For tcp listeners. |
@@ -526,23 +526,28 @@ service mail { listeners tls; upstream mail; server_names mail.example.com }
 
 Which client addresses akit serves, by allow lists (whitelists) and deny lists (blacklists) of IP
 addresses and CIDR prefixes, written inline or in files, as the lists published for firewalls are.
-The top-level `access` is global: every listener and route goes by it. Each of them may set an
-`access` of its own, which decides first, so that the more specific setting wins:
+The top-level `access` is global: every listener, route and service goes by it. Each of them may
+set an `access` of its own, which decides first, so that the more specific setting wins:
 
 - a list's `deny` refuses an address, whatever its `allow` holds;
 - else its `allow` serves an address it holds;
 - else, when its `allow` has entries, it refuses the address, since an allow list serves only what
   it holds;
 - else it has no say, and the next one out decides: a route's, then its listener's, then the global
-  one. An address none has a say on is served.
+  one; a service's, then its listener's, then the global one. An address none has a say on is
+  served.
 
 A route's `allow` therefore serves an address the global `deny` refuses, and a route's `deny`
-refuses one the global `allow` serves; `allow 0.0.0.0/0 ::/0` opens a route to every address
-whatever the global access says.
+refuses one the global `allow` serves; `allow 0.0.0.0/0 ::/0` opens a route or service to every
+address whatever the global access says.
 
 Where it can, akit decides when a connection is accepted: a refused TCP connection is closed before
-anything is read from it, by akio's accept filter. A listener whose routes set an access of their
-own, or that takes PROXY headers, decides later instead: a refused HTTP request is answered `403`.
+anything is read from it, by akio's accept filter. So does a `tcp` listener of one service without
+`server_names`, on a port of its own, by that service's access. A listener whose routes or services
+set an access of their own, or that takes PROXY headers, decides later instead: a refused HTTP
+request is answered `403`, a refused `tcp` connection closed once its service is known (after its
+PROXY header and its ClientHello, as the listener needs them), and a client of the listener's
+`socks` refused at its request.
 The address is the connection's, or the one its PROXY header names, never `X-Forwarded-For`'s. A
 change applies to the connections that start after it: a reload changes the lists without binding a
 listener again, and the connections already open, and the later requests of an HTTP/2 connection a
@@ -575,11 +580,15 @@ route partners {
 }
 
 route { handler respond { body hello } }
+
+listener postgres :5432 tcp
+upstream db 10.0.0.5:5432
+service postgres { listeners postgres; upstream db; access { allow 10.0.0.0/8 } }
 ```
 
-**akit:** HTTP/3 requests are checked one by one, a refused one answered `403`, where fit drops a
-refused peer's datagrams before a session is made: akio's UDP listeners take no accept filter yet
-(akit's request A220).
+**akit:** HTTP/3 requests are checked one by one, a refused one answered `403`, and a `udp`
+session from a refused client is closed as it opens, where fit drops a refused peer's datagrams
+before a session is made: akio's UDP listeners take no accept filter yet (akit's request A220).
 
 ### `access`
 
@@ -598,6 +607,19 @@ refused peer's datagrams before a session is made: akio's UDP listeners take no 
 
 <!-- BEGIN GENERATED: listeners[].access -->
 <a id="cfg-listeners-access"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `allow` | list of string |  | IP addresses and CIDR prefixes served, as "10.0.0.0/8" or "2001:db8::/32": with any entry here or in allow_files, every address neither holds is refused, unless deny refuses it first. |
+| `allow_files` | list of string |  | Files of more allow entries, one on each line, each line told apart by its content: an address or prefix, with what follows # or ; left out, as the lists published for firewalls are written; a range, first-last; an eMule ipfilter.dat line, first - last , level , name, where a level above 127 is not listed; or a PeerGuardian .p2p line, name:first-last. IPv4 addresses of ranges may have leading zeros. Blank lines and lines that begin with #, ; or // are left out; any other line is an error. Read when the config is applied, and applied again when one changes; each at most 64 MiB. |
+| `deny` | list of string |  | IP addresses and CIDR prefixes refused, whatever allow holds. |
+| `deny_files` | list of string |  | Files of more deny entries, written as allow_files. |
+<!-- END GENERATED -->
+
+### `services[].access`
+
+<!-- BEGIN GENERATED: services[].access -->
+<a id="cfg-services-access"></a>
 
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |

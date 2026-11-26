@@ -191,7 +191,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I88.
 | I80b | Security hardening: the threat model's limitations and the review's findings | I80, the review | todo |
 | **After 1.0: access lists** | | | |
 | I85 | Access lists I: the lists, listeners and routes | I79, akio A3 | done |
-| I86 | Access lists II: services and the forward proxy | I85 | todo |
+| I86 | Access lists II: services and the forward proxy | I85 | done |
 | I87 | Access lists III: the Admin API and the reference | I85 | todo |
 
 ## Benchmark and optimization status
@@ -1179,6 +1179,10 @@ answered 403 or the connection closed once its service is known. fit's roles (`s
   by server name and SOCKS on a shared port; on epoll and io_uring.
 - **Touches**: `akit-config`, `akit-runtime`, `akit-l4`, `akit-listener`, `tests/compat`.
 - **fit**: `l4/entry.go` (`SetAccess`, `CheckAccess`), `l4/forward.go` (`NewSOCKS`), I195.
+- **Status**: done (2026-11-26). `services[].access`; a lone service's `tcp` listener at accept,
+  others by akit-l4's entry once it knows the service, PROXY-header listeners included; `udp`
+  sessions closed as they open until akio's A220; SOCKS clients at their request. See the progress
+  log.
 
 ### I87 Access lists III: the Admin API and the reference
 

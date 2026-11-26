@@ -223,12 +223,25 @@ impl Rules {
     /// authentication, for the clients and to the destinations the rules allow.
     #[must_use]
     pub fn socks(self: &Arc<Rules>, engine: EngineRef) -> Socks {
+        self.socks_gated(engine, |_| true)
+    }
+
+    /// [`socks`](Self::socks), its clients also asked of `gate` at their request: the access
+    /// lists, when the listener does not check them at accept (I86, fit's `SOCKSAccess`). `gate`
+    /// runs on the I/O thread and must not block.
+    #[must_use]
+    pub fn socks_gated(
+        self: &Arc<Rules>,
+        engine: EngineRef,
+        gate: impl Fn(IpAddr) -> bool + Send + Sync + 'static,
+    ) -> Socks {
         let rules = Arc::clone(self);
         Socks::new(engine)
             .config(self.proxy_config())
             .allow(move |r| {
                 r.command() == Command::Connect
                     && rules.client(r.client().ip())
+                    && gate(r.client().ip())
                     && rules.dest(r.dest()) != Verdict::Refused
             })
     }

@@ -86,6 +86,10 @@
     "listeners[].access": {
       "en": "HTTP/3's requests are checked one by one, a refused one answered `403`, where fit drops a refused peer's datagrams before a session is made: akio's UDP listeners take no accept filter yet (akit's request A220).",
       "zh": "HTTP/3 的请求逐个检查，被拒绝的回答 `403`；而 fit 在为被拒绝的对端建立会话之前就丢弃它的数据报：akio 的 UDP 监听器还不支持 accept 过滤器（akit 的需求 A220）。"
+    },
+    "services[].access": {
+      "en": "A `udp` session from a client it refuses is closed as it opens, its first datagram dropped and each later one opening another, where fit drops the datagrams before a session is made: akio's UDP listeners take no accept filter yet (akit's request A220).",
+      "zh": "来自被拒绝客户端的 `udp` 会话在打开时被关闭，它的第一个数据报被丢弃，之后的每个数据报都会再打开一个会话；而 fit 在建立会话之前就丢弃这些数据报：akio 的 UDP 监听器还不支持 accept 过滤器（akit 的需求 A220）。"
     }
   }
 }

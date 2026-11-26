@@ -4,7 +4,10 @@
 
 use std::collections::HashMap;
 use std::fmt;
+use std::net::IpAddr;
 use std::sync::Arc;
+
+use akit_access::Policy;
 
 use crate::Service;
 
@@ -13,7 +16,7 @@ use crate::Service;
 #[derive(Clone, Default)]
 pub struct Entry(Arc<Inner>);
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct Inner {
     /// The service without `server_names`, if any.
     fallback: Option<Service>,
@@ -24,6 +27,14 @@ struct Inner {
     /// The listener's `sockmap` (I51b): its TCP connections are spliced in the kernel where
     /// the relay is loaded ([`crate::sockmap`]).
     sockmap: bool,
+    /// The access lists (I86, fit's `Entry.CheckAccess`): each connection's address is checked
+    /// once its service is known, against that service's policy, or against `listener` when it
+    /// goes to none; when false, the listener checked it at accept.
+    check: bool,
+    /// The listener's own list, then the global one.
+    listener: Option<Arc<Policy>>,
+    /// Each service's policy: its own list, then the listener's, then the global one.
+    policies: Vec<(Service, Option<Arc<Policy>>)>,
 }
 
 impl fmt::Debug for Entry {
@@ -31,6 +42,7 @@ impl fmt::Debug for Entry {
         f.debug_struct("Entry")
             .field("fallback", &self.0.fallback.as_ref().map(Service::name))
             .field("sockmap", &self.0.sockmap)
+            .field("check", &self.0.check)
             .field(
                 "names",
                 &self.0.exact.len().saturating_add(self.0.wild.len()),
@@ -83,6 +95,43 @@ impl Entry {
             }
         }
         Entry(Arc::new(inner))
+    }
+
+    /// The same, checking each connection's address once its service is known when `check`
+    /// (I86, fit's `SetAccess` and `CheckAccess`): against the policy `policies` gives its
+    /// service, or `listener`'s when it goes to none.
+    #[must_use]
+    pub fn with_access(
+        mut self,
+        check: bool,
+        listener: Option<Arc<Policy>>,
+        policies: Vec<(Service, Option<Arc<Policy>>)>,
+    ) -> Entry {
+        let inner = Arc::make_mut(&mut self.0);
+        inner.check = check;
+        inner.listener = listener;
+        inner.policies = policies;
+        self
+    }
+
+    /// Whether a connection from `ip` may go to `s` (to none when `None`): always when the
+    /// listener checked it at accept. Runs on the I/O thread: a lookup, no allocation.
+    #[must_use]
+    pub fn admits(&self, s: Option<&Service>, ip: IpAddr) -> bool {
+        if !self.0.check {
+            return true;
+        }
+        let listener = self.0.listener.as_deref();
+        let p = match s {
+            Some(s) => self
+                .0
+                .policies
+                .iter()
+                .find(|(x, _)| x.same(s))
+                .map_or(listener, |(_, p)| p.as_deref()),
+            None => listener,
+        };
+        akit_access::allows(p, ip)
     }
 
     /// Whether its listener asks for its TCP connections to be spliced in the kernel

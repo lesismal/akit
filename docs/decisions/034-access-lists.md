@@ -2,7 +2,7 @@
 
 [English](034-access-lists.md) | [简体中文](034-access-lists.zh-CN.md)
 
-Status: accepted in I85 (2026-11-26).
+Status: accepted in I85 (2026-11-26); extended by I86 (layer 4 and SOCKS).
 
 ## Context
 
@@ -49,8 +49,25 @@ applies, how list files are read, and where each module decides. akio has the ac
    `cert_files`, which `akit run -watch-certs` compares the files with: a change applies the config
    again, as fit's `watchFiles`.
 
+8. **Layer 4, once the service is known (I86).** A `tcp` listener of one service without
+   `server_names`, on a port of its own and without PROXY headers, refuses at accept by that
+   service's policy (its own list, the listener's, the global one), as fit's. Any other listener
+   with a service's list of its own, or with PROXY headers, has akit-l4's entry check each
+   connection once it knows the service (after the PROXY header and the ClientHello, as the
+   listener needs them), with the policies compiled into the entry with the graph: a refused one
+   is closed before its upstream is dialed.
+9. **`udp` sessions refused as they open until A220.** akio makes each new client address a
+   connection; the entry checks it as it opens and closes it when refused, the datagram dropped.
+   Nothing is remembered of the peer, so each datagram of a refused client opens and closes a
+   session: a cost per datagram, and nothing that grows with the clients refused (fit's decision 7
+   on I195).
+10. **SOCKS at the client's request.** A listener's `socks` rules are fixed for as long as it is
+    bound; its access is not: the server asks the graph current at each request for the policy
+    the listener's SOCKS clients go by when the listener decides later, fit's `SOCKSAccess`.
+
 ## Consequences
 
 - A refused TCP client costs an `accept` and a close, with no TLS, no read and no request.
 - A refused HTTP/3 client costs a QUIC handshake and a request until A220.
 - A listener that decides per request costs every request a graph read and a lookup, as fit's.
+- A refused `udp` client costs a session opened and closed per datagram until A220.

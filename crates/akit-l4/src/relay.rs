@@ -64,6 +64,13 @@ where
                 c.close();
                 return Client::default();
             };
+            // The access lists, when the listener did not check at accept (I86): a TCP
+            // connection closed before anything is read from it, a UDP session's first datagram
+            // dropped (akio filters no datagrams yet: A220).
+            if !entry.admits(Some(s), proxy::client_addr(c).ip()) {
+                c.close();
+                return Client::default();
+            }
             return Client {
                 relay: start(s, c, self.udp, Vec::new(), entry.sockmap()),
                 opening: None,
@@ -238,8 +245,11 @@ impl Handler for Client {
                 return;
             }
             match picked {
-                Some(s) => self.relay = start(&s, c, false, o.buf, o.entry.sockmap()),
-                None => c.close(),
+                // The access lists, once the ClientHello named the service (I86).
+                Some(s) if o.entry.admits(Some(&s), proxy::client_addr(c).ip()) => {
+                    self.relay = start(&s, c, false, o.buf, o.entry.sockmap());
+                }
+                _ => c.close(),
             }
             return;
         }

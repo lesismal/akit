@@ -44,6 +44,19 @@ fn read_at_every_level() {
         ["2001:db8::/32"]
     );
     assert_eq!(c.routes[0].access.as_ref().unwrap().allow, ["::1"]);
+    // A service's (I86).
+    let c = from_json(
+        r#"{"listeners": [{"name": "t", "address": ":7000", "protocols": ["tcp"]}],
+            "upstreams": [{"name": "app", "addresses": ["127.0.0.1:9000"]}],
+            "services": [{"name": "a", "listeners": ["t"], "upstream": "app", "access": {"allow": ["10.0.0.0/8"], "deny_files": ["d.txt"]}}]}"#,
+        None,
+    )
+    .unwrap();
+    let a = c.services[0].access.as_ref().unwrap();
+    assert_eq!(
+        (a.allow.as_slice(), a.deny_files.as_slice()),
+        (&["10.0.0.0/8".to_owned()][..], &["d.txt".to_owned()][..])
+    );
     // Empty, and left out.
     let c = from_json(&format!(r#"{{"access": {{}}, {ROUTES}}}"#), None).unwrap();
     assert_eq!(c.access, Some(Access::default()));

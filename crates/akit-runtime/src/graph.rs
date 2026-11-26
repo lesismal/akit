@@ -651,6 +651,19 @@ pub fn compile(
             )
         })
         .collect();
+    let service_lists: Vec<_> = config
+        .services
+        .iter()
+        .enumerate()
+        .map(|(i, s)| {
+            crate::access::list(
+                s.access.as_ref(),
+                &format!("services[{i}].access"),
+                &mut access_files,
+                &mut errors,
+            )
+        })
+        .collect();
     cert_files.extend(access_files);
     if !errors.is_empty() {
         // `modules` drops here, cleaning up what was provisioned, and `lease` gives back what it
@@ -725,23 +738,7 @@ pub fn compile(
             Some(akit_l4::Service::new(s, pool.clone()))
         })
         .collect();
-    let l4 = config
-        .listeners
-        .iter()
-        .map(|l| {
-            let mine: Vec<(akit_l4::Service, &[String])> = config
-                .services
-                .iter()
-                .filter(|c| c.listeners.contains(&l.name))
-                .filter_map(|c| {
-                    let s = services.iter().find(|s| s.name() == c.name)?;
-                    Some((s.clone(), c.server_names.as_slice()))
-                })
-                .collect();
-            (!mine.is_empty()).then(|| akit_l4::Entry::of_listener(mine, l.sockmap))
-        })
-        .collect();
-    let access = config
+    let access: Vec<crate::access::ListenerAccess> = config
         .listeners
         .iter()
         .zip(&listener_lists)
@@ -752,7 +749,48 @@ pub fn compile(
                 .zip(&route_lists)
                 .map(|(r, list)| list.clone().filter(|_| serves(l, r)))
                 .collect();
-            crate::access::listener(l, global.as_ref(), own.as_ref(), &routes)
+            // Its services, each with its own list (I86).
+            let services: Vec<_> = config
+                .services
+                .iter()
+                .zip(&service_lists)
+                .filter(|(c, _)| c.listeners.contains(&l.name))
+                .map(|(c, list)| crate::access::ServiceAccess {
+                    name: &c.name,
+                    list: list.as_ref(),
+                    names: !c.server_names.is_empty(),
+                })
+                .collect();
+            crate::access::listener(l, global.as_ref(), own.as_ref(), &routes, &services)
+        })
+        .collect();
+    let l4 = config
+        .listeners
+        .iter()
+        .zip(&access)
+        .map(|(l, access)| {
+            let mine: Vec<(akit_l4::Service, &[String])> = config
+                .services
+                .iter()
+                .filter(|c| c.listeners.contains(&l.name))
+                .filter_map(|c| {
+                    let s = services.iter().find(|s| s.name() == c.name)?;
+                    Some((s.clone(), c.server_names.as_slice()))
+                })
+                .collect();
+            // The entry checks a connection once it knows its service, when the listener does
+            // not at accept (I86).
+            let policies = mine
+                .iter()
+                .map(|(s, _)| (s.clone(), access.service(s.name()).cloned()))
+                .collect();
+            (!mine.is_empty()).then(|| {
+                akit_l4::Entry::of_listener(mine, l.sockmap).with_access(
+                    access.l4_check(),
+                    access.policy().cloned(),
+                    policies,
+                )
+            })
         })
         .collect();
     Ok(Graph {

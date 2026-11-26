@@ -143,8 +143,8 @@ fn checks() {
         ),
         (
             TCP,
-            r#"{"name": "a", "listeners": ["t"], "upstream": "app", "access": {}}"#,
-            &["services[0].access: not supported yet"],
+            r#"{"name": "a", "listeners": ["t"], "upstream": "app", "access": {"deny": ["x"]}}"#,
+            &[r#"services[0].access.deny[0]: "x" is not an IP address or a CIDR prefix"#],
         ),
     ];
     let mut wrong = Vec::new();

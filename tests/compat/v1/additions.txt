@@ -24,3 +24,8 @@ config	added	supported	routes[].access.allow
 config	added	supported	routes[].access.allow_files
 config	added	supported	routes[].access.deny
 config	added	supported	routes[].access.deny_files
+config	added	supported	services[].access
+config	added	supported	services[].access.allow
+config	added	supported	services[].access.allow_files
+config	added	supported	services[].access.deny
+config	added	supported	services[].access.deny_files

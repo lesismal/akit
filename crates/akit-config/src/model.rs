@@ -1077,6 +1077,9 @@ pub struct Service {
     /// `proxy_protocol` (I52): the PROXY protocol header sent first on each upstream
     /// connection, naming the client and the address it connected to.
     pub proxy_protocol: Option<ProxyVersion>,
+    /// `access` (I86): the client addresses the service takes, deciding before its listener's
+    /// access and the global one ([`Access`]).
+    pub access: Option<Access>,
 }
 
 /// A version of the PROXY protocol: a service's `proxy_protocol`.
@@ -2174,8 +2177,9 @@ const SERVICE_FIELDS: &[&str] = &[
     "max_conns",
     "server_names",
     "proxy_protocol",
+    "access",
 ];
-const SERVICE_FIT_ONLY: &[&str] = &["access"];
+const SERVICE_FIT_ONLY: &[&str] = &[];
 const TLS_FIELDS: &[&str] = &[
     "certificates",
     "client_auth",
@@ -2221,7 +2225,7 @@ const ROUTE_FIELDS: &[&str] = &[
     "access",
 ];
 const ROUTE_FIT_ONLY: &[&str] = &[];
-// I85: fit's `config.Access`, at the top level, on listeners and on routes.
+// I85: fit's `config.Access`, at the top level, on listeners and on routes; I86, on services.
 const ACCESS_FIELDS: &[&str] = &["allow", "deny", "allow_files", "deny_files"];
 const MATCH_FIELDS: &[&str] = &[
     "host",
@@ -6398,6 +6402,7 @@ fn service(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Service> {
             }
         }
     });
+    let access = o.take("access").and_then(|v| access(d, v, &o.at("access")));
     o.finish(d, SERVICE_FIELDS, SERVICE_FIT_ONLY);
     Some(Service {
         name: name?,
@@ -6407,6 +6412,7 @@ fn service(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Service> {
         max_conns,
         server_names,
         proxy_protocol,
+        access,
     })
 }
 

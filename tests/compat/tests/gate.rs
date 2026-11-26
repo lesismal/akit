@@ -610,6 +610,31 @@ fn supported_fields_are_read() {
             |c| c.routes[0].access.as_ref().unwrap().deny_files == ["d.txt"],
         ),
         (
+            "services[].access",
+            r#"{"listeners": [{"name": "t", "address": ":7000", "protocols": ["tcp"]}], "upstreams": [{"name": "app", "addresses": ["127.0.0.1:9000"]}], "services": [{"name": "a", "listeners": ["t"], "upstream": "app", "access": {"allow": ["10.0.0.0/8"]}}]}"#.into(),
+            |c| c.services[0].access.is_some(),
+        ),
+        (
+            "services[].access.allow",
+            r#"{"listeners": [{"name": "t", "address": ":7000", "protocols": ["tcp"]}], "upstreams": [{"name": "app", "addresses": ["127.0.0.1:9000"]}], "services": [{"name": "a", "listeners": ["t"], "upstream": "app", "access": {"allow": ["10.0.0.0/8"]}}]}"#.into(),
+            |c| c.services[0].access.as_ref().unwrap().allow == ["10.0.0.0/8"],
+        ),
+        (
+            "services[].access.deny",
+            r#"{"listeners": [{"name": "t", "address": ":7000", "protocols": ["tcp"]}], "upstreams": [{"name": "app", "addresses": ["127.0.0.1:9000"]}], "services": [{"name": "a", "listeners": ["t"], "upstream": "app", "access": {"deny": ["192.0.2.1"]}}]}"#.into(),
+            |c| c.services[0].access.as_ref().unwrap().deny == ["192.0.2.1"],
+        ),
+        (
+            "services[].access.allow_files",
+            r#"{"listeners": [{"name": "t", "address": ":7000", "protocols": ["tcp"]}], "upstreams": [{"name": "app", "addresses": ["127.0.0.1:9000"]}], "services": [{"name": "a", "listeners": ["t"], "upstream": "app", "access": {"allow_files": ["a.txt"]}}]}"#.into(),
+            |c| c.services[0].access.as_ref().unwrap().allow_files == ["a.txt"],
+        ),
+        (
+            "services[].access.deny_files",
+            r#"{"listeners": [{"name": "t", "address": ":7000", "protocols": ["tcp"]}], "upstreams": [{"name": "app", "addresses": ["127.0.0.1:9000"]}], "services": [{"name": "a", "listeners": ["t"], "upstream": "app", "access": {"deny_files": ["d.txt"]}}]}"#.into(),
+            |c| c.services[0].access.as_ref().unwrap().deny_files == ["d.txt"],
+        ),
+        (
             "limits.max_pending_bytes",
             format!(r#"{{{L}, "limits": {{"max_pending_bytes": "25%"}}}}"#),
             |c| c.limits.max_pending_bytes == akit_config::Memory::Share(2500),
@@ -2919,7 +2944,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 66] = [
+    let objects: [(&str, &str, Option<&str>); 67] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         (
             "providers[].kubernetes",
@@ -2942,6 +2967,7 @@ fn akit_config_lists_match_the_inventory() {
         ("access", "ACCESS_FIELDS", None),
         ("listeners[].access", "ACCESS_FIELDS", None),
         ("routes[].access", "ACCESS_FIELDS", None),
+        ("services[].access", "ACCESS_FIELDS", None),
         ("engine", "ENGINE_FIELDS", Some("ENGINE_FIT_ONLY")),
         (
             "access_log",

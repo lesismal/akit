@@ -13,6 +13,7 @@ publish = false
 fuzzing = []
 
 [dependencies]
+akit-access = { workspace = true }
 akio = { workspace = true }
 akio-mux = { workspace = true }
 akio-socks = { workspace = true }

@@ -13,7 +13,7 @@ akit 配置的每个字段：配置的每一部分是做什么的、一个示例
 akit 与 fit 不同之处，在表格中以 **akit：** 标出。
 
 <!-- BEGIN GENERATED: summary -->
-fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **444** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 66 个对象，下文各有一张表。
+fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **449** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 67 个对象，下文各有一张表。
 <!-- END GENERATED -->
 
 字段说明来自 fit 代码中的 `doc` 标签，是英文的，所以每个字段的完整说明在[英文版](config.md)的同一张表中；本页的表格给出每个字段的
@@ -40,7 +40,7 @@ fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../co
 - [路由](#路由)：[`routes[]`](#cfg-routes)、[`match`](#cfg-routes-match)、[`handler`](#cfg-routes-handler)、[`middleware[]`](#cfg-routes-middleware)
 - [上游](#上游)：[`upstreams[]`](#cfg-upstreams)、[`sticky_cookie`](#cfg-upstreams-sticky-cookie)、[`health_check`](#cfg-upstreams-health-check)
 - [服务](#服务)
-- [访问控制列表](#访问控制列表)：[`access`](#cfg-access)、[`listeners[].access`](#cfg-listeners-access)、[`routes[].access`](#cfg-routes-access)
+- [访问控制列表](#访问控制列表)：[`access`](#cfg-access)、[`listeners[].access`](#cfg-listeners-access)、[`routes[].access`](#cfg-routes-access)、[`services[].access`](#cfg-services-access)
 - [访问日志](#访问日志)
 - [遥测](#遥测)
 - [上限](#上限)
@@ -516,7 +516,7 @@ service mail { listeners tls; upstream mail; server_names mail.example.com }
 | `listeners` | 字符串的列表 | 必填 |  |
 | `name` | 字符串 | 必填 |  |
 | `upstream` | 字符串 | 必填 |  |
-| `access` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `access` | [对象](#cfg-services-access) |  | **akit：**来自被拒绝客户端的 `udp` 会话在打开时被关闭，它的第一个数据报被丢弃，之后的每个数据报都会再打开一个会话；而 fit 在建立会话之前就丢弃这些数据报：akio 的 UDP 监听器还不支持 accept 过滤器（akit 的需求 A220）。 |
 | `idle_timeout` | 时长 |  |  |
 | `max_conns` | 整数，≥ 0 | `10000` |  |
 | `proxy_protocol` | 字符串：`v1`、`v2` |  |  |
@@ -526,19 +526,23 @@ service mail { listeners tls; upstream mail; server_names mail.example.com }
 ## 访问控制列表
 
 akit 为哪些客户端地址提供服务，由 IP 地址和 CIDR 前缀的允许列表（白名单）和拒绝列表（黑名单）决定，可以写在配置中，
-也可以写在文件中，就像为防火墙发布的那些列表一样。顶层的 `access` 是全局的：每个监听器和路由都遵循它。它们各自也可以设置
+也可以写在文件中，就像为防火墙发布的那些列表一样。顶层的 `access` 是全局的：每个监听器、路由和服务都遵循它。它们各自也可以设置
 自己的 `access`，它先作决定，因此更具体的设置优先：
 
 - 列表的 `deny` 拒绝一个地址，无论它的 `allow` 包含什么；
 - 否则它的 `allow` 为其中包含的地址提供服务；
 - 否则，当它的 `allow` 有条目时，拒绝该地址，因为允许列表只为其中的地址提供服务；
-- 否则它不表态，由外面的下一个决定：路由的，然后是其监听器的，最后是全局的。没有任何列表表态的地址会被服务。
+- 否则它不表态，由外面的下一个决定：路由的，然后是其监听器的，最后是全局的；服务的，然后是其监听器的，最后是全局的。
+  没有任何列表表态的地址会被服务。
 
 因此路由的 `allow` 可以为全局 `deny` 拒绝的地址提供服务，路由的 `deny` 也可以拒绝全局 `allow` 放行的地址；
-`allow 0.0.0.0/0 ::/0` 让一个路由向所有地址开放，无论全局访问列表怎么说。
+`allow 0.0.0.0/0 ::/0` 让一个路由或服务向所有地址开放，无论全局访问列表怎么说。
 
 能在接受连接时决定的，akit 就在那时决定：被拒绝的 TCP 连接在读取任何内容之前就被 akio 的 accept 过滤器关闭。
-监听器的路由设置了自己的访问列表、或监听器接受 PROXY 头时，改为之后再决定：被拒绝的 HTTP 请求回答 `403`。
+只有一个不带 `server_names` 的服务、独占端口的 `tcp` 监听器也是如此，按该服务的访问列表决定。
+监听器的路由或服务设置了自己的访问列表、或监听器接受 PROXY 头时，改为之后再决定：被拒绝的 HTTP 请求回答 `403`，
+被拒绝的 `tcp` 连接在知道其服务后关闭（在按监听器需要读完它的 PROXY 头和 ClientHello 之后），监听器 `socks` 的客户端
+在发出请求时被拒绝。
 地址是连接的地址，或其 PROXY 头指明的地址，从不使用 `X-Forwarded-For` 的。变更只影响此后开始的连接：重载修改列表而不重新绑定监听器，
 已经打开的连接、以及监听器在 accept 时已决定过的 HTTP/2 连接上之后的请求，不会再次检查。
 
@@ -564,10 +568,14 @@ route partners {
 }
 
 route { handler respond { body hello } }
+
+listener postgres :5432 tcp
+upstream db 10.0.0.5:5432
+service postgres { listeners postgres; upstream db; access { allow 10.0.0.0/8 } }
 ```
 
-**akit：** HTTP/3 请求逐个检查，被拒绝的回答 `403`；而 fit 在为被拒绝的对端建立会话之前就丢弃它的数据报：akio 的 UDP
-监听器还不支持 accept 过滤器（akit 的需求 A220）。
+**akit：** HTTP/3 请求逐个检查，被拒绝的回答 `403`，来自被拒绝客户端的 `udp` 会话在打开时被关闭；而 fit 在为被拒绝的对端
+建立会话之前就丢弃它的数据报：akio 的 UDP 监听器还不支持 accept 过滤器（akit 的需求 A220）。
 
 ### `access`
 
@@ -590,6 +598,21 @@ route { handler respond { body hello } }
 <a id="cfg-listeners-access"></a>
 
 各字段的说明见英文版的[同一张表](config.md#cfg-listeners-access)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `allow` | 字符串的列表 |  |  |
+| `allow_files` | 字符串的列表 |  |  |
+| `deny` | 字符串的列表 |  |  |
+| `deny_files` | 字符串的列表 |  |  |
+<!-- END GENERATED -->
+
+### `services[].access`
+
+<!-- BEGIN GENERATED: services[].access -->
+<a id="cfg-services-access"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-services-access)。
 
 | 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |

@@ -1,14 +1,20 @@
-//! Where each listener's access lists decide (I85, fit's `runtime/graph.go` `compileAccess`).
+//! Where each listener's access lists decide (I85, I86; fit's `runtime/graph.go`
+//! `compileAccess`).
 //!
 //! A listener's policy is its own list, then the global one. When that is all there is (no route
 //! or service of the listener has a list of its own) and the client's address is known when a
 //! connection is accepted (no PROXY header names another), the listener's TCP side refuses at
-//! accept, through akio's filter (A3): [`ListenerAccess::accept`]. Otherwise it decides later:
-//! each HTTP request against its route's policy, the route's own list, then the listener's, then
-//! the global one ([`ListenerAccess::request`]), a refused request answered 403.
+//! accept, through akio's filter (A3): [`ListenerAccess::accept`]; so does a `tcp` listener of one
+//! service without server names, on a port of its own, by that service's policy. Otherwise it
+//! decides later: each HTTP request against its route's policy, the route's own list, then the
+//! listener's, then the global one ([`ListenerAccess::request`]), a refused request answered 403;
+//! each layer 4 connection once akit-l4's entry knows its service, against the service's own
+//! list, then the listener's, then the global one ([`ListenerAccess::l4_check`]); a SOCKS client at
+//! its request against the listener's ([`ListenerAccess::socks`]).
 //!
 //! akio filters no UDP peers (akit's request A220): a listener's HTTP/3 requests are checked one
-//! by one against the policy its TCP side asks at accept, until it does.
+//! by one against the policy its TCP side asks at accept, and a `udp` listener's sessions as they
+//! open, until it does.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -31,6 +37,13 @@ pub struct ListenerAccess {
     /// By the index of the graph's routes: the policy of a request that route takes on this
     /// listener, when `requests`.
     routes: Vec<Option<Arc<Policy>>>,
+    /// akit-l4's entry checks each connection once it knows its service (I86).
+    l4_check: bool,
+    /// By service name: the policy of a connection that service takes from this listener.
+    services: Vec<(String, Option<Arc<Policy>>)>,
+    /// What the listener's `socks` checks a client against at its request, when the listener
+    /// does not check at accept (I86).
+    socks: Option<Arc<Policy>>,
 }
 
 impl ListenerAccess {
@@ -65,6 +78,38 @@ impl ListenerAccess {
     pub fn policy(&self) -> Option<&Arc<Policy>> {
         self.policy.as_ref()
     }
+
+    /// Whether akit-l4's entry checks each connection once its service is known (I86):
+    /// [`akit_l4::Entry::with_access`].
+    #[must_use]
+    pub fn l4_check(&self) -> bool {
+        self.l4_check
+    }
+
+    /// The policy of a connection the service named `name` takes from this listener; the
+    /// listener's for a service it has none of its own for.
+    #[must_use]
+    pub fn service(&self, name: &str) -> Option<&Arc<Policy>> {
+        self.services
+            .iter()
+            .find(|(n, _)| n == name)
+            .map_or(self.policy.as_ref(), |(_, p)| p.as_ref())
+    }
+
+    /// What the listener's `socks` checks a client against at its request (I86); `None` when
+    /// the listener checked it at accept, or has no lists.
+    #[must_use]
+    pub fn socks(&self) -> Option<&Arc<Policy>> {
+        self.socks.as_ref()
+    }
+}
+
+/// A service of a listener, for its access (I86): its name, its own list, and whether it takes
+/// connections by server name.
+pub(crate) struct ServiceAccess<'a> {
+    pub(crate) name: &'a str,
+    pub(crate) list: Option<&'a Arc<List>>,
+    pub(crate) names: bool,
 }
 
 /// Compiles `a`, at `path` in the config, reading its files into `files`; a problem is added to
@@ -101,28 +146,69 @@ fn serves_http(l: &Listener) -> bool {
         })
 }
 
-/// The access of listener `l`, from the global list, its own and `routes`: by the index of the
-/// graph's routes, each route's own list when the route serves on `l`, `None` otherwise.
+/// Whether listener `l` serves more than one of HTTP over TCP, `tcp` and `socks` on its port,
+/// which it tells apart by what a client sends first (fit's `config.Sniffs`).
+fn sniffs(l: &Listener) -> bool {
+    let http = l
+        .protocols
+        .iter()
+        .any(|p| matches!(p, Protocol::Http11 | Protocol::H2c | Protocol::H2));
+    let kinds = [
+        http,
+        l.protocols.contains(&Protocol::Tcp),
+        l.protocols.contains(&Protocol::Socks),
+    ];
+    kinds.iter().filter(|k| **k).count() > 1
+}
+
+/// The access of listener `l`, from the global list, its own, `routes` (by the index of the
+/// graph's routes, each route's own list when the route serves on `l`, `None` otherwise) and its
+/// `services`.
 pub(crate) fn listener(
     l: &Listener,
     global: Option<&Arc<List>>,
     own: Option<&Arc<List>>,
     routes: &[Option<Arc<List>>],
+    services: &[ServiceAccess<'_>],
 ) -> ListenerAccess {
     let policy = Policy::chain([own, global]);
     let routed = routes.iter().any(Option::is_some);
-    if policy.is_none() && !routed {
+    let serviced = services.iter().any(|s| s.list.is_some());
+    if policy.is_none() && !routed && !serviced {
         return ListenerAccess::default();
     }
+    let policies: Vec<(String, Option<Arc<Policy>>)> = services
+        .iter()
+        .map(|s| (s.name.to_owned(), Policy::chain([s.list, own, global])))
+        .collect();
+    // akio's UDP listeners take no accept filter (A220): a `udp` listener's entry checks each
+    // session as it opens, by the policy fit's accept would.
+    let udp = l.protocols.contains(&Protocol::Udp);
     let proxy = l.proxy_protocol.is_some();
-    if !proxy && !routed {
+    if !proxy && !routed && !serviced {
         return ListenerAccess {
             accept: policy.clone(),
             policy,
+            l4_check: udp,
+            services: policies,
             ..ListenerAccess::default()
         };
     }
-    // Decided later: by each request, when the listener routes.
+    if let [only] = services {
+        if !proxy && !routed && !only.names && !sniffs(l) {
+            // A lone service takes every connection, or every udp session: its policy is known
+            // at accept.
+            return ListenerAccess {
+                accept: policies.first().and_then(|(_, p)| p.clone()),
+                policy,
+                l4_check: udp,
+                services: policies,
+                ..ListenerAccess::default()
+            };
+        }
+    }
+    // Decided later: by each request, when the listener routes; by the entry, once it knows the
+    // service; by SOCKS, at a client's request.
     let requests = serves_http(l);
     let routes = if requests {
         routes
@@ -136,9 +222,12 @@ pub(crate) fn listener(
         Vec::new()
     };
     ListenerAccess {
+        socks: policy.clone(),
         policy,
         accept: None,
         requests,
         routes,
+        l4_check: true,
+        services: policies,
     }
 }
