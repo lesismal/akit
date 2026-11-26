@@ -16,7 +16,7 @@ YAML or JSON, any of them split across several files. Where akit differs from fi
 so in a note marked **akit:**.
 
 <!-- BEGIN GENERATED: summary -->
-akit reads **449** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 67 objects akit reads, each has its table below.
+akit reads **454** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 68 objects akit reads, each has its table below.
 <!-- END GENERATED -->
 
 How to read the tables:
@@ -46,7 +46,7 @@ is not there, a plugin that does not compile are errors.
 - [Routes](#routes): [`routes[]`](#cfg-routes), [`match`](#cfg-routes-match), [`handler`](#cfg-routes-handler), [`middleware[]`](#cfg-routes-middleware)
 - [Upstreams](#upstreams): [`upstreams[]`](#cfg-upstreams), [`sticky_cookie`](#cfg-upstreams-sticky-cookie), [`health_check`](#cfg-upstreams-health-check)
 - [Services](#services)
-- [Access lists](#access-lists): [`access`](#cfg-access), [`listeners[].access`](#cfg-listeners-access), [`routes[].access`](#cfg-routes-access), [`services[].access`](#cfg-services-access)
+- [Access lists](#access-lists): [`access`](#cfg-access), [`listeners[].access`](#cfg-listeners-access), [`routes[].access`](#cfg-routes-access), [`services[].access`](#cfg-services-access), [`admin.access`](#cfg-admin-access)
 - [Access log](#access-log)
 - [Telemetry](#telemetry)
 - [Limits](#limits)
@@ -526,16 +526,17 @@ service mail { listeners tls; upstream mail; server_names mail.example.com }
 
 Which client addresses akit serves, by allow lists (whitelists) and deny lists (blacklists) of IP
 addresses and CIDR prefixes, written inline or in files, as the lists published for firewalls are.
-The top-level `access` is global: every listener, route and service goes by it. Each of them may
-set an `access` of its own, which decides first, so that the more specific setting wins:
+The top-level `access` is global: every listener, route and service, and the Admin API, goes by
+it. Each of them may set an `access` of its own, which decides first, so that the more specific
+setting wins:
 
 - a list's `deny` refuses an address, whatever its `allow` holds;
 - else its `allow` serves an address it holds;
 - else, when its `allow` has entries, it refuses the address, since an allow list serves only what
   it holds;
 - else it has no say, and the next one out decides: a route's, then its listener's, then the global
-  one; a service's, then its listener's, then the global one. An address none has a say on is
-  served.
+  one; a service's, then its listener's, then the global one; the Admin API's, then the global one.
+  An address none has a say on is served.
 
 A route's `allow` therefore serves an address the global `deny` refuses, and a route's `deny`
 refuses one the global `allow` serves; `allow 0.0.0.0/0 ::/0` opens a route or service to every
@@ -548,6 +549,15 @@ set an access of their own, or that takes PROXY headers, decides later instead: 
 request is answered `403`, a refused `tcp` connection closed once its service is known (after its
 PROXY header and its ClientHello, as the listener needs them), and a client of the listener's
 `socks` refused at its request.
+
+The Admin API (`admin.access`, which serves the dashboard too) goes by the global access as well,
+after its own, and decides at accept. Unlike the rest of `admin`, it follows every config applied,
+without a restart. A global `allow` that leaves out `127.0.0.1` therefore shuts local clients out
+of the Admin API too; to keep local access whatever the global access says, set the API's own
+`allow 127.0.0.1 ::1`, which decides first. An Admin API on a Unix socket is never checked: its peers
+have no address, and setting `admin.access` with one is an error. A config applied with an allow
+list that leaves out the address the change came from does not close that connection, but the next
+one is refused.
 The address is the connection's, or the one its PROXY header names, never `X-Forwarded-For`'s. A
 change applies to the connections that start after it: a reload changes the lists without binding a
 listener again, and the connections already open, and the later requests of an HTTP/2 connection a
@@ -584,6 +594,8 @@ route { handler respond { body hello } }
 listener postgres :5432 tcp
 upstream db 10.0.0.5:5432
 service postgres { listeners postgres; upstream db; access { allow 10.0.0.0/8 } }
+
+admin { address 127.0.0.1:2019; access { allow 127.0.0.1 ::1 } }
 ```
 
 **akit:** HTTP/3 requests are checked one by one, a refused one answered `403`, and a `udp`
@@ -607,6 +619,19 @@ before a session is made: akio's UDP listeners take no accept filter yet (akit's
 
 <!-- BEGIN GENERATED: listeners[].access -->
 <a id="cfg-listeners-access"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `allow` | list of string |  | IP addresses and CIDR prefixes served, as "10.0.0.0/8" or "2001:db8::/32": with any entry here or in allow_files, every address neither holds is refused, unless deny refuses it first. |
+| `allow_files` | list of string |  | Files of more allow entries, one on each line, each line told apart by its content: an address or prefix, with what follows # or ; left out, as the lists published for firewalls are written; a range, first-last; an eMule ipfilter.dat line, first - last , level , name, where a level above 127 is not listed; or a PeerGuardian .p2p line, name:first-last. IPv4 addresses of ranges may have leading zeros. Blank lines and lines that begin with #, ; or // are left out; any other line is an error. Read when the config is applied, and applied again when one changes; each at most 64 MiB. |
+| `deny` | list of string |  | IP addresses and CIDR prefixes refused, whatever allow holds. |
+| `deny_files` | list of string |  | Files of more deny entries, written as allow_files. |
+<!-- END GENERATED -->
+
+### `admin.access`
+
+<!-- BEGIN GENERATED: admin.access -->
+<a id="cfg-admin-access"></a>
 
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
@@ -833,8 +858,9 @@ status at `/status`, cache purges at `POST /cache/purge`, and a read-only dashbo
 is. A change through the API is applied as a SIGHUP's reload is, and shares its history.
 
 akit serves the API on a loopback address or a Unix socket only, as it does not serve the API over
-TLS yet; `token_file` asks every request for a bearer token. The console, the store, the assistant
-and cluster management are not supported yet. The [Admin API guide](../guides/admin-api.md) walks
+TLS yet; `token_file` asks every request for a bearer token; `access` says which client addresses it
+serves ([access lists](#access-lists)), and follows every config applied. The console, the store,
+the assistant and cluster management are not supported yet. The [Admin API guide](../guides/admin-api.md) walks
 through it.
 
 ```fit
@@ -854,7 +880,7 @@ route { match { host example.com }; handler respond { body hello } }
 
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
-| `access` | object |  | **Not supported yet**: refused by name. The client addresses the Admin API serves, deciding before the global access, which applies to the API too: a connection either refuses is closed as soon as it is accepted. Unlike the other admin settings it follows every config applied, without a restart. Set allow to "127.0.0.1" (and "::1") to keep local access whatever the global access says. A Unix socket's peers have no address and are never checked, and access is an error with one. Every address is served, unless the global access says otherwise, when left out. |
+| `access` | [object](#cfg-admin-access) |  | The client addresses the Admin API serves, deciding before the global access, which applies to the API too: a connection either refuses is closed as soon as it is accepted. Unlike the other admin settings it follows every config applied, without a restart. Set allow to "127.0.0.1" (and "::1") to keep local access whatever the global access says. A Unix socket's peers have no address and are never checked, and access is an error with one. Every address is served, unless the global access says otherwise, when left out. |
 | `address` | string | `"127.0.0.1:2019"` | Where the Admin API listens: a host and port, or "unix/" and the path of a Unix socket, as in "unix//run/fit/admin.sock". A host that is not a loopback address or localhost needs token_file, cert_file and key_file, so that only holders of the token reach the API and the token never crosses a network in the clear. 127.0.0.1:2019 when left out. **akit:** Only a loopback address or a Unix socket (`unix/<path>`, made 0600): a host that is not loopback needs TLS, which akit's Admin API does not serve yet, so it is refused. |
 | `assistant` | object |  | **Not supported yet**: refused by name. The workbench's assistant, a chat beside the console's pages that reads what fit does and drafts changes for a person to submit, calling the model APIs set here; off when left out, and then nothing is sent anywhere. Needs console. With a store, these settings are the first ones only: once the Settings page saves, the store's are used, keys included. |
 | `cert_file` | string |  | **Not supported yet**: refused by name. A PEM file with the Admin API's certificate, followed by any intermediates; with key_file, the API is served over TLS, 1.2 or later. The files are read again when they change, so that a renewed certificate is served without a restart. Not for a Unix socket. |

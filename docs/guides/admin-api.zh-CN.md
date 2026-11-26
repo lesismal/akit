@@ -73,6 +73,21 @@ curl -H "Authorization: Bearer $TOKEN" -X POST localhost:2019/rollback/1
 
 经 API 加载的配置不会写回文件：之后的 SIGHUP 会再次应用文件中的配置。要么以文件为准，要么每次修改都经 API 加载。
 
+`admin.access` 指定 API 为哪些客户端地址提供服务，在全局 `access` 之前决定，全局 `access` 也适用于 API
+（[访问控制列表](../reference/config.zh-CN.md#访问控制列表)）；与 `admin` 的其余部分不同，它随每次应用的配置生效。不包含
+`127.0.0.1` 的全局 `allow` 也会把本地客户端挡在 API 之外，除非 API 自己的列表放行它们：
+
+```fit
+access { allow 10.0.0.0/8 }
+
+admin {
+	address 127.0.0.1:2019
+	access { allow 127.0.0.1 ::1 }
+}
+
+route { match { host example.com }; handler respond { body hello } }
+```
+
 ## 指标和追踪
 
 `GET /metrics` 提供 akit 的指标：上游及其地址、证书、连接、重载、akio 引擎，以及（设置 `metrics {}` 时）按监听器和路由统计的
@@ -80,4 +95,4 @@ curl -H "Authorization: Bearer $TOKEN" -X POST localhost:2019/rollback/1
 
 ## 尚不支持
 
-fit 的控制台、加密的 store、助手、集群管理、Admin API 的 TLS 和访问列表，以及 `fit run -admin` 尚不支持：akit 按名称拒绝它们。
+fit 的控制台、加密的 store、助手、集群管理、Admin API 的 TLS，以及 `fit run -admin` 尚不支持：akit 按名称拒绝它们。

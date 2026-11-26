@@ -29,3 +29,8 @@ config	added	supported	services[].access.allow
 config	added	supported	services[].access.allow_files
 config	added	supported	services[].access.deny
 config	added	supported	services[].access.deny_files
+config	added	supported	admin.access
+config	added	supported	admin.access.allow
+config	added	supported	admin.access.allow_files
+config	added	supported	admin.access.deny
+config	added	supported	admin.access.deny_files

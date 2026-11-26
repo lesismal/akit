@@ -223,6 +223,10 @@ pub struct Admin {
     /// `disable_dashboard`: the read-only dashboard at `/dashboard/` is not served (I63); it is
     /// when left out.
     pub disable_dashboard: bool,
+    /// `access` (I87): the client addresses the API serves, deciding before the global access,
+    /// which applies to the API too. Unlike the rest of `admin` it follows every config applied.
+    /// Refused with an API on a Unix socket, whose peers have no address.
+    pub access: Option<Access>,
 }
 
 impl Default for Admin {
@@ -234,6 +238,7 @@ impl Default for Admin {
             max_config_bytes: DEFAULT_ADMIN_MAX_CONFIG_BYTES,
             max_conns: DEFAULT_ADMIN_MAX_CONNS,
             disable_dashboard: false,
+            access: None,
         }
     }
 }
@@ -2078,8 +2083,8 @@ const CONFIG_FIT_ONLY: &[&str] = &[
     "sync",
     "bittorrent",
 ];
-// I26: the Admin API's address, history and limits; I27: its token; I63: its dashboard. Its TLS waits for the API to
-// be served over TLS, its access lists for fit's access.
+// I26: the Admin API's address, history and limits; I27: its token; I63: its dashboard; I87: its
+// access lists. Its TLS waits for the API to be served over TLS.
 const ADMIN_FIELDS: &[&str] = &[
     "address",
     "token_file",
@@ -2087,6 +2092,7 @@ const ADMIN_FIELDS: &[&str] = &[
     "max_config_bytes",
     "max_conns",
     "disable_dashboard",
+    "access",
 ];
 const ADMIN_FIT_ONLY: &[&str] = &[
     "mptcp",
@@ -2099,7 +2105,6 @@ const ADMIN_FIT_ONLY: &[&str] = &[
     "assistant",
     "cluster",
     "cluster_member",
-    "access",
 ];
 // I79, and I79b's max_pending_bytes on akio's budget across connections (A214).
 const LIMITS_FIELDS: &[&str] = &[
@@ -2225,7 +2230,8 @@ const ROUTE_FIELDS: &[&str] = &[
     "access",
 ];
 const ROUTE_FIT_ONLY: &[&str] = &[];
-// I85: fit's `config.Access`, at the top level, on listeners and on routes; I86, on services.
+// I85: fit's `config.Access`, at the top level, on listeners and on routes; I86, on services;
+// I87, on the Admin API.
 const ACCESS_FIELDS: &[&str] = &["allow", "deny", "allow_files", "deny_files"];
 const MATCH_FIELDS: &[&str] = &[
     "host",
@@ -3661,6 +3667,19 @@ fn admin(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Admin> {
     count(&mut o, d, "max_conns", &mut a.max_conns);
     let mut ok = true;
     a.disable_dashboard = flag(d, &mut o, "disable_dashboard", &mut ok);
+    if let Some(v) = o.take("access") {
+        let p = o.at("access");
+        a.access = access(d, v, &p);
+        // fit's message (config/validate.go).
+        if a.access.is_some() && a.address.starts_with("unix/") {
+            d.error(
+                v.off,
+                &p,
+                "the Admin API listens on a Unix socket, whose peers have no address to check: \
+                 leave access out",
+            );
+        }
+    }
     o.finish(d, ADMIN_FIELDS, ADMIN_FIT_ONLY);
     Some(a)
 }

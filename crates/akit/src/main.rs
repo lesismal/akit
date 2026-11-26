@@ -305,6 +305,8 @@ struct Runner<'a> {
     /// (I79b), `max_write_queue_bytes` and `engine` take a restart, as fit's.
     limits: akit_config::Limits,
     engine: akit_config::Engine,
+    /// The Admin API akit started with, whose access lists follow every config applied (I87).
+    api: Option<&'a akit_admin::Server>,
 }
 
 impl Runner<'_> {
@@ -426,12 +428,17 @@ impl Runner<'_> {
         .map_err(failure)?;
         let files = graph.cert_files().clone();
         let names = graph.acme_names().to_vec();
+        let admin_access = graph.admin_access().cloned();
         let r = self
             .listeners
             .reload(graph)
             .map_err(|e| ApplyError::Failed(e.to_string()))?;
         // Once the graph is current, as fit's manageACME.
         self.acme.manage(&names);
+        // The Admin API's access lists follow the config applied, as fit's `setAccess` (I87).
+        if let Some(api) = self.api {
+            api.set_access(admin_access.as_ref());
+        }
         Ok((r, files))
     }
 
@@ -929,6 +936,8 @@ fn run(args: &[String]) -> ExitCode {
             .with_listeners(listeners.view())
             .with_tracer(tracer.clone());
             let mut api_opts = akit_admin::Options::default();
+            // The running graph's `admin.access`, then its global access (I87).
+            api_opts.access = cell.with(|g| g.admin_access().cloned());
             // What akit is doing now, at GET /status, which the dashboard reads (I63).
             let status = scrape.clone();
             api_opts.status = Some(Arc::new(move |out: &mut String| status.write_status(out)));
@@ -1012,6 +1021,7 @@ fn run(args: &[String]) -> ExitCode {
         providers: &provider_configs,
         limits: start_limits,
         engine: start_engine,
+        api: api.as_ref(),
     };
     // The certificate files watched (fit's -watch-certs), on this thread, every interval: the
     // running config's version number and the files it loaded tell the watcher what it loaded.

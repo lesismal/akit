@@ -673,3 +673,11 @@ services[].access.allow
 services[].access.deny
 services[].access.allow_files
 services[].access.deny_files
+
+# I87: the Admin API's access, before the global access, at accept; it follows every config
+# applied though the rest of admin takes a restart; an error with an API on a Unix socket.
+admin.access
+admin.access.allow
+admin.access.deny
+admin.access.allow_files
+admin.access.deny_files

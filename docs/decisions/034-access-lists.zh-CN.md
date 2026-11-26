@@ -2,7 +2,7 @@
 
 [English](034-access-lists.md) | [简体中文](034-access-lists.zh-CN.md)
 
-状态：在 I85 中采纳（2026-11-26）；由 I86 扩展（第 4 层与 SOCKS）。
+状态：在 I85 中采纳（2026-11-26）；由 I86（第 4 层与 SOCKS）和 I87（Admin API）扩展。
 
 ## 背景
 
@@ -43,6 +43,10 @@ fit 的迭代 I195 为 fit 加入了客户端地址的允许列表（白名单�
    （fit 在 I195 中的决定 7）。
 10. **SOCKS 在客户端发出请求时检查。** 监听器的 `socks` 规则在绑定期间固定不变，而访问控制不是：监听器之后才决定时，
     服务器在每个请求时向当前的运行时图询问该监听器的 SOCKS 客户端所遵循的策略，即 fit 的 `SOCKSAccess`。
+11. **Admin API 在 accept 时决定，并随每次应用的配置生效（I87）。** 它的策略，即 `admin.access` 然后全局访问列表，随每个运行时图编译
+    （它的文件与其余文件一起被监视），在 akit 启动时装到 API 的监听器上，并在每次应用配置后用 `Engine::set_listener_filter` 重新设置，
+    尽管 `admin` 的其余部分需要重启（只改 `access` 也不会被警告为需要重启）。仪表盘属于 API，也遵循它。Unix 套接字上的 API 从不检查，
+    此时设置 `admin.access` 是错误，与 fit 相同。各角色的控制台（`admin.console.access`、各角色的 `console.access`）随控制台路线实现。
 
 ## 影响
 

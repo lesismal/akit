@@ -369,14 +369,14 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 449 supported.
+3821 fields in 121 sections, at fit `7daee573`; 454 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
 | [`access`](#fields-access) | 5 | 5 | 0 |
 | [`access_log`](#fields-access-log) | 14 | 7 | 7 |
 | [`acme`](#fields-acme) | 43 | 43 | 0 |
-| [`admin`](#fields-admin) | 105 | 7 | 98 |
+| [`admin`](#fields-admin) | 105 | 12 | 93 |
 | [`auto_https`](#fields-auto-https) | 5 | 5 | 0 |
 | [`bittorrent`](#fields-bittorrent) | 160 | 0 | 160 |
 | [`engine`](#fields-engine) | 11 | 8 | 3 |
@@ -494,7 +494,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 449 | 3372 |
+| **Total** | 3821 | 454 | 3367 |
 
 <a id="fields-access"></a>
 
@@ -586,11 +586,11 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | Field | Type | Status |
 | --- | --- | --- |
 | `admin` | `object` | supported |
-| `admin.access` | `object` | not supported yet |
-| `admin.access.allow` | `array<string>` | not supported yet |
-| `admin.access.allow_files` | `array<string>` | not supported yet |
-| `admin.access.deny` | `array<string>` | not supported yet |
-| `admin.access.deny_files` | `array<string>` | not supported yet |
+| `admin.access` | `object` | supported |
+| `admin.access.allow` | `array<string>` | supported |
+| `admin.access.allow_files` | `array<string>` | supported |
+| `admin.access.deny` | `array<string>` | supported |
+| `admin.access.deny_files` | `array<string>` | supported |
 | `admin.address` | `string` | supported |
 | `admin.assistant` | `object` | not supported yet |
 | `admin.assistant.data` | `object` | not supported yet |

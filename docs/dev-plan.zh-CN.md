@@ -185,7 +185,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | **1.0 之后：访问控制列表** | | | |
 | I85 | 访问控制列表 I：列表、监听器和路由 | I79、akio A3 | done |
 | I86 | 访问控制列表 II：服务与正向代理 | I85 | done |
-| I87 | 访问控制列表 III：Admin API 与配置参考 | I85 | todo |
+| I87 | 访问控制列表 III：Admin API 与配置参考 | I85 | done |
 
 ## 基准与优化状态
 
@@ -1061,3 +1061,5 @@ fit 的各个角色（`streaming`、`webrtc`、`tunnel`、`llm`、`bittorrent`�
 - **涉及**：`akit-config`、`akit-admin`、`akit`、`docs/reference`、`docs/decisions`。
 - **fit**：`admin/server.go`（`accessListener`）、`admin/configs.go`（`setAccess`）、`config/validate.go`、
   `schema/doc/access.md`。
+- **状态**：已完成（2026-11-26）。`admin.access` 在 accept 时决定，每次应用配置都重新设置；在 Unix 套接字上被拒绝；配置参考的这一章、
+  Admin API 指南和决定 034 涵盖整条路线。各角色和控制台的 `access` 随各自的路线实现。见进度日志。

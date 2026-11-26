@@ -2,7 +2,8 @@
 
 [English](034-access-lists.md) | [简体中文](034-access-lists.zh-CN.md)
 
-Status: accepted in I85 (2026-11-26); extended by I86 (layer 4 and SOCKS).
+Status: accepted in I85 (2026-11-26); extended by I86 (layer 4 and SOCKS) and I87 (the Admin
+API).
 
 ## Context
 
@@ -64,6 +65,14 @@ applies, how list files are read, and where each module decides. akio has the ac
 10. **SOCKS at the client's request.** A listener's `socks` rules are fixed for as long as it is
     bound; its access is not: the server asks the graph current at each request for the policy
     the listener's SOCKS clients go by when the listener decides later, fit's `SOCKSAccess`.
+11. **The Admin API at accept, following every config applied (I87).** Its policy,
+    `admin.access` then the global access, is compiled with each graph (its files watched with the
+    rest), set on the API's listener when akit starts and again, with
+    `Engine::set_listener_filter`, after each config is applied, though the rest of `admin` takes a
+    restart (and a change to `access` alone is not warned of as one). The dashboard is the API's
+    and goes by it. An API on a Unix socket is never checked, and `admin.access` with one is an
+    error, as fit's. The roles' consoles (`admin.console.access`, the roles' `console.access`) come
+    with the Console track.
 
 ## Consequences
 

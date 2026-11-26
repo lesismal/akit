@@ -295,6 +295,7 @@ dependencies = [
  "akio",
  "akio-crypto",
  "akio-http",
+ "akit-access",
  "akit-cache",
  "akit-config",
  "akit-handler",

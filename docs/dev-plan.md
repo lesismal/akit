@@ -192,7 +192,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I88.
 | **After 1.0: access lists** | | | |
 | I85 | Access lists I: the lists, listeners and routes | I79, akio A3 | done |
 | I86 | Access lists II: services and the forward proxy | I85 | done |
-| I87 | Access lists III: the Admin API and the reference | I85 | todo |
+| I87 | Access lists III: the Admin API and the reference | I85 | done |
 
 ## Benchmark and optimization status
 
@@ -1198,3 +1198,6 @@ answered 403 or the connection closed once its service is known. fit's roles (`s
 - **Touches**: `akit-config`, `akit-admin`, `akit`, `docs/reference`, `docs/decisions`.
 - **fit**: `admin/server.go` (`accessListener`), `admin/configs.go` (`setAccess`),
   `config/validate.go`, `schema/doc/access.md`.
+- **Status**: done (2026-11-26). `admin.access` at accept, set again by every config applied;
+  refused on a Unix socket; the reference's chapter, the Admin API's guide and decision 034 cover
+  the whole track. The roles' and consoles' `access` come with their tracks. See the progress log.

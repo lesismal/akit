@@ -507,6 +507,31 @@ fn supported_fields_are_read() {
             |c| c.admin.as_ref().unwrap().token_file.as_deref() == Some("/etc/akit/admin.token"),
         ),
         (
+            "admin.access",
+            r#"{"admin": {"access": {"allow": ["127.0.0.1"]}}}"#.into(),
+            |c| c.admin.as_ref().unwrap().access.is_some(),
+        ),
+        (
+            "admin.access.allow",
+            r#"{"admin": {"access": {"allow": ["127.0.0.1"]}}}"#.into(),
+            |c| c.admin.as_ref().unwrap().access.as_ref().unwrap().allow == ["127.0.0.1"],
+        ),
+        (
+            "admin.access.deny",
+            r#"{"admin": {"access": {"deny": ["192.0.2.1"]}}}"#.into(),
+            |c| c.admin.as_ref().unwrap().access.as_ref().unwrap().deny == ["192.0.2.1"],
+        ),
+        (
+            "admin.access.allow_files",
+            r#"{"admin": {"access": {"allow_files": ["a.txt"]}}}"#.into(),
+            |c| c.admin.as_ref().unwrap().access.as_ref().unwrap().allow_files == ["a.txt"],
+        ),
+        (
+            "admin.access.deny_files",
+            r#"{"admin": {"access": {"deny_files": ["d.txt"]}}}"#.into(),
+            |c| c.admin.as_ref().unwrap().access.as_ref().unwrap().deny_files == ["d.txt"],
+        ),
+        (
             "admin.disable_dashboard",
             r#"{"admin": {"disable_dashboard": true}}"#.into(),
             |c| c.admin.as_ref().unwrap().disable_dashboard,
@@ -2944,7 +2969,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 67] = [
+    let objects: [(&str, &str, Option<&str>); 68] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         (
             "providers[].kubernetes",
@@ -2968,6 +2993,7 @@ fn akit_config_lists_match_the_inventory() {
         ("listeners[].access", "ACCESS_FIELDS", None),
         ("routes[].access", "ACCESS_FIELDS", None),
         ("services[].access", "ACCESS_FIELDS", None),
+        ("admin.access", "ACCESS_FIELDS", None),
         ("engine", "ENGINE_FIELDS", Some("ENGINE_FIT_ONLY")),
         (
             "access_log",

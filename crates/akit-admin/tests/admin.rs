@@ -1783,3 +1783,26 @@ fn v1_surface_is_frozen() {
         gone.join("\n  ")
     );
 }
+
+/// `admin.access` follows every config applied (I87): a change to it alone is not one that takes
+/// a restart; a change to the rest of `admin` still is.
+#[test]
+fn admin_access_takes_no_restart() {
+    let first = akit_config::Admin::default();
+    let with_access = akit_config::Admin {
+        access: Some(akit_config::Access {
+            deny: vec!["192.0.2.1".into()],
+            ..akit_config::Access::default()
+        }),
+        ..akit_config::Admin::default()
+    };
+    assert_eq!(
+        akit_admin::admin_warning(Some(&first), Some(&with_access)),
+        None
+    );
+    let moved = akit_config::Admin {
+        history: 3,
+        ..with_access
+    };
+    assert!(akit_admin::admin_warning(Some(&first), Some(&moved)).is_some());
+}

@@ -81,5 +81,13 @@ pub fn admin_warning(
     first: Option<&akit_config::Admin>,
     next: Option<&akit_config::Admin>,
 ) -> Option<String> {
-    (first != next).then(|| "admin changed; the change takes effect when akit restarts".to_owned())
+    // `access` follows every config applied (I87), the rest takes a restart, as fit's.
+    let without_access = |a: Option<&akit_config::Admin>| {
+        a.map(|a| akit_config::Admin {
+            access: None,
+            ..a.clone()
+        })
+    };
+    (without_access(first) != without_access(next))
+        .then(|| "admin changed; the change takes effect when akit restarts".to_owned())
 }

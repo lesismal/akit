@@ -66,6 +66,10 @@ pub struct Options {
     /// What `GET /status` says akit is doing now (I63); without it, nothing: no listeners, no
     /// upstreams, no certificates.
     pub status: Option<Live>,
+    /// The access lists the API's connections are checked against at accept (I87): the running
+    /// graph's `admin.access`, then its global access; every address served without it. Changed
+    /// by [`Server::set_access`]. Not asked of a Unix socket's peers.
+    pub access: Option<Arc<akit_access::Policy>>,
 }
 
 impl fmt::Debug for Options {
@@ -77,6 +81,7 @@ impl fmt::Debug for Options {
             .field("idle_timeout", &self.idle_timeout)
             .field("metrics", &self.metrics.is_some())
             .field("status", &self.status.is_some())
+            .field("access", &self.access.is_some())
             .finish()
     }
 }
@@ -90,6 +95,7 @@ impl Default for Options {
             idle_timeout: Duration::from_secs(60),
             metrics: None,
             status: None,
+            access: None,
         }
     }
 }
@@ -378,16 +384,19 @@ impl Server {
         // Past it, a connection is closed as it is accepted.
         cfg.max_connections = settings.max_conns;
         cfg.shutdown_timeout = Duration::from_secs(1);
+        let listener = match (&unix, &opts.access) {
+            (Some(path), _) => Listener::unix(path).unix_mode(0o600),
+            // Refused at accept, before anything is read (I87, akio's A3).
+            (None, Some(p)) => Listener::tcp(addr).filter(accept_filter(p)),
+            (None, None) => Listener::tcp(addr),
+        };
         let engine = Engine::builder()
             .config(cfg)
             .listen(
-                match &unix {
-                    Some(path) => Listener::unix(path).unix_mode(0o600),
-                    None => Listener::tcp(addr),
-                }
-                .backend(opts.backend.clone())
-                .threads(1)
-                .serve(akio_http::serve_with(http, api)),
+                listener
+                    .backend(opts.backend.clone())
+                    .threads(1)
+                    .serve(akio_http::serve_with(http, api)),
             )
             .build()
             .map_err(|e| match &unix {
@@ -397,6 +406,23 @@ impl Server {
         engine.start()?;
         let addr = engine.local_addrs().first().copied().unwrap_or(addr);
         Ok(Server { engine, addr, unix })
+    }
+
+    /// Has the API serve the clients `access` serves from now on (I87): the access lists of a
+    /// config applied, `admin.access` then the global access; every client without it. A
+    /// connection already open is not checked again. A Unix socket's peers are never checked.
+    pub fn set_access(&self, access: Option<&Arc<akit_access::Policy>>) {
+        if self.unix.is_some() {
+            return;
+        }
+        let Some(id) = self.engine.listeners().first().map(|l| l.id) else {
+            return;
+        };
+        // Only `NotFound` (the API shut down) can come back.
+        let _ = match access {
+            Some(p) => self.engine.set_listener_filter(id, accept_filter(p)),
+            None => self.engine.clear_listener_filter(id),
+        };
     }
 
     /// Where the API listens: [`akio::UNIX_ADDR`] on a Unix socket.
@@ -428,6 +454,15 @@ impl Server {
             }
         }
     }
+}
+
+/// The accept filter of `policy`: a connection from an address it refuses is closed as it is
+/// accepted.
+fn accept_filter(
+    policy: &Arc<akit_access::Policy>,
+) -> impl Fn(&SocketAddr) -> bool + Send + Sync + 'static {
+    let p = Arc::clone(policy);
+    move |peer: &SocketAddr| p.allows(peer.ip())
 }
 
 /// The token in `file`, as fit reads it: the file's content, trimmed of white space.

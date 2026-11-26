@@ -115,6 +115,9 @@ pub struct Graph {
     l4: Vec<Option<akit_l4::Entry>>,
     /// Per listener, in the order of `listeners`: where its access lists decide (I85).
     access: Vec<crate::access::ListenerAccess>,
+    /// The Admin API's access (I87): `admin.access`, then the global access; applied to the API
+    /// akit started with each time this graph is, though the rest of `admin` takes a restart.
+    admin_access: Option<Arc<akit_access::Policy>>,
     /// The access log its requests' lines go to: the env's, when the config has `access_log`.
     access_log: Option<akit_observe::AccessLog>,
     /// The process's tracer, which samples its requests (I64).
@@ -246,6 +249,13 @@ impl Graph {
     #[must_use]
     pub fn services(&self) -> &[akit_l4::Service] {
         &self.services
+    }
+
+    /// The Admin API's access (I87): `admin.access`, then the global access; `None` serves every
+    /// address. Set on the API's listener when this graph is applied.
+    #[must_use]
+    pub fn admin_access(&self) -> Option<&Arc<akit_access::Policy>> {
+        self.admin_access.as_ref()
     }
 
     /// Where the access lists of the listener at `listener` decide (I85); `None` for no such
@@ -664,6 +674,15 @@ pub fn compile(
             )
         })
         .collect();
+    // The Admin API's own (I87), compiled here for its files to be checked and watched. A config
+    // without `admin` still has its global access apply to the API akit started with, as fit's.
+    let admin_list = crate::access::list(
+        config.admin.as_ref().and_then(|a| a.access.as_ref()),
+        "admin.access",
+        &mut access_files,
+        &mut errors,
+    );
+    let admin_access = akit_access::Policy::chain([admin_list.as_ref(), global.as_ref()]);
     cert_files.extend(access_files);
     if !errors.is_empty() {
         // `modules` drops here, cleaning up what was provisioned, and `lease` gives back what it
@@ -807,6 +826,7 @@ pub fn compile(
         services,
         l4,
         access,
+        admin_access,
         access_log: config.access_log.as_ref().and(env.access_log().cloned()),
         tracer: env.tracer().cloned(),
         requests,

@@ -80,6 +80,22 @@ A config loaded through the API is not written back to the files: a SIGHUP after
 files again. Keep the files the source of truth, or load every change
 through the API.
 
+`admin.access` says which client addresses the API serves, before the global `access`, which
+applies to the API too ([access lists](../reference/config.md#access-lists)); unlike the rest of
+`admin` it follows every config applied. A global `allow` that leaves out `127.0.0.1` shuts local
+clients out of the API as well, unless the API's own allows them:
+
+```fit
+access { allow 10.0.0.0/8 }
+
+admin {
+	address 127.0.0.1:2019
+	access { allow 127.0.0.1 ::1 }
+}
+
+route { match { host example.com }; handler respond { body hello } }
+```
+
 ## Metrics and tracing
 
 `GET /metrics` serves akit's metrics: upstreams and their addresses, certificates, connections,
@@ -89,5 +105,5 @@ traces of requests and the same metrics over OTLP/HTTP to a collector
 
 ## Not supported yet
 
-fit's console, its encrypted store, the assistant, cluster management, TLS and access lists for the
-Admin API, and `fit run -admin` are not supported yet: akit refuses them by name.
+fit's console, its encrypted store, the assistant, cluster management, TLS for the Admin API, and
+`fit run -admin` are not supported yet: akit refuses them by name.
