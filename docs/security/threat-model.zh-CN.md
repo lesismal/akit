@@ -6,7 +6,8 @@ akit 保护什么、防御谁、怎样防御：资产、信任边界、每个边
 局限及其计划。本页为 1.0 的外部安全审查而写（[审查范围](review-scope.zh-CN.md)），并随 akit 的变化保持真实：增加边界、资产或控制措施的
 改动要在同一个提交中更新本页，与[规则 26](../rules.zh-CN.md) 让两种语言同步的方式相同。如何报告问题见 [SECURITY.zh-CN.md](../../SECURITY.zh-CN.md)。
 
-写于 I80（2026-11-26），针对 akit `main` 的 `953cb57` 加上 I80 的改动，基于 akio `0fc8f3a7`（`1.0.0-rc.1`）。路径相对于仓库根目录；
+写于 I80（2026-11-26），针对 akit `main` 的 `953cb57` 加上 I80 的改动，基于 akio `0fc8f3a7`（`1.0.0-rc.1`）；由 I80b 更新
+（2026-11-26，akit `main` 的 `20caeedc` 加上 I80b 的改动，akio `6bcd8ad6`），I80b 关闭了局限 L2、L3、L4、L6、L7、L12、L13 和 L14。路径相对于仓库根目录；
 测试以其函数名称呼，位于所给的文件或该 crate 自己的测试中。
 
 - [本模型中的 akit](#本模型中的-akit)
@@ -131,7 +132,7 @@ flowchart LR
 
 | 攻击 | 控制措施 | 测试 |
 | --- | --- | --- |
-| `static` 中的路径穿越：`..`、NUL、反斜杠，无论是否转义；点文件 | 先是规范化路径（见上），然后处理器自己的扫描拒绝 `..`、NUL 和 `\`（400：`crates/akit-handler/src/static_files.rs`，`scan`）；默认 `dotfiles: deny`（除 `/.well-known` 外返回 404），`try_files` 的候选也一样；只在 akio 的线程池上打开普通文件；目录列表做 HTML 转义 | `traversal`、`browse`（`crates/akit-handler/tests/static_files.rs`）、`traversal_is_unsafe`、`dotfiles_are_hidden`；模糊测试 `static_path` |
+| `static` 中的路径穿越：`..`、NUL、反斜杠，无论是否转义；点文件 | 先是规范化路径（见上），然后处理器自己的扫描拒绝 `..`、NUL 和 `\`（400：`crates/akit-handler/src/static_files.rs`，`scan`）；默认 `dotfiles: deny`（除 `/.well-known` 外返回 404），`try_files` 的候选也一样；只在 akio 的线程池上打开普通文件；目录列表做 HTML 转义；根目录下的符号链接无论指向何处都会被跟随，与 fit 相同（L7，参考文档中写明） | `traversal`、`browse`、`symlinks_out_of_the_root_followed`（`crates/akit-handler/tests/static_files.rs`）、`traversal_is_unsafe`、`dotfiles_are_hidden`；模糊测试 `static_path` |
 | FastCGI：根目录之外的脚本、httpoxy | `SCRIPT_FILENAME` 由清理过的路径拼接在根目录之下，拒绝 `..`、NUL 和 `\`，隐藏点文件（`crates/akit-handler/src/fastcgi/params.rs`、`crates/akit-config/src/fastcgi.rs`）；客户端的 `Proxy` 字段从不变成 `HTTP_PROXY` | `params`、`dotfiles`、`fields`、`cleans`；模糊测试 `fastcgi_paths`、`fastcgi_response` |
 | 利用正向代理（SOCKS、CONNECT）访问内部服务（SSRF）、DNS 重绑定 | 必须设置 `clients`；目的地在拨号前根据 `allow`、`deny` 和 `ports` 检查，连接后再按实际连接的地址检查一次（`crates/akit-l4/src/forward.rs`）；回环、链路本地（云元数据）、未指定、组播地址和主机自己的地址被拒绝，除非 `allow` 写明，IPv4 映射地址先解除映射；拒绝 SOCKS 的 BIND 和 UDP ASSOCIATE | `rules_dest`、`rules_internal`、`netguard_internal_and_refused`、`tunnels_and_refusals`、`refusals`；模糊测试 `l4_forward` |
 
@@ -169,8 +170,9 @@ flowchart LR
 | 攻击 | 控制措施 | 测试 |
 | --- | --- | --- |
 | 从网络访问 | 不设置 `admin` 就不开启；地址必须是回环地址（否则为配置错误：`crates/akit-config/src/model.rs`，`admin`、`loopback_host`），或以 0600 模式创建的 Unix 套接字；在自己的引擎上提供服务，繁忙的数据面不会拖住它（[决定 006](../decisions/006-admin-api.zh-CN.md)） | `refused`、`defaults_and_values`（`crates/akit-config/tests/admin.rs`）、`unix_socket` |
-| 本机的其他用户或进程 | `token_file`：除仪表盘的静态文件外，每个请求都要带 bearer 令牌，以常数时间比较（`crates/akit-admin/src/server.rs`，`guard`、`same`） | `token`、`tokens_compared`、`dashboard_token`、`edits_dry_runs_and_rollbacks_behind_the_token` |
-| 操作者浏览器中的网页（CSRF、DNS 重绑定） | 带 `Origin` 的请求都被拒绝（403），来自 API 自身来源的读取除外；没有令牌时，`Host` 必须是回环主机名，因此重绑定的名字被拒绝 | `browsers_refused`、`loopback_hosts` |
+| 本机的其他用户或进程 | `token_file`：除仪表盘的静态文件外，每个请求都要带 bearer 令牌，以常数时间比较（`crates/akit-admin/src/server.rs`，`guard`、`same`）；组或其他用户可读的令牌文件会被警告（见下文的主机） | `token`、`tokens_compared`、`dashboard_token`、`edits_dry_runs_and_rollbacks_behind_the_token`、`cache_purge_guarded` |
+| 操作者浏览器中的网页（CSRF、DNS 重绑定） | 带 `Origin` 的请求都被拒绝（403），来自 API 自身来源的读取除外；没有令牌时，`Host` 必须是回环主机名，因此重绑定的名字被拒绝 | `browsers_refused`、`loopback_hosts`、`cache_purge_guarded` |
+| 经 API 读到内联的秘密（持有令牌的人、仪表盘、记录其应答的日志） | 每次读取配置（`/config` 及其指针、`/versions/{n}`、`/config/effective`），凡 fit 的 `secretName` 认定为秘密的成员下的字符串都答 `[redacted]`（`crates/akit-admin/src/redact.rs`）；修改送回的 `[redacted]` 保留原位置的秘密，其位置上没有秘密的被拒绝（400）；`ETag` 仍是配置的（[决定 035](../decisions/035-admin-api-redacts-secrets.zh-CN.md)） | `secrets_redacted`、`redacts_secrets_only`、`redacts_under_a_pointer`、`restores_by_member_name_and_index` |
 | 大的或慢速的请求 | 配置的消息体在 `max_config_bytes`（4 MiB：413）之内流式读取，其他消息体在 64 KiB 之内；头 10 秒，消息体 60 秒没有字节，空闲 60 秒；`max_conns`（16）；只有 HTTP/1.1 | `loads_refused`、`edit_limits_and_cut_clients`、`slow_and_cut_clients`、`connection_limit` |
 | 破坏运行中网关的修改、丢失的更新 | 每个修改在应用前都要编译（编译失败的被拒绝，保留运行中的配置）；`?dry_run=1` 只编译不应用；`If-Match` 在为应用排序的锁下比较（412）；历史记录和回滚 | `dry_run`、`dry_run_removes_listener`、`if_match_every_change`、`concurrent_writers`、`rollback` |
 | 利用仪表盘进行 XSS 或点击劫持 | 只有自己的文件，只读，带 `Content-Security-Policy: default-src 'none'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'`、`X-Frame-Options: DENY`、`nosniff`、`Referrer-Policy: no-referrer`；令牌保存在 `sessionStorage` 中 | `dashboard`、`dashboard_read_only`、`the_dashboard_and_the_status` |
@@ -186,7 +188,7 @@ fit 的控制台（登录、加密存储）在 akit 中尚未实现：它属于 
 | 攻击 | 控制措施 | 测试 |
 | --- | --- | --- |
 | 证书与密钥不匹配，文件在写入中途被替换 | 加载时检查每一对（`load_pair`）；文件最多 1 MiB；`-watch-certs` 等文件稳定后重载，不匹配的一对保留运行中的配置 | `problems_name_the_certificate_or_file`、`reloads_once_the_files_settle`、`a_certificate_replaced_under_traffic` |
-| 从存储中泄露密钥 | 文件存储以 0700 创建目录、以 0600 创建文件（`create_new`），先写入临时名、同步再重命名；配置中写的是密钥文件的路径，因此 Admin API 的应答只含路径，不含密钥 | `stores_loads_lists_and_deletes`（检查模式）、`crates/akit-tls/tests/storage.rs` |
+| 从存储中泄露密钥 | 文件存储以 0700 创建目录、以 0600 创建文件（`create_new`），先写入临时名、同步再重命名，重命名后同步目录；其根目录及其下被写入的目录若对其他人开放，收紧为 0700（`FileStorage::prepare`）；配置中写的是密钥文件的路径，因此 Admin API 的应答只含路径，不含密钥，组或其他用户可读的密钥文件会被警告（`crates/akit-config/src/hardening.rs`） | `stores_loads_lists_and_deletes`（检查模式）、`an_open_storage_directory_is_tightened`、`secret_files_open_to_others`、`validate_warns_of_exposed_secrets` |
 | 存储键中的路径花招 | 会离开存储根目录的键被拒绝（`crates/akit-tls/src/storage.rs`） | `crates/akit-tls/tests/storage.rs` |
 | 滥用 HTTP-01 应答 | 只在明文监听器上、路由之前，为 CA 给出的令牌（base64url）应答；应答本来就是公开的；在共享存储中的查找有上限（同时 16 个，每个客户端 4 个，5 秒） | `obtains_serves_and_keeps_a_certificate`（对 Pebble 的 HTTP-01）、`a_challenge_nobody_has_is_404` |
 | 恶意或慢速的 CA、OCSP 响应者、ask URL | 各自在自己的引擎和工作线程上运行，不在 I/O 线程上；应答有上限（ACME 1 MiB，OCSP 和 ask 64 KiB），有超时（每个请求 30 秒，每个订单 600 秒，OCSP 和 ask 10 秒），访问 CA 和 OCSP 不跟随重定向，退避从 60 秒到一小时；OCSP 响应依据签发者验证、与证书匹配，从不在 `nextUpdate` 之后装订；来自文件的证书，只有其链验证通过且响应者在公网地址时才询问其响应者 | `a_slow_responder_is_bounded`、`refreshes_keeps_and_drops_responses`、`certificates_from_files_not_trusted_are_not_asked`、`responders_of_files_at_private_addresses_are_not_asked`、`stapled_in_a_handshake`、`renews_when_ari_says` |
@@ -197,8 +199,8 @@ fit 的控制台（登录、加密存储）在 akit 中尚未实现：它属于 
 | --- | --- | --- |
 | 提供者的 API 发送巨大或恶意的文档 | 每个应答都有上限（Docker：列表 16 MiB，事件 1 MiB；Consul 和 etcd：32 MiB；Kubernetes：每页 64 MiB，令牌文件 64 KiB），对象有计数（`max_containers` 1,000，`max_services` 和 `max_keys` 1,000，`max_objects` 10,000）；部分最多 16 MiB；由 akit 自己的读取器解析，并做模糊测试 | `list_fails`、`bad_events`、`catalog_max_services`、`provider_max_keys`；模糊测试 `provider_docker`、`provider_kubernetes`、`provider_consul`、`provider_kv`、`provider_merge` |
 | 提供者接管网关 | 部分限于四类，以基础配置为准（见上）；提供者的修改作为版本应用，与其他修改一样先编译 | `providers`、`file_and_providers`（`crates/akit-admin/tests/providers.rs`） |
-| 滥用 Kubernetes 凭据 | 集群内：服务账户的令牌，必须有集群 CA，强制 `https`；拒绝 kubeconfig 的 `exec` 和 auth-provider 插件（不运行任何命令）；令牌每分钟重新读取 | `kubeconfigs`、`token_rotates`、`cert_files` |
-| 共享证书存储（Redis、etcd、Consul） | 凭据来自文件；TLS 使用系统的 CA 或 `ca_file`；锁带租约（崩溃实例的锁会过期）；应答在限制之内解析 | `redis_shares_keys_and_locks`、`etcd_shares_keys_and_locks`、`consul_shares_keys_and_locks`；模糊测试 `tls_redis_reply` |
+| 滥用 Kubernetes 凭据 | 集群内：服务账户的令牌，必须有集群 CA，强制 `https`；拒绝 kubeconfig 的 `exec` 和 auth-provider 插件（不运行任何命令）；令牌每分钟重新读取；kubeconfig 中不在环回上的 `http://` 服务器或 `insecure-skip-tls-verify` 在 provider 的日志中警告（`RestConfig::exposed`） | `kubeconfigs`、`token_rotates`、`cert_files` |
+| 共享证书存储（Redis、etcd、Consul） | 凭据来自文件；TLS 使用系统的 CA 或 `ca_file`；锁带租约（崩溃实例的锁会过期）；应答在限制之内解析；不在环回上明文访问的存储，以及这样发送的 provider 令牌或密码，会被警告（`crates/akit-config/src/hardening.rs`，`cleartext`） | `redis_shares_keys_and_locks`、`etcd_shares_keys_and_locks`、`consul_shares_keys_and_locks`、`credentials_in_the_clear`；模糊测试 `tls_redis_reply` |
 
 提供者可以增加监听器（Consul KV、etcd、Kubernetes）：能写入提供者数据源的人可以打开端口、路由流量，与 fit 相同。这是操作者给予数据源的信任。
 
@@ -218,6 +220,7 @@ fit 的控制台（登录、加密存储）在 akit 中尚未实现：它属于 
 | --- | --- | --- |
 | 滥用 akit 的权限 | systemd unit 以 `akit` 用户运行 akit，只有 `CAP_NET_BIND_SERVICE`（ambient 和 bounding 集合）并设置 `NoNewPrivileges`（`deploy/systemd/akit.service`，[决定 009](../decisions/009-packaging.zh-CN.md)）；镜像以 distroless 的 `nonroot` 用户运行；sockmap 转发的 `CAP_BPF` 和 `CAP_NET_ADMIN` 只在监听器要求时才需要，akit 没有它们也能运行 | `deploy/systemd/test.sh`（CI 的打包任务） |
 | 通过配置读取文件 | 配置是受信任的（见假设）；对端给出的文件名从不受信任：静态文件和 FastCGI 的路径保持在其根目录之下 | 见上 |
+| 本机其他用户能读取的秘密文件 | 配置为密钥、令牌或密码指定的文件（`key_file`、`tls_key_file`、`token_file`、`password_file`、`hmac_secret_file`、`kubeconfig`），其组或其他用户有任何权限时，在启动时、`akit validate` 中和每次修改时警告，与 fit 一样照常运行（`crates/akit-config/src/hardening.rs`，`secret_files`） | `secret_files_open_to_others`、`validate_warns_of_exposed_secrets` |
 | 环境变量和参数 | 只有 `.conf` 配置会展开 `{$NAME}`；akit 从对端读取的内容不会到达 shell（akit 不运行任何命令） | — |
 
 ## 贯穿所有边界
@@ -234,22 +237,23 @@ fit 的控制台（登录、加密存储）在 akit 中尚未实现：它属于 
 ## 已知的局限
 
 每一项都是审查应当事先知道而不是去发现的缺口，并写明在哪里解决。计划中的 [I80b](../dev-plan.zh-CN.md#i80b-安全加固) 负责属于 akit 的
-各项，安排在审查之后，以便审查的发现一并加入；其余属于 1.0 之后的某条路线或 akio。
+各项，审查的发现陆续加入；其余属于 1.0 之后的某条路线、fit 或 akio。I80b（2026-11-26）关闭了 L2、L3、L4、L6、L7、L12、L13 和 L14
+（[决定 035](../decisions/035-admin-api-redacts-secrets.zh-CN.md)）；L8 和 L9 等待 fit 的配置增加字段，L15 等待 akio 的外部审查。
 
 | 编号 | 局限 | 暴露面 | 计划 |
 | --- | --- | --- | --- |
 | L1 | Admin API 不提供 TLS，只监听回环地址或 Unix 套接字；fit 在回环之外带 TLS 和客户端证书的 API 作为暂不支持被拒绝 | 远程操作者需要 SSH 隧道或自己的代理 | 1.0 之后，控制台路线（登录、加密存储、TLS） |
-| L2 | `GET /config`、`/versions/{n}` 和 `/config/effective` 按写入的样子返回配置，包括内联的值（`password_hash`、路由设置的头的值）；没有任何脱敏 | 持有令牌的人能读到它们；fit 的字段中密钥是文件，因此这里只是内联写入的内容 | I80b：像 fit 的控制台显示 `[redacted]` 那样脱敏 |
-| L3 | 读取密钥和私钥文件时不检查其权限（`token_file`、密钥文件、密码和令牌文件）；已有的、权限更宽的存储目录照原样使用；存储在重命名后不同步目录 | 所有人可读的密钥文件不会被报告 | I80b：对组可读或所有人可读的密钥发出警告，收紧存储目录，并同步它 |
-| L4 | 允许明文的控制面传输：`http://` 的 ACME 目录，经 `http://` 带令牌访问 Consul、etcd 和共享存储，不带 TLS 的 Redis（其默认），不带 TLS 的 `tcp://` Docker，kubeconfig 的 `insecure-skip-tls-verify` 以及带 bearer 令牌的 `http://` 服务器 | 按操作者的配置，凭据和证书在路径上可被读取 | I80b：在回环之外明文发送令牌或密码时发出警告 |
+| L2 | 已关闭（I80b）。`GET /config`、`/versions/{n}` 和 `/config/effective` 曾按写入的样子返回配置，包括内联的值（`password_hash`、路由设置的头的值） | 未知：每次读取时，fit 的 `secretName` 认定为秘密的成员下的字符串都答 `[redacted]`；修改中送回的 `[redacted]` 保留秘密。成员名不表明秘密的（如 `X-Api-Key` 头）按写入的样子返回 | 已完成：`crates/akit-admin/src/redact.rs`，`secrets_redacted` |
+| L3 | 已关闭（I80b）。读取密钥和私钥文件时曾不检查其权限；已有的、权限更宽的存储目录曾照原样使用；存储曾在重命名后不同步目录 | 对他人开放的秘密文件会被警告，但不拒绝（与 fit 一样读取） | 已完成：`secret_files` 警告，存储的目录收紧为 0700 并同步（`an_open_storage_directory_is_tightened`、`secret_files_open_to_others`） |
+| L4 | 已关闭（I80b），以警告的方式。允许明文的控制面传输：`http://` 的 ACME 目录，经 `http://` 带令牌访问 Consul、etcd 和共享存储，不带 TLS 的 Redis（其默认），`tcp://` 的 Docker，kubeconfig 的 `insecure-skip-tls-verify` 以及带 bearer 令牌的 `http://` 服务器 | 按操作者的配置，凭据和证书在路径上可被读取，现在不在环回上时会被警告 | 已完成：`cleartext` 和 Kubernetes provider 的 `exposed`（`credentials_in_the_clear`、`kubeconfigs`）；是否拒绝由 fit 决定 |
 | L5 | 私钥和 ACME 账户密钥未加密存储，无论是文件还是共享存储；存储中的证书按存储所保存的样子被信任 | 能读取存储的人就持有密钥（与 fit、Caddy、certmagic 相同） | 1.0 接受；随控制台路线的加密存储重新考虑 |
-| L6 | 正向代理没有代理认证（SOCKS5 不带认证方法，CONNECT 不带 `Proxy-Authorization`），私有地址段（10/8、172.16/12、192.168/16、100.64/10、fc00::/7）除非 `deny` 列出否则可达，与 fit 相同 | `clients` 范围宽的正向代理能到达内部网络 | 1.0 之后，访问列表路线；I80b 在正向代理的指南中写明 |
-| L7 | 静态文件跟随符号链接，包括根目录内指向根目录外的链接（akio 的 `Files`） | 能在根目录下创建链接的人可以提供链接所指的内容 | I80b：参照 fit 的行为决定，fit 有选项则提供选项 |
-| L8 | 不检查客户端证书是否被吊销（没有 CRL，没有 OCSP） | 被吊销的客户端证书在过期前都会被接受 | I80b，基于 akio 的 CRL 选项 |
-| L9 | WASM 模块不按哈希固定；磁盘上被替换的模块文件在下次重载时加载 | 模块文件与配置一样受信任 | I80b：向 fit 提议一个摘要字段（决定 002） |
-| L10 | Admin API 在 401 或 413 之后无法关闭连接；客户端可以再发送请求 | 受 API 的限制约束 | akio API 需求 A24（已在 akio 的分支上实现，尚未固定） |
-| L11 | `limits.max_pending_bytes`（跨连接的预算）作为暂不支持被拒绝 | 内存只按连接有界 | I79b，akio API 需求 A214 |
-| L12 | 头和消息体的超时是 akio 的（10 秒、60 秒），不可配置 | 未知：它们是 fit 的默认值 | I80b，如果 fit 的配置有这些字段 |
-| L13 | `compress` 可能压缩把密钥和反射输入混在一起的响应（BREACH） | 同时具备两者、经 TLS 的路由 | I80b：在配置参考的 `compress` 处加一条说明，与 nginx 和 Caddy 的文档相同 |
-| L14 | 没有测试在不带令牌或带 `Origin` 时发送 `POST /cache/purge`；其守卫与所有端点相同 | 未知 | I80b：补上测试 |
-| L15 | akio 的 TLS、X.509、密码算法、QUIC 和 HTTP 解析器是它自己实现的，经过了 akio 的内部审查（模糊测试、unsafe 审查、常数时间检查、sanitizer），没有经过外部审查 | 每个连接都依赖它们 | akit 之外：akio 的审查（[范围](review-scope.zh-CN.md#akio)）；I80b 跟踪对它的请求 |
+| L6 | 正向代理没有代理认证（SOCKS5 不带认证方法，CONNECT 不带 `Proxy-Authorization`），私有地址段（10/8、172.16/12、192.168/16、100.64/10、fc00::/7）除非 `deny` 列出否则可达，与 fit 相同 | `clients` 范围宽的正向代理能到达内部网络 | 已在参考文档的 `forward_proxy` 中写明（I80b）；认证和访问列表在 1.0 之后，访问列表路线 |
+| L7 | 已决定（I80b）：静态文件跟随符号链接，包括根目录内指向根目录外的链接，与 fit 的 `static` 有意的行为相同（fit 没有选项） | 能在根目录下创建链接的人可以提供链接所指的内容 | 已在参考文档的 `static` 中写明；有测试（`symlinks_out_of_the_root_followed`）；拒绝它们的选项要先在 fit 中设计（[决定 035](../decisions/035-admin-api-redacts-secrets.zh-CN.md)） |
+| L8 | 不检查客户端证书是否被吊销（没有 CRL，没有 OCSP） | 被吊销的客户端证书在过期前都会被接受 | akio-tls 已具备（`ServerConfigBuilder::client_crls`、`client_ocsp_policy`）；fit 的配置没有字段：已向 fit 提议 `tls.client_auth.crl_files`（决定 035），fit 有了之后 akit 读取它 |
+| L9 | WASM 模块不按哈希固定；磁盘上被替换的模块文件在下次重载时加载 | 模块文件与配置一样受信任 | 已向 fit 提议 `wasm` 中间件的 `module_sha256`（决定 002、035），fit 有了之后在 akit 中实现 |
+| L10 | 已关闭（akio A24，锁定于 `6bcd8ad6`）：Admin API 曾无法在 401 或 413 之后关闭连接，客户端可以再发送请求 | 无：连接在其后关闭 | 已完成：`token`、`loads_refused` |
+| L11 | 已关闭（I79b，akio A214）：`limits.max_pending_bytes`（跨连接的预算）曾作为暂不支持被拒绝 | 无：与 fit 一样读取，落在 akio 的预算上 | 已完成：[决定 032](../decisions/032-limits-on-akio-budget.zh-CN.md) |
+| L12 | 已按现状关闭（I80b）：头和消息体的超时是 akio 的（10 秒、60 秒），不可配置 | 未知：fit 的配置没有这样的字段，它们是 fit 的值 | 无可读取：字段要先在 fit 中设计（决定 035） |
+| L13 | 已关闭（I80b），以文档的方式。`compress` 可能压缩把密钥和反射输入混在一起的响应（BREACH） | 同时具备两者、经 TLS 的路由 | 已完成：配置参考 `compress` 处的说明 |
+| L14 | 已关闭（I80b）。曾没有测试在不带令牌或带 `Origin` 时发送 `POST /cache/purge`；其守卫与所有端点相同 | 未知 | 已完成：`cache_purge_guarded` |
+| L15 | akio 的 TLS、X.509、密码算法、QUIC 和 HTTP 解析器是它自己实现的，经过了 akio 的内部审查（模糊测试、unsafe 审查、常数时间检查、sanitizer），没有经过外部审查 | 每个连接都依赖它们 | akit 之外：akio 的审查（[范围](review-scope.zh-CN.md#akio)），已作为 [A225](../akio-api-requests.zh-CN.md#a225-对-akio-的密码学tlshttp-解析器和-webassembly-的外部安全审查) 向 akio 提出（I80b） |

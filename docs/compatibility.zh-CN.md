@@ -102,7 +102,7 @@ API 的下一个版本中才会去掉，并在其改动清单中写明。
 
 | 方法和路径 | 作用 |
 | --- | --- |
-| `GET`、`HEAD` `/config`、`/config/{path...}` | 正在运行的配置（按写入时的样子），或某个路径处的部分 |
+| `GET`、`HEAD` `/config`、`/config/{path...}` | 正在运行的配置（按写入时的样子），或某个路径处的部分，其中内联的秘密以 `[redacted]` 给出 |
 | 对 `/config` 和 `/config/{path...}` 的 `PUT`、`PATCH`、`DELETE` | 替换、合并补丁（RFC 7396）或删除整个配置或某个路径处的部分，并应用结果 |
 | `POST /load` | 应用一份完整的配置 |
 | `GET`、`HEAD` `/config/effective` | 合并了 provider 所提供内容的配置，以及每部分的来源 |
@@ -118,6 +118,11 @@ API 的下一个版本中才会去掉，并在其改动清单中写明。
 `ETag`；带 `If-Match` 的变更只应用于该 ETag 所指的配置，否则答 412；带 `?dry_run=1` 的变更只检查不应用，应答带
 `Fit-Dry-Run: 1`。无法加载的配置答 400，内容为 `{"error": ..., "errors": [{"path", "line", "column", "message"}]}`。
 这些都是 fit 的名称，fit 的客户端不加改动即可用于 akit。
+
+自 I80b 起，配置中内联写出的秘密（成员名与 fit 控制台认定秘密的规则相同：`password_hash`、`secret`、`token`、`Authorization`
+头）在 `/config`、`/versions/{n}` 和 `/config/effective` 中以 `[redacted]` 给出，与 fit 控制台的显示相同；修改中送回的
+`[redacted]` 保留原位置的秘密（[决定 035](decisions/035-admin-api-redacts-secrets.zh-CN.md)）。fit 自己的 Admin API
+按写入时的样子返回配置；这一改动关闭威胁模型的 L2，属于 1.x 版本为修补安全漏洞可以做的改动。
 
 fit 的 v1 还有更多端点，用于 akit 尚未运行的部分：tunnel 和 LLM 角色的链接令牌（`/tokens`）、媒体库和工作台的媒体页面
 （`/media/...`），以及流媒体角色（`/streaming/...`）。akit 在运行这些部分之前对它们答 404，届时按 fit 的样子加入，属于兼容的增加。

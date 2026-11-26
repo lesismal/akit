@@ -225,7 +225,9 @@ of its cryptography. Its TLS, X.509, cryptography and QUIC are written in akio, 
 widely reviewed library, and have had no external review (threat model L15). That review belongs
 with akio and is recommended before akit's 1.0 relies on it; if the engagement can extend, the
 order we would suggest is akio-crypto and akio-tls (handshake, record layer, certificate
-verification), then akio-http's HTTP/1 and HTTP/2 parsers, then akio-wasm.
+verification), then akio-http's HTTP/1 and HTTP/2 parsers, then akio-wasm. akit asked akio for it
+as [A225](../akio-api-requests.md#a225-an-external-security-review-of-akios-cryptography-tls-http-parsers-and-webassembly)
+(I80b).
 
 ## Working on akit
 

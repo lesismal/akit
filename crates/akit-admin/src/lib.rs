@@ -56,6 +56,7 @@ mod dashboard;
 #[doc(hidden)]
 pub mod fuzzing;
 mod pointer;
+mod redact;
 mod server;
 mod status;
 mod watch;

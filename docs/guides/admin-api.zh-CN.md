@@ -59,6 +59,12 @@ API，所以不接受其他地址：请在本机、经 SSH 隧道或用 `docker 
 带 `If-Match: <etag>` 的修改，若配置在读取之后已被改变，则以 412 拒绝，这样两个客户端不会互相覆盖。带 `?dry_run=1` 时，修改
 走完应用的完整流程，像真正应用一样应答，但不应用任何东西。
 
+配置中内联写出的秘密，即成员名表明其为秘密的值（`password_hash`、`secret`、`token`、路由设置的 `Authorization` 头），在每次
+读取时都以 `[redacted]` 给出：`GET /config` 及其指针、`GET /versions/{n}` 和 `GET /config/effective`，与 fit 控制台的显示
+相同。修改中送回的 `[redacted]` 保留运行中配置在同一位置的秘密，所以读出、编辑、再加载的配置不会丢失秘密；没有秘密的位置上
+出现 `[redacted]` 以 400 拒绝。要修改秘密，就送新值。保存在文件中的秘密（`token_file`、`password_file`、`key_file`）从不在
+配置中；这样的文件若其组或其他用户可读，akit 在启动时和每次修改时都会警告（[决定 035](../decisions/035-admin-api-redacts-secrets.zh-CN.md)）。
+
 ```bash
 TOKEN=$(cat admin.token)
 curl -H "Authorization: Bearer $TOKEN" localhost:2019/config/routes/0

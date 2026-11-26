@@ -64,6 +64,16 @@ A change sent with `If-Match: <etag>` is refused with 412 if the config changed 
 so that two clients cannot overwrite each other. With `?dry_run=1` it is checked through the whole
 path an apply takes and answered as an apply would be, with nothing applied.
 
+Secrets written inline in the config, under a member whose name says it holds one (a
+`password_hash`, a `secret`, a `token`, an `Authorization` header a route sets), are answered as
+`[redacted]` by every read: `GET /config`, its pointers, `GET /versions/{n}` and
+`GET /config/effective`, as fit's console shows them. A change that sends `[redacted]` back keeps
+the secret the running config holds at that place, so a config read, edited and loaded again loses
+none; `[redacted]` where no secret is kept is refused with 400. To change a secret, send the new
+value. Secrets kept in files (`token_file`, `password_file`, `key_file`) are never in the config;
+akit warns at start, and on each change, of such a file its group or others may read
+([decision 035](../decisions/035-admin-api-redacts-secrets.md)).
+
 ```bash
 TOKEN=$(cat admin.token)
 curl -H "Authorization: Bearer $TOKEN" localhost:2019/config/routes/0

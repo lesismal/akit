@@ -180,7 +180,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I79 | v1 冻结与兼容性 | I78 | done |
 | I79b | 门禁仍拒绝的网关示例：`limits.max_pending_bytes`、只有 h2c、按接受的连接计数的 `max_conns` | I79、akio A214、A168、A215 | done |
 | I80 | 为安全审查做好准备 | I77, I79 | done |
-| I80b | 安全加固：威胁模型的局限与审查的发现 | I80、审查 | todo |
+| I80b | 安全加固：威胁模型的局限与审查的发现 | I80、审查 | doing |
 
 ## 基准与优化状态
 
@@ -975,6 +975,16 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
   - L15：请 akio 安排对 akio-crypto、akio-tls、akio-http 和 akio-wasm 的外部审查。
   其余各项在别处：L1 和 L5 在控制台路线，L6 的访问列表在访问列表路线，L10 随 akio A24，L11 随 I79b。
 - **完成标准**：审查的每项发现都已修复，或写明理由记为接受；上面属于 akit 的每项局限都已解决，或移到将解决它的计划中。
+- **状态**：doing（2026-11-26）：各项局限已完成，审查的发现等待审查（[决定 035](decisions/035-admin-api-redacts-secrets.zh-CN.md)）。
+  - 已关闭：**L2**（Admin API 按 fit 的 `secretName` 规则把内联的秘密答为 `[redacted]`，修改送回的 `[redacted]` 保留秘密）；
+    **L3**（对他人开放的秘密文件发出警告；证书存储的根目录及其写入的目录收紧为 0700，重命名后同步目录）；**L4**（不在环回上明文
+    发送的凭据和密钥发出警告，Kubernetes provider 的写入其日志）；**L6**（参考文档的 `forward_proxy`；没有正向代理的指南）；
+    **L7**（与 fit 相同跟随链接，写明并有测试）；**L12**（fit 没有这样的字段：按现状关闭）；**L13**（`compress` 处的说明）；
+    **L14**（`cache_purge_guarded`）。
+  - 已移出：**L8** 和 **L9** 交给 fit（决定 002）：在决定 035 中提议 `tls.client_auth.crl_files` 和 `wasm` 中间件的
+    `module_sha256`；akio-tls 已支持 CRL（`client_crls`），两者都不需要 akio。**L15** 已作为
+    [A225](akio-api-requests.zh-CN.md#a225-对-akio-的密码学tlshttp-解析器和-webassembly-的外部安全审查) 向 akio 提出。
+  - 剩下：外部审查的发现（尚无）。它们修复或接受后即完成。
 
 ## 1.0 之后
 

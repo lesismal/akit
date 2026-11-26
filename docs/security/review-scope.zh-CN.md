@@ -167,7 +167,8 @@ akio 是 akit 的引擎和唯一的依赖，与 akit 是同一位维护者，有
 Miri、loom、sanitizer，以及对密码算法的[常数时间检查](https://github.com/lesismal/akio/blob/main/docs/constant-time.zh-CN.md)。它的 TLS、
 X.509、密码算法和 QUIC 都是 akio 自己写的，不是取自经过广泛审查的库，也没有经过外部审查（威胁模型 L15）。那项审查属于 akio，建议在
 akit 的 1.0 依赖它之前进行；如果本次审查可以扩展，我们建议的顺序是 akio-crypto 和 akio-tls（握手、记录层、证书验证），然后是
-akio-http 的 HTTP/1 和 HTTP/2 解析器，再然后是 akio-wasm。
+akio-http 的 HTTP/1 和 HTTP/2 解析器，再然后是 akio-wasm。akit 已作为
+[A225](../akio-api-requests.zh-CN.md#a225-对-akio-的密码学tlshttp-解析器和-webassembly-的外部安全审查) 向 akio 提出这一请求（I80b）。
 
 ## 在 akit 上工作
 

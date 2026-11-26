@@ -118,7 +118,7 @@ version of the schema or the API, which says so in its list of changes.
 
 | Method and path | What it does |
 | --- | --- |
-| `GET`, `HEAD` `/config`, `/config/{path...}` | The running config as it was written, or the part at a path |
+| `GET`, `HEAD` `/config`, `/config/{path...}` | The running config as it was written, or the part at a path, its inline secrets answered as `[redacted]` |
 | `PUT`, `PATCH`, `DELETE` on `/config` and `/config/{path...}` | Replace, merge patch (RFC 7396) or delete the config or the part at a path, and apply the result |
 | `POST /load` | Apply a whole config |
 | `GET`, `HEAD` `/config/effective` | The config merged with what providers provide, and where each part came from |
@@ -136,6 +136,14 @@ body (`version`) and in `Fit-Config-Version`, and with the config's `ETag`; a ch
 with `?dry_run=1` is checked, not applied, and answered with `Fit-Dry-Run: 1`. A config that does
 not load is answered 400 with `{"error": ..., "errors": [{"path", "line", "column", "message"}]}`.
 These are fit's names, so that fit's clients work with akit unchanged.
+
+Since I80b, a secret written inline in the config (under a member named as fit's console names
+secrets: `password_hash`, `secret`, `token`, an `Authorization` header) is answered as
+`[redacted]` by `/config`, `/versions/{n}` and `/config/effective`, as fit's console shows it, and a
+change that sends `[redacted]` back keeps the secret in its place
+([decision 035](decisions/035-admin-api-redacts-secrets.md)). fit's own Admin API answers the
+config as written; the change closes the threat model's L2, as a 1.x release may to close a
+security hole.
 
 fit's v1 has more endpoints, for the parts akit does not run yet: the link tokens of the tunnel's
 and the LLM roles (`/tokens`), the media libraries and the workbench's media pages (`/media/...`)

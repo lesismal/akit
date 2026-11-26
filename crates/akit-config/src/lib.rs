@@ -32,6 +32,7 @@ mod fastcgi;
 #[cfg(any(test, feature = "fuzzing"))]
 #[doc(hidden)]
 pub mod fuzzing;
+pub mod hardening;
 mod json;
 mod model;
 mod providers;

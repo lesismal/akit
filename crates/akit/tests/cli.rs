@@ -141,6 +141,50 @@ fn validate_warns_of_renamed_fields() {
     );
 }
 
+/// I80b (the threat model's L3, L4): a secret file open to others and a credential sent in the
+/// clear off loopback are warned of; the config is still valid, as fit runs it.
+#[cfg(unix)]
+#[test]
+fn validate_warns_of_exposed_secrets() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let d = dir("exposed");
+    let token = write(&d, "token", "s3cret\n");
+    fs::set_permissions(&token, fs::Permissions::from_mode(0o644)).unwrap();
+    let c = write(
+        &d,
+        "fit.json",
+        &format!(
+            r#"{{"listeners": [{{"name": "web", "address": "127.0.0.1:0"}}],
+  "admin": {{"token_file": "{}"}},
+  "acme": {{"directory": "http://ca.example.com/directory"}}}}"#,
+            token.display()
+        ),
+    );
+    let out = akit(&["validate", "-c", s(&c)]);
+    assert_eq!(out.status.code(), Some(0), "{out:?}");
+    let err = String::from_utf8(out.stderr).unwrap();
+    let lines: Vec<&str> = err.lines().collect();
+    assert_eq!(lines.len(), 2, "{err}");
+    assert!(
+        lines[0].starts_with(&format!(
+            "{}: admin.token_file: {} holds a secret and is open to its group or others (mode 0644)",
+            c.display(),
+            token.display()
+        )),
+        "{err}"
+    );
+    assert!(
+        lines[1]
+            .contains("acme.directory http://ca.example.com/directory is plain HTTP off loopback"),
+        "{err}"
+    );
+    // Readable by its owner alone, it is not.
+    fs::set_permissions(&token, fs::Permissions::from_mode(0o600)).unwrap();
+    let out = akit(&["validate", "-c", s(&c)]);
+    let err = String::from_utf8(out.stderr).unwrap();
+    assert!(!err.contains("token_file"), "{err}");
+}
+
 #[test]
 fn usage_errors_exit_2() {
     for args in [

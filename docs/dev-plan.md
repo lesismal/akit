@@ -187,7 +187,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I79 | v1 freeze and compatibility | I78 | done |
 | I79b | The gateway examples the gate still refuses: `limits.max_pending_bytes`, h2c alone, `max_conns` by accepted connections | I79, akio A214, A168, A215 | done |
 | I80 | Security review readiness | I77, I79 | done |
-| I80b | Security hardening: the threat model's limitations and the review's findings | I80, the review | todo |
+| I80b | Security hardening: the threat model's limitations and the review's findings | I80, the review | doing |
 
 ## Benchmark and optimization status
 
@@ -1094,6 +1094,21 @@ Split from I07 so that the half that needs no config model runs beside I02.
   track, L10 with akio A24, L11 with I79b.
 - **Done when**: every finding of the review is fixed or recorded as accepted with its reason, and
   each akit limitation above is closed or moved to the plan that will close it.
+- **Status**: doing (2026-11-26): the limitations are done, the review's findings wait for the
+  review ([decision 035](decisions/035-admin-api-redacts-secrets.md)).
+  - Closed: **L2** (the Admin API answers inline secrets as `[redacted]` by fit's `secretName`
+    rule, and keeps a secret a change sends back as `[redacted]`); **L3** (secret files open to
+    others warned of; the certificate storage's root and the directories it writes into tightened
+    to 0700, the directory synced after a rename); **L4** (credentials and keys sent in the clear off
+    loopback warned of, the Kubernetes provider's in its log); **L6** (the reference's
+    `forward_proxy`; there is no forward proxy guide); **L7** (links followed as fit's, documented
+    and tested); **L12** (fit has no such field: closed as it is); **L13** (the note at
+    `compress`); **L14** (`cache_purge_guarded`).
+  - Moved: **L8** and **L9** to fit (decision 002): `tls.client_auth.crl_files` and the `wasm`
+    middleware's `module_sha256` proposed in decision 035; akio-tls already has CRLs
+    (`client_crls`), so neither needs akio. **L15** asked of akio as
+    [A225](akio-api-requests.md#a225-an-external-security-review-of-akios-cryptography-tls-http-parsers-and-webassembly).
+  - Left: the external review's findings (none yet). Done when they are fixed or accepted.
 
 ## After 1.0
 

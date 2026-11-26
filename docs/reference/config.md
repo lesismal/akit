@@ -1141,6 +1141,12 @@ single-page apps. Files are opened and read on akio's file pool, never on an I/O
 a segment that starts with a dot (`/.git/config`, `/.env`) is answered 404, but `/.well-known/`;
 `dotfiles: allow` serves them. The [static files guide](../guides/static-files.md) has more.
 
+A request cannot name a file outside `root` (a `..` segment, a NUL or a backslash is refused with
+400), but symbolic links under `root` are followed wherever they lead, as fit follows them: whoever
+can create a link under the root decides what it serves. Keep the root writable by its publisher
+alone, and leave links out of it unless they are meant
+([threat model, L7](../security/threat-model.md#known-limitations)).
+
 ```fit
 route {
 	match { host example.com }
@@ -1303,6 +1309,13 @@ permit; a listener's [`socks`](#cfg-listeners-socks) does the same for SOCKS. Lo
 (`169.254.169.254` among them), unspecified and multicast addresses and the host's own are refused
 unless `allow` names them; a host name is decided by the address it was connected to, before
 anything is sent.
+
+The proxy has no authentication of its own (no `Proxy-Authorization`, SOCKS5 without methods):
+`clients` alone says who may use it, so keep it to the hosts meant to. Private ranges (`10.0.0.0/8`,
+`172.16.0.0/12`, `192.168.0.0/16`, `100.64.0.0/10`, `fc00::/7`) are reachable unless `deny` lists
+them, as in fit: a proxy whose clients come from outside should deny the internal network, as
+`deny 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 fc00::/7`
+([threat model, L6](../security/threat-model.md#known-limitations)).
 
 ```fit
 listener web :8080
@@ -1543,6 +1556,13 @@ route {
 
 Compresses responses with zstd, brotli or gzip, by the client's `Accept-Encoding` and its q values,
 streamed bodies encoded write by write.
+
+Compression over TLS can give away a secret (BREACH): when a response carries a secret (a CSRF token,
+a session identifier) and also reflects what the request sent (a query parameter, a form field),
+an attacker who can make the victim's browser send many requests learns the secret, byte by byte,
+from the compressed lengths. Leave such routes out of `compress`, or have the application mask the
+secret anew for each response, as nginx's and Caddy's docs advise
+([threat model, L13](../security/threat-model.md#known-limitations)).
 
 ```fit
 listener web :8080

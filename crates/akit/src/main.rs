@@ -311,12 +311,17 @@ impl Runner<'_> {
     /// Compiles `config` and moves the server to it (I22's reload), as one step: on any failure
     /// the running config stays. The access log takes the new config's level and time zone
     /// (`zone`); its other settings, and `admin`, take a restart, as fit's, and are warned of.
-    fn apply(&mut self, config: &Config, zone: Option<Zone>) -> Result<Applied, ApplyError> {
+    fn apply(
+        &mut self,
+        config: &Config,
+        json: &str,
+        zone: Option<Zone>,
+    ) -> Result<Applied, ApplyError> {
         let r = self.swap(config);
         self.stats.reloaded(r.is_ok());
         let (r, files) = r?;
         self.cert_files = files;
-        let warnings = self.warnings(config, zone, true);
+        let warnings = self.warnings(config, json, zone, true);
         Ok(applied(&r, warnings))
     }
 
@@ -324,7 +329,12 @@ impl Runner<'_> {
     /// the Admin API, I27, as fit's): compiled with no engine, so that its pools dial nothing
     /// and probe nothing, and its new listeners' addresses tried (`Listeners::plan`). Not counted
     /// as a reload.
-    fn check(&self, config: &Config, zone: Option<Zone>) -> Result<Applied, ApplyError> {
+    fn check(
+        &self,
+        config: &Config,
+        json: &str,
+        zone: Option<Zone>,
+    ) -> Result<Applied, ApplyError> {
         let graph = compile_config(
             config,
             &EngineSlot::new(),
@@ -339,14 +349,17 @@ impl Runner<'_> {
             .listeners
             .plan(&graph)
             .map_err(|e| ApplyError::Failed(e.to_string()))?;
-        Ok(applied(&r, self.warnings(config, zone, false)))
+        Ok(applied(&r, self.warnings(config, json, zone, false)))
     }
 
-    /// The changes in `config` that take a restart, as fit warns of them. With `set`, the access
-    /// log takes `config`'s level and time zone (`zone`).
-    fn warnings(&self, config: &Config, zone: Option<Zone>, set: bool) -> Vec<String> {
+    /// The changes in `config` (`json` as standard JSON) that take a restart, as fit warns of
+    /// them, and what it exposes (I80b). With `set`, the access log takes `config`'s level and
+    /// time zone (`zone`).
+    fn warnings(&self, config: &Config, json: &str, zone: Option<Zone>, set: bool) -> Vec<String> {
         // The old names of renamed fields first, as fit's load returns them (I79).
         let mut warnings: Vec<String> = config.warnings.0.iter().map(ToString::to_string).collect();
+        // Secret files open to others, credentials in the clear (I80b).
+        warnings.extend(akit_config::hardening::warnings(config, json));
         match (self.log, &config.access_log, zone) {
             (Some((l, first)), Some(c), Some(zone)) => {
                 if set {
@@ -445,8 +458,8 @@ impl Runner<'_> {
                 Ok((config, zone))
             });
         match (read, mode) {
-            (Ok((config, zone)), Mode::Apply) => self.apply(&config, zone),
-            (Ok((config, zone)), Mode::DryRun) => self.check(&config, zone),
+            (Ok((config, zone)), Mode::Apply) => self.apply(&config, text, zone),
+            (Ok((config, zone)), Mode::DryRun) => self.check(&config, text, zone),
             (Err(e), Mode::Apply) => {
                 self.stats.reloaded(false);
                 Err(e)
@@ -517,8 +530,8 @@ fn apply_files(name: &str, files: &[ConfigFile], configs: &Configs, runner: &mut
             return;
         }
     };
-    match configs.update(akit_admin::SOURCE_FILE, None, json, |_| {
-        runner.apply(&config, zone)
+    match configs.update(akit_admin::SOURCE_FILE, None, json, |text| {
+        runner.apply(&config, text, zone)
     }) {
         Ok(o) => {
             print_applied(&o);
@@ -679,8 +692,11 @@ fn validate(args: &[String]) -> ExitCode {
     };
     let paths = config_paths(&flags);
     // No engine: an upstream's pool is made, and never dials.
-    let checked = read_config(&paths).and_then(|((config, _, _), _)| {
+    let checked = read_config(&paths).and_then(|((config, json, _), _)| {
         print_warnings(&paths.join(", "), &config.warnings);
+        for w in akit_config::hardening::warnings(&config, &json) {
+            eprintln!("{}: {w}", paths.join(", "));
+        }
         compile_config(
             &config,
             &EngineSlot::new(),
@@ -792,6 +808,10 @@ fn run(args: &[String]) -> ExitCode {
         }
     };
     print_warnings(&name, &config.warnings);
+    // Secret files open to others, credentials in the clear (I80b).
+    for w in akit_config::hardening::warnings(&config, &json) {
+        eprintln!("akit: {w}");
+    }
     // Opened before the graph, which writes to it, and closed after the engine, so that every
     // response finished has its line written.
     let log = match (&config.access_log, zone) {

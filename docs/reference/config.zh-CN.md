@@ -1157,6 +1157,10 @@ route {
 副本，以及用于单页应用的 `try_files`。文件在 akio 的文件池上打开和读取，从不在 I/O 线程上。路径中有以点开头的段
 （`/.git/config`、`/.env`）答 404，`/.well-known/` 除外；`dotfiles: allow` 提供这些文件。详见[静态文件指南](../guides/static-files.zh-CN.md)。
 
+请求不能指向 `root` 之外的文件（含 `..` 段、NUL 或反斜杠的路径答 400），但 `root` 下的符号链接无论指向何处都会被跟随，与 fit
+相同：能在根目录下创建链接的人决定它提供什么。让根目录只由发布者可写，除非确有需要，不要在其中放链接
+（[威胁模型，L7](../security/threat-model.zh-CN.md#已知的局限)）。
+
 ```fit
 route {
 	match { host example.com }
@@ -1324,6 +1328,12 @@ route {
 为 `clients` 列出的客户端提供 HTTP CONNECT 代理，目的地由 `allow` 和 `deny` 决定；监听器的 [`socks`](#cfg-listeners-socks)
 以 SOCKS 做同样的事。除非 `allow` 指明，环回、链路本地（包括 `169.254.169.254`）、未指定和组播地址以及本机地址都被拒绝；
 主机名按其连接到的地址判断，在发送任何内容之前。
+
+代理本身没有认证（不看 `Proxy-Authorization`，SOCKS5 不协商认证方法）：谁能使用它只由 `clients` 决定，所以只列出应当使用它的
+主机。与 fit 相同，私有网段（`10.0.0.0/8`、`172.16.0.0/12`、`192.168.0.0/16`、`100.64.0.0/10`、`fc00::/7`）除非
+`deny` 列出，否则都可到达：客户端来自外部的代理应拒绝内网，如
+`deny 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 fc00::/7`
+（[威胁模型，L6](../security/threat-model.zh-CN.md#已知的局限)）。
 
 ```fit
 listener web :8080
@@ -1573,6 +1583,10 @@ route {
 ### `compress`
 
 按客户端的 `Accept-Encoding` 及其 q 值，以 zstd、brotli 或 gzip 压缩响应，流式响应体逐次写入逐次编码。
+
+TLS 上的压缩可能泄露秘密（BREACH）：响应既带有秘密（CSRF 令牌、会话标识）又回显请求发送的内容（查询参数、表单字段）时，
+能让受害者的浏览器发送大量请求的攻击者可以从压缩后的长度逐字节推出秘密。这样的路由不要用 `compress`，或让应用为每个响应重新
+掩码秘密，与 nginx 和 Caddy 文档的建议相同（[威胁模型，L13](../security/threat-model.zh-CN.md#已知的局限)）。
 
 ```fit
 listener web :8080

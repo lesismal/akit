@@ -23,6 +23,7 @@ use crate::configs::{Applied, ApplyError, Configs, Mode, Outcome, Refused, SOURC
 use crate::configs::{Effective, ListenerChange, etag_matches};
 use crate::dashboard;
 use crate::pointer::{self, Problem};
+use crate::redact;
 
 /// The header that carries the version of the config a response is about: fit's name, so that
 /// fit's clients read it.
@@ -177,6 +178,35 @@ fn whole(text: &str) -> Result<String, Refused> {
     akit_config::value::standardize(text).map_err(|errs| Refused::Apply(ApplyError::Config(errs)))
 }
 
+/// `new`, a value sent for the place `tokens` names, with the secrets it sends as
+/// [`redact::REDACTED`] put back from `old`, what the running config holds there (I80b); 400 for
+/// one with no secret kept at its place.
+fn restored(new: &mut Value, old: Option<&Value>, tokens: &[String]) -> Result<(), Problem> {
+    redact::restore(new, old, &pointer::string(tokens))
+        .map(|_| ())
+        .map_err(|msg| Problem::new(400, msg))
+}
+
+/// A whole config sent, `text`, with the secrets it sends as [`redact::REDACTED`] put back from
+/// the running config `cur`: as it was written when it sends none, or else written out as fit
+/// writes an edited config. Left for [`whole`] to refuse when it is not JSON.
+fn unredacted(cur: &Version, text: String) -> Result<String, Refused> {
+    if !text.contains(redact::REDACTED) {
+        return Ok(text);
+    }
+    let (Ok(mut new), Ok(old)) = (
+        akit_config::value::parse(&text),
+        akit_config::value::parse(cur.data()),
+    ) else {
+        return Ok(text);
+    };
+    match redact::restore(&mut new, Some(&old), "") {
+        Ok(true) => Ok(new.to_json()),
+        Ok(false) => Ok(text),
+        Err(msg) => Err(Refused::Request { status: 400, msg }),
+    }
+}
+
 /// The running config `cur` with `change` made to it at `tokens`, written out as fit writes an
 /// edited config.
 fn edited(
@@ -214,33 +244,52 @@ impl Job {
         let if_match = if_match.as_deref();
         let r = match op {
             Op::Load(data) => utf8(data).and_then(|text| {
-                configs.change(SOURCE_ADMIN, if_match, mode, |_| whole(&text), apply)
-            }),
-            // A whole config, kept as written; the body must be JSON before anything is compared.
-            Op::Put(tokens, data) if tokens.is_empty() => utf8(data).and_then(|text| {
-                body_value(&text)?;
-                configs.change(SOURCE_ADMIN, if_match, mode, |_| whole(&text), apply)
-            }),
-            Op::Put(tokens, data) => utf8(data).and_then(|text| {
-                let v = body_value(&text)?;
                 configs.change(
                     SOURCE_ADMIN,
                     if_match,
                     mode,
-                    |cur| edited(cur, |root| pointer::put(root, &tokens, v)),
+                    |cur| whole(&unredacted(cur, text)?),
                     apply,
                 )
             }),
-            Op::Patch(tokens, data) => utf8(data).and_then(|text| {
-                let v = body_value(&text)?;
+            // A whole config, kept as written; the body must be JSON before anything is compared.
+            Op::Put(tokens, data) if tokens.is_empty() => utf8(data).and_then(|text| {
+                body_value(&text)?;
+                configs.change(
+                    SOURCE_ADMIN,
+                    if_match,
+                    mode,
+                    |cur| whole(&unredacted(cur, text)?),
+                    apply,
+                )
+            }),
+            Op::Put(tokens, data) => utf8(data).and_then(|text| {
+                let mut v = body_value(&text)?;
                 configs.change(
                     SOURCE_ADMIN,
                     if_match,
                     mode,
                     |cur| {
                         edited(cur, |root| {
-                            pointer::lookup_mut(root, &tokens)
-                                .map(|target| pointer::merge_patch(target, v))
+                            restored(&mut v, pointer::lookup(root, &tokens).ok(), &tokens)?;
+                            pointer::put(root, &tokens, v)
+                        })
+                    },
+                    apply,
+                )
+            }),
+            Op::Patch(tokens, data) => utf8(data).and_then(|text| {
+                let mut v = body_value(&text)?;
+                configs.change(
+                    SOURCE_ADMIN,
+                    if_match,
+                    mode,
+                    |cur| {
+                        edited(cur, |root| {
+                            let target = pointer::lookup_mut(root, &tokens)?;
+                            restored(&mut v, Some(target), &tokens)?;
+                            pointer::merge_patch(target, v);
+                            Ok(())
                         })
                     },
                     apply,
@@ -788,7 +837,11 @@ fn get_config(ctx: &Context, configs: &Configs, path: &str) -> Response {
     }
     let found = akit_config::value::parse(v.data())
         .map_err(|_| Problem::new(500, "the running config is not JSON".into()))
-        .and_then(|root| pointer::lookup(&root, &tokens).map(Value::to_json));
+        .and_then(|root| {
+            let mut found = pointer::lookup(&root, &tokens)?.clone();
+            redact::at_pointer(&mut found, &tokens);
+            Ok(found.to_json())
+        });
     match found {
         Ok(body) => json(200, body)
             .header("ETag", &v.etag)
@@ -797,9 +850,12 @@ fn get_config(ctx: &Context, configs: &Configs, path: &str) -> Response {
     }
 }
 
-/// A config as it was written, with its ETag and version.
+/// A config as it was written, its secrets redacted (I80b), with its ETag and version.
 fn config(v: &Version) -> Response {
-    Response::with_body(200, "application/json", v.data().as_bytes().to_vec())
+    let Some(data) = redact::config(v.data()) else {
+        return error(500, "the running config is not JSON");
+    };
+    Response::with_body(200, "application/json", data.into_bytes())
         .header("ETag", &v.etag)
         .header(VERSION_HEADER, v.number.to_string())
 }
@@ -854,7 +910,10 @@ fn effective(e: &Effective) -> Response {
         write_string(&mut b, s);
     }
     b.push_str("],\"config\":");
-    compact(&mut b, v.effective());
+    match redact::config(v.effective()) {
+        Some(c) => compact(&mut b, &c),
+        None => return error(500, "the running config is not JSON"),
+    }
     b.push_str(",\"sources\":[");
     for (i, s) in v.sources().iter().enumerate() {
         if i > 0 {

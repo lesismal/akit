@@ -43,6 +43,13 @@ impl Ca {
         );
         std::fs::write(&c, cert.to_pem()).unwrap();
         std::fs::write(&k, key.to_pkcs8_pem()).unwrap();
+        // Readable by its owner alone, as a key file should be: akit warns of one that is not
+        // (I80b), which would be noise in the tests' output.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            std::fs::set_permissions(&k, std::fs::Permissions::from_mode(0o600)).unwrap();
+        }
         (c, k)
     }
 }
