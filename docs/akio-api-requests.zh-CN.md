@@ -96,6 +96,7 @@
 | A214 | 所有连接合计排队字节的预算，超出时暂停每个连接的读取（fit 的 `limits.max_pending_bytes`） | 已进入 akio 的 main 并锁定（自 `6bcd8ad6` 起，akio 的 ADR-172） | 8、11 | I79、I79b |
 | A215 | 只计入被接受的连接、不计入引擎拨出的连接的连接上限（fit 的 `limits.max_conns`） | 已进入 akio 的 main 并锁定（自 `6bcd8ad6` 起，akio 的 ADR-173） | 11 | I79、I79b |
 | A220 | UDP 和数据报监听器上的 accept 过滤器：在为被拒绝的对端建立连接（`udp` 会话、QUIC 连接）之前丢弃它的数据报 | 已提出（I85） | 1、11 | I85、I86 |
+| A225 | 对 akio-crypto、akio-tls（连同 akio-x509）、akio-http 的 HTTP/1 和 HTTP/2 解析器以及 akio-wasm 的外部安全审查（不是 API） | 已提出（I80b）：威胁模型的 L15 | 15 | I80、I80b |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -1701,3 +1702,22 @@ HTTP/3 请求由监听器的分发器回答 403（I85），`udp` 会话在打开
 
 **akit 将如何使用。** akit-listener 把监听器 TCP 一侧的访问策略也装到它的 UDP 一侧上，HTTP/3 分发器不再逐个检查请求
 （`Dispatcher::unfiltered`），akit-l4 的 `udp` 会话不再在打开时检查。
+
+## A225 对 akio 的密码学、TLS、HTTP 解析器和 WebAssembly 的外部安全审查
+
+**状态。** 由 I80b 为威胁模型的 L15 提出（2026-11-26）。不是 API：是由 akio 委托或参与的审查。akit 中没有任何东西等待它；
+akit 自己的外部审查（[审查范围](security/review-scope.zh-CN.md)）不包括 akio 的内部。
+
+**问题。** akit 提供的每个连接都经过 akio 自己的 TLS 1.2/1.3（akio-tls）、X.509 验证（akio-x509）、密码学（akio-crypto）、
+QUIC，以及 HTTP/1 和 HTTP/2 解析器（akio-http），每个 `wasm` 插件都经过 akio-wasm 的解释器。它们都不是经过广泛审查的库：
+都是在 akio 中编写的，只经过 akio 的内部审查。
+
+**证据。** akio 1.0 的检查：对协议解析器的模糊测试、cargo-audit 和 cargo-deny、unsafe 审查、Miri、loom、sanitizer，以及对
+密码学的常数时间检查（akio 的 `docs/unsafe-review.md`、`docs/constant-time.md`）。[威胁模型](security/threat-model.zh-CN.md#已知的局限)
+把缺少外部审查列为 L15；审查范围的 [akio](security/review-scope.zh-CN.md#akio) 一节建议在 akit 的 1.0 依赖它们之前进行审查。
+
+**建议的 API。** 无。一次外部审查，顺序为：akio-crypto 和 akio-tls 连同 akio-x509（握手、记录层、证书和 CRL 验证、常数时间
+路径），然后是 akio-http 的 HTTP/1 和 HTTP/2 解析器（请求走私、HPACK、流量控制），然后是 akio-wasm（校验、沙箱的边界）。
+其发现按 akio 的安全策略在 akio 中修复，报告从 akio 的文档中链接。
+
+**akit 将如何使用。** 锁定带有修复的 akio 提交（规则 22），关闭威胁模型的 L15，并从威胁模型和审查范围链接报告。

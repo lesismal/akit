@@ -469,6 +469,9 @@ impl Run {
         // Until the cluster can be found, nothing new is sent, so the last part stays.
         let (api, engine) = loop {
             let r = kubeconfig::load(&self.opts, &self.env).and_then(|rc| {
+                for w in rc.exposed() {
+                    self.log(&w);
+                }
                 let server = rc.server.clone();
                 let r#where = rc.r#where.clone();
                 let mut cfg = akio::Config::default();

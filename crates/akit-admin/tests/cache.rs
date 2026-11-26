@@ -209,3 +209,97 @@ fn cache_purge() {
     engine.shutdown();
     engine.wait();
 }
+
+/// I80b (the threat model's L14): `POST /cache/purge` is guarded as every endpoint is. With a
+/// token asked for, a purge without it, or with a wrong one, is refused (401) and purges nothing;
+/// a purge sent from a web page (`Origin`) is refused (403), token or not, even from the API's
+/// own origin, which may only read; with the token, it purges.
+#[test]
+fn cache_purge_guarded() {
+    let doc = r#"{"listeners": [{"name": "web", "address": "127.0.0.1:0"}],
+  "routes": [{"middleware": [{"module": "cache", "params": {"zone": "guarded"}}],
+    "handler": {"module": "respond", "params": {"body": "x", "headers": {"Cache-Control": "max-age=60"}}}}]}"#;
+    let config = akit_config::from_json(doc, None).unwrap();
+    let registry: Registry<HandlerParams> =
+        Registry::new(&[akit_handler::MODULES, akit_cache::MODULES]).unwrap();
+    let cell = GraphCell::new(compile(&config, &registry, &Env::default()).unwrap());
+    let mut lo = akit_listener::Options::default();
+    lo.backend = backend();
+    lo.shutdown_timeout = Duration::from_secs(5);
+    let engine = Arc::new(akit_listener::engine(&cell, &lo).unwrap());
+    engine.start().unwrap();
+    let site = *engine.local_addrs().first().unwrap();
+
+    let file = std::env::temp_dir().join(format!("akit-admin-purge-token-{}", std::process::id()));
+    std::fs::write(&file, "purge-s3cret\n").unwrap();
+    let settings = akit_config::Admin {
+        address: "127.0.0.1:0".into(),
+        token_file: Some(file.to_str().unwrap().to_owned()),
+        ..akit_config::Admin::default()
+    };
+    let configs = Configs::new(
+        akit_config::value::standardize(doc).unwrap(),
+        SOURCE_FILE,
+        settings.history,
+    );
+    let mut opts = Options::default();
+    opts.backend = backend();
+    let server = Server::start(&settings, configs, Box::new(|_| Ok(())), &opts).unwrap();
+    let api = server.addr();
+    let token = "Bearer purge-s3cret";
+    let body = r#"{"zone": "guarded", "all": true}"#;
+    let json = ("Content-Type", "application/json");
+    let kept = || {
+        let r = request(api, "GET", "/cache", &[("Authorization", token)], None);
+        assert_eq!(r.status, 200, "{}", r.body);
+        r.body.contains(r#""zone":"guarded","keys":1"#)
+    };
+
+    let cs = request(site, "GET", "/a", &[], None);
+    assert_eq!(cs.status, 200);
+    assert!(kept(), "the response is kept");
+    let api_origin = format!("http://{api}");
+    for (headers, want) in [
+        (vec![json], 401),
+        (vec![json, ("Authorization", "Bearer wrong")], 401),
+        (vec![json, ("Authorization", "purge-s3cret")], 401),
+        (
+            vec![
+                json,
+                ("Authorization", token),
+                ("Origin", "https://evil.example.com"),
+            ],
+            403,
+        ),
+        (
+            vec![
+                json,
+                ("Authorization", token),
+                ("Origin", api_origin.as_str()),
+            ],
+            403,
+        ),
+        (vec![json, ("Origin", "https://evil.example.com")], 401),
+    ] {
+        let r = request(api, "POST", "/cache/purge", &headers, Some(body));
+        assert_eq!(r.status, want, "{headers:?}: {}", r.body);
+        assert!(kept(), "{headers:?} purged nothing");
+    }
+    let r = request(
+        api,
+        "POST",
+        "/cache/purge",
+        &[json, ("Authorization", token)],
+        Some(body),
+    );
+    assert_eq!(
+        (r.status, r.body.as_str()),
+        (200, "{\"purged\":1}\n"),
+        "with the token"
+    );
+    assert!(!kept(), "purged");
+    server.shutdown();
+    engine.shutdown();
+    engine.wait();
+    let _ = std::fs::remove_file(&file);
+}

@@ -26,3 +26,4 @@
 | [030](030-supply-chain-checks.zh-CN.md) | 供应链检查：cargo-deny、每日的 cargo-audit，以及发布二进制的依赖图 | 已采纳 |
 | [032](032-limits-on-akio-budget.zh-CN.md) | 启动时生效的限制落在 akio 引擎的预算上，以及只有 h2c 的监听器 | 已采纳 |
 | [034](034-access-lists.zh-CN.md) | 基于 akio accept 过滤器的访问控制列表 | 已采纳 |
+| [035](035-admin-api-redacts-secrets.zh-CN.md) | Admin API 遮蔽秘密，akit 对暴露的秘密发出警告，以及 I80b 的其余局限 | 待审阅 |

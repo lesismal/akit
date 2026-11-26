@@ -201,3 +201,46 @@ fn a_stale_lock_is_taken_over() {
     s.unlock("issue/a.example").unwrap();
     std::fs::remove_dir_all(&root).unwrap();
 }
+
+/// I80b (the threat model's L3): a storage directory left open to others, and the directories
+/// under it written into, are tightened to 0700 by a store or a lock; a file stored replaces the
+/// old one whole.
+#[cfg(unix)]
+#[test]
+fn an_open_storage_directory_is_tightened() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = dir("storage-open");
+    let mode = |p: &std::path::Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+    let open = |p: &std::path::Path| {
+        std::fs::create_dir_all(p).unwrap();
+        std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o755)).unwrap();
+    };
+    open(&root);
+    open(&root.join("certs/a.example"));
+    open(&root.join("other"));
+    let s = FileStorage::new(&root);
+    s.store("certs/a.example/key.pem", b"a key", later())
+        .unwrap();
+    assert_eq!(mode(&root), 0o700);
+    assert_eq!(mode(&root.join("certs")), 0o700);
+    assert_eq!(mode(&root.join("certs/a.example")), 0o700);
+    assert_eq!(mode(&root.join("certs/a.example/key.pem")), 0o600);
+    // A directory it does not write into is left as it is.
+    assert_eq!(mode(&root.join("other")), 0o755);
+    s.store("certs/a.example/key.pem", b"a key, renewed", later())
+        .unwrap();
+    assert_eq!(
+        s.load("certs/a.example/key.pem", later()).unwrap(),
+        b"a key, renewed"
+    );
+    let names: Vec<String> = std::fs::read_dir(root.join("certs/a.example"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(names, ["key.pem"], "no file left beside it");
+    // A lock tightens its directory too.
+    open(&root.join("locks"));
+    s.lock("issue/a.example", later()).unwrap();
+    assert_eq!(mode(&root.join("locks")), 0o700);
+    s.unlock("issue/a.example").unwrap();
+}

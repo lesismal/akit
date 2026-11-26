@@ -435,6 +435,38 @@ fn traversal() {
     assert_eq!(get(srv.addr, "/x/../ok.txt").text(), "ok");
 }
 
+/// I80b (the threat model's L7): symbolic links under the root are followed wherever they lead,
+/// as fit's handler follows them ("symbolic links under the root are followed, wherever they
+/// lead"; fit has no option to refuse them, nginx's `disable_symlinks` is off by default): a link
+/// to a file or a directory outside the root is served. A request cannot name a path outside
+/// the root itself; whoever can make links under it decides what it serves (the reference's
+/// `static`).
+#[cfg(unix)]
+#[test]
+fn symlinks_out_of_the_root_followed() {
+    let outer = dir("symlinks");
+    fs::write(outer.join("outside.txt"), "outside").unwrap();
+    fs::create_dir(outer.join("elsewhere")).unwrap();
+    fs::write(outer.join("elsewhere/inner.txt"), "inner").unwrap();
+    let root = outer.join("www");
+    fs::create_dir(&root).unwrap();
+    std::os::unix::fs::symlink(outer.join("outside.txt"), root.join("link.txt")).unwrap();
+    std::os::unix::fs::symlink(outer.join("elsewhere"), root.join("dir")).unwrap();
+    std::os::unix::fs::symlink("../outside.txt", root.join("relative.txt")).unwrap();
+    std::os::unix::fs::symlink(outer.join("missing"), root.join("dangling")).unwrap();
+    let srv = serve(&root, "");
+    for (target, body) in [
+        ("/link.txt", "outside"),
+        ("/dir/inner.txt", "inner"),
+        ("/relative.txt", "outside"),
+    ] {
+        let r = get(srv.addr, target);
+        assert_eq!((r.status, r.text()), (200, body), "{target}");
+    }
+    assert_eq!(get(srv.addr, "/dangling").status, 404);
+    assert_eq!(get(srv.addr, "/../outside.txt").status, 400);
+}
+
 /// fit's TestConditional: from memory, and from disk (`max_file_bytes` 4).
 #[test]
 fn conditional_and_ranges() {

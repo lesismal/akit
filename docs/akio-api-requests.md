@@ -97,6 +97,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | A214 | A budget of the bytes queued for every connection together, which pauses every connection's reads past it (fit's `limits.max_pending_bytes`) | on akio's main and pinned (since `6bcd8ad6`, akio's ADR-172) | 8, 11 | I79, I79b |
 | A215 | A connection limit that counts the connections accepted, not those the engine dials (fit's `limits.max_conns`) | on akio's main and pinned (since `6bcd8ad6`, akio's ADR-173) | 11 | I79, I79b |
 | A220 | An accept filter on UDP and datagram listeners: a refused peer's datagrams dropped before a connection (a `udp` session, a QUIC connection) is made for it | requested (I85) | 1, 11 | I85, I86 |
+| A225 | An external security review of akio-crypto, akio-tls (with akio-x509), akio-http's HTTP/1 and HTTP/2 parsers and akio-wasm (no API) | requested (I80b): the threat model's L15 | 15 | I80, I80b |
 
 ## A1 TCP listeners on a running engine
 
@@ -2104,3 +2105,29 @@ first Initial packet.
 **How akit would use it.** akit-listener installs the access policy the listener's TCP side has on
 its UDP side too, the HTTP/3 dispatcher stops checking requests (`Dispatcher::unfiltered`), and
 akit-l4's `udp` sessions are no longer checked as they open.
+
+## A225 An external security review of akio's cryptography, TLS, HTTP parsers and WebAssembly
+
+**Status.** Requested by I80b (2026-11-26) for the threat model's L15. Not an API: a review akio
+commissions or takes part in. Nothing in akit waits on it; akit's own external review
+([review scope](security/review-scope.md)) leaves akio's internals out.
+
+**Problem.** Every connection akit serves goes through akio's own TLS 1.2/1.3 (akio-tls), X.509
+verification (akio-x509), cryptography (akio-crypto), QUIC, and HTTP/1 and HTTP/2 parsers
+(akio-http), and every `wasm` plugin through akio-wasm's interpreter. None is a widely reviewed
+library: each was written in akio and has had akio's internal review only.
+
+**Evidence.** akio's 1.0 checks: fuzzing of its protocol parsers, cargo-audit and cargo-deny, the
+unsafe review, Miri, loom, sanitizers, and constant-time checks of its cryptography
+(`docs/unsafe-review.md`, `docs/constant-time.md` in akio). The [threat model](security/threat-model.md#known-limitations)
+lists the lack of an external review as L15; the review scope's [akio](security/review-scope.md#akio)
+section recommends one before akit's 1.0 relies on them.
+
+**Suggested API.** None. An external review, in this order: akio-crypto and akio-tls with
+akio-x509 (the handshake, the record layer, certificate and CRL verification, the constant-time
+paths), then akio-http's HTTP/1 and HTTP/2 parsers (request smuggling, HPACK, flow control), then
+akio-wasm (validation, the sandbox's bounds). Its findings fixed in akio, as akio's security policy
+says, and the report linked from akio's docs.
+
+**How akit would use it.** It pins the akio commit with the fixes (rule 22), and the threat model's
+L15 is closed, with the report linked from it and from the review scope.

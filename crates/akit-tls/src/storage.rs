@@ -148,7 +148,10 @@ const TMP_PREFIX: &str = ".tmp-";
 /// each lock a file under `root/locks`, which its holder touches every
 /// [`lock_refresh`](Self::lock_refresh). A lock file left untouched for
 /// [`lock_stale`](Self::lock_stale) is taken to be left by a holder that stopped, and is
-/// removed. Files and directories are made readable by their owner only.
+/// removed. Files and directories are made readable by their owner only: those it makes, and
+/// (I80b) the root and the directories under it that it writes into, tightened to 0700 when they
+/// were left open to others. A file is renamed into place once written and synced, and its
+/// directory synced after the rename, so that a crash leaves the old value or the new.
 #[derive(Debug)]
 pub struct FileStorage {
     root: PathBuf,
@@ -226,6 +229,17 @@ impl FileStorage {
         self.filename(&format!("{LOCKS_DIR}/{}.lock", name.replace('/', "_")))
     }
 
+    /// Makes `dir`, under the root, and tightens it and the directories between it and the root,
+    /// the root included, to 0700 where their group or others had any permission. Tightening is
+    /// best effort: a directory akit's user does not own stays as it is.
+    fn prepare(&self, dir: &Path) -> io::Result<()> {
+        mkdir_all(dir)?;
+        for d in dir.ancestors().take_while(|d| d.starts_with(&self.root)) {
+            tighten(d);
+        }
+        Ok(())
+    }
+
     fn held(&self) -> std::sync::MutexGuard<'_, HashMap<String, SyncSender<()>>> {
         self.held.lock().unwrap_or_else(PoisonError::into_inner)
     }
@@ -263,6 +277,31 @@ fn mkdir_all(dir: &Path) -> io::Result<()> {
     b.create(dir)
 }
 
+/// Sets `dir`'s mode to 0700 when its group or others have any permission on it.
+#[cfg(unix)]
+fn tighten(dir: &Path) {
+    use std::os::unix::fs::PermissionsExt as _;
+    if let Ok(m) = fs::metadata(dir) {
+        if m.is_dir() && m.permissions().mode() & 0o077 != 0 {
+            let _ = fs::set_permissions(dir, fs::Permissions::from_mode(0o700));
+        }
+    }
+}
+
+#[cfg(not(unix))]
+fn tighten(_dir: &Path) {}
+
+/// Syncs `dir`, so that a rename in it outlives a crash. Best effort: some file systems refuse
+/// to sync a directory, and the file itself was synced before the rename.
+fn sync_dir(dir: &Path) {
+    #[cfg(unix)]
+    if let Ok(d) = File::open(dir) {
+        let _ = d.sync_all();
+    }
+    #[cfg(not(unix))]
+    let _ = dir;
+}
+
 fn create_new(path: &Path) -> io::Result<File> {
     let mut o = OpenOptions::new();
     o.write(true).create_new(true);
@@ -271,10 +310,10 @@ fn create_new(path: &Path) -> io::Result<File> {
     o.open(path)
 }
 
-/// Writes `path` whole or not at all: to a file beside it, synced, then renamed over it.
+/// Writes `path` whole or not at all: to a file beside it, synced, then renamed over it, and the
+/// directory synced. Its directory is made first ([`FileStorage::prepare`]).
 fn write_file(path: &Path, value: &[u8]) -> io::Result<()> {
     let dir = path.parent().unwrap_or(Path::new("."));
-    mkdir_all(dir)?;
     let tmp = dir.join(format!(
         "{TMP_PREFIX}{}-{}",
         std::process::id(),
@@ -285,7 +324,9 @@ fn write_file(path: &Path, value: &[u8]) -> io::Result<()> {
         f.write_all(value)?;
         f.sync_all()?;
         drop(f);
-        fs::rename(&tmp, path)
+        fs::rename(&tmp, path)?;
+        sync_dir(dir);
+        Ok(())
     })();
     if result.is_err() {
         let _ = fs::remove_file(&tmp);
@@ -313,6 +354,9 @@ impl Storage for FileStorage {
             return Err(StorageError::TooLarge(key.to_owned()));
         }
         check(deadline)?;
+        if let Some(dir) = name.parent() {
+            self.prepare(dir)?;
+        }
         write_file(&name, value).map_err(StorageError::Io)
     }
 
@@ -372,7 +416,7 @@ impl Storage for FileStorage {
             return Err(StorageError::TooManyLocks);
         }
         if let Some(dir) = file.parent() {
-            mkdir_all(dir)?;
+            self.prepare(dir)?;
         }
         loop {
             match create_new(&file) {

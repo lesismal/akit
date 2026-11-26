@@ -1452,6 +1452,89 @@ fn token() {
     assert!(e.to_string().contains("token_file"), "{e}");
 }
 
+/// I80b (the threat model's L2): a secret written inline is answered as `[redacted]` by every
+/// read of the config, whole, by pointer, by version and as it runs; sent back as `[redacted]`
+/// with a change, it is kept; where no secret is kept, `[redacted]` is refused.
+#[test]
+fn secrets_redacted() {
+    let cfg = r#"{"listeners": [{"name": "web", "address": "127.0.0.1:0"}],
+  "routes": [{"handler": {"module": "respond", "params": {"body": "v1",
+    "headers": {"Authorization": "Bearer s3cret-value", "X-Plain": "seen"}}}}]}"#;
+    let f = start(cfg, admin(|_| {}));
+    let headers = "/config/routes/0/handler/params/headers";
+    for path in [
+        "/config",
+        "/versions/1",
+        "/config/effective",
+        headers,
+        &format!("{headers}/Authorization"),
+    ] {
+        let r = f.get(path);
+        assert_eq!(r.status, 200, "{path}: {r:?}");
+        assert!(!r.body.contains("s3cret-value"), "{path}: {}", r.body);
+        assert!(r.body.contains("[redacted]"), "{path}: {}", r.body);
+    }
+    assert!(f.get("/config").body.contains("\"seen\""));
+    let site = |want: &str| {
+        let r = request(f.web, "GET", "/", &[("Host", "x")], None);
+        assert_eq!(r.header("Authorization"), Some(want), "{r:?}");
+        r
+    };
+    site("Bearer s3cret-value");
+
+    // What GET answered, sent back changed, keeps the secret.
+    let got = f.get("/config");
+    let etag = got.header("ETag").unwrap().to_owned();
+    let r = f.load_with(
+        &got.body.replace("\"v1\"", "\"v2\""),
+        &[("If-Match", etag.as_str())],
+    );
+    assert_eq!(r.status, 200, "{r:?}");
+    assert_eq!(site("Bearer s3cret-value").body, "v2");
+    assert!(f.configs.current().data().contains("Bearer s3cret-value"));
+    // So do a value put at a pointer and a merge patch.
+    let r = f.send(
+        "PUT",
+        headers,
+        "application/json",
+        r#"{"Authorization": "[redacted]", "X-Plain": "again"}"#,
+        "",
+    );
+    assert_eq!(r.status, 200, "{r:?}");
+    assert_eq!(site("Bearer s3cret-value").header("X-Plain"), Some("again"));
+    let r = f.send(
+        "PATCH",
+        "/config/routes/0/handler/params",
+        "application/merge-patch+json",
+        r#"{"headers": {"Authorization": "[redacted]"}, "body": "v3"}"#,
+        "",
+    );
+    assert_eq!(r.status, 200, "{r:?}");
+    assert_eq!(site("Bearer s3cret-value").body, "v3");
+    // Where no secret is kept, it is refused, and nothing changes.
+    for (method, path, body) in [
+        ("PUT", format!("{headers}/Cookie"), "\"[redacted]\""),
+        ("PATCH", headers.to_owned(), r#"{"Cookie": "[redacted]"}"#),
+    ] {
+        let r = f.send(method, &path, "application/json", body, "");
+        assert_eq!(r.status, 400, "{method} {path}: {r:?}");
+        assert!(r.body.contains("no secret is kept there"), "{}", r.body);
+    }
+    let r = f.load(&doc("[redacted]").replace("\"body\"", "\"token\""));
+    assert_eq!(r.status, 400, "{r:?}");
+    assert_eq!(site("Bearer s3cret-value").body, "v3");
+    // A new secret replaces the old.
+    let r = f.send(
+        "PUT",
+        &format!("{headers}/Authorization"),
+        "application/json",
+        "\"Bearer other\"",
+        "",
+    );
+    assert_eq!(r.status, 200, "{r:?}");
+    site("Bearer other");
+}
+
 /// An edit's body under, at and over `max_config_bytes`, and one cut off midway: only a whole
 /// body within the limit is applied.
 #[test]

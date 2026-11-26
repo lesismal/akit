@@ -792,6 +792,8 @@ clusters:
 - {{name: nocafile, cluster: {{server: "https://127.0.0.1:1", certificate-authority: missing.crt}}}}
 - {{name: notca, cluster: {{server: "https://127.0.0.1:1", certificate-authority-data: "{}"}}}}
 - {{name: plain, cluster: {{server: "http://127.0.0.1:8001"}}}}
+- {{name: remote, cluster: {{server: "http://10.0.0.1:8080"}}}}
+- {{name: remoteinsecure, cluster: {{server: "https://k8s.example.com:6443", insecure-skip-tls-verify: true}}}}
 users:
 - {{name: files, user: {{tokenFile: token}}}}
 - {{name: plugin, user: {{exec: {{command: aws}}}}}}
@@ -812,6 +814,8 @@ contexts:
 - {{name: nokey, context: {{cluster: c, user: nokey}}}}
 - {{name: notb64, context: {{cluster: c, user: notb64}}}}
 - {{name: plain, context: {{cluster: plain, user: nobody}}}}
+- {{name: remote, context: {{cluster: remote, user: files}}}}
+- {{name: remoteinsecure, context: {{cluster: remoteinsecure, user: cert}}}}
 "#,
             b64(&ca),
             b64(b"not PEM"),
@@ -838,6 +842,26 @@ contexts:
     assert!(rc.tls.unwrap().client.is_some() && rc.token.is_none());
     let rc = from_kubeconfig(&path, "plain").unwrap();
     assert!(rc.tls.is_none() && rc.token.is_none());
+    // I80b: plain HTTP, or a server not verified, off loopback is warned of; on loopback not.
+    for ctx in ["", "insecure", "plain", "cert"] {
+        let w = from_kubeconfig(&path, ctx).unwrap().exposed();
+        assert!(w.is_empty(), "context {ctx:?}: {w:?}");
+    }
+    let w = from_kubeconfig(&path, "remote").unwrap().exposed();
+    assert_eq!(w.len(), 1, "{w:?}");
+    assert!(
+        w[0].starts_with(
+            "the cluster's API server http://10.0.0.1:8080 is plain HTTP off loopback"
+        ) && w[0].contains("its bearer token and the TLS Secrets' private keys"),
+        "{w:?}"
+    );
+    let w = from_kubeconfig(&path, "remoteinsecure").unwrap().exposed();
+    assert_eq!(w.len(), 1, "{w:?}");
+    assert!(
+        w[0].contains("is not verified (insecure-skip-tls-verify")
+            && !w[0].contains("bearer token"),
+        "{w:?}"
+    );
     for (ctx, want) in [
         ("plugin", "authenticates with a plugin"),
         ("badcert", r#"user "badcert": client-certificate"#),

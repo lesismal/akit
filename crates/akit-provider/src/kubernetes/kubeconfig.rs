@@ -127,6 +127,34 @@ pub(crate) struct RestConfig {
     pub(crate) r#where: String,
 }
 
+impl RestConfig {
+    /// What reaching the cluster this way exposes off loopback (I80b, the threat model's L4): an
+    /// `http://` server, or one whose certificate is not verified, carries the bearer token and
+    /// the TLS Secrets' private keys akit reads where a machine on the path can read them. Said
+    /// once the cluster is found; allowed, as in fit.
+    pub(crate) fn exposed(&self) -> Vec<String> {
+        if akit_config::hardening::loopback(&self.server) {
+            return Vec::new();
+        }
+        let what = if self.token.is_some() {
+            "its bearer token and the TLS Secrets' private keys akit reads"
+        } else {
+            "the TLS Secrets' private keys akit reads"
+        };
+        match &self.tls {
+            None => vec![format!(
+                "the cluster's API server {} is plain HTTP off loopback ({}): {what} cross the network in the clear",
+                self.server, self.r#where
+            )],
+            Some(t) if t.insecure => vec![format!(
+                "the cluster's API server {} is not verified (insecure-skip-tls-verify, {}): {what} go to whoever answers in its place",
+                self.server, self.r#where
+            )],
+            Some(_) => Vec::new(),
+        }
+    }
+}
+
 /// What the client's TLS is made of; made into configs for HTTP/2 and HTTP/1.1.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct TlsParts {
