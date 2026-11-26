@@ -123,9 +123,6 @@ pub struct Dispatcher {
     alt_svc: Option<String>,
     /// The listener's `max_body_bytes`, which bounds a body that streams to its handler.
     max_body_bytes: u64,
-    /// Its connections are not checked at accept, as HTTP/3's are not (akio filters no UDP
-    /// peers: A220): every request is checked against the access lists (I85).
-    unfiltered: bool,
 }
 
 impl Dispatcher {
@@ -140,21 +137,13 @@ impl Dispatcher {
             tls: false,
             alt_svc: None,
             max_body_bytes: akit_config::DEFAULT_MAX_BODY_BYTES,
-            unfiltered: false,
         }
-    }
-
-    /// The same, for a listener whose connections no accept filter checks (HTTP/3's, A220):
-    /// each request is checked against the access lists the TCP side's filter goes by (I85).
-    #[must_use]
-    pub fn unfiltered(mut self, unfiltered: bool) -> Dispatcher {
-        self.unfiltered = unfiltered;
-        self
     }
 
     /// Whether the access lists refuse a request from `peer` that the route at `route` (`None`:
     /// no route) takes on the listener at `listener` (I85): checked here when the listener
-    /// decides per request, or when its connection was not checked at accept. Only reads.
+    /// decides per request; otherwise its connection (TCP) or its peer (HTTP/3) was checked at
+    /// accept, by akio's filter. Only reads.
     fn refused(
         &self,
         g: &akit_runtime::Graph,
@@ -164,7 +153,7 @@ impl Dispatcher {
     ) -> bool {
         listener
             .and_then(|i| g.access(i))
-            .and_then(|a| a.request(route, self.unfiltered))
+            .and_then(|a| a.request(route))
             .is_some_and(|p| !p.allows(peer))
     }
 
@@ -1127,6 +1116,7 @@ fn build(cell: &GraphCell, opts: &Options) -> Result<Engine, (Error, bool)> {
         Listener,
         Option<akit_tls::ServerConfigs>,
         Option<Arc<akit_access::Policy>>,
+        Option<Arc<akit_access::Policy>>,
     );
     // Each TLS listener's configurations, its certificates served from the current graph per
     // handshake (I30), so that a reload keeping the listener changes them.
@@ -1137,13 +1127,15 @@ fn build(cell: &GraphCell, opts: &Options) -> Result<Engine, (Error, bool)> {
                 .enumerate()
                 .map(|(i, l)| {
                     let tls = akit_runtime::tls::server_configs(cell, g, i, false).transpose()?;
-                    let accept = g.access(i).and_then(|a| a.accept()).cloned();
-                    Ok((l.clone(), tls, accept))
+                    let access = g.access(i);
+                    let accept = access.and_then(|a| a.accept()).cloned();
+                    let datagrams = access.and_then(|a| a.datagrams()).cloned();
+                    Ok((l.clone(), tls, accept, datagrams))
                 })
                 .collect::<Result<_, akit_tls::Error>>()
         })
         .map_err(|e| (tls_error(&e), false))?;
-    load_sockmap(listeners.iter().map(|(l, _, _)| l));
+    load_sockmap(listeners.iter().map(|(l, _, _, _)| l));
     let mut probed = false;
     let mut cfg = EngineConfig::default();
     cfg.shutdown_timeout = opts.shutdown_timeout;
@@ -1161,7 +1153,7 @@ fn build(cell: &GraphCell, opts: &Options) -> Result<Engine, (Error, bool)> {
         g.engine_config().event_loops
     });
     let mut b = Engine::builder().config(cfg).pool(pool);
-    for (l, tls, accept) in &listeners {
+    for (l, tls, accept, datagrams) in &listeners {
         let fail = |e: Error| (e, false);
         let mut addr = resolve(&l.address).map_err(|error| {
             fail(Error::Address {
@@ -1194,24 +1186,24 @@ fn build(cell: &GraphCell, opts: &Options) -> Result<Engine, (Error, bool)> {
         if h3 {
             // Per-peer UDP listeners run on akio's epoll (kqueue) UDP loop whatever the TCP
             // backend: the backend is left to akio.
-            b = b.listen(EngineListener::udp(addr).serve(
+            b = b.listen(udp_listener(addr, datagrams.as_ref()).serve(
                 h3_acceptor(cell, l, tls.as_ref().and_then(|c| c.h3.as_ref())).map_err(fail)?,
             ));
         }
         if serves_l4_udp(l) {
-            b = b.listen(EngineListener::udp(addr).serve(l4_acceptor(cell, l)));
+            b = b.listen(udp_listener(addr, datagrams.as_ref()).serve(l4_acceptor(cell, l)));
         }
     }
     // The HTTP/3 of a listener a reload adds is bound on the engine's UDP threads
     // (`Engine::bind_udp`, I22): those of the last listener serving h3, or one of their own when
     // none does. (akio adds TCP listeners at run time, A1, not UDP ones.)
     // UDP services dial their upstreams there too (I51).
-    if !listeners.iter().any(|(l, _, _)| udp_side(l)) {
+    if !listeners.iter().any(|(l, _, _, _)| udp_side(l)) {
         b = b.udp_client_threads(1);
     }
     // The roles beside the gateway dial on this engine (I100): with no TCP listener it has no
     // I/O thread to dial on, so it gets one of its own; with one, dials go where they always did.
-    if !listeners.iter().any(|(l, _, _)| tcp_side(l)) {
+    if !listeners.iter().any(|(l, _, _, _)| tcp_side(l)) {
         b = b.client_threads(1);
     }
     b.build().map_err(|e| (Error::Engine(e), probed))
@@ -1275,6 +1267,17 @@ pub(crate) fn accept_filter(
 ) -> impl Fn(&SocketAddr) -> bool + Send + Sync + 'static {
     let p = Arc::clone(policy);
     move |peer: &SocketAddr| p.allows(peer.ip())
+}
+
+/// A UDP listener at `addr` (HTTP/3's, or a `udp` service's), refusing the peers `policy` refuses
+/// at akio's filter (ADR-178, akit's A220): their datagrams are dropped before a session, or a
+/// QUIC connection, is made for them.
+fn udp_listener(addr: SocketAddr, policy: Option<&Arc<akit_access::Policy>>) -> EngineListener {
+    let listener = EngineListener::udp(addr);
+    match policy {
+        Some(p) => listener.filter(accept_filter(p)),
+        None => listener,
+    }
 }
 
 /// The acceptor of a listener serving more than one of HTTP, `tcp` and `socks` (I53, I55; fit's
@@ -1379,10 +1382,9 @@ fn h3_acceptor(
     };
     let quic = akio_quic::server_config_from(tls)
         .map_err(|e| Error::Engine(io::Error::other(e.to_string())))?;
-    // HTTP/3 is always over TLS; no accept filter checks its peers (A220).
+    // HTTP/3 is always over TLS; its peers are checked at akio's filter (`udp_listener`).
     let d = Dispatcher::new(cell.clone(), l.name.clone())
         .tls(true)
-        .unfiltered(true)
         .max_body_bytes(l.max_body_bytes);
     let observer = d.observer();
     Ok(akio_h3::serve_with_observer(

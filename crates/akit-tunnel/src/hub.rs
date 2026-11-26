@@ -142,14 +142,12 @@ impl HubCore {
         }
     }
 
-    /// A link on `wire` from `peer`, unless the hub's bounds or its access policy refuse it
-    /// (`None`: the caller closes the wire).
+    /// A link on `wire` from `peer`, unless the hub's bounds refuse it (`None`: the caller closes
+    /// the wire). Its access policy refused the peer before, at akio's filter: a TCP listener's
+    /// at accept, a QUIC one's before a connection is made (ADR-178).
     fn accept_wire(self: &Arc<Self>, peer: SocketAddr, wire: Arc<dyn Wire>) -> Option<Arc<Link>> {
         let cfg = lock(&self.cfg).clone();
         let ip = peer.ip().to_canonical();
-        if lock(&self.access).as_ref().is_some_and(|p| !p.allows(ip)) {
-            return None;
-        }
         let coder = lock(&self.coder).clone();
         let l = {
             let mut st = lock(&self.st);
@@ -1062,10 +1060,16 @@ impl Hub {
                 cfg.quic.as_ref(),
             ));
         let server = crate::quic::server(&tls, cfg.quic.as_ref(), max, accept)?;
-        c.host
-            .engine
-            .bind_udp(addr, server)
-            .map_err(|e| e.to_string())
+        // The access policy at akio's filter from the first datagram (ADR-178): a refused peer's
+        // packets are dropped before a QUIC connection, or any TLS work, is made for it.
+        let bound = match lock(&c.access).clone() {
+            Some(p) => c
+                .host
+                .engine
+                .bind_udp_filtered(addr, server, move |peer: &SocketAddr| p.allows(peer.ip())),
+            None => c.host.engine.bind_udp(addr, server),
+        };
+        bound.map_err(|e| e.to_string())
     }
 
     fn move_listeners(
@@ -1153,18 +1157,15 @@ impl Role for Hub {
         match crate::proxy::policy(cfg.access.as_ref(), config.access.as_ref()) {
             Ok(p) => {
                 for (_, b) in lock(&c.listeners).iter() {
-                    // A QUIC listener's links are checked as they are accepted.
-                    let Bound::Tcp(id) = b else { continue };
-                    let _ = match &p {
-                        Some(p) => {
-                            let p = Arc::clone(p);
-                            c.host
-                                .engine
-                                .set_listener_filter(*id, move |peer: &SocketAddr| {
-                                    p.allows(peer.ip())
-                                })
-                        }
-                        None => c.host.engine.clear_listener_filter(*id),
+                    // Peers accepted before are kept; new ones go by the new policy.
+                    let filter = p
+                        .clone()
+                        .map(|p| move |peer: &SocketAddr| -> bool { p.allows(peer.ip()) });
+                    let _ = match (b, filter) {
+                        (Bound::Tcp(id), Some(f)) => c.host.engine.set_listener_filter(*id, f),
+                        (Bound::Tcp(id), None) => c.host.engine.clear_listener_filter(*id),
+                        (Bound::Udp(u), Some(f)) => u.set_filter(f),
+                        (Bound::Udp(u), None) => u.clear_filter(),
                     };
                 }
                 *lock(&c.access) = p;

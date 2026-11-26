@@ -12,9 +12,10 @@
 //! list, then the listener's, then the global one ([`ListenerAccess::l4_check`]); a SOCKS client at
 //! its request against the listener's ([`ListenerAccess::socks`]).
 //!
-//! akio filters no UDP peers (akit's request A220): a listener's HTTP/3 requests are checked one
-//! by one against the policy its TCP side asks at accept, and a `udp` listener's sessions as they
-//! open, until it does.
+//! A listener's UDP side refuses at akio's filter too (akio's ADR-178, akit's A220): the datagrams
+//! of a peer it refuses are dropped before a session or a QUIC connection is made
+//! ([`ListenerAccess::datagrams`]), HTTP/3's by the listener's policy when no route has a list of
+//! its own (its requests are checked one by one otherwise), a `udp` service's by that service's.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -31,6 +32,8 @@ pub struct ListenerAccess {
     /// What its TCP side asks at accept: `policy`, when the address is known then and no route
     /// of the listener has a list of its own.
     accept: Option<Arc<Policy>>,
+    /// What its UDP side (HTTP/3, or its `udp` service's sessions) asks of each new peer.
+    datagrams: Option<Arc<Policy>>,
     /// Every HTTP request is checked against [`routes`](Self::routes) (by its route), or against
     /// `policy` when no route takes it.
     requests: bool,
@@ -54,22 +57,27 @@ impl ListenerAccess {
         self.accept.as_ref()
     }
 
-    /// The policy a request the route at `route` takes (`None`: no route takes it) is checked
-    /// against: `None` when there is none to check, the connection having been checked at
-    /// accept. `unfiltered`: its connection was not, as an HTTP/3 one is not (A220). Runs per
-    /// request: it only reads.
+    /// The policy the listener's UDP side refuses new peers by (akio's `Listener::filter` on a
+    /// UDP listener, ADR-178): a refused peer's datagrams are dropped before anything is made
+    /// for it, an HTTP/3 one's before a QUIC connection. `None`: every peer is served, and
+    /// decided later if at all (HTTP/3's requests one by one when a route has a list of its own).
     #[must_use]
-    pub fn request(&self, route: Option<usize>, unfiltered: bool) -> Option<&Policy> {
-        if self.requests {
-            return match route {
-                Some(i) => self.routes.get(i).and_then(Option::as_deref),
-                None => self.policy.as_deref(),
-            };
+    pub fn datagrams(&self) -> Option<&Arc<Policy>> {
+        self.datagrams.as_ref()
+    }
+
+    /// The policy a request the route at `route` takes (`None`: no route takes it) is checked
+    /// against: `None` when there is none to check, the connection (or the HTTP/3 peer) having
+    /// been checked at accept. Runs per request: it only reads.
+    #[must_use]
+    pub fn request(&self, route: Option<usize>) -> Option<&Policy> {
+        if !self.requests {
+            return None;
         }
-        if unfiltered {
-            return self.accept.as_deref();
+        match route {
+            Some(i) => self.routes.get(i).and_then(Option::as_deref),
+            None => self.policy.as_deref(),
         }
-        None
     }
 
     /// The listener's own list, then the global one: what decides for it where no route or
@@ -181,15 +189,26 @@ pub(crate) fn listener(
         .iter()
         .map(|s| (s.name.to_owned(), Policy::chain([s.list, own, global])))
         .collect();
-    // akio's UDP listeners take no accept filter (A220): a `udp` listener's entry checks each
-    // session as it opens, by the policy fit's accept would.
-    let udp = l.protocols.contains(&Protocol::Udp);
+    // The UDP side knows its peer's address at accept (no PROXY header comes over UDP): HTTP/3
+    // refuses there by the listener's policy unless a route has its own, a `udp` service's
+    // sessions by the policy of the service that takes them, the one without server names.
+    let datagrams = if l.protocols.contains(&Protocol::Udp) {
+        services
+            .iter()
+            .zip(&policies)
+            .find(|(s, _)| !s.names)
+            .and_then(|(_, (_, p))| p.clone())
+    } else if l.protocols.contains(&Protocol::H3) && !routed {
+        policy.clone()
+    } else {
+        None
+    };
     let proxy = l.proxy_protocol.is_some();
     if !proxy && !routed && !serviced {
         return ListenerAccess {
             accept: policy.clone(),
+            datagrams,
             policy,
-            l4_check: udp,
             services: policies,
             ..ListenerAccess::default()
         };
@@ -200,8 +219,8 @@ pub(crate) fn listener(
             // at accept.
             return ListenerAccess {
                 accept: policies.first().and_then(|(_, p)| p.clone()),
+                datagrams,
                 policy,
-                l4_check: udp,
                 services: policies,
                 ..ListenerAccess::default()
             };
@@ -225,6 +244,7 @@ pub(crate) fn listener(
         socks: policy.clone(),
         policy,
         accept: None,
+        datagrams,
         requests,
         routes,
         l4_check: true,

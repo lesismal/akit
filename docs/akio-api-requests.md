@@ -96,7 +96,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | A200 | A request target in absolute form taken as RFC 9112 asks: its path as the request's path, its authority as its host | on akio's main and pinned (since `077a6710`, akio's ADR-177) | 15, 19 | I77 |
 | A214 | A budget of the bytes queued for every connection together, which pauses every connection's reads past it (fit's `limits.max_pending_bytes`) | on akio's main and pinned (since `6bcd8ad6`, akio's ADR-172) | 8, 11 | I79, I79b |
 | A215 | A connection limit that counts the connections accepted, not those the engine dials (fit's `limits.max_conns`) | on akio's main and pinned (since `6bcd8ad6`, akio's ADR-173) | 11 | I79, I79b |
-| A220 | An accept filter on UDP and datagram listeners: a refused peer's datagrams dropped before a connection (a `udp` session, a QUIC connection) is made for it | requested (I85) | 1, 11 | I85, I86 |
+| A220 | An accept filter on UDP and datagram listeners: a refused peer's datagrams dropped before a connection (a `udp` session, a QUIC connection) is made for it | on akio's main and pinned (since `9e21ada7`, akio's ADR-178) | 1, 11 | I85, I86 |
 | A225 | An external security review of akio-crypto, akio-tls (with akio-x509), akio-http's HTTP/1 and HTTP/2 parsers and akio-wasm (no API) | requested (I80b): the threat model's L15 | 15 | I80, I80b |
 | A230 | Argon2id (RFC 9106), with BLAKE2b, in akio-crypto: the key derivation of fit's `fitstore` format | requested (I93): I93 waits for it | 15, 20 | I93 |
 | A231 | XChaCha20-Poly1305 (HChaCha20 and a 24-byte nonce) in akio-crypto: the AEAD of fit's `fitstore` format | requested (I93): I93 waits for it | 15, 20 | I93 |
@@ -105,6 +105,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | A234 | A connection's own bound of the bytes queued for it, past the engine's `max_queued_bytes` or below it | requested (I101): a link holds what feeds it past 8 MiB meanwhile | 8, 11 | I101, I104 |
 | A235 | A client TLS configuration that checks the server's certificate by its SHA-256 (a pin) in the handshake, in place of the chain and name | requested (I102): checked once the handshake is done, before a byte is sent, meanwhile | 1, 15 | I102, I104 |
 | A236 | A WebSocket's reads held and resumed, its drain heard, and its peer's address, on `WsSender` (both akio-ws's client and akio-http's upgrade) | requested (I102c): the tunnel's WebSocket links and the LLM mesh wait for it | 8, 9 | I102c, I104 |
+| A237 | `Engine::wait` (and `Pool::is_current`) safe in a thread-local destructor | requested (2026-11-27): akit's client engines wait on a thread of their own meanwhile | 1, 15 | — |
 
 ## A1 TCP listeners on a running engine
 
@@ -2089,6 +2090,8 @@ listeners, are closed right after `accept` and counted as `rejected`, whatever t
 
 ## A220 An accept filter on UDP and datagram listeners
 
+**Done.** On akio's main (`9e21ada7`, akio's ADR-178) and pinned: `Listener::filter` on a UDP listener, `Engine::bind_udp_filtered`, `UdpBinding::set_filter`, and akio-quic's server asking it again before an Initial packet makes a connection. akit-listener gives a listener's UDP socket (HTTP/3's, or a `udp` service's) the policy its peers go by, set again by every reload on the socket it keeps; the HTTP/3 dispatcher's check (`Dispatcher::unfiltered`) and the `udp` sessions' check as they open are gone, and the tunnel hub's QUIC listeners refuse at the filter too.
+
 **Status.** Requested by I85 (2026-11-26). akit refuses meanwhile where it can without it, a
 stopgap recorded in [progress](progress.md): an HTTP/3 request is answered 403 by the listener's
 dispatcher (I85), and a `udp` session is closed as it opens (I86).
@@ -2337,3 +2340,30 @@ that passed a watermark drains.
 **How akit would use it.** A WebSocket link's `Wire` (`akit_tunnel::link::Wire`) maps `hold_reads`,
 `on_drain`, `queued` and `peer` onto them, as `ConnWire` does onto a TCP connection's; the LLM
 mesh's sessions hold a link's reads while a stream's reader is slow past its window.
+
+## A237 `Engine::wait` safe in a thread-local destructor
+
+**Status.** Requested on 2026-11-27, when akit moved to akio `9e21ada7`. Meanwhile akit's client
+engines (OTLP's, the providers', the shared ACME storage's) are waited for on a thread spawned for
+it (`akit_observe::stop_client_engine`), a stopgap recorded in [progress](progress.md).
+
+**Problem.** Since `9e21ada7`, `Engine::wait` first asks `Pool::is_current` whether it runs on one
+of the engine's pool threads, which reads akio-pool's thread-local `CURRENT` with `with`. A thread's
+thread-locals are destroyed in an unspecified order when it exits; an engine dropped by another
+thread-local's destructor (akit's: a thread's cached graph, whose last reference drops a client
+engine's owner) finds `CURRENT` destroyed already, `with` panics, and a panic in a thread-local
+destructor aborts the process. akit's `acme_shared` test aborted so on macOS
+(`a_challenge_nobody_has_is_404`); the same can happen to an I/O thread that exits holding the
+last reference to a graph.
+
+**Evidence.** At akio `9e21ada7`: `crates/akio/src/lib.rs`, `Engine::wait` calls
+`self.pool.is_current()`; `crates/akio-pool/src/lib.rs`, `Pool::is_current` is
+`CURRENT.with(...)`, `CURRENT` a `RefCell<Option<Weak<Pool>>>` (it has a destructor, so it is
+destroyed with the thread). `timer::on_loop` reads a `Cell<u64>`, which has none, and is safe.
+
+**Suggested API.** No new API: `Pool::is_current` (and `on_pool_thread`, and any thread-local
+read on the way to waiting or joining) with `try_with`, a destroyed thread-local taken as "not a
+pool thread".
+
+**How akit would use it.** `stop_client_engine` goes back to `shutdown` and `wait` on the calling
+thread.

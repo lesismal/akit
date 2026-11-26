@@ -1,8 +1,8 @@
 //! Access lists on layer 4 services and the forward proxy (I86; fit's `listener/access_test.go`
 //! `TestAccessService`): a `tcp` listener of one service decides at accept by the service's
 //! policy; one that tells protocols apart, or whose services pick by server name, decides once it
-//! knows the service; a `udp` session is refused as it opens (akio filters no datagrams: A220);
-//! a listener's `socks` checks its clients at their request when the listener decides later. On
+//! knows the service; a `udp` listener's refused clients' datagrams are dropped at akio's filter
+//! (ADR-178, A220); a listener's `socks` checks its clients at their request when the listener decides later. On
 //! the backend `AKIO_TEST_BACKEND` names (epoll by default, `uring`).
 #![allow(
     clippy::unwrap_used,
@@ -40,15 +40,7 @@ fn options() -> akit_listener::Options {
 /// `json` served, the slot filled so that services dial: the engine, its listeners and the
 /// address of the first.
 fn serve(json: &str) -> (Arc<akio::Engine>, Listeners, SocketAddr) {
-    let slot = EngineSlot::new();
-    let config = akit_config::from_json(json, None).unwrap();
-    let registry: Registry<HandlerParams> = Registry::new(&[akit_handler::MODULES]).unwrap();
-    let cell = GraphCell::new(compile(&config, &registry, &Env::new(slot.clone())).unwrap());
-    let e = Arc::new(akit_listener::engine(&cell, &options()).unwrap());
-    e.start().unwrap();
-    assert!(slot.set(Arc::clone(&e)));
-    let l = Listeners::new(Arc::clone(&e), cell, &options());
-    let addr = l.served()[0].address;
+    let (e, l, addr, _) = serve_slot(json);
     (e, l, addr)
 }
 
@@ -256,8 +248,9 @@ fn client_hello(name: &str) -> Vec<u8> {
     rec
 }
 
-/// A `udp` session from a refused client is closed as it opens (A220): its datagrams get no
-/// answer, a served client's do.
+/// A `udp` listener refuses a client's datagrams at akio's filter (ADR-178, A220), by the policy
+/// of the service that takes its sessions: they are dropped before a session is made, and get no
+/// answer; a served client's do. A reload swaps the filter of the socket it keeps.
 #[test]
 fn udp_sessions() {
     let up = UdpSocket::bind("127.0.0.1:0").unwrap();
@@ -268,32 +261,98 @@ fn udp_sessions() {
             let _ = up.send_to(&buf[..n], from);
         }
     });
-    for (access, want) in [
-        (r#"{"deny": ["127.0.0.1"]}"#, false),
-        (r#"{"allow": ["127.0.0.1"]}"#, true),
-    ] {
-        let json = format!(
+    let json = |access: &str, service: &str| {
+        format!(
             r#"{{"access": {access},
   "listeners": [{{"name": "dns", "address": "127.0.0.1:0", "protocols": ["udp"]}}],
   "upstreams": [{{"name": "dns", "addresses": ["{up_addr}"]}}],
-  "services": [{{"name": "dns", "listeners": ["dns"], "upstream": "dns"}}]}}"#
-        );
-        let (e, l, addr) = serve(&json);
-        let c = UdpSocket::bind("127.0.0.1:0").unwrap();
-        c.set_read_timeout(Some(Duration::from_millis(300)))
-            .unwrap();
-        let mut got = false;
+  "services": [{{"name": "dns", "listeners": ["dns"], "upstream": "dns"{service}}}]}}"#
+        )
+    };
+    let c = UdpSocket::bind("127.0.0.1:0").unwrap();
+    c.set_read_timeout(Some(Duration::from_millis(300)))
+        .unwrap();
+    let echoes = |addr: SocketAddr| {
         for _ in 0..10 {
             c.send_to(b"ping", addr).unwrap();
             let mut buf = [0u8; 16];
             if let Ok((n, _)) = c.recv_from(&mut buf) {
-                got = &buf[..n] == b"ping";
-                break;
+                return &buf[..n] == b"ping";
             }
         }
-        assert_eq!(got, want, "{access}");
+        false
+    };
+    let deny = r#"{"deny": ["127.0.0.1"]}"#;
+    let allow = r#"{"allow": ["127.0.0.1"]}"#;
+    for (access, service, want) in [
+        (deny, "", false),
+        (allow, "", true),
+        // The service's own list decides before the global one.
+        (deny, r#", "access": {"allow": ["127.0.0.1"]}"#, true),
+        (allow, r#", "access": {"deny": ["127.0.0.1"]}"#, false),
+    ] {
+        let (e, l, addr) = serve(&json(access, service));
+        assert_eq!(echoes(addr), want, "{access} {service}");
+        let m = e.telemetry().metrics();
+        if want {
+            assert_eq!(m.total.filtered, 0, "{access} {service}");
+        } else {
+            // Every datagram dropped at the filter: no session was made for the client.
+            assert!(m.total.filtered > 0, "{access} {service}: nothing filtered");
+            assert_eq!(
+                m.total.accepted, 0,
+                "{access} {service}: a session was made"
+            );
+        }
         stop(&e, l);
     }
+
+    // A reload keeping the listener swaps its socket's filter.
+    let (e, mut l, addr, slot) = serve_slot(&json("{}", ""));
+    assert!(echoes(addr));
+    let r = l.reload(graph(&json(deny, ""), &slot)).unwrap();
+    assert_eq!(r.kept, 1, "the reload bound the listener anew");
+    // A new client: the one served above keeps its session, as an accepted connection is kept.
+    let c2 = UdpSocket::bind("127.0.0.1:0").unwrap();
+    c2.set_read_timeout(Some(Duration::from_millis(300)))
+        .unwrap();
+    c2.send_to(b"ping", addr).unwrap();
+    let mut buf = [0u8; 16];
+    assert!(
+        c2.recv_from(&mut buf).is_err(),
+        "served after a reload denied it"
+    );
+    let r = l.reload(graph(&json(allow, ""), &slot)).unwrap();
+    assert_eq!(r.kept, 1);
+    let mut got = false;
+    for _ in 0..10 {
+        c2.send_to(b"ping", addr).unwrap();
+        if let Ok((n, _)) = c2.recv_from(&mut buf) {
+            got = &buf[..n] == b"ping";
+            break;
+        }
+    }
+    assert!(got, "refused after a reload allowed it");
+    stop(&e, l);
+}
+
+/// `json` compiled with `slot` as the upstreams' engine.
+fn graph(json: &str, slot: &EngineSlot) -> akit_runtime::Graph {
+    let config = akit_config::from_json(json, None).unwrap();
+    let registry: Registry<HandlerParams> = Registry::new(&[akit_handler::MODULES]).unwrap();
+    compile(&config, &registry, &Env::new(slot.clone())).unwrap()
+}
+
+/// [`serve`], with the slot, for reloads.
+fn serve_slot(json: &str) -> (Arc<akio::Engine>, Listeners, SocketAddr, EngineSlot) {
+    let slot = EngineSlot::new();
+    let cell = GraphCell::new(graph(json, &slot));
+    let e = Arc::new(akit_listener::engine(&cell, &options()).unwrap());
+    e.start().unwrap();
+    assert!(slot.set(Arc::clone(&e)));
+    let l = Listeners::new(Arc::clone(&e), cell, &options());
+    let addr = l.served()[0].address;
+    (e, l, addr, slot)
 }
 
 /// A listener's `socks` beside HTTP, whose route has a list of its own: the listener decides

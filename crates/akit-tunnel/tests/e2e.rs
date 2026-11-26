@@ -499,3 +499,55 @@ fn quic_links_carry_tunnels_and_check_the_pin() {
     e.wait();
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// A QUIC listener refuses peers by the hub's access policy at akio's filter (ADR-178): a refused
+/// peer's packets are dropped before a connection is made, and no tunnel opens; a config that
+/// allows it swaps the filter on the same socket, and the peers link.
+#[test]
+fn quic_links_refused_at_the_filter() {
+    let dir = tmp("quic-access");
+    let e = quic_engine();
+    let (hub, svc) = (free_udp_port(), echo());
+    let doc = |access: &str| {
+        format!(
+            r#"{{"tunnel": {{"hub": {{"name": "hub", "password": "pw", "access": {access},
+              "listeners": [{{"protocol": "quic", "address": "127.0.0.1:{hub}"}}]}}}}}}"#
+        )
+    };
+    let config = akit_config::from_json(&doc(r#"{"deny": ["127.0.0.1"]}"#), None).unwrap();
+    let mut h = Manager::new(&[akit_tunnel::HUB], Arc::clone(&e), None);
+    h.keep_beside(dir.join("akit.json").to_str().unwrap());
+    let errs = h.apply(&config);
+    assert!(errs.is_empty(), "{errs:?}");
+    let fwd = free_port();
+    let mut p = peers(
+        &e,
+        &format!("quic://127.0.0.1:{hub}"),
+        r#", "quic_insecure": true"#,
+        svc,
+        fwd,
+    );
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while e.telemetry().metrics().total.filtered == 0 {
+        assert!(Instant::now() < deadline, "no packet was filtered");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let mut s = TcpStream::connect(("127.0.0.1", fwd)).unwrap();
+    s.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
+    let _ = s.write_all(b"x");
+    let mut b = [0u8; 1];
+    assert!(
+        !matches!(s.read(&mut b), Ok(1)),
+        "a tunnel opened from a refused peer"
+    );
+    let config = akit_config::from_json(&doc(r#"{"allow": ["127.0.0.1"]}"#), None).unwrap();
+    let errs = h.apply(&config);
+    assert!(errs.is_empty(), "{errs:?}");
+    let mut s = tunnel(fwd);
+    round_trip(&mut s, 64 << 10);
+    p.stop(Duration::ZERO);
+    h.stop(Duration::ZERO);
+    e.shutdown();
+    e.wait();
+    let _ = std::fs::remove_dir_all(&dir);
+}

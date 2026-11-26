@@ -181,8 +181,7 @@ impl Otlp {
 
 impl Drop for Otlp {
     fn drop(&mut self) {
-        self.engine.shutdown();
-        self.engine.wait();
+        crate::stop_client_engine(&self.engine);
     }
 }
 

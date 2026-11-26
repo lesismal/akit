@@ -683,7 +683,8 @@ limits.max_pending_bytes
 
 # I85: access lists (fit's I195), the global one, a listener's and a route's: decided at accept
 # by akio's filter (A3) where the listener's own and the global list are all there is, per request
-# (403) where a route has its own or a PROXY header names the client; HTTP/3 per request (A220).
+# (403) where a route has its own or a PROXY header names the client; HTTP/3's peers at akio's
+# filter on its UDP socket (A220), its requests one by one where a route has its own.
 access
 access.allow
 access.deny
@@ -702,7 +703,8 @@ routes[].access.deny_files
 
 # I86: a service's access: at accept for a tcp listener of one service without server names, on a
 # port of its own and without PROXY headers; otherwise once akit-l4's entry knows the service. A
-# udp session is refused as it opens (A220); a listener's socks checks its clients at their request.
+# udp listener's datagrams at akio's filter (A220); a listener's socks checks its clients at their
+# request.
 services[].access
 services[].access.allow
 services[].access.deny

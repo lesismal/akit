@@ -57,6 +57,28 @@ pub use otlp::{MetricWriter, MetricsExporter, Otlp, OtlpWriter};
 pub use trace::{SpanEnd, Trace, Tracer};
 pub use zone::{Zone, ZoneError};
 
+/// Shuts down a client engine of akit's own (OTLP's, a provider's, the shared ACME storage's) and
+/// waits for its threads to exit, as its owner is dropped. Such an owner goes with a graph, whose
+/// last reference may be a thread's cached one, dropped in that thread's thread-local destructors:
+/// there akio's `Engine::wait` cannot read its own thread-locals (it panics, which aborts), so the
+/// wait runs on a thread spawned for it (the stopgap for akio API request A237). On an I/O thread
+/// it is not waited for at all, as `Engine::wait` would not (rule 1): the engine's threads exit on
+/// their own once it is shut down.
+pub fn stop_client_engine(engine: &std::sync::Arc<akio::Engine>) {
+    engine.shutdown();
+    if akio::timer::on_loop() {
+        return;
+    }
+    let e = std::sync::Arc::clone(engine);
+    // Without a thread, the engine's threads exit on their own, not waited for.
+    if let Ok(t) = std::thread::Builder::new()
+        .name("akit-engine-stop".to_owned())
+        .spawn(move || e.wait())
+    {
+        let _ = t.join();
+    }
+}
+
 /// Opens where an access log's `output` says lines go: standard output for `"stdout"` (or
 /// empty), standard error for `"stderr"`, else the file of that path, created if need be and
 /// appended to. Control plane only: it opens a file.

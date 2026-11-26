@@ -239,7 +239,7 @@ fit 在边缘代理之外的路线，按 akit 接手的顺序排列。每条路�
 | 路线 | 交付什么（fit 的文档） | akio 能力 | 状态 |
 | --- | --- | --- | --- |
 | 日志 | 按大小和时间切割的日志文件、保留策略、时区（[fit](https://github.com/lesismal/fit/blob/main/docs/configuration.zh-CN.md)） | — | 计划中 |
-| 访问控制 | 允许与拒绝名单，全局的以及每个 listener、路由、service 和 Admin API 的（各角色的随其路线实现） | accept 时过滤（A3）；UDP 的已提出（A220） | 已完成（I85–I87） |
+| 访问控制 | 允许与拒绝名单，全局的以及每个 listener、路由、service 和 Admin API 的（各角色的随其路线实现） | accept 时过滤（A3）；UDP 的也是（A220） | 已完成（I85–I87） |
 | 控制台与加密的 store | `admin.store`、`admin.console`、登录、`akit store export/import`（[fit](https://github.com/lesismal/fit/blob/main/docs/console.zh-CN.md)） | `akio-crypto` | 计划中 |
 | Tunnel 与 LLM | 经 hub 访问 NAT 后的服务；在多台机器间共享 AI 模型（[tunnel](https://github.com/lesismal/fit/blob/main/docs/tunnel.zh-CN.md)、[llm](https://github.com/lesismal/fit/blob/main/docs/llm.zh-CN.md)） | `akio-ws`、`akio-quic`、HTTP 客户端 | 计划中 |
 | WebRTC | TURN 服务器；WHIP 和 WHEP，作为 SFU 和作为代理（[fit](https://github.com/lesismal/fit/blob/main/docs/webrtc.zh-CN.md)） | `akio-turn`、`akio-webrtc`、`akio-ice` | 计划中 |

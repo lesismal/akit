@@ -54,8 +54,7 @@ impl ApiEngine {
 
 impl Drop for ApiEngine {
     fn drop(&mut self) {
-        self.engine.shutdown();
-        self.engine.wait();
+        akit_observe::stop_client_engine(&self.engine);
     }
 }
 

@@ -95,7 +95,7 @@
 | A200 | 按 RFC 9112 的要求处理 absolute-form 请求目标：以其路径作为请求的路径，以其 authority 作为主机 | 已进入 akio 的 main 并锁定（自 `077a6710` 起，akio 的 ADR-177） | 15、19 | I77 |
 | A214 | 所有连接合计排队字节的预算，超出时暂停每个连接的读取（fit 的 `limits.max_pending_bytes`） | 已进入 akio 的 main 并锁定（自 `6bcd8ad6` 起，akio 的 ADR-172） | 8、11 | I79、I79b |
 | A215 | 只计入被接受的连接、不计入引擎拨出的连接的连接上限（fit 的 `limits.max_conns`） | 已进入 akio 的 main 并锁定（自 `6bcd8ad6` 起，akio 的 ADR-173） | 11 | I79、I79b |
-| A220 | UDP 和数据报监听器上的 accept 过滤器：在为被拒绝的对端建立连接（`udp` 会话、QUIC 连接）之前丢弃它的数据报 | 已提出（I85） | 1、11 | I85、I86 |
+| A220 | UDP 和数据报监听器上的 accept 过滤器：在为被拒绝的对端建立连接（`udp` 会话、QUIC 连接）之前丢弃它的数据报 | 已进入 akio 的 main 并锁定（自 `9e21ada7` 起，akio 的 ADR-178） | 1、11 | I85、I86 |
 | A225 | 对 akio-crypto、akio-tls（连同 akio-x509）、akio-http 的 HTTP/1 和 HTTP/2 解析器以及 akio-wasm 的外部安全审查（不是 API） | 已提出（I80b）：威胁模型的 L15 | 15 | I80、I80b |
 | A230 | akio-crypto 中的 Argon2id（RFC 9106）及 BLAKE2b：fit 的 `fitstore` 格式的密钥派生 | 已提出（I93）：I93 等待它 | 15、20 | I93 |
 | A231 | akio-crypto 中的 XChaCha20-Poly1305（HChaCha20 和 24 字节 nonce）：fit 的 `fitstore` 格式的 AEAD | 已提出（I93）：I93 等待它 | 15、20 | I93 |
@@ -104,6 +104,7 @@
 | A234 | 单个连接自己的发送队列上限，可高于或低于引擎的 `max_queued_bytes` | 已提出（I101）：在此之前链路在超过 8 MiB 时压住喂给它的一方 | 8, 11 | I101, I104 |
 | A235 | 在握手中按 SHA-256（pin）检查服务器证书、代替证书链和名称检查的客户端 TLS 配置 | 已提出（I102）：在此之前于握手完成后、发送任何字节前检查 | 1, 15 | I102, I104 |
 | A236 | 在 `WsSender` 上压住和恢复 WebSocket 的读取、得知其发送队列排空、取得对端地址（akio-ws 的客户端和 akio-http 的升级都要） | 已提出（I102c）：隧道的 WebSocket 链路和 LLM mesh 在等待它 | 8, 9 | I102c, I104 |
+| A237 | 在线程局部变量的析构中调用 `Engine::wait`（以及 `Pool::is_current`）也安全 | 已提出（2026-11-27）：在此之前 akit 的客户端引擎在专门的线程上等待 | 1, 15 | — |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -1694,6 +1695,8 @@ ADR-173），基于 A30 的 `Telemetry::open_accepted` 计数器。akit 的 I79b
 
 ## A220 UDP 和数据报监听器上的 accept 过滤器
 
+**完成。** 已进入 akio 的 main（`9e21ada7`，akio 的 ADR-178）并锁定：UDP 监听器上的 `Listener::filter`、`Engine::bind_udp_filtered`、`UdpBinding::set_filter`，以及 akio-quic 的服务器在 Initial 包建立连接之前再次询问它。akit-listener 给监听器的 UDP 套接字（HTTP/3 的，或 `udp` 服务的）设置其对端所遵循的策略，每次重载在保留的套接字上重新设置；HTTP/3 分发器的检查（`Dispatcher::unfiltered`）和 `udp` 会话打开时的检查已删除，隧道 hub 的 QUIC 监听器也在过滤器处拒绝。
+
 **状态。** 由 I85 提出（2026-11-26）。在此之前，akit 在不需要它的地方先行拒绝，这一权宜实现记录在[开发进度](progress.zh-CN.md)中：
 HTTP/3 请求由监听器的分发器回答 403（I85），`udp` 会话在打开时被关闭（I86）。
 
@@ -1876,3 +1879,23 @@ Go 的 `VerifyPeerCertificate` 配合 `InsecureSkipVerify`）：不匹配的证�
 
 **akit 如何使用。** WebSocket 链路的 `Wire`（`akit_tunnel::link::Wire`）把 `hold_reads`、`on_drain`、`queued` 和 `peer` 映射到
 它们上，如 `ConnWire` 映射到 TCP 连接上那样；LLM mesh 的会话在某条流的读者慢过其窗口时压住链路的读取。
+
+## A237 在线程局部变量的析构中调用 `Engine::wait` 也安全
+
+**状态。** 2026-11-27 akit 移到 akio `9e21ada7` 时提出。在此之前，akit 的客户端引擎（OTLP 的、provider 的、共享 ACME 存储的）在为此
+启动的线程上等待（`akit_observe::stop_client_engine`），这一权宜实现记录在[开发进度](progress.zh-CN.md)中。
+
+**问题。** 自 `9e21ada7` 起，`Engine::wait` 先用 `Pool::is_current` 询问自己是否运行在引擎的池线程上，它用 `with` 读取 akio-pool 的
+线程局部变量 `CURRENT`。线程退出时，其线程局部变量按不确定的顺序销毁；由另一个线程局部变量的析构函数丢弃的引擎（akit 的情况：
+线程缓存的运行时图，其最后一个引用丢弃客户端引擎的所有者）会发现 `CURRENT` 已经销毁，`with` panic，而线程局部析构中的 panic 会使
+进程中止。akit 的 `acme_shared` 测试在 macOS 上因此中止（`a_challenge_nobody_has_is_404`）；持有运行时图最后一个引用而退出的 I/O 线程
+也可能如此。
+
+**证据。** 在 akio `9e21ada7` 中：`crates/akio/src/lib.rs` 的 `Engine::wait` 调用 `self.pool.is_current()`；
+`crates/akio-pool/src/lib.rs` 的 `Pool::is_current` 是 `CURRENT.with(...)`，`CURRENT` 是 `RefCell<Option<Weak<Pool>>>`（它有析构
+函数，所以随线程销毁）。`timer::on_loop` 读取的是没有析构函数的 `Cell<u64>`，是安全的。
+
+**建议的 API。** 不需要新 API：`Pool::is_current`（以及 `on_pool_thread`，和等待或 join 路上读取的任何线程局部变量）改用 `try_with`，
+已销毁的线程局部变量视为“不是池线程”。
+
+**akit 如何使用。** `stop_client_engine` 恢复为在调用线程上 `shutdown` 和 `wait`。

@@ -34,7 +34,7 @@ use std::io;
 use std::net::SocketAddr;
 use std::time::Duration;
 
-use akio::{Engine, ListenerId, UdpBinding};
+use akio::{Acceptor, Engine, ListenerId, UdpBinding};
 use akit_config::{Listener, Protocol};
 use akit_runtime::{Graph, GraphCell};
 
@@ -264,6 +264,20 @@ fn retry<T>(f: impl Fn() -> Result<T, Error>) -> Result<T, Error> {
     }
 }
 
+/// A UDP socket bound on `engine` at `addr` serving `acceptor`, its new peers refused by `policy`
+/// at akio's filter from the first datagram (ADR-178, akit's A220).
+fn bind_udp<A: Acceptor>(
+    engine: &Engine,
+    addr: SocketAddr,
+    acceptor: A,
+    policy: Option<&std::sync::Arc<akit_access::Policy>>,
+) -> io::Result<UdpBinding> {
+    match policy {
+        Some(p) => engine.bind_udp_filtered(addr, acceptor, crate::accept_filter(p)),
+        None => engine.bind_udp(addr, acceptor),
+    }
+}
+
 /// How long [`retry`] waits for an address: 100 tries, 10 ms apart.
 const ROOM_TRIES: u32 = 100;
 const ROOM_WAIT: Duration = Duration::from_millis(10);
@@ -396,7 +410,9 @@ impl Listeners {
                 addr.set_port(local.port());
             }
             if h3 {
-                match self.bind_h3(tls.as_ref().and_then(|c| c.h3.as_ref()), l, addr, room) {
+                let datagrams = graph.access(index).and_then(|a| a.datagrams());
+                let h3_tls = tls.as_ref().and_then(|c| c.h3.as_ref());
+                match self.bind_h3(h3_tls, l, addr, room, datagrams) {
                     Ok(b) => entry.udp = Some(Udp::Bound(b)),
                     Err(e) => {
                         entry.stop(&self.engine);
@@ -474,6 +490,7 @@ impl Listeners {
         l: &Listener,
         addr: SocketAddr,
         room: &mut [(usize, bool)],
+        datagrams: Option<&std::sync::Arc<akit_access::Policy>>,
     ) -> Result<UdpBinding, Error> {
         let bind = || {
             let failed = |error| Error::Address {
@@ -483,13 +500,11 @@ impl Listeners {
             };
             if !serves_h3(l) {
                 // A `udp` listener's (I51).
-                return self
-                    .engine
-                    .bind_udp(addr, l4_acceptor(&self.cell, l))
-                    .map_err(failed);
+                let a = l4_acceptor(&self.cell, l);
+                return bind_udp(&self.engine, addr, a, datagrams).map_err(failed);
             }
             let a = h3_acceptor(&self.cell, l, h3_tls)?;
-            self.engine.bind_udp(addr, a).map_err(failed)
+            bind_udp(&self.engine, addr, a, datagrams).map_err(failed)
         };
         match bind() {
             Err(Error::Address { error: e, .. })
@@ -504,21 +519,31 @@ impl Listeners {
         }
     }
 
-    /// Sets each listener's accept filter to the current graph's access lists (I85, akio's A3):
-    /// a listener kept by a reload is not bound anew, its filter swapped; connections it accepted
-    /// before are not checked again. Every `accept` that starts after this goes by the new one.
+    /// Sets each listener's accept filters to the current graph's access lists (I85, akio's A3;
+    /// its UDP side's, ADR-178, A220): a listener kept by a reload is not bound anew, its filters
+    /// swapped; connections (and UDP peers) it accepted before are not checked again. Every
+    /// `accept`, and every datagram of a new peer, after this goes by the new ones.
     fn gate(&self) {
         self.cell.with(|g| {
             for e in &self.entries {
-                let Some((id, _)) = e.tcp else { continue };
-                let accept = g
-                    .listener_index(&e.config.name)
-                    .and_then(|i| g.access(i))
-                    .and_then(|a| a.accept());
-                // Only `NotFound` (removed meanwhile) can come back.
-                let _ = match accept {
-                    Some(p) => self.engine.set_listener_filter(id, crate::accept_filter(p)),
-                    None => self.engine.clear_listener_filter(id),
+                let access = g.listener_index(&e.config.name).and_then(|i| g.access(i));
+                if let Some((id, _)) = e.tcp {
+                    // Only `NotFound` (removed meanwhile) can come back.
+                    let _ = match access.and_then(|a| a.accept()) {
+                        Some(p) => self.engine.set_listener_filter(id, crate::accept_filter(p)),
+                        None => self.engine.clear_listener_filter(id),
+                    };
+                }
+                let datagrams = access.and_then(|a| a.datagrams());
+                // As above; a bound socket's filter always swaps.
+                let _ = match (&e.udp, datagrams) {
+                    (Some(Udp::Builder(id, _)), Some(p)) => self
+                        .engine
+                        .set_listener_filter(*id, crate::accept_filter(p)),
+                    (Some(Udp::Builder(id, _)), None) => self.engine.clear_listener_filter(*id),
+                    (Some(Udp::Bound(b)), Some(p)) => b.set_filter(crate::accept_filter(p)),
+                    (Some(Udp::Bound(b)), None) => b.clear_filter(),
+                    (None, _) => Ok(()),
                 };
             }
         });

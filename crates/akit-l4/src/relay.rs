@@ -65,8 +65,8 @@ where
                 return Client::default();
             };
             // The access lists, when the listener did not check at accept (I86): a TCP
-            // connection closed before anything is read from it, a UDP session's first datagram
-            // dropped (akio filters no datagrams yet: A220).
+            // connection closed before anything is read from it. A UDP listener's peers were
+            // asked at akio's filter (ADR-178), by the policy of the service taken here.
             if !entry.admits(Some(s), proxy::client_addr(c).ip()) {
                 c.close();
                 return Client::default();

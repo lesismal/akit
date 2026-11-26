@@ -3,7 +3,8 @@
 [English](034-access-lists.md) | [简体中文](034-access-lists.zh-CN.md)
 
 Status: accepted in I85 (2026-11-26); extended by I86 (layer 4 and SOCKS) and I87 (the Admin
-API).
+API); points 6 and 9 replaced on 2026-11-27, once akio's UDP listeners took the filter (A220,
+akio's ADR-178).
 
 ## Context
 
@@ -42,10 +43,12 @@ applies, how list files are read, and where each module decides. akio has the ac
    text), logged and counted with its route, before its handler runs; its body is not buffered
    (its body mode is `Stream`, nothing reads it). A request whose path has no canonical form is
    refused before it is answered 400, as fit's.
-6. **HTTP/3 per request until akio filters datagrams.** akio's UDP listeners take no accept
-   filter, so akit cannot drop a refused peer's datagrams as fit does: the HTTP/3 dispatcher checks
-   each request against the policy the listener's TCP side has at accept, and answers 403. akit's
-   request A220 asks akio for the filter on UDP and datagram listeners.
+6. **HTTP/3 at akio's filter too.** A listener's UDP socket for HTTP/3 takes the policy its TCP
+   side refuses by at accept (`Listener::filter` on a UDP listener, `Engine::bind_udp_filtered`
+   for one a reload binds, swapped by a reload that keeps it): a refused peer's datagrams are
+   dropped before a QUIC connection, or any TLS work, is made, as fit drops them. Where a route has
+   a list of its own, the peer is served and its requests are decided one by one (403). Until
+   akio's A220 (2026-11-27), HTTP/3 was checked per request.
 7. **List files are watched with the certificate files.** Their SHA-256 sums join the graph's
    `cert_files`, which `akit run -watch-certs` compares the files with: a change applies the config
    again, as fit's `watchFiles`.
@@ -57,11 +60,11 @@ applies, how list files are read, and where each module decides. akio has the ac
    connection once it knows the service (after the PROXY header and the ClientHello, as the
    listener needs them), with the policies compiled into the entry with the graph: a refused one
    is closed before its upstream is dialed.
-9. **`udp` sessions refused as they open until A220.** akio makes each new client address a
-   connection; the entry checks it as it opens and closes it when refused, the datagram dropped.
-   Nothing is remembered of the peer, so each datagram of a refused client opens and closes a
-   session: a cost per datagram, and nothing that grows with the clients refused (fit's decision 7
-   on I195).
+9. **`udp` listeners at akio's filter.** A `udp` listener's socket takes the policy of the
+   service its sessions go to (the one without server names: its own list, the listener's, the
+   global one): a refused client's datagrams are dropped before a session is made, and nothing is
+   remembered of the peer, so nothing grows with the clients refused (fit's decision 7 on I195).
+   Until akio's A220 (2026-11-27), each datagram of a refused client opened and closed a session.
 10. **SOCKS at the client's request.** A listener's `socks` rules are fixed for as long as it is
     bound; its access is not: the server asks the graph current at each request for the policy
     the listener's SOCKS clients go by when the listener decides later, fit's `SOCKSAccess`.
@@ -77,6 +80,7 @@ applies, how list files are read, and where each module decides. akio has the ac
 ## Consequences
 
 - A refused TCP client costs an `accept` and a close, with no TLS, no read and no request.
-- A refused HTTP/3 client costs a QUIC handshake and a request until A220.
+- A refused HTTP/3 client costs a lookup per datagram, no QUIC handshake (one per request where a
+  route has its own list).
 - A listener that decides per request costs every request a graph read and a lookup, as fit's.
-- A refused `udp` client costs a session opened and closed per datagram until A220.
+- A refused `udp` client costs a lookup per datagram.

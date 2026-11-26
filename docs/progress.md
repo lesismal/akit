@@ -29,6 +29,26 @@ done and where the work differs from the plan.
   (admitted work resumed through a full pool, a pool thread that waits stood in for, a pressure
   watcher). akit's `rev` and `akit_runtime::AKIO_REV` move to it; nothing in akit had to change to
   build on it.
+- **Stopgap (akio request A237)**: akio's `Engine::wait` now reads a thread-local of akio-pool's,
+  which panics (and so aborts) when the wait runs in another thread-local's destructor: a graph
+  whose last reference is a thread's cached one drops its client engines there (`acme_shared`
+  aborted so). The client engines of OTLP, the providers and the shared ACME storage are stopped
+  by `akit_observe::stop_client_engine`, which waits on a thread spawned for it (and not at all on
+  an I/O thread), until akio reads its thread-locals with `try_with`.
+- A220: a listener's UDP socket takes its access policy at akio's filter
+  (`ListenerAccess::datagrams`): HTTP/3's the listener's own list then the global one, unless a
+  route has a list of its own (its requests decided one by one then); a `udp` listener's the policy
+  of the service its sessions go to. A refused peer's datagrams are dropped before a QUIC
+  connection or a session is made, as fit's. A reload swaps the filter on the socket it keeps
+  (`Engine::set_listener_filter`, `UdpBinding::set_filter`) and binds a new one filtered from its
+  first datagram (`Engine::bind_udp_filtered`). The stopgaps go: the HTTP/3 dispatcher's per-request
+  check (`Dispatcher::unfiltered`) and the `udp` entry's check as a session opens; decision 034's
+  points 6 and 9 are replaced, and the config reference loses its two notes. The tunnel hub's QUIC
+  listeners refuse at the filter too (`bind_udp_filtered`, swapped by `apply`), and the hub's
+  check when a link's stream opens goes. Tests: `h3_peers_are_filtered` (refused peers unanswered
+  and counted as filtered, a route's own list deciding per request, a reload swapping and binding),
+  `udp_sessions` (a service's own list both ways, nothing accepted for a refused client, a reload
+  swapping), the tunnel's `quic_links_refused_at_the_filter`.
 
 ### 2026-11-27: I102b, QUIC links; the track stops at I102c, waiting on akio's A236
 

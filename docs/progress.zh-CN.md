@@ -25,6 +25,18 @@
   ADR-178）、A230 和 A231（akio-crypto 的 Argon2id、BLAKE2b 和 XChaCha20-Poly1305，ADR-179）、A232（连接句柄、关闭期限、监听器的
   accept 和 close 钩子，ADR-180）和 A233（关闭终端回显），以及逻辑线程池的改动（已接纳的工作穿过已满的线程池继续、等待中的池线程
   有线程顶替、压力监视线程）。akit 的 `rev` 和 `akit_runtime::AKIO_REV` 移到它；akit 无需任何改动即可在其上构建。
+- **权宜实现（akio 需求 A237）**：akio 的 `Engine::wait` 现在读取 akio-pool 的一个线程局部变量，在另一个线程局部变量的析构中等待时它会
+  panic（从而中止进程）：最后一个引用是线程缓存的运行时图会在那里丢弃它的客户端引擎（`acme_shared` 因此中止）。OTLP、provider 和共享
+  ACME 存储的客户端引擎由 `akit_observe::stop_client_engine` 停止，它在为此启动的线程上等待（在 I/O 线程上则不等待），直到 akio 用
+  `try_with` 读取它的线程局部变量。
+- A220：监听器的 UDP 套接字在 akio 的过滤器处采用其访问策略（`ListenerAccess::datagrams`）：HTTP/3 的是监听器自己的列表然后全局列表，
+  除非某个路由有自己的列表（此时它的请求逐个决定）；`udp` 监听器的是其会话所去服务的策略。被拒绝对端的数据报在建立 QUIC 连接或会话之前
+  被丢弃，与 fit 相同。重载在保留的套接字上替换过滤器（`Engine::set_listener_filter`、`UdpBinding::set_filter`），新绑定的套接字从第一个
+  数据报起就带过滤器（`Engine::bind_udp_filtered`）。权宜实现删除：HTTP/3 分发器的逐请求检查（`Dispatcher::unfiltered`）和 `udp` 入口在
+  会话打开时的检查；决定 034 的第 6、9 点被替换，配置参考去掉两条说明。隧道 hub 的 QUIC 监听器也在过滤器处拒绝（`bind_udp_filtered`，
+  由 `apply` 替换），hub 在链路的流打开时的检查删除。测试：`h3_peers_are_filtered`（被拒绝的对端得不到回答并计入 filtered，路由自己的列表
+  逐请求决定，重载替换和绑定）、`udp_sessions`（服务自己的列表双向覆盖，被拒绝的客户端不建立任何会话，重载替换）、隧道的
+  `quic_links_refused_at_the_filter`。
 
 ### 2026-11-27：I102b，QUIC 链路；本路线停在 I102c，等待 akio 的 A236
 

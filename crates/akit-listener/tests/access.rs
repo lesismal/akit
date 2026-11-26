@@ -2,8 +2,9 @@
 //! is closed as it is accepted when the listener's own list and the global one are all there is
 //! (akio's accept filter, A3), and answered 403 when a route of the listener has a list of its
 //! own, or the listener takes PROXY headers; a reload changes the policy on the same binding.
-//! HTTP/3's requests, which no accept filter checks (A220), are refused one by one. TCP on the
-//! backend `AKIO_TEST_BACKEND` names (epoll by default, `uring`).
+//! HTTP/3's peers are refused at akio's filter on its UDP socket (ADR-178, A220), its requests
+//! one by one when a route has a list of its own. TCP on the backend `AKIO_TEST_BACKEND` names
+//! (epoll by default, `uring`).
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -282,50 +283,94 @@ fn list_files() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
-/// HTTP/3, which no accept filter checks (A220): its requests are refused one by one, by the
-/// policy the TCP side refuses at accept.
+/// HTTP/3's peers refused at akio's filter (ADR-178, A220), before a QUIC connection is made:
+/// a refused client's handshake goes unanswered, as its TCP side's connection is closed at
+/// accept; with a route that has a list of its own, its requests are decided one by one (403).
+/// A reload swaps the filter of the UDP socket it keeps, and one a reload binds takes it from its
+/// first datagram.
 #[test]
-fn h3_requests_are_checked() {
+fn h3_peers_are_filtered() {
     use support::certs::{Ca, dir};
     let d = dir("access-h3");
     let ca = Ca::new("akit test ca");
     let ca_file = ca.write(&d, "ca.pem");
     let (cert, key) = ca.leaf(&d, "a", &["a.example"]);
     let s = |p: &Path| p.display().to_string();
-    let json = |access: &str| {
+    let json = |address: &str, access: &str, route: &str| {
         format!(
             r#"{{"access": {access},
-  "listeners": [{{"name": "secure", "address": "127.0.0.1:0", "protocols": ["http/1.1", "h3"],
+  "listeners": [{{"name": "secure", "address": "{address}", "protocols": ["http/1.1", "h3"],
     "tls": {{"certificates": [{{"cert_file": "{}", "key_file": "{}"}}]}}}}],
-  "routes": [{{"handler": {{"module": "respond", "params": {{"body": "hello"}}}}}}]}}"#,
+  "routes": [{{"handler": {{"module": "respond", "params": {{"body": "hello"}}}}{route}}}]}}"#,
             s(&cert),
             s(&key)
         )
     };
-    for (access, want) in [
-        (r#"{"deny": ["127.0.0.1"]}"#, 403),
-        (r#"{"allow": ["127.0.0.1"]}"#, 200),
+    let filtered = |e: &akio::Engine| e.telemetry().metrics().total.filtered;
+    // What an HTTP/3 GET of `/` from 127.0.0.1 gets: its status, `None` with no answer.
+    let h3 = |udp: SocketAddr| {
+        support::h3::get(udp, support::h3::client(&ca_file, None), "a.example", "/")
+            .ok()
+            .map(|seen| seen.status)
+    };
+    let deny = r#"{"deny": ["127.0.0.1"]}"#;
+    let allow = r#"{"allow": ["127.0.0.1"]}"#;
+    let own = r#", "access": {"allow": ["127.0.0.1"]}"#;
+    let own_deny = r#", "access": {"deny": ["127.0.0.1"]}"#;
+    for (access, route, want) in [
+        (deny, "", None),
+        (allow, "", Some(200)),
+        // A route of its own: the peer is served, the request decided.
+        (deny, own, Some(200)),
+        (allow, own_deny, Some(403)),
     ] {
-        let config = akit_config::from_json(&json(access), None).unwrap();
-        let registry: Registry<HandlerParams> = Registry::new(&[akit_handler::MODULES]).unwrap();
-        let cell = GraphCell::new(compile(&config, &registry, &Env::default()).unwrap());
-        let e = akit_listener::engine(&cell, &options()).unwrap();
-        e.start().unwrap();
+        let (e, l) = serve(&json("127.0.0.1:0", access, route));
+        let config = akit_config::from_json(&json("127.0.0.1:0", access, route), None).unwrap();
         let a = akit_listener::addrs(&config.listeners, &e)[0];
-        let seen = support::h3::get(
-            a.udp.unwrap(),
-            support::h3::client(&ca_file, None),
-            "a.example",
-            "/",
-        )
-        .unwrap();
-        assert_eq!(seen.status, want, "{access}");
-        if want == 403 {
-            assert_eq!(seen.body, "403 forbidden\n");
+        let before = filtered(&e);
+        assert_eq!(h3(a.udp.unwrap()), want, "{access} {route}");
+        if want.is_none() {
+            assert!(filtered(&e) > before, "{access}: no datagram was filtered");
             // Its TCP side refuses at accept.
             assert_eq!(get(a.tcp.unwrap(), "/"), None);
         }
-        assert!(akit_listener::shutdown(&e, Duration::from_secs(5)));
+        stop(&e, l);
     }
+
+    // A reload swaps the kept socket's filter.
+    let (e, mut l) = serve(&json("127.0.0.1:0", "{}", ""));
+    let config = akit_config::from_json(&json("127.0.0.1:0", "{}", ""), None).unwrap();
+    let a = akit_listener::addrs(&config.listeners, &e)[0].udp.unwrap();
+    assert_eq!(h3(a), Some(200));
+    let r = l.reload(graph(&json("127.0.0.1:0", deny, ""))).unwrap();
+    assert_eq!(r.kept, 1, "the reload bound the listener anew");
+    assert_eq!(h3(a), None, "served after a reload denied it");
+    let r = l.reload(graph(&json("127.0.0.1:0", allow, ""))).unwrap();
+    assert_eq!(r.kept, 1);
+    assert_eq!(h3(a), Some(200), "refused after a reload allowed it");
+    // A listener a reload binds (another address) refuses from its first datagram.
+    let other = format!("127.0.0.1:{}", free_udp_port());
+    let r = l.reload(graph(&json(&other, deny, ""))).unwrap();
+    assert_eq!(r.added.len(), 1);
+    let moved: SocketAddr = other.parse().unwrap();
+    let before = filtered(&e);
+    assert_eq!(
+        h3(moved),
+        None,
+        "a socket bound by a reload served a denied peer"
+    );
+    assert!(filtered(&e) > before, "no datagram was filtered");
+    stop(&e, l);
     let _ = std::fs::remove_dir_all(&d);
+}
+
+/// A port free for both TCP and UDP on 127.0.0.1, for a listener a reload adds.
+fn free_udp_port() -> u16 {
+    loop {
+        let t = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = t.local_addr().unwrap().port();
+        if std::net::UdpSocket::bind(("127.0.0.1", port)).is_ok() {
+            return port;
+        }
+    }
 }

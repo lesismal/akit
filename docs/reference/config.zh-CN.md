@@ -182,7 +182,7 @@ route { listeners web internal; handler respond { body plain } }
 | --- | --- | --- | --- |
 | `address` | 字符串 | 必填 |  |
 | `name` | 字符串 | 必填 |  |
-| `access` | [对象](#cfg-listeners-access) |  | **akit：**HTTP/3 的请求逐个检查，被拒绝的回答 `403`；而 fit 在为被拒绝的对端建立会话之前就丢弃它的数据报：akio 的 UDP 监听器还不支持 accept 过滤器（akit 的需求 A220）。 |
+| `access` | [对象](#cfg-listeners-access) |  |  |
 | `mptcp` | 布尔值 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
 | `protocols` | 字符串：`http/1.1`、`h2c`、`h2`、`h3`、`tcp`、`udp`、`socks`的列表 |  | **akit：**有 `h2c` 而没有 `http/1.1` 时，监听器只以先验知识提供 HTTP/2，与 fit 相同（I79b）：发送其他内容的客户端会先收到 akio 的 `GOAWAY`（`PROTOCOL_ERROR`）再被关闭连接，而 fit 不发送任何内容直接关闭（akio 的 ADR-174）。 |
 | `proxy_protocol` | [对象](#cfg-listeners-proxy-protocol) |  |  |
@@ -520,7 +520,7 @@ service mail { listeners tls; upstream mail; server_names mail.example.com }
 | `listeners` | 字符串的列表 | 必填 |  |
 | `name` | 字符串 | 必填 |  |
 | `upstream` | 字符串 | 必填 |  |
-| `access` | [对象](#cfg-services-access) |  | **akit：**来自被拒绝客户端的 `udp` 会话在打开时被关闭，它的第一个数据报被丢弃，之后的每个数据报都会再打开一个会话；而 fit 在建立会话之前就丢弃这些数据报：akio 的 UDP 监听器还不支持 accept 过滤器（akit 的需求 A220）。 |
+| `access` | [对象](#cfg-services-access) |  |  |
 | `idle_timeout` | 时长 |  |  |
 | `max_conns` | 整数，≥ 0 | `10000` |  |
 | `proxy_protocol` | 字符串：`v1`、`v2` |  |  |
@@ -583,9 +583,6 @@ service postgres { listeners postgres; upstream db; access { allow 10.0.0.0/8 } 
 
 admin { address 127.0.0.1:2019; access { allow 127.0.0.1 ::1 } }
 ```
-
-**akit：** HTTP/3 请求逐个检查，被拒绝的回答 `403`，来自被拒绝客户端的 `udp` 会话在打开时被关闭；而 fit 在为被拒绝的对端
-建立会话之前就丢弃它的数据报：akio 的 UDP 监听器还不支持 accept 过滤器（akit 的需求 A220）。
 
 ### `access`
 
