@@ -83,6 +83,16 @@ pub struct Options {
     /// The running roles' link tokens, with their last uses and links (I100), which `GET
     /// /tokens` lists; without it, the tokens the running config holds.
     pub tokens: Option<crate::tokens::TokenViews>,
+    /// How long after it was accepted a console connection without a valid session is closed
+    /// (fit's `UnauthIdleTimeout`, [`crate::console::UNAUTH_TIMEOUT`]); tests shorten it.
+    pub console_unauth_timeout: Duration,
+    /// How long a console connection with a valid session may go between requests (fit's
+    /// `IdleTimeout`, [`crate::console::IDLE_TIMEOUT`]); tests shorten it.
+    pub console_idle_timeout: Duration,
+    /// How long past its time a console connection without a valid session is kept while a
+    /// request is served on it (fit's grace); `None`: `console_unauth_timeout`, as fit's. Tests
+    /// lengthen it.
+    pub console_grace: Option<Duration>,
 }
 
 impl fmt::Debug for Options {
@@ -98,6 +108,9 @@ impl fmt::Debug for Options {
             .field("console_access", &self.console_access.is_some())
             .field("logs", &self.logs.is_some())
             .field("tokens", &self.tokens.is_some())
+            .field("console_unauth_timeout", &self.console_unauth_timeout)
+            .field("console_idle_timeout", &self.console_idle_timeout)
+            .field("console_grace", &self.console_grace)
             .finish()
     }
 }
@@ -115,6 +128,9 @@ impl Default for Options {
             console_access: None,
             logs: None,
             tokens: None,
+            console_unauth_timeout: crate::console::UNAUTH_TIMEOUT,
+            console_idle_timeout: crate::console::IDLE_TIMEOUT,
+            console_grace: None,
         }
     }
 }

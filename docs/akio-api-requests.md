@@ -100,7 +100,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | A225 | An external security review of akio-crypto, akio-tls (with akio-x509), akio-http's HTTP/1 and HTTP/2 parsers and akio-wasm (no API) | requested (I80b): the threat model's L15 | 15 | I80, I80b |
 | A230 | Argon2id (RFC 9106), with BLAKE2b, in akio-crypto: the key derivation of fit's `fitstore` format | requested (I93): I93 waits for it | 15, 20 | I93 |
 | A231 | XChaCha20-Poly1305 (HChaCha20 and a 24-byte nonce) in akio-crypto: the AEAD of fit's `fitstore` format | requested (I93): I93 waits for it | 15, 20 | I93 |
-| A232 | An HTTP connection's idle timeout and close from its handler, and the connections accepted told to the application: fit's bounds on connections without a login | requested (I90): the console bounded as the Admin API meanwhile | 10, 11 | I90 |
+| A232 | An HTTP connection's idle timeout and close from its handler, and the connections accepted told to the application: fit's bounds on connections without a login | on akio's main and pinned (since `9e21ada7`, akio's ADR-180) | 10, 11 | I90 |
 | A233 | A terminal's echo turned off (raw mode), to read a password | requested (I89): the password shown as typed meanwhile, the prompt says so | 14 | I89 |
 | A234 | A connection's own bound of the bytes queued for it, past the engine's `max_queued_bytes` or below it | requested (I101): a link holds what feeds it past 8 MiB meanwhile | 8, 11 | I101, I104 |
 | A235 | A client TLS configuration that checks the server's certificate by its SHA-256 (a pin) in the handshake, in place of the chain and name | requested (I102): checked once the handshake is done, before a byte is sent, meanwhile | 1, 15 | I102, I104 |
@@ -2203,6 +2203,8 @@ as additional data, and seals each write with a new random nonce (`akio_crypto::
 `Store.seal`.
 
 ## A232 An HTTP connection's idle timeout and close from its handler, and a table of the connections accepted
+
+**Done.** On akio's main (`9e21ada7`, akio's ADR-180) and pinned: `ConnHandle` (`close`, `close_at`, `close_after`, `cancel_close`, `set_idle_timeout`), `Listener::on_accept` and `on_close`, and akio-http's `Context::connection()`. The console keeps fit's rules on them: a connection without a valid session closed 5 s after accept (a request served then answered with `Connection: close` within as long again), one with a session kept 2 minutes between requests, and past `max_conns` the oldest unauthenticated connection of the client holding the most closed for a new one (`console::slots`, fit's `login.Slots`). The stopgap, an answer without a valid session closing its connection, is gone. The Admin API keeps `max_conns` at accept: fit's Admin API rules for connections without a token are not ported yet.
 
 **Status.** Requested by I90 (2026-11-26). The console works without it; meanwhile its connections
 are bounded as the Admin API's are (a stopgap recorded in [progress](progress.md)).

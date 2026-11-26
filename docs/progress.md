@@ -49,6 +49,23 @@ done and where the work differs from the plan.
   and counted as filtered, a route's own list deciding per request, a reload swapping and binding),
   `udp_sessions` (a service's own list both ways, nothing accepted for a refused client, a reload
   swapping), the tunnel's `quic_links_refused_at_the_filter`.
+- A232: the console's connections are fit's (`limitHandler`), on akio's connection handles. The
+  listener's `on_accept` counts each connection (`console::slots`, fit's `login.Slots` and `Peers`
+  ported with their tests: a quarter of `max_conns` kept for connections with a login, a quarter
+  the most one client other than the host's own holds, the oldest unauthenticated connection of
+  the client holding the most closed for a new one) and sets its deadline, 5 s on
+  (`ConnHandle::close_at`); `on_close` frees its slot. A request with a valid session, a login
+  that succeeds among them, cancels the deadline (2 minutes between requests from then on,
+  akio-http's keep-alive timeout); one without, on a connection a session had kept, sets it again.
+  A request served when its connection's time runs out is answered within as long again, with
+  `Connection: close`. The engine's bound is twice `max_conns`, for connections being closed. The
+  stopgap goes: an answer without a valid session no longer closes its connection, nor a logout
+  or a 429. Decision 036's point 5 is replaced, the reference's note on `admin.console.max_conns`
+  goes. Tests: fit's `TestConsoleIdleTimeouts`, `TestConsoleUnauthBoundFromOpen`,
+  `TestConsoleUnauthBoundServing` (its grace set apart with `Options::console_grace`, so that a
+  loaded host's check time does not decide it) and `TestLimitHandlerEvicts`. Not ported: fit's
+  Admin API rules for connections without the token (decision 006 lists them), which the same
+  slots could carry now.
 
 ### 2026-11-27: I102b, QUIC links; the track stops at I102c, waiting on akio's A236
 

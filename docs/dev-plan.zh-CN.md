@@ -1205,7 +1205,7 @@ Admin API 并列，在自己的登录之后于进程内调用 Admin API 的端�
 - **涉及**：`akit-admin`（`console`）、`akit`（`run`）、`docs/guides`。
 - **阅读**：akio 的 `Pool`（A117）、`Context::req_mut`、`Detached`。
 - **fit**：`app/console`、`admin/console.go`、`login`；I104。
-- **状态**：已完成（2026-11-26）。在 akio 的 A232 之前连接像 Admin API 的那样受限。见进度日志。
+- **状态**：已完成（2026-11-26）。在 akio 的 A232 之前连接像 Admin API 的那样受限，此后（2026-11-27）按 fit 的规则。见进度日志。
 
 ### I91 控制台 III：页面
 

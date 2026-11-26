@@ -4,7 +4,8 @@
 
 Status: accepted in I90 (2026-11-26), waiting for review ([decisions waiting for
 review](../decisions-pending.md), row 16); extended by I91 (the pages) and I92 (the Admin API over
-TLS); its 3 and 8 amended by [decision 037](037-akit-names.md) (akit's names).
+TLS); its 3 and 8 amended by [decision 037](037-akit-names.md) (akit's names); its 5 replaced on
+2026-11-27, once akio had A232.
 
 ## Context
 
@@ -37,11 +38,17 @@ engine of its own. akit and fit are both under the Apache License 2.0.
 4. **The logins are fit's** (package `login`, ported with its tests): lockouts by address and by
    user, sessions by their SHA-256, CSRF tokens. A password is checked on a pool of the console's
    own (`akio::Pool`, one thread and 16 waiting, then 503), never on the I/O thread.
-5. **Connections bounded as the Admin API's until akio's A232.** fit closes a connection without a
-   login 5 s after it opens, and past `max_conns` closes the oldest such connection to make room,
-   keeping a quarter of the slots for logged-in ones; akio-http gives a handler no handle on its
-   connection. Meanwhile: `max_conns` at accept, akio's head (10 s), body (30 s) and idle (2 min)
-   timeouts, and an answer to a request without a valid session closes its connection.
+5. **fit's connection rules, on akio's connection handles** (A232, akio's ADR-180): a connection
+   without a valid session is closed 5 s after it was accepted, a request served then answered
+   with `Connection: close` within 5 s more; one with a session is kept 2 minutes between
+   requests; past `max_conns`, or past the three quarters of it unauthenticated connections may
+   hold, a new connection closes the oldest unauthenticated one of the client holding the most,
+   each client other than the host's own held to a quarter (fit's `login.Slots` and `Peers`,
+   ported with their tests as `console::slots`). The listener's `on_accept` and `on_close` keep
+   the table, `ConnHandle::close_at` and `cancel_close` the deadlines; the engine's own bound is
+   twice `max_conns`, for the connections being closed. Until A232 (2026-11-27) the connections
+   were bounded as the Admin API's: `max_conns` at accept, and an answer to a request without a
+   valid session closed its connection.
 6. **Passwords change only with a store**, as in fit: without `admin.store` the account endpoints
    answer 409. The store (I93) waits for akio-crypto's Argon2id (A230) and XChaCha20-Poly1305
    (A231): fit's format cannot be read without them, and a format of akit's own would be a store
@@ -73,8 +80,8 @@ engine of its own. akit and fit are both under the Apache License 2.0.
 - A config changed in the console runs and is in `/versions` as the console's; a restart starts
   from the config files again, as fit's without a store.
 - fit's console users and their hashes work in akit as they are.
-- Until A232, a client without a login can hold up to `max_conns` connections for akio's head
-  timeout each.
+- A client without a login holds a connection 5 s at most, and cannot keep a logged-in operator
+  out by reconnecting.
 - The pages said "fit" until decision 037; their menu holds fit's features that akit does not run yet: their forms
   edit the draft, a save that sets one is refused as not supported yet, and the endpoints akit does
   not have (`/node`, `/config/check`, the media, BitTorrent and sync pages') answer 404. An

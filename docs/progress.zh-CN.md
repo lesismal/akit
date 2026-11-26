@@ -37,6 +37,15 @@
   由 `apply` 替换），hub 在链路的流打开时的检查删除。测试：`h3_peers_are_filtered`（被拒绝的对端得不到回答并计入 filtered，路由自己的列表
   逐请求决定，重载替换和绑定）、`udp_sessions`（服务自己的列表双向覆盖，被拒绝的客户端不建立任何会话，重载替换）、隧道的
   `quic_links_refused_at_the_filter`。
+- A232：控制台的连接规则与 fit 相同（`limitHandler`），基于 akio 的连接句柄。监听器的 `on_accept` 为每个连接计数（`console::slots`，
+  即 fit 的 `login.Slots` 和 `Peers`，连同其测试移植：`max_conns` 的四分之一留给已登录的连接，除本机外每个客户端最多占四分之一，
+  新连接关闭占用最多的客户端最旧的未认证连接）并设置其期限为 5 秒后（`ConnHandle::close_at`）；`on_close` 释放其名额。带有效会话的
+  请求（包括成功的登录）取消期限（此后两次请求之间保留 2 分钟，即 akio-http 的 keep-alive 超时）；在会话曾保留的连接上没有有效会话的
+  请求重新设置期限。连接时间用尽时正在处理的请求在其后同样长的时间内得到回答，并带上 `Connection: close`。引擎的上限是 `max_conns`
+  的两倍，留给正在关闭的连接。权宜实现删除：没有有效会话的回答、登出和 429 不再关闭连接。决定 036 的第 5 条被替换，配置参考中
+  `admin.console.max_conns` 的说明删除。测试：fit 的 `TestConsoleIdleTimeouts`、`TestConsoleUnauthBoundFromOpen`、
+  `TestConsoleUnauthBoundServing`（其宽限期用 `Options::console_grace` 单独设置，使负载高的主机上检查所需的时间不影响结果）和
+  `TestLimitHandlerEvicts`。未移植：fit 的 Admin API 对没有令牌的连接的规则（决定 006 列出了它们），现在同样的 slots 可以承载它们。
 
 ### 2026-11-27：I102b，QUIC 链路；本路线停在 I102c，等待 akio 的 A236
 

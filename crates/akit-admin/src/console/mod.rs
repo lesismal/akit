@@ -5,12 +5,16 @@
 //! - `server`: the console's server and its endpoints, as fit's `app/console` and
 //!   `admin/console.go` (I90).
 //! - `pages`: the files it serves (I91).
+//! - [`slots`]: its connections counted against `max_conns`, as fit's `login.Slots`.
 
 pub mod login;
 pub(crate) mod pages;
 pub(crate) mod server;
+pub mod slots;
 
-pub use server::{ADMIN_MODULE, COOKIE, CSP, CSRF_HEADER, IDLE_TIMEOUT, MAX_LOGIN_BYTES};
+pub use server::{
+    ADMIN_MODULE, COOKIE, CSP, CSRF_HEADER, IDLE_TIMEOUT, MAX_LOGIN_BYTES, UNAUTH_TIMEOUT,
+};
 
 /// The source of a config the console applied, as `/versions` names it: fit's `SourceConsole`.
 pub const SOURCE_CONSOLE: &str = "console";

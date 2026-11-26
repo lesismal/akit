@@ -1063,7 +1063,7 @@ admin {
 | `address` | 字符串 | `"127.0.0.1:2020"` |  |
 | `cert_file` | 字符串 |  | **akit：**文件变化时重新读取，与 `admin.cert_file` 相同（I94）：续期的证书无需重启即提供给新连接；fit 只在启动时读取。 |
 | `key_file` | 字符串 |  |  |
-| `max_conns` | 整数，≥ 0 | `32` | **akit：**超出时新连接在 accept 时被关闭：在 akio 的 A232 之前，不为已登录的连接保留名额，也不关闭未登录的连接来腾出位置。 |
+| `max_conns` | 整数，≥ 0 | `32` |  |
 | `max_sessions` | 整数，≥ 0 | `64` |  |
 | `mptcp` | 布尔值 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
 | `session_lifetime` | 时长 | `"12h"` |  |

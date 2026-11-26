@@ -812,3 +812,288 @@ fn pages_and_schema() {
     assert_eq!(r.status, 200, "{r:?}");
     assert!(r.body.contains("log"), "{}", r.body);
 }
+
+// The console's connections (akio's A232; fit's `app/console/idle_test.go` and
+// `TestLimitHandlerEvicts`).
+
+/// A raw HTTP/1.1 connection to the console, so that a test knows which connection each request
+/// goes on.
+struct Raw {
+    s: TcpStream,
+    buf: Vec<u8>,
+}
+
+impl Raw {
+    fn dial(f: &Fixture) -> Raw {
+        let s = TcpStream::connect(f.addr).unwrap();
+        s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+        Raw { s, buf: Vec::new() }
+    }
+
+    /// Sends a request with header lines `extra` and `body`; its response, or `None` when the
+    /// connection closed first.
+    fn try_do(&mut self, method: &str, path: &str, body: &str, extra: &[&str]) -> Option<Resp> {
+        let mut req = format!("{method} {path} HTTP/1.1\r\nHost: test\r\n");
+        for h in extra {
+            req.push_str(h);
+            req.push_str("\r\n");
+        }
+        if !body.is_empty() {
+            req.push_str(&format!(
+                "Content-Type: application/json\r\nContent-Length: {}\r\n",
+                body.len()
+            ));
+        }
+        req.push_str("\r\n");
+        req.push_str(body);
+        self.s.write_all(req.as_bytes()).ok()?;
+        // The head, then its Content-Length's body.
+        let head_end = loop {
+            if let Some(i) = self.buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                break i + 4;
+            }
+            let mut b = [0u8; 4096];
+            match self.s.read(&mut b) {
+                Ok(0) | Err(_) => return None,
+                Ok(n) => self.buf.extend_from_slice(&b[..n]),
+            }
+        };
+        let head = String::from_utf8_lossy(&self.buf[..head_end]).into_owned();
+        let len: usize = head
+            .lines()
+            .filter_map(|l| l.split_once(':'))
+            .find(|(n, _)| n.eq_ignore_ascii_case("content-length"))
+            .map_or(0, |(_, v)| v.trim().parse().unwrap());
+        while self.buf.len() < head_end + len {
+            let mut b = [0u8; 4096];
+            match self.s.read(&mut b) {
+                Ok(0) | Err(_) => return None,
+                Ok(n) => self.buf.extend_from_slice(&b[..n]),
+            }
+        }
+        let rest = self.buf.split_off(head_end + len);
+        let raw = String::from_utf8_lossy(&self.buf).into_owned();
+        self.buf = rest;
+        Some(parse(&raw))
+    }
+
+    fn send(&mut self, method: &str, path: &str, body: &str, extra: &[&str]) -> Resp {
+        self.try_do(method, path, body, extra)
+            .unwrap_or_else(|| panic!("{method} {path}: the connection closed"))
+    }
+
+    /// Whether the console has closed the connection, waiting up to `within`.
+    fn closed_within(&mut self, within: Duration) -> bool {
+        self.s.set_read_timeout(Some(within)).unwrap();
+        let mut b = [0u8; 1];
+        let r = self.s.read(&mut b);
+        self.s
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .unwrap();
+        match r {
+            Ok(0) => true,
+            Ok(_) => panic!("the console sent more on an idle connection"),
+            Err(e) => !matches!(
+                e.kind(),
+                std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+            ),
+        }
+    }
+
+    /// Asks `GET path` every `gap` until the console closes the connection; how long after
+    /// `start` that was. Fails past `limit`.
+    fn keeps_asking(
+        &mut self,
+        start: Instant,
+        gap: Duration,
+        limit: Duration,
+        path: &str,
+    ) -> Duration {
+        while start.elapsed() < limit {
+            if self.try_do("GET", path, "", &[]).is_none() {
+                return start.elapsed();
+            }
+            std::thread::sleep(gap);
+        }
+        panic!(
+            "the connection is still open {:?} on, asked every {gap:?}",
+            start.elapsed()
+        );
+    }
+}
+
+/// The session cookie of a login's response, as a `Cookie` line.
+fn cookie_line(r: &Resp) -> String {
+    let set = r.header("Set-Cookie").unwrap();
+    format!("Cookie: {}", set.split(';').next().unwrap())
+}
+
+fn timeouts(unauth: Duration, idle: Duration) -> Options {
+    let mut o = Options::default();
+    o.console_unauth_timeout = unauth;
+    o.console_idle_timeout = idle;
+    o
+}
+
+const LOGIN: &str = r#"{"username": "ada", "password": "pw"}"#;
+
+/// fit's `TestConsoleIdleTimeouts`: a connection that has not sent a request with a valid session
+/// is closed after the short timeout, whether it said nothing or made requests without one; one
+/// that has, by logging in or by a request carrying the session, outlives it, request after
+/// request, until it logs out.
+#[test]
+fn connections_idle_timeouts() {
+    let (unauth, idle) = (Duration::from_secs(1), Duration::from_secs(10));
+    let f = start(console(|_| {}), timeouts(unauth, idle));
+    // Silent.
+    assert!(Raw::dial(&f).closed_within(idle / 2), "a silent connection");
+    // Without a session.
+    let mut c = Raw::dial(&f);
+    assert_eq!(c.send("GET", "/", "", &[]).status, 200);
+    let forged = format!("Cookie: akit_console_{}=forged", f.addr.port());
+    assert_eq!(c.send("GET", "/api/session", "", &[&forged]).status, 401);
+    let wrong = r#"{"username": "ada", "password": "wrong"}"#;
+    let r = c.try_do("POST", "/api/login", wrong, &[]);
+    assert!(r.is_none_or(|r| r.status == 401));
+    assert!(c.closed_within(idle / 2), "a connection without a session");
+    // Logged in: past the short timeout, the login keeps the connection.
+    let mut c = Raw::dial(&f);
+    let r = c.send("POST", "/api/login", LOGIN, &[]);
+    assert_eq!(r.status, 200);
+    let cookie = cookie_line(&r);
+    std::thread::sleep(3 * unauth);
+    assert_eq!(c.send("GET", "/", "", &[]).status, 200, "after a pause");
+    // With a session: twice past the short timeout, the second time after a request without
+    // the session, which does not shorten it again.
+    let mut c = Raw::dial(&f);
+    assert_eq!(c.send("GET", "/api/session", "", &[&cookie]).status, 200);
+    std::thread::sleep(3 * unauth);
+    assert_eq!(c.send("GET", "/", "", &[]).status, 200);
+    std::thread::sleep(3 * unauth);
+    assert_eq!(c.send("POST", "/api/logout", "", &[&cookie]).status, 204);
+    // Logged out, it is an unauthenticated connection again.
+    assert!(c.closed_within(idle / 2), "after logging out");
+}
+
+/// fit's `TestConsoleUnauthBoundFromOpen`: a connection without a valid session is closed the
+/// short timeout after it opened however often it asks; one whose session has ended since it
+/// was kept for it is closed the short timeout after the request that found it gone.
+#[test]
+fn connections_bound_from_open() {
+    let (unauth, idle) = (Duration::from_millis(600), Duration::from_secs(10));
+    let f = start(console(|_| {}), timeouts(unauth, idle));
+    for path in ["/", "/api/session"] {
+        let start = Instant::now();
+        let mut c = Raw::dial(&f);
+        let held = c.keeps_asking(start, unauth / 3, 10 * unauth, path);
+        assert!(held <= 3 * unauth, "{path}: closed only after {held:?}");
+    }
+    // The session ended.
+    let mut c = Raw::dial(&f);
+    let r = c.send("POST", "/api/login", LOGIN, &[]);
+    assert_eq!(r.status, 200);
+    let cookie = cookie_line(&r);
+    std::thread::sleep(2 * unauth);
+    assert_eq!(c.send("GET", "/api/session", "", &[&cookie]).status, 200);
+    // Another tab logs out: the next request finds the session gone.
+    assert_eq!(
+        Raw::dial(&f)
+            .send("POST", "/api/logout", "", &[&cookie])
+            .status,
+        204
+    );
+    let start = Instant::now();
+    assert_eq!(c.send("GET", "/api/session", "", &[&cookie]).status, 401);
+    let held = c.keeps_asking(start, unauth / 3, 10 * unauth, "/");
+    assert!(
+        held <= 3 * unauth,
+        "the ended session: closed only after {held:?}"
+    );
+}
+
+/// fit's `TestConsoleUnauthBoundServing`: an unauthenticated connection whose time runs out while
+/// a request is served (a login whose check is slow) is not cut under it: the response comes,
+/// saying `Connection: close`, and the connection closes after it; one whose request goes on
+/// past the grace is closed anyway. The grace (fit's: as long as the short timeout) is set apart
+/// here, so that how long a check takes on a loaded host does not decide the outcome.
+#[test]
+fn connections_answered_past_their_time() {
+    // A cost whose check takes twice the short timeout here, or more.
+    let (unauth, idle) = (Duration::from_millis(300), Duration::from_secs(10));
+    let mut cost = 8;
+    loop {
+        let t = Instant::now();
+        akio_crypto::bcrypt::hash(b"pw", cost).unwrap();
+        if t.elapsed() >= 2 * unauth || cost >= 16 {
+            break;
+        }
+        cost += 1;
+    }
+    let slow = akio_crypto::bcrypt::hash(b"pw", cost).unwrap();
+    let users = |c: &mut akit_config::Console| c.users[0].password_hash = slow.clone();
+    let mut o = timeouts(unauth, idle);
+    o.console_grace = Some(Duration::from_secs(20));
+    let f = start(console(users), o);
+    let mut c = Raw::dial(&f);
+    // A wrong password: checked in full, the connection still without a session.
+    let r = c.send(
+        "POST",
+        "/api/login",
+        r#"{"username": "ada", "password": "wrong"}"#,
+        &[],
+    );
+    assert_eq!(r.status, 401);
+    assert_eq!(r.header("Connection"), Some("close"), "{r:?}");
+    assert!(c.closed_within(idle / 2));
+    drop(f);
+    // Past the grace: closed under the request, with no answer.
+    let mut o = timeouts(unauth, idle);
+    o.console_grace = Some(Duration::from_millis(20));
+    let f = start(console(users), o);
+    let mut c = Raw::dial(&f);
+    let r = c.try_do(
+        "POST",
+        "/api/login",
+        r#"{"username": "ada", "password": "wrong"}"#,
+        &[],
+    );
+    assert!(r.is_none(), "answered past the grace: {r:?}");
+}
+
+/// fit's `TestLimitHandlerEvicts`: with its connections taken, the console closes the oldest
+/// unauthenticated one for a new connection, rather than refuse it; an authenticated one is
+/// kept, and a new one is refused only when every connection has authenticated.
+#[test]
+fn connections_evicted_for_new_ones() {
+    let f = start(console(|c| c.max_conns = 4), Options::default()); // 3 for unauthenticated ones
+    let mut c1 = Raw::dial(&f);
+    assert_eq!(c1.send("POST", "/api/login", LOGIN, &[]).status, 200);
+    let mut cs: Vec<Raw> = (0..3).map(|_| Raw::dial(&f)).collect();
+    for c in &mut cs {
+        // Served: counted.
+        assert_eq!(c.send("GET", "/", "", &[]).status, 200);
+    }
+    // Full, with 3 unauthenticated: the oldest of them goes.
+    let mut c5 = Raw::dial(&f);
+    assert_eq!(c5.send("GET", "/", "", &[]).status, 200);
+    assert!(
+        cs[0].closed_within(Duration::from_secs(5)),
+        "not the oldest"
+    );
+    assert!(!cs[1].closed_within(Duration::from_millis(200)));
+    assert!(!cs[2].closed_within(Duration::from_millis(200)));
+    assert_eq!(
+        c1.send("GET", "/", "", &[]).status,
+        200,
+        "an authenticated one"
+    );
+    // Every one authenticated: a new one is closed as it opens.
+    for c in cs.iter_mut().skip(1).chain([&mut c5]) {
+        assert_eq!(c.send("POST", "/api/login", LOGIN, &[]).status, 200);
+    }
+    let mut last = Raw::dial(&f);
+    assert!(
+        last.try_do("GET", "/", "", &[]).is_none(),
+        "a connection past max_conns, all authenticated, was served"
+    );
+}

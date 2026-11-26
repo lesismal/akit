@@ -1387,7 +1387,8 @@ without one it changes the running config as the Admin API does, and password ch
 - **Touches**: `akit-admin` (`console`), `akit` (`run`), `docs/guides`.
 - **Read**: akio's `Pool` (A117), `Context::req_mut`, `Detached`.
 - **fit**: `app/console`, `admin/console.go`, `login`; I104.
-- **Status**: done (2026-11-26). Connections bounded as the Admin API's until akio's A232. See
+- **Status**: done (2026-11-26). Connections bounded as the Admin API's until akio's A232, by fit's
+  rules since (2026-11-27). See
   the progress log.
 
 ### I91 Console III: the pages

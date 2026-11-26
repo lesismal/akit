@@ -99,7 +99,7 @@
 | A225 | 对 akio-crypto、akio-tls（连同 akio-x509）、akio-http 的 HTTP/1 和 HTTP/2 解析器以及 akio-wasm 的外部安全审查（不是 API） | 已提出（I80b）：威胁模型的 L15 | 15 | I80、I80b |
 | A230 | akio-crypto 中的 Argon2id（RFC 9106）及 BLAKE2b：fit 的 `fitstore` 格式的密钥派生 | 已提出（I93）：I93 等待它 | 15、20 | I93 |
 | A231 | akio-crypto 中的 XChaCha20-Poly1305（HChaCha20 和 24 字节 nonce）：fit 的 `fitstore` 格式的 AEAD | 已提出（I93）：I93 等待它 | 15、20 | I93 |
-| A232 | 由处理函数设置 HTTP 连接的空闲超时并关闭它，并把已接受的连接告诉应用：fit 对未登录连接的限制 | 已提出（I90）：在此之前控制台像 Admin API 一样受限 | 10、11 | I90 |
+| A232 | 由处理函数设置 HTTP 连接的空闲超时并关闭它，并把已接受的连接告诉应用：fit 对未登录连接的限制 | 已进入 akio 的 main 并锁定（自 `9e21ada7` 起，akio 的 ADR-180） | 10、11 | I90 |
 | A233 | 关闭终端回显（原始模式）以读取密码 | 已提出（I89）：在此之前密码按输入显示，提示中说明 | 14 | I89 |
 | A234 | 单个连接自己的发送队列上限，可高于或低于引擎的 `max_queued_bytes` | 已提出（I101）：在此之前链路在超过 8 MiB 时压住喂给它的一方 | 8, 11 | I101, I104 |
 | A235 | 在握手中按 SHA-256（pin）检查服务器证书、代替证书链和名称检查的客户端 TLS 配置 | 已提出（I102）：在此之前于握手完成后、发送任何字节前检查 | 1, 15 | I102, I104 |
@@ -1778,6 +1778,8 @@ Wycheproof 的 `xchacha20_poly1305_test.json` 和 Go 的输出测试。
 （`akio_crypto::rand`）密封，同 fit 的 `Store.seal`。
 
 ## A232 由处理函数设置 HTTP 连接的空闲超时并关闭它，以及已接受连接的表
+
+**完成。** 已进入 akio 的 main（`9e21ada7`，akio 的 ADR-180）并锁定：`ConnHandle`（`close`、`close_at`、`close_after`、`cancel_close`、`set_idle_timeout`）、`Listener::on_accept` 和 `on_close`，以及 akio-http 的 `Context::connection()`。控制台在其上实现 fit 的规则：没有有效会话的连接在 accept 5 秒后关闭（此时正在处理的请求在其后同样长的时间内得到回答并带上 `Connection: close`），有会话的连接在两次请求之间保留 2 分钟，超过 `max_conns` 时为新连接关闭占用最多的客户端最旧的未认证连接（`console::slots`，即 fit 的 `login.Slots`）。权宜实现（对没有有效会话的请求的回答关闭其连接）已删除。Admin API 仍在 accept 时按 `max_conns` 限制：fit 的 Admin API 对没有令牌的连接的规则尚未移植。
 
 **状态。** 由 I90 提出（2026-11-26）。没有它控制台也能工作；在此之前，它的连接像 Admin API 的那样受限（一个权宜实现，
 记录在[开发进度](progress.zh-CN.md)中）。

@@ -27,24 +27,30 @@
 //! thread, 16 waiting), never on the I/O thread; the Admin API's changes go to the control thread
 //! as its own do.
 //!
-//! fit closes a connection without a login 5 s after it was accepted, and past `max_conns` closes
-//! the oldest such connection to make room; akio-http does not let a handler do either (akio's
-//! A232). Meanwhile the console's connections are bounded as the Admin API's: `max_conns` at
-//! accept, akio's head (10 s), body (30 s) and idle (2 min) timeouts, and an answer to a request
-//! without a valid session closes its connection.
+//! Its connections are fit's (`limitHandler`, on akio's connection handles and accept hooks,
+//! A232): one that has not sent a request with a valid session (a login that succeeds counts) is
+//! closed [`UNAUTH_TIMEOUT`] after it was accepted, whatever it sends meanwhile, and kept that long
+//! between requests; one that has is kept [`IDLE_TIMEOUT`] between requests, until it logs out or
+//! its session ends, when it is back on the first rule. A request being served when its
+//! connection's time runs out is answered, with `Connection: close`, within as long again. Past
+//! `max_conns`, or past the share of it unauthenticated connections may hold, a new connection
+//! closes the oldest unauthenticated one of the client holding the most ([`super::slots`]);
+//! akio's head (10 s) and body (30 s) timeouts bound every request.
 
+use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::io;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::{Arc, Mutex, OnceLock, PoisonError};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-use akio::{AnyAcceptor, Config as EngineConfig, Engine, Listener, Pool, PoolConfig};
+use akio::{AnyAcceptor, Config as EngineConfig, ConnHandle, Engine, Listener, Pool, PoolConfig};
 use akio_http::{BodyMode, Context, Detached, HttpConfig, Method, Request, Response};
 use akit_config::value::{Value, write_string};
 use akit_observe::logger::{Level, Logger};
 
 use super::login::{self, Logins, Options as LoginOptions, Session};
+use super::slots::Slots;
 use crate::certs::Reloader;
 use crate::server::{Options, Shared, VERSION_HEADER, dispatch, error, json, takes_config};
 
@@ -65,8 +71,12 @@ pub const MAX_LOGIN_BYTES: usize = 4 << 10;
 /// The largest body of a request other than a config: none is held past it.
 const OTHER_BODY_BYTES: usize = 64 << 10;
 
-/// How long a connection may go between requests: fit's `IdleTimeout`.
+/// How long a connection with a valid session may go between requests: fit's `IdleTimeout`.
 pub const IDLE_TIMEOUT: Duration = Duration::from_secs(2 * 60);
+
+/// How long after it was accepted a connection without a valid session is closed, whatever it
+/// sends meanwhile, and how long it may go between requests: fit's `UnauthIdleTimeout`.
+pub const UNAUTH_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// The login pool: one check at a time, 16 waiting, then 503, as fit's.
 const LOGIN_WORKERS: usize = 1;
@@ -105,6 +115,107 @@ struct Pages {
     cookie: OnceLock<String>,
     secure: bool,
     login_pool: Arc<Pool>,
+    conns: Arc<Conns>,
+}
+
+/// The console's connections, fit's `limitHandler`: counted by [`Slots`], each closed at its
+/// deadline unless a request with a valid session comes first.
+struct Conns {
+    slots: Slots,
+    /// The connections open, by id: when they close while they have not authenticated.
+    open: Mutex<HashMap<u64, Instant>>,
+    /// [`UNAUTH_TIMEOUT`], or a test's.
+    unauth: Duration,
+    /// How long past its time a connection is kept while a request is served on it: `unauth`,
+    /// or a test's.
+    grace: Duration,
+}
+
+impl Conns {
+    fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<u64, Instant>> {
+        self.open.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// A connection accepted (akio's `on_accept`, on the I/O thread): counted, unauthenticated,
+    /// and closed `unauth` from now unless it authenticates; closed at once when its client
+    /// holds its share already or every connection has authenticated. It may close the oldest
+    /// unauthenticated connection to take its slot.
+    fn accepted(&self, h: &ConnHandle) {
+        let evict = h.clone();
+        if !self
+            .slots
+            .open(h.id(), h.peer_addr().ip(), move || evict.close())
+        {
+            h.close();
+            return;
+        }
+        let until = after(Instant::now(), self.unauth);
+        let _ = h.close_at(until);
+        self.lock().insert(h.id(), until);
+    }
+
+    /// A connection closed (akio's `on_close`): its slot freed.
+    fn closed(&self, h: &ConnHandle) {
+        self.lock().remove(&h.id());
+        self.slots.release(h.id());
+    }
+
+    /// A request begun on its connection (fit's `limitHandler.begin`): one without a valid
+    /// session is not cut while it is served, for as long again as its time (fit's grace); its
+    /// response says `Connection: close` when that time ran out meanwhile, and otherwise sets
+    /// the deadline back.
+    fn begin(self: &Arc<Self>, ctx: &mut Context) -> Option<ConnHandle> {
+        let h = ctx.connection()?;
+        let id = h.id();
+        if !self.slots.authenticated(id) {
+            if let Some(until) = self.lock().get(&id).copied() {
+                let _ = h.close_at(after(until.max(Instant::now()), self.grace));
+            }
+        }
+        let me = Arc::clone(self);
+        let handle = h.clone();
+        ctx.add_response_filter(move |resp, _| {
+            if me.slots.authenticated(id) {
+                return;
+            }
+            let Some(until) = me.lock().get(&id).copied() else {
+                return;
+            };
+            if Instant::now() >= until {
+                resp.headers.set("Connection", "close");
+            } else {
+                let _ = handle.close_at(until);
+            }
+        });
+        Some(h)
+    }
+
+    /// Whether the request on `h` came with a valid session (fit's `Console.authenticated`): one
+    /// that did keeps its connection from now on, [`IDLE_TIMEOUT`] between requests (akio-http's
+    /// keep-alive timeout), and is no longer closed for a newer one; one that did not, on a
+    /// connection a session had kept, puts it back on the rule for unauthenticated ones, closed
+    /// `unauth` from now unless a valid session comes first.
+    fn authenticated(&self, h: Option<&ConnHandle>, valid: bool) {
+        let Some(h) = h else { return };
+        let id = h.id();
+        if valid {
+            h.cancel_close();
+            self.slots.authenticate(id);
+            return;
+        }
+        if self.slots.unauthenticate(id) {
+            let until = after(Instant::now(), self.unauth);
+            let _ = h.close_at(until);
+            if let Some(u) = self.lock().get_mut(&id) {
+                *u = until;
+            }
+        }
+    }
+}
+
+/// `d` after `at` (`at` itself past what an `Instant` holds, which a timeout never comes near).
+fn after(at: Instant, d: Duration) -> Instant {
+    at.checked_add(d).unwrap_or(at)
 }
 
 fn pool(threads: usize, queue: usize) -> Arc<Pool> {
@@ -160,12 +271,19 @@ impl Console {
             }),
             _ => None,
         };
+        let conns = Arc::new(Conns {
+            slots: Slots::new(c.max_conns),
+            open: Mutex::new(HashMap::new()),
+            unauth: opts.console_unauth_timeout,
+            grace: opts.console_grace.unwrap_or(opts.console_unauth_timeout),
+        });
         let pages = Arc::new(Pages {
             api: Arc::new(api),
             logins: Arc::new(Logins::new(&LoginOptions::of(c))),
             cookie: OnceLock::new(),
             secure,
             login_pool: pool(LOGIN_WORKERS, LOGIN_QUEUE),
+            conns: Arc::clone(&conns),
         });
         let mut http = HttpConfig::default();
         // HTTP/1.1 alone, as the Admin API: one request at a time on each connection max_conns
@@ -174,9 +292,13 @@ impl Console {
         http.max_body_bytes = OTHER_BODY_BYTES;
         http.head_timeout = Some(Duration::from_secs(10));
         http.body_timeout = Some(Duration::from_secs(30));
-        http.keep_alive_timeout = Some(IDLE_TIMEOUT);
+        // How long a connection is kept between requests; one without a valid session is closed
+        // at its deadline (`Conns`) before.
+        http.keep_alive_timeout = Some(opts.console_idle_timeout);
         let mut cfg = EngineConfig::default();
-        cfg.max_connections = c.max_conns;
+        // `max_conns` is the slots' (`Conns`), which close an older connection for a new one;
+        // the engine's bound leaves room for those being closed.
+        cfg.max_connections = c.max_conns.saturating_mul(2);
         cfg.shutdown_timeout = Duration::from_secs(1);
         let service = akio_http::serve_with(http, Service(Arc::clone(&pages)));
         // The certificate's files read again when they change (I94).
@@ -193,6 +315,11 @@ impl Console {
             Some(p) => Listener::tcp(addr).filter(super::accept_filter(p)),
             None => Listener::tcp(addr),
         };
+        // Counted as they are accepted, before TLS (akio's A232).
+        let (a, b) = (Arc::clone(&conns), conns);
+        let listener = listener
+            .on_accept(move |h| a.accepted(h))
+            .on_close(move |h| b.closed(h));
         let engine = Engine::builder()
             .config(cfg)
             .listen(
@@ -267,12 +394,6 @@ impl akio_http::Service for Service {
     fn call(&self, ctx: &mut Context) {
         self.0.serve(ctx);
     }
-}
-
-/// `{"error": msg}`, closing the connection: an answer to a client without a valid session, which
-/// is not kept (the stopgap for akio's A232).
-fn refuse(status: u16, msg: &str) -> Response {
-    error(status, msg).header("Connection", "close")
 }
 
 /// The value of cookie `name` in `header`, a `Cookie` field.
@@ -353,6 +474,7 @@ impl Pages {
     }
 
     fn serve(self: &Arc<Self>, ctx: &mut Context) {
+        let conn = self.conns.begin(ctx);
         ctx.add_response_header("Content-Security-Policy", CSP);
         ctx.add_response_header("X-Content-Type-Options", "nosniff");
         ctx.add_response_header("X-Frame-Options", "DENY");
@@ -362,7 +484,7 @@ impl Pages {
         }
         if let Some(o) = ctx.header("Origin") {
             if o != self.origin(ctx) {
-                return ctx.respond(refuse(403, "requests from other web pages are refused"));
+                return ctx.respond(error(403, "requests from other web pages are refused"));
             }
         }
         let path = ctx.path().to_owned();
@@ -373,8 +495,8 @@ impl Pages {
         ctx.add_response_header("Cache-Control", "no-store");
         let method = ctx.method().clone();
         match (&method, path.as_str()) {
-            (Method::Post, "/api/login") => return self.login(ctx),
-            (Method::Post, "/api/logout") => return self.logout(ctx),
+            (Method::Post, "/api/login") => return self.login(ctx, conn),
+            (Method::Post, "/api/logout") => return self.logout(ctx, conn.as_ref()),
             _ => {}
         }
         let token = ctx
@@ -383,7 +505,8 @@ impl Pages {
             .unwrap_or("")
             .to_owned();
         let Some(s) = self.logins.lookup(&token) else {
-            return ctx.respond(refuse(401, "log in first"));
+            self.conns.authenticated(conn.as_ref(), false);
+            return ctx.respond(error(401, "log in first"));
         };
         let read = matches!(method, Method::Get | Method::Head);
         if !read
@@ -396,6 +519,7 @@ impl Pages {
                 &format!("the request lacks the session's {CSRF_HEADER} token"),
             ));
         }
+        self.conns.authenticated(conn.as_ref(), true);
         if method == Method::Get {
             match path.as_str() {
                 "/api/session" => return ctx.respond(json(200, session_body(&s))),
@@ -509,17 +633,17 @@ impl Pages {
 
     /// `POST /api/login`: checked on the login pool, one from an address at a time, not while
     /// it is locked out or its user slowed.
-    fn login(self: &Arc<Self>, ctx: &mut Context) {
+    fn login(self: &Arc<Self>, ctx: &mut Context, conn: Option<ConnHandle>) {
         let json_body = ctx.header("Content-Type").is_some_and(|t| {
             t.split(';')
                 .next()
                 .is_some_and(|m| m.trim().eq_ignore_ascii_case("application/json"))
         });
         if !json_body {
-            return ctx.respond(refuse(415, "the body must be sent as application/json"));
+            return ctx.respond(error(415, "the body must be sent as application/json"));
         }
         if ctx.body().len() > MAX_LOGIN_BYTES {
-            return ctx.respond(refuse(413, "a login's body is 4 KiB at most"));
+            return ctx.respond(error(413, "a login's body is 4 KiB at most"));
         }
         let parsed = std::str::from_utf8(ctx.body())
             .ok()
@@ -532,7 +656,7 @@ impl Pages {
             .as_ref()
             .and_then(|v| Some((field(v, "username")?, field(v, "password")?)))
         else {
-            return ctx.respond(refuse(400, "the body must be {\"username\", \"password\"}"));
+            return ctx.respond(error(400, "the body must be {\"username\", \"password\"}"));
         };
         let addr = client(ctx);
         let ticket = match self.logins.admit_user(&addr, &user) {
@@ -557,12 +681,13 @@ impl Pages {
                     Level::Warn,
                     format_args!("console: a failed login as {user:?} from {addr}"),
                 );
-                return d.respond(refuse(401, "the user name or password is wrong"));
+                return d.respond(error(401, "the user name or password is wrong"));
             }
             ticket.passed();
             let Some((token, s)) = me.logins.start(&user) else {
-                return d.respond(refuse(500, "no randomness for a session"));
+                return d.respond(error(500, "no randomness for a session"));
             };
+            me.conns.authenticated(conn.as_ref(), true);
             log(
                 Level::Info,
                 format_args!("console: {user:?} logged in from {addr}"),
@@ -572,7 +697,7 @@ impl Pages {
     }
 
     /// `POST /api/logout`: the session ends, its cookie with it; 204.
-    fn logout(&self, ctx: &mut Context) {
+    fn logout(&self, ctx: &mut Context, conn: Option<&ConnHandle>) {
         let token = ctx
             .header("Cookie")
             .and_then(|h| cookie(h, self.cookie()))
@@ -584,11 +709,9 @@ impl Pages {
                 format_args!("console: {:?} logged out", s.user),
             );
         }
-        ctx.respond(
-            Response::new(204)
-                .header("Set-Cookie", self.set_cookie(""))
-                .header("Connection", "close"),
-        );
+        // Logged out, the connection is an unauthenticated one again.
+        self.conns.authenticated(conn, false);
+        ctx.respond(Response::new(204).header("Set-Cookie", self.set_cookie("")));
     }
 }
 
@@ -606,7 +729,5 @@ fn refused(r: login::Refusal) -> Response {
     let mut b = String::from("{\"error\":");
     write_string(&mut b, msg);
     let _ = writeln!(b, ",\"retry_after\":{secs}}}");
-    json(429, b)
-        .header("Retry-After", secs.to_string())
-        .header("Connection", "close")
+    json(429, b).header("Retry-After", secs.to_string())
 }
