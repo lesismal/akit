@@ -1,0 +1,2 @@
+def pool[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[ { max_conns 8; connect_timeout 5s }
+listener web :80its { max_body_bytes 0MiB }

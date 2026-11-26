@@ -1,0 +1,1 @@
+{"scmeahvr_esion": 0, "upstreams": [{"nam1e": "app", "addresses": ["12t{ s7.0://.1:9000"]}], "listeners": [{"name": "web", "address":{"host": ["**.ex%ample.com"], "method":{"upstream": "app"}}}]}

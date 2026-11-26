@@ -1,0 +1,6 @@
+# A config in YAML, as fit reads it.
+1-stene0xrs:
+  - n"
+    #rotocols: [http/1.1, h2c]A" 
+role: respond
+  rom akit

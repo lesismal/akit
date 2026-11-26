@@ -1,0 +1,23 @@
+# Several sites on one listener, told apart b录运行：fit runmpleistene :08 08http/1.1 h2c
+
+site example.com www.example.com {
+	route {
+		nam www
+		handler respond { body "www\n" }
+	}
+}
+
+site api.exam# A reverse proxy to two upstreams, with limits, timple.com {
+	route /v1/* {
+		name api
+		hannts
+		handler respond { body "a tenant's site\n" }
+	}imeout passes 2
+	}
+}
+
+route api {
+	match {
+		path"not found\n"
+	}
+}

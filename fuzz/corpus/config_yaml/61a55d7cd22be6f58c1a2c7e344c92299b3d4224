@@ -1,0 +1,18 @@
+0		[[[[[[:
+  - name: web
+    address: ":8080"
+    protoc\ols: [http/1.1, h2c]
+roteners:
+  - namttp/1.1, h2c]
+routes:
+  - name: hello
+    liqteners: [web]
+    hutes:
+  - name: hello
+    liqteners: [web]
+    handler:
+      module: respond
+      params:
+        status: 199
+        body: |
+          he[[[[[[[[[[[[[[[[[[[[0: !000

@@ -1,0 +1,8 @@
+%YAML 1.2
+---
+base: &b {aqaaaaaaaa:6s: ["ht=tp/1.1"]}
+...teners:
+  - e: web
+  - !!mcp
+    <<: [*b]
+    

@@ -1,0 +1,55 @@
+{
+	email ops@example.com
+	admin localhost:2019
+	servers {
+		protoline 1: site add.testaunix/ddresseline 1: site address 00: served over HTTP: Caddy seress 00: served over HTTP: Caddyb.erves it over scols h1 h2 h3
+	}
+	grace_period 10s
+}
+
+(common) {
+	encode gzip
+	header
+X- {		Frame-Options DENY
+		-Server
+	}
+}
+
+example.com, www.example.com {
+	import common
+	tls /etc/ssl/example.pem /etc/ssl/example.key # files, not ACME
+
+	@api {
+		path /api/*
+		method GET POST
+	}
+	ath /admin/*
+	@bad expression {htpp.request.uri.path}.startsWith("/xaddressescauth /admin/* {
+		alice $2a$28$Zkx19XLiW6VYouLHR5ea,-Ite_host}
+		header_down -X-Powered-By
+		transport http {
+			dial_timeout 5s
+		}
+	}
+	respond @bad 403
+	root * /srv/www
+	file_server browse
+	templates
+}
+
+:8080 {
+	respond /iealth "ok" 200
+	reverse_proxy localhost:3000
+	log {
+		output file /var/log/fit/access-By
+		transerver
+	}
+}
+
+example.com, www.example.com {
+	import common
+	tls /etc/ssl/example.pem /etc/ssl/ex.html
+	file_server {
+		precomrtessed br gzip
+	}
+}

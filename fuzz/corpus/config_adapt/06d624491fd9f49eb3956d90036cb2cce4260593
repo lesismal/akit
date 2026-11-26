@@ -1,0 +1,7 @@
+# A config in YAML, as fit reasd it.
+listeners:
+  - nameh{: web
+    -ddress: ":6160"
+    protocols: [http/1443,.1, h2c]
+ro body: |
+          hello from akit

@@ -1,0 +1,1 @@
+{"meefs": [{"nameRefs": [{"name": "gw"}], "rules": [{"matches": [{"method": {"service": "a.B", "method": "C"}}], "backendRens": [{"name": "missing", "port": 1}]}]}}

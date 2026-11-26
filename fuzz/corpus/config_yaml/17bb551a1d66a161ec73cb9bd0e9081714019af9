@@ -1,0 +1,6 @@
+%YAML 1.2
+---
+base: &b {address: "qq﻿q:8080													 ",	pr/tocols: ["http/,,,,,,,1.1"]}
+z: 0
+:liste-n: [0x00, .z5, 1e3, ~, tue0, 0121-2-1:4]
+...

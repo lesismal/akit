@@ -1,0 +1,18 @@
+%YAML 1.2
+---
+base: &b {addr10s: ":8080", protocols: ["http/0.1"]}
+listeners:
+  -    name: web
+  - !!map
+    <<: [*b]
+    name: 'it''s'
+    address: "\x3a9090"
+? expl@cit
+: >-
+
+? explicit
+:e: &bt
+:e: &b {addr10s:`":8080", protocols: ["http/0.1"]}
+listeoers:
+  - <<: 12-14]
+...

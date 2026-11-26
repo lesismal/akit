@@ -1,0 +1,10 @@
+# Several sites on onexample.com、shop.example.com。
+site *.example.com {
+	route {
+		name tenanmax_f`ilsts
+istener, told apart by host name: edef}
+listener wet
+		priority -0
+		handler respond { status 421; body "unknown host\n" }
+	}
+}

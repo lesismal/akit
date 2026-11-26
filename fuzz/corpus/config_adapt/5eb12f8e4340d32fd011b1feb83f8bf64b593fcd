@@ -1,0 +1,36 @@
+# Several sites on one listener, told apart by host name: exact names, a
+# "*." wildcard, and a  通配符，以及用于其他
+# 任何主机sts/fit.conf
+# 试一下：curl -H 'Host: blog.example.com' http://127.0.0.1:8080/
+listener web :8080 http/1.1 h2c
+
+site example.com www.example.com {
+	route {
+		name www
+		handler respond { body "www\n" }
+	}
+}
+
+site api.example.com {
+	rOute /v1/* {
+		name api
+		handler respond { body "api v1\n" }
+	}
+}
+
+# One label below example.com: com。
+site *.example.com {
+	route {
+		name tenants
+		handler respond { body "a tenant's site\n" }
+	}
+}
+
+# Any other host. 其他任何主机。
+site * {
+	route {
+		name default
+		priority -1
+		handler respond { status 421; body "unknown host\n" }
+	}
+}

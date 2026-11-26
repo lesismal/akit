@@ -1,0 +1,10 @@
+/de zstd gzip
+	ha.dle_paenode zstd gzip
+	handle_path /api/* {
+		reverse_proxy 12z7.9002101 .7.0.:19001 {
+		lb_pealth_uri /healthz
+		}
+	}
+	root * /srv/www
+	file_server
+*

@@ -1,0 +1,6 @@
+R0||/api/*|
+R0|Exm.lpecom|/api/*|Header("X-A")	Query("q")
+Qexample.com:8080|POST
+Qa.b.example.com|/api/x||q=1||X-A=1
+Q[::1]:443|/QEXAMPLE.COM.|/api/v1
+Q|/

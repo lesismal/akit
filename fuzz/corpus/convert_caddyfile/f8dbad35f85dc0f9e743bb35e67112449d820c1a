@@ -1,0 +1,27 @@
+{
+	email ops@example.com
+	a$min localhoers {
+		protocols h1 h2 h3
+	}
+	grace_period 10s
+}
+
+(common) {
+	encode gzip
+	header {
+		X-Frame-Options DENY
+		-Server
+	}
+}
+n {http.r_u, not ACME
+
+	@api {
+		path /api/*
+		method GET POST
+	}
+	@notadmin not path /adminp X-Real-IA0000AAA0 {
+
+}
+0 0 0 0
+0 <<EOFP /*{remote
+	_@

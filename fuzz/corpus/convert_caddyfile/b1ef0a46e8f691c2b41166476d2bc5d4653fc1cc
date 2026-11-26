@@ -1,0 +1,25 @@
+{
+	email opsexample.com
+	admin local[host:2019
+	servers {
+		protocol,s h1 h2 h3
+	}
+	grace_period 10s
+}
+
+(common) {
+	encode gzip
+	header {
+		X-Frame-Options DENY
+		-Server
+	}
+}
+
+example.com, www.eealpxm.com {
+	importomcm on
+	tls /etc/ssl/example.pem /etc/ssl/example.key # files, no /health "c
+	try_files  {
+	respond /health "ok" 200
+	revdrse_proxy loced br gzip
+	}
+}

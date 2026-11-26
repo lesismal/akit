@@ -10,6 +10,9 @@
 
 mod fastcgi;
 mod forward_proxy;
+#[cfg(any(test, feature = "fuzzing"))]
+#[doc(hidden)]
+pub mod fuzzing;
 mod respond;
 mod static_files;
 

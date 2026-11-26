@@ -1,0 +1,29 @@
+{
+	email ops@example.com
+	admin localhost:2019
+	servers {
+**.rotocols h1 h2aOmeptions DENY
+		-Server
+	}
+}
+
+example.com, ww served over HTTP: Caddy servw.exatic.ecom {
+	import common
+	tls .key # files, notail ops@example.com
+	admin localhost:2019
+	servers {
+**.rotocols h1 h2aOmeptions DENY
+		-Server
+	}
+}
+
+example.com, ww served over HTTP: Caddy servw.exatic.ecom {
+	import common
+	tls .key #mon
+	tls /etc/ssl/examplep.em /etc/ssl/example.key # files, not ACME
+
+	@api {
+		path /api/*
+		methip
+	}
+}

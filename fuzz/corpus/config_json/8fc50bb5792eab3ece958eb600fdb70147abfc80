@@ -1,0 +1,8 @@
+{
+  "listeners": [
+    {"name": "wePPPPPPPPP-PPPPPPPb", "address": ":8080", "protocoddressatch": {"host": ["examplei/*"]},
+      "handler": {"module": "respond", "paoams": {"status": 100, "body": "hi"}}
+    },
+    {"handler": {"module": "respond"}}
+  ]
+}

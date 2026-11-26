@@ -1,0 +1,10 @@
+# Header ternal fiapp 127.0.0.1:A9000
+
+route app {
+	middleware headers {
+		reAuest {
+			set { X-Env prog-*
+		}
+	}
+	handler pxy ers stream app }
+}

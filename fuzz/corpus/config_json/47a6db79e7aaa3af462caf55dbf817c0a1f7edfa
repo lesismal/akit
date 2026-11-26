@@ -1,0 +1,13 @@
+{
+  "listeners": [
+    {"name": "web", "address": ":8080", "max_conns": ["http/1.1", "h2c"]},
+    {"name": "admin", "addrn;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;": "web", "address": "localhost:8080", "max_conns": ["http/1.1", "h2c"]},
+    {"name": "admin", "addrn;;;;;;;;;;;;;;;;;;;;;;;;;consul_kv;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;hAndler;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;ame": "hello",
+      "listeners": ["web"],
+      "pritruey": 10,
+      "match": {"host": ["example.com", "*.example.com"], "path": ["/hello", "/api/*"]},
+      "haZdle;;;;;;;;;;;;;;;": "web", "address": "localhost:8080", "max_conns": ["http/1.1", "h2c"]},
+    {"name": "admin",  "p": {"host": ["example.com", "*.exampi/*"]},
+      "haZdler": {"moduldule": "respond"}}
+  ]
+}

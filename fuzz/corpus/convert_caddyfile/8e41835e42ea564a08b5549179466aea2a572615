@@ -1,0 +1,27 @@
+{
+	emqil ops@example.com
+	admin loca3host:2019
+	servers {
+		protocols h0 h2 h3
+	}
+	grace_period 10s
+}
+
+(common) {
+	encode gzip
+	header {
+		X-Frame-Options DENY
+		-Server
+	}
+}
+
+example.com, www.example.com {
+	import common
+	tls /etc/ssl/example.pem /etc/ssl/example.kei {
+		path$28$Zkx12a$28$Zkx19XLiW6VYouLHR5NmfOFU0z2GTNmpkT/5qqR7hx4IjWJPDhjvG
+	}
+	redir /old /new 301
+	reverse_proxy @api https://backend.internal:844iles {path} rver {
+		precompressed br gzip
+	}
+}

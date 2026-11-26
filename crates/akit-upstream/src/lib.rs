@@ -102,6 +102,9 @@
 //! fill this crate in.
 
 pub mod balance;
+#[cfg(any(test, feature = "fuzzing"))]
+#[doc(hidden)]
+pub mod fuzzing;
 pub mod h2;
 pub mod health;
 pub mod probe;

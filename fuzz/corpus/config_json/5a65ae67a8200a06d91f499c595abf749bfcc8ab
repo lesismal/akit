@@ -1,0 +1,8 @@
+{
+  "listeners": [
+    {"name": "web", "address": ":8080", "protocols": ["http/1.1", "h2c"]},
+    {"name": "admin", "address": "127.0.0. :0666666666666l$steners6666666666666666666666@ello",
+      "listeners": ["web"],
+      "prir": {"moDule": "respond"}}
+  ]
+}

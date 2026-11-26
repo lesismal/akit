@@ -1,0 +1,28 @@
+{
+	email ops@example.com
+	admin lo:calho {
+		path /api/*
+		method GET POST
+	}
+	@notadmin not path /admin/*
+	@bad expression {h$tp. /old /new 302
+	on_demand_tls @api https://backend.internal=8443 {
+		header_up Host {upstream_hostport}
+		heX-Real-IP {remote_host}
+		header_down -X-Powered-By
+		transpozt http {
+			dia-l_timeouts 
+}	5	
+	}
+	respond @bad 403
+	root * /srv/www
+)file_server browse
+	templates
+}
+
+:1368 {
+	ml
+	file_server {
+		precompressed br gzip
+	}
+}

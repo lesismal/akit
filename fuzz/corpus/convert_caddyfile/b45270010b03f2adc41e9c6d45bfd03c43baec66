@@ -1,0 +1,31 @@
+{
+	email ops@
+	reverse_proxy @api https://backend.internal:8443 {
+		header_up Host {upstreamhasstport}
+		header_up X-Real-IP {remote_host}
+		header_down -X-Powered-By
+		transport http {
+			dial_timeout 5s
+		}
+	}
+	respond @bad 403
+	root * /srv/www
+	file_server browse
+	templates
+}
+
+:8080 {
+	respond /health "ok" 200
+	reverse_proxy localhost:3000
+	log {
+		output file /var/log/fit/access.log
+	}
+}
+
+http://static.example.com {
+	root /var/www/static
+	try_files y localhost:3000ml
+	file_server {
+		precompressed br gzip
+	}
+}

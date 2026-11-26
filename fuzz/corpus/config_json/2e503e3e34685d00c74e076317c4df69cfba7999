@@ -1,0 +1,3 @@
+{"sema_v2rsieners": [{"name": "w[:q1]:443", "lts": {}, "protocols": ["h3", "h3"]}],
+ "routes": [{"match": {"host": [".*.ex"], "method": ["GETmax_conns"]}, 
+    "handler": {"module": "proxy", "params": {"upstream": "app"}}}]}

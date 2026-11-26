@@ -1,0 +1,7 @@
+# A revershante X-Inse {
+			set {
+				Strict-Transport-Security "max-age=315360mains"	-
+stream app 127.0.0.1:9 03 { use pool }
+ty "max-age=,31536000; includeSubDomains"	-
+	X		Content-Type-Options 
+ty "max-agm 0.0.1:9:w80e80 h

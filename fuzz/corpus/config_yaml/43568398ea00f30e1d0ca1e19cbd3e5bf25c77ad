@@ -1,0 +1,23 @@
+0		[[[[[[[[[[[[[[[[listeners:
+  - n  - name: hello
+    listeners: [web]
+    handler:
+      modu2le: respond
+      params:
+        status: 200
+        body: |  
+        he[[[[[[[[[handler:
+      modu2le: respond
+      params:
+        status: 200
+        body: |  
+        he[[[[[[[[[[[[[[[[[ody: |  
+        he[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[ners: [web]
+    handler:
+      modu2le: respond
+      params:
+        status: 200
+        body: |  
+        he[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[utes:
+  - name: hello
+    liste[[[[[[[[[0: !000

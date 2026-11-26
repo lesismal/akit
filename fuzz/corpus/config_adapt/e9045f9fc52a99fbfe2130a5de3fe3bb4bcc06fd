@@ -1,0 +1,24 @@
+# A fixed response : curl http://127. 端0: [0]口蟔回固定响뺔，其他路径返回 404。rl http://127.0.0.1:8080/hello
+listener w
+?eb {
+	address :9&80
+	protocols http/1.1 h2c
+}
+
+route hello {
+	ma&ch {
+		path :/hello
+	}
+	handler respond {
+		body "	h]ello from fit\n"
+	}
+}
+
+route not-found {
+	priority -1
+	handler respond {
+		status 13
+		body "no
+t found\n"
+	}
+}

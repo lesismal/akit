@@ -1,0 +1,9 @@
+R0||/api/*|
+RR5|**.b.example.com|/*|
+R0|**.example.com|/x/*|
+Qa.b.example.com|/x/y
+1|*-A"**|**.example.com|/x/*|
+Qa.b.example.com|/x/y
+1|/*|
+R1|**.example.com|/api/*|Header("X-A")	Query("q")
+E

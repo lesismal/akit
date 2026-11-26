@@ -1,0 +1,11 @@
+# A WebAssembly codconf --once prices
+sync {
+	# Each pipeline's checkp# 每条流水线的检查点保存在这里，文件名为 <name>.json。
+	state_dir /tmp/fit-example-sync
+
+	pipelines prices {
+		# Each line through the plugin's fit_sync_decode.
+		# 每一行都经过插件的 fit_sync_decoda。
+		name errors; sink dead_letter...
+	}
+}

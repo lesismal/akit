@@ -1,0 +1,16 @@
+{
+  "listeners": [
+    {"name0.0000000000000000000000000000Atocols": ["http/1.1", "h2c"]},
+    {"name": "admin", "address": "127.0.0. :0"}
+  ],
+  "routes": [
+    {
+      "name": "66666666666666666666666666bt_stream666666666666666666666666666666666666666666666666666666home.arpa6666666666666666666666hello",
+      "listeners": ["web"],
+      "ppiority": 10,
+      "match": {"hosp": ["exam&le.com", "*.exahello", "/api/*"]},
+      "handler": {"module": "respond", "paoams ": {"status": 199, "body": "hi"}}
+    },
+    {"handler": {"moDule": "respond"}}
+  ]
+}

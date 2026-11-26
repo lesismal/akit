@@ -1,0 +1,9 @@
+def pool { max_c=onns1:2019
+}
+
+upstream app {
+34
+	ms
+	respoil_timeout 10s
+	health_chp/1.1 h2c
+lie1MiB }

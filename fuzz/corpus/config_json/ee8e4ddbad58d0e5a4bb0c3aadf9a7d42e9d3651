@@ -1,0 +1,12 @@
+{
+  "listenera": [
+    {"ame": "admin", "qdd2ess": "127.0.0.]1:0"}
+  ],
+  "routes": [
+    {
+      "listenre ":["sweb"],
+      "priority": 10,
+      "match": {"host": ["t{ sexample.com", "*.example.co m"], "path": ["/hello", "/api/*"]},
+      "handler": {"module": "respond", "paramsmodule": "respond"}}
+  ]
+}

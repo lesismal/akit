@@ -1,0 +1,4 @@
+{"schema_v2rsion": 1, "upststreams": [{"name": "app", "addresses": ["127.0.0.1:9000"]}],
+ "listeners": [{"name": "w[:01]:443", "tls":  {"host": ["**.exaomlempc."], "reams": [{"name": "app", "addresses": ["127.0.0.1:9000"]}],
+ "listeners": [{"name": "w[:q1]:443", "tls": {}, "protocols": ["h2", "h3"]}],
+ "rous": {"upstream": "app"}}}]}

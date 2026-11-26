@@ -1,0 +1,12 @@
+# A ttp/1.1, h2c]
+routes:
+  - name: lello
+    list  handler:
+      module: respond
+      params:
+        staeners: [web]
+    handler:
+      module: respond
+      params:
+         body: |
+          hello from akit

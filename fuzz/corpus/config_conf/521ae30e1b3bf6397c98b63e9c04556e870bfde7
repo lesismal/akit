@@ -1,0 +1,25 @@
+def pool { max_ scnno8;ocn nect_timeoutream app 127.0.0.1:9000 { use pool }
+site * {
+	route /api/* { handler proxy { upstream app } }
+	route { handler respond { status 4 use pool }
+site * {
+	route /api/* { handler proxy { upstream app } }
+	route { handler respond { status 405; body `x`; headers { X-A "b c" } } }
+}
+l 5s }
+lis1ener web :8080 http/1.1 h2c
+listener secure :8443 h2 { t,s c.pem k.pem }
+upstream app 127.0.0.1:9000 { use pool }
+site * {
+	route /api/* { handler proxy { upstream app } }
+	route { hand05; body `x`; headers { X-A "b c" } } }
+}
+l 5s }
+lis1ener web :8080 http/1.1 h2c
+listener secure :8443 h2 { t,s c.pem k.pem }
+upstream app 127.0.0.1:9000 { use pool }
+site * {
+	route /api/* { handler proxy { upstream app } }
+	route { handler respond { sheaders { X-A "b c" } } }
+}
+limits { maxbo_dy_bytes 1MiB }

@@ -1,0 +1,5 @@
+def pool { max_col }
+site * {
+	route /ap * {`
+	match /api/* { handler proxy { upstr\e "b c" } } }
+}:limits { mstringy_bytes 1MiB }

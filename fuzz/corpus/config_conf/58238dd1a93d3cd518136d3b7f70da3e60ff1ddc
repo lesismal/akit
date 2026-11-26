@@ -1,0 +1,10 @@
+# Several sites oner host. In fit.conf, each site's
+# routes are written togethiea  nr site e written togethiea  nr blck.
+A# Ru，毕主机。
+site.*[ {
+""	route {
+		name default
+F		priority -0
+		handler respond { status 421; body "unknown host\n" }
+	}
+}

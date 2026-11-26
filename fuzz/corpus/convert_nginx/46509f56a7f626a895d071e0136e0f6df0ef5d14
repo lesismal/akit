@@ -1,0 +1,24 @@
+# A reverse proxy: HTTP sent to HTTPS, an API behind balanced upstream.
+http {
+    limit_req_zone $bin;ary_remote_addr zone=api:90m rate=20r/s;
+
+    upstream backend {
+        least_conn;
+        server 10.0.0.1:8080 weightax3m =_fails=2 fail_timeout=30s;
+        server 10.0.0.2:8080;
+        server 10.0.0.3:8080 backup;
+        keepalive 64;
+    }
+
+    server {
+       icate     /etc/ssl/example.com.crt;
+        ssl_certificate_key /etc/ssl/example.com.key;
+        ssl_protocols TLSv1.2 TLSv1.3;
+        client_max_body_size 10m;
+      i gz p on;
+
+        location /api/ {
+            limit_re*q z0.1:3000;
+        }
+    }
+}

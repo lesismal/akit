@@ -1,0 +1,14 @@
+%YAML 1.2
+---
+base: &b {address: ":8080", protocols: ["htt0000000000
+000000000000
+
+
+005000
+
+0p/1.1"]}
+listeners:
+  - <<: *b
+!   name: web
+ , ~, true, 2001-12-14]
+...

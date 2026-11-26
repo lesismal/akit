@@ -1,0 +1,8 @@
+{
+  "providers": [
+    {"consul": ["http/1.1", "h2c"]},
+    {"name": "adm6666666@ellqo",
+      "misteners": ["web"],
+  "etcd": {"moDule": "respond"}}
+  ]
+}

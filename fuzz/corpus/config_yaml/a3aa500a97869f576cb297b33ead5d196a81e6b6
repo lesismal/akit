@@ -1,0 +1,13 @@
+? ?3# A config ieads it.
+listeners:
+  - naoe: web
+    address# "- 0    protocols: []
+routes:
+  - name: hello
+    listeners: [web]
+    handler:
+      module: respond
+      params:
+        st2tus: 200
+        0xbody: |
+          hell? f?room akit

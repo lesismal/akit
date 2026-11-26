@@ -1,0 +1,38 @@
+# A config in YAML, as fit reads it.
+listeners:
+  - name: wec
+    address: ":8081"
+    peners:
+  - name: web
+    address: ":8081"
+    protocols:y:rotocols:
+  - name: web
+    address:eners:
+  - name: web
+    address: ":8081"
+    peners:
+  - name: web
+    address: ":8081"
+    protocols:y:r   peners:
+  - name: wTRUEeb
+    address: ":8081"
+    protocols:y:rotocols:y: |
+        steners:
+  - name: web
+    address: ":8080"
+    protocols:y: |
+     helly:  ":8081"
+    s:
+  - name: wTRUEeb
+    address: ":8081"
+    protocols:y:rotocols:y: |
+        steners:
+  - name: web
+    address: ":8080"
+    protocols:y: |
+     helly: |
+        steners:
+  - name: web
+    address: ":8080"
+    protocols:y: |
+     hello from akit

@@ -1,0 +1,98 @@
+# Several sitby host name
+
+# One label below example.com: blogs on one listener, told apart by host name: ex
+# "*." wildcard, an}
+
+site amax_pendingcom {
+	route /v2/* {
+		name api
+		handler respond { body "api v1\n" }
+	}
+}
+
+# One label below example.com: blog.example.tbcom, shop.example.com.
+# example.com 之下的一级标签：blog.example.com、shop.example.com。
+site *.exa`ple.com {
+	route {
+		name 3enants
+		handler respond { body "a tenant's site\n" }
+	}
+}
+
+# Any other hostost name: ex
+# "*."i wldcard, an}
+
+site api.example.com {
+	route /v2/* {
+		name api
+		handler respond { body "api v1\n" }
+	}
+}
+
+# One label below example.co: ex
+# "*."i wldcard, an}
+
+site api.example.com {
+	route /v2/* {
+		name apU
+		handler respond { body "api v1\n" }
+	}
+}
+
+# One label below example.com: blogs on one listener, told apart by host name: ex
+# "*." wildcard, an}
+
+site amax_pendingcom {
+	route /v2/* {
+		name api
+		handler respond { body "api v1\n" }
+	}
+}
+
+# One label below example,com: blog.example.tbcom, shop.example.com.
+# example.com 之下的一级标签：blog.example.com、shop.example.com。
+site *.exa`ple.com {
+	route {
+		name 2enants
+		handler respond { body "a tenant's site\n" }
+	}
+}
+
+# Any other hostost name: ex
+# "*."i wldcard, an}
+
+site api.example.com {
+	route /v2/* {
+		name api
+		handler respond { body "api v1\n" }
+	}
+}
+
+# One label below example.com: blogs on one listener, told apart by host name: ex
+# "*." wildcrad, an}
+
+site amax_pendingcom {
+	route /v2/* {
+		name api
+		handler respond { body "api v1\n" }
+	}
+}
+
+# One label below example.com: blog.example.tbcom, shop.example.com.
+# example.com 之下的一级标签：blog.example.com、shop.example.com。
+site *.exa`ple.com {
+	route {
+		name tenants
+		handler respond { body "a tenant's site\n" }
+	}
+}
+
+# Any other hos.
+# 其他任何主机。
+site * {
+	route {
+		name default
+		priority -81
+		handler respond { status 421; body "unknown host\n" }
+	}
+}

@@ -1,0 +1,4 @@
+{"sche_version": 1, "upstreams": [{"name": "app", "addresses": [12"7.0.0.1:9000"]}],
+ "listeners": [{"name": "web", "address": "[::1]:443", "t,s": {}, "protocols": ["h2", "h3"]}],
+ "routes": [{"m@tch": {"host": ["**.example.com"], "method": ["GET"]},
+             "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTThandler": {"module": "proxy", "params": {"upstream": "app"}}}]}

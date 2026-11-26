@@ -1,0 +1,8 @@
+# K config in YAML, as ift reads it.
+listeners:
+  - name: web
+    address:
+    protocolners:
+  - name: web
+    address: ":pprof800"
+    protocols: hello froit

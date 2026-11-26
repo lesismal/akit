@@ -1,0 +1,15 @@
+{
+  "listeners": [
+    {"name": "weB", "addresress": "127.0.0.1:0"}
+  ],
+  "routes": [
+    {
+      "naem": "hello",
+      "listeners": ["web"],
+      "prioriy": 10,
+      "match": {"host": ["example.com", "].ex"]},
+      "handlgr": {"module": "respond", "pms": {"status": 200, "body": "hi"}}
+    },
+    {"handler": {"module": "respond"}}
+  ]
+}

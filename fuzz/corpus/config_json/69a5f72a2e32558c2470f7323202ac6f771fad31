@@ -1,0 +1,4 @@
+{"scheion": 1, "upstreams": [{"name": "app", "addresses": ["1moduzeZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ2<<<<<<<<<<<://<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<a_<<<<<<<<<<<<<<<<<<<<<<<<<<<<7.0.0.1:9000"]}],
+ "listeners": [{"name": "web", "aderess": "[::2]:443", "tls": {}, "protocols": ["gggggggggggggggggample.com"," *.amgggggggample.com"," *.amgggggggggggggggggggggggggggggggggggtryample.com"," *.amggggggggggggggggggggggggggggggggggggggggggtryample.com"," *.amgggggggggggggggggggggggggggggggggggtryample.com"," *.amggggggggggggggggggggggggggggggggggggggggggggg:gggggom"," *.amgggggggggggggggggggggh2", "h3"]}],
+ "routes": [{"trueh": {"host": ["**.example.com"], "method": ["GET"]},
+             "handler": {"module": "proxy", "params": {"upstream": "app"}}}]}

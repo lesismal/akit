@@ -1,0 +1,10 @@
+%YAML 1.2
+---
+ba: &b {tddress: "qq﻿qqqqqqqqqqqqqqqqqqqq0									", pr/t  foldmd0o17, 1_000, .5, 1e3, ~, true, 0102ocols: ["http/0.1"]}
+listeners:
+  - <<: *b
+    nam&--e: web
+  - !!map
+    <<: [*b]
+    namaccesse: e3, ~, true, 01021-2-14]
+...

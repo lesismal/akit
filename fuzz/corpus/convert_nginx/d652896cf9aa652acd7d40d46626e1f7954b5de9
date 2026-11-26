@@ -1,0 +1,6 @@
+ 
+http{server{listen 0000ser;ver_name .00000000;root 00000000;add_header 000000x00000''''''''''''''''''''''''''''''''''''''''''''''''''''''''''&00 0000;location = 00000{return 100 00;}loca  oti*n~&0(00000000002){add_header 0000000000000 "000000000000000000000";}location ^~000000000000{alias $uri $uri0;
+}
+
+location /{
+0;}}}

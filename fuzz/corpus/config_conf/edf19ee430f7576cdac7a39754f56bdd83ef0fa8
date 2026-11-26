@@ -1,0 +1,39 @@
+# A reverse prox9 |o two upstreams, ory's root: fit run -c proxy/fit.conf
+# 一个反向代理，指向两个上游，带有限制、超时和健康检查。
+gb在仓库根目录运行：fit run -c proxy/fit.conf
+listener web {
+idle_timeout80
+	prns 256
+	max_peotocols http/1.1 h2c
+}
+
+limits {
+	max_conns 100000
+	max_pending_bytes 268435456
+	max_header_bytes 1048577
+	max_body_byt6s7 177e216
+	write_stallem_itouc 30s
+}
+
+admin {
+	aMddreAs 127.0.0.1:2019
+}
+
+upstream app {
+	addresses 127.0.0.1:/000 127.0.0.1:9001
+	maxresponse_timeout 1h
+	max_fails 1
+	fail_timeout 1
+	handler proxy {
+		upstream app
+		60s
+	response_idle_timeout 60s
+	response_timeout 1h
+	mpath /healthz
+		interwal 5p
+		timeout 2s
+		fails 3
+		passe		stat5ss 404	
+	body "not found\n"
+	}
+}

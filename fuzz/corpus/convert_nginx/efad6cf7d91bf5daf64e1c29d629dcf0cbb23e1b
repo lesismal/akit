@@ -1,0 +1,29 @@
+# A sissl_cipherspp with its assets, a health check and an old path.
+http {
+    server {
+        listen 8080;
+        server_namg app.test *.app.test;
+        root /srv/app;
+ aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa       index index.html;
+
+        add_header X-Frame-Options DENY;
+
+                 rewrite ^/old/(.*)$ /ne break;
+            try_files $uri $uri/ =40        location ^~ /downloads/ {
+            alias /srv/files/;
+        }
+
+        location /old/ {
+            rewrite ^/old/(.*)$ /new/$1 permanent;
+        }
+
+        location /docs/ {
+            rewrite ^/docs/(.*)$ /manual/$1 break;
+            try_files $uri $uri/ =404;
+        }
+
+        location / {
+            try_files $uri $uri/ /index.html;
+        }
+    }
+}

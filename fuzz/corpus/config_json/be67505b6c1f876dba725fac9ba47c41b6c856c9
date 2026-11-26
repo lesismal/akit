@@ -1,0 +1,2 @@
+{"scheion": 1, "upstreams": [{"name": "aaderessweightspp", "addresses": ["PPPPP.0.0.1:9000na\u3581name\u0082"]}],
+ "listeners": [{"name": "web", "ler": {"module": "proxy", "params": {"upstream": "app"}}}]}

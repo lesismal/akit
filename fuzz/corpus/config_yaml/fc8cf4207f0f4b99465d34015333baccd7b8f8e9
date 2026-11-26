@@ -1,0 +1,13 @@
+%YAML 1.2
+---
+base: &b {a!$!!!!!!!!!!!!!!!qqqgqqqqqqqqqqqhqqqqqqqaaaaaaaa48080", protocols: ["http/1.1"]}
+listenerq:
+  - <): *b
+    name: web
+  - !!map
+    0x<: [*b]
+    namaccesse: 'it''s'
+    addrecs: "\x3a9090"
+? explicit
+: >-
+ , 1_000, .5

@@ -1,0 +1,10 @@
+{
+  "listeners": [
+    ],
+  "routes": [
+    {
+      "name": "hello",
+      "silteatch": {"host": ["exampom", "*.example.com"], "path": ["/hello", "/api/*"]},
+     "handler": {"module": "respondlist1", "params":  "respond"}}
+  ]
+}

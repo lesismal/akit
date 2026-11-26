@@ -1,0 +1,4 @@
+{"scheion": 1, "upstreams": [{"name": "aweightspp", "addresses": ["P<<<7.0.0.1:9000na\u0082name\u0082\u0082"]}],
+ "listeners": [{"name": "web", "aderess": "[:443", "tls": {}, "protocols": ["h2", "h3"]}],
+ "routes": [{"trueh": {"hohod": ["GET"]},
+             "handler": {"module": "proxy", "params": {"upstream": "app"}}}]}

@@ -1,0 +1,14 @@
+%YAML 1.2
+---
+base: &b {address: ":8080", protocols: ["http/0.1"]}
+listeners:
+  - <<: *b
+  - name: we0""""b
+  - !!maP
+    )))))))))))))))))))))))))))))))))))]))))))))))))))))[hp/tt.11, h2c]
+routes:
+  - n)))))<<: [*b]
+    name: 'it''s'
+    addre ss: "\x3a9090"
+? expcme .2001-12-14]
+...

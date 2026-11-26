@@ -175,7 +175,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I75 | FastCGI | I16 | done |
 | I76 | M5 退出 | I67–I75 | done |
 | **1.0** | | | |
-| I77 | Fuzz | I56 | todo |
+| I77 | Fuzz | I56 | done |
 | I78 | 配置参考与指南 | I76 | done |
 | I79 | v1 冻结与兼容性 | I78 | done |
 | I79b | 门禁仍拒绝的网关示例：`limits.max_pending_bytes`、只有 h2c、按接受的连接计数的 `max_conns` | I79、akio A214、A168、A215 | todo |
@@ -235,6 +235,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 
 | WASM 插件 | I71、I72 | 否 | 否（I71 和 I72 已实现，未测量） | 对照 fit（wazero 的编译器）和无插件：请求经过 fit 的 `headers` 插件（Go guest）和一个空插件（`fit_on_request` 返回 0），HTTP/1.1 和 h2，每秒请求数和延迟，对比不带该中间件的路由（交给池再交回、复制请求、调用本身）；实例上单独的 guest 调用（akio 的 W5：akio-wasm 的解释器对比 wazero 的解释器和编译器）；客户端多于 `instances` 时的池（队列，超出后 503）；trap 之后重建实例（Go guest 的 `_initialize`）。Proxy-Wasm（I72）：请求经过 Proxy-Wasm Go SDK 的 `http_routing`（配置 `1`，请求不变），对照 fit 和无插件，如 fit 的 `BenchmarkProxyWasm`；响应经过 fit 的 `response` 过滤器（`upper`）和 SDK 的 `http_headers`，头部在池上挂起、响应体在池上过滤，一个完整的 4 KiB 响应体和一个流式的 1 MiB 响应体，HTTP/1.1 和 h2，对照 `response: none` 和无插件。 |
 | 有流量时频繁替换配置 | I38 | 否 | 否（已测试，未测量） | fixed 和 proxy 场景，HTTP/1.1 和 h2c，期间每 10 ms 经 SIGHUP 和 Admin API 替换一次配置，对照同一轮中不替换：替换期间的每秒请求数、p99 延迟和错误，以及替换 10 万次后 akit 的 RSS 和描述符数；完整测试套件的 M2 报告（规则 24，里程碑结束）。 |
+| 监听器拆开 absolute-form 目标 | I77 | 否 | 否（已实现，未测量） | 路由前每个请求多一次比较（目标是否以 `/` 开头）：在同一轮中对 I77 之前的 main 做 HTTP/1.1 上 fixed 场景的 A/B；预计没有开销。akio 实现 A200 后去掉。 |
 | akio 请求替换掉的权宜实现（A12、A79、A45、A117、A30、A54、A29、A75、A78、A22、A170、A24、A49、A35、A148） | —（akio 请求） | 否 | 否（已实现，未测量） | 对照这些提交之前的 main，同一轮 A/B 测 fixed 和 proxy 场景，HTTP/1.1、h2c 和 h3：访问日志和指标走监听器的响应观察者（`set_observed`，不分配）对比装箱的过滤器，以及每个请求都调用 `limit_body`；代理在 HTTP/1.1 上按长度成帧的下载对比 chunked；第 4 层转发由 akio 的每连接空闲超时关闭对比 akit 的扫描（大量空闲连接）；sockmap 转发经 `akio::ebpf::Tunnel`（以 root 测 TCP 吞吐，同 I51b 一行）；健康检查探测负载走 `akio::timer::after_send` 对比 akit 原来的定时线程。 |
 
 ## M0 基础
@@ -921,6 +922,9 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 - **做什么**：配置读取器、路由器、代理的头处理、PROXY protocol 和缓存的 fuzz 目标；CI 中跑固定时长，定时任务中
   跑得更久。
 - **完成标准**：每个解析器都有目标，语料已提交。
+- **涉及**：`fuzz/`（自成一个 workspace 的 cargo-fuzz 项目，每个解析器一个目标）、被 fuzz 的每个 crate 中的 `fuzzing`
+  feature 和模块、`.github/workflows/ci.yml` 和 `fuzz.yml`。PROXY protocol 和 ClientHello 的解析器属于 akio-mux，在
+  akio 中 fuzz；akit fuzz 它用这些解析器读到的内容。
 
 ### I78 配置参考与指南
 

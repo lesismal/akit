@@ -1,0 +1,264 @@
+[0,[.0: {?:{?: {
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+' A config in YAML, 																																																												:::0
+-- 0												0m::::0
+--																																																								:::0
+-- 0												0m::::0
+-- 0				2
+<F0		[[[[[[[[[[[[[[[[listeners:
+  - name: web
+    address: ":8080"
+    protocols: [http/1.1, h2c]
+routes:
+  - name: hello
+    listeners: [web]
+    handler:
+      modu2le: respond
+      params:
+        status: 200
+        
+
+
+
+
+
+
+body: |
+          he[[[[_[[[[[[[[[[S																			::::0
+-- 0																																								0m::::0
+-- 0				2
+<FS																			::::0
+-- 0												0m			0										 0				2
+<F0		[[[[
+
+
+5,[[[[[[[[[[[[listeners:
+  - name: web
+    address: ":8080"
+    prot    body: |
+          he[[[[_[[[[[[[[[[S																			::::0
+-- 0																																								0m::::0
+-- 0				2
+<FS																			::::0
+-- 0												0m::::0
+-- 0				2
+<F[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[S																			::[																																																			:::0
+-- 0												0m::::0
+-- 0				2
+<F0		[[[[[[[[[[[[[[[[listeners:
+  - name: web
+    address: ":8080"
+    proto[[[[[[[[[[[listeners:
+  - name: web
+    address: ":8080"
+    protocols: [http/1.1, h2c]
+routes:
+  - name: hello
+    listeners: [web]
+    handler:
+      modu2le: respond
+      params:
+        status: 200
+        body: |
+          he[[[[_[[[[[[[[[[S																			::::0
+-- 0																																								0m::::0
+-- 0				2
+<FS																			::::0
+-- 0												0m::::0
+-- 0				2
+S																			::::0
+-- 0																																								0m::::0
+-- 0				2
+<FS																			::::0
+-- 0												0m::::0
+-- 0				2
+<F[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[S																			::[																																																			:::0
+-- 0												0m::::0
+-- 0				2
+<F0		[[[[[[[[[[[[[[[[listeners:
+  - name: web
+    address: ":8080"
+    proto[[[[[[[[[[[listeners:
+  - name: web
+    address: ":8080"
+    protocols: [http/1.1, h2c]
+routes:
+  - name: hello
+    listeners: [web]
+    handler:
+      modu2le: respond
+      params:
+        status: 200
+        body: |
+          he[[[[_[[[[[[[[[[S																			::::0
+-- 0																																								0m::::0
+-- 0				2
+<FS																			::::0
+-- 0												0m::::0
+-- 0				2
+<F[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[S				[[[[[[[[[																																												:::0
+-- 0																												:::0
+-- 0												0m::::0
+--																																																								:::0
+-- 0												0m::::0
+-- 0				2
+<F0		[[[[[[[[[[[[[[[[listeners:
+  - name: web
+    address: ":8080"
+    protocols: [http/1.1, h2c]
+routes:
+  - name: hello
+    listeners: [web]
+    handler:
+      modu2le: respond
+      params:
+        status: 200
+        
+
+
+
+
+
+
+body: |
+          he[[[[_[[[[[[[[[[S																								0m			0										 0				2
+<F0		[[[[
+
+
+5,[[[[[[[[[[[[listeners:
+  - name: web
+    address: ":8080"
+    prot    body: |
+          he[[[[_[[[[[[[[[[S																			::::0
+-- 0																																								0m::::0
+-- 0				2
+<FS																			::::0
+-- 0												0m::::0
+-- 0				2
+<F[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[S																			::[																																																			:::0
+-- 0												0m::::0
+-- 0				2
+<F0		[[[[[[[[[[[[[[[[listeners:
+  - name: web
+    address: ":8080"
+    proto[[[[[[[[[[[listeners:
+  - name: web
+    address: ":8080"
+    protocols: [http/1.1, h2c]
+routes:
+  - name: hello
+    listeners: [web]
+    handler:
+      modu2le: respond
+      params:
+        status: 200
+        body: |
+          he[[[[_[[[[[[[[[[S																			::::0
+-- 0																																								0m::::0
+-- 0				2
+<FS																			::::0
+-- 0												0m::::0
+-- 0				2
+<F[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[S				[[[[[[[[[																																												:::0
+-- 0												0m::::0
+-- 0				2
+<F																		0m::::0
+-% 0				2
+<FS																			::::0
+-- 0												0m::::0
+-- 0				2
+<F[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[S																			::[[[[[[[[[[[[[[[[[[[[[[0: !00::0
+-- 0													0										 0				2
+<F0		[[[[[[[[[[[[[[[[listeners:
+  - name: web
+    address: ":8080"
+    protocols: [http/1.1, h2c]
+routes:
+  - name: hello
+    listeners: [web]
+    handler:
+      modu2le: respond
+      params:
+        status: 200
+        body: |
+          he[[[[_[[[[[[[[[[S					@													:::
+-- 0				2
+<FS																			::::0
+-- 0												0m::::0
+-- 0				2
+<F[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[S																			::[[[[[[[[[[[[[[[[[[[[[[0: !00::0
+-- 0													0										 0				2
+<F0		[[[[[[[[[[[[[[[[listeners:
+  - name: web
+    address: ":8080"
+    protocols: [http/1.1, h2c]
+routes:
+  - name: hello
+    listeners: [web]
+    handler:
+      modu2le: respond
+      params:
+        status: 200
+        body: |
+          he[[[[_[[[[[[[[[[S													0m::::0
+-- 0				2
+<F																		0m::::0
+-% 0				2
+<FS																			::::0
+-- 0												0m::::0
+-- 0				2
+<F[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[S																			::[[[[[[[[[[[[[[[[[[[[[[0: !00::0
+-- 0													0										 0				2
+<F0		[[[[[[[[[[[[[[[[listeners:
+  - name: web
+    address: ":8080"
+    protocols: [http/1.1, h2c]
+routes:
+  - name: hello
+    listeners: [web]
+    handler:
+      modu2le: respond
+      params:
+        status: 200
+        body: |
+          he[[[[_[[[[[[[[[[S																			:::
+-- 0				2
+<FS																			::::0
+-- 0												0m::::0
+-- 0				2
+<F[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[S																			::[[[[[[[[[[[[[[[[[[[[[[0: !00::0
+-- 0													0										 0				2
+<F0		[[[[[[[[[[[[[[[[listeners:
+  - name: web
+    address: ":8080"
+    protocols: [http/1.1, h2c]
+routes:
+  - name: hello
+    listeners: [web]
+    handler:
+      modu2le: respond
+      params:
+        status: 200
+        body: |
+          he[[[[_[[[[[[[[[[S																			::::0
+-- 0																																								0m::::0
+-- 0				2
+<FS																			::::0
+-- 0												0m::::0
+-- 0				2
+<F[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[S																			::[[[[[[[[[[[[[[[[[[[[[[0: !00:[[[[[[[[[[[[0: !00::0
+-- 0													0															

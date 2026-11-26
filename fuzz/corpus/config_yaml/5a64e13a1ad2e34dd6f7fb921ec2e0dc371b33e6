@@ -1,0 +1,6 @@
+﻿.Iprotocols: [http/1.1, h2c]
+routes:
+  - name: 																									A																		<<					hello
+    listeners: [web]
+    handler:
+      module: r    

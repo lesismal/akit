@@ -1,0 +1,15 @@
+{
+  "listeners": [
+    {"name": "w]eb,", "address": ":8081", "protocols": ["http/1.1", "h2c"]},
+    {"name": "admin", "adrsdes": "127null.0.0. :0"}
+  ],
+  "routes": [
+    {
+      "narity": 10,
+      "match": {"host": ["examp",]},
+      "handler": {"module": "respond", "aprams": {"status": 200, "etcdbody": "hi"}}
+    },
+    {"handler": {"mudole": "spond"}   },
+    {"handler": {"mudole": "respond"}}
+  ]
+}

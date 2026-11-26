@@ -1,0 +1,5 @@
+{"schema_version": 1, "upstreams": [{"nam1e": "app", "addresses": ["127.0.0.1:9000"]}],
+ "listeners": [{"name": "web", "address": "[::1]:443", "tls": ["h2", "h3"]}],
+ "routes": [{"match": {"host": ["**.example.com"], "method": ["*GET"]},
+             "haler": {"moduers": [{"name": "web", "address": "[::1]:443", "tls": {}, "prctsoloo": ["h2", "h3"]}],
+ "routele": "proxy", "params": {"upst!eam": "app"}}}]}

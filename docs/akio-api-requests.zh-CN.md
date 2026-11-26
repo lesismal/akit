@@ -92,6 +92,7 @@
 | A172 | TLS 服务端把 server name 为 IP 地址的 ClientHello 视为没有名字，而不是使握手失败 | 已在 akio 分支 `claude/a172-sni-ip-literal`（`d23c9368`）实现，未进入 akio 的 main | 19 | I09、I25 |
 | A170 | 不经 `Conn::inner` 读取连接的 TCP 计数（以及未读字节），并通过引擎自己的 API 先写数据再拼接 | 已在 akio 分支 `claude/akit-open-requests` 上实现（`22bc4402`，akio 的 ADR-156），akit 已使用（尚未移动锁定） | 1、14 | I51b |
 | A180 | 让 akio-wasm 的调用更便宜，并与 wazero 对比测量（akio 的 W5） | 已提出（I76）：一个修改头部的 Go guest 让 akit 每个请求多花 14.7 µs CPU，fit 6.8 µs | 13 | I71、I72、I76 |
+| A200 | 按 RFC 9112 的要求处理 absolute-form 请求目标：以其路径作为请求的路径，以其 authority 作为主机 | 已提出（I77）；在此之前 akit-listener 把这样的请求改写为 origin-form | 15、19 | I77 |
 | A214 | 所有连接合计排队字节的预算，超出时暂停每个连接的读取（fit 的 `limits.max_pending_bytes`） | 已提出（I79） | 8、11 | I79 |
 | A215 | 只计入被接受的连接、不计入引擎拨出的连接的连接上限（fit 的 `limits.max_conns`） | 已提出（I79） | 11 | I79 |
 
@@ -1609,6 +1610,29 @@ wazero 的解释器和编译器，如 fit 的 `BenchmarkGuestCall`；池的交�
 
 **akit 如何使用。** 原样使用：`akit-plugin` 在 `akio_wasm::InstancePool` 上运行每个 guest；调用变便宜后 akit 无需改动，
 用 `bench/run.sh -servers akit-wasm,fit-wasm -scenarios fixed,wasm` 重新测量。
+
+## A200 按 RFC 9112 的要求处理 absolute-form 请求目标
+
+**状态。** 由 I77 提出（2026-11-26）。在此之前 akit-listener 改写这样的请求，这是一个临时方案，记录在
+[进度](progress.zh-CN.md)中。
+
+**问题。** HTTP/1.1 服务器必须接受 absolute-form 的请求目标（`GET http://a.example/admin/x HTTP/1.1`），并且作为源服务器，
+以目标的 authority 作为请求的主机，忽略 `Host`（RFC 9112 第 3.2.2 节）；Go 的服务器就是这样做的（`r.URL.Path` 是
+`/admin/x`，`r.Host` 是 `a.example`），所以 fit 按其路径为这样的请求选择路由。akio 的 HTTP/1 服务器接受这个目标并把它
+原样保留：`Request::path()` 是 `http://a.example/admin/x`，`Host` 仍是该字段的值。按 `path()` 路由的路由器（akit 的或
+akio-http 自己的）认为请求不属于任何它知道的路径，而把 origin-form 发给上游的代理（akit 的代理就是这样做的，也必须这样
+做）会请求 `/admin/x`：fuzz 发现，这样写的请求绕过了保护 `/admin/*` 的路由，经由兜底路由到达了上游。
+
+**证据。** 在 `dad77a7a`（以及 `111004f8`）：`crates/akio-http/src/message.rs` 中 `Request::path()` 是目标中 `?`
+之前的部分；`crates/akio-http/src/parse.rs` 原样复制请求行中的目标（`new_target`）。在临时方案之前，akit 的测试
+`path_confusion`（`crates/akit-listener/tests/listeners.rs`）对 `GET http://a/admin/secret` 由兜底路由作答（200）。
+
+**建议的 API。** HTTP/1 服务器把 absolute-form 目标拆开：`Request` 的 `target` 为 origin-form（`/admin/x?q`），主机为目标的
+authority（去掉用户信息），设置为 `Host`，或由 `Request::authority()` 给出并优先于 `Host`；需要时为日志保留 absolute-form
+（`Request::raw_target()`）。authority-form 的目标只留给 `CONNECT`。
+
+**akit 的用法。** 去掉 akit-listener 的 `absolute_form` 改写（在 `Dispatcher::call` 和 `body_mode` 中）；路由、代理、缓存键和
+访问日志按 akio 给出的请求读取。
 
 ## A214 所有连接合计排队字节的预算
 

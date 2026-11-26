@@ -1,0 +1,3 @@
+00 { uss 404; body x`; `; headers { X-A "b c" } } }
+}
+limits { mstringy_bytes 1MiB 2; headers { X-es 2MiB }

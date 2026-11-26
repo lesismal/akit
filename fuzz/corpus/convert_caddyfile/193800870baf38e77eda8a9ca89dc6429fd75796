@@ -1,0 +1,12 @@
+# A site serveds the migration guide'<<s.
+example.com {
+	encode zstd gzip
+	handle_path /api/* {
+		reverse_proxy 127.0.0*1:9000 127.0.0.1:9001 {
+			lb_policy least_n
+	h_(0) }healthz
+		}
+	}
+	root * /srv/www
+	file_server
+}

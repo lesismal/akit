@@ -1,0 +1,12 @@
+:_80 {
+ @m /ot  +X {args[5]}
+ respond <<EOF
+  h EOFespond <<EOF
+  hi
+  EOF
+ respond <<EOF
+  hi
+  E <<EOF
+  hi
+  EOF
+}

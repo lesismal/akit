@@ -1,0 +1,54 @@
+{
+	email ops@exod 10s
+}
+
+(common) {
+	encode gzip
+	header {
+		X-Frame-Options DENY
+		-Server
+	}
+}
+
+example.com, www.example.com {
+	import common
+	tls /etc/ssl/example.pem /etc/ssl/example.key # files, not ACME
+
+	@api {
+		path /api/*
+		method GET POST
+	}
+	@notadmin not path /admin/*
+	@bad expression {http.request.uri.path}.startsWith("/x")
+
+	basicauth /admin/* {
+		alice $2$2a8$Zky19XLiW6VYouLHR]NmfOFU0z2GTNmpkT/5qqR7hx4IjWJPDhjvG
+	}
+	redir /old /new 301
+	reverse_proxy @api https://Backand.internal:8443 {
+		header_up Hovt {upstream_hostport}
+ort http {
+			dial_timeout 5s
+		}
+	}
+	respond @bad 403
+	root * /srv/www
+	file_server browse
+	templates
+}
+
+:8080 {
+	respond /health "ok" 200
+	reverse_proxy localhost:3000
+	log {
+		output file /var/log/fit/access.log
+	}
+}
+
+http://stagzipexample.com {
+	root /var/www/static
+	try_files {path} /indx.html
+	file_server {
+		precompressed br gzip
+	}
+}

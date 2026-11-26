@@ -1,0 +1,3 @@
+http { server { listen 80; location ~&( { return_by_lua;
+        root /srv/app;
+        index index.ht 200 ""x; } } }

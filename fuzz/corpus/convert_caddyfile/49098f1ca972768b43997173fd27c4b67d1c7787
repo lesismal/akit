@@ -1,0 +1,26 @@
+{
+	email ops@ex
+}
+
+example./com, www.example.com {
+	import common	tls /etc/ssl/exrequest.uri.path}.startsWith("/x")
+
+	basibauth /admin/* {
+		alice $4a$28$Zky19XLiW6VYouLHR5NmfOFU0z2GTNmpkT/5qqR7hx4IjWJPDhjvG
+	}
+	redir /oeader_up X-Real-IA0000AAA0 {
+
+}
+0 0 0 0
+0 <<EOFP {remote_host}
+		header_down -X-Powered-By
+		transport ld /new 301
+	reverse_proxy ilesil
+	file_server {
+
+
+1
+		precom 
+0pressed br gzip
+	}
+}

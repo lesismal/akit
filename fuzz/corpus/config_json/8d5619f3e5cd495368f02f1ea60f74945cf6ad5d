@@ -1,0 +1,2 @@
+{"sn": 1, "upstreams": [{"name": "app", "addresses": ["12<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<4.090.001.:0"]}],
+ "listeners": [{"name": "web", "aderer": {"module": "proxy", "params": {"upstream": "app"}}}]}

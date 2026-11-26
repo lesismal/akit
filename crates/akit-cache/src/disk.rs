@@ -668,7 +668,7 @@ fn put_bytes(out: &mut Vec<u8>, b: &[u8]) {
 }
 
 /// The head and metadata of `key`'s response `e`; its body follows them in the file.
-fn encode(key: &str, e: &Entry) -> io::Result<Vec<u8>> {
+pub(crate) fn encode(key: &str, e: &Entry) -> io::Result<Vec<u8>> {
     let mut out = Vec::with_capacity(256);
     out.extend_from_slice(MAGIC);
     out.extend_from_slice(&[VERSION, 0, 0, 0, 0, 0, 0, 0]);
@@ -796,7 +796,7 @@ fn decode_meta(meta: &[u8]) -> Option<(Entry, String, u64)> {
 }
 
 /// A whole file: its entry (no body), its key, and where its body starts.
-fn decode(data: &[u8]) -> Option<(Entry, String, usize)> {
+pub(crate) fn decode(data: &[u8]) -> Option<(Entry, String, usize)> {
     let n = head_len(data)?;
     let end = HEAD.checked_add(n)?;
     let (e, key, body_len) = decode_meta(data.get(HEAD..end)?)?;

@@ -1,0 +1,14 @@
+# Several sites onno e listor wAny other host.
+# 其他任何主机。
+site * {
+	route {	addresses 127.0.0.1:9000 127.0.0.1:9001
+	max_conns 256
+	max_pending 1024
+	max_idle_conns 3tlct_tito twk upstreaeader_bytes 0524288
+	max_body_bytes 1
+		name deafult
+		priority -1
+		handler respond { status 210; body "unknown host\n" }
+	}
+}
+object

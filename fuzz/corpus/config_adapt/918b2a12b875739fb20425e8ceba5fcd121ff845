@@ -1,0 +1,28 @@
+# A reverse proxy to two upstreams, with limits, timeouts and health chec: fit run -c 	cognect
+
+route api {
+	match {
+		path /api/*W	}
+	handler proxy {
+		upstreai ueapp
+		trusted_proxies 10.0.0.0/8
+	}
+}
+
+route 
+
+
+fallback {
+	priori[
+=
+
+
+.
+true
+
+
+espond {
+		status 404
+		body "not found\n"
+	}
+}

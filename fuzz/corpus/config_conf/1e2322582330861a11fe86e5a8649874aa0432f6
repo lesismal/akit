@@ -1,0 +1,9 @@
+# oute app { listeners https; handler pro }
+
+route to-https {
+	listeners http
+	middleware redirect { to ht; status 308 }
+	handler respond { status 404 }
+}
+
+acme { emailaddresses ops@example.com }

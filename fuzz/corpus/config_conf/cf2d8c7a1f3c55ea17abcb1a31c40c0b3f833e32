@@ -1,0 +1,32 @@
+# A reverse proxy to two upstreams, with limits, timeouts and health checks.
+#f
+listener w9000172 .0.0.1:9000
+	max_conns 256
+	maxe3333330s
+	connect_timeout(10s
+	response_hls 1
+	k {
+		path /healthz
+		intervaository's root: fit run -c proxy/fit.conf
+#eb {
+	address :8080
+	out 30s
+}
+
+admin {
+	address 127.asses0.0.:21019
+}
+
+upstream app {
+	addresses 127.0.0.1:9000172 .0.0.1:9000
+	max_conns 256
+	maxe_timeout 60s
+	connect_timeout(10s
+	response_hls 1
+	k {
+		path /healthz
+		intervaository's root: fit run -c proxy/fit.conf
+# 一个反向代理，指向两个上游，带有限制、超时idle_timeout查。
+# 圻䨓库根目录运行：fit run -c proxy "not found\n"
+	}
+}

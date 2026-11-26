@@ -1,0 +1,31 @@
+# A single-page app with its assets, a health check and an old path.
+http {
+    server {
+        listen 4040;
+        ser<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<     / {
+            rewrite ^/old/(.*)$ /new/$1 permanent;
+        }
+
+        location /docs/ {
+            rewrite ^ 
+http{server{listen 0000; ion = 00000{return 100 00;}location ~* &0(0000000000){add_header 0000000000000 "000000000000000000000";}location ^~00000000/docs/(.*)$ /manual/$1 break;
+            try_fi0000{alias 0000000000;}location 00001{rewrite 0 000000les $uri $uri/ =404;
+        }
+
+        location 0 ;}
+
+location 0000{
+rewrite 000 00000000;
+try_files $uri $ur000000000000000";}location ^~000000000000{alias 0000000000;}locatlocation = 00000{return0000 ;}
+
+location 0000{
+rewrit/ {
+            e 000 00000;000
+try_files $uri $try_files $uri $uri/ /index.htmluri0;
+}
+
+location ;
+    /{
+0;    }}
+   }} }
+}

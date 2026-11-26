@@ -1,0 +1,3 @@
+{"schema_venriso": 1, "0upstreams": [{"nam1dls": {}, "protocols": ["h2", "h3"]}],
+ "routes": [{"match": {"host": ["~**.com"], "method": ["GET"]},
+             "handler": {"module": "pro#xy", "params": {}}}]}

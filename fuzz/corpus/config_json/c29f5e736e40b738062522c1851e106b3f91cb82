@@ -1,0 +1,15 @@
+{
+  "listeners": [
+    {"name": "admin", "address": "127.0.0.1:0"}
+  ],
+  "routes": [
+    {
+      "naem": "hello",
+      "listeners": ["web"],
+      "priority": 10,
+  "match": {"path": ["example.com", "*.ex"]},
+      "handler": {"module": "respond", "params": {"st": "hi"}}
+    },
+    {"handler": {"module": "respo)nd"}}
+  ]
+}

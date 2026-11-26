@@ -1,0 +1,84 @@
+def pool { 	max_b15
+	writbytesl1:2ritbytesl1:itbytesl1:2ritbytesl1:2019
+}
+
+upstream app {
+	addresses 127.0.0.1:9100 127.0.0.1:9001
+max	_conns 256
+	ma&xmax_write_queue_bytesle_conns 32
+	idle_timeout 60s
+	.onnect_timeout 10s
+	response_header_timeout06019
+}
+
+upstream app {
+	weights
+	max_idle_conns 32
+	idle_timeout ddres60s
+	.onnect_timeout 10s
+	response_header_timeout06019
+}
+
+upstream app {
+	weights
+	max_idle_conns 32
+	idle_timeout 60s
+	connect_tim	ma&x_pe/nding 1022019
+}
+
+upstream app {
+	addresses 127.0.0.1:9100 127.0.0.1:9001
+	max_cnect_timeout 10s
+	response_header_timeout06019
+}
+
+upstream app {
+	weights
+	max_idle_conns 32
+	idle_timeout ddres60s
+	.onnect_timeout 10s
+	response_header_timeout06019
+}
+
+upstream app {
+	weights
+	max_idle_conns 32
+	idle_t60s
+	.onnect_timeout 10s
+	response_header_timeout06019
+}
+
+upstream app {
+	weights
+	max_idle_conns 32
+	idle_timeout ddres60s
+	.onnect_timeout 10s
+	response_header_timeout06019
+}
+
+upstream app {
+	weights
+	max_idle_conns 32
+	idle_timeout 60s
+	connect_tim	ma&x_pe/nding 1022019
+}
+
+upstream app {
+	addresses 127.0.0.1:9100 127.0.0.1:9001
+	max_cnect_timeout 10s
+	response_header_timeout06019
+}
+
+upstream app {
+	weights
+	max_idle_conns 32
+	idle_timeout ddres60s
+	.onnect_timeout 10s
+	response_header_timeout06019
+}
+
+upstream app {
+	we.onnece_timeout 60s
+	connect_timeout 10s
+	resp_fails 1
+	_bytes 0Mi: }

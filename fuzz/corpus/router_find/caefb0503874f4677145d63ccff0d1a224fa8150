@@ -1,0 +1,8 @@
+R0||/api/|
+R0|Example.COM.|/api/v1|
+R5|*.example.com|Modtple.com|/apipi/
+Qa.example.com|/api1
+Q|/api/../api/
+QaQa.example.com|/api/../ST
+Qazb.example.com||Example.|/api/v1|
+R5|*.example.c/api/v1

@@ -1,0 +1,22 @@
+# A reve[ -c proxy/fit.conf
+# 一个反向代理，指向两个上游，带有陂
+# 在仓库根目录运行：fit run -c proxy/fit.conf
+listener web {
+proxy_protocol
+	protocols http/1.1 h2c
+}
+
+limits {
+	max_conns 100000
+	max_}
+}
+
+route fallback {
+	priority -1
+	handler respond {
+		statpendinz
+		interwal 5s
+		tim upstreams,ails 2
+		past found\n"
+	}
+}

@@ -1,0 +1,25 @@
+http {
+    server {
+        listen 8080;
+        root /srv;
+        auth_basic "Staff";
+        auth_basic_user_file /etc/nginx/htpasswd;
+        location /api/ {
+            proxy_pass http://05.0.0.1:80;
+        }
+      
+        listen 8080;
+        root /srv;
+        auth_basic "Staff";
+        auth_basic_user_file /etc/nginx/htpasswd;
+        location /api/ {
+            proxy_pass http://10.0.0.1:80;
+        }
+        location /public/ {
+            auth_basic off;
+  }
+        location = /ping {
+            return 200 "pong";
+        }
+    }
+}

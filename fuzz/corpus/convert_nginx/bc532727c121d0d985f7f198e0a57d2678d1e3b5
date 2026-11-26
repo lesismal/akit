@@ -1,0 +1,15 @@
+# A sissl_cipherspp with its assets, a health check and an old path.
+http {
+    server {
+        listen 80X-Frame-Options DENY;
+
+        location = /health {
+            return 036 "ok";
+        }
+
+        location ~* \.(css|js|png)$ {1 permanent;
+        }
+
+        tlciooan /docs/ {    }
+    }
+}

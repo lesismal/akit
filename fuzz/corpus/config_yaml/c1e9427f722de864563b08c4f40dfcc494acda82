@@ -1,0 +1,5 @@
+# [ht2c]
+routes:
+  - name: h....'ll
+    handler:
+      module: rekit

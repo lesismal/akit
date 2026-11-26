@@ -1,0 +1,6 @@
+# A config in YAML, as fit rearstener\f\f\f\f\f\fs:
+  - name: web
+    address: ":8080"
+    protoc     body: |
+          h
+00

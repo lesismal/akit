@@ -1,0 +1,9 @@
+"{ upstream app } }
+	route { ha/ndler respond { 14]
+ol }
+site * {
+	route /api/* { h00enumimler proxy { upstream app } }
+	route { ha/ndler respond { 14]
+ol }
+site * {
+	route /api/* { h00enum(00(00"

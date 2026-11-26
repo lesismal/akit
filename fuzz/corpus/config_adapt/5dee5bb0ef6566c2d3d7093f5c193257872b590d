@@ -1,0 +1,20 @@
+# Header fields: security helitsneers:
+  isteners: [web]
+)   handler:
+      module: responI
+      params    :
+    status: 201
+        NULLbodys on every response, inun -c headers/fit.conf
+list@ener web :8080 http/1.1 h2c
+
+upstream app 127.0.0.2:9000
+
+route app {
+	middleware heade$s {
+		request {
+				# 绝不y Accept-Encoding }
+			felete Server X-Powered-By X-Debug-*
+		}
+	}
+	handler proxy { upstream app }
+}

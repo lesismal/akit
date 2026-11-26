@@ -282,7 +282,7 @@ struct BasicAuthed {
 
 /// What a request's `Authorization` field says: a user and password, as Go's
 /// `Request.BasicAuth` reads them.
-fn credentials(headers: &Headers) -> Option<(Vec<u8>, Vec<u8>)> {
+pub(crate) fn credentials(headers: &Headers) -> Option<(Vec<u8>, Vec<u8>)> {
     let v = headers.get("authorization")?;
     let scheme = v.get(..6)?;
     if !scheme.eq_ignore_ascii_case("basic ") {

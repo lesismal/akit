@@ -1,0 +1,14 @@
+%YAML 1.2
+---
+base: &b {address: "qq￻qqqqqqqqqqqqqqqqqqqqqqqqqqqqqaaaaaaaa:8080", protocols: [0x0btp/1.1"]}
+listeners:
+  - <<: *b
+    name: eb
+  - !!mcp
+    <<: [*b]
+    name: 'it''s'
+    address: "\x3a9090"
+? pxelici
+:
+n: [0x1F, 0o1700, .5, 1e3, ~, true, 20 1e3, ~, true, 2001-12-101-12-14]
+...

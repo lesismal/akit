@@ -22,10 +22,10 @@
 //! handler, and the akio API requests that close the gaps (A147, a Unix-domain socket dialed),
 //! `docs/progress.md` says (I75).
 
-mod exchange;
-mod params;
+pub(crate) mod exchange;
+pub(crate) mod params;
 mod pool;
-mod record;
+pub(crate) mod record;
 
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -94,7 +94,7 @@ fn declared_length(req: &Request) -> Option<u64> {
 }
 
 /// `target` in origin form: an absolute-form one without its scheme and authority.
-fn origin_form(target: &str) -> Cow<'_, str> {
+pub(crate) fn origin_form(target: &str) -> Cow<'_, str> {
     if target.starts_with('/') {
         return Cow::Borrowed(target);
     }
@@ -109,7 +109,7 @@ fn origin_form(target: &str) -> Cow<'_, str> {
 }
 
 /// `s` with its `%XX` escapes decoded; `None` for a malformed escape or what is not UTF-8.
-fn unescape(s: &str) -> Option<Cow<'_, str>> {
+pub(crate) fn unescape(s: &str) -> Option<Cow<'_, str>> {
     if !s.contains('%') {
         return Some(Cow::Borrowed(s));
     }
@@ -137,23 +137,37 @@ fn unescape(s: &str) -> Option<Cow<'_, str>> {
 /// logical pool.
 fn try_files(cfg: &FastCgi, req_path: &str) -> Result<(String, String), u16> {
     for t in &cfg.try_files {
-        let mut candidate = params::clean(&format!("/{}", t.replace("{path}", req_path)));
-        if t.ends_with('/') || (req_path.ends_with('/') && t.ends_with("{path}")) {
-            candidate.push('/');
-        }
-        let (script, info) = cfg.split(&candidate);
-        if akit_config::scan(&script) == Scan::Unsafe {
-            return Err(400);
-        }
-        if cfg.check(&script) != 0 {
+        let Some((script, info)) = candidate(cfg, t, req_path)? else {
             continue;
-        }
+        };
         let file = params::join(&cfg.root, &params::clean(&script));
         if std::fs::metadata(&file).is_ok_and(|m| m.is_file()) {
-            return Ok((script.into_owned(), info.to_owned()));
+            return Ok((script, info));
         }
     }
     Err(404)
+}
+
+/// The script and path info the `try_files` entry `t` makes of `req_path`, before the disk is
+/// looked at: 400 for a script with a `..` segment, a backslash or a NUL; `None` for one
+/// [`FastCgi::check`] does not let run.
+pub(crate) fn candidate(
+    cfg: &FastCgi,
+    t: &str,
+    req_path: &str,
+) -> Result<Option<(String, String)>, u16> {
+    let mut candidate = params::clean(&format!("/{}", t.replace("{path}", req_path)));
+    if t.ends_with('/') || (req_path.ends_with('/') && t.ends_with("{path}")) {
+        candidate.push('/');
+    }
+    let (script, info) = cfg.split(&candidate);
+    if akit_config::scan(&script) == Scan::Unsafe {
+        return Err(400);
+    }
+    if cfg.check(&script) != 0 {
+        return Ok(None);
+    }
+    Ok(Some((script.into_owned(), info.to_owned())))
 }
 
 /// The client's streamed body, as it arrives.

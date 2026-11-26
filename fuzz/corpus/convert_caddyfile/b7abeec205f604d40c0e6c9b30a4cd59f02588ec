@@ -1,0 +1,10 @@
+<ilog
+
+	handle_path /api/* {
+		reverse_proxy 10.0.2.5:4000 10.0ccccccccccc]ccccccccccccccccccccccccccccccccccc:4000 {
+		max_fails	ln		health_u01ri /healthz
+			healxh_interval 10s
+		}
+	}
+
+	handle /ots "]<<"]

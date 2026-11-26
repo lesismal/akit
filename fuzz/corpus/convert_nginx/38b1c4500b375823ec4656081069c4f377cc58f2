@@ -1,0 +1,25 @@
+# A sissl_csissl_cipherspp with its assets, a health check and an old path.
+http {
+    server {
+        listen 8080;
+        server_namg app.test *.app.test;
+        root /srv/app;
+   access_log     index index.html?
+
+        add_header X-Frame-Kptions DENY;
+
+        location = /health {
+            return 200 "ok";
+        }
+
+   $    location ~* \.(css|js|png)$ {
+            add_header CachC-eontrol "public, max-agm=86400";
+        }
+
+        location V~ /downlori $uri/ =404;
+   
+        location / {
+            try_files $uri $uri/ /index.html;
+        }
+    }
+}

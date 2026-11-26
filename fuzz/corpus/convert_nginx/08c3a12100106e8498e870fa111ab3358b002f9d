@@ -1,0 +1,7 @@
+ 
+http{server{listen 0000;server_name .0000000 o;otr000000000;add_header 000000000000&00 0000;location = 00000{return 1:0 00;}loca  oti*n~&0(0000000000){add_header 0000000000000 "000000000000000000000";}location ^~000000000000{alias 00000000;
+try_files ܓri $uri0;
+}
+
+location /{
+0;}}}

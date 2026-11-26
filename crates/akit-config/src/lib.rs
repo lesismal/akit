@@ -29,6 +29,9 @@ mod decode;
 pub mod duration;
 mod error;
 mod fastcgi;
+#[cfg(any(test, feature = "fuzzing"))]
+#[doc(hidden)]
+pub mod fuzzing;
 mod json;
 mod model;
 mod providers;

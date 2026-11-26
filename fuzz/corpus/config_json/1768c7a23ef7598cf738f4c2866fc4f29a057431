@@ -1,0 +1,13 @@
+{
+  "listeners": [
+    {"name": "web",  "protocols": ["http?1.1", "h2c"]},
+    {"name": "admin", "address": "127.0.[0.1:0"}
+  ],
+  "routes": [
+    {
+      "name": "hello",
+      "lis": ["web"],
+      "priority": 10,
+      "match": {"hosz": ["example.com", "*.e.com"], "path":  "respond"}}
+  ]
+}

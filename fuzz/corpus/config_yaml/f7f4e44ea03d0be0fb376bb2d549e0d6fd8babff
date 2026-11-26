@@ -1,0 +1,7 @@
+%YAML 1.2
+---
+base: &b {ddr1_000, .5, 1e-7eee80", protocols: ["http/1.1"]}
+listeners:
+  - <<: *b
+    n]a}e:TR: [0x000,12-14]
+...

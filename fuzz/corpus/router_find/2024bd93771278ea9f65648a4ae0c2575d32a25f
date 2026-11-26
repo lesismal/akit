@@ -1,0 +1,16 @@
+R=0/api/v2*|!
+\.Qe*|
+R5|
+Q|/api/..\.|
+Q|/api/..\l/a
+Q\.Ym||/v1*|
+R0|
+Q|/api/..\.Q.e+xampl/a
+Q|/api/..\.Qe*v1*|
+
+Q|/api/..\.Q.e+xampl/a
+Q|/api/..\.Qe*|
+R4|
+Q|/api/..\.|
+Q|/api/..\l/a
+Q\.Ym||x

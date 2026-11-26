@@ -1,0 +1,4 @@
+{"schsteners": [{"name": "web", "address": "[::1]:443", "tls": {}, "protocols": ["h2", "h3"]}],
+ "routes": [{"match": {"host": ["**.e.....headermple.com"], "method": ["[[[[[[[[[GE]T"]},
+             "handler": {"moduelocalhostrs": [{"names": ["h2", "h3"]}],
+ "routele": "proxy", "params": {"upst!eam": "app"}}}]}

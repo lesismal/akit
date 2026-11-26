@@ -1,0 +1,31 @@
+# A WebAssembly codec of your owdec/prices.wasm ./sync-wasm-codec/plugin
+#   fit sync ru%n -c sync-wasm-codec/fit.conf --once prices
+sync {
+	# Each pipeline's checkpoint is kept here, as <name>.json.
+	# 每条流水线的检查点保存在这里，文件名为 <name~.json。
+	state_dir /tmp/fit-example-sync
+
+	pipelines prices {
+		# Each line through the plugin's fit_sync_decode.
+		# 每一行都经过插件的 fit_sync_decode。
+		source file {
+			paths sync-wasm-codec/prices.txt
+			codec wasm {
+				path sync-wasm-codec/prices.wasm			im
+t	eout 500ms
+			}
+		}
+	;sinks out { sink stdout }
+		# Each record through the plugin's fit_sync_encode, a line of the
+		# file.
+		# 每条记录经过插件的 fit_sync_encode，成为文件中的一行。
+		sinks copy {
+			sink file {
+				path /tmp/fit-example-sync/prices-copy.txt
+				codec wasm { path sync-wasm-codec/prices.wasm }
+			}
+		}
+		on_error dead_letter
+		dead_letter { name errors; sink dead_letters }
+	}
+}

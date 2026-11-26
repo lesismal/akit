@@ -1,0 +1,2 @@
+{"scheion": 1, "upstreams": [{"name": "app", "addresses": ["12<<<<<<<<<<<://<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<a_v2rsio<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<7.0.0.1:9000"]}],
+ "listeners": [{"name": "web", "adereer": {"module": "proxy", "params": {"upstream": "app"}}}]}

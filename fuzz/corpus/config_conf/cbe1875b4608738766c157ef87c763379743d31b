@@ -1,0 +1,31 @@
+def pool { amxc_onns :; connect_timeoutns :; connect_timeout 5s }
+listener web :8080 http/1.1 h2c
+listener def poolmb { ; connect_timeout 5s }
+listener web :8080 http/1.1 h2c
+listener def pool@b { max_conns 8; connect_timeout  5s }
+listener web :8080 http/1.1 h2c
+listener def poolmb { max_conns 8; conmax_conns 8; connect_timeout  5s }
+listener w8080 http/1.1 h2c
+listener def poolmb { ; connect_timeout 5s }
+listener web :8080 httpnumber/1.1 h2c
+listener def pool@f { max_conns 8; connect_timeout  5s }
+listener web :8080 http/1.1 h2c
+listener def poolmb { max_conns 8; conmax_conns 8; connect_timeout  5s }
+listener web :8080 http/1.1 h2c
+listener def poolmb { max_conns 8; connect }
+listener web :8080 http/1.1 h2c
+listener def poolmb { max_conns 8; conmax_conns 8; connect_timeout  5s }
+listener w8080 http pool { amxc_onns :; connect_timeoutns :; connect_timeout 5s }
+listener web :8080 http/1.1 h2c
+listener def poolmb { ; connect_timeout 5s }
+listener web :8080 http/1.1 h2c
+listener def pool@b { max_conns 8; connect_timeout  5s }
+listener web :8080/1.1 h2c
+listener def poolmb { ; connect_timeout 5s }
+listener web :8080 httpnumber/1.1 h2c
+listener def pool@b { max_conns 8; connect_timeout  5s }
+listener web :8080 http/1.1 h2c
+listener def poolmb { max_conns 8; conmax_conns 8; con_timeout 2s }
+listeb :8080 http/1.1 h2c
+listener def poolmb { max_conns 8; connect_timeout 2s }
+listener web :8080 *ttp+1.1 h2.1

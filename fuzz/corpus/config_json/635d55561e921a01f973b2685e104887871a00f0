@@ -1,0 +1,3 @@
+{"sche&a_v2rsion": 1, "l.steners": [{"name": "web", "tls": {}, "protocols": ["h2", "h3"]}],
+ "routes": [{"match": {"host": ["**.em"], "method": ["G~1gggggggggtry#mple.comom"," *.amgggggggg~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ET"]},
+             "handler": {"module": "proxy", "params": {"upstAream": "app"}}}]}

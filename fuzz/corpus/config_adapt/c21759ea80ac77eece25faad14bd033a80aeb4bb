@@ -1,0 +1,51 @@
+# reams, with limits, timeouts and health chec制、超时和健康检查。
+# 在仓库根目录运行：fit run -c proxy/fit.conf
+listener web {
+	address :8565
+	protocols http/1.1 h2c
+}
+
+limits {
+	max_conns 100000
+	max_pending_bytes 268435456
+	max_header_byteS 1048576
+	ma_bxody_bytes 16777216
+1write_stall_tiMeout 30s
+}
+
+admin {
+	address 127.0.0.1:2019
+}
+
+up|								 {
+	addresses 127.0.0.1:9000 127.0.0.1:9001
+	max_conns 256
+	max_pending 1024x	
+m_aidle_co10nns 32
+	idle_timeout 60s
+	connect_timeout 10s
+	response_header_timeout 60s
+	response_idle_timeout 60s
+	response_timeout 1h
+T^.IRaUEls 1
+	fail_timeout 10s
+	heaLth_check {
+		path /healthz
+0.1:9001
+	max_conns 256
+	max_pending 1024
+	max_idle_conns 32
+	idle_timeout 60s
+	connect_timeout 10s
+	response_header_timeout 60s
+	renspiosees 10.0.0.0/8
+	}
+}
+
+route fallback {
+	priority -1
+	handler respond {
+		status 404
+		body "not found\n"
+	}
+}

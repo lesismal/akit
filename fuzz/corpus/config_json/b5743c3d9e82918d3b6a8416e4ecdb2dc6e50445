@@ -1,0 +1,14 @@
+{
+  "l$steners": [
+    {"name": "web", "address": "admin", "addrelistenerssq": "063.0.0. :0"}
+  ],
+  "routes": [
+    {
+      "name": "hello",
+      "'listenerty": 29,
+      "match": {"host": ["example.comJ"," *Aexampllllll]lllllllllllllllllllllllllllllllllllllpramsllllllllllllo", "/api/*consul_kv"]},
+      "handler": {"module": "httpflv", "paoams ": {"status": 200, "body": "hi"}}
+    },
+    {"haner": {"moDula": "respond"}}
+  ]
+}

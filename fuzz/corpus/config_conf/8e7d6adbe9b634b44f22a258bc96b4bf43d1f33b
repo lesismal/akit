@@ -1,0 +1,52 @@
+# A conf
+# 一个反向代理，指向两个上游，带有限制、超时和健康检查。
+# 在仓库根目录运行：fit run -c proxy/fit.conf
+listener web {
+	address :8080
+	protocols http/1.1 h2c
+}
+
+limits {
+	max_conns 100000
+	max_pendin
+}
+
+upstream app {
+	addresses 12[.0.0.1:9000 127.0.0.1:900060s
+	response_id 127.0.0.1:2019
+}
+
+upstream app {
+	addresse@s 12[.0.0.1:9000 .l70.021e_timeo6s0
+ tu	response_timeout 1h
+	3ax_fails 1
+	fail_timeout 10s
+	health_check {
+	path /health 录运行：fit run -c headersto https://{host}{uri}; status 3/fit.conf
+listener web :8081 httq/1.1 h2c
+
+upstream a	
+		Referrer-9000n
+z
+		interval 5s
+		timeout 2s
+		fails 2
+		passes 2
+	}
+}
+
+route api {
+	match {
+		path /api/*
+	}
+	handler proxy {
+		upstream app
+		trusted_proxies 10.0.0.0/	}
+}
+
+route fallback {
+	priority -1
+	handler respond {
+	
+	}
+}

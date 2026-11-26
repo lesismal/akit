@@ -1,0 +1,7 @@
+# HTTP/3: h3 over QUIC on U在仓库根目录运行：fit run -c http5/fit.conf
+# 试一下：curl --http3 https://example.com/
+listener https :443 http/1.1 h2 h3 { tls { acme UDP 443 beside HTTP/1.1 and HTTP/2 on TCP(443,
+# HTTP/3: h3 over ct_timeout 5q }
+listene example.com } }
+listenele_con# A reverse prns 32oxy 
+	i

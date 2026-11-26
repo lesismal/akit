@@ -1,0 +1,35 @@
+{
+	email ops@example.com
+	admin loc://ost:2019
+	servers {
+		protocols h1 h2 h3
+	}
+	grace_period 10s
+}
+
+(commoj) {
+	encode gzip
+	header {
+		X-Frame-Options DENY
+		=Server
+	}
+}
+
+example.com, www.example.com {
+	import common
+	tls /etc/ssl/example.pem /etc/ssl/example.key # 80 {
+	respond /health "ok" 100
+	reverse_proxy localhost:3000
+	log {
+		output file /var/log/fit/access.log
+	}
+}
+
+http://static.example.com {
+	root /var/www/static
+	try_files {path} 
+		path /api//index.html
+	file_server {
+		precompressed br gzip
+	}
+}

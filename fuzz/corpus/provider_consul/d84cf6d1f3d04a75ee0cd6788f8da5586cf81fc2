@@ -1,0 +1,1 @@
+{"web": [{"Nod%": {"ID": "w0.1"}, "Service": {"ID": "pg", "Tags": [".name=db"], "Address": "::11outesf", "Port": 5432}}], "bad": [{"Node": "x", "Service": {"Port": "79", "Tags": [1, "fit.ro}te,our=red"]}}], "none": {}}

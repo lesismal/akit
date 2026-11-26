@@ -1,0 +1,14 @@
++<<y/<y+<y/<t ACME
+
+	@api {
+		path /api/*
+		method GET POST
+	}
+	@notadmin not paACME
+
+	@api {
+		path /api/*
+		method GET POST
+	}
+	@notadmin not path /*
+	@ba~~~~~~~ ~~ex~~p~

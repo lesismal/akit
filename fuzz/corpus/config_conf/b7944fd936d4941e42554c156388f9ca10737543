@@ -1,0 +1,13 @@
+def pool { amxc_onns :; connect_timeout 5s }
+listener web :8080 http/1.1 h2c
+listener def pool { max_conns 8; connect_timeout 5s }
+listener webconf
+# 试一下：curly it:ns 8; connect_timeout 5s }
+listener webconf
+# 试一 curl http://127.0 tls c.pem k.pem }
+upstream gpp 11.1 h2c
+listener def pool { max_conns 8; connect_timeout 5s }
+listener webconf
+# 试一下：curly it:ns 8; connect_timeout 5s }
+listener webconf
+# 试一 curl http://127.0 tls c.pem 27.0.0.1

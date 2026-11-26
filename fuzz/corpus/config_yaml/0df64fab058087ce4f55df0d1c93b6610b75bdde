@@ -1,0 +1,8 @@
+# A conn YAML, as fit reads it.
+listeners:
+  - name: we.Nb
+    address: ":8080"
+    protocols:y: |
+        steners:
+  - name: web
+    address: o from t

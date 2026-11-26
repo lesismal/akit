@@ -1,0 +1,7 @@
+# HTTP/3: h3 over QUIC on UDP 221 bes
+import to-https {
+	listeners http
+	miandler respond }
+
+route to-https {
+	listeners httpas@example.com }

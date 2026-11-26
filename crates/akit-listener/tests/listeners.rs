@@ -318,6 +318,14 @@ fn path_confusion() {
         ("/a/./b/../c//d?q=/../x", 200, "open"),
         // Routes match the decoded path, as fit's do.
         ("/%61dmin/secret", 401, "protected"),
+        // A target in absolute form is routed by its path, as fit's (Go's) are: found by
+        // fuzzing (I77), it went to the catch-all, which asked the upstream for that path.
+        ("http://a/admin/secret", 401, "protected"),
+        ("http://a/x/../admin/secret", 401, "protected"),
+        ("https://user@a:8443/%61dmin/secret?x", 401, "protected"),
+        ("HTTP://a/x/%2e%2e/admin/secret", 401, "protected"),
+        ("http://a/../admin/secret", 400, "400 bad request path\n"),
+        ("http://a", 200, "open"),
     ] {
         let (line, got) = get(a, "a", target);
         assert!(
@@ -325,13 +333,43 @@ fn path_confusion() {
             "{target}: {line}"
         );
         assert_eq!(got, body, "{target}");
-        if !target.starts_with("//") {
+        if target.starts_with('/') && !target.starts_with("//") {
             assert_eq!(
                 get_h2c(a, target).unwrap(),
                 (status, body.to_owned()),
                 "h2c {target}"
             );
         }
+    }
+    e.shutdown();
+    e.wait();
+}
+
+/// A target in absolute form names the host the request is for, which goes before its `Host`
+/// field (RFC 9112 section 3.2.2), as Go's server, and so fit, takes it (I77).
+#[test]
+fn absolute_form_targets_name_their_host() {
+    let (e, addrs) = serve(
+        r#"{"listeners": [{"name": "web", "address": "127.0.0.1:0"}],
+            "routes": [
+              {"match": {"host": ["b.example"]},
+               "handler": {"module": "respond", "params": {"status": 401, "body": "b"}}},
+              {"handler": {"module": "respond", "params": {"body": "open"}}}]}"#,
+    );
+    let a = addrs[0];
+    for (host, target, status, body) in [
+        ("a.example", "http://b.example/x", 401, "b"),
+        ("a.example", "http://u:p@B.example:80/x", 401, "b"),
+        ("b.example", "http://a.example/x", 200, "open"),
+        ("b.example", "http:///x", 401, "b"),
+        ("b.example", "/x", 401, "b"),
+    ] {
+        let (line, got) = get(a, host, target);
+        assert!(
+            line.starts_with(&format!("HTTP/1.1 {status} ")),
+            "{host} {target}: {line}"
+        );
+        assert_eq!(got, body, "{host} {target}");
     }
     e.shutdown();
     e.wait();

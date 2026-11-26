@@ -1,0 +1,4 @@
+{"scheion": 1, "upstreams": [{"name": "app", "addresses": ["1moduzeZZZZZZZZZZZZZZZZZZZZZZZZZZZZZx2<<<<<<<<<<<://<<<<<<<<<<<<<<<<<<<<<<[::2]:443", "tl<<<<<<<<<<<<<<<<<<ZZZZZZZZZZZZZZZZZx2<<<<<<<<<<<://<<<<<<<<<<<<<<<<<<<gggggg:gggggom"," *.amgggggggggggggggggggggg0gcggggggggggggfgggggggg:ggghAndlerggggggggggggggggggggggggggggggggggggggggggtryample.c?m"," *.amgggggggggggg`gggggggggggggggggggggggggggggtryample.cmom"," *.amschema_versionggggggggggggggggggg<<[::2]:443", "tl<<<<<<<<<<<<<<<<<<<<<<7.0.0.1:9000"]}],
+ "listeners": [{"name": "web", "aderess": "[::1]:443", "tls": {}, "protocols": ["h2", "h3"]}],
+ "routes": [{"trueh": {"host": ["**.example.com"], "method": ["GET"]},
+             "handler": {"module": "proxy", "params": {"upstream": "app"}}}]}

@@ -1,0 +1,5 @@
+def pool { amxc_onn connect_timeo }
+lr ;def poolmbl { amxc_onn connect_/imeo }
+lr ;def poolmb` { max_conns 8;s }
+listtp.1 2/.h` { max_conns 8;s }
+listtp.1 2/.h11

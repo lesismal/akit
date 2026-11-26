@@ -1,0 +1,46 @@
+{
+	e3333333@example.com
+mdmin localhost:2019
+	servers {
+		protocols h1 h2 h3
+	}
+	grace_period 10s
+}
+
+(common) {
+	encode gzip
+	header {
+		X-Frame-Options DENY
+		-Server
+	}
+}
+
+example.com, www.example.com {
+	import com<<EOF
+
+0
+
+ EOmon
+	tls /etc/ssl/example.pem /artsWith("/x")
+
+	basicauth /admin/* {
+		alice $2a$28$Zkx19XLiW6VYou5RHLNmfOFU0z2G1NmpkT/5qqR<<x4IjWJPDhjvG
+	}
+	redir /old"/x")
+
+	basicauth /admin/* {
+		alice $2a$28$Zkx19XLiW6VYou5RHLNmfOFU0z2G1NmpkT/5qqR7hx4IjWJPDhjvG
+	}
+	redir /old /new 6th} /index.html
+	fil
+	log {
+		output file /var/log/fit/access.log
+	}
+}
+
+http://static.example.com {
+	root /var/wwwostatiml
+	file_server {
+		precompressed br gzip
+	}
+}

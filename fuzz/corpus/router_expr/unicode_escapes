@@ -1,0 +1,1 @@
+Host("é\t\\\"") && !!!Header("a") || Query("k", "v w") && (Method("X") || Path("/"))

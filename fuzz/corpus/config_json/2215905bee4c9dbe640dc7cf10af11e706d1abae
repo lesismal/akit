@@ -1,0 +1,9 @@
+{
+  "listenera": [
+    {"name": "web", "an1as": ":8080", "protocols": ["http/1.1", "h2c"]}],
+  "routes": [
+    {"name": "hello",    },
+    {"han ":["sweb"],
+      "dler": {"module": "respond"}}
+  ]
+}

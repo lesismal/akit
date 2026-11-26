@@ -1,0 +1,12 @@
+%YAML 1.2
+---
+base: &b {address: ":8&a [1, 2]
+b: *a
+c: {<<: {x: 1}, 0eeeeeeeee80", protocols: ["1.1"]}
+listeners:
+  - <<: *b
+    na}e:TRU <<: [*b]
+    n   address: "\x6a9090"
+? explic  text
+n: [0x000, .5, 1e6, ~, t1F, 0o17, 1_000, .5, 1e13, 1_.00, .5, 1e6, ~, true, 1000-12-14]
+...

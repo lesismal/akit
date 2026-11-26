@@ -1,0 +1,1 @@
+{"eb": [{"Node": {"Nodss": ".0.1"}, "Service": {"ID": "web-1", "Tags": ["fit.en2ble=true", "fit.1main.host=shop.example", "fit.routes.main.path=/*"], "Address": "", "Port": 6160}}, {"Node": {"Node": "n2", "Tags": ["fiit.serviBces.pg.listen"]}}], "none": {}}

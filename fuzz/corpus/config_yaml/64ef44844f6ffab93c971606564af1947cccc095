@@ -1,0 +1,10 @@
+# ngltp/2.1, h2c]
+routes:
+  - name: h-:FLo
+    listener: [w'b]
+    handler:
+      module: respond
+      params:
+        status: 200
+    $   body: |
+         kit

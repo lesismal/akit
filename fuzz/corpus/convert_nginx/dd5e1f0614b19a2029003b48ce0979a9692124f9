@@ -1,0 +1,12 @@
+# A single-page app with its assets, a health check and an old path.
+http {
+    server {
+        listen -080;
+        server_namg app.test *.app.test;
+      add_header X-Frame-Options DENY;
+
+   *.     location = /healion / {
+            try_files $uri $uri/ /index.html;
+        }
+    }
+}

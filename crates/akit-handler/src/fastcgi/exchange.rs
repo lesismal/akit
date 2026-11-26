@@ -645,7 +645,7 @@ impl Exchange {
 }
 
 /// Where the CGI header ends, and the length of the blank line's separator.
-fn header_end(head: &[u8]) -> Option<(usize, usize)> {
+pub(crate) fn header_end(head: &[u8]) -> Option<(usize, usize)> {
     let crlf = head.windows(4).position(|w| w == b"\r\n\r\n");
     let lf = head.windows(2).position(|w| w == b"\n\n");
     match (crlf, lf) {
@@ -665,7 +665,7 @@ fn is_token(s: &str) -> bool {
 
 /// The status, fields and whether a length is declared, from a CGI header: `Status` gives the
 /// status (200 by default, 302 with a `Location`); the hop-by-hop fields are dropped.
-fn parse_head(head: &[u8]) -> Result<(u16, Headers, bool), Failure> {
+pub(crate) fn parse_head(head: &[u8]) -> Result<(u16, Headers, bool), Failure> {
     let bad = |m: &str| Failure::Bad(format!("the application's response header: {m}"));
     let text = std::str::from_utf8(head).map_err(|_| bad("not UTF-8"))?;
     let mut status = 0u16;

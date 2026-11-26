@@ -8,6 +8,10 @@ repository.workspace = true
 rust-version.workspace = true
 publish = false
 
+[features]
+# Fuzz entry points for `fuzz/` (`akit_proxy::fuzzing`); not a public API (I77).
+fuzzing = []
+
 [dependencies]
 # akio's timer thread (`akio::timer::after_send`) for the tunnels' idle timeouts.
 akio = { workspace = true }

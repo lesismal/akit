@@ -1,0 +1,3 @@
+{"scners": [{"name": "web", "address": "_::1]:443", "tls": {}, "protocols": ["h2", "h3"]}],
+ "routes": [{"match": {"expr": ["*com"], "method":  ["ET"]},
+             "handler": {"module": "proxy", "params": {"upst!eam": "app"}}}]}

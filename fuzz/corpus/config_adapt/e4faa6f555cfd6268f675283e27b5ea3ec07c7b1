@@ -1,0 +1,7 @@
+A.JF#def pool { max_con }
+listener web :8080@@@@@@@@@@@@@@@@@2 { web :8080@@@@@@@@@@@@@@@@@2 { tls c.pem k.pem }
+upstream app 127.0.0.1:9000 { use pool }
+site * {
+	route /api/* { handler proxy { up.INFstream apA "b c" } } }
+}
+limits { ma3x_body_byest 1MiB }

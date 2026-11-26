@@ -553,6 +553,115 @@ pub fn set_jwks_min_refetch(d: std::time::Duration) {
     crate::jwks::set_min_refetch(d);
 }
 
+/// The `jwt_token` fuzz target (feature `fuzzing`; I77), here to reach the middleware's own
+/// parts: [`crate::fuzzing::jwt_token`].
+#[cfg(any(test, feature = "fuzzing"))]
+pub(crate) mod fuzz {
+    #![allow(
+        clippy::indexing_slicing,
+        clippy::arithmetic_side_effects,
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic
+    )]
+
+    use akio_crypto::base64::URL_SAFE_NO_PAD as B64;
+    use akio_crypto::mac::Hmac;
+
+    use super::*;
+
+    const SECRET: &[u8] = b"0123456789abcdef0123456789abcdef";
+    const NOW: f64 = 1_700_000_000.0;
+
+    /// A `jwt` middleware with [`SECRET`] as its key, taking tokens `from` where `flags` say,
+    /// with an issuer and audiences when they ask for them, and claims copied onto fields.
+    fn jwt(flags: u8) -> Jwt {
+        let key = Arc::new(Key::new(Material::Secret(SECRET.to_vec())));
+        let mut allowed = 0;
+        for a in Alg::ALL {
+            allowed |= a.bit();
+        }
+        Jwt {
+            id: 0,
+            keys: Keys::Static(KeySet::new([&[key][..]])),
+            allowed,
+            from: match (flags >> 1) & 3 {
+                0 => From::Authorization,
+                1 => From::Header("X-Token".into()),
+                2 => From::Cookie("token".into()),
+                _ => From::Query("token".into()),
+            },
+            issuer: if flags & 8 != 0 {
+                "https://issuer.example".into()
+            } else {
+                String::new()
+            },
+            audience: if flags & 16 != 0 {
+                vec!["api".into(), "web".into()]
+            } else {
+                Vec::new()
+            },
+            leeway: f64::from(flags >> 5) * 10.0,
+            claim_headers: vec![
+                ("X-Roles".into(), "roles".into()),
+                ("X-Sub".into(), "sub".into()),
+            ],
+        }
+    }
+
+    /// `jwt_token`: `data[0]`'s low bit picks what the rest is: a request's token as the
+    /// client sends it (in the `Authorization` field, the `X-Token` one, the `token` cookie and
+    /// query parameter), or a header and claims, NUL-separated, signed with the middleware's own
+    /// secret, so that the claims are checked. A token is never let in without its claims
+    /// holding, and the fields made of its claims break no line.
+    pub(crate) fn jwt_token(data: &[u8]) {
+        let Some((&flags, rest)) = data.split_first() else {
+            return;
+        };
+        let Ok(text) = std::str::from_utf8(rest) else {
+            return;
+        };
+        let j = jwt(flags);
+        let token = if flags & 1 == 0 {
+            let mut h = Headers::new();
+            h.append("Authorization", text);
+            h.append("X-Token", text);
+            h.append("Cookie", format!("a=b; token={text}"));
+            let target = format!("/p?x=1&token={text}");
+            let Some(t) = j.token(&h, &target) else {
+                return;
+            };
+            t
+        } else {
+            let (head, claims) = text
+                .split_once('\0')
+                .unwrap_or((r#"{"alg":"HS256"}"#, text));
+            let signed = format!("{}.{}", B64.encode(head), B64.encode(claims));
+            let sig = Hmac::<Sha256>::mac(SECRET, signed.as_bytes());
+            format!("{signed}.{}", B64.encode(sig.as_ref()))
+        };
+        let Ok(t) = parse_token(&token) else {
+            return;
+        };
+        assert!(token.starts_with(&t.signed));
+        let Ok(v) = j.with_keys(|k| j.check(&t, k, NOW)) else {
+            return;
+        };
+        let claims = t.claims().expect("a token let in has claims");
+        assert!(numeric_date(claim(&claims, "exp")).is_some());
+        assert!(j.timely(v.exp, v.nbf, NOW), "{v:?}");
+        if !j.issuer.is_empty() {
+            assert!(matches!(claim(&claims, "iss"), Some(Value::String(s)) if *s == j.issuer));
+        }
+        for f in v.fields.iter().flatten() {
+            assert!(
+                !f.chars().any(|c| (c < ' ' && c != '\t') || c == '\x7f'),
+                "{f:?}"
+            );
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used, clippy::indexing_slicing)]

@@ -1,0 +1,5 @@
+ 
+http{server{listen 0000;server_name 00000.000;root 0000000;add_header 000000000000000 0000telemeyr;tlocation = 00000{return 100 00;}location ~* &0(0000000000){add_header 0000000000000 "000000000000000000000";}location ^~000000000000{alias 0000000000;}location 00001{rewrite 0 00080DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""DDDDDDDDDDDDDDDDDDD00 ;}
+
+locationation /{
+0;}}}

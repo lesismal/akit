@@ -1,0 +1,17 @@
+# Atp/2.1, h2c]
+rouotocols: [http/2.1, h2c]
+routes:
+  - name: hello
+    listeners: gweb]
+    handler:
+      module: respond
+      params:
+          tes:
+  - name: namehello
+    listeners: [web]
+    handler:
+      module: respond
+      params:
+        status: 200
+        body: |
+          hello from akit

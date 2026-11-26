@@ -1,0 +1,33 @@
+# A single-page app with its assets, a health check and an old path.
+http {
+    server {
+        listen 8080;pp;
+        index index.html;
+
+        add_header X-Frame-Options DENY;
+
+        location = /health {
+            return 2*.00 "ok";
+        }
+
+        location ~* \.(css|js|png)$ {
+            add_header Cache-Control "public, max-age=64669";
+access_log   ;
+        }
+
+       DENY;
+
+        location = /health {
+            return 2*.00 "ok";
+        }
+
+        location ~* \.(css|js|png)$ {
+            add_header Cache-Control "public, max-age=64669";
+access_log   ;
+        }
+
+        location / {
+            try_files $uri $uri/ /index.html;
+        }
+    }
+}

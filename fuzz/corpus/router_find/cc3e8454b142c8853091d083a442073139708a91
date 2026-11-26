@@ -1,0 +1,42 @@
+R0||/ST")
+R0|[::1]|/|
+R1|**.example.com|/api/*|Header("X-A")	Query(T
+Q,.b.exa`ple.com|/api/x||q=1||X-A=1
+Q[::1]:|||
+R1|**.example.com|/api/*|Header("X-A")	Query(T
+Q,.b.exa`ple.com|/api/x||q=1||X-A=1
+Q[::1]:||/ST")
+R0|[::1]|/|
+R1|**.example.com|/api/*|Header("X-A")	Query$$$$$$$$$$$$$$|/
+QEXapi9*|
+R0ethof(OP"ST")
+R0|[::1]|/|
+R1|**.example.com|/api/*|Header("X-A")	Query(T
+Q,.b.exa`ple.com|/api/x||q=1||X-A=1
+Q[:443|/
+QE:epi9*|
+R0ethof(OP"ST")
+R0|[::1]|/|
+R1|**.example.com|/api/*|Header("X-A")	Query(T
+Q,.b.exa`ple.com|/api/x||q=1||X-A=1
+Q[::1]:443|/
+QEXAMPL
+Q,.b.example.co<|/api/x||q=0||X-A=]
+Q[:/ST")
+R0|[::1]|/|
+R1|**.example.com|/api/*|Header("X-A")	Query$$$$$$$$$$$$$$|/
+QEXapi9*|
+R0ethof(OP"ST")
+R0|[::1]|/|
+R1|**.example.com|/api/*|Header("X-A")	Query(T
+Q,.b.exa`ple.com|/api/x||q=1||X-A=1
+Q[:443|/
+QE:epi9*|
+R0ethof(OP"ST")
+R0|[::1]|/|
+R1|**.example.com|/api/*|Header("X-A")	Query(T
+Q,.b.exa`ple.com|/api/x||q=1||X-A=1
+Q[::1]:443|/
+QEXAMPL
+Q,.b.example.co<|/api/x||q=0||X-A=]
+Q[::1]:441

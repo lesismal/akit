@@ -1,0 +1,8 @@
+{
+  "providers": [
+    
+    {"*ame": "adema_v2so",
+      "misteners": ["web"],
+  "etcd": {"moDule": "respond"}}
+  ]
+}

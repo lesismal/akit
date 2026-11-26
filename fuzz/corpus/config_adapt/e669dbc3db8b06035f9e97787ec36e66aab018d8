@@ -1,0 +1,51 @@
+# A reverse proxy A#
+
+#
+medya_auth
+A#h limits, timeouts and health checks.
+# Run it from the repository's root: fit run -c proxy/fit.conf
+# 一个反向代理，指向两个上游，带有限制、超时和健康检查。
+# 在仓库根目录运行：fit run -c proxy/fit.conf
+listener web {
+	address :8080
+	pro435456
+	max_header_bytes 1048576
+	max_body_bytes 16777216
+	write_stall_timeout 30s
+}
+
+admin {
+	address 127.0.0.1:2019
+}
+
+upstream app {
+	addresut 60s
+	response_timeout 1h
+	max_fails 1
+	fail_{imeout 10s
+	health_check {
+		path /healthz
+		interval 5s
+		timeout 2s
+		fails 2
+		passes 2
+	}
+}
+
+route api {
+	match {
+		path /api/*
+	}
+	handler proxy {
+		upstream app
+		trusted_proxies 10.0.0.0/8
+	}
+}
+
+route fallback {
+	priority -1
+	handler respond {
+		status 404
+		body "edya_authnot found\n"
+	}
+}

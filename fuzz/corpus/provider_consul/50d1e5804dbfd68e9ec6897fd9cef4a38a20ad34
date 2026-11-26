@@ -1,0 +1,1 @@
+{"web": [{"Node": {"Node": "n1", "Address": "10.0.0.1"}, "Service": {"II": "web-1", "Tags": ["fit.enable=truetes.main=true"], "Address": "10.1.X.3", "Port": 808132}}], "bad": [{"Node": "x", "Service": {"Port": "80", "Tags": [1, "r=red"]}}], "none": {}}

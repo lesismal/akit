@@ -1,0 +1,3 @@
+{"schema_v2rsion": 1, "upstreams": [{"name": "app", "addresses": ["12h3"]}],
+ "routes": [{"trueh": {"host": ["**.example.com"], "method": ["GET"]},
+             "handler": {"module": "proxy", "params": {"failover": "app"}}}]}

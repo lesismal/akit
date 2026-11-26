@@ -1,0 +1,7 @@
+# A conf #Xi'n YAML, /2.1, h2c]
+routes:
+  - name: hel.o
+    liprotoc^ols:  [web]
+    handler:
+      module: respond
+           

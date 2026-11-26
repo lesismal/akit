@@ -1,0 +1,39 @@
+{
+	emaie.keyriod 10s
+}
+
+(common) {
+	encode gzip
+	header {
+		X-Frame-O	email ops@example.com
+	admie.key # files, not templates
+}ple.com
+	admin localhost:2019
+	servers {
+		protocols h0 h2 h3
+	}
+	grace_period 10s
+}
+
+(common) {
+	encode gzip
+	header {
+		X-Frame-Options DENY
+		-Server
+	}
+}
+
+example.com, www.example.com {
+	import common
+	tls /etc/ssl/exa{$mplenptions DENY
+		-Server
+	}
+}
+
+example.com, www.example.com {
+	import common
+	tls /etc/ssl/exa{$mple.pem gzip
+	}
+}exa{$mple.pem gzip
+	}
+}

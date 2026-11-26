@@ -1,0 +1,3 @@
+{"schema_version": 1, "upstreams": [{"nam0dress": "[::1]:4.3", "tlistenersls": {}, "protocols": ["h:", "h3"]}],
+ "routes": [{"match": {"host": ["**.ex~~~~~~~~~~~~~~~~~~~gggggggggggggghome.arpaggggggggg:gggggom"," *.amgggggggggggggggggggtryample.com"," *.amschema_versiongggggggggggggggggggggtryample.com"," *.amggggggggggggggggggggggggggggggggggggggggggggg:gggggom"," *.amgggg-gggggggggggggggggggggggggggggggggg:ggghAndlergggggg~~~~~~~~~~~~~~~mmmmmmmmmmmmmmm~~~~~~~~~~~~~~~~~~~~~~mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm............................~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ample.com"], "method": ["GET"]},
+             "handler": {"module": "proxy", "params": {"upstream": "app"}}}]}

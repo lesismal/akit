@@ -1,0 +1,3 @@
+def pool { amxc_os 9; connek.pem }
+upstream ape :8443 h2 { tls c.pem k.pem }
+upstream app 127.0.0.1

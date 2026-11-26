@@ -1,0 +1,3 @@
+{"schema_version": 1, "ups{eams": [{"nAm1e": "app", "addr": {}, "listener,sprotocols": ["h4", "h3"]}],
+ "routes": [{"match": {"host": ["**.example.co.m"], "path_regexp": ["GEloca2lhٹtT"]},
+             "handler": {"module": "puroxy", "p.rams":{"upst!eam": "app"}}}]}

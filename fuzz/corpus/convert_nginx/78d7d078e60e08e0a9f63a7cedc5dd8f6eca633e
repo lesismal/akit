@@ -1,0 +1,50 @@
+# old path.
+http {server {[      .test *.app.test;
+        root /srv
+
+     rv
+
+        location ^~ /downloads/ {
+                  }
+
+        loc *.app.test;
+        root /srv
+
+        location ^~ /downloads/ {
+                  }
+
+        location /old/ {
+    }
+
+        location /ation /old/ {
+    }
+
+        location /docs/ {
+       ( C2 r&write ^/doak;
+            try_fissl_ciphersles $uri $uri/ =404;
+        }
+
+        location / {
+    1    NNNNNN_;  }   location ^~ /downloads/ {
+                  }
+
+        loc *.app.test;
+        root /srv
+
+        location ^~ /downloads/ {
+                  }
+
+        location /old/ {
+    }
+
+        location /ation /old/ {
+    }
+
+        location /docs/ {
+       ( C2 r&write ^/doak;
+            try_fissl_ciphersles $uri $uri/ =404;
+        }
+
+        location / {
+    1    NNNNNN_;  } }
+}

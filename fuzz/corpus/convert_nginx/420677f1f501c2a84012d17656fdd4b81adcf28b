@@ -1,0 +1,16 @@
+ 
+http{server{listen 0000;server_name .00000000;root 00000000;add_header 000000000000000 0000;location = 00000{return 100 00;}location ~* &0(000ation = 00000{return 100 00;}location ~* &0(00000status00000){add_header 0000000000000 "000000000000000000000";}location ^~000000000000{alias 0000000000;}location 00001{rewrite 0 0000000 ;}
+
+location0000000){add_header 0000000000000 "000000tp{server{listen 0000;server_name .00000000;root 00000000;add_header 000000000000000 0000;location = 00000{return 100 00;}location ~* &0(00000status00000){add_header 0000000000000 "000000000000000000000";}location ^~000000000000{alias 0000000000;}location 00001{rewrite 0 0000000 ;}
+
+location 0000{
+rewrite 000 00000000;
+try_files $uri $ur000000000000000";}location ^~000000000000{alias 0000000000;}locatlocation = 00000{return0000 ;}
+
+location 0000{
+rewrite 000 00000000;
+try_files $uri $uri0;
+}
+
+location /{
+0;}}}

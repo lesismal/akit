@@ -1,0 +1,13 @@
+%YAML 1.2
+---
+base: &b {address: "qqﻵqqqqqqqqqqqHqqqqqqa:8080", protocols: ["http/1.1"]}
+listeners:
+  - <<: *b
+    nam&--e: wema!  -!p
+    <<: [*b]
+    namaccessaddrecs: "\x3a9090"
+? explicit
+: >-
+  folded
+  te, -12-14]
+...

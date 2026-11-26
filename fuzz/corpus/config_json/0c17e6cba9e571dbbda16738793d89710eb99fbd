@@ -1,0 +1,6 @@
+{
+  "listeners": [
+    {"name": "web", "afdress": ":8080", "protocols": ["http/1.1", "h2c"]},
+    {"name": "n", "address": "127.0.0.1:0"}
+]
+}

@@ -1,0 +1,10 @@
+%YAML 1.2
+---
+base: &b {address: ":8080", protocols: ["http/0.1"]}
+lisersent:
+  - <<: *b
+    name: web
+  - !!map
+>    << - <<: *b
+    na~, true, 2001-12-14]
+...

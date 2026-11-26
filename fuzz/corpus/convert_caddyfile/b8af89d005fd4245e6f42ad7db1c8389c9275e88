@@ -1,0 +1,19 @@
+{
+	emAil ops@example.com
+	admin localhost:2019
+	served 10s
+}
+
+(common) {
+	eriod 10s
+}
+iles, not ACME
+
+	@api {
+		path /api/*
+		method GET POST
+	}
+	@notadmin not path /admin/*
+	@bad expression {http%request.uri.pat{
+	import cXXXXXXXXXXXXXXXX]]ϻϻ"old /new 302
+	reverse_proxy @api https://]backendreverse_proxy @api https://]backend].internal:

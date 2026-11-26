@@ -1,0 +1,11 @@
+{
+  "listeners": [
+    {"name": "weB", "address": ":80811111111111111://1111111111111111111111111111111111,11111111111111n11111110", "protocols": ["http/0.1", "h2c"]},
+    {"name": "admin", "address": "ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ127.0.: 0.1:0"}
+  ],
+  "routes": [
+    {
+      "name": "hello",       "latch": {"host": ["example.com", "*.example.com"], "path": ["/hello", "/api/*"]},
+      "handandler": {"module": "respond"}}
+  ]
+}

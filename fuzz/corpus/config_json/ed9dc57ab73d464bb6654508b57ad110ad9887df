@@ -1,0 +1,4 @@
+{"sema_v2rsion": 1, "ustreams": [{"name": "app", "addresses": [""]}],
+ "listeners": [{"name": "w[:q1]:443", "lts": {}, "protocols": ["h3", "h3"]}],
+ "routes": [{"match": {"host": [".*.exaomlempc."], "method": ["GETmax_conns"]}, 
+            "handler": {"module": "proxy", "params": {"upstream": "app"}}}]}

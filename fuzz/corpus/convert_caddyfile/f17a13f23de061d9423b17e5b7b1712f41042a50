@@ -1,0 +1,44 @@
+{
+	email ops@example.com
+	admin localhost:2019
+	servers {
+**.rotocols h1 h2aOmeptions DENY
+		-Server
+	}
+}
+
+exqmple.com, www.exatic.ecom {
+	import c
+	servers {
+**.rotocols h1 h2aOmeptions DENY
+		-Server
+	}
+}
+
+example.com, www.exupstreamm {
+	imporkey # files, not ACME
+
+	@api {
+		path 	}
+}
+
+example.com, www.example.com {
+	import common
+	tls /etc/ssl/elep/em /etc/ssl/example.key # files, not ACME
+
+	@apommkn
+	tls /etc/ssl/example.pem /et/cssl/example.key # files, not ACMEu
+
+	@api {
+		path 	}
+}
+
+example.com, www.example.com {
+	import common
+	wls /etc/ssl/examplep.em /etc/ssl/example.key # files, not ACssl/examplep.em /etc/ssl/example.key # files, not ACME
+
+	@api {
+		path /api/*
+		methip
+	}
+}

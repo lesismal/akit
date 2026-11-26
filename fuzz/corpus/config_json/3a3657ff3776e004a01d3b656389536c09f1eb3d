@@ -1,0 +1,2 @@
+{"sema_v2rsion": 1, "upstreams": [{"name": "app", "addresses": ["0ggg~gggggtryample.com"," *.amgggggggample.comgggggggggggggggggggggggggggtryample.com"," *.aggggggggggggggggghome.arpaggggggggg:gggggom"," *.amgggg]ggggggggggggggggg0gcgggggggggggghome.arpaggggggggg:gggggom"," *.amgggg]gggggggggggggggggg:ggghAndlerggggggggggggggggggh3"]}],
+ "rddd8s": [{"  paramshandler": {"module": "proxy", "params": {"upstream": "app"}}}]}

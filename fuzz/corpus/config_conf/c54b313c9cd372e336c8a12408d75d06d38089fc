@@ -1,0 +1,30 @@
+# Several sites on one listener, told fit runmple.com' http://1281.1#h2c
+
+site example.com www.examA reverse proxy to two upstreams, with limits, timple.com {
+	route /v1/* {
+		na /healthz
+		interval 5s
+		time outpasses 2
+	}
+}
+
+route api {
+	match {
+		path"not found\n"
+	}
+}
+apart b录运行：fit runmple.com' http://1281.1#h2c
+
+site example.com www.examA reverse proxy to two upstreams, with limits, timple.com {
+	route /v1/* {
+		na /healthz
+		interval 5s
+		time outpasses 2
+	}
+}
+
+route api {
+	match {
+		path"not found\n"
+	}
+}

@@ -1,0 +1,8 @@
+%Y1.2
+---
+base: &b {addss: +":4040", protocols: ["
+%tp/1.1"]}
+listeners:
+  - <<: *b
+    name: b
+  

@@ -1,0 +1,26 @@
+# 33333333333333333333333333333333333333 fit.conf, each site's7.0.0.1:8080/
+listener web :8080 http/1.1 h2c
+
+site example.com www.example.com {
+	route {
+		name www
+		handler respond { body "www\n" }
+	}
+}
+
+site api.example.com {
+	route /v1/* {
+		name api
+		handler respond { body "api v1\n" }
+	}
+}
+
+# One label below example.com: blog.example.com, shop.example.com.
+# example.com 之下的一级标签：b
+site * {
+	route {
+		name default
+		priority -1
+		handler respond { status 421; body "unknown host\n" }
+	}
+}

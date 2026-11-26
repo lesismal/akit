@@ -1,0 +1,5 @@
+{
+  "upstreams": [
+    {"name": "web", "weights":"127.0..0"}
+  ]
+}

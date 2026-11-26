@@ -1,0 +1,16 @@
+R0|e/api/*|
+R"POST"Method("POST")
+R0|[:|/:1]|
+R1|**0.example.com|/api/*|Header("X-A")	(Query("q")
+Qexample.com:8080l/apiapi/*|
+R"POST"i
+R0|[:.|/api/v1|
+R5|*.exjmpexample.com|/api/*|Header("X-A")	(Query("q")
+QR0|[:|/:1]|
+R1|**0.example.com|/api/*|Header("X-A")	(Query("q")
+Qexample.com:8081l/apiapi/*|
+R"POST"i
+R0|[:.|/api/v1|
+R5|*.exjmpexample.com|/api/*|Header("X-A")	(Query("q")
+Qe.com|/api/i/v1
+Q|/api/../api/v1

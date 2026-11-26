@@ -1,0 +1,7 @@
+%YAML 1.2
+---
+base: &b {address: "qq￻qqqqqqqqqqqqqqqqqqqqqqqqqqqqqaaaaaaa8624:a", ps: ["ht=tp/1.1"]}
+listeners:
+  -oxt
+n: [1F,ue, 0102-11-14]
+...

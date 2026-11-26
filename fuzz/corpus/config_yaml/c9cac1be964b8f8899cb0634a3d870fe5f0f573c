@@ -1,0 +1,6 @@
+0: # A config in YAocols.
+listeners:
+  - na address: ":8080"
+    protocols: [http/2.1, h ,2ch2c]
+routes:
+  - n)enerse}t

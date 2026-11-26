@@ -1,0 +1,34 @@
+R0|api/*|
+R0|Exampl[:|[::1]|/|
+R1|**.example.com|/api/*|Header("X-C")	Query("q")
+Qapi/*|
+R0|Exampl[:|[::1]|/|
+R1|**.example.com|/api/*|Header("X-C")	Query("q")
+Qex:a=mi/v1|POST
+Qa.b.example.com|/api/x||q=1||X-A=1
+/a`i/]:443/
+QEXAMPLE.COM.|/api/v1
+Qder("X-C")	Query("q")
+Qex:a=mi/v1|POST
+Qa.b.example.com|/api/x||q=1||X-A=1
+/a`i/]:443/
+QEXAMPLE.COM.|/api/v1
+Q|/api/../apiex:a=mi/v1|POST
+Qa.b.example.com|/api/x||q=1||X-A=1
+/a`i/]:443/
+QE|/api/../apiex:a=mi/v1|POST
+Qa.b.example.com|/api/x||q=1||X-A=1
+/a`i/]:443/
+QEXAMPLE.COM.|/Exampl[:|[::1]|/|
+R1|**.example.com|/api/*|Header("X-C")	Query("q")
+Qapi/*|
+R0|Exampl[:|[::1]|/|
+R1|**.example.com|/api/*|Header("X-C")	Query("q")
+Qex:a=mi/v1|POST
+Qa.b.example.com|/api/x||q=1||X-A=1
+/a`i/]:443/
+QEXAMPLE.COM.|/api/v/api/x||q=1||X-A=1
+/a`i/]:443/
+QE|/api/../apiexap/api/*|Header("X-C")	Query("q")
+Qex:a=mi/i/v1
+Q|/api/../api/v1

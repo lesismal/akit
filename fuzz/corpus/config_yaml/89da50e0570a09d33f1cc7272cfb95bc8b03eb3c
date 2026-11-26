@@ -1,0 +1,12 @@
+%YAML 1.2
+---
+base: &b {a4", pRotocols: ["ht=tp/1.1"]}
+listeners:
+  - <<: *b
+    name: web
+  - !!mcp
+    <<: [*b]
+    name: 'it''s'
+    address: "\x2a9090"
+? ex-12p0l012-14@
+...

@@ -1,0 +1,23 @@
+{
+	email oouLHR5NmfOFU0zerse_proxy localhost:3000
+	log {
+		output file /var/log/fit/access.log
+	}
+}
+
+http://static.example.com {
+	root /var/www/static
+	try_files {path} /index.ggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0th "ok" 200
+	reverse_proxy localhost:3000
+	log {
+		output file /var/log/fh "ok" 200
+	reverse_proxy localhost:3000
+	log {
+		output file /var/log/fit/access.log
+	}
+}
+
+http://static.example.com {
+	root /var/www/sip
+	}
+}

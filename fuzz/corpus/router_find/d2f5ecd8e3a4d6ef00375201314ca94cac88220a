@@ -1,0 +1,9 @@
+R0||/api"ST")
+R0|[::1]|/|
+R1|**.example.com|/api/*|Header("-X-A")	Query(OST
+Q,.b.example.com|/api/x||q=1||X-A=1
+Q[::1]:443|/
+QEXAMPL
+Q,.b.example.com|/api/x||q=1||X-A=1
+Q[::1]:443|/
+QEXAMPLERpi/v1pi/v1

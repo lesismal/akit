@@ -1,0 +1,8 @@
+# A config ic]
+routes:
+  - name: h_llo
+    listeners: [web]
+    handler:
+      module: respond
+      params:
+        sta|us: 201kit

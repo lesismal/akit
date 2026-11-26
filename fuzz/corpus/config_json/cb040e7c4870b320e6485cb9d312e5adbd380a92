@@ -1,0 +1,3 @@
+{"schupstreamsema_version": 1, "upstreams": [{"nam": "app", "addresses": ["127.0.0.1:0000000000000000000000009000"]}],
+ "listeners": [{"name": "web", "address": "[::2))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))]:443", "tls": {}, "protocols": ["h2", "h3"]}],
+ "routes": [{"match": {"host": ["**.exampl0e.com"], "meth/dle": {"upstream": "app"}}}]}

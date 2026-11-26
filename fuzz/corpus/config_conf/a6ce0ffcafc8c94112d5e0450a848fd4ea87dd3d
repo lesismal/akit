@@ -1,0 +1,11 @@
+def pool { m_c max_conns :; connect_timeout 5s }
+listener web :8080 http/1.1 h2c
+l`m app } }
+	route { handlerout 5s }
+%istener web :8080 http/1.1 h2c
+listener secure :8443 h2 { tl"" "" 000.pem }
+upstream app 127.0.0ener web :8080 http/1.1 h2c
+listener secure :8443 h2 { tl"" "" 000.pem }
+upstream app 127.0.0. { tls c.pem k.pem }
+upstream app 127.0.0.1:9000 { use pool }
+sit app 127.0.0.1:9000 { usndler pro{ handler proxy { ups

@@ -1,0 +1,10 @@
+# A config in YAML, as fit reads it.
+l  body: |
+  
+    listeners: [web]
+    handler:
+      module: responI
+      params:
+        status: 200
+        body: |
+          hello from akit

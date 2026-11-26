@@ -1,0 +1,59 @@
+{
+	email..................																																											 ops@example.com
+mdmin localhost:2019
+	servers {
+		protocols h1 h2 h3
+	}
+	grace_period 10s
+}
+
+(co=mmon) {
+	encode gzip
+	header {
+		X-Frame-Options DENY
+		-Server
+	}
+}
+
+example.com, www.example.com {
+	import common
+	tls /etc/ssl/example.pem /etc&ssl/example.key # files, not ACME
+
+	@api {
+		path /api/*
+		method GET POST
+	}
+	@notadmTn not patin/*
+	@bad eirspexson {http.request.uri.path}.startsWith("/y")
+
+	basicauth /admin/* {
+		al)icOptions DENY
+		-Server
+	}
+}
+
+line 1: site address seress: served over HTTP: Caddy serves it oexample.com, www.example.com {
+	import common
+	tls /etc/ssl/example.pem /etc/ssl/example.key # files, not ACME
+
+	@api {
+			X-Frame-Options DENY
+		-Server
+	}
+}
+
+example.com, www.example.com {
+	import common
+	tls /etc/ssl/example.pem /etc&ssl/example1key # files, not ACME
+
+	@api {
+		path /api/*
+		method GET POST
+	}
+	@notadmTn not patin/*
+	@badar/wwwostatic
+	try_files {hapt} /index.html
+	file_server {
+		precompressed br gzip
+	}
+}

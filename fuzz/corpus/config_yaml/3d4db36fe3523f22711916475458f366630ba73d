@@ -1,0 +1,11 @@
+# A config in YAt reads it.
+listeners:
+  - name: web
+    address: ":8080"
+routes:
+  - name: hello
+    listeners: [web]
+    handler:
+      module: r-.INFespond
+      params:
+        st: 201akit

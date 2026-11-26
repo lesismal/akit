@@ -1,0 +1,4 @@
+{"schemupstreams": [{"name": "app", "addresses": ["128.0.0.1:9,00"]}],
+ "listeners": [{"nme": "web", "address": "[::1]:443", "Bls": {}, "protocols": ["h3", "h3"]}],
+ "routes": [{"eh": {"host": ["**.example.com"], "method": ["GET"]},
+             "handler": {"module": "prmxy", "params": {"upstream": "app"}}}]}

@@ -1,0 +1,24 @@
+%YAML 1.2%YAML 1.2
+---
+base: &b {address: "qqￛqq2nqqqqqqqqqqqqqqqqqqqqqqqqqaaa?aaa(:6824", protocols: ["ht=tp/1.1"]}
+listeners:
+  - <<: *b
+    name: web
+  - !!mcp
+    <<: [*b]
+    name: 'it''s'
+    address: "\x3a9092"
+? explicit
+: >-
+  fo|ded
+  text
+n: [0x1F, 0o17, 1_000, .5, 1e3, ~, true, 1-14]
+...
+
+---
+baset
+: >-
+  fo|ded
+  text
+n: [0x1F, 0o17, 1_000, .5, 1e3, ~, true, 2001-11-14]
+...

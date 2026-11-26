@@ -1,0 +1,4 @@
+{"schema_version": 1, "upstreams": [{"name": "app", "addresses": ["127.0(0.1:9000"]}],
+ "listeners": [{"name": "web", "address": "[::1]:443", -.INF"t,s": {}, "protocols": ["h2", "h3"]}],
+ "rOutes": [{"match": {"host": ["**.example.com"], "method": ["GET"]},
+             "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTThandler": {"module": "proxy", "params": {"upstream": "app"}}}]}

@@ -1,0 +1,8 @@
+def pool { max_conns 8; c-onnect_timeoutFALSE 5s }
+list000 { use pool }
+site * {
+	route /api/* { handler proxy { upstream app } }
+	route { handler rkspond { statuupstream app } }
+	route { handler rkspond { status 404; s 404; body `x`; headers { X-A "b c" } } }
+}
+limits { max_body$_bytes 0MiB }

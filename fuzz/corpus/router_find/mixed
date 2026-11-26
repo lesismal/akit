@@ -1,0 +1,11 @@
+R0||/api/*|
+R0|Example.COM.|/api/v1|
+R5|*.example.com||Method("POST")
+R0|[::1]|/|
+R1|**.example.com|/api/*|Header("X-A")	Query("q")
+Qexample.com:8080|/api/v1
+Qa.example.com|/api/v1|POST
+Qa.b.example.com|/api/x||q=1||X-A=1
+Q[::1]:443|/
+QEXAMPLE.COM.|/api/v1
+Q|/api/../api/v1

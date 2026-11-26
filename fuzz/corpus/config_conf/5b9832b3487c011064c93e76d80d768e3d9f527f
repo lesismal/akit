@@ -1,0 +1,5 @@
+def pool { 	maxmax_bgdy_bytesrite	address &127.0.0.1:2019
+}
+
+upstream app------------------------------------------------------ {
+	addresses 1.0s 0MiB }

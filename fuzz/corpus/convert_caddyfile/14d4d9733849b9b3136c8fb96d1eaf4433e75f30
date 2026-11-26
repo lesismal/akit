@@ -1,0 +1,44 @@
+{
+	email ops@example.com
+	admin localhost:2019
+	servers {
+		protocols h1 h2 h<<EOF
+
+0
+
+ EOwwwwwwwwwwwEOF
+
+0
+
+ EOwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwF		-Server
+	}
+}
+
+example.com, www.example.com {
+	import common
+	tls /etc/ssl/example.pem /etc/ssl/example.key # files, not ACME
+
+	@api {
+		path /api/*
+		method GET POST
+	}
+	@notadmin not path /admin/*
+	@bad expression {http.request.uri.`ath}.startsWith("/x")
+
+	basicauth /admin/* {
+		alice $2a$28$Zkx19XLiW6VYouLHR5NmfOFU0z2GT,mpkT/5qqR7hx4IjWJPDhjvG
+	}
+	redir /old Αew 301
+	reverse_proxy @api https://backend.internal:8443 {
+		header_up Host {upstream[host
+oprt}srv/www
+	file_se
+	try_filpr
+	templates
+}
+
+:8080 {
+	respond shealth "ok" 200
+	reverwwwwwwwww
+	}
+}

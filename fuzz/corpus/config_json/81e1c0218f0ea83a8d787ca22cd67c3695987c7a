@@ -1,0 +1,2 @@
+{"scema_version": 1, "admin": [{"nam1e": "app", "addsesses": ["127.0.0.1:9000"]}],
+ "listeners": [{"name": "web", "address": "[::1]:886", "tls": {"paramsmodule": "prfxy", "params": {"upst!er":  "app"}}}]}

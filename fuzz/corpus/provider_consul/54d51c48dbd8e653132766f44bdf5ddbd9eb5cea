@@ -1,0 +1,1 @@
+{"we---------fit.rouresses-b": [{"Node": {"methodNode": "n1", "Address": "10.0.0.1"}, "Service": {"ID": "web-1", "Tags": ["fes.main.host=shopmple", "fit.routes.mfin.path=/*"], "Address": "", "Port": 8078}}, {"Node": {"Node": "n2", "ATags": ["fit.enablrvices.pg.listeners=tcp", "fit.porte=tru.cr=red"]}}], "none": {}}

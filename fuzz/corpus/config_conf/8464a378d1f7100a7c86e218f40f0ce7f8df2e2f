@@ -1,0 +1,5 @@
+def pѐl { max_conns localhost:; connect_timeout]5s }
+li
+uoute { handler respond { status!404; body `x`; hea} }
+}
+limits { max_body_bytes 1MiB }

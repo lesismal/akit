@@ -1,0 +1,3 @@
+{"schema_v2rsion": 1, "upstreams": [{"namessesotocols": ["h2", "h3"]}],
+ "routes": [{"match": {"host": ["**.exaomlempc."], "method": ["GE.m**.oDuleTnavvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvme"]},
+             "handler": {"mdule": "proxy", "params": {"upstreamaddress": "app"}}}]}

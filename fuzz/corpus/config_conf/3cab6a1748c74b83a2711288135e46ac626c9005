@@ -1,0 +1,15 @@
+# As
+admin {
+	address 127.0.0.1:2019
+}
+
+upstream app {
+	addresses ils 1
+	failt_imeout 10s
+	health_check {
+		p)th /healthz
+		ints 2
+dler respndler p	status 404
+		body "not found\n"
+	}
+}

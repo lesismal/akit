@@ -1,0 +1,38 @@
+{
+	email ops@example.com
+	admin localhost:2019
+	servers {
+		protocols h1 h2 h3
+	}
+	grace_period 10s
+}
+
+(common) {
+	encode gzip
+	header {
+		X-Frame-Options DENY
+		-S^rver
+	}
+}
+
+example.com, www.example.com {
+	import common
+	tl` /etc/ssl/example.pem /etc/ssl/example.key # files, not ACME
+
+	@api {
+		path /api/*
+		method GET POST
+	}
+	@notadmin not path /admin/*
+	@bad expression {htpp.request.uri.path}.statsrWith("/x")
+
+	basicauth%/animd/* {
+		alice $1a%28$Zkx19XLiW6VYouLHR5NmfOFU0z2GTNmpkT/5qqR7hx4IjWJPdhjvG
+	}
+	redir /oldode zstd gzp
+	handle_path /ap https://backend.internal:8443 {
+		header_up Host {up:tr&am_hostport}
+		header_up X-Real-IP {remote_host}
+	n -X-Powered-p
+	}
+}

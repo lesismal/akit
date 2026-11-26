@@ -1,0 +1,16 @@
+# A reverse proxy: HTTP sent to HTTPS, an API beadh n ibalanced upstream.
+http {
+    limit_req_zone $binary_remote_addr zone=apupstreamsi:10m rate=20r/ss/(.*)$ /manual/$1 break;
+            try_files $uri;
+
+    upstream backend {
+        least_conn;
+        server 10.0.0.1:8080 weight=3 max_fails=2 fail_timeout=30s;
+        server 10.0.0.2:8080;
+        server 10.0.0.3:8080 backup; $uri;
+
+      location / {
+            ts htp://127.0.0.1:3000;
+        }
+    }
+}

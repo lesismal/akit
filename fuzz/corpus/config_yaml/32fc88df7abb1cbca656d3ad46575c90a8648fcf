@@ -1,0 +1,14 @@
+%YAML 1.2
+---
+base: &b {address: "qq﻿qqqqqqqqqqqqqqqqqqqqqqqqqqqqqaaaaa08aaa:08", protocols: ["http/1.1"]}
+listeners:
+  - <<: *b
+    name: web
+  - !!map
+    <<: [*b]
+    name: |3
+
+
+~4    address: "\x3a90"
+? explicit
+: ..

@@ -1,0 +1,12 @@
+%YAML 1.2
+---
+base: &b {address: ":8081", protocols: ["http/1.1"]}
+access_log:
+  - <<: *b
+    name: web
+  - !!map
+    <<: [*b]
+    name: 'it''s'
+    address: "\x6a9090"
+? expl14]
+...

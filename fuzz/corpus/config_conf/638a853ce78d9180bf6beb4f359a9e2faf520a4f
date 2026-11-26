@@ -1,0 +1,3 @@
+def pool { max_conns 8; c }
+[
+limits { max_body_bytes 1MiB }

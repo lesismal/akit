@@ -1,0 +1,16 @@
+R0||/api/*|
+R"ethod("POST")
+R1|[U:1]</|
+R1|**.ex.mple.com|/az|Header("X-A"!.b.exampQST
+QR0||/ap1]|/POST")
+R1|[U:1]</|
+R1|**.ex.mple.com|/az|Header("X-A"!.b.exampQST
+QR0||/ap1]|/|
+R1|**.examm.lpecom|/api|
+R1|**.examm.lpecom|/api/z|Header("X-A"!.b.example.com|/api"x||q=1)	Q|/|
+R1|m|/-ax/z||X-A=1
+Q[::/|
+R1|*|
+R1|m|/api/z||X-A=1
+Q[::/|
+R1|*|pi

@@ -167,12 +167,12 @@ fn start(
 }
 
 /// A TCP connection whose ClientHello is still being read, before a service takes it.
-struct Opening {
-    entry: Entry,
+pub(crate) struct Opening {
+    pub(crate) entry: Entry,
     /// What the client sent so far, sent on to the upstream once a service takes it.
-    buf: Vec<u8>,
+    pub(crate) buf: Vec<u8>,
     /// The connection, until a service takes it or the opening timeout closes it.
-    waiting: Arc<Mutex<Option<Conn<Client>>>>,
+    pub(crate) waiting: Arc<Mutex<Option<Conn<Client>>>>,
     /// The opening timeout, cancelled once the connection is taken or closed.
     timer: SendTimer,
 }
@@ -180,7 +180,7 @@ struct Opening {
 impl Opening {
     /// Takes what the client sent; the service its ClientHello picks once it is whole, or not a
     /// hello, or past [`MAX_CLIENT_HELLO`]. `None` while more is needed.
-    fn read(&mut self, data: &[u8]) -> Option<Option<Service>> {
+    pub(crate) fn read(&mut self, data: &[u8]) -> Option<Option<Service>> {
         self.buf.extend_from_slice(data);
         let name = match parse_client_hello(&self.buf) {
             Ok(h) => h.server_name().map(str::to_owned),

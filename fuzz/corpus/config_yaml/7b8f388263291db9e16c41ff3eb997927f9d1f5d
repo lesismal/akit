@@ -1,0 +1,11 @@
+0: # A listeners:
+   protocols: [http/5.1, -h2c, h2c]
+routes:
+  - name: hello
+s:
+ it.
+listeners: [http/2.1, -h2c, h2c]
+rrotocols: [http/2.1, -h2c, h2c]
+ro    protocols: [http/20x0b.1, -h2c, h2c]
+ro.utes:
+  - name}t

@@ -1,0 +1,6 @@
+#00
+
+route app { listeners httpx; handler rect { to https://{host}{s 404 }
+}
+
+acme { email ops@example.com }

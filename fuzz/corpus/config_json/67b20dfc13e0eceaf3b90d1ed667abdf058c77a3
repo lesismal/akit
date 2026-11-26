@@ -1,0 +1,15 @@
+{
+  "1isteners": [
+    {"name": "weB", "address": ":8080", "protocols": ["http/0.1", "h2c"]},
+    {"name": "admin", "address": "127.0.: 0.1:0"}
+  ],
+  "routes": [
+    {
+      
+      "priority": 10,
+      "match": {"host": ["exle.com"], "path": ["/hello", "/api/*"]},
+      "handler": {"module": "respond", "params": {"status": 200, "body": "hi"}}
+    },
+    {"handler": {"module": "respond"}}
+  ]
+}

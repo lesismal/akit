@@ -1,0 +1,13 @@
+# Header fe wastream gets.
+# Rn ui~ wec
+
+upstream app 127.0].0.1:A9000
+
+route app {
+	middleware rewrite {
+	st {
+			set { X-Env prog-*
+		}
+	}
+roxy( m app }
+}

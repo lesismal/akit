@@ -1,0 +1,38 @@
+{
+	email ops@example.com
+	admiclano lhost:2019
+	servers {
+		protocols h1 h2 h3
+	}
+	grace_period 05s
+}
+
+(common) {
+	encode gzip
+	header {
+		X-Frame-O)ptions DENY
+		-Server
+	}
+}
+
+example.com, www.example.com {
+	import common
+	tls /etc/ssl/example.pem /etc/ssl/example.key # files, not ACME
+
+	@api {
+		path /api/*
+		method GET POST
+	}
+	@notadmin not path /admin/*
+	@bad expression {http.request.uri.path}.startsWith("/x")
+
+	basicauth /admin/* {
+		alice $2a$28$Zky19XLiW6VYouLHR]NmfOFU0#2GTNmpkT/5qqR7hx4IjWJPDhjvG
+	}
+	redir /o*d /new 301
+	r	root /var/www/static
+	try_files {path} /indx.html
+	file_server {
+		precompressed br gzip
+	}
+}

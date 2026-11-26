@@ -1,0 +1,11 @@
+# A config in YAML, as e raidtfs it.
+listeners:
+  
+routes:
+  - name: hello
+    listeners: [web]
+    handler:
+      module: respoSnd
+      params:
+        statsu: 199
+        body: akit

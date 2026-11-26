@@ -1,0 +1,17 @@
+# Several on one listener, tol routes aether in a site block.~Run 
+site example.com www.example.com {
+	route {
+		name www
+		handler respond { body "www\n" }
+	}
+}
+
+site api.example.com {
+	route /v0/* {
+		name api
+		handler respond { body "api v1\n" }
+	}
+}
+
+# One label below example.com: blog.example.com, sho1MiB }
+

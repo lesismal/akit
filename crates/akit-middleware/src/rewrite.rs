@@ -56,8 +56,18 @@ pub(crate) fn new(
 }
 
 impl Rewrite {
+    /// A rewrite that replaces `re`'s matches with `with`, and strips and adds nothing.
+    #[cfg(any(test, feature = "fuzzing"))]
+    pub(crate) fn with_regexp(re: Regex, with: &str) -> Rewrite {
+        Rewrite {
+            strip: Arc::from(Vec::new()),
+            replace: Some((Arc::new(re), with.into())),
+            add: Arc::from(Vec::new()),
+        }
+    }
+
     /// `p`, a decoded path, rewritten; `None` when it is left as it is.
-    fn path(&self, p: &[u8]) -> Option<Vec<u8>> {
+    pub(crate) fn path(&self, p: &[u8]) -> Option<Vec<u8>> {
         let mut rest = p;
         for prefix in self.strip.iter() {
             if let Some(r) = cut_segments(p, prefix) {
@@ -89,8 +99,8 @@ impl Rewrite {
 /// `p` (a decoded path, perhaps not UTF-8) with each match of `re` replaced with `with`; `None`
 /// when nothing matched. Go's regexp reads each byte of an invalid UTF-8 sequence as a character
 /// of its own (U+FFFD) and keeps the byte where it copies the text: here such a byte stands, while
-/// the regexp runs, for a character of Unicode's private use plane 16 (U+10FF80 to U+10FFFF), and
-/// is put back after.
+/// the regexp runs, for a character of a private use plane ([`stand_in_base`]), and is put back
+/// after.
 fn replace(re: &Regex, with: &str, p: &[u8]) -> Option<Vec<u8>> {
     if let Ok(text) = std::str::from_utf8(p) {
         return match re.replace_all(text, with) {
@@ -98,11 +108,14 @@ fn replace(re: &Regex, with: &str, p: &[u8]) -> Option<Vec<u8>> {
             Cow::Owned(s) => Some(s.into_bytes()),
         };
     }
+    // No block free for the stand-ins: only a path made to hold every one can do that; it is
+    // left as it is rather than have its characters taken for its bytes.
+    let base = stand_in_base(p, with)?;
     let mut text = String::with_capacity(p.len().saturating_mul(2));
     for chunk in p.utf8_chunks() {
         text.push_str(chunk.valid());
         for &b in chunk.invalid() {
-            text.push(char::from_u32(STAND_IN | u32::from(b)).unwrap_or('\u{FFFD}'));
+            text.push(char::from_u32(base | u32::from(b)).unwrap_or('\u{FFFD}'));
         }
     }
     let Cow::Owned(out) = re.replace_all(&text, with) else {
@@ -111,7 +124,7 @@ fn replace(re: &Regex, with: &str, p: &[u8]) -> Option<Vec<u8>> {
     let mut bytes = Vec::with_capacity(out.len());
     for c in out.chars() {
         match u32::from(c)
-            .checked_sub(STAND_IN)
+            .checked_sub(base)
             .and_then(|b| u8::try_from(b).ok())
         {
             Some(b) if b >= 0x80 => bytes.push(b),
@@ -121,9 +134,35 @@ fn replace(re: &Regex, with: &str, p: &[u8]) -> Option<Vec<u8>> {
     Some(bytes)
 }
 
-/// A byte `b` of an invalid UTF-8 sequence (0x80 to 0xFF) stands as the character
-/// `STAND_IN | b` while a regexp runs.
-const STAND_IN: u32 = 0x10_FF00;
+/// Where the stand-ins of `p`'s invalid bytes go: a block of private use planes 15 and 16,
+/// `base | 0x80` to `base | 0xFF`, that no character of `p` or `with` is in, so that every
+/// stand-in the replacement holds is one and is put back as its byte (a path holding a
+/// character of the block, U+10FF80 say, keeps it). The highest free one, U+10FF80's when no
+/// character of the planes is there; `None` when none is free.
+fn stand_in_base(p: &[u8], with: &str) -> Option<u32> {
+    const FIRST: u32 = 0xF_0000;
+    const BLOCKS: usize = 0x200;
+    let mut used = [false; BLOCKS];
+    let mut mark = |c: char| {
+        let u = u32::from(c);
+        if u >= FIRST && u & 0x80 != 0 {
+            if let Some(slot) = usize::try_from(u.saturating_sub(FIRST) >> 8)
+                .ok()
+                .and_then(|i| used.get_mut(i))
+            {
+                *slot = true;
+            }
+        }
+    };
+    for chunk in p.utf8_chunks() {
+        chunk.valid().chars().for_each(&mut mark);
+    }
+    with.chars().for_each(&mut mark);
+    let free = used.iter().rposition(|u| !u)?;
+    u32::try_from(free)
+        .ok()
+        .and_then(|i| FIRST.checked_add(i << 8))
+}
 
 /// What is left of `p` without `prefix` (which has no trailing `/`), when `p` is `prefix` or goes
 /// on with a `/` after it: fit's `cutSegments`. An empty rest stands for `/`.
@@ -271,5 +310,31 @@ mod tests {
         assert!(r.path(b"/\xff\xff").is_none());
         // Nothing matched: no new path.
         assert!(rx(&[], "q", "r", "").path(b"/\xff").is_none());
+    }
+
+    /// Found by fuzzing (I77, `middleware_fields`): a path with an invalid byte and a character
+    /// of the block its stand-ins used to take (U+10FF80 to U+10FFFF) came out with that
+    /// character turned into a byte (`/\u{10FF80}\xff` into `/\x80\xff`). The stand-ins now take
+    /// a block neither the path nor the replacement uses.
+    #[test]
+    fn characters_of_the_stand_ins_block_are_kept() {
+        let mut p = "/\u{10FF80}x\u{10FFFF}".as_bytes().to_vec();
+        p.push(0xff);
+        let same = rx(&[], "(?s)(.)", "$1", "");
+        assert!(same.path(&p).is_none(), "rewritten as itself");
+        let r = rx(&[], "x", "\u{10FF81}", "");
+        let mut want = "/\u{10FF80}\u{10FF81}\u{10FFFF}".as_bytes().to_vec();
+        want.push(0xff);
+        assert_eq!(r.path(&p), Some(want));
+        // Every block taken: left as it is, not corrupted.
+        let mut all = String::from("/");
+        for i in 0..0x200u32 {
+            all.push(char::from_u32(0xF_0080 + (i << 8)).unwrap());
+        }
+        let mut p = all.clone().into_bytes();
+        p.push(0xff);
+        assert_eq!(stand_in_base(&p, ""), None);
+        assert!(same.path(&p).is_none());
+        assert_eq!(stand_in_base(b"/\xff", ""), Some(0x10_FF00));
     }
 }

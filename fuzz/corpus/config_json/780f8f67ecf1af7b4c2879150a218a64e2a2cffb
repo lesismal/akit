@@ -1,0 +1,10 @@
+{
+  "listeners": [
+    {"name": "web", "address": "680.0.0. :00000012297932887423034409"}
+  ],
+  "routes": [
+    {
+     "listeners": ["web"],
+      "prir": {"moDule": "respond"}}
+  ]
+}

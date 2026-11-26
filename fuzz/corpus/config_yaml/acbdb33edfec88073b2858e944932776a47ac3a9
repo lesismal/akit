@@ -1,0 +1,17 @@
+%YAML 1.2
+---
+base: &b {as: ["http/1.1"]}
+listeners:
+  - <<: *b
+    name: &--
+  - !!map
+    <<: [*b]
+    namteners:
+  - <<: *b
+    name: &--
+  - !!map
+    <<: [*b]
+    namaccesse: 'it`''s'
+    addrcs: "\x3a9090"
+? e?2001-12-14]
+...

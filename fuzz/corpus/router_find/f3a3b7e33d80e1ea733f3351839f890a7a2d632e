@@ -1,0 +1,13 @@
+R0||/api/*|
+R0|Ex|[::od(api/.T")
+R5|
+"R0|[::1
+Q|//x/y
+"R0|Z::1
+Q|/api/.T")
+R5|[/|
+R1|**.example.com|/api/*|Heaom:8080|/api/v1
+Qa.example.com|/api//x
+Q[::1]:443|/
+QST
+Qa.b.example.com|/api/R0||/api/:1

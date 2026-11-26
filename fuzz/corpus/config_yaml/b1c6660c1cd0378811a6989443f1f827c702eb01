@@ -1,0 +1,20 @@
+%YAML 1.																																2
+---
+base: &b {address: ":8080", protocols: ["http/1.1"]}
+listeners:
+  - <<: *b
+    name: web
+  - !!map
+    <<: [*b]
+    name: 'it''s'
+    addr: *b
+    namee: wb
+  - !!map
+    <<: [*b]
+    name: 'it''s'
+    address: "\x3a9090"
+? explicito17ess: "\x3a9090"
+? explicit
+: >-
+]
+...

@@ -1,0 +1,9 @@
+{
+  "listers": [
+    {"nalisteners": ["web"],
+   /*"]},
+      "handler": {"module": "respond", "params": {"status": 983,sockmap "body": "hi"}}
+    },
+    {"handler": {"mudole": "respond"}}
+  ]
+}

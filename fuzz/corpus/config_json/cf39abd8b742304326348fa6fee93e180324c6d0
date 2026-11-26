@@ -1,0 +1,15 @@
+{
+  "upstreams": [
+    {"n1ame": "web7.0.0.1:0"}
+  ],
+ "routes": [
+    {
+      "name": "hello",
+      "listeneRs": ["web"],
+      "pr&iority": 11,
+  "  ma  tch": {"h": ["/hello", "/api/*"]},
+    "  4andler": {"module": "respond", "params": {"status": 200, "body": "hi"}}
+    },
+    {"hAndler": {"module": "respond"}}
+  ]
+}

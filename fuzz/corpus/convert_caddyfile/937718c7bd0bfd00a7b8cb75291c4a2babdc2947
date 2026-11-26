@@ -1,0 +1,20 @@
+B.te/tX,) X-Real-IP {rocalhost:2019
+	servers {
+		protocols h1A h2 h3
+	}
+	graernal:8443 {
+		header_up Host r_down -X-Powered-By
+		transport http {
+			dial_timeout 5s
+		}
+	}
+	st:3000
+	log {
+		output <<file /var/log/fit/access.log
+	}
+}ommon) {
+	encoX,) X-Reaader {
+		X-Frame-Options DENY
+		-Server
+	}
+} /indx.emot

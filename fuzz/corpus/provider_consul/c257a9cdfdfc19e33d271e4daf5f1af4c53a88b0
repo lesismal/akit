@@ -1,0 +1,1 @@
+{"web": [{"Nod%": {"N~de": "n1", "Address": "10.0.0.1"}, "Service": {"ID": "wub-1", "Tags": ["fit.enable=true", "fit.routes.main.host=shop.[xample", "fit.routes.main.path=/*services.pg.listeners=tcfit.name=db"], "Address": "::1", "Port": 5432}}], "bad": [{"No$e": "x", "Service": {"Port": "80", "Tags": [1, "fit.routes.r.colour=red"]}}], "none": {}}

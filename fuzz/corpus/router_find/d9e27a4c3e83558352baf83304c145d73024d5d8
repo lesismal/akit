@@ -1,0 +1,6 @@
+
+R1|**.example.com|/api/*|Header"(XA")	Qr("POST")
+R0|[::0]le.com|/api/*|Header"(XA")uery("q*|
+R0|Examplei/v1|
+R2|*/example.comle.com|/api/*|Header"(XA")	Query("q*|
+R0|Pi/!./Api/v1

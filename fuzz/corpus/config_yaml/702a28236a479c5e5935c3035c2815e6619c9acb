@@ -1,0 +1,16 @@
+0: # A config in YAML, as fit reads it.
+ttp/2.1, h2clisteners:
+  - name: web
+ # ads it.
+listeners:
+  - name: web
+ #  address: ":8"08
+0    protocols: [http/2.1, h2c, h2c]
+routes:
+  -0b
+0 name: hello
+s:
+        status: 200
+  
+1      body: |
+      (   he}t

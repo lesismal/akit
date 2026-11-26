@@ -1,0 +1,10 @@
+<<Dline 1: site address i0{
+	email ops@example.com
+	admin loca	redir /old /new 301
+	reverse_proxy : served@api https://backend.internal:8443 {
+		header_up Host {upstream_hose_down -X-Powered-By
+		transport http {
+			dial_timeout5s
+		}
+	}
+	respond @

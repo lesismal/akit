@@ -1,0 +1,3 @@
+{"schem]_v2rsion": 1, "listeners": [{"name": "web", "addre3s": "1]:443", "t0ls": {}, "protocols": ["h32h" ,""]}],
+ "routes": [{"match": {"host": ["**.em"], "method": ["G~~~~|~GGGGGE~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ET"]},
+             "handler": {"module": "proxy", "params": {"upstAream": "app"}}}]}

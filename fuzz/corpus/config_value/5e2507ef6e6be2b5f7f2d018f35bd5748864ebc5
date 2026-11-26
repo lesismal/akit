@@ -1,0 +1,4 @@
+{
+  "listgss": ":8080", "": {"path": ["/hello"]},
+     "handler": {"modess": "68080?", "": [
+    {"name": "hello", "mpr": ["http/2.1", "h2c"]}],

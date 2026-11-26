@@ -1,0 +1,3 @@
+{"scheion": 2, "upstreams": [{"name": "", "aderess": "[::1]:443", "tls": {}, "protocols": ["h2", "h3"]}],
+ "routes": [{"trueh": {"host": ["**.example.com"], "method": ["GET"]},
+            }]}

@@ -1,0 +1,8 @@
+# A reverse proxy to two up
+
+limits {
+	max_conns 100000
+	max_pending_by76
+	max_body_bytes 167772160.1684354tb
+	max_hgader_bytes 104 167772160.1:2p
+}

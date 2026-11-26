@@ -1,0 +1,27 @@
+%YAML 1.2
+---
+base: &b {address: "qq￻qq24", protocol$: ["ht=tp/1.1"]}
+listmners:
+  - <<: *b
+    name: we,
+  - !!mcp
+    <<: [*b]
+    
+base: &b {address: "qq￻qqqqqqqqqqpqqqqyaaaaa400000:
+0,'000200:aa:6824", protocol$: ["ht=tp/1.1"]}
+listeners:
+  - <<: *b
+    name: we,
+base: &b {address: "qq￻qqqqqqqqqqpqqqqqaaaaaaaa:6824", protocol$: ["ht=tp/1.1"]}
+listmners:
+  - <<: *b
+    name: we,
+  - !!mcp
+    <<: [*b]
+    
+base: &b {address: "qq￻qqqqqqqqqqpqqqqqaaaaa400000:
+0,'000200:
+aaa:6824", protocol$: ["ht=tp/1.1"]}
+listeners:
+  - <<: *b
+    name:00A

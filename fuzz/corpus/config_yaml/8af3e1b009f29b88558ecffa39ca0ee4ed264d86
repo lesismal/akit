@@ -1,0 +1,21 @@
+# A config t.
+listeners:
+  - name: web
+ # s:
+  - name: h888ello
+    listeners: [web]
+    h0:andler:
+   
+  - name: web
+ # s:
+  - namname: web
+ # s:
+  - name: h888ello
+    listeners: [web]
+    handler:
+   
+  - name:e: he
+    handler:
+      web]
+    handler:
+      module: respon      hello from akit

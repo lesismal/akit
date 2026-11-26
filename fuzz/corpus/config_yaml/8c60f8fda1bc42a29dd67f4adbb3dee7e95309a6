@@ -1,0 +1,7 @@
+%YAML 1.2
+---
+base: &b {address: "qq￻qqqqqqgqqqqqqqqqqqqqqqqqqqqqqaaaaaaaa6:824", protocols: ["ht=tp/1.1"]}
+listeners:
+  - <<: *b
+    name: \x3a903, ~, true, 2001-12-14]
+...

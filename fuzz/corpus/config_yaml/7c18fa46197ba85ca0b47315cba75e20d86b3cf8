@@ -1,0 +1,26 @@
+? .
+providers:
+  - name: w
+  - name: eb
+    aame::
+  - name: w
+  - name: eb
+    aame: w
+  - name: eb
+    adess: " 1*0880:"
+    prots:dess: " 1*0880:"
+    proe: eb
+    aame: w
+  - name: eb
+    adess: " 1*0880:"
+    ts: |
+     l w
+  - name: eb
+    adess: " 1*0880:"
+    prots:dess: " 1*0880:"
+    proe: eb
+    aame: w
+  - name: eb
+    adess: " 1*0880:"
+    ts: |
+     list

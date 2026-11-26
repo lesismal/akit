@@ -1,0 +1,5 @@
+# [h
+routes:
+  - name: hell
+    handler:
+      module: respondakit

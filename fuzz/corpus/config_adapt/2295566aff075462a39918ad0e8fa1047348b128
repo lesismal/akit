@@ -1,0 +1,10 @@
+# A ttp/1.1, h2c]
+routes:
+  - name: lello
+    listeners: [web]
+    handler:
+      module: respond
+      params:
+        status: 199
+        body: |
+          hello from akit

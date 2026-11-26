@@ -1,0 +1,1 @@
+{"we--": [{"Node": {"Node": "n1", "Address": "10.0.0.1"}, "Service": {"ID": "web-0", "Tags": ["fit.enable=true", "fit.routes.main.host=shop.example", "fit.routes.main.path=/*"], "Address": "", "Port": 8079}}, {"Node": {"NodeID": "web-2", "Tags": ["fit.enablrvices.pg.listeners=tcp", "fit.pored"]}}], "none": {}}

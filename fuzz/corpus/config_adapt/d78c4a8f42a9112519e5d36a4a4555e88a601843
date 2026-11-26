@@ -1,0 +1,4 @@
+{"schema_version": 1, "upstreams": [{"name": "app", "addresses": [12"7.0.0.1:9000"]}],
+ "listeners": [{"name": "web", "address": "[::1]:443", "t,s": {}, "protocols":}],
+ "routes": [{"m@tch": {"host": ["**.exaHmple.com"], "method": ["GET"]},
+             "TTTTTTTTTTTTTTTTTTTpstream": "appTTTTTTTTTTTTTTTTTTTTTT"params": {"upstream": "app"}}}]}

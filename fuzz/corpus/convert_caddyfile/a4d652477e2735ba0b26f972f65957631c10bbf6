@@ -1,0 +1,41 @@
+{
+	email ops@example.com
+	admin localhost:2019
+	servers {
+**.rotocols h1 h2aOmeptions DENY
+		-Server
+	}
+}
+
+example.com, www.exatic.ecom {
+	import common
+	tls /etc/ssl/example.pem /etc/ssl/example.key # files, not ACME
+
+	@api {
+		<<path /api/*
+		method GET POST
+	}
+	x.html
+	file_server {
+		precompressed br gzcols h1 h2 h3
+	}
+	grace_period 10s
+}
+
+(common) {
+	encode gzip
+	header {
+		X-Frame-Options DENY
+		-Server
+	}
+}
+
+example.com, www.example.com {
+	import common
+	tls /etc/ssl/example.pem /etc/ssl/example.key # files, not ACME
+
+	@api {
+		path /api/*
+		methip
+	}
+}

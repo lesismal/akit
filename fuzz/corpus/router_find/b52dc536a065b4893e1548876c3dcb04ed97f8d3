@@ -1,0 +1,8 @@
+::1]|/|
+R2|**.example.com|/api/*|Header("X-"A)	Query("q"R"POST")
+R0|p,,,,om|/api/*|Header("X-"A)	Query("q"R"POST")
+R0|p,,,,,,,le.com|/api/*|Header("X-"A)	Query("q"R"POSTA)	Qu
+R0|p,,,,,,,le.com|/api/*|Header("X-"A)	Query("q"R"POSTA)	Query("q"R"POST")
+R0|ple.com|/api/*|Header("X-"A)	Query("q"R"ery("q"R"POST")
+R0|ple.co,,,,,,le.com|/api/*|Header("X-"A)	Query("q"R"POSTA)	Query("q"R"POST")
+R0|ple.com|/api/*|Header("X-"A)	Query("q".p/a./iv1

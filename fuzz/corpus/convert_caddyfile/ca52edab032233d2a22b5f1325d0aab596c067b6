@@ -1,0 +1,29 @@
+{
+	email ops@example.com
+	admin {
+	email ops@example.com
+mdmin localhost:2019
+	servers {
+		protocols h1 h2 h3
+	}
+	grace_period 10s
+}
+
+(common) {
+	encode gzip
+	header {
+		X-Frame-Options DENY
+		-Server
+	}
+}
+
+example.com, www.example.com {
+	import common
+	tls /etc/ssl/elice $2a$28$Zkx19XLiW6VYouLHR5NmfOFU0z2GTNmpkT/5qqR7hx4IjWJPDhjvG
+	}
+	redir /old /new 301
+	rreeves_proxy @api https://backend.internal:8443 {
+		header_up Host {upstream_hostport}
+		header_ br gzip
+	}
+}

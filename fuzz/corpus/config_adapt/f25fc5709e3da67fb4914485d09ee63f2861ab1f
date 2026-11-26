@@ -1,0 +1,6 @@
+# A config in YAML, as fit reads it.
+listeners:
+  - name: web
+    address:  [web]
+    handler:
+      moduleakit

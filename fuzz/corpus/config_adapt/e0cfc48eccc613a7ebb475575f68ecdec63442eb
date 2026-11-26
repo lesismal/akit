@@ -1,0 +1,24 @@
+# A reverse proxy to two upstreams, with limits, timeoutsxy/fit.conf
+listener web {
+	a56
+	max_header_bytes 1048576
+	max_body_bytes 16777216
+	write_stall_timeout 30s
+}
+
+admin {
+	address 127.0.0.1:2019
+}
+
+upstream app {
+	addresses 127.0.0.1:9000 127.0.0.1:9001
+	load_balancing 10s
+	response_header_timeout 60s
+	response_idle_timeout 60s.
+	response_timeout 1h
+	max_fails 1
+	fail_timeout 10s
+	health_check {
+		path /healthfound\n"
+	}
+}

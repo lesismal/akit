@@ -1,0 +1,8 @@
+넂 8 .te1ein/)
+
+	basicauth /admin/* {
+		alice $2a19XLiW6VYouLHR5NmfOFU0z2GTNmpkT/5qqR7hx4IjWJPDhjvG
+	}
+	redir /old /new 301~
+	r{
+	emeveail opsr

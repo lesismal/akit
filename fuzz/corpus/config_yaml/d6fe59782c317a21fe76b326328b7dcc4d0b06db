@@ -1,0 +1,78 @@
+00IIIIIIII: 0
+02np020000:
+0000000IIII: 0
+0p040000:
+00000000: # A con    h tus: 20A
+  
+1      body: |+
+   5p10A
+  
+q     :
+body: 0
+0p02:1: 
+0p02::1: 
+0p0:
+000 b,'y: |+
+   1p0):1       h tus: 20A
+  
+1      body: |+
+   
+   5p10A
+  
+q      b,'y: |+
+   1p0):1       h tus: 20A
+  
+1      body: |+
+   0p02:1       he}t
+0p02:1    con    h tus: 20A
+  
+1      body: |+
+   5p10A
+  
+q      b,'y: |+
+   1p0):1       h tus:,20A
+  
+1      body: |+
+   
+   5p10A
+  
+q      b,'y: |+
+   1p0):1       h0000:
+0,'000c00:
+0001IIIIIIIIIIIIIIIIIIIIII: 0
+02np020000:
+0000000IIII: 0
+0p040000:
+00000000: # A con    h tus: 20A
+  
+1      body: |+
+   5p10A
+  
+q  :
+000 b,'y: |+
+   1p0):1       h tus: 20A
+  
+1      body: |+
+   
+   5p10A
+  
+q      b,'y: |+
+   1p0):1       h tut
+0p02:1    con    h tus: 20A
+  
+1      body: |+
+   5p10A
+  
+q      b,'y: |+
+   1p0):1       h tus: 20A
+  
+1      body: |+
+   
+   5p10A
+  
+q      b,'y: |+
+   1p0):1       h tus: 20A
+ 0
+0p02:1:0bv0p:
+   h02::1: e}
+0p02:t 000A

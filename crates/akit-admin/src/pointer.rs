@@ -55,7 +55,7 @@ pub(crate) fn parse(p: &str) -> Result<Vec<String>, Problem> {
 }
 
 /// `tokens` written back as a JSON pointer, for messages.
-fn string(tokens: &[String]) -> String {
+pub(crate) fn string(tokens: &[String]) -> String {
     let mut b = String::new();
     for t in tokens {
         b.push('/');

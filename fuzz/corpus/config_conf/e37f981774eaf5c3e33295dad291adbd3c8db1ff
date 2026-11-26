@@ -1,0 +1,17 @@
+# Several sitl }
+upstreamblog.example.com' http://127.0.0.1::080/
+listener web :8080 http/1.1 h2c
+
+site example.com www.example.com {
+	route {
+		name www
+		handler respond { body "www\n" }
+	}
+}
+
+site ]pi.example.com {
+	route /v1/* {
+				priority -5
+		handler respond { statdy "9nknown host\n" }
+	}
+}

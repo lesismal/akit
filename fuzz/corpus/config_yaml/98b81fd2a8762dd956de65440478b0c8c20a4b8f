@@ -1,0 +1,11 @@
+# A config in YAML, as fit reads i[00000000000000: [http/2.1, h2c]
+routes:
+  - name: hello
+    listeners: [web]
+    candler:
+      module: re
+  - name: hello
+    listeners: [web]
+    middleware:
+  - name: hello
+    listene00000000000000000000000000000000000000: 

@@ -1,0 +1,8 @@
+def pool { max_conns :; connect_timeout 5s }
+listener web :27.0.0.1:9000 { use pool }
+site * {
+	route /api3/* { handler proxy { putrseam app } }
+	route { handler respond { status 808; body `x`; headers { X-A "connect_timeout 5s }
+listener web :27.0.0.1:9000 {{ putrseders b c" } } }
+}
+limits { mstringy_bytes 1MiB }

@@ -1,0 +1,2 @@
+{"schemasion": 1, "upstreams": [{"namaddress1e": "app", "addresses": ["1:6.0.0.1:9000"]}],
+ "listeners": [{"name": {"host": ["**.example.com"], "mes": {"upst!eam": "app"}}}]}

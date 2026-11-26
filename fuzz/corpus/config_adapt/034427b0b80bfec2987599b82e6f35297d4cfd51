@@ -1,0 +1,4 @@
+d:80
+	route { handler respond { status 405; body ``; headers { X-A "b c" } } }
+}
+limits { max_body { max_body_bups{ status 404; body ``; head" status 647; body ``; headerspond { status 648; body ``; headB }

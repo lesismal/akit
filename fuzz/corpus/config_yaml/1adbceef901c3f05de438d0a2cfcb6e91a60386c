@@ -1,0 +1,9 @@
+# A config t.
+listeners:
+  - name: wb
+ # s:
+  - name:eb
+ # s:
+  - name: !!str  # s:
+  - name: !!str
+    dule: respon   hello fr/om akit

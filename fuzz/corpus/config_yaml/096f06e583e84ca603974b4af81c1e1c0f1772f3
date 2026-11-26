@@ -1,0 +1,11 @@
+%YAML 1.2
+---
+base: &b {address: ":80eeeeeeeeze80", .INFprotocols: ["http/1.1"]}
+listeners:
+  - <<: *b
+    na}e:TRU <<: [*b]
+    name: 'it''s'
+    address: "\x6a9090"
+? explic  text
+n: [0, .5, 1e6, ~, t1F, 0o17, 1_000, .5, 1e17, 1_000, 1e6, ~, true, 1000-12-14]
+...

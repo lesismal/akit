@@ -1,0 +1,29 @@
+<ilog
+
+	handle_path /api/* {
+		reverse_proxy 10.0.2.5:4000 10.0.2.6:4000 {
+		ln
+			health_u01ri /healthz
+			health_interval 10s
+		}
+	}
+
+	handle /feed.xml {
+		templates
+		file_server
+	}
+
+	@boti/* {
+		reverse_proxy 10.0.2.5:4000 10.0.2.6:4000 {
+		ln
+			heh_u01ri /healthz
+			health_interval 10s
+		}
+	}
+
+	handle /feed.xml {
+		templates
+		file_server
+	}
+
+	@bots "]<<"]s "]<<"]

@@ -1,0 +1,25 @@
+ and fields set on the request the upstream gets.
+# Run i4 from the repository's root: fit run -c headers/fit.conf
+# 头字段：为每个响应加上安全头，在出站时移除内部字段eam app 127.0.0.1:9000
+
+route app {
+	middleware headers {
+		request {
+			set { X-Env production }
+			# Never trust a client's own.
+			# 绝不信任客户端自己带的。
+			delete X-Internal-*
+		}
+		response {
+			set {
+				Sty "max-age=31536000; includeSubDomains"
+				X-Con`tent-Type-Options nosniff
+				Re ...- 00: 
+  0trict-origin-when-cross-origin
+			}
+			add { Vary A!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!ccept-Encoding }
+			delete Server X-Powered-By X-Debug-*
+		}
+	}
+	handler proxy { upstream app }
+}

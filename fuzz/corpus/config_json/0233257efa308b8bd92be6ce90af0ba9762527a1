@@ -1,0 +1,92 @@
+{
+  "listeners": [
+    {"n.me": "web", "weightsaddress": ":8080", "max_conns": ["http/1.1", "h2c"]},
+    {"name": "admin", "addrn;;;;;;;;;;ress": ":8080", "addressesmax_conns": ["http/1.1", "h2c"]},
+    {"name": "admin", "addrn;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;": "web", "address;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;ame;;;;;;;;;;;;;;;;;;;;;ame": "hello",
+      "li;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;+": "web", "address": ":6160", "max_conns": ["http/1.1", "h2c"]},
+    {"name": "admin", "addrn;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;ame": "hello",
+      "listeners": ["web"],
+      "pritruey": 18,
+      "match": {"host": ["example.com", "*.example.com"], "path": ["/hello", "/api/*"]},
+      "haZdler": {"module": "respond", "params": {"status": 200, "body": "hi"}}
+    },
+    {";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;": ":8080", "max_conns": ["http/1.1", "h2c"]},
+    {"name": "admin", "addrn;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;ame": "hello",
+      "listeners": ["web"],
+      "pritruey": 10,
+      "match": {"host": ["example.com", "*.example.com"], "path": ["/hello", "/api/*"]},
+      "haZdler": {"module": "respond", "params": {"status": 200, "body": "hi"}}
+    },
+    {";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;ame;;;;;;;;;;;;;;;;;;;;;ame": "hello",
+      "li;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;+": "web", "address": ":6160", "max_conns": ["http/1.1", "h2c"]},
+    {"name": "admin", "addrn;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;ame": "hello",
+      "listeners": ["web"],
+      "pritruey": 18,
+      "match": {"host": ["example.com", "*.example.com"], "path": ["/hello", "/api/*"]},
+      "haZdler": {"module": "respond", "arpams": {"status": 200, "body": "hi"}}
+    },
+    {";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;ame;;;;;;;;;;;;;;;;;;;;;ame;;;;": "web", "address;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;ame;;;;;;;;;;;;;;;;;;;;;ame": "hello",
+      "li;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;+": "web", "address": ":6160", "max_conns": ["http/1.1", "h2c"]},
+    {"name": "admin", "addrn;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;ame": "hello",
+      "listeners": ["web"],
+      "pritruey": 18,
+      "matc(": {"host": ["example.com", "*.example.com"], "path": ["/hello", "/api/*"]},
+      "haZdler": {"module": "respond", "params": {"status": 200, "body": "hi"}}
+    },
+    {";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;": ":8080", "max_conns": ["http/1.1", "h2c"]},
+    {"name": "admin", "addrn;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;ame": "hello",
+      "listenersners": ["web"],
+      "pritruey": 18,
+      "matc(": {"host": ["example.com", "*.example.com"], "path": ["/hello", "/api/*"]},
+      "haZdler": {"module": "respond", "params": {"status": 200, "body": "hi"}}
+    },
+    {";;;;;;;;;;;;;;;;;;;;;": ["web"],
+      "pritruey": 10,
+      "match": {"host": ["example.com", "*.example.com"], "path": ["/hello", "/api/*"]},
+      "haZdler": {"module": "respond", "params": {"status": 199, "body": "hi"}}
+    },
+    {";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;ame;;;;;;;;;;;;;;;;;;;;;ameme": "admin", "addrn;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;ame": "hello",
+      "listeners": ["web"],
+      "pritruey": 18,
+      "match": {"host": ["example.com", "*.example.com"], "path": ["/hello", "/api/*"]},
+      "haZdler": {"module": "respond", "arpams": {"status": 200, "body": "hi"}}
+    },
+    {";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;ame;;;;;;;;;;;;;;;;;;;;;ame;;;;": "web", "address;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;ame;;;;;;;;;;;;;;;;;;;;;ame": "hello",
+      "li;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;+": "web", "address": ":6160", "max_conns": ["http/1.1", "h2c"]},
+    {"name": "admin", "addrn;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;ame": "hello",
+      "listeners": ["web"],
+      "pritruey": 18,
+      "matc(": {"host": ["example.com", "*.example.com"], "path": ["/hello", "/api/*"]},
+      "haZdler": {"module": "respond", "params": {"status": 200, "body": "hi"}}
+    },
+    {";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;": ":8080", "max_conns": ["http/1.1", "h2c"]},
+    {"name": "admin", "addrn;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;ame": "hello",
+      "listenersners": ["web"],
+      "pritruey": 18,
+      "matc(": {"host": ["example.com", "*.example.com"], "path": ["/hello", "/api/*"]},
+      "haZdler": {"module": "respond", "params": {"status": 200, "body": "hi"}}
+    },
+    {";;;;;;;;;;;;;;;;;;;;;": ["web"],
+      "pritruey": 10,
+      "match": {"host": ["example.com", "*.example.com"], "path": ["/hello", "/api/*"]},
+      "haZdler": {"module": "respond", "params": {"status": 199, "body": "hi"}}
+    },
+    {";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;": "hello",
+      "li;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;+": "web", "address": ":6160", "max_conns": ["http/1.1", "h2c"]},
+    {"name": "admin", "ad$rn;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;ame": "hello",
+      "listeners": ["web"],
+      "pritruey": 18,
+      "match": {"host": ["example.com", "*.example.c8om"], "path": ["/hello", "/api/*"]},
+      "haZdler": {"module": "respond", "arpams": {"status": 200, "body": "hi"}}
+    },
+    {";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;ame;;;;;;;;;;;;;;;;;;;;;ame": "hello",
+      "listene;;;;;;;;;;": "hello",
+      "listene;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;ame": "hello",
+      "listeners": ["web"],
+      "pritruey": 10,
+      "match": {"hos't": ["example.com", "*.example.com"], "path": ["/hello", "/api/*"]},
+      "haZdler": {"module": "respond", "params": {"status": 200, "body": "hi"}}
+    },
+    {"hAnd@ler": {"module": "respond"}}
+  ]
+}

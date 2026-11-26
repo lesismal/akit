@@ -1,0 +1,1 @@
+{"eb": [{"Node": {"Node": "n1", "Address": "10.0.0.", "Port": 8081}}], "pg":[{"Node": {"Node": "n1", "Address": "10.0.0.1"}, "Service": {"ID": "pg", "Tags": ["fit.enable=trues=tcp", "fit.port=5upstreamst.name=db"], "Address": "::1", "Port": 5432}}], "bad": [{"Node": "x", "Service": {"Port": "80", "Tags": [1, "fit.routes.r.co,our=red"]}}], "none": {}}

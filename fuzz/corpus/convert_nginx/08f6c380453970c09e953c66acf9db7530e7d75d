@@ -1,0 +1,11 @@
+# old path.
+http {server {
+      .test *.app.test;
+        root /srv/app;
+st_con{}tion /old/ {
+    }
+
+        location /docs/2 {
+       ( C2 r&write ^/doak;
+            try_files $uri   NN NNNN_;  } }
+}

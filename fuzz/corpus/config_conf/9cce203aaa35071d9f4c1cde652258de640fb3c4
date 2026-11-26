@@ -1,0 +1,4 @@
+# Header fields: securi1:9000(
+route app {
+	middleware headhandler proxy { upstream app }
+}

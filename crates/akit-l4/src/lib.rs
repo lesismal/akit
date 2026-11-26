@@ -65,6 +65,9 @@ use akit_upstream::Pool;
 
 mod entry;
 pub mod forward;
+#[cfg(any(test, feature = "fuzzing"))]
+#[doc(hidden)]
+pub mod fuzzing;
 mod relay;
 pub mod sockmap;
 
