@@ -227,47 +227,81 @@ fn engine_settings() {
     e.wait();
 }
 
+/// Waits, up to ten seconds, until `done` holds; `what` says what was awaited when it does not.
+/// The budget is summed by akio's watcher thread on its own clock and its counters are read
+/// from another thread, so the test asks for the state rather than waiting for an event.
+fn wait_until(what: &str, mut done: impl FnMut() -> bool) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !done() {
+        assert!(Instant::now() < deadline, "{what}");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
 /// fit's `TestPendingBytesBudget`: a client that asks for more than `max_pending_bytes` and
 /// reads none of it leaves that much queued, and the engine pauses reads for the budget (I79b,
-/// akio's ADR-172); once the client reads, the budget frees and another request is served.
+/// akio's ADR-172): a request read meanwhile on that connection, and a connection opened
+/// meanwhile, wait; once the client reads, the budget frees and both are served.
+///
+/// Which connections the budget pauses is akio's contract, not a timing: a connection is
+/// paused (and counted in `budget_pauses`) when it reads, or re-arms its reads, while the
+/// budget is over. A connection whose own queue passed `write_high_watermark` has stopped
+/// reading already, and is not asked again until its queue drains, so the hog's watermark is
+/// raised above its answer: otherwise its second request waits on the watermark, and whether the
+/// budget counts it too depended on the backend (io_uring's one ring send of the answer never
+/// completes while the client reads nothing, epoll's writability events may still come after the
+/// watcher raised the budget).
 #[test]
 fn pending_bytes_budget() {
     const BUDGET: usize = 1 << 20;
+    const BIG: usize = 32 << 20;
     let root = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("pending-budget");
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).unwrap();
     // Kept in memory, so it goes out whole, queued on the connection rather than read as the
     // client takes it; and far more than the kernel's socket buffers take.
-    std::fs::write(root.join("big.bin"), vec![0u8; 32 << 20]).unwrap();
+    std::fs::write(root.join("big.bin"), vec![0u8; BIG]).unwrap();
     std::fs::write(root.join("small.txt"), b"small").unwrap();
     let (e, addrs) = serve(&format!(
         r#"{{"listeners": [{{"name": "web", "address": "127.0.0.1:0"}}],
             "limits": {{"max_pending_bytes": {BUDGET}, "max_write_queue_bytes": 67108864}},
+            "engine": {{"write_watermark": 67108864}},
             "routes": [{{"handler": {{"module": "static",
               "params": {{"root": {root:?}, "max_file_bytes": 67108864, "max_cache_bytes": 134217728}}}}}}]}}"#,
         root = root.to_str().unwrap()
     ));
     let a = addrs[0];
+    let tel = e.telemetry();
     let mut hog = TcpStream::connect(a).unwrap();
-    // Two requests: the second is read after the first's answer has spent the budget, which
-    // pauses its connection.
     hog.write_all(b"GET /big.bin HTTP/1.1\r\nHost: x\r\n\r\n")
         .unwrap();
-    std::thread::sleep(Duration::from_millis(200));
+    // The answer is queued and the client reads none of it: the budget is reached, and stays
+    // over (above three quarters of it) while the client does not read.
+    wait_until("the budget was not reached", || tel.over_budget());
+    assert!(tel.pending_bytes() > BUDGET, "{}", tel.pending_bytes());
+    // Read while over: the hog's second request pauses its connection (if a writability event
+    // did not already), and a connection opened now is paused before it reads at all. One
+    // episode, each connection once.
     hog.write_all(b"GET /small.txt HTTP/1.1\r\nHost: x\r\n\r\n")
         .unwrap();
-    let tel = e.telemetry();
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while !(tel.pending_bytes() >= BUDGET && tel.metrics().total.budget_pauses > 0) {
-        assert!(
-            Instant::now() < deadline,
-            "the budget was not reached: {} bytes pending, {} pauses by budget",
-            tel.pending_bytes(),
-            tel.metrics().total.budget_pauses
-        );
-        std::thread::sleep(Duration::from_millis(20));
-    }
-    // The hog reads what it was sent: the budget frees, and both its answers and another
+    let mut s = TcpStream::connect(a).unwrap();
+    s.write_all(b"GET /small.txt HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
+        .unwrap();
+    wait_until("both connections were not paused by the budget", || {
+        tel.metrics().total.budget_pauses >= 2
+    });
+    assert_eq!(tel.metrics().total.budget_pauses, 2);
+    assert!(tel.over_budget());
+    // Paused before its first read, the second client has no answer.
+    s.set_nonblocking(true).unwrap();
+    let mut b = [0u8; 64];
+    let r = s.read(&mut b);
+    assert!(
+        matches!(&r, Err(e) if e.kind() == ErrorKind::WouldBlock),
+        "served while over the budget: {r:?}"
+    );
+    s.set_nonblocking(false).unwrap();
+    // The hog reads what it was sent: the budget frees, and both its answers and the other
     // client's request go through.
     let reader = std::thread::spawn(move || {
         hog.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
@@ -289,19 +323,17 @@ fn pending_bytes_budget() {
         }
         got
     });
-    let mut s = TcpStream::connect(a).unwrap();
     s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
-    s.write_all(b"GET /small.txt HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
-        .unwrap();
     let mut resp = String::new();
     s.read_to_string(&mut resp).unwrap();
     assert!(
         resp.starts_with("HTTP/1.1 200") && resp.ends_with("small"),
         "{resp}"
     );
-    assert!(reader.join().unwrap() > 32 << 20);
+    assert!(reader.join().unwrap() > BIG);
+    assert!(!tel.over_budget());
     // The scrape's akit_reads_paused_total{reason="budget"} is akio's count.
-    assert!(e.telemetry().metrics().total.budget_pauses > 0);
+    assert_eq!(tel.metrics().total.budget_pauses, 2);
     e.shutdown();
     e.wait();
 }
