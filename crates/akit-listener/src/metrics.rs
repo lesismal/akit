@@ -4,23 +4,23 @@
 //! fit serves it at the Admin API's `GET /metrics`, with [`CONTENT_TYPE`]; akit's Admin API
 //! (I26) serves [`Scrape::write`] there. What it writes, in fit's order:
 //!
-//! - with `metrics` in the running config: `fit_http_requests_total` and
-//!   `fit_http_request_duration_seconds`, by listener and route, of the routes the graphs in use
+//! - with `metrics` in the running config: `akit_http_requests_total` and
+//!   `akit_http_request_duration_seconds`, by listener and route, of the routes the graphs in use
 //!   have;
-//! - the running graph's upstreams: `fit_upstream_requests_in_flight`,
-//!   `fit_upstream_response_duration_seconds`, and by backend
-//!   `fit_upstream_backend_requests_total`, `fit_upstream_backend_requests_in_flight` and
-//!   `fit_upstream_backend_up`;
-//! - `fit_tls_certificate_not_after_seconds`, by listener, name and serial;
-//! - the listeners' connections: `fit_connections_open`, `fit_connections_refused_total`,
-//!   `fit_pending_bytes`, `fit_reads_paused_total`, from akio's engine telemetry
-//!   (`fit_connections_open` counts the accepted TCP connections only, akio's `open_accepted`,
+//! - the running graph's upstreams: `akit_upstream_requests_in_flight`,
+//!   `akit_upstream_response_duration_seconds`, and by backend
+//!   `akit_upstream_backend_requests_total`, `akit_upstream_backend_requests_in_flight` and
+//!   `akit_upstream_backend_up`;
+//! - `akit_tls_certificate_not_after_seconds`, by listener, name and serial;
+//! - the listeners' connections: `akit_connections_open`, `akit_connections_refused_total`,
+//!   `akit_pending_bytes`, `akit_reads_paused_total`, from akio's engine telemetry
+//!   (`akit_connections_open` counts the accepted TCP connections only, akio's `open_accepted`,
 //!   not the upstream connections dialed on the engine; `reason="budget"` counts the pauses of
 //!   `limits.max_pending_bytes`, akio's `budget_pauses`, I79b);
-//! - `fit_config_reloads_total`, `fit_config_version` and
-//!   `fit_config_last_applied_timestamp_seconds`;
-//! - `fit_trace_spans_total`, by what became of the spans, with `telemetry.traces` (I64);
-//! - `fit_access_log_dropped_total`, with an access log;
+//! - `akit_config_reloads_total`, `akit_config_version` and
+//!   `akit_config_last_applied_timestamp_seconds`;
+//! - `akit_trace_spans_total`, by what became of the spans, with `telemetry.traces` (I64);
+//! - `akit_access_log_dropped_total`, with an access log;
 //! - akio's engine metrics (`akio_*`), where fit has a few of the Go runtime's (`go_*`).
 //!
 //! Scraping sums the counters and takes the registry's lock for a moment: control plane work, a
@@ -132,7 +132,7 @@ impl Scrape {
             if let Some(m) = g.metrics() {
                 let all = m.routes();
                 w.family(
-                    "fit_http_requests_total",
+                    "akit_http_requests_total",
                     "counter",
                     "Requests answered, by listener, route and the class of their status.",
                 );
@@ -140,7 +140,7 @@ impl Scrape {
                     for (class, n) in STATUS_CLASSES.iter().zip(r.codes) {
                         if n > 0 {
                             w.sample_u64(
-                                "fit_http_requests_total",
+                                "akit_http_requests_total",
                                 n,
                                 &[("listener", &r.listener), ("route", &r.route), ("code", class)],
                             );
@@ -148,13 +148,13 @@ impl Scrape {
                     }
                 }
                 w.family(
-                    "fit_http_request_duration_seconds",
+                    "akit_http_request_duration_seconds",
                     "histogram",
                     "How long requests took, from when the handler was called to when the response was handed to the connection.",
                 );
                 for r in &all {
                     w.histogram(
-                        "fit_http_request_duration_seconds",
+                        "akit_http_request_duration_seconds",
                         &r.duration,
                         &[("listener", &r.listener), ("route", &r.route)],
                     );
@@ -163,31 +163,31 @@ impl Scrape {
 
             let pools = g.upstreams();
             w.family(
-                "fit_upstream_requests_in_flight",
+                "akit_upstream_requests_in_flight",
                 "gauge",
                 "Requests to an upstream that are not over, body included.",
             );
             for p in pools {
                 w.sample_u64(
-                    "fit_upstream_requests_in_flight",
+                    "akit_upstream_requests_in_flight",
                     p.in_flight() as u64,
                     &[("upstream", p.name())],
                 );
             }
             w.family(
-                "fit_upstream_response_duration_seconds",
+                "akit_upstream_response_duration_seconds",
                 "histogram",
                 "How long an upstream took to send a response's header, or to fail without one.",
             );
             for p in pools {
                 w.histogram(
-                    "fit_upstream_response_duration_seconds",
+                    "akit_upstream_response_duration_seconds",
                     &p.response_times(),
                     &[("upstream", p.name())],
                 );
             }
             w.family(
-                "fit_upstream_backend_requests_total",
+                "akit_upstream_backend_requests_total",
                 "counter",
                 "Requests to a backend that are over, by whether the backend failed them.",
             );
@@ -196,40 +196,40 @@ impl Scrape {
                     let (done, failed) = p.backend_requests(i);
                     let labels = |result| [("upstream", p.name()), ("backend", addr), ("result", result)];
                     w.sample_u64(
-                        "fit_upstream_backend_requests_total",
+                        "akit_upstream_backend_requests_total",
                         done.saturating_sub(failed),
                         &labels("success"),
                     );
                     w.sample_u64(
-                        "fit_upstream_backend_requests_total",
+                        "akit_upstream_backend_requests_total",
                         failed,
                         &labels("failure"),
                     );
                 }
             }
             w.family(
-                "fit_upstream_backend_requests_in_flight",
+                "akit_upstream_backend_requests_in_flight",
                 "gauge",
                 "Requests to a backend that are not over, body included.",
             );
             for p in pools {
                 for (i, addr) in p.addresses().enumerate() {
                     w.sample_u64(
-                        "fit_upstream_backend_requests_in_flight",
+                        "akit_upstream_backend_requests_in_flight",
                         p.backend_active(i) as u64,
                         &[("upstream", p.name()), ("backend", addr)],
                     );
                 }
             }
             w.family(
-                "fit_upstream_backend_up",
+                "akit_upstream_backend_up",
                 "gauge",
                 "Whether a backend is in rotation (1) or out of it, for failing requests or its health check (0).",
             );
             for p in pools {
                 for (i, addr) in p.addresses().enumerate() {
                     w.sample(
-                        "fit_upstream_backend_up",
+                        "akit_upstream_backend_up",
                         if p.is_down(i) { 0.0 } else { 1.0 },
                         &[("upstream", p.name()), ("backend", addr)],
                     );
@@ -237,14 +237,14 @@ impl Scrape {
             }
 
             w.family(
-                "fit_tls_certificate_not_after_seconds",
+                "akit_tls_certificate_not_after_seconds",
                 "gauge",
                 "When a certificate a listener serves expires, in seconds since the Unix epoch.",
             );
             for (i, l) in g.listeners().iter().enumerate() {
                 for c in g.certificates(i) {
                     w.sample(
-                        "fit_tls_certificate_not_after_seconds",
+                        "akit_tls_certificate_not_after_seconds",
                         c.not_after as f64,
                         &[("listener", &l.name), ("name", &c.name), ("serial", &c.serial)],
                     );
@@ -254,94 +254,102 @@ impl Scrape {
 
         let tel = self.engine.telemetry().metrics();
         w.family(
-            "fit_connections_open",
+            "akit_connections_open",
             "gauge",
             "Client connections open on the listeners.",
         );
-        w.sample_u64("fit_connections_open", tel.open_accepted as u64, &[]);
+        w.sample_u64("akit_connections_open", tel.open_accepted as u64, &[]);
         w.family(
-            "fit_connections_refused_total",
+            "akit_connections_refused_total",
             "counter",
             "Client connections closed as they were accepted, for limits.max_conns.",
         );
-        w.sample_u64("fit_connections_refused_total", tel.total.rejected, &[]);
+        w.sample_u64("akit_connections_refused_total", tel.total.rejected, &[]);
         w.family(
-            "fit_pending_bytes",
+            "akit_pending_bytes",
             "gauge",
             "Bytes queued for clients that their connections have not taken, which limits.max_pending_bytes bounds.",
         );
-        w.sample_u64("fit_pending_bytes", tel.total.queued_bytes, &[]);
+        w.sample_u64("akit_pending_bytes", tel.total.queued_bytes, &[]);
         w.family(
-            "fit_reads_paused_total",
+            "akit_reads_paused_total",
             "counter",
             "Times a connection's reads were paused: for its own queued output (watermark), or for limits.max_pending_bytes (budget).",
         );
         w.sample_u64(
-            "fit_reads_paused_total",
+            "akit_reads_paused_total",
             tel.total.backpressure,
             &[("reason", "watermark")],
         );
         // limits.max_pending_bytes (I79b): akio's budget across the engine's connections.
         w.sample_u64(
-            "fit_reads_paused_total",
+            "akit_reads_paused_total",
             tel.total.budget_pauses,
             &[("reason", "budget")],
         );
 
         let (tried, failed) = self.config.reloads();
         w.family(
-            "fit_config_reloads_total",
+            "akit_config_reloads_total",
             "counter",
             "Configs applied after the first, by SIGHUP, the file watcher, the Admin API or a change of certificate files, by result.",
         );
         w.sample_u64(
-            "fit_config_reloads_total",
+            "akit_config_reloads_total",
             tried.saturating_sub(failed),
             &[("result", "success")],
         );
-        w.sample_u64("fit_config_reloads_total", failed, &[("result", "failure")]);
+        w.sample_u64(
+            "akit_config_reloads_total",
+            failed,
+            &[("result", "failure")],
+        );
         w.family(
-            "fit_config_version",
+            "akit_config_version",
             "gauge",
             "The version of the running config.",
         );
-        w.sample_u64("fit_config_version", self.config.version(), &[]);
+        w.sample_u64("akit_config_version", self.config.version(), &[]);
         w.family(
-            "fit_config_last_applied_timestamp_seconds",
+            "akit_config_last_applied_timestamp_seconds",
             "gauge",
             "When the running config was applied, in seconds since the Unix epoch.",
         );
         w.sample(
-            "fit_config_last_applied_timestamp_seconds",
+            "akit_config_last_applied_timestamp_seconds",
             self.config.applied_ms() as f64 / 1e3,
             &[],
         );
 
         if let Some(t) = &self.tracer {
             w.family(
-                "fit_trace_spans_total",
+                "akit_trace_spans_total",
                 "counter",
                 "Spans of traced requests, by what became of them: exported, failed (in an export the receiver did not take) or dropped (for want of room while they waited).",
             );
             w.sample_u64(
-                "fit_trace_spans_total",
+                "akit_trace_spans_total",
                 t.exported(),
                 &[("result", "exported")],
             );
-            w.sample_u64("fit_trace_spans_total", t.failed(), &[("result", "failed")]);
             w.sample_u64(
-                "fit_trace_spans_total",
+                "akit_trace_spans_total",
+                t.failed(),
+                &[("result", "failed")],
+            );
+            w.sample_u64(
+                "akit_trace_spans_total",
                 t.dropped(),
                 &[("result", "dropped")],
             );
         }
         if let Some(log) = &self.access_log {
             w.family(
-                "fit_access_log_dropped_total",
+                "akit_access_log_dropped_total",
                 "counter",
                 "Access log lines dropped because the log's buffer was full.",
             );
-            w.sample_u64("fit_access_log_dropped_total", log.dropped(), &[]);
+            w.sample_u64("akit_access_log_dropped_total", log.dropped(), &[]);
         }
     }
 }

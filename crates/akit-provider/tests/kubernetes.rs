@@ -617,10 +617,10 @@ fn list<'a>(v: &'a Value, k: &str) -> &'a [Value] {
 }
 
 const CLASS: &str =
-    r#"{"metadata": {"name": "fit"}, "spec": {"controller": "lesismal.github.io/fit"}}"#;
+    r#"{"metadata": {"name": "akit"}, "spec": {"controller": "lesismal.github.io/akit"}}"#;
 const WEB: &str =
     r#"{"metadata": {"namespace": "default", "name": "web"}, "spec": {"ports": [{"port": 80}]}}"#;
-const INGRESS: &str = r#"{"metadata": {"namespace": "default", "name": "i"}, "spec": {"ingressClassName": "fit",
+const INGRESS: &str = r#"{"metadata": {"namespace": "default", "name": "i"}, "spec": {"ingressClassName": "akit",
   "rules": [{"http": {"paths": [{"path": "/", "pathType": "Prefix", "backend": {"service": {"name": "web", "port": {"number": 80}}}}]}}]}}"#;
 
 fn slice(name: &str, addr: &str) -> String {
@@ -877,8 +877,8 @@ fn ingress_tls() {
     a.put(SECRETS, &secret);
     a.put(
         INGRESSES,
-        r#"{"metadata": {"namespace": "default", "name": "shop", "annotations": {"fit.lesismal.github.io/ssl-redirect": "true"}},
-  "spec": {"ingressClassName": "fit", "tls": [{"hosts": ["shop.example.com"], "secretName": "shop-tls"}],
+        r#"{"metadata": {"namespace": "default", "name": "shop", "annotations": {"akit.lesismal.github.io/ssl-redirect": "true"}},
+  "spec": {"ingressClassName": "akit", "tls": [{"hosts": ["shop.example.com"], "secretName": "shop-tls"}],
   "rules": [{"host": "shop.example.com", "http": {"paths": [{"path": "/", "pathType": "Prefix", "backend": {"service": {"name": "web", "port": {"number": 80}}}}]}}]}}"#,
     );
     let certs = a.dir.join("certs");
@@ -954,7 +954,7 @@ fn gateway_opts(kubeconfig: String) -> KubernetesProvider {
 }
 
 const GW_CLASS: &str =
-    r#"{"metadata": {"name": "fit"}, "spec": {"controllerName": "lesismal.github.io/fit"}}"#;
+    r#"{"metadata": {"name": "akit"}, "spec": {"controllerName": "lesismal.github.io/akit"}}"#;
 
 /// fit's `TestProvider`, for the Gateway API: nothing is sent until every kind is listed, a
 /// kind served in neither of its versions counts as empty, lists come in pages, a route comes
@@ -970,7 +970,7 @@ fn gateway_provider() {
     a.put(GATEWAY_CLASSES, GW_CLASS);
     a.put(
         GATEWAYS,
-        r#"{"metadata": {"namespace": "default", "name": "gw"}, "spec": {"gatewayClassName": "fit", "listeners": [{"name": "http", "port": 8000, "protocol": "HTTP"}]}}"#,
+        r#"{"metadata": {"namespace": "default", "name": "gw"}, "spec": {"gatewayClassName": "akit", "listeners": [{"name": "http", "port": 8000, "protocol": "HTTP"}]}}"#,
     );
     a.put(SERVICES, WEB);
     for i in 0..520 {
@@ -1053,7 +1053,7 @@ fn gateway_status() {
     a.put(GATEWAY_CLASSES, GW_CLASS);
     a.put(
         GATEWAYS,
-        r#"{"metadata": {"namespace": "default", "name": "gw", "generation": 1}, "spec": {"gatewayClassName": "fit", "listeners": [
+        r#"{"metadata": {"namespace": "default", "name": "gw", "generation": 1}, "spec": {"gatewayClassName": "akit", "listeners": [
   {"name": "http", "port": 8000, "protocol": "HTTP"},
   {"name": "https", "port": 8443, "protocol": "HTTPS", "tls": {"certificateRefs": [{"name": "a"}]}},
   {"name": "pass", "port": 9443, "protocol": "TLS", "tls": {"mode": "Passthrough"}}]}}"#,
@@ -1098,7 +1098,7 @@ fn gateway_status() {
     };
     wait("the statuses", || {
         let gs = status_of(GATEWAYS, "default", "gw");
-        let cs = status_of(GATEWAY_CLASSES, "", "fit");
+        let cs = status_of(GATEWAY_CLASSES, "", "akit");
         condition(gs.get("conditions"), "Programmed") == "True Programmed"
             && condition(cs.get("conditions"), "Accepted") == "True Accepted"
             && route_status(HTTP_ROUTES, "r") == "True Accepted, True ResolvedRefs"

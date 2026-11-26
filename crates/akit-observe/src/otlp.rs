@@ -25,8 +25,9 @@ use crate::metrics::{DURATION_BUCKETS, HistogramSnapshot, TextWriter};
 /// The most bytes of a receiver's answer read.
 const MAX_ANSWER_BYTES: usize = 64 << 10;
 
-/// The instrumentation scope of what akit exports: fit's, as its metrics and attributes are.
-pub const SCOPE: &str = "fit";
+/// The instrumentation scope of what akit exports: fit's `fit`, renamed as its metrics and
+/// attributes are (decision 037).
+pub const SCOPE: &str = "akit";
 
 /// Where a telemetry exporter's messages go: an export that failed, and exports that work again.
 pub type Log = Arc<dyn Fn(&str) + Send + Sync>;
@@ -638,10 +639,10 @@ mod tests {
         let mut w = OtlpWriter::new(SystemTime::now(), SystemTime::now());
         w.sample("orphan", 1.0, &[]);
         w.histogram("orphan", &HistogramSnapshot::default(), &[]);
-        w.family("fit_g", "gauge", "G.");
-        w.sample("fit_g", f64::NAN, &[]);
-        w.sample("fit_g", f64::INFINITY, &[]);
-        w.histogram("fit_g", &HistogramSnapshot::default(), &[]);
+        w.family("akit_g", "gauge", "G.");
+        w.sample("akit_g", f64::NAN, &[]);
+        w.sample("akit_g", f64::INFINITY, &[]);
+        w.histogram("akit_g", &HistogramSnapshot::default(), &[]);
         assert_eq!(w.metrics(), 1);
         let body = String::from_utf8(w.finish(b"{}")).unwrap();
         assert!(body.contains(r#""gauge":{"dataPoints":[]}"#), "{body}");

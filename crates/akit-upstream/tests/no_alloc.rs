@@ -77,7 +77,10 @@ fn main() {
         .remove(0);
     let pool = Pool::new(&u, EngineSlot::new());
     let mut named = Headers::new();
-    named.append("Cookie", format!("x=1; fit_sticky={}", sticky_id(addrs[2])));
+    named.append(
+        "Cookie",
+        format!("x=1; akit_sticky={}", sticky_id(addrs[2])),
+    );
     for h in [&named, &headers] {
         let k = Keys {
             headers: Some(h),

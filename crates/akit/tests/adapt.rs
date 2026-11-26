@@ -224,7 +224,7 @@ fn converted_configs_place_their_problems_at_the_sources_lines() {
     let src = "http { server { listen 8080; server_name a.test; ssl_protocols TLSv1.3; location / { return 200 \"hi\"; } } }\n";
     let out = akit_in(
         &root(),
-        &["adapt", "-from", "nginx", "-c", "-", "-to", "fit"],
+        &["adapt", "-from", "nginx", "-c", "-", "-to", "akit"],
         Some(src),
     );
     assert_eq!(out.status.code(), Some(0), "{}", text(&out.stderr));
@@ -266,7 +266,7 @@ fn every_template_and_example_round_trips_through_every_format() {
         let Some(json) = golden.filter(|_| to == "json") else {
             continue;
         };
-        for (to, ext, from) in [("yaml", "yaml", "yaml"), ("fit", "conf", "fit")] {
+        for (to, ext, from) in [("yaml", "yaml", "yaml"), ("akit", "conf", "akit")] {
             let out = akit(&["adapt", "-c", &input, "-to", to]);
             assert!(
                 out.status.success(),
@@ -360,7 +360,7 @@ fn to_conf_and_back() {
         "-c",
         "crates/akit/tests/testdata/adapt/fit/proxy.json",
         "-to",
-        "fit",
+        "akit",
     ]);
     let conf = text(&out.stdout);
     assert!(
@@ -417,7 +417,7 @@ fn flags_and_their_errors() {
         (
             vec!["-c", hello, "-to", "toml"],
             2,
-            "-to \"toml\": json, yaml or fit",
+            "-to \"toml\": json, yaml or akit",
         ),
         (
             vec!["-c", hello, "-from", "nginx"],
@@ -437,7 +437,7 @@ fn flags_and_their_errors() {
         (
             vec!["-c", hello, "-from", "xml"],
             1,
-            "there is no adapter \"xml\" (there are caddyfile, fit, nginx, yaml)",
+            "there is no adapter \"xml\" (there are akit, caddyfile, nginx, yaml)",
         ),
     ] {
         let mut a = vec!["adapt"];
@@ -469,7 +469,7 @@ fn flags_and_their_errors() {
         "-c",
         yml.to_str().unwrap(),
         "-to",
-        "fit",
+        "akit",
     ]);
     assert!(out.status.success(), "{}", text(&out.stderr));
     assert_eq!(
@@ -523,7 +523,7 @@ fn several_files_are_merged() {
         "-c",
         sites.to_str().unwrap(),
         "-from",
-        "fit",
+        "akit",
     ]);
     assert_eq!(out.status.code(), Some(2));
     // A problem in the config fails the conversion, at its place.
@@ -555,7 +555,7 @@ fn a_config_a_conf_file_cannot_hold_is_refused() {
         r#"{"listeners": [{"name": "web", "address": ":8080"}],
   "routes": [{"handler": {"module": "respond"}}], "x-extra": [1]}"#,
     );
-    let out = akit(&["adapt", "-c", f.to_str().unwrap(), "-to", "fit"]);
+    let out = akit(&["adapt", "-c", f.to_str().unwrap(), "-to", "akit"]);
     // An unknown field fails the check first, as in fit.
     assert_eq!(out.status.code(), Some(1));
     assert!(out.stdout.is_empty());

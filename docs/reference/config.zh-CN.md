@@ -10,6 +10,7 @@ crates/akit/tests/docs_examples.rs 以 akit validate 检查。 -->
 akit 配置的每个字段：配置的每一部分是做什么的、一个示例，以及一张字段表，列出每个字段的类型、默认值和说明。akit
 读取 fit 的配置（[决定 002](../decisions/002-config-compatibility.zh-CN.md)）：字段、默认值和含义都相同，格式也是同样的三种，
 [.conf 文件](https://github.com/lesismal/fit/blob/main/docs/reference/fit.zh-CN.md)、YAML 或 JSON，都可以拆分到多个文件中。
+以网关命名的九个默认值是 akit 的：fit 写 `fit` 的地方写 `akit`（[决定 037](../decisions/037-akit-names.zh-CN.md)）。
 akit 与 fit 不同之处，在表格中以 **akit：** 标出。
 
 <!-- BEGIN GENERATED: summary -->
@@ -459,7 +460,7 @@ route { handler proxy { upstream app } }
 | 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
 | `max_age` | 时长 |  |  |
-| `name` | 字符串 | `"fit_sticky"` |  |
+| `name` | 字符串 | `"akit_sticky"` | **akit：**fit 的默认值是 `fit_sticky`，已改名（决定 037）。 |
 | `path` | 字符串 | `"/"` |  |
 | `secure` | 布尔值 |  |  |
 <!-- END GENERATED -->
@@ -871,7 +872,7 @@ telemetry {
 | `headers_file` | 字符串 |  |  |
 | `key_file` | 字符串 |  |  |
 | `metrics` | [对象](#cfg-telemetry-metrics) |  |  |
-| `service_name` | 字符串 | `"fit"` |  |
+| `service_name` | 字符串 | `"akit"` | **akit：**fit 的默认值是 `fit`，已改名（决定 037）。 |
 | `timeout` | 时长 | `"10s"` |  |
 | `traces` | [对象](#cfg-telemetry-traces) |  |  |
 <!-- END GENERATED -->
@@ -1222,7 +1223,7 @@ route { match { host example.com }; handler respond { body hello } }
 | `consul` | [对象](#cfg-acme-shared-storage-consul) |  |  |
 | `etcd` | [对象](#cfg-acme-shared-storage-etcd) |  |  |
 | `lock_ttl` | 时长 | `"30s"` |  |
-| `prefix` | 字符串 | `"fit/"` |  |
+| `prefix` | 字符串 | `"akit/"` | **akit：**fit 的默认值是 `fit/`，已改名（决定 037）。 |
 | `redis` | [对象](#cfg-acme-shared-storage-redis) |  |  |
 | `request_timeout` | 时长 | `"10s"` |  |
 <!-- END GENERATED -->
@@ -1321,7 +1322,7 @@ provider kv { etcd { endpoints http://etcd:2379; prefix akit/ } }
 | --- | --- | --- | --- |
 | `endpoint` | 字符串 | `"unix:///var/run/docker.sock"` |  |
 | `expose_all` | 布尔值 |  |  |
-| `label_prefix` | 字符串 | `"fit"` |  |
+| `label_prefix` | 字符串 | `"akit"` | **akit：**fit 的默认值是 `fit`，已改名（决定 037）。 |
 | `max_containers` | 整数，≥ 0 | `1000` |  |
 | `network` | 字符串 |  |  |
 | `refresh_interval` | 时长 | `"30s"` |  |
@@ -1347,7 +1348,7 @@ provider kv { etcd { endpoints http://etcd:2379; prefix akit/ } }
 | `max_services` | 整数，≥ 0 | `1000` |  |
 | `refresh_interval` | 时长 | `"30s"` |  |
 | `request_timeout` | 时长 | `"10s"` |  |
-| `tag_prefix` | 字符串 | `"fit"` |  |
+| `tag_prefix` | 字符串 | `"akit"` | **akit：**fit 的默认值是 `fit`，已改名（决定 037）。 |
 | `token_file` | 字符串 |  |  |
 <!-- END GENERATED -->
 
@@ -1366,7 +1367,7 @@ provider kv { etcd { endpoints http://etcd:2379; prefix akit/ } }
 | `endpoint` | 字符串 | `"http://127.0.0.1:8500"` |  |
 | `key_file` | 字符串 |  |  |
 | `max_keys` | 整数，≥ 0 | `1000` |  |
-| `prefix` | 字符串 | `"fit/"` |  |
+| `prefix` | 字符串 | `"akit/"` | **akit：**fit 的默认值是 `fit/`，已改名（决定 037）。 |
 | `refresh_interval` | 时长 | `"30s"` |  |
 | `request_timeout` | 时长 | `"10s"` |  |
 | `token_file` | 字符串 |  |  |
@@ -1387,7 +1388,7 @@ provider kv { etcd { endpoints http://etcd:2379; prefix akit/ } }
 | `key_file` | 字符串 |  |  |
 | `max_keys` | 整数，≥ 0 | `1000` |  |
 | `password_file` | 字符串 |  |  |
-| `prefix` | 字符串 | `"fit/"` |  |
+| `prefix` | 字符串 | `"akit/"` | **akit：**fit 的默认值是 `fit/`，已改名（决定 037）。 |
 | `refresh_interval` | 时长 | `"30s"` |  |
 | `request_timeout` | 时长 | `"10s"` |  |
 | `username` | 字符串 |  |  |
@@ -1419,7 +1420,7 @@ provider k8s {
 | `backends` | 字符串：`endpoints`、`cluster_ip` | `"endpoints"` |  |
 | `certificates_dir` | 字符串 |  |  |
 | `context` | 字符串 |  |  |
-| `controller_name` | 字符串 | `"lesismal.github.io/fit"` |  |
+| `controller_name` | 字符串 | `"lesismal.github.io/akit"` | **akit：**fit 的默认值是 `lesismal.github.io/fit`，已改名（决定 037）。 |
 | `ingress` | [对象](#cfg-providers-kubernetes-ingress) |  |  |
 | `kubeconfig` | 字符串 |  |  |
 | `listen_host` | 字符串 |  |  |
@@ -1756,7 +1757,7 @@ route {
 | --- | --- | --- | --- |
 | `users` | [对象](#cfg-routes-middleware-basic-auth-params-users)的列表 | 必填 |  |
 | `forward_authorization` | 布尔值 |  |  |
-| `realm` | 字符串 | `"fit"` |  |
+| `realm` | 字符串 | `"akit"` | **akit：**fit 的默认值是 `fit`，已改名（决定 037）。 |
 | `user_header` | 字符串 |  |  |
 <!-- END GENERATED -->
 
@@ -2224,7 +2225,7 @@ route {
 
 | 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `path` | 字符串 | 必填 | **akit：**插件在 akio-wasm 的实例池上运行，从不在 I/O 线程上；fit 的插件无需修改即可运行。 |
+| `path` | 字符串 | 必填 | **akit：**插件在 akio-wasm 的实例池上运行，从不在 I/O 线程上。akit 的 ABI 即 fit 的 ABI 改名之后的版本（决定 037）：fit 的插件需用改名后的 fit guest 包重新构建（如 tools/plugin-guest.sh 所做）；Proxy-Wasm 过滤器无需修改即可运行。 |
 | `config` | 字符串 |  |  |
 | `instances` | 整数，≥ 0 |  |  |
 | `max_body_bytes` | 整数，≥ 0 | `1048576` |  |

@@ -314,10 +314,10 @@ fn same(a: &Value, b: &Value) -> bool {
 fn translates() {
     let opts = catalog_opts("http://127.0.0.1:1");
     let web_tags = [
-        "fit.enable=true",
-        "fit.routes.main.host=shop.example",
-        "fit.routes.main.path=/*",
-        r#"fit.upstream={"load_balancing": "least_conn"}"#,
+        "akit.enable=true",
+        "akit.routes.main.host=shop.example",
+        "akit.routes.main.path=/*",
+        r#"akit.upstream={"load_balancing": "least_conn"}"#,
     ];
     let mut web2_tags = vec!["primary"];
     web2_tags.extend(web_tags);
@@ -325,7 +325,7 @@ fn translates() {
         inst("web", "web-2", "n2", "10.0.0.3", 8080, &web2_tags).entry(),
         inst("web", "web-1", "n1", "10.0.0.2", 8080, &web_tags).entry(),
         // Its node's address, as an instance registered without one.
-        inst("web", "web-3", "n3", "", 8080, &["fit.enable=true"]).entry(),
+        inst("web", "web-3", "n3", "", 8080, &["akit.enable=true"]).entry(),
         // Not taken.
         inst(
             "web",
@@ -333,7 +333,7 @@ fn translates() {
             "n4",
             "10.0.0.9",
             8080,
-            &["fit.enable=false"],
+            &["akit.enable=false"],
         )
         .entry(),
         inst("web", "web-5", "n5", "10.0.0.9", 8080, &[]).entry(),
@@ -351,11 +351,11 @@ fn translates() {
                 "10.0.1.1",
                 1,
                 &[
-                    "fit.enable=true",
-                    "fit.name=db",
-                    "fit.port=5432",
-                    "fit.services.pg.listeners=tcp",
-                    "fit.services.pg.port=5433",
+                    "akit.enable=true",
+                    "akit.name=db",
+                    "akit.port=5432",
+                    "akit.services.pg.listeners=tcp",
+                    "akit.services.pg.port=5433",
                 ],
             )
             .entry(),
@@ -364,24 +364,24 @@ fn translates() {
     services.insert(
         "bad".to_owned(),
         vec![
-            inst("bad", "b1", "n1", "10.0.2.1", 80, &["fit.enable"]).entry(),
+            inst("bad", "b1", "n1", "10.0.2.1", 80, &["akit.enable"]).entry(),
             inst(
                 "bad",
                 "b2",
                 "n1",
                 "10.0.2.2",
                 80,
-                &["fit.enable=true", "fit.routes.r.colour=red"],
+                &["akit.enable=true", "akit.routes.r.colour=red"],
             )
             .entry(),
-            inst("bad", "b3", "n1", "10.0.2.3", 0, &["fit.enable=true"]).entry(),
+            inst("bad", "b3", "n1", "10.0.2.3", 0, &["akit.enable=true"]).entry(),
             inst(
                 "bad",
                 "b4",
                 "n1",
                 "10.0.2.4",
                 80,
-                &["fit.enable=true", "fit.name=no way"],
+                &["akit.enable=true", "akit.name=no way"],
             )
             .entry(),
             inst(
@@ -390,7 +390,7 @@ fn translates() {
                 "n1",
                 "10.0.2.5",
                 80,
-                &["fit.enable=true", r#"fit.upstream={"addresses": []}"#],
+                &["akit.enable=true", r#"akit.upstream={"addresses": []}"#],
             )
             .entry(),
         ],
@@ -421,11 +421,11 @@ fn translates() {
     assert_eq!(
         problems,
         [
-            "service bad, instance b1 on node n1: tag fit.enable: is not <key>=<value>",
-            r#"service bad, instance b2 on node n1: tag fit.routes.r.colour: a route has no setting "colour""#,
-            "service bad, instance b3 on node n1: it has no port: tag it fit.port=<port>",
-            r#"service bad, instance b4 on node n1: "no way" is not a valid name for an upstream: tag it fit.name=<name>"#,
-            "service bad, instance b5 on node n1: tag fit.upstream: addresses are the services'",
+            "service bad, instance b1 on node n1: tag akit.enable: is not <key>=<value>",
+            r#"service bad, instance b2 on node n1: tag akit.routes.r.colour: a route has no setting "colour""#,
+            "service bad, instance b3 on node n1: it has no port: tag it akit.port=<port>",
+            r#"service bad, instance b4 on node n1: "no way" is not a valid name for an upstream: tag it akit.name=<name>"#,
+            "service bad, instance b5 on node n1: tag akit.upstream: addresses are the services'",
         ]
     );
 
@@ -454,7 +454,7 @@ fn catalog() {
             &format!("n-{id}"),
             addr,
             80,
-            &["fit.enable=true", "fit.routes.r.path=/"],
+            &["akit.enable=true", "akit.routes.r.path=/"],
         )
     };
     f.change(|s| {
@@ -537,7 +537,7 @@ fn catalog_max_services() {
     f.change(|s| {
         for name in ["c", "a", "b"] {
             s.insts
-                .push(inst(name, name, "n", "10.0.0.1", 80, &["fit.enable=true"]));
+                .push(inst(name, name, "n", "10.0.0.1", 80, &["akit.enable=true"]));
         }
     });
     let lines = testing::Lines::default();
@@ -562,8 +562,8 @@ fn kv() {
         format!(r#"{{"routes": [{{"name": "{name}", "handler": {{"module": "respond"}}}}]}}"#)
     };
     f.change(|s| {
-        s.kv.insert("fit/a".to_owned(), route("a"));
-        s.kv.insert("fit/bad".to_owned(), r#"{"limits": {}}"#.to_owned());
+        s.kv.insert("akit/a".to_owned(), route("a"));
+        s.kv.insert("akit/bad".to_owned(), r#"{"limits": {}}"#.to_owned());
         s.kv.insert("other/x".to_owned(), route("x"));
     });
     let lines = testing::Lines::default();
@@ -573,7 +573,7 @@ fn kv() {
     p.start(update).unwrap();
     parts.want(r#"{"routes":[{"name":"a","handler":{"module":"respond"}}]}"#);
     f.change(|s| {
-        s.kv.insert("fit/b".to_owned(), route("b"));
+        s.kv.insert("akit/b".to_owned(), route("b"));
     });
     parts.want(r#"{"routes":[{"name":"a","handler":{"module":"respond"}},{"name":"b","handler":{"module":"respond"}}]}"#);
     // Every key gone: Consul answers 404, an empty part.
@@ -582,14 +582,14 @@ fn kv() {
     // The index goes back, as after a restore: the provider starts over.
     f.change(|s| {
         s.index = 3;
-        s.kv.insert("fit/c".to_owned(), route("c"));
+        s.kv.insert("akit/c".to_owned(), route("c"));
     });
     parts.want(r#"{"routes":[{"name":"c","handler":{"module":"respond"}}]}"#);
     p.stop();
-    lines.wait("provider kv: key fit/bad: ");
+    lines.wait("provider kv: key akit/bad: ");
     for r in f.requests() {
         assert!(
-            r.starts_with("/v1/kv/fit/?") && r.contains("recurse=true"),
+            r.starts_with("/v1/kv/akit/?") && r.contains("recurse=true"),
             "request: {r}"
         );
     }
@@ -597,7 +597,7 @@ fn kv() {
 
 #[test]
 fn escapes_path() {
-    assert_eq!(escape_path("fit/a b/c?"), "fit/a%20b/c%3F");
+    assert_eq!(escape_path("akit/a b/c?"), "akit/a%20b/c%3F");
 }
 
 #[test]
@@ -612,7 +612,7 @@ fn kinds() {
         (
             "consul_kv",
             akit_config::ProviderKind::ConsulKv(kv_opts("http://127.0.0.1:1")),
-            r#"watching Consul's keys under "fit/" at http://127.0.0.1:1"#,
+            r#"watching Consul's keys under "akit/" at http://127.0.0.1:1"#,
         ),
     ];
     for (kind, k, want) in cases {
@@ -658,7 +658,7 @@ fn open_fails() {
         let mut kv = KvSource {
             settings: s,
             engine: Arc::clone(&e),
-            prefix: "fit/".to_owned(),
+            prefix: "akit/".to_owned(),
             max_keys: 10,
         };
         assert!(kv.open(&Stop::new()).is_err(), "kv opened");
@@ -679,7 +679,7 @@ fn answers(a: Answers) -> Server {
 const OK: (&str, u16, &str) = (
     "/v1/catalog/services",
     200,
-    r#"{"web": ["fit.enable=true"]}"#,
+    r#"{"web": ["akit.enable=true"]}"#,
 );
 
 #[test]
@@ -726,13 +726,13 @@ fn kv_read_fails() {
     let cases: [(&str, Answers, &str); 2] = [
         (
             "fails",
-            &[("/v1/kv/fit/", 500, "down")],
+            &[("/v1/kv/akit/", 500, "down")],
             "500 Internal Server Error: down",
         ),
         (
             "not JSON",
-            &[("/v1/kv/fit/", 200, "nope")],
-            "GET /v1/kv/fit/: ",
+            &[("/v1/kv/akit/", 200, "nope")],
+            "GET /v1/kv/akit/: ",
         ),
     ];
     for (name, a, want) in cases {
@@ -740,7 +740,7 @@ fn kv_read_fails() {
         let mut s = KvSource {
             settings: settings(&srv.url),
             engine: Arc::clone(&e),
-            prefix: "fit/".to_owned(),
+            prefix: "akit/".to_owned(),
             max_keys: 10,
         };
         let stop = Stop::new();
@@ -807,7 +807,7 @@ fn poll_index_zero() {
 
 #[test]
 fn translate_no_address() {
-    let mut e = inst("web", "w", "n", "", 80, &["fit.enable=true"]).entry();
+    let mut e = inst("web", "w", "n", "", 80, &["akit.enable=true"]).entry();
     e.node_address = String::new();
     let mut services = BTreeMap::new();
     services.insert("web".to_owned(), vec![e]);

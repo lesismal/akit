@@ -78,7 +78,7 @@ fn validate_merges_files_and_reports_errors() {
         String::from_utf8_lossy(&out.stderr)
     );
 
-    // fit.json by default, which is not here.
+    // akit.json by default, which is not here.
     let out = Command::new(env!("CARGO_BIN_EXE_akit"))
         .arg("validate")
         .current_dir(&d)
@@ -88,7 +88,7 @@ fn validate_merges_files_and_reports_errors() {
     assert!(
         String::from_utf8(out.stderr)
             .unwrap()
-            .starts_with("fit.json: ")
+            .starts_with("akit.json: ")
     );
 
     // fit's own .conf format (I23), its problems at their line and column.

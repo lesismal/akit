@@ -21,8 +21,9 @@ What a table says comes from three places, so that it cannot drift from what aki
   (crates/akit-config/src/model.rs); every other field of an object akit reads is refused as
   "not supported yet";
 - tools/config-reference-notes.json: akit's extensions (fields fit does not have, which
-  `reference_matches_akit_config` holds equal to the `*_AKIT_ONLY` lists of akit-config) and
-  akit's notes on fields it reads differently from fit, in both languages.
+  `reference_matches_akit_config` holds equal to the `*_AKIT_ONLY` lists of akit-config), akit's
+  defaults where fit's hold the name fit (`defaults`, fit's renamed: decision 037), and akit's
+  notes on fields it reads differently from fit, in both languages.
 
 Each object akit reads must have its table in both files, and each table must name an object akit
 reads: a field supported, refused or added changes the tables, and the check fails until they are
@@ -84,6 +85,7 @@ TEXT = {
         "not_yet": "**Not supported yet**: refused by name. ",
         "extension": "**akit's extension** ([decision {decision}](../decisions/{file}.md)). ",
         "note": " **akit:** ",
+        "renamed": "fit's default is `{fit}`, renamed (decision 037).",
         "string": "string",
         "integer": "integer",
         "number": "number",
@@ -119,6 +121,7 @@ TEXT = {
         "not_yet": "**尚不支持**（not supported yet）：按名称拒绝。",
         "extension": "**akit 扩展**（[决定 {decision}](../decisions/{file}.zh-CN.md)）。",
         "note": "**akit：**",
+        "renamed": "fit 的默认值是 `{fit}`，已改名（决定 037）。",
         "string": "字符串",
         "integer": "整数",
         "number": "数",
@@ -165,6 +168,9 @@ def esc(s):
 PHRASES = [
     ("as fit hash-password or htpasswd -B makes it", "as htpasswd -B makes it"),
     ("$XDG_DATA_HOME/fit, or ~/.local/share/fit", "$XDG_DATA_HOME/akit, or ~/.local/share/akit"),
+    # akit's names (decision 037).
+    ("exports fit_on_request", "exports akit_on_request"),
+    ("unix//run/fit/admin.sock", "unix//run/akit/admin.sock"),
     ("fib's workers", "akio's I/O threads"),
     ("goroutines", "threads"),
     ("goroutine", "thread"),
@@ -172,7 +178,10 @@ PHRASES = [
 
 # What stays fit's after the text is said of akit: fit's own tools.
 AFTER = [
-    ("package plugin/wasm/guest builds one", "fit's package plugin/wasm/guest builds one"),
+    (
+        "package plugin/wasm/guest builds one",
+        "fit's package plugin/wasm/guest, its names renamed, builds one",
+    ),
     # The verb, not the gateway: rotate's max_total_bytes.
     ("removed until they akit", "removed until they fit"),
     # fit's log formats are fib's, which akit writes as fit does.
@@ -180,15 +189,16 @@ AFTER = [
 ]
 
 
-def as_akit(text, default=None):
-    """fit's description of a field akit reads, said of akit. akit keeps fit's default names (a
-    label prefix `fit`, a cookie `fit_sticky`), so a default named in the text, and a word joined
-    to a path or a name (`fit/`, `fit_sticky`, `lesismal.github.io/fit`), stay as they are."""
+def as_akit(text, default=None, akit_default=None):
+    """fit's description of a field akit reads, said of akit. Where akit's default renames fit's
+    (`defaults` in the notes: a label prefix `akit`, a cookie `akit_sticky`), fit's default named
+    in the text is akit's; other words joined to a path or a name (`fit/`, `lesismal.github.io/fit`)
+    stay as they are."""
     for old, new in PHRASES:
         text = text.replace(old, new)
     keep = []
     if isinstance(default, str) and "fit" in default:
-        keep.append(default)
+        keep.append(akit_default if akit_default is not None else default)
         text = text.replace(default, "\0")
     text = re.sub(r"(?<![/\w.-])fit's\b", "akit's", text)
     text = re.sub(r"(?<![/\w.-])fit(?![/\w-])", "akit", text)
@@ -215,6 +225,7 @@ class Reference:
         with open(os.path.join(root, NOTES), encoding="utf-8") as f:
             notes = json.load(f)
         self.extensions = notes["extensions"]
+        self.defaults = notes["defaults"]
         self.notes = notes["notes"]
         # Each object's direct fields, in the order fit's schema writes them (by name).
         self.children = {}
@@ -242,6 +253,12 @@ class Reference:
             for k in ("type", "since", "decision", "file", "en", "zh", "en_short", "zh_short"):
                 if k not in e:
                     raise SystemExit(f"{NOTES}: extension {p} has no {k}")
+        for p, d in self.defaults.items():
+            if p not in self.supported:
+                raise SystemExit(f"{NOTES}: default of {p}, which is not a field akit reads")
+            fit = self.raw_default(self.inv.nodes[p][0])
+            if not isinstance(fit, str) or "fit" not in fit or d == fit:
+                raise SystemExit(f"{NOTES}: default of {p}: fit's, {fit!r}, holds no name to rename")
         for p, n in self.notes.items():
             if p not in self.known and p not in self.extensions:
                 raise SystemExit(f"{NOTES}: note on {p}, which is not a field of fit's or akit's")
@@ -301,8 +318,8 @@ class Reference:
         _, target = self.inv.ref(node)
         return node.get("default", target.get("default"))
 
-    def default_of(self, node):
-        d = self.raw_default(node)
+    def default_of(self, node, path=None):
+        d = self.defaults.get(path, self.raw_default(node))
         if d is None:
             return ""
         return "`" + esc(json.dumps(d, ensure_ascii=False)) + "`"
@@ -323,14 +340,21 @@ class Reference:
             return f"| `{key}` | {ty} | {e.get('default', '')} | {esc(desc)} |"
         node, required = self.inv.nodes[path]
         ty = self.type_of(node, lang, path)
-        default = t["required"] if required else self.default_of(node)
+        default = t["required"] if required else self.default_of(node, path)
         flags = INV.Inventory.flags(self.inv, node, False)
         prefix = t["deprecated"] if "deprecated" in flags else ""
         if path in self.supported:
-            desc = as_akit(self.description_of(node), self.raw_default(node)) if lang == "en" else ""
+            desc = (
+                as_akit(self.description_of(node), self.raw_default(node), self.defaults.get(path))
+                if lang == "en"
+                else ""
+            )
             desc = prefix + desc
         else:
             desc = t["not_yet"] + (self.description_of(node) if lang == "en" else "")
+        if path in self.defaults:
+            renamed = t["renamed"].format(fit=self.raw_default(node))
+            desc = (desc + t["note"] if desc else t["note"].strip()) + renamed
         if path in self.notes:
             desc = (desc + t["note"] if desc else t["note"].strip()) + self.notes[path][lang]
         return f"| `{key}` | {esc(ty)} | {default} | {esc(desc.strip())} |"

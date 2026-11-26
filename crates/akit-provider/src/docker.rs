@@ -7,16 +7,16 @@
 //! A thread of the provider's own keeps the time (the debounce after events, the refresh, the
 //! backoff after a failure) and sends the parts; it waits on nothing an I/O thread holds.
 //!
-//! The labels, under a prefix (`fit` by default), are fit's ([`crate::labels`]), with these of
-//! the container's own:
+//! The labels, under a prefix (`akit` by default, fit's `fit` renamed), are fit's
+//! ([`crate::labels`]), with these of the container's own:
 //!
 //! ```text
-//! fit.enable=true                 take the container (needed unless expose_all)
-//! fit.name=<name>                 the upstream's name, shared by replicas; the Compose project
-//!                                 and service ("<project>-<service>") or the container's name
-//!                                 when left out
-//! fit.port=<port>                 the container's port; its only TCP port when left out
-//! fit.network=<network>           the network whose address is used
+//! akit.enable=true                take the container (needed unless expose_all)
+//! akit.name=<name>                the upstream's name, shared by replicas; the Compose project
+//!                                and service ("<project>-<service>") or the container's name
+//!                                when left out
+//! akit.port=<port>                the container's port; its only TCP port when left out
+//! akit.network=<network>          the network whose address is used
 //! ```
 //!
 //! Replicas, the containers of one name, add their addresses to one upstream; its routes and

@@ -162,7 +162,7 @@ fn telemetry(endpoint: &str) -> Telemetry {
         ca_file: String::new(),
         cert_file: String::new(),
         key_file: String::new(),
-        service_name: "fit".to_owned(),
+        service_name: "akit".to_owned(),
         timeout: Duration::from_secs(10),
         traces: None,
         metrics: None,
@@ -271,7 +271,7 @@ fn decode_spans(bodies: &[Vec<u8>]) -> (Value, Vec<Value>) {
             for ss in arr(rs.get("scopeSpans")) {
                 assert_eq!(
                     ss.get("scope").and_then(|s| s.get("name")).map(s),
-                    Some("fit")
+                    Some("akit")
                 );
                 spans.extend(arr(ss.get("spans")).iter().cloned());
             }
@@ -327,7 +327,7 @@ fn exports_spans() {
     let rcv = Receiver::start();
     let dir = temp_dir("export");
     let headers = dir.join("headers");
-    std::fs::write(&headers, "# a key\nX-Api-Key: s3cret\n\nX-Tenant:  fit \n").unwrap();
+    std::fs::write(&headers, "# a key\nX-Api-Key: s3cret\n\nX-Tenant:  akit \n").unwrap();
     let mut c = telemetry(&rcv.url);
     c.headers_file = headers.display().to_string();
     c.service_name = "edge".to_owned();
@@ -369,7 +369,7 @@ fn exports_spans() {
     let bodies = rcv.got("/v1/traces");
     assert_eq!(bodies.len(), 1);
     assert_eq!(rcv.header("x-api-key").as_deref(), Some("s3cret"));
-    assert_eq!(rcv.header("x-tenant").as_deref(), Some("fit"));
+    assert_eq!(rcv.header("x-tenant").as_deref(), Some("akit"));
     let (resource, mut spans) = decode_spans(&bodies);
     let r = resource.to_json();
     assert!(
@@ -415,9 +415,9 @@ fn exports_spans() {
         ("network.protocol.version", "1.1"),
         ("http.response.status_code", "502"),
         ("http.response.body.size", "12"),
-        ("fit.listener", "web"),
-        ("fit.route", r#"api "v2""#),
-        ("fit.upstream.address", "10.0.0.1:80"),
+        ("akit.listener", "web"),
+        ("akit.route", r#"api "v2""#),
+        ("akit.upstream.address", "10.0.0.1:80"),
     ] {
         assert_eq!(attr(sp, k), Some(v), "{k}");
     }
@@ -427,7 +427,7 @@ fn exports_spans() {
     assert!(sp.get("status").is_none());
     assert_eq!(attr(sp, "network.protocol.version"), Some("2"));
     assert_eq!(attr(sp, "url.path"), Some("/\u{fffd}/x"));
-    assert_eq!(attr(sp, "fit.route"), None);
+    assert_eq!(attr(sp, "akit.route"), None);
     let _ = std::fs::remove_dir_all(dir);
 }
 
@@ -617,8 +617,8 @@ fn export_failures() {
         Otlp::new(&c, "dev", log).unwrap(),
         Duration::from_secs(3600),
         Box::new(|w: &mut dyn MetricWriter| {
-            w.family("fit_up", "gauge", "Up.");
-            w.sample("fit_up", 1.0, &[]);
+            w.family("akit_up", "gauge", "Up.");
+            w.sample("akit_up", 1.0, &[]);
         }),
     )
     .unwrap();
@@ -649,21 +649,21 @@ fn exports_metrics() {
         Otlp::new(&c, "dev", quiet()).unwrap(),
         Duration::from_secs(3600),
         Box::new(move |w: &mut dyn MetricWriter| {
-            w.family("fit_http_requests_total", "counter", "Requests.");
+            w.family("akit_http_requests_total", "counter", "Requests.");
             w.sample(
-                "fit_http_requests_total",
+                "akit_http_requests_total",
                 7.0,
                 &[("route", "api"), ("code", "2xx")],
             );
-            w.family("fit_connections_open", "gauge", "Connections.");
-            w.sample_u64("fit_connections_open", 3, &[]);
+            w.family("akit_connections_open", "gauge", "Connections.");
+            w.sample_u64("akit_connections_open", 3, &[]);
             w.family(
-                "fit_http_request_duration_seconds",
+                "akit_http_request_duration_seconds",
                 "histogram",
                 "Durations.",
             );
             w.histogram(
-                "fit_http_request_duration_seconds",
+                "akit_http_request_duration_seconds",
                 &snap,
                 &[("route", "api")],
             );
@@ -687,7 +687,7 @@ fn exports_metrics() {
     assert_eq!(ms.len(), 3, "{text}");
     let sum = ms[0].get("sum").unwrap();
     let point = &arr(sum.get("dataPoints"))[0];
-    assert_eq!(ms[0].get("name").map(s), Some("fit_http_requests_total"));
+    assert_eq!(ms[0].get("name").map(s), Some("akit_http_requests_total"));
     assert_eq!(sum.get("isMonotonic"), Some(&Value::Bool(true)));
     assert_eq!(sum.get("aggregationTemporality").map(s), Some("2"));
     assert_eq!(point.get("asDouble").map(s), Some("7"));
@@ -715,8 +715,8 @@ fn exports_metrics_every_interval() {
         Otlp::new(&telemetry(&rcv.url), "dev", quiet()).unwrap(),
         Duration::from_millis(10),
         Box::new(|w: &mut dyn MetricWriter| {
-            w.family("fit_up", "gauge", "Up.");
-            w.sample("fit_up", 1.0, &[]);
+            w.family("akit_up", "gauge", "Up.");
+            w.sample("akit_up", 1.0, &[]);
         }),
     )
     .unwrap();

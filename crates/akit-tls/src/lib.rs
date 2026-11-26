@@ -52,7 +52,7 @@
 //!   `CertDone`, without holding its I/O thread, at most `acme.on_demand.timeout`.
 //!
 //! - **Metrics** (I37): what each certificate is for and when it expires ([`CertificateInfo`]),
-//!   for `fit_tls_certificate_not_after_seconds`.
+//!   for `akit_tls_certificate_not_after_seconds`.
 //! - **Upstream TLS** (I54, [`UpstreamTls`]): an `h2` upstream's `tls_ca_file`, and its client
 //!   certificate (`tls_cert_file`, `tls_key_file`), for its pool's connections and probes.
 //!

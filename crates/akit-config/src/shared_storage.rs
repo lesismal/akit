@@ -49,8 +49,9 @@ const CONSUL_STORAGE_FIELDS: &[&str] = &[
     "key_file",
 ];
 
-/// fit's default `acme.shared_storage.prefix`.
-pub const DEFAULT_SHARED_STORAGE_PREFIX: &str = "fit/";
+/// The default `acme.shared_storage.prefix`: fit's `fit/`, renamed (decision 037), so that akit and
+/// fit share a store's certificates only when the prefix says so.
+pub const DEFAULT_SHARED_STORAGE_PREFIX: &str = "akit/";
 /// fit's default `acme.shared_storage.lock_ttl`.
 pub const DEFAULT_SHARED_STORAGE_LOCK_TTL: Duration = Duration::from_secs(30);
 /// The shortest `acme.shared_storage.lock_ttl`: what Consul's sessions need, and more than a
@@ -67,7 +68,7 @@ pub const DEFAULT_REDIS_ADDRESS: &str = "127.0.0.1:6379";
 pub struct SharedStorage {
     /// `redis`, `etcd` or `consul`: exactly one is set.
     pub kind: SharedStorageKind,
-    /// `prefix`: what the keys kept start with, as `fit/certificates/<CA>/<name>.pem`; instances
+    /// `prefix`: what the keys kept start with, as `akit/certificates/<CA>/<name>.pem`; instances
     /// that share certificates share it. [`DEFAULT_SHARED_STORAGE_PREFIX`] when left out or
     /// empty.
     pub prefix: String,

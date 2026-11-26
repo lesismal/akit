@@ -165,7 +165,7 @@ func convertGolden(fit string) {
 			golden := "golden/" + s.name + "." + t.ext
 			must(os.WriteFile(convertCases+"/"+golden, out, 0o644))
 			must(os.WriteFile(convertCases+"/"+golden+".stderr", errb, 0o644))
-			fmt.Fprintf(&cases, "%s\t%s\t%s\t%d\t%s\n", in, s.from, t.to, code, golden)
+			fmt.Fprintf(&cases, "%s\t%s\t%s\t%d\t%s\n", in, s.from, t.akit, code, golden)
 		}
 	}
 	must(os.WriteFile(cliDir+"/convert-cases.txt", []byte(cases.String()), 0o644))

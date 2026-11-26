@@ -744,11 +744,14 @@ fn metrics() {
     assert_eq!(f.get("/metrics").status, 404);
     let mut opts = Options::default();
     opts.metrics = Some(Arc::new(|out: &mut Vec<u8>| {
-        out.extend_from_slice(b"fit_config_version 1\n");
+        out.extend_from_slice(b"akit_config_version 1\n");
     }));
     let f = start_with(&doc("v1"), admin(|_| {}), opts);
     let r = f.get("/metrics");
-    assert_eq!((r.status, r.body.as_str()), (200, "fit_config_version 1\n"));
+    assert_eq!(
+        (r.status, r.body.as_str()),
+        (200, "akit_config_version 1\n")
+    );
     assert_eq!(
         r.header("Content-Type"),
         Some(akit_admin::METRICS_CONTENT_TYPE)
@@ -1704,7 +1707,7 @@ fn v1_surface_is_frozen() {
 
     let mut opts = Options::default();
     opts.metrics = Some(Arc::new(|out: &mut Vec<u8>| {
-        out.extend_from_slice(b"fit_config_version 1\n");
+        out.extend_from_slice(b"akit_config_version 1\n");
     }));
     let f = start_with(&doc("v1"), admin(|_| {}), opts);
 
@@ -2216,7 +2219,7 @@ fn export_and_import() {
         assert_eq!(r.status, 200, "{format}: {r:?}");
         let cd = r.header("Content-Disposition").unwrap();
         assert!(
-            cd.starts_with(r#"attachment; filename="fit-config-v"#)
+            cd.starts_with(r#"attachment; filename="akit-config-v"#)
                 && cd.ends_with(&format!(".{format}\"")),
             "{cd}"
         );
@@ -2243,7 +2246,7 @@ fn export_and_import() {
     assert!(
         r.header("Content-Disposition")
             .unwrap()
-            .contains("fit-routes-v")
+            .contains("akit-routes-v")
     );
     let r = f.send(
         "POST",

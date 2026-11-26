@@ -52,14 +52,14 @@ const ETCD_PROVIDER_FIELDS: &[&str] = &[
 /// fit's default `providers[].consul.endpoint` and `providers[].consul_kv.endpoint`: the local
 /// agent.
 pub const DEFAULT_CONSUL_ENDPOINT: &str = "http://127.0.0.1:8500";
-/// fit's default `providers[].consul.tag_prefix`.
-pub const DEFAULT_CONSUL_TAG_PREFIX: &str = "fit";
+/// The default `providers[].consul.tag_prefix`: fit's `fit`, renamed (decision 037).
+pub const DEFAULT_CONSUL_TAG_PREFIX: &str = "akit";
 /// fit's default `providers[].consul.max_services`.
 pub const DEFAULT_CONSUL_MAX_SERVICES: usize = 1000;
 /// fit's default `providers[].etcd.endpoints`.
 pub const DEFAULT_ETCD_ENDPOINT: &str = "http://127.0.0.1:2379";
-/// fit's default `prefix` of the Consul KV and etcd providers.
-pub const DEFAULT_KV_PREFIX: &str = "fit/";
+/// The default `prefix` of the Consul KV and etcd providers: fit's `fit/`, renamed (decision 037).
+pub const DEFAULT_KV_PREFIX: &str = "akit/";
 /// fit's default `max_keys` of the Consul KV and etcd providers.
 pub const DEFAULT_KV_MAX_KEYS: usize = 1000;
 /// fit's default `refresh_interval` of the providers that watch an API.

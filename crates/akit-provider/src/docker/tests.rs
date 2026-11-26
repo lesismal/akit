@@ -35,7 +35,7 @@ fn opts() -> DockerProvider {
         expose_all: false,
         network: String::new(),
         use_published_ports: false,
-        label_prefix: "fit".to_owned(),
+        label_prefix: "akit".to_owned(),
         max_containers: 1000,
         refresh_interval: Duration::from_secs(30),
         request_timeout: Duration::from_secs(10),
@@ -161,21 +161,21 @@ fn translates() {
         ctr(
             n,
             &[
-                ("fit.enable", "true"),
+                ("akit.enable", "true"),
                 ("com.docker.compose.project", "shop"),
                 ("com.docker.compose.service", "web"),
-                ("fit.routes.main.host", "shop.example, www.shop.example"),
-                ("fit.routes.main.path", "/*"),
-                ("fit.routes.main.priority", "5"),
-                ("fit.routes.main.listeners", "web"),
-                ("fit.upstream", r#"{"load_balancing": "least_conn"}"#),
+                ("akit.routes.main.host", "shop.example, www.shop.example"),
+                ("akit.routes.main.path", "/*"),
+                ("akit.routes.main.priority", "5"),
+                ("akit.routes.main.listeners", "web"),
+                ("akit.upstream", r#"{"load_balancing": "least_conn"}"#),
             ],
             ip,
             &[8080],
         )
     };
     let health = |n: &str, ip: &str, status: &str| {
-        let mut c = ctr(n, &[("fit.enable", "true")], ip, &[80]);
+        let mut c = ctr(n, &[("akit.enable", "true")], ip, &[80]);
         c.status = status.into();
         c
     };
@@ -188,21 +188,21 @@ fn translates() {
         ctr(
             "api",
             &[
-                ("fit.enable", "true"),
-                ("fit.name", "api"),
-                ("fit.port", "9000"),
-                ("fit.routes.r.expr", r#"PathPrefix("/api/")"#),
+                ("akit.enable", "true"),
+                ("akit.name", "api"),
+                ("akit.port", "9000"),
+                ("akit.routes.r.expr", r#"PathPrefix("/api/")"#),
                 (
-                    "fit.routes.r.middleware",
+                    "akit.routes.r.middleware",
                     r#"[{"module": "rate_limit", "params": {"rate": 10}}]"#,
                 ),
                 (
-                    "fit.routes.r.handler",
+                    "akit.routes.r.handler",
                     r#"{"module": "respond", "params": {"body": "hi"}}"#,
                 ),
-                ("fit.services.db.listeners", "tcp"),
-                ("fit.services.db.port", "5432"),
-                ("fit.services.db.proxy_protocol", "v2"),
+                ("akit.services.db.listeners", "tcp"),
+                ("akit.services.db.port", "5432"),
+                ("akit.services.db.proxy_protocol", "v2"),
             ],
             "10.0.0.4",
             &[9000, 5432],
@@ -210,55 +210,58 @@ fn translates() {
         // Left out: not enabled, enabled false, unhealthy, starting.
         ctr(
             "plain",
-            &[("fit.routes.x.host", "x.example")],
+            &[("akit.routes.x.host", "x.example")],
             "10.0.0.5",
             &[80],
         ),
-        ctr("off", &[("fit.enable", "false")], "10.0.0.6", &[80]),
+        ctr("off", &[("akit.enable", "false")], "10.0.0.6", &[80]),
         health("sick", "10.0.0.7", "Up 3 minutes (unhealthy)"),
         health("young", "10.0.0.8", "Up 1 second (health: starting)"),
         // Left out with problems.
         ctr(
             "twoports",
-            &[("fit.enable", "true")],
+            &[("akit.enable", "true")],
             "10.0.0.9",
             &[80, 443],
         ),
-        ctr("noports", &[("fit.enable", "true")], "10.0.0.10", &[]),
+        ctr("noports", &[("akit.enable", "true")], "10.0.0.10", &[]),
         ctr(
             "badlabel",
-            &[("fit.enable", "true"), ("fit.routes.a.colour", "red")],
+            &[("akit.enable", "true"), ("akit.routes.a.colour", "red")],
             "10.0.0.11",
             &[80],
         ),
         ctr(
             "badjson",
-            &[("fit.enable", "true"), ("fit.routes.a.middleware", "{")],
+            &[("akit.enable", "true"), ("akit.routes.a.middleware", "{")],
             "10.0.0.12",
             &[80],
         ),
-        ctr("nonet", &[("fit.enable", "true")], "", &[80]),
+        ctr("nonet", &[("akit.enable", "true")], "", &[80]),
         ctr(
             "wrongnet",
-            &[("fit.enable", "true"), ("fit.network", "other")],
+            &[("akit.enable", "true"), ("akit.network", "other")],
             "10.0.0.13",
             &[80],
         ),
         ctr(
             "dotkey",
-            &[("fit.enable", "true"), ("fit.routes.a.b.host", "x")],
+            &[("akit.enable", "true"), ("akit.routes.a.b.host", "x")],
             "10.0.0.14",
             &[80],
         ),
         ctr(
             "svc",
-            &[("fit.enable", "true"), ("fit.services.s.port", "1")],
+            &[("akit.enable", "true"), ("akit.services.s.port", "1")],
             "10.0.0.15",
             &[80],
         ),
         ctr(
             "upname",
-            &[("fit.enable", "true"), ("fit.upstream", r#"{"name": "x"}"#)],
+            &[
+                ("akit.enable", "true"),
+                ("akit.upstream", r#"{"name": "x"}"#),
+            ],
             "10.0.0.16",
             &[80],
         ),
@@ -288,14 +291,14 @@ fn translates() {
     assert_eq!(
         problems,
         [
-            "container badjson: label fit.routes.a.middleware: must be a JSON array of middleware, as in the config",
-            r#"container badlabel: label fit.routes.a.colour: a route has no setting "colour""#,
-            r#"container dotkey: label fit.routes.a.b.host: a route has no setting "b.host""#,
+            "container badjson: label akit.routes.a.middleware: must be a JSON array of middleware, as in the config",
+            r#"container badlabel: label akit.routes.a.colour: a route has no setting "colour""#,
+            r#"container dotkey: label akit.routes.a.b.host: a route has no setting "b.host""#,
             "container nonet: it has no address on any network",
-            "container noports: it exposes no TCP port: set fit.port",
-            "container svc: service s: set fit.services.s.listeners",
-            "container twoports: it exposes TCP ports [80 443]: set fit.port",
-            "container upname: label fit.upstream: name is the container's: set fit.name",
+            "container noports: it exposes no TCP port: set akit.port",
+            "container svc: service s: set akit.services.s.listeners",
+            "container twoports: it exposes TCP ports [80 443]: set akit.port",
+            "container upname: label akit.upstream: name is the container's: set akit.name",
             r#"container wrongnet: it is not on network "other""#,
         ]
     );
@@ -403,20 +406,20 @@ fn translate_options() {
 #[test]
 fn translate_edges() {
     // No name but its ID, and not running.
-    let mut stopped = ctr("x", &[("fit.enable", "true")], "10.0.0.1", &[80]);
+    let mut stopped = ctr("x", &[("akit.enable", "true")], "10.0.0.1", &[80]);
     stopped.names.clear();
     stopped.state = "exited".into();
     // A name the config does not take.
     let bad_name = ctr(
         "badname",
-        &[("fit.enable", "true"), ("fit.name", "no way")],
+        &[("akit.enable", "true"), ("akit.name", "no way")],
         "10.0.0.2",
         &[80],
     );
     // On the network it names, but without an address there.
     let mut no_addr = ctr(
         "noaddr",
-        &[("fit.enable", "true"), ("fit.network", "net")],
+        &[("akit.enable", "true"), ("akit.network", "net")],
         "10.0.0.3",
         &[80],
     );
@@ -428,7 +431,7 @@ fn translate_edges() {
     assert_eq!(
         problems,
         [
-            r#"container badname: "no way" is not a valid name for an upstream: set fit.name"#,
+            r#"container badname: "no way" is not a valid name for an upstream: set akit.name"#,
             r#"container noaddr: it has no address on network "net""#,
         ]
     );
@@ -438,9 +441,9 @@ fn translate_edges() {
     let mut publ = ctr(
         "pub",
         &[
-            ("fit.enable", "true"),
-            ("fit.port", "80"),
-            ("fit.services.a.listeners", "tcp"),
+            ("akit.enable", "true"),
+            ("akit.port", "80"),
+            ("akit.services.a.listeners", "tcp"),
         ],
         "10.0.0.4",
         &[80],
@@ -450,10 +453,10 @@ fn translate_edges() {
     let mut unpub = ctr(
         "unpub",
         &[
-            ("fit.enable", "true"),
-            ("fit.port", "80"),
-            ("fit.services.b.listeners", "tcp"),
-            ("fit.services.b.port", "81"),
+            ("akit.enable", "true"),
+            ("akit.port", "80"),
+            ("akit.services.b.listeners", "tcp"),
+            ("akit.services.b.port", "81"),
         ],
         "10.0.0.5",
         &[80],
@@ -876,17 +879,17 @@ fn follows_the_daemon() {
     let d = Daemon::new();
     let web = ctr(
         "web",
-        &[("fit.enable", "true"), ("fit.routes.r.path", "/")],
+        &[("akit.enable", "true"), ("akit.routes.r.path", "/")],
         "10.0.0.2",
         &[80],
     );
     let api = ctr(
         "api",
-        &[("fit.enable", "true"), ("fit.routes.r.path", "/api/*")],
+        &[("akit.enable", "true"), ("akit.routes.r.path", "/api/*")],
         "10.0.0.3",
         &[80],
     );
-    let other = ctr("other", &[("fit.routes.r.path", "/o")], "10.0.0.4", &[80]);
+    let other = ctr("other", &[("akit.routes.r.path", "/o")], "10.0.0.4", &[80]);
     d.set(vec![web.clone(), other.clone()]);
     let e = engine();
     let lines = Lines::default();
@@ -970,8 +973,8 @@ fn follows_the_daemon() {
 fn refreshes() {
     let d = Daemon::new();
     d.set(vec![
-        ctr("web", &[("fit.enable", "true")], "10.0.0.2", &[80]),
-        ctr("bad", &[("fit.enable", "true")], "10.0.0.3", &[80, 81]),
+        ctr("web", &[("akit.enable", "true")], "10.0.0.2", &[80]),
+        ctr("bad", &[("akit.enable", "true")], "10.0.0.3", &[80, 81]),
     ]);
     let e = engine();
     let lines = Lines::default();
@@ -994,7 +997,7 @@ fn refreshes() {
     stop_engine(&e);
     assert_eq!(
         lines.all(),
-        "provider dk: container bad: it exposes TCP ports [80 81]: set fit.port"
+        "provider dk: container bad: it exposes TCP ports [80 81]: set akit.port"
     );
 }
 
@@ -1040,7 +1043,7 @@ fn list_fails() {
         let d = Daemon::new();
         d.set(vec![ctr(
             "web",
-            &[("fit.enable", "true")],
+            &[("akit.enable", "true")],
             "10.0.0.2",
             &[80],
         )]);
@@ -1137,7 +1140,7 @@ fn bad_events() {
         let d = Daemon::new();
         d.set(vec![ctr(
             "web",
-            &[("fit.enable", "true")],
+            &[("akit.enable", "true")],
             "10.0.0.2",
             &[80],
         )]);
@@ -1188,7 +1191,7 @@ fn kind() {
 #[test]
 fn query_escaping() {
     let mut b = String::new();
-    super::query_escape(&mut b, r#"{"label":["fit.enable=true"]}"#);
-    assert_eq!(b, "%7B%22label%22%3A%5B%22fit.enable%3Dtrue%22%5D%7D");
-    assert_eq!(unescape(&b), r#"{"label":["fit.enable=true"]}"#);
+    super::query_escape(&mut b, r#"{"label":["akit.enable=true"]}"#);
+    assert_eq!(b, "%7B%22label%22%3A%5B%22akit.enable%3Dtrue%22%5D%7D");
+    assert_eq!(unescape(&b), r#"{"label":["akit.enable=true"]}"#);
 }

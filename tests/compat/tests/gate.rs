@@ -1859,7 +1859,7 @@ fn supported_fields_are_read() {
             matches!(c.routes[0].middleware[0], Handler::BasicAuth(_))
         }),
         ("routes[].middleware[]<basic_auth>.params", basic(""), |c| {
-            basic_of(c).realm == "fit" && basic_of(c).user_header.is_empty()
+            basic_of(c).realm == "akit" && basic_of(c).user_header.is_empty()
         }),
         (
             "routes[].middleware[]<basic_auth>.params.realm",
@@ -2377,7 +2377,7 @@ fn supported_fields_are_read() {
                 .sticky_cookie
                 .as_ref()
                 .map(|s| s.name.as_str())
-                == Some("fit_sticky")
+                == Some("akit_sticky")
         }),
         (
             "upstreams[].sticky_cookie.name",
@@ -2709,7 +2709,7 @@ fn supported_fields_are_read() {
         (
             "providers[].docker",
             r#"{"providers": [{"docker": {}}]}"#.into(),
-            |c| c.providers.first().unwrap().name == "docker" && docker(c).label_prefix == "fit",
+            |c| c.providers.first().unwrap().name == "docker" && docker(c).label_prefix == "akit",
         ),
         (
             "providers[].docker.endpoint",

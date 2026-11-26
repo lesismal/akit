@@ -25,13 +25,14 @@ use crate::dashboard;
 use crate::pointer::{self, Problem};
 use crate::redact;
 
-/// The header that carries the version of the config a response is about: fit's name, so that
-/// fit's clients read it.
-pub const VERSION_HEADER: &str = "Fit-Config-Version";
+/// The header that carries the version of the config a response is about: fit's
+/// `Fit-Config-Version`, renamed (decision 037).
+pub const VERSION_HEADER: &str = "Akit-Config-Version";
 
 /// The header set, to `1`, on the answer of a dry run that passed: the config was checked, not
-/// applied, and [`VERSION_HEADER`] and `ETag` are still the running config's. fit's name.
-pub const DRY_RUN_HEADER: &str = "Fit-Dry-Run";
+/// applied, and [`VERSION_HEADER`] and `ETag` are still the running config's. fit's `Fit-Dry-Run`,
+/// renamed (decision 037).
+pub const DRY_RUN_HEADER: &str = "Akit-Dry-Run";
 
 /// What the control thread is given: `submit` hands it a [`Job`], and gives it back when it
 /// cannot be taken now (its queue is full), to be answered 503. Called on the API's I/O thread:

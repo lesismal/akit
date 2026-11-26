@@ -95,8 +95,8 @@ pub struct DockerProvider {
 
 /// fit's default `providers[].docker.endpoint`.
 pub const DEFAULT_DOCKER_ENDPOINT: &str = "unix:///var/run/docker.sock";
-/// fit's default `providers[].docker.label_prefix`.
-pub const DEFAULT_DOCKER_LABEL_PREFIX: &str = "fit";
+/// The default `providers[].docker.label_prefix`: fit's `fit`, renamed (decision 037).
+pub const DEFAULT_DOCKER_LABEL_PREFIX: &str = "akit";
 /// fit's default `providers[].docker.max_containers`.
 pub const DEFAULT_DOCKER_MAX_CONTAINERS: usize = 1000;
 /// fit's default `providers[].docker.refresh_interval`.
@@ -104,8 +104,9 @@ pub const DEFAULT_DOCKER_REFRESH_INTERVAL: Duration = Duration::from_secs(30);
 /// fit's default `providers[].docker.request_timeout`.
 pub const DEFAULT_DOCKER_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// fit's default `providers[].kubernetes.controller_name`.
-pub const DEFAULT_KUBERNETES_CONTROLLER_NAME: &str = "lesismal.github.io/fit";
+/// The default `providers[].kubernetes.controller_name`: fit's `lesismal.github.io/akit`, renamed
+/// (decision 037).
+pub const DEFAULT_KUBERNETES_CONTROLLER_NAME: &str = "lesismal.github.io/akit";
 /// fit's default `providers[].kubernetes.max_objects`: of each kind.
 pub const DEFAULT_KUBERNETES_MAX_OBJECTS: usize = 10_000;
 /// fit's default `providers[].kubernetes.request_timeout`.
@@ -651,7 +652,7 @@ mod tests {
         let ProviderKind::Kubernetes(k) = &c.providers[0].kind else {
             panic!("not kubernetes")
         };
-        assert_eq!(k.controller_name, "lesismal.github.io/fit");
+        assert_eq!(k.controller_name, "lesismal.github.io/akit");
         assert_eq!(
             (k.max_objects, k.request_timeout),
             (10_000, Duration::from_secs(10))
@@ -717,7 +718,7 @@ mod tests {
                 "is not an IP address or localhost",
             ),
             (
-                r#"{"kubernetes": {"ingress": {}, "controller_name": "fit"}}"#,
+                r#"{"kubernetes": {"ingress": {}, "controller_name": "akit"}}"#,
                 "is not a domain-prefixed path",
             ),
             (
@@ -752,13 +753,13 @@ mod tests {
     #[test]
     fn controllers() {
         for ok in [
-            "lesismal.github.io/fit",
+            "lesismal.github.io/akit",
             "example.net/gateway-controller",
             "a/b/c",
         ] {
             assert!(valid_controller(ok), "{ok}");
         }
-        for bad in ["fit", "/fit", "Example.net/x", "a-/x", "a/", "a/b c"] {
+        for bad in ["akit", "/akit", "Example.net/x", "a-/x", "a/", "a/b c"] {
             assert!(!valid_controller(bad), "{bad}");
         }
     }

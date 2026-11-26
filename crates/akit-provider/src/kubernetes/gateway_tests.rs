@@ -612,7 +612,7 @@ fn https() {
     ];
     w.gateways = vec![
         gateway(
-            r#"{"metadata": {"namespace": "default", "name": "secure", "creationTimestamp": "2026-01-01T00:00:00Z"}, "spec": {"gatewayClassName": "fit", "listeners": [
+            r#"{"metadata": {"namespace": "default", "name": "secure", "creationTimestamp": "2026-01-01T00:00:00Z"}, "spec": {"gatewayClassName": "akit", "listeners": [
   {"name": "a", "port": 443, "protocol": "HTTPS", "hostname": "a.example.com", "tls": {"certificateRefs": [{"name": "a"}]}},
   {"name": "b", "port": 443, "protocol": "HTTPS", "hostname": "*.b.example.com", "tls": {"certificateRefs": [{"name": "b", "namespace": "certs"}]}},
   {"name": "pass", "port": 443, "protocol": "TLS", "hostname": "db.example.com", "tls": {"mode": "Passthrough"}},
@@ -620,7 +620,7 @@ fn https() {
   {"name": "term", "port": 9443, "protocol": "TLS"}]}}"#,
         ),
         gateway(
-            r#"{"metadata": {"namespace": "default", "name": "late", "creationTimestamp": "2026-01-02T00:00:00Z"}, "spec": {"gatewayClassName": "fit", "listeners": [
+            r#"{"metadata": {"namespace": "default", "name": "late", "creationTimestamp": "2026-01-02T00:00:00Z"}, "spec": {"gatewayClassName": "akit", "listeners": [
   {"name": "plain", "port": 443, "protocol": "HTTP"}]}}"#,
         ),
     ];
@@ -710,7 +710,7 @@ fn https() {
 fn grpc_route() {
     let mut w = base();
     w.gateways = vec![gateway(
-        r#"{"metadata": {"namespace": "default", "name": "g"}, "spec": {"gatewayClassName": "fit", "listeners": [
+        r#"{"metadata": {"namespace": "default", "name": "g"}, "spec": {"gatewayClassName": "akit", "listeners": [
   {"name": "http", "port": 80, "protocol": "HTTP"},
   {"name": "httponly", "port": 81, "protocol": "HTTP", "allowedRoutes": {"kinds": [{"kind": "HTTPRoute"}]}}]}}"#,
     )];
@@ -796,7 +796,7 @@ fn grpc_route() {
 fn l4_routes() {
     let mut w = base();
     w.gateways = vec![gateway(
-        r#"{"metadata": {"namespace": "default", "name": "l4"}, "spec": {"gatewayClassName": "fit", "listeners": [
+        r#"{"metadata": {"namespace": "default", "name": "l4"}, "spec": {"gatewayClassName": "akit", "listeners": [
   {"name": "tcp", "port": 5432, "protocol": "TCP"},
   {"name": "udp", "port": 53, "protocol": "UDP"},
   {"name": "udp2", "port": 5353, "protocol": "UDP"},
@@ -942,7 +942,7 @@ fn translate_edges() {
     let mut w = base();
     w.gateways.push(gateway(
         r#"{"metadata": {"namespace": "default", "name": "edge", "creationTimestamp": "2026-01-05T00:00:00Z"},
-  "spec": {"gatewayClassName": "fit", "listeners": [
+  "spec": {"gatewayClassName": "akit", "listeners": [
   {"name": "badport", "port": 0, "protocol": "HTTP"},
   {"name": "hpass", "port": 8443, "protocol": "HTTPS", "tls": {"mode": "Passthrough"}},
   {"name": "p1", "port": 9443, "protocol": "TLS", "hostname": "a.example.com", "tls": {"mode": "Passthrough"}},
@@ -1114,7 +1114,7 @@ fn secret_too_large() {
         &secret_doc("default", "big", &big, &key),
     )];
     w.gateways = vec![gateway(
-        r#"{"metadata": {"namespace": "default", "name": "gw"}, "spec": {"gatewayClassName": "fit", "listeners": [
+        r#"{"metadata": {"namespace": "default", "name": "gw"}, "spec": {"gatewayClassName": "akit", "listeners": [
   {"name": "https", "port": 443, "protocol": "HTTPS", "tls": {"certificateRefs": [{"name": "big"}]}}]}}"#,
     )];
     Part::of(&w, &plain(), Some("/certs")).has_problems(&[
@@ -1128,7 +1128,7 @@ fn status_world() -> Snapshot {
     let mut w = base();
     w.gateways = vec![gateway(
         r#"{"metadata": {"namespace": "default", "name": "gw", "generation": 3, "resourceVersion": "7"},
-  "spec": {"gatewayClassName": "fit", "listeners": [
+  "spec": {"gatewayClassName": "akit", "listeners": [
   {"name": "http", "port": 80, "protocol": "HTTP", "allowedRoutes": {"namespaces": {"from": "All"}}},
   {"name": "web", "port": 8080, "protocol": "HTTP", "hostname": "*.example.com"},
   {"name": "tls", "port": 443, "protocol": "HTTPS"},
@@ -1189,7 +1189,7 @@ fn status_world() -> Snapshot {
             "default",
             "stale",
             r#"{"parentRefs": [{"name": "theirs"}], "rules": [{}]}"#,
-            r#", "status": {"parents": [{"parentRef": {"group": "gateway.networking.k8s.io", "kind": "Gateway", "name": "gw"}, "controllerName": "lesismal.github.io/fit", "conditions": []},
+            r#", "status": {"parents": [{"parentRef": {"group": "gateway.networking.k8s.io", "kind": "Gateway", "name": "gw"}, "controllerName": "lesismal.github.io/akit", "conditions": []},
   {"parentRef": {"name": "theirs"}, "controllerName": "example.net/other", "conditions": []}]}"#,
         ),
         // Not on akit's Gateway, and never was: no status of akit's.
@@ -1302,7 +1302,7 @@ fn statuses() {
 
     // akit's class is accepted; the other's is not written.
     let c = conds(
-        ps["gatewayclasses /fit"]
+        ps["gatewayclasses /akit"]
             .get("status")
             .and_then(|s| s.get("conditions")),
     );
@@ -1434,7 +1434,10 @@ fn statuses() {
             .unwrap_or_else(|| panic!("{key}: no status"));
         let parents = parents(p);
         let mine = parents.last().unwrap();
-        assert_eq!(field(mine, "controllerName"), r#""lesismal.github.io/fit""#);
+        assert_eq!(
+            field(mine, "controllerName"),
+            r#""lesismal.github.io/akit""#
+        );
         assert_eq!(
             field(mine.get("parentRef").unwrap(), "group"),
             r#""gateway.networking.k8s.io""#
@@ -1508,7 +1511,7 @@ fn status_edges() {
         obj(
             Shape::HttpRoute,
             r#"{"metadata": {"namespace": "default", "name": "gone"}, "spec": {"parentRefs": [{"name": "theirs"}], "rules": [{}]},
-  "status": {"parents": [{"parentRef": {"group": "gateway.networking.k8s.io", "kind": "Gateway", "name": "gw"}, "controllerName": "lesismal.github.io/fit", "conditions": []}]}}"#,
+  "status": {"parents": [{"parentRef": {"group": "gateway.networking.k8s.io", "kind": "Gateway", "name": "gw"}, "controllerName": "lesismal.github.io/akit", "conditions": []}]}}"#,
         ),
     ];
     let mut o = plain();
@@ -1532,14 +1535,14 @@ fn status_edges() {
 #[test]
 fn decode_gateway_kinds() {
     let Object::Gateway(g) = &*gateway(
-        r#"{"metadata": {"namespace": "d", "name": "g", "generation": 4}, "spec": {"gatewayClassName": "fit", "listeners": [
+        r#"{"metadata": {"namespace": "d", "name": "g", "generation": 4}, "spec": {"gatewayClassName": "akit", "listeners": [
   {"name": "l", "port": 443, "protocol": "HTTPS", "hostname": "a.b", "tls": {"mode": "Terminate", "certificateRefs": [{"name": "s", "namespace": "n"}]},
    "allowedRoutes": {"namespaces": {"from": "Selector", "selector": {"matchExpressions": [{"key": "k", "operator": "In", "values": ["v"]}]}}, "kinds": [{"kind": "HTTPRoute"}]}}]},
   "status": {"addresses": [{"value": "1.2.3.4"}], "listeners": [{"name": "l", "attachedRoutes": 2, "supportedKinds": [], "conditions": []}]}}"#,
     ) else {
         panic!()
     };
-    assert_eq!((g.meta.generation, g.class_name.as_str()), (4, "fit"));
+    assert_eq!((g.meta.generation, g.class_name.as_str()), (4, "akit"));
     let l = &g.listeners[0];
     assert_eq!((l.port, l.hostname.as_deref()), (443, Some("a.b")));
     let tls = l.tls.as_ref().unwrap();

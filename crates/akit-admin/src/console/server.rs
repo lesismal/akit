@@ -20,7 +20,7 @@
 //! ```
 //!
 //! Every request but `POST /api/login` and `/api/logout` needs a session; every one but a read
-//! carries its CSRF token in `X-Fit-Csrf`; one whose `Origin` is not the console's own is
+//! carries its CSRF token in `X-Akit-Csrf`; one whose `Origin` is not the console's own is
 //! refused. Answers carry fit's headers: a Content-Security-Policy of the pages' own files,
 //! `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `nosniff`, HSTS over TLS, and
 //! `Cache-Control: no-store` on the API. A password is checked on the console's login pool (one
@@ -48,11 +48,12 @@ use akit_observe::logger::{Level, Logger};
 use super::login::{self, Logins, Options as LoginOptions, Session};
 use crate::server::{Options, Shared, VERSION_HEADER, dispatch, error, json, takes_config};
 
-/// The header every request but a read carries its session's CSRF token in: fit's.
-pub const CSRF_HEADER: &str = "X-Fit-Csrf";
+/// The header every request but a read carries its session's CSRF token in: fit's `X-Fit-Csrf`,
+/// renamed (decision 037), as the pages send it.
+pub const CSRF_HEADER: &str = "X-Akit-Csrf";
 
-/// The session cookie's name before its port: fit's, so that fit's scripts work unchanged.
-pub const COOKIE: &str = "fit_console";
+/// The session cookie's name before its port: fit's `fit_console`, renamed (decision 037).
+pub const COOKIE: &str = "akit_console";
 
 /// The pages' Content-Security-Policy: their own files and origin only, fit's `csp`.
 pub const CSP: &str = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; \
@@ -99,7 +100,7 @@ struct Pages {
     /// The Admin API's endpoints, its configs applied as the console's.
     api: Arc<Shared>,
     logins: Arc<Logins>,
-    /// `fit_console_<port>`, once the port is known.
+    /// `akit_console_<port>`, once the port is known.
     cookie: OnceLock<String>,
     secure: bool,
     login_pool: Arc<Pool>,

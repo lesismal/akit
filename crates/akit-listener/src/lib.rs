@@ -26,7 +26,7 @@
 //! [`reload`]).
 //!
 //! I37: a graph whose config has `metrics` has each request counted by listener and route
-//! (`fit_http_requests_total`, `fit_http_request_duration_seconds`): one answered before its
+//! (`akit_http_requests_total`, `akit_http_request_duration_seconds`): one answered before its
 //! handler returns (an inline handler's, the 404, the 400) once the call returns, with no hook;
 //! any other by the listener's response observer (or response filter), the access log's when
 //! there is one. [`metrics::Scrape`] writes
@@ -900,7 +900,7 @@ fn engine_settings(
 ) {
     let size = |n: u64| usize::try_from(n).unwrap_or(usize::MAX);
     // Client connections past it are closed as they are accepted, counted as refused
-    // (`/metrics`' fit_connections_refused_total); the upstream connections dialed on the same
+    // (`/metrics`' akit_connections_refused_total); the upstream connections dialed on the same
     // engine do not count (I79b, akio's ADR-173).
     cfg.max_accepted_connections = size(limits.max_conns);
     cfg.max_queued_bytes = size(limits.max_write_queue_bytes);

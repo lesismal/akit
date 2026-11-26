@@ -87,7 +87,7 @@ fn request(
     let status = head.split(' ').nth(1).unwrap().parse().unwrap();
     let version = head
         .lines()
-        .find_map(|l| l.strip_prefix("Fit-Config-Version: "))
+        .find_map(|l| l.strip_prefix("Akit-Config-Version: "))
         .unwrap_or("")
         .to_owned();
     (status, version, body.to_owned())
@@ -282,10 +282,10 @@ fn the_admin_api_serves_the_metrics() {
         "{head}"
     );
     for line in [
-        "fit_config_reloads_total{result=\"success\"} 2",
-        "fit_config_reloads_total{result=\"failure\"} 1",
-        "fit_config_version 3",
-        "fit_http_requests_total{listener=\"web\",route=\"#0\",code=\"2xx\"} 2",
+        "akit_config_reloads_total{result=\"success\"} 2",
+        "akit_config_reloads_total{result=\"failure\"} 1",
+        "akit_config_version 3",
+        "akit_http_requests_total{listener=\"web\",route=\"#0\",code=\"2xx\"} 2",
     ] {
         assert!(body.lines().any(|l| l == line), "no {line:?} in:\n{body}");
     }
@@ -388,7 +388,7 @@ fn edits_dry_runs_and_rollbacks_behind_the_token() {
     );
     assert_eq!(status, 200, "{head}\n{body}");
     assert!(
-        head.contains("Fit-Dry-Run: 1") && head.contains("Fit-Config-Version: 2"),
+        head.contains("Akit-Dry-Run: 1") && head.contains("Akit-Config-Version: 2"),
         "{head}"
     );
     assert!(
@@ -477,7 +477,7 @@ fn the_dashboard_and_the_status() {
     for _ in 0..500 {
         let (status, head, b) = call(api, "GET", "/status", &[("Origin", &origin)], None);
         assert_eq!(status, 200, "{head}\n{b}");
-        assert!(head.contains("Fit-Config-Version: 2"), "{head}");
+        assert!(head.contains("Akit-Config-Version: 2"), "{head}");
         body = b;
         // Both requests counted: one may be counted after its client has the answer.
         if body.contains("\"requests\":{\"total\":2,") {

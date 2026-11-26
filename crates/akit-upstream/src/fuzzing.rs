@@ -79,7 +79,7 @@ pub fn upstream_keys(data: &[u8]) {
 
     let s = Sticky::new(
         &StickyCookie {
-            name: "fit_sticky".into(),
+            name: "akit_sticky".into(),
             path: String::new(),
             max_age: Some(Duration::from_secs(60)),
             secure: false,
@@ -93,11 +93,11 @@ pub fn upstream_keys(data: &[u8]) {
     }
     for (i, a) in addresses.iter().enumerate() {
         let mut c = Headers::new();
-        c.append("Cookie", format!("a=b; fit_sticky=\"{}\"", sticky_id(a)));
+        c.append("Cookie", format!("a=b; akit_sticky=\"{}\"", sticky_id(a)));
         assert_eq!(s.backend(&c), Some(i));
         let set = s.set_cookie(None, i).unwrap();
         assert!(
-            set.starts_with(&format!("fit_sticky={}", sticky_id(a))),
+            set.starts_with(&format!("akit_sticky={}", sticky_id(a))),
             "{set}"
         );
     }

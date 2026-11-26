@@ -169,7 +169,7 @@ fn sticky_cookie() {
         assert_eq!(
             cookies[1],
             format!(
-                "fit_sticky={}; Path=/; Max-Age=3600; HttpOnly; SameSite=Lax",
+                "akit_sticky={}; Path=/; Max-Age=3600; HttpOnly; SameSite=Lax",
                 sticky_id(addr)
             ),
             "{path}"
@@ -181,7 +181,7 @@ fn sticky_cookie() {
             assert_eq!(cookies, ["own=1"], "{path}: with the cookie");
         }
         // A cookie naming no address is replaced.
-        let (_, cookies) = get(akit.addr, path, &[("Cookie", "fit_sticky=0000")]);
+        let (_, cookies) = get(akit.addr, path, &[("Cookie", "akit_sticky=0000")]);
         assert_eq!(cookies.len(), 2, "{path}: a stale cookie: {cookies:?}");
     }
 }

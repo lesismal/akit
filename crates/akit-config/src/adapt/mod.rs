@@ -24,25 +24,25 @@ use crate::{Format, Source};
 pub use conf_out::from_json as conf_from_json;
 pub use yaml_out::from_json as yaml_from_json;
 
-/// What a config is written as: fit's `-to` names.
+/// What a config is written as: `-to`'s names, fit's with its `fit` renamed `akit` (decision 037).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Target {
     /// JSON, with two spaces of indentation (`json`).
     Json,
     /// YAML (`yaml`).
     Yaml,
-    /// fit's own format, `.conf` (`fit`).
+    /// The `.conf` format, fit's own (`akit`).
     Conf,
 }
 
 impl Target {
-    /// The target fit's `-to` names: `json`, `yaml` or `fit`.
+    /// The target `-to` names: `json`, `yaml` or `akit`.
     #[must_use]
     pub fn named(name: &str) -> Option<Target> {
         match name {
             "json" => Some(Target::Json),
             "yaml" => Some(Target::Yaml),
-            "fit" => Some(Target::Conf),
+            "akit" => Some(Target::Conf),
             _ => None,
         }
     }

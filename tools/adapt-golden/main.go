@@ -38,7 +38,11 @@ const (
 	writerFile = "crates/akit-config/testdata/adapt-writers.txt"
 )
 
-var targets = []struct{ to, ext string }{{"json", "json"}, {"yaml", "yaml"}, {"fit", "conf"}}
+// targets are fit's -to names, each with akit's name for it (fit's "fit" is akit's "akit",
+// decision 037) and the golden file's extension.
+var targets = []struct{ to, akit, ext string }{
+	{"json", "json", "json"}, {"yaml", "yaml", "yaml"}, {"fit", "akit", "conf"},
+}
 
 func must(err error) {
 	if err != nil {
@@ -87,7 +91,7 @@ func main() {
 			} else {
 				fmt.Fprintf(os.Stderr, "%s -to %s: %d %s", in, t.to, code, errb)
 			}
-			fmt.Fprintf(&cases, "%s\t%s\t%d\t%s\n", in, t.to, code, golden)
+			fmt.Fprintf(&cases, "%s\t%s\t%d\t%s\n", in, t.akit, code, golden)
 		}
 	}
 	must(os.WriteFile(cliDir+"/cases.txt", []byte(cases.String()), 0o644))

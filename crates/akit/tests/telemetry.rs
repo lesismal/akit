@@ -319,10 +319,10 @@ fn traces_reach_the_collector() {
     assert_eq!(sp.get("name").map(s), Some("GET api"));
     assert_eq!(sp.get("spanId").map(s), Some(span_id));
     assert_eq!(sp.get("parentSpanId").map(s), Some("00f067aa0ba902b7"));
-    assert_eq!(attr(sp, "fit.route"), Some("api"));
-    assert_eq!(attr(sp, "fit.listener"), Some("web"));
+    assert_eq!(attr(sp, "akit.route"), Some("api"));
+    assert_eq!(attr(sp, "akit.listener"), Some("web"));
     assert_eq!(
-        attr(sp, "fit.upstream.address"),
+        attr(sp, "akit.upstream.address"),
         Some(up.to_string().as_str())
     );
     assert_eq!(attr(sp, "http.response.status_code"), Some("200"));
@@ -331,7 +331,7 @@ fn traces_reach_the_collector() {
     assert_eq!(attr(sp, "client.address"), Some("127.0.0.1"));
     let sp = by("/hello");
     assert_eq!(sp.get("name").map(s), Some("GET hi"));
-    assert_eq!(attr(sp, "fit.upstream.address"), None);
+    assert_eq!(attr(sp, "akit.upstream.address"), None);
     let sp = by("/nope");
     assert_eq!(sp.get("name").map(s), Some("GET"));
     assert_eq!(attr(sp, "http.response.status_code"), Some("404"));
@@ -341,11 +341,11 @@ fn traces_reach_the_collector() {
     let metrics = got.get("/v1/metrics").expect("no metrics exported");
     let last = metrics.last().unwrap();
     for name in [
-        "fit_http_requests_total",
-        "fit_http_request_duration_seconds",
-        "fit_upstream_backend_requests_total",
-        "fit_trace_spans_total",
-        "fit_config_version",
+        "akit_http_requests_total",
+        "akit_http_request_duration_seconds",
+        "akit_upstream_backend_requests_total",
+        "akit_trace_spans_total",
+        "akit_config_version",
     ] {
         assert!(
             last.contains(&format!("\"name\":\"{name}\"")),

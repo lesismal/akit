@@ -57,8 +57,8 @@ pub(crate) const DOWNLOAD_PENDING: usize = 64 << 10;
 pub(crate) const WHOLE_RESPONSE: u64 = 64 << 10;
 
 /// The trailer an HTTP/2 or HTTP/3 response of no declared length ends with when its upstream
-/// failed mid-body: fit's `Fit-Error` and its `brokenTrailer`.
-pub(crate) const BROKEN_TRAILER: (&str, &str) = ("Fit-Error", "upstream failed mid-body");
+/// failed mid-body: fit's `brokenTrailer`, its `Fit-Error` renamed `Akit-Error` (decision 037).
+pub(crate) const BROKEN_TRAILER: (&str, &str) = ("Akit-Error", "upstream failed mid-body");
 
 /// What the request's two sides share.
 struct Shared {

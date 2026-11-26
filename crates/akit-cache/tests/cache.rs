@@ -450,11 +450,11 @@ impl Got {
     /// Answered with a fresh response the cache keeps.
     fn fresh_hit(&self) -> bool {
         let cs = self.cache_status();
-        cs.starts_with("fit; hit; ttl=") && !cs.contains("ttl=-") && !cs.contains("detail")
+        cs.starts_with("akit; hit; ttl=") && !cs.contains("ttl=-") && !cs.contains("detail")
     }
 
     fn hit(&self) -> bool {
-        self.cache_status().starts_with("fit; hit")
+        self.cache_status().starts_with("akit; hit")
     }
 }
 
@@ -621,13 +621,13 @@ fn hit() {
         let first = get(proto, a.addr, "GET", "/fresh", &[]);
         assert_eq!(
             (first.status, first.text().as_str(), first.cache_status()),
-            (200, "/fresh 1", "fit; fwd=uri-miss; stored"),
+            (200, "/fresh 1", "akit; fwd=uri-miss; stored"),
             "{proto:?}"
         );
         let second = get(proto, a.addr, "GET", "/fresh", &[]);
         assert_eq!(second.text(), "/fresh 1", "{proto:?}");
         assert!(
-            second.cache_status().starts_with("fit; hit; ttl="),
+            second.cache_status().starts_with("akit; hit; ttl="),
             "{second:?}"
         );
         assert!(second.one("age").is_some() && second.one("etag") == Some("\"v1\""));
@@ -641,7 +641,7 @@ fn hit() {
         let other = get(proto, a.addr, "GET", "/fresh?x=1", &[]);
         assert_eq!(
             (other.text().as_str(), other.cache_status()),
-            ("/fresh 2", "fit; fwd=uri-miss; stored")
+            ("/fresh 2", "akit; fwd=uri-miss; stored")
         );
     }
 }
@@ -722,7 +722,7 @@ fn freshness() {
     // The Date it was given is up to a second old already.
     assert_eq!(r.one("age"), Some("30"));
     assert!(
-        matches!(r.cache_status(), "fit; hit; ttl=29" | "fit; hit; ttl=30"),
+        matches!(r.cache_status(), "akit; hit; ttl=29" | "akit; hit; ttl=30"),
         "{r:?}"
     );
     // Stale: fetched again by the cache, with its validators, and answered from what that keeps.
@@ -764,7 +764,11 @@ fn vary() {
         let url = format!("/vary?{proto:?}");
         let en = get(proto, a.addr, "GET", &url, &[("Accept-Language", "en")]);
         let fr = get(proto, a.addr, "GET", &url, &[("Accept-Language", "fr")]);
-        assert_eq!(fr.cache_status(), "fit; fwd=vary-miss; stored", "{proto:?}");
+        assert_eq!(
+            fr.cache_status(),
+            "akit; fwd=vary-miss; stored",
+            "{proto:?}"
+        );
         let en2 = get(proto, a.addr, "GET", &url, &[("Accept-Language", "en")]);
         let fr2 = get(proto, a.addr, "GET", &url, &[("Accept-Language", "fr")]);
         assert!(en2.body == en.body && fr2.body == fr.body && en.body != fr.body && en2.hit());
@@ -891,28 +895,28 @@ fn request_directives() {
     get(c, a.addr, "GET", "/must", &[]);
     let _c = at(start, 20);
     for (fields, want) in [
-        (vec![("Cache-Control", "only-if-cached")], "fit; hit"),
-        (vec![("Cache-Control", "max-age=30")], "fit; hit"),
-        (vec![("Cache-Control", "min-fresh=30")], "fit; hit"),
+        (vec![("Cache-Control", "only-if-cached")], "akit; hit"),
+        (vec![("Cache-Control", "max-age=30")], "akit; hit"),
+        (vec![("Cache-Control", "min-fresh=30")], "akit; hit"),
         (
             vec![("Cache-Control", "max-age=10")],
-            "fit; fwd=request; stored",
+            "akit; fwd=request; stored",
         ),
         // From here on, what is kept is the response stored just now.
         (
             vec![("Cache-Control", "min-fresh=61")],
-            "fit; fwd=request; stored",
+            "akit; fwd=request; stored",
         ),
         (
             vec![("Cache-Control", "no-cache")],
-            "fit; fwd=request; stored",
+            "akit; fwd=request; stored",
         ),
-        (vec![("Pragma", "no-cache")], "fit; fwd=request; stored"),
+        (vec![("Pragma", "no-cache")], "akit; fwd=request; stored"),
         (
             vec![("Pragma", "no-cache"), ("Cache-Control", "max-age=60")],
-            "fit; hit",
+            "akit; hit",
         ),
-        (vec![("Range", "bytes=0-1")], "fit; fwd=bypass; stored"),
+        (vec![("Range", "bytes=0-1")], "akit; fwd=bypass; stored"),
     ] {
         let r = get(c, a.addr, "GET", "/fresh", &fields);
         assert!(
@@ -926,23 +930,23 @@ fn request_directives() {
         (
             "/fresh",
             vec![("Cache-Control", "max-stale")],
-            "fit; hit; ttl=-2",
+            "akit; hit; ttl=-2",
         ),
         (
             "/fresh",
             vec![("Cache-Control", "max-stale=30")],
-            "fit; hit",
+            "akit; hit",
         ),
         // Fetched again by the cache, and answered from what that keeps.
         (
             "/fresh",
             vec![("Cache-Control", "max-stale=10")],
-            "fit; hit; ttl=59",
+            "akit; hit; ttl=59",
         ),
         (
             "/must",
             vec![("Cache-Control", "max-stale")],
-            "fit; fwd=stale; stored",
+            "akit; fwd=stale; stored",
         ),
     ] {
         let r = get(c, a.addr, "GET", path, &fields);
@@ -968,13 +972,13 @@ fn invalidate() {
     let r = get(c, a.addr, "GET", "/expires", &[]);
     assert_eq!(
         r.cache_status(),
-        "fit; fwd=uri-miss; stored",
+        "akit; fwd=uri-miss; stored",
         "the POSTed URI"
     );
     let r = get(c, a.addr, "GET", "/fresh", &[]);
     assert_eq!(
         r.cache_status(),
-        "fit; fwd=uri-miss; stored",
+        "akit; fwd=uri-miss; stored",
         "the Location"
     );
     let r = get(c, a.addr, "GET", "/s-maxage", &[]);
@@ -1046,7 +1050,7 @@ fn bodies_through_the_proxy() {
                 "{proto:?} {path}: {} bytes",
                 first.body.len()
             );
-            assert_eq!(first.cache_status(), "fit; fwd=uri-miss; stored");
+            assert_eq!(first.cache_status(), "akit; fwd=uri-miss; stored");
             let second = get(proto, a.addr, "GET", &url, &[]);
             assert!(
                 second.body == want && second.hit(),
@@ -1157,7 +1161,7 @@ fn client_gone() {
     let r = get(Proto::H1, a.addr, "GET", "/slow", &[]);
     assert_eq!(
         (r.cache_status(), r.body.len()),
-        ("fit; fwd=uri-miss; stored", 64 << 10)
+        ("akit; fwd=uri-miss; stored", 64 << 10)
     );
     let r = get(Proto::H1, a.addr, "GET", "/slow", &[]);
     assert!(r.hit() && r.body.len() == 64 << 10, "{r:?}");
@@ -1791,7 +1795,7 @@ fn disk_never_blocks() {
         let (r, took) = waiting.join().unwrap();
         assert_eq!(
             (r.status, r.cache_status()),
-            (200, "fit; fwd=uri-miss; stored"),
+            (200, "akit; fwd=uri-miss; stored"),
             "{i}"
         );
         assert!(
@@ -1823,7 +1827,7 @@ fn disk_file_gone() {
     let r = get(c, a.addr, "GET", "/expires", &[]);
     assert_eq!(
         (r.status, r.cache_status()),
-        (200, "fit; fwd=uri-miss; stored")
+        (200, "akit; fwd=uri-miss; stored")
     );
     wait_for("written again", || {
         on_disk("gone") == 1 && dir.files().len() == 1
@@ -1846,7 +1850,7 @@ fn disk_invalidate() {
         on_disk("invalidate") == 1 && dir.files().len() == 1
     });
     let r = get(c, a.addr, "GET", "/fresh", &[]);
-    assert_eq!(r.cache_status(), "fit; fwd=uri-miss; stored");
+    assert_eq!(r.cache_status(), "akit; fwd=uri-miss; stored");
     wait_for("/fresh written again", || on_disk("invalidate") == 2);
     assert_eq!(akit_cache::disk_io_off_pool(), 0);
 }

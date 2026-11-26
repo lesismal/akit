@@ -30,11 +30,12 @@ not run yet is converted as written, with a warning.
 Flags:
 
 	-c path      a config file or a directory of them, or - for standard
-	             input; give -c again for more; fit.json when left out
+	             input; give -c again for more; akit.json when left out
 	-from name   the format of a single file or of standard input: json,
-	             or an adapter's (caddyfile, fit, nginx, yaml); by the file's
+	             or an adapter's (akit, caddyfile, nginx, yaml); by the file's
 	             extension when left out, json for standard input
-	-to name     what to write: json, yaml or fit; json when left out
+	-to name     what to write: json, yaml or akit (the .conf format);
+	             json when left out
 	-o file      where to write it; standard output when left out
 ";
 
@@ -49,7 +50,7 @@ and named on standard error.
 Flags:
 
 	-c path   a config file or a directory of them; give -c again for more;
-	          fit.json when left out
+	          akit.json when left out
 	-w        write each file in place rather than to standard output
 	-l        list the files whose formatting differs, and write nothing
 ";
@@ -63,12 +64,12 @@ const ADAPT_FLAGS: &[Spec] = &[
     Spec {
         name: "from",
         bool: false,
-        usage: "the format of a single file or of standard input: json, caddyfile, fit, nginx or yaml",
+        usage: "the format of a single file or of standard input: json, akit, caddyfile, nginx or yaml",
     },
     Spec {
         name: "to",
         bool: false,
-        usage: "what to write: json, yaml or fit (default json)",
+        usage: "what to write: json, yaml or akit (default json)",
     },
     Spec {
         name: "o",
@@ -136,11 +137,11 @@ fn from_format(name: &str) -> Result<Input, String> {
     match name {
         "" | "json" => Ok(Input::Format(Format::Json)),
         "yaml" => Ok(Input::Format(Format::Yaml)),
-        "fit" => Ok(Input::Format(Format::Conf)),
+        "akit" => Ok(Input::Format(Format::Conf)),
         "nginx" => Ok(Input::Nginx),
         "caddyfile" => Ok(Input::Caddyfile),
         _ => Err(format!(
-            "there is no adapter {name:?} (there are caddyfile, fit, nginx, yaml)"
+            "there is no adapter {name:?} (there are akit, caddyfile, nginx, yaml)"
         )),
     }
 }
@@ -224,7 +225,7 @@ pub(crate) fn adapt(args: &[String]) -> ExitCode {
     let from = last(&flags, "from").unwrap_or_default();
     let to_name = last(&flags, "to").unwrap_or("json");
     let Some(to) = Target::named(to_name) else {
-        eprintln!("akit adapt: -to {to_name:?}: json, yaml or fit");
+        eprintln!("akit adapt: -to {to_name:?}: json, yaml or akit");
         return ExitCode::from(2);
     };
     let paths = crate::config_paths(&flags);

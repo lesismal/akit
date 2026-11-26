@@ -5,7 +5,7 @@
 //! throughout. A reload while it is out keeps it out: the unchanged upstream's pool, and its
 //! probed state, carry over (fit's `TestSharedPools`).
 //!
-//! - `health_window_through_akit_run`: `akit run`, with the address's `fit_upstream_backend_up`
+//! - `health_window_through_akit_run`: `akit run`, with the address's `akit_upstream_backend_up`
 //!   gauge read at the Admin API's `GET /metrics` as it leaves and returns.
 //! - `health_window_in_process`: in process, on the backend `AKIO_TEST_BACKEND` names (epoll by
 //!   default, `uring`), the probes on that backend's engine.
@@ -129,9 +129,9 @@ fn until(what: &str, within: Duration, mut f: impl FnMut() -> bool) -> Duration 
     }
 }
 
-/// The scrape's `fit_upstream_backend_up` for `addr`, when akit runs with the Admin API.
+/// The scrape's `akit_upstream_backend_up` for `addr`, when akit runs with the Admin API.
 fn gauge(akit: &Proc, addr: SocketAddr) -> Option<u32> {
-    let want = format!("fit_upstream_backend_up{{upstream=\"app\",backend=\"{addr}\"}} ");
+    let want = format!("akit_upstream_backend_up{{upstream=\"app\",backend=\"{addr}\"}} ");
     akit.metrics()
         .lines()
         .find_map(|l| l.strip_prefix(&want).and_then(|v| v.trim().parse().ok()))

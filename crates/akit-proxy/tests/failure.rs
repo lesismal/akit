@@ -511,7 +511,7 @@ fn timeout_before_head() {
 /// `response_timeout` mid-body, and fit's `TestUpstreamBreaksMidBody`: a response cut short once
 /// it began, by its timeout or by its upstream. The client can tell: an HTTP/1.1 body ends with its connection,
 /// short of its length or of its last chunk; an h2c one of a length fails, and one of no length
-/// ends with fit's `Fit-Error` trailer.
+/// ends with fit's `Akit-Error` trailer.
 #[test]
 fn cut_short_mid_body() {
     let (up, gone) = upstream();
@@ -544,7 +544,7 @@ fn cut_short_mid_body() {
                 assert!(!got.ended, "h2c {target}: a body cut short read as whole");
             } else {
                 assert_eq!(
-                    got.trailers.get("fit-error"),
+                    got.trailers.get("akit-error"),
                     Some("upstream failed mid-body"),
                     "h2c {target}: {got:?}"
                 );
@@ -718,7 +718,7 @@ fn response_header_timeout() {
 
 /// fit's `TestResponseIdleTimeout`: an upstream silent mid-body past `response_idle_timeout` has
 /// its response cut short, and the client can tell: an HTTP/1.1 body ends with its connection,
-/// an h2c one of a length fails, and one of no length ends with fit's `Fit-Error` trailer.
+/// an h2c one of a length fails, and one of no length ends with fit's `Akit-Error` trailer.
 #[test]
 fn response_idle_timeout() {
     let (up, gone) = upstream();
@@ -744,7 +744,7 @@ fn response_idle_timeout() {
             assert!(!got.ended, "h2c {target}: a body cut short read as whole");
         } else {
             assert_eq!(
-                got.trailers.get("fit-error"),
+                got.trailers.get("akit-error"),
                 Some("upstream failed mid-body"),
                 "h2c {target}: {got:?}"
             );

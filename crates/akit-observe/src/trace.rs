@@ -253,12 +253,12 @@ pub fn append_span(b: &mut Vec<u8>, t: &Trace, span: &SpanEnd<'_>) {
         "http.response.body.size",
         i64::try_from(span.size).unwrap_or(i64::MAX),
     );
-    append_attr(b, "fit.listener", span.listener, false);
+    append_attr(b, "akit.listener", span.listener, false);
     if !span.route.is_empty() {
-        append_attr(b, "fit.route", span.route, false);
+        append_attr(b, "akit.route", span.route, false);
     }
     if !span.upstream.is_empty() {
-        append_attr(b, "fit.upstream.address", span.upstream, false);
+        append_attr(b, "akit.upstream.address", span.upstream, false);
     }
     b.push(b']');
     if span.status >= 500 {

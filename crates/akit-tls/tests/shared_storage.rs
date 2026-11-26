@@ -32,7 +32,7 @@ fn later() -> Instant {
 fn config(kind: SharedStorageKind) -> SharedStorage {
     SharedStorage {
         kind,
-        prefix: "fit/".into(),
+        prefix: "akit/".into(),
         lock_ttl: TTL,
         request_timeout: Duration::from_secs(5),
     }

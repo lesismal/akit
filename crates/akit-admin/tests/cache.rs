@@ -152,11 +152,11 @@ fn cache_purge() {
     );
     let cs = fetch("/a");
     assert!(
-        cs.starts_with("fit; fwd=uri-miss"),
+        cs.starts_with("akit; fwd=uri-miss"),
         "/a after its purge: {cs:?}"
     );
     let cs = fetch("/b");
-    assert!(cs.starts_with("fit; hit"), "/b: {cs:?}");
+    assert!(cs.starts_with("akit; hit"), "/b: {cs:?}");
     assert_eq!(
         purge(r#"{"tags": ["t"]}"#),
         (200, "{\"purged\":2}\n".to_owned()),
@@ -174,7 +174,7 @@ fn cache_purge() {
     );
     let cs = fetch("/other");
     assert!(
-        cs.starts_with("fit; hit"),
+        cs.starts_with("akit; hit"),
         "/other after the purge of /img/: {cs:?}"
     );
     for (body, want) in [

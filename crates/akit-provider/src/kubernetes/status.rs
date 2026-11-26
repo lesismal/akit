@@ -531,8 +531,8 @@ mod tests {
             (
                 format!("{g}v1/gatewayclasses"),
                 "",
-                "fit",
-                format!("{g}v1/gatewayclasses/fit"),
+                "akit",
+                format!("{g}v1/gatewayclasses/akit"),
             ),
             (
                 format!("{g}v1/gateways"),

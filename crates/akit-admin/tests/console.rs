@@ -280,12 +280,12 @@ impl Browser {
 
     fn send(&self, method: &str, path: &str, headers: &[(&str, &str)], body: Option<&str>) -> Resp {
         let mut h: Vec<(&str, &str)> = headers.to_vec();
-        let cookie = format!("fit_console_{}={}", self.addr.port(), self.cookie);
+        let cookie = format!("akit_console_{}={}", self.addr.port(), self.cookie);
         if !self.cookie.is_empty() {
             h.push(("Cookie", &cookie));
         }
         if !self.csrf.is_empty() && method != "GET" {
-            h.push(("X-Fit-Csrf", &self.csrf));
+            h.push(("X-Akit-Csrf", &self.csrf));
         }
         if body.is_some() && !h.iter().any(|(n, _)| *n == "Content-Type") {
             h.push(("Content-Type", "application/json"));

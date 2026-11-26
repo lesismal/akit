@@ -259,11 +259,11 @@ fn provider() {
     let f = FakeEtcd::new();
     {
         let mut st = f.st.lock().unwrap();
-        st.user = "fit".to_owned();
+        st.user = "akit".to_owned();
         st.password = "pa ss".to_owned();
     }
-    f.put("fit/a", &route("a"));
-    f.put("fit/bad", "nope");
+    f.put("akit/a", &route("a"));
+    f.put("akit/bad", "nope");
     f.put("fiu", &route("outside")); // past the prefix's range
     f.put("fis", &route("before"));
     let (dir, pw) = tmp_file("password", "pa ss\n");
@@ -271,15 +271,15 @@ fn provider() {
     // The first endpoint is not there: the provider goes on to the next.
     let url = format!("{}/", f.srv.url);
     let mut o = opts(&["http://127.0.0.1:1", &url]);
-    o.username = "fit".to_owned();
+    o.username = "akit".to_owned();
     o.password_file = pw;
     let mut p = Etcd::new("etcd", &o, lines.log());
     assert_eq!(p.name(), "etcd");
     let parts = start(&mut p);
     parts.want(&routes_part(&["a"]));
-    f.put("fit/b", &route("b"));
+    f.put("akit/b", &route("b"));
     parts.want(&routes_part(&["a", "b"]));
-    f.put("fit/a", "");
+    f.put("akit/a", "");
     parts.want(&routes_part(&["b"]));
     // Progress notifications, with no events, read nothing.
     let before = f.requests().len();
@@ -295,16 +295,16 @@ fn provider() {
     f.broadcast(
         r#"{"result":{"header":{},"canceled":true,"compact_revision":"5","cancel_reason":"mvcc: required revision has been compacted"}}"#,
     );
-    f.put("fit/c", &route("c"));
+    f.put("akit/c", &route("c"));
     parts.want(&routes_part(&["b", "c"]));
     // The stream ends.
     f.broadcast("");
-    f.put("fit/b", "");
+    f.put("akit/b", "");
     parts.want(&routes_part(&["c"]));
     p.stop();
     let all = lines.all();
     for want in [
-        "provider etcd: key fit/bad: ",
+        "provider etcd: key akit/bad: ",
         "127.0.0.1:1",
         "etcd canceled the watch: mvcc: required revision has been compacted (compacted at revision 5)",
         "etcd ended the watch",
@@ -323,16 +323,16 @@ fn provider() {
 #[test]
 fn provider_max_keys() {
     let f = FakeEtcd::new();
-    f.put("fit/1", &route("one"));
-    f.put("fit/2", &route("two"));
-    f.put("fit/3", &route("three"));
+    f.put("akit/1", &route("one"));
+    f.put("akit/2", &route("two"));
+    f.put("akit/3", &route("three"));
     let lines = testing::Lines::default();
     let mut o = opts(&[&f.srv.url]);
     o.max_keys = 2;
     let mut p = Etcd::new("etcd", &o, lines.log());
     let parts = start(&mut p);
     parts.want(&routes_part(&["one", "two"]));
-    lines.wait("provider etcd: the keys past the first 2 under fit/ are left out: max_keys");
+    lines.wait("provider etcd: the keys past the first 2 under akit/ are left out: max_keys");
 }
 
 #[test]
@@ -353,13 +353,13 @@ fn provider_bad_password() {
     let f = FakeEtcd::new();
     {
         let mut st = f.st.lock().unwrap();
-        st.user = "fit".to_owned();
+        st.user = "akit".to_owned();
         st.password = "right".to_owned();
     }
     let (dir, pw) = tmp_file("password", "wrong");
     let lines = testing::Lines::default();
     let mut o = opts(&[&f.srv.url]);
-    o.username = "fit".to_owned();
+    o.username = "akit".to_owned();
     o.password_file = pw;
     let mut p = Etcd::new("etcd", &o, lines.log());
     let parts = start(&mut p);
@@ -375,7 +375,7 @@ fn provider_bad_password() {
 #[test]
 fn range_ends() {
     for (input, want) in [
-        (&b"fit/"[..], &b"fit0"[..]),
+        (&b"akit/"[..], &b"akit0"[..]),
         (b"a\xff", b"b"),
         (b"\xff\xff", b"\x00"),
         (b"", b"\x00"),
@@ -458,7 +458,7 @@ fn kind() {
     assert_eq!(p.name(), "e");
     assert_eq!(
         watching,
-        r#"watching etcd's keys under "fit/" at http://127.0.0.1:1, http://127.0.0.1:2"#
+        r#"watching etcd's keys under "akit/" at http://127.0.0.1:1, http://127.0.0.1:2"#
     );
     assert!(kinds.lookup("consul").unwrap()("e", &pc).is_err());
 }
@@ -481,7 +481,7 @@ fn open_fails() {
     let mut a = opts(&["http://127.0.0.1:1"]);
     a.tls.ca_file.clone_from(&missing);
     let mut b = opts(&["http://127.0.0.1:1"]);
-    b.username = "fit".to_owned();
+    b.username = "akit".to_owned();
     b.password_file = missing;
     for o in [a, b] {
         assert!(

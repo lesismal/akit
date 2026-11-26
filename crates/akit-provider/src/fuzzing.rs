@@ -72,7 +72,7 @@ pub fn provider_docker(data: &[u8]) {
             String::new()
         },
         use_published_ports: flags & 4 != 0,
-        label_prefix: "fit".to_owned(),
+        label_prefix: "akit".to_owned(),
         max_containers: usize::from(flags >> 3).max(1),
         refresh_interval: Duration::from_secs(30),
         request_timeout: Duration::from_secs(10),

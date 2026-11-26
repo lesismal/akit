@@ -924,7 +924,7 @@ mod tests {
     fn decode_kinds() {
         let v = parse(
             r#"{"metadata": {"namespace": "ns", "name": "i", "annotations": {"a": "b"}},
-              "spec": {"ingressClassName": "fit", "rules": [{"host": "h", "http": {"paths":
+              "spec": {"ingressClassName": "akit", "rules": [{"host": "h", "http": {"paths":
               [{"path": "/", "pathType": "Prefix", "backend": {"service": {"name": "s",
               "port": {"name": "http"}}}}]}}, {"host": "x"}]}}"#,
         )
@@ -934,7 +934,7 @@ mod tests {
         };
         assert_eq!(i.meta.key(), "ns/i");
         assert_eq!(i.meta.annotation("a"), Some("b"));
-        assert_eq!(i.class_name.as_deref(), Some("fit"));
+        assert_eq!(i.class_name.as_deref(), Some("akit"));
         let paths = i.rules[0].paths.as_ref().unwrap();
         assert_eq!(paths[0].backend.service.as_ref().unwrap().port_name, "http");
         assert!(i.rules[1].paths.is_none());

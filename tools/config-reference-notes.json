@@ -1,5 +1,5 @@
 {
-  "_comment": "Read by tools/config-reference.py: akit's extensions to fit's config, and akit's notes on fields it reads differently from fit, in English and Chinese. Each path is a field of fit's inventory (tests/compat/fit-fields.txt) or an extension; the generator refuses any other.",
+  "_comment": "Read by tools/config-reference.py and tools/v1-freeze.py: akit's extensions to fit's config, akit's defaults where fit's hold the name fit (`defaults`: fit's renamed, decision 037), and akit's notes on fields it reads differently from fit, in English and Chinese. Each path is a field of fit's inventory (tests/compat/fit-fields.txt) or an extension; the generator refuses any other.",
   "extensions": {
     "listeners[].sockmap": {
       "type": "boolean",
@@ -13,6 +13,17 @@
       "en_short": "a `tcp` listener's connections spliced in the kernel by akio's eBPF sockmap relay where it loads",
       "zh_short": "`tcp` 监听器的连接在能加载 akio 的 eBPF sockmap 中继时于内核中拼接"
     }
+  },
+  "defaults": {
+    "acme.shared_storage.prefix": "akit/",
+    "providers[].consul.tag_prefix": "akit",
+    "providers[].consul_kv.prefix": "akit/",
+    "providers[].docker.label_prefix": "akit",
+    "providers[].etcd.prefix": "akit/",
+    "providers[].kubernetes.controller_name": "lesismal.github.io/akit",
+    "routes[].middleware[]<basic_auth>.params.realm": "akit",
+    "telemetry.service_name": "akit",
+    "upstreams[].sticky_cookie.name": "akit_sticky"
   },
   "notes": {
     "listeners[].protocols": {
@@ -44,8 +55,8 @@
       "zh": "暂无计划：`splice(2)` 需要 `unsafe` 或 akio 的 API。"
     },
     "routes[].middleware[]<wasm>.params.path": {
-      "en": "The plugin runs on akio-wasm's instance pool, never on an I/O thread; fit's plugins run unchanged.",
-      "zh": "插件在 akio-wasm 的实例池上运行，从不在 I/O 线程上；fit 的插件无需修改即可运行。"
+      "en": "The plugin runs on akio-wasm's instance pool, never on an I/O thread. akit's ABI is fit's with its names renamed (decision 037): a plugin of fit's is built again with fit's guest package renamed (as tools/plugin-guest.sh does); Proxy-Wasm filters run unchanged.",
+      "zh": "插件在 akio-wasm 的实例池上运行，从不在 I/O 线程上。akit 的 ABI 即 fit 的 ABI 改名之后的版本（决定 037）：fit 的插件需用改名后的 fit guest 包重新构建（如 tools/plugin-guest.sh 所做）；Proxy-Wasm 过滤器无需修改即可运行。"
     },
     "upstreams[].deny_internal": {
       "en": "It comes with the Kubernetes provider's ExternalName Services (`allow_external_name_services`).",

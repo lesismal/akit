@@ -1084,7 +1084,7 @@ fn cut_connections() {
     assert!(!got.complete, "http/1.1: a response cut short read whole");
     let got = h2_get(s.addr, "/cut.php");
     assert!(
-        !got.complete || got.trailer("fit-error").is_some(),
+        !got.complete || got.trailer("akit-error").is_some(),
         "h2c: a response cut short read whole"
     );
     // The client goes in the middle of a response: the application's connection is closed.
@@ -1300,7 +1300,7 @@ fn responses() {
     for script in ["/shortend.php", "/cl.php"] {
         for (proto, got) in both(s.addr, script) {
             assert!(
-                !got.complete || got.trailer("fit-error").is_some() || got.status == 502,
+                !got.complete || got.trailer("akit-error").is_some() || got.status == 502,
                 "{proto} {script}: a broken response read whole"
             );
         }

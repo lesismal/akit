@@ -66,7 +66,7 @@ fn defaults() {
             DEFAULT_SHARED_STORAGE_LOCK_TTL,
             DEFAULT_SHARED_STORAGE_TIMEOUT
         ),
-        ("fit/", Duration::from_secs(30), Duration::from_secs(10))
+        ("akit/", Duration::from_secs(30), Duration::from_secs(10))
     );
     assert_eq!(s.kind.name(), "redis");
     let s = shared(r#""etcd": {}"#);
@@ -91,7 +91,7 @@ fn defaults() {
     );
     assert_eq!(
         (s.prefix.as_str(), s.lock_ttl),
-        ("fit/", DEFAULT_SHARED_STORAGE_LOCK_TTL)
+        ("akit/", DEFAULT_SHARED_STORAGE_LOCK_TTL)
     );
 }
 

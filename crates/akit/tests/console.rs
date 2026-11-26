@@ -183,7 +183,7 @@ fn console_under_akit_run() {
         .next()
         .unwrap()
         .to_owned();
-    let auth = format!("Cookie: {session}\r\nX-Fit-Csrf: {csrf}\r\n");
+    let auth = format!("Cookie: {session}\r\nX-Akit-Csrf: {csrf}\r\n");
 
     // A config changed through the console runs, and says who changed it.
     let next = config(api, console, web, &hash, "", "").replace("\"hi\"", "\"changed\"");

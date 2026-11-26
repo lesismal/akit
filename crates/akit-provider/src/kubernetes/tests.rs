@@ -109,7 +109,7 @@ pub(crate) fn base() -> Snapshot {
         gateway_classes: vec![
             obj(
                 Shape::GatewayClass,
-                r#"{"metadata": {"name": "fit"}, "spec": {"controllerName": "lesismal.github.io/fit"}}"#,
+                r#"{"metadata": {"name": "akit"}, "spec": {"controllerName": "lesismal.github.io/akit"}}"#,
             ),
             obj(
                 Shape::GatewayClass,
@@ -119,7 +119,7 @@ pub(crate) fn base() -> Snapshot {
         gateways: vec![
             obj(
                 Shape::Gateway,
-                r#"{"metadata": {"namespace": "default", "name": "gw"}, "spec": {"gatewayClassName": "fit", "listeners": [
+                r#"{"metadata": {"namespace": "default", "name": "gw"}, "spec": {"gatewayClassName": "akit", "listeners": [
   {"name": "http", "port": 80, "protocol": "HTTP", "allowedRoutes": {"namespaces": {"from": "All"}}},
   {"name": "web", "port": 8080, "protocol": "HTTP", "hostname": "*.example.com"},
   {"name": "picky", "port": 8081, "protocol": "HTTP", "allowedRoutes": {"namespaces": {"from": "Selector", "selector": {"matchLabels": {"gateway": "yes"}}}}},
@@ -172,7 +172,7 @@ fn ingress_world(default_class: bool) -> Snapshot {
             obj(
                 Shape::IngressClass,
                 &format!(
-                    r#"{{"metadata": {{"name": "fit"{ann}}}, "spec": {{"controller": "lesismal.github.io/fit"}}}}"#
+                    r#"{{"metadata": {{"name": "akit"{ann}}}, "spec": {{"controller": "lesismal.github.io/akit"}}}}"#
                 ),
             ),
             obj(
@@ -332,9 +332,9 @@ fn ingresses() {
         ingress(
             "shop",
             "2026-01-01T00:00:00Z",
-            r#""fit.lesismal.github.io/ssl-redirect": "true", "fit.lesismal.github.io/limit-rps": "10",
-  "fit.lesismal.github.io/proxy-body-size": "1m", "fit.lesismal.github.io/request-timeout": "30s""#,
-            r#"{"ingressClassName": "fit",
+            r#""akit.lesismal.github.io/ssl-redirect": "true", "akit.lesismal.github.io/limit-rps": "10",
+  "akit.lesismal.github.io/proxy-body-size": "1m", "akit.lesismal.github.io/request-timeout": "30s""#,
+            r#"{"ingressClassName": "akit",
   "tls": [{"hosts": ["shop.example.com"], "secretName": "shop-tls"}],
   "rules": [{"host": "shop.example.com", "http": {"paths": [
     {"path": "/api", "pathType": "Prefix", "backend": {"service": {"name": "api", "port": {"number": 8080}}}},
@@ -343,8 +343,8 @@ fn ingresses() {
         ingress(
             "legacy",
             "2026-01-02T00:00:00Z",
-            r#""kubernetes.io/ingress.class": "fit", "fit.lesismal.github.io/rewrite-target": "/v2",
-  "fit.lesismal.github.io/backend-protocol": "GRPC", "fit.lesismal.github.io/allow-source-range": "10.0.0.0/8, 192.168.1.1""#,
+            r#""kubernetes.io/ingress.class": "akit", "akit.lesismal.github.io/rewrite-target": "/v2",
+  "akit.lesismal.github.io/backend-protocol": "GRPC", "akit.lesismal.github.io/allow-source-range": "10.0.0.0/8, 192.168.1.1""#,
             r#"{
   "rules": [{"host": "*.example.com", "http": {"paths": [{"path": "/", "pathType": "ImplementationSpecific", "backend": {"service": {"name": "api", "port": {"number": 8080}}}}]}}]}"#,
         ),
@@ -365,9 +365,9 @@ fn ingresses() {
         ingress(
             "broken",
             "2026-01-05T00:00:00Z",
-            r#""fit.lesismal.github.io/limit-rps": "fast", "fit.lesismal.github.io/unknown": "x",
-  "fit.lesismal.github.io/proxy-body-size": "lots""#,
-            r#"{"ingressClassName": "fit",
+            r#""akit.lesismal.github.io/limit-rps": "fast", "akit.lesismal.github.io/unknown": "x",
+  "akit.lesismal.github.io/proxy-body-size": "lots""#,
+            r#"{"ingressClassName": "akit",
   "rules": [{"host": "b.example.com", "http": {"paths": [
     {"path": "/x", "pathType": "Exact", "backend": {"service": {"name": "missing", "port": {"number": 80}}}},
     {"path": "/r", "pathType": "Prefix", "backend": {"resource": {"kind": "Bucket", "name": "b"}}},
@@ -377,8 +377,8 @@ fn ingresses() {
         ingress(
             "closed",
             "2026-01-06T00:00:00Z",
-            r#""fit.lesismal.github.io/allow-source-range": "10.0.0.0/8, nope""#,
-            r#"{"ingressClassName": "fit",
+            r#""akit.lesismal.github.io/allow-source-range": "10.0.0.0/8, nope""#,
+            r#"{"ingressClassName": "akit",
   "rules": [{"host": "c.example.com", "http": {"paths": [{"path": "/", "pathType": "Prefix", "backend": {"service": {"name": "web", "port": {"number": 80}}}}]}}]}"#,
         ),
     ];
@@ -488,14 +488,14 @@ fn ingresses() {
     );
     p.has_problems(&[
         "ingress default/defaulted: tls 0: there is no secret default/missing of type kubernetes.io/tls",
-        r#"ingress default/broken: annotation fit.lesismal.github.io/limit-rps: "fast" is not a rate of at least 0.001; it is left out"#,
-        r#"ingress default/broken: annotation fit.lesismal.github.io/proxy-body-size: "lots" is not a size, as 8m; it is left out"#,
-        "ingress default/broken: annotation fit.lesismal.github.io/unknown is not one akit knows",
+        r#"ingress default/broken: annotation akit.lesismal.github.io/limit-rps: "fast" is not a rate of at least 0.001; it is left out"#,
+        r#"ingress default/broken: annotation akit.lesismal.github.io/proxy-body-size: "lots" is not a size, as 8m; it is left out"#,
+        "ingress default/broken: annotation akit.lesismal.github.io/unknown is not one akit knows",
         "ingress default/broken: rule 0: path 0: service default/missing does not exist; it answers 503",
         "ingress default/broken: rule 0: path 1: only a Service is supported as a backend; it answers 503",
         r#"ingress default/broken: rule 0: path 2: service default/web has no port named "nope"; it answers 503"#,
         r#"ingress default/broken: rule 0: path 3: path type "Regex" is not supported"#,
-        r#"ingress default/closed: annotation fit.lesismal.github.io/allow-source-range: "nope" is not an address or CIDR range; every request is refused"#,
+        r#"ingress default/closed: annotation akit.lesismal.github.io/allow-source-range: "nope" is not an address or CIDR range; every request is refused"#,
     ]);
     // The certificate file of shop-tls is given to write: its chain and key.
     let (path, data) = {
@@ -542,8 +542,8 @@ fn ingress_ports() {
     w.ingresses = vec![ingress(
         "shop",
         "",
-        r#""fit.lesismal.github.io/ssl-redirect": "true""#,
-        r#"{"ingressClassName": "fit",
+        r#""akit.lesismal.github.io/ssl-redirect": "true""#,
+        r#"{"ingressClassName": "akit",
   "tls": [{"hosts": ["shop.example.com", "*.shop.example.com"], "secretName": "shop-tls"}],
   "rules": [{"host": "shop.example.com", "http": {"paths": [{"pathType": "Prefix", "backend": {"service": {"name": "api", "port": {"number": 8080}}}}]}},
             {"host": "*.shop.example.com", "http": {"paths": [{"pathType": "Prefix", "backend": {"service": {"name": "api", "port": {"number": 8080}}}}]}}]}"#,
@@ -565,7 +565,7 @@ fn ingress_ports() {
     // A Gateway's TCP listener holds the HTTPS port: HTTP alone, unredirected.
     w.gateways = vec![obj(
         Shape::Gateway,
-        r#"{"metadata": {"namespace": "default", "name": "l4"}, "spec": {"gatewayClassName": "fit", "listeners": [
+        r#"{"metadata": {"namespace": "default", "name": "l4"}, "spec": {"gatewayClassName": "akit", "listeners": [
   {"name": "tcp", "port": 443, "protocol": "TCP"}]}}"#,
     )];
     let p = Part::of(&w, &opts(ports(80, 443)), Some("/certs"));
@@ -591,10 +591,10 @@ fn ingress_edges() {
         ingress(
             "a",
             "2026-01-01T00:00:00Z",
-            r#""fit.lesismal.github.io/ssl-redirect": "maybe", "fit.lesismal.github.io/rewrite-target": "x",
-  "fit.lesismal.github.io/backend-protocol": "HTTP", "fit.lesismal.github.io/request-timeout": "soon",
-  "fit.lesismal.github.io/allow-source-range": "10.0.0.0/8, ,", "other.example/ignored": "x""#,
-            r#"{"ingressClassName": "fit",
+            r#""akit.lesismal.github.io/ssl-redirect": "maybe", "akit.lesismal.github.io/rewrite-target": "x",
+  "akit.lesismal.github.io/backend-protocol": "HTTP", "akit.lesismal.github.io/request-timeout": "soon",
+  "akit.lesismal.github.io/allow-source-range": "10.0.0.0/8, ,", "other.example/ignored": "x""#,
+            r#"{"ingressClassName": "akit",
   "tls": [{"secretName": ""}, {"secretName": "shop-tls"}],
   "rules": [{"host": "x.example.com"},
             {"http": {"paths": [{"path": "x", "pathType": "Prefix", "backend": {"service": {"name": "web", "port": {"number": 80}}}},
@@ -603,9 +603,9 @@ fn ingress_edges() {
         ingress(
             "b",
             "2026-01-02T00:00:00Z",
-            r#""fit.lesismal.github.io/ssl-redirect": "true", "fit.lesismal.github.io/rewrite-target": "/v2",
-  "fit.lesismal.github.io/backend-protocol": "SCTP""#,
-            r#"{"ingressClassName": "fit",
+            r#""akit.lesismal.github.io/ssl-redirect": "true", "akit.lesismal.github.io/rewrite-target": "/v2",
+  "akit.lesismal.github.io/backend-protocol": "SCTP""#,
+            r#"{"ingressClassName": "akit",
   "tls": [{"secretName": "shop-tls"}],
   "rules": [{"http": {"paths": [{"path": "/x", "pathType": "Exact", "backend": {"service": {"name": "web", "port": {"number": 80}}}},
                                 {"path": "/y", "pathType": "Prefix", "backend": {"service": {"name": "empty", "port": {"number": 80}}}}]}}]}"#,
@@ -613,12 +613,12 @@ fn ingress_edges() {
     ];
     let p = Part::of(&w, &opts(ports(80, 443)), Some("/certs"));
     p.has_problems(&[
-        r#"ingress default/a: annotation fit.lesismal.github.io/ssl-redirect: "maybe" is not true or false"#,
-        r#"ingress default/a: annotation fit.lesismal.github.io/rewrite-target: "x" is not a path"#,
-        r#"ingress default/a: annotation fit.lesismal.github.io/request-timeout: "soon" is not a duration"#,
+        r#"ingress default/a: annotation akit.lesismal.github.io/ssl-redirect: "maybe" is not true or false"#,
+        r#"ingress default/a: annotation akit.lesismal.github.io/rewrite-target: "x" is not a path"#,
+        r#"ingress default/a: annotation akit.lesismal.github.io/request-timeout: "soon" is not a duration"#,
         "ingress default/a: tls 0: no secretName",
         r#"ingress default/a: rule 1: path 0: path "x" does not start with '/'"#,
-        r#"ingress default/b: annotation fit.lesismal.github.io/backend-protocol: "SCTP" is not HTTP, H2C or GRPC"#,
+        r#"ingress default/b: annotation akit.lesismal.github.io/backend-protocol: "SCTP" is not HTTP, H2C or GRPC"#,
     ]);
     // a: TLS for any host, and its source range, its empty entries left out.
     let r = p.route("default.a.ing.r1.p1");
@@ -662,7 +662,7 @@ fn ingress_edges() {
     // A Gateway's TCP listener holds the HTTP port.
     w.gateways = vec![obj(
         Shape::Gateway,
-        r#"{"metadata": {"namespace": "default", "name": "l4"}, "spec": {"gatewayClassName": "fit", "listeners": [
+        r#"{"metadata": {"namespace": "default", "name": "l4"}, "spec": {"gatewayClassName": "akit", "listeners": [
   {"name": "tcp", "port": 80, "protocol": "TCP"}]}}"#,
     )];
     let p = Part::of(&w, &opts(ports(80, 443)), Some("/certs"));

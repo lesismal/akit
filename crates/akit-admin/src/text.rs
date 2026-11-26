@@ -387,7 +387,10 @@ pub(crate) fn export(shared: &Arc<Shared>, ctx: &mut Context) {
                 Response::with_body(200, "text/plain; charset=utf-8", out.into_bytes())
                     .header(
                         "Content-Disposition",
-                        format!("attachment; filename=\"fit-{name}-v{}.{format}\"", v.number),
+                        format!(
+                            "attachment; filename=\"akit-{name}-v{}.{format}\"",
+                            v.number
+                        ),
                     )
                     .header("ETag", &v.etag)
                     .header(VERSION_HEADER, v.number.to_string()),

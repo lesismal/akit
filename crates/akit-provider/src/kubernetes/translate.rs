@@ -19,9 +19,9 @@ use super::types::{
     Service, ServicePort,
 };
 
-/// The prefix of the annotations of Ingresses read: fit's, so that the same Ingresses serve
-/// both.
-pub(crate) const ANNOTATION_PREFIX: &str = "fit.lesismal.github.io/";
+/// The prefix of the annotations of Ingresses read: fit's `fit.lesismal.github.io/`, renamed
+/// (decision 037).
+pub(crate) const ANNOTATION_PREFIX: &str = "akit.lesismal.github.io/";
 
 /// The largest certificate file written, as fit's TLS reads one (`tlsmgr.MaxCertFileBytes`).
 pub(crate) const MAX_CERT_BYTES: usize = 1 << 20;

@@ -632,7 +632,8 @@ providers[].etcd.max_keys
 providers[].etcd.refresh_interval
 providers[].etcd.request_timeout
 
-# I71: wasm, a WebAssembly plugin of fit's ABI (fit_on_request and the host module "fit") run for
+# I71: wasm, a WebAssembly plugin of fit's ABI, renamed (akit_on_request and the host module "akit",
+# decision 037), run for
 # each request on akio-wasm's instance pool (akio ADR-125), never on an I/O thread, the request
 # suspended meanwhile and its fields changed through akio's Context::req_mut (ADR-126); each call
 # bounded by timeout and max_memory_bytes, the queue and wait_timeout answering 503.

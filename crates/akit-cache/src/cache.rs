@@ -76,16 +76,16 @@ impl Fwd {
     /// The `Cache-Status` member, without and with `stored`.
     fn field(self, stored: bool) -> &'static str {
         match (self, stored) {
-            (Fwd::UriMiss, false) => "fit; fwd=uri-miss",
-            (Fwd::UriMiss, true) => "fit; fwd=uri-miss; stored",
-            (Fwd::VaryMiss, false) => "fit; fwd=vary-miss",
-            (Fwd::VaryMiss, true) => "fit; fwd=vary-miss; stored",
-            (Fwd::Stale, false) => "fit; fwd=stale",
-            (Fwd::Stale, true) => "fit; fwd=stale; stored",
-            (Fwd::Request, false) => "fit; fwd=request",
-            (Fwd::Request, true) => "fit; fwd=request; stored",
-            (Fwd::Bypass, false) => "fit; fwd=bypass",
-            (Fwd::Bypass, true) => "fit; fwd=bypass; stored",
+            (Fwd::UriMiss, false) => "akit; fwd=uri-miss",
+            (Fwd::UriMiss, true) => "akit; fwd=uri-miss; stored",
+            (Fwd::VaryMiss, false) => "akit; fwd=vary-miss",
+            (Fwd::VaryMiss, true) => "akit; fwd=vary-miss; stored",
+            (Fwd::Stale, false) => "akit; fwd=stale",
+            (Fwd::Stale, true) => "akit; fwd=stale; stored",
+            (Fwd::Request, false) => "akit; fwd=request",
+            (Fwd::Request, true) => "akit; fwd=request; stored",
+            (Fwd::Bypass, false) => "akit; fwd=bypass",
+            (Fwd::Bypass, true) => "akit; fwd=bypass; stored",
         }
     }
 }
@@ -253,8 +253,8 @@ pub(crate) fn hit_response(
     r.headers.set("Age", age.as_secs().to_string());
     let ttl = signed_secs(e.lifetime, age);
     let cs = match detail {
-        Some(d) => format!("fit; hit; ttl={ttl}; detail={d}"),
-        None => format!("fit; hit; ttl={ttl}"),
+        Some(d) => format!("akit; hit; ttl={ttl}; detail={d}"),
+        None => format!("akit; hit; ttl={ttl}"),
     };
     r.headers.set("Cache-Status", cs);
     r

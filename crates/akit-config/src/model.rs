@@ -604,8 +604,8 @@ pub struct MetricsExport {
 
 /// fit's default `telemetry.endpoint`.
 pub const DEFAULT_TELEMETRY_ENDPOINT: &str = "http://127.0.0.1:4318";
-/// fit's default `telemetry.service_name`.
-pub const DEFAULT_TELEMETRY_SERVICE_NAME: &str = "fit";
+/// The default `telemetry.service_name`: fit's `fit`, renamed (decision 037).
+pub const DEFAULT_TELEMETRY_SERVICE_NAME: &str = "akit";
 /// fit's default `telemetry.timeout`.
 pub const DEFAULT_TELEMETRY_TIMEOUT: Duration = Duration::from_secs(10);
 /// fit's default `telemetry.traces.max_queue_bytes`: 4 MiB.
@@ -870,8 +870,8 @@ pub struct StickyCookie {
     pub secure: bool,
 }
 
-/// fit's default sticky cookie name.
-pub const DEFAULT_STICKY_COOKIE_NAME: &str = "fit_sticky";
+/// The default sticky cookie name: fit's `akit_sticky`, renamed (decision 037).
+pub const DEFAULT_STICKY_COOKIE_NAME: &str = "akit_sticky";
 
 /// An upstream's `load_balancing` policy: each of fit's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -1310,7 +1310,7 @@ pub enum Handler {
     Jwt(Jwt),
     /// The `cache` middleware: responses kept and answered from by RFC 9111's rules (I67).
     Cache(Cache),
-    /// The `wasm` middleware: a WebAssembly plugin of fit's ABI run for each request, on a pool
+    /// The `wasm` middleware: a WebAssembly plugin of akit's ABI run for each request, on a pool
     /// of its own (I71).
     Wasm(crate::wasm::Wasm),
     /// A module akit's config model does not know: one built in with `akit build` (I70), its
@@ -1616,7 +1616,7 @@ pub struct BodyLimit {
 /// `Provision` checks them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BasicAuth {
-    /// `realm`: what the browser shows when it asks for a user and password; `fit` when left
+    /// `realm`: what the browser shows when it asks for a user and password; `akit` when left
     /// out. It holds no quote, backslash or control character.
     pub realm: String,
     /// `users`: at least one, each name once.
@@ -1639,8 +1639,8 @@ pub struct BasicUser {
     pub password_hash: String,
 }
 
-/// fit's `realm` when left out.
-pub const DEFAULT_REALM: &str = "fit";
+/// The `realm` when left out: fit's `fit`, renamed (decision 037).
+pub const DEFAULT_REALM: &str = "akit";
 
 /// The `client_cert` middleware's params, as fit's `middleware/auth` `ClientCert`.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]

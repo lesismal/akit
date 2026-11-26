@@ -136,19 +136,19 @@ mod tests {
     fn parts() {
         let entries = vec![
             e(
-                "fit/b",
+                "akit/b",
                 r#"{"routes": [{"name": "b", "handler": {"module": "respond"}}], "upstreams": [{"name": "u2", "addresses": ["10.0.0.2:80"]}]}"#,
             ),
             e(
-                "fit/a",
+                "akit/a",
                 "{\n  \"upstreams\": [{\"name\": \"u1\", \"addresses\": [\"10.0.0.1:80\"]}],\n  \"listeners\": [{\"name\": \"l\", \"address\": \":8080\"}]\n}",
             ),
-            e("fit/", ""),                                // a folder
-            e("fit/dir/", "junk"),                        // a folder, with a value
-            e("fit/empty", "  \n"),                       // empty
-            e("fit/c", r#"{"access_log": {}}"#),          // not a part
-            e("fit/d", r#"{"routes": ["#),                // not JSON
-            e("fit/e", r#"{"services": {"name": "x"}}"#), // not an array
+            e("akit/", ""),                                // a folder
+            e("akit/dir/", "junk"),                        // a folder, with a value
+            e("akit/empty", "  \n"),                       // empty
+            e("akit/c", r#"{"access_log": {}}"#),          // not a part
+            e("akit/d", r#"{"routes": ["#),                // not JSON
+            e("akit/e", r#"{"services": {"name": "x"}}"#), // not an array
         ];
         let (p, problems) = part(entries, 10);
         let want = concat!(
@@ -159,12 +159,12 @@ mod tests {
         assert_eq!(String::from_utf8(p).unwrap(), want);
         assert_eq!(problems.len(), 3, "{problems:?}");
         assert!(
-            problems[0].starts_with("key fit/c: ")
+            problems[0].starts_with("key akit/c: ")
                 && problems[0].contains("only listeners, routes, upstreams and services"),
             "{problems:?}"
         );
-        assert!(problems[1].starts_with("key fit/d: "), "{problems:?}");
-        assert!(problems[2].starts_with("key fit/e: "), "{problems:?}");
+        assert!(problems[1].starts_with("key akit/d: "), "{problems:?}");
+        assert!(problems[2].starts_with("key akit/e: "), "{problems:?}");
 
         // Past max, the rest by key are left out.
         let (p, problems) = part(

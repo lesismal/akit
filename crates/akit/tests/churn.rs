@@ -221,14 +221,15 @@ fn churn_through_sighup_and_the_admin_api() {
 
     // Every swap counted as applied (and the two of the warm-up), none failed.
     let metrics = akit.metrics();
-    let line = format!("fit_config_reloads_total{{result=\"success\"}} {}", n + 2);
+    let line = format!("akit_config_reloads_total{{result=\"success\"}} {}", n + 2);
     assert!(
         metrics.lines().any(|l| l == line),
         "no {line:?} in:\n{metrics}"
     );
     assert!(
         !metrics.lines().any(
-            |l| l.starts_with("fit_config_reloads_total{result=\"failure\"}") && !l.ends_with(" 0")
+            |l| l.starts_with("akit_config_reloads_total{result=\"failure\"}")
+                && !l.ends_with(" 0")
         ),
         "{metrics}"
     );

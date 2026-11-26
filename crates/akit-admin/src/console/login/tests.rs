@@ -122,8 +122,8 @@ fn lockout() {
 
 #[test]
 fn cookie_names() {
-    assert_eq!(cookie_name("fit_console", 2020), "fit_console_2020");
-    assert_eq!(cookie_name("fit_console", 0), "fit_console");
+    assert_eq!(cookie_name("akit_console", 2020), "akit_console_2020");
+    assert_eq!(cookie_name("akit_console", 0), "akit_console");
 }
 
 #[test]

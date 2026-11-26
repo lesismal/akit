@@ -82,7 +82,7 @@ Commands:
 Run akit <command> -h for a command's flags.
 ";
 
-const CONFIG_USAGE: &str = "a config file, or a directory of them, to use; give -c again for more, which are merged (fit.json when none is given). A file ending in .conf is fit's .conf format, one ending in .yaml or .yml YAML, any other JSON (comments and trailing commas allowed); a directory's files are its .conf, .yaml, .yml and .json files, in its subdirectories too";
+const CONFIG_USAGE: &str = "a config file, or a directory of them, to use; give -c again for more, which are merged (akit.json when none is given). A file ending in .conf is fit's .conf format, one ending in .yaml or .yml YAML, any other JSON (comments and trailing commas allowed); a directory's files are its .conf, .yaml, .yml and .json files, in its subdirectories too";
 
 const RUN_FLAGS: &[Spec] = &[
     Spec {
@@ -169,7 +169,7 @@ fn print_warnings(name: &str, w: &akit_config::Warnings) {
     }
 }
 
-/// The config files the flags name, `fit.json` when none.
+/// The config files the flags name, `akit.json` when none (fit's `fit.json`, renamed: decision 037).
 pub(crate) fn config_paths(flags: &[(&str, String)]) -> Vec<String> {
     let paths: Vec<String> = flags
         .iter()
@@ -177,7 +177,7 @@ pub(crate) fn config_paths(flags: &[(&str, String)]) -> Vec<String> {
         .map(|(_, v)| v.clone())
         .collect();
     if paths.is_empty() {
-        vec!["fit.json".to_owned()]
+        vec!["akit.json".to_owned()]
     } else {
         paths
     }

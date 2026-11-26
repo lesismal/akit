@@ -324,58 +324,58 @@ fn scrape_as_fit() {
 
     let s = |k: &str, v: f64| (k.to_owned(), v);
     let got = f.wait(&[
-        s(r#"fit_http_requests_total{listener="web",route="hello",code="2xx"}"#, 4.0),
-        s(r#"fit_http_requests_total{listener="web",route="",code="4xx"}"#, 1.0),
-        s(r##"fit_http_requests_total{listener="web",route="#1",code="2xx"}"##, ok),
-        s(r##"fit_http_requests_total{listener="web",route="#1",code="5xx"}"##, failed),
-        s(r#"fit_http_request_duration_seconds_count{listener="web",route="hello"}"#, 4.0),
+        s(r#"akit_http_requests_total{listener="web",route="hello",code="2xx"}"#, 4.0),
+        s(r#"akit_http_requests_total{listener="web",route="",code="4xx"}"#, 1.0),
+        s(r##"akit_http_requests_total{listener="web",route="#1",code="2xx"}"##, ok),
+        s(r##"akit_http_requests_total{listener="web",route="#1",code="5xx"}"##, failed),
+        s(r#"akit_http_request_duration_seconds_count{listener="web",route="hello"}"#, 4.0),
         s(
-            r#"fit_http_request_duration_seconds_bucket{listener="web",route="hello",le="+Inf"}"#,
+            r#"akit_http_request_duration_seconds_bucket{listener="web",route="hello",le="+Inf"}"#,
             4.0,
         ),
-        s(r#"fit_http_request_duration_seconds_count{listener="secure",route=""}"#, 0.0),
+        s(r#"akit_http_request_duration_seconds_count{listener="secure",route=""}"#, 0.0),
         s(
-            r#"fit_upstream_response_duration_seconds_count{upstream="back"}"#,
+            r#"akit_upstream_response_duration_seconds_count{upstream="back"}"#,
             ok + failed,
         ),
-        s(r#"fit_upstream_requests_in_flight{upstream="back"}"#, 0.0),
+        s(r#"akit_upstream_requests_in_flight{upstream="back"}"#, 0.0),
         (
-            format!(r#"fit_upstream_backend_requests_total{{upstream="back",backend="{live}",result="success"}}"#),
+            format!(r#"akit_upstream_backend_requests_total{{upstream="back",backend="{live}",result="success"}}"#),
             ok,
         ),
         (
-            format!(r#"fit_upstream_backend_requests_total{{upstream="back",backend="{live}",result="failure"}}"#),
+            format!(r#"akit_upstream_backend_requests_total{{upstream="back",backend="{live}",result="failure"}}"#),
             0.0,
         ),
         (
-            format!(r#"fit_upstream_backend_requests_total{{upstream="back",backend="{dead}",result="failure"}}"#),
+            format!(r#"akit_upstream_backend_requests_total{{upstream="back",backend="{dead}",result="failure"}}"#),
             failed,
         ),
         (
-            format!(r#"fit_upstream_backend_requests_in_flight{{upstream="back",backend="{live}"}}"#),
+            format!(r#"akit_upstream_backend_requests_in_flight{{upstream="back",backend="{live}"}}"#),
             0.0,
         ),
         (
-            format!(r#"fit_upstream_backend_up{{upstream="back",backend="{live}"}}"#),
+            format!(r#"akit_upstream_backend_up{{upstream="back",backend="{live}"}}"#),
             1.0,
         ),
         (
             format!(
-                r#"fit_tls_certificate_not_after_seconds{{listener="secure",name="a.example",serial="{}"}}"#,
+                r#"akit_tls_certificate_not_after_seconds{{listener="secure",name="a.example",serial="{}"}}"#,
                 serial_hex(leaf.serial())
             ),
             leaf.not_after() as f64,
         ),
-        s(r#"fit_config_reloads_total{result="success"}"#, 1.0),
-        s(r#"fit_config_reloads_total{result="failure"}"#, 1.0),
-        s("fit_config_version", 2.0),
-        s(r#"fit_reads_paused_total{reason="budget"}"#, 0.0),
+        s(r#"akit_config_reloads_total{result="success"}"#, 1.0),
+        s(r#"akit_config_reloads_total{result="failure"}"#, 1.0),
+        s("akit_config_version", 2.0),
+        s(r#"akit_reads_paused_total{reason="budget"}"#, 0.0),
     ]);
     for name in [
-        "fit_connections_open",
-        "fit_connections_refused_total",
-        "fit_pending_bytes",
-        "fit_config_last_applied_timestamp_seconds",
+        "akit_connections_open",
+        "akit_connections_refused_total",
+        "akit_pending_bytes",
+        "akit_config_last_applied_timestamp_seconds",
     ] {
         assert!(got.contains_key(name), "no {name}");
     }
@@ -387,7 +387,7 @@ fn scrape_as_fit() {
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_secs_f64();
-    let applied = got["fit_config_last_applied_timestamp_seconds"];
+    let applied = got["akit_config_last_applied_timestamp_seconds"];
     assert!((now - applied).abs() < 60.0, "last applied {applied}");
 
     // A route a reload removes is no longer scraped, once the graphs that had it are gone.
@@ -397,10 +397,10 @@ fn scrape_as_fit() {
         f.cell.collect();
         let got = f.scrape();
         let old = got.contains_key(
-            r#"fit_http_request_duration_seconds_count{listener="web",route="hello"}"#,
+            r#"akit_http_request_duration_seconds_count{listener="web",route="hello"}"#,
         );
         let renamed = got.contains_key(
-            r#"fit_http_request_duration_seconds_count{listener="web",route="greeting"}"#,
+            r#"akit_http_request_duration_seconds_count{listener="web",route="greeting"}"#,
         );
         if !old && renamed {
             break;
@@ -434,9 +434,9 @@ fn scrape_without_metrics() {
     assert_eq!(get(f.addr("web"), "/"), 200);
     let got = f.scrape();
     for k in got.keys() {
-        assert!(!k.starts_with("fit_http_"), "{k} scraped without metrics");
+        assert!(!k.starts_with("akit_http_"), "{k} scraped without metrics");
     }
-    assert!(got.contains_key("fit_config_version"));
+    assert!(got.contains_key("akit_config_version"));
     assert!(f.metrics.routes().is_empty());
     f.stop();
 }
@@ -472,11 +472,11 @@ fn counted_with_the_access_log() {
     assert_eq!(get(web, "/nowhere"), 404);
     f.wait(&[
         (
-            r#"fit_http_requests_total{listener="web",route="hello",code="2xx"}"#.to_owned(),
+            r#"akit_http_requests_total{listener="web",route="hello",code="2xx"}"#.to_owned(),
             2.0,
         ),
         (
-            r#"fit_http_requests_total{listener="web",route="",code="4xx"}"#.to_owned(),
+            r#"akit_http_requests_total{listener="web",route="",code="4xx"}"#.to_owned(),
             1.0,
         ),
     ]);

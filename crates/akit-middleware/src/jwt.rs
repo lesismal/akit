@@ -351,9 +351,9 @@ impl Jwt {
         resp.headers.set(
             "WWW-Authenticate",
             if invalid {
-                r#"Bearer realm="fit", error="invalid_token""#
+                r#"Bearer realm="akit", error="invalid_token""#
             } else {
-                r#"Bearer realm="fit""#
+                r#"Bearer realm="akit""#
             },
         );
         ctx.respond(resp);

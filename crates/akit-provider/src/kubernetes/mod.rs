@@ -14,7 +14,7 @@
 //! `ingress.http_port` and, for the hosts of its `tls`, of `ingress.https_port`. The certificates
 //! of the Secrets HTTPS listeners and Ingresses name are written to files; each Service port they
 //! send to is an upstream of its ready endpoints or its cluster IP. Ingresses' annotations under
-//! `fit.lesismal.github.io/` ask for redirects to HTTPS, rewrites, h2c upstreams, rate and body
+//! `akit.lesismal.github.io/` ask for redirects to HTTPS, rewrites, h2c upstreams, rate and body
 //! limits, source ranges and timeouts, as fit reads them. What it leaves out is reported once.
 //!
 //! It runs in the control plane, on a thread of its own, its requests answered on an akio
@@ -1170,11 +1170,11 @@ pub(crate) mod fuzz {
             )],
             gateway_classes: vec![o(
                 Shape::GatewayClass,
-                r#"{"metadata": {"name": "fit"}, "spec": {"controllerName": "lesismal.github.io/fit"}}"#,
+                r#"{"metadata": {"name": "akit"}, "spec": {"controllerName": "lesismal.github.io/akit"}}"#,
             )],
             gateways: vec![o(
                 Shape::Gateway,
-                r#"{"metadata": {"namespace": "default", "name": "gw"}, "spec": {"gatewayClassName": "fit", "listeners": [
+                r#"{"metadata": {"namespace": "default", "name": "gw"}, "spec": {"gatewayClassName": "akit", "listeners": [
   {"name": "http", "port": 80, "protocol": "HTTP", "allowedRoutes": {"namespaces": {"from": "All"}}},
   {"name": "web", "port": 8080, "protocol": "HTTP", "hostname": "*.example.com"},
   {"name": "tls", "port": 443, "protocol": "HTTPS", "tls": {"certificateRefs": [{"name": "cert"}]}},
@@ -1182,7 +1182,7 @@ pub(crate) mod fuzz {
             )],
             ingress_classes: vec![o(
                 Shape::IngressClass,
-                r#"{"metadata": {"name": "fit", "annotations": {"ingressclass.kubernetes.io/is-default-class": "true"}}, "spec": {"controller": "lesismal.github.io/fit"}}"#,
+                r#"{"metadata": {"name": "akit", "annotations": {"ingressclass.kubernetes.io/is-default-class": "true"}}, "spec": {"controller": "lesismal.github.io/akit"}}"#,
             )],
             services: vec![o(
                 Shape::Service,

@@ -2,24 +2,24 @@
 //! Docker provider reads containers' labels (and the Consul provider, I61, services' tags), and
 //! the part they make: fit's `provider/labels`.
 //!
-//! The labels, under a prefix (`fit.`, say):
+//! The labels, under a prefix (`akit.`, say):
 //!
 //! ```text
-//! fit.port=<port>                 the port; the source's own when left out
-//! fit.upstream=<JSON object>      more of the upstream's settings, as in the config
-//! fit.routes.<r>.host=<a,b>       a route named <name>.<r>, matching these hosts;
-//! fit.routes.<r>.path=<a,b>       ... paths, as in the config's match
-//! fit.routes.<r>.path_regexp=<a,b>
-//! fit.routes.<r>.method=<a,b>
-//! fit.routes.<r>.expr=<expr>
-//! fit.routes.<r>.priority=<n>
-//! fit.routes.<r>.listeners=<a,b>
-//! fit.routes.<r>.middleware=<JSON array>
-//! fit.routes.<r>.handler=<JSON object>  proxy to the upstream when left out
-//! fit.services.<s>.listeners=<a,b>      a layer 4 service named <name>.<s>
-//! fit.services.<s>.port=<port>          to this port, through an upstream of its own
-//! fit.services.<s>.server_names=<a,b>
-//! fit.services.<s>.proxy_protocol=<v1|v2>
+//! akit.port=<port>                the port; the source's own when left out
+//! akit.upstream=<JSON object>      more of the upstream's settings, as in the config
+//! akit.routes.<r>.host=<a,b>      a route named <name>.<r>, matching these hosts;
+//! akit.routes.<r>.path=<a,b>      ... paths, as in the config's match
+//! akit.routes.<r>.path_regexp=<a,b>
+//! akit.routes.<r>.method=<a,b>
+//! akit.routes.<r>.expr=<expr>
+//! akit.routes.<r>.priority=<n>
+//! akit.routes.<r>.listeners=<a,b>
+//! akit.routes.<r>.middleware=<JSON array>
+//! akit.routes.<r>.handler=<JSON object>  proxy to the upstream when left out
+//! akit.services.<s>.listeners=<a,b>     a layer 4 service named <name>.<s>
+//! akit.services.<s>.port=<port>         to this port, through an upstream of its own
+//! akit.services.<s>.server_names=<a,b>
+//! akit.services.<s>.proxy_protocol=<v1|v2>
 //! ```
 //!
 //! Other labels under the prefix are the caller's to read, or refused. A label's JSON is read
@@ -152,7 +152,7 @@ pub(crate) fn parse(
                 .set(field, value)
                 .map_err(bad)?;
         } else {
-            return Err(bad(format!("is not a {} fit reads", kind.label)));
+            return Err(bad(format!("is not a {} akit reads", kind.label)));
         }
     }
     if let Some(k) = l
@@ -412,15 +412,15 @@ mod tests {
         let l = parse(
             &map(&[
                 ("other", "not ours"),
-                ("fit.enable", "true"),
-                ("fit.port", "8080"),
-                ("fit.routes.r.path_regexp", "^/a, ^/b"),
-                ("fit.routes.r.method", "GET,POST"),
-                ("fit.services.s.listeners", "tcp"),
-                ("fit.services.s.server_names", "a.example, b.example"),
-                ("fit.services.s.port", "5432"),
+                ("akit.enable", "true"),
+                ("akit.port", "8080"),
+                ("akit.routes.r.path_regexp", "^/a, ^/b"),
+                ("akit.routes.r.method", "GET,POST"),
+                ("akit.services.s.listeners", "tcp"),
+                ("akit.services.s.server_names", "a.example, b.example"),
+                ("akit.services.s.port", "5432"),
             ]),
-            "fit.",
+            "akit.",
             &["enable"],
             KIND,
         )
@@ -456,57 +456,57 @@ mod tests {
     #[test]
     fn refused() {
         for (labels, want) in [
-            (("fit.port", "0"), r#"label fit.port: "0" is not a port"#),
+            (("akit.port", "0"), r#"label akit.port: "0" is not a port"#),
             (
-                ("fit.port", "http"),
-                r#"label fit.port: "http" is not a port"#,
+                ("akit.port", "http"),
+                r#"label akit.port: "http" is not a port"#,
             ),
             (
-                ("fit.upstream", "[]"),
-                "label fit.upstream: must be a JSON object of an upstream's settings",
+                ("akit.upstream", "[]"),
+                "label akit.upstream: must be a JSON object of an upstream's settings",
             ),
             (
-                ("fit.upstream", "null"),
-                "label fit.upstream: must be a JSON object of an upstream's settings",
+                ("akit.upstream", "null"),
+                "label akit.upstream: must be a JSON object of an upstream's settings",
             ),
             (
-                ("fit.routes.r", "x"),
-                "label fit.routes.r: is not fit.routes.<name>.<setting>, with a name of letters, digits, '_' and '-'",
+                ("akit.routes.r", "x"),
+                "label akit.routes.r: is not akit.routes.<name>.<setting>, with a name of letters, digits, '_' and '-'",
             ),
             (
-                ("fit.routes._r.path", "/"),
-                "label fit.routes._r.path: is not fit.routes.<name>.<setting>, with a name of letters, digits, '_' and '-'",
+                ("akit.routes._r.path", "/"),
+                "label akit.routes._r.path: is not akit.routes.<name>.<setting>, with a name of letters, digits, '_' and '-'",
             ),
             (
-                ("fit.services.s", "x"),
-                "label fit.services.s: is not fit.services.<name>.<setting>, with a name of letters, digits, '_' and '-'",
+                ("akit.services.s", "x"),
+                "label akit.services.s: is not akit.services.<name>.<setting>, with a name of letters, digits, '_' and '-'",
             ),
             (
-                ("fit.services.s.port", "70000"),
-                r#"label fit.services.s.port: "70000" is not a port"#,
+                ("akit.services.s.port", "70000"),
+                r#"label akit.services.s.port: "70000" is not a port"#,
             ),
             (
-                ("fit.services.s.colour", "red"),
-                r#"label fit.services.s.colour: a service has no setting "colour""#,
+                ("akit.services.s.colour", "red"),
+                r#"label akit.services.s.colour: a service has no setting "colour""#,
             ),
             (
-                ("fit.bogus", "x"),
-                "label fit.bogus: is not a label fit reads",
+                ("akit.bogus", "x"),
+                "label akit.bogus: is not a label akit reads",
             ),
             (
-                ("fit.routes.r.priority", "high"),
-                r#"label fit.routes.r.priority: "high" is not a whole number"#,
+                ("akit.routes.r.priority", "high"),
+                r#"label akit.routes.r.priority: "high" is not a whole number"#,
             ),
             (
-                ("fit.routes.r.handler", "[]"),
-                "label fit.routes.r.handler: must be a JSON object of a handler, as in the config",
+                ("akit.routes.r.handler", "[]"),
+                "label akit.routes.r.handler: must be a JSON object of a handler, as in the config",
             ),
             (
-                ("fit.routes.r.handler", "null"),
-                "label fit.routes.r.handler: must be a JSON object of a handler, as in the config",
+                ("akit.routes.r.handler", "null"),
+                "label akit.routes.r.handler: must be a JSON object of a handler, as in the config",
             ),
         ] {
-            let err = parse(&map(&[labels]), "fit.", &[], KIND).unwrap_err();
+            let err = parse(&map(&[labels]), "akit.", &[], KIND).unwrap_err();
             assert_eq!(err, want, "{labels:?}");
         }
     }

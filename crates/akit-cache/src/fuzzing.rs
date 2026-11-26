@@ -173,7 +173,7 @@ pub fn cache_semantics(data: &[u8]) {
     assert!(
         r.headers
             .get("cache-status")
-            .is_some_and(|v| v.starts_with("fit; hit; ttl="))
+            .is_some_and(|v| v.starts_with("akit; hit; ttl="))
     );
 
     let base = if flags & 8 != 0 {

@@ -430,7 +430,7 @@ fn bearer(addr: SocketAddr, path: &str, token: &str) -> Resp {
 /// the process's and the tests run at once.
 const MIN_REFETCH: Duration = Duration::from_millis(50);
 
-const INVALID: &str = r#"Bearer realm="fit", error="invalid_token""#;
+const INVALID: &str = r#"Bearer realm="akit", error="invalid_token""#;
 
 // ---- fit's tests ----
 
@@ -642,7 +642,7 @@ fn jwt_token_from() {
     assert_eq!(r.status, 200, "Authorization, in lower case");
     let r = get(a, "/header", &[]);
     assert_eq!(r.status, 401, "no token");
-    assert_eq!(r.header("www-authenticate"), Some(r#"Bearer realm="fit""#));
+    assert_eq!(r.header("www-authenticate"), Some(r#"Bearer realm="akit""#));
     let basic = akio_crypto::base64::STANDARD.encode(format!("alice:{token}"));
     let r = get(
         a,

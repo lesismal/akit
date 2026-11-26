@@ -43,8 +43,8 @@ use super::record::{self, END_REQUEST, Reader, STDERR, STDIN, STDOUT};
 pub(crate) const WATERMARK: usize = 64 << 10;
 
 /// The trailer an HTTP/2 or HTTP/3 response of no declared length ends with when the application
-/// broke off mid-body: fit's `Fit-Error`.
-const BROKEN_TRAILER: (&str, &str) = ("Fit-Error", "the FastCGI application's response broke off");
+/// broke off mid-body: `Akit-Error`, fit's `Fit-Error` renamed (decision 037).
+const BROKEN_TRAILER: (&str, &str) = ("Akit-Error", "the FastCGI application's response broke off");
 
 /// Why an exchange ended before its response did.
 #[derive(Debug)]

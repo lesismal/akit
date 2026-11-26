@@ -217,7 +217,7 @@ fn route(body: &str) -> String {
 #[test]
 fn consul_kv_routes_follow_the_keys() {
     let consul = FakeConsul::start();
-    consul.put("fit/app", &route("one"));
+    consul.put("akit/app", &route("one"));
     consul.put("other/x", &route("other"));
     let dir = Dir::new("providers");
     let config = dir.0.join("akit.json");
@@ -235,14 +235,14 @@ fn consul_kv_routes_follow_the_keys() {
     .unwrap();
     let (akit, addr) = Akit::start(&config);
     akit.until(&format!(
-        r#"akit: provider kv watching Consul's keys under "fit/" at http://{}"#,
+        r#"akit: provider kv watching Consul's keys under "akit/" at http://{}"#,
         consul.addr
     ));
     akit.until("akit: applied what provider kv provides");
     assert_eq!(get(addr, "/app"), (200, "one".to_owned()));
     assert_eq!(get(addr, "/base"), (200, "base".to_owned()));
 
-    consul.put("fit/app", &route("two"));
+    consul.put("akit/app", &route("two"));
     akit.until("akit: applied what provider kv provides");
     assert_eq!(get(addr, "/app"), (200, "two".to_owned()));
     akit.stop();

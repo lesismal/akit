@@ -335,7 +335,7 @@ fn basic_auth_forward_authorization() {
     let r = auth_get(akit.addr(), "", "", &[]);
     assert_eq!(
         r.header("www-authenticate"),
-        Some(r#"Basic realm="fit", charset="UTF-8""#),
+        Some(r#"Basic realm="akit", charset="UTF-8""#),
         "the realm by default"
     );
 }
@@ -621,7 +621,7 @@ fn basic_auth_params() {
         let akit_config::Handler::BasicAuth(b) = &c.routes[0].middleware[0] else {
             panic!()
         };
-        assert_eq!((b.realm.as_str(), b.forward_authorization), ("fit", false));
+        assert_eq!((b.realm.as_str(), b.forward_authorization), ("akit", false));
     }
 }
 

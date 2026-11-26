@@ -69,10 +69,10 @@ pub struct WasmProperty {
     pub value: String,
 }
 
-/// The `wasm` middleware's params, as fit's `plugin/wasm` `WASM`: fit's ABI and Proxy-Wasm's.
+/// The `wasm` middleware's params, as fit's `plugin/wasm` `WASM`: akit's ABI (fit's, renamed) and Proxy-Wasm's.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Wasm {
-    /// `path` (required): the plugin, a WebAssembly module that exports `fit_on_request`, as a
+    /// `path` (required): the plugin, a WebAssembly module that exports `akit_on_request`, as a
     /// WASI reactor; read when the config is compiled.
     pub path: String,
     /// `config`: a string the plugin reads, for settings of its own.

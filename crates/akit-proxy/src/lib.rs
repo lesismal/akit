@@ -75,7 +75,7 @@
 //!   announcement, and a small one, which is otherwise sent whole, is streamed to carry them.
 //! - **A body cut short** closes an HTTP/1 client's connection, and resets an HTTP/2 or HTTP/3
 //!   stream of a body of a declared length; one of no declared length ends with fit's
-//!   `Fit-Error: upstream failed mid-body` trailer, which is all such a client could tell it by.
+//!   `Akit-Error: upstream failed mid-body` trailer, which is all such a client could tell it by.
 //!
 //! I18 adds upstreams over h2 and h2c (the upstream's `protocol`): the same exchange, through
 //! akit-upstream's h2 pool, the request's `Host` going as HTTP/2's `:authority`. Since I18b (akio

@@ -76,7 +76,7 @@ fn defaults() {
             DEFAULT_KV_MAX_KEYS
         )
     );
-    assert_eq!((DEFAULT_KV_PREFIX, DEFAULT_KV_MAX_KEYS), ("fit/", 1000));
+    assert_eq!((DEFAULT_KV_PREFIX, DEFAULT_KV_MAX_KEYS), ("akit/", 1000));
     let ProviderKind::Etcd(e) = &ps[2].kind else {
         panic!("{:?}", ps[2]);
     };
@@ -98,7 +98,7 @@ fn values() {
               "refresh_interval": "1m", "request_timeout": "3s"}}}},
             {{"name": "kv", "consul_kv": {{"endpoint": "http://10.0.0.1:8500", "prefix": "edge/", "max_keys": 7}}}},
             {{"name": "e", "etcd": {{"endpoints": ["http://10.0.0.71:2379", "https://10.0.0.72:2379"],
-              "username": "fit", "password_file": "pw", "prefix": "x/", "max_keys": 0,
+              "username": "akit", "password_file": "pw", "prefix": "x/", "max_keys": 0,
               "refresh_interval": "0s", "request_timeout": "2s"}}}}
         ]}}"#
     ))
@@ -143,7 +143,7 @@ fn values() {
     );
     assert_eq!(
         (&*e.username, &*e.password_file, &*e.prefix, e.max_keys),
-        ("fit", "pw", "x/", DEFAULT_KV_MAX_KEYS)
+        ("akit", "pw", "x/", DEFAULT_KV_MAX_KEYS)
     );
     assert_eq!(
         (e.refresh_interval, e.request_timeout),

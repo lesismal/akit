@@ -1,7 +1,9 @@
 # akit's Admin API, v1, as frozen at I79 (docs/compatibility.md#the-admin-api-v1): fit's v1 for
 # what akit serves. Written by hand at the freeze and never edited within v1: what changes later
 # is marked in additions.txt. akit-admin's test v1_surface_is_frozen holds the running API to
-# this file and those additions. One item a line, tab-separated:
+# this file and those additions. Edited once before akit's first release, by decision 037: fit's
+# header fields Fit-Config-Version and Fit-Dry-Run renamed Akit-Config-Version and Akit-Dry-Run.
+# One item a line, tab-separated:
 #   endpoint <method> <path>     a path's {n} is a number, {path...} JSON pointer tokens
 #   uncovered <method> <path>    served, for people, and not covered (the dashboard)
 #   header <name>                a header field the API reads or writes
@@ -36,8 +38,8 @@ endpoint	PUT	/config/{path...}
 header	Allow
 header	Authorization
 header	ETag
-header	Fit-Config-Version
-header	Fit-Dry-Run
+header	Akit-Config-Version
+header	Akit-Dry-Run
 header	If-Match
 header	If-None-Match
 header	WWW-Authenticate

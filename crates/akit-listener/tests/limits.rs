@@ -300,7 +300,7 @@ fn pending_bytes_budget() {
         "{resp}"
     );
     assert!(reader.join().unwrap() > 32 << 20);
-    // The scrape's fit_reads_paused_total{reason="budget"} is akio's count.
+    // The scrape's akit_reads_paused_total{reason="budget"} is akio's count.
     assert!(e.telemetry().metrics().total.budget_pauses > 0);
     e.shutdown();
     e.wait();

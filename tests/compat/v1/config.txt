@@ -64,7 +64,7 @@ field	acme.shared_storage.etcd.key_file	string	optional	-
 field	acme.shared_storage.etcd.password_file	string	optional	-
 field	acme.shared_storage.etcd.username	string	optional	-
 field	acme.shared_storage.lock_ttl	duration	optional	"30s"
-field	acme.shared_storage.prefix	string	optional	"fit/"
+field	acme.shared_storage.prefix	string	optional	"akit/"
 field	acme.shared_storage.redis	object	optional	-
 field	acme.shared_storage.redis.address	string	optional	"127.0.0.1:6379"
 field	acme.shared_storage.redis.ca_file	string	optional	-
@@ -711,7 +711,7 @@ field	providers[].consul.key_file	string	optional	-
 field	providers[].consul.max_services	integer	optional	1000
 field	providers[].consul.refresh_interval	duration	optional	"30s"
 field	providers[].consul.request_timeout	duration	optional	"10s"
-field	providers[].consul.tag_prefix	string	optional	"fit"
+field	providers[].consul.tag_prefix	string	optional	"akit"
 field	providers[].consul.token_file	string	optional	-
 field	providers[].consul_kv	object	optional	-
 field	providers[].consul_kv.ca_file	string	optional	-
@@ -720,14 +720,14 @@ field	providers[].consul_kv.datacenter	string	optional	-
 field	providers[].consul_kv.endpoint	string	optional	"http://127.0.0.1:8500"
 field	providers[].consul_kv.key_file	string	optional	-
 field	providers[].consul_kv.max_keys	integer	optional	1000
-field	providers[].consul_kv.prefix	string	optional	"fit/"
+field	providers[].consul_kv.prefix	string	optional	"akit/"
 field	providers[].consul_kv.refresh_interval	duration	optional	"30s"
 field	providers[].consul_kv.request_timeout	duration	optional	"10s"
 field	providers[].consul_kv.token_file	string	optional	-
 field	providers[].docker	object	optional	-
 field	providers[].docker.endpoint	string	optional	"unix:///var/run/docker.sock"
 field	providers[].docker.expose_all	boolean	optional	-
-field	providers[].docker.label_prefix	string	optional	"fit"
+field	providers[].docker.label_prefix	string	optional	"akit"
 field	providers[].docker.max_containers	integer	optional	1000
 field	providers[].docker.network	string	optional	-
 field	providers[].docker.refresh_interval	duration	optional	"30s"
@@ -740,7 +740,7 @@ field	providers[].etcd.endpoints	array<string>	optional	["http://127.0.0.1:2379"
 field	providers[].etcd.key_file	string	optional	-
 field	providers[].etcd.max_keys	integer	optional	1000
 field	providers[].etcd.password_file	string	optional	-
-field	providers[].etcd.prefix	string	optional	"fit/"
+field	providers[].etcd.prefix	string	optional	"akit/"
 field	providers[].etcd.refresh_interval	duration	optional	"30s"
 field	providers[].etcd.request_timeout	duration	optional	"10s"
 field	providers[].etcd.username	string	optional	-
@@ -750,7 +750,7 @@ field	providers[].kubernetes.allow_external_name_services	boolean	optional	-
 field	providers[].kubernetes.backends	enum	optional	"endpoints"
 field	providers[].kubernetes.certificates_dir	string	optional	-
 field	providers[].kubernetes.context	string	optional	-
-field	providers[].kubernetes.controller_name	string	optional	"lesismal.github.io/fit"
+field	providers[].kubernetes.controller_name	string	optional	"lesismal.github.io/akit"
 field	providers[].kubernetes.ingress	object	optional	-
 field	providers[].kubernetes.ingress.http_port	integer	optional	80
 field	providers[].kubernetes.ingress.https_port	integer	optional	443
@@ -986,7 +986,7 @@ field	routes[].middleware[].params	object	optional	-
 field	routes[].middleware[]<basic_auth>	module	optional	-
 field	routes[].middleware[]<basic_auth>.params	object	optional	-
 field	routes[].middleware[]<basic_auth>.params.forward_authorization	boolean	optional	-
-field	routes[].middleware[]<basic_auth>.params.realm	string	optional	"fit"
+field	routes[].middleware[]<basic_auth>.params.realm	string	optional	"akit"
 field	routes[].middleware[]<basic_auth>.params.user_header	string	optional	-
 field	routes[].middleware[]<basic_auth>.params.users	array<object>	required	-
 field	routes[].middleware[]<basic_auth>.params.users[].password_hash	string	required	-
@@ -3552,7 +3552,7 @@ field	telemetry.headers_file	string	optional	-
 field	telemetry.key_file	string	optional	-
 field	telemetry.metrics	object	optional	-
 field	telemetry.metrics.interval	duration	optional	"30s"
-field	telemetry.service_name	string	optional	"fit"
+field	telemetry.service_name	string	optional	"akit"
 field	telemetry.timeout	duration	optional	"10s"
 field	telemetry.traces	object	optional	-
 field	telemetry.traces.interval	duration	optional	"5s"
@@ -3752,7 +3752,7 @@ field	upstreams[].response_idle_timeout	duration	optional	"60s"
 field	upstreams[].response_timeout	duration	optional	"1h"
 field	upstreams[].sticky_cookie	object	optional	-
 field	upstreams[].sticky_cookie.max_age	duration	optional	-
-field	upstreams[].sticky_cookie.name	string	optional	"fit_sticky"
+field	upstreams[].sticky_cookie.name	string	optional	"akit_sticky"
 field	upstreams[].sticky_cookie.path	string	optional	"/"
 field	upstreams[].sticky_cookie.secure	boolean	optional	-
 field	upstreams[].tls_ca_file	string	optional	-

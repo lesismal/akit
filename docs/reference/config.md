@@ -13,7 +13,8 @@ its fields, with each field's type, default and description. akit reads fit's co
 ([decision 002](../decisions/002-config-compatibility.md)): the same fields, defaults and meanings,
 in the same three formats, a [.conf file](https://github.com/lesismal/fit/blob/main/docs/reference/fit.md),
 YAML or JSON, any of them split across several files. Where akit differs from fit, the table says
-so in a note marked **akit:**.
+so in a note marked **akit:**; nine defaults that name the gateway are akit's, `akit` where fit's
+say `fit` ([decision 037](../decisions/037-akit-names.md)).
 
 <!-- BEGIN GENERATED: summary -->
 akit reads **504** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 76 objects akit reads, each has its table below.
@@ -460,7 +461,7 @@ route { handler proxy { upstream app } }
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
 | `max_age` | duration |  | How long the client keeps the cookie, as its Max-Age; until the browser closes when left out. |
-| `name` | string | `"fit_sticky"` | The cookie's name; fit_sticky when left out. |
+| `name` | string | `"akit_sticky"` | The cookie's name; akit_sticky when left out. **akit:** fit's default is `fit_sticky`, renamed (decision 037). |
 | `path` | string | `"/"` | The cookie's Path; / when left out. |
 | `secure` | boolean |  | Mark the cookie Secure, so that it is sent only over HTTPS. It is always HttpOnly and SameSite=Lax. |
 <!-- END GENERATED -->
@@ -878,7 +879,7 @@ telemetry {
 | `headers_file` | string |  | A file of header fields sent with each export, one "Name: value" a line, as an API key a receiver asks for; read when akit starts. None when left out. |
 | `key_file` | string |  | A PEM file with cert_file's private key. |
 | `metrics` | [object](#cfg-telemetry-metrics) |  | Export the metrics the Admin API's /metrics serves, requests counted included, every interval. No metrics over OTLP when left out. |
-| `service_name` | string | `"fit"` | The service.name of the resource traces and metrics are about. fit when left out. |
+| `service_name` | string | `"akit"` | The service.name of the resource traces and metrics are about. akit when left out. **akit:** fit's default is `fit`, renamed (decision 037). |
 | `timeout` | duration | `"10s"` | How long an export may take, connecting included; a batch not sent by then is dropped and counted. 10s when left out. |
 | `traces` | [object](#cfg-telemetry-traces) |  | Trace requests: a server span for each one sampled, and its context sent on to upstreams in traceparent. No traces when left out. |
 <!-- END GENERATED -->
@@ -1023,7 +1024,7 @@ route { match { host example.com }; handler respond { body hello } }
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
 | `access` | [object](#cfg-admin-access) |  | The client addresses the Admin API serves, deciding before the global access, which applies to the API too: a connection either refuses is closed as soon as it is accepted. Unlike the other admin settings it follows every config applied, without a restart. Set allow to "127.0.0.1" (and "::1") to keep local access whatever the global access says. A Unix socket's peers have no address and are never checked, and access is an error with one. Every address is served, unless the global access says otherwise, when left out. |
-| `address` | string | `"127.0.0.1:2019"` | Where the Admin API listens: a host and port, or "unix/" and the path of a Unix socket, as in "unix//run/fit/admin.sock". A host that is not a loopback address or localhost needs token_file, cert_file and key_file, so that only holders of the token reach the API and the token never crosses a network in the clear. 127.0.0.1:2019 when left out. **akit:** A Unix socket is made 0600 (`unix/<path>`). |
+| `address` | string | `"127.0.0.1:2019"` | Where the Admin API listens: a host and port, or "unix/" and the path of a Unix socket, as in "unix//run/akit/admin.sock". A host that is not a loopback address or localhost needs token_file, cert_file and key_file, so that only holders of the token reach the API and the token never crosses a network in the clear. 127.0.0.1:2019 when left out. **akit:** A Unix socket is made 0600 (`unix/<path>`). |
 | `assistant` | object |  | **Not supported yet**: refused by name. The workbench's assistant, a chat beside the console's pages that reads what fit does and drafts changes for a person to submit, calling the model APIs set here; off when left out, and then nothing is sent anywhere. Needs console. With a store, these settings are the first ones only: once the Settings page saves, the store's are used, keys included. |
 | `cert_file` | string |  | A PEM file with the Admin API's certificate, followed by any intermediates; with key_file, the API is served over TLS, 1.2 or later. The files are read again when they change, so that a renewed certificate is served without a restart. Not for a Unix socket. **akit:** Read when akit starts: a renewed certificate takes a restart. |
 | `client_ca_file` | string |  | A PEM file with the CAs that clients' certificates must chain to: with it, every client must present a valid certificate, besides the token, before it is heard. Needs cert_file and key_file; read again when it changes, as they are. **akit:** Read when akit starts, as `cert_file`. |
@@ -1230,7 +1231,7 @@ route { match { host example.com }; handler respond { body hello } }
 | `consul` | [object](#cfg-acme-shared-storage-consul) |  | Keep them in Consul's KV store, with locks held by sessions. |
 | `etcd` | [object](#cfg-acme-shared-storage-etcd) |  | Keep them in etcd, through its v3 JSON gateway, with locks held by leases. |
 | `lock_ttl` | duration | `"30s"` | How long a lock outlives an instance that stopped holding it without giving it back; its holder renews it every third of that. At least 10s; 30s when left out. |
-| `prefix` | string | `"fit/"` | What the keys kept start with, as fit/certificates/<CA>/<name>.pem; instances that share certificates share it. fit/ when left out. |
+| `prefix` | string | `"akit/"` | What the keys kept start with, as akit/certificates/<CA>/<name>.pem; instances that share certificates share it. akit/ when left out. **akit:** fit's default is `fit/`, renamed (decision 037). |
 | `redis` | [object](#cfg-acme-shared-storage-redis) |  | Keep them in Redis, a standalone server or a primary (not Redis Cluster), with locks of SET NX and an expiry. |
 | `request_timeout` | duration | `"10s"` | How long each request to the store may take, connecting included. 10s when left out. |
 <!-- END GENERATED -->
@@ -1322,7 +1323,7 @@ provider kv { etcd { endpoints http://etcd:2379; prefix akit/ } }
 | --- | --- | --- | --- |
 | `endpoint` | string | `"unix:///var/run/docker.sock"` | Where the Docker daemon's API is: unix:// and a socket's path, or tcp:// and a host and port, as of a socket proxy, in plain HTTP. unix:///var/run/docker.sock when left out. |
 | `expose_all` | boolean |  | Take every running container with routes or services in its labels; only those labelled <label_prefix>.enable=true when left out or false. A container labelled <label_prefix>.enable=false is never taken. |
-| `label_prefix` | string | `"fit"` | What the labels read start with, as in fit.routes.web.host. fit when left out. |
+| `label_prefix` | string | `"akit"` | What the labels read start with, as in akit.routes.web.host. akit when left out. **akit:** fit's default is `fit`, renamed (decision 037). |
 | `max_containers` | integer, 0 or more | `1000` | The most containers taken; past it, the rest, by name, are left out and reported. 1000 when left out or 0. |
 | `network` | string |  | The Docker network whose address of a container's is used, when the container is on several and has no <label_prefix>.network label; the first by name when left out. |
 | `refresh_interval` | duration | `"30s"` | How often the containers are listed again whether or not an event came, in case one was missed. 30s when left out. |
@@ -1346,7 +1347,7 @@ provider kv { etcd { endpoints http://etcd:2379; prefix akit/ } }
 | `max_services` | integer, 0 or more | `1000` | The most services taken; past it, the rest, by name, are left out and reported. 1000 when left out or 0. |
 | `refresh_interval` | duration | `"30s"` | How often the catalog is read again whether or not it changed. 30s when left out. |
 | `request_timeout` | duration | `"10s"` | How long each request to Consul may take, connecting included, beyond the five minutes a blocking query waits for a change. 10s when left out. |
-| `tag_prefix` | string | `"fit"` | What the tags read start with, as in fit.routes.web.host=example.com; tags without '=' are passed over. Besides the routes, services and upstream settings a Docker container's labels may set, <tag_prefix>.name names the upstream, the service's name when left out. fit when left out. |
+| `tag_prefix` | string | `"akit"` | What the tags read start with, as in akit.routes.web.host=example.com; tags without '=' are passed over. Besides the routes, services and upstream settings a Docker container's labels may set, <tag_prefix>.name names the upstream, the service's name when left out. akit when left out. **akit:** fit's default is `fit`, renamed (decision 037). |
 | `token_file` | string |  | A file holding the ACL token to send, read each time a watch starts; none when left out. The token needs to read the services and nodes served. |
 <!-- END GENERATED -->
 
@@ -1363,7 +1364,7 @@ provider kv { etcd { endpoints http://etcd:2379; prefix akit/ } }
 | `endpoint` | string | `"http://127.0.0.1:8500"` | Where Consul's HTTP API is, as of the local agent: http:// or https:// and a host and port. http://127.0.0.1:8500 when left out. |
 | `key_file` | string |  | A PEM file with cert_file's private key. |
 | `max_keys` | integer, 0 or more | `1000` | The most keys taken; past it, the rest, by key, are left out and reported. 1000 when left out or 0. |
-| `prefix` | string | `"fit/"` | The keys read are those starting with it. Each holds a JSON object of listeners, routes, upstreams and services, as a config holds them; keys ending in '/' and empty ones are passed over, and a key whose value is not such an object is left out and reported. fit/ when left out. |
+| `prefix` | string | `"akit/"` | The keys read are those starting with it. Each holds a JSON object of listeners, routes, upstreams and services, as a config holds them; keys ending in '/' and empty ones are passed over, and a key whose value is not such an object is left out and reported. akit/ when left out. **akit:** fit's default is `fit/`, renamed (decision 037). |
 | `refresh_interval` | duration | `"30s"` | How often what the keys provide is sent again whether or not it changed, so that a part refused because of the rest of the config is tried again. 30s when left out. |
 | `request_timeout` | duration | `"10s"` | How long each request to Consul may take, connecting included, beyond the five minutes a blocking query waits for a change. 10s when left out. |
 | `token_file` | string |  | A file holding the ACL token to send, read each time a watch starts; none when left out. The token needs to read the keys under prefix. |
@@ -1382,7 +1383,7 @@ provider kv { etcd { endpoints http://etcd:2379; prefix akit/ } }
 | `key_file` | string |  | A PEM file with cert_file's private key. |
 | `max_keys` | integer, 0 or more | `1000` | The most keys taken; past it, the rest, by key, are left out and reported. 1000 when left out or 0. |
 | `password_file` | string |  | A file holding username's password, read each time a watch starts. |
-| `prefix` | string | `"fit/"` | The keys read are those starting with it. Each holds a JSON object of listeners, routes, upstreams and services, as a config holds them; keys ending in '/' and empty ones are passed over, and a key whose value is not such an object is left out and reported. fit/ when left out. |
+| `prefix` | string | `"akit/"` | The keys read are those starting with it. Each holds a JSON object of listeners, routes, upstreams and services, as a config holds them; keys ending in '/' and empty ones are passed over, and a key whose value is not such an object is left out and reported. akit/ when left out. **akit:** fit's default is `fit/`, renamed (decision 037). |
 | `refresh_interval` | duration | `"30s"` | How often the keys are read again whether or not a watch event came. 30s when left out. |
 | `request_timeout` | duration | `"10s"` | How long each request to etcd may take, connecting included, and a watch to start; a watch then lasts until it fails. 10s when left out. |
 | `username` | string |  | The user to authenticate as, with password_file, when etcd's authentication is on; none when left out. |
@@ -1413,7 +1414,7 @@ provider k8s {
 | `backends` | string: `endpoints`, `cluster_ip` | `"endpoints"` | Where requests to a Service go: endpoints, to its ready endpoints from its EndpointSlices, balanced by akit; or cluster_ip, to its cluster IP, balanced by the cluster. endpoints when left out. |
 | `certificates_dir` | string |  | The directory the certificates of HTTPS listeners are written to, from the Secrets they name, for akit's TLS to load: each Secret's chain and key in one file only akit's user may read, named for the Secret and a hash of its contents. Files of that form that are no longer named are removed. A directory of akit's own in the system's temporary directory, removed when akit stops, when left out. |
 | `context` | string |  | The kubeconfig's context to use; its current-context when left out. |
-| `controller_name` | string | `"lesismal.github.io/fit"` | The controllerName of the GatewayClasses whose Gateways akit serves. lesismal.github.io/fit when left out. |
+| `controller_name` | string | `"lesismal.github.io/akit"` | The controllerName of the GatewayClasses whose Gateways akit serves. lesismal.github.io/akit when left out. **akit:** fit's default is `lesismal.github.io/fit`, renamed (decision 037). |
 | `ingress` | [object](#cfg-providers-kubernetes-ingress) |  | Serve Ingresses too: those whose ingressClassName, or kubernetes.io/ingress.class annotation, names an IngressClass whose controller is controller_name, and those naming none when such a class is the default. Their rules are served on http_port, and on https_port for the hosts of their tls, with the certificates of its Secrets. akit's account then needs to list and watch Ingresses and IngressClasses. No Ingresses when left out. |
 | `kubeconfig` | string |  | A kubeconfig file to reach the cluster with: its server, CA, client certificate, token or token file. When left out, the pod's service account, inside the cluster, or else $KUBECONFIG or ~/.kube/config. Exec and auth-provider plugins are not supported. |
 | `listen_host` | string |  | The IP address Gateway listeners are bound on, each on its port; every address when left out. |
@@ -1745,7 +1746,7 @@ route {
 | --- | --- | --- | --- |
 | `users` | list of [object](#cfg-routes-middleware-basic-auth-params-users) | required | The users allowed in, with their passwords' bcrypt hashes. |
 | `forward_authorization` | boolean |  | Leave the Authorization field, with the password, on the request the handler sees; it is removed when left out. |
-| `realm` | string | `"fit"` | The realm the browser shows when it asks for a user and password; fit when left out. |
+| `realm` | string | `"akit"` | The realm the browser shows when it asks for a user and password; akit when left out. **akit:** fit's default is `fit`, renamed (decision 037). |
 | `user_header` | string |  | A request field to set to the user's name for the handler, and the upstream a proxy sends the request to; any the client sent, also spelled with _ for -, is replaced. |
 <!-- END GENERATED -->
 
@@ -2192,7 +2193,7 @@ route {
 
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
-| `path` | string | required | The plugin: a WebAssembly module that exports fit_on_request, as a WASI reactor; fit's package plugin/wasm/guest builds one from Go with GOOS=wasip1 GOARCH=wasm go build -buildmode=c-shared. **akit:** The plugin runs on akio-wasm's instance pool, never on an I/O thread; fit's plugins run unchanged. |
+| `path` | string | required | The plugin: a WebAssembly module that exports akit_on_request, as a WASI reactor; fit's package plugin/wasm/guest, its names renamed, builds one from Go with GOOS=wasip1 GOARCH=wasm go build -buildmode=c-shared. **akit:** The plugin runs on akio-wasm's instance pool, never on an I/O thread. akit's ABI is fit's with its names renamed (decision 037): a plugin of fit's is built again with fit's guest package renamed (as tools/plugin-guest.sh does); Proxy-Wasm filters run unchanged. |
 | `config` | string |  | A string the plugin reads, for settings of its own. |
 | `instances` | integer, 0 or more |  | How many instances of the plugin run calls at once, each with its own memory: the CPUs akit has, at most 16, when left out or 0. |
 | `max_body_bytes` | integer, 0 or more | `1048576` | For a Proxy-Wasm plugin given the response's body, how much of it the plugin may hold, pausing it to see more, or make it; past it the response fails, or goes on without the plugin when on_error is skip. 1 MiB when left out or 0. |

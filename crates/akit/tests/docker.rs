@@ -126,8 +126,8 @@ fn upstream(body: &'static str) -> u16 {
 fn container(service: &str, host: &str, port: u16) -> String {
     format!(
         r#"{{"Id":"id-{service}","Names":["/shop-{service}-1"],"State":"running","Status":"Up 1 second",
-"Labels":{{"fit.enable":"true","com.docker.compose.project":"shop","com.docker.compose.service":"{service}",
-"fit.port":"{port}","fit.routes.main.host":"{host}"}},
+"Labels":{{"akit.enable":"true","com.docker.compose.project":"shop","com.docker.compose.service":"{service}",
+"akit.port":"{port}","akit.routes.main.host":"{host}"}},
 "Ports":[],"HostConfig":{{"NetworkMode":"bridge"}},
 "NetworkSettings":{{"Networks":{{"shop_default":{{"IPAddress":"127.0.0.1","GlobalIPv6Address":""}}}}}}}}"#
     )

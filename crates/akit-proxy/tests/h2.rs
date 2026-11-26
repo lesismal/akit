@@ -748,7 +748,7 @@ fn upstream_breaks_mid_body() {
     let got = Client::H2c.get(akit.addr, "/", &[]);
     assert_eq!(got.status, 200);
     assert_eq!(
-        got.trailer("fit-error"),
+        got.trailer("akit-error"),
         Some("upstream failed mid-body"),
         "{:?} after {} bytes",
         got.trailers,
@@ -1008,7 +1008,7 @@ fn response_idle_timeout() {
             assert!(took < Duration::from_secs(3), "{client:?} {path}: {took:?}");
             if matches!(client, Client::H2c) && path == "/" {
                 assert_eq!(
-                    got.trailer("fit-error"),
+                    got.trailer("akit-error"),
                     Some("upstream failed mid-body"),
                     "{client:?} {path}"
                 );

@@ -295,7 +295,7 @@ fn sticky_cookie() {
         (s.name.as_str(), s.path.as_str(), s.max_age, s.secure),
         (akit_config::DEFAULT_STICKY_COOKIE_NAME, "/", None, false)
     );
-    assert_eq!(s.name, "fit_sticky");
+    assert_eq!(s.name, "akit_sticky");
     let s = sticky(r#"{"name": "s", "path": "/app", "max_age": "1h", "secure": true}"#);
     assert_eq!(
         (s.name.as_str(), s.path.as_str(), s.max_age, s.secure),
@@ -304,7 +304,7 @@ fn sticky_cookie() {
     let s = sticky(r#"{"name": "", "path": "", "max_age": "0s"}"#);
     assert_eq!(
         (s.name.as_str(), s.path.as_str(), s.max_age),
-        ("fit_sticky", "/", None)
+        ("akit_sticky", "/", None)
     );
 }
 
