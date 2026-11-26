@@ -264,6 +264,7 @@ fn compile_config(
     tracer: Option<&Tracer>,
     previous: Option<Previous>,
 ) -> Result<Graph, Failure> {
+    roles_not_running(config)?;
     let modules = BUILD.get().map_or(crate::STANDARD, |(_, m)| m.as_slice());
     let registry: Registry<HandlerParams> =
         Registry::new(modules).map_err(|e| Failure::Registry(e.to_string()))?;
@@ -274,6 +275,51 @@ fn compile_config(
         .with_tracer(tracer.cloned())
         .with_previous(previous);
     compile(config, &registry, &env).map_err(Failure::Config)
+}
+
+/// Refuses a config that sets a role of the tunnel or the LLM feature, which `akit validate`
+/// checks (I98) and the iterations after it run: until a role runs, applying it would be a config
+/// that says more than akit does.
+fn roles_not_running(config: &Config) -> Result<(), Failure> {
+    let mut errs = Vec::new();
+    let mut refuse = |path: &str, iterations: &str| {
+        errs.push(Error {
+            file: None,
+            path: path.to_owned(),
+            line: 0,
+            col: 0,
+            msg: format!(
+                "akit run does not run this role yet ({iterations}); akit validate checks it"
+            ),
+        });
+    };
+    if let Some(t) = &config.tunnel {
+        for (set, path) in [
+            (t.hub.is_some(), "tunnel.hub"),
+            (t.node.is_some(), "tunnel.node"),
+            (t.proxy.is_some(), "tunnel.proxy"),
+        ] {
+            if set {
+                refuse(path, "I101-I103");
+            }
+        }
+    }
+    if let Some(l) = &config.llm {
+        for (set, path) in [
+            (l.hub.is_some(), "llm.hub"),
+            (l.node.is_some(), "llm.node"),
+            (l.proxy.is_some(), "llm.proxy"),
+        ] {
+            if set {
+                refuse(path, "I104-I109");
+            }
+        }
+    }
+    if errs.is_empty() {
+        Ok(())
+    } else {
+        Err(Failure::Config(Errors(errs)))
+    }
 }
 
 /// Opens the access log `c` describes, its times in `zone`, as fit's `NewAccessLogFiles`: a file
@@ -1384,5 +1430,19 @@ mod tests {
             lines[2],
             format!("{}/{}", std::env::consts::OS, std::env::consts::ARCH)
         );
+    }
+
+    /// A role akit validate checks is refused by akit run until its iteration runs it (I98).
+    #[test]
+    fn roles_are_refused_until_they_run() {
+        let c = akit_config::from_json(r#"{"tunnel": {"hub": {}}, "llm": {"proxy": {}}}"#, None)
+            .unwrap();
+        let Err(super::Failure::Config(errs)) = super::roles_not_running(&c) else {
+            panic!("roles let through");
+        };
+        let paths: Vec<&str> = errs.0.iter().map(|e| e.path.as_str()).collect();
+        assert_eq!(paths, ["tunnel.hub", "llm.proxy"]);
+        let c = akit_config::from_json(r#"{"tunnel": {}, "llm": {}}"#, None).unwrap();
+        assert!(super::roles_not_running(&c).is_ok());
     }
 }

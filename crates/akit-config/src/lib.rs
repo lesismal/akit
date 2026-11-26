@@ -38,6 +38,7 @@ mod log;
 mod model;
 mod providers;
 mod providers_kv;
+pub mod roles;
 mod shared_storage;
 pub mod value;
 mod wasm;

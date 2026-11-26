@@ -393,7 +393,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 504 supported.
+3821 fields in 121 sections, at fit `7daee573`; 880 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -440,7 +440,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`http.middleware/wasm`](#fields-http-middleware-wasm) | 18 | 18 | 0 |
 | [`limits`](#fields-limits) | 7 | 7 | 0 |
 | [`listeners`](#fields-listeners) | 30 | 28 | 2 |
-| [`llm`](#fields-llm) | 218 | 0 | 218 |
+| [`llm`](#fields-llm) | 218 | 215 | 3 |
 | [`log`](#fields-log) | 24 | 24 | 0 |
 | [`media_auth`](#fields-media-auth) | 34 | 0 | 34 |
 | [`media_library`](#fields-media-library) | 24 | 0 | 24 |
@@ -515,10 +515,10 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`sync.transforms/route`](#fields-sync-transforms-route) | 7 | 0 | 7 |
 | [`sync.transforms/wasm`](#fields-sync-transforms-wasm) | 9 | 0 | 9 |
 | [`telemetry`](#fields-telemetry) | 14 | 14 | 0 |
-| [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
+| [`tunnel`](#fields-tunnel) | 164 | 161 | 3 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 504 | 3317 |
+| **Total** | 3821 | 880 | 2941 |
 
 <a id="fields-access"></a>
 
@@ -1532,224 +1532,224 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `llm` | `object` | not supported yet |
-| `llm.hub` | `object` | not supported yet |
-| `llm.hub.access` | `object` | not supported yet |
-| `llm.hub.access.allow` | `array<string>` | not supported yet |
-| `llm.hub.access.allow_files` | `array<string>` | not supported yet |
-| `llm.hub.access.deny` | `array<string>` | not supported yet |
-| `llm.hub.access.deny_files` | `array<string>` | not supported yet |
-| `llm.hub.console` | `object` | not supported yet |
-| `llm.hub.console.access` | `object` | not supported yet |
-| `llm.hub.console.access.allow` | `array<string>` | not supported yet |
-| `llm.hub.console.access.allow_files` | `array<string>` | not supported yet |
-| `llm.hub.console.access.deny` | `array<string>` | not supported yet |
-| `llm.hub.console.access.deny_files` | `array<string>` | not supported yet |
-| `llm.hub.console.address` | `string, required` | not supported yet |
-| `llm.hub.console.cert_file` | `string` | not supported yet |
-| `llm.hub.console.key_file` | `string` | not supported yet |
-| `llm.hub.console.max_conns` | `integer` | not supported yet |
-| `llm.hub.console.max_sessions` | `integer` | not supported yet |
+| `llm` | `object` | supported |
+| `llm.hub` | `object` | supported |
+| `llm.hub.access` | `object` | supported |
+| `llm.hub.access.allow` | `array<string>` | supported |
+| `llm.hub.access.allow_files` | `array<string>` | supported |
+| `llm.hub.access.deny` | `array<string>` | supported |
+| `llm.hub.access.deny_files` | `array<string>` | supported |
+| `llm.hub.console` | `object` | supported |
+| `llm.hub.console.access` | `object` | supported |
+| `llm.hub.console.access.allow` | `array<string>` | supported |
+| `llm.hub.console.access.allow_files` | `array<string>` | supported |
+| `llm.hub.console.access.deny` | `array<string>` | supported |
+| `llm.hub.console.access.deny_files` | `array<string>` | supported |
+| `llm.hub.console.address` | `string, required` | supported |
+| `llm.hub.console.cert_file` | `string` | supported |
+| `llm.hub.console.key_file` | `string` | supported |
+| `llm.hub.console.max_conns` | `integer` | supported |
+| `llm.hub.console.max_sessions` | `integer` | supported |
 | `llm.hub.console.mptcp` | `boolean` | not supported yet |
-| `llm.hub.console.session_lifetime` | `duration` | not supported yet |
-| `llm.hub.console.session_timeout` | `duration` | not supported yet |
-| `llm.hub.console.users` | `array<object>, required` | not supported yet |
-| `llm.hub.console.users[].password_hash` | `string, required` | not supported yet |
-| `llm.hub.console.users[].username` | `string, required` | not supported yet |
-| `llm.hub.id` | `string` | not supported yet |
-| `llm.hub.limits` | `object` | not supported yet |
-| `llm.hub.limits.max_conns` | `integer` | not supported yet |
-| `llm.hub.limits.max_inflight` | `integer` | not supported yet |
-| `llm.hub.limits.ping_interval` | `duration` | not supported yet |
-| `llm.hub.limits.retry_interval` | `duration` | not supported yet |
-| `llm.hub.limits.slow_timeout` | `duration` | not supported yet |
-| `llm.hub.limits.stream_idle` | `duration` | not supported yet |
-| `llm.hub.listen` | `object` | not supported yet |
-| `llm.hub.listen.address` | `string, required` | not supported yet |
-| `llm.hub.listen.cert` | `string` | not supported yet |
-| `llm.hub.listen.cert_file` | `string` | not supported yet |
-| `llm.hub.listen.hub_password` | `string` | not supported yet |
-| `llm.hub.listen.key` | `string` | not supported yet |
-| `llm.hub.listen.key_file` | `string` | not supported yet |
-| `llm.hub.listen.node_password` | `string` | not supported yet |
-| `llm.hub.listen.password` | `string` | not supported yet |
-| `llm.hub.listen.proxy_password` | `string` | not supported yet |
-| `llm.hub.listen.self_signed` | `boolean` | not supported yet |
-| `llm.hub.max_nodes` | `integer` | not supported yet |
-| `llm.hub.name` | `string` | not supported yet |
-| `llm.hub.peers` | `array<object>` | not supported yet |
-| `llm.hub.peers[].address` | `string, required` | not supported yet |
-| `llm.hub.peers[].ca_file` | `string` | not supported yet |
-| `llm.hub.peers[].password` | `string` | not supported yet |
-| `llm.hub.peers[].pin` | `string` | not supported yet |
-| `llm.hub.peers[].role` | `enum(hub\|node\|proxy), required` | not supported yet |
-| `llm.hub.peers[].server_name` | `string` | not supported yet |
-| `llm.hub.peers[].token` | `string` | not supported yet |
-| `llm.hub.tokens` | `array<object>` | not supported yet |
-| `llm.hub.tokens[].created_at` | `integer` | not supported yet |
-| `llm.hub.tokens[].expires_at` | `integer` | not supported yet |
-| `llm.hub.tokens[].hash` | `string, required` | not supported yet |
-| `llm.hub.tokens[].id` | `string, required` | not supported yet |
-| `llm.hub.tokens[].members` | `array<string>` | not supported yet |
-| `llm.hub.tokens[].name` | `string, required` | not supported yet |
-| `llm.hub.tokens[].note` | `string` | not supported yet |
-| `llm.node` | `object` | not supported yet |
-| `llm.node.access` | `object` | not supported yet |
-| `llm.node.access.allow` | `array<string>` | not supported yet |
-| `llm.node.access.allow_files` | `array<string>` | not supported yet |
-| `llm.node.access.deny` | `array<string>` | not supported yet |
-| `llm.node.access.deny_files` | `array<string>` | not supported yet |
-| `llm.node.console` | `object` | not supported yet |
-| `llm.node.console.access` | `object` | not supported yet |
-| `llm.node.console.access.allow` | `array<string>` | not supported yet |
-| `llm.node.console.access.allow_files` | `array<string>` | not supported yet |
-| `llm.node.console.access.deny` | `array<string>` | not supported yet |
-| `llm.node.console.access.deny_files` | `array<string>` | not supported yet |
-| `llm.node.console.address` | `string, required` | not supported yet |
-| `llm.node.console.cert_file` | `string` | not supported yet |
-| `llm.node.console.key_file` | `string` | not supported yet |
-| `llm.node.console.max_conns` | `integer` | not supported yet |
-| `llm.node.console.max_sessions` | `integer` | not supported yet |
+| `llm.hub.console.session_lifetime` | `duration` | supported |
+| `llm.hub.console.session_timeout` | `duration` | supported |
+| `llm.hub.console.users` | `array<object>, required` | supported |
+| `llm.hub.console.users[].password_hash` | `string, required` | supported |
+| `llm.hub.console.users[].username` | `string, required` | supported |
+| `llm.hub.id` | `string` | supported |
+| `llm.hub.limits` | `object` | supported |
+| `llm.hub.limits.max_conns` | `integer` | supported |
+| `llm.hub.limits.max_inflight` | `integer` | supported |
+| `llm.hub.limits.ping_interval` | `duration` | supported |
+| `llm.hub.limits.retry_interval` | `duration` | supported |
+| `llm.hub.limits.slow_timeout` | `duration` | supported |
+| `llm.hub.limits.stream_idle` | `duration` | supported |
+| `llm.hub.listen` | `object` | supported |
+| `llm.hub.listen.address` | `string, required` | supported |
+| `llm.hub.listen.cert` | `string` | supported |
+| `llm.hub.listen.cert_file` | `string` | supported |
+| `llm.hub.listen.hub_password` | `string` | supported |
+| `llm.hub.listen.key` | `string` | supported |
+| `llm.hub.listen.key_file` | `string` | supported |
+| `llm.hub.listen.node_password` | `string` | supported |
+| `llm.hub.listen.password` | `string` | supported |
+| `llm.hub.listen.proxy_password` | `string` | supported |
+| `llm.hub.listen.self_signed` | `boolean` | supported |
+| `llm.hub.max_nodes` | `integer` | supported |
+| `llm.hub.name` | `string` | supported |
+| `llm.hub.peers` | `array<object>` | supported |
+| `llm.hub.peers[].address` | `string, required` | supported |
+| `llm.hub.peers[].ca_file` | `string` | supported |
+| `llm.hub.peers[].password` | `string` | supported |
+| `llm.hub.peers[].pin` | `string` | supported |
+| `llm.hub.peers[].role` | `enum(hub\|node\|proxy), required` | supported |
+| `llm.hub.peers[].server_name` | `string` | supported |
+| `llm.hub.peers[].token` | `string` | supported |
+| `llm.hub.tokens` | `array<object>` | supported |
+| `llm.hub.tokens[].created_at` | `integer` | supported |
+| `llm.hub.tokens[].expires_at` | `integer` | supported |
+| `llm.hub.tokens[].hash` | `string, required` | supported |
+| `llm.hub.tokens[].id` | `string, required` | supported |
+| `llm.hub.tokens[].members` | `array<string>` | supported |
+| `llm.hub.tokens[].name` | `string, required` | supported |
+| `llm.hub.tokens[].note` | `string` | supported |
+| `llm.node` | `object` | supported |
+| `llm.node.access` | `object` | supported |
+| `llm.node.access.allow` | `array<string>` | supported |
+| `llm.node.access.allow_files` | `array<string>` | supported |
+| `llm.node.access.deny` | `array<string>` | supported |
+| `llm.node.access.deny_files` | `array<string>` | supported |
+| `llm.node.console` | `object` | supported |
+| `llm.node.console.access` | `object` | supported |
+| `llm.node.console.access.allow` | `array<string>` | supported |
+| `llm.node.console.access.allow_files` | `array<string>` | supported |
+| `llm.node.console.access.deny` | `array<string>` | supported |
+| `llm.node.console.access.deny_files` | `array<string>` | supported |
+| `llm.node.console.address` | `string, required` | supported |
+| `llm.node.console.cert_file` | `string` | supported |
+| `llm.node.console.key_file` | `string` | supported |
+| `llm.node.console.max_conns` | `integer` | supported |
+| `llm.node.console.max_sessions` | `integer` | supported |
 | `llm.node.console.mptcp` | `boolean` | not supported yet |
-| `llm.node.console.session_lifetime` | `duration` | not supported yet |
-| `llm.node.console.session_timeout` | `duration` | not supported yet |
-| `llm.node.console.users` | `array<object>, required` | not supported yet |
-| `llm.node.console.users[].password_hash` | `string, required` | not supported yet |
-| `llm.node.console.users[].username` | `string, required` | not supported yet |
-| `llm.node.description` | `string` | not supported yet |
-| `llm.node.id` | `string` | not supported yet |
-| `llm.node.limits` | `object` | not supported yet |
-| `llm.node.limits.max_conns` | `integer` | not supported yet |
-| `llm.node.limits.max_inflight` | `integer` | not supported yet |
-| `llm.node.limits.ping_interval` | `duration` | not supported yet |
-| `llm.node.limits.retry_interval` | `duration` | not supported yet |
-| `llm.node.limits.slow_timeout` | `duration` | not supported yet |
-| `llm.node.limits.stream_idle` | `duration` | not supported yet |
-| `llm.node.listen` | `object` | not supported yet |
-| `llm.node.listen.address` | `string, required` | not supported yet |
-| `llm.node.listen.cert` | `string` | not supported yet |
-| `llm.node.listen.cert_file` | `string` | not supported yet |
-| `llm.node.listen.hub_password` | `string` | not supported yet |
-| `llm.node.listen.key` | `string` | not supported yet |
-| `llm.node.listen.key_file` | `string` | not supported yet |
-| `llm.node.listen.node_password` | `string` | not supported yet |
-| `llm.node.listen.password` | `string` | not supported yet |
-| `llm.node.listen.proxy_password` | `string` | not supported yet |
-| `llm.node.listen.self_signed` | `boolean` | not supported yet |
-| `llm.node.models` | `array<object>` | not supported yet |
-| `llm.node.models[].api` | `enum(openai\|anthropic\|gemini\|azure_openai\|ollama\|cohere), required` | not supported yet |
-| `llm.node.models[].api_key` | `string` | not supported yet |
-| `llm.node.models[].api_version` | `string` | not supported yet |
-| `llm.node.models[].base_url` | `string, required` | not supported yet |
-| `llm.node.models[].description` | `string` | not supported yet |
-| `llm.node.models[].disabled` | `boolean` | not supported yet |
-| `llm.node.models[].max_inflight` | `integer` | not supported yet |
-| `llm.node.models[].name` | `string, required` | not supported yet |
-| `llm.node.models[].upstream` | `string` | not supported yet |
-| `llm.node.name` | `string` | not supported yet |
-| `llm.node.peers` | `array<object>` | not supported yet |
-| `llm.node.peers[].address` | `string, required` | not supported yet |
-| `llm.node.peers[].ca_file` | `string` | not supported yet |
-| `llm.node.peers[].password` | `string` | not supported yet |
-| `llm.node.peers[].pin` | `string` | not supported yet |
-| `llm.node.peers[].role` | `enum(hub\|node\|proxy), required` | not supported yet |
-| `llm.node.peers[].server_name` | `string` | not supported yet |
-| `llm.node.peers[].token` | `string` | not supported yet |
-| `llm.node.proxy` | `object` | not supported yet |
-| `llm.node.proxy.connect_timeout` | `duration` | not supported yet |
-| `llm.node.proxy.first_byte_timeout` | `duration` | not supported yet |
-| `llm.node.proxy.idle_timeout` | `duration` | not supported yet |
-| `llm.node.proxy.max_body_bytes` | `integer` | not supported yet |
-| `llm.node.proxy.max_inflight` | `integer` | not supported yet |
-| `llm.node.proxy.timeout` | `duration` | not supported yet |
-| `llm.node.settings` | `object` | not supported yet |
-| `llm.node.settings.allow_hub_manage` | `boolean` | not supported yet |
-| `llm.node.settings.gpu_data_dir` | `string` | not supported yet |
-| `llm.node.settings.gpu_sudo` | `boolean` | not supported yet |
-| `llm.node.settings.job_timeout` | `duration` | not supported yet |
-| `llm.node.settings.refresh_interval` | `duration` | not supported yet |
-| `llm.node.tokens` | `array<object>` | not supported yet |
-| `llm.node.tokens[].created_at` | `integer` | not supported yet |
-| `llm.node.tokens[].expires_at` | `integer` | not supported yet |
-| `llm.node.tokens[].hash` | `string, required` | not supported yet |
-| `llm.node.tokens[].id` | `string, required` | not supported yet |
-| `llm.node.tokens[].members` | `array<string>` | not supported yet |
-| `llm.node.tokens[].name` | `string, required` | not supported yet |
-| `llm.node.tokens[].note` | `string` | not supported yet |
-| `llm.proxy` | `object` | not supported yet |
-| `llm.proxy.access` | `object` | not supported yet |
-| `llm.proxy.access.allow` | `array<string>` | not supported yet |
-| `llm.proxy.access.allow_files` | `array<string>` | not supported yet |
-| `llm.proxy.access.deny` | `array<string>` | not supported yet |
-| `llm.proxy.access.deny_files` | `array<string>` | not supported yet |
-| `llm.proxy.api` | `object` | not supported yet |
-| `llm.proxy.api.address` | `string, required` | not supported yet |
-| `llm.proxy.api.cert_file` | `string` | not supported yet |
-| `llm.proxy.api.first_byte_timeout` | `duration` | not supported yet |
-| `llm.proxy.api.key_file` | `string` | not supported yet |
-| `llm.proxy.api.max_body_bytes` | `integer` | not supported yet |
-| `llm.proxy.api.max_conns` | `integer` | not supported yet |
-| `llm.proxy.api.max_inflight` | `integer` | not supported yet |
-| `llm.proxy.api.timeout` | `duration` | not supported yet |
-| `llm.proxy.api_keys` | `array<object>` | not supported yet |
-| `llm.proxy.api_keys[].created_at` | `integer` | not supported yet |
-| `llm.proxy.api_keys[].hash` | `string, required` | not supported yet |
-| `llm.proxy.api_keys[].id` | `string, required` | not supported yet |
-| `llm.proxy.api_keys[].name` | `string, required` | not supported yet |
-| `llm.proxy.api_keys[].prefix` | `string` | not supported yet |
-| `llm.proxy.console` | `object` | not supported yet |
-| `llm.proxy.console.access` | `object` | not supported yet |
-| `llm.proxy.console.access.allow` | `array<string>` | not supported yet |
-| `llm.proxy.console.access.allow_files` | `array<string>` | not supported yet |
-| `llm.proxy.console.access.deny` | `array<string>` | not supported yet |
-| `llm.proxy.console.access.deny_files` | `array<string>` | not supported yet |
-| `llm.proxy.console.address` | `string, required` | not supported yet |
-| `llm.proxy.console.cert_file` | `string` | not supported yet |
-| `llm.proxy.console.key_file` | `string` | not supported yet |
-| `llm.proxy.console.max_conns` | `integer` | not supported yet |
-| `llm.proxy.console.max_sessions` | `integer` | not supported yet |
+| `llm.node.console.session_lifetime` | `duration` | supported |
+| `llm.node.console.session_timeout` | `duration` | supported |
+| `llm.node.console.users` | `array<object>, required` | supported |
+| `llm.node.console.users[].password_hash` | `string, required` | supported |
+| `llm.node.console.users[].username` | `string, required` | supported |
+| `llm.node.description` | `string` | supported |
+| `llm.node.id` | `string` | supported |
+| `llm.node.limits` | `object` | supported |
+| `llm.node.limits.max_conns` | `integer` | supported |
+| `llm.node.limits.max_inflight` | `integer` | supported |
+| `llm.node.limits.ping_interval` | `duration` | supported |
+| `llm.node.limits.retry_interval` | `duration` | supported |
+| `llm.node.limits.slow_timeout` | `duration` | supported |
+| `llm.node.limits.stream_idle` | `duration` | supported |
+| `llm.node.listen` | `object` | supported |
+| `llm.node.listen.address` | `string, required` | supported |
+| `llm.node.listen.cert` | `string` | supported |
+| `llm.node.listen.cert_file` | `string` | supported |
+| `llm.node.listen.hub_password` | `string` | supported |
+| `llm.node.listen.key` | `string` | supported |
+| `llm.node.listen.key_file` | `string` | supported |
+| `llm.node.listen.node_password` | `string` | supported |
+| `llm.node.listen.password` | `string` | supported |
+| `llm.node.listen.proxy_password` | `string` | supported |
+| `llm.node.listen.self_signed` | `boolean` | supported |
+| `llm.node.models` | `array<object>` | supported |
+| `llm.node.models[].api` | `enum(openai\|anthropic\|gemini\|azure_openai\|ollama\|cohere), required` | supported |
+| `llm.node.models[].api_key` | `string` | supported |
+| `llm.node.models[].api_version` | `string` | supported |
+| `llm.node.models[].base_url` | `string, required` | supported |
+| `llm.node.models[].description` | `string` | supported |
+| `llm.node.models[].disabled` | `boolean` | supported |
+| `llm.node.models[].max_inflight` | `integer` | supported |
+| `llm.node.models[].name` | `string, required` | supported |
+| `llm.node.models[].upstream` | `string` | supported |
+| `llm.node.name` | `string` | supported |
+| `llm.node.peers` | `array<object>` | supported |
+| `llm.node.peers[].address` | `string, required` | supported |
+| `llm.node.peers[].ca_file` | `string` | supported |
+| `llm.node.peers[].password` | `string` | supported |
+| `llm.node.peers[].pin` | `string` | supported |
+| `llm.node.peers[].role` | `enum(hub\|node\|proxy), required` | supported |
+| `llm.node.peers[].server_name` | `string` | supported |
+| `llm.node.peers[].token` | `string` | supported |
+| `llm.node.proxy` | `object` | supported |
+| `llm.node.proxy.connect_timeout` | `duration` | supported |
+| `llm.node.proxy.first_byte_timeout` | `duration` | supported |
+| `llm.node.proxy.idle_timeout` | `duration` | supported |
+| `llm.node.proxy.max_body_bytes` | `integer` | supported |
+| `llm.node.proxy.max_inflight` | `integer` | supported |
+| `llm.node.proxy.timeout` | `duration` | supported |
+| `llm.node.settings` | `object` | supported |
+| `llm.node.settings.allow_hub_manage` | `boolean` | supported |
+| `llm.node.settings.gpu_data_dir` | `string` | supported |
+| `llm.node.settings.gpu_sudo` | `boolean` | supported |
+| `llm.node.settings.job_timeout` | `duration` | supported |
+| `llm.node.settings.refresh_interval` | `duration` | supported |
+| `llm.node.tokens` | `array<object>` | supported |
+| `llm.node.tokens[].created_at` | `integer` | supported |
+| `llm.node.tokens[].expires_at` | `integer` | supported |
+| `llm.node.tokens[].hash` | `string, required` | supported |
+| `llm.node.tokens[].id` | `string, required` | supported |
+| `llm.node.tokens[].members` | `array<string>` | supported |
+| `llm.node.tokens[].name` | `string, required` | supported |
+| `llm.node.tokens[].note` | `string` | supported |
+| `llm.proxy` | `object` | supported |
+| `llm.proxy.access` | `object` | supported |
+| `llm.proxy.access.allow` | `array<string>` | supported |
+| `llm.proxy.access.allow_files` | `array<string>` | supported |
+| `llm.proxy.access.deny` | `array<string>` | supported |
+| `llm.proxy.access.deny_files` | `array<string>` | supported |
+| `llm.proxy.api` | `object` | supported |
+| `llm.proxy.api.address` | `string, required` | supported |
+| `llm.proxy.api.cert_file` | `string` | supported |
+| `llm.proxy.api.first_byte_timeout` | `duration` | supported |
+| `llm.proxy.api.key_file` | `string` | supported |
+| `llm.proxy.api.max_body_bytes` | `integer` | supported |
+| `llm.proxy.api.max_conns` | `integer` | supported |
+| `llm.proxy.api.max_inflight` | `integer` | supported |
+| `llm.proxy.api.timeout` | `duration` | supported |
+| `llm.proxy.api_keys` | `array<object>` | supported |
+| `llm.proxy.api_keys[].created_at` | `integer` | supported |
+| `llm.proxy.api_keys[].hash` | `string, required` | supported |
+| `llm.proxy.api_keys[].id` | `string, required` | supported |
+| `llm.proxy.api_keys[].name` | `string, required` | supported |
+| `llm.proxy.api_keys[].prefix` | `string` | supported |
+| `llm.proxy.console` | `object` | supported |
+| `llm.proxy.console.access` | `object` | supported |
+| `llm.proxy.console.access.allow` | `array<string>` | supported |
+| `llm.proxy.console.access.allow_files` | `array<string>` | supported |
+| `llm.proxy.console.access.deny` | `array<string>` | supported |
+| `llm.proxy.console.access.deny_files` | `array<string>` | supported |
+| `llm.proxy.console.address` | `string, required` | supported |
+| `llm.proxy.console.cert_file` | `string` | supported |
+| `llm.proxy.console.key_file` | `string` | supported |
+| `llm.proxy.console.max_conns` | `integer` | supported |
+| `llm.proxy.console.max_sessions` | `integer` | supported |
 | `llm.proxy.console.mptcp` | `boolean` | not supported yet |
-| `llm.proxy.console.session_lifetime` | `duration` | not supported yet |
-| `llm.proxy.console.session_timeout` | `duration` | not supported yet |
-| `llm.proxy.console.users` | `array<object>, required` | not supported yet |
-| `llm.proxy.console.users[].password_hash` | `string, required` | not supported yet |
-| `llm.proxy.console.users[].username` | `string, required` | not supported yet |
-| `llm.proxy.id` | `string` | not supported yet |
-| `llm.proxy.limits` | `object` | not supported yet |
-| `llm.proxy.limits.max_conns` | `integer` | not supported yet |
-| `llm.proxy.limits.max_inflight` | `integer` | not supported yet |
-| `llm.proxy.limits.ping_interval` | `duration` | not supported yet |
-| `llm.proxy.limits.retry_interval` | `duration` | not supported yet |
-| `llm.proxy.limits.slow_timeout` | `duration` | not supported yet |
-| `llm.proxy.limits.stream_idle` | `duration` | not supported yet |
-| `llm.proxy.listen` | `object` | not supported yet |
-| `llm.proxy.listen.address` | `string, required` | not supported yet |
-| `llm.proxy.listen.cert` | `string` | not supported yet |
-| `llm.proxy.listen.cert_file` | `string` | not supported yet |
-| `llm.proxy.listen.hub_password` | `string` | not supported yet |
-| `llm.proxy.listen.key` | `string` | not supported yet |
-| `llm.proxy.listen.key_file` | `string` | not supported yet |
-| `llm.proxy.listen.node_password` | `string` | not supported yet |
-| `llm.proxy.listen.password` | `string` | not supported yet |
-| `llm.proxy.listen.proxy_password` | `string` | not supported yet |
-| `llm.proxy.listen.self_signed` | `boolean` | not supported yet |
-| `llm.proxy.name` | `string` | not supported yet |
-| `llm.proxy.peers` | `array<object>` | not supported yet |
-| `llm.proxy.peers[].address` | `string, required` | not supported yet |
-| `llm.proxy.peers[].ca_file` | `string` | not supported yet |
-| `llm.proxy.peers[].password` | `string` | not supported yet |
-| `llm.proxy.peers[].pin` | `string` | not supported yet |
-| `llm.proxy.peers[].role` | `enum(hub\|node\|proxy), required` | not supported yet |
-| `llm.proxy.peers[].server_name` | `string` | not supported yet |
-| `llm.proxy.peers[].token` | `string` | not supported yet |
-| `llm.proxy.tokens` | `array<object>` | not supported yet |
-| `llm.proxy.tokens[].created_at` | `integer` | not supported yet |
-| `llm.proxy.tokens[].expires_at` | `integer` | not supported yet |
-| `llm.proxy.tokens[].hash` | `string, required` | not supported yet |
-| `llm.proxy.tokens[].id` | `string, required` | not supported yet |
-| `llm.proxy.tokens[].members` | `array<string>` | not supported yet |
-| `llm.proxy.tokens[].name` | `string, required` | not supported yet |
-| `llm.proxy.tokens[].note` | `string` | not supported yet |
+| `llm.proxy.console.session_lifetime` | `duration` | supported |
+| `llm.proxy.console.session_timeout` | `duration` | supported |
+| `llm.proxy.console.users` | `array<object>, required` | supported |
+| `llm.proxy.console.users[].password_hash` | `string, required` | supported |
+| `llm.proxy.console.users[].username` | `string, required` | supported |
+| `llm.proxy.id` | `string` | supported |
+| `llm.proxy.limits` | `object` | supported |
+| `llm.proxy.limits.max_conns` | `integer` | supported |
+| `llm.proxy.limits.max_inflight` | `integer` | supported |
+| `llm.proxy.limits.ping_interval` | `duration` | supported |
+| `llm.proxy.limits.retry_interval` | `duration` | supported |
+| `llm.proxy.limits.slow_timeout` | `duration` | supported |
+| `llm.proxy.limits.stream_idle` | `duration` | supported |
+| `llm.proxy.listen` | `object` | supported |
+| `llm.proxy.listen.address` | `string, required` | supported |
+| `llm.proxy.listen.cert` | `string` | supported |
+| `llm.proxy.listen.cert_file` | `string` | supported |
+| `llm.proxy.listen.hub_password` | `string` | supported |
+| `llm.proxy.listen.key` | `string` | supported |
+| `llm.proxy.listen.key_file` | `string` | supported |
+| `llm.proxy.listen.node_password` | `string` | supported |
+| `llm.proxy.listen.password` | `string` | supported |
+| `llm.proxy.listen.proxy_password` | `string` | supported |
+| `llm.proxy.listen.self_signed` | `boolean` | supported |
+| `llm.proxy.name` | `string` | supported |
+| `llm.proxy.peers` | `array<object>` | supported |
+| `llm.proxy.peers[].address` | `string, required` | supported |
+| `llm.proxy.peers[].ca_file` | `string` | supported |
+| `llm.proxy.peers[].password` | `string` | supported |
+| `llm.proxy.peers[].pin` | `string` | supported |
+| `llm.proxy.peers[].role` | `enum(hub\|node\|proxy), required` | supported |
+| `llm.proxy.peers[].server_name` | `string` | supported |
+| `llm.proxy.peers[].token` | `string` | supported |
+| `llm.proxy.tokens` | `array<object>` | supported |
+| `llm.proxy.tokens[].created_at` | `integer` | supported |
+| `llm.proxy.tokens[].expires_at` | `integer` | supported |
+| `llm.proxy.tokens[].hash` | `string, required` | supported |
+| `llm.proxy.tokens[].id` | `string, required` | supported |
+| `llm.proxy.tokens[].members` | `array<string>` | supported |
+| `llm.proxy.tokens[].name` | `string, required` | supported |
+| `llm.proxy.tokens[].note` | `string` | supported |
 
 <a id="fields-log"></a>
 
@@ -4895,170 +4895,170 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `tunnel` | `object` | not supported yet |
-| `tunnel.hub` | `object` | not supported yet |
-| `tunnel.hub.access` | `object` | not supported yet |
-| `tunnel.hub.access.allow` | `array<string>` | not supported yet |
-| `tunnel.hub.access.allow_files` | `array<string>` | not supported yet |
-| `tunnel.hub.access.deny` | `array<string>` | not supported yet |
-| `tunnel.hub.access.deny_files` | `array<string>` | not supported yet |
-| `tunnel.hub.allow_proxy_services` | `boolean` | not supported yet |
-| `tunnel.hub.body_password` | `string` | not supported yet |
-| `tunnel.hub.call_timeout` | `duration` | not supported yet |
-| `tunnel.hub.console` | `object` | not supported yet |
-| `tunnel.hub.console.access` | `object` | not supported yet |
-| `tunnel.hub.console.access.allow` | `array<string>` | not supported yet |
-| `tunnel.hub.console.access.allow_files` | `array<string>` | not supported yet |
-| `tunnel.hub.console.access.deny` | `array<string>` | not supported yet |
-| `tunnel.hub.console.access.deny_files` | `array<string>` | not supported yet |
-| `tunnel.hub.console.address` | `string, required` | not supported yet |
-| `tunnel.hub.console.cert_file` | `string` | not supported yet |
-| `tunnel.hub.console.key_file` | `string` | not supported yet |
-| `tunnel.hub.console.max_conns` | `integer` | not supported yet |
-| `tunnel.hub.console.max_sessions` | `integer` | not supported yet |
+| `tunnel` | `object` | supported |
+| `tunnel.hub` | `object` | supported |
+| `tunnel.hub.access` | `object` | supported |
+| `tunnel.hub.access.allow` | `array<string>` | supported |
+| `tunnel.hub.access.allow_files` | `array<string>` | supported |
+| `tunnel.hub.access.deny` | `array<string>` | supported |
+| `tunnel.hub.access.deny_files` | `array<string>` | supported |
+| `tunnel.hub.allow_proxy_services` | `boolean` | supported |
+| `tunnel.hub.body_password` | `string` | supported |
+| `tunnel.hub.call_timeout` | `duration` | supported |
+| `tunnel.hub.console` | `object` | supported |
+| `tunnel.hub.console.access` | `object` | supported |
+| `tunnel.hub.console.access.allow` | `array<string>` | supported |
+| `tunnel.hub.console.access.allow_files` | `array<string>` | supported |
+| `tunnel.hub.console.access.deny` | `array<string>` | supported |
+| `tunnel.hub.console.access.deny_files` | `array<string>` | supported |
+| `tunnel.hub.console.address` | `string, required` | supported |
+| `tunnel.hub.console.cert_file` | `string` | supported |
+| `tunnel.hub.console.key_file` | `string` | supported |
+| `tunnel.hub.console.max_conns` | `integer` | supported |
+| `tunnel.hub.console.max_sessions` | `integer` | supported |
 | `tunnel.hub.console.mptcp` | `boolean` | not supported yet |
-| `tunnel.hub.console.session_lifetime` | `duration` | not supported yet |
-| `tunnel.hub.console.session_timeout` | `duration` | not supported yet |
-| `tunnel.hub.console.users` | `array<object>, required` | not supported yet |
-| `tunnel.hub.console.users[].password_hash` | `string, required` | not supported yet |
-| `tunnel.hub.console.users[].username` | `string, required` | not supported yet |
-| `tunnel.hub.console_socket` | `object` | not supported yet |
-| `tunnel.hub.console_socket.address` | `string, required` | not supported yet |
-| `tunnel.hub.console_socket.max_conns` | `integer` | not supported yet |
-| `tunnel.hub.console_socket.password` | `string` | not supported yet |
-| `tunnel.hub.listeners` | `array<object>` | not supported yet |
-| `tunnel.hub.listeners[].address` | `string, required` | not supported yet |
-| `tunnel.hub.listeners[].cert_file` | `string` | not supported yet |
-| `tunnel.hub.listeners[].key_file` | `string` | not supported yet |
-| `tunnel.hub.listeners[].path` | `string` | not supported yet |
-| `tunnel.hub.listeners[].protocol` | `enum(tcp\|tls\|ws\|wss\|quic), required` | not supported yet |
-| `tunnel.hub.max_links` | `integer` | not supported yet |
-| `tunnel.hub.max_links_per_peer` | `integer` | not supported yet |
-| `tunnel.hub.max_peers` | `integer` | not supported yet |
-| `tunnel.hub.max_tunnels` | `integer` | not supported yet |
-| `tunnel.hub.max_unregistered` | `integer` | not supported yet |
-| `tunnel.hub.max_unregistered_per_ip` | `integer` | not supported yet |
-| `tunnel.hub.name` | `string` | not supported yet |
-| `tunnel.hub.password` | `string` | not supported yet |
-| `tunnel.hub.quic` | `object` | not supported yet |
-| `tunnel.hub.quic.cert` | `string` | not supported yet |
-| `tunnel.hub.quic.handshake_timeout` | `duration` | not supported yet |
-| `tunnel.hub.quic.idle_timeout` | `duration` | not supported yet |
-| `tunnel.hub.quic.keep_alive` | `duration` | not supported yet |
-| `tunnel.hub.quic.key` | `string` | not supported yet |
-| `tunnel.hub.quic.max_handshakes` | `integer` | not supported yet |
-| `tunnel.hub.register_timeout` | `duration` | not supported yet |
-| `tunnel.hub.tokens` | `array<object>` | not supported yet |
-| `tunnel.hub.tokens[].created_at` | `integer` | not supported yet |
-| `tunnel.hub.tokens[].expires_at` | `integer` | not supported yet |
-| `tunnel.hub.tokens[].hash` | `string, required` | not supported yet |
-| `tunnel.hub.tokens[].id` | `string, required` | not supported yet |
-| `tunnel.hub.tokens[].members` | `array<string>` | not supported yet |
-| `tunnel.hub.tokens[].name` | `string, required` | not supported yet |
-| `tunnel.hub.tokens[].note` | `string` | not supported yet |
-| `tunnel.node` | `object` | not supported yet |
-| `tunnel.node.allow_hub_services` | `boolean` | not supported yet |
-| `tunnel.node.console` | `object` | not supported yet |
-| `tunnel.node.console.access` | `object` | not supported yet |
-| `tunnel.node.console.access.allow` | `array<string>` | not supported yet |
-| `tunnel.node.console.access.allow_files` | `array<string>` | not supported yet |
-| `tunnel.node.console.access.deny` | `array<string>` | not supported yet |
-| `tunnel.node.console.access.deny_files` | `array<string>` | not supported yet |
-| `tunnel.node.console.address` | `string, required` | not supported yet |
-| `tunnel.node.console.cert_file` | `string` | not supported yet |
-| `tunnel.node.console.key_file` | `string` | not supported yet |
-| `tunnel.node.console.max_conns` | `integer` | not supported yet |
-| `tunnel.node.console.max_sessions` | `integer` | not supported yet |
+| `tunnel.hub.console.session_lifetime` | `duration` | supported |
+| `tunnel.hub.console.session_timeout` | `duration` | supported |
+| `tunnel.hub.console.users` | `array<object>, required` | supported |
+| `tunnel.hub.console.users[].password_hash` | `string, required` | supported |
+| `tunnel.hub.console.users[].username` | `string, required` | supported |
+| `tunnel.hub.console_socket` | `object` | supported |
+| `tunnel.hub.console_socket.address` | `string, required` | supported |
+| `tunnel.hub.console_socket.max_conns` | `integer` | supported |
+| `tunnel.hub.console_socket.password` | `string` | supported |
+| `tunnel.hub.listeners` | `array<object>` | supported |
+| `tunnel.hub.listeners[].address` | `string, required` | supported |
+| `tunnel.hub.listeners[].cert_file` | `string` | supported |
+| `tunnel.hub.listeners[].key_file` | `string` | supported |
+| `tunnel.hub.listeners[].path` | `string` | supported |
+| `tunnel.hub.listeners[].protocol` | `enum(tcp\|tls\|ws\|wss\|quic), required` | supported |
+| `tunnel.hub.max_links` | `integer` | supported |
+| `tunnel.hub.max_links_per_peer` | `integer` | supported |
+| `tunnel.hub.max_peers` | `integer` | supported |
+| `tunnel.hub.max_tunnels` | `integer` | supported |
+| `tunnel.hub.max_unregistered` | `integer` | supported |
+| `tunnel.hub.max_unregistered_per_ip` | `integer` | supported |
+| `tunnel.hub.name` | `string` | supported |
+| `tunnel.hub.password` | `string` | supported |
+| `tunnel.hub.quic` | `object` | supported |
+| `tunnel.hub.quic.cert` | `string` | supported |
+| `tunnel.hub.quic.handshake_timeout` | `duration` | supported |
+| `tunnel.hub.quic.idle_timeout` | `duration` | supported |
+| `tunnel.hub.quic.keep_alive` | `duration` | supported |
+| `tunnel.hub.quic.key` | `string` | supported |
+| `tunnel.hub.quic.max_handshakes` | `integer` | supported |
+| `tunnel.hub.register_timeout` | `duration` | supported |
+| `tunnel.hub.tokens` | `array<object>` | supported |
+| `tunnel.hub.tokens[].created_at` | `integer` | supported |
+| `tunnel.hub.tokens[].expires_at` | `integer` | supported |
+| `tunnel.hub.tokens[].hash` | `string, required` | supported |
+| `tunnel.hub.tokens[].id` | `string, required` | supported |
+| `tunnel.hub.tokens[].members` | `array<string>` | supported |
+| `tunnel.hub.tokens[].name` | `string, required` | supported |
+| `tunnel.hub.tokens[].note` | `string` | supported |
+| `tunnel.node` | `object` | supported |
+| `tunnel.node.allow_hub_services` | `boolean` | supported |
+| `tunnel.node.console` | `object` | supported |
+| `tunnel.node.console.access` | `object` | supported |
+| `tunnel.node.console.access.allow` | `array<string>` | supported |
+| `tunnel.node.console.access.allow_files` | `array<string>` | supported |
+| `tunnel.node.console.access.deny` | `array<string>` | supported |
+| `tunnel.node.console.access.deny_files` | `array<string>` | supported |
+| `tunnel.node.console.address` | `string, required` | supported |
+| `tunnel.node.console.cert_file` | `string` | supported |
+| `tunnel.node.console.key_file` | `string` | supported |
+| `tunnel.node.console.max_conns` | `integer` | supported |
+| `tunnel.node.console.max_sessions` | `integer` | supported |
 | `tunnel.node.console.mptcp` | `boolean` | not supported yet |
-| `tunnel.node.console.session_lifetime` | `duration` | not supported yet |
-| `tunnel.node.console.session_timeout` | `duration` | not supported yet |
-| `tunnel.node.console.users` | `array<object>, required` | not supported yet |
-| `tunnel.node.console.users[].password_hash` | `string, required` | not supported yet |
-| `tunnel.node.console.users[].username` | `string, required` | not supported yet |
-| `tunnel.node.dial_timeout` | `duration` | not supported yet |
-| `tunnel.node.hubs` | `array<object>` | not supported yet |
-| `tunnel.node.hubs[].body_password` | `string` | not supported yet |
-| `tunnel.node.hubs[].ca_file` | `string` | not supported yet |
-| `tunnel.node.hubs[].call_timeout` | `duration` | not supported yet |
-| `tunnel.node.hubs[].dial_timeout` | `duration` | not supported yet |
-| `tunnel.node.hubs[].endpoints` | `array<object>, required` | not supported yet |
-| `tunnel.node.hubs[].endpoints[].address` | `string, required` | not supported yet |
-| `tunnel.node.hubs[].endpoints[].disabled` | `boolean` | not supported yet |
-| `tunnel.node.hubs[].name` | `string` | not supported yet |
-| `tunnel.node.hubs[].password` | `string` | not supported yet |
-| `tunnel.node.hubs[].pin` | `string` | not supported yet |
-| `tunnel.node.hubs[].ping_interval` | `duration` | not supported yet |
-| `tunnel.node.hubs[].ping_timeout` | `duration` | not supported yet |
-| `tunnel.node.hubs[].pool_size` | `integer` | not supported yet |
-| `tunnel.node.hubs[].quic_insecure` | `boolean` | not supported yet |
-| `tunnel.node.hubs[].quic_pin` | `string, deprecated` | not supported yet |
-| `tunnel.node.hubs[].retry_interval` | `duration` | not supported yet |
-| `tunnel.node.hubs[].token` | `string` | not supported yet |
-| `tunnel.node.idle_timeout` | `duration` | not supported yet |
-| `tunnel.node.max_tunnels` | `integer` | not supported yet |
-| `tunnel.node.meta` | `map<string>` | not supported yet |
-| `tunnel.node.name` | `string` | not supported yet |
-| `tunnel.node.services` | `array<object>` | not supported yet |
-| `tunnel.node.services[].address` | `string, required` | not supported yet |
-| `tunnel.node.services[].description` | `string` | not supported yet |
-| `tunnel.node.services[].name` | `string, required` | not supported yet |
-| `tunnel.proxy` | `object` | not supported yet |
-| `tunnel.proxy.access` | `object` | not supported yet |
-| `tunnel.proxy.access.allow` | `array<string>` | not supported yet |
-| `tunnel.proxy.access.allow_files` | `array<string>` | not supported yet |
-| `tunnel.proxy.access.deny` | `array<string>` | not supported yet |
-| `tunnel.proxy.access.deny_files` | `array<string>` | not supported yet |
-| `tunnel.proxy.console` | `object` | not supported yet |
-| `tunnel.proxy.console.access` | `object` | not supported yet |
-| `tunnel.proxy.console.access.allow` | `array<string>` | not supported yet |
-| `tunnel.proxy.console.access.allow_files` | `array<string>` | not supported yet |
-| `tunnel.proxy.console.access.deny` | `array<string>` | not supported yet |
-| `tunnel.proxy.console.access.deny_files` | `array<string>` | not supported yet |
-| `tunnel.proxy.console.address` | `string, required` | not supported yet |
-| `tunnel.proxy.console.cert_file` | `string` | not supported yet |
-| `tunnel.proxy.console.key_file` | `string` | not supported yet |
-| `tunnel.proxy.console.max_conns` | `integer` | not supported yet |
-| `tunnel.proxy.console.max_sessions` | `integer` | not supported yet |
+| `tunnel.node.console.session_lifetime` | `duration` | supported |
+| `tunnel.node.console.session_timeout` | `duration` | supported |
+| `tunnel.node.console.users` | `array<object>, required` | supported |
+| `tunnel.node.console.users[].password_hash` | `string, required` | supported |
+| `tunnel.node.console.users[].username` | `string, required` | supported |
+| `tunnel.node.dial_timeout` | `duration` | supported |
+| `tunnel.node.hubs` | `array<object>` | supported |
+| `tunnel.node.hubs[].body_password` | `string` | supported |
+| `tunnel.node.hubs[].ca_file` | `string` | supported |
+| `tunnel.node.hubs[].call_timeout` | `duration` | supported |
+| `tunnel.node.hubs[].dial_timeout` | `duration` | supported |
+| `tunnel.node.hubs[].endpoints` | `array<object>, required` | supported |
+| `tunnel.node.hubs[].endpoints[].address` | `string, required` | supported |
+| `tunnel.node.hubs[].endpoints[].disabled` | `boolean` | supported |
+| `tunnel.node.hubs[].name` | `string` | supported |
+| `tunnel.node.hubs[].password` | `string` | supported |
+| `tunnel.node.hubs[].pin` | `string` | supported |
+| `tunnel.node.hubs[].ping_interval` | `duration` | supported |
+| `tunnel.node.hubs[].ping_timeout` | `duration` | supported |
+| `tunnel.node.hubs[].pool_size` | `integer` | supported |
+| `tunnel.node.hubs[].quic_insecure` | `boolean` | supported |
+| `tunnel.node.hubs[].quic_pin` | `string, deprecated` | supported |
+| `tunnel.node.hubs[].retry_interval` | `duration` | supported |
+| `tunnel.node.hubs[].token` | `string` | supported |
+| `tunnel.node.idle_timeout` | `duration` | supported |
+| `tunnel.node.max_tunnels` | `integer` | supported |
+| `tunnel.node.meta` | `map<string>` | supported |
+| `tunnel.node.name` | `string` | supported |
+| `tunnel.node.services` | `array<object>` | supported |
+| `tunnel.node.services[].address` | `string, required` | supported |
+| `tunnel.node.services[].description` | `string` | supported |
+| `tunnel.node.services[].name` | `string, required` | supported |
+| `tunnel.proxy` | `object` | supported |
+| `tunnel.proxy.access` | `object` | supported |
+| `tunnel.proxy.access.allow` | `array<string>` | supported |
+| `tunnel.proxy.access.allow_files` | `array<string>` | supported |
+| `tunnel.proxy.access.deny` | `array<string>` | supported |
+| `tunnel.proxy.access.deny_files` | `array<string>` | supported |
+| `tunnel.proxy.console` | `object` | supported |
+| `tunnel.proxy.console.access` | `object` | supported |
+| `tunnel.proxy.console.access.allow` | `array<string>` | supported |
+| `tunnel.proxy.console.access.allow_files` | `array<string>` | supported |
+| `tunnel.proxy.console.access.deny` | `array<string>` | supported |
+| `tunnel.proxy.console.access.deny_files` | `array<string>` | supported |
+| `tunnel.proxy.console.address` | `string, required` | supported |
+| `tunnel.proxy.console.cert_file` | `string` | supported |
+| `tunnel.proxy.console.key_file` | `string` | supported |
+| `tunnel.proxy.console.max_conns` | `integer` | supported |
+| `tunnel.proxy.console.max_sessions` | `integer` | supported |
 | `tunnel.proxy.console.mptcp` | `boolean` | not supported yet |
-| `tunnel.proxy.console.session_lifetime` | `duration` | not supported yet |
-| `tunnel.proxy.console.session_timeout` | `duration` | not supported yet |
-| `tunnel.proxy.console.users` | `array<object>, required` | not supported yet |
-| `tunnel.proxy.console.users[].password_hash` | `string, required` | not supported yet |
-| `tunnel.proxy.console.users[].username` | `string, required` | not supported yet |
-| `tunnel.proxy.forwards` | `array<object>` | not supported yet |
-| `tunnel.proxy.forwards[].hub` | `string` | not supported yet |
-| `tunnel.proxy.forwards[].listen` | `string, required` | not supported yet |
-| `tunnel.proxy.forwards[].node` | `string, required` | not supported yet |
-| `tunnel.proxy.forwards[].service` | `string, required` | not supported yet |
-| `tunnel.proxy.hubs` | `array<object>` | not supported yet |
-| `tunnel.proxy.hubs[].body_password` | `string` | not supported yet |
-| `tunnel.proxy.hubs[].ca_file` | `string` | not supported yet |
-| `tunnel.proxy.hubs[].call_timeout` | `duration` | not supported yet |
-| `tunnel.proxy.hubs[].dial_timeout` | `duration` | not supported yet |
-| `tunnel.proxy.hubs[].endpoints` | `array<object>, required` | not supported yet |
-| `tunnel.proxy.hubs[].endpoints[].address` | `string, required` | not supported yet |
-| `tunnel.proxy.hubs[].endpoints[].disabled` | `boolean` | not supported yet |
-| `tunnel.proxy.hubs[].name` | `string` | not supported yet |
-| `tunnel.proxy.hubs[].password` | `string` | not supported yet |
-| `tunnel.proxy.hubs[].pin` | `string` | not supported yet |
-| `tunnel.proxy.hubs[].ping_interval` | `duration` | not supported yet |
-| `tunnel.proxy.hubs[].ping_timeout` | `duration` | not supported yet |
-| `tunnel.proxy.hubs[].pool_size` | `integer` | not supported yet |
-| `tunnel.proxy.hubs[].quic_insecure` | `boolean` | not supported yet |
-| `tunnel.proxy.hubs[].quic_pin` | `string, deprecated` | not supported yet |
-| `tunnel.proxy.hubs[].retry_interval` | `duration` | not supported yet |
-| `tunnel.proxy.hubs[].token` | `string` | not supported yet |
-| `tunnel.proxy.idle_timeout` | `duration` | not supported yet |
-| `tunnel.proxy.max_tunnels` | `integer` | not supported yet |
-| `tunnel.proxy.meta` | `map<string>` | not supported yet |
-| `tunnel.proxy.name` | `string` | not supported yet |
-| `tunnel.proxy.open_timeout` | `duration` | not supported yet |
-| `tunnel.proxy.web_proxies` | `array<object>` | not supported yet |
-| `tunnel.proxy.web_proxies[].listen` | `string, required` | not supported yet |
-| `tunnel.proxy.web_proxies[].max_conns` | `integer` | not supported yet |
-| `tunnel.proxy.web_proxies[].name` | `string` | not supported yet |
-| `tunnel.proxy.web_proxies[].password` | `string, required` | not supported yet |
-| `tunnel.proxy.web_proxies[].url` | `string, required` | not supported yet |
+| `tunnel.proxy.console.session_lifetime` | `duration` | supported |
+| `tunnel.proxy.console.session_timeout` | `duration` | supported |
+| `tunnel.proxy.console.users` | `array<object>, required` | supported |
+| `tunnel.proxy.console.users[].password_hash` | `string, required` | supported |
+| `tunnel.proxy.console.users[].username` | `string, required` | supported |
+| `tunnel.proxy.forwards` | `array<object>` | supported |
+| `tunnel.proxy.forwards[].hub` | `string` | supported |
+| `tunnel.proxy.forwards[].listen` | `string, required` | supported |
+| `tunnel.proxy.forwards[].node` | `string, required` | supported |
+| `tunnel.proxy.forwards[].service` | `string, required` | supported |
+| `tunnel.proxy.hubs` | `array<object>` | supported |
+| `tunnel.proxy.hubs[].body_password` | `string` | supported |
+| `tunnel.proxy.hubs[].ca_file` | `string` | supported |
+| `tunnel.proxy.hubs[].call_timeout` | `duration` | supported |
+| `tunnel.proxy.hubs[].dial_timeout` | `duration` | supported |
+| `tunnel.proxy.hubs[].endpoints` | `array<object>, required` | supported |
+| `tunnel.proxy.hubs[].endpoints[].address` | `string, required` | supported |
+| `tunnel.proxy.hubs[].endpoints[].disabled` | `boolean` | supported |
+| `tunnel.proxy.hubs[].name` | `string` | supported |
+| `tunnel.proxy.hubs[].password` | `string` | supported |
+| `tunnel.proxy.hubs[].pin` | `string` | supported |
+| `tunnel.proxy.hubs[].ping_interval` | `duration` | supported |
+| `tunnel.proxy.hubs[].ping_timeout` | `duration` | supported |
+| `tunnel.proxy.hubs[].pool_size` | `integer` | supported |
+| `tunnel.proxy.hubs[].quic_insecure` | `boolean` | supported |
+| `tunnel.proxy.hubs[].quic_pin` | `string, deprecated` | supported |
+| `tunnel.proxy.hubs[].retry_interval` | `duration` | supported |
+| `tunnel.proxy.hubs[].token` | `string` | supported |
+| `tunnel.proxy.idle_timeout` | `duration` | supported |
+| `tunnel.proxy.max_tunnels` | `integer` | supported |
+| `tunnel.proxy.meta` | `map<string>` | supported |
+| `tunnel.proxy.name` | `string` | supported |
+| `tunnel.proxy.open_timeout` | `duration` | supported |
+| `tunnel.proxy.web_proxies` | `array<object>` | supported |
+| `tunnel.proxy.web_proxies[].listen` | `string, required` | supported |
+| `tunnel.proxy.web_proxies[].max_conns` | `integer` | supported |
+| `tunnel.proxy.web_proxies[].name` | `string` | supported |
+| `tunnel.proxy.web_proxies[].password` | `string, required` | supported |
+| `tunnel.proxy.web_proxies[].url` | `string, required` | supported |
 
 <a id="fields-upstreams"></a>
 

@@ -209,7 +209,7 @@ renamed fit's external names; I98–I109 are the Tunnel and LLM track).
 | **After 1.0: akit's names** | | | |
 | I97 | akit's names: every external name that says "fit" says "akit" (decision 037) | I91, I92 | done |
 | **After 1.0: tunnel and LLM** | | | |
-| I98 | Tunnel and LLM I: `tunnel` and `llm` in the config | I79 | todo |
+| I98 | Tunnel and LLM I: `tunnel` and `llm` in the config | I79 | done |
 | I99 | Link tokens: `akitt1.` tokens, proofs and registry; `akit token`; the Admin API's `/tokens` | I98, I27 | todo |
 | I100 | The roles in `akit run`: started, moved and stopped on the listeners' engine; one address, one server | I98 | todo |
 | I101 | Tunnel I: links, registration and tunnels over TCP | I99, I100 | todo |
@@ -1513,7 +1513,7 @@ link with fit's (decision 038).
   freeze marks them as additions.
 - **Touches**: `akit-config` (`tunnel`, `llm`), `akit`, `tests/compat`, `docs/reference`.
 - **fit**: `config/tunnel.go`, `config/llm.go`, `config/linktoken.go`; I105, I159, I160.
-- **Status**: todo.
+- **Status**: done (2026-11-27). See the progress log.
 
 ### I99 Link tokens
 

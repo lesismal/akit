@@ -14,7 +14,7 @@ akit 配置的每个字段：配置的每一部分是做什么的、一个示例
 akit 与 fit 不同之处，在表格中以 **akit：** 标出。
 
 <!-- BEGIN GENERATED: summary -->
-fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **504** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 76 个对象，下文各有一张表。
+fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **880** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 135 个对象，下文各有一张表。
 <!-- END GENERATED -->
 
 字段说明来自 fit 代码中的 `doc` 标签，是英文的，所以每个字段的完整说明在[英文版](config.md)的同一张表中；本页的表格给出每个字段的
@@ -52,6 +52,8 @@ fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../co
 - [指标](#指标)
 - [ACME](#acme)：[`acme`](#cfg-acme)、[`on_demand`](#cfg-acme-on-demand)、[`shared_storage`](#cfg-acme-shared-storage)
 - [Provider](#provider)：[`docker`](#cfg-providers-docker)、[`consul`](#cfg-providers-consul)、[`consul_kv`](#cfg-providers-consul-kv)、[`etcd`](#cfg-providers-etcd)、[`kubernetes`](#cfg-providers-kubernetes)
+- [隧道](#隧道)：[`tunnel.hub`](#cfg-tunnel-hub)、[`tunnel.node`](#cfg-tunnel-node)、[`tunnel.proxy`](#cfg-tunnel-proxy)
+- [LLM](#llm)：[`llm.hub`](#cfg-llm-hub)、[`llm.node`](#cfg-llm-node)、[`llm.proxy`](#cfg-llm-proxy)
 - [处理器](#处理器)：[`respond`](#respond)、[`static`](#static)、[`proxy`](#proxy)、[`fastcgi`](#fastcgi)、[`forward_proxy`](#forward_proxy)
 - [中间件](#中间件)：[`basic_auth`](#basic_auth)、[`body_limit`](#body_limit)、[`cache`](#cache)、[`circuit_breaker`](#circuit_breaker)、[`client_cert`](#client_cert)、[`compress`](#compress)、[`concurrency_limit`](#concurrency_limit)、[`forward_auth`](#forward_auth)、[`headers`](#headers)、[`jwt`](#jwt)、[`rate_limit`](#rate_limit)、[`redirect`](#redirect)、[`rewrite`](#rewrite)、[`wasm`](#wasm)
 - [akit 的扩展](#akit-的扩展)
@@ -122,7 +124,7 @@ routes:
 | `engine` | [对象](#cfg-engine) |  |  |
 | `limits` | [对象](#cfg-limits) |  |  |
 | `listeners` | [对象](#cfg-listeners)的列表 |  |  |
-| `llm` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `llm` | [对象](#cfg-llm) |  | **akit：**像 fit 一样读取并检查（I98）。在 LLM 的迭代运行这些角色之前（I104–I109），`akit run` 拒绝设置了角色的配置。 |
 | `log` | [对象](#cfg-log) |  |  |
 | `media_auth` | 对象的列表 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
 | `media_library` | 对象的列表 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
@@ -135,7 +137,7 @@ routes:
 | `streaming` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
 | `sync` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
 | `telemetry` | [对象](#cfg-telemetry) |  |  |
-| `tunnel` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `tunnel` | [对象](#cfg-tunnel) |  | **akit：**像 fit 一样读取并检查（I98）。在隧道的迭代运行这些角色之前（I100–I103），`akit run` 拒绝设置了角色的配置。 |
 | `upstreams` | [对象](#cfg-upstreams)的列表 |  |  |
 | `webrtc` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
 <!-- END GENERATED -->
@@ -1440,6 +1442,1072 @@ provider k8s {
 | --- | --- | --- | --- |
 | `http_port` | 整数 | `80` |  |
 | `https_port` | 整数 | `443` |  |
+<!-- END GENERATED -->
+
+## 隧道
+
+`tunnel` 包含 fit 的隧道角色（[fit 的指南](https://github.com/lesismal/fit/blob/main/docs/tunnel.zh-CN.md)）：
+node 和 proxy 主动连接的 hub（`tunnel.hub`）；位于其所能访问的 TCP 服务旁的 node（`tunnel.node`），它只连接这些地址；
+以及 proxy（`tunnel.proxy`），它为每个转发监听一个本地地址，把每个连接经由 hub 隧道到某个 node 的服务。进程运行其配置
+设置的每个角色，可以有网关路由，也可以没有。链路基于 `tls://`、`wss://` 或 `quic://`，hub 的证书由 `pin` 或 `ca_file`
+检查；`tcp://` 和 `ws://` 只能在回环地址上或带 `body_password` 使用。node 和 proxy 用 hub 签发的 token
+`akitt1.<id>.<secret>`（I99）注册，或者用已弃用的 hub 共享 `password`。akit 像 fit 一样读取并检查这些角色（I98）；
+`akit run` 由 I100–I103 运行它们，在此之前拒绝设置了角色的配置。
+
+```fit
+tunnel {
+	hub {
+		name hub
+		body_password a-body-password
+		listeners { protocol tls; address :7000 }
+	}
+}
+```
+
+### `tunnel`
+
+<!-- BEGIN GENERATED: tunnel -->
+<a id="cfg-tunnel"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-tunnel)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `hub` | [对象](#cfg-tunnel-hub) |  |  |
+| `node` | [对象](#cfg-tunnel-node) |  |  |
+| `proxy` | [对象](#cfg-tunnel-proxy) |  |  |
+<!-- END GENERATED -->
+
+### `tunnel.hub`
+
+<!-- BEGIN GENERATED: tunnel.hub -->
+<a id="cfg-tunnel-hub"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-tunnel-hub)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `access` | [对象](#cfg-tunnel-hub-access) |  |  |
+| `allow_proxy_services` | 布尔值 |  |  |
+| `body_password` | 字符串 |  |  |
+| `call_timeout` | 时长 | `"15s"` |  |
+| `console` | [对象](#cfg-tunnel-hub-console) |  |  |
+| `console_socket` | [对象](#cfg-tunnel-hub-console-socket) |  |  |
+| `listeners` | [对象](#cfg-tunnel-hub-listeners)的列表 |  |  |
+| `max_links` | 整数，≥ 0 | `1024` |  |
+| `max_links_per_peer` | 整数，≥ 0 | `128` |  |
+| `max_peers` | 整数，≥ 0 | `1024` |  |
+| `max_tunnels` | 整数，≥ 0 | `16384` |  |
+| `max_unregistered` | 整数，≥ 0 | `256` |  |
+| `max_unregistered_per_ip` | 整数，≥ 0 | `32` |  |
+| `name` | 字符串 |  |  |
+| `password` | 字符串 |  |  |
+| `quic` | [对象](#cfg-tunnel-hub-quic) |  |  |
+| `register_timeout` | 时长 | `"10s"` |  |
+| `tokens` | [对象](#cfg-tunnel-hub-tokens)的列表 |  |  |
+<!-- END GENERATED -->
+
+### `tunnel.hub.listeners[]`
+
+<!-- BEGIN GENERATED: tunnel.hub.listeners[] -->
+<a id="cfg-tunnel-hub-listeners"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-tunnel-hub-listeners)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `address` | 字符串 | 必填 |  |
+| `protocol` | 字符串：`tcp`、`tls`、`ws`、`wss`、`quic` | 必填 |  |
+| `cert_file` | 字符串 |  |  |
+| `key_file` | 字符串 |  |  |
+| `path` | 字符串 | `"/tunnel"` |  |
+<!-- END GENERATED -->
+
+### `tunnel.hub.console_socket`
+
+<!-- BEGIN GENERATED: tunnel.hub.console_socket -->
+<a id="cfg-tunnel-hub-console-socket"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-tunnel-hub-console-socket)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `address` | 字符串 | 必填 |  |
+| `max_conns` | 整数，≥ 0 | `32` |  |
+| `password` | 字符串 |  |  |
+<!-- END GENERATED -->
+
+### `tunnel.hub.quic`
+
+<!-- BEGIN GENERATED: tunnel.hub.quic -->
+<a id="cfg-tunnel-hub-quic"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-tunnel-hub-quic)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `cert` | 字符串 |  |  |
+| `handshake_timeout` | 时长 | `"10s"` |  |
+| `idle_timeout` | 时长 | `"30s"` |  |
+| `keep_alive` | 时长 | `"10s"` |  |
+| `key` | 字符串 |  |  |
+| `max_handshakes` | 整数，≥ 0 | `64` |  |
+<!-- END GENERATED -->
+
+### `tunnel.hub.tokens[]`
+
+<!-- BEGIN GENERATED: tunnel.hub.tokens[] -->
+<a id="cfg-tunnel-hub-tokens"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-tunnel-hub-tokens)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `hash` | 字符串 | 必填 |  |
+| `id` | 字符串 | 必填 |  |
+| `name` | 字符串 | 必填 |  |
+| `created_at` | 整数，≥ 0 |  |  |
+| `expires_at` | 整数，≥ 0 |  |  |
+| `members` | 字符串的列表 |  |  |
+| `note` | 字符串 |  |  |
+<!-- END GENERATED -->
+
+### `tunnel.hub.access`
+
+<!-- BEGIN GENERATED: tunnel.hub.access -->
+<a id="cfg-tunnel-hub-access"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-tunnel-hub-access)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `allow` | 字符串的列表 |  |  |
+| `allow_files` | 字符串的列表 |  |  |
+| `deny` | 字符串的列表 |  |  |
+| `deny_files` | 字符串的列表 |  |  |
+<!-- END GENERATED -->
+
+### `tunnel.hub.console`
+
+<!-- BEGIN GENERATED: tunnel.hub.console -->
+<a id="cfg-tunnel-hub-console"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-tunnel-hub-console)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `address` | 字符串 | 必填 |  |
+| `users` | [对象](#cfg-tunnel-hub-console-users)的列表 | 必填 |  |
+| `access` | [对象](#cfg-tunnel-hub-console-access) |  |  |
+| `cert_file` | 字符串 |  |  |
+| `key_file` | 字符串 |  |  |
+| `max_conns` | 整数，≥ 0 | `32` |  |
+| `max_sessions` | 整数，≥ 0 | `64` |  |
+| `mptcp` | 布尔值 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `session_lifetime` | 时长 | `"12h"` |  |
+| `session_timeout` | 时长 | `"30m"` |  |
+<!-- END GENERATED -->
+
+### `tunnel.hub.console.users[]`
+
+<!-- BEGIN GENERATED: tunnel.hub.console.users[] -->
+<a id="cfg-tunnel-hub-console-users"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-tunnel-hub-console-users)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `password_hash` | 字符串 | 必填 |  |
+| `username` | 字符串 | 必填 |  |
+<!-- END GENERATED -->
+
+### `tunnel.hub.console.access`
+
+<!-- BEGIN GENERATED: tunnel.hub.console.access -->
+<a id="cfg-tunnel-hub-console-access"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-tunnel-hub-console-access)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `allow` | 字符串的列表 |  |  |
+| `allow_files` | 字符串的列表 |  |  |
+| `deny` | 字符串的列表 |  |  |
+| `deny_files` | 字符串的列表 |  |  |
+<!-- END GENERATED -->
+
+### `tunnel.node`
+
+<!-- BEGIN GENERATED: tunnel.node -->
+<a id="cfg-tunnel-node"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-tunnel-node)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `allow_hub_services` | 布尔值 |  |  |
+| `console` | [对象](#cfg-tunnel-node-console) |  |  |
+| `dial_timeout` | 时长 | `"5s"` |  |
+| `hubs` | [对象](#cfg-tunnel-node-hubs)的列表 |  |  |
+| `idle_timeout` | 时长 | `"2h"` |  |
+| `max_tunnels` | 整数，≥ 0 | `4096` |  |
+| `meta` | 值为字符串的映射 |  |  |
+| `name` | 字符串 |  |  |
+| `services` | [对象](#cfg-tunnel-node-services)的列表 |  |  |
+<!-- END GENERATED -->
+
+### `tunnel.node.hubs[]`
+
+<!-- BEGIN GENERATED: tunnel.node.hubs[] -->
+<a id="cfg-tunnel-node-hubs"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-tunnel-node-hubs)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `endpoints` | [对象](#cfg-tunnel-node-hubs-endpoints)的列表 | 必填 |  |
+| `body_password` | 字符串 |  |  |
+| `ca_file` | 字符串 |  |  |
+| `call_timeout` | 时长 | `"10s"` |  |
+| `dial_timeout` | 时长 | `"5s"` |  |
+| `name` | 字符串 |  |  |
+| `password` | 字符串 |  |  |
+| `pin` | 字符串 |  |  |
+| `ping_interval` | 时长 | `"5s"` |  |
+| `ping_timeout` | 时长 | `"5s"` |  |
+| `pool_size` | 整数，0 到 100 | `10` |  |
+| `quic_insecure` | 布尔值 |  |  |
+| `quic_pin` | 字符串 |  | 已弃用。 |
+| `retry_interval` | 时长 | `"3s"` |  |
+| `token` | 字符串 |  | **akit：**akit 的 token 形如 `akitt1.<id>.<secret>`（决定 037）；fit 签发的 token（`fitt1.`）写成 akit 的前缀，其 ID 和 secret 不变（决定 038）。 |
+<!-- END GENERATED -->
+
+### `tunnel.node.hubs[].endpoints[]`
+
+<!-- BEGIN GENERATED: tunnel.node.hubs[].endpoints[] -->
+<a id="cfg-tunnel-node-hubs-endpoints"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-tunnel-node-hubs-endpoints)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `address` | 字符串 | 必填 |  |
+| `disabled` | 布尔值 |  |  |
+<!-- END GENERATED -->
+
+### `tunnel.node.services[]`
+
+<!-- BEGIN GENERATED: tunnel.node.services[] -->
+<a id="cfg-tunnel-node-services"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-tunnel-node-services)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `address` | 字符串 | 必填 |  |
+| `name` | 字符串 | 必填 |  |
+| `description` | 字符串 |  |  |
+<!-- END GENERATED -->
+
+### `tunnel.node.console`
+
+<!-- BEGIN GENERATED: tunnel.node.console -->
+<a id="cfg-tunnel-node-console"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-tunnel-node-console)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `address` | 字符串 | 必填 |  |
+| `users` | [对象](#cfg-tunnel-node-console-users)的列表 | 必填 |  |
+| `access` | [对象](#cfg-tunnel-node-console-access) |  |  |
+| `cert_file` | 字符串 |  |  |
+| `key_file` | 字符串 |  |  |
+| `max_conns` | 整数，≥ 0 | `32` |  |
+| `max_sessions` | 整数，≥ 0 | `64` |  |
+| `mptcp` | 布尔值 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `session_lifetime` | 时长 | `"12h"` |  |
+| `session_timeout` | 时长 | `"30m"` |  |
+<!-- END GENERATED -->
+
+### `tunnel.node.console.users[]`
+
+<!-- BEGIN GENERATED: tunnel.node.console.users[] -->
+<a id="cfg-tunnel-node-console-users"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-tunnel-node-console-users)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `password_hash` | 字符串 | 必填 |  |
+| `username` | 字符串 | 必填 |  |
+<!-- END GENERATED -->
+
+### `tunnel.node.console.access`
+
+<!-- BEGIN GENERATED: tunnel.node.console.access -->
+<a id="cfg-tunnel-node-console-access"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-tunnel-node-console-access)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `allow` | 字符串的列表 |  |  |
+| `allow_files` | 字符串的列表 |  |  |
+| `deny` | 字符串的列表 |  |  |
+| `deny_files` | 字符串的列表 |  |  |
+<!-- END GENERATED -->
+
+### `tunnel.proxy`
+
+<!-- BEGIN GENERATED: tunnel.proxy -->
+<a id="cfg-tunnel-proxy"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-tunnel-proxy)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `access` | [对象](#cfg-tunnel-proxy-access) |  |  |
+| `console` | [对象](#cfg-tunnel-proxy-console) |  |  |
+| `forwards` | [对象](#cfg-tunnel-proxy-forwards)的列表 |  |  |
+| `hubs` | [对象](#cfg-tunnel-proxy-hubs)的列表 |  |  |
+| `idle_timeout` | 时长 | `"2h"` |  |
+| `max_tunnels` | 整数，≥ 0 | `4096` |  |
+| `meta` | 值为字符串的映射 |  |  |
+| `name` | 字符串 |  |  |
+| `open_timeout` | 时长 | `"20s"` |  |
+| `web_proxies` | [对象](#cfg-tunnel-proxy-web-proxies)的列表 |  |  |
+<!-- END GENERATED -->
+
+### `tunnel.proxy.hubs[]`
+
+<!-- BEGIN GENERATED: tunnel.proxy.hubs[] -->
+<a id="cfg-tunnel-proxy-hubs"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-tunnel-proxy-hubs)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `endpoints` | [对象](#cfg-tunnel-proxy-hubs-endpoints)的列表 | 必填 |  |
+| `body_password` | 字符串 |  |  |
+| `ca_file` | 字符串 |  |  |
+| `call_timeout` | 时长 | `"10s"` |  |
+| `dial_timeout` | 时长 | `"5s"` |  |
+| `name` | 字符串 |  |  |
+| `password` | 字符串 |  |  |
+| `pin` | 字符串 |  |  |
+| `ping_interval` | 时长 | `"5s"` |  |
+| `ping_timeout` | 时长 | `"5s"` |  |
+| `pool_size` | 整数，0 到 100 | `10` |  |
+| `quic_insecure` | 布尔值 |  |  |
+| `quic_pin` | 字符串 |  | 已弃用。 |
+| `retry_interval` | 时长 | `"3s"` |  |
+| `token` | 字符串 |  | **akit：**akit 的 token 形如 `akitt1.<id>.<secret>`（决定 037）；fit 签发的 token（`fitt1.`）写成 akit 的前缀，其 ID 和 secret 不变（决定 038）。 |
+<!-- END GENERATED -->
+
+### `tunnel.proxy.hubs[].endpoints[]`
+
+<!-- BEGIN GENERATED: tunnel.proxy.hubs[].endpoints[] -->
+<a id="cfg-tunnel-proxy-hubs-endpoints"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-tunnel-proxy-hubs-endpoints)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `address` | 字符串 | 必填 |  |
+| `disabled` | 布尔值 |  |  |
+<!-- END GENERATED -->
+
+### `tunnel.proxy.forwards[]`
+
+<!-- BEGIN GENERATED: tunnel.proxy.forwards[] -->
+<a id="cfg-tunnel-proxy-forwards"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-tunnel-proxy-forwards)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `listen` | 字符串 | 必填 |  |
+| `node` | 字符串 | 必填 |  |
+| `service` | 字符串 | 必填 |  |
+| `hub` | 字符串 |  |  |
+<!-- END GENERATED -->
+
+### `tunnel.proxy.web_proxies[]`
+
+<!-- BEGIN GENERATED: tunnel.proxy.web_proxies[] -->
+<a id="cfg-tunnel-proxy-web-proxies"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-tunnel-proxy-web-proxies)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `listen` | 字符串 | 必填 |  |
+| `password` | 字符串 | 必填 |  |
+| `url` | 字符串 | 必填 |  |
+| `max_conns` | 整数，≥ 0 | `32` |  |
+| `name` | 字符串 |  |  |
+<!-- END GENERATED -->
+
+### `tunnel.proxy.access`
+
+<!-- BEGIN GENERATED: tunnel.proxy.access -->
+<a id="cfg-tunnel-proxy-access"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-tunnel-proxy-access)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `allow` | 字符串的列表 |  |  |
+| `allow_files` | 字符串的列表 |  |  |
+| `deny` | 字符串的列表 |  |  |
+| `deny_files` | 字符串的列表 |  |  |
+<!-- END GENERATED -->
+
+### `tunnel.proxy.console`
+
+<!-- BEGIN GENERATED: tunnel.proxy.console -->
+<a id="cfg-tunnel-proxy-console"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-tunnel-proxy-console)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `address` | 字符串 | 必填 |  |
+| `users` | [对象](#cfg-tunnel-proxy-console-users)的列表 | 必填 |  |
+| `access` | [对象](#cfg-tunnel-proxy-console-access) |  |  |
+| `cert_file` | 字符串 |  |  |
+| `key_file` | 字符串 |  |  |
+| `max_conns` | 整数，≥ 0 | `32` |  |
+| `max_sessions` | 整数，≥ 0 | `64` |  |
+| `mptcp` | 布尔值 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `session_lifetime` | 时长 | `"12h"` |  |
+| `session_timeout` | 时长 | `"30m"` |  |
+<!-- END GENERATED -->
+
+### `tunnel.proxy.console.users[]`
+
+<!-- BEGIN GENERATED: tunnel.proxy.console.users[] -->
+<a id="cfg-tunnel-proxy-console-users"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-tunnel-proxy-console-users)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `password_hash` | 字符串 | 必填 |  |
+| `username` | 字符串 | 必填 |  |
+<!-- END GENERATED -->
+
+### `tunnel.proxy.console.access`
+
+<!-- BEGIN GENERATED: tunnel.proxy.console.access -->
+<a id="cfg-tunnel-proxy-console-access"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-tunnel-proxy-console-access)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `allow` | 字符串的列表 |  |  |
+| `allow_files` | 字符串的列表 |  |  |
+| `deny` | 字符串的列表 |  |  |
+| `deny_files` | 字符串的列表 |  |  |
+<!-- END GENERATED -->
+
+## LLM
+
+`llm` 包含 fit 的 LLM 角色（[fit 的指南](https://github.com/lesismal/fit/blob/main/docs/llm.zh-CN.md)），用于在多台机器
+之间共享 AI 模型：node（`llm.node`）从本地或托管的上游提供 OpenAI、Anthropic、Gemini、Azure OpenAI、Ollama 和 Cohere
+API 的模型；hub（`llm.hub`）是 node 和 proxy 汇合的地方；proxy（`llm.proxy`）向其本机或局域网中的 agent 提供模型的 API。
+这些角色通过 WebSocket 组成的 mesh 互连，非回环地址上走 TLS（监听方的证书由 `pin` 固定或由 `ca_file` 检查），每条链路
+用其监听方签发的 token（`akitt1.`，I99）或已弃用的角色密码证明。akit 像 fit 一样读取并检查这些角色（I98）；`akit run`
+由 I104–I109 运行它们，在此之前拒绝设置了角色的配置。
+
+```fit
+llm {
+	hub {
+		listen { address :9210; self_signed true }
+	}
+}
+```
+
+### `llm`
+
+<!-- BEGIN GENERATED: llm -->
+<a id="cfg-llm"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-llm)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `hub` | [对象](#cfg-llm-hub) |  |  |
+| `node` | [对象](#cfg-llm-node) |  |  |
+| `proxy` | [对象](#cfg-llm-proxy) |  |  |
+<!-- END GENERATED -->
+
+### `llm.hub`
+
+<!-- BEGIN GENERATED: llm.hub -->
+<a id="cfg-llm-hub"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-llm-hub)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `access` | [对象](#cfg-llm-hub-access) |  |  |
+| `console` | [对象](#cfg-llm-hub-console) |  |  |
+| `id` | 字符串 |  |  |
+| `limits` | [对象](#cfg-llm-hub-limits) |  |  |
+| `listen` | [对象](#cfg-llm-hub-listen) |  |  |
+| `max_nodes` | 整数，≥ 0 | `1024` |  |
+| `name` | 字符串 |  |  |
+| `peers` | [对象](#cfg-llm-hub-peers)的列表 |  |  |
+| `tokens` | [对象](#cfg-llm-hub-tokens)的列表 |  |  |
+<!-- END GENERATED -->
+
+### `llm.hub.listen`
+
+<!-- BEGIN GENERATED: llm.hub.listen -->
+<a id="cfg-llm-hub-listen"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-llm-hub-listen)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `address` | 字符串 | 必填 |  |
+| `cert` | 字符串 |  |  |
+| `cert_file` | 字符串 |  |  |
+| `hub_password` | 字符串 |  |  |
+| `key` | 字符串 |  |  |
+| `key_file` | 字符串 |  |  |
+| `node_password` | 字符串 |  |  |
+| `password` | 字符串 |  |  |
+| `proxy_password` | 字符串 |  |  |
+| `self_signed` | 布尔值 |  |  |
+<!-- END GENERATED -->
+
+### `llm.hub.peers[]`
+
+<!-- BEGIN GENERATED: llm.hub.peers[] -->
+<a id="cfg-llm-hub-peers"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-llm-hub-peers)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `address` | 字符串 | 必填 |  |
+| `role` | 字符串：`hub`、`node`、`proxy` | 必填 |  |
+| `ca_file` | 字符串 |  |  |
+| `password` | 字符串 |  |  |
+| `pin` | 字符串 |  |  |
+| `server_name` | 字符串 |  |  |
+| `token` | 字符串 |  | **akit：**akit 的 token 形如 `akitt1.<id>.<secret>`（决定 037）；fit 签发的 token（`fitt1.`）写成 akit 的前缀，其 ID 和 secret 不变（决定 038）。 |
+<!-- END GENERATED -->
+
+### `llm.hub.limits`
+
+<!-- BEGIN GENERATED: llm.hub.limits -->
+<a id="cfg-llm-hub-limits"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-llm-hub-limits)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `max_conns` | 整数，≥ 0 | `1024` |  |
+| `max_inflight` | 整数，≥ 0 | `1024` |  |
+| `ping_interval` | 时长 | `"15s"` |  |
+| `retry_interval` | 时长 | `"5s"` |  |
+| `slow_timeout` | 时长 | `"30s"` |  |
+| `stream_idle` | 时长 | `"2m"` |  |
+<!-- END GENERATED -->
+
+### `llm.hub.tokens[]`
+
+<!-- BEGIN GENERATED: llm.hub.tokens[] -->
+<a id="cfg-llm-hub-tokens"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-llm-hub-tokens)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `hash` | 字符串 | 必填 |  |
+| `id` | 字符串 | 必填 |  |
+| `name` | 字符串 | 必填 |  |
+| `created_at` | 整数，≥ 0 |  |  |
+| `expires_at` | 整数，≥ 0 |  |  |
+| `members` | 字符串的列表 |  |  |
+| `note` | 字符串 |  |  |
+<!-- END GENERATED -->
+
+### `llm.hub.access`
+
+<!-- BEGIN GENERATED: llm.hub.access -->
+<a id="cfg-llm-hub-access"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-llm-hub-access)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `allow` | 字符串的列表 |  |  |
+| `allow_files` | 字符串的列表 |  |  |
+| `deny` | 字符串的列表 |  |  |
+| `deny_files` | 字符串的列表 |  |  |
+<!-- END GENERATED -->
+
+### `llm.hub.console`
+
+<!-- BEGIN GENERATED: llm.hub.console -->
+<a id="cfg-llm-hub-console"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-llm-hub-console)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `address` | 字符串 | 必填 |  |
+| `users` | [对象](#cfg-llm-hub-console-users)的列表 | 必填 |  |
+| `access` | [对象](#cfg-llm-hub-console-access) |  |  |
+| `cert_file` | 字符串 |  |  |
+| `key_file` | 字符串 |  |  |
+| `max_conns` | 整数，≥ 0 | `32` |  |
+| `max_sessions` | 整数，≥ 0 | `64` |  |
+| `mptcp` | 布尔值 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `session_lifetime` | 时长 | `"12h"` |  |
+| `session_timeout` | 时长 | `"30m"` |  |
+<!-- END GENERATED -->
+
+### `llm.hub.console.users[]`
+
+<!-- BEGIN GENERATED: llm.hub.console.users[] -->
+<a id="cfg-llm-hub-console-users"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-llm-hub-console-users)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `password_hash` | 字符串 | 必填 |  |
+| `username` | 字符串 | 必填 |  |
+<!-- END GENERATED -->
+
+### `llm.hub.console.access`
+
+<!-- BEGIN GENERATED: llm.hub.console.access -->
+<a id="cfg-llm-hub-console-access"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-llm-hub-console-access)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `allow` | 字符串的列表 |  |  |
+| `allow_files` | 字符串的列表 |  |  |
+| `deny` | 字符串的列表 |  |  |
+| `deny_files` | 字符串的列表 |  |  |
+<!-- END GENERATED -->
+
+### `llm.node`
+
+<!-- BEGIN GENERATED: llm.node -->
+<a id="cfg-llm-node"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-llm-node)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `access` | [对象](#cfg-llm-node-access) |  |  |
+| `console` | [对象](#cfg-llm-node-console) |  |  |
+| `description` | 字符串 |  |  |
+| `id` | 字符串 |  |  |
+| `limits` | [对象](#cfg-llm-node-limits) |  |  |
+| `listen` | [对象](#cfg-llm-node-listen) |  |  |
+| `models` | [对象](#cfg-llm-node-models)的列表 |  |  |
+| `name` | 字符串 |  |  |
+| `peers` | [对象](#cfg-llm-node-peers)的列表 |  |  |
+| `proxy` | [对象](#cfg-llm-node-proxy) |  |  |
+| `settings` | [对象](#cfg-llm-node-settings) |  |  |
+| `tokens` | [对象](#cfg-llm-node-tokens)的列表 |  |  |
+<!-- END GENERATED -->
+
+### `llm.node.listen`
+
+<!-- BEGIN GENERATED: llm.node.listen -->
+<a id="cfg-llm-node-listen"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-llm-node-listen)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `address` | 字符串 | 必填 |  |
+| `cert` | 字符串 |  |  |
+| `cert_file` | 字符串 |  |  |
+| `hub_password` | 字符串 |  |  |
+| `key` | 字符串 |  |  |
+| `key_file` | 字符串 |  |  |
+| `node_password` | 字符串 |  |  |
+| `password` | 字符串 |  |  |
+| `proxy_password` | 字符串 |  |  |
+| `self_signed` | 布尔值 |  |  |
+<!-- END GENERATED -->
+
+### `llm.node.peers[]`
+
+<!-- BEGIN GENERATED: llm.node.peers[] -->
+<a id="cfg-llm-node-peers"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-llm-node-peers)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `address` | 字符串 | 必填 |  |
+| `role` | 字符串：`hub`、`node`、`proxy` | 必填 |  |
+| `ca_file` | 字符串 |  |  |
+| `password` | 字符串 |  |  |
+| `pin` | 字符串 |  |  |
+| `server_name` | 字符串 |  |  |
+| `token` | 字符串 |  | **akit：**akit 的 token 形如 `akitt1.<id>.<secret>`（决定 037）；fit 签发的 token（`fitt1.`）写成 akit 的前缀，其 ID 和 secret 不变（决定 038）。 |
+<!-- END GENERATED -->
+
+### `llm.node.limits`
+
+<!-- BEGIN GENERATED: llm.node.limits -->
+<a id="cfg-llm-node-limits"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-llm-node-limits)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `max_conns` | 整数，≥ 0 | `1024` |  |
+| `max_inflight` | 整数，≥ 0 | `1024` |  |
+| `ping_interval` | 时长 | `"15s"` |  |
+| `retry_interval` | 时长 | `"5s"` |  |
+| `slow_timeout` | 时长 | `"30s"` |  |
+| `stream_idle` | 时长 | `"2m"` |  |
+<!-- END GENERATED -->
+
+### `llm.node.tokens[]`
+
+<!-- BEGIN GENERATED: llm.node.tokens[] -->
+<a id="cfg-llm-node-tokens"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-llm-node-tokens)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `hash` | 字符串 | 必填 |  |
+| `id` | 字符串 | 必填 |  |
+| `name` | 字符串 | 必填 |  |
+| `created_at` | 整数，≥ 0 |  |  |
+| `expires_at` | 整数，≥ 0 |  |  |
+| `members` | 字符串的列表 |  |  |
+| `note` | 字符串 |  |  |
+<!-- END GENERATED -->
+
+### `llm.node.access`
+
+<!-- BEGIN GENERATED: llm.node.access -->
+<a id="cfg-llm-node-access"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-llm-node-access)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `allow` | 字符串的列表 |  |  |
+| `allow_files` | 字符串的列表 |  |  |
+| `deny` | 字符串的列表 |  |  |
+| `deny_files` | 字符串的列表 |  |  |
+<!-- END GENERATED -->
+
+### `llm.node.console`
+
+<!-- BEGIN GENERATED: llm.node.console -->
+<a id="cfg-llm-node-console"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-llm-node-console)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `address` | 字符串 | 必填 |  |
+| `users` | [对象](#cfg-llm-node-console-users)的列表 | 必填 |  |
+| `access` | [对象](#cfg-llm-node-console-access) |  |  |
+| `cert_file` | 字符串 |  |  |
+| `key_file` | 字符串 |  |  |
+| `max_conns` | 整数，≥ 0 | `32` |  |
+| `max_sessions` | 整数，≥ 0 | `64` |  |
+| `mptcp` | 布尔值 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `session_lifetime` | 时长 | `"12h"` |  |
+| `session_timeout` | 时长 | `"30m"` |  |
+<!-- END GENERATED -->
+
+### `llm.node.console.users[]`
+
+<!-- BEGIN GENERATED: llm.node.console.users[] -->
+<a id="cfg-llm-node-console-users"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-llm-node-console-users)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `password_hash` | 字符串 | 必填 |  |
+| `username` | 字符串 | 必填 |  |
+<!-- END GENERATED -->
+
+### `llm.node.console.access`
+
+<!-- BEGIN GENERATED: llm.node.console.access -->
+<a id="cfg-llm-node-console-access"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-llm-node-console-access)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `allow` | 字符串的列表 |  |  |
+| `allow_files` | 字符串的列表 |  |  |
+| `deny` | 字符串的列表 |  |  |
+| `deny_files` | 字符串的列表 |  |  |
+<!-- END GENERATED -->
+
+### `llm.node.models[]`
+
+<!-- BEGIN GENERATED: llm.node.models[] -->
+<a id="cfg-llm-node-models"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-llm-node-models)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `api` | 字符串：`openai`、`anthropic`、`gemini`、`azure_openai`、`ollama`、`cohere` | 必填 |  |
+| `base_url` | 字符串 | 必填 |  |
+| `name` | 字符串 | 必填 |  |
+| `api_key` | 字符串 |  |  |
+| `api_version` | 字符串 |  |  |
+| `description` | 字符串 |  |  |
+| `disabled` | 布尔值 |  |  |
+| `max_inflight` | 整数，0 到 100000 |  |  |
+| `upstream` | 字符串 |  |  |
+<!-- END GENERATED -->
+
+### `llm.node.settings`
+
+<!-- BEGIN GENERATED: llm.node.settings -->
+<a id="cfg-llm-node-settings"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-llm-node-settings)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `allow_hub_manage` | 布尔值 |  |  |
+| `gpu_data_dir` | 字符串 |  |  |
+| `gpu_sudo` | 布尔值 | `true` |  |
+| `job_timeout` | 时长 | `"1h"` |  |
+| `refresh_interval` | 时长 | `"30s"` |  |
+<!-- END GENERATED -->
+
+### `llm.node.proxy`
+
+<!-- BEGIN GENERATED: llm.node.proxy -->
+<a id="cfg-llm-node-proxy"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-llm-node-proxy)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `connect_timeout` | 时长 | `"10s"` |  |
+| `first_byte_timeout` | 时长 | `"5m"` |  |
+| `idle_timeout` | 时长 | `"5m"` |  |
+| `max_body_bytes` | 整数，≥ 0 | `33554432` |  |
+| `max_inflight` | 整数，≥ 0 | `256` |  |
+| `timeout` | 时长 | `"30m"` |  |
+<!-- END GENERATED -->
+
+### `llm.proxy`
+
+<!-- BEGIN GENERATED: llm.proxy -->
+<a id="cfg-llm-proxy"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-llm-proxy)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `access` | [对象](#cfg-llm-proxy-access) |  |  |
+| `api` | [对象](#cfg-llm-proxy-api) |  |  |
+| `api_keys` | [对象](#cfg-llm-proxy-api-keys)的列表 |  |  |
+| `console` | [对象](#cfg-llm-proxy-console) |  |  |
+| `id` | 字符串 |  |  |
+| `limits` | [对象](#cfg-llm-proxy-limits) |  |  |
+| `listen` | [对象](#cfg-llm-proxy-listen) |  |  |
+| `name` | 字符串 |  |  |
+| `peers` | [对象](#cfg-llm-proxy-peers)的列表 |  |  |
+| `tokens` | [对象](#cfg-llm-proxy-tokens)的列表 |  |  |
+<!-- END GENERATED -->
+
+### `llm.proxy.listen`
+
+<!-- BEGIN GENERATED: llm.proxy.listen -->
+<a id="cfg-llm-proxy-listen"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-llm-proxy-listen)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `address` | 字符串 | 必填 |  |
+| `cert` | 字符串 |  |  |
+| `cert_file` | 字符串 |  |  |
+| `hub_password` | 字符串 |  |  |
+| `key` | 字符串 |  |  |
+| `key_file` | 字符串 |  |  |
+| `node_password` | 字符串 |  |  |
+| `password` | 字符串 |  |  |
+| `proxy_password` | 字符串 |  |  |
+| `self_signed` | 布尔值 |  |  |
+<!-- END GENERATED -->
+
+### `llm.proxy.peers[]`
+
+<!-- BEGIN GENERATED: llm.proxy.peers[] -->
+<a id="cfg-llm-proxy-peers"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-llm-proxy-peers)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `address` | 字符串 | 必填 |  |
+| `role` | 字符串：`hub`、`node`、`proxy` | 必填 |  |
+| `ca_file` | 字符串 |  |  |
+| `password` | 字符串 |  |  |
+| `pin` | 字符串 |  |  |
+| `server_name` | 字符串 |  |  |
+| `token` | 字符串 |  | **akit：**akit 的 token 形如 `akitt1.<id>.<secret>`（决定 037）；fit 签发的 token（`fitt1.`）写成 akit 的前缀，其 ID 和 secret 不变（决定 038）。 |
+<!-- END GENERATED -->
+
+### `llm.proxy.limits`
+
+<!-- BEGIN GENERATED: llm.proxy.limits -->
+<a id="cfg-llm-proxy-limits"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-llm-proxy-limits)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `max_conns` | 整数，≥ 0 | `1024` |  |
+| `max_inflight` | 整数，≥ 0 | `1024` |  |
+| `ping_interval` | 时长 | `"15s"` |  |
+| `retry_interval` | 时长 | `"5s"` |  |
+| `slow_timeout` | 时长 | `"30s"` |  |
+| `stream_idle` | 时长 | `"2m"` |  |
+<!-- END GENERATED -->
+
+### `llm.proxy.tokens[]`
+
+<!-- BEGIN GENERATED: llm.proxy.tokens[] -->
+<a id="cfg-llm-proxy-tokens"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-llm-proxy-tokens)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `hash` | 字符串 | 必填 |  |
+| `id` | 字符串 | 必填 |  |
+| `name` | 字符串 | 必填 |  |
+| `created_at` | 整数，≥ 0 |  |  |
+| `expires_at` | 整数，≥ 0 |  |  |
+| `members` | 字符串的列表 |  |  |
+| `note` | 字符串 |  |  |
+<!-- END GENERATED -->
+
+### `llm.proxy.access`
+
+<!-- BEGIN GENERATED: llm.proxy.access -->
+<a id="cfg-llm-proxy-access"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-llm-proxy-access)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `allow` | 字符串的列表 |  |  |
+| `allow_files` | 字符串的列表 |  |  |
+| `deny` | 字符串的列表 |  |  |
+| `deny_files` | 字符串的列表 |  |  |
+<!-- END GENERATED -->
+
+### `llm.proxy.console`
+
+<!-- BEGIN GENERATED: llm.proxy.console -->
+<a id="cfg-llm-proxy-console"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-llm-proxy-console)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `address` | 字符串 | 必填 |  |
+| `users` | [对象](#cfg-llm-proxy-console-users)的列表 | 必填 |  |
+| `access` | [对象](#cfg-llm-proxy-console-access) |  |  |
+| `cert_file` | 字符串 |  |  |
+| `key_file` | 字符串 |  |  |
+| `max_conns` | 整数，≥ 0 | `32` |  |
+| `max_sessions` | 整数，≥ 0 | `64` |  |
+| `mptcp` | 布尔值 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `session_lifetime` | 时长 | `"12h"` |  |
+| `session_timeout` | 时长 | `"30m"` |  |
+<!-- END GENERATED -->
+
+### `llm.proxy.console.users[]`
+
+<!-- BEGIN GENERATED: llm.proxy.console.users[] -->
+<a id="cfg-llm-proxy-console-users"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-llm-proxy-console-users)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `password_hash` | 字符串 | 必填 |  |
+| `username` | 字符串 | 必填 |  |
+<!-- END GENERATED -->
+
+### `llm.proxy.console.access`
+
+<!-- BEGIN GENERATED: llm.proxy.console.access -->
+<a id="cfg-llm-proxy-console-access"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-llm-proxy-console-access)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `allow` | 字符串的列表 |  |  |
+| `allow_files` | 字符串的列表 |  |  |
+| `deny` | 字符串的列表 |  |  |
+| `deny_files` | 字符串的列表 |  |  |
+<!-- END GENERATED -->
+
+### `llm.proxy.api`
+
+<!-- BEGIN GENERATED: llm.proxy.api -->
+<a id="cfg-llm-proxy-api"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-llm-proxy-api)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `address` | 字符串 | 必填 |  |
+| `cert_file` | 字符串 |  |  |
+| `first_byte_timeout` | 时长 | `"5m"` |  |
+| `key_file` | 字符串 |  |  |
+| `max_body_bytes` | 整数，≥ 0 | `33554432` |  |
+| `max_conns` | 整数，≥ 0 | `256` |  |
+| `max_inflight` | 整数，≥ 0 | `256` |  |
+| `timeout` | 时长 | `"30m"` |  |
+<!-- END GENERATED -->
+
+### `llm.proxy.api_keys[]`
+
+<!-- BEGIN GENERATED: llm.proxy.api_keys[] -->
+<a id="cfg-llm-proxy-api-keys"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-llm-proxy-api-keys)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `hash` | 字符串 | 必填 |  |
+| `id` | 字符串 | 必填 |  |
+| `name` | 字符串 | 必填 |  |
+| `created_at` | 整数，≥ 0 |  |  |
+| `prefix` | 字符串 |  |  |
 <!-- END GENERATED -->
 
 ## 处理器

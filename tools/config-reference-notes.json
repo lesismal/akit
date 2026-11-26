@@ -133,6 +133,34 @@
     "admin.console.cert_file": {
       "en": "Read again when the files change, as `admin.cert_file` (I94): a renewed certificate is served to new connections without a restart; fit reads it when it starts.",
       "zh": "文件变化时重新读取，与 `admin.cert_file` 相同（I94）：续期的证书无需重启即提供给新连接；fit 只在启动时读取。"
+    },
+    "tunnel": {
+      "en": "Read and checked as fit's (I98). `akit run` refuses a config that sets a role until the tunnel's iterations run it (I100–I103).",
+      "zh": "像 fit 一样读取并检查（I98）。在隧道的迭代运行这些角色之前（I100–I103），`akit run` 拒绝设置了角色的配置。"
+    },
+    "llm": {
+      "en": "Read and checked as fit's (I98). `akit run` refuses a config that sets a role until the LLM iterations run it (I104–I109).",
+      "zh": "像 fit 一样读取并检查（I98）。在 LLM 的迭代运行这些角色之前（I104–I109），`akit run` 拒绝设置了角色的配置。"
+    },
+    "tunnel.node.hubs[].token": {
+      "en": "akit's tokens are `akitt1.<id>.<secret>` (decision 037); a token fit issued (`fitt1.`) is written with akit's prefix, its ID and secret unchanged (decision 038).",
+      "zh": "akit 的 token 形如 `akitt1.<id>.<secret>`（决定 037）；fit 签发的 token（`fitt1.`）写成 akit 的前缀，其 ID 和 secret 不变（决定 038）。"
+    },
+    "tunnel.proxy.hubs[].token": {
+      "en": "akit's tokens are `akitt1.<id>.<secret>` (decision 037); a token fit issued (`fitt1.`) is written with akit's prefix, its ID and secret unchanged (decision 038).",
+      "zh": "akit 的 token 形如 `akitt1.<id>.<secret>`（决定 037）；fit 签发的 token（`fitt1.`）写成 akit 的前缀，其 ID 和 secret 不变（决定 038）。"
+    },
+    "llm.hub.peers[].token": {
+      "en": "akit's tokens are `akitt1.<id>.<secret>` (decision 037); a token fit issued (`fitt1.`) is written with akit's prefix, its ID and secret unchanged (decision 038).",
+      "zh": "akit 的 token 形如 `akitt1.<id>.<secret>`（决定 037）；fit 签发的 token（`fitt1.`）写成 akit 的前缀，其 ID 和 secret 不变（决定 038）。"
+    },
+    "llm.node.peers[].token": {
+      "en": "akit's tokens are `akitt1.<id>.<secret>` (decision 037); a token fit issued (`fitt1.`) is written with akit's prefix, its ID and secret unchanged (decision 038).",
+      "zh": "akit 的 token 形如 `akitt1.<id>.<secret>`（决定 037）；fit 签发的 token（`fitt1.`）写成 akit 的前缀，其 ID 和 secret 不变（决定 038）。"
+    },
+    "llm.proxy.peers[].token": {
+      "en": "akit's tokens are `akitt1.<id>.<secret>` (decision 037); a token fit issued (`fitt1.`) is written with akit's prefix, its ID and secret unchanged (decision 038).",
+      "zh": "akit 的 token 形如 `akitt1.<id>.<secret>`（决定 037）；fit 签发的 token（`fitt1.`）写成 akit 的前缀，其 ID 和 secret 不变（决定 038）。"
     }
   }
 }

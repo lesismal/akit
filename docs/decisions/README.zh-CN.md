@@ -30,3 +30,4 @@
 | [035](035-admin-api-redacts-secrets.zh-CN.md) | Admin API 遮蔽秘密，akit 对暴露的秘密发出警告，以及 I80b 的其余局限 | 待审阅 |
 | [036](036-console.zh-CN.md) | 控制台运行在自己的引擎上，按 fit 发布时原样提供 fit 的页面，store 等待 akio | 待审阅；名字由 037 修订 |
 | [037](037-akit-names.zh-CN.md) | akit 的名字：对外凡写 "fit" 的名字都改为 "akit"，不保留别名 | 已采纳 |
+| [038](038-tunnel-and-llm.zh-CN.md) | 隧道与 LLM 功能：fit 的角色、akit 的名字、fit 的线上协议 | 待审阅 |

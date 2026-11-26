@@ -17,7 +17,7 @@ so in a note marked **akit:**; nine defaults that name the gateway are akit's, `
 say `fit` ([decision 037](../decisions/037-akit-names.md)).
 
 <!-- BEGIN GENERATED: summary -->
-akit reads **504** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 76 objects akit reads, each has its table below.
+akit reads **880** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 135 objects akit reads, each has its table below.
 <!-- END GENERATED -->
 
 How to read the tables:
@@ -58,6 +58,8 @@ is not there, a plugin that does not compile are errors.
 - [Metrics](#metrics)
 - [ACME](#acme): [`acme`](#cfg-acme), [`on_demand`](#cfg-acme-on-demand), [`shared_storage`](#cfg-acme-shared-storage)
 - [Providers](#providers): [`docker`](#cfg-providers-docker), [`consul`](#cfg-providers-consul), [`consul_kv`](#cfg-providers-consul-kv), [`etcd`](#cfg-providers-etcd), [`kubernetes`](#cfg-providers-kubernetes)
+- [Tunnel](#tunnel): [`tunnel.hub`](#cfg-tunnel-hub), [`tunnel.node`](#cfg-tunnel-node), [`tunnel.proxy`](#cfg-tunnel-proxy)
+- [LLM](#llm): [`llm.hub`](#cfg-llm-hub), [`llm.node`](#cfg-llm-node), [`llm.proxy`](#cfg-llm-proxy)
 - [Handlers](#handlers): [`respond`](#respond), [`static`](#static), [`proxy`](#proxy), [`fastcgi`](#fastcgi), [`forward_proxy`](#forward_proxy)
 - [Middleware](#middleware): [`basic_auth`](#basic_auth), [`body_limit`](#body_limit), [`cache`](#cache), [`circuit_breaker`](#circuit_breaker), [`client_cert`](#client_cert), [`compress`](#compress), [`concurrency_limit`](#concurrency_limit), [`forward_auth`](#forward_auth), [`headers`](#headers), [`jwt`](#jwt), [`rate_limit`](#rate_limit), [`redirect`](#redirect), [`rewrite`](#rewrite), [`wasm`](#wasm)
 - [akit's extensions](#akits-extensions)
@@ -129,7 +131,7 @@ name every file on the command line (`-c` may be given again, or name a director
 | `engine` | [object](#cfg-engine) |  | How akio, the network engine akit serves and dials on, is set up: its event loops, workers and buffers. akio's own defaults for what is left out, and for all of it when engine is. Read when akit starts: a change takes effect when akit restarts. |
 | `limits` | [object](#cfg-limits) |  | Limits that apply to every listener. |
 | `listeners` | list of [object](#cfg-listeners) |  | The addresses akit listens on, and the protocols each one serves. When left out, HTTPS by default makes them from the routes' host names; see auto_https. |
-| `llm` | object |  | **Not supported yet**: refused by name. The LLM feature's roles to run beside the gateway, on its engine: a hub, a node and a proxy, which share AI models among machines and serve them to agents. None when left out. What their web pages change is written back here. |
+| `llm` | [object](#cfg-llm) |  | The LLM feature's roles to run beside the gateway, on its engine: a hub, a node and a proxy, which share AI models among machines and serve them to agents. None when left out. What their web pages change is written back here. **akit:** Read and checked as fit's (I98). `akit run` refuses a config that sets a role until the LLM iterations run it (I104–I109). |
 | `log` | [object](#cfg-log) |  | akit's own log: what it says about starting, reloading, certificates, providers and the engine, by logger, each with the least level written, and the format and output it writes in, as akio writes its own. Messages at info and debug to stdout and the rest to stderr, at info and above, as lines, when left out. |
 | `media_auth` | list of object |  | **Not supported yet**: refused by name. Named policies of who may publish and play which streams, with tokens, users and keys for tokens fit signs: the handlers and roles that take media (whip, whep, webrtc_proxy) refer to one with their auth param. A handler without auth lets everyone in, as the route's middleware allow. |
 | `media_library` | list of object |  | **Not supported yet**: refused by name. Named libraries of media files: directories scanned into a catalog of items, each a title with its renditions, audio, subtitles and poster, probed off fib's workers on a bounded file pool of the library's own, and read by the Admin API's /media/library. None when left out: no files are scanned or served. |
@@ -142,7 +144,7 @@ name every file on the command line (`-c` may be given again, or name a director
 | `streaming` | object |  | **Not supported yet**: refused by name. fit's streaming role, beside the gateway on its engine: one media hub where a stream is published once, over RTMP, RTSP, SRT or WHIP, and played over any of them, HTTP-FLV and HLS too, each listener and handler with its media_auth policy. None when left out. |
 | `sync` | object |  | **Not supported yet**: refused by name. fit's sync role: pipelines that read records from a source (a database's changes, files, a queue) and write them to sinks, each with a checkpoint saved only once every sink has acknowledged the records it covers, kept in state_dir. None when left out: no connections out and no state on disk. |
 | `telemetry` | [object](#cfg-telemetry) |  | OpenTelemetry: traces of requests, with W3C trace context sent on to upstreams, and metrics, exported over OTLP/HTTP to a collector. Neither when left out. Read when akit starts: a change takes effect when akit restarts. |
-| `tunnel` | object |  | **Not supported yet**: refused by name. The tunnel's roles to run beside the gateway, on its engine: a hub, a node and a proxy, which reach services behind NAT through the hub. None when left out. What their web pages change is written back here. |
+| `tunnel` | [object](#cfg-tunnel) |  | The tunnel's roles to run beside the gateway, on its engine: a hub, a node and a proxy, which reach services behind NAT through the hub. None when left out. What their web pages change is written back here. **akit:** Read and checked as fit's (I98). `akit run` refuses a config that sets a role until the tunnel's iterations run it (I100–I103). |
 | `upstreams` | list of [object](#cfg-upstreams) |  | The servers requests can be proxied to, by name. |
 | `webrtc` | object |  | **Not supported yet**: refused by name. What fit runs for WebRTC beside the gateway, on its engine: a TURN server, the media port of the whip and whep handlers, and the relay of the webrtc_proxy handler. None when left out. |
 <!-- END GENERATED -->
@@ -1432,6 +1434,960 @@ provider k8s {
 | --- | --- | --- | --- |
 | `http_port` | integer | `80` | The port Ingresses' rules are served on over HTTP. 80 when left out or 0. |
 | `https_port` | integer | `443` | The port the hosts of Ingresses' tls are served on over HTTPS. 443 when left out or 0. |
+<!-- END GENERATED -->
+
+## Tunnel
+
+`tunnel` holds fit's tunnel roles ([fit's guide](https://github.com/lesismal/fit/blob/main/docs/tunnel.md)):
+a hub (`tunnel.hub`) that nodes and proxies link out to, a node (`tunnel.node`) beside the TCP
+services it reaches and the only addresses it connects to, and a proxy (`tunnel.proxy`) that
+listens on a local address per forward and tunnels each connection through a hub to a node's
+service. A process runs every role its config sets, with the gateway's routes or without any.
+Links go over `tls://`, `wss://` or `quic://`, the hub's certificate checked by `pin` or
+`ca_file`; `tcp://` and `ws://` only on loopback or with `body_password`. Nodes and proxies
+register with a token the hub issued, `akitt1.<id>.<secret>` (I99), or, deprecated, the hub's
+shared `password`. akit reads and checks the roles as fit does (I98); `akit run` runs them with
+I100–I103 and refuses a config that sets one until then.
+
+```fit
+tunnel {
+	hub {
+		name hub
+		body_password a-body-password
+		listeners { protocol tls; address :7000 }
+	}
+}
+```
+
+### `tunnel`
+
+<!-- BEGIN GENERATED: tunnel -->
+<a id="cfg-tunnel"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `hub` | [object](#cfg-tunnel-hub) |  | Run a hub: nodes and proxies link to it, and it joins a proxy's tunnels to a node's. |
+| `node` | [object](#cfg-tunnel-node) |  | Run a node: it links to hubs and opens the tunnels they ask for to the services it exposes. |
+| `proxy` | [object](#cfg-tunnel-proxy) |  | Run a proxy: local ports and web proxies forwarded through a hub to the services of a node. |
+<!-- END GENERATED -->
+
+### `tunnel.hub`
+
+<!-- BEGIN GENERATED: tunnel.hub -->
+<a id="cfg-tunnel-hub"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `access` | [object](#cfg-tunnel-hub-access) |  | The client addresses the hub's listeners and its console_socket take, deciding before the global access: a connection it refuses is closed as soon as it is accepted, and the datagrams a quic listener gets from an address it refuses are dropped. A change applies to the connections that open from then on, without listening anew; those already open stay. Its console's pages take console.access. |
+| `allow_proxy_services` | boolean |  | Let registered proxies set nodes' services through the hub, as a proxy's pages do; a node takes them only with its allow_hub_services. Every proxy that has the password could then do it. Off when left out: only the hub's own pages ask nodes to change their services. |
+| `body_password` | string |  | When set, the body of every frame on the links is encrypted with AES-256-GCM, and nodes and proxies need the same one: each frame is authenticated, so a tcp or ws listener on an address that is not a loopback one is allowed only with it. A link registered with a token derives its keys from the token and this, by HKDF; one with the password, from the password's PBKDF2. It applies to the links that open after it changes. |
+| `call_timeout` | duration | `"15s"` | How long a node may take to answer the hub: to open a tunnel, or to list or set its services. 15s when left out. |
+| `console` | [object](#cfg-tunnel-hub-console) |  | The hub's web pages; none when left out. |
+| `console_socket` | [object](#cfg-tunnel-hub-console-socket) |  | An encrypted WebSocket that carries the hub's console pages to the web_proxies of proxies that cannot reach them otherwise. Needs console. None when left out. |
+| `listeners` | list of [object](#cfg-tunnel-hub-listeners) |  | Where nodes and proxies link to the hub, each over its protocol. A tcp or ws listener on an address that is not a loopback one needs body_password: use tls, wss or quic there. None when left out: the console's pages add them. |
+| `max_links` | integer, 0 or more | `1024` | The most links the hub keeps open at once, registered or not; one past it is closed as soon as it opens. 1024 when left out or 0. |
+| `max_links_per_peer` | integer, 0 or more | `128` | The most links one node or proxy may register, from however many processes of the same name. 128 when left out or 0. |
+| `max_peers` | integer, 0 or more | `1024` | The most nodes and proxies registered at once. 1024 when left out or 0. |
+| `max_tunnels` | integer, 0 or more | `16384` | The most tunnels the hub passes at once; a proxy's request for one more is refused. 16384 when left out or 0. |
+| `max_unregistered` | integer, 0 or more | `256` | The most links open at once that have not registered yet, which anyone who reaches a listener can open; one past it is closed as soon as it opens, so that they cannot take every link from the nodes and proxies that register. 256 when left out or 0. |
+| `max_unregistered_per_ip` | integer, 0 or more | `32` | The most links from one IP address open at once that have not registered yet; one past it is closed as soon as it opens, and its node or proxy links again after its retry_interval. 32 when left out or 0. |
+| `name` | string |  | The name the hub tells the nodes and proxies that register. The host's name when left out. |
+| `password` | string |  | The password every node and proxy may register with, which they prove they know without sending it: deprecated for tokens, which give each member a credential of its own. Still taken in this release, with a warning on the pages while a member uses it; refused in the next. Without it, only tokens register. |
+| `quic` | [object](#cfg-tunnel-hub-quic) |  | The hub's certificate, which its tls, wss and quic listeners present unless they have cert_file, and the connections of the quic listeners. The hub makes a self-signed certificate and writes it here when a listener needs one and none is set. |
+| `register_timeout` | duration | `"10s"` | How long a link may take to register once it is open; it is closed past it. 10s when left out. |
+| `tokens` | list of [object](#cfg-tunnel-hub-tokens) |  | The tokens the hub issued, which nodes and proxies register with in place of the password: each its own credential, kept as a hash, with an optional expiry. The hub's pages, its Admin API module and akit token make, list, change and revoke them; not written by hand. |
+<!-- END GENERATED -->
+
+### `tunnel.hub.listeners[]`
+
+<!-- BEGIN GENERATED: tunnel.hub.listeners[] -->
+<a id="cfg-tunnel-hub-listeners"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `address` | string | required | The host and port it listens on, as in ":7000"; an empty host is every address. |
+| `protocol` | string: `tcp`, `tls`, `ws`, `wss`, `quic` | required | The protocol: tls, TCP over TLS; wss, a WebSocket over TLS, for networks that let only HTTPS through; quic, over UDP; or tcp and ws, the same in the clear, which only a loopback address, or a hub with body_password, may take. |
+| `cert_file` | string |  | A tls, wss or quic listener's certificate: a PEM file with it, followed by any intermediates, for nodes and proxies that check it with ca_file or the system's roots; with key_file. Read when the hub's member is applied, and again when it changes on disk (akit run -watch-certs). The hub's own certificate, in quic, when left out. |
+| `key_file` | string |  | The PEM private key of cert_file. |
+| `path` | string | `"/tunnel"` | A ws or wss listener's path. /tunnel when left out. |
+<!-- END GENERATED -->
+
+### `tunnel.hub.console_socket`
+
+<!-- BEGIN GENERATED: tunnel.hub.console_socket -->
+<a id="cfg-tunnel-hub-console-socket"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `address` | string | required | The host and port the WebSocket listens on; it answers on any path. |
+| `max_conns` | integer, 0 or more | `32` | The most WebSockets open at once; one past it is closed as soon as it opens. A WebSocket that has not proven the password, with a message it seals, is closed after 10s, and one IP address may have a quarter of them open that have not. 32 when left out or 0. |
+| `password` | string |  | The password the WebSocket's messages are encrypted with, which a proxy's web_proxy needs. The hub's password when left out. |
+<!-- END GENERATED -->
+
+### `tunnel.hub.quic`
+
+<!-- BEGIN GENERATED: tunnel.hub.quic -->
+<a id="cfg-tunnel-hub-quic"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `cert` | string |  | The PEM certificate the tls, wss and quic listeners without cert_file present, which nodes and proxies pin by its SHA-256 fingerprint; with key. When a listener needs one and none is set, the hub makes a self-signed one and keeps it: here, with admin.store, or else in a file beside the config, 0600, as akit.tunnel.hub.pem beside akit.json; so that it outlives a restart, and the pins of it stay good. |
+| `handshake_timeout` | duration | `"10s"` | How long a QUIC handshake may take. 10s when left out. |
+| `idle_timeout` | duration | `"30s"` | How long a QUIC connection may hear nothing from its peer before it is closed. 30s when left out. |
+| `keep_alive` | duration | `"10s"` | How often a quiet QUIC connection is pinged, so that it neither idles out nor loses its NAT mapping. 10s when left out. |
+| `key` | string |  | The PEM private key of cert. |
+| `max_handshakes` | integer, 0 or more | `64` | The most QUIC handshakes under way at once; a new connection past it is dropped, and its proxy tries again. Past half of them, a client proves its address with a Retry first, so that Initials from forged addresses hold at most half. 64 when left out or 0. |
+<!-- END GENERATED -->
+
+### `tunnel.hub.tokens[]`
+
+<!-- BEGIN GENERATED: tunnel.hub.tokens[] -->
+<a id="cfg-tunnel-hub-tokens"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `hash` | string | required | The SHA-256 of the key the token's secret derives, in hex: what the listener checks a link's proof with, which cannot be used to link. The token itself is not kept. |
+| `id` | string | required | The token's ID, 16 hex digits, the part of the token before its secret; unique among the listener's. |
+| `name` | string | required | What the token is for, as the pages list it: 1 to 64 characters. |
+| `created_at` | integer, 0 or more |  | When the token was made, in seconds since 1970. |
+| `expires_at` | integer, 0 or more |  | When the token expires, in seconds since 1970: it is refused from then on, and the links it holds are closed. Never when left out or 0. |
+| `members` | list of string |  | The members that first linked with the token, which no other token may link as: a tunnel's node/<name> or proxy/<name>, an LLM role's ID. Written by the listener; revoking the token frees them. |
+| `note` | string |  | Anything else about the token, for the pages; up to 1024 bytes. |
+<!-- END GENERATED -->
+
+### `tunnel.hub.access`
+
+<!-- BEGIN GENERATED: tunnel.hub.access -->
+<a id="cfg-tunnel-hub-access"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `allow` | list of string |  | IP addresses and CIDR prefixes served, as "10.0.0.0/8" or "2001:db8::/32": with any entry here or in allow_files, every address neither holds is refused, unless deny refuses it first. |
+| `allow_files` | list of string |  | Files of more allow entries, one on each line, each line told apart by its content: an address or prefix, with what follows # or ; left out, as the lists published for firewalls are written; a range, first-last; an eMule ipfilter.dat line, first - last , level , name, where a level above 127 is not listed; or a PeerGuardian .p2p line, name:first-last. IPv4 addresses of ranges may have leading zeros. Blank lines and lines that begin with #, ; or // are left out; any other line is an error. Read when the config is applied, and applied again when one changes; each at most 64 MiB. |
+| `deny` | list of string |  | IP addresses and CIDR prefixes refused, whatever allow holds. |
+| `deny_files` | list of string |  | Files of more deny entries, written as allow_files. |
+<!-- END GENERATED -->
+
+### `tunnel.hub.console`
+
+<!-- BEGIN GENERATED: tunnel.hub.console -->
+<a id="cfg-tunnel-hub-console"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `address` | string | required | The host and port the pages listen on. A host that is not a loopback address needs cert_file and key_file, so that passwords never cross a network in the clear. |
+| `users` | list of [object](#cfg-tunnel-hub-console-users) | required | Who may log in: at least one user. |
+| `access` | [object](#cfg-tunnel-hub-console-access) |  | The client addresses the pages serve, deciding before the global access, which applies to the pages too: a connection either refuses is closed as soon as it is accepted. It follows every config applied, without restarting the pages. Set allow to "127.0.0.1" (and "::1") to keep local access whatever the global access says. Every address is served, unless the global access says otherwise, when left out. |
+| `cert_file` | string |  | A PEM file with the pages' certificate, followed by any intermediates; with key_file, the pages are served over TLS. |
+| `key_file` | string |  | A PEM file with the certificate's private key. |
+| `max_conns` | integer, 0 or more | `32` | The most connections the pages keep open at once, a quarter of them kept for those with a login. When they are taken, a new connection closes the oldest of those without one, of the client holding the most, and is closed as it is accepted only when every one has a login; one past a client's share, a quarter of them, is closed too, but for loopback clients. 32 when left out or 0. |
+| `max_sessions` | integer, 0 or more | `64` | The most logins kept at once; one more ends the oldest. 64 when left out or 0. |
+| `mptcp` | boolean |  | **Not supported yet**: refused by name. Listen the pages with Multipath TCP where the kernel offers it (Linux 5.6+, net.mptcp.enabled), falling back to plain TCP where it does not. Off by default. |
+| `session_lifetime` | duration | `"12h"` | How long a login lasts at most, however busy. 12h when left out. |
+| `session_timeout` | duration | `"30m"` | How long a login lasts without a request. 30m when left out. |
+<!-- END GENERATED -->
+
+### `tunnel.hub.console.users[]`
+
+<!-- BEGIN GENERATED: tunnel.hub.console.users[] -->
+<a id="cfg-tunnel-hub-console-users"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `password_hash` | string | required | The bcrypt hash of the user's password, as akit hash-password makes it. |
+| `username` | string | required | The user's name. |
+<!-- END GENERATED -->
+
+### `tunnel.hub.console.access`
+
+<!-- BEGIN GENERATED: tunnel.hub.console.access -->
+<a id="cfg-tunnel-hub-console-access"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `allow` | list of string |  | IP addresses and CIDR prefixes served, as "10.0.0.0/8" or "2001:db8::/32": with any entry here or in allow_files, every address neither holds is refused, unless deny refuses it first. |
+| `allow_files` | list of string |  | Files of more allow entries, one on each line, each line told apart by its content: an address or prefix, with what follows # or ; left out, as the lists published for firewalls are written; a range, first-last; an eMule ipfilter.dat line, first - last , level , name, where a level above 127 is not listed; or a PeerGuardian .p2p line, name:first-last. IPv4 addresses of ranges may have leading zeros. Blank lines and lines that begin with #, ; or // are left out; any other line is an error. Read when the config is applied, and applied again when one changes; each at most 64 MiB. |
+| `deny` | list of string |  | IP addresses and CIDR prefixes refused, whatever allow holds. |
+| `deny_files` | list of string |  | Files of more deny entries, written as allow_files. |
+<!-- END GENERATED -->
+
+### `tunnel.node`
+
+<!-- BEGIN GENERATED: tunnel.node -->
+<a id="cfg-tunnel-node"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `allow_hub_services` | boolean |  | Let the hubs the node registers with set its services, which are the addresses it opens tunnels to, and write them into this member. Off when left out: only this member and the node's own pages set them. |
+| `console` | [object](#cfg-tunnel-node-console) |  | The node's web pages; none when left out. |
+| `dial_timeout` | duration | `"5s"` | How long a connect to a service may take; shorter than a hub's call_timeout, so that the hub hears either way. 5s when left out. |
+| `hubs` | list of [object](#cfg-tunnel-node-hubs) |  | The hubs the node links to and registers with. None when left out: the console's pages add them. |
+| `idle_timeout` | duration | `"2h"` | How long a tunnel may carry nothing either way before it is closed. 2h when left out. |
+| `max_tunnels` | integer, 0 or more | `4096` | The most tunnels open at once, over every hub; a hub's request for one more is refused. 4096 when left out or 0. |
+| `meta` | map of string |  | Anything else the node tells the hubs, which their pages show. |
+| `name` | string |  | The node's name, which proxies name to reach its services. The host's name when left out. |
+| `services` | list of [object](#cfg-tunnel-node-services) |  | The services the node reaches, and the only addresses it opens tunnels to. |
+<!-- END GENERATED -->
+
+### `tunnel.node.hubs[]`
+
+<!-- BEGIN GENERATED: tunnel.node.hubs[] -->
+<a id="cfg-tunnel-node-hubs"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `endpoints` | list of [object](#cfg-tunnel-node-hubs-endpoints) | required | The hub's addresses, in the order each link tries them: it dials the first one not disabled, and the next when that fails. |
+| `body_password` | string |  | The hub's body_password, when it has one. A tcp:// or ws:// endpoint whose host is not a loopback one needs it. |
+| `ca_file` | string |  | A PEM file of the CAs that sign the hub's certificate, which tls://, wss:// and quic:// endpoints check it against, its name too, in place of the system's roots. Read at each dial. Not with pin. |
+| `call_timeout` | duration | `"10s"` | How long the hub may take to answer a registration or a call. 10s when left out. |
+| `dial_timeout` | duration | `"5s"` | How long a link's dial may take. 5s when left out. |
+| `name` | string |  | The hub's name here, which forwards and the pages name it by. The first endpoint's address when left out. |
+| `password` | string |  | The hub's shared password: deprecated for token, taken by hubs of this release with a warning, and refused by the next. |
+| `pin` | string |  | The SHA-256 fingerprint of the hub's certificate, as its pages show it, which tls://, wss:// and quic:// endpoints check the certificate against, in place of the chain and name checks: for a hub with a self-signed certificate. Without it or ca_file, the certificate is checked against the system's roots. |
+| `ping_interval` | duration | `"5s"` | How often the round trip to the hub is measured. 5s when left out. |
+| `ping_timeout` | duration | `"5s"` | How long a ping may go unanswered before it counts as lost. 5s when left out. |
+| `pool_size` | integer, 0 to 100 | `10` | How many links to the hub carry tunnels; each tunnel goes over one throughout. 10 when left out or 0. |
+| `quic_insecure` | boolean |  | Take any QUIC certificate, which lets anyone on the path read and change what the quic links carry: for tests only. Refused for a quic:// endpoint whose host is not a loopback one, unless body_password is set; pin and ca_file override it. |
+| `quic_pin` | string |  | Deprecated. Renamed pin; the old name goes in config version 2. |
+| `retry_interval` | duration | `"3s"` | How long a link waits after a failed dial, or a lost hub, before it dials again. 3s when left out. |
+| `token` | string |  | The token the hub issued for this node or proxy, as fitt1.<id>.<secret>, which its pages, its Admin API module or akit token show once when they make it. Set token or password, not both. **akit:** akit's tokens are `akitt1.<id>.<secret>` (decision 037); a token fit issued (`fitt1.`) is written with akit's prefix, its ID and secret unchanged (decision 038). |
+<!-- END GENERATED -->
+
+### `tunnel.node.hubs[].endpoints[]`
+
+<!-- BEGIN GENERATED: tunnel.node.hubs[].endpoints[] -->
+<a id="cfg-tunnel-node-hubs-endpoints"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `address` | string | required | The hub's address: tls://host:port for TCP over TLS, wss://host:port/path for a WebSocket over TLS, quic://host:port for QUIC; or, only to a loopback host or with body_password, host:port or tcp://host:port for TCP and ws://host:port/path for a WebSocket in the clear. An address has no query, fragment or user ('?', '#', '@'): pin and ca_file say how the hub's certificate is checked. |
+| `disabled` | boolean |  | Leave the endpoint out of the dials, keeping it for later. |
+<!-- END GENERATED -->
+
+### `tunnel.node.services[]`
+
+<!-- BEGIN GENERATED: tunnel.node.services[] -->
+<a id="cfg-tunnel-node-services"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `address` | string | required | The service's TCP address, host and port. |
+| `name` | string | required | The service's name among the node's, which proxies' forwards name. |
+| `description` | string |  | What the service is, for the pages. |
+<!-- END GENERATED -->
+
+### `tunnel.node.console`
+
+<!-- BEGIN GENERATED: tunnel.node.console -->
+<a id="cfg-tunnel-node-console"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `address` | string | required | The host and port the pages listen on. A host that is not a loopback address needs cert_file and key_file, so that passwords never cross a network in the clear. |
+| `users` | list of [object](#cfg-tunnel-node-console-users) | required | Who may log in: at least one user. |
+| `access` | [object](#cfg-tunnel-node-console-access) |  | The client addresses the pages serve, deciding before the global access, which applies to the pages too: a connection either refuses is closed as soon as it is accepted. It follows every config applied, without restarting the pages. Set allow to "127.0.0.1" (and "::1") to keep local access whatever the global access says. Every address is served, unless the global access says otherwise, when left out. |
+| `cert_file` | string |  | A PEM file with the pages' certificate, followed by any intermediates; with key_file, the pages are served over TLS. |
+| `key_file` | string |  | A PEM file with the certificate's private key. |
+| `max_conns` | integer, 0 or more | `32` | The most connections the pages keep open at once, a quarter of them kept for those with a login. When they are taken, a new connection closes the oldest of those without one, of the client holding the most, and is closed as it is accepted only when every one has a login; one past a client's share, a quarter of them, is closed too, but for loopback clients. 32 when left out or 0. |
+| `max_sessions` | integer, 0 or more | `64` | The most logins kept at once; one more ends the oldest. 64 when left out or 0. |
+| `mptcp` | boolean |  | **Not supported yet**: refused by name. Listen the pages with Multipath TCP where the kernel offers it (Linux 5.6+, net.mptcp.enabled), falling back to plain TCP where it does not. Off by default. |
+| `session_lifetime` | duration | `"12h"` | How long a login lasts at most, however busy. 12h when left out. |
+| `session_timeout` | duration | `"30m"` | How long a login lasts without a request. 30m when left out. |
+<!-- END GENERATED -->
+
+### `tunnel.node.console.users[]`
+
+<!-- BEGIN GENERATED: tunnel.node.console.users[] -->
+<a id="cfg-tunnel-node-console-users"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `password_hash` | string | required | The bcrypt hash of the user's password, as akit hash-password makes it. |
+| `username` | string | required | The user's name. |
+<!-- END GENERATED -->
+
+### `tunnel.node.console.access`
+
+<!-- BEGIN GENERATED: tunnel.node.console.access -->
+<a id="cfg-tunnel-node-console-access"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `allow` | list of string |  | IP addresses and CIDR prefixes served, as "10.0.0.0/8" or "2001:db8::/32": with any entry here or in allow_files, every address neither holds is refused, unless deny refuses it first. |
+| `allow_files` | list of string |  | Files of more allow entries, one on each line, each line told apart by its content: an address or prefix, with what follows # or ; left out, as the lists published for firewalls are written; a range, first-last; an eMule ipfilter.dat line, first - last , level , name, where a level above 127 is not listed; or a PeerGuardian .p2p line, name:first-last. IPv4 addresses of ranges may have leading zeros. Blank lines and lines that begin with #, ; or // are left out; any other line is an error. Read when the config is applied, and applied again when one changes; each at most 64 MiB. |
+| `deny` | list of string |  | IP addresses and CIDR prefixes refused, whatever allow holds. |
+| `deny_files` | list of string |  | Files of more deny entries, written as allow_files. |
+<!-- END GENERATED -->
+
+### `tunnel.proxy`
+
+<!-- BEGIN GENERATED: tunnel.proxy -->
+<a id="cfg-tunnel-proxy"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `access` | [object](#cfg-tunnel-proxy-access) |  | The client addresses the proxy's forwards and web_proxies take, deciding before the global access: a connection it refuses is closed as soon as it is accepted. A change applies to the connections that open from then on, without listening anew; those already open stay. Its console's pages take console.access. |
+| `console` | [object](#cfg-tunnel-proxy-console) |  | The proxy's web pages; none when left out. |
+| `forwards` | list of [object](#cfg-tunnel-proxy-forwards) |  | Local addresses whose connections are tunneled to a node's service. |
+| `hubs` | list of [object](#cfg-tunnel-proxy-hubs) |  | The hubs the proxy links to and registers with. None when left out: the console's pages add them. |
+| `idle_timeout` | duration | `"2h"` | How long a tunnel may carry nothing either way before it is closed. 2h when left out. |
+| `max_tunnels` | integer, 0 or more | `4096` | The most tunnels open at once, over every forward; a connection past it is closed as soon as it is accepted. 4096 when left out or 0. |
+| `meta` | map of string |  | Anything else the proxy tells the hubs, which their pages show. |
+| `name` | string |  | The proxy's name, which the hubs and nodes show. The host's name when left out. |
+| `open_timeout` | duration | `"20s"` | How long the opening of a tunnel may take, through the hub to the node and on to the service. 20s when left out. |
+| `web_proxies` | list of [object](#cfg-tunnel-proxy-web-proxies) |  | Local addresses that serve a hub's console pages through its encrypted console_socket. |
+<!-- END GENERATED -->
+
+### `tunnel.proxy.hubs[]`
+
+<!-- BEGIN GENERATED: tunnel.proxy.hubs[] -->
+<a id="cfg-tunnel-proxy-hubs"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `endpoints` | list of [object](#cfg-tunnel-proxy-hubs-endpoints) | required | The hub's addresses, in the order each link tries them: it dials the first one not disabled, and the next when that fails. |
+| `body_password` | string |  | The hub's body_password, when it has one. A tcp:// or ws:// endpoint whose host is not a loopback one needs it. |
+| `ca_file` | string |  | A PEM file of the CAs that sign the hub's certificate, which tls://, wss:// and quic:// endpoints check it against, its name too, in place of the system's roots. Read at each dial. Not with pin. |
+| `call_timeout` | duration | `"10s"` | How long the hub may take to answer a registration or a call. 10s when left out. |
+| `dial_timeout` | duration | `"5s"` | How long a link's dial may take. 5s when left out. |
+| `name` | string |  | The hub's name here, which forwards and the pages name it by. The first endpoint's address when left out. |
+| `password` | string |  | The hub's shared password: deprecated for token, taken by hubs of this release with a warning, and refused by the next. |
+| `pin` | string |  | The SHA-256 fingerprint of the hub's certificate, as its pages show it, which tls://, wss:// and quic:// endpoints check the certificate against, in place of the chain and name checks: for a hub with a self-signed certificate. Without it or ca_file, the certificate is checked against the system's roots. |
+| `ping_interval` | duration | `"5s"` | How often the round trip to the hub is measured. 5s when left out. |
+| `ping_timeout` | duration | `"5s"` | How long a ping may go unanswered before it counts as lost. 5s when left out. |
+| `pool_size` | integer, 0 to 100 | `10` | How many links to the hub carry tunnels; each tunnel goes over one throughout. 10 when left out or 0. |
+| `quic_insecure` | boolean |  | Take any QUIC certificate, which lets anyone on the path read and change what the quic links carry: for tests only. Refused for a quic:// endpoint whose host is not a loopback one, unless body_password is set; pin and ca_file override it. |
+| `quic_pin` | string |  | Deprecated. Renamed pin; the old name goes in config version 2. |
+| `retry_interval` | duration | `"3s"` | How long a link waits after a failed dial, or a lost hub, before it dials again. 3s when left out. |
+| `token` | string |  | The token the hub issued for this node or proxy, as fitt1.<id>.<secret>, which its pages, its Admin API module or akit token show once when they make it. Set token or password, not both. **akit:** akit's tokens are `akitt1.<id>.<secret>` (decision 037); a token fit issued (`fitt1.`) is written with akit's prefix, its ID and secret unchanged (decision 038). |
+<!-- END GENERATED -->
+
+### `tunnel.proxy.hubs[].endpoints[]`
+
+<!-- BEGIN GENERATED: tunnel.proxy.hubs[].endpoints[] -->
+<a id="cfg-tunnel-proxy-hubs-endpoints"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `address` | string | required | The hub's address: tls://host:port for TCP over TLS, wss://host:port/path for a WebSocket over TLS, quic://host:port for QUIC; or, only to a loopback host or with body_password, host:port or tcp://host:port for TCP and ws://host:port/path for a WebSocket in the clear. An address has no query, fragment or user ('?', '#', '@'): pin and ca_file say how the hub's certificate is checked. |
+| `disabled` | boolean |  | Leave the endpoint out of the dials, keeping it for later. |
+<!-- END GENERATED -->
+
+### `tunnel.proxy.forwards[]`
+
+<!-- BEGIN GENERATED: tunnel.proxy.forwards[] -->
+<a id="cfg-tunnel-proxy-forwards"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `listen` | string | required | The local host and port the forward listens on. |
+| `node` | string | required | The node whose service the tunnels go to. |
+| `service` | string | required | The node's service the tunnels go to. |
+| `hub` | string |  | The name of the hub the tunnels go through. When left out, they are spread over every hub that has the node, more of them through the faster ones. |
+<!-- END GENERATED -->
+
+### `tunnel.proxy.web_proxies[]`
+
+<!-- BEGIN GENERATED: tunnel.proxy.web_proxies[] -->
+<a id="cfg-tunnel-proxy-web-proxies"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `listen` | string | required | The local host and port the pages are served on. |
+| `password` | string | required | The console_socket's password. |
+| `url` | string | required | The hub's console_socket, as ws://host:port/. |
+| `max_conns` | integer, 0 or more | `32` | The most connections open at once; one past it is closed as soon as it is accepted. 32 when left out or 0. |
+| `name` | string |  | The hub's name, for the pages. |
+<!-- END GENERATED -->
+
+### `tunnel.proxy.access`
+
+<!-- BEGIN GENERATED: tunnel.proxy.access -->
+<a id="cfg-tunnel-proxy-access"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `allow` | list of string |  | IP addresses and CIDR prefixes served, as "10.0.0.0/8" or "2001:db8::/32": with any entry here or in allow_files, every address neither holds is refused, unless deny refuses it first. |
+| `allow_files` | list of string |  | Files of more allow entries, one on each line, each line told apart by its content: an address or prefix, with what follows # or ; left out, as the lists published for firewalls are written; a range, first-last; an eMule ipfilter.dat line, first - last , level , name, where a level above 127 is not listed; or a PeerGuardian .p2p line, name:first-last. IPv4 addresses of ranges may have leading zeros. Blank lines and lines that begin with #, ; or // are left out; any other line is an error. Read when the config is applied, and applied again when one changes; each at most 64 MiB. |
+| `deny` | list of string |  | IP addresses and CIDR prefixes refused, whatever allow holds. |
+| `deny_files` | list of string |  | Files of more deny entries, written as allow_files. |
+<!-- END GENERATED -->
+
+### `tunnel.proxy.console`
+
+<!-- BEGIN GENERATED: tunnel.proxy.console -->
+<a id="cfg-tunnel-proxy-console"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `address` | string | required | The host and port the pages listen on. A host that is not a loopback address needs cert_file and key_file, so that passwords never cross a network in the clear. |
+| `users` | list of [object](#cfg-tunnel-proxy-console-users) | required | Who may log in: at least one user. |
+| `access` | [object](#cfg-tunnel-proxy-console-access) |  | The client addresses the pages serve, deciding before the global access, which applies to the pages too: a connection either refuses is closed as soon as it is accepted. It follows every config applied, without restarting the pages. Set allow to "127.0.0.1" (and "::1") to keep local access whatever the global access says. Every address is served, unless the global access says otherwise, when left out. |
+| `cert_file` | string |  | A PEM file with the pages' certificate, followed by any intermediates; with key_file, the pages are served over TLS. |
+| `key_file` | string |  | A PEM file with the certificate's private key. |
+| `max_conns` | integer, 0 or more | `32` | The most connections the pages keep open at once, a quarter of them kept for those with a login. When they are taken, a new connection closes the oldest of those without one, of the client holding the most, and is closed as it is accepted only when every one has a login; one past a client's share, a quarter of them, is closed too, but for loopback clients. 32 when left out or 0. |
+| `max_sessions` | integer, 0 or more | `64` | The most logins kept at once; one more ends the oldest. 64 when left out or 0. |
+| `mptcp` | boolean |  | **Not supported yet**: refused by name. Listen the pages with Multipath TCP where the kernel offers it (Linux 5.6+, net.mptcp.enabled), falling back to plain TCP where it does not. Off by default. |
+| `session_lifetime` | duration | `"12h"` | How long a login lasts at most, however busy. 12h when left out. |
+| `session_timeout` | duration | `"30m"` | How long a login lasts without a request. 30m when left out. |
+<!-- END GENERATED -->
+
+### `tunnel.proxy.console.users[]`
+
+<!-- BEGIN GENERATED: tunnel.proxy.console.users[] -->
+<a id="cfg-tunnel-proxy-console-users"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `password_hash` | string | required | The bcrypt hash of the user's password, as akit hash-password makes it. |
+| `username` | string | required | The user's name. |
+<!-- END GENERATED -->
+
+### `tunnel.proxy.console.access`
+
+<!-- BEGIN GENERATED: tunnel.proxy.console.access -->
+<a id="cfg-tunnel-proxy-console-access"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `allow` | list of string |  | IP addresses and CIDR prefixes served, as "10.0.0.0/8" or "2001:db8::/32": with any entry here or in allow_files, every address neither holds is refused, unless deny refuses it first. |
+| `allow_files` | list of string |  | Files of more allow entries, one on each line, each line told apart by its content: an address or prefix, with what follows # or ; left out, as the lists published for firewalls are written; a range, first-last; an eMule ipfilter.dat line, first - last , level , name, where a level above 127 is not listed; or a PeerGuardian .p2p line, name:first-last. IPv4 addresses of ranges may have leading zeros. Blank lines and lines that begin with #, ; or // are left out; any other line is an error. Read when the config is applied, and applied again when one changes; each at most 64 MiB. |
+| `deny` | list of string |  | IP addresses and CIDR prefixes refused, whatever allow holds. |
+| `deny_files` | list of string |  | Files of more deny entries, written as allow_files. |
+<!-- END GENERATED -->
+
+## LLM
+
+`llm` holds fit's LLM roles ([fit's guide](https://github.com/lesismal/fit/blob/main/docs/llm.md)),
+which share AI models among machines: a node (`llm.node`) serves models of OpenAI's, Anthropic's,
+Gemini's, Azure OpenAI's, Ollama's and Cohere's APIs from local or hosted upstreams; a hub
+(`llm.hub`) is where nodes and proxies meet; a proxy (`llm.proxy`) serves the models' APIs to
+agents on its machine or LAN. The roles link over a mesh of WebSockets, over TLS off loopback
+(the listener's certificate pinned by `pin` or checked by `ca_file`), each link proven with a
+token its listener issued (`akitt1.`, I99) or, deprecated, a role's password. akit reads and
+checks the roles as fit does (I98); `akit run` runs them with I104–I109 and refuses a config that
+sets one until then.
+
+```fit
+llm {
+	hub {
+		listen { address :9210; self_signed true }
+	}
+}
+```
+
+### `llm`
+
+<!-- BEGIN GENERATED: llm -->
+<a id="cfg-llm"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `hub` | [object](#cfg-llm-hub) |  | Run a hub: nodes and proxies link to it, and it passes calls between them. |
+| `node` | [object](#cfg-llm-node) |  | Run a node: it serves models from local or remote upstreams to the hubs and proxies linked to it. |
+| `proxy` | [object](#cfg-llm-proxy) |  | Run a proxy: an OpenAI- and Anthropic-compatible API, for agents, that calls the models of the nodes it reaches. |
+<!-- END GENERATED -->
+
+### `llm.hub`
+
+<!-- BEGIN GENERATED: llm.hub -->
+<a id="cfg-llm-hub"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `access` | [object](#cfg-llm-hub-access) |  | The client addresses the hub's listen takes links from, deciding before the global access: a connection it refuses is closed as soon as it is accepted. A change applies to the links that open from then on, without listening anew; those already open stay. Its console's pages take console.access. |
+| `console` | [object](#cfg-llm-hub-console) |  | The hub's web pages; none when left out. |
+| `id` | string |  | The hub's stable ID, which its peers know it by. Made when left out, and written back here. |
+| `limits` | [object](#cfg-llm-hub-limits) |  | Bounds on the hub's links; the defaults when left out. |
+| `listen` | [object](#cfg-llm-hub-listen) |  | Where the hub takes links from nodes and proxies; none when left out. Its pages change it. |
+| `max_nodes` | integer, 0 or more | `1024` | The most nodes the hub keeps in its table, offline ones included; past it the offline node seen longest ago is forgotten; online nodes are bounded by limits.max_conns and the hub's peers. 1024 when left out or 0. |
+| `name` | string |  | The name the hub shows its peers; the host's name when left out. Its pages change it. |
+| `peers` | list of [object](#cfg-llm-hub-peers) |  | The nodes and proxies the hub dials. Its pages change them. |
+| `tokens` | list of [object](#cfg-llm-hub-tokens) |  | The tokens the hub's listener issued, which nodes and proxies link with in place of a password: each its own credential, of no role, kept as a hash, with an optional expiry. The pages, the Admin API module and akit token make, list, change and revoke them; not written by hand. |
+<!-- END GENERATED -->
+
+### `llm.hub.listen`
+
+<!-- BEGIN GENERATED: llm.hub.listen -->
+<a id="cfg-llm-hub-listen"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `address` | string | required | The host and port the role takes links on, as a binding of its own on the listeners' engine; the WebSocket path is /ws. An empty host listens on every address. |
+| `cert` | string |  | The PEM certificate self_signed made; with key. Written by the role; delete both for a new one, which every peer must pin again. |
+| `cert_file` | string |  | A PEM file with the certificate the listener presents, followed by any intermediates; with key_file, links are taken over TLS (wss://), and peers check it with their ca_file or pin. A listener on an address other than a loopback one needs TLS: this, or self_signed. Read when the listener starts, and again when it changes on disk (akit run -watch-certs): links from then on are taken with the new certificate, and those open stay. |
+| `hub_password` | string |  | The password hubs prove to link as a hub, on a node's or a proxy's listener; password when left out. |
+| `key` | string |  | The PEM private key of cert. |
+| `key_file` | string |  | A PEM file with the private key of cert_file. |
+| `node_password` | string |  | The password nodes prove to link as a node, on a hub's or a proxy's listener; password when left out. |
+| `password` | string |  | The password of every role the listener links with that has no password of its own: peers prove they know it when they link, and it never crosses the network. Whoever holds it may link as any of those roles, so give each role its own instead. None when left out. |
+| `proxy_password` | string |  | The password proxies prove to link as a proxy, on a hub's or a node's listener; password when left out. |
+| `self_signed` | boolean |  | Take links over TLS (wss://) with a self-signed certificate the role makes and keeps, so that it outlives a restart: in cert and key with admin.store, or else in a file beside the config, 0600, as akit.llm.hub.pem beside akit.json; its pages and its log show its SHA-256 fingerprint, which peers set as their pin. For a listener without cert_file. |
+<!-- END GENERATED -->
+
+### `llm.hub.peers[]`
+
+<!-- BEGIN GENERATED: llm.hub.peers[] -->
+<a id="cfg-llm-hub-peers"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `address` | string | required | The peer's host and port, as its listen.address says. |
+| `role` | string: `hub`, `node`, `proxy` | required | The role the peer must announce; a link to a peer of another role is refused. Never the dialing role's own. |
+| `ca_file` | string |  | A PEM file with the certificates of the authorities the peer listener's certificate must chain to: the link is made over TLS (wss://), and the certificate must name server_name, or the address's host. Or pin, one of the two. |
+| `password` | string |  | The shared password of the dialing role on the peer's listener, deprecated for token: a node dials with the peer's listen.node_password, a proxy with its listen.proxy_password, a hub with its listen.hub_password, or with its listen.password when it has none for the role. Taken in this release, with a warning on the peer's pages; refused in the next. |
+| `pin` | string |  | The SHA-256 fingerprint of the certificate the peer's listener presents, 64 hex digits (colons allowed), as its pages and its log show it: the link is made over TLS (wss://) and only to a listener with exactly that certificate. A peer at an address other than a loopback one needs pin or ca_file. |
+| `server_name` | string |  | The name the peer listener's certificate must have with ca_file, and the TLS server name sent; the address's host when left out. |
+| `token` | string |  | The token the peer's listener issued for this role, as fitt1.<id>.<secret>, which the peer's pages, its Admin API module or akit token show once when they make it. Set token or password, not both. **akit:** akit's tokens are `akitt1.<id>.<secret>` (decision 037); a token fit issued (`fitt1.`) is written with akit's prefix, its ID and secret unchanged (decision 038). |
+<!-- END GENERATED -->
+
+### `llm.hub.limits`
+
+<!-- BEGIN GENERATED: llm.hub.limits -->
+<a id="cfg-llm-hub-limits"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `max_conns` | integer, 0 or more | `1024` | The most links the role takes from its peers at once; one past it is refused, and its dialer backs off. 1024 when left out or 0. |
+| `max_inflight` | integer, 0 or more | `1024` | The most calls and streams a peer may have running here on one link at once; one past it fails at once. 1024 when left out or 0. |
+| `ping_interval` | duration | `"15s"` | How long a link may hear nothing before it is pinged; one that hears nothing for three of them is closed. 15s when left out. |
+| `retry_interval` | duration | `"5s"` | The most a dialer waits between attempts at a peer it cannot reach; the waits grow to it, at random within each step. 5s when left out. |
+| `slow_timeout` | duration | `"30s"` | How long a ping may wait for its pong, behind everything sent before it, before the link is taken for too slow and closed. 30s when left out. |
+| `stream_idle` | duration | `"2m"` | How long a stream, as a model call relayed between roles, may carry nothing either way before it ends. 2m when left out. |
+<!-- END GENERATED -->
+
+### `llm.hub.tokens[]`
+
+<!-- BEGIN GENERATED: llm.hub.tokens[] -->
+<a id="cfg-llm-hub-tokens"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `hash` | string | required | The SHA-256 of the key the token's secret derives, in hex: what the listener checks a link's proof with, which cannot be used to link. The token itself is not kept. |
+| `id` | string | required | The token's ID, 16 hex digits, the part of the token before its secret; unique among the listener's. |
+| `name` | string | required | What the token is for, as the pages list it: 1 to 64 characters. |
+| `created_at` | integer, 0 or more |  | When the token was made, in seconds since 1970. |
+| `expires_at` | integer, 0 or more |  | When the token expires, in seconds since 1970: it is refused from then on, and the links it holds are closed. Never when left out or 0. |
+| `members` | list of string |  | The members that first linked with the token, which no other token may link as: a tunnel's node/<name> or proxy/<name>, an LLM role's ID. Written by the listener; revoking the token frees them. |
+| `note` | string |  | Anything else about the token, for the pages; up to 1024 bytes. |
+<!-- END GENERATED -->
+
+### `llm.hub.access`
+
+<!-- BEGIN GENERATED: llm.hub.access -->
+<a id="cfg-llm-hub-access"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `allow` | list of string |  | IP addresses and CIDR prefixes served, as "10.0.0.0/8" or "2001:db8::/32": with any entry here or in allow_files, every address neither holds is refused, unless deny refuses it first. |
+| `allow_files` | list of string |  | Files of more allow entries, one on each line, each line told apart by its content: an address or prefix, with what follows # or ; left out, as the lists published for firewalls are written; a range, first-last; an eMule ipfilter.dat line, first - last , level , name, where a level above 127 is not listed; or a PeerGuardian .p2p line, name:first-last. IPv4 addresses of ranges may have leading zeros. Blank lines and lines that begin with #, ; or // are left out; any other line is an error. Read when the config is applied, and applied again when one changes; each at most 64 MiB. |
+| `deny` | list of string |  | IP addresses and CIDR prefixes refused, whatever allow holds. |
+| `deny_files` | list of string |  | Files of more deny entries, written as allow_files. |
+<!-- END GENERATED -->
+
+### `llm.hub.console`
+
+<!-- BEGIN GENERATED: llm.hub.console -->
+<a id="cfg-llm-hub-console"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `address` | string | required | The host and port the pages listen on. A host that is not a loopback address needs cert_file and key_file, so that passwords never cross a network in the clear. |
+| `users` | list of [object](#cfg-llm-hub-console-users) | required | Who may log in: at least one user. |
+| `access` | [object](#cfg-llm-hub-console-access) |  | The client addresses the pages serve, deciding before the global access, which applies to the pages too: a connection either refuses is closed as soon as it is accepted. It follows every config applied, without restarting the pages. Set allow to "127.0.0.1" (and "::1") to keep local access whatever the global access says. Every address is served, unless the global access says otherwise, when left out. |
+| `cert_file` | string |  | A PEM file with the pages' certificate, followed by any intermediates; with key_file, the pages are served over TLS. |
+| `key_file` | string |  | A PEM file with the certificate's private key. |
+| `max_conns` | integer, 0 or more | `32` | The most connections the pages keep open at once, a quarter of them kept for those with a login. When they are taken, a new connection closes the oldest of those without one, of the client holding the most, and is closed as it is accepted only when every one has a login; one past a client's share, a quarter of them, is closed too, but for loopback clients. 32 when left out or 0. |
+| `max_sessions` | integer, 0 or more | `64` | The most logins kept at once; one more ends the oldest. 64 when left out or 0. |
+| `mptcp` | boolean |  | **Not supported yet**: refused by name. Listen the pages with Multipath TCP where the kernel offers it (Linux 5.6+, net.mptcp.enabled), falling back to plain TCP where it does not. Off by default. |
+| `session_lifetime` | duration | `"12h"` | How long a login lasts at most, however busy. 12h when left out. |
+| `session_timeout` | duration | `"30m"` | How long a login lasts without a request. 30m when left out. |
+<!-- END GENERATED -->
+
+### `llm.hub.console.users[]`
+
+<!-- BEGIN GENERATED: llm.hub.console.users[] -->
+<a id="cfg-llm-hub-console-users"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `password_hash` | string | required | The bcrypt hash of the user's password, as akit hash-password makes it. |
+| `username` | string | required | The user's name. |
+<!-- END GENERATED -->
+
+### `llm.hub.console.access`
+
+<!-- BEGIN GENERATED: llm.hub.console.access -->
+<a id="cfg-llm-hub-console-access"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `allow` | list of string |  | IP addresses and CIDR prefixes served, as "10.0.0.0/8" or "2001:db8::/32": with any entry here or in allow_files, every address neither holds is refused, unless deny refuses it first. |
+| `allow_files` | list of string |  | Files of more allow entries, one on each line, each line told apart by its content: an address or prefix, with what follows # or ; left out, as the lists published for firewalls are written; a range, first-last; an eMule ipfilter.dat line, first - last , level , name, where a level above 127 is not listed; or a PeerGuardian .p2p line, name:first-last. IPv4 addresses of ranges may have leading zeros. Blank lines and lines that begin with #, ; or // are left out; any other line is an error. Read when the config is applied, and applied again when one changes; each at most 64 MiB. |
+| `deny` | list of string |  | IP addresses and CIDR prefixes refused, whatever allow holds. |
+| `deny_files` | list of string |  | Files of more deny entries, written as allow_files. |
+<!-- END GENERATED -->
+
+### `llm.node`
+
+<!-- BEGIN GENERATED: llm.node -->
+<a id="cfg-llm-node"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `access` | [object](#cfg-llm-node-access) |  | The client addresses the node's listen takes links from, deciding before the global access: a connection it refuses is closed as soon as it is accepted. A change applies to the links that open from then on, without listening anew; those already open stay. Its console's pages take console.access. |
+| `console` | [object](#cfg-llm-node-console) |  | The node's web pages; none when left out. |
+| `description` | string |  | A note about the node its peers show. Its pages, and a hub that settings.allow_hub_manage lets, change it. |
+| `id` | string |  | The node's stable ID, which its peers know it by. Made when left out, and written back here. |
+| `limits` | [object](#cfg-llm-node-limits) |  | Bounds on the node's links; the defaults when left out. |
+| `listen` | [object](#cfg-llm-node-listen) |  | Where the node takes links from hubs and proxies; none when left out. Its pages change it. |
+| `models` | list of [object](#cfg-llm-node-models) |  | The models the node serves: each an upstream API endpoint. Its pages, and a hub that settings.allow_hub_manage lets, change them. |
+| `name` | string |  | The name the node shows its peers; the host's name when left out. Its pages, and a hub that settings.allow_hub_manage lets, change it. |
+| `peers` | list of [object](#cfg-llm-node-peers) |  | The hubs and proxies the node dials. Its pages change them. |
+| `proxy` | [object](#cfg-llm-node-proxy) |  | Bounds on the calls the node forwards to its models' upstreams; the defaults when left out. |
+| `settings` | [object](#cfg-llm-node-settings) |  | The node's own settings; the defaults when left out. Only its own pages change them. |
+| `tokens` | list of [object](#cfg-llm-node-tokens) |  | The tokens the node's listener issued, which hubs and proxies link with in place of a password: each its own credential, of no role, kept as a hash, with an optional expiry. The pages, the Admin API module and akit token make, list, change and revoke them; not written by hand. |
+<!-- END GENERATED -->
+
+### `llm.node.listen`
+
+<!-- BEGIN GENERATED: llm.node.listen -->
+<a id="cfg-llm-node-listen"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `address` | string | required | The host and port the role takes links on, as a binding of its own on the listeners' engine; the WebSocket path is /ws. An empty host listens on every address. |
+| `cert` | string |  | The PEM certificate self_signed made; with key. Written by the role; delete both for a new one, which every peer must pin again. |
+| `cert_file` | string |  | A PEM file with the certificate the listener presents, followed by any intermediates; with key_file, links are taken over TLS (wss://), and peers check it with their ca_file or pin. A listener on an address other than a loopback one needs TLS: this, or self_signed. Read when the listener starts, and again when it changes on disk (akit run -watch-certs): links from then on are taken with the new certificate, and those open stay. |
+| `hub_password` | string |  | The password hubs prove to link as a hub, on a node's or a proxy's listener; password when left out. |
+| `key` | string |  | The PEM private key of cert. |
+| `key_file` | string |  | A PEM file with the private key of cert_file. |
+| `node_password` | string |  | The password nodes prove to link as a node, on a hub's or a proxy's listener; password when left out. |
+| `password` | string |  | The password of every role the listener links with that has no password of its own: peers prove they know it when they link, and it never crosses the network. Whoever holds it may link as any of those roles, so give each role its own instead. None when left out. |
+| `proxy_password` | string |  | The password proxies prove to link as a proxy, on a hub's or a node's listener; password when left out. |
+| `self_signed` | boolean |  | Take links over TLS (wss://) with a self-signed certificate the role makes and keeps, so that it outlives a restart: in cert and key with admin.store, or else in a file beside the config, 0600, as akit.llm.hub.pem beside akit.json; its pages and its log show its SHA-256 fingerprint, which peers set as their pin. For a listener without cert_file. |
+<!-- END GENERATED -->
+
+### `llm.node.peers[]`
+
+<!-- BEGIN GENERATED: llm.node.peers[] -->
+<a id="cfg-llm-node-peers"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `address` | string | required | The peer's host and port, as its listen.address says. |
+| `role` | string: `hub`, `node`, `proxy` | required | The role the peer must announce; a link to a peer of another role is refused. Never the dialing role's own. |
+| `ca_file` | string |  | A PEM file with the certificates of the authorities the peer listener's certificate must chain to: the link is made over TLS (wss://), and the certificate must name server_name, or the address's host. Or pin, one of the two. |
+| `password` | string |  | The shared password of the dialing role on the peer's listener, deprecated for token: a node dials with the peer's listen.node_password, a proxy with its listen.proxy_password, a hub with its listen.hub_password, or with its listen.password when it has none for the role. Taken in this release, with a warning on the peer's pages; refused in the next. |
+| `pin` | string |  | The SHA-256 fingerprint of the certificate the peer's listener presents, 64 hex digits (colons allowed), as its pages and its log show it: the link is made over TLS (wss://) and only to a listener with exactly that certificate. A peer at an address other than a loopback one needs pin or ca_file. |
+| `server_name` | string |  | The name the peer listener's certificate must have with ca_file, and the TLS server name sent; the address's host when left out. |
+| `token` | string |  | The token the peer's listener issued for this role, as fitt1.<id>.<secret>, which the peer's pages, its Admin API module or akit token show once when they make it. Set token or password, not both. **akit:** akit's tokens are `akitt1.<id>.<secret>` (decision 037); a token fit issued (`fitt1.`) is written with akit's prefix, its ID and secret unchanged (decision 038). |
+<!-- END GENERATED -->
+
+### `llm.node.limits`
+
+<!-- BEGIN GENERATED: llm.node.limits -->
+<a id="cfg-llm-node-limits"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `max_conns` | integer, 0 or more | `1024` | The most links the role takes from its peers at once; one past it is refused, and its dialer backs off. 1024 when left out or 0. |
+| `max_inflight` | integer, 0 or more | `1024` | The most calls and streams a peer may have running here on one link at once; one past it fails at once. 1024 when left out or 0. |
+| `ping_interval` | duration | `"15s"` | How long a link may hear nothing before it is pinged; one that hears nothing for three of them is closed. 15s when left out. |
+| `retry_interval` | duration | `"5s"` | The most a dialer waits between attempts at a peer it cannot reach; the waits grow to it, at random within each step. 5s when left out. |
+| `slow_timeout` | duration | `"30s"` | How long a ping may wait for its pong, behind everything sent before it, before the link is taken for too slow and closed. 30s when left out. |
+| `stream_idle` | duration | `"2m"` | How long a stream, as a model call relayed between roles, may carry nothing either way before it ends. 2m when left out. |
+<!-- END GENERATED -->
+
+### `llm.node.tokens[]`
+
+<!-- BEGIN GENERATED: llm.node.tokens[] -->
+<a id="cfg-llm-node-tokens"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `hash` | string | required | The SHA-256 of the key the token's secret derives, in hex: what the listener checks a link's proof with, which cannot be used to link. The token itself is not kept. |
+| `id` | string | required | The token's ID, 16 hex digits, the part of the token before its secret; unique among the listener's. |
+| `name` | string | required | What the token is for, as the pages list it: 1 to 64 characters. |
+| `created_at` | integer, 0 or more |  | When the token was made, in seconds since 1970. |
+| `expires_at` | integer, 0 or more |  | When the token expires, in seconds since 1970: it is refused from then on, and the links it holds are closed. Never when left out or 0. |
+| `members` | list of string |  | The members that first linked with the token, which no other token may link as: a tunnel's node/<name> or proxy/<name>, an LLM role's ID. Written by the listener; revoking the token frees them. |
+| `note` | string |  | Anything else about the token, for the pages; up to 1024 bytes. |
+<!-- END GENERATED -->
+
+### `llm.node.access`
+
+<!-- BEGIN GENERATED: llm.node.access -->
+<a id="cfg-llm-node-access"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `allow` | list of string |  | IP addresses and CIDR prefixes served, as "10.0.0.0/8" or "2001:db8::/32": with any entry here or in allow_files, every address neither holds is refused, unless deny refuses it first. |
+| `allow_files` | list of string |  | Files of more allow entries, one on each line, each line told apart by its content: an address or prefix, with what follows # or ; left out, as the lists published for firewalls are written; a range, first-last; an eMule ipfilter.dat line, first - last , level , name, where a level above 127 is not listed; or a PeerGuardian .p2p line, name:first-last. IPv4 addresses of ranges may have leading zeros. Blank lines and lines that begin with #, ; or // are left out; any other line is an error. Read when the config is applied, and applied again when one changes; each at most 64 MiB. |
+| `deny` | list of string |  | IP addresses and CIDR prefixes refused, whatever allow holds. |
+| `deny_files` | list of string |  | Files of more deny entries, written as allow_files. |
+<!-- END GENERATED -->
+
+### `llm.node.console`
+
+<!-- BEGIN GENERATED: llm.node.console -->
+<a id="cfg-llm-node-console"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `address` | string | required | The host and port the pages listen on. A host that is not a loopback address needs cert_file and key_file, so that passwords never cross a network in the clear. |
+| `users` | list of [object](#cfg-llm-node-console-users) | required | Who may log in: at least one user. |
+| `access` | [object](#cfg-llm-node-console-access) |  | The client addresses the pages serve, deciding before the global access, which applies to the pages too: a connection either refuses is closed as soon as it is accepted. It follows every config applied, without restarting the pages. Set allow to "127.0.0.1" (and "::1") to keep local access whatever the global access says. Every address is served, unless the global access says otherwise, when left out. |
+| `cert_file` | string |  | A PEM file with the pages' certificate, followed by any intermediates; with key_file, the pages are served over TLS. |
+| `key_file` | string |  | A PEM file with the certificate's private key. |
+| `max_conns` | integer, 0 or more | `32` | The most connections the pages keep open at once, a quarter of them kept for those with a login. When they are taken, a new connection closes the oldest of those without one, of the client holding the most, and is closed as it is accepted only when every one has a login; one past a client's share, a quarter of them, is closed too, but for loopback clients. 32 when left out or 0. |
+| `max_sessions` | integer, 0 or more | `64` | The most logins kept at once; one more ends the oldest. 64 when left out or 0. |
+| `mptcp` | boolean |  | **Not supported yet**: refused by name. Listen the pages with Multipath TCP where the kernel offers it (Linux 5.6+, net.mptcp.enabled), falling back to plain TCP where it does not. Off by default. |
+| `session_lifetime` | duration | `"12h"` | How long a login lasts at most, however busy. 12h when left out. |
+| `session_timeout` | duration | `"30m"` | How long a login lasts without a request. 30m when left out. |
+<!-- END GENERATED -->
+
+### `llm.node.console.users[]`
+
+<!-- BEGIN GENERATED: llm.node.console.users[] -->
+<a id="cfg-llm-node-console-users"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `password_hash` | string | required | The bcrypt hash of the user's password, as akit hash-password makes it. |
+| `username` | string | required | The user's name. |
+<!-- END GENERATED -->
+
+### `llm.node.console.access`
+
+<!-- BEGIN GENERATED: llm.node.console.access -->
+<a id="cfg-llm-node-console-access"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `allow` | list of string |  | IP addresses and CIDR prefixes served, as "10.0.0.0/8" or "2001:db8::/32": with any entry here or in allow_files, every address neither holds is refused, unless deny refuses it first. |
+| `allow_files` | list of string |  | Files of more allow entries, one on each line, each line told apart by its content: an address or prefix, with what follows # or ; left out, as the lists published for firewalls are written; a range, first-last; an eMule ipfilter.dat line, first - last , level , name, where a level above 127 is not listed; or a PeerGuardian .p2p line, name:first-last. IPv4 addresses of ranges may have leading zeros. Blank lines and lines that begin with #, ; or // are left out; any other line is an error. Read when the config is applied, and applied again when one changes; each at most 64 MiB. |
+| `deny` | list of string |  | IP addresses and CIDR prefixes refused, whatever allow holds. |
+| `deny_files` | list of string |  | Files of more deny entries, written as allow_files. |
+<!-- END GENERATED -->
+
+### `llm.node.models[]`
+
+<!-- BEGIN GENERATED: llm.node.models[] -->
+<a id="cfg-llm-node-models"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `api` | string: `openai`, `anthropic`, `gemini`, `azure_openai`, `ollama`, `cohere` | required | The API the upstream speaks: openai (OpenAI and every OpenAI-compatible server, as DeepSeek, Qwen, Mistral, Groq, xAI, OpenRouter, vLLM, llama.cpp), anthropic, gemini (Google's Gemini API), azure_openai (Azure OpenAI deployments, which agents call as openai), ollama (Ollama's own API) or cohere (Cohere's v2 API). It sets the agent endpoints the model is reached through, the upstream URL and the auth header. |
+| `base_url` | string | required | The upstream's base URL, http or https, without a query or a trailing slash. openai, anthropic and cohere calls go to it with their path appended, as base_url/chat/completions with http://127.0.0.1:8000/v1; gemini's to base_url/models/{upstream}:{method}, with https://generativelanguage.googleapis.com/v1beta; azure_openai's to base_url/openai/deployments/{upstream}/{path}, with https://{resource}.openai.azure.com; ollama's to base_url/api/chat, with http://127.0.0.1:11434. |
+| `name` | string | required | The name agents ask for the model by: 1 to 128 characters, no spaces. A name is unique among a node's models of one agent API: an azure_openai model shares openai's. |
+| `api_key` | string |  | The key sent upstream: as Authorization: Bearer for openai, ollama and cohere, as x-api-key for anthropic, x-goog-api-key for gemini, api-key for azure_openai. None when left out. The pages never show it whole. |
+| `api_version` | string |  | The api-version query every call of an azure_openai model carries, as 2024-10-21: required for azure_openai, and only taken there. |
+| `description` | string |  | A note about the model its peers show. |
+| `disabled` | boolean |  | Keep the model without serving it. |
+| `max_inflight` | integer, 0 to 100000 |  | The most calls to the model the node forwards at once; a call past it goes to another node. No bound but proxy.max_inflight's when left out or 0. |
+| `upstream` | string |  | The model ID sent upstream in place of name: in the body's model, a form's model field, Gemini's path, or as an azure_openai model's deployment. name when left out. |
+<!-- END GENERATED -->
+
+### `llm.node.settings`
+
+<!-- BEGIN GENERATED: llm.node.settings -->
+<a id="cfg-llm-node-settings"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `allow_hub_manage` | boolean |  | Let linked hubs manage the node: edit its models, change GPU settings, run its fixed actions and follow their jobs. Never its own settings, and never a command of their own. Off when left out. |
+| `gpu_data_dir` | string |  | A directory the install scripts of vendors whose drivers are downloaded by hand look for the packages in, under the vendor's name; the working directory when left out. |
+| `gpu_sudo` | boolean | `true` | Run GPU settings, tool installs and actions that need root with sudo -n when akit does not run as root; sudo must not ask for a password. On when left out. |
+| `job_timeout` | duration | `"1h"` | How long a job, an action or an install, may run before it is killed, 10s to 168h. 1h when left out. |
+| `refresh_interval` | duration | `"30s"` | How often the node reads its hardware again, 5s to 1h. 30s when left out. |
+<!-- END GENERATED -->
+
+### `llm.node.proxy`
+
+<!-- BEGIN GENERATED: llm.node.proxy -->
+<a id="cfg-llm-node-proxy"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `connect_timeout` | duration | `"10s"` | How long a connection to an upstream may take. 10s when left out. |
+| `first_byte_timeout` | duration | `"5m"` | How long an upstream may take to begin its response, from when the call starts, its connect included, as a model reading a long prompt does. 5m when left out. |
+| `idle_timeout` | duration | `"5m"` | How long an upstream may go silent in the middle of its response before the call is cut short. 5m when left out. |
+| `max_body_bytes` | integer, 0 or more | `33554432` | The largest request body a call may carry; one past it fails. A body is held whole only when the model's upstream differs from the name the call gives and the model is named in the body (its JSON model, or a form's model field), to set it. 32 MiB when left out or 0. |
+| `max_inflight` | integer, 0 or more | `256` | The most calls the node forwards at once, across its models; a call past it goes to another node. 256 when left out or 0. |
+| `timeout` | duration | `"30m"` | The most one call may take, from its start to the end of its response. 30m when left out. |
+<!-- END GENERATED -->
+
+### `llm.proxy`
+
+<!-- BEGIN GENERATED: llm.proxy -->
+<a id="cfg-llm-proxy"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `access` | [object](#cfg-llm-proxy-access) |  | The client addresses the proxy's listen takes links from and its api serves, deciding before the global access: a connection it refuses is closed as soon as it is accepted. A change applies to the connections that open from then on, without listening anew; those already open stay. Its console's pages take console.access. |
+| `api` | [object](#cfg-llm-proxy-api) |  | The API agents on this machine or the LAN call, /v1/chat/completions, /v1/messages, /v1beta/models/{model}:generateContent, /api/chat, /v2/chat and the rest; none when left out. |
+| `api_keys` | list of [object](#cfg-llm-proxy-api-keys) |  | The keys agents call the API with, each kept as its SHA-256 alone. Its pages make and delete them. |
+| `console` | [object](#cfg-llm-proxy-console) |  | The proxy's web pages; none when left out. |
+| `id` | string |  | The proxy's stable ID, which its peers know it by. Made when left out, and written back here. |
+| `limits` | [object](#cfg-llm-proxy-limits) |  | Bounds on the proxy's links; the defaults when left out. |
+| `listen` | [object](#cfg-llm-proxy-listen) |  | Where the proxy takes links from hubs and nodes; none when left out. Its pages change it. |
+| `name` | string |  | The name the proxy shows its peers; the host's name when left out. Its pages change it. |
+| `peers` | list of [object](#cfg-llm-proxy-peers) |  | The hubs and nodes the proxy dials. Its pages change them. |
+| `tokens` | list of [object](#cfg-llm-proxy-tokens) |  | The tokens the proxy's listener issued, which hubs and nodes link with in place of a password: each its own credential, of no role, kept as a hash, with an optional expiry. The pages, the Admin API module and akit token make, list, change and revoke them; not written by hand. |
+<!-- END GENERATED -->
+
+### `llm.proxy.listen`
+
+<!-- BEGIN GENERATED: llm.proxy.listen -->
+<a id="cfg-llm-proxy-listen"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `address` | string | required | The host and port the role takes links on, as a binding of its own on the listeners' engine; the WebSocket path is /ws. An empty host listens on every address. |
+| `cert` | string |  | The PEM certificate self_signed made; with key. Written by the role; delete both for a new one, which every peer must pin again. |
+| `cert_file` | string |  | A PEM file with the certificate the listener presents, followed by any intermediates; with key_file, links are taken over TLS (wss://), and peers check it with their ca_file or pin. A listener on an address other than a loopback one needs TLS: this, or self_signed. Read when the listener starts, and again when it changes on disk (akit run -watch-certs): links from then on are taken with the new certificate, and those open stay. |
+| `hub_password` | string |  | The password hubs prove to link as a hub, on a node's or a proxy's listener; password when left out. |
+| `key` | string |  | The PEM private key of cert. |
+| `key_file` | string |  | A PEM file with the private key of cert_file. |
+| `node_password` | string |  | The password nodes prove to link as a node, on a hub's or a proxy's listener; password when left out. |
+| `password` | string |  | The password of every role the listener links with that has no password of its own: peers prove they know it when they link, and it never crosses the network. Whoever holds it may link as any of those roles, so give each role its own instead. None when left out. |
+| `proxy_password` | string |  | The password proxies prove to link as a proxy, on a hub's or a node's listener; password when left out. |
+| `self_signed` | boolean |  | Take links over TLS (wss://) with a self-signed certificate the role makes and keeps, so that it outlives a restart: in cert and key with admin.store, or else in a file beside the config, 0600, as akit.llm.hub.pem beside akit.json; its pages and its log show its SHA-256 fingerprint, which peers set as their pin. For a listener without cert_file. |
+<!-- END GENERATED -->
+
+### `llm.proxy.peers[]`
+
+<!-- BEGIN GENERATED: llm.proxy.peers[] -->
+<a id="cfg-llm-proxy-peers"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `address` | string | required | The peer's host and port, as its listen.address says. |
+| `role` | string: `hub`, `node`, `proxy` | required | The role the peer must announce; a link to a peer of another role is refused. Never the dialing role's own. |
+| `ca_file` | string |  | A PEM file with the certificates of the authorities the peer listener's certificate must chain to: the link is made over TLS (wss://), and the certificate must name server_name, or the address's host. Or pin, one of the two. |
+| `password` | string |  | The shared password of the dialing role on the peer's listener, deprecated for token: a node dials with the peer's listen.node_password, a proxy with its listen.proxy_password, a hub with its listen.hub_password, or with its listen.password when it has none for the role. Taken in this release, with a warning on the peer's pages; refused in the next. |
+| `pin` | string |  | The SHA-256 fingerprint of the certificate the peer's listener presents, 64 hex digits (colons allowed), as its pages and its log show it: the link is made over TLS (wss://) and only to a listener with exactly that certificate. A peer at an address other than a loopback one needs pin or ca_file. |
+| `server_name` | string |  | The name the peer listener's certificate must have with ca_file, and the TLS server name sent; the address's host when left out. |
+| `token` | string |  | The token the peer's listener issued for this role, as fitt1.<id>.<secret>, which the peer's pages, its Admin API module or akit token show once when they make it. Set token or password, not both. **akit:** akit's tokens are `akitt1.<id>.<secret>` (decision 037); a token fit issued (`fitt1.`) is written with akit's prefix, its ID and secret unchanged (decision 038). |
+<!-- END GENERATED -->
+
+### `llm.proxy.limits`
+
+<!-- BEGIN GENERATED: llm.proxy.limits -->
+<a id="cfg-llm-proxy-limits"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `max_conns` | integer, 0 or more | `1024` | The most links the role takes from its peers at once; one past it is refused, and its dialer backs off. 1024 when left out or 0. |
+| `max_inflight` | integer, 0 or more | `1024` | The most calls and streams a peer may have running here on one link at once; one past it fails at once. 1024 when left out or 0. |
+| `ping_interval` | duration | `"15s"` | How long a link may hear nothing before it is pinged; one that hears nothing for three of them is closed. 15s when left out. |
+| `retry_interval` | duration | `"5s"` | The most a dialer waits between attempts at a peer it cannot reach; the waits grow to it, at random within each step. 5s when left out. |
+| `slow_timeout` | duration | `"30s"` | How long a ping may wait for its pong, behind everything sent before it, before the link is taken for too slow and closed. 30s when left out. |
+| `stream_idle` | duration | `"2m"` | How long a stream, as a model call relayed between roles, may carry nothing either way before it ends. 2m when left out. |
+<!-- END GENERATED -->
+
+### `llm.proxy.tokens[]`
+
+<!-- BEGIN GENERATED: llm.proxy.tokens[] -->
+<a id="cfg-llm-proxy-tokens"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `hash` | string | required | The SHA-256 of the key the token's secret derives, in hex: what the listener checks a link's proof with, which cannot be used to link. The token itself is not kept. |
+| `id` | string | required | The token's ID, 16 hex digits, the part of the token before its secret; unique among the listener's. |
+| `name` | string | required | What the token is for, as the pages list it: 1 to 64 characters. |
+| `created_at` | integer, 0 or more |  | When the token was made, in seconds since 1970. |
+| `expires_at` | integer, 0 or more |  | When the token expires, in seconds since 1970: it is refused from then on, and the links it holds are closed. Never when left out or 0. |
+| `members` | list of string |  | The members that first linked with the token, which no other token may link as: a tunnel's node/<name> or proxy/<name>, an LLM role's ID. Written by the listener; revoking the token frees them. |
+| `note` | string |  | Anything else about the token, for the pages; up to 1024 bytes. |
+<!-- END GENERATED -->
+
+### `llm.proxy.access`
+
+<!-- BEGIN GENERATED: llm.proxy.access -->
+<a id="cfg-llm-proxy-access"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `allow` | list of string |  | IP addresses and CIDR prefixes served, as "10.0.0.0/8" or "2001:db8::/32": with any entry here or in allow_files, every address neither holds is refused, unless deny refuses it first. |
+| `allow_files` | list of string |  | Files of more allow entries, one on each line, each line told apart by its content: an address or prefix, with what follows # or ; left out, as the lists published for firewalls are written; a range, first-last; an eMule ipfilter.dat line, first - last , level , name, where a level above 127 is not listed; or a PeerGuardian .p2p line, name:first-last. IPv4 addresses of ranges may have leading zeros. Blank lines and lines that begin with #, ; or // are left out; any other line is an error. Read when the config is applied, and applied again when one changes; each at most 64 MiB. |
+| `deny` | list of string |  | IP addresses and CIDR prefixes refused, whatever allow holds. |
+| `deny_files` | list of string |  | Files of more deny entries, written as allow_files. |
+<!-- END GENERATED -->
+
+### `llm.proxy.console`
+
+<!-- BEGIN GENERATED: llm.proxy.console -->
+<a id="cfg-llm-proxy-console"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `address` | string | required | The host and port the pages listen on. A host that is not a loopback address needs cert_file and key_file, so that passwords never cross a network in the clear. |
+| `users` | list of [object](#cfg-llm-proxy-console-users) | required | Who may log in: at least one user. |
+| `access` | [object](#cfg-llm-proxy-console-access) |  | The client addresses the pages serve, deciding before the global access, which applies to the pages too: a connection either refuses is closed as soon as it is accepted. It follows every config applied, without restarting the pages. Set allow to "127.0.0.1" (and "::1") to keep local access whatever the global access says. Every address is served, unless the global access says otherwise, when left out. |
+| `cert_file` | string |  | A PEM file with the pages' certificate, followed by any intermediates; with key_file, the pages are served over TLS. |
+| `key_file` | string |  | A PEM file with the certificate's private key. |
+| `max_conns` | integer, 0 or more | `32` | The most connections the pages keep open at once, a quarter of them kept for those with a login. When they are taken, a new connection closes the oldest of those without one, of the client holding the most, and is closed as it is accepted only when every one has a login; one past a client's share, a quarter of them, is closed too, but for loopback clients. 32 when left out or 0. |
+| `max_sessions` | integer, 0 or more | `64` | The most logins kept at once; one more ends the oldest. 64 when left out or 0. |
+| `mptcp` | boolean |  | **Not supported yet**: refused by name. Listen the pages with Multipath TCP where the kernel offers it (Linux 5.6+, net.mptcp.enabled), falling back to plain TCP where it does not. Off by default. |
+| `session_lifetime` | duration | `"12h"` | How long a login lasts at most, however busy. 12h when left out. |
+| `session_timeout` | duration | `"30m"` | How long a login lasts without a request. 30m when left out. |
+<!-- END GENERATED -->
+
+### `llm.proxy.console.users[]`
+
+<!-- BEGIN GENERATED: llm.proxy.console.users[] -->
+<a id="cfg-llm-proxy-console-users"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `password_hash` | string | required | The bcrypt hash of the user's password, as akit hash-password makes it. |
+| `username` | string | required | The user's name. |
+<!-- END GENERATED -->
+
+### `llm.proxy.console.access`
+
+<!-- BEGIN GENERATED: llm.proxy.console.access -->
+<a id="cfg-llm-proxy-console-access"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `allow` | list of string |  | IP addresses and CIDR prefixes served, as "10.0.0.0/8" or "2001:db8::/32": with any entry here or in allow_files, every address neither holds is refused, unless deny refuses it first. |
+| `allow_files` | list of string |  | Files of more allow entries, one on each line, each line told apart by its content: an address or prefix, with what follows # or ; left out, as the lists published for firewalls are written; a range, first-last; an eMule ipfilter.dat line, first - last , level , name, where a level above 127 is not listed; or a PeerGuardian .p2p line, name:first-last. IPv4 addresses of ranges may have leading zeros. Blank lines and lines that begin with #, ; or // are left out; any other line is an error. Read when the config is applied, and applied again when one changes; each at most 64 MiB. |
+| `deny` | list of string |  | IP addresses and CIDR prefixes refused, whatever allow holds. |
+| `deny_files` | list of string |  | Files of more deny entries, written as allow_files. |
+<!-- END GENERATED -->
+
+### `llm.proxy.api`
+
+<!-- BEGIN GENERATED: llm.proxy.api -->
+<a id="cfg-llm-proxy-api"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `address` | string | required | The host and port the API listens on: a loopback address serves agents on this machine; a LAN address, or an empty host, serves agents on other machines too, and needs cert_file and key_file, so that keys never cross a network in the clear. |
+| `cert_file` | string |  | A PEM file with the API's certificate, followed by any intermediates; with key_file, the API is served over TLS. |
+| `first_byte_timeout` | duration | `"5m"` | How long a call may wait for its response to begin. 5m when left out. |
+| `key_file` | string |  | A PEM file with the certificate's private key. |
+| `max_body_bytes` | integer, 0 or more | `33554432` | The largest request body a call may carry; one past it gets 413. It is held whole, to read the model it names and to send it again when a route cannot serve it. 32 MiB when left out or 0. |
+| `max_conns` | integer, 0 or more | `256` | The most connections the API keeps open at once; one past it is closed as soon as it is accepted. 256 when left out or 0. |
+| `max_inflight` | integer, 0 or more | `256` | The most calls the API forwards at once; one past it gets 429. 256 when left out or 0. |
+| `timeout` | duration | `"30m"` | The most one call may take, to the end of its response. 30m when left out. |
+<!-- END GENERATED -->
+
+### `llm.proxy.api_keys[]`
+
+<!-- BEGIN GENERATED: llm.proxy.api_keys[] -->
+<a id="cfg-llm-proxy-api-keys"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `hash` | string | required | The SHA-256 of the key, in hex. |
+| `id` | string | required | The key's ID, 16 hex digits. |
+| `name` | string | required | What the key is for: 1 to 64 characters. |
+| `created_at` | integer, 0 or more |  | When the key was made, in seconds since 1970. |
+| `prefix` | string |  | The key's first characters, to tell it by on the pages. |
 <!-- END GENERATED -->
 
 ## Handlers

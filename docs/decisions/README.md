@@ -33,3 +33,4 @@ says whether akit follows it.
 | [035](035-admin-api-redacts-secrets.md) | The Admin API redacts secrets, akit warns of exposed ones, and the rest of I80b's limitations | waiting for review |
 | [036](036-console.md) | The console on an engine of its own, fit's pages served as fit ships them, the store waiting for akio | waiting for review; names amended by 037 |
 | [037](037-akit-names.md) | akit's names: every external name that says "fit" says "akit", with no aliases | accepted |
+| [038](038-tunnel-and-llm.md) | The tunnel and the LLM feature: fit's roles, akit's names, fit's wire protocols | waiting for review |

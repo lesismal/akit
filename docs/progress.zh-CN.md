@@ -19,6 +19,22 @@
 
 ## 日志
 
+### 2026-11-27：I98，配置中的 `tunnel` 和 `llm`
+
+- 隧道与 LLM 路线规划为 I98–I109（开发计划）；[决定 038](decisions/038-tunnel-and-llm.zh-CN.md)：akit 显示名字之处用
+  akit 的名字，线上协议与 fit 逐字节相同，使 akit 和 fit 的角色能够互连。
+- `akit-config` 的 `roles` 模块：六个成员（`tunnel.hub`、`tunnel.node`、`tunnel.proxy`、`llm.hub`、`llm.node`、`llm.proxy`），
+  字段、默认值（与 fit 一样用方法给出）、范围和检查与 fit 相同（`config/tunnel.go`、`config/llm.go`、`config/linktoken.go`）：
+  端点被拆解，拒绝查询、片段或用户信息（I160 的攻击）；拒绝非回环地址上没有 `body_password` 的 tcp 和 ws、非回环地址上的
+  `quic_insecure`、非回环地址上没有 TLS 的 LLM 监听器和对端；`quic_pin` 带 fit 的警告读取；token 的成员只绑定一次；各种
+  API 的模型。链路 token 为 `akitt1.<id>.<secret>`（决定 037）；`fitt1.` 被拒绝。
+- 在运行角色的迭代完成之前，`akit run` 拒绝设置了角色的配置（`roles_not_running`）；`akit validate` 接受 fit-examples 的
+  六个示例（门禁：55 个有效，24 个仅因尚不支持被拒绝）。两个地址的冲突是 I100 的（fit 的 I162）。
+- 测试：移植 fit 的 `TestLLMChecks`、`TestLLMMembers`、`TestLLMDefaults`、`TestTunnelChecks`、`TestTunnelNames`、
+  `TestLinkTokenChecks` 和 `tunnel/config_test.go`（`roles/tests.rs`）；门禁为 376 个字段各取两份只在该字段上不同的配置
+  （`tests/compat/tests/support/roles.rs`）；376 个字段标为 v1 新增；配置参考的“隧道”和 “LLM” 两章。
+- 下一步：I99，链路 token。
+
 ### 2026-11-27：I94，重新读取 Admin API 和控制台的证书
 
 - 先于 I93 完成：I93 等待 akio 的 A230 和 A231，而 I94 不需要它们。

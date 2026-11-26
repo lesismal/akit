@@ -57,6 +57,10 @@ pub struct Config {
     /// `access` (I85): the global allow and deny lists of client addresses, which every listener
     /// and route goes by when its own has no say; every address served when left out.
     pub access: Option<Access>,
+    /// `tunnel` (I98): the tunnel's roles, a hub, a node and a proxy; none when left out.
+    pub tunnel: Option<crate::roles::Tunnel>,
+    /// `llm` (I98): the LLM feature's roles, a hub, a node and a proxy; none when left out.
+    pub llm: Option<crate::roles::Llm>,
     /// What the config was read with that is said rather than refused (I79): the old names of
     /// fields renamed in schema version 1, each at its file, line, column and path. Not part of
     /// what the config means: configs equal but for these are equal.
@@ -2170,11 +2174,12 @@ const CONFIG_FIELDS: &[&str] = &[
     "providers",
     "engine",
     "access",
+    // I98: fit's roles of the tunnel and the LLM feature (crate::roles).
+    "tunnel",
+    "llm",
 ];
 const CONFIG_FIT_ONLY: &[&str] = &[
     "pprof",
-    "llm",
-    "tunnel",
     "webrtc",
     "media_auth",
     "streaming",
@@ -2596,6 +2601,9 @@ pub(crate) struct Part {
     engine: Option<(Engine, usize)>,
     /// `access` (I85), with the position of its key, when the file gives it.
     access: Option<(Access, usize)>,
+    /// `tunnel` and `llm` (I98), with the positions of their keys, when the file gives them.
+    tunnel: Option<(crate::roles::Tunnel, usize)>,
+    llm: Option<(crate::roles::Llm, usize)>,
     providers: Vec<At<crate::providers::Provider>>,
     /// The position of the file's top object.
     doc_off: usize,
@@ -2677,6 +2685,12 @@ pub(crate) fn part(d: &mut Decoder<'_>, n: &Node, file: usize) -> Option<Part> {
     let access = o
         .take("access")
         .and_then(|v| access(d, v, "access").map(|a| (a, v.off)));
+    let tunnel = o
+        .take("tunnel")
+        .and_then(|v| crate::roles::tunnel(d, v, "tunnel").map(|t| (t, v.off)));
+    let llm = o
+        .take("llm")
+        .and_then(|v| crate::roles::llm(d, v, "llm").map(|l| (l, v.off)));
     let providers = o
         .take("providers")
         .map(|v| {
@@ -2703,6 +2717,8 @@ pub(crate) fn part(d: &mut Decoder<'_>, n: &Node, file: usize) -> Option<Part> {
         telemetry,
         engine,
         access,
+        tunnel,
+        llm,
         providers,
         doc_off,
     })
@@ -2734,6 +2750,8 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
     let mut telemetry: Option<(Telemetry, usize)> = None;
     let mut engine: Option<(Engine, usize)> = None;
     let mut access: Option<(Access, usize)> = None;
+    let mut tunnel: Option<(crate::roles::Tunnel, usize)> = None;
+    let mut llm: Option<(crate::roles::Llm, usize)> = None;
     let mut providers = Vec::new();
     for (file, p) in parts.into_iter().enumerate() {
         first_doc.get_or_insert((file, p.doc_off));
@@ -2866,6 +2884,12 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
         if let Some((a, off)) = p.access {
             once(ds, &mut access, a, file, off, "access");
         }
+        if let Some((t, off)) = p.tunnel {
+            once(ds, &mut tunnel, t, file, off, "tunnel");
+        }
+        if let Some((l, off)) = p.llm {
+            once(ds, &mut llm, l, file, off, "llm");
+        }
         listeners.extend(p.listeners);
         routes.extend(p.routes);
         upstreams.extend(p.upstreams);
@@ -2931,6 +2955,8 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
         providers: providers.into_iter().map(|a| a.v).collect(),
         engine: engine.map(|(e, _)| e).unwrap_or_default(),
         access: access.map(|(a, _)| a),
+        tunnel: tunnel.map(|(t, _)| t),
+        llm: llm.map(|(l, _)| l),
         warnings: crate::error::Warnings::default(),
     }
 }
@@ -3888,7 +3914,7 @@ fn list_of(names: &[&str]) -> String {
 }
 
 /// `admin.console`, as fit's `config.Console` and its `checkConsole` (I89).
-fn console(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Console> {
+pub(crate) fn console(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Console> {
     let mut o = d.object(n, path)?;
     let mut c = Console::default();
     let mut address_off = None;
@@ -4277,7 +4303,7 @@ fn route(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Route> {
 /// An `access` (I85), as fit's `config.Access` and its `check`: each entry of `allow` and `deny`
 /// an address or prefix fit's router parses, spaces around it left out; each file's path not
 /// empty. The files are read, and their lines checked, when the config is compiled.
-fn access(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Access> {
+pub(crate) fn access(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Access> {
     let mut o = d.object(n, path)?;
     let mut a = Access::default();
     for (key, into) in [("allow", &mut a.allow), ("deny", &mut a.deny)] {
@@ -7077,7 +7103,7 @@ fn bad_name(s: &str) -> String {
 }
 
 /// A host and port, as Go's `net.SplitHostPort` and fit's `checkAddress` take them.
-fn check_address(a: &str) -> Result<(), String> {
+pub(crate) fn check_address(a: &str) -> Result<(), String> {
     let bad = || format!("{a:?} is not a host and port, as in \":8080\" or \"127.0.0.1:8080\"");
     let (host, port) = if let Some(rest) = a.strip_prefix('[') {
         let (h, p) = rest.split_once(']').ok_or_else(bad)?;

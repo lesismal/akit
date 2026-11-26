@@ -200,7 +200,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | **1.0 之后：akit 的名字** | | | |
 | I97 | akit 的名字：对外凡写 "fit" 的名字都改为 "akit"（决定 037） | I91, I92 | done |
 | **1.0 之后：隧道与 LLM** | | | |
-| I98 | 隧道与 LLM I：配置中的 `tunnel` 和 `llm` | I79 | todo |
+| I98 | 隧道与 LLM I：配置中的 `tunnel` 和 `llm` | I79 | done |
 | I99 | 链路 token：`akitt1.` token、证明和登记表；`akit token`；Admin API 的 `/tokens` | I98, I27 | todo |
 | I100 | `akit run` 中的角色：在监听器的引擎上启动、迁移和停止；一个地址，一个服务器 | I98 | todo |
 | I101 | 隧道 I：TCP 上的链路、注册和隧道 | I99, I100 | todo |
@@ -1298,7 +1298,7 @@ fit 的，使 akit 的角色能与 fit 的角色互连（决定 038）。
   `llm-*` 通过门禁；配置参考列出每个字段；v1 冻结把它们标为新增。
 - **涉及**：`akit-config`（`tunnel`、`llm`）、`akit`、`tests/compat`、`docs/reference`。
 - **fit**：`config/tunnel.go`、`config/llm.go`、`config/linktoken.go`；I105、I159、I160。
-- **状态**：todo。
+- **状态**：已完成（2026-11-27）。见进度日志。
 
 ### I99 链路 token
 

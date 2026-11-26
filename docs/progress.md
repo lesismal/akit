@@ -20,6 +20,28 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-27: I98, `tunnel` and `llm` in the config
+
+- The Tunnel and LLM track planned as I98–I109 (dev plan); [decision 038](decisions/038-tunnel-and-llm.md):
+  akit's names where akit shows one, fit's wire protocols byte for byte, so that akit's and fit's
+  roles link with each other.
+- `akit-config`'s `roles` module: the six members (`tunnel.hub`, `tunnel.node`, `tunnel.proxy`,
+  `llm.hub`, `llm.node`, `llm.proxy`) with fit's fields, defaults (methods, as fit's), bounds and
+  checks (`config/tunnel.go`, `config/llm.go`, `config/linktoken.go`): endpoints taken apart and a
+  query, fragment or user refused (I160's attacks), tcp and ws off loopback without
+  `body_password`, `quic_insecure` off loopback, LLM listeners and peers off loopback without TLS,
+  `quic_pin` read with fit's warning, tokens with their members bound once, models of each API.
+  Link tokens are `akitt1.<id>.<secret>` (decision 037); `fitt1.` is refused.
+- `akit run` refuses a config that sets a role until the iteration that runs it
+  (`roles_not_running`); `akit validate` takes the six fit-examples (the gate: 55 valid, 24
+  refused only as not supported yet). The clashes of two addresses are I100's (fit's I162).
+- Tests: fit's `TestLLMChecks`, `TestLLMMembers`, `TestLLMDefaults`, `TestTunnelChecks`,
+  `TestTunnelNames`, `TestLinkTokenChecks` and `tunnel/config_test.go` ported
+  (`roles/tests.rs`); the gate samples each of the 376 fields with two configs that differ only
+  in it (`tests/compat/tests/support/roles.rs`); 376 fields marked as v1 additions; the reference's
+  Tunnel and LLM chapters.
+- Next: I99, link tokens.
+
 ### 2026-11-27: I94, the Admin API's and the console's certificates read again
 
 - Built before I93, which waits for akio's A230 and A231 and which I94 does not need.

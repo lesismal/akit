@@ -13,6 +13,10 @@ use akit_compat::{
 };
 use akit_config::{Config, Destination, Handler, Protocol};
 
+// The samples of the roles' fields (I98).
+#[path = "support/roles.rs"]
+mod role_samples;
+
 #[test]
 fn fixtures_are_pinned_and_complete() {
     let pins = pins().unwrap();
@@ -2995,11 +2999,36 @@ fn supported_fields_are_read() {
         ),
     ];
     let marked = supported().unwrap();
-    let sampled: BTreeSet<String> = samples.iter().map(|(p, ..)| (*p).to_owned()).collect();
+    // The roles' fields (I98), sampled in support/roles.rs.
+    let roles = role_samples::samples();
+    let mut sampled: BTreeSet<String> = samples.iter().map(|(p, ..)| (*p).to_owned()).collect();
+    for (p, ..) in &roles {
+        assert!(sampled.insert(p.clone()), "{p} is sampled twice");
+    }
     assert_eq!(
         sampled, marked,
         "supported.txt and this test's samples must name the same fields"
     );
+    for (path, a, read) in &roles {
+        let first = akit_config::from_json(a, None);
+        match read {
+            role_samples::Read::Differs(b) => {
+                let first =
+                    first.unwrap_or_else(|e| panic!("{path}: akit-config refuses {a}:\n{e}"));
+                let second = akit_config::from_json(b, None)
+                    .unwrap_or_else(|e| panic!("{path}: akit-config refuses {b}:\n{e}"));
+                assert!(
+                    first != second,
+                    "{path}: akit-config does not read it: {a} and {b} read the same"
+                );
+            }
+            // A field fit refuses in this role: refused by its check, not as unknown.
+            role_samples::Read::Refused(msg) => match first {
+                Ok(_) => panic!("{path}: {a} loads, want {msg:?}"),
+                Err(e) => assert!(e.to_string().contains(msg), "{path}: {e}, want {msg:?}"),
+            },
+        }
+    }
     for (path, json, check) in &samples {
         let config = akit_config::from_json(json, None)
             .unwrap_or_else(|e| panic!("{path}: akit-config refuses {json}:\n{e}"));
@@ -3196,6 +3225,8 @@ fn akit_config_lists_match_the_inventory() {
         "providers_kv.rs",
         "shared_storage.rs",
         "log.rs",
+        // I98: the tunnel's and the LLM feature's roles.
+        "roles.rs",
     ]
     .iter()
     .map(|f| fs::read_to_string(compat_dir().join("../../crates/akit-config/src").join(f)).unwrap())
@@ -3211,7 +3242,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 76] = [
+    let objects: [(&str, &str, Option<&str>); 135] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         (
             "providers[].kubernetes",
@@ -3388,13 +3419,110 @@ fn akit_config_lists_match_the_inventory() {
             "CACHE_DISK_FIELDS",
             None,
         ),
+        // I98: the roles (crate::roles).
+        ("tunnel", "TUNNEL_FIELDS", None),
+        ("tunnel.hub", "TUNNEL_HUB_FIELDS", None),
+        ("tunnel.hub.listeners[]", "TUNNEL_LISTENER_FIELDS", None),
+        ("tunnel.hub.console_socket", "TUNNEL_SOCKET_FIELDS", None),
+        ("tunnel.hub.quic", "TUNNEL_QUIC_FIELDS", None),
+        ("tunnel.hub.tokens[]", "LINK_TOKEN_FIELDS", None),
+        ("tunnel.hub.access", "ACCESS_FIELDS", None),
+        (
+            "tunnel.hub.console",
+            "CONSOLE_FIELDS",
+            Some("CONSOLE_FIT_ONLY"),
+        ),
+        ("tunnel.hub.console.users[]", "CONSOLE_USER_FIELDS", None),
+        ("tunnel.hub.console.access", "ACCESS_FIELDS", None),
+        ("tunnel.node", "TUNNEL_NODE_FIELDS", None),
+        ("tunnel.node.hubs[]", "TUNNEL_UPLINK_FIELDS", None),
+        (
+            "tunnel.node.hubs[].endpoints[]",
+            "TUNNEL_ENDPOINT_FIELDS",
+            None,
+        ),
+        ("tunnel.node.services[]", "TUNNEL_SERVICE_FIELDS", None),
+        (
+            "tunnel.node.console",
+            "CONSOLE_FIELDS",
+            Some("CONSOLE_FIT_ONLY"),
+        ),
+        ("tunnel.node.console.users[]", "CONSOLE_USER_FIELDS", None),
+        ("tunnel.node.console.access", "ACCESS_FIELDS", None),
+        ("tunnel.proxy", "TUNNEL_PROXY_FIELDS", None),
+        ("tunnel.proxy.hubs[]", "TUNNEL_UPLINK_FIELDS", None),
+        (
+            "tunnel.proxy.hubs[].endpoints[]",
+            "TUNNEL_ENDPOINT_FIELDS",
+            None,
+        ),
+        ("tunnel.proxy.forwards[]", "TUNNEL_FORWARD_FIELDS", None),
+        (
+            "tunnel.proxy.web_proxies[]",
+            "TUNNEL_WEB_PROXY_FIELDS",
+            None,
+        ),
+        ("tunnel.proxy.access", "ACCESS_FIELDS", None),
+        (
+            "tunnel.proxy.console",
+            "CONSOLE_FIELDS",
+            Some("CONSOLE_FIT_ONLY"),
+        ),
+        ("tunnel.proxy.console.users[]", "CONSOLE_USER_FIELDS", None),
+        ("tunnel.proxy.console.access", "ACCESS_FIELDS", None),
+        ("llm", "LLM_FIELDS", None),
+        ("llm.hub", "LLM_HUB_FIELDS", None),
+        ("llm.hub.listen", "LLM_LISTEN_FIELDS", None),
+        ("llm.hub.peers[]", "LLM_PEER_FIELDS", None),
+        ("llm.hub.limits", "LLM_LIMITS_FIELDS", None),
+        ("llm.hub.tokens[]", "LINK_TOKEN_FIELDS", None),
+        ("llm.hub.access", "ACCESS_FIELDS", None),
+        (
+            "llm.hub.console",
+            "CONSOLE_FIELDS",
+            Some("CONSOLE_FIT_ONLY"),
+        ),
+        ("llm.hub.console.users[]", "CONSOLE_USER_FIELDS", None),
+        ("llm.hub.console.access", "ACCESS_FIELDS", None),
+        ("llm.node", "LLM_NODE_FIELDS", None),
+        ("llm.node.listen", "LLM_LISTEN_FIELDS", None),
+        ("llm.node.peers[]", "LLM_PEER_FIELDS", None),
+        ("llm.node.limits", "LLM_LIMITS_FIELDS", None),
+        ("llm.node.tokens[]", "LINK_TOKEN_FIELDS", None),
+        ("llm.node.access", "ACCESS_FIELDS", None),
+        (
+            "llm.node.console",
+            "CONSOLE_FIELDS",
+            Some("CONSOLE_FIT_ONLY"),
+        ),
+        ("llm.node.console.users[]", "CONSOLE_USER_FIELDS", None),
+        ("llm.node.console.access", "ACCESS_FIELDS", None),
+        ("llm.proxy", "LLM_PROXY_FIELDS", None),
+        ("llm.proxy.listen", "LLM_LISTEN_FIELDS", None),
+        ("llm.proxy.peers[]", "LLM_PEER_FIELDS", None),
+        ("llm.proxy.limits", "LLM_LIMITS_FIELDS", None),
+        ("llm.proxy.tokens[]", "LINK_TOKEN_FIELDS", None),
+        ("llm.proxy.access", "ACCESS_FIELDS", None),
+        (
+            "llm.proxy.console",
+            "CONSOLE_FIELDS",
+            Some("CONSOLE_FIT_ONLY"),
+        ),
+        ("llm.proxy.console.users[]", "CONSOLE_USER_FIELDS", None),
+        ("llm.proxy.console.access", "ACCESS_FIELDS", None),
+        ("llm.node.models[]", "LLM_MODEL_FIELDS", None),
+        ("llm.node.settings", "LLM_SETTINGS_FIELDS", None),
+        ("llm.node.proxy", "LLM_NODE_PROXY_FIELDS", None),
+        ("llm.proxy.api", "LLM_API_FIELDS", None),
+        ("llm.proxy.api_keys[]", "LLM_KEY_FIELDS", None),
     ];
     let mapped: BTreeSet<&str> = objects
         .iter()
         .flat_map(|(_, r, n)| [Some(*r), *n])
         .flatten()
-        // fit's logger names (config.Loggers), not fields: the keys log.levels and log.loggers take.
-        .chain(["FIT_HANDLERS", "FIT_MIDDLEWARE", "LOGGERS"])
+        // fit's logger names (config.Loggers), not fields: the keys log.levels and log.loggers take;
+        // and the APIs an LLM model's `api` takes (I98), values too.
+        .chain(["FIT_HANDLERS", "FIT_MIDDLEWARE", "LOGGERS", "LLM_APIS"])
         .chain(AKIT_ONLY.iter().map(|(_, l)| *l))
         .collect();
     for name in lists.keys() {

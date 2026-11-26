@@ -1,0 +1,773 @@
+//! The samples of the roles' fields (I98): for each field of `tunnel` and `llm`, a config that
+//! sets it and either another that differs only in it, both valid, which akit-config must read as
+//! different configs, or, for a field fit refuses in that role (`llm.hub.listen.hub_password`), the
+//! refusal its check gives, not "unknown field".
+
+/// How a sample shows its field is read.
+pub(crate) enum Read {
+    /// The two configs differ only in the field: their models differ.
+    Differs(String),
+    /// The config is refused by the field's own check, with this message.
+    Refused(&'static str),
+}
+
+const H64: &str = "abababababababababababababababababababababababababababababababab";
+const C64: &str = "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd";
+const TOK_A: &str = "akitt1.0123456789abcdef.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+const TOK_B: &str = "akitt1.0123456789abcdef.BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
+const HASH_A: &str = "$2a$04$5xt5UjNNUVWTqOgf9FDZm.bfWVyXg.U2as/rOFV.Ny5IQstc/jC26";
+const HASH_B: &str = "$2a$04$5xt5UjNNUVWTqOgf9FDZm.bfWVyXg.U2as/rOFV.Ny5IQstc/jC27";
+// Two self-signed EC certificates and their keys, made for this test (openssl, P-256).
+const CERT_A: &str = r#""-----BEGIN CERTIFICATE-----\nMIIBZTCCAQygAwIBAgIUHbSe+D/8lFj//T18SoXsQ5N5lxIwCgYIKoZIzj0EAwIw\nGDEWMBQGA1UEAwwNYWtpdC1jb21wYXQtYTAgFw0yNjExMjYxODAwNTVaGA8yMTI2\nMTEwMjE4MDA1NVowGDEWMBQGA1UEAwwNYWtpdC1jb21wYXQtYTBZMBMGByqGSM49\nAgEGCCqGSM49AwEHA0IABG4Ytk27PBBxHipzgVQ+mSxIr6M1izYwkKaOp94tpRyw\nBVAj04tqJ/D61zCSbs/PZAdg3SnwxdZIkdzdHpKaatSjMjAwMB0GA1UdDgQWBBRr\nW6ncyPSw7Zln9PlqMPrHMuZ8xzAPBgNVHRMBAf8EBTADAQH/MAoGCCqGSM49BAMC\nA0cAMEQCIGRJ1EuS+IvbXnDJbpy3Zh9XwL3Ze4pODEGTojLkrZa3AiAPeOh36Jmg\n8ompTorBetXBf9zprsN4ju/gVrnx9kP2vw==\n-----END CERTIFICATE-----\n""#;
+const CERT_B: &str = r#""-----BEGIN CERTIFICATE-----\nMIIBZTCCAQygAwIBAgIUQvpi0CyFqEPvJQ/AAu6rYTuLbbgwCgYIKoZIzj0EAwIw\nGDEWMBQGA1UEAwwNYWtpdC1jb21wYXQtYjAgFw0yNjExMjYxODAwNTVaGA8yMTI2\nMTEwMjE4MDA1NVowGDEWMBQGA1UEAwwNYWtpdC1jb21wYXQtYjBZMBMGByqGSM49\nAgEGCCqGSM49AwEHA0IABC2yqiOtizo6Sr+OEbtlnbpaldNhivg+74V3QI35HVMq\noQBmlcvppc8h++BhlnplRaQVwBP9MydrzpvGCdDMeISjMjAwMB0GA1UdDgQWBBS1\nK1Ub4N8OM4FiJ4lgdZFrFmKupzAPBgNVHRMBAf8EBTADAQH/MAoGCCqGSM49BAMC\nA0cAMEQCIHaGvD/kenQrXN2/+mY+XZgY4b//YqKPV1LcC0zSPpEWAiAdwOpm1iPb\nvFKWoAvCvTw/nfAEQccbQCAf48stio6fgw==\n-----END CERTIFICATE-----\n""#;
+const KEY_A: &str = r#""-----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgmq0GaJ7+BFMNIKA6\nT5lJWwSi1ARPRp+jSg/dvCYZ+IWhRANCAARuGLZNuzwQcR4qc4FUPpksSK+jNYs2\nMJCmjqfeLaUcsAVQI9OLaifw+tcwkm7Pz2QHYN0p8MXWSJHc3R6SmmrU\n-----END PRIVATE KEY-----\n""#;
+const KEY_B: &str = r#""-----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgGSSsv5aZQGjxoXnf\n70VTmS0ofXnQf+TYrPdF3/73hwmhRANCAAQtsqojrYs6Okq/jhG7ZZ26WpXTYYr4\nPu+Fd0CN+R1TKqEAZpXL6aXPIfvgYZZ6ZUWkFcAT/TMna86bxgnQzHiE\n-----END PRIVATE KEY-----\n""#;
+
+fn q(s: &str) -> String {
+    format!("\"{s}\"")
+}
+
+/// A field: its key, two values, and members it needs beside it (a value of "" leaves a member
+/// the object needs out).
+struct F {
+    key: &'static str,
+    a: String,
+    b: Read,
+    extra: Vec<(&'static str, String)>,
+}
+
+fn f(key: &'static str, a: impl Into<String>, b: impl Into<String>) -> F {
+    F {
+        key,
+        a: a.into(),
+        b: Read::Differs(b.into()),
+        extra: Vec::new(),
+    }
+}
+
+fn fx(
+    key: &'static str,
+    a: impl Into<String>,
+    b: impl Into<String>,
+    extra: &[(&'static str, &str)],
+) -> F {
+    F {
+        key,
+        a: a.into(),
+        b: Read::Differs(b.into()),
+        extra: extra.iter().map(|(k, v)| (*k, (*v).to_owned())).collect(),
+    }
+}
+
+fn refused(key: &'static str, a: impl Into<String>, msg: &'static str) -> F {
+    F {
+        key,
+        a: a.into(),
+        b: Read::Refused(msg),
+        extra: Vec::new(),
+    }
+}
+
+/// An object's members: what it needs, then the field's extras over them, then the field.
+fn members(need: &[(&str, String)], field: &F, value: &str) -> String {
+    let mut out: Vec<(String, String)> = need
+        .iter()
+        .filter(|(k, _)| *k != field.key)
+        .map(|(k, v)| ((*k).to_owned(), v.clone()))
+        .collect();
+    for (k, v) in &field.extra {
+        out.retain(|(o, _)| o != k);
+        if !v.is_empty() {
+            out.push(((*k).to_owned(), v.clone()));
+        }
+    }
+    out.push((field.key.to_owned(), value.to_owned()));
+    out.iter()
+        .map(|(k, v)| format!("\"{k}\": {v}"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+type Wrap<'a> = &'a dyn Fn(&str) -> String;
+
+fn emit(
+    out: &mut Vec<(String, String, Read)>,
+    path: &str,
+    wrap: Wrap<'_>,
+    need: &[(&str, String)],
+    fields: Vec<F>,
+) {
+    for field in fields {
+        let doc_a = wrap(&format!("{{{}}}", members(need, &field, &field.a)));
+        let read = match &field.b {
+            Read::Differs(b) => Read::Differs(wrap(&format!("{{{}}}", members(need, &field, b)))),
+            Read::Refused(m) => Read::Refused(m),
+        };
+        out.push((format!("{path}.{}", field.key), doc_a, read));
+    }
+}
+
+fn console(port: u16) -> String {
+    format!(
+        r#"{{"address": "127.0.0.1:{port}", "users": [{{"username": "a", "password_hash": "{HASH_A}"}}]}}"#
+    )
+}
+
+fn access_fields() -> Vec<F> {
+    vec![
+        f("allow", r#"["10.0.0.0/8"]"#, r#"["10.0.0.0/9"]"#),
+        f("deny", r#"["10.0.0.0/8"]"#, r#"["10.0.0.0/9"]"#),
+        f("allow_files", r#"["a"]"#, r#"["b"]"#),
+        f("deny_files", r#"["a"]"#, r#"["b"]"#),
+    ]
+}
+
+/// A role's `console` and `access` at `path`, `wrap` putting members into the role.
+fn console_and_access(
+    out: &mut Vec<(String, String, Read)>,
+    path: &str,
+    wrap: Wrap<'_>,
+    access: bool,
+) {
+    let c = format!("{path}.console");
+    let cw = |m: &str| wrap(&format!(r#""console": {m}"#));
+    let need = [
+        ("address", q("127.0.0.1:7080")),
+        (
+            "users",
+            format!(r#"[{{"username": "a", "password_hash": "{HASH_A}"}}]"#),
+        ),
+    ];
+    emit(
+        out,
+        &c,
+        &cw,
+        &need,
+        vec![
+            f("address", q("127.0.0.1:7080"), q("127.0.0.1:7081")),
+            fx(
+                "cert_file",
+                q("a.pem"),
+                q("b.pem"),
+                &[("key_file", r#""k.pem""#)],
+            ),
+            fx(
+                "key_file",
+                q("a.pem"),
+                q("b.pem"),
+                &[("cert_file", r#""c.pem""#)],
+            ),
+            f(
+                "users",
+                format!(r#"[{{"username": "a", "password_hash": "{HASH_A}"}}]"#),
+                format!(r#"[{{"username": "b", "password_hash": "{HASH_A}"}}]"#),
+            ),
+            f("session_timeout", q("1m"), q("2m")),
+            f("session_lifetime", q("1h"), q("2h")),
+            f("max_sessions", "1", "2"),
+            f("max_conns", "1", "2"),
+            f("access", "{}", r#"{"allow": ["10.0.0.0/8"]}"#),
+        ],
+    );
+    let uw = |m: &str| {
+        wrap(&format!(
+            r#""console": {{"address": "127.0.0.1:7080", "users": [{m}]}}"#
+        ))
+    };
+    emit(
+        out,
+        &format!("{c}.users[]"),
+        &uw,
+        &[("username", q("a")), ("password_hash", q(HASH_A))],
+        vec![
+            f("username", q("a"), q("b")),
+            f("password_hash", q(HASH_A), q(HASH_B)),
+        ],
+    );
+    let aw = |m: &str| {
+        wrap(&format!(
+            r#""console": {{"address": "127.0.0.1:7080", "users": [{{"username": "a", "password_hash": "{HASH_A}"}}], "access": {m}}}"#
+        ))
+    };
+    emit(out, &format!("{c}.access"), &aw, &[], access_fields());
+    if access {
+        let aw = |m: &str| wrap(&format!(r#""access": {m}"#));
+        emit(out, &format!("{path}.access"), &aw, &[], access_fields());
+    }
+}
+
+fn token_fields() -> Vec<F> {
+    vec![
+        f("id", q("0123456789abcdef"), q("0123456789abcde0")),
+        f("name", q("a"), q("b")),
+        f("hash", q(H64), q(C64)),
+        f("created_at", "1", "2"),
+        f("expires_at", "1", "2"),
+        f("note", q("a"), q("b")),
+        f("members", r#"["a"]"#, r#"["b"]"#),
+    ]
+}
+
+fn tokens(out: &mut Vec<(String, String, Read)>, path: &str, wrap: Wrap<'_>) {
+    let tw = |m: &str| wrap(&format!(r#""tokens": [{m}]"#));
+    emit(
+        out,
+        &format!("{path}.tokens[]"),
+        &tw,
+        &[
+            ("id", q("0123456789abcdef")),
+            ("name", q("a")),
+            ("hash", q(H64)),
+        ],
+        token_fields(),
+    );
+}
+
+fn uplinks(out: &mut Vec<(String, String, Read)>, path: &str, wrap: Wrap<'_>) {
+    let hw = |m: &str| wrap(&format!(r#""hubs": [{m}]"#));
+    emit(
+        out,
+        &format!("{path}.hubs[]"),
+        &hw,
+        &[
+            ("endpoints", r#"[{"address": "127.0.0.1:7000"}]"#.to_owned()),
+            ("password", q("p")),
+        ],
+        vec![
+            f("name", q("a"), q("b")),
+            f(
+                "endpoints",
+                r#"[{"address": "127.0.0.1:7000"}]"#,
+                r#"[{"address": "127.0.0.1:7001"}]"#,
+            ),
+            fx("token", q(TOK_A), q(TOK_B), &[("password", "")]),
+            f("password", q("a"), q("b")),
+            f("body_password", q("a"), q("b")),
+            f("pin", q(H64), q(C64)),
+            f("quic_pin", q(H64), q(C64)),
+            f("ca_file", q("a.pem"), q("b.pem")),
+            f("quic_insecure", "true", "false"),
+            f("pool_size", "1", "2"),
+            f("dial_timeout", q("1s"), q("2s")),
+            f("call_timeout", q("1s"), q("2s")),
+            f("retry_interval", q("1s"), q("2s")),
+            f("ping_interval", q("1s"), q("2s")),
+            f("ping_timeout", q("1s"), q("2s")),
+        ],
+    );
+    let ew = |m: &str| {
+        wrap(&format!(
+            r#""hubs": [{{"password": "p", "endpoints": [{m}, {{"address": "127.0.0.1:7999"}}]}}]"#
+        ))
+    };
+    emit(
+        out,
+        &format!("{path}.hubs[].endpoints[]"),
+        &ew,
+        &[("address", q("127.0.0.1:7000"))],
+        vec![
+            f("address", q("127.0.0.1:7000"), q("127.0.0.1:7001")),
+            f("disabled", "true", "false"),
+        ],
+    );
+}
+
+fn tunnel(out: &mut Vec<(String, String, Read)>) {
+    out.push((
+        "tunnel".into(),
+        r#"{"tunnel": {}}"#.into(),
+        Read::Differs(r#"{"tunnel": {"hub": {}}}"#.into()),
+    ));
+    let uplink = r#"[{"endpoints": [{"address": "127.0.0.1:7000"}], "password": "p"}]"#;
+    // The hub.
+    let hub = |m: &str| format!(r#"{{"tunnel": {{"hub": {m}}}}}"#);
+    out.push((
+        "tunnel.hub".into(),
+        hub("{}"),
+        Read::Differs(hub(r#"{"name": "a"}"#)),
+    ));
+    let hw = |m: &str| hub(&format!("{{{m}}}"));
+    emit(
+        out,
+        "tunnel.hub",
+        &|m: &str| hub(m),
+        &[],
+        vec![
+            f("name", q("a"), q("b")),
+            f("password", q("a"), q("b")),
+            f(
+                "tokens",
+                "[]",
+                format!(r#"[{{"id": "0123456789abcdef", "name": "a", "hash": "{H64}"}}]"#),
+            ),
+            f("body_password", q("a"), q("b")),
+            f(
+                "listeners",
+                "[]",
+                r#"[{"protocol": "tcp", "address": "127.0.0.1:7000"}]"#,
+            ),
+            f("access", "{}", r#"{"allow": ["10.0.0.0/8"]}"#),
+            fx(
+                "console_socket",
+                r#"{"address": "127.0.0.1:7002"}"#,
+                r#"{"address": "127.0.0.1:7003"}"#,
+                &[("password", r#""p""#), ("console", &console(7080))],
+            ),
+            f("quic", "{}", r#"{"idle_timeout": "5s"}"#),
+            f("register_timeout", q("1s"), q("2s")),
+            f("call_timeout", q("1s"), q("2s")),
+            f("max_links", "1", "2"),
+            f("max_unregistered", "1", "2"),
+            f("max_unregistered_per_ip", "1", "2"),
+            f("max_links_per_peer", "1", "2"),
+            f("max_peers", "1", "2"),
+            f("max_tunnels", "1", "2"),
+            f("allow_proxy_services", "true", "false"),
+            f("console", console(7080), console(7081)),
+        ],
+    );
+    let lw = |m: &str| hw(&format!(r#""listeners": [{m}]"#));
+    emit(
+        out,
+        "tunnel.hub.listeners[]",
+        &lw,
+        &[("protocol", q("tcp")), ("address", q("127.0.0.1:7000"))],
+        vec![
+            f("protocol", q("tcp"), q("ws")),
+            f("address", q("127.0.0.1:7000"), q("127.0.0.1:7001")),
+            fx("path", q("/a"), q("/b"), &[("protocol", r#""ws""#)]),
+            fx(
+                "cert_file",
+                q("a.pem"),
+                q("b.pem"),
+                &[("protocol", r#""tls""#), ("key_file", r#""k.pem""#)],
+            ),
+            fx(
+                "key_file",
+                q("a.pem"),
+                q("b.pem"),
+                &[("protocol", r#""tls""#), ("cert_file", r#""c.pem""#)],
+            ),
+        ],
+    );
+    let sw = |m: &str| {
+        hw(&format!(
+            r#""password": "p", "console": {}, "console_socket": {m}"#,
+            console(7080)
+        ))
+    };
+    emit(
+        out,
+        "tunnel.hub.console_socket",
+        &sw,
+        &[("address", q("127.0.0.1:7002"))],
+        vec![
+            f("address", q("127.0.0.1:7002"), q("127.0.0.1:7003")),
+            f("password", q("a"), q("b")),
+            f("max_conns", "1", "2"),
+        ],
+    );
+    let qw = |m: &str| hw(&format!(r#""quic": {m}"#));
+    emit(
+        out,
+        "tunnel.hub.quic",
+        &qw,
+        &[],
+        vec![
+            fx("cert", CERT_A, CERT_B, &[("key", KEY_A)]),
+            fx("key", KEY_A, KEY_B, &[("cert", CERT_A)]),
+            f("idle_timeout", q("1s"), q("2s")),
+            f("keep_alive", q("1s"), q("2s")),
+            f("handshake_timeout", q("1s"), q("2s")),
+            f("max_handshakes", "1", "2"),
+        ],
+    );
+    tokens(out, "tunnel.hub", &hw);
+    console_and_access(out, "tunnel.hub", &hw, true);
+
+    // The node.
+    let node = |m: &str| format!(r#"{{"tunnel": {{"node": {m}}}}}"#);
+    out.push((
+        "tunnel.node".into(),
+        node("{}"),
+        Read::Differs(node(r#"{"name": "a"}"#)),
+    ));
+    let nw = |m: &str| node(&format!("{{{m}}}"));
+    emit(
+        out,
+        "tunnel.node",
+        &|m: &str| node(m),
+        &[],
+        vec![
+            f("name", q("a"), q("b")),
+            f("meta", r#"{"a": "1"}"#, r#"{"a": "2"}"#),
+            f("hubs", "[]", uplink),
+            f(
+                "services",
+                "[]",
+                r#"[{"name": "s", "address": "127.0.0.1:22"}]"#,
+            ),
+            f("allow_hub_services", "true", "false"),
+            f("dial_timeout", q("1s"), q("2s")),
+            f("idle_timeout", q("1s"), q("2s")),
+            f("max_tunnels", "1", "2"),
+            f("console", console(7080), console(7081)),
+        ],
+    );
+    uplinks(out, "tunnel.node", &nw);
+    let svw = |m: &str| nw(&format!(r#""services": [{m}]"#));
+    emit(
+        out,
+        "tunnel.node.services[]",
+        &svw,
+        &[("name", q("s")), ("address", q("127.0.0.1:22"))],
+        vec![
+            f("name", q("a"), q("b")),
+            f("address", q("127.0.0.1:22"), q("127.0.0.1:23")),
+            f("description", q("a"), q("b")),
+        ],
+    );
+    console_and_access(out, "tunnel.node", &nw, false);
+
+    // The proxy.
+    let proxy = |m: &str| format!(r#"{{"tunnel": {{"proxy": {m}}}}}"#);
+    out.push((
+        "tunnel.proxy".into(),
+        proxy("{}"),
+        Read::Differs(proxy(r#"{"name": "a"}"#)),
+    ));
+    let pw = |m: &str| proxy(&format!("{{{m}}}"));
+    emit(
+        out,
+        "tunnel.proxy",
+        &|m: &str| proxy(m),
+        &[],
+        vec![
+            f("name", q("a"), q("b")),
+            f("meta", r#"{"a": "1"}"#, r#"{"a": "2"}"#),
+            f("hubs", "[]", uplink),
+            f(
+                "forwards",
+                "[]",
+                r#"[{"listen": "127.0.0.1:1", "node": "n", "service": "s"}]"#,
+            ),
+            f(
+                "web_proxies",
+                "[]",
+                r#"[{"listen": "127.0.0.1:2", "url": "ws://h:1/", "password": "p"}]"#,
+            ),
+            f("access", "{}", r#"{"allow": ["10.0.0.0/8"]}"#),
+            f("open_timeout", q("1s"), q("2s")),
+            f("idle_timeout", q("1s"), q("2s")),
+            f("max_tunnels", "1", "2"),
+            f("console", console(7080), console(7081)),
+        ],
+    );
+    uplinks(out, "tunnel.proxy", &pw);
+    let fw = |m: &str| {
+        pw(&format!(
+            r#""hubs": [{{"name": "a", "endpoints": [{{"address": "127.0.0.1:7000"}}], "password": "p"}}, {{"name": "b", "endpoints": [{{"address": "127.0.0.1:7001"}}], "password": "p"}}], "forwards": [{m}]"#
+        ))
+    };
+    emit(
+        out,
+        "tunnel.proxy.forwards[]",
+        &fw,
+        &[
+            ("listen", q("127.0.0.1:1")),
+            ("node", q("n")),
+            ("service", q("s")),
+        ],
+        vec![
+            f("listen", q("127.0.0.1:1"), q("127.0.0.1:2")),
+            f("node", q("a"), q("b")),
+            f("service", q("a"), q("b")),
+            f("hub", q("a"), q("b")),
+        ],
+    );
+    let ww = |m: &str| pw(&format!(r#""web_proxies": [{m}]"#));
+    emit(
+        out,
+        "tunnel.proxy.web_proxies[]",
+        &ww,
+        &[
+            ("listen", q("127.0.0.1:2")),
+            ("url", q("ws://h:1/")),
+            ("password", q("p")),
+        ],
+        vec![
+            f("name", q("a"), q("b")),
+            f("listen", q("127.0.0.1:2"), q("127.0.0.1:3")),
+            f("url", q("ws://h:1/"), q("ws://h:2/")),
+            f("password", q("a"), q("b")),
+            f("max_conns", "1", "2"),
+        ],
+    );
+    console_and_access(out, "tunnel.proxy", &pw, true);
+}
+
+fn llm(out: &mut Vec<(String, String, Read)>) {
+    out.push((
+        "llm".into(),
+        r#"{"llm": {}}"#.into(),
+        Read::Differs(r#"{"llm": {"hub": {}}}"#.into()),
+    ));
+    for (role, peer_role, other_role) in [
+        ("hub", "node", "proxy"),
+        ("node", "hub", "proxy"),
+        ("proxy", "hub", "node"),
+    ] {
+        let path = format!("llm.{role}");
+        let whole = |m: &str| format!(r#"{{"llm": {{"{role}": {m}}}}}"#);
+        out.push((
+            path.clone(),
+            whole("{}"),
+            Read::Differs(whole(r#"{"name": "a"}"#)),
+        ));
+        let rw = |m: &str| whole(&format!("{{{m}}}"));
+        let peer =
+            format!(r#"[{{"address": "127.0.0.1:1", "password": "p", "role": "{peer_role}"}}]"#);
+        let mut fields = vec![
+            f("id", q("a"), q("b")),
+            f("name", q("a"), q("b")),
+            f("console", console(7080), console(7081)),
+            f(
+                "listen",
+                r#"{"address": "127.0.0.1:9200"}"#,
+                r#"{"address": "127.0.0.1:9201"}"#,
+            ),
+            f("access", "{}", r#"{"allow": ["10.0.0.0/8"]}"#),
+            f(
+                "tokens",
+                "[]",
+                format!(r#"[{{"id": "0123456789abcdef", "name": "a", "hash": "{H64}"}}]"#),
+            ),
+            f("peers", "[]", peer.as_str()),
+            f("limits", "{}", r#"{"max_conns": 1}"#),
+        ];
+        match role {
+            "hub" => fields.push(f("max_nodes", "1", "2")),
+            "node" => fields.extend([
+                f("description", q("a"), q("b")),
+                f(
+                    "models",
+                    "[]",
+                    r#"[{"name": "m", "api": "openai", "base_url": "http://h"}]"#,
+                ),
+                f("settings", "{}", r#"{"allow_hub_manage": true}"#),
+                f("proxy", "{}", r#"{"timeout": "1m"}"#),
+            ]),
+            _ => fields.extend([
+                f(
+                    "api",
+                    r#"{"address": "127.0.0.1:9300"}"#,
+                    r#"{"address": "127.0.0.1:9301"}"#,
+                ),
+                f(
+                    "api_keys",
+                    "[]",
+                    format!(r#"[{{"id": "0123456789abcdef", "name": "k", "hash": "{H64}"}}]"#),
+                ),
+            ]),
+        }
+        emit(out, &path, &|m: &str| whole(m), &[], fields);
+        // listen: a role's own password is refused on its own listener.
+        let lw = |m: &str| rw(&format!(r#""listen": {m}"#));
+        let mut lf = vec![
+            f("address", q("127.0.0.1:9200"), q("127.0.0.1:9201")),
+            f("password", q("a"), q("b")),
+            fx(
+                "cert_file",
+                q("a.pem"),
+                q("b.pem"),
+                &[("key_file", r#""k.pem""#)],
+            ),
+            fx(
+                "key_file",
+                q("a.pem"),
+                q("b.pem"),
+                &[("cert_file", r#""c.pem""#)],
+            ),
+            f("self_signed", "true", "false"),
+            fx("cert", CERT_A, CERT_B, &[("key", KEY_A)]),
+            fx("key", KEY_A, KEY_B, &[("cert", CERT_A)]),
+        ];
+        for r in ["node", "proxy", "hub"] {
+            let key: &'static str = match r {
+                "node" => "node_password",
+                "proxy" => "proxy_password",
+                _ => "hub_password",
+            };
+            if r == role {
+                lf.push(refused(
+                    key,
+                    q("a"),
+                    match role {
+                        "hub" => "a hub takes no links from hubs",
+                        "node" => "a node takes no links from nodes",
+                        _ => "a proxy takes no links from proxys",
+                    },
+                ));
+            } else {
+                lf.push(f(key, q("a"), q("b")));
+            }
+        }
+        emit(
+            out,
+            &format!("{path}.listen"),
+            &lw,
+            &[("address", q("127.0.0.1:9200"))],
+            lf,
+        );
+        let pw = |m: &str| rw(&format!(r#""peers": [{m}]"#));
+        emit(
+            out,
+            &format!("{path}.peers[]"),
+            &pw,
+            &[
+                ("address", q("127.0.0.1:1")),
+                ("password", q("p")),
+                ("role", q(peer_role)),
+            ],
+            vec![
+                f("address", q("127.0.0.1:1"), q("127.0.0.1:2")),
+                fx("token", q(TOK_A), q(TOK_B), &[("password", "")]),
+                f("password", q("a"), q("b")),
+                f("role", q(peer_role), q(other_role)),
+                f("pin", q(H64), q(C64)),
+                f("ca_file", q("a.pem"), q("b.pem")),
+                fx("server_name", q("a"), q("b"), &[("ca_file", r#""ca.pem""#)]),
+            ],
+        );
+        let limw = |m: &str| rw(&format!(r#""limits": {m}"#));
+        emit(
+            out,
+            &format!("{path}.limits"),
+            &limw,
+            &[],
+            vec![
+                f("max_conns", "1", "2"),
+                f("max_inflight", "1", "2"),
+                f("ping_interval", q("1s"), q("2s")),
+                f("slow_timeout", q("1s"), q("2s")),
+                f("retry_interval", q("1s"), q("2s")),
+                f("stream_idle", q("1s"), q("2s")),
+            ],
+        );
+        tokens(out, &path, &rw);
+        console_and_access(out, &path, &rw, true);
+        if role == "node" {
+            let mw = |m: &str| rw(&format!(r#""models": [{m}]"#));
+            emit(
+                out,
+                "llm.node.models[]",
+                &mw,
+                &[
+                    ("name", q("m")),
+                    ("api", q("openai")),
+                    ("base_url", q("http://h")),
+                ],
+                vec![
+                    f("name", q("a"), q("b")),
+                    f("api", q("openai"), q("ollama")),
+                    f("base_url", q("http://h"), q("http://i")),
+                    f("upstream", q("a"), q("b")),
+                    f("api_key", q("a"), q("b")),
+                    fx(
+                        "api_version",
+                        q("v1"),
+                        q("v2"),
+                        &[("api", r#""azure_openai""#)],
+                    ),
+                    f("disabled", "true", "false"),
+                    f("description", q("a"), q("b")),
+                    f("max_inflight", "1", "2"),
+                ],
+            );
+            let sw = |m: &str| rw(&format!(r#""settings": {m}"#));
+            emit(
+                out,
+                "llm.node.settings",
+                &sw,
+                &[],
+                vec![
+                    f("allow_hub_manage", "true", "false"),
+                    f("gpu_sudo", "true", "false"),
+                    f("refresh_interval", q("10s"), q("20s")),
+                    f("job_timeout", q("20s"), q("30s")),
+                    f("gpu_data_dir", q("a"), q("b")),
+                ],
+            );
+            let xw = |m: &str| rw(&format!(r#""proxy": {m}"#));
+            emit(
+                out,
+                "llm.node.proxy",
+                &xw,
+                &[],
+                vec![
+                    f("connect_timeout", q("1s"), q("2s")),
+                    f("first_byte_timeout", q("1s"), q("2s")),
+                    f("idle_timeout", q("1s"), q("2s")),
+                    f("timeout", q("1s"), q("2s")),
+                    f("max_inflight", "1", "2"),
+                    f("max_body_bytes", "1", "2"),
+                ],
+            );
+        }
+        if role == "proxy" {
+            let aw = |m: &str| rw(&format!(r#""api": {m}"#));
+            emit(
+                out,
+                "llm.proxy.api",
+                &aw,
+                &[("address", q("127.0.0.1:9300"))],
+                vec![
+                    f("address", q("127.0.0.1:9300"), q("127.0.0.1:9301")),
+                    fx(
+                        "cert_file",
+                        q("a.pem"),
+                        q("b.pem"),
+                        &[("key_file", r#""k.pem""#)],
+                    ),
+                    fx(
+                        "key_file",
+                        q("a.pem"),
+                        q("b.pem"),
+                        &[("cert_file", r#""c.pem""#)],
+                    ),
+                    f("max_body_bytes", "1", "2"),
+                    f("max_conns", "1", "2"),
+                    f("max_inflight", "1", "2"),
+                    f("first_byte_timeout", q("1s"), q("2s")),
+                    f("timeout", q("1s"), q("2s")),
+                ],
+            );
+            let kw = |m: &str| rw(&format!(r#""api_keys": [{m}]"#));
+            emit(
+                out,
+                "llm.proxy.api_keys[]",
+                &kw,
+                &[
+                    ("id", q("0123456789abcdef")),
+                    ("name", q("k")),
+                    ("hash", q(H64)),
+                ],
+                vec![
+                    f("id", q("0123456789abcdef"), q("0123456789abcde0")),
+                    f("name", q("a"), q("b")),
+                    f("prefix", q("a"), q("b")),
+                    f("hash", q(H64), q(C64)),
+                    f("created_at", "1", "2"),
+                ],
+            );
+        }
+    }
+}
+
+/// Every sample of the roles' fields.
+pub(crate) fn samples() -> Vec<(String, String, Read)> {
+    let mut out = Vec::new();
+    tunnel(&mut out);
+    llm(&mut out);
+    out
+}
