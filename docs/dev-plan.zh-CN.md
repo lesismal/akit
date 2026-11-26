@@ -85,7 +85,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 
 ## 索引
 
-状态：`todo`、`doing` 或 `done`。下一个可用的迭代编号是 I98（为日志路线和访问控制列表路线预留的 I84 和 I88 未使用；I95 和 I96 为控制台路线预留；I97 改名了 fit 的对外名字）。
+状态：`todo`、`doing` 或 `done`。下一个可用的迭代编号是 I110（为日志路线和访问控制列表路线预留的 I84 和 I88 未使用；I95 和 I96 为控制台路线预留；I97 改名了 fit 的对外名字；I98–I109 是隧道与 LLM 路线）。
 
 | ID | 迭代 | 依赖 | 状态 |
 | --- | --- | --- | --- |
@@ -199,6 +199,19 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I94 | 文件变化时重新读取 Admin API 和控制台的证书 | I92 | done |
 | **1.0 之后：akit 的名字** | | | |
 | I97 | akit 的名字：对外凡写 "fit" 的名字都改为 "akit"（决定 037） | I91, I92 | done |
+| **1.0 之后：隧道与 LLM** | | | |
+| I98 | 隧道与 LLM I：配置中的 `tunnel` 和 `llm` | I79 | todo |
+| I99 | 链路 token：`akitt1.` token、证明和登记表；`akit token`；Admin API 的 `/tokens` | I98, I27 | todo |
+| I100 | `akit run` 中的角色：在监听器的引擎上启动、迁移和停止；一个地址，一个服务器 | I98 | todo |
+| I101 | 隧道 I：TCP 上的链路、注册和隧道 | I99, I100 | todo |
+| I102 | 隧道 II：TLS、WebSocket 和 QUIC 链路；pin；保存 hub 的证书 | I101 | todo |
+| I103 | 隧道 III：hub 的调用、token 过期、控制台套接字和 web 代理 | I102 | todo |
+| I104 | LLM I：mesh：帧、会话、带信用的流、握手、hello、连接池 | I99, I100 | todo |
+| I105 | LLM II：node：模型、检查、双向流式转发到上游的调用 | I104 | todo |
+| I106 | LLM III：hub：node 表、模型、选择和转发 | I105 | todo |
+| I107 | LLM IV：proxy：agent 的 API、API key、路由、错误 | I106 | todo |
+| I108 | LLM V：node 的管理：硬件、GPU、固定动作和作业 | I105 | todo |
+| I109 | 角色的页面：其控制台和方法，写回的编辑 | I103, I107, I91 | todo |
 
 ## 基准与优化状态
 
@@ -1017,7 +1030,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | 1 | 日志：文件、切割与保留 | I155–I157 | 已完成：[I81–I83](#日志文件切割与保留)，带时区的日志文件，按大小和时间切割，保留策略 |
 | 2 | 访问控制列表 | I195 | [I85–I87](#访问控制列表)：列表、监听器和路由；服务与 SOCKS；Admin API |
 | 3 | 控制台与加密的 store | I104、I157 的页面 | [I89–I93](#控制台与加密的-store)：控制台的登录、服务器和页面（包括基于 I83 的 `/logs` 的“日志”页面）、带 TLS 的 Admin API、加密的 store |
-| 4 | 隧道与 LLM | I105–I107, I159–I162 | 基于 `akio-ws` 和 `akio-quic` 的 hub、node 和 proxy 角色；链路 token |
+| 4 | 隧道与 LLM | I105–I107, I159–I162 | [I98–I109](#隧道与-llm)：配置中的角色、链路 token、`akit run` 中的角色；基于 TCP、TLS、WebSocket 和 QUIC 的隧道链路；基于 `akio-ws` 的 LLM mesh 及其 node、hub 和 proxy；角色的页面 |
 | 5 | WebRTC | I87, I108–I111 | 基于 `akio-turn` 的 TURN；基于 `akio-webrtc` 的 WHIP 和 WHEP |
 | 6 | 流媒体与媒体认证 | I115–I117 | 基于 `akio-media` 的流媒体角色；`media_auth` |
 | 7 | 媒体库与频道 | I131–I139 | MP4 读取器（akio 需求）；点播；频道；签名 URL |
@@ -1260,3 +1273,149 @@ Admin API 并列，在自己的登录之后于进程内调用 Admin API 的端�
   不被读取）；页面在浏览器中对 akit 的服务器正常工作；门禁、v1 检查和整个工作区在 macOS、epoll 和 io_uring 上通过。
 - **涉及**：每个带名字的 crate、`tools`、`tests/compat/v1`、`bench`、`deploy`、`docs`。
 - **状态**：已完成（2026-11-26）。见进度日志。
+
+### 隧道与 LLM
+
+fit 的 I105–I107 和 I159–I162（其[隧道](https://github.com/lesismal/fit/blob/main/docs/tunnel.zh-CN.md)和
+[LLM](https://github.com/lesismal/fit/blob/main/docs/llm.zh-CN.md)指南、其决定 028 和 035，以及其包 `tunnel`、`llm`、
+`internal/linktoken`、`config/tunnel.go` 和 `config/llm.go`），分十二次迭代（[决定 038](decisions/038-tunnel-and-llm.zh-CN.md)）。
+配置中的六个角色：`tunnel.hub`、`tunnel.node` 和 `tunnel.proxy` 经由 hub 访问 NAT 之后的 TCP 服务；`llm.hub`、`llm.node`
+和 `llm.proxy` 在多台机器之间共享 AI 模型，并向 agent 提供它们的 API。它们运行在监听器的 akio 引擎上，与网关的路由并列，
+或者没有路由，基于 akio 的 TCP、TLS、WebSocket（`akio-ws`）、QUIC（`akio-quic`）和 HTTP 客户端。akit 对外显示的名字都是
+akit 的（决定 037：token `akitt1.`、`X-Akit-Node`、akit 写的文件）；线上协议的常量（ALPN、HKDF 和 HMAC 标签、方法名）沿用
+fit 的，使 akit 的角色能与 fit 的角色互连（决定 038）。
+
+### I98 隧道与 LLM I：配置中的 `tunnel` 和 `llm`
+
+- **做什么**：六个成员与其余配置一样严格读取，字段、默认值、范围和检查与 fit 的相同（`config/tunnel.go`、`config/llm.go`）：
+  hub 的 `listeners`、`quic`、`console_socket` 和各项上限；node 和 proxy 的 `hubs` 及其端点（`tls://`、`wss://`、`quic://`、
+  `tcp://`、`ws://`；拒绝查询、片段或用户信息）、`pin`（旧名 `quic_pin` 读取时给出警告）、`ca_file` 和 `quic_insecure`；
+  `services`、`forwards` 和 `web_proxies`；LLM 角色的 `id`、`name`、`listen`、`peers`、`limits`、`tokens`，node 的
+  `models`、`settings` 和 `proxy`，proxy 的 `api` 和 `api_keys`；每个角色的 `access` 和 `console`。按 fit 的 I160 在非回环地址上
+  要求 TLS：拒绝非回环地址上没有 `body_password` 的 `tcp` 或 `ws` 监听器或端点、非回环地址上没有它的 `quic_insecure`、
+  非回环地址上没有 TLS 的 LLM 监听器或对端。在角色由其迭代运行之前，`akit run` 拒绝带该角色的配置。
+- **完成标准**：移植后的 fit `config/tunnel_test.go`、`llm_test.go` 和 `roles_test.go` 用例通过；fit-examples 的 `tunnel-*` 和
+  `llm-*` 通过门禁；配置参考列出每个字段；v1 冻结把它们标为新增。
+- **涉及**：`akit-config`（`tunnel`、`llm`）、`akit`、`tests/compat`、`docs/reference`。
+- **fit**：`config/tunnel.go`、`config/llm.go`、`config/linktoken.go`；I105、I159、I160。
+- **状态**：todo。
+
+### I99 链路 token
+
+- **做什么**：fit 的决定 035，同 `internal/linktoken`：token `akitt1.<id>.<secret>`（16 位十六进制数字，256 个随机位），
+  其 client、stored、server 和 body 密钥，拨号方和监听方基于包含双方 nonce 和方向的记录（transcript）的证明；监听方的 token
+  登记表（成员绑定到其首次注册所用的 token、过期、最后使用、使用每个 token 的链路，最多 1,024 个 token、每个 token 256 个
+  成员）；在配置文件上运行 `akit token create|list|expiry|revoke -role <成员>`；Admin API 的 `GET`、`POST /tokens/{成员}` 和
+  `PATCH`、`DELETE /tokens/{成员}/{id}`，每个都是对成员的一次编辑，像任何配置一样应用，并记录到 `admin` 日志器。
+- **完成标准**：移植后的 fit `linktoken_test.go` 通过，其测试向量逐字节一致（fit token 的 secret 得出相同的哈希和证明）；
+  CLI 和 Admin API 能创建、列出、修改和撤销 token，token 只显示一次，只保存其哈希；v1 冻结把这些端点标为新增。
+- **涉及**：`akit-config`、`akit-admin`、`akit`（`token`）、`tests/compat/v1`、`docs`。
+- **fit**：`internal/linktoken`、`admin/tokens.go`、`cli/token.go`；I159。
+- **状态**：todo。
+
+### I100 `akit run` 中的角色
+
+- **做什么**：同 fit 的 `app`（I105）：一个宿主，在每次应用配置时于监听器之后启动、迁移和停止每个角色，角色失败只是警告；
+  角色的绑定加在监听器的 akio 引擎上（角色不另建引擎），每次应用都重新设置其 `access`；一个地址，一个服务器（fit 的 I162）：
+  配置监听的每个地址（包括各角色的）规范化后统一检查一次，两者中后出现的被拒绝，并指出先出现的那个。
+- **完成标准**：配置能启动、迁移和停止角色（测试中用一个占位角色）；角色失败是警告，网关照常运行；fit 的 `bindings_test.go`
+  中的冲突被拒绝。
+- **涉及**：`akit-roles`（新）、`akit-config`、`akit`。
+- **fit**：`app/app.go`、`config/bindings.go`、`internal/bindcheck`；I105、I162。
+- **状态**：todo。
+
+### I101 隧道 I：TCP 上的链路、注册和隧道
+
+- **做什么**：fit 的链路协议（`tunnel/internal/proto`、`link`、`bodycrypt`），逐字节一致：帧、版本 3 和 4 的 hello、用 token
+  和已弃用的共享密码注册（双向证明）、`body_password` 密封的帧；hub（对端、链路、把隧道路由到它指定的 node 并转发其帧）、
+  node（其 `services`，它只拨这些地址）和 proxy（`forwards`，每个一个本地监听器，隧道分布在其 hub 上）；每条隧道 4 MiB 的窗口，
+  两端 TCP 上用 `hold_reads` 和 `on_drain`，由 hub 检查；各角色的上限和超时。基于 `tcp://`。
+- **完成标准**：移植后的 fit `tunnel/e2e_test.go` 中基于 TCP 的用例通过（大量传输、慢服务和慢 proxy、中途断开、密封和明文、
+  每种角色的 token、成员 ID 绑定到其 token、伪造或重放的证明被拒绝）。
+- **涉及**：`akit-tunnel`（新）、`akit`。
+- **fit**：`tunnel/hub`、`tunnel/node`、`tunnel/proxy`、`tunnel/internal/{proto,link,bodycrypt,tunnel,uplink,common}`；I106、I159。
+- **状态**：todo。
+
+### I102 隧道 II：TLS、WebSocket 和 QUIC 链路
+
+- **做什么**：`tls://`（akio-tls，ALPN `fit-tunnel`）、`wss://` 和 `ws://`（akio-ws，默认路径 `/tunnel`，其他路径回 404）以及
+  `quic://`（监听器引擎的 UDP 绑定上的 akio-quic）链路；hub 每个监听器的证书（`cert_file` 和 `key_file`，文件变化时重新读取）
+  或它自己的自签名证书，保存在配置旁（`akit.tunnel.hub.pem`，0600）；node 或 proxy 的 `pin`、`ca_file` 和 `quic_insecure`
+  交给拨号，从不从地址中读取；不恢复会话。
+- **完成标准**：基于 TLS、WebSocket、TLS 上的 WebSocket 和 QUIC 的端到端测试通过；fit I160 的片段攻击失败；带自己证书的中继
+  握手失败；没有 store 的 hub 重启后指纹不变。
+- **涉及**：`akit-tunnel`、`akit-tls`。
+- **fit**：`tunnel/internal/transport/...`、`internal/certpin`；I106、I160。
+- **状态**：todo。
+
+### I103 隧道 III：hub 的调用、token 过期、控制台套接字和 web 代理
+
+- **做什么**：hub 的调用（查询 node、在 `allow_hub_services` 和 `allow_proxy_services` 允许时设置其服务、踢掉对端、关闭隧道）
+  和状态；token 的过期和撤销关闭其链路（一分钟内、立即）；`password_peers`；hub 的 `console_socket`（其密封的 WebSocket、
+  `max_conns`、10 秒内的证明）和 proxy 的 `web_proxies`。
+- **完成标准**：移植后的 fit hub 和 token 端到端测试通过（过期、撤销、带警告的共享密码）；web 代理经由套接字提供 hub 的控制台。
+- **涉及**：`akit-tunnel`。
+- **fit**：`tunnel/hub/api.go`、`socket.go`、`tunnel/proxy/webproxy.go`、`tunnel/internal/wscrypt`。
+- **状态**：todo。
+
+### I104 LLM I：网状链路（mesh）
+
+- **做什么**：fit 的 `llm/internal/wire` 和 `mesh`：帧（类型、标志、1 KiB 起 gzip、最大 16 MiB）、会话（奇偶流 ID）、请求、
+  按序的推送（最多 1,024 个排队）、每个方向 256 KiB 窗口的流；用 token 或角色密码的握手，双方都给出证明；hello 和角色规则；
+  按对端 ID 的连接池、拨号退避、心跳、慢超时和排空；基于 akio-ws，回环上用 `ws://`，带 `pin` 或 `ca_file` 时用 `wss://`；
+  最多 256 条未认证链路，单个地址 16 条。
+- **完成标准**：移植后的 fit `wire` 和 `mesh` 测试通过（信用、慢读者只阻塞自己的流、取消、空闲、ping 和慢超时、排空、hello
+  拒绝、token 和密码）。
+- **涉及**：`akit-llm`（新）。
+- **fit**：`llm/internal/wire`、`llm/internal/mesh`、`llm/internal/role`；I107、I159、I160。
+- **状态**：todo。
+
+### I105 LLM II：node
+
+- **做什么**：`models` 及其状态（`disabled`、`error`、`ready`），每 60 秒检查一次（`error` 时 15 秒），基于 akio 异步 HTTP 客户端
+  的 `/node/proxy`：每种 API 的 URL、密钥头、发往上游的头和查询参数、在 JSON 正文或表单中设置 `upstream`、在流的信用下双向
+  流式传输正文、`connect_timeout`、`first_byte_timeout`、`idle_timeout` 和 `timeout`；推送 node 的信息（间隔 200 毫秒，带序号）。
+- **完成标准**：移植后的 fit `llm/node` 代理和模型测试针对每种 API 的模拟上游通过（流式事件、慢的和中途断开的上游、大正文、
+  模型改名）。
+- **涉及**：`akit-llm`。
+- **fit**：`llm/node/{node,models,proxy,push}.go`、`llm/internal/model`。
+- **状态**：todo。
+
+### I106 LLM III：hub
+
+- **做什么**：node 表（`max_nodes`，遗忘离线最久的）、其在线 node 的模型推送给 proxy、`/hub/proxy` 选择负载最低的 node 并在
+  每个流的信用下转发帧（响应头之前最多 3 个 node）、带上限的 node 列表；供页面使用的 `/hub/node/call` 和 `/hub/node/stream`。
+- **完成标准**：移植后的 fit `llm/hub` 测试通过；一次端到端调用 agent → proxy → hub → node → 模拟上游双向流式传输。
+- **涉及**：`akit-llm`。
+- **fit**：`llm/hub`。
+- **状态**：todo。
+
+### I107 LLM IV：proxy
+
+- **做什么**：`api.address` 上供 agent 使用的 API（独立的绑定，非回环地址上需要 TLS）：OpenAI、Anthropic、Gemini、Ollama 和
+  Cohere 的路径、模型列表、API key（`ah-`，只保存 SHA-256，常数时间比较）、先直连 node 再经 hub 的路由（响应头之前最多 4 条）、
+  `X-Akit-Node`、每种 API 的错误格式和状态码、`max_conns`、`max_inflight`、`max_body_bytes` 和各项超时。
+- **完成标准**：移植后的 fit `llm/proxy` 和 `llm/e2e` 测试通过。
+- **涉及**：`akit-llm`。
+- **fit**：`llm/proxy`、`llm/e2e`。
+- **状态**：todo。
+
+### I108 LLM V：node 的管理
+
+- **做什么**：每隔 `refresh_interval` 读取硬件，在小线程池（2 个运行、16 个等待）上读取 GPU 状态；固定的动作和 GPU 设置作为
+  作业运行（8 个运行、保留 200 个、每个保留 1 MiB 输出，超过 `job_timeout` 杀掉进程组），从不运行调用方的命令，从不经过 shell；
+  页面以及在 `allow_hub_manage` 下 hub 可以调用的方法。
+- **完成标准**：移植后的 fit `llm/node` 动作、作业和 GPU 测试在 Linux 和 macOS 上通过。
+- **涉及**：`akit-llm`。
+- **fit**：`llm/node/{actions,jobs,exec,gpu,hwinfo_*}.go`、`llm/internal/gpu`。
+- **状态**：todo。
+
+### I109 角色的页面
+
+- **做什么**：每个角色的 `console`，与 `admin.console` 一样在登录之后，以及 `admin.console` 上的角色模块：改名后的 fit 工作台
+  页面（决定 037）、供页面使用的隧道 API 和 LLM 角色的 `/mesh/*`、`/node/*`、`/hub/*`、`/proxy/*` 方法，每个修改都作为一次
+  配置编辑写回角色的成员。
+- **完成标准**：移植后的 fit 角色页面测试通过；页面的修改被应用、进入历史，不能加载时被拒绝。
+- **涉及**：`akit-admin`、`akit-tunnel`、`akit-llm`、`tools/console-pages.py`。
+- **fit**：`app/roleconsole`、`app/workbench`、`tunnel/*/api.go`、`llm/internal/webui`。
+- **状态**：todo。

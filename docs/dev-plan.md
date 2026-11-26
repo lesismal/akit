@@ -92,9 +92,9 @@ few crates as it can. fit's package of the same role is given for reference.
 
 ## Index
 
-Status: `todo`, `doing` or `done`. The next free iteration number is I98 (I84 and I88, reserved for the
+Status: `todo`, `doing` or `done`. The next free iteration number is I110 (I84 and I88, reserved for the
 Logging and Access lists tracks, are unused; I95 and I96 are reserved for the Console track; I97
-renamed fit's external names).
+renamed fit's external names; I98–I109 are the Tunnel and LLM track).
 
 | ID | Iteration | Depends on | Status |
 | --- | --- | --- | --- |
@@ -208,6 +208,19 @@ renamed fit's external names).
 | I94 | The Admin API's and the console's certificates read again when they change | I92 | done |
 | **After 1.0: akit's names** | | | |
 | I97 | akit's names: every external name that says "fit" says "akit" (decision 037) | I91, I92 | done |
+| **After 1.0: tunnel and LLM** | | | |
+| I98 | Tunnel and LLM I: `tunnel` and `llm` in the config | I79 | todo |
+| I99 | Link tokens: `akitt1.` tokens, proofs and registry; `akit token`; the Admin API's `/tokens` | I98, I27 | todo |
+| I100 | The roles in `akit run`: started, moved and stopped on the listeners' engine; one address, one server | I98 | todo |
+| I101 | Tunnel I: links, registration and tunnels over TCP | I99, I100 | todo |
+| I102 | Tunnel II: TLS, WebSocket and QUIC links; pins; the hub's certificate kept | I101 | todo |
+| I103 | Tunnel III: the hub's calls, token expiry, the console socket and web proxies | I102 | todo |
+| I104 | LLM I: the mesh: frames, sessions, streams with credit, the handshake, hello, pools | I99, I100 | todo |
+| I105 | LLM II: the node: models, checks, calls forwarded upstream streamed both ways | I104 | todo |
+| I106 | LLM III: the hub: node table, models, picking and relaying | I105 | todo |
+| I107 | LLM IV: the proxy: the agents' API, API keys, routing, errors | I106 | todo |
+| I108 | LLM V: the node's management: hardware, GPUs, fixed actions and jobs | I105 | todo |
+| I109 | The roles' pages: their consoles and methods, edits written back | I103, I107, I91 | todo |
 
 ## Benchmark and optimization status
 
@@ -1143,7 +1156,7 @@ below is the planned order; tracks with no dependency between them may run in pa
 | 1 | Logging: files, rotation and retention | I155–I157 | done: [I81–I83](#logging-files-rotation-and-retention), log files with time zones, rotation by size and time, retention |
 | 2 | Access lists | I195 | [I85–I87](#access-lists): the lists, listeners and routes; services and SOCKS; the Admin API |
 | 3 | Console and encrypted store | I104, I157's page | [I89–I93](#console-and-encrypted-store): the console's logins, server and pages (the Logs page on I83's `/logs` among them), the Admin API over TLS, the encrypted store |
-| 4 | Tunnel and LLM | I105–I107, I159–I162 | hub, node and proxy roles on `akio-ws` and `akio-quic`; link tokens |
+| 4 | Tunnel and LLM | I105–I107, I159–I162 | [I98–I109](#tunnel-and-llm): the roles in the config, link tokens, the roles in `akit run`; the tunnel's links over TCP, TLS, WebSocket and QUIC; the LLM mesh on `akio-ws`, its node, hub and proxy; the roles' pages |
 | 5 | WebRTC | I87, I108–I111 | TURN on `akio-turn`; WHIP and WHEP on `akio-webrtc` |
 | 6 | Streaming and media auth | I115–I117 | the streaming role on `akio-media`; `media_auth` |
 | 7 | Media library and channels | I131–I139 | an MP4 reader (akio request); VOD; channels; signed URLs |
@@ -1468,3 +1481,185 @@ Not a track of fit's: the maintainer's decision that akit's external names are a
   io_uring.
 - **Touches**: every crate with a name, `tools`, `tests/compat/v1`, `bench`, `deploy`, `docs`.
 - **Status**: done (2026-11-26). See the progress log.
+
+### Tunnel and LLM
+
+fit's I105–I107 and I159–I162 (its [tunnel](https://github.com/lesismal/fit/blob/main/docs/tunnel.md)
+and [LLM](https://github.com/lesismal/fit/blob/main/docs/llm.md) guides, its decisions 028 and 035,
+and its packages `tunnel`, `llm`, `internal/linktoken`, `config/tunnel.go` and `config/llm.go`), in
+twelve iterations ([decision 038](decisions/038-tunnel-and-llm.md)). Six roles of the config:
+`tunnel.hub`, `tunnel.node` and `tunnel.proxy` reach TCP services behind NAT through a hub;
+`llm.hub`, `llm.node` and `llm.proxy` share AI models among machines and serve their APIs to agents.
+They run on the listeners' akio engine beside the gateway's routes, or without any, on akio's TCP,
+TLS, WebSocket (`akio-ws`), QUIC (`akio-quic`) and HTTP clients. Every external name akit shows is
+akit's (decision 037: the tokens `akitt1.`, `X-Akit-Node`, the files akit writes); the wire
+protocols' constants (ALPN, HKDF and HMAC labels, method names) are fit's, so that akit's roles
+link with fit's (decision 038).
+
+### I98 Tunnel and LLM I: `tunnel` and `llm` in the config
+
+- **Do**: the six members read as strictly as the rest, with fit's fields, defaults, bounds and
+  checks (`config/tunnel.go`, `config/llm.go`): the hub's `listeners`, `quic`, `console_socket`
+  and bounds; nodes' and proxies' `hubs` with their endpoints (`tls://`, `wss://`, `quic://`,
+  `tcp://`, `ws://`; a query, fragment or user refused), `pin` (its old name `quic_pin` read with a
+  warning), `ca_file` and `quic_insecure`; `services`, `forwards` and `web_proxies`; the LLM roles'
+  `id`, `name`, `listen`, `peers`, `limits`, `tokens`, a node's `models`, `settings` and `proxy`,
+  a proxy's `api` and `api_keys`; each role's `access` and `console`. TLS off loopback, as fit's
+  I160 refuses: a `tcp` or `ws` listener or endpoint off loopback without `body_password`,
+  `quic_insecure` off loopback without it, an LLM listener or peer off loopback without TLS.
+  `akit run` refuses a config with a role until the role's iteration runs it.
+- **Done when**: fit's `config/tunnel_test.go`, `llm_test.go` and `roles_test.go` cases pass ported;
+  fit-examples' `tunnel-*` and `llm-*` pass the gate; the reference lists every field; the v1
+  freeze marks them as additions.
+- **Touches**: `akit-config` (`tunnel`, `llm`), `akit`, `tests/compat`, `docs/reference`.
+- **fit**: `config/tunnel.go`, `config/llm.go`, `config/linktoken.go`; I105, I159, I160.
+- **Status**: todo.
+
+### I99 Link tokens
+
+- **Do**: decision 035 of fit's, as `internal/linktoken`: a token `akitt1.<id>.<secret>` (16 hex
+  digits, 256 random bits), its client, stored, server and body keys, the dialer's and the
+  listener's proofs over a transcript of both nonces and the direction; the registry of a
+  listener's tokens (members bound to the token they first registered with, expiry, last use, the
+  links using each, at most 1,024 tokens and 256 members a token); `akit token
+  create|list|expiry|revoke -role <member>` on the config's files; the Admin API's `GET`, `POST`
+  `/tokens/{member}` and `PATCH`, `DELETE /tokens/{member}/{id}`, each an edit of the member
+  applied as any config, logged to the `admin` logger.
+- **Done when**: fit's `linktoken_test.go` passes ported, its vectors byte for byte (a fit token's
+  secret makes the same hash and proofs); the CLI and the Admin API make, list, change and revoke a
+  token, shown once and kept as a hash; the v1 freeze marks the endpoints as additions.
+- **Touches**: `akit-config`, `akit-admin`, `akit` (`token`), `tests/compat/v1`, `docs`.
+- **fit**: `internal/linktoken`, `admin/tokens.go`, `cli/token.go`; I159.
+- **Status**: todo.
+
+### I100 The roles in `akit run`
+
+- **Do**: as fit's `app` (I105): a host that starts, moves and stops each role on every config
+  applied after the listeners, a role's failure a warning; the roles' bindings added to the
+  listeners' akio engine (a role's own engine nowhere), with its `access` set again on every
+  apply; one address, one server (fit's I162): every address the config listens on, the roles'
+  among them, normalized and checked once, the later of two refused with the earlier named.
+- **Done when**: a config starts, moves and stops a role (a stub role in the tests); a role's
+  failure is a warning and the gateway runs; fit's `bindings_test.go` clashes are refused.
+- **Touches**: `akit-roles` (new), `akit-config`, `akit`.
+- **fit**: `app/app.go`, `config/bindings.go`, `internal/bindcheck`; I105, I162.
+- **Status**: todo.
+
+### I101 Tunnel I: links, registration and tunnels over TCP
+
+- **Do**: fit's link protocol (`tunnel/internal/proto`, `link`, `bodycrypt`), byte for byte: the
+  frames, the hello of versions 3 and 4, registration with a token and with the deprecated shared
+  password, both proven both ways, `body_password`'s sealed frames; the hub (peers, links, routing a
+  tunnel to the node it names and passing its frames), the node (its `services`, the only addresses
+  it dials) and the proxy (`forwards`, a local listener each, tunnels spread over its hubs); each
+  tunnel's 4 MiB window with `hold_reads` and `on_drain` on both TCP ends, checked by the hub; the
+  roles' bounds and timeouts. Over `tcp://`.
+- **Done when**: fit's `tunnel/e2e_test.go` cases over TCP pass ported (large transfers, slow
+  services and proxies, cut connections, sealed and plain, a token of each role, a member's ID
+  bound to its token, a forged or replayed proof refused).
+- **Touches**: `akit-tunnel` (new), `akit`.
+- **fit**: `tunnel/hub`, `tunnel/node`, `tunnel/proxy`, `tunnel/internal/{proto,link,bodycrypt,
+  tunnel,uplink,common}`; I106, I159.
+- **Status**: todo.
+
+### I102 Tunnel II: TLS, WebSocket and QUIC links
+
+- **Do**: `tls://` (akio-tls, ALPN `fit-tunnel`), `wss://` and `ws://` (akio-ws, `/tunnel` by
+  default, 404 for another path), and `quic://` (akio-quic on a UDP binding of the listeners'
+  engine) links; a hub's certificate per listener (`cert_file` and `key_file`, read again when
+  they change) or its own self-signed one, kept beside the config (`akit.tunnel.hub.pem`, 0600);
+  a node's or proxy's `pin`, `ca_file` and `quic_insecure` given to the dial, never read from the
+  address; no session resumption.
+- **Done when**: the e2e tests over TLS, WebSocket, WebSocket over TLS and QUIC pass; fit's I160
+  fragment attacks fail; a relay with a certificate of its own fails the handshake; a hub without
+  a store keeps its fingerprint across restarts.
+- **Touches**: `akit-tunnel`, `akit-tls`.
+- **fit**: `tunnel/internal/transport/...`, `internal/certpin`; I106, I160.
+- **Status**: todo.
+
+### I103 Tunnel III: the hub's calls, token expiry, the console socket and web proxies
+
+- **Do**: the hub's calls (query a node, set its services where `allow_hub_services` and
+  `allow_proxy_services` let it, kick a peer, close a tunnel) and status; tokens' expiry and
+  revocation closing their links (within a minute, at once); `password_peers`; the hub's
+  `console_socket` (its sealed WebSocket, `max_conns`, the 10 s proof) and a proxy's
+  `web_proxies`.
+- **Done when**: fit's hub and token e2e tests pass ported (expiry, revocation, the shared
+  password with its warning); a web proxy serves a hub's console through its socket.
+- **Touches**: `akit-tunnel`.
+- **fit**: `tunnel/hub/api.go`, `socket.go`, `tunnel/proxy/webproxy.go`, `tunnel/internal/wscrypt`.
+- **Status**: todo.
+
+### I104 LLM I: the mesh
+
+- **Do**: fit's `llm/internal/wire` and `mesh`: frames (types, flags, gzip at 1 KiB, 16 MiB at
+  most), sessions with odd and even stream IDs, requests, pushes in order (1,024 waiting),
+  streams with a 256 KiB window each way; the handshake with a token or a role's password, both
+  sides proven; hello and the roles' rules; pools by peer ID, dial backoff, the heartbeat, the slow
+  timeout and drain; over akio-ws, `ws://` on loopback and `wss://` with `pin` or `ca_file`; at
+  most 256 links not authenticated, 16 from one address.
+- **Done when**: fit's `wire` and `mesh` tests pass ported (credit, a slow reader holding its own
+  stream only, cancel, idle, ping and slow timeout, drain, hello refusals, tokens and passwords).
+- **Touches**: `akit-llm` (new).
+- **fit**: `llm/internal/wire`, `llm/internal/mesh`, `llm/internal/role`; I107, I159, I160.
+- **Status**: todo.
+
+### I105 LLM II: the node
+
+- **Do**: `models` with their state (`disabled`, `error`, `ready`), checks every 60 s (15 s in
+  `error`), `/node/proxy` on akio's asynchronous HTTP client: each API's URL, key header, the
+  headers and query that go upstream, `upstream` set in a JSON body or a form, bodies streamed
+  both ways under the stream's credit, `connect_timeout`, `first_byte_timeout`, `idle_timeout`
+  and `timeout`; the node's info pushed (200 ms apart, with its sequence).
+- **Done when**: fit's `llm/node` proxy and model tests pass ported against a mock upstream of each
+  API (streamed events, slow and cut upstreams, a large body, the model renamed).
+- **Touches**: `akit-llm`.
+- **fit**: `llm/node/{node,models,proxy,push}.go`, `llm/internal/model`.
+- **Status**: todo.
+
+### I106 LLM III: the hub
+
+- **Do**: the node table (`max_nodes`, the offline seen longest ago forgotten), the models of its
+  online nodes pushed to proxies, `/hub/proxy` picking the least loaded node and relaying the
+  frames under each stream's credit (up to 3 nodes before the head), the node list with its
+  bounds; `/hub/node/call` and `/hub/node/stream` for the pages.
+- **Done when**: fit's `llm/hub` tests pass ported; an end-to-end call agent → proxy → hub → node
+  → mock upstream streams both ways.
+- **Touches**: `akit-llm`.
+- **fit**: `llm/hub`.
+- **Status**: todo.
+
+### I107 LLM IV: the proxy
+
+- **Do**: the agents' API on `api.address` (a binding of its own, TLS off loopback): OpenAI's,
+  Anthropic's, Gemini's, Ollama's and Cohere's paths, the model lists, API keys (`ah-`, SHA-256
+  kept, compared in constant time), routes to direct nodes then hubs (4 at most before the head),
+  `X-Akit-Node`, each API's error shape and status, `max_conns`, `max_inflight`,
+  `max_body_bytes` and the timeouts.
+- **Done when**: fit's `llm/proxy` and `llm/e2e` tests pass ported.
+- **Touches**: `akit-llm`.
+- **fit**: `llm/proxy`, `llm/e2e`.
+- **Status**: todo.
+
+### I108 LLM V: the node's management
+
+- **Do**: the hardware read every `refresh_interval` and the GPUs' status on a small pool (2
+  running, 16 waiting), the fixed actions and GPU settings as jobs (8 running, 200 kept, 1 MiB of
+  output each, `job_timeout` killing the process group), never a command of the caller's, never
+  through a shell; the methods the pages and, with `allow_hub_manage`, a hub call.
+- **Done when**: fit's `llm/node` action, job and GPU tests pass ported on Linux and macOS.
+- **Touches**: `akit-llm`.
+- **fit**: `llm/node/{actions,jobs,exec,gpu,hwinfo_*}.go`, `llm/internal/gpu`.
+- **Status**: todo.
+
+### I109 The roles' pages
+
+- **Do**: each role's `console` behind logins as `admin.console`'s, and the roles' modules on
+  `admin.console`: fit's workbench pages renamed (decision 037), the tunnel's API and the LLM
+  roles' `/mesh/*`, `/node/*`, `/hub/*` and `/proxy/*` methods for the pages, every change written
+  back into the role's member as a config edit.
+- **Done when**: fit's role page tests pass ported; a page's change is applied, in the history, and
+  refused when it does not load.
+- **Touches**: `akit-admin`, `akit-tunnel`, `akit-llm`, `tools/console-pages.py`.
+- **fit**: `app/roleconsole`, `app/workbench`, `tunnel/*/api.go`, `llm/internal/webui`.
+- **Status**: todo.
