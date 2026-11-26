@@ -19,7 +19,7 @@ reads the config as `akit run` would, opening the files it names, and prints `va
 problem with its file, line and column. A field akit does not support yet is one of them:
 
 ```text
-fit.conf:12:2: log: not supported yet
+fit.conf:12:2: access: not supported yet
 fit.conf:40:4: routes[3].handler.module: not supported yet: the "hls" handler
 ```
 
@@ -28,15 +28,15 @@ that validates runs as fit runs it, within what akit supports.
 
 ## What akit does not run yet
 
-- **Whole parts**: `log` (akit writes its own messages to standard output and standard error),
-  `pprof`, and the roles beside the gateway: `llm`, `tunnel`, `webrtc`, `media_auth`, `streaming`, `media_library`, `sync`
+- **Whole parts**: `pprof`, and the roles
+  beside the gateway: `llm`, `tunnel`, `webrtc`, `media_auth`, `streaming`, `media_library`, `sync`
   and `bittorrent`. The [roadmap](../roadmap.md) says when each comes.
 - **Handlers** for media, BitTorrent and sync: `hls`, `httpflv`, `vod`, `whip`, `whep`,
   `stream_whip`, `stream_whep`, `webrtc_proxy`, `websockify`, `media_pages`, `media_tokens`,
   `bt_publish`, `bt_stream`, `bt_tracker` and `sync_ingest`. Every middleware of fit's is supported.
 - **Fields of parts akit reads**: `engine`'s `loop_wait`, `poll_batch` and `kernel_tls_offload` (the rest of
   `engine` is read onto akio's engine, as the [reference](../reference/config.md#engine) says);
-  `access_log.rotate`; every `mptcp`; `tls.kernel_tls_offload`; `upstreams[].deny_internal`;
+  every `mptcp`; `tls.kernel_tls_offload`; `upstreams[].deny_internal`;
   the proxy's `splice_uploads`; the Kubernetes provider's `allow_external_name_services`; and in
   `admin`, everything but `address`, `token_file`, `history`, `max_config_bytes`, `max_conns`,
   `disable_dashboard` and `access`: no TLS, so no address off loopback, and no console, store, assistant or

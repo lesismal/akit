@@ -274,7 +274,11 @@ impl Ocsp {
     /// A stapler with no certificates; it runs no thread until the first is added.
     #[must_use]
     pub fn new() -> Ocsp {
-        let log: Log = Arc::new(|line: &str| eprintln!("akit: ocsp: {line}"));
+        let log: Log = akit_observe::logger::lines(
+            akit_observe::logger::Logger::Tls,
+            akit_observe::logger::Level::Warn,
+            "ocsp: ",
+        );
         Ocsp {
             inner: Arc::new(Inner {
                 state: Mutex::new(State::default()),

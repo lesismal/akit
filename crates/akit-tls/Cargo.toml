@@ -19,6 +19,8 @@ akio-crypto = { workspace = true }
 akio-http = { workspace = true }
 akio-x509 = { workspace = true }
 akit-config = { workspace = true }
+# akit's own log (I82): messages through fit's loggers.
+akit-observe = { workspace = true }
 
 [lints]
 workspace = true

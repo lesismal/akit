@@ -171,7 +171,13 @@ PHRASES = [
 ]
 
 # What stays fit's after the text is said of akit: fit's own tools.
-AFTER = [("package plugin/wasm/guest builds one", "fit's package plugin/wasm/guest builds one")]
+AFTER = [
+    ("package plugin/wasm/guest builds one", "fit's package plugin/wasm/guest builds one"),
+    # The verb, not the gateway: rotate's max_total_bytes.
+    ("removed until they akit", "removed until they fit"),
+    # fit's log formats are fib's, which akit writes as fit does.
+    ("as akio writes its own:", "as fib writes its own, which akit writes as fit does:"),
+]
 
 
 def as_akit(text, default=None):

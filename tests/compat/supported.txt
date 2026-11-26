@@ -172,8 +172,7 @@ limits.max_body_bytes
 limits.write_stall_timeout
 
 # I21: access logs, as fit's observe package writes them. access_log.time_zone takes local, utc or
-# an IANA name (from the system's zoneinfo files); access_log.rotate is refused as not supported
-# yet (fit's logs package's file rotation).
+# an IANA name (from the system's zoneinfo files).
 access_log
 access_log.output
 access_log.flush_interval
@@ -181,6 +180,41 @@ access_log.buffer_bytes
 access_log.level
 access_log.format
 access_log.time_zone
+# I81: the file sink of fit's logs package (decision 033): a file output rotated by size and by
+# time in the log's zone, its rotated files removed by age, number and total size and gzipped.
+access_log.rotate
+access_log.rotate.max_bytes
+access_log.rotate.interval
+access_log.rotate.max_age
+access_log.rotate.max_files
+access_log.rotate.max_total_bytes
+access_log.rotate.compress
+# I82: akit's own log, as fit's logs package: fit's loggers, their levels, formats and outputs,
+# the log's zone, and files rotated and kept through I81's sink.
+log
+log.level
+log.levels
+log.output
+log.format
+log.time_zone
+log.rotate
+log.rotate.max_bytes
+log.rotate.interval
+log.rotate.max_age
+log.rotate.max_files
+log.rotate.max_total_bytes
+log.rotate.compress
+log.loggers
+log.loggers.*.level
+log.loggers.*.output
+log.loggers.*.format
+log.loggers.*.rotate
+log.loggers.*.rotate.max_bytes
+log.loggers.*.rotate.interval
+log.loggers.*.rotate.max_age
+log.loggers.*.rotate.max_files
+log.loggers.*.rotate.max_total_bytes
+log.loggers.*.rotate.compress
 
 # I64: OpenTelemetry, as fit's: a server span for each sampled request (W3C traceparent, followed
 # when its caller sampled, else telemetry.traces.sample_ratio), its traceparent sent on to the

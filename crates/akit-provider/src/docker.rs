@@ -77,7 +77,7 @@ fn make(name: &str, pc: &akit_config::Provider) -> Result<(Box<dyn Provider>, St
     match &pc.kind {
         akit_config::ProviderKind::Docker(d) => {
             let watching = format!("watching Docker at {}", dial(&d.endpoint));
-            let log: Log = Arc::new(|msg: &str| eprintln!("akit: {msg}"));
+            let log: Log = crate::watch::stderr_log();
             Ok((Box::new(Docker::new(name, d.clone(), log)), watching))
         }
         #[allow(unreachable_patterns)]

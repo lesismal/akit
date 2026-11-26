@@ -1,7 +1,9 @@
 //! End to end: `akit run` with `access_log` (I21) writes a line for each request, with fit's
 //! fields: answered by a handler, proxied (with the upstream's address and time), not routed
 //! (404), refused (400), `HEAD`; every line is written by the time akit has stopped, even with a
-//! flush interval that never came; a reload changes the level in place.
+//! flush interval that never came; a reload changes the level in place. I81: a file rotated by
+//! size and compressed keeps every line, whole, in exactly one file, and a reload changes its
+//! retention in place.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -333,5 +335,102 @@ fn reload_changes_the_level() {
     assert!(
         lines[0].contains(" level=WARN msg=access listener=web client=127.0.0.1 proto=HTTP/1.1 method=GET host=h uri=/nope status=404 "),
         "{text}"
+    );
+}
+
+/// The lines of the log `base` and its rotated files in `dir`, gzipped or not; each file ends
+/// on a whole line.
+fn lines_of(dir: &Path, base: &str) -> (Vec<String>, Vec<String>) {
+    let mut names: Vec<String> = std::fs::read_dir(dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|n| n == base || n.starts_with(&format!("{base}.")))
+        .collect();
+    names.sort();
+    let mut lines = Vec::new();
+    for n in &names {
+        assert!(!n.ends_with(".tmp"), "{names:?}");
+        let data = std::fs::read(dir.join(n)).unwrap();
+        let data = if n.ends_with(".gz") {
+            akio_deflate::decompress(akio_deflate::Format::Gzip, &data, 1 << 26).unwrap()
+        } else {
+            data
+        };
+        let text = String::from_utf8(data).unwrap();
+        assert!(text.is_empty() || text.ends_with('\n'), "{n} ends mid-line");
+        lines.extend(text.lines().map(str::to_owned));
+    }
+    (names, lines)
+}
+
+#[test]
+fn a_rotated_file_keeps_every_line() {
+    let dir = Dir::new("access-log-rotate");
+    let log = dir.0.join("access.log");
+    let up = upstream();
+    let rotate = r#""flush_interval": "10ms", "rotate": {"max_bytes": 1024, "max_files": 1000}"#;
+    let cfg = config(&dir.0, &log, up, rotate);
+    let (akit, addr) = Akit::start(&cfg);
+    for i in 0..60 {
+        send(
+            addr,
+            &format!("GET /hello?n={i} HTTP/1.1\r\nHost: h\r\nConnection: close\r\n\r\n"),
+        );
+        if i % 5 == 0 {
+            // Some flushes between, so batches are small.
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+    akit.stop();
+    let (names, lines) = lines_of(&dir.0, "access.log");
+    assert!(names.len() >= 5, "{names:?}");
+    assert!(names.iter().any(|n| n.ends_with(".gz")), "{names:?}");
+    for i in 0..60 {
+        let uri = format!("\"uri\":\"/hello?n={i}\"");
+        assert_eq!(
+            lines.iter().filter(|l| l.contains(&uri)).count(),
+            1,
+            "{uri}: {lines:?}"
+        );
+    }
+}
+
+#[test]
+fn reload_changes_the_retention() {
+    let dir = Dir::new("access-log-retention");
+    let log = dir.0.join("access.log");
+    let up = upstream();
+    let keep = |n: u32| {
+        format!(
+            r#""flush_interval": "10ms", "rotate": {{"max_bytes": 512, "max_files": {n}, "compress": false}}"#
+        )
+    };
+    let cfg = config(&dir.0, &log, up, &keep(100));
+    let (akit, addr) = Akit::start(&cfg);
+    let burst = |from: u32| {
+        for i in from..from + 30 {
+            send(
+                addr,
+                &format!("GET /hello?n={i} HTTP/1.1\r\nHost: h\r\nConnection: close\r\n\r\n"),
+            );
+            std::thread::sleep(Duration::from_millis(15));
+        }
+    };
+    burst(0);
+    // Each line is about 230 bytes: many files by now, none removed.
+    std::thread::sleep(Duration::from_millis(100));
+    let (before, _) = lines_of(&dir.0, "access.log");
+    assert!(before.len() > 4, "{before:?}");
+    config(&dir.0, &log, up, &keep(2));
+    kill(akit.child.id(), SIGHUP).unwrap();
+    akit.until("akit: reloaded");
+    burst(100);
+    akit.stop();
+    // The open file and the two newest rotated ones.
+    let (after, lines) = lines_of(&dir.0, "access.log");
+    assert_eq!(after.len(), 3, "{after:?}");
+    assert!(
+        lines.iter().any(|l| l.contains("/hello?n=129")),
+        "{lines:?}"
     );
 }

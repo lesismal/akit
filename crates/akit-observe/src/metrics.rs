@@ -485,8 +485,9 @@ impl Metrics {
             None => {
                 if !t.warned {
                     t.warned = true;
-                    eprintln!(
-                        "akit: metrics: more than {MAX_ROUTE_SLOTS} listener and route pairs; the rest are not counted"
+                    crate::warn!(
+                        Server,
+                        "metrics: more than {MAX_ROUTE_SLOTS} listener and route pairs; the rest are not counted"
                     );
                 }
                 return None;

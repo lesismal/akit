@@ -284,7 +284,7 @@ impl Kubernetes {
             opts,
             env: Env::of_process(),
             timings: Timings::default(),
-            log: Arc::new(|line: &str| eprintln!("akit: {line}")),
+            log: crate::watch::stderr_log(),
             running: None,
         }
     }

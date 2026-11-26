@@ -52,7 +52,7 @@ use akit_admin::{
 };
 use akit_config::{Config, ConfigFile, Error, Errors, LogFormat};
 use akit_observe::metrics::{ConfigStats, Metrics};
-use akit_observe::{AccessLog, Format, MetricsExporter, Otlp, Tracer, Zone};
+use akit_observe::{AccessLog, Files, Format, LogFile, MetricsExporter, Otlp, Tracer, Zone};
 use akit_provider::{Kinds, Provider, Updates};
 use akit_runtime::upstream::EngineSlot;
 use akit_runtime::{Env, Graph, GraphCell, HandlerParams, Info, Previous, Registry, compile};
@@ -215,8 +215,23 @@ fn load(files: &[ConfigFile]) -> Result<Loaded, Failure> {
     Ok((config, json, zone))
 }
 
-/// The zone `config`'s access log's `time_zone` names, loaded.
+/// The zone `config`'s `log.time_zone` names, loaded (I82): the local zone when it has no `log`.
+fn log_zone(config: &Config) -> Result<Zone, Failure> {
+    let tz = config.log.as_ref().map_or("", |l| l.time_zone.as_str());
+    Zone::load(tz).map_err(|e| {
+        Failure::Config(Errors(vec![Error {
+            file: None,
+            path: "log.time_zone".into(),
+            line: 0,
+            col: 0,
+            msg: e.to_string(),
+        }]))
+    })
+}
+
+/// The zone `config`'s access log's `time_zone` names, loaded; `log.time_zone` is checked too.
 fn time_zone(config: &Config) -> Result<Option<Zone>, Failure> {
+    log_zone(config)?;
     Ok(match &config.access_log {
         None => None,
         Some(a) => Some(Zone::load(&a.time_zone).map_err(|e| {
@@ -254,20 +269,49 @@ fn compile_config(
     compile(config, &registry, &env).map_err(Failure::Config)
 }
 
-/// Opens the access log `c` describes, its times in `zone`, as fit's `NewAccessLogFiles`.
-fn open_access_log(c: &akit_config::AccessLog, zone: Zone) -> std::io::Result<AccessLog> {
-    let out = akit_observe::open_output(&c.output)?;
+/// Opens the access log `c` describes, its times in `zone`, as fit's `NewAccessLogFiles`: a file
+/// output through the sink `files` keeps for its path (I81), rotated as `c.rotate` says; with
+/// the file's sink, which a reload changes the rotation and zone of.
+fn open_access_log(
+    c: &akit_config::AccessLog,
+    zone: Zone,
+    files: &Files,
+) -> std::io::Result<(AccessLog, Option<LogFile>)> {
     let mut opts = akit_observe::Options::new();
     opts.format = match c.format {
         LogFormat::Json => Format::Json,
         LogFormat::Text => Format::Text,
         LogFormat::Line => Format::Line,
     };
-    opts.zone = zone;
+    opts.zone = zone.clone();
     opts.min_status = c.min_status();
     opts.flush_interval = c.flush_interval;
     opts.buffer_bytes = c.buffer_bytes;
-    AccessLog::new(out, opts)
+    if !akit_config::is_file_output(&c.output) {
+        let out = akit_observe::open_output(&c.output)?;
+        return Ok((AccessLog::new(out, opts)?, None));
+    }
+    let file = files.open(&c.output, akit_config::rotation(c.rotate.as_ref()), zone)?;
+    let held = files.get(&c.output);
+    Ok((AccessLog::to_file(file, opts)?, held))
+}
+
+/// Each logger's output, cleaned, and format: what a restart, not a reload, changes.
+fn log_shape(l: Option<&akit_config::Log>) -> Vec<(String, LogFormat)> {
+    let default = akit_config::Log::default();
+    let l = l.unwrap_or(&default);
+    akit_config::LOGGERS
+        .iter()
+        .map(|n| {
+            let out = l.output_of(n);
+            let out = if akit_config::is_file_output(out) {
+                akit_config::output_path(out)
+            } else {
+                out.to_owned()
+            };
+            (out, l.format_of(n))
+        })
+        .collect()
 }
 
 /// The certificate, key and authority files a config loaded, with their SHA-256, by path.
@@ -283,6 +327,12 @@ struct Runner<'a> {
     cell: &'a GraphCell,
     listeners: &'a mut akit_listener::Listeners,
     log: Option<&'a (AccessLog, akit_config::AccessLog)>,
+    /// The access log's file, when it writes one (I81): a reload changes its rotation and zone.
+    access_file: Option<&'a LogFile>,
+    /// akit's own log (I82), and the `log` it was made from: a reload changes its levels, zone
+    /// and files' rotation in place (I83); its outputs and formats take a restart.
+    root: &'a akit_observe::logger::Root,
+    log_config: Option<&'a akit_config::Log>,
     admin: Option<&'a akit_config::Admin>,
     cert_files: CertFiles,
     /// The process's metrics registry, which each graph is compiled with (I37).
@@ -362,11 +412,27 @@ impl Runner<'_> {
         let mut warnings: Vec<String> = config.warnings.0.iter().map(ToString::to_string).collect();
         // Secret files open to others, credentials in the clear (I80b).
         warnings.extend(akit_config::hardening::warnings(config, json));
+        // akit's own log (I83, fit's Root.SetConfig): levels, zone, rotation and retention in
+        // place; a logger's output or format takes a restart.
+        if set {
+            if let Ok(z) = log_zone(config) {
+                self.root.set_config(config.log.as_ref(), z);
+            }
+        }
+        if log_shape(config.log.as_ref()) != log_shape(self.log_config) {
+            warnings
+                .push("log's outputs and formats take a restart; the running ones stay".to_owned());
+        }
         match (self.log, &config.access_log, zone) {
             (Some((l, first)), Some(c), Some(zone)) => {
                 if set {
                     l.set_min_status(c.min_status());
-                    l.set_zone(zone);
+                    l.set_zone(zone.clone());
+                    // The file's rotation and zone change in place, as fit's (I81).
+                    if let Some(f) = self.access_file {
+                        f.set_zone(zone);
+                        f.set_rotation(akit_config::rotation(c.rotate.as_ref()));
+                    }
                 }
                 if (&c.output, c.format, c.flush_interval, c.buffer_bytes)
                     != (
@@ -819,17 +885,50 @@ fn run(args: &[String]) -> ExitCode {
     for w in akit_config::hardening::warnings(&config, &json) {
         eprintln!("akit: {w}");
     }
+    // The log files the process writes, a sink a path (I81), and akit's own log (I82), which
+    // akio's records go to as the engine logger's; the access log shares its files.
+    let log_files = Files::new();
+    let root = match log_zone(&config)
+        .map_err(|f| {
+            f.print(&name);
+        })
+        .and_then(|zone| {
+            akit_observe::logger::Root::new(config.log.as_ref(), zone, &log_files).map_err(|e| {
+                eprintln!("akit run: log: {e}");
+            })
+        }) {
+        Ok(r) => Arc::new(r),
+        Err(()) => return ExitCode::FAILURE,
+    };
+    akit_observe::logger::install(Arc::clone(&root));
+    akit_observe::logger::bridge_akio();
+    // Closed last, on every way out of `run`.
+    let _log_guard = LogGuard(Arc::clone(&root));
+    if let Some(l) = &config.log {
+        for out in l.file_outputs() {
+            if out.rotate.is_none() {
+                akit_observe::warn!(
+                    Server,
+                    "log file {} has no rotate: it will grow without bound",
+                    out.path
+                );
+            }
+        }
+    }
     // Opened before the graph, which writes to it, and closed after the engine, so that every
     // response finished has its line written.
+    let mut access_file = None;
     let log = match (&config.access_log, zone) {
-        (Some(c), Some(zone)) => match open_access_log(c, zone) {
-            Ok(l) => {
-                if !matches!(c.output.as_str(), "stdout" | "stderr") {
-                    eprintln!(
-                        "akit: access log file {} has no rotate: it will grow without bound",
+        (Some(c), Some(zone)) => match open_access_log(c, zone, &log_files) {
+            Ok((l, f)) => {
+                if akit_config::is_file_output(&c.output) && c.rotate.is_none() {
+                    akit_observe::warn!(
+                        Server,
+                        "access log file {} has no rotate: it will grow without bound",
                         c.output
                     );
                 }
+                access_file = f;
                 Some((l, c.clone()))
             }
             Err(e) => {
@@ -894,6 +993,7 @@ fn run(args: &[String]) -> ExitCode {
         }
     };
     let admin = config.admin.clone();
+    let log_config = config.log.clone();
     let provider_configs = config.providers.clone();
     let (start_limits, start_engine) = (config.limits, config.engine);
     drop(config);
@@ -962,6 +1062,8 @@ fn run(args: &[String]) -> ExitCode {
             let status = scrape.clone();
             api_opts.status = Some(Arc::new(move |out: &mut String| status.write_status(out)));
             api_opts.metrics = Some(Arc::new(move |out: &mut Vec<u8>| scrape.write(out)));
+            // The log files, at GET /logs and POST /logs/rotate and /logs/cleanup (I83).
+            api_opts.logs = Some(log_files.clone());
             match akit_admin::Server::start(a, configs.clone(), submit, &api_opts) {
                 Ok(s) => {
                     println!("akit: admin API on {}", s.address());
@@ -1030,6 +1132,9 @@ fn run(args: &[String]) -> ExitCode {
         cell: &cell,
         listeners: &mut listeners,
         log: log.as_ref(),
+        access_file: access_file.as_ref(),
+        root: &root,
+        log_config: log_config.as_ref(),
         admin: admin.as_ref(),
         cert_files,
         acme: &acme,
@@ -1181,6 +1286,17 @@ fn run(args: &[String]) -> ExitCode {
     }
     println!("akit: stopped");
     ExitCode::SUCCESS
+}
+
+/// Lets go of akit's own log's files when `run` returns, last: what is logged afterwards goes to
+/// standard error, as fit's `Root.Close`.
+struct LogGuard(Arc<akit_observe::logger::Root>);
+
+impl Drop for LogGuard {
+    fn drop(&mut self) {
+        akit_observe::logger::uninstall();
+        self.0.close();
+    }
 }
 
 /// Exports the metrics once more and the spans that wait, and stops their threads, as fit's

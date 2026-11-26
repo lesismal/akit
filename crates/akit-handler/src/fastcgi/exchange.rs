@@ -737,7 +737,7 @@ fn log_stderr(c: &Conn<Link>, addr: &str, p: &[u8]) {
         .to_owned();
     let addr = addr.to_owned();
     // Dropped when the pool is full.
-    let _ = c.execute(move || eprintln!("akit: fastcgi {addr}: {msg}"));
+    let _ = c.execute(move || akit_observe::warn!(Fastcgi, "fastcgi {addr}: {msg}"));
 }
 
 /// Takes the records in `data` that the application sent on `fc` for `x`, on the connection's

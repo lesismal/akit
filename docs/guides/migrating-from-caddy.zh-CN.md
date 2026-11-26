@@ -86,8 +86,8 @@ akit validate -c akit.conf
 `respond`、`redir`、`rewrite`、`uri`、`header`、`request_header`、`encode`、`basic_auth`、`forward_auth`、`request_body`、
 `php_fastcgi`、`tls` 和 `log`。
 
-全局的 `log` 或 `debug` 会转换为 fit 的 `log`，而 akit 尚不支持它：删除它，akit 会把自己的消息写到标准输出和标准错误。站点中的
-`log` 是访问日志，akit 支持。
+全局的 `log` 或 `debug` 会转换为 fit 的 `log`，即 akit 自身的日志，akit 与 fit 一样读取它（[参考](../reference/config.zh-CN.md#日志)）。站点中的
+`log` 是访问日志。
 
 ## 各部分的对应
 

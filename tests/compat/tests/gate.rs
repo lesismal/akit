@@ -471,6 +471,163 @@ fn supported_fields_are_read() {
             access(r#""time_zone": "utc""#),
             |c| c.access_log.as_ref().unwrap().time_zone == "utc",
         ),
+        // I81: the file sink's rotation and retention.
+        (
+            "access_log.rotate",
+            access(r#""rotate": {}"#),
+            |c| c.access_log.as_ref().unwrap().rotate.is_some(),
+        ),
+        (
+            "access_log.rotate.max_bytes",
+            access(r#""rotate": {"max_bytes": 7}"#),
+            |c| rotate(c).max_bytes == Some(7),
+        ),
+        (
+            "access_log.rotate.interval",
+            access(r#""rotate": {"interval": "1h"}"#),
+            |c| rotate(c).interval == std::time::Duration::from_secs(3600),
+        ),
+        (
+            "access_log.rotate.max_age",
+            access(r#""rotate": {"max_age": "1h"}"#),
+            |c| rotate(c).max_age == Some(std::time::Duration::from_secs(3600)),
+        ),
+        (
+            "access_log.rotate.max_files",
+            access(r#""rotate": {"max_files": 3}"#),
+            |c| rotate(c).max_files == Some(3),
+        ),
+        (
+            "access_log.rotate.max_total_bytes",
+            access(r#""rotate": {"max_total_bytes": 9}"#),
+            |c| rotate(c).max_total_bytes == Some(9),
+        ),
+        (
+            "access_log.rotate.compress",
+            access(r#""rotate": {"compress": false}"#),
+            |c| rotate(c).compress == Some(false),
+        ),
+        // I82: akit's own log.
+        (
+            "log",
+            r#"{"log": {}}"#.into(),
+            |c| c.log.is_some(),
+        ),
+        (
+            "log.level",
+            r#"{"log": {"level": "warn"}}"#.into(),
+            |c| log(c).level == Some(akit_config::LogLevel::Warn),
+        ),
+        (
+            "log.levels",
+            r#"{"log": {"levels": {"tls": "debug"}}}"#.into(),
+            |c| log(c).level_of("tls") == akit_config::LogLevel::Debug,
+        ),
+        (
+            "log.output",
+            r#"{"log": {"output": "stderr"}}"#.into(),
+            |c| log(c).output == "stderr",
+        ),
+        (
+            "log.format",
+            r#"{"log": {"format": "json"}}"#.into(),
+            |c| log(c).format == Some(akit_config::LogFormat::Json),
+        ),
+        (
+            "log.time_zone",
+            r#"{"log": {"time_zone": "utc"}}"#.into(),
+            |c| log(c).time_zone == "utc",
+        ),
+        (
+            "log.loggers",
+            r#"{"log": {"loggers": {"tls": {}}}}"#.into(),
+            |c| log(c).loggers.len() == 1,
+        ),
+        (
+            "log.loggers.*.level",
+            r#"{"log": {"loggers": {"tls": {"level": "error"}}}}"#.into(),
+            |c| log(c).level_of("tls") == akit_config::LogLevel::Error,
+        ),
+        (
+            "log.loggers.*.output",
+            r#"{"log": {"loggers": {"tls": {"output": "stdout"}}}}"#.into(),
+            |c| log(c).output_of("tls") == "stdout",
+        ),
+        (
+            "log.loggers.*.format",
+            r#"{"log": {"loggers": {"tls": {"format": "text"}}}}"#.into(),
+            |c| log(c).format_of("tls") == akit_config::LogFormat::Text,
+        ),
+        (
+            "log.rotate",
+            r#"{"log": {"rotate": {}}}"#.into(),
+            |c| log(c).rotate.is_some(),
+        ),
+        (
+            "log.rotate.max_bytes",
+            r#"{"log": {"rotate": {"max_bytes": 7}}}"#.into(),
+            |c| log(c).rotate.as_ref().unwrap().max_bytes == Some(7),
+        ),
+        (
+            "log.rotate.interval",
+            r#"{"log": {"rotate": {"interval": "1h"}}}"#.into(),
+            |c| log(c).rotate.as_ref().unwrap().interval == std::time::Duration::from_secs(3600),
+        ),
+        (
+            "log.rotate.max_age",
+            r#"{"log": {"rotate": {"max_age": "1h"}}}"#.into(),
+            |c| log(c).rotate.as_ref().unwrap().max_age == Some(std::time::Duration::from_secs(3600)),
+        ),
+        (
+            "log.rotate.max_files",
+            r#"{"log": {"rotate": {"max_files": 3}}}"#.into(),
+            |c| log(c).rotate.as_ref().unwrap().max_files == Some(3),
+        ),
+        (
+            "log.rotate.max_total_bytes",
+            r#"{"log": {"rotate": {"max_total_bytes": 9}}}"#.into(),
+            |c| log(c).rotate.as_ref().unwrap().max_total_bytes == Some(9),
+        ),
+        (
+            "log.rotate.compress",
+            r#"{"log": {"rotate": {"compress": false}}}"#.into(),
+            |c| log(c).rotate.as_ref().unwrap().compress == Some(false),
+        ),
+        (
+            "log.loggers.*.rotate",
+            r#"{"log": {"loggers": {"tls": {"output": "/l/t.log", "rotate": {}}}}}"#.into(),
+            |c| log(c).loggers[0].1.rotate.is_some(),
+        ),
+        (
+            "log.loggers.*.rotate.max_bytes",
+            r#"{"log": {"loggers": {"tls": {"output": "/l/t.log", "rotate": {"max_bytes": 7}}}}}"#.into(),
+            |c| log(c).loggers[0].1.rotate.as_ref().unwrap().max_bytes == Some(7),
+        ),
+        (
+            "log.loggers.*.rotate.interval",
+            r#"{"log": {"loggers": {"tls": {"output": "/l/t.log", "rotate": {"interval": "1h"}}}}}"#.into(),
+            |c| log(c).loggers[0].1.rotate.as_ref().unwrap().interval == std::time::Duration::from_secs(3600),
+        ),
+        (
+            "log.loggers.*.rotate.max_age",
+            r#"{"log": {"loggers": {"tls": {"output": "/l/t.log", "rotate": {"max_age": "1h"}}}}}"#.into(),
+            |c| log(c).loggers[0].1.rotate.as_ref().unwrap().max_age == Some(std::time::Duration::from_secs(3600)),
+        ),
+        (
+            "log.loggers.*.rotate.max_files",
+            r#"{"log": {"loggers": {"tls": {"output": "/l/t.log", "rotate": {"max_files": 3}}}}}"#.into(),
+            |c| log(c).loggers[0].1.rotate.as_ref().unwrap().max_files == Some(3),
+        ),
+        (
+            "log.loggers.*.rotate.max_total_bytes",
+            r#"{"log": {"loggers": {"tls": {"output": "/l/t.log", "rotate": {"max_total_bytes": 9}}}}}"#.into(),
+            |c| log(c).loggers[0].1.rotate.as_ref().unwrap().max_total_bytes == Some(9),
+        ),
+        (
+            "log.loggers.*.rotate.compress",
+            r#"{"log": {"loggers": {"tls": {"output": "/l/t.log", "rotate": {"compress": false}}}}}"#.into(),
+            |c| log(c).loggers[0].1.rotate.as_ref().unwrap().compress == Some(false),
+        ),
         // It needs admin, as in fit: refused without it, with fit's message.
         ("metrics", r#"{"admin": {}, "metrics": {}}"#.into(), |c| {
             c.metrics.is_some()
@@ -2954,6 +3111,7 @@ fn akit_config_lists_match_the_inventory() {
         "providers.rs",
         "providers_kv.rs",
         "shared_storage.rs",
+        "log.rs",
     ]
     .iter()
     .map(|f| fs::read_to_string(compat_dir().join("../../crates/akit-config/src").join(f)).unwrap())
@@ -2969,7 +3127,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 68] = [
+    let objects: [(&str, &str, Option<&str>); 73] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         (
             "providers[].kubernetes",
@@ -3000,6 +3158,11 @@ fn akit_config_lists_match_the_inventory() {
             "ACCESS_LOG_FIELDS",
             Some("ACCESS_LOG_FIT_ONLY"),
         ),
+        ("access_log.rotate", "ROTATE_FIELDS", None),
+        ("log", "LOG_FIELDS", None),
+        ("log.rotate", "ROTATE_FIELDS", None),
+        ("log.loggers.*", "LOGGER_FIELDS", None),
+        ("log.loggers.*.rotate", "ROTATE_FIELDS", None),
         ("auto_https", "AUTO_HTTPS_FIELDS", None),
         ("telemetry", "TELEMETRY_FIELDS", None),
         ("telemetry.traces", "TRACES_EXPORT_FIELDS", None),
@@ -3143,7 +3306,8 @@ fn akit_config_lists_match_the_inventory() {
         .iter()
         .flat_map(|(_, r, n)| [Some(*r), *n])
         .flatten()
-        .chain(["FIT_HANDLERS", "FIT_MIDDLEWARE"])
+        // fit's logger names (config.Loggers), not fields: the keys log.levels and log.loggers take.
+        .chain(["FIT_HANDLERS", "FIT_MIDDLEWARE", "LOGGERS"])
         .chain(AKIT_ONLY.iter().map(|(_, l)| *l))
         .collect();
     for name in lists.keys() {
@@ -3469,6 +3633,17 @@ fn consul_kv(c: &Config) -> &akit_config::ConsulKvProvider {
     }
 }
 
+fn log(c: &Config) -> &akit_config::Log {
+    c.log.as_ref().unwrap()
+}
+
+fn rotate(c: &Config) -> &akit_config::Rotate {
+    c.access_log
+        .as_ref()
+        .and_then(|a| a.rotate.as_ref())
+        .unwrap()
+}
+
 fn etcd(c: &Config) -> &akit_config::EtcdProvider {
     match c.providers.first().map(|p| &p.kind) {
         Some(akit_config::ProviderKind::Etcd(p)) => p,
@@ -3525,13 +3700,14 @@ fn reference_matches_akit_config() {
         }
     }
     // The objects akit reads, each with a table: the top level, and every field read that has
-    // fields of its own (an array's items, `listeners[]`, and a module's params among them).
+    // fields of its own (an array's items, `listeners[]`, a map's values, `log.loggers.*`, and a
+    // module's params among them).
     let mut objects = BTreeSet::from([String::new()]);
     for p in &supported {
         if p.ends_with('>') {
             continue;
         }
-        for obj in [p.clone(), format!("{p}[]")] {
+        for obj in [p.clone(), format!("{p}[]"), format!("{p}.*")] {
             if !children(&inventory, &obj).is_empty() {
                 objects.insert(obj);
             }

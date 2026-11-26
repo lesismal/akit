@@ -29,10 +29,15 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 /// What a provider reports: a line, without the `akit: ` its caller adds.
 pub type Log = Arc<dyn Fn(&str) + Send + Sync>;
 
-/// A log to standard error, as akit reports what its providers find.
+/// The `provider` logger (I82), at warn, as akit reports what its providers find: standard error
+/// until akit's log is installed.
 #[must_use]
 pub fn stderr_log() -> Log {
-    Arc::new(|line: &str| eprintln!("akit: {line}"))
+    akit_observe::logger::lines(
+        akit_observe::logger::Logger::Provider,
+        akit_observe::logger::Level::Warn,
+        "",
+    )
 }
 
 /// A follower's timings: fit's `watch.Debounce`, `MinBackoff` and `MaxBackoff`.

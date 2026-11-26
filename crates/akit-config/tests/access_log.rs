@@ -1,11 +1,13 @@
 //! `access_log` (I21): its fields with fit's defaults, in JSON, YAML and `.conf`; wrong values
-//! with their paths; `rotate` refused as not supported yet; and given by one file only.
+//! with their paths; `rotate` (I81) with its defaults and fit's checks; and given by one file
+//! only.
 #![allow(clippy::panic, clippy::unwrap_used, clippy::indexing_slicing)]
 
 use std::time::Duration;
 
 use akit_config::{
-    AccessLevel, AccessLog, DEFAULT_BUFFER_BYTES, DEFAULT_FLUSH_INTERVAL, Format, LogFormat,
+    AccessLevel, AccessLog, DEFAULT_BUFFER_BYTES, DEFAULT_FLUSH_INTERVAL, DEFAULT_ROTATE_MAX_AGE,
+    DEFAULT_ROTATE_MAX_BYTES, DEFAULT_ROTATE_MAX_TOTAL_BYTES, Format, LogFormat, Rotate, Rotation,
     Source, from_conf, from_json, from_sources, from_yaml,
 };
 
@@ -30,6 +32,7 @@ fn defaults() {
             level: AccessLevel::Info,
             format: LogFormat::Json,
             time_zone: String::new(),
+            rotate: None,
         }
     );
     assert_eq!(a.min_status(), 0);
@@ -66,6 +69,7 @@ fn fields() {
             level: AccessLevel::Warn,
             format: LogFormat::Line,
             time_zone: "Asia/Shanghai".into(),
+            rotate: None,
         }
     );
     assert_eq!(a.min_status(), 400);
@@ -75,6 +79,62 @@ fn fields() {
     assert_eq!(
         (a.level, a.format, a.min_status()),
         (AccessLevel::Error, LogFormat::Text, 500)
+    );
+}
+
+#[test]
+fn rotate() {
+    // An empty rotate is a bounded policy: fit's defaults.
+    let a = access_log(r#""output": "/var/log/a.log", "rotate": {}"#)
+        .unwrap()
+        .unwrap();
+    assert_eq!(a.rotate, Some(Rotate::default()));
+    assert_eq!(
+        akit_config::rotation(a.rotate.as_ref()),
+        Some(Rotation {
+            max_bytes: DEFAULT_ROTATE_MAX_BYTES,
+            interval: Duration::ZERO,
+            max_age: DEFAULT_ROTATE_MAX_AGE,
+            max_files: 0,
+            max_total_bytes: DEFAULT_ROTATE_MAX_TOTAL_BYTES,
+            compress: true,
+        })
+    );
+    let a = access_log(
+        r#""rotate": {"max_bytes": 0, "interval": "48h", "max_age": "0s", "max_files": 7,
+           "max_total_bytes": 1048576, "compress": false}"#,
+    )
+    .unwrap()
+    .unwrap();
+    let r = akit_config::rotation(a.rotate.as_ref()).unwrap();
+    assert_eq!(
+        r,
+        Rotation {
+            max_bytes: 0,
+            interval: Duration::from_secs(48 * 3600),
+            max_age: Duration::ZERO,
+            max_files: 7,
+            max_total_bytes: 1 << 20,
+            compress: false,
+        }
+    );
+    assert!(r.bounded());
+    // A whole number of days, and a second, are taken.
+    for i in ["24h", "72h", "1s", "90m"] {
+        access_log(&format!(r#""rotate": {{"interval": "{i}"}}"#))
+            .unwrap()
+            .unwrap();
+    }
+    // .conf: sizes in units, as fit's.
+    let c = from_conf(
+        "listener web :8080\nroute {\n\thandler respond\n}\naccess_log {\n\toutput /tmp/a.log\n\trotate {\n\t\tmax_bytes 10MiB\n\t\tinterval 1h\n\t\tmax_files 3\n\t}\n}\n",
+        None,
+    )
+    .unwrap();
+    let r = c.access_log.unwrap().rotate.unwrap();
+    assert_eq!(
+        (r.max_bytes, r.interval, r.max_files),
+        (Some(10 << 20), Duration::from_secs(3600), Some(3))
     );
 }
 
@@ -102,8 +162,28 @@ fn errors() {
             "access_log.output: expected a string, got",
         ),
         (
-            r#""rotate": {"max_bytes": 1}"#,
-            "access_log.rotate: not supported yet",
+            r#""rotate": {"max_bytes": -1}"#,
+            "access_log.rotate.max_bytes: -1 is less than the minimum 0",
+        ),
+        (
+            r#""rotate": {"max_files": -2}"#,
+            "access_log.rotate.max_files: -2 is less than the minimum 0",
+        ),
+        (
+            r#""rotate": {"interval": "500ms"}"#,
+            "access_log.rotate.interval: 500ms is too short: a file rotates every second or more",
+        ),
+        (
+            r#""rotate": {"interval": "36h"}"#,
+            "access_log.rotate.interval: 36h0m0s is over 24h but not a whole number of days",
+        ),
+        (
+            r#""rotate": {"compress": "yes"}"#,
+            "access_log.rotate.compress: expected a boolean, got a string",
+        ),
+        (
+            r#""rotate": {"max_size": 1}"#,
+            "access_log.rotate.max_size: unknown field",
         ),
         (r#""outputs": "x""#, "access_log.outputs: unknown field"),
     ] {

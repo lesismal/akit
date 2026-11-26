@@ -16,7 +16,7 @@ akit validate -c /etc/fit
 它像 `akit run` 一样读取配置并打开其中指定的文件，输出 `valid`，或者每个问题及其文件、行和列。akit 尚不支持的字段也是其中之一：
 
 ```text
-fit.conf:12:2: log: not supported yet
+fit.conf:12:2: access: not supported yet
 fit.conf:40:4: routes[3].handler.module: not supported yet: the "hls" handler
 ```
 
@@ -24,12 +24,12 @@ fit.conf:40:4: routes[3].handler.module: not supported yet: the "hls" handler
 
 ## akit 尚不运行的部分
 
-- **整个部分**：`log`（akit 把自己的消息写到标准输出和标准错误）、`pprof`，以及网关之外的角色：`llm`、`tunnel`、`webrtc`、`media_auth`、`streaming`、`media_library`、`sync` 和
+- **整个部分**：`pprof`，以及网关之外的角色：`llm`、`tunnel`、`webrtc`、`media_auth`、`streaming`、`media_library`、`sync` 和
   `bittorrent`。[路线图](../roadmap.zh-CN.md)说明各自何时到来。
 - **处理器**：媒体、BitTorrent 和 sync 的处理器：`hls`、`httpflv`、`vod`、`whip`、`whep`、`stream_whip`、`stream_whep`、
   `webrtc_proxy`、`websockify`、`media_pages`、`media_tokens`、`bt_publish`、`bt_stream`、`bt_tracker` 和 `sync_ingest`。fit 的
   每个中间件都已支持。
-- **akit 读取的部分中的字段**：`engine` 的 `loop_wait`、`poll_batch` 和 `kernel_tls_offload`（`engine` 的其余字段映射到 akio 的引擎上，见[参考](../reference/config.zh-CN.md#引擎)）；`access_log.rotate`；所有的
+- **akit 读取的部分中的字段**：`engine` 的 `loop_wait`、`poll_batch` 和 `kernel_tls_offload`（`engine` 的其余字段映射到 akio 的引擎上，见[参考](../reference/config.zh-CN.md#引擎)）；所有的
   `mptcp`；`tls.kernel_tls_offload`；`upstreams[].deny_internal`；proxy 的 `splice_uploads`；Kubernetes provider 的
   `allow_external_name_services`；以及 `admin` 中除 `address`、`token_file`、`history`、`max_config_bytes`、`max_conns`、
   `disable_dashboard` 和 `access` 以外的一切：没有 TLS，因而不能监听回环以外的地址，也没有控制台、store、助手或集群。

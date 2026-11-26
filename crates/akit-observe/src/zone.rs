@@ -145,6 +145,19 @@ impl Zone {
             .find_map(|dir| read_tzif(&Path::new(dir).join(name), name))
     }
 
+    /// A zone `offset` seconds east of UTC at every instant, named `name`, as Go's
+    /// `time.FixedZone`: for tests and fixed offsets.
+    #[must_use]
+    pub fn fixed(name: &str, offset: i32) -> Zone {
+        Zone {
+            name: name.to_owned(),
+            times: Vec::new(),
+            idx: Vec::new(),
+            types: vec![(offset, false)],
+            rule: None,
+        }
+    }
+
     /// The zone of a TZif file's bytes, named `name`.
     #[must_use]
     pub fn from_tzif(name: &str, data: &[u8]) -> Option<Zone> {

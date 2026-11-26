@@ -9,16 +9,57 @@
 #            security hole or bound a resource); written by hand, with the reason in a comment
 #            above it and in the release notes.
 config	added	supported	limits.max_pending_bytes
+# I83: the log files (fit's admin/logs.go).
+admin	added	endpoint	GET	/logs
+admin	added	endpoint	HEAD	/logs
+admin	added	endpoint	POST	/logs/cleanup
+admin	added	endpoint	POST	/logs/rotate
 config	added	supported	access
 config	added	supported	access.allow
 config	added	supported	access.allow_files
 config	added	supported	access.deny
 config	added	supported	access.deny_files
+config	added	supported	access_log.rotate
+config	added	supported	access_log.rotate.compress
+config	added	supported	access_log.rotate.interval
+config	added	supported	access_log.rotate.max_age
+config	added	supported	access_log.rotate.max_bytes
+config	added	supported	access_log.rotate.max_files
+config	added	supported	access_log.rotate.max_total_bytes
+config	added	supported	admin.access
+config	added	supported	admin.access.allow
+config	added	supported	admin.access.allow_files
+config	added	supported	admin.access.deny
+config	added	supported	admin.access.deny_files
 config	added	supported	listeners[].access
 config	added	supported	listeners[].access.allow
 config	added	supported	listeners[].access.allow_files
 config	added	supported	listeners[].access.deny
 config	added	supported	listeners[].access.deny_files
+config	added	supported	log
+config	added	supported	log.format
+config	added	supported	log.level
+config	added	supported	log.levels
+config	added	supported	log.loggers
+config	added	supported	log.loggers.*.format
+config	added	supported	log.loggers.*.level
+config	added	supported	log.loggers.*.output
+config	added	supported	log.loggers.*.rotate
+config	added	supported	log.loggers.*.rotate.compress
+config	added	supported	log.loggers.*.rotate.interval
+config	added	supported	log.loggers.*.rotate.max_age
+config	added	supported	log.loggers.*.rotate.max_bytes
+config	added	supported	log.loggers.*.rotate.max_files
+config	added	supported	log.loggers.*.rotate.max_total_bytes
+config	added	supported	log.output
+config	added	supported	log.rotate
+config	added	supported	log.rotate.compress
+config	added	supported	log.rotate.interval
+config	added	supported	log.rotate.max_age
+config	added	supported	log.rotate.max_bytes
+config	added	supported	log.rotate.max_files
+config	added	supported	log.rotate.max_total_bytes
+config	added	supported	log.time_zone
 config	added	supported	routes[].access
 config	added	supported	routes[].access.allow
 config	added	supported	routes[].access.allow_files
@@ -29,8 +70,3 @@ config	added	supported	services[].access.allow
 config	added	supported	services[].access.allow_files
 config	added	supported	services[].access.deny
 config	added	supported	services[].access.deny_files
-config	added	supported	admin.access
-config	added	supported	admin.access.allow
-config	added	supported	admin.access.allow_files
-config	added	supported	admin.access.deny
-config	added	supported	admin.access.deny_files

@@ -1,0 +1,96 @@
+# 033: Log files, rotation and retention, as fit's
+
+[English](033-log-files.md) | [简体中文](033-log-files.zh-CN.md)
+
+Status: accepted in I81 (2026-11-26); points 7 to 10 in I82, 11 and 12 in I83 (2026-11-26).
+
+## Context
+
+fit's own log and its access log can write to a file, and since fit's I155–I156 a file is rotated
+by size and by time and its rotated files removed by age, number and total size, gzipped, in the
+log's time zone ([fit's decision 034](https://github.com/lesismal/fit/blob/main/docs/decisions/034-log-files.md)).
+akit's access log (I21) appended to one file for as long as akit ran and refused `rotate` as not
+supported yet; akit had no `log` at all. The Logging track ports fit's I155–I157 in I81–I83.
+
+## Decision
+
+1. **A sink of akit's own, as fit's.** akit-observe's `Files` keeps one sink a path, shared by
+   every log writing there (the access log, and akit's own loggers from I82), as fit's
+   `logs.Files`. A write queues its buffer and returns; past a queue of 1 MiB (or 256 buffers) it
+   is refused and counted, never waited for, so no I/O thread, request or logger waits for the
+   disk (rules 1 and 11). A thread of the sink's own writes, rotates and sweeps; the access log's
+   writer thread hands it each flushed buffer as it is, without a copy, and counts the lines of a
+   refused one as dropped. Closing a sink writes what it queued and waits, at most 30 s, for the
+   compressions of its files.
+2. **fit's rotation, naming and retention, unchanged.** Before a write that would take the file
+   past `max_bytes` (a buffer larger than that gets a file of its own, so the access log's unit is
+   its flushed batch, as fit's I156 says) and at the first write in a later period of `interval`,
+   a period a whole number of intervals from midnight in the log's zone (a period of whole days
+   grouping days from 1970-01-01). The rotated name is `<path>.<yyyy-mm-ddThh-mm-ss.mmm>`, the
+   rotation's time in UTC, `-1`, `-2` when taken, `.gz` once compressed. A rotation that fails
+   keeps the file and is not tried again by size or time for a minute. Retention at open, after
+   every rotation and every ten minutes: older than `max_age`, then past `max_files`, then the
+   oldest past `max_total_bytes`; only names a rotation makes from that path, never the open file.
+   `rotate`'s fields, defaults and checks are fit's `config.Rotate`'s.
+3. **Compression on a thread of the set's own**, started with the first file compressed, a queue
+   of 16 and a minute's wait at most (fit's `internal/filepool` with one worker): gzip by
+   akio-deflate into a temporary file created exclusively, renamed, the plain file removed; a
+   failure keeps the plain file and says why. No dependency is added (decision 001).
+4. **No link is followed, without `O_NOFOLLOW`.** fit opens with `O_NOFOLLOW|O_NONBLOCK`. akio-sys
+   has no `O_NOFOLLOW`, and akit has no `unsafe` and no `libc`; so a file is looked at without
+   following a link (`symlink_metadata`), must be a regular file with one link, is opened with
+   `O_NONBLOCK` (akio-sys's) so that a FIFO put at the name cannot hold the open, and must then be
+   the same file (device and inode) the name held. A link swapped in between is opened but never
+   written or read, and refused. A new file, and a compression's temporary file, are created with
+   `O_EXCL` (`create_new`), which does not follow a link. This is what `O_NOFOLLOW` gives, so no
+   akio request is made. A directory others may write is warned of, as fit warns.
+5. **Zones from the system's zoneinfo**, as I21 decided for the access log: fit embeds Go's
+   `time/tzdata`; akit reads `/usr/share/zoneinfo` and the like (akit-observe's `Zone`), so an
+   IANA name needs a zoneinfo in a container, and an unknown name fails the config.
+6. **A reload changes the rotation and the zone in place**, as fit's: the sink keeps its file and
+   takes the new settings at its next write; its path, and a log's format, take a restart.
+
+7. **akit's own log is fit's `log`** (I82): fit's loggers by fit's names, a level each (a
+   reload may change it), a format and an output each or the log's, the formats fib's `line` and
+   log/slog's `text` and `json`, each line naming its logger, the time in `log.time_zone`. One log
+   a process, installed by `akit run`; before it, and in `akit validate`, a message of info or
+   above is written to standard error as `akit: <message>`, as fit's default logger writes
+   `fit: <message>`. A message is formatted and written by the thread that logs it, through the
+   sink for a file (never waiting) and to standard output or error otherwise.
+8. **akio's records are the `engine` logger's**, through akio's `log` facade (`akio::log`, one
+   logger a process): its warnings and errors at their levels; its info and debug records, which
+   are its engines starting and stopping, at debug, as fib writes its engine lines only when asked
+   (`logStatus`), so `akit run`'s standard output stays its command lines. akio's maximum level
+   follows the `engine` logger's, so a record below it is never formatted.
+9. **What akit's crates say goes through their loggers**: certificates (`tls`: ACME, OCSP, the
+   shared storage), providers (`provider`), OTLP exports (`telemetry`), FastCGI applications'
+   standard error (`fastcgi`), the access log's dropped lines (`access_log`), the sink's failures
+   and the sockmap relay (`engine`), the metrics' overflow and the files with no `rotate`
+   (`server`). The crates' line callbacks carry no level, so their lines are written at warn,
+   never lost to a level of warn; a level for each message is left until fit's split of them is
+   ported message by message.
+10. **akit's command lines stay plain**: `akit: listener …`, `akit: reloaded …`, `akit: admin API on
+    …` and the rest are printed as they were, as fit's `cli` prints its own with `fmt`; the few
+    fit writes through its `admin` and `tls` loggers (`admin API on`, `certificate files changed`)
+    stay plain in akit, where tools and tests read them.
+
+11. **A reload changes akit's own log in place** (I83), as fit's `Root.SetConfig`: the levels
+    (akio's maximum level with the `engine` logger's), `time_zone`, and each of its files'
+    `rotate`; a file the new config no longer names keeps writing, unrotated, until a restart.
+    A logger's output or format changed is warned of as taking a restart, once for the log.
+12. **The Admin API's `/logs`** (I83, fit's `admin/logs.go`): `GET /logs`, `POST /logs/rotate`
+    and `POST /logs/cleanup` with fit's bodies. They read a directory or wait for a file's writer,
+    so they run on the API engine's logical pool (`detach_to_pool`), never on its I/O thread; a
+    path that is not one of the running config's file outputs is refused, so nothing else is
+    listed or removed; a listing names at most 1,000 files an output and says `"truncated"` past
+    it. Times are RFC 3339 in UTC. fit's workbench page over them waits for the Console track.
+
+## Consequences
+
+- A slow disk costs at most the queue: 1 MiB a file, behind the access log's own buffer.
+- A file shared by two logs has one sink and one policy; I82 refuses a config that gives one
+  path two `rotate`s or two zones, as fit's.
+- `"rotate": {}` is a bounded policy of fit's defaults; a file output without `rotate` grows, and
+  `akit run` says so when it starts.
+- What to measure is in the dev plan's benchmark table (I81's row): a feature task runs no
+  benchmark (rule 30).

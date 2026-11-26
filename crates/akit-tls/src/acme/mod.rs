@@ -436,7 +436,11 @@ impl Acme {
             }
             Some(roots)
         };
-        let log: Log = Arc::new(|line: &str| eprintln!("akit: acme: {line}"));
+        let log: Log = akit_observe::logger::lines(
+            akit_observe::logger::Logger::Tls,
+            akit_observe::logger::Level::Warn,
+            "acme: ",
+        );
         let on_demand = config
             .on_demand
             .as_ref()

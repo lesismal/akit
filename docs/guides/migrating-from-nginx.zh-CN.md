@@ -21,7 +21,7 @@ akit validate -c akit.conf
 请阅读它的报告，并按下表手工补全配置。`auth_basic` 保护的内容在换上带有用户的 `basic_auth` 中间件之前一律答 401，这样原本需要
 密码的内容不会被任何人取得。
 
-`error_log` 会转换为 fit 的 `log`，而 akit 尚不支持它：删除转换器写出的 `log`，akit 会把自己的消息写到标准输出和标准错误。
+`error_log` 会转换为 fit 的 `log`，akit 与 fit 一样读取它（[参考](../reference/config.zh-CN.md#日志)）：它的文件和级别就是 akit 自身日志的。
 
 例如：
 

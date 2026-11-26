@@ -85,7 +85,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 
 ## 索引
 
-状态：`todo`、`doing` 或 `done`。下一个可用的迭代编号是 I88。
+状态：`todo`、`doing` 或 `done`。下一个可用的迭代编号是 I89（为日志路线和访问控制列表路线预留的 I84 和 I88 未使用）。
 
 | ID | 迭代 | 依赖 | 状态 |
 | --- | --- | --- | --- |
@@ -182,6 +182,10 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I79b | 门禁仍拒绝的网关示例：`limits.max_pending_bytes`、只有 h2c、按接受的连接计数的 `max_conns` | I79、akio A214、A168、A215 | done |
 | I80 | 为安全审查做好准备 | I77, I79 | done |
 | I80b | 安全加固：威胁模型的局限与审查的发现 | I80、审查 | doing |
+| **1.0 之后** | | | |
+| I81 | 日志文件：按大小和时间切割、保留、压缩；`access_log.rotate` | I21 | done |
+| I82 | akit 自身的日志：fit 的 `log`，其日志器、格式、文件与时区 | I81 | done |
+| I83 | 重载时的日志文件，以及 Admin API 的 `/logs` | I82、I27 | done |
 | **1.0 之后：访问控制列表** | | | |
 | I85 | 访问控制列表 I：列表、监听器和路由 | I79、akio A3 | done |
 | I86 | 访问控制列表 II：服务与正向代理 | I85 | done |
@@ -209,6 +213,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | 被动健康检查 | I20 | 否 | 否（已实现，未测） | 请求路径上记录结果的微基准。 |
 | 主动健康检查 | I35 | 否 | 否（已实现，未测） | 不在热路径上（选择地址仍只读每个地址一个原子量）：繁忙引擎上探测的开销，每秒探测数千个地址（http 和 tcp），连同探测定时器的线程（akio A45 之前的临时方案）；proxy 场景下开关健康检查的同轮 A/B。 |
 | 访问日志 | I21 | 否 | 否（已实现，未测） | fixed 和 proxy 开关日志的同轮 A/B（json，以及 text 或 line），写文件和写 `/dev/null`；默认 4 MiB 缓冲、磁盘慢时满负载下丢弃的行数；每个请求的开销（装箱的响应过滤器、分片锁、格式化）。 |
+| 日志文件：写入端、切割、保留、压缩 | I81 | 否 | 否（已实现，未测） | fixed 和 proxy 场景下，访问日志写到带 `rotate`（`max_bytes` 1 MiB，使其频繁切割；`compress` 开和关）的文件，与写不带 `rotate` 的同一文件、与 I81 之前的 main 做同轮 A/B：访问日志的写线程把每次刷出的缓冲原样交给写入端的队列（不复制），由写入端的线程写盘；磁盘慢时满负载下丢弃的行（日志 4 MiB 缓冲之后是写入端 1 MiB 的队列）；负载下一次切割的开销（一次改名、一次打开、为保留策略列一次目录）以及压缩线程上 gzip 的开销（每 MiB 的 CPU，大量切割时 16 个的队列）。 |
 | 每次握手选择证书（读取运行时图的 resolver） | I30 | 否 | 否（已实现，未测） | 一个和十个证书时每秒完整 TLS 握手数，对比 I09 的 `sni_cert` 和 fit。 |
 | 明文监听器上的 HTTP-01 检查 | I31 | 否 | 否（已实现，未测） | HTTP/1.1 和 h2c 上的 fixed，与 I31 之前的 main 做同轮 A/B（`akit run` 下每个请求一次前缀比较）。 |
 | 带 TLS-ALPN-01 和 OCSP 装订的证书选择 | I32 | 否 | 否（已实现，未测） | 与 I31 对比每秒完整 TLS 握手数，有和没有装订的响应（读取 ALPN 列表，带响应者的文件证书还要读第二个 `Published` 映射）；带响应时握手的大小。 |
@@ -1000,9 +1005,9 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 
 | 顺序 | 路线 | fit 的迭代 | akit 中的第一步 |
 | --- | --- | --- | --- |
-| 1 | 日志：文件、切割与保留 | I155–I157 | 带时区的日志文件，按大小和时间切割，保留策略 |
+| 1 | 日志：文件、切割与保留 | I155–I157 | 已完成：[I81–I83](#日志文件切割与保留)，带时区的日志文件，按大小和时间切割，保留策略 |
 | 2 | 访问控制列表 | I195 | [I85–I87](#访问控制列表)：列表、监听器和路由；服务与 SOCKS；Admin API |
-| 3 | 控制台与加密的 store | I104 | 加密的 store、控制台页面、登录 |
+| 3 | 控制台与加密的 store | I104、I157 的页面 | 加密的 store、控制台页面（包括基于 I83 的 `/logs` 的“日志”页面）、登录 |
 | 4 | 隧道与 LLM | I105–I107, I159–I162 | 基于 `akio-ws` 和 `akio-quic` 的 hub、node 和 proxy 角色；链路 token |
 | 5 | WebRTC | I87, I108–I111 | 基于 `akio-turn` 的 TURN；基于 `akio-webrtc` 的 WHIP 和 WHEP |
 | 6 | 流媒体与媒体认证 | I115–I117 | 基于 `akio-media` 的流媒体角色；`media_auth` |
@@ -1013,6 +1018,56 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | 11 | 数据同步 | I163–I194, I211–I222 | 先做流水线核心和检查点，再按 fit 的顺序做连接器 |
 | 12 | Prefork 与 NUMA | fit 中已规划 | 取消（2026-11-25）：akit 不使用 prefork，akio 已删除 `akio-prefork`。不再计划。 |
 | 13 | P2P 与 VPN | I84–I103 | 待 fit 的这条路线完成后 |
+
+### 日志：文件、切割与保留
+
+对应 fit 的 I155–I157（[fit 的决策 034](https://github.com/lesismal/fit/blob/main/docs/decisions/034-log-files.zh-CN.md)），
+分三次迭代（[决策 033](decisions/033-log-files.zh-CN.md)）。fit I157 的工作台“日志”页面等控制台路线；它的 Admin API 在这里做。
+
+### I81 日志文件：按大小和时间切割、保留、压缩
+
+- **做什么**：决策 033。akit-observe 的文件写入端，对应 fit 的 `logs.Files` 和 `logs.File`：每个路径一个写入端，写该路径的
+  所有日志共用；1 MiB 的队列由它自己的线程写盘，超出时拒绝并计数，从不等待。在一次写入会使文件超过 `max_bytes` 之前切割（大于
+  它的缓冲独占一个文件），也在 `interval` 的下一个周期里的第一次写入时切割，周期从日志时区的午夜算起，以先到者为准；切割出的文件
+  名为 `<path>.<yyyy-mm-ddThh-mm-ss.mmm>`（UTC），名字被占用时加 `-N`，压缩后加 `.gz`（akio-deflate，在文件集自己的线程上，
+  队列 16 个；失败时保留未压缩的文件）。打开时、每次切割后和每十分钟执行保留策略：早于 `max_age` 的、超过 `max_files` 的、再从
+  最旧的删到总量不超过 `max_total_bytes`；只删除切割生成的文件名，绝不删除正在写的文件。不经由文件名处的符号链接或第二个硬链接
+  写、读或删除任何文件。按 fit 的 `config.Rotate` 读取 `rotate`（默认 1 GiB、720h、1 GiB，`compress` 开启；0 关闭该项限制；
+  小于 1s 的 interval，以及超过 24h 又不是整天数的，拒绝）；`access_log.rotate`：访问日志的批次原样交给写入端；重载时就地改变
+  访问日志文件的切割设置和时区。
+- **完成标准**：文件在 `max_bytes` 处、在某时区的每个周期边界处切割（用假时钟），每一行完整地只出现在一个文件里；按时间、数量和
+  总量从最旧的开始删除，不删正在写的文件和非写入端生成的文件名；gzip 解压后正是那些行；拒绝链接和硬链接；队列满时拒绝并计数；
+  `akit run` 切割访问日志，重载改变它的保留策略；配置检查；参考文档、兼容性门禁和 v1 冻结（`access_log.rotate` 标为新增）。
+- **涉及**：`akit-observe`（`files`）、`akit-config`（`log`）、`akit`（`run`）、`tests/compat`、`docs/reference`。
+- **fit**：`logs/file.go`、`config/rotate.go`、`observe/accesslog.go`；I155、I156。
+- **状态**：done（2026-11-26）。见进度日志。
+
+### I82 akit 自身的日志：fit 的 `log`
+
+- **做什么**：fit 的 `log`（`level`、`levels`、`output`、`format`、`time_zone`、`rotate`、`loggers` 及其自己的 `level`、
+  `output`、`format` 和 `rotate`），对应 fit 的 `logs.Root`：fit 的日志器（`server`、`admin`、`tls`、`provider`、`telemetry`、
+  `access_log`、`plugin`、`fastcgi`、`engine`，fit 的其他名字也接受），低于日志器级别的消息不做格式化，按日志时区以 fit 的
+  `line`、`text` 或 `json` 写出；未设置输出时 debug 和 info 写标准输出，其余写标准错误；文件经由 I81 的写入端。akit 各 crate
+  关于自身的消息（证书、provider、遥测、FastCGI 的 stderr、写入端的失败）经由各自的日志器；akio 的记录（akio-log）经由
+  `engine`。与访问日志共用的文件是同一个写入端；fit 的检查：未知日志器、级别设置两次、同一文件两个 `rotate` 或两个时区、未知
+  时区。`akit run` 对没有 `rotate` 的文件输出给出提示。
+- **完成标准**：每个日志器的每种格式都写所选时区；级别在格式化之前过滤；日志器自己的文件会切割；访问日志和某个日志器写同一路径时
+  共用一个写入端且每行完整；fit 的 `logging` 示例通过门禁；配置检查；参考文档。
+- **涉及**：`akit-observe`（`logger`）、`akit-config`（`log`）、`akit`、原先写标准错误的各 crate、`tests/compat`、
+  `docs/reference`。
+- **fit**：`logs/logs.go`、`config/log.go`；I155、I156。
+- **状态**：done（2026-11-26）。见进度日志。
+
+### I83 重载时的日志文件，以及 Admin API 的 `/logs`
+
+- **做什么**：重载就地改变 `log` 的级别、`time_zone` 以及每个文件的 `rotate`，对应 fit 的 `Root.SetConfig`；路径或格式的
+  改变提示需要重启。Admin API 的 `GET /logs`（`log` 和访问日志的每个文件输出：路径、日志器、格式、时区、填入默认值的
+  `rotate`、当前文件和切割出的文件及其大小和时间（有上限）、丢弃的行数和最后的错误）、`POST /logs/rotate` 和
+  `POST /logs/cleanup`（`dry_run`）；不是运行中配置的输出路径一律拒绝；在写入端的线程上执行，从不在 I/O 线程上；标为 v1 新增。
+- **完成标准**：重载无需重启即改变级别、时区和保留策略；路径或格式的改变给出提示；三个端点及其上限和拒绝；参考文档。
+- **涉及**：`akit-observe`、`akit-admin`、`akit`、`tests/compat/v1`、`docs/reference`。
+- **fit**：`admin/logs.go`、`logs.Root.SetConfig`；I155–I157。
+- **状态**：done（2026-11-26）。见进度日志。本路线完成；fit 工作台的“日志”页面等控制台路线。
 
 ### 访问控制列表
 

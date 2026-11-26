@@ -28,5 +28,6 @@ says whether akit follows it.
 | [029](029-v1-freeze.md) | The v1 freeze: baselines, marked changes, and two checks | accepted |
 | [030](030-supply-chain-checks.md) | Supply-chain checks: cargo-deny, cargo-audit daily, and the release binary's graph | accepted |
 | [032](032-limits-on-akio-budget.md) | The limits taken at start on akio's engine budget, and h2c alone | accepted |
+| [033](033-log-files.md) | Log files, rotation and retention, as fit's | accepted |
 | [034](034-access-lists.md) | Access lists on akio's accept filter | accepted |
 | [035](035-admin-api-redacts-secrets.md) | The Admin API redacts secrets, akit warns of exposed ones, and the rest of I80b's limitations | waiting for review |

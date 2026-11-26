@@ -17,6 +17,8 @@ akio = { workspace = true }
 akio-http = { workspace = true }
 akio-socks = { workspace = true }
 akit-config = { workspace = true }
+# akit's own log (I82): messages through fit's loggers.
+akit-observe = { workspace = true }
 akit-l4 = { workspace = true }
 akit-runtime = { workspace = true }
 akit-upstream = { workspace = true }

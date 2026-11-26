@@ -21,6 +21,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant, SystemTime};
 
+use crate::files::LogFile;
 use crate::format::{self, Format, Record};
 use crate::time::Stamp;
 use crate::zone::Zone;
@@ -70,7 +71,10 @@ impl Options {
             buffer_bytes: DEFAULT_BUFFER_BYTES,
             shards: 0,
             on_dropped: Box::new(|n| {
-                eprintln!("akit: access log: {n} lines dropped, the output was too slow");
+                crate::warn!(
+                    AccessLog,
+                    "access log: {n} lines dropped, the output was too slow"
+                );
             }),
         }
     }
@@ -183,6 +187,10 @@ impl AccessLog {
     ///
     /// When the thread cannot be started.
     pub fn new(out: Box<dyn Write + Send>, opts: Options) -> io::Result<AccessLog> {
+        AccessLog::start(Out::Stream(out), opts)
+    }
+
+    fn start(out: Out, opts: Options) -> io::Result<AccessLog> {
         let interval = if opts.flush_interval.is_zero() {
             DEFAULT_FLUSH_INTERVAL
         } else {
@@ -305,6 +313,17 @@ impl AccessLog {
         self.0.core.dropped_total.load(Ordering::Relaxed)
     }
 
+    /// A log writing to `file`, a log file's sink (I81) it shares with the logs writing there, from
+    /// a thread of its own: each buffer the shards hand over is queued to the sink as it is,
+    /// and one the sink refuses counts its lines as dropped.
+    ///
+    /// # Errors
+    ///
+    /// When the thread cannot be started.
+    pub fn to_file(file: LogFile, opts: Options) -> io::Result<AccessLog> {
+        AccessLog::start(Out::File(file), opts)
+    }
+
     /// Writes out what is buffered, stops the writer and waits for it. Lines logged afterwards
     /// are dropped. Blocks: call it on the control plane, after the listeners have stopped.
     pub fn close(&self) {
@@ -394,11 +413,19 @@ fn after(d: Duration) -> Instant {
     now.checked_add(d).unwrap_or(now)
 }
 
+/// Where the writer writes.
+enum Out {
+    /// A stream: standard output or error, or a test's.
+    Stream(Box<dyn Write + Send>),
+    /// A log file's sink (I81).
+    File(LogFile),
+}
+
 /// The writer thread's state.
 struct Writer {
     core: Arc<Core>,
     shards: Vec<Arc<Shard>>,
-    out: Box<dyn Write + Send>,
+    out: Out,
     on_dropped: Box<dyn Fn(u64) + Send>,
     interval: Duration,
 }
@@ -410,7 +437,7 @@ impl Writer {
         loop {
             let wait = next.saturating_duration_since(Instant::now());
             match rx.recv_timeout(wait) {
-                Ok(Msg::Buf(b)) => self.write(&b),
+                Ok(Msg::Buf(b)) => self.write(b),
                 Ok(Msg::Stop) | Err(RecvTimeoutError::Disconnected) => {
                     self.flush(rx);
                     return;
@@ -428,17 +455,20 @@ impl Writer {
     }
 
     /// Writes a buffer out. One the output refuses loses its lines, counted as dropped.
-    fn write(&mut self, b: &[u8]) {
-        let ok = self
-            .out
-            .write_all(b)
-            .and_then(|()| self.out.flush())
-            .is_ok();
-        if !ok {
+    fn write(&mut self, b: Vec<u8>) {
+        let len = b.len();
+        let lost = match &mut self.out {
+            Out::Stream(out) => {
+                let ok = out.write_all(&b).and_then(|()| out.flush()).is_ok();
+                (!ok).then_some(b)
+            }
+            Out::File(f) => f.write_owned(b).err().map(|(_, b)| b),
+        };
+        if let Some(b) = lost {
             let lines = b.iter().filter(|&&c| c == b'\n').count();
             self.core.drop_lines(lines as u64);
         }
-        self.core.queued.fetch_sub(b.len(), Ordering::Relaxed);
+        self.core.queued.fetch_sub(len, Ordering::Relaxed);
     }
 
     /// Writes what the shards hold, after what they handed over before, and reports the lines
@@ -466,7 +496,7 @@ impl Writer {
         let mut stop = false;
         while let Ok(m) = rx.try_recv() {
             match m {
-                Msg::Buf(b) => self.write(&b),
+                Msg::Buf(b) => self.write(b),
                 Msg::Stop => stop = true,
             }
         }

@@ -345,6 +345,7 @@ dependencies = [
  "akit-config",
  "akit-l4",
  "akit-listener",
+ "akit-observe",
  "akit-runtime",
  "akit-upstream",
 ]
@@ -358,6 +359,7 @@ dependencies = [
  "akio-socks",
  "akit-access",
  "akit-config",
+ "akit-observe",
  "akit-upstream",
 ]
 
@@ -411,7 +413,9 @@ name = "akit-observe"
 version = "0.0.1"
 dependencies = [
  "akio",
+ "akio-deflate",
  "akio-http",
+ "akio-sys",
  "akit-config",
 ]
 
@@ -438,6 +442,7 @@ dependencies = [
  "akio-http",
  "akio-x509",
  "akit-config",
+ "akit-observe",
  "akit-router",
 ]
 
@@ -493,6 +498,7 @@ dependencies = [
  "akio-http",
  "akio-x509",
  "akit-config",
+ "akit-observe",
 ]
 
 [[package]]

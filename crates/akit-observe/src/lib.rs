@@ -29,11 +29,13 @@
 //! Part of [akit](https://github.com/lesismal/akit); see `docs/dev-plan.md` for the iterations that
 //! fill this crate in.
 
+pub mod files;
 mod format;
 #[cfg(any(test, feature = "fuzzing"))]
 #[doc(hidden)]
 pub mod fuzzing;
 mod log;
+pub mod logger;
 pub mod metrics;
 pub mod otlp;
 pub mod time;
@@ -45,6 +47,7 @@ use std::fs::OpenOptions;
 use std::io::{self, Write};
 use std::time::Duration;
 
+pub use files::{Files, LogFile};
 pub use format::{Format, Record, append as append_line, go_quote, json_string, logfmt};
 pub use log::{
     AccessLog, DEFAULT_BUFFER_BYTES, DEFAULT_FLUSH_INTERVAL, FLUSH_BYTES, MAX_SHARDS, Options,

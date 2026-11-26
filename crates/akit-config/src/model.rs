@@ -27,6 +27,9 @@ pub struct Config {
     pub limits: Limits,
     /// `access_log`: where a line is written for each request; no access log when left out.
     pub access_log: Option<AccessLog>,
+    /// `log` (I82): akit's own log, its loggers' levels, formats and outputs; fit's defaults
+    /// when left out.
+    pub log: Option<crate::log::Log>,
     /// `admin`: the Admin API (I26); off when left out.
     pub admin: Option<Admin>,
     /// `metrics`: count and time requests by listener and route, for the Admin API's
@@ -409,7 +412,8 @@ pub struct Engine {
 
 /// `access_log`: where and how a line is written for each request, as fit's `config.AccessLog`.
 /// Lines are buffered and written by a thread of their own; lines past `buffer_bytes` are
-/// dropped and counted. `rotate` is refused as not supported yet.
+/// dropped and counted. A file output is rotated and its rotated files removed as `rotate` says
+/// (I81).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AccessLog {
     /// `output`: `"stdout"`, `"stderr"`, or the path of a file lines are appended to;
@@ -428,6 +432,9 @@ pub struct AccessLog {
     /// `time_zone`, as written: `local` (or empty, the default), `utc`, or an IANA zone name.
     /// That it names a zone is checked when the log is opened (akit-observe's `Zone::load`).
     pub time_zone: String,
+    /// `rotate` (I81): how a file output is rotated and its rotated files removed; none when
+    /// left out, and the file grows without bound.
+    pub rotate: Option<crate::log::Rotate>,
 }
 
 impl AccessLog {
@@ -2061,6 +2068,8 @@ const CONFIG_FIELDS: &[&str] = &[
     "upstreams",
     "limits",
     "access_log",
+    // I82: akit's own log, as fit's.
+    "log",
     "admin",
     "metrics",
     "acme",
@@ -2072,7 +2081,6 @@ const CONFIG_FIELDS: &[&str] = &[
     "access",
 ];
 const CONFIG_FIT_ONLY: &[&str] = &[
-    "log",
     "pprof",
     "llm",
     "tunnel",
@@ -2135,9 +2143,10 @@ const ACCESS_LOG_FIELDS: &[&str] = &[
     "level",
     "format",
     "time_zone",
+    // I81: the file sink's rotation and retention (decision 033).
+    "rotate",
 ];
-// rotate comes with the file sink's rotation (fit's logs package).
-const ACCESS_LOG_FIT_ONLY: &[&str] = &["rotate"];
+const ACCESS_LOG_FIT_ONLY: &[&str] = &[];
 // I64: OpenTelemetry, every field.
 const TELEMETRY_FIELDS: &[&str] = &[
     "endpoint",
@@ -2465,6 +2474,8 @@ pub(crate) struct Part {
     limits: Option<(Limits, usize)>,
     /// `access_log`, with the position of its key, when the file gives it.
     access_log: Option<(AccessLog, usize)>,
+    /// `log`, with the position of its key, when the file gives it.
+    log: Option<(crate::log::Log, usize)>,
     /// `admin`, with the position of its key, when the file gives it.
     admin: Option<(Admin, usize)>,
     /// `metrics`, with the position of its key, when the file gives it.
@@ -2534,6 +2545,9 @@ pub(crate) fn part(d: &mut Decoder<'_>, n: &Node, file: usize) -> Option<Part> {
     let access_log = o
         .take("access_log")
         .and_then(|v| access_log(d, v, "access_log").map(|a| (a, v.off)));
+    let log = o
+        .take("log")
+        .and_then(|v| crate::log::log(d, v, "log").map(|l| (l, v.off)));
     let admin = o
         .take("admin")
         .and_then(|v| admin(d, v, "admin").map(|a| (a, v.off)));
@@ -2576,6 +2590,7 @@ pub(crate) fn part(d: &mut Decoder<'_>, n: &Node, file: usize) -> Option<Part> {
         services,
         limits,
         access_log,
+        log,
         admin,
         metrics,
         acme,
@@ -2604,6 +2619,9 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
     let mut limits: Option<(Limits, usize)> = None;
     let mut first_doc: Option<(usize, usize)> = None;
     let mut access_log: Option<(AccessLog, usize)> = None;
+    // The access log's key, where a file shared with `log` is reported.
+    let mut access_at: Option<(usize, usize)> = None;
+    let mut log: Option<(crate::log::Log, usize)> = None;
     let mut admin: Option<(Admin, usize)> = None;
     let mut metrics: Option<(Metrics, usize, usize)> = None;
     let mut acme: Option<(Acme, usize)> = None;
@@ -2677,8 +2695,14 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
                         );
                     }
                 }
-                None => access_log = Some((a, file)),
+                None => {
+                    access_at = Some((file, off));
+                    access_log = Some((a, file));
+                }
             }
+        }
+        if let Some((l, off)) = p.log {
+            once(ds, &mut log, l, file, off, "log");
         }
         if let Some((a, off)) = p.admin {
             match &admin {
@@ -2768,6 +2792,15 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
             }
         }
     }
+    // A file the access log and `log` both write turns at one boundary and has one rotate
+    // (fit's checkLogFileSharing).
+    if let (Some((a, _)), Some((file, off))) = (&access_log, access_at) {
+        for (field, msg) in crate::log::sharing_problems(log.as_ref().map(|(l, _)| l), a) {
+            if let Some(d) = ds.get_mut(file) {
+                d.error(off, &format!("access_log.{field}"), msg);
+            }
+        }
+    }
     let limits = limits.map(|(l, _)| l).unwrap_or_default();
     Config {
         schema_version: schema.map_or(SCHEMA_VERSION, |(v, _)| v),
@@ -2783,6 +2816,7 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
         upstreams: upstreams.into_iter().map(|a| a.v).collect(),
         limits,
         access_log: access_log.map(|(a, _)| a),
+        log: log.map(|(l, _)| l),
         admin: admin.map(|(a, _)| a),
         metrics: metrics.map(|(m, _, _)| m),
         acme: acme.map(|(a, _)| a),
@@ -3180,6 +3214,9 @@ fn access_log(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<AccessLog> {
         .take("time_zone")
         .and_then(|v| d.string(v, &o.at("time_zone")))
         .unwrap_or_default();
+    let rotate = o
+        .take("rotate")
+        .and_then(|v| crate::log::rotate(d, v, &o.at("rotate")));
     o.finish(d, ACCESS_LOG_FIELDS, ACCESS_LOG_FIT_ONLY);
     Some(AccessLog {
         output,
@@ -3188,6 +3225,7 @@ fn access_log(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<AccessLog> {
         level,
         format,
         time_zone,
+        rotate,
     })
 }
 

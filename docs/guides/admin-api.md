@@ -58,6 +58,7 @@ What it serves:
 | `GET /status` | listeners, upstreams and their addresses' health, certificates, reloads |
 | `GET /metrics` | metrics in Prometheus's text format |
 | `GET /cache`, `POST /cache/purge` | what each cache zone keeps, and purges ([caching](caching.md)) |
+| `GET /logs`, `POST /logs/rotate`, `POST /logs/cleanup` | the log files of `log` and `access_log` with their rotation and files on disk, one rotated now, and what its retention removes, removed or (`dry_run`) listed |
 | `GET /dashboard/` | a read-only dashboard of the status and the config |
 
 A change sent with `If-Match: <etag>` is refused with 412 if the config changed since it was read,
