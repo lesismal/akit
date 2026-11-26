@@ -20,6 +20,18 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-26: I80b, Logging (I81–I83) and Access lists (I85–I87) merged
+
+- akio: unchanged, `6bcd8ad6`. The three branches merged together: the plan's index and track
+  table, the status rows and the log keep all three; the gate's inventory, the config reference
+  (485 fields of fit's read) and the v1 additions (57) regenerated from the merged sources; the
+  threat model's L6 says access lists are built. The next free iteration number is I89 (I84 and
+  I88, reserved for the two tracks, unused).
+- Tests: `make check` on macOS; on gpu51 clippy and the workspace on epoll and io_uring. In the
+  io_uring run akit-middleware's `basic_auth_checks_off_the_io_thread`, `breaker`'s
+  `stops_and_resumes_a_proxied_upstream` and `compress_proxied` failed while another session's
+  io_uring tests ran beside them; alone they passed 3 of 3.
+
 ### 2026-11-26: I80b, security hardening: the threat model's limitations (doing)
 
 - **L2, inline secrets redacted** (`crates/akit-admin/src/redact.rs`): `GET /config` and its

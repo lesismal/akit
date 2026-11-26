@@ -19,6 +19,15 @@
 
 ## 日志
 
+### 2026-11-26：I80b、日志（I81–I83）与访问控制列表（I85–I87）合并
+
+- akio：未变，`6bcd8ad6`。三个分支一起合并：计划的索引和路线表、状态行和日志保留三者的内容；门禁的字段清单、
+  配置参考（读取 fit 的 485 个字段）和 v1 新增项（57 个）按合并后的源重新生成；威胁模型的 L6 写明访问控制列表已实现。
+  下一个可用的迭代编号是 I89（为两条路线预留的 I84 和 I88 未使用）。
+- 测试：macOS 上 `make check`；gpu51 上 clippy，以及 epoll 和 io_uring 下的整个工作区。io_uring 运行中，
+  akit-middleware 的 `basic_auth_checks_off_the_io_thread`、`breaker` 的 `stops_and_resumes_a_proxied_upstream`
+  和 `compress_proxied` 在另一个会话的 io_uring 测试同时运行时失败；单独运行时 3 次全过。
+
 ### 2026-11-26：I80b，安全加固：威胁模型的局限（进行中）
 
 - **L2，遮蔽内联的秘密**（`crates/akit-admin/src/redact.rs`）：`GET /config` 及其指针、`/versions/{n}` 和
