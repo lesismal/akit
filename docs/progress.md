@@ -74,6 +74,11 @@ done and where the work differs from the plan.
   aborted so). The client engines of OTLP, the providers and the shared ACME storage are stopped
   by `akit_observe::stop_client_engine`, which waits on a thread spawned for it (and not at all on
   an I/O thread), until akio reads its thread-locals with `try_with`.
+- akit-middleware's `basic_auth_checks_off_the_io_thread` failed every run in release builds on
+  gpu51, both backends (10 of 10 alone): its cost-8 bcrypt check, about a second in a debug build,
+  took less than the 20 ms after which the requests that need none are sent, so the check passed
+  first. The test now takes the lowest cost from 8 whose hash takes 200 ms there; 10 of 10 alone on
+  each backend since.
 - A220: a listener's UDP socket takes its access policy at akio's filter
   (`ListenerAccess::datagrams`): HTTP/3's the listener's own list then the global one, unless a
   route has a list of its own (its requests decided one by one then); a `udp` listener's the policy

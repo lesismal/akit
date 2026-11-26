@@ -55,6 +55,9 @@
   panic（从而中止进程）：最后一个引用是线程缓存的运行时图会在那里丢弃它的客户端引擎（`acme_shared` 因此中止）。OTLP、provider 和共享
   ACME 存储的客户端引擎由 `akit_observe::stop_client_engine` 停止，它在为此启动的线程上等待（在 I/O 线程上则不等待），直到 akio 用
   `try_with` 读取它的线程局部变量。
+- akit-middleware 的 `basic_auth_checks_off_the_io_thread` 在 gpu51 上的 release 构建中每次都失败，两种后端都是（单独运行 10 次失败
+  10 次）：其成本为 8 的 bcrypt 检查在 debug 构建中约一秒，在这里却比不需要检查的请求的 20 ms 发送间隔还短，检查先通过了。测试现在取
+  从 8 起、在本机哈希耗时达到 200 ms 的最低成本；此后在两种后端上单独运行都是 10 次通过 10 次。
 - A220：监听器的 UDP 套接字在 akio 的过滤器处采用其访问策略（`ListenerAccess::datagrams`）：HTTP/3 的是监听器自己的列表然后全局列表，
   除非某个路由有自己的列表（此时它的请求逐个决定）；`udp` 监听器的是其会话所去服务的策略。被拒绝对端的数据报在建立 QUIC 连接或会话之前
   被丢弃，与 fit 相同。重载在保留的套接字上替换过滤器（`Engine::set_listener_filter`、`UdpBinding::set_filter`），新绑定的套接字从第一个

@@ -340,16 +340,26 @@ fn basic_auth_forward_authorization() {
     );
 }
 
-// A slow check (cost 8: about a second in a debug build) runs off the I/O thread: on one HTTP/2
-// connection, whose streams are all served by one I/O thread, requests that need no check are
-// answered while it runs; the request goes on once it passes, and the password is remembered.
+// A slow check runs off the I/O thread: on one HTTP/2 connection, whose streams are all served by
+// one I/O thread, requests that need no check are answered while it runs; the request goes on
+// once it passes, and the password is remembered. The cost is the lowest from 8 whose hash takes
+// 200 ms here (8 in a debug build, about a second; more in a release build, where cost 8 took
+// less than the 20 ms the other requests are sent after, and the check passed before them).
 #[test]
 fn basic_auth_checks_off_the_io_thread() {
     use akio_http::client::ClientRequest;
     use akio_http::h2client::{H2Client, H2Options};
     use std::sync::mpsc;
 
-    let slow = bcrypt::hash(b"slow", 8).unwrap();
+    let mut cost = 8;
+    let slow = loop {
+        let t = Instant::now();
+        let h = bcrypt::hash(b"slow", cost).unwrap();
+        if t.elapsed() >= Duration::from_millis(200) || cost >= 14 {
+            break h;
+        }
+        cost += 1;
+    };
     let akit = Akit::start(
         &format!(
             r#"{{"listeners": [{{"name": "web", "address": "127.0.0.1:0", "protocols": ["http/1.1", "h2c"]}}],
