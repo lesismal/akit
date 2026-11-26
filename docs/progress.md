@@ -46,8 +46,9 @@ changes; `TestAdminAccessUnixSocket`: the error with a Unix socket, and its peer
 akit-admin `admin_access_takes_no_restart`; the gate's samples; the examples of the reference and
 the Admin API guide.
 
-Checks for I85–I87: `make check` on macOS; on the benchmark host, clippy and the workspace on epoll
-and on io_uring (below).
+Checks for I85–I87: `make check` on macOS (the whole branch); on the benchmark host, clippy and the
+workspace on epoll and on io_uring (`--test-threads=4`), every test binary through
+`tools/test-timeout.sh`: 153 test binaries passed on each backend, none failed or hung.
 
 ### 2026-11-26: I86, access lists II: services and the forward proxy
 

@@ -37,7 +37,8 @@
 `TestAdminAccessUnixSocket`：Unix 套接字上的错误，以及其对端从不被拒绝）；akit-admin 的 `admin_access_takes_no_restart`；门禁的样例；
 配置参考和 Admin API 指南中的示例。
 
-I85–I87 的检查：macOS 上 `make check`；基准主机上 clippy，以及 epoll 和 io_uring 上的整个工作区（见下）。
+I85–I87 的检查：macOS 上 `make check`（整个分支）；基准主机上 clippy，以及 epoll 和 io_uring（`--test-threads=4`）上的整个工作区，
+每个测试二进制都经 `tools/test-timeout.sh` 运行：两个后端各 153 个测试二进制全部通过，没有失败或挂起。
 
 ### 2026-11-26：I86，访问控制列表 II：服务与正向代理
 
