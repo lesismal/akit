@@ -406,3 +406,96 @@ fn tls_links_check_a_listeners_certificate_by_its_cas() {
     e.wait();
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+// I102b: QUIC links.
+
+fn free_udp_port() -> u16 {
+    std::net::UdpSocket::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port()
+}
+
+fn quic_engine() -> Arc<akio::Engine> {
+    let e = akio::Engine::builder()
+        .client_threads(2)
+        .udp_client_threads(1)
+        .build()
+        .unwrap();
+    e.start().unwrap();
+    Arc::new(e)
+}
+
+#[test]
+fn quic_links_carry_tunnels_and_check_the_pin() {
+    let dir = tmp("quic");
+    let e = quic_engine();
+    let (hub, svc) = (free_udp_port(), echo());
+    let mut h = hub_alone(
+        &e,
+        &dir,
+        &format!(r#"{{"protocol": "quic", "address": "127.0.0.1:{hub}"}}"#),
+    );
+    let pem = std::fs::read_to_string(dir.join("akit.tunnel.hub.pem")).unwrap();
+    let fp = akit_tunnel::tls::fingerprint(&pem);
+    // The pin links; tunnels carry more than a stream's send buffer each, several at once.
+    let fwd = free_port();
+    let mut p = peers(
+        &e,
+        &format!("quic://127.0.0.1:{hub}"),
+        &format!(r#", "pin": "{fp}""#),
+        svc,
+        fwd,
+    );
+    let mut s = tunnel(fwd);
+    round_trip(&mut s, 12 << 20);
+    let ts: Vec<_> = (0..4)
+        .map(|_| {
+            std::thread::spawn(move || {
+                let mut s = tunnel(fwd);
+                round_trip(&mut s, 2 << 20);
+            })
+        })
+        .collect();
+    for t in ts {
+        t.join().unwrap();
+    }
+    p.stop(Duration::ZERO);
+    // quic_insecure takes any certificate.
+    let fwd = free_port();
+    let mut p = peers(
+        &e,
+        &format!("quic://127.0.0.1:{hub}"),
+        r#", "quic_insecure": true"#,
+        svc,
+        fwd,
+    );
+    let mut s = tunnel(fwd);
+    round_trip(&mut s, 64 << 10);
+    p.stop(Duration::ZERO);
+    // Another pin does not link.
+    let fwd = free_port();
+    let other = "ab".repeat(32);
+    let mut p = peers(
+        &e,
+        &format!("quic://127.0.0.1:{hub}"),
+        &format!(r#", "pin": "{other}""#),
+        svc,
+        fwd,
+    );
+    std::thread::sleep(Duration::from_millis(700));
+    let mut s = TcpStream::connect(("127.0.0.1", fwd)).unwrap();
+    s.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+    let _ = s.write_all(b"x");
+    let mut b = [0u8; 1];
+    assert!(
+        !matches!(s.read(&mut b), Ok(1)),
+        "a tunnel opened past a wrong pin"
+    );
+    p.stop(Duration::ZERO);
+    h.stop(Duration::ZERO);
+    e.shutdown();
+    e.wait();
+    let _ = std::fs::remove_dir_all(&dir);
+}

@@ -50,7 +50,9 @@ protocols fall.
    once the token is written `akitt1.<id>.<secret>`, the ID and secret unchanged. That rewrite of
    the prefix is the whole cost of akit's name on the wire's edge; nothing else differs.
 5. **The version a role says hello with is akit's** (`akit <version>`), as fit's says fit's; what
-   a peer does with it is written here by the iteration that ports it (I101, I104).
+   a peer does with it is written here by the iteration that ports it. A tunnel peer only reports
+   it (the hub's list of peers, a peer's status) and compares it with nothing, as fit's (I101);
+   the mesh's is I104's.
 
 ## Alternatives
 

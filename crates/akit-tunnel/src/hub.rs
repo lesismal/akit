@@ -15,7 +15,7 @@ use akit_roles::host::{Host, Role};
 use akit_roles::linktoken::{Registry, Use};
 
 use crate::crypt::Coder;
-use crate::link::{ConnWire, Link, LinkHandler, Responder, Router};
+use crate::link::{ConnWire, Link, LinkHandler, Responder, Router, Wire};
 use crate::msg::{
     self, Info, MAX_IN_FLIGHT, MAX_TUNNELS_PER_LINK, RegisterReq, RegisterRsp, Stats,
     TunnelOpenReq, Verifier, method,
@@ -93,7 +93,7 @@ pub(crate) struct HubCore {
     tokens: Registry,
     verifier: Mutex<Option<Verifier>>,
     coder: Mutex<Option<Coder>>,
-    listeners: Mutex<Vec<(TunnelListener, akio::ListenerId)>>,
+    listeners: Mutex<Vec<(TunnelListener, Bound)>>,
     access: Mutex<Option<Arc<akit_access::Policy>>>,
     /// The SHA-256 of the hub's own certificate, which peers pin.
     fingerprint: Mutex<String>,
@@ -104,6 +104,23 @@ pub(crate) struct HubCore {
 
 struct HubRouter(Weak<HubCore>);
 
+/// A listener of the hub's: a TCP one of the engine's, or a UDP socket bound for QUIC.
+enum Bound {
+    Tcp(akio::ListenerId),
+    Udp(akio::UdpBinding),
+}
+
+impl Bound {
+    fn remove(self, engine: &akio::Engine) {
+        match self {
+            Bound::Tcp(id) => {
+                let _ = engine.remove_listener(id);
+            }
+            Bound::Udp(b) => b.close(),
+        }
+    }
+}
+
 fn kind_name(info: &Info) -> String {
     format!("{}/{}", info.kind, info.name)
 }
@@ -113,10 +130,26 @@ impl HubCore {
         Arc::new(HubRouter(self.me.clone()))
     }
 
-    /// A connection accepted on a listener: a link, unless the hub's bounds refuse it.
+    /// A connection accepted on a TCP, TLS or WebSocket listener: a link, unless the hub's bounds
+    /// refuse it.
     fn accept(self: &Arc<Self>, c: &akio::Conn<LinkHandler>) -> LinkHandler {
+        match self.accept_wire(c.peer_addr(), Arc::new(ConnWire::new(c))) {
+            Some(l) => LinkHandler(Some(l)),
+            None => {
+                c.close();
+                LinkHandler(None)
+            }
+        }
+    }
+
+    /// A link on `wire` from `peer`, unless the hub's bounds or its access policy refuse it
+    /// (`None`: the caller closes the wire).
+    fn accept_wire(self: &Arc<Self>, peer: SocketAddr, wire: Arc<dyn Wire>) -> Option<Arc<Link>> {
         let cfg = lock(&self.cfg).clone();
-        let ip = c.peer_addr().ip().to_canonical();
+        let ip = peer.ip().to_canonical();
+        if lock(&self.access).as_ref().is_some_and(|p| !p.allows(ip)) {
+            return None;
+        }
         let coder = lock(&self.coder).clone();
         let l = {
             let mut st = lock(&self.st);
@@ -126,11 +159,9 @@ impl HubCore {
                 || unreg >= cfg.unregistered()
                 || st.unreg_ip.get(&ip).copied().unwrap_or(0) >= cfg.unregistered_per_ip()
             {
-                drop(st);
-                c.close();
-                return LinkHandler(None);
+                return None;
             }
-            let l = Link::new(Arc::new(ConnWire::new(c)), self.router(), coder);
+            let l = Link::new(wire, self.router(), coder);
             l.set_max_frame(UNREGISTERED_FRAME);
             st.links.insert(
                 l.id,
@@ -159,7 +190,7 @@ impl HubCore {
                 }
             }
         });
-        LinkHandler(Some(l))
+        Some(l)
     }
 
     fn registered(st: &mut HubState, lid: u64) {
@@ -992,7 +1023,51 @@ fn sweep(core: &Arc<HubCore>) {
     });
 }
 
+/// A TLS or QUIC listener's TLS: its own certificate, or the hub's. Reads its files when the
+/// member is applied (fit's): the control thread's.
+fn listener_tls(
+    l: &TunnelListener,
+    own: Option<&Arc<(String, String)>>,
+) -> Result<akio::tls::ServerConfig, String> {
+    if l.cert_file.is_empty() {
+        match own {
+            Some(cert) => crate::tls::server_config(&cert.0, &cert.1),
+            None => Err("no certificate".to_owned()),
+        }
+    } else {
+        std::fs::read_to_string(&l.cert_file)
+            .and_then(|c| std::fs::read_to_string(&l.key_file).map(|k| (c, k)))
+            .map_err(|e| e.to_string())
+            .and_then(|(c, k)| crate::tls::server_config(&c, &k))
+    }
+}
+
 impl Hub {
+    /// A QUIC listener: a UDP socket bound on the engine's UDP threads, served by akio-quic.
+    fn bind_quic(
+        &self,
+        l: &TunnelListener,
+        own: Option<&Arc<(String, String)>>,
+        addr: SocketAddr,
+    ) -> Result<akio::UdpBinding, String> {
+        let c = &self.core;
+        let tls = listener_tls(l, own)?;
+        let cfg = lock(&c.cfg).clone();
+        let me = c.me.clone();
+        let accept: crate::quic::Accept =
+            Arc::new(move |peer, wire| me.upgrade().and_then(|h| h.accept_wire(peer, wire)));
+        let max = cfg
+            .links()
+            .saturating_add(akit_config::roles::TunnelHubQuic::handshakes(
+                cfg.quic.as_ref(),
+            ));
+        let server = crate::quic::server(&tls, cfg.quic.as_ref(), max, accept)?;
+        c.host
+            .engine
+            .bind_udp(addr, server)
+            .map_err(|e| e.to_string())
+    }
+
     fn move_listeners(
         &self,
         want: &[TunnelListener],
@@ -1026,32 +1101,25 @@ impl Hub {
                 });
             let mut el = match l.protocol {
                 TunnelProtocol::Tcp => akio::Listener::tcp(addr).threads(1).serve(acceptor),
-                TunnelProtocol::Tls => {
-                    let tls = if l.cert_file.is_empty() {
-                        match own {
-                            Some(cert) => crate::tls::server_config(&cert.0, &cert.1),
-                            None => Err("no certificate".to_owned()),
-                        }
-                    } else {
-                        // Read when the member is applied (fit's): the control thread's.
-                        std::fs::read_to_string(&l.cert_file)
-                            .and_then(|c| std::fs::read_to_string(&l.key_file).map(|k| (c, k)))
-                            .map_err(|e| e.to_string())
-                            .and_then(|(c, k)| crate::tls::server_config(&c, &k))
-                    };
-                    match tls {
-                        Ok(cfg) => akio::Listener::tcp(addr)
-                            .threads(1)
-                            .serve(akio::tls::Tls::server(cfg, acceptor)),
-                        Err(e) => {
-                            errs.push(format!("listener tls {}: {e}", l.address));
-                            continue;
-                        }
+                TunnelProtocol::Tls => match listener_tls(l, own) {
+                    Ok(cfg) => akio::Listener::tcp(addr)
+                        .threads(1)
+                        .serve(akio::tls::Tls::server(cfg, acceptor)),
+                    Err(e) => {
+                        errs.push(format!("listener tls {}: {e}", l.address));
+                        continue;
                     }
+                },
+                TunnelProtocol::Quic => {
+                    match self.bind_quic(l, own, addr) {
+                        Ok(b) => next.push((l.clone(), Bound::Udp(b))),
+                        Err(e) => errs.push(format!("listener quic {}: {e}", l.address)),
+                    }
+                    continue;
                 }
                 p => {
                     errs.push(format!(
-                        "listener {} {}: {} links are not supported yet (I102b)",
+                        "listener {} {}: {} links are not supported yet (I102c, akio API request A236)",
                         p.as_str(),
                         l.address,
                         p.as_str()
@@ -1063,12 +1131,12 @@ impl Hub {
                 el = el.filter(move |peer: &SocketAddr| p.allows(peer.ip()));
             }
             match engine.add_listener(el) {
-                Ok(id) => next.push((l.clone(), id)),
+                Ok(id) => next.push((l.clone(), Bound::Tcp(id))),
                 Err(e) => errs.push(format!("listener {}: {e}", l.address)),
             }
         }
-        for (_, id) in have.drain(..) {
-            let _ = engine.remove_listener(id);
+        for (_, b) in have.drain(..) {
+            b.remove(engine);
         }
         *have = next;
         errs
@@ -1084,7 +1152,9 @@ impl Role for Hub {
         let mut errs = Vec::new();
         match crate::proxy::policy(cfg.access.as_ref(), config.access.as_ref()) {
             Ok(p) => {
-                for (_, id) in lock(&c.listeners).iter() {
+                for (_, b) in lock(&c.listeners).iter() {
+                    // A QUIC listener's links are checked as they are accepted.
+                    let Bound::Tcp(id) = b else { continue };
                     let _ = match &p {
                         Some(p) => {
                             let p = Arc::clone(p);
@@ -1170,8 +1240,8 @@ impl Role for Hub {
     fn stop(&mut self, _grace: Duration) {
         let c = &self.core;
         lock(&c.st).closing = true;
-        for (_, id) in lock(&c.listeners).drain(..) {
-            let _ = c.host.engine.remove_listener(id);
+        for (_, b) in lock(&c.listeners).drain(..) {
+            b.remove(&c.host.engine);
         }
         let links: Vec<Arc<Link>> = lock(&c.st)
             .links

@@ -1532,7 +1532,10 @@ mod tests {
             panic!("roles let through");
         };
         let paths: Vec<&str> = errs.0.iter().map(|e| e.path.as_str()).collect();
-        assert_eq!(paths, ["llm.proxy", "tunnel.hub"]);
+        // The tunnel's roles run (I101); the LLM's not yet (I104-I108).
+        assert_eq!(paths, ["llm.proxy"]);
+        let c = akit_config::from_json(r#"{"tunnel": {"hub": {}}}"#, None).unwrap();
+        assert!(super::roles_not_running(&c).is_ok());
         let c = akit_config::from_json(r#"{"tunnel": {}, "llm": {}}"#, None).unwrap();
         assert!(super::roles_not_running(&c).is_ok());
     }

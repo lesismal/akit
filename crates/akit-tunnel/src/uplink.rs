@@ -62,6 +62,8 @@ pub struct Uplink {
     /// The TLS of `tls://` endpoints, and the pin it leaves to [`crate::tls::when_handshaken`];
     /// made when the uplink is (on the control thread: it reads `ca_file`).
     tls: Option<(akio::tls::ClientConfig, Option<[u8; 32]>)>,
+    /// The TLS of `quic://` endpoints, which `quic_insecure` may leave unchecked.
+    quic: Option<(akio::tls::ClientConfig, Option<[u8; 32]>)>,
     proven: Arc<Mutex<HashSet<u64>>>,
     st: Mutex<UpState>,
     seq: AtomicU32,
@@ -132,6 +134,15 @@ impl Uplink {
         } else {
             None
         };
+        let needs_quic = dials(cfg)
+            .iter()
+            .any(|a| parse_endpoint(a).is_some_and(|e| e.protocol == TunnelProtocol::Quic));
+        let quic = if needs_quic {
+            let check = crate::tls::Check::of(&cfg.pin, &cfg.ca_file, cfg.quic_insecure);
+            Some((crate::tls::client_config(&check)?, pin))
+        } else {
+            None
+        };
         Ok(Arc::new(Uplink {
             name: cfg.hub_name().to_owned(),
             cfg: cfg.clone(),
@@ -141,6 +152,7 @@ impl Uplink {
             coder,
             token,
             tls,
+            quic,
             proven,
             st: Mutex::new(UpState {
                 links: HashMap::new(),
@@ -271,8 +283,27 @@ impl Uplink {
                     Err(e) => on_error(e),
                 }
             }
+            TunnelProtocol::Quic => {
+                let Some((cfg, pin)) = self.quic.clone() else {
+                    return on_error(std::io::Error::other("no TLS configured"));
+                };
+                crate::quic::dial(
+                    &self.engine,
+                    &ep.host,
+                    ep.port,
+                    &cfg,
+                    pin,
+                    self.cfg.dial(),
+                    router,
+                    coder,
+                    Box::new(move |r| match r {
+                        Ok(l) => me.dialed(&l),
+                        Err(e) => on_error(std::io::Error::other(e)),
+                    }),
+                );
+            }
             p => on_error(std::io::Error::other(format!(
-                "{} links are not supported yet (I102b)",
+                "{} links are not supported yet (I102c, akio API request A236)",
                 p.as_str()
             ))),
         }

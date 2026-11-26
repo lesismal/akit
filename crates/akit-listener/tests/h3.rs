@@ -156,7 +156,14 @@ fn h3_alone_listens_on_udp_alone() {
     let a = addrs[0];
     assert_eq!(a.tcp, None);
     let udp = a.udp.unwrap();
-    assert_eq!(e.local_addrs(), [udp]);
+    // The listener's UDP socket alone, and after it, unbound, the TCP client thread an engine
+    // without a TCP listener gets for the roles' dials (I100).
+    let bound: Vec<_> = e
+        .local_addrs()
+        .into_iter()
+        .filter(|a| a.port() != 0)
+        .collect();
+    assert_eq!(bound, [udp]);
     let seen = h3::get(udp, h3::client(&p.ca, None), "a.example", "/hello").unwrap();
     assert_eq!((seen.status, seen.body.as_str()), (200, "hello\n"));
     assert!(akit_listener::shutdown(&e, Duration::from_secs(5)));

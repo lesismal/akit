@@ -95,7 +95,7 @@ few crates as it can. fit's package of the same role is given for reference.
 
 Status: `todo`, `doing` or `done`. The next free iteration number is I110 (I84 and I88, reserved for the
 Logging and Access lists tracks, are unused; I95 and I96 are reserved for the Console track; I97
-renamed fit's external names; I98–I109 and I102b are the Tunnel and LLM track).
+renamed fit's external names; I98–I109, I102b and I102c are the Tunnel and LLM track).
 
 | ID | Iteration | Depends on | Status |
 | --- | --- | --- | --- |
@@ -215,8 +215,9 @@ renamed fit's external names; I98–I109 and I102b are the Tunnel and LLM track)
 | I100 | The roles in `akit run`: started, moved and stopped on the listeners' engine; one address, one server; the Admin API's `/tokens` and `akit token` | I99, I27 | done |
 | I101 | Tunnel I: links, registration and tunnels over TCP | I99, I100 | done |
 | I102 | Tunnel II: TLS links; pins; the hub's certificate kept | I101 | done |
-| I102b | Tunnel II b: WebSocket and QUIC links | I102 | todo |
-| I103 | Tunnel III: the hub's calls, token expiry, the console socket and web proxies | I102 | todo |
+| I102b | Tunnel II b: QUIC links | I102 | done |
+| I102c | Tunnel II c: WebSocket links, waiting on akio API request A236 | I102b | todo |
+| I103 | Tunnel III: the hub's calls, token expiry, the console socket and web proxies | I102c | todo |
 | I104 | LLM I: the mesh: frames, sessions, streams with credit, the handshake, hello, pools | I99, I100 | todo |
 | I105 | LLM II: the node: models, checks, calls forwarded upstream streamed both ways | I104 | todo |
 | I106 | LLM III: the hub: node table, models, picking and relaying | I105 | todo |
@@ -271,7 +272,7 @@ commit and result.
 | WebSocket and gRPC proxying | I49, I50 | partly (2026-11-25, idle WebSockets at 10k, `bench/results/m1-2026-11-25-akio-fixes`: 4,452 bytes each, fit 5,916, nginx 22,275) | no (I49 and I50 built) | Against fit: WebSocket messages a second (small, echoed) and bytes a second (large) through akit from HTTP/1.1, h2 and h3 clients, memory per open WebSocket (idle, and with 64 KiB pending each way), and handshakes a second (a key generated, the upstream connection leaving the pool); I50: gRPC calls a second (unary, h2c and h2 upstreams) and messages a second on a stream each way, against fit. |
 | TCP and UDP proxying, SNI routing, many protocols on one port | I51–I53 | no | no (I51–I53 built, not measured) | Against fit and nginx's `stream`, as I51 asks: TCP throughput (fit's `BenchmarkTCPProxy`, 256 KB echoed at a time, direct and through akit), connections a second, memory per idle connection; UDP datagrams a second and sessions at once; the per-service idle sweep on akit's timer thread with 10,000 connections (the stopgap for akio A78); the cost of sniffing on a shared port (I53). I52: connections a second through a listener that routes by SNI (the ClientHello read and parsed before the dial) against one that does not, and with a PROXY header read on accept and one sent upstream; HTTP/1.1 and h2c request rates on a listener with `proxy_protocol` against one without, and akio's ADR-118 cost (a `OnceLock::get` per request) on a listener without. |
 | The eBPF sockmap relay | I51b | no | no (I51b built, not measured) | On the benchmark host as root (Linux 6.15+), against the same listener without `sockmap` and against fit: TCP throughput (fit's `BenchmarkTCPProxy`, 256 KB echoed at a time) and CPU per gigabyte, connections a second (the splice's cost on each: two `TCP_INFO` reads, the map's two inserts and the gate), and the latency of a small echo; the idle sweep on akit's timer thread with 10,000 spliced connections (three syscalls a socket a sweep) and the drain's polling as many close at once. |
-| Tunnel: hub, node, proxy | I101–I103 | no | no (built, not measured) | Against fit's tunnel (fit's hub with fit's node and proxy, the same three in akit, and mixed): bytes a second through one tunnel and through 64 at once over one link, plain, sealed with `body_password` and (I102) over TLS, WebSocket and QUIC; tunnels opened a second (a proxy's accept, `tunnel/open` through the hub, the node's dial); the hub's CPU per gigabyte passed; memory per idle tunnel and per link; a slow service holding one tunnel while the link's others go on (the window and the link's high water). |
+| Tunnel: hub, node, proxy | I101–I103 (I102b, I102c) | no | no (built, not measured) | Against fit's tunnel (fit's hub with fit's node and proxy, the same three in akit, and mixed): bytes a second through one tunnel and through 64 at once over one link, plain, sealed with `body_password` and over TLS (I102), QUIC (I102b: the stream's send buffer as the link's high water, the wire's overflow queue) and WebSocket (I102c); tunnels opened a second (a proxy's accept, `tunnel/open` through the hub, the node's dial); the hub's CPU per gigabyte passed; memory per idle tunnel and per link; a slow service holding one tunnel while the link's others go on (the window and the link's high water). |
 | Forward proxy: SOCKS and HTTP CONNECT | I55 | no | no (built, not measured) | Against fit (and nginx's `stream` for raw throughput): bytes a second through a SOCKS5 tunnel and an HTTP/1.1 CONNECT tunnel (256 KB echoed at a time, as fit's `BenchmarkTCPProxy`), tunnels opened a second (the handshake, the rules' checks, a name resolved on the pool and the `connected` check), memory per idle tunnel; the cost of SOCKS on a shared port (akio-mux's greeting rule beside HTTP and TLS) against HTTP alone; akio-socks's watchdog thread (the connect timeout added to it, ADR-119) with 10,000 tunnels. |
 | Response cache | I67, I68, I69 | partial (2026-11-25, I76, `346ad8b`: the harness's `cache-hot` and `cache-zipf` against nginx and fit, and a stampede of 1,000 clients, in the [M5 report](../bench/results/m5-report-2026-11-25.md)) | no | Measured in I76: hits from memory through the harness (4 KiB; akit first, 1.5 times nginx over HTTP/1.1 and 6.2 times over h2c, 1.75 times for 100,000 paths, 12% to 23% ahead of fit) and one fetch for 1,000 clients on a cold key. Left, against fit, as I67 built it: hits from memory (a 4 KiB and a 1 MiB body, HTTP/1.1 and h2), misses kept through the proxy (a streamed body copied by the tap) against the proxy alone, the cost on requests the cache passes through (POST, `no-store` responses) against no middleware, the shards' locks under many keys and one hot key. I68: hits read back from disk (64 KiB and 1 MiB, the disk pool's threads and queue under many at once), writes to disk under a miss rate that fills `MAX_PENDING_WRITES`, a stampede of many clients on one key with the lock and with `disable_lock` (the waiters' suspend and resume, the timer per fetch), and stale-while-revalidate's background fetches. akio's ADR-116 tap: a tapped stream against an untapped one. I69: storing tagged responses (none and 32 tags) against untagged ones, and purges of a large zone by prefix and by tag while it serves (the shards' and the disk index's lock hold times). |
 | FastCGI | I75 | no | no (built, not measured) | Against fit and nginx's `fastcgi_pass`, PHP-FPM (or a FastCGI application that answers at once) over TCP and a Unix-domain socket: requests a second and latency for a small page, HTTP/1.1 and h2; a 1 MiB upload and a 16 MiB download (memory per request in flight, the 64 KiB watermarks both ways); keep-alive reuse against a connection a request; the pool's queue under more clients than `max_conns`; the cost of `try_files` (a `stat` on akio's logical pool a candidate) against a route without it; the handler's sweep every 100 ms on akit's timer thread (A45's stopgap) over its exchanges at many requests a second. |
@@ -1587,17 +1588,33 @@ link with fit's (decision 038).
 - **fit**: `tunnel/internal/transport/tls.go`, `internal/certpin`; I106, I160.
 - **Status**: done (2026-11-27). See the progress log.
 
-### I102b Tunnel II b: WebSocket and QUIC links
+### I102b Tunnel II b: QUIC links
+
+- **Do**: `quic://` links (akio-quic on a UDP socket bound on the listeners' engine at run time,
+  ALPN `fit-tunnel`, one bidirectional stream per connection opened with fit's version byte,
+  `idle_timeout` and `keep_alive`, the hub's links and handshakes bounding its connections); the
+  stream's send buffer the link's high water, what passes it queued by the link's wire up to
+  24 MiB and sent on akio-quic's `on_stream_writable`; `quic_insecure`; the pin checked as the
+  TLS links' (A235).
+- **Done when**: the e2e tests over QUIC pass (a pin, `quic_insecure`, a wrong pin opening
+  nothing, transfers past the stream's buffer, several tunnels at once); a fit hub and akit's node
+  and proxy, and the other way round, link over QUIC with a pin.
+- **Touches**: `akit-tunnel` (`quic`, `hub`, `uplink`).
+- **fit**: `tunnel/internal/transport/quic`; I106, I160.
+- **Status**: done (2026-11-27). See the progress log.
+
+### I102c Tunnel II c: WebSocket links
 
 - **Do**: `wss://` and `ws://` links (akio-ws: a hub's `/tunnel` by default, 404 for another
-  path, a handshake bounded by 10 s, the link's bytes in binary messages of at most 1 MiB) and
-  `quic://` links (akio-quic on a UDP binding of the listeners' engine, ALPN `fit-tunnel`,
-  `idle_timeout`, `keep_alive`, `handshake_timeout`, `max_handshakes` with a Retry past half);
-  `quic_insecure`; a listener's certificate read again when its files change.
-- **Done when**: the e2e tests over WebSocket, WebSocket over TLS and QUIC pass, and against
-  fit's hub, node and proxy.
+  path, a handshake bounded by 10 s, the link's bytes in binary messages of at most 1 MiB); the
+  hub's QUIC handshake bounds (`handshake_timeout`, `max_handshakes` with a Retry past half); a
+  listener's certificate read again when its files change.
+- **Waits on**: akio API request A236 (a WebSocket's reads held and its drain heard): without
+  them a WebSocket link can neither hold the peer nor resume its feeders (rules 8 and 9).
+- **Done when**: the e2e tests over WebSocket and WebSocket over TLS pass, and against fit's hub,
+  node and proxy.
 - **Touches**: `akit-tunnel`.
-- **fit**: `tunnel/internal/transport/ws`, `tunnel/internal/transport/quic`; I106, I160.
+- **fit**: `tunnel/internal/transport/ws`; I106, I160.
 - **Status**: todo.
 
 ### I103 Tunnel III: the hub's calls, token expiry, the console socket and web proxies
@@ -1621,6 +1638,7 @@ link with fit's (decision 038).
   sides proven; hello and the roles' rules; pools by peer ID, dial backoff, the heartbeat, the slow
   timeout and drain; over akio-ws, `ws://` on loopback and `wss://` with `pin` or `ca_file`; at
   most 256 links not authenticated, 16 from one address.
+- **Waits on**: akio API request A236, as I102c: the mesh's links are WebSockets.
 - **Done when**: fit's `wire` and `mesh` tests pass ported (credit, a slow reader holding its own
   stream only, cancel, idle, ping and slow timeout, drain, hello refusals, tokens and passwords).
 - **Touches**: `akit-llm` (new).

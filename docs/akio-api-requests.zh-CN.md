@@ -103,6 +103,7 @@
 | A233 | 关闭终端回显（原始模式）以读取密码 | 已提出（I89）：在此之前密码按输入显示，提示中说明 | 14 | I89 |
 | A234 | 单个连接自己的发送队列上限，可高于或低于引擎的 `max_queued_bytes` | 已提出（I101）：在此之前链路在超过 8 MiB 时压住喂给它的一方 | 8, 11 | I101, I104 |
 | A235 | 在握手中按 SHA-256（pin）检查服务器证书、代替证书链和名称检查的客户端 TLS 配置 | 已提出（I102）：在此之前于握手完成后、发送任何字节前检查 | 1, 15 | I102, I104 |
+| A236 | 在 `WsSender` 上压住和恢复 WebSocket 的读取、得知其发送队列排空、取得对端地址（akio-ws 的客户端和 akio-http 的升级都要） | 已提出（I102c）：隧道的 WebSocket 链路和 LLM mesh 在等待它 | 8, 9 | I102c, I104 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -1851,3 +1852,27 @@ Go 的 `VerifyPeerCertificate` 配合 `InsecureSkipVerify`）：不匹配的证�
 
 **akit 如何使用。** 隧道的 TLS 链路（以及 I102b 的 QUIC 链路）和 LLM mesh 的 `wss://` 链路（I104）把 pin 交给客户端配置并立即
 启动链路，与 `ca_file` 时相同；`crate::tls::when_handshaken` 随之去掉。
+
+## A236 压住 WebSocket 的读取、得知其发送队列排空、取得对端地址
+
+**状态。** 由 I102c 提出（2026-11-27）。I102c（隧道的 `ws://` 和 `wss://` 链路）和 I104（LLM mesh，其链路是 WebSocket）在
+等待它。
+
+**问题。** 隧道链路和 LLM mesh 链路承载许多流，流的字节来自其他连接：链路的队列超过高水位时，喂给它的一方被压住，队列排空后
+恢复；链路交付的数据写不出去时（慢服务、hub 另一侧拥塞的链路），压住链路自己的读取，让对端的窗口停住它（规则 8 和 9；fit 的
+`transport.Conn` 在 WebSocket 链路上和 TCP 链路上一样有 `SetReadPaused` 和 `OnDrain`）。akio-ws 的 `WsSender` 只有
+`queued_bytes`：无法停止读取 WebSocket，队列排空时没有回调，也没有对端地址（hub 按地址的限制和访问策略需要它）。在其上的链路
+只能丢弃或轮询。
+
+**证据。** 在 akio `077a6710`（以及 akio main 的 `88618b83`）中，`akio-ws/src/session.rs` 的 `WsSender` 有 `send_*`、`ping`、
+`pong`、`close`、`subprotocol`、`is_open` 和 `queued_bytes`；`WsHandler` 有 `on_open`、`on_message`、`on_message_ref`、
+`on_pong` 和 `on_close`；akio-ws 和 akio-http 的升级胶水（`Context::upgrade_websocket`）都不对底层连接调用 `hold_reads` 或
+`on_drain`。
+
+**建议的 API。** 在 `WsSender` 上：`hold_reads(&self, hold: bool)`（TCP 或 TLS 上的 WebSocket 用连接的，HTTP/2 或 HTTP/3 上的
+用流的）、`on_drain(&self, f: impl FnOnce() + Send + 'static)`（队列为空时调用一次，如 `Conn::on_drain`）、
+`peer_addr(&self) -> Option<SocketAddr>`，以及 `set_relayed(&self, bool)`（边读边写的中继需要它，如 `Conn::set_relayed`）。
+或者 `WsHandler::on_drain(&mut self, ws: &WsSender)`，在超过水位的队列排空时调用。
+
+**akit 如何使用。** WebSocket 链路的 `Wire`（`akit_tunnel::link::Wire`）把 `hold_reads`、`on_drain`、`queued` 和 `peer` 映射到
+它们上，如 `ConnWire` 映射到 TCP 连接上那样；LLM mesh 的会话在某条流的读者慢过其窗口时压住链路的读取。

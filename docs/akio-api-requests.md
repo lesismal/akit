@@ -104,6 +104,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | A233 | A terminal's echo turned off (raw mode), to read a password | requested (I89): the password shown as typed meanwhile, the prompt says so | 14 | I89 |
 | A234 | A connection's own bound of the bytes queued for it, past the engine's `max_queued_bytes` or below it | requested (I101): a link holds what feeds it past 8 MiB meanwhile | 8, 11 | I101, I104 |
 | A235 | A client TLS configuration that checks the server's certificate by its SHA-256 (a pin) in the handshake, in place of the chain and name | requested (I102): checked once the handshake is done, before a byte is sent, meanwhile | 1, 15 | I102, I104 |
+| A236 | A WebSocket's reads held and resumed, its drain heard, and its peer's address, on `WsSender` (both akio-ws's client and akio-http's upgrade) | requested (I102c): the tunnel's WebSocket links and the LLM mesh wait for it | 8, 9 | I102c, I104 |
 
 ## A1 TCP listeners on a running engine
 
@@ -2304,3 +2305,35 @@ akio-tls's.
 **How akit would use it.** The tunnel's TLS links (and QUIC's, I102b) and the LLM mesh's `wss://`
 links (I104) give their pin to the client configuration and start the link at once, as with
 `ca_file`; `crate::tls::when_handshaken` goes.
+
+## A236 A WebSocket's reads held, its drain heard, and its peer's address
+
+**Status.** Requested by I102c (2026-11-27). I102c (the tunnel's `ws://` and `wss://` links) and
+I104 (the LLM mesh, whose links are WebSockets) wait for it.
+
+**Problem.** A tunnel link, and an LLM mesh link, carries many streams whose bytes come from
+other connections: when the link's queue passes its high water, what feeds it is held, and it
+resumes once the queue drains; when what the link delivers cannot be written on (a slow service,
+a congested link on the hub's other side), the link's own reads are held, so that the peer's
+window stops it (rules 8 and 9; fit's `transport.Conn` has `SetReadPaused` and an `OnDrain` on its
+WebSocket links as on its TCP ones). akio-ws's `WsSender` has `queued_bytes` and nothing else of
+the kind: no way to stop reading a WebSocket, no callback when its queue drains, no peer address
+(which the hub's bounds per address and its access policy need). A link on it could only drop or
+poll.
+
+**Evidence.** At akio `077a6710` (and akio's main at `88618b83`), `akio-ws/src/session.rs`'s
+`WsSender` has `send_*`, `ping`, `pong`, `close`, `subprotocol`, `is_open` and `queued_bytes`;
+`WsHandler` has `on_open`, `on_message`, `on_message_ref`, `on_pong` and `on_close`; nothing in
+akio-ws or in akio-http's upgrade glue (`Context::upgrade_websocket`) calls `hold_reads` or
+`on_drain` on the connection underneath.
+
+**Suggested API.** On `WsSender`: `hold_reads(&self, hold: bool)` (the connection's, for a
+WebSocket over TCP or TLS; the stream's for one over HTTP/2 or HTTP/3), `on_drain(&self, f: impl
+FnOnce() + Send + 'static)` (once its queue is empty, as `Conn::on_drain`), `peer_addr(&self) ->
+Option<SocketAddr>`, and `set_relayed(&self, bool)` (what a relay that writes as it reads needs,
+as `Conn::set_relayed`). Or `WsHandler::on_drain(&mut self, ws: &WsSender)`, called when a queue
+that passed a watermark drains.
+
+**How akit would use it.** A WebSocket link's `Wire` (`akit_tunnel::link::Wire`) maps `hold_reads`,
+`on_drain`, `queued` and `peer` onto them, as `ConnWire` does onto a TCP connection's; the LLM
+mesh's sessions hold a link's reads while a stream's reader is slow past its window.

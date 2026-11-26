@@ -137,7 +137,7 @@ routes:
 | `streaming` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
 | `sync` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
 | `telemetry` | [对象](#cfg-telemetry) |  |  |
-| `tunnel` | [对象](#cfg-tunnel) |  | **akit：**像 fit 一样读取并检查（I98）；`akit run` 在监听器的引擎上运行这三个角色（I101），其链路与 fit 的协议逐字节相同，使 akit 的 hub、node 和 proxy 能与 fit 的互连（决定 038）。目前链路只走 `tcp` 和 `tcp://`：`tls`、`wss`、`ws` 或 `quic` 的监听器或端点在角色应用时给出警告并被跳过，直到 I102。 |
+| `tunnel` | [对象](#cfg-tunnel) |  | **akit：**像 fit 一样读取并检查（I98）；`akit run` 在监听器的引擎上运行这三个角色（I101），其链路与 fit 的协议逐字节相同，使 akit 的 hub、node 和 proxy 能与 fit 的互连（决定 038）。链路走 `tcp`、`tls`（I102）和 `quic`（I102b）；`ws` 或 `wss` 的监听器或端点在角色应用时给出警告并被跳过，直到 I102c，它等待 akio API 请求 A236。 |
 | `upstreams` | [对象](#cfg-upstreams)的列表 |  |  |
 | `webrtc` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
 <!-- END GENERATED -->

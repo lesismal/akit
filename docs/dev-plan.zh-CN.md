@@ -86,7 +86,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 
 ## 索引
 
-状态：`todo`、`doing` 或 `done`。下一个可用的迭代编号是 I110（为日志路线和访问控制列表路线预留的 I84 和 I88 未使用；I95 和 I96 为控制台路线预留；I97 改名了 fit 的对外名字；I98–I109 和 I102b 是隧道与 LLM 路线）。
+状态：`todo`、`doing` 或 `done`。下一个可用的迭代编号是 I110（为日志路线和访问控制列表路线预留的 I84 和 I88 未使用；I95 和 I96 为控制台路线预留；I97 改名了 fit 的对外名字；I98–I109、I102b 和 I102c 是隧道与 LLM 路线）。
 
 | ID | 迭代 | 依赖 | 状态 |
 | --- | --- | --- | --- |
@@ -206,8 +206,9 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I100 | `akit run` 中的角色：在监听器的引擎上启动、迁移和停止；一个地址，一个服务器；Admin API 的 `/tokens` 和 `akit token` | I99, I27 | done |
 | I101 | 隧道 I：TCP 上的链路、注册和隧道 | I99, I100 | done |
 | I102 | 隧道 II：TLS 链路；pin；保存 hub 的证书 | I101 | done |
-| I102b | 隧道 II b：WebSocket 和 QUIC 链路 | I102 | todo |
-| I103 | 隧道 III：hub 的调用、token 过期、控制台套接字和 web 代理 | I102 | todo |
+| I102b | 隧道 II b：QUIC 链路 | I102 | done |
+| I102c | 隧道 II c：WebSocket 链路，等待 akio API 请求 A236 | I102b | todo |
+| I103 | 隧道 III：hub 的调用、token 过期、控制台套接字和 web 代理 | I102c | todo |
 | I104 | LLM I：mesh：帧、会话、带信用的流、握手、hello、连接池 | I99, I100 | todo |
 | I105 | LLM II：node：模型、检查、双向流式转发到上游的调用 | I104 | todo |
 | I106 | LLM III：hub：node 表、模型、选择和转发 | I105 | todo |
@@ -260,7 +261,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | WebSocket 与 gRPC 代理 | I49、I50 | 部分（2026-11-25，1 万个空闲 WebSocket，`bench/results/m1-2026-11-25-akio-fixes`：每个 4,452 字节，fit 5,916，nginx 22,275） | 否（I49 与 I50 已实现） | 对比 fit：经 akit 的 WebSocket 每秒消息数（小消息回显）与每秒字节数（大消息），来自 HTTP/1.1、h2 和 h3 客户端；每个打开的 WebSocket 的内存（空闲时，以及每个方向各有 64 KiB 待发时）；每秒握手数（生成密钥、上游连接离开连接池）；I50：对比 fit，每秒 gRPC 调用数（一元调用，h2c 与 h2 上游）与一个流上每个方向的每秒消息数。 |
 | TCP 和 UDP 代理、SNI 路由、单端口多协议 | I51–I53 | 否 | 否（I51–I53 已实现，未测） | 按 I51 的要求对比 fit 和 nginx 的 `stream`：TCP 吞吐（fit 的 `BenchmarkTCPProxy`，每次回显 256 KB，直连与经 akit 对比）、每秒连接数、每个空闲连接的内存；UDP 每秒数据报数与同时的会话数；10,000 个连接时每个服务在 akit 定时线程上的空闲扫描（akio A78 之前的权宜之计）；共享端口上协议嗅探的开销（I53）。I52：按 SNI 分流的监听器（拨号前读取并解析 ClientHello）与不分流的监听器每秒连接数的对比，以及接受时读 PROXY 头、向上游发送 PROXY 头时的情形；带与不带 `proxy_protocol` 的监听器上 HTTP/1.1 与 h2c 的请求速率，以及不带时 akio ADR-118 的开销（每个请求一次 `OnceLock::get`）。 |
 | eBPF sockmap 中转 | I51b | 否 | 否（I51b 已实现，未测） | 在基准主机上以 root（Linux 6.15+）运行，对比不带 `sockmap` 的同一监听器以及 fit：TCP 吞吐（fit 的 `BenchmarkTCPProxy`，每次回显 256 KB）和每 GB 的 CPU，每秒连接数（每个连接拼接的开销：两次 `TCP_INFO` 读取、映射表的两次插入和闸门），以及小回显的延迟；10,000 个已拼接连接时 akit 定时线程上的空闲扫描（每次扫描每个套接字三次系统调用），以及大量连接同时关闭时排空的轮询。 |
-| 隧道：hub、node、proxy | I101–I103 | 否 | 否（已实现，未测） | 对比 fit 的隧道（fit 的 hub 配 fit 的 node 和 proxy、akit 的三者、以及混合）：一条隧道、以及一条链路上 64 条隧道同时的每秒字节数，明文、`body_password` 密封以及（I102）经 TLS、WebSocket 和 QUIC；每秒打开的隧道数（proxy 的 accept、经 hub 的 `tunnel/open`、node 的拨号）；hub 转发每 GB 的 CPU；每条空闲隧道和每条链路的内存；一个慢服务压住一条隧道而链路上其他隧道照常进行（窗口和链路的高水位）。 |
+| 隧道：hub、node、proxy | I101–I103（I102b、I102c） | 否 | 否（已实现，未测） | 对比 fit 的隧道（fit 的 hub 配 fit 的 node 和 proxy、akit 的三者、以及混合）：一条隧道、以及一条链路上 64 条隧道同时的每秒字节数，明文、`body_password` 密封以及经 TLS（I102）、QUIC（I102b：流的发送缓冲作为链路的高水位、wire 的溢出队列）和 WebSocket（I102c）；每秒打开的隧道数（proxy 的 accept、经 hub 的 `tunnel/open`、node 的拨号）；hub 转发每 GB 的 CPU；每条空闲隧道和每条链路的内存；一个慢服务压住一条隧道而链路上其他隧道照常进行（窗口和链路的高水位）。 |
 | 正向代理：SOCKS 与 HTTP CONNECT | I55 | 否 | 否（已实现，未测） | 对比 fit（原始吞吐另对比 nginx 的 `stream`）：经 SOCKS5 隧道和 HTTP/1.1 CONNECT 隧道的每秒字节数（每次回显 256 KB，同 fit 的 `BenchmarkTCPProxy`），每秒建立的隧道数（握手、规则检查、在线程池上解析名字以及 `connected` 检查），每个空闲隧道的内存；共享端口上 SOCKS 的开销（akio-mux 的问候规则与 HTTP、TLS 并列）对比只有 HTTP；10,000 条隧道时 akio-socks 看门狗线程的开销（ADR-119 在其上增加了连接超时）。 |
 | 响应缓存 | I67、I68、I69 | 部分（2026-11-25，I76，`346ad8b`：基准框架的 `cache-hot` 和 `cache-zipf` 对照 nginx 和 fit，以及 1,000 个客户端的击穿，见 [M5 报告](../bench/results/m5-report-2026-11-25.zh-CN.md)） | 否 | I76 已测：经基准框架的内存命中（4 KiB；akit 第一，HTTP/1.1 上是 nginx 的 1.5 倍、h2c 上 6.2 倍，100,000 个路径时 1.75 倍，领先 fit 12% 到 23%），以及 1,000 个客户端请求一个冷键时只取一次源站。剩下的，对比 fit，按 I67 的实现：内存命中（4 KiB 与 1 MiB 消息体，HTTP/1.1 与 h2），经代理保存的未命中（旁路复制的流式消息体）对比仅代理，缓存直接放行的请求（POST、`no-store` 响应）对比无中间件的开销，大量键与单个热点键下分片锁的表现。I68：从磁盘读回的命中（64 KiB 与 1 MiB，大量并发下磁盘线程池的线程与队列），未命中率高到填满 `MAX_PENDING_WRITES` 时的磁盘写入，大量客户端对同一个键的惊群，开启锁与 `disable_lock` 两种情况（等待者的挂起与恢复、每次获取一个定时器），以及 stale-while-revalidate 的后台获取。akio ADR-116 的旁路：有旁路的流对比无旁路的流。I69：带标签响应（0 与 32 个标签）对比无标签响应的保存开销，以及服务期间对大 zone 按前缀和按标签清除（分片锁与磁盘索引锁的持有时间）。 |
 | FastCGI | I75 | 否 | 否（已实现，未测量） | 对比 fit 和 nginx 的 `fastcgi_pass`，经 TCP 和 Unix 域套接字连接 PHP-FPM（或立即应答的 FastCGI 应用）：小页面的每秒请求数与延迟，HTTP/1.1 与 h2；1 MiB 上传与 16 MiB 下载（每个进行中请求的内存，双向 64 KiB 水位线）；连接复用对比每个请求一个连接；客户端多于 `max_conns` 时连接池的队列；`try_files` 的开销（每个候选在 akio 逻辑线程池上一次 `stat`）对比不带它的路由；每秒大量请求时，handler 每 100 ms 在 akit 定时器线程（A45 的临时方案）上对其交换的巡检。 |
@@ -1355,14 +1356,28 @@ fit 的，使 akit 的角色能与 fit 的角色互连（决定 038）。
 - **fit**：`tunnel/internal/transport/tls.go`、`internal/certpin`；I106、I160。
 - **状态**：已完成（2026-11-27）。见进度日志。
 
-### I102b 隧道 II b：WebSocket 和 QUIC 链路
+### I102b 隧道 II b：QUIC 链路
+
+- **做什么**：`quic://` 链路（运行时绑定在监听器引擎上的 UDP 套接字上的 akio-quic，ALPN `fit-tunnel`，每个连接一条双向流，
+  以 fit 的版本字节开头，`idle_timeout` 和 `keep_alive`，hub 的链路数和握手数限制其连接数）；流的发送缓冲即链路的高水位，
+  超出的部分由链路的 wire 排队至多 24 MiB，在 akio-quic 的 `on_stream_writable` 时发出；`quic_insecure`；pin 的检查与
+  TLS 链路相同（A235）。
+- **完成标准**：基于 QUIC 的端到端测试通过（pin、`quic_insecure`、错误的 pin 打不开任何隧道、超过流缓冲的传输、同时多条隧道）；
+  fit 的 hub 与 akit 的 node 和 proxy、以及反过来，用 pin 通过 QUIC 互连。
+- **涉及**：`akit-tunnel`（`quic`、`hub`、`uplink`）。
+- **fit**：`tunnel/internal/transport/quic`；I106、I160。
+- **状态**：已完成（2026-11-27）。见进度日志。
+
+### I102c 隧道 II c：WebSocket 链路
 
 - **做什么**：`wss://` 和 `ws://` 链路（akio-ws：hub 默认路径 `/tunnel`，其他路径回 404，握手限 10 秒，链路的字节放在每条至多
-  1 MiB 的二进制消息中）以及 `quic://` 链路（监听器引擎 UDP 绑定上的 akio-quic，ALPN `fit-tunnel`，`idle_timeout`、
-  `keep_alive`、`handshake_timeout`、`max_handshakes`，超过一半时用 Retry）；`quic_insecure`；监听器的证书文件变化时重新读取。
-- **完成标准**：基于 WebSocket、TLS 上的 WebSocket 和 QUIC 的端到端测试通过，并能与 fit 的 hub、node 和 proxy 互连。
+  1 MiB 的二进制消息中）；hub 的 QUIC 握手限制（`handshake_timeout`、`max_handshakes`，超过一半时用 Retry）；监听器的证书文件
+  变化时重新读取。
+- **等待**：akio API 请求 A236（压住 WebSocket 的读取、得知其发送队列排空）：没有它们，WebSocket 链路既压不住对端，也无法让
+  喂给它的一方恢复（规则 8 和 9）。
+- **完成标准**：基于 WebSocket 和 TLS 上的 WebSocket 的端到端测试通过，并能与 fit 的 hub、node 和 proxy 互连。
 - **涉及**：`akit-tunnel`。
-- **fit**：`tunnel/internal/transport/ws`、`tunnel/internal/transport/quic`；I106、I160。
+- **fit**：`tunnel/internal/transport/ws`；I106、I160。
 - **状态**：todo。
 
 ### I103 隧道 III：hub 的调用、token 过期、控制台套接字和 web 代理
@@ -1381,6 +1396,7 @@ fit 的，使 akit 的角色能与 fit 的角色互连（决定 038）。
   按序的推送（最多 1,024 个排队）、每个方向 256 KiB 窗口的流；用 token 或角色密码的握手，双方都给出证明；hello 和角色规则；
   按对端 ID 的连接池、拨号退避、心跳、慢超时和排空；基于 akio-ws，回环上用 `ws://`，带 `pin` 或 `ca_file` 时用 `wss://`；
   最多 256 条未认证链路，单个地址 16 条。
+- **等待**：akio API 请求 A236，与 I102c 相同：网格的链路是 WebSocket。
 - **完成标准**：移植后的 fit `wire` 和 `mesh` 测试通过（信用、慢读者只阻塞自己的流、取消、空闲、ping 和慢超时、排空、hello
   拒绝、token 和密码）。
 - **涉及**：`akit-llm`（新）。
