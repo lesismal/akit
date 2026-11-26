@@ -127,8 +127,8 @@
       "zh": "文件变化时重新读取，与 `admin.cert_file` 相同（I94）：续期的证书无需重启即提供给新连接；fit 只在启动时读取。"
     },
     "tunnel": {
-      "en": "Read and checked as fit's (I98); `akit run` runs the three roles (I101) on the listeners' engine, their links speaking fit's protocol byte for byte, so that akit's hub, nodes and proxies link with fit's (decision 038). Links go over `tcp`, `tls` (I102), `quic` (I102b), and `ws` and `wss` (I102c, on akio-ws).",
-      "zh": "像 fit 一样读取并检查（I98）；`akit run` 在监听器的引擎上运行这三个角色（I101），其链路与 fit 的协议逐字节相同，使 akit 的 hub、node 和 proxy 能与 fit 的互连（决定 038）。链路走 `tcp`、`tls`（I102）、`quic`（I102b），以及 `ws` 和 `wss`（I102c，基于 akio-ws）。"
+      "en": "Read and checked as fit's (I98); `akit run` runs the three roles (I101) on the listeners' engine, their links speaking fit's protocol byte for byte, so that akit's hub, nodes and proxies link with fit's (decision 038). Links go over `tcp`, `tls` (I102), `quic` (I102b), and `ws` and `wss` (I102c, on akio-ws). A hub's `console_socket` and a proxy's `web_proxies` speak fit's sealed WebSocket (I103b).",
+      "zh": "像 fit 一样读取并检查（I98）；`akit run` 在监听器的引擎上运行这三个角色（I101），其链路与 fit 的协议逐字节相同，使 akit 的 hub、node 和 proxy 能与 fit 的互连（决定 038）。链路走 `tcp`、`tls`（I102）、`quic`（I102b），以及 `ws` 和 `wss`（I102c，基于 akio-ws）。hub 的 `console_socket` 和 proxy 的 `web_proxies` 使用 fit 的密封 WebSocket（I103b）。"
     },
     "llm": {
       "en": "Read and checked as fit's (I98). `akit run` refuses a config that sets a role until the LLM iterations run it (I104–I109).",
@@ -153,6 +153,26 @@
     "llm.proxy.peers[].token": {
       "en": "akit's tokens are `akitt1.<id>.<secret>` (decision 037); a token fit issued (`fitt1.`) is written with akit's prefix, its ID and secret unchanged (decision 038).",
       "zh": "akit 的 token 形如 `akitt1.<id>.<secret>`（决定 037）；fit 签发的 token（`fitt1.`）写成 akit 的前缀，其 ID 和 secret 不变（决定 038）。"
+    },
+    "tunnel.hub.console": {
+      "en": "`akit run` refuses it until I109 serves the roles' pages; `akit validate` checks it. With it, the hub's `console_socket`, which carries the pages.",
+      "zh": "在 I109 提供角色页面之前 `akit run` 拒绝它；`akit validate` 会检查它。hub 的 `console_socket` 承载这些页面，因此随之被拒绝。"
+    },
+    "tunnel.node.console": {
+      "en": "`akit run` refuses it until I109 serves the roles' pages; `akit validate` checks it.",
+      "zh": "在 I109 提供角色页面之前 `akit run` 拒绝它；`akit validate` 会检查它。"
+    },
+    "tunnel.proxy.console": {
+      "en": "`akit run` refuses it until I109 serves the roles' pages; `akit validate` checks it.",
+      "zh": "在 I109 提供角色页面之前 `akit run` 拒绝它；`akit validate` 会检查它。"
+    },
+    "tunnel.hub.console_socket": {
+      "en": "fit's sealed WebSocket byte for byte (I103b): fit's proxies' web proxies reach akit's hub, and akit's fit's. It dials the hub's `console.address`, which `akit run` refuses until I109 serves the pages there. A WebSocket refused or failed gets a close frame where fit aborts it (akio API request A238).",
+      "zh": "逐字节等同 fit 的密封 WebSocket（I103b）：fit 的 proxy 的 web 代理可连到 akit 的 hub，akit 的也可连到 fit 的。它拨向 hub 的 `console.address`，而在 I109 在那里提供页面之前 `akit run` 拒绝该字段。被拒绝或失败的 WebSocket 收到关闭帧，而 fit 直接中止（akio API 请求 A238）。"
+    },
+    "tunnel.proxy.web_proxies": {
+      "en": "Run by `akit run` (I103b), sealed as fit's: they serve the consoles of fit's hubs as of akit's. Their WebSockets say `User-Agent: akit`.",
+      "zh": "由 `akit run` 运行（I103b），密封方式同 fit：既可提供 fit 的 hub 的控制台，也可提供 akit 的。其 WebSocket 发送 `User-Agent: akit`。"
     }
   }
 }

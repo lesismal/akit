@@ -1,0 +1,282 @@
+//! fit's `tunnel/proxy/webproxy_test.go`, ported (I103b).
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects
+)]
+
+use std::io::{Read, Write};
+use std::net::TcpStream;
+use std::sync::mpsc::{Receiver, Sender, channel};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+use akio_http::ws::{MessageRef, WsHandler, WsSender};
+
+use crate::proxy::ProxyApi;
+use crate::testutil::{Env, HASH, PAGE_MARK, free_port, page_console, read_to_end, wait_for};
+use crate::wscrypt::{Secret, Session};
+
+/// Gets `/` through the web proxy on `port`, on a connection of its own: the status line's code,
+/// or 0 when nothing came back.
+fn proxy_get(port: u16) -> (u16, String) {
+    let Ok(mut s) = TcpStream::connect(("127.0.0.1", port)) else {
+        return (0, String::new());
+    };
+    let _ = s.write_all(b"GET / HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n");
+    let got = String::from_utf8_lossy(&read_to_end(&mut s)).into_owned();
+    let code = got
+        .strip_prefix("HTTP/1.1 ")
+        .and_then(|r| r.get(..3))
+        .and_then(|c| c.parse().ok())
+        .unwrap_or(0);
+    (code, got)
+}
+
+/// Dials `port` and expects the connection closed without a byte.
+fn closed_soon(port: u16) {
+    let mut s = TcpStream::connect(("127.0.0.1", port)).unwrap();
+    s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+    match s.read(&mut [0u8; 1]) {
+        Ok(0) => {}
+        Err(e)
+            if e.kind() != std::io::ErrorKind::WouldBlock
+                && e.kind() != std::io::ErrorKind::TimedOut => {}
+        r => panic!("{port}: {r:?}"),
+    }
+}
+
+fn web_proxies(env: &Env) -> Vec<super::WebProxyView> {
+    let api = env.roles.api("tunnel.proxy").unwrap();
+    api.downcast_ref::<ProxyApi>().unwrap().web_proxies()
+}
+
+fn doc(console: u16, sock: u16, proxies: &str) -> String {
+    format!(
+        r#"{{"tunnel": {{
+          "hub": {{"name": "hub", "password": "pw", "console": {{"address": "127.0.0.1:{console}", "users": [{{"username": "admin", "password_hash": "{HASH}"}}]}},
+                   "console_socket": {{"address": "127.0.0.1:{sock}", "password": "sock"}}}},
+          "proxy": {{"name": "me", "web_proxies": [{proxies}]}}}}}}"#
+    )
+}
+
+/// fit's `TestWebProxy`: a web proxy serves the hub's pages, takes a new password and a new limit
+/// for the connections it accepts from then on, and closes its connections when it is removed.
+#[test]
+fn web_proxy() {
+    let (con, sock, port) = (page_console(), free_port(), free_port());
+    let pm = |password: &str, conns: usize| {
+        format!(
+            r#"{{"name": "hub", "listen": "127.0.0.1:{port}", "url": "ws://127.0.0.1:{sock}/", "password": "{password}", "max_conns": {conns}}}"#
+        )
+    };
+    let mut env = Env::start(&[crate::HUB, crate::PROXY], &doc(con, sock, &pm("sock", 0)));
+    let (code, body) = proxy_get(port);
+    assert_eq!(code, 200, "{body}");
+    assert!(body.contains(PAGE_MARK), "the page: {body}");
+    let v = web_proxies(&env);
+    assert_eq!(v.len(), 1);
+    assert_eq!(v[0].name, "hub");
+    assert_eq!(v[0].addr, format!("127.0.0.1:{port}"));
+    assert_eq!(v[0].error, "");
+
+    // Another password: the hub opens nothing the proxy sends.
+    env.apply(&doc(con, sock, &pm("wrong", 0)));
+    let (code, _) = proxy_get(port);
+    assert_eq!(code, 0, "a wrong password got an answer");
+
+    // One connection at most: a second is closed at once.
+    env.apply(&doc(con, sock, &pm("sock", 1)));
+    let mut first = TcpStream::connect(("127.0.0.1", port)).unwrap();
+    wait_for("the first connection", || {
+        let v = web_proxies(&env);
+        v.len() == 1 && v[0].conns == 1
+    });
+    closed_soon(port);
+
+    // Removed, it closes the connection it has.
+    env.apply(&doc(con, sock, ""));
+    first
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .unwrap();
+    assert!(
+        matches!(first.read(&mut [0u8; 1]), Ok(0) | Err(_)),
+        "the connection of a removed proxy"
+    );
+    assert!(web_proxies(&env).is_empty());
+
+    // A socket nothing listens on: each connection is closed.
+    let nowhere = free_port();
+    env.apply(&doc(
+        con,
+        sock,
+        &format!(
+            r#"{{"listen": "127.0.0.1:{port}", "url": "ws://127.0.0.1:{nowhere}/", "password": "sock"}}"#
+        ),
+    ));
+    closed_soon(port);
+}
+
+/// fit's `TestWebProxyBadURL`: a web proxy whose URL cannot be dialed closes each connection.
+#[test]
+fn bad_url() {
+    let port = free_port();
+    let env = Env::start(
+        &[crate::PROXY],
+        &format!(
+            r#"{{"tunnel": {{"proxy": {{"name": "me", "web_proxies": [{{"listen": "127.0.0.1:{port}", "url": "ws://127.0.0.1:1/", "password": "p"}}]}}}}}}"#
+        ),
+    );
+    closed_soon(port);
+    drop(env);
+}
+
+/// What a WebSocket server of the test's own hears.
+enum Event {
+    Open(WsSender),
+    Msg(Vec<u8>),
+    Close,
+}
+
+struct Recorder(Sender<Event>);
+
+impl WsHandler for Recorder {
+    fn on_open(&mut self, ws: &WsSender) {
+        let _ = self.0.send(Event::Open(ws.clone()));
+    }
+    fn on_message_ref(&mut self, _ws: &WsSender, msg: MessageRef<'_>) {
+        let _ = self.0.send(Event::Msg(msg.as_bytes().to_vec()));
+    }
+    fn on_close(&mut self, _code: Option<u16>, _reason: &str) {
+        let _ = self.0.send(Event::Close);
+    }
+}
+
+/// A WebSocket server of the test's own on `engine`, in place of a hub's console socket: its
+/// port, and what it hears.
+fn ws_server(engine: &Arc<akio::Engine>) -> (u16, Receiver<Event>) {
+    let (tx, rx) = channel();
+    let tx = Mutex::new(tx);
+    let svc = move |ctx: &mut akio_http::Context| {
+        let h = Recorder(tx.lock().unwrap().clone());
+        ctx.upgrade_websocket(h, &akio_http::WsOptions::default());
+    };
+    let id = engine
+        .add_listener(
+            akio::Listener::tcp("127.0.0.1:0".parse().unwrap())
+                .threads(1)
+                .serve(akio_http::serve_with(crate::ws::http_config(), svc)),
+        )
+        .unwrap();
+    let port = engine
+        .listeners()
+        .iter()
+        .find(|i| i.id == id)
+        .unwrap()
+        .local_addr
+        .port();
+    (port, rx)
+}
+
+fn next(rx: &Receiver<Event>) -> Event {
+    rx.recv_timeout(Duration::from_secs(10))
+        .expect("timed out waiting for the server")
+}
+
+fn open(rx: &Receiver<Event>) -> WsSender {
+    match next(rx) {
+        Event::Open(ws) => ws,
+        _ => panic!("not an open"),
+    }
+}
+
+fn msg(rx: &Receiver<Event>) -> Vec<u8> {
+    match next(rx) {
+        Event::Msg(m) => m,
+        _ => panic!("not a message"),
+    }
+}
+
+fn closed(rx: &Receiver<Event>) {
+    loop {
+        if let Event::Close = next(rx) {
+            return;
+        }
+    }
+}
+
+fn proxy_to(port: u16, ws: u16) -> String {
+    format!(
+        r#"{{"tunnel": {{"proxy": {{"name": "me", "web_proxies": [{{"listen": "127.0.0.1:{port}", "url": "ws://127.0.0.1:{ws}/", "password": "sock"}}]}}}}}}"#
+    )
+}
+
+/// fit's `TestProxyConnSession`: what the local connection sends before the session is up waits
+/// for it, and then goes sealed, in order, after the proof of the password; what the socket sends
+/// is opened, and one message that does not open ends it, and the local connection with it.
+#[test]
+fn conn_session() {
+    let port = free_port();
+    let engine = Arc::new(akio::Engine::builder().client_threads(2).build().unwrap());
+    engine.start().unwrap();
+    let (ws_port, rx) = ws_server(&engine);
+    let env = Env::start(&[crate::PROXY], &proxy_to(port, ws_port));
+    let secret = Secret::new("sock");
+
+    let mut local = TcpStream::connect(("127.0.0.1", port)).unwrap();
+    local
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .unwrap();
+    local.write_all(b"early").unwrap();
+    let ws = open(&rx);
+    let server_hello = crate::wscrypt::hello();
+    ws.send_binary(&server_hello).unwrap();
+    let client_hello = msg(&rx);
+    let mut srv = Session::new(&secret, &server_hello, &client_hello, true).unwrap();
+    // The proof of the password comes first: an empty message.
+    assert_eq!(srv.open(&msg(&rx)).unwrap(), b"");
+    assert_eq!(srv.open(&msg(&rx)).unwrap(), b"early");
+    local.write_all(b"later").unwrap();
+    assert_eq!(srv.open(&msg(&rx)).unwrap(), b"later");
+
+    ws.send_binary(&srv.seal(b"reply")).unwrap();
+    let mut got = [0u8; 5];
+    local.read_exact(&mut got).unwrap();
+    assert_eq!(&got, b"reply");
+    ws.send_binary(b"not sealed").unwrap();
+    closed(&rx);
+    assert_eq!(read_to_end(&mut local), b"");
+    drop(env);
+    engine.shutdown();
+    engine.wait();
+}
+
+/// fit's `TestProxyConnClosed`: a local connection that closes before its session is up closes the
+/// WebSocket (once its reads, held until then, see its end); a hello that is not one ends the
+/// socket, and the local connection.
+#[test]
+fn conn_closed() {
+    let port = free_port();
+    let engine = Arc::new(akio::Engine::builder().client_threads(2).build().unwrap());
+    engine.start().unwrap();
+    let (ws_port, rx) = ws_server(&engine);
+    let env = Env::start(&[crate::PROXY], &proxy_to(port, ws_port));
+
+    let local = TcpStream::connect(("127.0.0.1", port)).unwrap();
+    drop(local);
+    // Its reads held, the local connection's end is read once the session is up.
+    let ws = open(&rx);
+    ws.send_binary(&crate::wscrypt::hello()).unwrap();
+    closed(&rx);
+    wait_for("the connection to go", || web_proxies(&env)[0].conns == 0);
+    let mut local = TcpStream::connect(("127.0.0.1", port)).unwrap();
+    let ws = open(&rx);
+    ws.send_binary(b"short").unwrap();
+    closed(&rx);
+    assert_eq!(read_to_end(&mut local), b"");
+    drop(env);
+    engine.shutdown();
+    engine.wait();
+}

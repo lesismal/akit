@@ -212,7 +212,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I102c | 隧道 II c：WebSocket 链路 | I102b | done |
 | I102d | 隧道 II d：hub 的 QUIC 握手限制；监听器的证书文件变化时重新读取 | I102c | todo |
 | I103 | 隧道 III：hub 的调用和状态、token 过期 | I102c | done |
-| I103b | 隧道 III b：控制台套接字和 web 代理 | I103 | todo |
+| I103b | 隧道 III b：控制台套接字和 web 代理 | I103 | done |
 | I104 | LLM I：mesh：帧、会话、带信用的流、握手、hello、连接池 | I99, I100 | done |
 | I105 | LLM II：node：模型、检查、双向流式转发到上游的调用 | I104 | done |
 | I106 | LLM III：hub：node 表、模型、选择和转发 | I105 | done |
@@ -268,7 +268,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | eBPF sockmap 中转 | I51b | 否 | 否（I51b 已实现，未测） | 在基准主机上以 root（Linux 6.15+）运行，对比不带 `sockmap` 的同一监听器以及 fit：TCP 吞吐（fit 的 `BenchmarkTCPProxy`，每次回显 256 KB）和每 GB 的 CPU，每秒连接数（每个连接拼接的开销：两次 `TCP_INFO` 读取、映射表的两次插入和闸门），以及小回显的延迟；10,000 个已拼接连接时 akit 定时线程上的空闲扫描（每次扫描每个套接字三次系统调用），以及大量连接同时关闭时排空的轮询。 |
 | LLM 角色：hub、node、proxy | I105–I107 | 否 | 否（已实现，未测） | 对比 fit 的角色（fit 对 fit、akit 对 akit、以及混合），以 OpenAI 兼容的桩作上游：经 proxy → hub → node → 上游每秒的调用数，小正文和 3 MiB 正文（超过 1 MiB 时流式传输）；流式回答的首字节与各事件的延迟；256 个调用同时进行；hub 每转发一个调用的 CPU；每个角色上每个进行中调用的内存；一个慢 agent 只压住自己的调用。 |
 | LLM mesh | I104 | 否 | 否（已实现，未测） | 对比 fit 的 mesh（fit 对 fit、akit 对 akit、以及混合）：一条链路上和一组链路上每秒的调用数；一条链路上 256 KiB 窗口下单个流每秒的字节数，以及 64 个流同时；一个慢读者只压住自己的流而链路上其他流照常进行（窗口，以及链路的 64 KiB 高水位及其暂停的读取）；1 KiB 以上帧的 gzip 每帧 CPU；每条空闲链路和每个流的内存。 |
-| 隧道：hub、node、proxy | I101–I103（I102b、I102c） | 否 | 否（已实现，未测） | 对比 fit 的隧道（fit 的 hub 配 fit 的 node 和 proxy、akit 的三者、以及混合）：一条隧道、以及一条链路上 64 条隧道同时的每秒字节数，明文、`body_password` 密封以及经 TLS（I102）、QUIC（I102b：流的发送缓冲和 wire 的溢出队列，合起来是 `LINK_QUEUE`）和 WebSocket（I102c）；每秒打开的隧道数（proxy 的 accept、经 hub 的 `tunnel/open`、node 的拨号）；hub 转发每 GB 的 CPU；每条空闲隧道和每条链路的内存；一个慢服务压住一条隧道而链路上其他隧道照常进行（只由窗口调节链路，其队列上限为 fit 的 `LinkQueue`，A234）。 |
+| 隧道：hub、node、proxy | I101–I103（I102b、I102c、I103b） | 否 | 否（已实现，未测） | 对比 fit 的隧道（fit 的 hub 配 fit 的 node 和 proxy、akit 的三者、以及混合）：一条隧道、以及一条链路上 64 条隧道同时的每秒字节数，明文、`body_password` 密封以及经 TLS（I102）、QUIC（I102b：流的发送缓冲和 wire 的溢出队列，合起来是 `LINK_QUEUE`）和 WebSocket（I102c）；每秒打开的隧道数（proxy 的 accept、经 hub 的 `tunnel/open`、node 的拨号）；hub 转发每 GB 的 CPU；每条空闲隧道和每条链路的内存；一个慢服务压住一条隧道而链路上其他隧道照常进行（只由窗口调节链路，其队列上限为 fit 的 `LinkQueue`，A234）；I103b：经 web 代理和 hub 控制台套接字的每秒字节数（双向密封，每条消息 64 KiB），对比 fit，以及 hub 每 GB 的 CPU。 |
 | 正向代理：SOCKS 与 HTTP CONNECT | I55 | 否 | 否（已实现，未测） | 对比 fit（原始吞吐另对比 nginx 的 `stream`）：经 SOCKS5 隧道和 HTTP/1.1 CONNECT 隧道的每秒字节数（每次回显 256 KB，同 fit 的 `BenchmarkTCPProxy`），每秒建立的隧道数（握手、规则检查、在线程池上解析名字以及 `connected` 检查），每个空闲隧道的内存；共享端口上 SOCKS 的开销（akio-mux 的问候规则与 HTTP、TLS 并列）对比只有 HTTP；10,000 条隧道时 akio-socks 看门狗线程的开销（ADR-119 在其上增加了连接超时）。 |
 | 响应缓存 | I67、I68、I69 | 部分（2026-11-25，I76，`346ad8b`：基准框架的 `cache-hot` 和 `cache-zipf` 对照 nginx 和 fit，以及 1,000 个客户端的击穿，见 [M5 报告](../bench/results/m5-report-2026-11-25.zh-CN.md)） | 否 | I76 已测：经基准框架的内存命中（4 KiB；akit 第一，HTTP/1.1 上是 nginx 的 1.5 倍、h2c 上 6.2 倍，100,000 个路径时 1.75 倍，领先 fit 12% 到 23%），以及 1,000 个客户端请求一个冷键时只取一次源站。剩下的，对比 fit，按 I67 的实现：内存命中（4 KiB 与 1 MiB 消息体，HTTP/1.1 与 h2），经代理保存的未命中（旁路复制的流式消息体）对比仅代理，缓存直接放行的请求（POST、`no-store` 响应）对比无中间件的开销，大量键与单个热点键下分片锁的表现。I68：从磁盘读回的命中（64 KiB 与 1 MiB，大量并发下磁盘线程池的线程与队列），未命中率高到填满 `MAX_PENDING_WRITES` 时的磁盘写入，大量客户端对同一个键的惊群，开启锁与 `disable_lock` 两种情况（等待者的挂起与恢复、每次获取一个定时器），以及 stale-while-revalidate 的后台获取。akio ADR-116 的旁路：有旁路的流对比无旁路的流。I69：带标签响应（0 与 32 个标签）对比无标签响应的保存开销，以及服务期间对大 zone 按前缀和按标签清除（分片锁与磁盘索引锁的持有时间）。 |
 | FastCGI | I75 | 否 | 否（已实现，未测量） | 对比 fit 和 nginx 的 `fastcgi_pass`，经 TCP 和 Unix 域套接字连接 PHP-FPM（或立即应答的 FastCGI 应用）：小页面的每秒请求数与延迟，HTTP/1.1 与 h2；1 MiB 上传与 16 MiB 下载（每个进行中请求的内存，双向 64 KiB 水位线）；连接复用对比每个请求一个连接；客户端多于 `max_conns` 时连接池的队列；`try_files` 的开销（每个候选在 akio 逻辑线程池上一次 `stat`）对比不带它的路由；每秒大量请求时，handler 每 100 ms 在 akit 定时器线程（A45 的临时方案）上对其交换的巡检。 |
@@ -1442,7 +1442,8 @@ fit 的，使 akit 的角色能与 fit 的角色互连（决定 038）。
   hub 和 proxy。
 - **涉及**：`akit-tunnel`。
 - **fit**：`tunnel/hub/socket.go`、`tunnel/proxy/webproxy.go`、`tunnel/internal/wscrypt`。套接字承载的控制台是 hub 的页面（I109）。
-- **状态**：todo。
+- **状态**：done（2026-11-27）。见进度日志。在 I109 提供套接字承载的页面之前，`akit run` 拒绝各角色的 `console`，因而也拒绝
+  hub 的 `console_socket`。
 
 ### I104 LLM I：网状链路（mesh）
 

@@ -1,6 +1,7 @@
 //! `tunnel.proxy` (fit's `tunnel/proxy`): it links to its hubs, learns their nodes and services,
 //! and listens on a local address per forward, each connection there a tunnel through a hub to a
-//! node's service. A connection is not read until its tunnel is open.
+//! node's service. A connection is not read until its tunnel is open. Its web proxies (I103b,
+//! [`web`]) serve hubs' console pages through their console sockets.
 
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
@@ -16,6 +17,9 @@ use crate::end::{EndHandler, Limit, Table};
 use crate::link::{Link, Responder, Router};
 use crate::msg::{self, Info, MAX_TUNNELS_PER_LINK, TunnelOpenReq, method};
 use crate::uplink::{Owner, Uplink};
+
+pub mod web;
+pub use web::WebProxyView;
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(PoisonError::into_inner)
@@ -71,6 +75,8 @@ pub(crate) struct ProxyCore {
     nodes: Mutex<HashMap<String, Vec<Info>>>,
     forwards: Mutex<Vec<Forward>>,
     access: Mutex<Option<Arc<akit_access::Policy>>>,
+    /// The web proxies (I103b).
+    webs: web::WebProxies,
     me: Weak<ProxyCore>,
 }
 
@@ -280,6 +286,7 @@ pub fn new(host: Host) -> Result<Box<dyn Role>, String> {
         nodes: Mutex::new(HashMap::new()),
         forwards: Mutex::new(Vec::new()),
         access: Mutex::new(None),
+        webs: web::WebProxies::default(),
         me: me.clone(),
     });
     sweep(&core);
@@ -375,7 +382,11 @@ impl Role for Proxy {
             Err(e) => errs.push(e),
         }
         c.limit.set_max(cfg.tunnels());
-        let (hubs, forwards) = (cfg.hubs.clone(), cfg.forwards.clone());
+        let (hubs, forwards, webs) = (
+            cfg.hubs.clone(),
+            cfg.forwards.clone(),
+            cfg.web_proxies.clone(),
+        );
         *lock(&c.cfg) = cfg;
         let owner: Weak<dyn Owner> = c.me.clone();
         let router: Arc<dyn Router> = Arc::new(ProxyRouter(c.me.clone()));
@@ -391,6 +402,8 @@ impl Role for Proxy {
             ));
         }
         errs.extend(self.move_forwards(&forwards));
+        let access = lock(&c.access).clone();
+        errs.extend(c.webs.apply(&c.host.engine, &webs, access.as_ref()));
         if errs.is_empty() {
             Ok(())
         } else {
@@ -406,7 +419,31 @@ impl Role for Proxy {
         for u in lock(&c.uplinks).drain(..) {
             u.stop();
         }
+        c.webs.stop();
         c.table.close_all("the proxy stopped");
+    }
+
+    fn api(&self) -> Option<akit_roles::host::Api> {
+        Some(Arc::new(ProxyApi(Arc::clone(&self.core))))
+    }
+}
+
+/// The proxy's handle for its pages (`Role::api`): what they show of it.
+#[derive(Clone)]
+pub struct ProxyApi(Arc<ProxyCore>);
+
+impl std::fmt::Debug for ProxyApi {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ProxyApi").finish_non_exhaustive()
+    }
+}
+
+impl ProxyApi {
+    /// The proxy's web proxies (I103b, fit's `WebProxies`): where each listens or why it does
+    /// not, and its connections open.
+    #[must_use]
+    pub fn web_proxies(&self) -> Vec<WebProxyView> {
+        self.0.webs.views()
     }
 }
 

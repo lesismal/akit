@@ -277,6 +277,7 @@ impl HubApi {
             .bool("has_password", !cfg.password.is_empty())
             .bool("has_body_password", !cfg.body_password.is_empty());
         let socket = cfg.console_socket.as_ref();
+        let socket_at = c.socket_addr().map(|a| a.to_string()).unwrap_or_default();
         settings = settings
             .bool(
                 "has_socket_password",
@@ -289,6 +290,7 @@ impl HubApi {
             .raw("listen", &msg::array(&listen, |u| msg::json_string(u)))
             .raw("listeners", &msg::array(&listeners, Clone::clone))
             .raw("settings", &settings.end())
+            .str_omit("socket", &socket_at)
             .str("fingerprint", &fp)
             .str("quic_fingerprint", &fp)
             .bool("body_encrypted", !cfg.body_password.is_empty())
@@ -310,6 +312,12 @@ impl HubApi {
         let mut v = self.0.password_peers();
         v.sort();
         v
+    }
+
+    /// Where the console socket listens (I103b, fit's `SocketAddr`), or `None` without one.
+    #[must_use]
+    pub fn socket_addr(&self) -> Option<std::net::SocketAddr> {
+        self.0.socket_addr()
     }
 
     /// The ID of the registered peer `kind/name`.

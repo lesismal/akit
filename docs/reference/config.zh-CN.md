@@ -137,7 +137,7 @@ routes:
 | `streaming` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
 | `sync` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
 | `telemetry` | [对象](#cfg-telemetry) |  |  |
-| `tunnel` | [对象](#cfg-tunnel) |  | **akit：**像 fit 一样读取并检查（I98）；`akit run` 在监听器的引擎上运行这三个角色（I101），其链路与 fit 的协议逐字节相同，使 akit 的 hub、node 和 proxy 能与 fit 的互连（决定 038）。链路走 `tcp`、`tls`（I102）、`quic`（I102b），以及 `ws` 和 `wss`（I102c，基于 akio-ws）。 |
+| `tunnel` | [对象](#cfg-tunnel) |  | **akit：**像 fit 一样读取并检查（I98）；`akit run` 在监听器的引擎上运行这三个角色（I101），其链路与 fit 的协议逐字节相同，使 akit 的 hub、node 和 proxy 能与 fit 的互连（决定 038）。链路走 `tcp`、`tls`（I102）、`quic`（I102b），以及 `ws` 和 `wss`（I102c，基于 akio-ws）。hub 的 `console_socket` 和 proxy 的 `web_proxies` 使用 fit 的密封 WebSocket（I103b）。 |
 | `upstreams` | [对象](#cfg-upstreams)的列表 |  |  |
 | `webrtc` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
 <!-- END GENERATED -->
@@ -1478,7 +1478,8 @@ node 和 proxy 主动连接的 hub（`tunnel.hub`）；位于其所能访问的 
 设置的每个角色，可以有网关路由，也可以没有。链路基于 `tls://`、`wss://` 或 `quic://`，hub 的证书由 `pin` 或 `ca_file`
 检查；`tcp://` 和 `ws://` 只能在回环地址上或带 `body_password` 使用。node 和 proxy 用 hub 签发的 token
 `akitt1.<id>.<secret>`（I99）注册，或者用已弃用的 hub 共享 `password`。akit 像 fit 一样读取并检查这些角色（I98）；
-`akit run` 由 I100–I103 运行它们，在此之前拒绝设置了角色的配置。
+`akit run` 运行它们（I100–I103b），hub 的 `console_socket` 和 proxy 的 `web_proxies` 使用 fit 的密封 WebSocket；
+在 I109 提供角色页面之前，`akit run` 拒绝各角色的 `console`（以及承载这些页面的 hub 的 `console_socket`）。
 
 ```fit
 tunnel {
@@ -1517,8 +1518,8 @@ tunnel {
 | `allow_proxy_services` | 布尔值 |  |  |
 | `body_password` | 字符串 |  |  |
 | `call_timeout` | 时长 | `"15s"` |  |
-| `console` | [对象](#cfg-tunnel-hub-console) |  |  |
-| `console_socket` | [对象](#cfg-tunnel-hub-console-socket) |  |  |
+| `console` | [对象](#cfg-tunnel-hub-console) |  | **akit：**在 I109 提供角色页面之前 `akit run` 拒绝它；`akit validate` 会检查它。hub 的 `console_socket` 承载这些页面，因此随之被拒绝。 |
+| `console_socket` | [对象](#cfg-tunnel-hub-console-socket) |  | **akit：**逐字节等同 fit 的密封 WebSocket（I103b）：fit 的 proxy 的 web 代理可连到 akit 的 hub，akit 的也可连到 fit 的。它拨向 hub 的 `console.address`，而在 I109 在那里提供页面之前 `akit run` 拒绝该字段。被拒绝或失败的 WebSocket 收到关闭帧，而 fit 直接中止（akio API 请求 A238）。 |
 | `listeners` | [对象](#cfg-tunnel-hub-listeners)的列表 |  |  |
 | `max_links` | 整数，≥ 0 | `1024` |  |
 | `max_links_per_peer` | 整数，≥ 0 | `128` |  |
@@ -1672,7 +1673,7 @@ tunnel {
 | 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
 | `allow_hub_services` | 布尔值 |  |  |
-| `console` | [对象](#cfg-tunnel-node-console) |  |  |
+| `console` | [对象](#cfg-tunnel-node-console) |  | **akit：**在 I109 提供角色页面之前 `akit run` 拒绝它；`akit validate` 会检查它。 |
 | `dial_timeout` | 时长 | `"5s"` |  |
 | `hubs` | [对象](#cfg-tunnel-node-hubs)的列表 |  |  |
 | `idle_timeout` | 时长 | `"2h"` |  |
@@ -1794,7 +1795,7 @@ tunnel {
 | 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
 | `access` | [对象](#cfg-tunnel-proxy-access) |  |  |
-| `console` | [对象](#cfg-tunnel-proxy-console) |  |  |
+| `console` | [对象](#cfg-tunnel-proxy-console) |  | **akit：**在 I109 提供角色页面之前 `akit run` 拒绝它；`akit validate` 会检查它。 |
 | `forwards` | [对象](#cfg-tunnel-proxy-forwards)的列表 |  |  |
 | `hubs` | [对象](#cfg-tunnel-proxy-hubs)的列表 |  |  |
 | `idle_timeout` | 时长 | `"2h"` |  |
@@ -1802,7 +1803,7 @@ tunnel {
 | `meta` | 值为字符串的映射 |  |  |
 | `name` | 字符串 |  |  |
 | `open_timeout` | 时长 | `"20s"` |  |
-| `web_proxies` | [对象](#cfg-tunnel-proxy-web-proxies)的列表 |  |  |
+| `web_proxies` | [对象](#cfg-tunnel-proxy-web-proxies)的列表 |  | **akit：**由 `akit run` 运行（I103b），密封方式同 fit：既可提供 fit 的 hub 的控制台，也可提供 akit 的。其 WebSocket 发送 `User-Agent: akit`。 |
 <!-- END GENERATED -->
 
 ### `tunnel.proxy.hubs[]`

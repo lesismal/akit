@@ -144,7 +144,7 @@ name every file on the command line (`-c` may be given again, or name a director
 | `streaming` | object |  | **Not supported yet**: refused by name. fit's streaming role, beside the gateway on its engine: one media hub where a stream is published once, over RTMP, RTSP, SRT or WHIP, and played over any of them, HTTP-FLV and HLS too, each listener and handler with its media_auth policy. None when left out. |
 | `sync` | object |  | **Not supported yet**: refused by name. fit's sync role: pipelines that read records from a source (a database's changes, files, a queue) and write them to sinks, each with a checkpoint saved only once every sink has acknowledged the records it covers, kept in state_dir. None when left out: no connections out and no state on disk. |
 | `telemetry` | [object](#cfg-telemetry) |  | OpenTelemetry: traces of requests, with W3C trace context sent on to upstreams, and metrics, exported over OTLP/HTTP to a collector. Neither when left out. Read when akit starts: a change takes effect when akit restarts. |
-| `tunnel` | [object](#cfg-tunnel) |  | The tunnel's roles to run beside the gateway, on its engine: a hub, a node and a proxy, which reach services behind NAT through the hub. None when left out. What their web pages change is written back here. **akit:** Read and checked as fit's (I98); `akit run` runs the three roles (I101) on the listeners' engine, their links speaking fit's protocol byte for byte, so that akit's hub, nodes and proxies link with fit's (decision 038). Links go over `tcp`, `tls` (I102), `quic` (I102b), and `ws` and `wss` (I102c, on akio-ws). |
+| `tunnel` | [object](#cfg-tunnel) |  | The tunnel's roles to run beside the gateway, on its engine: a hub, a node and a proxy, which reach services behind NAT through the hub. None when left out. What their web pages change is written back here. **akit:** Read and checked as fit's (I98); `akit run` runs the three roles (I101) on the listeners' engine, their links speaking fit's protocol byte for byte, so that akit's hub, nodes and proxies link with fit's (decision 038). Links go over `tcp`, `tls` (I102), `quic` (I102b), and `ws` and `wss` (I102c, on akio-ws). A hub's `console_socket` and a proxy's `web_proxies` speak fit's sealed WebSocket (I103b). |
 | `upstreams` | list of [object](#cfg-upstreams) |  | The servers requests can be proxied to, by name. |
 | `webrtc` | object |  | **Not supported yet**: refused by name. What fit runs for WebRTC beside the gateway, on its engine: a TURN server, the media port of the whip and whep handlers, and the relay of the webrtc_proxy handler. None when left out. |
 <!-- END GENERATED -->
@@ -1473,8 +1473,10 @@ service. A process runs every role its config sets, with the gateway's routes or
 Links go over `tls://`, `wss://` or `quic://`, the hub's certificate checked by `pin` or
 `ca_file`; `tcp://` and `ws://` only on loopback or with `body_password`. Nodes and proxies
 register with a token the hub issued, `akitt1.<id>.<secret>` (I99), or, deprecated, the hub's
-shared `password`. akit reads and checks the roles as fit does (I98); `akit run` runs them with
-I100–I103 and refuses a config that sets one until then.
+shared `password`. akit reads and checks the roles as fit does (I98); `akit run` runs them
+(I100–I103b), a hub's `console_socket` and a proxy's `web_proxies` speaking fit's sealed WebSocket,
+and refuses the roles' `console`, their pages, until I109 serves them (the hub's `console_socket`,
+which carries them, with it).
 
 ```fit
 tunnel {
@@ -1509,8 +1511,8 @@ tunnel {
 | `allow_proxy_services` | boolean |  | Let registered proxies set nodes' services through the hub, as a proxy's pages do; a node takes them only with its allow_hub_services. Every proxy that has the password could then do it. Off when left out: only the hub's own pages ask nodes to change their services. |
 | `body_password` | string |  | When set, the body of every frame on the links is encrypted with AES-256-GCM, and nodes and proxies need the same one: each frame is authenticated, so a tcp or ws listener on an address that is not a loopback one is allowed only with it. A link registered with a token derives its keys from the token and this, by HKDF; one with the password, from the password's PBKDF2. It applies to the links that open after it changes. |
 | `call_timeout` | duration | `"15s"` | How long a node may take to answer the hub: to open a tunnel, or to list or set its services. 15s when left out. |
-| `console` | [object](#cfg-tunnel-hub-console) |  | The hub's web pages; none when left out. |
-| `console_socket` | [object](#cfg-tunnel-hub-console-socket) |  | An encrypted WebSocket that carries the hub's console pages to the web_proxies of proxies that cannot reach them otherwise. Needs console. None when left out. |
+| `console` | [object](#cfg-tunnel-hub-console) |  | The hub's web pages; none when left out. **akit:** `akit run` refuses it until I109 serves the roles' pages; `akit validate` checks it. With it, the hub's `console_socket`, which carries the pages. |
+| `console_socket` | [object](#cfg-tunnel-hub-console-socket) |  | An encrypted WebSocket that carries the hub's console pages to the web_proxies of proxies that cannot reach them otherwise. Needs console. None when left out. **akit:** fit's sealed WebSocket byte for byte (I103b): fit's proxies' web proxies reach akit's hub, and akit's fit's. It dials the hub's `console.address`, which `akit run` refuses until I109 serves the pages there. A WebSocket refused or failed gets a close frame where fit aborts it (akio API request A238). |
 | `listeners` | list of [object](#cfg-tunnel-hub-listeners) |  | Where nodes and proxies link to the hub, each over its protocol. A tcp or ws listener on an address that is not a loopback one needs body_password: use tls, wss or quic there. None when left out: the console's pages add them. |
 | `max_links` | integer, 0 or more | `1024` | The most links the hub keeps open at once, registered or not; one past it is closed as soon as it opens. 1024 when left out or 0. |
 | `max_links_per_peer` | integer, 0 or more | `128` | The most links one node or proxy may register, from however many processes of the same name. 128 when left out or 0. |
@@ -1646,7 +1648,7 @@ tunnel {
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
 | `allow_hub_services` | boolean |  | Let the hubs the node registers with set its services, which are the addresses it opens tunnels to, and write them into this member. Off when left out: only this member and the node's own pages set them. |
-| `console` | [object](#cfg-tunnel-node-console) |  | The node's web pages; none when left out. |
+| `console` | [object](#cfg-tunnel-node-console) |  | The node's web pages; none when left out. **akit:** `akit run` refuses it until I109 serves the roles' pages; `akit validate` checks it. |
 | `dial_timeout` | duration | `"5s"` | How long a connect to a service may take; shorter than a hub's call_timeout, so that the hub hears either way. 5s when left out. |
 | `hubs` | list of [object](#cfg-tunnel-node-hubs) |  | The hubs the node links to and registers with. None when left out: the console's pages add them. |
 | `idle_timeout` | duration | `"2h"` | How long a tunnel may carry nothing either way before it is closed. 2h when left out. |
@@ -1754,7 +1756,7 @@ tunnel {
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
 | `access` | [object](#cfg-tunnel-proxy-access) |  | The client addresses the proxy's forwards and web_proxies take, deciding before the global access: a connection it refuses is closed as soon as it is accepted. A change applies to the connections that open from then on, without listening anew; those already open stay. Its console's pages take console.access. |
-| `console` | [object](#cfg-tunnel-proxy-console) |  | The proxy's web pages; none when left out. |
+| `console` | [object](#cfg-tunnel-proxy-console) |  | The proxy's web pages; none when left out. **akit:** `akit run` refuses it until I109 serves the roles' pages; `akit validate` checks it. |
 | `forwards` | list of [object](#cfg-tunnel-proxy-forwards) |  | Local addresses whose connections are tunneled to a node's service. |
 | `hubs` | list of [object](#cfg-tunnel-proxy-hubs) |  | The hubs the proxy links to and registers with. None when left out: the console's pages add them. |
 | `idle_timeout` | duration | `"2h"` | How long a tunnel may carry nothing either way before it is closed. 2h when left out. |
@@ -1762,7 +1764,7 @@ tunnel {
 | `meta` | map of string |  | Anything else the proxy tells the hubs, which their pages show. |
 | `name` | string |  | The proxy's name, which the hubs and nodes show. The host's name when left out. |
 | `open_timeout` | duration | `"20s"` | How long the opening of a tunnel may take, through the hub to the node and on to the service. 20s when left out. |
-| `web_proxies` | list of [object](#cfg-tunnel-proxy-web-proxies) |  | Local addresses that serve a hub's console pages through its encrypted console_socket. |
+| `web_proxies` | list of [object](#cfg-tunnel-proxy-web-proxies) |  | Local addresses that serve a hub's console pages through its encrypted console_socket. **akit:** Run by `akit run` (I103b), sealed as fit's: they serve the consoles of fit's hubs as of akit's. Their WebSockets say `User-Agent: akit`. |
 <!-- END GENERATED -->
 
 ### `tunnel.proxy.hubs[]`

@@ -22,6 +22,7 @@ use crate::msg::{
 };
 
 mod api;
+pub mod socket;
 pub use api::{HubApi, InfoDone};
 
 /// The most bytes of a frame on a link that has not registered.
@@ -115,6 +116,8 @@ pub(crate) struct HubCore {
     /// The sweep of expired tokens in force: an earlier one, superseded when the tokens change,
     /// ends at its time.
     sweep_gen: std::sync::atomic::AtomicU64,
+    /// The console socket (I103b).
+    socket: Mutex<Option<socket::Socket>>,
     me: Weak<HubCore>,
 }
 
@@ -1033,6 +1036,7 @@ pub fn new(host: Host) -> Result<Box<dyn Role>, String> {
         epoch: u64::from_be_bytes(epoch) >> 1,
         started: akit_roles::linktoken::unix_now(),
         sweep_gen: std::sync::atomic::AtomicU64::new(0),
+        socket: Mutex::new(None),
         me: me.clone(),
     });
     Ok(Box::new(Hub { core }))
@@ -1241,6 +1245,18 @@ impl Role for Hub {
                         (Bound::Udp(u), None) => u.clear_filter(),
                     };
                 }
+                // The console socket's too (I103b).
+                if let Some(s) = lock(&c.socket).as_ref() {
+                    let _ = match p.clone() {
+                        Some(p) => c
+                            .host
+                            .engine
+                            .set_listener_filter(s.id, move |peer: &SocketAddr| {
+                                p.allows(peer.ip())
+                            }),
+                        None => c.host.engine.clear_listener_filter(s.id),
+                    };
+                }
                 *lock(&c.access) = p;
             }
             Err(e) => errs.push(e),
@@ -1297,8 +1313,12 @@ impl Role for Hub {
         } else {
             None
         };
-        *lock(&c.cfg) = cfg;
+        *lock(&c.cfg) = cfg.clone();
         errs.extend(self.move_listeners(&listeners, own.as_ref()));
+        // The console socket (I103b), which carries the console the config names.
+        if let Err(e) = c.apply_socket(&cfg) {
+            errs.push(e);
+        }
         if !c.password_peers().is_empty() {
             akit_observe::debug!(
                 Tunnel,
@@ -1321,6 +1341,7 @@ impl Role for Hub {
         for (_, b) in lock(&c.listeners).drain(..) {
             b.remove(&c.host.engine);
         }
+        c.stop_socket();
         let links: Vec<Arc<Link>> = lock(&c.st)
             .links
             .values()

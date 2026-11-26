@@ -4,7 +4,9 @@
 //! and proxies link out to, a node (`tunnel.node`) beside the TCP services it reaches, and a proxy
 //! (`tunnel.proxy`) that listens on a local address per forward and carries each connection
 //! through a hub to a node's service. The links speak fit's protocol byte for byte, so that akit's
-//! roles and fit's link with each other.
+//! roles and fit's link with each other. A hub's console socket ([`hub::socket`]) carries its
+//! console to the web proxies of proxies ([`proxy::web`]) over a sealed WebSocket ([`wscrypt`],
+//! I103b), as fit's do.
 //!
 //! Everything runs on the listeners' akio engine, driven by callbacks: a link is read in its
 //! connection's `on_data`; a call that waits (a node's dial of a service, a proxy's open of a
@@ -13,7 +15,7 @@
 //! connection's reads until it is acknowledged (rule 8): the windows bound what waits on a link,
 //! which may queue fit's `LinkQueue` (akio's per-connection bound, A234).
 //!
-//! Part of [akit](https://github.com/lesismal/akit); see `docs/dev-plan.md` (I101-I103).
+//! Part of [akit](https://github.com/lesismal/akit); see `docs/dev-plan.md` (I101-I103b).
 
 pub mod crypt;
 pub mod end;
@@ -21,11 +23,16 @@ pub mod hub;
 pub mod link;
 pub mod msg;
 pub mod node;
+pub mod pace;
 pub mod proxy;
 pub mod quic;
 pub mod tls;
 pub mod uplink;
 pub mod ws;
+pub mod wscrypt;
+
+#[cfg(test)]
+mod testutil;
 
 use akit_roles::host::Info;
 

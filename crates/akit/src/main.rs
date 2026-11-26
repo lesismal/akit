@@ -287,7 +287,7 @@ fn compile_config(
 /// runs, applying it would be a config that says more than akit does.
 fn roles_not_running(config: &Config) -> Result<(), Failure> {
     let unknown = akit_roles::host::unknown(config, crate::ROLES);
-    let errs: Vec<Error> = unknown
+    let mut errs: Vec<Error> = unknown
         .into_iter()
         .map(|path| Error {
             file: None,
@@ -304,11 +304,52 @@ fn roles_not_running(config: &Config) -> Result<(), Failure> {
             ),
         })
         .collect();
+    errs.extend(role_pages_not_served(config));
     if errs.is_empty() {
         Ok(())
     } else {
         Err(Failure::Config(Errors(errs)))
     }
+}
+
+/// Refuses the tunnel roles' `console`, their pages, which `akit run` does not serve until I109:
+/// run, a config that sets one would say more than akit does (decision 002), the hub's
+/// `console_socket`, which carries them (I103b), with it.
+fn role_pages_not_served(config: &Config) -> Vec<Error> {
+    let Some(t) = config.tunnel.as_ref() else {
+        return Vec::new();
+    };
+    [
+        (
+            "tunnel.hub.console",
+            t.hub.as_ref().is_some_and(|h| h.console.is_some()),
+        ),
+        (
+            "tunnel.node.console",
+            t.node.as_ref().is_some_and(|n| n.console.is_some()),
+        ),
+        (
+            "tunnel.proxy.console",
+            t.proxy.as_ref().is_some_and(|p| p.console.is_some()),
+        ),
+    ]
+    .into_iter()
+    .filter(|(_, set)| *set)
+    .map(|(path, _)| Error {
+        file: None,
+        path: path.to_owned(),
+        line: 0,
+        col: 0,
+        msg: format!(
+            "akit run does not serve the roles' pages yet (I109){}; akit validate checks it",
+            if path == "tunnel.hub.console" {
+                ", nor so the console_socket that carries them"
+            } else {
+                ""
+            }
+        ),
+    })
+    .collect()
 }
 
 /// Opens the access log `c` describes, its times in `zone`, as fit's `NewAccessLogFiles`: a file
@@ -1791,6 +1832,31 @@ mod tests {
         let c = akit_config::from_json(r#"{"tunnel": {"hub": {}}}"#, None).unwrap();
         assert!(super::roles_not_running(&c).is_ok());
         let c = akit_config::from_json(r#"{"tunnel": {}, "llm": {}}"#, None).unwrap();
+        assert!(super::roles_not_running(&c).is_ok());
+    }
+
+    /// The tunnel roles' pages are refused by akit run until I109 serves them, the hub's
+    /// console_socket with them; a proxy's web_proxies run (I103b).
+    #[test]
+    fn role_pages_are_refused_until_served() {
+        let console = r#"{"address": "127.0.0.1:7100", "users": [{"username": "a", "password_hash": "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy"}]}"#;
+        let doc = format!(
+            r#"{{"tunnel": {{"hub": {{"password": "pw", "console": {console}, "console_socket": {{"address": "127.0.0.1:7101"}}}},
+                "proxy": {{"console": {}, "web_proxies": [{{"listen": "127.0.0.1:7103", "url": "ws://127.0.0.1:7101/", "password": "pw"}}]}}}}}}"#,
+            console.replace("7100", "7102")
+        );
+        let c = akit_config::from_json(&doc, None).unwrap();
+        let Err(super::Failure::Config(errs)) = super::roles_not_running(&c) else {
+            panic!("the roles' pages let through");
+        };
+        let paths: Vec<&str> = errs.0.iter().map(|e| e.path.as_str()).collect();
+        assert_eq!(paths, ["tunnel.hub.console", "tunnel.proxy.console"]);
+        assert!(errs.0[0].msg.contains("I109") && errs.0[0].msg.contains("console_socket"));
+        let c = akit_config::from_json(
+            r#"{"tunnel": {"proxy": {"web_proxies": [{"listen": "127.0.0.1:7103", "url": "ws://127.0.0.1:7101/", "password": "pw"}]}}}"#,
+            None,
+        )
+        .unwrap();
         assert!(super::roles_not_running(&c).is_ok());
     }
 }
