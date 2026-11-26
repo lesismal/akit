@@ -299,20 +299,39 @@ impl Limit {
     pub fn open(&self) -> usize {
         self.n.load(Ordering::Relaxed)
     }
+    // Compare-and-swap loops: `fetch_update` is deprecated from Rust 1.100 on for `try_update`,
+    // which the oldest Rust akit builds with lacks.
     fn take(&self) -> bool {
         let max = self.max.load(Ordering::Relaxed);
-        self.n
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| {
-                (n < max).then(|| n.saturating_add(1))
-            })
-            .is_ok()
+        let mut n = self.n.load(Ordering::Acquire);
+        loop {
+            if n >= max {
+                return false;
+            }
+            match self.n.compare_exchange_weak(
+                n,
+                n.saturating_add(1),
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => return true,
+                Err(now) => n = now,
+            }
+        }
     }
     fn give(&self) {
-        let _ = self
-            .n
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| {
-                Some(n.saturating_sub(1))
-            });
+        let mut n = self.n.load(Ordering::Acquire);
+        loop {
+            match self.n.compare_exchange_weak(
+                n,
+                n.saturating_sub(1),
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => return,
+                Err(now) => n = now,
+            }
+        }
     }
 }
 
