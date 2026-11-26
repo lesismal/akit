@@ -1357,8 +1357,8 @@ without one it changes the running config as the Admin API does, and password ch
   `tests/compat`, `docs/reference`.
 - **fit**: `config/config.go` (`Console`), `config/validate.go` (`checkConsole`), `login`,
   `cli` (`hash-password`); I104.
-- **Status**: done (2026-11-26). The terminal's echo stays on until akio's A233. See the progress
-  log.
+- **Status**: done (2026-11-26). The terminal's echo stayed on until akio's A233; raw mode and a
+  `*` a character since (2026-11-27), as fit's. See the progress log.
 
 ### I90 Console II: the console's server
 

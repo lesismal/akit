@@ -1182,7 +1182,7 @@ Admin API 并列，在自己的登录之后于进程内调用 Admin API 的端�
   `TestEndUserSessions`）；配置检查同 fit 的 `checkConsole`；`hash-password` 产生可验证的哈希；字段用 `make v1-bless` 标记。
 - **涉及**：`akit-config`、`akit-admin`（`console/login`）、`akit`（`hash-password`）、`tests/compat`、`docs/reference`。
 - **fit**：`config/config.go`（`Console`）、`config/validate.go`（`checkConsole`）、`login`、`cli`（`hash-password`）；I104。
-- **状态**：已完成（2026-11-26）。在 akio 的 A233 之前终端回显保持开启。见进度日志。
+- **状态**：已完成（2026-11-26）。在 akio 的 A233 之前终端回显保持开启；此后（2026-11-27）与 fit 相同，使用原始模式并为每个字符显示一个 `*`。见进度日志。
 
 ### I90 控制台 II：控制台的服务器
 

@@ -66,6 +66,12 @@ done and where the work differs from the plan.
   loaded host's check time does not decide it) and `TestLimitHandlerEvicts`. Not ported: fit's
   Admin API rules for connections without the token (decision 006 lists them), which the same
   slots could carry now.
+- A233: `akit hash-password` at a terminal puts it in raw mode (`akio_sys::terminal::raw`, its
+  guard putting it back) and reads the password twice as fit's `readMasked`: a `*` a character,
+  Backspace taking back a character (all its bytes), Ctrl-U all of them, escape sequences dropped,
+  Ctrl-C, Ctrl-D or the end of input "interrupted", at most 1024 bytes kept. The note that the
+  password is shown goes; a pipe is still read a line. fit's `TestHashPasswordTerminal` ported
+  (`asks_twice_masked`).
 
 ### 2026-11-27: I102b, QUIC links; the track stops at I102c, waiting on akio's A236
 

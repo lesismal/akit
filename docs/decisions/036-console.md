@@ -5,7 +5,7 @@
 Status: accepted in I90 (2026-11-26), waiting for review ([decisions waiting for
 review](../decisions-pending.md), row 16); extended by I91 (the pages) and I92 (the Admin API over
 TLS); its 3 and 8 amended by [decision 037](037-akit-names.md) (akit's names); its 5 replaced on
-2026-11-27, once akio had A232.
+2026-11-27, once akio had A232, and its 7 once akio had A233.
 
 ## Context
 
@@ -55,8 +55,10 @@ engine of its own. akit and fit are both under the Apache License 2.0.
    fit cannot open. The threat model's L5 (keys stored unencrypted) stays accepted: fit's store
    holds the config and the console's users, not the certificate storage, which akit shares with
    fit (I62) and which an encrypted store would make unreadable to it.
-7. **`akit hash-password` shows the password typed at a terminal** until akio can turn the echo off
-   (A233); the prompt says so and how to hide it.
+7. **`akit hash-password` reads a password typed at a terminal as fit's**: in raw mode (akio-sys's
+   `terminal::raw`, A233), a `*` shown for each character, Backspace, Ctrl-U and escape sequences
+   handled as fit's `readMasked`. Until A233 (2026-11-27) the password was shown as typed, the
+   prompt saying so.
 8. **The pages are fit's workbench, served with akit's names** (I91; renamed since decision 037:
    `tools/console-pages.py` applies a deterministic list of renames, and `console/CHANGES` lists
    them). fit's licence (Apache-2.0, akit's too) lets akit serve them, and they need no build: they are plain files that fit embeds and

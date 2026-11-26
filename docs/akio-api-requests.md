@@ -101,7 +101,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | A230 | Argon2id (RFC 9106), with BLAKE2b, in akio-crypto: the key derivation of fit's `fitstore` format | requested (I93): I93 waits for it | 15, 20 | I93 |
 | A231 | XChaCha20-Poly1305 (HChaCha20 and a 24-byte nonce) in akio-crypto: the AEAD of fit's `fitstore` format | requested (I93): I93 waits for it | 15, 20 | I93 |
 | A232 | An HTTP connection's idle timeout and close from its handler, and the connections accepted told to the application: fit's bounds on connections without a login | on akio's main and pinned (since `9e21ada7`, akio's ADR-180) | 10, 11 | I90 |
-| A233 | A terminal's echo turned off (raw mode), to read a password | requested (I89): the password shown as typed meanwhile, the prompt says so | 14 | I89 |
+| A233 | A terminal's echo turned off (raw mode), to read a password | on akio's main and pinned (since `9e21ada7`) | 14 | I89 |
 | A234 | A connection's own bound of the bytes queued for it, past the engine's `max_queued_bytes` or below it | requested (I101): a link holds what feeds it past 8 MiB meanwhile | 8, 11 | I101, I104 |
 | A235 | A client TLS configuration that checks the server's certificate by its SHA-256 (a pin) in the handshake, in place of the chain and name | requested (I102): checked once the handshake is done, before a byte is sent, meanwhile | 1, 15 | I102, I104 |
 | A236 | A WebSocket's reads held and resumed, its drain heard, and its peer's address, on `WsSender` (both akio-ws's client and akio-http's upgrade) | requested (I102c): the tunnel's WebSocket links and the LLM mesh wait for it | 8, 9 | I102c, I104 |
@@ -2238,6 +2238,8 @@ valid session sets 2 minutes idle; past `max_conns`, the oldest unauthenticated 
 client holding the most is closed to make room.
 
 ## A233 A terminal's echo turned off, to read a password
+
+**Done.** On akio's main (`9e21ada7`) and pinned: akio-sys's `terminal::no_echo`, `terminal::raw` and `echo_enabled`, with a `TerminalGuard` that puts the modes back. `akit hash-password` reads a password typed at a terminal in raw mode, a `*` shown for each character, as fit's `readMasked` (Backspace, Ctrl-U, escape sequences dropped, Ctrl-C and Ctrl-D interrupting); the note about the shown password is gone. From a pipe it still reads the first line.
 
 **Status.** Requested by I89 (2026-11-26). `akit hash-password` works without it: from a terminal,
 the password is seen as it is typed, and the prompt says so and how to hide it (a stopgap recorded

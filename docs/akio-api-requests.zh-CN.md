@@ -100,7 +100,7 @@
 | A230 | akio-crypto 中的 Argon2id（RFC 9106）及 BLAKE2b：fit 的 `fitstore` 格式的密钥派生 | 已提出（I93）：I93 等待它 | 15、20 | I93 |
 | A231 | akio-crypto 中的 XChaCha20-Poly1305（HChaCha20 和 24 字节 nonce）：fit 的 `fitstore` 格式的 AEAD | 已提出（I93）：I93 等待它 | 15、20 | I93 |
 | A232 | 由处理函数设置 HTTP 连接的空闲超时并关闭它，并把已接受的连接告诉应用：fit 对未登录连接的限制 | 已进入 akio 的 main 并锁定（自 `9e21ada7` 起，akio 的 ADR-180） | 10、11 | I90 |
-| A233 | 关闭终端回显（原始模式）以读取密码 | 已提出（I89）：在此之前密码按输入显示，提示中说明 | 14 | I89 |
+| A233 | 关闭终端回显（原始模式）以读取密码 | 已进入 akio 的 main 并锁定（自 `9e21ada7` 起） | 14 | I89 |
 | A234 | 单个连接自己的发送队列上限，可高于或低于引擎的 `max_queued_bytes` | 已提出（I101）：在此之前链路在超过 8 MiB 时压住喂给它的一方 | 8, 11 | I101, I104 |
 | A235 | 在握手中按 SHA-256（pin）检查服务器证书、代替证书链和名称检查的客户端 TLS 配置 | 已提出（I102）：在此之前于握手完成后、发送任何字节前检查 | 1, 15 | I102, I104 |
 | A236 | 在 `WsSender` 上压住和恢复 WebSocket 的读取、得知其发送队列排空、取得对端地址（akio-ws 的客户端和 akio-http 的升级都要） | 已提出（I102c）：隧道的 WebSocket 链路和 LLM mesh 在等待它 | 8, 9 | I102c, I104 |
@@ -1803,6 +1803,8 @@ Wycheproof 的 `xchacha20_poly1305_test.json` 和 Go 的输出测试。
 取消它；有效会话把空闲时间设为 2 分钟；超过 `max_conns` 时，关闭持有最多未登录连接的客户端最旧的未登录连接以腾出位置。
 
 ## A233 关闭终端回显以读取密码
+
+**完成。** 已进入 akio 的 main（`9e21ada7`）并锁定：akio-sys 的 `terminal::no_echo`、`terminal::raw` 和 `echo_enabled`，以及恢复原模式的 `TerminalGuard`。`akit hash-password` 以原始模式读取在终端输入的密码，每个字符显示一个 `*`，同 fit 的 `readMasked`（处理退格、Ctrl-U，丢弃转义序列，Ctrl-C 和 Ctrl-D 中断）；关于密码会被显示的说明已删除。从管道读取时仍读第一行。
 
 **状态。** 由 I89 提出（2026-11-26）。没有它 `akit hash-password` 也能工作：从终端输入时密码会按输入原样显示，提示中说明这一点
 以及如何隐藏（一个权宜实现，记录在[开发进度](progress.zh-CN.md)中）。

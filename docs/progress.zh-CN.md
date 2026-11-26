@@ -46,6 +46,10 @@
   `admin.console.max_conns` 的说明删除。测试：fit 的 `TestConsoleIdleTimeouts`、`TestConsoleUnauthBoundFromOpen`、
   `TestConsoleUnauthBoundServing`（其宽限期用 `Options::console_grace` 单独设置，使负载高的主机上检查所需的时间不影响结果）和
   `TestLimitHandlerEvicts`。未移植：fit 的 Admin API 对没有令牌的连接的规则（决定 006 列出了它们），现在同样的 slots 可以承载它们。
+- A233：`akit hash-password` 在终端上把终端置于原始模式（`akio_sys::terminal::raw`，其 guard 负责恢复），并像 fit 的 `readMasked`
+  那样读两次密码：每个字符显示一个 `*`，退格删去一个字符（其全部字节），Ctrl-U 删去全部，丢弃转义序列，Ctrl-C、Ctrl-D 或输入结束为
+  “interrupted”，最多保留 1024 字节。关于密码会被显示的说明删除；从管道仍读一行。移植了 fit 的 `TestHashPasswordTerminal`
+  （`asks_twice_masked`）。
 
 ### 2026-11-27：I102b，QUIC 链路；本路线停在 I102c，等待 akio 的 A236
 

@@ -4,7 +4,7 @@
 
 状态：在 I90 中接受（2026-11-26），等待评审（[等待评审的决定](../decisions-pending.zh-CN.md)，第 16 行）；由 I91（页面）和
 I92（带 TLS 的 Admin API）扩展；其第 3、8 条由[决定 037](037-akit-names.zh-CN.md)（akit 的名字）修订；其第 5 条于 2026-11-27
-在 akio 有了 A232 之后替换。
+在 akio 有了 A232 之后替换，第 7 条在 akio 有了 A233 之后替换。
 
 ## 背景
 
@@ -38,7 +38,8 @@ Apache License 2.0。
    （A230）和 XChaCha20-Poly1305（A231）：没有它们就无法读取 fit 的格式，而 akit 自己的格式会是 fit 打不开的 store。威胁模型的
    L5（密钥未加密存放）仍为接受：fit 的 store 保存配置和控制台用户，不保存证书存储，而 akit 与 fit 共用证书存储（I62），加密的
    store 会让 fit 读不了它。
-7. **在 akio 能关闭回显之前（A233），`akit hash-password` 会显示在终端输入的密码**；提示中说明这一点以及如何隐藏。
+7. **`akit hash-password` 像 fit 那样读取在终端输入的密码**：使用原始模式（akio-sys 的 `terminal::raw`，A233），每个字符显示一个
+   `*`，退格、Ctrl-U 和转义序列按 fit 的 `readMasked` 处理。在 A233（2026-11-27）之前密码按输入显示，提示中说明这一点。
 8. **页面即 fit 的工作台，以 akit 的名字提供**（I91；自决定 037 起改名：`tools/console-pages.py` 应用一组确定的改名规则，
    `console/CHANGES` 列出这些规则）。fit 的许可证（Apache-2.0，与 akit 相同）允许 akit 提供它们，而且它们不需要构建：
    是 fit 嵌入并从内存提供的纯文件。`tools/console-pages.py` 在兼容性门禁固定的 fit 提交（`tests/compat/fixtures/PINS`）上把
