@@ -35,9 +35,12 @@ stage_fit() {
 	fi
 	COPYFILE_DISABLE=1 tar --no-xattrs -cf - -C "$here" fitbench/akit.go configs/akit |
 		$BENCH_SSH "cd $fit_dir/bench && tar xf - && mv fitbench/akit.go cmd/fitbench/akit.go && rmdir fitbench"
-	# The wasm scenario's plugin (fitbench/akit.go), fit's own test plugin as akit's tests run it.
-	gzip -dc "$root/crates/akit-plugin/tests/guests/headers-go.wasm.gz" |
+	# The wasm scenario's plugin (fitbench/akit.go), fit's own test plugin as akit's tests run it:
+	# built for akit's ABI for akit, and fit's own build for fit (decision 037).
+	gzip -dc "$root/crates/akit-plugin/tests/guests/headers-akit.wasm.gz" |
 		$BENCH_SSH "cat > $fit_dir/bench/configs/akit/headers.wasm"
+	gzip -dc "$root/crates/akit-plugin/tests/guests/headers-fit.wasm.gz" |
+		$BENCH_SSH "cat > $fit_dir/bench/configs/akit/fit-headers.wasm"
 	echo "bench: building fitbench, idleconn and fit on the host"
 	$BENCH_SSH "$host_path; cd $fit_dir && mkdir -p bin && flock -s /root/bench.lock sh -c '
 		go build -o bin/fitbench ./bench/cmd/fitbench &&

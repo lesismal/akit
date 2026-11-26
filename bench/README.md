@@ -14,7 +14,7 @@ the harness does). The results come only from the benchmark host
 | --- | --- |
 | [`FIT_REV`](FIT_REV) | the fit commit whose harness is used: the one the compatibility fixtures are pinned at |
 | [`fitbench/akit.go`](fitbench/akit.go) | akit as a server of fitbench's: copied into fit's `bench/cmd/fitbench`, it adds akit to the list of servers, run from the image `akit-bench:<tag>`; and the `wasm` scenario, with the servers `akit-wasm` and `fit-wasm` that serve it |
-| [`configs/akit/fit.json`](configs/akit/fit.json) | akit's config for the harness, copied into fit's `bench/configs/akit`: the routes fit's `bench/configs/fit/fit.conf` serves, as far as akit serves them |
+| [`configs/akit/akit.json`](configs/akit/akit.json) | akit's config for the harness, copied into fit's `bench/configs/akit`: the routes fit's `bench/configs/fit/fit.conf` serves, as far as akit serves them |
 | [`configs/akit/wasm.json`](configs/akit/wasm.json), [`configs/akit/fit-wasm.conf`](configs/akit/fit-wasm.conf) | the `wasm` scenario's route, for akit and for fit, each a second config file beside the server's own |
 | [`stampede.sh`](stampede.sh), [`stampede`](stampede) | the stampede check: many clients, one cold key, a slow origin counting its fetches, for nginx, fit and akit |
 | [`lib.sh`](lib.sh) | staging, shared by the scripts |
@@ -25,8 +25,9 @@ the harness does). The results come only from the benchmark host
 
 fit's own files are not changed. The scripts upload fit's tree at `FIT_REV` (from the fit
 repository beside akit's, or `FIT_REPO`; a git worktree of akit sets it) to the host once, add
-akit's files to it each time (with the `wasm` scenario's plugin, unpacked from
-`crates/akit-plugin/tests/guests/headers-go.wasm.gz`),
+akit's files to it each time (with the `wasm` scenario's plugin, fit's `headers`, for each server's
+ABI: akit's from `crates/akit-plugin/tests/guests/headers-akit.wasm.gz` and fit's from
+`headers-fit.wasm.gz`, [decision 037](../docs/decisions/037-akit-names.md)),
 and build fitbench, benchreport, idleconn and fit there with Go; they upload akit at the ref asked
 for and build it there with cargo, into an image of its own on `ubuntu:24.04`, the base image fit
 runs on. Builds take the host's `/root/bench.lock` shared; measured runs take it alone, through
@@ -57,7 +58,7 @@ fit and nginx do: the route `cache`, a 1 GiB zone with the cache lock on, in fro
 cache origin, whose fetches give each run's hit ratio; like fit's harness, a run has them only when
 `-scenarios` names them. The other servers run every scenario they serve; akit's other scenarios
 (HTTP/3, the website workloads) are recorded as skipped ("akit cannot serve it"). Each iteration
-adds what it serves to `fitbench/akit.go` and `configs/akit/fit.json`, and the protocols to the
+adds what it serves to `fitbench/akit.go` and `configs/akit/akit.json`, and the protocols to the
 defaults. For memory at 100k idle connections, as fit's M1 report: `-scenarios fixed -protocols http/1.1
 -idle http1,tls -args '-idle-connections 100000'`.
 
@@ -68,8 +69,8 @@ bench/run.sh -servers akit-wasm,fit-wasm -scenarios fixed,wasm -protocols http/1
 ```
 
 measures what a header-editing WebAssembly plugin costs a request, in akit and in fit, with the
-same `.wasm`: fit's own test plugin (`plugin/wasm/testdata/headers`, built by Go for
-`wasip1`), which sets and removes request fields and adds three response fields. The `wasm`
+same plugin: fit's own test plugin (`plugin/wasm/testdata/headers`, built by Go for `wasip1`,
+for each server's ABI names: decision 037), which sets and removes request fields and adds three response fields. The `wasm`
 scenario is the fixed response behind the `wasm` middleware, with its defaults (an instance a CPU,
 a queue of 1024, 100 ms a call); `fixed` measured in the same container is the baseline. The
 servers `akit-wasm` and `fit-wasm` are akit and fit with their harness configs and a second config

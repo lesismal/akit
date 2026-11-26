@@ -1,7 +1,9 @@
-//! fit's plugin ABI (fit's `plugin/wasm/abi.go`), as host functions of akio-wasm's [`Linker`].
+//! akit's plugin ABI, fit's (fit's `plugin/wasm/abi.go`) with its names renamed (decision 037), as
+//! host functions of akio-wasm's [`Linker`].
 //!
-//! A plugin is a WASI reactor that exports `fit_on_request() i32`: 0 for the request to go on,
-//! 1 when the plugin answered it. The host functions it imports, from the module `fit`, take
+//! A plugin is a WASI reactor that exports `akit_on_request() i32` (fit's `fit_on_request`): 0 for
+//! the request to go on, 1 when the plugin answered it. The host functions it imports, from the
+//! module `akit` (fit's `fit`), take
 //! strings as a pointer and a length into the plugin's memory:
 //!
 //! ```text
@@ -40,10 +42,10 @@ use akio_wasm::{Caller, LinkError, Linker, Trap, TypedFunc};
 use crate::proxywasm::{PwInstance, PwShared};
 
 /// The module the host functions are imported from.
-pub(crate) const HOST_MODULE: &str = "fit";
-/// The function a plugin of fit's ABI exports, run for each request.
-pub(crate) const EXPORT_ON_REQUEST: &str = "fit_on_request";
-/// What `fit_on_request` returns once the plugin answered.
+pub(crate) const HOST_MODULE: &str = "akit";
+/// The function a plugin of akit's ABI exports, run for each request.
+pub(crate) const EXPORT_ON_REQUEST: &str = "akit_on_request";
+/// What `akit_on_request` returns once the plugin answered.
 pub(crate) const ACTION_STOP: i32 = 1;
 
 /// `header_*`'s kind: the request's fields.
@@ -190,8 +192,8 @@ impl Shared {
     }
 }
 
-/// The state of an instance's store: what its instances share, and, for a plugin of fit's ABI,
-/// its `fit_on_request` and the call it runs, or a Proxy-Wasm plugin's own.
+/// The state of an instance's store: what its instances share, and, for a plugin of akit's ABI,
+/// its `akit_on_request` and the call it runs, or a Proxy-Wasm plugin's own.
 #[derive(Debug)]
 pub(crate) struct Host {
     pub(crate) shared: Arc<Shared>,

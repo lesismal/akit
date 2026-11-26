@@ -14,7 +14,8 @@ in fit reaches akit only when the pin moves.
 
 `fixtures/PINS` holds the same two hashes for tools and tests. The console's pages, fit's
 `app/workbench/web` at the same fit commit, are copied by `tools/console-pages.py` into
-`crates/akit-admin/console` (I91), which the script runs too.
+`crates/akit-admin/console` with akit's names (I91, decision 037), and fit's WebAssembly test plugin
+is built for akit's ABI by `tools/plugin-guest.sh`; the script runs both.
 
 - fit: <https://github.com/lesismal/fit>
 - fit-examples: <https://github.com/lesismal/fit-examples>

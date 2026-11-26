@@ -11,7 +11,7 @@
 //! The examples name files relative to the directory akit runs in; the test runs them in a
 //! directory that holds them ([`sandbox`]): `public/`, `certs/example.com.pem`,
 //! `certs/example.com.key`, `certs/ca.pem`, `admin.token`, `lists/deny.txt` (an access list's
-//! file, I85), and `plugins/headers.wasm` and `plugins/http_headers.wasm` (a plugin of fit's ABI
+//! file, I85), and `plugins/headers.wasm` and `plugins/http_headers.wasm` (a plugin of akit's ABI
 //! and a Proxy-Wasm one).
 //!
 //! A document and its Chinese twin show the same examples, in the same order: that is checked
@@ -147,10 +147,10 @@ fn sandbox() -> PathBuf {
         "# addresses refused\n198.51.100.0/24 ; a prefix\nSome Org:192.0.2.10-192.0.2.20\n",
     )
     .unwrap();
-    // fit's `headers` plugin (fit's ABI), and the Proxy-Wasm Go SDK's `http_headers`.
+    // fit's `headers` plugin (built for akit's ABI), and the Proxy-Wasm Go SDK's `http_headers`.
     fs::create_dir_all(d.join("plugins")).unwrap();
     for (guest, name) in [
-        ("headers-go.wasm.gz", "headers.wasm"),
+        ("headers-akit.wasm.gz", "headers.wasm"),
         ("pw-http_headers.wasm.gz", "http_headers.wasm"),
     ] {
         let gz = fs::read(

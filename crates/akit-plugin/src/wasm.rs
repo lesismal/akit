@@ -1,4 +1,4 @@
-//! The `wasm` middleware, as fit's `plugin/wasm` `WASM`, with fit's own ABI ([`crate::abi`]) or
+//! The `wasm` middleware, as fit's `plugin/wasm` `WASM`, with akit's own ABI ([`crate::abi`]) or
 //! Proxy-Wasm's ([`crate::proxywasm`], [`crate::response`]): a WebAssembly plugin run for each
 //! request, on a pool of instances of its own.
 //!
@@ -6,7 +6,7 @@
 //!   query, host, client address, fields), suspended (akio's `Context::suspend`, ADR-109) and
 //!   handed to the plugin's [`InstancePool`] (akio-wasm, ADR-125), which never waits: a full
 //!   queue is answered 503 at once.
-//! - On a pool thread, `fit_on_request` (or a Proxy-Wasm filter's context made, and its
+//! - On a pool thread, `akit_on_request` (or a Proxy-Wasm filter's context made, and its
 //!   `proxy_on_request_headers`) runs under the call's deadline (`timeout`) and the instance's
 //!   memory bound (`max_memory_bytes`). A call past its deadline traps, and its instance is made
 //!   again for the next request.
@@ -75,7 +75,7 @@ impl Middleware for WasmMiddleware {
         })
     }
 
-    /// A plugin may set the request's path (fit's ABI, Proxy-Wasm's `:path`).
+    /// A plugin may set the request's path (akit's ABI, Proxy-Wasm's `:path`).
     fn changes_target(&self) -> bool {
         true
     }

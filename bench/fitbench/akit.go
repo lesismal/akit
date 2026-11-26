@@ -7,11 +7,12 @@
 // CPUs, its readiness, versions, memory and CPU read as for any server.
 //
 // It also adds the wasm scenario (I76): the fixed response behind the wasm middleware running
-// fit's own header-editing test plugin (plugin/wasm/testdata/headers, akit's
-// crates/akit-plugin/tests/guests/headers-go.wasm.gz, which lib.sh unpacks into the configs as
-// akit/headers.wasm). Two servers serve it, akit-wasm and fit-wasm: akit and fit with their
-// harness configs and one more config file each, which adds the route /wasm, so that the same
-// .wasm runs in both, and the fixed scenario measured in the same container is the cost's
+// fit's own header-editing test plugin (plugin/wasm/testdata/headers), built for each server's
+// ABI: akit's crates/akit-plugin/tests/guests/headers-akit.wasm.gz (fit's names renamed, akit's
+// decision 037) and headers-fit.wasm.gz (fit's own build), which lib.sh unpacks into the configs
+// as akit/headers.wasm and akit/fit-headers.wasm. Two servers serve it, akit-wasm and fit-wasm:
+// akit and fit with their harness configs and one more config file each, which adds the route
+// /wasm, so that the same plugin runs in both, and the fixed scenario measured in the same container is the cost's
 // baseline. They are servers of their own so that a run that does not name them loads no plugin
 // (each instance of a Go guest holds its own memory, which would count against the server's).
 //
@@ -29,8 +30,8 @@ func init() {
 		// harness since I25) connections.
 		scenarios: []string{"fixed", "static", "proxy", "cache-hot", "cache-zipf"},
 		idle:      []string{"http1", "tls", "ws"},
-		mounts:    [][2]string{{"akit/fit.json", "/etc/akit/fit.json"}, {"www", "/srv/www"}, {"certs", "/certs"}},
-		cmd:       []string{"/usr/local/bin/akit", "run", "-c", "/etc/akit/fit.json"},
+		mounts:    [][2]string{{"akit/akit.json", "/etc/akit/akit.json"}, {"www", "/srv/www"}, {"certs", "/certs"}},
+		cmd:       []string{"/usr/local/bin/akit", "run", "-c", "/etc/akit/akit.json"},
 		version:   []string{"/usr/local/bin/akit", "version"},
 		ready:     "/fixed",
 	}
@@ -52,7 +53,7 @@ func init() {
 			fitWasm.scenarios = []string{"fixed", "wasm"}
 			fitWasm.idle = nil
 			fitWasm.mounts = append(append([][2]string{}, s.mounts...),
-				[2]string{"akit/fit-wasm.conf", "/etc/fit/wasm.conf"}, [2]string{"akit/headers.wasm", "/etc/fit/headers.wasm"})
+				[2]string{"akit/fit-wasm.conf", "/etc/fit/wasm.conf"}, [2]string{"akit/fit-headers.wasm", "/etc/fit/headers.wasm"})
 			fitWasm.cmd = append(append([]string{}, s.cmd...), "-c", "/etc/fit/wasm.conf")
 			servers = append(servers, fitWasm)
 			break

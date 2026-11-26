@@ -2,8 +2,8 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-`tests/wasm.rs` 通过 `wasm` 中间件原样运行 fit 自己的测试插件，`tests/proxywasm.rs` 运行 fit 的 Proxy-Wasm
-测试过滤器：
+`tests/wasm.rs` 通过 `wasm` 中间件运行 fit 自己的测试插件，按 akit 的 ABI 构建（fit 的 ABI 改名之后，
+[决定 037](../../../../docs/decisions/037-akit-names.zh-CN.md)），`tests/proxywasm.rs` 原样运行 fit 的 Proxy-Wasm 测试过滤器：
 
 | 文件 | fit 中的源码 | 构建方式 | 大小 |
 | --- | --- | --- | --- |
@@ -12,12 +12,16 @@
 | `pw-http_headers.wasm.gz` | `.../proxywasm/http_headers`：SDK 的示例；修改一个请求字段，并在 `proxy_on_response_headers` 中添加响应字段 | 同上 | 1.3 MB |
 | `pw-http_body.wasm.gz` | `.../proxywasm/http_body`：SDK 的示例；把响应体保留到结束，然后追加、前置或替换 | 同上 | 0.7 MB |
 | `pw-response.wasm.gz` | `.../proxywasm/response`：fit 自己的过滤器；把每个响应体分段转成大写，读取 `:status`，修改 trailer，或在 `proxy_on_response_headers` 中应答 | 同上 | 0.7 MB |
-| `headers-go.wasm.gz` | `plugin/wasm/testdata/headers`（fit `7daee573`；`plugin/wasm` 在构建它的 `edbe1cfe` 上相同）：fit 自己的 ABI，修改字段，应答 `/deny`，以及 `/loop`、`/grow`、`/panic` | Go 1.27.3，`GOOS=wasip1 GOARCH=wasm -buildmode=c-shared`，`gzip -9 -n` | 1.2 MB |
+| `headers-akit.wasm.gz` | `plugin/wasm/testdata/headers` 和 `plugin/wasm/guest`（fit `7daee573`，门禁固定的提交），`//go:wasmexport` 和 `//go:wasmimport` 的名字改名：akit 的 ABI（`akit_on_request`，模块 `akit`），修改字段，应答 `/deny`，以及 `/loop`、`/grow`、`/panic` | `tools/plugin-guest.sh`：Go 1.27.3，`GOOS=wasip1 GOARCH=wasm -buildmode=c-shared -trimpath`，`gzip -9 -n` | 1.2 MB |
+| `headers-fit.wasm.gz` | 同一个插件按 fit 的方式原样构建（fit `7daee573`；`plugin/wasm` 在构建它的 `edbe1cfe` 上相同）：fit 的 ABI（`fit_on_request`，模块 `fit`），akit 拒绝它 | Go 1.27.3，`GOOS=wasip1 GOARCH=wasm -buildmode=c-shared`，`gzip -9 -n` | 1.2 MB |
 
-`headers-go.wasm.gz` 是 akio-wasm 提交的 guest（akio 的 `crates/akio-wasm/tests/guests/headers-go.wasm.gz`，
-SHA-256 `3c1094fc117430ed8c443030aaf1eadd5d9c5d7a644028042ab3334cb1ca3bbb`）的副本，这样 akit 的测试既不需要 Go
-工具链，也不需要指向 akio 检出目录的路径。akio 重新构建它时（`crates/akio-wasm/tests/guests/build.sh <fit 检出目录>`），
-再复制一次并运行 `cargo test -p akit-plugin`。
+`headers-akit.wasm.gz` 由 `tools/plugin-guest.sh` 从门禁固定提交处的 fit 检出目录（akit 旁边的，或 `FIT_DIR`）构建：fit 的 guest 包
+和测试插件，只把 ABI 的名字改名（`fit` 改为 `akit`，`fit_*` 改为 `akit_*`）；`tools/plugin-guest.sh --check` 重新构建并比较。固定的
+提交移动时重新运行它。
+
+`headers-fit.wasm.gz` 是 akio-wasm 提交的 guest（akio 的 `crates/akio-wasm/tests/guests/headers-go.wasm.gz`，
+SHA-256 `3c1094fc117430ed8c443030aaf1eadd5d9c5d7a644028042ab3334cb1ca3bbb`），即 fit 自己的构建：用于检查 akit 拒绝 fit 名字的测试，
+以及基准测试中的 fit 服务器（`bench/modules.sh`、`bench/lib.sh`）。
 
 `pw-*` 过滤器从 fit 检出目录的 `plugin/wasm/testdata/proxywasm` 中构建（SDK 取自 Go 的模块缓存或网络）：
 

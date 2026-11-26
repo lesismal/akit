@@ -225,7 +225,7 @@ impl World {
             + 3600;
         let gz = std::fs::read(
             PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("../akit-plugin/tests/guests/headers-go.wasm.gz"),
+                .join("../akit-plugin/tests/guests/headers-akit.wasm.gz"),
         )
         .unwrap();
         let wasm = akio_deflate::decompress(akio_deflate::Format::Gzip, &gz, 64 << 20).unwrap();

@@ -2,9 +2,9 @@
 //! names (epoll by default, `uring`), with fit's tests (`plugin/wasm/wasm_test.go`,
 //! `plugin_test.go`) ported.
 //!
-//! The plugin is fit's own test plugin, `testdata/headers`, built with Go for wasip1 (akio-wasm's
-//! committed guest, `tests/guests/headers-go.wasm.gz`; see `tests/guests/README.md`), run
-//! unchanged: it edits the request's and the response's fields, answers `/deny` itself, loops on
+//! The plugin is fit's own test plugin, `testdata/headers`, built with Go for wasip1 with the ABI's
+//! names renamed as akit names them (decision 037; `tests/guests/headers-akit.wasm.gz`, made by
+//! `tools/plugin-guest.sh`; see `tests/guests/README.md`): it edits the request's and the response's fields, answers `/deny` itself, loops on
 //! `/loop`, panics on `/panic` and grows its memory by 64 MiB on `/grow`. Plugins that misbehave
 //! in ways a compiler would not let them are encoded by the tests (`akit_plugin::encode`).
 #![allow(
@@ -99,17 +99,21 @@ fn temp_file(name: &str, bytes: &[u8]) -> String {
     path.to_str().unwrap().to_owned()
 }
 
-/// fit's test plugin, inflated once.
+/// A committed guest of `tests/guests`, inflated.
+fn guest(name: &str) -> Vec<u8> {
+    let gz = std::fs::read(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/guests")
+            .join(name),
+    )
+    .unwrap();
+    akio_deflate::decompress(akio_deflate::Format::Gzip, &gz, 64 << 20).unwrap()
+}
+
+/// fit's test plugin, built for akit's ABI, inflated once.
 fn headers_plugin() -> &'static str {
     static PATH: OnceLock<String> = OnceLock::new();
-    PATH.get_or_init(|| {
-        let gz = std::fs::read(
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/guests/headers-go.wasm.gz"),
-        )
-        .unwrap();
-        let wasm = akio_deflate::decompress(akio_deflate::Format::Gzip, &gz, 64 << 20).unwrap();
-        temp_file("headers.wasm", &wasm)
-    })
+    PATH.get_or_init(|| temp_file("headers.wasm", &guest("headers-akit.wasm.gz")))
 }
 
 /// akit serving `json`, as `akit run` does.
@@ -417,7 +421,7 @@ fn bodies() {
     assert_eq!(r.status, 413);
 }
 
-/// fit's `TestCalls` (fit's ABI): `fit_on_request` that stops without an answer is answered 200
+/// fit's `TestCalls` (akit's ABI): `akit_on_request` that stops without an answer is answered 200
 /// with nothing; one that goes on reaches the handler; a request that waited past a
 /// `wait_timeout` of 1ns is answered 503.
 #[test]
@@ -425,7 +429,7 @@ fn calls() {
     let module = |action: i32| {
         encode::Module {
             funcs: vec![Func::export(
-                "fit_on_request",
+                "akit_on_request",
                 0,
                 1,
                 encode::i32_const(action),
@@ -462,13 +466,13 @@ fn calls() {
     }
 }
 
-/// The config's errors, as fit's `TestParams` and `TestLoadErrors` (fit's ABI) check them.
+/// The config's errors, as fit's `TestParams` and `TestLoadErrors` (akit's ABI) check them.
 #[test]
 fn errors() {
     let trap = vec![encode::OP_UNREACHABLE];
     let init_traps = encode::Module {
         funcs: vec![
-            Func::export("fit_on_request", 0, 1, encode::i32_const(0)),
+            Func::export("akit_on_request", 0, 1, encode::i32_const(0)),
             Func::export("_initialize", 0, 0, trap),
         ],
         ..encode::Module::default()
@@ -496,7 +500,13 @@ fn errors() {
         (
             temp_file("none.wasm", &no_exports),
             "",
-            "exports neither fit_on_request",
+            "exports neither akit_on_request",
+        ),
+        // fit's own build of the same plugin: fit's names are not akit's ABI (decision 037).
+        (
+            temp_file("headers-fit.wasm", &guest("headers-fit.wasm.gz")),
+            "",
+            "exports neither akit_on_request",
         ),
         (
             temp_file("pw.wasm", &proxy_wasm),

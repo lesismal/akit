@@ -13,7 +13,7 @@ akit 用 fit 的测试框架测量，而不是它的副本：相同的场景、�
 | --- | --- |
 | [`FIT_REV`](FIT_REV) | 所用框架的 fit 提交：与兼容性夹具锁定的提交相同 |
 | [`fitbench/akit.go`](fitbench/akit.go) | 作为 fitbench 服务器的 akit：复制到 fit 的 `bench/cmd/fitbench` 中，把 akit 加入服务器列表，从镜像 `akit-bench:<tag>` 运行；以及 `wasm` 场景和提供它的服务器 `akit-wasm`、`fit-wasm` |
-| [`configs/akit/fit.json`](configs/akit/fit.json) | akit 在框架中的配置，复制到 fit 的 `bench/configs/akit`：fit 的 `bench/configs/fit/fit.conf` 提供的路由中 akit 已能提供的部分 |
+| [`configs/akit/akit.json`](configs/akit/akit.json) | akit 在框架中的配置，复制到 fit 的 `bench/configs/akit`：fit 的 `bench/configs/fit/fit.conf` 提供的路由中 akit 已能提供的部分 |
 | [`configs/akit/wasm.json`](configs/akit/wasm.json)、[`configs/akit/fit-wasm.conf`](configs/akit/fit-wasm.conf) | `wasm` 场景的路由，分别给 akit 和 fit，都是服务器自己的配置之外的第二个配置文件 |
 | [`stampede.sh`](stampede.sh)、[`stampede`](stampede) | 击穿检查：许多客户端、一个冷键、一个计数自己被取了几次的慢源站，测 nginx、fit 和 akit |
 | [`lib.sh`](lib.sh) | 各脚本共用的部署代码 |
@@ -23,8 +23,8 @@ akit 用 fit 的测试框架测量，而不是它的副本：相同的场景、�
 | [`results`](results) | 入库的运行，每个都带结果、报告、参数和 akit 提交；运行取回到 `results/run-<time>`（不入库），要保留时改名，如 `baseline-2026-11-24` |
 
 fit 自己的文件不做改动。脚本把 `FIT_REV` 处的 fit 源码树（取自 akit 旁边的 fit 仓库，或 `FIT_REPO`；在 akit 的
-git worktree 里要设置它）上传到主机一次，每次把 akit 的文件加进去（连同 `wasm` 场景的插件，从
-`crates/akit-plugin/tests/guests/headers-go.wasm.gz` 解压），在主机上用 Go 构建 fitbench、benchreport、idleconn 和 fit；把所要求的 ref 处
+git worktree 里要设置它）上传到主机一次，每次把 akit 的文件加进去（连同 `wasm` 场景的插件，即 fit 的 `headers`，按各服务器的 ABI：akit 的从
+`crates/akit-plugin/tests/guests/headers-akit.wasm.gz` 解压，fit 的从 `headers-fit.wasm.gz` 解压，[决定 037](../docs/decisions/037-akit-names.zh-CN.md)），在主机上用 Go 构建 fitbench、benchreport、idleconn 和 fit；把所要求的 ref 处
 的 akit 上传并在主机上用 cargo 构建，放进基于 `ubuntu:24.04`（fit 所用的基础镜像）的独立镜像。构建以共享方式持有
 主机的 `/root/bench.lock`；测量运行通过主机的 `quiet.sh` 独占持有，它还会在运行期间停下主机自身的服务。
 
@@ -46,7 +46,7 @@ fitbench 参数的 `-args`，例如 `-args '-duration 15s -warmup 5s'`。`BENCH_
 HTTP/1.1、TLS 和 WebSocket 连接（WebSocket 自 I25 起，与 fit 的路由 `ws` 一样代理到 fitbench 的 WebSocket 后端）。akit 也提供缓存场景（自 I76 起）`cache-hot` 和 `cache-zipf`，与 fit 和 nginx 一样：路由
 `cache`，1 GiB 的区域，开启缓存锁，位于 fitbench 的缓存源站之前，源站被取的次数给出每次运行的命中率；与 fit 的框架一样，
 只有 `-scenarios` 点名时才运行它们。其他服务器运行它们能提供的所有场景；akit 的其他场景（HTTP/3、网站类负载）记为跳过
-（"akit cannot serve it"）。每个迭代把它新提供的内容加到 `fitbench/akit.go` 和 `configs/akit/fit.json`，并把协议加入默认值。
+（"akit cannot serve it"）。每个迭代把它新提供的内容加到 `fitbench/akit.go` 和 `configs/akit/akit.json`，并把协议加入默认值。
 测 10 万空闲连接的内存（与 fit 的 M1 报告一样）：`-scenarios fixed -protocols http/1.1 -idle http1,tls
 -args '-idle-connections 100000'`。
 
@@ -56,8 +56,8 @@ HTTP/1.1、TLS 和 WebSocket 连接（WebSocket 自 I25 起，与 fit 的路由 
 bench/run.sh -servers akit-wasm,fit-wasm -scenarios fixed,wasm -protocols http/1.1,h2c -idle "" work
 ```
 
-测量一个修改头部的 WebAssembly 插件给每个请求增加的开销，在 akit 和 fit 中，用同一个 `.wasm`：fit 自己的测试插件
-（`plugin/wasm/testdata/headers`，由 Go 为 `wasip1` 构建），它设置和删除请求字段，并添加三个响应字段。`wasm` 场景是放在
+测量一个修改头部的 WebAssembly 插件给每个请求增加的开销，在 akit 和 fit 中，用同一个插件：fit 自己的测试插件
+（`plugin/wasm/testdata/headers`，由 Go 为 `wasip1` 构建，按各服务器 ABI 的名字：决定 037），它设置和删除请求字段，并添加三个响应字段。`wasm` 场景是放在
 `wasm` 中间件之后的固定响应，用中间件的默认值（每个 CPU 一个实例，队列 1024，每次调用 100 ms）；在同一个容器中测量的
 `fixed` 是基线。服务器 `akit-wasm` 和 `fit-wasm` 是带框架配置的 akit 和 fit，各自另加一个添加路由 `/wasm` 的配置文件
 （[`configs/akit/wasm.json`](configs/akit/wasm.json)、[`configs/akit/fit-wasm.conf`](configs/akit/fit-wasm.conf)），这样

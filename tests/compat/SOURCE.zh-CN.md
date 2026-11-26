@@ -13,7 +13,8 @@
 
 （表头保持英文，以便 `update-fixtures.sh` 在两种语言里用同一规则改写哈希。）`fixtures/PINS`
 为工具和测试保存同样的两个哈希。控制台的页面，即同一 fit 提交上 fit 的 `app/workbench/web`，由
-`tools/console-pages.py` 复制到 `crates/akit-admin/console`（I91），本脚本也会运行它。
+`tools/console-pages.py` 以 akit 的名字复制到 `crates/akit-admin/console`（I91，决定 037），fit 的 WebAssembly 测试插件由
+`tools/plugin-guest.sh` 按 akit 的 ABI 构建；本脚本也会运行这两者。
 
 - fit：<https://github.com/lesismal/fit>
 - fit-examples：<https://github.com/lesismal/fit-examples>

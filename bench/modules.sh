@@ -88,7 +88,8 @@ $BENCH_SSH "$host_path; cd $src && flock -s /root/bench.lock \
 	cp $BENCH_DIR/target/release/examples/bench_serve $dir/bench_serve &&
 	cp $fit_dir/bin/fit $dir/fit &&
 	cp bench/configs/modules/modules.json bench/configs/modules/backend.conf $dir/ &&
-	gzip -dc crates/akit-plugin/tests/guests/headers-go.wasm.gz > $dir/headers.wasm &&
+	gzip -dc crates/akit-plugin/tests/guests/headers-akit.wasm.gz > $dir/headers-akit.wasm &&
+	gzip -dc crates/akit-plugin/tests/guests/headers-fit.wasm.gz > $dir/headers-fit.wasm &&
 	printf 'a secret of the bench, 32 bytes or more' > $dir/secret" ||
 	die "building akit $desc on the host failed"
 $BENCH_SSH "rm -rf $src"
@@ -140,6 +141,8 @@ for ((r = 1; r <= rounds; r++)); do
 	n=${#list[@]}
 	for ((k = 0; k < n; k++)); do
 		s=${list[$(((k + r - 1) % n))]}
+		# The wasm module's plugin, of each server's own ABI (decision 037).
+		case $s in fit) cp -f headers-fit.wasm headers.wasm ;; *) cp -f headers-akit.wasm headers.wasm ;; esac
 		case $s in
 		akit-epoll) taskset -c $SERVER_CPUS ./bench_serve modules.run.json epoll 2>>server.log & ;;
 		akit-uring) taskset -c $SERVER_CPUS ./bench_serve modules.run.json uring 2>>server.log & ;;
@@ -179,5 +182,5 @@ for ((r = 1; r <= rounds; r++)); do
 	done
 done
 EOP
-$BENCH_SSH "cd $dir && setsid nohup sh -c '$QUIET run ./run.sh $rounds $duration $servers $only >> run.log 2>&1; echo \"exit \$?\" > status; rm -f bench_serve fit headers.wasm' > /dev/null 2>&1 < /dev/null &" < /dev/null
+$BENCH_SSH "cd $dir && setsid nohup sh -c '$QUIET run ./run.sh $rounds $duration $servers $only >> run.log 2>&1; echo \"exit \$?\" > status; rm -f bench_serve fit headers.wasm headers-akit.wasm headers-fit.wasm' > /dev/null 2>&1 < /dev/null &" < /dev/null
 echo "bench: started $id on the benchmark host; bench/modules.sh -report $id (or -wait $id)"

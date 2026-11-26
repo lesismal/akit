@@ -72,14 +72,14 @@ pub(crate) fn compile(code: &[u8]) -> Result<Arc<Module>, String> {
 /// Which ABI a plugin speaks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Abi {
-    /// fit's own: `fit_on_request`.
-    Fit,
+    /// akit's own, fit's renamed: `akit_on_request`.
+    Akit,
     /// Proxy-Wasm's: it exports `proxy_abi_version_0_2_0` or `_0_2_1`, as fit tells them apart.
     ProxyWasm,
 }
 
 /// Which ABI `m` speaks: a Proxy-Wasm filter, checked to export the functions the host calls, or
-/// a plugin of fit's ABI.
+/// a plugin of akit's ABI.
 pub(crate) fn check_exports(m: &Module) -> Result<Abi, String> {
     if proxywasm::VERSIONS.iter().any(|v| m.export(v).is_some()) {
         if let Some(name) = REQUIRED.iter().find(|n| m.export(n).is_none()) {
@@ -88,7 +88,7 @@ pub(crate) fn check_exports(m: &Module) -> Result<Abi, String> {
         return Ok(Abi::ProxyWasm);
     }
     if m.export(EXPORT_ON_REQUEST).is_some() {
-        return Ok(Abi::Fit);
+        return Ok(Abi::Akit);
     }
     Err(format!(
         "the plugin exports neither {EXPORT_ON_REQUEST} nor Proxy-Wasm's ABI version"
@@ -212,7 +212,7 @@ impl Plugin {
         let pool = InstancePool::builder(module, linker()?, move |_| Host::new(Arc::clone(&s)))
             .config(pool_config(w))
             .on_start(move |p| match kind {
-                Abi::Fit => {
+                Abi::Akit => {
                     let f = p.typed_func::<(), i32>(EXPORT_ON_REQUEST)?;
                     p.state_mut().on_request = Some(f);
                     Ok(())
@@ -307,7 +307,7 @@ mod tests {
     fn exports_are_checked() {
         let none = Wasm::default().encode();
         let e = check_exports(&compile(&none).unwrap()).unwrap_err();
-        assert!(e.contains("exports neither fit_on_request"), "{e}");
+        assert!(e.contains("exports neither akit_on_request"), "{e}");
         let pw = Wasm {
             funcs: vec![Func::export("proxy_abi_version_0_2_1", 0, 0, Vec::new())],
             ..Wasm::default()
