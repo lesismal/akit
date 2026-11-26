@@ -64,6 +64,7 @@ pub fn l4_hello(data: &[u8]) {
         entry: entry.clone(),
         buf: Vec::new(),
         waiting: Arc::new(Mutex::new(None)),
+        timer: None,
     };
     let step = usize::from(split).max(1);
     let mut picked = None;

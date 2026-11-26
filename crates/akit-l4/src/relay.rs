@@ -89,7 +89,7 @@ where
                 entry,
                 buf: Vec::new(),
                 waiting,
-                timer,
+                timer: Some(timer),
             })),
         }
     }
@@ -173,8 +173,9 @@ pub(crate) struct Opening {
     pub(crate) buf: Vec<u8>,
     /// The connection, until a service takes it or the opening timeout closes it.
     pub(crate) waiting: Arc<Mutex<Option<Conn<Client>>>>,
-    /// The opening timeout, cancelled once the connection is taken or closed.
-    timer: SendTimer,
+    /// The opening timeout, cancelled once the connection is taken or closed (`None` where
+    /// none was armed: the fuzz target's).
+    pub(crate) timer: Option<SendTimer>,
 }
 
 impl Opening {
@@ -200,7 +201,9 @@ impl Opening {
             .take()
             .is_some();
         // Its job, and the connection it holds, are dropped now rather than when it is due.
-        self.timer.cancel();
+        if let Some(t) = self.timer {
+            t.cancel();
+        }
         taken
     }
 }
