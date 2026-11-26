@@ -134,7 +134,7 @@ impl Converter {
                 let Some(to) =
                     redirect_target(args.first().map(String::as_str).unwrap_or_default())
                 else {
-                    self.skip(d, "its URL has placeholders fit has no counterpart for");
+                    self.skip(d, "its URL has placeholders akit has no counterpart for");
                     return None;
                 };
                 let mut status = 302;
@@ -146,7 +146,7 @@ impl Converter {
                         _ => match atoi_ok(st).filter(|n| (300..=399).contains(n)) {
                             Some(n) => status = n,
                             None => {
-                                self.skip(d, "a status fit's redirect does not take");
+                                self.skip(d, "a status akit's redirect does not take");
                                 return None;
                             }
                         },
@@ -164,7 +164,7 @@ impl Converter {
                     return None;
                 };
                 let p = self.rewrite(d, to)?;
-                self.warn(d.line, "rewrite: fit picks a request's route before rewriting it: the rewritten path does not choose another route");
+                self.warn(d.line, "rewrite: akit picks a request's route before rewriting it: the rewritten path does not choose another route");
                 add(m, "rewrite", p)
             }
             "uri" => {
@@ -201,7 +201,7 @@ impl Converter {
                         return add(m, "body_limit", params([("max_bytes", J::Int(n))]));
                     }
                 }
-                self.skip(d, "fit limits a request body's size, with max_size");
+                self.skip(d, "akit limits a request body's size, with max_size");
                 None
             }
             _ => None,
@@ -221,7 +221,7 @@ impl Converter {
                 if a != "=404" {
                     self.warn(
                         d.line,
-                        format!("try_files: the last {a} answers 404 in fit"),
+                        format!("try_files: the last {a} answers 404 in akit"),
                     );
                 }
                 continue;
@@ -240,7 +240,7 @@ impl Converter {
             out.push(a);
         }
         for e in &d.block {
-            self.skip(e, "fit tries files in order, the first that exists served");
+            self.skip(e, "akit tries files in order, the first that exists served");
         }
         if out.is_empty() {
             self.skip(d, "nothing to try");
@@ -259,7 +259,7 @@ impl Converter {
             return None;
         }
         if !to.starts_with('/') {
-            self.skip(d, "fit rewrites to a path starting with /");
+            self.skip(d, "akit rewrites to a path starting with /");
             return None;
         }
         // The query is kept, so {uri} is the path's.
@@ -310,7 +310,7 @@ impl Converter {
                 if args.len() == 4 {
                     self.warn(
                         d.line,
-                        "uri replace: its limit is not converted: fit replaces every match",
+                        "uri replace: its limit is not converted: akit replaces every match",
                     );
                 }
                 let a2 = args.get(2).cloned().unwrap_or_default();
@@ -385,7 +385,7 @@ impl Converter {
                 c.warn(
                     line,
                     format!(
-                        "{} {f}: skipped: its value has placeholders, which fit does not expand",
+                        "{} {f}: skipped: its value has placeholders, which akit does not expand",
                         d.name
                     ),
                 );
@@ -397,7 +397,7 @@ impl Converter {
                 c.warn(
                     line,
                     format!(
-                        "{} {f}: written as set: fit sets the field whether or not it is there",
+                        "{} {f}: written as set: akit sets the field whether or not it is there",
                         d.name
                     ),
                 );
@@ -451,7 +451,7 @@ impl Converter {
             }
             _ => c.warn(
                 line,
-                format!("encode {e}: skipped: fit compresses with zstd, br and gzip"),
+                format!("encode {e}: skipped: akit compresses with zstd, br and gzip"),
             ),
         };
         for a in args {
@@ -465,7 +465,7 @@ impl Converter {
                         if let Some((field, n)) = encode_level(&e.name, level) {
                             p.insert(field.into(), J::Int(n));
                         } else {
-                            self.warn(e.line, format!("encode {} {level}: the level is not converted: fit's compress takes gzip 1 to 9, br 1 to 11, and zstd 1 to 22 or fastest, default, better and best", e.name));
+                            self.warn(e.line, format!("encode {} {level}: the level is not converted: akit's compress takes gzip 1 to 9, br 1 to 11, and zstd 1 to 22 or fastest, default, better and best", e.name));
                         }
                     }
                 }
@@ -480,7 +480,7 @@ impl Converter {
                 }
                 "match" => self.skip(
                     e,
-                    "fit compresses what compresses well, by its content type",
+                    "akit compresses what compresses well, by its content type",
                 ),
                 _ => self.skip(e, "not converted"),
             }
@@ -501,7 +501,7 @@ impl Converter {
     fn basic_auth(&mut self, d: &Directive, args: &[String]) -> Option<Params> {
         let mut p = Params::new();
         if args.first().is_some_and(|a| a != "bcrypt") {
-            self.skip(d, "fit checks bcrypt hashes");
+            self.skip(d, "akit checks bcrypt hashes");
             return None;
         }
         if let [_, realm] = args {
@@ -587,7 +587,7 @@ impl Converter {
                         copied.push(h);
                     }
                 }
-                "header_up" => self.skip(e, "fit sends the request's fields to the auth service"),
+                "header_up" => self.skip(e, "akit sends the request's fields to the auth service"),
                 _ => self.skip(e, "not converted"),
             }
         }
@@ -624,7 +624,7 @@ impl Converter {
                 ))
             }
             "abort" => {
-                self.skip(d, "fit answers every request it takes");
+                self.skip(d, "akit answers every request it takes");
                 None
             }
             "file_server" => Some(self.file_server(d, args)),
@@ -663,7 +663,7 @@ impl Converter {
             {
                 body.clone_from(b);
             } else if e.name == "close" {
-                self.skip(e, "fit keeps the connection");
+                self.skip(e, "akit keeps the connection");
             } else {
                 self.skip(e, "not converted");
             }
@@ -677,7 +677,7 @@ impl Converter {
         }
         if !body.is_empty() {
             if has_placeholder(&body) {
-                self.warn(d.line, "respond: its body's placeholders are sent as they are written: fit does not expand them");
+                self.warn(d.line, "respond: its body's placeholders are sent as they are written: akit does not expand them");
             }
             p.insert("body".into(), J::Str(body));
         }
@@ -724,7 +724,7 @@ impl Converter {
                     for a in &e.args {
                         match a.as_str() {
                             "br" | "zstd" | "gzip" => encs.push(a.clone()),
-                            _ => self.warn(e.line, format!("precompressed {a}: skipped: fit serves br, zstd and gzip twins")),
+                            _ => self.warn(e.line, format!("precompressed {a}: skipped: akit serves br, zstd and gzip twins")),
                         }
                     }
                     if e.args.is_empty() {
@@ -734,7 +734,7 @@ impl Converter {
                         p.insert("precompressed".into(), J::strs(&encs));
                     }
                 }
-                "hide" => self.skip(e, "fit hides no files but those whose names start with a dot, which the static handler's dotfiles deny answers 404"),
+                "hide" => self.skip(e, "akit hides no files but those whose names start with a dot, which the static handler's dotfiles deny answers 404"),
                 _ => self.skip(e, "not converted"),
             }
         }
@@ -750,7 +750,7 @@ impl Converter {
         if args.len() > 1 {
             self.warn(
                 d.line,
-                format!("php_fastcgi: fit sends requests to the first address, {first}"),
+                format!("php_fastcgi: akit sends requests to the first address, {first}"),
             );
         }
         let mut addr = first.clone();
@@ -861,7 +861,7 @@ impl Converter {
                                     if let [a] = u.addresses.as_slice() {
                                         p.insert("host_header".into(), J::str(a));
                                     } else {
-                                        w.push((e.line, format!("header_up Host {v}: skipped: fit sends one Host to every address")));
+                                        w.push((e.line, format!("header_up Host {v}: skipped: akit sends one Host to every address")));
                                     }
                                 }
                                 _ => {
@@ -878,7 +878,7 @@ impl Converter {
                         } else if f.starts_with("x-forwarded-")
                             || f == "x-real-ip" && e.args.len() == 2 && v == "{remote_host}"
                         {
-                            w.push((e.line, format!("header_up {arg0}: skipped: fit's proxy sets X-Forwarded-For, -Proto and -Host itself")));
+                            w.push((e.line, format!("header_up {arg0}: skipped: akit's proxy sets X-Forwarded-For, -Proto and -Host itself")));
                         } else {
                             req_ops.push(e.args.clone());
                             req_lines.push(e.line);
@@ -908,12 +908,12 @@ impl Converter {
                 "lb_try_duration" => {
                     p.entry("retry".into())
                         .or_insert_with(|| J::Map(Params::new()));
-                    w.push((e.line, "lb_try_duration: written as fit's retry, which tries again at once, twice by default, within a budget".into()));
+                    w.push((e.line, "lb_try_duration: written as akit's retry, which tries again at once, twice by default, within a budget".into()));
                     true
                 }
                 "flush_interval" | "buffer_requests" | "buffer_responses" | "request_buffers"
                 | "response_buffers" | "max_buffer_size" => {
-                    w.push(skip_msg(e, "fit streams bodies both ways, as they arrive"));
+                    w.push(skip_msg(e, "akit streams bodies both ways, as they arrive"));
                     true
                 }
                 "stream_timeout" => {
@@ -1007,7 +1007,7 @@ impl Converter {
                 self.warn(
                     d.line,
                     format!(
-                        "{} {a}: skipped: fit reaches an upstream's addresses alike",
+                        "{} {a}: skipped: akit reaches an upstream's addresses alike",
                         d.name
                     ),
                 );
@@ -1064,7 +1064,7 @@ impl Converter {
                     if let Some(n) = atoi_ok(&arg).filter(|n| one && (100..600).contains(n)) {
                         health.expect_status = vec![n];
                     } else if arg != "2xx" {
-                        self.warn(e.line, format!("health_status {arg}: skipped: fit passes any status from 200 to 399, or those listed"));
+                        self.warn(e.line, format!("health_status {arg}: skipped: akit passes any status from 200 to 399, or those listed"));
                     }
                 }
                 "health_passes" => {
@@ -1084,7 +1084,7 @@ impl Converter {
                         } else {
                             self.skip(
                                 f,
-                                "fit's probes send a Host of their own and no other field",
+                                "akit's probes send a Host of their own and no other field",
                             );
                         }
                     }
@@ -1104,7 +1104,7 @@ impl Converter {
                 | "health_follow_redirects"
                 | "passive_health" => self.skip(
                     e,
-                    "not converted: fit counts failed connections and responses cut short",
+                    "not converted: akit counts failed connections and responses cut short",
                 ),
                 "transport" => self.transport(&mut u, e),
                 _ => {
@@ -1178,7 +1178,7 @@ impl Converter {
                 let name = e.args.get(1).cloned().unwrap_or_else(|| "lb".into());
                 u.sticky_cookie = Some(name);
                 if e.args.len() == 3 {
-                    self.warn(e.line, "lb_policy cookie: its secret is not converted: fit's cookie names the address");
+                    self.warn(e.line, "lb_policy cookie: its secret is not converted: akit's cookie names the address");
                 }
             }
             "weighted_round_robin" => {
@@ -1197,14 +1197,14 @@ impl Converter {
                 u.load_balancing.clone_from(policy);
                 u.weights = ws;
             }
-            "first" => self.warn(e.line, "lb_policy first: written as round_robin: fit's proxy fails over to another upstream, named as failover, written by hand"),
-            _ => self.skip(e, "fit balances by round robin, weights, least connections, random, P2C, or a hash of the client's address, the URI, a header or a cookie"),
+            "first" => self.warn(e.line, "lb_policy first: written as round_robin: akit's proxy fails over to another upstream, named as failover, written by hand"),
+            _ => self.skip(e, "akit balances by round robin, weights, least connections, random, P2C, or a hash of the client's address, the URI, a header or a cookie"),
         }
     }
 
     fn transport(&mut self, u: &mut OutUpstream, e: &Directive) {
         if e.args.first().is_none_or(|a| a != "http") {
-            self.skip(e, "fit's proxy speaks HTTP; write php_fastcgi for FastCGI");
+            self.skip(e, "akit's proxy speaks HTTP; write php_fastcgi for FastCGI");
             return;
         }
         for f in &e.block {
@@ -1223,7 +1223,7 @@ impl Converter {
                     if f.args.iter().any(|a| a == "h2c") {
                         u.protocol = "h2c".into();
                     } else if f.args.iter().any(|a| a == "2") && u.protocol != "h2" {
-                        self.warn(f.line, "versions 2: fit speaks HTTP/2 to TLS upstreams, and h2c in the clear");
+                        self.warn(f.line, "versions 2: akit speaks HTTP/2 to TLS upstreams, and h2c in the clear");
                     }
                 }
                 "tls" => u.protocol = "h2".into(),
@@ -1243,7 +1243,7 @@ impl Converter {
                     {
                         u.tls_ca_file.clone_from(file);
                     } else {
-                        self.skip(f, "fit takes one CA file");
+                        self.skip(f, "akit takes one CA file");
                     }
                 }
                 "tls_client_auth" => {
@@ -1272,7 +1272,7 @@ impl Converter {
                         u.max_conns = n;
                     }
                 }
-                "tls_insecure_skip_verify" => self.skip(f, "fit verifies upstreams' certificates; give it their CA with tls_trusted_ca_certs"),
+                "tls_insecure_skip_verify" => self.skip(f, "akit verifies upstreams' certificates; give it their CA with tls_trusted_ca_certs"),
                 _ => self.skip(f, "not converted"),
             }
         }
@@ -1295,12 +1295,12 @@ fn upstream_addr(a: &str) -> Result<(Vec<String>, &'static str), &'static str> {
                 port = "443";
             }
             "h2c" => proto = "h2c",
-            _ => return Err("fit reaches upstreams over http://, https:// and h2c://"),
+            _ => return Err("akit reaches upstreams over http://, https:// and h2c://"),
         }
         a = rest;
     }
     if a.starts_with("unix/") {
-        return Err("fit reaches upstreams over TCP");
+        return Err("akit reaches upstreams over TCP");
     }
     if a.contains('/') {
         return Err("an upstream address has no path");

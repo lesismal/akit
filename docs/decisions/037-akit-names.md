@@ -28,8 +28,10 @@ keys. akit has had no release, so its names can still change without breaking an
    format, decision 002), fit's config format itself (`.conf`, YAML, JSON) and the `fitstore` store
    format I93 is to read and write as fit's (decision 036, 6); Proxy-Wasm's ABI (`proxy_*`, a
    standard of its own, decision 011); and "fit" where it names fit, the specification, in docs,
-   comments and messages ("as fit does", "fit's `X`"), and in `akit adapt`'s converter warnings,
-   which are fit's, checked byte for byte against fit's golden files.
+   comments and messages ("as fit does", "fit's `X`"). `akit adapt`'s converter warnings and
+   errors (103 of them) name the gateway akit, as a fit user reads them from akit; the golden test
+   reads akit's name in them as fit's before comparing with fit's golden files byte for byte
+   (fit's corpus never holds "akit").
 3. **What was renamed**:
 
    | Where | fit's | akit's |

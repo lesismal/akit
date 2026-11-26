@@ -185,7 +185,7 @@ impl Converter {
             "fastcgi" => {
                 if !h.params.contains_key("root") {
                     if !r.h.root_set {
-                        self.warn(r.h.line, "php_fastcgi: skipped: it needs a root, which fit takes as an absolute path; write root");
+                        self.warn(r.h.line, "php_fastcgi: skipped: it needs a root, which akit takes as an absolute path; write root");
                         return;
                     }
                     h.params.insert("root".into(), J::str(&r.h.root));
@@ -262,7 +262,7 @@ impl Converter {
                     self.metrics = true;
                     self.warn(
                         d.line,
-                        "metrics: fit serves them on the Admin API at /metrics, not on the site",
+                        "metrics: akit serves them on the Admin API at /metrics, not on the site",
                     );
                 }
                 "handle_errors" => self.skip(d, "error pages are not converted"),

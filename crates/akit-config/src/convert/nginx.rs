@@ -282,11 +282,11 @@ pub(crate) fn convert_parsed(ds: &[Directive]) -> Result<Converted, String> {
             | "thread_pool"
             | "env"
             | "worker_shutdown_timeout" => {
-                c.skip(d, "fit runs as one process with its own workers");
+                c.skip(d, "akit runs as one process with its own workers");
             }
             "stream" => c.skip(
                 d,
-                "TCP and UDP proxying is fit's tcp and udp listeners, written by hand",
+                "TCP and UDP proxying is akit's tcp and udp listeners, written by hand",
             ),
             _ => c.skip(d, "not converted"),
         }
@@ -466,17 +466,17 @@ impl Converter {
                     return;
                 }
                 s.auth_basic = d.line;
-                self.warn(d.line, "auth_basic: not converted: what it guards answers 401 until a basic_auth middleware takes its place, with its users' bcrypt hashes (fit hash-password makes one)");
+                self.warn(d.line, "auth_basic: not converted: what it guards answers 401 until a basic_auth middleware takes its place, with its users' bcrypt hashes (akit hash-password makes one)");
                 return;
             }
             "auth_basic_user_file" => {
-                self.skip(d, "fit does not read htpasswd files: basic_auth's users hold the bcrypt hashes, written in the config");
+                self.skip(d, "akit does not read htpasswd files: basic_auth's users hold the bcrypt hashes, written in the config");
                 return;
             }
             "add_header" if (2..=3).contains(&d.args.len()) => {
                 let (name, value) = (arg0, d.args.get(1).map(String::as_str).unwrap_or_default());
                 if value.contains('$') {
-                    self.skip(d, "its value has variables, which fit does not expand");
+                    self.skip(d, "its value has variables, which akit does not expand");
                     return;
                 }
                 if !s.set_add_headers {
@@ -522,7 +522,7 @@ impl Converter {
             | "gzip_buffers" => {
                 self.skip(
                     d,
-                    "fit's compress middleware compresses what compresses well, with zstd, brotli or gzip",
+                    "akit's compress middleware compresses what compresses well, with zstd, brotli or gzip",
                 );
                 return;
             }
@@ -538,7 +538,7 @@ impl Converter {
             | "ssl_stapling_verify" => {
                 self.skip(
                     d,
-                    "fit picks TLS versions and ciphers, and staples OCSP, itself",
+                    "akit picks TLS versions and ciphers, and staples OCSP, itself",
                 );
                 return;
             }
@@ -550,12 +550,12 @@ impl Converter {
                     // fit hands a connection that sends a large file to the kernel's TLS
                     // anyway; every connection, as Options KTLS does, is a setting of the whole
                     // engine.
-                    self.skip(d, "fit uses kTLS for large files by default; for every connection, as for a network card that encrypts TLS, set engine.kernel_tls_offload");
+                    self.skip(d, "akit uses kTLS for large files by default; for every connection, as for a network card that encrypts TLS, set engine.kernel_tls_offload");
                     return;
                 }
                 self.skip(
                     d,
-                    "fit picks TLS versions and ciphers, and staples OCSP, itself",
+                    "akit picks TLS versions and ciphers, and staples OCSP, itself",
                 );
                 return;
             }
@@ -570,7 +570,7 @@ impl Converter {
             "log_format" => {
                 self.skip(
                     d,
-                    "fit writes its access log lines as JSON, with fields of its own",
+                    "akit writes its access log lines as JSON, with fields of its own",
                 );
                 return;
             }
@@ -598,13 +598,13 @@ impl Converter {
             | "client_header_timeout"
             | "resolver"
             | "resolver_timeout" => {
-                self.skip(d, "not converted: fit's defaults stand in for it");
+                self.skip(d, "not converted: akit's defaults stand in for it");
                 return;
             }
             _ => {}
         }
         if d.name.contains("_by_lua") {
-            self.skip(d, "OpenResty's Lua is not converted: fit's plugins are WebAssembly, run by the wasm middleware");
+            self.skip(d, "OpenResty's Lua is not converted: akit's plugins are WebAssembly, run by the wasm middleware");
             return;
         }
         self.skip(d, "not converted");
@@ -776,7 +776,7 @@ impl Converter {
             return None;
         };
         if addr.starts_with("unix:") {
-            self.skip(d, "fit listens on TCP and UDP addresses");
+            self.skip(d, "akit listens on TCP and UDP addresses");
             return None;
         }
         let (mut host, port) = match split_host_port(addr) {
@@ -1083,7 +1083,7 @@ impl Converter {
                 if a != "=404" {
                     self.warn(
                         d.line,
-                        format!("try_files: the last {a} answers 404 in fit"),
+                        format!("try_files: the last {a} answers 404 in akit"),
                     );
                 }
                 continue;
@@ -1132,7 +1132,7 @@ impl Converter {
         };
         if matches!(code, 301 | 302 | 303 | 307 | 308) {
             let Some(to) = vars(text, info) else {
-                self.skip(d, "its URL has variables fit has no placeholder for");
+                self.skip(d, "its URL has variables akit has no placeholder for");
                 return None;
             };
             return Some((
@@ -1144,7 +1144,7 @@ impl Converter {
             ));
         }
         if text.contains('$') {
-            self.skip(d, "its text has variables, which fit does not expand");
+            self.skip(d, "its text has variables, which akit does not expand");
             return None;
         }
         Some((
@@ -1188,7 +1188,7 @@ impl Converter {
             let Some(u) = vars(to, info) else {
                 self.skip(
                     d,
-                    "its replacement has variables fit has no placeholder for",
+                    "its replacement has variables akit has no placeholder for",
                 );
                 return None;
             };
@@ -1216,7 +1216,7 @@ impl Converter {
         if flag == "last" {
             self.warn(
                 d.line,
-                "rewrite ... last: converted, but fit does not look for the location again after it",
+                "rewrite ... last: converted, but akit does not look for the location again after it",
             );
         }
         // nginx replaces the whole path when the expression matches anywhere in it; fit's
@@ -1254,7 +1254,7 @@ impl Converter {
         {
             // fit's proxy sets X-Forwarded-For, -Proto and -Host itself.
         } else if v.contains('$') {
-            self.skip(d, "its value has variables, which fit does not expand");
+            self.skip(d, "its value has variables, which akit does not expand");
         } else {
             if !s.set_proxy_headers {
                 s.proxy_headers.clear();
@@ -1286,7 +1286,7 @@ impl Converter {
         let (scheme, rest) = match target.split_once("://") {
             Some((s, r)) if s == "http" || s == "https" => (s, r),
             _ => {
-                self.skip(d, "fit proxies to http:// and https:// upstreams");
+                self.skip(d, "akit proxies to http:// and https:// upstreams");
                 return None;
             }
         };
@@ -1344,7 +1344,7 @@ impl Converter {
         if warn_h2 {
             self.warn(
                 d.line,
-                format!("proxy_pass {target}: fit reaches TLS upstreams over HTTP/2"),
+                format!("proxy_pass {target}: akit reaches TLS upstreams over HTTP/2"),
             );
         }
         let mut p = params([("upstream", J::Str(name))]);
@@ -1418,7 +1418,7 @@ impl Converter {
                         continue;
                     };
                     if first.starts_with("unix:") {
-                        self.skip(e, "fit reaches upstreams over TCP");
+                        self.skip(e, "akit reaches upstreams over TCP");
                         continue;
                     }
                     let mut addr = first.clone();
@@ -1487,7 +1487,7 @@ impl Converter {
                         u.load_balancing = "cookie_hash".into();
                         u.hash_key = c.into();
                     } else {
-                        self.warn(e.line, format!("hash {key}: skipped: fit hashes on the client's address, the URI, a header or a cookie"));
+                        self.warn(e.line, format!("hash {key}: skipped: akit hashes on the client's address, the URI, a header or a cookie"));
                     }
                 }
                 "keepalive" => {
@@ -1500,7 +1500,7 @@ impl Converter {
                     self.skip(e, "keepalive takes a number");
                 }
                 "keepalive_timeout" | "keepalive_requests" | "keepalive_time" => {
-                    self.skip(e, "fit's upstream idle_timeout stands in for it");
+                    self.skip(e, "akit's upstream idle_timeout stands in for it");
                 }
                 _ => self.skip(e, "not converted"),
             }
@@ -1556,7 +1556,7 @@ impl Converter {
                 } else if a == "$server_name" || a == "$host" {
                     key = "route".into();
                 } else {
-                    self.warn(d.line, format!("limit_req_zone {a}: skipped: fit counts requests by the client's address, a header, or the route"));
+                    self.warn(d.line, format!("limit_req_zone {a}: skipped: akit counts requests by the client's address, a header, or the route"));
                     return;
                 }
             } else if let Some(z) = a.strip_prefix("zone=") {
@@ -1570,7 +1570,7 @@ impl Converter {
                     (r, 1.0)
                 };
                 let Some(n) = parse_float(r) else {
-                    self.skip(d, "a rate fit cannot read");
+                    self.skip(d, "a rate akit cannot read");
                     return;
                 };
                 rate = n / per;
@@ -1608,7 +1608,7 @@ impl Converter {
         p.insert("rate".into(), J::Float(z.rate));
         p.insert("key".into(), J::Str(z.key));
         if !nodelay {
-            self.warn(d.line, "limit_req without nodelay: nginx delays requests past the rate, fit refuses them with 429");
+            self.warn(d.line, "limit_req without nodelay: nginx delays requests past the rate, akit refuses them with 429");
         }
         Some(p)
     }
@@ -1622,7 +1622,7 @@ impl Converter {
         }
         let Some(output) = log_output(d.args.first().map(String::as_str).unwrap_or_default())
         else {
-            self.skip(d, "fit writes its log to stdout, stderr or a file");
+            self.skip(d, "akit writes its log to stdout, stderr or a file");
             return;
         };
         // nginx's level when none is named.
@@ -1636,14 +1636,14 @@ impl Converter {
             if matches!(l.as_str(), "crit" | "alert" | "emerg") {
                 self.warn(
                     d.line,
-                    format!("error_log: {l} is fit's error, its highest level"),
+                    format!("error_log: {l} is akit's error, its highest level"),
                 );
             }
         }
         if let Some(l) = &self.log {
             if l.output != output || l.level != level {
                 let line = self.log_line;
-                self.warn(d.line, format!("error_log: skipped: fit has one log, for the whole process, which line {line} sets"));
+                self.warn(d.line, format!("error_log: skipped: akit has one log, for the whole process, which line {line} sets"));
             }
             return;
         }
@@ -1651,7 +1651,7 @@ impl Converter {
             self.warn(
                 d.line,
                 format!(
-                    "error_log: fit has one log, for the whole process, not one for each {place}"
+                    "error_log: akit has one log, for the whole process, not one for each {place}"
                 ),
             );
         }
@@ -1667,7 +1667,7 @@ impl Converter {
     fn access_log(&mut self, d: &Directive, place: &str) {
         if d.args.len() == 1 && d.args.first().is_some_and(|a| a == "off") {
             if self.access_log.is_some() || place == "location" {
-                self.warn(d.line, "access_log off: skipped: fit's access log, when there is one, writes a line for every request");
+                self.warn(d.line, "access_log off: skipped: akit's access log, when there is one, writes a line for every request");
             }
             return;
         }
@@ -1676,7 +1676,7 @@ impl Converter {
             return;
         };
         let Some(output) = log_output(file) else {
-            self.skip(d, "fit writes its access log to stdout, stderr or a file");
+            self.skip(d, "akit writes its access log to stdout, stderr or a file");
             return;
         };
         let mut l = OutAccessLog {
@@ -1686,7 +1686,7 @@ impl Converter {
         for (i, a) in d.args.iter().skip(1).enumerate() {
             let (key, value) = a.split_once('=').unwrap_or((a, ""));
             if i == 0 && !a.contains('=') {
-                self.warn(d.line, format!("access_log: the format {a} is not converted: fit writes its lines as JSON, text or line, with fields of its own"));
+                self.warn(d.line, format!("access_log: the format {a} is not converted: akit writes its lines as JSON, text or line, with fields of its own"));
             } else if key == "buffer" {
                 match size(value).filter(|n| *n > 0) {
                     Some(n) => l.buffer_bytes = n,
@@ -1698,7 +1698,7 @@ impl Converter {
                     None => self.warn(d.line, format!("access_log: {a}: not a time")),
                 }
             } else if key == "if" {
-                self.warn(d.line, format!("access_log: {a} is not converted: fit writes a line for every request, or as its level says"));
+                self.warn(d.line, format!("access_log: {a} is not converted: akit writes a line for every request, or as its level says"));
             } else {
                 self.warn(d.line, format!("access_log: {a} is not converted"));
             }
@@ -1708,13 +1708,13 @@ impl Converter {
                 let line = self.access_log_line;
                 self.warn(
                     d.line,
-                    format!("access_log: skipped: fit has one access log, which line {line} sets"),
+                    format!("access_log: skipped: akit has one access log, which line {line} sets"),
                 );
             }
             return;
         }
         if place == "server" || place == "location" {
-            self.warn(d.line, format!("access_log: fit has one access log, for every request, not one for each {place}"));
+            self.warn(d.line, format!("access_log: akit has one access log, for every request, not one for each {place}"));
         }
         self.access_log = Some(l);
         self.access_log_line = d.line;

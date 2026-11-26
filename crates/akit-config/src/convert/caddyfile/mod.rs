@@ -516,7 +516,7 @@ impl Converter {
                             continue;
                         }
                     }
-                    self.skip(d, "fit keeps certificates in a directory, or in Redis, etcd or Consul through acme.shared_storage, written by hand");
+                    self.skip(d, "akit keeps certificates in a directory, or in Redis, etcd or Consul through acme.shared_storage, written by hand");
                     continue;
                 }
                 "admin" => {
@@ -585,7 +585,7 @@ impl Converter {
                 | "ocsp_interval" | "ocsp_stapling" | "preferred_chains" | "cert_issuer"
                 | "pki" | "events" | "filesystem" | "default_sni" | "fallback_sni"
                 | "default_bind" | "cert_lifetime" | "metrics" => {
-                    self.skip(d, "not converted: fit's defaults stand in for it");
+                    self.skip(d, "not converted: akit's defaults stand in for it");
                     continue;
                 }
                 _ => {}
@@ -640,7 +640,7 @@ impl Converter {
             } else {
                 self.skip(
                     e,
-                    "not converted: fit's limits and timeouts are set at the top of its config",
+                    "not converted: akit's limits and timeouts are set at the top of its config",
                 );
             }
         }
@@ -727,7 +727,7 @@ impl Converter {
             if scheme != "http" && scheme != "https" {
                 self.warn(
                     line,
-                    format!("site address {raw}: skipped: fit serves http:// and https://"),
+                    format!("site address {raw}: skipped: akit serves http:// and https://"),
                 );
                 return None;
             }
@@ -745,7 +745,7 @@ impl Converter {
                 self.warn(
                     line,
                     format!(
-                        "site address {raw}: skipped: fit takes a path that is exact or ends in *"
+                        "site address {raw}: skipped: akit takes a path that is exact or ends in *"
                     ),
                 );
                 return None;
@@ -768,7 +768,7 @@ impl Converter {
         if a.host.matches('*').count() > 1 || a.host.contains('*') && !a.host.starts_with("*.") {
             self.warn(
                 line,
-                format!("site address {raw}: skipped: fit takes names and a leading \"*.\""),
+                format!("site address {raw}: skipped: akit takes names and a leading \"*.\""),
             );
             return None;
         }
@@ -785,7 +785,7 @@ impl Converter {
             true
         } else {
             if !a.host.is_empty() {
-                self.warn(line, format!("site address {raw}: served over HTTP: Caddy serves it over HTTPS with a certificate of its internal CA, which fit has not"));
+                self.warn(line, format!("site address {raw}: served over HTTP: Caddy serves it over HTTPS with a certificate of its internal CA, which akit has not"));
             }
             false
         };
@@ -806,7 +806,7 @@ impl Converter {
             [a] => {
                 if a == "internal" {
                     s.tls.internal = true;
-                    self.warn(d.line, "tls internal: fit has no internal CA: write certificate files, or let ACME obtain certificates for public names");
+                    self.warn(d.line, "tls internal: akit has no internal CA: write certificate files, or let ACME obtain certificates for public names");
                 } else if a.contains('@') {
                     self.email(d.line, a);
                 } else {
@@ -835,7 +835,7 @@ impl Converter {
                                 "require_and_verify" => "require".into(),
                                 "verify_if_given" => "verify_if_given".into(),
                                 _ => {
-                                    self.warn(f.line, format!("client_auth mode {arg0}: fit requires and verifies certificates, or verifies them if given"));
+                                    self.warn(f.line, format!("client_auth mode {arg0}: akit requires and verifies certificates, or verifies them if given"));
                                     "verify_if_given".into()
                                 }
                             };
@@ -864,12 +864,12 @@ impl Converter {
                     s.tls.client_auth = Some(ca);
                 }
                 "protocols" | "ciphers" | "curves" | "alpn" | "key_type" => {
-                    self.skip(e, "fit picks TLS versions, ciphers and curves itself");
+                    self.skip(e, "akit picks TLS versions, ciphers and curves itself");
                 }
                 "issuer" => {
                     if e.args.first().is_some_and(|a| a == "internal") {
                         s.tls.internal = true;
-                        self.warn(e.line, "issuer internal: fit has no internal CA");
+                        self.warn(e.line, "issuer internal: akit has no internal CA");
                         continue;
                     }
                     for f in &e.block {
@@ -892,7 +892,7 @@ impl Converter {
                 }
                 "dns" => self.skip(
                     e,
-                    "fit answers ACME's HTTP-01 and TLS-ALPN-01 challenges, not DNS-01",
+                    "akit answers ACME's HTTP-01 and TLS-ALPN-01 challenges, not DNS-01",
                 ),
                 _ => self.skip(e, "not converted"),
             }
@@ -902,7 +902,7 @@ impl Converter {
     fn email(&mut self, line: i64, e: &str) {
         let have = self.acme().email.clone();
         if !have.is_empty() && have != e {
-            self.warn(line, format!("tls {e}: fit has one ACME email, {have}"));
+            self.warn(line, format!("tls {e}: akit has one ACME email, {have}"));
             return;
         }
         self.acme().email = e.into();
@@ -919,16 +919,16 @@ impl Converter {
                     [f, path] if f == "file" => {
                         output.clone_from(path);
                         if !e.block.is_empty() {
-                            self.warn(e.line, "output file: rolling is not converted: fit appends to the file, for logrotate to rotate");
+                            self.warn(e.line, "output file: rolling is not converted: akit appends to the file, for logrotate to rotate");
                         }
                     }
                     [o] if o == "discard" => return,
-                    _ => self.skip(e, "fit writes to stdout, stderr or a file"),
+                    _ => self.skip(e, "akit writes to stdout, stderr or a file"),
                 },
                 "format" => match e.args.first().map(String::as_str) {
                     Some("json") => format.clear(),
                     Some("console") => format = "line".into(),
-                    _ => self.skip(e, "fit writes access log lines as JSON, text or line"),
+                    _ => self.skip(e, "akit writes access log lines as JSON, text or line"),
                 },
                 "level" => {
                     if let Some(lv) = self.log_level(e) {
@@ -944,7 +944,7 @@ impl Converter {
             let out = l.output.clone();
             self.warn(
                 d.line,
-                format!("log: fit has one access log, written to {out}"),
+                format!("log: akit has one access log, written to {out}"),
             );
             return;
         }
@@ -969,7 +969,7 @@ impl Converter {
             "WARN" | "WARNING" => Some("warn"),
             "ERROR" => Some("error"),
             "PANIC" | "FATAL" | "DPANIC" => {
-                self.warn(e.line, format!("level {l} is fit's error, its highest"));
+                self.warn(e.line, format!("level {l} is akit's error, its highest"));
                 Some("error")
             }
             _ => {
@@ -1012,7 +1012,7 @@ impl Converter {
             return;
         }
         if d.args.len() == 1 && d.args.first().is_some_and(|a| a != "default") {
-            self.skip(d, "fit has one log: the default logger's is converted");
+            self.skip(d, "akit has one log: the default logger's is converted");
             return;
         }
         let mut out = self.log.clone().unwrap_or_else(|| OutLog {
@@ -1026,15 +1026,15 @@ impl Converter {
                     [f, path] if f == "file" => {
                         out.output.clone_from(path);
                         if !e.block.is_empty() {
-                            self.warn(e.line, "output file: rolling is not converted: fit appends to the file, for logrotate to rotate");
+                            self.warn(e.line, "output file: rolling is not converted: akit appends to the file, for logrotate to rotate");
                         }
                     }
-                    _ => self.skip(e, "fit writes its log to stdout, stderr or a file"),
+                    _ => self.skip(e, "akit writes its log to stdout, stderr or a file"),
                 },
                 "format" => match e.args.first().map(String::as_str) {
                     Some("json") => out.format = "json".into(),
                     Some("console") => out.format.clear(),
-                    _ => self.skip(e, "fit writes its log as line, text or JSON"),
+                    _ => self.skip(e, "akit writes its log as line, text or JSON"),
                 },
                 "level" => {
                     if let Some(lv) = self.log_level(e) {
@@ -1043,9 +1043,9 @@ impl Converter {
                 }
                 "exclude" => self.skip(
                     e,
-                    "fit's log.levels sets the level of each of its loggers, written by hand",
+                    "akit's log.levels sets the level of each of its loggers, written by hand",
                 ),
-                "include" => self.skip(e, "fit's log takes every logger's messages"),
+                "include" => self.skip(e, "akit's log takes every logger's messages"),
                 _ => self.skip(e, "not converted"),
             }
         }

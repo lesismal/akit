@@ -437,7 +437,7 @@ fn matcher_set(lines: &[Directive]) -> Result<OutMatch, String> {
                         || h.contains('*') && !h.starts_with("*.")
                     {
                         return Err(format!(
-                            "host {h} is not converted: fit takes names and a leading \"*.\""
+                            "host {h} is not converted: akit takes names and a leading \"*.\""
                         ));
                     }
                     m.host.push(go_lower(h));
@@ -500,7 +500,7 @@ fn matcher_set(lines: &[Directive]) -> Result<OutMatch, String> {
             "remote_ip" | "client_ip" => {
                 if l.args.first().is_some_and(|a| a == "forwarded") {
                     return Err(
-                        "remote_ip forwarded is not converted: fit matches the connection's address"
+                        "remote_ip forwarded is not converted: akit matches the connection's address"
                             .into(),
                     );
                 }

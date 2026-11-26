@@ -25,8 +25,16 @@ fn unhex(s: &str) -> String {
     unhex_utf8(s).unwrap()
 }
 
+/// akit's warnings and errors with fit's name for the gateway, as fit's golden files have them:
+/// akit's say akit (decision 037). fit's corpus never holds "akit", so only akit's own words map.
+fn fit_names(s: &str) -> String {
+    s.replace("an akit", "a fit")
+        .replace("An akit", "A fit")
+        .replace("akit", "fit")
+}
+
 /// Each converter on fit's corpus gives what fit's gives, byte for byte: the JSON and the
-/// warnings, or the error.
+/// warnings, or the error, akit's name for itself read as fit's (decision 037).
 fn golden(name: &str, convert: &dyn Fn(&str) -> Result<super::Converted, String>) {
     let file = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("testdata/convert/{name}.txt"));
     let text = std::fs::read_to_string(file).unwrap();
@@ -39,8 +47,8 @@ fn golden(name: &str, convert: &dyn Fn(&str) -> Result<super::Converted, String>
         };
         n += 1;
         let got = match convert(&input) {
-            Ok(r) => format!("OK\n{}\n{}", r.json(), r.warnings().join("\n")),
-            Err(e) => format!("ERR\n{e}"),
+            Ok(r) => format!("OK\n{}\n{}", r.json(), fit_names(&r.warnings().join("\n"))),
+            Err(e) => format!("ERR\n{}", fit_names(&e)),
         };
         let want = if c[1] == "OK" {
             format!("OK\n{}\n{}", unhex(c[2]), unhex(c[3]))
@@ -390,4 +398,16 @@ fn nginx_samples_list_every_skipped_directive() {
         }
     }
     assert!(probed_blocks > 50, "{probed_blocks} blocks probed");
+}
+
+#[test]
+fn warnings_name_akit() {
+    let r = super::nginx("http { server { listen 80; auth_basic \"x\"; } }").unwrap();
+    let w = r.warnings().join("\n");
+    assert!(w.contains("akit hash-password"), "{w}");
+    assert!(
+        !w.split(|c: char| !c.is_ascii_alphanumeric())
+            .any(|t| t == "fit"),
+        "{w}"
+    );
 }

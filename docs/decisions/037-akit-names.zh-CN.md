@@ -20,8 +20,9 @@ akit 移植 fit（决定 002），此前凡是 akit 对外显示名字的地方�
    默认配置文件、akit 写出的文件名，以及控制台的页面。**不保留旧名字作为别名**：akit 不接受、不读取、也不回答 fit 的名字。
 2. **不变的部分**：配置的字段名（没有一个写着 "fit"；akit 读取 fit 的配置格式，决定 002）、fit 的配置格式本身（`.conf`、
    YAML、JSON），以及 I93 要按 fit 的格式读写的 `fitstore` store 格式（决定 036 第 6 条）；Proxy-Wasm 的 ABI（`proxy_*`，自成
-   一套标准，决定 011）；以及在文档、注释和消息中指 fit（即规范）的 "fit"（"与 fit 相同"、"fit 的 `X`"），还有 `akit adapt`
-   的转换警告，它们是 fit 的，逐字节对照 fit 的 golden 文件检查。
+   一套标准，决定 011）；以及在文档、注释和消息中指 fit（即规范）的 "fit"（"与 fit 相同"、"fit 的 `X`"）。`akit adapt`
+   的转换警告和错误（103 条）把网关称为 akit；golden 测试先把其中 akit 的名字读作 fit，再与 fit 的 golden 文件逐字节对比
+   （fit 的语料中从不出现 "akit"）。
 3. **改名的内容**：
 
    | 位置 | fit 的 | akit 的 |
