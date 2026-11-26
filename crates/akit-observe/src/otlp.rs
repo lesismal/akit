@@ -31,10 +31,15 @@ pub const SCOPE: &str = "fit";
 /// Where a telemetry exporter's messages go: an export that failed, and exports that work again.
 pub type Log = Arc<dyn Fn(&str) + Send + Sync>;
 
-/// The [`Log`] that writes to standard error.
+/// The [`Log`] that writes to the `telemetry` logger (I82), at warn: standard error until akit's
+/// log is installed.
 #[must_use]
 pub fn stderr_log() -> Log {
-    Arc::new(|msg: &str| eprintln!("akit: {msg}"))
+    crate::logger::lines(
+        crate::logger::Logger::Telemetry,
+        crate::logger::Level::Warn,
+        "",
+    )
 }
 
 /// Posts OTLP/HTTP JSON requests to a receiver: `telemetry`'s endpoint, headers, TLS and timeout,

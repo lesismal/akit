@@ -82,6 +82,18 @@
     "engine.backlog": {
       "en": "akio's 1024 when left out or 0, not the system's.",
       "zh": "省略或为 0 时为 akio 的 1024，而不是系统的值。"
+    },
+    "log.format": {
+      "en": "The formats are fit's, as fib writes them (akio's own log formats are not used): `line` as fib's, `text` and `json` as Go's log/slog.",
+      "zh": "格式与 fit 相同，即 fib 的写法（不使用 akio 自己的日志格式）：`line` 同 fib，`text` 和 `json` 同 Go 的 log/slog。"
+    },
+    "log.levels": {
+      "en": "`engine` takes akio's records: its warnings and errors at their levels, its info and debug records at debug (fib's engine lines are off unless asked). akit's crates whose messages carry no level (ACME, OCSP, providers, telemetry, FastCGI's stderr) write them at warn. `plugin` has no messages yet.",
+      "zh": "`engine` 接收 akio 的记录：警告和错误保持其级别，info 和 debug 记录按 debug 写（fib 的引擎行默认不输出）。消息不带级别的 akit crate（ACME、OCSP、provider、遥测、FastCGI 的 stderr）按 warn 写。`plugin` 暂无消息。"
+    },
+    "log.time_zone": {
+      "en": "An IANA name is read from the system's zoneinfo files, as `access_log.time_zone`'s; fit embeds Go's zone database.",
+      "zh": "IANA 名称从系统的 zoneinfo 文件读取，与 `access_log.time_zone` 相同；fit 内嵌了 Go 的时区数据库。"
     }
   }
 }

@@ -73,8 +73,9 @@ pub fn load() -> Result<(), String> {
         Ok(_) => Ok(()),
         Err(e) => {
             if first {
-                eprintln!(
-                    "akit: the sockmap relay cannot be loaded ({e}): listeners with sockmap relay \
+                akit_observe::warn!(
+                    Engine,
+                    "the sockmap relay cannot be loaded ({e}): listeners with sockmap relay \
                      their tcp services in userspace"
                 );
             }

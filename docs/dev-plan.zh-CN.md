@@ -183,7 +183,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I80b | 安全加固：威胁模型的局限与审查的发现 | I80、审查 | todo |
 | **1.0 之后** | | | |
 | I81 | 日志文件：按大小和时间切割、保留、压缩；`access_log.rotate` | I21 | done |
-| I82 | akit 自身的日志：fit 的 `log`，其日志器、格式、文件与时区 | I81 | todo |
+| I82 | akit 自身的日志：fit 的 `log`，其日志器、格式、文件与时区 | I81 | done |
 | I83 | 重载时的日志文件，以及 Admin API 的 `/logs` | I82、I27 | todo |
 
 ## 基准与优化状态
@@ -1040,6 +1040,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 - **涉及**：`akit-observe`（`logger`）、`akit-config`（`log`）、`akit`、原先写标准错误的各 crate、`tests/compat`、
   `docs/reference`。
 - **fit**：`logs/logs.go`、`config/log.go`；I155、I156。
+- **状态**：done（2026-11-26）。见进度日志。
 
 ### I83 重载时的日志文件，以及 Admin API 的 `/logs`
 

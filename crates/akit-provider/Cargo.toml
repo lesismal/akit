@@ -14,6 +14,8 @@ fuzzing = []
 
 [dependencies]
 akit-config = { workspace = true }
+# akit's own log (I82): messages through fit's loggers.
+akit-observe = { workspace = true }
 # The Kubernetes provider's regular expressions (I60), checked as routes' path_regexp is.
 akit-router = { workspace = true }
 # The Docker provider (I58): akio's HTTP client, over a Unix socket or TCP; the Kubernetes

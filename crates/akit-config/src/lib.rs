@@ -56,8 +56,9 @@ pub use fastcgi::{
 };
 pub use json::MAX_DEPTH;
 pub use log::{
-    DEFAULT_ROTATE_MAX_AGE, DEFAULT_ROTATE_MAX_BYTES, DEFAULT_ROTATE_MAX_TOTAL_BYTES, Rotate,
-    Rotation, is_file_output, output_path, rotation, same_rotation, zone_name,
+    DEFAULT_ROTATE_MAX_AGE, DEFAULT_ROTATE_MAX_BYTES, DEFAULT_ROTATE_MAX_TOTAL_BYTES, FileOutput,
+    LOGGERS, Log, LogLevel, Logger, Rotate, Rotation, is_file_output, output_path, rotation,
+    same_rotation, sharing_problems, zone_name,
 };
 pub use model::CACHE_SHARDS;
 pub use model::ModuleRef;

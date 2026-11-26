@@ -192,7 +192,11 @@ impl SharedStore {
         c: &SharedStorage,
         poll: Duration,
     ) -> SharedStore {
-        let log: Log = Arc::new(|line: &str| eprintln!("akit: acme: {line}"));
+        let log: Log = akit_observe::logger::lines(
+            akit_observe::logger::Logger::Tls,
+            akit_observe::logger::Level::Warn,
+            "acme: ",
+        );
         SharedStore {
             b,
             kind,

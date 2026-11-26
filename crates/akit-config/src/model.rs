@@ -27,6 +27,9 @@ pub struct Config {
     pub limits: Limits,
     /// `access_log`: where a line is written for each request; no access log when left out.
     pub access_log: Option<AccessLog>,
+    /// `log` (I82): akit's own log, its loggers' levels, formats and outputs; fit's defaults
+    /// when left out.
+    pub log: Option<crate::log::Log>,
     /// `admin`: the Admin API (I26); off when left out.
     pub admin: Option<Admin>,
     /// `metrics`: count and time requests by listener and route, for the Admin API's
@@ -2018,6 +2021,8 @@ const CONFIG_FIELDS: &[&str] = &[
     "upstreams",
     "limits",
     "access_log",
+    // I82: akit's own log, as fit's.
+    "log",
     "admin",
     "metrics",
     "acme",
@@ -2028,7 +2033,6 @@ const CONFIG_FIELDS: &[&str] = &[
     "engine",
 ];
 const CONFIG_FIT_ONLY: &[&str] = &[
-    "log",
     "access",
     "pprof",
     "llm",
@@ -2417,6 +2421,8 @@ pub(crate) struct Part {
     limits: Option<(Limits, usize)>,
     /// `access_log`, with the position of its key, when the file gives it.
     access_log: Option<(AccessLog, usize)>,
+    /// `log`, with the position of its key, when the file gives it.
+    log: Option<(crate::log::Log, usize)>,
     /// `admin`, with the position of its key, when the file gives it.
     admin: Option<(Admin, usize)>,
     /// `metrics`, with the position of its key, when the file gives it.
@@ -2484,6 +2490,9 @@ pub(crate) fn part(d: &mut Decoder<'_>, n: &Node, file: usize) -> Option<Part> {
     let access_log = o
         .take("access_log")
         .and_then(|v| access_log(d, v, "access_log").map(|a| (a, v.off)));
+    let log = o
+        .take("log")
+        .and_then(|v| crate::log::log(d, v, "log").map(|l| (l, v.off)));
     let admin = o
         .take("admin")
         .and_then(|v| admin(d, v, "admin").map(|a| (a, v.off)));
@@ -2523,6 +2532,7 @@ pub(crate) fn part(d: &mut Decoder<'_>, n: &Node, file: usize) -> Option<Part> {
         services,
         limits,
         access_log,
+        log,
         admin,
         metrics,
         acme,
@@ -2550,6 +2560,9 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
     let mut limits: Option<(Limits, usize)> = None;
     let mut first_doc: Option<(usize, usize)> = None;
     let mut access_log: Option<(AccessLog, usize)> = None;
+    // The access log's key, where a file shared with `log` is reported.
+    let mut access_at: Option<(usize, usize)> = None;
+    let mut log: Option<(crate::log::Log, usize)> = None;
     let mut admin: Option<(Admin, usize)> = None;
     let mut metrics: Option<(Metrics, usize, usize)> = None;
     let mut acme: Option<(Acme, usize)> = None;
@@ -2622,8 +2635,14 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
                         );
                     }
                 }
-                None => access_log = Some((a, file)),
+                None => {
+                    access_at = Some((file, off));
+                    access_log = Some((a, file));
+                }
             }
+        }
+        if let Some((l, off)) = p.log {
+            once(ds, &mut log, l, file, off, "log");
         }
         if let Some((a, off)) = p.admin {
             match &admin {
@@ -2710,6 +2729,15 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
             }
         }
     }
+    // A file the access log and `log` both write turns at one boundary and has one rotate
+    // (fit's checkLogFileSharing).
+    if let (Some((a, _)), Some((file, off))) = (&access_log, access_at) {
+        for (field, msg) in crate::log::sharing_problems(log.as_ref().map(|(l, _)| l), a) {
+            if let Some(d) = ds.get_mut(file) {
+                d.error(off, &format!("access_log.{field}"), msg);
+            }
+        }
+    }
     let limits = limits.map(|(l, _)| l).unwrap_or_default();
     Config {
         schema_version: schema.map_or(SCHEMA_VERSION, |(v, _)| v),
@@ -2725,6 +2753,7 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
         upstreams: upstreams.into_iter().map(|a| a.v).collect(),
         limits,
         access_log: access_log.map(|(a, _)| a),
+        log: log.map(|(l, _)| l),
         admin: admin.map(|(a, _)| a),
         metrics: metrics.map(|(m, _, _)| m),
         acme: acme.map(|(a, _)| a),

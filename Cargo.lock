@@ -335,6 +335,7 @@ dependencies = [
  "akit-config",
  "akit-l4",
  "akit-listener",
+ "akit-observe",
  "akit-runtime",
  "akit-upstream",
 ]
@@ -347,6 +348,7 @@ dependencies = [
  "akio-mux",
  "akio-socks",
  "akit-config",
+ "akit-observe",
  "akit-upstream",
 ]
 
@@ -428,6 +430,7 @@ dependencies = [
  "akio-http",
  "akio-x509",
  "akit-config",
+ "akit-observe",
  "akit-router",
 ]
 
@@ -482,6 +485,7 @@ dependencies = [
  "akio-http",
  "akio-x509",
  "akit-config",
+ "akit-observe",
 ]
 
 [[package]]

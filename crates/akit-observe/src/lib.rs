@@ -35,6 +35,7 @@ mod format;
 #[doc(hidden)]
 pub mod fuzzing;
 mod log;
+pub mod logger;
 pub mod metrics;
 pub mod otlp;
 pub mod time;

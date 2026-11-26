@@ -16,7 +16,7 @@ YAML or JSON, any of them split across several files. Where akit differs from fi
 so in a note marked **akit:**.
 
 <!-- BEGIN GENERATED: summary -->
-akit reads **436** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 64 objects akit reads, each has its table below.
+akit reads **460** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 68 objects akit reads, each has its table below.
 <!-- END GENERATED -->
 
 How to read the tables:
@@ -47,6 +47,7 @@ is not there, a plugin that does not compile are errors.
 - [Upstreams](#upstreams): [`upstreams[]`](#cfg-upstreams), [`sticky_cookie`](#cfg-upstreams-sticky-cookie), [`health_check`](#cfg-upstreams-health-check)
 - [Services](#services)
 - [Access log](#access-log)
+- [Log](#log): [`log`](#cfg-log), [`rotate`](#cfg-log-rotate), [`loggers`](#cfg-log-loggers), [`loggers.*.rotate`](#cfg-log-loggers-rotate)
 - [Telemetry](#telemetry)
 - [Limits](#limits)
 - [Engine](#engine)
@@ -127,7 +128,7 @@ name every file on the command line (`-c` may be given again, or name a director
 | `limits` | [object](#cfg-limits) |  | Limits that apply to every listener. |
 | `listeners` | list of [object](#cfg-listeners) |  | The addresses akit listens on, and the protocols each one serves. When left out, HTTPS by default makes them from the routes' host names; see auto_https. |
 | `llm` | object |  | **Not supported yet**: refused by name. The LLM feature's roles to run beside the gateway, on its engine: a hub, a node and a proxy, which share AI models among machines and serve them to agents. None when left out. What their web pages change is written back here. |
-| `log` | object |  | **Not supported yet**: refused by name. fit's own log: what it says about starting, reloading, certificates, providers and the engine, by logger, each with the least level written, and the format and output it writes in, as fib writes its own. Messages at info and debug to stdout and the rest to stderr, at info and above, as lines, when left out. |
+| `log` | [object](#cfg-log) |  | akit's own log: what it says about starting, reloading, certificates, providers and the engine, by logger, each with the least level written, and the format and output it writes in, as akio writes its own. Messages at info and debug to stdout and the rest to stderr, at info and above, as lines, when left out. |
 | `media_auth` | list of object |  | **Not supported yet**: refused by name. Named policies of who may publish and play which streams, with tokens, users and keys for tokens fit signs: the handlers and roles that take media (whip, whep, webrtc_proxy) refer to one with their auth param. A handler without auth lets everyone in, as the route's middleware allow. |
 | `media_library` | list of object |  | **Not supported yet**: refused by name. Named libraries of media files: directories scanned into a catalog of items, each a title with its renditions, audio, subtitles and poster, probed off fib's workers on a bounded file pool of the library's own, and read by the Admin API's /media/library. None when left out: no files are scanned or served. |
 | `metrics` | object |  | Count and time requests by listener and route, for the Admin API's /metrics, which serves the rest of akit's metrics without it; off when left out, since it costs every request a little. Needs admin. |
@@ -597,6 +598,100 @@ route { handler respond { body hello } }
 
 <!-- BEGIN GENERATED: access_log.rotate -->
 <a id="cfg-access-log-rotate"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `compress` | boolean | `true` | Gzip a file when it is rotated. On when left out. |
+| `interval` | duration |  | How long a file is written before it is rotated, at the next period boundary of the log's time_zone: 24h turns at midnight, 1h on the hour; a fraction of a second, or a period over 24h that is not a whole number of days, is refused. Off when left out. |
+| `max_age` | duration | `"720h"` | How long a rotated file is kept after it was last written: 720h (30 days) when left out; 0 keeps it until a count or size limit removes it. |
+| `max_bytes` | integer, 0 or more | `1073741824` | How large a file may grow before it is rotated: a write that would take it past this starts a new file. 1 GiB when left out; 0 does not rotate by size. |
+| `max_files` | integer, 0 or more |  | The most rotated files kept, newest first; 0 or left out has no count limit. |
+| `max_total_bytes` | integer, 0 or more | `1073741824` | The most the rotated files may total, the oldest removed until they fit. 1 GiB when left out; 0 does not limit the total. |
+<!-- END GENERATED -->
+
+## Log
+
+akit's own log: what akit says about itself (certificates, providers, telemetry, FastCGI
+applications' standard error, its files, akio's engine), as opposed to the access log's line for
+each request. Each message comes from one of fit's loggers: `server`, `admin`, `tls`, `provider`,
+`telemetry`, `access_log`, `plugin`, `fastcgi` and `engine` (akio's warnings and errors; its info
+and debug records are the engine's debug, as fib's engine lines are off unless asked); fit's
+`llm`, `tunnel`, `webrtc`, `sync` and `bittorrent` are taken too, for the tracks that bring them. A
+message below its logger's level is not formatted. Lines are written as fit's (fib's): `line`, the
+time, level and message, then `logger=` and any attributes; `text` (logfmt) and `json`, as Go's
+log/slog writes them; every format in `time_zone`, local by default. With no `output`, debug and
+info go to standard output and warn and error to standard error; a file is written through the same
+sink as the access log's (decision 033), shared when both name one path, which then needs one
+`rotate` and one `time_zone`. Until `akit run` has read the config, and in `akit validate`, a
+message is written to standard error as `akit: <message>`. akit's command lines (`akit: listener …`,
+`akit: reloaded …`) are printed as they are, not through the log.
+
+```fit
+listener web :8080
+
+log {
+	level info
+	levels { tls debug }
+	format json
+	time_zone utc
+	loggers {
+		engine { output /var/log/akit/engine.log; format line; rotate { interval 24h } }
+	}
+}
+
+route { handler respond { body hello } }
+```
+
+### `log`
+
+<!-- BEGIN GENERATED: log -->
+<a id="cfg-log"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `format` | string: `line`, `text`, `json` | `"line"` | How messages are written, those of every logger loggers does not set one for, as fib writes its own, which akit writes as fit does: line, the time, level and message, then the attributes as key=value; text, every part as key=value (logfmt); or json, a JSON object a line. Each carries the logger's name as logger. line when left out. A change takes a restart. **akit:** The formats are fit's, as fib writes them (akio's own log formats are not used): `line` as fib's, `text` and `json` as Go's log/slog. |
+| `level` | string: `debug`, `info`, `warn`, `error` | `"info"` | The least level written, of every logger levels and loggers do not set one for: debug, info, warn or error. info when left out. A change takes effect on reload. |
+| `levels` | map of string |  | The least level of some loggers, by name, over level: server (listeners, loading and reloading configs, shutting down), admin (the Admin API), tls (certificates: ACME, OCSP, certificate files), provider (providers), telemetry (exporting over OTLP), access_log (the access log's dropped lines), plugin (wasm plugins), fastcgi (what FastCGI applications write to their stderr), llm and tunnel (their roles), webrtc (the TURN server), sync (its pipelines), bittorrent (its roles) and engine (akio, the network engine, and whatever else writes to Go's log and log/slog). The same as loggers' level, which a logger may not have both of. A change takes effect on reload. **akit:** `engine` takes akio's records: its warnings and errors at their levels, its info and debug records at debug (fib's engine lines are off unless asked). akit's crates whose messages carry no level (ACME, OCSP, providers, telemetry, FastCGI's stderr) write them at warn. `plugin` has no messages yet. |
+| `loggers` | map of [object](#cfg-log-loggers) |  | Settings of some loggers of their own, by name (those levels lists), over level, output, format and rotate: engine's to a file of its own, say, or access_log's as json. |
+| `output` | string |  | "stdout", "stderr", or the path of a file messages are appended to, of every logger loggers does not set one for. When left out, debug and info messages go to stdout and warn and error ones to stderr. A change takes a restart. |
+| `rotate` | [object](#cfg-log-rotate) |  | Rotate the file log.output names, and remove old rotated files: the size and interval a file is rotated at, and the age, count and total size past which rotated files are removed. None when left out: the file grows without bound, as before. |
+| `time_zone` | string |  | The zone the time of every line is written in, and the zone a file's interval is rotated at: local (the default), utc, or an IANA zone name such as Asia/Shanghai. So 24h turns at local midnight by default, and at UTC midnight with utc. The zone database is embedded, so an IANA name works in a container without zoneinfo. A change takes effect on reload. **akit:** An IANA name is read from the system's zoneinfo files, as `access_log.time_zone`'s; fit embeds Go's zone database. |
+<!-- END GENERATED -->
+
+### `log.rotate`
+
+<!-- BEGIN GENERATED: log.rotate -->
+<a id="cfg-log-rotate"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `compress` | boolean | `true` | Gzip a file when it is rotated. On when left out. |
+| `interval` | duration |  | How long a file is written before it is rotated, at the next period boundary of the log's time_zone: 24h turns at midnight, 1h on the hour; a fraction of a second, or a period over 24h that is not a whole number of days, is refused. Off when left out. |
+| `max_age` | duration | `"720h"` | How long a rotated file is kept after it was last written: 720h (30 days) when left out; 0 keeps it until a count or size limit removes it. |
+| `max_bytes` | integer, 0 or more | `1073741824` | How large a file may grow before it is rotated: a write that would take it past this starts a new file. 1 GiB when left out; 0 does not rotate by size. |
+| `max_files` | integer, 0 or more |  | The most rotated files kept, newest first; 0 or left out has no count limit. |
+| `max_total_bytes` | integer, 0 or more | `1073741824` | The most the rotated files may total, the oldest removed until they fit. 1 GiB when left out; 0 does not limit the total. |
+<!-- END GENERATED -->
+
+### `log.loggers`
+
+A logger's own settings, by its name; what it leaves out is the log's.
+
+<!-- BEGIN GENERATED: log.loggers.* -->
+<a id="cfg-log-loggers"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `format` | string: `line`, `text`, `json` |  | How the logger's messages are written: line, text or json, as the log's format. A change takes a restart. |
+| `level` | string: `debug`, `info`, `warn`, `error` |  | The least level the logger writes. A change takes effect on reload. |
+| `output` | string |  | "stdout", "stderr", or the path of a file the logger's messages are appended to. A change takes a restart. |
+| `rotate` | [object](#cfg-log-loggers-rotate) |  | Rotate this logger's file, when output names one of its own; the log's rotate is used when the logger writes to the log's output. The settings are the log's rotate's. |
+<!-- END GENERATED -->
+
+### `log.loggers.*.rotate`
+
+<!-- BEGIN GENERATED: log.loggers.*.rotate -->
+<a id="cfg-log-loggers-rotate"></a>
 
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |

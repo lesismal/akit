@@ -309,7 +309,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 436 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 460 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -357,7 +357,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`limits`](#fields-limits) | 7 | 7 | 0 |
 | [`listeners`](#fields-listeners) | 30 | 23 | 7 |
 | [`llm`](#fields-llm) | 218 | 0 | 218 |
-| [`log`](#fields-log) | 24 | 0 | 24 |
+| [`log`](#fields-log) | 24 | 24 | 0 |
 | [`media_auth`](#fields-media-auth) | 34 | 0 | 34 |
 | [`media_library`](#fields-media-library) | 24 | 0 | 24 |
 | [`metrics`](#fields-metrics) | 1 | 1 | 0 |
@@ -434,7 +434,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **合计** | 3821 | 436 | 3385 |
+| **合计** | 3821 | 460 | 3361 |
 
 <a id="fields-access"></a>
 
@@ -1673,30 +1673,30 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
-| `log` | `object` | 尚不支持（not supported yet） |
-| `log.format` | `enum(line\|text\|json)` | 尚不支持（not supported yet） |
-| `log.level` | `enum(debug\|info\|warn\|error)` | 尚不支持（not supported yet） |
-| `log.levels` | `map<string>` | 尚不支持（not supported yet） |
-| `log.loggers` | `map<object>` | 尚不支持（not supported yet） |
-| `log.loggers.*.format` | `enum(line\|text\|json)` | 尚不支持（not supported yet） |
-| `log.loggers.*.level` | `enum(debug\|info\|warn\|error)` | 尚不支持（not supported yet） |
-| `log.loggers.*.output` | `string` | 尚不支持（not supported yet） |
-| `log.loggers.*.rotate` | `object` | 尚不支持（not supported yet） |
-| `log.loggers.*.rotate.compress` | `boolean` | 尚不支持（not supported yet） |
-| `log.loggers.*.rotate.interval` | `duration` | 尚不支持（not supported yet） |
-| `log.loggers.*.rotate.max_age` | `duration` | 尚不支持（not supported yet） |
-| `log.loggers.*.rotate.max_bytes` | `integer` | 尚不支持（not supported yet） |
-| `log.loggers.*.rotate.max_files` | `integer` | 尚不支持（not supported yet） |
-| `log.loggers.*.rotate.max_total_bytes` | `integer` | 尚不支持（not supported yet） |
-| `log.output` | `string` | 尚不支持（not supported yet） |
-| `log.rotate` | `object` | 尚不支持（not supported yet） |
-| `log.rotate.compress` | `boolean` | 尚不支持（not supported yet） |
-| `log.rotate.interval` | `duration` | 尚不支持（not supported yet） |
-| `log.rotate.max_age` | `duration` | 尚不支持（not supported yet） |
-| `log.rotate.max_bytes` | `integer` | 尚不支持（not supported yet） |
-| `log.rotate.max_files` | `integer` | 尚不支持（not supported yet） |
-| `log.rotate.max_total_bytes` | `integer` | 尚不支持（not supported yet） |
-| `log.time_zone` | `string` | 尚不支持（not supported yet） |
+| `log` | `object` | 已支持 |
+| `log.format` | `enum(line\|text\|json)` | 已支持 |
+| `log.level` | `enum(debug\|info\|warn\|error)` | 已支持 |
+| `log.levels` | `map<string>` | 已支持 |
+| `log.loggers` | `map<object>` | 已支持 |
+| `log.loggers.*.format` | `enum(line\|text\|json)` | 已支持 |
+| `log.loggers.*.level` | `enum(debug\|info\|warn\|error)` | 已支持 |
+| `log.loggers.*.output` | `string` | 已支持 |
+| `log.loggers.*.rotate` | `object` | 已支持 |
+| `log.loggers.*.rotate.compress` | `boolean` | 已支持 |
+| `log.loggers.*.rotate.interval` | `duration` | 已支持 |
+| `log.loggers.*.rotate.max_age` | `duration` | 已支持 |
+| `log.loggers.*.rotate.max_bytes` | `integer` | 已支持 |
+| `log.loggers.*.rotate.max_files` | `integer` | 已支持 |
+| `log.loggers.*.rotate.max_total_bytes` | `integer` | 已支持 |
+| `log.output` | `string` | 已支持 |
+| `log.rotate` | `object` | 已支持 |
+| `log.rotate.compress` | `boolean` | 已支持 |
+| `log.rotate.interval` | `duration` | 已支持 |
+| `log.rotate.max_age` | `duration` | 已支持 |
+| `log.rotate.max_bytes` | `integer` | 已支持 |
+| `log.rotate.max_files` | `integer` | 已支持 |
+| `log.rotate.max_total_bytes` | `integer` | 已支持 |
+| `log.time_zone` | `string` | 已支持 |
 
 <a id="fields-media-auth"></a>
 

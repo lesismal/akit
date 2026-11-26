@@ -13,7 +13,7 @@ akit 配置的每个字段：配置的每一部分是做什么的、一个示例
 akit 与 fit 不同之处，在表格中以 **akit：** 标出。
 
 <!-- BEGIN GENERATED: summary -->
-fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **436** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 64 个对象，下文各有一张表。
+fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **460** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 68 个对象，下文各有一张表。
 <!-- END GENERATED -->
 
 字段说明来自 fit 代码中的 `doc` 标签，是英文的，所以每个字段的完整说明在[英文版](config.md)的同一张表中；本页的表格给出每个字段的
@@ -41,6 +41,7 @@ fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../co
 - [上游](#上游)：[`upstreams[]`](#cfg-upstreams)、[`sticky_cookie`](#cfg-upstreams-sticky-cookie)、[`health_check`](#cfg-upstreams-health-check)
 - [服务](#服务)
 - [访问日志](#访问日志)
+- [日志](#日志)：[`log`](#cfg-log)、[`rotate`](#cfg-log-rotate)、[`loggers`](#cfg-log-loggers)、[`loggers.*.rotate`](#cfg-log-loggers-rotate)
 - [遥测](#遥测)
 - [上限](#上限)
 - [引擎](#引擎)
@@ -120,7 +121,7 @@ routes:
 | `limits` | [对象](#cfg-limits) |  |  |
 | `listeners` | [对象](#cfg-listeners)的列表 |  |  |
 | `llm` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
-| `log` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `log` | [对象](#cfg-log) |  |  |
 | `media_auth` | 对象的列表 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
 | `media_library` | 对象的列表 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
 | `metrics` | 对象 |  |  |
@@ -594,6 +595,103 @@ route { handler respond { body hello } }
 <a id="cfg-access-log-rotate"></a>
 
 各字段的说明见英文版的[同一张表](config.md#cfg-access-log-rotate)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `compress` | 布尔值 | `true` |  |
+| `interval` | 时长 |  |  |
+| `max_age` | 时长 | `"720h"` |  |
+| `max_bytes` | 整数，≥ 0 | `1073741824` |  |
+| `max_files` | 整数，≥ 0 |  |  |
+| `max_total_bytes` | 整数，≥ 0 | `1073741824` |  |
+<!-- END GENERATED -->
+
+## 日志
+
+akit 自身的日志：akit 关于自身的消息（证书、provider、遥测、FastCGI 应用的标准错误、它的文件、akio 的引擎），区别于访问日志为每个
+请求写的一行。每条消息来自 fit 的某个日志器：`server`、`admin`、`tls`、`provider`、`telemetry`、`access_log`、`plugin`、
+`fastcgi` 和 `engine`（akio 的警告和错误；它的 info 和 debug 记录算作引擎的 debug，正如 fib 的引擎行默认不输出）；fit 的
+`llm`、`tunnel`、`webrtc`、`sync` 和 `bittorrent` 也接受，留给带来它们的路线。低于日志器级别的消息不做格式化。行的写法与 fit（fib）
+相同：`line` 依次写时间、级别和消息，再写 `logger=` 及其他属性；`text`（logfmt）和 `json` 与 Go 的 log/slog 写法相同；每种格式都
+按 `time_zone` 写时间，默认本地时区。未设置 `output` 时，debug 和 info 写标准输出，warn 和 error 写标准错误；文件经由与访问日志相同
+的写入端写入（决策 033），两者写同一路径时共用，此时只能有一个 `rotate` 和一个 `time_zone`。在 `akit run` 读完配置之前，以及在
+`akit validate` 中，消息以 `akit: <消息>` 写到标准错误。akit 命令本身的输出行（`akit: listener …`、`akit: reloaded …`）原样打印，
+不经过日志。
+
+```fit
+listener web :8080
+
+log {
+	level info
+	levels { tls debug }
+	format json
+	time_zone utc
+	loggers {
+		engine { output /var/log/akit/engine.log; format line; rotate { interval 24h } }
+	}
+}
+
+route { handler respond { body hello } }
+```
+
+### `log`
+
+<!-- BEGIN GENERATED: log -->
+<a id="cfg-log"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-log)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `format` | 字符串：`line`、`text`、`json` | `"line"` | **akit：**格式与 fit 相同，即 fib 的写法（不使用 akio 自己的日志格式）：`line` 同 fib，`text` 和 `json` 同 Go 的 log/slog。 |
+| `level` | 字符串：`debug`、`info`、`warn`、`error` | `"info"` |  |
+| `levels` | 值为字符串的映射 |  | **akit：**`engine` 接收 akio 的记录：警告和错误保持其级别，info 和 debug 记录按 debug 写（fib 的引擎行默认不输出）。消息不带级别的 akit crate（ACME、OCSP、provider、遥测、FastCGI 的 stderr）按 warn 写。`plugin` 暂无消息。 |
+| `loggers` | 值为[对象](#cfg-log-loggers)的映射 |  |  |
+| `output` | 字符串 |  |  |
+| `rotate` | [对象](#cfg-log-rotate) |  |  |
+| `time_zone` | 字符串 |  | **akit：**IANA 名称从系统的 zoneinfo 文件读取，与 `access_log.time_zone` 相同；fit 内嵌了 Go 的时区数据库。 |
+<!-- END GENERATED -->
+
+### `log.rotate`
+
+<!-- BEGIN GENERATED: log.rotate -->
+<a id="cfg-log-rotate"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-log-rotate)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `compress` | 布尔值 | `true` |  |
+| `interval` | 时长 |  |  |
+| `max_age` | 时长 | `"720h"` |  |
+| `max_bytes` | 整数，≥ 0 | `1073741824` |  |
+| `max_files` | 整数，≥ 0 |  |  |
+| `max_total_bytes` | 整数，≥ 0 | `1073741824` |  |
+<!-- END GENERATED -->
+
+### `log.loggers`
+
+某个日志器自己的设置，按名字给出；它未写的部分取日志的设置。
+
+<!-- BEGIN GENERATED: log.loggers.* -->
+<a id="cfg-log-loggers"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-log-loggers)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `format` | 字符串：`line`、`text`、`json` |  |  |
+| `level` | 字符串：`debug`、`info`、`warn`、`error` |  |  |
+| `output` | 字符串 |  |  |
+| `rotate` | [对象](#cfg-log-loggers-rotate) |  |  |
+<!-- END GENERATED -->
+
+### `log.loggers.*.rotate`
+
+<!-- BEGIN GENERATED: log.loggers.*.rotate -->
+<a id="cfg-log-loggers-rotate"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-log-loggers-rotate)。
 
 | 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |

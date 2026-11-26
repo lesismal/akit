@@ -191,7 +191,7 @@ track's, unused; I85–I88 the Access lists track's).
 | I80b | Security hardening: the threat model's limitations and the review's findings | I80, the review | todo |
 | **After 1.0** | | | |
 | I81 | Log files: rotation by size and time, retention, compression; `access_log.rotate` | I21 | done |
-| I82 | akit's own log: fit's `log`, its loggers, formats, files and zone | I81 | todo |
+| I82 | akit's own log: fit's `log`, its loggers, formats, files and zone | I81 | done |
 | I83 | Log files on reload, and the Admin API's `/logs` | I82, I27 | todo |
 
 ## Benchmark and optimization status
@@ -1174,6 +1174,7 @@ I157 waits for the Console track; its Admin API comes here.
 - **Touches**: `akit-observe` (`logger`), `akit-config` (`log`), `akit`, the crates that wrote to
   standard error, `tests/compat`, `docs/reference`.
 - **fit**: `logs/logs.go`, `config/log.go`; I155, I156.
+- **Status**: done (2026-11-26). See the progress log.
 
 ### I83 Log files on reload, and the Admin API's `/logs`
 

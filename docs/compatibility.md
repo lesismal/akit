@@ -369,7 +369,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 436 supported.
+3821 fields in 121 sections, at fit `7daee573`; 460 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -417,7 +417,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`limits`](#fields-limits) | 7 | 7 | 0 |
 | [`listeners`](#fields-listeners) | 30 | 23 | 7 |
 | [`llm`](#fields-llm) | 218 | 0 | 218 |
-| [`log`](#fields-log) | 24 | 0 | 24 |
+| [`log`](#fields-log) | 24 | 24 | 0 |
 | [`media_auth`](#fields-media-auth) | 34 | 0 | 34 |
 | [`media_library`](#fields-media-library) | 24 | 0 | 24 |
 | [`metrics`](#fields-metrics) | 1 | 1 | 0 |
@@ -494,7 +494,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 436 | 3385 |
+| **Total** | 3821 | 460 | 3361 |
 
 <a id="fields-access"></a>
 
@@ -1733,30 +1733,30 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `log` | `object` | not supported yet |
-| `log.format` | `enum(line\|text\|json)` | not supported yet |
-| `log.level` | `enum(debug\|info\|warn\|error)` | not supported yet |
-| `log.levels` | `map<string>` | not supported yet |
-| `log.loggers` | `map<object>` | not supported yet |
-| `log.loggers.*.format` | `enum(line\|text\|json)` | not supported yet |
-| `log.loggers.*.level` | `enum(debug\|info\|warn\|error)` | not supported yet |
-| `log.loggers.*.output` | `string` | not supported yet |
-| `log.loggers.*.rotate` | `object` | not supported yet |
-| `log.loggers.*.rotate.compress` | `boolean` | not supported yet |
-| `log.loggers.*.rotate.interval` | `duration` | not supported yet |
-| `log.loggers.*.rotate.max_age` | `duration` | not supported yet |
-| `log.loggers.*.rotate.max_bytes` | `integer` | not supported yet |
-| `log.loggers.*.rotate.max_files` | `integer` | not supported yet |
-| `log.loggers.*.rotate.max_total_bytes` | `integer` | not supported yet |
-| `log.output` | `string` | not supported yet |
-| `log.rotate` | `object` | not supported yet |
-| `log.rotate.compress` | `boolean` | not supported yet |
-| `log.rotate.interval` | `duration` | not supported yet |
-| `log.rotate.max_age` | `duration` | not supported yet |
-| `log.rotate.max_bytes` | `integer` | not supported yet |
-| `log.rotate.max_files` | `integer` | not supported yet |
-| `log.rotate.max_total_bytes` | `integer` | not supported yet |
-| `log.time_zone` | `string` | not supported yet |
+| `log` | `object` | supported |
+| `log.format` | `enum(line\|text\|json)` | supported |
+| `log.level` | `enum(debug\|info\|warn\|error)` | supported |
+| `log.levels` | `map<string>` | supported |
+| `log.loggers` | `map<object>` | supported |
+| `log.loggers.*.format` | `enum(line\|text\|json)` | supported |
+| `log.loggers.*.level` | `enum(debug\|info\|warn\|error)` | supported |
+| `log.loggers.*.output` | `string` | supported |
+| `log.loggers.*.rotate` | `object` | supported |
+| `log.loggers.*.rotate.compress` | `boolean` | supported |
+| `log.loggers.*.rotate.interval` | `duration` | supported |
+| `log.loggers.*.rotate.max_age` | `duration` | supported |
+| `log.loggers.*.rotate.max_bytes` | `integer` | supported |
+| `log.loggers.*.rotate.max_files` | `integer` | supported |
+| `log.loggers.*.rotate.max_total_bytes` | `integer` | supported |
+| `log.output` | `string` | supported |
+| `log.rotate` | `object` | supported |
+| `log.rotate.compress` | `boolean` | supported |
+| `log.rotate.interval` | `duration` | supported |
+| `log.rotate.max_age` | `duration` | supported |
+| `log.rotate.max_bytes` | `integer` | supported |
+| `log.rotate.max_files` | `integer` | supported |
+| `log.rotate.max_total_bytes` | `integer` | supported |
+| `log.time_zone` | `string` | supported |
 
 <a id="fields-media-auth"></a>
 

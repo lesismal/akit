@@ -2,7 +2,7 @@
 
 [English](033-log-files.md) | [简体中文](033-log-files.zh-CN.md)
 
-状态：在 I81 中采纳（2026-11-26）。
+状态：在 I81 中采纳（2026-11-26）；第 7 至 10 点在 I82 中采纳（2026-11-26）。
 
 ## 背景
 
@@ -35,6 +35,21 @@ I81–I83 中移植 fit 的 I155–I157。
 5. **时区来自系统的 zoneinfo**，与 I21 为访问日志所做的决定相同：fit 内嵌 Go 的 `time/tzdata`；akit 读取
    `/usr/share/zoneinfo` 等目录（akit-observe 的 `Zone`），所以在容器中使用 IANA 名称需要 zoneinfo，未知的名称使配置失败。
 6. **重载就地改变切割设置和时区**，与 fit 相同：写入端保留已打开的文件，在下一次写入时采用新设置；路径以及日志的格式需要重启。
+
+7. **akit 自身的日志就是 fit 的 `log`**（I82）：按 fit 的名字划分日志器，各有级别（重载可改变）、格式和输出（或取日志的），
+   格式为 fib 的 `line` 以及 log/slog 的 `text` 和 `json`，每行写出日志器的名字，时间按 `log.time_zone`。每个进程一个日志，由
+   `akit run` 安装；在此之前以及在 `akit validate` 中，info 及以上的消息以 `akit: <消息>` 写到标准错误，正如 fit 的默认日志器
+   写 `fit: <消息>`。消息由记录它的线程格式化并写出：文件经由写入端（从不等待），否则写标准输出或标准错误。
+8. **akio 的记录属于 `engine` 日志器**，经由 akio 的 `log` 门面（`akio::log`，每个进程一个日志器）：警告和错误保持其级别；info
+   和 debug 记录（即引擎的启动和停止）按 debug 写，正如 fib 只在要求时（`logStatus`）才写引擎行，所以 `akit run` 的标准输出仍只
+   有它的命令输出行。akio 的最高级别跟随 `engine` 日志器的级别，低于它的记录从不格式化。
+9. **akit 各 crate 的消息经由各自的日志器**：证书（`tls`：ACME、OCSP、共享存储）、provider（`provider`）、OTLP 导出
+   （`telemetry`）、FastCGI 应用的标准错误（`fastcgi`）、访问日志丢弃的行（`access_log`）、写入端的失败和 sockmap 中继
+   （`engine`）、指标的溢出和没有 `rotate` 的文件（`server`）。各 crate 的行回调不带级别，所以这些行按 warn 写，日志级别设为 warn
+   时也不会丢失；为每条消息定级别，留待逐条移植 fit 对它们的划分。
+10. **akit 命令本身的输出行保持原样**：`akit: listener …`、`akit: reloaded …`、`akit: admin API on …` 等照旧打印，正如 fit 的
+    `cli` 用 `fmt` 打印自己的行；fit 经由 `admin` 和 `tls` 日志器写的少数几行（`admin API on`、`certificate files changed`）在
+    akit 中保持原样，工具和测试会读取它们。
 
 ## 影响
 

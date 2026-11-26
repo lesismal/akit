@@ -215,8 +215,23 @@ fn load(files: &[ConfigFile]) -> Result<Loaded, Failure> {
     Ok((config, json, zone))
 }
 
-/// The zone `config`'s access log's `time_zone` names, loaded.
+/// The zone `config`'s `log.time_zone` names, loaded (I82): the local zone when it has no `log`.
+fn log_zone(config: &Config) -> Result<Zone, Failure> {
+    let tz = config.log.as_ref().map_or("", |l| l.time_zone.as_str());
+    Zone::load(tz).map_err(|e| {
+        Failure::Config(Errors(vec![Error {
+            file: None,
+            path: "log.time_zone".into(),
+            line: 0,
+            col: 0,
+            msg: e.to_string(),
+        }]))
+    })
+}
+
+/// The zone `config`'s access log's `time_zone` names, loaded; `log.time_zone` is checked too.
 fn time_zone(config: &Config) -> Result<Option<Zone>, Failure> {
+    log_zone(config)?;
     Ok(match &config.access_log {
         None => None,
         Some(a) => Some(Zone::load(&a.time_zone).map_err(|e| {
@@ -810,17 +825,46 @@ fn run(args: &[String]) -> ExitCode {
         }
     };
     print_warnings(&name, &config.warnings);
+    // The log files the process writes, a sink a path (I81), and akit's own log (I82), which
+    // akio's records go to as the engine logger's; the access log shares its files.
+    let log_files = Files::new();
+    let root = match log_zone(&config)
+        .map_err(|f| {
+            f.print(&name);
+        })
+        .and_then(|zone| {
+            akit_observe::logger::Root::new(config.log.as_ref(), zone, &log_files).map_err(|e| {
+                eprintln!("akit run: log: {e}");
+            })
+        }) {
+        Ok(r) => Arc::new(r),
+        Err(()) => return ExitCode::FAILURE,
+    };
+    akit_observe::logger::install(Arc::clone(&root));
+    akit_observe::logger::bridge_akio();
+    // Closed last, on every way out of `run`.
+    let _log_guard = LogGuard(Arc::clone(&root));
+    if let Some(l) = &config.log {
+        for out in l.file_outputs() {
+            if out.rotate.is_none() {
+                akit_observe::warn!(
+                    Server,
+                    "log file {} has no rotate: it will grow without bound",
+                    out.path
+                );
+            }
+        }
+    }
     // Opened before the graph, which writes to it, and closed after the engine, so that every
     // response finished has its line written.
-    // The log files the process writes, a sink a path (I81).
-    let log_files = Files::new();
     let mut access_file = None;
     let log = match (&config.access_log, zone) {
         (Some(c), Some(zone)) => match open_access_log(c, zone, &log_files) {
             Ok((l, f)) => {
                 if akit_config::is_file_output(&c.output) && c.rotate.is_none() {
-                    eprintln!(
-                        "akit: access log file {} has no rotate: it will grow without bound",
+                    akit_observe::warn!(
+                        Server,
+                        "access log file {} has no rotate: it will grow without bound",
                         c.output
                     );
                 }
@@ -1174,6 +1218,17 @@ fn run(args: &[String]) -> ExitCode {
     }
     println!("akit: stopped");
     ExitCode::SUCCESS
+}
+
+/// Lets go of akit's own log's files when `run` returns, last: what is logged afterwards goes to
+/// standard error, as fit's `Root.Close`.
+struct LogGuard(Arc<akit_observe::logger::Root>);
+
+impl Drop for LogGuard {
+    fn drop(&mut self) {
+        akit_observe::logger::uninstall();
+        self.0.close();
+    }
 }
 
 /// Exports the metrics once more and the spans that wait, and stops their threads, as fit's

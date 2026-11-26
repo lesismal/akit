@@ -2,7 +2,7 @@
 
 [English](033-log-files.md) | [简体中文](033-log-files.zh-CN.md)
 
-Status: accepted in I81 (2026-11-26).
+Status: accepted in I81 (2026-11-26); points 7 to 10 in I82 (2026-11-26).
 
 ## Context
 
@@ -49,6 +49,30 @@ supported yet; akit had no `log` at all. The Logging track ports fit's I155–I1
    IANA name needs a zoneinfo in a container, and an unknown name fails the config.
 6. **A reload changes the rotation and the zone in place**, as fit's: the sink keeps its file and
    takes the new settings at its next write; its path, and a log's format, take a restart.
+
+7. **akit's own log is fit's `log`** (I82): fit's loggers by fit's names, a level each (a
+   reload may change it), a format and an output each or the log's, the formats fib's `line` and
+   log/slog's `text` and `json`, each line naming its logger, the time in `log.time_zone`. One log
+   a process, installed by `akit run`; before it, and in `akit validate`, a message of info or
+   above is written to standard error as `akit: <message>`, as fit's default logger writes
+   `fit: <message>`. A message is formatted and written by the thread that logs it, through the
+   sink for a file (never waiting) and to standard output or error otherwise.
+8. **akio's records are the `engine` logger's**, through akio's `log` facade (`akio::log`, one
+   logger a process): its warnings and errors at their levels; its info and debug records, which
+   are its engines starting and stopping, at debug, as fib writes its engine lines only when asked
+   (`logStatus`), so `akit run`'s standard output stays its command lines. akio's maximum level
+   follows the `engine` logger's, so a record below it is never formatted.
+9. **What akit's crates say goes through their loggers**: certificates (`tls`: ACME, OCSP, the
+   shared storage), providers (`provider`), OTLP exports (`telemetry`), FastCGI applications'
+   standard error (`fastcgi`), the access log's dropped lines (`access_log`), the sink's failures
+   and the sockmap relay (`engine`), the metrics' overflow and the files with no `rotate`
+   (`server`). The crates' line callbacks carry no level, so their lines are written at warn,
+   never lost to a level of warn; a level for each message is left until fit's split of them is
+   ported message by message.
+10. **akit's command lines stay plain**: `akit: listener …`, `akit: reloaded …`, `akit: admin API on
+    …` and the rest are printed as they were, as fit's `cli` prints its own with `fmt`; the few
+    fit writes through its `admin` and `tls` loggers (`admin API on`, `certificate files changed`)
+    stay plain in akit, where tools and tests read them.
 
 ## Consequences
 

@@ -123,13 +123,18 @@ impl Default for Files {
 }
 
 impl Files {
-    /// An empty set, on the system's clock, its failures written to standard error.
+    /// An empty set, on the system's clock, its failures written by the `engine` logger at warn,
+    /// as fit's.
     #[must_use]
     pub fn new() -> Files {
         Files::with(
             Arc::new(SystemTime::now),
             SWEEP_EVERY,
-            Arc::new(|msg: &str| eprintln!("akit: {msg}")),
+            crate::logger::lines(
+                crate::logger::Logger::Engine,
+                crate::logger::Level::Warn,
+                "",
+            ),
         )
     }
 

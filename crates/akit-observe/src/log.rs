@@ -71,7 +71,10 @@ impl Options {
             buffer_bytes: DEFAULT_BUFFER_BYTES,
             shards: 0,
             on_dropped: Box::new(|n| {
-                eprintln!("akit: access log: {n} lines dropped, the output was too slow");
+                crate::warn!(
+                    AccessLog,
+                    "access log: {n} lines dropped, the output was too slow"
+                );
             }),
         }
     }
