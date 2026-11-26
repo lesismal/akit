@@ -297,7 +297,11 @@ fn every_request_has_its_line() {
     // `RequestURI` (akio's A200).
     let absolute = by("GET", "http://u:p@abs.example/hello?y=2", "HTTP/1.1");
     assert_eq!(field(absolute, "route"), Some("\"hi\""), "{absolute}");
-    assert_eq!(field(absolute, "host"), Some("\"abs.example\""), "{absolute}");
+    assert_eq!(
+        field(absolute, "host"),
+        Some("\"abs.example\""),
+        "{absolute}"
+    );
 }
 
 #[test]
