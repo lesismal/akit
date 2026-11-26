@@ -31,6 +31,10 @@ done and where the work differs from the plan.
   akio's main and pinned. The branches that built only against an akio branch build against the pin.
 - Decisions: [decisions waiting for review](decisions-pending.md) row 11 brought up to date (the A/B
   done and the costs removed), row 13 for this merge.
+- Tests: `make check` on macOS; on gpu51 clippy and the workspace on epoll and io_uring. In the
+  full runs `sni_passthrough_spliced` (`sockmap`, both backends) and io_uring's FastCGI
+  `cut_connections` failed once each; alone they passed 5 of 5 on each backend and 3 of 3: timing
+  under the shared host's load, not the merge.
 - The dev plan's benchmark table lost stale copies of the cache, FastCGI and WASM rows an earlier
   merge had left; the zh status table's "What works" row lost a repeated span, and the English one
   a missing separator.

@@ -28,6 +28,9 @@
   akit 的 `rev` 和 `akit_runtime::AKIO_REV` 移到这个提交；[akio API 请求](akio-api-requests.zh-CN.md)
   中除 A180 和 A200 外的所有请求都已进入 akio 的 main 并锁定。只能针对 akio 分支构建的分支，现在针对锁定的提交构建。
 - 决定：[待审决定](decisions-pending.zh-CN.md)第 11 行已更新（A/B 已完成，开销已去掉），第 13 行记录本次合并。
+- 测试：macOS 上 `make check`；gpu51 上 clippy，以及 epoll 和 io_uring 下的整个工作区。完整运行中
+  `sni_passthrough_spliced`（`sockmap`，两个后端）和 io_uring 下 FastCGI 的 `cut_connections` 各失败一次；
+  单独运行时分别在每个后端 5 次全过、3 次全过：是共享主机负载下的时序问题，与合并无关。
 - 开发计划的基准表删掉了一次早先合并留下的缓存、FastCGI 和 WASM 旧行副本；状态表“可用功能”一行，中文删掉了一段重复，英文补上了缺的分隔符。
 
 ### 2026-11-26：I79b，网关示例的最后几个字段
