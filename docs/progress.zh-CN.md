@@ -19,6 +19,25 @@
 
 ## 日志
 
+### 2026-11-27：I102，TLS 链路和 hub 的证书
+
+- `tls://` 链路：akio-tls，只用 TLS 1.3，ALPN `fit-tunnel`，不恢复会话（`resumption(false)`、`session_tickets(false)`）。hub 的
+  TLS 监听器提供其 `cert_file` 和 `key_file`（在应用成员时读取），或 hub 自己的证书：`quic.cert` 和 `quic.key`，或者一个只生成
+  一次的自签名证书（P-256，十年，用于 `localhost` 和 hub 的名字），保存在配置旁，即 `akit.json` 旁的 `akit.tunnel.hub.pem`，
+  权限 0600（`Host::kept_file`，I100 的前缀），其指纹写入日志；没有可以保存在旁边的配置文件时，每次启动都重新生成，日志会说明。
+  node 或 proxy 的链路按 `pin`、`ca_file`（在建立 uplink 时于控制线程读取；fit 在每次拨号时读取）或系统根证书检查证书，从不
+  依据地址中的任何内容。
+- pin 的临时做法（直到 akio 的 A235）：akio-tls 要么检查证书链，要么什么都不检查，所以带 pin 的链路以 `insecure_skip_verify`
+  进行握手（仍用叶证书的密钥检查服务器的签名），链路以 `deferred` 方式建立（不发送任何东西，包括其 hello），akio 的定时器
+  线程每 5 毫秒轮询一次 `tls_info`，直到握手完成（限 `dial_timeout`），再以常数时间比较叶证书的 SHA-256 与 pin；之后链路才启动；
+  不匹配则在不发送任何东西的情况下关闭连接，提示 “the hub's certificate does not match the pin”。
+- WebSocket 和 QUIC 链路拆到 I102b：它们的监听器和端点在角色应用时仍给出警告。监听器的证书文件在应用成员时读取，文件变化时
+  不会重新读取（I102b）。
+- 测试：用 hub 的 pin 经 TLS（传输 4 MiB）、错误的 pin（什么都打不开）、重新启动的 hub 指纹不变、由 `ca_file` 检查的 CA 签名的
+  监听器证书（此时不保存证书）；用 fit 的二进制手工检查：fit 的 hub 经 TLS 配合用 pin 固定它的 akit node 和 proxy，以及 akit 的
+  hub 配合 fit 的 node 和 proxy，两个方向都用 token。
+- 下一步：I102b（WebSocket 和 QUIC 链路）或 I103。
+
 ### 2026-11-27：I101，基于 TCP 的隧道链路、注册和隧道
 
 - 新 crate `akit-tunnel`（fit 的 `tunnel`）：`crypt`（fit 的 `bodycrypt`）、`msg`（fit 的 `proto`：方法、以 fit 的字段名编码为 JSON

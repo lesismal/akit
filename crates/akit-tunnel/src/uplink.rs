@@ -59,6 +59,9 @@ pub struct Uplink {
     owner: Weak<dyn Owner>,
     coder: Option<Coder>,
     token: Option<Secret>,
+    /// The TLS of `tls://` endpoints, and the pin it leaves to [`crate::tls::when_handshaken`];
+    /// made when the uplink is (on the control thread: it reads `ca_file`).
+    tls: Option<(akio::tls::ClientConfig, Option<[u8; 32]>)>,
     proven: Arc<Mutex<HashSet<u64>>>,
     st: Mutex<UpState>,
     seq: AtomicU32,
@@ -116,6 +119,19 @@ impl Uplink {
             .dialer(),
             None => c.dialer(),
         });
+        let check = crate::tls::Check::of(&cfg.pin, &cfg.ca_file, false);
+        let pin = match &check {
+            crate::tls::Check::Pin(p) => Some(*p),
+            _ => None,
+        };
+        let needs_tls = dials(cfg)
+            .iter()
+            .any(|a| parse_endpoint(a).is_some_and(|e| e.protocol == TunnelProtocol::Tls));
+        let tls = if needs_tls {
+            Some((crate::tls::client_config(&check)?, pin))
+        } else {
+            None
+        };
         Ok(Arc::new(Uplink {
             name: cfg.hub_name().to_owned(),
             cfg: cfg.clone(),
@@ -124,6 +140,7 @@ impl Uplink {
             owner,
             coder,
             token,
+            tls,
             proven,
             st: Mutex::new(UpState {
                 links: HashMap::new(),
@@ -192,39 +209,73 @@ impl Uplink {
             self.keep(at.saturating_add(1));
             return;
         };
-        if ep.protocol != TunnelProtocol::Tcp {
-            // TLS, WebSocket and QUIC links are I102's.
-            self.fail(&format!(
-                "{addr}: {} links are not supported yet (I102)",
-                ep.protocol.as_str()
-            ));
-            self.keep(at.saturating_add(1));
-            return;
-        }
         let me = Arc::clone(self);
         let me2 = Arc::clone(self);
         let mut he = akio::dns::HappyEyeballs::default();
         he.connect_timeout = self.cfg.dial();
         let router = Arc::clone(&self.router);
         let coder = self.coder.clone();
-        he.connect(
-            &self.engine,
-            &ep.host,
-            ep.port,
-            akio::fn_acceptor(move |c: &akio::Conn<LinkHandler>| {
-                let l = Link::new(
-                    Arc::new(ConnWire::new(c)),
-                    Arc::clone(&router),
-                    coder.clone(),
-                );
-                me.dialed(&l);
-                LinkHandler(Some(l))
-            }),
-            move |e| {
-                me2.fail(&format!("{addr}: {e}"));
-                me2.keep(at.saturating_add(1));
-            },
-        );
+        let on_error = move |e: std::io::Error| {
+            me2.fail(&format!("{addr}: {e}"));
+            me2.keep(at.saturating_add(1));
+        };
+        match ep.protocol {
+            TunnelProtocol::Tcp => he.connect(
+                &self.engine,
+                &ep.host,
+                ep.port,
+                akio::fn_acceptor(move |c: &akio::Conn<LinkHandler>| {
+                    let l = Link::new(
+                        Arc::new(ConnWire::new(c)),
+                        Arc::clone(&router),
+                        coder.clone(),
+                    );
+                    me.dialed(&l);
+                    LinkHandler(Some(l))
+                }),
+                on_error,
+            ),
+            TunnelProtocol::Tls => {
+                let Some((cfg, pin)) = self.tls.clone() else {
+                    return on_error(std::io::Error::other("no TLS configured"));
+                };
+                let dial = self.cfg.dial();
+                let inner = akio::fn_acceptor(move |c: &akio::Conn<LinkHandler>| {
+                    // Nothing is sent until the hub's certificate is checked (crate::tls).
+                    let l = Link::deferred(
+                        Arc::new(ConnWire::new(c)),
+                        Arc::clone(&router),
+                        coder.clone(),
+                    );
+                    let (me, l2, c2) = (Arc::clone(&me), Arc::clone(&l), c.clone());
+                    crate::tls::when_handshaken(
+                        c.clone(),
+                        pin,
+                        dial,
+                        Box::new(move |r| match r {
+                            Ok(()) => {
+                                l2.start();
+                                me.dialed(&l2);
+                            }
+                            Err(e) => {
+                                me.fail(&e);
+                                akit_observe::warn!(Tunnel, "hub {}: {e}", me.name);
+                                c2.close();
+                            }
+                        }),
+                    );
+                    LinkHandler(Some(l))
+                });
+                match akio::tls::Tls::client(cfg, &ep.host, inner) {
+                    Ok(acceptor) => he.connect(&self.engine, &ep.host, ep.port, acceptor, on_error),
+                    Err(e) => on_error(e),
+                }
+            }
+            p => on_error(std::io::Error::other(format!(
+                "{} links are not supported yet (I102b)",
+                p.as_str()
+            ))),
+        }
     }
 
     fn retry(self: &Arc<Self>) {

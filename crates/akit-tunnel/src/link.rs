@@ -186,6 +186,8 @@ struct State {
     /// feeding it.
     drain_waiters: Vec<Box<dyn FnOnce() + Send>>,
     drain_armed: bool,
+    /// The hello, until the link starts.
+    hello: Option<Vec<u8>>,
 }
 
 /// A link: one transport connection of the tunnel's protocol.
@@ -222,6 +224,18 @@ impl Link {
     /// A link on `wire`, served by `router`, its bodies sealed by `coder` (the dialer's coder on
     /// the side that dialed). With a coder, its hello is sent at once.
     pub fn new(wire: Arc<dyn Wire>, router: Arc<dyn Router>, coder: Option<Coder>) -> Arc<Link> {
+        let l = Link::deferred(wire, router, coder);
+        l.start();
+        l
+    }
+
+    /// A link that sends nothing, its hello included, until [`Link::start`]: for a TLS link whose
+    /// hub's certificate is checked once its handshake is done (`crate::tls`).
+    pub fn deferred(
+        wire: Arc<dyn Wire>,
+        router: Arc<dyn Router>,
+        coder: Option<Coder>,
+    ) -> Arc<Link> {
         let random = crate::crypt::random();
         let hello = coder.as_ref().map(|c| {
             let tok = c.token_id();
@@ -263,12 +277,19 @@ impl Link {
                 coder,
                 drain_waiters: Vec::new(),
                 drain_armed: false,
+                hello: None,
             }),
         });
-        if let Some(h) = hello {
-            l.wire.send(&h);
-        }
+        lock(&l.st).hello = hello;
         l
+    }
+
+    /// Starts a link made [`deferred`](Link::deferred): its hello goes out.
+    pub fn start(&self) {
+        let hello = lock(&self.st).hello.take();
+        if let Some(h) = hello {
+            self.wire.send(&h);
+        }
     }
 
     /// Lowers the most bytes a frame may have (an unregistered link's 64 KiB).

@@ -103,6 +103,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | A232 | An HTTP connection's idle timeout and close from its handler, and the connections accepted told to the application: fit's bounds on connections without a login | requested (I90): the console bounded as the Admin API meanwhile | 10, 11 | I90 |
 | A233 | A terminal's echo turned off (raw mode), to read a password | requested (I89): the password shown as typed meanwhile, the prompt says so | 14 | I89 |
 | A234 | A connection's own bound of the bytes queued for it, past the engine's `max_queued_bytes` or below it | requested (I101): a link holds what feeds it past 8 MiB meanwhile | 8, 11 | I101, I104 |
+| A235 | A client TLS configuration that checks the server's certificate by its SHA-256 (a pin) in the handshake, in place of the chain and name | requested (I102): checked once the handshake is done, before a byte is sent, meanwhile | 1, 15 | I102, I104 |
 
 ## A1 TCP listeners on a running engine
 
@@ -2274,3 +2275,32 @@ next send.
 **How akit would use it.** A tunnel link's connection gets fit's `LinkQueue` and drops its 8 MiB
 high water (`akit_tunnel::link::HIGH_WATER`), so that its tunnels are paced by their windows alone,
 as fit's are; an LLM link gets its streams' windows times `max_inflight`.
+
+## A235 A pinned server certificate in akio-tls's client
+
+**Status.** Requested by I102 (2026-11-27). Nothing waits for it: the tunnel's TLS links check the
+pin once the handshake is done and before they send a byte (a stopgap recorded in
+[progress](progress.md)).
+
+**Problem.** fit's tunnel and LLM mesh check a hub's (or a listener's) self-signed certificate by
+its SHA-256, in place of the chain and the name (`certpin.Pinned`: Go's `VerifyPeerCertificate`
+with `InsecureSkipVerify`), in the handshake: a certificate that does not match fails it. akio-tls's
+`ClientConfigBuilder` verifies the chain and the name against roots, or nothing
+(`insecure_skip_verify`, which still checks the server's CertificateVerify with the leaf's key);
+it has no hook for a certificate of the caller's choosing, and no callback when the handshake is
+done. akit therefore polls `tls_info` on akio's timer thread until the handshake is done, compares
+the leaf with the pin, and only then starts the link: sound (the signature proves the key), but a
+poll, and the handshake completes where it should have failed.
+
+**Evidence.** At akio `077a6710`, `akio-tls/src/config.rs`'s `ClientConfigBuilder` has `roots`,
+`client_cert`, `insecure_skip_verify` and the rest, and `proto/client.rs`'s `peer_certificate`
+either `verify_chain`s or takes `leaf_key` under `insecure`.
+
+**Suggested API.** `ClientConfigBuilder::pin_sha256(pins: Vec<[u8; 32]>)`: the server's leaf must
+hash to one of them (compared in constant time); chain, name and dates are not checked; the
+handshake fails with `bad_certificate` otherwise. The same for akio-quic's client, whose TLS is
+akio-tls's.
+
+**How akit would use it.** The tunnel's TLS links (and QUIC's, I102b) and the LLM mesh's `wss://`
+links (I104) give their pin to the client configuration and start the link at once, as with
+`ca_file`; `crate::tls::when_handshaken` goes.

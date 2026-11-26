@@ -95,6 +95,8 @@ pub(crate) struct HubCore {
     coder: Mutex<Option<Coder>>,
     listeners: Mutex<Vec<(TunnelListener, akio::ListenerId)>>,
     access: Mutex<Option<Arc<akit_access::Policy>>>,
+    /// The SHA-256 of the hub's own certificate, which peers pin.
+    fingerprint: Mutex<String>,
     st: Mutex<HubState>,
     epoch: u64,
     me: Weak<HubCore>,
@@ -965,6 +967,7 @@ pub fn new(host: Host) -> Result<Box<dyn Role>, String> {
         coder: Mutex::new(None),
         listeners: Mutex::new(Vec::new()),
         access: Mutex::new(None),
+        fingerprint: Mutex::new(String::new()),
         st: Mutex::new(HubState::default()),
         epoch: u64::from_be_bytes(epoch) >> 1,
         me: me.clone(),
@@ -990,7 +993,11 @@ fn sweep(core: &Arc<HubCore>) {
 }
 
 impl Hub {
-    fn move_listeners(&self, want: &[TunnelListener]) -> Vec<String> {
+    fn move_listeners(
+        &self,
+        want: &[TunnelListener],
+        own: Option<&Arc<(String, String)>>,
+    ) -> Vec<String> {
         let c = &self.core;
         let engine = &c.host.engine;
         let mut errs = Vec::new();
@@ -1001,15 +1008,6 @@ impl Hub {
                 next.push(have.remove(i));
                 continue;
             }
-            if l.protocol != TunnelProtocol::Tcp {
-                errs.push(format!(
-                    "listener {} {}: {} links are not supported yet (I102)",
-                    l.protocol.as_str(),
-                    l.address,
-                    l.protocol.as_str()
-                ));
-                continue;
-            }
             let Some(addr) = crate::proxy::listen_addr(&l.address) else {
                 errs.push(format!(
                     "listener {}: not an address to listen on",
@@ -1018,17 +1016,49 @@ impl Hub {
                 continue;
             };
             let me = c.me.clone();
-            let mut el = akio::Listener::tcp(addr)
-                .threads(1)
-                .serve(akio::fn_acceptor(
-                    move |conn: &akio::Conn<LinkHandler>| match me.upgrade() {
-                        Some(h) => h.accept(conn),
-                        None => {
-                            conn.close();
-                            LinkHandler(None)
+            let acceptor =
+                akio::fn_acceptor(move |conn: &akio::Conn<LinkHandler>| match me.upgrade() {
+                    Some(h) => h.accept(conn),
+                    None => {
+                        conn.close();
+                        LinkHandler(None)
+                    }
+                });
+            let mut el = match l.protocol {
+                TunnelProtocol::Tcp => akio::Listener::tcp(addr).threads(1).serve(acceptor),
+                TunnelProtocol::Tls => {
+                    let tls = if l.cert_file.is_empty() {
+                        match own {
+                            Some(cert) => crate::tls::server_config(&cert.0, &cert.1),
+                            None => Err("no certificate".to_owned()),
                         }
-                    },
-                ));
+                    } else {
+                        // Read when the member is applied (fit's): the control thread's.
+                        std::fs::read_to_string(&l.cert_file)
+                            .and_then(|c| std::fs::read_to_string(&l.key_file).map(|k| (c, k)))
+                            .map_err(|e| e.to_string())
+                            .and_then(|(c, k)| crate::tls::server_config(&c, &k))
+                    };
+                    match tls {
+                        Ok(cfg) => akio::Listener::tcp(addr)
+                            .threads(1)
+                            .serve(akio::tls::Tls::server(cfg, acceptor)),
+                        Err(e) => {
+                            errs.push(format!("listener tls {}: {e}", l.address));
+                            continue;
+                        }
+                    }
+                }
+                p => {
+                    errs.push(format!(
+                        "listener {} {}: {} links are not supported yet (I102b)",
+                        p.as_str(),
+                        l.address,
+                        p.as_str()
+                    ));
+                    continue;
+                }
+            };
             if let Some(p) = lock(&c.access).clone() {
                 el = el.filter(move |peer: &SocketAddr| p.allows(peer.ip()));
             }
@@ -1086,8 +1116,44 @@ impl Role for Hub {
             }))
         });
         let listeners = cfg.listeners.clone();
+        // The hub's own certificate, for its TLS listeners without one of their own (I102): made
+        // once and kept beside the config, so that its fingerprint, which peers pin, outlives a
+        // restart.
+        let needs_own = listeners
+            .iter()
+            .any(|l| l.protocol.takes_tls() && l.cert_file.is_empty());
+        let own = if needs_own {
+            let kept = c.host.kept_file("pem");
+            match crate::tls::hub_cert(&cfg, kept.as_deref()) {
+                Ok((cert, made)) => {
+                    let fp = crate::tls::fingerprint(&cert.0);
+                    if made {
+                        match &kept {
+                            Some(path) => akit_observe::info!(
+                                Tunnel,
+                                "tunnel.hub: made a certificate, kept in {path}; its fingerprint, which nodes and proxies pin: {fp}"
+                            ),
+                            None => akit_observe::warn!(
+                                Tunnel,
+                                "tunnel.hub: made a certificate that is kept nowhere: it changes at the next start; its fingerprint: {fp}"
+                            ),
+                        }
+                    } else {
+                        akit_observe::info!(Tunnel, "tunnel.hub: certificate fingerprint {fp}");
+                    }
+                    *lock(&c.fingerprint) = fp;
+                    Some(cert)
+                }
+                Err(e) => {
+                    errs.push(format!("the hub's certificate: {e}"));
+                    None
+                }
+            }
+        } else {
+            None
+        };
         *lock(&c.cfg) = cfg;
-        errs.extend(self.move_listeners(&listeners));
+        errs.extend(self.move_listeners(&listeners, own.as_ref()));
         if !c.password_peers().is_empty() {
             akit_observe::debug!(
                 Tunnel,

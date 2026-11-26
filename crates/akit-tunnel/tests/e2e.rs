@@ -224,3 +224,185 @@ fn a_token_another_member_holds_is_refused() {
     let views = akit_roles::host::token_views(&env.roles.registries(), "tunnel.hub").unwrap();
     assert_eq!(views[0].members.len(), 2, "{views:?}");
 }
+
+// I102: TLS links.
+
+/// A hub alone on `engine`, keeping its certificate beside `dir/akit.json`, with `listener`.
+fn hub_alone(engine: &Arc<akio::Engine>, dir: &std::path::Path, listener: &str) -> Manager {
+    let doc = format!(
+        r#"{{"tunnel": {{"hub": {{"name": "hub", "password": "pw", "listeners": [{listener}]}}}}}}"#
+    );
+    let config = akit_config::from_json(&doc, None).unwrap();
+    let mut m = Manager::new(&[akit_tunnel::HUB], Arc::clone(engine), None);
+    m.keep_beside(dir.join("akit.json").to_str().unwrap());
+    let errs = m.apply(&config);
+    assert!(errs.is_empty(), "{errs:?}");
+    m
+}
+
+/// The node and the proxy, linking to `endpoint` with `check` (a pin or a CA file).
+fn peers(engine: &Arc<akio::Engine>, endpoint: &str, check: &str, svc: u16, fwd: u16) -> Manager {
+    let up = format!(
+        r#"{{"name": "hub", "endpoints": [{{"address": "{endpoint}"}}], "password": "pw"{check}, "retry_interval": "100ms"}}"#
+    );
+    let doc = format!(
+        r#"{{"tunnel": {{
+          "node": {{"name": "lab", "hubs": [{up}], "services": [{{"name": "echo", "address": "127.0.0.1:{svc}"}}]}},
+          "proxy": {{"name": "alice", "hubs": [{up}], "forwards": [{{"listen": "127.0.0.1:{fwd}", "node": "lab", "service": "echo"}}]}}}}}}"#
+    );
+    let config = akit_config::from_json(&doc, None).unwrap_or_else(|e| panic!("{doc}\n{e}"));
+    let mut m = Manager::new(
+        &[akit_tunnel::NODE, akit_tunnel::PROXY],
+        Arc::clone(engine),
+        None,
+    );
+    let errs = m.apply(&config);
+    assert!(errs.is_empty(), "{errs:?}");
+    m
+}
+
+fn engine() -> Arc<akio::Engine> {
+    let e = akio::Engine::builder().client_threads(2).build().unwrap();
+    e.start().unwrap();
+    Arc::new(e)
+}
+
+fn tmp(name: &str) -> std::path::PathBuf {
+    let d = std::env::temp_dir().join(format!("akit-tunnel-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&d);
+    std::fs::create_dir_all(&d).unwrap();
+    d
+}
+
+#[test]
+fn tls_links_check_the_hubs_certificate_by_its_pin() {
+    let dir = tmp("pin");
+    let e = engine();
+    let (hub, svc) = (free_port(), echo());
+    let mut h = hub_alone(
+        &e,
+        &dir,
+        &format!(r#"{{"protocol": "tls", "address": "127.0.0.1:{hub}"}}"#),
+    );
+    let kept = dir.join("akit.tunnel.hub.pem");
+    let pem =
+        std::fs::read_to_string(&kept).expect("the hub keeps its certificate beside the config");
+    let fp = akit_tunnel::tls::fingerprint(&pem);
+    assert_eq!(fp.len(), 64);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(&kept).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
+    }
+    // The pin links.
+    let fwd = free_port();
+    let mut p = peers(
+        &e,
+        &format!("tls://127.0.0.1:{hub}"),
+        &format!(r#", "pin": "{fp}""#),
+        svc,
+        fwd,
+    );
+    let mut s = tunnel(fwd);
+    round_trip(&mut s, 4 << 20);
+    p.stop(Duration::ZERO);
+    // Another pin does not: the handshake is checked before a byte is sent.
+    let fwd = free_port();
+    let other = "ab".repeat(32);
+    let mut p = peers(
+        &e,
+        &format!("tls://127.0.0.1:{hub}"),
+        &format!(r#", "pin": "{other}""#),
+        svc,
+        fwd,
+    );
+    std::thread::sleep(Duration::from_millis(700));
+    let mut s = TcpStream::connect(("127.0.0.1", fwd)).unwrap();
+    s.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+    let _ = s.write_all(b"x");
+    let mut b = [0u8; 1];
+    assert!(
+        !matches!(s.read(&mut b), Ok(1)),
+        "a tunnel opened past a wrong pin"
+    );
+    p.stop(Duration::ZERO);
+    h.stop(Duration::ZERO);
+    // A hub started again keeps its certificate: the pin stays good.
+    let hub2 = free_port();
+    let mut h = hub_alone(
+        &e,
+        &dir,
+        &format!(r#"{{"protocol": "tls", "address": "127.0.0.1:{hub2}"}}"#),
+    );
+    assert_eq!(
+        akit_tunnel::tls::fingerprint(&std::fs::read_to_string(&kept).unwrap()),
+        fp
+    );
+    let fwd = free_port();
+    let mut p = peers(
+        &e,
+        &format!("tls://127.0.0.1:{hub2}"),
+        &format!(r#", "pin": "{fp}""#),
+        svc,
+        fwd,
+    );
+    let _ = tunnel(fwd);
+    p.stop(Duration::ZERO);
+    h.stop(Duration::ZERO);
+    e.shutdown();
+    e.wait();
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn tls_links_check_a_listeners_certificate_by_its_cas() {
+    let dir = tmp("ca");
+    // A CA, and a certificate it signs for 127.0.0.1, the listener's own.
+    let ca_key =
+        akio_crypto::pkey::PrivateKey::P256(akio_crypto::p256::SecretKey::generate().unwrap());
+    let ca = akio_x509::CertificateParams::ca("akit tunnel test CA")
+        .self_signed(&ca_key)
+        .unwrap();
+    let key =
+        akio_crypto::pkey::PrivateKey::P256(akio_crypto::p256::SecretKey::generate().unwrap());
+    let leaf = akio_x509::CertificateParams::new(["127.0.0.1"])
+        .signed_by(&key.public_key(), &ca, &ca_key)
+        .unwrap();
+    std::fs::write(dir.join("ca.pem"), ca.to_pem()).unwrap();
+    std::fs::write(dir.join("cert.pem"), leaf.to_pem()).unwrap();
+    std::fs::write(
+        dir.join("key.pem"),
+        akio_crypto::pem::encode("PRIVATE KEY", &key.to_pkcs8_der()),
+    )
+    .unwrap();
+    let e = engine();
+    let (hub, svc, fwd) = (free_port(), echo(), free_port());
+    let mut h = hub_alone(
+        &e,
+        &dir,
+        &format!(
+            r#"{{"protocol": "tls", "address": "127.0.0.1:{hub}", "cert_file": "{}", "key_file": "{}"}}"#,
+            dir.join("cert.pem").display(),
+            dir.join("key.pem").display()
+        ),
+    );
+    assert!(
+        !dir.join("akit.tunnel.hub.pem").exists(),
+        "a listener with a certificate of its own makes none"
+    );
+    let mut p = peers(
+        &e,
+        &format!("tls://127.0.0.1:{hub}"),
+        &format!(r#", "ca_file": "{}""#, dir.join("ca.pem").display()),
+        svc,
+        fwd,
+    );
+    let mut s = tunnel(fwd);
+    round_trip(&mut s, 1 << 20);
+    p.stop(Duration::ZERO);
+    h.stop(Duration::ZERO);
+    e.shutdown();
+    e.wait();
+    let _ = std::fs::remove_dir_all(&dir);
+}

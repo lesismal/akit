@@ -86,7 +86,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 
 ## 索引
 
-状态：`todo`、`doing` 或 `done`。下一个可用的迭代编号是 I110（为日志路线和访问控制列表路线预留的 I84 和 I88 未使用；I95 和 I96 为控制台路线预留；I97 改名了 fit 的对外名字；I98–I109 是隧道与 LLM 路线）。
+状态：`todo`、`doing` 或 `done`。下一个可用的迭代编号是 I110（为日志路线和访问控制列表路线预留的 I84 和 I88 未使用；I95 和 I96 为控制台路线预留；I97 改名了 fit 的对外名字；I98–I109 和 I102b 是隧道与 LLM 路线）。
 
 | ID | 迭代 | 依赖 | 状态 |
 | --- | --- | --- | --- |
@@ -205,7 +205,8 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I99 | 链路 token：`akitt1.` token、证明、登记表和管理 | I98 | done |
 | I100 | `akit run` 中的角色：在监听器的引擎上启动、迁移和停止；一个地址，一个服务器；Admin API 的 `/tokens` 和 `akit token` | I99, I27 | done |
 | I101 | 隧道 I：TCP 上的链路、注册和隧道 | I99, I100 | done |
-| I102 | 隧道 II：TLS、WebSocket 和 QUIC 链路；pin；保存 hub 的证书 | I101 | todo |
+| I102 | 隧道 II：TLS 链路；pin；保存 hub 的证书 | I101 | done |
+| I102b | 隧道 II b：WebSocket 和 QUIC 链路 | I102 | todo |
 | I103 | 隧道 III：hub 的调用、token 过期、控制台套接字和 web 代理 | I102 | todo |
 | I104 | LLM I：mesh：帧、会话、带信用的流、握手、hello、连接池 | I99, I100 | todo |
 | I105 | LLM II：node：模型、检查、双向流式转发到上游的调用 | I104 | todo |
@@ -1342,16 +1343,26 @@ fit 的，使 akit 的角色能与 fit 的角色互连（决定 038）。
 - **fit**：`tunnel/hub`、`tunnel/node`、`tunnel/proxy`、`tunnel/internal/{proto,link,bodycrypt,tunnel,uplink,common}`；I106、I159。
 - **状态**：已完成（2026-11-27）。见进度日志。
 
-### I102 隧道 II：TLS、WebSocket 和 QUIC 链路
+### I102 隧道 II：TLS 链路和 hub 的证书
 
-- **做什么**：`tls://`（akio-tls，ALPN `fit-tunnel`）、`wss://` 和 `ws://`（akio-ws，默认路径 `/tunnel`，其他路径回 404）以及
-  `quic://`（监听器引擎的 UDP 绑定上的 akio-quic）链路；hub 每个监听器的证书（`cert_file` 和 `key_file`，文件变化时重新读取）
-  或它自己的自签名证书，保存在配置旁（`akit.tunnel.hub.pem`，0600）；node 或 proxy 的 `pin`、`ca_file` 和 `quic_insecure`
-  交给拨号，从不从地址中读取；不恢复会话。
-- **完成标准**：基于 TLS、WebSocket、TLS 上的 WebSocket 和 QUIC 的端到端测试通过；fit I160 的片段攻击失败；带自己证书的中继
-  握手失败；没有 store 的 hub 重启后指纹不变。
-- **涉及**：`akit-tunnel`、`akit-tls`。
-- **fit**：`tunnel/internal/transport/...`、`internal/certpin`；I106、I160。
+- **做什么**：`tls://` 链路（akio-tls，TLS 1.3，ALPN `fit-tunnel`，不恢复会话）；hub 每个监听器的证书（`cert_file` 和 `key_file`，
+  在应用成员时读取），或它自己的自签名证书，只生成一次并保存在配置旁（`akit.tunnel.hub.pem`，0600），或在 `quic.cert` 和
+  `quic.key` 中给出，其指纹写入日志；node 或 proxy 的 `pin`、`ca_file` 或系统根证书，交给拨号，从不从地址中读取。pin 在握手完成
+  之后、链路发送任何字节之前检查（akio API 请求 A235 要求 akio-tls 在握手中检查固定的证书）。
+- **完成标准**：基于 TLS 的端到端测试在 pin 和 `ca_file` 下通过；错误的 pin 打开不了任何东西；重新启动的 hub 保持其指纹；
+  fit 的 hub 与 akit 的 node 和 proxy、以及反过来，用 pin 经 TLS 互连。
+- **涉及**：`akit-tunnel`（`tls`、`hub`、`uplink`、`link`）。
+- **fit**：`tunnel/internal/transport/tls.go`、`internal/certpin`；I106、I160。
+- **状态**：已完成（2026-11-27）。见进度日志。
+
+### I102b 隧道 II b：WebSocket 和 QUIC 链路
+
+- **做什么**：`wss://` 和 `ws://` 链路（akio-ws：hub 默认路径 `/tunnel`，其他路径回 404，握手限 10 秒，链路的字节放在每条至多
+  1 MiB 的二进制消息中）以及 `quic://` 链路（监听器引擎 UDP 绑定上的 akio-quic，ALPN `fit-tunnel`，`idle_timeout`、
+  `keep_alive`、`handshake_timeout`、`max_handshakes`，超过一半时用 Retry）；`quic_insecure`；监听器的证书文件变化时重新读取。
+- **完成标准**：基于 WebSocket、TLS 上的 WebSocket 和 QUIC 的端到端测试通过，并能与 fit 的 hub、node 和 proxy 互连。
+- **涉及**：`akit-tunnel`。
+- **fit**：`tunnel/internal/transport/ws`、`tunnel/internal/transport/quic`；I106、I160。
 - **状态**：todo。
 
 ### I103 隧道 III：hub 的调用、token 过期、控制台套接字和 web 代理

@@ -133,7 +133,15 @@ fn a_tunnel_through_akit_run_with_tokens_from_akit_token() {
     let (ok, node_token) = token(&["create", "-c", c, "-role", "tunnel.hub", "-name", "lab"]);
     assert!(ok && node_token.starts_with("akitt1."), "{node_token}");
     let (ok, proxy_token) = token(&[
-        "create", "-c", c, "-role", "tunnel.hub", "-name", "alice", "-ttl", "30d",
+        "create",
+        "-c",
+        c,
+        "-role",
+        "tunnel.hub",
+        "-name",
+        "alice",
+        "-ttl",
+        "30d",
     ]);
     assert!(ok, "{proxy_token}");
     let (node_token, proxy_token) = (node_token.trim(), proxy_token.trim());

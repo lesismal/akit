@@ -102,6 +102,7 @@
 | A232 | 由处理函数设置 HTTP 连接的空闲超时并关闭它，并把已接受的连接告诉应用：fit 对未登录连接的限制 | 已提出（I90）：在此之前控制台像 Admin API 一样受限 | 10、11 | I90 |
 | A233 | 关闭终端回显（原始模式）以读取密码 | 已提出（I89）：在此之前密码按输入显示，提示中说明 | 14 | I89 |
 | A234 | 单个连接自己的发送队列上限，可高于或低于引擎的 `max_queued_bytes` | 已提出（I101）：在此之前链路在超过 8 MiB 时压住喂给它的一方 | 8, 11 | I101, I104 |
+| A235 | 在握手中按 SHA-256（pin）检查服务器证书、代替证书链和名称检查的客户端 TLS 配置 | 已提出（I102）：在此之前于握手完成后、发送任何字节前检查 | 1, 15 | I102, I104 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -1830,3 +1831,23 @@ akio-sys 中没有任何地方提到 `termios`。
 
 **akit 如何使用。** 隧道链路的连接取 fit 的 `LinkQueue`，去掉其 8 MiB 高水位（`akit_tunnel::link::HIGH_WATER`），使其隧道只由
 窗口调节，与 fit 相同；LLM 链路取其流的窗口乘以 `max_inflight`。
+
+## A235 akio-tls 客户端中固定的服务器证书
+
+**状态。** 由 I102 提出（2026-11-27）。没有工作在等待它：在此之前隧道的 TLS 链路在握手完成之后、发送任何字节之前检查 pin
+（记录在[进度](progress.zh-CN.md)中的临时做法）。
+
+**问题。** fit 的隧道和 LLM mesh 在握手中按 SHA-256 检查 hub（或监听方）的自签名证书，代替证书链和名称（`certpin.Pinned`：
+Go 的 `VerifyPeerCertificate` 配合 `InsecureSkipVerify`）：不匹配的证书使握手失败。akio-tls 的 `ClientConfigBuilder` 要么按根证书
+检查证书链和名称，要么什么都不检查（`insecure_skip_verify`，但仍用叶证书的密钥检查服务器的 CertificateVerify）；它没有让调用方
+选择证书的钩子，也没有握手完成时的回调。因此 akit 在 akio 的定时器线程上轮询 `tls_info` 直到握手完成，把叶证书与 pin 比较，
+然后才启动链路：这是可靠的（签名证明了持有密钥），但它是轮询，而且本应失败的握手完成了。
+
+**证据。** 在 akio `077a6710` 中，`akio-tls/src/config.rs` 的 `ClientConfigBuilder` 有 `roots`、`client_cert`、
+`insecure_skip_verify` 等，`proto/client.rs` 的 `peer_certificate` 要么 `verify_chain`，要么在 `insecure` 下取 `leaf_key`。
+
+**建议的 API。** `ClientConfigBuilder::pin_sha256(pins: Vec<[u8; 32]>)`：服务器的叶证书必须哈希为其中之一（常数时间比较）；
+不检查证书链、名称和日期；否则握手以 `bad_certificate` 失败。akio-quic 的客户端（其 TLS 是 akio-tls 的）同样如此。
+
+**akit 如何使用。** 隧道的 TLS 链路（以及 I102b 的 QUIC 链路）和 LLM mesh 的 `wss://` 链路（I104）把 pin 交给客户端配置并立即
+启动链路，与 `ca_file` 时相同；`crate::tls::when_handshaken` 随之去掉。

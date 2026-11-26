@@ -95,7 +95,7 @@ few crates as it can. fit's package of the same role is given for reference.
 
 Status: `todo`, `doing` or `done`. The next free iteration number is I110 (I84 and I88, reserved for the
 Logging and Access lists tracks, are unused; I95 and I96 are reserved for the Console track; I97
-renamed fit's external names; I98–I109 are the Tunnel and LLM track).
+renamed fit's external names; I98–I109 and I102b are the Tunnel and LLM track).
 
 | ID | Iteration | Depends on | Status |
 | --- | --- | --- | --- |
@@ -214,7 +214,8 @@ renamed fit's external names; I98–I109 are the Tunnel and LLM track).
 | I99 | Link tokens: `akitt1.` tokens, proofs, registry and management | I98 | done |
 | I100 | The roles in `akit run`: started, moved and stopped on the listeners' engine; one address, one server; the Admin API's `/tokens` and `akit token` | I99, I27 | done |
 | I101 | Tunnel I: links, registration and tunnels over TCP | I99, I100 | done |
-| I102 | Tunnel II: TLS, WebSocket and QUIC links; pins; the hub's certificate kept | I101 | todo |
+| I102 | Tunnel II: TLS links; pins; the hub's certificate kept | I101 | done |
+| I102b | Tunnel II b: WebSocket and QUIC links | I102 | todo |
 | I103 | Tunnel III: the hub's calls, token expiry, the console socket and web proxies | I102 | todo |
 | I104 | LLM I: the mesh: frames, sessions, streams with credit, the handshake, hello, pools | I99, I100 | todo |
 | I105 | LLM II: the node: models, checks, calls forwarded upstream streamed both ways | I104 | todo |
@@ -1570,19 +1571,33 @@ link with fit's (decision 038).
   tunnel,uplink,common}`; I106, I159.
 - **Status**: done (2026-11-27). See the progress log.
 
-### I102 Tunnel II: TLS, WebSocket and QUIC links
+### I102 Tunnel II: TLS links and the hub's certificate
 
-- **Do**: `tls://` (akio-tls, ALPN `fit-tunnel`), `wss://` and `ws://` (akio-ws, `/tunnel` by
-  default, 404 for another path), and `quic://` (akio-quic on a UDP binding of the listeners'
-  engine) links; a hub's certificate per listener (`cert_file` and `key_file`, read again when
-  they change) or its own self-signed one, kept beside the config (`akit.tunnel.hub.pem`, 0600);
-  a node's or proxy's `pin`, `ca_file` and `quic_insecure` given to the dial, never read from the
-  address; no session resumption.
-- **Done when**: the e2e tests over TLS, WebSocket, WebSocket over TLS and QUIC pass; fit's I160
-  fragment attacks fail; a relay with a certificate of its own fails the handshake; a hub without
-  a store keeps its fingerprint across restarts.
-- **Touches**: `akit-tunnel`, `akit-tls`.
-- **fit**: `tunnel/internal/transport/...`, `internal/certpin`; I106, I160.
+- **Do**: `tls://` links (akio-tls, TLS 1.3, ALPN `fit-tunnel`, no session resumed); a hub's
+  certificate per listener (`cert_file` and `key_file`, read when the member is applied) or its
+  own self-signed one, made once and kept beside the config (`akit.tunnel.hub.pem`, 0600) or
+  given in `quic.cert` and `quic.key`, its fingerprint logged; a node's or proxy's `pin`,
+  `ca_file` or the system's roots, given to the dial, never read from the address. The pin is
+  checked once the handshake is done and before the link sends a byte (akio API request A235
+  asks akio-tls to check a pinned certificate in the handshake).
+- **Done when**: the e2e tests over TLS pass with a pin and with `ca_file`; a wrong pin opens
+  nothing; a hub started again keeps its fingerprint; a fit hub and akit's node and proxy, and the
+  other way round, link over TLS with a pin.
+- **Touches**: `akit-tunnel` (`tls`, `hub`, `uplink`, `link`).
+- **fit**: `tunnel/internal/transport/tls.go`, `internal/certpin`; I106, I160.
+- **Status**: done (2026-11-27). See the progress log.
+
+### I102b Tunnel II b: WebSocket and QUIC links
+
+- **Do**: `wss://` and `ws://` links (akio-ws: a hub's `/tunnel` by default, 404 for another
+  path, a handshake bounded by 10 s, the link's bytes in binary messages of at most 1 MiB) and
+  `quic://` links (akio-quic on a UDP binding of the listeners' engine, ALPN `fit-tunnel`,
+  `idle_timeout`, `keep_alive`, `handshake_timeout`, `max_handshakes` with a Retry past half);
+  `quic_insecure`; a listener's certificate read again when its files change.
+- **Done when**: the e2e tests over WebSocket, WebSocket over TLS and QUIC pass, and against
+  fit's hub, node and proxy.
+- **Touches**: `akit-tunnel`.
+- **fit**: `tunnel/internal/transport/ws`, `tunnel/internal/transport/quic`; I106, I160.
 - **Status**: todo.
 
 ### I103 Tunnel III: the hub's calls, token expiry, the console socket and web proxies

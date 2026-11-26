@@ -20,6 +20,32 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-27: I102, TLS links and the hub's certificate
+
+- `tls://` links: akio-tls, TLS 1.3 alone, the ALPN `fit-tunnel`, no session resumed
+  (`resumption(false)`, `session_tickets(false)`). A hub's TLS listener presents its `cert_file`
+  and `key_file`, read when the member is applied, or the hub's own certificate: `quic.cert` and
+  `quic.key`, or a self-signed one made once (P-256, ten years, for `localhost` and the hub's
+  name) and kept beside the config, `akit.tunnel.hub.pem` beside `akit.json`, mode 0600 (`Host::
+  kept_file`, I100's prefix), its fingerprint logged; without a config file to keep it beside, it
+  is made at each start and the log says so. A node's or proxy's link checks the certificate by
+  `pin`, by `ca_file` (read when the uplink is made, on the control thread; fit reads it at each
+  dial) or by the system's roots, never by anything in the address.
+- The pin, until akio's A235: akio-tls checks a chain or nothing, so a pinned link's handshake
+  runs with `insecure_skip_verify` (which still checks the server's signature with the leaf's
+  key), the link is made `deferred` (nothing sent, its hello included), akio's timer thread polls
+  `tls_info` every 5 ms until the handshake is done, within `dial_timeout`, and compares the
+  leaf's SHA-256 with the pin in constant time; only then does the link start; a mismatch closes
+  the connection unsent, "the hub's certificate does not match the pin".
+- WebSocket and QUIC links split into I102b: their listeners and endpoints are still a warning
+  when the role applies. A listener's certificate files are read when the member is applied, not
+  again when they change (I102b).
+- Tests: over TLS with the hub's pin (4 MiB through), a wrong pin (nothing opens), a hub started
+  again with the same fingerprint, a CA-signed listener certificate checked by `ca_file` (and no
+  certificate kept then); by hand against fit's binary: a fit hub over TLS with akit's node and
+  proxy pinning it, and an akit hub with fit's, tokens each way.
+- Next: I102b (WebSocket and QUIC links), or I103.
+
 ### 2026-11-27: I101, the tunnel's links, registration and tunnels over TCP
 
 - A new crate, `akit-tunnel` (fit's `tunnel`): `crypt` (fit's `bodycrypt`), `msg` (fit's

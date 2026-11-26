@@ -13,10 +13,16 @@ publish = false
 akio = { workspace = true }
 # AES-256-GCM, HKDF, PBKDF2, HMAC-SHA256 and random bytes of the links (fit's bodycrypt, proto).
 akio-crypto = { workspace = true }
+# The hub's self-signed certificate (I102).
+akio-x509 = { workspace = true }
 akit-access = { workspace = true }
 akit-config = { workspace = true }
 akit-observe = { workspace = true }
 akit-roles = { workspace = true }
+
+[dev-dependencies]
+akio-crypto = { workspace = true }
+akio-x509 = { workspace = true }
 
 [lints]
 workspace = true
