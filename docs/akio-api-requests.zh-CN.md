@@ -91,8 +91,8 @@
 | A171 | HTTP 客户端请求结束时取消其定时器任务，而不是保留到超时时间 | 已进入 akio 的 main 并锁定（自 `0fc8f3a7` 起） | 11、13 | I15、I18、I25 |
 | A172 | TLS 服务端把 server name 为 IP 地址的 ClientHello 视为没有名字，而不是使握手失败 | 已进入 akio 的 main 并锁定（自 `0fc8f3a7` 起） | 19 | I09、I25 |
 | A170 | 不经 `Conn::inner` 读取连接的 TCP 计数（以及未读字节），并通过引擎自己的 API 先写数据再拼接 | 已进入 akio 的 main 并锁定（自 `6bcd8ad6` 起，akio 的 ADR-156） | 1、14 | I51b |
-| A180 | 让 akio-wasm 的调用更便宜，并与 wazero 对比测量（akio 的 W5） | 已提出（I76）：一个修改头部的 Go guest 让 akit 每个请求多花 14.7 µs CPU，fit 6.8 µs | 13 | I71、I72、I76 |
-| A200 | 按 RFC 9112 的要求处理 absolute-form 请求目标：以其路径作为请求的路径，以其 authority 作为主机 | 已提出（I77）；在此之前 akit-listener 把这样的请求改写为 origin-form | 15、19 | I77 |
+| A180 | 让 akio-wasm 的调用更便宜，并与 wazero 对比测量（akio 的 W5） | 已进入 akio 的 main 并锁定（自 `077a6710` 起） | 13 | I71、I72、I76 |
+| A200 | 按 RFC 9112 的要求处理 absolute-form 请求目标：以其路径作为请求的路径，以其 authority 作为主机 | 已进入 akio 的 main 并锁定（自 `077a6710` 起，akio 的 ADR-177） | 15、19 | I77 |
 | A214 | 所有连接合计排队字节的预算，超出时暂停每个连接的读取（fit 的 `limits.max_pending_bytes`） | 已进入 akio 的 main 并锁定（自 `6bcd8ad6` 起，akio 的 ADR-172） | 8、11 | I79、I79b |
 | A215 | 只计入被接受的连接、不计入引擎拨出的连接的连接上限（fit 的 `limits.max_conns`） | 已进入 akio 的 main 并锁定（自 `6bcd8ad6` 起，akio 的 ADR-173） | 11 | I79、I79b |
 | A220 | UDP 和数据报监听器上的 accept 过滤器：在为被拒绝的对端建立连接（`udp` 会话、QUIC 连接）之前丢弃它的数据报 | 已提出（I85） | 1、11 | I85、I86 |
@@ -1594,6 +1594,8 @@ akio-socks 的拼接隧道（计数、空闲探测、关闭时的排空）作为
 
 ## A180 让 akio-wasm 的调用更便宜，并与 wazero 对比测量（akio 的 W5）
 
+**完成。** 已进入 akio 的 main（`077a6710`）并锁定：fit 的 Go `headers` guest 的一次调用在 gpu51 上从 9,089 ns 降到 5,068 ns（wazero 编译器 3,520 ns），见 akio 的 docs/BENCHMARKS。akit 的 `wasm` 场景待基准任务重新测量。
+
 **状态。** 由 I76 提出（2026-11-25），给出 akio 的 W5（ADR-125 第 8 节，"对照 fit（wazero）的性能优化"，在 akio 的
 开发计划中仍未完成）的第一批数字。akit 中没有任何东西等待它：开销有界且已测量，M5 的标准成立。
 
@@ -1616,6 +1618,8 @@ wazero 的解释器和编译器，如 fit 的 `BenchmarkGuestCall`；池的交�
 用 `bench/run.sh -servers akit-wasm,fit-wasm -scenarios fixed,wasm` 重新测量。
 
 ## A200 按 RFC 9112 的要求处理 absolute-form 请求目标
+
+**完成。** 已进入 akio 的 main（`077a6710`，akio 的 ADR-177）并锁定：akio 以 origin-form 给出 absolute-form 目标，用目标的主机替换 `Host`，`Request::raw_target()` 给出原样的目标。akit-listener 的临时改写已删除，访问日志写 `raw_target()`。与 fit 的一处差异：主机为空的 http URI（`http:///x`）由 akio 回答 400（RFC 9110 第 4.2.1 节），fit 按 `Host` 字段路由它（[待审决定](decisions-pending.zh-CN.md)第 15 行）。
 
 **状态。** 由 I77 提出（2026-11-26）。在此之前 akit-listener 改写这样的请求，这是一个临时方案，记录在
 [进度](progress.zh-CN.md)中。

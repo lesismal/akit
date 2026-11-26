@@ -108,31 +108,6 @@ const BAD_REQUEST_PATH: &str = "400 bad request path\n";
 /// fit's answer to a request the access lists refuse (I85).
 const FORBIDDEN: &str = "403 forbidden\n";
 
-/// The host (without its user information; `None` when empty) and the origin-form target of a
-/// request target in absolute form, `scheme://authority/path?query` (RFC 9112 section 3.2.2);
-/// `None` for a target in any other form (origin, authority or asterisk).
-fn absolute_form(target: &str) -> Option<(Option<&str>, Cow<'_, str>)> {
-    if target.starts_with('/') {
-        return None;
-    }
-    let (scheme, rest) = target.split_once("://")?;
-    let mut b = scheme.bytes();
-    if !b.next().is_some_and(|c| c.is_ascii_alphabetic())
-        || !b.all(|c| c.is_ascii_alphanumeric() || matches!(c, b'+' | b'-' | b'.'))
-    {
-        return None;
-    }
-    let end = rest.find(['/', '?']).unwrap_or(rest.len());
-    let (authority, tail) = rest.split_at(end);
-    let host = authority.rsplit_once('@').map_or(authority, |(_, h)| h);
-    let origin = if tail.starts_with('/') {
-        Cow::Borrowed(tail)
-    } else {
-        Cow::Owned(format!("/{tail}"))
-    };
-    Some(((!host.is_empty()).then_some(host), origin))
-}
-
 pub use akit_runtime::{TLS, TRACEPARENT};
 
 /// The akio service of one listener: each request goes to the route the current graph picks for
@@ -284,9 +259,10 @@ impl Dispatcher {
             return;
         }
         let shard = log.map(AccessLog::shard);
-        // The target as it is now, canonical: a `rewrite` middleware changes the request's path
-        // for the handlers, while the line writes the target fit's `RequestURI` keeps.
-        let uri = shard.as_ref().map(|_| ctx.req().target.clone());
+        // The target as the client sent it, an absolute form included (akio's `raw_target`, A200):
+        // a `rewrite` middleware changes the request's path for the handlers, while the line
+        // writes the target fit's `RequestURI` keeps.
+        let uri = shard.as_ref().map(|_| ctx.req().raw_target().to_owned());
         let listener = self.log_name.clone();
         let route = Name::new(route_name(route.map(|(_, r)| r)));
         let tls = self.tls;
@@ -464,12 +440,8 @@ pub fn access_record<'a>(
         IpAddr::V6(v6) => v6.to_ipv4_mapped().map_or(ip, IpAddr::V4),
         IpAddr::V4(_) => ip,
     };
-    let host = req.headers.get("host").unwrap_or_else(|| {
-        req.target
-            .split_once("://")
-            .map(|(_, rest)| rest.split(['/', '?']).next().unwrap_or(""))
-            .unwrap_or("")
-    });
+    // A target in absolute form has set it already (akio's A200).
+    let host = req.headers.get("host").unwrap_or("");
     Record {
         listener,
         route,
@@ -484,7 +456,7 @@ pub fn access_record<'a>(
         },
         method: req.method.as_str(),
         host,
-        uri: &req.target,
+        uri: req.raw_target(),
         status: resp.status,
         bytes_in,
         bytes_out,
@@ -508,22 +480,8 @@ impl akio_http::Service for Dispatcher {
             let metrics = g.metrics();
             // Whether it is traced (I64), whatever is made of it, as fit samples before routing.
             let traced = sample(g, ctx);
-            // A target in absolute form names the host and the path the request is for (RFC
-            // 9112 section 3.2.2), as Go's server, and so fit, takes them: the request goes on
-            // in origin form, its host the target's. Routed by the whole target, it would miss
-            // the routes of its path while its upstream is asked for that path (found by I77's
-            // fuzzing).
-            if let Some((host, origin)) = absolute_form(&ctx.req().target) {
-                let (host, origin) = (host.map(str::to_owned), origin.into_owned());
-                let Some(r) = ctx.req_mut() else {
-                    ctx.text(400, BAD_REQUEST_PATH);
-                    return;
-                };
-                r.target = origin;
-                if let Some(h) = host {
-                    r.headers.set("Host", h);
-                }
-            }
+            // A target in absolute form comes from akio in origin form, its host the target's
+            // (RFC 9112 section 3.2.2, akio's A200), as Go's server, and so fit, takes it.
             // The routes go by the canonical path, as fit's do; a path that has none is answered
             // 400, and counted with the requests no route takes.
             let (route, changed) = {
@@ -580,7 +538,6 @@ impl akio_http::Service for Dispatcher {
                 }
                 let req = RouterRequest {
                     req: ctx.req(),
-                    host: None,
                     path: &path.decoded,
                 };
                 let route = listener.and_then(|i| g.route_request_at(i, &req));
@@ -652,16 +609,12 @@ impl akio_http::Service for Dispatcher {
     /// sees it empty.
     fn body_mode(&self, req: &Request) -> BodyMode {
         self.cell.with(|g| {
-            // Routed as `call` routes it: a target in absolute form by its path and host.
-            let absolute = absolute_form(&req.target);
-            let target = absolute.as_ref().map_or(req.target.as_str(), |(_, t)| t);
-            let target_path = target.split('?').next().unwrap_or("");
+            let target_path = req.target.split('?').next().unwrap_or("");
             let Some(path) = akit_router::canonicalize(target_path) else {
                 return BodyMode::Buffered;
             };
             let rr = RouterRequest {
                 req,
-                host: absolute.as_ref().and_then(|(h, _)| *h),
                 path: &path.decoded,
             };
             let listener = g.listener_index(&self.listener);
@@ -787,11 +740,9 @@ fn declared_length(req: &Request) -> Option<u64> {
         .and_then(|v| v.trim().parse().ok())
 }
 
-/// A request as the router's matchers read it: akio's request, with the canonical path, and
-/// the host of a target in absolute form, which goes before its `Host`.
+/// A request as the router's matchers read it: akio's request, with the canonical path.
 struct RouterRequest<'a> {
     req: &'a Request,
-    host: Option<&'a str>,
     path: &'a [u8],
 }
 
@@ -800,8 +751,7 @@ impl akit_router::Request for RouterRequest<'_> {
         self.req.method.as_str()
     }
     fn host(&self) -> &str {
-        self.host
-            .unwrap_or_else(|| self.req.headers.get("host").unwrap_or(""))
+        self.req.headers.get("host").unwrap_or("")
     }
     fn path(&self) -> &[u8] {
         self.path
@@ -1501,30 +1451,6 @@ mod tests {
             cfg.keep_alive_timeout,
             Some(std::time::Duration::from_secs(120))
         );
-    }
-
-    /// The targets in absolute form (I77): their host and their origin form; any other form
-    /// is not one.
-    #[test]
-    fn absolute_form_targets() {
-        for (target, want) in [
-            ("http://a/b?c", Some((Some("a"), "/b?c"))),
-            ("https://u:p@a:8443?q", Some((Some("a:8443"), "/?q"))),
-            ("h2c+x.y-z://a", Some((Some("a"), "/"))),
-            ("http:///x", Some((None, "/x"))),
-            ("/http://a/b", None),
-            ("a:443", None),
-            ("*", None),
-            ("1http://a/b", None),
-            ("ht tp://a/b", None),
-        ] {
-            let got = super::absolute_form(target);
-            assert_eq!(
-                got.as_ref().map(|(h, t)| (*h, t.as_ref())),
-                want,
-                "{target}"
-            );
-        }
     }
 
     #[test]

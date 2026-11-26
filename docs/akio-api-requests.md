@@ -92,8 +92,8 @@ first; its status here records the branch, then the akio commit akit pins.
 | A171 | An HTTP client request's timer jobs cancelled when it ends, not held until its timeout would pass | on akio's main and pinned (since `0fc8f3a7`) | 11, 13 | I15, I18, I25 |
 | A172 | A TLS server that takes a ClientHello whose server name is an IP address (as no name) rather than failing the handshake | on akio's main and pinned (since `0fc8f3a7`) | 19 | I09, I25 |
 | A170 | A connection's TCP counters (and unread bytes) without reaching into `Conn::inner`, and a splice that writes first through the engine's own API | on akio's main and pinned (since `6bcd8ad6`, akio's ADR-156) | 1, 14 | I51b |
-| A180 | akio-wasm's call made cheaper, measured against wazero (akio's W5) | requested (I76): a header-editing Go guest costs akit 14.7 µs of CPU a request, fit 6.8 µs | 13 | I71, I72, I76 |
-| A200 | A request target in absolute form taken as RFC 9112 asks: its path as the request's path, its authority as its host | requested (I77); akit-listener rewrites such a request to origin form meanwhile | 15, 19 | I77 |
+| A180 | akio-wasm's call made cheaper, measured against wazero (akio's W5) | on akio's main and pinned (since `077a6710`) | 13 | I71, I72, I76 |
+| A200 | A request target in absolute form taken as RFC 9112 asks: its path as the request's path, its authority as its host | on akio's main and pinned (since `077a6710`, akio's ADR-177) | 15, 19 | I77 |
 | A214 | A budget of the bytes queued for every connection together, which pauses every connection's reads past it (fit's `limits.max_pending_bytes`) | on akio's main and pinned (since `6bcd8ad6`, akio's ADR-172) | 8, 11 | I79, I79b |
 | A215 | A connection limit that counts the connections accepted, not those the engine dials (fit's `limits.max_conns`) | on akio's main and pinned (since `6bcd8ad6`, akio's ADR-173) | 11 | I79, I79b |
 | A220 | An accept filter on UDP and datagram listeners: a refused peer's datagrams dropped before a connection (a `udp` session, a QUIC connection) is made for it | requested (I85) | 1, 11 | I85, I86 |
@@ -1957,6 +1957,8 @@ and splice the connections of a listener with `proxy_protocol` too.
 
 ## A180 akio-wasm's call made cheaper, measured against wazero (akio's W5)
 
+**Done.** On akio's main (`077a6710`) and pinned: a call of fit's Go `headers` guest went from 9,089 ns to 5,068 ns on gpu51 (wazero's compiler 3,520 ns), in akio's docs/BENCHMARKS. akit's `wasm` scenario is left for a benchmark task to measure again.
+
 **Status.** Requested by I76 (2026-11-25), with the first numbers for akio's W5 (ADR-125 section
 8, "a performance pass against fit (wazero)", still open in akio's development plan). Nothing in
 akit waits on it: the cost is bounded and measured, and M5's criterion holds.
@@ -1986,6 +1988,8 @@ a cheaper call needs no change in akit, which measures it again with
 `bench/run.sh -servers akit-wasm,fit-wasm -scenarios fixed,wasm`.
 
 ## A200 A request target in absolute form, taken as RFC 9112 asks
+
+**Done.** On akio's main (`077a6710`, akio's ADR-177) and pinned: akio gives a target in absolute form in origin form, the target's host in place of `Host`, and `Request::raw_target()` as sent. akit-listener's rewrite is gone and the access log writes `raw_target()`. One difference from fit: an http URI with no host (`http:///x`) is answered 400 by akio (RFC 9110 section 4.2.1), where fit routes it by its `Host` field ([decisions waiting for review](decisions-pending.md), row 15).
 
 **Status.** Requested by I77 (2026-11-26). akit-listener rewrites such a request meanwhile, a
 stopgap recorded in [progress](progress.md).

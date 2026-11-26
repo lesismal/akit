@@ -205,6 +205,7 @@ fn every_request_has_its_line() {
         "GET /hello HTTP/1.0\r\n\r\n",
         "GET /old/y?z=1 HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n",
         "GET /x/./../hello HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n",
+        "GET http://u:p@abs.example/hello?y=2 HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n",
     ];
     let statuses: Vec<String> = reqs.iter().map(|r| send(addr, r)).collect();
     assert_eq!(
@@ -214,6 +215,7 @@ fn every_request_has_its_line() {
             "HTTP/1.1 200 OK",
             "HTTP/1.1 404 Not Found",
             "HTTP/1.1 400 Bad Request",
+            "HTTP/1.1 200 OK",
             "HTTP/1.1 200 OK",
             "HTTP/1.1 200 OK",
             "HTTP/1.1 200 OK",
@@ -291,6 +293,11 @@ fn every_request_has_its_line() {
     assert_eq!(field(rewritten, "route"), Some("\"old\""), "{rewritten}");
     let canonical = by("GET", "/hello", "HTTP/1.1");
     assert_eq!(field(canonical, "status"), Some("200"), "{canonical}");
+    // A target in absolute form is routed by its path and host and written as sent, as fit's
+    // `RequestURI` (akio's A200).
+    let absolute = by("GET", "http://u:p@abs.example/hello?y=2", "HTTP/1.1");
+    assert_eq!(field(absolute, "route"), Some("\"hi\""), "{absolute}");
+    assert_eq!(field(absolute, "host"), Some("\"abs.example\""), "{absolute}");
 }
 
 #[test]

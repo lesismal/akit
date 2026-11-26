@@ -354,7 +354,7 @@ fn path_confusion() {
 }
 
 /// A target in absolute form names the host the request is for, which goes before its `Host`
-/// field (RFC 9112 section 3.2.2), as Go's server, and so fit, takes it (I77).
+/// field (RFC 9112 section 3.2.2), as Go's server, and so fit, takes it (I77; akio's A200).
 #[test]
 fn absolute_form_targets_name_their_host() {
     let (e, addrs) = serve(
@@ -369,7 +369,6 @@ fn absolute_form_targets_name_their_host() {
         ("a.example", "http://b.example/x", 401, "b"),
         ("a.example", "http://u:p@B.example:80/x", 401, "b"),
         ("b.example", "http://a.example/x", 200, "open"),
-        ("b.example", "http:///x", 401, "b"),
         ("b.example", "/x", 401, "b"),
     ] {
         let (line, got) = get(a, host, target);
@@ -379,6 +378,10 @@ fn absolute_form_targets_name_their_host() {
         );
         assert_eq!(got, body, "{host} {target}");
     }
+    // An http URI with no host is invalid (RFC 9110 section 4.2.1) and akio answers it 400
+    // (A200); Go's server, and so fit, routes it by its `Host` field instead.
+    let (line, _) = get(a, "b.example", "http:///x");
+    assert!(line.starts_with("HTTP/1.1 400 "), "{line}");
     e.shutdown();
     e.wait();
 }
