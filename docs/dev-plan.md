@@ -91,7 +91,7 @@ few crates as it can. fit's package of the same role is given for reference.
 
 ## Index
 
-Status: `todo`, `doing` or `done`. The next free iteration number is I81.
+Status: `todo`, `doing` or `done`. The next free iteration number is I88.
 
 | ID | Iteration | Depends on | Status |
 | --- | --- | --- | --- |
@@ -188,6 +188,10 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I79b | The gateway examples the gate still refuses: `limits.max_pending_bytes`, h2c alone, `max_conns` by accepted connections | I79, akio A214, A168, A215 | done |
 | I80 | Security review readiness | I77, I79 | done |
 | I80b | Security hardening: the threat model's limitations and the review's findings | I80, the review | todo |
+| **After 1.0: access lists** | | | |
+| I85 | Access lists I: the lists, listeners and routes | I79, akio A3 | todo |
+| I86 | Access lists II: services and the forward proxy | I85 | todo |
+| I87 | Access lists III: the Admin API and the reference | I85 | todo |
 
 ## Benchmark and optimization status
 
@@ -241,6 +245,7 @@ commit and result.
 | WASM plugins | I71, I72 | partial (2026-11-25, I76, `346ad8b`: fit's `headers` plugin in akit and fit, HTTP/1.1 and h2c, in the [M5 report](../bench/results/m5-report-2026-11-25.md)) | no | Measured in I76 (`bench/run.sh -servers akit-wasm,fit-wasm -scenarios fixed,wasm`): fit's `headers` plugin costs akit 14.7 µs of CPU a request over HTTP/1.1, fit 6.8 µs (akio-wasm interprets, wazero compiles: akio API request A180, akio's W5); over h2c 2,048 requests in flight overrun the queue of 1,024 and both answer the rest 503 at once. Left: against fit (wazero's compiler) and none: a request through fit's `headers` plugin (Go guest) and through a no-op one (`fit_on_request` returning 0), HTTP/1.1 and h2, requests a second and latency, against the route without the middleware (the hand-off to the pool and back, the request copied, the call); the guest call alone on an instance (akio's W5: akio-wasm's interpreter against wazero's interpreter and compiler); the pool under more clients than `instances` (the queue, 503 past it); an instance remade after a trap (a Go guest's `_initialize`). Proxy-Wasm (I72): a request through the Proxy-Wasm Go SDK's `http_routing` (config `1`, the request unchanged) against fit and none, as fit's `BenchmarkProxyWasm`; a response through fit's `response` filter (`upper`) and the SDK's `http_headers`, the head held and the body filtered on the pool, a whole 4 KiB body and a streamed 1 MiB one, HTTP/1.1 and h2, against `response: none` and none. |
 | Engine budget and client-only connection limit | I79b | partial (2026-11-26, akio `76a010c1`: akio's same-run A/B, in akio's docs/BENCHMARKS, "Engine budget and accepted-connection limit": HTTP/1.1, pipelined, h2c and TCP echo within 1% of akio's main on epoll and io_uring, with both settings off and on) | no (built, not measured in akit) | akio's side is measured. Left in akit: the fixed and proxy scenarios with the default `max_pending_bytes` (half the memory: the watcher thread, a relaxed load per read) against the same build with the budget removed (akio's `Live::set_max_pending_bytes(None)`), HTTP/1.1 and h2c; many slow clients (10,000 not reading a 1 MiB response) against fit: akit's RSS bounded by the budget, other clients' latency while it holds, and how fast they resume. |
 | Config churn under traffic | I38 | no | no (tested, not measured) | The fixed and proxy scenarios, HTTP/1.1 and h2c, while the config is swapped every 10 ms through SIGHUP and the Admin API, against the same run with no swaps: requests a second, p99 latency and errors during the churn, and akit's RSS and descriptors after 100k swaps; the M2 report of the full harness (rule 24, a milestone's end). |
+| Access lists | I85–I87 | no | no (built, not measured) | As fit's `BenchmarkAllows`: a policy's lookup (one list of 10, 10,000 and 1,000,000 prefixes from a file, and three lists chained) for IPv4 and IPv6 addresses, 1 and 16 threads, no allocation. Same-run A/B, alternating rounds, against the same config without `access`: connections a second through a listener refused or served at accept (akio's filter, A3: an `Arc` read and the lookup per accept) with a large deny list; the fixed and proxy scenarios over HTTP/1.1, h2c and h3 with a route's own access (checked per request: a graph read and the lookup) and without; a `tcp` service's connections a second decided by akit-l4's entry; a flood of refused `udp` datagrams (each a session opened and closed until akio filters datagrams, A220) against the served sessions' latency. |
 | Absolute-form targets taken apart in the listener | I77 | no | no (built, not measured) | One comparison a request (does the target start with `/`) before routing: a same-run A/B of the fixed scenario over HTTP/1.1 against main before I77; no cost is expected. Goes when akio does it (A200). |
 | akio requests moved off their stopgaps (A12, A79, A45, A117, A30, A54, A29, A75, A78, A22, A170, A24, A49, A35, A148) | — (akio requests) | no | no (built, not measured) | Same-run A/B of the fixed and proxy scenarios, HTTP/1.1, h2c and h3, against main before these commits: the access log and metrics through the listener's response observer (`set_observed`, no allocation) against the boxed filter, and `limit_body` called on every request; the proxy's downloads framed by their length on HTTP/1.1 against chunked; layer 4 relays timed out by akio's per-connection idle timeout against akit's sweep (many idle connections); the sockmap relay through `akio::ebpf::Tunnel` (TCP throughput as root, as I51b's row); a health-check probe load on `akio::timer::after_send` against akit's old timer thread. |
 
@@ -1104,7 +1109,7 @@ below is the planned order; tracks with no dependency between them may run in pa
 | Order | Track | fit's iterations | First steps in akit |
 | --- | --- | --- | --- |
 | 1 | Logging: files, rotation and retention | I155–I157 | log files with time zones, rotation by size and time, retention |
-| 2 | Access lists | I195 | accept-time filter in akio (A3); global and per-scope lists |
+| 2 | Access lists | I195 | [I85–I87](#access-lists): the lists, listeners and routes; services and SOCKS; the Admin API |
 | 3 | Console and encrypted store | I104 | the encrypted store, the console's pages, logins |
 | 4 | Tunnel and LLM | I105–I107, I159–I162 | hub, node and proxy roles on `akio-ws` and `akio-quic`; link tokens |
 | 5 | WebRTC | I87, I108–I111 | TURN on `akio-turn`; WHIP and WHEP on `akio-webrtc` |
@@ -1116,3 +1121,70 @@ below is the planned order; tracks with no dependency between them may run in pa
 | 11 | Sync | I163–I194, I211–I222 | the pipeline core and checkpoints, then connectors by fit's order |
 | 12 | Prefork and NUMA | planned in fit | dropped (2026-11-25): akit does not use prefork, and akio removed `akio-prefork`. Not planned. |
 | 13 | P2P and VPN | I84–I103 | after fit's track is done |
+
+### Access lists
+
+fit's iteration I195 (its [development plan](https://github.com/lesismal/fit/blob/main/docs/dev-plan.md),
+its package `access` and [reference](https://github.com/lesismal/fit/blob/main/docs/reference/config.md)):
+allow lists (whitelists) and deny lists (blacklists) of client addresses, a global `access` and one
+on each listener, route and service and on the Admin API. Of the lists that apply, the most specific
+that has a say decides: a route's, then its listener's, then the global one; a service's, then its
+listener's, then the global one; the Admin API's, then the global one. Where the policy is known
+when a connection is accepted, akio's accept filter (A3) refuses it then; where it is known only
+later (a route or service with a list of its own, a PROXY header naming the client), the request is
+answered 403 or the connection closed once its service is known. fit's roles (`streaming`,
+`webrtc`, `tunnel`, `llm`, `bittorrent`) and its console take their `access` with their tracks.
+
+### I85 Access lists I: the lists, listeners and routes
+
+- **Do**: a crate `akit-access`, fit's package `access`: inline entries and list files (addresses
+  and prefixes, ranges, eMule `ipfilter.dat` and PeerGuardian `.p2p` lines, at most 64 MiB a file)
+  compiled into sorted, merged ranges of each family, looked up by binary search; a policy of the
+  lists that apply, the most specific first. `access` read at the top level, on listeners and on
+  routes, with fit's checks. The graph compiles each listener's policies as fit's `compileAccess`
+  does: akio's accept filter (A3) when the listener's own list and the global one are all there is,
+  set again by every reload on the listener it keeps, without binding anew; each HTTP request
+  checked, and answered `403 forbidden` when refused, when a route of the listener has a list of its
+  own or the listener takes PROXY headers. HTTP/3 has no accept filter in akio (A220): its requests
+  are checked one by one. List files are read when the config is compiled, a file that cannot be
+  read failing it, and watched with the certificate files (`-watch-certs`).
+- **Done when**: fit's `access` tests (`TestPolicyLayers`, `TestChainEmpty`,
+  `TestDenyBeatsAllowInOneList`, `TestEdges`, `TestSetAgainstLinear`, `TestFiles`,
+  `TestCompileErrors`, `TestRangeOf`, `TestParseLine`, `TestP2PAndDATFiles`,
+  `TestRangesAgainstLinear`) and `listener/access_test.go`'s HTTP ones (`TestAccessRefusedAtAccept`,
+  `TestAccessRoute`, `TestAccessFollowsReload`, `TestAccessProxyProtocol`) pass ported, on epoll
+  and io_uring, with HTTP/3 refused per request; the fields read, marked with `make v1-bless`.
+- **Touches**: `akit-access` (new), `akit-config`, `akit-runtime`, `akit-listener`, `tests/compat`.
+- **Read**: akio's `Listener::filter`, `Engine::set_listener_filter` (ADR-099).
+- **fit**: `access`, `config` (`Access`, its `check`), `runtime/graph.go` (`compileAccess`),
+  `listener` (I195).
+
+### I86 Access lists II: services and the forward proxy
+
+- **Do**: `services[].access`. A `tcp` listener of one service without `server_names`, on a port
+  of its own and without PROXY headers, decided at accept by that service's policy; one whose
+  services pick by server name, that shares its port with HTTP or SOCKS, or that takes PROXY headers
+  decided by akit-l4's entry once it knows the service, the connection closed when refused; `udp`
+  sessions refused as they open (akio filters no datagrams yet, A220: a refused client's datagram
+  opens a session that is closed at once); the `socks` forward proxy checking its clients at their
+  request where the listener decides later, as fit's `SOCKSAccess`.
+- **Done when**: fit's `TestAccessService` passes ported (a `tcp` listener, and one shared with
+  HTTP, the service overriding the global list both ways), with a `udp` service, a service picked
+  by server name and SOCKS on a shared port; on epoll and io_uring.
+- **Touches**: `akit-config`, `akit-runtime`, `akit-l4`, `akit-listener`, `tests/compat`.
+- **fit**: `l4/entry.go` (`SetAccess`, `CheckAccess`), `l4/forward.go` (`NewSOCKS`), I195.
+
+### I87 Access lists III: the Admin API and the reference
+
+- **Do**: `admin.access`, decided before the global list, which applies to the Admin API (and the
+  dashboard it serves) too; at accept, set again by every config applied though the rest of `admin`
+  takes a restart; refused with an Admin API on a Unix socket, whose peers have no address and are
+  never checked. The config reference's chapter on access lists, from fit's `schema/doc/access.md`:
+  how the lists combine, where each is decided, the list files' formats, the CA's validation
+  servers an allow list must serve for ACME's HTTP-01 and TLS-ALPN-01. Decision 034 for where akit
+  decides differently from fit.
+- **Done when**: fit's `admin/access_test.go` (`TestAdminAccess`, `TestAdminAccessFile`,
+  `TestAdminAccessUnixSocket`) passes ported; the reference's examples pass `akit validate`.
+- **Touches**: `akit-config`, `akit-admin`, `akit`, `docs/reference`, `docs/decisions`.
+- **fit**: `admin/server.go` (`accessListener`), `admin/configs.go` (`setAccess`),
+  `config/validate.go`, `schema/doc/access.md`.

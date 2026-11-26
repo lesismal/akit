@@ -84,7 +84,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 
 ## 索引
 
-状态：`todo`、`doing` 或 `done`。下一个可用的迭代编号是 I81。
+状态：`todo`、`doing` 或 `done`。下一个可用的迭代编号是 I88。
 
 | ID | 迭代 | 依赖 | 状态 |
 | --- | --- | --- | --- |
@@ -181,6 +181,10 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I79b | 门禁仍拒绝的网关示例：`limits.max_pending_bytes`、只有 h2c、按接受的连接计数的 `max_conns` | I79、akio A214、A168、A215 | done |
 | I80 | 为安全审查做好准备 | I77, I79 | done |
 | I80b | 安全加固：威胁模型的局限与审查的发现 | I80、审查 | todo |
+| **1.0 之后：访问控制列表** | | | |
+| I85 | 访问控制列表 I：列表、监听器和路由 | I79、akio A3 | todo |
+| I86 | 访问控制列表 II：服务与正向代理 | I85 | todo |
+| I87 | 访问控制列表 III：Admin API 与配置参考 | I85 | todo |
 
 ## 基准与优化状态
 
@@ -231,6 +235,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | FastCGI | I75 | 否 | 否（已实现，未测量） | 对比 fit 和 nginx 的 `fastcgi_pass`，经 TCP 和 Unix 域套接字连接 PHP-FPM（或立即应答的 FastCGI 应用）：小页面的每秒请求数与延迟，HTTP/1.1 与 h2；1 MiB 上传与 16 MiB 下载（每个进行中请求的内存，双向 64 KiB 水位线）；连接复用对比每个请求一个连接；客户端多于 `max_conns` 时连接池的队列；`try_files` 的开销（每个候选在 akio 逻辑线程池上一次 `stat`）对比不带它的路由；每秒大量请求时，handler 每 100 ms 在 akit 定时器线程（A45 的临时方案）上对其交换的巡检。 |
 | WASM 插件 | I71、I72 | 部分（2026-11-25，I76，`346ad8b`：fit 的 `headers` 插件在 akit 和 fit 中，HTTP/1.1 和 h2c，见 [M5 报告](../bench/results/m5-report-2026-11-25.zh-CN.md)） | 否 | I76 已测（`bench/run.sh -servers akit-wasm,fit-wasm -scenarios fixed,wasm`）：fit 的 `headers` 插件在 HTTP/1.1 上让 akit 每个请求多花 14.7 µs CPU，fit 6.8 µs（akio-wasm 解释执行，wazero 编译执行：akio API 请求 A180，akio 的 W5）；h2c 上 2,048 个同时进行的请求超出 1,024 的队列，两者都立即以 503 回答多出的部分。剩下的：对照 fit（wazero 的编译器）和无插件：请求经过 fit 的 `headers` 插件（Go guest）和一个空插件（`fit_on_request` 返回 0），HTTP/1.1 和 h2，每秒请求数和延迟，对比不带该中间件的路由（交给池再交回、复制请求、调用本身）；实例上单独的 guest 调用（akio 的 W5：akio-wasm 的解释器对比 wazero 的解释器和编译器）；客户端多于 `instances` 时的池（队列，超出后 503）；trap 之后重建实例（Go guest 的 `_initialize`）。Proxy-Wasm（I72）：请求经过 Proxy-Wasm Go SDK 的 `http_routing`（配置 `1`，请求不变），对照 fit 和无插件，如 fit 的 `BenchmarkProxyWasm`；响应经过 fit 的 `response` 过滤器（`upper`）和 SDK 的 `http_headers`，头部在池上挂起、响应体在池上过滤，一个完整的 4 KiB 响应体和一个流式的 1 MiB 响应体，HTTP/1.1 和 h2，对照 `response: none` 和无插件。 |
 | 有流量时频繁替换配置 | I38 | 否 | 否（已测试，未测量） | fixed 和 proxy 场景，HTTP/1.1 和 h2c，期间每 10 ms 经 SIGHUP 和 Admin API 替换一次配置，对照同一轮中不替换：替换期间的每秒请求数、p99 延迟和错误，以及替换 10 万次后 akit 的 RSS 和描述符数；完整测试套件的 M2 报告（规则 24，里程碑结束）。 |
+| 访问控制列表 | I85–I87 | 否 | 否（已实现，未测量） | 同 fit 的 `BenchmarkAllows`：一个策略的查找（一个含 10、10,000 和 1,000,000 个前缀、从文件读入的列表，以及串联的三个列表），IPv4 和 IPv6 地址，1 和 16 个线程，不分配内存。与不带 `access` 的同一配置做同一轮 A/B、交替轮次：带大型拒绝列表时，监听器在 accept 时拒绝或接受的每秒连接数（akio 的过滤器，A3：每次 accept 一次 `Arc` 读取加一次查找）；路由带自己的列表（逐请求检查：一次图读取加一次查找）与不带时，fixed 和 proxy 场景在 HTTP/1.1、h2c 和 h3 上的表现；由 akit-l4 的入口决定的 `tcp` 服务每秒连接数；被拒绝的 `udp` 数据报洪泛（在 akio 过滤数据报之前（A220），每个都会打开再关闭一个会话）对正常会话延迟的影响。 |
 | 监听器拆开 absolute-form 目标 | I77 | 否 | 否（已实现，未测量） | 路由前每个请求多一次比较（目标是否以 `/` 开头）：在同一轮中对 I77 之前的 main 做 HTTP/1.1 上 fixed 场景的 A/B；预计没有开销。akio 实现 A200 后去掉。 |
 | akio 请求替换掉的权宜实现（A12、A79、A45、A117、A30、A54、A29、A75、A78、A22、A170、A24、A49、A35、A148） | —（akio 请求） | 否 | 否（已实现，未测量） | 对照这些提交之前的 main，同一轮 A/B 测 fixed 和 proxy 场景，HTTP/1.1、h2c 和 h3：访问日志和指标走监听器的响应观察者（`set_observed`，不分配）对比装箱的过滤器，以及每个请求都调用 `limit_body`；代理在 HTTP/1.1 上按长度成帧的下载对比 chunked；第 4 层转发由 akio 的每连接空闲超时关闭对比 akit 的扫描（大量空闲连接）；sockmap 转发经 `akio::ebpf::Tunnel`（以 root 测 TCP 吞吐，同 I51b 一行）；健康检查探测负载走 `akio::timer::after_send` 对比 akit 原来的定时线程。 |
 
@@ -985,7 +990,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | 顺序 | 路线 | fit 的迭代 | akit 中的第一步 |
 | --- | --- | --- | --- |
 | 1 | 日志：文件、切割与保留 | I155–I157 | 带时区的日志文件，按大小和时间切割，保留策略 |
-| 2 | 访问控制列表 | I195 | akio 中的 accept 时过滤（A3）；全局和按作用域的列表 |
+| 2 | 访问控制列表 | I195 | [I85–I87](#访问控制列表)：列表、监听器和路由；服务与 SOCKS；Admin API |
 | 3 | 控制台与加密的 store | I104 | 加密的 store、控制台页面、登录 |
 | 4 | 隧道与 LLM | I105–I107, I159–I162 | 基于 `akio-ws` 和 `akio-quic` 的 hub、node 和 proxy 角色；链路 token |
 | 5 | WebRTC | I87, I108–I111 | 基于 `akio-turn` 的 TURN；基于 `akio-webrtc` 的 WHIP 和 WHEP |
@@ -997,3 +1002,56 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | 11 | 数据同步 | I163–I194, I211–I222 | 先做流水线核心和检查点，再按 fit 的顺序做连接器 |
 | 12 | Prefork 与 NUMA | fit 中已规划 | 取消（2026-11-25）：akit 不使用 prefork，akio 已删除 `akio-prefork`。不再计划。 |
 | 13 | P2P 与 VPN | I84–I103 | 待 fit 的这条路线完成后 |
+
+### 访问控制列表
+
+fit 的迭代 I195（见它的[开发计划](https://github.com/lesismal/fit/blob/main/docs/dev-plan.zh-CN.md)、
+`access` 包和[配置参考](https://github.com/lesismal/fit/blob/main/docs/reference/config.md)）：客户端地址的
+允许列表（白名单）和拒绝列表（黑名单），一个全局的 `access`，以及每个监听器、路由、服务和 Admin API 上各自的一个。
+在适用的列表中，最具体且有发言权的那个说了算：路由的，然后是其监听器的，最后是全局的；服务的，然后是其监听器的，
+最后是全局的；Admin API 的，然后是全局的。在接受连接时就能确定策略的，由 akio 的 accept 过滤器（A3）当场拒绝；
+只有之后才能确定的（路由或服务带有自己的列表、由 PROXY 头指明客户端），则请求回答 403，或在知道服务后关闭连接。
+fit 的各个角色（`streaming`、`webrtc`、`tunnel`、`llm`、`bittorrent`）和控制台的 `access` 随各自的路线实现。
+
+### I85 访问控制列表 I：列表、监听器和路由
+
+- **做什么**：新 crate `akit-access`，对应 fit 的 `access` 包：把内联条目和列表文件（地址和前缀、区间、eMule
+  `ipfilter.dat` 行和 PeerGuardian `.p2p` 行，每个文件最多 64 MiB）编译成按地址族分开、排序并合并的区间，用二分查找；
+  由适用的列表组成的策略，最具体的在前。在顶层、监听器和路由上读取 `access`，带 fit 的检查。图按 fit 的
+  `compileAccess` 编译每个监听器的策略：监听器自己的列表和全局列表就是全部时，用 akio 的 accept 过滤器（A3），
+  每次重载在保留的监听器上重新设置，不重新绑定；监听器的某个路由有自己的列表、或监听器接受 PROXY 头时，逐个检查 HTTP 请求，
+  被拒绝的回答 `403 forbidden`。akio 的 HTTP/3 没有 accept 过滤器（A220）：它的请求逐个检查。列表文件在编译配置时读取，
+  读不了的文件使配置失败，并与证书文件一起被监视（`-watch-certs`）。
+- **完成标准**：移植后的 fit `access` 测试（`TestPolicyLayers`、`TestChainEmpty`、`TestDenyBeatsAllowInOneList`、
+  `TestEdges`、`TestSetAgainstLinear`、`TestFiles`、`TestCompileErrors`、`TestRangeOf`、`TestParseLine`、
+  `TestP2PAndDATFiles`、`TestRangesAgainstLinear`）和 `listener/access_test.go` 中 HTTP 部分（`TestAccessRefusedAtAccept`、
+  `TestAccessRoute`、`TestAccessFollowsReload`、`TestAccessProxyProtocol`）在 epoll 和 io_uring 上通过，HTTP/3 逐请求拒绝；
+  这些字段改为读取，用 `make v1-bless` 标记。
+- **涉及**：`akit-access`（新）、`akit-config`、`akit-runtime`、`akit-listener`、`tests/compat`。
+- **阅读**：akio 的 `Listener::filter`、`Engine::set_listener_filter`（ADR-099）。
+- **fit**：`access`、`config`（`Access` 及其 `check`）、`runtime/graph.go`（`compileAccess`）、`listener`（I195）。
+
+### I86 访问控制列表 II：服务与正向代理
+
+- **做什么**：`services[].access`。只有一个不带 `server_names` 的服务、独占端口且不接受 PROXY 头的 `tcp` 监听器，
+  在 accept 时按该服务的策略决定；服务按服务器名挑选、与 HTTP 或 SOCKS 共用端口、或接受 PROXY 头的监听器，由
+  akit-l4 的入口在知道服务后决定，被拒绝的连接被关闭；`udp` 会话在打开时被拒绝（akio 还不过滤数据报，A220：
+  被拒绝客户端的数据报会打开一个会话并立即关闭）；监听器之后才决定时，`socks` 正向代理在客户端发出请求时检查它，
+  同 fit 的 `SOCKSAccess`。
+- **完成标准**：移植后的 fit `TestAccessService` 通过（一个 `tcp` 监听器，以及一个与 HTTP 共用的，服务的列表双向覆盖全局列表），
+  另有 `udp` 服务、按服务器名挑选的服务和共用端口上的 SOCKS；在 epoll 和 io_uring 上。
+- **涉及**：`akit-config`、`akit-runtime`、`akit-l4`、`akit-listener`、`tests/compat`。
+- **fit**：`l4/entry.go`（`SetAccess`、`CheckAccess`）、`l4/forward.go`（`NewSOCKS`）、I195。
+
+### I87 访问控制列表 III：Admin API 与配置参考
+
+- **做什么**：`admin.access`，在全局列表之前决定，全局列表也适用于 Admin API（及其提供的仪表盘）；在 accept 时决定，
+  每次应用配置都会重新设置，尽管 `admin` 的其余部分需要重启；Admin API 在 Unix 套接字上时拒绝它，因为其对端没有地址、
+  从不检查。配置参考中关于访问控制列表的一章，取自 fit 的 `schema/doc/access.md`：列表如何组合、各自在哪里决定、
+  列表文件的格式、使用 ACME 的 HTTP-01 和 TLS-ALPN-01 时允许列表必须放行 CA 的验证服务器。决定 034 记录 akit 与 fit
+  决定位置不同的地方。
+- **完成标准**：移植后的 fit `admin/access_test.go`（`TestAdminAccess`、`TestAdminAccessFile`、`TestAdminAccessUnixSocket`）
+  通过；配置参考中的示例通过 `akit validate`。
+- **涉及**：`akit-config`、`akit-admin`、`akit`、`docs/reference`、`docs/decisions`。
+- **fit**：`admin/server.go`（`accessListener`）、`admin/configs.go`（`setAccess`）、`config/validate.go`、
+  `schema/doc/access.md`。
