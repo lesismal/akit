@@ -17,7 +17,7 @@ so in a note marked **akit:**; nine defaults that name the gateway are akit's, `
 say `fit` ([decision 037](../decisions/037-akit-names.md)).
 
 <!-- BEGIN GENERATED: summary -->
-akit reads **880** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 135 objects akit reads, each has its table below.
+akit reads **885** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 136 objects akit reads, each has its table below.
 <!-- END GENERATED -->
 
 How to read the tables:
@@ -1036,7 +1036,7 @@ route { match { host example.com }; handler respond { body hello } }
 | `max_conns` | integer, 0 or more | `16` | The most connections the Admin API keeps open at once, a quarter of them kept for those that have made a request with the token (any request, without token_file). When they are taken, a new connection closes the oldest of those that have not, of the client holding the most, and is closed as it is accepted only when every one has; one past a client's share, a quarter of them, is closed too, but for loopback clients. A connection that has not is closed 5s after it is accepted, whatever it is doing. 16 when left out or 0. |
 | `mptcp` | boolean |  | **Not supported yet**: refused by name. Listen the Admin API with Multipath TCP where the kernel offers it (Linux 5.6+, net.mptcp.enabled), falling back to plain TCP where it does not. Off by default; a Unix socket has no paths. |
 | `node_id` | string |  | **Not supported yet**: refused by name. This fit's node ID, which the Admin API's GET /node answers and a manager of many fits knows it by: 1 to 64 letters, digits, '.', '_' and '-', starting with a letter or digit. Left out, fit makes one, a random UUID, once, and keeps it in the store, or without one in a file beside the config, as fit.node-id beside fit.json; set it where neither lasts, as in a container whose config is read-only. |
-| `store` | object |  | **Not supported yet**: refused by name. Keep the config encrypted in a file of its own, the store, which is the base config fit runs from then on: every config applied is written to it, and what this file sets beside admin is only the store's first content, used when the store does not exist yet. Left out, the config lives in this file. |
+| `store` | [object](#cfg-admin-store) |  | Keep the config encrypted in a file of its own, the store, which is the base config akit runs from then on: every config applied is written to it, and what this file sets beside admin is only the store's first content, used when the store does not exist yet. Left out, the config lives in this file. **akit:** The file is fit's `fitstore` format, byte for byte (its magic stays `FITSTORE`): fit opens akit's stores and akit fit's. `akit validate` checks it and `akit store export` and `import` read and write it; `akit run` refuses it until I93b keeps the config in it. |
 | `token_file` | string |  | A file holding a token that every request must carry, as "Authorization: Bearer <token>"; no token is asked for when left out. **akit:** Read when akit starts. |
 <!-- END GENERATED -->
 
@@ -1103,6 +1103,26 @@ admin {
 | `allow_files` | list of string |  | Files of more allow entries, one on each line, each line told apart by its content: an address or prefix, with what follows # or ; left out, as the lists published for firewalls are written; a range, first-last; an eMule ipfilter.dat line, first - last , level , name, where a level above 127 is not listed; or a PeerGuardian .p2p line, name:first-last. IPv4 addresses of ranges may have leading zeros. Blank lines and lines that begin with #, ; or // are left out; any other line is an error. Read when the config is applied, and applied again when one changes; each at most 64 MiB. |
 | `deny` | list of string |  | IP addresses and CIDR prefixes refused, whatever allow holds. |
 | `deny_files` | list of string |  | Files of more deny entries, written as allow_files. |
+<!-- END GENERATED -->
+
+### `admin.store`
+
+The encrypted store (I93): fit's `fitstore` file, which `akit store export` prints and
+`akit store import` seals a config into. `akit run` keeps the config in it from I93b.
+
+```fit
+admin { store { path /var/lib/akit/akit.store; password_env AKIT_STORE_PASSWORD } }
+```
+
+<!-- BEGIN GENERATED: admin.store -->
+<a id="cfg-admin-store"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `path` | string | required | The store's file, made 0600 when it is written. akit stops at start if it exists and does not open with the password. |
+| `password` | string |  | The password the store is encrypted with. Written here, it protects a store copied away from this file, not one read beside it; password_file or password_env keep it out of the file. |
+| `password_env` | string |  | An environment variable holding the password. |
+| `password_file` | string |  | A file holding the password, its surrounding spaces trimmed. |
 <!-- END GENERATED -->
 
 ## HTTPS by default

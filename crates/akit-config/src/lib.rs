@@ -92,7 +92,7 @@ pub use model::{
     Limits, Listener, ListenerProxyProtocol, LoadBalancing, LogFormat, MAX_MIRRORED, MAX_WEIGHT,
     Match, Metrics, Mirror, Network, OnDemand, Protocol, Proxy, ProxyVersion, RateKey, RateLimit,
     Redirect, Respond, Retry, Rewrite, Route, SCHEMA_VERSION, Service, Split, Static, StickyCookie,
-    Tls, TlsVersion, TokenFrom, Upstream, UpstreamProtocol,
+    Store, Tls, TlsVersion, TokenFrom, Upstream, UpstreamProtocol,
 };
 pub use model::{
     DEFAULT_FORWARD_CONNECT_TIMEOUT, DEFAULT_FORWARD_IDLE_TIMEOUT, Destination, ForwardProxy,

@@ -196,7 +196,9 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I90 | 控制台 II：控制台的服务器：TLS、访问控制、CSRF 与来源、进程内的 Admin API | I89, I27 | done |
 | I91 | 控制台 III：页面：fit 的工作台、schema、原文编辑器和导入导出、“日志”页面 | I90, I83 | done |
 | I92 | 非回环地址上带 TLS 的 Admin API（L1） | I27 | done |
-| I93 | 加密的 store：`admin.store`、`akit store export` 和 `import`、`run -admin` | I90, akio A230, A231 | todo |
+| I93 | 加密的 store I：`fitstore` 格式、`admin.store`、`akit store export` 和 `import` | I90, akio A230, A231 | done |
+| I93b | 加密的 store II：`akit run` 把配置保存在其中；控制台的密码修改；`/config/export` 和 `/config/import` 的 `store` 格式 | I93 | todo |
+| I93c | 加密的 store III：`akit run -admin`、配置文件旁边的 store | I93b | todo |
 | I94 | 文件变化时重新读取 Admin API 和控制台的证书 | I92 | done |
 | **1.0 之后：akit 的名字** | | | |
 | I97 | akit 的名字：对外凡写 "fit" 的名字都改为 "akit"（决定 037） | I91, I92 | done |
@@ -268,7 +270,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | WASM 插件 | I71、I72 | 部分（2026-11-25，I76，`346ad8b`：fit 的 `headers` 插件在 akit 和 fit 中，HTTP/1.1 和 h2c，见 [M5 报告](../bench/results/m5-report-2026-11-25.zh-CN.md)） | 否 | I76 已测（`bench/run.sh -servers akit-wasm,fit-wasm -scenarios fixed,wasm`）：fit 的 `headers` 插件在 HTTP/1.1 上让 akit 每个请求多花 14.7 µs CPU，fit 6.8 µs（akio-wasm 解释执行，wazero 编译执行：akio API 请求 A180，akio 的 W5）；h2c 上 2,048 个同时进行的请求超出 1,024 的队列，两者都立即以 503 回答多出的部分。剩下的：对照 fit（wazero 的编译器）和无插件：请求经过 fit 的 `headers` 插件（Go guest）和一个空插件（`fit_on_request` 返回 0），HTTP/1.1 和 h2，每秒请求数和延迟，对比不带该中间件的路由（交给池再交回、复制请求、调用本身）；实例上单独的 guest 调用（akio 的 W5：akio-wasm 的解释器对比 wazero 的解释器和编译器）；客户端多于 `instances` 时的池（队列，超出后 503）；trap 之后重建实例（Go guest 的 `_initialize`）。Proxy-Wasm（I72）：请求经过 Proxy-Wasm Go SDK 的 `http_routing`（配置 `1`，请求不变），对照 fit 和无插件，如 fit 的 `BenchmarkProxyWasm`；响应经过 fit 的 `response` 过滤器（`upper`）和 SDK 的 `http_headers`，头部在池上挂起、响应体在池上过滤，一个完整的 4 KiB 响应体和一个流式的 1 MiB 响应体，HTTP/1.1 和 h2，对照 `response: none` 和无插件。 |
 | 有流量时频繁替换配置 | I38 | 否 | 否（已测试，未测量） | fixed 和 proxy 场景，HTTP/1.1 和 h2c，期间每 10 ms 经 SIGHUP 和 Admin API 替换一次配置，对照同一轮中不替换：替换期间的每秒请求数、p99 延迟和错误，以及替换 10 万次后 akit 的 RSS 和描述符数；完整测试套件的 M2 报告（规则 24，里程碑结束）。 |
 | 访问控制列表 | I85–I87 | 否 | 否（已实现，未测量） | 同 fit 的 `BenchmarkAllows`：一个策略的查找（一个含 10、10,000 和 1,000,000 个前缀、从文件读入的列表，以及串联的三个列表），IPv4 和 IPv6 地址，1 和 16 个线程，不分配内存。与不带 `access` 的同一配置做同一轮 A/B、交替轮次：带大型拒绝列表时，监听器在 accept 时拒绝或接受的每秒连接数（akio 的过滤器，A3：每次 accept 一次 `Arc` 读取加一次查找）；路由带自己的列表（逐请求检查：一次图读取加一次查找）与不带时，fixed 和 proxy 场景在 HTTP/1.1、h2c 和 h3 上的表现；由 akit-l4 的入口决定的 `tcp` 服务每秒连接数；被拒绝的 `udp` 数据报洪泛（在 akio 的过滤器处丢弃，A220）对正常会话延迟的影响。 |
-| 控制台与加密的 store | I89–I93 | 否 | 否（控制面；I93 未实现） | 控制台属于控制面（规则 24：自身无需基准），但与数据面共用主机。同一轮 A/B、交替轮次：fixed 和 proxy 场景在控制台遭受大量失败登录（成本 10 的 bcrypt 在其单线程登录池上，16 个等待，其余 503）时和没有时，并有一个已登录客户端每秒轮询 `GET /api/m/admin/status`：数据面的每秒请求数和 p99 不应变化。控制台自身的数字仅作记录：成本 10 和 12 时每秒登录数；工作台首次加载（其 2.5 MB 文件，从内存提供）在 HTTP/1.1 和 TLS 上的耗时。I93：启动时 store 的密钥派生（fit 的 Argon2id 参数 3、64 MiB、4 线程：耗时和峰值内存），以及 4 MiB 配置一次写入（密封、同步、重命名）的延迟。 |
+| 控制台与加密的 store | I89–I93 | 否 | 否（控制面；I93b 未实现） | 控制台属于控制面（规则 24：自身无需基准），但与数据面共用主机。同一轮 A/B、交替轮次：fixed 和 proxy 场景在控制台遭受大量失败登录（成本 10 的 bcrypt 在其单线程登录池上，16 个等待，其余 503）时和没有时，并有一个已登录客户端每秒轮询 `GET /api/m/admin/status`：数据面的每秒请求数和 p99 不应变化。控制台自身的数字仅作记录：成本 10 和 12 时每秒登录数；工作台首次加载（其 2.5 MB 文件，从内存提供）在 HTTP/1.1 和 TLS 上的耗时。I93：启动时 store 的密钥派生（fit 的 Argon2id 参数 3、64 MiB、4 线程：耗时和峰值内存），以及 4 MiB 配置一次写入（密封、同步、重命名）的延迟。 |
 | akio 请求替换掉的权宜实现（A12、A79、A45、A117、A30、A54、A29、A75、A78、A22、A170、A24、A49、A35、A148） | —（akio 请求） | 否 | 否（已实现，未测量） | 对照这些提交之前的 main，同一轮 A/B 测 fixed 和 proxy 场景，HTTP/1.1、h2c 和 h3：访问日志和指标走监听器的响应观察者（`set_observed`，不分配）对比装箱的过滤器，以及每个请求都调用 `limit_body`；代理在 HTTP/1.1 上按长度成帧的下载对比 chunked；第 4 层转发由 akio 的每连接空闲超时关闭对比 akit 的扫描（大量空闲连接）；sockmap 转发经 `akio::ebpf::Tunnel`（以 root 测 TCP 吞吐，同 I51b 一行）；健康检查探测负载走 `akio::timer::after_send` 对比 akit 原来的定时线程。 |
 
 ## M0 基础
@@ -1033,7 +1035,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | --- | --- | --- | --- |
 | 1 | 日志：文件、切割与保留 | I155–I157 | 已完成：[I81–I83](#日志文件切割与保留)，带时区的日志文件，按大小和时间切割，保留策略 |
 | 2 | 访问控制列表 | I195 | [I85–I87](#访问控制列表)：列表、监听器和路由；服务与 SOCKS；Admin API |
-| 3 | 控制台与加密的 store | I104、I157 的页面 | [I89–I93](#控制台与加密的-store)：控制台的登录、服务器和页面（包括基于 I83 的 `/logs` 的“日志”页面）、带 TLS 的 Admin API、加密的 store |
+| 3 | 控制台与加密的 store | I104、I157 的页面 | [I89–I93c](#控制台与加密的-store)：控制台的登录、服务器和页面（包括基于 I83 的 `/logs` 的“日志”页面）、带 TLS 的 Admin API、加密的 store |
 | 4 | 隧道与 LLM | I105–I107, I159–I162 | [I98–I109](#隧道与-llm)：配置中的角色、链路 token、`akit run` 中的角色；基于 TCP、TLS、WebSocket 和 QUIC 的隧道链路；基于 `akio-ws` 的 LLM mesh 及其 node、hub 和 proxy；角色的页面 |
 | 5 | WebRTC | I87, I108–I111 | 基于 `akio-turn` 的 TURN；基于 `akio-webrtc` 的 WHIP 和 WHEP |
 | 6 | 流媒体与媒体认证 | I115–I117 | 基于 `akio-media` 的流媒体角色；`media_auth` |
@@ -1159,7 +1161,7 @@ fit 的各个角色（`streaming`、`webrtc`、`tunnel`、`llm`、`bittorrent`�
 
 fit 的 I104（[fit 的决定 027](https://github.com/lesismal/fit/blob/main/docs/decisions/027-console-and-store.zh-CN.md)、
 其[控制台指南](https://github.com/lesismal/fit/blob/main/docs/console.zh-CN.md)）以及其 I157 中工作台的“日志”页面（基于
-I83 的 `/logs`），分六次迭代（[决定 036](decisions/036-console.zh-CN.md)），I94 由 I92 拆出。`admin.console` 是一个独立的服务器，与
+I83 的 `/logs`），分六次迭代（[决定 036](decisions/036-console.zh-CN.md)），I94 由 I92 拆出，I93b 和 I93c 由 I93 拆出。`admin.console` 是一个独立的服务器，与
 Admin API 并列，在自己的登录之后于进程内调用 Admin API 的端点；它按 fit 发布时的原样提供 fit 的工作台页面。`admin.store`
 以 fit 的 `fitstore` 格式密封保存配置。威胁模型的 L1（Admin API 没有 TLS、不能远程访问）由带 TLS 的控制台（I90）和带 TLS
 的 Admin API（I92）关闭；L5（密钥未加密存放）在这里重新审视，仍为接受：fit 的 store 保存配置和控制台用户，不保存证书存储，
@@ -1234,21 +1236,44 @@ Admin API 并列，在自己的登录之后于进程内调用 Admin API 的端�
 - **fit**：`admin/server.go`、`admin/tls.go`、`config/validate.go`（`checkAdminAddress`）。
 - **状态**：已完成（2026-11-26）。证书文件在 akit 启动时读取；文件变化时重新读取是 I94。见进度日志。
 
-### I93 加密的 store
+### I93 加密的 store I：格式、`admin.store` 和 `akit store`
 
-- **做什么**：`admin.store`（`path`，`password`、`password_file`、`password_env` 恰好一个），同 fit 的 `admin/store`：
-  `fitstore` 格式（59 字节的头、Argon2id 的参数和盐、以 XChaCha20-Poly1305 密封的内容，头为其附加数据；读取版本 1 到 3，
-  限制文件可要求的 Argon2id 代价），store 作为 akit 运行所依据的基础配置，由引导文件播种，每次修改时写入（0600、同步、重命名），
-  SIGHUP 时重新读取，`admin` 取自引导文件，从不保存或显示；控制台的密码修改保存在其中；`akit store export` 和
-  `akit store import`；`akit run -admin`（默认的 store 和控制台、临时密码 `admin`）；导入导出页面的 `store` 格式。
-- **完成标准**：在控制台中修改的配置运行、存入 store 并在重启后仍在；错误的密码或改动一个字节使 akit 无法启动；fit 写的
-  store 能在 akit 中打开，akit 写的能在 fit 中打开；`store export` 和 `import` 往返一致。
-- **涉及**：`akit-admin`（`store`）、`akit-config`、`akit`（`store`、`run`）、`docs`。
-- **阅读**：akio-crypto 缺少的 Argon2id（[A230](akio-api-requests.zh-CN.md#a230-akio-crypto-中的-argon2id)）和
-  XChaCha20-Poly1305（[A231](akio-api-requests.zh-CN.md#a231-akio-crypto-中的-xchacha20-poly1305)）。
-- **fit**：`admin/store`、`admin/configs.go`、`admin/bootstrap.go`、`cli/store.go`、`cli/run.go`；I104。
-- **状态**：todo，等待 akio A230 和 A231：没有 Argon2id 和 XChaCha20-Poly1305 就无法读取 fit 的格式，而 akio-crypto
-  （`077a6710`）两者都没有。
+- **做什么**：逐字节移植 fit 的 `admin/store`，即 `akit_admin::store`：`fitstore` 格式（59 字节的头、Argon2id 的参数和盐、以
+  XChaCha20-Poly1305 密封的内容，头为其附加数据；读取版本 1 到 3，fit 存放在其中的 sections 原样保留；限制文件及导入的文件可要求的
+  Argon2id 代价），每次写入用新的 nonce 密封，0600、同步、重命名，导出用自己的密码密封；按 fit 的方式读取并检查 `admin.store`
+  （`path`，`password`、`password_file`、`password_env` 恰好一个）；`akit store export` 和 `akit store import`，同 fit 的 `fit store`。
+- **完成标准**：移植后的 fit `admin/store` 测试通过；fit 写的 store（各个版本、fit 自己的 Argon2id 参数、导出文件）能在 akit 中打开，
+  akit 写的能在 fit 中打开，两者都用 fit 自己的代码检查；`store export` 和 `import` 往返一致。
+- **涉及**：`akit-admin`（`store`）、`akit-config`、`akit`（`store`）、`tests/compat`、`docs`。
+- **阅读**：akio-crypto 的 `kdf::argon2id`（[A230](akio-api-requests.zh-CN.md#a230-akio-crypto-中的-argon2id)）和
+  `chacha::XChaCha20Poly1305`（[A231](akio-api-requests.zh-CN.md#a231-akio-crypto-中的-xchacha20-poly1305)）。
+- **fit**：`admin/store`、`cli/store.go`、`config`（`Store`、`checkStore`）；I104。
+- **状态**：已完成（2026-11-27），拆分出 I93b 和 I93c：在 I93b 把配置保存在 store 中之前，`akit run` 拒绝 `admin.store`。见进度日志。
+
+### I93b 加密的 store II：`akit run` 把配置保存在其中
+
+- **做什么**：同 fit 的 `cli/run.go`、`admin/bootstrap.go` 和 `admin/configs.go`：store 作为 akit 运行所依据的基础配置，每次启动时合并
+  到配置文件之上（其值优先）并写回，不存在时由配置文件播种；`admin` 取自引导文件，从不保存、显示，有 store 时也不从发来的配置中
+  取；每个应用的配置（Admin API、控制台、回滚、SIGHUP、provider 的基础配置）写入其中，写不进去的仍然应用并说明未保存；SIGHUP
+  重新读取它；有 store 时拒绝 `-watch`；控制台的密码修改（`POST /api/m/admin/account/password`、`/users/password`，没有 store 时回答
+  409）保存在其中，其用户覆盖引导文件中的；Admin API 的 `/config/export` 和 `/config/import` 支持 `store` 格式（自己的密码或正在运行的
+  store 的密钥，导入按 fit 的 `Unseal` 限制）。密钥在启动时于控制线程上派生一次；写入在控制线程上。
+- **完成标准**：移植后的 fit `cli` store 测试和 `admin` 的 store、transfer 测试通过；在控制台中修改的配置运行、存入 store 并在重启后
+  仍在；错误的密码或改动一个字节使 akit 无法启动。
+- **涉及**：`akit-admin`（`configs`、`console`、`server`）、`akit`（`run`）、`docs`。
+- **fit**：`cli/run.go`、`cli/store.go`、`admin/bootstrap.go`、`admin/configs.go`、`admin/transfer.go`、`admin/console.go`；I104。
+- **状态**：todo。
+
+### I93c 加密的 store III：`akit run -admin` 和配置旁边的 store
+
+- **做什么**：同 fit 对其决定 027 的 2026-11-04 修改：`-c` 指定一个 `.store` 文件时用它作为 store；没有 `admin.store` 时，配置文件旁边的
+  store（`site.yaml` 对应 `site.store`）存在后即使用，其密码来自环境变量或旁边的密钥文件（`<store>.key`，两者都不存在时生成，0600 且
+  随机）；`akit run -admin`：配置省略时补上 `admin` 和 `admin.console` 及其默认值，配置保存在 store 中，没有控制台用户时添加用户
+  `admin`，临时密码为 `admin`，须在 `-timeout` 内修改，使用它的会话只能修改密码。
+- **完成标准**：移植后的 fit `run -admin` 测试通过。
+- **涉及**：`akit`（`run`、`store`）、`akit-admin`（`console`）、`docs`。
+- **fit**：`cli/run.go`、`cli/store.go`、`admin/bootstrap.go`（`WithDefaultConsole`）；I104。
+- **状态**：todo，在 I93b 之后。环境变量的名字（fit 的 `FIT_STORE_PASSWORD`）由决定 037 决定是否改名。
 
 ### I94 文件变化时重新读取 Admin API 和控制台的证书
 
@@ -1257,7 +1282,7 @@ Admin API 并列，在自己的登录之后于进程内调用 Admin API 的端�
 - **完成标准**：移植后的 fit `TestTLSReload` 对 API 和控制台都通过。
 - **涉及**：`akit-admin`、`akit`（`run`）。
 - **fit**：`admin/tls.go`。
-- **状态**：已完成（2026-11-27），先于 I93 完成：I93 等待 akio 的 A230 和 A231，而 I94 不需要它。文件在控制线程上查看
+- **状态**：已完成（2026-11-27），先于 I93 完成，I94 不需要它。文件在控制线程上查看
   （`-watch-certs`，每个 `-watch-interval`，以及 SIGHUP），而不是像 fit 那样在握手时查看（规则 1）；控制台的证书也会重新
   读取，fit 的不会。见进度日志。
 

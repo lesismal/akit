@@ -480,3 +480,8 @@ admin	added	endpoint	HEAD	/tokens/{member}
 admin	added	endpoint	POST	/tokens/{member}
 admin	added	endpoint	PATCH	/tokens/{member}/{id}
 admin	added	endpoint	DELETE	/tokens/{member}/{id}
+config	added	supported	admin.store
+config	added	supported	admin.store.password
+config	added	supported	admin.store.password_env
+config	added	supported	admin.store.password_file
+config	added	supported	admin.store.path

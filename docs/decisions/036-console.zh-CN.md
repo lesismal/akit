@@ -4,7 +4,7 @@
 
 状态：在 I90 中接受（2026-11-26），等待评审（[等待评审的决定](../decisions-pending.zh-CN.md)，第 16 行）；由 I91（页面）和
 I92（带 TLS 的 Admin API）扩展；其第 3、8 条由[决定 037](037-akit-names.zh-CN.md)（akit 的名字）修订；其第 5 条于 2026-11-27
-在 akio 有了 A232 之后替换，第 7 条在 akio 有了 A233 之后替换。
+在 akio 有了 A232 之后替换，第 7 条在 akio 有了 A233 之后替换，第 6 条由 I93 更新。
 
 ## 背景
 
@@ -34,8 +34,9 @@ Apache License 2.0。
    测试移植为 `console::slots`）。监听器的 `on_accept` 和 `on_close` 维护连接表，`ConnHandle::close_at` 和 `cancel_close` 管理期限；
    引擎自己的上限是 `max_conns` 的两倍，留给正在关闭的连接。在 A232（2026-11-27）之前，连接像 Admin API 的那样受限：`max_conns` 在
    accept 时限制，对没有有效会话的请求的回答会关闭其连接。
-6. **只有有 store 时才能修改密码**，同 fit：没有 `admin.store` 时账户端点回答 409。store（I93）等待 akio-crypto 的 Argon2id
-   （A230）和 XChaCha20-Poly1305（A231）：没有它们就无法读取 fit 的格式，而 akit 自己的格式会是 fit 打不开的 store。威胁模型的
+6. **只有有 store 时才能修改密码**，同 fit：没有 `admin.store` 时账户端点回答 409。store 逐字节采用 fit 的格式，基于
+   akio-crypto 的 Argon2id（A230）和 XChaCha20-Poly1305（A231），akio 自 2026-11-27 起具备：akit 自己的格式会是 fit 打不开的 store。
+   I93 带来格式和 `akit store`；I93b 把运行中的配置保存在其中，届时账户端点随之可用。威胁模型的
    L5（密钥未加密存放）仍为接受：fit 的 store 保存配置和控制台用户，不保存证书存储，而 akit 与 fit 共用证书存储（I62），加密的
    store 会让 fit 读不了它。
 7. **`akit hash-password` 像 fit 那样读取在终端输入的密码**：使用原始模式（akio-sys 的 `terminal::raw`，A233），每个字符显示一个

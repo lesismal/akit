@@ -324,14 +324,14 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 880 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 885 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
 | [`access`](#fields-access) | 5 | 5 | 0 |
 | [`access_log`](#fields-access-log) | 14 | 14 | 0 |
 | [`acme`](#fields-acme) | 43 | 43 | 0 |
-| [`admin`](#fields-admin) | 105 | 31 | 74 |
+| [`admin`](#fields-admin) | 105 | 36 | 69 |
 | [`auto_https`](#fields-auto-https) | 5 | 5 | 0 |
 | [`bittorrent`](#fields-bittorrent) | 160 | 0 | 160 |
 | [`engine`](#fields-engine) | 11 | 8 | 3 |
@@ -449,7 +449,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 161 | 3 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **合计** | 3821 | 880 | 2941 |
+| **合计** | 3821 | 885 | 2936 |
 
 <a id="fields-access"></a>
 
@@ -639,11 +639,11 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `admin.max_conns` | `integer` | 已支持 |
 | `admin.mptcp` | `boolean` | 尚不支持（not supported yet） |
 | `admin.node_id` | `string` | 尚不支持（not supported yet） |
-| `admin.store` | `object` | 尚不支持（not supported yet） |
-| `admin.store.password` | `string` | 尚不支持（not supported yet） |
-| `admin.store.password_env` | `string` | 尚不支持（not supported yet） |
-| `admin.store.password_file` | `string` | 尚不支持（not supported yet） |
-| `admin.store.path` | `string, required` | 尚不支持（not supported yet） |
+| `admin.store` | `object` | 已支持 |
+| `admin.store.password` | `string` | 已支持 |
+| `admin.store.password_env` | `string` | 已支持 |
+| `admin.store.password_file` | `string` | 已支持 |
+| `admin.store.path` | `string, required` | 已支持 |
 | `admin.token_file` | `string` | 已支持 |
 
 <a id="fields-auto-https"></a>

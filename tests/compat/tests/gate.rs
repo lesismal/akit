@@ -713,6 +713,39 @@ fn supported_fields_are_read() {
                 .into(),
             |c| c.admin.as_ref().unwrap().client_ca_file.as_deref() == Some("ca.pem"),
         ),
+        (
+            "admin.store",
+            r#"{"admin": {"store": {"path": "s.store", "password": "p"}}}"#.into(),
+            |c| c.admin.as_ref().unwrap().store.is_some(),
+        ),
+        (
+            "admin.store.path",
+            r#"{"admin": {"store": {"path": "s.store", "password": "p"}}}"#.into(),
+            |c| c.admin.as_ref().unwrap().store.as_ref().unwrap().path == "s.store",
+        ),
+        (
+            "admin.store.password",
+            r#"{"admin": {"store": {"path": "s.store", "password": "p"}}}"#.into(),
+            |c| {
+                c.admin.as_ref().unwrap().store.as_ref().unwrap().password.as_deref() == Some("p")
+            },
+        ),
+        (
+            "admin.store.password_file",
+            r#"{"admin": {"store": {"path": "s.store", "password_file": "p.txt"}}}"#.into(),
+            |c| {
+                c.admin.as_ref().unwrap().store.as_ref().unwrap().password_file.as_deref()
+                    == Some("p.txt")
+            },
+        ),
+        (
+            "admin.store.password_env",
+            r#"{"admin": {"store": {"path": "s.store", "password_env": "P"}}}"#.into(),
+            |c| {
+                c.admin.as_ref().unwrap().store.as_ref().unwrap().password_env.as_deref()
+                    == Some("P")
+            },
+        ),
         ("admin.console", console_sample(""), |c| console_of(c).users.len() == 1),
         ("admin.console.users", console_sample(""), |c| console_of(c).users.len() == 1),
         ("admin.console.users[].username", console_sample(""), |c| {
@@ -3242,7 +3275,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 135] = [
+    let objects: [(&str, &str, Option<&str>); 136] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         (
             "providers[].kubernetes",
@@ -3258,6 +3291,7 @@ fn akit_config_lists_match_the_inventory() {
         ("admin.console", "CONSOLE_FIELDS", Some("CONSOLE_FIT_ONLY")),
         ("admin.console.users[]", "CONSOLE_USER_FIELDS", None),
         ("admin.console.access", "ACCESS_FIELDS", None),
+        ("admin.store", "STORE_FIELDS", None),
         ("acme", "ACME_FIELDS", Some("ACME_FIT_ONLY")),
         ("acme.on_demand", "ON_DEMAND_FIELDS", None),
         ("acme.shared_storage", "SHARED_STORAGE_FIELDS", None),

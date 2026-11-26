@@ -244,6 +244,66 @@ pub struct Admin {
     /// `console` (I89): the web console, a server of its own with logins, which calls the API in
     /// process. Read when akit starts, as the rest of `admin`, but for its `access`.
     pub console: Option<Console>,
+    /// `store` (I93): the encrypted store the config is kept in, fit's `fitstore` file.
+    pub store: Option<Store>,
+}
+
+/// `admin.store`, as fit's `config.Store` and its `checkStore` (I93): the store's file and where
+/// its password is, exactly one of `password`, `password_file` and `password_env`.
+#[derive(Clone, PartialEq, Eq)]
+pub struct Store {
+    /// `path`: the store's file, made 0600 when it is written.
+    pub path: String,
+    /// `password`: the password, written in the config.
+    pub password: Option<String>,
+    /// `password_file`: a file holding the password, its surrounding spaces trimmed.
+    pub password_file: Option<String>,
+    /// `password_env`: an environment variable holding the password.
+    pub password_env: Option<String>,
+}
+
+impl std::fmt::Debug for Store {
+    // The password is never shown.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Store")
+            .field("path", &self.path)
+            .field("password", &self.password.as_ref().map(|_| "[redacted]"))
+            .field("password_file", &self.password_file)
+            .field("password_env", &self.password_env)
+            .finish()
+    }
+}
+
+impl Store {
+    /// The store's password, from where it says: the trimmed contents of `password_file`, or
+    /// `password_env`'s value. Reads a file: control plane only.
+    ///
+    /// # Errors
+    ///
+    /// fit's: a file that cannot be read or is empty, a variable that is empty or not set.
+    pub fn password(&self) -> Result<String, String> {
+        if let Some(p) = &self.password {
+            return Ok(p.clone());
+        }
+        if let Some(f) = &self.password_file {
+            let data = std::fs::read_to_string(f)
+                .map_err(|e| format!("admin.store.password_file: {f}: {e}"))?;
+            let p = data.trim();
+            if p.is_empty() {
+                return Err(format!("admin.store.password_file {f} is empty"));
+            }
+            return Ok(p.to_owned());
+        }
+        if let Some(v) = &self.password_env {
+            return match std::env::var(v) {
+                Ok(p) if !p.is_empty() => Ok(p),
+                _ => Err(format!(
+                    "admin.store.password_env: ${v} is empty or not set"
+                )),
+            };
+        }
+        Err("admin.store: set exactly one of password, password_file and password_env".into())
+    }
 }
 
 /// fit's default `admin.console.address`.
@@ -337,6 +397,7 @@ impl Default for Admin {
             disable_dashboard: false,
             access: None,
             console: None,
+            store: None,
         }
     }
 }
@@ -2201,7 +2262,9 @@ const ADMIN_FIELDS: &[&str] = &[
     "cert_file",
     "key_file",
     "client_ca_file",
+    "store",
 ];
+const STORE_FIELDS: &[&str] = &["path", "password", "password_file", "password_env"];
 // I89: the console. Multipath TCP is not offered by akio's listeners.
 const CONSOLE_FIELDS: &[&str] = &[
     "address",
@@ -2216,14 +2279,7 @@ const CONSOLE_FIELDS: &[&str] = &[
 ];
 const CONSOLE_FIT_ONLY: &[&str] = &["mptcp"];
 const CONSOLE_USER_FIELDS: &[&str] = &["username", "password_hash"];
-const ADMIN_FIT_ONLY: &[&str] = &[
-    "mptcp",
-    "node_id",
-    "store",
-    "assistant",
-    "cluster",
-    "cluster_member",
-];
+const ADMIN_FIT_ONLY: &[&str] = &["mptcp", "node_id", "assistant", "cluster", "cluster_member"];
 // I79, and I79b's max_pending_bytes on akio's budget across connections (A214).
 const LIMITS_FIELDS: &[&str] = &[
     "max_body_bytes",
@@ -3873,6 +3929,9 @@ fn admin(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Admin> {
     if let Some(v) = o.take("console") {
         a.console = console(d, v, &o.at("console"));
     }
+    if let Some(v) = o.take("store") {
+        a.store = store(d, v, &o.at("store"));
+    }
     // fit's checkAdminAddress (I92): off loopback, a token and TLS, so that the token, which is
     // all it takes to change what akit serves, never crosses a network in the clear.
     let tls_files = a.cert_file.is_some() || a.key_file.is_some() || a.client_ca_file.is_some();
@@ -3922,6 +3981,44 @@ fn admin(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Admin> {
     }
     o.finish(d, ADMIN_FIELDS, ADMIN_FIT_ONLY);
     Some(a)
+}
+
+/// `admin.store`, as fit's `config.Store` and its `checkStore` (I93): a path, and one way to the
+/// password, only one.
+fn store(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Store> {
+    let mut o = d.object(n, path)?;
+    let path_value = o.require(d, "path").and_then(|v| {
+        let p = o.at("path");
+        let s = d.string(v, &p)?;
+        if s.is_empty() {
+            d.error(v.off, &p, "the path is empty");
+        }
+        Some(s)
+    });
+    let mut take = |key: &str| {
+        o.take(key)
+            .and_then(|v| d.string(v, &o.at(key)))
+            .filter(|s| !s.is_empty())
+    };
+    let st = Store {
+        path: path_value.unwrap_or_default(),
+        password: take("password"),
+        password_file: take("password_file"),
+        password_env: take("password_env"),
+    };
+    let ways = [&st.password, &st.password_file, &st.password_env]
+        .iter()
+        .filter(|w| w.is_some())
+        .count();
+    if ways != 1 {
+        d.error(
+            n.off,
+            path,
+            "set exactly one of password, password_file and password_env",
+        );
+    }
+    o.finish(d, STORE_FIELDS, &[]);
+    Some(st)
 }
 
 /// `names` as English lists them: "a", "a and b", "a, b and c" (fit's `listOf`).

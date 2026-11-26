@@ -5,7 +5,7 @@
 Status: accepted in I90 (2026-11-26), waiting for review ([decisions waiting for
 review](../decisions-pending.md), row 16); extended by I91 (the pages) and I92 (the Admin API over
 TLS); its 3 and 8 amended by [decision 037](037-akit-names.md) (akit's names); its 5 replaced on
-2026-11-27, once akio had A232, and its 7 once akio had A233.
+2026-11-27, once akio had A232, its 7 once akio had A233, and its 6 brought up to date by I93.
 
 ## Context
 
@@ -50,9 +50,10 @@ engine of its own. akit and fit are both under the Apache License 2.0.
    were bounded as the Admin API's: `max_conns` at accept, and an answer to a request without a
    valid session closed its connection.
 6. **Passwords change only with a store**, as in fit: without `admin.store` the account endpoints
-   answer 409. The store (I93) waits for akio-crypto's Argon2id (A230) and XChaCha20-Poly1305
-   (A231): fit's format cannot be read without them, and a format of akit's own would be a store
-   fit cannot open. The threat model's L5 (keys stored unencrypted) stays accepted: fit's store
+   answer 409. The store is fit's format, byte for byte, on akio-crypto's Argon2id (A230) and
+   XChaCha20-Poly1305 (A231), which akio has since 2026-11-27: a format of akit's own would be a
+   store fit cannot open. I93 brings the format and `akit store`; I93b keeps the running config
+   in it, and the account endpoints work with it then. The threat model's L5 (keys stored unencrypted) stays accepted: fit's store
    holds the config and the console's users, not the certificate storage, which akit shares with
    fit (I62) and which an encrypted store would make unreadable to it.
 7. **`akit hash-password` reads a password typed at a terminal as fit's**: in raw mode (akio-sys's

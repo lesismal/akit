@@ -44,6 +44,7 @@ mod adapt;
 mod build_cli;
 pub(crate) mod flags;
 mod hash_password;
+mod store_cli;
 mod token;
 
 use std::io::Read;
@@ -82,6 +83,8 @@ Commands:
              admin.console's users and basic_auth
   token      issue, list, change and revoke the link tokens of a running akit's
              tunnel hub and LLM roles, through its Admin API
+  store      print the config the encrypted store holds, or seal a config as
+             the store (fit's fitstore files)
   version    print akit's version and the akio commit it is built on
   help       print this help
 
@@ -153,7 +156,7 @@ fn version() -> String {
 
 /// Prints a config's errors as fit does: each with its file, or with `name`, the files' names,
 /// when it has none.
-fn print_errors(name: &str, errs: &Errors) {
+pub(crate) fn print_errors(name: &str, errs: &Errors) {
     for e in errs.as_slice() {
         if e.file.is_some() {
             eprintln!("{e}");
@@ -282,30 +285,43 @@ fn compile_config(
 /// Refuses a config that sets a member of fit's roles akit does not run ([`crate::ROLES`]):
 /// `akit validate` checks every role (I98), and the iterations after I100 run them; until a role
 /// runs, applying it would be a config that says more than akit does.
+/// The encrypted store (`admin.store`, I93) likewise: `akit validate` checks it and `akit store`
+/// exports and imports it; `akit run` keeps a config in it from I93b.
 fn roles_not_running(config: &Config) -> Result<(), Failure> {
     let unknown = akit_roles::host::unknown(config, crate::ROLES);
-    if unknown.is_empty() {
-        return Ok(());
+    let mut errs: Vec<Error> = unknown
+        .into_iter()
+        .map(|path| Error {
+            file: None,
+            path: path.to_owned(),
+            line: 0,
+            col: 0,
+            msg: format!(
+                "akit run does not run this role yet ({}); akit validate checks it",
+                if path.starts_with("tunnel.") {
+                    "I101-I103"
+                } else {
+                    "I104-I109"
+                }
+            ),
+        })
+        .collect();
+    if config.admin.as_ref().is_some_and(|a| a.store.is_some()) {
+        errs.push(Error {
+            file: None,
+            path: "admin.store".to_owned(),
+            line: 0,
+            col: 0,
+            msg: "akit run does not keep the config in a store yet (I93b); akit validate checks \
+                  it, and akit store exports and imports it"
+                .to_owned(),
+        });
     }
-    Err(Failure::Config(Errors(
-        unknown
-            .into_iter()
-            .map(|path| Error {
-                file: None,
-                path: path.to_owned(),
-                line: 0,
-                col: 0,
-                msg: format!(
-                    "akit run does not run this role yet ({}); akit validate checks it",
-                    if path.starts_with("tunnel.") {
-                        "I101-I103"
-                    } else {
-                        "I104-I109"
-                    }
-                ),
-            })
-            .collect(),
-    )))
+    if errs.is_empty() {
+        Ok(())
+    } else {
+        Err(Failure::Config(Errors(errs)))
+    }
 }
 
 /// Opens the access log `c` describes, its times in `zone`, as fit's `NewAccessLogFiles`: a file
@@ -1490,6 +1506,7 @@ pub fn main(akit_version: &str, modules: &[&'static [Info<HandlerParams>]]) -> E
         "build" => build_cli::build(rest),
         "hash-password" => hash_password::hash_password(rest),
         "token" => token::token(rest),
+        "store" => store_cli::store(rest),
         "version" | "-V" | "--version" => {
             if let Err(u) = flags::parse("version", rest, &[]) {
                 return usage_error(&u);

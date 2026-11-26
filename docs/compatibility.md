@@ -394,14 +394,14 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 880 supported.
+3821 fields in 121 sections, at fit `7daee573`; 885 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
 | [`access`](#fields-access) | 5 | 5 | 0 |
 | [`access_log`](#fields-access-log) | 14 | 14 | 0 |
 | [`acme`](#fields-acme) | 43 | 43 | 0 |
-| [`admin`](#fields-admin) | 105 | 31 | 74 |
+| [`admin`](#fields-admin) | 105 | 36 | 69 |
 | [`auto_https`](#fields-auto-https) | 5 | 5 | 0 |
 | [`bittorrent`](#fields-bittorrent) | 160 | 0 | 160 |
 | [`engine`](#fields-engine) | 11 | 8 | 3 |
@@ -519,7 +519,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 161 | 3 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 880 | 2941 |
+| **Total** | 3821 | 885 | 2936 |
 
 <a id="fields-access"></a>
 
@@ -709,11 +709,11 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `admin.max_conns` | `integer` | supported |
 | `admin.mptcp` | `boolean` | not supported yet |
 | `admin.node_id` | `string` | not supported yet |
-| `admin.store` | `object` | not supported yet |
-| `admin.store.password` | `string` | not supported yet |
-| `admin.store.password_env` | `string` | not supported yet |
-| `admin.store.password_file` | `string` | not supported yet |
-| `admin.store.path` | `string, required` | not supported yet |
+| `admin.store` | `object` | supported |
+| `admin.store.password` | `string` | supported |
+| `admin.store.password_env` | `string` | supported |
+| `admin.store.password_file` | `string` | supported |
+| `admin.store.path` | `string, required` | supported |
 | `admin.token_file` | `string` | supported |
 
 <a id="fields-auto-https"></a>

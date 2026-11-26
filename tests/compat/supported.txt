@@ -745,6 +745,14 @@ admin.cert_file
 admin.key_file
 admin.client_ca_file
 
+# I93: the encrypted store, fit's fitstore file, read and checked as fit's; akit store exports and
+# imports it. akit run refuses it until I93b keeps the config in it.
+admin.store
+admin.store.path
+admin.store.password
+admin.store.password_file
+admin.store.password_env
+
 # I98: fit's roles, tunnel.{hub,node,proxy} and llm.{hub,node,proxy}, read and checked as fit's
 # (crate::roles); their consoles' mptcp is refused as admin.console's. akit run refuses a role
 # until the iteration that runs it (I101-I109).

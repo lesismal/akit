@@ -359,3 +359,116 @@ fn hash_password_from_standard_input() {
         assert!(err.contains(want), "{args:?}: {err}");
     }
 }
+
+/// `akit store import` and `export` (I93), as fit's `fit store`: a config sealed into the store
+/// `admin.store` names, printed back as it was sealed; a store fit wrote is exported; `admin` in what is imported, a wrong password and no
+/// store refused; `akit run` refuses `admin.store` until I93b, which `akit validate` checks.
+#[test]
+fn store_export_and_import() {
+    let d = dir("store");
+    let store = d.join("akit.store");
+    let boot = |pw: &str| {
+        format!(
+            r#"{{"admin": {{"address": "127.0.0.1:0", "store": {{"path": {:?}, "password_file": {:?}}}}}}}"#,
+            s(&store),
+            s(&d.join(format!("{pw}.pw")))
+        )
+    };
+    fs::write(d.join("pw.pw"), "  secret\n").unwrap();
+    fs::write(d.join("fit-v2.pw"), "fit-v2").unwrap();
+    let b = write(&d, "boot.json", &boot("pw"));
+    let conf = write(&d, "site.json", LISTENER);
+    let route = write(&d, "route.json", ROUTE);
+
+    let out = akit(&["validate", "-c", s(&b)]);
+    assert_eq!(out.status.code(), Some(0), "{out:?}");
+    let out = akit(&["store", "export", "-c", s(&b)]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("there is no store at"),
+        "{out:?}"
+    );
+    let out = akit(&["store", "import", "-c", s(&b), s(&conf), s(&route)]);
+    assert_eq!(out.status.code(), Some(0), "{out:?}");
+    assert!(String::from_utf8_lossy(&out.stdout).contains("sealed into"));
+    let out = akit(&["store", "export", "-c", s(&b)]);
+    assert_eq!(out.status.code(), Some(0), "{out:?}");
+    let exported = String::from_utf8(out.stdout).unwrap();
+    assert!(
+        exported.contains("\"listeners\"") && exported.contains("/hello"),
+        "{exported}"
+    );
+    assert!(!exported.contains("admin"), "{exported}");
+    // The export imports again.
+    let again = write(&d, "exported.json", &exported);
+    let out = akit(&["store", "import", "-c", s(&b), s(&again)]);
+    assert_eq!(out.status.code(), Some(0), "{out:?}");
+    assert_eq!(
+        String::from_utf8(akit(&["store", "export", "-c", s(&b)]).stdout).unwrap(),
+        exported
+    );
+
+    // Refused: admin imported, a config that does not check, a wrong password, no store.
+    let with_admin = write(&d, "admin.json", r#"{"admin": {}}"#);
+    let out = akit(&["store", "import", "-c", s(&b), s(&with_admin)]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("admin stays in the bootstrap file"));
+    let bad = write(
+        &d,
+        "bad.json",
+        r#"{"routes": [{"listeners": ["nowhere"]}]}"#,
+    );
+    let out = akit(&["store", "import", "-c", s(&b), s(&bad)]);
+    assert_eq!(out.status.code(), Some(1), "{out:?}");
+    fs::write(d.join("pw.pw"), "wrong").unwrap();
+    let out = akit(&["store", "export", "-c", s(&b)]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("does not open with the password"),
+        "{out:?}"
+    );
+    let out = akit(&["store", "export", "-c", s(&conf)]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("names no store"));
+    for args in [
+        &["store"][..],
+        &["store", "x"],
+        &["store", "export", "-c", s(&b), "extra"],
+    ] {
+        assert_eq!(akit(args).status.code(), Some(2), "{args:?}");
+    }
+    assert_eq!(
+        akit(&["store", "import", "-c", s(&b)]).status.code(),
+        Some(2)
+    );
+
+    // A store fit wrote (fit's own code, akit-admin's fixtures): exported as fit sealed it.
+    let fit = Path::new(env!("CARGO_MANIFEST_DIR")).join("../akit-admin/tests/fitstore/v2.store");
+    fs::copy(&fit, &store).unwrap();
+    let b2 = write(&d, "boot-fit.json", &boot("fit-v2"));
+    let out = akit(&["store", "export", "-c", s(&b2)]);
+    assert_eq!(out.status.code(), Some(0), "{out:?}");
+    assert!(
+        String::from_utf8(out.stdout)
+            .unwrap()
+            .starts_with(r#"{"listeners": [{"name": "web", "address": ":8080"}]"#)
+    );
+
+    // akit run does not keep a config in a store yet.
+    let out = akit(&["run", "-c", s(&b), "-c", s(&conf)]);
+    assert_eq!(out.status.code(), Some(1), "{out:?}");
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("I93b"),
+        "{out:?}"
+    );
+    // Two ways to the password.
+    let two = write(
+        &d,
+        "two.json",
+        r#"{"admin": {"store": {"path": "x.store", "password": "a", "password_env": "B"}}}"#,
+    );
+    let out = akit(&["validate", "-c", s(&two)]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("set exactly one of password"));
+    let _ = fs::remove_dir_all(&d);
+}

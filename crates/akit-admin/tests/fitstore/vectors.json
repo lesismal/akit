@@ -1,0 +1,77 @@
+[
+  {
+    "file": "v1.store",
+    "password": "fit-v1",
+    "config": "{\"listeners\": [{\"name\": \"web\", \"address\": \":8080\"}],\n  \"routes\": [{\"handler\": {\"module\": \"respond\", \"params\": {\"body\": \"hé é \u003c\u0026\u003e\"}}}]}"
+  },
+  {
+    "file": "v2.store",
+    "password": "fit-v2",
+    "config": "{\"listeners\": [{\"name\": \"web\", \"address\": \":8080\"}],\n  \"routes\": [{\"handler\": {\"module\": \"respond\", \"params\": {\"body\": \"hé é \u003c\u0026\u003e\"}}}]}",
+    "users": [
+      {
+        "username": "ada",
+        "password_hash": "$2a$04$ada"
+      },
+      {
+        "username": "bob",
+        "password_hash": "$2a$04$bob\"q"
+      }
+    ]
+  },
+  {
+    "file": "v3.store",
+    "password": "fit-v3",
+    "config": "{\"listeners\": [{\"name\": \"web\", \"address\": \":8080\"}],\n  \"routes\": [{\"handler\": {\"module\": \"respond\", \"params\": {\"body\": \"hé é \u003c\u0026\u003e\"}}}]}",
+    "users": [
+      {
+        "username": "ada",
+        "password_hash": "$2a$04$ada"
+      },
+      {
+        "username": "bob",
+        "password_hash": "$2a$04$bob\"q"
+      }
+    ],
+    "sections": {
+      "assistant": {
+        "model": "m",
+        "keys": [
+          "k1",
+          "k2"
+        ]
+      },
+      "cluster": {
+        "version": 2,
+        "members": []
+      }
+    }
+  },
+  {
+    "file": "v2-default.store",
+    "password": "fit-default",
+    "config": "{\"routes\":[]}",
+    "users": [
+      {
+        "username": "ada",
+        "password_hash": "$2a$04$ada"
+      }
+    ]
+  },
+  {
+    "file": "export.store",
+    "password": "export-pw",
+    "export": true,
+    "config": "{\"listeners\": [{\"name\": \"web\", \"address\": \":8080\"}],\n  \"routes\": [{\"handler\": {\"module\": \"respond\", \"params\": {\"body\": \"hé é \u003c\u0026\u003e\"}}}]}",
+    "users": [
+      {
+        "username": "ada",
+        "password_hash": "$2a$04$ada"
+      },
+      {
+        "username": "bob",
+        "password_hash": "$2a$04$bob\"q"
+      }
+    ]
+  }
+]

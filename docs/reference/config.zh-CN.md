@@ -14,7 +14,7 @@ akit 配置的每个字段：配置的每一部分是做什么的、一个示例
 akit 与 fit 不同之处，在表格中以 **akit：** 标出。
 
 <!-- BEGIN GENERATED: summary -->
-fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **880** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 135 个对象，下文各有一张表。
+fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **885** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 136 个对象，下文各有一张表。
 <!-- END GENERATED -->
 
 字段说明来自 fit 代码中的 `doc` 标签，是英文的，所以每个字段的完整说明在[英文版](config.md)的同一张表中；本页的表格给出每个字段的
@@ -1026,7 +1026,7 @@ route { match { host example.com }; handler respond { body hello } }
 | `max_conns` | 整数，≥ 0 | `16` |  |
 | `mptcp` | 布尔值 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
 | `node_id` | 字符串 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
-| `store` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `store` | [对象](#cfg-admin-store) |  | **akit：**文件即 fit 的 `fitstore` 格式，逐字节相同（其魔数仍为 `FITSTORE`）：fit 能打开 akit 的 store，akit 也能打开 fit 的。`akit validate` 检查它，`akit store export` 和 `import` 读写它；在 I93b 让 `akit run` 把配置保存在其中之前，`akit run` 拒绝它。 |
 | `token_file` | 字符串 |  | **akit：**在 akit 启动时读取。 |
 <!-- END GENERATED -->
 
@@ -1096,6 +1096,28 @@ admin {
 | `allow_files` | 字符串的列表 |  |  |
 | `deny` | 字符串的列表 |  |  |
 | `deny_files` | 字符串的列表 |  |  |
+<!-- END GENERATED -->
+
+### `admin.store`
+
+加密的 store（I93）：即 fit 的 `fitstore` 文件，`akit store export` 打印其内容，`akit store import` 把配置封存进去。从 I93b 起
+`akit run` 把配置保存在其中。
+
+```fit
+admin { store { path /var/lib/akit/akit.store; password_env AKIT_STORE_PASSWORD } }
+```
+
+<!-- BEGIN GENERATED: admin.store -->
+<a id="cfg-admin-store"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-admin-store)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `path` | 字符串 | 必填 |  |
+| `password` | 字符串 |  |  |
+| `password_env` | 字符串 |  |  |
+| `password_file` | 字符串 |  |  |
 <!-- END GENERATED -->
 
 ## 默认 HTTPS

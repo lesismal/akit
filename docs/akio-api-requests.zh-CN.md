@@ -97,8 +97,8 @@
 | A215 | 只计入被接受的连接、不计入引擎拨出的连接的连接上限（fit 的 `limits.max_conns`） | 已进入 akio 的 main 并锁定（自 `6bcd8ad6` 起，akio 的 ADR-173） | 11 | I79、I79b |
 | A220 | UDP 和数据报监听器上的 accept 过滤器：在为被拒绝的对端建立连接（`udp` 会话、QUIC 连接）之前丢弃它的数据报 | 已进入 akio 的 main 并锁定（自 `9e21ada7` 起，akio 的 ADR-178） | 1、11 | I85、I86 |
 | A225 | 对 akio-crypto、akio-tls（连同 akio-x509）、akio-http 的 HTTP/1 和 HTTP/2 解析器以及 akio-wasm 的外部安全审查（不是 API） | 已提出（I80b）：威胁模型的 L15 | 15 | I80、I80b |
-| A230 | akio-crypto 中的 Argon2id（RFC 9106）及 BLAKE2b：fit 的 `fitstore` 格式的密钥派生 | 已提出（I93）：I93 等待它 | 15、20 | I93 |
-| A231 | akio-crypto 中的 XChaCha20-Poly1305（HChaCha20 和 24 字节 nonce）：fit 的 `fitstore` 格式的 AEAD | 已提出（I93）：I93 等待它 | 15、20 | I93 |
+| A230 | akio-crypto 中的 Argon2id（RFC 9106）及 BLAKE2b：fit 的 `fitstore` 格式的密钥派生 | 已进入 akio 的 main 并锁定（自 `9e21ada7` 起，akio 的 ADR-179），I93 使用 | 15、20 | I93 |
+| A231 | akio-crypto 中的 XChaCha20-Poly1305（HChaCha20 和 24 字节 nonce）：fit 的 `fitstore` 格式的 AEAD | 已进入 akio 的 main 并锁定（自 `9e21ada7` 起，akio 的 ADR-179），I93 使用 | 15、20 | I93 |
 | A232 | 由处理函数设置 HTTP 连接的空闲超时并关闭它，并把已接受的连接告诉应用：fit 对未登录连接的限制 | 已进入 akio 的 main 并锁定（自 `9e21ada7` 起，akio 的 ADR-180） | 10、11 | I90 |
 | A233 | 关闭终端回显（原始模式）以读取密码 | 已进入 akio 的 main 并锁定（自 `9e21ada7` 起） | 14 | I89 |
 | A234 | 单个连接自己的发送队列上限，可高于或低于引擎的 `max_queued_bytes` | 已提出（I101）：在此之前链路在超过 8 MiB 时压住喂给它的一方 | 8, 11 | I101, I104 |
@@ -1738,6 +1738,8 @@ QUIC，以及 HTTP/1 和 HTTP/2 解析器（akio-http），每个 `wasm` 插件�
 
 ## A230 akio-crypto 中的 Argon2id
 
+**完成。** 已进入 akio 的 main（`9e21ada7`，akio 的 ADR-179）并锁定：`kdf::argon2id`（RFC 9106，同 Go 的 `argon2.IDKey`）和 `hash::Blake2b`。akit-admin 的 `store` 用它派生 `fitstore` 文件的密钥（新 store 用 fit 的参数：时间 3、64 MiB、4 条 lane；读取的 store 用其头中的参数，在 fit 的限制之内），在控制面上进行；fit 写的 store 能在 akit 中打开，akit 写的也能在 fit 中打开（I93）。
+
 **状态。** 由 I93 提出（2026-11-26）。I93（加密的 store）等待它：没有它就无法读取 fit 的 store 格式。
 
 **问题。** fit 以自己的文件格式 `fitstore` 密封保存其配置（fit 的决定 027、`admin/store`），akit 要读写同样的文件，使 store 能在
@@ -1759,6 +1761,8 @@ out: &mut [u8]) -> Result<(), Error>`（Argon2 版本 0x13，RFC 9106，无密�
 派生前按 fit 的边界检查文件头中的参数；发给 Admin API 的导入文件在派生任何东西之前被限制在 fit 代价的两倍以内，同 fit 的 `Unseal`。
 
 ## A231 akio-crypto 中的 XChaCha20-Poly1305
+
+**完成。** 已进入 akio 的 main（`9e21ada7`，akio 的 ADR-179）并锁定：`chacha::XChaCha20Poly1305` 和 `chacha::hchacha20`，同 Go 的 `chacha20poly1305.NewX`。akit-admin 的 `store` 每次写入用新的随机 nonce 密封，59 字节的头作为附加数据（I93）。
 
 **状态。** 由 I93 与 A230 一起提出（2026-11-26）。I93 等待它。
 

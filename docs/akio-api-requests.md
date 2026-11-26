@@ -98,8 +98,8 @@ first; its status here records the branch, then the akio commit akit pins.
 | A215 | A connection limit that counts the connections accepted, not those the engine dials (fit's `limits.max_conns`) | on akio's main and pinned (since `6bcd8ad6`, akio's ADR-173) | 11 | I79, I79b |
 | A220 | An accept filter on UDP and datagram listeners: a refused peer's datagrams dropped before a connection (a `udp` session, a QUIC connection) is made for it | on akio's main and pinned (since `9e21ada7`, akio's ADR-178) | 1, 11 | I85, I86 |
 | A225 | An external security review of akio-crypto, akio-tls (with akio-x509), akio-http's HTTP/1 and HTTP/2 parsers and akio-wasm (no API) | requested (I80b): the threat model's L15 | 15 | I80, I80b |
-| A230 | Argon2id (RFC 9106), with BLAKE2b, in akio-crypto: the key derivation of fit's `fitstore` format | requested (I93): I93 waits for it | 15, 20 | I93 |
-| A231 | XChaCha20-Poly1305 (HChaCha20 and a 24-byte nonce) in akio-crypto: the AEAD of fit's `fitstore` format | requested (I93): I93 waits for it | 15, 20 | I93 |
+| A230 | Argon2id (RFC 9106), with BLAKE2b, in akio-crypto: the key derivation of fit's `fitstore` format | on akio's main and pinned (since `9e21ada7`, akio's ADR-179), used by I93 | 15, 20 | I93 |
+| A231 | XChaCha20-Poly1305 (HChaCha20 and a 24-byte nonce) in akio-crypto: the AEAD of fit's `fitstore` format | on akio's main and pinned (since `9e21ada7`, akio's ADR-179), used by I93 | 15, 20 | I93 |
 | A232 | An HTTP connection's idle timeout and close from its handler, and the connections accepted told to the application: fit's bounds on connections without a login | on akio's main and pinned (since `9e21ada7`, akio's ADR-180) | 10, 11 | I90 |
 | A233 | A terminal's echo turned off (raw mode), to read a password | on akio's main and pinned (since `9e21ada7`) | 14 | I89 |
 | A234 | A connection's own bound of the bytes queued for it, past the engine's `max_queued_bytes` or below it | requested (I101): a link holds what feeds it past 8 MiB meanwhile | 8, 11 | I101, I104 |
@@ -2148,6 +2148,8 @@ L15 is closed, with the report linked from it and from the review scope.
 
 ## A230 Argon2id in akio-crypto
 
+**Done.** On akio's main (`9e21ada7`, akio's ADR-179) and pinned: `kdf::argon2id` (RFC 9106, as Go's `argon2.IDKey`) and `hash::Blake2b`. akit-admin's `store` derives a `fitstore` file's key with it (fit's time 3, 64 MiB and 4 lanes for a new store; the header's own, within fit's bounds, for one read), on the control plane; stores fit wrote open in akit and akit's in fit (I93).
+
 **Status.** Requested by I93 (2026-11-26). I93, the encrypted store, waits for it: fit's store
 format cannot be read without it.
 
@@ -2179,6 +2181,8 @@ header's settings against fit's bounds; an import sent to the Admin API is bound
 cost before anything is derived, as fit's `Unseal`.
 
 ## A231 XChaCha20-Poly1305 in akio-crypto
+
+**Done.** On akio's main (`9e21ada7`, akio's ADR-179) and pinned: `chacha::XChaCha20Poly1305` and `chacha::hchacha20`, as Go's `chacha20poly1305.NewX`. akit-admin's `store` seals each write with a new random nonce, the 59-byte header as additional data (I93).
 
 **Status.** Requested by I93 (2026-11-26), with A230. I93 waits for it.
 

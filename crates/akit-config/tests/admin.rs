@@ -145,7 +145,21 @@ fn refused() {
             "or set token_file, cert_file and key_file",
         ),
         (r#""mptcp": true"#, "admin.mptcp: not supported yet"),
-        (r#""store": {}"#, "admin.store: not supported yet"),
+        // fit's checkStore (I93).
+        (r#""store": {}"#, "admin.store: set exactly one of password"),
+        (r#""store": {"password": "p"}"#, "admin.store.path"),
+        (
+            r#""store": {"path": "", "password": "p"}"#,
+            "admin.store.path: the path is empty",
+        ),
+        (
+            r#""store": {"path": "s", "password": "p", "password_file": "f"}"#,
+            "admin.store: set exactly one of password",
+        ),
+        (
+            r#""store": {"path": "s", "password": "p", "bogus": 1}"#,
+            "admin.store.bogus: unknown field",
+        ),
         (r#""bogus": 1"#, "admin.bogus: unknown field"),
     ] {
         let e = admin(fields).unwrap_err();

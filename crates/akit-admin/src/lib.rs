@@ -63,6 +63,8 @@
 //! served over TLS (I92), with `client_ca_file` to clients with a certificate only; an address off
 //! loopback needs TLS and a token. Its certificate files, and the console's, are read again when
 //! they change ([`Server::watch_certs`], [`Server::reload_certs`], I94).
+//!
+//! [`store`] is fit's encrypted store, its `fitstore` file byte for byte (I93).
 
 mod cache;
 mod certs;
@@ -77,6 +79,7 @@ mod pointer;
 mod redact;
 mod server;
 mod status;
+pub mod store;
 mod text;
 pub mod tokens;
 mod watch;
