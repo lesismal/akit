@@ -666,6 +666,10 @@ impl akio_http::Service for Dispatcher {
             };
             let listener = g.listener_index(&self.listener);
             let Some((i, route)) = listener.and_then(|l| g.route_request_at(l, &rr)) else {
+                // No route: a refused request is answered 403 from its head too (I85).
+                if self.refused(g, listener, None, req.peer.ip()) {
+                    return BodyMode::Stream;
+                }
                 return BodyMode::Buffered;
             };
             // Refused (I85): answered 403 from its head, its body never buffered.
