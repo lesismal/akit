@@ -202,11 +202,13 @@ impl Router for ProxyRouter {
                     p.take_nodes(&u, body);
                 }
             }
-            method::KICK => akit_observe::warn!(
-                Tunnel,
-                "tunnel.proxy: kicked by the hub: {}",
-                String::from_utf8_lossy(body)
-            ),
+            method::KICK => {
+                let why = String::from_utf8_lossy(body);
+                akit_observe::warn!(Tunnel, "tunnel.proxy: kicked by the hub: {why}");
+                if let Some(u) = p.uplink_of(l) {
+                    u.kicked(&why);
+                }
+            }
             _ => {}
         }
     }

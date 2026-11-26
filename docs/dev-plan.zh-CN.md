@@ -86,7 +86,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 
 ## 索引
 
-状态：`todo`、`doing` 或 `done`。下一个可用的迭代编号是 I110（为日志路线和访问控制列表路线预留的 I84 和 I88 未使用；I95 和 I96 为控制台路线预留；I97 改名了 fit 的对外名字；I98–I109、I102b、I102c 和 I102d 是隧道与 LLM 路线）。
+状态：`todo`、`doing` 或 `done`。下一个可用的迭代编号是 I110（为日志路线和访问控制列表路线预留的 I84 和 I88 未使用；I95 和 I96 为控制台路线预留；I97 改名了 fit 的对外名字；I98–I109、I102b、I102c、I102d 和 I103b 是隧道与 LLM 路线）。
 
 | ID | 迭代 | 依赖 | 状态 |
 | --- | --- | --- | --- |
@@ -211,7 +211,8 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I102b | 隧道 II b：QUIC 链路 | I102 | done |
 | I102c | 隧道 II c：WebSocket 链路 | I102b | done |
 | I102d | 隧道 II d：hub 的 QUIC 握手限制；监听器的证书文件变化时重新读取 | I102c | todo |
-| I103 | 隧道 III：hub 的调用、token 过期、控制台套接字和 web 代理 | I102c | todo |
+| I103 | 隧道 III：hub 的调用和状态、token 过期 | I102c | done |
+| I103b | 隧道 III b：控制台套接字和 web 代理 | I103 | todo |
 | I104 | LLM I：mesh：帧、会话、带信用的流、握手、hello、连接池 | I99, I100 | todo |
 | I105 | LLM II：node：模型、检查、双向流式转发到上游的调用 | I104 | todo |
 | I106 | LLM III：hub：node 表、模型、选择和转发 | I105 | todo |
@@ -1415,14 +1416,25 @@ fit 的，使 akit 的角色能与 fit 的角色互连（决定 038）。
 - **fit**：`tunnel/internal/transport/quic`、`tunnel/hub`；I160。
 - **状态**：todo。
 
-### I103 隧道 III：hub 的调用、token 过期、控制台套接字和 web 代理
+### I103 隧道 III：hub 的调用和状态、token 过期
 
-- **做什么**：hub 的调用（查询 node、在 `allow_hub_services` 和 `allow_proxy_services` 允许时设置其服务、踢掉对端、关闭隧道）
-  和状态；token 的过期和撤销关闭其链路（一分钟内、立即）；`password_peers`；hub 的 `console_socket`（其密封的 WebSocket、
-  `max_conns`、10 秒内的证明）和 proxy 的 `web_proxies`。
-- **完成标准**：移植后的 fit hub 和 token 端到端测试通过（过期、撤销、带警告的共享密码）；web 代理经由套接字提供 hub 的控制台。
+- **做什么**：hub 的调用（查询 node、在 `allow_hub_services` 允许时设置其服务、踢掉对端、关闭隧道）及其状态，按 fit 的页面读取的
+  样子，通过角色交给其页面的句柄（`Role::api`、`akit_tunnel::hub::HubApi`）；token 过期时在过期时刻关闭其链路，吊销时立即关闭；
+  `password_peers`。
+- **完成标准**：移植的 fit hub 和 token 测试通过（过期、列出使用共享密码的对端）；这些调用对连到 hub 的 node 和 proxy 生效。
+- **涉及**：`akit-tunnel`、`akit-roles`。
+- **fit**：`tunnel/hub/api.go`、`hub.go` 中的调用。
+- **状态**：done（2026-11-27）。见进度日志。控制台套接字和 web 代理移到 I103b。
+
+### I103b 隧道 III b：控制台套接字和 web 代理
+
+- **做什么**：hub 的 `console_socket`（其加密的 WebSocket，fit 的 `wscrypt`：PBKDF2、HKDF、每个方向的 AES-GCM；`max_conns`，来自
+  同一地址的未证明连接至多四分之一，10 秒内证明；每个 WebSocket 对应一条到 hub 控制台的 TCP 连接，双向调节）和 proxy 的
+  `web_proxies`（一个本地监听器，每条连接对应一个到 hub 套接字的 WebSocket）。
+- **完成标准**：移植的 fit `socket_test.go` 和 `webproxy_test.go` 通过；web 代理经 hub 的套接字提供 hub 的控制台，双向对照 fit 的
+  hub 和 proxy。
 - **涉及**：`akit-tunnel`。
-- **fit**：`tunnel/hub/api.go`、`socket.go`、`tunnel/proxy/webproxy.go`、`tunnel/internal/wscrypt`。
+- **fit**：`tunnel/hub/socket.go`、`tunnel/proxy/webproxy.go`、`tunnel/internal/wscrypt`。套接字承载的控制台是 hub 的页面（I109）。
 - **状态**：todo。
 
 ### I104 LLM I：网状链路（mesh）

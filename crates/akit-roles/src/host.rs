@@ -38,7 +38,17 @@ pub trait Role: Send {
     fn tokens(&self) -> Option<Registry> {
         None
     }
+
+    /// What the role's pages call (a hub's status, its calls on peers and tunnels): a handle of
+    /// the role's own type, which the caller downcasts (`akit_tunnel::hub::HubApi`). Its methods
+    /// return at once. `None` for a role without one.
+    fn api(&self) -> Option<Api> {
+        None
+    }
 }
+
+/// A role's handle for its pages ([`Role::api`]).
+pub type Api = Arc<dyn std::any::Any + Send + Sync>;
 
 /// A role akit can run.
 #[derive(Clone, Copy)]
@@ -335,6 +345,12 @@ impl Manager {
     #[must_use]
     pub fn running(&self) -> Vec<&'static str> {
         self.running.keys().copied().collect()
+    }
+
+    /// The handle of the running role `id` for its pages ([`Role::api`]).
+    #[must_use]
+    pub fn api(&self, id: &str) -> Option<Api> {
+        self.running.get(id).and_then(|r| r.api())
     }
 
     /// The running roles' token registries, for the Admin API.

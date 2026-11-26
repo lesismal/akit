@@ -20,6 +20,35 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-27: I103, the hub's calls and status, tokens' expiry; I103b split
+
+- The hub's calls (fit's `tunnel/hub/api.go` and the calls of `hub.go` it makes), on
+  `akit_tunnel::hub::HubApi`, the handle the hub gives its pages through `Role::api` (a new method
+  of akit-roles' `Role` with a default of `None`, and `Manager::api`): `status`, the JSON fit's
+  `GET /api/status` answers (name, version, the listeners with the URLs peers dial and the
+  certificate's fingerprint, the settings, the peers with their links' places, tokens, round trips
+  and tunnels, the tunnels with their service, the address the node reached, when they opened and
+  the bytes passed each way, `password_peers`); `refresh_node` (`node/info` on the node's link in
+  the lowest place, the answer taken and the proxies told), `set_services` (`node/setServices`,
+  which the node takes only with `allow_hub_services` and writes back to its member),
+  `kick` (fit's notify with the reason as a JSON string, then each link closed once it is sent,
+  those still registering too), `close_tunnel` (both ends told). A node or proxy kicked says so in
+  its uplink's state (`Uplink::kicked`), and links again after `retry_interval`, as fit's.
+- Tokens' expiry: the hub's sweep of expired tokens is scheduled again each time the config's
+  tokens change (a generation supersedes the sweep scheduled before), so that a token's links close
+  at its expiry, as fit's registry's timer does; before, the first sweep came a minute after the
+  hub started, whatever the tokens. A revoked token's links close at once (the registry's closers,
+  I101).
+- Split: the console socket and web proxies are I103b. The console the socket carries is the hub's
+  pages, which I109 serves. Decisions waiting for review: row 21.
+- Tests: `the_hubs_calls_and_status` (the status of a hub with a node, a proxy and a tunnel; a
+  node's info asked for again, a proxy refused; services set through a control thread that
+  applies the node's edit as `akit run`'s does; a tunnel closed from the hub ending the client's
+  connection; a proxy kicked and linking again), `a_tokens_expiry_closes_its_links` (fit's
+  `TestTokenExpires`: a token expiring two seconds after its node linked closes its links, and it
+  does not link again; tokens listed on the peers, no password peer).
+- Next: I103b, or I102d.
+
 ### 2026-11-27: I102c, WebSocket links
 
 - `ws://` and `wss://` links (`akit_tunnel::ws`, fit's `tunnel/internal/transport/ws`) on akio's

@@ -95,7 +95,7 @@ few crates as it can. fit's package of the same role is given for reference.
 
 Status: `todo`, `doing` or `done`. The next free iteration number is I110 (I84 and I88, reserved for the
 Logging and Access lists tracks, are unused; I95 and I96 are reserved for the Console track; I97
-renamed fit's external names; I98–I109, I102b, I102c and I102d are the Tunnel and LLM track).
+renamed fit's external names; I98–I109, I102b, I102c, I102d and I103b are the Tunnel and LLM track).
 
 | ID | Iteration | Depends on | Status |
 | --- | --- | --- | --- |
@@ -220,7 +220,8 @@ renamed fit's external names; I98–I109, I102b, I102c and I102d are the Tunnel 
 | I102b | Tunnel II b: QUIC links | I102 | done |
 | I102c | Tunnel II c: WebSocket links | I102b | done |
 | I102d | Tunnel II d: the hub's QUIC handshake bounds; a listener's certificate read again when its files change | I102c | todo |
-| I103 | Tunnel III: the hub's calls, token expiry, the console socket and web proxies | I102c | todo |
+| I103 | Tunnel III: the hub's calls and status, token expiry | I102c | done |
+| I103b | Tunnel III b: the console socket and web proxies | I103 | todo |
 | I104 | LLM I: the mesh: frames, sessions, streams with credit, the handshake, hello, pools | I99, I100 | todo |
 | I105 | LLM II: the node: models, checks, calls forwarded upstream streamed both ways | I104 | todo |
 | I106 | LLM III: the hub: node table, models, picking and relaying | I105 | todo |
@@ -1667,17 +1668,30 @@ link with fit's (decision 038).
 - **fit**: `tunnel/internal/transport/quic`, `tunnel/hub`; I160.
 - **Status**: todo.
 
-### I103 Tunnel III: the hub's calls, token expiry, the console socket and web proxies
+### I103 Tunnel III: the hub's calls and status, token expiry
 
-- **Do**: the hub's calls (query a node, set its services where `allow_hub_services` and
-  `allow_proxy_services` let it, kick a peer, close a tunnel) and status; tokens' expiry and
-  revocation closing their links (within a minute, at once); `password_peers`; the hub's
-  `console_socket` (its sealed WebSocket, `max_conns`, the 10 s proof) and a proxy's
-  `web_proxies`.
-- **Done when**: fit's hub and token e2e tests pass ported (expiry, revocation, the shared
-  password with its warning); a web proxy serves a hub's console through its socket.
+- **Do**: the hub's calls (query a node, set its services where `allow_hub_services` lets it, kick
+  a peer, close a tunnel) and its status, as fit's pages read them, through a handle the role
+  gives its pages (`Role::api`, `akit_tunnel::hub::HubApi`); tokens' expiry closing their links at
+  their expiry, and revocation at once; `password_peers`.
+- **Done when**: fit's hub and token tests pass ported (expiry, the shared password listed); the
+  calls work against a node and a proxy linked to the hub.
+- **Touches**: `akit-tunnel`, `akit-roles`.
+- **fit**: `tunnel/hub/api.go`, `hub.go`'s calls.
+- **Status**: done (2026-11-27). See the progress log. The console socket and web proxies moved to
+  I103b.
+
+### I103b Tunnel III b: the console socket and web proxies
+
+- **Do**: the hub's `console_socket` (its sealed WebSocket, fit's `wscrypt`: PBKDF2, HKDF, AES-GCM
+  each way; `max_conns`, a quarter of them at most unproven from one address, the 10 s proof; each
+  WebSocket a TCP connection to the hub's console, both ways paced) and a proxy's `web_proxies`
+  (a local listener, each connection a WebSocket of its own to a hub's socket).
+- **Done when**: fit's `socket_test.go` and `webproxy_test.go` pass ported; a web proxy serves a
+  hub's console through its socket, against fit's hub and proxy both ways.
 - **Touches**: `akit-tunnel`.
-- **fit**: `tunnel/hub/api.go`, `socket.go`, `tunnel/proxy/webproxy.go`, `tunnel/internal/wscrypt`.
+- **fit**: `tunnel/hub/socket.go`, `tunnel/proxy/webproxy.go`, `tunnel/internal/wscrypt`. The
+  console the socket carries is the hub's pages (I109).
 - **Status**: todo.
 
 ### I104 LLM I: the mesh

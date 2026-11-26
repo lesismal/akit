@@ -21,6 +21,9 @@ use crate::msg::{
     TunnelOpenReq, Verifier, method,
 };
 
+mod api;
+pub use api::{HubApi, InfoDone};
+
 /// The most bytes of a frame on a link that has not registered.
 const UNREGISTERED_FRAME: usize = 64 << 10;
 
@@ -72,6 +75,14 @@ struct Route {
     open: bool,
     up_flight: i64,
     down_flight: i64,
+    /// The node's service, and its address as the node reports it once the tunnel is open.
+    service: String,
+    addr: String,
+    /// When it opened, in seconds since 1970.
+    created: i64,
+    /// Bytes of data passed each way: from the proxy, and to it.
+    up: i64,
+    down: i64,
 }
 
 #[derive(Default)]
@@ -99,6 +110,11 @@ pub(crate) struct HubCore {
     fingerprint: Mutex<String>,
     st: Mutex<HubState>,
     epoch: u64,
+    /// When the hub started, in seconds since 1970.
+    started: i64,
+    /// The sweep of expired tokens in force: an earlier one, superseded when the tokens change,
+    /// ends at its time.
+    sweep_gen: std::sync::atomic::AtomicU64,
     me: Weak<HubCore>,
 }
 
@@ -594,16 +610,16 @@ impl HubCore {
             let Some(&node) = st.by_name.get(&format!("{}/{}", msg::TYPE_NODE, req.node)) else {
                 return r.err(&format!("tunnel: no node {:?}", req.node));
             };
-            let has = st
+            let svc_addr = st
                 .peers
                 .get(&node)
-                .is_some_and(|p| p.info.service(&req.service).is_some());
-            if !has {
+                .and_then(|p| p.info.service(&req.service).map(|s| s.addr.clone()));
+            let Some(svc_addr) = svc_addr else {
                 return r.err(&format!(
                     "tunnel: node {:?} has no service {:?}",
                     req.node, req.service
                 ));
-            }
+            };
             if st.routes.contains_key(&req.id) {
                 return r.err("tunnel: tunnel ID in use");
             }
@@ -632,6 +648,11 @@ impl HubCore {
                     open: true,
                     up_flight: 0,
                     down_flight: 0,
+                    service: req.service.clone(),
+                    addr: svc_addr,
+                    created: akit_roles::linktoken::unix_now(),
+                    up: 0,
+                    down: 0,
                 },
             );
             nl
@@ -646,7 +667,21 @@ impl HubCore {
             None,
             Box::new(move |res| match res {
                 Ok(b) => {
-                    let open = lock(&me.st).routes.get(&id).is_some_and(|x| x.open);
+                    let addr = msg::parse(&b)
+                        .map(|v| msg::get_str(&v, "addr"))
+                        .unwrap_or_default();
+                    let open = {
+                        let mut st = lock(&me.st);
+                        match st.routes.get_mut(&id) {
+                            Some(x) => {
+                                if !addr.is_empty() {
+                                    x.addr = addr;
+                                }
+                                x.open
+                            }
+                            None => false,
+                        }
+                    };
                     if open {
                         r.ok(&b);
                     } else {
@@ -735,7 +770,10 @@ impl HubCore {
                     &mut r.down_flight
                 };
                 *sent = sent.saturating_add(n);
-                (*sent > MAX_IN_FLIGHT).then_some("sent past its window")
+                let over = *sent > MAX_IN_FLIGHT;
+                let passed = if up { &mut r.up } else { &mut r.down };
+                *passed = passed.saturating_add(n);
+                over.then_some("sent past its window")
             }
             method::TUNNEL_ACK => match msg::parse_ack(payload) {
                 Some(k) if k > 0 => {
@@ -993,14 +1031,27 @@ pub fn new(host: Host) -> Result<Box<dyn Role>, String> {
         fingerprint: Mutex::new(String::new()),
         st: Mutex::new(HubState::default()),
         epoch: u64::from_be_bytes(epoch) >> 1,
+        started: akit_roles::linktoken::unix_now(),
+        sweep_gen: std::sync::atomic::AtomicU64::new(0),
         me: me.clone(),
     });
-    sweep(&core);
     Ok(Box::new(Hub { core }))
 }
 
-/// Closes the links of tokens that expired, at their expiry, a minute late at most.
+/// Closes the links of tokens that expired, at their expiry (fit's registry's timer): scheduled
+/// for the next expiry, a minute at most, and again each time the tokens change, which supersedes
+/// the sweep scheduled before.
 fn sweep(core: &Arc<HubCore>) {
+    use std::sync::atomic::Ordering;
+    let generation = core
+        .sweep_gen
+        .fetch_add(1, Ordering::SeqCst)
+        .wrapping_add(1);
+    arm_sweep(core, generation);
+}
+
+fn arm_sweep(core: &Arc<HubCore>, generation: u64) {
+    use std::sync::atomic::Ordering;
     let weak = Arc::downgrade(core);
     let every = core
         .tokens
@@ -1009,8 +1060,11 @@ fn sweep(core: &Arc<HubCore>) {
         .max(Duration::from_millis(200));
     let _ = akio::timer::after_send(every, move || {
         if let Some(c) = weak.upgrade() {
+            if c.sweep_gen.load(Ordering::SeqCst) != generation {
+                return;
+            }
             c.tokens.sweep();
-            sweep(&c);
+            arm_sweep(&c, generation);
         }
     });
 }
@@ -1192,6 +1246,7 @@ impl Role for Hub {
             Err(e) => errs.push(e),
         }
         c.tokens.set(&cfg.tokens);
+        sweep(c);
         *lock(&c.verifier) = (!cfg.password.is_empty()).then(|| Verifier::new(&cfg.password));
         let tokens = c.tokens.clone();
         let body_password = cfg.body_password.clone();
@@ -1260,6 +1315,9 @@ impl Role for Hub {
     fn stop(&mut self, _grace: Duration) {
         let c = &self.core;
         lock(&c.st).closing = true;
+        // The sweep scheduled ends at its time.
+        c.sweep_gen
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         for (_, b) in lock(&c.listeners).drain(..) {
             b.remove(&c.host.engine);
         }
@@ -1275,5 +1333,9 @@ impl Role for Hub {
 
     fn tokens(&self) -> Option<Registry> {
         Some(self.core.tokens.clone())
+    }
+
+    fn api(&self) -> Option<akit_roles::host::Api> {
+        Some(Arc::new(HubApi(Arc::clone(&self.core))))
     }
 }

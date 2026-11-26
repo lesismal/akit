@@ -213,11 +213,12 @@ impl Router for NodeRouter {
                 n.table.frame(l, m, body);
             }
             method::KICK => {
-                akit_observe::warn!(
-                    Tunnel,
-                    "tunnel.node: kicked by the hub: {}",
-                    String::from_utf8_lossy(body)
-                );
+                let why = String::from_utf8_lossy(body);
+                akit_observe::warn!(Tunnel, "tunnel.node: kicked by the hub: {why}");
+                let ups = lock(&n.uplinks).clone();
+                if let Some(u) = ups.iter().find(|u| u.owns(l)) {
+                    u.kicked(&why);
+                }
             }
             _ => {}
         }

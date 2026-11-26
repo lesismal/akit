@@ -19,6 +19,25 @@
 
 ## 日志
 
+### 2026-11-27：I103，hub 的调用和状态、token 过期；拆分出 I103b
+
+- hub 的调用（fit 的 `tunnel/hub/api.go` 及其调用的 `hub.go` 中的方法），在 `akit_tunnel::hub::HubApi` 上，这是 hub 通过 `Role::api`
+  交给其页面的句柄（akit-roles 的 `Role` 新增的方法，默认 `None`，以及 `Manager::api`）：`status`，即 fit 的 `GET /api/status` 返回
+  的 JSON（名字、版本、监听器及对端拨号用的 URL 和证书指纹、设置、对端及其链路的位置、token、往返时间和隧道数、隧道及其服务、node
+  连到的地址、打开时间和双向传递的字节数、`password_peers`）；`refresh_node`（在 node 位置最低的链路上调用 `node/info`，采纳其应答
+  并通知 proxy）、`set_services`（`node/setServices`，node 仅在 `allow_hub_services` 时接受并写回自己的配置成员）、`kick`（同 fit，
+  以 JSON 字符串形式的原因发送通知，发出后关闭每条链路，包括仍在注册的链路）、`close_tunnel`（通知两端）。被踢掉的 node 或 proxy
+  在其 uplink 的状态中说明（`Uplink::kicked`），并在 `retry_interval` 后重新连接，同 fit。
+- token 过期：hub 对过期 token 的清理在配置中的 token 每次变化时重新安排（新的一代取代之前安排的清理），使 token 的链路在其过期时
+  关闭，同 fit 注册表的定时器；此前第一次清理在 hub 启动一分钟后才进行，与 token 无关。被吊销 token 的链路立即关闭（注册表的
+  closer，I101）。
+- 拆分：控制台套接字和 web 代理是 I103b。套接字承载的控制台是 hub 的页面，由 I109 提供。待审决定：第 21 行。
+- 测试：`the_hubs_calls_and_status`（一个带 node、proxy 和一条隧道的 hub 的状态；重新查询 node 的信息，proxy 被拒绝；通过像
+  `akit run` 那样应用 node 编辑的控制线程设置服务；从 hub 关闭隧道使客户端连接结束；踢掉 proxy 后它重新连接）、
+  `a_tokens_expiry_closes_its_links`（fit 的 `TestTokenExpires`：node 连上两秒后过期的 token 关闭其链路，且不再连上；对端上列出
+  token，没有使用密码的对端）。
+- 下一步：I103b 或 I102d。
+
 ### 2026-11-27：I102c，WebSocket 链路
 
 - `ws://` 和 `wss://` 链路（`akit_tunnel::ws`，fit 的 `tunnel/internal/transport/ws`），基于 akio 的 A236：hub 的 `ws` 或 `wss`

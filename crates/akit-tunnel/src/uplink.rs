@@ -209,6 +209,16 @@ impl Uplink {
         }
     }
 
+    /// The hub kicked this side (fit's `fail(..., true)`): the state says so, whatever links
+    /// are still registered, until a link registers again.
+    pub fn kicked(&self, why: &str) {
+        let mut st = lock(&self.st);
+        if !self.stopped() {
+            st.state = STATE_FAILED;
+            st.last_err = format!("kicked by the hub: {why}");
+        }
+    }
+
     /// Dials the endpoint at `at` among the dials, falling back to the next; once every one has
     /// failed, waits `retry_interval` and starts over.
     fn keep(self: &Arc<Self>, at: usize) {

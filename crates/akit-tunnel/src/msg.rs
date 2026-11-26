@@ -169,6 +169,14 @@ impl Obj {
     }
 }
 
+/// `s` as a JSON string, quoted and escaped as Go's `encoding/json` writes it.
+#[must_use]
+pub fn json_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len().saturating_add(2));
+    write_string(&mut out, s);
+    out
+}
+
 /// A JSON array of what `items` write.
 #[must_use]
 pub fn array<T>(items: &[T], each: impl Fn(&T) -> String) -> String {

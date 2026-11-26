@@ -753,3 +753,223 @@ fn ws_links_a_slow_reader_holds_its_tunnel_alone() {
     e.wait();
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+// I103: the hub's calls and status, tokens' expiry.
+
+fn hub_api(roles: &Manager) -> akit_tunnel::hub::HubApi {
+    roles
+        .api("tunnel.hub")
+        .expect("the hub's handle")
+        .downcast_ref::<akit_tunnel::hub::HubApi>()
+        .expect("a HubApi")
+        .clone()
+}
+
+fn status(api: &akit_tunnel::hub::HubApi) -> akit_config::value::Value {
+    akit_tunnel::msg::parse(api.status().as_bytes()).expect("the status is JSON")
+}
+
+fn arr(v: &akit_config::value::Value, k: &str) -> Vec<akit_config::value::Value> {
+    match v.get(k) {
+        Some(akit_config::value::Value::Array(a)) => a.clone(),
+        _ => Vec::new(),
+    }
+}
+
+fn wait_until(what: &str, f: impl Fn() -> bool) {
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while !f() {
+        assert!(Instant::now() < deadline, "{what}");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+type InfoResult = Result<akit_tunnel::msg::Info, String>;
+
+fn call_info(f: impl FnOnce(akit_tunnel::hub::InfoDone)) -> InfoResult {
+    let (tx, rx) = std::sync::mpsc::channel();
+    f(Box::new(move |r| {
+        let _ = tx.send(r);
+    }));
+    rx.recv_timeout(Duration::from_secs(10)).unwrap()
+}
+
+/// fit's hub calls (`api.go`): the status the pages read, a node's info asked for again, its
+/// services set where it lets the hub, a tunnel closed and a peer kicked.
+#[test]
+fn the_hubs_calls_and_status() {
+    let (hub, svc, fwd) = (free_port(), echo(), free_port());
+    let up = format!(
+        r#"{{"name": "hub", "endpoints": [{{"address": "127.0.0.1:{hub}"}}], "password": "pw", "pool_size": 2, "retry_interval": "100ms"}}"#
+    );
+    let doc = format!(
+        r#"{{"tunnel": {{
+          "hub": {{"name": "hub", "password": "pw", "listeners": [{{"protocol": "tcp", "address": "127.0.0.1:{hub}"}}]}},
+          "node": {{"name": "lab", "hubs": [{up}], "allow_hub_services": true, "services": [{{"name": "echo", "address": "127.0.0.1:{svc}"}}]}},
+          "proxy": {{"name": "alice", "hubs": [{up}], "forwards": [{{"listen": "127.0.0.1:{fwd}", "node": "lab", "service": "echo"}}]}}}}}}"#
+    );
+    let e = engine();
+    let (roles, api) = controlled(&e, &doc);
+    let mut s = tunnel(fwd);
+    round_trip(&mut s, 1 << 20);
+
+    let st = status(&api);
+    assert_eq!(akit_tunnel::msg::get_str(&st, "name"), "hub");
+    assert_eq!(arr(&st, "peers").len(), 2, "{}", api.status());
+    assert_eq!(
+        arr(&st, "listen"),
+        [akit_config::value::Value::String(format!(
+            "127.0.0.1:{hub}"
+        ))]
+    );
+    let tunnels = arr(&st, "tunnels");
+    assert_eq!(tunnels.len(), 1, "{}", api.status());
+    assert_eq!(akit_tunnel::msg::get_str(&tunnels[0], "service"), "echo");
+    assert_eq!(
+        akit_tunnel::msg::get_str(&tunnels[0], "addr"),
+        format!("127.0.0.1:{svc}")
+    );
+    assert_eq!(api.password_peers(), ["node/lab", "proxy/alice"]);
+
+    // A node's info, asked for again.
+    let node = api.peer_id("node", "lab").unwrap();
+    let proxy = api.peer_id("proxy", "alice").unwrap();
+    let info = call_info(|d| api.refresh_node(node, d)).unwrap();
+    assert_eq!(info.name, "lab");
+    assert_eq!(info.services.len(), 1);
+    assert!(
+        call_info(|d| api.refresh_node(proxy, d)).is_err(),
+        "a proxy is no node"
+    );
+
+    // Its services set: the node takes them, and the hub shows them.
+    let svcs = [
+        akit_tunnel::msg::Service {
+            name: "echo".into(),
+            addr: format!("127.0.0.1:{svc}"),
+            desc: String::new(),
+        },
+        akit_tunnel::msg::Service {
+            name: "two".into(),
+            addr: format!("127.0.0.1:{svc}"),
+            desc: "the same".into(),
+        },
+    ];
+    let info = call_info(|d| api.set_services(node, &svcs, d)).unwrap();
+    assert_eq!(info.services.len(), 2);
+    assert!(api.status().contains(r#""description":"the same""#));
+
+    // A tunnel closed from the hub: the client's connection ends.
+    let id: u64 = akit_tunnel::msg::get_str(&tunnels[0], "id")
+        .parse()
+        .unwrap();
+    assert!(api.close_tunnel(id, "closed from the hub's console"));
+    assert!(!api.close_tunnel(id, "again"));
+    s.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+    let mut b = [0u8; 1];
+    assert!(
+        matches!(s.read(&mut b), Ok(0) | Err(_)),
+        "the tunnel stayed open"
+    );
+
+    // A peer kicked: its links close; it links again after its retry.
+    assert!(!api.kick(9999, "nobody"));
+    let before = api.status();
+    assert!(api.kick(proxy, "kicked from the hub's console"));
+    wait_until("the kicked proxy's links to close", || {
+        api.peer_id("proxy", "alice") != Some(proxy)
+    });
+    wait_until("the proxy to link again", || {
+        api.peer_id("proxy", "alice").is_some()
+    });
+    assert_ne!(api.status(), before);
+    let _ = tunnel(fwd);
+    roles.lock().unwrap().stop(Duration::ZERO);
+    e.shutdown();
+    e.wait();
+}
+
+/// The roles of `doc`, with a control thread that applies their edits as `akit run`'s does; and
+/// the hub's handle.
+fn controlled(
+    e: &Arc<akio::Engine>,
+    doc: &str,
+) -> (Arc<std::sync::Mutex<Manager>>, akit_tunnel::hub::HubApi) {
+    let (tx, rx) = std::sync::mpsc::channel::<akit_roles::host::Edit>();
+    let tx = std::sync::Mutex::new(tx);
+    let editor: akit_roles::host::Editor = Arc::new(move |edit| {
+        let _ = tx.lock().unwrap().send(edit);
+        Ok(())
+    });
+    let mut roles = Manager::new(
+        &[akit_tunnel::HUB, akit_tunnel::NODE, akit_tunnel::PROXY],
+        Arc::clone(e),
+        Some(editor),
+    );
+    let config = akit_config::from_json(doc, None).unwrap_or_else(|err| panic!("{doc}\n{err}"));
+    assert!(roles.apply(&config).is_empty());
+    let api = hub_api(&roles);
+    let roles = Arc::new(std::sync::Mutex::new(roles));
+    let control = Arc::clone(&roles);
+    let mut value = akit_config::value::parse(doc).unwrap();
+    std::thread::spawn(move || {
+        while let Ok(edit) = rx.recv() {
+            match edit.apply_to(&mut value) {
+                Ok(done) => {
+                    let config = akit_config::from_json(&value.to_json(), None).unwrap();
+                    let errs = control.lock().unwrap().apply(&config);
+                    done(if errs.is_empty() {
+                        Ok(Vec::new())
+                    } else {
+                        Err(errs.join("; "))
+                    });
+                }
+                Err((done, err)) => done(Err(err)),
+            }
+        }
+    });
+    (roles, api)
+}
+
+/// fit's `TestTokenExpires` and `TestTokenRevoke`: a token whose expiry passes closes the links
+/// it holds, and is refused from then on.
+#[test]
+fn a_tokens_expiry_closes_its_links() {
+    let (rn, tn) = token_record("lab");
+    let s = Secret::parse(&tn).unwrap();
+    let exp = akit_roles::linktoken::unix_now() + 2;
+    let rn = rn.replace(
+        &format!(r#""id": "{}""#, s.id()),
+        &format!(r#""id": "{}", "expires_at": {exp}"#, s.id()),
+    );
+    let (rp, tp) = token_record("alice");
+    let env = start(
+        &format!(r#", "tokens": [{rn}, {rp}]"#),
+        (
+            &format!(r#""token": "{tn}""#),
+            &format!(r#""token": "{tp}""#),
+        ),
+        "",
+    );
+    let api = hub_api(&env.roles);
+    let _ = tunnel(env.forward);
+    assert!(api.password_peers().is_empty());
+    let st = status(&api);
+    assert!(
+        arr(&st, "peers")
+            .iter()
+            .all(|p| arr(p, "tokens").len() == 1),
+        "{}",
+        api.status()
+    );
+    // Past the expiry the node's links close, and it does not link again.
+    wait_until("the node's links to close at its token's expiry", || {
+        api.peer_id("node", "lab").is_none()
+    });
+    std::thread::sleep(Duration::from_millis(600));
+    assert!(
+        api.peer_id("node", "lab").is_none(),
+        "an expired token linked again"
+    );
+    assert!(api.peer_id("proxy", "alice").is_some());
+}
