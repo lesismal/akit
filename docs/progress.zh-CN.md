@@ -19,6 +19,37 @@
 
 ## 日志
 
+### 2026-11-27：I104，LLM mesh：基于 akio-ws 的 wire、链路和 mesh
+
+- `akit-llm`（新）：fit 的 `llm/internal/wire` 和 `mesh`，线上逐字节一致。帧（`wire::frame`）：fit 的头，调用、打开流和推送带方法名，
+  1 KiB 起在更小时用 gzip（akio-deflate），编码后或解压后最大 16 MiB。会话（`wire::session`）：奇偶流 ID，带超时（并通知对端取消）的调用，
+  推送，带往返时间计量的 ping，排空，`max_inbound`（超出即限流），每个方向 256 KiB 窗口、消费一半即归还信用的流，空闲超时（定时器按剩余
+  时间重新设置），保活，`Pump`。fit 的 goroutine 在这里是回调：调用的处理函数在就绪时通过 `Reply` 应答（未应答即丢弃时回内部错误）；流的
+  读者在 `on_data` 中拿到帧并用 `release` 归还；没有信用的发送方（`try_send`）由 `on_credit` 告知何时重试。推送在链路的线程上按到达顺序
+  处理，因此没有排队的（fit 的 1,024 个队列无需保存任何东西），出站链路的 hello 应答在读下一帧之前登记对端（fit 在 `caller` 中的两秒等待
+  无需等待）。
+- 链路（`wire::conn`）：监听器引擎上的 akio-ws。监听器是一个独立的 akio 监听器，只在 `/ws` 上提供 akio-http 的升级（其他路径 404），
+  经 TLS（TLS 1.3，无 ticket）或在回环上明文；升级之后是 fit 的握手（32 字节挑战、token 的 `FTK1` 应答或密码的 HMAC 加 nonce、带监听方
+  证明的 `0x01` 确认、4001 和 4003 关闭）；最多 256 条未认证链路、单个地址 16 条，从 TCP accept 起计（akio 的 `on_accept`/`on_close`），
+  10 秒内未认证即关闭；`max_conns`。每条链路按 fit 的 `Conn.send` 节流：排队超过 64 KiB 时暂停其流，并暂停读取至多 ping 间隔与慢超时中
+  较短者的四分之一，直到 akio-ws 的 `on_drain`（A236）；链路设为中继（`set_relayed`），使引擎只在链路自己的循环上发送时才检查的暂停不会压住
+  由其他链路喂数据的链路。心跳：空闲一个间隔后、发送过帧后、或往返时间已过两个间隔时发 ping；三个间隔无帧或 ping 等满慢超时即断开链路。
+  拨号方固定指纹的 `wss://` 链路使用 akio-tls 的 `pin_sha256`（A235），指纹在握手中检查。
+- mesh（`mesh`）：基于定时器和回调的 fit `Mesh`：监听器（`set_listen`，回环之外用 TLS）、按全抖动退避保持连接的拨号目标（hello 被拒绝后
+  更久）、双向 hello 及 fit 的检查（接受的角色、非自身角色、非自身、以另一角色持有的 ID、密码对应的角色、token 绑定第一个用它 hello 的 ID、
+  目标须具有的角色）、按对端 ID 的链路池、在未排空的链路间轮询、`call`、`open_stream`、`push`、`peers`、`targets`、`kick`、`configure`
+  （未变化的部分及其链路保持不动）、`shutdown` 等待进行中的调用和流（由链路的会话通知的条件变量，不轮询）。`Router` 带每个方法的角色和超时
+  （`Answer`），页面的 `local` 角色始终接受。角色 hello 时的版本是 `akit <version>`；对端只显示它。
+- 测试（36 个）：fit 的帧、会话、流控、边界和异步测试（信用、慢读者只压住自己的流、取消到达处理函数、空闲、保活、关闭、推送顺序、ping、
+  `max_inbound`、排空、暂停的流、对端的协议错误、超出窗口、ID 回绕、pump 把写方压到慢读者的速度）；链路（双向密码、token、错误密码、
+  `max_conns`、accept 钩子、404、单地址的未认证链路、慢超时断开沉默的对端、未完成的握手以 4001 关闭）；mesh（一条链路上的双向调用、角色、
+  方法超时、流、按序推送、被踢掉的链路重新拨号、拒绝角色、密码和以另一角色声明的 ID、token 绑定其成员及吊销的 token 关闭其链路、两条链路的
+  池和排空、不 hello 的链路被关闭、带指纹和错误指纹的 TLS、`configure`）。对 fit 的二进制（`tests/fit_mesh.rs`，用 `AKIT_FIT_BIN` 运行）：
+  akit 的 node 用共享密码、用 fit 签发的 token（写成 `akitt1.`）以及经固定指纹的 TLS 连接 fit 的 hub，错误的指纹和错误的密码都连不上；
+  fit 的 node 用角色密码、用 akit 签发的 token（写成 `fitt1.`）以及经固定指纹的 TLS 连接 akit 的 hub，推送其信息并应答 `/node/info`。
+- 临时方案：拨号方用 close 帧断开已死或过慢的链路，该帧排在等待的数据之后，akio-ws 的客户端在其关闭超时（这里 1 秒）后关闭 TCP 连接；
+  监听方通过连接句柄立即中止。akio API 请求 A238 请求 `WsSender::abort`。
+- 下一步：其上的角色，I105（node）、I106（hub）、I107（proxy）。
 ### 2026-11-27：I103，hub 的调用和状态、token 过期；拆分出 I103b
 
 - hub 的调用（fit 的 `tunnel/hub/api.go` 及其调用的 `hub.go` 中的方法），在 `akit_tunnel::hub::HubApi` 上，这是 hub 通过 `Role::api`

@@ -395,6 +395,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "akit-llm"
+version = "0.0.1"
+dependencies = [
+ "akio",
+ "akio-crypto",
+ "akio-deflate",
+ "akio-http",
+ "akio-ws",
+ "akio-x509",
+ "akit-access",
+ "akit-config",
+ "akit-observe",
+ "akit-roles",
+]
+
+[[package]]
 name = "akit-middleware"
 version = "0.0.1"
 dependencies = [

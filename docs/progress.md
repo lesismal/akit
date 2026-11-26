@@ -20,6 +20,64 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-27: I104, the LLM mesh: wire, links and mesh on akio-ws
+
+- `akit-llm` (new): fit's `llm/internal/wire` and `mesh`, byte for byte on the wire. Frames
+  (`wire::frame`): fit's header, the method on calls, stream opens and pushes, gzip from 1 KiB when
+  smaller (akio-deflate), 16 MiB encoded or inflated. Sessions (`wire::session`): odd and even
+  stream IDs, calls with a timeout that tells the peer to cancel, pushes, pings with the round
+  trips' meter, drain, `max_inbound` (rate limited past it), streams with a 256 KiB window each way
+  and credit given back at half of it, the idle timeout (a timer that sets itself again for what is
+  left), keep-alives, `Pump`. fit's goroutines are callbacks here: a call's handler answers through
+  a `Reply` whenever it is ready (dropped unanswered, an internal error); a stream's reader gets
+  its frames at `on_data` and gives them back with `release`; a sender that finds no credit
+  (`try_send`) is told when to try again (`on_credit`). Pushes are handled on the link's thread in
+  the order they came, so none waits (fit's queue of 1,024 has nothing to hold), and an outbound
+  link's hello answer registers the peer before the next frame is read (fit's two-second wait in
+  `caller` has nothing to wait for).
+- Links (`wire::conn`): akio-ws on the listeners' engine. A listener is an akio listener of its own
+  serving akio-http's upgrade on `/ws` alone (404 for any other path), over TLS (TLS 1.3, no
+  tickets) or plain on loopback; fit's handshake after the upgrade (the 32-byte challenge, a
+  token's `FTK1` answer or a password's HMAC and nonce, the `0x01` acknowledgement with the
+  listener's proof, 4001 and 4003 closes); at most 256 links not authenticated and 16 from one
+  address, counted from the TCP accept (akio's `on_accept`/`on_close`) and closed 10 s after it
+  unless they authenticate; `max_conns`. Each link is paced as fit's `Conn.send`: past 64 KiB queued
+  its streams are held and its reads held for a quarter of the shorter of the ping interval and the
+  slow timeout at most, until akio-ws's `on_drain` (A236); the links are relayed (`set_relayed`),
+  so that the engine's own pause, which only sends on the link's loop check, does not hold a link
+  fed from other links. The heartbeat: a ping after an idle interval, after frames sent or after a
+  round trip two intervals old; three intervals silent or a ping waiting the slow timeout drops the
+  link. A dialer's pinned `wss://` link uses akio-tls's `pin_sha256` (A235), so the pin is checked
+  in the handshake.
+- The mesh (`mesh`): fit's `Mesh` on timers and callbacks: a listener (`set_listen`, TLS off
+  loopback), dial targets kept linked with full-jitter backoff (longer after a refused hello), the
+  hello both ways with fit's checks (roles taken, not one's own, not oneself, an ID held under
+  another role, the password's roles, a token binding the first ID that says hello with it, the
+  role a target must have), pools of links by peer ID, round robin over those not draining,
+  `call`, `open_stream`, `push`, `peers`, `targets`, `kick`, `configure` (what did not change, its
+  links among it, left alone), `shutdown` waiting for the calls and streams under way (a condition
+  the links' sessions signal, no polling). The `Router` with each method's roles and timeout
+  (`Answer`), the pages' `local` role always taken. The version a role says hello with is
+  `akit <version>`; peers only show it.
+- Tests (36): fit's frame, session, flow, edge and async tests (credit, a slow reader holding its
+  own stream only, cancel reaching the handler, idle, keep-alive, close, push order, pings,
+  `max_inbound`, drain, held streams, a peer's protocol errors, a window overrun, IDs wrapping, the
+  pump holding a writer to a slow reader); links (passwords both ways, tokens, a wrong password,
+  `max_conns`, the accept hook, 404, pending links per address, a silent peer dropped by the slow
+  timeout, a handshake that never finishes closed with 4001); the mesh (both directions on one
+  link, roles, the method timeout, streams, pushes in order, a kicked link dialed again, refusals
+  of roles, passwords and an ID claimed under another role, tokens binding their members and a
+  revoked token closing its link, a pool of two links and a drain, a link without hello closed,
+  TLS with a pin and a wrong one, `configure`). Against fit's binary (`tests/fit_mesh.rs`, run with
+  `AKIT_FIT_BIN`): an akit node links to a fit hub with the shared password, with a token fit
+  issued (written `akitt1.`) and over TLS pinned, a wrong pin and a wrong password linking nothing;
+  a fit node links to an akit hub with a role's password, with a token akit issued (written
+  `fitt1.`) and over TLS pinned, pushes its info, and answers `/node/info`.
+- Stopgap: a dialer drops a dead or too slow link with a close frame, which queues behind what
+  waits, and akio-ws's client closes the TCP connection after its close timeout, 1 s here; a
+  listener aborts at once through the connection's handle. akio API request A238 asks for
+  `WsSender::abort`.
+- Next: the roles on it, I105 (node), I106 (hub), I107 (proxy).
 ### 2026-11-27: I103, the hub's calls and status, tokens' expiry; I103b split
 
 - The hub's calls (fit's `tunnel/hub/api.go` and the calls of `hub.go` it makes), on

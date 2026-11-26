@@ -22,6 +22,7 @@ members = [
     "crates/akit-access",
     "crates/akit-roles",
     "crates/akit-tunnel",
+    "crates/akit-llm",
     "tests/compat",
 ]
 
@@ -48,6 +49,8 @@ akio-crypto = { git = "https://github.com/lesismal/akio", rev = "6151f5c56f5e7a4
 # HTTP/3 listeners (akit-listener): akio-h3 serves akio-http's services over akio-quic.
 akio-h3 = { git = "https://github.com/lesismal/akio", rev = "6151f5c56f5e7a4bb2107ada495325a8bbf387c7" }
 akio-quic = { git = "https://github.com/lesismal/akio", rev = "6151f5c56f5e7a4bb2107ada495325a8bbf387c7" }
+# WebSockets: the LLM mesh's links (akit-llm, I104).
+akio-ws = { git = "https://github.com/lesismal/akio", rev = "6151f5c56f5e7a4bb2107ada495325a8bbf387c7" }
 # Route path regexps (akit-router) and the redirect middleware's (akit-middleware), decision 001:
 # linear-time matching, no dependencies.
 akio-regex = { git = "https://github.com/lesismal/akio", rev = "6151f5c56f5e7a4bb2107ada495325a8bbf387c7" }
@@ -87,6 +90,7 @@ akit-plugin = { path = "crates/akit-plugin" }
 akit-access = { path = "crates/akit-access" }
 akit-roles = { path = "crates/akit-roles" }
 akit-tunnel = { path = "crates/akit-tunnel" }
+akit-llm = { path = "crates/akit-llm" }
 
 [workspace.lints.rust]
 # No unsafe in akit (rules.md rule 14); every crate also says #![forbid(unsafe_code)].

@@ -1,0 +1,30 @@
+[package]
+name = "akit-llm"
+description = "fit's LLM feature on akio: the mesh its hub, nodes and proxies link with, byte for byte fit's, over akio-ws."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+# The links' engine, their listeners, timers and the logical pool.
+akio = { workspace = true }
+# The listener's WebSocket upgrade (and, I105-I107, the upstream client and the agents' API).
+akio-http = { workspace = true }
+# The links: WebSockets (decision 038).
+akio-ws = { workspace = true }
+# HMAC-SHA256 of the passwords' proofs, random challenges and nonces, SHA-256 of pins, base64.
+akio-crypto = { workspace = true }
+# The frames' gzip.
+akio-deflate = { workspace = true }
+# The listener's self-signed certificate.
+akio-x509 = { workspace = true }
+akit-access = { workspace = true }
+akit-config = { workspace = true }
+akit-observe = { workspace = true }
+akit-roles = { workspace = true }
+
+[lints]
+workspace = true
