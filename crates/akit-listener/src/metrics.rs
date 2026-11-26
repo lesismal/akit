@@ -15,8 +15,8 @@
 //! - the listeners' connections: `fit_connections_open`, `fit_connections_refused_total`,
 //!   `fit_pending_bytes`, `fit_reads_paused_total`, from akio's engine telemetry
 //!   (`fit_connections_open` counts the upstream connections dialed on the engine too, until
-//!   akio can tell them apart: akio API request A30; `reason="budget"` is 0, akit having no
-//!   `limits.max_pending_bytes` yet);
+//!   akio can tell them apart: akio API request A30; `reason="budget"` counts the pauses of
+//!   `limits.max_pending_bytes`, akio's `budget_pauses`, I79b);
 //! - `fit_config_reloads_total`, `fit_config_version` and
 //!   `fit_config_last_applied_timestamp_seconds`;
 //! - `fit_trace_spans_total`, by what became of the spans, with `telemetry.traces` (I64);
@@ -281,9 +281,12 @@ impl Scrape {
             tel.total.backpressure,
             &[("reason", "watermark")],
         );
-        // akit has no budget of pending bytes across connections yet (limits.max_pending_bytes,
-        // akio API request A214).
-        w.sample_u64("fit_reads_paused_total", 0, &[("reason", "budget")]);
+        // limits.max_pending_bytes (I79b): akio's budget across the engine's connections.
+        w.sample_u64(
+            "fit_reads_paused_total",
+            tel.total.budget_pauses,
+            &[("reason", "budget")],
+        );
 
         let (tried, failed) = self.config.reloads();
         w.family(

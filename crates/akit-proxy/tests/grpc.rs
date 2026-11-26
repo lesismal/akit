@@ -93,7 +93,12 @@ impl Akit {
     /// To `addr`, over h2 with TLS trusting the CA at `ca` when given, else over h2c.
     fn to(addr: &str, ca: Option<&std::path::Path>, params: &str) -> Akit {
         let protocol = if ca.is_some() { "h2" } else { "h2c" };
-        let config = akit_config::from_json(&config(addr, protocol, params), None).unwrap();
+        Akit::from(&config(addr, protocol, params), ca)
+    }
+
+    /// Serving `json`, whose upstream is at `addr` over h2 trusting `ca` when given.
+    fn from(json: &str, ca: Option<&std::path::Path>) -> Akit {
+        let config = akit_config::from_json(json, None).unwrap();
         let Some(ca) = ca else {
             let slot = EngineSlot::new();
             let graph =
@@ -958,4 +963,23 @@ fn fields_upstream() {
     let (_, timeout) = rx.recv_timeout(Duration::from_secs(10)).unwrap();
     assert_eq!(timeout.as_deref(), Some("1S"));
     up.shutdown();
+}
+
+/// fit-examples' `grpc` (I79b): calls taken on a listener of h2c alone, HTTP/2 with prior
+/// knowledge and nothing else, as gRPC clients speak it (akio's ADR-174).
+#[test]
+fn h2c_alone_listener() {
+    let up = Upstream::start("h2c");
+    let json = config(&up.addr(), "h2c", "").replace(r#"["http/1.1", "h2c"]"#, r#"["h2c"]"#);
+    assert!(json.contains(r#""protocols": ["h2c"]"#), "{json}");
+    let akit = Akit::from(&json, None);
+    let c = akit.client();
+    let out = c
+        .unary(
+            "/test.Echo/Unary",
+            &msg("hello", 7),
+            opts(Duration::from_secs(10)),
+        )
+        .unwrap();
+    assert_eq!(parse(&out), ("hello".to_owned(), 7));
 }

@@ -831,3 +831,52 @@ fn body_limit() {
     let seen: Vec<usize> = rx.try_iter().map(|s| s.body.len()).collect();
     assert_eq!(seen, [150_000; 3]);
 }
+
+/// `limits.max_conns` counts the client connections alone (I79b, akio's ADR-173), as fit's: the
+/// upstream connections the proxy dials on the same engine take no room from its clients. Two
+/// clients through the proxy, with the upstream connections they made still open, are served
+/// and the third is closed as it is accepted; before I79b the upstream connections counted.
+#[test]
+fn connection_limit_counts_clients_only() {
+    let (up, _seen) = fixed("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nup");
+    let akit = Akit::start(&format!(
+        r#"{{"listeners": [{{"name": "web", "address": "127.0.0.1:0"}}],
+            "limits": {{"max_conns": 2}},
+            "upstreams": [{{"name": "app", "addresses": ["{up}"]}}],
+            "routes": [{{"handler": {{"module": "proxy", "params": {{"upstream": "app"}}}}}}]}}"#
+    ));
+    let ask = |s: &mut TcpStream| -> String {
+        s.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+        s.write_all(b"GET / HTTP/1.1\r\nHost: a.example\r\n\r\n")
+            .unwrap();
+        let mut b = [0u8; 512];
+        let n = s.read(&mut b).unwrap();
+        String::from_utf8_lossy(&b[..n]).into_owned()
+    };
+    let mut one = TcpStream::connect(akit.addr).unwrap();
+    let r = ask(&mut one);
+    assert!(r.starts_with("HTTP/1.1 200") && r.ends_with("up"), "{r}");
+    let mut two = TcpStream::connect(akit.addr).unwrap();
+    let r = ask(&mut two);
+    assert!(r.starts_with("HTTP/1.1 200") && r.ends_with("up"), "{r}");
+    let tel = akit.engine.telemetry();
+    assert_eq!(tel.open_accepted(), 2);
+    assert!(
+        tel.open_connections() >= 3,
+        "connections open, the upstream's with the clients': {}",
+        tel.open_connections()
+    );
+    // The third client is closed as it is accepted.
+    let mut three = TcpStream::connect(akit.addr).unwrap();
+    three
+        .set_read_timeout(Some(Duration::from_secs(3)))
+        .unwrap();
+    let _ = three.write_all(b"GET / HTTP/1.1\r\nHost: a.example\r\n\r\n");
+    let mut b = [0u8; 64];
+    assert!(
+        matches!(three.read(&mut b), Ok(0) | Err(_)),
+        "a client past max_conns was served"
+    );
+    assert!(tel.metrics().total.rejected >= 1);
+    drop((one, two));
+}

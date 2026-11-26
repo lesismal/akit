@@ -13,7 +13,7 @@ akit 配置的每个字段：配置的每一部分是做什么的、一个示例
 akit 与 fit 不同之处，在表格中以 **akit：** 标出。
 
 <!-- BEGIN GENERATED: summary -->
-fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **428** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 63 个对象，下文各有一张表。
+fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **429** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 63 个对象，下文各有一张表。
 <!-- END GENERATED -->
 
 字段说明来自 fit 代码中的 `doc` 标签，是英文的，所以每个字段的完整说明在[英文版](config.md)的同一张表中；本页的表格给出每个字段的
@@ -179,7 +179,7 @@ route { listeners web internal; handler respond { body plain } }
 | `name` | 字符串 | 必填 |  |
 | `access` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
 | `mptcp` | 布尔值 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
-| `protocols` | 字符串：`http/1.1`、`h2c`、`h2`、`h3`、`tcp`、`udp`、`socks`的列表 |  | **akit：**只有 `h2c` 而没有 `http/1.1` 时按“尚不支持”拒绝：akio 的服务器在 h2c 之外总是同时接受 HTTP/1.1（akio API 请求 A168）。 |
+| `protocols` | 字符串：`http/1.1`、`h2c`、`h2`、`h3`、`tcp`、`udp`、`socks`的列表 |  | **akit：**有 `h2c` 而没有 `http/1.1` 时，监听器只以先验知识提供 HTTP/2，与 fit 相同（I79b）：发送其他内容的客户端会先收到 akio 的 `GOAWAY`（`PROTOCOL_ERROR`）再被关闭连接，而 fit 不发送任何内容直接关闭（akio 的 ADR-174）。 |
 | `proxy_protocol` | [对象](#cfg-listeners-proxy-protocol) |  |  |
 | `sockmap` | 布尔值 | `false` | **akit 扩展**（[决定 010](../decisions/010-sockmap-relay.zh-CN.md)）。该监听器接受的 `tcp` 服务连接，在能加载 akio 的 eBPF sockmap 中继时（Linux 6.15 及以上，具备 `CAP_BPF` 和 `CAP_NET_ADMIN`）在内核中直接拼接，否则在用户态转发。只用于协议包含 `tcp` 的监听器。重载改变它时，只影响此后接受的连接。fit 把它当作未知字段拒绝。 |
 | `socks` | [对象](#cfg-listeners-socks) |  |  |
@@ -628,11 +628,11 @@ telemetry {
 ## 上限
 
 限制客户端能让 akit 为其保留多少资源，作用于所有监听器：最大的请求头（`max_header_bytes`，超出答 431）和请求体
-（`max_body_bytes`，超出答 413）、同时打开的客户端连接数（`max_conns`）、一个连接可为其客户端排队的字节数
-（`max_write_queue_bytes`），以及客户端可以不读响应多久（`write_stall_timeout`）。`max_conns` 和 `max_write_queue_bytes`
-在启动时生效；重载改变它们时会给出警告。`max_pending_bytes` 是所有客户端合计等待字节的预算，尚不支持：akio 没有这样的预算
-（akio API 请求 A214），在此之前由 akio 每个连接的水位和联动的背压约束每个连接。[`body_limit`](#body_limit) 中间件可以进一步
-限制某条路由的请求体。
+（`max_body_bytes`，超出答 413）、同时打开的客户端连接数（`max_conns`；akit 到上游的连接不计入）、一个连接可为其客户端
+排队的字节数（`max_write_queue_bytes`）、所有客户端合计等待的字节数（`max_pending_bytes`，默认为内存的一半：超过后每个
+连接都停止读，直到有数据发出），以及客户端可以不读响应多久（`write_stall_timeout`）。`max_conns`、`max_pending_bytes` 和
+`max_write_queue_bytes` 在启动时生效；重载改变它们时会给出警告。[`body_limit`](#body_limit) 中间件可以进一步限制某条
+路由的请求体。
 
 ```fit
 listener web :8080
@@ -656,9 +656,9 @@ limits {
 | 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
 | `max_body_bytes` | 整数，≥ 0 | `16777216` |  |
-| `max_conns` | 整数，≥ 0 | `100000` | **akit：**即 akio 引擎范围的 `max_connections`：akit 在监听器的引擎上拨出的连接（到上游的连接）也计入其中，但超出时只关闭新接受的连接（akio API 请求 A215）。 |
+| `max_conns` | 整数，≥ 0 | `100000` |  |
 | `max_header_bytes` | 整数，≥ 0 | `1048576` |  |
-| `max_pending_bytes` | 字节数或百分比 | `"50%"` | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `max_pending_bytes` | 字节数或百分比 | `"50%"` | **akit：**即 akio 对监听器引擎上所有排队字节的预算（akio 的 ADR-172）：超过后，每个连接（包括到上游的连接）在当前这次读之后停止读，排队字节回落到预算的四分之三以下时全部恢复。akio 大约每毫秒汇总一次各 I/O 线程的队列，所以期间入队的数据可能略微超过预算。内存份额在 Linux 上从 `/proc/meminfo` 和 cgroup 的上限读取；其他系统（macOS）上 akit 读不到内存，份额按 256 MiB 计。 |
 | `max_write_queue_bytes` | 整数，≥ 0 | `33554432` | **akit：**即 akio 的 `max_queued_bytes`：超出时 akio 拒绝这次写入（`Overloaded`）而不排队，fit 则关闭连接。 |
 | `write_stall_timeout` | 时长 | `"30s"` |  |
 <!-- END GENERATED -->

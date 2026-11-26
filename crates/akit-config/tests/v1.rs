@@ -73,13 +73,14 @@ fn engine_read_as_fit_reads_it() {
     assert!(!e.only_not_supported_yet(), "{e}");
 }
 
-/// fit-examples' `limits` example, in fit's `.conf`, but for `max_pending_bytes`.
+/// fit-examples' `limits` example, in fit's `.conf`, `max_pending_bytes` a share (I79b).
 #[test]
 fn engine_and_limits_in_conf() {
     let c = from_conf(
         "listener web :8080 http/1.1 h2c\n\
          route hello { handler respond { body \"hello\\n\" } }\n\
-         limits {\n\tmax_header_bytes 64KiB\n\tmax_conns 200000\n\tmax_body_bytes 32MiB\n\
+         limits {\n\tmax_header_bytes 64KiB\n\tmax_pending_bytes 25%\n\tmax_conns 200000\n\
+         \tmax_body_bytes 32MiB\n\
          \tmax_write_queue_bytes 8MiB\n\twrite_stall_timeout 30s\n}\n\
          engine {\n\tevent_loops 8\n\tworkers 64\n\tmin_workers 8\n\ttask_queue 65536\n\
          \tread_buffer_size 64KiB\n\twrite_watermark 262144\n\tbacklog 4096\n}\n",
@@ -89,6 +90,7 @@ fn engine_and_limits_in_conf() {
     assert_eq!(c.limits.max_header_bytes, 64 << 10);
     assert_eq!(c.listeners[0].max_header_bytes, 64 << 10);
     assert_eq!(c.limits.max_conns, 200_000);
+    assert_eq!(c.limits.max_pending_bytes, akit_config::Memory::Share(2500));
     assert_eq!(c.limits.max_write_queue_bytes, 8 << 20);
     assert_eq!(c.engine.event_loops, 8);
     assert_eq!(c.engine.read_buffer_size, 64 << 10);

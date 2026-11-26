@@ -1,6 +1,6 @@
 //! `limits` (I16, I17b, I79): `max_body_bytes` and `max_header_bytes` read as fit reads them,
-//! carried by every listener, `write_stall_timeout`, `max_conns` and `max_write_queue_bytes`;
-//! `max_pending_bytes` refused as not supported yet; given by one file only.
+//! carried by every listener, `write_stall_timeout`, `max_conns`, `max_write_queue_bytes` and
+//! (I79b) `max_pending_bytes`; given by one file only.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use std::fs;
@@ -112,17 +112,79 @@ fn header_conns_and_queue() {
     }
 }
 
+/// `max_pending_bytes` (I79b): a number of bytes or a share of memory, fit's `TestMemory` and
+/// `TestLimits`; half the memory when left out or 0.
 #[test]
-fn other_fields_not_supported_yet() {
-    let e = limits(
+fn max_pending_bytes() {
+    use akit_config::{DEFAULT_MAX_PENDING_BYTES, FALLBACK_MAX_PENDING_BYTES, Memory};
+    assert_eq!(DEFAULT_MAX_PENDING_BYTES, Memory::Share(5000));
+    assert_eq!(FALLBACK_MAX_PENDING_BYTES, 256 << 20);
+    for fields in ["", r#""max_pending_bytes": 0"#] {
+        let c = limits(fields).unwrap();
+        assert_eq!(c.limits.max_pending_bytes, DEFAULT_MAX_PENDING_BYTES);
+    }
+    let total = 64u64 << 30;
+    for (v, want, bytes) in [
+        ("1048576", Memory::Bytes(1 << 20), 1 << 20),
+        (r#""25%""#, Memory::Share(2500), total / 4),
+        (r#""12.5%""#, Memory::Share(1250), total / 8),
+        (r#""100%""#, Memory::Share(10000), total),
+        (r#""12.345%""#, Memory::Share(1235), 8_486_855_376),
+    ] {
+        let c = limits(&format!(r#""max_pending_bytes": {v}"#)).unwrap();
+        let m = c.limits.max_pending_bytes;
+        assert_eq!(m, want, "{v}");
+        assert_eq!(m.bytes(Some(total), 9), bytes, "{v}");
+        // A share where the memory cannot be read is the fallback; bytes are bytes.
+        let unread = if matches!(m, Memory::Share(_)) {
+            9
+        } else {
+            bytes
+        };
+        assert_eq!(m.bytes(None, 9), unread, "{v}");
+        // Written back as a config writes it, the share rounded to hundredths of a percent.
+        let written = if v == r#""12.345%""# {
+            "12.35%"
+        } else {
+            v.trim_matches('"')
+        };
+        assert_eq!(m.to_string(), written, "{v}");
+    }
+    // A share is a byte at least.
+    assert_eq!(Memory::Share(1).bytes(Some(10), 9), 1);
+    for (v, msg) in [
+        (r#""0%""#, r#""0%" is not more than 0% and at most 100%"#),
+        (r#""0.001%""#, "not more than 0% and at most 100%"),
+        (r#""101%""#, "not more than 0% and at most 100%"),
+        (r#""NaN%""#, "not more than 0% and at most 100%"),
+        (r#""50""#, r#""50" is not a share of memory, such as "50%""#),
+        (r#"" 5%""#, "is not a share of memory"),
+        (r#""half""#, "is not a share of memory"),
+        ("-1", "-1 is not a number of bytes, 0 or more"),
+        ("1.5", "is not a number of bytes, 0 or more"),
+        (
+            "true",
+            "expected a number of bytes or a share of memory, got",
+        ),
+    ] {
+        let e = limits(&format!(r#""max_pending_bytes": {v}"#)).unwrap_err();
+        assert!(!e.only_not_supported_yet(), "{v}: {e}");
+        let e = e.to_string();
+        assert!(
+            e.contains("limits.max_pending_bytes: ") && e.contains(msg),
+            "{v}: {e}, want {msg:?}"
+        );
+    }
+}
+
+#[test]
+fn every_field_is_read() {
+    let c = limits(
         r#""max_body_bytes": 1, "max_pending_bytes": "25%", "max_header_bytes": 1, "max_conns": 1,
            "max_write_queue_bytes": 1, "write_stall_timeout": "1s""#,
     )
-    .unwrap_err();
-    assert!(e.only_not_supported_yet(), "{e}");
-    let paths: Vec<&str> = e.as_slice().iter().map(|e| e.path.as_str()).collect();
-    // A budget across connections waits for akio (akio API request A214).
-    assert_eq!(paths, ["limits.max_pending_bytes"]);
+    .unwrap();
+    assert_eq!(c.limits.max_pending_bytes, akit_config::Memory::Share(2500));
     // A field fit does not have is wrong, not "not supported yet".
     let e = limits(r#""max_bodies": 1"#).unwrap_err();
     assert!(!e.only_not_supported_yet(), "{e}");

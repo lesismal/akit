@@ -388,6 +388,16 @@ fn sniff_clear_without_h2c() {
     expect_echo(&mut a.dial(), preface);
 }
 
+/// h2c alone beside tcp (I79b, fit's `TestTCPBesideHTTP`'s h2c listener): HTTP/2's preface is
+/// the listener's HTTP, and HTTP/1.1, which it does not serve, goes to the service.
+#[test]
+fn sniff_clear_h2c_alone() {
+    let p = pki("one-port-h2c-alone");
+    let a = Akit::start(&config(&p, r#""h2c", "tcp""#, "", true));
+    assert_eq!(get_h2c(a.addr()).unwrap(), (200, "site".to_owned()));
+    expect_echo(&mut a.dial(), "GET / HTTP/1.1\r\nHost: x\r\n\r\n");
+}
+
 /// A listener of HTTPS and tcp whose service has no server_names: TLS connections are served
 /// HTTPS by the listener, h2 and HTTP/1.1 as ALPN picks, and the rest go to the service (fit's
 /// `TestTLSTerminatedWithoutNames`).

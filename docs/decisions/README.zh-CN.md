@@ -23,3 +23,4 @@
 | [011](011-proxy-wasm.zh-CN.md) | Proxy-Wasm 子集，与 fit 相同，运行在 akio 的挂起响应头和响应体过滤器上 | 已采纳 |
 | [028](028-engine-on-akio.zh-CN.md) | 把 fit 的 `engine` 映射到 akio 的引擎上 | 已采纳 |
 | [029](029-v1-freeze.zh-CN.md) | v1 冻结：基线、标记的改动和两项检查 | 已采纳 |
+| [032](032-limits-on-akio-budget.zh-CN.md) | 启动时生效的限制落在 akio 引擎的预算上，以及只有 h2c 的监听器 | 已采纳 |

@@ -2,7 +2,8 @@
 
 [English](028-engine-on-akio.md) | [简体中文](028-engine-on-akio.zh-CN.md)
 
-Status: accepted in I79 (2026-11-26).
+Status: accepted in I79 (2026-11-26). `limits.max_conns` counting the clients alone and
+`limits.max_pending_bytes` since I79b ([decision 032](032-limits-on-akio-budget.md)).
 
 ## Context
 

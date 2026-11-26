@@ -87,15 +87,15 @@ first; its status here records the branch, then the akio commit akit pins.
 | A165 | A WebAssembly runtime for plugins: a sandboxed interpreter, its host API, WASI preview 1, a pool of instances; the response hooks Proxy-Wasm needs | in akio's main (`dad77a7a`), pinned | 1, 4, 11 | I71, I72 |
 | A166 | A response's head held while a call made elsewhere decides on it (fit's A41 from fib) | in akio's main (`dad77a7a`), pinned | 1, 4 | I72 |
 | A167 | A response body filtered by calls made elsewhere, one at a time, its trailers in the last (fit's A46 from fib) | in akio's main (`dad77a7a`), pinned | 1, 4, 5, 8 | I72 |
-| A168 | An HTTP server that serves HTTP/2 with prior knowledge alone (a listener with `h2c` and no `http/1.1`) | requested (I25) | 19 | I05, I25 |
+| A168 | An HTTP server that serves HTTP/2 with prior knowledge alone (a listener with `h2c` and no `http/1.1`) | built on akio branch `claude/i79b-akio` (I79b, ADR-174, `HttpConfig::http1`), not in akio's main; used by akit's I79b branch | 19 | I05, I25, I79b |
 | A169 | Requests RFC 9112, RFC 9113 and RFC 9114 call malformed refused by akio's servers: two `Host` fields, bad bytes in HTTP/2 and HTTP/3 field names and values, a streamed body's bad framing answered 400 | built on akio branch `claude/a169-request-checks` (`813f53ea`, but the last part), not in akio's main | 15, 19 | I25 |
 | A171 | An HTTP client request's timer jobs cancelled when it ends, not held until its timeout would pass | built on akio branch `claude/a171-client-timer-cancel` (`90adec65`), not in akio's main | 11, 13 | I15, I18, I25 |
 | A172 | A TLS server that takes a ClientHello whose server name is an IP address (as no name) rather than failing the handshake | built on akio branch `claude/a172-sni-ip-literal` (`d23c9368`), not in akio's main | 19 | I09, I25 |
 
 | A170 | A connection's TCP counters (and unread bytes) without reaching into `Conn::inner`, and a splice that writes first through the engine's own API | requested (I51b); akit-l4 uses the doc-hidden `Conn::inner` meanwhile | 1, 14 | I51b |
 | A180 | akio-wasm's call made cheaper, measured against wazero (akio's W5) | requested (I76): a header-editing Go guest costs akit 14.7 µs of CPU a request, fit 6.8 µs | 13 | I71, I72, I76 |
-| A214 | A budget of the bytes queued for every connection together, which pauses every connection's reads past it (fit's `limits.max_pending_bytes`) | requested (I79) | 8, 11 | I79 |
-| A215 | A connection limit that counts the connections accepted, not those the engine dials (fit's `limits.max_conns`) | requested (I79) | 11 | I79 |
+| A214 | A budget of the bytes queued for every connection together, which pauses every connection's reads past it (fit's `limits.max_pending_bytes`) | built on akio branch `claude/i79b-akio` (I79b, ADR-172, `Config::max_pending_bytes`), not in akio's main; used by akit's I79b branch | 8, 11 | I79, I79b |
+| A215 | A connection limit that counts the connections accepted, not those the engine dials (fit's `limits.max_conns`) | built on akio branch `claude/i79b-akio` (I79b, ADR-173, `Config::max_accepted_connections`), not in akio's main; used by akit's I79b branch | 11 | I79, I79b |
 
 ## A1 TCP listeners on a running engine
 
@@ -1778,7 +1778,10 @@ body filter, so file bodies keep `sendfile`.
 
 ## A168 HTTP/2 with prior knowledge alone
 
-**Status.** Requested (I25).
+**Status.** Built (I79b, 2026-11-26) on akio branch `claude/i79b-akio`, not in akio's main yet: `HttpConfig::http1`
+(default `true`; with `false` a connection that does not begin with the preface gets a `GOAWAY`
+`PROTOCOL_ERROR` and is closed, no `Upgrade: h2c`), akio's ADR-174. akit's I79b branch sets it for
+a listener of `h2c` alone and drops its "not supported yet"; akit's main moves to it with the pin.
 
 **Problem.** fit's listener with `protocols: [h2c]` serves HTTP/2 with prior knowledge and
 nothing else, as fit's benchmark config's port 8081 does. akio-http's server always takes
@@ -1955,8 +1958,12 @@ a cheaper call needs no change in akit, which measures it again with
 
 ## A214 A budget of the bytes queued for every connection together
 
-**Status.** Requested (I79). akit refuses `limits.max_pending_bytes` as not supported yet until it
-is built; fit-examples' `limits` and `proxy` examples are refused for it alone.
+**Status.** Built (I79b, 2026-11-26) on akio branch `claude/i79b-akio`, not in akio's main yet:
+`Config::max_pending_bytes` (akio's ADR-172; a watcher thread sums the I/O threads' queue gauges
+every 1–10 ms, connections pause through `ConnInner::read_held` and are woken through their loops;
+`LoopCounters::budget_pauses`, `Telemetry::pending_bytes`), with a same-run A/B in akio's
+docs/BENCHMARKS. akio has no helper for a share of memory: akit reads it (decision 032). akit's
+I79b branch reads `limits.max_pending_bytes` onto it; until the pin moves, akit's main refuses it.
 
 **Problem.** fit's `limits.max_pending_bytes` bounds the bytes of responses waiting, across every
 connection, for their clients to take them: past it, every connection stops reading until some go
@@ -1987,8 +1994,11 @@ start as fit's; `supported.txt` marks the field, `make v1-bless` marks the addit
 
 ## A215 A connection limit that counts only the connections accepted
 
-**Status.** Requested (I79). akit uses `Config::max_connections` for `limits.max_conns` meanwhile,
-as the reference notes.
+**Status.** Built (I79b, 2026-11-26) on akio branch `claude/i79b-akio`, not in akio's main yet:
+`Config::max_accepted_connections` (akio's ADR-173), on the counters of A30's
+`Telemetry::open_accepted`. akit's I79b branch sets it from `limits.max_conns` in place of
+`max_connections`, and the reference's note is gone; akit's main keeps `max_connections` until the
+pin moves.
 
 **Problem.** fit's `limits.max_conns` bounds "the client connections the listeners keep open at
 once, across all of them". akit's upstream pools dial on the engine that serves the listeners, so

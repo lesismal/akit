@@ -623,8 +623,7 @@ routes[].middleware[]<wasm>.params.response
 routes[].middleware[]<wasm>.params.max_streams
 routes[].middleware[]<wasm>.params.max_body_bytes
 
-# I79: limits' other fields but max_pending_bytes, a budget of bytes across connections akio has
-# not yet (akio API request A214): max_header_bytes on akio's HTTP/1, HTTP/2 and HTTP/3 servers
+# I79: limits' other fields but max_pending_bytes (I79b, below): max_header_bytes on akio's HTTP/1, HTTP/2 and HTTP/3 servers
 # (431), max_conns and max_write_queue_bytes on akio's engine, at start. engine read onto akio's
 # engine (decision 028): event_loops as each listener's I/O threads, workers, min_workers and
 # task_queue as its logical pool, read_buffer_size, write_watermark and backlog as akio's own;
@@ -640,3 +639,9 @@ engine.task_queue
 engine.read_buffer_size
 engine.write_watermark
 engine.backlog
+
+# I79b: limits.max_pending_bytes on akio's budget of the bytes queued across the engine's
+# connections (akio's ADR-172, akit's A214), a share of the memory read as fit's sysmem reads it,
+# at start; limits.max_conns counts the clients alone (ADR-173, A215); a listener of h2c alone
+# (ADR-174, A168) is a protocols value, not a field.
+limits.max_pending_bytes

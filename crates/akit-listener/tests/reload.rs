@@ -270,18 +270,6 @@ fn what_cannot_be_served_is_refused_with_nothing_changed() {
     wait_closed(free);
     drop(busy);
 
-    // h2c alone is not supported yet: the config reader refuses it (I25), so no graph with it
-    // reaches a reload.
-    let errs = akit_config::from_json(
-        &config(
-            &format!(r#"{WEB}, {{"name": "c", "address": "127.0.0.1:0", "protocols": ["h2c"]}}"#),
-            "v2",
-        ),
-        None,
-    )
-    .unwrap_err();
-    assert!(errs.only_not_supported_yet(), "{errs}");
-
     assert_eq!(cell.epoch(), epoch);
     assert_eq!(cell.retiring(), 0);
     assert_eq!(l.served().len(), 1);
@@ -466,5 +454,48 @@ fn a_reload_changes_the_write_stall_timeout() {
     l.reload(graph(&config(WEB, "three"))).unwrap();
     cell.collect();
     assert_eq!(live(), Some(Duration::from_secs(30)));
+    stop(&e, l);
+}
+
+/// A reload that adds a listener of h2c alone (I79b; fit's `TestReloadSameAddress` changes a
+/// listener's protocols to h2c): it serves HTTP/2 with prior knowledge, not HTTP/1.1.
+#[test]
+fn reload_adds_a_listener_of_h2c_alone() {
+    let (cell, e, mut l) = serve(&config(WEB, "v1"));
+    l.reload(graph(&config(
+        &format!(r#"{WEB}, {{"name": "c", "address": "127.0.0.1:0", "protocols": ["h2c"]}}"#),
+        "v2",
+    )))
+    .unwrap();
+    cell.collect();
+    let served = l.served();
+    assert_eq!(served.len(), 2);
+    let c = served[1].address;
+    let client = akio::Engine::builder().client_threads(1).build().unwrap();
+    client.start().unwrap();
+    let h2 = akio_http::h2client::H2Client::dial_blocking(
+        &client,
+        c,
+        None,
+        akio_http::h2client::H2Options::default(),
+    )
+    .unwrap();
+    let r = h2
+        .send(
+            akio_http::client::ClientRequest::get(&format!("http://{c}/"))
+                .timeout(Duration::from_secs(5)),
+        )
+        .wait()
+        .unwrap();
+    assert_eq!((r.status, r.body.as_slice()), (200, b"v2".as_slice()));
+    h2.close();
+    // HTTP/1.1 there gets no answer of HTTP/1.1.
+    let mut s = TcpStream::connect(c).unwrap();
+    s.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+    s.write_all(b"GET / HTTP/1.1\r\nHost: x\r\n\r\n").unwrap();
+    let mut got = Vec::new();
+    let _ = s.read_to_end(&mut got);
+    assert!(!got.starts_with(b"HTTP/1.1"), "{got:?}");
+    client.shutdown();
     stop(&e, l);
 }

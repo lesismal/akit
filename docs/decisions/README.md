@@ -26,3 +26,4 @@ says whether akit follows it.
 | [011](011-proxy-wasm.md) | Proxy-Wasm's subset, as fit's, on akio's held heads and body filters | accepted |
 | [028](028-engine-on-akio.md) | fit's `engine` read onto akio's engine | accepted |
 | [029](029-v1-freeze.md) | The v1 freeze: baselines, marked changes, and two checks | accepted |
+| [032](032-limits-on-akio-budget.md) | The limits taken at start on akio's engine budget, and h2c alone | accepted |

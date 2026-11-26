@@ -160,21 +160,29 @@ fn routes_per_listener() {
     e.wait();
 }
 
-/// A listener with h2c and no http/1.1 is fit's, and not akit's yet (akio API request A168): the
-/// config reader refuses it as not supported yet (I25), before a listener is made.
+/// fit's `TestProtocols` (I79b, akio's ADR-174): a listener of h2c alone serves HTTP/2 with prior
+/// knowledge and nothing else, a listener of http/1.1 HTTP/1.1 alone.
 #[test]
-fn h2c_without_http1_is_not_supported_yet() {
-    let errs = akit_config::from_json(
-        r#"{"listeners": [{"name": "web", "address": "127.0.0.1:0", "protocols": ["h2c"]}]}"#,
-        None,
-    )
-    .unwrap_err();
-    assert!(errs.only_not_supported_yet(), "{errs}");
-    assert!(
-        errs.to_string()
-            .contains("not supported yet: protocols h2c without http/1.1"),
-        "{errs}"
+fn h2c_alone() {
+    let (e, addrs) = serve(
+        r#"{"listeners": [{"name": "h1", "address": "127.0.0.1:0"},
+                          {"name": "h2c", "address": "127.0.0.1:0", "protocols": ["h2c"]}],
+            "routes": [{"handler": {"module": "respond", "params": {"body": "ok"}}}]}"#,
     );
+    let (h1, h2) = (addrs[0], addrs[1]);
+    assert_eq!(get(h1, "h", "/").1, "ok");
+    assert_eq!(get_h2c(h2, "/").unwrap(), (200, "ok".to_owned()));
+    assert!(get_h2c(h1, "/").is_err(), "h2c on an http/1.1 listener");
+    // HTTP/1.1 on the h2c listener: a GOAWAY, then closed; no HTTP/1.1 answer.
+    let mut s = TcpStream::connect(h2).unwrap();
+    s.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+    s.write_all(b"GET / HTTP/1.1\r\nHost: h\r\n\r\n").unwrap();
+    let mut got = Vec::new();
+    let _ = s.read_to_end(&mut got);
+    assert!(!got.starts_with(b"HTTP/1.1"), "{got:?}");
+    assert_eq!(got.get(3), Some(&7), "a GOAWAY frame: {got:?}");
+    e.shutdown();
+    e.wait();
 }
 
 /// A `respond` that answers 300 ms later, from another thread: a request in flight.

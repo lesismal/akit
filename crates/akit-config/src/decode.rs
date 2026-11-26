@@ -128,6 +128,53 @@ impl<'s> Decoder<'s> {
         Some(v)
     }
 
+    /// A number of bytes, 0 or more, or a share of memory written as a string such as `"50%"`
+    /// (more than 0% and at most 100%): fit's `config.Memory`, with its messages.
+    pub(crate) fn memory(&mut self, n: &Node, path: &str) -> Option<crate::model::Memory> {
+        match &n.kind {
+            Kind::Number(raw) => match raw.parse::<u64>() {
+                Ok(v) if i64::try_from(v).is_ok() => Some(crate::model::Memory::Bytes(v)),
+                _ => {
+                    self.error(
+                        n.off,
+                        path,
+                        format!("{raw} is not a number of bytes, 0 or more, nor a share of memory such as \"50%\""),
+                    );
+                    None
+                }
+            },
+            Kind::Str(s) => {
+                let p = s
+                    .strip_suffix('%')
+                    .filter(|v| *v == v.trim())
+                    .and_then(|v| v.parse::<f64>().ok());
+                let Some(p) = p else {
+                    self.error(
+                        n.off,
+                        path,
+                        format!("{s:?} is not a share of memory, such as \"50%\""),
+                    );
+                    return None;
+                };
+                match crate::model::Memory::percent(p) {
+                    Some(m) => Some(m),
+                    None => {
+                        self.error(
+                            n.off,
+                            path,
+                            format!("{s:?} is not more than 0% and at most 100%"),
+                        );
+                        None
+                    }
+                }
+            }
+            _ => {
+                self.expected(n, path, "a number of bytes or a share of memory");
+                None
+            }
+        }
+    }
+
     /// A number, as fit's `float64` fields take it: any JSON number.
     pub(crate) fn number(&mut self, n: &Node, path: &str) -> Option<f64> {
         let Kind::Number(raw) = &n.kind else {

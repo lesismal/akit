@@ -35,16 +35,14 @@ that validates runs as fit runs it, within what akit supports.
 - **Handlers** for media, BitTorrent and sync: `hls`, `httpflv`, `vod`, `whip`, `whep`,
   `stream_whip`, `stream_whep`, `webrtc_proxy`, `websockify`, `media_pages`, `media_tokens`,
   `bt_publish`, `bt_stream`, `bt_tracker` and `sync_ingest`. Every middleware of fit's is supported.
-- **Fields of parts akit reads**: `limits.max_pending_bytes` (akio has no budget across
-  connections yet); `engine`'s `loop_wait`, `poll_batch` and `kernel_tls_offload` (the rest of
+- **Fields of parts akit reads**: `engine`'s `loop_wait`, `poll_batch` and `kernel_tls_offload` (the rest of
   `engine` is read onto akio's engine, as the [reference](../reference/config.md#engine) says);
   `access_log.rotate`; every `access` and `mptcp`; `tls.kernel_tls_offload`; `upstreams[].deny_internal`;
   the proxy's `splice_uploads`; the Kubernetes provider's `allow_external_name_services`; and in
   `admin`, everything but `address`, `token_file`, `history`, `max_config_bytes`, `max_conns` and
   `disable_dashboard`: no TLS, so no address off loopback, and no console, store, assistant or
   cluster.
-- **Values**: a listener with `h2c` and no `http/1.1` (akio's server always takes HTTP/1.1 beside
-  h2c), and `static`'s `disk_io auto` (akit looks at the disk on its file pool only).
+- **Values**: `static`'s `disk_io auto` (akit looks at the disk on its file pool only).
 - **In `.conf` files**: `import` and `include`; name every file with `-c`, or a directory.
 - **Commands and flags**: akit has `run`, `validate`, `adapt`, `fmt`, `build` and `version`; `run`'s
   `-admin` and `-timeout` are refused. fit's `check`, `hash-password`, `token`, `store`, `sync`, `bt`

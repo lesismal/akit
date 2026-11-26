@@ -535,6 +535,11 @@ fn supported_fields_are_read() {
             |c| c.limits.max_conns == 5,
         ),
         (
+            "limits.max_pending_bytes",
+            format!(r#"{{{L}, "limits": {{"max_pending_bytes": "25%"}}}}"#),
+            |c| c.limits.max_pending_bytes == akit_config::Memory::Share(2500),
+        ),
+        (
             "limits.max_write_queue_bytes",
             format!(r#"{{{L}, "limits": {{"max_write_queue_bytes": 5}}}}"#),
             |c| c.limits.max_write_queue_bytes == 5,
@@ -3238,7 +3243,7 @@ fn inventory_paths_for_akit_config_paths() {
 fn findings_from_akit_config_errors() {
     let errs = akit_config::from_json(
         r#"{"listeners": [{"name": "w", "address": ":1", "mptcp": true}],
-            "routes": [{"handler": {"module": "hls"}}], "limits": {"max_pending_bytes": 10}}"#,
+            "routes": [{"handler": {"module": "hls"}}], "engine": {"loop_wait": "1ms"}}"#,
         None,
     )
     .unwrap_err();
@@ -3250,7 +3255,7 @@ fn findings_from_akit_config_errors() {
     let want: BTreeSet<String> = [
         "listeners[0].mptcp",
         "routes[0].handler<hls>",
-        "limits.max_pending_bytes",
+        "engine.loop_wait",
     ]
     .iter()
     .map(|p| format!("not supported yet: {p}"))
