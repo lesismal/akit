@@ -223,9 +223,10 @@ renamed fit's external names; I98–I109, I102b, I102c, I102d and I103b are the 
 | I103 | Tunnel III: the hub's calls and status, token expiry | I102c | done |
 | I103b | Tunnel III b: the console socket and web proxies | I103 | todo |
 | I104 | LLM I: the mesh: frames, sessions, streams with credit, the handshake, hello, pools | I99, I100 | done |
-| I105 | LLM II: the node: models, checks, calls forwarded upstream streamed both ways | I104 | todo |
-| I106 | LLM III: the hub: node table, models, picking and relaying | I105 | todo |
-| I107 | LLM IV: the proxy: the agents' API, API keys, routing, errors | I106 | todo |
+| I105 | LLM II: the node: models, checks, calls forwarded upstream streamed both ways | I104 | done |
+| I106 | LLM III: the hub: node table, models, picking and relaying | I105 | done |
+| I106b | LLM III b: the hub's calls for the pages (`/hub/nodes`, `/hub/node/call`, `/hub/node/stream`), the node list's byte bound, the routes' counts (`/mesh/status`) | I106 | todo |
+| I107 | LLM IV: the proxy: the agents' API, API keys, routing, errors | I106 | done |
 | I108 | LLM V: the node's management: hardware, GPUs, fixed actions and jobs | I105 | todo |
 | I109 | The roles' pages: their consoles and methods, edits written back | I103, I107, I91 | todo |
 
@@ -276,6 +277,7 @@ commit and result.
 | WebSocket and gRPC proxying | I49, I50 | partly (2026-11-25, idle WebSockets at 10k, `bench/results/m1-2026-11-25-akio-fixes`: 4,452 bytes each, fit 5,916, nginx 22,275) | no (I49 and I50 built) | Against fit: WebSocket messages a second (small, echoed) and bytes a second (large) through akit from HTTP/1.1, h2 and h3 clients, memory per open WebSocket (idle, and with 64 KiB pending each way), and handshakes a second (a key generated, the upstream connection leaving the pool); I50: gRPC calls a second (unary, h2c and h2 upstreams) and messages a second on a stream each way, against fit. |
 | TCP and UDP proxying, SNI routing, many protocols on one port | I51–I53 | no | no (I51–I53 built, not measured) | Against fit and nginx's `stream`, as I51 asks: TCP throughput (fit's `BenchmarkTCPProxy`, 256 KB echoed at a time, direct and through akit), connections a second, memory per idle connection; UDP datagrams a second and sessions at once; the per-service idle sweep on akit's timer thread with 10,000 connections (the stopgap for akio A78); the cost of sniffing on a shared port (I53). I52: connections a second through a listener that routes by SNI (the ClientHello read and parsed before the dial) against one that does not, and with a PROXY header read on accept and one sent upstream; HTTP/1.1 and h2c request rates on a listener with `proxy_protocol` against one without, and akio's ADR-118 cost (a `OnceLock::get` per request) on a listener without. |
 | The eBPF sockmap relay | I51b | no | no (I51b built, not measured) | On the benchmark host as root (Linux 6.15+), against the same listener without `sockmap` and against fit: TCP throughput (fit's `BenchmarkTCPProxy`, 256 KB echoed at a time) and CPU per gigabyte, connections a second (the splice's cost on each: two `TCP_INFO` reads, the map's two inserts and the gate), and the latency of a small echo; the idle sweep on akit's timer thread with 10,000 spliced connections (three syscalls a socket a sweep) and the drain's polling as many close at once. |
+| LLM roles: hub, node, proxy | I105–I107 | no | no (built, not measured) | Against fit's roles (fit with fit, akit with akit, and mixed), an OpenAI-compatible stub upstream: calls a second through proxy → hub → node → upstream, small and with 3 MiB bodies (streamed past 1 MiB); a streamed answer's first byte and its events' latency; 256 calls at once; the hub's CPU per call relayed; memory per call in flight on each role; a slow agent holding its own call only. |
 | LLM mesh | I104 | no | no (built, not measured) | Against fit's mesh (fit with fit, akit with akit, and mixed): calls a second over one link and over a pool of links; a stream's bytes a second through one link at 256 KiB windows, and 64 streams at once; a slow reader holding its own stream only while the link's others go on (the window and the link's 64 KiB high water with its held reads); gzip's CPU per frame of 1 KiB and more; memory per idle link and per stream. |
 | Tunnel: hub, node, proxy | I101–I103 (I102b, I102c) | no | no (built, not measured) | Against fit's tunnel (fit's hub with fit's node and proxy, the same three in akit, and mixed): bytes a second through one tunnel and through 64 at once over one link, plain, sealed with `body_password` and over TLS (I102), QUIC (I102b: the stream's send buffer and the wire's overflow queue, `LINK_QUEUE` together) and WebSocket (I102c); tunnels opened a second (a proxy's accept, `tunnel/open` through the hub, the node's dial); the hub's CPU per gigabyte passed; memory per idle tunnel and per link; a slow service holding one tunnel while the link's others go on (the windows alone pace a link, its queue bounded at fit's `LinkQueue`, A234). |
 | Forward proxy: SOCKS and HTTP CONNECT | I55 | no | no (built, not measured) | Against fit (and nginx's `stream` for raw throughput): bytes a second through a SOCKS5 tunnel and an HTTP/1.1 CONNECT tunnel (256 KB echoed at a time, as fit's `BenchmarkTCPProxy`), tunnels opened a second (the handshake, the rules' checks, a name resolved on the pool and the `connected` check), memory per idle tunnel; the cost of SOCKS on a shared port (akio-mux's greeting rule beside HTTP and TLS) against HTTP alone; akio-socks's watchdog thread (the connect timeout added to it, ADR-119) with 10,000 tunnels. |
@@ -1724,7 +1726,9 @@ link with fit's (decision 038).
   API (streamed events, slow and cut upstreams, a large body, the model renamed).
 - **Touches**: `akit-llm`.
 - **fit**: `llm/node/{node,models,proxy,push}.go`, `llm/internal/model`.
-- **Status**: todo.
+- **Status**: done (2026-11-27). See the progress log. The node's management methods (models
+  saved, deleted and checked by its pages or a hub, its profile, settings and upstream bounds) are
+  I108's and I109's; its info's hardware is I108's.
 
 ### I106 LLM III: the hub
 
@@ -1736,6 +1740,18 @@ link with fit's (decision 038).
   → mock upstream streams both ways.
 - **Touches**: `akit-llm`.
 - **fit**: `llm/hub`.
+- **Status**: done (2026-11-27), but for `/hub/node/call`, `/hub/node/stream` and the node list's
+  4 MiB bound, split into I106b. See the progress log.
+
+### I106b LLM III b: the hub's calls for the pages
+
+- **Do**: `/hub/nodes`, `/hub/node/call` and `/hub/node/stream` (a node's management methods
+  relayed, where the node allows a hub to manage it), the hub's settings methods; the node list
+  bounded at 4 MiB, the offline nodes left out first; the routes' counts (`mesh.Routes`) and
+  `/mesh/status`.
+- **Done when**: fit's `llm/hub` tests of the node calls and the list's bounds pass ported.
+- **Touches**: `akit-llm`.
+- **fit**: `llm/hub/{manage,nodelist}.go`, `llm/internal/mesh/routes.go`.
 - **Status**: todo.
 
 ### I107 LLM IV: the proxy
@@ -1746,9 +1762,10 @@ link with fit's (decision 038).
   `X-Akit-Node`, each API's error shape and status, `max_conns`, `max_inflight`,
   `max_body_bytes` and the timeouts.
 - **Done when**: fit's `llm/proxy` and `llm/e2e` tests pass ported.
-- **Touches**: `akit-llm`.
+- **Touches**: `akit-llm`, `akit`.
 - **fit**: `llm/proxy`, `llm/e2e`.
-- **Status**: todo.
+- **Status**: done (2026-11-27). See the progress log. The proxy's pages' methods (keys made and
+  deleted, its API settings, its stats) are I109's.
 
 ### I108 LLM V: the node's management
 

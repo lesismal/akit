@@ -1540,17 +1540,19 @@ mod tests {
         );
     }
 
-    /// A role akit validate checks is refused by akit run until its iteration runs it (I98).
+    /// A role akit validate checks is refused by akit run until its iteration runs it (I98):
+    /// every role of fit's runs now (the tunnel's since I101, the LLM feature's since I105-I107).
     #[test]
     fn roles_are_refused_until_they_run() {
         let c = akit_config::from_json(r#"{"tunnel": {"hub": {}}, "llm": {"proxy": {}}}"#, None)
             .unwrap();
-        let Err(super::Failure::Config(errs)) = super::roles_not_running(&c) else {
-            panic!("roles let through");
-        };
-        let paths: Vec<&str> = errs.0.iter().map(|e| e.path.as_str()).collect();
-        // The tunnel's roles run (I101); the LLM's not yet (I104-I108).
-        assert_eq!(paths, ["llm.proxy"]);
+        assert!(super::roles_not_running(&c).is_ok());
+        let c = akit_config::from_json(
+            r#"{"llm": {"hub": {}, "node": {}, "proxy": {}}, "tunnel": {"node": {}}}"#,
+            None,
+        )
+        .unwrap();
+        assert!(super::roles_not_running(&c).is_ok());
         let c = akit_config::from_json(r#"{"tunnel": {"hub": {}}}"#, None).unwrap();
         assert!(super::roles_not_running(&c).is_ok());
         let c = akit_config::from_json(r#"{"tunnel": {}, "llm": {}}"#, None).unwrap();

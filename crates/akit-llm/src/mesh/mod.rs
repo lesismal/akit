@@ -244,6 +244,13 @@ impl Mesh {
     /// [`Mesh::configure`].
     #[must_use]
     pub fn new(cfg: Config, router: Router) -> Mesh {
+        Mesh::with_tokens(cfg, router, Registry::default())
+    }
+
+    /// A mesh whose listener's tokens are `tokens` (a registry that writes a token's first member
+    /// back into the config).
+    #[must_use]
+    pub fn with_tokens(cfg: Config, router: Router, tokens: Registry) -> Mesh {
         Mesh(Arc::new_cyclic(|me| Inner {
             me: me.clone(),
             cfg,
@@ -254,7 +261,7 @@ impl Mesh {
             on_down: RwLock::new(Vec::new()),
             st: Mutex::new(St::default()),
             lst: Mutex::new(Lst::default()),
-            tokens: Registry::default(),
+            tokens,
             draining: AtomicBool::new(false),
             stopped: AtomicBool::new(false),
             round: AtomicU64::new(0),
@@ -714,8 +721,9 @@ impl Inner {
         Ok(())
     }
 
-    /// Records the peer of `c`, checked already.
-    fn register(&self, c: &Arc<MConn>, id: Identity) -> Result<(), String> {
+    /// Records the peer of `c`, checked already; the peer-up callbacks are the caller's to run
+    /// ([`Inner::up`]), once the hello's answer has gone.
+    fn register(&self, c: &Arc<MConn>, id: Identity) -> Result<PeerConn, String> {
         let mut peer = PeerConn {
             identity: id.clone(),
             conn_id: c.id,
@@ -773,19 +781,23 @@ impl Inner {
             c.dir(),
             peer.remote
         );
+        Ok(peer)
+    }
+
+    /// Runs the peer-up callbacks for `peer`.
+    fn up(&self, peer: &PeerConn) {
         let fns = self
             .on_up
             .read()
             .unwrap_or_else(PoisonError::into_inner)
             .clone();
         for f in fns {
-            f(&peer);
+            f(peer);
         }
-        Ok(())
     }
 
     /// Serves the hello of an incoming link.
-    fn handle_hello(&self, c: &Arc<MConn>, payload: &[u8]) -> Result<String, Error> {
+    fn handle_hello(&self, c: &Arc<MConn>, payload: &[u8]) -> Result<(String, PeerConn), Error> {
         let id = Identity::parse(payload).map_err(|_| bad_request("bad hello"))?;
         let mut r = self.check_peer(&id);
         if r.is_ok() && !c.wc.roles().contains(&id.role) {
@@ -798,11 +810,8 @@ impl Inner {
         if r.is_ok() && !c.wc.token().is_empty() {
             r = self.admit_token(c, &id.id);
         }
-        if r.is_ok() {
-            r = self.register(c, id.clone());
-        }
-        match r {
-            Ok(()) => Ok((self.cfg.identity)().to_json()),
+        match r.and_then(|()| self.register(c, id.clone())) {
+            Ok(peer) => Ok(((self.cfg.identity)().to_json(), peer)),
             Err(e) => {
                 akit_observe::warn!(
                     Llm,
@@ -878,8 +887,14 @@ impl wire::Handler for Handler {
                     "hello is for incoming connections",
                 )));
             }
-            let r = m.handle_hello(&c, &req.payload);
-            return reply.answer(r.map(String::into_bytes));
+            // The peer hears its hello answered before anything the peer-up callbacks send.
+            return match m.handle_hello(&c, &req.payload) {
+                Ok((me, peer)) => {
+                    reply.answer(Ok(me.into_bytes()));
+                    m.up(&peer);
+                }
+                Err(e) => reply.answer(Err(e)),
+            };
         }
         match Inner::caller(&c) {
             Ok(caller) => m.router.invoke(&caller, &req.method, &req.payload, reply),

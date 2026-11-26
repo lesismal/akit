@@ -52,7 +52,9 @@ protocols fall.
 5. **The version a role says hello with is akit's** (`akit <version>`), as fit's says fit's; what
    a peer does with it is written here by the iteration that ports it. A tunnel peer only reports
    it (the hub's list of peers, a peer's status) and compares it with nothing, as fit's (I101);
-   the mesh's is I104's.
+   a mesh peer, the same (I104): it shows it in its links and compares it with nothing. The mesh's
+   links are akio-ws WebSockets on fit's path `/ws`, with fit's handshake labels (`fit llm mesh v1`,
+   `fit llm wire listener`) and token magic (`FTK1`) (I104).
 
 ## Alternatives
 

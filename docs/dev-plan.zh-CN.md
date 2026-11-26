@@ -214,9 +214,10 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I103 | 隧道 III：hub 的调用和状态、token 过期 | I102c | done |
 | I103b | 隧道 III b：控制台套接字和 web 代理 | I103 | todo |
 | I104 | LLM I：mesh：帧、会话、带信用的流、握手、hello、连接池 | I99, I100 | done |
-| I105 | LLM II：node：模型、检查、双向流式转发到上游的调用 | I104 | todo |
-| I106 | LLM III：hub：node 表、模型、选择和转发 | I105 | todo |
-| I107 | LLM IV：proxy：agent 的 API、API key、路由、错误 | I106 | todo |
+| I105 | LLM II：node：模型、检查、双向流式转发到上游的调用 | I104 | done |
+| I106 | LLM III：hub：node 表、模型、选择和转发 | I105 | done |
+| I106b | LLM III b：hub 供页面使用的调用（`/hub/nodes`、`/hub/node/call`、`/hub/node/stream`）、node 列表的字节上限、路由计数（`/mesh/status`） | I106 | todo |
+| I107 | LLM IV：proxy：agent 的 API、API key、路由、错误 | I106 | done |
 | I108 | LLM V：node 的管理：硬件、GPU、固定动作和作业 | I105 | todo |
 | I109 | 角色的页面：其控制台和方法，写回的编辑 | I103, I107, I91 | todo |
 
@@ -265,6 +266,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | WebSocket 与 gRPC 代理 | I49、I50 | 部分（2026-11-25，1 万个空闲 WebSocket，`bench/results/m1-2026-11-25-akio-fixes`：每个 4,452 字节，fit 5,916，nginx 22,275） | 否（I49 与 I50 已实现） | 对比 fit：经 akit 的 WebSocket 每秒消息数（小消息回显）与每秒字节数（大消息），来自 HTTP/1.1、h2 和 h3 客户端；每个打开的 WebSocket 的内存（空闲时，以及每个方向各有 64 KiB 待发时）；每秒握手数（生成密钥、上游连接离开连接池）；I50：对比 fit，每秒 gRPC 调用数（一元调用，h2c 与 h2 上游）与一个流上每个方向的每秒消息数。 |
 | TCP 和 UDP 代理、SNI 路由、单端口多协议 | I51–I53 | 否 | 否（I51–I53 已实现，未测） | 按 I51 的要求对比 fit 和 nginx 的 `stream`：TCP 吞吐（fit 的 `BenchmarkTCPProxy`，每次回显 256 KB，直连与经 akit 对比）、每秒连接数、每个空闲连接的内存；UDP 每秒数据报数与同时的会话数；10,000 个连接时每个服务在 akit 定时线程上的空闲扫描（akio A78 之前的权宜之计）；共享端口上协议嗅探的开销（I53）。I52：按 SNI 分流的监听器（拨号前读取并解析 ClientHello）与不分流的监听器每秒连接数的对比，以及接受时读 PROXY 头、向上游发送 PROXY 头时的情形；带与不带 `proxy_protocol` 的监听器上 HTTP/1.1 与 h2c 的请求速率，以及不带时 akio ADR-118 的开销（每个请求一次 `OnceLock::get`）。 |
 | eBPF sockmap 中转 | I51b | 否 | 否（I51b 已实现，未测） | 在基准主机上以 root（Linux 6.15+）运行，对比不带 `sockmap` 的同一监听器以及 fit：TCP 吞吐（fit 的 `BenchmarkTCPProxy`，每次回显 256 KB）和每 GB 的 CPU，每秒连接数（每个连接拼接的开销：两次 `TCP_INFO` 读取、映射表的两次插入和闸门），以及小回显的延迟；10,000 个已拼接连接时 akit 定时线程上的空闲扫描（每次扫描每个套接字三次系统调用），以及大量连接同时关闭时排空的轮询。 |
+| LLM 角色：hub、node、proxy | I105–I107 | 否 | 否（已实现，未测） | 对比 fit 的角色（fit 对 fit、akit 对 akit、以及混合），以 OpenAI 兼容的桩作上游：经 proxy → hub → node → 上游每秒的调用数，小正文和 3 MiB 正文（超过 1 MiB 时流式传输）；流式回答的首字节与各事件的延迟；256 个调用同时进行；hub 每转发一个调用的 CPU；每个角色上每个进行中调用的内存；一个慢 agent 只压住自己的调用。 |
 | LLM mesh | I104 | 否 | 否（已实现，未测） | 对比 fit 的 mesh（fit 对 fit、akit 对 akit、以及混合）：一条链路上和一组链路上每秒的调用数；一条链路上 256 KiB 窗口下单个流每秒的字节数，以及 64 个流同时；一个慢读者只压住自己的流而链路上其他流照常进行（窗口，以及链路的 64 KiB 高水位及其暂停的读取）；1 KiB 以上帧的 gzip 每帧 CPU；每条空闲链路和每个流的内存。 |
 | 隧道：hub、node、proxy | I101–I103（I102b、I102c） | 否 | 否（已实现，未测） | 对比 fit 的隧道（fit 的 hub 配 fit 的 node 和 proxy、akit 的三者、以及混合）：一条隧道、以及一条链路上 64 条隧道同时的每秒字节数，明文、`body_password` 密封以及经 TLS（I102）、QUIC（I102b：流的发送缓冲和 wire 的溢出队列，合起来是 `LINK_QUEUE`）和 WebSocket（I102c）；每秒打开的隧道数（proxy 的 accept、经 hub 的 `tunnel/open`、node 的拨号）；hub 转发每 GB 的 CPU；每条空闲隧道和每条链路的内存；一个慢服务压住一条隧道而链路上其他隧道照常进行（只由窗口调节链路，其队列上限为 fit 的 `LinkQueue`，A234）。 |
 | 正向代理：SOCKS 与 HTTP CONNECT | I55 | 否 | 否（已实现，未测） | 对比 fit（原始吞吐另对比 nginx 的 `stream`）：经 SOCKS5 隧道和 HTTP/1.1 CONNECT 隧道的每秒字节数（每次回显 256 KB，同 fit 的 `BenchmarkTCPProxy`），每秒建立的隧道数（握手、规则检查、在线程池上解析名字以及 `connected` 检查），每个空闲隧道的内存；共享端口上 SOCKS 的开销（akio-mux 的问候规则与 HTTP、TLS 并列）对比只有 HTTP；10,000 条隧道时 akio-socks 看门狗线程的开销（ADR-119 在其上增加了连接超时）。 |
@@ -1461,7 +1463,8 @@ fit 的，使 akit 的角色能与 fit 的角色互连（决定 038）。
   模型改名）。
 - **涉及**：`akit-llm`。
 - **fit**：`llm/node/{node,models,proxy,push}.go`、`llm/internal/model`。
-- **状态**：todo。
+- **状态**：done（2026-11-27）。见进度日志。node 的管理方法（由其页面或 hub 保存、删除和检查模型，其资料、设置和上游上限）属于
+  I108 和 I109；其信息中的硬件属于 I108。
 
 ### I106 LLM III：hub
 
@@ -1470,6 +1473,15 @@ fit 的，使 akit 的角色能与 fit 的角色互连（决定 038）。
 - **完成标准**：移植后的 fit `llm/hub` 测试通过；一次端到端调用 agent → proxy → hub → node → 模拟上游双向流式传输。
 - **涉及**：`akit-llm`。
 - **fit**：`llm/hub`。
+- **状态**：done（2026-11-27），`/hub/node/call`、`/hub/node/stream` 和 node 列表的 4 MiB 上限除外，拆分为 I106b。见进度日志。
+
+### I106b LLM III b：hub 供页面使用的调用
+
+- **做什么**：`/hub/nodes`、`/hub/node/call` 和 `/hub/node/stream`（在 node 允许 hub 管理时转发其管理方法）、hub 的设置方法；
+  node 列表以 4 MiB 为上限，先略去离线的 node；路由计数（`mesh.Routes`）和 `/mesh/status`。
+- **完成标准**：移植后的 fit `llm/hub` 中 node 调用和列表上限的测试通过。
+- **涉及**：`akit-llm`。
+- **fit**：`llm/hub/{manage,nodelist}.go`、`llm/internal/mesh/routes.go`。
 - **状态**：todo。
 
 ### I107 LLM IV：proxy
@@ -1478,9 +1490,9 @@ fit 的，使 akit 的角色能与 fit 的角色互连（决定 038）。
   Cohere 的路径、模型列表、API key（`ah-`，只保存 SHA-256，常数时间比较）、先直连 node 再经 hub 的路由（响应头之前最多 4 条）、
   `X-Akit-Node`、每种 API 的错误格式和状态码、`max_conns`、`max_inflight`、`max_body_bytes` 和各项超时。
 - **完成标准**：移植后的 fit `llm/proxy` 和 `llm/e2e` 测试通过。
-- **涉及**：`akit-llm`。
+- **涉及**：`akit-llm`、`akit`。
 - **fit**：`llm/proxy`、`llm/e2e`。
-- **状态**：todo。
+- **状态**：done（2026-11-27）。见进度日志。proxy 页面的方法（创建和删除 key、其 API 设置、其统计）属于 I109。
 
 ### I108 LLM V：node 的管理
 

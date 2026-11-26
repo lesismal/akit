@@ -56,4 +56,8 @@ pub const ROLES: &[akit_roles::host::Info] = &[
     akit_tunnel::HUB,
     akit_tunnel::NODE,
     akit_tunnel::PROXY,
+    // I105-I107: the LLM feature's roles.
+    akit_llm::hub::HUB,
+    akit_llm::node::NODE,
+    akit_llm::proxy::PROXY,
 ];

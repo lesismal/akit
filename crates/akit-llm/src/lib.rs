@@ -12,7 +12,13 @@
 //!
 //! Part of [akit](https://github.com/lesismal/akit); see `docs/dev-plan.md` (I104-I109).
 
+pub mod form;
+pub mod hub;
 pub mod json;
 pub mod mesh;
 pub mod model;
+pub mod node;
+pub mod proxy;
+pub mod role;
+pub mod tls;
 pub mod wire;

@@ -37,7 +37,8 @@ hub 访问 NAT 之后的 TCP 服务；LLM 功能的 `llm.hub`、`llm.node` 和 `
    连接；拿到 fit 签发的 token 的 akit node，只要把它写成 `akitt1.<id>.<secret>`（ID 和 secret 不变）即可连接 fit 的 hub。
    改写这个前缀就是 akit 的名字在线上协议边缘的全部代价，其他都没有差别。
 5. **角色在 hello 中给出的版本是 akit 的**（`akit <版本>`），就像 fit 的给出 fit 的；对端如何使用它，由移植该部分的迭代
-   写在这里。隧道的对端只报告它（hub 的对端列表、对端的状态），不与任何东西比较，与 fit 相同（I101）；mesh 的由 I104 决定。
+   写在这里。隧道的对端只报告它（hub 的对端列表、对端的状态），不与任何东西比较，与 fit 相同（I101）；mesh 的对端同样如此（I104）：只在其链路中显示，不与任何东西比较。mesh 的链路是 fit 的路径 `/ws` 上的 akio-ws WebSocket，
+   使用 fit 的握手标签（`fit llm mesh v1`、`fit llm wire listener`）和 token 魔数（`FTK1`）（I104）。
 
 ## 其他选择
 

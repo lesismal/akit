@@ -487,7 +487,10 @@ impl Inner {
                         .and_then(|()| self.register(c, id)),
                 };
                 match e {
-                    Ok(()) => return t.set_err(String::new()),
+                    Ok(peer) => {
+                        t.set_err(String::new());
+                        return self.up(&peer);
+                    }
                     Err(e) => (true, e),
                 }
             }

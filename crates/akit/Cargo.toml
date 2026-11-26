@@ -39,6 +39,7 @@ akit-runtime = { workspace = true }
 akit-roles = { workspace = true }
 # The tunnel's roles (I101).
 akit-tunnel = { workspace = true }
+akit-llm = { workspace = true }
 akit-tls = { workspace = true }
 
 [dev-dependencies]

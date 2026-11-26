@@ -273,6 +273,7 @@ dependencies = [
  "akit-config",
  "akit-handler",
  "akit-listener",
+ "akit-llm",
  "akit-middleware",
  "akit-observe",
  "akit-plugin",

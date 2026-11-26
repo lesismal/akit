@@ -20,6 +20,61 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-27: I105–I107, the LLM node, hub and proxy; I106b split
+
+- The roles (`akit_llm::{node,hub,proxy}`), registered in `akit run` (`akit::ROLES`): what they
+  share is `akit_llm::role::Base`: the member's `id` (made at the first start, `<role>-<16 hex>`,
+  written back into the member) and `name`; the access policy (the member's, then the global
+  one) at the listener's filter; the `limits`; the `listen`, its `self_signed` certificate made
+  once and kept beside the config (`akit.llm.<role>.pem`, 0600; written into the member when
+  nothing is kept beside the config); the `peers`; the `tokens`, a token's first member written
+  back into its record, the links of expired tokens closed by a sweep armed again on every apply.
+  The version a role says hello with is `akit <version>`.
+- The node (I105): its models' state (`ready`, `disabled`, `error`), checked every 60 s (15 s in
+  error) by a probe of the upstream's model list on akio's client (401, 403 and 5xx fail it, a
+  stale probe dropped); its info (`/node/info`) and its pushes to its hubs and proxies
+  (`/node/update`, 200 ms apart, only when it changed, with a growing sequence; at once to a peer
+  that links); `/node/proxy`: the model taken within its `max_inflight` and the node's, the
+  upstream URL and auth of each API (OpenAI's, Anthropic's with its version, Gemini's with `alt`,
+  Azure OpenAI's deployments, Ollama's, Cohere's), the model renamed upstream in a JSON body, a
+  form's field or a Gemini batch, the request body inline or streamed from the stream's frames
+  (held against the window past 256 KiB waiting upstream, on the request body's `on_drain`), the
+  response's head and body sent as they come under the stream's credit (the upstream's reads
+  held otherwise), `first_byte_timeout` (which also bounds the connect: akio-http's client has no
+  connect timeout of its own), `idle_timeout`, `timeout`, a keep-alive until the first byte, the
+  model put in error when its upstream cannot be reached. The hardware in its info is a minimum
+  (host, system, CPUs) until I108.
+- The hub (I106): the node table (`max_nodes`, the offline node seen longest ago forgotten; a
+  node's info of an older sequence in the same run dropped), the models of its online nodes
+  pushed to its proxies when they change (200 ms apart), `/hub/models`, a node list
+  (`/hub/node/list` and its pushes, 64 models a node), and `/hub/proxy`: the least loaded node
+  serving the model ready, ties round robin, the call relayed by two pumps (the proxy's streamed
+  body to the node, the node's frames to the proxy) under each stream's credit, another node
+  (3 at most) while nothing reached the proxy and none of its body was taken.
+- The proxy (I107): the agents' API on `api.address`, an akio-http listener of its own on the
+  listeners' engine (TLS with `cert_file`, `max_conns` closed past at accept, the role's access
+  policy, `max_body_bytes`); the model lists of OpenAI and Anthropic (`/v1/models`), Gemini
+  (`/v1beta/models`) and Ollama (`/api/tags`); the calls of the five APIs, the key from
+  `Authorization: Bearer`, `x-api-key`, `x-goog-api-key` or Gemini's `key`, its SHA-256 compared
+  with every key's in constant time; the catalog of the direct nodes' and the hubs' models
+  (pushed, and read when a peer links); routes: the ready direct nodes, least loaded first, then
+  the hubs, 4 at most before the head; bodies past 1 MiB streamed in 64 KiB frames; the response
+  streamed to the agent with `X-Akit-Node`, the stream's frames held while the agent is behind;
+  `max_inflight` (429), `first_byte_timeout` (503) and `timeout` (504); each API's error shape
+  and status.
+- Tests: units of the form and JSON rewrites, upstream URLs, auth headers, endpoints and error
+  shapes; end to end (`tests/e2e.rs`): an agent through akit's proxy, hub and node to a fake
+  OpenAI-compatible upstream (the model renamed, the upstream's key, streamed events, a 3 MiB
+  body streamed through the hub, a wrong key, an unknown model, a model of another API, bad JSON,
+  an unknown path), a direct node first, a dead upstream answered 503, an expired token's link
+  closed. Against fit's binary (`tests/fit_roles.rs`, `AKIT_FIT_BIN`): a fit hub between akit's
+  node and proxy, akit's hub between fit's node and proxy, and akit's proxy to fit's node
+  directly, each with the same calls.
+- The mesh: a peer-up callback runs once the hello's answer has gone, so that what it sends (a
+  hub's `/node/info`, a proxy's models) reaches a peer that has registered the link.
+- Left: I106b (the hub's calls for the pages, the node list's byte bound, the routes' counts),
+  I108 (the node's management, its hardware), I109 (the roles' pages).
+
 ### 2026-11-27: I104, the LLM mesh: wire, links and mesh on akio-ws
 
 - `akit-llm` (new): fit's `llm/internal/wire` and `mesh`, byte for byte on the wire. Frames

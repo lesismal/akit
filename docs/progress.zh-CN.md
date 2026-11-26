@@ -19,6 +19,36 @@
 
 ## 日志
 
+### 2026-11-27：I105–I107，LLM 的 node、hub 和 proxy；拆分出 I106b
+
+- 角色（`akit_llm::{node,hub,proxy}`）已注册到 `akit run`（`akit::ROLES`）：它们共有的部分是 `akit_llm::role::Base`：成员的 `id`
+  （首次启动时生成，`<role>-<16 位十六进制>`，写回成员）和 `name`；访问策略（成员自己的，然后是全局的）用作监听器的过滤器；`limits`；
+  `listen` 及其 `self_signed` 证书，生成一次并保存在配置旁（`akit.llm.<role>.pem`，0600；配置旁无处保存时写入成员）；`peers`；`tokens`，
+  token 的第一个成员写回其记录，过期 token 的链路由每次应用配置时重新设置的清扫关闭。角色 hello 时的版本是 `akit <version>`。
+- node（I105）：其模型的状态（`ready`、`disabled`、`error`），每 60 秒（出错时 15 秒）用 akio 客户端探测上游的模型列表来检查（401、403
+  和 5xx 视为失败，丢弃过时的探测）；其信息（`/node/info`）以及向其 hub 和 proxy 的推送（`/node/update`，间隔 200 毫秒，只在变化时，带递增
+  的序号；对新连接的对端立即推送）；`/node/proxy`：在模型的 `max_inflight` 和 node 的上限内占用模型，各 API 的上游 URL 和认证（OpenAI；
+  Anthropic 及其版本；Gemini 及其 `alt`；Azure OpenAI 的部署；Ollama；Cohere），在 JSON 正文、表单字段或 Gemini 批量请求中把模型改名为上游
+  的名字，请求正文内联或从流的帧流式上传（上游等待超过 256 KiB 时按窗口压住，借助请求正文的 `on_drain`），响应头和正文到达即在流的信用下
+  发出（否则暂停上游的读取），`first_byte_timeout`（同时约束连接：akio-http 的客户端没有自己的连接超时）、`idle_timeout`、`timeout`，
+  首字节之前保活，上游连不上时把模型置为错误。其信息中的硬件在 I108 之前只有最少的部分（主机、系统、CPU）。
+- hub（I106）：node 表（`max_nodes`，遗忘最久之前见到的离线 node；同一次运行中序号更旧的 node 信息丢弃），其在线 node 的模型在变化时推送给
+  proxy（间隔 200 毫秒），`/hub/models`，node 列表（`/hub/node/list` 及其推送，每个 node 64 个模型），以及 `/hub/proxy`：选择提供该模型且
+  就绪、负载最低的 node，相同时轮询，由两个 pump 在各流的信用下转发调用（proxy 流式上传的正文到 node，node 的帧到 proxy），在没有任何数据
+  到达 proxy 且其正文未被取走时换下一个 node（最多 3 个）。
+- proxy（I107）：`api.address` 上供 agent 使用的 API，监听器引擎上独立的 akio-http 监听器（配 `cert_file` 时用 TLS，超过 `max_conns` 的
+  连接在 accept 时关闭，角色的访问策略，`max_body_bytes`）；OpenAI 和 Anthropic（`/v1/models`）、Gemini（`/v1beta/models`）和 Ollama
+  （`/api/tags`）的模型列表；五种 API 的调用，key 取自 `Authorization: Bearer`、`x-api-key`、`x-goog-api-key` 或 Gemini 的 `key`，其
+  SHA-256 与每个 key 以常数时间比较；直连 node 和 hub 的模型目录（推送而来，并在对端连接时读取）；路由：先是就绪的直连 node（负载低者优先），
+  再是 hub，响应头之前最多 4 条；超过 1 MiB 的正文以 64 KiB 的帧流式发送；响应带 `X-Akit-Node` 流式写给 agent，agent 跟不上时压住流的帧；
+  `max_inflight`（429）、`first_byte_timeout`（503）和 `timeout`（504）；各 API 的错误格式和状态码。
+- 测试：表单与 JSON 改写、上游 URL、认证头、端点和错误格式的单元测试；端到端（`tests/e2e.rs`）：agent 经 akit 的 proxy、hub 和 node 到
+  模拟的 OpenAI 兼容上游（模型改名、上游的 key、流式事件、经 hub 流式传输的 3 MiB 正文、错误的 key、未知模型、另一种 API 的模型、错误的
+  JSON、未知路径），直连 node 优先，上游已死时回答 503，过期 token 的链路被关闭。对 fit 的二进制（`tests/fit_roles.rs`，`AKIT_FIT_BIN`）：
+  fit 的 hub 位于 akit 的 node 和 proxy 之间，akit 的 hub 位于 fit 的 node 和 proxy 之间，以及 akit 的 proxy 直连 fit 的 node，各自做同样的调用。
+- mesh：对端上线回调在 hello 的应答发出之后才运行，使其发送的内容（hub 的 `/node/info`、proxy 的模型）到达已登记该链路的对端。
+- 剩余：I106b（hub 供页面使用的调用、node 列表的字节上限、路由计数）、I108（node 的管理、其硬件）、I109（角色的页面）。
+
 ### 2026-11-27：I104，LLM mesh：基于 akio-ws 的 wire、链路和 mesh
 
 - `akit-llm`（新）：fit 的 `llm/internal/wire` 和 `mesh`，线上逐字节一致。帧（`wire::frame`）：fit 的头，调用、打开流和推送带方法名，
