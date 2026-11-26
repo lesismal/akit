@@ -59,11 +59,11 @@ pub struct Uplink {
     owner: Weak<dyn Owner>,
     coder: Option<Coder>,
     token: Option<Secret>,
-    /// The TLS of `tls://` endpoints, and the pin it leaves to [`crate::tls::when_handshaken`];
-    /// made when the uplink is (on the control thread: it reads `ca_file`).
-    tls: Option<(akio::tls::ClientConfig, Option<[u8; 32]>)>,
+    /// The TLS of `tls://` and `wss://` endpoints, made when the uplink is (on the control
+    /// thread: it reads `ca_file`).
+    tls: Option<akio::tls::ClientConfig>,
     /// The TLS of `quic://` endpoints, which `quic_insecure` may leave unchecked.
-    quic: Option<(akio::tls::ClientConfig, Option<[u8; 32]>)>,
+    quic: Option<akio::tls::ClientConfig>,
     proven: Arc<Mutex<HashSet<u64>>>,
     st: Mutex<UpState>,
     seq: AtomicU32,
@@ -122,15 +122,11 @@ impl Uplink {
             None => c.dialer(),
         });
         let check = crate::tls::Check::of(&cfg.pin, &cfg.ca_file, false);
-        let pin = match &check {
-            crate::tls::Check::Pin(p) => Some(*p),
-            _ => None,
-        };
         let needs_tls = dials(cfg)
             .iter()
             .any(|a| parse_endpoint(a).is_some_and(|e| e.protocol == TunnelProtocol::Tls));
         let tls = if needs_tls {
-            Some((crate::tls::client_config(&check)?, pin))
+            Some(crate::tls::client_config(&check)?)
         } else {
             None
         };
@@ -139,7 +135,7 @@ impl Uplink {
             .any(|a| parse_endpoint(a).is_some_and(|e| e.protocol == TunnelProtocol::Quic));
         let quic = if needs_quic {
             let check = crate::tls::Check::of(&cfg.pin, &cfg.ca_file, cfg.quic_insecure);
-            Some((crate::tls::client_config(&check)?, pin))
+            Some(crate::tls::client_config(&check)?)
         } else {
             None
         };
@@ -248,34 +244,18 @@ impl Uplink {
                 on_error,
             ),
             TunnelProtocol::Tls => {
-                let Some((cfg, pin)) = self.tls.clone() else {
+                let Some(cfg) = self.tls.clone() else {
                     return on_error(std::io::Error::other("no TLS configured"));
                 };
-                let dial = self.cfg.dial();
+                // The link starts at once: what it sends waits for the handshake, which checks
+                // the hub's certificate (its pin too) first.
                 let inner = akio::fn_acceptor(move |c: &akio::Conn<LinkHandler>| {
-                    // Nothing is sent until the hub's certificate is checked (crate::tls).
-                    let l = Link::deferred(
+                    let l = Link::new(
                         Arc::new(ConnWire::new(c)),
                         Arc::clone(&router),
                         coder.clone(),
                     );
-                    let (me, l2, c2) = (Arc::clone(&me), Arc::clone(&l), c.clone());
-                    crate::tls::when_handshaken(
-                        c.clone(),
-                        pin,
-                        dial,
-                        Box::new(move |r| match r {
-                            Ok(()) => {
-                                l2.start();
-                                me.dialed(&l2);
-                            }
-                            Err(e) => {
-                                me.fail(&e);
-                                akit_observe::warn!(Tunnel, "hub {}: {e}", me.name);
-                                c2.close();
-                            }
-                        }),
-                    );
+                    me.dialed(&l);
                     LinkHandler(Some(l))
                 });
                 match akio::tls::Tls::client(cfg, &ep.host, inner) {
@@ -284,7 +264,7 @@ impl Uplink {
                 }
             }
             TunnelProtocol::Quic => {
-                let Some((cfg, pin)) = self.quic.clone() else {
+                let Some(cfg) = self.quic.clone() else {
                     return on_error(std::io::Error::other("no TLS configured"));
                 };
                 crate::quic::dial(
@@ -292,7 +272,6 @@ impl Uplink {
                     &ep.host,
                     ep.port,
                     &cfg,
-                    pin,
                     self.cfg.dial(),
                     router,
                     coder,

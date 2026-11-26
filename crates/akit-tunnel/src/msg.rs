@@ -51,6 +51,12 @@ pub const MAX_CHUNK: usize = 64 << 10;
 pub const MAX_IN_FLIGHT: i64 = WINDOW + (1 << 20);
 /// The most tunnels one link carries at once.
 pub const MAX_TUNNELS_PER_LINK: usize = 64;
+/// What a link may have waiting to be sent (fit's `proto.LinkQueue`): the windows of its tunnels,
+/// and room for the control messages beside them. What waits on a link is bounded by its tunnels'
+/// windows, not by a high water of its own.
+pub const LINK_QUEUE: usize = MAX_TUNNELS_PER_LINK * (4 << 20) + (4 << 20);
+// `LINK_QUEUE` counts windows of `WINDOW` bytes.
+const _: () = assert!(WINDOW == 4 << 20);
 
 /// The version every peer reports: akit's (decision 038's point 5).
 #[must_use]

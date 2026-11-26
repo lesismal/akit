@@ -20,6 +20,28 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-27: the stopgaps of A234, A235 and A237 go
+
+- A234: every tunnel link's wire is bounded at fit's `LinkQueue` (`msg::LINK_QUEUE`, 64 windows of
+  4 MiB and 4 MiB for control messages, about 260 MiB) as the link is made, as fit's `link.New`
+  does (`Wire::set_max_queued`, a method with a default that does nothing, onto
+  `Conn::set_max_queued_bytes`). The 8 MiB high water goes (`link::HIGH_WATER`, `Link::congested`,
+  `Link::when_drained`), and with it the holds it put on a tunnel's end and on the link the hub
+  reads from: the tunnels' windows alone bound what waits on a link, as in fit. A QUIC link's
+  stream buffer (8 MiB, `quic::STREAM_BUFFER`) and its wire's overflow queue hold `LINK_QUEUE`
+  together. Links stay relayed (`set_relayed`): akio's pause at `write_high_watermark` would stall
+  two links writing to each other.
+- A235: the TLS and QUIC links give their pin to akio-tls (`pin_sha256`) and start at once: a
+  certificate that does not match fails the handshake, and what the link queued meanwhile never
+  leaves. `tls::when_handshaken` and its 5 ms poll on akio's timer thread go, with `Link::deferred`
+  and `Link::start` and the QUIC dialer's check of the leaf in `on_connected`.
+- A237: `akit_observe::stop_client_engine` shuts the engine down and waits on the calling thread
+  again (not on an I/O thread); akit-listener's `acme_shared`, which aborted before akio's fix,
+  passes on macOS. Decisions waiting for review: row 18's outcome.
+- akio API requests A234, A235 and A237 are marked done.
+- Tests: a link bounds its wire at `LINK_QUEUE`; the TLS and QUIC e2e tests (a pin, a wrong pin
+  opening nothing, 12 MiB over QUIC past its stream's buffer) pass unchanged.
+
 ### 2026-11-27: I93, the encrypted store's format and `akit store`; I93b and I93c split
 
 - `akit_admin::store`: fit's `admin/store` byte for byte. The `fitstore` file (the magic `FITSTORE`

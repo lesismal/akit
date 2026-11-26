@@ -102,10 +102,10 @@ first; its status here records the branch, then the akio commit akit pins.
 | A231 | XChaCha20-Poly1305 (HChaCha20 and a 24-byte nonce) in akio-crypto: the AEAD of fit's `fitstore` format | on akio's main and pinned (since `9e21ada7`, akio's ADR-179), used by I93 | 15, 20 | I93 |
 | A232 | An HTTP connection's idle timeout and close from its handler, and the connections accepted told to the application: fit's bounds on connections without a login | on akio's main and pinned (since `9e21ada7`, akio's ADR-180) | 10, 11 | I90 |
 | A233 | A terminal's echo turned off (raw mode), to read a password | on akio's main and pinned (since `9e21ada7`) | 14 | I89 |
-| A234 | A connection's own bound of the bytes queued for it, past the engine's `max_queued_bytes` or below it | requested (I101): a link holds what feeds it past 8 MiB meanwhile | 8, 11 | I101, I104 |
-| A235 | A client TLS configuration that checks the server's certificate by its SHA-256 (a pin) in the handshake, in place of the chain and name | requested (I102): checked once the handshake is done, before a byte is sent, meanwhile | 1, 15 | I102, I104 |
+| A234 | A connection's own bound of the bytes queued for it, past the engine's `max_queued_bytes` or below it | on akio's main and pinned (since `6151f5c5`, akio's ADR-181), used by the tunnel's links | 8, 11 | I101, I104 |
+| A235 | A client TLS configuration that checks the server's certificate by its SHA-256 (a pin) in the handshake, in place of the chain and name | on akio's main and pinned (since `6151f5c5`, akio's ADR-182), used by the tunnel's TLS and QUIC links | 1, 15 | I102, I104 |
 | A236 | A WebSocket's reads held and resumed, its drain heard, and its peer's address, on `WsSender` (both akio-ws's client and akio-http's upgrade) | requested (I102c): the tunnel's WebSocket links and the LLM mesh wait for it | 8, 9 | I102c, I104 |
-| A237 | `Engine::wait` (and `Pool::is_current`) safe in a thread-local destructor | requested (2026-11-27): akit's client engines wait on a thread of their own meanwhile | 1, 15 | — |
+| A237 | `Engine::wait` (and `Pool::is_current`) safe in a thread-local destructor | on akio's main and pinned (since `6151f5c5`) | 1, 15 | — |
 
 ## A1 TCP listeners on a running engine
 
@@ -2265,6 +2265,8 @@ as fit does, a `*` written for each character, and the note about the shown pass
 
 ## A234 A connection's own bound of the bytes queued for it
 
+**Done.** On akio's main (`6151f5c5`, akio's ADR-181) and pinned: `Conn::set_max_queued_bytes` (and `ConnInner`'s, and akio-ws's `WsSender::set_max_queued_bytes`). Every tunnel link's wire is bounded at fit's `LinkQueue` (`akit_tunnel::msg::LINK_QUEUE`, 64 windows of 4 MiB and 4 MiB for control messages) as the link is made (`Wire::set_max_queued`); the 8 MiB high water (`akit_tunnel::link::HIGH_WATER`, `Link::congested`, `Link::when_drained`) and the holds it put on a tunnel's end and on the hub's other link are gone, so tunnels are paced by their windows alone, as fit's. A QUIC link's stream buffer and its wire's overflow queue hold the same `LinkQueue` together.
+
 **Status.** Requested by I101 (2026-11-27). Nothing waits for it: the tunnel's links pace what
 feeds them by their own high water meanwhile (a stopgap recorded in [progress](progress.md)).
 
@@ -2289,6 +2291,8 @@ high water (`akit_tunnel::link::HIGH_WATER`), so that its tunnels are paced by t
 as fit's are; an LLM link gets its streams' windows times `max_inflight`.
 
 ## A235 A pinned server certificate in akio-tls's client
+
+**Done.** On akio's main (`6151f5c5`, akio's ADR-182) and pinned: `ClientConfigBuilder::pin_sha256`, which akio-quic's clients built from the configuration check too. The tunnel's TLS and QUIC links give their pin to the client configuration and start at once: a certificate that does not match fails the handshake, and nothing the link sent meanwhile leaves. `crate::tls::when_handshaken` and its poll on akio's timer thread, `Link::deferred` and `Link::start`, and the QUIC dialer's own check of the leaf are gone.
 
 **Status.** Requested by I102 (2026-11-27). Nothing waits for it: the tunnel's TLS links check the
 pin once the handshake is done and before they send a byte (a stopgap recorded in
@@ -2350,6 +2354,8 @@ that passed a watermark drains.
 mesh's sessions hold a link's reads while a stream's reader is slow past its window.
 
 ## A237 `Engine::wait` safe in a thread-local destructor
+
+**Done.** On akio's main (`6151f5c5`) and pinned: akio-pool's thread-locals read with `try_with`, a destroyed one taken as "not a pool thread". `akit_observe::stop_client_engine` shuts the engine down and waits for it on the calling thread again (not on an I/O thread); the thread it spawned for the wait is gone. akit-listener's `acme_shared` passes on macOS.
 
 **Status.** Requested on 2026-11-27, when akit moved to akio `9e21ada7`. Meanwhile akit's client
 engines (OTLP's, the providers', the shared ACME storage's) are waited for on a thread spawned for

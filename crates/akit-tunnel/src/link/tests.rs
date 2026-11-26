@@ -72,6 +72,7 @@ fn fits_vectors() {
 /// A wire in memory: what one side sends, the other's link reads, on a thread of its own.
 struct Mem {
     tx: Mutex<Option<mpsc::Sender<Vec<u8>>>>,
+    max: AtomicUsize,
 }
 
 impl Wire for Mem {
@@ -95,6 +96,9 @@ impl Wire for Mem {
     }
     fn on_drain(&self, f: Box<dyn FnOnce() + Send>) {
         f();
+    }
+    fn set_max_queued(&self, n: usize) {
+        self.max.store(n, Ordering::Relaxed);
     }
 }
 
@@ -129,6 +133,7 @@ fn pair(a: Option<Coder>, b: Option<Coder>) -> (Arc<Link>, Arc<Link>, Arc<Echo>)
     let la = Link::new(
         Arc::new(Mem {
             tx: Mutex::new(Some(to_b)),
+            max: AtomicUsize::new(0),
         }),
         Arc::clone(&echo) as Arc<dyn Router>,
         a,
@@ -136,6 +141,7 @@ fn pair(a: Option<Coder>, b: Option<Coder>) -> (Arc<Link>, Arc<Link>, Arc<Echo>)
     let lb = Link::new(
         Arc::new(Mem {
             tx: Mutex::new(Some(to_a)),
+            max: AtomicUsize::new(0),
         }),
         Arc::clone(&echo) as Arc<dyn Router>,
         b,
@@ -215,4 +221,18 @@ fn frames_out_of_bounds_close_the_link() {
     // A call past the listener's limit closes it: the call fails.
     assert!(call(&la, 9, &[0u8; 100]).is_err());
     assert!(lb.is_closed() || la.is_closed() || call(&la, 9, b"x").is_err());
+}
+
+/// A link bounds its wire's queue at fit's `LinkQueue` (A234): its tunnels' windows pace it, and a
+/// wire never fails a send they allow.
+#[test]
+fn a_links_wire_is_bounded_at_the_link_queue() {
+    let w = Arc::new(Mem {
+        tx: Mutex::new(None),
+        max: AtomicUsize::new(0),
+    });
+    let echo = Arc::new(Echo(Mutex::new(Vec::new())));
+    let _l = Link::new(Arc::clone(&w) as Arc<dyn Wire>, echo, None);
+    assert_eq!(w.max.load(Ordering::Relaxed), crate::msg::LINK_QUEUE);
+    assert_eq!(crate::msg::LINK_QUEUE, 64 * (4 << 20) + (4 << 20));
 }

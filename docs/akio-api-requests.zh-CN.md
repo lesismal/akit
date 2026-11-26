@@ -101,10 +101,10 @@
 | A231 | akio-crypto 中的 XChaCha20-Poly1305（HChaCha20 和 24 字节 nonce）：fit 的 `fitstore` 格式的 AEAD | 已进入 akio 的 main 并锁定（自 `9e21ada7` 起，akio 的 ADR-179），I93 使用 | 15、20 | I93 |
 | A232 | 由处理函数设置 HTTP 连接的空闲超时并关闭它，并把已接受的连接告诉应用：fit 对未登录连接的限制 | 已进入 akio 的 main 并锁定（自 `9e21ada7` 起，akio 的 ADR-180） | 10、11 | I90 |
 | A233 | 关闭终端回显（原始模式）以读取密码 | 已进入 akio 的 main 并锁定（自 `9e21ada7` 起） | 14 | I89 |
-| A234 | 单个连接自己的发送队列上限，可高于或低于引擎的 `max_queued_bytes` | 已提出（I101）：在此之前链路在超过 8 MiB 时压住喂给它的一方 | 8, 11 | I101, I104 |
-| A235 | 在握手中按 SHA-256（pin）检查服务器证书、代替证书链和名称检查的客户端 TLS 配置 | 已提出（I102）：在此之前于握手完成后、发送任何字节前检查 | 1, 15 | I102, I104 |
+| A234 | 单个连接自己的发送队列上限，可高于或低于引擎的 `max_queued_bytes` | 已进入 akio 的 main 并锁定（自 `6151f5c5` 起，akio 的 ADR-181），隧道链路使用 | 8, 11 | I101, I104 |
+| A235 | 在握手中按 SHA-256（pin）检查服务器证书、代替证书链和名称检查的客户端 TLS 配置 | 已进入 akio 的 main 并锁定（自 `6151f5c5` 起，akio 的 ADR-182），隧道的 TLS 和 QUIC 链路使用 | 1, 15 | I102, I104 |
 | A236 | 在 `WsSender` 上压住和恢复 WebSocket 的读取、得知其发送队列排空、取得对端地址（akio-ws 的客户端和 akio-http 的升级都要） | 已提出（I102c）：隧道的 WebSocket 链路和 LLM mesh 在等待它 | 8, 9 | I102c, I104 |
-| A237 | 在线程局部变量的析构中调用 `Engine::wait`（以及 `Pool::is_current`）也安全 | 已提出（2026-11-27）：在此之前 akit 的客户端引擎在专门的线程上等待 | 1, 15 | — |
+| A237 | 在线程局部变量的析构中调用 `Engine::wait`（以及 `Pool::is_current`）也安全 | 已进入 akio 的 main 并锁定（自 `6151f5c5` 起） | 1, 15 | — |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -1826,6 +1826,8 @@ akio-sys 中没有任何地方提到 `termios`。
 
 ## A234 单个连接自己的发送队列上限
 
+**完成。** 已进入 akio 的 main（`6151f5c5`，akio 的 ADR-181）并锁定：`Conn::set_max_queued_bytes`（以及 `ConnInner` 的，和 akio-ws 的 `WsSender::set_max_queued_bytes`）。每条隧道链路的 wire 在链路建立时以 fit 的 `LinkQueue`（`akit_tunnel::msg::LINK_QUEUE`，64 个 4 MiB 窗口加 4 MiB 控制消息余量）为上限（`Wire::set_max_queued`）；8 MiB 高水位（`akit_tunnel::link::HIGH_WATER`、`Link::congested`、`Link::when_drained`）及其对隧道端和 hub 另一侧链路的压制已删除，隧道只由各自的窗口调节，同 fit。QUIC 链路的流缓冲和其 wire 的溢出队列合起来同样是 `LinkQueue`。
+
 **状态。** 由 I101 提出（2026-11-27）。没有工作在等待它：在此之前隧道链路用自己的高水位调节喂给它的一方（记录在
 [进度](progress.zh-CN.md)中的临时做法）。
 
@@ -1845,6 +1847,8 @@ akio-sys 中没有任何地方提到 `termios`。
 窗口调节，与 fit 相同；LLM 链路取其流的窗口乘以 `max_inflight`。
 
 ## A235 akio-tls 客户端中固定的服务器证书
+
+**完成。** 已进入 akio 的 main（`6151f5c5`，akio 的 ADR-182）并锁定：`ClientConfigBuilder::pin_sha256`，由该配置构建的 akio-quic 客户端同样检查。隧道的 TLS 和 QUIC 链路把 pin 交给客户端配置并立即启动：不匹配的证书使握手失败，链路在此期间发送的内容不会发出。`crate::tls::when_handshaken` 及其在 akio 定时器线程上的轮询、`Link::deferred` 和 `Link::start`、QUIC 拨号方对叶证书的自行检查均已删除。
 
 **状态。** 由 I102 提出（2026-11-27）。没有工作在等待它：在此之前隧道的 TLS 链路在握手完成之后、发送任何字节之前检查 pin
 （记录在[进度](progress.zh-CN.md)中的临时做法）。
@@ -1889,6 +1893,8 @@ Go 的 `VerifyPeerCertificate` 配合 `InsecureSkipVerify`）：不匹配的证�
 它们上，如 `ConnWire` 映射到 TCP 连接上那样；LLM mesh 的会话在某条流的读者慢过其窗口时压住链路的读取。
 
 ## A237 在线程局部变量的析构中调用 `Engine::wait` 也安全
+
+**完成。** 已进入 akio 的 main（`6151f5c5`）并锁定：akio-pool 的线程局部变量用 `try_with` 读取，已销毁的视为“不是池线程”。`akit_observe::stop_client_engine` 重新在调用线程上关闭引擎并等待（I/O 线程上不等待）；为等待而启动的线程已删除。akit-listener 的 `acme_shared` 在 macOS 上通过。
 
 **状态。** 2026-11-27 akit 移到 akio `9e21ada7` 时提出。在此之前，akit 的客户端引擎（OTLP 的、provider 的、共享 ACME 存储的）在为此
 启动的线程上等待（`akit_observe::stop_client_engine`），这一权宜实现记录在[开发进度](progress.zh-CN.md)中。

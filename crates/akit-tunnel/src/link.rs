@@ -45,7 +45,8 @@ pub const VERSION_TOKEN: u8 = 4;
 /// What waits before the peer's hello: a registration, not the tunnels after it.
 const MAX_BEFORE_HELLO: usize = MAX_FRAME;
 
-/// The transport a link runs over: an akio connection, TCP or TLS. Every method must not block.
+/// The transport a link runs over: an akio connection (TCP or TLS), a QUIC stream or a WebSocket.
+/// Every method must not block.
 pub trait Wire: Send + Sync + 'static {
     /// Queues `b`; false when the connection is gone or its queue is full.
     fn send(&self, b: &[u8]) -> bool;
@@ -61,6 +62,9 @@ pub trait Wire: Send + Sync + 'static {
     fn queued(&self) -> usize;
     /// Runs `f` once what is queued drains.
     fn on_drain(&self, f: Box<dyn FnOnce() + Send>);
+    /// Bounds what may be queued at `n` bytes, past the engine's bound or below it: a send past
+    /// it fails. Nothing for a wire whose queue has a bound of its own.
+    fn set_max_queued(&self, _n: usize) {}
 }
 
 /// Why a call failed.
@@ -182,12 +186,6 @@ struct State {
     err: String,
     hello_token: String,
     coder: Option<Coder>,
-    /// What waits for the link's queue to drain (rule 8): held reads of the tunnels and links
-    /// feeding it.
-    drain_waiters: Vec<Box<dyn FnOnce() + Send>>,
-    drain_armed: bool,
-    /// The hello, until the link starts.
-    hello: Option<Vec<u8>>,
 }
 
 /// A link: one transport connection of the tunnel's protocol.
@@ -210,32 +208,17 @@ impl std::fmt::Debug for Link {
 
 static NEXT: AtomicU64 = AtomicU64::new(1);
 
-/// The bytes queued on a link past which what feeds it is held, and resumed once it drains:
-/// the link's queue stays well inside akio's per-connection bound (`limits.max_write_queue_bytes`,
-/// 32 MiB), where fit raises the bound to the windows of 64 tunnels (A234 asks akio for a
-/// connection's own bound).
-pub const HIGH_WATER: usize = 8 << 20;
-
 fn lock(m: &Mutex<State>) -> MutexGuard<'_, State> {
     m.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 impl Link {
     /// A link on `wire`, served by `router`, its bodies sealed by `coder` (the dialer's coder on
-    /// the side that dialed). With a coder, its hello is sent at once.
+    /// the side that dialed). With a coder, its hello is sent at once. The wire's queue is bounded
+    /// by [`LINK_QUEUE`](crate::msg::LINK_QUEUE), as fit's links' are: its tunnels' windows pace
+    /// what waits on it.
     pub fn new(wire: Arc<dyn Wire>, router: Arc<dyn Router>, coder: Option<Coder>) -> Arc<Link> {
-        let l = Link::deferred(wire, router, coder);
-        l.start();
-        l
-    }
-
-    /// A link that sends nothing, its hello included, until [`Link::start`]: for a TLS link whose
-    /// hub's certificate is checked once its handshake is done (`crate::tls`).
-    pub fn deferred(
-        wire: Arc<dyn Wire>,
-        router: Arc<dyn Router>,
-        coder: Option<Coder>,
-    ) -> Arc<Link> {
+        wire.set_max_queued(crate::msg::LINK_QUEUE);
         let random = crate::crypt::random();
         let hello = coder.as_ref().map(|c| {
             let tok = c.token_id();
@@ -275,21 +258,12 @@ impl Link {
                 err: String::new(),
                 hello_token: String::new(),
                 coder,
-                drain_waiters: Vec::new(),
-                drain_armed: false,
-                hello: None,
             }),
         });
-        lock(&l.st).hello = hello;
-        l
-    }
-
-    /// Starts a link made [`deferred`](Link::deferred): its hello goes out.
-    pub fn start(&self) {
-        let hello = lock(&self.st).hello.take();
         if let Some(h) = hello {
-            self.wire.send(&h);
+            l.wire.send(&h);
         }
+        l
     }
 
     /// Lowers the most bytes a frame may have (an unregistered link's 64 KiB).
@@ -328,45 +302,6 @@ impl Link {
     /// Closes the link once what is queued is sent.
     pub fn close_after_send(&self) {
         self.wire.close_after_send();
-    }
-
-    /// Whether the link's queue is past [`HIGH_WATER`]: what feeds it waits ([`Link::when_drained`]).
-    #[must_use]
-    pub fn congested(&self) -> bool {
-        self.wire.queued() > HIGH_WATER
-    }
-
-    /// Runs `f` once the link's queue has drained (at once when it is not congested).
-    pub fn when_drained(self: &Arc<Self>, f: Box<dyn FnOnce() + Send>) {
-        if !self.congested() {
-            f();
-            return;
-        }
-        let arm = {
-            let mut st = lock(&self.st);
-            if st.closed {
-                drop(st);
-                f();
-                return;
-            }
-            st.drain_waiters.push(f);
-            !std::mem::replace(&mut st.drain_armed, true)
-        };
-        if arm {
-            let me = Arc::clone(self);
-            self.wire.on_drain(Box::new(move || me.drained()));
-        }
-    }
-
-    fn drained(&self) {
-        let ws = {
-            let mut st = lock(&self.st);
-            st.drain_armed = false;
-            std::mem::take(&mut st.drain_waiters)
-        };
-        for w in ws {
-            w();
-        }
     }
 
     /// Builds a frame and sends it, sealed on a sealed link; held until the peer's hello comes.
@@ -699,7 +634,7 @@ impl Link {
 
     /// The link's connection closed: its calls fail, and its router is told.
     pub fn on_closed(self: &Arc<Self>, err: Option<String>) {
-        let (pending, why, waiters) = {
+        let (pending, why) = {
             let mut st = lock(&self.st);
             if st.closed {
                 return;
@@ -710,17 +645,10 @@ impl Link {
                     e.clone_into(&mut st.err);
                 }
             }
-            (
-                std::mem::take(&mut st.pending),
-                st.err.clone(),
-                std::mem::take(&mut st.drain_waiters),
-            )
+            (std::mem::take(&mut st.pending), st.err.clone())
         };
         for (_, p) in pending {
             (p.done)(Err(CallError::Closed(why.clone())));
-        }
-        for w in waiters {
-            w();
         }
         self.router.closed(self, &why);
     }
@@ -756,7 +684,7 @@ impl<H: akio::Handler> ConnWire<H> {
     /// The wire of `c`, which no longer stops reading while its own output is queued (akio's
     /// `set_relayed`, fit's `SetWriteBackpressure(false)`): both ends of a link writing to each
     /// other would otherwise each stop reading the other's frames and wait forever. Its senders
-    /// pace themselves instead: each tunnel by its window, everything by [`HIGH_WATER`].
+    /// pace themselves instead, each tunnel by its window.
     #[must_use]
     pub fn new(c: &akio::Conn<H>) -> ConnWire<H> {
         c.set_relayed(true);
@@ -791,6 +719,9 @@ impl<H: akio::Handler> Wire for ConnWire<H> {
     }
     fn on_drain(&self, f: Box<dyn FnOnce() + Send>) {
         self.0.on_drain(f);
+    }
+    fn set_max_queued(&self, n: usize) {
+        self.0.set_max_queued_bytes(Some(n));
     }
 }
 

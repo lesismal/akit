@@ -3,16 +3,12 @@
 //! `ca_file`, or by the system's roots; the hub's own self-signed certificate made once and kept
 //! beside the config.
 //!
-//! A pin is checked after the handshake and before the link sends a byte: akio-tls verifies a
-//! server's chain and name, or nothing (`insecure_skip_verify`, which still checks the server's
-//! signature over the handshake with the leaf's key), and has no check of a pinned certificate of
-//! its own (akio API request A235). So a pinned link's handshake runs unverified, the leaf's
-//! SHA-256 is compared with the pin, in constant time, once the handshake is done, and the link
-//! starts only then; a mismatch closes it unsent. The handshake's signature proves the peer holds
-//! the key of the certificate the pin names, as fit's `VerifyPeerCertificate` does.
+//! A pin is checked in the handshake (akio-tls's `pin_sha256`, A235): the leaf's SHA-256 must be
+//! the pin, compared in constant time, in place of the chain and the name; a mismatch fails the
+//! handshake, and what the link sent meanwhile never leaves. The handshake's signature proves the
+//! peer holds the key of the certificate the pin names, as fit's `VerifyPeerCertificate` does.
 
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 
 use akio::tls::{Certificate, ClientConfig, PrivateKey, RootCerts, ServerConfig};
 use akio_crypto::hash::Sha256;
@@ -187,7 +183,8 @@ pub fn client_config(check: &Check) -> Result<ClientConfig, String> {
         .tls13_only(true)
         .resumption(false);
     let b = match check {
-        Check::Pin(_) | Check::Insecure => b.insecure_skip_verify(),
+        Check::Pin(pin) => b.pin_sha256(vec![*pin]),
+        Check::Insecure => b.insecure_skip_verify(),
         Check::Ca(path) => {
             let pem = std::fs::read(path).map_err(|e| format!("tunnel: the hub's CAs: {e}"))?;
             let mut roots = RootCerts::empty();
@@ -206,58 +203,6 @@ pub fn client_config(check: &Check) -> Result<ClientConfig, String> {
         }
     };
     b.build().map_err(|e| e.to_string())
-}
-
-/// Waits, on akio's timer thread, for the handshake of `c` to finish, then checks its leaf against
-/// `pin` (any leaf when `None`), and tells `done`: `Ok` to start the link, or why not. Bounded by
-/// `within`.
-pub fn when_handshaken<H: akio::Handler>(
-    c: akio::Conn<H>,
-    pin: Option<[u8; 32]>,
-    within: Duration,
-    done: Box<dyn FnOnce(Result<(), String>) + Send>,
-) {
-    let deadline = Instant::now()
-        .checked_add(within)
-        .unwrap_or_else(Instant::now);
-    poll(c, pin, deadline, done);
-}
-
-fn poll<H: akio::Handler>(
-    c: akio::Conn<H>,
-    pin: Option<[u8; 32]>,
-    deadline: Instant,
-    done: Box<dyn FnOnce(Result<(), String>) + Send>,
-) {
-    if !c.is_open() {
-        return done(Err(
-            "tunnel: the connection closed in its handshake".to_owned()
-        ));
-    }
-    match akio::tls::tls_info(&c) {
-        Some(info) if !info.handshaking => {
-            let Some(leaf) = info.peer_certificates.first() else {
-                return done(Err("tunnel: the hub sent no certificate".to_owned()));
-            };
-            if let Some(pin) = pin {
-                if !akio_crypto::ct_eq(&Sha256::digest(leaf), &pin) {
-                    return done(Err(
-                        "tunnel: the hub's certificate does not match the pin".to_owned()
-                    ));
-                }
-            }
-            done(Ok(()));
-        }
-        None => done(Err("tunnel: not a TLS connection".to_owned())),
-        Some(_) => {
-            if Instant::now() >= deadline {
-                return done(Err("tunnel: the TLS handshake timed out".to_owned()));
-            }
-            let _ = akio::timer::after_send(Duration::from_millis(5), move || {
-                poll(c, pin, deadline, done);
-            });
-        }
-    }
 }
 
 /// A hub's certificate for its TLS listeners without their own: `quic.cert` and `quic.key`, or the

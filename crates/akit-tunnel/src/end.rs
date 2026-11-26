@@ -4,8 +4,8 @@
 //! Each end sends no more than [`WINDOW`] bytes the other has not acknowledged, and holds its TCP
 //! connection's reads once it has; the other end acknowledges what its own connection has taken,
 //! once that connection's queue is short again (`on_drain`). A slow reader at one end holds back
-//! the writer at the other, one tunnel at a time (rule 8). A link whose queue is past its high
-//! water holds every end that feeds it until it drains.
+//! the writer at the other, one tunnel at a time (rule 8). What waits on a link is so bounded by
+//! its tunnels' windows (`msg::LINK_QUEUE`, fit's).
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicI64, AtomicUsize, Ordering};
@@ -28,7 +28,6 @@ struct EndState {
     window: i64,
     ready: bool,
     held: bool,
-    link_held: bool,
     unacked: i64,
     ack_waiting: bool,
     closed: bool,
@@ -74,7 +73,7 @@ impl End {
     }
 
     fn update_hold(st: &mut EndState) {
-        let hold = !st.ready || st.window <= 0 || st.link_held;
+        let hold = !st.ready || st.window <= 0;
         if hold != st.held {
             st.held = hold;
             if let Some(c) = &st.conn {
@@ -118,19 +117,6 @@ impl End {
         }
         self.bytes_out.fetch_add(total, Ordering::Relaxed);
         self.active.store(now_ms(), Ordering::Relaxed);
-        if self.link.congested() {
-            {
-                let mut st = lock(&self.st);
-                st.link_held = true;
-                Self::update_hold(&mut st);
-            }
-            let me = Arc::clone(self);
-            self.link.when_drained(Box::new(move || {
-                let mut st = lock(&me.st);
-                st.link_held = false;
-                Self::update_hold(&mut st);
-            }));
-        }
     }
 
     /// Bytes of the tunnel from the link: written to the end's connection.
@@ -390,7 +376,6 @@ impl Table {
                 window: WINDOW,
                 ready,
                 held: false,
-                link_held: false,
                 unacked: 0,
                 ack_waiting: false,
                 closed: false,

@@ -19,6 +19,23 @@
 
 ## 日志
 
+### 2026-11-27：A234、A235 和 A237 的临时做法删除
+
+- A234：每条隧道链路的 wire 在链路建立时以 fit 的 `LinkQueue`（`msg::LINK_QUEUE`，64 个 4 MiB 窗口加 4 MiB 控制消息余量，约
+  260 MiB）为上限，同 fit 的 `link.New`（`Wire::set_max_queued`，带一个什么也不做的默认实现，映射到
+  `Conn::set_max_queued_bytes`）。8 MiB 高水位删除（`link::HIGH_WATER`、`Link::congested`、`Link::when_drained`），随之删除它对
+  隧道端和 hub 所读链路的压制：链路上等待的数据只由隧道的窗口约束，同 fit。QUIC 链路的流缓冲（8 MiB，`quic::STREAM_BUFFER`）
+  和其 wire 的溢出队列合起来是 `LINK_QUEUE`。链路仍是中继连接（`set_relayed`）：akio 在 `write_high_watermark` 处的暂停会让
+  互相写的两条链路停住。
+- A235：TLS 和 QUIC 链路把 pin 交给 akio-tls（`pin_sha256`）并立即启动：不匹配的证书使握手失败，链路在此期间排队的内容不会
+  发出。`tls::when_handshaken` 及其在 akio 定时器线程上每 5 ms 的轮询删除，`Link::deferred`、`Link::start` 以及 QUIC 拨号方在
+  `on_connected` 中对叶证书的检查一并删除。
+- A237：`akit_observe::stop_client_engine` 重新在调用线程上关闭引擎并等待（I/O 线程上不等待）；akio 修复之前会中止的
+  akit-listener `acme_shared` 在 macOS 上通过。待审决定：第 18 行的结果。
+- akio API 请求 A234、A235 和 A237 标为完成。
+- 测试：链路把 wire 的上限设为 `LINK_QUEUE`；TLS 和 QUIC 的端到端测试（pin、错误的 pin 打不开任何东西、QUIC 上超过流缓冲的
+  12 MiB）不加修改通过。
+
 ### 2026-11-27：I93，加密 store 的格式和 `akit store`；拆分出 I93b 和 I93c
 
 - `akit_admin::store`：逐字节移植 fit 的 `admin/store`。`fitstore` 文件（保留魔数 `FITSTORE`：格式是 fit 的），59 字节的头（版本、

@@ -3,31 +3,33 @@
 //! byte, [`STREAM_VERSION`], before its data, which makes the stream known to the hub before the
 //! dialer has anything else to say; the hub strips it. Nothing else is added: what one side writes
 //! is what the other reads. The TLS is the TLS links' (ALPN `fit-tunnel`, TLS 1.3), the hub's
-//! certificate checked the same way, a pin once the handshake is done (akio API request A235).
+//! certificate checked the same way, a pin in the handshake (akio-tls's `pin_sha256`, A235).
 //!
-//! Everything runs on akio-quic's callbacks. A stream's send buffer is the link's high water
-//! ([`HIGH_WATER`]); what the link sends past it waits in the wire's own queue, bounded by
-//! [`OVERFLOW`], until akio-quic says the stream has room again (`on_stream_writable`), and the
-//! feeders a congested link holds resume then. Holding a link's reads holds its stream's, whose
-//! flow control window then stops the peer.
+//! Everything runs on akio-quic's callbacks. What the link sends past its stream's send buffer
+//! ([`STREAM_BUFFER`]) waits in the wire's own queue, bounded by [`OVERFLOW`] so that the two hold
+//! fit's `LinkQueue` (`msg::LINK_QUEUE`), until akio-quic says the stream has room again
+//! (`on_stream_writable`). The tunnels' windows bound what waits, as on the other links. Holding a
+//! link's reads holds its stream's, whose flow control window then stops the peer.
 
 use std::collections::VecDeque;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
-use akio_crypto::hash::Sha256;
 use akio_quic::{Connection, Dir, Side, StreamId, TransportConfig};
 
 use crate::crypt::Coder;
-use crate::link::{HIGH_WATER, Link, Router, Wire};
+use crate::link::{Link, Router, Wire};
 
 /// The byte the dialer sends first on its stream (fit's `streamVersion`).
 pub const STREAM_VERSION: u8 = 1;
 
-/// What a link may queue past its stream's send buffer before a send fails: what the TCP links'
-/// connections take past [`HIGH_WATER`] (akit's default `limits.max_write_queue_bytes`, 32 MiB).
-pub const OVERFLOW: usize = 24 << 20;
+/// A link's stream's send buffer.
+pub const STREAM_BUFFER: usize = 8 << 20;
+
+/// What a link may queue past its stream's send buffer before a send fails: with the buffer, what
+/// the other links' connections may queue (`msg::LINK_QUEUE`).
+pub const OVERFLOW: usize = crate::msg::LINK_QUEUE - STREAM_BUFFER;
 
 /// fit's code for a refused stream.
 const CODE_REFUSED: u32 = 1;
@@ -37,7 +39,7 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 }
 
 /// The transport of a link's QUIC connection: idle past `idle`, pinged every `ping`, the stream's
-/// send buffer the link's high water.
+/// send buffer [`STREAM_BUFFER`].
 #[must_use]
 pub fn transport(idle: Duration, ping: Duration) -> TransportConfig {
     let mut t = TransportConfig::default();
@@ -45,7 +47,7 @@ pub fn transport(idle: Duration, ping: Duration) -> TransportConfig {
     t.keep_alive_interval = Some(ping);
     t.max_concurrent_bidi_streams = 1;
     t.max_concurrent_uni_streams = 0;
-    t.stream_send_buffer = HIGH_WATER as u64;
+    t.stream_send_buffer = STREAM_BUFFER as u64;
     t
 }
 
@@ -166,8 +168,8 @@ impl Wire for QuicWire {
         {
             let mut st = lock(&self.st);
             // Something waits for room only after a refusal, which akio-quic answers with
-            // `on_stream_writable`; with nothing waiting the queue is the stream's alone, under
-            // the high water.
+            // `on_stream_writable`; with nothing waiting the queue is the stream's alone, within
+            // its buffer.
             if !st.pending.is_empty() && !st.closed {
                 st.waiters.push(f);
                 return;
@@ -188,7 +190,6 @@ type Slot = Arc<Mutex<Option<Dialed>>>;
 
 enum Role {
     Dialer {
-        pin: Option<[u8; 32]>,
         router: Arc<dyn Router>,
         coder: Option<Coder>,
         done: Slot,
@@ -242,21 +243,9 @@ impl QuicLink {
     }
 
     fn dialer_connected(&mut self, c: &Connection) -> Result<Arc<Link>, String> {
-        let Role::Dialer {
-            pin, router, coder, ..
-        } = &self.role
-        else {
+        let Role::Dialer { router, coder, .. } = &self.role else {
             return Err("tunnel: not a dialer".to_owned());
         };
-        let certs = c.peer_certificates().unwrap_or_default();
-        let Some(leaf) = certs.first() else {
-            return Err("tunnel: the hub sent no certificate".to_owned());
-        };
-        if let Some(pin) = pin {
-            if !akio_crypto::ct_eq(&Sha256::digest(leaf), pin) {
-                return Err("tunnel: the hub's certificate does not match the pin".to_owned());
-            }
-        }
         let id = c
             .open_bi()
             .ok_or_else(|| "tunnel: the hub lets this side open no stream".to_owned())?;
@@ -372,7 +361,8 @@ impl akio_quic::QuicHandler for QuicLink {
     }
 }
 
-/// Dials a hub's `quic://` endpoint `host:port`, checking its certificate with `tls` and `pin`;
+/// Dials a hub's `quic://` endpoint `host:port`, checking its certificate with `tls` (its pin
+/// too);
 /// `done` hears the link, started, or why not, within `within`. Resolves a name on akio's
 /// resolver thread.
 #[allow(clippy::too_many_arguments)]
@@ -381,7 +371,6 @@ pub fn dial(
     host: &str,
     port: u16,
     tls: &akio::tls::ClientConfig,
-    pin: Option<[u8; 32]>,
     within: Duration,
     router: Arc<dyn Router>,
     coder: Option<Coder>,
@@ -414,7 +403,6 @@ pub fn dial(
         };
         let handler = QuicLink {
             role: Role::Dialer {
-                pin,
                 router,
                 coder,
                 done: Arc::clone(&slot2),

@@ -1,7 +1,7 @@
 //! `tunnel.hub` (fit's `tunnel/hub`): it takes links from nodes and proxies on its listeners,
 //! registers them (a token it issued, or the deprecated shared password), routes each tunnel a
 //! proxy opens to the node it names, and passes the tunnel's frames between them, checking each
-//! end's window, and holding the link it reads from while the one it writes to is congested.
+//! end's window: the windows bound what waits on each link, as fit's.
 
 use std::collections::{BTreeMap, HashMap};
 use std::net::{IpAddr, SocketAddr};
@@ -770,12 +770,6 @@ impl HubCore {
         }
         drop(st);
         to.notify(m, body);
-        // The link written to is congested: the one read from waits for it (rule 8).
-        if to.congested() {
-            from.hold_reads(true);
-            let f = Arc::clone(from);
-            to.when_drained(Box::new(move || f.hold_reads(false)));
-        }
     }
 
     fn disconnected(&self, l: &Arc<Link>) {

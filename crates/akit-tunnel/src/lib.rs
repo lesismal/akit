@@ -10,8 +10,8 @@
 //! connection's `on_data`; a call that waits (a node's dial of a service, a proxy's open of a
 //! tunnel) is answered from the callback that ends the wait; timers run on akio's timer thread.
 //! Each tunnel's end sends at most a window the other has not acknowledged and holds its TCP
-//! connection's reads until it is acknowledged; a link whose queue passes its high water holds
-//! what feeds it until it drains (rule 8).
+//! connection's reads until it is acknowledged (rule 8): the windows bound what waits on a link,
+//! which may queue fit's `LinkQueue` (akio's per-connection bound, A234).
 //!
 //! Part of [akit](https://github.com/lesismal/akit); see `docs/dev-plan.md` (I101-I103).
 
