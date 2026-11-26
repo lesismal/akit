@@ -31,3 +31,4 @@ says whether akit follows it.
 | [033](033-log-files.md) | Log files, rotation and retention, as fit's | accepted |
 | [034](034-access-lists.md) | Access lists on akio's accept filter | accepted |
 | [035](035-admin-api-redacts-secrets.md) | The Admin API redacts secrets, akit warns of exposed ones, and the rest of I80b's limitations | waiting for review |
+| [036](036-console.md) | The console on an engine of its own, fit's pages served as fit ships them, the store waiting for akio | waiting for review |

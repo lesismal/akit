@@ -295,6 +295,7 @@ dependencies = [
  "akio",
  "akio-crypto",
  "akio-http",
+ "akio-x509",
  "akit-access",
  "akit-cache",
  "akit-config",
@@ -303,6 +304,7 @@ dependencies = [
  "akit-observe",
  "akit-provider",
  "akit-runtime",
+ "akit-tls",
 ]
 
 [[package]]

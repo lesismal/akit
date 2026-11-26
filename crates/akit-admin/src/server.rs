@@ -71,6 +71,10 @@ pub struct Options {
     /// graph's `admin.access`, then its global access; every address served without it. Changed
     /// by [`Server::set_access`]. Not asked of a Unix socket's peers.
     pub access: Option<Arc<akit_access::Policy>>,
+    /// The access lists the console's connections are checked against at accept (I90): the
+    /// running graph's `admin.console.access`, then its global access; every address served
+    /// without it. Changed by [`Server::set_console_access`].
+    pub console_access: Option<Arc<akit_access::Policy>>,
     /// The log files akit writes (I81, I83), which `GET /logs` lists and `POST /logs/rotate` and
     /// `POST /logs/cleanup` act on; without it, the outputs are listed with no files.
     pub logs: Option<akit_observe::Files>,
@@ -86,6 +90,7 @@ impl fmt::Debug for Options {
             .field("metrics", &self.metrics.is_some())
             .field("status", &self.status.is_some())
             .field("access", &self.access.is_some())
+            .field("console_access", &self.console_access.is_some())
             .field("logs", &self.logs.is_some())
             .finish()
     }
@@ -101,6 +106,7 @@ impl Default for Options {
             metrics: None,
             status: None,
             access: None,
+            console_access: None,
             logs: None,
         }
     }
@@ -115,6 +121,8 @@ pub struct Job(Box<Change>);
 
 struct Change {
     op: Op,
+    /// Where the change comes from: [`SOURCE_ADMIN`], or the console's.
+    source: &'static str,
     if_match: Option<String>,
     mode: Mode,
     reply: Detached,
@@ -248,6 +256,7 @@ impl Job {
     ) -> Option<Outcome> {
         let Change {
             op,
+            source,
             if_match,
             mode,
             reply,
@@ -256,7 +265,7 @@ impl Job {
         let r = match op {
             Op::Load(data) => utf8(data).and_then(|text| {
                 configs.change(
-                    SOURCE_ADMIN,
+                    source,
                     if_match,
                     mode,
                     |cur| whole(&unredacted(cur, text)?),
@@ -267,7 +276,7 @@ impl Job {
             Op::Put(tokens, data) if tokens.is_empty() => utf8(data).and_then(|text| {
                 body_value(&text)?;
                 configs.change(
-                    SOURCE_ADMIN,
+                    source,
                     if_match,
                     mode,
                     |cur| whole(&unredacted(cur, text)?),
@@ -277,7 +286,7 @@ impl Job {
             Op::Put(tokens, data) => utf8(data).and_then(|text| {
                 let mut v = body_value(&text)?;
                 configs.change(
-                    SOURCE_ADMIN,
+                    source,
                     if_match,
                     mode,
                     |cur| {
@@ -292,7 +301,7 @@ impl Job {
             Op::Patch(tokens, data) => utf8(data).and_then(|text| {
                 let mut v = body_value(&text)?;
                 configs.change(
-                    SOURCE_ADMIN,
+                    source,
                     if_match,
                     mode,
                     |cur| {
@@ -307,14 +316,14 @@ impl Job {
                 )
             }),
             Op::Delete(tokens) => configs.change(
-                SOURCE_ADMIN,
+                source,
                 if_match,
                 mode,
                 |cur| edited(cur, |root| pointer::remove(root, &tokens)),
                 apply,
             ),
             Op::Rollback(n) => configs.rollback(n, if_match, mode, apply),
-            Op::Reload => configs.reapply(SOURCE_ADMIN, if_match, mode, apply),
+            Op::Reload => configs.reapply(source, if_match, mode, apply),
         };
         match r {
             Ok(o) => {
@@ -363,6 +372,8 @@ pub struct Server {
     addr: SocketAddr,
     /// The Unix socket's path, when `address` is `unix/<path>` (A23): removed at shutdown.
     unix: Option<PathBuf>,
+    /// The console, when `admin.console` is set (I90).
+    console: Option<crate::console::server::Console>,
 }
 
 impl fmt::Debug for Server {
@@ -417,17 +428,38 @@ impl Server {
             Some(_) => akio::UNIX_ADDR,
             None => resolve(&settings.address)?,
         };
-        let api = Api(Arc::new(Shared {
+        let shared = Shared {
             unix: unix.is_some(),
             configs,
-            submit,
+            submit: Arc::from(submit),
+            source: SOURCE_ADMIN,
             max_body: settings.max_config_bytes,
             metrics: opts.metrics.clone(),
             status: opts.status.clone(),
             logs: opts.logs.clone(),
             dashboard: !settings.disable_dashboard,
             token,
-        }));
+        };
+        // The console (I90), when admin.console is set: the same endpoints, behind its logins,
+        // its configs applied as its own source; bound first, so that an address it cannot have
+        // stops akit before the API listens.
+        let console = match &settings.console {
+            Some(c) => Some(crate::console::server::Console::start(
+                c,
+                Shared {
+                    source: crate::console::SOURCE_CONSOLE,
+                    token: None,
+                    dashboard: false,
+                    unix: false,
+                    // Room for the request's own JSON around a config, as fit's.
+                    max_body: settings.max_config_bytes.saturating_add(64 << 10),
+                    ..shared.clone()
+                },
+                opts,
+            )?),
+            None => None,
+        };
+        let api = Api(Arc::new(shared));
         let mut http = HttpConfig::default();
         // HTTP/1.1 alone: one request at a time on each of the connections max_conns counts.
         http.h2 = None;
@@ -458,9 +490,19 @@ impl Server {
                 Some(p) => io::Error::new(e.kind(), format!("{}: {e}", p.display())),
                 None => e,
             })?;
-        engine.start()?;
+        if let Err(e) = engine.start() {
+            if let Some(c) = &console {
+                c.shutdown();
+            }
+            return Err(e);
+        }
         let addr = engine.local_addrs().first().copied().unwrap_or(addr);
-        Ok(Server { engine, addr, unix })
+        Ok(Server {
+            engine,
+            addr,
+            unix,
+            console,
+        })
     }
 
     /// Has the API serve the clients `access` serves from now on (I87): the access lists of a
@@ -478,6 +520,23 @@ impl Server {
             Some(p) => self.engine.set_listener_filter(id, accept_filter(p)),
             None => self.engine.clear_listener_filter(id),
         };
+    }
+
+    /// Has the console serve the clients `access` serves from now on (I90): the access lists of a
+    /// config applied, `admin.console.access` then the global access; every client without it.
+    /// Nothing without a console.
+    pub fn set_console_access(&self, access: Option<&Arc<akit_access::Policy>>) {
+        if let Some(c) = &self.console {
+            c.set_access(access);
+        }
+    }
+
+    /// Where the console listens, as a URL (`http://127.0.0.1:2020/`), when there is one.
+    #[must_use]
+    pub fn console_url(&self) -> Option<String> {
+        self.console
+            .as_ref()
+            .map(crate::console::server::Console::url)
     }
 
     /// Where the API listens: [`akio::UNIX_ADDR`] on a Unix socket.
@@ -499,6 +558,9 @@ impl Server {
     /// (a load waiting for the control thread is answered when its [`Job`] is dropped: its
     /// connection closes).
     pub fn shutdown(&self) {
+        if let Some(c) = &self.console {
+            c.shutdown();
+        }
         self.engine.shutdown();
         self.engine.wait();
         // The socket file goes with the API, as Go's listener removes it on close.
@@ -513,7 +575,7 @@ impl Server {
 
 /// The accept filter of `policy`: a connection from an address it refuses is closed as it is
 /// accepted.
-fn accept_filter(
+pub(crate) fn accept_filter(
     policy: &Arc<akit_access::Policy>,
 ) -> impl Fn(&SocketAddr) -> bool + Send + Sync + 'static {
     let p = Arc::clone(policy);
@@ -534,9 +596,12 @@ fn read_token(file: &str) -> io::Result<Vec<u8>> {
     Ok(token.as_bytes().to_vec())
 }
 
+#[derive(Clone)]
 pub(crate) struct Shared {
     pub(crate) configs: Configs,
-    submit: Submit,
+    submit: Arc<dyn Fn(Job) -> Result<(), Job> + Send + Sync>,
+    /// The source of the configs applied through it: [`SOURCE_ADMIN`], or the console's.
+    pub(crate) source: &'static str,
     max_body: usize,
     metrics: Option<Metrics>,
     status: Option<Live>,
@@ -554,9 +619,8 @@ struct Api(Arc<Shared>);
 
 /// Whether `req` sends a config or a value of one, or a purge: its body is streamed in, within
 /// `max_config_bytes`.
-fn takes_config(req: &Request) -> bool {
-    let path = req.path();
-    match req.method {
+pub(crate) fn takes_config(method: &Method, path: &str) -> bool {
+    match method {
         Method::Post => {
             path == "/load"
                 || path == "/cache/purge"
@@ -610,6 +674,28 @@ impl akio_http::Service for Api {
             ctx.respond(resp);
             return;
         }
+        dispatch(&self.0, ctx);
+    }
+
+    fn body_mode(&self, req: &Request) -> BodyMode {
+        if takes_config(&req.method, req.path()) {
+            BodyMode::Stream
+        } else {
+            BodyMode::Buffered
+        }
+    }
+}
+
+/// Answers a request of the API's endpoints, past its guard: the Admin API's own, or the
+/// console's, which checks its sessions instead and calls this with the request's target
+/// rewritten to the API's path (I90).
+pub(crate) fn dispatch(shared: &Arc<Shared>, ctx: &mut Context) {
+    let this = Api(Arc::clone(shared));
+    this.serve(ctx);
+}
+
+impl Api {
+    fn serve(&self, ctx: &mut Context) {
         let path = ctx.path().to_owned();
         let method = ctx.method().clone();
         let read = matches!(method, Method::Get | Method::Head);
@@ -688,14 +774,6 @@ impl akio_http::Service for Api {
         };
         ctx.respond(resp);
     }
-
-    fn body_mode(&self, req: &Request) -> BodyMode {
-        if takes_config(req) {
-            BodyMode::Stream
-        } else {
-            BodyMode::Buffered
-        }
-    }
 }
 
 /// Hands `op` to the control thread, the request detached to be answered there; 503 when it
@@ -705,6 +783,7 @@ fn submit(shared: &Shared, ctx: &mut Context, op: Op, mode: Mode) {
     let Some(reply) = ctx.detach() else { return };
     let job = Job(Box::new(Change {
         op,
+        source: shared.source,
         if_match,
         mode,
         reply,

@@ -21,8 +21,10 @@ akit-cache = { workspace = true }
 akit-config = { workspace = true }
 akit-observe = { workspace = true }
 akit-provider = { workspace = true }
+akit-tls = { workspace = true }
 
 [dev-dependencies]
+akio-x509 = { workspace = true }
 akit-handler = { workspace = true }
 akit-listener = { workspace = true }
 akit-runtime = { workspace = true }

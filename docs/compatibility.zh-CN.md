@@ -128,6 +128,8 @@ API 的下一个版本中才会去掉，并在其改动清单中写明。
 fit 的 v1 还有更多端点，用于 akit 尚未运行的部分：tunnel 和 LLM 角色的链接令牌（`/tokens`）、媒体库和工作台的媒体页面
 （`/media/...`），以及流媒体角色（`/streaming/...`）。akit 在运行这些部分之前对它们答 404，届时按 fit 的样子加入，属于兼容的增加。
 
+自 I90 起，控制台（`admin.console`）在 `/api/m/admin/` 下提供同样的端点，用它的登录代替令牌，另有 fit 控制台自己的端点（`/api/login`、`/api/logout`、`/api/session`、`/api/workbench`），cookie 和 CSRF 请求头也沿用 fit 的名字，使 fit 的页面和脚本原样可用于 akit（[控制台指南](guides/console.zh-CN.md)）。
+
 如果需要 Admin API 的 v2，它会在 `/v2/` 下与 v1 的路径并存，v1 的路径在 akit 的整个主版本内保留。
 
 ### 新版本

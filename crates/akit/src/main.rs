@@ -512,6 +512,7 @@ impl Runner<'_> {
         let files = graph.cert_files().clone();
         let names = graph.acme_names().to_vec();
         let admin_access = graph.admin_access().cloned();
+        let console_access = graph.console_access().cloned();
         let r = self
             .listeners
             .reload(graph)
@@ -521,6 +522,8 @@ impl Runner<'_> {
         // The Admin API's access lists follow the config applied, as fit's `setAccess` (I87).
         if let Some(api) = self.api {
             api.set_access(admin_access.as_ref());
+            // The console's too (I90).
+            api.set_console_access(console_access.as_ref());
         }
         Ok((r, files))
     }
@@ -1062,6 +1065,8 @@ fn run(args: &[String]) -> ExitCode {
             let mut api_opts = akit_admin::Options::default();
             // The running graph's `admin.access`, then its global access (I87).
             api_opts.access = cell.with(|g| g.admin_access().cloned());
+            // And the console's: `admin.console.access`, then the global access (I90).
+            api_opts.console_access = cell.with(|g| g.console_access().cloned());
             // What akit is doing now, at GET /status, which the dashboard reads (I63).
             let status = scrape.clone();
             api_opts.status = Some(Arc::new(move |out: &mut String| status.write_status(out)));
@@ -1071,6 +1076,9 @@ fn run(args: &[String]) -> ExitCode {
             match akit_admin::Server::start(a, configs.clone(), submit, &api_opts) {
                 Ok(s) => {
                     println!("akit: admin API on {}", s.address());
+                    if let Some(url) = s.console_url() {
+                        println!("akit: console on {url}");
+                    }
                     Some(s)
                 }
                 Err(e) => {

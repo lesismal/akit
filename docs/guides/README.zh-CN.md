@@ -10,6 +10,7 @@
 - [静态文件与 PHP](static-files.zh-CN.md)：站点、单页应用、压缩、PHP-FPM。
 - [HTTPS 与证书](https.zh-CN.md)：默认 HTTPS、ACME、自己的证书和按需申请的证书、多个实例、客户端证书。
 - [Admin API 与重载](admin-api.zh-CN.md)：SIGHUP、`-watch`、读取和修改运行中的配置、回滚、指标。
+- [控制台](console.zh-CN.md)：需要登录的网页，从中读取和修改运行中的配置；`akit hash-password`。
 - [缓存](caching.zh-CN.md)：`cache` 中间件、磁盘层和清除。
 - [WebAssembly 插件](wasm.zh-CN.md)：fit 的插件和 Proxy-Wasm 插件、它们的上限和开销。
 

@@ -89,10 +89,15 @@ pub fn admin_warning(
     first: Option<&akit_config::Admin>,
     next: Option<&akit_config::Admin>,
 ) -> Option<String> {
-    // `access` follows every config applied (I87), the rest takes a restart, as fit's.
+    // `access` and the console's `access` follow every config applied (I87, I90), the rest
+    // takes a restart, as fit's.
     let without_access = |a: Option<&akit_config::Admin>| {
         a.map(|a| akit_config::Admin {
             access: None,
+            console: a.console.as_ref().map(|c| akit_config::Console {
+                access: None,
+                ..c.clone()
+            }),
             ..a.clone()
         })
     };

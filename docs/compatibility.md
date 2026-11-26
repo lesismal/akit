@@ -151,6 +151,11 @@ and the LLM roles (`/tokens`), the media libraries and the workbench's media pag
 and the streaming role (`/streaming/...`). akit answers them 404 until it runs those parts, and adds
 them then, as fit has them, a compatible addition.
 
+Since I90, the console (`admin.console`) serves the same endpoints under `/api/m/admin/`, behind
+its logins instead of the token, with fit's own console endpoints (`/api/login`, `/api/logout`,
+`/api/session`, `/api/workbench`) and fit's names for its cookie and CSRF header, so that fit's
+pages and scripts work with akit unchanged ([the console guide](guides/console.md)).
+
 A v2 of the Admin API, if one is needed, would be served under `/v2/` beside v1's paths, which would
 stay for the rest of akit's major version.
 

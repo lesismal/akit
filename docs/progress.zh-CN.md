@@ -19,6 +19,27 @@
 
 ## 日志
 
+### 2026-11-26：I90，控制台的服务器
+
+- `akit_admin::console::server`（fit 的 `app/console` 和 `admin/console.go`；[决定 036](decisions/036-console.zh-CN.md)）：
+  akio-http 运行在自己的引擎上，一个 I/O 线程，HTTP/1.1，用 `cert_file` 和 `key_file` 提供 TLS（`akit_tls::server_config`，
+  TLS 1.2 和 1.3）；`max_conns` 在 accept 时限制；`admin.console.access`、再是全局访问控制，在 accept 时决定
+  （`Graph::console_access`，每次应用配置都重新设置，`Server::set_console_access`；`admin_warning` 不把它算在内）。设置了
+  `admin.console` 时由 `Server::start` 与 Admin API 一起启动，先绑定；`akit run` 打印 `akit: console on <url>`。
+- fit 的端点：`POST /api/login`（4 KiB 以内的 JSON；先由登录模块准入，再在自己的池上检查，`akio::Pool`，一个线程、16 个等待，
+  超出 503；锁定时 429，带 `Retry-After` 和 `retry_after`）、`POST /api/logout`、`GET /api/session`、`GET /api/workbench`
+  （`{"user", "modules": ["admin"]}`）、`GET /api/m/admin/users`、修改密码的端点（409：没有 store），以及
+  `/api/m/admin/<路径>`：在同一个请求上调用 Admin API 的分发，改写其目标（`Context::req_mut`），跳过其令牌和 `Host` 检查，所应用的
+  配置来源为 `console`（`Shared` 增加了来源；`Submit` 在内部变为 `Arc`，两者共用）。fit 的 cookie（`fit_console_<端口>`、
+  `HttpOnly`、`SameSite=Strict`，TLS 上 `Secure`）、`X-Fit-Csrf`、来源检查和每个回答上 fit 的响应头。`admin` 日志记录器：登录及其
+  来源、失败、登出，以及每次修改所应用的版本或其状态（一个响应过滤器，使写出回答者记录它）。
+- 在 akio 的 [A232](akio-api-requests.zh-CN.md#a232-由处理函数设置-http-连接的空闲超时并关闭它以及已接受连接的表) 之前的
+  权宜实现：没有登录的连接没有 5 秒的限制，超过 `max_conns` 时也不驱逐；对没有有效会话的请求的回答会关闭其连接。
+- 测试：`crates/akit-admin/tests/console.rs`（fit 的 `TestConsoleLoginAndEdit`、`TestConsoleLoginRefused`、`TestConsoleSessions`、
+  `TestConsoleFailureTableBounded`，TLS，accept 时的访问控制及其替换）；`crates/akit/tests/console.rs` 在 `akit run` 下（通过控制台
+  的登录和加载记入日志，全局访问控制和 `admin.console.access` 随加载变化）。指南 `docs/guides/console.zh-CN.md`；兼容性页面的
+  Admin API 一节。下一步：I91。
+
 ### 2026-11-26：I89，控制台的配置与登录
 
 - 按 fit 的 `config.Console` 读取 `admin.console`（`akit-config`）：`address`（127.0.0.1:2020）、`cert_file` 和 `key_file`

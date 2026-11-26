@@ -15,6 +15,8 @@ by a test that runs `akit validate` on it.
   demand, several instances, client certificates.
 - [The Admin API and reloads](admin-api.md): SIGHUP, `-watch`, reading and changing the running
   config, rollbacks, metrics.
+- [The console](console.md): web pages with logins, from which the running config is read and
+  changed; `akit hash-password`.
 - [Caching](caching.md): the `cache` middleware, its disk tier and purges.
 - [WebAssembly plugins](wasm.md): fit's and Proxy-Wasm plugins, their bounds and cost.
 

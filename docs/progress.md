@@ -20,6 +20,35 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-26: I90, the console's server
+
+- `akit_admin::console::server` (fit's `app/console` and `admin/console.go`; [decision
+  036](decisions/036-console.md)): akio-http on an engine of its own, one I/O thread, HTTP/1.1, over
+  TLS from `cert_file` and `key_file` (`akit_tls::server_config`, TLS 1.2 and 1.3);
+  `max_conns` at accept; `admin.console.access`, then the global access, at accept
+  (`Graph::console_access`, set again by every config applied, `Server::set_console_access`;
+  `admin_warning` leaves it out). Started by `Server::start` with the Admin API when
+  `admin.console` is set, bound first; `akit run` prints `akit: console on <url>`.
+- fit's endpoints: `POST /api/login` (JSON within 4 KiB; admitted by the logins, then checked on a
+  pool of its own, `akio::Pool` with one thread and 16 waiting, 503 past it; 429 with `Retry-After`
+  and `retry_after`), `POST /api/logout`, `GET /api/session`, `GET /api/workbench`
+  (`{"user", "modules": ["admin"]}`), `GET /api/m/admin/users`, the password endpoints (409: no
+  store), and `/api/m/admin/<path>`: the Admin API's dispatch on the same request, its target
+  rewritten (`Context::req_mut`), past its token and `Host` checks, its configs applied as source
+  `console` (`Shared` gained a source; `Submit` became an `Arc` inside, so both share it). fit's
+  cookie (`fit_console_<port>`, `HttpOnly`, `SameSite=Strict`, `Secure` over TLS), `X-Fit-Csrf`,
+  the origin check and fit's headers on every answer. The `admin` logger: logins and where from,
+  failures, logouts, and each change with the version it applied or its status (a response
+  filter, so whoever writes the answer logs it).
+- Stopgap until akio's [A232](akio-api-requests.md#a232-an-http-connections-idle-timeout-and-close-from-its-handler-and-a-table-of-the-connections-accepted):
+  no 5 s bound on a connection without a login and no eviction past `max_conns`; an answer to a
+  request without a valid session closes its connection.
+- Tests: `crates/akit-admin/tests/console.rs` (fit's `TestConsoleLoginAndEdit`,
+  `TestConsoleLoginRefused`, `TestConsoleSessions`, `TestConsoleFailureTableBounded`, TLS,
+  access at accept and swapped); `crates/akit/tests/console.rs` under `akit run` (a login and a load
+  through the console in the log, the global access and `admin.console.access` following loads).
+  The guide `docs/guides/console.md`; the compatibility page's Admin API section. Next: I91.
+
 ### 2026-11-26: I89, the console's config and logins
 
 - `admin.console` read as fit's `config.Console` (`akit-config`): `address` (127.0.0.1:2020),
