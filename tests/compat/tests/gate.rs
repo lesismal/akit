@@ -535,6 +535,81 @@ fn supported_fields_are_read() {
             |c| c.limits.max_conns == 5,
         ),
         (
+            "access",
+            format!(r#"{{{L}, "access": {{"allow": ["10.0.0.0/8"]}}}}"#),
+            |c| c.access.is_some(),
+        ),
+        (
+            "access.allow",
+            format!(r#"{{{L}, "access": {{"allow": ["10.0.0.0/8"]}}}}"#),
+            |c| c.access.as_ref().unwrap().allow == ["10.0.0.0/8"],
+        ),
+        (
+            "access.deny",
+            format!(r#"{{{L}, "access": {{"deny": [" 192.0.2.1 "]}}}}"#),
+            |c| c.access.as_ref().unwrap().deny == [" 192.0.2.1 "],
+        ),
+        (
+            "access.allow_files",
+            format!(r#"{{{L}, "access": {{"allow_files": ["a.txt"]}}}}"#),
+            |c| c.access.as_ref().unwrap().allow_files == ["a.txt"],
+        ),
+        (
+            "access.deny_files",
+            format!(r#"{{{L}, "access": {{"deny_files": ["d.txt"]}}}}"#),
+            |c| c.access.as_ref().unwrap().deny_files == ["d.txt"],
+        ),
+        (
+            "listeners[].access",
+            r#"{"listeners": [{"name": "web", "address": ":8080", "access": {"allow": ["10.0.0.0/8"]}}]}"#.into(),
+            |c| c.listeners[0].access.is_some(),
+        ),
+        (
+            "listeners[].access.allow",
+            r#"{"listeners": [{"name": "web", "address": ":8080", "access": {"allow": ["10.0.0.0/8"]}}]}"#.into(),
+            |c| c.listeners[0].access.as_ref().unwrap().allow == ["10.0.0.0/8"],
+        ),
+        (
+            "listeners[].access.deny",
+            r#"{"listeners": [{"name": "web", "address": ":8080", "access": {"deny": [" 192.0.2.1 "]}}]}"#.into(),
+            |c| c.listeners[0].access.as_ref().unwrap().deny == [" 192.0.2.1 "],
+        ),
+        (
+            "listeners[].access.allow_files",
+            r#"{"listeners": [{"name": "web", "address": ":8080", "access": {"allow_files": ["a.txt"]}}]}"#.into(),
+            |c| c.listeners[0].access.as_ref().unwrap().allow_files == ["a.txt"],
+        ),
+        (
+            "listeners[].access.deny_files",
+            r#"{"listeners": [{"name": "web", "address": ":8080", "access": {"deny_files": ["d.txt"]}}]}"#.into(),
+            |c| c.listeners[0].access.as_ref().unwrap().deny_files == ["d.txt"],
+        ),
+        (
+            "routes[].access",
+            route(r#""access": {"allow": ["10.0.0.0/8"]}"#),
+            |c| c.routes[0].access.is_some(),
+        ),
+        (
+            "routes[].access.allow",
+            route(r#""access": {"allow": ["10.0.0.0/8"]}"#),
+            |c| c.routes[0].access.as_ref().unwrap().allow == ["10.0.0.0/8"],
+        ),
+        (
+            "routes[].access.deny",
+            route(r#""access": {"deny": [" 192.0.2.1 "]}"#),
+            |c| c.routes[0].access.as_ref().unwrap().deny == [" 192.0.2.1 "],
+        ),
+        (
+            "routes[].access.allow_files",
+            route(r#""access": {"allow_files": ["a.txt"]}"#),
+            |c| c.routes[0].access.as_ref().unwrap().allow_files == ["a.txt"],
+        ),
+        (
+            "routes[].access.deny_files",
+            route(r#""access": {"deny_files": ["d.txt"]}"#),
+            |c| c.routes[0].access.as_ref().unwrap().deny_files == ["d.txt"],
+        ),
+        (
             "limits.max_pending_bytes",
             format!(r#"{{{L}, "limits": {{"max_pending_bytes": "25%"}}}}"#),
             |c| c.limits.max_pending_bytes == akit_config::Memory::Share(2500),
@@ -2844,7 +2919,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 63] = [
+    let objects: [(&str, &str, Option<&str>); 66] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         (
             "providers[].kubernetes",
@@ -2864,6 +2939,9 @@ fn akit_config_lists_match_the_inventory() {
         ("acme.shared_storage.etcd", "ETCD_STORAGE_FIELDS", None),
         ("acme.shared_storage.consul", "CONSUL_STORAGE_FIELDS", None),
         ("limits", "LIMITS_FIELDS", Some("LIMITS_FIT_ONLY")),
+        ("access", "ACCESS_FIELDS", None),
+        ("listeners[].access", "ACCESS_FIELDS", None),
+        ("routes[].access", "ACCESS_FIELDS", None),
         ("engine", "ENGINE_FIELDS", Some("ENGINE_FIT_ONLY")),
         (
             "access_log",

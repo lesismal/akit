@@ -9,6 +9,7 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
+akit-access = { workspace = true }
 akio = { workspace = true }
 akio-h3 = { workspace = true }
 akio-http = { workspace = true }

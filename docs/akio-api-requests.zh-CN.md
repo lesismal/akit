@@ -20,7 +20,7 @@
 | --- | --- | --- | --- | --- |
 | A1 | 在运行中的引擎上添加、移除和排空 TCP 监听器 | 已在 akio 的 main（`a9a620ab`），已锁定，I22 已使用 | 10、11 | I22、I28 |
 | A2 | 每次握手由回调选择服务端证书，回调可以稍后完成 | 已在 akio 的 main（`a9a620ab`），已锁定 | 1、4 | I30、I34 |
-| A3 | 在任何 handler 运行之前过滤已接受的连接 | 已在 akio 的 main（`a9a620ab`），已锁定 | 11 | 访问控制列表 |
+| A3 | 在任何 handler 运行之前过滤已接受的连接 | 已在 akio 的 main（`a9a620ab`），已锁定，由 I85 使用 | 11 | I85–I87 |
 | A4 | PROXY 协议 v1/v2：接受时解析，拨号时写出 | 已在 akio 的 main（`a9a620ab`），已锁定，I52 已使用 | 12 | I52 |
 | A5 | akio-mux 中按 SNI 路由 TLS 而不终结它的规则 | 已在 akio 的 main（`a9a620ab`），已锁定，I52 已使用其 ClientHello 解析器 | 12 | I52、I53 |
 | A6 | `akio-x509` 中生成 CSR（以及 `akio-crypto` 中的 JWS 辅助函数） | 已在 akio 的 main（`afbbb521`），已锁定 | 15 | I31 |
@@ -95,6 +95,7 @@
 | A200 | 按 RFC 9112 的要求处理 absolute-form 请求目标：以其路径作为请求的路径，以其 authority 作为主机 | 已提出（I77）；在此之前 akit-listener 把这样的请求改写为 origin-form | 15、19 | I77 |
 | A214 | 所有连接合计排队字节的预算，超出时暂停每个连接的读取（fit 的 `limits.max_pending_bytes`） | 已进入 akio 的 main 并锁定（自 `6bcd8ad6` 起，akio 的 ADR-172） | 8、11 | I79、I79b |
 | A215 | 只计入被接受的连接、不计入引擎拨出的连接的连接上限（fit 的 `limits.max_conns`） | 已进入 akio 的 main 并锁定（自 `6bcd8ad6` 起，akio 的 ADR-173） | 11 | I79、I79b |
+| A220 | UDP 和数据报监听器上的 accept 过滤器：在为被拒绝的对端建立连接（`udp` 会话、QUIC 连接）之前丢弃它的数据报 | 已提出（I85） | 1、11 | I85、I86 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -1678,3 +1679,25 @@ ADR-173），基于 A30 的 `Telemetry::open_accepted` 计数器。akit 的 I79b
 接受的 TCP 连接超过它时，新连接在 `accept` 之后立即关闭并计为 `rejected`，与引擎拨出多少连接无关。
 
 **akit 将如何使用。** `engine_settings` 用 `limits.max_conns` 设置它，取代 `max_connections`，参考文档中关于 `limits.max_conns` 的说明随之删除。
+
+## A220 UDP 和数据报监听器上的 accept 过滤器
+
+**状态。** 由 I85 提出（2026-11-26）。在此之前，akit 在不需要它的地方先行拒绝，这一权宜实现记录在[开发进度](progress.zh-CN.md)中：
+HTTP/3 请求由监听器的分发器回答 403（I85），`udp` 会话在打开时被关闭（I86）。
+
+**问题。** fit 的访问控制列表在为被拒绝的 UDP 对端建立会话或 QUIC 连接之前就丢弃它的数据报（fib 的 `Binding.Filter`，fit 的 A73），
+就像在 accept 时关闭被拒绝的 TCP 连接一样。akio 的 accept 过滤器（A3，ADR-099）只用于 TCP 监听器：在 UDP 或数据报监听器上
+`Listener::filter` 会以 `InvalidInput` 使构建失败，`Engine::set_listener_filter` 回答 `Unsupported`。因此被拒绝客户端的 QUIC
+握手会完整进行（它发送的每个 Initial 包都要做 TLS 工作），之后它的请求才被回答 403；被拒绝的 `udp` 客户端的每个数据报都会打开
+一个连接，再由 akit 立即关闭。
+
+**证据。** 在 akio `6bcd8ad6` 中，`Engine::swap_filter` 拒绝 `Tcp` 以外的任何 `Kind`（`crates/akio/src/lib.rs`），`Listener::filter`
+的文档写明“epoll、kqueue 和 io_uring 上的 TCP 监听器”。
+
+**建议的 API。** 同样的 `Fn(&SocketAddr) -> bool`，对尚无连接的对端的每个数据报询问：`Listener::udp` 上的 `Listener::filter`
+（以及 `Engine::bind_udp` 绑定的监听器上，通过该调用或 `UdpBinding` 上的 `filter`），由 `Engine::set_listener_filter` 和
+`UdpBinding::set_filter` 替换；被拒绝的数据报被丢弃并计入 `LoopCounters::filtered`，不记住该对端（这样策略变化立即生效，也不会随着
+被拒绝的对端增多而增长，同 fit 在 I195 中的决定 7）。akio-quic 的服务器在连接的第一个 Initial 包上询问它。
+
+**akit 将如何使用。** akit-listener 把监听器 TCP 一侧的访问策略也装到它的 UDP 一侧上，HTTP/3 分发器不再逐个检查请求
+（`Dispatcher::unfiltered`），akit-l4 的 `udp` 会话不再在打开时检查。

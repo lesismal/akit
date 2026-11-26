@@ -1,0 +1,19 @@
+[package]
+name = "akit-access"
+description = "akit's allow and deny lists of client addresses: inline entries and list files compiled into ranges, and the policies of the lists that apply."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+# The SHA-256 of each list file read, which `run -watch-certs` compares the files with.
+akio-crypto = { workspace = true }
+akit-config = { workspace = true }
+# fit's router parses the entries (`ParsePrefix`).
+akit-router = { workspace = true }
+
+[lints]
+workspace = true

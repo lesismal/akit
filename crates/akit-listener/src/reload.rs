@@ -384,7 +384,8 @@ impl Listeners {
                 udp: None,
             };
             if tcp {
-                let id = self.add_tcp(tls.as_ref().map(|c| &c.tcp), l, addr, room)?;
+                let accept = graph.access(index).and_then(|a| a.accept());
+                let id = self.add_tcp(tls.as_ref().map(|c| &c.tcp), l, addr, room, accept)?;
                 let local = self
                     .engine
                     .listeners()
@@ -438,6 +439,7 @@ impl Listeners {
         l: &Listener,
         addr: SocketAddr,
         room: &mut [(usize, bool)],
+        accept: Option<&std::sync::Arc<akit_access::Policy>>,
     ) -> Result<ListenerId, Error> {
         let h3_port = serves_h3(l).then_some(addr.port());
         let make = || {
@@ -447,6 +449,7 @@ impl Listeners {
                 tls,
                 crate::tcp_engine_listener(addr, &self.opts.backend, self.event_loops),
                 h3_port,
+                accept,
             )
         };
         let failed = |error| Error::Address {
@@ -499,6 +502,26 @@ impl Listeners {
             }
             r => r,
         }
+    }
+
+    /// Sets each listener's accept filter to the current graph's access lists (I85, akio's A3):
+    /// a listener kept by a reload is not bound anew, its filter swapped; connections it accepted
+    /// before are not checked again. Every `accept` that starts after this goes by the new one.
+    fn gate(&self) {
+        self.cell.with(|g| {
+            for e in &self.entries {
+                let Some((id, _)) = e.tcp else { continue };
+                let accept = g
+                    .listener_index(&e.config.name)
+                    .and_then(|i| g.access(i))
+                    .and_then(|a| a.accept());
+                // Only `NotFound` (removed meanwhile) can come back.
+                let _ = match accept {
+                    Some(p) => self.engine.set_listener_filter(id, crate::accept_filter(p)),
+                    None => self.engine.clear_listener_filter(id),
+                };
+            }
+        });
     }
 
     /// Per listener of `graph`, the running one it keeps; and per running listener, whether it
@@ -696,6 +719,7 @@ impl Listeners {
             next.extend(e);
         }
         self.entries = next;
+        self.gate();
         self.view.set(self.served());
         Ok(report)
     }

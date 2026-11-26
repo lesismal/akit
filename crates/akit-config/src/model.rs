@@ -51,6 +51,9 @@ pub struct Config {
     /// `engine` (I79): how akio's engine that serves the listeners is set up; akio's defaults
     /// for what it leaves out. Read when akit starts: a change takes a restart, as in fit.
     pub engine: Engine,
+    /// `access` (I85): the global allow and deny lists of client addresses, which every listener
+    /// and route goes by when its own has no say; every address served when left out.
+    pub access: Option<Access>,
     /// What the config was read with that is said rather than refused (I79): the old names of
     /// fields renamed in schema version 1, each at its file, line, column and path. Not part of
     /// what the config means: configs equal but for these are equal.
@@ -883,6 +886,9 @@ pub struct Listener {
     ///
     /// [decision 010]: https://github.com/lesismal/akit/blob/main/docs/decisions/010-sockmap-relay.md
     pub sockmap: bool,
+    /// `access` (I85): the client addresses the listener serves, deciding before the global
+    /// access ([`Access`]).
+    pub access: Option<Access>,
 }
 
 /// Who may use a forward proxy, SOCKS (a listener's `socks`) or HTTP CONNECT (the
@@ -1128,6 +1134,9 @@ pub struct Route {
     pub middleware: Vec<Handler>,
     /// `handler`.
     pub handler: Handler,
+    /// `access` (I85): the client addresses the route serves, deciding before its listener's
+    /// access and the global one; a request it refuses is answered 403.
+    pub access: Option<Access>,
 }
 
 /// What a route matches.
@@ -1978,6 +1987,36 @@ impl std::fmt::Display for Network {
     }
 }
 
+/// An allow list (whitelist) and a deny list (blacklist) of client addresses, as fit's
+/// `config.Access` (I85): the global `access`, or a listener's or a route's. Of the lists that
+/// apply, the most specific decides: an address its `deny` holds is refused, one its `allow` holds
+/// served, and, when its `allow` has entries, any other address refused; otherwise it has no say
+/// and the next one, out to the global access, decides. An address none has a say on is served.
+/// The entries are kept as written; akit-access compiles them, and reads the files, when the
+/// config is compiled.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Access {
+    /// `allow`: IP addresses and CIDR prefixes served, each one fit's router parses
+    /// ([`akit_router::parse_prefix`], spaces around it left out).
+    pub allow: Vec<String>,
+    /// `deny`: IP addresses and CIDR prefixes refused, whatever `allow` holds.
+    pub deny: Vec<String>,
+    /// `allow_files`: files of more `allow` entries, one on each line (akit-access reads them).
+    pub allow_files: Vec<String>,
+    /// `deny_files`: files of more `deny` entries.
+    pub deny_files: Vec<String>,
+}
+
+impl Access {
+    /// Its list files, `allow_files` then `deny_files`.
+    pub fn files(&self) -> impl Iterator<Item = &str> {
+        self.allow_files
+            .iter()
+            .chain(&self.deny_files)
+            .map(String::as_str)
+    }
+}
+
 /// `ip`, an IPv4-mapped IPv6 address taken as the IPv4 address it maps.
 #[must_use]
 pub(crate) fn unmap(ip: IpAddr) -> IpAddr {
@@ -2022,10 +2061,10 @@ const CONFIG_FIELDS: &[&str] = &[
     "telemetry",
     "providers",
     "engine",
+    "access",
 ];
 const CONFIG_FIT_ONLY: &[&str] = &[
     "log",
-    "access",
     "pprof",
     "llm",
     "tunnel",
@@ -2112,8 +2151,9 @@ const LISTENER_FIELDS: &[&str] = &[
     "tls",
     "proxy_protocol",
     "socks",
+    "access",
 ];
-const LISTENER_FIT_ONLY: &[&str] = &["mptcp", "access"];
+const LISTENER_FIT_ONLY: &[&str] = &["mptcp"];
 // I51b: akit's extensions, fields fit does not have (decision 010).
 const LISTENER_AKIT_ONLY: &[&str] = &["sockmap"];
 const FORWARD_PROXY_FIELDS: &[&str] = &[
@@ -2178,8 +2218,11 @@ const ROUTE_FIELDS: &[&str] = &[
     "match",
     "middleware",
     "handler",
+    "access",
 ];
-const ROUTE_FIT_ONLY: &[&str] = &["access"];
+const ROUTE_FIT_ONLY: &[&str] = &[];
+// I85: fit's `config.Access`, at the top level, on listeners and on routes.
+const ACCESS_FIELDS: &[&str] = &["allow", "deny", "allow_files", "deny_files"];
 const MATCH_FIELDS: &[&str] = &[
     "host",
     "path",
@@ -2425,6 +2468,8 @@ pub(crate) struct Part {
     telemetry: Option<(Telemetry, usize)>,
     /// `engine`, with the position of its key, when the file gives it.
     engine: Option<(Engine, usize)>,
+    /// `access` (I85), with the position of its key, when the file gives it.
+    access: Option<(Access, usize)>,
     providers: Vec<At<crate::providers::Provider>>,
     /// The position of the file's top object.
     doc_off: usize,
@@ -2500,6 +2545,9 @@ pub(crate) fn part(d: &mut Decoder<'_>, n: &Node, file: usize) -> Option<Part> {
     let engine = o
         .take("engine")
         .and_then(|v| engine(d, v, "engine").map(|e| (e, v.off)));
+    let access = o
+        .take("access")
+        .and_then(|v| access(d, v, "access").map(|a| (a, v.off)));
     let providers = o
         .take("providers")
         .map(|v| {
@@ -2524,6 +2572,7 @@ pub(crate) fn part(d: &mut Decoder<'_>, n: &Node, file: usize) -> Option<Part> {
         auto_https,
         telemetry,
         engine,
+        access,
         providers,
         doc_off,
     })
@@ -2551,6 +2600,7 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
     let mut auto_https: Option<((crate::AutoHttps, usize), usize)> = None;
     let mut telemetry: Option<(Telemetry, usize)> = None;
     let mut engine: Option<(Engine, usize)> = None;
+    let mut access: Option<(Access, usize)> = None;
     let mut providers = Vec::new();
     for (file, p) in parts.into_iter().enumerate() {
         first_doc.get_or_insert((file, p.doc_off));
@@ -2674,6 +2724,9 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
         if let Some((e, off)) = p.engine {
             once(ds, &mut engine, e, file, off, "engine");
         }
+        if let Some((a, off)) = p.access {
+            once(ds, &mut access, a, file, off, "access");
+        }
         listeners.extend(p.listeners);
         routes.extend(p.routes);
         upstreams.extend(p.upstreams);
@@ -2728,6 +2781,7 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
         telemetry: telemetry.map(|(t, _)| t),
         providers: providers.into_iter().map(|a| a.v).collect(),
         engine: engine.map(|(e, _)| e).unwrap_or_default(),
+        access: access.map(|(a, _)| a),
         warnings: crate::error::Warnings::default(),
     }
 }
@@ -3336,6 +3390,7 @@ fn listener(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Listener> {
             false
         }
     };
+    let access = o.take("access").and_then(|v| access(d, v, &o.at("access")));
     let known: Vec<&str> = LISTENER_FIELDS
         .iter()
         .chain(LISTENER_AKIT_ONLY)
@@ -3421,6 +3476,7 @@ fn listener(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Listener> {
         proxy_protocol,
         socks,
         sockmap,
+        access,
     })
 }
 
@@ -3849,6 +3905,7 @@ fn route(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Route> {
     let handler = o
         .require(d, "handler")
         .and_then(|v| handler(d, v, &o.at("handler")));
+    let access = o.take("access").and_then(|v| access(d, v, &o.at("access")));
     o.finish(d, ROUTE_FIELDS, ROUTE_FIT_ONLY);
     Some(Route {
         name,
@@ -3857,7 +3914,43 @@ fn route(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Route> {
         matcher,
         middleware,
         handler: handler?,
+        access,
     })
+}
+
+/// An `access` (I85), as fit's `config.Access` and its `check`: each entry of `allow` and `deny`
+/// an address or prefix fit's router parses, spaces around it left out; each file's path not
+/// empty. The files are read, and their lines checked, when the config is compiled.
+fn access(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Access> {
+    let mut o = d.object(n, path)?;
+    let mut a = Access::default();
+    for (key, into) in [("allow", &mut a.allow), ("deny", &mut a.deny)] {
+        if let Some(v) = o.take(key) {
+            let p = o.at(key);
+            for (i, (off, s)) in d.strings(v, &p).into_iter().enumerate() {
+                if let Err(e) = akit_router::parse_prefix(s.trim()) {
+                    d.error(off, &crate::error::join_index(&p, i), e.to_string());
+                }
+                into.push(s);
+            }
+        }
+    }
+    for (key, into) in [
+        ("allow_files", &mut a.allow_files),
+        ("deny_files", &mut a.deny_files),
+    ] {
+        if let Some(v) = o.take(key) {
+            let p = o.at(key);
+            for (i, (off, s)) in d.strings(v, &p).into_iter().enumerate() {
+                if s.trim().is_empty() {
+                    d.error(off, &crate::error::join_index(&p, i), "the path is empty");
+                }
+                into.push(s);
+            }
+        }
+    }
+    o.finish(d, ACCESS_FIELDS, &[]);
+    Some(a)
 }
 
 fn route_match(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Match> {

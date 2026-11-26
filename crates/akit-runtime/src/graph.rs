@@ -113,6 +113,8 @@ pub struct Graph {
     /// Per listener, in the order of `listeners`: the services that take its connections, by
     /// server name (I52), for a `tcp` or `udp` listener.
     l4: Vec<Option<akit_l4::Entry>>,
+    /// Per listener, in the order of `listeners`: where its access lists decide (I85).
+    access: Vec<crate::access::ListenerAccess>,
     /// The access log its requests' lines go to: the env's, when the config has `access_log`.
     access_log: Option<akit_observe::AccessLog>,
     /// The process's tracer, which samples its requests (I64).
@@ -244,6 +246,13 @@ impl Graph {
     #[must_use]
     pub fn services(&self) -> &[akit_l4::Service] {
         &self.services
+    }
+
+    /// Where the access lists of the listener at `listener` decide (I85); `None` for no such
+    /// listener. Runs per connection and per request: it only reads.
+    #[must_use]
+    pub fn access(&self, listener: usize) -> Option<&crate::access::ListenerAccess> {
+        self.access.get(listener)
     }
 
     /// The services that take the connections of the listener at `listener`, a `tcp` or `udp`
@@ -607,6 +616,42 @@ pub fn compile(
         .flat_map(|t| t.files().iter().map(|(p, s)| (p.clone(), *s)))
         .collect();
     cert_files.extend(upstream_files);
+    // The access lists (I85): the global one, each listener's and each route's, their files
+    // read here and watched with the certificates', as fit's graph compiles them.
+    let mut access_files = std::collections::BTreeMap::new();
+    let global = crate::access::list(
+        config.access.as_ref(),
+        "access",
+        &mut access_files,
+        &mut errors,
+    );
+    let route_lists: Vec<_> = config
+        .routes
+        .iter()
+        .enumerate()
+        .map(|(i, r)| {
+            crate::access::list(
+                r.access.as_ref(),
+                &format!("routes[{i}].access"),
+                &mut access_files,
+                &mut errors,
+            )
+        })
+        .collect();
+    let listener_lists: Vec<_> = config
+        .listeners
+        .iter()
+        .enumerate()
+        .map(|(i, l)| {
+            crate::access::list(
+                l.access.as_ref(),
+                &format!("listeners[{i}].access"),
+                &mut access_files,
+                &mut errors,
+            )
+        })
+        .collect();
+    cert_files.extend(access_files);
     if !errors.is_empty() {
         // `modules` drops here, cleaning up what was provisioned, and `lease` gives back what it
         // took.
@@ -696,6 +741,20 @@ pub fn compile(
             (!mine.is_empty()).then(|| akit_l4::Entry::of_listener(mine, l.sockmap))
         })
         .collect();
+    let access = config
+        .listeners
+        .iter()
+        .zip(&listener_lists)
+        .map(|(l, own)| {
+            // Each route's own list, where it serves on `l`.
+            let routes: Vec<_> = routes
+                .iter()
+                .zip(&route_lists)
+                .map(|(r, list)| list.clone().filter(|_| serves(l, r)))
+                .collect();
+            crate::access::listener(l, global.as_ref(), own.as_ref(), &routes)
+        })
+        .collect();
     Ok(Graph {
         id: NEXT_GRAPH.fetch_add(1, Ordering::Relaxed),
         listeners: config.listeners.clone(),
@@ -709,6 +768,7 @@ pub fn compile(
         upstream_keys,
         services,
         l4,
+        access,
         access_log: config.access_log.as_ref().and(env.access_log().cloned()),
         tracer: env.tracer().cloned(),
         requests,

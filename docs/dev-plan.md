@@ -85,6 +85,7 @@ few crates as it can. fit's package of the same role is given for reference.
 | `akit-observe` | logs, metrics, tracing | `observe`, `logs` |
 | `akit-cache` | the response cache | `handler/cache` |
 | `akit-plugin` | WASM plugins | `plugin` |
+| `akit-access` | access lists: allow and deny lists compiled into ranges, policies (I85) | `access` |
 | `tests/e2e` | end-to-end tests of the binary | `test/e2e` |
 | `tests/compat` | the fit config compatibility gate: pinned fixtures, field inventory | `templates`, fit-examples |
 | `bench` | the harness, scenarios and reports | `bench` |
@@ -189,7 +190,7 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I88.
 | I80 | Security review readiness | I77, I79 | done |
 | I80b | Security hardening: the threat model's limitations and the review's findings | I80, the review | todo |
 | **After 1.0: access lists** | | | |
-| I85 | Access lists I: the lists, listeners and routes | I79, akio A3 | todo |
+| I85 | Access lists I: the lists, listeners and routes | I79, akio A3 | done |
 | I86 | Access lists II: services and the forward proxy | I85 | todo |
 | I87 | Access lists III: the Admin API and the reference | I85 | todo |
 
@@ -1158,6 +1159,11 @@ answered 403 or the connection closed once its service is known. fit's roles (`s
 - **Read**: akio's `Listener::filter`, `Engine::set_listener_filter` (ADR-099).
 - **fit**: `access`, `config` (`Access`, its `check`), `runtime/graph.go` (`compileAccess`),
   `listener` (I195).
+- **Status**: done (2026-11-26). akit-access ([decision 034](decisions/034-access-lists.md)); `access`
+  read at the top level, on listeners and on routes; at accept by akio's filter, swapped by each
+  reload, or per request (403); HTTP/3 per request until akio's A220; list files watched with the
+  certificates. A `udp` listener and a `tcp` one taking PROXY headers wait for I86. See the progress
+  log.
 
 ### I86 Access lists II: services and the forward proxy
 

@@ -13,7 +13,7 @@ akit 配置的每个字段：配置的每一部分是做什么的、一个示例
 akit 与 fit 不同之处，在表格中以 **akit：** 标出。
 
 <!-- BEGIN GENERATED: summary -->
-fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **429** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 63 个对象，下文各有一张表。
+fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **444** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 66 个对象，下文各有一张表。
 <!-- END GENERATED -->
 
 字段说明来自 fit 代码中的 `doc` 标签，是英文的，所以每个字段的完整说明在[英文版](config.md)的同一张表中；本页的表格给出每个字段的
@@ -29,7 +29,7 @@ fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../co
 - **akit 扩展**：fit 没有的字段（[见下文](#akit-的扩展)）。
 
 本页每个示例都是完整的配置，由一个测试以 `akit validate` 检查。示例中的文件相对于 akit 运行时所在的目录：`public/`（要提供的目录）、
-`certs/example.com.pem` 和 `certs/example.com.key`（证书及其私钥）、`certs/ca.pem`（CA）、`admin.token`（令牌），以及
+`certs/example.com.pem` 和 `certs/example.com.key`（证书及其私钥）、`certs/ca.pem`（CA）、`admin.token`（令牌）、`lists/deny.txt`（地址列表），以及
 `plugins/headers.wasm` 和 `plugins/http_headers.wasm`（fit ABI 和 Proxy-Wasm 的 WebAssembly 插件）。`akit validate` 与 `akit run` 一样打开配置中指定的文件：证书无法加载、静态根目录不存在、
 插件无法编译都是错误。
 
@@ -40,6 +40,7 @@ fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../co
 - [路由](#路由)：[`routes[]`](#cfg-routes)、[`match`](#cfg-routes-match)、[`handler`](#cfg-routes-handler)、[`middleware[]`](#cfg-routes-middleware)
 - [上游](#上游)：[`upstreams[]`](#cfg-upstreams)、[`sticky_cookie`](#cfg-upstreams-sticky-cookie)、[`health_check`](#cfg-upstreams-health-check)
 - [服务](#服务)
+- [访问控制列表](#访问控制列表)：[`access`](#cfg-access)、[`listeners[].access`](#cfg-listeners-access)、[`routes[].access`](#cfg-routes-access)
 - [访问日志](#访问日志)
 - [遥测](#遥测)
 - [上限](#上限)
@@ -110,7 +111,7 @@ routes:
 
 | 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `access` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `access` | [对象](#cfg-access) |  |  |
 | `access_log` | [对象](#cfg-access-log) |  |  |
 | `acme` | [对象](#cfg-acme) |  |  |
 | `admin` | [对象](#cfg-admin) |  |  |
@@ -177,7 +178,7 @@ route { listeners web internal; handler respond { body plain } }
 | --- | --- | --- | --- |
 | `address` | 字符串 | 必填 |  |
 | `name` | 字符串 | 必填 |  |
-| `access` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `access` | [对象](#cfg-listeners-access) |  | **akit：**HTTP/3 的请求逐个检查，被拒绝的回答 `403`；而 fit 在为被拒绝的对端建立会话之前就丢弃它的数据报：akio 的 UDP 监听器还不支持 accept 过滤器（akit 的需求 A220）。 |
 | `mptcp` | 布尔值 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
 | `protocols` | 字符串：`http/1.1`、`h2c`、`h2`、`h3`、`tcp`、`udp`、`socks`的列表 |  | **akit：**有 `h2c` 而没有 `http/1.1` 时，监听器只以先验知识提供 HTTP/2，与 fit 相同（I79b）：发送其他内容的客户端会先收到 akio 的 `GOAWAY`（`PROTOCOL_ERROR`）再被关闭连接，而 fit 不发送任何内容直接关闭（akio 的 ADR-174）。 |
 | `proxy_protocol` | [对象](#cfg-listeners-proxy-protocol) |  |  |
@@ -323,7 +324,7 @@ site example.com {
 | 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
 | `handler` | [对象](#cfg-routes-handler) | 必填 |  |
-| `access` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `access` | [对象](#cfg-routes-access) |  |  |
 | `listeners` | 字符串的列表 |  |  |
 | `match` | [对象](#cfg-routes-match) |  |  |
 | `middleware` | [对象](#cfg-routes-middleware)的列表 |  |  |
@@ -520,6 +521,97 @@ service mail { listeners tls; upstream mail; server_names mail.example.com }
 | `max_conns` | 整数，≥ 0 | `10000` |  |
 | `proxy_protocol` | 字符串：`v1`、`v2` |  |  |
 | `server_names` | 字符串的列表 |  |  |
+<!-- END GENERATED -->
+
+## 访问控制列表
+
+akit 为哪些客户端地址提供服务，由 IP 地址和 CIDR 前缀的允许列表（白名单）和拒绝列表（黑名单）决定，可以写在配置中，
+也可以写在文件中，就像为防火墙发布的那些列表一样。顶层的 `access` 是全局的：每个监听器和路由都遵循它。它们各自也可以设置
+自己的 `access`，它先作决定，因此更具体的设置优先：
+
+- 列表的 `deny` 拒绝一个地址，无论它的 `allow` 包含什么；
+- 否则它的 `allow` 为其中包含的地址提供服务；
+- 否则，当它的 `allow` 有条目时，拒绝该地址，因为允许列表只为其中的地址提供服务；
+- 否则它不表态，由外面的下一个决定：路由的，然后是其监听器的，最后是全局的。没有任何列表表态的地址会被服务。
+
+因此路由的 `allow` 可以为全局 `deny` 拒绝的地址提供服务，路由的 `deny` 也可以拒绝全局 `allow` 放行的地址；
+`allow 0.0.0.0/0 ::/0` 让一个路由向所有地址开放，无论全局访问列表怎么说。
+
+能在接受连接时决定的，akit 就在那时决定：被拒绝的 TCP 连接在读取任何内容之前就被 akio 的 accept 过滤器关闭。
+监听器的路由设置了自己的访问列表、或监听器接受 PROXY 头时，改为之后再决定：被拒绝的 HTTP 请求回答 `403`。
+地址是连接的地址，或其 PROXY 头指明的地址，从不使用 `X-Forwarded-For` 的。变更只影响此后开始的连接：重载修改列表而不重新绑定监听器，
+已经打开的连接、以及监听器在 accept 时已决定过的 HTTP/2 连接上之后的请求，不会再次检查。
+
+列表文件每行一个条目，每行按内容区分，因此一个文件可以混用多种格式：一个地址或前缀，`#` 或 `;` 之后的内容被忽略；
+一个区间，`first-last`；一行 eMule `ipfilter.dat`，`first - last , level , name`，级别高于 127 的行不计入（qBittorrent 的
+读法，也是 eMule 默认过滤级别下的读法）；或一行 PeerGuardian `.p2p`，`name:first-last`。区间中的 IPv4 地址可以带前导零，
+如 `ipfilter.dat` 的写法。空行以及以 `#`、`;` 或 `//` 开头的行被忽略；其他任何行都是错误，错误中写明文件和行号，配置不会被应用。
+文件在应用配置时读取，文件变化时配置会像证书文件那样被重新应用（`akit run -watch-certs`）；每个文件最多 64 MiB。
+
+在使用 ACME 的 HTTP-01 或 TLS-ALPN-01 质询获取证书的监听器上，允许列表必须放行 CA 的验证服务器，否则无法获得证书。
+
+```fit
+access { deny 203.0.113.0/24; deny_files lists/deny.txt }
+
+listener web :8080
+listener internal :8081 { access { allow 10.0.0.0/8 192.168.0.0/16 } }
+
+route partners {
+	listeners web
+	match { path /partner/* }
+	access { allow 203.0.113.7 198.51.100.0/24 }
+	handler respond { body partners }
+}
+
+route { handler respond { body hello } }
+```
+
+**akit：** HTTP/3 请求逐个检查，被拒绝的回答 `403`；而 fit 在为被拒绝的对端建立会话之前就丢弃它的数据报：akio 的 UDP
+监听器还不支持 accept 过滤器（akit 的需求 A220）。
+
+### `access`
+
+<!-- BEGIN GENERATED: access -->
+<a id="cfg-access"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-access)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `allow` | 字符串的列表 |  |  |
+| `allow_files` | 字符串的列表 |  |  |
+| `deny` | 字符串的列表 |  |  |
+| `deny_files` | 字符串的列表 |  |  |
+<!-- END GENERATED -->
+
+### `listeners[].access`
+
+<!-- BEGIN GENERATED: listeners[].access -->
+<a id="cfg-listeners-access"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-listeners-access)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `allow` | 字符串的列表 |  |  |
+| `allow_files` | 字符串的列表 |  |  |
+| `deny` | 字符串的列表 |  |  |
+| `deny_files` | 字符串的列表 |  |  |
+<!-- END GENERATED -->
+
+### `routes[].access`
+
+<!-- BEGIN GENERATED: routes[].access -->
+<a id="cfg-routes-access"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-routes-access)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `allow` | 字符串的列表 |  |  |
+| `allow_files` | 字符串的列表 |  |  |
+| `deny` | 字符串的列表 |  |  |
+| `deny_files` | 字符串的列表 |  |  |
 <!-- END GENERATED -->
 
 ## 访问日志
@@ -1907,7 +1999,7 @@ route {
 
 ## akit 尚不读取的部分
 
-fit 配置的以下部分被整体按名称拒绝为“尚不支持”：`log`、`access`、`pprof`、`llm`、`tunnel`、`webrtc`、`media_auth`、
+fit 配置的以下部分被整体按名称拒绝为“尚不支持”：`log`、`pprof`、`llm`、`tunnel`、`webrtc`、`media_auth`、
 `streaming`、`media_library`、`sync` 和 `bittorrent`，以及 fit 的媒体、BitTorrent 和 sync 处理器。在 akit 读取的部分中，上面
 表格里标为 **尚不支持** 的字段也同样被拒绝。[路线图](../roadmap.zh-CN.md)说明各部分何时到来，[兼容性页面](../compatibility.zh-CN.md)
 列出每个字段。

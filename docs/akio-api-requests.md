@@ -21,7 +21,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | --- | --- | --- | --- | --- |
 | A1 | TCP listeners added, removed and drained on a running engine | in akio's main (`a9a620ab`), pinned, used by I22 | 10, 11 | I22, I28 |
 | A2 | A server certificate chosen per handshake by a callback that may complete later | in akio's main (`a9a620ab`), pinned | 1, 4 | I30, I34 |
-| A3 | A filter on accepted connections before any handler runs | in akio's main (`a9a620ab`), pinned | 11 | access lists |
+| A3 | A filter on accepted connections before any handler runs | in akio's main (`a9a620ab`), pinned, used by I85 | 11 | I85–I87 |
 | A4 | PROXY protocol v1/v2: parse on accept, write on dial | in akio's main (`a9a620ab`), pinned, used by I52 | 12 | I52 |
 | A5 | An akio-mux rule that routes TLS by SNI without terminating it | in akio's main (`a9a620ab`), pinned, its ClientHello parser used by I52 | 12 | I52, I53 |
 | A6 | CSR generation in `akio-x509` (and JWS helpers in `akio-crypto`) | in akio's main (`afbbb521`), pinned | 15 | I31 |
@@ -96,6 +96,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | A200 | A request target in absolute form taken as RFC 9112 asks: its path as the request's path, its authority as its host | requested (I77); akit-listener rewrites such a request to origin form meanwhile | 15, 19 | I77 |
 | A214 | A budget of the bytes queued for every connection together, which pauses every connection's reads past it (fit's `limits.max_pending_bytes`) | on akio's main and pinned (since `6bcd8ad6`, akio's ADR-172) | 8, 11 | I79, I79b |
 | A215 | A connection limit that counts the connections accepted, not those the engine dials (fit's `limits.max_conns`) | on akio's main and pinned (since `6bcd8ad6`, akio's ADR-173) | 11 | I79, I79b |
+| A220 | An accept filter on UDP and datagram listeners: a refused peer's datagrams dropped before a connection (a `udp` session, a QUIC connection) is made for it | requested (I85) | 1, 11 | I85, I86 |
 
 ## A1 TCP listeners on a running engine
 
@@ -2073,3 +2074,33 @@ listeners, are closed right after `accept` and counted as `rejected`, whatever t
 
 **How akit would use it.** `engine_settings` sets it from `limits.max_conns` in place of
 `max_connections`, and the reference's note on `limits.max_conns` goes.
+
+## A220 An accept filter on UDP and datagram listeners
+
+**Status.** Requested by I85 (2026-11-26). akit refuses meanwhile where it can without it, a
+stopgap recorded in [progress](progress.md): an HTTP/3 request is answered 403 by the listener's
+dispatcher (I85), and a `udp` session is closed as it opens (I86).
+
+**Problem.** fit's access lists drop the datagrams of a refused UDP peer before a session or a
+QUIC connection is made for it (fib's `Binding.Filter`, fit's A73), as they close a refused TCP
+connection at accept. akio's accept filter (A3, ADR-099) is for TCP listeners only: on a UDP or
+datagram listener `Listener::filter` fails the build with `InvalidInput`, and
+`Engine::set_listener_filter` answers `Unsupported`. So a refused client's QUIC handshake is done
+in full (TLS work for every Initial packet it sends) before its request is answered 403, and each
+datagram of a refused `udp` client opens a connection that akit closes at once.
+
+**Evidence.** At akio `6bcd8ad6`, `Engine::swap_filter` refuses any `Kind` but `Tcp`
+(`crates/akio/src/lib.rs`), and `Listener::filter`'s documentation says "TCP listeners on epoll,
+kqueue and io_uring".
+
+**Suggested API.** The same `Fn(&SocketAddr) -> bool`, asked for each datagram from a peer that
+has no connection yet: `Listener::filter` on `Listener::udp` (and on the listeners `Engine::bind_udp`
+binds, through a `filter` on that call or on `UdpBinding`), swapped by `Engine::set_listener_filter`
+and `UdpBinding::set_filter`; a refused datagram dropped and counted in `LoopCounters::filtered`,
+nothing remembered of the peer (so that a policy change applies at once and nothing grows with the
+peers refused, as fit's decision 7 of I195 has it). akio-quic's server asks it on a connection's
+first Initial packet.
+
+**How akit would use it.** akit-listener installs the access policy the listener's TCP side has on
+its UDP side too, the HTTP/3 dispatcher stops checking requests (`Dispatcher::unfiltered`), and
+akit-l4's `udp` sessions are no longer checked as they open.

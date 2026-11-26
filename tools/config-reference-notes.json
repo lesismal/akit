@@ -82,6 +82,10 @@
     "engine.backlog": {
       "en": "akio's 1024 when left out or 0, not the system's.",
       "zh": "省略或为 0 时为 akio 的 1024，而不是系统的值。"
+    },
+    "listeners[].access": {
+      "en": "HTTP/3's requests are checked one by one, a refused one answered `403`, where fit drops a refused peer's datagrams before a session is made: akio's UDP listeners take no accept filter yet (akit's request A220).",
+      "zh": "HTTP/3 的请求逐个检查，被拒绝的回答 `403`；而 fit 在为被拒绝的对端建立会话之前就丢弃它的数据报：akio 的 UDP 监听器还不支持 accept 过滤器（akit 的需求 A220）。"
     }
   }
 }

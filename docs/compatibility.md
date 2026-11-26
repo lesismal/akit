@@ -369,11 +369,11 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 429 supported.
+3821 fields in 121 sections, at fit `7daee573`; 444 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
-| [`access`](#fields-access) | 5 | 0 | 5 |
+| [`access`](#fields-access) | 5 | 5 | 0 |
 | [`access_log`](#fields-access-log) | 14 | 7 | 7 |
 | [`acme`](#fields-acme) | 43 | 43 | 0 |
 | [`admin`](#fields-admin) | 105 | 7 | 98 |
@@ -415,7 +415,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`http.middleware/rewrite`](#fields-http-middleware-rewrite) | 6 | 6 | 0 |
 | [`http.middleware/wasm`](#fields-http-middleware-wasm) | 18 | 18 | 0 |
 | [`limits`](#fields-limits) | 7 | 7 | 0 |
-| [`listeners`](#fields-listeners) | 30 | 23 | 7 |
+| [`listeners`](#fields-listeners) | 30 | 28 | 2 |
 | [`llm`](#fields-llm) | 218 | 0 | 218 |
 | [`log`](#fields-log) | 24 | 0 | 24 |
 | [`media_auth`](#fields-media-auth) | 34 | 0 | 34 |
@@ -423,7 +423,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`metrics`](#fields-metrics) | 1 | 1 | 0 |
 | [`pprof`](#fields-pprof) | 4 | 0 | 4 |
 | [`providers`](#fields-providers) | 60 | 59 | 1 |
-| [`routes`](#fields-routes) | 24 | 19 | 5 |
+| [`routes`](#fields-routes) | 24 | 24 | 0 |
 | [`schema_version`](#fields-schema-version) | 1 | 1 | 0 |
 | [`services`](#fields-services) | 13 | 8 | 5 |
 | [`streaming`](#fields-streaming) | 76 | 0 | 76 |
@@ -494,7 +494,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 429 | 3392 |
+| **Total** | 3821 | 444 | 3377 |
 
 <a id="fields-access"></a>
 
@@ -502,11 +502,11 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `access` | `object` | not supported yet |
-| `access.allow` | `array<string>` | not supported yet |
-| `access.allow_files` | `array<string>` | not supported yet |
-| `access.deny` | `array<string>` | not supported yet |
-| `access.deny_files` | `array<string>` | not supported yet |
+| `access` | `object` | supported |
+| `access.allow` | `array<string>` | supported |
+| `access.allow_files` | `array<string>` | supported |
+| `access.deny` | `array<string>` | supported |
+| `access.deny_files` | `array<string>` | supported |
 
 <a id="fields-access-log"></a>
 
@@ -1472,11 +1472,11 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | Field | Type | Status |
 | --- | --- | --- |
 | `listeners` | `array<object>` | supported |
-| `listeners[].access` | `object` | not supported yet |
-| `listeners[].access.allow` | `array<string>` | not supported yet |
-| `listeners[].access.allow_files` | `array<string>` | not supported yet |
-| `listeners[].access.deny` | `array<string>` | not supported yet |
-| `listeners[].access.deny_files` | `array<string>` | not supported yet |
+| `listeners[].access` | `object` | supported |
+| `listeners[].access.allow` | `array<string>` | supported |
+| `listeners[].access.allow_files` | `array<string>` | supported |
+| `listeners[].access.deny` | `array<string>` | supported |
+| `listeners[].access.deny_files` | `array<string>` | supported |
 | `listeners[].address` | `string, required` | supported |
 | `listeners[].mptcp` | `boolean` | not supported yet |
 | `listeners[].name` | `string, required` | supported |
@@ -1923,11 +1923,11 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | Field | Type | Status |
 | --- | --- | --- |
 | `routes` | `array<object>` | supported |
-| `routes[].access` | `object` | not supported yet |
-| `routes[].access.allow` | `array<string>` | not supported yet |
-| `routes[].access.allow_files` | `array<string>` | not supported yet |
-| `routes[].access.deny` | `array<string>` | not supported yet |
-| `routes[].access.deny_files` | `array<string>` | not supported yet |
+| `routes[].access` | `object` | supported |
+| `routes[].access.allow` | `array<string>` | supported |
+| `routes[].access.allow_files` | `array<string>` | supported |
+| `routes[].access.deny` | `array<string>` | supported |
+| `routes[].access.deny_files` | `array<string>` | supported |
 | `routes[].handler` | `object, required` | supported |
 | `routes[].handler.module` | `enum(bt_publish\|bt_stream\|bt_tracker\|fastcgi\|forward_proxy\|hls\|httpflv\|media_pages\|media_tokens\|proxy\|respond\|static\|stream_whep\|stream_whip\|sync_ingest\|vod\|webrtc_proxy\|websockify\|whep\|whip), required` | supported |
 | `routes[].handler.params` | `object` | supported |

@@ -105,6 +105,9 @@ const NOT_FOUND: &str = "404 page not found\n";
 /// fit's answer to a path that has no canonical form ([`akit_router::canonicalize`]).
 const BAD_REQUEST_PATH: &str = "400 bad request path\n";
 
+/// fit's answer to a request the access lists refuse (I85).
+const FORBIDDEN: &str = "403 forbidden\n";
+
 /// The host (without its user information; `None` when empty) and the origin-form target of a
 /// request target in absolute form, `scheme://authority/path?query` (RFC 9112 section 3.2.2);
 /// `None` for a target in any other form (origin, authority or asterisk).
@@ -145,6 +148,9 @@ pub struct Dispatcher {
     alt_svc: Option<String>,
     /// The listener's `max_body_bytes`, which bounds a body that streams to its handler.
     max_body_bytes: u64,
+    /// Its connections are not checked at accept, as HTTP/3's are not (akio filters no UDP
+    /// peers: A220): every request is checked against the access lists (I85).
+    unfiltered: bool,
 }
 
 impl Dispatcher {
@@ -159,7 +165,32 @@ impl Dispatcher {
             tls: false,
             alt_svc: None,
             max_body_bytes: akit_config::DEFAULT_MAX_BODY_BYTES,
+            unfiltered: false,
         }
+    }
+
+    /// The same, for a listener whose connections no accept filter checks (HTTP/3's, A220):
+    /// each request is checked against the access lists the TCP side's filter goes by (I85).
+    #[must_use]
+    pub fn unfiltered(mut self, unfiltered: bool) -> Dispatcher {
+        self.unfiltered = unfiltered;
+        self
+    }
+
+    /// Whether the access lists refuse a request from `peer` that the route at `route` (`None`:
+    /// no route) takes on the listener at `listener` (I85): checked here when the listener
+    /// decides per request, or when its connection was not checked at accept. Only reads.
+    fn refused(
+        &self,
+        g: &akit_runtime::Graph,
+        listener: Option<usize>,
+        route: Option<usize>,
+        peer: IpAddr,
+    ) -> bool {
+        listener
+            .and_then(|i| g.access(i))
+            .and_then(|a| a.request(route, self.unfiltered))
+            .is_some_and(|p| !p.allows(peer))
     }
 
     /// The same, for a listener that serves TLS: its requests carry [`TLS`].
@@ -502,9 +533,16 @@ impl akio_http::Service for Dispatcher {
                         self.track(ctx, g, log, None, None, traced);
                     }
                     let start = Instant::now();
-                    ctx.text(400, BAD_REQUEST_PATH);
+                    // Refused before its path is looked at, as fit's.
+                    let status = if self.refused(g, listener, None, ctx.req().peer.ip()) {
+                        ctx.text(403, FORBIDDEN);
+                        403
+                    } else {
+                        ctx.text(400, BAD_REQUEST_PATH);
+                        400
+                    };
                     if let Some((m, slot)) = slot {
-                        m.observe(slot, 400, start.elapsed());
+                        m.observe(slot, status, start.elapsed());
                     }
                     return;
                 };
@@ -567,9 +605,13 @@ impl akio_http::Service for Dispatcher {
                 let _ = ctx.limit_body(self.max_body_bytes);
             }
             let slot = metrics.zip(listener.and_then(|i| g.request_slot(i, route.map(|(i, _)| i))));
-            // A request answered before its handler returns (fit's inline ones, and the 404) is
-            // counted then, with no hook; any other is counted by the hook on its response.
-            let inline = route.is_none_or(|(_, r)| r.handler.inline());
+            // The access lists (I85), when they decide per request: a refused request is
+            // answered 403, logged and counted with its route, as fit's.
+            let refused = self.refused(g, listener, route.map(|(i, _)| i), ctx.req().peer.ip());
+            // A request answered before its handler returns (fit's inline ones, the 404 and the
+            // 403) is counted then, with no hook; any other is counted by the hook on its
+            // response.
+            let inline = refused || route.is_none_or(|(_, r)| r.handler.inline());
             // A request logged or traced has one hook for its line, its span and its count.
             let hook = log.is_some() || traced.is_some();
             let hooked = match slot {
@@ -580,6 +622,7 @@ impl akio_http::Service for Dispatcher {
             if hook {
                 self.track(ctx, g, log, hooked, route, traced);
                 match route {
+                    _ if refused => ctx.text(403, FORBIDDEN),
                     Some((_, r)) => akit_observe::dispatch_logged(|| r.handler.call(ctx)),
                     None => unmatched(ctx, redirect_port(g, listener)),
                 }
@@ -588,6 +631,7 @@ impl akio_http::Service for Dispatcher {
                     self.track(ctx, g, None, hooked, None, None);
                 }
                 match route {
+                    _ if refused => ctx.text(403, FORBIDDEN),
                     Some((_, r)) => r.handler.call(ctx),
                     None => unmatched(ctx, redirect_port(g, listener)),
                 }
@@ -620,12 +664,14 @@ impl akio_http::Service for Dispatcher {
                 host: absolute.as_ref().and_then(|(h, _)| *h),
                 path: &path.decoded,
             };
-            let Some(route) = g
-                .listener_index(&self.listener)
-                .and_then(|i| g.route_request(i, &rr))
-            else {
+            let listener = g.listener_index(&self.listener);
+            let Some((i, route)) = listener.and_then(|l| g.route_request_at(l, &rr)) else {
                 return BodyMode::Buffered;
             };
+            // Refused (I85): answered 403 from its head, its body never buffered.
+            if self.refused(g, listener, Some(i), req.peer.ip()) {
+                return BodyMode::Stream;
+            }
             match route.handler.body_mode(req) {
                 BodyMode::Stream
                     if declared_length(req).is_some_and(|n| n > self.max_body_bytes) =>
@@ -1108,7 +1154,11 @@ pub fn engine(cell: &GraphCell, opts: &Options) -> Result<Engine, Error> {
 
 /// [`engine`]'s one try; the error says too whether a port was probed for a listener at port 0.
 fn build(cell: &GraphCell, opts: &Options) -> Result<Engine, (Error, bool)> {
-    type Loaded = (Listener, Option<akit_tls::ServerConfigs>);
+    type Loaded = (
+        Listener,
+        Option<akit_tls::ServerConfigs>,
+        Option<Arc<akit_access::Policy>>,
+    );
     // Each TLS listener's configurations, its certificates served from the current graph per
     // handshake (I30), so that a reload keeping the listener changes them.
     let listeners: Vec<Loaded> = cell
@@ -1118,12 +1168,13 @@ fn build(cell: &GraphCell, opts: &Options) -> Result<Engine, (Error, bool)> {
                 .enumerate()
                 .map(|(i, l)| {
                     let tls = akit_runtime::tls::server_configs(cell, g, i, false).transpose()?;
-                    Ok((l.clone(), tls))
+                    let accept = g.access(i).and_then(|a| a.accept()).cloned();
+                    Ok((l.clone(), tls, accept))
                 })
                 .collect::<Result<_, akit_tls::Error>>()
         })
         .map_err(|e| (tls_error(&e), false))?;
-    load_sockmap(listeners.iter().map(|(l, _)| l));
+    load_sockmap(listeners.iter().map(|(l, _, _)| l));
     let mut probed = false;
     let mut cfg = EngineConfig::default();
     cfg.shutdown_timeout = opts.shutdown_timeout;
@@ -1141,7 +1192,7 @@ fn build(cell: &GraphCell, opts: &Options) -> Result<Engine, (Error, bool)> {
         g.engine_config().event_loops
     });
     let mut b = Engine::builder().config(cfg).pool(pool);
-    for (l, tls) in &listeners {
+    for (l, tls, accept) in &listeners {
         let fail = |e: Error| (e, false);
         let mut addr = resolve(&l.address).map_err(|error| {
             fail(Error::Address {
@@ -1166,6 +1217,7 @@ fn build(cell: &GraphCell, opts: &Options) -> Result<Engine, (Error, bool)> {
                     tls.as_ref().map(|c| &c.tcp),
                     listener,
                     h3.then_some(addr.port()),
+                    accept.as_ref(),
                 )
                 .map_err(fail)?,
             );
@@ -1185,7 +1237,7 @@ fn build(cell: &GraphCell, opts: &Options) -> Result<Engine, (Error, bool)> {
     // (`Engine::bind_udp`, I22): those of the last listener serving h3, or one of their own when
     // none does. (akio adds TCP listeners at run time, A1, not UDP ones.)
     // UDP services dial their upstreams there too (I51).
-    if !listeners.iter().any(|(l, _)| udp_side(l)) {
+    if !listeners.iter().any(|(l, _, _)| udp_side(l)) {
         b = b.udp_client_threads(1);
     }
     b.build().map_err(|e| (Error::Engine(e), probed))
@@ -1201,7 +1253,13 @@ fn tcp_listener(
     tls: Option<&akio::tls::ServerConfig>,
     listener: EngineListener,
     h3_port: Option<u16>,
+    accept: Option<&Arc<akit_access::Policy>>,
 ) -> Result<EngineListener, Error> {
+    // The access lists' policy at accept (I85, akio's A3), before TLS or anything is read.
+    let listener = match accept {
+        Some(p) => listener.filter(accept_filter(p)),
+        None => listener,
+    };
     let web = if serves_tcp(l) {
         let mut d = Dispatcher::new(cell.clone(), l.name.clone())
             .tls(l.tls.is_some())
@@ -1233,6 +1291,16 @@ fn tcp_listener(
     };
     // The PROXY header comes before TLS, and before the sniffing.
     Ok(serve_tcp(l, listener, acc))
+}
+
+/// The accept filter of `policy` (I85, akio's A3): a connection from an address it refuses is
+/// closed as it is accepted. Runs on the I/O thread for every connection: a lookup, no
+/// allocation.
+pub(crate) fn accept_filter(
+    policy: &Arc<akit_access::Policy>,
+) -> impl Fn(&SocketAddr) -> bool + Send + Sync + 'static {
+    let p = Arc::clone(policy);
+    move |peer: &SocketAddr| p.allows(peer.ip())
 }
 
 /// The acceptor of a listener serving more than one of HTTP, `tcp` and `socks` (I53, I55; fit's
@@ -1337,9 +1405,10 @@ fn h3_acceptor(
     };
     let quic = akio_quic::server_config_from(tls)
         .map_err(|e| Error::Engine(io::Error::other(e.to_string())))?;
-    // HTTP/3 is always over TLS.
+    // HTTP/3 is always over TLS; no accept filter checks its peers (A220).
     let d = Dispatcher::new(cell.clone(), l.name.clone())
         .tls(true)
+        .unfiltered(true)
         .max_body_bytes(l.max_body_bytes);
     let observer = d.observer();
     Ok(akio_h3::serve_with_observer(

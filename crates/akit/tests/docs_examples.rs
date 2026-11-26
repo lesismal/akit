@@ -10,8 +10,9 @@
 //!
 //! The examples name files relative to the directory akit runs in; the test runs them in a
 //! directory that holds them ([`sandbox`]): `public/`, `certs/example.com.pem`,
-//! `certs/example.com.key`, `certs/ca.pem`, `admin.token`, and `plugins/headers.wasm` and
-//! `plugins/http_headers.wasm` (a plugin of fit's ABI and a Proxy-Wasm one).
+//! `certs/example.com.key`, `certs/ca.pem`, `admin.token`, `lists/deny.txt` (an access list's
+//! file, I85), and `plugins/headers.wasm` and `plugins/http_headers.wasm` (a plugin of fit's ABI
+//! and a Proxy-Wasm one).
 //!
 //! A document and its Chinese twin show the same examples, in the same order: that is checked
 //! too, so that an example changed in one language is changed in the other.
@@ -139,6 +140,13 @@ fn sandbox() -> PathBuf {
         &["example.com", "www.example.com"],
     );
     fs::write(d.join("admin.token"), "an-admin-token\n").unwrap();
+    // An access list's file (I85), in two of the formats it reads.
+    fs::create_dir_all(d.join("lists")).unwrap();
+    fs::write(
+        d.join("lists/deny.txt"),
+        "# addresses refused\n198.51.100.0/24 ; a prefix\nSome Org:192.0.2.10-192.0.2.20\n",
+    )
+    .unwrap();
     // fit's `headers` plugin (fit's ABI), and the Proxy-Wasm Go SDK's `http_headers`.
     fs::create_dir_all(d.join("plugins")).unwrap();
     for (guest, name) in [

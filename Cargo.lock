@@ -280,6 +280,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "akit-access"
+version = "0.0.1"
+dependencies = [
+ "akio-crypto",
+ "akit-config",
+ "akit-router",
+]
+
+[[package]]
 name = "akit-admin"
 version = "0.0.1"
 dependencies = [
@@ -362,6 +371,7 @@ dependencies = [
  "akio-quic",
  "akio-socks",
  "akio-x509",
+ "akit-access",
  "akit-config",
  "akit-handler",
  "akit-l4",
@@ -463,6 +473,7 @@ dependencies = [
  "akio",
  "akio-http",
  "akio-x509",
+ "akit-access",
  "akit-config",
  "akit-l4",
  "akit-observe",

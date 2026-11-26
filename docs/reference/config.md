@@ -16,7 +16,7 @@ YAML or JSON, any of them split across several files. Where akit differs from fi
 so in a note marked **akit:**.
 
 <!-- BEGIN GENERATED: summary -->
-akit reads **429** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 63 objects akit reads, each has its table below.
+akit reads **444** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 66 objects akit reads, each has its table below.
 <!-- END GENERATED -->
 
 How to read the tables:
@@ -34,7 +34,7 @@ How to read the tables:
 Every example on this page is a whole config, checked by a test that runs `akit validate` on it.
 Files they name are relative to the directory akit runs in: `public/` (a directory to serve),
 `certs/example.com.pem` and `certs/example.com.key` (a certificate and its key), `certs/ca.pem` (a
-CA), `admin.token` (a token), and `plugins/headers.wasm` and `plugins/http_headers.wasm` (WebAssembly plugins
+CA), `admin.token` (a token), `lists/deny.txt` (a list of addresses), and `plugins/headers.wasm` and `plugins/http_headers.wasm` (WebAssembly plugins
 of fit's ABI and of Proxy-Wasm's). `akit validate`
 opens what a config names, as `akit run` does: a certificate that does not load, a static root that
 is not there, a plugin that does not compile are errors.
@@ -46,6 +46,7 @@ is not there, a plugin that does not compile are errors.
 - [Routes](#routes): [`routes[]`](#cfg-routes), [`match`](#cfg-routes-match), [`handler`](#cfg-routes-handler), [`middleware[]`](#cfg-routes-middleware)
 - [Upstreams](#upstreams): [`upstreams[]`](#cfg-upstreams), [`sticky_cookie`](#cfg-upstreams-sticky-cookie), [`health_check`](#cfg-upstreams-health-check)
 - [Services](#services)
+- [Access lists](#access-lists): [`access`](#cfg-access), [`listeners[].access`](#cfg-listeners-access), [`routes[].access`](#cfg-routes-access)
 - [Access log](#access-log)
 - [Telemetry](#telemetry)
 - [Limits](#limits)
@@ -117,7 +118,7 @@ name every file on the command line (`-c` may be given again, or name a director
 
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
-| `access` | object |  | **Not supported yet**: refused by name. The client addresses fit serves, by allow (whitelist) and deny (blacklist) lists, for every listener, route, service and role, the Admin API and the consoles, that sets no access of its own that decides: a more specific one, set on a listener, route, service, role, admin or a console, decides first, and this one only for an address that one has no say on. Every address is served when left out. |
+| `access` | [object](#cfg-access) |  | The client addresses akit serves, by allow (whitelist) and deny (blacklist) lists, for every listener, route, service and role, the Admin API and the consoles, that sets no access of its own that decides: a more specific one, set on a listener, route, service, role, admin or a console, decides first, and this one only for an address that one has no say on. Every address is served when left out. |
 | `access_log` | [object](#cfg-access-log) |  | Where a line is written for each request, as JSON or, as its format says, text or line; no access log when left out. |
 | `acme` | [object](#cfg-acme) |  | How certificates for the names listeners list in tls.acme are obtained and renewed; the defaults when left out. Its settings are read when akit starts: a change to them takes effect when akit restarts. The names follow every reload. |
 | `admin` | [object](#cfg-admin) |  | The Admin API, through which the running config is read and replaced, and which serves metrics in Prometheus's text format at /metrics; off when left out. Its settings are read when akit starts: a change to them takes effect when akit restarts. |
@@ -191,7 +192,7 @@ route { listeners web internal; handler respond { body plain } }
 | --- | --- | --- | --- |
 | `address` | string | required | The host and port to listen on, as in ":8080" or "127.0.0.1:8080". |
 | `name` | string | required | A name unique among the listeners, by which routes refer to this one. |
-| `access` | object |  | **Not supported yet**: refused by name. The client addresses the listener serves, deciding before the global access: a connection it refuses is closed as soon as it is accepted, or, for HTTP/3 and udp, its datagrams dropped, unless a route or service of the listener sets an access of its own, which then decides first, for its requests or connections. With proxy_protocol the address is the one the header names. |
+| `access` | [object](#cfg-listeners-access) |  | The client addresses the listener serves, deciding before the global access: a connection it refuses is closed as soon as it is accepted, or, for HTTP/3 and udp, its datagrams dropped, unless a route or service of the listener sets an access of its own, which then decides first, for its requests or connections. With proxy_protocol the address is the one the header names. **akit:** HTTP/3's requests are checked one by one, a refused one answered `403`, where fit drops a refused peer's datagrams before a session is made: akio's UDP listeners take no accept filter yet (akit's request A220). |
 | `mptcp` | boolean |  | **Not supported yet**: refused by name. Listen the listener's TCP connections with Multipath TCP where the kernel offers it (Linux 5.6+, net.mptcp.enabled), falling back to plain TCP where it does not; a client without Multipath TCP falls back too. Off by default: a listener is plain TCP. udp listeners and HTTP/3 take none. |
 | `protocols` | list of string: `http/1.1`, `h2c`, `h2`, `h3`, `tcp`, `udp`, `socks` |  | The protocols served: http/1.1, h2c (HTTP/2 in the clear) and, with tls, h2 (HTTP/2 over TLS, chosen through ALPN) and h3 (HTTP/3 over QUIC, on the same port in UDP, announced to HTTP/1 and HTTP/2 clients with Alt-Svc); tcp, raw TCP, whose connections the services that list the listener proxy to their upstreams; socks, a SOCKS5 and SOCKS4 forward proxy, as socks says; or udp alone, whose datagrams a service proxies. A listener that serves more than one of HTTP, tcp and socks tells them apart on its port by what a client sends first: a TLS ClientHello goes to the service whose server_names hold its name, or else, with tls, is served HTTPS, or else goes to the service without server_names; a SOCKS greeting to socks; an HTTP request, in the clear, to HTTP; and whatever else to the service without server_names, or it is closed. A client that waits for the server to speak first is closed after 10s: such a protocol needs a listener of its own. http/1.1 alone when left out, or http/1.1 and h2 with tls. **akit:** With `h2c` and no `http/1.1` the listener serves HTTP/2 with prior knowledge alone, as fit's (I79b): a client that sends anything else gets akio's `GOAWAY` (`PROTOCOL_ERROR`) before the connection closes, where fit closes it with nothing (akio's ADR-174). |
 | `proxy_protocol` | [object](#cfg-listeners-proxy-protocol) |  | Take a PROXY protocol header, of version 1 or 2, at the start of each connection from a trusted address, and serve the connection as from the client it names. For listeners of tcp and of HTTP over TCP; with tls the header comes before TLS. HTTP/3 takes none. |
@@ -332,7 +333,7 @@ site example.com {
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
 | `handler` | [object](#cfg-routes-handler) | required | What answers the request. |
-| `access` | object |  | **Not supported yet**: refused by name. The client addresses the route serves, deciding before its listener's access and the global one: a request it refuses is answered 403. The address is the connection's, or the one its PROXY header names, not X-Forwarded-For's. |
+| `access` | [object](#cfg-routes-access) |  | The client addresses the route serves, deciding before its listener's access and the global one: a request it refuses is answered 403. The address is the connection's, or the one its PROXY header names, not X-Forwarded-For's. |
 | `listeners` | list of string |  | The names of the listeners the route serves; every listener when left out. |
 | `match` | [object](#cfg-routes-match) |  | What a request must match; every request when left out. |
 | `middleware` | list of [object](#cfg-routes-middleware) |  | Middleware a request passes through, in order, before the handler. |
@@ -519,6 +520,104 @@ service mail { listeners tls; upstream mail; server_names mail.example.com }
 | `max_conns` | integer, 0 or more | `10000` | The most connections and udp sessions the service proxies at once; a connection past it is closed as soon as it is accepted, and the datagrams of a session past it are dropped. 10000 when left out or 0. |
 | `proxy_protocol` | string: `v1`, `v2` |  | Send each upstream connection a PROXY protocol header of this version (v1, text, or v2, binary) first, naming the client's address and the one it connected to. For tcp listeners. |
 | `server_names` | list of string |  | The server names (SNI) of the TLS connections the service takes from its tcp listeners, which it proxies as they are, without terminating their TLS; "*.example.com" takes the names one label below example.com. A tcp listener may then be listed by several services: a connection goes to the one whose names hold the name its ClientHello asks for, or else to the listener's service without server_names, if it has one, as one that is not TLS or asks for no name does; otherwise it is closed. The ClientHello must come within 10s. |
+<!-- END GENERATED -->
+
+## Access lists
+
+Which client addresses akit serves, by allow lists (whitelists) and deny lists (blacklists) of IP
+addresses and CIDR prefixes, written inline or in files, as the lists published for firewalls are.
+The top-level `access` is global: every listener and route goes by it. Each of them may set an
+`access` of its own, which decides first, so that the more specific setting wins:
+
+- a list's `deny` refuses an address, whatever its `allow` holds;
+- else its `allow` serves an address it holds;
+- else, when its `allow` has entries, it refuses the address, since an allow list serves only what
+  it holds;
+- else it has no say, and the next one out decides: a route's, then its listener's, then the global
+  one. An address none has a say on is served.
+
+A route's `allow` therefore serves an address the global `deny` refuses, and a route's `deny`
+refuses one the global `allow` serves; `allow 0.0.0.0/0 ::/0` opens a route to every address
+whatever the global access says.
+
+Where it can, akit decides when a connection is accepted: a refused TCP connection is closed before
+anything is read from it, by akio's accept filter. A listener whose routes set an access of their
+own, or that takes PROXY headers, decides later instead: a refused HTTP request is answered `403`.
+The address is the connection's, or the one its PROXY header names, never `X-Forwarded-For`'s. A
+change applies to the connections that start after it: a reload changes the lists without binding a
+listener again, and the connections already open, and the later requests of an HTTP/2 connection a
+listener decided at accept, are not checked again.
+
+A list file has one entry on each line, each line told apart by its content, so that one file may
+mix them: an address or prefix, with what follows `#` or `;` left out; a range, `first-last`; an
+eMule `ipfilter.dat` line, `first - last , level , name`, where a line of a level above 127 is not
+listed (qBittorrent's reading, and eMule's at its default filter level); or a PeerGuardian `.p2p`
+line, `name:first-last`. IPv4 addresses in ranges may have leading zeros, as `ipfilter.dat` writes
+them. Blank lines and lines that begin with `#`, `;` or `//` are left out; any other line is an
+error naming the file and the line, and the config is not applied. A file is read when the config
+is applied, and the config applied again when it changes, as certificate files are (`akit run
+-watch-certs`); each file is at most 64 MiB.
+
+An allow list on a listener that obtains certificates with ACME's HTTP-01 or TLS-ALPN-01 challenges
+must serve the CA's validation servers, or the certificates cannot be obtained.
+
+```fit
+access { deny 203.0.113.0/24; deny_files lists/deny.txt }
+
+listener web :8080
+listener internal :8081 { access { allow 10.0.0.0/8 192.168.0.0/16 } }
+
+route partners {
+	listeners web
+	match { path /partner/* }
+	access { allow 203.0.113.7 198.51.100.0/24 }
+	handler respond { body partners }
+}
+
+route { handler respond { body hello } }
+```
+
+**akit:** HTTP/3 requests are checked one by one, a refused one answered `403`, where fit drops a
+refused peer's datagrams before a session is made: akio's UDP listeners take no accept filter yet
+(akit's request A220).
+
+### `access`
+
+<!-- BEGIN GENERATED: access -->
+<a id="cfg-access"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `allow` | list of string |  | IP addresses and CIDR prefixes served, as "10.0.0.0/8" or "2001:db8::/32": with any entry here or in allow_files, every address neither holds is refused, unless deny refuses it first. |
+| `allow_files` | list of string |  | Files of more allow entries, one on each line, each line told apart by its content: an address or prefix, with what follows # or ; left out, as the lists published for firewalls are written; a range, first-last; an eMule ipfilter.dat line, first - last , level , name, where a level above 127 is not listed; or a PeerGuardian .p2p line, name:first-last. IPv4 addresses of ranges may have leading zeros. Blank lines and lines that begin with #, ; or // are left out; any other line is an error. Read when the config is applied, and applied again when one changes; each at most 64 MiB. |
+| `deny` | list of string |  | IP addresses and CIDR prefixes refused, whatever allow holds. |
+| `deny_files` | list of string |  | Files of more deny entries, written as allow_files. |
+<!-- END GENERATED -->
+
+### `listeners[].access`
+
+<!-- BEGIN GENERATED: listeners[].access -->
+<a id="cfg-listeners-access"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `allow` | list of string |  | IP addresses and CIDR prefixes served, as "10.0.0.0/8" or "2001:db8::/32": with any entry here or in allow_files, every address neither holds is refused, unless deny refuses it first. |
+| `allow_files` | list of string |  | Files of more allow entries, one on each line, each line told apart by its content: an address or prefix, with what follows # or ; left out, as the lists published for firewalls are written; a range, first-last; an eMule ipfilter.dat line, first - last , level , name, where a level above 127 is not listed; or a PeerGuardian .p2p line, name:first-last. IPv4 addresses of ranges may have leading zeros. Blank lines and lines that begin with #, ; or // are left out; any other line is an error. Read when the config is applied, and applied again when one changes; each at most 64 MiB. |
+| `deny` | list of string |  | IP addresses and CIDR prefixes refused, whatever allow holds. |
+| `deny_files` | list of string |  | Files of more deny entries, written as allow_files. |
+<!-- END GENERATED -->
+
+### `routes[].access`
+
+<!-- BEGIN GENERATED: routes[].access -->
+<a id="cfg-routes-access"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `allow` | list of string |  | IP addresses and CIDR prefixes served, as "10.0.0.0/8" or "2001:db8::/32": with any entry here or in allow_files, every address neither holds is refused, unless deny refuses it first. |
+| `allow_files` | list of string |  | Files of more allow entries, one on each line, each line told apart by its content: an address or prefix, with what follows # or ; left out, as the lists published for firewalls are written; a range, first-last; an eMule ipfilter.dat line, first - last , level , name, where a level above 127 is not listed; or a PeerGuardian .p2p line, name:first-last. IPv4 addresses of ranges may have leading zeros. Blank lines and lines that begin with #, ; or // are left out; any other line is an error. Read when the config is applied, and applied again when one changes; each at most 64 MiB. |
+| `deny` | list of string |  | IP addresses and CIDR prefixes refused, whatever allow holds. |
+| `deny_files` | list of string |  | Files of more deny entries, written as allow_files. |
 <!-- END GENERATED -->
 
 ## Access log
@@ -1859,9 +1958,8 @@ it, since fit refuses it as an unknown field.
 
 ## What akit does not read yet
 
-These parts of fit's config are refused whole, by name, as not supported yet: `log`, `access`,
-`pprof`, `llm`, `tunnel`, `webrtc`, `media_auth`, `streaming`, `media_library`, `sync`
-and `bittorrent`, with fit's handlers for media, BitTorrent and sync. Within the parts akit reads,
+These parts of fit's config are refused whole, by name, as not supported yet: `log`, `pprof`,
+`llm`, `tunnel`, `webrtc`, `media_auth`, `streaming`, `media_library`, `sync` and `bittorrent`, with fit's handlers for media, BitTorrent and sync. Within the parts akit reads,
 the fields marked **Not supported yet** in the tables above are refused the same way. The
 [roadmap](../roadmap.md) says when each comes, and the [compatibility page](../compatibility.md)
 lists every field.

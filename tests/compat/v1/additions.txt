@@ -9,3 +9,18 @@
 #            security hole or bound a resource); written by hand, with the reason in a comment
 #            above it and in the release notes.
 config	added	supported	limits.max_pending_bytes
+config	added	supported	access
+config	added	supported	access.allow
+config	added	supported	access.allow_files
+config	added	supported	access.deny
+config	added	supported	access.deny_files
+config	added	supported	listeners[].access
+config	added	supported	listeners[].access.allow
+config	added	supported	listeners[].access.allow_files
+config	added	supported	listeners[].access.deny
+config	added	supported	listeners[].access.deny_files
+config	added	supported	routes[].access
+config	added	supported	routes[].access.allow
+config	added	supported	routes[].access.allow_files
+config	added	supported	routes[].access.deny
+config	added	supported	routes[].access.deny_files

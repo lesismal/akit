@@ -309,11 +309,11 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 429 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 444 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
-| [`access`](#fields-access) | 5 | 0 | 5 |
+| [`access`](#fields-access) | 5 | 5 | 0 |
 | [`access_log`](#fields-access-log) | 14 | 7 | 7 |
 | [`acme`](#fields-acme) | 43 | 43 | 0 |
 | [`admin`](#fields-admin) | 105 | 7 | 98 |
@@ -355,7 +355,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`http.middleware/rewrite`](#fields-http-middleware-rewrite) | 6 | 6 | 0 |
 | [`http.middleware/wasm`](#fields-http-middleware-wasm) | 18 | 18 | 0 |
 | [`limits`](#fields-limits) | 7 | 7 | 0 |
-| [`listeners`](#fields-listeners) | 30 | 23 | 7 |
+| [`listeners`](#fields-listeners) | 30 | 28 | 2 |
 | [`llm`](#fields-llm) | 218 | 0 | 218 |
 | [`log`](#fields-log) | 24 | 0 | 24 |
 | [`media_auth`](#fields-media-auth) | 34 | 0 | 34 |
@@ -363,7 +363,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`metrics`](#fields-metrics) | 1 | 1 | 0 |
 | [`pprof`](#fields-pprof) | 4 | 0 | 4 |
 | [`providers`](#fields-providers) | 60 | 59 | 1 |
-| [`routes`](#fields-routes) | 24 | 19 | 5 |
+| [`routes`](#fields-routes) | 24 | 24 | 0 |
 | [`schema_version`](#fields-schema-version) | 1 | 1 | 0 |
 | [`services`](#fields-services) | 13 | 8 | 5 |
 | [`streaming`](#fields-streaming) | 76 | 0 | 76 |
@@ -434,7 +434,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **合计** | 3821 | 429 | 3392 |
+| **合计** | 3821 | 444 | 3377 |
 
 <a id="fields-access"></a>
 
@@ -442,11 +442,11 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
-| `access` | `object` | 尚不支持（not supported yet） |
-| `access.allow` | `array<string>` | 尚不支持（not supported yet） |
-| `access.allow_files` | `array<string>` | 尚不支持（not supported yet） |
-| `access.deny` | `array<string>` | 尚不支持（not supported yet） |
-| `access.deny_files` | `array<string>` | 尚不支持（not supported yet） |
+| `access` | `object` | 已支持 |
+| `access.allow` | `array<string>` | 已支持 |
+| `access.allow_files` | `array<string>` | 已支持 |
+| `access.deny` | `array<string>` | 已支持 |
+| `access.deny_files` | `array<string>` | 已支持 |
 
 <a id="fields-access-log"></a>
 
@@ -1412,11 +1412,11 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
 | `listeners` | `array<object>` | 已支持 |
-| `listeners[].access` | `object` | 尚不支持（not supported yet） |
-| `listeners[].access.allow` | `array<string>` | 尚不支持（not supported yet） |
-| `listeners[].access.allow_files` | `array<string>` | 尚不支持（not supported yet） |
-| `listeners[].access.deny` | `array<string>` | 尚不支持（not supported yet） |
-| `listeners[].access.deny_files` | `array<string>` | 尚不支持（not supported yet） |
+| `listeners[].access` | `object` | 已支持 |
+| `listeners[].access.allow` | `array<string>` | 已支持 |
+| `listeners[].access.allow_files` | `array<string>` | 已支持 |
+| `listeners[].access.deny` | `array<string>` | 已支持 |
+| `listeners[].access.deny_files` | `array<string>` | 已支持 |
 | `listeners[].address` | `string, required` | 已支持 |
 | `listeners[].mptcp` | `boolean` | 尚不支持（not supported yet） |
 | `listeners[].name` | `string, required` | 已支持 |
@@ -1863,11 +1863,11 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
 | `routes` | `array<object>` | 已支持 |
-| `routes[].access` | `object` | 尚不支持（not supported yet） |
-| `routes[].access.allow` | `array<string>` | 尚不支持（not supported yet） |
-| `routes[].access.allow_files` | `array<string>` | 尚不支持（not supported yet） |
-| `routes[].access.deny` | `array<string>` | 尚不支持（not supported yet） |
-| `routes[].access.deny_files` | `array<string>` | 尚不支持（not supported yet） |
+| `routes[].access` | `object` | 已支持 |
+| `routes[].access.allow` | `array<string>` | 已支持 |
+| `routes[].access.allow_files` | `array<string>` | 已支持 |
+| `routes[].access.deny` | `array<string>` | 已支持 |
+| `routes[].access.deny_files` | `array<string>` | 已支持 |
 | `routes[].handler` | `object, required` | 已支持 |
 | `routes[].handler.module` | `enum(bt_publish\|bt_stream\|bt_tracker\|fastcgi\|forward_proxy\|hls\|httpflv\|media_pages\|media_tokens\|proxy\|respond\|static\|stream_whep\|stream_whip\|sync_ingest\|vod\|webrtc_proxy\|websockify\|whep\|whip), required` | 已支持 |
 | `routes[].handler.params` | `object` | 已支持 |

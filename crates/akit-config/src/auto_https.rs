@@ -247,6 +247,7 @@ pub(crate) fn effective(
         proxy_protocol: None,
         socks: None,
         sockmap: false,
+        access: None,
     }];
     if auto.redirects() {
         listeners.push(Listener {
@@ -260,6 +261,7 @@ pub(crate) fn effective(
             proxy_protocol: None,
             socks: None,
             sockmap: false,
+            access: None,
         });
     }
     Effective::Made(listeners)

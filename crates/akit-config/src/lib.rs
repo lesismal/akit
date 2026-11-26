@@ -57,7 +57,7 @@ pub use json::MAX_DEPTH;
 pub use model::CACHE_SHARDS;
 pub use model::ModuleRef;
 pub use model::{
-    AccessLevel, AccessLog, Acme, Admin, BasicAuth, BasicUser, BodyLimit, Cache, CacheDisk,
+    Access, AccessLevel, AccessLog, Acme, Admin, BasicAuth, BasicUser, BodyLimit, Cache, CacheDisk,
     Certificate, Challenge, CircuitBreaker, ClientAuth, ClientAuthMode, ClientCert, Compress,
     ConcurrencyLimit, Config, DEFAULT_ACME_DIRECTORY, DEFAULT_ACME_MAX_CONCURRENT,
     DEFAULT_ACME_REQUEST_TIMEOUT, DEFAULT_ACME_TIMEOUT, DEFAULT_ADMIN_ADDRESS,

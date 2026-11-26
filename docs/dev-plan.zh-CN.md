@@ -78,6 +78,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | `akit-observe` | 日志、指标、追踪 | `observe`、`logs` |
 | `akit-cache` | 响应缓存 | `handler/cache` |
 | `akit-plugin` | WASM 插件 | `plugin` |
+| `akit-access` | 访问控制列表：编译成区间的允许和拒绝列表、策略（I85） | `access` |
 | `tests/e2e` | 可执行文件的端到端测试 | `test/e2e` |
 | `tests/compat` | fit 配置兼容性门禁：固定夹具、字段清单 | `templates`、fit-examples |
 | `bench` | 基准框架、场景和报告 | `bench` |
@@ -182,7 +183,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I80 | 为安全审查做好准备 | I77, I79 | done |
 | I80b | 安全加固：威胁模型的局限与审查的发现 | I80、审查 | todo |
 | **1.0 之后：访问控制列表** | | | |
-| I85 | 访问控制列表 I：列表、监听器和路由 | I79、akio A3 | todo |
+| I85 | 访问控制列表 I：列表、监听器和路由 | I79、akio A3 | done |
 | I86 | 访问控制列表 II：服务与正向代理 | I85 | todo |
 | I87 | 访问控制列表 III：Admin API 与配置参考 | I85 | todo |
 
@@ -1030,6 +1031,9 @@ fit 的各个角色（`streaming`、`webrtc`、`tunnel`、`llm`、`bittorrent`�
 - **涉及**：`akit-access`（新）、`akit-config`、`akit-runtime`、`akit-listener`、`tests/compat`。
 - **阅读**：akio 的 `Listener::filter`、`Engine::set_listener_filter`（ADR-099）。
 - **fit**：`access`、`config`（`Access` 及其 `check`）、`runtime/graph.go`（`compileAccess`）、`listener`（I195）。
+- **状态**：已完成（2026-11-26）。akit-access（[决定 034](decisions/034-access-lists.zh-CN.md)）；在顶层、监听器和路由上读取 `access`；
+  由 akio 的过滤器在 accept 时决定、每次重载替换，或逐请求决定（403）；在 akio 的 A220 之前 HTTP/3 逐请求检查；列表文件与证书一起被监视。
+  `udp` 监听器和接受 PROXY 头的 `tcp` 监听器留待 I86。见进度日志。
 
 ### I86 访问控制列表 II：服务与正向代理
 

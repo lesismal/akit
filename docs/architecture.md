@@ -22,6 +22,7 @@ is fixed in the same change.
 │   (akit-handler, akit-proxy, akit-cache, akit-plugin)         │
 │ akit-upstream pools · balancing · health                      │
 │ akit-l4       TCP/UDP proxy · SNI · PROXY protocol            │
+│ akit-access   allow and deny lists, compiled to ranges        │
 │ akit-observe  logs · metrics · tracing                        │
 ├──────────────────────────────────────────────────────────────┤
 │ akio: Engine · Conn · logical pool · akio-http/h3/ws/grpc ·   │
