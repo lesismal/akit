@@ -146,6 +146,14 @@ fn fits_templates_and_examples_convert_as_fit_converts_them() {
     );
 }
 
+/// akit's words with fit's name for the gateway, as fit's golden files have them (decision 037):
+/// fit's corpus never holds "akit", so only akit's own words map.
+fn fit_names(s: &str) -> String {
+    s.replace("an akit", "a fit")
+        .replace("An akit", "A fit")
+        .replace("akit", "fit")
+}
+
 /// fit's nginx configs and Caddyfiles (its converters' samples, its assistant's migration cases
 /// and its benchmark's configs, copied to `testdata/adapt/convert`) converted with `akit adapt
 /// -from nginx` and `-from caddyfile` to each format as `fit adapt` converts them: the exit code,
@@ -178,7 +186,18 @@ fn nginx_configs_and_caddyfiles_convert_as_fit_converts_them() {
         let (akit_warns, rest): (Vec<&str>, Vec<&str>) = stderr
             .lines()
             .partition(|l| l.starts_with("akit adapt: warning: "));
-        let rest: String = rest.iter().map(|l| format!("{l}\n")).collect();
+        // akit's warnings name the gateway akit (decision 037): read as fit's golden files have
+        // them, past the file name, which may hold "akit".
+        let rest: String = rest
+            .iter()
+            .map(|l| match l.split_once(": warning: ") {
+                Some((file, w)) => format!("{file}: warning: {}\n", fit_names(w)),
+                None => match l.split_once(": ") {
+                    Some((file, e)) => format!("{file}: {}\n", fit_names(e)),
+                    None => format!("{}\n", fit_names(l)),
+                },
+            })
+            .collect();
         let only_unsupported = akit_warns
             .iter()
             .all(|w| w.ends_with(": not supported yet; converted as written"));
@@ -230,7 +249,7 @@ fn converted_configs_place_their_problems_at_the_sources_lines() {
     assert_eq!(out.status.code(), Some(0), "{}", text(&out.stderr));
     assert_eq!(
         text(&out.stderr),
-        "-: warning: line 1: ssl_protocols: skipped: fit picks TLS versions and ciphers, and staples OCSP, itself\n"
+        "-: warning: line 1: ssl_protocols: skipped: akit picks TLS versions and ciphers, and staples OCSP, itself\n"
     );
     assert!(
         text(&out.stdout).contains("a.test"),
