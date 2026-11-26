@@ -1,7 +1,8 @@
 //! End to end: `akit run` watches the certificate files its config loaded (`-watch-certs`, on by
 //! default, as fit's) and applies the config again when they change (I30): the listener is kept
 //! and its next handshakes get the new certificate; a key that does not match its certificate
-//! leaves the running one until it is fixed; `-watch-certs=false` turns it off.
+//! leaves the running one until it is fixed; `-watch-certs=false` turns it off. The Admin API's
+//! certificate files are watched too, and served to its new connections without a restart (I94).
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -196,5 +197,72 @@ fn watch_certs_false_leaves_the_files_alone() {
     ca.leaf(&d, "a", &["a.example"]);
     akit.quiet(Duration::from_millis(1000));
     assert_eq!(leaf(addr, &roots), first);
+    std::fs::remove_dir_all(&d).unwrap();
+}
+
+/// Waits until a full handshake with the Admin API at `addr` gets `want`.
+fn wait_admin_leaf(addr: SocketAddr, roots: &Path, want: &[u8]) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let seen = get_h1(
+            addr,
+            &client(roots, &["http/1.1"], None),
+            "admin.example",
+            // The loopback API without a token hears only its own host names.
+            "localhost",
+            "/versions",
+        )
+        .unwrap();
+        assert!(seen.status.contains(" 200 "), "{}", seen.status);
+        if seen.leaf == want {
+            return;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the Admin API's certificate was not replaced"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+#[test]
+fn admin_certificate_renewed_without_a_restart() {
+    let d = dir("e2e-watch-certs-admin");
+    let ca = Ca::new("akit e2e ca");
+    let roots = ca.write(&d, "ca.pem");
+    let a = ca.leaf(&d, "a", &["a.example"]);
+    let admin = ca.leaf(&d, "admin", &["admin.example"]);
+    let p = config(&d, &a);
+    let json = std::fs::read_to_string(&p).unwrap().replacen(
+        '{',
+        &format!(
+            r#"{{"admin": {{"address": "127.0.0.1:0", "cert_file": "{}", "key_file": "{}"}},"#,
+            s(&admin.0),
+            s(&admin.1)
+        ),
+        1,
+    );
+    std::fs::write(&p, json).unwrap();
+    let (akit, _) = start(&p, &["-watch-interval", "50ms"]);
+    let line = akit.until("akit: admin API on ").pop().unwrap();
+    let api: SocketAddr = line.rsplit(' ').next().unwrap().parse().unwrap();
+    wait_admin_leaf(api, &roots, &leaf_der(&admin.0));
+
+    // Renewed in place: served to new connections once the files settle.
+    ca.leaf(&d, "admin", &["admin.example"]);
+    let renewed = leaf_der(&admin.0);
+    wait_admin_leaf(api, &roots, &renewed);
+
+    // A certificate whose key is not yet written: the running one stays; once the key is
+    // written, served.
+    let next = d.join("next");
+    std::fs::create_dir_all(&next).unwrap();
+    let (c, k) = ca.leaf(&next, "admin", &["admin.example"]);
+    std::fs::copy(&c, &admin.0).unwrap();
+    std::thread::sleep(Duration::from_millis(1000));
+    wait_admin_leaf(api, &roots, &renewed);
+    std::fs::copy(&k, &admin.1).unwrap();
+    wait_admin_leaf(api, &roots, &leaf_der(&c));
+    drop(akit);
     std::fs::remove_dir_all(&d).unwrap();
 }

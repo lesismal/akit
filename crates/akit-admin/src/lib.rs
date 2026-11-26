@@ -61,9 +61,11 @@
 //! On `unix/<path>` the API listens on a Unix socket only akit's user reaches (0600; a stale one
 //! replaced, one in use refused; no `Host` check), as fit's. With `cert_file` and `key_file` it is
 //! served over TLS (I92), with `client_ca_file` to clients with a certificate only; an address off
-//! loopback needs TLS and a token.
+//! loopback needs TLS and a token. Its certificate files, and the console's, are read again when
+//! they change ([`Server::watch_certs`], [`Server::reload_certs`], I94).
 
 mod cache;
+mod certs;
 mod configs;
 pub mod console;
 mod dashboard;
@@ -78,6 +80,7 @@ mod status;
 mod text;
 mod watch;
 
+pub use certs::CertReload;
 pub use configs::{
     Applied, ApplyError, Configs, Effective, ListenerChange, Mode, Outcome, Refused, SOURCE_ADMIN,
     SOURCE_CERTIFICATES, SOURCE_FILE, SOURCE_ROLLBACK, Version, etag_matches, etag_of,

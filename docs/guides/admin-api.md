@@ -41,9 +41,16 @@ route hello {
 ```
 
 The API listens on 127.0.0.1:2019 by default, or on a Unix socket (`unix//run/akit/admin.sock`,
-made 0600). akit does not serve it over TLS yet, so it takes no other address: reach it from the host,
-through an SSH tunnel, or with `docker exec`. With `token_file`, every request carries the token as
-`Authorization: Bearer <token>`. Its settings are read when akit starts.
+made 0600). With `token_file`, every request carries the token as `Authorization: Bearer <token>`.
+With `cert_file` and `key_file` it is served over TLS, 1.2 or later, and with `client_ca_file` only
+to clients whose certificate chains to one of its CAs. An address off loopback needs both a token and
+TLS, so that the token never crosses a network in the clear; without them, reach the API from the
+host, through an SSH tunnel, or with `docker exec`. Its settings are read when akit starts, but for
+`access`, which follows every config applied, and the certificate files: with `-watch-certs` they are
+looked at every `-watch-interval`, and SIGHUP reads them again, and a certificate renewed outside
+akit is served to new connections without a restart. Files that do not load, as when a certificate
+is written and its key not yet, are logged in the `admin` logger, and the running certificate stays
+until they change again.
 
 What it serves:
 
@@ -119,5 +126,5 @@ traces of requests and the same metrics over OTLP/HTTP to a collector
 
 ## Not supported yet
 
-fit's console, its encrypted store, the assistant, cluster management, TLS for the Admin API, and
-`fit run -admin` are not supported yet: akit refuses them by name.
+fit's encrypted store (`admin.store`, I93), the assistant, cluster management and `fit run -admin`
+are not supported yet: akit refuses them by name. The [console](console.md) is supported.

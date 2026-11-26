@@ -19,7 +19,10 @@
 //!   the running config is applied again as a new version (I30): a listener whose files changed
 //!   only in their certificates is kept, and its next handshakes get the new ones; an h2
 //!   upstream's `tls_ca_file`, `tls_cert_file` and `tls_key_file` (I54) are watched too, and its
-//!   new pool reads them again. With `-watch`
+//!   new pool reads them again; so are the Admin API's and the console's certificate, key and
+//!   client CA files (I94), loaded once settled and served to new connections without a
+//!   restart, the running certificate kept when they do not load (SIGHUP reads them again too).
+//!   With `-watch`
 //!   (I29, fit's file provider), the config's files are looked at every `-watch-interval` too,
 //!   and once a change has settled for 500ms, and the files hold something other than what was
 //!   applied last, they are applied as SIGHUP applies them: a file added to a directory, or taken
@@ -1223,6 +1226,11 @@ fn run(args: &[String]) -> ExitCode {
                                 );
                             }
                             // A failed reload said why.
+                            // The Admin API's and the console's certificate files (I94): what
+                            // happened is in the admin logger.
+                            if let Some(api) = runner.api {
+                                let _ = api.watch_certs(now);
+                            }
                         }
                     }
                     if cell.retiring() > 0 {
@@ -1237,6 +1245,11 @@ fn run(args: &[String]) -> ExitCode {
             Some(Control::Stop) | None => break,
             Some(Control::Hangup) => {
                 reload(&paths, &configs, &mut runner, provider.as_mut());
+                // The Admin API's and the console's certificate files read again (I94); what
+                // happened is in the admin logger.
+                if let Some(api) = runner.api {
+                    let _ = api.reload_certs();
+                }
                 cell.collect();
             }
             // Taken at the top of the loop.

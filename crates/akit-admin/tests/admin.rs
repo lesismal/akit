@@ -2439,3 +2439,164 @@ fn tls_start_errors() {
         assert!(e.to_string().starts_with("admin: "), "{c} {k}: {e}");
     }
 }
+
+// I94: the certificate files read again when they change (fit's admin/tls_test.go:
+// TestTLSReload).
+
+/// The leaf a TLS server at `addr` presents to a new connection, as DER: a client of its own each
+/// time, whose handshake resumes no session (a resumed one is sent no certificate).
+fn served_leaf(addr: SocketAddr, cfg: &akio::tls::ClientConfig) -> Vec<u8> {
+    let tcp = TcpStream::connect(addr).unwrap();
+    tcp.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+    tcp.set_write_timeout(Some(Duration::from_secs(5))).unwrap();
+    let mut s = akio::tls::stream::Stream::client(cfg, "admin.akit.test", tcp).unwrap();
+    s.handshake().unwrap();
+    s.conn().peer_certificates()[0].clone()
+}
+
+/// The first certificate of the PEM file `path`, as DER.
+fn leaf_der(path: &str) -> Vec<u8> {
+    akio_x509::Certificate::from_pem(&std::fs::read(path).unwrap()).unwrap()[0]
+        .as_der()
+        .to_vec()
+}
+
+/// Copies `from` over `to` and dates it `secs` from now: a file system with coarse modification
+/// times may not tell the change otherwise, and the certificates' sizes may be the same.
+fn replace(from: &str, to: &str, secs: u64) {
+    std::fs::copy(from, to).unwrap();
+    std::fs::File::options()
+        .write(true)
+        .open(to)
+        .unwrap()
+        .set_modified(std::time::SystemTime::now() + Duration::from_secs(secs))
+        .unwrap();
+}
+
+#[test]
+fn tls_reload() {
+    let pki = Pki::new("reload");
+    let (cert, key) = pki.leaf("api", &["admin.akit.test"]);
+    let token = pki.dir.join("token");
+    std::fs::write(&token, "t0ken").unwrap();
+    let f = start(
+        &doc("v1"),
+        admin(|a| {
+            a.cert_file = Some(cert.clone());
+            a.key_file = Some(key.clone());
+            a.token_file = Some(token.to_string_lossy().into_owned());
+        }),
+    );
+    let addr = f.api.addr();
+    let client = pki.client(None);
+    let first = served_leaf(addr, &pki.client(None));
+    assert_eq!(first, leaf_der(&cert));
+    // Nothing changed: nothing read again.
+    assert!(f.api.reload_certs().is_empty());
+
+    // Renewed outside akit, and read again (SIGHUP): new connections get it.
+    let (renewed, renewed_key) = pki.leaf("renewed", &["admin.akit.test"]);
+    replace(&renewed, &cert, 10);
+    replace(&renewed_key, &key, 10);
+    assert_eq!(
+        f.api.reload_certs(),
+        vec![akit_admin::CertReload::Reloaded("admin")]
+    );
+    let got = served_leaf(addr, &pki.client(None));
+    assert_eq!(got, leaf_der(&renewed));
+    assert_ne!(got, first);
+    assert_eq!(
+        tls_get(addr, &client, "/versions").unwrap(),
+        "HTTP/1.1 200 OK"
+    );
+
+    // A key that does not load, through the watcher (-watch-certs): the renewed certificate
+    // stays, and the warning says why; the same files are not tried again.
+    std::fs::write(&key, "not a key").unwrap();
+    let now = Instant::now();
+    assert!(f.api.watch_certs(now).is_empty(), "the first look settles");
+    let r = f.api.watch_certs(now + Duration::from_secs(1));
+    match r.as_slice() {
+        [akit_admin::CertReload::Failed(e)] => {
+            assert!(e.starts_with("admin: "), "{e}");
+            assert!(e.contains("api.key"), "{e}");
+            assert!(e.ends_with("; the running certificate stays"), "{e}");
+        }
+        r => panic!("{r:?}"),
+    }
+    assert_eq!(served_leaf(addr, &pki.client(None)), leaf_der(&renewed));
+    assert!(f.api.watch_certs(now + Duration::from_secs(2)).is_empty());
+    assert_eq!(served_leaf(addr, &pki.client(None)), leaf_der(&renewed));
+
+    // Mended: loaded once the files have settled for the debounce time.
+    let (third, third_key) = pki.leaf("third", &["admin.akit.test"]);
+    replace(&third, &cert, 20);
+    replace(&third_key, &key, 20);
+    assert!(f.api.watch_certs(now + Duration::from_secs(3)).is_empty());
+    assert!(
+        f.api
+            .watch_certs(now + Duration::from_millis(3200))
+            .is_empty(),
+        "loaded before it settled"
+    );
+    assert_eq!(
+        f.api.watch_certs(now + Duration::from_secs(4)),
+        vec![akit_admin::CertReload::Reloaded("admin")]
+    );
+    assert_eq!(served_leaf(addr, &pki.client(None)), leaf_der(&third));
+    assert!(f.api.watch_certs(now + Duration::from_secs(5)).is_empty());
+}
+
+#[test]
+fn tls_reload_client_ca() {
+    let pki = Pki::new("reload-client-ca");
+    let other = Pki::new("reload-client-ca-other");
+    let (cert, key) = pki.leaf("api", &["admin.akit.test"]);
+    let (ccert, ckey) = pki.leaf("client", &["client.akit.test"]);
+    let (ocert, okey) = other.leaf("client", &["client.akit.test"]);
+    let token = pki.dir.join("token");
+    std::fs::write(&token, "t0ken").unwrap();
+    let ca = pki.dir.join("clients.pem");
+    std::fs::copy(pki.dir.join("ca.pem"), &ca).unwrap();
+    let ca = ca.to_string_lossy().into_owned();
+    let f = start(
+        &doc("v1"),
+        admin(|a| {
+            a.cert_file = Some(cert.clone());
+            a.key_file = Some(key.clone());
+            a.client_ca_file = Some(ca.clone());
+            a.token_file = Some(token.to_string_lossy().into_owned());
+        }),
+    );
+    let addr = f.api.addr();
+    let ours = pki.client(Some((&ccert, &ckey)));
+    let theirs = pki.client(Some((&ocert, &okey)));
+    assert_eq!(
+        tls_get(addr, &ours, "/versions").unwrap(),
+        "HTTP/1.1 200 OK"
+    );
+    assert!(tls_get(addr, &theirs, "/versions").is_err());
+
+    // The client CA replaced: the other CA's clients are heard, and ours no more.
+    replace(&other.dir.join("ca.pem").to_string_lossy(), &ca, 10);
+    assert_eq!(
+        f.api.reload_certs(),
+        vec![akit_admin::CertReload::Reloaded("admin")]
+    );
+    assert_eq!(
+        tls_get(addr, &theirs, "/versions").unwrap(),
+        "HTTP/1.1 200 OK"
+    );
+    assert!(tls_get(addr, &ours, "/versions").is_err());
+
+    // A client CA file with no certificate: the running one stays.
+    std::fs::write(&ca, "no certificate here").unwrap();
+    match f.api.reload_certs().as_slice() {
+        [akit_admin::CertReload::Failed(e)] => assert!(e.contains("clients.pem"), "{e}"),
+        r => panic!("{r:?}"),
+    }
+    assert_eq!(
+        tls_get(addr, &theirs, "/versions").unwrap(),
+        "HTTP/1.1 200 OK"
+    );
+}

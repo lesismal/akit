@@ -205,7 +205,7 @@ renamed fit's external names).
 | I91 | Console III: the pages: fit's workbench, the schema, the raw editors and transfer, the Logs page | I90, I83 | done |
 | I92 | The Admin API over TLS, off loopback (L1) | I27 | done |
 | I93 | The encrypted store: `admin.store`, `akit store export` and `import`, `run -admin` | I90, akio A230, A231 | todo |
-| I94 | The Admin API's and the console's certificates read again when they change | I92 | todo |
+| I94 | The Admin API's and the console's certificates read again when they change | I92 | done |
 | **After 1.0: akit's names** | | | |
 | I97 | akit's names: every external name that says "fit" says "akit" (decision 037) | I91, I92 | done |
 
@@ -1441,7 +1441,10 @@ without one it changes the running config as the Admin API does, and password ch
 - **Done when**: fit's `TestTLSReload` passes ported, for the API and the console.
 - **Touches**: `akit-admin`, `akit` (`run`).
 - **fit**: `admin/tls.go`.
-- **Status**: todo.
+- **Status**: done (2026-11-27), before I93, which waits for akio's A230 and A231 and which I94
+  does not need. The files are looked at on the control thread (`-watch-certs`, every
+  `-watch-interval`, and SIGHUP), not at the handshake as fit's (rule 1); the console's
+  certificate is read again too, which fit's is not. See the progress log.
 
 ### akit's names
 

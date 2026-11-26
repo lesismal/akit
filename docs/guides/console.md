@@ -45,7 +45,11 @@ refuses one without. On a loopback address TLS is optional, as for a console rea
 tunnel. `access` says which client addresses it serves ([access lists](../reference/config.md#access-lists)),
 deciding before the global `access`, which applies to the console too: `allow 127.0.0.1 ::1` keeps
 local access whatever the global access says. Unlike the rest of `admin.console`, read when akit
-starts, `access` follows every config applied.
+starts, `access` follows every config applied, and the certificate files are read again when they
+change, as the Admin API's are: with `-watch-certs` (on by default) every `-watch-interval`, and on
+SIGHUP. A renewed certificate is served to new connections without a restart, and logins are kept;
+files that do not load are logged in the `admin` logger and the running certificate stays. fit reads
+the console's certificate only when it starts.
 
 ## Logins and sessions
 

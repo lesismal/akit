@@ -39,13 +39,13 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 use std::time::Duration;
 
-use akio::tls::Tls;
 use akio::{AnyAcceptor, Config as EngineConfig, Engine, Listener, Pool, PoolConfig};
 use akio_http::{BodyMode, Context, Detached, HttpConfig, Method, Request, Response};
 use akit_config::value::{Value, write_string};
 use akit_observe::logger::{Level, Logger};
 
 use super::login::{self, Logins, Options as LoginOptions, Session};
+use crate::certs::Reloader;
 use crate::server::{Options, Shared, VERSION_HEADER, dispatch, error, json, takes_config};
 
 /// The header every request but a read carries its session's CSRF token in: fit's `X-Fit-Csrf`,
@@ -84,6 +84,7 @@ pub(crate) struct Console {
     engine: Engine,
     addr: SocketAddr,
     secure: bool,
+    certs: Option<Reloader>,
 }
 
 impl std::fmt::Debug for Console {
@@ -147,24 +148,16 @@ impl Console {
         let addr = resolve(&c.address)?;
         let secure = c.cert_file.is_some();
         let tls = match (&c.cert_file, &c.key_file) {
-            (Some(cert), Some(key)) => Some(
-                akit_tls::server_config(
-                    &akit_config::Tls {
-                        certificates: vec![akit_config::Certificate {
-                            cert_file: cert.clone(),
-                            key_file: key.clone(),
-                        }],
-                        client_auth: None,
-                        max_version: akit_config::TlsVersion::Tls13,
-                        acme: Vec::new(),
-                        on_demand: false,
-                    },
-                    &[akit_config::Protocol::Http11],
-                )
-                .map_err(|e| {
-                    io::Error::new(io::ErrorKind::InvalidInput, format!("console: {e}"))
-                })?,
-            ),
+            (Some(cert), Some(key)) => Some(akit_config::Tls {
+                certificates: vec![akit_config::Certificate {
+                    cert_file: cert.clone(),
+                    key_file: key.clone(),
+                }],
+                client_auth: None,
+                max_version: akit_config::TlsVersion::Tls13,
+                acme: Vec::new(),
+                on_demand: false,
+            }),
             _ => None,
         };
         let pages = Arc::new(Pages {
@@ -186,9 +179,14 @@ impl Console {
         cfg.max_connections = c.max_conns;
         cfg.shutdown_timeout = Duration::from_secs(1);
         let service = akio_http::serve_with(http, Service(Arc::clone(&pages)));
-        let acceptor = match tls {
-            Some(t) => AnyAcceptor::new(Tls::server(t, service)),
-            None => AnyAcceptor::new(service),
+        // The certificate's files read again when they change (I94).
+        let (acceptor, certs) = match tls {
+            Some(t) => {
+                let (r, swap) = Reloader::start("console", t, service)
+                    .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+                (AnyAcceptor::new(swap), Some(r))
+            }
+            None => (AnyAcceptor::new(service), None),
         };
         let listener = match &opts.console_access {
             // Refused at accept, before anything is read (fit's Binding.Filter).
@@ -214,7 +212,13 @@ impl Console {
             engine,
             addr,
             secure,
+            certs,
         })
+    }
+
+    /// The certificate's files, when it serves TLS (I94).
+    pub(crate) fn certs(&self) -> Option<&Reloader> {
+        self.certs.as_ref()
     }
 
     /// Has the console serve the clients `access` serves from now on: a connection already open

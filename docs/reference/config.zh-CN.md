@@ -1015,8 +1015,8 @@ route { match { host example.com }; handler respond { body hello } }
 | `access` | [对象](#cfg-admin-access) |  |  |
 | `address` | 字符串 | `"127.0.0.1:2019"` | **akit：**Unix 套接字（`unix/<路径>`）的权限设为 0600。 |
 | `assistant` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
-| `cert_file` | 字符串 |  | **akit：**在 akit 启动时读取：更新的证书需要重启才生效。 |
-| `client_ca_file` | 字符串 |  | **akit：**同 `cert_file`，在 akit 启动时读取。 |
+| `cert_file` | 字符串 |  | **akit：**在控制线程上，带 `-watch-certs`（默认开启）时每个 `-watch-interval` 查看一次这些文件，而不是像 fit 那样在握手时查看；文件保持 500ms 不变后加载；SIGHUP 也会重新读取（I94）。新连接得到新证书；加载失败的文件记录到 `admin` 日志器，正在使用的证书保留。 |
+| `client_ca_file` | 字符串 |  | **akit：**与 `cert_file` 一起重新读取（I94）：新连接按新的 CA 检查。 |
 | `cluster` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
 | `cluster_member` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
 | `console` | [对象](#cfg-admin-console) |  |  |
@@ -1062,7 +1062,7 @@ admin {
 | `users` | [对象](#cfg-admin-console-users)的列表 | 必填 |  |
 | `access` | [对象](#cfg-admin-console-access) |  |  |
 | `address` | 字符串 | `"127.0.0.1:2020"` |  |
-| `cert_file` | 字符串 |  |  |
+| `cert_file` | 字符串 |  | **akit：**文件变化时重新读取，与 `admin.cert_file` 相同（I94）：续期的证书无需重启即提供给新连接；fit 只在启动时读取。 |
 | `key_file` | 字符串 |  |  |
 | `max_conns` | 整数，≥ 0 | `32` | **akit：**超出时新连接在 accept 时被关闭：在 akio 的 A232 之前，不为已登录的连接保留名额，也不关闭未登录的连接来腾出位置。 |
 | `max_sessions` | 整数，≥ 0 | `64` |  |

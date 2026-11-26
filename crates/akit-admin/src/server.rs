@@ -12,13 +12,14 @@ use std::io;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use akio::{AnyAcceptor, Backend, Config as EngineConfig, Engine, Listener};
 use akio_http::{BodyEvent, BodyMode, Context, Detached, HttpConfig, Method, Request, Response};
 use akit_config::Errors;
 use akit_config::value::{Value, write_string};
 
+use crate::certs::{CertReload, Reloader};
 use crate::configs::{Applied, ApplyError, Configs, Mode, Outcome, Refused, SOURCE_ADMIN, Version};
 use crate::configs::{Effective, ListenerChange, etag_matches};
 use crate::dashboard;
@@ -401,6 +402,8 @@ pub struct Server {
     unix: Option<PathBuf>,
     /// The console, when `admin.console` is set (I90).
     console: Option<crate::console::server::Console>,
+    /// The TLS certificate's files, read again when they change (I94).
+    certs: Option<Reloader>,
 }
 
 impl fmt::Debug for Server {
@@ -460,10 +463,10 @@ impl Server {
             Some(_) => akio::UNIX_ADDR,
             None => resolve(&settings.address)?,
         };
-        let tls = match &settings.cert_file {
-            Some(cert) => Some(api_tls(settings, cert)?),
-            None => None,
-        };
+        let tls = settings
+            .cert_file
+            .as_ref()
+            .map(|cert| api_tls(settings, cert));
         let shared = Shared {
             tls: tls.is_some(),
             unix: unix.is_some(),
@@ -516,10 +519,19 @@ impl Server {
             (None, None) => Listener::tcp(addr),
         };
         let service = akio_http::serve_with(http, api);
-        // Over TLS with cert_file (I92), client certificates asked for with client_ca_file.
-        let acceptor = match tls {
-            Some(cfg) => AnyAcceptor::new(akio::tls::Tls::server(cfg, service)),
-            None => AnyAcceptor::new(service),
+        // Over TLS with cert_file (I92), client certificates asked for with client_ca_file; the
+        // files read again when they change (I94).
+        let (acceptor, certs) = match tls {
+            Some(t) => match Reloader::start("admin", t, service) {
+                Ok((r, swap)) => (AnyAcceptor::new(swap), Some(r)),
+                Err(e) => {
+                    if let Some(c) = &console {
+                        c.shutdown();
+                    }
+                    return Err(io::Error::new(io::ErrorKind::InvalidInput, e));
+                }
+            },
+            None => (AnyAcceptor::new(service), None),
         };
         let engine = Engine::builder()
             .config(cfg)
@@ -530,9 +542,14 @@ impl Server {
                     .serve_any(acceptor),
             )
             .build()
-            .map_err(|e| match &unix {
-                Some(p) => io::Error::new(e.kind(), format!("{}: {e}", p.display())),
-                None => e,
+            .map_err(|e| {
+                if let Some(c) = &console {
+                    c.shutdown();
+                }
+                match &unix {
+                    Some(p) => io::Error::new(e.kind(), format!("{}: {e}", p.display())),
+                    None => e,
+                }
             })?;
         if let Err(e) = engine.start() {
             if let Some(c) = &console {
@@ -546,7 +563,30 @@ impl Server {
             addr,
             unix,
             console,
+            certs,
         })
+    }
+
+    /// Looks at the API's and the console's certificate files once (I94): `-watch-certs`, every
+    /// interval, on the control thread, never an I/O thread (it reads files). Files that changed
+    /// and have stayed as they are for the watcher's debounce time are loaded and served to new
+    /// connections; files that do not load leave the running certificate, and are not tried
+    /// again until they change. What happened is in the `admin` logger, and returned.
+    pub fn watch_certs(&self, now: Instant) -> Vec<CertReload> {
+        self.reloaders().filter_map(|r| r.tick(now)).collect()
+    }
+
+    /// Reads the API's and the console's certificate files now (SIGHUP, I94), and serves those
+    /// that changed and load to new connections; as [`watch_certs`](Self::watch_certs)
+    /// otherwise.
+    pub fn reload_certs(&self) -> Vec<CertReload> {
+        self.reloaders().filter_map(Reloader::reload).collect()
+    }
+
+    fn reloaders(&self) -> impl Iterator<Item = &Reloader> {
+        self.certs
+            .iter()
+            .chain(self.console.as_ref().and_then(|c| c.certs()))
     }
 
     /// Has the API serve the clients `access` serves from now on (I87): the access lists of a
@@ -618,9 +658,10 @@ impl Server {
 }
 
 /// The Admin API's TLS (I92): `cert` and `key_file`, TLS 1.2 and 1.3, every client's certificate
-/// verified against `client_ca_file` when it is set. Read when akit starts.
-fn api_tls(settings: &akit_config::Admin, cert: &str) -> io::Result<akio::tls::ServerConfig> {
-    let tls = akit_config::Tls {
+/// verified against `client_ca_file` when it is set. Read when akit starts, and again when the
+/// files change (I94).
+fn api_tls(settings: &akit_config::Admin, cert: &str) -> akit_config::Tls {
+    akit_config::Tls {
         certificates: vec![akit_config::Certificate {
             cert_file: cert.to_owned(),
             key_file: settings.key_file.clone().unwrap_or_default(),
@@ -635,9 +676,7 @@ fn api_tls(settings: &akit_config::Admin, cert: &str) -> io::Result<akio::tls::S
         max_version: akit_config::TlsVersion::Tls13,
         acme: Vec::new(),
         on_demand: false,
-    };
-    akit_tls::server_config(&tls, &[akit_config::Protocol::Http11])
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, format!("admin: {e}")))
+    }
 }
 
 /// The accept filter of `policy`: a connection from an address it refuses is closed as it is

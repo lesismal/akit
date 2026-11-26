@@ -38,7 +38,9 @@ route { handler respond { body "hello\n" } }
 `akit validate` 拒绝。在回环地址上 TLS 可选，比如通过 SSH 隧道访问的控制台。`access` 指定它为哪些客户端地址提供服务
 （[访问控制列表](../reference/config.zh-CN.md#访问控制列表)），在全局 `access` 之前决定，全局 `access` 也适用于控制台：
 `allow 127.0.0.1 ::1` 不论全局访问控制如何都保留本机访问。与 `admin.console` 的其余部分（在 akit 启动时读取）不同，`access`
-随每次应用的配置变化。
+随每次应用的配置变化，证书文件也会在变化时重新读取，与 Admin API 的相同：带 `-watch-certs`（默认开启）时每个
+`-watch-interval` 查看一次，SIGHUP 时也读取。续期的证书无需重启即提供给新连接，登录会话保留；加载失败的文件记录到
+`admin` 日志器，正在使用的证书保留。fit 只在启动时读取控制台的证书。
 
 ## 登录与会话
 

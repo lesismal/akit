@@ -196,7 +196,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I91 | 控制台 III：页面：fit 的工作台、schema、原文编辑器和导入导出、“日志”页面 | I90, I83 | done |
 | I92 | 非回环地址上带 TLS 的 Admin API（L1） | I27 | done |
 | I93 | 加密的 store：`admin.store`、`akit store export` 和 `import`、`run -admin` | I90, akio A230, A231 | todo |
-| I94 | 文件变化时重新读取 Admin API 和控制台的证书 | I92 | todo |
+| I94 | 文件变化时重新读取 Admin API 和控制台的证书 | I92 | done |
 | **1.0 之后：akit 的名字** | | | |
 | I97 | akit 的名字：对外凡写 "fit" 的名字都改为 "akit"（决定 037） | I91, I92 | done |
 
@@ -1240,7 +1240,9 @@ Admin API 并列，在自己的登录之后于进程内调用 Admin API 的端�
 - **完成标准**：移植后的 fit `TestTLSReload` 对 API 和控制台都通过。
 - **涉及**：`akit-admin`、`akit`（`run`）。
 - **fit**：`admin/tls.go`。
-- **状态**：todo。
+- **状态**：已完成（2026-11-27），先于 I93 完成：I93 等待 akio 的 A230 和 A231，而 I94 不需要它。文件在控制线程上查看
+  （`-watch-certs`，每个 `-watch-interval`，以及 SIGHUP），而不是像 fit 那样在握手时查看（规则 1）；控制台的证书也会重新
+  读取，fit 的不会。见进度日志。
 
 ### akit 的名字
 

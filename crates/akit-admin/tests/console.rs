@@ -2,8 +2,8 @@
 //! `TestConsoleLoginRefused`, `TestConsoleSessions`, `TestConsoleFailureTableBounded`) and the
 //! cases of `app/console`'s tests that need neither the pages nor the store ported: logins,
 //! lockouts, sessions' ends, CSRF tokens, other origins, fit's headers, TLS, access at accept and
-//! after a config applied, and a config changed through the console applied as its own source and
-//! logged. On the backend `AKIO_TEST_BACKEND` names (epoll by default, `uring`).
+//! after a config applied, a config changed through the console applied as its own source and
+//! logged, and the certificate read again when its files change (I94). On the backend `AKIO_TEST_BACKEND` names (epoll by default, `uring`).
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -618,6 +618,94 @@ fn over_tls() {
         None,
     );
     assert_eq!(r.status, 403);
+}
+
+/// A self-signed certificate for `console.akit.test` and its key, written to `c` and `k`.
+fn self_signed(c: &Path, k: &Path) {
+    use akio_crypto::pkey::PrivateKey;
+    let key = PrivateKey::P256(akio_crypto::p256::SecretKey::generate().unwrap());
+    let cert = akio_x509::CertificateParams::new(["console.akit.test"])
+        .self_signed(&key)
+        .unwrap();
+    std::fs::write(c, cert.to_pem()).unwrap();
+    std::fs::write(k, key.to_pkcs8_pem()).unwrap();
+}
+
+/// The leaf the console presents to a new connection, as DER (a client of its own, which resumes
+/// no session).
+fn served_leaf(addr: SocketAddr) -> Vec<u8> {
+    let cfg = ClientConfig::builder()
+        .insecure_skip_verify()
+        .build()
+        .unwrap();
+    let tcp = TcpStream::connect(addr).unwrap();
+    tcp.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+    tcp.set_write_timeout(Some(Duration::from_secs(5))).unwrap();
+    let mut s = Stream::client(&cfg, "console.akit.test", tcp).unwrap();
+    s.handshake().unwrap();
+    s.conn().peer_certificates()[0].clone()
+}
+
+fn leaf_der(path: &Path) -> Vec<u8> {
+    akio_x509::Certificate::from_pem(&std::fs::read(path).unwrap()).unwrap()[0]
+        .as_der()
+        .to_vec()
+}
+
+/// I94: the console's certificate read again when its files change (fit's TestTLSReload, for the
+/// console): a renewed one served to new connections, one that does not load leaving the running
+/// one, with a warning in the admin logger.
+#[test]
+fn tls_reload() {
+    let d = dir("tls-reload");
+    let (c, k) = (d.join("c.pem"), d.join("k.pem"));
+    self_signed(&c, &k);
+    let f = start(
+        console(|con| {
+            con.cert_file = Some(c.to_string_lossy().into_owned());
+            con.key_file = Some(k.to_string_lossy().into_owned());
+        }),
+        Options::default(),
+    );
+    let first = served_leaf(f.addr);
+    assert_eq!(first, leaf_der(&c));
+    assert!(f.api.reload_certs().is_empty());
+
+    // Renewed outside akit: written whole beside it, then renamed over it, as tools do.
+    let (nc, nk) = (d.join("new.pem"), d.join("new.key"));
+    self_signed(&nc, &nk);
+    let renewed = leaf_der(&nc);
+    std::fs::rename(&nc, &c).unwrap();
+    std::fs::rename(&nk, &k).unwrap();
+    let now = Instant::now();
+    assert!(f.api.watch_certs(now).is_empty(), "the first look settles");
+    assert_eq!(
+        f.api.watch_certs(now + Duration::from_secs(1)),
+        vec![akit_admin::CertReload::Reloaded("console")]
+    );
+    assert_eq!(served_leaf(f.addr), renewed);
+    assert_ne!(renewed, first);
+    assert!(logged("console: certificate files changed; reloaded"));
+
+    // The certificate replaced and its key not yet: the renewed one stays.
+    self_signed(&nc, &nk);
+    std::fs::rename(&nc, &c).unwrap();
+    match f.api.reload_certs().as_slice() {
+        [akit_admin::CertReload::Failed(e)] => {
+            assert!(e.starts_with("console: "), "{e}");
+            assert!(e.ends_with("; the running certificate stays"), "{e}");
+        }
+        r => panic!("{r:?}"),
+    }
+    assert_eq!(served_leaf(f.addr), renewed);
+    assert!(logged("the running certificate stays"));
+    // Its key written: served.
+    std::fs::rename(&nk, &k).unwrap();
+    assert_eq!(
+        f.api.reload_certs(),
+        vec![akit_admin::CertReload::Reloaded("console")]
+    );
+    assert_eq!(served_leaf(f.addr), leaf_der(&c));
 }
 
 #[test]

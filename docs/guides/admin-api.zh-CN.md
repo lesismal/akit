@@ -37,9 +37,13 @@ route hello {
 }
 ```
 
-API 默认监听 127.0.0.1:2019，也可以监听 Unix 套接字（`unix//run/akit/admin.sock`，权限设为 0600）。akit 还不能经 TLS 提供
-API，所以不接受其他地址：请在本机、经 SSH 隧道或用 `docker exec` 访问它。设置 `token_file` 时，每个请求都要以
-`Authorization: Bearer <令牌>` 带上令牌。它的设置在 akit 启动时读取。
+API 默认监听 127.0.0.1:2019，也可以监听 Unix 套接字（`unix//run/akit/admin.sock`，权限设为 0600）。设置 `token_file`
+时，每个请求都要以 `Authorization: Bearer <令牌>` 带上令牌。设置 `cert_file` 和 `key_file` 时经 TLS（1.2 或更高）提供，
+再设置 `client_ca_file` 时只服务证书链到其中某个 CA 的客户端。非回环地址既要令牌也要 TLS，使令牌从不以明文经过网络；
+没有它们时，请在本机、经 SSH 隧道或用 `docker exec` 访问 API。它的设置在 akit 启动时读取，但 `access` 随每次应用的配置
+变化，证书文件也不同：带 `-watch-certs` 时每个 `-watch-interval` 查看一次，SIGHUP 也会重新读取，在 akit 之外续期的证书
+无需重启即提供给新连接。加载失败的文件（例如证书已写入而密钥尚未写入）记录到 `admin` 日志器，正在使用的证书保留到文件
+再次变化。
 
 它提供：
 
@@ -105,4 +109,5 @@ route { match { host example.com }; handler respond { body hello } }
 
 ## 尚不支持
 
-fit 的控制台、加密的 store、助手、集群管理、Admin API 的 TLS，以及 `fit run -admin` 尚不支持：akit 按名称拒绝它们。
+fit 的加密 store（`admin.store`，I93）、助手、集群管理和 `fit run -admin` 尚不支持：akit 按名称拒绝它们。
+[控制台](console.zh-CN.md)已支持。
