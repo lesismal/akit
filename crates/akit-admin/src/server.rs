@@ -80,6 +80,9 @@ pub struct Options {
     /// The log files akit writes (I81, I83), which `GET /logs` lists and `POST /logs/rotate` and
     /// `POST /logs/cleanup` act on; without it, the outputs are listed with no files.
     pub logs: Option<akit_observe::Files>,
+    /// The running roles' link tokens, with their last uses and links (I100), which `GET
+    /// /tokens` lists; without it, the tokens the running config holds.
+    pub tokens: Option<crate::tokens::TokenViews>,
 }
 
 impl fmt::Debug for Options {
@@ -94,6 +97,7 @@ impl fmt::Debug for Options {
             .field("access", &self.access.is_some())
             .field("console_access", &self.console_access.is_some())
             .field("logs", &self.logs.is_some())
+            .field("tokens", &self.tokens.is_some())
             .finish()
     }
 }
@@ -110,6 +114,7 @@ impl Default for Options {
             access: None,
             console_access: None,
             logs: None,
+            tokens: None,
         }
     }
 }
@@ -155,6 +160,8 @@ pub(crate) enum Op {
         text: String,
         format: akit_config::Format,
     },
+    /// The link tokens of a member (I100).
+    Tokens(crate::tokens::TokenOp),
 }
 
 impl Op {
@@ -167,6 +174,7 @@ impl Op {
             Op::Rollback(_) => "rollback",
             Op::Reload => "reload",
             Op::Text { .. } => "text",
+            Op::Tokens(t) => t.name(),
         }
     }
 }
@@ -275,6 +283,12 @@ impl Job {
             reply,
         } = *self.0;
         let if_match = if_match.as_deref();
+        if let Op::Tokens(t) = op {
+            let (resp, outcome) =
+                crate::tokens::run(t, configs, source, |text, _| apply(text, Mode::Apply));
+            reply.respond(resp);
+            return outcome;
+        }
         let r = match op {
             Op::Load(data) => utf8(data).and_then(|text| {
                 configs.change(
@@ -352,6 +366,8 @@ impl Job {
                     apply,
                 )
                 .map_err(|e| crate::text::placed(e, &text, format)),
+            // Taken above.
+            Op::Tokens(_) => return None,
         };
         match r {
             Ok(o) => {
@@ -376,6 +392,11 @@ impl Job {
     pub fn refuse(self, status: u16, msg: &str) {
         self.0.reply.respond(error(status, msg));
     }
+}
+
+/// The answer to a change refused, as fit's `writeUpdateError`.
+pub(crate) fn refused_response(e: &Refused) -> Response {
+    refused(e)
 }
 
 /// The answer to a change refused, as fit's `writeUpdateError`.
@@ -477,6 +498,7 @@ impl Server {
             metrics: opts.metrics.clone(),
             status: opts.status.clone(),
             logs: opts.logs.clone(),
+            tokens: opts.tokens.clone(),
             dashboard: !settings.disable_dashboard,
             token,
         };
@@ -713,6 +735,8 @@ pub(crate) struct Shared {
     status: Option<Live>,
     /// The log files akit writes (I83).
     pub(crate) logs: Option<akit_observe::Files>,
+    /// The running roles' link tokens (I100).
+    pub(crate) tokens: Option<crate::tokens::TokenViews>,
     /// Whether the dashboard is served (I63): unless `disable_dashboard`.
     dashboard: bool,
     /// The token every request must carry, from `token_file`; none asked for without it.
@@ -730,7 +754,8 @@ struct Api(Arc<Shared>);
 pub(crate) fn takes_config(method: &Method, path: &str) -> bool {
     match method {
         Method::Post => {
-            path == "/load"
+            crate::tokens::takes_body(method, path)
+                || path == "/load"
                 || path == "/config/render"
                 || path == "/config/parse"
                 || path == "/config/export"
@@ -739,7 +764,11 @@ pub(crate) fn takes_config(method: &Method, path: &str) -> bool {
                 || path == "/logs/rotate"
                 || path == "/logs/cleanup"
         }
-        Method::Put | Method::Patch => path == "/config" || path.starts_with("/config/"),
+        Method::Put | Method::Patch => {
+            path == "/config"
+                || path.starts_with("/config/")
+                || crate::tokens::takes_body(method, path)
+        }
         _ => false,
     }
 }
@@ -842,6 +871,10 @@ impl Api {
             "/logs/rotate" if post => return crate::logs::operate(&self.0, ctx, true),
             "/logs/cleanup" if post => return crate::logs::operate(&self.0, ctx, false),
             "/logs/rotate" | "/logs/cleanup" => not_allowed("POST"),
+            // I100: the link tokens of the tunnel's hub and the LLM roles.
+            p if p == "/tokens" || p.starts_with("/tokens/") => {
+                return crate::tokens::serve(&self.0, ctx, p);
+            }
             // Its other methods edit the member `effective`, as fit's `PUT /config/{path...}`.
             p if self.0.dashboard && dashboard::is_dashboard(p) => {
                 if read {
@@ -1333,7 +1366,7 @@ pub(crate) fn error(status: u16, msg: &str) -> Response {
     json(status, b)
 }
 
-fn not_allowed(allow: &str) -> Response {
+pub(crate) fn not_allowed(allow: &str) -> Response {
     error(405, "method not allowed").header("Allow", allow)
 }
 

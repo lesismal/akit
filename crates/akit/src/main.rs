@@ -44,6 +44,7 @@ mod adapt;
 mod build_cli;
 pub(crate) mod flags;
 mod hash_password;
+mod token;
 
 use std::io::Read;
 use std::process::ExitCode;
@@ -79,6 +80,8 @@ Commands:
   hash-password
              print the bcrypt hash of a password read from standard input, for
              admin.console's users and basic_auth
+  token      issue, list, change and revoke the link tokens of a running akit's
+             tunnel hub and LLM roles, through its Admin API
   version    print akit's version and the akio commit it is built on
   help       print this help
 
@@ -264,7 +267,6 @@ fn compile_config(
     tracer: Option<&Tracer>,
     previous: Option<Previous>,
 ) -> Result<Graph, Failure> {
-    roles_not_running(config)?;
     let modules = BUILD.get().map_or(crate::STANDARD, |(_, m)| m.as_slice());
     let registry: Registry<HandlerParams> =
         Registry::new(modules).map_err(|e| Failure::Registry(e.to_string()))?;
@@ -277,49 +279,33 @@ fn compile_config(
     compile(config, &registry, &env).map_err(Failure::Config)
 }
 
-/// Refuses a config that sets a role of the tunnel or the LLM feature, which `akit validate`
-/// checks (I98) and the iterations after it run: until a role runs, applying it would be a config
-/// that says more than akit does.
+/// Refuses a config that sets a member of fit's roles akit does not run ([`crate::ROLES`]):
+/// `akit validate` checks every role (I98), and the iterations after I100 run them; until a role
+/// runs, applying it would be a config that says more than akit does.
 fn roles_not_running(config: &Config) -> Result<(), Failure> {
-    let mut errs = Vec::new();
-    let mut refuse = |path: &str, iterations: &str| {
-        errs.push(Error {
-            file: None,
-            path: path.to_owned(),
-            line: 0,
-            col: 0,
-            msg: format!(
-                "akit run does not run this role yet ({iterations}); akit validate checks it"
-            ),
-        });
-    };
-    if let Some(t) = &config.tunnel {
-        for (set, path) in [
-            (t.hub.is_some(), "tunnel.hub"),
-            (t.node.is_some(), "tunnel.node"),
-            (t.proxy.is_some(), "tunnel.proxy"),
-        ] {
-            if set {
-                refuse(path, "I101-I103");
-            }
-        }
+    let unknown = akit_roles::host::unknown(config, crate::ROLES);
+    if unknown.is_empty() {
+        return Ok(());
     }
-    if let Some(l) = &config.llm {
-        for (set, path) in [
-            (l.hub.is_some(), "llm.hub"),
-            (l.node.is_some(), "llm.node"),
-            (l.proxy.is_some(), "llm.proxy"),
-        ] {
-            if set {
-                refuse(path, "I104-I109");
-            }
-        }
-    }
-    if errs.is_empty() {
-        Ok(())
-    } else {
-        Err(Failure::Config(Errors(errs)))
-    }
+    Err(Failure::Config(Errors(
+        unknown
+            .into_iter()
+            .map(|path| Error {
+                file: None,
+                path: path.to_owned(),
+                line: 0,
+                col: 0,
+                msg: format!(
+                    "akit run does not run this role yet ({}); akit validate checks it",
+                    if path.starts_with("tunnel.") {
+                        "I101-I103"
+                    } else {
+                        "I104-I109"
+                    }
+                ),
+            })
+            .collect(),
+    )))
 }
 
 /// Opens the access log `c` describes, its times in `zone`, as fit's `NewAccessLogFiles`: a file
@@ -410,6 +396,8 @@ struct Runner<'a> {
     engine: akit_config::Engine,
     /// The Admin API akit started with, whose access lists follow every config applied (I87).
     api: Option<&'a akit_admin::Server>,
+    /// The roles (I100), moved to every config applied after the listeners.
+    roles: &'a mut akit_roles::host::Manager,
 }
 
 impl Runner<'_> {
@@ -426,7 +414,9 @@ impl Runner<'_> {
         self.stats.reloaded(r.is_ok());
         let (r, files) = r?;
         self.cert_files = files;
-        let warnings = self.warnings(config, json, zone, true);
+        let mut warnings = self.warnings(config, json, zone, true);
+        // The roles after the listeners, as fit's: a role's failure is a warning (I100).
+        warnings.extend(self.roles.apply(config));
         Ok(applied(&r, warnings))
     }
 
@@ -440,6 +430,7 @@ impl Runner<'_> {
         json: &str,
         zone: Option<Zone>,
     ) -> Result<Applied, ApplyError> {
+        roles_not_running(config).map_err(failure)?;
         let graph = compile_config(
             config,
             &EngineSlot::new(),
@@ -548,6 +539,8 @@ impl Runner<'_> {
         // The running graph's pools, for the upstreams that stay as they are (fit's
         // `Env.Previous`): their connections and health carry over the swap.
         let previous = self.cell.with(Previous::of);
+        // A role akit does not run is refused here, not by `validate` (I98, I100).
+        roles_not_running(config).map_err(failure)?;
         let graph = compile_config(
             config,
             self.slot,
@@ -776,6 +769,59 @@ fn provide(updates: &Updates, configs: &Configs, runner: &mut Runner<'_>) {
 }
 
 /// What applying a config changed: the listeners closed and opened, and its warnings.
+/// Applies a role's change of its own member (I100, fit's `Host.Edit`): the running config with
+/// the member changed, applied as any config from the role's pages, the member's path its source;
+/// the role is told the warnings, or why it was not applied.
+fn role_edit(edit: akit_roles::host::Edit, configs: &Configs, runner: &mut Runner<'_>) {
+    let source = edit.id;
+    let mut done = None;
+    let r = configs.change(
+        source,
+        None,
+        Mode::Apply,
+        |cur| {
+            let mut root = akit_config::value::parse(cur.data()).map_err(|_| Refused::Request {
+                status: 500,
+                msg: "the running config is not JSON".into(),
+            })?;
+            match edit.apply_to(&mut root) {
+                Ok(d) => {
+                    done = Some(d);
+                    Ok(root.to_json())
+                }
+                Err((d, msg)) => {
+                    done = Some(d);
+                    Err(Refused::Request { status: 400, msg })
+                }
+            }
+        },
+        |text, mode| runner.apply_text(text, mode),
+    );
+    let told = match r {
+        Ok(o) => {
+            print_applied(&o);
+            println!(
+                "akit: {source} changed its config (config version {})",
+                o.version
+            );
+            Ok(o.applied.warnings)
+        }
+        Err(e) => {
+            let msg = match e {
+                Refused::Changed => "the config changed meanwhile".to_owned(),
+                Refused::Request { msg, .. } => msg,
+                Refused::Apply(ApplyError::Config(errs)) => errs.to_string(),
+                Refused::Apply(ApplyError::Failed(msg)) => msg,
+            };
+            eprintln!("akit: {source}'s change of its config was not applied: {msg}");
+            Err(msg)
+        }
+    };
+    if let Some(d) = done {
+        d(told);
+    }
+}
+
 fn print_applied(o: &Outcome) {
     for l in &o.applied.removed {
         println!("akit: listener {:?} on {} removed", l.name, l.address);
@@ -855,6 +901,8 @@ enum Control {
     Admin(akit_admin::Job),
     /// Providers' parts wait (I57).
     Provide,
+    /// A role changes its own member (I100).
+    RoleEdit(akit_roles::host::Edit),
 }
 
 /// How many requests may wait for the control thread: the Admin API's connections, each with
@@ -1033,15 +1081,17 @@ fn run(args: &[String]) -> ExitCode {
         },
         _ => None,
     };
-    let graph = match compile_config(
-        &config,
-        &slot,
-        log.as_ref().map(|l| &l.0),
-        &metrics,
-        Some(&acme),
-        tracer.as_ref(),
-        None,
-    ) {
+    let graph = match roles_not_running(&config).and_then(|()| {
+        compile_config(
+            &config,
+            &slot,
+            log.as_ref().map(|l| &l.0),
+            &metrics,
+            Some(&acme),
+            tracer.as_ref(),
+            None,
+        )
+    }) {
         Ok(g) => g,
         Err(f) => {
             f.print(&name);
@@ -1052,7 +1102,8 @@ fn run(args: &[String]) -> ExitCode {
     let log_config = config.log.clone();
     let provider_configs = config.providers.clone();
     let (start_limits, start_engine) = (config.limits, config.engine);
-    drop(config);
+    // The roles take the config once the listeners serve it (I100).
+    let start_config = config;
     let cert_files = graph.cert_files().clone();
     let acme_names = graph.acme_names().to_vec();
     let configs = Configs::new(
@@ -1086,6 +1137,29 @@ fn run(args: &[String]) -> ExitCode {
     for l in listeners.served() {
         print_listener(&l);
     }
+    // The roles (I100), after the listeners, on their engine: their edits of their own members
+    // reach this thread through the control queue, as the Admin API's loads do.
+    let editor: akit_roles::host::Editor = {
+        let tx = tx.clone();
+        Arc::new(move |edit| match tx.try_send(Control::RoleEdit(edit)) {
+            Ok(()) => Ok(()),
+            Err(
+                mpsc::TrySendError::Full(Control::RoleEdit(edit))
+                | mpsc::TrySendError::Disconnected(Control::RoleEdit(edit)),
+            ) => Err(edit),
+            // Only an edit is sent here.
+            Err(_) => Ok(()),
+        })
+    };
+    let mut roles = akit_roles::host::Manager::new(crate::ROLES, Arc::clone(&engine), Some(editor));
+    roles.set_drain(grace);
+    if let Some(first) = paths.first() {
+        roles.keep_beside(first);
+    }
+    for w in roles.apply(&start_config) {
+        eprintln!("akit run: {w}");
+    }
+    drop(start_config);
     acme.manage(&acme_names);
     let api = match &admin {
         None => None,
@@ -1122,6 +1196,11 @@ fn run(args: &[String]) -> ExitCode {
             api_opts.metrics = Some(Arc::new(move |out: &mut Vec<u8>| scrape.write(out)));
             // The log files, at GET /logs and POST /logs/rotate and /logs/cleanup (I83).
             api_opts.logs = Some(log_files.clone());
+            // The running roles' link tokens, at GET /tokens (I100).
+            let registries = roles.registries();
+            api_opts.tokens = Some(Arc::new(move |id: &str| {
+                akit_roles::host::token_views(&registries, id)
+            }));
             match akit_admin::Server::start(a, configs.clone(), submit, &api_opts) {
                 Ok(s) => {
                     println!("akit: admin API on {}", s.address());
@@ -1208,6 +1287,7 @@ fn run(args: &[String]) -> ExitCode {
         limits: start_limits,
         engine: start_engine,
         api: api.as_ref(),
+        roles: &mut roles,
     };
     // The certificate files watched (fit's -watch-certs), on this thread, every interval: the
     // running config's version number and the files it loaded tell the watcher what it loaded.
@@ -1300,6 +1380,10 @@ fn run(args: &[String]) -> ExitCode {
             }
             // Taken at the top of the loop.
             Some(Control::Provide) => {}
+            Some(Control::RoleEdit(edit)) => {
+                role_edit(edit, &configs, &mut runner);
+                cell.collect();
+            }
             Some(Control::Admin(job)) => {
                 if let Some(o) = job.run(&configs, |text, mode| runner.apply_text(text, mode)) {
                     print_applied(&o);
@@ -1323,6 +1407,8 @@ fn run(args: &[String]) -> ExitCode {
     }
     // No more certificates obtained: its work under way is given up.
     acme.close();
+    // The roles before the engine they serve on (I100).
+    runner.roles.stop(grace);
     // A second SIGINT or SIGTERM does not wait for the shutdown, as fit's.
     std::thread::spawn(move || {
         while let Ok(c) = control.recv() {
@@ -1332,6 +1418,7 @@ fn run(args: &[String]) -> ExitCode {
                     std::process::exit(1);
                 }
                 Control::Admin(job) => job.refuse(503, "akit is shutting down"),
+                Control::RoleEdit(edit) => (edit.done)(Err("akit is shutting down".to_owned())),
                 Control::Hangup | Control::Provide => {}
             }
         }
@@ -1399,6 +1486,7 @@ pub fn main(akit_version: &str, modules: &[&'static [Info<HandlerParams>]]) -> E
         "fmt" => adapt::fmt(rest),
         "build" => build_cli::build(rest),
         "hash-password" => hash_password::hash_password(rest),
+        "token" => token::token(rest),
         "version" | "-V" | "--version" => {
             if let Err(u) = flags::parse("version", rest, &[]) {
                 return usage_error(&u);
@@ -1441,7 +1529,7 @@ mod tests {
             panic!("roles let through");
         };
         let paths: Vec<&str> = errs.0.iter().map(|e| e.path.as_str()).collect();
-        assert_eq!(paths, ["tunnel.hub", "llm.proxy"]);
+        assert_eq!(paths, ["llm.proxy", "tunnel.hub"]);
         let c = akit_config::from_json(r#"{"tunnel": {}, "llm": {}}"#, None).unwrap();
         assert!(super::roles_not_running(&c).is_ok());
     }

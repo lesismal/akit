@@ -47,3 +47,8 @@ pub const STANDARD: &[&[Info<HandlerParams>]] = &[
     akit_plugin::MODULES,
     akit_proxy::MODULES,
 ];
+
+/// The roles of fit's config that akit runs (I100: the host; the tunnel's and the LLM feature's
+/// roles join it with their iterations, I101-I109). A config that sets another role's member is
+/// refused by `run`, which `validate` still checks.
+pub const ROLES: &[akit_roles::host::Info] = &[];

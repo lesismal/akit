@@ -21,6 +21,8 @@ path = "src/bin/akit.rs"
 [dependencies]
 akio = { workspace = true }
 akio-crypto = { workspace = true }
+# akit token's client of the Admin API (I100).
+akio-http = { workspace = true }
 akio-sys = { workspace = true }
 akit-admin = { workspace = true }
 akit-provider = { workspace = true }
@@ -33,12 +35,13 @@ akit-middleware = { workspace = true }
 akit-listener = { workspace = true }
 akit-proxy = { workspace = true }
 akit-runtime = { workspace = true }
+# The host of fit's roles (I100).
+akit-roles = { workspace = true }
 akit-tls = { workspace = true }
 
 [dev-dependencies]
 akio-deflate = { workspace = true }
 akio-h3 = { workspace = true }
-akio-http = { workspace = true }
 akio-quic = { workspace = true }
 akio-x509 = { workspace = true }
 

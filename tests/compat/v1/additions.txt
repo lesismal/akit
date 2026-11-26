@@ -472,3 +472,11 @@ config	added	supported	tunnel.proxy.web_proxies[].max_conns
 config	added	supported	tunnel.proxy.web_proxies[].name
 config	added	supported	tunnel.proxy.web_proxies[].password
 config	added	supported	tunnel.proxy.web_proxies[].url
+# I100: the link tokens of the tunnel's hub and the LLM roles (fit's admin/tokens.go).
+admin	added	endpoint	GET	/tokens
+admin	added	endpoint	HEAD	/tokens
+admin	added	endpoint	GET	/tokens/{member}
+admin	added	endpoint	HEAD	/tokens/{member}
+admin	added	endpoint	POST	/tokens/{member}
+admin	added	endpoint	PATCH	/tokens/{member}/{id}
+admin	added	endpoint	DELETE	/tokens/{member}/{id}

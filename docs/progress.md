@@ -20,6 +20,42 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-27: I100, the roles in `akit run`
+
+- `akit-roles`'s `host`, fit's `app`: a `Manager` that, on every config applied and after the
+  listeners, starts each role the config sets, applies the config to each running one and stops
+  each it leaves out; a role's failure is a warning in the reload's answer and the gateway runs.
+  A role gets a `Host`: the listeners' akio engine (no engine of its own), the drain timeout
+  (`-shutdown-timeout`), the prefix of the files it keeps beside the config (`akit.tunnel.hub.pem`
+  beside `akit.json`, decision 038) and `edit`, which changes its own member: the edit goes to the
+  control thread through its queue, is applied there as any config with the member's path as its
+  source, and its warnings or refusal are told back. The roles akit runs are `akit::ROLES`; a
+  config that sets another member is refused by `run`, its reloads and the Admin API, and not by
+  `validate` (which compiled configs refused roles since I98: moved out of `compile_config`). The
+  roles stop before the engine.
+- One address, one server (fit's I162, `config/bindings.go`): every address the config listens on,
+  the served listeners (those HTTPS by default makes too), `admin`, `admin.console` and the
+  roles' (consoles, `listen`, `api`, the hub's listeners and console socket, the proxy's forwards
+  and web proxies), normalized (every address, `localhost`, IPv4-mapped) and checked once in
+  `akit-config`'s `binds`, a clash reported at the later of two with the earlier named. akit
+  checked none before: a config with two listeners on one port, which fit refuses at the pin, is
+  now refused too. The bind-time probe fit adds for another process is not ported: akio's
+  listeners bind as they always have.
+- The Admin API's `GET /tokens`, `GET` and `POST /tokens/{member}`, `PATCH` and `DELETE
+  /tokens/{member}/{id}` (fit's `admin/tokens.go`): reads on the API's thread, from the running
+  config's member and the running role's registry (last uses, links) when it runs; changes on the
+  control thread as edits of the member's `tokens`, logged to the `admin` logger. Unlike fit's,
+  they work on a member the running config sets whether or not its role runs (fit answers 404
+  until the role runs). Marked as v1 additions. `akit token create|list|expiry|revoke` (fit's
+  `cli/token.go`) calls them on akio's HTTP client, the API's address, token and TLS read from the
+  config's `admin`.
+- Tests: the host (a stub role started, moved, failing, stopped; members no role runs refused;
+  edits), the binds (fit's `TestBindsEveryKindClashes`, `TestBindsNormalized` and the tunnel's
+  clashes), the tokens' endpoints end to end against the Admin API (issued and shown once, kept as
+  a hash, listed, expiry changed, refusals, revoked), the v1 surface with the new endpoints.
+- Next: I101, the tunnel's links over TCP. The CLI's end-to-end test comes with it, once a hub
+  runs.
+
 ### 2026-11-27: I99, link tokens
 
 - A new crate, `akit-roles` (fit's `app`, I100 adds the host): `linktoken`, fit's

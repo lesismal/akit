@@ -9,6 +9,8 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
+# The listeners' engine the roles bind and dial on.
+akio = { workspace = true }
 # HMAC-SHA256, HKDF, SHA-256, base64url and the random secrets of the link tokens.
 akio-crypto = { workspace = true }
 akit-config = { workspace = true }

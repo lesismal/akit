@@ -23,6 +23,7 @@
 
 pub mod adapt;
 mod auto_https;
+mod binds;
 mod conf;
 pub mod convert;
 mod decode;

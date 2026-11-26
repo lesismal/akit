@@ -116,6 +116,7 @@ API 的下一个版本中才会去掉，并在其改动清单中写明。
 | `GET`、`HEAD` `/cache`、`POST /cache/purge` | 缓存的区域，以及按 URL、URL 前缀、标签或区域清除 |
 | `GET`、`HEAD` `/logs`、`POST /logs/rotate`、`POST /logs/cleanup` | 日志文件，立即切割其中一个，以及执行或列出其保留策略（冻结之后新增，I83） |
 | `POST /config/render`、`POST /config/parse`、`PUT /config/text`、`POST /config/export`、`POST /config/import` | 配置或其部分顶层成员（`?members=`）的 `.conf`、YAML 或 JSON 文本（`?format=`），以及应用一段文本或一个文件，即 fit 控制台的原文编辑器和导入导出页面所调用的（冻结之后新增，I91；fit 的 `store` 格式等 I93） |
+| `GET`、`HEAD` `/tokens` 和 `/tokens/{成员}`、`POST /tokens/{成员}`、`PATCH` 和 `DELETE /tokens/{成员}/{id}` | 隧道 hub 和 LLM 角色的链路 token：签发、列出、修改过期时间和撤销，同 fit 的 `admin/tokens.go`；akit 的作用于运行中配置所设置的成员，无论其角色是否已在运行（冻结之后新增，I100） |
 | `GET /dashboard/` | 仪表盘，给人看（不覆盖） |
 
 配置中的路径是 JSON pointer 的各个 token。变更的应答给出所应用的版本，在内容中（`version`）和 `Akit-Config-Version` 中，并给出配置的

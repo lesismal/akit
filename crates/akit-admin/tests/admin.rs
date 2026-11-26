@@ -1660,6 +1660,12 @@ fn path_matches(pattern: &str, path: &str) -> bool {
         match (p.next(), c.next()) {
             (None, None) => return true,
             (Some("{path...}"), Some(seg)) => return !seg.is_empty(),
+            // I100's /tokens/{member}/{id}: one segment each.
+            (Some("{member}" | "{id}"), Some(seg)) => {
+                if seg.is_empty() {
+                    return false;
+                }
+            }
             (Some("{n}"), Some(seg)) => {
                 if seg.is_empty() || !seg.bytes().all(|b| b.is_ascii_digit()) {
                     return false;
@@ -1720,7 +1726,9 @@ fn v1_surface_is_frozen() {
     for pattern in &patterns {
         let path = pattern
             .replace("{path...}", "listeners/0/name")
-            .replace("{n}", "1");
+            .replace("{n}", "1")
+            .replace("{member}", "tunnel.hub")
+            .replace("{id}", "0123456789abcdef");
         let mut get_served = false;
         for method in ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"] {
             let r = request(f.api.addr(), method, &path, &[], None);
@@ -2599,4 +2607,127 @@ fn tls_reload_client_ca() {
         tls_get(addr, &theirs, "/versions").unwrap(),
         "HTTP/1.1 200 OK"
     );
+}
+
+// I100: the link tokens (fit's admin/tokens.go and its tests).
+
+/// A config with a tunnel hub, whose tokens the API manages.
+fn hub_doc() -> String {
+    r#"{"listeners": [{"name": "web", "address": "127.0.0.1:0"}],
+  "routes": [{"handler": {"module": "respond", "params": {"body": "v1"}}}],
+  "tunnel": {"hub": {"name": "hub"}}}"#
+        .to_owned()
+}
+
+#[test]
+fn tokens_issued_listed_changed_and_revoked() {
+    let f = start(&hub_doc(), admin(|_| {}));
+    // Issued: shown once, its hash in the config.
+    let r = f.send(
+        "POST",
+        "/tokens/tunnel.hub",
+        "application/json",
+        r#"{"name": " lab ", "note": "the lab", "ttl": "1h"}"#,
+        "",
+    );
+    assert_eq!(r.status, 200, "{r:?}");
+    let v = akit_config::value::parse(&r.body).unwrap();
+    let Some(Value::String(token)) = v.get("token") else {
+        panic!("{r:?}")
+    };
+    assert!(token.starts_with("akitt1."), "{token}");
+    let Some(Value::String(id)) = v.get("id") else {
+        panic!("{r:?}")
+    };
+    assert_eq!(v.get("name"), Some(&Value::String("lab".into())));
+    let secret = akit_roles::linktoken::Secret::parse(token).unwrap();
+    // The Admin API redacts the tokens' records, as fit's secretName rule takes "tokens" (I80b).
+    assert!(f.get("/config").body.contains("[redacted]"));
+    let config = f.configs.current().data().to_owned();
+    assert!(config.contains(&secret.hash()), "{config}");
+    assert!(!config.contains(token.as_str()), "the token itself is kept");
+    // Listed, one member's and every one's.
+    let r = f.get("/tokens/tunnel.hub");
+    assert_eq!(r.status, 200);
+    assert!(
+        r.body.contains(id.as_str()) && !r.body.contains("hash"),
+        "{r:?}"
+    );
+    let r = f.get("/tokens");
+    assert!(r.body.starts_with(r#"{"roles":{"tunnel.hub":[{"#), "{r:?}");
+    // Its expiry changed, then never.
+    let r = f.send(
+        "PATCH",
+        &format!("/tokens/tunnel.hub/{id}"),
+        "application/json",
+        r#"{"expires_at": 4102444800}"#,
+        "",
+    );
+    assert_eq!(r.status, 200, "{r:?}");
+    assert!(r.body.contains(r#""expires_at":4102444800"#), "{r:?}");
+    let r = f.send(
+        "PATCH",
+        &format!("/tokens/tunnel.hub/{id}"),
+        "application/json",
+        "{}",
+        "",
+    );
+    assert!(r.status == 200 && !r.body.contains("expires_at"), "{r:?}");
+    // Refused: a bad name, a past expiry, an unknown token, a member that issues none, one the
+    // config does not set.
+    for (method, path, body, status) in [
+        (
+            "POST",
+            "/tokens/tunnel.hub".to_owned(),
+            r#"{"name": ""}"#,
+            400,
+        ),
+        (
+            "POST",
+            "/tokens/tunnel.hub".to_owned(),
+            r#"{"name": "a", "expires_at": 5}"#,
+            400,
+        ),
+        (
+            "POST",
+            "/tokens/tunnel.hub".to_owned(),
+            r#"{"name": 1}"#,
+            400,
+        ),
+        (
+            "PATCH",
+            "/tokens/tunnel.hub/0123456789abcdef".to_owned(),
+            "{}",
+            404,
+        ),
+        (
+            "POST",
+            "/tokens/tunnel.node".to_owned(),
+            r#"{"name": "a"}"#,
+            404,
+        ),
+        (
+            "POST",
+            "/tokens/llm.hub".to_owned(),
+            r#"{"name": "a"}"#,
+            404,
+        ),
+    ] {
+        let r = f.send(method, &path, "application/json", body, "");
+        assert_eq!(r.status, status, "{method} {path} {body}: {r:?}");
+    }
+    assert_eq!(f.get("/tokens/llm.hub").status, 404);
+    assert_eq!(f.get("/tokens/tunnel.hub/x/y").status, 404);
+    assert_eq!(f.request_with("PUT", "/tokens", &[]).status, 405);
+    // Revoked: gone from the config.
+    let r = request(
+        f.api.addr(),
+        "DELETE",
+        &format!("/tokens/tunnel.hub/{id}"),
+        &[],
+        None,
+    );
+    assert_eq!((r.status, r.body.as_str()), (200, r#"{"ok":true}"#));
+    assert!(!f.configs.current().data().contains(&secret.hash()));
+    assert_eq!(f.get("/tokens/tunnel.hub").body, r#"{"tokens":[]}"#);
 }

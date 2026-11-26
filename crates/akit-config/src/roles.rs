@@ -1775,6 +1775,7 @@ fn tunnel_listener(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<TunnelLi
     }
     let (address, off) = required(d, &mut o, "address");
     if off != o.off {
+        d.address_at(&o.at("address"), off);
         check_listen(d, &address, off, &o.at("address"));
     }
     l.address = address;
@@ -1805,6 +1806,7 @@ fn tunnel_socket(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<TunnelCons
     let mut o = d.object(n, path)?;
     let (address, off) = required(d, &mut o, "address");
     if off != o.off {
+        d.address_at(&o.at("address"), off);
         check_listen(d, &address, off, &o.at("address"));
     }
     let password = text(d, &mut o, "password");
@@ -2047,6 +2049,7 @@ fn tunnel_proxy(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<TunnelProxy
         let mut o = d.object(n, p)?;
         let (listen, off) = required(d, &mut o, "listen");
         if off != o.off {
+            d.address_at(&o.at("listen"), off);
             check_listen(d, &listen, off, &o.at("listen"));
         }
         let (node, noff) = required(d, &mut o, "node");
@@ -2081,6 +2084,7 @@ fn tunnel_proxy(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<TunnelProxy
         let name = text(d, &mut o, "name");
         let (listen, off) = required(d, &mut o, "listen");
         if off != o.off {
+            d.address_at(&o.at("listen"), off);
             check_listen(d, &listen, off, &o.at("listen"));
         }
         let (url, uoff) = required(d, &mut o, "url");
@@ -2431,6 +2435,9 @@ fn llm_listen(d: &mut Decoder<'_>, n: &Node, path: &str, role: &str) -> Option<L
     };
     l.self_signed = boolean(d, &mut o, "self_signed");
     o.finish(d, LLM_LISTEN_FIELDS, &[]);
+    if aoff != n.off {
+        d.address_at(&join_field(path, "address"), aoff);
+    }
     if aoff != n.off
         && check_listen(d, &l.address, aoff, &join_field(path, "address"))
         && host_of(&l.address).is_some_and(|h| !loopback(&h))
@@ -2810,6 +2817,9 @@ fn llm_proxy(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<LlmProxy> {
         };
         o.finish(d, LLM_API_FIELDS, &[]);
         let ap = join_field(&p, "address");
+        if aoff != v.off {
+            d.address_at(&ap, aoff);
+        }
         if aoff != v.off
             && check_listen(d, &a.address, aoff, &ap)
             && host_of(&a.address).is_some_and(|h| !loopback(&h))

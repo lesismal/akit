@@ -2930,6 +2930,24 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
             }
         }
     }
+    // One address, one server (I100, fit's I162): every address the config listens on.
+    let paths: Vec<(Listener, String)> = served
+        .iter()
+        .map(|l| {
+            let path = listeners.iter().find(|w| w.v.name == l.name).map_or_else(
+                || "listeners".to_owned(),
+                |w| crate::error::join_field(&w.path, "address"),
+            );
+            (l.clone(), path)
+        })
+        .collect();
+    let clashes = crate::binds::clashes(
+        &paths,
+        admin.as_ref().map(|(a, _)| a),
+        tunnel.as_ref().map(|(t, _)| t),
+        llm.as_ref().map(|(l, _)| l),
+    );
+    crate::binds::report(ds, clashes);
     let limits = limits.map(|(l, _)| l).unwrap_or_default();
     Config {
         schema_version: schema.map_or(SCHEMA_VERSION, |(v, _)| v),
@@ -3499,6 +3517,7 @@ fn listener(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Listener> {
         .and_then(|v| d.string(v, &o.at("name")));
     let address = o.require(d, "address").and_then(|v| {
         let p = o.at("address");
+        d.address_at(&p, v.off);
         let a = d.string(v, &p)?;
         if let Err(msg) = check_address(&a) {
             d.error(v.off, &p, msg);
@@ -3795,6 +3814,7 @@ fn admin(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Admin> {
     let mut address_off = None;
     if let Some(v) = o.take("address") {
         let p = o.at("address");
+        d.address_at(&p, v.off);
         if let Some(s) = d.string(v, &p).filter(|s| !s.is_empty()) {
             if let Some(path) = s.strip_prefix("unix/") {
                 if path.is_empty() {
@@ -3920,6 +3940,7 @@ pub(crate) fn console(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Conso
     let mut address_off = None;
     if let Some(v) = o.take("address") {
         let p = o.at("address");
+        d.address_at(&p, v.off);
         if let Some(s) = d.string(v, &p).filter(|s| !s.is_empty()) {
             match check_address(&s) {
                 Err(msg) => d.error(v.off, &p, msg),

@@ -212,7 +212,7 @@ renamed fit's external names; I98–I109 are the Tunnel and LLM track).
 | **After 1.0: tunnel and LLM** | | | |
 | I98 | Tunnel and LLM I: `tunnel` and `llm` in the config | I79 | done |
 | I99 | Link tokens: `akitt1.` tokens, proofs, registry and management | I98 | done |
-| I100 | The roles in `akit run`: started, moved and stopped on the listeners' engine; one address, one server; the Admin API's `/tokens` and `akit token` | I99, I27 | todo |
+| I100 | The roles in `akit run`: started, moved and stopped on the listeners' engine; one address, one server; the Admin API's `/tokens` and `akit token` | I99, I27 | done |
 | I101 | Tunnel I: links, registration and tunnels over TCP | I99, I100 | todo |
 | I102 | Tunnel II: TLS, WebSocket and QUIC links; pins; the hub's certificate kept | I101 | todo |
 | I103 | Tunnel III: the hub's calls, token expiry, the console socket and web proxies | I102 | todo |
@@ -1550,7 +1550,7 @@ link with fit's (decision 038).
 - **Touches**: `akit-roles`, `akit-config`, `akit-admin`, `akit`, `tests/compat/v1`.
 - **fit**: `app/app.go`, `config/bindings.go`, `internal/bindcheck`, `admin/tokens.go`,
   `cli/token.go`; I105, I159, I162.
-- **Status**: todo.
+- **Status**: done (2026-11-27). See the progress log.
 
 ### I101 Tunnel I: links, registration and tunnels over TCP
 

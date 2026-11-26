@@ -15,6 +15,9 @@ pub(crate) struct Decoder<'s> {
     pub(crate) errors: Vec<Error>,
     /// What is read but said (fit's `Config.Warnings`): an old name of a renamed field.
     pub(crate) warnings: Vec<Error>,
+    /// Where each address the config listens on was read: its path and position, for the clashes
+    /// of two (I100, `crate::binds`).
+    pub(crate) addresses: Vec<(String, usize)>,
 }
 
 impl<'s> Decoder<'s> {
@@ -24,12 +27,18 @@ impl<'s> Decoder<'s> {
             file: file.map(str::to_owned),
             errors: Vec::new(),
             warnings: Vec::new(),
+            addresses: Vec::new(),
         }
     }
 
     /// The file named in its problems.
     pub(crate) fn file(&self) -> Option<&str> {
         self.file.as_deref()
+    }
+
+    /// Records that an address the config listens on is at `path`, its value at byte `off`.
+    pub(crate) fn address_at(&mut self, path: &str, off: usize) {
+        self.addresses.push((path.to_owned(), off));
     }
 
     /// Records a problem at byte `off`, for the value at `path`.

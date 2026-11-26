@@ -19,6 +19,29 @@
 
 ## 日志
 
+### 2026-11-27：I100，`akit run` 中的角色
+
+- `akit-roles` 的 `host`，即 fit 的 `app`：一个 `Manager`，在每次应用配置时于监听器之后，启动配置设置的每个角色，把配置
+  应用到每个运行中的角色，并停止配置去掉的角色；角色失败是重载回答中的警告，网关照常运行。角色得到一个 `Host`：监听器的
+  akio 引擎（不另建引擎）、排空超时（`-shutdown-timeout`）、它保存在配置旁的文件的前缀（`akit.json` 旁的
+  `akit.tunnel.hub.pem`，决定 038），以及修改自身成员的 `edit`：编辑通过控制线程的队列送达，在那里像任何配置一样以成员路径
+  为来源应用，其警告或拒绝再告知角色。akit 运行的角色是 `akit::ROLES`；设置了其他成员的配置被 `run`、其重载和 Admin API
+  拒绝，但不被 `validate` 拒绝（自 I98 起，编译配置时就拒绝了角色：现已移出 `compile_config`）。角色在引擎之前停止。
+- 一个地址，一个服务器（fit 的 I162，`config/bindings.go`）：配置监听的每个地址——提供服务的监听器（包括默认 HTTPS
+  生成的）、`admin`、`admin.console` 以及各角色的（控制台、`listen`、`api`、hub 的监听器和控制台套接字、proxy 的转发和
+  web 代理）——规范化（所有地址、`localhost`、IPv4 映射）后在 `akit-config` 的 `binds` 中统一检查一次，冲突报在两者中
+  后出现的那个上，并指出先出现的那个。akit 以前不做任何检查：两个监听器在同一端口的配置（fit 在锁定的提交中拒绝）现在也
+  被拒绝。fit 为其他进程增加的绑定时探测没有移植：akio 的监听器照旧绑定。
+- Admin API 的 `GET /tokens`、`GET` 和 `POST /tokens/{成员}`、`PATCH` 和 `DELETE /tokens/{成员}/{id}`（fit 的
+  `admin/tokens.go`）：读取在 API 的线程上进行，来自运行中配置的成员，以及角色运行时其登记表（最后使用、链路）；修改在
+  控制线程上作为对成员 `tokens` 的编辑进行，记录到 `admin` 日志器。与 fit 不同，无论角色是否运行，只要运行中的配置设置了
+  该成员，它们就可用（fit 在角色运行前回答 404）。标为 v1 新增。`akit token create|list|expiry|revoke`（fit 的
+  `cli/token.go`）通过 akio 的 HTTP 客户端调用它们，API 的地址、令牌和 TLS 从配置的 `admin` 读取。
+- 测试：宿主（占位角色的启动、迁移、失败、停止；拒绝没有角色运行的成员；编辑）、地址冲突（fit 的
+  `TestBindsEveryKindClashes`、`TestBindsNormalized` 和隧道的冲突）、对 Admin API 端到端测试 token 端点（签发且只显示一次、
+  只保存哈希、列出、修改过期时间、拒绝、撤销）、包含新端点的 v1 接口。
+- 下一步：I101，基于 TCP 的隧道链路。CLI 的端到端测试随它一起，待 hub 运行之后。
+
 ### 2026-11-27：I99，链路 token
 
 - 新 crate `akit-roles`（fit 的 `app`，I100 加入宿主）：`linktoken`，即 fit 的 `internal/linktoken`（fit 的决定 035）。token

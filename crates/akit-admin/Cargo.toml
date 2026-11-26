@@ -21,6 +21,8 @@ akit-cache = { workspace = true }
 akit-config = { workspace = true }
 akit-observe = { workspace = true }
 akit-provider = { workspace = true }
+# The link tokens of the tunnel's hub and the LLM roles (I100): their management and views.
+akit-roles = { workspace = true }
 akit-tls = { workspace = true }
 
 [dev-dependencies]

@@ -70,6 +70,7 @@ What it serves:
 | `PUT /config/text?format=&members=` | a text applied as the whole config, or as those top-level members only, the rest kept; `If-Match` and `dry_run` as `PUT /config`; its errors placed at their lines in the text |
 | `POST /config/export`, `POST /config/import?format=&members=` | the config (`admin` left out, secrets redacted), or some members, as a file; and a file applied, `admin` kept |
 | `GET /dashboard/` | a read-only dashboard of the status and the config |
+| `GET /tokens`, `GET` and `POST /tokens/{member}`, `PATCH` and `DELETE /tokens/{member}/{id}` | the link tokens the tunnel's hub and the LLM roles' listeners issue (`tunnel.hub`, `llm.hub`, `llm.node`, `llm.proxy`): listed with their expiry, last use, members and links; issued (`{name, note, ttl \| expires_at}`, the token shown once, `akitt1.<id>.<secret>`); their expiry changed; revoked. Each change is an edit of the member, logged to the `admin` logger; `akit token` calls them |
 
 A change sent with `If-Match: <etag>` is refused with 412 if the config changed since it was read,
 so that two clients cannot overwrite each other. With `?dry_run=1` it is checked through the whole
@@ -116,6 +117,26 @@ admin {
 
 route { match { host example.com }; handler respond { body hello } }
 ```
+
+## Link tokens
+
+The tunnel's hub and the LLM roles' listeners take links from members that hold a token they
+issued, in place of a password every member shares (fit's decision 035, [decision
+038](../decisions/038-tunnel-and-llm.md)). A token is `akitt1.<id>.<secret>`: the config keeps its
+ID, name, times, note, the members bound to it and a hash, never the token, which is shown once.
+`akit token` manages them through the Admin API of a running akit, its address, token and TLS
+read from the config's `admin`:
+
+```sh
+akit token create -c akit.json -role tunnel.hub -name lab -ttl 90d   # prints the token, once
+akit token list   -c akit.json -role tunnel.hub                      # expiry, last use, members, links
+akit token expiry -c akit.json -role tunnel.hub -id fdd44d906b8e6ce2 -never
+akit token revoke -c akit.json -role tunnel.hub -id fdd44d906b8e6ce2
+```
+
+A token fit issued is the same token with akit's prefix: `fitt1.<id>.<secret>` is written
+`akitt1.<id>.<secret>`. Unlike fit's, the endpoints work on the member the running config sets
+whether or not its role runs yet; the running role adds each token's last use and links.
 
 ## Metrics and tracing
 

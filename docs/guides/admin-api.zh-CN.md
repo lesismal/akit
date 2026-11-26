@@ -63,6 +63,7 @@ API 默认监听 127.0.0.1:2019，也可以监听 Unix 套接字（`unix//run/ak
 | `PUT /config/text?format=&members=` | 把一段文本作为整个配置，或只作为其中那些顶层成员应用，其余保留；`If-Match` 和 `dry_run` 同 `PUT /config`；其错误定位到文本中的行 |
 | `POST /config/export`、`POST /config/import?format=&members=` | 配置（不含 `admin`，秘密被遮蔽）或其部分成员导出为文件；以及应用一个文件，保留 `admin` |
 | `GET /dashboard/` | 状态和配置的只读仪表盘 |
+| `GET /tokens`、`GET` 和 `POST /tokens/{成员}`、`PATCH` 和 `DELETE /tokens/{成员}/{id}` | 隧道 hub 和 LLM 角色的监听方签发的链路 token（`tunnel.hub`、`llm.hub`、`llm.node`、`llm.proxy`）：列出（带过期时间、最后使用、成员和链路）；签发（`{name, note, ttl \| expires_at}`，token 只显示一次，形如 `akitt1.<id>.<secret>`）；修改过期时间；撤销。每个修改都是对成员的一次编辑，记录到 `admin` 日志器；`akit token` 调用它们 |
 
 带 `If-Match: <etag>` 的修改，若配置在读取之后已被改变，则以 412 拒绝，这样两个客户端不会互相覆盖。带 `?dry_run=1` 时，修改
 走完应用的完整流程，像真正应用一样应答，但不应用任何东西。
@@ -101,6 +102,23 @@ admin {
 
 route { match { host example.com }; handler respond { body hello } }
 ```
+
+## 链路 token
+
+隧道的 hub 和 LLM 角色的监听方接受持有其签发 token 的成员的链路，以代替所有成员共享的密码（fit 的决定 035，
+[决定 038](../decisions/038-tunnel-and-llm.zh-CN.md)）。token 形如 `akitt1.<id>.<secret>`：配置中保存其 ID、名称、时间、
+备注、绑定到它的成员和一个哈希，从不保存 token 本身，token 只显示一次。`akit token` 通过运行中 akit 的 Admin API 管理它们，
+其地址、令牌和 TLS 从配置的 `admin` 读取：
+
+```sh
+akit token create -c akit.json -role tunnel.hub -name lab -ttl 90d   # 打印 token，仅此一次
+akit token list   -c akit.json -role tunnel.hub                      # 过期时间、最后使用、成员、链路
+akit token expiry -c akit.json -role tunnel.hub -id fdd44d906b8e6ce2 -never
+akit token revoke -c akit.json -role tunnel.hub -id fdd44d906b8e6ce2
+```
+
+fit 签发的 token 换上 akit 的前缀就是同一个 token：`fitt1.<id>.<secret>` 写作 `akitt1.<id>.<secret>`。与 fit 不同，无论其
+角色是否已在运行，这些端点都作用于运行中配置所设置的成员；运行中的角色会补上每个 token 的最后使用和链路。
 
 ## 指标和追踪
 

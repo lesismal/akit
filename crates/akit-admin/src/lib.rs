@@ -78,6 +78,7 @@ mod redact;
 mod server;
 mod status;
 mod text;
+pub mod tokens;
 mod watch;
 
 pub use certs::CertReload;

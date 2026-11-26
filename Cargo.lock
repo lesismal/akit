@@ -275,6 +275,7 @@ dependencies = [
  "akit-plugin",
  "akit-provider",
  "akit-proxy",
+ "akit-roles",
  "akit-runtime",
  "akit-tls",
 ]
@@ -303,6 +304,7 @@ dependencies = [
  "akit-listener",
  "akit-observe",
  "akit-provider",
+ "akit-roles",
  "akit-runtime",
  "akit-tls",
 ]
@@ -471,6 +473,7 @@ dependencies = [
 name = "akit-roles"
 version = "0.0.1"
 dependencies = [
+ "akio",
  "akio-crypto",
  "akit-config",
 ]

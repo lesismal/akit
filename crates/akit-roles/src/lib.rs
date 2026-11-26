@@ -7,4 +7,5 @@
 //! Part of [akit](https://github.com/lesismal/akit); see `docs/dev-plan.md` (I98–I109) and
 //! decision 038.
 
+pub mod host;
 pub mod linktoken;

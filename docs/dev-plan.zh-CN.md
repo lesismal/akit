@@ -203,7 +203,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | **1.0 之后：隧道与 LLM** | | | |
 | I98 | 隧道与 LLM I：配置中的 `tunnel` 和 `llm` | I79 | done |
 | I99 | 链路 token：`akitt1.` token、证明、登记表和管理 | I98 | done |
-| I100 | `akit run` 中的角色：在监听器的引擎上启动、迁移和停止；一个地址，一个服务器；Admin API 的 `/tokens` 和 `akit token` | I99, I27 | todo |
+| I100 | `akit run` 中的角色：在监听器的引擎上启动、迁移和停止；一个地址，一个服务器；Admin API 的 `/tokens` 和 `akit token` | I99, I27 | done |
 | I101 | 隧道 I：TCP 上的链路、注册和隧道 | I99, I100 | todo |
 | I102 | 隧道 II：TLS、WebSocket 和 QUIC 链路；pin；保存 hub 的证书 | I101 | todo |
 | I103 | 隧道 III：hub 的调用、token 过期、控制台套接字和 web 代理 | I102 | todo |
@@ -1327,7 +1327,7 @@ fit 的，使 akit 的角色能与 fit 的角色互连（决定 038）。
   标为新增。
 - **涉及**：`akit-roles`、`akit-config`、`akit-admin`、`akit`、`tests/compat/v1`。
 - **fit**：`app/app.go`、`config/bindings.go`、`internal/bindcheck`、`admin/tokens.go`、`cli/token.go`；I105、I159、I162。
-- **状态**：todo。
+- **状态**：已完成（2026-11-27）。见进度日志。
 
 ### I101 隧道 I：TCP 上的链路、注册和隧道
 
