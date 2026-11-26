@@ -19,6 +19,27 @@
 
 ## 日志
 
+### 2026-11-27：I102c，WebSocket 链路
+
+- `ws://` 和 `wss://` 链路（`akit_tunnel::ws`，fit 的 `tunnel/internal/transport/ws`），基于 akio 的 A236：hub 的 `ws` 或 `wss`
+  监听器在其路径上提供 akio-http 的升级（默认 `/tunnel`；其他路径回 404），只用 HTTP/1.1，握手头部限 16 KiB 和 10 秒，接受任何
+  `Origin`；`wss` 监听器出示自己的证书或 hub 的证书，ALPN `http/1.1`，TLS 1.3。node 或 proxy 用 akio-ws 的客户端拨号
+  （`User-Agent: akit`），握手在 `dial_timeout` 内完成，`wss` 拨号像 `tls` 拨号一样检查 hub 的证书（通过 `pin_sha256` 的 pin、
+  `ca_file` 或系统根证书）。接受至多 2 MiB 的消息；一次发送拆成每条至多 1 MiB 的二进制消息，同一次发送的消息保持在一起；不压缩。
+  1000、1001、1005、1006 以外的关闭码作为链路的错误，同 fit。
+- `ws::WsWire` 是基于 `WsSender` 的链路 `Wire`，同 `ConnWire` 之于 TCP 连接：WebSocket 的连接设为中继（`set_relayed`），队列上限
+  为 `LINK_QUEUE`（`set_max_queued_bytes`），`hold_reads`、`queued`、`on_drain` 和 `peer` 映射到 sender 上。hub 按与 TCP 链路相同的
+  限制接收 WebSocket 的链路（`accept_wire`），访问策略在 TCP 监听器上的 akio 过滤器处执行。
+- **临时做法（akio 请求 A238）**：akio-ws 没有不做握手的关闭，所以 `WsWire::close`（失败的链路、踢掉、吊销的令牌、停止的角色）
+  在已排队数据之后发送关闭帧，而 fit 是直接中止；A238 请求 `WsSender::abort`。
+- 拆分：hub 的 QUIC 握手限制（`handshake_timeout`、`max_handshakes` 的 Retry，akio-quic 的服务端尚不支持）和监听器证书文件变化时
+  重新读取移到 I102d。akio API 请求 A236 标为完成。待审决定：第 20 行。
+- 测试：经 `ws://`（一条隧道 12 MiB、四条隧道同时、其他路径回 404 且连不上、默认路径上用 `body_password` 密封）、经 `wss://` 用
+  hub 的 pin（8 MiB）和错误的 pin（打不开任何东西），以及一个停止读取的读者只压住自己的隧道、同一链路上另一条隧道照常回显
+  （`ws_links_a_slow_reader_holds_its_tunnel_alone`）。对照 fit 的二进制（`b6c5cebf`，会话临时目录中的脚本，不在 CI 中）：fit 的
+  hub 配 akit 的 node 和 proxy、akit 的 hub 配 fit 的，经 `ws` 和 `wss`（pin），明文和密封：八种组合各回显 4 MiB。
+- 下一步：I103。
+
 ### 2026-11-27：A234、A235 和 A237 的临时做法删除
 
 - A234：每条隧道链路的 wire 在链路建立时以 fit 的 `LinkQueue`（`msg::LINK_QUEUE`，64 个 4 MiB 窗口加 4 MiB 控制消息余量，约

@@ -86,7 +86,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 
 ## 索引
 
-状态：`todo`、`doing` 或 `done`。下一个可用的迭代编号是 I110（为日志路线和访问控制列表路线预留的 I84 和 I88 未使用；I95 和 I96 为控制台路线预留；I97 改名了 fit 的对外名字；I98–I109、I102b 和 I102c 是隧道与 LLM 路线）。
+状态：`todo`、`doing` 或 `done`。下一个可用的迭代编号是 I110（为日志路线和访问控制列表路线预留的 I84 和 I88 未使用；I95 和 I96 为控制台路线预留；I97 改名了 fit 的对外名字；I98–I109、I102b、I102c 和 I102d 是隧道与 LLM 路线）。
 
 | ID | 迭代 | 依赖 | 状态 |
 | --- | --- | --- | --- |
@@ -209,7 +209,8 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I101 | 隧道 I：TCP 上的链路、注册和隧道 | I99, I100 | done |
 | I102 | 隧道 II：TLS 链路；pin；保存 hub 的证书 | I101 | done |
 | I102b | 隧道 II b：QUIC 链路 | I102 | done |
-| I102c | 隧道 II c：WebSocket 链路，等待 akio API 请求 A236 | I102b | todo |
+| I102c | 隧道 II c：WebSocket 链路 | I102b | done |
+| I102d | 隧道 II d：hub 的 QUIC 握手限制；监听器的证书文件变化时重新读取 | I102c | todo |
 | I103 | 隧道 III：hub 的调用、token 过期、控制台套接字和 web 代理 | I102c | todo |
 | I104 | LLM I：mesh：帧、会话、带信用的流、握手、hello、连接池 | I99, I100 | todo |
 | I105 | LLM II：node：模型、检查、双向流式转发到上游的调用 | I104 | todo |
@@ -1396,13 +1397,22 @@ fit 的，使 akit 的角色能与 fit 的角色互连（决定 038）。
 ### I102c 隧道 II c：WebSocket 链路
 
 - **做什么**：`wss://` 和 `ws://` 链路（akio-ws：hub 默认路径 `/tunnel`，其他路径回 404，握手限 10 秒，链路的字节放在每条至多
-  1 MiB 的二进制消息中）；hub 的 QUIC 握手限制（`handshake_timeout`、`max_handshakes`，超过一半时用 Retry）；监听器的证书文件
-  变化时重新读取。
+  1 MiB 的二进制消息中）。
 - **等待**：akio API 请求 A236（压住 WebSocket 的读取、得知其发送队列排空）：没有它们，WebSocket 链路既压不住对端，也无法让
-  喂给它的一方恢复（规则 8 和 9）。
+  喂给它的一方恢复（规则 8 和 9）。已完成（akio `6151f5c5`）。
 - **完成标准**：基于 WebSocket 和 TLS 上的 WebSocket 的端到端测试通过，并能与 fit 的 hub、node 和 proxy 互连。
 - **涉及**：`akit-tunnel`。
 - **fit**：`tunnel/internal/transport/ws`；I106、I160。
+- **状态**：done（2026-11-27）。见进度日志。hub 的 QUIC 握手限制和监听器证书的重新读取移到 I102d。
+
+### I102d 隧道 II d：hub 的 QUIC 握手限制；证书重新读取
+
+- **做什么**：hub 的 QUIC 握手限制（`handshake_timeout`、`max_handshakes`，超过一半时用 Retry，同 fit），akio-quic 的服务端尚不
+  支持（需写一个请求：它的 Retry 由自己在负载下决定，握手由空闲超时约束）；监听器的证书（以及 hub 自己的）在文件变化时重新读取。
+- **完成标准**：停滞的 QUIC 握手在 `handshake_timeout` 时关闭；超过 `max_handshakes` 一半时要求新对端 Retry；监听器续期的证书
+  无需重启即可生效。
+- **涉及**：`akit-tunnel`；akio-quic。
+- **fit**：`tunnel/internal/transport/quic`、`tunnel/hub`；I160。
 - **状态**：todo。
 
 ### I103 隧道 III：hub 的调用、token 过期、控制台套接字和 web 代理

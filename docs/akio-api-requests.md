@@ -104,8 +104,9 @@ first; its status here records the branch, then the akio commit akit pins.
 | A233 | A terminal's echo turned off (raw mode), to read a password | on akio's main and pinned (since `9e21ada7`) | 14 | I89 |
 | A234 | A connection's own bound of the bytes queued for it, past the engine's `max_queued_bytes` or below it | on akio's main and pinned (since `6151f5c5`, akio's ADR-181), used by the tunnel's links | 8, 11 | I101, I104 |
 | A235 | A client TLS configuration that checks the server's certificate by its SHA-256 (a pin) in the handshake, in place of the chain and name | on akio's main and pinned (since `6151f5c5`, akio's ADR-182), used by the tunnel's TLS and QUIC links | 1, 15 | I102, I104 |
-| A236 | A WebSocket's reads held and resumed, its drain heard, and its peer's address, on `WsSender` (both akio-ws's client and akio-http's upgrade) | requested (I102c): the tunnel's WebSocket links and the LLM mesh wait for it | 8, 9 | I102c, I104 |
+| A236 | A WebSocket's reads held and resumed, its drain heard, and its peer's address, on `WsSender` (both akio-ws's client and akio-http's upgrade) | on akio's main and pinned (since `6151f5c5`, akio's ADR-183), used by I102c | 8, 9 | I102c, I104 |
 | A237 | `Engine::wait` (and `Pool::is_current`) safe in a thread-local destructor | on akio's main and pinned (since `6151f5c5`) | 1, 15 | — |
+| A238 | A WebSocket ended at once, what is queued for it dropped, without the close handshake (`WsSender::abort`) | requested (I102c): a WebSocket link closes with a close frame behind what is queued meanwhile | 8, 10 | I102c, I104 |
 
 ## A1 TCP listeners on a running engine
 
@@ -2323,6 +2324,8 @@ links (I104) give their pin to the client configuration and start the link at on
 
 ## A236 A WebSocket's reads held, its drain heard, and its peer's address
 
+**Done.** On akio's main (`6151f5c5`, akio's ADR-183) and pinned: `WsSender::hold_reads`, `on_drain`, `peer_addr`, `set_relayed` and `set_max_queued_bytes`, on akio-ws's client and akio-http's upgrade alike. The tunnel's `ws://` and `wss://` links (I102c) run on them: `akit_tunnel::ws::WsWire` maps a link's `hold_reads`, `on_drain`, `queued`, `peer` and `set_max_queued` onto them, as `ConnWire` does onto a TCP connection's, and marks the WebSocket's connection relayed, as fit's `prepareLink` does.
+
 **Status.** Requested by I102c (2026-11-27). I102c (the tunnel's `ws://` and `wss://` links) and
 I104 (the LLM mesh, whose links are WebSockets) wait for it.
 
@@ -2381,3 +2384,29 @@ pool thread".
 
 **How akit would use it.** `stop_client_engine` goes back to `shutdown` and `wait` on the calling
 thread.
+
+## A238 A WebSocket ended at once, what is queued dropped
+
+**Status.** Requested by I102c (2026-11-27). Nothing waits for it: a WebSocket link closes with
+`WsSender::close` meanwhile (a stopgap recorded in [progress](progress.md)).
+
+**Problem.** fit's links close at once, dropping what is queued, when the link fails (a frame that
+does not open, a breach of the protocol), when a hub kicks a peer or its token is revoked, and when
+a role stops: fit's WebSocket transport calls `Abort`. akio-ws's `WsSender` has `close(code,
+reason)` alone, which queues a close frame behind what is queued (a tunnel link may have fit's
+`LinkQueue`, about 260 MiB) and closes once it is written (a server) or once the peer answers it or
+`close_timeout` passes (a client). A kicked or failed WebSocket link so goes on sending what it
+had queued, and a client's waits for its peer, where a TCP, TLS or QUIC link closes at once
+(`Conn::close`, `Connection::close`).
+
+**Evidence.** At akio `6151f5c5`, `akio-ws/src/session.rs`'s `WsSender` has `send_*`, `ping`,
+`pong`, `close`, `subprotocol`, `is_open`, `queued_bytes`, `hold_reads`, `on_drain`, `peer_addr`,
+`set_relayed` and `set_max_queued_bytes`; `close_with` sends a close frame and closes after it.
+
+**Suggested API.** `WsSender::abort(&self)`: closes the transport now (the TCP or TLS connection's
+`close`; over HTTP/2 or HTTP/3, the stream reset), what is queued dropped, no close frame;
+`WsHandler::on_close` is told with 1006.
+
+**How akit would use it.** `akit_tunnel::ws::WsWire::close` (a failed link, a kick, a revoked token,
+a role stopped) aborts, as `ConnWire::close` closes a TCP link; the LLM mesh's links (I104) the
+same.

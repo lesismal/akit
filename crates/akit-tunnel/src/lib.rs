@@ -25,6 +25,7 @@ pub mod proxy;
 pub mod quic;
 pub mod tls;
 pub mod uplink;
+pub mod ws;
 
 use akit_roles::host::Info;
 

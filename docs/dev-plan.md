@@ -95,7 +95,7 @@ few crates as it can. fit's package of the same role is given for reference.
 
 Status: `todo`, `doing` or `done`. The next free iteration number is I110 (I84 and I88, reserved for the
 Logging and Access lists tracks, are unused; I95 and I96 are reserved for the Console track; I97
-renamed fit's external names; I98–I109, I102b and I102c are the Tunnel and LLM track).
+renamed fit's external names; I98–I109, I102b, I102c and I102d are the Tunnel and LLM track).
 
 | ID | Iteration | Depends on | Status |
 | --- | --- | --- | --- |
@@ -218,7 +218,8 @@ renamed fit's external names; I98–I109, I102b and I102c are the Tunnel and LLM
 | I101 | Tunnel I: links, registration and tunnels over TCP | I99, I100 | done |
 | I102 | Tunnel II: TLS links; pins; the hub's certificate kept | I101 | done |
 | I102b | Tunnel II b: QUIC links | I102 | done |
-| I102c | Tunnel II c: WebSocket links, waiting on akio API request A236 | I102b | todo |
+| I102c | Tunnel II c: WebSocket links | I102b | done |
+| I102d | Tunnel II d: the hub's QUIC handshake bounds; a listener's certificate read again when its files change | I102c | todo |
 | I103 | Tunnel III: the hub's calls, token expiry, the console socket and web proxies | I102c | todo |
 | I104 | LLM I: the mesh: frames, sessions, streams with credit, the handshake, hello, pools | I99, I100 | todo |
 | I105 | LLM II: the node: models, checks, calls forwarded upstream streamed both ways | I104 | todo |
@@ -1642,15 +1643,28 @@ link with fit's (decision 038).
 ### I102c Tunnel II c: WebSocket links
 
 - **Do**: `wss://` and `ws://` links (akio-ws: a hub's `/tunnel` by default, 404 for another
-  path, a handshake bounded by 10 s, the link's bytes in binary messages of at most 1 MiB); the
-  hub's QUIC handshake bounds (`handshake_timeout`, `max_handshakes` with a Retry past half); a
-  listener's certificate read again when its files change.
+  path, a handshake bounded by 10 s, the link's bytes in binary messages of at most 1 MiB).
 - **Waits on**: akio API request A236 (a WebSocket's reads held and its drain heard): without
-  them a WebSocket link can neither hold the peer nor resume its feeders (rules 8 and 9).
+  them a WebSocket link can neither hold the peer nor resume its feeders (rules 8 and 9). Done
+  (akio `6151f5c5`).
 - **Done when**: the e2e tests over WebSocket and WebSocket over TLS pass, and against fit's hub,
   node and proxy.
 - **Touches**: `akit-tunnel`.
 - **fit**: `tunnel/internal/transport/ws`; I106, I160.
+- **Status**: done (2026-11-27). See the progress log. The hub's QUIC handshake bounds and a
+  listener's certificate read again moved to I102d.
+
+### I102d Tunnel II d: the hub's QUIC handshake bounds; certificates read again
+
+- **Do**: the hub's QUIC handshake bounds (`handshake_timeout`, `max_handshakes` with a Retry past
+  half, as fit's), which akio-quic's server does not take yet (a request to write: its Retry is
+  its own, under load, and a handshake is bounded by the idle timeout); a listener's certificate
+  (and the hub's own) read again when its files change.
+- **Done when**: a QUIC handshake that stalls is closed at `handshake_timeout`; past half of
+  `max_handshakes` new peers are asked to Retry; a listener's renewed certificate is served
+  without a restart.
+- **Touches**: `akit-tunnel`; akio-quic.
+- **fit**: `tunnel/internal/transport/quic`, `tunnel/hub`; I160.
 - **Status**: todo.
 
 ### I103 Tunnel III: the hub's calls, token expiry, the console socket and web proxies

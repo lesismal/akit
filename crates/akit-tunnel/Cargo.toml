@@ -17,6 +17,8 @@ akio-crypto = { workspace = true }
 akio-x509 = { workspace = true }
 # QUIC links (I102b).
 akio-quic = { workspace = true }
+# WebSocket links (I102c): akio-http's upgrade on a hub's listener, its akio-ws client to dial.
+akio-http = { workspace = true }
 akit-access = { workspace = true }
 akit-config = { workspace = true }
 akit-observe = { workspace = true }

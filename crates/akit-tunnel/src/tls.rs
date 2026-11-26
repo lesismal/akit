@@ -129,13 +129,26 @@ pub fn fingerprint(cert_pem: &str) -> String {
 ///
 /// A certificate or key that does not load.
 pub fn server_config(cert_pem: &str, key_pem: &str) -> Result<ServerConfig, String> {
+    server_config_alpn(cert_pem, key_pem, ALPN)
+}
+
+/// [`server_config`] with another ALPN: `wss` listeners' `http/1.1` (`crate::ws::ALPN`).
+///
+/// # Errors
+///
+/// A certificate or key that does not load.
+pub fn server_config_alpn(
+    cert_pem: &str,
+    key_pem: &str,
+    alpn: &str,
+) -> Result<ServerConfig, String> {
     let chain = Certificate::from_pem(cert_pem.as_bytes()).map_err(|e| e.to_string())?;
     if chain.is_empty() {
         return Err("no certificate".to_owned());
     }
     let key = PrivateKey::from_pem(key_pem.as_bytes()).map_err(|e| e.to_string())?;
     ServerConfig::builder(chain, key)
-        .alpn([ALPN])
+        .alpn([alpn])
         .tls13_only(true)
         .session_tickets(false)
         .build()
@@ -178,8 +191,17 @@ impl Check {
 ///
 /// CAs that do not load.
 pub fn client_config(check: &Check) -> Result<ClientConfig, String> {
+    client_config_alpn(check, ALPN)
+}
+
+/// [`client_config`] with another ALPN: `wss` links' `http/1.1` (`crate::ws::ALPN`).
+///
+/// # Errors
+///
+/// CAs that do not load.
+pub fn client_config_alpn(check: &Check, alpn: &str) -> Result<ClientConfig, String> {
     let b = ClientConfig::builder()
-        .alpn([ALPN])
+        .alpn([alpn])
         .tls13_only(true)
         .resumption(false);
     let b = match check {

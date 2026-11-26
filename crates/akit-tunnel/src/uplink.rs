@@ -59,11 +59,13 @@ pub struct Uplink {
     owner: Weak<dyn Owner>,
     coder: Option<Coder>,
     token: Option<Secret>,
-    /// The TLS of `tls://` and `wss://` endpoints, made when the uplink is (on the control
-    /// thread: it reads `ca_file`).
+    /// The TLS of `tls://` endpoints, made when the uplink is (on the control thread: it reads
+    /// `ca_file`).
     tls: Option<akio::tls::ClientConfig>,
     /// The TLS of `quic://` endpoints, which `quic_insecure` may leave unchecked.
     quic: Option<akio::tls::ClientConfig>,
+    /// The TLS of `wss://` endpoints: the `tls://` check, ALPN `http/1.1`.
+    wss: Option<akio::tls::ClientConfig>,
     proven: Arc<Mutex<HashSet<u64>>>,
     st: Mutex<UpState>,
     seq: AtomicU32,
@@ -130,6 +132,14 @@ impl Uplink {
         } else {
             None
         };
+        let needs_wss = dials(cfg)
+            .iter()
+            .any(|a| parse_endpoint(a).is_some_and(|e| e.protocol == TunnelProtocol::Wss));
+        let wss = if needs_wss {
+            Some(crate::tls::client_config_alpn(&check, crate::ws::ALPN)?)
+        } else {
+            None
+        };
         let needs_quic = dials(cfg)
             .iter()
             .any(|a| parse_endpoint(a).is_some_and(|e| e.protocol == TunnelProtocol::Quic));
@@ -149,6 +159,7 @@ impl Uplink {
             token,
             tls,
             quic,
+            wss,
             proven,
             st: Mutex::new(UpState {
                 links: HashMap::new(),
@@ -223,6 +234,7 @@ impl Uplink {
         he.connect_timeout = self.cfg.dial();
         let router = Arc::clone(&self.router);
         let coder = self.coder.clone();
+        let url = addr.clone();
         let on_error = move |e: std::io::Error| {
             me2.fail(&format!("{addr}: {e}"));
             me2.keep(at.saturating_add(1));
@@ -281,10 +293,33 @@ impl Uplink {
                     }),
                 );
             }
-            p => on_error(std::io::Error::other(format!(
-                "{} links are not supported yet (I102c, akio API request A236)",
-                p.as_str()
-            ))),
+            TunnelProtocol::Ws | TunnelProtocol::Wss => {
+                let tls = if ep.protocol == TunnelProtocol::Wss {
+                    let Some(cfg) = self.wss.clone() else {
+                        return on_error(std::io::Error::other("no TLS configured"));
+                    };
+                    Some(cfg)
+                } else {
+                    None
+                };
+                let opts = crate::ws::dial_options(tls, self.cfg.dial());
+                let open: crate::ws::Open = Box::new(move |ws| {
+                    let l = Link::new(
+                        Arc::new(crate::ws::WsWire::new(ws)),
+                        Arc::clone(&router),
+                        coder.clone(),
+                    );
+                    me.dialed(&l);
+                    Some(l)
+                });
+                akio_http::ws::client::dial(
+                    &self.engine,
+                    &url,
+                    &opts,
+                    crate::ws::WsLink::new(open),
+                    move |e| on_error(std::io::Error::other(e.to_string())),
+                );
+            }
         }
     }
 

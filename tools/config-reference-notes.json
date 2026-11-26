@@ -127,8 +127,8 @@
       "zh": "文件变化时重新读取，与 `admin.cert_file` 相同（I94）：续期的证书无需重启即提供给新连接；fit 只在启动时读取。"
     },
     "tunnel": {
-      "en": "Read and checked as fit's (I98); `akit run` runs the three roles (I101) on the listeners' engine, their links speaking fit's protocol byte for byte, so that akit's hub, nodes and proxies link with fit's (decision 038). Links go over `tcp`, `tls` (I102) and `quic` (I102b); a `ws` or `wss` listener or endpoint is a warning when the role applies, and is skipped, until I102c, which waits on akio API request A236.",
-      "zh": "像 fit 一样读取并检查（I98）；`akit run` 在监听器的引擎上运行这三个角色（I101），其链路与 fit 的协议逐字节相同，使 akit 的 hub、node 和 proxy 能与 fit 的互连（决定 038）。链路走 `tcp`、`tls`（I102）和 `quic`（I102b）；`ws` 或 `wss` 的监听器或端点在角色应用时给出警告并被跳过，直到 I102c，它等待 akio API 请求 A236。"
+      "en": "Read and checked as fit's (I98); `akit run` runs the three roles (I101) on the listeners' engine, their links speaking fit's protocol byte for byte, so that akit's hub, nodes and proxies link with fit's (decision 038). Links go over `tcp`, `tls` (I102), `quic` (I102b), and `ws` and `wss` (I102c, on akio-ws).",
+      "zh": "像 fit 一样读取并检查（I98）；`akit run` 在监听器的引擎上运行这三个角色（I101），其链路与 fit 的协议逐字节相同，使 akit 的 hub、node 和 proxy 能与 fit 的互连（决定 038）。链路走 `tcp`、`tls`（I102）、`quic`（I102b），以及 `ws` 和 `wss`（I102c，基于 akio-ws）。"
     },
     "llm": {
       "en": "Read and checked as fit's (I98). `akit run` refuses a config that sets a role until the LLM iterations run it (I104–I109).",

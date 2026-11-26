@@ -551,3 +551,205 @@ fn quic_links_refused_at_the_filter() {
     e.wait();
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+// I102c: WebSocket links.
+
+/// `ws://` links: the hub's path takes them (several tunnels at once, more than a message
+/// each), another path is answered 404 and links nothing; sealed by `body_password` too.
+#[test]
+fn ws_links_carry_tunnels() {
+    let dir = tmp("ws");
+    let e = engine();
+    let (hub, svc) = (free_port(), echo());
+    let mut h = hub_alone(
+        &e,
+        &dir,
+        &format!(r#"{{"protocol": "ws", "address": "127.0.0.1:{hub}", "path": "/t"}}"#),
+    );
+    assert!(
+        !dir.join("akit.tunnel.hub.pem").exists(),
+        "a ws listener needs no certificate"
+    );
+    let fwd = free_port();
+    let mut p = peers(&e, &format!("ws://127.0.0.1:{hub}/t"), "", svc, fwd);
+    let mut s = tunnel(fwd);
+    round_trip(&mut s, 12 << 20);
+    let ts: Vec<_> = (0..4)
+        .map(|_| {
+            std::thread::spawn(move || {
+                let mut s = tunnel(fwd);
+                round_trip(&mut s, 2 << 20);
+            })
+        })
+        .collect();
+    for t in ts {
+        t.join().unwrap();
+    }
+    p.stop(Duration::ZERO);
+    // Another path: 404, nothing opens.
+    let mut c = TcpStream::connect(("127.0.0.1", hub)).unwrap();
+    c.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+    c.write_all(b"GET /other HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n").unwrap();
+    let mut head = [0u8; 12];
+    c.read_exact(&mut head).unwrap();
+    assert_eq!(&head, b"HTTP/1.1 404");
+    let fwd = free_port();
+    let mut p = peers(&e, &format!("ws://127.0.0.1:{hub}/other"), "", svc, fwd);
+    std::thread::sleep(Duration::from_millis(700));
+    let mut s = TcpStream::connect(("127.0.0.1", fwd)).unwrap();
+    s.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+    let _ = s.write_all(b"x");
+    let mut b = [0u8; 1];
+    assert!(
+        !matches!(s.read(&mut b), Ok(1)),
+        "a tunnel opened on another path"
+    );
+    p.stop(Duration::ZERO);
+    h.stop(Duration::ZERO);
+    e.shutdown();
+    e.wait();
+    let _ = std::fs::remove_dir_all(&dir);
+    // Sealed, the default path.
+    let (hub, svc, fwd) = (free_port(), echo(), free_port());
+    let up = format!(
+        r#"{{"name": "hub", "endpoints": [{{"address": "ws://127.0.0.1:{hub}/tunnel"}}], "password": "pw", "body_password": "b", "pool_size": 2, "retry_interval": "100ms"}}"#
+    );
+    let doc = format!(
+        r#"{{"tunnel": {{
+          "hub": {{"name": "hub", "password": "pw", "body_password": "b", "listeners": [{{"protocol": "ws", "address": "127.0.0.1:{hub}"}}]}},
+          "node": {{"name": "lab", "hubs": [{up}], "services": [{{"name": "echo", "address": "127.0.0.1:{svc}"}}]}},
+          "proxy": {{"name": "alice", "hubs": [{up}], "forwards": [{{"listen": "127.0.0.1:{fwd}", "node": "lab", "service": "echo"}}]}}}}}}"#
+    );
+    let config = akit_config::from_json(&doc, None).unwrap_or_else(|e| panic!("{doc}\n{e}"));
+    let e = engine();
+    let mut roles = Manager::new(
+        &[akit_tunnel::HUB, akit_tunnel::NODE, akit_tunnel::PROXY],
+        Arc::clone(&e),
+        None,
+    );
+    let errs = roles.apply(&config);
+    assert!(errs.is_empty(), "{errs:?}");
+    let mut s = tunnel(fwd);
+    round_trip(&mut s, 8 << 20);
+    roles.stop(Duration::ZERO);
+    e.shutdown();
+    e.wait();
+}
+
+/// `wss://` links check the hub's certificate by its pin, as `tls://` ones; another pin links
+/// nothing.
+#[test]
+fn wss_links_check_the_hubs_certificate_by_its_pin() {
+    let dir = tmp("wss");
+    let e = engine();
+    let (hub, svc) = (free_port(), echo());
+    let mut h = hub_alone(
+        &e,
+        &dir,
+        &format!(r#"{{"protocol": "wss", "address": "127.0.0.1:{hub}"}}"#),
+    );
+    let pem = std::fs::read_to_string(dir.join("akit.tunnel.hub.pem")).unwrap();
+    let fp = akit_tunnel::tls::fingerprint(&pem);
+    let fwd = free_port();
+    let mut p = peers(
+        &e,
+        &format!("wss://127.0.0.1:{hub}/tunnel"),
+        &format!(r#", "pin": "{fp}""#),
+        svc,
+        fwd,
+    );
+    let mut s = tunnel(fwd);
+    round_trip(&mut s, 8 << 20);
+    p.stop(Duration::ZERO);
+    let fwd = free_port();
+    let other = "ab".repeat(32);
+    let mut p = peers(
+        &e,
+        &format!("wss://127.0.0.1:{hub}/tunnel"),
+        &format!(r#", "pin": "{other}""#),
+        svc,
+        fwd,
+    );
+    std::thread::sleep(Duration::from_millis(700));
+    let mut s = TcpStream::connect(("127.0.0.1", fwd)).unwrap();
+    s.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+    let _ = s.write_all(b"x");
+    let mut b = [0u8; 1];
+    assert!(
+        !matches!(s.read(&mut b), Ok(1)),
+        "a tunnel opened past a wrong pin"
+    );
+    p.stop(Duration::ZERO);
+    h.stop(Duration::ZERO);
+    e.shutdown();
+    e.wait();
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A service that writes `n` bytes to each connection, then closes it.
+fn source(n: usize) -> u16 {
+    let l = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = l.local_addr().unwrap().port();
+    std::thread::spawn(move || {
+        for s in l.incoming() {
+            let Ok(mut s) = s else { break };
+            std::thread::spawn(move || {
+                let data: Vec<u8> = (0..n).map(|i| u8::try_from(i % 249).unwrap()).collect();
+                let _ = s.write_all(&data);
+            });
+        }
+    });
+    port
+}
+
+/// Over a `ws://` link, a reader that stops holds its own tunnel's window, not the link: a second
+/// tunnel echoes meanwhile, and the first's bytes all arrive once it reads again (rules 8, 9).
+#[test]
+fn ws_links_a_slow_reader_holds_its_tunnel_alone() {
+    let dir = tmp("ws-slow");
+    let e = engine();
+    let (hub, svc, src) = (free_port(), echo(), source(24 << 20));
+    let mut h = hub_alone(
+        &e,
+        &dir,
+        &format!(r#"{{"protocol": "ws", "address": "127.0.0.1:{hub}"}}"#),
+    );
+    let up = format!(
+        r#"{{"name": "hub", "endpoints": [{{"address": "ws://127.0.0.1:{hub}/tunnel"}}], "password": "pw", "pool_size": 1, "retry_interval": "100ms"}}"#
+    );
+    let (fwd, fwd_src) = (free_port(), free_port());
+    let doc = format!(
+        r#"{{"tunnel": {{
+          "node": {{"name": "lab", "hubs": [{up}], "services": [{{"name": "echo", "address": "127.0.0.1:{svc}"}}, {{"name": "src", "address": "127.0.0.1:{src}"}}]}},
+          "proxy": {{"name": "alice", "hubs": [{up}], "forwards": [{{"listen": "127.0.0.1:{fwd}", "node": "lab", "service": "echo"}}, {{"listen": "127.0.0.1:{fwd_src}", "node": "lab", "service": "src"}}]}}}}}}"#
+    );
+    let config = akit_config::from_json(&doc, None).unwrap_or_else(|e| panic!("{doc}\n{e}"));
+    let mut p = Manager::new(
+        &[akit_tunnel::NODE, akit_tunnel::PROXY],
+        Arc::clone(&e),
+        None,
+    );
+    assert!(p.apply(&config).is_empty());
+    let _ = tunnel(fwd);
+    // The source's tunnel, not read for a while.
+    let mut slow = TcpStream::connect(("127.0.0.1", fwd_src)).unwrap();
+    std::thread::sleep(Duration::from_millis(500));
+    let mut s = tunnel(fwd);
+    round_trip(&mut s, 4 << 20);
+    let mut got = Vec::new();
+    slow.set_read_timeout(Some(Duration::from_secs(30)))
+        .unwrap();
+    slow.read_to_end(&mut got).unwrap();
+    assert_eq!(got.len(), 24 << 20);
+    assert!(
+        got.iter()
+            .enumerate()
+            .all(|(i, b)| *b == u8::try_from(i % 249).unwrap()),
+        "the bytes came changed"
+    );
+    p.stop(Duration::ZERO);
+    h.stop(Duration::ZERO);
+    e.shutdown();
+    e.wait();
+    let _ = std::fs::remove_dir_all(&dir);
+}

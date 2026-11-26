@@ -103,8 +103,9 @@
 | A233 | 关闭终端回显（原始模式）以读取密码 | 已进入 akio 的 main 并锁定（自 `9e21ada7` 起） | 14 | I89 |
 | A234 | 单个连接自己的发送队列上限，可高于或低于引擎的 `max_queued_bytes` | 已进入 akio 的 main 并锁定（自 `6151f5c5` 起，akio 的 ADR-181），隧道链路使用 | 8, 11 | I101, I104 |
 | A235 | 在握手中按 SHA-256（pin）检查服务器证书、代替证书链和名称检查的客户端 TLS 配置 | 已进入 akio 的 main 并锁定（自 `6151f5c5` 起，akio 的 ADR-182），隧道的 TLS 和 QUIC 链路使用 | 1, 15 | I102, I104 |
-| A236 | 在 `WsSender` 上压住和恢复 WebSocket 的读取、得知其发送队列排空、取得对端地址（akio-ws 的客户端和 akio-http 的升级都要） | 已提出（I102c）：隧道的 WebSocket 链路和 LLM mesh 在等待它 | 8, 9 | I102c, I104 |
+| A236 | 在 `WsSender` 上压住和恢复 WebSocket 的读取、得知其发送队列排空、取得对端地址（akio-ws 的客户端和 akio-http 的升级都要） | 已进入 akio 的 main 并锁定（自 `6151f5c5` 起，akio 的 ADR-183），I102c 使用 | 8, 9 | I102c, I104 |
 | A237 | 在线程局部变量的析构中调用 `Engine::wait`（以及 `Pool::is_current`）也安全 | 已进入 akio 的 main 并锁定（自 `6151f5c5` 起） | 1, 15 | — |
+| A238 | 立即结束 WebSocket、丢弃为它排队的数据、不做关闭握手（`WsSender::abort`） | 已提出（I102c）：在此之前 WebSocket 链路以排在已排队数据之后的关闭帧关闭 | 8, 10 | I102c, I104 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -1870,6 +1871,8 @@ Go 的 `VerifyPeerCertificate` 配合 `InsecureSkipVerify`）：不匹配的证�
 
 ## A236 压住 WebSocket 的读取、得知其发送队列排空、取得对端地址
 
+**完成。** 已进入 akio 的 main（`6151f5c5`，akio 的 ADR-183）并锁定：`WsSender::hold_reads`、`on_drain`、`peer_addr`、`set_relayed` 和 `set_max_queued_bytes`，akio-ws 的客户端和 akio-http 的升级都有。隧道的 `ws://` 和 `wss://` 链路（I102c）基于它们：`akit_tunnel::ws::WsWire` 把链路的 `hold_reads`、`on_drain`、`queued`、`peer` 和 `set_max_queued` 映射到它们上，同 `ConnWire` 之于 TCP 连接，并把 WebSocket 的连接标为中继，同 fit 的 `prepareLink`。
+
 **状态。** 由 I102c 提出（2026-11-27）。I102c（隧道的 `ws://` 和 `wss://` 链路）和 I104（LLM mesh，其链路是 WebSocket）在
 等待它。
 
@@ -1913,3 +1916,24 @@ Go 的 `VerifyPeerCertificate` 配合 `InsecureSkipVerify`）：不匹配的证�
 已销毁的线程局部变量视为“不是池线程”。
 
 **akit 如何使用。** `stop_client_engine` 恢复为在调用线程上 `shutdown` 和 `wait`。
+
+## A238 立即结束 WebSocket、丢弃已排队的数据
+
+**状态。** 由 I102c 提出（2026-11-27）。没有工作在等待它：在此之前 WebSocket 链路用 `WsSender::close` 关闭（记录在
+[进度](progress.zh-CN.md)中的临时做法）。
+
+**问题。** fit 的链路在失败时（无法解开的帧、违反协议）、hub 踢掉对端或其令牌被吊销时、角色停止时立即关闭并丢弃已排队的数据：
+fit 的 WebSocket 传输调用 `Abort`。akio-ws 的 `WsSender` 只有 `close(code, reason)`，它把关闭帧排在已排队的数据之后（一条隧道
+链路可能有 fit 的 `LinkQueue`，约 260 MiB），写出后关闭（服务端），或等对端应答或 `close_timeout` 到期后关闭（客户端）。于是
+被踢掉或失败的 WebSocket 链路会继续发送已排队的数据，客户端还要等对端，而 TCP、TLS 或 QUIC 链路会立即关闭（`Conn::close`、
+`Connection::close`）。
+
+**证据。** 在 akio `6151f5c5`，`akio-ws/src/session.rs` 的 `WsSender` 有 `send_*`、`ping`、`pong`、`close`、`subprotocol`、
+`is_open`、`queued_bytes`、`hold_reads`、`on_drain`、`peer_addr`、`set_relayed` 和 `set_max_queued_bytes`；`close_with` 发送关闭帧
+并在其后关闭。
+
+**建议的 API。** `WsSender::abort(&self)`：立即关闭传输（TCP 或 TLS 连接的 `close`；HTTP/2 或 HTTP/3 上重置流），丢弃已排队的
+数据，不发关闭帧；`WsHandler::on_close` 以 1006 被告知。
+
+**akit 如何使用。** `akit_tunnel::ws::WsWire::close`（失败的链路、踢掉、吊销的令牌、停止的角色）调用 abort，同 `ConnWire::close`
+关闭 TCP 链路；LLM mesh 的链路（I104）同样。

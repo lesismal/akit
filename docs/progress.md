@@ -20,6 +20,38 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-27: I102c, WebSocket links
+
+- `ws://` and `wss://` links (`akit_tunnel::ws`, fit's `tunnel/internal/transport/ws`) on akio's
+  A236: a hub's `ws` or `wss` listener serves akio-http's upgrade on its path (`/tunnel` by
+  default; another path is answered 404), HTTP/1.1 alone, the handshake's head bounded at 16 KiB
+  and 10 s, any `Origin`; a `wss` listener presents its certificate or the hub's, ALPN `http/1.1`,
+  TLS 1.3. A node or proxy dials with akio-ws's client (`User-Agent: akit`), the handshake within
+  `dial_timeout`, a `wss` dial checking the hub's certificate as a `tls` one does (a pin through
+  `pin_sha256`, `ca_file` or the system's roots). Messages of at most 2 MiB are taken; a send goes
+  out as binary messages of at most 1 MiB, the messages of one send kept together; no compression.
+  A close code other than 1000, 1001, 1005 or 1006 is the link's error, as fit's.
+- `ws::WsWire` is the link's `Wire` on a `WsSender`, as `ConnWire` on a TCP connection: the
+  WebSocket's connection relayed (`set_relayed`), its queue bounded at `LINK_QUEUE`
+  (`set_max_queued_bytes`), and `hold_reads`, `queued`, `on_drain` and `peer` mapped onto the
+  sender's. The hub takes a WebSocket's link by the same bounds as a TCP one's (`accept_wire`),
+  its access policy at akio's filter on the TCP listener.
+- **Stopgap (akio request A238)**: akio-ws has no close without the handshake, so `WsWire::close`
+  (a failed link, a kick, a revoked token, a role stopped) sends a close frame behind what is
+  queued, where fit aborts; A238 asks for `WsSender::abort`.
+- Split: the hub's QUIC handshake bounds (`handshake_timeout`, `max_handshakes`' Retry), which
+  akio-quic's server does not take yet, and a listener's certificate read again when its files
+  change moved to I102d. akio API request A236 is marked done. Decisions waiting for review: row
+  20.
+- Tests: over `ws://` (12 MiB through a tunnel, four tunnels at once, another path answered 404
+  and linking nothing, sealed by `body_password` on the default path), over `wss://` with the
+  hub's pin (8 MiB) and a wrong pin (nothing opens), and a reader that stops holding its own
+  tunnel while another on the same link echoes (`ws_links_a_slow_reader_holds_its_tunnel_alone`).
+  Against fit's binary (`b6c5cebf`, a script in the session's scratchpad, not in CI): a fit hub
+  with akit's node and proxy, and an akit hub with fit's, over `ws` and `wss` (pinned), plain and
+  sealed: 4 MiB echoed through each of the eight.
+- Next: I103.
+
 ### 2026-11-27: the stopgaps of A234, A235 and A237 go
 
 - A234: every tunnel link's wire is bounded at fit's `LinkQueue` (`msg::LINK_QUEUE`, 64 windows of

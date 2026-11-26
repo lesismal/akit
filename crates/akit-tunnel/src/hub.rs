@@ -1021,20 +1021,31 @@ fn listener_tls(
     l: &TunnelListener,
     own: Option<&Arc<(String, String)>>,
 ) -> Result<akio::tls::ServerConfig, String> {
+    let alpn = if l.protocol.is_ws() {
+        crate::ws::ALPN
+    } else {
+        crate::tls::ALPN
+    };
     if l.cert_file.is_empty() {
         match own {
-            Some(cert) => crate::tls::server_config(&cert.0, &cert.1),
+            Some(cert) => crate::tls::server_config_alpn(&cert.0, &cert.1, alpn),
             None => Err("no certificate".to_owned()),
         }
     } else {
         std::fs::read_to_string(&l.cert_file)
             .and_then(|c| std::fs::read_to_string(&l.key_file).map(|k| (c, k)))
             .map_err(|e| e.to_string())
-            .and_then(|(c, k)| crate::tls::server_config(&c, &k))
+            .and_then(|(c, k)| crate::tls::server_config_alpn(&c, &k, alpn))
     }
 }
 
 impl Hub {
+    /// How a WebSocket listener takes a link: as the TCP ones, by the hub's bounds.
+    fn ws_accept(&self) -> crate::ws::Accept {
+        let me = self.core.me.clone();
+        Arc::new(move |peer, wire| me.upgrade().and_then(|h| h.accept_wire(peer, wire)))
+    }
+
     /// A QUIC listener: a UDP socket bound on the engine's UDP threads, served by akio-quic.
     fn bind_quic(
         &self,
@@ -1115,15 +1126,29 @@ impl Hub {
                     }
                     continue;
                 }
-                p => {
-                    errs.push(format!(
-                        "listener {} {}: {} links are not supported yet (I102c, akio API request A236)",
-                        p.as_str(),
-                        l.address,
-                        p.as_str()
-                    ));
-                    continue;
+                TunnelProtocol::Ws => {
+                    akio::Listener::tcp(addr)
+                        .threads(1)
+                        .serve(akio_http::serve_with(
+                            crate::ws::http_config(),
+                            crate::ws::service(l.ws_path().to_owned(), self.ws_accept()),
+                        ))
                 }
+                TunnelProtocol::Wss => match listener_tls(l, own) {
+                    Ok(cfg) => akio::Listener::tcp(addr)
+                        .threads(1)
+                        .serve(akio::tls::Tls::server(
+                            cfg,
+                            akio_http::serve_with(
+                                crate::ws::http_config(),
+                                crate::ws::service(l.ws_path().to_owned(), self.ws_accept()),
+                            ),
+                        )),
+                    Err(e) => {
+                        errs.push(format!("listener wss {}: {e}", l.address));
+                        continue;
+                    }
+                },
             };
             if let Some(p) = lock(&c.access).clone() {
                 el = el.filter(move |peer: &SocketAddr| p.allows(peer.ip()));
