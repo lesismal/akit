@@ -19,6 +19,22 @@
 
 ## 日志
 
+### 2026-11-27：I99，链路 token
+
+- 新 crate `akit-roles`（fit 的 `app`，I100 加入宿主）：`linktoken`，即 fit 的 `internal/linktoken`（fit 的决定 035）。token
+  为 `akitt1.<id>.<secret>`；其 client、stored、server 和 body 密钥以及双方的证明与 fit 逐字节相同，基于 akio-crypto 的
+  HMAC-SHA256、HKDF 和 SHA-256（决定 038）。监听方的 token 登记表把成员绑定到它首次连接所用的 token，拒绝未知、过期或
+  已满的 token 以及绑定到其他 token 的成员，关闭被撤销、哈希改变或过期的 token 的链路（`set`），以及在链路打开期间过期的
+  token 的链路（`sweep`，角色每隔 `next_sweep`（至多一分钟）调用一次：fit 的计时器在这里由角色负责）；链路的 `Use` 在被
+  丢弃时让登记表忘记它。签发、修改过期时间（`ttl` 或 `expires_at`）、撤销和绑定都是对成员 token 列表的编辑，由调用方作为
+  配置应用。
+- 与计划的不同：Admin API 的 `/tokens` 和 `akit token` 移到 I100，与读取其角色登记表的宿主一起；fit 的 CLI 调用 Admin API，
+  akit 的也将如此。
+- 测试：移植 fit 的 `TestSecretRoundTrip`、`TestHandshake`、`TestRegistry`、`TestRegistryListOrder`、`TestRegistryFull`、
+  `TestParseTTL`、`TestManager` 和 `TestBind`；fit 自己的测试向量（一个哈希、一个 body 密钥、拨号方和监听方的证明，由一个
+  调用 fit `7daee573` 中该包的 Go 程序打印）逐字节一致（`fits_vectors`）。
+- 下一步：I100，`akit run` 中的角色。
+
 ### 2026-11-27：I98，配置中的 `tunnel` 和 `llm`
 
 - 隧道与 LLM 路线规划为 I98–I109（开发计划）；[决定 038](decisions/038-tunnel-and-llm.zh-CN.md)：akit 显示名字之处用

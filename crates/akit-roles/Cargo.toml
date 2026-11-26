@@ -1,0 +1,17 @@
+[package]
+name = "akit-roles"
+description = "akit's roles beside the gateway (fit's app): the link tokens their listeners issue, and the host that runs the tunnel's and the LLM feature's roles."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+# HMAC-SHA256, HKDF, SHA-256, base64url and the random secrets of the link tokens.
+akio-crypto = { workspace = true }
+akit-config = { workspace = true }
+
+[lints]
+workspace = true

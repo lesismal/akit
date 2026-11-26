@@ -20,6 +20,26 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-27: I99, link tokens
+
+- A new crate, `akit-roles` (fit's `app`, I100 adds the host): `linktoken`, fit's
+  `internal/linktoken` (fit's decision 035). A token is `akitt1.<id>.<secret>`; its client,
+  stored, server and body keys and both sides' proofs are fit's byte for byte, on akio-crypto's
+  HMAC-SHA256, HKDF and SHA-256 (decision 038). The registry of a listener's tokens binds a
+  member to the token it first linked with, refuses an unknown, expired or full token and a member
+  bound to another, closes the links of a token revoked, rehashed or expired (`set`), and of one
+  that expires while they are open (`sweep`, which the role calls every `next_sweep`, at most a
+  minute: fit's timer is the role's here); a link's `Use` forgets it when dropped. Issuing,
+  changing the expiry (`ttl` or `expires_at`), revoking and binding are edits of a member's token
+  list, which the caller applies as a config.
+- Where the plan changed: the Admin API's `/tokens` and `akit token` move to I100, with the host
+  whose roles' registries they read; fit's CLI calls the Admin API, as akit's will.
+- Tests: fit's `TestSecretRoundTrip`, `TestHandshake`, `TestRegistry`, `TestRegistryListOrder`,
+  `TestRegistryFull`, `TestParseTTL`, `TestManager` and `TestBind` ported; fit's own vectors (a
+  hash, a body key, a dialer's and a listener's proof, printed by a Go program calling fit's
+  package at `7daee573`) matched byte for byte (`fits_vectors`).
+- Next: I100, the roles in `akit run`.
+
 ### 2026-11-27: I98, `tunnel` and `llm` in the config
 
 - The Tunnel and LLM track planned as I98–I109 (dev plan); [decision 038](decisions/038-tunnel-and-llm.md):

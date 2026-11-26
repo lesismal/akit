@@ -468,6 +468,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "akit-roles"
+version = "0.0.1"
+dependencies = [
+ "akio-crypto",
+ "akit-config",
+]
+
+[[package]]
 name = "akit-router"
 version = "0.0.1"
 dependencies = [

@@ -86,6 +86,7 @@ few crates as it can. fit's package of the same role is given for reference.
 | `akit-cache` | the response cache | `handler/cache` |
 | `akit-plugin` | WASM plugins | `plugin` |
 | `akit-access` | access lists: allow and deny lists compiled into ranges, policies (I85) | `access` |
+| `akit-roles` | the roles beside the gateway: link tokens (I99), the host that runs them (I100) | `app`, `internal/linktoken` |
 | `tests/e2e` | end-to-end tests of the binary | `test/e2e` |
 | `tests/compat` | the fit config compatibility gate: pinned fixtures, field inventory | `templates`, fit-examples |
 | `bench` | the harness, scenarios and reports | `bench` |
@@ -210,8 +211,8 @@ renamed fit's external names; I98–I109 are the Tunnel and LLM track).
 | I97 | akit's names: every external name that says "fit" says "akit" (decision 037) | I91, I92 | done |
 | **After 1.0: tunnel and LLM** | | | |
 | I98 | Tunnel and LLM I: `tunnel` and `llm` in the config | I79 | done |
-| I99 | Link tokens: `akitt1.` tokens, proofs and registry; `akit token`; the Admin API's `/tokens` | I98, I27 | todo |
-| I100 | The roles in `akit run`: started, moved and stopped on the listeners' engine; one address, one server | I98 | todo |
+| I99 | Link tokens: `akitt1.` tokens, proofs, registry and management | I98 | done |
+| I100 | The roles in `akit run`: started, moved and stopped on the listeners' engine; one address, one server; the Admin API's `/tokens` and `akit token` | I99, I27 | todo |
 | I101 | Tunnel I: links, registration and tunnels over TCP | I99, I100 | todo |
 | I102 | Tunnel II: TLS, WebSocket and QUIC links; pins; the hub's certificate kept | I101 | todo |
 | I103 | Tunnel III: the hub's calls, token expiry, the console socket and web proxies | I102 | todo |
@@ -1517,20 +1518,19 @@ link with fit's (decision 038).
 
 ### I99 Link tokens
 
-- **Do**: decision 035 of fit's, as `internal/linktoken`: a token `akitt1.<id>.<secret>` (16 hex
-  digits, 256 random bits), its client, stored, server and body keys, the dialer's and the
-  listener's proofs over a transcript of both nonces and the direction; the registry of a
-  listener's tokens (members bound to the token they first registered with, expiry, last use, the
-  links using each, at most 1,024 tokens and 256 members a token); `akit token
-  create|list|expiry|revoke -role <member>` on the config's files; the Admin API's `GET`, `POST`
-  `/tokens/{member}` and `PATCH`, `DELETE /tokens/{member}/{id}`, each an edit of the member
-  applied as any config, logged to the `admin` logger.
-- **Done when**: fit's `linktoken_test.go` passes ported, its vectors byte for byte (a fit token's
-  secret makes the same hash and proofs); the CLI and the Admin API make, list, change and revoke a
-  token, shown once and kept as a hash; the v1 freeze marks the endpoints as additions.
-- **Touches**: `akit-config`, `akit-admin`, `akit` (`token`), `tests/compat/v1`, `docs`.
-- **fit**: `internal/linktoken`, `admin/tokens.go`, `cli/token.go`; I159.
-- **Status**: todo.
+- **Do**: decision 035 of fit's, as `internal/linktoken`, in a new crate `akit-roles`: a token
+  `akitt1.<id>.<secret>` (16 hex digits, 256 random bits), its client, stored, server and body
+  keys, the dialer's and the listener's proofs over a transcript of both nonces and the direction;
+  the registry of a listener's tokens (members bound to the token they first registered with,
+  expiry, last use, the links using each, at most 1,024 tokens and 256 members a token); the
+  management the pages, the Admin API and the CLI share (issue, change the expiry, revoke, bind),
+  as edits of a member's token list. The Admin API's `/tokens` and `akit token` come with the host
+  that runs the roles (I100).
+- **Done when**: fit's `linktoken_test.go` passes ported, and fit's own vectors byte for byte (a
+  fit token's secret makes the same hash, body key and proofs).
+- **Touches**: `akit-roles` (new, `linktoken`).
+- **fit**: `internal/linktoken`; I159.
+- **Status**: done (2026-11-27). See the progress log.
 
 ### I100 The roles in `akit run`
 
@@ -1538,11 +1538,18 @@ link with fit's (decision 038).
   applied after the listeners, a role's failure a warning; the roles' bindings added to the
   listeners' akio engine (a role's own engine nowhere), with its `access` set again on every
   apply; one address, one server (fit's I162): every address the config listens on, the roles'
-  among them, normalized and checked once, the later of two refused with the earlier named.
+  among them, normalized and checked once, the later of two refused with the earlier named. The
+  Admin API's `GET /tokens`, `GET` and `POST /tokens/{member}`, `PATCH` and `DELETE
+  /tokens/{member}/{id}` (fit's `admin/tokens.go`), each change an edit of the member applied as
+  any config and logged to the `admin` logger, and `akit token create|list|expiry|revoke`, which
+  calls them (fit's `cli/token.go`).
 - **Done when**: a config starts, moves and stops a role (a stub role in the tests); a role's
-  failure is a warning and the gateway runs; fit's `bindings_test.go` clashes are refused.
-- **Touches**: `akit-roles` (new), `akit-config`, `akit`.
-- **fit**: `app/app.go`, `config/bindings.go`, `internal/bindcheck`; I105, I162.
+  failure is a warning and the gateway runs; fit's `bindings_test.go` clashes are refused; a token
+  is issued, listed, changed and revoked through the Admin API and the CLI, shown once and kept as
+  a hash; the v1 freeze marks the endpoints as additions.
+- **Touches**: `akit-roles`, `akit-config`, `akit-admin`, `akit`, `tests/compat/v1`.
+- **fit**: `app/app.go`, `config/bindings.go`, `internal/bindcheck`, `admin/tokens.go`,
+  `cli/token.go`; I105, I159, I162.
 - **Status**: todo.
 
 ### I101 Tunnel I: links, registration and tunnels over TCP

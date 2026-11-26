@@ -79,6 +79,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | `akit-cache` | 响应缓存 | `handler/cache` |
 | `akit-plugin` | WASM 插件 | `plugin` |
 | `akit-access` | 访问控制列表：编译成区间的允许和拒绝列表、策略（I85） | `access` |
+| `akit-roles` | 网关之外的角色：链路 token（I99）、运行它们的宿主（I100） | `app`、`internal/linktoken` |
 | `tests/e2e` | 可执行文件的端到端测试 | `test/e2e` |
 | `tests/compat` | fit 配置兼容性门禁：固定夹具、字段清单 | `templates`、fit-examples |
 | `bench` | 基准框架、场景和报告 | `bench` |
@@ -201,8 +202,8 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I97 | akit 的名字：对外凡写 "fit" 的名字都改为 "akit"（决定 037） | I91, I92 | done |
 | **1.0 之后：隧道与 LLM** | | | |
 | I98 | 隧道与 LLM I：配置中的 `tunnel` 和 `llm` | I79 | done |
-| I99 | 链路 token：`akitt1.` token、证明和登记表；`akit token`；Admin API 的 `/tokens` | I98, I27 | todo |
-| I100 | `akit run` 中的角色：在监听器的引擎上启动、迁移和停止；一个地址，一个服务器 | I98 | todo |
+| I99 | 链路 token：`akitt1.` token、证明、登记表和管理 | I98 | done |
+| I100 | `akit run` 中的角色：在监听器的引擎上启动、迁移和停止；一个地址，一个服务器；Admin API 的 `/tokens` 和 `akit token` | I99, I27 | todo |
 | I101 | 隧道 I：TCP 上的链路、注册和隧道 | I99, I100 | todo |
 | I102 | 隧道 II：TLS、WebSocket 和 QUIC 链路；pin；保存 hub 的证书 | I101 | todo |
 | I103 | 隧道 III：hub 的调用、token 过期、控制台套接字和 web 代理 | I102 | todo |
@@ -1302,26 +1303,30 @@ fit 的，使 akit 的角色能与 fit 的角色互连（决定 038）。
 
 ### I99 链路 token
 
-- **做什么**：fit 的决定 035，同 `internal/linktoken`：token `akitt1.<id>.<secret>`（16 位十六进制数字，256 个随机位），
-  其 client、stored、server 和 body 密钥，拨号方和监听方基于包含双方 nonce 和方向的记录（transcript）的证明；监听方的 token
-  登记表（成员绑定到其首次注册所用的 token、过期、最后使用、使用每个 token 的链路，最多 1,024 个 token、每个 token 256 个
-  成员）；在配置文件上运行 `akit token create|list|expiry|revoke -role <成员>`；Admin API 的 `GET`、`POST /tokens/{成员}` 和
-  `PATCH`、`DELETE /tokens/{成员}/{id}`，每个都是对成员的一次编辑，像任何配置一样应用，并记录到 `admin` 日志器。
-- **完成标准**：移植后的 fit `linktoken_test.go` 通过，其测试向量逐字节一致（fit token 的 secret 得出相同的哈希和证明）；
-  CLI 和 Admin API 能创建、列出、修改和撤销 token，token 只显示一次，只保存其哈希；v1 冻结把这些端点标为新增。
-- **涉及**：`akit-config`、`akit-admin`、`akit`（`token`）、`tests/compat/v1`、`docs`。
-- **fit**：`internal/linktoken`、`admin/tokens.go`、`cli/token.go`；I159。
-- **状态**：todo。
+- **做什么**：fit 的决定 035，同 `internal/linktoken`，放在新 crate `akit-roles` 中：token `akitt1.<id>.<secret>`（16 位
+  十六进制数字，256 个随机位），其 client、stored、server 和 body 密钥，拨号方和监听方基于包含双方 nonce 和方向的记录的
+  证明；监听方的 token 登记表（成员绑定到其首次注册所用的 token、过期、最后使用、使用每个 token 的链路，最多 1,024 个
+  token、每个 token 256 个成员）；页面、Admin API 和 CLI 共用的管理（签发、修改过期时间、撤销、绑定），作为对成员 token
+  列表的编辑。Admin API 的 `/tokens` 和 `akit token` 随运行角色的宿主一起实现（I100）。
+- **完成标准**：移植后的 fit `linktoken_test.go` 通过，fit 自己的测试向量逐字节一致（fit token 的 secret 得出相同的哈希、
+  body 密钥和证明）。
+- **涉及**：`akit-roles`（新，`linktoken`）。
+- **fit**：`internal/linktoken`；I159。
+- **状态**：已完成（2026-11-27）。见进度日志。
 
 ### I100 `akit run` 中的角色
 
 - **做什么**：同 fit 的 `app`（I105）：一个宿主，在每次应用配置时于监听器之后启动、迁移和停止每个角色，角色失败只是警告；
   角色的绑定加在监听器的 akio 引擎上（角色不另建引擎），每次应用都重新设置其 `access`；一个地址，一个服务器（fit 的 I162）：
-  配置监听的每个地址（包括各角色的）规范化后统一检查一次，两者中后出现的被拒绝，并指出先出现的那个。
+  配置监听的每个地址（包括各角色的）规范化后统一检查一次，两者中后出现的被拒绝，并指出先出现的那个。Admin API 的
+  `GET /tokens`、`GET` 和 `POST /tokens/{成员}`、`PATCH` 和 `DELETE /tokens/{成员}/{id}`（fit 的 `admin/tokens.go`），每个修改
+  都是对成员的一次编辑，像任何配置一样应用并记录到 `admin` 日志器；以及调用它们的 `akit token create|list|expiry|revoke`
+  （fit 的 `cli/token.go`）。
 - **完成标准**：配置能启动、迁移和停止角色（测试中用一个占位角色）；角色失败是警告，网关照常运行；fit 的 `bindings_test.go`
-  中的冲突被拒绝。
-- **涉及**：`akit-roles`（新）、`akit-config`、`akit`。
-- **fit**：`app/app.go`、`config/bindings.go`、`internal/bindcheck`；I105、I162。
+  中的冲突被拒绝；通过 Admin API 和 CLI 签发、列出、修改和撤销 token，token 只显示一次，只保存其哈希；v1 冻结把这些端点
+  标为新增。
+- **涉及**：`akit-roles`、`akit-config`、`akit-admin`、`akit`、`tests/compat/v1`。
+- **fit**：`app/app.go`、`config/bindings.go`、`internal/bindcheck`、`admin/tokens.go`、`cli/token.go`；I105、I159、I162。
 - **状态**：todo。
 
 ### I101 隧道 I：TCP 上的链路、注册和隧道
