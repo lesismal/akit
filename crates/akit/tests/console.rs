@@ -117,14 +117,16 @@ fn call(
     headers: &str,
     body: &str,
 ) -> (u16, String, String) {
-    let mut s = TcpStream::connect(console).unwrap();
+    let Ok(mut s) = TcpStream::connect(console) else {
+        return (0, String::new(), String::new());
+    };
     s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
-    write!(
+    // A connection the console closes as it is accepted may refuse the write.
+    let _ = write!(
         s,
         "{method} {path} HTTP/1.1\r\nHost: {console}\r\nConnection: close\r\nContent-Type: application/json\r\n{headers}Content-Length: {}\r\n\r\n{body}",
         body.len()
-    )
-    .unwrap();
+    );
     let mut raw = String::new();
     let _ = s.read_to_string(&mut raw);
     let (head, body) = raw.split_once("\r\n\r\n").unwrap_or((&raw, ""));
