@@ -13,7 +13,7 @@ akit 配置的每个字段：配置的每一部分是做什么的、一个示例
 akit 与 fit 不同之处，在表格中以 **akit：** 标出。
 
 <!-- BEGIN GENERATED: summary -->
-fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **485** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 73 个对象，下文各有一张表。
+fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **501** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 76 个对象，下文各有一张表。
 <!-- END GENERATED -->
 
 字段说明来自 fit 代码中的 `doc` 标签，是英文的，所以每个字段的完整说明在[英文版](config.md)的同一张表中；本页的表格给出每个字段的
@@ -46,7 +46,7 @@ fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../co
 - [遥测](#遥测)
 - [上限](#上限)
 - [引擎](#引擎)
-- [Admin API](#admin-api)
+- [Admin API](#admin-api)：[`admin`](#cfg-admin)、[`console`](#cfg-admin-console)、[`console.users[]`](#cfg-admin-console-users)、[`console.access`](#cfg-admin-console-access)
 - [默认 HTTPS](#默认-https)
 - [指标](#指标)
 - [ACME](#acme)：[`acme`](#cfg-acme)、[`on_demand`](#cfg-acme-on-demand)、[`shared_storage`](#cfg-acme-shared-storage)
@@ -990,7 +990,7 @@ Admin API 读取和替换运行中的配置：对 `/config/` 及其后的 JSON �
 的重载一样应用，并共用同一份历史。
 
 akit 只在回环地址或 Unix 套接字上提供 API，因为它还不能经 TLS 提供 API；`token_file` 要求每个请求带上 bearer 令牌；`access`
-指定它为哪些客户端地址提供服务（[访问控制列表](#访问控制列表)），并随每次应用的配置生效。控制台、store、助手和集群管理尚不支持。[Admin API 指南](../guides/admin-api.zh-CN.md)有完整的介绍。
+指定它为哪些客户端地址提供服务（[访问控制列表](#访问控制列表)），并随每次应用的配置生效。[控制台](#控制台)已支持（I89）；store、助手和集群管理尚不支持。[Admin API 指南](../guides/admin-api.zh-CN.md)有完整的介绍。
 
 ```fit
 admin {
@@ -1018,7 +1018,7 @@ route { match { host example.com }; handler respond { body hello } }
 | `client_ca_file` | 字符串 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
 | `cluster` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
 | `cluster_member` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
-| `console` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `console` | [对象](#cfg-admin-console) |  |  |
 | `disable_dashboard` | 布尔值 |  |  |
 | `history` | 整数，≥ 0 | `10` |  |
 | `key_file` | 字符串 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
@@ -1028,6 +1028,74 @@ route { match { host example.com }; handler respond { body hello } }
 | `node_id` | 字符串 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
 | `store` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
 | `token_file` | 字符串 |  | **akit：**在 akit 启动时读取。 |
+<!-- END GENERATED -->
+
+### 控制台
+
+`admin.console` 提供控制台：需要用户名和密码登录的网页，从中读取和修改运行中的配置；它监听自己的地址（默认
+`127.0.0.1:2020`），用 `cert_file` 和 `key_file` 提供 TLS，非回环地址必须有它们。用户是一个名字和一个 bcrypt 哈希，即
+`akit hash-password` 打印的哈希；密码从不以明文写出。一个客户端地址 15 分钟内登录失败 5 次即被拒绝 15 分钟；会话在
+`session_timeout` 内没有请求或总计超过 `session_lifetime` 时结束。控制台在进程内调用 Admin API，因此必须有 `admin`；同
+`admin` 的其余部分，它的设置在 akit 启动时读取，只有 `access` 随每次应用的配置变化。[控制台指南](../guides/console.zh-CN.md)
+有完整介绍。
+
+```fit
+admin {
+	console {
+		address 127.0.0.1:2020
+		users { username admin; password_hash "$2b$10$BnL9RRJoyXb.4XE2fYkhbuZmsS45tlwTM/ip3LmJmAW7ybYRggFd." }
+		access { allow 127.0.0.1 ::1 }
+	}
+}
+```
+
+### `admin.console`
+
+<!-- BEGIN GENERATED: admin.console -->
+<a id="cfg-admin-console"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-admin-console)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `users` | [对象](#cfg-admin-console-users)的列表 | 必填 |  |
+| `access` | [对象](#cfg-admin-console-access) |  |  |
+| `address` | 字符串 | `"127.0.0.1:2020"` |  |
+| `cert_file` | 字符串 |  |  |
+| `key_file` | 字符串 |  |  |
+| `max_conns` | 整数，≥ 0 | `32` | **akit：**超出时新连接在 accept 时被关闭：在 akio 的 A232 之前，不为已登录的连接保留名额，也不关闭未登录的连接来腾出位置。 |
+| `max_sessions` | 整数，≥ 0 | `64` |  |
+| `mptcp` | 布尔值 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `session_lifetime` | 时长 | `"12h"` |  |
+| `session_timeout` | 时长 | `"30m"` |  |
+<!-- END GENERATED -->
+
+### `admin.console.users[]`
+
+<!-- BEGIN GENERATED: admin.console.users[] -->
+<a id="cfg-admin-console-users"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-admin-console-users)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `password_hash` | 字符串 | 必填 | **akit：**由 `akit hash-password` 生成；fit 的哈希原样可用。 |
+| `username` | 字符串 | 必填 |  |
+<!-- END GENERATED -->
+
+### `admin.console.access`
+
+<!-- BEGIN GENERATED: admin.console.access -->
+<a id="cfg-admin-console-access"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-admin-console-access)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `allow` | 字符串的列表 |  |  |
+| `allow_files` | 字符串的列表 |  |  |
+| `deny` | 字符串的列表 |  |  |
+| `deny_files` | 字符串的列表 |  |  |
 <!-- END GENERATED -->
 
 ## 默认 HTTPS

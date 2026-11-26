@@ -19,6 +19,24 @@
 
 ## 日志
 
+### 2026-11-26：I89，控制台的配置与登录
+
+- 按 fit 的 `config.Console` 读取 `admin.console`（`akit-config`）：`address`（127.0.0.1:2020）、`cert_file` 和 `key_file`
+  （成对出现；非回环地址没有它们时被拒绝）、`users`（至少一个；有名字，不重复；哈希以 bcrypt 的 `$2` 开头）、
+  `session_timeout`（30m）、`session_lifetime`（12h）、`max_sessions`（64）、`max_conns`（32）、`access`；`mptcp` 以“尚不支持”
+  拒绝。只有 `admin`、没有监听器和路由的配置原本就有效。用户的 `Debug` 不含其哈希。用 `make v1-bless` 标记（16 项新增）；门禁的
+  `examples/console` 现在只因 `admin.store` 被拒绝（`make compat-bless`）；配置参考新增控制台一节，其表格由工具生成。
+- `akit_admin::console::login`，即 fit 的 `login` 包：bcrypt 检查（`akio_crypto::bcrypt`），同时最多两个，未知的名字以用户的代价
+  对一个假哈希检查；按地址锁定（IPv6 按 /64），加倍直到一小时，一个地址同一时间只检查一个，最多记录 4,096 个地址，表满也从不提前
+  结束锁定；用户连续失败 10 次后其检查被延缓，不是用户的名字合并计数；会话为 32 个随机字节，按其 SHA-256 保存，空闲、超过总时长、
+  登出或作为最旧者时结束；每个会话一个以常数时间比较的 CSRF 令牌；cookie 名带端口。时间为距一年前某个起点的时长，使从未设置的
+  时间早已过去，同 Go 的零时间。移植后的 fit `login` 测试通过（15 个），使用假时钟。
+- `akit hash-password`（`-cost`，10）：标准输入的第一行；从终端输入时询问两次。fit 会关闭终端回显，这需要 `tcsetattr`（unsafe）：
+  akio 请求 [A233](akio-api-requests.zh-CN.md#a233-关闭终端回显以读取密码)。在此之前的权宜实现：从终端输入时密码按输入显示，
+  提示中说明这一点以及如何隐藏。
+- 为本路线写的 akio 请求：A230（Argon2id）和 A231（XChaCha20-Poly1305），I93 等待它们；A232（控制台的连接限制，用于 I90）和 A233。
+- 测试：akit-config、akit-admin 的 `console`、akit 的 `cli` 和门禁的 `cargo test`；clippy 和 fmt。下一步：I90。
+
 ### 2026-11-26：akio 锁定到 `077a6710`：A200 与 A180
 
 - akio：akio main 上的 `077a6710`，包含 A200（absolute-form 请求目标，akio 的 ADR-177）和 A180（WebAssembly guest

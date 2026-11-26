@@ -715,3 +715,23 @@ admin.access.allow
 admin.access.deny
 admin.access.allow_files
 admin.access.deny_files
+
+# I89: the console: where it listens, its TLS (an address off loopback needs it), its users with
+# bcrypt hashes, sessions and limits, and its access, which follows every config applied. mptcp is
+# refused (akio's listeners do not offer Multipath TCP).
+admin.console
+admin.console.address
+admin.console.cert_file
+admin.console.key_file
+admin.console.users
+admin.console.users[].username
+admin.console.users[].password_hash
+admin.console.session_timeout
+admin.console.session_lifetime
+admin.console.max_sessions
+admin.console.max_conns
+admin.console.access
+admin.console.access.allow
+admin.console.access.deny
+admin.console.access.allow_files
+admin.console.access.deny_files

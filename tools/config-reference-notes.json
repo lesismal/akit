@@ -102,6 +102,14 @@
     "log.time_zone": {
       "en": "An IANA name is read from the system's zoneinfo files, as `access_log.time_zone`'s; fit embeds Go's zone database.",
       "zh": "IANA 名称从系统的 zoneinfo 文件读取，与 `access_log.time_zone` 相同；fit 内嵌了 Go 的时区数据库。"
+    },
+    "admin.console.users[].password_hash": {
+      "en": "`akit hash-password` makes one; fit's hashes are taken as they are.",
+      "zh": "由 `akit hash-password` 生成；fit 的哈希原样可用。"
+    },
+    "admin.console.max_conns": {
+      "en": "A connection past it is closed as it is accepted: none is kept for those with a login, and none without one is closed to make room, until akio's A232.",
+      "zh": "超出时新连接在 accept 时被关闭：在 akio 的 A232 之前，不为已登录的连接保留名额，也不关闭未登录的连接来腾出位置。"
     }
   }
 }

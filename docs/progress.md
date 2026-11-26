@@ -20,6 +20,33 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-26: I89, the console's config and logins
+
+- `admin.console` read as fit's `config.Console` (`akit-config`): `address` (127.0.0.1:2020),
+  `cert_file` and `key_file` (together; an address off loopback refused without them), `users`
+  (at least one; a name, no name twice; a hash that starts as bcrypt's, `$2`), `session_timeout`
+  (30m), `session_lifetime` (12h), `max_sessions` (64), `max_conns` (32), `access`; `mptcp`
+  refused as not supported yet. A config of `admin` alone, with no listener or route, was already
+  valid. A user's `Debug` leaves its hash out. Marked with `make v1-bless` (16 additions); the
+  gate's `examples/console` is now refused only for `admin.store` (`make compat-bless`); the
+  reference has a section on the console, its tables generated.
+- `akit_admin::console::login`, fit's package `login`: bcrypt checks (`akio_crypto::bcrypt`), two
+  at once, an unknown name checked against a dummy hash at the users' cost; lockouts by address (an
+  IPv6 /64), doubling to an hour, one check from an address at a time, 4,096 addresses kept and a
+  full table never ending a lockout early; a user's checks slowed after 10 failures in a row, names
+  of no user counted together; sessions of 32 random bytes kept by their SHA-256, ended idle, past
+  their lifetime, at logout or as the oldest; a CSRF token each, compared in constant time; the
+  cookie's name with the port. Times are durations from an origin a year back, so that a time never
+  set is long past, as Go's zero time. fit's `login` tests pass ported (15), with a fake clock.
+- `akit hash-password` (`-cost`, 10): the first line of standard input; from a terminal, asked
+  twice. fit turns the terminal's echo off, which takes `tcsetattr` (unsafe): akio request
+  [A233](akio-api-requests.md#a233-a-terminals-echo-turned-off-to-read-a-password). Stopgap until
+  then: from a terminal the password is seen as typed, and the prompt says so and how to hide it.
+- akio requests written for the track: A230 (Argon2id) and A231 (XChaCha20-Poly1305), which I93
+  waits for, A232 (the console's connection bounds, for I90) and A233.
+- Tests: `cargo test` of akit-config, akit-admin's `console`, akit's `cli` and the gate; clippy and
+  fmt. Next: I90.
+
 ### 2026-11-26: akio pinned at `077a6710`: A200 and A180
 
 - akio: `077a6710` on akio's main, with A200 (absolute-form request targets, akio's ADR-177) and

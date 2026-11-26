@@ -199,7 +199,7 @@ Logging and Access lists tracks, are unused; I94–I96 are reserved for the Cons
 | I86 | Access lists II: services and the forward proxy | I85 | done |
 | I87 | Access lists III: the Admin API and the reference | I85 | done |
 | **After 1.0: console and encrypted store** | | | |
-| I89 | Console I: `admin.console` and its logins: users, lockouts, sessions; `akit hash-password` | I87 | todo |
+| I89 | Console I: `admin.console` and its logins: users, lockouts, sessions; `akit hash-password` | I87 | done |
 | I90 | Console II: the console's server: TLS, access, CSRF and origins, the Admin API in process | I89, I27 | todo |
 | I91 | Console III: the pages: fit's workbench, the schema, the raw editors and transfer, the Logs page | I90, I83 | todo |
 | I92 | The Admin API over TLS, off loopback (L1) | I27 | todo |
@@ -1336,7 +1336,8 @@ without one it changes the running config as the Admin API does, and password ch
   `tests/compat`, `docs/reference`.
 - **fit**: `config/config.go` (`Console`), `config/validate.go` (`checkConsole`), `login`,
   `cli` (`hash-password`); I104.
-- **Status**: todo.
+- **Status**: done (2026-11-26). The terminal's echo stays on until akio's A233. See the progress
+  log.
 
 ### I90 Console II: the console's server
 

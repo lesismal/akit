@@ -315,14 +315,14 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 485 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 501 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
 | [`access`](#fields-access) | 5 | 5 | 0 |
 | [`access_log`](#fields-access-log) | 14 | 14 | 0 |
 | [`acme`](#fields-acme) | 43 | 43 | 0 |
-| [`admin`](#fields-admin) | 105 | 12 | 93 |
+| [`admin`](#fields-admin) | 105 | 28 | 77 |
 | [`auto_https`](#fields-auto-https) | 5 | 5 | 0 |
 | [`bittorrent`](#fields-bittorrent) | 160 | 0 | 160 |
 | [`engine`](#fields-engine) | 11 | 8 | 3 |
@@ -440,7 +440,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **合计** | 3821 | 485 | 3336 |
+| **合计** | 3821 | 501 | 3320 |
 
 <a id="fields-access"></a>
 
@@ -606,23 +606,23 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `admin.cluster_member.manager` | `string, required` | 尚不支持（not supported yet） |
 | `admin.cluster_member.token` | `string` | 尚不支持（not supported yet） |
 | `admin.cluster_member.token_file` | `string` | 尚不支持（not supported yet） |
-| `admin.console` | `object` | 尚不支持（not supported yet） |
-| `admin.console.access` | `object` | 尚不支持（not supported yet） |
-| `admin.console.access.allow` | `array<string>` | 尚不支持（not supported yet） |
-| `admin.console.access.allow_files` | `array<string>` | 尚不支持（not supported yet） |
-| `admin.console.access.deny` | `array<string>` | 尚不支持（not supported yet） |
-| `admin.console.access.deny_files` | `array<string>` | 尚不支持（not supported yet） |
-| `admin.console.address` | `string` | 尚不支持（not supported yet） |
-| `admin.console.cert_file` | `string` | 尚不支持（not supported yet） |
-| `admin.console.key_file` | `string` | 尚不支持（not supported yet） |
-| `admin.console.max_conns` | `integer` | 尚不支持（not supported yet） |
-| `admin.console.max_sessions` | `integer` | 尚不支持（not supported yet） |
+| `admin.console` | `object` | 已支持 |
+| `admin.console.access` | `object` | 已支持 |
+| `admin.console.access.allow` | `array<string>` | 已支持 |
+| `admin.console.access.allow_files` | `array<string>` | 已支持 |
+| `admin.console.access.deny` | `array<string>` | 已支持 |
+| `admin.console.access.deny_files` | `array<string>` | 已支持 |
+| `admin.console.address` | `string` | 已支持 |
+| `admin.console.cert_file` | `string` | 已支持 |
+| `admin.console.key_file` | `string` | 已支持 |
+| `admin.console.max_conns` | `integer` | 已支持 |
+| `admin.console.max_sessions` | `integer` | 已支持 |
 | `admin.console.mptcp` | `boolean` | 尚不支持（not supported yet） |
-| `admin.console.session_lifetime` | `duration` | 尚不支持（not supported yet） |
-| `admin.console.session_timeout` | `duration` | 尚不支持（not supported yet） |
-| `admin.console.users` | `array<object>, required` | 尚不支持（not supported yet） |
-| `admin.console.users[].password_hash` | `string, required` | 尚不支持（not supported yet） |
-| `admin.console.users[].username` | `string, required` | 尚不支持（not supported yet） |
+| `admin.console.session_lifetime` | `duration` | 已支持 |
+| `admin.console.session_timeout` | `duration` | 已支持 |
+| `admin.console.users` | `array<object>, required` | 已支持 |
+| `admin.console.users[].password_hash` | `string, required` | 已支持 |
+| `admin.console.users[].username` | `string, required` | 已支持 |
 | `admin.disable_dashboard` | `boolean` | 已支持 |
 | `admin.history` | `integer` | 已支持 |
 | `admin.key_file` | `string` | 尚不支持（not supported yet） |

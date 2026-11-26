@@ -100,6 +100,8 @@ first; its status here records the branch, then the akio commit akit pins.
 | A225 | An external security review of akio-crypto, akio-tls (with akio-x509), akio-http's HTTP/1 and HTTP/2 parsers and akio-wasm (no API) | requested (I80b): the threat model's L15 | 15 | I80, I80b |
 | A230 | Argon2id (RFC 9106), with BLAKE2b, in akio-crypto: the key derivation of fit's `fitstore` format | requested (I93): I93 waits for it | 15, 20 | I93 |
 | A231 | XChaCha20-Poly1305 (HChaCha20 and a 24-byte nonce) in akio-crypto: the AEAD of fit's `fitstore` format | requested (I93): I93 waits for it | 15, 20 | I93 |
+| A232 | An HTTP connection's idle timeout and close from its handler, and the connections accepted told to the application: fit's bounds on connections without a login | requested (I90): the console bounded as the Admin API meanwhile | 10, 11 | I90 |
+| A233 | A terminal's echo turned off (raw mode), to read a password | requested (I89): the password shown as typed meanwhile, the prompt says so | 14 | I89 |
 
 ## A1 TCP listeners on a running engine
 
@@ -2193,3 +2195,56 @@ Go's output.
 **How akit would use it.** akit-admin's `store` opens a store with the key A230 derives, the header
 as additional data, and seals each write with a new random nonce (`akio_crypto::rand`), as fit's
 `Store.seal`.
+
+## A232 An HTTP connection's idle timeout and close from its handler, and a table of the connections accepted
+
+**Status.** Requested by I90 (2026-11-26). The console works without it; meanwhile its connections
+are bounded as the Admin API's are (a stopgap recorded in [progress](progress.md)).
+
+**Problem.** fit's console (and, since fit's I161, its Admin API) bounds the connections of clients
+that have not logged in: one is closed 5 s after it was accepted, whatever it sends, until a
+request with a valid session comes; from then on it is kept for 2 minutes between requests, and
+put back on the 5 s rule when its session ends. When `max_conns` are open, a new connection closes
+the oldest unauthenticated one of the client holding the most (loopback counting as one client),
+keeping a quarter of the slots for connections with a login, rather than being refused. So clients
+without a login cannot hold the console's few connections, and an attacker reconnecting cannot
+keep an operator out. akio-http's server has the timeouts of `HttpConfig` (head, body, keep-alive)
+for every connection alike, and a handler has no handle on its connection: it can neither change
+its idle timeout nor close it later, and nothing tells an application of each connection accepted
+so that it can choose one to close.
+
+**Evidence.** At akio `077a6710`: akio-core's `Conn` has `set_idle_timeout` and `close`, but
+akio-http's `Context` exposes neither (no `conn()` accessor); `Listener::filter` (A3) sees the peer
+address only, and answers yes or no.
+
+**Suggested API.** `Context::connection(&self) -> ConnHandle`, a cheap clonable handle with
+`set_idle_timeout(Option<Duration>)`, `close()` and `id()`, usable from any thread; and a
+`Listener::on_accept(Fn(ConnHandle, SocketAddr))` hook (or the filter given the handle), so that an
+application keeps its own table of the connections open and closes the one it chooses. A deadline
+set at accept (`ConnHandle::close_at(Instant)`), cancelled by the handler, would cover the 5 s rule
+without a timer of the application's own.
+
+**How akit would use it.** The console (and the Admin API, as fit's I161 has them) keeps a table of
+its connections: each closed 5 s after accept unless a request with a valid session cancels it; a
+valid session sets 2 minutes idle; past `max_conns`, the oldest unauthenticated connection of the
+client holding the most is closed to make room.
+
+## A233 A terminal's echo turned off, to read a password
+
+**Status.** Requested by I89 (2026-11-26). `akit hash-password` works without it: from a terminal,
+the password is seen as it is typed, and the prompt says so and how to hide it (a stopgap recorded
+in [progress](progress.md)).
+
+**Problem.** `fit hash-password` reads a password from a terminal in raw mode, without echo,
+showing a `*` for each character (golang.org/x/term's `MakeRaw`). That takes `tcgetattr` and
+`tcsetattr`, which need `unsafe` (libc) that akit forbids; akio-sys has no terminal calls.
+
+**Evidence.** At akio `077a6710`, `crates/akio-sys/src/process.rs` has `allowed_cpus`,
+`pin_current_thread`, `signal_pipe` and `kill`; nothing in akio-sys names `termios`.
+
+**Suggested API.** In akio-sys: `terminal::raw(fd: BorrowedFd<'_>) -> io::Result<RawGuard>` (or
+`no_echo`), which puts the terminal in raw mode (or turns `ECHO` and `ICANON` off) and restores it
+when the guard is dropped, an error for a descriptor that is not a terminal.
+
+**How akit would use it.** `akit hash-password` reads the password from a terminal with echo off,
+as fit does, a `*` written for each character, and the note about the shown password goes.

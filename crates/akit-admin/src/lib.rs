@@ -56,6 +56,7 @@
 
 mod cache;
 mod configs;
+pub mod console;
 mod dashboard;
 #[cfg(any(test, feature = "fuzzing"))]
 #[doc(hidden)]

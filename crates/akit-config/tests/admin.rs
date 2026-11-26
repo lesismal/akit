@@ -117,7 +117,7 @@ fn refused() {
             "admin.disable_dashboard: expected a boolean",
         ),
         (r#""cert_file": "c""#, "admin.cert_file: not supported yet"),
-        (r#""console": {}"#, "admin.console: not supported yet"),
+        (r#""store": {}"#, "admin.store: not supported yet"),
         (r#""bogus": 1"#, "admin.bogus: unknown field"),
     ] {
         let e = admin(fields).unwrap_err();
@@ -187,4 +187,158 @@ fn as_the_api_keeps_it() {
     // A config with errors gives them, and no JSON.
     fs::write(&one, "{\"listeners\": 1}").unwrap();
     assert!(load_files(&[&one]).is_err());
+}
+
+const HASH: &str = "$2b$04$9u7ktsc3kKzS8dTbCbQyvOCT6NsjXTrZfX9t/cP8cs6oBwVjtwHZC";
+
+fn console(fields: &str) -> Result<akit_config::Console, Vec<String>> {
+    admin(&format!(r#""console": {{{fields}}}"#)).map(|a| a.unwrap().console.unwrap())
+}
+
+#[test]
+fn console_defaults_and_values() {
+    use akit_config::{
+        Console, ConsoleUser, DEFAULT_CONSOLE_MAX_CONNS, DEFAULT_CONSOLE_MAX_SESSIONS,
+        DEFAULT_CONSOLE_SESSION_LIFETIME, DEFAULT_CONSOLE_SESSION_TIMEOUT,
+    };
+    use std::time::Duration;
+    let users = format!(r#""users": [{{"username": "admin", "password_hash": "{HASH}"}}]"#);
+    let c = console(&users).unwrap();
+    assert_eq!(
+        c,
+        Console {
+            users: vec![ConsoleUser {
+                username: "admin".into(),
+                password_hash: HASH.into(),
+            }],
+            ..Console::default()
+        }
+    );
+    // fit's defaults.
+    assert_eq!(c.address, "127.0.0.1:2020");
+    assert_eq!(
+        (
+            DEFAULT_CONSOLE_SESSION_TIMEOUT,
+            DEFAULT_CONSOLE_SESSION_LIFETIME,
+            DEFAULT_CONSOLE_MAX_SESSIONS,
+            DEFAULT_CONSOLE_MAX_CONNS
+        ),
+        (
+            Duration::from_secs(1800),
+            Duration::from_secs(43200),
+            64,
+            32
+        )
+    );
+    // The hash is never in a Debug line.
+    assert!(!format!("{c:?}").contains(HASH));
+    let c = console(&format!(
+        r#"{users}, "address": "0.0.0.0:2020", "cert_file": "c.pem", "key_file": "k.pem",
+           "session_timeout": "5m", "session_lifetime": "1h", "max_sessions": 2, "max_conns": 3,
+           "access": {{"allow": ["127.0.0.1"]}}"#
+    ))
+    .unwrap();
+    assert_eq!(
+        (
+            c.address.as_str(),
+            c.cert_file.as_deref(),
+            c.key_file.as_deref(),
+            c.session_timeout,
+            c.session_lifetime,
+            c.max_sessions,
+            c.max_conns,
+        ),
+        (
+            "0.0.0.0:2020",
+            Some("c.pem"),
+            Some("k.pem"),
+            Duration::from_secs(300),
+            Duration::from_secs(3600),
+            2,
+            3
+        )
+    );
+    assert_eq!(c.access.unwrap().allow, vec!["127.0.0.1".to_owned()]);
+    // 0 is the default, as fit's.
+    let c = console(&format!(
+        r#"{users}, "session_timeout": "0s", "max_sessions": 0, "max_conns": 0"#
+    ))
+    .unwrap();
+    assert_eq!(
+        (c.session_timeout, c.max_sessions, c.max_conns),
+        (DEFAULT_CONSOLE_SESSION_TIMEOUT, 64, 32)
+    );
+    // A config of the console alone needs no listener, as fit's.
+    assert!(from_json(&format!(r#"{{"admin": {{"console": {{{users}}}}}}}"#), None).is_ok());
+}
+
+#[test]
+fn console_refused() {
+    let user = format!(r#"{{"username": "admin", "password_hash": "{HASH}"}}"#);
+    for (fields, want) in [
+        (String::new(), "admin.console.users: missing required field"),
+        (
+            r#""users": []"#.to_owned(),
+            "admin.console.users: list at least one user",
+        ),
+        (
+            format!(r#""users": [{user}, {user}]"#),
+            r#"admin.console.users[1].username: "admin" is listed twice"#,
+        ),
+        (
+            r#""users": [{"username": "", "password_hash": "$2a$10$x"}]"#.to_owned(),
+            "admin.console.users[0].username: the user name is empty",
+        ),
+        (
+            r#""users": [{"username": "a", "password_hash": "secret"}]"#.to_owned(),
+            "admin.console.users[0].password_hash: not a bcrypt hash: make one with akit hash-password",
+        ),
+        (
+            r#""users": [{"username": "a"}]"#.to_owned(),
+            "admin.console.users[0].password_hash: missing required field",
+        ),
+        (
+            format!(r#""users": [{user}], "address": "0.0.0.0:2020""#),
+            r#"admin.console.address: "0.0.0.0:2020" is not a loopback address: set cert_file and key_file"#,
+        ),
+        (
+            format!(r#""users": [{user}], "cert_file": "c""#),
+            "admin.console: cert_file and key_file go together",
+        ),
+        (
+            format!(r#""users": [{user}], "address": "2020""#),
+            "admin.console.address: ",
+        ),
+        (
+            format!(r#""users": [{user}], "mptcp": true"#),
+            "admin.console.mptcp: not supported yet",
+        ),
+        (
+            format!(r#""users": [{user}], "session_timeout": "soon""#),
+            "admin.console.session_timeout: \"soon\" is not a duration",
+        ),
+        (
+            format!(r#""users": [{user}], "max_conns": -1"#),
+            "admin.console.max_conns: -1 is less than the minimum 0",
+        ),
+        (
+            format!(r#""users": [{user}], "access": {{"allow": ["x"]}}"#),
+            "admin.console.access.allow[0]",
+        ),
+        (
+            format!(r#""users": [{user}], "bogus": 1"#),
+            "admin.console.bogus: unknown field",
+        ),
+    ] {
+        let e = console(&fields).unwrap_err();
+        assert!(e.iter().any(|m| m.contains(want)), "{fields}: {e:?}");
+    }
+    // Off loopback with TLS is fine; on loopback without it too.
+    assert!(console(&format!(r#""users": [{user}], "address": "[::1]:2020""#)).is_ok());
+    assert!(
+        console(&format!(
+            r#""users": [{user}], "address": ":2020", "cert_file": "c", "key_file": "k""#
+        ))
+        .is_ok()
+    );
 }

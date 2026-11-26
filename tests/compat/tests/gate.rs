@@ -693,6 +693,74 @@ fn supported_fields_are_read() {
             r#"{"admin": {"disable_dashboard": true}}"#.into(),
             |c| c.admin.as_ref().unwrap().disable_dashboard,
         ),
+        ("admin.console", console_sample(""), |c| console_of(c).users.len() == 1),
+        ("admin.console.users", console_sample(""), |c| console_of(c).users.len() == 1),
+        ("admin.console.users[].username", console_sample(""), |c| {
+            console_of(c).users[0].username == "a"
+        }),
+        ("admin.console.users[].password_hash", console_sample(""), |c| {
+            console_of(c).users[0].password_hash == "$2b$04$x"
+        }),
+        (
+            "admin.console.address",
+            console_sample(r#", "address": "127.0.0.1:9""#),
+            |c| console_of(c).address == "127.0.0.1:9",
+        ),
+        (
+            "admin.console.cert_file",
+            console_sample(r#", "cert_file": "c.pem", "key_file": "k.pem""#),
+            |c| console_of(c).cert_file.as_deref() == Some("c.pem"),
+        ),
+        (
+            "admin.console.key_file",
+            console_sample(r#", "cert_file": "c.pem", "key_file": "k.pem""#),
+            |c| console_of(c).key_file.as_deref() == Some("k.pem"),
+        ),
+        (
+            "admin.console.session_timeout",
+            console_sample(r#", "session_timeout": "1m""#),
+            |c| console_of(c).session_timeout == std::time::Duration::from_secs(60),
+        ),
+        (
+            "admin.console.session_lifetime",
+            console_sample(r#", "session_lifetime": "1h""#),
+            |c| console_of(c).session_lifetime == std::time::Duration::from_secs(3600),
+        ),
+        (
+            "admin.console.max_sessions",
+            console_sample(r#", "max_sessions": 3"#),
+            |c| console_of(c).max_sessions == 3,
+        ),
+        (
+            "admin.console.max_conns",
+            console_sample(r#", "max_conns": 3"#),
+            |c| console_of(c).max_conns == 3,
+        ),
+        (
+            "admin.console.access",
+            console_sample(r#", "access": {"allow": ["127.0.0.1"]}"#),
+            |c| console_of(c).access.is_some(),
+        ),
+        (
+            "admin.console.access.allow",
+            console_sample(r#", "access": {"allow": ["127.0.0.1"]}"#),
+            |c| console_of(c).access.as_ref().unwrap().allow == ["127.0.0.1"],
+        ),
+        (
+            "admin.console.access.deny",
+            console_sample(r#", "access": {"deny": ["192.0.2.1"]}"#),
+            |c| console_of(c).access.as_ref().unwrap().deny == ["192.0.2.1"],
+        ),
+        (
+            "admin.console.access.allow_files",
+            console_sample(r#", "access": {"allow_files": ["a.txt"]}"#),
+            |c| console_of(c).access.as_ref().unwrap().allow_files == ["a.txt"],
+        ),
+        (
+            "admin.console.access.deny_files",
+            console_sample(r#", "access": {"deny_files": ["d.txt"]}"#),
+            |c| console_of(c).access.as_ref().unwrap().deny_files == ["d.txt"],
+        ),
         ("limits", r#"{"limits": {}}"#.into(), |c| {
             c.limits == akit_config::Limits::default()
         }),
@@ -3127,7 +3195,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 73] = [
+    let objects: [(&str, &str, Option<&str>); 76] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         (
             "providers[].kubernetes",
@@ -3140,6 +3208,9 @@ fn akit_config_lists_match_the_inventory() {
             None,
         ),
         ("admin", "ADMIN_FIELDS", Some("ADMIN_FIT_ONLY")),
+        ("admin.console", "CONSOLE_FIELDS", Some("CONSOLE_FIT_ONLY")),
+        ("admin.console.users[]", "CONSOLE_USER_FIELDS", None),
+        ("admin.console.access", "ACCESS_FIELDS", None),
         ("acme", "ACME_FIELDS", Some("ACME_FIT_ONLY")),
         ("acme.on_demand", "ON_DEMAND_FIELDS", None),
         ("acme.shared_storage", "SHARED_STORAGE_FIELDS", None),
@@ -3814,4 +3885,16 @@ fn reference_matches_akit_config() {
             );
         }
     }
+}
+
+/// A config whose `admin.console` has one user and `extra` members (I89).
+fn console_sample(extra: &str) -> String {
+    format!(
+        r#"{{"admin": {{"console": {{"users": [{{"username": "a", "password_hash": "$2b$04$x"}}]{extra}}}}}}}"#
+    )
+}
+
+/// The `admin.console` of `c`.
+fn console_of(c: &Config) -> &akit_config::Console {
+    c.admin.as_ref().unwrap().console.as_ref().unwrap()
 }

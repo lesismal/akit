@@ -40,6 +40,7 @@
 mod adapt;
 mod build_cli;
 pub(crate) mod flags;
+mod hash_password;
 
 use std::io::Read;
 use std::process::ExitCode;
@@ -72,6 +73,9 @@ Commands:
              nginx config or a Caddyfile into one of them
   fmt        write a config's files again, each in its own format
   build      build an akit with more modules, or fewer, as akit build -h says
+  hash-password
+             print the bcrypt hash of a password read from standard input, for
+             admin.console's users and basic_auth
   version    print akit's version and the akio commit it is built on
   help       print this help
 
@@ -1327,6 +1331,7 @@ pub fn main(akit_version: &str, modules: &[&'static [Info<HandlerParams>]]) -> E
         "adapt" => adapt::adapt(rest),
         "fmt" => adapt::fmt(rest),
         "build" => build_cli::build(rest),
+        "hash-password" => hash_password::hash_password(rest),
         "version" | "-V" | "--version" => {
             if let Err(u) = flags::parse("version", rest, &[]) {
                 return usage_error(&u);

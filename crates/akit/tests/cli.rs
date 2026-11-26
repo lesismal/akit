@@ -313,3 +313,49 @@ fn run_stops_on_sigint_from_a_directory() {
     assert_eq!(code, Some(0));
     assert_eq!(out, "akit: shutting down\nakit: stopped\n");
 }
+
+/// `akit hash-password` (I89), as fit's: the first line of standard input hashed, at `-cost`; an
+/// empty or too long password, or an argument, refused.
+#[test]
+fn hash_password_from_standard_input() {
+    let run = |args: &[&str], input: &[u8]| {
+        let mut child = Command::new(env!("CARGO_BIN_EXE_akit"))
+            .arg("hash-password")
+            .args(args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        child.stdin.take().unwrap().write_all(input).unwrap();
+        child.wait_with_output().unwrap()
+    };
+    let out = run(&["-cost", "4"], b"correct horse\nnext line\n");
+    assert!(out.status.success(), "{out:?}");
+    let hash = String::from_utf8(out.stdout).unwrap();
+    let hash = hash.trim_end();
+    assert!(hash.starts_with("$2b$04$"), "{hash}");
+    assert!(
+        akio_crypto::bcrypt::Hash::parse(hash)
+            .unwrap()
+            .verify(b"correct horse")
+    );
+    // The default cost, 10.
+    let out = run(&[], b"pw\n");
+    assert!(
+        String::from_utf8(out.stdout)
+            .unwrap()
+            .starts_with("$2b$10$")
+    );
+    for (args, input, code, want) in [
+        (&[][..], &b"\n"[..], 1, "the password is empty"),
+        (&[], &[b'x'; 80][..], 1, "at most 72 bytes"),
+        (&["-cost", "x"], b"pw\n", 2, "invalid value"),
+        (&["pw"], b"", 2, "unexpected argument"),
+    ] {
+        let out = run(args, input);
+        assert_eq!(out.status.code(), Some(code), "{args:?}");
+        let err = String::from_utf8(out.stderr).unwrap();
+        assert!(err.contains(want), "{args:?}: {err}");
+    }
+}

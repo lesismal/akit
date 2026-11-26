@@ -378,14 +378,14 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 485 supported.
+3821 fields in 121 sections, at fit `7daee573`; 501 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
 | [`access`](#fields-access) | 5 | 5 | 0 |
 | [`access_log`](#fields-access-log) | 14 | 14 | 0 |
 | [`acme`](#fields-acme) | 43 | 43 | 0 |
-| [`admin`](#fields-admin) | 105 | 12 | 93 |
+| [`admin`](#fields-admin) | 105 | 28 | 77 |
 | [`auto_https`](#fields-auto-https) | 5 | 5 | 0 |
 | [`bittorrent`](#fields-bittorrent) | 160 | 0 | 160 |
 | [`engine`](#fields-engine) | 11 | 8 | 3 |
@@ -503,7 +503,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 485 | 3336 |
+| **Total** | 3821 | 501 | 3320 |
 
 <a id="fields-access"></a>
 
@@ -669,23 +669,23 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `admin.cluster_member.manager` | `string, required` | not supported yet |
 | `admin.cluster_member.token` | `string` | not supported yet |
 | `admin.cluster_member.token_file` | `string` | not supported yet |
-| `admin.console` | `object` | not supported yet |
-| `admin.console.access` | `object` | not supported yet |
-| `admin.console.access.allow` | `array<string>` | not supported yet |
-| `admin.console.access.allow_files` | `array<string>` | not supported yet |
-| `admin.console.access.deny` | `array<string>` | not supported yet |
-| `admin.console.access.deny_files` | `array<string>` | not supported yet |
-| `admin.console.address` | `string` | not supported yet |
-| `admin.console.cert_file` | `string` | not supported yet |
-| `admin.console.key_file` | `string` | not supported yet |
-| `admin.console.max_conns` | `integer` | not supported yet |
-| `admin.console.max_sessions` | `integer` | not supported yet |
+| `admin.console` | `object` | supported |
+| `admin.console.access` | `object` | supported |
+| `admin.console.access.allow` | `array<string>` | supported |
+| `admin.console.access.allow_files` | `array<string>` | supported |
+| `admin.console.access.deny` | `array<string>` | supported |
+| `admin.console.access.deny_files` | `array<string>` | supported |
+| `admin.console.address` | `string` | supported |
+| `admin.console.cert_file` | `string` | supported |
+| `admin.console.key_file` | `string` | supported |
+| `admin.console.max_conns` | `integer` | supported |
+| `admin.console.max_sessions` | `integer` | supported |
 | `admin.console.mptcp` | `boolean` | not supported yet |
-| `admin.console.session_lifetime` | `duration` | not supported yet |
-| `admin.console.session_timeout` | `duration` | not supported yet |
-| `admin.console.users` | `array<object>, required` | not supported yet |
-| `admin.console.users[].password_hash` | `string, required` | not supported yet |
-| `admin.console.users[].username` | `string, required` | not supported yet |
+| `admin.console.session_lifetime` | `duration` | supported |
+| `admin.console.session_timeout` | `duration` | supported |
+| `admin.console.users` | `array<object>, required` | supported |
+| `admin.console.users[].password_hash` | `string, required` | supported |
+| `admin.console.users[].username` | `string, required` | supported |
 | `admin.disable_dashboard` | `boolean` | supported |
 | `admin.history` | `integer` | supported |
 | `admin.key_file` | `string` | not supported yet |

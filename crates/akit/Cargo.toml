@@ -20,6 +20,7 @@ path = "src/bin/akit.rs"
 
 [dependencies]
 akio = { workspace = true }
+akio-crypto = { workspace = true }
 akio-sys = { workspace = true }
 akit-admin = { workspace = true }
 akit-provider = { workspace = true }
@@ -35,7 +36,6 @@ akit-runtime = { workspace = true }
 akit-tls = { workspace = true }
 
 [dev-dependencies]
-akio-crypto = { workspace = true }
 akio-deflate = { workspace = true }
 akio-h3 = { workspace = true }
 akio-http = { workspace = true }

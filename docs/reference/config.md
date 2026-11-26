@@ -16,7 +16,7 @@ YAML or JSON, any of them split across several files. Where akit differs from fi
 so in a note marked **akit:**.
 
 <!-- BEGIN GENERATED: summary -->
-akit reads **485** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 73 objects akit reads, each has its table below.
+akit reads **501** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 76 objects akit reads, each has its table below.
 <!-- END GENERATED -->
 
 How to read the tables:
@@ -52,7 +52,7 @@ is not there, a plugin that does not compile are errors.
 - [Telemetry](#telemetry)
 - [Limits](#limits)
 - [Engine](#engine)
-- [Admin API](#admin-api)
+- [Admin API](#admin-api): [`admin`](#cfg-admin), [`console`](#cfg-admin-console), [`console.users[]`](#cfg-admin-console-users), [`console.access`](#cfg-admin-console-access)
 - [HTTPS by default](#https-by-default)
 - [Metrics](#metrics)
 - [ACME](#acme): [`acme`](#cfg-acme), [`on_demand`](#cfg-acme-on-demand), [`shared_storage`](#cfg-acme-shared-storage)
@@ -999,8 +999,9 @@ is. A change through the API is applied as a SIGHUP's reload is, and shares its 
 
 akit serves the API on a loopback address or a Unix socket only, as it does not serve the API over
 TLS yet; `token_file` asks every request for a bearer token; `access` says which client addresses it
-serves ([access lists](#access-lists)), and follows every config applied. The console, the store,
-the assistant and cluster management are not supported yet. The [Admin API guide](../guides/admin-api.md) walks
+serves ([access lists](#access-lists)), and follows every config applied. The
+[console](#the-console) is supported (I89); the store, the assistant and cluster management are not
+supported yet. The [Admin API guide](../guides/admin-api.md) walks
 through it.
 
 ```fit
@@ -1027,7 +1028,7 @@ route { match { host example.com }; handler respond { body hello } }
 | `client_ca_file` | string |  | **Not supported yet**: refused by name. A PEM file with the CAs that clients' certificates must chain to: with it, every client must present a valid certificate, besides the token, before it is heard. Needs cert_file and key_file; read again when it changes, as they are. |
 | `cluster` | object |  | **Not supported yet**: refused by name. Manage other fits from this one, the manager: their addresses and credentials, added on the workbench's Cluster pages, are kept in the store, and each one's state is read every poll_interval. Off when left out, and then nothing is called. Needs store and console. See decision 033. |
 | `cluster_member` | object |  | **Not supported yet**: refused by name. Link this fit out to a manager of many fits, which then manages it through the link as it manages others over HTTP: for a fit behind NAT, or with no port open to the manager. The manager's Add by enrollment gives the line to paste here. Off when left out, and then nothing is dialed. Read when fit starts. See decision 033. |
-| `console` | object |  | **Not supported yet**: refused by name. Serve the console, web pages behind a user name and password from which the whole config, admin aside, is read and changed; off when left out. |
+| `console` | [object](#cfg-admin-console) |  | Serve the console, web pages behind a user name and password from which the whole config, admin aside, is read and changed; off when left out. |
 | `disable_dashboard` | boolean |  | Do not serve the dashboard, the read-only web pages at /dashboard/ that show the routes, services, upstreams and their health, certificates and config versions from the Admin API's GET endpoints; served when left out or false. |
 | `history` | integer, 0 or more | `10` | How many of the configs applied, the running one included, are kept to be read back. 10 when left out or 0. |
 | `key_file` | string |  | **Not supported yet**: refused by name. A PEM file with the certificate's private key. |
@@ -1037,6 +1038,71 @@ route { match { host example.com }; handler respond { body hello } }
 | `node_id` | string |  | **Not supported yet**: refused by name. This fit's node ID, which the Admin API's GET /node answers and a manager of many fits knows it by: 1 to 64 letters, digits, '.', '_' and '-', starting with a letter or digit. Left out, fit makes one, a random UUID, once, and keeps it in the store, or without one in a file beside the config, as fit.node-id beside fit.json; set it where neither lasts, as in a container whose config is read-only. |
 | `store` | object |  | **Not supported yet**: refused by name. Keep the config encrypted in a file of its own, the store, which is the base config fit runs from then on: every config applied is written to it, and what this file sets beside admin is only the store's first content, used when the store does not exist yet. Left out, the config lives in this file. |
 | `token_file` | string |  | A file holding a token that every request must carry, as "Authorization: Bearer <token>"; no token is asked for when left out. **akit:** Read when akit starts. |
+<!-- END GENERATED -->
+
+### The console
+
+`admin.console` serves the console: web pages behind a user name and password from which the
+running config is read and changed, on an address of its own (`127.0.0.1:2020` by default), with
+TLS from `cert_file` and `key_file`, which an address off loopback must have. A user is a name and
+a bcrypt hash, as `akit hash-password` prints it; a password is never written in clear text. A
+client address that fails 5 logins in 15 minutes is refused for 15 minutes; sessions end after
+`session_timeout` without a request or `session_lifetime` in all. The console calls the Admin API in
+process, so `admin` must be there; like the rest of `admin`, its settings are read when akit starts,
+but for `access`, which follows every config applied. The [console guide](../guides/console.md)
+walks through it.
+
+```fit
+admin {
+	console {
+		address 127.0.0.1:2020
+		users { username admin; password_hash "$2b$10$BnL9RRJoyXb.4XE2fYkhbuZmsS45tlwTM/ip3LmJmAW7ybYRggFd." }
+		access { allow 127.0.0.1 ::1 }
+	}
+}
+```
+
+### `admin.console`
+
+<!-- BEGIN GENERATED: admin.console -->
+<a id="cfg-admin-console"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `users` | list of [object](#cfg-admin-console-users) | required | Who may log in: at least one user. |
+| `access` | [object](#cfg-admin-console-access) |  | The client addresses the console serves, deciding before the global access, which applies to the console too: a connection either refuses is closed as soon as it is accepted. It follows every config applied, without a restart. Set allow to "127.0.0.1" (and "::1") to keep local access whatever the global access says. Every address is served, unless the global access says otherwise, when left out. |
+| `address` | string | `"127.0.0.1:2020"` | The host and port the console listens on. A host that is not a loopback address needs cert_file and key_file, so that passwords never cross a network in the clear. 127.0.0.1:2020 when left out. |
+| `cert_file` | string |  | A PEM file with the console's certificate, followed by any intermediates; with key_file, the console is served over TLS. |
+| `key_file` | string |  | A PEM file with the certificate's private key. |
+| `max_conns` | integer, 0 or more | `32` | The most connections the console keeps open at once, a quarter of them kept for those with a login. When they are taken, a new connection closes the oldest of those without one, of the client holding the most, and is closed as it is accepted only when every one has a login; one past a client's share, a quarter of them, is closed too, but for loopback clients. 32 when left out or 0. **akit:** A connection past it is closed as it is accepted: none is kept for those with a login, and none without one is closed to make room, until akio's A232. |
+| `max_sessions` | integer, 0 or more | `64` | The most logins kept at once; one more ends the oldest. 64 when left out or 0. |
+| `mptcp` | boolean |  | **Not supported yet**: refused by name. Listen the console with Multipath TCP where the kernel offers it (Linux 5.6+, net.mptcp.enabled), falling back to plain TCP where it does not. Off by default. |
+| `session_lifetime` | duration | `"12h"` | How long a login lasts at most, however busy. 12h when left out. |
+| `session_timeout` | duration | `"30m"` | How long a login lasts without a request. 30m when left out. |
+<!-- END GENERATED -->
+
+### `admin.console.users[]`
+
+<!-- BEGIN GENERATED: admin.console.users[] -->
+<a id="cfg-admin-console-users"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `password_hash` | string | required | The bcrypt hash of the user's password, as akit hash-password makes it. **akit:** `akit hash-password` makes one; fit's hashes are taken as they are. |
+| `username` | string | required | The user's name. |
+<!-- END GENERATED -->
+
+### `admin.console.access`
+
+<!-- BEGIN GENERATED: admin.console.access -->
+<a id="cfg-admin-console-access"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `allow` | list of string |  | IP addresses and CIDR prefixes served, as "10.0.0.0/8" or "2001:db8::/32": with any entry here or in allow_files, every address neither holds is refused, unless deny refuses it first. |
+| `allow_files` | list of string |  | Files of more allow entries, one on each line, each line told apart by its content: an address or prefix, with what follows # or ; left out, as the lists published for firewalls are written; a range, first-last; an eMule ipfilter.dat line, first - last , level , name, where a level above 127 is not listed; or a PeerGuardian .p2p line, name:first-last. IPv4 addresses of ranges may have leading zeros. Blank lines and lines that begin with #, ; or // are left out; any other line is an error. Read when the config is applied, and applied again when one changes; each at most 64 MiB. |
+| `deny` | list of string |  | IP addresses and CIDR prefixes refused, whatever allow holds. |
+| `deny_files` | list of string |  | Files of more deny entries, written as allow_files. |
 <!-- END GENERATED -->
 
 ## HTTPS by default

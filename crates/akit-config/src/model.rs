@@ -201,9 +201,9 @@ pub const DEFAULT_ADMIN_MAX_CONFIG_BYTES: usize = 4 << 20;
 /// fit's default `admin.max_conns`.
 pub const DEFAULT_ADMIN_MAX_CONNS: usize = 16;
 
-/// `admin`: the Admin API, as fit's `config.Admin` (decision 006): so far its address, history,
-/// limits and token (I27). Its TLS, access lists, store, console and the rest are refused as not
-/// supported yet.
+/// `admin`: the Admin API, as fit's `config.Admin` (decision 006): its address, history, limits
+/// and token (I27), dashboard (I63), access lists (I87) and console (I89). Its TLS, store and the
+/// rest are refused as not supported yet.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Admin {
     /// `address`: a loopback host and port, or `unix/` and the path of a Unix socket, made 0600
@@ -230,6 +230,86 @@ pub struct Admin {
     /// which applies to the API too. Unlike the rest of `admin` it follows every config applied.
     /// Refused with an API on a Unix socket, whose peers have no address.
     pub access: Option<Access>,
+    /// `console` (I89): the web console, a server of its own with logins, which calls the API in
+    /// process. Read when akit starts, as the rest of `admin`, but for its `access`.
+    pub console: Option<Console>,
+}
+
+/// fit's default `admin.console.address`.
+pub const DEFAULT_CONSOLE_ADDRESS: &str = "127.0.0.1:2020";
+/// fit's default `admin.console.session_timeout`: how long a login lasts without a request.
+pub const DEFAULT_CONSOLE_SESSION_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+/// fit's default `admin.console.session_lifetime`: how long a login lasts at most.
+pub const DEFAULT_CONSOLE_SESSION_LIFETIME: Duration = Duration::from_secs(12 * 60 * 60);
+/// fit's default `admin.console.max_sessions`.
+pub const DEFAULT_CONSOLE_MAX_SESSIONS: usize = 64;
+/// fit's default `admin.console.max_conns`.
+pub const DEFAULT_CONSOLE_MAX_CONNS: usize = 32;
+
+/// `admin.console`, as fit's `config.Console` and its `checkConsole` (I89): where the console
+/// listens, its TLS, who may log in, and its limits.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Console {
+    /// `address`: a host and port; [`DEFAULT_CONSOLE_ADDRESS`] when left out. A host that is not
+    /// a loopback one needs `cert_file` and `key_file`, so that passwords never cross a network
+    /// in the clear.
+    pub address: String,
+    /// `cert_file`: the console's certificate, followed by any intermediates; with `key_file`,
+    /// the console is served over TLS.
+    pub cert_file: Option<String>,
+    /// `key_file`: the certificate's private key.
+    pub key_file: Option<String>,
+    /// `users`: who may log in, at least one.
+    pub users: Vec<ConsoleUser>,
+    /// `session_timeout`: how long a login lasts without a request;
+    /// [`DEFAULT_CONSOLE_SESSION_TIMEOUT`] when left out or 0.
+    pub session_timeout: Duration,
+    /// `session_lifetime`: how long a login lasts at most; [`DEFAULT_CONSOLE_SESSION_LIFETIME`]
+    /// when left out or 0.
+    pub session_lifetime: Duration,
+    /// `max_sessions`: the most logins kept, one more ending the oldest;
+    /// [`DEFAULT_CONSOLE_MAX_SESSIONS`] when left out or 0.
+    pub max_sessions: usize,
+    /// `max_conns`: the most connections the console keeps open at once;
+    /// [`DEFAULT_CONSOLE_MAX_CONNS`] when left out or 0.
+    pub max_conns: usize,
+    /// `access`: the client addresses the console serves, deciding before the global access,
+    /// which applies to the console too. It follows every config applied.
+    pub access: Option<Access>,
+}
+
+impl Default for Console {
+    fn default() -> Console {
+        Console {
+            address: DEFAULT_CONSOLE_ADDRESS.to_owned(),
+            cert_file: None,
+            key_file: None,
+            users: Vec::new(),
+            session_timeout: DEFAULT_CONSOLE_SESSION_TIMEOUT,
+            session_lifetime: DEFAULT_CONSOLE_SESSION_LIFETIME,
+            max_sessions: DEFAULT_CONSOLE_MAX_SESSIONS,
+            max_conns: DEFAULT_CONSOLE_MAX_CONNS,
+            access: None,
+        }
+    }
+}
+
+/// A user of the console: a name and the bcrypt hash of its password, as `akit hash-password`
+/// makes it.
+#[derive(Clone, PartialEq, Eq)]
+pub struct ConsoleUser {
+    /// `username`.
+    pub username: String,
+    /// `password_hash`: a bcrypt hash.
+    pub password_hash: String,
+}
+
+impl std::fmt::Debug for ConsoleUser {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ConsoleUser")
+            .field("username", &self.username)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Default for Admin {
@@ -242,6 +322,7 @@ impl Default for Admin {
             max_conns: DEFAULT_ADMIN_MAX_CONNS,
             disable_dashboard: false,
             access: None,
+            console: None,
         }
     }
 }
@@ -2092,7 +2173,7 @@ const CONFIG_FIT_ONLY: &[&str] = &[
     "bittorrent",
 ];
 // I26: the Admin API's address, history and limits; I27: its token; I63: its dashboard; I87: its
-// access lists. Its TLS waits for the API to be served over TLS.
+// access lists; I89: its console. Its TLS waits for the API to be served over TLS.
 const ADMIN_FIELDS: &[&str] = &[
     "address",
     "token_file",
@@ -2101,7 +2182,22 @@ const ADMIN_FIELDS: &[&str] = &[
     "max_conns",
     "disable_dashboard",
     "access",
+    "console",
 ];
+// I89: the console. Multipath TCP is not offered by akio's listeners.
+const CONSOLE_FIELDS: &[&str] = &[
+    "address",
+    "cert_file",
+    "key_file",
+    "users",
+    "session_timeout",
+    "session_lifetime",
+    "max_sessions",
+    "max_conns",
+    "access",
+];
+const CONSOLE_FIT_ONLY: &[&str] = &["mptcp"];
+const CONSOLE_USER_FIELDS: &[&str] = &["username", "password_hash"];
 const ADMIN_FIT_ONLY: &[&str] = &[
     "mptcp",
     "cert_file",
@@ -2109,7 +2205,6 @@ const ADMIN_FIT_ONLY: &[&str] = &[
     "client_ca_file",
     "node_id",
     "store",
-    "console",
     "assistant",
     "cluster",
     "cluster_member",
@@ -3718,8 +3813,141 @@ fn admin(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Admin> {
             );
         }
     }
+    if let Some(v) = o.take("console") {
+        a.console = console(d, v, &o.at("console"));
+    }
     o.finish(d, ADMIN_FIELDS, ADMIN_FIT_ONLY);
     Some(a)
+}
+
+/// `admin.console`, as fit's `config.Console` and its `checkConsole` (I89).
+fn console(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Console> {
+    let mut o = d.object(n, path)?;
+    let mut c = Console::default();
+    let mut address_off = None;
+    if let Some(v) = o.take("address") {
+        let p = o.at("address");
+        if let Some(s) = d.string(v, &p).filter(|s| !s.is_empty()) {
+            match check_address(&s) {
+                Err(msg) => d.error(v.off, &p, msg),
+                Ok(()) => address_off = Some(v.off),
+            }
+            c.address = s;
+        }
+    }
+    for (key, slot) in [
+        ("cert_file", &mut c.cert_file),
+        ("key_file", &mut c.key_file),
+    ] {
+        if let Some(v) = o.take(key) {
+            *slot = d.string(v, &o.at(key)).filter(|s| !s.is_empty());
+        }
+    }
+    if c.cert_file.is_some() != c.key_file.is_some() {
+        d.error(n.off, path, "cert_file and key_file go together");
+    }
+    if c.cert_file.is_none() || c.key_file.is_none() {
+        // The default address is a loopback one; one written is checked here.
+        if let Some(off) = address_off.filter(|_| !loopback_host(&c.address)) {
+            d.error(
+                off,
+                &crate::error::join_field(path, "address"),
+                format!(
+                    "{:?} is not a loopback address: set cert_file and key_file, so that \
+                     passwords are not sent in the clear",
+                    c.address
+                ),
+            );
+        }
+    }
+    if let Some(v) = o.require(d, "users") {
+        let p = o.at("users");
+        if let crate::json::Kind::Array(items) = &v.kind {
+            if items.is_empty() {
+                d.error(v.off, &p, "list at least one user");
+            }
+            for (i, item) in items.iter().enumerate() {
+                let at = crate::error::join_index(&p, i);
+                let Some(u) = console_user(d, item, &at) else {
+                    continue;
+                };
+                if !u.username.is_empty() && c.users.iter().any(|o| o.username == u.username) {
+                    d.error(
+                        item.off,
+                        &crate::error::join_field(&at, "username"),
+                        format!("{:?} is listed twice", u.username),
+                    );
+                }
+                c.users.push(u);
+            }
+        } else {
+            d.error(
+                v.off,
+                &p,
+                format!("expected an array, got {}", v.kind.name()),
+            );
+        }
+    }
+    for (key, slot) in [
+        ("session_timeout", &mut c.session_timeout),
+        ("session_lifetime", &mut c.session_lifetime),
+    ] {
+        if let Some(v) = o.take(key) {
+            if let Some(t) = d.duration(v, &o.at(key)).filter(|t| !t.is_zero()) {
+                *slot = t;
+            }
+        }
+    }
+    // fit's ints, at least 0; 0 is the default.
+    for (key, slot) in [
+        ("max_sessions", &mut c.max_sessions),
+        ("max_conns", &mut c.max_conns),
+    ] {
+        if let Some(v) = o.take(key) {
+            if let Some(n) = d
+                .int(v, &o.at(key), 0, i64::MAX)
+                .and_then(|n| usize::try_from(n).ok())
+                .filter(|n| *n != 0)
+            {
+                *slot = n;
+            }
+        }
+    }
+    if let Some(v) = o.take("access") {
+        c.access = access(d, v, &o.at("access"));
+    }
+    o.finish(d, CONSOLE_FIELDS, CONSOLE_FIT_ONLY);
+    Some(c)
+}
+
+/// A user of `admin.console.users`, with fit's checks: a name, and a bcrypt hash.
+fn console_user(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<ConsoleUser> {
+    let mut o = d.object(n, path)?;
+    let username = o.require(d, "username").and_then(|v| {
+        let p = o.at("username");
+        let s = d.string(v, &p)?;
+        if s.is_empty() {
+            d.error(v.off, &p, "the user name is empty");
+        }
+        Some(s)
+    });
+    let password_hash = o.require(d, "password_hash").and_then(|v| {
+        let p = o.at("password_hash");
+        let s = d.string(v, &p)?;
+        if !s.starts_with("$2") {
+            d.error(
+                v.off,
+                &p,
+                "not a bcrypt hash: make one with akit hash-password",
+            );
+        }
+        Some(s)
+    });
+    o.finish(d, CONSOLE_USER_FIELDS, &[]);
+    Some(ConsoleUser {
+        username: username?,
+        password_hash: password_hash?,
+    })
 }
 
 /// Whether `address`'s host (it is a host and port, [`check_address`]) is `localhost` or a

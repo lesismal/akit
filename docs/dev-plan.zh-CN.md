@@ -191,7 +191,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I86 | 访问控制列表 II：服务与正向代理 | I85 | done |
 | I87 | 访问控制列表 III：Admin API 与配置参考 | I85 | done |
 | **1.0 之后：控制台与加密的 store** | | | |
-| I89 | 控制台 I：`admin.console` 及其登录：用户、锁定、会话；`akit hash-password` | I87 | todo |
+| I89 | 控制台 I：`admin.console` 及其登录：用户、锁定、会话；`akit hash-password` | I87 | done |
 | I90 | 控制台 II：控制台的服务器：TLS、访问控制、CSRF 与来源、进程内的 Admin API | I89, I27 | todo |
 | I91 | 控制台 III：页面：fit 的工作台、schema、原文编辑器和导入导出、“日志”页面 | I90, I83 | todo |
 | I92 | 非回环地址上带 TLS 的 Admin API（L1） | I27 | todo |
@@ -1162,7 +1162,7 @@ Admin API 并列，在自己的登录之后于进程内调用 Admin API 的端�
   `TestEndUserSessions`）；配置检查同 fit 的 `checkConsole`；`hash-password` 产生可验证的哈希；字段用 `make v1-bless` 标记。
 - **涉及**：`akit-config`、`akit-admin`（`console/login`）、`akit`（`hash-password`）、`tests/compat`、`docs/reference`。
 - **fit**：`config/config.go`（`Console`）、`config/validate.go`（`checkConsole`）、`login`、`cli`（`hash-password`）；I104。
-- **状态**：todo。
+- **状态**：已完成（2026-11-26）。在 akio 的 A233 之前终端回显保持开启。见进度日志。
 
 ### I90 控制台 II：控制台的服务器
 

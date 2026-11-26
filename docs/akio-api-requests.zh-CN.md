@@ -99,6 +99,8 @@
 | A225 | 对 akio-crypto、akio-tls（连同 akio-x509）、akio-http 的 HTTP/1 和 HTTP/2 解析器以及 akio-wasm 的外部安全审查（不是 API） | 已提出（I80b）：威胁模型的 L15 | 15 | I80、I80b |
 | A230 | akio-crypto 中的 Argon2id（RFC 9106）及 BLAKE2b：fit 的 `fitstore` 格式的密钥派生 | 已提出（I93）：I93 等待它 | 15、20 | I93 |
 | A231 | akio-crypto 中的 XChaCha20-Poly1305（HChaCha20 和 24 字节 nonce）：fit 的 `fitstore` 格式的 AEAD | 已提出（I93）：I93 等待它 | 15、20 | I93 |
+| A232 | 由处理函数设置 HTTP 连接的空闲超时并关闭它，并把已接受的连接告诉应用：fit 对未登录连接的限制 | 已提出（I90）：在此之前控制台像 Admin API 一样受限 | 10、11 | I90 |
+| A233 | 关闭终端回显（原始模式）以读取密码 | 已提出（I89）：在此之前密码按输入显示，提示中说明 | 14 | I89 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -1768,3 +1770,42 @@ Wycheproof 的 `xchacha20_poly1305_test.json` 和 Go 的输出测试。
 
 **akit 将如何使用。** akit-admin 的 `store` 用 A230 派生的密钥打开 store，以文件头作为附加数据，每次写入用新的随机 nonce
 （`akio_crypto::rand`）密封，同 fit 的 `Store.seal`。
+
+## A232 由处理函数设置 HTTP 连接的空闲超时并关闭它，以及已接受连接的表
+
+**状态。** 由 I90 提出（2026-11-26）。没有它控制台也能工作；在此之前，它的连接像 Admin API 的那样受限（一个权宜实现，
+记录在[开发进度](progress.zh-CN.md)中）。
+
+**问题。** fit 的控制台（以及自 fit 的 I161 起它的 Admin API）限制未登录客户端的连接：连接在被接受 5 秒后关闭，不论它发送
+什么，直到带有效会话的请求到来；此后两次请求之间保持 2 分钟，会话结束时重新回到 5 秒规则。`max_conns` 个连接都已打开时，
+新连接会关闭持有未登录连接最多的客户端（回环地址算作一个客户端）最旧的未登录连接，并为已登录的连接保留四分之一的名额，
+而不是拒绝新连接。这样，未登录的客户端占不住控制台不多的连接，不断重连的攻击者也挡不住运维人员。akio-http 的服务器对所有
+连接一视同仁地使用 `HttpConfig` 的超时（请求头、请求体、keep-alive），处理函数也拿不到自己的连接：既不能改变它的空闲超时，
+也不能稍后关闭它；也没有任何东西把每个被接受的连接告诉应用，让应用选择关闭哪一个。
+
+**证据。** 在 akio `077a6710` 中：akio-core 的 `Conn` 有 `set_idle_timeout` 和 `close`，但 akio-http 的 `Context` 两者都不提供
+（没有 `conn()` 访问器）；`Listener::filter`（A3）只看到对端地址，并回答是或否。
+
+**建议的 API。** `Context::connection(&self) -> ConnHandle`，一个可廉价克隆、可在任何线程使用的句柄，带
+`set_idle_timeout(Option<Duration>)`、`close()` 和 `id()`；以及一个 `Listener::on_accept(Fn(ConnHandle, SocketAddr))` 钩子（或把句柄
+交给过滤器），使应用能维护自己的已打开连接表并关闭它选中的那个。在 accept 时设置、由处理函数取消的截止时间
+（`ConnHandle::close_at(Instant)`）可以不用应用自己的计时器就实现 5 秒规则。
+
+**akit 将如何使用。** 控制台（以及 Admin API，同 fit 的 I161）维护其连接表：每个连接在 accept 后 5 秒关闭，除非带有效会话的请求
+取消它；有效会话把空闲时间设为 2 分钟；超过 `max_conns` 时，关闭持有最多未登录连接的客户端最旧的未登录连接以腾出位置。
+
+## A233 关闭终端回显以读取密码
+
+**状态。** 由 I89 提出（2026-11-26）。没有它 `akit hash-password` 也能工作：从终端输入时密码会按输入原样显示，提示中说明这一点
+以及如何隐藏（一个权宜实现，记录在[开发进度](progress.zh-CN.md)中）。
+
+**问题。** `fit hash-password` 以原始模式、无回显地从终端读取密码，每个字符显示一个 `*`（golang.org/x/term 的 `MakeRaw`）。
+这需要 `tcgetattr` 和 `tcsetattr`，它们需要 akit 禁止的 `unsafe`（libc）；akio-sys 没有终端相关的调用。
+
+**证据。** 在 akio `077a6710` 中，`crates/akio-sys/src/process.rs` 有 `allowed_cpus`、`pin_current_thread`、`signal_pipe` 和 `kill`；
+akio-sys 中没有任何地方提到 `termios`。
+
+**建议的 API。** 在 akio-sys 中：`terminal::raw(fd: BorrowedFd<'_>) -> io::Result<RawGuard>`（或 `no_echo`），把终端置于原始模式
+（或关闭 `ECHO` 和 `ICANON`），在 guard 被丢弃时恢复，对不是终端的描述符返回错误。
+
+**akit 将如何使用。** `akit hash-password` 像 fit 那样在关闭回显的情况下从终端读取密码，每个字符写一个 `*`，关于密码被显示的说明随之去掉。
