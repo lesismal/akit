@@ -47,7 +47,10 @@
 共存）、`v1.rs`（`.conf` 写的 fit-examples `limits`）；akit-listener 的 `limits.rs`（`TestPendingBytesBudget`；引擎设置）、
 `listeners.rs`（`TestProtocols`）、`reload.rs`（重载新增只有 h2c 的监听器）、`one_port.rs`（只有 h2c 与 `tcp` 共存）、`sysmem`（单元测试）；akit-proxy 的
 `proxy.rs`（上游连接打开时的 `max_conns`）、`grpc.rs`（只有 h2c 的监听器上的调用）；akit-compat 的 `gate.rs`（该字段的样例）；akit 的 `admin.rs`。在 macOS 和基准
-主机（epoll 与 io_uring）上检查。
+主机上检查，akio 的测试与 akit 的 workspace 在 epoll 与 io_uring 上都跑过。akio 的同轮 A/B：HTTP/1.1、pipelined、h2c 与
+TCP echo 在两项设置关闭与开启时都与 akio 的 main 相差 1% 以内；其中 `connect` 用例受客户端在回环上复用 TIME_WAIT 端口的
+限制，测不到 accept 路径。`akit` 的 `watch` 测试（`each_edit_is_applied`）先等 stdout 的一行再等 stderr 的一行，负载重的
+主机上两者可能交换顺序；现在接受任意顺序。
 
 与计划的不同：范围内没有。akit 不做基准（规则 30）：[基准表](dev-plan.zh-CN.md#基准与优化状态)中有 I79b 的一行。
 

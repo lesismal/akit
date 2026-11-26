@@ -54,7 +54,11 @@ Tests (ported from fit): akit-config `limits.rs` (`TestMemory`, `TestLimits`), `
 (`TestPendingBytesBudget`; the engine's settings), `listeners.rs` (`TestProtocols`), `reload.rs` (a reload adds a listener of h2c alone),
 `one_port.rs` (h2c alone beside `tcp`), `sysmem` (unit); akit-proxy `proxy.rs` (`max_conns` with
 the upstream connections open), `grpc.rs` (calls on a listener of h2c alone); akit-compat `gate.rs` (the field's sample); akit `admin.rs`.
-Checked on macOS and the benchmark host (epoll and io_uring); see the report for the numbers.
+Checked on macOS and on the benchmark host, akio's suites and akit's workspace on epoll and
+io_uring. akio's same-run A/B: HTTP/1.1, pipelined, h2c and TCP echo within 1% of akio's main with
+both settings off and on; its `connect` case is bound by the client's reuse of TIME_WAIT ports on
+loopback, not by the accept path. `akit`'s `watch` test (`each_edit_is_applied`) waited for a
+stdout line before a stderr one, which a loaded host can swap; it now takes them in either order.
 
 Differences from the plan: none in scope. No benchmark in akit (rule 30): the
 [benchmark table](dev-plan.md#benchmark-and-optimization-status) has I79b's row.
