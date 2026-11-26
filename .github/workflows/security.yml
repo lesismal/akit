@@ -1,0 +1,41 @@
+name: Security
+
+# The supply-chain checks (I80, decision 030): cargo-deny (advisories, bans, licenses, sources;
+# deny.toml) and cargo-audit (RustSec advisories, yanked and unmaintained crates, as warnings that
+# fail). Every push to main and every pull request, and daily: an advisory published against a
+# locked crate fails the run without any change to akit.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  audit:
+    name: cargo-audit and cargo-deny
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+      # No advisory is ignored: an exception goes into both deny.toml's [advisories] ignore and
+      # .cargo/audit.toml, with its reason (decision 030).
+      - run: cargo audit -D warnings
+      # The release binary links akio and nothing from crates.io (decision 001): a crates.io
+      # crate in its normal graph needs a decision note, and fails here until it has one.
+      - run: python3 -I tools/release-deps.py

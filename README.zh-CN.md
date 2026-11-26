@@ -23,6 +23,8 @@ Admin API 相同；没有垃圾回收，回调直接运行在每核一线程的 
 - [开发规则](docs/rules.zh-CN.md)：每次改动都必须遵守的规则。
 - [akio API 需求](docs/akio-api-requests.zh-CN.md)：akit 需要而 akio 还没有的东西。
 - [决定](docs/decisions/README.zh-CN.md)：依赖策略、与 fit 的配置兼容，以及之后做出的其他决定。
+- [安全政策](SECURITY.zh-CN.md)：报告漏洞、支持的版本；[威胁模型](docs/security/threat-model.zh-CN.md)和外部审查的
+  [范围](docs/security/review-scope.zh-CN.md)。
 
 ## 它的样子
 

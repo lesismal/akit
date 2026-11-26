@@ -186,7 +186,8 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I78 | Config reference and guides | I76 | done |
 | I79 | v1 freeze and compatibility | I78 | done |
 | I79b | The gateway examples the gate still refuses: `limits.max_pending_bytes`, h2c alone, `max_conns` by accepted connections | I79, akio A214, A168, A215 | todo |
-| I80 | Security review readiness | I77, I79 | todo |
+| I80 | Security review readiness | I77, I79 | done |
+| I80b | Security hardening: the threat model's limitations and the review's findings | I80, the review | todo |
 
 ## Benchmark and optimization status
 
@@ -1064,6 +1065,40 @@ Split from I07 so that the half that needs no config model runs beside I02.
 - **Do**: a threat model; `cargo audit` and `cargo deny` clean; the scope of the external review (TLS
   handling, the Admin API, the plugin sandbox).
 - **Done when**: the review can start.
+- **Status**: done (2026-11-26). [The threat model](security/threat-model.md) (assets, trust
+  boundaries, each attack with the code and tests that answer it, 15 known limitations with their
+  plans), [the review's scope](security/review-scope.md) (TLS handling, the Admin API and dashboard,
+  the plugin sandbox, request parsing and header handling with I77's fuzz targets, the sockmap path;
+  akio's internals and what akit does not build out of scope), and [SECURITY.md](../SECURITY.md)
+  (reporting, supported versions). `cargo deny check` and `cargo audit -D warnings` clean, run on
+  every change and daily by `.github/workflows/security.yml` with `tools/release-deps.py`, which
+  holds the release binary to akio alone ([decision 030](decisions/030-supply-chain-checks.md)).
+  On-demand TLS's `https://` ask URL fixed: its client had no CAs. See the progress log.
+
+### I80b Security hardening
+
+- **Do**: the [threat model's known limitations](security/threat-model.md#known-limitations) that are
+  akit's, with the external review's findings as they come:
+  - L2: `GET /config`, `/versions/{n}` and `/config/effective` redact inline secrets, as fit's
+    console shows `[redacted]`.
+  - L3: a warning for secret and key files readable by group or others; the storage directory
+    tightened to 0700 and synced after a rename.
+  - L4: a warning when a token or password is sent in the clear to an address off loopback (ACME,
+    Consul, etcd, Redis, Docker over `tcp://`, a kubeconfig's `http://` server or
+    `insecure-skip-tls-verify`).
+  - L6: the forward proxy's guide says that private ranges are reachable unless `deny` lists them,
+    and that it has no authentication.
+  - L7: symbolic links out of a `static` root decided against fit's behaviour.
+  - L8: revocation of client certificates (CRLs) on akio-tls's options.
+  - L9: a digest for WASM modules, proposed to fit first ([decision 002](decisions/002-config-compatibility.md)).
+  - L12: akio's head and body timeouts read from fit's fields, if fit has them.
+  - L13: a BREACH note in the compression part of the reference.
+  - L14: `POST /cache/purge` tested without the token and with an `Origin`.
+  - L15: an external review of akio-crypto, akio-tls, akio-http and akio-wasm asked of akio.
+  The rest are elsewhere: L1 and L5 in the Console track, L6's access lists in the Access lists
+  track, L10 with akio A24, L11 with I79b.
+- **Done when**: every finding of the review is fixed or recorded as accepted with its reason, and
+  each akit limitation above is closed or moved to the plan that will close it.
 
 ## After 1.0
 

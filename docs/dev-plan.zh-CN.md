@@ -179,7 +179,8 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I78 | 配置参考与指南 | I76 | done |
 | I79 | v1 冻结与兼容性 | I78 | done |
 | I79b | 门禁仍拒绝的网关示例：`limits.max_pending_bytes`、只有 h2c、按接受的连接计数的 `max_conns` | I79、akio A214、A168、A215 | todo |
-| I80 | 为安全审查做好准备 | I77, I79 | todo |
+| I80 | 为安全审查做好准备 | I77, I79 | done |
+| I80b | 安全加固：威胁模型的局限与审查的发现 | I80、审查 | todo |
 
 ## 基准与优化状态
 
@@ -955,6 +956,30 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 
 - **做什么**：威胁模型；`cargo audit` 和 `cargo deny` 无问题；外部审查的范围（TLS 处理、Admin API、插件沙箱）。
 - **完成标准**：审查可以开始。
+- **状态**：已完成（2026-11-26）。[威胁模型](security/threat-model.zh-CN.md)（资产、信任边界、每种攻击及应对它的代码和测试、15 项已知局限
+  及其计划），[审查范围](security/review-scope.zh-CN.md)（TLS 处理、Admin API 与仪表盘、插件沙箱、带 I77 模糊测试目标的请求解析与头处理、
+  sockmap 路径；akio 的内部和 akit 尚未实现的部分不在范围之内），以及 [SECURITY.zh-CN.md](../SECURITY.zh-CN.md)（报告方式、支持的版本）。
+  `cargo deny check` 和 `cargo audit -D warnings` 无问题，由 `.github/workflows/security.yml` 在每次改动和每天运行，同时运行
+  `tools/release-deps.py`，它让发布二进制只依赖 akio（[决定 030](decisions/030-supply-chain-checks.zh-CN.md)）。修复了按需 TLS 的
+  `https://` ask URL：其客户端没有任何 CA。见开发进度的日志。
+
+### I80b 安全加固
+
+- **做什么**：[威胁模型的已知局限](security/threat-model.zh-CN.md#已知的局限)中属于 akit 的各项，以及外部审查陆续给出的发现：
+  - L2：`GET /config`、`/versions/{n}` 和 `/config/effective` 对内联的密钥脱敏，像 fit 的控制台显示 `[redacted]` 那样。
+  - L3：对组或其他用户可读的密钥和私钥文件发出警告；存储目录收紧到 0700，并在重命名后同步。
+  - L4：向回环之外的地址明文发送令牌或密码时发出警告（ACME、Consul、etcd、Redis、经 `tcp://` 的 Docker、kubeconfig 的 `http://` 服务器
+    或 `insecure-skip-tls-verify`）。
+  - L6：正向代理的指南写明，除非 `deny` 列出，否则私有地址段可达，并且没有认证。
+  - L7：参照 fit 的行为决定指向 `static` 根目录之外的符号链接。
+  - L8：基于 akio-tls 的选项检查客户端证书的吊销（CRL）。
+  - L9：WASM 模块的摘要，先向 fit 提议（[决定 002](decisions/002-config-compatibility.zh-CN.md)）。
+  - L12：如果 fit 有相应字段，从中读取 akio 的头和消息体超时。
+  - L13：在配置参考的压缩部分加入 BREACH 说明。
+  - L14：测试不带令牌和带 `Origin` 时的 `POST /cache/purge`。
+  - L15：请 akio 安排对 akio-crypto、akio-tls、akio-http 和 akio-wasm 的外部审查。
+  其余各项在别处：L1 和 L5 在控制台路线，L6 的访问列表在访问列表路线，L10 随 akio A24，L11 随 I79b。
+- **完成标准**：审查的每项发现都已修复，或写明理由记为接受；上面属于 akit 的每项局限都已解决，或移到将解决它的计划中。
 
 ## 1.0 之后
 

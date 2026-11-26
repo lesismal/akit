@@ -25,7 +25,7 @@ use std::sync::{Arc, Mutex, Weak};
 use std::time::{Duration, Instant};
 
 use akio::Engine;
-use akio::tls::{CertifiedKey, ClientConfig};
+use akio::tls::{CertifiedKey, ClientConfig, RootCerts};
 use akio_http::client::{Client, ClientOptions, ClientRequest, RedirectPolicy};
 
 use super::{Acme, Inner, lock, normalize};
@@ -144,7 +144,19 @@ fn nanos(d: Duration) -> u64 {
 }
 
 impl OnDemand {
+    /// The manager of `config`, its ask client trusting the system's CAs for an `https://` ask
+    /// URL, read here, as the config is compiled, never on an I/O thread.
     pub(super) fn new(config: &akit_config::OnDemand) -> Result<OnDemand, crate::Error> {
+        OnDemand::with_roots(config, RootCerts::system)
+    }
+
+    /// The manager of `config`, its ask client trusting the CAs `roots` gives for an `https://`
+    /// ask URL. akio-tls's `ClientConfig::builder()` starts with no roots: built without them,
+    /// every `https://` ask failed its handshake (I80, found by the security review's survey).
+    fn with_roots(
+        config: &akit_config::OnDemand,
+        roots: impl FnOnce() -> Result<RootCerts, akio::tls::Error>,
+    ) -> Result<OnDemand, crate::Error> {
         let fail = |e: String| crate::Error::new("acme.on_demand", e);
         let mut cfg = akio::Config::default();
         cfg.shutdown_timeout = Duration::from_secs(1);
@@ -166,7 +178,9 @@ impl OnDemand {
             .with_redirects(RedirectPolicy::limit(ASK_REDIRECTS))
             .with_timeout(config.timeout);
         if config.ask.starts_with("https://") {
+            let roots = roots().map_err(|e| fail(format!("the ask client's CAs: {e}")))?;
             let tls = ClientConfig::builder()
+                .roots(roots)
                 .build()
                 .map_err(|e| fail(format!("the ask client's TLS: {e}")))?;
             client = client.with_tls(tls);
@@ -1166,5 +1180,76 @@ mod tests {
         ] {
             assert_eq!(on_demand_name(n), ok, "{n}");
         }
+    }
+
+    /// An ask URL over HTTPS (I80): the ask client trusts the CAs it is given, so an `https://`
+    /// ask is answered, and one whose server those CAs did not sign fails its handshake, as
+    /// with no roots at all (what every `https://` ask did before).
+    #[test]
+    fn https_ask() {
+        use akio::tls::{Certificate, PrivateKey, ServerConfig, Tls as AkioTls};
+        use akio_crypto::pkey::PrivateKey as Key;
+        use akio_http::client::ClientResponse;
+
+        let ca_key = Key::P256(akio_crypto::p256::SecretKey::generate().unwrap());
+        let ca = CertificateParams::ca("akit ask test CA")
+            .self_signed(&ca_key)
+            .unwrap();
+        let key = Key::P256(akio_crypto::p256::SecretKey::generate().unwrap());
+        let leaf = CertificateParams::new(["127.0.0.1"])
+            .signed_by(&key.public_key(), &ca, &ca_key)
+            .unwrap();
+        let chain = Certificate::from_pem(leaf.to_pem().as_bytes()).unwrap();
+        let key_pem = akio_crypto::pem::encode("PRIVATE KEY", &key.to_pkcs8_der());
+        let cfg = ServerConfig::builder(chain, PrivateKey::from_pem(key_pem.as_bytes()).unwrap())
+            .build()
+            .unwrap();
+        let app = akio_http::Router::new().get("/check", |ctx: &mut akio_http::Context| {
+            ctx.text(200, "yes");
+        });
+        let backend = match std::env::var("AKIO_TEST_BACKEND").as_deref() {
+            Ok("uring") => akio::Backend::IoUring(akio::UringConfig::default()),
+            _ => akio::Backend::Epoll,
+        };
+        let server = Engine::builder()
+            .listen(
+                akio::Listener::tcp("127.0.0.1:0".parse().unwrap())
+                    .backend(backend)
+                    .threads(1)
+                    .serve(AkioTls::server(cfg, akio_http::serve(app))),
+            )
+            .build()
+            .unwrap();
+        server.start().unwrap();
+        let url = format!("https://{}/check", server.local_addrs()[0]);
+        let ask = |od: &OnDemand| {
+            let (tx, rx) = mpsc::channel();
+            let req = ClientRequest::get(&format!("{url}?domain=a.akit.test"));
+            od.client.request(req, move |r: Result<ClientResponse, _>| {
+                let _ = tx.send(r.map(|resp| resp.status).map_err(|e| e.to_string()));
+            });
+            rx.recv_timeout(Duration::from_secs(10)).unwrap()
+        };
+
+        let mut roots = RootCerts::empty();
+        assert_eq!(roots.add_pem(ca.to_pem().as_bytes()).unwrap(), 1);
+        let config = akit_config::OnDemand::new(url.clone());
+        let trusted = OnDemand::with_roots(&config, move || Ok(roots)).unwrap();
+        assert_eq!(ask(&trusted), Ok(200));
+        trusted.close();
+
+        let none = OnDemand::with_roots(&config, || Ok(RootCerts::empty())).unwrap();
+        assert!(
+            ask(&none).is_err(),
+            "an ask past an unknown CA was answered"
+        );
+        none.close();
+
+        // An `http://` ask URL reads no CAs.
+        let plain = akit_config::OnDemand::new("http://127.0.0.1:1/check".to_owned());
+        let od = OnDemand::with_roots(&plain, || panic!("CAs read for http://")).unwrap();
+        od.close();
+        server.shutdown();
+        server.wait();
     }
 }
