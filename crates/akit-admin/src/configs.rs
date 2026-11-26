@@ -7,12 +7,17 @@
 //! runs, with where each part of it came from.
 
 use std::collections::VecDeque;
+use std::fmt;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::SystemTime;
 
 use akio_crypto::hash::Sha256;
 use akit_config::Errors;
 use akit_provider::{Merged, Part, Shadowed, Source};
+
+use crate::bootstrap::{SOURCE_STORE, admin_in_store, has_admin, with_admin};
+use crate::store::{Sealer, User};
 
 /// A config read from the files (at start and on SIGHUP).
 pub const SOURCE_FILE: &str = "file";
@@ -25,12 +30,46 @@ pub const SOURCE_ROLLBACK: &str = "rollback";
 pub const SOURCE_CERTIFICATES: &str = "certificates";
 
 /// The names of the base config's sources, which no provider may take.
-const BASE_SOURCES: [&str; 4] = [
+const BASE_SOURCES: [&str; 5] = [
     SOURCE_FILE,
     SOURCE_ADMIN,
     SOURCE_ROLLBACK,
     SOURCE_CERTIFICATES,
+    SOURCE_STORE,
 ];
+
+/// What writes a base config, standard JSON, to the store (I93b): the store's write, sealed,
+/// synced and renamed. Called on the control thread, under the lock that orders changes.
+pub type SaveConfig = Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>;
+
+/// What writes the console users whose passwords changed beside the config in the store
+/// (I93b). Called on the console's login pool, never an I/O thread.
+pub type SaveUsers = Box<dyn Fn(&[User]) -> Result<(), String> + Send + Sync>;
+
+/// The store the base configs applied are kept in (I93b, fit's `UseStore`).
+struct Kept {
+    /// The bootstrap file's `admin`, as JSON, put into every config as it loads; `None` when it
+    /// has none.
+    admin: Option<Arc<str>>,
+    save: SaveConfig,
+    /// The SHA-256 of what was written last.
+    saved: [u8; 32],
+}
+
+impl fmt::Debug for Kept {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Kept")
+            .field("admin", &self.admin.is_some())
+            .finish_non_exhaustive()
+    }
+}
+
+/// The console users whose passwords changed since akit started, and what keeps them (I93b).
+#[derive(Default)]
+struct Users {
+    list: Vec<User>,
+    save: Option<SaveUsers>,
+}
 
 /// A config that was applied.
 #[derive(Debug)]
@@ -178,10 +217,19 @@ pub struct Outcome {
     pub unchanged: bool,
 }
 
-/// The providers, in their order of precedence, with what each provided last that was applied.
+/// The providers, in their order of precedence, with what each provided last that was applied;
+/// and the store the base configs are kept in, when there is one.
 #[derive(Debug, Default)]
 struct Providers {
     parts: Vec<(Arc<str>, Option<Arc<Part>>)>,
+    kept: Option<Kept>,
+}
+
+impl Providers {
+    /// The bootstrap file's `admin`, when a store keeps the config and the file has one.
+    fn admin(&self) -> Option<&str> {
+        self.kept.as_ref().and_then(|k| k.admin.as_deref())
+    }
 }
 
 impl Providers {
@@ -212,6 +260,25 @@ struct Inner {
     /// The providers' names, in their order of precedence, for `GET /config/effective` on the
     /// API's I/O thread: held for a clone only.
     names: Mutex<Vec<Arc<str>>>,
+    /// The console users whose passwords changed (I93b): held while they are written, on the
+    /// console's pool. `stored` says whether a store keeps them, for the I/O thread.
+    users: Mutex<Users>,
+    stored: AtomicBool,
+    /// The store's key and password, for the Admin API's exports and imports (I93b): held for a
+    /// clone only.
+    sealer: Mutex<Option<Sealer>>,
+    /// The console user whose password is temporary (`akit run -admin`, I93c), and until when:
+    /// held for a clone only, on every request of the Admin API.
+    temporary: Mutex<Option<(String, SystemTime)>>,
+}
+
+impl fmt::Debug for Users {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Users")
+            .field("list", &self.list.len())
+            .field("save", &self.save.is_some())
+            .finish()
+    }
 }
 
 /// The configs applied to a running akit, the running one last, and the one path every new
@@ -273,10 +340,14 @@ fn provider_name(name: &str) -> bool {
 /// Merges `parts` into `data`, the base config from `base_source`, and applies (or checks) the
 /// result with `apply`, its errors mapped to where they were written: in the base config, or in
 /// what a provider provided.
+///
+/// With a store, `admin` is the bootstrap file's, added to the config as its last member, so that
+/// every position before it stays where it was (fit's `WithAdmin`).
 fn merged_apply(
     data: &Arc<str>,
     base_source: &Arc<str>,
     parts: &[Arc<Part>],
+    admin: Option<&str>,
     mode: Mode,
     apply: impl FnOnce(&str, Mode) -> Result<Applied, ApplyError>,
 ) -> Result<(Applied, Merged), Refused> {
@@ -287,7 +358,11 @@ fn merged_apply(
         // its own errors.
         Err(_) => Merged::plain(Arc::clone(data)),
     };
-    match apply(merged.data(), mode) {
+    let applied = match admin {
+        Some(a) => apply(&with_admin(merged.data(), a), mode),
+        None => apply(merged.data(), mode),
+    };
+    match applied {
         Ok(applied) => Ok((applied, merged)),
         Err(ApplyError::Config(errs)) => {
             Err(Refused::Apply(ApplyError::Config(merged.errors(errs))))
@@ -327,8 +402,122 @@ impl Configs {
                 history: Mutex::new(history),
                 applying: Mutex::new(Providers::default()),
                 names: Mutex::new(Vec::new()),
+                users: Mutex::new(Users::default()),
+                stored: AtomicBool::new(false),
+                sealer: Mutex::new(None),
+                temporary: Mutex::new(None),
             }),
         }
+    }
+
+    /// Keeps the base configs applied from here on with `save`, which writes one to the store,
+    /// and puts `admin`, the bootstrap file's `admin` as JSON, into every config as it loads; the
+    /// base configs are then without `admin`, and one that sets it is refused. The running config
+    /// is taken to be saved already. fit's `UseStore`.
+    pub fn use_store(&self, admin: Option<String>, save: SaveConfig) {
+        let mut p = lock(&self.inner.applying);
+        let saved = Sha256::digest(self.current().data.as_bytes());
+        p.kept = Some(Kept {
+            admin: admin.map(Arc::from),
+            save,
+            saved,
+        });
+    }
+
+    /// Gives the console users whose passwords changed since akit started, and `save`, which
+    /// writes a new list beside the config in the store. fit's `UseConsoleUsers`.
+    pub fn use_console_users(&self, users: Vec<User>, save: SaveUsers) {
+        let mut u = lock(&self.inner.users);
+        u.list = users;
+        u.save = Some(save);
+        self.inner.stored.store(true, Ordering::Release);
+    }
+
+    /// The console users whose passwords changed since akit started, and whether a store keeps
+    /// them.
+    #[must_use]
+    pub fn console_users(&self) -> (Vec<User>, bool) {
+        let u = lock(&self.inner.users);
+        (u.list.clone(), u.save.is_some())
+    }
+
+    /// Whether a store keeps the console users: what the console's pages are told, read without
+    /// waiting on a write (an I/O thread's read).
+    #[must_use]
+    pub fn users_stored(&self) -> bool {
+        self.inner.stored.load(Ordering::Acquire)
+    }
+
+    /// Writes `users` beside the config, then keeps them. Writes the store: never on an I/O
+    /// thread.
+    ///
+    /// # Errors
+    ///
+    /// No store keeps the users, or the write failed: the old list stays.
+    pub fn set_console_users(&self, users: Vec<User>) -> Result<(), String> {
+        let mut u = lock(&self.inner.users);
+        let Some(save) = &u.save else {
+            return Err("admin: no store keeps the console users".to_owned());
+        };
+        save(&users)?;
+        u.list = users;
+        Ok(())
+    }
+
+    /// Writes `hash` as `username`'s console password hash beside the config in the store,
+    /// replacing the user's own or adding it, the read and the write one step, so that two
+    /// changes at once do not lose one; a temporary password of the user's is one no more. fit's
+    /// `SetConsolePassword`. Writes the store: never on an I/O thread.
+    ///
+    /// # Errors
+    ///
+    /// No store keeps the users, or the write failed: nothing changes.
+    pub fn set_console_password(&self, username: &str, hash: &str) -> Result<(), String> {
+        let mut u = lock(&self.inner.users);
+        let Some(save) = &u.save else {
+            return Err("admin: no store keeps the console users".to_owned());
+        };
+        let mut out = u.list.clone();
+        match out.iter_mut().find(|x| x.username == username) {
+            Some(x) => hash.clone_into(&mut x.password_hash),
+            None => out.push(User {
+                username: username.to_owned(),
+                password_hash: hash.to_owned(),
+            }),
+        }
+        save(&out)?;
+        u.list = out;
+        drop(u);
+        let mut t = lock(&self.inner.temporary);
+        if t.as_ref().is_some_and(|(user, _)| user == username) {
+            *t = None;
+        }
+        Ok(())
+    }
+
+    /// Gives the store's key and password, which seal and open the `fitstore` files the Admin
+    /// API exports and imports without a password of their own. fit's `UseSealer`.
+    pub fn use_sealer(&self, sealer: Sealer) {
+        *lock(&self.inner.sealer) = Some(sealer);
+    }
+
+    /// The store's key and password [`use_sealer`](Configs::use_sealer) gave.
+    #[must_use]
+    pub fn sealer(&self) -> Option<Sealer> {
+        lock(&self.inner.sealer).clone()
+    }
+
+    /// Says that the console user `user`'s password is a temporary one, good until `until`
+    /// (`akit run -admin`, I93c): the console asks for it to be changed first, and the Admin
+    /// API refuses every request until it is. fit's `UseTemporaryPassword`.
+    pub fn use_temporary_password(&self, user: &str, until: SystemTime) {
+        *lock(&self.inner.temporary) = Some((user.to_owned(), until));
+    }
+
+    /// The console user whose password is temporary, and until when.
+    #[must_use]
+    pub fn temporary_password(&self) -> Option<(String, SystemTime)> {
+        lock(&self.inner.temporary).clone()
     }
 
     /// The running config.
@@ -487,7 +676,7 @@ impl Configs {
     ///
     /// When `name` is not a valid name (lower-case letters, digits, `_`, `.` and `-`, starting
     /// with a letter or digit, at most 63), names a source of the base config (`file`, `admin`,
-    /// `rollback`, `certificates`), or is added already.
+    /// `rollback`, `certificates`, `store`), or is added already.
     pub fn add_provider(&self, name: &str) -> Result<(), String> {
         if !provider_name(name) {
             return Err(format!(
@@ -557,8 +746,14 @@ impl Configs {
             });
         }
         let parts = providers.parts(Some((i, &part)));
-        let (applied, merged) =
-            merged_apply(&cur.data, &cur.base_source, &parts, Mode::Apply, apply)?;
+        let (applied, merged) = merged_apply(
+            &cur.data,
+            &cur.base_source,
+            &parts,
+            providers.admin(),
+            Mode::Apply,
+            apply,
+        )?;
         if let Some(slot) = providers.parts.get_mut(i) {
             slot.1 = Some(part);
         }
@@ -591,14 +786,19 @@ impl Configs {
         edit: impl FnOnce(&Version) -> Result<(Arc<str>, Arc<str>), Refused>,
         apply: impl FnOnce(&str, Mode) -> Result<Applied, ApplyError>,
     ) -> Result<Outcome, Refused> {
-        let providers = lock(&self.inner.applying);
+        let mut providers = lock(&self.inner.applying);
         let cur = self.current();
         if if_match.is_some_and(|m| !etag_matches(m, &cur.etag)) {
             return Err(Refused::Changed);
         }
         let (data, base_source) = edit(&cur)?;
+        // With a store, admin comes from the bootstrap file, never from a config sent.
+        if providers.admin().is_some() && has_admin(&data) {
+            return Err(Refused::Apply(ApplyError::Config(admin_in_store())));
+        }
         let parts = providers.parts(None);
-        let (applied, merged) = merged_apply(&data, &base_source, &parts, mode, apply)?;
+        let (mut applied, merged) =
+            merged_apply(&data, &base_source, &parts, providers.admin(), mode, apply)?;
         let etag = etag_of(data.as_bytes());
         if mode == Mode::DryRun {
             return Ok(Outcome {
@@ -610,6 +810,19 @@ impl Configs {
                 unchanged: etag == cur.etag,
                 new_etag: etag,
             });
+        }
+        // Kept in the store, unless it holds this config already; one that cannot be written
+        // runs, and is said unsaved, as fit's.
+        if let Some(k) = &mut providers.kept {
+            let sum = Sha256::digest(data.as_bytes());
+            if sum != k.saved {
+                match (k.save)(&data) {
+                    Ok(()) => k.saved = sum,
+                    Err(e) => applied.warnings.push(format!(
+                        "the config runs, but was not saved to the store: {e}"
+                    )),
+                }
+            }
         }
         let v = self.record(
             cur.number.saturating_add(1),

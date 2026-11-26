@@ -3,7 +3,10 @@
 //! cases of `app/console`'s tests that need neither the pages nor the store ported: logins,
 //! lockouts, sessions' ends, CSRF tokens, other origins, fit's headers, TLS, access at accept and
 //! after a config applied, a config changed through the console applied as its own source and
-//! logged, and the certificate read again when its files change (I94). On the backend `AKIO_TEST_BACKEND` names (epoll by default, `uring`).
+//! logged, and the certificate read again when its files change (I94). With a store (I93b),
+//! fit's `admin/accounts_test.go`, `accounts_edge_test.go`, `transfer_test.go` and
+//! `transfer_edge_test.go`: password changes and resets kept in the store, the temporary password
+//! of `akit run -admin` (I93c), and the `store` format of exports and imports. On the backend `AKIO_TEST_BACKEND` names (epoll by default, `uring`).
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -116,6 +119,11 @@ struct Fixture {
 }
 
 fn start(c: akit_config::Console, opts: Options) -> Fixture {
+    start_with(c, opts, |_| {})
+}
+
+/// [`start`], with `prep` given the configs before the Admin API and the console start.
+fn start_with(c: akit_config::Console, opts: Options, prep: impl FnOnce(&Configs)) -> Fixture {
     let _ = log_file();
     let text = doc("one");
     let config = akit_config::from_json(&text, None).unwrap();
@@ -149,6 +157,7 @@ fn start(c: akit_config::Console, opts: Options) -> Fixture {
     };
     let mut opts = opts;
     opts.backend = backend();
+    prep(&configs);
     let api = Server::start(&settings, configs.clone(), submit, &opts).unwrap();
     let url = api.console_url().unwrap();
     let addr = url
@@ -1096,4 +1105,688 @@ fn connections_evicted_for_new_ones() {
         last.try_do("GET", "/", "", &[]).is_none(),
         "a connection past max_conns, all authenticated, was served"
     );
+}
+
+// --- With a store (I93b, I93c): fit's accounts, transfer and temporary-password tests. ---
+
+/// Argon2id cheap enough for tests: the store's header records them.
+const CHEAP: akit_admin::store::Params = akit_admin::store::Params {
+    time: 1,
+    memory_kib: 64,
+    threads: 1,
+};
+
+const USERS: &str = "/api/m/admin/users";
+const ACCOUNT: &str = "/api/m/admin/account/password";
+const RESET: &str = "/api/m/admin/users/password";
+
+type Kept = Arc<std::sync::Mutex<akit_admin::store::Store>>;
+
+fn locked(k: &Kept) -> std::sync::MutexGuard<'_, akit_admin::store::Store> {
+    k.lock().unwrap()
+}
+
+/// fit's `startStoreConsole`: a console of ada (`pw`) and bob (`bobpw`) whose configs keep the
+/// password hashes changed from it beside the config in a store, as `akit run` does with
+/// `admin.store`, its key sealing the exports; `prep` given the configs too, before the console
+/// starts. The store, its path, and the bootstrap file's `admin` as JSON.
+fn start_store(name: &str, prep: impl FnOnce(&Configs)) -> (Fixture, Kept, PathBuf, String) {
+    let users = vec![
+        akit_config::ConsoleUser {
+            username: "ada".into(),
+            password_hash: hash("pw"),
+        },
+        akit_config::ConsoleUser {
+            username: "bob".into(),
+            password_hash: hash("bobpw"),
+        },
+    ];
+    let mut admin = String::from(r#"{"console": {"address": "127.0.0.1:0", "users": ["#);
+    for (i, u) in users.iter().enumerate() {
+        if i > 0 {
+            admin.push(',');
+        }
+        admin.push_str(&format!(
+            r#"{{"username": "{}", "password_hash": "{}"}}"#,
+            u.username, u.password_hash
+        ));
+    }
+    admin.push_str("]}}");
+    let path = dir(name).join("akit.store");
+    let mut st = akit_admin::store::Store::create_with(&path, "secret", CHEAP).unwrap();
+    st.write(doc("one").into_bytes()).unwrap();
+    let sealer = st.sealer().unwrap();
+    let kept: Kept = Arc::new(std::sync::Mutex::new(st));
+    let (a, b) = (Arc::clone(&kept), Arc::clone(&kept));
+    let f = start_with(console(|c| c.users = users), Options::default(), |cs| {
+        cs.use_store(
+            None,
+            Box::new(move |d: &str| {
+                locked(&a)
+                    .write(d.as_bytes().to_vec())
+                    .map_err(|e| e.to_string())
+            }),
+        );
+        cs.use_console_users(
+            Vec::new(),
+            Box::new(move |u: &[akit_admin::store::User]| {
+                locked(&b).set_users(u.to_vec()).map_err(|e| e.to_string())
+            }),
+        );
+        cs.use_sealer(sealer);
+        prep(cs);
+    });
+    (f, kept, path, admin)
+}
+
+/// One exchange with the Admin API itself, its body bytes as they came.
+fn api_call(
+    f: &Fixture,
+    method: &str,
+    path: &str,
+    headers: &[(&str, &str)],
+    body: &[u8],
+) -> (u16, Vec<(String, String)>, Vec<u8>) {
+    let addr = f.api.addr();
+    let mut s = TcpStream::connect(addr).unwrap();
+    s.set_read_timeout(Some(Duration::from_secs(30))).unwrap();
+    raw_exchange(&mut s, &addr.to_string(), method, path, headers, body)
+}
+
+/// One exchange on `s` with a body of bytes, and the response's body as bytes.
+fn raw_exchange(
+    s: &mut (impl Read + Write),
+    host: &str,
+    method: &str,
+    path: &str,
+    headers: &[(&str, &str)],
+    body: &[u8],
+) -> (u16, Vec<(String, String)>, Vec<u8>) {
+    let mut req = format!(
+        "{method} {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\nContent-Length: {}\r\n",
+        body.len()
+    );
+    for (n, v) in headers {
+        req.push_str(&format!("{n}: {v}\r\n"));
+    }
+    req.push_str("\r\n");
+    s.write_all(req.as_bytes()).unwrap();
+    let _ = s.write_all(body);
+    let _ = s.flush();
+    let mut raw = Vec::new();
+    let _ = s.read_to_end(&mut raw);
+    let at = raw
+        .windows(4)
+        .position(|w| w == b"\r\n\r\n")
+        .expect("a head");
+    let head = String::from_utf8_lossy(&raw[..at]).into_owned();
+    let mut lines = head.lines();
+    let status = lines
+        .next()
+        .unwrap()
+        .split(' ')
+        .nth(1)
+        .unwrap()
+        .parse()
+        .unwrap();
+    let headers = lines
+        .filter_map(|l| l.split_once(':'))
+        .map(|(n, v)| (n.to_owned(), v.trim().to_owned()))
+        .collect();
+    (status, headers, raw[at + 4..].to_vec())
+}
+
+impl Browser {
+    /// A request with a body of bytes sent as `content_type`, the response's body as bytes.
+    fn send_bytes(
+        &self,
+        method: &str,
+        path: &str,
+        headers: &[(&str, &str)],
+        body: &[u8],
+    ) -> (u16, Vec<(String, String)>, Vec<u8>) {
+        let mut h: Vec<(&str, &str)> = headers.to_vec();
+        let cookie = format!("akit_console_{}={}", self.addr.port(), self.cookie);
+        h.push(("Cookie", &cookie));
+        h.push(("X-Akit-Csrf", &self.csrf));
+        let mut tcp = TcpStream::connect(self.addr).unwrap();
+        tcp.set_read_timeout(Some(Duration::from_secs(30))).unwrap();
+        raw_exchange(&mut tcp, &self.addr.to_string(), method, path, &h, body)
+    }
+
+    fn post(&self, path: &str, body: &str) -> Resp {
+        self.send("POST", path, &[], Some(body))
+    }
+}
+
+fn header<'a>(h: &'a [(String, String)], name: &str) -> Option<&'a str> {
+    h.iter()
+        .find(|(n, _)| n.eq_ignore_ascii_case(name))
+        .map(|(_, v)| v.as_str())
+}
+
+fn verifies(hash: &str, pw: &str) -> bool {
+    akio_crypto::bcrypt::Hash::parse(hash).is_ok_and(|h| h.verify(pw.as_bytes()))
+}
+
+/// fit's `TestConsolePasswordChange`: a user changes its own password; the wrong current password
+/// is refused, the right one changes it, the user's other sessions end, and the store keeps the
+/// hash, so that a restart logs in with it.
+#[test]
+fn password_change() {
+    let (f, _kept, path, admin) = start_store("password-change", |_| {});
+    let mut b = Browser::new(&f);
+    assert_eq!(b.login("ada", "pw"), 200);
+    let mut other = Browser::new(&f);
+    assert_eq!(other.login("ada", "pw"), 200);
+    let r = b.get(USERS);
+    assert!(r.body.contains(r#""store":true"#), "{r:?}");
+
+    // A request without the session's CSRF token changes nothing.
+    let csrf = std::mem::take(&mut b.csrf);
+    assert_eq!(
+        b.post(ACCOUNT, r#"{"current_password": "pw", "password": "new"}"#)
+            .status,
+        403
+    );
+    b.csrf = csrf;
+    // The body's fields, and a password bcrypt does not take, are refused before anything is
+    // checked.
+    let long = format!(
+        r#"{{"current_password": "pw", "password": "{}"}}"#,
+        "a".repeat(73)
+    );
+    for body in [
+        r#"{"current_password": "pw"}"#,
+        r#"{"password": "new"}"#,
+        long.as_str(),
+    ] {
+        assert_eq!(b.post(ACCOUNT, body).status, 400, "{body:.60}");
+    }
+    // The wrong current password is refused, and the old one still logs in.
+    let r = b.post(
+        ACCOUNT,
+        r#"{"current_password": "wrong", "password": "new"}"#,
+    );
+    assert_eq!(r.status, 403, "{r:?}");
+    assert!(r.body.contains("the current password is wrong"));
+    assert_eq!(Browser::new(&f).login("ada", "pw"), 200);
+
+    // The right one changes it.
+    let r = b.post(ACCOUNT, r#"{"current_password": "pw", "password": "new"}"#);
+    assert_eq!(r.status, 200, "{r:?}");
+    assert_eq!(r.body.trim(), r#"{"changed":true,"user":"ada"}"#);
+    assert!(logged(r#"console: "ada" changed the password of "ada""#));
+    // The user's other sessions end; the one that changed the password stays.
+    assert_eq!(other.get("/api/session").status, 401);
+    assert_eq!(b.get("/api/session").status, 200);
+    assert_eq!(Browser::new(&f).login("ada", "pw"), 401);
+    assert_eq!(Browser::new(&f).login("ada", "new"), 200);
+    let (users, stored) = f.configs.console_users();
+    assert!(stored);
+    assert_eq!(users.len(), 1);
+    assert_eq!(users[0].username, "ada");
+    assert!(verifies(&users[0].password_hash, "new"));
+
+    // The store keeps the hash beside the config, and the bootstrap file's admin with the
+    // store's users, as akit run makes it at a restart, logs in with the new password.
+    let (opened, data) = akit_admin::store::Store::open(&path, "secret").unwrap();
+    assert_eq!(String::from_utf8(data.unwrap()).unwrap(), doc("one"));
+    let users = opened.users().to_vec();
+    assert_eq!(users.len(), 1);
+    assert!(verifies(&users[0].password_hash, "new"));
+    let merged = akit_admin::bootstrap::with_console_users(&admin, &users);
+    let restarted = akit_config::from_json(&format!(r#"{{"admin": {merged}}}"#), None).unwrap();
+    let c = restarted.admin.unwrap().console.unwrap();
+    let f2 = start(c, Options::default());
+    assert_eq!(Browser::new(&f2).login("ada", "new"), 200);
+    assert_eq!(Browser::new(&f2).login("bob", "bobpw"), 200);
+}
+
+/// fit's `TestConsolePasswordReset`: another user's password set; the target logs in with it, its
+/// sessions end, and the store keeps the hash.
+#[test]
+fn password_reset() {
+    let (f, _kept, path, _) = start_store("password-reset", |_| {});
+    let mut b = Browser::new(&f);
+    assert_eq!(b.login("ada", "pw"), 200);
+    let mut bob = Browser::new(&f);
+    assert_eq!(bob.login("bob", "bobpw"), 200);
+    let r = b.post(RESET, r#"{"username": "nobody", "password": "x"}"#);
+    assert_eq!(r.status, 400);
+    assert!(
+        r.body
+            .contains(r#"there is no console user named \"nobody\""#),
+        "{r:?}"
+    );
+    assert_eq!(b.post(RESET, r#"{"username": "bob"}"#).status, 400);
+    let r = b.post(RESET, r#"{"username": "bob", "password": "newbob"}"#);
+    assert_eq!(r.status, 200, "{r:?}");
+    assert_eq!(r.body.trim(), r#"{"changed":true,"username":"bob"}"#);
+    assert!(logged(r#"console: "ada" set the password of "bob""#));
+    assert_eq!(bob.get("/api/session").status, 401);
+    assert_eq!(Browser::new(&f).login("bob", "newbob"), 200);
+    let (opened, _) = akit_admin::store::Store::open(&path, "secret").unwrap();
+    let users = opened.users();
+    assert_eq!(users.len(), 1);
+    assert_eq!(users[0].username, "bob");
+    assert!(verifies(&users[0].password_hash, "newbob"));
+    assert_eq!(b.get("/api/session").status, 200);
+}
+
+/// fit's `TestConsolePasswordNoStore` and `TestSetConsoleUsersWithoutStore`: without a store a
+/// change is refused, so that nothing is lost at the next restart.
+#[test]
+fn password_without_a_store() {
+    let f = start(console(|_| {}), Options::default());
+    let mut b = Browser::new(&f);
+    assert_eq!(b.login("ada", "pw"), 200);
+    for (path, body) in [
+        (ACCOUNT, r#"{"current_password": "pw", "password": "new"}"#),
+        (RESET, r#"{"username": "ada", "password": "new"}"#),
+    ] {
+        let r = b.post(path, body);
+        assert_eq!(r.status, 409, "{path}: {r:?}");
+        assert!(
+            r.body.contains("passwords change only with a store"),
+            "{r:?}"
+        );
+    }
+    assert_eq!(Browser::new(&f).login("ada", "pw"), 200);
+    assert!(
+        f.configs
+            .set_console_users(vec![akit_admin::store::User {
+                username: "ada".into(),
+                password_hash: "x".into(),
+            }])
+            .is_err()
+    );
+    let (users, stored) = f.configs.console_users();
+    assert!(users.is_empty() && !stored);
+}
+
+/// fit's `TestConsolePasswordStoreFails` and `TestConsoleResetStoreFails`: a change the store
+/// cannot keep leaves the login as it was.
+#[test]
+fn password_store_fails() {
+    let (f, _kept, _, _) = start_store("password-fails", |_| {});
+    f.configs.use_console_users(
+        Vec::new(),
+        Box::new(|_: &[akit_admin::store::User]| Err("the disk is full".to_owned())),
+    );
+    let mut b = Browser::new(&f);
+    assert_eq!(b.login("ada", "pw"), 200);
+    let r = b.post(ACCOUNT, r#"{"current_password": "pw", "password": "new"}"#);
+    assert_eq!(r.status, 500, "{r:?}");
+    assert!(r.body.contains("saving the password: the disk is full"));
+    assert_eq!(Browser::new(&f).login("ada", "pw"), 200);
+    assert_eq!(Browser::new(&f).login("ada", "new"), 401);
+    let r = b.post(RESET, r#"{"username": "bob", "password": "new-bob"}"#);
+    assert_eq!(r.status, 500, "{r:?}");
+    assert!(r.body.contains("saving the password: the disk is full"));
+    assert_eq!(Browser::new(&f).login("bob", "bobpw"), 200);
+}
+
+/// fit's `TestConsolePasswordLockout` and `TestConsolePasswordResetLockedOut`: the wrong current
+/// password counts as a failed login and locks the address out of every password check, a
+/// reset's included.
+#[test]
+fn password_lockout() {
+    let (f, _kept, _, _) = start_store("password-lockout", |_| {});
+    let mut b = Browser::new(&f);
+    assert_eq!(b.login("ada", "pw"), 200);
+    let wrong = r#"{"current_password": "wrong", "password": "new"}"#;
+    for i in 0..akit_admin::console::login::MAX_FAILURES - 1 {
+        assert_eq!(b.post(ACCOUNT, wrong).status, 403, "failure {}", i + 1);
+    }
+    let r = b.post(ACCOUNT, wrong);
+    assert_eq!(r.status, 429, "{r:?}");
+    assert!(r.header("Retry-After").is_some());
+    assert_eq!(
+        b.post(ACCOUNT, r#"{"current_password": "pw", "password": "new"}"#)
+            .status,
+        429
+    );
+    assert_eq!(
+        b.post(RESET, r#"{"username": "bob", "password": "newbob"}"#)
+            .status,
+        429
+    );
+}
+
+/// fit's `TestConsolePasswordBodies`: a change whose body is not the JSON it takes, or names no
+/// user, is refused before anything is checked.
+#[test]
+fn password_bodies() {
+    let (f, _kept, _, _) = start_store("password-bodies", |_| {});
+    let mut b = Browser::new(&f);
+    assert_eq!(b.login("ada", "pw"), 200);
+    for (path, body, want) in [
+        (
+            ACCOUNT,
+            r#"{"current_password": "#,
+            "the body is not the JSON expected",
+        ),
+        (RESET, "[", "the body is not the JSON expected"),
+        (
+            RESET,
+            r#"{"password": "new"}"#,
+            "the user name and the new password",
+        ),
+    ] {
+        let r = b.post(path, body);
+        assert_eq!(r.status, 400, "{body}: {r:?}");
+        assert!(r.body.contains(want), "{body}: {r:?}");
+    }
+    let r = b.send(
+        "POST",
+        RESET,
+        &[("Content-Type", "text/plain")],
+        Some(r#"{"username": "bob"}"#),
+    );
+    assert_eq!(r.status, 415, "{r:?}");
+}
+
+/// fit's `TestTemporaryPassword` and `TestConsoleStartsTemporary`: a session with the temporary
+/// password `akit run -admin` gives may only change it, and the Admin API refuses everything
+/// meanwhile.
+#[test]
+fn temporary_password() {
+    let until = std::time::SystemTime::now() + Duration::from_secs(600);
+    let (f, _kept, _, _) = start_store("temporary", |cs| cs.use_temporary_password("ada", until));
+    let (status, _, body) = api_call(&f, "GET", "/config", &[], b"");
+    assert_eq!(status, 403);
+    assert!(String::from_utf8_lossy(&body).contains("temporary password"));
+    let mut b = Browser::new(&f);
+    let r = b.send(
+        "POST",
+        "/api/login",
+        &[],
+        Some(r#"{"username": "ada", "password": "pw"}"#),
+    );
+    assert_eq!(r.status, 200, "{r:?}");
+    assert!(r.body.contains(r#""must_change_password":true"#), "{r:?}");
+    assert!(r.body.contains(r#""password_expires":""#), "{r:?}");
+    assert_eq!(b.login("ada", "pw"), 200);
+    for path in ["/api/m/admin/config", "/api/m/admin/schema"] {
+        let r = b.get(path);
+        assert_eq!(r.status, 403, "{path}");
+        assert!(r.body.contains(r#""must_change_password":true"#), "{r:?}");
+    }
+    for path in ["/api/session", "/api/workbench", USERS] {
+        assert_eq!(b.get(path).status, 200, "{path}");
+    }
+    let r = b.post(ACCOUNT, r#"{"current_password": "pw", "password": "pw"}"#);
+    assert_eq!(r.status, 400);
+    assert!(r.body.contains("must not be the temporary one"), "{r:?}");
+    let r = b.post(
+        ACCOUNT,
+        r#"{"current_password": "pw", "password": "new-pw"}"#,
+    );
+    assert_eq!(r.status, 200, "{r:?}");
+    // The same session goes on, with everything open; so does the API.
+    let r = b.get("/api/session");
+    assert!(r.status == 200 && !r.body.contains("must_change"), "{r:?}");
+    assert_eq!(b.get("/api/m/admin/config").status, 200);
+    assert!(f.configs.temporary_password().is_none());
+    assert_eq!(api_call(&f, "GET", "/config", &[], b"").0, 200);
+}
+
+/// fit's `TestTemporaryPassword`, past its time: the login and the change are refused.
+#[test]
+fn temporary_password_expired() {
+    let until = std::time::SystemTime::now() + Duration::from_secs(2);
+    let (f, _kept, _, _) = start_store("temporary-expired", |cs| {
+        cs.use_temporary_password("ada", until);
+    });
+    let mut b = Browser::new(&f);
+    assert_eq!(b.login("ada", "pw"), 200);
+    while std::time::SystemTime::now() < until + Duration::from_millis(100) {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let r = Browser::new(&f).send(
+        "POST",
+        "/api/login",
+        &[],
+        Some(r#"{"username": "ada", "password": "pw"}"#),
+    );
+    assert_eq!(r.status, 401, "{r:?}");
+    assert!(r.body.contains(r#""password_expired":true"#), "{r:?}");
+    let r = b.post(
+        ACCOUNT,
+        r#"{"current_password": "pw", "password": "new-pw"}"#,
+    );
+    assert_eq!(r.status, 403, "{r:?}");
+    assert!(r.body.contains("expired"), "{r:?}");
+}
+
+/// fit's `TestExportImport`: the config and a page's members exported in every format and
+/// imported back; `fitstore` files sealed with the running store's key and with a password of
+/// their own; every import kept in the store.
+#[test]
+fn export_and_import() {
+    let (f, kept, _, _) = start_store("transfer", |_| {});
+    let mut b = Browser::new(&f);
+    assert_eq!(b.login("ada", "pw"), 200);
+    const EXPORT: &str = "/api/m/admin/config/export";
+    const IMPORT: &str = "/api/m/admin/config/import";
+    let mut prev = "one".to_owned();
+    for format in ["json", "yaml", "conf"] {
+        let r = b.post(EXPORT, &format!(r#"{{"format": "{format}"}}"#));
+        assert_eq!(r.status, 200, "{r:?}");
+        assert!(r.body.contains(&prev), "{r:?}");
+        assert!(
+            r.header("Content-Disposition")
+                .unwrap()
+                .contains("akit-config-v")
+        );
+        let changed = r.body.replacen(&prev, format, 1);
+        prev = format.to_owned();
+        let r = b.send(
+            "POST",
+            &format!("{IMPORT}?format={format}"),
+            &[("Content-Type", "text/plain")],
+            Some(&changed),
+        );
+        assert_eq!(r.status, 200, "{r:?}\n{changed}");
+        assert_eq!(served(&f), format);
+    }
+    let r = b.post(EXPORT, r#"{"format": "json", "members": ["routes"]}"#);
+    assert_eq!(r.status, 200);
+    assert!(!r.body.contains("listeners"));
+    assert!(
+        r.header("Content-Disposition")
+            .unwrap()
+            .contains("akit-routes-v")
+    );
+    assert_eq!(
+        b.post(EXPORT, r#"{"format": "json", "members": ["admin"]}"#)
+            .status,
+        400
+    );
+    assert_eq!(b.post(EXPORT, r#"{"format": "toml"}"#).status, 400);
+
+    // fitstore: with the running store's key, and with a password.
+    for pw in ["", "export-pw"] {
+        let (status, h, body) = b.send_bytes(
+            "POST",
+            EXPORT,
+            &[("Content-Type", "application/json")],
+            format!(r#"{{"format": "store", "password": "{pw}"}}"#).as_bytes(),
+        );
+        assert_eq!(status, 200, "{}", String::from_utf8_lossy(&body));
+        assert!(body.starts_with(b"FITSTORE"));
+        assert_eq!(header(&h, "Content-Type"), Some("application/octet-stream"));
+        let key = if pw.is_empty() { "secret" } else { pw };
+        let (data, _) = akit_admin::store::unseal(&body, key).unwrap();
+        assert!(String::from_utf8(data).unwrap().contains("routes"));
+        let sealed =
+            akit_admin::store::seal_with(key, doc(&format!("sealed-{pw}")).as_bytes(), &[], CHEAP)
+                .unwrap();
+        let mut hdr = vec![("Content-Type", "application/octet-stream")];
+        if !pw.is_empty() {
+            hdr.push(("Akit-Store-Password", pw));
+        }
+        let (status, _, res) =
+            b.send_bytes("POST", &format!("{IMPORT}?format=store"), &hdr, &sealed);
+        assert_eq!(status, 200, "{}", String::from_utf8_lossy(&res));
+        assert_eq!(served(&f), format!("sealed-{pw}"));
+    }
+    let sealed = akit_admin::store::seal_with("other", doc("x").as_bytes(), &[], CHEAP).unwrap();
+    let (status, _, res) = b.send_bytes(
+        "POST",
+        &format!("{IMPORT}?format=store"),
+        &[("Content-Type", "application/octet-stream")],
+        &sealed,
+    );
+    assert_eq!(status, 400);
+    assert!(String::from_utf8_lossy(&res).contains("does not open"));
+    // A config that does not load is not applied.
+    let r = b.send(
+        "POST",
+        &format!("{IMPORT}?format=json"),
+        &[("Content-Type", "text/plain")],
+        Some(r#"{"listeners": [{"name": "web"}]}"#),
+    );
+    assert_eq!(r.status, 400, "{r:?}");
+    // Every import was kept in the store.
+    let saved = locked(&kept).read().unwrap();
+    assert!(
+        String::from_utf8(saved)
+            .unwrap()
+            .contains("sealed-export-pw")
+    );
+    // A whole export with the store's key holds the users whose passwords changed.
+    let r = b.post(ACCOUNT, r#"{"current_password": "pw", "password": "new"}"#);
+    assert_eq!(r.status, 200);
+    let (_, _, body) = b.send_bytes(
+        "POST",
+        EXPORT,
+        &[("Content-Type", "application/json")],
+        br#"{"format": "store"}"#,
+    );
+    let (_, users) = akit_admin::store::unseal(&body, "secret").unwrap();
+    assert_eq!(users.len(), 1);
+    assert!(verifies(&users[0].password_hash, "new"));
+}
+
+/// fit's `TestImportStoreBounded`: a file whose header asks for a costly key derivation is
+/// refused before deriving it, and a second import while one is being opened is answered 503,
+/// rather than both deriving at once; akit runs without a store, so the file's password is
+/// asked for.
+#[test]
+fn import_store_bounded() {
+    let f = start(console(|_| {}), Options::default());
+    let send = |file: &[u8], pw: Option<&str>| {
+        let mut h = vec![("Content-Type", "application/octet-stream")];
+        if let Some(p) = pw {
+            h.push(("Akit-Store-Password", p));
+        }
+        api_call(&f, "POST", "/config/import?format=store", &h, file)
+    };
+    let sealed = akit_admin::store::seal_with("pw", doc("v2").as_bytes(), &[], CHEAP).unwrap();
+    let (status, _, body) = send(&sealed, None);
+    assert_eq!(status, 400);
+    assert!(String::from_utf8_lossy(&body).contains("Akit-Store-Password"));
+    // Past twice what akit writes with: refused before anything is derived.
+    let mut costly = sealed.clone();
+    costly[14..18].copy_from_slice(&(2 * (64 << 10) + 8u32).to_be_bytes());
+    let (status, _, body) = send(&costly, Some("pw"));
+    assert_eq!(status, 400);
+    assert!(String::from_utf8_lossy(&body).contains("more than"));
+    // One that takes a while to open, and another meanwhile.
+    let slow = akit_admin::store::seal_with(
+        "pw",
+        doc("v3").as_bytes(),
+        &[],
+        akit_admin::store::Params {
+            time: 6,
+            memory_kib: 128 << 10,
+            threads: 1,
+        },
+    )
+    .unwrap();
+    std::thread::scope(|s| {
+        let first = s.spawn(|| send(&slow, Some("pw")));
+        std::thread::sleep(Duration::from_millis(300));
+        let (status, h, body) = send(&sealed, Some("pw"));
+        assert_eq!(status, 503, "{}", String::from_utf8_lossy(&body));
+        assert!(header(&h, "Retry-After").is_some());
+        assert!(String::from_utf8_lossy(&body).contains("being opened"));
+        assert_eq!(first.join().unwrap().0, 200);
+    });
+    assert_eq!(served(&f), "v3");
+    let (status, _, _) = send(&sealed, Some("pw"));
+    assert_eq!(status, 200);
+    assert_eq!(served(&f), "v2");
+    // Exports need a password of their own without a store.
+    let (status, _, body) = api_call(
+        &f,
+        "POST",
+        "/config/export",
+        &[("Content-Type", "application/json")],
+        br#"{"format": "store"}"#,
+    );
+    assert_eq!(status, 400);
+    assert!(String::from_utf8_lossy(&body).contains("give the password"));
+}
+
+/// With a store, a config that sets `admin` is refused: it comes from the bootstrap file
+/// (`akit run`'s `errAdminInStore`); one without is applied and kept in the store.
+#[test]
+fn store_keeps_admin_out() {
+    let (f, kept, _, _) = start_store("admin-out", |_| {});
+    // use_store with an admin: what akit run does.
+    let k2 = Arc::clone(&kept);
+    f.configs.use_store(
+        Some(r#"{"address": "127.0.0.1:0"}"#.to_owned()),
+        Box::new(move |d: &str| {
+            locked(&k2)
+                .write(d.as_bytes().to_vec())
+                .map_err(|e| e.to_string())
+        }),
+    );
+    let with_admin = r#"{"admin": {}, "listeners": [{"name": "web", "address": "127.0.0.1:0"}]}"#;
+    let (status, _, body) = api_call(
+        &f,
+        "POST",
+        "/load",
+        &[("Content-Type", "application/json")],
+        with_admin.as_bytes(),
+    );
+    assert_eq!(status, 400);
+    assert!(
+        String::from_utf8_lossy(&body)
+            .contains("admin is set in the config file akit started with")
+    );
+    let (status, _, body) = api_call(
+        &f,
+        "POST",
+        "/load",
+        &[("Content-Type", "application/json")],
+        doc("two").as_bytes(),
+    );
+    assert_eq!(status, 200, "{}", String::from_utf8_lossy(&body));
+    assert_eq!(served(&f), "two");
+    assert_eq!(
+        String::from_utf8(locked(&kept).read().unwrap()).unwrap(),
+        doc("two")
+    );
+    // A store that cannot be written: the config runs, and is said unsaved.
+    f.configs.use_store(
+        Some("{}".to_owned()),
+        Box::new(|_: &str| Err("the disk is full".to_owned())),
+    );
+    let (status, _, body) = api_call(
+        &f,
+        "POST",
+        "/load",
+        &[("Content-Type", "application/json")],
+        doc("three").as_bytes(),
+    );
+    assert_eq!(status, 200);
+    assert!(
+        String::from_utf8_lossy(&body).contains("was not saved to the store: the disk is full")
+    );
+    assert_eq!(served(&f), "three");
 }

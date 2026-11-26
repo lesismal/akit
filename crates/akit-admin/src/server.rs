@@ -178,6 +178,9 @@ pub(crate) enum Op {
     },
     /// The link tokens of a member (I100).
     Tokens(crate::tokens::TokenOp),
+    /// `POST /config/import?format=store` (I93b): a `fitstore` file's config, opened, whole or
+    /// some of its members, the running `admin` kept.
+    Sealed { frag: Value, members: Vec<String> },
 }
 
 impl Op {
@@ -191,6 +194,7 @@ impl Op {
             Op::Reload => "reload",
             Op::Text { .. } => "text",
             Op::Tokens(t) => t.name(),
+            Op::Sealed { .. } => "import",
         }
     }
 }
@@ -382,6 +386,13 @@ impl Job {
                     apply,
                 )
                 .map_err(|e| crate::text::placed(e, &text, format)),
+            Op::Sealed { frag, members } => configs.change(
+                source,
+                if_match,
+                mode,
+                |cur| crate::text::edited(cur, frag, &members, true),
+                apply,
+            ),
             // Taken above.
             Op::Tokens(_) => return None,
         };
@@ -517,6 +528,7 @@ impl Server {
             tokens: opts.tokens.clone(),
             dashboard: !settings.disable_dashboard,
             token,
+            deriving: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         };
         // The console (I90), when admin.console is set: the same endpoints, behind its logins,
         // its configs applied as its own source; bound first, so that an address it cannot have
@@ -761,6 +773,9 @@ pub(crate) struct Shared {
     unix: bool,
     /// Served over TLS (I92): the API's own origin is `https://`.
     tls: bool,
+    /// Set while a key is derived for a `fitstore` file exported or imported (I93b), from the
+    /// Admin API and the console alike: one at a time, the others refused.
+    pub(crate) deriving: Arc<std::sync::atomic::AtomicBool>,
 }
 
 struct Api(Arc<Shared>);
@@ -827,6 +842,18 @@ const CONFIG_METHODS: &str = "GET, HEAD, PUT, PATCH, DELETE";
 
 impl akio_http::Service for Api {
     fn call(&self, ctx: &mut Context) {
+        // While a console user's password is the temporary one `akit run -admin` gave, nothing
+        // is served (I93c); the console, which calls the endpoints past this, asks for it.
+        if let Some((user, _)) = self.0.configs.temporary_password() {
+            ctx.respond(error(
+                403,
+                &format!(
+                    "the console user {user:?} still has its temporary password: change it on \
+                     the console first"
+                ),
+            ));
+            return;
+        }
         if let Some(resp) = guard(ctx, self.0.token.as_deref(), self.0.unix, self.0.tls) {
             ctx.respond(resp);
             return;
@@ -954,6 +981,18 @@ impl Api {
 pub(crate) fn submit(shared: &Shared, ctx: &mut Context, op: Op, mode: Mode) {
     let if_match = ctx.header("If-Match").map(str::to_owned);
     let Some(reply) = ctx.detach() else { return };
+    submit_detached(shared, reply, if_match, op, mode);
+}
+
+/// Hands `op` to the control thread, to answer `reply` there, as [`submit`] does for a request
+/// detached already (a store's file opened on the pool, I93b).
+pub(crate) fn submit_detached(
+    shared: &Shared,
+    reply: Detached,
+    if_match: Option<String>,
+    op: Op,
+    mode: Mode,
+) {
     let job = Job(Box::new(Change {
         op,
         source: shared.source,

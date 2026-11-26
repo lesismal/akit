@@ -111,8 +111,8 @@
       "zh": "由 `akit hash-password` 生成；fit 的哈希原样可用。"
     },
     "admin.store": {
-      "en": "The file is fit's `fitstore` format, byte for byte (its magic stays `FITSTORE`): fit opens akit's stores and akit fit's. `akit validate` checks it and `akit store export` and `import` read and write it; `akit run` refuses it until I93b keeps the config in it.",
-      "zh": "文件即 fit 的 `fitstore` 格式，逐字节相同（其魔数仍为 `FITSTORE`）：fit 能打开 akit 的 store，akit 也能打开 fit 的。`akit validate` 检查它，`akit store export` 和 `import` 读写它；在 I93b 让 `akit run` 把配置保存在其中之前，`akit run` 拒绝它。"
+      "en": "The file is fit's `fitstore` format, byte for byte (its magic stays `FITSTORE`): fit opens akit's stores and akit fit's, and they run in turn from one. `akit run` keeps the config in it (I93b), merged onto the config files at each start; `akit store export` and `import` read and write it. Without `admin.store`, `akit run -admin` keeps one beside the config file, as fit's (I93c).",
+      "zh": "文件即 fit 的 `fitstore` 格式，逐字节相同（其魔数仍为 `FITSTORE`）：fit 能打开 akit 的 store，akit 也能打开 fit 的，两者可轮流从同一个 store 运行。`akit run` 把配置保存在其中（I93b），每次启动时合并到配置文件之上；`akit store export` 和 `import` 读写它。没有 `admin.store` 时，`akit run -admin` 同 fit 在配置文件旁边保存一个（I93c）。"
     },
     "admin.cert_file": {
       "en": "The files are looked at on the control thread every `-watch-interval` with `-watch-certs` (on by default), not at a handshake as fit's, and loaded once they have stayed as they are for 500ms; SIGHUP reads them again too (I94). New connections get the new certificate; files that do not load are logged in the `admin` logger and the running certificate stays.",

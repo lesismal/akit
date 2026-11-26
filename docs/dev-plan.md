@@ -206,8 +206,8 @@ renamed fit's external names; I98–I109, I102b, I102c, I102d and I103b are the 
 | I91 | Console III: the pages: fit's workbench, the schema, the raw editors and transfer, the Logs page | I90, I83 | done |
 | I92 | The Admin API over TLS, off loopback (L1) | I27 | done |
 | I93 | The encrypted store I: the `fitstore` format, `admin.store`, `akit store export` and `import` | I90, akio A230, A231 | done |
-| I93b | The encrypted store II: `akit run` keeps the config in it; the console's password changes; the `store` format of `/config/export` and `/config/import` | I93 | todo |
-| I93c | The encrypted store III: `akit run -admin`, the store beside the config files | I93b | todo |
+| I93b | The encrypted store II: `akit run` keeps the config in it; the console's password changes; the `store` format of `/config/export` and `/config/import` | I93 | done |
+| I93c | The encrypted store III: `akit run -admin`, the store beside the config files | I93b | done |
 | I94 | The Admin API's and the console's certificates read again when they change | I92 | done |
 | **After 1.0: akit's names** | | | |
 | I97 | akit's names: every external name that says "fit" says "akit" (decision 037) | I91, I92 | done |
@@ -287,7 +287,7 @@ commit and result.
 | Engine budget and client-only connection limit | I79b | partial (2026-11-26, akio `76a010c1`: akio's same-run A/B, in akio's docs/BENCHMARKS, "Engine budget and accepted-connection limit": HTTP/1.1, pipelined, h2c and TCP echo within 1% of akio's main on epoll and io_uring, with both settings off and on) | no (built, not measured in akit) | akio's side is measured. Left in akit: the fixed and proxy scenarios with the default `max_pending_bytes` (half the memory: the watcher thread, a relaxed load per read) against the same build with the budget removed (akio's `Live::set_max_pending_bytes(None)`), HTTP/1.1 and h2c; many slow clients (10,000 not reading a 1 MiB response) against fit: akit's RSS bounded by the budget, other clients' latency while it holds, and how fast they resume. |
 | Config churn under traffic | I38 | no | no (tested, not measured) | The fixed and proxy scenarios, HTTP/1.1 and h2c, while the config is swapped every 10 ms through SIGHUP and the Admin API, against the same run with no swaps: requests a second, p99 latency and errors during the churn, and akit's RSS and descriptors after 100k swaps; the M2 report of the full harness (rule 24, a milestone's end). |
 | Access lists | I85–I87 | no | no (built, not measured) | As fit's `BenchmarkAllows`: a policy's lookup (one list of 10, 10,000 and 1,000,000 prefixes from a file, and three lists chained) for IPv4 and IPv6 addresses, 1 and 16 threads, no allocation. Same-run A/B, alternating rounds, against the same config without `access`: connections a second through a listener refused or served at accept (akio's filter, A3: an `Arc` read and the lookup per accept) with a large deny list; the fixed and proxy scenarios over HTTP/1.1, h2c and h3 with a route's own access (checked per request: a graph read and the lookup) and without; a `tcp` service's connections a second decided by akit-l4's entry; a flood of refused `udp` datagrams (dropped at akio's filter, A220) against the served sessions' latency. |
-| Console and encrypted store | I89–I93 | no | no (control plane; I93b not built) | The console is control plane (rule 24: no benchmark of its own), but it shares the host with the data plane. Same-run A/B, alternating rounds, of the fixed and proxy scenarios with and without a console being flooded with failed logins (bcrypt at cost 10 on its one-thread login pool, 16 waiting, the rest 503) and with a logged-in client polling `GET /api/m/admin/status` every second: the data plane's requests a second and p99 should not move. The console's own numbers, for the record: logins a second at costs 10 and 12; the workbench's first load (its 2.5 MB of files, from memory) over HTTP/1.1 and TLS. For I93: the store's key derivation at start (Argon2id at fit's 3, 64 MiB, 4 threads: time and peak memory), and a write's latency with a 4 MiB config (sealed, synced, renamed). |
+| Console and encrypted store | I89–I93c | no | no (control plane) | The console is control plane (rule 24: no benchmark of its own), but it shares the host with the data plane. Same-run A/B, alternating rounds, of the fixed and proxy scenarios with and without a console being flooded with failed logins (bcrypt at cost 10 on its one-thread login pool, 16 waiting, the rest 503) and with a logged-in client polling `GET /api/m/admin/status` every second: the data plane's requests a second and p99 should not move. The console's own numbers, for the record: logins a second at costs 10 and 12; the workbench's first load (its 2.5 MB of files, from memory) over HTTP/1.1 and TLS. For I93: the store's key derivation at start (Argon2id at fit's 3, 64 MiB, 4 threads: time and peak memory), and a write's latency with a 4 MiB config (sealed, synced, renamed). |
 | akio requests moved off their stopgaps (A12, A79, A45, A117, A30, A54, A29, A75, A78, A22, A170, A24, A49, A35, A148) | — (akio requests) | no | no (built, not measured) | Same-run A/B of the fixed and proxy scenarios, HTTP/1.1, h2c and h3, against main before these commits: the access log and metrics through the listener's response observer (`set_observed`, no allocation) against the boxed filter, and `limit_body` called on every request; the proxy's downloads framed by their length on HTTP/1.1 against chunked; layer 4 relays timed out by akio's per-connection idle timeout against akit's sweep (many idle connections); the sockmap relay through `akio::ebpf::Tunnel` (TCP throughput as root, as I51b's row); a health-check probe load on `akio::timer::after_send` against akit's old timer thread. |
 
 ## M0, foundations
@@ -1474,7 +1474,12 @@ without one it changes the running config as the Admin API does, and password ch
 - **Touches**: `akit-admin` (`configs`, `console`, `server`), `akit` (`run`), `docs`.
 - **fit**: `cli/run.go`, `cli/store.go`, `admin/bootstrap.go`, `admin/configs.go`,
   `admin/transfer.go`, `admin/console.go`; I104.
-- **Status**: todo.
+- **Status**: done (2026-11-27), with I93c. Key derivations for the Admin API's `store` exports and
+  imports run on its pool, one at a time, an export with a password of its own too (fit bounds
+  imports only); a password change is hashed and kept on the console's login pool. fit's
+  `TestStoreCommand` case of `{"listeners": []}` is left out: akit takes an empty list of
+  listeners. Besides fit's code writing and reading the stores (`tests/fitstore`), fit's binary and
+  akit's run in turn from one store when `AKIT_FIT_BIN` names fit's. See the progress log.
 
 ### I93c The encrypted store III: `akit run -admin` and the store beside the config
 
@@ -1488,8 +1493,9 @@ without one it changes the running config as the Admin API does, and password ch
 - **Done when**: fit's `run -admin` tests pass ported.
 - **Touches**: `akit` (`run`, `store`), `akit-admin` (`console`), `docs`.
 - **fit**: `cli/run.go`, `cli/store.go`, `admin/bootstrap.go` (`WithDefaultConsole`); I104.
-- **Status**: todo, after I93b. The variable's name (fit's `FIT_STORE_PASSWORD`) is decision 037's
-  to rename.
+- **Status**: done (2026-11-27), with I93b. fit's names renamed as decision 037 renames them:
+  `AKIT_STORE_PASSWORD`, `akit.store` with no config file; the key file `<store>.key` as fit's, so
+  that fit and akit share a store and its key. See the progress log.
 
 ### I94 The Admin API's and the console's certificates read again when they change
 

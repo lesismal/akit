@@ -40,13 +40,14 @@ that validates runs as fit runs it, within what akit supports.
   every `mptcp`; `tls.kernel_tls_offload`; `upstreams[].deny_internal`;
   the proxy's `splice_uploads`; the Kubernetes provider's `allow_external_name_services`; and in
   `admin`, everything but `address`, `token_file`, `history`, `max_config_bytes`, `max_conns`,
-  `disable_dashboard`, `access`, `cert_file`, `key_file`, `client_ca_file` and `console`: no store,
-  assistant or cluster.
+  `disable_dashboard`, `access`, `cert_file`, `key_file`, `client_ca_file`, `console` and `store`:
+  no assistant or cluster.
 - **Values**: `static`'s `disk_io auto` (akit looks at the disk on its file pool only).
 - **In `.conf` files**: `import` and `include`; name every file with `-c`, or a directory.
-- **Commands and flags**: akit has `run`, `validate`, `adapt`, `fmt`, `build`, `hash-password` and
-  `version`; `run`'s `-admin` and `-timeout` are refused. fit's `check`, `token`, `store`, `sync`,
-  `bt` and `media-token` are not there yet.
+- **Commands and flags**: akit has `run` (with fit's `-admin` and `-timeout`), `validate`, `adapt`,
+  `fmt`, `build`, `hash-password`, `token`, `store` and `version`. fit's `check`, `sync`, `bt` and
+  `media-token` are not there yet. A store fit kept opens in akit as it is (its key file too); the
+  variable for its password is `AKIT_STORE_PASSWORD` (fit's `FIT_STORE_PASSWORD`).
 
 ## akit's names
 

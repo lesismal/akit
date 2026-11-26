@@ -52,8 +52,8 @@ engine of its own. akit and fit are both under the Apache License 2.0.
 6. **Passwords change only with a store**, as in fit: without `admin.store` the account endpoints
    answer 409. The store is fit's format, byte for byte, on akio-crypto's Argon2id (A230) and
    XChaCha20-Poly1305 (A231), which akio has since 2026-11-27: a format of akit's own would be a
-   store fit cannot open. I93 brings the format and `akit store`; I93b keeps the running config
-   in it, and the account endpoints work with it then. The threat model's L5 (keys stored unencrypted) stays accepted: fit's store
+   store fit cannot open. I93 brought the format and `akit store`; I93b keeps the running config
+   in it, and the account endpoints work with it; I93c brings `akit run -admin`. The threat model's L5 (keys stored unencrypted) stays accepted: fit's store
    holds the config and the console's users, not the certificate storage, which akit shares with
    fit (I62) and which an encrypted store would make unreadable to it.
 7. **`akit hash-password` reads a password typed at a terminal as fit's**: in raw mode (akio-sys's
@@ -70,7 +70,7 @@ engine of its own. akit and fit are both under the Apache License 2.0.
    forms are made from fit's schema at the same pin (`GET /api/m/admin/schema`). akit adds what the
    config pages call that it did not have, as Admin API endpoints, fit's: `/config/render`,
    `/config/parse`, `/config/text`, `/config/export` and `/config/import` (their `store` format
-   waits for I93); a text's errors are placed at their lines in it (`akit_config::position_of`),
+   since I93b); a text's errors are placed at their lines in it (`akit_config::position_of`),
    as fit's adapter places them.
 9. **The Admin API over TLS** (I92), as fit's `checkAdminAddress`: `cert_file` and `key_file`
    (TLS 1.2 and 1.3), `client_ca_file` asking every client for a certificate it verifies; off

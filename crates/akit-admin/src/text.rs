@@ -15,8 +15,14 @@
 //!                                 a file applied as the config, admin kept, or as those members
 //! ```
 //!
-//! fit's `store` format waits for the store (I93): it is refused. A text sends the secrets the
-//! reads answer as `[redacted]` back as they came, and they are put back from the running config
+//! fit's `store` format (I93b) exports a `fitstore` file sealed with the password the request
+//! gives, or with the running store's key, and imports one opened with the password in
+//! `Akit-Store-Password` (fit's `Fit-Store-Password`, renamed: decision 037), or with the running
+//! store's: the file's key is derived on the API's pool, one at a time in the process (the others
+//! answered 503), and a file asking for more than twice the cost akit writes with is refused
+//! before (`store::unseal`). A whole config's export holds the console users whose passwords
+//! changed, so that a restore logs in with them; an import takes none. A text sends the secrets
+//! the reads answer as `[redacted]` back as they came, and they are put back from the running config
 //! as `PUT /config` puts them (decision 035); an export redacts them as the reads do. Converting
 //! a text parses it whole on the API's I/O thread, as a JSON body is, within `max_config_bytes`;
 //! the change goes to the control thread as every change does.
@@ -25,14 +31,21 @@
 #![allow(clippy::result_large_err)]
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
-use akio_http::{Context, Response};
+use akio_http::{Context, Detached, Response};
 use akit_config::adapt::{Target, document};
 use akit_config::value::{Value, standardize};
 use akit_config::{Errors, Format, Source};
 
-use crate::configs::{Refused, Version};
-use crate::server::{Op, Shared, VERSION_HEADER, error, json, read_body, submit};
+use crate::configs::{Mode, Refused, Version};
+use crate::server::{Op, Shared, VERSION_HEADER, error, json, read_body, submit, submit_detached};
+use crate::store;
+
+/// The header carrying the password of a `fitstore` file imported with `POST
+/// /config/import?format=store` that was sealed with one of its own: fit's `Fit-Store-Password`,
+/// renamed (decision 037).
+pub const STORE_PASSWORD_HEADER: &str = "Akit-Store-Password";
 
 /// A text format: its `format` name, how it is read, and the content types its text is sent as.
 struct TextFormat {
@@ -67,14 +80,46 @@ fn format_of(name: Option<&str>) -> Option<TextFormat> {
     })
 }
 
-fn bad_format(store: bool) -> Response {
-    if store {
-        error(
-            400,
-            "the store format needs admin.store, which akit does not have yet",
-        )
+fn bad_format(export: bool) -> Response {
+    if export {
+        error(400, "the format must be conf, yaml, json or store")
     } else {
         error(400, "the format must be conf, yaml or json")
+    }
+}
+
+/// Holds [`Shared::deriving`] while a key is derived for a `fitstore` file, and lets it go when
+/// dropped.
+struct Deriving(Arc<AtomicBool>);
+
+impl Deriving {
+    /// The hold, or `None` while another file's key is derived.
+    fn take(flag: &Arc<AtomicBool>) -> Option<Deriving> {
+        flag.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .ok()
+            .map(|_| Deriving(Arc::clone(flag)))
+    }
+}
+
+impl Drop for Deriving {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::Release);
+    }
+}
+
+/// 503 while another `fitstore` file's key is derived, as fit's.
+fn busy_deriving() -> Response {
+    error(503, "another store file is being opened; try again").header("Retry-After", "1")
+}
+
+/// What a store's error says to the client: fit's words for a file that does not open.
+fn store_error(e: &store::Error) -> String {
+    match e {
+        store::Error::Open(_) => {
+            "the file does not open with the password: it is wrong, or the file was changed"
+                .to_owned()
+        }
+        e => e.to_string(),
     }
 }
 
@@ -193,9 +238,6 @@ pub(crate) fn parse(shared: &Arc<Shared>, ctx: &mut Context) {
 /// as `members` of it.
 pub(crate) fn put(shared: &Arc<Shared>, ctx: &mut Context, import: bool) {
     let name = ctx.req().query_param("format").map(str::to_owned);
-    let Some(f) = format_of(name.as_deref()) else {
-        return ctx.respond(bad_format(name.as_deref() == Some("store")));
-    };
     let members = match members_of(ctx) {
         Ok(m) => m,
         Err(r) => return ctx.respond(r),
@@ -203,6 +245,12 @@ pub(crate) fn put(shared: &Arc<Shared>, ctx: &mut Context, import: bool) {
     let mode = match crate::server::mode_of(ctx) {
         Ok(m) => m,
         Err(p) => return ctx.respond(error(p.status, &p.msg)),
+    };
+    if import && name.as_deref() == Some("store") {
+        return import_store(shared, ctx, members, mode);
+    }
+    let Some(f) = format_of(name.as_deref()) else {
+        return ctx.respond(bad_format(false));
     };
     let shared2 = Arc::clone(shared);
     let types = f.types;
@@ -238,6 +286,63 @@ pub(crate) fn put(shared: &Arc<Shared>, ctx: &mut Context, import: bool) {
             mode,
         );
     });
+}
+
+/// `POST /config/import?format=store`: a `fitstore` file, opened on the pool with the password in
+/// [`STORE_PASSWORD_HEADER`] or the running store's, applied as the config or as `members` of it,
+/// the running `admin` kept; the users it may hold are not imported. fit's `importConfig`.
+fn import_store(shared: &Arc<Shared>, ctx: &mut Context, members: Vec<String>, mode: Mode) {
+    let password = ctx
+        .header(STORE_PASSWORD_HEADER)
+        .filter(|p| !p.is_empty())
+        .map(str::to_owned);
+    let if_match = ctx.header("If-Match").map(str::to_owned);
+    let shared2 = Arc::clone(shared);
+    read_body(
+        shared,
+        ctx,
+        &["application/octet-stream"],
+        move |ctx, file| {
+            // Deriving a file's key takes Argon2id's time and memory (up to twice what akit
+            // writes with): one at a time, the others refused rather than kept waiting.
+            let Some(hold) = Deriving::take(&shared2.deriving) else {
+                return ctx.respond(busy_deriving());
+            };
+            let sealer = shared2.configs.sealer();
+            if password.is_none() && sealer.is_none() {
+                return ctx.respond(error(
+                    400,
+                    &format!(
+                        "akit runs without a store: give the file's password in {STORE_PASSWORD_HEADER}"
+                    ),
+                ));
+            }
+            let shared3 = Arc::clone(&shared2);
+            let queued = ctx.detach_to_pool(move |d: Detached| {
+                let opened = match (&password, &sealer) {
+                    (Some(p), _) => store::unseal(&file, p),
+                    (None, Some(s)) => s.unseal(&file),
+                    (None, None) => return,
+                };
+                drop(hold);
+                let data = match opened {
+                    Ok((data, _users)) => data,
+                    Err(e) => return d.respond(error(400, &store_error(&e))),
+                };
+                let frag = match std::str::from_utf8(&data)
+                    .ok()
+                    .and_then(|t| akit_config::value::parse(t).ok())
+                {
+                    Some(v @ Value::Object(_)) => v,
+                    _ => return d.respond(error(400, "the file is not a config object")),
+                };
+                submit_detached(&shared3, d, if_match, Op::Sealed { frag, members }, mode);
+            });
+            if !queued {
+                ctx.respond(error(503, "the Admin API is busy; try again"));
+            }
+        },
+    );
 }
 
 /// `e`, a change refused, its config's errors placed in `text`, the text they came from in
@@ -331,8 +436,10 @@ pub(crate) fn edited(
 /// written in the format, without `admin` and with its secrets redacted, as a file.
 pub(crate) fn export(shared: &Arc<Shared>, ctx: &mut Context) {
     let configs = shared.configs.clone();
+    let deriving = Arc::clone(&shared.deriving);
     read_body(shared, ctx, &["application/json"], move |ctx, data| {
-        let r = utf8(data).and_then(|text| {
+        let r = (|| -> Result<Response, Exported> {
+            let text = utf8(data)?;
             let body = akit_config::value::parse(&text).map_err(|_| {
                 error(
                     400,
@@ -359,45 +466,146 @@ pub(crate) fn export(shared: &Arc<Shared>, ctx: &mut Context) {
                     "admin is not exported: it comes from the config akit started with",
                 )
             })?;
-            let Some(f) = format_of(Some(format.as_str())) else {
-                return Err(bad_format(format == "store"));
+            let password = match body.get("password") {
+                Some(Value::String(s)) if !s.is_empty() => Some(s.clone()),
+                _ => None,
+            };
+            let target = match format_of(Some(format.as_str())) {
+                Some(f) => Some(f.target),
+                None if format == "store" => None,
+                None => return Err(bad_format(true).into()),
             };
             let v = configs.current();
             let redacted = crate::redact::config(v.data())
                 .ok_or_else(|| error(500, "the running config is not a JSON object"))?;
             let Ok(Value::Object(mut root)) = akit_config::value::parse(&redacted) else {
-                return Err(error(500, "the running config is not a JSON object"));
+                return Err(error(500, "the running config is not a JSON object").into());
             };
             root.retain(|(k, _)| k != "admin" && (members.is_empty() || members.contains(k)));
             let std = Value::Object(root).to_json();
+            let name = if members.is_empty() {
+                "config".to_owned()
+            } else {
+                members.join("-")
+            };
+            let headers = move |resp: Response| {
+                resp.header(
+                    "Content-Disposition",
+                    format!(
+                        "attachment; filename=\"akit-{name}-v{}.{format}\"",
+                        v.number
+                    ),
+                )
+                .header("ETag", &v.etag)
+                .header(VERSION_HEADER, v.number.to_string())
+            };
+            let Some(target) = target else {
+                return Err(Sealing {
+                    std,
+                    whole: members.is_empty(),
+                    password,
+                    headers: Box::new(headers),
+                }
+                .into());
+            };
             let out = document(&[Source {
                 name: None,
                 format: Format::Json,
                 src: &std,
             }])
             .map_err(|e| error(500, &format!("exporting the config: {e}")))?
-            .write(f.target)
+            .write(target)
             .map_err(|e| error(500, &format!("exporting the config: {e}")))?;
-            let name = if members.is_empty() {
-                "config".to_owned()
-            } else {
-                members.join("-")
-            };
-            Ok(
-                Response::with_body(200, "text/plain; charset=utf-8", out.into_bytes())
-                    .header(
-                        "Content-Disposition",
-                        format!(
-                            "attachment; filename=\"akit-{name}-v{}.{format}\"",
-                            v.number
-                        ),
-                    )
-                    .header("ETag", &v.etag)
-                    .header(VERSION_HEADER, v.number.to_string()),
-            )
-        });
-        ctx.respond(r.unwrap_or_else(|e| e));
+            Ok(headers(Response::with_body(
+                200,
+                "text/plain; charset=utf-8",
+                out.into_bytes(),
+            )))
+        })();
+        match r {
+            Ok(resp) | Err(Exported::Answer(resp)) => ctx.respond(resp),
+            Err(Exported::Seal(s)) => seal_export(&configs, ctx, &deriving, *s),
+        }
     });
+}
+
+/// A `fitstore` export to seal off the I/O thread.
+struct Sealing {
+    /// The config, standard JSON.
+    std: String,
+    /// Whether it is the whole config, which takes the console users with it.
+    whole: bool,
+    /// The export's own password, or `None` for the store's key.
+    password: Option<String>,
+    headers: Box<dyn FnOnce(Response) -> Response + Send>,
+}
+
+/// What an export comes to before it is answered.
+enum Exported {
+    Answer(Response),
+    Seal(Box<Sealing>),
+}
+
+impl From<Response> for Exported {
+    fn from(r: Response) -> Exported {
+        Exported::Answer(r)
+    }
+}
+
+impl From<Sealing> for Exported {
+    fn from(s: Sealing) -> Exported {
+        Exported::Seal(Box::new(s))
+    }
+}
+
+/// Seals an export on the pool: with its own password (a key derived, one at a time in the
+/// process), or with the running store's key; 400 when akit runs without a store and none is
+/// given. As fit's `exportConfig`.
+fn seal_export(
+    configs: &crate::Configs,
+    ctx: &mut Context,
+    deriving: &Arc<AtomicBool>,
+    s: Sealing,
+) {
+    let sealer = configs.sealer();
+    if s.password.is_none() && sealer.is_none() {
+        return ctx.respond(error(
+            400,
+            "akit runs without a store: give the password to seal the export with",
+        ));
+    }
+    let hold = match &s.password {
+        Some(_) => match Deriving::take(deriving) {
+            Some(h) => Some(h),
+            None => return ctx.respond(busy_deriving()),
+        },
+        None => None,
+    };
+    let configs = configs.clone();
+    let queued = ctx.detach_to_pool(move |d: Detached| {
+        let users = if s.whole {
+            configs.console_users().0
+        } else {
+            Vec::new()
+        };
+        let sealed = match (&s.password, &sealer) {
+            (Some(p), _) => store::seal(p, s.std.as_bytes(), &users),
+            (None, Some(st)) => st.seal(s.std.as_bytes(), &users),
+            (None, None) => return,
+        };
+        drop(hold);
+        match sealed {
+            Ok(out) => d.respond((s.headers)(Response::with_body(
+                200,
+                "application/octet-stream",
+                out,
+            ))),
+            Err(e) => d.respond(error(500, &format!("exporting the config: {e}"))),
+        }
+    });
+    if !queued {
+        ctx.respond(error(503, "the Admin API is busy; try again"));
+    }
 }
 
 #[cfg(test)]

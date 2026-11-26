@@ -34,6 +34,11 @@ route { handler respond { body "hello\n" } }
 
 再打开 <http://127.0.0.1:2020/>。只有 `admin`、没有监听器的配置是有效的：其余部分可以在控制台中添加。
 
+**最快的方式：`akit run -admin`。** 它在配置省略时以默认值提供 Admin API 和控制台，并把配置保存在配置文件旁边的 store 中
+（`site.json` 对应 `site.store` 及其密钥文件 `site.store.key`，0600；没有配置文件时为 `akit.store`）。配置中没有控制台用户时，
+用户 `admin` 以密码 `admin` 登录，该密码须在 `-timeout`（30m）内修改：在此之前控制台只要求这一修改，Admin API 拒绝所有请求；
+超时之后该密码失效，须用 `-admin` 重启 akit。修改后的密码保存在 store 中。
+
 **非回环地址上的控制台需要 TLS**：非回环地址必须有 `cert_file` 和 `key_file`，使密码从不以明文经过网络；没有时
 `akit validate` 拒绝。在回环地址上 TLS 可选，比如通过 SSH 隧道访问的控制台。`access` 指定它为哪些客户端地址提供服务
 （[访问控制列表](../reference/config.zh-CN.md#访问控制列表)），在全局 `access` 之前决定，全局 `access` 也适用于控制台：
@@ -58,8 +63,10 @@ route { handler respond { body "hello\n" } }
 
 `admin` 日志记录器记录谁从哪里登录、每次失败的登录、每次登出，以及每个用户的每次修改及其应用的配置版本。
 
-**修改密码需要 store。** fit 把修改后的密码保存在 `admin.store` 中，akit 还没有它（[I93](../dev-plan.zh-CN.md#i93-加密的-store)）：
-在此之前相应端点回答 `409`，用户即配置中的用户。
+**修改密码需要 store。** 用户可以修改自己的密码（当前密码按登录的方式检查：错误的算一次失败的登录，计入锁定），或设置别人的；
+新的哈希保存在 store 中（[`admin.store`](../reference/config.zh-CN.md#adminstore)，或 `akit run -admin` 保存的那个），在配置旁边，
+每次启动时替换配置中该用户的哈希，因此不必修改配置文件。该用户的其他会话随之结束。没有 store 时这些端点回答 `409`，以免下次重启时
+丢失修改。fit 的 store 和 akit 的可以互相打开。
 
 ## 页面
 
@@ -81,7 +88,8 @@ akit 还不运行的部分按 fit 的样子显示，akit 像回答配置那样�
   设置了其中之一的保存以“尚不支持”被拒绝。
 - akit 没有的端点回答 404，调用它们的页面会说明：一致性检查（`/config/check`）、**本节点**（`/node`）、集群管理端的标记
   （`/node/managed`），以及媒体、BitTorrent 和同步页面自己的端点。
-- 导入导出页面的 `store` 格式和修改密码需要 `admin.store`（I93）。
+- 导入导出页面的 `store` 格式导出用该页给出的密码、或用正在运行的 store 的密钥密封的 `fitstore` 文件，并导入用其密码或 store 的
+  密码打开的文件（fit 的和 akit 的都可以）；没有 store 时必须给出密码。一次只派生一个文件的密钥：其间的另一个回答 503。
 
 ## 供脚本使用
 
@@ -94,6 +102,8 @@ akit 还不运行的部分按 fit 的样子显示，akit 像回答配置那样�
 | `GET /api/session` | `{"user", "csrf"}` |
 | `GET /api/workbench` | 用户和提供的模块：`admin` |
 | `GET /api/m/admin/users` | 已登录的用户、所有用户，以及是否有 store 保存它们 |
+| `POST /api/m/admin/account/password` | `{"current_password", "password"}`：修改用户自己的密码（没有 store 时 `409`） |
+| `POST /api/m/admin/users/password` | `{"username", "password"}`：设置另一个用户的密码（没有 store 时 `409`） |
 | `GET /api/m/admin/schema` | fit 的配置 schema，与页面一样改了名，页面的表单由它生成 |
 | `/api/m/admin/<路径>` | Admin API 的 `/<路径>`，用会话代替令牌，如 `GET /api/m/admin/config` |
 

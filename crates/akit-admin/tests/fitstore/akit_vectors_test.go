@@ -5,9 +5,11 @@
 //	AKIT_VECTORS_OUT=<dir> go test -run TestAkitVectors ./admin/store
 //	AKIT_WROTE_DIR=<dir> go test -run TestAkitWrote ./admin/store
 //
-// TestAkitVectors writes stores of every version, and an export, with vectors.json
-// saying what each holds; TestAkitWrote opens the stores akit wrote, as its
-// manifest.json says, and checks what they hold.
+// TestAkitVectors writes stores of every version, one written back and with a
+// password changed as fit run and its console do, and an export, with
+// vectors.json saying what each holds; TestAkitWrote opens the stores akit wrote
+// (akit's own, and fit's written back by akit), as its manifest.json says, and
+// checks what they hold.
 package store
 
 import (
@@ -76,6 +78,35 @@ func TestAkitVectors(t *testing.T) {
 			return err
 		}
 		return s.SetSection("cluster", []byte(`{"version":2,"members":[]}`))
+	})
+	// What fit run and its console do to the store they keep the config in (akit I93b): the
+	// store opened again at a restart, the config written back after a change (Write, the
+	// users and sections kept), and a console password changed (SetUsers, the config kept).
+	write("writeback.store", "fit-writeback", cheap, func(s *Store) error {
+		if err := s.Write([]byte(config)); err != nil {
+			return err
+		}
+		if err := s.SetUsers(users); err != nil {
+			return err
+		}
+		if err := s.SetSection("cluster", []byte(`{"version":2,"members":[]}`)); err != nil {
+			return err
+		}
+		again, data, err := Open(s.path, "fit-writeback")
+		if err != nil {
+			return err
+		}
+		if string(data) != config {
+			t.Fatalf("writeback.store: opened again: %q", data)
+		}
+		if err := again.Write([]byte(`{"routes": [{"handler": {"module": "respond", "params": {"body": "written back"}}}]}`)); err != nil {
+			return err
+		}
+		if err := again.SetUsers([]User{{Username: "ada", PasswordHash: "$2a$10$ada-changed"}, users[1]}); err != nil {
+			return err
+		}
+		_, err = s.Read()
+		return err
 	})
 	// fit's own settings, as a store fit makes has them.
 	write("v2-default.store", "fit-default", saved, func(s *Store) error {

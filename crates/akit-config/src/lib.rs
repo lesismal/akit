@@ -453,6 +453,17 @@ pub fn load_config_files(files: &[ConfigFile]) -> Result<(Config, String), Error
     Ok((config, value::json_of(&srcs)?))
 }
 
+/// The config `files` hold as one JSON document ([`value::json_of`]), each file in the format its
+/// extension says, without checking what it says: what `akit run` merges a store's config onto
+/// (I93b), checked once merged.
+///
+/// # Errors
+///
+/// A file that is not UTF-8 or does not parse, naming it.
+pub fn json_of_files(files: &[ConfigFile]) -> Result<String, Errors> {
+    value::json_of(&sources(files)?)
+}
+
 /// `files` as sources, each in the format its extension says.
 fn sources(files: &[ConfigFile]) -> Result<Vec<Source<'_>>, Errors> {
     files

@@ -1,10 +1,12 @@
-//! The encrypted store against fit's own code (I93): the stores in `tests/fitstore` were written
-//! by fit's `admin/store` package, of every version, one with fit's own Argon2id settings (time
-//! 3, 64 MiB, 4 lanes) and an export, by `tests/fitstore/akit_vectors_test.go` run inside fit's
+//! The encrypted store against fit's own code (I93, I93b): the stores in `tests/fitstore` were
+//! written by fit's `admin/store` package, of every version, one with fit's own Argon2id settings
+//! (time 3, 64 MiB, 4 lanes), one opened again, its config written back and a console password
+//! changed, as `fit run` and its console do, and an export, by `tests/fitstore/akit_vectors_test.go` run inside fit's
 //! package at the compatibility gate's fit pin (`TestAkitVectors`), `vectors.json` saying what
 //! each holds. akit opens each and finds it; akit writes one back and keeps what it does not read
-//! (the sections). With `AKIT_FITSTORE_OUT=<dir>`, `akit_writes_for_fit` writes akit's stores and
-//! a `manifest.json` there for the same Go file's `TestAkitWrote` to open with fit's code
+//! (the sections). With `AKIT_FITSTORE_OUT=<dir>`, `akit_writes_for_fit` writes akit's stores (one
+//! written back with a password changed as `akit run` and its console do, and fit's written back
+//! by akit so) and a `manifest.json` there for the same Go file's `TestAkitWrote` to open with fit's code
 //! (`AKIT_WROTE_DIR=<dir> go test -run TestAkitWrote ./admin/store`).
 #![allow(
     clippy::unwrap_used,
@@ -84,7 +86,7 @@ fn json(raw: &[u8]) -> Value {
 #[test]
 fn opens_what_fit_wrote() {
     let vs = vectors();
-    assert_eq!(vs.len(), 5, "the vectors");
+    assert_eq!(vs.len(), 6, "the vectors");
     for v in &vs {
         let path = fixtures().join(&v.file);
         if v.export {
@@ -234,6 +236,39 @@ fn akit_writes_for_fit() {
         assert_eq!(data.unwrap(), config.as_bytes());
         assert_eq!(o.users(), users);
         entry(file, pw, false, &users, sections);
+    }
+    // What akit run and its console do (I93b): the store opened again at a restart, the config
+    // written back after a change, a console password changed; and the same done to the store
+    // fit wrote so.
+    let changed = vec![
+        User {
+            username: "ada".into(),
+            password_hash: "$2a$10$ada-changed-by-akit".into(),
+        },
+        users[1].clone(),
+    ];
+    for (file, pw, from_fit) in [
+        ("akit-writeback.store", "akit-writeback", false),
+        ("akit-on-fit.store", "fit-writeback", true),
+    ] {
+        let path = out.join(file);
+        let _ = std::fs::remove_file(&path);
+        let sections: &[(&str, &str)] = if from_fit {
+            std::fs::copy(fixtures().join("writeback.store"), &path).unwrap();
+            &[("cluster", r#"{"version":2,"members":[]}"#)]
+        } else {
+            let mut s = Store::create_with(&path, pw, cheap).unwrap();
+            s.write(br#"{"routes":[]}"#.to_vec()).unwrap();
+            s.set_users(users.clone()).unwrap();
+            &[]
+        };
+        let (mut again, _) = Store::open(&path, pw).unwrap();
+        again.write(config.as_bytes().to_vec()).unwrap();
+        again.set_users(changed.clone()).unwrap();
+        let (o, data) = Store::open(&path, pw).unwrap();
+        assert_eq!(data.unwrap(), config.as_bytes());
+        assert_eq!(o.users(), changed);
+        entry(file, pw, false, &changed, sections);
     }
     let sealed = store::seal_with("akit-export", config.as_bytes(), &users, cheap).unwrap();
     std::fs::write(out.join("akit-export.store"), sealed).unwrap();

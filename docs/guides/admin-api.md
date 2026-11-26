@@ -147,5 +147,6 @@ traces of requests and the same metrics over OTLP/HTTP to a collector
 
 ## Not supported yet
 
-fit's encrypted store (`admin.store`, I93), the assistant, cluster management and `fit run -admin`
-are not supported yet: akit refuses them by name. The [console](console.md) is supported.
+fit's assistant and cluster management are not supported yet: akit refuses them by name. The
+[console](console.md), the encrypted store (`admin.store`, which `akit run` keeps the config in, and
+the `store` format of `/config/export` and `/config/import`) and `akit run -admin` are supported.

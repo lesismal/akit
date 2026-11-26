@@ -22,7 +22,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::net::IpAddr;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError, RwLock};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use akio_crypto::base64::URL_SAFE_NO_PAD;
 use akio_crypto::bcrypt;
@@ -93,6 +93,12 @@ pub struct Session {
     pub user: String,
     /// The CSRF token every request but a read carries.
     pub csrf: String,
+    /// A session of a user whose password is temporary ([`Logins::set_temporary`], `akit run
+    /// -admin`): it may change the password and nothing else, until `expires`; changing it
+    /// clears this.
+    pub must_change: bool,
+    /// When the temporary password stops working, with `must_change`.
+    pub expires: Option<SystemTime>,
     created: Duration,
     seen: Duration,
 }
@@ -101,6 +107,8 @@ pub struct Session {
 /// sessions.
 pub struct Logins {
     users: RwLock<BTreeMap<String, String>>,
+    /// The users whose password is temporary: until when on the clock, and as a time.
+    temporary: Mutex<HashMap<String, (Duration, SystemTime)>>,
     dummy: String,
     idle: Duration,
     lifetime: Duration,
@@ -210,6 +218,7 @@ impl Logins {
             .unwrap_or_default();
         Logins {
             users: RwLock::new(o.users.iter().cloned().collect()),
+            temporary: Mutex::new(HashMap::new()),
             dummy,
             idle: o.idle,
             lifetime: o.lifetime,
@@ -274,11 +283,47 @@ impl Logins {
     }
 
     /// Sets `user`'s password hash, adding the user when it is not one: checks use it from now on.
+    /// A temporary password is temporary no more, and the user's sessions may do everything
+    /// again.
     pub fn set_password(&self, user: &str, hash: &str) {
         self.users
             .write()
             .unwrap_or_else(PoisonError::into_inner)
             .insert(user.to_owned(), hash.to_owned());
+        if lock(&self.temporary).remove(user).is_none() {
+            return;
+        }
+        for s in lock(&self.state).sessions.values_mut() {
+            if s.user == user {
+                s.must_change = false;
+                s.expires = None;
+            }
+        }
+    }
+
+    /// Makes `user`'s password a temporary one, good until `until`: a session started with it
+    /// may only change the password ([`Session::must_change`]), and from `until` on
+    /// [`expired`](Self::expired) says so, and the console refuses it. fit's `SetTemporary`.
+    pub fn set_temporary(&self, user: &str, until: SystemTime) {
+        let left = until
+            .duration_since(SystemTime::now())
+            .unwrap_or(Duration::ZERO);
+        let at = self.now().saturating_add(left);
+        lock(&self.temporary).insert(user.to_owned(), (at, until));
+    }
+
+    /// When `user`'s temporary password stops working; `None` when it is not temporary.
+    #[must_use]
+    pub fn temporary(&self, user: &str) -> Option<SystemTime> {
+        lock(&self.temporary).get(user).map(|(_, t)| *t)
+    }
+
+    /// Whether `user`'s password is a temporary one past its time: a login or a password change
+    /// with it is refused, until akit restarts.
+    #[must_use]
+    pub fn expired(&self, user: &str) -> bool {
+        let at = lock(&self.temporary).get(user).map(|(at, _)| *at);
+        at.is_some_and(|at| self.now() >= at)
     }
 
     /// Starts a session of `user`: its token, for the cookie, and the session. The oldest goes
@@ -288,9 +333,12 @@ impl Logins {
         let token = random(32)?;
         let csrf = random(24)?;
         let now = self.now();
+        let expires = self.temporary(user);
         let s = Session {
             user: user.to_owned(),
             csrf,
+            must_change: expires.is_some(),
+            expires,
             created: now,
             seen: now,
         };

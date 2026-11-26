@@ -36,7 +36,7 @@ Apache License 2.0。
    accept 时限制，对没有有效会话的请求的回答会关闭其连接。
 6. **只有有 store 时才能修改密码**，同 fit：没有 `admin.store` 时账户端点回答 409。store 逐字节采用 fit 的格式，基于
    akio-crypto 的 Argon2id（A230）和 XChaCha20-Poly1305（A231），akio 自 2026-11-27 起具备：akit 自己的格式会是 fit 打不开的 store。
-   I93 带来格式和 `akit store`；I93b 把运行中的配置保存在其中，届时账户端点随之可用。威胁模型的
+   I93 带来了格式和 `akit store`；I93b 把运行中的配置保存在其中，账户端点随之可用；I93c 带来 `akit run -admin`。威胁模型的
    L5（密钥未加密存放）仍为接受：fit 的 store 保存配置和控制台用户，不保存证书存储，而 akit 与 fit 共用证书存储（I62），加密的
    store 会让 fit 读不了它。
 7. **`akit hash-password` 像 fit 那样读取在终端输入的密码**：使用原始模式（akio-sys 的 `terminal::raw`，A233），每个字符显示一个
@@ -47,7 +47,7 @@ Apache License 2.0。
    `app/workbench/web` 和 fit 的许可证复制到 `crates/akit-admin/console`，并写出由 `include_bytes!` 编进 akit 的文件列表；
    `make compat-check` 和一个测试检查该列表就是该目录的文件、提交就是固定的提交。表单由同一固定提交上 fit 的 schema 生成
    （`GET /api/m/admin/schema`）。配置页面调用而 akit 原本没有的端点，akit 作为 Admin API 端点按 fit 的样子补上：`/config/render`、
-   `/config/parse`、`/config/text`、`/config/export` 和 `/config/import`（其 `store` 格式等 I93）；文本的错误定位到文本中的行
+   `/config/parse`、`/config/text`、`/config/export` 和 `/config/import`（其 `store` 格式自 I93b 起）；文本的错误定位到文本中的行
    （`akit_config::position_of`），同 fit 的 adapter。
 9. **带 TLS 的 Admin API**（I92），同 fit 的 `checkAdminAddress`：`cert_file` 和 `key_file`（TLS 1.2 和 1.3），`client_ca_file`
    要求每个客户端提供证书并验证它；非回环地址只有在有令牌和 TLS 时才允许。加上带 TLS 的控制台，这关闭了威胁模型的 L1。API 和

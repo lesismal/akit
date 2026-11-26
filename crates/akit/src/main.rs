@@ -41,6 +41,7 @@
 //! - `version`, `help`.
 
 mod adapt;
+mod boot;
 mod build_cli;
 pub(crate) mod flags;
 mod hash_password;
@@ -119,16 +120,15 @@ const RUN_FLAGS: &[Spec] = &[
         bool: true,
         usage: "apply the running config again each time the certificate or key files it loaded change (default true)",
     },
-    // fit's, not supported yet: refused when given.
     Spec {
         name: "admin",
         bool: true,
-        usage: "not supported yet (the Admin API, I26)",
+        usage: "serve the Admin API and the console with their defaults where the config leaves them out, and keep the config in a store; with no console user in the config, the user admin logs in with the password admin, which must be changed within -timeout",
     },
     Spec {
         name: "timeout",
         bool: false,
-        usage: "not supported yet (the Admin API, I26)",
+        usage: "with -admin, how long the console's default password, admin, works: it must be changed within that time, before the console or the Admin API can be used, or akit must be restarted (default 30m0s)",
     },
 ];
 
@@ -285,11 +285,9 @@ fn compile_config(
 /// Refuses a config that sets a member of fit's roles akit does not run ([`crate::ROLES`]):
 /// `akit validate` checks every role (I98), and the iterations after I100 run them; until a role
 /// runs, applying it would be a config that says more than akit does.
-/// The encrypted store (`admin.store`, I93) likewise: `akit validate` checks it and `akit store`
-/// exports and imports it; `akit run` keeps a config in it from I93b.
 fn roles_not_running(config: &Config) -> Result<(), Failure> {
     let unknown = akit_roles::host::unknown(config, crate::ROLES);
-    let mut errs: Vec<Error> = unknown
+    let errs: Vec<Error> = unknown
         .into_iter()
         .map(|path| Error {
             file: None,
@@ -306,17 +304,6 @@ fn roles_not_running(config: &Config) -> Result<(), Failure> {
             ),
         })
         .collect();
-    if config.admin.as_ref().is_some_and(|a| a.store.is_some()) {
-        errs.push(Error {
-            file: None,
-            path: "admin.store".to_owned(),
-            line: 0,
-            col: 0,
-            msg: "akit run does not keep the config in a store yet (I93b); akit validate checks \
-                  it, and akit store exports and imports it"
-                .to_owned(),
-        });
-    }
     if errs.is_empty() {
         Ok(())
     } else {
@@ -656,6 +643,80 @@ fn reload(
     apply_files(&name, &files, configs, runner);
 }
 
+/// SIGHUP with a store (I93b): reads the store again, as `akit store import` or another akit may
+/// have written it, and applies what it holds as a new version from the store; on any failure the
+/// running config stays. Says what happened as fit says it.
+fn reload_store(b: &boot::Boot, configs: &Configs, runner: &mut Runner<'_>) {
+    println!("akit: reloading the store {}", b.path);
+    let read = boot::lock(&b.store)
+        .read()
+        .map_err(|e| e.to_string())
+        .and_then(|d| {
+            String::from_utf8(d).map_err(|_| "the store's config is not UTF-8".to_owned())
+        });
+    let data = match read.map(|d| akit_config::value::standardize(&d)) {
+        Ok(Ok(d)) => d,
+        Ok(Err(errs)) => {
+            runner.stats.reloaded(false);
+            eprintln!("akit: reload failed; the running config stays");
+            print_errors(&b.path, &errs);
+            return;
+        }
+        Err(e) => {
+            runner.stats.reloaded(false);
+            eprintln!("akit: reload failed; the running config stays");
+            eprintln!("{}: {e}", b.path);
+            return;
+        }
+    };
+    match configs.update(akit_admin::SOURCE_STORE, None, data, |text| {
+        runner.apply_text(text, Mode::Apply)
+    }) {
+        Ok(o) => {
+            print_applied(&o);
+            println!(
+                "akit: reloaded the store {} (config version {})",
+                b.path, o.version
+            );
+        }
+        Err(Refused::Apply(ApplyError::Config(errs))) => {
+            eprintln!("akit: reload failed; the running config stays");
+            print_errors(&b.path, &errs);
+        }
+        Err(Refused::Apply(ApplyError::Failed(e))) => {
+            eprintln!("akit: reload failed; the running config stays: {e}");
+        }
+        Err(Refused::Changed | Refused::Request { .. }) => {}
+    }
+}
+
+/// The config `std`, standard JSON, with `admin` and `admin.console` set, as `-admin` asks, and
+/// the default console user, whose password is temporary, when the config names none (I93c).
+fn with_default_admin(std: &str) -> Result<(String, Option<String>), Errors> {
+    let hash = akio_crypto::bcrypt::hash(
+        akit_admin::bootstrap::DEFAULT_CONSOLE_PASSWORD.as_bytes(),
+        akio_crypto::bcrypt::DEFAULT_COST,
+    )
+    .map_err(|e| {
+        Errors(vec![Error {
+            file: None,
+            path: String::new(),
+            line: 0,
+            col: 0,
+            msg: format!("hashing the default password: {e}"),
+        }])
+    })?;
+    akit_admin::bootstrap::with_default_console(std, &hash)
+}
+
+/// `t` as RFC 3339 in UTC, as Go's `time.RFC3339`.
+fn rfc3339(t: std::time::SystemTime) -> String {
+    let secs = t
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX));
+    akit_roles::linktoken::rfc3339(secs)
+}
+
 /// Applies the config `files` hold, named `name`, as a new version from the files, for SIGHUP and
 /// `-watch` (I29); on any failure the running config stays. Says what happened as fit says it.
 fn apply_files(name: &str, files: &[ConfigFile], configs: &Configs, runner: &mut Runner<'_>) {
@@ -959,9 +1020,21 @@ fn run(args: &[String]) -> ExitCode {
     let mut watch = false;
     let mut watch_certs = true;
     let mut watch_interval = akit_tls::DEFAULT_WATCH_INTERVAL;
+    let mut admin_flag = false;
+    let mut timeout: Option<Duration> = None;
     for (name, value) in &flags {
         match *name {
             "c" => {}
+            "admin" => admin_flag = value == "true",
+            "timeout" => match flags::parse_duration(value) {
+                Some(d) => timeout = Some(d),
+                None => {
+                    return usage_error(&Usage(format!(
+                        "invalid value {value:?} for flag -timeout: parse error\n{}",
+                        flags::usage("run", RUN_FLAGS)
+                    )));
+                }
+            },
             "watch" => watch = value == "true",
             "watch-certs" => watch_certs = value == "true",
             "watch-interval" => match flags::parse_duration(value) {
@@ -988,22 +1061,128 @@ fn run(args: &[String]) -> ExitCode {
             }
         }
     }
+    if timeout.is_some() && !admin_flag {
+        eprintln!("akit run: -timeout is the default password's time, which needs -admin");
+        return ExitCode::from(2);
+    }
+    if timeout.is_some_and(|t| t.is_zero()) {
+        eprintln!("akit run: -timeout must be more than 0");
+        return ExitCode::from(2);
+    }
+    let timeout = timeout.unwrap_or(Duration::from_secs(30 * 60));
+    let started = std::time::SystemTime::now();
+    let given = flags.iter().any(|(n, _)| *n == "c");
     let paths = config_paths(&flags);
     // The pools are made with the graph, before the engine they dial through, which is built
     // from the graph's listeners: they reach it through this slot, filled once it is built.
     let slot = EngineSlot::new();
-    let name = paths.join(", ");
-    let ((config, json, zone), files) = match read_config(&paths) {
-        Ok(c) => c,
-        Err(f) => {
+    let mut name = paths.join(", ");
+    // The config files, a .store among them aside, and the store that goes with them (I93b,
+    // I93c): the one admin.store names, a .store given with -c, or the one beside the files, when
+    // it exists or -admin is given. With a store, the config runs from what it holds merged onto
+    // the files'.
+    let (boot_files, spec) = match boot::load_boot(&paths, given, admin_flag) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("akit run: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let Ok((std, files)) = store_cli::files_json(&boot_files) else {
+        return ExitCode::FAILURE;
+    };
+    let mut temp_user = None;
+    let std = if admin_flag {
+        match with_default_admin(&std) {
+            Ok((s, t)) => {
+                temp_user = t;
+                s
+            }
+            Err(errs) => {
+                print_errors(&name, &errs);
+                return ExitCode::FAILURE;
+            }
+        }
+    } else {
+        std
+    };
+    let boot = match boot::open_store(&std, &spec) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("{name}: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let loaded = match &boot {
+        None => load(&files).map(|(c, j, z)| (c, j.clone(), j, z)),
+        Some(b) => {
+            let full = b.full();
+            akit_config::from_json(&full, None)
+                .map_err(Failure::Config)
+                .and_then(|c| {
+                    let zone = time_zone(&c)?;
+                    Ok((c, full, b.base.clone(), zone))
+                })
+        }
+    };
+    let (config, full_json, json, zone) = match (loaded, &boot) {
+        (Ok(l), _) => l,
+        // A store that did not exist holds the files' config: its errors are the files'.
+        (Err(f), Some(b)) if b.seeded => {
+            match load(&files) {
+                Err(ff) if !files.is_empty() => ff.print(&name),
+                _ => f.print(&name),
+            }
+            return ExitCode::FAILURE;
+        }
+        (Err(f), Some(b)) => {
+            f.print(&b.path);
+            return ExitCode::FAILURE;
+        }
+        (Err(f), None) => {
             f.print(&name);
             return ExitCode::FAILURE;
         }
     };
+    if let Some(b) = &boot {
+        if watch {
+            eprintln!(
+                "{name}: -watch watches config files, but the config is kept in the store {}; send SIGHUP to read the store again",
+                b.path
+            );
+            return ExitCode::FAILURE;
+        }
+        if !b.seeded {
+            name.clone_from(&b.path);
+        }
+    }
     print_warnings(&name, &config.warnings);
     // Secret files open to others, credentials in the clear (I80b).
-    for w in akit_config::hardening::warnings(&config, &json) {
+    for w in akit_config::hardening::warnings(&config, &full_json) {
         eprintln!("akit: {w}");
+    }
+    // A store seeded from the files, or merged onto them, is written before akit serves, and put
+    // back as it was when the start fails after it (I93b).
+    let mut restore = None;
+    let mut store_note = None;
+    if let Some(b) = boot.as_ref().filter(|b| b.seeded || b.merged) {
+        restore = Some(boot::Restore::of(&b.path));
+        if let Err(e) = boot::lock(&b.store).write(b.base.clone().into_bytes()) {
+            eprintln!("akit run: {e}");
+            return ExitCode::FAILURE;
+        }
+        let files = boot_files.join(", ");
+        store_note = Some(if b.seeded {
+            format!(
+                "akit: the config of {files} is kept in the store {} from now on",
+                b.path
+            )
+        } else {
+            format!(
+                "akit: the store {} merged onto {files}, the store's values winning",
+                b.path
+            )
+        });
     }
     // The log files the process writes, a sink a path (I81), and akit's own log (I82), which
     // akio's records go to as the engine logger's; the access log shares its files.
@@ -1124,9 +1303,53 @@ fn run(args: &[String]) -> ExitCode {
     let acme_names = graph.acme_names().to_vec();
     let configs = Configs::new(
         json,
-        akit_admin::SOURCE_FILE,
+        if boot.is_some() {
+            akit_admin::SOURCE_STORE
+        } else {
+            akit_admin::SOURCE_FILE
+        },
         admin.as_ref().map_or(1, |a| a.history),
     );
+    // With a store, every config applied is kept in it, admin coming from the bootstrap file;
+    // the console's passwords changed since that file was written are kept beside the config;
+    // the store's key seals and opens the Admin API's store exports and imports (I93b).
+    if let Some(b) = &boot {
+        let st = Arc::clone(&b.store);
+        configs.use_store(
+            b.admin.clone(),
+            Box::new(move |data: &str| {
+                boot::lock(&st)
+                    .write(data.as_bytes().to_vec())
+                    .map_err(|e| e.to_string())
+            }),
+        );
+        let st = Arc::clone(&b.store);
+        configs.use_console_users(
+            b.users.clone(),
+            Box::new(move |users: &[akit_admin::store::User]| {
+                boot::lock(&st)
+                    .set_users(users.to_vec())
+                    .map_err(|e| e.to_string())
+            }),
+        );
+        if let Some(s) = boot::lock(&b.store).sealer() {
+            configs.use_sealer(s);
+        }
+        // The default user's password is temporary until it is changed, which keeps the changed
+        // hash in the store (I93c).
+        if let Some(user) = temp_user
+            .as_ref()
+            .filter(|u| !b.users.iter().any(|s| &s.username == *u))
+        {
+            let until = started.checked_add(timeout).unwrap_or(started);
+            configs.use_temporary_password(user, until);
+            eprintln!(
+                "akit: the console user {user:?} has the password {:?} until it is changed, which must be by {}; until then the console asks for that change and the Admin API refuses every request",
+                akit_admin::bootstrap::DEFAULT_CONSOLE_PASSWORD,
+                rfc3339(until)
+            );
+        }
+    }
     // Before the listeners: a signal from then on shuts down gracefully.
     let (tx, control) = mpsc::sync_channel(CONTROL_QUEUE);
     if let Err(e) = signals(tx.clone()) {
@@ -1169,7 +1392,9 @@ fn run(args: &[String]) -> ExitCode {
     };
     let mut roles = akit_roles::host::Manager::new(crate::ROLES, Arc::clone(&engine), Some(editor));
     roles.set_drain(grace);
-    if let Some(first) = paths.first() {
+    // Without a store, what the roles make and must keep goes beside the config; with one, it
+    // goes into the config, which the store keeps.
+    if let Some(first) = paths.first().filter(|_| boot.is_none()) {
         roles.keep_beside(first);
     }
     for w in roles.apply(&start_config) {
@@ -1286,6 +1511,13 @@ fn run(args: &[String]) -> ExitCode {
     if let Some(t) = &telemetry {
         println!("akit: exporting telemetry to {}", t.endpoint);
     }
+    // Started: the store written from the files stays, and says so.
+    if let Some(r) = &mut restore {
+        r.disarm();
+    }
+    if let Some(note) = &store_note {
+        println!("{note}");
+    }
     let mut runner = Runner {
         slot: &slot,
         cell: &cell,
@@ -1389,7 +1621,10 @@ fn run(args: &[String]) -> ExitCode {
         match next {
             Some(Control::Stop) | None => break,
             Some(Control::Hangup) => {
-                reload(&paths, &configs, &mut runner, provider.as_mut());
+                match &boot {
+                    Some(b) => reload_store(b, &configs, &mut runner),
+                    None => reload(&paths, &configs, &mut runner, provider.as_mut()),
+                }
                 // The Admin API's and the console's certificate files read again (I94); what
                 // happened is in the admin logger.
                 if let Some(api) = runner.api {

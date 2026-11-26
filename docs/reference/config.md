@@ -1036,7 +1036,7 @@ route { match { host example.com }; handler respond { body hello } }
 | `max_conns` | integer, 0 or more | `16` | The most connections the Admin API keeps open at once, a quarter of them kept for those that have made a request with the token (any request, without token_file). When they are taken, a new connection closes the oldest of those that have not, of the client holding the most, and is closed as it is accepted only when every one has; one past a client's share, a quarter of them, is closed too, but for loopback clients. A connection that has not is closed 5s after it is accepted, whatever it is doing. 16 when left out or 0. |
 | `mptcp` | boolean |  | **Not supported yet**: refused by name. Listen the Admin API with Multipath TCP where the kernel offers it (Linux 5.6+, net.mptcp.enabled), falling back to plain TCP where it does not. Off by default; a Unix socket has no paths. |
 | `node_id` | string |  | **Not supported yet**: refused by name. This fit's node ID, which the Admin API's GET /node answers and a manager of many fits knows it by: 1 to 64 letters, digits, '.', '_' and '-', starting with a letter or digit. Left out, fit makes one, a random UUID, once, and keeps it in the store, or without one in a file beside the config, as fit.node-id beside fit.json; set it where neither lasts, as in a container whose config is read-only. |
-| `store` | [object](#cfg-admin-store) |  | Keep the config encrypted in a file of its own, the store, which is the base config akit runs from then on: every config applied is written to it, and what this file sets beside admin is only the store's first content, used when the store does not exist yet. Left out, the config lives in this file. **akit:** The file is fit's `fitstore` format, byte for byte (its magic stays `FITSTORE`): fit opens akit's stores and akit fit's. `akit validate` checks it and `akit store export` and `import` read and write it; `akit run` refuses it until I93b keeps the config in it. |
+| `store` | [object](#cfg-admin-store) |  | Keep the config encrypted in a file of its own, the store, which is the base config akit runs from then on: every config applied is written to it, and what this file sets beside admin is only the store's first content, used when the store does not exist yet. Left out, the config lives in this file. **akit:** The file is fit's `fitstore` format, byte for byte (its magic stays `FITSTORE`): fit opens akit's stores and akit fit's, and they run in turn from one. `akit run` keeps the config in it (I93b), merged onto the config files at each start; `akit store export` and `import` read and write it. Without `admin.store`, `akit run -admin` keeps one beside the config file, as fit's (I93c). |
 | `token_file` | string |  | A file holding a token that every request must carry, as "Authorization: Bearer <token>"; no token is asked for when left out. **akit:** Read when akit starts. |
 <!-- END GENERATED -->
 
@@ -1107,8 +1107,19 @@ admin {
 
 ### `admin.store`
 
-The encrypted store (I93): fit's `fitstore` file, which `akit store export` prints and
-`akit store import` seals a config into. `akit run` keeps the config in it from I93b.
+The encrypted store (I93–I93c): fit's `fitstore` file, which `akit run` keeps the config in, which
+`akit store export` prints and `akit store import` seals a config into. With a store, the config
+akit runs is what it holds merged onto the config files at each start, its values winning (the
+store is seeded from the files when it does not exist yet), and every config applied (the Admin
+API's, the console's, a rollback, SIGHUP, which reads the store again) is written to it; `admin`
+stays in this file, never in the store, and a config that sets it is refused; `-watch` is refused.
+The console's password changes are kept in it beside the config. A store that does not open (a
+wrong password, a changed byte) stops akit from starting.
+
+Without `admin.store`, a `.store` file given with `-c` is the store, and so is the one beside the
+config file (`site.json` gives `site.store`, no file `akit.store`) once it exists or `akit run
+-admin` makes it; its password is `$AKIT_STORE_PASSWORD`, or else the key file beside it
+(`site.store.key`), made 0600 with a random key when neither exists, as fit's.
 
 ```fit
 admin { store { path /var/lib/akit/akit.store; password_env AKIT_STORE_PASSWORD } }

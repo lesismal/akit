@@ -33,11 +33,12 @@ fit.conf:40:4: routes[3].handler.module: not supported yet: the "hls" handler
 - **akit 读取的部分中的字段**：`engine` 的 `loop_wait`、`poll_batch` 和 `kernel_tls_offload`（`engine` 的其余字段映射到 akio 的引擎上，见[参考](../reference/config.zh-CN.md#引擎)）；所有的
   `mptcp`；`tls.kernel_tls_offload`；`upstreams[].deny_internal`；proxy 的 `splice_uploads`；Kubernetes provider 的
   `allow_external_name_services`；以及 `admin` 中除 `address`、`token_file`、`history`、`max_config_bytes`、`max_conns`、
-  `disable_dashboard`、`access`、`cert_file`、`key_file`、`client_ca_file` 和 `console` 以外的一切：没有 store、助手或集群。
+  `disable_dashboard`、`access`、`cert_file`、`key_file`、`client_ca_file`、`console` 和 `store` 以外的一切：没有助手或集群。
 - **取值**：`static` 的 `disk_io auto`（akit 只在文件池上访问磁盘）。
 - **`.conf` 文件中**：`import` 和 `include`；用 `-c` 指定每个文件，或指定目录。
-- **命令和参数**：akit 有 `run`、`validate`、`adapt`、`fmt`、`build`、`hash-password` 和 `version`；`run` 的 `-admin` 和
-  `-timeout` 被拒绝。fit 的 `check`、`token`、`store`、`sync`、`bt` 和 `media-token` 暂时没有。
+- **命令和参数**：akit 有 `run`（带 fit 的 `-admin` 和 `-timeout`）、`validate`、`adapt`、`fmt`、`build`、`hash-password`、
+  `token`、`store` 和 `version`。fit 的 `check`、`sync`、`bt` 和 `media-token` 暂时没有。fit 保存的 store（及其密钥文件）在 akit
+  中原样可用；其密码的环境变量为 `AKIT_STORE_PASSWORD`（fit 的 `FIT_STORE_PASSWORD`）。
 
 ## akit 的名字
 

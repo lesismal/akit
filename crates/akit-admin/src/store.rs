@@ -426,31 +426,118 @@ impl Store {
         unseal(file, &self.password)
     }
 
+    /// What seals and opens files with the store's key and password apart from the store
+    /// ([`Sealer`]); `None` before its key is derived, which [`open`](Self::open) and
+    /// [`create`](Self::create) do.
+    #[must_use]
+    pub fn sealer(&self) -> Option<Sealer> {
+        Some(Sealer {
+            password: self.password.clone(),
+            params: self.params,
+            salt: self.salt,
+            aead: self.aead.clone()?,
+        })
+    }
+
     /// The store's file for `plaintext`, as a file of version `version`: the header, then the
     /// plaintext sealed.
-    fn seal_payload(&self, version: u8, mut plaintext: Vec<u8>) -> Result<Vec<u8>, Error> {
+    fn seal_payload(&self, version: u8, plaintext: Vec<u8>) -> Result<Vec<u8>, Error> {
         let Some(aead) = &self.aead else {
             return Err(other("store: no key"));
         };
-        let mut nonce = [0u8; XNONCE_LEN];
-        akio_crypto::rand::fill_random(&mut nonce).map_err(|e| io_error(&e))?;
-        let mut header = Vec::with_capacity(
-            HEADER_LEN
-                .saturating_add(plaintext.len())
-                .saturating_add(TAG_LEN),
-        );
-        header.extend_from_slice(MAGIC);
-        header.push(version);
-        header.push(KDF_ARGON2);
-        header.extend_from_slice(&self.params.time.to_be_bytes());
-        header.extend_from_slice(&self.params.memory_kib.to_be_bytes());
-        header.push(self.params.threads);
-        header.extend_from_slice(&self.salt);
-        header.extend_from_slice(&nonce);
-        aead.encrypt_in_place(&nonce, &header, &mut plaintext);
-        header.append(&mut plaintext);
-        Ok(header)
+        seal_payload(aead, self.params, &self.salt, version, plaintext)
     }
+}
+
+/// A store's key, its salt and Argon2id settings, and its password, apart from the store: what
+/// seals the files the Admin API exports with the store's key, and opens the files it imports
+/// with the store's password ([`Store::sealer`]), on a pool while the store is written
+/// elsewhere. Shown, it shows none of them.
+#[derive(Clone)]
+pub struct Sealer {
+    password: String,
+    params: Params,
+    salt: [u8; SALT_LEN],
+    aead: XChaCha20Poly1305,
+}
+
+impl fmt::Debug for Sealer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Sealer")
+            .field("params", &self.params)
+            .finish_non_exhaustive()
+    }
+}
+
+impl Sealer {
+    /// A `fitstore` file holding `data` and `users`, sealed with the store's key, as
+    /// [`Store::seal`]: it opens with the store's password. No key is derived.
+    ///
+    /// # Errors
+    ///
+    /// A config that is not JSON, or no randomness for the nonce.
+    pub fn seal(&self, data: &[u8], users: &[User]) -> Result<Vec<u8>, Error> {
+        let (plaintext, version) = encode(data, users, &BTreeMap::new())?;
+        seal_payload(&self.aead, self.params, &self.salt, version, plaintext)
+    }
+
+    /// Opens `file`, a whole `fitstore` file, with the store's password, as [`unseal`]: a key
+    /// is derived with the file's salt.
+    ///
+    /// # Errors
+    ///
+    /// As [`unseal`]'s.
+    pub fn unseal(&self, file: &[u8]) -> Result<(Vec<u8>, Vec<User>), Error> {
+        unseal(file, &self.password)
+    }
+}
+
+/// A file of version `version` holding `plaintext`, sealed with `aead`, the key of `params` and
+/// `salt`, under a new nonce: the header, then the plaintext sealed.
+fn seal_payload(
+    aead: &XChaCha20Poly1305,
+    params: Params,
+    salt: &[u8; SALT_LEN],
+    version: u8,
+    mut plaintext: Vec<u8>,
+) -> Result<Vec<u8>, Error> {
+    let mut nonce = [0u8; XNONCE_LEN];
+    akio_crypto::rand::fill_random(&mut nonce).map_err(|e| io_error(&e))?;
+    let mut header = Vec::with_capacity(
+        HEADER_LEN
+            .saturating_add(plaintext.len())
+            .saturating_add(TAG_LEN),
+    );
+    header.extend_from_slice(MAGIC);
+    header.push(version);
+    header.push(KDF_ARGON2);
+    header.extend_from_slice(&params.time.to_be_bytes());
+    header.extend_from_slice(&params.memory_kib.to_be_bytes());
+    header.push(params.threads);
+    header.extend_from_slice(salt);
+    header.extend_from_slice(&nonce);
+    aead.encrypt_in_place(&nonce, &header, &mut plaintext);
+    header.append(&mut plaintext);
+    Ok(header)
+}
+
+/// A new random password, for the key file kept beside a store `admin.store` does not describe
+/// (I93c): 52 characters of RFC 4648's base32 alphabet, 260 bits, as fit's `rand.Text() +
+/// rand.Text()`.
+///
+/// # Errors
+///
+/// No randomness.
+pub fn new_key() -> io::Result<String> {
+    const ALPHABET: &[u8; 32] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+    let mut b = [0u8; 52];
+    akio_crypto::rand::fill_random(&mut b)?;
+    let key = b
+        .iter()
+        .filter_map(|x| ALPHABET.get(usize::from(x & 31)).map(|c| char::from(*c)))
+        .collect();
+    b.fill(0);
+    Ok(key)
 }
 
 /// A `fitstore` file holding `data` and `users`, sealed with a key `password` gives with a new

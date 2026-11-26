@@ -32,8 +32,10 @@
 //! POST   /config/render       a config fragment written as .conf, YAML or JSON (I91)
 //! POST   /config/parse        the JSON of such a text (I91)
 //! PUT    /config/text         a text applied as the config, or as ?members= of it (I91)
-//! POST   /config/export       the config, or members of it, as a file (I91)
-//! POST   /config/import       a file applied as the config, or as ?members= of it (I91)
+//! POST   /config/export       the config, or members of it, as a file (I91); as a fitstore
+//!                             file, format store (I93b)
+//! POST   /config/import       a file applied as the config, or as ?members= of it (I91); a
+//!                             fitstore file, format store (I93b)
 //! ```
 //!
 //! With `admin.console` (I89–I91, [`console`]), the console serves the same endpoints under
@@ -64,8 +66,11 @@
 //! loopback needs TLS and a token. Its certificate files, and the console's, are read again when
 //! they change ([`Server::watch_certs`], [`Server::reload_certs`], I94).
 //!
-//! [`store`] is fit's encrypted store, its `fitstore` file byte for byte (I93).
+//! [`store`] is fit's encrypted store, its `fitstore` file byte for byte (I93); with one, `akit run`
+//! keeps the config in it, the bootstrap file's `admin` apart ([`bootstrap`], [`Configs::use_store`],
+//! I93b), and the console's password changes are kept beside it.
 
+pub mod bootstrap;
 mod cache;
 mod certs;
 mod configs;
@@ -84,16 +89,19 @@ mod text;
 pub mod tokens;
 mod watch;
 
+pub use bootstrap::SOURCE_STORE;
 pub use certs::CertReload;
 pub use configs::{
     Applied, ApplyError, Configs, Effective, ListenerChange, Mode, Outcome, Refused, SOURCE_ADMIN,
-    SOURCE_CERTIFICATES, SOURCE_FILE, SOURCE_ROLLBACK, Version, etag_matches, etag_of,
+    SOURCE_CERTIFICATES, SOURCE_FILE, SOURCE_ROLLBACK, SaveConfig, SaveUsers, Version,
+    etag_matches, etag_of,
 };
 pub use dashboard::DASHBOARD_CSP;
 pub use server::{
     DRY_RUN_HEADER, Job, Live, METRICS_CONTENT_TYPE, Metrics, Options, Server, Submit,
     VERSION_HEADER,
 };
+pub use text::STORE_PASSWORD_HEADER;
 pub use watch::{
     DEFAULT_WATCH_DEBOUNCE, DEFAULT_WATCH_INTERVAL, DEFAULT_WATCH_MAX_BYTES, Expand, WatchError,
     WatchOptions, WatchReport, Watcher,

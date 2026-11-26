@@ -13,15 +13,20 @@
 //! GET  /api/node                   the Admin API's GET /node
 //! GET  /api/m/admin/users          {"user", "store", "users"}
 //! GET  /api/m/admin/schema         fit's config schema (I91)
-//! POST /api/m/admin/account/password, /api/m/admin/users/password
-//!                                  a password changed: 409 without admin.store (I93)
+//! POST /api/m/admin/account/password
+//!                                  {"current_password", "password"}: the user's own password
+//!                                  changed, kept in the store; 409 without one (I93b)
+//! POST /api/m/admin/users/password {"username", "password"}: another user's password set,
+//!                                  kept in the store; 409 without one (I93b)
 //! *    /api/m/admin/<path>         the Admin API's endpoint at /<path>, called in process
 //! GET  /<file>                     fit's workbench, its files as fit ships them (I91)
 //! ```
 //!
 //! Every request but `POST /api/login` and `/api/logout` needs a session; every one but a read
 //! carries its CSRF token in `X-Akit-Csrf`; one whose `Origin` is not the console's own is
-//! refused. Answers carry fit's headers: a Content-Security-Policy of the pages' own files,
+//! refused. A session whose password is temporary (`akit run -admin`, I93c) reads who it is and
+//! changes the password, and does nothing else until it has; past its time, the temporary
+//! password logs in no more. Answers carry fit's headers: a Content-Security-Policy of the pages' own files,
 //! `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `nosniff`, HSTS over TLS, and
 //! `Cache-Control: no-store` on the API. A password is checked on the console's login pool (one
 //! thread, 16 waiting), never on the I/O thread; the Admin API's changes go to the control thread
@@ -36,6 +41,9 @@
 //! `max_conns`, or past the share of it unauthenticated connections may hold, a new connection
 //! closes the oldest unauthenticated one of the client holding the most ([`super::slots`]);
 //! akio's head (10 s) and body (30 s) timeouts bound every request.
+
+// A refusal is the answer itself, made once per request: its size does not matter.
+#![allow(clippy::result_large_err)]
 
 use std::collections::HashMap;
 use std::fmt::Write as _;
@@ -86,8 +94,19 @@ const LOGIN_QUEUE: usize = 16;
 pub const ADMIN_MODULE: &str = "admin";
 
 /// What a password change answers without a store: fit's `errNoConsoleStore`, in akit's words.
-const NO_STORE: &str = "the console users are not saved: akit has no admin.store; passwords \
-     change only with a store";
+pub(crate) const NO_STORE: &str = "the console users are not saved: akit has no admin.store; \
+     passwords change only with a store";
+
+/// What a temporary password past its time is told: fit's, in akit's words.
+const EXPIRED: &str =
+    "has expired without being changed; restart akit with -admin to set a new one in time";
+
+/// The requests a session whose password is temporary may make, beside `GET /api/session` and
+/// `/api/workbench`: fit's `PasswordRoutes`.
+const PASSWORD_ROUTES: [(Method, &str); 2] = [
+    (Method::Get, "/api/m/admin/users"),
+    (Method::Post, "/api/m/admin/account/password"),
+];
 
 /// The console, served.
 pub(crate) struct Console {
@@ -277,9 +296,14 @@ impl Console {
             unauth: opts.console_unauth_timeout,
             grace: opts.console_grace.unwrap_or(opts.console_unauth_timeout),
         });
+        let logins = Logins::new(&LoginOptions::of(c));
+        // A console started while a user's password is temporary asks for it to be changed.
+        if let Some((user, until)) = api.configs.temporary_password() {
+            logins.set_temporary(&user, until);
+        }
         let pages = Arc::new(Pages {
             api: Arc::new(api),
-            logins: Arc::new(Logins::new(&LoginOptions::of(c))),
+            logins: Arc::new(logins),
             cookie: OnceLock::new(),
             secure,
             login_pool: pool(LOGIN_WORKERS, LOGIN_QUEUE),
@@ -421,12 +445,96 @@ fn quoted(s: &str) -> String {
     b
 }
 
-/// `{"user", "csrf"}`, a session as fit's `sessionBody` writes it.
+/// `t` as RFC 3339 in UTC, as Go's `time.RFC3339`.
+fn rfc3339(t: std::time::SystemTime) -> String {
+    let secs = t
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX));
+    akit_roles::linktoken::rfc3339(secs)
+}
+
+/// `{"user", "csrf"}`, a session as fit's `sessionBody` writes it; with
+/// `"must_change_password": true` and `password_expires` for a session whose password is
+/// temporary.
 fn session_body(s: &Session) -> String {
-    format!(
-        "{{\"user\":{},\"csrf\":{}}}\n",
+    let mut b = format!(
+        "{{\"user\":{},\"csrf\":{}",
         quoted(&s.user),
         quoted(&s.csrf)
+    );
+    if s.must_change {
+        b.push_str(",\"must_change_password\":true");
+        if let Some(t) = s.expires {
+            b.push_str(",\"password_expires\":");
+            b.push_str(&quoted(&rfc3339(t)));
+        }
+    }
+    b.push_str("}\n");
+    b
+}
+
+/// A JSON body's string member `k`; `None` when it is not one.
+fn field(v: &Value, k: &str) -> Option<String> {
+    match v.get(k) {
+        Some(Value::String(s)) => Some(s.clone()),
+        _ => None,
+    }
+}
+
+/// The JSON object a console request sent as `application/json`, as fit's `Request.Decode`:
+/// 415 for another type, 400 for a body that is not an object.
+fn decoded(ctx: &Context) -> Result<Value, Response> {
+    let json_body = ctx.header("Content-Type").is_some_and(|t| {
+        t.split(';')
+            .next()
+            .is_some_and(|m| m.trim().eq_ignore_ascii_case("application/json"))
+    });
+    if !json_body {
+        return Err(error(415, "the body must be sent as application/json"));
+    }
+    let not_json = |why: &str| error(400, &format!("the body is not the JSON expected: {why}"));
+    let text = std::str::from_utf8(ctx.body()).map_err(|_| not_json("not UTF-8"))?;
+    match akit_config::value::parse(text) {
+        Ok(v @ Value::Object(_)) => Ok(v),
+        Ok(_) => Err(not_json("not an object")),
+        Err(e) => Err(not_json(
+            &e.as_slice()
+                .first()
+                .map_or_else(String::new, |e| e.msg.clone()),
+        )),
+    }
+}
+
+/// Why `password` cannot be a console password, or `None` when it can: bcrypt takes 72 bytes at
+/// most. fit's `passwordProblem`.
+pub(crate) fn password_problem(password: &str) -> Option<&'static str> {
+    if password.is_empty() {
+        Some("the new password is empty")
+    } else if password.len() > 72 {
+        Some("the new password is longer than bcrypt's 72 bytes")
+    } else {
+        None
+    }
+}
+
+/// A password check refused before it is made: 429, as fit's `refuseChecks`, with how long to
+/// wait in `Retry-After` and `retry_after`.
+fn refused_checks(r: &login::Refusal) -> Response {
+    let msg = if r.busy {
+        "another password check from this address is under way; try again"
+    } else if r.slowed {
+        "too many failed password checks of this user; try again later"
+    } else {
+        "too many failed password checks from this address; try again later"
+    };
+    retry(r.wait, msg)
+}
+
+/// `{"changed": true, ...}`, a password change's answer: `user` or `username` its member.
+fn changed(member: &str, who: &str) -> Response {
+    json(
+        200,
+        format!("{{\"changed\":true,\"{member}\":{}}}\n", quoted(who)),
     )
 }
 
@@ -520,6 +628,13 @@ impl Pages {
             ));
         }
         self.conns.authenticated(conn.as_ref(), true);
+        if s.must_change && !password_route(&method, &path) {
+            return ctx.respond(json(
+                403,
+                "{\"error\":\"change the temporary password first\",\"must_change_password\":true}\n"
+                    .to_owned(),
+            ));
+        }
         if method == Method::Get {
             match path.as_str() {
                 "/api/session" => return ctx.respond(json(200, session_body(&s))),
@@ -561,9 +676,8 @@ impl Pages {
                     super::pages::SCHEMA.to_vec(),
                 ));
             }
-            (Method::Post, "/account/password" | "/users/password") => {
-                return ctx.respond(error(409, NO_STORE));
-            }
+            (Method::Post, "/account/password") => return self.account_password(ctx, &s, &token),
+            (Method::Post, "/users/password") => return self.user_password(ctx, &s),
             _ => {}
         }
         self.call_api(ctx, &s.user, &sub);
@@ -617,10 +731,14 @@ impl Pages {
         dispatch(&self.api, ctx);
     }
 
-    /// `GET /api/m/admin/users`: who is logged in, whether a store keeps the passwords (never
-    /// yet: I93), and every user who may log in.
+    /// `GET /api/m/admin/users`: who is logged in, whether a store keeps the passwords, and
+    /// every user who may log in.
     fn users(&self, s: &Session) -> Response {
-        let mut b = format!("{{\"user\":{},\"store\":false,\"users\":[", quoted(&s.user));
+        let mut b = format!(
+            "{{\"user\":{},\"store\":{},\"users\":[",
+            quoted(&s.user),
+            self.api.configs.users_stored()
+        );
         for (i, u) in self.logins.users().iter().enumerate() {
             if i > 0 {
                 b.push(',');
@@ -648,10 +766,6 @@ impl Pages {
         let parsed = std::str::from_utf8(ctx.body())
             .ok()
             .and_then(|t| akit_config::value::parse(t).ok());
-        let field = |v: &Value, k: &str| match v.get(k) {
-            Some(Value::String(s)) => Some(s.clone()),
-            _ => None,
-        };
         let Some((user, password)) = parsed
             .as_ref()
             .and_then(|v| Some((field(v, "username")?, field(v, "password")?)))
@@ -684,6 +798,21 @@ impl Pages {
                 return d.respond(error(401, "the user name or password is wrong"));
             }
             ticket.passed();
+            if me.logins.expired(&user) {
+                log(
+                    Level::Warn,
+                    format_args!(
+                        "console: a login as {user:?} from {addr} with its temporary password, which has expired"
+                    ),
+                );
+                let mut b = String::from("{\"error\":");
+                write_string(
+                    &mut b,
+                    &format!("the temporary password of {} {EXPIRED}", quoted(&user)),
+                );
+                b.push_str(",\"password_expired\":true}\n");
+                return d.respond(json(401, b));
+            }
             let Some((token, s)) = me.logins.start(&user) else {
                 return d.respond(error(500, "no randomness for a session"));
             };
@@ -694,6 +823,160 @@ impl Pages {
             );
             d.respond(json(200, session_body(&s)).header("Set-Cookie", me.set_cookie(&token)));
         });
+    }
+
+    /// Whether a password may change now, from `addr`: 429 while a lockout holds the address,
+    /// 409 when no store keeps the console users. fit's `passwordReady`.
+    fn password_ready(&self, addr: &str) -> Result<(), Response> {
+        let wait = self.logins.locked_out(addr);
+        if !wait.is_zero() {
+            return Err(refused_checks(&login::Refusal {
+                wait,
+                busy: false,
+                slowed: false,
+            }));
+        }
+        if !self.api.configs.users_stored() {
+            return Err(error(409, NO_STORE));
+        }
+        Ok(())
+    }
+
+    /// `POST /api/m/admin/account/password`: a user changes its own password, giving the current
+    /// one, checked as a login's is (one from an address at a time, each failure counted). The
+    /// new one is hashed and saved to the store on the login pool, since bcrypt and the disk
+    /// block; the user's other sessions end. fit's `accountPassword`.
+    fn account_password(self: &Arc<Self>, ctx: &mut Context, s: &Session, token: &str) {
+        let body = match decoded(ctx) {
+            Ok(b) => b,
+            Err(r) => return ctx.respond(r),
+        };
+        let current = field(&body, "current_password").unwrap_or_default();
+        let password = field(&body, "password").unwrap_or_default();
+        if current.is_empty() {
+            return ctx.respond(error(
+                400,
+                "the body must hold the current password and the new password",
+            ));
+        }
+        if let Some(msg) = password_problem(&password) {
+            return ctx.respond(error(400, msg));
+        }
+        if self.logins.temporary(&s.user).is_some() {
+            if self.logins.expired(&s.user) {
+                return ctx.respond(error(403, &format!("the temporary password {EXPIRED}")));
+            }
+            if password == current {
+                return ctx.respond(error(400, "the new password must not be the temporary one"));
+            }
+        }
+        let addr = client(ctx);
+        if let Err(r) = self.password_ready(&addr) {
+            return ctx.respond(r);
+        }
+        let ticket = match self.logins.admit_user(&addr, &s.user) {
+            Ok(t) => t,
+            Err(r) => return ctx.respond(refused_checks(&r)),
+        };
+        let Some(d) = ctx.detach() else { return };
+        let me = Arc::clone(self);
+        let (user, token) = (s.user.clone(), token.to_owned());
+        run_on(&self.login_pool, d, move |d| {
+            let wait = ticket.locked_out();
+            if !wait.is_zero() {
+                return d.respond(refused_checks(&login::Refusal {
+                    wait,
+                    busy: false,
+                    slowed: false,
+                }));
+            }
+            if me.logins.check(&user, &current) {
+                ticket.passed();
+            } else {
+                ticket.done(true);
+                let wait = me.logins.locked_out(&addr);
+                if !wait.is_zero() {
+                    return d.respond(refused_checks(&login::Refusal {
+                        wait,
+                        busy: false,
+                        slowed: false,
+                    }));
+                }
+                return d.respond(error(403, "the current password is wrong"));
+            }
+            match me.save_password(&user, &password) {
+                Ok(()) => {
+                    me.logins.end_user_sessions(&user, &token);
+                    log(
+                        Level::Info,
+                        format_args!("console: {user:?} changed the password of {user:?}"),
+                    );
+                    d.respond(changed("user", &user));
+                }
+                Err(r) => d.respond(r),
+            }
+        });
+    }
+
+    /// `POST /api/m/admin/users/password`: a console user sets another user's password; every
+    /// session of the other user ends. All console users are admins: no role is asked for.
+    /// fit's `userPassword`.
+    fn user_password(self: &Arc<Self>, ctx: &mut Context, s: &Session) {
+        let body = match decoded(ctx) {
+            Ok(b) => b,
+            Err(r) => return ctx.respond(r),
+        };
+        let target = field(&body, "username").unwrap_or_default();
+        let password = field(&body, "password").unwrap_or_default();
+        if target.is_empty() {
+            return ctx.respond(error(
+                400,
+                "the body must hold the user name and the new password",
+            ));
+        }
+        if let Some(msg) = password_problem(&password) {
+            return ctx.respond(error(400, msg));
+        }
+        if !self.logins.has_user(&target) {
+            return ctx.respond(error(
+                400,
+                &format!("there is no console user named {}", quoted(&target)),
+            ));
+        }
+        if let Err(r) = self.password_ready(&client(ctx)) {
+            return ctx.respond(r);
+        }
+        let Some(d) = ctx.detach() else { return };
+        let me = Arc::clone(self);
+        let caller = s.user.clone();
+        run_on(&self.login_pool, d, move |d| {
+            match me.save_password(&target, &password) {
+                Ok(()) => {
+                    me.logins.end_user_sessions(&target, "");
+                    log(
+                        Level::Info,
+                        format_args!("console: {caller:?} set the password of {target:?}"),
+                    );
+                    d.respond(changed("username", &target));
+                }
+                Err(r) => d.respond(r),
+            }
+        });
+    }
+
+    /// Hashes `password` and keeps it as `user`'s, in the store, then in the logins: on the
+    /// login pool. A save that fails changes nothing.
+    fn save_password(&self, user: &str, password: &str) -> Result<(), Response> {
+        // password_problem kept it to bcrypt's 72 bytes.
+        let hash =
+            akio_crypto::bcrypt::hash(password.as_bytes(), akio_crypto::bcrypt::DEFAULT_COST)
+                .map_err(|e| error(500, &format!("hashing the password: {e}")))?;
+        self.api
+            .configs
+            .set_console_password(user, &hash)
+            .map_err(|e| error(500, &format!("saving the password: {e}")))?;
+        self.logins.set_password(user, &hash);
+        Ok(())
     }
 
     /// `POST /api/logout`: the session ends, its cookie with it; 204.
@@ -725,9 +1008,23 @@ fn refused(r: login::Refusal) -> Response {
     } else {
         "too many failed logins from this address; try again later"
     };
-    let secs = r.wait.as_secs().saturating_add(1);
+    retry(r.wait, msg)
+}
+
+/// 429 with `msg`, and how long to wait, `wait`'s whole seconds and one more, in `Retry-After`
+/// and the body's `retry_after`, as fit's `Refuse`.
+fn retry(wait: Duration, msg: &str) -> Response {
+    let secs = wait.as_secs().saturating_add(1);
     let mut b = String::from("{\"error\":");
     write_string(&mut b, msg);
     let _ = writeln!(b, ",\"retry_after\":{secs}}}");
     json(429, b).header("Retry-After", secs.to_string())
+}
+
+/// Whether a session whose password is temporary may make `method` on `path`.
+fn password_route(method: &Method, path: &str) -> bool {
+    (*method == Method::Get && (path == "/api/session" || path == "/api/workbench"))
+        || PASSWORD_ROUTES
+            .iter()
+            .any(|(m, p)| m == method && *p == path)
 }

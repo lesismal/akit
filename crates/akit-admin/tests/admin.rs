@@ -2164,8 +2164,10 @@ fn text_part_save() {
         assert_eq!(r.status, 400);
         assert!(r.body.contains("conf, yaml or json"));
     }
+    // A text is never a store's file: that is an import's (I93b).
     let r = f.send("PUT", "/config/text?format=store", "text/plain", "{}", "");
-    assert!(r.body.contains("admin.store"), "{}", r.body);
+    assert_eq!(r.status, 400);
+    assert!(r.body.contains("conf, yaml or json"), "{}", r.body);
 }
 
 #[test]
@@ -2266,8 +2268,12 @@ fn export_and_import() {
     assert_eq!(r.status, 200, "{r:?}");
     assert_eq!(f.served(), "v5");
     for (body, want) in [
-        (r#"{"format": "toml"}"#, "conf, yaml or json"),
-        (r#"{"format": "store"}"#, "admin.store"),
+        (r#"{"format": "toml"}"#, "conf, yaml, json or store"),
+        // Without a store, a store's export needs a password of its own (I93b).
+        (
+            r#"{"format": "store"}"#,
+            "give the password to seal the export with",
+        ),
         (
             r#"{"format": "json", "members": ["admin"]}"#,
             "admin is not exported",

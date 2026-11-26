@@ -1026,7 +1026,7 @@ route { match { host example.com }; handler respond { body hello } }
 | `max_conns` | 整数，≥ 0 | `16` |  |
 | `mptcp` | 布尔值 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
 | `node_id` | 字符串 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
-| `store` | [对象](#cfg-admin-store) |  | **akit：**文件即 fit 的 `fitstore` 格式，逐字节相同（其魔数仍为 `FITSTORE`）：fit 能打开 akit 的 store，akit 也能打开 fit 的。`akit validate` 检查它，`akit store export` 和 `import` 读写它；在 I93b 让 `akit run` 把配置保存在其中之前，`akit run` 拒绝它。 |
+| `store` | [对象](#cfg-admin-store) |  | **akit：**文件即 fit 的 `fitstore` 格式，逐字节相同（其魔数仍为 `FITSTORE`）：fit 能打开 akit 的 store，akit 也能打开 fit 的，两者可轮流从同一个 store 运行。`akit run` 把配置保存在其中（I93b），每次启动时合并到配置文件之上；`akit store export` 和 `import` 读写它。没有 `admin.store` 时，`akit run -admin` 同 fit 在配置文件旁边保存一个（I93c）。 |
 | `token_file` | 字符串 |  | **akit：**在 akit 启动时读取。 |
 <!-- END GENERATED -->
 
@@ -1100,8 +1100,15 @@ admin {
 
 ### `admin.store`
 
-加密的 store（I93）：即 fit 的 `fitstore` 文件，`akit store export` 打印其内容，`akit store import` 把配置封存进去。从 I93b 起
-`akit run` 把配置保存在其中。
+加密的 store（I93–I93c）：即 fit 的 `fitstore` 文件，`akit run` 把配置保存在其中，`akit store export` 打印其内容，`akit store
+import` 把配置封存进去。有 store 时，akit 运行的配置是每次启动时把其内容合并到配置文件之上的结果，以其值为准（store 还不存在时由配置
+文件播种），每个应用的配置（Admin API 的、控制台的、回滚、重新读取 store 的 SIGHUP）都写入其中；`admin` 留在本文件中，从不进入
+store，设置它的配置被拒绝；`-watch` 被拒绝。控制台的密码修改保存在其中、配置旁边。打不开的 store（密码错误、改动了一个字节）使
+akit 无法启动。
+
+没有 `admin.store` 时，经 `-c` 给出的 `.store` 文件就是 store，配置文件旁边的 store（`site.json` 对应 `site.store`，没有文件时为
+`akit.store`）存在后或由 `akit run -admin` 创建后也是；其密码为 `$AKIT_STORE_PASSWORD`，否则为旁边的密钥文件（`site.store.key`），
+两者都不存在时生成，0600，内容随机，同 fit。
 
 ```fit
 admin { store { path /var/lib/akit/akit.store; password_env AKIT_STORE_PASSWORD } }

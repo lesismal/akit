@@ -127,5 +127,5 @@ fit 签发的 token 换上 akit 的前缀就是同一个 token：`fitt1.<id>.<se
 
 ## 尚不支持
 
-fit 的加密 store（`admin.store`，I93）、助手、集群管理和 `fit run -admin` 尚不支持：akit 按名称拒绝它们。
-[控制台](console.zh-CN.md)已支持。
+fit 的助手和集群管理尚不支持：akit 按名称拒绝它们。[控制台](console.zh-CN.md)、加密的 store（`admin.store`，`akit run`
+把配置保存在其中，以及 `/config/export` 和 `/config/import` 的 `store` 格式）和 `akit run -admin` 已支持。

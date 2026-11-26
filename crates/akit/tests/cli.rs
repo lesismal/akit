@@ -196,7 +196,9 @@ fn usage_errors_exit_2() {
         &["run", "-shutdown-timeout", "soon"],
         &["run", "-watch-interval", "soon"],
         &["run", "-watch-interval", "0s"],
-        &["run", "-admin"],
+        &["run", "-timeout", "1m"],
+        &["run", "-admin", "-timeout", "soon"],
+        &["run", "-admin", "-timeout", "0s"],
         &["validate", "-shutdown-timeout=1s"],
         &["version", "-x"],
     ] {
@@ -362,7 +364,7 @@ fn hash_password_from_standard_input() {
 
 /// `akit store import` and `export` (I93), as fit's `fit store`: a config sealed into the store
 /// `admin.store` names, printed back as it was sealed; a store fit wrote is exported; `admin` in what is imported, a wrong password and no
-/// store refused; `akit run` refuses `admin.store` until I93b, which `akit validate` checks.
+/// store refused; `akit validate` checks `admin.store` (`akit run` with it: `tests/store.rs`).
 #[test]
 fn store_export_and_import() {
     let d = dir("store");
@@ -454,13 +456,6 @@ fn store_export_and_import() {
             .starts_with(r#"{"listeners": [{"name": "web", "address": ":8080"}]"#)
     );
 
-    // akit run does not keep a config in a store yet.
-    let out = akit(&["run", "-c", s(&b), "-c", s(&conf)]);
-    assert_eq!(out.status.code(), Some(1), "{out:?}");
-    assert!(
-        String::from_utf8_lossy(&out.stderr).contains("I93b"),
-        "{out:?}"
-    );
     // Two ways to the password.
     let two = write(
         &d,

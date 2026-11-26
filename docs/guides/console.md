@@ -39,6 +39,14 @@ route { handler respond { body "hello\n" } }
 and open <http://127.0.0.1:2020/>. A config of `admin` alone, with no listener, is valid: the rest
 can be added from the console.
 
+**Quickest, with `akit run -admin`.** It serves the Admin API and the console with their defaults
+where the config leaves them out, and keeps the config in a store beside the config file
+(`site.json` gives `site.store`, and its key file `site.store.key`, made 0600; `akit.store` with no
+config file). With no console user in the config, the user `admin` logs in with the password
+`admin`, which must be changed within `-timeout` (30m): until then the console asks for that change
+and nothing else, and the Admin API refuses every request; past it, the password works no more and
+akit must be restarted with `-admin`. The changed password is kept in the store.
+
 **Off loopback, the console needs TLS**: an address that is not a loopback one must have
 `cert_file` and `key_file`, so that passwords never cross a network in the clear; `akit validate`
 refuses one without. On a loopback address TLS is optional, as for a console reached through an SSH
@@ -76,9 +84,12 @@ the console's certificate only when it starts.
 The `admin` logger records who logged in and from where, each failed login, each logout, and each
 change a user made with the config version it applied.
 
-**Passwords are changed with a store.** fit keeps a changed password in `admin.store`, which akit
-does not have yet ([I93](../dev-plan.md#i93-the-encrypted-store)): until then the endpoints answer
-`409` and the users are the config's.
+**Passwords are changed with a store.** A user changes its own password (the current one checked
+as a login's is: a wrong one counts as a failed login, toward the lockout) or sets another's; the
+new hash is kept in the store ([`admin.store`](../reference/config.md#adminstore), or the one `akit
+run -admin` keeps), beside the config, and replaces the config's for that user at every start, so
+that the config file need not change. The user's other sessions end. Without a store the endpoints
+answer `409`, so that nothing is lost at the next restart. fit's stores and akit's open in either.
 
 ## The pages
 
@@ -108,7 +119,10 @@ What akit does not run yet shows as fit has it, and akit answers it as it answer
 - Endpoints akit does not have answer 404, and the page that calls them says so: the consistency
   check (`/config/check`), **This node** (`/node`), the cluster manager's marks
   (`/node/managed`), and the media, BitTorrent and sync pages' own.
-- The `store` format of the transfer page, and changing a password, need `admin.store` (I93).
+- The `store` format of the transfer page exports a `fitstore` file sealed with the password given
+  there, or with the running store's key, and imports one opened with its password or the store's
+  (fit's and akit's alike); without a store a password must be given. One file's key is derived at
+  a time: another meanwhile is answered 503.
 
 ## For scripts
 
@@ -121,6 +135,8 @@ The console's own endpoints, as fit's:
 | `GET /api/session` | `{"user", "csrf"}` |
 | `GET /api/workbench` | the user and the modules served: `admin` |
 | `GET /api/m/admin/users` | the signed-in user, the users, and whether a store keeps them |
+| `POST /api/m/admin/account/password` | `{"current_password", "password"}`: the user's own password changed (`409` without a store) |
+| `POST /api/m/admin/users/password` | `{"username", "password"}`: another user's password set (`409` without a store) |
 | `GET /api/m/admin/schema` | fit's config schema, renamed as the pages are, which their forms are made from |
 | `/api/m/admin/<path>` | the Admin API's `/<path>`, behind the session instead of the token, as `GET /api/m/admin/config` |
 

@@ -132,7 +132,7 @@ version of the schema or the API, which says so in its list of changes.
 | `GET`, `HEAD` `/metrics` | Metrics in Prometheus's text format |
 | `GET`, `HEAD` `/cache`, `POST /cache/purge` | The cache's zones, and purges by URL, URL prefix, tag or zone |
 | `GET`, `HEAD` `/logs`, `POST /logs/rotate`, `POST /logs/cleanup` | The log files, one rotated now, and its retention applied or listed (added after the freeze, I83) |
-| `POST /config/render`, `POST /config/parse`, `PUT /config/text`, `POST /config/export`, `POST /config/import` | The config, or some of its top-level members (`?members=`), as `.conf`, YAML or JSON text (`?format=`), and a text or file applied, as fit's console's raw editors and transfer page call them (added after the freeze, I91; fit's `store` format waits for I93) |
+| `POST /config/render`, `POST /config/parse`, `PUT /config/text`, `POST /config/export`, `POST /config/import` | The config, or some of its top-level members (`?members=`), as `.conf`, YAML or JSON text (`?format=`), and a text or file applied, as fit's console's raw editors and transfer page call them (added after the freeze, I91; fit's `store` format, a `fitstore` file sealed with a password of its own or the running store's key, since I93b) |
 | `GET`, `HEAD` `/tokens` and `/tokens/{member}`, `POST /tokens/{member}`, `PATCH` and `DELETE /tokens/{member}/{id}` | The link tokens of the tunnel's hub and the LLM roles, issued, listed, their expiry changed and revoked, as fit's `admin/tokens.go`; akit's work on the member the running config sets, whether or not its role runs yet (added after the freeze, I100) |
 | `GET /dashboard/` | The dashboard, for people (not covered) |
 

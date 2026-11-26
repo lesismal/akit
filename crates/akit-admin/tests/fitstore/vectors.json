@@ -48,6 +48,27 @@
     }
   },
   {
+    "file": "writeback.store",
+    "password": "fit-writeback",
+    "config": "{\"routes\": [{\"handler\": {\"module\": \"respond\", \"params\": {\"body\": \"written back\"}}}]}",
+    "users": [
+      {
+        "username": "ada",
+        "password_hash": "$2a$10$ada-changed"
+      },
+      {
+        "username": "bob",
+        "password_hash": "$2a$04$bob\"q"
+      }
+    ],
+    "sections": {
+      "cluster": {
+        "version": 2,
+        "members": []
+      }
+    }
+  },
+  {
     "file": "v2-default.store",
     "password": "fit-default",
     "config": "{\"routes\":[]}",
