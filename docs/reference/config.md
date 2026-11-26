@@ -548,7 +548,10 @@ anything is read from it, by akio's accept filter. So does a `tcp` listener of o
 set an access of their own, or that takes PROXY headers, decides later instead: a refused HTTP
 request is answered `403`, a refused `tcp` connection closed once its service is known (after its
 PROXY header and its ClientHello, as the listener needs them), and a client of the listener's
-`socks` refused at its request.
+`socks` refused at its request. The address is the connection's, or the one its PROXY header names,
+never `X-Forwarded-For`'s. A change applies to the connections that start after it: a reload changes
+the lists without binding a listener again, and the connections already open, and the later requests
+of an HTTP/2 connection a listener decided at accept, are not checked again.
 
 The Admin API (`admin.access`, which serves the dashboard too) goes by the global access as well,
 after its own, and decides at accept. Unlike the rest of `admin`, it follows every config applied,
@@ -558,10 +561,6 @@ of the Admin API too; to keep local access whatever the global access says, set 
 have no address, and setting `admin.access` with one is an error. A config applied with an allow
 list that leaves out the address the change came from does not close that connection, but the next
 one is refused.
-The address is the connection's, or the one its PROXY header names, never `X-Forwarded-For`'s. A
-change applies to the connections that start after it: a reload changes the lists without binding a
-listener again, and the connections already open, and the later requests of an HTTP/2 connection a
-listener decided at accept, are not checked again.
 
 A list file has one entry on each line, each line told apart by its content, so that one file may
 mix them: an address or prefix, with what follows `#` or `;` left out; a range, `first-last`; an
