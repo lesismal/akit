@@ -44,6 +44,12 @@ done and where the work differs from the plan.
   a format changed warned of; `the_admin_api_lists_rotates_and_cleans_up`: the listing, a rotation
   now, a dry run that removes nothing and a cleanup that removes what it listed, a path not the
   config's refused).
+- **Test runs of the track**: `make check` on macOS (fmt, clippy, the workspace, deny, docs,
+  the gate and the v1 freeze); in its first run akit-listener's `udp_sessions_expire` failed once
+  (a session's idle timing under the machine's load, a test this track does not touch) and passed 5
+  of 5 alone, and the workspace then passed with `--no-fail-fast`. On gpu51 clippy, and the
+  workspace on epoll and on io_uring (`--test-threads=4`), every test binary under
+  `tools/test-timeout.sh`: all passed, no hang.
 - **Docs**: the Admin API guide and the compatibility page list `/logs`; the migration guides from
   fit, nginx and Caddy no longer say `log` and `access_log.rotate` are not supported.
 - **Differences from the plan**: fit's workbench Logs page (I157) waits for the Console track,

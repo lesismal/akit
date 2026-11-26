@@ -35,6 +35,10 @@
   `v1_surface_is_frozen`；akit 的 `log` 端到端测试（`reload_changes_levels_zone_and_rotation_in_place`：从 UTC 改为东八区的
   本地时区，akio 的行改为 debug，与访问日志共用的文件改为 300 字节切割，再改格式并得到提示；
   `the_admin_api_lists_rotates_and_cleans_up`：列表、立即切割、什么也不删的 dry run 以及删除所列文件的清理、拒绝非配置中的路径）。
+- **本路线的测试运行**：macOS 上 `make check`（fmt、clippy、整个工作区、deny、文档、门禁和 v1 冻结）；第一次运行中
+  akit-listener 的 `udp_sessions_expire` 失败一次（机器负载下会话的空闲计时，本路线未触及的测试），单独运行 5 次全过，随后整个
+  工作区以 `--no-fail-fast` 全部通过。gpu51 上 clippy，以及 epoll 和 io_uring（`--test-threads=4`）下的整个工作区，每个测试
+  二进制都经由 `tools/test-timeout.sh`：全部通过，没有挂起。
 - **文档**：Admin API 指南和兼容性页面列出 `/logs`；从 fit、nginx 和 Caddy 迁移的指南不再说 `log` 和 `access_log.rotate`
   尚不支持。
 - **与计划的不同**：fit 工作台的“日志”页面（I157）按计划等控制台路线；它的端点在这里完成。应答中的时间为 UTC（fit 用其进程的
