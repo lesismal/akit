@@ -1,7 +1,7 @@
 # The compatibility gate's report (docs/compatibility.md), written by make compat-bless;
 # do not edit. The gate fails when a run's outcomes differ from these lines.
 # fit 7daee573, fit-examples 9659d7e4.
-# 80 fixtures: 45 valid, 34 refused only as not supported yet (fields refused: 26), 0 in a format not supported yet, 1 skipped, 0 failed.
+# 80 fixtures: 48 valid, 31 refused only as not supported yet (fields refused: 24), 0 in a format not supported yet, 1 skipped, 0 failed.
 examples/acme-on-demand: valid
 examples/acme-shared-storage: valid
 examples/admin: valid
@@ -25,7 +25,7 @@ examples/docker-compose: valid
 examples/fastcgi: valid
 examples/forward-auth: valid
 examples/forward-proxy: valid
-examples/grpc: not supported yet: listeners[].protocols: protocols h2c without http/1.1
+examples/grpc: valid
 examples/headers: valid
 examples/hello: valid
 examples/http3: valid
@@ -33,7 +33,7 @@ examples/https: skipped: its certificate and key files are the user's own
 examples/jwt: valid
 examples/l4-tcp: valid
 examples/l4-udp: valid
-examples/limits: not supported yet: limits.max_pending_bytes
+examples/limits: valid
 examples/llm-hub: not supported yet: llm
 examples/llm-node: not supported yet: llm
 examples/llm-proxy: not supported yet: llm
@@ -51,7 +51,7 @@ examples/provider-consul-kv: valid
 examples/provider-docker: valid
 examples/provider-etcd: valid
 examples/provider-kubernetes: valid
-examples/proxy: not supported yet: limits.max_pending_bytes
+examples/proxy: valid
 examples/proxy-protocol: valid
 examples/rate-limit: valid
 examples/redirect: valid

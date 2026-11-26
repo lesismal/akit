@@ -16,8 +16,8 @@
   },
   "notes": {
     "listeners[].protocols": {
-      "en": "`h2c` without `http/1.1` is refused as not supported yet: akio's server always takes HTTP/1.1 beside h2c (akio API request A168).",
-      "zh": "只有 `h2c` 而没有 `http/1.1` 时按“尚不支持”拒绝：akio 的服务器在 h2c 之外总是同时接受 HTTP/1.1（akio API 请求 A168）。"
+      "en": "With `h2c` and no `http/1.1` the listener serves HTTP/2 with prior knowledge alone, as fit's (I79b): a client that sends anything else gets akio's `GOAWAY` (`PROTOCOL_ERROR`) before the connection closes, where fit closes it with nothing (akio's ADR-174).",
+      "zh": "有 `h2c` 而没有 `http/1.1` 时，监听器只以先验知识提供 HTTP/2，与 fit 相同（I79b）：发送其他内容的客户端会先收到 akio 的 `GOAWAY`（`PROTOCOL_ERROR`）再被关闭连接，而 fit 不发送任何内容直接关闭（akio 的 ADR-174）。"
     },
     "listeners[].tls.kernel_tls_offload": {
       "en": "It comes with the `engine` settings.",
@@ -51,13 +51,13 @@
       "en": "It comes with the Kubernetes provider's ExternalName Services (`allow_external_name_services`).",
       "zh": "随 Kubernetes provider 的 ExternalName Service（`allow_external_name_services`）一起支持。"
     },
-    "limits.max_conns": {
-      "en": "akio's engine-wide `max_connections`: the connections akit dials on the listeners' engine (to upstreams) count toward it too, though only accepted ones are closed past it (akio API request A215).",
-      "zh": "即 akio 引擎范围的 `max_connections`：akit 在监听器的引擎上拨出的连接（到上游的连接）也计入其中，但超出时只关闭新接受的连接（akio API 请求 A215）。"
-    },
     "limits.max_write_queue_bytes": {
       "en": "akio's `max_queued_bytes`: past it akio refuses the write (`Overloaded`) rather than queue it, where fit closes the connection.",
       "zh": "即 akio 的 `max_queued_bytes`：超出时 akio 拒绝这次写入（`Overloaded`）而不排队，fit 则关闭连接。"
+    },
+    "limits.max_pending_bytes": {
+      "en": "akio's budget of the bytes queued across the listeners' engine (akio's ADR-172): past it every connection, upstream ones too, stops reading after its current read, and all resume once the bytes queued are back under three quarters of it. akio sums the I/O threads' queues every millisecond or so, so what is queued meanwhile can pass the budget by a little. A share of memory is read from `/proc/meminfo` and the cgroup's limit on Linux; elsewhere (macOS) akit reads no memory and a share is 256 MiB.",
+      "zh": "即 akio 对监听器引擎上所有排队字节的预算（akio 的 ADR-172）：超过后，每个连接（包括到上游的连接）在当前这次读之后停止读，排队字节回落到预算的四分之三以下时全部恢复。akio 大约每毫秒汇总一次各 I/O 线程的队列，所以期间入队的数据可能略微超过预算。内存份额在 Linux 上从 `/proc/meminfo` 和 cgroup 的上限读取；其他系统（macOS）上 akit 读不到内存，份额按 256 MiB 计。"
     },
     "engine.event_loops": {
       "en": "Each listener's akio I/O threads, which run its connections' callbacks too (fib's loops only wait); one a core when left out or 0, where fib has 1 on up to 4 CPUs.",

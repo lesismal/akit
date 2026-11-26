@@ -27,3 +27,4 @@ says whether akit follows it.
 | [028](028-engine-on-akio.md) | fit's `engine` read onto akio's engine | accepted |
 | [029](029-v1-freeze.md) | The v1 freeze: baselines, marked changes, and two checks | accepted |
 | [030](030-supply-chain-checks.md) | Supply-chain checks: cargo-deny, cargo-audit daily, and the release binary's graph | accepted |
+| [032](032-limits-on-akio-budget.md) | The limits taken at start on akio's engine budget, and h2c alone | accepted |

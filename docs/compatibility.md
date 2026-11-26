@@ -369,7 +369,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 428 supported.
+3821 fields in 121 sections, at fit `7daee573`; 429 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -414,7 +414,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`http.middleware/redirect`](#fields-http-middleware-redirect) | 5 | 5 | 0 |
 | [`http.middleware/rewrite`](#fields-http-middleware-rewrite) | 6 | 6 | 0 |
 | [`http.middleware/wasm`](#fields-http-middleware-wasm) | 18 | 18 | 0 |
-| [`limits`](#fields-limits) | 7 | 6 | 1 |
+| [`limits`](#fields-limits) | 7 | 7 | 0 |
 | [`listeners`](#fields-listeners) | 30 | 23 | 7 |
 | [`llm`](#fields-llm) | 218 | 0 | 218 |
 | [`log`](#fields-log) | 24 | 0 | 24 |
@@ -494,7 +494,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 428 | 3393 |
+| **Total** | 3821 | 429 | 3392 |
 
 <a id="fields-access"></a>
 
@@ -1461,7 +1461,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `limits.max_body_bytes` | `integer` | supported |
 | `limits.max_conns` | `integer` | supported |
 | `limits.max_header_bytes` | `integer` | supported |
-| `limits.max_pending_bytes` | `bytes\|percent` | not supported yet |
+| `limits.max_pending_bytes` | `bytes\|percent` | supported |
 | `limits.max_write_queue_bytes` | `integer` | supported |
 | `limits.write_stall_timeout` | `duration` | supported |
 

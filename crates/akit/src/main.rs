@@ -301,8 +301,8 @@ struct Runner<'a> {
     tracer: Option<&'a Tracer>,
     /// The `providers` akit started with (I58, I59): a config's take a restart, as fit's.
     providers: &'a [akit_config::Provider],
-    /// The `limits` and `engine` akit started with (I79): `max_conns`,
-    /// `max_write_queue_bytes` and `engine` take a restart, as fit's.
+    /// The `limits` and `engine` akit started with (I79): `max_conns`, `max_pending_bytes`
+    /// (I79b), `max_write_queue_bytes` and `engine` take a restart, as fit's.
     limits: akit_config::Limits,
     engine: akit_config::Engine,
 }
@@ -395,6 +395,10 @@ impl Runner<'_> {
                 "limits.max_conns and limits.max_write_queue_bytes take a restart; the running ones stay"
                     .to_owned(),
             );
+        }
+        if l.max_pending_bytes != self.limits.max_pending_bytes {
+            warnings
+                .push("limits.max_pending_bytes takes a restart; the running one stays".to_owned());
         }
         if config.engine != self.engine {
             warnings.push("engine takes a restart; the running one stays".to_owned());

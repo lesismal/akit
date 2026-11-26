@@ -2,7 +2,8 @@
 
 [English](028-engine-on-akio.md) | [简体中文](028-engine-on-akio.zh-CN.md)
 
-状态：在 I79 中采纳（2026-11-26）。
+状态：在 I79 中采纳（2026-11-26）。自 I79b 起 `limits.max_conns` 只统计客户端连接，并支持 `limits.max_pending_bytes`
+（[决定 032](032-limits-on-akio-budget.zh-CN.md)）。
 
 ## 背景
 

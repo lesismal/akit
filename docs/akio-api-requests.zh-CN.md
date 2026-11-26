@@ -86,15 +86,15 @@
 | A165 | 插件用的 WebAssembly 运行时：沙箱解释器、宿主 API、WASI preview 1、实例池；Proxy-Wasm 需要的响应钩子 | 已在 akio 的 main（`dad77a7a`），已锁定 | 1、4、11 | I71、I72 |
 | A166 | 由别处进行的调用决定时扣住响应头（fit 向 fib 提出的 A41） | 已在 akio 的 main（`dad77a7a`），已锁定 | 1、4 | I72 |
 | A167 | 由别处进行的调用逐次过滤响应 body，trailer 在最后一次调用中（fit 向 fib 提出的 A46） | 已在 akio 的 main（`dad77a7a`），已锁定 | 1、4、5、8 | I72 |
-| A168 | 只提供先验知识 HTTP/2 的 HTTP 服务端（带 `h2c` 而没有 `http/1.1` 的监听器） | 已提出（I25） | 19 | I05、I25 |
+| A168 | 只提供先验知识 HTTP/2 的 HTTP 服务端（带 `h2c` 而没有 `http/1.1` 的监听器） | 已在 akio 分支 `claude/i79b-akio` 上实现（I79b，ADR-174，`HttpConfig::http1`），尚未进入 akio 的 main；akit 的 I79b 分支已使用 | 19 | I05、I25、I79b |
 | A169 | akio 的服务端拒绝 RFC 9112、RFC 9113 和 RFC 9114 规定为畸形的请求：两个 `Host` 字段、HTTP/2 与 HTTP/3 字段名和值中的非法字节、流式 body 的分帧错误以 400 应答 | 已在 akio 分支 `claude/a169-request-checks`（`813f53ea`，最后一部分除外）实现，未进入 akio 的 main | 15、19 | I25 |
 | A171 | HTTP 客户端请求结束时取消其定时器任务，而不是保留到超时时间 | 已在 akio 分支 `claude/a171-client-timer-cancel`（`90adec65`）实现，未进入 akio 的 main | 11、13 | I15、I18、I25 |
 | A172 | TLS 服务端把 server name 为 IP 地址的 ClientHello 视为没有名字，而不是使握手失败 | 已在 akio 分支 `claude/a172-sni-ip-literal`（`d23c9368`）实现，未进入 akio 的 main | 19 | I09、I25 |
 | A170 | 不经 `Conn::inner` 读取连接的 TCP 计数（以及未读字节），并通过引擎自己的 API 先写数据再拼接 | 已在 akio 分支 `claude/akit-open-requests` 上实现（`22bc4402`，akio 的 ADR-156），akit 已使用（尚未移动锁定） | 1、14 | I51b |
 | A180 | 让 akio-wasm 的调用更便宜，并与 wazero 对比测量（akio 的 W5） | 已提出（I76）：一个修改头部的 Go guest 让 akit 每个请求多花 14.7 µs CPU，fit 6.8 µs | 13 | I71、I72、I76 |
 | A200 | 按 RFC 9112 的要求处理 absolute-form 请求目标：以其路径作为请求的路径，以其 authority 作为主机 | 已提出（I77）；在此之前 akit-listener 把这样的请求改写为 origin-form | 15、19 | I77 |
-| A214 | 所有连接合计排队字节的预算，超出时暂停每个连接的读取（fit 的 `limits.max_pending_bytes`） | 已提出（I79） | 8、11 | I79 |
-| A215 | 只计入被接受的连接、不计入引擎拨出的连接的连接上限（fit 的 `limits.max_conns`） | 已提出（I79） | 11 | I79 |
+| A214 | 所有连接合计排队字节的预算，超出时暂停每个连接的读取（fit 的 `limits.max_pending_bytes`） | 已在 akio 分支 `claude/i79b-akio` 上实现（I79b，ADR-172，`Config::max_pending_bytes`），尚未进入 akio 的 main；akit 的 I79b 分支已使用 | 8、11 | I79、I79b |
+| A215 | 只计入被接受的连接、不计入引擎拨出的连接的连接上限（fit 的 `limits.max_conns`） | 已在 akio 分支 `claude/i79b-akio` 上实现（I79b，ADR-173，`Config::max_accepted_connections`），尚未进入 akio 的 main；akit 的 I79b 分支已使用 | 11 | I79、I79b |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -1472,7 +1472,9 @@ body）和 tap；由客户端限速（连接积压超过 256 KiB 时下一次调
 
 ## A168 只提供先验知识的 HTTP/2
 
-**状态。** 已提出（I25）。
+**状态。** 已在 akio 分支 `claude/i79b-akio` 上实现（I79b，2026-11-26），尚未进入 akio 的 main：`HttpConfig::http1`（默认 `true`；为 `false`
+时，不以 preface 开头的连接收到 `GOAWAY` `PROTOCOL_ERROR` 并被关闭，也不接受 `Upgrade: h2c`），即 akio 的 ADR-174。akit 的
+I79b 分支为只有 `h2c` 的监听器设置它，并去掉“尚不支持”；akit 的 main 随锁定版本的更新使用它。
 
 **问题。** fit 中 `protocols: [h2c]` 的监听器只提供先验知识的 HTTP/2，不提供其他协议，fit 基准配置的 8081 端口就是这样。
 akio-http 的服务端对不以 HTTP/2 前言开头的连接总是按 HTTP/1.1 处理，因此 akit 在启动时拒绝这样的监听器
@@ -1636,8 +1638,11 @@ authority（去掉用户信息），设置为 `Host`，或由 `Request::authorit
 
 ## A214 所有连接合计排队字节的预算
 
-**状态。** 已提出（I79）。在实现之前，akit 把 `limits.max_pending_bytes` 拒绝为“尚不支持”；fit-examples 的 `limits` 和
-`proxy` 示例只因它被拒绝。
+**状态。** 已在 akio 分支 `claude/i79b-akio` 上实现（I79b，2026-11-26），尚未进入 akio 的 main：`Config::max_pending_bytes`（akio 的
+ADR-172；一个监视线程每 1–10 毫秒汇总各 I/O 线程的队列 gauge，连接通过 `ConnInner::read_held` 暂停，并经由各自的事件循环唤醒；
+`LoopCounters::budget_pauses`、`Telemetry::pending_bytes`），akio 的 docs/BENCHMARKS 中有同轮 A/B。akio 没有把内存份额换算成
+字节的辅助函数：由 akit 读取（决定 032）。akit 的 I79b 分支把 `limits.max_pending_bytes` 映射到它上面；锁定版本更新之前，akit
+的 main 仍拒绝该字段。
 
 **问题。** fit 的 `limits.max_pending_bytes` 约束所有连接中等待客户端取走的响应字节总量：超出时每个连接都停止读取，直到有一些被取走
 （默认是 fit 可用内存的 "50%"，可以是字节数或比例；对应 fib 的 `Config.MaxPendingBytes`）。它使许多慢客户端合起来不能占用每个连接
@@ -1659,7 +1664,9 @@ authority（去掉用户信息），设置为 `Host`，或由 `Request::authorit
 
 ## A215 只计入被接受连接的连接上限
 
-**状态。** 已提出（I79）。在此之前 akit 用 `Config::max_connections` 实现 `limits.max_conns`，参考文档中有说明。
+**状态。** 已在 akio 分支 `claude/i79b-akio` 上实现（I79b，2026-11-26），尚未进入 akio 的 main：`Config::max_accepted_connections`（akio 的
+ADR-173），基于 A30 的 `Telemetry::open_accepted` 计数器。akit 的 I79b 分支用 `limits.max_conns` 设置它以代替
+`max_connections`，参考文档中的说明已删除；锁定版本更新之前，akit 的 main 仍使用 `max_connections`。
 
 **问题。** fit 的 `limits.max_conns` 约束“监听器同时保持打开的客户端连接，所有监听器合计”。akit 的上游连接池在为监听器服务的同一个
 引擎上拨号，所以使用 akio 的上限时，繁忙代理的上游连接会占用客户端的名额：在默认的 100,000 下，若有 30,000 个上游连接打开，第

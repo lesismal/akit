@@ -110,6 +110,20 @@ impl Akit {
         }
     }
 
+    /// Its output lines until, for each of `wants`, one has started with it, in any order (stdout
+    /// and stderr are read apart, so lines from the two can swap).
+    fn until_all(&self, wants: &[&str]) -> Vec<String> {
+        let mut v: Vec<String> = Vec::new();
+        while !wants.iter().all(|w| v.iter().any(|l| l.starts_with(w))) {
+            let line = self
+                .out
+                .recv_timeout(Duration::from_secs(10))
+                .unwrap_or_else(|e| panic!("waiting for {wants:?} after {v:?}: {e}"));
+            v.push(line);
+        }
+        v
+    }
+
     /// Nothing said for `d`.
     fn quiet(&self, d: Duration) {
         if let Ok(line) = self.out.recv_timeout(d) {
@@ -189,13 +203,14 @@ fn each_edit_is_applied() {
         &cfg,
         r#"{"listeners": [{"name": "web", "address": "127.0.0.1:0"}], "routes": [{"handler": {"module": "nope"}}]}"#,
     );
-    let lines = akit.until("akit: reload failed; the running config stays");
-    assert!(
-        lines.contains(&format!("akit: {name} changed; reloading")),
-        "{lines:?}"
-    );
-    let err = akit.until(&name);
-    assert!(err.last().unwrap().contains("nope"), "{err:?}");
+    // "changed" comes on stdout, the failure and its error on stderr: either may come first.
+    let lines = akit.until_all(&[
+        &format!("akit: {name} changed; reloading"),
+        "akit: reload failed; the running config stays",
+        &name,
+    ]);
+    let err = lines.iter().find(|l| l.starts_with(&name)).unwrap();
+    assert!(err.contains("nope"), "{lines:?}");
     akit.quiet(Duration::from_millis(500));
     assert_eq!(get(addr, "/"), (200, "three".into()));
 

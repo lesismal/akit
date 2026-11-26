@@ -1,6 +1,7 @@
 //! I79: the config's `limits.max_header_bytes`, `limits.max_conns`, `limits.max_write_queue_bytes`
-//! and `engine` on the listeners' akio engine, as fit's listeners take them. On the backend
-//! `AKIO_TEST_BACKEND` names (epoll by default, `uring`).
+//! and `engine` on the listeners' akio engine, as fit's listeners take them; I79b:
+//! `limits.max_pending_bytes` (akio's budget across connections) and `max_conns` counting the
+//! clients alone (with upstream connections open: akit-proxy's `proxy.rs`). On the backend `AKIO_TEST_BACKEND` names (epoll by default, `uring`).
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -183,7 +184,10 @@ fn engine_settings() {
     ));
     assert_eq!(e.threads()[0], 2);
     let live = e.telemetry().live();
-    assert_eq!(live.max_connections(), 7);
+    // max_conns counts the clients alone (I79b, akio's ADR-173): the engine's own limit, which
+    // counts the upstream connections too, is off.
+    assert_eq!(live.max_accepted_connections(), 7);
+    assert_eq!(live.max_connections(), 0);
     assert_eq!(live.max_queued_bytes(), 1 << 20);
     assert_eq!(live.read_buffer(), 16384);
     assert_eq!(live.write_high_watermark(), 65536);
@@ -195,9 +199,109 @@ fn engine_settings() {
     // Left out: fit's limits, akio's engine.
     let (e, _) = serve(&config("", ""));
     let live = e.telemetry().live();
-    assert_eq!(live.max_connections(), 100_000);
+    assert_eq!(live.max_accepted_connections(), 100_000);
     assert_eq!(live.max_queued_bytes(), 32 << 20);
     assert_eq!(live.read_buffer(), 64 << 10);
+    // max_pending_bytes: half the memory, or fit's 256 MiB where akit reads none (macOS).
+    let half = live.max_pending_bytes().unwrap();
+    if cfg!(target_os = "linux") {
+        assert!(half > 256 << 20, "{half}");
+    } else {
+        assert_eq!(half, 256 << 20);
+    }
+    e.shutdown();
+    e.wait();
+    // In bytes, or a share.
+    let (e, _) = serve(&config(r#""max_pending_bytes": 1048576"#, ""));
+    assert_eq!(e.telemetry().live().max_pending_bytes(), Some(1 << 20));
+    e.shutdown();
+    e.wait();
+    let (e, _) = serve(&config(r#""max_pending_bytes": "25%""#, ""));
+    let quarter = e.telemetry().live().max_pending_bytes().unwrap();
+    if cfg!(target_os = "linux") {
+        assert!(quarter.abs_diff(half / 2) <= 1, "{quarter} {half}");
+    } else {
+        assert_eq!(quarter, 256 << 20);
+    }
+    e.shutdown();
+    e.wait();
+}
+
+/// fit's `TestPendingBytesBudget`: a client that asks for more than `max_pending_bytes` and
+/// reads none of it leaves that much queued, and the engine pauses reads for the budget (I79b,
+/// akio's ADR-172); once the client reads, the budget frees and another request is served.
+#[test]
+fn pending_bytes_budget() {
+    const BUDGET: usize = 1 << 20;
+    let root = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("pending-budget");
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    // Kept in memory, so it goes out whole, queued on the connection rather than read as the
+    // client takes it; and far more than the kernel's socket buffers take.
+    std::fs::write(root.join("big.bin"), vec![0u8; 32 << 20]).unwrap();
+    std::fs::write(root.join("small.txt"), b"small").unwrap();
+    let (e, addrs) = serve(&format!(
+        r#"{{"listeners": [{{"name": "web", "address": "127.0.0.1:0"}}],
+            "limits": {{"max_pending_bytes": {BUDGET}, "max_write_queue_bytes": 67108864}},
+            "routes": [{{"handler": {{"module": "static",
+              "params": {{"root": {root:?}, "max_file_bytes": 67108864, "max_cache_bytes": 134217728}}}}}}]}}"#,
+        root = root.to_str().unwrap()
+    ));
+    let a = addrs[0];
+    let mut hog = TcpStream::connect(a).unwrap();
+    // Two requests: the second is read after the first's answer has spent the budget, which
+    // pauses its connection.
+    hog.write_all(b"GET /big.bin HTTP/1.1\r\nHost: x\r\n\r\n")
+        .unwrap();
+    std::thread::sleep(Duration::from_millis(200));
+    hog.write_all(b"GET /small.txt HTTP/1.1\r\nHost: x\r\n\r\n")
+        .unwrap();
+    let tel = e.telemetry();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !(tel.pending_bytes() >= BUDGET && tel.metrics().total.budget_pauses > 0) {
+        assert!(
+            Instant::now() < deadline,
+            "the budget was not reached: {} bytes pending, {} pauses by budget",
+            tel.pending_bytes(),
+            tel.metrics().total.budget_pauses
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    // The hog reads what it was sent: the budget frees, and both its answers and another
+    // client's request go through.
+    let reader = std::thread::spawn(move || {
+        hog.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+        let mut got = 0usize;
+        let mut b = vec![0u8; 1 << 16];
+        let mut tail = Vec::new();
+        while let Ok(n) = hog.read(&mut b) {
+            if n == 0 {
+                break;
+            }
+            got += n;
+            tail.extend_from_slice(&b[..n]);
+            if tail.len() > 64 {
+                tail.drain(..tail.len() - 64);
+            }
+            if tail.ends_with(b"small") {
+                break;
+            }
+        }
+        got
+    });
+    let mut s = TcpStream::connect(a).unwrap();
+    s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+    s.write_all(b"GET /small.txt HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
+        .unwrap();
+    let mut resp = String::new();
+    s.read_to_string(&mut resp).unwrap();
+    assert!(
+        resp.starts_with("HTTP/1.1 200") && resp.ends_with("small"),
+        "{resp}"
+    );
+    assert!(reader.join().unwrap() > 32 << 20);
+    // The scrape's fit_reads_paused_total{reason="budget"} is akio's count.
+    assert!(e.telemetry().metrics().total.budget_pauses > 0);
     e.shutdown();
     e.wait();
 }

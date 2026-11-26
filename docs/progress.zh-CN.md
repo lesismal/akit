@@ -19,6 +19,41 @@
 
 ## 日志
 
+### 2026-11-26：I79b，网关示例的最后几个字段
+
+- **先做 akio**（akio 分支 `claude/i79b-akio`，从 akio 的 main `1b85fd83` 切出，尚未合并或锁定；akit 的 `Cargo.toml`
+  仍锁定 `0fc8f3a7`）：A214 `Config::max_pending_bytes`（akio 的 ADR-172：设置预算时，一个监视线程每 1–10 毫秒汇总
+  各 I/O 线程的排队字节 gauge；连接通过每个后端都会询问的 `ConnInner::read_held` 暂停，并经由各自的事件循环唤醒；
+  `budget_pauses`、`pending_bytes`），A215 `Config::max_accepted_connections`（ADR-173，基于 A30 的
+  `Telemetry::open_accepted` 计数器；该分支按 `claude/akit-open-requests` 上的原样引入这些改动，便于两者合并），A168
+  `HttpConfig::http1`（ADR-174：`false` 时只以先验知识提供 HTTP/2，其他内容收到 `GOAWAY`）。各后端都有测试；accept
+  和读路径的同轮 A/B 记在 akio 的 docs/BENCHMARKS 中。
+- **`limits.max_pending_bytes`** 像 fit 一样读取（字节数，或 `"25%"` 这样的内存份额，默认内存的一半；错误信息与 fit
+  相同），即 `akit_config::Memory`，启动时映射到 akio 的预算上；重载改变它时给出警告。份额所对应的内存由 akit 像 fit 的
+  `sysmem` 那样读取（Linux 上读 `/proc/meminfo` 和 cgroup 的上限；其他系统用 fit 的回退值 256 MiB），见
+  [决定 032](decisions/032-limits-on-akio-budget.zh-CN.md)。`/metrics` 的 `fit_reads_paused_total{reason="budget"}`
+  即 akio 的计数。
+- **`limits.max_conns`** 只统计客户端连接：用 akio 的 `max_accepted_connections` 代替 `max_connections`，akit 拨出的
+  上游连接不再占用客户端的名额。
+- **只有 `h2c` 的监听器**（`protocols: [h2c]` 或 `[h2c, tcp]`）：与 fit 相同，只提供先验知识的 HTTP/2；在共享端口上，
+  它的 HTTP 规则只匹配 preface。
+- **门禁**：之前 80 个夹具，45 个有效，34 个只因暂不支持被拒绝（26 个字段）；之后 48 个有效，31 个被拒绝（24 个字段）：
+  `grpc`、`limits` 和 `proxy` 有效，只有 After-1.0 路线的示例被拒绝（`bittorrent`、`console`、`llm-*`、`logging`、
+  `media-pages`、`streaming`、`sync-*`、`tunnel-*`、`video-site`、`webrtc-*`、`whip-whep`）。`limits.max_pending_bytes`
+  已记入 `tests/compat/v1/additions.txt`（`make v1-bless`）；配置参考中 `max_conns` 的说明已删除，`max_pending_bytes` 和
+  `protocols` 有了说明。
+
+测试（移植自 fit）：akit-config 的 `limits.rs`（`TestMemory`、`TestLimits`）、`json_config.rs`（只有 h2c，以及与 `tcp`
+共存）、`v1.rs`（`.conf` 写的 fit-examples `limits`）；akit-listener 的 `limits.rs`（`TestPendingBytesBudget`；引擎设置）、
+`listeners.rs`（`TestProtocols`）、`reload.rs`（重载新增只有 h2c 的监听器）、`one_port.rs`（只有 h2c 与 `tcp` 共存）、`sysmem`（单元测试）；akit-proxy 的
+`proxy.rs`（上游连接打开时的 `max_conns`）、`grpc.rs`（只有 h2c 的监听器上的调用）；akit-compat 的 `gate.rs`（该字段的样例）；akit 的 `admin.rs`。在 macOS 和基准
+主机上检查，akio 的测试与 akit 的 workspace 在 epoll 与 io_uring 上都跑过。akio 的同轮 A/B：HTTP/1.1、pipelined、h2c 与
+TCP echo 在两项设置关闭与开启时都与 akio 的 main 相差 1% 以内；其中 `connect` 用例受客户端在回环上复用 TIME_WAIT 端口的
+限制，测不到 accept 路径。`akit` 的 `watch` 测试（`each_edit_is_applied`）先等 stdout 的一行再等 stderr 的一行，负载重的
+主机上两者可能交换顺序；现在接受任意顺序。
+
+与计划的不同：范围内没有。akit 不做基准（规则 30）：[基准表](dev-plan.zh-CN.md#基准与优化状态)中有 I79b 的一行。
+
 ### 2026-11-26：I80，为安全审查做好准备
 
 - akio：未变，`0fc8f3a7`。除决定 030 外，没有占用 akio API 需求、ADR 或决定编号。

@@ -188,15 +188,18 @@ fn tls_reads() {
     assert_eq!(c.listeners[0].tls, None);
 }
 
-/// h2c alone is fit's, and not akit's yet (akio API request A168): `validate` says so, as `run`
-/// does (I25).
+/// h2c alone (I79b, akio's A168): a listener of HTTP/2 with prior knowledge and nothing else, as
+/// fit's `TestProtocols`; beside `tcp` too, as fit's `TestTCPBesideHTTP`.
 #[test]
-fn h2c_alone_is_not_supported_yet() {
-    let errs = lines(r#"{"listeners": [{"name": "w", "address": ":80", "protocols": ["h2c"]}]}"#);
-    assert_eq!(
-        errs,
-        ["1:62: listeners[0].protocols[0]: not supported yet: protocols h2c without http/1.1"]
+fn h2c_alone() {
+    let c = ok(r#"{"listeners": [{"name": "w", "address": ":80", "protocols": ["h2c"]}]}"#);
+    assert_eq!(c.listeners[0].protocols, [Protocol::H2c]);
+    let c = ok(
+        r#"{"listeners": [{"name": "w", "address": ":80", "protocols": ["h2c", "tcp"]}],
+            "upstreams": [{"name": "up", "addresses": ["127.0.0.1:1"]}],
+            "services": [{"name": "s", "listeners": ["w"], "upstream": "up"}]}"#,
     );
+    assert_eq!(c.listeners[0].protocols, [Protocol::H2c, Protocol::Tcp]);
     let c =
         ok(r#"{"listeners": [{"name": "w", "address": ":80", "protocols": ["h2c", "http/1.1"]}]}"#);
     assert_eq!(c.listeners[0].protocols, [Protocol::H2c, Protocol::Http11]);

@@ -20,6 +20,49 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-26: I79b, the gateway examples' last fields
+
+- **akio first** (akio branch `claude/i79b-akio`, cut from akio's main `1b85fd83`, not merged or
+  pinned yet; akit's `Cargo.toml` still pins `0fc8f3a7`): A214 `Config::max_pending_bytes`
+  (akio's ADR-172: a watcher thread sums the I/O threads' queued-bytes gauges every 1–10 ms while
+  a budget is set; connections pause through `ConnInner::read_held`, which every backend asks, and
+  are woken through their loops; `budget_pauses`, `pending_bytes`), A215
+  `Config::max_accepted_connections` (ADR-173, on the counters of A30's `Telemetry::open_accepted`,
+  whose hunks the branch takes as they are on `claude/akit-open-requests` so that the two merge),
+  A168 `HttpConfig::http1` (ADR-174: `false` serves HTTP/2 with prior knowledge alone, anything
+  else gets a `GOAWAY`). Tests on every backend; the accept and read paths measured by a same-run
+  A/B in akio's docs/BENCHMARKS.
+- **`limits.max_pending_bytes`** read as fit reads it (bytes, or a share of memory such as
+  `"25%"`, half the memory by default; fit's messages), `akit_config::Memory`, onto akio's budget at
+  start; a reload that changes it is warned of. The memory a share is of is read by akit as fit's
+  `sysmem` (Linux `/proc/meminfo` and the cgroup's limit; elsewhere fit's 256 MiB fallback),
+  [decision 032](decisions/032-limits-on-akio-budget.md). `/metrics`'
+  `fit_reads_paused_total{reason="budget"}` is akio's count.
+- **`limits.max_conns`** counts the client connections alone: akio's `max_accepted_connections`
+  in place of `max_connections`, so the upstream connections akit dials take no room from clients.
+- **A listener of `h2c` alone** (`protocols: [h2c]`, or `[h2c, tcp]`): HTTP/2 with prior knowledge
+  and nothing else, as fit's; on a shared port its HTTP rule is the preface alone.
+- **The gate**: before, 80 fixtures, 45 valid, 34 refused only as not supported yet (26 fields);
+  after, 48 valid, 31 refused (24 fields): `grpc`, `limits` and `proxy` are valid, and only the
+  After-1.0 tracks' examples are refused (`bittorrent`, `console`, `llm-*`, `logging`,
+  `media-pages`, `streaming`, `sync-*`, `tunnel-*`, `video-site`, `webrtc-*`, `whip-whep`).
+  `limits.max_pending_bytes` is marked in `tests/compat/v1/additions.txt` (`make v1-bless`); the
+  config reference's note on `max_conns` is gone, `max_pending_bytes` and `protocols` have notes.
+
+Tests (ported from fit): akit-config `limits.rs` (`TestMemory`, `TestLimits`), `json_config.rs`
+(h2c alone, beside `tcp`), `v1.rs` (fit-examples' `limits` in `.conf`); akit-listener `limits.rs`
+(`TestPendingBytesBudget`; the engine's settings), `listeners.rs` (`TestProtocols`), `reload.rs` (a reload adds a listener of h2c alone),
+`one_port.rs` (h2c alone beside `tcp`), `sysmem` (unit); akit-proxy `proxy.rs` (`max_conns` with
+the upstream connections open), `grpc.rs` (calls on a listener of h2c alone); akit-compat `gate.rs` (the field's sample); akit `admin.rs`.
+Checked on macOS and on the benchmark host, akio's suites and akit's workspace on epoll and
+io_uring. akio's same-run A/B: HTTP/1.1, pipelined, h2c and TCP echo within 1% of akio's main with
+both settings off and on; its `connect` case is bound by the client's reuse of TIME_WAIT ports on
+loopback, not by the accept path. `akit`'s `watch` test (`each_edit_is_applied`) waited for a
+stdout line before a stderr one, which a loaded host can swap; it now takes them in either order.
+
+Differences from the plan: none in scope. No benchmark in akit (rule 30): the
+[benchmark table](dev-plan.md#benchmark-and-optimization-status) has I79b's row.
+
 ### 2026-11-26: I80, security review readiness
 
 - akio: unchanged, `0fc8f3a7`. No akio API request, ADR or decision number taken but decision 030.

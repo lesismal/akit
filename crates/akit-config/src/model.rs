@@ -250,8 +250,74 @@ pub const DEFAULT_LIMITS_MAX_CONNS: u64 = 100_000;
 /// fit's default `limits.max_write_queue_bytes`: 32 MiB.
 pub const DEFAULT_MAX_WRITE_QUEUE_BYTES: u64 = 32 << 20;
 
-/// `limits`, as fit's `config.Limits`: every field but `max_pending_bytes`, which waits for akio
-/// (akio API request A214) and is refused as not supported yet.
+/// fit's `FallbackMaxPendingBytes`: `limits.max_pending_bytes` when it is a share of memory and
+/// the memory cannot be read, 256 MiB.
+pub const FALLBACK_MAX_PENDING_BYTES: u64 = 256 << 20;
+
+/// A number of bytes, or a share of the memory akit may use: fit's `config.Memory`, which a
+/// config writes as an integer or as a string such as `"25%"`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Memory {
+    /// This many bytes.
+    Bytes(u64),
+    /// This many hundredths of a percent of the memory, 1 to 10,000 (fit rounds a share to
+    /// them: `"12.345%"` is 1,235).
+    Share(u32),
+}
+
+impl Memory {
+    /// The share `p` percent, more than 0 and at most 100 (`None` otherwise, or when it rounds
+    /// to 0 hundredths of a percent, as fit refuses `"0.001%"`).
+    pub fn percent(p: f64) -> Option<Memory> {
+        if !(p > 0.0 && p <= 100.0) {
+            return None;
+        }
+        let h = (p * 100.0).round();
+        // In 0..=10_000 after the check above, a whole number: the cast is exact.
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let h = h as u32;
+        (h >= 1).then_some(Memory::Share(h))
+    }
+
+    /// In bytes: a share of `total` bytes of memory (the machine's, or the container's limit
+    /// where lower), or `fallback` where the memory could not be read (`total` is `None`); a
+    /// share is a byte at least. fit's `Memory.Bytes`.
+    pub fn bytes(self, total: Option<u64>, fallback: u64) -> u64 {
+        match self {
+            Memory::Bytes(n) => n,
+            Memory::Share(h) => match total.filter(|t| *t > 0) {
+                None => fallback,
+                Some(t) => {
+                    // `total * h / 10_000` in integers (fit computes it in a float64, to the
+                    // same bytes below 2^53); at most i64::MAX, as fit's int64.
+                    let v = u128::from(t)
+                        .saturating_mul(u128::from(h))
+                        .checked_div(10_000)
+                        .unwrap_or(0);
+                    u64::try_from(v)
+                        .unwrap_or(u64::MAX)
+                        .min(i64::MAX.unsigned_abs())
+                        .max(1)
+                }
+            },
+        }
+    }
+}
+
+impl std::fmt::Display for Memory {
+    /// As a config writes it: its bytes, or its share with `%` (`"50%"`, `"12.5%"`).
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Memory::Bytes(n) => write!(f, "{n}"),
+            Memory::Share(h) => write!(f, "{}%", f64::from(*h) / 100.0),
+        }
+    }
+}
+
+/// fit's default `limits.max_pending_bytes`: half the memory.
+pub const DEFAULT_MAX_PENDING_BYTES: Memory = Memory::Share(5000);
+
+/// `limits`, as fit's `config.Limits`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Limits {
     /// `max_body_bytes`: the largest request body a listener takes, whether it arrives whole or
@@ -275,6 +341,13 @@ pub struct Limits {
     /// [`DEFAULT_MAX_WRITE_QUEUE_BYTES`] when left out or 0. Takes effect at start, not on a
     /// reload.
     pub max_write_queue_bytes: u64,
+    /// `max_pending_bytes` (I79b): how many bytes of responses may wait, across every
+    /// connection, for clients to take them; past it every connection stops reading until some
+    /// go (akio's `Config::max_pending_bytes`, akio's ADR-172). A number of bytes or a share of
+    /// memory; [`DEFAULT_MAX_PENDING_BYTES`] when left out or 0, and
+    /// [`FALLBACK_MAX_PENDING_BYTES`] for a share where the memory cannot be read. Takes effect
+    /// at start, not on a reload.
+    pub max_pending_bytes: Memory,
 }
 
 impl Default for Limits {
@@ -285,6 +358,7 @@ impl Default for Limits {
             max_header_bytes: DEFAULT_MAX_HEADER_BYTES,
             max_conns: DEFAULT_LIMITS_MAX_CONNS,
             max_write_queue_bytes: DEFAULT_MAX_WRITE_QUEUE_BYTES,
+            max_pending_bytes: DEFAULT_MAX_PENDING_BYTES,
         }
     }
 }
@@ -1985,15 +2059,16 @@ const ADMIN_FIT_ONLY: &[&str] = &[
     "cluster_member",
     "access",
 ];
-// I79: every field but max_pending_bytes, a budget across connections akio has not (A214).
+// I79, and I79b's max_pending_bytes on akio's budget across connections (A214).
 const LIMITS_FIELDS: &[&str] = &[
     "max_body_bytes",
     "write_stall_timeout",
     "max_header_bytes",
     "max_conns",
     "max_write_queue_bytes",
+    "max_pending_bytes",
 ];
-const LIMITS_FIT_ONLY: &[&str] = &["max_pending_bytes"];
+const LIMITS_FIT_ONLY: &[&str] = &[];
 // I79: engine, read onto akio's engine (decision 028). How fib's event loops wait and how many
 // events a wait collects have no akio setting; kernel TLS offload waits for akio's kTLS.
 const ENGINE_FIELDS: &[&str] = &[
@@ -3278,11 +3353,6 @@ fn listener(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Listener> {
                 at,
                 "h2c is HTTP/2 in the clear, which a listener with tls does not serve; use h2",
             ),
-            // fit serves HTTP/2 alone then; akio's server always takes HTTP/1.1 as well (akio
-            // API request A168). `akit run` refused it already; `validate` says so too (I25).
-            Protocol::H2c if !protocols.iter().any(|(_, _, p)| *p == Protocol::Http11) => {
-                d.not_yet(*off, at, "protocols h2c without http/1.1");
-            }
             Protocol::Udp if protocols.len() > 1 => d.error(
                 *off,
                 at,
@@ -3579,6 +3649,13 @@ fn limits(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Limits> {
             {
                 *slot = n;
             }
+        }
+    }
+    if let Some(v) = o.take("max_pending_bytes") {
+        // 0 is the default, as fit's.
+        match d.memory(v, &o.at("max_pending_bytes")) {
+            Some(Memory::Bytes(0)) | None => {}
+            Some(m) => l.max_pending_bytes = m,
         }
     }
     o.finish(d, LIMITS_FIELDS, LIMITS_FIT_ONLY);

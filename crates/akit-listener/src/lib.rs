@@ -96,6 +96,7 @@ use akit_runtime::{CompiledRoute, GraphCell, NO_SLOT};
 pub mod metrics;
 pub mod reload;
 mod status;
+mod sysmem;
 pub use reload::{Listeners, ReloadError, Reloaded, Served, ServedView};
 
 /// fit's answer when no route matches.
@@ -847,14 +848,10 @@ fn http_config(l: &Listener) -> Result<HttpConfig, Error> {
     // preface. One that offers no ALPN is served HTTP/1.1 even by an h2-only listener, as Go's
     // server serves it.
     let h2 = l.protocols.contains(&Protocol::H2);
-    if h2c && !h1 {
-        // fit serves HTTP/2 alone then; akio's server always takes HTTP/1 as well.
-        return Err(Error::NotSupportedYet {
-            listener: l.name.clone(),
-            what: "protocols h2c without http/1.1".into(),
-        });
-    }
     let mut cfg = HttpConfig::default();
+    // h2c alone (I79b): HTTP/2 with prior knowledge and nothing else, as fit's listener serves
+    // it; a client of HTTP/1.1 gets a GOAWAY and is closed (akio's ADR-174).
+    cfg.http1 = h1 || !h2c;
     cfg.max_body_bytes = body_limit(l);
     // fit's limits.max_header_bytes (I79): a larger head is answered 431.
     cfg.max_header_bytes = header_limit(l);
@@ -902,10 +899,14 @@ fn engine_settings(
     pool: &mut akio::PoolConfig,
 ) {
     let size = |n: u64| usize::try_from(n).unwrap_or(usize::MAX);
-    // Connections past it are closed as they are accepted, counted as refused (`/metrics`'
-    // fit_connections_refused_total).
-    cfg.max_connections = size(limits.max_conns);
+    // Client connections past it are closed as they are accepted, counted as refused
+    // (`/metrics`' fit_connections_refused_total); the upstream connections dialed on the same
+    // engine do not count (I79b, akio's ADR-173).
+    cfg.max_accepted_connections = size(limits.max_conns);
     cfg.max_queued_bytes = size(limits.max_write_queue_bytes);
+    // What waits for clients across every connection (I79b, akio's ADR-172): past it every
+    // connection stops reading until some go. A share of the memory as fit reads it.
+    cfg.max_pending_bytes = Some(size(pending_budget(limits.max_pending_bytes)));
     if e.read_buffer_size > 0 {
         cfg.read_buffer = e.read_buffer_size;
     }
@@ -925,6 +926,12 @@ fn engine_settings(
     if e.task_queue > 0 {
         pool.queue_capacity = e.task_queue;
     }
+}
+
+/// `limits.max_pending_bytes` in bytes: a share of the memory akit may use (the machine's, or the
+/// container's limit where lower, as fit's `sysmem`), or fit's 256 MiB where it cannot be read.
+fn pending_budget(m: akit_config::Memory) -> u64 {
+    m.bytes(sysmem::total(), akit_config::FALLBACK_MAX_PENDING_BYTES)
 }
 
 /// An akio TCP listener at `addr` on `backend`, served by `event_loops` I/O threads (the config's
@@ -1271,10 +1278,15 @@ fn sniff(
         (_, web) => {
             mux = mux.route(Rule::Tls, l4_acceptor(cell, l));
             if let Some(web) = web {
-                let http = if l.protocols.contains(&Protocol::H2c) {
-                    Rule::Http
-                } else {
-                    Rule::Http1
+                // As fit's mux: HTTP/1.1, HTTP/2's preface with h2c, or the preface alone with
+                // h2c alone (I79b).
+                let http = match (
+                    l.protocols.contains(&Protocol::Http11),
+                    l.protocols.contains(&Protocol::H2c),
+                ) {
+                    (true, true) => Rule::Http,
+                    (false, true) => Rule::Http2,
+                    _ => Rule::Http1,
                 };
                 mux = mux.route_any(http, web);
             }
