@@ -16,7 +16,7 @@ YAML or JSON, any of them split across several files. Where akit differs from fi
 so in a note marked **akit:**.
 
 <!-- BEGIN GENERATED: summary -->
-akit reads **501** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 76 objects akit reads, each has its table below.
+akit reads **504** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 76 objects akit reads, each has its table below.
 <!-- END GENERATED -->
 
 How to read the tables:
@@ -997,8 +997,9 @@ status at `/status`, cache purges at `POST /cache/purge`, and a read-only dashbo
 `/dashboard/`. It is off when `admin` is left out, and listens on `127.0.0.1:2019` when its address
 is. A change through the API is applied as a SIGHUP's reload is, and shares its history.
 
-akit serves the API on a loopback address or a Unix socket only, as it does not serve the API over
-TLS yet; `token_file` asks every request for a bearer token; `access` says which client addresses it
+akit serves the API on a loopback address or a Unix socket, or, with TLS (`cert_file`,
+`key_file`, and `client_ca_file` for client certificates) and a token, off loopback (I92);
+`token_file` asks every request for a bearer token; `access` says which client addresses it
 serves ([access lists](#access-lists)), and follows every config applied. The
 [console](#the-console) is supported (I89); the store, the assistant and cluster management are not
 supported yet. The [Admin API guide](../guides/admin-api.md) walks
@@ -1022,16 +1023,16 @@ route { match { host example.com }; handler respond { body hello } }
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
 | `access` | [object](#cfg-admin-access) |  | The client addresses the Admin API serves, deciding before the global access, which applies to the API too: a connection either refuses is closed as soon as it is accepted. Unlike the other admin settings it follows every config applied, without a restart. Set allow to "127.0.0.1" (and "::1") to keep local access whatever the global access says. A Unix socket's peers have no address and are never checked, and access is an error with one. Every address is served, unless the global access says otherwise, when left out. |
-| `address` | string | `"127.0.0.1:2019"` | Where the Admin API listens: a host and port, or "unix/" and the path of a Unix socket, as in "unix//run/fit/admin.sock". A host that is not a loopback address or localhost needs token_file, cert_file and key_file, so that only holders of the token reach the API and the token never crosses a network in the clear. 127.0.0.1:2019 when left out. **akit:** Only a loopback address or a Unix socket (`unix/<path>`, made 0600): a host that is not loopback needs TLS, which akit's Admin API does not serve yet, so it is refused. |
+| `address` | string | `"127.0.0.1:2019"` | Where the Admin API listens: a host and port, or "unix/" and the path of a Unix socket, as in "unix//run/fit/admin.sock". A host that is not a loopback address or localhost needs token_file, cert_file and key_file, so that only holders of the token reach the API and the token never crosses a network in the clear. 127.0.0.1:2019 when left out. **akit:** A Unix socket is made 0600 (`unix/<path>`). |
 | `assistant` | object |  | **Not supported yet**: refused by name. The workbench's assistant, a chat beside the console's pages that reads what fit does and drafts changes for a person to submit, calling the model APIs set here; off when left out, and then nothing is sent anywhere. Needs console. With a store, these settings are the first ones only: once the Settings page saves, the store's are used, keys included. |
-| `cert_file` | string |  | **Not supported yet**: refused by name. A PEM file with the Admin API's certificate, followed by any intermediates; with key_file, the API is served over TLS, 1.2 or later. The files are read again when they change, so that a renewed certificate is served without a restart. Not for a Unix socket. |
-| `client_ca_file` | string |  | **Not supported yet**: refused by name. A PEM file with the CAs that clients' certificates must chain to: with it, every client must present a valid certificate, besides the token, before it is heard. Needs cert_file and key_file; read again when it changes, as they are. |
+| `cert_file` | string |  | A PEM file with the Admin API's certificate, followed by any intermediates; with key_file, the API is served over TLS, 1.2 or later. The files are read again when they change, so that a renewed certificate is served without a restart. Not for a Unix socket. **akit:** Read when akit starts: a renewed certificate takes a restart. |
+| `client_ca_file` | string |  | A PEM file with the CAs that clients' certificates must chain to: with it, every client must present a valid certificate, besides the token, before it is heard. Needs cert_file and key_file; read again when it changes, as they are. **akit:** Read when akit starts, as `cert_file`. |
 | `cluster` | object |  | **Not supported yet**: refused by name. Manage other fits from this one, the manager: their addresses and credentials, added on the workbench's Cluster pages, are kept in the store, and each one's state is read every poll_interval. Off when left out, and then nothing is called. Needs store and console. See decision 033. |
 | `cluster_member` | object |  | **Not supported yet**: refused by name. Link this fit out to a manager of many fits, which then manages it through the link as it manages others over HTTP: for a fit behind NAT, or with no port open to the manager. The manager's Add by enrollment gives the line to paste here. Off when left out, and then nothing is dialed. Read when fit starts. See decision 033. |
 | `console` | [object](#cfg-admin-console) |  | Serve the console, web pages behind a user name and password from which the whole config, admin aside, is read and changed; off when left out. |
 | `disable_dashboard` | boolean |  | Do not serve the dashboard, the read-only web pages at /dashboard/ that show the routes, services, upstreams and their health, certificates and config versions from the Admin API's GET endpoints; served when left out or false. |
 | `history` | integer, 0 or more | `10` | How many of the configs applied, the running one included, are kept to be read back. 10 when left out or 0. |
-| `key_file` | string |  | **Not supported yet**: refused by name. A PEM file with the certificate's private key. |
+| `key_file` | string |  | A PEM file with the certificate's private key. |
 | `max_config_bytes` | integer, 0 or more | `4194304` | The largest config the Admin API takes; a larger one gets 413. 4 MiB when left out or 0. |
 | `max_conns` | integer, 0 or more | `16` | The most connections the Admin API keeps open at once, a quarter of them kept for those that have made a request with the token (any request, without token_file). When they are taken, a new connection closes the oldest of those that have not, of the client holding the most, and is closed as it is accepted only when every one has; one past a client's share, a quarter of them, is closed too, but for loopback clients. A connection that has not is closed 5s after it is accepted, whatever it is doing. 16 when left out or 0. |
 | `mptcp` | boolean |  | **Not supported yet**: refused by name. Listen the Admin API with Multipath TCP where the kernel offers it (Linux 5.6+, net.mptcp.enabled), falling back to plain TCP where it does not. Off by default; a Unix socket has no paths. |

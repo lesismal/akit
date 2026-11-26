@@ -77,12 +77,25 @@ fn defaults_and_values() {
         admin(r#""disable_dashboard": false"#).unwrap().unwrap(),
         Admin::default()
     );
-    // Off loopback, a token is not enough: the API is not served over TLS yet.
+    // Off loopback, a token is not enough: TLS too (I92).
     let e = admin(r#""address": "0.0.0.0:2019", "token_file": "t""#).unwrap_err();
-    assert!(
-        e[0].contains("does not serve the Admin API over TLS yet"),
-        "{e:?}"
+    assert!(e[0].contains("or set cert_file and key_file"), "{e:?}");
+    let a = admin(
+        r#""address": "0.0.0.0:2019", "token_file": "t", "cert_file": "c", "key_file": "k",
+           "client_ca_file": "ca""#,
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(
+        (
+            a.cert_file.as_deref(),
+            a.key_file.as_deref(),
+            a.client_ca_file.as_deref()
+        ),
+        (Some("c"), Some("k"), Some("ca"))
     );
+    // TLS on loopback, without a token, is fine.
+    assert!(admin(r#""cert_file": "c", "key_file": "k""#).is_ok());
     for addr in ["localhost:2019", "127.0.0.2:1", "LOCALHOST:0"] {
         assert!(admin(&format!(r#""address": "{addr}""#)).is_ok(), "{addr}");
     }
@@ -97,7 +110,6 @@ fn refused() {
         "{e:?}"
     );
     for (fields, want) in [
-        (r#""address": ":2019""#, "is not a loopback address"),
         (r#""address": "2019""#, "is not a host and port"),
         (
             r#""history": -1"#,
@@ -116,7 +128,23 @@ fn refused() {
             r#""disable_dashboard": "yes""#,
             "admin.disable_dashboard: expected a boolean",
         ),
-        (r#""cert_file": "c""#, "admin.cert_file: not supported yet"),
+        (
+            r#""cert_file": "c""#,
+            "admin: cert_file and key_file go together",
+        ),
+        (
+            r#""client_ca_file": "ca""#,
+            "admin.client_ca_file: client certificates are asked for over TLS",
+        ),
+        (
+            r#""address": "unix//run/a.sock", "cert_file": "c", "key_file": "k""#,
+            "a Unix socket is not served over TLS",
+        ),
+        (
+            r#""address": ":2019""#,
+            "or set token_file, cert_file and key_file",
+        ),
+        (r#""mptcp": true"#, "admin.mptcp: not supported yet"),
         (r#""store": {}"#, "admin.store: not supported yet"),
         (r#""bogus": 1"#, "admin.bogus: unknown field"),
     ] {

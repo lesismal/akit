@@ -202,15 +202,22 @@ pub const DEFAULT_ADMIN_MAX_CONFIG_BYTES: usize = 4 << 20;
 pub const DEFAULT_ADMIN_MAX_CONNS: usize = 16;
 
 /// `admin`: the Admin API, as fit's `config.Admin` (decision 006): its address, history, limits
-/// and token (I27), dashboard (I63), access lists (I87) and console (I89). Its TLS, store and the
-/// rest are refused as not supported yet.
+/// and token (I27), dashboard (I63), access lists (I87), console (I89) and TLS (I92). Its store
+/// and the rest are refused as not supported yet.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Admin {
-    /// `address`: a loopback host and port, or `unix/` and the path of a Unix socket, made 0600
-    /// (akio API request A23); [`DEFAULT_ADMIN_ADDRESS`] when left out. A host that is not
-    /// loopback needs a token and TLS, as in fit, and akit does not serve the API over TLS yet:
-    /// it is refused.
+    /// `address`: a host and port, or `unix/` and the path of a Unix socket, made 0600 (akio API
+    /// request A23); [`DEFAULT_ADMIN_ADDRESS`] when left out. A host that is not loopback needs a
+    /// token and TLS, as in fit (I92).
     pub address: String,
+    /// `cert_file` (I92): the API's certificate, followed by any intermediates; with `key_file`,
+    /// the API is served over TLS. Not with a Unix socket.
+    pub cert_file: Option<String>,
+    /// `key_file` (I92): the certificate's private key.
+    pub key_file: Option<String>,
+    /// `client_ca_file` (I92): the authorities a client's certificate must chain to; with it,
+    /// every client must present one. Needs `cert_file`.
+    pub client_ca_file: Option<String>,
     /// `token_file`: a file holding a token that every request must carry, as
     /// `Authorization: Bearer <token>`, read when akit starts; none asked for when left out.
     pub token_file: Option<String>,
@@ -316,6 +323,9 @@ impl Default for Admin {
     fn default() -> Admin {
         Admin {
             address: DEFAULT_ADMIN_ADDRESS.to_owned(),
+            cert_file: None,
+            key_file: None,
+            client_ca_file: None,
             token_file: None,
             history: DEFAULT_ADMIN_HISTORY,
             max_config_bytes: DEFAULT_ADMIN_MAX_CONFIG_BYTES,
@@ -2173,7 +2183,7 @@ const CONFIG_FIT_ONLY: &[&str] = &[
     "bittorrent",
 ];
 // I26: the Admin API's address, history and limits; I27: its token; I63: its dashboard; I87: its
-// access lists; I89: its console. Its TLS waits for the API to be served over TLS.
+// access lists; I89: its console; I92: its TLS.
 const ADMIN_FIELDS: &[&str] = &[
     "address",
     "token_file",
@@ -2183,6 +2193,9 @@ const ADMIN_FIELDS: &[&str] = &[
     "disable_dashboard",
     "access",
     "console",
+    "cert_file",
+    "key_file",
+    "client_ca_file",
 ];
 // I89: the console. Multipath TCP is not offered by akio's listeners.
 const CONSOLE_FIELDS: &[&str] = &[
@@ -2200,9 +2213,6 @@ const CONSOLE_FIT_ONLY: &[&str] = &["mptcp"];
 const CONSOLE_USER_FIELDS: &[&str] = &["username", "password_hash"];
 const ADMIN_FIT_ONLY: &[&str] = &[
     "mptcp",
-    "cert_file",
-    "key_file",
-    "client_ca_file",
     "node_id",
     "store",
     "assistant",
@@ -3756,6 +3766,7 @@ fn listener_proxy_protocol(
 fn admin(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Admin> {
     let mut o = d.object(n, path)?;
     let mut a = Admin::default();
+    let mut address_off = None;
     if let Some(v) = o.take("address") {
         let p = o.at("address");
         if let Some(s) = d.string(v, &p).filter(|s| !s.is_empty()) {
@@ -3765,19 +3776,19 @@ fn admin(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Admin> {
                 }
             } else if let Err(msg) = check_address(&s) {
                 d.error(v.off, &p, msg);
-            } else if !loopback_host(&s) {
-                d.error(
-                    v.off,
-                    &p,
-                    format!(
-                        "{s:?} is not a loopback address: the Admin API can change everything \
-                         akit serves, so listen on localhost, 127.0.0.1 or [::1]; off loopback it \
-                         needs a token (token_file) and TLS (cert_file and key_file), and akit \
-                         does not serve the Admin API over TLS yet"
-                    ),
-                );
+            } else {
+                address_off = Some(v.off);
             }
             a.address = s;
+        }
+    }
+    for (key, slot) in [
+        ("cert_file", &mut a.cert_file),
+        ("key_file", &mut a.key_file),
+        ("client_ca_file", &mut a.client_ca_file),
+    ] {
+        if let Some(v) = o.take(key) {
+            *slot = d.string(v, &o.at(key)).filter(|s| !s.is_empty());
         }
     }
     if let Some(v) = o.take("token_file") {
@@ -3816,8 +3827,64 @@ fn admin(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Admin> {
     if let Some(v) = o.take("console") {
         a.console = console(d, v, &o.at("console"));
     }
+    // fit's checkAdminAddress (I92): off loopback, a token and TLS, so that the token, which is
+    // all it takes to change what akit serves, never crosses a network in the clear.
+    let tls_files = a.cert_file.is_some() || a.key_file.is_some() || a.client_ca_file.is_some();
+    if a.address.starts_with("unix/") {
+        if tls_files {
+            d.error(
+                n.off,
+                path,
+                "a Unix socket is not served over TLS: leave cert_file, key_file and \
+                 client_ca_file out",
+            );
+        }
+    } else if let Some(off) = address_off.filter(|_| !loopback_host(&a.address)) {
+        let missing: Vec<&str> = [
+            ("token_file", a.token_file.is_some()),
+            ("cert_file", a.cert_file.is_some()),
+            ("key_file", a.key_file.is_some()),
+        ]
+        .into_iter()
+        .filter(|(_, set)| !set)
+        .map(|(name, _)| name)
+        .collect();
+        if !missing.is_empty() {
+            d.error(
+                off,
+                &crate::error::join_field(path, "address"),
+                format!(
+                    "{:?} is not a loopback address: the Admin API can change everything akit \
+                     serves, so listen on localhost, 127.0.0.1, [::1] or a Unix socket, or set \
+                     {}: off loopback it needs a token (token_file) and TLS (cert_file and \
+                     key_file), so that the token is not sent in the clear",
+                    a.address,
+                    list_of(&missing)
+                ),
+            );
+        }
+    }
+    if a.cert_file.is_some() != a.key_file.is_some() {
+        d.error(n.off, path, "cert_file and key_file go together");
+    }
+    if a.client_ca_file.is_some() && a.cert_file.is_none() {
+        d.error(
+            n.off,
+            &crate::error::join_field(path, "client_ca_file"),
+            "client certificates are asked for over TLS: set cert_file and key_file too",
+        );
+    }
     o.finish(d, ADMIN_FIELDS, ADMIN_FIT_ONLY);
     Some(a)
+}
+
+/// `names` as English lists them: "a", "a and b", "a, b and c" (fit's `listOf`).
+fn list_of(names: &[&str]) -> String {
+    match names {
+        [] => String::new(),
+        [one] => (*one).to_owned(),
+        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+    }
 }
 
 /// `admin.console`, as fit's `config.Console` and its `checkConsole` (I89).

@@ -93,3 +93,6 @@ config	added	supported	admin.console.session_timeout
 config	added	supported	admin.console.users
 config	added	supported	admin.console.users[].password_hash
 config	added	supported	admin.console.users[].username
+config	added	supported	admin.cert_file
+config	added	supported	admin.client_ca_file
+config	added	supported	admin.key_file

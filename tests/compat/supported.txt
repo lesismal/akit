@@ -735,3 +735,9 @@ admin.console.access.allow
 admin.console.access.deny
 admin.console.access.allow_files
 admin.console.access.deny_files
+
+# I92: the Admin API over TLS, client certificates with client_ca_file; off loopback with a token
+# and TLS. The files are read when akit starts.
+admin.cert_file
+admin.key_file
+admin.client_ca_file

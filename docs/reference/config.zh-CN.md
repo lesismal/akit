@@ -13,7 +13,7 @@ akit 配置的每个字段：配置的每一部分是做什么的、一个示例
 akit 与 fit 不同之处，在表格中以 **akit：** 标出。
 
 <!-- BEGIN GENERATED: summary -->
-fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **501** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 76 个对象，下文各有一张表。
+fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **504** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 76 个对象，下文各有一张表。
 <!-- END GENERATED -->
 
 字段说明来自 fit 代码中的 `doc` 标签，是英文的，所以每个字段的完整说明在[英文版](config.md)的同一张表中；本页的表格给出每个字段的
@@ -989,7 +989,7 @@ Admin API 读取和替换运行中的配置：对 `/config/` 及其后的 JSON �
 缓存，并在 `/dashboard/` 提供只读的仪表盘。不写 `admin` 时它关闭；不写地址时监听 `127.0.0.1:2019`。经 API 的修改与 SIGHUP
 的重载一样应用，并共用同一份历史。
 
-akit 只在回环地址或 Unix 套接字上提供 API，因为它还不能经 TLS 提供 API；`token_file` 要求每个请求带上 bearer 令牌；`access`
+akit 在回环地址或 Unix 套接字上提供 API，或者在有 TLS（`cert_file`、`key_file`，以及用于客户端证书的 `client_ca_file`）和令牌时在非回环地址上提供（I92）；`token_file` 要求每个请求带上 bearer 令牌；`access`
 指定它为哪些客户端地址提供服务（[访问控制列表](#访问控制列表)），并随每次应用的配置生效。[控制台](#控制台)已支持（I89）；store、助手和集群管理尚不支持。[Admin API 指南](../guides/admin-api.zh-CN.md)有完整的介绍。
 
 ```fit
@@ -1012,16 +1012,16 @@ route { match { host example.com }; handler respond { body hello } }
 | 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
 | `access` | [对象](#cfg-admin-access) |  |  |
-| `address` | 字符串 | `"127.0.0.1:2019"` | **akit：**只能是回环地址或 Unix 套接字（`unix/<路径>`，权限设为 0600）：非回环地址需要 TLS，而 akit 的 Admin API 尚未提供 TLS，因此被拒绝。 |
+| `address` | 字符串 | `"127.0.0.1:2019"` | **akit：**Unix 套接字（`unix/<路径>`）的权限设为 0600。 |
 | `assistant` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
-| `cert_file` | 字符串 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
-| `client_ca_file` | 字符串 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `cert_file` | 字符串 |  | **akit：**在 akit 启动时读取：更新的证书需要重启才生效。 |
+| `client_ca_file` | 字符串 |  | **akit：**同 `cert_file`，在 akit 启动时读取。 |
 | `cluster` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
 | `cluster_member` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
 | `console` | [对象](#cfg-admin-console) |  |  |
 | `disable_dashboard` | 布尔值 |  |  |
 | `history` | 整数，≥ 0 | `10` |  |
-| `key_file` | 字符串 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `key_file` | 字符串 |  |  |
 | `max_config_bytes` | 整数，≥ 0 | `4194304` |  |
 | `max_conns` | 整数，≥ 0 | `16` |  |
 | `mptcp` | 布尔值 |  | **尚不支持**（not supported yet）：按名称拒绝。 |

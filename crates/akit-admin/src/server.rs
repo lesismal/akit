@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use akio::{Backend, Config as EngineConfig, Engine, Listener};
+use akio::{AnyAcceptor, Backend, Config as EngineConfig, Engine, Listener};
 use akio_http::{BodyEvent, BodyMode, Context, Detached, HttpConfig, Method, Request, Response};
 use akit_config::Errors;
 use akit_config::value::{Value, write_string};
@@ -416,13 +416,18 @@ fn resolve(address: &str) -> io::Result<SocketAddr> {
     let invalid = || {
         io::Error::new(
             io::ErrorKind::InvalidInput,
-            format!("{address:?} is not a loopback host and port"),
+            format!("{address:?} is not a host and port"),
         )
     };
     if let Some((host, port)) = address.rsplit_once(':') {
         if host.eq_ignore_ascii_case("localhost") {
             let port = port.parse().map_err(|_| invalid())?;
             return Ok(SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port));
+        }
+        // Every address, off loopback with TLS and a token (I92).
+        if host.is_empty() {
+            let port = port.parse().map_err(|_| invalid())?;
+            return Ok(SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port));
         }
     }
     address.parse().map_err(|_| invalid())
@@ -454,7 +459,12 @@ impl Server {
             Some(_) => akio::UNIX_ADDR,
             None => resolve(&settings.address)?,
         };
+        let tls = match &settings.cert_file {
+            Some(cert) => Some(api_tls(settings, cert)?),
+            None => None,
+        };
         let shared = Shared {
+            tls: tls.is_some(),
             unix: unix.is_some(),
             configs,
             submit: Arc::from(submit),
@@ -477,6 +487,7 @@ impl Server {
                     token: None,
                     dashboard: false,
                     unix: false,
+                    tls: false,
                     // Room for the request's own JSON around a config, as fit's.
                     max_body: settings.max_config_bytes.saturating_add(64 << 10),
                     ..shared.clone()
@@ -503,13 +514,19 @@ impl Server {
             (None, Some(p)) => Listener::tcp(addr).filter(accept_filter(p)),
             (None, None) => Listener::tcp(addr),
         };
+        let service = akio_http::serve_with(http, api);
+        // Over TLS with cert_file (I92), client certificates asked for with client_ca_file.
+        let acceptor = match tls {
+            Some(cfg) => AnyAcceptor::new(akio::tls::Tls::server(cfg, service)),
+            None => AnyAcceptor::new(service),
+        };
         let engine = Engine::builder()
             .config(cfg)
             .listen(
                 listener
                     .backend(opts.backend.clone())
                     .threads(1)
-                    .serve(akio_http::serve_with(http, api)),
+                    .serve_any(acceptor),
             )
             .build()
             .map_err(|e| match &unix {
@@ -599,6 +616,29 @@ impl Server {
     }
 }
 
+/// The Admin API's TLS (I92): `cert` and `key_file`, TLS 1.2 and 1.3, every client's certificate
+/// verified against `client_ca_file` when it is set. Read when akit starts.
+fn api_tls(settings: &akit_config::Admin, cert: &str) -> io::Result<akio::tls::ServerConfig> {
+    let tls = akit_config::Tls {
+        certificates: vec![akit_config::Certificate {
+            cert_file: cert.to_owned(),
+            key_file: settings.key_file.clone().unwrap_or_default(),
+        }],
+        client_auth: settings
+            .client_ca_file
+            .as_ref()
+            .map(|ca| akit_config::ClientAuth {
+                ca_files: vec![ca.clone()],
+                mode: akit_config::ClientAuthMode::Require,
+            }),
+        max_version: akit_config::TlsVersion::Tls13,
+        acme: Vec::new(),
+        on_demand: false,
+    };
+    akit_tls::server_config(&tls, &[akit_config::Protocol::Http11])
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, format!("admin: {e}")))
+}
+
 /// The accept filter of `policy`: a connection from an address it refuses is closed as it is
 /// accepted.
 pub(crate) fn accept_filter(
@@ -639,6 +679,8 @@ pub(crate) struct Shared {
     token: Option<Vec<u8>>,
     /// On a Unix socket (A23): only akit's user reaches it, so `Host` is not checked.
     unix: bool,
+    /// Served over TLS (I92): the API's own origin is `https://`.
+    tls: bool,
 }
 
 struct Api(Arc<Shared>);
@@ -700,7 +742,7 @@ const CONFIG_METHODS: &str = "GET, HEAD, PUT, PATCH, DELETE";
 
 impl akio_http::Service for Api {
     fn call(&self, ctx: &mut Context) {
-        if let Some(resp) = guard(ctx, self.0.token.as_deref(), self.0.unix) {
+        if let Some(resp) = guard(ctx, self.0.token.as_deref(), self.0.unix, self.0.tls) {
             ctx.respond(resp);
             return;
         }
@@ -841,7 +883,7 @@ pub(crate) fn submit(shared: &Shared, ctx: &mut Context, op: Op, mode: Mode) {
 /// from the API's own origin); and, without a token, one whose `Host` is not a loopback name, as
 /// a web page's is after DNS rebinding, unless it came over the Unix socket (`unix`), which no web
 /// page reaches (fit's `loopback` is false there).
-fn guard(ctx: &Context, token: Option<&[u8]>, unix: bool) -> Option<Response> {
+fn guard(ctx: &Context, token: Option<&[u8]>, unix: bool, tls: bool) -> Option<Response> {
     if let Some(token) = token {
         let valid = ctx
             .header("Authorization")
@@ -864,7 +906,7 @@ fn guard(ctx: &Context, token: Option<&[u8]>, unix: bool) -> Option<Response> {
     if let Some(origin) = ctx.header("Origin") {
         let same_origin_read = matches!(ctx.method(), Method::Get | Method::Head)
             && origin
-                .strip_prefix("http://")
+                .strip_prefix(if tls { "https://" } else { "http://" })
                 .is_some_and(|h| !h.is_empty() && h.eq_ignore_ascii_case(host));
         if !same_origin_read {
             return Some(error(403, "requests from web pages are refused"));

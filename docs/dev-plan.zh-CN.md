@@ -85,7 +85,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 
 ## 索引
 
-状态：`todo`、`doing` 或 `done`。下一个可用的迭代编号是 I94（为日志路线和访问控制列表路线预留的 I84 和 I88 未使用；I94–I96 为控制台路线预留）。
+状态：`todo`、`doing` 或 `done`。下一个可用的迭代编号是 I95（为日志路线和访问控制列表路线预留的 I84 和 I88 未使用；I95 和 I96 为控制台路线预留）。
 
 | ID | 迭代 | 依赖 | 状态 |
 | --- | --- | --- | --- |
@@ -194,8 +194,9 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I89 | 控制台 I：`admin.console` 及其登录：用户、锁定、会话；`akit hash-password` | I87 | done |
 | I90 | 控制台 II：控制台的服务器：TLS、访问控制、CSRF 与来源、进程内的 Admin API | I89, I27 | done |
 | I91 | 控制台 III：页面：fit 的工作台、schema、原文编辑器和导入导出、“日志”页面 | I90, I83 | done |
-| I92 | 非回环地址上带 TLS 的 Admin API（L1） | I27 | todo |
+| I92 | 非回环地址上带 TLS 的 Admin API（L1） | I27 | done |
 | I93 | 加密的 store：`admin.store`、`akit store export` 和 `import`、`run -admin` | I90, akio A230, A231 | todo |
+| I94 | 文件变化时重新读取 Admin API 和控制台的证书 | I92 | todo |
 
 ## 基准与优化状态
 
@@ -1139,7 +1140,7 @@ fit 的各个角色（`streaming`、`webrtc`、`tunnel`、`llm`、`bittorrent`�
 
 fit 的 I104（[fit 的决定 027](https://github.com/lesismal/fit/blob/main/docs/decisions/027-console-and-store.zh-CN.md)、
 其[控制台指南](https://github.com/lesismal/fit/blob/main/docs/console.zh-CN.md)）以及其 I157 中工作台的“日志”页面（基于
-I83 的 `/logs`），分五次迭代（[决定 036](decisions/036-console.zh-CN.md)）。`admin.console` 是一个独立的服务器，与
+I83 的 `/logs`），分六次迭代（[决定 036](decisions/036-console.zh-CN.md)），I94 由 I92 拆出。`admin.console` 是一个独立的服务器，与
 Admin API 并列，在自己的登录之后于进程内调用 Admin API 的端点；它按 fit 发布时的原样提供 fit 的工作台页面。`admin.store`
 以 fit 的 `fitstore` 格式密封保存配置。威胁模型的 L1（Admin API 没有 TLS、不能远程访问）由带 TLS 的控制台（I90）和带 TLS
 的 Admin API（I92）关闭；L5（密钥未加密存放）在这里重新审视，仍为接受：fit 的 store 保存配置和控制台用户，不保存证书存储，
@@ -1207,10 +1208,10 @@ Admin API 并列，在自己的登录之后于进程内调用 Admin API 的端�
   提供，要求客户端证书并用 `client_ca_file` 验证；非回环地址在有令牌和 TLS 时允许，没有时拒绝；Unix 套接字上三者都不允许。
   关闭威胁模型的 L1。
 - **完成标准**：移植后的 fit `admin/tls_test.go` 通过（`TestTLS`、`TestTLSClientCA`、`TestTLSStartErrors`；`TestTLSReload`
-  通过 `-watch-certs`），以及非回环地址有无令牌两种情况；字段用 `make v1-bless` 标记。
+  移到 I94），以及非回环地址有无令牌两种情况；字段用 `make v1-bless` 标记。
 - **涉及**：`akit-config`、`akit-admin`、`docs/reference`、`docs/security`。
 - **fit**：`admin/server.go`、`admin/tls.go`、`config/validate.go`（`checkAdminAddress`）。
-- **状态**：todo。
+- **状态**：已完成（2026-11-26）。证书文件在 akit 启动时读取；文件变化时重新读取是 I94。见进度日志。
 
 ### I93 加密的 store
 
@@ -1227,3 +1228,12 @@ Admin API 并列，在自己的登录之后于进程内调用 Admin API 的端�
 - **fit**：`admin/store`、`admin/configs.go`、`admin/bootstrap.go`、`cli/store.go`、`cli/run.go`；I104。
 - **状态**：todo，等待 akio A230 和 A231：没有 Argon2id 和 XChaCha20-Poly1305 就无法读取 fit 的格式，而 akio-crypto
   （`077a6710`）两者都没有。
+
+### I94 文件变化时重新读取 Admin API 和控制台的证书
+
+- **做什么**：同 fit 的 `admin/tls.go`：`admin.cert_file`、`key_file`、`client_ca_file` 和 `admin.console.cert_file`、`key_file`
+  的文件变化时重新读取（`-watch-certs`，akit 的证书监视器），新证书无需重启就提供给新连接，加载失败的文件记入日志并保留旧证书。
+- **完成标准**：移植后的 fit `TestTLSReload` 对 API 和控制台都通过。
+- **涉及**：`akit-admin`、`akit`（`run`）。
+- **fit**：`admin/tls.go`。
+- **状态**：todo。

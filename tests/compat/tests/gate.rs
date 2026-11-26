@@ -693,6 +693,22 @@ fn supported_fields_are_read() {
             r#"{"admin": {"disable_dashboard": true}}"#.into(),
             |c| c.admin.as_ref().unwrap().disable_dashboard,
         ),
+        (
+            "admin.cert_file",
+            r#"{"admin": {"cert_file": "c.pem", "key_file": "k.pem"}}"#.into(),
+            |c| c.admin.as_ref().unwrap().cert_file.as_deref() == Some("c.pem"),
+        ),
+        (
+            "admin.key_file",
+            r#"{"admin": {"cert_file": "c.pem", "key_file": "k.pem"}}"#.into(),
+            |c| c.admin.as_ref().unwrap().key_file.as_deref() == Some("k.pem"),
+        ),
+        (
+            "admin.client_ca_file",
+            r#"{"admin": {"cert_file": "c.pem", "key_file": "k.pem", "client_ca_file": "ca.pem"}}"#
+                .into(),
+            |c| c.admin.as_ref().unwrap().client_ca_file.as_deref() == Some("ca.pem"),
+        ),
         ("admin.console", console_sample(""), |c| console_of(c).users.len() == 1),
         ("admin.console.users", console_sample(""), |c| console_of(c).users.len() == 1),
         ("admin.console.users[].username", console_sample(""), |c| {

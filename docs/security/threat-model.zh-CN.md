@@ -169,7 +169,7 @@ flowchart LR
 
 | 攻击 | 控制措施 | 测试 |
 | --- | --- | --- |
-| 从网络访问 | 不设置 `admin` 就不开启；地址必须是回环地址（否则为配置错误：`crates/akit-config/src/model.rs`，`admin`、`loopback_host`），或以 0600 模式创建的 Unix 套接字；在自己的引擎上提供服务，繁忙的数据面不会拖住它（[决定 006](../decisions/006-admin-api.zh-CN.md)） | `refused`、`defaults_and_values`（`crates/akit-config/tests/admin.rs`）、`unix_socket` |
+| 从网络访问 | 不设置 `admin` 就不开启；地址必须是回环地址或以 0600 权限创建的 Unix 套接字，除非有令牌和 TLS（I92：`cert_file`、`key_file`，以及在握手中验证客户端证书的 `client_ca_file`；否则为配置错误：`crates/akit-config/src/model.rs`，`admin`）；运行在自己的引擎上，繁忙的数据面不会拖住它（[决定 006](../decisions/006-admin-api.zh-CN.md)） | `refused`、`defaults_and_values`（`crates/akit-config/tests/admin.rs`）、`unix_socket`、`tls`、`tls_client_ca`、`tls_start_errors` |
 | 本机的其他用户或进程 | `token_file`：除仪表盘的静态文件外，每个请求都要带 bearer 令牌，以常数时间比较（`crates/akit-admin/src/server.rs`，`guard`、`same`）；组或其他用户可读的令牌文件会被警告（见下文的主机） | `token`、`tokens_compared`、`dashboard_token`、`edits_dry_runs_and_rollbacks_behind_the_token`、`cache_purge_guarded` |
 | 操作者浏览器中的网页（CSRF、DNS 重绑定） | 带 `Origin` 的请求都被拒绝（403），来自 API 自身来源的读取除外；没有令牌时，`Host` 必须是回环主机名，因此重绑定的名字被拒绝 | `browsers_refused`、`loopback_hosts`、`cache_purge_guarded` |
 | 经 API 读到内联的秘密（持有令牌的人、仪表盘、记录其应答的日志） | 每次读取配置（`/config` 及其指针、`/versions/{n}`、`/config/effective`），凡 fit 的 `secretName` 认定为秘密的成员下的字符串都答 `[redacted]`（`crates/akit-admin/src/redact.rs`）；修改送回的 `[redacted]` 保留原位置的秘密，其位置上没有秘密的被拒绝（400）；`ETag` 仍是配置的（[决定 035](../decisions/035-admin-api-redacts-secrets.zh-CN.md)） | `secrets_redacted`、`redacts_secrets_only`、`redacts_under_a_pointer`、`restores_by_member_name_and_index` |
@@ -178,8 +178,18 @@ flowchart LR
 | 利用仪表盘进行 XSS 或点击劫持 | 只有自己的文件，只读，带 `Content-Security-Policy: default-src 'none'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'`、`X-Frame-Options: DENY`、`nosniff`、`Referrer-Policy: no-referrer`；令牌保存在 `sessionStorage` 中 | `dashboard`、`dashboard_read_only`、`the_dashboard_and_the_status` |
 | 提供者改写 Admin API 或其他控制面设置 | 提供者的部分只能包含 `listeners`、`routes`、`upstreams` 和 `services`；两者都定义的名字以基础配置为准（`crates/akit-provider/src/merge.rs`） | `parts_refused`、`parts_refused_more`、`merges` |
 
-fit 的控制台（登录、加密存储）在 akit 中尚未实现：它属于 1.0 之后的[控制台路线](../dev-plan.zh-CN.md#10-之后)，fit 的控制台字段作为暂不支持
-被拒绝。
+### 控制台
+
+控制台（`admin.console`，I89–I91，[决定 036](../decisions/036-console.zh-CN.md)）在登录之后提供 Admin API 的端点和 fit 的工作台页面。
+
+| 攻击 | 控制措施 | 测试 |
+| --- | --- | --- |
+| 从网络访问，密码在途中被读取 | 不设置 `admin.console` 就不开启；非回环地址必须有 `cert_file` 和 `key_file`（否则为配置错误）；`admin.console.access`、再是全局访问控制，在 accept 时决定 | `console_refused`（`crates/akit-config/tests/admin.rs`）、`over_tls`、`access_at_accept`、`console_under_akit_run` |
+| 猜测密码 | 只有 bcrypt 哈希（配置中没有明文）；不是用户的名字用假哈希检查；同时检查 2 个，在自己的池上（1 个线程、16 个等待，再多 503），从不在 I/O 线程上；一个地址（IPv6 按 /64）15 分钟内失败 5 次即锁定 15 分钟，加倍直到一小时，一个地址同一时间只检查一个，最多记录 4,096 个地址；一个用户连续失败 10 次后其检查从 2 秒延缓到 5 分钟（`crates/akit-admin/src/console/login.rs`） | `lockout`、`admit_attack`、`admit_full_table`、`user_backoff`、`address_backoff`、`logins_refused` |
+| 被盗或重放的会话 | `HttpOnly`、`SameSite=Strict`（TLS 上 `Secure`）cookie 中的 32 个随机字节，按 SHA-256 保存；空闲（30 分钟）、超过总时长（12 小时）、登出或超过 `max_sessions` 作为最旧者时结束；只在内存中 | `sessions`、`sessions_end` |
+| 操作者浏览器中的网页（CSRF、点击劫持、XSS） | 除读取外的每个请求在 `X-Fit-Csrf` 中带会话的 CSRF 令牌（常数时间比较）；`Origin` 不是控制台的请求被拒绝；只允许页面自身文件和来源的 Content-Security-Policy、`frame-ancestors 'none'`、`X-Frame-Options: DENY`、`nosniff`、`Referrer-Policy: no-referrer`，TLS 上 HSTS；API 的回答带 `Cache-Control: no-store` | `login_and_edit`、`pages_and_schema`、`over_tls` |
+| 未登录而占用连接 | `max_conns` 在 accept 时限制；请求头 10 秒、请求体 30 秒、空闲 2 分钟；对没有有效会话的回答会关闭连接。fit 的 5 秒限制和驱逐等待 akio 的 A232 | `login_and_edit` |
+| 谁改了什么 | `admin` 日志记录器：登录及其来源、失败、登出、每次修改及其应用的版本；控制台的配置以 `console` 为来源记入 `/versions` | `login_and_edit`、`console_under_akit_run` |
 
 ## 证书
 
@@ -237,16 +247,16 @@ fit 的控制台（登录、加密存储）在 akit 中尚未实现：它属于 
 ## 已知的局限
 
 每一项都是审查应当事先知道而不是去发现的缺口，并写明在哪里解决。计划中的 [I80b](../dev-plan.zh-CN.md#i80b-安全加固) 负责属于 akit 的
-各项，审查的发现陆续加入；其余属于 1.0 之后的某条路线、fit 或 akio。I80b（2026-11-26）关闭了 L2、L3、L4、L6、L7、L12、L13 和 L14
+各项，审查的发现陆续加入；其余属于 1.0 之后的某条路线、fit 或 akio。控制台路线（2026-11-26）关闭了 L1，L5 仍为接受。I80b（2026-11-26）关闭了 L2、L3、L4、L6、L7、L12、L13 和 L14
 （[决定 035](../decisions/035-admin-api-redacts-secrets.zh-CN.md)）；L8 和 L9 等待 fit 的配置增加字段，L15 等待 akio 的外部审查。
 
 | 编号 | 局限 | 暴露面 | 计划 |
 | --- | --- | --- | --- |
-| L1 | Admin API 不提供 TLS，只监听回环地址或 Unix 套接字；fit 在回环之外带 TLS 和客户端证书的 API 作为暂不支持被拒绝 | 远程操作者需要 SSH 隧道或自己的代理 | 1.0 之后，控制台路线（登录、加密存储、TLS） |
+| L1 | 已关闭（控制台路线）。Admin API 不提供 TLS，只监听回环地址或 Unix 套接字 | 未知：Admin API 在非回环地址上带令牌经 TLS 提供，用 `client_ca_file` 要求客户端证书（I92），控制台经 TLS 带登录提供（I90）；API 和控制台的证书文件在 akit 启动时读取 | 已完成：`tls`、`tls_client_ca`、`over_tls` |
 | L2 | 已关闭（I80b）。`GET /config`、`/versions/{n}` 和 `/config/effective` 曾按写入的样子返回配置，包括内联的值（`password_hash`、路由设置的头的值） | 未知：每次读取时，fit 的 `secretName` 认定为秘密的成员下的字符串都答 `[redacted]`；修改中送回的 `[redacted]` 保留秘密。成员名不表明秘密的（如 `X-Api-Key` 头）按写入的样子返回 | 已完成：`crates/akit-admin/src/redact.rs`，`secrets_redacted` |
 | L3 | 已关闭（I80b）。读取密钥和私钥文件时曾不检查其权限；已有的、权限更宽的存储目录曾照原样使用；存储曾在重命名后不同步目录 | 对他人开放的秘密文件会被警告，但不拒绝（与 fit 一样读取） | 已完成：`secret_files` 警告，存储的目录收紧为 0700 并同步（`an_open_storage_directory_is_tightened`、`secret_files_open_to_others`） |
 | L4 | 已关闭（I80b），以警告的方式。允许明文的控制面传输：`http://` 的 ACME 目录，经 `http://` 带令牌访问 Consul、etcd 和共享存储，不带 TLS 的 Redis（其默认），`tcp://` 的 Docker，kubeconfig 的 `insecure-skip-tls-verify` 以及带 bearer 令牌的 `http://` 服务器 | 按操作者的配置，凭据和证书在路径上可被读取，现在不在环回上时会被警告 | 已完成：`cleartext` 和 Kubernetes provider 的 `exposed`（`credentials_in_the_clear`、`kubeconfigs`）；是否拒绝由 fit 决定 |
-| L5 | 私钥和 ACME 账户密钥未加密存储，无论是文件还是共享存储；存储中的证书按存储所保存的样子被信任 | 能读取存储的人就持有密钥（与 fit、Caddy、certmagic 相同） | 1.0 接受；随控制台路线的加密存储重新考虑 |
+| L5 | 私钥和 ACME 账户密钥未加密存储，无论是文件还是共享存储；存储中的证书按存储所保存的样子被信任 | 能读取存储的人就持有密钥（与 fit、Caddy、certmagic 相同） | 随控制台路线重新审视（决定 036）：接受。fit 的加密 store 保存配置和控制台用户，不保存证书存储，而 akit 与 fit 共用证书存储（I62）；store 本身等待 akio 的 A230 和 A231（I93） |
 | L6 | 正向代理没有代理认证（SOCKS5 不带认证方法，CONNECT 不带 `Proxy-Authorization`），私有地址段（10/8、172.16/12、192.168/16、100.64/10、fc00::/7）除非 `deny` 列出否则可达，与 fit 相同 | `clients` 范围宽的正向代理能到达内部网络 | 已在参考文档的 `forward_proxy` 中写明（I80b）；访问控制列表已实现（I85–I87：监听器、其服务以及 SOCKS 客户端请求上的 `access`），运维者可以拒绝私有网段；代理认证在 1.0 之后 |
 | L7 | 已决定（I80b）：静态文件跟随符号链接，包括根目录内指向根目录外的链接，与 fit 的 `static` 有意的行为相同（fit 没有选项） | 能在根目录下创建链接的人可以提供链接所指的内容 | 已在参考文档的 `static` 中写明；有测试（`symlinks_out_of_the_root_followed`）；拒绝它们的选项要先在 fit 中设计（[决定 035](../decisions/035-admin-api-redacts-secrets.zh-CN.md)） |
 | L8 | 不检查客户端证书是否被吊销（没有 CRL，没有 OCSP） | 被吊销的客户端证书在过期前都会被接受 | akio-tls 已具备（`ServerConfigBuilder::client_crls`、`client_ocsp_policy`）；fit 的配置没有字段：已向 fit 提议 `tls.client_auth.crl_files`（决定 035），fit 有了之后 akit 读取它 |

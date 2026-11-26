@@ -2268,3 +2268,171 @@ fn export_and_import() {
         assert!(r.body.contains(want), "{body}: {}", r.body);
     }
 }
+
+// I92: the Admin API over TLS (fit's admin/tls_test.go: TestTLS, TestTLSClientCA,
+// TestTLSStartErrors).
+
+struct Pki {
+    dir: std::path::PathBuf,
+    ca: akio_x509::Certificate,
+    ca_key: akio_crypto::pkey::PrivateKey,
+}
+
+fn new_key() -> akio_crypto::pkey::PrivateKey {
+    akio_crypto::pkey::PrivateKey::P256(akio_crypto::p256::SecretKey::generate().unwrap())
+}
+
+impl Pki {
+    fn new(name: &str) -> Pki {
+        let dir = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR"))
+            .join("admin-tls")
+            .join(name);
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let ca_key = new_key();
+        let ca = akio_x509::CertificateParams::ca("admin test ca")
+            .self_signed(&ca_key)
+            .unwrap();
+        std::fs::write(dir.join("ca.pem"), ca.to_pem()).unwrap();
+        Pki { dir, ca, ca_key }
+    }
+
+    /// A leaf the CA signs for `names`: its certificate and key files.
+    fn leaf(&self, stem: &str, names: &[&str]) -> (String, String) {
+        let key = new_key();
+        let cert = akio_x509::CertificateParams::new(names)
+            .signed_by(&key.public_key(), &self.ca, &self.ca_key)
+            .unwrap();
+        let (c, k) = (
+            self.dir.join(format!("{stem}.pem")),
+            self.dir.join(format!("{stem}.key")),
+        );
+        std::fs::write(&c, cert.to_pem()).unwrap();
+        std::fs::write(&k, key.to_pkcs8_pem()).unwrap();
+        (
+            c.to_string_lossy().into_owned(),
+            k.to_string_lossy().into_owned(),
+        )
+    }
+
+    fn client(&self, cert: Option<(&str, &str)>) -> akio::tls::ClientConfig {
+        let mut roots = akio::tls::RootCerts::empty();
+        roots
+            .add_pem(&std::fs::read(self.dir.join("ca.pem")).unwrap())
+            .unwrap();
+        let mut b = akio::tls::ClientConfig::builder().roots(roots);
+        if let Some((c, k)) = cert {
+            b = b.client_cert(
+                akio::tls::Certificate::from_pem(&std::fs::read(c).unwrap()).unwrap(),
+                akio::tls::PrivateKey::from_pem(&std::fs::read(k).unwrap()).unwrap(),
+            );
+        }
+        b.build().unwrap()
+    }
+}
+
+/// A GET over TLS: the status line, or why the exchange failed.
+fn tls_get(addr: SocketAddr, cfg: &akio::tls::ClientConfig, path: &str) -> Result<String, String> {
+    let tcp = TcpStream::connect(addr).map_err(|e| e.to_string())?;
+    tcp.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+    let mut s = akio::tls::stream::Stream::client(cfg, "admin.akit.test", tcp)
+        .map_err(|e| e.to_string())?;
+    s.handshake().map_err(|e| e.to_string())?;
+    write!(
+        s,
+        "GET {path} HTTP/1.1\r\nHost: admin.akit.test\r\nAuthorization: Bearer t0ken\r\nConnection: close\r\n\r\n"
+    )
+    .map_err(|e| e.to_string())?;
+    let mut out = Vec::new();
+    s.read_to_end(&mut out).map_err(|e| e.to_string())?;
+    let text = String::from_utf8_lossy(&out).into_owned();
+    Ok(text.lines().next().unwrap_or("").to_owned())
+}
+
+#[test]
+fn tls() {
+    let pki = Pki::new("tls");
+    let (cert, key) = pki.leaf("api", &["admin.akit.test"]);
+    let token = pki.dir.join("token");
+    std::fs::write(&token, "t0ken\n").unwrap();
+    let f = start(
+        &doc("v1"),
+        admin(|a| {
+            a.address = "0.0.0.0:0".into();
+            a.cert_file = Some(cert.clone());
+            a.key_file = Some(key.clone());
+            a.token_file = Some(token.to_string_lossy().into_owned());
+        }),
+    );
+    let addr = SocketAddr::from(([127, 0, 0, 1], f.api.addr().port()));
+    assert_eq!(
+        tls_get(addr, &pki.client(None), "/versions").unwrap(),
+        "HTTP/1.1 200 OK"
+    );
+    // In the clear, nothing is answered.
+    let mut s = TcpStream::connect(addr).unwrap();
+    s.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+    let _ = s.write_all(b"GET /versions HTTP/1.1\r\nHost: x\r\n\r\n");
+    let mut buf = Vec::new();
+    let _ = s.read_to_end(&mut buf);
+    assert!(
+        !buf.starts_with(b"HTTP/1.1 200"),
+        "{}",
+        String::from_utf8_lossy(&buf)
+    );
+}
+
+#[test]
+fn tls_client_ca() {
+    let pki = Pki::new("client-ca");
+    let (cert, key) = pki.leaf("api", &["admin.akit.test"]);
+    let (ccert, ckey) = pki.leaf("client", &["client.akit.test"]);
+    let token = pki.dir.join("token");
+    std::fs::write(&token, "t0ken").unwrap();
+    let f = start(
+        &doc("v1"),
+        admin(|a| {
+            a.cert_file = Some(cert.clone());
+            a.key_file = Some(key.clone());
+            a.client_ca_file = Some(pki.dir.join("ca.pem").to_string_lossy().into_owned());
+            a.token_file = Some(token.to_string_lossy().into_owned());
+        }),
+    );
+    let addr = f.api.addr();
+    assert!(
+        tls_get(addr, &pki.client(None), "/versions").is_err(),
+        "a client without a certificate was heard"
+    );
+    assert_eq!(
+        tls_get(addr, &pki.client(Some((&ccert, &ckey))), "/versions").unwrap(),
+        "HTTP/1.1 200 OK"
+    );
+    // A certificate another CA signed is refused too.
+    let other = Pki::new("client-ca-other");
+    let (ocert, okey) = other.leaf("client", &["client.akit.test"]);
+    assert!(tls_get(addr, &pki.client(Some((&ocert, &okey))), "/versions").is_err());
+}
+
+#[test]
+fn tls_start_errors() {
+    let pki = Pki::new("start-errors");
+    let (cert, key) = pki.leaf("api", &["admin.akit.test"]);
+    for (c, k, ca) in [
+        ("missing.pem".to_owned(), key.clone(), None),
+        (cert.clone(), "missing.key".to_owned(), None),
+        (key.clone(), key.clone(), None),
+        (cert.clone(), key.clone(), Some("missing-ca.pem".to_owned())),
+    ] {
+        let settings = admin(|a| {
+            a.cert_file = Some(c.clone());
+            a.key_file = Some(k.clone());
+            a.client_ca_file = ca.clone();
+        });
+        let configs = Configs::new(doc("v1"), SOURCE_FILE, 2);
+        let submit: akit_admin::Submit = Box::new(|_| Ok(()));
+        let mut opts = Options::default();
+        opts.backend = backend();
+        let e = Server::start(&settings, configs, submit, &opts).unwrap_err();
+        assert!(e.to_string().starts_with("admin: "), "{c} {k}: {e}");
+    }
+}

@@ -59,6 +59,11 @@ engine of its own. akit and fit are both under the Apache License 2.0.
    `/config/parse`, `/config/text`, `/config/export` and `/config/import` (their `store` format
    waits for I93); a text's errors are placed at their lines in it (`akit_config::position_of`),
    as fit's adapter places them.
+9. **The Admin API over TLS** (I92), as fit's `checkAdminAddress`: `cert_file` and `key_file`
+   (TLS 1.2 and 1.3), `client_ca_file` asking every client for a certificate it verifies; off
+   loopback only with a token and TLS. With the console over TLS, this closes the threat model's
+   L1. The API's and the console's certificate files are read when akit starts; fit reads them
+   again when they change, which I94 brings.
 
 ## Consequences
 

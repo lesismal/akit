@@ -92,8 +92,8 @@ few crates as it can. fit's package of the same role is given for reference.
 
 ## Index
 
-Status: `todo`, `doing` or `done`. The next free iteration number is I94 (I84 and I88, reserved for the
-Logging and Access lists tracks, are unused; I94–I96 are reserved for the Console track).
+Status: `todo`, `doing` or `done`. The next free iteration number is I95 (I84 and I88, reserved for the
+Logging and Access lists tracks, are unused; I95 and I96 are reserved for the Console track).
 
 | ID | Iteration | Depends on | Status |
 | --- | --- | --- | --- |
@@ -202,8 +202,9 @@ Logging and Access lists tracks, are unused; I94–I96 are reserved for the Cons
 | I89 | Console I: `admin.console` and its logins: users, lockouts, sessions; `akit hash-password` | I87 | done |
 | I90 | Console II: the console's server: TLS, access, CSRF and origins, the Admin API in process | I89, I27 | done |
 | I91 | Console III: the pages: fit's workbench, the schema, the raw editors and transfer, the Logs page | I90, I83 | done |
-| I92 | The Admin API over TLS, off loopback (L1) | I27 | todo |
+| I92 | The Admin API over TLS, off loopback (L1) | I27 | done |
 | I93 | The encrypted store: `admin.store`, `akit store export` and `import`, `run -admin` | I90, akio A230, A231 | todo |
+| I94 | The Admin API's and the console's certificates read again when they change | I92 | todo |
 
 ## Benchmark and optimization status
 
@@ -1302,7 +1303,7 @@ answered 403 or the connection closed once its service is known. fit's roles (`s
 
 fit's I104 ([fit's decision 027](https://github.com/lesismal/fit/blob/main/docs/decisions/027-console-and-store.md),
 its [console guide](https://github.com/lesismal/fit/blob/main/docs/console.md)) and the workbench's
-Logs page of its I157, on I83's `/logs`, in five iterations ([decision 036](decisions/036-console.md)).
+Logs page of its I157, on I83's `/logs`, in six iterations ([decision 036](decisions/036-console.md)), I94 split from I92.
 `admin.console` is a server of its own, beside the Admin API, whose endpoints it calls in process
 behind logins of its own; it serves fit's workbench pages as fit ships them. `admin.store` keeps the
 config sealed in fit's `fitstore` format. The threat model's L1 (no Admin API over TLS, no remote
@@ -1397,11 +1398,12 @@ without one it changes the running config as the Admin API does, and password ch
   `client_ca_file`; an address off loopback allowed with a token and TLS, refused without them;
   none of them with a Unix socket. The threat model's L1 closed.
 - **Done when**: fit's `admin/tls_test.go` passes ported (`TestTLS`, `TestTLSClientCA`,
-  `TestTLSStartErrors`; `TestTLSReload` with `-watch-certs`), and off loopback with and without a
+  `TestTLSStartErrors`; `TestTLSReload` moved to I94), and off loopback with and without a
   token; the fields marked with `make v1-bless`.
 - **Touches**: `akit-config`, `akit-admin`, `docs/reference`, `docs/security`.
 - **fit**: `admin/server.go`, `admin/tls.go`, `config/validate.go` (`checkAdminAddress`).
-- **Status**: todo.
+- **Status**: done (2026-11-26). The certificate files are read when akit starts; reading them
+  again when they change is I94. See the progress log.
 
 ### I93 The encrypted store
 
@@ -1424,3 +1426,14 @@ without one it changes the running config as the Admin API does, and password ch
   I104.
 - **Status**: todo, waits for akio A230 and A231: fit's format cannot be read without Argon2id and
   XChaCha20-Poly1305, and akio-crypto (`077a6710`) has neither.
+
+### I94 The Admin API's and the console's certificates read again when they change
+
+- **Do**: as fit's `admin/tls.go`: the files of `admin.cert_file`, `key_file`, `client_ca_file` and
+  `admin.console.cert_file`, `key_file` read again when they change (`-watch-certs`, akit's
+  certificate watcher), the new certificate served to new connections without a restart, a file
+  that fails to load logged and the old one kept.
+- **Done when**: fit's `TestTLSReload` passes ported, for the API and the console.
+- **Touches**: `akit-admin`, `akit` (`run`).
+- **fit**: `admin/tls.go`.
+- **Status**: todo.

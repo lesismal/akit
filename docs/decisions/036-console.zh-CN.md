@@ -41,6 +41,9 @@ Apache License 2.0。
    （`GET /api/m/admin/schema`）。配置页面调用而 akit 原本没有的端点，akit 作为 Admin API 端点按 fit 的样子补上：`/config/render`、
    `/config/parse`、`/config/text`、`/config/export` 和 `/config/import`（其 `store` 格式等 I93）；文本的错误定位到文本中的行
    （`akit_config::position_of`），同 fit 的 adapter。
+9. **带 TLS 的 Admin API**（I92），同 fit 的 `checkAdminAddress`：`cert_file` 和 `key_file`（TLS 1.2 和 1.3），`client_ca_file`
+   要求每个客户端提供证书并验证它；非回环地址只有在有令牌和 TLS 时才允许。加上带 TLS 的控制台，这关闭了威胁模型的 L1。API 和
+   控制台的证书文件在 akit 启动时读取；fit 在它们变化时重新读取，由 I94 实现。
 
 ## 影响
 

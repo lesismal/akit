@@ -384,14 +384,14 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 501 supported.
+3821 fields in 121 sections, at fit `7daee573`; 504 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
 | [`access`](#fields-access) | 5 | 5 | 0 |
 | [`access_log`](#fields-access-log) | 14 | 14 | 0 |
 | [`acme`](#fields-acme) | 43 | 43 | 0 |
-| [`admin`](#fields-admin) | 105 | 28 | 77 |
+| [`admin`](#fields-admin) | 105 | 31 | 74 |
 | [`auto_https`](#fields-auto-https) | 5 | 5 | 0 |
 | [`bittorrent`](#fields-bittorrent) | 160 | 0 | 160 |
 | [`engine`](#fields-engine) | 11 | 8 | 3 |
@@ -509,7 +509,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 501 | 3320 |
+| **Total** | 3821 | 504 | 3317 |
 
 <a id="fields-access"></a>
 
@@ -659,8 +659,8 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `admin.assistant.users` | `array<object>` | not supported yet |
 | `admin.assistant.users[].level` | `enum(off\|read\|edit\|propose\|apply), required` | not supported yet |
 | `admin.assistant.users[].username` | `string, required` | not supported yet |
-| `admin.cert_file` | `string` | not supported yet |
-| `admin.client_ca_file` | `string` | not supported yet |
+| `admin.cert_file` | `string` | supported |
+| `admin.client_ca_file` | `string` | supported |
 | `admin.cluster` | `object` | not supported yet |
 | `admin.cluster.admins` | `array<string>` | not supported yet |
 | `admin.cluster.link_address` | `string` | not supported yet |
@@ -694,7 +694,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `admin.console.users[].username` | `string, required` | supported |
 | `admin.disable_dashboard` | `boolean` | supported |
 | `admin.history` | `integer` | supported |
-| `admin.key_file` | `string` | not supported yet |
+| `admin.key_file` | `string` | supported |
 | `admin.max_config_bytes` | `integer` | supported |
 | `admin.max_conns` | `integer` | supported |
 | `admin.mptcp` | `boolean` | not supported yet |

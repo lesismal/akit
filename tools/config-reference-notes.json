@@ -24,8 +24,8 @@
       "zh": "随 `engine` 的设置一起支持。"
     },
     "admin.address": {
-      "en": "Only a loopback address or a Unix socket (`unix/<path>`, made 0600): a host that is not loopback needs TLS, which akit's Admin API does not serve yet, so it is refused.",
-      "zh": "只能是回环地址或 Unix 套接字（`unix/<路径>`，权限设为 0600）：非回环地址需要 TLS，而 akit 的 Admin API 尚未提供 TLS，因此被拒绝。"
+      "en": "A Unix socket is made 0600 (`unix/<path>`).",
+      "zh": "Unix 套接字（`unix/<路径>`）的权限设为 0600。"
     },
     "admin.token_file": {
       "en": "Read when akit starts.",
@@ -110,6 +110,14 @@
     "admin.console.max_conns": {
       "en": "A connection past it is closed as it is accepted: none is kept for those with a login, and none without one is closed to make room, until akio's A232.",
       "zh": "超出时新连接在 accept 时被关闭：在 akio 的 A232 之前，不为已登录的连接保留名额，也不关闭未登录的连接来腾出位置。"
+    },
+    "admin.cert_file": {
+      "en": "Read when akit starts: a renewed certificate takes a restart.",
+      "zh": "在 akit 启动时读取：更新的证书需要重启才生效。"
+    },
+    "admin.client_ca_file": {
+      "en": "Read when akit starts, as `cert_file`.",
+      "zh": "同 `cert_file`，在 akit 启动时读取。"
     }
   }
 }
