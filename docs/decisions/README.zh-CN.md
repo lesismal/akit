@@ -28,4 +28,5 @@
 | [033](033-log-files.zh-CN.md) | 日志文件的切割与保留，与 fit 相同 | 已采纳 |
 | [034](034-access-lists.zh-CN.md) | 基于 akio accept 过滤器的访问控制列表 | 已采纳 |
 | [035](035-admin-api-redacts-secrets.zh-CN.md) | Admin API 遮蔽秘密，akit 对暴露的秘密发出警告，以及 I80b 的其余局限 | 待审阅 |
-| [036](036-console.zh-CN.md) | 控制台运行在自己的引擎上，按 fit 发布时原样提供 fit 的页面，store 等待 akio | 待审阅 |
+| [036](036-console.zh-CN.md) | 控制台运行在自己的引擎上，按 fit 发布时原样提供 fit 的页面，store 等待 akio | 待审阅；名字由 037 修订 |
+| [037](037-akit-names.zh-CN.md) | akit 的名字：对外凡写 "fit" 的名字都改为 "akit"，不保留别名 | 已采纳 |

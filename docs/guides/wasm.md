@@ -2,8 +2,9 @@
 
 [English](wasm.md) | [简体中文](wasm.zh-CN.md)
 
-The `wasm` middleware runs a WebAssembly plugin on a route's requests: fit's plugins, built against
-fit's ABI (`fit_on_request`), and Proxy-Wasm plugins, as Envoy's SDKs build them, run unchanged.
+The `wasm` middleware runs a WebAssembly plugin on a route's requests: plugins of akit's ABI, which
+is fit's with its names renamed ([below](#akits-abi)), and Proxy-Wasm plugins, as Envoy's SDKs build
+them, unchanged.
 They run on akio-wasm's pool of instances, never on the threads that serve connections, each call
 bounded in time and memory; a plugin that traps or runs past its time is stopped and its instance
 replaced. The [reference](../reference/config.md#wasm) has every field.
@@ -51,6 +52,54 @@ route {
 	handler respond { body hello }
 }
 ```
+
+## akit's ABI
+
+A plugin of akit's own ABI is a WASI reactor (`-buildmode=c-shared`, so that it exports
+`_initialize`) that exports `akit_on_request` and imports its host functions from the module `akit`.
+This is fit's ABI ([fit's `plugin/wasm/abi.go`](https://github.com/lesismal/fit/blob/main/plugin/wasm/abi.go))
+with fit's names renamed: fit's `fit_on_request` and module `fit` are not read
+([decision 037](../decisions/037-akit-names.md)). A plugin that exports neither `akit_on_request` nor
+a Proxy-Wasm ABI version is refused when the config loads.
+
+```text
+export  akit_on_request() i32          0: the request goes on; 1: the plugin answered it
+
+import  akit.header_get(kind, name, name_len, buf, buf_len) i32
+                                       the field's first value written to buf, up to buf_len
+                                       bytes, and its length, or -1; kind 0 is the request's
+                                       fields, 1 the response's as the plugin set them so far
+        akit.header_set(kind, name, name_len, value, value_len)
+        akit.header_add(kind, name, name_len, value, value_len)
+        akit.header_del(kind, name, name_len)
+        akit.request_get(field, buf, buf_len) i32
+                                       as header_get, for field 0 the method, 1 the path
+                                       (decoded), 2 the query, 3 the host, 4 the client's
+                                       address, 5 the plugin's config
+        akit.respond(status, body, body_len)
+                                       answer with status (200 to 599), body (1 MiB at most)
+                                       and the response's fields the plugin set
+        akit.log(level, msg, msg_len)  write msg to akit's log: -4 debug, 0 info, 4 warn, 8 error
+```
+
+Strings are a pointer and a length into the plugin's memory. A name or value is at most 64 KiB, a
+call makes at most 256 changes to the response's fields and as many to the request's, and a field
+name must be an HTTP token and a value hold no line break or NUL; past any of these the call fails,
+and goes as `on_error` says.
+
+fit's Go package `plugin/wasm/guest` builds such a plugin once its `//go:wasmexport` and
+`//go:wasmimport` names are renamed from `fit` to `akit` (and `fit_*` to `akit_*`); nothing else in
+it changes. `tools/plugin-guest.sh` does this for akit's tests, with fit's test plugin
+`plugin/wasm/testdata/headers`:
+
+```bash
+sed -i -e 's#^//go:wasmexport fit_#//go:wasmexport akit_#' \
+       -e 's#^//go:wasmimport fit #//go:wasmimport akit #' \
+       -e 's#^//go:wasmimport fit_sync #//go:wasmimport akit_sync #' plugin/wasm/guest/*.go
+GOOS=wasip1 GOARCH=wasm go build -buildmode=c-shared -o plugin.wasm .
+```
+
+A plugin built for fit, unchanged, does not load in akit, nor one built for akit in fit.
 
 ## Proxy-Wasm
 

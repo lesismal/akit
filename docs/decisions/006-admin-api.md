@@ -2,7 +2,8 @@
 
 [English](006-admin-api.md) | [简体中文](006-admin-api.zh-CN.md)
 
-Status: accepted in I26 (2026-11-24).
+Status: accepted in I26 (2026-11-24); its header fields renamed by [decision 037](037-akit-names.md)
+(`Akit-Config-Version`, `Akit-Dry-Run`: fit's clients that send fit's names do not work against akit).
 
 ## Context
 
@@ -42,8 +43,8 @@ two meet without a blocking wait on an I/O thread.
 - **Web pages are refused as in fit**: `Origin` gets 403 but on a read from the API's own origin,
   and the `Host` must name a loopback host. The address must be a loopback one (off loopback fit
   asks for a token and TLS, below); a Unix socket waits on akio (A23).
-- **fit's paths and payloads**, the `Fit-Config-Version` header included, so fit's clients work
-  against akit; edits, rollback, `POST /reload` and dry runs answered 501 until I27.
+- **fit's paths and payloads**, the version header included (fit's `Fit-Config-Version`, akit's
+  `Akit-Config-Version` since decision 037); edits, rollback, `POST /reload` and dry runs answered 501 until I27.
 
 Update, I27 (2026-11-24):
 
@@ -61,7 +62,7 @@ Update, I27 (2026-11-24):
   reach no scrape), and `Listeners::plan` lists what `Listeners::reload` would open and close,
   resolving each new listener's address and binding it for a moment unless a running listener
   holds it. Nothing is kept or counted; the answer carries the running version and ETag, the ETag
-  the config would have, and `Fit-Dry-Run: 1`, as fit's.
+  the config would have, and `Akit-Dry-Run: 1` (fit's `Fit-Dry-Run`, renamed by decision 037).
 - **The token** (`admin.token_file`) is read when the API starts, trimmed, and refused when
   empty; every request then carries `Authorization: Bearer <token>`, compared in constant time, or
   gets 401 with `WWW-Authenticate`; the `Host` check is dropped then, as in fit, and `Origin` is

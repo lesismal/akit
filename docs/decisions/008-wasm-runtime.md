@@ -2,7 +2,7 @@
 
 [English](008-wasm-runtime.md) | [简体中文](008-wasm-runtime.zh-CN.md)
 
-Status: accepted in I71 (2026-11-25).
+Status: accepted in I71 (2026-11-25); the ABI's names amended by [decision 037](037-akit-names.md).
 
 ## Context
 
@@ -31,9 +31,10 @@ dependency rule 21 sends to akio instead.
   reactors, and runs plugins on `InstancePool`: threads that own instances, a bounded queue that
   refuses a job rather than wait, a deadline per job, an instance made again after a trap. Being
   akio's, it needs no exception to decision 001 and no trait of akit's in front of it.
-- **The ABI is fit's** (`fit_on_request` and the host module `fit`), implemented in `akit-plugin`
-  on `akio-wasm`'s `Linker`, so that fit's plugins run unchanged; fit's Go test plugin is run by
-  akit's tests. Proxy-Wasm, fit's decision 018, came in I72 ([decision 011](011-proxy-wasm.md)).
+- **The ABI is fit's, its names akit's** (`akit_on_request` and the host module `akit`, fit's
+  `fit_on_request` and `fit` renamed by decision 037), implemented in `akit-plugin` on
+  `akio-wasm`'s `Linker`: fit's plugins run once built again with the names renamed; fit's Go test
+  plugin, so built (`tools/plugin-guest.sh`), is run by akit's tests. Proxy-Wasm, fit's decision 018, came in I72 ([decision 011](011-proxy-wasm.md)).
 - **Requests wait suspended** (`Context::suspend`, ADR-109) while their call waits for and runs on
   an instance, and go on from the pool's completion; their fields are changed through
   `Context::req_mut` (A33).

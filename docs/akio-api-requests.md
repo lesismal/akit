@@ -683,7 +683,7 @@ I64's traces take the same hook.
 
 ## A30 The open connections a listener accepted
 
-**Status.** Built on akio branch `claude/akit-open-requests` (`57a942af`); used by akit, the pin not moved yet. `Telemetry::open_accepted` (and `Metrics::open_accepted`): akit-listener's scrape writes `fit_connections_open` from it, the accepted connections alone.
+**Status.** Built on akio branch `claude/akit-open-requests` (`57a942af`); used by akit, the pin not moved yet. `Telemetry::open_accepted` (and `Metrics::open_accepted`): akit-listener's scrape writes `akit_connections_open` (fit's `fit_connections_open`) from it, the accepted connections alone.
 
 **Problem.** fit's `fit_connections_open` counts the client connections open on the listeners.
 akio's `Telemetry::open_connections` counts every connection open, the ones the engine dialed (the
@@ -698,7 +698,7 @@ for dialed connections with `limited` false); `conn_closed` takes from it whatev
 **Suggested API.** `Telemetry::open_accepted()` (or an `accepted_open` gauge per loop in
 `LoopCounters`): accepted TCP connections open now, apart from dialed ones and UDP peers.
 
-**How akit uses it.** `akit_listener::metrics::Scrape` writes it as `fit_connections_open`, in
+**How akit uses it.** `akit_listener::metrics::Scrape` writes it as `akit_connections_open` (fit's `fit_connections_open`), in
 place of `open_connections`.
 
 ## A32 Where a regular expression matches, its groups, and replacing them
@@ -917,7 +917,7 @@ spends held is not idle: the client chose to stop reading.
 
 **How akit uses it.** I17b: the upstream's `response_header_timeout` and
 `response_idle_timeout` (fit's 60s defaults) are set on each proxied request; a header timeout is
-answered 504, an idle one cuts the response short as a broken one is (I17's `Fit-Error` trailer on
+answered 504, an idle one cuts the response short as a broken one is (I17's `Akit-Error` trailer, fit's `Fit-Error`, on
 HTTP/2 and HTTP/3 for a body of no declared length).
 
 ## A37 An HTTP client request cancelled at any point
@@ -1723,7 +1723,7 @@ until a call elsewhere hands it back; H2: a streamed body filtered by calls made
 a time), fit's A41 and A46 from fib, to be requested on their own when I72 starts. Milestones
 W1-W6 in the ADR; I71 needs W1-W4 and A33.
 
-**How akit uses it.** `akit-plugin` implements fit's ABI (module `fit`, with `fit_sync`'s names
+**How akit uses it.** `akit-plugin` implements fit's ABI under akit's names (module `akit`, decision 037; with `akit_sync`'s names
 trapping if called) and Proxy-Wasm's host functions on `akio-wasm`'s safe API, suspends each
 request (`Context::suspend`, ADR-109) and resumes it from the pool when the call returns, as fit's
 `wasm` middleware does with fib.
@@ -2052,7 +2052,7 @@ akio's job (rule 21).
 while the bytes queued across the engine's connections are at or past it, every connection's reads
 are paused after its current read, as the watermark pauses one connection's; they resume once the
 sum is back under, say, three quarters of it. A counter of the pauses it caused beside the
-watermark's (`backpressure`), so akit's `fit_reads_paused_total{reason="budget"}` reports it, and a
+watermark's (`backpressure`), so akit's `akit_reads_paused_total{reason="budget"}` reports it, and a
 helper that turns a share of the memory into bytes (the machine's, or the cgroup's limit where
 lower), or akit computes it.
 

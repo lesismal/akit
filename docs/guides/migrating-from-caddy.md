@@ -80,7 +80,7 @@ Let's Encrypt for the routes' host names, and port 80 redirects to it.
 ## Converting a Caddyfile
 
 ```bash
-akit adapt -from caddyfile -c Caddyfile -to fit -o akit.conf
+akit adapt -from caddyfile -c Caddyfile -to akit -o akit.conf
 akit validate -c akit.conf
 ```
 

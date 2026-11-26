@@ -26,7 +26,7 @@
 4. **只有 `h2c` 的监听器**把 akio-http 的 `HttpConfig::http1` 设为 `false`；在与 `tcp` 或 `socks` 共享的端口上，它的 HTTP
    规则是 akio-mux 的 `Rule::Http2`（只匹配 preface），与 fit 的 mux 匹配 `HTTP2()` 相同。发送其他内容的客户端收到 akio 的
    `GOAWAY` 并被关闭（fit 不发送任何内容直接关闭），或者在与 `tcp` 共享端口时交给监听器的服务，与 fit 相同。
-5. **指标。** `fit_reads_paused_total{reason="budget"}` 即 akio 的 `budget_pauses`。
+5. **指标。** `akit_reads_paused_total{reason="budget"}` 即 akio 的 `budget_pauses`。
 
 ## 影响
 

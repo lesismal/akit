@@ -28,7 +28,8 @@ fit 已经走完了下面的每个里程碑，它的 [路线图](https://github.
 1. **功能与 fit 对齐。** fit 用户依赖的每项功能 akit 都有，按下面里程碑的顺序实现。一项功能算对齐，是指
    fit 自己针对它的测试和示例移植过来后，在 akit 上通过。
 2. **两者共用一份配置。** fit 接受的配置（.conf、YAML 或 JSON）akit 也接受，且含义相同；akit 暂不支持的字段
-   会按名字拒绝，绝不忽略。在 fit 和 akit 之间切换只需替换二进制（[决定 002](decisions/002-config-compatibility.zh-CN.md)）。
+   会按名字拒绝，绝不忽略。在 fit 和 akit 之间切换只需替换二进制（[决定 002](decisions/002-config-compatibility.zh-CN.md)），
+   fit 写着 "fit" 的名字在 akit 中是 akit 自己的名字（[决定 037](decisions/037-akit-names.zh-CN.md)）。
 3. **比 fit 更快、更省。** 没有垃圾回收，回调在 I/O 线程上内联执行，每个监听器可用 io_uring 和 eBPF 分流：
    在同一台机器上，akit 的吞吐、p99 延迟和每连接内存都应胜过 fit，并保持与 nginx 持平或领先。
 4. **内存安全，自身不含 `unsafe`。** 所有 `unsafe` 都留在 akio 经过审计的 crate 中；akit 全部

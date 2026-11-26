@@ -575,7 +575,7 @@ ctx.set_observed(words: [u64; 2]); // 不分配；此时记下 started
 
 ## A30 监听器接受的打开连接数
 
-**状态。** 已在 akio 分支 `claude/akit-open-requests` 上实现（`57a942af`）；akit 已使用，尚未移动锁定。`Telemetry::open_accepted`（及 `Metrics::open_accepted`）：akit-listener 的抓取据此写 `fit_connections_open`，只计接受的连接。
+**状态。** 已在 akio 分支 `claude/akit-open-requests` 上实现（`57a942af`）；akit 已使用，尚未移动锁定。`Telemetry::open_accepted`（及 `Metrics::open_accepted`）：akit-listener 的抓取据此写 `akit_connections_open`（fit 的 `fit_connections_open`），只计接受的连接。
 
 **问题。** fit 的 `fit_connections_open` 统计监听器上打开的客户端连接。akio 的 `Telemetry::open_connections`
 统计所有打开的连接，包括引擎拨出的（akit 在监听器的引擎上拨出的上游连接池连接）和 UDP 对端，所以 akit 的这个
@@ -588,7 +588,7 @@ ctx.set_observed(words: [u64; 2]); // 不分配；此时记下 started
 **建议的 API。** `Telemetry::open_accepted()`（或 `LoopCounters` 中按循环的 `accepted_open` 指标）：现在打开的
 已接受 TCP 连接，不含拨出的连接和 UDP 对端。
 
-**akit 的用法。** `akit_listener::metrics::Scrape` 把它写作 `fit_connections_open`，替代 `open_connections`。
+**akit 的用法。** `akit_listener::metrics::Scrape` 把它写作 `akit_connections_open`（fit 的 `fit_connections_open`），替代 `open_connections`。
 
 ## A32 正则表达式在哪里匹配、它的分组，以及替换
 
@@ -754,7 +754,7 @@ internals ... (use `akio`)"），没有任何地方重新导出。akio 的 `clau
 
 **akit 的用法。** I17b：上游的 `response_header_timeout` 和 `response_idle_timeout`（fit 的默认值 60s）设到每个
 被代理的请求上；响应头超时回答 504，空闲超时像中途断开那样截断响应（对 HTTP/2 和 HTTP/3 上未声明长度的响应体，用
-I17 的 `Fit-Error` 尾部字段结束）。
+I17 的 `Akit-Error`（fit 的 `Fit-Error`）尾部字段结束）。
 
 ## A37 可在任意时刻取消的 HTTP 客户端请求
 
@@ -1409,7 +1409,7 @@ authority），akio-h3 在收到头部时分派；流式的 `2xx` 即为隧道�
 akio-http 的两个钩子（H1：扣住响应头，直到别处的调用把它交回；H2：流式 body 由别处进行的调用逐次过滤），即 fit 向
 fib 提出的 A41 和 A46，在 I72 开始时单独提出。里程碑 W1–W6 见 ADR；I71 需要 W1–W4 和 A33。
 
-**akit 的用法。** `akit-plugin` 在 `akio-wasm` 的安全 API 上实现 fit 的 ABI（模块 `fit`，`fit_sync` 的名字被调用
+**akit 的用法。** `akit-plugin` 在 `akio-wasm` 的安全 API 上以 akit 的名字实现 fit 的 ABI（模块 `akit`，决定 037；`akit_sync` 的名字被调用
 时 trap）和 Proxy-Wasm 的宿主函数，挂起每个请求（`Context::suspend`，ADR-109），调用返回时从池上恢复它，就像 fit
 的 `wasm` 中间件在 fib 上所做的那样。
 
@@ -1665,7 +1665,7 @@ ADR-172；一个监视线程每 1–10 毫秒汇总各 I/O 线程的队列 gauge
 
 **建议的 API。** `Config::max_pending_bytes: Option<usize>`（默认 `None`，可在运行时重载）：当引擎所有连接排队的字节总数达到或
 超过它时，每个连接在当前这次读取之后暂停读取，就像水位暂停单个连接那样；总数回落到比如四分之三以下时恢复。在水位的计数
-（`backpressure`）旁边增加一个由它引起的暂停计数，以便 akit 的 `fit_reads_paused_total{reason="budget"}` 报告它；再提供一个把内存
+（`backpressure`）旁边增加一个由它引起的暂停计数，以便 akit 的 `akit_reads_paused_total{reason="budget"}` 报告它；再提供一个把内存
 比例换算为字节的辅助函数（机器的内存，或更低的 cgroup 限制），或由 akit 自己换算。
 
 **akit 将如何使用。** `akit-listener` 的 `engine_settings` 在启动时按 `limits.max_pending_bytes` 设置它（字节数，或内存比例，默认

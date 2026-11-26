@@ -75,7 +75,7 @@ site example.com {
 ## 转换 Caddyfile
 
 ```bash
-akit adapt -from caddyfile -c Caddyfile -to fit -o akit.conf
+akit adapt -from caddyfile -c Caddyfile -to akit -o akit.conf
 akit validate -c akit.conf
 ```
 

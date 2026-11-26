@@ -2,7 +2,7 @@
 
 [English](console.md) | [简体中文](console.zh-CN.md)
 
-控制台是一组需要用户名和密码登录的网页，从中读取和修改运行中的配置：即 fit 的控制台，akit 用 fit 自己的页面提供它。它是
+控制台是一组需要用户名和密码登录的网页，从中读取和修改运行中的配置：即 fit 的控制台，akit 用 fit 自己的页面以 akit 的名字提供它。它是
 `admin.console`，与 [Admin API](admin-api.zh-CN.md) 并列，在自己的登录之后于进程内调用 Admin API 的端点，因此在控制台中做的
 修改与其他配置走同一条应用路径、经过同样的检查，并以控制台为来源记入 `/versions`。[配置参考](../reference/config.zh-CN.md#控制台)
 列出所有字段；[决定 036](../decisions/036-console.zh-CN.md) 说明 akit 与 fit 的不同之处。
@@ -47,10 +47,10 @@ route { handler respond { body "hello\n" } }
 - **锁定。** 一个客户端地址 15 分钟内失败 5 次即被拒绝 15 分钟，回答 `429` 和 `Retry-After`；在安静 15 分钟之前再次被锁定时，
   时长加倍，最长一小时。IPv6 地址按 /64 计算。一个地址同一时间只检查一个；最多记录 4,096 个地址。
 - **延缓的用户。** 一个用户的密码（来自任何地址）连续失败 10 次后，其检查被拒绝 2 秒，此后每再失败一次时长加倍，最长 5 分钟。
-- **会话。** 登录得到一个会话：cookie `fit_console_<端口>` 中的 32 个随机字节，`HttpOnly`、`SameSite=Strict`，TLS 上还有
+- **会话。** 登录得到一个会话：cookie `akit_console_<端口>` 中的 32 个随机字节，`HttpOnly`、`SameSite=Strict`，TLS 上还有
   `Secure`。控制台只保存其 SHA-256，在 `session_timeout`（30m）内没有请求、总计超过 `session_lifetime`（12h）、登出，或保存了
   `max_sessions`（64）个会话时作为最旧的一个结束它。会话保存在内存中：重启会让所有人登出。
-- **其他网页。** 除读取外的每个请求都在 `X-Fit-Csrf` 中携带会话的 CSRF 令牌，否则得到 `403`；`Origin` 不是控制台自己的请求
+- **其他网页。** 除读取外的每个请求都在 `X-Akit-Csrf` 中携带会话的 CSRF 令牌，否则得到 `403`；`Origin` 不是控制台自己的请求
   得到 `403`。回答带有只允许页面自身文件和 `frame-ancestors 'none'` 的 Content-Security-Policy、`X-Frame-Options: DENY`、
   `Referrer-Policy: no-referrer`，TLS 上还有 `Strict-Transport-Security`；API 的回答带 `Cache-Control: no-store`。
 
@@ -61,8 +61,10 @@ route { handler respond { body "hello\n" } }
 
 ## 页面
 
-登录后即工作台：fit 自己的页面，按 fit 发布时的样子逐字节提供（兼容性门禁固定的 fit 提交上的 `app/workbench/web`），因此页面上
-显示的是“fit”。其菜单是一个扁平列表：先是配置的全局页面（概览、监听器、引擎的端口、全局设置、JSON 形式的整个配置、可回滚的版本、
+登录后即工作台：fit 自己的页面（兼容性门禁固定的 fit 提交上的 `app/workbench/web`），其中 fit 的名字改成了 akit 的
+（[决定 037](../decisions/037-akit-names.zh-CN.md)）：页面上显示“akit”，发送 `X-Akit-Csrf`，读取 `Akit-Config-Version`。
+`tools/console-pages.py` 复制这些页面并应用一组固定的改名规则，`crates/akit-admin/console/CHANGES` 列出了这些规则；fit 页面的其他内容
+不变。其菜单是一个扁平列表：先是配置的全局页面（概览、监听器、引擎的端口、全局设置、JSON 形式的整个配置、可回滚的版本、
 一致性检查、日志和账户页面），再是各协议和功能的页面。每个配置页面都是由 fit 的配置 schema 生成的表单，带每个字段的说明，以及
 以文本形式编辑该页面所管配置部分的 `.conf`、`.yaml` 和 `.json` 标签页；**保存并应用**带 `If-Match` 发送草稿（或该标签页的文本），
 **检查**以 `?dry_run=1` 发送。有错误的配置被拒绝，其错误显示在各自的路径处（从文本标签页发送时还显示在各自的行处）。
@@ -90,10 +92,10 @@ akit 还不运行的部分按 fit 的样子显示，akit 像回答配置那样�
 | `GET /api/session` | `{"user", "csrf"}` |
 | `GET /api/workbench` | 用户和提供的模块：`admin` |
 | `GET /api/m/admin/users` | 已登录的用户、所有用户，以及是否有 store 保存它们 |
-| `GET /api/m/admin/schema` | fit 的配置 schema，页面的表单由它生成 |
+| `GET /api/m/admin/schema` | fit 的配置 schema，与页面一样改了名，页面的表单由它生成 |
 | `/api/m/admin/<路径>` | Admin API 的 `/<路径>`，用会话代替令牌，如 `GET /api/m/admin/config` |
 
-程序保留 cookie，并在除 GET 和 HEAD 外的每个请求中把 `csrf` 放在 `X-Fit-Csrf` 中发送：
+程序保留 cookie，并在除 GET 和 HEAD 外的每个请求中把 `csrf` 放在 `X-Akit-Csrf` 中发送（发送 `X-Fit-Csrf` 的 fit 脚本要改用 akit 的名字）：
 
 ```bash
 curl -c jar -H 'Content-Type: application/json' \

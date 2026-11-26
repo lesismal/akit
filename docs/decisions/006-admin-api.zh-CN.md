@@ -2,7 +2,8 @@
 
 [English](006-admin-api.md) | [简体中文](006-admin-api.zh-CN.md)
 
-状态：于 I26 采纳（2026-11-24）。
+状态：于 I26 采纳（2026-11-24）；其请求头字段由[决定 037](037-akit-names.zh-CN.md)改名（`Akit-Config-Version`、
+`Akit-Dry-Run`：发送 fit 名字的 fit 客户端不能用于 akit）。
 
 ## 背景
 
@@ -33,7 +34,7 @@ akit 没有 goroutine，也没有异步运行时（规则 1 和 16）：它要�
   一个 JSON 文档（`akit_config::value::json_of`）。ETag 是该文本 SHA-256 的前 96 位（akio-crypto），与 fit 一样。
 - **与 fit 一样拒绝网页**：带 `Origin` 的请求回 403，来自 API 自身源的读请求除外；`Host` 必须是回环主机。
   地址必须是回环地址（fit 在非回环地址上要求令牌和 TLS，见下文）；Unix 套接字要等 akio（A23）。
-- **沿用 fit 的路径和载荷**，包括 `Fit-Config-Version` 头，fit 的客户端可以直接用于 akit；编辑、回滚、
+- **沿用 fit 的路径和载荷**，包括版本头（fit 的 `Fit-Config-Version`，自决定 037 起为 akit 的 `Akit-Config-Version`）；编辑、回滚、
   `POST /reload` 和试运行在 I27 之前回 501。
 
 I27 更新（2026-11-24）：
@@ -47,7 +48,7 @@ I27 更新（2026-11-24）：
 - **试运行走应用的路径但不产生效果**：配置被解析，并用空的引擎槽（其连接池不拨号、不探测）和自己的注册表（其计数器
   不进入任何抓取）编译，`Listeners::plan` 列出 `Listeners::reload` 会打开和关闭的监听器：解析每个新监听器的地址，
   除非正在运行的监听器占着它，否则短暂绑定一下再放开。什么都不保存、不计数；回答带正在运行的版本和 ETag、
-  该配置应用后会有的 ETag，以及 `Fit-Dry-Run: 1`，与 fit 一样。
+  该配置应用后会有的 ETag，以及 `Akit-Dry-Run: 1`（fit 的 `Fit-Dry-Run`，由决定 037 改名）。
 - **令牌**（`admin.token_file`）在 API 启动时读取，去掉首尾空白，为空则拒绝；此后每个请求都要带
   `Authorization: Bearer <token>`，以常数时间比较，否则回 401 并带 `WWW-Authenticate`；这时与 fit 一样不再检查
   `Host`，`Origin` 仍然拒绝。非回环地址仍被拒绝：fit 在那里还要求 TLS（`cert_file`、`key_file`），而 akit 还不能

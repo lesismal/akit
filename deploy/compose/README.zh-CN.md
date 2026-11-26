@@ -25,8 +25,8 @@ whoami 以 `Hostname: <container>` 作答；再请求一次，另一个副本作
 | `akit.routes.web.host=whoami.localhost` | 这个主机的一条路由，代理到应用容器的上游 `akit-example-whoami`（Compose 项目名加服务名）。 |
 | `akit.upstream={"health_check": ...}` | 上游的更多设置，与配置中相同：这里是主动健康检查。 |
 
-前缀是 provider 的 `label_prefix`；fit 的默认值 `fit` 也是 akit 的默认值，所以 provider 不写它时，
-fit 示例的 `fit.` 标签可原样使用。
+前缀是 provider 的 `label_prefix`，不写时为 `akit`（fit 的默认值是 `fit`，akit 已将其改名，见
+[决定 037](../../docs/decisions/037-akit-names.zh-CN.md)）；fit 示例的 `fit.` 标签需配合 `label_prefix fit` 使用。
 
 扩缩应用，akit 跟随：
 

@@ -2,7 +2,7 @@
 
 [English](007-opentelemetry.md) | [简体中文](007-opentelemetry.zh-CN.md)
 
-状态：I64 中接受（2026-11-24）。
+状态：I64 中接受（2026-11-24）；名字由[决定 037](037-akit-names.zh-CN.md)修订。
 
 ## 背景
 
@@ -50,8 +50,9 @@ akio 里，而不是在 akit 中绕过，所以问题是 akit 是否应建立在
 
 ## 后果
 
-- akit 的 span 和指标在名称和属性上与 fit 相同：为 fit 配置的仪表盘和 collector 以同样方式读取
-  akit 的（scope 是 `fit`，`service.name` 默认为 `fit`）。
+- akit 的 span 和指标是 fit 的名字把 `fit` 改为 `akit`（决定 037）：scope 是 `akit`，`service.name` 默认为 `akit`，
+  属性是 `akit.listener`、`akit.route` 和 `akit.upstream.address`，指标是 `akit_*`。为 fit 配置的仪表盘和 collector
+  要改用 akit 的名字。
 - akio 的请求 span 仍可由使用 akio-log 打开它的人使用；akit 不打开，所以一个请求不会被追踪两次。
 - 导出协议只有 HTTP 上的 JSON，与 fit 相同；akio-export 支持的 gRPC 和 protobuf 不提供。
 - 被采样的请求要分配它的 `traceparent` 和响应钩子中它的那份；未被采样的请求与以前相比没有更多

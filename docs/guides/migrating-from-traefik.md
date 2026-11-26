@@ -78,7 +78,7 @@ not there: a host with a leading `*.` (one label) or `**.` (one or more) covers 
 | Traefik | akit's `providers` |
 | --- | --- |
 | file provider | the config file itself, applied again on change with `akit run -watch` |
-| Docker | `docker`, with labels under `fit.` (below) |
+| Docker | `docker`, with labels under `akit.` (below) |
 | Consul Catalog | `consul`, from services' tags |
 | Consul KV, etcd | `consul_kv`, `etcd`: keys holding JSON objects of listeners, routes, upstreams and services |
 | Kubernetes Gateway API | `kubernetes`, which serves the Gateways of its GatewayClasses and their HTTPRoutes, GRPCRoutes, TLSRoutes, TCPRoutes and UDPRoutes |
@@ -95,16 +95,15 @@ listener web :80
 provider { docker { endpoint unix:///var/run/docker.sock } }
 ```
 
-Docker labels look alike, under `fit.` (fit's prefix, which akit keeps; `label_prefix` changes it)
-rather than `traefik.`:
+Docker labels look alike, under `akit.` (`label_prefix` changes it) rather than `traefik.`:
 
 | Traefik | akit |
 | --- | --- |
-| `traefik.enable=true` | `fit.enable=true` |
-| `traefik.http.routers.web.rule=Host(...)` | `fit.routes.web.host=a.example`, `fit.routes.web.path=/api/*`, or `fit.routes.web.expr=Host(...)` |
-| `traefik.http.services.app.loadbalancer.server.port=8080` | `fit.port=8080` |
-| `traefik.http.routers.web.middlewares=...` | `fit.routes.web.middleware=[{"module": "compress"}]`, as JSON |
-| `traefik.docker.network=net` | `fit.network=net` |
+| `traefik.enable=true` | `akit.enable=true` |
+| `traefik.http.routers.web.rule=Host(...)` | `akit.routes.web.host=a.example`, `akit.routes.web.path=/api/*`, or `akit.routes.web.expr=Host(...)` |
+| `traefik.http.services.app.loadbalancer.server.port=8080` | `akit.port=8080` |
+| `traefik.http.routers.web.middlewares=...` | `akit.routes.web.middleware=[{"module": "compress"}]`, as JSON |
+| `traefik.docker.network=net` | `akit.network=net` |
 
 ## What works differently
 

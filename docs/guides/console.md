@@ -3,7 +3,7 @@
 [English](console.md) | [简体中文](console.zh-CN.md)
 
 The console is a set of web pages behind a user name and password, from which the running config is
-read and changed: fit's console, which akit serves with fit's own pages. It is `admin.console`,
+read and changed: fit's console, which akit serves with fit's own pages under akit's names. It is `admin.console`,
 beside the [Admin API](admin-api.md), whose endpoints it calls in process behind its own logins, so
 that a change made in the console is applied by the one path every config takes, with the same
 checks, and is in `/versions` as the console's. The [reference](../reference/config.md#the-console)
@@ -58,12 +58,12 @@ starts, `access` follows every config applied.
   time; 4,096 addresses are kept.
 - **Slowed users.** A user whose password fails 10 times in a row, from any addresses, has its checks
   refused for 2 seconds, then twice as long after each further failure, up to 5 minutes.
-- **Sessions.** A login gives a session: 32 random bytes in the cookie `fit_console_<port>`,
+- **Sessions.** A login gives a session: 32 random bytes in the cookie `akit_console_<port>`,
   `HttpOnly`, `SameSite=Strict`, and `Secure` over TLS. The console keeps only its SHA-256, and ends
   it after `session_timeout` (30m) without a request, after `session_lifetime` (12h) in all, at
   logout, or as the oldest when `max_sessions` (64) are kept. Sessions are in memory: a restart logs
   everyone out.
-- **Other web pages.** Every request but a read carries the session's CSRF token in `X-Fit-Csrf`,
+- **Other web pages.** Every request but a read carries the session's CSRF token in `X-Akit-Csrf`,
   or gets `403`; a request whose `Origin` is not the console's own gets `403`. Answers carry a
   Content-Security-Policy that allows the pages' own files only and `frame-ancestors 'none'`,
   `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, and over TLS `Strict-Transport-Security`;
@@ -78,8 +78,11 @@ does not have yet ([I93](../dev-plan.md#i93-the-encrypted-store)): until then th
 
 ## The pages
 
-After logging in, the workbench: fit's own pages, served byte for byte as fit ships them (fit's
-`app/workbench/web` at the fit commit the compatibility gate pins), so they say "fit". Its menu is
+After logging in, the workbench: fit's own pages (fit's `app/workbench/web` at the fit commit the
+compatibility gate pins), with fit's names renamed as akit's
+([decision 037](../decisions/037-akit-names.md)): they say "akit", send `X-Akit-Csrf`, read
+`Akit-Config-Version`. `tools/console-pages.py` copies them and applies a fixed list of renames,
+which `crates/akit-admin/console/CHANGES` lists; nothing else of fit's pages changes. Its menu is
 one flat list: the config's global pages first (overview, listeners, the engine's ports, the global
 settings, the whole config as JSON, the versions with rollback, the consistency check, the logs and
 the account pages), then the protocol and feature pages. Each config page is a form made from fit's
@@ -114,10 +117,11 @@ The console's own endpoints, as fit's:
 | `GET /api/session` | `{"user", "csrf"}` |
 | `GET /api/workbench` | the user and the modules served: `admin` |
 | `GET /api/m/admin/users` | the signed-in user, the users, and whether a store keeps them |
-| `GET /api/m/admin/schema` | fit's config schema, which the pages' forms are made from |
+| `GET /api/m/admin/schema` | fit's config schema, renamed as the pages are, which their forms are made from |
 | `/api/m/admin/<path>` | the Admin API's `/<path>`, behind the session instead of the token, as `GET /api/m/admin/config` |
 
-A program keeps the cookie and sends `csrf` in `X-Fit-Csrf` on every request but a GET or a HEAD:
+A program keeps the cookie and sends `csrf` in `X-Akit-Csrf` on every request but a GET or a HEAD
+(fit's scripts, which send `X-Fit-Csrf`, take akit's name):
 
 ```bash
 curl -c jar -H 'Content-Type: application/json' \

@@ -5,12 +5,15 @@
 From 1.0, akit keeps what it promises here: a config that loads keeps loading, and a client of the
 Admin API keeps working, across every 1.x release. akit's v1 is fit's v1: the same config schema,
 version 1, and the same Admin API, v1, for what akit serves of them
-([fit's policy](https://github.com/lesismal/fit/blob/main/docs/compatibility.md)). What changes in
-a way that could break them waits for a new version of the config schema or of the Admin API, and
-comes with a way over.
+([fit's policy](https://github.com/lesismal/fit/blob/main/docs/compatibility.md)), with akit's
+names where fit's say "fit" ([decision 037](decisions/037-akit-names.md)). What changes in a way
+that could break them waits for a new version of the config schema or of the Admin API, and comes
+with a way over.
 
 akit reads fit's config ([decision 002](decisions/002-config-compatibility.md)): the same fields,
-defaults and meanings, in the same three formats. A field akit does not support yet is refused by
+defaults and meanings, in the same three formats; nine defaults that name the gateway are akit's
+(`akit` for fit's `fit`, [decision 037](decisions/037-akit-names.md)), and the
+[migration guide](guides/migrating-from-fit.md#akits-names) lists them. A field akit does not support yet is refused by
 name, "not supported yet: `<path>`", never read and ignored. The second half of this page says how
 that is checked against fit's templates and examples, and lists every field of fit's config with
 whether akit supports it. The list shrinks milestone by milestone.
@@ -37,9 +40,9 @@ whether akit supports it. The list shrinks milestone by milestone.
 | Surface | Version | What it is |
 | --- | --- | --- |
 | The config | schema version 1 | Every field of fit's schema version 1 (the pinned [`fit.schema.json`](../tests/compat/fixtures/fit/schema/fit.schema.json)), the handlers' and middleware's params included: its name, its type, what it means, and its default; and akit's [extensions](#akits-extensions). A field akit reads stays read; one it refuses as not supported yet may become read. `.conf`, YAML and JSON are the same config written three ways. |
-| The Admin API | v1 | Its paths and methods, the bodies they take and give, their status codes, the header fields `ETag`, `If-Match`, `If-None-Match`, `Fit-Config-Version` and `Fit-Dry-Run`, the bearer token, and `?dry_run` ([below](#the-admin-api-v1)). |
+| The Admin API | v1 | Its paths and methods, the bodies they take and give, their status codes, the header fields `ETag`, `If-Match`, `If-None-Match`, `Akit-Config-Version` and `Akit-Dry-Run` (fit's `Fit-Config-Version` and `Fit-Dry-Run`, renamed by decision 037), the bearer token, and `?dry_run` ([below](#the-admin-api-v1)). |
 | The command line | 1 | The commands `run`, `validate`, `adapt`, `fmt`, `build` and `version`, their flags, and their exit codes, as fit's. |
-| Metrics | 1 | The names, types and labels of the metrics `/metrics` serves and OTLP exports, fit's, all starting `fit_`. |
+| Metrics | 1 | The names, types and labels of the metrics `/metrics` serves and OTLP exports: fit's, each renamed from `fit_` to `akit_` (decision 037). |
 | The access log | 1 | The fields of its JSON lines, fit's. |
 
 Not covered:
@@ -47,7 +50,7 @@ Not covered:
 - What akit writes for people rather than programs: messages, warnings, the dashboard,
   `akit adapt`'s output beyond its being a valid config, and the text of errors (their JSON shape
   is covered).
-- The host functions of WASM plugins (the `fit` import module) and fit's subset of Proxy-Wasm,
+- The host functions of WASM plugins (the `akit` import module, fit's `fit` renamed by decision 037) and fit's subset of Proxy-Wasm,
   which are experimental in fit's 1.0 too; the `wasm` middleware's config is covered.
 - The nginx and Caddyfile converters' coverage, which only grows.
 - The Rust API of akit's crates, which modules built with `akit build` use: in 1.0 it may change in
@@ -133,11 +136,13 @@ version of the schema or the API, which says so in its list of changes.
 | `GET /dashboard/` | The dashboard, for people (not covered) |
 
 A path in the config is a JSON pointer's tokens. A change answers with the version applied, in the
-body (`version`) and in `Fit-Config-Version`, and with the config's `ETag`; a change sent with
+body (`version`) and in `Akit-Config-Version`, and with the config's `ETag`; a change sent with
 `If-Match` is applied only to the config that ETag names, and is answered 412 otherwise; one sent
-with `?dry_run=1` is checked, not applied, and answered with `Fit-Dry-Run: 1`. A config that does
+with `?dry_run=1` is checked, not applied, and answered with `Akit-Dry-Run: 1`. A config that does
 not load is answered 400 with `{"error": ..., "errors": [{"path", "line", "column", "message"}]}`.
-These are fit's names, so that fit's clients work with akit unchanged.
+These are fit's, with fit's header fields `Fit-Config-Version` and `Fit-Dry-Run` renamed
+([decision 037](decisions/037-akit-names.md)): a client of fit's that reads or sends those takes
+akit's names; fit's are not accepted.
 
 Since I80b, a secret written inline in the config (under a member named as fit's console names
 secrets: `password_hash`, `secret`, `token`, an `Authorization` header) is answered as
@@ -154,8 +159,9 @@ them then, as fit has them, a compatible addition.
 
 Since I90, the console (`admin.console`) serves the same endpoints under `/api/m/admin/`, behind
 its logins instead of the token, with fit's own console endpoints (`/api/login`, `/api/logout`,
-`/api/session`, `/api/workbench`) and fit's names for its cookie and CSRF header, so that fit's
-pages and scripts work with akit unchanged ([the console guide](guides/console.md)).
+`/api/session`, `/api/workbench`), and akit's names for its cookie and CSRF header,
+`akit_console_<port>` and `X-Akit-Csrf` (fit's `fit_console_<port>` and `X-Fit-Csrf`, decision
+037; [the console guide](guides/console.md)).
 
 A v2 of the Admin API, if one is needed, would be served under `/v2/` beside v1's paths, which would
 stay for the rest of akit's major version.
@@ -198,7 +204,10 @@ Two checks fail on any change not marked, in CI and in `make check`:
   marked in `additions.txt` by hand, as the failing test prints it.
 
 The baselines themselves are never edited within v1: `tools/v1-freeze.py` holds their SHA-256
-sums, and a change to either is a new version.
+sums, and a change to either is a new version. They were written again once before akit's first
+release, by [decision 037](decisions/037-akit-names.md): the config's by
+`python3 tools/v1-freeze.py --write-baseline` (the surface less the additions marked, with akit's
+nine defaults that rename fit's), the Admin API's by hand (its two header fields renamed).
 
 ## The gate
 

@@ -85,7 +85,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 
 ## 索引
 
-状态：`todo`、`doing` 或 `done`。下一个可用的迭代编号是 I95（为日志路线和访问控制列表路线预留的 I84 和 I88 未使用；I95 和 I96 为控制台路线预留）。
+状态：`todo`、`doing` 或 `done`。下一个可用的迭代编号是 I98（为日志路线和访问控制列表路线预留的 I84 和 I88 未使用；I95 和 I96 为控制台路线预留；I97 改名了 fit 的对外名字）。
 
 | ID | 迭代 | 依赖 | 状态 |
 | --- | --- | --- | --- |
@@ -197,6 +197,8 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I92 | 非回环地址上带 TLS 的 Admin API（L1） | I27 | done |
 | I93 | 加密的 store：`admin.store`、`akit store export` 和 `import`、`run -admin` | I90, akio A230, A231 | todo |
 | I94 | 文件变化时重新读取 Admin API 和控制台的证书 | I92 | todo |
+| **1.0 之后：akit 的名字** | | | |
+| I97 | akit 的名字：对外凡写 "fit" 的名字都改为 "akit"（决定 037） | I91, I92 | done |
 
 ## 基准与优化状态
 
@@ -1174,7 +1176,8 @@ Admin API 并列，在自己的登录之后于进程内调用 Admin API 的端�
   `POST /api/logout`、`GET /api/session`、`GET /api/workbench`（用户和模块 `admin`）、`/api/m/admin/<path>`：Admin API
   的端点，在进程内调用，用会话代替令牌，所应用的配置来源为 `console`；`GET /api/m/admin/users`、
   `POST /api/m/admin/account/password` 和 `POST /api/m/admin/users/password`（没有 store 时 409：I93）。会话的 cookie
-  （`fit_console_<端口>`，`HttpOnly`、`SameSite=Strict`，TLS 上 `Secure`），除读取外每个请求带 `X-Fit-Csrf`，`Origin`
+  （`fit_console_<端口>`，`HttpOnly`、`SameSite=Strict`，TLS 上 `Secure`；自 I97 起为 `akit_console_<端口>`），除读取外每个
+  请求带 `X-Fit-Csrf`（自 I97 起为 `X-Akit-Csrf`），`Origin`
   不是控制台自己的则拒绝，fit 的响应头（Content-Security-Policy、`X-Frame-Options`、`Referrer-Policy`、`nosniff`、TLS 上的
   HSTS、API 上的 `Cache-Control: no-store`）。`admin` 日志记录器：谁从哪里登录、每次失败、每次登出、每个用户的每次修改及其
   应用的版本。`akit run` 与 Admin API 一起启动它。
@@ -1200,7 +1203,8 @@ Admin API 并列，在自己的登录之后于进程内调用 Admin API 的端�
   `TestTextPartSave`、`TestTextWholeConfig`）和 `transfer_test.go` 中文本格式的用例通过；提供的文件与 fit 的逐字节相同。
 - **涉及**：`akit-admin`（`console`、`text`）、`tools`、`tests/compat/v1`、`docs/guides`。
 - **fit**：`app/workbench`、`admin/check.go`（`renderText`、`parseText`、`putText`）、`admin/transfer.go`；I104、I157。
-- **状态**：已完成（2026-11-26）。页面即 fit 的，原样提供，带 fit 的名字和 akit 尚不运行的功能的菜单（决定 036）。见进度日志。
+- **状态**：已完成（2026-11-26）。页面即 fit 的，带 akit 尚不运行的功能的菜单（决定 036）；在 I97 之前原样提供，I97 把其中
+  fit 的名字改了名（决定 037）。见进度日志。
 
 ### I92 非回环地址上带 TLS 的 Admin API
 
@@ -1237,3 +1241,20 @@ Admin API 并列，在自己的登录之后于进程内调用 Admin API 的端�
 - **涉及**：`akit-admin`、`akit`（`run`）。
 - **fit**：`admin/tls.go`。
 - **状态**：todo。
+
+### akit 的名字
+
+不是 fit 的路线：维护者决定 akit 对外的名字是 akit 自己的（[决定 037](decisions/037-akit-names.zh-CN.md)），在 akit 首次发布之前。
+
+### I97 akit 的名字
+
+- **做什么**：对外凡写 "fit" 的名字都改为 "akit"，不保留别名：Admin API 的 `Akit-Config-Version` 和 `Akit-Dry-Run`、
+  `Akit-Error` trailer、控制台的 `akit_console_<端口>` 和 `X-Akit-Csrf`、导出的 `akit-*` 文件名、指标 `akit_*`、OTLP 的
+  scope 和 span 属性、`Cache-Status` 的 `akit`、WebAssembly ABI（`akit_on_request`、模块 `akit`）、以网关命名的九个默认值、
+  Ingress 注解 `akit.lesismal.github.io/*`、`jwt` 的 realm、默认配置文件 `akit.json`、`adapt` 的格式名 `akit`。控制台的页面由
+  `tools/console-pages.py` 的确定性改名列表改名，由 `make compat-check` 检查；WebAssembly 测试插件由 fit 的插件把 ABI 的名字改名
+  后重新构建（`tools/plugin-guest.sh`）；重写 v1 基线；更新所有文档。
+- **完成标准**：没有对外名字写着 "fit"（决定 037 的报告中的 grep）；fit 的名字被拒绝（fit 构建的插件、旧的请求头和 cookie
+  不被读取）；页面在浏览器中对 akit 的服务器正常工作；门禁、v1 检查和整个工作区在 macOS、epoll 和 io_uring 上通过。
+- **涉及**：每个带名字的 crate、`tools`、`tests/compat/v1`、`bench`、`deploy`、`docs`。
+- **状态**：已完成（2026-11-26）。见进度日志。

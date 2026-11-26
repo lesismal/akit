@@ -14,7 +14,7 @@ config; the [config reference](../reference/config.md) has every field.
 lines, the directives it left out:
 
 ```bash
-akit adapt -from nginx -c nginx.conf -to fit -o akit.conf
+akit adapt -from nginx -c nginx.conf -to akit -o akit.conf
 akit validate -c akit.conf
 ```
 

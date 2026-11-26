@@ -2,7 +2,7 @@
 
 [English](008-wasm-runtime.md) | [简体中文](008-wasm-runtime.zh-CN.md)
 
-状态：I71 中接受（2026-11-25）。
+状态：I71 中接受（2026-11-25）；ABI 的名字由[决定 037](037-akit-names.zh-CN.md)修订。
 
 ## 背景
 
@@ -25,8 +25,9 @@ wasmi 是成熟的解释器，但其执行器使用 `unsafe`，而且是第三�
   （每执行一段指令检查一次截止时间、中断），为 reactor 实现 WASI preview 1，并在 `InstancePool` 上运行插件：
   拥有实例的线程、宁可拒绝任务也不等待的有界队列、每个任务的截止时间、trap 之后重建的实例。它属于 akio，
   因此不需要决策 001 的例外，也不需要在它前面放一个 akit 的 trait。
-- **ABI 是 fit 的**（`fit_on_request` 和宿主模块 `fit`），在 `akit-plugin` 中基于 `akio-wasm` 的 `Linker`
-  实现，使 fit 的插件不加修改即可运行；akit 的测试运行 fit 的 Go 测试插件。Proxy-Wasm（fit 的决策 018）在 I72 中实现（[决定 011](011-proxy-wasm.zh-CN.md)）。
+- **ABI 是 fit 的，名字是 akit 的**（`akit_on_request` 和宿主模块 `akit`，即由决定 037 改名的 fit 的 `fit_on_request`
+  和 `fit`），在 `akit-plugin` 中基于 `akio-wasm` 的 `Linker` 实现：fit 的插件把名字改名后重新构建即可运行；akit 的测试运行
+  如此构建的 fit 的 Go 测试插件（`tools/plugin-guest.sh`）。Proxy-Wasm（fit 的决策 018）在 I72 中实现（[决定 011](011-proxy-wasm.zh-CN.md)）。
 - **请求挂起等待**（`Context::suspend`，ADR-109）：它的调用等待实例并在实例上运行，之后从池的完成回调继续；
   请求字段通过 `Context::req_mut`（A33）修改。
 

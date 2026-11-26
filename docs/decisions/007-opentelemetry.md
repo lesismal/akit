@@ -2,7 +2,7 @@
 
 [English](007-opentelemetry.md) | [简体中文](007-opentelemetry.zh-CN.md)
 
-Status: accepted in I64 (2026-11-24).
+Status: accepted in I64 (2026-11-24); the names amended by [decision 037](037-akit-names.md).
 
 ## Context
 
@@ -55,8 +55,10 @@ question was whether akit should build on that stack.
 
 ## Consequences
 
-- akit's spans and metrics are fit's, by name and attribute: dashboards and collectors set up for
-  fit read akit's the same (the scope is `fit`, `service.name` defaults to `fit`).
+- akit's spans and metrics are fit's with `fit` renamed `akit` (decision 037): the scope is
+  `akit`, `service.name` defaults to `akit`, the attributes are `akit.listener`, `akit.route` and
+  `akit.upstream.address`, the metrics `akit_*`. Dashboards and collectors set up for fit take
+  akit's names.
 - akio's request spans stay available to anyone who turns them on with akio-log; akit does not,
   so a request is not traced twice.
 - The export's protocol is JSON over HTTP only, as fit's; gRPC and protobuf, which akio-export

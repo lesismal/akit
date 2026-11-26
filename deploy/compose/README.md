@@ -26,8 +26,9 @@ have passed their first health check. The labels say:
 | `akit.routes.web.host=whoami.localhost` | A route for this host, proxying to the upstream of the app's containers, `akit-example-whoami` (the Compose project and service). |
 | `akit.upstream={"health_check": ...}` | More of the upstream's settings, as in the config: here, an active health check. |
 
-The prefix is the provider's `label_prefix`; fit's default, `fit`, is akit's too, so a fit
-example's `fit.` labels work unchanged with a provider that leaves it out.
+The prefix is the provider's `label_prefix`, `akit` when left out (fit's is `fit`: akit renamed
+it, [decision 037](../../docs/decisions/037-akit-names.md)); a fit example's `fit.` labels work
+with `label_prefix fit`.
 
 Scale the app and akit follows:
 

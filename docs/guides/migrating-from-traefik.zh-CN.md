@@ -76,7 +76,7 @@ route api {
 | Traefik | akit 的 `providers` |
 | --- | --- |
 | file provider | 配置文件本身，以 `akit run -watch` 在变化时重新应用 |
-| Docker | `docker`，标签以 `fit.` 开头（见下） |
+| Docker | `docker`，标签以 `akit.` 开头（见下） |
 | Consul Catalog | `consul`，来自服务的标签 |
 | Consul KV、etcd | `consul_kv`、`etcd`：键中保存监听器、路由、上游和服务的 JSON 对象 |
 | Kubernetes Gateway API | `kubernetes`，提供其 GatewayClass 下的 Gateway 及其 HTTPRoute、GRPCRoute、TLSRoute、TCPRoute 和 UDPRoute |
@@ -93,15 +93,15 @@ listener web :80
 provider { docker { endpoint unix:///var/run/docker.sock } }
 ```
 
-Docker 标签与 Traefik 的相似，以 `fit.`（fit 的前缀，akit 沿用；`label_prefix` 可以修改）而不是 `traefik.` 开头：
+Docker 标签与 Traefik 的相似，以 `akit.`（`label_prefix` 可以修改）而不是 `traefik.` 开头：
 
 | Traefik | akit |
 | --- | --- |
-| `traefik.enable=true` | `fit.enable=true` |
-| `traefik.http.routers.web.rule=Host(...)` | `fit.routes.web.host=a.example`、`fit.routes.web.path=/api/*`，或 `fit.routes.web.expr=Host(...)` |
-| `traefik.http.services.app.loadbalancer.server.port=8080` | `fit.port=8080` |
-| `traefik.http.routers.web.middlewares=...` | `fit.routes.web.middleware=[{"module": "compress"}]`，写成 JSON |
-| `traefik.docker.network=net` | `fit.network=net` |
+| `traefik.enable=true` | `akit.enable=true` |
+| `traefik.http.routers.web.rule=Host(...)` | `akit.routes.web.host=a.example`、`akit.routes.web.path=/api/*`，或 `akit.routes.web.expr=Host(...)` |
+| `traefik.http.services.app.loadbalancer.server.port=8080` | `akit.port=8080` |
+| `traefik.http.routers.web.middlewares=...` | `akit.routes.web.middleware=[{"module": "compress"}]`，写成 JSON |
+| `traefik.docker.network=net` | `akit.network=net` |
 
 ## 工作方式的不同
 

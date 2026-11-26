@@ -11,7 +11,7 @@ akit 保留了 nginx 的长处：事件循环和每个连接很小的开销；�
 `akit adapt` 与 `fit adapt` 一样转换 nginx 配置中常见的部分，并列出它略过的指令及其行号：
 
 ```bash
-akit adapt -from nginx -c nginx.conf -to fit -o akit.conf
+akit adapt -from nginx -c nginx.conf -to akit -o akit.conf
 akit validate -c akit.conf
 ```
 

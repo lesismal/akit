@@ -92,8 +92,9 @@ few crates as it can. fit's package of the same role is given for reference.
 
 ## Index
 
-Status: `todo`, `doing` or `done`. The next free iteration number is I95 (I84 and I88, reserved for the
-Logging and Access lists tracks, are unused; I95 and I96 are reserved for the Console track).
+Status: `todo`, `doing` or `done`. The next free iteration number is I98 (I84 and I88, reserved for the
+Logging and Access lists tracks, are unused; I95 and I96 are reserved for the Console track; I97
+renamed fit's external names).
 
 | ID | Iteration | Depends on | Status |
 | --- | --- | --- | --- |
@@ -205,6 +206,8 @@ Logging and Access lists tracks, are unused; I95 and I96 are reserved for the Co
 | I92 | The Admin API over TLS, off loopback (L1) | I27 | done |
 | I93 | The encrypted store: `admin.store`, `akit store export` and `import`, `run -admin` | I90, akio A230, A231 | todo |
 | I94 | The Admin API's and the console's certificates read again when they change | I92 | todo |
+| **After 1.0: akit's names** | | | |
+| I97 | akit's names: every external name that says "fit" says "akit" (decision 037) | I91, I92 | done |
 
 ## Benchmark and optimization status
 
@@ -1352,7 +1355,8 @@ without one it changes the running config as the Admin API does, and password ch
   endpoints, called in process behind the session instead of the token, its configs applied as
   source `console`; `GET /api/m/admin/users`, `POST /api/m/admin/account/password` and
   `POST /api/m/admin/users/password` (409 without a store: I93). The session's cookie
-  (`fit_console_<port>`, `HttpOnly`, `SameSite=Strict`, `Secure` over TLS), `X-Fit-Csrf` on every
+  (`fit_console_<port>`, `HttpOnly`, `SameSite=Strict`, `Secure` over TLS; `akit_console_<port>`
+  since I97), `X-Fit-Csrf` (`X-Akit-Csrf` since I97) on every
   request but a read, an `Origin` that is not the console's refused, fit's headers
   (Content-Security-Policy, `X-Frame-Options`, `Referrer-Policy`, `nosniff`, HSTS over TLS,
   `Cache-Control: no-store` on the API). The `admin` logger: who logged in and from where, each
@@ -1388,8 +1392,9 @@ without one it changes the running config as the Admin API does, and password ch
 - **Touches**: `akit-admin` (`console`, `text`), `tools`, `tests/compat/v1`, `docs/guides`.
 - **fit**: `app/workbench`, `admin/check.go` (`renderText`, `parseText`, `putText`),
   `admin/transfer.go`; I104, I157.
-- **Status**: done (2026-11-26). The pages are fit's, unchanged, with fit's name and its menus of
-  features akit does not run yet (decision 036). See the progress log.
+- **Status**: done (2026-11-26). The pages are fit's, with its menus of features akit does not run
+  yet (decision 036); unchanged until I97, which renamed fit's names in them (decision 037). See the
+  progress log.
 
 ### I92 The Admin API over TLS, off loopback
 
@@ -1437,3 +1442,26 @@ without one it changes the running config as the Admin API does, and password ch
 - **Touches**: `akit-admin`, `akit` (`run`).
 - **fit**: `admin/tls.go`.
 - **Status**: todo.
+
+### akit's names
+
+Not a track of fit's: the maintainer's decision that akit's external names are akit's
+([decision 037](decisions/037-akit-names.md)), before akit's first release.
+
+### I97 akit's names
+
+- **Do**: every external name that says "fit" says "akit", with no alias: the Admin API's
+  `Akit-Config-Version` and `Akit-Dry-Run`, the `Akit-Error` trailer, the console's
+  `akit_console_<port>` and `X-Akit-Csrf`, the export's `akit-*` file names, the metrics `akit_*`,
+  the OTLP scope and span attributes, `Cache-Status`'s `akit`, the WebAssembly ABI
+  (`akit_on_request`, module `akit`), the nine defaults that name the gateway, the Ingress
+  annotations `akit.lesismal.github.io/*`, `jwt`'s realm, the default config file `akit.json`,
+  `adapt`'s format `akit`. The console's pages renamed by `tools/console-pages.py`'s deterministic
+  list, checked by `make compat-check`; the WebAssembly test plugin rebuilt from fit's with the
+  ABI's names renamed (`tools/plugin-guest.sh`); the v1 baselines written again; every doc.
+- **Done when**: no external name says "fit" (the grep of decision 037's report); fit's names are
+  refused (a fit-built plugin, the old header and cookie unread); the pages work in a browser
+  against akit's server; the gate, the v1 check and the workspace pass on macOS, epoll and
+  io_uring.
+- **Touches**: every crate with a name, `tools`, `tests/compat/v1`, `bench`, `deploy`, `docs`.
+- **Status**: done (2026-11-26). See the progress log.

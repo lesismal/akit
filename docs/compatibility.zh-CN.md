@@ -3,11 +3,13 @@
 [English](compatibility.md) | [简体中文](compatibility.zh-CN.md)
 
 从 1.0 起，akit 遵守这里的承诺：能加载的配置继续能加载，Admin API 的客户端继续能工作，在每个 1.x 版本中都是如此。akit 的 v1
-就是 fit 的 v1：同样的配置 schema 版本 1、同样的 Admin API v1，限于 akit 提供的部分（[fit 的政策](https://github.com/lesismal/fit/blob/main/docs/compatibility.zh-CN.md)）。
+就是 fit 的 v1：同样的配置 schema 版本 1、同样的 Admin API v1，限于 akit 提供的部分（[fit 的政策](https://github.com/lesismal/fit/blob/main/docs/compatibility.zh-CN.md)），
+fit 写着 "fit" 的名字换成 akit 的（[决定 037](decisions/037-akit-names.zh-CN.md)）。
 可能破坏它们的改动要等到配置 schema 或 Admin API 的新版本，并附带迁移的办法。
 
 akit 读取 fit 的配置（[决策 002](decisions/002-config-compatibility.zh-CN.md)）：同样的字段、默认值和
-含义，同样的三种格式。akit 尚不支持的字段会按名称拒绝——"not supported yet: `<path>`"——绝不读取后
+含义，同样的三种格式；其中以网关命名的九个默认值是 akit 的（fit 的 `fit` 改为 `akit`，[决定 037](decisions/037-akit-names.zh-CN.md)），
+[迁移指南](guides/migrating-from-fit.zh-CN.md#akit-的名字)列出了它们。akit 尚不支持的字段会按名称拒绝——"not supported yet: `<path>`"——绝不读取后
 忽略。本页后半部分说明这一点如何对照 fit 的模板和示例检查，并列出 fit 配置的每个字段及 akit 是否支持。这份清单会随里程碑逐步缩短。
 
 - [v1：哪些保持稳定](#v1哪些保持稳定)
@@ -32,16 +34,16 @@ akit 读取 fit 的配置（[决策 002](decisions/002-config-compatibility.zh-C
 | 范围 | 版本 | 内容 |
 | --- | --- | --- |
 | 配置 | schema 版本 1 | fit 的 schema 版本 1（固定的 [`fit.schema.json`](../tests/compat/fixtures/fit/schema/fit.schema.json)）中的每个字段，包括处理器和中间件的参数：名称、类型、含义和默认值；以及 akit 的[扩展字段](#akit-的扩展字段)。akit 读取的字段会一直被读取；按“尚不支持”拒绝的字段以后可能变为读取。`.conf`、YAML 和 JSON 是同一份配置的三种写法。 |
-| Admin API | v1 | 路径和方法、它们接受和返回的内容、状态码、头字段 `ETag`、`If-Match`、`If-None-Match`、`Fit-Config-Version` 和 `Fit-Dry-Run`、bearer token，以及 `?dry_run`（[见下文](#admin-api-v1)）。 |
+| Admin API | v1 | 路径和方法、它们接受和返回的内容、状态码、头字段 `ETag`、`If-Match`、`If-None-Match`、`Akit-Config-Version` 和 `Akit-Dry-Run`（fit 的 `Fit-Config-Version` 和 `Fit-Dry-Run`，由决定 037 改名）、bearer token，以及 `?dry_run`（[见下文](#admin-api-v1)）。 |
 | 命令行 | 1 | 命令 `run`、`validate`、`adapt`、`fmt`、`build` 和 `version`，它们的参数和退出码，与 fit 相同。 |
-| 指标 | 1 | `/metrics` 提供和 OTLP 导出的指标的名称、类型和标签，与 fit 相同，都以 `fit_` 开头。 |
+| 指标 | 1 | `/metrics` 提供和 OTLP 导出的指标的名称、类型和标签：fit 的指标，每个都从 `fit_` 改名为 `akit_`（决定 037）。 |
 | 访问日志 | 1 | 其 JSON 行的字段，与 fit 相同。 |
 
 不覆盖：
 
 - akit 写给人看而不是给程序读的东西：消息、警告、仪表盘、`akit adapt` 的输出（除了它是有效配置这一点），以及错误的文字
   （错误的 JSON 结构是覆盖的）。
-- WASM 插件的宿主函数（`fit` 导入模块）和 fit 的 Proxy-Wasm 子集，它们在 fit 的 1.0 中也是实验性的；`wasm` 中间件的配置是覆盖的。
+- WASM 插件的宿主函数（`akit` 导入模块，即由决定 037 改名的 fit 的 `fit`）和 fit 的 Proxy-Wasm 子集，它们在 fit 的 1.0 中也是实验性的；`wasm` 中间件的配置是覆盖的。
 - nginx 和 Caddyfile 转换器的覆盖范围，它只会增长。
 - akit 各 crate 的 Rust API（`akit build` 构建的模块使用它）：在 1.0 中它可能在任何版本中改变（fit 覆盖其 Go 的 `module`
   包；akit 暂不覆盖）。
@@ -116,10 +118,11 @@ API 的下一个版本中才会去掉，并在其改动清单中写明。
 | `POST /config/render`、`POST /config/parse`、`PUT /config/text`、`POST /config/export`、`POST /config/import` | 配置或其部分顶层成员（`?members=`）的 `.conf`、YAML 或 JSON 文本（`?format=`），以及应用一段文本或一个文件，即 fit 控制台的原文编辑器和导入导出页面所调用的（冻结之后新增，I91；fit 的 `store` 格式等 I93） |
 | `GET /dashboard/` | 仪表盘，给人看（不覆盖） |
 
-配置中的路径是 JSON pointer 的各个 token。变更的应答给出所应用的版本，在内容中（`version`）和 `Fit-Config-Version` 中，并给出配置的
+配置中的路径是 JSON pointer 的各个 token。变更的应答给出所应用的版本，在内容中（`version`）和 `Akit-Config-Version` 中，并给出配置的
 `ETag`；带 `If-Match` 的变更只应用于该 ETag 所指的配置，否则答 412；带 `?dry_run=1` 的变更只检查不应用，应答带
-`Fit-Dry-Run: 1`。无法加载的配置答 400，内容为 `{"error": ..., "errors": [{"path", "line", "column", "message"}]}`。
-这些都是 fit 的名称，fit 的客户端不加改动即可用于 akit。
+`Akit-Dry-Run: 1`。无法加载的配置答 400，内容为 `{"error": ..., "errors": [{"path", "line", "column", "message"}]}`。
+这些都是 fit 的，只是 fit 的请求头字段 `Fit-Config-Version` 和 `Fit-Dry-Run` 改了名（[决定 037](decisions/037-akit-names.zh-CN.md)）：
+读取或发送它们的 fit 客户端要改用 akit 的名字；fit 的名字不被接受。
 
 自 I80b 起，配置中内联写出的秘密（成员名与 fit 控制台认定秘密的规则相同：`password_hash`、`secret`、`token`、`Authorization`
 头）在 `/config`、`/versions/{n}` 和 `/config/effective` 中以 `[redacted]` 给出，与 fit 控制台的显示相同；修改中送回的
@@ -129,7 +132,7 @@ API 的下一个版本中才会去掉，并在其改动清单中写明。
 fit 的 v1 还有更多端点，用于 akit 尚未运行的部分：tunnel 和 LLM 角色的链接令牌（`/tokens`）、媒体库和工作台的媒体页面
 （`/media/...`），以及流媒体角色（`/streaming/...`）。akit 在运行这些部分之前对它们答 404，届时按 fit 的样子加入，属于兼容的增加。
 
-自 I90 起，控制台（`admin.console`）在 `/api/m/admin/` 下提供同样的端点，用它的登录代替令牌，另有 fit 控制台自己的端点（`/api/login`、`/api/logout`、`/api/session`、`/api/workbench`），cookie 和 CSRF 请求头也沿用 fit 的名字，使 fit 的页面和脚本原样可用于 akit（[控制台指南](guides/console.zh-CN.md)）。
+自 I90 起，控制台（`admin.console`）在 `/api/m/admin/` 下提供同样的端点，用它的登录代替令牌，另有 fit 控制台自己的端点（`/api/login`、`/api/logout`、`/api/session`、`/api/workbench`），cookie 和 CSRF 请求头用 akit 的名字 `akit_console_<端口>` 和 `X-Akit-Csrf`（fit 的 `fit_console_<端口>` 和 `X-Fit-Csrf`，决定 037；[控制台指南](guides/console.zh-CN.md)）。
 
 如果需要 Admin API 的 v2，它会在 `/v2/` 下与 v1 的路径并存，v1 的路径在 akit 的整个主版本内保留。
 
@@ -158,7 +161,9 @@ fit 的 v1 还有更多端点，用于 akit 尚未运行的部分：tunnel 和 L
 - `v1_surface_is_frozen`（akit-admin 的测试，CI 的测试任务）运行 Admin API 并逐一探测：冻结的每个端点都提供服务，冻结路径的其他方法都不提供，
   分发器中出现的路径都在冻结范围内，头字段和应答成员与冻结的一致。新增的项按失败的测试打印的内容，手工标记在 `additions.txt` 中。
 
-基线文件本身在 v1 内从不修改：`tools/v1-freeze.py` 保存它们的 SHA-256，改动任何一个都意味着新版本。
+基线文件本身在 v1 内从不修改：`tools/v1-freeze.py` 保存它们的 SHA-256，改动任何一个都意味着新版本。它们在 akit 首次发布之前
+按[决定 037](decisions/037-akit-names.zh-CN.md)重写过一次：配置的基线由 `python3 tools/v1-freeze.py --write-baseline` 重写
+（当前表面减去已标记的新增项，并带上 akit 改名 fit 默认值的九项），Admin API 的基线手工修改（其两个请求头字段改名）。
 
 ## 门禁
 

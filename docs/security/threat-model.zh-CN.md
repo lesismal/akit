@@ -187,7 +187,7 @@ flowchart LR
 | 从网络访问，密码在途中被读取 | 不设置 `admin.console` 就不开启；非回环地址必须有 `cert_file` 和 `key_file`（否则为配置错误）；`admin.console.access`、再是全局访问控制，在 accept 时决定 | `console_refused`（`crates/akit-config/tests/admin.rs`）、`over_tls`、`access_at_accept`、`console_under_akit_run` |
 | 猜测密码 | 只有 bcrypt 哈希（配置中没有明文）；不是用户的名字用假哈希检查；同时检查 2 个，在自己的池上（1 个线程、16 个等待，再多 503），从不在 I/O 线程上；一个地址（IPv6 按 /64）15 分钟内失败 5 次即锁定 15 分钟，加倍直到一小时，一个地址同一时间只检查一个，最多记录 4,096 个地址；一个用户连续失败 10 次后其检查从 2 秒延缓到 5 分钟（`crates/akit-admin/src/console/login.rs`） | `lockout`、`admit_attack`、`admit_full_table`、`user_backoff`、`address_backoff`、`logins_refused` |
 | 被盗或重放的会话 | `HttpOnly`、`SameSite=Strict`（TLS 上 `Secure`）cookie 中的 32 个随机字节，按 SHA-256 保存；空闲（30 分钟）、超过总时长（12 小时）、登出或超过 `max_sessions` 作为最旧者时结束；只在内存中 | `sessions`、`sessions_end` |
-| 操作者浏览器中的网页（CSRF、点击劫持、XSS） | 除读取外的每个请求在 `X-Fit-Csrf` 中带会话的 CSRF 令牌（常数时间比较）；`Origin` 不是控制台的请求被拒绝；只允许页面自身文件和来源的 Content-Security-Policy、`frame-ancestors 'none'`、`X-Frame-Options: DENY`、`nosniff`、`Referrer-Policy: no-referrer`，TLS 上 HSTS；API 的回答带 `Cache-Control: no-store` | `login_and_edit`、`pages_and_schema`、`over_tls` |
+| 操作者浏览器中的网页（CSRF、点击劫持、XSS） | 除读取外的每个请求在 `X-Akit-Csrf` 中带会话的 CSRF 令牌（常数时间比较）；`Origin` 不是控制台的请求被拒绝；只允许页面自身文件和来源的 Content-Security-Policy、`frame-ancestors 'none'`、`X-Frame-Options: DENY`、`nosniff`、`Referrer-Policy: no-referrer`，TLS 上 HSTS；API 的回答带 `Cache-Control: no-store` | `login_and_edit`、`pages_and_schema`、`over_tls` |
 | 未登录而占用连接 | `max_conns` 在 accept 时限制；请求头 10 秒、请求体 30 秒、空闲 2 分钟；对没有有效会话的回答会关闭连接。fit 的 5 秒限制和驱逐等待 akio 的 A232 | `login_and_edit` |
 | 谁改了什么 | `admin` 日志记录器：登录及其来源、失败、登出、每次修改及其应用的版本；控制台的配置以 `console` 为来源记入 `/versions` | `login_and_edit`、`console_under_akit_run` |
 

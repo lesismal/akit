@@ -3,7 +3,7 @@
 [English](036-console.md) | [简体中文](036-console.zh-CN.md)
 
 状态：在 I90 中接受（2026-11-26），等待评审（[等待评审的决定](../decisions-pending.zh-CN.md)，第 16 行）；由 I91（页面）和
-I92（带 TLS 的 Admin API）扩展。
+I92（带 TLS 的 Admin API）扩展；其第 3、8 条由[决定 037](037-akit-names.zh-CN.md)（akit 的名字）修订。
 
 ## 背景
 
@@ -23,7 +23,8 @@ Apache License 2.0。
    `Context::req_mut`），交给 Admin API 的分发，跳过它的令牌和 `Host` 检查，由控制台的会话、CSRF 令牌和来源检查代替；修改像 API
    自己的修改一样交给控制线程，以 `console` 为来源应用。与 fit 的 recorder 不同，请求和回答都不复制；不论由谁写出回答，控制台的
    响应头和它对修改的日志（一个响应过滤器）都随回答一起。
-3. **沿用 fit 的名字，使 fit 的页面和脚本原样可用**：cookie `fit_console_<端口>`、请求头 `X-Fit-Csrf`、端点及其 JSON、消息。
+3. **沿用 fit 的端点及其 JSON 和消息；名字是 akit 的**（由决定 037 修订，它把这里为使 fit 的页面和脚本原样可用而保留的 fit 名字
+   改了名）：cookie `akit_console_<端口>`（fit 的 `fit_console_<端口>`）、请求头 `X-Akit-Csrf`（fit 的 `X-Fit-Csrf`）。
 4. **登录即 fit 的**（`login` 包，连同其测试一起移植）：按地址和按用户的锁定、按 SHA-256 保存的会话、CSRF 令牌。密码在控制台
    自己的池上检查（`akio::Pool`，一个线程、16 个等待，再多 503），从不在 I/O 线程上。
 5. **在 akio 的 A232 之前，连接像 Admin API 的那样受限。** fit 在没有登录的连接打开 5 秒后关闭它，并在超过 `max_conns` 时关闭
@@ -34,7 +35,8 @@ Apache License 2.0。
    L5（密钥未加密存放）仍为接受：fit 的 store 保存配置和控制台用户，不保存证书存储，而 akit 与 fit 共用证书存储（I62），加密的
    store 会让 fit 读不了它。
 7. **在 akio 能关闭回显之前（A233），`akit hash-password` 会显示在终端输入的密码**；提示中说明这一点以及如何隐藏。
-8. **页面即 fit 的工作台，原样提供**（I91）。fit 的许可证（Apache-2.0，与 akit 相同）允许 akit 提供它们，而且它们不需要构建：
+8. **页面即 fit 的工作台，以 akit 的名字提供**（I91；自决定 037 起改名：`tools/console-pages.py` 应用一组确定的改名规则，
+   `console/CHANGES` 列出这些规则）。fit 的许可证（Apache-2.0，与 akit 相同）允许 akit 提供它们，而且它们不需要构建：
    是 fit 嵌入并从内存提供的纯文件。`tools/console-pages.py` 在兼容性门禁固定的 fit 提交（`tests/compat/fixtures/PINS`）上把
    `app/workbench/web` 和 fit 的许可证复制到 `crates/akit-admin/console`，并写出由 `include_bytes!` 编进 akit 的文件列表；
    `make compat-check` 和一个测试检查该列表就是该目录的文件、提交就是固定的提交。表单由同一固定提交上 fit 的 schema 生成
@@ -50,7 +52,7 @@ Apache License 2.0。
 - 在控制台中修改的配置会运行，并以控制台为来源记入 `/versions`；重启时再从配置文件开始，同没有 store 的 fit。
 - fit 的控制台用户及其哈希在 akit 中原样可用。
 - 在 A232 之前，没有登录的客户端最多可占用 `max_conns` 个连接，每个最长为 akio 的请求头超时。
-- 页面上显示“fit”，菜单中有 akit 尚不运行的 fit 功能：其表单编辑草稿，设置了其中之一的保存以“尚不支持”被拒绝，akit 没有的端点
+- 在决定 037 之前页面上显示“fit”；菜单中有 akit 尚不运行的 fit 功能：其表单编辑草稿，设置了其中之一的保存以“尚不支持”被拒绝，akit 没有的端点
   （`/node`、`/config/check`、媒体、BitTorrent 和同步页面的端点）回答 404。只加载 akit 运行的模块的 akit 自己的 `index.html` 会改动
   fit 的一个文件；它是[第 16 行](../decisions-pending.zh-CN.md)中的另一选择。
 - 移动门禁的固定提交时页面随之移动：在同一提交中运行 `tools/console-pages.py`。

@@ -31,7 +31,7 @@ for them. akio built all three (its ADR-172, ADR-173 and ADR-174).
    shared with `tcp` or `socks` its HTTP is akio-mux's `Rule::Http2` (the preface alone), as fit's
    mux matches `HTTP2()`. A client that sends anything else gets akio's `GOAWAY` and is closed
    (fit closes it with nothing), or, beside `tcp`, goes to the listener's service, as in fit.
-5. **Metrics.** `fit_reads_paused_total{reason="budget"}` is akio's `budget_pauses`.
+5. **Metrics.** `akit_reads_paused_total{reason="budget"}` is akio's `budget_pauses`.
 
 ## Consequences
 

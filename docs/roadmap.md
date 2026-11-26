@@ -32,7 +32,8 @@ milestone ends when its exit criteria hold.
    against akit.
 2. **One config for both.** A config fit accepts, in .conf, YAML or JSON, is accepted by akit and
    means the same thing; a field akit does not support yet is refused by name, never ignored.
-   Moving between fit and akit is a binary swap ([decision 002](decisions/002-config-compatibility.md)).
+   Moving between fit and akit is a binary swap ([decision 002](decisions/002-config-compatibility.md)),
+   with akit's own names where fit's say "fit" ([decision 037](decisions/037-akit-names.md)).
 3. **Faster and leaner than fit.** No garbage collector, callbacks inline on the I/O thread,
    io_uring and eBPF steering per listener: akit should beat fit on throughput, p99 latency and
    memory per connection on the same host, and stay at or ahead of nginx.
