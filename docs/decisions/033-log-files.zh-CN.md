@@ -2,7 +2,7 @@
 
 [English](033-log-files.md) | [简体中文](033-log-files.zh-CN.md)
 
-状态：在 I81 中采纳（2026-11-26）；第 7 至 10 点在 I82 中采纳（2026-11-26）。
+状态：在 I81 中采纳（2026-11-26）；第 7 至 10 点在 I82 中、第 11 和 12 点在 I83 中采纳（2026-11-26）。
 
 ## 背景
 
@@ -50,6 +50,14 @@ I81–I83 中移植 fit 的 I155–I157。
 10. **akit 命令本身的输出行保持原样**：`akit: listener …`、`akit: reloaded …`、`akit: admin API on …` 等照旧打印，正如 fit 的
     `cli` 用 `fmt` 打印自己的行；fit 经由 `admin` 和 `tls` 日志器写的少数几行（`admin API on`、`certificate files changed`）在
     akit 中保持原样，工具和测试会读取它们。
+
+11. **重载就地改变 akit 自身的日志**（I83），对应 fit 的 `Root.SetConfig`：级别（akio 的最高级别随 `engine` 日志器）、
+    `time_zone`，以及它每个文件的 `rotate`；新配置不再提到的文件继续写，不再切割，直到重启。日志器的输出或格式改变时，提示需要重启，
+    整个日志只提示一次。
+12. **Admin API 的 `/logs`**（I83，对应 fit 的 `admin/logs.go`）：`GET /logs`、`POST /logs/rotate` 和 `POST /logs/cleanup`，
+    请求和应答的内容与 fit 相同。它们要读目录或等待文件的写线程，所以在 API 引擎的逻辑池上执行（`detach_to_pool`），从不在它的 I/O
+    线程上；不是运行中配置的文件输出的路径一律拒绝，所以不会列出或删除别的东西；每个输出最多列出 1,000 个文件，超出时写
+    `"truncated"`。时间为 UTC 的 RFC 3339。fit 工作台上基于它们的页面等控制台路线。
 
 ## 影响
 

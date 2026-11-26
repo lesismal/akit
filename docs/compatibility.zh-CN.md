@@ -112,6 +112,7 @@ API 的下一个版本中才会去掉，并在其改动清单中写明。
 | `GET`、`HEAD` `/status` | 监听器、连接、上游及其健康状态，以及证书 |
 | `GET`、`HEAD` `/metrics` | Prometheus 文本格式的指标 |
 | `GET`、`HEAD` `/cache`、`POST /cache/purge` | 缓存的区域，以及按 URL、URL 前缀、标签或区域清除 |
+| `GET`、`HEAD` `/logs`、`POST /logs/rotate`、`POST /logs/cleanup` | 日志文件，立即切割其中一个，以及执行或列出其保留策略（冻结之后新增，I83） |
 | `GET /dashboard/` | 仪表盘，给人看（不覆盖） |
 
 配置中的路径是 JSON pointer 的各个 token。变更的应答给出所应用的版本，在内容中（`version`）和 `Fit-Config-Version` 中，并给出配置的

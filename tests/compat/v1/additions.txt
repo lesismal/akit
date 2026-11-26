@@ -40,3 +40,8 @@ config	added	supported	log.rotate.max_bytes
 config	added	supported	log.rotate.max_files
 config	added	supported	log.rotate.max_total_bytes
 config	added	supported	log.time_zone
+# I83: the log files (fit's admin/logs.go).
+admin	added	endpoint	GET	/logs
+admin	added	endpoint	HEAD	/logs
+admin	added	endpoint	POST	/logs/rotate
+admin	added	endpoint	POST	/logs/cleanup

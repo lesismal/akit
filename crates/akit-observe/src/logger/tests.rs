@@ -10,8 +10,9 @@ use std::time::{Duration, UNIX_EPOCH};
 
 use akit_config::{Log, LogFormat, LogLevel};
 
-use super::{Attr, Level, Logger, Root, format, rfc3339_nano};
+use super::{Attr, Level, Logger, Root, format};
 use crate::files::Files;
+use crate::time::rfc3339_nano;
 use crate::zone::Zone;
 
 fn line(f: LogFormat, zone: &Zone, msg: &str) -> String {

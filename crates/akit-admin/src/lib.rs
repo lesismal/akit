@@ -22,6 +22,11 @@
 //! GET    /cache               what each cache zone keeps (I69)
 //! POST   /cache/purge         remove what a cache zone keeps, by URL, URL prefix, tag, or all
 //!                             (I69)
+//! GET    /logs                every file output of akit's log and the access log, with its
+//!                             loggers, format, zone, rotation and files (I83)
+//! POST   /logs/rotate         rotate one output now: {"path"} (I83)
+//! POST   /logs/cleanup        remove what its retention says, or with dry_run report it:
+//!                             {"path", "dry_run"} (I83)
 //! GET    /dashboard/          read-only web pages of the GET endpoints, unless
 //!                             admin.disable_dashboard (I63)
 //! ```
@@ -55,6 +60,7 @@ mod dashboard;
 #[cfg(any(test, feature = "fuzzing"))]
 #[doc(hidden)]
 pub mod fuzzing;
+mod logs;
 mod pointer;
 mod server;
 mod status;

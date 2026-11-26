@@ -142,6 +142,29 @@ pub fn rfc3339(b: &mut Vec<u8>, t: Stamp, offset: i32) {
     two(b, o % 60);
 }
 
+/// Appends `secs` and `nanos` since the epoch at `offset` as Go's `time.RFC3339Nano`: the
+/// fraction's trailing zeros dropped, none when it is zero, as log/slog's JSON writes a time.
+pub fn rfc3339_nano(b: &mut Vec<u8>, secs: i64, nanos: u32, offset: i32) {
+    let start = b.len();
+    rfc3339(b, Stamp { secs, millis: 0 }, offset);
+    // `…:05.000Z` or `…:05.000+08:00`: the fraction goes where `.000` is.
+    let frac_at = start.saturating_add(19);
+    let tail: Vec<u8> = b
+        .get(frac_at.saturating_add(4)..)
+        .unwrap_or_default()
+        .to_vec();
+    b.truncate(frac_at);
+    if nanos > 0 {
+        let mut digits = format!("{nanos:09}");
+        while digits.ends_with('0') {
+            digits.pop();
+        }
+        b.push(b'.');
+        b.extend_from_slice(digits.as_bytes());
+    }
+    b.extend_from_slice(&tail);
+}
+
 /// Appends `t` at `offset` seconds east of UTC as fit's `line` format writes it:
 /// `2006-01-02 15:04:05.000`.
 pub fn line(b: &mut Vec<u8>, t: Stamp, offset: i32) {

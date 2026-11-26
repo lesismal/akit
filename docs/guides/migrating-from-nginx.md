@@ -26,8 +26,8 @@ blocks, `root`, `alias`, `index`, `try_files`, `return`, `rewrite`, `limit_req` 
 the table below. What `auth_basic` guards answers 401 until a `basic_auth` middleware with its users
 takes its place, so that nothing a password kept is served to anyone.
 
-`error_log` converts to fit's `log`, which akit does not support yet: remove the `log` the converter
-writes, and akit writes its messages to standard output and standard error.
+`error_log` converts to fit's `log`, which akit reads as fit does ([the reference](../reference/config.md#log)):
+its file and level are akit's own log's.
 
 For example, this:
 

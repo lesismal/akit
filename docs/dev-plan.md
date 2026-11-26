@@ -192,7 +192,7 @@ track's, unused; I85–I88 the Access lists track's).
 | **After 1.0** | | | |
 | I81 | Log files: rotation by size and time, retention, compression; `access_log.rotate` | I21 | done |
 | I82 | akit's own log: fit's `log`, its loggers, formats, files and zone | I81 | done |
-| I83 | Log files on reload, and the Admin API's `/logs` | I82, I27 | todo |
+| I83 | Log files on reload, and the Admin API's `/logs` | I82, I27 | done |
 
 ## Benchmark and optimization status
 
@@ -1109,9 +1109,9 @@ below is the planned order; tracks with no dependency between them may run in pa
 
 | Order | Track | fit's iterations | First steps in akit |
 | --- | --- | --- | --- |
-| 1 | Logging: files, rotation and retention | I155–I157 | [I81–I83](#logging-files-rotation-and-retention): log files with time zones, rotation by size and time, retention |
+| 1 | Logging: files, rotation and retention | I155–I157 | done: [I81–I83](#logging-files-rotation-and-retention), log files with time zones, rotation by size and time, retention |
 | 2 | Access lists | I195 | accept-time filter in akio (A3); global and per-scope lists |
-| 3 | Console and encrypted store | I104 | the encrypted store, the console's pages, logins |
+| 3 | Console and encrypted store | I104, I157's page | the encrypted store, the console's pages (the Logs page on I83's `/logs` among them), logins |
 | 4 | Tunnel and LLM | I105–I107, I159–I162 | hub, node and proxy roles on `akio-ws` and `akio-quic`; link tokens |
 | 5 | WebRTC | I87, I108–I111 | TURN on `akio-turn`; WHIP and WHEP on `akio-webrtc` |
 | 6 | Streaming and media auth | I115–I117 | the streaming role on `akio-media`; `media_auth` |
@@ -1189,3 +1189,5 @@ I157 waits for the Console track; its Admin API comes here.
   change is warned of; the three endpoints with their bounds and refusals; the reference.
 - **Touches**: `akit-observe`, `akit-admin`, `akit`, `tests/compat/v1`, `docs/reference`.
 - **fit**: `admin/logs.go`, `logs.Root.SetConfig`; I155–I157.
+- **Status**: done (2026-11-26). See the progress log. The track is done; fit's workbench Logs
+  page waits for the Console track.

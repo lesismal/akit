@@ -54,6 +54,7 @@ API，所以不接受其他地址：请在本机、经 SSH 隧道或用 `docker 
 | `GET /status` | 监听器、上游及其地址的健康状况、证书、重载 |
 | `GET /metrics` | Prometheus 文本格式的指标 |
 | `GET /cache`、`POST /cache/purge` | 每个缓存 zone 保存了什么，以及清除（[缓存](caching.zh-CN.md)） |
+| `GET /logs`、`POST /logs/rotate`、`POST /logs/cleanup` | `log` 和 `access_log` 的日志文件及其切割设置和磁盘上的文件，立即切割其中一个，以及按保留策略删除的文件：删除，或（`dry_run`）只列出 |
 | `GET /dashboard/` | 状态和配置的只读仪表盘 |
 
 带 `If-Match: <etag>` 的修改，若配置在读取之后已被改变，则以 412 拒绝，这样两个客户端不会互相覆盖。带 `?dry_run=1` 时，修改

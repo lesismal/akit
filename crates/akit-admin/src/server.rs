@@ -66,6 +66,9 @@ pub struct Options {
     /// What `GET /status` says akit is doing now (I63); without it, nothing: no listeners, no
     /// upstreams, no certificates.
     pub status: Option<Live>,
+    /// The log files akit writes (I81, I83), which `GET /logs` lists and `POST /logs/rotate` and
+    /// `POST /logs/cleanup` act on; without it, the outputs are listed with no files.
+    pub logs: Option<akit_observe::Files>,
 }
 
 impl fmt::Debug for Options {
@@ -77,6 +80,7 @@ impl fmt::Debug for Options {
             .field("idle_timeout", &self.idle_timeout)
             .field("metrics", &self.metrics.is_some())
             .field("status", &self.status.is_some())
+            .field("logs", &self.logs.is_some())
             .finish()
     }
 }
@@ -90,6 +94,7 @@ impl Default for Options {
             idle_timeout: Duration::from_secs(60),
             metrics: None,
             status: None,
+            logs: None,
         }
     }
 }
@@ -364,6 +369,7 @@ impl Server {
             max_body: settings.max_config_bytes,
             metrics: opts.metrics.clone(),
             status: opts.status.clone(),
+            logs: opts.logs.clone(),
             dashboard: !settings.disable_dashboard,
             token,
         }));
@@ -445,11 +451,13 @@ fn read_token(file: &str) -> io::Result<Vec<u8>> {
 }
 
 pub(crate) struct Shared {
-    configs: Configs,
+    pub(crate) configs: Configs,
     submit: Submit,
     max_body: usize,
     metrics: Option<Metrics>,
     status: Option<Live>,
+    /// The log files akit writes (I83).
+    pub(crate) logs: Option<akit_observe::Files>,
     /// Whether the dashboard is served (I63): unless `disable_dashboard`.
     dashboard: bool,
     /// The token every request must carry, from `token_file`; none asked for without it.
@@ -465,7 +473,12 @@ struct Api(Arc<Shared>);
 fn takes_config(req: &Request) -> bool {
     let path = req.path();
     match req.method {
-        Method::Post => path == "/load" || path == "/cache/purge",
+        Method::Post => {
+            path == "/load"
+                || path == "/cache/purge"
+                || path == "/logs/rotate"
+                || path == "/logs/cleanup"
+        }
         Method::Put | Method::Patch => path == "/config" || path.starts_with("/config/"),
         _ => false,
     }
@@ -541,6 +554,12 @@ impl akio_http::Service for Api {
             "/cache" => not_allowed("GET, HEAD"),
             "/cache/purge" if post => return crate::cache::purge(&self.0, ctx),
             "/cache/purge" => not_allowed("POST"),
+            // I83: the log files, on the pool.
+            "/logs" if read => return crate::logs::list(&self.0, ctx),
+            "/logs" => not_allowed("GET, HEAD"),
+            "/logs/rotate" if post => return crate::logs::operate(&self.0, ctx, true),
+            "/logs/cleanup" if post => return crate::logs::operate(&self.0, ctx, false),
+            "/logs/rotate" | "/logs/cleanup" => not_allowed("POST"),
             // Its other methods edit the member `effective`, as fit's `PUT /config/{path...}`.
             p if self.0.dashboard && dashboard::is_dashboard(p) => {
                 if read {

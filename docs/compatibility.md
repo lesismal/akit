@@ -128,6 +128,7 @@ version of the schema or the API, which says so in its list of changes.
 | `GET`, `HEAD` `/status` | The listeners, connections, upstreams and their health, and certificates |
 | `GET`, `HEAD` `/metrics` | Metrics in Prometheus's text format |
 | `GET`, `HEAD` `/cache`, `POST /cache/purge` | The cache's zones, and purges by URL, URL prefix, tag or zone |
+| `GET`, `HEAD` `/logs`, `POST /logs/rotate`, `POST /logs/cleanup` | The log files, one rotated now, and its retention applied or listed (added after the freeze, I83) |
 | `GET /dashboard/` | The dashboard, for people (not covered) |
 
 A path in the config is a JSON pointer's tokens. A change answers with the version applied, in the

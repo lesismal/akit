@@ -296,6 +296,24 @@ fn open_access_log(
     Ok((AccessLog::to_file(file, opts)?, held))
 }
 
+/// Each logger's output, cleaned, and format: what a restart, not a reload, changes.
+fn log_shape(l: Option<&akit_config::Log>) -> Vec<(String, LogFormat)> {
+    let default = akit_config::Log::default();
+    let l = l.unwrap_or(&default);
+    akit_config::LOGGERS
+        .iter()
+        .map(|n| {
+            let out = l.output_of(n);
+            let out = if akit_config::is_file_output(out) {
+                akit_config::output_path(out)
+            } else {
+                out.to_owned()
+            };
+            (out, l.format_of(n))
+        })
+        .collect()
+}
+
 /// The certificate, key and authority files a config loaded, with their SHA-256, by path.
 type CertFiles = std::collections::BTreeMap<String, akit_tls::Sum>;
 
@@ -311,6 +329,10 @@ struct Runner<'a> {
     log: Option<&'a (AccessLog, akit_config::AccessLog)>,
     /// The access log's file, when it writes one (I81): a reload changes its rotation and zone.
     access_file: Option<&'a LogFile>,
+    /// akit's own log (I82), and the `log` it was made from: a reload changes its levels, zone
+    /// and files' rotation in place (I83); its outputs and formats take a restart.
+    root: &'a akit_observe::logger::Root,
+    log_config: Option<&'a akit_config::Log>,
     admin: Option<&'a akit_config::Admin>,
     cert_files: CertFiles,
     /// The process's metrics registry, which each graph is compiled with (I37).
@@ -375,6 +397,17 @@ impl Runner<'_> {
     fn warnings(&self, config: &Config, zone: Option<Zone>, set: bool) -> Vec<String> {
         // The old names of renamed fields first, as fit's load returns them (I79).
         let mut warnings: Vec<String> = config.warnings.0.iter().map(ToString::to_string).collect();
+        // akit's own log (I83, fit's Root.SetConfig): levels, zone, rotation and retention in
+        // place; a logger's output or format takes a restart.
+        if set {
+            if let Ok(z) = log_zone(config) {
+                self.root.set_config(config.log.as_ref(), z);
+            }
+        }
+        if log_shape(config.log.as_ref()) != log_shape(self.log_config) {
+            warnings
+                .push("log's outputs and formats take a restart; the running ones stay".to_owned());
+        }
         match (self.log, &config.access_log, zone) {
             (Some((l, first)), Some(c), Some(zone)) => {
                 if set {
@@ -933,6 +966,7 @@ fn run(args: &[String]) -> ExitCode {
         }
     };
     let admin = config.admin.clone();
+    let log_config = config.log.clone();
     let provider_configs = config.providers.clone();
     let (start_limits, start_engine) = (config.limits, config.engine);
     drop(config);
@@ -999,6 +1033,8 @@ fn run(args: &[String]) -> ExitCode {
             let status = scrape.clone();
             api_opts.status = Some(Arc::new(move |out: &mut String| status.write_status(out)));
             api_opts.metrics = Some(Arc::new(move |out: &mut Vec<u8>| scrape.write(out)));
+            // The log files, at GET /logs and POST /logs/rotate and /logs/cleanup (I83).
+            api_opts.logs = Some(log_files.clone());
             match akit_admin::Server::start(a, configs.clone(), submit, &api_opts) {
                 Ok(s) => {
                     println!("akit: admin API on {}", s.address());
@@ -1068,6 +1104,8 @@ fn run(args: &[String]) -> ExitCode {
         listeners: &mut listeners,
         log: log.as_ref(),
         access_file: access_file.as_ref(),
+        root: &root,
+        log_config: log_config.as_ref(),
         admin: admin.as_ref(),
         cert_files,
         acme: &acme,

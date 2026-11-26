@@ -94,9 +94,8 @@ sites by their addresses, matchers (paths, `path_regexp`, `host`, `method`, `hea
 `request_header`, `encode`, `basic_auth`, `forward_auth`, `request_body`, `php_fastcgi`, `tls` and
 `log`.
 
-A global `log` or `debug` converts to fit's `log`, which akit does not support yet: remove it, and
-akit writes its messages to standard output and standard error. A site's `log` is the access log,
-which akit supports.
+A global `log` or `debug` converts to fit's `log`, akit's own log, which akit reads as fit does
+([the reference](../reference/config.md#log)). A site's `log` is the access log.
 
 ## How the parts map
 

@@ -240,6 +240,33 @@ impl Root {
             (Arc::new(zone), akit_config::zone_name(time_zone));
     }
 
+    /// Has the log write and turn its files as `c` says from now on (I83, fit's `SetConfig`): the
+    /// levels, the zone (`zone`, the one `c`'s `time_zone` names) and each file's rotation and
+    /// retention, all in place. A file's path and a logger's format take a restart: they are not
+    /// taken up here. A file of the log's `c` no longer names keeps writing, unrotated.
+    pub fn set_config(&self, c: Option<&akit_config::Log>, zone: Zone) {
+        self.set_levels(c);
+        let rotations: Vec<(String, Option<akit_config::Rotation>)> = c
+            .map(akit_config::Log::file_outputs)
+            .unwrap_or_default()
+            .iter()
+            .map(|o| {
+                (
+                    akit_config::output_path(&o.path),
+                    akit_config::rotation(o.rotate.as_ref()),
+                )
+            })
+            .collect();
+        for (path, f) in lock(&self.sinks).iter() {
+            let r = rotations
+                .iter()
+                .find(|(p, _)| p == path)
+                .and_then(|(_, r)| *r);
+            f.set_rotation(r);
+        }
+        self.set_zone(zone, c.map_or("", |c| c.time_zone.as_str()));
+    }
+
     /// The file sinks the log writes through, by their cleaned paths.
     #[must_use]
     pub fn sinks(&self) -> Vec<(String, Arc<LogFile>)> {
@@ -331,29 +358,6 @@ fn escaped(b: &mut Vec<u8>, s: &str) {
     }
 }
 
-/// Appends `secs` and `nanos` since the epoch at `offset` as Go's `time.RFC3339Nano`: the
-/// fraction's trailing zeros dropped, none when it is zero, as log/slog's JSON writes a time.
-fn rfc3339_nano(b: &mut Vec<u8>, secs: i64, nanos: u32, offset: i32) {
-    let start = b.len();
-    time::rfc3339(b, Stamp { secs, millis: 0 }, offset);
-    // `…:05.000Z` or `…:05.000+08:00`: the fraction goes where `.000` is.
-    let frac_at = start.saturating_add(19);
-    let tail: Vec<u8> = b
-        .get(frac_at.saturating_add(4)..)
-        .unwrap_or_default()
-        .to_vec();
-    b.truncate(frac_at);
-    if nanos > 0 {
-        let mut digits = format!("{nanos:09}");
-        while digits.ends_with('0') {
-            digits.pop();
-        }
-        b.push(b'.');
-        b.extend_from_slice(digits.as_bytes());
-    }
-    b.extend_from_slice(&tail);
-}
-
 /// An attribute's value: a string, or a number or boolean, which `json` writes bare.
 #[derive(Clone, Copy)]
 pub enum Attr<'a> {
@@ -434,7 +438,7 @@ fn format(
         }
         LogFormat::Json => {
             b.extend_from_slice(b"{\"time\":\"");
-            rfc3339_nano(b, t.secs, nanos, offset);
+            time::rfc3339_nano(b, t.secs, nanos, offset);
             b.extend_from_slice(b"\",\"level\":\"");
             b.extend_from_slice(level_name(level).as_bytes());
             b.extend_from_slice(b"\",\"msg\":");

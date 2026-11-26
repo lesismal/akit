@@ -2,7 +2,7 @@
 
 [English](033-log-files.md) | [简体中文](033-log-files.zh-CN.md)
 
-Status: accepted in I81 (2026-11-26); points 7 to 10 in I82 (2026-11-26).
+Status: accepted in I81 (2026-11-26); points 7 to 10 in I82, 11 and 12 in I83 (2026-11-26).
 
 ## Context
 
@@ -73,6 +73,17 @@ supported yet; akit had no `log` at all. The Logging track ports fit's I155–I1
     …` and the rest are printed as they were, as fit's `cli` prints its own with `fmt`; the few
     fit writes through its `admin` and `tls` loggers (`admin API on`, `certificate files changed`)
     stay plain in akit, where tools and tests read them.
+
+11. **A reload changes akit's own log in place** (I83), as fit's `Root.SetConfig`: the levels
+    (akio's maximum level with the `engine` logger's), `time_zone`, and each of its files'
+    `rotate`; a file the new config no longer names keeps writing, unrotated, until a restart.
+    A logger's output or format changed is warned of as taking a restart, once for the log.
+12. **The Admin API's `/logs`** (I83, fit's `admin/logs.go`): `GET /logs`, `POST /logs/rotate`
+    and `POST /logs/cleanup` with fit's bodies. They read a directory or wait for a file's writer,
+    so they run on the API engine's logical pool (`detach_to_pool`), never on its I/O thread; a
+    path that is not one of the running config's file outputs is refused, so nothing else is
+    listed or removed; a listing names at most 1,000 files an output and says `"truncated"` past
+    it. Times are RFC 3339 in UTC. fit's workbench page over them waits for the Console track.
 
 ## Consequences
 
