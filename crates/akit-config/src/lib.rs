@@ -33,6 +33,7 @@ mod fastcgi;
 #[doc(hidden)]
 pub mod fuzzing;
 mod json;
+mod log;
 mod model;
 mod providers;
 mod providers_kv;
@@ -54,6 +55,10 @@ pub use fastcgi::{
     DEFAULT_FASTCGI_RESPONSE_TIMEOUT, DEFAULT_FASTCGI_TIMEOUT, FastCgi, FastCgiAddress, Scan, scan,
 };
 pub use json::MAX_DEPTH;
+pub use log::{
+    DEFAULT_ROTATE_MAX_AGE, DEFAULT_ROTATE_MAX_BYTES, DEFAULT_ROTATE_MAX_TOTAL_BYTES, Rotate,
+    Rotation, is_file_output, output_path, rotation, same_rotation, zone_name,
+};
 pub use model::CACHE_SHARDS;
 pub use model::ModuleRef;
 pub use model::{

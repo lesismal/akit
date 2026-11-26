@@ -471,6 +471,42 @@ fn supported_fields_are_read() {
             access(r#""time_zone": "utc""#),
             |c| c.access_log.as_ref().unwrap().time_zone == "utc",
         ),
+        // I81: the file sink's rotation and retention.
+        (
+            "access_log.rotate",
+            access(r#""rotate": {}"#),
+            |c| c.access_log.as_ref().unwrap().rotate.is_some(),
+        ),
+        (
+            "access_log.rotate.max_bytes",
+            access(r#""rotate": {"max_bytes": 7}"#),
+            |c| rotate(c).max_bytes == Some(7),
+        ),
+        (
+            "access_log.rotate.interval",
+            access(r#""rotate": {"interval": "1h"}"#),
+            |c| rotate(c).interval == std::time::Duration::from_secs(3600),
+        ),
+        (
+            "access_log.rotate.max_age",
+            access(r#""rotate": {"max_age": "1h"}"#),
+            |c| rotate(c).max_age == Some(std::time::Duration::from_secs(3600)),
+        ),
+        (
+            "access_log.rotate.max_files",
+            access(r#""rotate": {"max_files": 3}"#),
+            |c| rotate(c).max_files == Some(3),
+        ),
+        (
+            "access_log.rotate.max_total_bytes",
+            access(r#""rotate": {"max_total_bytes": 9}"#),
+            |c| rotate(c).max_total_bytes == Some(9),
+        ),
+        (
+            "access_log.rotate.compress",
+            access(r#""rotate": {"compress": false}"#),
+            |c| rotate(c).compress == Some(false),
+        ),
         // It needs admin, as in fit: refused without it, with fit's message.
         ("metrics", r#"{"admin": {}, "metrics": {}}"#.into(), |c| {
             c.metrics.is_some()
@@ -2829,6 +2865,7 @@ fn akit_config_lists_match_the_inventory() {
         "providers.rs",
         "providers_kv.rs",
         "shared_storage.rs",
+        "log.rs",
     ]
     .iter()
     .map(|f| fs::read_to_string(compat_dir().join("../../crates/akit-config/src").join(f)).unwrap())
@@ -2844,7 +2881,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 63] = [
+    let objects: [(&str, &str, Option<&str>); 64] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         (
             "providers[].kubernetes",
@@ -2870,6 +2907,7 @@ fn akit_config_lists_match_the_inventory() {
             "ACCESS_LOG_FIELDS",
             Some("ACCESS_LOG_FIT_ONLY"),
         ),
+        ("access_log.rotate", "ROTATE_FIELDS", None),
         ("auto_https", "AUTO_HTTPS_FIELDS", None),
         ("telemetry", "TELEMETRY_FIELDS", None),
         ("telemetry.traces", "TRACES_EXPORT_FIELDS", None),
@@ -3337,6 +3375,13 @@ fn consul_kv(c: &Config) -> &akit_config::ConsulKvProvider {
         Some(akit_config::ProviderKind::ConsulKv(p)) => p,
         other => unreachable!("{other:?}"),
     }
+}
+
+fn rotate(c: &Config) -> &akit_config::Rotate {
+    c.access_log
+        .as_ref()
+        .and_then(|a| a.rotate.as_ref())
+        .unwrap()
 }
 
 fn etcd(c: &Config) -> &akit_config::EtcdProvider {

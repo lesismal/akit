@@ -399,7 +399,9 @@ name = "akit-observe"
 version = "0.0.1"
 dependencies = [
  "akio",
+ "akio-deflate",
  "akio-http",
+ "akio-sys",
  "akit-config",
 ]
 

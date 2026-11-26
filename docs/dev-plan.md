@@ -91,7 +91,8 @@ few crates as it can. fit's package of the same role is given for reference.
 
 ## Index
 
-Status: `todo`, `doing` or `done`. The next free iteration number is I81.
+Status: `todo`, `doing` or `done`. The next free iteration number is I89 (I84 is the Logging
+track's, unused; I85–I88 the Access lists track's).
 
 | ID | Iteration | Depends on | Status |
 | --- | --- | --- | --- |
@@ -188,6 +189,10 @@ Status: `todo`, `doing` or `done`. The next free iteration number is I81.
 | I79b | The gateway examples the gate still refuses: `limits.max_pending_bytes`, h2c alone, `max_conns` by accepted connections | I79, akio A214, A168, A215 | done |
 | I80 | Security review readiness | I77, I79 | done |
 | I80b | Security hardening: the threat model's limitations and the review's findings | I80, the review | todo |
+| **After 1.0** | | | |
+| I81 | Log files: rotation by size and time, retention, compression; `access_log.rotate` | I21 | done |
+| I82 | akit's own log: fit's `log`, its loggers, formats, files and zone | I81 | todo |
+| I83 | Log files on reload, and the Admin API's `/logs` | I82, I27 | todo |
 
 ## Benchmark and optimization status
 
@@ -214,6 +219,7 @@ commit and result.
 | Passive health checks | I20 | no | no (built, not measured) | A micro-benchmark of recording a result on the request path. |
 | Active health checks | I35 | no | no (built, not measured) | Off the hot path (a pick still reads one atomic per address): the probes' cost on a busy engine, thousands of addresses probed every second (http and tcp), with the probe timer's thread (the stopgap for akio A45); same-run A/B of the proxy scenario with a health check on and off. |
 | Access logs | I21 | no | no (built, not measured) | Same-run A/B of fixed and proxy with logs on and off (json, and text or line), to a file and to `/dev/null`; lines dropped at full load with the default 4 MiB buffer and a slow disk; the per-request cost (the boxed response filter, the shard lock, formatting). |
+| Log files: the sink, rotation, retention, compression | I81 | no | no (built, not measured) | Same-run A/B of fixed and proxy with the access log to a file with `rotate` (`max_bytes` 1 MiB, so it turns often, `compress` on and off) against the same file without it, against main before I81: the access log's writer hands each flush to the sink's queue (no copy) and the sink's thread writes it; lines dropped at full load with a slow disk (the sink's 1 MiB queue behind the log's 4 MiB buffer); the cost of a rotation under load (a rename, an open, a directory listed for retention) and of gzip on the compression thread (CPU per MiB, the queue of 16 under many rotations). |
 | Certificates chosen per handshake (the resolver reading the graph) | I30 | no | no (built, not measured) | Full TLS handshakes a second with one and ten certificates, against I09's `sni_cert` and fit. |
 | The HTTP-01 check on listeners in the clear | I31 | no | no (built, not measured) | Fixed over HTTP/1.1 and h2c, same-run A/B against main before I31 (a prefix comparison per request under `akit run`). |
 | The certificate choice with TLS-ALPN-01 and OCSP staples | I32 | no | no (built, not measured) | Full TLS handshakes a second against I31, with and without a stapled response (the ALPN list read, and a second `Published` map for files with responders); the handshake's size with a response. |
@@ -1103,7 +1109,7 @@ below is the planned order; tracks with no dependency between them may run in pa
 
 | Order | Track | fit's iterations | First steps in akit |
 | --- | --- | --- | --- |
-| 1 | Logging: files, rotation and retention | I155–I157 | log files with time zones, rotation by size and time, retention |
+| 1 | Logging: files, rotation and retention | I155–I157 | [I81–I83](#logging-files-rotation-and-retention): log files with time zones, rotation by size and time, retention |
 | 2 | Access lists | I195 | accept-time filter in akio (A3); global and per-scope lists |
 | 3 | Console and encrypted store | I104 | the encrypted store, the console's pages, logins |
 | 4 | Tunnel and LLM | I105–I107, I159–I162 | hub, node and proxy roles on `akio-ws` and `akio-quic`; link tokens |
@@ -1116,3 +1122,69 @@ below is the planned order; tracks with no dependency between them may run in pa
 | 11 | Sync | I163–I194, I211–I222 | the pipeline core and checkpoints, then connectors by fit's order |
 | 12 | Prefork and NUMA | planned in fit | dropped (2026-11-25): akit does not use prefork, and akio removed `akio-prefork`. Not planned. |
 | 13 | P2P and VPN | I84–I103 | after fit's track is done |
+
+### Logging: files, rotation and retention
+
+fit's I155–I157 ([fit's decision 034](https://github.com/lesismal/fit/blob/main/docs/decisions/034-log-files.md)),
+in three iterations ([decision 033](decisions/033-log-files.md)). The workbench's Logs page of fit's
+I157 waits for the Console track; its Admin API comes here.
+
+### I81 Log files: rotation by size and time, retention, compression
+
+- **Do**: decision 033. akit-observe's file sink, as fit's `logs.Files` and `logs.File`: one sink a
+  path, shared by every log writing there, a queue of 1 MiB written by a thread of its own, a write
+  refused and counted past it, never waited for. Rotation before a write that would take the file
+  past `max_bytes` (a buffer larger than that gets a file of its own) and at the first write in a
+  later period of `interval`, counted from midnight in the log's zone, whichever comes first; the
+  rotated file named `<path>.<yyyy-mm-ddThh-mm-ss.mmm>` in UTC, `-N` when taken, `.gz` once gzipped
+  (akio-deflate, on a thread of the set's own, a queue of 16; a failure keeps the plain file).
+  Retention at open, after each rotation and every ten minutes: older than `max_age`, past
+  `max_files`, then the oldest past `max_total_bytes`; only names a rotation made, never the open
+  file. No link or second hard link at a name is written, read or removed through. `rotate` read
+  as fit's `config.Rotate` (defaults 1 GiB, 720h, 1 GiB, `compress` on; 0 a limit off; an interval
+  under 1s, or over 24h and not whole days, refused); `access_log.rotate`, the access log's batches
+  handed to the sink as they are; a reload changes the access log's file's rotation and zone in
+  place.
+- **Done when**: a file rotates at `max_bytes` and at each period boundary in a zone (a fake clock),
+  every line whole in exactly one file; retention by age, number and total size, oldest first,
+  sparing the open file and names the sink did not make; gzip whose text is the lines; links and
+  hard links refused; a full queue refuses and counts; `akit run` rotates an access log and a
+  reload changes its retention; the config's checks; the reference, the gate and the v1 freeze
+  (`access_log.rotate` marked as additions).
+- **Touches**: `akit-observe` (`files`), `akit-config` (`log`), `akit` (`run`), `tests/compat`,
+  `docs/reference`.
+- **fit**: `logs/file.go`, `config/rotate.go`, `observe/accesslog.go`; I155, I156.
+- **Status**: done (2026-11-26). See the progress log.
+
+### I82 akit's own log: fit's `log`
+
+- **Do**: fit's `log` (`level`, `levels`, `output`, `format`, `time_zone`, `rotate`, `loggers`
+  with their own `level`, `output`, `format` and `rotate`), as fit's `logs.Root`: fit's loggers
+  (`server`, `admin`, `tls`, `provider`, `telemetry`, `access_log`, `plugin`, `fastcgi`, `engine`,
+  and fit's other names, accepted), each message below its logger's level not formatted, written in
+  fit's `line`, `text` or `json` in the log's zone, debug and info to standard output and the rest
+  to standard error when no output is set, a file through I81's sink. What akit's crates say about
+  themselves (certificates, providers, telemetry, FastCGI's stderr, the sink's failures) goes
+  through their loggers; akio's records (akio-log) through `engine`. A file shared with the access
+  log is one sink; fit's checks: an unknown logger, a level set twice, two `rotate`s or two zones
+  for one file, an unknown zone. `akit run` warns of a file output with no `rotate`.
+- **Done when**: every format of every logger in the chosen zone; levels filter before formatting;
+  a logger's file of its own rotates; the access log and a logger on one path share a sink and each
+  line is whole; fit's `logging` example passes the gate; the config's checks; the reference.
+- **Touches**: `akit-observe` (`logger`), `akit-config` (`log`), `akit`, the crates that wrote to
+  standard error, `tests/compat`, `docs/reference`.
+- **fit**: `logs/logs.go`, `config/log.go`; I155, I156.
+
+### I83 Log files on reload, and the Admin API's `/logs`
+
+- **Do**: a reload changes `log`'s levels, `time_zone` and every file's `rotate` in place, as fit's
+  `Root.SetConfig`; a changed path or format is warned of as taking a restart. The Admin API's
+  `GET /logs` (each file output of `log` and the access log: path, loggers, format, zone, `rotate`
+  with its defaults, the current and rotated files with sizes and times, bounded, the lines dropped
+  and the last error), `POST /logs/rotate` and `POST /logs/cleanup` (`dry_run`), a path not one of
+  the running config's outputs refused, run on the sink's thread, never on an I/O thread; marked as
+  v1 additions.
+- **Done when**: a reload changes levels, zone and retention without a restart; a path or format
+  change is warned of; the three endpoints with their bounds and refusals; the reference.
+- **Touches**: `akit-observe`, `akit-admin`, `akit`, `tests/compat/v1`, `docs/reference`.
+- **fit**: `admin/logs.go`, `logs.Root.SetConfig`; I155–I157.

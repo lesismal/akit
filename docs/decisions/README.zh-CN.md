@@ -25,3 +25,4 @@
 | [029](029-v1-freeze.zh-CN.md) | v1 冻结：基线、标记的改动和两项检查 | 已采纳 |
 | [030](030-supply-chain-checks.zh-CN.md) | 供应链检查：cargo-deny、每日的 cargo-audit，以及发布二进制的依赖图 | 已采纳 |
 | [032](032-limits-on-akio-budget.zh-CN.md) | 启动时生效的限制落在 akio 引擎的预算上，以及只有 h2c 的监听器 | 已采纳 |
+| [033](033-log-files.zh-CN.md) | 日志文件的切割与保留，与 fit 相同 | 已采纳 |

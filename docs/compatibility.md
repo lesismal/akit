@@ -369,12 +369,12 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 429 supported.
+3821 fields in 121 sections, at fit `7daee573`; 436 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
 | [`access`](#fields-access) | 5 | 0 | 5 |
-| [`access_log`](#fields-access-log) | 14 | 7 | 7 |
+| [`access_log`](#fields-access-log) | 14 | 14 | 0 |
 | [`acme`](#fields-acme) | 43 | 43 | 0 |
 | [`admin`](#fields-admin) | 105 | 7 | 98 |
 | [`auto_https`](#fields-auto-https) | 5 | 5 | 0 |
@@ -494,7 +494,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 0 | 164 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 429 | 3392 |
+| **Total** | 3821 | 436 | 3385 |
 
 <a id="fields-access"></a>
 
@@ -520,13 +520,13 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `access_log.format` | `enum(json\|text\|line)` | supported |
 | `access_log.level` | `enum(info\|warn\|error)` | supported |
 | `access_log.output` | `string` | supported |
-| `access_log.rotate` | `object` | not supported yet |
-| `access_log.rotate.compress` | `boolean` | not supported yet |
-| `access_log.rotate.interval` | `duration` | not supported yet |
-| `access_log.rotate.max_age` | `duration` | not supported yet |
-| `access_log.rotate.max_bytes` | `integer` | not supported yet |
-| `access_log.rotate.max_files` | `integer` | not supported yet |
-| `access_log.rotate.max_total_bytes` | `integer` | not supported yet |
+| `access_log.rotate` | `object` | supported |
+| `access_log.rotate.compress` | `boolean` | supported |
+| `access_log.rotate.interval` | `duration` | supported |
+| `access_log.rotate.max_age` | `duration` | supported |
+| `access_log.rotate.max_bytes` | `integer` | supported |
+| `access_log.rotate.max_files` | `integer` | supported |
+| `access_log.rotate.max_total_bytes` | `integer` | supported |
 | `access_log.time_zone` | `string` | supported |
 
 <a id="fields-acme"></a>

@@ -13,7 +13,7 @@ akit 配置的每个字段：配置的每一部分是做什么的、一个示例
 akit 与 fit 不同之处，在表格中以 **akit：** 标出。
 
 <!-- BEGIN GENERATED: summary -->
-fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **429** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 63 个对象，下文各有一张表。
+fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **436** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 64 个对象，下文各有一张表。
 <!-- END GENERATED -->
 
 字段说明来自 fit 代码中的 `doc` 标签，是英文的，所以每个字段的完整说明在[英文版](config.md)的同一张表中；本页的表格给出每个字段的
@@ -527,8 +527,16 @@ service mail { listeners tls; upstream mail; server_names mail.example.com }
 每个请求一行，写到标准输出、标准错误或文件，经过有界的缓冲：输出跟不上时，超出缓冲的行被丢弃并计数，而不是拖住请求。文件
 由 akit 自己的线程写入，从不由 I/O 线程写。`format` 决定行的写法：`json`（默认，每行一个对象）、`text`（每部分写成
 `key=value`，即 logfmt）或 `line`（时间和级别，然后字段写成 `key=value`）。请求的级别取决于响应的状态码：400 以下为 info，4xx
-为 warn，5xx 为 error；`level` 只写该级别及以上的请求。`rotate` 尚不支持：请用系统的工具轮转文件，例如 logrotate 的
-`copytruncate`。
+为 warn，5xx 为 error；`level` 只写该级别及以上的请求。
+
+文件输出经由它自己的写入端（决策 033）写入；akit 自身的日志与它写同一路径时共用这一个写入端：1 MiB 的队列和一个负责写入的线程，
+磁盘慢时丢弃并计数日志行，而不拖住任何东西。`rotate` 在一次写入会使文件超过 `max_bytes` 之前轮转文件，也在 `interval` 的下一个
+周期里的第一次写入时轮转，周期从 `time_zone` 时区的午夜算起（所以默认 `24h` 在本地午夜轮转，`1h` 在整点），以先到者为准。轮转
+出的文件名为 `<output>.<yyyy-mm-ddThh-mm-ss.mmm>`，即轮转时刻的 UTC 时间，名字被占用时加 `-1`、`-2`，压缩后加 `.gz`。文件打开
+时、每次轮转后以及每十分钟，依次删除早于 `max_age` 的轮转文件、超过 `max_files` 的、再从最旧的删起直到总量不超过
+`max_total_bytes`；只删除轮转从该路径生成的文件名，绝不删除正在写的文件。`"rotate": {}` 即采用 fit 默认值的有界策略；没有
+`rotate` 时文件无限增长，`akit run` 启动时会提示。重载时 `time_zone` 和 `rotate` 的每个字段就地生效；`output` 和 `format` 需
+要重启。
 
 ```fit
 listener web :8080
@@ -539,6 +547,24 @@ access_log {
 	level warn
 	format line
 	time_zone UTC
+}
+
+route { handler respond { body hello } }
+```
+
+每天本地午夜或到 100 MiB 时轮转、保留两周且总量至多 2 GiB 的文件：
+
+```fit
+listener web :8080
+
+access_log {
+	output /var/log/akit/access.log
+	rotate {
+		interval 24h
+		max_bytes 100MiB
+		max_age 336h
+		max_total_bytes 2GiB
+	}
 }
 
 route { handler respond { body hello } }
@@ -558,8 +584,25 @@ route { handler respond { body hello } }
 | `format` | 字符串：`json`、`text`、`line` | `"json"` |  |
 | `level` | 字符串：`info`、`warn`、`error` | `"info"` |  |
 | `output` | 字符串 | `"stdout"` |  |
-| `rotate` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `rotate` | [对象](#cfg-access-log-rotate) |  |  |
 | `time_zone` | 字符串 |  |  |
+<!-- END GENERATED -->
+
+### `access_log.rotate`
+
+<!-- BEGIN GENERATED: access_log.rotate -->
+<a id="cfg-access-log-rotate"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-access-log-rotate)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `compress` | 布尔值 | `true` |  |
+| `interval` | 时长 |  |  |
+| `max_age` | 时长 | `"720h"` |  |
+| `max_bytes` | 整数，≥ 0 | `1073741824` |  |
+| `max_files` | 整数，≥ 0 |  |  |
+| `max_total_bytes` | 整数，≥ 0 | `1073741824` |  |
 <!-- END GENERATED -->
 
 ## 遥测

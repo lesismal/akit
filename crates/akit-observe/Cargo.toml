@@ -17,6 +17,10 @@ fuzzing = []
 akio = { workspace = true }
 akio-http = { workspace = true }
 akit-config = { workspace = true }
+# Log files (I81, decision 033): rotated files gzipped, and a file opened without waiting on a FIFO
+# planted at its name (O_NONBLOCK).
+akio-deflate = { workspace = true }
+akio-sys = { workspace = true }
 
 [lints]
 workspace = true

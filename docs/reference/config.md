@@ -16,7 +16,7 @@ YAML or JSON, any of them split across several files. Where akit differs from fi
 so in a note marked **akit:**.
 
 <!-- BEGIN GENERATED: summary -->
-akit reads **429** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 63 objects akit reads, each has its table below.
+akit reads **436** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 64 objects akit reads, each has its table below.
 <!-- END GENERATED -->
 
 How to read the tables:
@@ -529,8 +529,21 @@ holding requests up. A file is written by a thread of akit's own, never by an I/
 is how a line is written: `json`, the default, an object a line; `text`, every part as `key=value`
 (logfmt); or `line`, the time and level, then the fields as `key=value`. A request's level is its
 response's status: info below 400, warn for 4xx and error for 5xx; `level` writes the requests at
-that level and above. `rotate` is not supported yet: rotate the file with a tool of the system's,
-such as logrotate's `copytruncate`.
+that level and above.
+
+A file output is written through a sink of its own (decision 033), shared with akit's own log when
+both name the same path: a queue of 1 MiB and a thread that writes, so a slow disk drops lines and
+counts them rather than holding anything up. `rotate` rotates the file before a write that would
+take it past `max_bytes`, and at the first write in a later period of `interval`, counted from
+midnight in `time_zone` (so `24h` turns at local midnight by default, and `1h` on the hour),
+whichever comes first. A rotated file is named `<output>.<yyyy-mm-ddThh-mm-ss.mmm>`, the rotation's
+time in UTC, with `-1`, `-2` when the name is taken and `.gz` once compressed. Rotated files older
+than `max_age`, then past `max_files`, then the oldest until they total at most `max_total_bytes`
+are removed when the file opens, after each rotation and every ten minutes; only names a rotation
+made from that path are ever removed, never the open file. `"rotate": {}` is a bounded policy of
+fit's defaults; without `rotate` the file grows without bound, and `akit run` says so when it
+starts. A reload changes `time_zone` and every `rotate` field in place; `output` and `format` take
+a restart.
 
 ```fit
 listener web :8080
@@ -541,6 +554,24 @@ access_log {
 	level warn
 	format line
 	time_zone UTC
+}
+
+route { handler respond { body hello } }
+```
+
+A file rotated every day at local midnight or at 100 MiB, kept for two weeks and at most 2 GiB:
+
+```fit
+listener web :8080
+
+access_log {
+	output /var/log/akit/access.log
+	rotate {
+		interval 24h
+		max_bytes 100MiB
+		max_age 336h
+		max_total_bytes 2GiB
+	}
 }
 
 route { handler respond { body hello } }
@@ -558,8 +589,23 @@ route { handler respond { body hello } }
 | `format` | string: `json`, `text`, `line` | `"json"` | How a request's line is written, with the same fields whichever: json, a JSON object; text, time, level, msg and the fields as key=value (logfmt); or line, the time and level, then the fields as key=value, as akit's own log writes lines. A request's level is its status's, as level says. json when left out. A change takes a restart. |
 | `level` | string: `info`, `warn`, `error` | `"info"` | The least level of the requests written: a response with a status below 400 is info, a 4xx warn and a 5xx error, so warn writes the requests answered with 4xx and 5xx, and error those answered with 5xx. Every request when left out. A change takes effect on reload. |
 | `output` | string | `"stdout"` | "stdout", "stderr", or the path of a file lines are appended to; "stdout" when left out. |
-| `rotate` | object |  | **Not supported yet**: refused by name. Rotate the file output names, and remove old rotated files: the size and interval a file is rotated at, and the age, count and total size past which rotated files are removed. None when left out: the file grows without bound, as before. |
+| `rotate` | [object](#cfg-access-log-rotate) |  | Rotate the file output names, and remove old rotated files: the size and interval a file is rotated at, and the age, count and total size past which rotated files are removed. None when left out: the file grows without bound, as before. |
 | `time_zone` | string |  | The zone a line's time is written in, and the zone a file's interval is rotated at: local (the default), utc, or an IANA zone name such as Asia/Shanghai. json and text wrote UTC and line local before this setting; now every format writes this zone, local when left out, and 24h turns at local midnight. A change takes effect on reload. |
+<!-- END GENERATED -->
+
+### `access_log.rotate`
+
+<!-- BEGIN GENERATED: access_log.rotate -->
+<a id="cfg-access-log-rotate"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `compress` | boolean | `true` | Gzip a file when it is rotated. On when left out. |
+| `interval` | duration |  | How long a file is written before it is rotated, at the next period boundary of the log's time_zone: 24h turns at midnight, 1h on the hour; a fraction of a second, or a period over 24h that is not a whole number of days, is refused. Off when left out. |
+| `max_age` | duration | `"720h"` | How long a rotated file is kept after it was last written: 720h (30 days) when left out; 0 keeps it until a count or size limit removes it. |
+| `max_bytes` | integer, 0 or more | `1073741824` | How large a file may grow before it is rotated: a write that would take it past this starts a new file. 1 GiB when left out; 0 does not rotate by size. |
+| `max_files` | integer, 0 or more |  | The most rotated files kept, newest first; 0 or left out has no count limit. |
+| `max_total_bytes` | integer, 0 or more | `1073741824` | The most the rotated files may total, the oldest removed until they fit. 1 GiB when left out; 0 does not limit the total. |
 <!-- END GENERATED -->
 
 ## Telemetry

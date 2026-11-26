@@ -52,7 +52,7 @@ use akit_admin::{
 };
 use akit_config::{Config, ConfigFile, Error, Errors, LogFormat};
 use akit_observe::metrics::{ConfigStats, Metrics};
-use akit_observe::{AccessLog, Format, MetricsExporter, Otlp, Tracer, Zone};
+use akit_observe::{AccessLog, Files, Format, LogFile, MetricsExporter, Otlp, Tracer, Zone};
 use akit_provider::{Kinds, Provider, Updates};
 use akit_runtime::upstream::EngineSlot;
 use akit_runtime::{Env, Graph, GraphCell, HandlerParams, Info, Previous, Registry, compile};
@@ -254,20 +254,31 @@ fn compile_config(
     compile(config, &registry, &env).map_err(Failure::Config)
 }
 
-/// Opens the access log `c` describes, its times in `zone`, as fit's `NewAccessLogFiles`.
-fn open_access_log(c: &akit_config::AccessLog, zone: Zone) -> std::io::Result<AccessLog> {
-    let out = akit_observe::open_output(&c.output)?;
+/// Opens the access log `c` describes, its times in `zone`, as fit's `NewAccessLogFiles`: a file
+/// output through the sink `files` keeps for its path (I81), rotated as `c.rotate` says; with
+/// the file's sink, which a reload changes the rotation and zone of.
+fn open_access_log(
+    c: &akit_config::AccessLog,
+    zone: Zone,
+    files: &Files,
+) -> std::io::Result<(AccessLog, Option<LogFile>)> {
     let mut opts = akit_observe::Options::new();
     opts.format = match c.format {
         LogFormat::Json => Format::Json,
         LogFormat::Text => Format::Text,
         LogFormat::Line => Format::Line,
     };
-    opts.zone = zone;
+    opts.zone = zone.clone();
     opts.min_status = c.min_status();
     opts.flush_interval = c.flush_interval;
     opts.buffer_bytes = c.buffer_bytes;
-    AccessLog::new(out, opts)
+    if !akit_config::is_file_output(&c.output) {
+        let out = akit_observe::open_output(&c.output)?;
+        return Ok((AccessLog::new(out, opts)?, None));
+    }
+    let file = files.open(&c.output, akit_config::rotation(c.rotate.as_ref()), zone)?;
+    let held = files.get(&c.output);
+    Ok((AccessLog::to_file(file, opts)?, held))
 }
 
 /// The certificate, key and authority files a config loaded, with their SHA-256, by path.
@@ -283,6 +294,8 @@ struct Runner<'a> {
     cell: &'a GraphCell,
     listeners: &'a mut akit_listener::Listeners,
     log: Option<&'a (AccessLog, akit_config::AccessLog)>,
+    /// The access log's file, when it writes one (I81): a reload changes its rotation and zone.
+    access_file: Option<&'a LogFile>,
     admin: Option<&'a akit_config::Admin>,
     cert_files: CertFiles,
     /// The process's metrics registry, which each graph is compiled with (I37).
@@ -351,7 +364,12 @@ impl Runner<'_> {
             (Some((l, first)), Some(c), Some(zone)) => {
                 if set {
                     l.set_min_status(c.min_status());
-                    l.set_zone(zone);
+                    l.set_zone(zone.clone());
+                    // The file's rotation and zone change in place, as fit's (I81).
+                    if let Some(f) = self.access_file {
+                        f.set_zone(zone);
+                        f.set_rotation(akit_config::rotation(c.rotate.as_ref()));
+                    }
                 }
                 if (&c.output, c.format, c.flush_interval, c.buffer_bytes)
                     != (
@@ -794,15 +812,19 @@ fn run(args: &[String]) -> ExitCode {
     print_warnings(&name, &config.warnings);
     // Opened before the graph, which writes to it, and closed after the engine, so that every
     // response finished has its line written.
+    // The log files the process writes, a sink a path (I81).
+    let log_files = Files::new();
+    let mut access_file = None;
     let log = match (&config.access_log, zone) {
-        (Some(c), Some(zone)) => match open_access_log(c, zone) {
-            Ok(l) => {
-                if !matches!(c.output.as_str(), "stdout" | "stderr") {
+        (Some(c), Some(zone)) => match open_access_log(c, zone, &log_files) {
+            Ok((l, f)) => {
+                if akit_config::is_file_output(&c.output) && c.rotate.is_none() {
                     eprintln!(
                         "akit: access log file {} has no rotate: it will grow without bound",
                         c.output
                     );
                 }
+                access_file = f;
                 Some((l, c.clone()))
             }
             Err(e) => {
@@ -1001,6 +1023,7 @@ fn run(args: &[String]) -> ExitCode {
         cell: &cell,
         listeners: &mut listeners,
         log: log.as_ref(),
+        access_file: access_file.as_ref(),
         admin: admin.as_ref(),
         cert_files,
         acme: &acme,

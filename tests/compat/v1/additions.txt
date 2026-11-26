@@ -9,3 +9,10 @@
 #            security hole or bound a resource); written by hand, with the reason in a comment
 #            above it and in the release notes.
 config	added	supported	limits.max_pending_bytes
+config	added	supported	access_log.rotate
+config	added	supported	access_log.rotate.compress
+config	added	supported	access_log.rotate.interval
+config	added	supported	access_log.rotate.max_age
+config	added	supported	access_log.rotate.max_bytes
+config	added	supported	access_log.rotate.max_files
+config	added	supported	access_log.rotate.max_total_bytes

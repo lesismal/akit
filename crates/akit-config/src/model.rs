@@ -401,7 +401,8 @@ pub struct Engine {
 
 /// `access_log`: where and how a line is written for each request, as fit's `config.AccessLog`.
 /// Lines are buffered and written by a thread of their own; lines past `buffer_bytes` are
-/// dropped and counted. `rotate` is refused as not supported yet.
+/// dropped and counted. A file output is rotated and its rotated files removed as `rotate` says
+/// (I81).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AccessLog {
     /// `output`: `"stdout"`, `"stderr"`, or the path of a file lines are appended to;
@@ -420,6 +421,9 @@ pub struct AccessLog {
     /// `time_zone`, as written: `local` (or empty, the default), `utc`, or an IANA zone name.
     /// That it names a zone is checked when the log is opened (akit-observe's `Zone::load`).
     pub time_zone: String,
+    /// `rotate` (I81): how a file output is rotated and its rotated files removed; none when
+    /// left out, and the file grows without bound.
+    pub rotate: Option<crate::log::Rotate>,
 }
 
 impl AccessLog {
@@ -2088,9 +2092,10 @@ const ACCESS_LOG_FIELDS: &[&str] = &[
     "level",
     "format",
     "time_zone",
+    // I81: the file sink's rotation and retention (decision 033).
+    "rotate",
 ];
-// rotate comes with the file sink's rotation (fit's logs package).
-const ACCESS_LOG_FIT_ONLY: &[&str] = &["rotate"];
+const ACCESS_LOG_FIT_ONLY: &[&str] = &[];
 // I64: OpenTelemetry, every field.
 const TELEMETRY_FIELDS: &[&str] = &[
     "endpoint",
@@ -3116,6 +3121,9 @@ fn access_log(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<AccessLog> {
         .take("time_zone")
         .and_then(|v| d.string(v, &o.at("time_zone")))
         .unwrap_or_default();
+    let rotate = o
+        .take("rotate")
+        .and_then(|v| crate::log::rotate(d, v, &o.at("rotate")));
     o.finish(d, ACCESS_LOG_FIELDS, ACCESS_LOG_FIT_ONLY);
     Some(AccessLog {
         output,
@@ -3124,6 +3132,7 @@ fn access_log(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<AccessLog> {
         level,
         format,
         time_zone,
+        rotate,
     })
 }
 
