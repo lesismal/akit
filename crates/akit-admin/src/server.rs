@@ -129,7 +129,7 @@ struct Change {
 }
 
 /// What a [`Job`] changes.
-enum Op {
+pub(crate) enum Op {
     /// `POST /load`: a whole config, the body.
     Load(Vec<u8>),
     /// `PUT /config[/<pointer>]`: the value there set to the body; at the root, a whole config,
@@ -143,6 +143,16 @@ enum Op {
     Rollback(u64),
     /// `POST /reload`: the running config applied again.
     Reload,
+    /// `PUT /config/text` and `POST /config/import` (I91): a text's config, whole or some of its
+    /// members; with `import`, the running `admin` kept.
+    Text {
+        frag: Value,
+        members: Vec<String>,
+        import: bool,
+        /// The text, and its format, which the errors of the config it makes are placed in.
+        text: String,
+        format: akit_config::Format,
+    },
 }
 
 impl Op {
@@ -154,6 +164,7 @@ impl Op {
             Op::Delete(_) => "delete",
             Op::Rollback(_) => "rollback",
             Op::Reload => "reload",
+            Op::Text { .. } => "text",
         }
     }
 }
@@ -324,6 +335,21 @@ impl Job {
             ),
             Op::Rollback(n) => configs.rollback(n, if_match, mode, apply),
             Op::Reload => configs.reapply(source, if_match, mode, apply),
+            Op::Text {
+                frag,
+                members,
+                import,
+                text,
+                format,
+            } => configs
+                .change(
+                    source,
+                    if_match,
+                    mode,
+                    |cur| crate::text::edited(cur, frag, &members, import),
+                    apply,
+                )
+                .map_err(|e| crate::text::placed(e, &text, format)),
         };
         match r {
             Ok(o) => {
@@ -623,6 +649,10 @@ pub(crate) fn takes_config(method: &Method, path: &str) -> bool {
     match method {
         Method::Post => {
             path == "/load"
+                || path == "/config/render"
+                || path == "/config/parse"
+                || path == "/config/export"
+                || path == "/config/import"
                 || path == "/cache/purge"
                 || path == "/logs/rotate"
                 || path == "/logs/cleanup"
@@ -650,7 +680,7 @@ fn pointer_of(path: &str) -> Result<Vec<String>, Problem> {
 
 /// Whether the request asks for a dry run: `?dry_run=1` or `true`; anything but those, `0`,
 /// `false` or none is refused, as fit's `isDryRun`.
-fn mode_of(ctx: &Context) -> Result<Mode, Problem> {
+pub(crate) fn mode_of(ctx: &Context) -> Result<Mode, Problem> {
     match ctx.req().query_param("dry_run") {
         None | Some("" | "0" | "false") => Ok(Mode::Apply),
         Some("1" | "true") => Ok(Mode::DryRun),
@@ -756,6 +786,18 @@ impl Api {
                 }
             }
             "/config/effective" if read => effective(&self.0.configs.effective()),
+            // I91: the config as text, for the console's raw editors and transfer page.
+            "/config/render" if post => return crate::text::render(&self.0, ctx),
+            "/config/parse" if post => return crate::text::parse(&self.0, ctx),
+            "/config/export" if post => return crate::text::export(&self.0, ctx),
+            "/config/import" if post => return crate::text::put(&self.0, ctx, true),
+            "/config/text" if method == Method::Put => {
+                return crate::text::put(&self.0, ctx, false);
+            }
+            "/config/render" | "/config/parse" | "/config/export" | "/config/import" => {
+                not_allowed("POST")
+            }
+            "/config/text" => not_allowed("PUT"),
             p if p == "/config" || p.starts_with("/config/") => match method {
                 Method::Get | Method::Head => get_config(ctx, &self.0.configs, &path),
                 Method::Put | Method::Patch => match pointer_of(&path) {
@@ -778,7 +820,7 @@ impl Api {
 
 /// Hands `op` to the control thread, the request detached to be answered there; 503 when it
 /// cannot take it now.
-fn submit(shared: &Shared, ctx: &mut Context, op: Op, mode: Mode) {
+pub(crate) fn submit(shared: &Shared, ctx: &mut Context, op: Op, mode: Mode) {
     let if_match = ctx.header("If-Match").map(str::to_owned);
     let Some(reply) = ctx.detach() else { return };
     let job = Job(Box::new(Change {
@@ -915,6 +957,10 @@ pub(crate) fn read_body(
         .and_then(|l| l.trim().parse::<u64>().ok());
     if declared.is_some_and(|n| n > u64::try_from(max).unwrap_or(u64::MAX)) {
         return ctx.respond(too_large());
+    }
+    // No body: nothing will arrive to end it.
+    if declared == Some(0) || (declared.is_none() && ctx.header("Transfer-Encoding").is_none()) {
+        return done(ctx, Vec::new());
     }
     // The body as it arrives, within max: bounded by the length sent, when one is.
     let mut data = Vec::with_capacity(

@@ -201,7 +201,7 @@ Logging and Access lists tracks, are unused; I94–I96 are reserved for the Cons
 | **After 1.0: console and encrypted store** | | | |
 | I89 | Console I: `admin.console` and its logins: users, lockouts, sessions; `akit hash-password` | I87 | done |
 | I90 | Console II: the console's server: TLS, access, CSRF and origins, the Admin API in process | I89, I27 | done |
-| I91 | Console III: the pages: fit's workbench, the schema, the raw editors and transfer, the Logs page | I90, I83 | todo |
+| I91 | Console III: the pages: fit's workbench, the schema, the raw editors and transfer, the Logs page | I90, I83 | done |
 | I92 | The Admin API over TLS, off loopback (L1) | I27 | todo |
 | I93 | The encrypted store: `admin.store`, `akit store export` and `import`, `run -admin` | I90, akio A230, A231 | todo |
 
@@ -1387,7 +1387,8 @@ without one it changes the running config as the Admin API does, and password ch
 - **Touches**: `akit-admin` (`console`, `text`), `tools`, `tests/compat/v1`, `docs/guides`.
 - **fit**: `app/workbench`, `admin/check.go` (`renderText`, `parseText`, `putText`),
   `admin/transfer.go`; I104, I157.
-- **Status**: todo.
+- **Status**: done (2026-11-26). The pages are fit's, unchanged, with fit's name and its menus of
+  features akit does not run yet (decision 036). See the progress log.
 
 ### I92 The Admin API over TLS, off loopback
 

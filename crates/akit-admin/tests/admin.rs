@@ -1750,8 +1750,8 @@ fn v1_surface_is_frozen() {
     // A path the dispatcher names is one frozen, or the stem of one.
     let src = include_str!("../src/server.rs");
     let call = src
-        .split_once("fn call(&self, ctx: &mut Context)")
-        .and_then(|(_, rest)| rest.split_once("fn body_mode"))
+        .split_once("fn serve(&self, ctx: &mut Context)")
+        .and_then(|(_, rest)| rest.split_once("pub(crate) fn submit("))
         .map(|(body, _)| body)
         .unwrap();
     for lit in call.split('"').skip(1).step_by(2) {
@@ -1888,4 +1888,383 @@ fn admin_access_takes_no_restart() {
         ..with_access
     };
     assert!(akit_admin::admin_warning(Some(&first), Some(&moved)).is_some());
+}
+
+// I91: the config as text (fit's admin/text_test.go and transfer_test.go, ported).
+
+const TEXT_FRAGMENT: &str = r#"{"listeners": [{"name": "web", "address": "127.0.0.1:0"}],
+  "routes": [{"name": "r1", "handler": {"module": "respond", "params": {"body": "v1"}}}],
+  "upstreams": [{"name": "app", "addresses": ["127.0.0.1:9000"]}],
+  "log": {"level": "debug"}}"#;
+
+fn same_json(what: &str, want: &str, got: &str) {
+    let (w, g) = (
+        akit_config::value::parse(want).unwrap(),
+        akit_config::value::parse(got).unwrap_or_else(|e| panic!("{what}: {got:?}: {e:?}")),
+    );
+    assert_eq!(w, g, "{what}: {got}");
+}
+
+/// The first error of a refused text: its path, line and message.
+fn first_error(body: &str) -> (String, u64, String) {
+    let v = akit_config::value::parse(body).unwrap();
+    let Some(Value::Array(errs)) = v.get("errors") else {
+        panic!("{body}")
+    };
+    let e = &errs[0];
+    let s = |k: &str| match e.get(k) {
+        Some(Value::String(s)) => s.clone(),
+        _ => String::new(),
+    };
+    let line = match e.get("line") {
+        Some(Value::Number(n)) => n.parse().unwrap(),
+        _ => 0,
+    };
+    (s("path"), line, s("message"))
+}
+
+fn member(f: &Fixture, name: &str) -> Option<String> {
+    let v = akit_config::value::parse(&f.get("/config").body).unwrap();
+    v.get(name).map(Value::to_json)
+}
+
+#[test]
+fn text_render_parse() {
+    let f = start(&doc("v1"), admin(|_| {}));
+    for (format, ct) in [
+        ("conf", "text/plain"),
+        ("yaml", "application/yaml"),
+        ("json", "application/json"),
+    ] {
+        let r = f.send(
+            "POST",
+            &format!("/config/render?format={format}"),
+            "application/json",
+            TEXT_FRAGMENT,
+            "",
+        );
+        assert_eq!(r.status, 200, "{format}: {r:?}");
+        assert_eq!(r.header("Content-Type"), Some("text/plain; charset=utf-8"));
+        let p = f.send(
+            "POST",
+            &format!("/config/parse?format={format}"),
+            ct,
+            &r.body,
+            "",
+        );
+        assert_eq!(p.status, 200, "{format}: {p:?}");
+        assert_eq!(p.header("Content-Type"), Some("application/json"));
+        same_json(
+            &format!("the fragment after {format}"),
+            TEXT_FRAGMENT,
+            &p.body,
+        );
+        // The empty config.
+        let r = f.send(
+            "POST",
+            &format!("/config/render?format={format}"),
+            "application/json",
+            "{}",
+            "",
+        );
+        assert_eq!(r.status, 200);
+        let p = f.send(
+            "POST",
+            &format!("/config/parse?format={format}"),
+            "text/plain",
+            &r.body,
+            "",
+        );
+        assert_eq!(p.body.trim(), "{}", "{format}");
+    }
+    for (query, body, want) in [
+        ("", TEXT_FRAGMENT, "conf, yaml or json"),
+        ("format=toml", TEXT_FRAGMENT, "conf, yaml or json"),
+        ("format=json", "[1]", "a config is a JSON object"),
+        ("format=conf", "{", "not a config"),
+    ] {
+        let r = f.send(
+            "POST",
+            &format!("/config/render?{query}"),
+            "application/json",
+            body,
+            "",
+        );
+        assert_eq!(r.status, 400, "{query} {body}");
+        assert!(r.body.contains(want), "{query}: {}", r.body);
+    }
+}
+
+#[test]
+fn text_parse_errors() {
+    let f = start(&doc("v1"), admin(|_| {}));
+    for (format, body) in [
+        ("conf", "listener web {\n\taddress :8080\n"),
+        ("json", r#"{"listeners": [}"#),
+    ] {
+        let r = f.send(
+            "POST",
+            &format!("/config/parse?format={format}"),
+            "text/plain",
+            body,
+            "",
+        );
+        assert_eq!(r.status, 400, "{format}: {r:?}");
+        assert!(
+            r.body.contains(r#""error":"the text does not parse""#),
+            "{}",
+            r.body
+        );
+        assert!(r.body.contains(r#""line":"#), "{}", r.body);
+    }
+    // Comments and trailing commas, as fit's JSON takes them.
+    let r = f.send(
+        "POST",
+        "/config/parse?format=json",
+        "text/plain",
+        "{\n  \"listeners\": [ // the web listener\n    {\"name\": \"web\", \"address\": \"127.0.0.1:0\"},\n  ],\n}\n",
+        "",
+    );
+    assert_eq!(r.status, 200, "{r:?}");
+    let r = f.send(
+        "POST",
+        "/config/parse?format=yaml",
+        "text/plain",
+        "- a\n- b\n",
+        "",
+    );
+    assert_eq!(r.status, 400);
+    assert!(r.body.contains("not a config object"), "{}", r.body);
+}
+
+#[test]
+fn text_part_save() {
+    let f = start(&doc("v1"), admin(|_| {}));
+    let etag = f.configs.current().etag.clone();
+    let r = f.send(
+        "PUT",
+        "/config/text?format=conf&members=listeners",
+        "text/plain",
+        "listener web {\n\taddress 127.0.0.1:0\n\tprotocols http/1.1\n}\n",
+        &etag,
+    );
+    assert_eq!(r.status, 200, "{r:?}");
+    assert_eq!(r.header(VERSION_HEADER), Some("2"));
+    same_json(
+        "listeners",
+        r#"[{"name": "web", "address": "127.0.0.1:0", "protocols": ["http/1.1"]}]"#,
+        &member(&f, "listeners").unwrap(),
+    );
+    same_json(
+        "routes kept",
+        r#"[{"handler": {"module": "respond", "params": {"body": "v1"}}}]"#,
+        &member(&f, "routes").unwrap(),
+    );
+    let r = f.send(
+        "PUT",
+        "/config/text?format=yaml&members=upstreams",
+        "text/plain",
+        "upstreams:\n  - name: app\n    addresses:\n      - 127.0.0.1:9000\n",
+        "",
+    );
+    assert_eq!(r.status, 200, "{r:?}");
+    assert!(member(&f, "upstreams").is_some());
+    // A member the text leaves out is removed.
+    let r = f.send(
+        "PUT",
+        "/config/text?format=yaml&members=upstreams",
+        "text/plain",
+        "# no upstreams\n",
+        "",
+    );
+    assert_eq!(r.status, 200, "{r:?}");
+    assert_eq!(member(&f, "upstreams"), None);
+    let r = f.send(
+        "PUT",
+        "/config/text?format=json&members=routes",
+        "text/plain",
+        r#"{"routes": [{"name": "r2", "handler": {"module": "respond", "params": {"body": "v2"}}}]}"#,
+        &f.configs.current().etag,
+    );
+    assert_eq!(r.status, 200, "{r:?}");
+    assert_eq!(f.served(), "v2");
+    let before = f.configs.current().number;
+    let r = f.send(
+        "PUT",
+        "/config/text?format=conf&members=listeners",
+        "text/plain",
+        "listener web 127.0.0.1:0\nroute r3 { handler respond { body v9 } }\n",
+        "",
+    );
+    assert_eq!(r.status, 400);
+    assert!(
+        r.body
+            .contains(r#"the text sets \"routes\", which this page does not edit"#),
+        "{}",
+        r.body
+    );
+    let r = f.send(
+        "PUT",
+        "/config/text?format=json&members=admin,listeners",
+        "text/plain",
+        r#"{"listeners": []}"#,
+        "",
+    );
+    assert_eq!(r.status, 400);
+    assert!(r.body.contains("admin cannot be edited this way"));
+    // An invalid listener: its error placed in the text.
+    let r = f.send(
+        "PUT",
+        "/config/text?format=conf&members=listeners",
+        "text/plain",
+        "listener web {\n\taddress bogus\n}\n",
+        "",
+    );
+    assert_eq!(r.status, 400, "{r:?}");
+    assert!(
+        r.body
+            .contains("the config was not applied; the running config stays")
+    );
+    let (path, line, _) = first_error(&r.body);
+    assert_eq!(
+        (path.as_str(), line),
+        ("listeners[0].address", 2),
+        "{}",
+        r.body
+    );
+    assert_eq!(f.configs.current().number, before);
+    assert_eq!(f.served(), "v2");
+    let r = f.send(
+        "PUT",
+        "/config/text?format=json&members=listeners",
+        "text/plain",
+        r#"{"listeners": [{"name": "web", "address": "127.0.0.1:0"}]}"#,
+        "\"stale\"",
+    );
+    assert_eq!(r.status, 412, "{r:?}");
+    for query in ["", "format=toml"] {
+        let r = f.send(
+            "PUT",
+            &format!("/config/text?{query}"),
+            "text/plain",
+            "{}",
+            "",
+        );
+        assert_eq!(r.status, 400);
+        assert!(r.body.contains("conf, yaml or json"));
+    }
+    let r = f.send("PUT", "/config/text?format=store", "text/plain", "{}", "");
+    assert!(r.body.contains("admin.store"), "{}", r.body);
+}
+
+#[test]
+fn text_whole_config() {
+    let f = start(&doc("v1"), admin(|_| {}));
+    let r = f.send(
+        "PUT",
+        "/config/text?format=conf",
+        "text/plain",
+        "listener web {\n\taddress bogus\n}\n\nroute r1 { handler respond { body v1 } }\n",
+        "",
+    );
+    assert_eq!(r.status, 400, "{r:?}");
+    let (path, line, _) = first_error(&r.body);
+    assert_eq!(
+        (path.as_str(), line),
+        ("listeners[0].address", 2),
+        "{}",
+        r.body
+    );
+    assert_eq!(f.served(), "v1");
+    let r = f.send(
+        "PUT",
+        "/config/text?format=conf",
+        "text/plain",
+        "listener web 127.0.0.1:0\n\nroute r1 {\n\thandler respond {\n\t\tbody v3\n\t}\n}\n",
+        "",
+    );
+    assert_eq!(r.status, 200, "{r:?}");
+    assert_eq!(f.served(), "v3");
+    same_json(
+        "the whole config",
+        r#"{"listeners": [{"name": "web", "address": "127.0.0.1:0"}], "routes": [{"name": "r1", "handler": {"module": "respond", "params": {"body": "v3"}}}]}"#,
+        &f.get("/config").body,
+    );
+    // A dry run checks, and applies nothing.
+    let r = f.send(
+        "PUT",
+        "/config/text?format=json&dry_run=1",
+        "text/plain",
+        &doc("v4"),
+        "",
+    );
+    assert_eq!(r.status, 200, "{r:?}");
+    assert_eq!(f.served(), "v3");
+}
+
+#[test]
+fn export_and_import() {
+    let f = start(&doc("v1"), admin(|_| {}));
+    for format in ["conf", "yaml", "json"] {
+        let r = f.send(
+            "POST",
+            "/config/export",
+            "application/json",
+            &format!(r#"{{"format": "{format}"}}"#),
+            "",
+        );
+        assert_eq!(r.status, 200, "{format}: {r:?}");
+        let cd = r.header("Content-Disposition").unwrap();
+        assert!(
+            cd.starts_with(r#"attachment; filename="fit-config-v"#)
+                && cd.ends_with(&format!(".{format}\"")),
+            "{cd}"
+        );
+        // Imported back: the same config, as a new version.
+        let i = f.send(
+            "POST",
+            &format!("/config/import?format={format}"),
+            "text/plain",
+            &r.body,
+            "",
+        );
+        assert_eq!(i.status, 200, "{format}: {i:?}");
+        assert_eq!(f.served(), "v1");
+    }
+    let r = f.send(
+        "POST",
+        "/config/export",
+        "application/json",
+        r#"{"format": "json", "members": ["routes"]}"#,
+        "",
+    );
+    assert_eq!(r.status, 200);
+    assert!(r.body.contains("\"routes\"") && !r.body.contains("\"listeners\""));
+    assert!(
+        r.header("Content-Disposition")
+            .unwrap()
+            .contains("fit-routes-v")
+    );
+    let r = f.send(
+        "POST",
+        "/config/import?format=json&members=routes",
+        "text/plain",
+        r#"{"routes": [{"handler": {"module": "respond", "params": {"body": "v5"}}}]}"#,
+        "",
+    );
+    assert_eq!(r.status, 200, "{r:?}");
+    assert_eq!(f.served(), "v5");
+    for (body, want) in [
+        (r#"{"format": "toml"}"#, "conf, yaml or json"),
+        (r#"{"format": "store"}"#, "admin.store"),
+        (
+            r#"{"format": "json", "members": ["admin"]}"#,
+            "admin is not exported",
+        ),
+        ("[", "the body must be"),
+    ] {
+        let r = f.send("POST", "/config/export", "application/json", body, "");
+        assert_eq!(r.status, 400, "{body}: {r:?}");
+        assert!(r.body.contains(want), "{body}: {}", r.body);
+    }
 }

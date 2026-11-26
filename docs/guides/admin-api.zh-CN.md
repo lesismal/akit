@@ -55,6 +55,9 @@ API，所以不接受其他地址：请在本机、经 SSH 隧道或用 `docker 
 | `GET /metrics` | Prometheus 文本格式的指标 |
 | `GET /cache`、`POST /cache/purge` | 每个缓存 zone 保存了什么，以及清除（[缓存](caching.zh-CN.md)） |
 | `GET /logs`、`POST /logs/rotate`、`POST /logs/cleanup` | `log` 和 `access_log` 的日志文件及其切割设置和磁盘上的文件，立即切割其中一个，以及按保留策略删除的文件：删除，或（`dry_run`）只列出 |
+| `POST /config/render?format=`、`POST /config/parse?format=` | 把一个配置片段（JSON 对象）写成 `.conf`、`yaml` 或 `json`；以及这样一段文本的 JSON |
+| `PUT /config/text?format=&members=` | 把一段文本作为整个配置，或只作为其中那些顶层成员应用，其余保留；`If-Match` 和 `dry_run` 同 `PUT /config`；其错误定位到文本中的行 |
+| `POST /config/export`、`POST /config/import?format=&members=` | 配置（不含 `admin`，秘密被遮蔽）或其部分成员导出为文件；以及应用一个文件，保留 `admin` |
 | `GET /dashboard/` | 状态和配置的只读仪表盘 |
 
 带 `If-Match: <etag>` 的修改，若配置在读取之后已被改变，则以 412 拒绝，这样两个客户端不会互相覆盖。带 `?dry_run=1` 时，修改

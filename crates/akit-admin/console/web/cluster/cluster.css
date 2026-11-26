@@ -1,0 +1,94 @@
+/* The Cluster menu's pages (cluster/*.js): the overview's cards and filter, the members' labels, problems and
+   certificates, the member's form. The rest is core/ui.css, which index.html loads before this file.
+
+   集群菜单的页面（cluster/*.js）：概览的卡片与筛选、成员的标签、问题与证书、成员表单。其余样式在 core/ui.css 中；
+   index.html 在本文件之前加载它。 */
+
+/* The state tiles, which filter by their state when clicked. / 状态磁贴，点击即按其状态筛选。 */
+.cl-stat { cursor: pointer; transition: border-color .15s; }
+.cl-stat:hover, .cl-stat:focus-visible { border-color: var(--border-2); outline: none; }
+.cl-stat.is-active { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
+
+/* The filter's controls on one wrapping row. / 筛选控件排成可换行的一行。 */
+.cl-filter { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.cl-filter .input { width: auto; flex: 1 1 180px; min-width: 0; }
+.cl-filter .cl-sel { flex: 2 1 260px; font-family: var(--mono); }
+.cl-filter .select { width: auto; }
+.btn.is-active { background: var(--primary-soft); color: var(--primary); }
+
+/* A card per member, its state the colour of its left edge. / 每个成员一张卡片，左边线为其状态的颜色。 */
+.cl-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+.cl-card { border-left: 4px solid var(--border-2); min-width: 0; }
+.cl-card--ok { border-left-color: var(--ok); }
+.cl-card--warn { border-left-color: var(--warn); }
+.cl-card--danger { border-left-color: var(--danger); }
+.cl-card .card__head { gap: 8px; flex-wrap: wrap; }
+.cl-card .card__head h2 a { color: inherit; text-decoration: none; }
+.cl-card .card__head h2 a:hover { text-decoration: underline; }
+.cl-card .card__body { display: flex; flex-direction: column; gap: 8px; }
+.cl-card .kv { margin: 0; }
+
+.cl-health { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.cl-health__why { font-size: 12px; font-weight: 600; color: var(--text-2); margin-left: 4px; }
+.cl-msg { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Labels, each a link that filters the overview. / 标签，每个都是筛选概览的链接。 */
+.cl-labels { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+.cl-label { font: 11.5px/1.6 var(--mono); padding: 0 7px; border-radius: 999px; background: var(--surface-3); color: var(--text-2); text-decoration: none; white-space: nowrap; }
+.cl-label:hover { background: var(--primary-soft); color: var(--primary); }
+
+/* A problem: its kind, message and hint. / 问题：类型、消息与提示。 */
+.cl-problem { display: flex; flex-direction: column; gap: 4px; }
+.cl-problem__msg { overflow-wrap: anywhere; font-size: 13px; }
+
+/* A certificate, its fingerprint in full. / 证书，指纹完整显示。 */
+.cl-cert { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); }
+.cl-fp { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; word-break: break-all; }
+.cl-url { white-space: nowrap; }
+.cl-details > summary { cursor: pointer; color: var(--muted); font-size: 13px; margin-bottom: 8px; }
+
+/* The member's form: its errors under their fields, the test's result below. / 成员表单：错误显示在对应字段下，测试结果在下方。 */
+.cl-form [hidden] { display: none !important; }
+.cl-err { color: var(--danger); }
+.cl-result:empty { display: none; }
+
+.cl-bar { flex-wrap: wrap; gap: 8px; }
+.cl-up { display: flex; flex-direction: column; gap: 6px; }
+/* What a flush card says when it has no table to show: padded as a card's body. / 无表格可显示时，贴边卡片中的文字按卡片主体留白。 */
+.cl-flush > :not(.table-wrap) { margin: 14px 18px; }
+.cl-top { align-items: start; }
+.cl-card .card__head h2 { min-width: 0; }
+/* A linked member's link on its row (I149, enroll.js). / 行上连接型成员的连接状态（I149，enroll.js）。 */
+.cl-link-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
+.cl-link .small { overflow-wrap: anywhere; }
+/* Groups and operations (I144, groups.js): chips of members and groups, a group's variables, the box column, the
+   operations bar. / 分组与操作（I144，groups.js）：成员与分组的标签块、分组变量、复选框列、操作栏。 */
+.cl-mono { font-family: var(--mono); }
+.cl-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.cl-chip { font: 12px/1.7 var(--mono); padding: 0 8px; border-radius: 999px; background: var(--surface-3); color: var(--text-2); text-decoration: none; white-space: nowrap; }
+a.cl-chip:hover { background: var(--primary-soft); color: var(--primary); }
+.cl-warn { color: var(--warn); }
+.cl-preview { min-height: 24px; }
+.cl-var { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto; gap: 6px; align-items: center; }
+.cl-vars-view { display: flex; flex-direction: column; gap: 2px; overflow-wrap: anywhere; }
+.cl-pick { width: 32px; }
+.cl-ops { flex-wrap: wrap; }
+.cl-check { gap: 8px; cursor: pointer; }
+
+/* Users and audit (I148): a user's roles on groups, each a chip; an audit entry's diff, each line by its kind.
+   用户与审计（I148）：用户在分组上的角色，每个一枚标签；审计条目的差异，按行类型着色。 */
+.cl-rchips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.cl-rchip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 8px; border-radius: 999px; background: var(--surface-3); font-size: 12px; }
+.cl-rchip--missing { opacity: .6; text-decoration: line-through; }
+.cl-rchip .select { width: auto; }
+.cl-rchip__x { border: 0; background: none; color: var(--text-2); cursor: pointer; font-size: 14px; line-height: 1; padding: 0 4px; border-radius: 999px; }
+.cl-rchip__x:hover { background: var(--danger-soft); color: var(--danger); }
+.cl-diff { margin: 0; padding: 8px 0; max-height: 50vh; overflow: auto; font-size: 12px; line-height: 1.45; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-xs); }
+.cl-diff > span { display: block; padding: 0 10px; white-space: pre; }
+.cl-diff__add { background: var(--ok-soft); }
+.cl-diff__del { background: var(--danger-soft); }
+.cl-diff__hunk { color: var(--primary); }
+.cl-diff__file { color: var(--muted); }
+/* I206: the Overview's BitTorrent card, and the targets picked in a new distribution. / I206：概览的 BitTorrent 卡片与新建分发中选择的目标。 */
+.cl-ovcards { display: grid; gap: 12px; }
+.cl-picks { display: flex; flex-wrap: wrap; gap: 4px 16px; max-height: 220px; overflow: auto; }

@@ -193,7 +193,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | **1.0 之后：控制台与加密的 store** | | | |
 | I89 | 控制台 I：`admin.console` 及其登录：用户、锁定、会话；`akit hash-password` | I87 | done |
 | I90 | 控制台 II：控制台的服务器：TLS、访问控制、CSRF 与来源、进程内的 Admin API | I89, I27 | done |
-| I91 | 控制台 III：页面：fit 的工作台、schema、原文编辑器和导入导出、“日志”页面 | I90, I83 | todo |
+| I91 | 控制台 III：页面：fit 的工作台、schema、原文编辑器和导入导出、“日志”页面 | I90, I83 | done |
 | I92 | 非回环地址上带 TLS 的 Admin API（L1） | I27 | todo |
 | I93 | 加密的 store：`admin.store`、`akit store export` 和 `import`、`run -admin` | I90, akio A230, A231 | todo |
 
@@ -1199,7 +1199,7 @@ Admin API 并列，在自己的登录之后于进程内调用 Admin API 的端�
   `TestTextPartSave`、`TestTextWholeConfig`）和 `transfer_test.go` 中文本格式的用例通过；提供的文件与 fit 的逐字节相同。
 - **涉及**：`akit-admin`（`console`、`text`）、`tools`、`tests/compat/v1`、`docs/guides`。
 - **fit**：`app/workbench`、`admin/check.go`（`renderText`、`parseText`、`putText`）、`admin/transfer.go`；I104、I157。
-- **状态**：todo。
+- **状态**：已完成（2026-11-26）。页面即 fit 的，原样提供，带 fit 的名字和 akit 尚不运行的功能的菜单（决定 036）。见进度日志。
 
 ### I92 非回环地址上带 TLS 的 Admin API
 

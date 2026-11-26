@@ -48,6 +48,17 @@ engine of its own. akit and fit are both under the Apache License 2.0.
    fit (I62) and which an encrypted store would make unreadable to it.
 7. **`akit hash-password` shows the password typed at a terminal** until akio can turn the echo off
    (A233); the prompt says so and how to hide it.
+8. **The pages are fit's workbench, served unchanged** (I91). fit's licence (Apache-2.0, akit's
+   too) lets akit serve them, and they need no build: they are plain files that fit embeds and
+   serves from memory. `tools/console-pages.py` copies `app/workbench/web` and fit's licence at the
+   fit commit the compatibility gate pins (`tests/compat/fixtures/PINS`) into
+   `crates/akit-admin/console`, and writes the list `include_bytes!` builds into akit; `make
+   compat-check` and a test check that the list is the directory's and the commit the pin. The
+   forms are made from fit's schema at the same pin (`GET /api/m/admin/schema`). akit adds what the
+   config pages call that it did not have, as Admin API endpoints, fit's: `/config/render`,
+   `/config/parse`, `/config/text`, `/config/export` and `/config/import` (their `store` format
+   waits for I93); a text's errors are placed at their lines in it (`akit_config::position_of`),
+   as fit's adapter places them.
 
 ## Consequences
 
@@ -56,3 +67,9 @@ engine of its own. akit and fit are both under the Apache License 2.0.
 - fit's console users and their hashes work in akit as they are.
 - Until A232, a client without a login can hold up to `max_conns` connections for akio's head
   timeout each.
+- The pages say "fit", and their menu holds fit's features that akit does not run yet: their forms
+  edit the draft, a save that sets one is refused as not supported yet, and the endpoints akit does
+  not have (`/node`, `/config/check`, the media, BitTorrent and sync pages') answer 404. An
+  `index.html` of akit's own loading only the modules akit runs would change one file of fit's;
+  it is the other choice in [row 16](../decisions-pending.md).
+- Moving the gate's pin moves the pages with it: `tools/console-pages.py` is run in the same commit.

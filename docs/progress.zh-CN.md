@@ -19,6 +19,25 @@
 
 ## 日志
 
+### 2026-11-26：I91，控制台的页面
+
+- 原样提供 fit 的工作台（[决定 036](decisions/036-console.zh-CN.md)，第 8 条）：`tools/console-pages.py` 在门禁固定的提交（`7daee573`）上
+  把 fit 的 `app/workbench/web`（69 个文件，2.5 MB）和其许可证复制到 `crates/akit-admin/console`，并写出 `console/files.rs`，由其中的
+  `include_bytes!` 编进 akit；从内存提供，带 fit 的内容类型和 `Cache-Control: no-cache`，`/` 即 `index.html`。`make compat-check` 运行其
+  `--check`，一个测试把编进的文件与该目录比对；固定提交移动时由 `tests/compat/update-fixtures.sh` 运行它。`GET /api/m/admin/schema`
+  回答门禁的 `fit.schema.json`。
+- Admin API 的文本端点，即 fit 的（`admin/check.go`、`admin/transfer.go`），在 `akit_admin::text` 中：`POST /config/render` 和
+  `/config/parse`（`.conf`、YAML、JSON，通过 `akit_config::adapt::document`）、`PUT /config/text`（`members=`、`dry_run`、`If-Match`；
+  检查文本设置的成员是否属于该页面）、`POST /config/export`（不含 `admin`，秘密像读取时那样被遮蔽）和 `/config/import`（保留 `admin`）。
+  文本中的 `[redacted]` 秘密像 `PUT /config` 那样放回；其错误定位到文本中的行（新增的 `akit_config::position_of`），同 fit 的 adapter。
+  在 I93 之前拒绝 `store` 格式。标记为 v1 新增。冻结测试现在从 `Api::serve` 读取分发器的路径（I90 把它们移到了那里）。没有请求体的修改
+  现在会得到回答（此前会挂起）。
+- 在浏览器中检查（Browser 面板，带控制台的 `akit run`）：登录、来自 `/status` 的概览、日志页面（其文件、**立即切割**）、`.conf` 标签页
+  （渲染与解析、定位到行的解析错误）、`limits` 的表单编辑、版本与回滚；每次修改都记入 `admin` 日志记录器。akit 拒绝的 fit 功能的菜单，
+  以及 akit 缺少其端点的页面（`/node`、`/config/check`），按决定 036 所说显示。
+- 测试：fit 的 `TestTextRenderParse`、`TestTextParseErrors`、`TestTextPartSave`、`TestTextWholeConfig` 和 `transfer_test.go` 中文本格式的
+  用例（`crates/akit-admin/tests/admin.rs`），`pages_and_schema`（`tests/console.rs`）。指南的页面一节。下一步：I92。
+
 ### 2026-11-26：I90，控制台的服务器
 
 - `akit_admin::console::server`（fit 的 `app/console` 和 `admin/console.go`；[决定 036](decisions/036-console.zh-CN.md)）：

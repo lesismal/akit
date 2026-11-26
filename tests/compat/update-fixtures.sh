@@ -65,6 +65,8 @@ for doc in "$root/tests/compat/SOURCE.md" "$root/tests/compat/SOURCE.zh-CN.md"; 
 done
 
 python3 -I "$root/tools/compat-inventory.py" --root "$root"
+# The console's pages, fit's workbench at the same commit (I91).
+FIT_REPO="$work/fit" python3 -I "$root/tools/console-pages.py"
 
 echo "fit $fit_hash, fit-examples $examples_hash"
 echo "templates: $(find "$fixtures/fit/templates" -type f \( -name '*.conf' -o -name '*.json' -o -name '*.yaml' \) | wc -l | tr -d ' ') files"

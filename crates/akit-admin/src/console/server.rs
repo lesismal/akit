@@ -12,9 +12,11 @@
 //! GET  /api/workbench              {"user", "modules": ["admin"]}
 //! GET  /api/node                   the Admin API's GET /node
 //! GET  /api/m/admin/users          {"user", "store", "users"}
+//! GET  /api/m/admin/schema         fit's config schema (I91)
 //! POST /api/m/admin/account/password, /api/m/admin/users/password
 //!                                  a password changed: 409 without admin.store (I93)
 //! *    /api/m/admin/<path>         the Admin API's endpoint at /<path>, called in process
+//! GET  /<file>                     fit's workbench, its files as fit ships them (I91)
 //! ```
 //!
 //! Every request but `POST /api/login` and `/api/logout` needs a session; every one but a read
@@ -422,6 +424,14 @@ impl Pages {
         };
         match (&method, sub.as_str()) {
             (Method::Get, "/users") => return ctx.respond(self.users(&s)),
+            // fit's config schema, which the pages' forms are made from (I91).
+            (Method::Get | Method::Head, "/schema") => {
+                return ctx.respond(Response::with_body(
+                    200,
+                    "application/schema+json",
+                    super::pages::SCHEMA.to_vec(),
+                ));
+            }
             (Method::Post, "/account/password" | "/users/password") => {
                 return ctx.respond(error(409, NO_STORE));
             }

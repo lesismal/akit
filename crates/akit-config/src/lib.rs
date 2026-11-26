@@ -499,3 +499,45 @@ pub fn from_json_file(path: &Path) -> Result<Config, Errors> {
     let src = String::from_utf8(data).map_err(|e| not_utf8(path, e.utf8_error().valid_up_to()))?;
     from_json(&src, Some(&path.display().to_string()))
 }
+
+/// The line and column (1-based) in `src` of the value the error path `path` names
+/// (`listeners[0].address`), or of the deepest part of it the text has: for an error found in
+/// the JSON a text was converted to, its place in the text (the console's raw editors, I91, as
+/// fit's adapter maps errors). `None` when the text does not parse.
+#[must_use]
+pub fn position_of(src: &Source<'_>, path: &str) -> Option<(u32, u32)> {
+    let root = match src.format {
+        Format::Json => json::parse(src.src).ok()?,
+        Format::Yaml => yaml::parse(src.src).ok()?,
+        Format::Conf => conf::parse(src.src, &|name| std::env::var(name).ok()).ok()?,
+    };
+    let mut cur = &root;
+    let mut off = root.off;
+    'walk: for seg in path.split('.').filter(|s| !s.is_empty()) {
+        let (name, rest) = seg.split_once('[').unwrap_or((seg, ""));
+        if !name.is_empty() {
+            let json::Kind::Object(ms) = &cur.kind else {
+                break 'walk;
+            };
+            let Some(m) = ms.iter().find(|m| m.key == name) else {
+                break 'walk;
+            };
+            cur = &m.value;
+            off = cur.off;
+        }
+        for idx in rest.split('[').map(|s| s.trim_end_matches(']')) {
+            let Ok(i) = idx.parse::<usize>() else {
+                continue;
+            };
+            let json::Kind::Array(items) = &cur.kind else {
+                break 'walk;
+            };
+            let Some(item) = items.get(i) else {
+                break 'walk;
+            };
+            cur = item;
+            off = cur.off;
+        }
+    }
+    Some(json::position(src.src, off))
+}

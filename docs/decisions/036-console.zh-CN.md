@@ -34,9 +34,20 @@ Apache License 2.0。
    L5（密钥未加密存放）仍为接受：fit 的 store 保存配置和控制台用户，不保存证书存储，而 akit 与 fit 共用证书存储（I62），加密的
    store 会让 fit 读不了它。
 7. **在 akio 能关闭回显之前（A233），`akit hash-password` 会显示在终端输入的密码**；提示中说明这一点以及如何隐藏。
+8. **页面即 fit 的工作台，原样提供**（I91）。fit 的许可证（Apache-2.0，与 akit 相同）允许 akit 提供它们，而且它们不需要构建：
+   是 fit 嵌入并从内存提供的纯文件。`tools/console-pages.py` 在兼容性门禁固定的 fit 提交（`tests/compat/fixtures/PINS`）上把
+   `app/workbench/web` 和 fit 的许可证复制到 `crates/akit-admin/console`，并写出由 `include_bytes!` 编进 akit 的文件列表；
+   `make compat-check` 和一个测试检查该列表就是该目录的文件、提交就是固定的提交。表单由同一固定提交上 fit 的 schema 生成
+   （`GET /api/m/admin/schema`）。配置页面调用而 akit 原本没有的端点，akit 作为 Admin API 端点按 fit 的样子补上：`/config/render`、
+   `/config/parse`、`/config/text`、`/config/export` 和 `/config/import`（其 `store` 格式等 I93）；文本的错误定位到文本中的行
+   （`akit_config::position_of`），同 fit 的 adapter。
 
 ## 影响
 
 - 在控制台中修改的配置会运行，并以控制台为来源记入 `/versions`；重启时再从配置文件开始，同没有 store 的 fit。
 - fit 的控制台用户及其哈希在 akit 中原样可用。
 - 在 A232 之前，没有登录的客户端最多可占用 `max_conns` 个连接，每个最长为 akio 的请求头超时。
+- 页面上显示“fit”，菜单中有 akit 尚不运行的 fit 功能：其表单编辑草稿，设置了其中之一的保存以“尚不支持”被拒绝，akit 没有的端点
+  （`/node`、`/config/check`、媒体、BitTorrent 和同步页面的端点）回答 404。只加载 akit 运行的模块的 akit 自己的 `index.html` 会改动
+  fit 的一个文件；它是[第 16 行](../decisions-pending.zh-CN.md)中的另一选择。
+- 移动门禁的固定提交时页面随之移动：在同一提交中运行 `tools/console-pages.py`。

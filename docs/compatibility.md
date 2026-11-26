@@ -129,6 +129,7 @@ version of the schema or the API, which says so in its list of changes.
 | `GET`, `HEAD` `/metrics` | Metrics in Prometheus's text format |
 | `GET`, `HEAD` `/cache`, `POST /cache/purge` | The cache's zones, and purges by URL, URL prefix, tag or zone |
 | `GET`, `HEAD` `/logs`, `POST /logs/rotate`, `POST /logs/cleanup` | The log files, one rotated now, and its retention applied or listed (added after the freeze, I83) |
+| `POST /config/render`, `POST /config/parse`, `PUT /config/text`, `POST /config/export`, `POST /config/import` | The config, or some of its top-level members (`?members=`), as `.conf`, YAML or JSON text (`?format=`), and a text or file applied, as fit's console's raw editors and transfer page call them (added after the freeze, I91; fit's `store` format waits for I93) |
 | `GET /dashboard/` | The dashboard, for people (not covered) |
 
 A path in the config is a JSON pointer's tokens. A change answers with the version applied, in the

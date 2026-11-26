@@ -76,6 +76,33 @@ change a user made with the config version it applied.
 does not have yet ([I93](../dev-plan.md#i93-the-encrypted-store)): until then the endpoints answer
 `409` and the users are the config's.
 
+## The pages
+
+After logging in, the workbench: fit's own pages, served byte for byte as fit ships them (fit's
+`app/workbench/web` at the fit commit the compatibility gate pins), so they say "fit". Its menu is
+one flat list: the config's global pages first (overview, listeners, the engine's ports, the global
+settings, the whole config as JSON, the versions with rollback, the consistency check, the logs and
+the account pages), then the protocol and feature pages. Each config page is a form made from fit's
+config schema, with each field's doc, and `.conf`, `.yaml` and `.json` tabs that edit its part of
+the config as text; **Save and apply** sends the draft (or the tab's text) with `If-Match`, and
+**Check** sends it with `?dry_run=1`. A config with errors is refused and its errors are shown at
+their paths (and, from a text tab, at their lines).
+
+The **Logs** page (fit's I157) lists each file output of `log` and the access log: the loggers
+writing there, the format and zone, the rotation and retention, the files on disk with their sizes
+and ages; **Rotate now** and **Clean up now** (with a preview), each in the `admin` logger; and the
+forms of `log` and `access_log`, whose zone, rotation and retention apply without a restart.
+
+What akit does not run yet shows as fit has it, and akit answers it as it answers the config:
+
+- The pages of fit's features that akit refuses in a config (streaming, media auth, WebRTC, the
+  tunnel and LLM roles, the media library, BitTorrent, sync) are in the menu; their forms edit the
+  draft, and a save that sets one is refused as "not supported yet".
+- Endpoints akit does not have answer 404, and the page that calls them says so: the consistency
+  check (`/config/check`), **This node** (`/node`), the cluster manager's marks
+  (`/node/managed`), and the media, BitTorrent and sync pages' own.
+- The `store` format of the transfer page, and changing a password, need `admin.store` (I93).
+
 ## For scripts
 
 The console's own endpoints, as fit's:
@@ -87,6 +114,7 @@ The console's own endpoints, as fit's:
 | `GET /api/session` | `{"user", "csrf"}` |
 | `GET /api/workbench` | the user and the modules served: `admin` |
 | `GET /api/m/admin/users` | the signed-in user, the users, and whether a store keeps them |
+| `GET /api/m/admin/schema` | fit's config schema, which the pages' forms are made from |
 | `/api/m/admin/<path>` | the Admin API's `/<path>`, behind the session instead of the token, as `GET /api/m/admin/config` |
 
 A program keeps the cookie and sends `csrf` in `X-Fit-Csrf` on every request but a GET or a HEAD:

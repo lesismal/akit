@@ -16,3 +16,6 @@ pub use server::{ADMIN_MODULE, COOKIE, CSP, CSRF_HEADER, IDLE_TIMEOUT, MAX_LOGIN
 pub const SOURCE_CONSOLE: &str = "console";
 
 pub(crate) use crate::server::accept_filter;
+
+/// The fit commit the console's pages are fit's workbench at (I91): the compatibility gate's pin.
+pub const PAGES_FIT_COMMIT: &str = pages::FIT_COMMIT;

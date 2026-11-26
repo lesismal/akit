@@ -14,6 +14,13 @@ admin	added	endpoint	GET	/logs
 admin	added	endpoint	HEAD	/logs
 admin	added	endpoint	POST	/logs/cleanup
 admin	added	endpoint	POST	/logs/rotate
+# I91: the config as text, for the console's raw editors and transfer page (fit's admin/check.go,
+# admin/transfer.go).
+admin	added	endpoint	POST	/config/export
+admin	added	endpoint	POST	/config/import
+admin	added	endpoint	POST	/config/parse
+admin	added	endpoint	POST	/config/render
+admin	added	endpoint	PUT	/config/text
 config	added	supported	access
 config	added	supported	access.allow
 config	added	supported	access.allow_files

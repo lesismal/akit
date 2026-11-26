@@ -1,0 +1,122 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>fit</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='4' fill='%236e6ef0'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="core/ui.css">
+  <link rel="stylesheet" href="gateway/config.css">
+  <link rel="stylesheet" href="gateway/check.css">
+  <link rel="stylesheet" href="gateway/features.css">
+  <link rel="stylesheet" href="gateway/engine.css">
+  <link rel="stylesheet" href="gateway/logs.css">
+  <link rel="stylesheet" href="gateway/media.css">
+  <link rel="stylesheet" href="ai/ai.css">
+  <link rel="stylesheet" href="cluster/cluster.css">
+  <link rel="stylesheet" href="cluster/switcher.css">
+  <link rel="stylesheet" href="cluster/templates.css">
+  <link rel="stylesheet" href="cluster/alerts.css">
+  <link rel="stylesheet" href="cluster/insight.css">
+  <link rel="stylesheet" href="sync/sync.css">
+  <link rel="stylesheet" href="bittorrent/bittorrent.css">
+  <script src="core/ui.js"></script>
+</head>
+<body>
+  <div id="app"></div>
+  <script src="core/workbench.js"></script>
+  <script src="core/tokens.js"></script>
+  <!-- The gateway's and the system's modules: the config's own, behind admin.console. / 网关与系统模块：配置本身的模块。 -->
+  <script src="gateway/schema-zh.js"></script>
+  <script src="gateway/config.js"></script>
+  <script src="gateway/overview.js"></script>
+  <script src="gateway/modules.js"></script>
+  <!-- The Engine menu: every listener port and the features it serves. / 引擎菜单：各监听端口及其提供的功能。 -->
+  <script src="gateway/engine.js"></script>
+  <!-- The media library's pages, before features.js so that their places of a save's problems come first: libraries, items
+       and their preview, channels on a timeline, playback URLs, keys and sessions, metrics, and their config pages (I138);
+       vendor/hls.min.js is loaded by them when a player first needs it. /
+       媒体库页面（在 features.js 之前加载，使其保存问题的位置优先）：媒体库、条目及其预览、时间线上的频道、播放 URL、密钥与会话、
+       指标及其配置页（I138）；播放器首次需要时由它们加载 vendor/hls.min.js。 -->
+  <script src="gateway/media.js"></script>
+  <!-- The gateway's features on pages of their own: streaming, media auth, WebRTC, the tunnel and LLM roles. / 网关功能各自成页：流媒体、媒体认证、WebRTC、隧道与 LLM 角色。 -->
+  <script src="gateway/features.js"></script>
+  <!-- The Sync menu: the sync role's pipelines, their state, lag and throughput, a pipeline's editor made from the schema with
+       Test connection and Dry run, its checkpoint and its dead letters (I190). /
+       同步菜单：sync 角色的管道、状态、延迟与吞吐，由 schema 生成的管道编辑器（含测试连接与试运行）、检查点与死信（I190）。 -->
+  <script src="sync/sync.js"></script>
+  <!-- The BitTorrent menu: the client's torrents with their files, peers and trackers, the add dialog and the alternative
+       rates, the tracker's totals and passkeys, publishing, live from the client's event stream (I204). /
+       BitTorrent 菜单：客户端的种子及其文件、peer 与 tracker，添加对话框与备用速率，tracker 的总计与 passkey，发布；
+       通过客户端的事件流实时更新（I204）。 -->
+  <script src="bittorrent/bittorrent.js"></script>
+  <!-- The consistency check: what fit runs compared with the config it runs from. / 一致性检查：运行状态与配置的比较。 -->
+  <script src="gateway/check.js"></script>
+  <!-- The logs: the files fit's log and the access log write, and their rotation and retention. / 日志：fit 日志与访问日志的文件及其切割与保留。 -->
+  <script src="gateway/logs.js"></script>
+  <!-- What a cluster manager owns in this fit's config, marked on its config pages, asked about before a change (I145). /
+       集群管理端在本 fit 配置中拥有的部分：在配置页面上标出，修改前先询问（I145）。 -->
+  <script src="gateway/managed.js"></script>
+  <!-- The account pages: the console users' own and each other's passwords. / 账户页面：控制台用户自己的及彼此的密码。 -->
+  <script src="account/account.js"></script>
+  <!-- The Cluster menu, when admin.cluster is set: the members' overview, the nodes and a member's page (I142). /
+       集群菜单（设置了 admin.cluster 时）：成员概览、节点与成员页（I142）。 -->
+  <script src="cluster/shared.js"></script>
+  <script src="cluster/overview.js"></script>
+  <script src="cluster/nodes.js"></script>
+  <script src="cluster/member.js"></script>
+  <!-- Add by enrollment, and each linked member's link, on the Nodes page (I149). / 节点页的“通过注册添加”及连接型成员的连接状态（I149）。 -->
+  <script src="cluster/enroll.js"></script>
+  <!-- Groups, and operations on a group's members or a selection of members (I144). / 分组，以及对分组成员或所选成员的操作（I144）。 -->
+  <script src="cluster/groups.js"></script>
+  <!-- Templates: config shared by a group, each member's sync state, Compare and Import from a node (I145). /
+       模板：分组共享的配置、各成员的同步状态、对比与从节点导入（I145）。 -->
+  <script src="cluster/templates.js"></script>
+  <!-- Rollouts: a change applied to many members in stages, planned, gated and rolled back (I146). /
+       发布：分阶段应用到多个成员的修改，含规划、健康检查与回滚（I146）。 -->
+  <script src="cluster/rollouts.js"></script>
+  <!-- Drift and alerts: members out of sync and their fixes as rollouts, alert rules, webhooks and silences (I147). /
+       漂移与告警：未同步的成员及以发布进行的修复、告警规则、Webhook 与静默（I147）。 -->
+  <script src="cluster/alerts.js"></script>
+  <!-- Users and audit: the users' roles, and the audit log of every cluster action (I148). /
+       用户与审计：用户的角色，以及每个集群操作的审计日志（I148）。 -->
+  <script src="cluster/users.js"></script>
+  <!-- Ask AI on the Cluster pages: the fleet, a failed batch, a drifting member (I153). /
+       集群页面上的“问 AI”：集群、失败的批次、漂移的成员（I153）。 -->
+  <script src="cluster/askai.js"></script>
+  <!-- Metrics, Logs and Certificates across the members, and the Overview's sparklines (I150). / 跨成员的指标、日志与证书，以及概览的迷你走势图（I150）。 -->
+  <script src="cluster/insight.js"></script>
+  <script src="cluster/bittorrent.js"></script>
+  <script src="cluster/cluster.js"></script>
+  <!-- The node switcher in the header: a member's own pages, opened through the manager (I143). /
+       页眉中的节点切换器：通过管理端打开成员自己的页面（I143）。 -->
+  <script src="cluster/switcher.js"></script>
+  <!-- The assistant's module, when admin.assistant is set: the chat panel on every page, its functions and its settings. /
+       助手模块（设置了 admin.assistant 时）：每个页面上的对话面板、其功能与设置。 -->
+  <script src="ai/panel.js"></script>
+  <!-- Ask AI on the pages: a save's errors, Consistency, Engine ports and routes, form fields, metrics, upstreams, link maps. /
+       各页面上的“问 AI”：保存错误、一致性检查、引擎端口与路由、表单字段、指标、上游、链路图。 -->
+  <script src="ai/ask.js"></script>
+  <script src="ai/functions.js"></script>
+  <script src="ai/skills.js"></script>
+  <script src="ai/proposals.js"></script>
+  <!-- The cards of the rollout plans and operations the cluster's propose tools make (I153). / 集群提案工具生成的发布规划与操作卡片（I153）。 -->
+  <script src="ai/plans.js"></script>
+  <script src="ai/audit.js"></script>
+  <script src="ai/mcp.js"></script>
+  <script src="ai/settings.js"></script>
+  <!-- The tunnel's roles. / 隧道各角色。 -->
+  <script src="tunnel/shared.js"></script>
+  <script src="tunnel/hub.js"></script>
+  <script src="tunnel/node.js"></script>
+  <script src="tunnel/proxy.js"></script>
+  <!-- The LLM feature's roles. / LLM 各角色。 -->
+  <script src="llm/peers.js"></script>
+  <script src="llm/jobs.js"></script>
+  <script src="llm/flow.js"></script>
+  <script src="llm/forms.js"></script>
+  <script src="llm/hub.js"></script>
+  <script src="llm/node.js"></script>
+  <script src="llm/proxy.js"></script>
+</body>
+</html>

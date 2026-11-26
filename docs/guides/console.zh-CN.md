@@ -59,6 +59,26 @@ route { handler respond { body "hello\n" } }
 **修改密码需要 store。** fit 把修改后的密码保存在 `admin.store` 中，akit 还没有它（[I93](../dev-plan.zh-CN.md#i93-加密的-store)）：
 在此之前相应端点回答 `409`，用户即配置中的用户。
 
+## 页面
+
+登录后即工作台：fit 自己的页面，按 fit 发布时的样子逐字节提供（兼容性门禁固定的 fit 提交上的 `app/workbench/web`），因此页面上
+显示的是“fit”。其菜单是一个扁平列表：先是配置的全局页面（概览、监听器、引擎的端口、全局设置、JSON 形式的整个配置、可回滚的版本、
+一致性检查、日志和账户页面），再是各协议和功能的页面。每个配置页面都是由 fit 的配置 schema 生成的表单，带每个字段的说明，以及
+以文本形式编辑该页面所管配置部分的 `.conf`、`.yaml` 和 `.json` 标签页；**保存并应用**带 `If-Match` 发送草稿（或该标签页的文本），
+**检查**以 `?dry_run=1` 发送。有错误的配置被拒绝，其错误显示在各自的路径处（从文本标签页发送时还显示在各自的行处）。
+
+**日志**页面（fit 的 I157）列出 `log` 和访问日志的每个文件输出：写入那里的日志记录器、格式和时区、切割和保留设置、磁盘上的文件及其
+大小和时间；**立即切割**和**立即清理**（带预览），每个操作都记入 `admin` 日志记录器；以及 `log` 和 `access_log` 的表单，其时区、切割和
+保留设置无需重启即生效。
+
+akit 还不运行的部分按 fit 的样子显示，akit 像回答配置那样回答它们：
+
+- akit 在配置中拒绝的 fit 功能（流媒体、媒体认证、WebRTC、隧道和 LLM 角色、媒体库、BitTorrent、同步）的页面在菜单中；其表单编辑草稿，
+  设置了其中之一的保存以“尚不支持”被拒绝。
+- akit 没有的端点回答 404，调用它们的页面会说明：一致性检查（`/config/check`）、**本节点**（`/node`）、集群管理端的标记
+  （`/node/managed`），以及媒体、BitTorrent 和同步页面自己的端点。
+- 导入导出页面的 `store` 格式和修改密码需要 `admin.store`（I93）。
+
 ## 供脚本使用
 
 控制台自己的端点，同 fit：
@@ -70,6 +90,7 @@ route { handler respond { body "hello\n" } }
 | `GET /api/session` | `{"user", "csrf"}` |
 | `GET /api/workbench` | 用户和提供的模块：`admin` |
 | `GET /api/m/admin/users` | 已登录的用户、所有用户，以及是否有 store 保存它们 |
+| `GET /api/m/admin/schema` | fit 的配置 schema，页面的表单由它生成 |
 | `/api/m/admin/<路径>` | Admin API 的 `/<路径>`，用会话代替令牌，如 `GET /api/m/admin/config` |
 
 程序保留 cookie，并在除 GET 和 HEAD 外的每个请求中把 `csrf` 放在 `X-Fit-Csrf` 中发送：

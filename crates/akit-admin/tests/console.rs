@@ -669,3 +669,58 @@ fn failure_table_bounded() {
     }
     assert!(l.addresses() <= akit_admin::console::login::MAX_ADDRESSES);
 }
+
+/// I91: fit's workbench, its files as fit ships them, and fit's schema behind a login.
+#[test]
+fn pages_and_schema() {
+    let f = start(console(|_| {}), Options::default());
+    let mut b = Browser::new(&f);
+    let r = b.get("/");
+    assert_eq!(r.status, 200);
+    assert_eq!(r.header("Content-Type"), Some("text/html; charset=utf-8"));
+    assert_eq!(r.header("Cache-Control"), Some("no-cache"));
+    assert!(
+        r.header("Content-Security-Policy")
+            .unwrap()
+            .contains("script-src 'self'")
+    );
+    let web = Path::new(env!("CARGO_MANIFEST_DIR")).join("console/web");
+    assert_eq!(
+        r.body,
+        std::fs::read_to_string(web.join("index.html")).unwrap()
+    );
+    for (path, ct) in [
+        ("/core/workbench.js", "text/javascript; charset=utf-8"),
+        ("/core/ui.css", "text/css; charset=utf-8"),
+        ("/gateway/logs.js", "text/javascript; charset=utf-8"),
+    ] {
+        let r = b.get(path);
+        assert_eq!(
+            (r.status, r.header("Content-Type")),
+            (200, Some(ct)),
+            "{path}"
+        );
+        assert_eq!(
+            r.body,
+            std::fs::read_to_string(web.join(path.trim_start_matches('/'))).unwrap(),
+            "{path}"
+        );
+    }
+    assert_eq!(b.get("/nothing.js").status, 404);
+    assert_eq!(b.send("POST", "/", &[], Some("{}")).status, 405);
+    assert_eq!(b.get("/api/m/admin/schema").status, 401);
+    assert_eq!(b.login("ada", "pw"), 200);
+    let r = b.get("/api/m/admin/schema");
+    assert_eq!(r.status, 200);
+    assert_eq!(r.header("Content-Type"), Some("application/schema+json"));
+    assert!(r.body.contains("\"$defs\"") && r.body.contains("\"console\""));
+    // The raw editors' endpoints, through the console.
+    let r = b.send(
+        "POST",
+        "/api/m/admin/config/render?format=conf",
+        &[],
+        Some(r#"{"log": {"level": "debug"}}"#),
+    );
+    assert_eq!(r.status, 200, "{r:?}");
+    assert!(r.body.contains("log"), "{}", r.body);
+}

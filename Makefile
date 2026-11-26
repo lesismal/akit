@@ -68,10 +68,12 @@ reference:
 	python3 -I tools/config-reference.py
 
 # The compatibility gate's field inventory and docs/compatibility.md are up to date with the pinned
-# fit schema and tests/compat/supported.txt (docs/compatibility.md).
+# fit schema and tests/compat/supported.txt (docs/compatibility.md), and the console's pages are
+# fit's at the same pin (tools/console-pages.py, I91).
 compat-check:
 	python3 -I tools/compat-inventory.py --check
 	python3 -I tools/v1-freeze.py
+	python3 -I tools/console-pages.py --check
 
 # Marks the config's compatible additions since the v1 freeze in tests/compat/v1/additions.txt
 # (docs/compatibility.md): a field supported, or fit's new optional fields when the pin moves.

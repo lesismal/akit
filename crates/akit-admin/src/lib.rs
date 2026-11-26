@@ -29,7 +29,15 @@
 //!                             {"path", "dry_run"} (I83)
 //! GET    /dashboard/          read-only web pages of the GET endpoints, unless
 //!                             admin.disable_dashboard (I63)
+//! POST   /config/render       a config fragment written as .conf, YAML or JSON (I91)
+//! POST   /config/parse        the JSON of such a text (I91)
+//! PUT    /config/text         a text applied as the config, or as ?members= of it (I91)
+//! POST   /config/export       the config, or members of it, as a file (I91)
+//! POST   /config/import       a file applied as the config, or as ?members= of it (I91)
 //! ```
+//!
+//! With `admin.console` (I89–I91, [`console`]), the console serves the same endpoints under
+//! `/api/m/admin/`, behind its logins, beside fit's workbench pages.
 //!
 //! Bodies are JSON (`application/json`; for `PATCH`, `application/merge-patch+json` too), within
 //! `max_config_bytes`. Every change takes `If-Match`, checked against the running config under the
@@ -66,6 +74,7 @@ mod pointer;
 mod redact;
 mod server;
 mod status;
+mod text;
 mod watch;
 
 pub use configs::{

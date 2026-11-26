@@ -12,7 +12,9 @@ in fit reaches akit only when the pin moves.
 | fit | `7daee573b102d87837cc10f033e4cc5894769210` | `templates/` (`.conf`, YAML and JSON, each as one file and as a `conf.d` directory), `schema/fit.schema.json`, `LICENSE` |
 | fit-examples | `9659d7e4b30a6f97d908536c85c2b2cf5b75fe8d` | every `*/fit.conf`, `LICENSE` |
 
-`fixtures/PINS` holds the same two hashes for tools and tests.
+`fixtures/PINS` holds the same two hashes for tools and tests. The console's pages, fit's
+`app/workbench/web` at the same fit commit, are copied by `tools/console-pages.py` into
+`crates/akit-admin/console` (I91), which the script runs too.
 
 - fit: <https://github.com/lesismal/fit>
 - fit-examples: <https://github.com/lesismal/fit-examples>

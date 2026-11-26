@@ -20,6 +20,33 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-26: I91, the console's pages
+
+- fit's workbench served unchanged ([decision 036](decisions/036-console.md), 8):
+  `tools/console-pages.py` copies fit's `app/workbench/web` (69 files, 2.5 MB) and its licence at
+  the gate's pin (`7daee573`) into `crates/akit-admin/console`, and writes `console/files.rs`,
+  whose `include_bytes!` build them into akit; served from memory with fit's content types and
+  `Cache-Control: no-cache`, `index.html` for `/`. `make compat-check` runs its `--check`, and a
+  test checks the built files against the directory; `tests/compat/update-fixtures.sh` runs it when
+  the pin moves. `GET /api/m/admin/schema` answers the gate's `fit.schema.json`.
+- The Admin API's text endpoints, fit's (`admin/check.go`, `admin/transfer.go`), in
+  `akit_admin::text`: `POST /config/render` and `/config/parse` (`.conf`, YAML, JSON, through
+  `akit_config::adapt::document`), `PUT /config/text` (`members=`, `dry_run`, `If-Match`; the
+  members a text sets checked against the page's), `POST /config/export` (`admin` left out,
+  secrets redacted as the reads redact them) and `/config/import` (`admin` kept). A text's
+  `[redacted]` secrets are put back as `PUT /config` puts them back; its errors are placed at their
+  lines in the text (`akit_config::position_of`, new), as fit's adapter places them. The `store`
+  format is refused until I93. Marked as v1 additions. The freeze test now reads the dispatcher's
+  paths from `Api::serve`, where I90 moved them. A change with no body is answered (it hung before).
+- Checked in a browser (the Browser pane, `akit run` with a console): the login, the overview from
+  `/status`, the Logs page (its files, **Rotate now**), a `.conf` tab (render and parse, a parse
+  error at its line), a form edit of `limits`, the versions and a rollback; each change in the
+  `admin` logger. The menus of fit's features akit refuses, and the pages whose endpoints akit
+  lacks (`/node`, `/config/check`), show as decision 036 says.
+- Tests: fit's `TestTextRenderParse`, `TestTextParseErrors`, `TestTextPartSave`,
+  `TestTextWholeConfig` and the text formats of `transfer_test.go` (`crates/akit-admin/tests/admin.rs`),
+  `pages_and_schema` (`tests/console.rs`). The guide's pages section. Next: I92.
+
 ### 2026-11-26: I90, the console's server
 
 - `akit_admin::console::server` (fit's `app/console` and `admin/console.go`; [decision
