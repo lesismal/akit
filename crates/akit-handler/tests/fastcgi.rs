@@ -949,18 +949,20 @@ fn params() {
 }
 
 /// fit's `TestKeepAlive`: requests one after another reuse a connection; the status and
-/// Location a script sets are the response's.
+/// Location a script sets are the response's. The connection is idle again before the client
+/// hears the end of a response, so the request the client sends next finds it (one that came
+/// before it was given back dialed a second connection): fit's 20 requests made 100, to tell.
 #[test]
 fn keep_alive() {
     let a = app();
     let s = serve(&format!(r#"{{"address": "{}", "root": "/srv"}}"#, a.addr()));
-    for _ in 0..20 {
+    for _ in 0..100 {
         assert_eq!(h1_get(s.addr, "/env.php").status, 200);
     }
     assert_eq!(
         a.accepted.load(Ordering::SeqCst),
         1,
-        "connections for 20 requests one after another"
+        "connections for 100 requests one after another"
     );
     let got = h1_get(s.addr, "/status.php");
     assert_eq!((got.status, got.one("location")), (301, Some("/elsewhere")));

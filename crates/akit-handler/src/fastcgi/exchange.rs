@@ -504,13 +504,16 @@ impl Exchange {
         };
     }
 
-    /// The application ended the request. Returns whether the connection may carry another: the
-    /// request ended as FastCGI says, its body all sent.
-    fn end(self: &Arc<Self>, complete: bool) -> bool {
+    /// The application ended the request on `fc`: `complete`, as FastCGI says, and `clean`,
+    /// nothing after the end record. The connection goes back to the pool when it may carry
+    /// another (the request ended so, its body all sent), else is closed, before the client hears
+    /// the end: a request the client sends next finds it idle.
+    fn end(self: &Arc<Self>, fc: &Arc<FcgiConn>, complete: bool, clean: bool) {
         let (answer, out, reuse) = {
             let mut st = lock(&self.st);
             if st.done {
-                return false;
+                drop(st);
+                return fc.release(self, false);
             }
             if let Out::Head(head) = &st.out {
                 match parse_head(head) {
@@ -524,21 +527,21 @@ impl Exchange {
                     }
                     Err(e) => {
                         drop(st);
-                        self.fail(e);
-                        return false;
+                        return self.fail(e);
                     }
                 }
             }
             st.done = true;
             self.finished.store(true, Ordering::Release);
             st.conn = None;
-            let reuse = complete && st.up.sent_end;
+            let reuse = complete && clean && st.up.sent_end;
             (
                 st.answer.take(),
                 std::mem::replace(&mut st.out, Out::Done),
                 reuse,
             )
         };
+        fc.release(self, reuse);
         self.end_upload();
         match out {
             Out::Collect {
@@ -559,7 +562,6 @@ impl Exchange {
             Out::Stream { stream, .. } => stream.finish(),
             Out::Head(_) | Out::Starting | Out::Done => {}
         }
-        reuse
     }
 
     /// The exchange is over: what is left of the client's body is not wanted, nor held.
@@ -797,11 +799,11 @@ pub(crate) fn records(
         Some(complete) => {
             // Whatever follows the end record breaks the protocol, but is the next request's
             // problem only if the connection is kept: it is not.
-            let reuse = x.end(complete) && !left && reader.is_empty();
+            let clean = !left && reader.is_empty();
             if left {
                 *reader = Reader::default();
             }
-            fc.release(x, reuse);
+            x.end(fc, complete, clean);
         }
         None => x.flush(fc),
     }
