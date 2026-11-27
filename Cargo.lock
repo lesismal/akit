@@ -68,7 +68,7 @@ source = "git+https://github.com/lesismal/akio?rev=a8171fda50470eae841c691981b43
 [[package]]
 name = "akio-dtls"
 version = "1.0.0-rc.1"
-source = "git+https://github.com/lesismal/akio?rev=8a9601b9ffc83cdcc8bf53352b0986a14d5e26b2#8a9601b9ffc83cdcc8bf53352b0986a14d5e26b2"
+source = "git+https://github.com/lesismal/akio?rev=a8171fda50470eae841c691981b43eeabe9303b1#a8171fda50470eae841c691981b43eeabe9303b1"
 dependencies = [
  "akio-crypto",
  "akio-x509",
@@ -224,7 +224,7 @@ dependencies = [
 [[package]]
 name = "akio-turn"
 version = "1.0.0-rc.1"
-source = "git+https://github.com/lesismal/akio?rev=8a9601b9ffc83cdcc8bf53352b0986a14d5e26b2#8a9601b9ffc83cdcc8bf53352b0986a14d5e26b2"
+source = "git+https://github.com/lesismal/akio?rev=a8171fda50470eae841c691981b43eeabe9303b1#a8171fda50470eae841c691981b43eeabe9303b1"
 dependencies = [
  "akio",
  "akio-core",
