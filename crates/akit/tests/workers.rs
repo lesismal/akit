@@ -354,6 +354,14 @@ fn cases(w: &World) -> Vec<Case> {
             503,
             true,
         ),
+        // I151: bt_tracker answers 503 at once while its role does not run; with it, an
+        // announce is a lookup and a shard lock (akit-bittorrent's tests).
+        handler(
+            "bt_tracker",
+            r#"{"module": "bt_tracker"}"#.into(),
+            503,
+            true,
+        ),
         // A CONNECT to the slow echo: the tunnel opens at once, its bytes come back late.
         handler(
             "forward_proxy",
