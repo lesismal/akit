@@ -116,6 +116,12 @@
 | A259 | `RtcServer` 上每个 peer 自己的配置（`accept_offer_with`）：一个会话的编解码器，如同 SFU 以其为每类媒体选定的编解码器应答发布者，并以同样的编解码器应答其观看者 | 已进入 akio 的 main 并锁定（自 `d8d51f61` 起，akio 的 ADR-187）：`RtcServer::accept_offer_with` | 12 | I113 |
 | A260 | akio-webrtc 中供 SFU 使用的 RTP 转发：收到的包写到另一个 peer 的发送媒体行上，改写其 SSRC、负载类型、序号和时间戳，映射其头部扩展 | 已进入 akio 的 main 并锁定（自 `d8d51f61` 起，akio 的 ADR-187）：`Peer::write_rtp` | 13 | I113 |
 | A261 | 接收方的码率上限以 REMB 告知远端发送方，以及按 peer 设置的 ICE consent 超时 | 已进入 akio 的 main 并锁定（自 `d8d51f61` 起，akio 的 ADR-187）：`Peer::set_receive_bitrate_cap`、`RtcConfig::set_ice_timeouts` | 10, 11 | I113 |
+| A283 | 运行在调用者引擎上的 BitTorrent 客户端（fit 向 fib 提出的 A79） | 已提出；临时做法：客户端使用它自己的引擎 | 16 | I152 |
+| A284 | BitTorrent 客户端按地址拒绝 peer、限制其连接数和同时拨号数、在运行时修改其限制（fib 的 A77、A78） | 已提出；在此之前客户端的 `access`、`max_conns`、`max_half_open` 和 `disk_queue_bytes` 以"尚不支持"拒绝 | 11 | I152, I154 |
+| A285 | tracker 服务器的存储：所有 peer 的上限、原地修改上限和 TTL、列出并计数其种子（fib 的 A85） | 已提出；在此之前 `max_peers` 被拒绝，上限的变化会建立新存储 | 11 | I151 |
+| A286 | 磁力链接的种子在其 info 到达后使用自己的存储目录（fib 的 `StorageOpener`） | 已提出 | — | I153 |
+| A287 | 等待分片并优先请求它们的种子字节读取器，以及文件优先级 | 已提出 | 1 | I155 |
+| A288 | 种子的 tracker 及其 announce、peer 来源和 web seed 的状态，以及原地重新校验（fib 的 A87、A88） | 已提出 | — | I157 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -2162,3 +2168,97 @@ Result<(Peer, String), Error>`，像闭包的配置一样在 `config` 之上设�
 
 **akit 如何使用。** `akit_webrtc::media` 把每个发布者限制在 `max_bitrate`，并在每个会话的配置上设置 `ice_timeout`
 （借助 A259）。
+
+## A283 运行在调用者引擎上的 BitTorrent 客户端
+
+**状态。** 由 I150 为 I152 提出（2026-11-27）。临时做法：客户端角色在 `Client::new` 为它建立的引擎上运行
+akio-bittorrent 的 `Client`（它自己的 I/O 线程，TCP 和 UDP 同一个端口），与监听器的引擎并列，记录在[进度](progress.zh-CN.md)中。
+
+**问题。** fit 的客户端角色在监听器的引擎上运行 fib 的客户端（fib 的 A79，`Config.SharedEngine`）：网关与其角色共用一个引擎、一组 I/O
+线程和限制，akit 的其他角色也是如此（`akit_roles::host::Host::engine`）。akio-bittorrent 的 `Client::new` 总是建立并启动它自己的
+`Engine`（每个监听器 `ClientConfig::threads` 个 I/O 线程，另有供 tracker 和 web seed 使用的客户端线程）。
+
+**证据。** 在 akio `a8171fda` 上，`crates/akio-bittorrent/src/client/mod.rs`：`Client::new` 调用
+`Engine::builder().listen(Listener::tcp(listen)...).listen(Listener::udp(listen)...).build()` 和 `engine.start()`；
+`ClientConfig` 没有引擎字段。
+
+**建议的 API。** `ClientConfig::engine: Option<Arc<Engine>>`：设置时，客户端把它的 TCP 监听器（`Engine::add_listener`）和 UDP 绑定
+（`bind_udp`）加入这个运行中的引擎，在其上拨号并运行 tracker 和 HTTP 客户端，`Client::close` 移除它们，引擎及其上的其他客户端继续运行。
+
+**akit 的用法。** 客户端角色像隧道和 LLM 角色一样传入 `Host::engine`，其端口加入监听器的引擎。
+
+## A284 BitTorrent 客户端按地址拒绝 peer、限制其连接、在运行时修改其限制
+
+**状态。** 由 I150 为 I152 和 I154 提出（2026-11-27）。在此之前 akit 把客户端的 `access`、`limits.max_conns`、`limits.max_half_open`
+和 `disk_queue_bytes` 以"尚不支持"拒绝，`max_conns_per_torrent` 或 `upload_slots` 的变化会建立新客户端。
+
+**问题。** fit 的客户端（fib 的 A77 和 A78）按地址拒绝 peer（角色的 `access`：被拒绝的 peer 一经 TCP 连接即被关闭，其 uTP 连接被忽略，
+从不被拨号，作为 DHT 节点得不到应答），限制客户端的总连接数（`max_conns`，200）和同时进行的拨号数（`max_half_open`，32），限制等待写盘的
+已接收块（`disk_queue_bytes`，64 MiB，超过时暂停读取 peer），并原地修改其限制（`Client.SetLimits`、`Torrent.SetLimits`），保留 peer。
+
+**证据。** 在 akio `a8171fda` 上，`ClientConfig` 有 `max_peers_per_torrent` 和 `upload_slots`，只由 `Client::new` 读取一次，没有过滤器、
+没有客户端范围的连接或拨号上限，也没有等待池的分片上限；`Client::set_rate_limits` 和 `Torrent::set_rate_limits` 只修改速率。
+
+**建议的 API。** `ClientConfig::filter: Option<Arc<dyn Fn(&SocketAddr) -> bool + Send + Sync>>` 和 `Client::refilter()`（关闭现在被拒绝的
+已连接 peer）；`ClientConfig::max_conns`、`max_half_open`、`disk_queue_bytes`；`Client::set_limits(Limits)` 和 `Torrent::set_limits`，
+用于连接数、上传槽和速率。
+
+**akit 的用法。** 角色在每次应用配置时根据其 `access` 和全局访问控制设置过滤器并重新过滤，原地修改其限制。
+
+## A285 tracker 服务器的存储：所有 peer 的上限、原地修改上限、列出种子
+
+**状态。** 由 I150 为 I151 提出（2026-11-27）。在此之前 akit 拒绝 tracker 的 `max_peers`，`max_torrents`、`max_peers_per_torrent`
+或 `peer_ttl` 的变化会建立新的 `TrackerServer`，其 swarm 从空开始（fit 的 I201 在 fib 的 A85 之前也是如此）。
+
+**问题。** fit 的 tracker 存储（fib 的 `MemoryStore`，A85）限制所有种子的 peer 总数（`max_peers`，默认 500,000，约 80 MiB），原地修改其上限
+和 TTL（`SetConfig`），列出其种子（`Range`，用于在页面上显示公开 tracker 的种子），并计数其 peer（`Peers`，用于统计）。
+
+**证据。** 在 akio `a8171fda` 上，`TrackerConfig` 只有 `max_swarms` 和 `max_peers_per_swarm`，由 `TrackerServer::new` 读取；
+`TrackerServer` 有 `swarms()` 和 `stats(&InfoHash)`，没有 peer 计数，没有修改配置的方法，也无法遍历其 swarm。
+
+**建议的 API。** `TrackerConfig::max_peers`（所有 swarm 合计；超出的 peer 仍得到 peer 列表，与超出 `max_peers_per_swarm` 时一样）；
+保留 swarm 的 `TrackerServer::set_config(TrackerConfig)`；`TrackerServer::peers() -> usize`；
+`TrackerServer::range(|InfoHash, ScrapeStats| -> bool)`。
+
+**akit 的用法。** 角色读取 `max_peers`，重载时原地设置上限，并在其控制台上列出公开 tracker 的种子和 peer 数。
+
+## A286 磁力链接的种子使用自己的存储目录
+
+**状态。** 由 I150 为 I153 提出（2026-11-27）。
+
+**问题。** fit 把种子下载到其分类的目录中，磁力链接的种子也一样（fib 的 `StorageOpener`，在 info 到达时调用）。akio-bittorrent 的
+`AddOptions::storage` 接受由种子的 `Info` 建立的存储（`FileStorage::new(dir, &info)`），而磁力链接此时还没有 info；不设置时文件放在
+`ClientConfig::data_dir` 之下。
+
+**证据。** 在 akio `a8171fda` 上，`AddOptions::storage: Option<Arc<dyn Storage>>`；`FileStorage::new(impl AsRef<Path>, &Info)`。
+
+**建议的 API。** `AddOptions::dir: Option<PathBuf>`（种子的 info 已知时在其下建立 `FileStorage` 的目录），或以 `Info` 调用的存储打开函数。
+
+**akit 的用法。** 分类和 `download_dir` 的变化，用于以磁力链接添加的种子。
+
+## A287 等待分片的种子字节读取器，以及文件优先级
+
+**状态。** 由 I150 为 I155 提出（2026-11-27）。
+
+**问题。** fit 的 `bt_stream` 在种子下载期间播放其文件：一个读取器（fib 的 `Reader`），其读取先请求所需的分片并等待它们，预读有上限；
+临时种子只下载被播放的文件（文件优先级）。
+
+**证据。** 在 akio `a8171fda` 上，`Torrent` 没有读取其字节的方法，也没有文件或分片优先级。
+
+**建议的 API。** `Torrent::reader(file) -> Reader`，其 `read_at(offset, len, done)` 在分片校验后于池上完成，带预读上限；以及
+`Torrent::set_file_priorities`。
+
+**akit 的用法。** `bt_stream` 由它应答范围请求，从不在 I/O 线程上等待。
+
+## A288 种子的 tracker 和 web seed 的状态，以及原地重新校验
+
+**状态。** 由 I150 为 I157 提出（2026-11-27）。
+
+**问题。** fit 的 Admin API 和页面显示每个 tracker 的 announce（上次、下次、错误、得到的 peer）、peer 来源和 web seed 的状态
+（fib 的 A87），并原地重新校验种子的数据（fib 的 A88）。
+
+**证据。** 在 akio `a8171fda` 上，`Torrent` 有 `peers()` 和 `stats()`；tracker 的失败只以 `TorrentEvent::TrackerError` 报告；没有重新校验。
+
+**建议的 API。** `Torrent::trackers() -> Vec<TrackerState>`、`Torrent::web_seeds()`、`Torrent::recheck()`。
+
+**akit 的用法。** `/bittorrent/torrents/<id>/trackers` 和重新校验操作。

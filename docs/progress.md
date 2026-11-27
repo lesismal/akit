@@ -169,6 +169,36 @@ done and where the work differs from the plan.
   server on the hooks akio-turn lacks (A256–A258); I113, WHIP and WHEP, an SFU on akio-webrtc's
   `RtcServer`; I114, WHIP and WHEP proxied. I115–I119 are reserved for the track. Its benchmark
   row names what to measure.
+
+### 2026-11-27: I150, `bittorrent` in the config
+
+- `bittorrent.client` and `bittorrent.tracker` read as strictly as the rest
+  (`akit_config::bittorrent`), with fit's fields, defaults, bounds and checks
+  (`config/bittorrent.go`, `config/bittorrent_tracker.go`): the client's `listen` and `data_dir`
+  (required, `data_dir` not blank), `download_dir` (`<data_dir>/downloads` by default),
+  `encryption` (`prefer`), `dht`, `pex`, `utp` (on), `lsd` (off), `disk_workers` (at most 64),
+  `save_interval` (5 s), `limits` (rates, `max_conns_per_torrent` 50, `upload_slots` 4,
+  `seed_ratio`, `seed_time`, `max_torrents` 1,000, at most 100,000) and `console`; the tracker's
+  `listen`, `interval` (30 m), `min_interval` (not past the interval), `peer_ttl` (1 h, longer than
+  the interval), `max_torrents`, `max_peers_per_torrent`, `max_numwant`, `max_scrape` (fit's
+  defaults and maxima), `allow` (info hashes of 40 or 64 hex digits, at most 1,048,576),
+  `allow_files`, `access` and `console`. The client's port in the one address check for TCP and
+  UDP, the tracker's for UDP, their consoles for TCP.
+- Refused as not supported yet, each by its iteration or akio request: the client's `categories`,
+  `watch_dir`, `watch_interval`, `watch_max_files`, `url_timeout` (I153), `alt_speed` (I154),
+  `access`, `disk_queue_bytes` and the limits `max_conns`, `max_half_open` (akio's A284),
+  `max_active_downloads`, `max_active_seeds`, `min_free_bytes` (I153), `publish` (I156), `rss`
+  (I159); the tracker's `max_peers` (A285), `auth` (a `media_auth` policy) and `store` (I159).
+  `akit run` refuses a config with either role until I151 and I152 run them.
+- akio requests A283–A288 filed: the client on the caller's engine, peers refused by address and
+  limits changed at run time, the tracker store's bounds in place, a magnet link's storage
+  directory, a reader that waits for pieces, trackers' state and a recheck in place.
+- Tests: `bittorrent::tests` (fit's `TestConfigChecks`, `TestBitTorrentTrackerChecks` and
+  `TestBitTorrentTrackerBinds`, the fields refused as not supported yet); the gate samples every
+  field read; akit's `roles_are_refused_until_they_run`. The gate's example `bittorrent` is still
+  refused (its `media_auth`, `media_library`, the `bt_*` handlers and the fields above).
+- Decisions waiting for review: row 76.
+
 ### 2026-11-27: the BitTorrent track planned (I150–I159)
 
 - The tenth track after 1.0 broken into iterations from fit's I196–I210
@@ -409,6 +439,7 @@ done and where the work differs from the plan.
   name written back, a failed edit answered (fit's `TestRole`); `tests/e2e.rs`: each role's
   routes after the end-to-end calls. Against fit's binary (`tests/fit_manage.rs`): akit's hub
   manages fit's node (its model list, a job run and followed, a model saved).
+
 ### 2026-11-27: I102d, the hub's QUIC handshake bounds and its listeners' certificates read again
 
 - The hub's `quic` listeners on akio's A245 (ADR-185), as fit's: each handshake bounded by
@@ -696,6 +727,7 @@ done and where the work differs from the plan.
   listener aborts at once through the connection's handle. akio API request A238 asks for
   `WsSender::abort`. Gone since akio `8a9601b9`: the dialer aborts, its 1 s close timeout dropped.
 - Next: the roles on it, I105 (node), I106 (hub), I107 (proxy).
+
 ### 2026-11-27: I103, the hub's calls and status, tokens' expiry; I103b split
 
 - The hub's calls (fit's `tunnel/hub/api.go` and the calls of `hub.go` it makes), on
@@ -2409,6 +2441,7 @@ Differences from the plan:
 - To measure (benchmark task, rule 30): the dev plan's row for the eBPF sockmap relay (throughput
   and CPU against the same listener without it and against fit, connections a second, the sweep
   and drain with 10,000 spliced connections).
+
 ### 2026-11-25: I71, WASM I: the runtime and fit's ABI
 
 - akio: akit is pinned to `dad77a7a`, akio's `main`:
@@ -4849,6 +4882,7 @@ Differences from the plan:
 - What a benchmark task should measure: same-run A/B of the fixed and proxy scenarios with
   `metrics` on and off, and with the access log on as well; a scrape's time with many routes on 64
   threads.
+
 ### 2026-11-24: I30, certificate manager and storage
 
 - The manager is akio-tls's `CertResolver` (akio A2, ADR-098), what fit's `tlsmgr.Manager` is to

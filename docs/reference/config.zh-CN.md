@@ -14,7 +14,7 @@ akit 配置的每个字段：配置的每一部分是做什么的、一个示例
 akit 与 fit 不同之处，在表格中以 **akit：** 标出。
 
 <!-- BEGIN GENERATED: summary -->
-fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **974** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 150 个对象，下文各有一张表。
+fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **1042** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 161 个对象，下文各有一张表。
 <!-- END GENERATED -->
 
 字段说明来自 fit 代码中的 `doc` 标签，是英文的，所以每个字段的完整说明在[英文版](config.md)的同一张表中；本页的表格给出每个字段的
@@ -55,6 +55,7 @@ fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../co
 - [隧道](#隧道)：[`tunnel.hub`](#cfg-tunnel-hub)、[`tunnel.node`](#cfg-tunnel-node)、[`tunnel.proxy`](#cfg-tunnel-proxy)
 - [LLM](#llm)：[`llm.hub`](#cfg-llm-hub)、[`llm.node`](#cfg-llm-node)、[`llm.proxy`](#cfg-llm-proxy)
 - [WebRTC](#webrtc)：[`webrtc.turn`](#cfg-webrtc-turn)、[`webrtc.media`](#cfg-webrtc-media)、[`webrtc.proxy`](#cfg-webrtc-proxy)
+- [BitTorrent](#bittorrent)：[`bittorrent.client`](#cfg-bittorrent-client)、[`bittorrent.tracker`](#cfg-bittorrent-tracker)
 - [处理器](#处理器)：[`respond`](#respond)、[`static`](#static)、[`proxy`](#proxy)、[`fastcgi`](#fastcgi)、[`forward_proxy`](#forward_proxy)、[`whip`](#whip)、[`whep`](#whep)、[`webrtc_proxy`](#webrtc_proxy)
 - [中间件](#中间件)：[`basic_auth`](#basic_auth)、[`body_limit`](#body_limit)、[`cache`](#cache)、[`circuit_breaker`](#circuit_breaker)、[`client_cert`](#client_cert)、[`compress`](#compress)、[`concurrency_limit`](#concurrency_limit)、[`forward_auth`](#forward_auth)、[`headers`](#headers)、[`jwt`](#jwt)、[`rate_limit`](#rate_limit)、[`redirect`](#redirect)、[`rewrite`](#rewrite)、[`wasm`](#wasm)
 - [akit 的扩展](#akit-的扩展)
@@ -121,7 +122,7 @@ routes:
 | `acme` | [对象](#cfg-acme) |  |  |
 | `admin` | [对象](#cfg-admin) |  |  |
 | `auto_https` | [对象](#cfg-auto-https) |  |  |
-| `bittorrent` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `bittorrent` | [对象](#cfg-bittorrent) |  |  |
 | `engine` | [对象](#cfg-engine) |  |  |
 | `limits` | [对象](#cfg-limits) |  |  |
 | `listeners` | [对象](#cfg-listeners)的列表 |  |  |
@@ -2754,6 +2755,236 @@ webrtc {
 | `deny_files` | 字符串的列表 |  |  |
 <!-- END GENERATED -->
 
+## BitTorrent
+
+`bittorrent` 包含 fit 的 BitTorrent 角色（[fit 的指南](https://github.com/lesismal/fit/blob/main/docs/bittorrent.md)）：
+客户端（`bittorrent.client`）在同一个端口上以 TCP 和 UDP（uTP、DHT 和 UDP tracker）下载和做种，
+其种子保存在 `data_dir` 中跨重启保留；tracker（`bittorrent.tracker`）应答 announce 和 scrape，
+HTTP 经由处理器为 `bt_tracker` 的路由，UDP 在其自己的 `listen` 上。akit 像 fit 一样读取并检查这些
+角色（I150）；`akit run` 从 I151 起运行 tracker，从 I152 起运行客户端。后续迭代才运行的内容以
+"尚不支持"拒绝：客户端的分类、`watch_dir`、`url_timeout`、`alt_speed`、`access`、
+`disk_queue_bytes`、`publish`、`rss` 以及 akio-bittorrent 尚不能设置的限制；tracker 的 `auth`、
+`max_peers` 和 `store`。
+
+```fit
+bittorrent {
+	client {
+		listen :6881
+		data_dir /var/lib/akit/bt
+		limits { upload_rate 1048576; seed_ratio 2 }
+	}
+	tracker { listen :6969 }
+}
+```
+
+### `bittorrent`
+
+<!-- BEGIN GENERATED: bittorrent -->
+<a id="cfg-bittorrent"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-bittorrent)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `client` | [对象](#cfg-bittorrent-client) |  |  |
+| `tracker` | [对象](#cfg-bittorrent-tracker) |  |  |
+<!-- END GENERATED -->
+
+### `bittorrent.client`
+
+<!-- BEGIN GENERATED: bittorrent.client -->
+<a id="cfg-bittorrent-client"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-bittorrent-client)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `data_dir` | 字符串 | 必填 |  |
+| `listen` | 字符串 | 必填 |  |
+| `access` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `alt_speed` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `categories` | 对象的列表 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `console` | [对象](#cfg-bittorrent-client-console) |  |  |
+| `dht` | 布尔值 | `true` |  |
+| `disk_queue_bytes` | 整数，≥ 0 | `67108864` | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `disk_workers` | 整数，0 到 64 |  |  |
+| `download_dir` | 字符串 |  |  |
+| `encryption` | 字符串：`allow`、`prefer`、`require` | `"prefer"` |  |
+| `limits` | [对象](#cfg-bittorrent-client-limits) |  |  |
+| `lsd` | 布尔值 |  |  |
+| `pex` | 布尔值 | `true` |  |
+| `publish` | 对象的列表 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `rss` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `save_interval` | 时长 | `"5s"` |  |
+| `url_timeout` | 时长 | `"30s"` | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `utp` | 布尔值 | `true` |  |
+| `watch_dir` | 字符串 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `watch_interval` | 时长 | `"10s"` | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `watch_max_files` | 整数，0 到 10000 | `100` | **尚不支持**（not supported yet）：按名称拒绝。 |
+<!-- END GENERATED -->
+
+### `bittorrent.client.limits`
+
+<!-- BEGIN GENERATED: bittorrent.client.limits -->
+<a id="cfg-bittorrent-client-limits"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-bittorrent-client-limits)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `download_rate` | 整数，≥ 0 |  |  |
+| `max_active_downloads` | 整数，≥ 0 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `max_active_seeds` | 整数，≥ 0 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `max_conns` | 整数，≥ 0 | `200` | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `max_conns_per_torrent` | 整数，≥ 0 | `50` |  |
+| `max_half_open` | 整数，≥ 0 | `32` | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `max_torrents` | 整数，0 到 100000 | `1000` |  |
+| `min_free_bytes` | 整数，≥ 0 | `1073741824` | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `seed_ratio` | 数，≥ 0 |  |  |
+| `seed_time` | 时长 |  |  |
+| `upload_rate` | 整数，≥ 0 |  |  |
+| `upload_slots` | 整数，≥ 0 | `4` |  |
+<!-- END GENERATED -->
+
+### `bittorrent.client.console`
+
+<!-- BEGIN GENERATED: bittorrent.client.console -->
+<a id="cfg-bittorrent-client-console"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-bittorrent-client-console)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `address` | 字符串 | 必填 |  |
+| `users` | [对象](#cfg-bittorrent-client-console-users)的列表 | 必填 |  |
+| `access` | [对象](#cfg-bittorrent-client-console-access) |  |  |
+| `cert_file` | 字符串 |  |  |
+| `key_file` | 字符串 |  |  |
+| `max_conns` | 整数，≥ 0 | `32` |  |
+| `max_sessions` | 整数，≥ 0 | `64` |  |
+| `mptcp` | 布尔值 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `session_lifetime` | 时长 | `"12h"` |  |
+| `session_timeout` | 时长 | `"30m"` |  |
+<!-- END GENERATED -->
+
+### `bittorrent.client.console.users[]`
+
+<!-- BEGIN GENERATED: bittorrent.client.console.users[] -->
+<a id="cfg-bittorrent-client-console-users"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-bittorrent-client-console-users)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `password_hash` | 字符串 | 必填 |  |
+| `username` | 字符串 | 必填 |  |
+<!-- END GENERATED -->
+
+### `bittorrent.client.console.access`
+
+<!-- BEGIN GENERATED: bittorrent.client.console.access -->
+<a id="cfg-bittorrent-client-console-access"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-bittorrent-client-console-access)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `allow` | 字符串的列表 |  |  |
+| `allow_files` | 字符串的列表 |  |  |
+| `deny` | 字符串的列表 |  |  |
+| `deny_files` | 字符串的列表 |  |  |
+<!-- END GENERATED -->
+
+### `bittorrent.tracker`
+
+<!-- BEGIN GENERATED: bittorrent.tracker -->
+<a id="cfg-bittorrent-tracker"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-bittorrent-tracker)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `access` | [对象](#cfg-bittorrent-tracker-access) |  |  |
+| `allow` | 字符串的列表 |  |  |
+| `allow_files` | 字符串的列表 |  |  |
+| `auth` | 字符串 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `console` | [对象](#cfg-bittorrent-tracker-console) |  |  |
+| `interval` | 时长 | `"30m"` |  |
+| `listen` | 字符串 |  |  |
+| `max_numwant` | 整数，0 到 1000 | `200` |  |
+| `max_peers` | 整数，0 到 4194304 | `500000` | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `max_peers_per_torrent` | 整数，0 到 65536 | `10000` |  |
+| `max_scrape` | 整数，0 到 1000 | `64` |  |
+| `max_torrents` | 整数，0 到 1048576 | `100000` |  |
+| `min_interval` | 时长 |  |  |
+| `peer_ttl` | 时长 | `"1h"` |  |
+| `store` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+<!-- END GENERATED -->
+
+### `bittorrent.tracker.access`
+
+<!-- BEGIN GENERATED: bittorrent.tracker.access -->
+<a id="cfg-bittorrent-tracker-access"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-bittorrent-tracker-access)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `allow` | 字符串的列表 |  |  |
+| `allow_files` | 字符串的列表 |  |  |
+| `deny` | 字符串的列表 |  |  |
+| `deny_files` | 字符串的列表 |  |  |
+<!-- END GENERATED -->
+
+### `bittorrent.tracker.console`
+
+<!-- BEGIN GENERATED: bittorrent.tracker.console -->
+<a id="cfg-bittorrent-tracker-console"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-bittorrent-tracker-console)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `address` | 字符串 | 必填 |  |
+| `users` | [对象](#cfg-bittorrent-tracker-console-users)的列表 | 必填 |  |
+| `access` | [对象](#cfg-bittorrent-tracker-console-access) |  |  |
+| `cert_file` | 字符串 |  |  |
+| `key_file` | 字符串 |  |  |
+| `max_conns` | 整数，≥ 0 | `32` |  |
+| `max_sessions` | 整数，≥ 0 | `64` |  |
+| `mptcp` | 布尔值 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `session_lifetime` | 时长 | `"12h"` |  |
+| `session_timeout` | 时长 | `"30m"` |  |
+<!-- END GENERATED -->
+
+### `bittorrent.tracker.console.users[]`
+
+<!-- BEGIN GENERATED: bittorrent.tracker.console.users[] -->
+<a id="cfg-bittorrent-tracker-console-users"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-bittorrent-tracker-console-users)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `password_hash` | 字符串 | 必填 |  |
+| `username` | 字符串 | 必填 |  |
+<!-- END GENERATED -->
+
+### `bittorrent.tracker.console.access`
+
+<!-- BEGIN GENERATED: bittorrent.tracker.console.access -->
+<a id="cfg-bittorrent-tracker-console-access"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-bittorrent-tracker-console-access)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `allow` | 字符串的列表 |  |  |
+| `allow_files` | 字符串的列表 |  |  |
+| `deny` | 字符串的列表 |  |  |
+| `deny_files` | 字符串的列表 |  |  |
+<!-- END GENERATED -->
+
 ## 处理器
 
 路由的 `handler` 应答其请求：下列之一，由 `module` 指定，带有其 `params`。以 `akit build` 编入 akit 的其他 crate 的模块
@@ -3631,6 +3862,6 @@ route {
 ## akit 尚不读取的部分
 
 fit 配置的以下部分被整体按名称拒绝为“尚不支持”：`log`、`pprof`、`llm`、`tunnel`、`webrtc`、`media_auth`、
-`streaming`、`media_library`、`sync` 和 `bittorrent`，以及 fit 的媒体、BitTorrent 和 sync 处理器。在 akit 读取的部分中，上面
+`streaming`、`media_library` 和 `sync`，以及 fit 的媒体、BitTorrent 和 sync 处理器。在 akit 读取的部分中，上面
 表格里标为 **尚不支持** 的字段也同样被拒绝。[路线图](../roadmap.zh-CN.md)说明各部分何时到来，[兼容性页面](../compatibility.zh-CN.md)
 列出每个字段。

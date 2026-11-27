@@ -3266,6 +3266,8 @@ fn akit_config_lists_match_the_inventory() {
         "roles.rs",
         // I110: the WebRTC roles and handlers.
         "webrtc.rs",
+        // I150: the BitTorrent roles.
+        "bittorrent.rs",
     ]
     .iter()
     .map(|f| fs::read_to_string(compat_dir().join("../../crates/akit-config/src").join(f)).unwrap())
@@ -3281,7 +3283,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 150] = [
+    let objects: [(&str, &str, Option<&str>); 161] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         (
             "providers[].kubernetes",
@@ -3582,6 +3584,46 @@ fn akit_config_lists_match_the_inventory() {
             "WEBRTC_PROXY_FIELDS",
             Some("WEBRTC_PROXY_FIT_ONLY"),
         ),
+        // I150: the BitTorrent roles (crate::bittorrent).
+        ("bittorrent", "BITTORRENT_FIELDS", None),
+        (
+            "bittorrent.client",
+            "BT_CLIENT_FIELDS",
+            Some("BT_CLIENT_FIT_ONLY"),
+        ),
+        (
+            "bittorrent.client.limits",
+            "BT_LIMITS_FIELDS",
+            Some("BT_LIMITS_FIT_ONLY"),
+        ),
+        (
+            "bittorrent.client.console",
+            "CONSOLE_FIELDS",
+            Some("CONSOLE_FIT_ONLY"),
+        ),
+        (
+            "bittorrent.client.console.users[]",
+            "CONSOLE_USER_FIELDS",
+            None,
+        ),
+        ("bittorrent.client.console.access", "ACCESS_FIELDS", None),
+        (
+            "bittorrent.tracker",
+            "BT_TRACKER_FIELDS",
+            Some("BT_TRACKER_FIT_ONLY"),
+        ),
+        ("bittorrent.tracker.access", "ACCESS_FIELDS", None),
+        (
+            "bittorrent.tracker.console",
+            "CONSOLE_FIELDS",
+            Some("CONSOLE_FIT_ONLY"),
+        ),
+        (
+            "bittorrent.tracker.console.users[]",
+            "CONSOLE_USER_FIELDS",
+            None,
+        ),
+        ("bittorrent.tracker.console.access", "ACCESS_FIELDS", None),
     ];
     let mapped: BTreeSet<&str> = objects
         .iter()

@@ -9,6 +9,7 @@
 use std::collections::HashMap;
 use std::net::IpAddr;
 
+use crate::bittorrent::BitTorrent;
 use crate::decode::Decoder;
 use crate::model::{Admin, Listener, Protocol};
 use crate::roles::{Llm, Tunnel, TunnelProtocol};
@@ -44,6 +45,7 @@ fn binds(
     tunnel: Option<&Tunnel>,
     llm: Option<&Llm>,
     webrtc: Option<&WebRtc>,
+    bittorrent: Option<&BitTorrent>,
 ) -> Vec<Bind> {
     let mut out = Vec::new();
     let mut add = |name: String, path: String, network: &'static str, address: &str| {
@@ -165,6 +167,31 @@ fn binds(
             }
         }
     }
+    // I150: the BitTorrent client's port, TCP and UDP, and the tracker's, UDP.
+    if let Some(b) = bittorrent {
+        if let Some(c) = &b.client {
+            console(&mut add, "bittorrent.client.console", c.console.as_ref());
+            for network in ["tcp", "udp"] {
+                add(
+                    "bittorrent.client".into(),
+                    "bittorrent.client.listen".into(),
+                    network,
+                    &c.listen,
+                );
+            }
+        }
+        if let Some(t) = &b.tracker {
+            console(&mut add, "bittorrent.tracker.console", t.console.as_ref());
+            if !t.listen.is_empty() {
+                add(
+                    "bittorrent.tracker".into(),
+                    "bittorrent.tracker.listen".into(),
+                    "udp",
+                    &t.listen,
+                );
+            }
+        }
+    }
     if let Some(w) = webrtc {
         if let Some(t) = &w.turn {
             for (i, a) in t.listen.iter().enumerate() {
@@ -272,10 +299,11 @@ pub(crate) fn clashes(
     tunnel: Option<&Tunnel>,
     llm: Option<&Llm>,
     webrtc: Option<&WebRtc>,
+    bittorrent: Option<&BitTorrent>,
 ) -> Vec<(String, String)> {
     let mut kept: Vec<(Bind, String, u16)> = Vec::new();
     let mut out = Vec::new();
-    for b in binds(listeners, admin, tunnel, llm, webrtc) {
+    for b in binds(listeners, admin, tunnel, llm, webrtc, bittorrent) {
         // Port 0 picks a free port, so two of them do not clash.
         let Some((host, port)) = bind_key(&b.address).filter(|(_, p)| *p != 0) else {
             continue;

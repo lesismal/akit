@@ -324,7 +324,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 974 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 1042 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -333,7 +333,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`acme`](#fields-acme) | 43 | 43 | 0 |
 | [`admin`](#fields-admin) | 105 | 36 | 69 |
 | [`auto_https`](#fields-auto-https) | 5 | 5 | 0 |
-| [`bittorrent`](#fields-bittorrent) | 160 | 0 | 160 |
+| [`bittorrent`](#fields-bittorrent) | 160 | 68 | 92 |
 | [`engine`](#fields-engine) | 11 | 8 | 3 |
 | [`http.handlers/bt_publish`](#fields-http-handlers-bt-publish) | 3 | 0 | 3 |
 | [`http.handlers/bt_stream`](#fields-http-handlers-bt-stream) | 14 | 0 | 14 |
@@ -449,7 +449,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 161 | 3 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 76 | 0 |
-| **合计** | 3821 | 974 | 2847 |
+| **合计** | 3821 | 1042 | 2779 |
 
 <a id="fields-access"></a>
 
@@ -664,8 +664,8 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
-| `bittorrent` | `object` | 尚不支持（not supported yet） |
-| `bittorrent.client` | `object` | 尚不支持（not supported yet） |
+| `bittorrent` | `object` | 已支持 |
+| `bittorrent.client` | `object` | 已支持 |
 | `bittorrent.client.access` | `object` | 尚不支持（not supported yet） |
 | `bittorrent.client.access.allow` | `array<string>` | 尚不支持（not supported yet） |
 | `bittorrent.client.access.allow_files` | `array<string>` | 尚不支持（not supported yet） |
@@ -690,45 +690,45 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `bittorrent.client.categories[].limits.upload_slots` | `integer` | 尚不支持（not supported yet） |
 | `bittorrent.client.categories[].media_library` | `string` | 尚不支持（not supported yet） |
 | `bittorrent.client.categories[].name` | `string, required` | 尚不支持（not supported yet） |
-| `bittorrent.client.console` | `object` | 尚不支持（not supported yet） |
-| `bittorrent.client.console.access` | `object` | 尚不支持（not supported yet） |
-| `bittorrent.client.console.access.allow` | `array<string>` | 尚不支持（not supported yet） |
-| `bittorrent.client.console.access.allow_files` | `array<string>` | 尚不支持（not supported yet） |
-| `bittorrent.client.console.access.deny` | `array<string>` | 尚不支持（not supported yet） |
-| `bittorrent.client.console.access.deny_files` | `array<string>` | 尚不支持（not supported yet） |
-| `bittorrent.client.console.address` | `string, required` | 尚不支持（not supported yet） |
-| `bittorrent.client.console.cert_file` | `string` | 尚不支持（not supported yet） |
-| `bittorrent.client.console.key_file` | `string` | 尚不支持（not supported yet） |
-| `bittorrent.client.console.max_conns` | `integer` | 尚不支持（not supported yet） |
-| `bittorrent.client.console.max_sessions` | `integer` | 尚不支持（not supported yet） |
+| `bittorrent.client.console` | `object` | 已支持 |
+| `bittorrent.client.console.access` | `object` | 已支持 |
+| `bittorrent.client.console.access.allow` | `array<string>` | 已支持 |
+| `bittorrent.client.console.access.allow_files` | `array<string>` | 已支持 |
+| `bittorrent.client.console.access.deny` | `array<string>` | 已支持 |
+| `bittorrent.client.console.access.deny_files` | `array<string>` | 已支持 |
+| `bittorrent.client.console.address` | `string, required` | 已支持 |
+| `bittorrent.client.console.cert_file` | `string` | 已支持 |
+| `bittorrent.client.console.key_file` | `string` | 已支持 |
+| `bittorrent.client.console.max_conns` | `integer` | 已支持 |
+| `bittorrent.client.console.max_sessions` | `integer` | 已支持 |
 | `bittorrent.client.console.mptcp` | `boolean` | 尚不支持（not supported yet） |
-| `bittorrent.client.console.session_lifetime` | `duration` | 尚不支持（not supported yet） |
-| `bittorrent.client.console.session_timeout` | `duration` | 尚不支持（not supported yet） |
-| `bittorrent.client.console.users` | `array<object>, required` | 尚不支持（not supported yet） |
-| `bittorrent.client.console.users[].password_hash` | `string, required` | 尚不支持（not supported yet） |
-| `bittorrent.client.console.users[].username` | `string, required` | 尚不支持（not supported yet） |
-| `bittorrent.client.data_dir` | `string, required` | 尚不支持（not supported yet） |
-| `bittorrent.client.dht` | `boolean` | 尚不支持（not supported yet） |
+| `bittorrent.client.console.session_lifetime` | `duration` | 已支持 |
+| `bittorrent.client.console.session_timeout` | `duration` | 已支持 |
+| `bittorrent.client.console.users` | `array<object>, required` | 已支持 |
+| `bittorrent.client.console.users[].password_hash` | `string, required` | 已支持 |
+| `bittorrent.client.console.users[].username` | `string, required` | 已支持 |
+| `bittorrent.client.data_dir` | `string, required` | 已支持 |
+| `bittorrent.client.dht` | `boolean` | 已支持 |
 | `bittorrent.client.disk_queue_bytes` | `integer` | 尚不支持（not supported yet） |
-| `bittorrent.client.disk_workers` | `integer` | 尚不支持（not supported yet） |
-| `bittorrent.client.download_dir` | `string` | 尚不支持（not supported yet） |
-| `bittorrent.client.encryption` | `enum(allow\|prefer\|require)` | 尚不支持（not supported yet） |
-| `bittorrent.client.limits` | `object` | 尚不支持（not supported yet） |
-| `bittorrent.client.limits.download_rate` | `integer` | 尚不支持（not supported yet） |
+| `bittorrent.client.disk_workers` | `integer` | 已支持 |
+| `bittorrent.client.download_dir` | `string` | 已支持 |
+| `bittorrent.client.encryption` | `enum(allow\|prefer\|require)` | 已支持 |
+| `bittorrent.client.limits` | `object` | 已支持 |
+| `bittorrent.client.limits.download_rate` | `integer` | 已支持 |
 | `bittorrent.client.limits.max_active_downloads` | `integer` | 尚不支持（not supported yet） |
 | `bittorrent.client.limits.max_active_seeds` | `integer` | 尚不支持（not supported yet） |
 | `bittorrent.client.limits.max_conns` | `integer` | 尚不支持（not supported yet） |
-| `bittorrent.client.limits.max_conns_per_torrent` | `integer` | 尚不支持（not supported yet） |
+| `bittorrent.client.limits.max_conns_per_torrent` | `integer` | 已支持 |
 | `bittorrent.client.limits.max_half_open` | `integer` | 尚不支持（not supported yet） |
-| `bittorrent.client.limits.max_torrents` | `integer` | 尚不支持（not supported yet） |
+| `bittorrent.client.limits.max_torrents` | `integer` | 已支持 |
 | `bittorrent.client.limits.min_free_bytes` | `integer` | 尚不支持（not supported yet） |
-| `bittorrent.client.limits.seed_ratio` | `number` | 尚不支持（not supported yet） |
-| `bittorrent.client.limits.seed_time` | `duration` | 尚不支持（not supported yet） |
-| `bittorrent.client.limits.upload_rate` | `integer` | 尚不支持（not supported yet） |
-| `bittorrent.client.limits.upload_slots` | `integer` | 尚不支持（not supported yet） |
-| `bittorrent.client.listen` | `string, required` | 尚不支持（not supported yet） |
-| `bittorrent.client.lsd` | `boolean` | 尚不支持（not supported yet） |
-| `bittorrent.client.pex` | `boolean` | 尚不支持（not supported yet） |
+| `bittorrent.client.limits.seed_ratio` | `number` | 已支持 |
+| `bittorrent.client.limits.seed_time` | `duration` | 已支持 |
+| `bittorrent.client.limits.upload_rate` | `integer` | 已支持 |
+| `bittorrent.client.limits.upload_slots` | `integer` | 已支持 |
+| `bittorrent.client.listen` | `string, required` | 已支持 |
+| `bittorrent.client.lsd` | `boolean` | 已支持 |
+| `bittorrent.client.pex` | `boolean` | 已支持 |
 | `bittorrent.client.publish` | `array<object>` | 尚不支持（not supported yet） |
 | `bittorrent.client.publish[].announce` | `array<string>` | 尚不支持（not supported yet） |
 | `bittorrent.client.publish[].check_interval` | `duration` | 尚不支持（not supported yet） |
@@ -767,47 +767,47 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `bittorrent.client.rss.rules[].patterns` | `array<string>` | 尚不支持（not supported yet） |
 | `bittorrent.client.rss.rules[].paused` | `boolean` | 尚不支持（not supported yet） |
 | `bittorrent.client.rss.timeout` | `duration` | 尚不支持（not supported yet） |
-| `bittorrent.client.save_interval` | `duration` | 尚不支持（not supported yet） |
+| `bittorrent.client.save_interval` | `duration` | 已支持 |
 | `bittorrent.client.url_timeout` | `duration` | 尚不支持（not supported yet） |
-| `bittorrent.client.utp` | `boolean` | 尚不支持（not supported yet） |
+| `bittorrent.client.utp` | `boolean` | 已支持 |
 | `bittorrent.client.watch_dir` | `string` | 尚不支持（not supported yet） |
 | `bittorrent.client.watch_interval` | `duration` | 尚不支持（not supported yet） |
 | `bittorrent.client.watch_max_files` | `integer` | 尚不支持（not supported yet） |
-| `bittorrent.tracker` | `object` | 尚不支持（not supported yet） |
-| `bittorrent.tracker.access` | `object` | 尚不支持（not supported yet） |
-| `bittorrent.tracker.access.allow` | `array<string>` | 尚不支持（not supported yet） |
-| `bittorrent.tracker.access.allow_files` | `array<string>` | 尚不支持（not supported yet） |
-| `bittorrent.tracker.access.deny` | `array<string>` | 尚不支持（not supported yet） |
-| `bittorrent.tracker.access.deny_files` | `array<string>` | 尚不支持（not supported yet） |
-| `bittorrent.tracker.allow` | `array<string>` | 尚不支持（not supported yet） |
-| `bittorrent.tracker.allow_files` | `array<string>` | 尚不支持（not supported yet） |
+| `bittorrent.tracker` | `object` | 已支持 |
+| `bittorrent.tracker.access` | `object` | 已支持 |
+| `bittorrent.tracker.access.allow` | `array<string>` | 已支持 |
+| `bittorrent.tracker.access.allow_files` | `array<string>` | 已支持 |
+| `bittorrent.tracker.access.deny` | `array<string>` | 已支持 |
+| `bittorrent.tracker.access.deny_files` | `array<string>` | 已支持 |
+| `bittorrent.tracker.allow` | `array<string>` | 已支持 |
+| `bittorrent.tracker.allow_files` | `array<string>` | 已支持 |
 | `bittorrent.tracker.auth` | `string` | 尚不支持（not supported yet） |
-| `bittorrent.tracker.console` | `object` | 尚不支持（not supported yet） |
-| `bittorrent.tracker.console.access` | `object` | 尚不支持（not supported yet） |
-| `bittorrent.tracker.console.access.allow` | `array<string>` | 尚不支持（not supported yet） |
-| `bittorrent.tracker.console.access.allow_files` | `array<string>` | 尚不支持（not supported yet） |
-| `bittorrent.tracker.console.access.deny` | `array<string>` | 尚不支持（not supported yet） |
-| `bittorrent.tracker.console.access.deny_files` | `array<string>` | 尚不支持（not supported yet） |
-| `bittorrent.tracker.console.address` | `string, required` | 尚不支持（not supported yet） |
-| `bittorrent.tracker.console.cert_file` | `string` | 尚不支持（not supported yet） |
-| `bittorrent.tracker.console.key_file` | `string` | 尚不支持（not supported yet） |
-| `bittorrent.tracker.console.max_conns` | `integer` | 尚不支持（not supported yet） |
-| `bittorrent.tracker.console.max_sessions` | `integer` | 尚不支持（not supported yet） |
+| `bittorrent.tracker.console` | `object` | 已支持 |
+| `bittorrent.tracker.console.access` | `object` | 已支持 |
+| `bittorrent.tracker.console.access.allow` | `array<string>` | 已支持 |
+| `bittorrent.tracker.console.access.allow_files` | `array<string>` | 已支持 |
+| `bittorrent.tracker.console.access.deny` | `array<string>` | 已支持 |
+| `bittorrent.tracker.console.access.deny_files` | `array<string>` | 已支持 |
+| `bittorrent.tracker.console.address` | `string, required` | 已支持 |
+| `bittorrent.tracker.console.cert_file` | `string` | 已支持 |
+| `bittorrent.tracker.console.key_file` | `string` | 已支持 |
+| `bittorrent.tracker.console.max_conns` | `integer` | 已支持 |
+| `bittorrent.tracker.console.max_sessions` | `integer` | 已支持 |
 | `bittorrent.tracker.console.mptcp` | `boolean` | 尚不支持（not supported yet） |
-| `bittorrent.tracker.console.session_lifetime` | `duration` | 尚不支持（not supported yet） |
-| `bittorrent.tracker.console.session_timeout` | `duration` | 尚不支持（not supported yet） |
-| `bittorrent.tracker.console.users` | `array<object>, required` | 尚不支持（not supported yet） |
-| `bittorrent.tracker.console.users[].password_hash` | `string, required` | 尚不支持（not supported yet） |
-| `bittorrent.tracker.console.users[].username` | `string, required` | 尚不支持（not supported yet） |
-| `bittorrent.tracker.interval` | `duration` | 尚不支持（not supported yet） |
-| `bittorrent.tracker.listen` | `string` | 尚不支持（not supported yet） |
-| `bittorrent.tracker.max_numwant` | `integer` | 尚不支持（not supported yet） |
+| `bittorrent.tracker.console.session_lifetime` | `duration` | 已支持 |
+| `bittorrent.tracker.console.session_timeout` | `duration` | 已支持 |
+| `bittorrent.tracker.console.users` | `array<object>, required` | 已支持 |
+| `bittorrent.tracker.console.users[].password_hash` | `string, required` | 已支持 |
+| `bittorrent.tracker.console.users[].username` | `string, required` | 已支持 |
+| `bittorrent.tracker.interval` | `duration` | 已支持 |
+| `bittorrent.tracker.listen` | `string` | 已支持 |
+| `bittorrent.tracker.max_numwant` | `integer` | 已支持 |
 | `bittorrent.tracker.max_peers` | `integer` | 尚不支持（not supported yet） |
-| `bittorrent.tracker.max_peers_per_torrent` | `integer` | 尚不支持（not supported yet） |
-| `bittorrent.tracker.max_scrape` | `integer` | 尚不支持（not supported yet） |
-| `bittorrent.tracker.max_torrents` | `integer` | 尚不支持（not supported yet） |
-| `bittorrent.tracker.min_interval` | `duration` | 尚不支持（not supported yet） |
-| `bittorrent.tracker.peer_ttl` | `duration` | 尚不支持（not supported yet） |
+| `bittorrent.tracker.max_peers_per_torrent` | `integer` | 已支持 |
+| `bittorrent.tracker.max_scrape` | `integer` | 已支持 |
+| `bittorrent.tracker.max_torrents` | `integer` | 已支持 |
+| `bittorrent.tracker.min_interval` | `duration` | 已支持 |
+| `bittorrent.tracker.peer_ttl` | `duration` | 已支持 |
 | `bittorrent.tracker.store` | `object` | 尚不支持（not supported yet） |
 | `bittorrent.tracker.store.cache_peers` | `integer` | 尚不支持（not supported yet） |
 | `bittorrent.tracker.store.cache_torrents` | `integer` | 尚不支持（not supported yet） |

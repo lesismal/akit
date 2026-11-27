@@ -1023,11 +1023,109 @@ fn webrtc(out: &mut Vec<(String, String, Read)>) {
     );
 }
 
+/// I150: `bittorrent`'s client and tracker.
+fn bittorrent(out: &mut Vec<(String, String, Read)>) {
+    out.push((
+        "bittorrent".into(),
+        r#"{"bittorrent": {}}"#.into(),
+        Read::Differs(r#"{"bittorrent": {"tracker": {}}}"#.into()),
+    ));
+    let client = |m: &str| format!(r#"{{"bittorrent": {{"client": {m}}}}}"#);
+    out.push((
+        "bittorrent.client".into(),
+        r#"{"bittorrent": {"tracker": {}}}"#.into(),
+        Read::Differs(client(r#"{"listen": "127.0.0.1:6881", "data_dir": "d"}"#)),
+    ));
+    let need = [("listen", q("127.0.0.1:6881")), ("data_dir", q("d"))];
+    emit(
+        out,
+        "bittorrent.client",
+        &|m: &str| client(m),
+        &need,
+        vec![
+            f("listen", q("127.0.0.1:6881"), q("127.0.0.1:6882")),
+            f("data_dir", q("a"), q("b")),
+            f("download_dir", q("a"), q("b")),
+            f("encryption", q("allow"), q("require")),
+            f("dht", "true", "false"),
+            f("pex", "true", "false"),
+            f("utp", "true", "false"),
+            f("lsd", "true", "false"),
+            f("disk_workers", "1", "2"),
+            f("save_interval", q("1s"), q("2s")),
+            f("limits", "{}", r#"{"upload_rate": 1}"#),
+            f("console", console(7080), console(7081)),
+        ],
+    );
+    let lw = |m: &str| {
+        client(&format!(
+            r#"{{"listen": "127.0.0.1:6881", "data_dir": "d", "limits": {m}}}"#
+        ))
+    };
+    emit(
+        out,
+        "bittorrent.client.limits",
+        &lw,
+        &[],
+        vec![
+            f("upload_rate", "1", "2"),
+            f("download_rate", "1", "2"),
+            f("max_conns_per_torrent", "1", "2"),
+            f("upload_slots", "1", "2"),
+            f("seed_ratio", "1", "1.5"),
+            f("seed_time", q("1h"), q("2h")),
+            f("max_torrents", "1", "2"),
+        ],
+    );
+    let cw = |m: &str| {
+        client(&format!(
+            r#"{{"listen": "127.0.0.1:6881", "data_dir": "d", {m}}}"#
+        ))
+    };
+    console_and_access(out, "bittorrent.client", &cw, false);
+    // The tracker.
+    let tracker = |m: &str| format!(r#"{{"bittorrent": {{"tracker": {m}}}}}"#);
+    out.push((
+        "bittorrent.tracker".into(),
+        r#"{"bittorrent": {}}"#.into(),
+        Read::Differs(tracker("{}")),
+    ));
+    let h40a = "ab".repeat(20);
+    let h40b = "cd".repeat(20);
+    emit(
+        out,
+        "bittorrent.tracker",
+        &|m: &str| tracker(m),
+        &[],
+        vec![
+            f("listen", q("127.0.0.1:6969"), q("127.0.0.1:6970")),
+            f("interval", q("1m"), q("2m")),
+            f("min_interval", q("1s"), q("2s")),
+            f("peer_ttl", q("2h"), q("3h")),
+            f("max_torrents", "1", "2"),
+            f("max_peers_per_torrent", "1", "2"),
+            f("max_numwant", "1", "2"),
+            f("max_scrape", "1", "2"),
+            f(
+                "allow",
+                format!("[{}]", q(&h40a)),
+                format!("[{}]", q(&h40b)),
+            ),
+            f("allow_files", r#"["a"]"#, r#"["b"]"#),
+            f("access", "{}", r#"{"allow": ["10.0.0.0/8"]}"#),
+            f("console", console(7080), console(7081)),
+        ],
+    );
+    let tw = |m: &str| tracker(&format!("{{{m}}}"));
+    console_and_access(out, "bittorrent.tracker", &tw, true);
+}
+
 /// Every sample of the roles' fields.
 pub(crate) fn samples() -> Vec<(String, String, Read)> {
     let mut out = Vec::new();
     tunnel(&mut out);
     llm(&mut out);
     webrtc(&mut out);
+    bittorrent(&mut out);
     out
 }

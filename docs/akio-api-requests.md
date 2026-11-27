@@ -117,6 +117,12 @@ first; its status here records the branch, then the akio commit akit pins.
 | A259 | A peer's own configuration on an `RtcServer` (`accept_offer_with`): the codecs of one session, as an SFU answers a publisher with the codec it picked of each kind and its viewers with the same | on akio's main and pinned (since `d8d51f61`, akio's ADR-187): `RtcServer::accept_offer_with` | 12 | I113 |
 | A260 | RTP forwarding in akio-webrtc for an SFU: a received packet written on another peer's sending line, its SSRC, payload type, sequence and timestamp rewritten, its header extensions mapped | on akio's main and pinned (since `d8d51f61`, akio's ADR-187): `Peer::write_rtp` | 13 | I113 |
 | A261 | A receiver's bitrate cap told to the remote sender as REMB, and the ICE consent timeout set per peer | on akio's main and pinned (since `d8d51f61`, akio's ADR-187): `Peer::set_receive_bitrate_cap`, `RtcConfig::set_ice_timeouts` | 10, 11 | I113 |
+| A283 | The BitTorrent client on the caller's engine (fit's fib A79) | requested; stopgap: the client on an engine of its own | 16 | I152 |
+| A284 | The BitTorrent client's peers refused by address, its connections and dials bounded, its limits changed at run time (fib's A77, A78) | requested; until then the client's `access`, `max_conns`, `max_half_open` and `disk_queue_bytes` are refused as not supported yet | 11 | I152, I154 |
+| A285 | The tracker server's store: a bound of all its peers, bounds and TTL changed in place, its torrents listed and counted (fib's A85) | requested; until then `max_peers` is refused, and a change of the bounds makes a new store | 11 | I151 |
+| A286 | A torrent's own storage directory for a magnet link, once its info arrives (fib's `StorageOpener`) | requested | — | I153 |
+| A287 | A reader of a torrent's bytes that waits for their pieces and asks for them first, and file priorities | requested | 1 | I155 |
+| A288 | A torrent's trackers with their announces, its peer sources and web seeds' state, and a recheck in place (fib's A87, A88) | requested | — | I157 |
 
 ## A1 TCP listeners on a running engine
 
@@ -2692,3 +2698,125 @@ the estimate when lower, once a second for every remote SSRC), and
 
 **How akit would use it.** `akit_webrtc::media` caps each publisher at `max_bitrate` and sets
 `ice_timeout` on each session's configuration (with A259).
+
+## A283 The BitTorrent client on the caller's engine
+
+**Status.** Requested by I150 (2026-11-27) for I152. Stopgap: the client role runs
+akio-bittorrent's `Client` on the engine `Client::new` makes for it (its I/O threads, one port for
+TCP and UDP), beside the listeners' engine, recorded in [progress](progress.md).
+
+**Problem.** fit's client role runs fib's client on the listeners' engine (fib's A79,
+`Config.SharedEngine`): one engine, one set of I/O threads and limits for the gateway and its
+roles, as akit's other roles (`akit_roles::host::Host::engine`). akio-bittorrent's `Client::new`
+always builds and starts an `Engine` of its own (`ClientConfig::threads` I/O threads per
+listener, client threads for trackers and web seeds).
+
+**Evidence.** At akio `a8171fda`, `crates/akio-bittorrent/src/client/mod.rs`: `Client::new` calls
+`Engine::builder().listen(Listener::tcp(listen)...).listen(Listener::udp(listen)...).build()`
+and `engine.start()`; `ClientConfig` has no engine.
+
+**Suggested API.** `ClientConfig::engine: Option<Arc<Engine>>`: when set, the client adds its TCP
+listener (`Engine::add_listener`) and UDP binding (`bind_udp`) to that running engine, dials and
+runs its tracker and HTTP clients on it, and `Client::close` removes them, leaving the engine and
+another client on it running.
+
+**How akit would use it.** The client role passes `Host::engine`, as the tunnel's and LLM roles
+do, and its port joins the listeners' engine.
+
+## A284 The BitTorrent client's peers refused by address, its connections bounded, its limits changed at run time
+
+**Status.** Requested by I150 (2026-11-27) for I152 and I154. Until then akit refuses the client's
+`access`, `limits.max_conns`, `limits.max_half_open` and `disk_queue_bytes` as not supported yet,
+and a change of `max_conns_per_torrent` or `upload_slots` makes a new client.
+
+**Problem.** fit's client (fib's A77 and A78) refuses peers by address (the role's `access`: a
+refused peer is closed as soon as it connects over TCP, its uTP connection ignored, never dialed,
+and as a DHT node gets no answers), bounds the client's connections in all (`max_conns`, 200) and
+its dials at once (`max_half_open`, 32), bounds the received blocks waiting for the disk
+(`disk_queue_bytes`, 64 MiB, holding the peers' reads past it), and changes its limits in place
+(`Client.SetLimits`, `Torrent.SetLimits`), keeping the peers.
+
+**Evidence.** At akio `a8171fda`, `ClientConfig` has `max_peers_per_torrent` and `upload_slots`,
+read once by `Client::new`, and no filter, no client-wide connection or dial bound and no bound of
+the pieces waiting for the pool; `Client::set_rate_limits` and `Torrent::set_rate_limits` change
+the rates only.
+
+**Suggested API.** `ClientConfig::filter: Option<Arc<dyn Fn(&SocketAddr) -> bool + Send + Sync>>`
+and `Client::refilter()` (closing the connected peers it now refuses); `ClientConfig::max_conns`,
+`max_half_open`, `disk_queue_bytes`; `Client::set_limits(Limits)` and `Torrent::set_limits` for
+the connection counts, upload slots and rates.
+
+**How akit would use it.** The role sets the filter from its `access` and the global one at every
+apply and refilters, and moves its limits in place.
+
+## A285 The tracker server's store: a bound of all its peers, bounds changed in place, its torrents listed
+
+**Status.** Requested by I150 (2026-11-27) for I151. Until then akit refuses the tracker's
+`max_peers`, and a change of `max_torrents`, `max_peers_per_torrent` or `peer_ttl` makes a new
+`TrackerServer`, its swarms starting empty (fit's I201 did the same before fib's A85).
+
+**Problem.** fit's tracker store (fib's `MemoryStore`, A85) bounds every torrent's peers together
+(`max_peers`, 500,000 by default, about 80 MiB), changes its bounds and TTL in place
+(`SetConfig`), lists its torrents (`Range`, for a public tracker's torrents on its pages) and counts
+its peers (`Peers`, for its statistics).
+
+**Evidence.** At akio `a8171fda`, `TrackerConfig` has `max_swarms` and `max_peers_per_swarm` only,
+read by `TrackerServer::new`; `TrackerServer` has `swarms()` and `stats(&InfoHash)`, no peer count,
+no way to change its config, and no way to walk its swarms.
+
+**Suggested API.** `TrackerConfig::max_peers` (all swarms together; a peer past it still gets
+peers, as one past `max_peers_per_swarm`); `TrackerServer::set_config(TrackerConfig)` keeping the
+swarms; `TrackerServer::peers() -> usize`; `TrackerServer::range(|InfoHash, ScrapeStats| -> bool)`.
+
+**How akit would use it.** The role reads `max_peers`, sets its bounds in place on a reload, and
+lists a public tracker's torrents and its peers on its console.
+
+## A286 A torrent's own storage directory for a magnet link
+
+**Status.** Requested by I150 (2026-11-27) for I153.
+
+**Problem.** fit downloads a torrent into its category's directory, a magnet link's too
+(fib's `StorageOpener`, called when the info arrives). akio-bittorrent's `AddOptions::storage`
+takes a storage made from the torrent's `Info` (`FileStorage::new(dir, &info)`), which a magnet
+link does not have yet; without it the files go below `ClientConfig::data_dir`.
+
+**Evidence.** At akio `a8171fda`, `AddOptions::storage: Option<Arc<dyn Storage>>`;
+`FileStorage::new(impl AsRef<Path>, &Info)`.
+
+**Suggested API.** `AddOptions::dir: Option<PathBuf>` (the directory a torrent's `FileStorage`
+is made below, when its info is known), or a storage opener called with the `Info`.
+
+**How akit would use it.** Categories and `download_dir` changes for torrents added by magnet
+link.
+
+## A287 A reader of a torrent's bytes that waits for their pieces, and file priorities
+
+**Status.** Requested by I150 (2026-11-27) for I155.
+
+**Problem.** fit's `bt_stream` plays a torrent's file while it downloads: a reader (fib's
+`Reader`) whose reads ask for their pieces first and wait for them, read ahead within a bound,
+and a temporary torrent downloads only the files streamed (file priorities).
+
+**Evidence.** At akio `a8171fda`, `Torrent` has no read of its bytes and no file or piece
+priorities.
+
+**Suggested API.** `Torrent::reader(file) -> Reader` with `read_at(offset, len, done)` completing
+on the pool once the pieces are verified, a readahead bound, and `Torrent::set_file_priorities`.
+
+**How akit would use it.** `bt_stream` answers ranges from it, never waiting on an I/O thread.
+
+## A288 A torrent's trackers and web seeds' state, and a recheck in place
+
+**Status.** Requested by I150 (2026-11-27) for I157.
+
+**Problem.** fit's Admin API and pages show each tracker's announces (last, next, errors, peers
+got), the peer sources and the web seeds' state (fib's A87), and recheck a torrent's data in place
+(fib's A88).
+
+**Evidence.** At akio `a8171fda`, `Torrent` has `peers()` and `stats()`; trackers' failures only
+as `TorrentEvent::TrackerError`; no recheck.
+
+**Suggested API.** `Torrent::trackers() -> Vec<TrackerState>`, `Torrent::web_seeds()`,
+`Torrent::recheck()`.
+
+**How akit would use it.** `/bittorrent/torrents/<id>/trackers` and the recheck action.

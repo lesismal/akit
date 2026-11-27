@@ -1545,14 +1545,14 @@ const LLM_API_FIELDS: &[&str] = &[
 const LLM_KEY_FIELDS: &[&str] = &["id", "name", "prefix", "hash", "created_at"];
 
 /// A string member; empty when left out.
-fn text(d: &mut Decoder<'_>, o: &mut Obj<'_>, key: &str) -> String {
+pub(crate) fn text(d: &mut Decoder<'_>, o: &mut Obj<'_>, key: &str) -> String {
     o.take(key)
         .and_then(|v| d.string(v, &o.at(key)))
         .unwrap_or_default()
 }
 
 /// A string member and where its value is; `None` when left out.
-fn text_at(d: &mut Decoder<'_>, o: &mut Obj<'_>, key: &str) -> Option<(String, usize)> {
+pub(crate) fn text_at(d: &mut Decoder<'_>, o: &mut Obj<'_>, key: &str) -> Option<(String, usize)> {
     let v = o.take(key)?;
     d.string(v, &o.at(key)).map(|s| (s, v.off))
 }
@@ -1566,14 +1566,14 @@ fn required(d: &mut Decoder<'_>, o: &mut Obj<'_>, key: &str) -> (String, usize) 
 }
 
 /// A duration member; zero when left out.
-fn duration(d: &mut Decoder<'_>, o: &mut Obj<'_>, key: &str) -> Duration {
+pub(crate) fn duration(d: &mut Decoder<'_>, o: &mut Obj<'_>, key: &str) -> Duration {
     o.take(key)
         .and_then(|v| d.duration(v, &o.at(key)))
         .unwrap_or_default()
 }
 
 /// A count, at least 0 and at most `max`; 0 when left out.
-fn count(d: &mut Decoder<'_>, o: &mut Obj<'_>, key: &str, max: i64) -> usize {
+pub(crate) fn count(d: &mut Decoder<'_>, o: &mut Obj<'_>, key: &str, max: i64) -> usize {
     o.take(key)
         .and_then(|v| d.int(v, &o.at(key), 0, max))
         .and_then(|n| usize::try_from(n).ok())
@@ -1581,7 +1581,7 @@ fn count(d: &mut Decoder<'_>, o: &mut Obj<'_>, key: &str, max: i64) -> usize {
 }
 
 /// A number of bytes, at least 0; 0 when left out.
-fn bytes(d: &mut Decoder<'_>, o: &mut Obj<'_>, key: &str) -> u64 {
+pub(crate) fn bytes(d: &mut Decoder<'_>, o: &mut Obj<'_>, key: &str) -> u64 {
     o.take(key)
         .and_then(|v| d.int(v, &o.at(key), 0, i64::MAX))
         .and_then(|n| u64::try_from(n).ok())
@@ -1596,11 +1596,11 @@ fn seconds(d: &mut Decoder<'_>, o: &mut Obj<'_>, key: &str) -> i64 {
 }
 
 /// A boolean member; false when left out.
-fn boolean(d: &mut Decoder<'_>, o: &mut Obj<'_>, key: &str) -> bool {
+pub(crate) fn boolean(d: &mut Decoder<'_>, o: &mut Obj<'_>, key: &str) -> bool {
     bool_opt(d, o, key).unwrap_or(false)
 }
 
-fn bool_opt(d: &mut Decoder<'_>, o: &mut Obj<'_>, key: &str) -> Option<bool> {
+pub(crate) fn bool_opt(d: &mut Decoder<'_>, o: &mut Obj<'_>, key: &str) -> Option<bool> {
     let v = o.take(key)?;
     match &v.kind {
         Kind::Bool(b) => Some(*b),
@@ -1616,7 +1616,7 @@ fn bool_opt(d: &mut Decoder<'_>, o: &mut Obj<'_>, key: &str) -> Option<bool> {
 }
 
 /// An array member, each element read by `f` with its index's path and position.
-fn list<T>(
+pub(crate) fn list<T>(
     d: &mut Decoder<'_>,
     o: &mut Obj<'_>,
     key: &str,
@@ -1632,7 +1632,7 @@ fn list<T>(
 }
 
 /// A role's `console`: `admin.console`'s fields and checks, its `address` required.
-fn role_console(d: &mut Decoder<'_>, o: &mut Obj<'_>) -> Option<Console> {
+pub(crate) fn role_console(d: &mut Decoder<'_>, o: &mut Obj<'_>) -> Option<Console> {
     let v = o.take("console")?;
     let p = o.at("console");
     if let Kind::Object(members) = &v.kind {
@@ -1643,7 +1643,7 @@ fn role_console(d: &mut Decoder<'_>, o: &mut Obj<'_>) -> Option<Console> {
     crate::model::console(d, v, &p)
 }
 
-fn access_of(d: &mut Decoder<'_>, o: &mut Obj<'_>) -> Option<Access> {
+pub(crate) fn access_of(d: &mut Decoder<'_>, o: &mut Obj<'_>) -> Option<Access> {
     let v = o.take("access")?;
     crate::model::access(d, v, &o.at("access"))
 }

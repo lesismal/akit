@@ -551,6 +551,8 @@ pub fn console_of<'c>(c: &'c akit_config::Config, id: &str) -> Option<&'c akit_c
         "llm.hub" => l?.hub.as_ref()?.role.console.as_ref(),
         "llm.node" => l?.node.as_ref()?.role.console.as_ref(),
         "llm.proxy" => l?.proxy.as_ref()?.role.console.as_ref(),
+        "bittorrent.client" => c.bittorrent.as_ref()?.client.as_ref()?.console.as_ref(),
+        "bittorrent.tracker" => c.bittorrent.as_ref()?.tracker.as_ref()?.console.as_ref(),
         _ => None,
     }
 }

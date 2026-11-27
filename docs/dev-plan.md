@@ -241,6 +241,7 @@ Tunnel and LLM track; I110–I114 are the WebRTC track, and I115–I119 are rese
 | I113 | WebRTC IV: WHIP and WHEP, an SFU on akio-webrtc's `RtcServer` | I110 | done |
 | I114 | WebRTC V: WHIP and WHEP proxied: `webrtc_proxy` and `webrtc.proxy` | I113, I14 | todo |
 | I150 | BitTorrent I: `bittorrent.client` and `bittorrent.tracker` in the config, fit's fields, checks and clashes; what later iterations run refused as not supported yet | I98 | todo |
+| I150 | BitTorrent I: `bittorrent.client` and `bittorrent.tracker` in the config, fit's fields, checks and clashes; what later iterations run refused as not supported yet | I98 | done |
 | I151 | BitTorrent II: the tracker role and `bt_tracker` on akio-bittorrent's `TrackerServer`: HTTP and UDP, the allow-list, access, bounds, statistics, its console | I150, I100 | todo |
 | I152 | BitTorrent III: the client role on akio-bittorrent's `Client`: the state in `data_dir`, restore without a check, reloads in place or by a new client, its API and console | I150, I151 | todo |
 | I153 | BitTorrent IV: adding by URL and `watch_dir`, categories, the queue, disk checks | I152 | todo |
@@ -1990,6 +1991,7 @@ Streaming and media auth track's: it is refused as not supported yet until that 
 - **Touches**: `akit-webrtc` (`proxy`), `akit-upstream`, `akit`.
 - **fit**: `webrtc/media/{proxy,proxyhttp,relay}.go`; I110, I111.
 - **Status**: todo.
+
 ### BitTorrent
 
 fit's I196–I210 (its [BitTorrent guide](https://github.com/lesismal/fit/blob/main/docs/bittorrent.md),
@@ -2030,6 +2032,7 @@ waits for the Cluster management track.
 - **Touches**: `akit-config` (`bittorrent`), `akit`, `tests/compat`, `docs/reference`.
 - **fit**: `config/bittorrent.go`, `config/bittorrent_tracker.go`, `config/bindings.go`; I197,
   I201.
+- **Status**: done (2026-11-27). See the progress log.
 
 ### I151 BitTorrent II: the tracker role
 

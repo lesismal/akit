@@ -128,6 +128,28 @@
   处理器 `whip`、`whep` 和 `webrtc_proxy`）；I111，基于 akio-turn、经 UDP、TCP 和 TLS 的 TURN 服务器；I112，基于
   akio-turn 所缺钩子（A256–A258）的 TURN 服务器；I113，WHIP 和 WHEP，基于 akio-webrtc `RtcServer` 的 SFU；I114，
   代理的 WHIP 和 WHEP。I115–I119 为该路线预留。其基准测试行写明要测量的内容。
+
+### 2026-11-27：I150，配置中的 `bittorrent`
+
+- `bittorrent.client` 和 `bittorrent.tracker` 与其余部分一样严格读取（`akit_config::bittorrent`），字段、默认值、上限和检查与 fit
+  相同（`config/bittorrent.go`、`config/bittorrent_tracker.go`）：客户端的 `listen` 和 `data_dir`（必填，`data_dir` 不能为空白）、
+  `download_dir`（默认 `<data_dir>/downloads`）、`encryption`（`prefer`）、`dht`、`pex`、`utp`（开）、`lsd`（关）、
+  `disk_workers`（至多 64）、`save_interval`（5 秒）、`limits`（速率、`max_conns_per_torrent` 50、`upload_slots` 4、`seed_ratio`、
+  `seed_time`、`max_torrents` 1,000，至多 100,000）和 `console`；tracker 的 `listen`、`interval`（30 分钟）、`min_interval`（不超过
+  interval）、`peer_ttl`（1 小时，长于 interval）、`max_torrents`、`max_peers_per_torrent`、`max_numwant`、`max_scrape`（fit 的默认值
+  和最大值）、`allow`（40 或 64 位十六进制的 info hash，至多 1,048,576 个）、`allow_files`、`access` 和 `console`。客户端的端口以 TCP
+  和 UDP、tracker 的以 UDP、它们的控制台以 TCP 进入"一个地址一个服务器"的检查。
+- 以"尚不支持"拒绝，各自由其迭代或 akio 请求解决：客户端的 `categories`、`watch_dir`、`watch_interval`、`watch_max_files`、
+  `url_timeout`（I153）、`alt_speed`（I154）、`access`、`disk_queue_bytes` 以及限制 `max_conns`、`max_half_open`（akio 的 A284）、
+  `max_active_downloads`、`max_active_seeds`、`min_free_bytes`（I153）、`publish`（I156）、`rss`（I159）；tracker 的 `max_peers`
+  （A285）、`auth`（一个 `media_auth` 策略）和 `store`（I159）。在 I151 和 I152 运行它们之前，`akit run` 拒绝含有任一角色的配置。
+- 提出 akio 请求 A283–A288：客户端运行在调用者的引擎上、按地址拒绝 peer 并在运行时修改限制、原地修改 tracker 存储的上限、磁力链接的
+  存储目录、等待分片的读取器、tracker 的状态和原地重新校验。
+- 测试：`bittorrent::tests`（fit 的 `TestConfigChecks`、`TestBitTorrentTrackerChecks` 和 `TestBitTorrentTrackerBinds`，以及以"尚不
+  支持"拒绝的字段）；兼容性闸门为读取的每个字段取样；akit 的 `roles_are_refused_until_they_run`。闸门的 `bittorrent` 示例仍被拒绝
+  （其 `media_auth`、`media_library`、`bt_*` 处理器以及上述字段）。
+- 待审查的决定：第 76 行。
+
 ### 2026-11-27：规划 BitTorrent 路线（I150–I159）
 
 - 1.0 之后的第十条路线按 fit 的 I196–I210 拆分为迭代（[计划](dev-plan.zh-CN.md#bittorrent)）：
@@ -297,6 +319,7 @@
   流被转发、拒绝、离线，对端调用页面的方法被拒绝；列表的序号；设置和名称写回，编辑失败时的应答（fit 的 `TestRole`）；`tests/e2e.rs`：
   端到端调用之后每个角色的路由。对 fit 的二进制（`tests/fit_manage.rs`）：akit 的 hub 管理 fit 的 node（其模型列表、运行并跟随一个作业、
   保存一个模型）。
+
 ### 2026-11-27：I102d，hub 的 QUIC 握手限制和监听器证书的重新读取
 
 - hub 的 `quic` 监听器基于 akio 的 A245（ADR-185），同 fit：每次握手受 `tunnel.hub.quic.handshake_timeout`（省略时 10 秒）限制，
@@ -383,6 +406,7 @@
   在单独的 target 目录中单独运行时通过；gpu51 上 clippy `-D warnings` 以及 release 模式的整个工作区在 epoll 和
   `AKIO_TEST_BACKEND=uring` 下都通过（epoll 那次运行早于两个按 `store` 格式的消息更新的 akit-admin 测试，io_uring 那次包含了它们）。不做基准（控制面，
   规则 30）；基准表中控制台的一行保持不变。
+
 ### 2026-11-27：I103b，控制台套接字和 web 代理
 
 - `akit_tunnel::wscrypt`：逐字节等同 fit 的 `tunnel/internal/wscrypt`：密码的 PBKDF2（`fit-tunnel-ws`，10,000 轮，SHA-256），
@@ -475,6 +499,7 @@
 - 临时方案：拨号方用 close 帧断开已死或过慢的链路，该帧排在等待的数据之后，akio-ws 的客户端在其关闭超时（这里 1 秒）后关闭 TCP 连接；
   监听方通过连接句柄立即中止。akio API 请求 A238 请求 `WsSender::abort`。自 akio `8a9601b9` 起已删除：拨号方直接中止，1 秒的关闭超时去掉。
 - 下一步：其上的角色，I105（node）、I106（hub）、I107（proxy）。
+
 ### 2026-11-27：I103，hub 的调用和状态、token 过期；拆分出 I103b
 
 - hub 的调用（fit 的 `tunnel/hub/api.go` 及其调用的 `hub.go` 中的方法），在 `akit_tunnel::hub::HubApi` 上，这是 hub 通过 `Role::api`
@@ -1682,6 +1707,7 @@ akit-listener（新增 `tests/limits.rs`：在 HTTP/1.1 和 h2c 上低于、超�
   `AKIT_TEST_SOCKMAP=userspace` 的 sockmap 测试（回退）：全部通过；sockmap 测试在四种模式下各运行三次。
 - 待测（基准任务，规则 30）：开发计划中 eBPF sockmap 转发一行（与不带它的同一监听器和 fit 对比吞吐与 CPU、每秒连接数，
   以及 10,000 个已拼接连接时的清扫与排空）。
+
 ### 2026-11-25：I71，WASM I：运行时与 fit 的 ABI
 
 - akio：akit 锁定到 akio `main` 的 `dad77a7a`：在 `1ae0a05f`
@@ -3532,6 +3558,7 @@ akit-listener（新增 `tests/limits.rs`：在 HTTP/1.1 和 h2c 上低于、超�
 - akio API 需求：A29（不分配内存的应答钩子）和 A30（监听器接受的打开连接数）。
 - 基准测试任务应测量：fixed 和 proxy 场景下开关 `metrics` 的同轮 A/B，以及同时开启访问日志；64 个线程、大量
   路由时一次抓取的耗时。
+
 ### 2026-11-24：I30，证书管理与存储
 
 - 证书管理器就是 akio-tls 的 `CertResolver`（akio A2，ADR-098），相当于 fit 的 `tlsmgr.Manager` 之于 Go 的

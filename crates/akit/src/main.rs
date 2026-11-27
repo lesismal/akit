@@ -300,6 +300,8 @@ fn roles_not_running(config: &Config) -> Result<(), Failure> {
                     p if p.starts_with("tunnel.") => "I101-I103",
                     "webrtc.media" => "I113",
                     "webrtc.proxy" => "I114",
+                    "bittorrent.tracker" => "I151",
+                    "bittorrent.client" => "I152",
                     _ => "I104-I109",
                 }
             ),
@@ -1840,6 +1842,23 @@ mod tests {
         let c = akit_config::from_json(r#"{"tunnel": {"hub": {}}}"#, None).unwrap();
         assert!(super::roles_not_running(&c).is_ok());
         let c = akit_config::from_json(r#"{"tunnel": {}, "llm": {}}"#, None).unwrap();
+        assert!(super::roles_not_running(&c).is_ok());
+        // The BitTorrent roles (I150): read and checked, run by their iterations.
+        let c = akit_config::from_json(
+            r#"{"bittorrent": {"client": {"listen": "127.0.0.1:0", "data_dir": "d"}, "tracker": {}}}"#,
+            None,
+        )
+        .unwrap();
+        let Err(super::Failure::Config(e)) = super::roles_not_running(&c) else {
+            panic!("the BitTorrent roles are not refused");
+        };
+        let e = e.to_string();
+        assert!(
+            e.contains("bittorrent.client: akit run does not run this role yet (I152)")
+                && e.contains("bittorrent.tracker: akit run does not run this role yet (I151)"),
+            "{e}"
+        );
+        let c = akit_config::from_json(r#"{"bittorrent": {}}"#, None).unwrap();
         assert!(super::roles_not_running(&c).is_ok());
     }
 

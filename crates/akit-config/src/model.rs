@@ -64,6 +64,8 @@ pub struct Config {
     /// `webrtc` (I110): the TURN server, the media server of `whip` and `whep`, and the relay of
     /// `webrtc_proxy`; none when left out.
     pub webrtc: Option<crate::webrtc::WebRtc>,
+    /// `bittorrent` (I150): the BitTorrent client and tracker; neither when left out.
+    pub bittorrent: Option<crate::bittorrent::BitTorrent>,
     /// What the config was read with that is said rather than refused (I79): the old names of
     /// fields renamed in schema version 1, each at its file, line, column and path. Not part of
     /// what the config means: configs equal but for these are equal.
@@ -2253,15 +2255,10 @@ const CONFIG_FIELDS: &[&str] = &[
     "llm",
     // I110: fit's WebRTC roles (crate::webrtc).
     "webrtc",
-];
-const CONFIG_FIT_ONLY: &[&str] = &[
-    "pprof",
-    "media_auth",
-    "streaming",
-    "media_library",
-    "sync",
+    // I150: fit's BitTorrent roles (crate::bittorrent).
     "bittorrent",
 ];
+const CONFIG_FIT_ONLY: &[&str] = &["pprof", "media_auth", "streaming", "media_library", "sync"];
 // I26: the Admin API's address, history and limits; I27: its token; I63: its dashboard; I87: its
 // access lists; I89: its console; I92: its TLS.
 const ADMIN_FIELDS: &[&str] = &[
@@ -2673,6 +2670,8 @@ pub(crate) struct Part {
     llm: Option<(crate::roles::Llm, usize)>,
     /// `webrtc` (I110), with the position of its key, when the file gives it.
     webrtc: Option<(crate::webrtc::WebRtc, usize)>,
+    /// `bittorrent` (I150), with the position of its key, when the file gives it.
+    bittorrent: Option<(crate::bittorrent::BitTorrent, usize)>,
     providers: Vec<At<crate::providers::Provider>>,
     /// The position of the file's top object.
     doc_off: usize,
@@ -2763,6 +2762,9 @@ pub(crate) fn part(d: &mut Decoder<'_>, n: &Node, file: usize) -> Option<Part> {
     let webrtc = o
         .take("webrtc")
         .and_then(|v| crate::webrtc::webrtc(d, v, "webrtc").map(|w| (w, v.off)));
+    let bittorrent = o
+        .take("bittorrent")
+        .and_then(|v| crate::bittorrent::bittorrent(d, v, "bittorrent").map(|b| (b, v.off)));
     let providers = o
         .take("providers")
         .map(|v| {
@@ -2792,6 +2794,7 @@ pub(crate) fn part(d: &mut Decoder<'_>, n: &Node, file: usize) -> Option<Part> {
         tunnel,
         llm,
         webrtc,
+        bittorrent,
         providers,
         doc_off,
     })
@@ -2826,6 +2829,7 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
     let mut tunnel: Option<(crate::roles::Tunnel, usize)> = None;
     let mut llm: Option<(crate::roles::Llm, usize)> = None;
     let mut webrtc: Option<(crate::webrtc::WebRtc, usize)> = None;
+    let mut bittorrent: Option<(crate::bittorrent::BitTorrent, usize)> = None;
     let mut providers = Vec::new();
     for (file, p) in parts.into_iter().enumerate() {
         first_doc.get_or_insert((file, p.doc_off));
@@ -2967,6 +2971,9 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
         if let Some((w, off)) = p.webrtc {
             once(ds, &mut webrtc, w, file, off, "webrtc");
         }
+        if let Some((b, off)) = p.bittorrent {
+            once(ds, &mut bittorrent, b, file, off, "bittorrent");
+        }
         listeners.extend(p.listeners);
         routes.extend(p.routes);
         upstreams.extend(p.upstreams);
@@ -3024,6 +3031,7 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
         tunnel.as_ref().map(|(t, _)| t),
         llm.as_ref().map(|(l, _)| l),
         webrtc.as_ref().map(|(w, _)| w),
+        bittorrent.as_ref().map(|(b, _)| b),
     );
     crate::binds::report(ds, clashes);
     let limits = limits.map(|(l, _)| l).unwrap_or_default();
@@ -3054,6 +3062,7 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
         tunnel: tunnel.map(|(t, _)| t),
         llm: llm.map(|(l, _)| l),
         webrtc: webrtc.map(|(w, _)| w),
+        bittorrent: bittorrent.map(|(b, _)| b),
         warnings: crate::error::Warnings::default(),
     }
 }

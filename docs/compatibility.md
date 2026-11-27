@@ -394,7 +394,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 974 supported.
+3821 fields in 121 sections, at fit `7daee573`; 1042 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -403,7 +403,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`acme`](#fields-acme) | 43 | 43 | 0 |
 | [`admin`](#fields-admin) | 105 | 36 | 69 |
 | [`auto_https`](#fields-auto-https) | 5 | 5 | 0 |
-| [`bittorrent`](#fields-bittorrent) | 160 | 0 | 160 |
+| [`bittorrent`](#fields-bittorrent) | 160 | 68 | 92 |
 | [`engine`](#fields-engine) | 11 | 8 | 3 |
 | [`http.handlers/bt_publish`](#fields-http-handlers-bt-publish) | 3 | 0 | 3 |
 | [`http.handlers/bt_stream`](#fields-http-handlers-bt-stream) | 14 | 0 | 14 |
@@ -519,7 +519,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 161 | 3 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 76 | 0 |
-| **Total** | 3821 | 974 | 2847 |
+| **Total** | 3821 | 1042 | 2779 |
 
 <a id="fields-access"></a>
 
@@ -734,8 +734,8 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `bittorrent` | `object` | not supported yet |
-| `bittorrent.client` | `object` | not supported yet |
+| `bittorrent` | `object` | supported |
+| `bittorrent.client` | `object` | supported |
 | `bittorrent.client.access` | `object` | not supported yet |
 | `bittorrent.client.access.allow` | `array<string>` | not supported yet |
 | `bittorrent.client.access.allow_files` | `array<string>` | not supported yet |
@@ -760,45 +760,45 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `bittorrent.client.categories[].limits.upload_slots` | `integer` | not supported yet |
 | `bittorrent.client.categories[].media_library` | `string` | not supported yet |
 | `bittorrent.client.categories[].name` | `string, required` | not supported yet |
-| `bittorrent.client.console` | `object` | not supported yet |
-| `bittorrent.client.console.access` | `object` | not supported yet |
-| `bittorrent.client.console.access.allow` | `array<string>` | not supported yet |
-| `bittorrent.client.console.access.allow_files` | `array<string>` | not supported yet |
-| `bittorrent.client.console.access.deny` | `array<string>` | not supported yet |
-| `bittorrent.client.console.access.deny_files` | `array<string>` | not supported yet |
-| `bittorrent.client.console.address` | `string, required` | not supported yet |
-| `bittorrent.client.console.cert_file` | `string` | not supported yet |
-| `bittorrent.client.console.key_file` | `string` | not supported yet |
-| `bittorrent.client.console.max_conns` | `integer` | not supported yet |
-| `bittorrent.client.console.max_sessions` | `integer` | not supported yet |
+| `bittorrent.client.console` | `object` | supported |
+| `bittorrent.client.console.access` | `object` | supported |
+| `bittorrent.client.console.access.allow` | `array<string>` | supported |
+| `bittorrent.client.console.access.allow_files` | `array<string>` | supported |
+| `bittorrent.client.console.access.deny` | `array<string>` | supported |
+| `bittorrent.client.console.access.deny_files` | `array<string>` | supported |
+| `bittorrent.client.console.address` | `string, required` | supported |
+| `bittorrent.client.console.cert_file` | `string` | supported |
+| `bittorrent.client.console.key_file` | `string` | supported |
+| `bittorrent.client.console.max_conns` | `integer` | supported |
+| `bittorrent.client.console.max_sessions` | `integer` | supported |
 | `bittorrent.client.console.mptcp` | `boolean` | not supported yet |
-| `bittorrent.client.console.session_lifetime` | `duration` | not supported yet |
-| `bittorrent.client.console.session_timeout` | `duration` | not supported yet |
-| `bittorrent.client.console.users` | `array<object>, required` | not supported yet |
-| `bittorrent.client.console.users[].password_hash` | `string, required` | not supported yet |
-| `bittorrent.client.console.users[].username` | `string, required` | not supported yet |
-| `bittorrent.client.data_dir` | `string, required` | not supported yet |
-| `bittorrent.client.dht` | `boolean` | not supported yet |
+| `bittorrent.client.console.session_lifetime` | `duration` | supported |
+| `bittorrent.client.console.session_timeout` | `duration` | supported |
+| `bittorrent.client.console.users` | `array<object>, required` | supported |
+| `bittorrent.client.console.users[].password_hash` | `string, required` | supported |
+| `bittorrent.client.console.users[].username` | `string, required` | supported |
+| `bittorrent.client.data_dir` | `string, required` | supported |
+| `bittorrent.client.dht` | `boolean` | supported |
 | `bittorrent.client.disk_queue_bytes` | `integer` | not supported yet |
-| `bittorrent.client.disk_workers` | `integer` | not supported yet |
-| `bittorrent.client.download_dir` | `string` | not supported yet |
-| `bittorrent.client.encryption` | `enum(allow\|prefer\|require)` | not supported yet |
-| `bittorrent.client.limits` | `object` | not supported yet |
-| `bittorrent.client.limits.download_rate` | `integer` | not supported yet |
+| `bittorrent.client.disk_workers` | `integer` | supported |
+| `bittorrent.client.download_dir` | `string` | supported |
+| `bittorrent.client.encryption` | `enum(allow\|prefer\|require)` | supported |
+| `bittorrent.client.limits` | `object` | supported |
+| `bittorrent.client.limits.download_rate` | `integer` | supported |
 | `bittorrent.client.limits.max_active_downloads` | `integer` | not supported yet |
 | `bittorrent.client.limits.max_active_seeds` | `integer` | not supported yet |
 | `bittorrent.client.limits.max_conns` | `integer` | not supported yet |
-| `bittorrent.client.limits.max_conns_per_torrent` | `integer` | not supported yet |
+| `bittorrent.client.limits.max_conns_per_torrent` | `integer` | supported |
 | `bittorrent.client.limits.max_half_open` | `integer` | not supported yet |
-| `bittorrent.client.limits.max_torrents` | `integer` | not supported yet |
+| `bittorrent.client.limits.max_torrents` | `integer` | supported |
 | `bittorrent.client.limits.min_free_bytes` | `integer` | not supported yet |
-| `bittorrent.client.limits.seed_ratio` | `number` | not supported yet |
-| `bittorrent.client.limits.seed_time` | `duration` | not supported yet |
-| `bittorrent.client.limits.upload_rate` | `integer` | not supported yet |
-| `bittorrent.client.limits.upload_slots` | `integer` | not supported yet |
-| `bittorrent.client.listen` | `string, required` | not supported yet |
-| `bittorrent.client.lsd` | `boolean` | not supported yet |
-| `bittorrent.client.pex` | `boolean` | not supported yet |
+| `bittorrent.client.limits.seed_ratio` | `number` | supported |
+| `bittorrent.client.limits.seed_time` | `duration` | supported |
+| `bittorrent.client.limits.upload_rate` | `integer` | supported |
+| `bittorrent.client.limits.upload_slots` | `integer` | supported |
+| `bittorrent.client.listen` | `string, required` | supported |
+| `bittorrent.client.lsd` | `boolean` | supported |
+| `bittorrent.client.pex` | `boolean` | supported |
 | `bittorrent.client.publish` | `array<object>` | not supported yet |
 | `bittorrent.client.publish[].announce` | `array<string>` | not supported yet |
 | `bittorrent.client.publish[].check_interval` | `duration` | not supported yet |
@@ -837,47 +837,47 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `bittorrent.client.rss.rules[].patterns` | `array<string>` | not supported yet |
 | `bittorrent.client.rss.rules[].paused` | `boolean` | not supported yet |
 | `bittorrent.client.rss.timeout` | `duration` | not supported yet |
-| `bittorrent.client.save_interval` | `duration` | not supported yet |
+| `bittorrent.client.save_interval` | `duration` | supported |
 | `bittorrent.client.url_timeout` | `duration` | not supported yet |
-| `bittorrent.client.utp` | `boolean` | not supported yet |
+| `bittorrent.client.utp` | `boolean` | supported |
 | `bittorrent.client.watch_dir` | `string` | not supported yet |
 | `bittorrent.client.watch_interval` | `duration` | not supported yet |
 | `bittorrent.client.watch_max_files` | `integer` | not supported yet |
-| `bittorrent.tracker` | `object` | not supported yet |
-| `bittorrent.tracker.access` | `object` | not supported yet |
-| `bittorrent.tracker.access.allow` | `array<string>` | not supported yet |
-| `bittorrent.tracker.access.allow_files` | `array<string>` | not supported yet |
-| `bittorrent.tracker.access.deny` | `array<string>` | not supported yet |
-| `bittorrent.tracker.access.deny_files` | `array<string>` | not supported yet |
-| `bittorrent.tracker.allow` | `array<string>` | not supported yet |
-| `bittorrent.tracker.allow_files` | `array<string>` | not supported yet |
+| `bittorrent.tracker` | `object` | supported |
+| `bittorrent.tracker.access` | `object` | supported |
+| `bittorrent.tracker.access.allow` | `array<string>` | supported |
+| `bittorrent.tracker.access.allow_files` | `array<string>` | supported |
+| `bittorrent.tracker.access.deny` | `array<string>` | supported |
+| `bittorrent.tracker.access.deny_files` | `array<string>` | supported |
+| `bittorrent.tracker.allow` | `array<string>` | supported |
+| `bittorrent.tracker.allow_files` | `array<string>` | supported |
 | `bittorrent.tracker.auth` | `string` | not supported yet |
-| `bittorrent.tracker.console` | `object` | not supported yet |
-| `bittorrent.tracker.console.access` | `object` | not supported yet |
-| `bittorrent.tracker.console.access.allow` | `array<string>` | not supported yet |
-| `bittorrent.tracker.console.access.allow_files` | `array<string>` | not supported yet |
-| `bittorrent.tracker.console.access.deny` | `array<string>` | not supported yet |
-| `bittorrent.tracker.console.access.deny_files` | `array<string>` | not supported yet |
-| `bittorrent.tracker.console.address` | `string, required` | not supported yet |
-| `bittorrent.tracker.console.cert_file` | `string` | not supported yet |
-| `bittorrent.tracker.console.key_file` | `string` | not supported yet |
-| `bittorrent.tracker.console.max_conns` | `integer` | not supported yet |
-| `bittorrent.tracker.console.max_sessions` | `integer` | not supported yet |
+| `bittorrent.tracker.console` | `object` | supported |
+| `bittorrent.tracker.console.access` | `object` | supported |
+| `bittorrent.tracker.console.access.allow` | `array<string>` | supported |
+| `bittorrent.tracker.console.access.allow_files` | `array<string>` | supported |
+| `bittorrent.tracker.console.access.deny` | `array<string>` | supported |
+| `bittorrent.tracker.console.access.deny_files` | `array<string>` | supported |
+| `bittorrent.tracker.console.address` | `string, required` | supported |
+| `bittorrent.tracker.console.cert_file` | `string` | supported |
+| `bittorrent.tracker.console.key_file` | `string` | supported |
+| `bittorrent.tracker.console.max_conns` | `integer` | supported |
+| `bittorrent.tracker.console.max_sessions` | `integer` | supported |
 | `bittorrent.tracker.console.mptcp` | `boolean` | not supported yet |
-| `bittorrent.tracker.console.session_lifetime` | `duration` | not supported yet |
-| `bittorrent.tracker.console.session_timeout` | `duration` | not supported yet |
-| `bittorrent.tracker.console.users` | `array<object>, required` | not supported yet |
-| `bittorrent.tracker.console.users[].password_hash` | `string, required` | not supported yet |
-| `bittorrent.tracker.console.users[].username` | `string, required` | not supported yet |
-| `bittorrent.tracker.interval` | `duration` | not supported yet |
-| `bittorrent.tracker.listen` | `string` | not supported yet |
-| `bittorrent.tracker.max_numwant` | `integer` | not supported yet |
+| `bittorrent.tracker.console.session_lifetime` | `duration` | supported |
+| `bittorrent.tracker.console.session_timeout` | `duration` | supported |
+| `bittorrent.tracker.console.users` | `array<object>, required` | supported |
+| `bittorrent.tracker.console.users[].password_hash` | `string, required` | supported |
+| `bittorrent.tracker.console.users[].username` | `string, required` | supported |
+| `bittorrent.tracker.interval` | `duration` | supported |
+| `bittorrent.tracker.listen` | `string` | supported |
+| `bittorrent.tracker.max_numwant` | `integer` | supported |
 | `bittorrent.tracker.max_peers` | `integer` | not supported yet |
-| `bittorrent.tracker.max_peers_per_torrent` | `integer` | not supported yet |
-| `bittorrent.tracker.max_scrape` | `integer` | not supported yet |
-| `bittorrent.tracker.max_torrents` | `integer` | not supported yet |
-| `bittorrent.tracker.min_interval` | `duration` | not supported yet |
-| `bittorrent.tracker.peer_ttl` | `duration` | not supported yet |
+| `bittorrent.tracker.max_peers_per_torrent` | `integer` | supported |
+| `bittorrent.tracker.max_scrape` | `integer` | supported |
+| `bittorrent.tracker.max_torrents` | `integer` | supported |
+| `bittorrent.tracker.min_interval` | `duration` | supported |
+| `bittorrent.tracker.peer_ttl` | `duration` | supported |
 | `bittorrent.tracker.store` | `object` | not supported yet |
 | `bittorrent.tracker.store.cache_peers` | `integer` | not supported yet |
 | `bittorrent.tracker.store.cache_torrents` | `integer` | not supported yet |

@@ -113,7 +113,10 @@ pub fn members(c: &Config) -> Vec<(&'static str, bool)> {
     let t = c.tunnel.as_ref();
     let l = c.llm.as_ref();
     let w = c.webrtc.as_ref();
+    let b = c.bittorrent.as_ref();
     vec![
+        ("bittorrent.client", b.is_some_and(|b| b.client.is_some())),
+        ("bittorrent.tracker", b.is_some_and(|b| b.tracker.is_some())),
         ("llm.hub", l.is_some_and(|l| l.hub.is_some())),
         ("llm.node", l.is_some_and(|l| l.node.is_some())),
         ("llm.proxy", l.is_some_and(|l| l.proxy.is_some())),
