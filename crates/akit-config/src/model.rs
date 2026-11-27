@@ -211,8 +211,8 @@ pub const DEFAULT_ADMIN_MAX_CONFIG_BYTES: usize = 4 << 20;
 pub const DEFAULT_ADMIN_MAX_CONNS: usize = 16;
 
 /// `admin`: the Admin API, as fit's `config.Admin` (decision 006): its address, history, limits
-/// and token (I27), dashboard (I63), access lists (I87), console (I89) and TLS (I92). Its store
-/// and the rest are refused as not supported yet.
+/// and token (I27), dashboard (I63), access lists (I87), console (I89), TLS (I92), store (I93)
+/// and cluster management (I130); `mptcp` and `assistant` are refused as not supported yet.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Admin {
     /// `address`: a host and port, or `unix/` and the path of a Unix socket, made 0600 (akio API
@@ -251,6 +251,13 @@ pub struct Admin {
     pub console: Option<Console>,
     /// `store` (I93): the encrypted store the config is kept in, fit's `fitstore` file.
     pub store: Option<Store>,
+    /// `node_id` (I130): the ID `GET /node` answers and a manager knows this akit by; made once
+    /// and kept when left out (I131).
+    pub node_id: Option<String>,
+    /// `cluster` (I130): this akit manages others, its members (fit's I141).
+    pub cluster: Option<crate::cluster::Cluster>,
+    /// `cluster_member` (I130): this akit links out to a manager (fit's I149).
+    pub cluster_member: Option<crate::cluster::ClusterMember>,
 }
 
 /// `admin.store`, as fit's `config.Store` and its `checkStore` (I93): the store's file and where
@@ -403,6 +410,9 @@ impl Default for Admin {
             access: None,
             console: None,
             store: None,
+            node_id: None,
+            cluster: None,
+            cluster_member: None,
         }
     }
 }
@@ -2274,6 +2284,9 @@ const ADMIN_FIELDS: &[&str] = &[
     "key_file",
     "client_ca_file",
     "store",
+    "node_id",
+    "cluster",
+    "cluster_member",
 ];
 const STORE_FIELDS: &[&str] = &["path", "password", "password_file", "password_env"];
 // I89: the console. Multipath TCP is not offered by akio's listeners.
@@ -2290,7 +2303,7 @@ const CONSOLE_FIELDS: &[&str] = &[
 ];
 const CONSOLE_FIT_ONLY: &[&str] = &["mptcp"];
 const CONSOLE_USER_FIELDS: &[&str] = &["username", "password_hash"];
-const ADMIN_FIT_ONLY: &[&str] = &["mptcp", "node_id", "assistant", "cluster", "cluster_member"];
+const ADMIN_FIT_ONLY: &[&str] = &["mptcp", "assistant"];
 // I79, and I79b's max_pending_bytes on akio's budget across connections (A214).
 const LIMITS_FIELDS: &[&str] = &[
     "max_body_bytes",
@@ -3962,6 +3975,33 @@ fn admin(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Admin> {
     }
     if let Some(v) = o.take("store") {
         a.store = store(d, v, &o.at("store"));
+    }
+    // I130: fit's node ID, admin.cluster and admin.cluster_member (config/cluster.go).
+    if let Some(v) = o.take("node_id") {
+        let p = o.at("node_id");
+        if let Some(s) = d.string(v, &p).filter(|s| !s.is_empty()) {
+            if !crate::cluster::valid_node_id(&s) {
+                d.error(
+                    v.off,
+                    &p,
+                    format!(
+                        "{s:?} is not a node ID: 1 to 64 letters, digits, '.', '_' and '-', \
+                         starting with a letter or digit"
+                    ),
+                );
+            }
+            a.node_id = Some(s);
+        }
+    }
+    if let Some(v) = o.take("cluster") {
+        let p = o.at("cluster");
+        if let Some((c, offs)) = crate::cluster::cluster(d, v, &p) {
+            crate::cluster::check_cluster(d, &c, a.console.as_ref(), v.off, &offs, &p);
+            a.cluster = Some(c);
+        }
+    }
+    if let Some(v) = o.take("cluster_member") {
+        a.cluster_member = crate::cluster::cluster_member(d, v, &o.at("cluster_member"));
     }
     // fit's checkAdminAddress (I92): off loopback, a token and TLS, so that the token, which is
     // all it takes to change what akit serves, never crosses a network in the clear.

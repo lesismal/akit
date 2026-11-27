@@ -314,6 +314,23 @@ done and where the work differs from the plan.
   role's iteration; fit's I206 (the cluster's view) waits for the Cluster management track. A row
   in the benchmark table names what to measure.
 
+### 2026-11-27: I130, cluster management in the config
+
+- `admin.node_id`, `admin.cluster` and `admin.cluster_member` read and checked as fit's
+  `config/cluster.go` (`akit_config::cluster`): the node ID's pattern; the manager's
+  `poll_interval` and `timeout` (10s, 1s at least), `max_nodes` (256, at most 10,000),
+  `max_concurrency` (8, at most 256), `max_response_bytes` (4 MiB, 16 KiB to 64 MiB),
+  `link_address` (a host and a port), `link_url` (wss, with `link_address`) and `admins` (console
+  users, each once, 64 at most), which needs `admin.console`; the member's `manager`,
+  `fingerprint`, and `token` (`akite1.`, fit's `fite1.` renamed) or `token_file`, not both; fit's
+  messages. `akit run` refuses `admin.cluster` until I132 and `admin.cluster_member` until I139b,
+  naming the iteration (decision row 74).
+- The 15 fields marked as v1 additions; the compatibility inventory and the config reference
+  regenerated, with `admin.cluster` and `admin.cluster_member` sections in both languages.
+- Tests: `akit-config`'s `tests/cluster.rs` (fit's `TestClusterErrors`,
+  `TestClusterLinkSettings`) and `cluster::tests` (`TestClusterDefaults`, the helpers); akit's
+  `cluster_is_refused_until_it_runs`.
+
 ### 2026-11-27: the Cluster management track planned (I130–I139c)
 
 - fit's I140–I150 in twelve iterations ([the plan](dev-plan.md#cluster-management),

@@ -753,6 +753,27 @@ admin.store.password
 admin.store.password_file
 admin.store.password_env
 
+# I130: cluster management, read and checked as fit's config/cluster.go: the node ID a manager knows
+# this akit by (GET /node, I131); admin.cluster, the manager, with its bounds, its link listener's
+# settings and its admins, who must be console users; admin.cluster_member, linking out to a
+# manager, its token akite1. (fit's fite1., decision 037). akit run refuses admin.cluster until
+# I132 and admin.cluster_member until I139b (decision row 74).
+admin.node_id
+admin.cluster
+admin.cluster.poll_interval
+admin.cluster.timeout
+admin.cluster.max_nodes
+admin.cluster.max_concurrency
+admin.cluster.max_response_bytes
+admin.cluster.link_address
+admin.cluster.link_url
+admin.cluster.admins
+admin.cluster_member
+admin.cluster_member.manager
+admin.cluster_member.fingerprint
+admin.cluster_member.token
+admin.cluster_member.token_file
+
 # I98: fit's roles, tunnel.{hub,node,proxy} and llm.{hub,node,proxy}, read and checked as fit's
 # (crate::roles); their consoles' mptcp is refused as admin.console's. akit run refuses a role
 # until the iteration that runs it (I101-I109).

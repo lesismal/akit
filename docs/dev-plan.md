@@ -252,7 +252,7 @@ Tunnel and LLM track; I110–I114 are the WebRTC track, and I115–I119 are rese
 | I158 | BitTorrent IX: the client's and the tracker's pages | I157, I109 | todo |
 | I159 | BitTorrent X: RSS auto-download, the tracker store instances share, private trackers' passkeys | I153, I151 | todo |
 | **After 1.0: cluster management** | | | |
-| I130 | Cluster I: `admin.node_id`, `admin.cluster` and `admin.cluster_member` in the config | I93c | todo |
+| I130 | Cluster I: `admin.node_id`, `admin.cluster` and `admin.cluster_member` in the config | I93c | done |
 | I131 | Cluster II: what a member needs: `GET /node`, the node ID kept, `GET /schema` | I130 | todo |
 | I132 | Cluster III: the manager (`akit-cluster`): members and credentials in the store, fit's document; the poller; `/api/m/cluster/nodes`, `/test`, `/state` | I131 | todo |
 | I133 | Cluster IV: the Cluster pages: Overview, Nodes and a node's page; `docs/guides/cluster.md` | I132 | todo |
@@ -2180,6 +2180,8 @@ default: no `admin.cluster`, no Cluster menu, no outgoing calls.
   the fields marked with `make v1-bless`; the reference regenerated.
 - **Touches**: `akit-config`, `akit`, `tests/compat`, `docs/reference`.
 - **fit**: `config/cluster.go`, `config/validate.go`; I140, I141, I149.
+- **Status**: done (2026-11-27). `akit_config::cluster`; `akit run` refuses `admin.cluster` and
+  `admin.cluster_member` naming the iteration (decision row 74). See the progress log.
 
 ### I131 Cluster II: what a member needs
 

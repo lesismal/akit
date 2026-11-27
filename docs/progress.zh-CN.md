@@ -232,6 +232,18 @@
   （I158）、RSS 和共享的 tracker 存储（I159）。fit 的 I205（互通和故障测试）放入每个角色自己的迭代；
   fit 的 I206（集群视图）等待集群管理路线。基准表中有一行说明要测量什么。
 
+### 2026-11-27：I130，配置中的集群管理
+
+- `admin.node_id`、`admin.cluster` 和 `admin.cluster_member` 按 fit 的 `config/cluster.go` 读取和检查（`akit_config::cluster`）：
+  节点 ID 的模式；管理端的 `poll_interval` 和 `timeout`（10s，至少 1s）、`max_nodes`（256，最多 10,000）、`max_concurrency`（8，
+  最多 256）、`max_response_bytes`（4 MiB，16 KiB 到 64 MiB）、`link_address`（主机和端口）、`link_url`（wss，需 `link_address`）
+  和 `admins`（控制台用户，各一次，至多 64 个），需要 `admin.console`；成员的 `manager`、`fingerprint`，以及 `token`（`akite1.`，
+  即 fit 的 `fite1.` 改名）或 `token_file`，二者不能同时设置；消息与 fit 的相同。在 I132 之前 `akit run` 拒绝 `admin.cluster`，在
+  I139b 之前拒绝 `admin.cluster_member`，并指名迭代（决定第 74 行）。
+- 15 个字段标记为 v1 新增；兼容性清单和配置参考重新生成，两种语言都有 `admin.cluster` 和 `admin.cluster_member` 小节。
+- 测试：`akit-config` 的 `tests/cluster.rs`（fit 的 `TestClusterErrors`、`TestClusterLinkSettings`）和 `cluster::tests`
+  （`TestClusterDefaults`、辅助函数）；akit 的 `cluster_is_refused_until_it_runs`。
+
 ### 2026-11-27：集群管理路线的计划（I130–I139c）
 
 - fit 的 I140–I150 分十二次迭代（[计划](dev-plan.zh-CN.md#集群管理)、[决定 041](decisions/041-cluster-management.zh-CN.md)）：

@@ -114,6 +114,22 @@
       "en": "The file is fit's `fitstore` format, byte for byte (its magic stays `FITSTORE`): fit opens akit's stores and akit fit's, and they run in turn from one. `akit run` keeps the config in it (I93b), merged onto the config files at each start; `akit store export` and `import` read and write it. Without `admin.store`, `akit run -admin` keeps one beside the config file, as fit's (I93c).",
       "zh": "文件即 fit 的 `fitstore` 格式，逐字节相同（其魔数仍为 `FITSTORE`）：fit 能打开 akit 的 store，akit 也能打开 fit 的，两者可轮流从同一个 store 运行。`akit run` 把配置保存在其中（I93b），每次启动时合并到配置文件之上；`akit store export` 和 `import` 读写它。没有 `admin.store` 时，`akit run -admin` 同 fit 在配置文件旁边保存一个（I93c）。"
     },
+    "admin.cluster": {
+      "en": "Read and checked as fit's (I130); `akit run` refuses it until I132 runs the manager. The manager keeps its members in the store's `cluster` section, fit's document (decision 041).",
+      "zh": "按 fit 的方式读取和检查（I130）；在 I132 运行管理端之前 `akit run` 拒绝它。管理端把成员保存在存储的 `cluster` 分区，即 fit 的文档（决定 041）。"
+    },
+    "admin.cluster_member": {
+      "en": "Read and checked as fit's (I130); `akit run` refuses it until I139b links out.",
+      "zh": "按 fit 的方式读取和检查（I130）；在 I139b 外连之前 `akit run` 拒绝它。"
+    },
+    "admin.cluster_member.token": {
+      "en": "akit's prefix is `akite1.`, fit's `fite1.` renamed (decision 037): a token fit's manager made is written `akite1.<id>.<secret>`.",
+      "zh": "akit 的前缀为 `akite1.`，即 fit 的 `fite1.` 改名（决定 037）：fit 管理端生成的 token 写作 `akite1.<id>.<secret>`。"
+    },
+    "admin.node_id": {
+      "en": "Read from I130; `GET /node` answers it from I131. Without it, the file beside the config is `akit.node-id` (fit's `fit.node-id`).",
+      "zh": "从 I130 起读取；从 I131 起由 `GET /node` 回答。没有它时，配置旁的文件为 `akit.node-id`（fit 的 `fit.node-id`）。"
+    },
     "admin.cert_file": {
       "en": "The files are looked at on the control thread every `-watch-interval` with `-watch-certs` (on by default), not at a handshake as fit's, and loaded once they have stayed as they are for 500ms; SIGHUP reads them again too (I94). New connections get the new certificate; files that do not load are logged in the `admin` logger and the running certificate stays.",
       "zh": "在控制线程上，带 `-watch-certs`（默认开启）时每个 `-watch-interval` 查看一次这些文件，而不是像 fit 那样在握手时查看；文件保持 500ms 不变后加载；SIGHUP 也会重新读取（I94）。新连接得到新证书；加载失败的文件记录到 `admin` 日志器，正在使用的证书保留。"

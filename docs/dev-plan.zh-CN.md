@@ -242,7 +242,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I158 | BitTorrent IX：客户端和 tracker 的页面 | I157, I109 | todo |
 | I159 | BitTorrent X：RSS 自动下载、实例共享的 tracker 存储、私有 tracker 的 passkey | I153, I151 | todo |
 | **1.0 之后：集群管理** | | | |
-| I130 | 集群 I：配置中的 `admin.node_id`、`admin.cluster` 和 `admin.cluster_member` | I93c | todo |
+| I130 | 集群 I：配置中的 `admin.node_id`、`admin.cluster` 和 `admin.cluster_member` | I93c | done |
 | I131 | 集群 II：成员需要什么：`GET /node`、保存节点 ID、`GET /schema` | I130 | todo |
 | I132 | 集群 III：管理端（`akit-cluster`）：存储中的成员和凭据，fit 的文档；轮询器；`/api/m/cluster/nodes`、`/test`、`/state` | I131 | todo |
 | I133 | 集群 IV：集群页面：概览、节点和节点页面；`docs/guides/cluster.md` | I132 | todo |
@@ -1835,6 +1835,8 @@ fit 工作台页面。成员尽量少改动：管理端使用成员已有的 API
 - **完成标准**：fit 对这三者的 `config` 测试移植后通过；门禁的示例有效；字段用 `make v1-bless` 标记；参考文档重新生成。
 - **涉及**：`akit-config`、`akit`、`tests/compat`、`docs/reference`。
 - **fit**：`config/cluster.go`、`config/validate.go`；I140、I141、I149。
+- **状态**：done（2026-11-27）。`akit_config::cluster`；`akit run` 拒绝 `admin.cluster` 和 `admin.cluster_member` 并指名其迭代
+  （决定第 74 行）。见进度日志。
 
 ### I131 集群 II：成员需要什么
 

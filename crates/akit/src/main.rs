@@ -306,6 +306,31 @@ fn roles_not_running(config: &Config) -> Result<(), Failure> {
         })
         .collect();
     errs.extend(webrtc_handlers_not_served(config));
+    // Cluster management (I130): read and checked by akit validate; the manager runs from I132,
+    // a member links out from I139b (decision row 74).
+    let admin = config.admin.as_ref();
+    for (set, path, when) in [
+        (
+            admin.is_some_and(|a| a.cluster.is_some()),
+            "admin.cluster",
+            "I132",
+        ),
+        (
+            admin.is_some_and(|a| a.cluster_member.is_some()),
+            "admin.cluster_member",
+            "I139b",
+        ),
+    ] {
+        if set {
+            errs.push(Error {
+                file: None,
+                path: path.to_owned(),
+                line: 0,
+                col: 0,
+                msg: format!("akit run does not run this yet ({when}); akit validate checks it"),
+            });
+        }
+    }
     if errs.is_empty() {
         Ok(())
     } else {
@@ -1873,6 +1898,24 @@ mod tests {
             .map(|e| (e.path.as_str(), e.msg.contains("I11")))
             .collect();
         assert_eq!(got, [("routes[2].handler", true)]);
+    }
+
+    /// Cluster management is checked by akit validate and refused by akit run until its
+    /// iterations run it (I130, decision row 74); the node ID is taken.
+    #[test]
+    fn cluster_is_refused_until_it_runs() {
+        let doc = r#"{"admin": {"node_id": "edge-1",
+            "console": {"users": [{"username": "a", "password_hash": "$2a$10$x"}]},
+            "cluster": {},
+            "cluster_member": {"manager": "wss://m:7444/cluster/link", "fingerprint": "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a", "token_file": "/t"}}}"#;
+        let c = akit_config::from_json(doc, None).unwrap();
+        let Err(super::Failure::Config(errs)) = super::roles_not_running(&c) else {
+            panic!("not refused");
+        };
+        let paths: Vec<&str> = errs.as_slice().iter().map(|e| e.path.as_str()).collect();
+        assert_eq!(paths, ["admin.cluster", "admin.cluster_member"]);
+        let c = akit_config::from_json(r#"{"admin": {"node_id": "edge-1"}}"#, None).unwrap();
+        assert!(super::roles_not_running(&c).is_ok());
     }
 
     /// Every role's pages are served by akit run: the hub's (I109, its console_socket with

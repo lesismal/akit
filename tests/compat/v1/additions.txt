@@ -644,3 +644,20 @@ config	added	supported	bittorrent.tracker.min_interval
 config	added	supported	bittorrent.tracker.peer_ttl
 config	added	supported	routes[].handler<bt_tracker>
 config	added	supported	routes[].handler<bt_tracker>.params
+
+
+config	added	supported	admin.cluster
+config	added	supported	admin.cluster.admins
+config	added	supported	admin.cluster.link_address
+config	added	supported	admin.cluster.link_url
+config	added	supported	admin.cluster.max_concurrency
+config	added	supported	admin.cluster.max_nodes
+config	added	supported	admin.cluster.max_response_bytes
+config	added	supported	admin.cluster.poll_interval
+config	added	supported	admin.cluster.timeout
+config	added	supported	admin.cluster_member
+config	added	supported	admin.cluster_member.fingerprint
+config	added	supported	admin.cluster_member.manager
+config	added	supported	admin.cluster_member.token
+config	added	supported	admin.cluster_member.token_file
+config	added	supported	admin.node_id
