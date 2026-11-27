@@ -13,7 +13,7 @@
 )]
 
 use std::io::{Read, Write};
-use std::net::{SocketAddr, TcpListener, TcpStream, UdpSocket};
+use std::net::{SocketAddr, TcpStream, UdpSocket};
 use std::sync::{Arc, mpsc};
 use std::time::{Duration, Instant};
 
@@ -26,13 +26,8 @@ use akit_runtime::upstream::EngineSlot;
 use super::service as tests_handler;
 use super::{TRACKER, key_of, stats};
 
-fn free_port() -> u16 {
-    TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port()
-}
+/// The tracker's UDP on port 0: where it listens is asked (`Env::udp`).
+const ANY: &str = "127.0.0.1:0";
 
 /// The role on an engine of the test's own, with `bt_tracker` served on a listener of it.
 struct Env {
@@ -59,11 +54,20 @@ impl Env {
             .unwrap();
         engine.start().unwrap();
         let engine = Arc::new(engine);
-        let http: SocketAddr = format!("127.0.0.1:{}", free_port()).parse().unwrap();
+        // The handler's listener on port 0: its address as it bound it.
         let svc = tests_handler(EngineSlot::with(Arc::clone(&engine)));
-        engine
-            .add_listener(akio::Listener::tcp(http).serve(akio_http::serve(svc)))
+        let id = engine
+            .add_listener(
+                akio::Listener::tcp(SocketAddr::from(([127, 0, 0, 1], 0)))
+                    .serve(akio_http::serve(svc)),
+            )
             .unwrap();
+        let http = engine
+            .listeners()
+            .into_iter()
+            .find(|l| l.id == id)
+            .unwrap()
+            .local_addr;
         let mut env = Env {
             roles: Manager::new(&[TRACKER], Arc::clone(&engine), None),
             client: TrackerClient::new(Arc::clone(&engine), Duration::from_millis(300), 2),
@@ -184,7 +188,7 @@ fn hex(b: &[u8]) -> String {
 /// HTTP, a leecher over UDP that gets it, the counts, the statistics.
 #[test]
 fn announce_and_scrape_over_http_and_udp() {
-    let env = Env::start(&format!(r#"{{"listen": "127.0.0.1:{}"}}"#, free_port()));
+    let env = Env::start(&format!(r#"{{"listen": "{ANY}"}}"#));
     let ih = [5u8; 20];
     let r = env.announce(&env.http_url(), &req(ih, 1, 6000, 0)).unwrap();
     assert_eq!(r.interval, 1800);
@@ -324,8 +328,7 @@ fn allow_list_and_its_files() {
     std::fs::write(&file, format!("# allowed\n{}  # b\n\n", hex(&b))).unwrap();
     let cfg = |extra: &str| {
         format!(
-            r#"{{"listen": "127.0.0.1:{}", "allow": ["{}"], "allow_files": [{:?}]{extra}}}"#,
-            free_port(),
+            r#"{{"listen": "{ANY}", "allow": ["{}"], "allow_files": [{:?}]{extra}}}"#,
             hex(&a),
             file.to_str().unwrap()
         )
@@ -376,10 +379,8 @@ fn allow_list_and_its_files() {
 /// counted; lifted by a reload.
 #[test]
 fn access_refuses_and_a_reload_lifts_it() {
-    let port = free_port();
-    let deny = format!(
-        r#"{{"listen": "127.0.0.1:{port}", "access": {{"deny": ["127.0.0.0/8", "::1/128"]}}}}"#
-    );
+    let deny =
+        format!(r#"{{"listen": "{ANY}", "access": {{"deny": ["127.0.0.0/8", "::1/128"]}}}}"#);
     let mut env = Env::start(&deny);
     let (_, body) = env.get(&announce_target([1; 20], 1, 6000, 1, ""));
     assert_eq!(failure_of(&body).as_deref(), Some("refused"));
@@ -393,8 +394,7 @@ fn access_refuses_and_a_reload_lifts_it() {
         "a refused client got an answer"
     );
     assert_eq!(stats(&env.engine).unwrap().refused[2], ("access", 1));
-    env.apply(&format!(r#"{{"listen": "127.0.0.1:{port}"}}"#))
-        .unwrap();
+    env.apply(&format!(r#"{{"listen": "{ANY}"}}"#)).unwrap();
     env.announce(&env.http_url(), &req([1; 20], 1, 6000, 1))
         .unwrap();
     sock.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
@@ -408,10 +408,7 @@ fn access_refuses_and_a_reload_lifts_it() {
 /// bytes, a scrape names at most 74 torrents.
 #[test]
 fn udp_by_hand() {
-    let env = Env::start(&format!(
-        r#"{{"listen": "127.0.0.1:{}", "max_numwant": 1000}}"#,
-        free_port()
-    ));
+    let env = Env::start(&format!(r#"{{"listen": "{ANY}", "max_numwant": 1000}}"#));
     let sock = UdpSocket::bind("127.0.0.1:0").unwrap();
     sock.set_read_timeout(Some(Duration::from_millis(300)))
         .unwrap();
@@ -474,14 +471,13 @@ fn udp_by_hand() {
 /// it was.
 #[test]
 fn reloads() {
-    let p1 = free_port();
-    let mut env = Env::start(&format!(r#"{{"listen": "127.0.0.1:{p1}"}}"#));
+    let mut env = Env::start(&format!(r#"{{"listen": "{ANY}"}}"#));
+    let p1 = env.udp().port();
     let ih = [7u8; 20];
     env.announce(&env.http_url(), &req(ih, 1, 6000, 0)).unwrap();
-    env.apply(&format!(
-        r#"{{"listen": "127.0.0.1:{p1}", "interval": "10m"}}"#
-    ))
-    .unwrap();
+    env.apply(&format!(r#"{{"listen": "{ANY}", "interval": "10m"}}"#))
+        .unwrap();
+    assert_eq!(env.udp().port(), p1, "the same listen keeps the binding");
     let r = env.announce(&env.udp_url(), &req(ih, 2, 6001, 5)).unwrap();
     assert_eq!((r.interval, r.peers.len()), (600, 1), "the swarm was kept");
     // A taken port: the reload fails, UDP stays where it was.
@@ -495,19 +491,15 @@ fn reloads() {
     assert!(e.contains("listen on"), "{e}");
     assert_eq!(env.udp().port(), p1);
     env.announce(&env.udp_url(), &req(ih, 2, 6001, 5)).unwrap();
-    // Moved.
-    let p2 = free_port();
-    env.apply(&format!(
-        r#"{{"listen": "127.0.0.1:{p2}", "interval": "10m"}}"#
-    ))
-    .unwrap();
-    assert_eq!(env.udp().port(), p2);
+    // Moved: another `listen` (localhost's, on port 0), bound anew elsewhere.
+    env.apply(r#"{"listen": "localhost:0", "interval": "10m"}"#)
+        .unwrap();
+    let p2 = env.udp().port();
+    assert_ne!(p2, p1);
     env.announce(&env.udp_url(), &req(ih, 2, 6001, 5)).unwrap();
     // New bounds: a new store.
-    env.apply(&format!(
-        r#"{{"listen": "127.0.0.1:{p2}", "interval": "10m", "max_torrents": 5}}"#
-    ))
-    .unwrap();
+    env.apply(r#"{"listen": "localhost:0", "interval": "10m", "max_torrents": 5}"#)
+        .unwrap();
     let s = env.scrape(&env.udp_url(), &[InfoHash(ih)]).unwrap();
     assert_eq!(s[&InfoHash(ih)].complete, 0, "new bounds start a new store");
     // No UDP.
@@ -593,7 +585,7 @@ fn data(n: usize, seed: u32) -> Vec<u8> {
 fn two_clients_find_each_other_through_the_tracker() {
     use akio_bittorrent::client::{AddOptions, Client, ClientConfig, MemoryStorage};
     use akio_bittorrent::metainfo::{Builder, MetaInfo};
-    let env = Env::start(&format!(r#"{{"listen": "127.0.0.1:{}"}}"#, free_port()));
+    let env = Env::start(&format!(r#"{{"listen": "{ANY}"}}"#));
     let payload = data(1 << 20, 3);
     let mi = Builder::new("t.bin")
         .piece_length(64 * 1024)

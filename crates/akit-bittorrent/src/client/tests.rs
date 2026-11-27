@@ -44,13 +44,8 @@ fn tmp(name: &str) -> PathBuf {
     d
 }
 
-fn free_port() -> u16 {
-    std::net::TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port()
-}
+/// The client listening on port 0: where it listens is asked (`ClientApi::listen_addr`).
+const ANY: &str = "127.0.0.1:0";
 
 /// The role on an engine of the test's own (the client makes its own until akio's A283).
 struct Env {
@@ -67,15 +62,15 @@ impl Drop for Env {
     }
 }
 
-fn member(dir: &Path, port: u16, extra: &str) -> String {
+fn member(dir: &Path, listen: &str, extra: &str) -> String {
     format!(
-        r#"{{"bittorrent": {{"client": {{"listen": "127.0.0.1:{port}", "data_dir": {:?}, "dht": false, "save_interval": "100ms"{extra}}}}}}}"#,
+        r#"{{"bittorrent": {{"client": {{"listen": "{listen}", "data_dir": {:?}, "dht": false, "save_interval": "100ms"{extra}}}}}}}"#,
         dir.join("data").to_str().unwrap()
     )
 }
 
 impl Env {
-    fn start(dir: &Path, port: u16, extra: &str) -> Env {
+    fn start(dir: &Path, listen: &str, extra: &str) -> Env {
         // Client threads for .torrent URLs.
         let engine = akio::Engine::builder().client_threads(1).build().unwrap();
         engine.start().unwrap();
@@ -85,12 +80,12 @@ impl Env {
             engine,
             dir: dir.to_path_buf(),
         };
-        env.apply(port, extra).unwrap();
+        env.apply(listen, extra).unwrap();
         env
     }
 
-    fn apply(&mut self, port: u16, extra: &str) -> Result<(), String> {
-        let doc = member(&self.dir, port, extra);
+    fn apply(&mut self, listen: &str, extra: &str) -> Result<(), String> {
+        let doc = member(&self.dir, listen, extra);
         let config = akit_config::from_json(&doc, None).unwrap_or_else(|e| panic!("{doc}\n{e}"));
         let errs = self.roles.apply(&config);
         if errs.is_empty() {
@@ -128,7 +123,7 @@ fn torrent(payload: &[u8]) -> MetaInfo {
 /// A seeder role holding `payload` as `t.bin`, its torrent added, seeding.
 fn seeder(name: &str, payload: &[u8]) -> (Env, MetaInfo, String) {
     let dir = tmp(name);
-    let env = Env::start(&dir, free_port(), "");
+    let env = Env::start(&dir, ANY, "");
     std::fs::write(env.downloads().join("t.bin"), payload).unwrap();
     let mi = torrent(payload);
     let s = env
@@ -151,8 +146,7 @@ fn download_and_restart_without_a_check() {
     let (seed, mi, id) = seeder("dl-seed", &payload);
     let seed_addr = seed.api().listen_addr().unwrap();
     let dir = tmp("dl-leech");
-    let port = free_port();
-    let mut leech = Env::start(&dir, port, "");
+    let mut leech = Env::start(&dir, ANY, "");
     let req = AddRequest {
         peers: vec![seed_addr],
         ..AddRequest::default()
@@ -183,7 +177,7 @@ fn download_and_restart_without_a_check() {
             .exists()
     );
     drop(leech);
-    let leech = Env::start(&dir, port, "");
+    let leech = Env::start(&dir, ANY, "");
     let api = leech.api();
     wait_for("the restart", 20, || {
         api.get(&id).is_ok_and(|s| s.state == "seeding")
@@ -201,8 +195,7 @@ fn a_magnet_links_torrent_is_kept() {
     let payload = data(1 << 20, 9);
     let (seed, mi, id) = seeder("mag-seed", &payload);
     let dir = tmp("mag-leech");
-    let port = free_port();
-    let leech = Env::start(&dir, port, "");
+    let leech = Env::start(&dir, ANY, "");
     let req = AddRequest {
         peers: vec![seed.api().listen_addr().unwrap()],
         ..AddRequest::default()
@@ -225,7 +218,7 @@ fn a_magnet_links_torrent_is_kept() {
         mi.info_hash
     );
     drop(leech);
-    let leech = Env::start(&dir, port, "");
+    let leech = Env::start(&dir, ANY, "");
     let s = leech.api().get(&id).unwrap();
     assert_eq!(s.name, "t.bin");
     assert!(s.state != "error", "{s:?}");
@@ -239,9 +232,8 @@ fn reloads_in_place_and_by_a_new_client() {
     let (mut seed, _mi, id) = seeder("reload", &payload);
     let api = seed.api();
     let addr = api.listen_addr().unwrap();
-    let port = addr.port();
     seed.apply(
-        port,
+        ANY,
         r#", "limits": {"upload_rate": 1048576, "seed_ratio": 5}"#,
     )
     .unwrap();
@@ -254,16 +246,19 @@ fn reloads_in_place_and_by_a_new_client() {
     // A port taken: the reload fails, the old client back.
     let taken = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let tp = taken.local_addr().unwrap().port();
-    let e = seed.apply(tp, "").unwrap_err();
+    let e = seed.apply(&format!("127.0.0.1:{tp}"), "").unwrap_err();
     assert!(e.contains("listen on"), "{e}");
-    assert_eq!(api.listen_addr().unwrap().port(), port);
+    // Back on its own `listen`: port 0 again, wherever that binds now, not the port taken.
+    assert_ne!(api.listen_addr().unwrap().port(), tp);
     wait_for("the torrent back", 20, || {
         api.get(&id).is_ok_and(|s| s.state == "seeding")
     });
-    // A new port: a new client with the torrent, resumed without a check.
-    let p2 = free_port();
-    seed.apply(p2, "").unwrap();
-    assert_eq!(api.listen_addr().unwrap().port(), p2);
+    // A new port (another `listen`, localhost's, on port 0): a new client with the torrent,
+    // resumed without a check.
+    seed.apply("localhost:0", "").unwrap();
+    // The old client closes before the new one binds: port 0 may hand it any port, the old
+    // one's too. It listens.
+    assert!(api.listen_addr().is_some());
     wait_for("the torrent moved", 20, || {
         api.get(&id).is_ok_and(|s| s.state == "seeding")
     });
@@ -304,7 +299,7 @@ fn a_bad_state_keeps_the_role_from_starting() {
         engine.start().unwrap();
         let engine = Arc::new(engine);
         let mut roles = Manager::new(&[CLIENT], Arc::clone(&engine), None);
-        let config = akit_config::from_json(&member(&dir, free_port(), ""), None).unwrap();
+        let config = akit_config::from_json(&member(&dir, ANY, ""), None).unwrap();
         let errs = roles.apply(&config);
         assert!(errs.iter().any(|e| e.contains(want)), "{doc}: {errs:?}");
         assert!(roles.running().is_empty());
@@ -335,7 +330,7 @@ fn fits_state_file_and_a_broken_torrent() {
         ),
     )
     .unwrap();
-    let env = Env::start(&dir, free_port(), "");
+    let env = Env::start(&dir, ANY, "");
     let s = env.api().get(&h).unwrap();
     assert_eq!(s.state, "error");
     assert!(
@@ -374,7 +369,7 @@ fn fits_state_file_and_a_broken_torrent() {
 #[test]
 fn the_apis_refusals_and_removal() {
     let dir = tmp("api");
-    let env = Env::start(&dir, free_port(), r#", "limits": {"max_torrents": 1}"#);
+    let env = Env::start(&dir, ANY, r#", "limits": {"max_torrents": 1}"#);
     let api = env.api();
     assert!(matches!(
         api.add(Source::Torrent(b"nope".to_vec()), AddRequest::default()),
@@ -446,9 +441,8 @@ fn categories_and_a_magnet_links_directory() {
     let (seed, mi, id) = seeder("cat-seed", &payload);
     let peer = seed.api().listen_addr().unwrap();
     let dir = tmp("cat-leech");
-    let port = free_port();
     let cats = r#", "categories": [{"name": "films", "dir": "f"}, {"name": "iso"}]"#;
-    let leech = Env::start(&dir, port, cats);
+    let leech = Env::start(&dir, ANY, cats);
     let api = leech.api();
     assert!(matches!(
         api.add(
@@ -499,7 +493,7 @@ fn categories_and_a_magnet_links_directory() {
         api.get(&s2.id).is_ok_and(|s| s.state == "seeding")
     });
     drop(leech);
-    let leech = Env::start(&dir, port, cats);
+    let leech = Env::start(&dir, ANY, cats);
     assert_eq!(leech.api().get(&id).unwrap().category, "films");
     assert_eq!(leech.api().get(&s2.id).unwrap().category, "iso");
 }
@@ -512,7 +506,7 @@ fn the_queue() {
     let dir = tmp("queue");
     let env = Env::start(
         &dir,
-        free_port(),
+        ANY,
         r#", "limits": {"max_active_downloads": 1, "max_active_seeds": 1}"#,
     );
     let api = env.api();
@@ -583,9 +577,8 @@ fn the_queue() {
 #[test]
 fn the_disk_check() {
     let dir = tmp("disk");
-    let port = free_port();
     let huge = r#", "limits": {"min_free_bytes": 9000000000000000000}"#;
-    let mut env = Env::start(&dir, port, huge);
+    let mut env = Env::start(&dir, ANY, huge);
     let api = env.api();
     let s = api
         .add(
@@ -596,12 +589,12 @@ fn the_disk_check() {
     let st = api.get(&s.id).unwrap();
     assert_eq!(st.held, "disk", "{st:?}");
     assert!(st.error.contains("min_free_bytes"), "{}", st.error);
-    env.apply(port, r#", "limits": {"min_free_bytes": 1}"#)
+    env.apply(ANY, r#", "limits": {"min_free_bytes": 1}"#)
         .unwrap();
     wait_for("started", 10, || {
         api.get(&s.id).is_ok_and(|s| s.state == "downloading")
     });
-    env.apply(port, huge).unwrap();
+    env.apply(ANY, huge).unwrap();
     wait_for("held for the disk", 10, || {
         api.get(&s.id)
             .is_ok_and(|s| s.held == "disk" && s.state == "paused")
@@ -618,7 +611,7 @@ fn watch_dir() {
     std::fs::create_dir_all(w.join("films")).unwrap();
     let env = Env::start(
         &dir,
-        free_port(),
+        ANY,
         &format!(
             r#", "watch_dir": {:?}, "watch_interval": "100ms", "categories": [{{"name": "films"}}]"#,
             w.to_str().unwrap()
@@ -713,7 +706,7 @@ fn http_server(routes: Vec<(&'static str, Vec<u8>)>) -> std::net::SocketAddr {
 #[test]
 fn add_by_url() {
     let dir = tmp("url");
-    let env = Env::start(&dir, free_port(), r#", "url_timeout": "500ms""#);
+    let env = Env::start(&dir, ANY, r#", "url_timeout": "500ms""#);
     let api = env.api();
     let a = named("a.bin", &data(50_000, 8));
     let b = named("b.bin", &data(50_000, 9));
@@ -783,9 +776,8 @@ fn add_by_url() {
 fn limits_and_alt_speed() {
     use akit_config::bittorrent::BitTorrentTorrentLimits;
     let dir = tmp("limits");
-    let port = free_port();
     let cfg = r#", "limits": {"upload_rate": 1000, "download_rate": 2000}, "categories": [{"name": "c", "limits": {"upload_rate": 300, "download_rate": -1}}], "alt_speed": {"upload_rate": 10, "download_rate": 20, "schedules": [{"from": "00:00", "to": "24:00"}], "time_zone": "utc"}"#;
-    let mut env = Env::start(&dir, port, cfg);
+    let mut env = Env::start(&dir, ANY, cfg);
     let api = env.api();
     // The schedule holds all day: the alternative rates hold.
     assert_eq!(api.alt_speed().unwrap(), ("auto".to_owned(), true));
@@ -813,7 +805,7 @@ fn limits_and_alt_speed() {
     api.set_torrent_limits(&s.id, own).unwrap();
     assert_eq!(api.torrent_rates(&s.id), Some((Some(300), Some(77))));
     drop(env);
-    env = Env::start(&dir, port, cfg);
+    env = Env::start(&dir, ANY, cfg);
     let api = env.api();
     assert_eq!(
         api.alt_speed().unwrap(),
@@ -829,13 +821,13 @@ fn limits_and_alt_speed() {
     api.set_alt_speed("on").unwrap();
     assert_eq!(api.client_rates(), Some((Some(10), Some(20))));
     // A reload without alt_speed: the client's rates, whatever the choice.
-    env.apply(port, r#", "limits": {"upload_rate": 1000, "download_rate": 2000}, "categories": [{"name": "c"}]"#)
+    env.apply(ANY, r#", "limits": {"upload_rate": 1000, "download_rate": 2000}, "categories": [{"name": "c"}]"#)
         .unwrap();
     assert_eq!(api.client_rates(), Some((Some(1000), Some(2000))));
     assert_eq!(api.torrent_rates(&s.id), Some((None, Some(77))));
     // A zone that does not load refuses the reload.
     let e = env
-        .apply(port, r#", "alt_speed": {"time_zone": "Nowhere/Nothing"}"#)
+        .apply(ANY, r#", "alt_speed": {"time_zone": "Nowhere/Nothing"}"#)
         .unwrap_err();
     assert!(e.contains("time_zone"), "{e}");
 }
@@ -867,7 +859,7 @@ fn the_queue_moves_on_the_completion_not_the_tick() {
     let mut roles = Manager::new(&[super::CLIENT_NO_TICK], Arc::clone(&engine), None);
     let doc = member(
         &dir,
-        free_port(),
+        ANY,
         r#", "limits": {"max_active_downloads": 1, "min_free_bytes": 1}"#,
     );
     assert!(
