@@ -321,21 +321,25 @@ impl Manager {
 
     /// Takes a place for a write's audit entry: false when [`MAX_PASS_AUDIT`] wait for theirs.
     fn hold_audit(&self) -> bool {
-        self.0
-            .pass_held
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |h| {
-                (h < MAX_PASS_AUDIT).then_some(h.saturating_add(1))
-            })
-            .is_ok()
+        self.held_change(|h| (h < MAX_PASS_AUDIT).then_some(h.saturating_add(1)))
     }
 
     fn unhold_audit(&self) {
-        let _ = self
-            .0
-            .pass_held
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |h| {
-                Some(h.saturating_sub(1))
-            });
+        let _ = self.held_change(|h| Some(h.saturating_sub(1)));
+    }
+
+    /// Changes the places held by `f`, as one compare-and-swap (`fetch_update`, which toolchains
+    /// after akit's MSRV call `try_update`): false when `f` refuses.
+    fn held_change(&self, f: impl Fn(usize) -> Option<usize>) -> bool {
+        let held = &self.0.pass_held;
+        let mut h = held.load(Ordering::Acquire);
+        loop {
+            let Some(next) = f(h) else { return false };
+            match held.compare_exchange_weak(h, next, Ordering::AcqRel, Ordering::Acquire) {
+                Ok(_) => return true,
+                Err(now) => h = now,
+            }
+        }
     }
 
     /// Records a write passed on to member `name`: in the log at once, in the audit log on the
