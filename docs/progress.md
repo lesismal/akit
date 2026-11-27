@@ -21,6 +21,26 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-28: io_uring runs that run on io_uring
+
+- akit's io_uring runs set only `AKIO_TEST_BACKEND=uring`, which the test files that choose a
+  backend read; akit-tunnel's tests, akit-llm's, akit-bittorrent's, TURN's TCP listener and every
+  test of the `akit` binary name none, so only akio's `AKIO_DEFAULT_BACKEND` (ADR-029) moves them,
+  and they ran on epoll (counted by their open io_uring descriptors on the benchmark host). The CI's
+  io_uring row, rule 25, the review scope and the conformance README now set both.
+- `akit run` could not run on io_uring at all: akit-listener's and akit-admin's `Options::backend`
+  defaulted to epoll and were always named to akio, and a named backend is one akio's variable
+  never overrides. Both are now `Option<Backend>`, `None` by default and named only when set, so
+  `akit run`'s gateway listeners, Admin API and consoles follow akio's default and
+  `AKIO_DEFAULT_BACKEND`; the tests that chose a backend still choose it (`Some`). Per-peer UDP
+  listeners (HTTP/3, `udp` services) stay on akio's epoll UDP loop. No config field: decision row
+  80.
+- On the benchmark host, `akit run` with `AKIO_DEFAULT_BACKEND=uring` held 17 io_uring
+  descriptors and 1 epoll; without it, 0 and 18. The workspace with both variables (the gateway on
+  io_uring for the first time) failed only FastCGI's `keep_alive` and akit-admin's
+  `connections_answered_past_their_time` (10 of 10 alone), both known; on epoll only
+  `bodies_through_the_proxy` (fixed since) and `hash_password_from_standard_input` (being fixed).
+
 ### 2026-11-28: I126, media auth on `webrtc_proxy`
 
 - With I114's `webrtc_proxy` on main, its `auth` and `action` are read (`auth` without `action` is

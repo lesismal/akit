@@ -20,6 +20,25 @@
 
 ## 日志
 
+### 2026-11-28：真正跑在 io_uring 上的 io_uring 测试
+
+- akit 的 io_uring 测试只设了 `AKIO_TEST_BACKEND=uring`，只有自己选后端的测试文件读它；
+  akit-tunnel、akit-llm、akit-bittorrent 的测试，TURN 的 TCP 监听器，以及所有运行 `akit`
+  二进制的测试都不指定后端，只有 akio 的 `AKIO_DEFAULT_BACKEND`（ADR-029）能切换它们，所以它们
+  一直跑在 epoll 上（在基准测试主机上按打开的 io_uring 描述符数确认）。CI 的 io_uring 一行、
+  规则 25、评审范围和一致性测试的 README 现在两个变量都设。
+- `akit run` 原本完全无法跑在 io_uring 上：akit-listener 和 akit-admin 的 `Options::backend`
+  默认是 epoll，且总是显式交给 akio，而显式指定的后端不会被 akio 的环境变量覆盖。两者现在是
+  `Option<Backend>`，默认 `None`，只有设置时才指定，因此 `akit run` 的网关监听器、Admin API
+  和控制台遵循 akio 的默认和 `AKIO_DEFAULT_BACKEND`；原来自己选后端的测试仍然选择（`Some`）。
+  逐对端的 UDP 监听器（HTTP/3、`udp` 服务）仍在 akio 的 epoll UDP 循环上。不加配置字段：见待
+  决策第 80 行。
+- 在基准测试主机上，设了 `AKIO_DEFAULT_BACKEND=uring` 的 `akit run` 持有 17 个 io_uring 描述符和
+  1 个 epoll；不设时为 0 和 18。两个变量都设的全工作区测试（网关第一次跑在 io_uring 上）只失败了
+  FastCGI 的 `keep_alive` 和 akit-admin 的 `connections_answered_past_their_time`（单独跑 10 次全过），
+  都是已知问题；epoll 下只失败了 `bodies_through_the_proxy`（已修）和
+  `hash_password_from_standard_input`（修复中）。
+
 ### 2026-11-28：I126，`webrtc_proxy` 上的媒体认证
 
 - I114 的 `webrtc_proxy` 进入 main 后，读取其 `auth` 和 `action`（有 `auth` 无 `action` 即 fit 的 "auth needs action"），处理器在
