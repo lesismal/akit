@@ -6,7 +6,7 @@
 //! Running a command blocks: it is done on a pool, never on an I/O thread.
 
 use std::io::Read;
-use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
 use crate::model::MAX_JOB_OUTPUT;
@@ -15,29 +15,10 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-static EUID: OnceLock<Option<u32>> = OnceLock::new();
-
-/// Reads the process's effective user once: blocks (a file's metadata on Linux, `id -u`
-/// elsewhere), so it is done on the control thread when a node starts, before any command
-/// needs it. A stopgap until akio's A247 (the effective user from akio-sys).
-pub fn init_euid() {
-    EUID.get_or_init(|| {
-        #[cfg(target_os = "linux")]
-        {
-            use std::os::unix::fs::MetadataExt;
-            if let Ok(m) = std::fs::metadata("/proc/self") {
-                return Some(m.uid());
-            }
-        }
-        let out = std::process::Command::new("id").arg("-u").output().ok()?;
-        String::from_utf8_lossy(&out.stdout).trim().parse().ok()
-    });
-}
-
-/// Whether the node runs as root (false until [`init_euid`], or when it could not tell).
+/// Whether the node runs as root (its effective user, akio-sys's `process::euid`).
 #[must_use]
 pub fn is_root() -> bool {
-    EUID.get().copied().flatten() == Some(0)
+    akio_sys::process::euid() == 0
 }
 
 /// A fixed command built in code.
@@ -224,13 +205,12 @@ struct KillSt {
     why: Option<Ended>,
 }
 
-/// Kills a running command's process group, from any thread; never blocks: the leader gets
-/// SIGKILL at once, the rest of its group from `kill(1)` run on `pool` (a stopgap until akio's
-/// A248, a signal to a process group from akio-sys).
-#[derive(Clone)]
+/// Kills a running command's process group, from any thread; never blocks: the group (the
+/// command started as its leader, the group's ID its own) gets SIGKILL from akio-sys's
+/// `process::kill_group`.
+#[derive(Clone, Default)]
 pub struct Killer {
     st: Arc<Mutex<KillSt>>,
-    pool: Arc<akio::Pool>,
 }
 
 impl std::fmt::Debug for Killer {
@@ -239,17 +219,11 @@ impl std::fmt::Debug for Killer {
     }
 }
 
-/// SIGKILL.
-const SIGKILL: i32 = 9;
-
 impl Killer {
-    /// A killer of the command to come, its group's signal sent on `pool`.
+    /// A killer of the command to come.
     #[must_use]
-    pub fn new(pool: Arc<akio::Pool>) -> Killer {
-        Killer {
-            st: Arc::default(),
-            pool,
-        }
+    pub fn new() -> Killer {
+        Killer::default()
     }
 
     fn started(&self, pid: u32) {
@@ -276,26 +250,14 @@ impl Killer {
 
     /// Kills the command and its group for `why`; the first reason stays.
     pub fn kill(&self, why: Ended) {
-        let pid = {
-            let mut g = lock(&self.st);
-            g.why.get_or_insert(why);
-            g.pid
-        };
-        let Some(pid) = pid else { return };
-        let _ = akio_sys::process::kill(pid, SIGKILL);
-        let st = Arc::clone(&self.st);
-        let _ = self.pool.try_execute(Box::new(move || {
-            // While the leader is not reaped its ID, which is its group's, is not reused.
-            let g = lock(&st);
-            if g.pid == Some(pid) {
-                let _ = std::process::Command::new("kill")
-                    .args(["-KILL", "--", &format!("-{pid}")])
-                    .stdin(std::process::Stdio::null())
-                    .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
-                    .status();
-            }
-        }));
+        let mut g = lock(&self.st);
+        g.why.get_or_insert(why);
+        // Under the lock: until the leader is reaped (then `exited`), its ID, its group's, is
+        // not reused. The leader signalled alone too, should it have left its group.
+        if let Some(pid) = g.pid {
+            let _ = akio_sys::process::kill(pid, akio_sys::process::SIGKILL);
+            let _ = akio_sys::process::kill_group(pid, akio_sys::process::SIGKILL);
+        }
     }
 }
 
@@ -360,7 +322,6 @@ pub fn look_path(name: &str) -> Option<std::path::PathBuf> {
 ///
 /// Not found, not started, killed at `timeout`, or a status other than 0.
 pub fn output(
-    pool: &Arc<akio::Pool>,
     argv: &[&str],
     timeout: Duration,
     combined: bool,
@@ -372,7 +333,7 @@ pub fn output(
     };
     if combined {
         let out = OutBuf::new();
-        let (_, r) = c.run(&out, &Killer::new(Arc::clone(pool)), timeout);
+        let (_, r) = c.run(&out, &Killer::new(), timeout);
         let (text, _, _) = out.from(0);
         return r
             .map(|()| text.clone())
@@ -390,8 +351,9 @@ pub fn output(
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null());
+    std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
     let mut child = cmd.spawn().map_err(|e| (String::new(), e.to_string()))?;
-    let k = Killer::new(Arc::clone(pool));
+    let k = Killer::new();
     k.started(child.id());
     let k2 = k.clone();
     let timer = akio::timer::after_send(timeout, move || k2.kill(Ended::Timeout)).ok();

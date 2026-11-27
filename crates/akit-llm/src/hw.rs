@@ -212,14 +212,14 @@ impl HwInfo {
 
 // ---- Reading this machine's (fit's `llm/node/hwinfo*.go`) ----
 
-use std::sync::{Arc, OnceLock};
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use crate::actions::{goarch, goos};
 
 /// Runs a short command, its standard output trimmed, `""` on any failure.
-fn run_cmd(pool: &Arc<akio::Pool>, timeout: Duration, argv: &[&str]) -> String {
-    crate::exec::output(pool, argv, timeout, false)
+fn run_cmd(timeout: Duration, argv: &[&str]) -> String {
+    crate::exec::output(argv, timeout, false)
         .map(|s| s.trim().to_owned())
         .unwrap_or_default()
 }
@@ -234,7 +234,7 @@ fn read_trim(path: &str) -> String {
 /// `sysctl`, `system_profiler`, `df`); what cannot be read is left out. Blocks: on the node's
 /// pool.
 #[must_use]
-pub fn collect(pool: &Arc<akio::Pool>) -> HwInfo {
+pub fn collect() -> HwInfo {
     let mut h = HwInfo {
         hostname: akit_config::roles::host_name(),
         os: goos().to_owned(),
@@ -246,22 +246,21 @@ pub fn collect(pool: &Arc<akio::Pool>) -> HwInfo {
     };
     match goos() {
         "linux" => linux_platform(&mut h),
-        "darwin" => darwin_platform(pool, &mut h),
+        "darwin" => darwin_platform(&mut h),
         _ => {}
     }
-    h.disks = Some(disks(pool));
-    let mut gpus = nvidia_gpus(pool);
+    h.disks = Some(disks());
+    let mut gpus = nvidia_gpus();
     if goos() == "darwin" {
-        gpus.extend(darwin_gpus(pool, &h));
+        gpus.extend(darwin_gpus(&h));
     }
     h.gpus = Some(gpus);
     h.ips = Some(local_ips());
     h
 }
 
-fn nvidia_gpus(pool: &Arc<akio::Pool>) -> Vec<GpuInfo> {
+fn nvidia_gpus() -> Vec<GpuInfo> {
     let out = run_cmd(
-        pool,
         Duration::from_secs(5),
         &[
             "nvidia-smi",
@@ -365,15 +364,15 @@ fn linux_platform(h: &mut HwInfo) {
     h.mem_available_mb = kb("MemAvailable") / 1024;
 }
 
-fn darwin_platform(pool: &Arc<akio::Pool>, h: &mut HwInfo) {
+fn darwin_platform(h: &mut HwInfo) {
     let s = Duration::from_secs(2);
-    h.cpu_model = run_cmd(pool, s, &["sysctl", "-n", "machdep.cpu.brand_string"]);
-    h.kernel = run_cmd(pool, s, &["sysctl", "-n", "kern.osrelease"]);
-    let v = run_cmd(pool, s, &["sw_vers", "-productVersion"]);
+    h.cpu_model = run_cmd(s, &["sysctl", "-n", "machdep.cpu.brand_string"]);
+    h.kernel = run_cmd(s, &["sysctl", "-n", "kern.osrelease"]);
+    let v = run_cmd(s, &["sw_vers", "-productVersion"]);
     if !v.is_empty() {
         h.platform = format!("macOS {v}");
     }
-    let load = run_cmd(pool, s, &["sysctl", "-n", "vm.loadavg"]);
+    let load = run_cmd(s, &["sysctl", "-n", "vm.loadavg"]);
     if let Some(f) = load
         .trim_matches(|c| c == '{' || c == '}' || c == ' ')
         .split_whitespace()
@@ -381,7 +380,7 @@ fn darwin_platform(pool: &Arc<akio::Pool>, h: &mut HwInfo) {
     {
         h.load1 = f.parse().unwrap_or(0.0);
     }
-    let boot = run_cmd(pool, s, &["sysctl", "-n", "kern.boottime"]);
+    let boot = run_cmd(s, &["sysctl", "-n", "kern.boottime"]);
     if let Some(sec) = boot
         .split_once("sec = ")
         .and_then(|(_, r)| r.split(|c: char| !c.is_ascii_digit()).next())
@@ -389,11 +388,11 @@ fn darwin_platform(pool: &Arc<akio::Pool>, h: &mut HwInfo) {
     {
         h.uptime_seconds = akit_roles::linktoken::unix_now().saturating_sub(sec);
     }
-    let total = run_cmd(pool, s, &["sysctl", "-n", "hw.memsize"])
+    let total = run_cmd(s, &["sysctl", "-n", "hw.memsize"])
         .parse::<i64>()
         .unwrap_or(0);
     h.mem_total_mb = total >> 20;
-    h.mem_available_mb = vm_stat_available(&run_cmd(pool, s, &["vm_stat"])) >> 20;
+    h.mem_available_mb = vm_stat_available(&run_cmd(s, &["vm_stat"])) >> 20;
 }
 
 /// The memory available, from `vm_stat` (free, inactive, speculative and purgeable pages), in
@@ -424,11 +423,10 @@ pub fn vm_stat_available(out: &str) -> i64 {
 
 /// The GPUs `system_profiler` lists, read once (it is slow); Apple silicon's share the memory,
 /// reported as the machine's.
-fn darwin_gpus(pool: &Arc<akio::Pool>, h: &HwInfo) -> Vec<GpuInfo> {
+fn darwin_gpus(h: &HwInfo) -> Vec<GpuInfo> {
     static GPUS: OnceLock<Vec<GpuInfo>> = OnceLock::new();
     let gpus = GPUS.get_or_init(|| {
         let out = run_cmd(
-            pool,
             Duration::from_secs(15),
             &["system_profiler", "SPDisplaysDataType", "-json"],
         );
@@ -489,14 +487,15 @@ const LINUX_FS: &[&str] = &[
     "ntfs", "ntfs3", "nfs", "nfs4", "cifs", "fuseblk",
 ];
 
-/// The mounted file systems with their space, from `df -k -P` (a stopgap until akio's A249, a
-/// file system's space from akio-sys): on Linux those of `/proc/mounts` of the kinds a node
-/// reports, each device once; on macOS the local ones, each APFS container once.
-fn disks(pool: &Arc<akio::Pool>) -> Vec<DiskInfo> {
+/// The mounted file systems with their space: on Linux those of `/proc/mounts` of the kinds a
+/// node reports, each device once, their space from akio-sys's `fs::space` (statfs, which may
+/// block on a network mount: this runs on the node's pool); on macOS the local ones of
+/// `df -k -P -l`, each APFS container once, as fit's.
+fn disks() -> Vec<DiskInfo> {
     match goos() {
         "linux" => {
-            let mut mounts: Vec<(String, String)> = Vec::new();
             let mut seen: Vec<String> = Vec::new();
+            let mut out = Vec::new();
             for line in read_trim("/proc/mounts").lines() {
                 let f: Vec<&str> = line.split_whitespace().collect();
                 let (Some(dev), Some(mnt), Some(fs)) = (f.first(), f.get(1), f.get(2)) else {
@@ -505,52 +504,29 @@ fn disks(pool: &Arc<akio::Pool>) -> Vec<DiskInfo> {
                 if !LINUX_FS.contains(fs) || seen.iter().any(|d| d == dev) {
                     continue;
                 }
+                let mount = mnt.replace("\\040", " ");
+                let Ok(sp) = akio_sys::fs::space(std::path::Path::new(&mount)) else {
+                    continue;
+                };
+                if sp.total == 0 {
+                    continue;
+                }
                 seen.push((*dev).to_owned());
-                mounts.push((mnt.replace("\\040", " "), (*fs).to_owned()));
+                out.push(DiskInfo {
+                    mount,
+                    fs_type: (*fs).to_owned(),
+                    total_mb: i64::try_from(sp.total >> 20).unwrap_or(i64::MAX),
+                    free_mb: i64::try_from(sp.available >> 20).unwrap_or(i64::MAX),
+                });
             }
-            if mounts.is_empty() {
-                return Vec::new();
-            }
-            let mut argv = vec!["df", "-k", "-P", "--"];
-            argv.extend(mounts.iter().map(|(m, _)| m.as_str()));
-            let out = crate::exec::output(pool, &argv, Duration::from_secs(5), false)
-                .unwrap_or_else(|(o, _)| o);
-            parse_df(&out)
-                .into_iter()
-                .filter_map(|(mount, total, free)| {
-                    let fs = mounts.iter().find(|(m, _)| *m == mount)?.1.clone();
-                    (total > 0).then_some(DiskInfo {
-                        mount,
-                        fs_type: fs,
-                        total_mb: total >> 10,
-                        free_mb: free >> 10,
-                    })
-                })
-                .collect()
+            out
         }
         "darwin" => {
-            let out = run_cmd(pool, Duration::from_secs(5), &["df", "-k", "-P", "-l"]);
+            let out = run_cmd(Duration::from_secs(5), &["df", "-k", "-P", "-l"]);
             darwin_disks(&out)
         }
         _ => Vec::new(),
     }
-}
-
-/// `df -k -P`'s lines as mount, KiB in all and KiB available, `/dev/` devices only.
-fn parse_df(out: &str) -> Vec<(String, i64, i64)> {
-    out.lines()
-        .skip(1)
-        .filter_map(|line| {
-            let f: Vec<&str> = line.split_whitespace().collect();
-            if f.len() < 6 {
-                return None;
-            }
-            let mount = f.get(5..)?.join(" ");
-            let total = f.get(1)?.parse::<i64>().ok()?;
-            let free = f.get(3)?.parse::<i64>().ok()?;
-            Some((mount, total, free))
-        })
-        .collect()
 }
 
 /// macOS's `df -k -P -l`: the `/dev/` volumes, the APFS system's helper volumes left out, the
@@ -593,8 +569,7 @@ mod tests {
     #[test]
     fn collect_this_machine() {
         crate::stand_ins::setup();
-        let pool = crate::jobs::pool("test-hw", 2, 16);
-        let h = collect(&pool);
+        let h = collect();
         assert_eq!(h.os, goos());
         assert!(h.cpu_cores > 0);
         assert!(h.gpus.is_some() && h.disks.is_some() && h.ips.is_some());

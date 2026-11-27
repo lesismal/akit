@@ -20,6 +20,19 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-27: the stopgaps of A247–A249 go
+
+- akio's A247–A249 in the LLM node (decision row 40's outcome): `akit_llm::exec::is_root` asks
+  akio-sys's `process::euid` (`init_euid`, which read `/proc/self` or ran `id -u` at the node's
+  start, is gone); `Killer::kill` sends a job's process group SIGKILL with
+  `process::kill_group`, at once, from any thread, under the lock that keeps the leader unreaped
+  (the `kill -KILL -- -<pgid>` run on the pool is gone, and `Killer` and `Jobs` take no pool); the
+  commands `exec::output` runs alone (the hardware's and the GPUs' queries) are started in a group
+  of their own too; Linux's disks are read with `fs::space` on the node's pool, as fit's
+  `Statfs` (`df` is no longer run there; macOS keeps `df -k -P -l`, as fit's). `hw::collect`,
+  `gpu::collect` and `exec::output` take no pool: they block, and run on the node's.
+- Tests: `akit-llm`'s, unchanged, on macOS.
+
 ### 2026-11-27: akio pinned at `a8171fda`: A247–A249
 
 - akio: `a8171fda` on akio's main, with A247 (`akio_sys::process::euid`), A248

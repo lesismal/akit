@@ -1509,7 +1509,7 @@ fit 的，使 akit 的角色能与 fit 的角色互连（决定 038）。
 - **完成标准**：移植后的 fit `llm/node` 动作、作业和 GPU 测试在 Linux 和 macOS 上通过。
 - **涉及**：`akit-llm`。
 - **fit**：`llm/node/{actions,jobs,exec,gpu,hwinfo_*}.go`、`llm/internal/gpu`。
-- **状态**：done（2026-11-27）。见进度日志。在 akio 的 A247（有效用户）、A248（向进程组发信号）和 A249（文件系统的空间）之前使用临时做法。
+- **状态**：done（2026-11-27）。见进度日志。akio 的 A247（有效用户）、A248（向进程组发信号）和 A249（文件系统的空间）已替换其临时做法（akio `a8171fda`）。
 
 ### I109 角色的页面
 

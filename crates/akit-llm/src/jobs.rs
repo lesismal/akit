@@ -120,7 +120,6 @@ struct St {
 
 struct Inner {
     pool: Arc<akio::Pool>,
-    kill_pool: Arc<akio::Pool>,
     st: Mutex<St>,
     on_change: OnceLock<Arc<dyn Fn() + Send + Sync>>,
 }
@@ -168,14 +167,18 @@ pub fn run_commands(cs: Vec<Command>) -> Run {
     })
 }
 
+impl Default for Jobs {
+    fn default() -> Jobs {
+        Jobs::new()
+    }
+}
+
 impl Jobs {
-    /// No jobs; they run on a pool of [`MAX_RUNNING`] threads, and their process groups'
-    /// signals go on `kill_pool`.
+    /// No jobs; they run on a pool of [`MAX_RUNNING`] threads.
     #[must_use]
-    pub fn new(kill_pool: Arc<akio::Pool>) -> Jobs {
+    pub fn new() -> Jobs {
         Jobs(Arc::new(Inner {
             pool: pool("akit-llm-jobs", MAX_RUNNING, MAX_RUNNING),
-            kill_pool,
             st: Mutex::new(St {
                 next_id: 0,
                 list: BTreeMap::new(),
@@ -237,7 +240,7 @@ impl Jobs {
                 created_at: now(),
                 ..Job::default()
             };
-            let (out, kill) = (OutBuf::new(), Killer::new(Arc::clone(&self.0.kill_pool)));
+            let (out, kill) = (OutBuf::new(), Killer::new());
             st.list.insert(
                 job.id,
                 Entry {

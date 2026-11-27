@@ -1787,8 +1787,9 @@ link with fit's (decision 038).
 - **Done when**: fit's `llm/node` action, job and GPU tests pass ported on Linux and macOS.
 - **Touches**: `akit-llm`.
 - **fit**: `llm/node/{actions,jobs,exec,gpu,hwinfo_*}.go`, `llm/internal/gpu`.
-- **Status**: done (2026-11-27). See the progress log. Stopgaps until akio's A247 (the effective
-  user), A248 (a process group's signal) and A249 (a file system's space).
+- **Status**: done (2026-11-27). See the progress log. akio's A247 (the effective user), A248 (a
+  process group's signal) and A249 (a file system's space) replaced its stopgaps (akio
+  `a8171fda`).
 
 ### I109 The roles' pages
 

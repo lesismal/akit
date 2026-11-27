@@ -12,12 +12,8 @@ use super::*;
 
 use crate::stand_ins::{NVIDIA_OUT, setup, use_case};
 
-fn pool() -> Arc<akio::Pool> {
-    crate::jobs::pool("test-gpu", 2, 16)
-}
-
 fn q(id: &str) -> (Vec<Device>, String, Option<String>) {
-    query(&pool(), vendor(id).unwrap())
+    query(vendor(id).unwrap())
 }
 
 #[test]
@@ -95,7 +91,6 @@ fn command_validation() {
 #[test]
 fn wrap_sudo() {
     setup();
-    exec::init_euid();
     let got = Options { use_sudo: true }.wrap(vec!["nvidia-smi".into(), "-pm".into(), "1".into()]);
     if is_root() {
         assert_eq!(got, ["nvidia-smi", "-pm", "1"]);
@@ -166,7 +161,7 @@ fn catalog() {
     assert!(cat.contains(r#""settings":null,"description":"mthreads-gmi"#));
     // Collect does not fail on a machine without any GPU tool.
     let _f = use_case("none");
-    let st = collect(&pool(), Options::default());
+    let st = collect(Options::default());
     assert_eq!(st.vendors.len(), VENDORS.len());
     assert!(st.vendors.iter().all(|v| !v.installed));
 }
@@ -263,7 +258,7 @@ fn query_fake_tools() {
 fn collect_fake_tools() {
     setup();
     let _f = use_case("collect");
-    let st = collect(&pool(), Options::default());
+    let st = collect(Options::default());
     let by = |id: &str| st.vendors.iter().find(|v| v.vendor.id == id).unwrap();
     let nv = by("nvidia");
     assert!(nv.installed && !nv.tool_path.is_empty());

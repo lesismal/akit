@@ -217,7 +217,7 @@ pub fn new(host: Host) -> Result<Box<dyn Role>, String> {
             probe: Client::new(Arc::clone(&engine))
                 .with_options(po)
                 .with_timeout(CHECK_TIMEOUT),
-            jobs: Jobs::new(Arc::clone(&work)),
+            jobs: Jobs::new(),
             work,
             hw: Mutex::new(hw()),
             gpu: Mutex::new(GpuCache { status: None }),
@@ -233,7 +233,6 @@ pub fn new(host: Host) -> Result<Box<dyn Role>, String> {
             c.changed();
         }
     });
-    crate::exec::init_euid();
     let w = Arc::downgrade(&core);
     core.base.mesh.on_peer_up(move |p: &PeerConn| {
         let Some(c) = w.upgrade() else { return };
@@ -467,7 +466,7 @@ impl Core {
         let me = self.me.clone();
         let read = move || {
             let Some(c) = me.upgrade() else { return };
-            let h = crate::hw::collect(&c.work);
+            let h = crate::hw::collect();
             *lock(&c.hw) = h.to_json();
             c.changed();
             c.next_hw();

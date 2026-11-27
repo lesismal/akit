@@ -108,6 +108,9 @@ first; its status here records the branch, then the akio commit akit pins.
 | A237 | `Engine::wait` (and `Pool::is_current`) safe in a thread-local destructor | on akio's main and pinned (since `6151f5c5`) | 1, 15 | — |
 | A238 | A WebSocket ended at once, what is queued for it dropped, without the close handshake (`WsSender::abort`) | on akio's main and pinned (since `8a9601b9`, akio's ADR-184) | 8, 10 | I102c, I103b, I104 |
 | A245 | The QUIC server's handshake bounds: a handshake timeout, and the handshakes under way bounded with a Retry past half (`ServerConfig::handshake_timeout`, `max_handshakes`) | on akio's main and pinned (since `8a9601b9`, akio's ADR-185) | 10, 11 | I102d |
+| A247 | The process's effective user (`akio_sys::process::euid`) | on akio's main and pinned (since `a8171fda`), used by the LLM node | 14 | I108 |
+| A248 | A signal to a process group (`akio_sys::process::kill_group`) | on akio's main and pinned (since `a8171fda`), used by the LLM node's jobs | 1, 14 | I108 |
+| A249 | A file system's size and space free (`akio_sys::fs::space`) | on akio's main and pinned (since `a8171fda`), used by the LLM node's disks | 1, 14 | I108 |
 
 ## A1 TCP listeners on a running engine
 
@@ -2416,6 +2419,10 @@ same.
 
 ## A247 The process's effective user
 
+**Done.** On akio's main (`a8171fda`) and pinned: `akio_sys::process::euid() -> u32`
+(`geteuid(2)`). `akit_llm::exec::is_root` calls it whenever it is asked; `init_euid` and its
+reads of `/proc/self` or `id -u` are gone.
+
 **Status.** Requested by I108 (2026-11-27). Nothing waits for it: an LLM node reads it once when
 it starts, on the control thread, from `/proc/self`'s owner on Linux and `id -u` elsewhere (a
 stopgap recorded in [progress](progress.md)).
@@ -2432,6 +2439,13 @@ standard library has no `geteuid`, and akit has no `unsafe`.
 **How akit would use it.** `akit_llm::exec::is_root` calls it, and `init_euid` goes.
 
 ## A248 A signal to a process group
+
+**Done.** On akio's main (`a8171fda`) and pinned: `akio_sys::process::kill_group(pgid, sig)`
+(`killpg(2)`; 0, 1 and pgids past `i32::MAX` refused with `EINVAL`, `ESRCH` for an empty group)
+and `process::SIGKILL`. `akit_llm::exec::Killer::kill` sends the group SIGKILL at once, from any
+thread, under the lock that keeps the leader unreaped; the `kill(1)` run on a pool is gone, and
+`Killer` and `Jobs` take no pool. The commands `exec::output` runs alone are started in a group of
+their own too, so a timeout kills their children.
 
 **Status.** Requested by I108 (2026-11-27). Nothing waits for it: a job's leader gets SIGKILL
 from `akio_sys::process::kill`, the rest of its group from `kill -KILL -- -<pgid>` run on the
@@ -2452,6 +2466,12 @@ thread, instead of running `kill(1)` on a pool.
 
 ## A249 A file system's size and space free
 
+**Done.** On akio's main (`a8171fda`) and pinned: `akio_sys::fs::space(path) -> io::Result<Space>`
+(`total`, `free`, `available`, bytes). `akit_llm::hw`'s disks on Linux read each file system of
+`/proc/mounts` of fit's kinds with it, on the node's pool (it may block on a network mount), as
+fit's `syscall.Statfs`: the space available to a user that is not root; `df` is no longer run
+there. macOS keeps `df -k -P -l`, as fit's.
+
 **Status.** Requested by I108 (2026-11-27). Nothing waits for it: an LLM node reads its disks from
 `df -k -P` on its pool (a stopgap recorded in [progress](progress.md)).
 
@@ -2465,6 +2485,7 @@ thread, instead of running `kill(1)` on a pool.
 
 **How akit would use it.** `akit_llm::hw`'s disks on Linux: `/proc/mounts`' file systems, each
 read with it, as fit reads them, without running `df`.
+
 ## A245 The QUIC server's handshake bounds
 
 **Done.** On akio's main (`8a9601b9`, akio's ADR-185) and pinned: `ServerConfig::handshake_timeout(Option<Duration>)` (default 10 s; a server connection whose handshake is not done in time is dropped without a word, its handler's `on_close` told `ConnectionError::TimedOut`) and `ServerConfig::max_handshakes(usize)` (default 8192; from half of them in progress, a client without a valid Retry or NEW_TOKEN token is answered with a Retry; at the limit, a new client's Initial is dropped unanswered, counted in `QuicServer::refused_connections`). fit lets an invalid Retry token through to an `INVALID_TOKEN` answer; akio drops it. The hub's `quic` listeners (I102d) take `tunnel.hub.quic`'s `handshake_timeout` and `max_handshakes` (fit's 10 s and 64 when left out).

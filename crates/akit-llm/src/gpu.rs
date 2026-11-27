@@ -9,7 +9,6 @@
 //! scripts are constants of this program, never a caller's. Collecting runs the vendors' tools:
 //! it blocks, on the node's pool.
 
-use std::sync::Arc;
 use std::time::Duration;
 
 use crate::actions::goos;
@@ -1084,7 +1083,7 @@ fn pci_vendors() -> Vec<(&'static str, i64)> {
 /// Reads the vendors and every GPU through the tools installed (fit's `gpu.Collect`). Blocks:
 /// on a pool.
 #[must_use]
-pub fn collect(pool: &Arc<akio::Pool>, opts: Options) -> Status {
+pub fn collect(opts: Options) -> Status {
     let family = os_family();
     let mut st = Status {
         os: family.clone(),
@@ -1125,7 +1124,7 @@ pub fn collect(pool: &Arc<akio::Pool>, opts: Options) -> Status {
         if !installed {
             continue;
         }
-        let (devs, raw, err) = query(pool, v);
+        let (devs, raw, err) = query(v);
         if let Some(e) = err {
             st.errors.push((v.id.to_owned(), e));
         }
@@ -1139,44 +1138,38 @@ pub fn collect(pool: &Arc<akio::Pool>, opts: Options) -> Status {
 
 const QUERY_TIMEOUT: Duration = Duration::from_secs(15);
 
-fn output(pool: &Arc<akio::Pool>, argv: &[&str]) -> Result<String, (String, String)> {
-    exec::output(pool, argv, QUERY_TIMEOUT, true)
+fn output(argv: &[&str]) -> Result<String, (String, String)> {
+    exec::output(argv, QUERY_TIMEOUT, true)
 }
 
 /// Reads the GPUs of `v`, whose tool is installed: parsed, or its output raw for a vendor
 /// without a parser.
-fn query(pool: &Arc<akio::Pool>, v: &Vendor) -> (Vec<Device>, String, Option<String>) {
+fn query(v: &Vendor) -> (Vec<Device>, String, Option<String>) {
     match v.id {
-        "nvidia" => match output(
-            pool,
-            &[
-                "nvidia-smi",
-                "--query-gpu=index,name,uuid,driver_version,memory.total,memory.used,utilization.gpu,temperature.gpu,power.draw,power.limit,power.min_limit,power.max_limit,power.default_limit,clocks.gr,clocks.mem,clocks.max.gr,clocks.max.mem,fan.speed,pstate,persistence_mode,compute_mode",
-                "--format=csv,noheader,nounits",
-            ],
-        ) {
+        "nvidia" => match output(&[
+            "nvidia-smi",
+            "--query-gpu=index,name,uuid,driver_version,memory.total,memory.used,utilization.gpu,temperature.gpu,power.draw,power.limit,power.min_limit,power.max_limit,power.default_limit,clocks.gr,clocks.mem,clocks.max.gr,clocks.max.mem,fan.speed,pstate,persistence_mode,compute_mode",
+            "--format=csv,noheader,nounits",
+        ]) {
             Ok(out) => (parse_nvidia_smi(&out), String::new(), None),
             Err((out, e)) => (Vec::new(), out, Some(e)),
         },
         "amd" => {
-            let r = output(
-                pool,
-                &[
-                    "rocm-smi",
-                    "--showproductname",
-                    "--showdriverversion",
-                    "--showtemp",
-                    "--showpower",
-                    "--showmaxpower",
-                    "--showuse",
-                    "--showmeminfo",
-                    "vram",
-                    "--showclocks",
-                    "--showfan",
-                    "--showperflevel",
-                    "--json",
-                ],
-            );
+            let r = output(&[
+                "rocm-smi",
+                "--showproductname",
+                "--showdriverversion",
+                "--showtemp",
+                "--showpower",
+                "--showmaxpower",
+                "--showuse",
+                "--showmeminfo",
+                "vram",
+                "--showclocks",
+                "--showfan",
+                "--showperflevel",
+                "--json",
+            ]);
             let out = match r {
                 Ok(o) => o,
                 Err((o, e)) if !o.trim().starts_with('{') => return (Vec::new(), o, Some(e)),
@@ -1187,8 +1180,8 @@ fn query(pool: &Arc<akio::Pool>, v: &Vendor) -> (Vec<Device>, String, Option<Str
                 Err(e) => (Vec::new(), out, Some(e)),
             }
         }
-        "intel" => query_intel(pool),
-        "apple" => match output(pool, &["system_profiler", "SPDisplaysDataType", "-json"]) {
+        "intel" => query_intel(),
+        "apple" => match output(&["system_profiler", "SPDisplaysDataType", "-json"]) {
             Ok(out) => (parse_apple_displays(&out), String::new(), None),
             Err((out, e)) => (Vec::new(), out, Some(e)),
         },
@@ -1198,7 +1191,7 @@ fn query(pool: &Arc<akio::Pool>, v: &Vendor) -> (Vec<Device>, String, Option<Str
                 "ascend" => &["npu-smi", "info"],
                 _ => &["mthreads-gmi"],
             };
-            match output(pool, argv) {
+            match output(argv) {
                 Ok(out) => (Vec::new(), out, None),
                 Err((out, e)) => (Vec::new(), out, Some(e)),
             }
@@ -1408,8 +1401,8 @@ fn clock(s: &str) -> f64 {
     num(n)
 }
 
-fn query_intel(pool: &Arc<akio::Pool>) -> (Vec<Device>, String, Option<String>) {
-    let out = match output(pool, &["xpu-smi", "discovery", "-j"]) {
+fn query_intel() -> (Vec<Device>, String, Option<String>) {
+    let out = match output(&["xpu-smi", "discovery", "-j"]) {
         Ok(o) => o,
         Err((o, e)) => return (Vec::new(), o, Some(e)),
     };
@@ -1426,7 +1419,7 @@ fn query_intel(pool: &Arc<akio::Pool>) -> (Vec<Device>, String, Option<String>) 
         let mut d = Device::unknown("intel", id);
         d.name = json::get_str(dd, "device_name");
         d.uuid = json::get_str(dd, "uuid");
-        if let Ok(s) = output(pool, &["xpu-smi", "stats", "-d", &id.to_string(), "-j"]) {
+        if let Ok(s) = output(&["xpu-smi", "stats", "-d", &id.to_string(), "-j"]) {
             apply_xpu_stats(&mut d, &s);
         }
         devs.push(d);

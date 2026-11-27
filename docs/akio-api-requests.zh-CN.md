@@ -107,6 +107,9 @@
 | A237 | 在线程局部变量的析构中调用 `Engine::wait`（以及 `Pool::is_current`）也安全 | 已进入 akio 的 main 并锁定（自 `6151f5c5` 起） | 1, 15 | — |
 | A238 | 立即结束 WebSocket、丢弃为它排队的数据、不做关闭握手（`WsSender::abort`） | 已进入 akio 的 main 并锁定（自 `8a9601b9` 起，akio 的 ADR-184） | 8, 10 | I102c, I103b, I104 |
 | A245 | QUIC 服务器的握手上限：握手超时，以及进行中的握手数上限、过半后要求 Retry（`ServerConfig::handshake_timeout`、`max_handshakes`） | 已进入 akio 的 main 并锁定（自 `8a9601b9` 起，akio 的 ADR-185） | 10, 11 | I102d |
+| A247 | 进程的有效用户（`akio_sys::process::euid`） | 已进入 akio 的 main 并锁定（自 `a8171fda` 起），LLM node 使用 | 14 | I108 |
+| A248 | 向进程组发送信号（`akio_sys::process::kill_group`） | 已进入 akio 的 main 并锁定（自 `a8171fda` 起），LLM node 的作业使用 | 1, 14 | I108 |
+| A249 | 文件系统的大小与可用空间（`akio_sys::fs::space`） | 已进入 akio 的 main 并锁定（自 `a8171fda` 起），LLM node 的磁盘信息使用 | 1, 14 | I108 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -1943,6 +1946,9 @@ fit 的 WebSocket 传输调用 `Abort`。akio-ws 的 `WsSender` 只有 `close(co
 
 ## A247 进程的有效用户
 
+**完成。** 已进入 akio 的 main（`a8171fda`）并锁定：`akio_sys::process::euid() -> u32`（`geteuid(2)`）。
+`akit_llm::exec::is_root` 每次被问到时调用它；`init_euid` 以及它对 `/proc/self` 或 `id -u` 的读取已删除。
+
 **状态。** 由 I108 提出（2026-11-27）。没有工作在等待它：LLM node 启动时在控制线程上读取一次，Linux 上取 `/proc/self` 的属主，
 其他系统上运行 `id -u`（记录在[进度](progress.zh-CN.md)中的临时做法）。
 
@@ -1958,6 +1964,11 @@ fit 的 WebSocket 传输调用 `Abort`。akio-ws 的 `WsSender` 只有 `close(co
 
 ## A248 向进程组发送信号
 
+**完成。** 已进入 akio 的 main（`a8171fda`）并锁定：`akio_sys::process::kill_group(pgid, sig)`（`killpg(2)`；拒绝 0、1 和
+超过 `i32::MAX` 的 pgid，返回 `EINVAL`；进程组为空时返回 `ESRCH`）以及 `process::SIGKILL`。`akit_llm::exec::Killer::kill`
+在保证组长尚未被回收的锁内，从任意线程立即向进程组发送 SIGKILL；在池上运行的 `kill(1)` 已删除，`Killer` 和 `Jobs` 不再需要池。
+`exec::output` 单独运行的命令也在自己的进程组中启动，超时时其子进程一并结束。
+
 **状态。** 由 I108 提出（2026-11-27）。没有工作在等待它：作业的组长由 `akio_sys::process::kill` 发送 SIGKILL，组内其余进程由在
 node 的池上运行的 `kill -KILL -- -<pgid>` 处理（记录在[进度](progress.zh-CN.md)中的临时做法）。
 
@@ -1972,6 +1983,11 @@ node 的池上运行的 `kill -KILL -- -<pgid>` 处理（记录在[进度](progr
 
 ## A249 文件系统的大小与可用空间
 
+**完成。** 已进入 akio 的 main（`a8171fda`）并锁定：`akio_sys::fs::space(path) -> io::Result<Space>`（`total`、`free`、
+`available`，以字节计）。`akit_llm::hw` 在 Linux 上对 `/proc/mounts` 中 fit 所列类型的每个文件系统用它读取，在 node 的池上进行
+（网络挂载上可能阻塞），同 fit 的 `syscall.Statfs`：取非 root 用户可用的空间；Linux 上不再运行 `df`。macOS 保留
+`df -k -P -l`，同 fit。
+
 **状态。** 由 I108 提出（2026-11-27）。没有工作在等待它：LLM node 在其池上用 `df -k -P` 读取磁盘（记录在
 [进度](progress.zh-CN.md)中的临时做法）。
 
@@ -1983,6 +1999,7 @@ node 的池上运行的 `kill -KILL -- -<pgid>` 处理（记录在[进度](progr
 （`statvfs(3)`）。
 
 **akit 如何使用。** `akit_llm::hw` 在 Linux 上的磁盘：`/proc/mounts` 中的文件系统逐个用它读取，与 fit 相同，不再运行 `df`。
+
 ## A245 QUIC 服务器的握手上限
 
 **完成。** 已进入 akio 的 main（`8a9601b9`，akio 的 ADR-185）并锁定：`ServerConfig::handshake_timeout(Option<Duration>)`（默认 10 秒；握手未按时完成的服务端连接被悄悄丢弃，其处理器的 `on_close` 收到 `ConnectionError::TimedOut`）和 `ServerConfig::max_handshakes(usize)`（默认 8192；进行中的握手达到一半起，Initial 中没有有效 Retry 或 NEW_TOKEN 令牌的客户端收到 Retry；达到上限时，新客户端的 Initial 不作应答地丢弃，计入 `QuicServer::refused_connections`）。fit 让无效的 Retry 令牌进来，再以 `INVALID_TOKEN` 应答；akio 直接丢弃。hub 的 `quic` 监听器（I102d）采用 `tunnel.hub.quic` 的 `handshake_timeout` 和 `max_handshakes`（省略时为 fit 的 10 秒和 64）。

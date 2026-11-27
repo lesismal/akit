@@ -19,6 +19,16 @@
 
 ## 日志
 
+### 2026-11-27：A247–A249 的临时做法删除
+
+- LLM node 使用 akio 的 A247–A249（决定第 40 行的结果）：`akit_llm::exec::is_root` 调用 akio-sys 的 `process::euid`
+  （在 node 启动时读取 `/proc/self` 或运行 `id -u` 的 `init_euid` 已删除）；`Killer::kill` 用 `process::kill_group` 从任意线程
+  立即向作业的进程组发送 SIGKILL，在保证组长尚未被回收的锁内进行（在池上运行的 `kill -KILL -- -<pgid>` 已删除，`Killer` 和
+  `Jobs` 不再需要池）；`exec::output` 单独运行的命令（硬件和 GPU 的查询）也在自己的进程组中启动；Linux 的磁盘在 node 的池上
+  用 `fs::space` 读取，同 fit 的 `Statfs`（Linux 上不再运行 `df`；macOS 保留 `df -k -P -l`，同 fit）。`hw::collect`、
+  `gpu::collect` 和 `exec::output` 不再接收池参数：它们会阻塞，在 node 的池上运行。
+- 测试：`akit-llm` 的测试未改动，在 macOS 上通过。
+
 ### 2026-11-27：akio 锁定在 `a8171fda`：A247–A249
 
 - akio：akio main 上的 `a8171fda`，包含 A247（`akio_sys::process::euid`）、A248（`process::kill_group`，即 killpg，以及

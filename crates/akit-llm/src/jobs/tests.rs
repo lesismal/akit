@@ -24,7 +24,7 @@ fn sh(script: &str) -> Command {
 }
 
 fn jobs() -> Jobs {
-    Jobs::new(pool("test-kill", 2, 16))
+    Jobs::new()
 }
 
 struct Serve(Jobs);
@@ -107,7 +107,6 @@ fn command_sudo_and_display() {
         ..Command::default()
     };
     assert_eq!(plain.clone().sudo(true).argv, plain.argv);
-    crate::exec::init_euid();
     if !crate::exec::is_root() {
         assert_eq!(
             c.clone().sudo(true).argv[..3],

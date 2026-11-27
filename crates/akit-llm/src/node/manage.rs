@@ -730,7 +730,7 @@ impl Core {
                 match (!fresh).then(|| cached(&c)).flatten() {
                     Some(s) => s,
                     None => {
-                        let s = gpu::collect(&c.work, opts);
+                        let s = gpu::collect(opts);
                         lock(&c.gpu).status = Some((s.clone(), Instant::now(), opts.use_sudo));
                         s
                     }
