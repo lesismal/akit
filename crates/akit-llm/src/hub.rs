@@ -1,30 +1,36 @@
-//! fit's LLM hub (`llm/hub`, I106): the table of its nodes (what they push), the models of its
-//! online nodes, pushed to its proxies when they change, and `/hub/proxy`: a proxy's call relayed
-//! to the least loaded node serving the model, frame by frame under each stream's credit
-//! ([`pump`]), another node tried (3 at most) while nothing reached the proxy.
+//! fit's LLM hub (`llm/hub`, I106 and I106b): the table of its nodes (what they push), the models
+//! of its online nodes, pushed to its proxies when they change, its node list for them (bounded
+//! at 4 MiB, pushed a second apart at most, its traffic every 5 s), and `/hub/proxy`: a proxy's
+//! call relayed to the least loaded node serving the model, frame by frame under each stream's
+//! credit ([`pump`]), another node tried (3 at most) while nothing reached the proxy, counted on
+//! its route.
 //!
-//! The hub's pages' methods (`/hub/nodes`, `/hub/node/call`, `/hub/node/stream`, its settings)
-//! are I109's.
+//! Its own pages call `/hub/nodes`, `/hub/node/call` and `/hub/node/stream` (a node's management
+//! methods relayed, where the node allows a hub to manage it), its settings and its name.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use akio::timer::{SendTimer, after_send};
 use akit_config::Config;
-use akit_roles::host::{Host, Info, Role};
+use akit_roles::host::{Api, Host, Info, Role};
 use akit_roles::linktoken::Registry;
 
-use crate::json::{self, Obj};
-use crate::mesh::{Answer, Router, bad_request};
+use crate::hw::HwInfo;
+use crate::json::{self, Obj, Req};
+use crate::mesh::{Answer, Router, bad_request, offline};
 use crate::model::{
-    CODE_INTERNAL, CODE_UNAVAILABLE, HubModel, HubModels, Identity, METHOD_HUB_MODELS,
-    METHOD_HUB_MODELS_UPDATE, METHOD_HUB_NODE_LIST, METHOD_HUB_NODE_LIST_UPDATE, METHOD_HUB_PROXY,
-    METHOD_NODE_INFO, METHOD_NODE_PROXY, METHOD_NODE_UPDATE, MODEL_DISABLED, NodeInfo, PROTOCOLS,
-    PeerConn, ProxyReq, ROLE_NODE, ROLE_PROXY, protocol,
+    CODE_FORBIDDEN, CODE_INTERNAL, CODE_UNAVAILABLE, HubModel, HubModels, Identity,
+    MAX_NODE_LIST_BYTES, MAX_NODE_LIST_MODELS, METHOD_HUB_MODELS, METHOD_HUB_MODELS_UPDATE,
+    METHOD_HUB_NODE_CALL, METHOD_HUB_NODE_LIST, METHOD_HUB_NODE_LIST_UPDATE,
+    METHOD_HUB_NODE_STREAM, METHOD_HUB_NODES, METHOD_HUB_PROFILE_SET, METHOD_HUB_PROXY,
+    METHOD_HUB_SETTINGS_GET, METHOD_HUB_SETTINGS_SET, METHOD_NODE_INFO, METHOD_NODE_PROXY,
+    METHOD_NODE_UPDATE, MODEL_DISABLED, NODE_MANAGE_METHODS, NODE_STREAM_METHODS, NodeInfo,
+    PROTOCOLS, PeerConn, ProxyReq, ROLE_NODE, ROLE_PROXY, protocol,
 };
-use crate::role::Base;
+use crate::role::{Base, EDIT_TIMEOUT, count_setting, number, set};
 use crate::wire::{Error, Stream, pump};
 
 /// `llm.hub`.
@@ -36,10 +42,16 @@ pub const HUB: Info = Info {
 
 /// Model changes gathered into one push.
 const COALESCE: Duration = Duration::from_millis(200);
+/// The node list goes out no sooner than this after the last one...
+const LIST_GAP: Duration = Duration::from_secs(1);
+/// ...and its traffic and latency, which change all the time, this often at most.
+const LIST_REFRESH: Duration = Duration::from_secs(5);
+/// The GPUs a node of the list shows.
+const MAX_LIST_GPUS: usize = 16;
+/// A managed call's bound (a model check probes the upstream).
+const NODE_CALL_TIMEOUT: Duration = Duration::from_secs(90);
 /// The nodes one call is tried on.
 const MAX_TRIES: usize = 3;
-/// The models a node lists in the node list.
-const MAX_NODE_LIST_MODELS: usize = 64;
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(PoisonError::into_inner)
@@ -61,13 +73,24 @@ struct Entry {
     last_seen: i64,
 }
 
+/// The node list pushed to the proxies: the last one, its nodes' encoding, when it went out,
+/// and the push waiting.
+struct List {
+    seq: i64,
+    nodes: String,
+    total: usize,
+    at: Option<Instant>,
+    timer: Option<SendTimer>,
+}
+
 struct St {
     nodes: HashMap<String, Entry>,
     models: HubModels,
-    list_seq: i64,
+    list: List,
     inflight: HashMap<String, i64>,
     rr: usize,
     timer: Option<SendTimer>,
+    tick: Option<SendTimer>,
     max_nodes: usize,
 }
 
@@ -86,39 +109,90 @@ impl std::fmt::Debug for Hub {
     }
 }
 
+/// Runs `f` on the hub, or answers that it is gone.
+fn with(me: &Weak<Core>, ans: Answer, f: impl FnOnce(&Arc<Core>, Answer)) {
+    match me.upgrade() {
+        Some(h) => f(&h, ans),
+        None => ans.err(Error::Closed),
+    }
+}
+
 /// Makes the hub role; its first apply starts it.
 ///
 /// # Errors
 ///
 /// None.
+#[allow(clippy::too_many_lines)]
 pub fn new(host: Host) -> Result<Box<dyn Role>, String> {
     let core = Arc::new_cyclic(|me: &Weak<Core>| {
         let mut r = Router::new();
-        let (a, b, c) = (me.clone(), me.clone(), me.clone());
+        let m = me.clone();
         r.handle(
             METHOD_HUB_MODELS,
             &[ROLE_PROXY],
             Duration::ZERO,
-            move |_, _, ans: Answer| match a.upgrade() {
-                Some(h) => ans.ok(h.models().to_json()),
-                None => ans.err(Error::Closed),
+            move |_, _, a| {
+                with(&m, a, |h, a| a.ok(h.models().to_json()));
             },
         );
+        let m = me.clone();
         r.handle(
             METHOD_HUB_NODE_LIST,
             &[ROLE_PROXY],
             Duration::ZERO,
-            move |_, _, ans: Answer| match c.upgrade() {
-                Some(h) => ans.ok(h.node_list()),
-                None => ans.err(Error::Closed),
-            },
+            move |_, _, a| with(&m, a, |h, a| a.ok(h.node_list())),
         );
+        let m = me.clone();
         r.handle_stream(
             METHOD_HUB_PROXY,
             &[ROLE_PROXY],
-            move |caller, req, st| match b.upgrade() {
+            move |caller, req, st| match m.upgrade() {
                 Some(h) => h.proxy(caller, req, st),
                 None => st.end(Err(Error::Closed)),
+            },
+        );
+        // Its own pages only.
+        let m = me.clone();
+        r.handle(METHOD_HUB_NODES, &[], Duration::ZERO, move |_, _, a| {
+            with(&m, a, |h, a| a.ok(h.nodes_json()));
+        });
+        let m = me.clone();
+        r.handle(
+            METHOD_HUB_NODE_CALL,
+            &[],
+            NODE_CALL_TIMEOUT,
+            move |_, req, a| with(&m, a, |h, a| h.node_call(req, a)),
+        );
+        let m = me.clone();
+        r.handle_stream(METHOD_HUB_NODE_STREAM, &[], move |_, req, st| {
+            match m.upgrade() {
+                Some(h) => h.node_stream(req, st),
+                None => st.end(Err(Error::Closed)),
+            }
+        });
+        let m = me.clone();
+        r.handle(
+            METHOD_HUB_SETTINGS_GET,
+            &[],
+            Duration::ZERO,
+            move |_, _, a| {
+                with(&m, a, |h, a| a.ok(h.settings()));
+            },
+        );
+        let m = me.clone();
+        r.handle(
+            METHOD_HUB_SETTINGS_SET,
+            &[],
+            EDIT_TIMEOUT,
+            move |_, req, a| with(&m, a, |h, a| h.set_settings(req, a)),
+        );
+        let m = me.clone();
+        r.handle(
+            METHOD_HUB_PROFILE_SET,
+            &[],
+            Duration::ZERO,
+            move |_, req, a| {
+                with(&m, a, |h, a| h.set_profile(req, a));
             },
         );
         Core {
@@ -130,10 +204,17 @@ pub fn new(host: Host) -> Result<Box<dyn Role>, String> {
                     seq: now_ms(),
                     ..HubModels::default()
                 },
-                list_seq: now_ms(),
+                list: List {
+                    seq: now_ms(),
+                    nodes: String::new(),
+                    total: 0,
+                    at: None,
+                    timer: None,
+                },
                 inflight: HashMap::new(),
                 rr: 0,
                 timer: None,
+                tick: None,
                 max_nodes: akit_config::roles::DEFAULT_LLM_MAX_NODES,
             }),
             stopped: AtomicBool::new(false),
@@ -162,6 +243,7 @@ pub fn new(host: Host) -> Result<Box<dyn Role>, String> {
             h.peer_down(p);
         }
     });
+    core.arm_refresh();
     Ok(Box::new(Hub(core)))
 }
 
@@ -180,15 +262,115 @@ impl Role for Hub {
 
     fn stop(&mut self, grace: Duration) {
         self.0.stopped.store(true, Ordering::Release);
-        if let Some(t) = lock(&self.0.st).timer.take() {
-            t.cancel();
+        {
+            let mut st = lock(&self.0.st);
+            for t in [st.timer.take(), st.list.timer.take(), st.tick.take()]
+                .into_iter()
+                .flatten()
+            {
+                t.cancel();
+            }
         }
-        self.0.base.stop(grace);
+        self.0.base.stop(grace.min(Duration::from_secs(10)));
     }
 
     fn tokens(&self) -> Option<Registry> {
         Some(self.0.base.mesh.tokens())
     }
+
+    fn api(&self) -> Option<Api> {
+        Some(Arc::new(self.0.base.local.clone()))
+    }
+}
+
+/// A node's links and their traffic, as a hub's node list shows them.
+#[derive(Debug, Clone, Copy, Default)]
+struct Traffic {
+    calls: i64,
+    errors: i64,
+    inflight: i64,
+    req_bytes: i64,
+    resp_bytes: i64,
+}
+
+impl Traffic {
+    fn to_json(self) -> String {
+        Obj::new()
+            .int("calls", self.calls)
+            .int("errors", self.errors)
+            .int("inflight", self.inflight)
+            .int("req_bytes", self.req_bytes)
+            .int("resp_bytes", self.resp_bytes)
+            .end()
+    }
+}
+
+/// One node of the table, as the hub's pages list it (fit's `HubNode`).
+struct NodeView {
+    info: NodeInfo,
+    online: bool,
+    conns: Vec<PeerConn>,
+    last_seen: i64,
+}
+
+/// `nodes` encoded within [`MAX_NODE_LIST_BYTES`], the nodes at the end (offline ones first, as
+/// they are sorted) left out while it is larger.
+fn encode_list(mut nodes: Vec<String>) -> String {
+    loop {
+        let enc = json::array(nodes.iter().cloned());
+        if enc.len() <= MAX_NODE_LIST_BYTES || nodes.is_empty() {
+            return enc;
+        }
+        let keep = nodes.len().saturating_mul(3) / 4;
+        nodes.truncate(keep);
+    }
+}
+
+/// A node as a hub's proxies see it (fit's `NodeSummary`): its hardware without its disks and
+/// addresses, 16 GPUs and 64 models at most, its load, its links with the hub and their traffic.
+fn summary(n: &NodeView, traffic: Traffic) -> String {
+    let mut hw = HwInfo::parse(&n.info.hw);
+    hw.disks = None;
+    hw.ips = None;
+    if let Some(g) = hw.gpus.as_mut() {
+        g.truncate(MAX_LIST_GPUS);
+    }
+    let models = &n.info.models;
+    let links: Vec<String> = n
+        .conns
+        .iter()
+        .map(|c| {
+            Obj::new()
+                .str("direction", &c.direction)
+                .int("connected_at", c.connected_at)
+                .bool_omit("draining", c.draining)
+                .raw("link", &c.link.to_json())
+                .end()
+        })
+        .collect();
+    let mut o = Obj::new()
+        .str("id", &n.info.id)
+        .str("name", &n.info.name)
+        .str_omit("description", &n.info.description)
+        .bool("online", n.online)
+        .int("last_seen", n.last_seen)
+        .raw("hw", &hw.to_json())
+        .raw(
+            "models",
+            &json::array(
+                models
+                    .iter()
+                    .take(MAX_NODE_LIST_MODELS)
+                    .map(crate::model::ModelView::to_json),
+            ),
+        )
+        .int("models_total", i64::try_from(models.len()).unwrap_or(0))
+        .int("inflight", n.info.inflight)
+        .int("jobs", n.info.jobs);
+    if !links.is_empty() {
+        o = o.raw("links", &json::array(links));
+    }
+    o.raw("traffic", &traffic.to_json()).end()
 }
 
 impl Core {
@@ -299,8 +481,9 @@ impl Core {
         self.changed();
     }
 
-    /// Schedules one recompute and push of the models and the node list, 200 ms on.
+    /// Schedules one recompute and push of the models 200 ms on, and one of the node list.
     fn changed(&self) {
+        self.list_changed();
         if self.stopped.load(Ordering::Acquire) {
             return;
         }
@@ -313,10 +496,49 @@ impl Core {
             if let Some(h) = me.upgrade() {
                 lock(&h.st).timer = None;
                 h.models();
-                h.push_list();
             }
         })
         .ok();
+    }
+
+    /// Schedules a push of the node list: 200 ms on, and no sooner than a second after the last.
+    fn list_changed(&self) {
+        if self.stopped.load(Ordering::Acquire) {
+            return;
+        }
+        let mut st = lock(&self.st);
+        if st.list.timer.is_some() {
+            return;
+        }
+        let gap = st
+            .list
+            .at
+            .map_or(Duration::ZERO, |at| LIST_GAP.saturating_sub(at.elapsed()));
+        let me = self.me.clone();
+        st.list.timer = after_send(COALESCE.max(gap), move || {
+            if let Some(h) = me.upgrade() {
+                lock(&h.st).list.timer = None;
+                h.node_list();
+            }
+        })
+        .ok();
+    }
+
+    /// Every 5 s while proxies are linked, the node list's traffic and latency go out again.
+    fn arm_refresh(&self) {
+        if self.stopped.load(Ordering::Acquire) {
+            return;
+        }
+        let me = self.me.clone();
+        let t = after_send(LIST_REFRESH, move || {
+            if let Some(h) = me.upgrade() {
+                if !h.base.mesh.peers_of(ROLE_PROXY).is_empty() {
+                    h.list_changed();
+                }
+                h.arm_refresh();
+            }
+        });
+        lock(&self.st).tick = t.ok();
     }
 
     fn aggregate(&self, st: &St) -> Vec<HubModel> {
@@ -394,64 +616,264 @@ impl Core {
         }
     }
 
-    /// The node list proxies show: online nodes first, each with 64 models at most.
-    fn node_list(&self) -> String {
+    /// The node table for the hub's pages (fit's `Nodes`): online nodes first, then by name and
+    /// ID.
+    fn nodes(&self) -> Vec<NodeView> {
+        let mut conns: HashMap<String, Vec<PeerConn>> = HashMap::new();
+        for p in self.base.mesh.peers() {
+            if p.identity.role == ROLE_NODE {
+                conns.entry(p.identity.id.clone()).or_default().push(p);
+            }
+        }
         let t = now();
-        let mut st = lock(&self.st);
-        st.list_seq = st.list_seq.saturating_add(1).max(now_ms());
-        let mut nodes: Vec<(bool, String, String)> = st
-            .nodes
-            .iter()
-            .map(|(id, e)| {
-                let online = self.base.mesh.online(id);
-                let models = &e.info.models;
-                let shown: Vec<String> = models
-                    .iter()
-                    .take(MAX_NODE_LIST_MODELS)
-                    .map(crate::model::ModelView::to_json)
-                    .collect();
-                let j = Obj::new()
-                    .str("id", id)
-                    .str("name", &e.info.name)
-                    .str_omit("description", &e.info.description)
-                    .bool("online", online)
-                    .int("last_seen", if online { t } else { e.last_seen })
-                    .raw(
-                        "hw",
-                        if e.info.hw.is_empty() {
-                            "{}"
-                        } else {
-                            &e.info.hw
-                        },
-                    )
-                    .raw("models", &json::array(shown))
-                    .int("models_total", i64::try_from(models.len()).unwrap_or(0))
-                    .int("inflight", e.info.inflight)
-                    .int("jobs", e.info.jobs)
-                    .raw(
-                        "traffic",
-                        r#"{"calls":0,"errors":0,"inflight":0,"req_bytes":0,"resp_bytes":0}"#,
-                    )
-                    .end();
-                (online, e.info.name.clone(), j)
-            })
-            .collect();
-        nodes.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
-        let total = nodes.len();
-        Obj::new()
-            .str("hub", &self.base.id())
-            .raw("nodes", &json::array(nodes.into_iter().map(|n| n.2)))
+        let mut out: Vec<NodeView> = {
+            let st = lock(&self.st);
+            st.nodes
+                .iter()
+                .map(|(id, e)| {
+                    let online = self.base.mesh.online(id);
+                    NodeView {
+                        info: e.info.clone(),
+                        online,
+                        conns: conns.remove(id).unwrap_or_default(),
+                        last_seen: if online { t } else { e.last_seen },
+                    }
+                })
+                .collect()
+        };
+        out.sort_by(|a, b| {
+            b.online
+                .cmp(&a.online)
+                .then_with(|| a.info.name.cmp(&b.info.name))
+                .then_with(|| a.info.id.cmp(&b.info.id))
+        });
+        out
+    }
+
+    /// `/hub/nodes`: fit's `[]HubNode`.
+    fn nodes_json(&self) -> String {
+        json::array(self.nodes().iter().map(|n| {
+            let mut o = Obj::new()
+                .raw("info", &n.info.to_json())
+                .bool("online", n.online);
+            if !n.conns.is_empty() {
+                o = o.raw("conns", &json::array(n.conns.iter().map(PeerConn::to_json)));
+            }
+            o.int("last_seen", n.last_seen).end()
+        }))
+    }
+
+    /// The node list for the proxies (fit's `NodeList`); when it changed since the last one,
+    /// its sequence grows and every proxy gets it.
+    fn node_list(&self) -> String {
+        let mut traffic: HashMap<String, Traffic> = HashMap::new();
+        for r in self.base.mesh.routes().snapshot() {
+            let t = traffic.entry(r.to).or_default();
+            t.calls = t.calls.saturating_add(r.calls);
+            t.errors = t.errors.saturating_add(r.errors);
+            t.inflight = t.inflight.saturating_add(r.inflight);
+            t.req_bytes = t.req_bytes.saturating_add(r.req_bytes);
+            t.resp_bytes = t.resp_bytes.saturating_add(r.resp_bytes);
+        }
+        let all = self.nodes();
+        let total = all.len();
+        let enc = encode_list(
+            all.iter()
+                .map(|n| summary(n, traffic.get(&n.info.id).copied().unwrap_or_default()))
+                .collect(),
+        );
+        let hub = self.base.id();
+        let (seq, changed) = {
+            let mut st = lock(&self.st);
+            if st.list.nodes == enc && st.list.total == total {
+                (st.list.seq, false)
+            } else {
+                st.list.seq = st.list.seq.saturating_add(1).max(now_ms());
+                st.list.nodes.clone_from(&enc);
+                st.list.total = total;
+                st.list.at = Some(Instant::now());
+                (st.list.seq, true)
+            }
+        };
+        let body = Obj::new()
+            .str("hub", &hub)
+            .raw("nodes", &enc)
             .int("total", i64::try_from(total).unwrap_or(0))
-            .int("seq", st.list_seq)
+            .int("seq", seq)
+            .end();
+        if changed {
+            let m = &self.base.mesh;
+            for p in m.peers_of(ROLE_PROXY) {
+                let _ = m.push(&p.id, METHOD_HUB_NODE_LIST_UPDATE, &body);
+            }
+        }
+        body
+    }
+
+    // ---- The pages' calls ----
+
+    /// A node's name for the pages' errors: `name (id)` when it has one of its own.
+    fn node_name(&self, id: &str) -> String {
+        match lock(&self.st).nodes.get(id) {
+            Some(e) if !e.info.name.is_empty() && e.info.name != id => {
+                format!("{} ({id})", e.info.name)
+            }
+            _ => id.to_owned(),
+        }
+    }
+
+    /// The errors of managed calls, made clear on the pages.
+    fn manage_err(&self, id: &str, e: Error) -> Error {
+        if e == offline() {
+            return Error::code(
+                CODE_UNAVAILABLE,
+                format!("node {} is offline", self.node_name(id)),
+            );
+        }
+        match e {
+            Error::Remote { code, msg } if code == CODE_FORBIDDEN => Error::code(
+                CODE_FORBIDDEN,
+                format!(
+                    "node {} does not allow hub management (enable allow_hub_manage on the node): {msg}",
+                    self.node_name(id)
+                ),
+            ),
+            e @ Error::Remote { .. } => e,
+            e => Error::Other(format!("node {}: {e}", self.node_name(id))),
+        }
+    }
+
+    /// `/hub/node/call`: a node management method, not a stream one, called on the node.
+    fn node_call(&self, req: &[u8], a: Answer) {
+        let r = match Req::parse(req) {
+            Ok(r) => r,
+            Err(e) => return a.err(e),
+        };
+        let (id, method) = match (r.str("id"), r.str("method")) {
+            (Ok(i), Ok(m)) => (i, m),
+            (Err(e), _) | (_, Err(e)) => return a.err(e),
+        };
+        if !NODE_MANAGE_METHODS.contains(&method.as_str())
+            || NODE_STREAM_METHODS.contains(&method.as_str())
+        {
+            return a.err(bad_request(format!(
+                "{method:?} is not a node management method"
+            )));
+        }
+        let me = self.me.clone();
+        let peer = id.clone();
+        self.base.mesh.call(
+            &peer,
+            &method,
+            &r.raw("req"),
+            NODE_CALL_TIMEOUT,
+            move |res| match res {
+                Ok(b) => a.ok(String::from_utf8_lossy(&b).into_owned()),
+                Err(e) => match me.upgrade() {
+                    Some(h) => a.err(h.manage_err(&id, e)),
+                    None => a.err(e),
+                },
+            },
+        );
+    }
+
+    /// `/hub/node/stream`: a node management stream method opened on the node, its frames and
+    /// result relayed as they are.
+    fn node_stream(&self, req: &[u8], st: Stream) {
+        let r = match Req::parse(req) {
+            Ok(r) => r,
+            Err(e) => return st.end(Err(e)),
+        };
+        let (id, method) = match (r.str("id"), r.str("method")) {
+            (Ok(i), Ok(m)) => (i, m),
+            (Err(e), _) | (_, Err(e)) => return st.end(Err(e)),
+        };
+        if !NODE_STREAM_METHODS.contains(&method.as_str()) {
+            return st.end(Err(bad_request(format!(
+                "{method:?} is not a node management stream method"
+            ))));
+        }
+        let mut payload = r.raw("req");
+        if payload.is_empty() {
+            "{}".clone_into(&mut payload);
+        }
+        let ns = match self.base.mesh.open_stream(&id, &method, &payload) {
+            Ok(s) => s,
+            Err(e) => return st.end(Err(self.manage_err(&id, e))),
+        };
+        // The pages' stream ending (they canceled, the pipe broke) cancels the node's.
+        let ns2 = ns.clone();
+        st.on_finish(move |e| {
+            if e.is_some_and(|e| *e != Error::StreamEnded) {
+                ns2.cancel();
+            }
+        });
+        let (me, st2, ns3) = (self.me.clone(), st.clone(), ns.clone());
+        pump(&ns, &st, None, move |res, _| match res {
+            Ok(()) => st2.end(Ok(ns3.result().unwrap_or_default())),
+            Err(e) => {
+                ns3.cancel();
+                let e = match me.upgrade() {
+                    Some(h) => h.manage_err(&id, e),
+                    None => e,
+                };
+                st2.end(Err(e));
+            }
+        });
+    }
+
+    /// `/hub/settings/get`: fit's `HubSettings`, its defaults filled in.
+    fn settings(&self) -> String {
+        let n = lock(&self.st).max_nodes;
+        Obj::new()
+            .int("max_nodes", i64::try_from(n).unwrap_or(i64::MAX))
             .end()
     }
 
-    fn push_list(&self) {
-        let body = self.node_list();
-        let m = &self.base.mesh;
-        for p in m.peers_of(ROLE_PROXY) {
-            let _ = m.push(&p.id, METHOD_HUB_NODE_LIST_UPDATE, &body);
+    /// `/hub/settings/set`: the settings written into the member, answered once applied.
+    fn set_settings(&self, req: &[u8], a: Answer) {
+        let n = match Req::parse(req)
+            .and_then(|r| r.int("max_nodes"))
+            .and_then(|n| {
+                count_setting(
+                    "max_nodes",
+                    n,
+                    i64::try_from(akit_config::roles::DEFAULT_LLM_MAX_NODES).unwrap_or(0),
+                )
+            }) {
+            Ok(n) => n,
+            Err(e) => return a.err(e),
+        };
+        let me = self.me.clone();
+        self.base.edit(
+            move |m| {
+                set(m, "max_nodes", number(n));
+                Ok(())
+            },
+            move |r| match (r, me.upgrade()) {
+                (Ok(()), Some(h)) => a.ok(h.settings()),
+                (Ok(()), None) => a.err(Error::Closed),
+                (Err(e), _) => a.err(e),
+            },
+        );
+    }
+
+    /// `/hub/profile/set`: the hub's name (1 to 64 characters), answered with its identity once
+    /// applied.
+    fn set_profile(&self, req: &[u8], a: Answer) {
+        let name = match Req::parse(req).and_then(|r| r.str("name")) {
+            Ok(n) => n.trim().to_owned(),
+            Err(e) => return a.err(e),
+        };
+        if name.is_empty() || name.chars().count() > 64 {
+            return a.err(bad_request("the name needs 1-64 characters"));
         }
+        let me = self.me.clone();
+        self.base.set_name(name, move |r| match (r, me.upgrade()) {
+            (Ok(()), Some(h)) => a.ok(h.base.mesh.identity().to_json()),
+            (Ok(()), None) => a.err(Error::Closed),
+            (Err(e), _) => a.err(e),
+        });
     }
 
     /// The online node serving `name` ready to agents of `api`, not excluded, with the fewest
@@ -589,6 +1011,16 @@ impl Relay {
             }
         };
         self.core.add_inflight(&id, 1);
+        // The call is counted on its route from the proxy to the node, its bytes as they cross
+        // the node's stream.
+        let rc = self
+            .core
+            .base
+            .mesh
+            .routes()
+            .begin(&self.from, &id, &self.req.model);
+        rc.add_req(self.req.body.len());
+        rc.attach(&ns, false);
         // The proxy's stream ending (it canceled, its link broke) cancels the node's.
         let ns2 = ns.clone();
         self.st.on_finish(move |e| {
@@ -618,7 +1050,10 @@ impl Relay {
             &ns,
             &self.st,
             Some(Box::new(move || keep.store(true, Ordering::Release))),
-            move |r, frames| me.node_ended(&id, &ns4, r, frames),
+            move |r, frames| {
+                rc.end(r.is_err() || frames == 0);
+                me.node_ended(&id, &ns4, r, frames);
+            },
         );
     }
 
@@ -656,5 +1091,127 @@ impl Relay {
                 self.end(Err(e));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
+    use super::*;
+    use crate::hw::{DiskInfo, GpuInfo};
+    use crate::model::{LinkStats, ModelView, Rtt};
+    use akit_config::value::Value;
+
+    /// fit's `TestNodeSummary`: a node of the list shows its hardware without disks and
+    /// addresses, at most 16 GPUs and 64 models, its links and traffic.
+    #[test]
+    fn node_summary() {
+        let hw = HwInfo {
+            arch: "amd64".to_owned(),
+            disks: Some(vec![DiskInfo {
+                mount: "/".to_owned(),
+                ..DiskInfo::default()
+            }]),
+            ips: Some(vec!["10.0.0.1".to_owned()]),
+            gpus: Some(vec![GpuInfo::default(); 20]),
+            ..HwInfo::default()
+        };
+        let mut info = NodeInfo {
+            id: "n".to_owned(),
+            name: "nn".to_owned(),
+            description: "d".to_owned(),
+            inflight: 2,
+            jobs: 1,
+            hw: hw.to_json(),
+            ..NodeInfo::default()
+        };
+        for i in 0..MAX_NODE_LIST_MODELS + 6 {
+            info.models.push(ModelView {
+                name: format!("m{i}"),
+                api: "openai".to_owned(),
+                state: "ready".to_owned(),
+                ..ModelView::default()
+            });
+        }
+        let n = NodeView {
+            info,
+            online: true,
+            last_seen: 7,
+            conns: vec![PeerConn {
+                direction: "in".to_owned(),
+                connected_at: 5,
+                link: LinkStats {
+                    bytes_in: 3,
+                    rtt: Rtt {
+                        samples: 1,
+                        ..Rtt::default()
+                    },
+                    ..LinkStats::default()
+                },
+                ..PeerConn::default()
+            }],
+        };
+        let s = summary(
+            &n,
+            Traffic {
+                calls: 4,
+                ..Traffic::default()
+            },
+        );
+        let v = json::parse(s.as_bytes()).unwrap();
+        let h = v.get("hw").unwrap();
+        assert_eq!(h.get("disks"), Some(&Value::Null));
+        assert_eq!(h.get("ips"), Some(&Value::Null));
+        assert_eq!(json::get_arr(h, "gpus").len(), MAX_LIST_GPUS);
+        assert_eq!(json::get_str(h, "arch"), "amd64");
+        assert_eq!(json::get_arr(&v, "models").len(), MAX_NODE_LIST_MODELS);
+        assert_eq!(
+            json::get_int(&v, "models_total"),
+            i64::try_from(MAX_NODE_LIST_MODELS + 6).unwrap()
+        );
+        assert_eq!(json::get_int(v.get("traffic").unwrap(), "calls"), 4);
+        let links = json::get_arr(&v, "links");
+        assert_eq!(links.len(), 1);
+        assert_eq!(json::get_int(&links[0], "connected_at"), 5);
+        assert_eq!(json::get_int(links[0].get("link").unwrap(), "bytes_in"), 3);
+        assert!(json::get_bool(&v, "online"));
+        assert_eq!(
+            (json::get_int(&v, "inflight"), json::get_int(&v, "jobs")),
+            (2, 1)
+        );
+        // No models is an empty list; no links, none at all.
+        let empty = NodeView {
+            info: NodeInfo::default(),
+            online: false,
+            conns: Vec::new(),
+            last_seen: 0,
+        };
+        let s = summary(&empty, Traffic::default());
+        assert!(s.contains(r#""models":[]"#) && !s.contains("links"), "{s}");
+    }
+
+    /// fit's `TestEncodeListBound`: a list past 4 MiB leaves out the nodes at its end.
+    #[test]
+    fn encode_list_bound() {
+        let desc = "d".repeat(1024);
+        let nodes: Vec<String> = (0..6000)
+            .map(|i| {
+                Obj::new()
+                    .str("id", &format!("n{i}"))
+                    .str("description", &desc)
+                    .end()
+            })
+            .collect();
+        let enc = encode_list(nodes.clone());
+        let back = json::parse(enc.as_bytes()).unwrap();
+        let Value::Array(kept) = back else {
+            panic!("not a list")
+        };
+        assert!(enc.len() <= MAX_NODE_LIST_BYTES);
+        assert!(!kept.is_empty() && kept.len() < nodes.len());
+        assert_eq!(json::get_str(&kept[0], "id"), "n0");
+        let small = encode_list(nodes[..3].to_vec());
+        assert_eq!(small, json::array(nodes[..3].iter().cloned()));
+        assert_eq!(encode_list(Vec::new()), "[]");
     }
 }

@@ -21,12 +21,12 @@ use akio_http::client::{
 use akio_http::{Headers, Method};
 use akit_config::Config;
 use akit_config::roles::{LlmModel, LlmNode, LlmNodeProxy};
-use akit_roles::host::{Host, Info, Role};
+use akit_roles::host::{Api, Host, Info, Role};
 use akit_roles::linktoken::Registry;
 
 use crate::form;
 use crate::json::Obj;
-use crate::mesh::{Answer, Router, bad_request};
+use crate::mesh::{Answer, RouteCall, Router, bad_request};
 use crate::model::{
     API_ANTHROPIC, API_AZURE_OPENAI, API_GEMINI, API_OLLAMA, API_OPENAI, CODE_BAD_REQUEST,
     CODE_INTERNAL, CODE_NOT_FOUND, CODE_UNAVAILABLE, Identity, METHOD_NODE_INFO, METHOD_NODE_PROXY,
@@ -231,6 +231,10 @@ impl Role for Node {
 
     fn tokens(&self) -> Option<Registry> {
         Some(self.0.base.mesh.tokens())
+    }
+
+    fn api(&self) -> Option<Api> {
+        Some(Arc::new(self.0.base.local.clone()))
     }
 }
 
@@ -603,6 +607,11 @@ impl Core {
             Err(e) => return st.end(Err(e)),
         };
         self.changed();
+        // The call is counted on its route from the caller to the upstream; dropped before the
+        // call goes upstream, it counts as failed.
+        let rc = self.base.mesh.routes().begin(&caller.id, "", &m.name);
+        rc.add_req(req.body.len());
+        rc.attach(&st, true);
         let fail = |e: Error| {
             self.release(&m);
             st.end(Err(e));
@@ -669,6 +678,7 @@ impl Core {
             start: Instant::now(),
             cancel,
             node: self.base.id(),
+            rc: Mutex::new(Some(rc)),
             s: Mutex::new(XState::default()),
         });
         x.arm_first_byte();
@@ -915,6 +925,7 @@ struct Exchange {
     start: Instant,
     cancel: CancelToken,
     node: String,
+    rc: Mutex<Option<RouteCall>>,
     s: Mutex<XState>,
 }
 
@@ -959,6 +970,10 @@ impl Exchange {
         };
         if let Some(t) = first {
             t.cancel();
+        }
+        if let Some(rc) = lock(&self.rc).take() {
+            // An upstream's error status counts as failed too.
+            rc.end(r.is_err() || status >= 400);
         }
         self.stop_keep();
         let ms = i64::try_from(self.start.elapsed().as_millis()).unwrap_or(i64::MAX);

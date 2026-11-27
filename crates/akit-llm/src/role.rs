@@ -12,8 +12,13 @@ use akit_config::value::Value;
 use akit_roles::host::Host;
 use akit_roles::linktoken::Registry;
 
-use crate::mesh::{self, Limits, Mesh, Router};
-use crate::model::{DialReq, Identity, ListenConfig};
+use crate::local::Local;
+use crate::mesh::{self, Answer, Limits, Mesh, Router, WeakMesh, bad_request};
+use crate::model::{DialReq, Identity, ListenConfig, METHOD_STATUS};
+use crate::wire::Error;
+
+/// How long a method that changes the config waits for it to be applied (fit's `EditTimeout`).
+pub const EDIT_TIMEOUT: Duration = Duration::from_secs(30);
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(PoisonError::into_inner)
@@ -50,6 +55,8 @@ pub struct Base {
     pub host: Host,
     /// The role's mesh.
     pub mesh: Mesh,
+    /// The role's methods as its own pages call them.
+    pub local: Local,
     st: Arc<Mutex<State>>,
     rpc: Arc<Mutex<String>>,
     /// The sweep of expired tokens: its generation, so that only the last one armed goes on.
@@ -125,7 +132,19 @@ fn write_cert(host: &Host, cert: String, key: String) {
 impl Base {
     /// A role's base on `host`, serving `router`'s methods.
     #[must_use]
-    pub fn new(host: Host, role: &'static str, router: Router) -> Base {
+    pub fn new(host: Host, role: &'static str, mut router: Router) -> Base {
+        // `/mesh/status`, every role's, its own pages only.
+        let slot: Arc<std::sync::OnceLock<WeakMesh>> = Arc::default();
+        let s2 = Arc::clone(&slot);
+        router.handle(
+            METHOD_STATUS,
+            &[],
+            Duration::ZERO,
+            move |_, _, a: Answer| match s2.get().and_then(WeakMesh::upgrade) {
+                Some(m) => a.ok(m.status_json()),
+                None => a.err(Error::Closed),
+            },
+        );
         let st: Arc<Mutex<State>> = Arc::default();
         let hostname = akit_config::roles::host_name();
         let started = akit_roles::linktoken::unix_now();
@@ -166,10 +185,13 @@ impl Base {
             router,
             tokens,
         );
+        let _ = slot.set(mesh.downgrade());
+        let local = Local::new(mesh.downgrade());
         Base {
             role,
             host,
             mesh,
+            local,
             st,
             rpc: lst,
             sweep: Arc::default(),
@@ -303,7 +325,62 @@ impl Base {
     /// Drains the mesh for `grace` at most, then stops it. Waits: the control thread's.
     pub fn stop(&self, grace: Duration) {
         self.sweep.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+        self.local.close();
         self.mesh.shutdown(grace);
+    }
+
+    /// The role's name: its member's, or the host's when it has none.
+    #[must_use]
+    pub fn name(&self) -> String {
+        self.mesh.identity().name
+    }
+
+    /// Changes the role's member with `change`, given its members, and tells `done` once the
+    /// config changed was applied (fit's `Base.Edit`): the change's own error keeps its code, a
+    /// config that does not load or was not applied is a bad request. Returns at once.
+    pub fn edit(
+        &self,
+        change: impl FnOnce(&mut Vec<(String, Value)>) -> Result<(), Error> + Send + 'static,
+        done: impl FnOnce(Result<(), Error>) + Send + 'static,
+    ) {
+        let own: Arc<Mutex<Option<Error>>> = Arc::default();
+        let own2 = Arc::clone(&own);
+        let role = self.role;
+        self.host.edit(
+            Box::new(move |m: &mut Value| {
+                if *m == Value::Null {
+                    *m = Value::Object(Vec::new());
+                }
+                let Value::Object(ms) = m else {
+                    return Err("the member is not an object".to_owned());
+                };
+                change(ms).map_err(|e| {
+                    let msg = e.to_string();
+                    *lock(&own2) = Some(e);
+                    msg
+                })
+            }),
+            Box::new(move |r| match r {
+                Ok(warnings) => {
+                    for w in warnings {
+                        akit_observe::warn!(Llm, "llm.{role}: {w}");
+                    }
+                    done(Ok(()));
+                }
+                Err(msg) => done(Err(lock(&own).take().unwrap_or_else(|| bad_request(msg)))),
+            }),
+        );
+    }
+
+    /// Writes the role's name into its member (fit's `SetName`).
+    pub fn set_name(&self, name: String, done: impl FnOnce(Result<(), Error>) + Send + 'static) {
+        self.edit(
+            move |m| {
+                set(m, "name", Value::String(name));
+                Ok(())
+            },
+            done,
+        );
     }
 }
 
@@ -419,4 +496,73 @@ pub fn dial_req(p: &LlmPeer) -> DialReq {
         ca_file: p.ca_file.clone(),
         server_name: p.server_name.clone(),
     }
+}
+
+/// Sets member `key` of `m` to `v`, or leaves it out when `v` is empty: `null`, `""`, `[]`,
+/// `{}`, `false` or `0` (fit's `role.Set`).
+pub fn set(m: &mut Vec<(String, Value)>, key: &str, v: Value) {
+    let empty = match &v {
+        Value::Null | Value::Bool(false) => true,
+        Value::String(s) => s.is_empty(),
+        Value::Array(a) => a.is_empty(),
+        Value::Object(o) => o.is_empty(),
+        Value::Number(n) => n == "0",
+        Value::Bool(true) => false,
+    };
+    match m.iter_mut().find(|(k, _)| k == key) {
+        Some(_) if empty => m.retain(|(k, _)| k != key),
+        Some((_, old)) => *old = v,
+        None if empty => {}
+        None => m.push((key.to_owned(), v)),
+    }
+}
+
+/// A number as a config value.
+#[must_use]
+pub fn number(n: impl std::fmt::Display) -> Value {
+    Value::Number(n.to_string())
+}
+
+/// Checks `v`, a duration the pages set, of at least `lo` (fit's `role.Duration`): Go's
+/// form, as it writes it, or `""` when it is empty, zero or `def`, which the member then leaves
+/// out.
+///
+/// # Errors
+///
+/// Not a duration of at least `lo`.
+pub fn duration_setting(
+    field: &str,
+    v: &str,
+    lo: Duration,
+    def: Duration,
+) -> Result<String, Error> {
+    if v.is_empty() {
+        return Ok(String::new());
+    }
+    match akit_config::duration::parse(v) {
+        Some(Ok(d)) if d >= lo => {
+            if d == def || d.is_zero() {
+                Ok(String::new())
+            } else {
+                Ok(akit_config::duration::format(d))
+            }
+        }
+        _ => Err(bad_request(format!(
+            "{field} is a duration of at least {}, as 30s or 5m",
+            akit_config::duration::format(lo)
+        ))),
+    }
+}
+
+/// Checks `n`, a count the pages set, which may not be negative (fit's `role.Count`): 0 when
+/// it equals `def`, which the member then leaves out.
+///
+/// # Errors
+///
+/// A negative count.
+pub fn count_setting(field: &str, n: i64, def: i64) -> Result<i64, Error> {
+    if n < 0 {
+        return Err(bad_request(format!("{field} may not be negative")));
+    }
+    Ok(if n == def { 0 } else { n })
 }

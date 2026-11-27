@@ -216,7 +216,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I104 | LLM I：mesh：帧、会话、带信用的流、握手、hello、连接池 | I99, I100 | done |
 | I105 | LLM II：node：模型、检查、双向流式转发到上游的调用 | I104 | done |
 | I106 | LLM III：hub：node 表、模型、选择和转发 | I105 | done |
-| I106b | LLM III b：hub 供页面使用的调用（`/hub/nodes`、`/hub/node/call`、`/hub/node/stream`）、node 列表的字节上限、路由计数（`/mesh/status`） | I106 | todo |
+| I106b | LLM III b：hub 供页面使用的调用（`/hub/nodes`、`/hub/node/call`、`/hub/node/stream`）、node 列表的字节上限、路由计数（`/mesh/status`） | I106 | done |
 | I107 | LLM IV：proxy：agent 的 API、API key、路由、错误 | I106 | done |
 | I108 | LLM V：node 的管理：硬件、GPU、固定动作和作业 | I105 | todo |
 | I109 | 角色的页面：其控制台和方法，写回的编辑 | I103, I107, I91 | todo |
@@ -1489,7 +1489,7 @@ fit 的，使 akit 的角色能与 fit 的角色互连（决定 038）。
 - **完成标准**：移植后的 fit `llm/hub` 中 node 调用和列表上限的测试通过。
 - **涉及**：`akit-llm`。
 - **fit**：`llm/hub/{manage,nodelist}.go`、`llm/internal/mesh/routes.go`。
-- **状态**：todo。
+- **状态**：done（2026-11-27）。见进度日志。角色的其他 `/mesh/*` 方法（peers、dial、listen、limits）属于 I109。
 
 ### I107 LLM IV：proxy
 

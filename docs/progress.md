@@ -20,6 +20,35 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-27: I106b, the hub's calls for its pages, the node list's bounds, the routes' counts
+
+- Every role's methods reach its own pages through `akit_llm::local::Local` (`Role::api`, fit's
+  `Router.Invoke` and `OpenLocal` as the caller `local`): an in-memory session (`wire::pipe`), so a
+  page's call or stream behaves as one over the mesh, through the same methods. A method that
+  changes the config does it with `Base::edit` (fit's `Base.Edit`): the member changed by the
+  control thread as a config from the role's pages, answered once applied; the change's own error
+  keeps its code, a config refused is a bad request (decision 38).
+- The routes' counts (`mesh::routes`, fit's `mesh.Routes`): the calls a role relays per route
+  (from, to, model; 1,024 routes apart, the rest as `other`), their bytes read from the stream as
+  they cross; counted by the node (caller to upstream, an upstream's error status a failure), the
+  hub (proxy to node) and the proxy (its agents to a hub or a node, each attempt). `/mesh/status`
+  on every role (its own pages): its identity, links and routes (fit's `MeshStatus`).
+- The hub: `/hub/nodes` (fit's `HubNode`s, online first), `/hub/node/call` (a node management
+  method, not a stream one, relayed within 90 s; offline, forbidden and other errors as fit's
+  `manageErr` words them) and `/hub/node/stream` (`/node/job/follow` relayed frame by frame under
+  both streams' credit, the pages' end canceling the node's stream), `/hub/settings/get` and
+  `set` (`max_nodes`, the default left out of the member), `/hub/profile/set`. The node list as
+  fit's: each node's hardware without disks and addresses, 16 GPUs, 64 models, its links and its
+  traffic from the routes; encoded within 4 MiB (the nodes at its end left out); its sequence
+  grows only when it changed; pushed 200 ms after a change and a second after the last at the
+  soonest, every 5 s while proxies are linked.
+- `akit_llm::hw::HwInfo`: fit's `HWInfo`, read from and written as a node's info carries it.
+- Tests: the routes (fit's `routes_test.go`), the node list's summary and bound
+  (`nodelist_test.go`); `tests/hub_manage.rs`: a node standing in for one, its calls and streams
+  relayed, refused, offline, a peer refused the pages' methods; the list's sequence; settings and
+  name written back, a failed edit answered (fit's `TestRole`); `tests/e2e.rs`: each role's
+  routes after the end-to-end calls. Against fit's binary (`tests/fit_manage.rs`): akit's hub
+  manages fit's node (its model list, a job run and followed, a model saved).
 ### 2026-11-27: I102d, the hub's QUIC handshake bounds and its listeners' certificates read again
 
 - The hub's `quic` listeners on akio's A245 (ADR-185), as fit's: each handshake bounded by

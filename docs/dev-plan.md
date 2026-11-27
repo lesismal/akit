@@ -225,7 +225,7 @@ renamed fit's external names; I98–I109, I102b, I102c, I102d and I103b are the 
 | I104 | LLM I: the mesh: frames, sessions, streams with credit, the handshake, hello, pools | I99, I100 | done |
 | I105 | LLM II: the node: models, checks, calls forwarded upstream streamed both ways | I104 | done |
 | I106 | LLM III: the hub: node table, models, picking and relaying | I105 | done |
-| I106b | LLM III b: the hub's calls for the pages (`/hub/nodes`, `/hub/node/call`, `/hub/node/stream`), the node list's byte bound, the routes' counts (`/mesh/status`) | I106 | todo |
+| I106b | LLM III b: the hub's calls for the pages (`/hub/nodes`, `/hub/node/call`, `/hub/node/stream`), the node list's byte bound, the routes' counts (`/mesh/status`) | I106 | done |
 | I107 | LLM IV: the proxy: the agents' API, API keys, routing, errors | I106 | done |
 | I108 | LLM V: the node's management: hardware, GPUs, fixed actions and jobs | I105 | todo |
 | I109 | The roles' pages: their consoles and methods, edits written back | I103, I107, I91 | todo |
@@ -1762,7 +1762,8 @@ link with fit's (decision 038).
 - **Done when**: fit's `llm/hub` tests of the node calls and the list's bounds pass ported.
 - **Touches**: `akit-llm`.
 - **fit**: `llm/hub/{manage,nodelist}.go`, `llm/internal/mesh/routes.go`.
-- **Status**: todo.
+- **Status**: done (2026-11-27). See the progress log. The roles' other `/mesh/*` methods (peers,
+  dial, listen, limits) are I109's.
 
 ### I107 LLM IV: the proxy
 

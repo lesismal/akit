@@ -23,7 +23,7 @@ use akit_roles::linktoken::Registry;
 
 use crate::form;
 use crate::json::{self, Obj};
-use crate::mesh::Router;
+use crate::mesh::{RouteCall, Router};
 use crate::model::{
     API_ANTHROPIC, API_COHERE, API_GEMINI, API_OLLAMA, API_OPENAI, CODE_BAD_REQUEST, CODE_INTERNAL,
     CODE_NOT_FOUND, CODE_RATE_LIMITED, CODE_UNAVAILABLE, HubModels, Identity, METHOD_HUB_MODELS,
@@ -276,6 +276,10 @@ impl Role for Proxy {
 
     fn tokens(&self) -> Option<Registry> {
         Some(self.0.base.mesh.tokens())
+    }
+
+    fn api(&self) -> Option<akit_roles::host::Api> {
+        Some(Arc::new(self.0.base.local.clone()))
     }
 }
 
@@ -1016,6 +1020,8 @@ struct CState {
     waiting: bool,
     first: Option<SendTimer>,
     total: Option<SendTimer>,
+    /// The attempt's count on its route.
+    rc: Option<RouteCall>,
 }
 
 struct Call {
@@ -1103,9 +1109,13 @@ impl Call {
             Ok(st) => st,
             Err(e) => return self.retry(&rt, e),
         };
+        let rc = core.base.mesh.routes().begin("", &rt.id, &self.req.model);
+        rc.add_req(req.body.len());
+        rc.attach(&st, false);
         let cause = {
             let mut s = lock(&self.s);
             s.st = Some(st.clone());
+            s.rc = Some(rc);
             s.cause
         };
         if cause.is_some() {
@@ -1122,6 +1132,9 @@ impl Call {
     fn retry(self: &Arc<Self>, rt: &RouteTo, e: Error) {
         let cause = {
             let mut s = lock(&self.s);
+            if let Some(rc) = s.rc.take() {
+                rc.end(true);
+            }
             self.unhold(&mut s);
             if !rt.hub {
                 s.exclude.push(rt.id.clone());
@@ -1302,6 +1315,9 @@ impl Call {
             }
             s.done = true;
             self.stop(&mut s);
+            if let Some(rc) = s.rc.take() {
+                rc.end(r.is_err());
+            }
             s.body.take()
         };
         match r {
@@ -1351,6 +1367,9 @@ impl Call {
             }
             s.done = true;
             self.stop(&mut s);
+            if let Some(rc) = s.rc.take() {
+                rc.end(true);
+            }
             (s.out.take(), s.cause)
         };
         if cause != Some(Gone::Agent) {

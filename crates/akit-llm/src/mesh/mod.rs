@@ -12,10 +12,12 @@
 mod dial;
 mod listen;
 pub mod router;
+pub mod routes;
 
 pub use dial::{DIAL_TIMEOUT, backoff, refused_backoff};
 pub use listen::{ListenState, fingerprint, validate_addr};
 pub use router::{Answer, DEFAULT_TIMEOUT, Router};
+pub use routes::{RouteCall, RouteStats, Routes};
 
 use std::collections::HashMap;
 use std::fmt;
@@ -225,11 +227,30 @@ pub(crate) struct Inner {
     hello_wait: Mutex<Duration>,
     filter: Mutex<Option<Arc<akit_access::Policy>>>,
     quiet: (Mutex<()>, Condvar),
+    routes: Routes,
 }
 
 /// One role's side of the mesh. Cheap to clone.
 #[derive(Clone)]
 pub struct Mesh(Arc<Inner>);
+
+/// A mesh not kept alive ([`Mesh::downgrade`]).
+#[derive(Clone, Default)]
+pub struct WeakMesh(Weak<Inner>);
+
+impl fmt::Debug for WeakMesh {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("WeakMesh").finish_non_exhaustive()
+    }
+}
+
+impl WeakMesh {
+    /// The mesh, while it is alive.
+    #[must_use]
+    pub fn upgrade(&self) -> Option<Mesh> {
+        self.0.upgrade().map(Mesh)
+    }
+}
 
 impl fmt::Debug for Mesh {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -269,7 +290,41 @@ impl Mesh {
             hello_wait: Mutex::new(HELLO_TIMEOUT),
             filter: Mutex::new(None),
             quiet: (Mutex::new(()), Condvar::new()),
+            routes: Routes::new(),
         }))
+    }
+
+    /// The model calls the role relays, per route.
+    #[must_use]
+    pub fn routes(&self) -> &Routes {
+        &self.0.routes
+    }
+
+    /// `/mesh/status`'s answer (fit's `MeshStatus`): the role's identity, its links with their
+    /// bytes and latency, its routes' counts, and when it was taken, in milliseconds since 1970.
+    #[must_use]
+    pub fn status_json(&self) -> String {
+        let at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX));
+        crate::json::Obj::new()
+            .raw("self", &self.identity().to_json())
+            .raw(
+                "links",
+                &crate::json::array(self.peers().iter().map(PeerConn::to_json)),
+            )
+            .raw(
+                "routes",
+                &crate::json::array(self.routes().snapshot().iter().map(RouteStats::to_json)),
+            )
+            .int("at", at)
+            .end()
+    }
+
+    /// A handle that does not keep the mesh alive.
+    #[must_use]
+    pub fn downgrade(&self) -> WeakMesh {
+        WeakMesh(Arc::downgrade(&self.0))
     }
 
     /// The tokens the listener issued, and the links that use them.

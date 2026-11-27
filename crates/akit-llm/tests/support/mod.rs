@@ -276,10 +276,14 @@ pub fn key_hash(key: &str) -> String {
     akit_roles::linktoken::hex(&akio_crypto::hash::Sha256::digest(key.as_bytes()))
 }
 
-/// The roles of `doc` run on one engine, as `akit run` runs them.
+/// The roles of `doc` run on one engine, as `akit run` runs them, with a control thread that
+/// applies their edits of their members as `akit run`'s does (refusing them with `fail`'s
+/// message while it is set); `doc` is the config they change.
 pub struct Roles {
     pub engine: Arc<akio::Engine>,
-    pub roles: akit_roles::host::Manager,
+    pub roles: Arc<Mutex<akit_roles::host::Manager>>,
+    pub doc: Arc<Mutex<akit_config::value::Value>>,
+    pub fail: Arc<Mutex<Option<String>>>,
 }
 
 impl Roles {
@@ -288,6 +292,12 @@ impl Roles {
         let engine = akio::Engine::builder().client_threads(2).build().unwrap();
         engine.start().unwrap();
         let engine = Arc::new(engine);
+        let (tx, rx) = std::sync::mpsc::channel::<akit_roles::host::Edit>();
+        let tx = Mutex::new(tx);
+        let editor: akit_roles::host::Editor = Arc::new(move |edit| {
+            let _ = tx.lock().unwrap().send(edit);
+            Ok(())
+        });
         let mut roles = akit_roles::host::Manager::new(
             &[
                 akit_llm::hub::HUB,
@@ -295,18 +305,114 @@ impl Roles {
                 akit_llm::proxy::PROXY,
             ],
             Arc::clone(&engine),
-            None,
+            Some(editor),
         );
         let errs = roles.apply(&config);
         assert!(errs.is_empty(), "{errs:?}");
-        Roles { engine, roles }
+        let roles = Arc::new(Mutex::new(roles));
+        let value = Arc::new(Mutex::new(akit_config::value::parse(doc).unwrap()));
+        let fail: Arc<Mutex<Option<String>>> = Arc::default();
+        let (control, v2, f2) = (Arc::clone(&roles), Arc::clone(&value), Arc::clone(&fail));
+        std::thread::spawn(move || {
+            while let Ok(edit) = rx.recv() {
+                if let Some(msg) = f2.lock().unwrap().clone() {
+                    (edit.done)(Err(msg));
+                    continue;
+                }
+                let mut v = v2.lock().unwrap().clone();
+                match edit.apply_to(&mut v) {
+                    Ok(done) => match akit_config::from_json(&v.to_json(), None) {
+                        Ok(config) => {
+                            let errs = control.lock().unwrap().apply(&config);
+                            if errs.is_empty() {
+                                *v2.lock().unwrap() = v;
+                                done(Ok(Vec::new()));
+                            } else {
+                                done(Err(errs.join("; ")));
+                            }
+                        }
+                        Err(e) => done(Err(e.to_string())),
+                    },
+                    Err((done, err)) => done(Err(err)),
+                }
+            }
+        });
+        Roles {
+            engine,
+            roles,
+            doc: value,
+            fail,
+        }
+    }
+
+    /// Role `id`'s methods, as its own pages call them.
+    pub fn local(&self, id: &str) -> akit_llm::local::Local {
+        let api = self.roles.lock().unwrap().api(id).unwrap();
+        api.downcast_ref::<akit_llm::local::Local>()
+            .unwrap()
+            .clone()
+    }
+
+    /// Member `path` (`llm.node`) of the config as the roles changed it, as JSON.
+    pub fn member(&self, path: &str) -> String {
+        let v = self.doc.lock().unwrap();
+        let mut cur = &*v;
+        for p in path.split('.') {
+            cur = cur.get(p).unwrap();
+        }
+        akit_llm::json::write(cur)
     }
 }
 
 impl Drop for Roles {
     fn drop(&mut self) {
-        self.roles.stop(Duration::ZERO);
+        self.roles.lock().unwrap().stop(Duration::ZERO);
         self.engine.shutdown();
         self.engine.wait();
+    }
+}
+
+/// A call to a role's own method, its answer's JSON.
+pub fn call(
+    l: &akit_llm::local::Local,
+    method: &str,
+    req: &str,
+) -> Result<String, akit_llm::wire::Error> {
+    l.call_wait(method, req, Duration::from_secs(30))
+        .map(|b| String::from_utf8(b).unwrap())
+}
+
+/// The code of an error, 0 for none.
+pub fn code<T>(r: &Result<T, akit_llm::wire::Error>) -> i64 {
+    match r {
+        Err(akit_llm::wire::Error::Remote { code, .. }) => *code,
+        Err(_) => -1,
+        Ok(_) => 0,
+    }
+}
+
+/// Reads a stream to its end: its frames, and its result or error.
+pub fn read_stream(
+    st: &akit_llm::wire::Stream,
+) -> (Vec<Vec<u8>>, Result<Vec<u8>, akit_llm::wire::Error>) {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let s2 = st.clone();
+    st.on_data(move |ev| {
+        let _ = tx.send(ev);
+    });
+    let mut frames = Vec::new();
+    loop {
+        match rx
+            .recv_timeout(Duration::from_secs(30))
+            .expect("the stream's frames")
+        {
+            akit_llm::wire::Event::Data(d) => {
+                s2.release(d.len());
+                frames.push(d);
+            }
+            akit_llm::wire::Event::End(r) => {
+                return (frames, r.map(|()| s2.result().unwrap_or_default()));
+            }
+        }
     }
 }

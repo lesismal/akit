@@ -19,6 +19,25 @@
 
 ## 日志
 
+### 2026-11-27：I106b，hub 供页面使用的调用、node 列表的上限、路由计数
+
+- 每个角色的方法经 `akit_llm::local::Local`（`Role::api`，即 fit 以调用方 `local` 进行的 `Router.Invoke` 和 `OpenLocal`）到达
+  其自己的页面：一个内存中的会话（`wire::pipe`），因此页面的调用或流与经 mesh 的行为一致，走同样的方法。修改配置的方法通过
+  `Base::edit`（fit 的 `Base.Edit`）进行：控制线程把成员的修改作为来自角色页面的配置应用，应用之后才应答；修改本身的错误保留其错误码，
+  被拒绝的配置是 bad request（决定 38）。
+- 路由计数（`mesh::routes`，fit 的 `mesh.Routes`）：角色按路由（from、to、model；单独统计 1,024 条，其余合并为 `other`）转发的调用，
+  字节随传输从流中读取；由 node（调用方到上游，上游的错误状态计为失败）、hub（proxy 到 node）和 proxy（其 agent 到 hub 或 node，
+  每次尝试）计数。每个角色的 `/mesh/status`（仅自己的页面）：其身份、链路和路由（fit 的 `MeshStatus`）。
+- hub：`/hub/nodes`（fit 的 `HubNode`，在线在前）、`/hub/node/call`（node 的非流管理方法，90 秒内转发；离线、禁止和其他错误按 fit
+  的 `manageErr` 的措辞）和 `/hub/node/stream`（在两条流的信用下逐帧转发 `/node/job/follow`，页面一端结束即取消 node 的流）、
+  `/hub/settings/get` 和 `set`（`max_nodes`，默认值不写入成员）、`/hub/profile/set`。node 列表与 fit 相同：每个 node 的硬件不含磁盘和地址、
+  16 块 GPU、64 个模型、其链路及来自路由的流量；编码后不超过 4 MiB（省略末尾的 node）；只在变化时序号递增；变化后 200 毫秒、且距上次至少
+  一秒推送，有 proxy 连接时每 5 秒推送一次。
+- `akit_llm::hw::HwInfo`：fit 的 `HWInfo`，按 node 信息携带的格式读写。
+- 测试：路由（fit 的 `routes_test.go`），node 列表的摘要和上限（`nodelist_test.go`）；`tests/hub_manage.rs`：一个替身 node，其调用和
+  流被转发、拒绝、离线，对端调用页面的方法被拒绝；列表的序号；设置和名称写回，编辑失败时的应答（fit 的 `TestRole`）；`tests/e2e.rs`：
+  端到端调用之后每个角色的路由。对 fit 的二进制（`tests/fit_manage.rs`）：akit 的 hub 管理 fit 的 node（其模型列表、运行并跟随一个作业、
+  保存一个模型）。
 ### 2026-11-27：I102d，hub 的 QUIC 握手限制和监听器证书的重新读取
 
 - hub 的 `quic` 监听器基于 akio 的 A245（ADR-185），同 fit：每次握手受 `tunnel.hub.quic.handshake_timeout`（省略时 10 秒）限制，

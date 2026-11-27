@@ -11,7 +11,7 @@
 
 mod support;
 
-use support::{Roles, Upstream, agent, free_port, key_hash, until};
+use support::{Roles, Upstream, agent, call, free_port, key_hash, until};
 
 const KEY: &str = "ah-test-key-0123456789";
 
@@ -58,7 +58,7 @@ fn models_listed(api: u16) -> bool {
 fn agent_proxy_hub_node_upstream() {
     let up = Upstream::start();
     let (hub, api) = (free_port(), free_port());
-    let _roles = Roles::start(&config(hub, api, up.port, None));
+    let roles = Roles::start(&config(hub, api, up.port, None));
     until("the proxy to list the node's models", || models_listed(api));
     let list = agent(api, "GET", "/v1/models", KEY, b"").text();
     assert!(
@@ -140,6 +140,46 @@ fn agent_proxy_hub_node_upstream() {
     let a = agent(api, "POST", "/v1/nope", KEY, b"{}");
     assert_eq!(a.status, 404);
     assert!(a.text().contains("unknown_url"));
+
+    // fit's `TestRoutesAndStatus` end to end: each role counted the calls it relayed on its
+    // route, the bytes as they crossed.
+    let routes = |id: &str| {
+        let s = call(&roles.local(id), "/mesh/status", "").unwrap();
+        let v = akit_llm::json::parse(s.as_bytes()).unwrap();
+        akit_llm::json::get_arr(&v, "routes").to_vec()
+    };
+    let get = |r: &akit_config::value::Value, k: &str| akit_llm::json::get_int(r, k);
+    let node = routes("llm.node");
+    let m2 = node
+        .iter()
+        .find(|r| akit_llm::json::get_str(r, "model") == "m2")
+        .unwrap();
+    assert_eq!(akit_llm::json::get_str(m2, "from"), "hub-0000000000000001");
+    assert_eq!(
+        (get(m2, "calls"), get(m2, "errors"), get(m2, "inflight")),
+        (2, 0, 0)
+    );
+    assert!(get(m2, "req_bytes") > 3 << 20, "{m2:?}");
+    let hub_routes = routes("llm.hub");
+    assert!(
+        hub_routes.iter().any(|r| {
+            akit_llm::json::get_str(r, "from") == "proxy-0000000000000001"
+                && akit_llm::json::get_str(r, "to") == "node-0000000000000001"
+                && akit_llm::json::get_str(r, "model") == "m2"
+                && get(r, "calls") == 2
+                && get(r, "req_bytes") > 3 << 20
+        }),
+        "{hub_routes:?}"
+    );
+    let proxy = routes("llm.proxy");
+    assert!(
+        proxy.iter().any(|r| {
+            akit_llm::json::get_str(r, "from").is_empty()
+                && akit_llm::json::get_str(r, "to") == "hub-0000000000000001"
+                && get(r, "resp_bytes") > 0
+        }),
+        "{proxy:?}"
+    );
 }
 
 #[test]
@@ -197,7 +237,7 @@ fn an_expired_token_closes_its_links() {
         sec.token()
     );
     let roles = Roles::start(&doc);
-    let reg = roles.roles.registries();
+    let reg = roles.roles.lock().unwrap().registries();
     let links = || {
         akit_roles::host::token_views(&reg, "llm.hub")
             .and_then(|v| v.first().map(|t| t.links.len()))

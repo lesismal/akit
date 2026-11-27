@@ -349,6 +349,84 @@ pub const METHOD_NODE_INFO: &str = "/node/info";
 pub const METHOD_NODE_PROXY: &str = "/node/proxy";
 /// A node's push of its info when it changes.
 pub const METHOD_NODE_UPDATE: &str = "/node/update";
+/// A hub's nodes, its own pages only (`[]HubNode`).
+pub const METHOD_HUB_NODES: &str = "/hub/nodes";
+/// A node management method called on a node, its own pages only (`HubNodeCallReq`).
+pub const METHOD_HUB_NODE_CALL: &str = "/hub/node/call";
+/// A node management stream method opened on a node, its frames and result relayed.
+pub const METHOD_HUB_NODE_STREAM: &str = "/hub/node/stream";
+/// The hub's name set, its own pages only (`ProfileReq` -> `Identity`).
+pub const METHOD_HUB_PROFILE_SET: &str = "/hub/profile/set";
+/// The hub's settings (`HubSettings`).
+pub const METHOD_HUB_SETTINGS_GET: &str = "/hub/settings/get";
+/// The hub's settings set (`HubSettings` -> `HubSettings`).
+pub const METHOD_HUB_SETTINGS_SET: &str = "/hub/settings/set";
+/// The models a node of a hub's node list shows.
+pub const MAX_NODE_LIST_MODELS: usize = 64;
+/// A hub's node list encoded, past which the nodes at its end (offline ones first) are left out.
+pub const MAX_NODE_LIST_BYTES: usize = 4 << 20;
+
+/// The node's models (`[]Model`, keys masked).
+pub const METHOD_NODE_MODEL_LIST: &str = "/node/model/list";
+/// A model saved (`Model` -> `Model`).
+pub const METHOD_NODE_MODEL_SAVE: &str = "/node/model/save";
+/// A model deleted (`NameReq`).
+pub const METHOD_NODE_MODEL_DELETE: &str = "/node/model/delete";
+/// A model checked now (`NameReq` -> `ModelView`).
+pub const METHOD_NODE_MODEL_CHECK: &str = "/node/model/check";
+/// The node's name and description set (`ProfileReq`).
+pub const METHOD_NODE_PROFILE_SET: &str = "/node/profile/set";
+/// The GPUs' status (`gpu.Status`).
+pub const METHOD_NODE_GPU_STATUS: &str = "/node/gpu/status";
+/// The GPU vendors known (`[]gpu.Vendor`).
+pub const METHOD_NODE_GPU_CATALOG: &str = "/node/gpu/catalog";
+/// A vendor's tool installed, as a job (`GPUInstallReq` -> `Job`).
+pub const METHOD_NODE_GPU_INSTALL: &str = "/node/gpu/install";
+/// A GPU setting applied, as a job (`GPUSetReq` -> `Job`).
+pub const METHOD_NODE_GPU_SET: &str = "/node/gpu/set";
+/// The fixed actions (`[]Action`).
+pub const METHOD_NODE_ACTION_LIST: &str = "/node/action/list";
+/// A fixed action run, as a job (`ActionRunReq` -> `Job`).
+pub const METHOD_NODE_ACTION_RUN: &str = "/node/action/run";
+/// The jobs, without their output (`[]Job`).
+pub const METHOD_NODE_JOB_LIST: &str = "/node/job/list";
+/// A job and its output from an offset (`JobGetReq` -> `Job`).
+pub const METHOD_NODE_JOB_GET: &str = "/node/job/get";
+/// A stream: a job's output as it comes (`JobGetReq`; frames `Job`; its end `Job`).
+pub const METHOD_NODE_JOB_FOLLOW: &str = "/node/job/follow";
+/// A running job canceled (`JobIDReq`).
+pub const METHOD_NODE_JOB_CANCEL: &str = "/node/job/cancel";
+/// The node's own settings, its pages only (`NodeSettings`).
+pub const METHOD_NODE_SETTINGS_GET: &str = "/node/settings/get";
+/// The node's own settings set, its pages only.
+pub const METHOD_NODE_SETTINGS_SET: &str = "/node/settings/set";
+/// The bounds of the calls the node forwards, its pages only (`NodeUpstream`).
+pub const METHOD_NODE_UPSTREAM_GET: &str = "/node/upstream/get";
+/// The bounds set, its pages only.
+pub const METHOD_NODE_UPSTREAM_SET: &str = "/node/upstream/set";
+
+/// The management methods a hub may call on a node that allows it (stream methods included).
+pub const NODE_MANAGE_METHODS: &[&str] = &[
+    METHOD_NODE_MODEL_LIST,
+    METHOD_NODE_MODEL_SAVE,
+    METHOD_NODE_MODEL_DELETE,
+    METHOD_NODE_MODEL_CHECK,
+    METHOD_NODE_PROFILE_SET,
+    METHOD_NODE_GPU_STATUS,
+    METHOD_NODE_GPU_CATALOG,
+    METHOD_NODE_GPU_INSTALL,
+    METHOD_NODE_GPU_SET,
+    METHOD_NODE_ACTION_LIST,
+    METHOD_NODE_ACTION_RUN,
+    METHOD_NODE_JOB_LIST,
+    METHOD_NODE_JOB_GET,
+    METHOD_NODE_JOB_FOLLOW,
+    METHOD_NODE_JOB_CANCEL,
+];
+
+/// The stream methods among [`NODE_MANAGE_METHODS`].
+pub const NODE_STREAM_METHODS: &[&str] = &[METHOD_NODE_JOB_FOLLOW];
+
 /// A hub's model list (`HubModels`).
 pub const METHOD_HUB_MODELS: &str = "/hub/models";
 /// A model call through a hub, which picks a node and relays.

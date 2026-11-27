@@ -272,6 +272,108 @@ fn write_into(b: &mut String, v: &Value) {
     }
 }
 
+/// A method's request, read as fit's `decodeReq` reads one into its struct: an empty payload or
+/// `null` is an empty request; anything but an object, or a member of the wrong type, is a bad
+/// request (`bad request: ...`).
+#[derive(Debug)]
+pub struct Req(Value);
+
+/// A bad request's error.
+fn bad(msg: impl std::fmt::Display) -> crate::wire::Error {
+    crate::mesh::bad_request(format!("bad request: {msg}"))
+}
+
+impl Req {
+    /// Reads `b`.
+    ///
+    /// # Errors
+    ///
+    /// Not JSON, or not an object.
+    pub fn parse(b: &[u8]) -> Result<Req, crate::wire::Error> {
+        match parse(b).map_err(bad)? {
+            Value::Null => Ok(Req(Value::Object(Vec::new()))),
+            v @ Value::Object(_) => Ok(Req(v)),
+            _ => Err(bad("the request is not an object")),
+        }
+    }
+
+    /// The request as a value.
+    #[must_use]
+    pub fn value(&self) -> &Value {
+        &self.0
+    }
+
+    fn member(&self, k: &str) -> Option<&Value> {
+        self.0.get(k).filter(|v| **v != Value::Null)
+    }
+
+    /// Member `k`, a string, `""` when left out.
+    ///
+    /// # Errors
+    ///
+    /// Not a string.
+    pub fn str(&self, k: &str) -> Result<String, crate::wire::Error> {
+        match self.member(k) {
+            None => Ok(String::new()),
+            Some(Value::String(s)) => Ok(s.clone()),
+            Some(_) => Err(bad(format!("{k} is not a string"))),
+        }
+    }
+
+    /// Member `k`, an integer, 0 when left out.
+    ///
+    /// # Errors
+    ///
+    /// Not an integer.
+    pub fn int(&self, k: &str) -> Result<i64, crate::wire::Error> {
+        match self.member(k) {
+            None => Ok(0),
+            Some(Value::Number(n)) => n
+                .parse::<i64>()
+                .map_err(|_| bad(format!("{k} is not an integer"))),
+            Some(_) => Err(bad(format!("{k} is not a number"))),
+        }
+    }
+
+    /// Member `k`, a boolean, false when left out.
+    ///
+    /// # Errors
+    ///
+    /// Not a boolean.
+    pub fn bool(&self, k: &str) -> Result<bool, crate::wire::Error> {
+        match self.member(k) {
+            None => Ok(false),
+            Some(Value::Bool(b)) => Ok(*b),
+            Some(_) => Err(bad(format!("{k} is not a boolean"))),
+        }
+    }
+
+    /// Member `k`, an object of strings, empty when left out.
+    ///
+    /// # Errors
+    ///
+    /// Not an object of strings.
+    pub fn str_map(&self, k: &str) -> Result<Vec<(String, String)>, crate::wire::Error> {
+        match self.member(k) {
+            None => Ok(Vec::new()),
+            Some(Value::Object(ms)) => ms
+                .iter()
+                .map(|(mk, v)| match v {
+                    Value::String(s) => Ok((mk.clone(), s.clone())),
+                    _ => Err(bad(format!("{k}.{mk} is not a string"))),
+                })
+                .collect(),
+            Some(_) => Err(bad(format!("{k} is not an object"))),
+        }
+    }
+
+    /// Member `k` written back as JSON, `""` when left out.
+    #[must_use]
+    pub fn raw(&self, k: &str) -> String {
+        self.member(k).map(write).unwrap_or_default()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used)]

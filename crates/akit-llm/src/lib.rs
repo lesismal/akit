@@ -14,7 +14,9 @@
 
 pub mod form;
 pub mod hub;
+pub mod hw;
 pub mod json;
+pub mod local;
 pub mod mesh;
 pub mod model;
 pub mod node;
