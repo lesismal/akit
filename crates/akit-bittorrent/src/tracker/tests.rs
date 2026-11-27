@@ -635,3 +635,150 @@ fn two_clients_find_each_other_through_the_tracker() {
     leecher.close();
     seeder.close();
 }
+
+/// fit's private tracker tests (I159): with `auth`, an announce or scrape must carry a passkey of
+/// the `media_auth` policy that plays the torrent, in its path or as `?passkey=` over HTTP and in
+/// BEP 41's URL data over UDP; a user's passkey, as `/api/passkey` gives it, or a token; the
+/// refusals counted; the passkey redacted from the logged target; a UDP scrape, which carries no
+/// URL data, refused.
+#[test]
+fn a_private_tracker() {
+    let engine = akio::Engine::builder()
+        .client_threads(1)
+        .udp_client_threads(1)
+        .build()
+        .unwrap();
+    engine.start().unwrap();
+    let engine = Arc::new(engine);
+    let http: SocketAddr = format!("127.0.0.1:{}", free_port()).parse().unwrap();
+    let slot = EngineSlot::with(Arc::clone(&engine));
+    let svc = tests_handler(slot.clone());
+    engine
+        .add_listener(akio::Listener::tcp(http).serve(akio_http::serve(svc)))
+        .unwrap();
+    let env = Env {
+        roles: Manager::new(
+            &[akit_media::role::MEDIA_AUTH, TRACKER],
+            Arc::clone(&engine),
+            None,
+        ),
+        client: TrackerClient::new(Arc::clone(&engine), Duration::from_millis(300), 2),
+        engine,
+        http,
+    };
+    let mut env = env;
+    let ih = [7u8; 20];
+    let doc = format!(
+        r#"{{"media_auth": [{{"name": "bt", "secret": "0123456789abcdef0123456789abcdef",
+              "users": [{{"name": "alice", "password": "alice-password", "play": ["bittorrent/*"]}},
+                        {{"name": "bob", "password": "bob-password", "play": ["bittorrent/{}"]}}],
+              "tokens": [{{"name": "t", "token": "token-0123456789ab", "play": ["bittorrent/*"]}}]}}],
+            "bittorrent": {{"tracker": {{"listen": "127.0.0.1:{}", "auth": "bt"}}}}}}"#,
+        hex(&[8u8; 20]),
+        free_port()
+    );
+    let config = akit_config::from_json(&doc, None).unwrap();
+    assert!(env.roles.apply(&config).is_empty());
+
+    // The user's passkey, fit's, from the console's route.
+    let pages = super::pages::Pages::new(key_of(&env.engine));
+    let r = super::tests_serve(&pages, "/api/passkey?user=alice");
+    assert_eq!(r.status, 200);
+    let body = String::from_utf8(r.body).unwrap();
+    assert_eq!(body, "{\"passkey\":\"c3751c196e55193e0c3be763bcc1b8ab\"}\n");
+    assert_eq!(
+        super::tests_serve(&pages, "/api/passkey?user=carol").status,
+        404
+    );
+    assert_eq!(super::tests_serve(&pages, "/api/passkey").status, 404);
+    let r = pages.passkey("/x?user=alice", true);
+    assert_eq!(
+        String::from_utf8(r.body).unwrap(),
+        "{\"user\":\"alice\",\"passkey\":\"c3751c196e55193e0c3be763bcc1b8ab\"}\n"
+    );
+    assert_eq!(pages.passkey("/x", true).status, 400);
+    let alice = "c3751c196e55193e0c3be763bcc1b8ab";
+
+    // Over HTTP: none, unknown, in the path, in the query, a token; bob's grant lacks it.
+    let target = |prefix: &str, extra: &str| {
+        announce_target(ih, 1, 6000, 0, extra).replacen("/tracker", prefix, 1)
+    };
+    for (t, want) in [
+        // fib's: the segment before `announce` is the passkey, `tracker` here.
+        (target("", ""), Some("a passkey is required")),
+        (target("/tracker", ""), Some("unknown passkey")),
+        (target("/tracker/nope", ""), Some("unknown passkey")),
+        (target(&format!("/tracker/{alice}"), ""), None),
+        (target("", &format!("&passkey={alice}")), None),
+        (target("/tracker/token-0123456789ab", ""), None),
+    ] {
+        let (s, body) = env.get(&t);
+        assert_eq!(s, 200);
+        assert_eq!(failure_of(&body).as_deref(), want, "{t}");
+    }
+    let bob = super::tests_serve(&pages, "/api/passkey?user=bob");
+    let bob = String::from_utf8(bob.body).unwrap();
+    let bob = bob.split('"').nth(3).unwrap().to_owned();
+    let (_, body) = env.get(&target(&format!("/tracker/{bob}"), ""));
+    assert_eq!(
+        failure_of(&body).as_deref(),
+        Some("the passkey may not use this torrent")
+    );
+    // A scrape with the passkey, and without.
+    let (_, body) = env.get(&format!("/tracker/{alice}/scrape?info_hash={}", pct(&ih)));
+    assert_eq!(
+        failure_of(&body),
+        None,
+        "{}",
+        String::from_utf8_lossy(&body)
+    );
+    let (_, body) = env.get(&format!("/scrape?info_hash={}", pct(&ih)));
+    assert_eq!(failure_of(&body).as_deref(), Some("a passkey is required"));
+
+    // Over UDP: the passkey in the URL data after the announce (BEP 41).
+    let sock = UdpSocket::bind("127.0.0.1:0").unwrap();
+    sock.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+    let mut buf = [0u8; 2048];
+    sock.send_to(&udp::connect_request(1), env.udp()).unwrap();
+    let (n, _) = sock.recv_from(&mut buf).unwrap();
+    let udp::Reply::Connect { conn_id, .. } = udp::parse_reply(&buf[..n], false).unwrap() else {
+        panic!("not a connect");
+    };
+    let mut announce = |data: &str| {
+        let mut b = udp::announce_request(conn_id, 2, &req(ih, 2, 6001, 10));
+        let path = data.as_bytes();
+        for chunk in path.chunks(255) {
+            b.push(2);
+            b.push(chunk.len() as u8);
+            b.extend_from_slice(chunk);
+        }
+        sock.send_to(&b, env.udp()).unwrap();
+        let _ = sock.recv_from(&mut buf).unwrap();
+        buf[..4].to_vec()
+    };
+    assert_eq!(announce(&format!("/{alice}/announce")), 1u32.to_be_bytes());
+    assert_eq!(announce("/announce"), 3u32.to_be_bytes(), "an error");
+    sock.send_to(&udp::scrape_request(conn_id, 3, &[InfoHash(ih)]), env.udp())
+        .unwrap();
+    let (n, _) = sock.recv_from(&mut buf).unwrap();
+    assert_eq!(&buf[..4], 3u32.to_be_bytes());
+    assert!(String::from_utf8_lossy(&buf[8..n]).contains("a passkey is required"));
+
+    // The refusals counted; the tracker private.
+    let st = stats(&env.engine).unwrap();
+    assert!(st.private);
+    let passkey = st.refused.iter().find(|(n, _)| *n == "passkey").unwrap().1;
+    assert_eq!(passkey, 7);
+
+    // The passkey redacted from the logged target: the path's, and the query's.
+    let h = akit_runtime::Handler::log_target(&*super::handler::handler(slot)).unwrap();
+    assert_eq!(
+        h(&format!("/t/{alice}/announce?info_hash=x")).as_deref(),
+        Some("/t/REDACTED/announce?info_hash=x")
+    );
+    assert_eq!(
+        h("/announce?passkey=k&x=1").as_deref(),
+        Some("/announce?passkey=REDACTED&x=1")
+    );
+    assert_eq!(h("/announce?x=1"), None);
+}

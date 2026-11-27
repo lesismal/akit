@@ -673,6 +673,9 @@ pub struct BitTorrentTracker {
     pub access: Option<Access>,
     /// `console`: the tracker's pages; none when left out.
     pub console: Option<Console>,
+    /// `auth` (I159): the `media_auth` policy whose passkeys the tracker takes, which makes it
+    /// private; `""` for a public tracker.
+    pub auth: String,
 }
 
 impl BitTorrentTracker {
@@ -845,22 +848,29 @@ const BT_TRACKER_FIELDS: &[&str] = &[
     "allow_files",
     "access",
     "console",
+    "auth",
 ];
-// The store's bound of every torrent's peers (akio's A285); auth, a media_auth policy, which akit
-// does not read yet; the store several instances share (I159).
-const BT_TRACKER_FIT_ONLY: &[&str] = &["max_peers", "auth", "store"];
+// The store's bound of every torrent's peers (akio's A285); the store several instances share
+// (I159).
+const BT_TRACKER_FIT_ONLY: &[&str] = &["max_peers", "store"];
 
-/// Decodes `bittorrent`.
-pub(crate) fn bittorrent(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<BitTorrent> {
+/// Decodes `bittorrent`, with the `media_auth` policy its tracker names (I159), checked once
+/// every file is read.
+pub(crate) fn bittorrent(
+    d: &mut Decoder<'_>,
+    n: &Node,
+    path: &str,
+) -> Option<(BitTorrent, Vec<crate::media::AuthRef>)> {
     let mut o = d.object(n, path)?;
     let client = o
         .take("client")
         .and_then(|v| client(d, v, &join_field(path, "client")));
+    let mut refs = Vec::new();
     let tracker = o
         .take("tracker")
-        .and_then(|v| tracker(d, v, &join_field(path, "tracker")));
+        .and_then(|v| tracker(d, v, &join_field(path, "tracker"), &mut refs));
     o.finish(d, BITTORRENT_FIELDS, &[]);
-    Some(BitTorrent { client, tracker })
+    Some((BitTorrent { client, tracker }, refs))
 }
 
 /// A listener's address: a host and port, as fit's `checkAddress`.
@@ -1282,9 +1292,24 @@ fn schedule(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<BitTorrentSched
     Some(s)
 }
 
-fn tracker(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<BitTorrentTracker> {
+fn tracker(
+    d: &mut Decoder<'_>,
+    n: &Node,
+    path: &str,
+    refs: &mut Vec<crate::media::AuthRef>,
+) -> Option<BitTorrentTracker> {
     let mut o = d.object(n, path)?;
     let mut t = BitTorrentTracker::default();
+    if let Some((name, off)) = text_at(d, &mut o, "auth") {
+        if !name.is_empty() {
+            refs.push(crate::media::AuthRef {
+                name: name.clone(),
+                off,
+                path: o.at("auth"),
+            });
+        }
+        t.auth = name;
+    }
     if let Some((s, off)) = text_at(d, &mut o, "listen") {
         if !s.is_empty() {
             check_listen(d, &o, &s, off);

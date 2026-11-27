@@ -1529,3 +1529,5 @@ bittorrent.client.publish[].max_hashing
 routes[].handler<bt_publish>
 routes[].handler<bt_publish>.params
 routes[].handler<bt_publish>.params.publish
+# I159: a private tracker's passkeys, a media_auth policy's.
+bittorrent.tracker.auth

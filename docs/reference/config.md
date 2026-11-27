@@ -17,7 +17,7 @@ so in a note marked **akit:**; nine defaults that name the gateway are akit's, `
 say `fit` ([decision 037](../decisions/037-akit-names.md)).
 
 <!-- BEGIN GENERATED: summary -->
-akit reads **1246** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 188 objects akit reads, each has its table below.
+akit reads **1247** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 188 objects akit reads, each has its table below.
 <!-- END GENERATED -->
 
 How to read the tables:
@@ -2926,7 +2926,9 @@ is `bt_tracker`, and over UDP on its own `listen`. akit reads and checks the rol
 `watch_dir`, .torrent URLs, the queue and the disk check from I153. What later iterations run is
 refused as not supported yet: the client's `access`, `disk_queue_bytes`, `rss`, a
 category's `media_library`, and the limits akio-bittorrent does not set yet (`alt_speed` and a
-category's rates and seed limits run from I154); the tracker's `auth`, `max_peers` and `store`.
+category's rates and seed limits run from I154); the tracker's `max_peers` and `store`. A
+private tracker (`auth`, I159) takes the passkeys of a `media_auth` policy: its users' passkeys
+are fit's, and a passkey over UDP rides in BEP 41's URL data.
 
 ```fit
 bittorrent {
@@ -3130,7 +3132,7 @@ bittorrent {
 | `access` | [object](#cfg-bittorrent-tracker-access) |  | The client addresses the tracker serves, deciding before the global access: a UDP datagram from an address it refuses is dropped before a connection is made, and an HTTP announce or scrape through bt_tracker from one is answered with a failure reason. A change applies at once. Every address when left out, unless the global access says otherwise. |
 | `allow` | list of string |  | The info hashes the tracker tracks, in hex: 40 digits for a v1 hash, or 64 for a v2 one, tracked by its first 20 bytes as v2 clients announce it. With any here or in allow_files, announces of other torrents are refused with "unregistered torrent", and scrapes of them get nothing. Every torrent when both are left out. |
 | `allow_files` | list of string |  | Files of more allowed info hashes: one on each line, as allow has them, with blank lines and what follows # left out. Read when the config is applied, and read again when one changes; each at most 64 MiB, and at most 1048576 info hashes in all. |
-| `auth` | string |  | **Not supported yet**: refused by name. The media_auth policy whose passkeys the tracker takes, which makes it private: an announce or scrape must carry a passkey, in its path as /<passkey>/announce or as ?passkey=, that is one of the policy's tokens (static, or signed by fit) or a user's passkey, derived from the policy's secret and the user's name, and whose grant plays bittorrent/<info hash in hex> (play ["bittorrent/*"] for every torrent). Others are refused with a failure reason. Public when left out: anyone may announce. |
+| `auth` | string |  | The media_auth policy whose passkeys the tracker takes, which makes it private: an announce or scrape must carry a passkey, in its path as /<passkey>/announce or as ?passkey=, that is one of the policy's tokens (static, or signed by akit) or a user's passkey, derived from the policy's secret and the user's name, and whose grant plays bittorrent/<info hash in hex> (play ["bittorrent/*"] for every torrent). Others are refused with a failure reason. Public when left out: anyone may announce. |
 | `console` | [object](#cfg-bittorrent-tracker-console) |  | The tracker's web pages: its statistics, read-only. None when left out. |
 | `interval` | duration | `"30m"` | How often clients are told to announce. 30m when left out. A change applies at once, keeping the swarms. |
 | `listen` | string |  | The host and port the tracker answers UDP announces and scrapes on (BEP 15), as ":6969". Announces over HTTP and HTTPS come through a route whose handler is bt_tracker, on akit's listeners. No UDP when left out. A change moves the UDP port, keeping the swarms. |

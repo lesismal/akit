@@ -86,6 +86,13 @@ and a client with fast resume, wire compatible with libtorrent and aria2.
    checks every piece but dials its peers again. A sequential download and file priorities are
    refused naming A287, a torrent's `max_conns` and `upload_slots` naming A284.
 
+9. **I159, begun**: a private tracker's passkeys are fit's (the same label and derivation, so a
+   user's passkey is the same under fit and akit with the same secret), checked on the I/O thread
+   as lookups (never a bcrypt check). The passkey leaves the access log as fit's handler takes it
+   out of `RequestURI`: through a handler's `log_target`, which makes the route's line written by
+   the listener's response filter rather than its observer. Over UDP the passkey comes in BEP
+   41's URL data, which akio-bittorrent's codec leaves after the announce, read by the role.
+
 ## Consequences
 
 - A config fit runs that sets a field akio cannot give yet is refused by name, not run without it.

@@ -14,7 +14,7 @@ use akio_bittorrent::tracker::{
     AnnounceRequest, AnnounceResponse, Event, TrackerError, TrackerServer, udp,
 };
 
-use super::{REFUSED_ACCESS, REFUSED_UNREGISTERED, Snap, TorrentStats, with_snap};
+use super::{REFUSED_ACCESS, REFUSED_PASSKEY, REFUSED_UNREGISTERED, Snap, TorrentStats, with_snap};
 
 /// The peers an announce gets when it does not say: fib's `DefaultNumWant`.
 pub(crate) const DEFAULT_NUMWANT: i64 = 50;
@@ -25,6 +25,104 @@ pub(crate) const MAX_UDP_REPLY: usize = 1400;
 const UDP_ANNOUNCE_HEADER: usize = 20;
 /// The most info hashes a UDP scrape names, bounded by its packet (BEP 15).
 const MAX_UDP_SCRAPE: usize = 74;
+
+/// The most URL data a UDP announce's options carry that is read (BEP 41): fib's `maxURLData`.
+const MAX_URL_DATA: usize = 2048;
+
+/// The passkey of a request's path and query (fib's `passkeyOf`): its `passkey` parameter, or
+/// else the path segment before the last one when that one begins with `announce` or `scrape`,
+/// as in `/0123abcd/announce`, where private trackers put their users' passkeys.
+pub(crate) fn passkey_of(path: &str, query: &str) -> String {
+    if let Some(q) = parse_query(query) {
+        let k = first(&q, "passkey");
+        if !k.is_empty() {
+            return k.to_owned();
+        }
+    }
+    let path = path.strip_suffix('/').unwrap_or(path);
+    let Some((rest, last)) = path.rsplit_once('/') else {
+        return String::new();
+    };
+    if !last.starts_with("announce") && !last.starts_with("scrape") {
+        return String::new();
+    }
+    rest.rsplit('/').next().unwrap_or("").to_owned()
+}
+
+/// The target `uri` with its passkey replaced by `REDACTED` (fit's `redacted`): its `passkey`
+/// parameter and, with `in_path`, the path segment before its last `announce` or `scrape` one;
+/// `None` when it has none.
+pub(crate) fn redacted(uri: &str, in_path: bool) -> Option<String> {
+    let (mut path, query) = match uri.split_once('?') {
+        Some((p, q)) => (p.to_owned(), Some(q)),
+        None => (uri.to_owned(), None),
+    };
+    let mut changed = false;
+    if in_path {
+        if let Some(i) = path.rfind('/').filter(|i| *i > 0) {
+            let last = path.get(i.saturating_add(1)..).unwrap_or("");
+            if last.starts_with("announce") || last.starts_with("scrape") {
+                let head = path.get(..i).unwrap_or("");
+                let j = head.rfind('/').map_or(0, |j| j.saturating_add(1));
+                let seg = head.get(j..).unwrap_or("");
+                if !seg.is_empty() && seg != "REDACTED" {
+                    path = format!(
+                        "{}REDACTED{}",
+                        path.get(..j).unwrap_or(""),
+                        path.get(i..).unwrap_or("")
+                    );
+                    changed = true;
+                }
+            }
+        }
+    }
+    let query = query.map(|q| {
+        q.split('&')
+            .map(|kv| match kv.split_once('=') {
+                Some(("passkey", v)) if v != "REDACTED" => {
+                    changed = true;
+                    "passkey=REDACTED"
+                }
+                _ => kv,
+            })
+            .collect::<Vec<_>>()
+            .join("&")
+    });
+    if !changed {
+        return None;
+    }
+    Some(match query {
+        Some(q) => format!("{path}?{q}"),
+        None => path,
+    })
+}
+
+/// The URL data of a UDP announce's options (BEP 41), after its 98 bytes: what the client sends
+/// of the tracker URL's path and query; `""` without.
+fn url_data(data: &[u8]) -> String {
+    let mut out = Vec::new();
+    let mut b = data.get(98..).unwrap_or(&[]);
+    while let Some((&kind, rest)) = b.split_first() {
+        match kind {
+            0 => break,
+            1 => b = rest,
+            2 => {
+                let Some((&n, rest)) = rest.split_first() else {
+                    break;
+                };
+                let n = usize::from(n);
+                let Some(chunk) = rest.get(..n) else { break };
+                if out.len().saturating_add(n) > MAX_URL_DATA {
+                    break;
+                }
+                out.extend_from_slice(chunk);
+                b = rest.get(n..).unwrap_or(&[]);
+            }
+            _ => break,
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
 
 /// A bencoded failure, BEP 3's refusal.
 pub(crate) fn failure(reason: &str) -> Vec<u8> {
@@ -232,17 +330,50 @@ impl Snap {
         }
     }
 
-    /// Serves an announce from `from`: the store's answer, its peers of the families `from` asks
-    /// for, or the failure reason.
+    /// A private tracker's check of `passkey` for each of `hashes` (fit's `authorize`): it must
+    /// play `bittorrent/<info hash in hex>` in the tracker's `media_auth` policy. A lookup, never
+    /// a bcrypt check: on the I/O thread. A refusal is counted and is the failure reason.
+    pub(crate) fn authorize(&self, hashes: &[[u8; 20]], passkey: &str) -> Result<(), String> {
+        let Some(g) = &self.auth else {
+            return Ok(());
+        };
+        let refuse = |why: &str| {
+            self.counters.refuse(REFUSED_PASSKEY);
+            Err(why.to_owned())
+        };
+        let Some(p) = g.policy() else {
+            return refuse("the tracker's passkeys are not available");
+        };
+        for h in hashes {
+            let stream = format!("bittorrent/{}", hex(h));
+            if let Err(e) = p.allow_passkey(&stream, passkey) {
+                use akit_media::auth::Refusal;
+                return refuse(match e {
+                    Refusal::NoCredentials => "a passkey is required",
+                    Refusal::Forbidden => "the passkey may not use this torrent",
+                    Refusal::BadCredentials | Refusal::Pending => "unknown passkey",
+                    Refusal::Busy | Refusal::Unavailable => {
+                        "the tracker's passkeys are not available"
+                    }
+                });
+            }
+        }
+        Ok(())
+    }
+
+    /// Serves an announce from `from` with `passkey`: the store's answer, its peers of the
+    /// families `from` asks for, or the failure reason.
     pub(crate) fn announce(
         &self,
         from: IpAddr,
         a: &Announce,
         udp: bool,
+        passkey: &str,
     ) -> Result<AnnounceResponse, String> {
         if !self.allowed(&a.info_hash) {
             return Err("unregistered torrent".to_owned());
         }
+        self.authorize(&[a.info_hash], passkey)?;
         self.counters.announces.fetch_add(1, Ordering::Relaxed);
         let src = from.to_canonical();
         let v4 = src.is_ipv4();
@@ -295,10 +426,17 @@ impl Snap {
         }
         let (path, query) = target.split_once('?').unwrap_or((target, ""));
         let last = path.rsplit('/').next().unwrap_or("");
+        let passkey = || {
+            if self.auth.is_some() {
+                passkey_of(path, query)
+            } else {
+                String::new()
+            }
+        };
         if last.starts_with("announce") {
             let body = match parse_announce(query) {
                 Err(e) => failure(e),
-                Ok(a) => match self.announce(peer.ip(), &a, false) {
+                Ok(a) => match self.announce(peer.ip(), &a, false, &passkey()) {
                     Err(e) => failure(&e),
                     Ok(r) => self.encode_announce(&r, a.compact, peer.ip()),
                 },
@@ -307,7 +445,17 @@ impl Snap {
         } else if last.starts_with("scrape") {
             let body = match parse_scrape(query, self.scrape) {
                 Err(e) => failure(e),
-                Ok(hashes) => self.scrape_http(&hashes),
+                Ok(hashes) => {
+                    let allowed: Vec<[u8; 20]> = hashes
+                        .iter()
+                        .copied()
+                        .filter(|h| self.allow.as_ref().is_none_or(|a| a.has(h)))
+                        .collect();
+                    match self.authorize(&allowed, &passkey()) {
+                        Err(e) => failure(&e),
+                        Ok(()) => self.scrape_http(&hashes),
+                    }
+                }
             };
             (200, "text/plain", body)
         } else {
@@ -447,7 +595,16 @@ impl Snap {
                     want_v4: false,
                     want_v6: false,
                 };
-                match self.announce(from.ip(), &a, true) {
+                // A private tracker's passkey rides in the URL data the client sends from the
+                // tracker URL it was given (BEP 41).
+                let passkey = if self.auth.is_some() {
+                    let u = url_data(data);
+                    let (p, q) = u.split_once('?').unwrap_or((&u, ""));
+                    passkey_of(p, q)
+                } else {
+                    String::new()
+                };
+                match self.announce(from.ip(), &a, true, &passkey) {
                     Err(e) => Some(error(tid, &e)),
                     Ok(r) => {
                         let mut b = header(udp::ANNOUNCE, tid);
@@ -476,6 +633,16 @@ impl Snap {
             } => {
                 if !self.valid_conn_id(from, conn_id) {
                     return None;
+                }
+                // A UDP scrape carries no URL data (BEP 41): a private tracker refuses it, unless
+                // its policy makes play public.
+                let allowed: Vec<[u8; 20]> = hashes
+                    .iter()
+                    .map(|h| h.0)
+                    .filter(|h| self.allow.as_ref().is_none_or(|a| a.has(h)))
+                    .collect();
+                if let Err(e) = self.authorize(&allowed, "") {
+                    return Some(error(tid, &e));
                 }
                 self.counters.scrapes.fetch_add(1, Ordering::Relaxed);
                 let mut b = header(udp::SCRAPE, tid);

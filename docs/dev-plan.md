@@ -2469,6 +2469,8 @@ waits for the Cluster management track.
   a private tracker's passkeys once `media_auth` is read (the Streaming and media auth track).
 - **Touches**: `akit-bittorrent`, `akit-config`.
 - **fit**: `bittorrent/rss*.go`, `bittorrent/tracker/sharedstore`; I207, I208.
+- **Status**: begun (2026-11-28): a private tracker's passkeys (`auth`) are done; RSS and the
+  shared `store` are still to do. See the progress log.
 
 ### Cluster management
 

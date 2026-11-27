@@ -230,7 +230,9 @@ impl Dispatcher {
         route: Option<(usize, &CompiledRoute)>,
         traced: Option<(Tracer, Trace)>,
     ) {
-        let keeps_target = log.is_none() || route.is_none_or(|(_, r)| r.keeps_target);
+        // A route whose handler rewrites the logged target (I159) has its line written here too.
+        let keeps_target =
+            log.is_none() || route.is_none_or(|(_, r)| r.keeps_target && r.log_target.is_none());
         if traced.is_none() && keeps_target {
             let words = observed(g.id(), slot, route.map(|(i, _)| i), log.is_some());
             if words.is_some_and(|w| ctx.set_observed(w)) {
@@ -251,7 +253,13 @@ impl Dispatcher {
         // The target as the client sent it, an absolute form included (akio's `raw_target`, A200):
         // a `rewrite` middleware changes the request's path for the handlers, while the line
         // writes the target fit's `RequestURI` keeps.
-        let uri = shard.as_ref().map(|_| ctx.req().raw_target().to_owned());
+        let rewrite = route.and_then(|(_, r)| r.log_target.as_ref());
+        let uri = shard.as_ref().map(|_| {
+            let raw = ctx.req().raw_target();
+            rewrite
+                .and_then(|f| f(raw))
+                .unwrap_or_else(|| raw.to_owned())
+        });
         let listener = self.log_name.clone();
         let route = Name::new(route_name(route.map(|(_, r)| r)));
         let tls = self.tls;

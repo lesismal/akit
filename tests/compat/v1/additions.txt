@@ -904,3 +904,4 @@ admin	added	endpoint	GET	/bittorrent/tracker/torrents/{hash}
 admin	added	endpoint	HEAD	/bittorrent/tracker/torrents/{hash}
 admin	added	endpoint	GET	/bittorrent/tracker/passkey
 admin	added	endpoint	HEAD	/bittorrent/tracker/passkey
+config	added	supported	bittorrent.tracker.auth

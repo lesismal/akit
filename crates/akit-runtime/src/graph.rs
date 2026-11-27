@@ -43,6 +43,9 @@ pub struct CompiledRoute {
     /// ([`Middleware::changes_target`](crate::Middleware::changes_target)): the target its
     /// handlers leave is the one the listener dispatched.
     pub keeps_target: bool,
+    /// What the access log writes of a request's target, from the handler, if it rewrites it
+    /// ([`Handler::log_target`](crate::Handler::log_target), I159).
+    pub log_target: Option<crate::LogTarget>,
 }
 
 impl fmt::Debug for CompiledRoute {
@@ -565,6 +568,7 @@ pub fn compile(
             continue;
         }
         let keeps_target = !middleware.iter().any(|m| m.changes_target());
+        let log_target = handler.log_target();
         let handler = crate::traits::chain(&middleware, handler);
         let (host, path) = r
             .matcher
@@ -594,6 +598,7 @@ pub fn compile(
             matchers,
             handler,
             keeps_target,
+            log_target,
         });
     }
     // Each TLS listener's certificates, read from their files, as fit's graph loads them: a

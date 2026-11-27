@@ -31,7 +31,18 @@ pub trait Handler: akio_http::Service {
     fn inline(&self) -> bool {
         false
     }
+
+    /// What the access log writes of a request's target in place of the target as sent, for a
+    /// handler whose targets carry a secret (I159: `bt_tracker`'s passkeys, as fit's handler
+    /// rewrites `RequestURI`): a function of the target as sent, `None` to write it as it is.
+    /// None by default. Asked once, when the route is compiled.
+    fn log_target(&self) -> Option<LogTarget> {
+        None
+    }
 }
+
+/// A handler's rewrite of the target the access log writes ([`Handler::log_target`]).
+pub type LogTarget = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
 
 /// A [`Handler`] as an akio [`akio_http::Service`], to hand to akio's server
 /// ([`akio_http::serve`]) or router.

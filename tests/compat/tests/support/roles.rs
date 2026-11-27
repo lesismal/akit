@@ -1240,6 +1240,19 @@ fn bittorrent(out: &mut Vec<(String, String, Read)>) {
             f("console", console(7080), console(7081)),
         ],
     );
+    // I159: a private tracker, with a policy it may name.
+    let ta = |m: &str| {
+        format!(
+            r#"{{"media_auth": [{{"name": "p", "public": ["play"]}}], "bittorrent": {{"tracker": {m}}}}}"#
+        )
+    };
+    emit(
+        out,
+        "bittorrent.tracker",
+        &ta,
+        &[],
+        vec![f("auth", q("p"), q(""))],
+    );
     let tw = |m: &str| tracker(&format!("{{{m}}}"));
     console_and_access(out, "bittorrent.tracker", &tw, true);
 }

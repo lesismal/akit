@@ -396,7 +396,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 1246 supported.
+3821 fields in 121 sections, at fit `7daee573`; 1247 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -405,7 +405,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`acme`](#fields-acme) | 43 | 43 | 0 |
 | [`admin`](#fields-admin) | 105 | 51 | 54 |
 | [`auto_https`](#fields-auto-https) | 5 | 5 | 0 |
-| [`bittorrent`](#fields-bittorrent) | 160 | 105 | 55 |
+| [`bittorrent`](#fields-bittorrent) | 160 | 106 | 54 |
 | [`engine`](#fields-engine) | 11 | 8 | 3 |
 | [`http.handlers/bt_publish`](#fields-http-handlers-bt-publish) | 3 | 3 | 0 |
 | [`http.handlers/bt_stream`](#fields-http-handlers-bt-stream) | 14 | 0 | 14 |
@@ -521,7 +521,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 161 | 3 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 76 | 0 |
-| **Total** | 3821 | 1246 | 2575 |
+| **Total** | 3821 | 1247 | 2574 |
 
 <a id="fields-access"></a>
 
@@ -853,7 +853,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `bittorrent.tracker.access.deny_files` | `array<string>` | supported |
 | `bittorrent.tracker.allow` | `array<string>` | supported |
 | `bittorrent.tracker.allow_files` | `array<string>` | supported |
-| `bittorrent.tracker.auth` | `string` | not supported yet |
+| `bittorrent.tracker.auth` | `string` | supported |
 | `bittorrent.tracker.console` | `object` | supported |
 | `bittorrent.tracker.console.access` | `object` | supported |
 | `bittorrent.tracker.console.access.allow` | `array<string>` | supported |

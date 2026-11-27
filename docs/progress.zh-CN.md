@@ -203,13 +203,21 @@
   `setNodes` 持有它自己的锁），因此为新 uplink 收下的列表总在其后；断开链路的 hub 也在同一把锁下忘掉其节点，且仅当其
   uplink 仍属于该 proxy。修复后：epoll 上单独运行 250 次、io_uring（`AKIO_DEFAULT_BACKEND=uring`）上 50 次，全部通过。
 
-### 2026-11-28：I159 开始，`media_auth` 用户的 passkey
+### 2026-11-28：I159 开始，私有 tracker 的 passkey
 
 - 同 fit 的 `mediaauth/passkey.go`：`akit_media::auth::Policy::passkey`（用户的 BitTorrent passkey，即用策略的签名密钥对 fit 的
   标签和用户名做 HMAC-SHA256 取前 32 个十六进制数字，与 fit 逐字节相同）和 `allow_passkey`（用户的 passkey 按其授权检查，否则像
-  `allow` 那样当作 token；公开播放则放行所有人）。测试：`auth::tests::passkeys`（fit 的 `TestPasskeys`，带一个由 fit 代码算出的
-  passkey）。使用它们的部分——tracker 的 `auth`（私有 tracker 经 HTTP 和 UDP 的 BEP 41 URL 数据的 announce 与 scrape、访问日志中
-  遮蔽 passkey、`/bittorrent/tracker/passkey`）——以及 RSS 尚待完成：`bittorrent.tracker.auth` 仍以“尚不支持”拒绝。
+  `allow` 那样当作 token；公开播放则放行所有人）。
+- 同 fit 的私有 tracker（`bittorrent/tracker/hooks.go`、`handler.go`）：`bittorrent.tracker.auth` 指定一个 `media_auth` 策略（检查其
+  存在）；此后每个 announce 和 scrape 必须带有能播放 `bittorrent/<info hash 十六进制>` 的 passkey：HTTP 中为 `?passkey=` 或
+  `announce`、`scrape` 前的路径段，UDP 中在 BEP 41 的 URL 数据里（没有 URL 数据的 UDP scrape 被拒绝）；拒绝以失败原因应答
+  （`a passkey is required`、`unknown passkey`、`the passkey may not use this torrent`），计为 `passkey`；策略在出现之前持续查找，
+  其间 tracker 拒绝请求。控制台的 `/api/passkey?user=` 和 Admin API 的 `/bittorrent/tracker/passkey?user=` 给出用户的 passkey，
+  在 I/O 线程之外执行。访问日志中 passkey 写作 `REDACTED`：akit-runtime 的 `Handler::log_target`，即处理器对日志所写目标的改写，
+  由 `bt_tracker` 提供。
+- 测试：`auth::tests::passkeys`（fit 的 `TestPasskeys`，带一个由 fit 代码算出的 passkey）、`tracker::tests::a_private_tracker`、
+  `bittorrent::tests::tracker_auth`、`akit/tests/bittorrent.rs` 的 `a_private_tracker_under_akit_run`（访问日志）。RSS 和 tracker
+  共享的 `store` 尚待完成。
 
 ### 2026-11-28：I157，Admin API 的 `/bittorrent/...`、事件、`akit bt`、指标
 

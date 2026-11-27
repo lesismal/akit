@@ -61,6 +61,11 @@ BitTorrent crate，akio-bittorrent：bencode、v1/v2/混合种子、磁力链接
    （这是 fit 对其客户端未运行的种子的应答），重新校验则不带 resume 数据重新添加种子，会校验每个分片但重新连接 peer。顺序下载和
    文件优先级以 A287 为名拒绝，种子的 `max_conns` 和 `upload_slots` 以 A284 为名拒绝。
 
+9. **I159，已开始**：私有 tracker 的 passkey 与 fit 的相同（相同的标签和派生方式，同一密钥下用户在 fit 和 akit 中的 passkey 相同），
+   在 I/O 线程上以查找方式检查（从不做 bcrypt 检查）。像 fit 的处理器从 `RequestURI` 中去掉 passkey 那样，访问日志中也不出现
+   passkey：通过处理器的 `log_target`，使该路由的日志行由监听器的响应过滤器而不是其观察器写出。UDP 上 passkey 来自 BEP 41 的
+   URL 数据，akio-bittorrent 的编解码器将其留在 announce 之后，由角色读取。
+
 ## 后果
 
 - fit 能运行而设置了 akio 尚不能提供的字段的配置，会按名称被拒绝，而不是缺少它照样运行。

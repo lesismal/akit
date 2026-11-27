@@ -63,7 +63,8 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 
 /// The reasons a request is refused, counted in the statistics.
 pub(crate) const REFUSED_UNREGISTERED: usize = 0;
-// 1, `passkey`, counts a private tracker's refusals, which come with `auth` (I159).
+/// A private tracker's passkey refused (I159).
+pub(crate) const REFUSED_PASSKEY: usize = 1;
 pub(crate) const REFUSED_ACCESS: usize = 2;
 const REFUSAL_NAMES: [&str; 3] = ["unregistered", "passkey", "access"];
 
@@ -124,6 +125,27 @@ pub(crate) struct Snap {
     /// Where UDP is answered, for the statistics.
     pub(crate) udp: Option<SocketAddr>,
     pub(crate) max_torrents: usize,
+    /// A private tracker's passkeys' policy (I159); none for a public tracker.
+    pub(crate) auth: Option<Guard>,
+}
+
+/// A private tracker's passkeys' policy, found by name in the engine's `media_auth` policies:
+/// the role `media_auth` may apply after this one, so a policy not found yet is looked up again
+/// at each check until it is (fit's `guard`). A private tracker fails closed meanwhile.
+pub(crate) struct Guard {
+    key: usize,
+    pub(crate) name: String,
+    found: Mutex<Option<Arc<akit_media::auth::Policy>>>,
+}
+
+impl Guard {
+    pub(crate) fn policy(&self) -> Option<Arc<akit_media::auth::Policy>> {
+        let mut g = lock(&self.found);
+        if g.as_ref().is_none_or(|p| !p.loaded()) {
+            *g = akit_media::auth::registry::lookup(self.key, &self.name);
+        }
+        g.clone()
+    }
 }
 
 impl fmt::Debug for Snap {
@@ -500,6 +522,11 @@ impl Role for Tracker {
             secret: Arc::clone(&self.secret),
             udp: self.udp.as_ref().map(|u| u.addr),
             max_torrents: cfg.torrents(),
+            auth: (!cfg.auth.is_empty()).then(|| Guard {
+                key: self.key,
+                name: cfg.auth.clone(),
+                found: Mutex::new(None),
+            }),
         };
         publish(self.key, Some(Arc::new(snap)));
         self.files = files.into_iter().collect();
@@ -656,7 +683,7 @@ pub(crate) fn stats_of(key: usize) -> Option<Stats> {
                 .zip(&c.refused)
                 .map(|(n, v)| (*n, v.load(Ordering::Relaxed)))
                 .collect(),
-            private: false,
+            private: s.auth.is_some(),
             allowed: s.allow.as_ref().map_or(0, |a| a.list.len()),
             udp: s.udp,
             max_torrents: s.max_torrents,

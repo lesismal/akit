@@ -278,16 +278,26 @@ done and where the work differs from the plan.
   uplink is still the proxy's. After the fix: 250 of 250 runs alone on epoll, 50 of 50 on io_uring
   (`AKIO_DEFAULT_BACKEND=uring`).
 
-### 2026-11-28: I159 begun, the passkeys of `media_auth`'s users
+### 2026-11-28: I159 begun, a private tracker's passkeys
 
 - As fit's `mediaauth/passkey.go`: `akit_media::auth::Policy::passkey` (a user's BitTorrent
   passkey, the first 32 hex digits of an HMAC-SHA256 of fit's label and the name under the
   policy's signing key, fit's byte for byte) and `allow_passkey` (a user's passkey with its grant,
-  else a token as `allow` takes one; public play lets everyone through). Test: `auth::tests::
-  passkeys` (fit's `TestPasskeys`, with a passkey fit's code computed). What uses them, the
-  tracker's `auth` (a private tracker's announces and scrapes over HTTP and over UDP's BEP 41 URL
-  data, the passkey redacted in the access log, `/bittorrent/tracker/passkey`), and RSS are still
-  to do: `bittorrent.tracker.auth` stays refused as not supported yet.
+  else a token as `allow` takes one; public play lets everyone through).
+- As fit's private tracker (`bittorrent/tracker/hooks.go`, `handler.go`): `bittorrent.tracker.auth`
+  names a `media_auth` policy (checked to be there); every announce and scrape must then carry a
+  passkey that plays `bittorrent/<info hash in hex>`: over HTTP as `?passkey=` or the path
+  segment before `announce` or `scrape`, over UDP in BEP 41's URL data (a UDP scrape, which has
+  none, is refused); refusals are failure reasons (`a passkey is required`, `unknown passkey`,
+  `the passkey may not use this torrent`), counted as `passkey`; the policy is looked up until it
+  is there, the tracker refusing meanwhile. A user's passkey at the console's `/api/passkey?user=`
+  and the Admin API's `/bittorrent/tracker/passkey?user=`, off the I/O threads. The passkey is
+  `REDACTED` in the access log: akit-runtime's `Handler::log_target`, a handler's rewrite of the
+  target the line writes, which `bt_tracker` gives.
+- Tests: `auth::tests::passkeys` (fit's `TestPasskeys`, with a passkey fit's code computed),
+  `tracker::tests::a_private_tracker`, `bittorrent::tests::tracker_auth`,
+  `akit/tests/bittorrent.rs`'s `a_private_tracker_under_akit_run` (the access log). RSS and the
+  tracker's shared `store` are still to do.
 
 ### 2026-11-28: I157, the Admin API's `/bittorrent/...`, events, `akit bt`, metrics
 

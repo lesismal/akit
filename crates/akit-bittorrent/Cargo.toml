@@ -23,6 +23,8 @@ akio-sys = { workspace = true }
 akit-admin = { workspace = true }
 akit-access = { workspace = true }
 akit-config = { workspace = true }
+# A private tracker's passkeys, a media_auth policy's (I159).
+akit-media = { workspace = true }
 # The alternative rates' time zone (I154).
 akit-observe = { workspace = true }
 akit-roles = { workspace = true }

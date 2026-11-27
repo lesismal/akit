@@ -452,3 +452,57 @@ fn akit_bt_through_the_admin_api() {
     assert_eq!(code, 1);
     assert!(err.contains("the Admin API answered 400"), "{err}");
 }
+
+/// A private tracker through `akit run` (I159): `media_auth`'s user's passkey in the announce's
+/// path lets the announce in, none is refused, and the access log writes the passkey as
+/// `REDACTED`, as fit's handler does.
+#[test]
+fn a_private_tracker_under_akit_run() {
+    let dir = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("bittorrent-private");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let web = free();
+    let log = dir.join("access.log");
+    let path = dir.join("akit.json");
+    std::fs::write(
+        &path,
+        format!(
+            r#"{{"listeners": [{{"name": "web", "address": "{web}"}}],
+                "access_log": {{"output": {:?}, "flush_interval": "10ms"}},
+                "media_auth": [{{"name": "bt", "secret": "0123456789abcdef0123456789abcdef",
+                    "users": [{{"name": "alice", "password": "alice-password", "play": ["bittorrent/*"]}}]}}],
+                "routes": [{{"listeners": ["web"], "match": {{"path": ["/tracker/*"]}}, "handler": {{"module": "bt_tracker"}}}}],
+                "bittorrent": {{"tracker": {{"auth": "bt"}}}}}}"#,
+            log.to_str().unwrap()
+        ),
+    )
+    .unwrap();
+    let _akit = run(&path, "akit: running bittorrent.tracker");
+    // fit's passkey of alice under this secret.
+    let alice = "c3751c196e55193e0c3be763bcc1b8ab";
+    let target = |prefix: &str| {
+        format!(
+            "{prefix}/announce?info_hash={}&peer_id={}&port=6881&left=0",
+            pct(&[0x42; 20]),
+            pct(&[1; 20])
+        )
+    };
+    let body = get(web, &target(&format!("/tracker/{alice}")));
+    assert!(
+        body.starts_with(b"d8:complete"),
+        "{}",
+        String::from_utf8_lossy(&body)
+    );
+    let body = get(web, &target("/tracker/nope"));
+    assert!(
+        String::from_utf8_lossy(&body).contains("unknown passkey"),
+        "{}",
+        String::from_utf8_lossy(&body)
+    );
+    wait_for("the access log", 10, || {
+        std::fs::read_to_string(&log).is_ok_and(|l| l.lines().count() >= 2)
+    });
+    let lines = std::fs::read_to_string(&log).unwrap();
+    assert!(!lines.contains(alice), "{lines}");
+    assert!(lines.contains("/tracker/REDACTED/announce"), "{lines}");
+}

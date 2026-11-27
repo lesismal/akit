@@ -1,7 +1,8 @@
 //! The tracker's console (I151, fit's `bittorrent/tracker/api.go`): its statistics, read-only, at
 //! `GET /api/stats`, `/api/torrents` (the allow-list's, paged by `offset` and `limit`, at most
 //! 1,000) and `/api/torrents/<hash>`. A public tracker's torrents are listed once akio-bittorrent
-//! can walk its store (akio's A285); a private tracker's passkeys come with `auth` (I159).
+//! can walk its store (akio's A285). A private tracker's (`auth`, I159) `/api/passkey?user=`
+//! gives a user's passkey.
 
 use std::fmt::Write as _;
 
@@ -78,6 +79,13 @@ impl Module for Pages {
 
     fn serve(&self, ctx: &mut Context, _user: &str, path: &str) {
         let get = ctx.req().method == akio_http::Method::Get;
+        if get && path == "/api/passkey" {
+            // Off the console's I/O thread: a policy not found yet is looked up in akit-media's
+            // registry, as fit's goes off its worker.
+            let (me, target) = (Pages { key: self.key }, ctx.req().target.clone());
+            ctx.detach_to_pool(move |d| d.respond(me.passkey(&target, false)));
+            return;
+        }
         let r = self.answer(get, &ctx.req().target, path);
         ctx.respond(r);
     }
@@ -102,10 +110,7 @@ impl Pages {
                 }
                 self.list(offset, limit)
             }
-            "/api/passkey" => fail(
-                404,
-                "bittorrent.tracker: the tracker is public: it takes no passkeys",
-            ),
+            "/api/passkey" => self.passkey(target, false),
             p => match p.strip_prefix("/api/torrents/") {
                 Some(h) => match parse_info_hash(h) {
                     None => fail(400, "not an info hash: 40 hex digits (v1) or 64 (v2)"),
@@ -126,6 +131,55 @@ impl Pages {
 }
 
 impl Pages {
+    /// The passkey of `?user=` of a private tracker's policy (I159, fit's `Passkey`), for the
+    /// announce URL `/<passkey>/announce`: `{"passkey"}` as fit's console answers it, or, for
+    /// the Admin API (`admin`), `{"user", "passkey"}` and a user asked for. A policy not found
+    /// yet is looked up in akit-media's registry: call it off an I/O thread.
+    pub(crate) fn passkey(&self, target: &str, admin: bool) -> akio_http::Response {
+        let q = target.split_once('?').map_or("", |(_, q)| q);
+        let user = q
+            .split('&')
+            .filter_map(|kv| kv.split_once('='))
+            .find(|(k, _)| *k == "user")
+            .and_then(|(_, v)| akio_http::message::percent_decode(&v.replace('+', " ")))
+            .unwrap_or_default();
+        if admin && user.is_empty() {
+            return fail(400, "name the user: ?user=");
+        }
+        with_snap(self.key, |s| {
+            let Some(s) = s else {
+                return fail(503, NOT_RUNNING);
+            };
+            let Some(g) = &s.auth else {
+                return fail(
+                    404,
+                    "bittorrent.tracker: the tracker is public: it takes no passkeys",
+                );
+            };
+            let Some(p) = g.policy() else {
+                return fail(
+                    404,
+                    "bittorrent.tracker: the tracker's passkeys are not available",
+                );
+            };
+            match p.passkey(&user) {
+                Ok(k) => {
+                    let mut b = String::from("{");
+                    if admin {
+                        b.push_str("\"user\":");
+                        write_string(&mut b, &user);
+                        b.push(',');
+                    }
+                    b.push_str("\"passkey\":");
+                    write_string(&mut b, &k);
+                    b.push_str("}\n");
+                    json(200, b)
+                }
+                Err(e) => fail(404, &e),
+            }
+        })
+    }
+
     /// A page of the allow-list's torrents with their statistics.
     fn list(&self, offset: usize, limit: usize) -> akio_http::Response {
         with_snap(self.key, |s| {

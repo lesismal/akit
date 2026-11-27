@@ -42,6 +42,20 @@ impl Handler for BtTracker {
     fn inline(&self) -> bool {
         true
     }
+
+    /// The passkey of a request's target is `REDACTED` in the access log (I159, fit's
+    /// `redact`): its `passkey` parameter, and for a private tracker the path segment before
+    /// `announce` or `scrape`; a public tracker's path may hold a name.
+    fn log_target(&self) -> Option<akit_runtime::LogTarget> {
+        let engine = self.engine.clone();
+        Some(Arc::new(move |uri: &str| {
+            let private = engine
+                .get()
+                .map(key_of)
+                .is_some_and(|k| with_snap(k, |s| s.is_some_and(|s| s.auth.is_some())));
+            super::serve::redacted(uri, private)
+        }))
+    }
 }
 
 pub(crate) fn new(
@@ -65,4 +79,10 @@ pub(crate) fn new(
 #[must_use]
 pub fn service(engine: EngineSlot) -> akit_runtime::HandlerService {
     akit_runtime::HandlerService(Arc::new(BtTracker { engine }))
+}
+
+/// The handler, for tests.
+#[cfg(test)]
+pub(crate) fn handler(engine: EngineSlot) -> Arc<dyn Handler> {
+    Arc::new(BtTracker { engine })
 }

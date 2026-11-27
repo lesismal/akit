@@ -2060,6 +2060,7 @@ fit 的 I196–I210（其 [BitTorrent 指南](https://github.com/lesismal/fit/bl
   在读取 `media_auth` 之后（流媒体与媒体鉴权路线）支持私有 tracker 的 passkey。
 - **涉及**：`akit-bittorrent`、`akit-config`。
 - **fit**：`bittorrent/rss*.go`、`bittorrent/tracker/sharedstore`；I207、I208。
+- **状态**：已开始（2026-11-28）：私有 tracker 的 passkey（`auth`）已完成；RSS 和共享的 `store` 尚待完成。见进度日志。
 
 ### 集群管理
 

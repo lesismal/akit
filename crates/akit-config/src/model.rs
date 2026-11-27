@@ -2704,7 +2704,11 @@ pub(crate) struct Part {
     /// `webrtc` (I110), with the position of its key, when the file gives it.
     webrtc: Option<(crate::webrtc::WebRtc, usize)>,
     /// `bittorrent` (I150), with the position of its key, when the file gives it.
-    bittorrent: Option<(crate::bittorrent::BitTorrent, usize)>,
+    #[allow(clippy::type_complexity)]
+    bittorrent: Option<(
+        (crate::bittorrent::BitTorrent, Vec<crate::media::AuthRef>),
+        usize,
+    )>,
     /// `media_auth` and `streaming` (I120), with the positions of their keys, when the file
     /// gives them; `streaming` with the policies its listeners name.
     media_auth: Option<(Vec<crate::media::MediaAuth>, usize)>,
@@ -2880,7 +2884,11 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
     let mut tunnel: Option<(crate::roles::Tunnel, usize)> = None;
     let mut llm: Option<(crate::roles::Llm, usize)> = None;
     let mut webrtc: Option<(crate::webrtc::WebRtc, usize)> = None;
-    let mut bittorrent: Option<(crate::bittorrent::BitTorrent, usize)> = None;
+    #[allow(clippy::type_complexity)]
+    let mut bittorrent: Option<(
+        (crate::bittorrent::BitTorrent, Vec<crate::media::AuthRef>),
+        usize,
+    )> = None;
     let mut media_auth: Option<(Vec<crate::media::MediaAuth>, usize)> = None;
     #[allow(clippy::type_complexity)]
     let mut streaming: Option<((crate::media::Streaming, Vec<crate::media::AuthRef>), usize)> =
@@ -3096,7 +3104,7 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
         tunnel.as_ref().map(|(t, _)| t),
         llm.as_ref().map(|(l, _)| l),
         webrtc.as_ref().map(|(w, _)| w),
-        bittorrent.as_ref().map(|(b, _)| b),
+        bittorrent.as_ref().map(|((b, _), _)| b),
         streaming.as_ref().map(|((s, _), _)| s),
     );
     crate::binds::report(ds, clashes);
@@ -3140,6 +3148,13 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
             }
         }
     }
+    // The policy the tracker names (I159), once every file is read (fit's checkBitTorrent).
+    let bittorrent = bittorrent.map(|((b, refs), file)| {
+        if let Some(d) = ds.get_mut(file) {
+            crate::media::check_refs(d, &refs, &media_auth);
+        }
+        b
+    });
     // The policies the role's listeners name, once every file is read (fit's checkStreaming).
     let streaming = streaming.map(|((s, refs), file)| {
         if let Some(d) = ds.get_mut(file) {
@@ -3175,7 +3190,7 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
         tunnel: tunnel.map(|(t, _)| t),
         llm: llm.map(|(l, _)| l),
         webrtc: webrtc.map(|(w, _)| w),
-        bittorrent: bittorrent.map(|(b, _)| b),
+        bittorrent,
         media_auth,
         streaming,
         media_library,

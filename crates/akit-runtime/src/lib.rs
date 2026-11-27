@@ -42,7 +42,7 @@ pub use tls::ListenerCerts;
 pub use module::{Env, Info, LoadError, Modules, Provision, ProvisionError, Provisioned, Registry};
 pub use request::{set_request_headers, set_request_path, with_path};
 pub use traits::{
-    Handler, HandlerService, Listener, Matcher, Middleware, Router, Service, Upstream,
+    Handler, HandlerService, Listener, LogTarget, Matcher, Middleware, Router, Service, Upstream,
 };
 
 /// The [`akio_http::Context::local`] set (to `""`) on a request that came over TLS, by

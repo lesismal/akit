@@ -14,7 +14,7 @@ akit 配置的每个字段：配置的每一部分是做什么的、一个示例
 akit 与 fit 不同之处，在表格中以 **akit：** 标出。
 
 <!-- BEGIN GENERATED: summary -->
-fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **1246** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 188 个对象，下文各有一张表。
+fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **1247** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 188 个对象，下文各有一张表。
 <!-- END GENERATED -->
 
 字段说明来自 fit 代码中的 `doc` 标签，是英文的，所以每个字段的完整说明在[英文版](config.md)的同一张表中；本页的表格给出每个字段的
@@ -3077,7 +3077,8 @@ HTTP 经由处理器为 `bt_tracker` 的路由，UDP 在其自己的 `listen` �
 角色（I150）；`akit run` 从 I151 起运行 tracker，从 I152 起运行客户端，从 I153 起支持分类、
 `watch_dir`、.torrent URL、队列和磁盘检查。后续迭代才运行的内容以"尚不支持"拒绝：客户端的
 `access`、`disk_queue_bytes`、`rss`、分类的 `media_library` 以及 akio-bittorrent 尚不能
-设置的限制（`alt_speed` 以及分类的速率和做种限制从 I154 起运行）；tracker 的 `auth`、`max_peers` 和 `store`。
+设置的限制（`alt_speed` 以及分类的速率和做种限制从 I154 起运行）；tracker 的 `max_peers` 和 `store`。私有 tracker（`auth`，I159）接受 `media_auth` 策略的 passkey：其用户的 passkey 与
+fit 的相同，经 UDP 时 passkey 放在 BEP 41 的 URL 数据中。
 
 ```fit
 bittorrent {
@@ -3305,7 +3306,7 @@ bittorrent {
 | `access` | [对象](#cfg-bittorrent-tracker-access) |  |  |
 | `allow` | 字符串的列表 |  |  |
 | `allow_files` | 字符串的列表 |  |  |
-| `auth` | 字符串 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `auth` | 字符串 |  |  |
 | `console` | [对象](#cfg-bittorrent-tracker-console) |  |  |
 | `interval` | 时长 | `"30m"` |  |
 | `listen` | 字符串 |  |  |

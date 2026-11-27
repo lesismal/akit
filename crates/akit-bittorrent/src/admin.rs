@@ -28,7 +28,7 @@
 //! GET    /bittorrent/tracker/stats            the tracker's totals
 //! GET    /bittorrent/tracker/torrents         the allow-list's swarms (offset, limit);
 //!                                             .../{hash} one torrent's swarm
-//! GET    /bittorrent/tracker/passkey?user=    a user's passkey (none until I159)
+//! GET    /bittorrent/tracker/passkey?user=    a private tracker's user's passkey
 //! ```
 //!
 //! A torrent's `{id}` is its v1 info hash in hex, or its v2 hash, whose first 20 bytes are the
@@ -219,6 +219,12 @@ fn serve(apis: &Apis, ctx: &mut Context, path: &str) {
     };
     if !methods.contains(&name) {
         return ctx.respond(not_allowed(methods));
+    }
+    if pattern == "/bittorrent/tracker/passkey" {
+        // Off the API's I/O thread: a policy not found yet is looked up in akit-media's
+        // registry.
+        let (apis, target) = (Arc::clone(apis), ctx.req().target.clone());
+        return on_pool(ctx, move || tracker_answer(&apis, &target, "passkey", &[]));
     }
     if let Some(rest) = pattern.strip_prefix("/bittorrent/tracker/") {
         return ctx.respond(tracker(apis, ctx, rest, &params));
@@ -1000,25 +1006,23 @@ fn events(api: &ClientApi, ctx: &mut Context) {
 
 /// The tracker's endpoints, answered at once from its statistics (no lock a request waits for).
 fn tracker(apis: &Apis, ctx: &Context, rest: &str, params: &[String]) -> Response {
+    tracker_answer(apis, &ctx.req().target, rest, params)
+}
+
+fn tracker_answer(apis: &Apis, target: &str, rest: &str, params: &[String]) -> Response {
     let Some(pages) = api_in(apis, crate::tracker::ID)
         .and_then(|a| a.downcast::<crate::tracker::pages::Pages>().ok())
     else {
         return fail(404, "the bittorrent.tracker role does not run here");
     };
-    let target = ctx.req().target.clone();
     match rest {
-        "stats" => pages.answer(true, &target, "/api/stats"),
-        "torrents" => pages.answer(true, &target, "/api/torrents"),
+        "stats" => pages.answer(true, target, "/api/stats"),
+        "torrents" => pages.answer(true, target, "/api/torrents"),
         "torrents/{hash}" => {
             let h = params.first().map_or("", String::as_str);
-            pages.answer(true, &target, &format!("/api/torrents/{h}"))
+            pages.answer(true, target, &format!("/api/torrents/{h}"))
         }
-        _ => {
-            if query(ctx, "user").unwrap_or_default().is_empty() {
-                return fail(400, "name the user: ?user=");
-            }
-            pages.answer(true, &target, "/api/passkey")
-        }
+        _ => pages.passkey(target, true),
     }
 }
 

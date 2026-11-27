@@ -155,7 +155,6 @@ fn not_supported_yet() {
     }
     for (m, field) in [
         (r#""max_peers": 1"#, "bittorrent.tracker.max_peers"),
-        (r#""auth": "a""#, "bittorrent.tracker.auth"),
         (r#""store": {}"#, "bittorrent.tracker.store"),
     ] {
         refused(
@@ -493,4 +492,24 @@ fn publish_entries() {
     }
     assert!(!valid_path_pattern("[") && !valid_path_pattern("/a") && !valid_path_pattern("a//b"));
     assert!(valid_path_pattern("a/**/b*") && valid_path_pattern("[a-z]?"));
+}
+
+/// fit's `TestBitTorrentTrackerAuth` (I159): a private tracker names a `media_auth` policy, which
+/// must be there.
+#[test]
+fn tracker_auth() {
+    let ok = r#"{"media_auth": [{"name": "bt", "users": [{"name": "a", "password": "secret-password", "play": ["bittorrent/*"]}]}],
+        "bittorrent": {"tracker": {"auth": "bt"}}}"#;
+    let c = from_json(ok, None).unwrap();
+    assert_eq!(c.bittorrent.unwrap().tracker.unwrap().auth, "bt");
+    let e = from_json(r#"{"bittorrent": {"tracker": {"auth": "nope"}}}"#, None)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        e.contains("bittorrent.tracker.auth")
+            && e.contains("there is no media_auth policy named \"nope\""),
+        "{e}"
+    );
+    let c = from_json(r#"{"bittorrent": {"tracker": {"auth": ""}}}"#, None).unwrap();
+    assert_eq!(c.bittorrent.unwrap().tracker.unwrap().auth, "");
 }
