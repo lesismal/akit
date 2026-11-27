@@ -203,6 +203,14 @@
   `setNodes` 持有它自己的锁），因此为新 uplink 收下的列表总在其后；断开链路的 hub 也在同一把锁下忘掉其节点，且仅当其
   uplink 仍属于该 proxy。修复后：epoll 上单独运行 250 次、io_uring（`AKIO_DEFAULT_BACKEND=uring`）上 50 次，全部通过。
 
+### 2026-11-28：I159 开始，`media_auth` 用户的 passkey
+
+- 同 fit 的 `mediaauth/passkey.go`：`akit_media::auth::Policy::passkey`（用户的 BitTorrent passkey，即用策略的签名密钥对 fit 的
+  标签和用户名做 HMAC-SHA256 取前 32 个十六进制数字，与 fit 逐字节相同）和 `allow_passkey`（用户的 passkey 按其授权检查，否则像
+  `allow` 那样当作 token；公开播放则放行所有人）。测试：`auth::tests::passkeys`（fit 的 `TestPasskeys`，带一个由 fit 代码算出的
+  passkey）。使用它们的部分——tracker 的 `auth`（私有 tracker 经 HTTP 和 UDP 的 BEP 41 URL 数据的 announce 与 scrape、访问日志中
+  遮蔽 passkey、`/bittorrent/tracker/passkey`）——以及 RSS 尚待完成：`bittorrent.tracker.auth` 仍以“尚不支持”拒绝。
+
 ### 2026-11-28：I157，Admin API 的 `/bittorrent/...`、事件、`akit bt`、指标
 
 - 同 fit 的 I203 和 I210（`akit_bittorrent::admin`、`client::{events,inspect,metrics}`）：Admin API 通过 akit-admin 新的扩展点

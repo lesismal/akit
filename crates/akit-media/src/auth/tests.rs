@@ -535,3 +535,76 @@ fn query_credentials() {
     assert_eq!(Credentials::from_query("user=u&token=t").token, "t");
     assert!(Credentials::from_query("x=1").is_empty());
 }
+
+/// fit's `TestPasskeys` (I159): users' BitTorrent passkeys, fit's byte for byte, their grants,
+/// tokens taken as passkeys, another secret's refused, public play, and what is refused.
+#[test]
+fn passkeys() {
+    let cfg = MediaAuth {
+        name: "bt".into(),
+        secret: "0123456789abcdef0123456789abcdef".into(),
+        users: vec![
+            MediaUser {
+                name: "alice".into(),
+                password: "alice-password".into(),
+                play: v(&["bittorrent/*"]),
+                ..MediaUser::default()
+            },
+            MediaUser {
+                name: "bob".into(),
+                password_hash: hash_of("bob-password"),
+                play: v(&["bittorrent/aa"]),
+                ..MediaUser::default()
+            },
+        ],
+        tokens: vec![MediaToken {
+            name: "t".into(),
+            token: "token-0123456789ab".into(),
+            play: v(&["bittorrent/*"]),
+            ..MediaToken::default()
+        }],
+        ..MediaAuth::default()
+    };
+    let p = Policy::from_config(&cfg).unwrap();
+    // fit's passkey of alice under this policy's secret.
+    let alice = p.passkey("alice").unwrap();
+    assert_eq!(alice, "c3751c196e55193e0c3be763bcc1b8ab");
+    let bob = p.passkey("bob").unwrap();
+    assert_ne!(bob, alice);
+    assert!(p.passkey("carol").is_err());
+    for (stream, key, want) in [
+        ("bittorrent/aa", alice.as_str(), Ok("alice")),
+        ("bittorrent/aa", bob.as_str(), Ok("bob")),
+        ("bittorrent/bb", bob.as_str(), Err(Refusal::Forbidden)),
+        ("bittorrent/bb", "token-0123456789ab", Ok("token:t")),
+        ("bittorrent/bb", "", Err(Refusal::NoCredentials)),
+        ("bittorrent/bb", "nope", Err(Refusal::BadCredentials)),
+        (
+            "bittorrent/bb",
+            "alice-password",
+            Err(Refusal::BadCredentials),
+        ),
+    ] {
+        let got = p.allow_passkey(stream, key);
+        assert_eq!(
+            got.as_deref().map_err(|e| *e),
+            want,
+            "{stream} with {key:?}"
+        );
+    }
+    let other = Policy::from_config(&MediaAuth {
+        secret: "another-secret-0123456789".into(),
+        ..cfg.clone()
+    })
+    .unwrap();
+    assert_eq!(
+        other.allow_passkey("bittorrent/aa", &alice),
+        Err(Refusal::BadCredentials)
+    );
+    let public = Policy::from_config(&MediaAuth {
+        public: vec![Action::Play],
+        ..cfg
+    })
+    .unwrap();
+    assert_eq!(public.allow_passkey("bittorrent/aa", ""), Ok(String::new()));
+}

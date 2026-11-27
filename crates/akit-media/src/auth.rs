@@ -275,6 +275,8 @@ struct State {
     decoy: Option<bcrypt::Hash>,
     sign_key: Vec<u8>,
     ttl: Duration,
+    /// The users' BitTorrent passkeys (I159), by their SHA-256: the user's name.
+    passkeys: HashMap<[u8; 32], String>,
 }
 
 fn action_index(a: Action) -> usize {
@@ -327,6 +329,26 @@ fn sign_key_for(name: &str, secret: &[u8]) -> Vec<u8> {
     m.update(SIGN_LABEL.as_bytes());
     m.update(name.as_bytes());
     m.finalize().to_vec()
+}
+
+/// The label a user's passkey is derived with: fit's, so that fit's passkeys and akit's agree.
+const PASSKEY_LABEL: &str = "fit bittorrent passkey\0";
+/// How many hex digits a user's passkey has: fit's `PasskeyChars`.
+pub const PASSKEY_CHARS: usize = 32;
+
+/// The passkey of user `name` under `key`, the policy's signing key: the first 32 hex digits of
+/// HMAC-SHA256(key, label + name), fit's `passkeyOf`. Without a secret the key is the process's
+/// own, and the passkeys change when akit restarts, as fit's do.
+fn passkey_of(key: &[u8], name: &str) -> String {
+    let mut m = Hmac::<Sha256>::new(key);
+    m.update(PASSKEY_LABEL.as_bytes());
+    m.update(name.as_bytes());
+    let sum = m.finalize();
+    let mut out = String::with_capacity(PASSKEY_CHARS);
+    for b in sum.iter().take(PASSKEY_CHARS / 2) {
+        out.push_str(&format!("{b:02x}"));
+    }
+    out
 }
 
 /// Reads a secret from `path`, its line breaks at the end taken off, with the SHA-256 of what was
@@ -387,6 +409,7 @@ impl Policy {
             decoy: None,
             sign_key: Vec::new(),
             ttl: cfg.ttl(),
+            passkeys: HashMap::new(),
         };
         for a in &cfg.public {
             if let Some(p) = st.public.get_mut(action_index(*a)) {
@@ -489,8 +512,81 @@ impl Policy {
         } else {
             sign_key_for(&cfg.name, secret.as_bytes())
         };
+        for name in st.users.keys() {
+            st.passkeys.insert(
+                Sha256::digest(passkey_of(&st.sign_key, name).as_bytes()),
+                name.clone(),
+            );
+        }
         *self.file.lock().unwrap_or_else(PoisonError::into_inner) = file;
         Ok(st)
+    }
+
+    /// The BitTorrent passkey of the policy's user `name` (I159, fit's `Passkey`), for a private
+    /// tracker's announce URL `/<passkey>/announce`.
+    ///
+    /// # Errors
+    ///
+    /// The policy not loaded, or no such user.
+    pub fn passkey(&self, name: &str) -> Result<String, String> {
+        self.st.with(|st| {
+            let Some(st) = st else {
+                return Err(Refusal::Unavailable.to_string());
+            };
+            if !st.users.contains_key(name) {
+                return Err(format!(
+                    "the media_auth policy {} has no user {name:?}",
+                    self.name
+                ));
+            }
+            Ok(passkey_of(&st.sign_key, name))
+        })
+    }
+
+    /// Whether `passkey` may play `stream`, as a private tracker asks of every announce and
+    /// scrape (I159, fit's `AllowPasskey`), without waiting: a user's passkey with that user's
+    /// grant, or else a token, as [`Policy::allow`] checks one. The subject, or the refusal:
+    /// [`Refusal::NoCredentials`] for no passkey, [`Refusal::BadCredentials`] for an unknown
+    /// one, [`Refusal::Forbidden`] for a grant that does not play `stream`. A policy that makes
+    /// play public lets every request through, as `allow` does.
+    ///
+    /// # Errors
+    ///
+    /// The refusal.
+    pub fn allow_passkey(&self, stream: &str, passkey: &str) -> Result<String, Refusal> {
+        let user = self.st.with(|st| {
+            let st = st.ok_or(Refusal::Unavailable)?;
+            if passkey.is_empty()
+                || passkey.len() > MAX_TOKEN_BYTES
+                || st
+                    .public
+                    .get(action_index(Action::Play))
+                    .copied()
+                    .unwrap_or(false)
+            {
+                return Ok(None);
+            }
+            let Some(name) = st.passkeys.get(&Sha256::digest(passkey.as_bytes())) else {
+                return Ok(None);
+            };
+            let u = st.users.get(name).ok_or(Refusal::BadCredentials)?;
+            if u.grant.allows(Action::Play, stream) {
+                Ok(Some(u.name.clone()))
+            } else {
+                Err(Refusal::Forbidden)
+            }
+        })?;
+        match user {
+            Some(name) => Ok(name),
+            None => self.allow(
+                Action::Play,
+                stream,
+                &Credentials {
+                    token: passkey.to_owned(),
+                    ..Credentials::default()
+                },
+            ),
+        }
     }
 
     /// The policy's name.

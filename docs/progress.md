@@ -278,6 +278,17 @@ done and where the work differs from the plan.
   uplink is still the proxy's. After the fix: 250 of 250 runs alone on epoll, 50 of 50 on io_uring
   (`AKIO_DEFAULT_BACKEND=uring`).
 
+### 2026-11-28: I159 begun, the passkeys of `media_auth`'s users
+
+- As fit's `mediaauth/passkey.go`: `akit_media::auth::Policy::passkey` (a user's BitTorrent
+  passkey, the first 32 hex digits of an HMAC-SHA256 of fit's label and the name under the
+  policy's signing key, fit's byte for byte) and `allow_passkey` (a user's passkey with its grant,
+  else a token as `allow` takes one; public play lets everyone through). Test: `auth::tests::
+  passkeys` (fit's `TestPasskeys`, with a passkey fit's code computed). What uses them, the
+  tracker's `auth` (a private tracker's announces and scrapes over HTTP and over UDP's BEP 41 URL
+  data, the passkey redacted in the access log, `/bittorrent/tracker/passkey`), and RSS are still
+  to do: `bittorrent.tracker.auth` stays refused as not supported yet.
+
 ### 2026-11-28: I157, the Admin API's `/bittorrent/...`, events, `akit bt`, metrics
 
 - As fit's I203 and I210 (`akit_bittorrent::admin`, `client::{events,inspect,metrics}`): the
