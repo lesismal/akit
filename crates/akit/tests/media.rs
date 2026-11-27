@@ -112,6 +112,8 @@ impl Drop for Killed {
     }
 }
 
+/// A port free now, for the interop tests' config, which fit's binary reads too and so must
+/// name its ports before either binds them: another process may take one meanwhile.
 fn free_tcp() -> u16 {
     TcpListener::bind("127.0.0.1:0")
         .unwrap()
@@ -120,6 +122,7 @@ fn free_tcp() -> u16 {
         .port()
 }
 
+/// As [`free_tcp`], for UDP.
 fn free_udp() -> u16 {
     UdpSocket::bind("127.0.0.1:0")
         .unwrap()
@@ -144,6 +147,44 @@ fn have(tool: &str, protocol: &str) -> bool {
 
 /// `akit run -c path` (or fit's, `bin run -c path`), once it says the role runs (akit), or its
 /// RTMP port takes connections (fit).
+/// `akit run -c path` until it prints `ready`: and the lines it printed until then, where it
+/// says where it listens.
+fn run_akit(path: &std::path::Path, ready: &str) -> (Killed, Vec<String>) {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_akit"))
+        .args(["run", "-c"])
+        .arg(path)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .unwrap();
+    let mut out = BufReader::new(child.stdout.take().unwrap()).lines();
+    let mut seen = Vec::new();
+    loop {
+        let line = out
+            .next()
+            .unwrap_or_else(|| panic!("akit stopped before {ready:?}: {seen:?}"))
+            .unwrap();
+        let done = line.starts_with(ready);
+        seen.push(line);
+        if done {
+            break;
+        }
+    }
+    std::thread::spawn(move || for _ in out {});
+    (Killed(child), seen)
+}
+
+/// The address after `marker` in the first of `lines` that holds it.
+fn printed(lines: &[String], marker: &str) -> std::net::SocketAddr {
+    let line = lines
+        .iter()
+        .find(|l| l.contains(marker))
+        .unwrap_or_else(|| panic!("no {marker:?} in {lines:?}"));
+    let rest = &line[line.find(marker).unwrap() + marker.len()..];
+    let end = rest.find([' ', '/']).unwrap_or(rest.len());
+    rest[..end].parse().unwrap()
+}
+
 fn serve(bin: &str, path: &std::path::Path, rtmp: u16) -> Killed {
     let mut child = Command::new(bin)
         .args(["run", "-c"])
@@ -474,17 +515,17 @@ fn ffmpeg_publishes_over_whip() {
 fn metrics_served() {
     use std::io::{Read, Write};
     let d = dir("metrics");
-    let (rtmp, admin) = (free_tcp(), free_tcp());
+    // On port 0: akit says where the Admin API and RTMP listen.
     let cfg = d.join("akit.json");
     std::fs::write(
         &cfg,
-        format!(
-            r#"{{"admin": {{"address": "127.0.0.1:{admin}"}},
-              "streaming": {{"rtmp": {{"listen": "127.0.0.1:{rtmp}"}}}}}}"#
-        ),
+        r#"{"admin": {"address": "127.0.0.1:0"},
+              "streaming": {"rtmp": {"listen": "127.0.0.1:0"}}}"#,
     )
     .unwrap();
-    let _akit = serve(env!("CARGO_BIN_EXE_akit"), &cfg, rtmp);
+    let (_akit, lines) = run_akit(&cfg, "akit: admin API on");
+    let admin = printed(&lines, "akit: admin API on ").port();
+    let _rtmp = printed(&lines, "streaming: rtmp on ");
     let deadline = Instant::now() + Duration::from_secs(20);
     let body = loop {
         if let Ok(s) = std::net::TcpStream::connect(("127.0.0.1", admin)) {

@@ -208,11 +208,14 @@ impl Akit {
     }
 }
 
-fn free_port() -> u16 {
-    std::net::TcpListener::bind("127.0.0.1:0")
+/// The port the streaming role's listener of `proto` bound (its `listen` says port 0).
+fn bound(m: &Manager, proto: &str) -> u16 {
+    m.api("streaming")
+        .expect("the streaming role's handle")
+        .downcast_ref::<akit_media::streaming::StreamingApi>()
         .unwrap()
-        .local_addr()
-        .unwrap()
+        .addr(proto)
+        .expect("bound")
         .port()
 }
 
@@ -254,7 +257,8 @@ fn start(json: &str) -> Akit {
 }
 
 /// The role with RTMP on `rtmp`, WebRTC on a port of loopback (when `webrtc`), and the routes.
-fn config(rtmp: u16, webrtc: bool) -> String {
+/// The routes and the roles, RTMP (and, with `webrtc`, WebRTC) on port 0.
+fn config(webrtc: bool) -> String {
     let rtc = if webrtc {
         r#", "webrtc": {"listen": "127.0.0.1:0"}"#
     } else {
@@ -265,7 +269,7 @@ fn config(rtmp: u16, webrtc: bool) -> String {
           "media_auth": [{{"name": "live", "tokens": [
             {{"token": "{PUBLISH}", "publish": ["live/*"], "play": ["live/*"]}},
             {{"token": "{VIEW}", "play": ["live/*"]}}]}}],
-          "streaming": {{"rtmp": {{"listen": "127.0.0.1:{rtmp}", "auth": "live"}}{rtc}}},
+          "streaming": {{"rtmp": {{"listen": "127.0.0.1:0", "auth": "live"}}{rtc}}},
           "routes": [
             {{"match": {{"path": ["/whip/*"]}}, "handler": {{"module": "stream_whip", "params": {{"auth": "live"}}}}}},
             {{"match": {{"path": ["/whep/*"]}}, "handler": {{"module": "stream_whep", "params": {{"auth": "live"}}}}}},
@@ -326,8 +330,8 @@ fn annexb(track: &Track, p: &Packet) -> Vec<u8> {
 /// played over RTMP and HLS.
 #[test]
 fn whip_and_whep() {
-    let rtmp_port = free_port();
-    let akit = start(&config(rtmp_port, true));
+    let akit = start(&config(true));
+    let rtmp_port = bound(&akit.roles, "rtmp");
     let a = akit.http;
     let src = Hub::default();
     let stop = Arc::new(AtomicBool::new(false));
@@ -502,7 +506,7 @@ fn whip_and_whep() {
 /// endpoint answered by the server.
 #[test]
 fn paths() {
-    let akit = start(&config(free_port(), true));
+    let akit = start(&config(true));
     let a = akit.http;
     for p in ["/elsewhere", "/in"] {
         assert_eq!(request(a, "GET", p, &[], "").status, 404, "{p}");
@@ -517,7 +521,7 @@ fn paths() {
 /// Without `streaming.webrtc` the handlers answer 503 (fit's `TestNotRunning`).
 #[test]
 fn without_webrtc() {
-    let akit = start(&config(free_port(), false));
+    let akit = start(&config(false));
     let r = post_sdp(akit.http, "/whip/live/x", Some(PUBLISH), "v=0\r\n");
     assert_eq!(r.status, 503);
 }

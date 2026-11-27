@@ -365,6 +365,39 @@ pub struct Server {
     rtsp: Option<Bound<StreamRtsp>>,
     srt: Option<Bound<StreamSrt>>,
     webrtc: Option<Bound<StreamWebRtc>>,
+    /// Where the listeners are bound, as [`StreamingApi`] tells it: set after each apply.
+    bound: Arc<Mutex<Addrs>>,
+}
+
+/// Where each of the role's listeners is bound, by protocol: rtmp, rtsp, srt, webrtc.
+type Addrs = [Option<SocketAddr>; 4];
+
+/// The streaming role's handle (`Role::api`): where its listeners are bound, the port each got
+/// when its `listen` said 0.
+#[derive(Clone)]
+pub struct StreamingApi(Arc<Mutex<Addrs>>);
+
+impl std::fmt::Debug for StreamingApi {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StreamingApi").finish_non_exhaustive()
+    }
+}
+
+impl StreamingApi {
+    /// The address the listener of `proto` (`rtmp`, `rtsp`, `srt`, `webrtc`) is bound to, or
+    /// `None` while it does not run.
+    #[must_use]
+    pub fn addr(&self, proto: &str) -> Option<SocketAddr> {
+        let i = ["rtmp", "rtsp", "srt", "webrtc"]
+            .iter()
+            .position(|p| *p == proto)?;
+        self.0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(i)
+            .copied()
+            .flatten()
+    }
 }
 
 impl std::fmt::Debug for Server {
@@ -558,7 +591,18 @@ impl Server {
             rtsp: None,
             srt: None,
             webrtc: None,
+            bound: Arc::default(),
         }
+    }
+
+    /// Notes where the listeners are bound now, for [`StreamingApi`].
+    fn note_bound(&self) {
+        *self.bound.lock().unwrap_or_else(PoisonError::into_inner) = [
+            self.addr("rtmp"),
+            self.addr("rtsp"),
+            self.addr("srt"),
+            self.addr("webrtc"),
+        ];
     }
 
     /// The address a listener of the role is bound to, by its protocol (`rtmp`, `rtsp`, `srt`,
@@ -872,6 +916,7 @@ impl Server {
             h.close();
         }
         self.slot.cur.set(None);
+        self.note_bound();
     }
 }
 
@@ -974,6 +1019,7 @@ impl Role for Server {
                 errs.push(format!("channels: {e}"));
             }
         }
+        self.note_bound();
         self.slot.cur.set(Some(Arc::new(Current {
             hub,
             hub_no: self.hub_no,
@@ -989,6 +1035,10 @@ impl Role for Server {
 
     fn stop(&mut self, _grace: Duration) {
         self.stop_all();
+    }
+
+    fn api(&self) -> Option<akit_roles::host::Api> {
+        Some(Arc::new(StreamingApi(Arc::clone(&self.bound))))
     }
 
     /// The role's metrics on `/metrics` (`akit_streaming_*`).

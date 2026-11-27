@@ -156,11 +156,14 @@ impl Drop for Akit {
     }
 }
 
-fn free_port() -> u16 {
-    std::net::TcpListener::bind("127.0.0.1:0")
+/// The port the streaming role's listener of `proto` bound (its `listen` says port 0).
+fn bound(m: &Manager, proto: &str) -> u16 {
+    m.api("streaming")
+        .expect("the streaming role's handle")
+        .downcast_ref::<akit_media::streaming::StreamingApi>()
         .unwrap()
-        .local_addr()
-        .unwrap()
+        .addr(proto)
+        .expect("bound")
         .port()
 }
 
@@ -198,11 +201,12 @@ fn start(json: &str, roles: bool) -> Akit {
     }
 }
 
-fn config(rtmp: u16) -> String {
+/// The routes and the roles, RTMP on port 0.
+fn config() -> String {
     format!(
         r#"{{"listeners": [{{"name": "web", "address": "127.0.0.1:0"}}],
           "media_auth": [{{"name": "live", "tokens": [{{"token": "{TOKEN}", "publish": ["live/*"], "play": ["live/*"]}}]}}],
-          "streaming": {{"rtmp": {{"listen": "127.0.0.1:{rtmp}", "auth": "live"}}}},
+          "streaming": {{"rtmp": {{"listen": "127.0.0.1:0", "auth": "live"}}}},
           "routes": [
             {{"match": {{"path": ["/hls/*"]}}, "handler": {{"module": "hls", "params": {{"prefix": "/hls/", "auth": "live", "target_duration": "1s", "play_wait": "10s"}}}}}},
             {{"match": {{"path": ["/live/*"]}}, "handler": {{"module": "httpflv", "params": {{"auth": "live", "cors": "*"}}}}}}]}}"#
@@ -212,8 +216,8 @@ fn config(rtmp: u16) -> String {
 /// HTTP-FLV and HLS of a stream published over RTMP, refused without credentials.
 #[test]
 fn flv_and_hls() {
-    let rtmp_port = free_port();
-    let akit = start(&config(rtmp_port), true);
+    let akit = start(&config(), true);
+    let rtmp_port = bound(&akit.roles, "rtmp");
     let src = Hub::default();
     let stop = Arc::new(AtomicBool::new(false));
     let feeder = paced(&src, "src", Arc::clone(&stop));
@@ -296,7 +300,7 @@ fn flv_and_hls() {
 /// Without the role, the handlers answer 503.
 #[test]
 fn no_role() {
-    let akit = start(&config(free_port()), false);
+    let akit = start(&config(), false);
     let r = get(akit.http, &format!("/live/cam.flv?token={TOKEN}"), &[], 0);
     assert_eq!(r.status, 503);
     let r = get(

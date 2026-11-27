@@ -138,8 +138,15 @@ impl Role {
     }
 
     /// The address of listener `proto`'s, from the engine.
-    fn addr(&self, port: u16) -> SocketAddr {
-        SocketAddr::from(([127, 0, 0, 1], port))
+    /// Where the listener of `proto` is bound (its `listen` says port 0).
+    fn addr(&self, proto: &str) -> SocketAddr {
+        self.roles
+            .api("streaming")
+            .expect("the streaming role's handle")
+            .downcast_ref::<akit_media::streaming::StreamingApi>()
+            .unwrap()
+            .addr(proto)
+            .expect("bound")
     }
 }
 
@@ -149,22 +156,6 @@ impl Drop for Role {
         self.engine.shutdown();
         self.clients.shutdown();
     }
-}
-
-fn free_port() -> u16 {
-    std::net::TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port()
-}
-
-fn free_udp_port() -> u16 {
-    std::net::UdpSocket::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port()
 }
 
 fn policy(public_play: bool) -> String {
@@ -184,12 +175,11 @@ fn policy(public_play: bool) -> String {
 /// counted.
 #[test]
 fn rtmp_publish_and_play() {
-    let port = free_port();
     let role = Role::start(&format!(
-        r#"{{"media_auth": [{}], "streaming": {{"rtmp": {{"listen": "127.0.0.1:{port}", "auth": "live"}}}}}}"#,
+        r#"{{"media_auth": [{}], "streaming": {{"rtmp": {{"listen": "127.0.0.1:0", "auth": "live"}}}}}}"#,
         policy(true)
     ));
-    let addr = role.addr(port);
+    let addr = role.addr("rtmp");
     let hub = role.hub();
     let (src, _p, videos) = source("src");
     // No credentials: refused, the client closed.
@@ -289,12 +279,11 @@ fn rtmp_publish_and_play() {
 #[test]
 fn rtsp_with_a_query_token() {
     for public in [false, true] {
-        let port = free_port();
         let role = Role::start(&format!(
-            r#"{{"media_auth": [{}], "streaming": {{"rtsp": {{"listen": "127.0.0.1:{port}", "auth": "live"}}}}}}"#,
+            r#"{{"media_auth": [{}], "streaming": {{"rtsp": {{"listen": "127.0.0.1:0", "auth": "live"}}}}}}"#,
             policy(public)
         ));
-        let addr = role.addr(port);
+        let addr = role.addr("rtsp");
         let hub = role.hub();
         let (src, _p, _) = source("src");
         let mut cfg = RtspClientConfig::default();
@@ -362,12 +351,11 @@ fn srt_with_stream_ids() {
             let _ = self.0.send(err);
         }
     }
-    let port = free_udp_port();
     let role = Role::start(&format!(
-        r#"{{"media_auth": [{}], "streaming": {{"srt": {{"listen": "127.0.0.1:{port}", "auth": "live"}}}}}}"#,
+        r#"{{"media_auth": [{}], "streaming": {{"srt": {{"listen": "127.0.0.1:0", "auth": "live"}}}}}}"#,
         policy(true)
     ));
-    let addr = role.addr(port);
+    let addr = role.addr("srt");
     let hub = role.hub();
     let dial = |sid: &str| {
         let (tx, rx) = std::sync::mpsc::channel();
@@ -435,11 +423,8 @@ fn srt_with_stream_ids() {
 /// fit's `TestLimits`: connections past `max_conns` closed as they open.
 #[test]
 fn rtmp_max_conns() {
-    let port = free_port();
-    let role = Role::start(&format!(
-        r#"{{"streaming": {{"rtmp": {{"listen": "127.0.0.1:{port}", "max_conns": 2}}}}}}"#
-    ));
-    let addr = role.addr(port);
+    let role = Role::start(r#"{"streaming": {"rtmp": {"listen": "127.0.0.1:0", "max_conns": 2}}}"#);
+    let addr = role.addr("rtmp");
     let open = |n: usize| -> Vec<TcpStream> {
         (0..n)
             .map(|_| {
@@ -486,14 +471,13 @@ fn rtmp_max_conns() {
 /// reload that allows it lets the next one in, the listener kept.
 #[test]
 fn access_and_reload() {
-    let port = free_port();
     let cfg = |access: &str, max: u32| {
         format!(
-            r#"{{"streaming": {{"max_streams": {max}, "rtmp": {{"listen": "127.0.0.1:{port}"}}, "access": {access}}}}}"#
+            r#"{{"streaming": {{"max_streams": {max}, "rtmp": {{"listen": "127.0.0.1:0"}}, "access": {access}}}}}"#
         )
     };
     let mut role = Role::start(&cfg(r#"{"deny": ["127.0.0.0/8"]}"#, 8));
-    let addr = role.addr(port);
+    let addr = role.addr("rtmp");
     let mut s = TcpStream::connect(addr).unwrap();
     s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
     let mut b = [0u8; 1];
@@ -533,15 +517,14 @@ fn access_and_reload() {
 /// publish checked by the policy as it is now.
 #[test]
 fn auth_changed_in_place() {
-    let port = free_port();
     let cfg = |auth: &str| {
         format!(
-            r#"{{"media_auth": [{}], "streaming": {{"rtmp": {{"listen": "127.0.0.1:{port}"{auth}}}}}}}"#,
+            r#"{{"media_auth": [{}], "streaming": {{"rtmp": {{"listen": "127.0.0.1:0"{auth}}}}}}}"#,
             policy(false)
         )
     };
     let mut role = Role::start(&cfg(""));
-    let addr = role.addr(port);
+    let addr = role.addr("rtmp");
     let hub = role.hub();
     let (src, _p, _) = source("src");
     let open = rtmp::push(
