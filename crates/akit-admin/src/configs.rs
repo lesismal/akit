@@ -250,6 +250,9 @@ impl Providers {
 #[derive(Debug)]
 struct Inner {
     keep: usize,
+    /// Version 1, the config akit started with: what takes a restart runs as it says
+    /// (`GET /config/check`, I138).
+    first: Arc<Version>,
     /// Oldest first; the last is the running config. Held for a push or a clone only: the API's
     /// I/O thread reads it.
     history: Mutex<VecDeque<Arc<Version>>>,
@@ -401,10 +404,11 @@ impl Configs {
         });
         let keep = keep.max(1);
         let mut history = VecDeque::with_capacity(keep);
-        history.push_back(first);
+        history.push_back(Arc::clone(&first));
         Configs {
             inner: Arc::new(Inner {
                 keep,
+                first,
                 history: Mutex::new(history),
                 applying: Mutex::new(Providers::default()),
                 names: Mutex::new(Vec::new()),
@@ -556,6 +560,12 @@ impl Configs {
     #[must_use]
     pub fn temporary_password(&self) -> Option<(String, SystemTime)> {
         lock(&self.inner.temporary).clone()
+    }
+
+    /// Version 1, the config akit started with, kept when the history drops it.
+    #[must_use]
+    pub fn first(&self) -> Arc<Version> {
+        Arc::clone(&self.inner.first)
     }
 
     /// The running config.

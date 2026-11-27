@@ -200,6 +200,9 @@ pub(crate) enum Op {
     /// `POST /config/import?format=store` (I93b): a `fitstore` file's config, opened, whole or
     /// some of its members, the running `admin` kept.
     Sealed { frag: Value, members: Vec<String> },
+    /// `POST /config/reconcile` (I138): the consistency check's fixes, as patches of the base
+    /// config; none applies the config again.
+    Reconcile(Vec<crate::check::Patch>),
 }
 
 impl Op {
@@ -214,6 +217,7 @@ impl Op {
             Op::Text { .. } => "text",
             Op::Tokens(t) => t.name(),
             Op::Sealed { .. } => "import",
+            Op::Reconcile(_) => "reconcile",
         }
     }
 }
@@ -410,6 +414,13 @@ impl Job {
                 if_match,
                 mode,
                 |cur| crate::text::edited(cur, frag, &members, true),
+                apply,
+            ),
+            Op::Reconcile(patches) => configs.change(
+                source,
+                if_match,
+                mode,
+                |cur| crate::check::reconciled(cur, &patches),
                 apply,
             ),
             // Taken above.
@@ -815,6 +826,7 @@ pub(crate) fn takes_config(method: &Method, path: &str) -> bool {
                 || path == "/config/parse"
                 || path == "/config/export"
                 || path == "/config/import"
+                || path == "/config/reconcile"
                 || path == "/cache/purge"
                 || path == "/logs/rotate"
                 || path == "/logs/cleanup"
@@ -978,6 +990,15 @@ impl Api {
                 }
             }
             "/config/effective" if read => effective(&self.0.configs.effective()),
+            // I138: the consistency check, and its fixes applied.
+            "/config/check" if read => crate::check::check(
+                &self.0.configs,
+                self.0.status.as_ref(),
+                self.0.node.as_ref(),
+            ),
+            "/config/check" => not_allowed("GET, HEAD"),
+            "/config/reconcile" if post => return reconcile(&self.0, ctx),
+            "/config/reconcile" => not_allowed("POST"),
             // I91: the config as text, for the console's raw editors and transfer page.
             "/config/render" if post => return crate::text::render(&self.0, ctx),
             "/config/parse" if post => return crate::text::parse(&self.0, ctx),
@@ -1105,6 +1126,35 @@ fn loopback_host(hostport: &str) -> bool {
 
 /// `POST /load` (`tokens` none), `PUT` or `PATCH /config[/<pointer>]`: the body, JSON within
 /// `max_config_bytes`, streamed in and handed to the control thread.
+/// `POST /config/reconcile` (I138): the fixes named, checked against the differences there are
+/// now, applied with `If-Match` the check's ETag (428 without it).
+fn reconcile(shared: &Arc<Shared>, ctx: &mut Context) {
+    if ctx.header("If-Match").is_none_or(str::is_empty) {
+        return ctx.respond(error(
+            428,
+            "If-Match is needed: send the ETag GET /config/check answers with",
+        ));
+    }
+    let shared2 = Arc::clone(shared);
+    read_body(shared, ctx, &["application/json"], move |ctx, data| {
+        let body = std::str::from_utf8(&data)
+            .ok()
+            .and_then(|t| akit_config::value::parse(t).ok());
+        let Some(body) = body else {
+            return ctx.respond(error(400, "the body: not a JSON object"));
+        };
+        match crate::check::fixes(
+            &shared2.configs,
+            shared2.status.as_ref(),
+            shared2.node.as_ref(),
+            &body,
+        ) {
+            Ok(patches) => submit(&shared2, ctx, Op::Reconcile(patches), Mode::Apply),
+            Err(msg) => ctx.respond(error(400, &msg)),
+        }
+    });
+}
+
 fn change(shared: &Arc<Shared>, ctx: &mut Context, tokens: Option<Vec<String>>) {
     let mode = match mode_of(ctx) {
         Ok(m) => m,

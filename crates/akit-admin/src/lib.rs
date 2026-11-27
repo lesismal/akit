@@ -78,6 +78,7 @@
 pub mod bootstrap;
 mod cache;
 mod certs;
+mod check;
 mod configs;
 pub mod console;
 mod dashboard;

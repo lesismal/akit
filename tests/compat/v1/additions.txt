@@ -671,3 +671,7 @@ admin	added	endpoint	GET	/node/managed
 admin	added	endpoint	HEAD	/node/managed
 admin	added	endpoint	PUT	/node/managed
 admin	added	endpoint	DELETE	/node/managed
+# I138: the consistency check, and its fixes applied (fit's admin/drift.go).
+admin	added	endpoint	GET	/config/check
+admin	added	endpoint	HEAD	/config/check
+admin	added	endpoint	POST	/config/reconcile

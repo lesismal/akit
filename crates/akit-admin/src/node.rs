@@ -57,6 +57,8 @@ pub const CAP_TRANSFER: &str = "config.transfer";
 pub const CAP_RELOAD: &str = "config.reload";
 /// `GET /status`.
 pub const CAP_STATUS: &str = "status";
+/// `GET /config/check` and `POST /config/reconcile` (I138).
+pub const CAP_CHECK: &str = "config.check";
 /// `GET /status` answers `requests`, when the running config counts them (`metrics`).
 pub const CAP_STATUS_REQUESTS: &str = "status.requests";
 /// `GET /metrics`.
@@ -318,6 +320,7 @@ fn capabilities(configs: &Configs, live: &NodeLive, metrics: bool) -> Vec<&'stat
         CAP_TRANSFER,
         CAP_RELOAD,
         CAP_STATUS,
+        CAP_CHECK,
         CAP_CACHE,
         CAP_CACHE_PREFIX,
         CAP_LOGS,

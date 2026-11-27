@@ -484,8 +484,8 @@ fn manager_reads_akit_members() {
     let (st, _, body) = b.call("GET", "/api/m/cluster/nodes/b/read/versions", "");
     assert_eq!(st, 200, "{body}");
     let (st, _, body) = b.call("GET", "/api/m/cluster/nodes/b/read/check", "");
-    assert_eq!(st, 502, "{body}");
-    assert!(body.contains("\"unsupported\""), "{body}");
+    assert_eq!(st, 200, "{body}");
+    assert!(body.contains("\"summary\""), "{body}");
 
     // Tests: a draft, and the member as it would be changed.
     let (st, _, body) = b.call(
@@ -1114,7 +1114,8 @@ fn groups_and_operations() {
         "{op:?}"
     );
     let id = start_op(&b, r#"{"op": "check", "members": ["a"]}"#);
-    assert_eq!(outcomes(&wait_op(&b, &id))[0].2, "unsupported");
+    let op = wait_op(&b, &id);
+    assert_eq!(outcomes(&op)[0].1, "done", "{op:?}");
     let id = start_op(
         &b,
         r#"{"op": "test", "group": "eu", "members": ["a", "c"]}"#,
@@ -1761,4 +1762,83 @@ fn rollouts_with_gates() {
     let (code, _, err) = m.stop();
     assert_eq!(code, Some(0), "{err}");
     let _ = (a.stop(), bm.stop(), cm.stop());
+}
+
+/// The consistency check on an akit (I138, fit's `admin/drift.go` tests): a running akit in step
+/// with its config has only infos (a dynamic port); a setting that takes a restart, changed,
+/// is a drift, its fix applied by `POST /config/reconcile` with the check's ETag (428 without,
+/// 400 for a fix not offered); `config.check` listed.
+#[test]
+fn consistency_check() {
+    let d = Dir::new("check");
+    let token = "a-token-of-the-checked-akit-0123";
+    let tf = d.file("check.token", token);
+    let cfg = d.file(
+        "check.json",
+        &format!(
+            r#"{{"admin": {{"address": "127.0.0.1:0", "token_file": {}}}, "limits": {{"max_conns": 100}},
+                "listeners": [{{"name": "web", "address": "127.0.0.1:0"}}],
+                "upstreams": [{{"name": "u", "addresses": ["127.0.0.1:1"]}}],
+                "routes": [{{"handler": {{"module": "proxy", "params": {{"upstream": "u"}}}}}}]}}"#,
+            js(&tf)
+        ),
+    );
+    let r = Run::start(&["-c", s(&cfg), "-watch-certs=false"]);
+    let api = r.addr("admin API on ");
+    let auth = format!("Bearer {token}");
+    let call = |method: &str, path: &str, extra: &[(&str, &str)], body: &str| {
+        let mut h = vec![
+            ("Authorization", auth.as_str()),
+            ("Content-Type", "application/json"),
+        ];
+        h.extend_from_slice(extra);
+        http(api, method, path, &h, body)
+    };
+    let (st, body) = admin_get(api, token, "/node");
+    assert_eq!(st, 200, "{body}");
+    assert!(body.contains("\"config.check\""), "{body}");
+    let (st, head, body) = call("GET", "/config/check", &[], "");
+    assert_eq!(st, 200, "{body}");
+    assert!(
+        body.contains(r#""id":"listener:web:port""#) && body.contains(r#""summary":{"drift":0,"#),
+        "{body}"
+    );
+    let etag = header_of(&head, "ETag");
+    let (st, _, resp) = call(
+        "PUT",
+        "/config/limits/max_conns",
+        &[("If-Match", &etag)],
+        "200",
+    );
+    assert_eq!(st, 200, "{resp}");
+    let (st, head, body) = call("GET", "/config/check", &[], "");
+    assert_eq!(st, 200, "{body}");
+    assert!(
+        body.contains(r#""id":"setting:limits.max_conns""#)
+            && body.contains(r#""patch":{"op":"replace","path":"/limits/max_conns","value":100}"#),
+        "{body}"
+    );
+    let etag = header_of(&head, "ETag");
+    let fix = r#"{"fixes": [{"id": "setting:limits.max_conns", "action": "replace"}]}"#;
+    let (st, _, resp) = call("POST", "/config/reconcile", &[], fix);
+    assert_eq!(st, 428, "{resp}");
+    let (st, _, resp) = call(
+        "POST",
+        "/config/reconcile",
+        &[("If-Match", &etag)],
+        r#"{"fixes": [{"id": "setting:limits.max_conns", "action": "delete"}]}"#,
+    );
+    assert_eq!(st, 400, "{resp}");
+    let (st, _, resp) = call("POST", "/config/reconcile", &[("If-Match", &etag)], fix);
+    assert_eq!(st, 200, "{resp}");
+    let (_, _, body) = call("GET", "/config/check", &[], "");
+    assert!(
+        !body.contains("setting:limits.max_conns") && body.contains(r#""summary":{"drift":0,"#),
+        "{body}"
+    );
+    assert_eq!(
+        admin_get(api, token, "/config/limits/max_conns").1.trim(),
+        "100"
+    );
+    let _ = r.stop();
 }

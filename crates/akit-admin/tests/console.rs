@@ -948,10 +948,11 @@ fn node_and_schema() {
         "status.requests",
         "schema",
         "console",
+        "config.check",
     ] {
         assert!(caps.iter().any(|x| x == c), "{caps:?} lacks {c}");
     }
-    assert!(!caps.iter().any(|x| x == "store" || x == "config.check"));
+    assert!(!caps.iter().any(|x| x == "store"));
     let mut sorted = caps.clone();
     sorted.sort();
     assert_eq!(caps, sorted);
