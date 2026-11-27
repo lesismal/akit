@@ -4,7 +4,8 @@
 //! `bittorrent.tracker` ([`tracker`], I151), answering announces and scrapes over HTTP through the
 //! routes' `bt_tracker` handler and over UDP on its own `listen`, on akio-bittorrent's
 //! `TrackerServer`; and `bittorrent.client` ([`client`], I152), downloading and seeding the
-//! torrents kept in its `data_dir` on akio-bittorrent's `Client`.
+//! torrents kept in its `data_dir` on akio-bittorrent's `Client`; their Admin API endpoints
+//! below `/bittorrent/` ([`admin`], I157).
 //!
 //! [`MODULES`] lists the handlers for akit's registry; the roles are [`akit_roles::host::Info`]s
 //! the binary registers.
@@ -12,6 +13,7 @@
 //! Part of [akit](https://github.com/lesismal/akit); see `docs/dev-plan.md` for the iterations that
 //! fill this crate in.
 
+pub mod admin;
 pub mod client;
 pub mod tracker;
 

@@ -19,6 +19,8 @@ akio-crypto = { workspace = true }
 akio-http = { workspace = true }
 # The disk's free space for min_free_bytes (I153).
 akio-sys = { workspace = true }
+# The Admin API's endpoints of the roles (I157).
+akit-admin = { workspace = true }
 akit-access = { workspace = true }
 akit-config = { workspace = true }
 # The alternative rates' time zone (I154).

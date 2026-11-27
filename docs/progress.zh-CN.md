@@ -203,6 +203,29 @@
   `setNodes` 持有它自己的锁），因此为新 uplink 收下的列表总在其后；断开链路的 hub 也在同一把锁下忘掉其节点，且仅当其
   uplink 仍属于该 proxy。修复后：epoll 上单独运行 250 次、io_uring（`AKIO_DEFAULT_BACKEND=uring`）上 50 次，全部通过。
 
+### 2026-11-28：I157，Admin API 的 `/bittorrent/...`、事件、`akit bt`、指标
+
+- 同 fit 的 I203 和 I210（`akit_bittorrent::admin`、`client::{events,inspect,metrics}`）：Admin API 通过 akit-admin 新的扩展点
+  `Options::endpoints`（一个前缀和一个函数，经过 API 的守卫和控制台的会话检查，请求体流式读入），在 `/bittorrent/` 下提供
+  BitTorrent 角色，运行中的角色从 `akit_roles::host::Manager::apis` 读取：列出种子（按状态、分类和名称过滤，分页）、添加（JSON、
+  .torrent 文件、表单）、读取（带文件）、暂停、恢复、重新校验、修改（`paused`、`category`、`limits`、`queue_position`）和删除；
+  其文件、peer 和 tracker；备用速率；发布条目；tracker 的统计。客户端的调用在 akio 的逻辑池上执行，从不在 API 的 I/O 线程上。
+  fit 的上限（.torrent 文件 32 MiB，一页 10,000 个种子）和应答（`{"error"}`、角色未运行时 404、409、429、带 `Retry-After` 的 503）。
+- 事件流 `GET /bittorrent/events`：种子的添加和删除、状态变化、完成、存储错误、做种限制、备用速率切换，编号并保留最近 1,024 个；
+  `Last-Event-ID` 重放流错过的事件，有些已不在时先发 `reset`；至多 32 个流；连接积压 256 KiB 的流收到 `lagged` 并结束；每 15 秒
+  一条注释；角色停止时发 `end`。由 API 的调用（立即）和管理线程的查看（每个事件，以及每秒）发布，从不等待。
+- `GET /metrics`：客户端的 `akit_bittorrent_*`（按分类的字节数、速率、peer、seeder、哈希失败和各状态的种子数，跨删除和新客户端
+  保持；客户端是否运行；备用速率；事件流及被丢弃的流；已发布的种子）和 tracker 的 `akit_bittorrent_tracker_*`，来自抓取时不取角色
+  锁的快照。种子的状态现在带速率、v2 hash、自身的和生效的限制。
+- `akit bt`（`ls`、`add`、`info`、`pause`、`resume`、`rm`、`limit`、`alt`），同 fit 的 `fit bt`，像 `akit token` 一样经由 Admin API；
+  标志和参数可以像 fit 那样混排。
+- 在 akio 提供之前：顺序下载和文件优先级以 501 拒绝并指明 A287，种子的 `max_conns` 和 `upload_slots` 指明 A284；种子的 tracker
+  和 web seed 以未知状态列出，重新校验则不带 resume 数据重新添加种子（A288）；文件已有的字节只在种子的数据能说明时给出（A287）。
+  fit 的 `fit bt rss` 随 I159 提供。
+- 测试：`client::tests::the_admin_api`（fit 的 `admin/bittorrent_test.go`）、`admin::tests::admin_surface_is_frozen`（端点对照
+  tests/compat/v1，akit-admin 自己的测试把它们留给这个测试）、`akit/tests/bittorrent.rs` 的 `akit_bt_through_the_admin_api`（fit 的
+  `cli/bt_test.go`）、`bt::tests`。
+
 ### 2026-11-28：I156，发布目录
 
 - 同 fit 的 I202（`akit_bittorrent::client::publish`、`client::publish_handler`）：

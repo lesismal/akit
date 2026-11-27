@@ -115,10 +115,10 @@ const NEVER: &[Spec] = &[Spec {
 }];
 
 /// The flags given, last one wins.
-struct Given(Vec<(&'static str, String)>);
+pub(crate) struct Given(pub(crate) Vec<(&'static str, String)>);
 
 impl Given {
-    fn get(&self, name: &str) -> &str {
+    pub(crate) fn get(&self, name: &str) -> &str {
         self.0
             .iter()
             .rev()
@@ -413,8 +413,9 @@ fn parse_rfc3339(s: &str) -> Option<i64> {
     Some(days * 86_400 + h * 3600 + mi * 60 + se - offset)
 }
 
-/// The Admin API, reached as the bootstrap config's `admin` says.
-struct Api {
+/// The Admin API, reached as the bootstrap config's `admin` says (`akit token`, and `akit bt`,
+/// I157).
+pub(crate) struct Api {
     engine: Arc<akio::Engine>,
     client: Client,
     base: String,
@@ -423,12 +424,12 @@ struct Api {
 }
 
 impl Api {
-    fn new(paths: &[String], given: &Given, timeout: Duration) -> Result<Api, String> {
+    pub(crate) fn new(paths: &[String], given: &Given, timeout: Duration) -> Result<Api, String> {
         let files = akit_config::read_config_files(paths).map_err(|e| e.to_string())?;
         let (config, _) = akit_config::load_config_files(&files).map_err(|e| e.to_string())?;
         let Some(admin) = config.admin else {
             return Err(format!(
-                "{} sets no admin: akit token reaches akit through its Admin API",
+                "{} sets no admin: the command reaches akit through its Admin API",
                 paths.join(", ")
             ));
         };
@@ -510,20 +511,33 @@ impl Api {
     }
 
     /// Sends a request and waits for its answer: its status and body.
-    fn call(
+    pub(crate) fn call(
         &self,
         method: Method,
         path: &str,
         body: Option<String>,
     ) -> Result<(u16, String), String> {
-        let mut req = ClientRequest::new(method, &format!("{}{path}", self.base));
+        self.send(
+            method,
+            path,
+            body.map(|b| (b.into_bytes(), "application/json")),
+        )
+    }
+
+    /// Sends a request with a body of a type and waits for its answer: its status and body.
+    pub(crate) fn send(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<(Vec<u8>, &str)>,
+    ) -> Result<(u16, String), String> {
+        let mut req = ClientRequest::new(method, &format!("{}{path}", self.base))
+            .header("Accept", "application/json");
         if let Some(t) = &self.token {
             req = req.header("Authorization", &format!("Bearer {t}"));
         }
-        if let Some(b) = body {
-            req = req
-                .header("Content-Type", "application/json")
-                .body(b.into_bytes());
+        if let Some((b, ty)) = body {
+            req = req.header("Content-Type", ty).body(b);
         }
         let (tx, rx) = std::sync::mpsc::sync_channel(1);
         self.client.request(req, move |r| {
@@ -536,7 +550,7 @@ impl Api {
         }
     }
 
-    fn close(&self) {
+    pub(crate) fn close(&self) {
         self.engine.shutdown();
         self.engine.wait();
     }

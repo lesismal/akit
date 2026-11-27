@@ -73,6 +73,19 @@ and a client with fast resume, wire compatible with libtorrent and aria2.
    stopped, so a reload or stop lets a running one end and drops it (fit's I209 stops builds on a
    context).
 
+8. **I157, as fit's I203 and I210**: the endpoints below `/bittorrent/` are akit-bittorrent's,
+   served through akit-admin's `Options::endpoints`, so that akit-admin does not depend on the
+   roles; akit-admin's v1 test leaves them to akit-bittorrent's, which holds them to
+   tests/compat/v1. The client's calls (which write the state files) run on akio's logical pool;
+   the event stream writes to akio's `BodyStream` without waiting, a stream that falls 256 KiB
+   behind dropped as fit's falls 256 events behind; its heartbeat is a timer about time. The
+   metrics are snapshots the manager's looks keep, its rates over a second or more between two,
+   as akio-bittorrent gives none. Until akio's A288: a torrent's trackers and web seeds are listed
+   as its .torrent file and magnet link name them, their state unknown (fit's answer for a torrent
+   its client does not run), and a recheck adds the torrent again without its resume data, which
+   checks every piece but dials its peers again. A sequential download and file priorities are
+   refused naming A287, a torrent's `max_conns` and `upload_slots` naming A284.
+
 ## Consequences
 
 - A config fit runs that sets a field akio cannot give yet is refused by name, not run without it.

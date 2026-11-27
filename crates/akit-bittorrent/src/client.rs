@@ -17,10 +17,13 @@
 //! closed (akio saves each torrent's resume data), and the new one starts from the state of its
 //! `data_dir`, resuming without a check. A new client that cannot be made brings the old one back.
 
+pub mod events;
 mod fetch;
+pub mod inspect;
 mod limits;
 mod manage;
-mod pages;
+mod metrics;
+pub(crate) mod pages;
 pub mod publish;
 pub mod publish_handler;
 pub(crate) mod state;
@@ -45,7 +48,9 @@ use akit_config::Config;
 use akit_config::bittorrent::{BitTorrentClient, BitTorrentTorrentLimits, BtEncryption};
 use akit_roles::host::{Host, Info, Role};
 
+pub(crate) use fetch::MAX_URL_BYTES;
 pub use limits::{ALT_AUTO, ALT_OFF, ALT_ON};
+pub(crate) use metrics::STATES;
 use state::{Doc, Entry};
 
 /// The role's ID, and its member's path in the config.
@@ -115,6 +120,10 @@ pub enum ApiError {
     Busy,
     /// A .torrent file's URL could not be fetched: why.
     Fetch(String),
+    /// What akio cannot do yet, naming the request that asks for it (I157).
+    NotSupported(String),
+    /// As many event subscribers as allowed listen already (fit's `ErrTooManySubscribers`).
+    TooManySubscribers,
 }
 
 impl fmt::Display for ApiError {
@@ -130,6 +139,10 @@ impl fmt::Display for ApiError {
                 "bittorrent: as many .torrent files are being downloaded by URL as may be at once",
             ),
             ApiError::Fetch(why) => write!(f, "bittorrent: {why}"),
+            ApiError::NotSupported(why) => write!(f, "bittorrent: {why}"),
+            ApiError::TooManySubscribers => f.write_str(
+                "bittorrent: as many event subscribers as allowed are listening already",
+            ),
         }
     }
 }
@@ -208,6 +221,16 @@ pub struct Status {
     pub held: String,
     /// Its place in the list, which the queue goes by, from 0.
     pub queue_position: usize,
+    /// Bytes a second it downloads and uploads, over the manager's last second or more (I157).
+    pub download_rate: f64,
+    /// Bytes a second it uploads.
+    pub upload_rate: f64,
+    /// Its v2 info hash in hex, for a v2 or hybrid torrent once known (I157).
+    pub info_hash_v2: String,
+    /// Its own limits, if it has any (I157).
+    pub limits: Option<BitTorrentTorrentLimits>,
+    /// What it goes by, its own over its category's, if any.
+    pub effective_limits: Option<BitTorrentTorrentLimits>,
 }
 
 /// A torrent the role holds.
@@ -226,6 +249,11 @@ struct Rec {
     /// A magnet link's torrent was added again into its own directory once its metadata came
     /// (the stopgap for akio's A286), or did not need to be.
     placed: bool,
+    /// Its state when the events last looked (I157): `""` before the first look.
+    last_state: String,
+    /// What its torrent counted when the metrics last looked: downloaded, uploaded, hash
+    /// failures, this session's.
+    counted: metrics::Counted,
 }
 
 /// What makes a new client when it changes.
@@ -278,15 +306,37 @@ struct Run {
     alt: limits::Alt,
     /// The publish entries (I156).
     publish: publish::Publisher,
+    /// The role's events (I157).
+    hub: Arc<events::Hub>,
+    /// Whether the alternative rates held when the events last looked.
+    last_alt: Option<bool>,
+}
+
+impl Rec {
+    /// An event of type `kind` about this torrent.
+    fn event(&self, kind: &'static str) -> events::Event {
+        events::Event {
+            kind,
+            torrent: self.entry.id.clone(),
+            name: self
+                .mi
+                .as_ref()
+                .map_or_else(|| self.entry.name.clone(), |m| m.info.name.clone()),
+            category: self.entry.category.clone(),
+            ..events::Event::default()
+        }
+    }
 }
 
 /// What a client's event noted for the saver.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum Note {
     Metadata,
     Completed,
     SeedLimit,
     Checked,
+    /// Its storage failed (I157: an event `error`).
+    Error(String),
 }
 
 /// The most events noted between two saves; past it, the saver looks at every torrent.
@@ -309,6 +359,10 @@ struct Shared {
     tick: Duration,
     /// The publish entries' states, for `bt_publish` (I156).
     pubs: Mutex<Vec<Arc<Mutex<publish::EntryStatus>>>>,
+    /// The role's events (I157).
+    events: Arc<events::Hub>,
+    /// What the metrics count across clients, and their last look (I157).
+    meters: Mutex<metrics::Meters>,
 }
 
 impl fmt::Debug for Shared {
@@ -437,6 +491,7 @@ fn make_client(cfg: &BitTorrentClient, shared: &Arc<Shared>) -> Result<Client, S
             TorrentEvent::SeedLimitReached => Note::SeedLimit,
             // A check that ended: the torrent is complete or still downloads.
             TorrentEvent::Checked { .. } => Note::Checked,
+            TorrentEvent::Error(e) => Note::Error(e.clone()),
             _ => return,
         };
         if let Some(s) = weak.upgrade() {
@@ -533,6 +588,8 @@ fn records(doc: &Doc, data_dir: &Path) -> Vec<Rec> {
                 err,
                 held: manage::Hold::None,
                 hold_msg: String::new(),
+                last_state: String::new(),
+                counted: metrics::Counted::default(),
             }
         })
         .collect()
@@ -641,6 +698,8 @@ impl Run {
                 held: manage::Hold::None,
                 hold_msg: String::new(),
                 placed,
+                last_state: String::new(),
+                counted: metrics::Counted::default(),
             };
             let seed = run.seed();
             start(&run.client, &mut rec, seed);
@@ -665,10 +724,18 @@ impl Run {
                 return Err(ApiError::Io(e));
             }
             let i = run.find(&id).ok_or(ApiError::NotFound)?;
-            run.recs
+            let st = run
+                .recs
                 .get(i)
                 .map(|r| run.status(r))
-                .ok_or(ApiError::NotFound)
+                .ok_or(ApiError::NotFound)?;
+            if let Some(r) = run.recs.get_mut(i) {
+                r.last_state.clone_from(&st.state);
+                let mut ev = r.event(events::ADDED);
+                ev.state.clone_from(&st.state);
+                run.hub.emit(ev);
+            }
+            Ok(st)
         }
         .map_err(|e| match e {
             ApiError::Exists(id) if id.is_empty() => ApiError::Exists("of this info hash".into()),
@@ -710,7 +777,19 @@ impl Run {
                 .iter()
                 .position(|o| o.entry.id == e.id)
                 .unwrap_or(0),
+            download_rate: r.counted.down_rate,
+            upload_rate: r.counted.up_rate,
+            info_hash_v2: String::new(),
+            limits: (!e.limits.is_zero()).then(|| e.limits.clone()),
+            effective_limits: Some(self.effective(e)).filter(|l| !l.is_zero()),
         };
+        if let Some(v2) =
+            r.mi.as_ref()
+                .and_then(|m| m.info_hash_v2)
+                .or_else(|| r.torrent.as_ref().and_then(Torrent::info_hash_v2))
+        {
+            s.info_hash_v2 = v2.to_hex();
+        }
         if let Some(mi) = &r.mi {
             if s.magnet.is_empty() {
                 s.magnet = mi.magnet().to_string();
@@ -765,6 +844,7 @@ impl Run {
     /// Applies the events noted since: completions and seed limits into the entries. Whether
     /// the list changed.
     fn take_notes(&mut self, notes: Vec<(InfoHash, Note)>, all: bool) -> bool {
+        let hub = Arc::clone(&self.hub);
         let mut changed = false;
         for r in &mut self.recs {
             let Some(t) = &r.torrent else { continue };
@@ -772,12 +852,13 @@ impl Run {
             let noted: Vec<Note> = notes
                 .iter()
                 .filter(|(h, _)| *h == ih)
-                .map(|(_, n)| *n)
+                .map(|(_, n)| n.clone())
                 .collect();
             let complete = t.is_complete();
             if (all || noted.contains(&Note::Completed)) && complete && !r.entry.completed {
                 r.entry.completed = true;
                 changed = true;
+                hub.emit(r.event(events::COMPLETED));
             }
             if (all || noted.contains(&Note::SeedLimit))
                 && t.stats().status == TorrentStatus::Paused
@@ -787,12 +868,59 @@ impl Run {
                 // keeps, does not seed it past its limit (fit's decision 9).
                 r.entry.paused = true;
                 changed = true;
+                hub.emit(r.event(events::SEED_LIMIT));
+            }
+            for n in &noted {
+                if let Note::Error(e) = n {
+                    let mut ev = r.event(events::ERROR);
+                    ev.error.clone_from(e);
+                    hub.emit(ev);
+                }
             }
             if (all || noted.contains(&Note::Metadata)) && !r.mi_saved {
                 changed = true;
             }
         }
         changed
+    }
+}
+
+impl Run {
+    /// Publishes the state changes of the torrents since the last look, and the alternative
+    /// rates switching (fit's `noteStatesLocked`).
+    fn note_states(&mut self) {
+        let states: Vec<(String, String)> = self
+            .recs
+            .iter()
+            .map(|r| {
+                let s = self.status(r);
+                (s.state, s.error)
+            })
+            .collect();
+        for (r, (state, error)) in self.recs.iter_mut().zip(states) {
+            if r.last_state == state {
+                continue;
+            }
+            if !r.last_state.is_empty() {
+                let mut ev = r.event(events::STATE);
+                ev.previous = std::mem::take(&mut r.last_state);
+                ev.state.clone_from(&state);
+                if ev.state == "error" {
+                    ev.error = error;
+                }
+                self.hub.emit(ev);
+            }
+            r.last_state = state;
+        }
+        let alt = self.alt.active;
+        if self.last_alt.is_some_and(|a| a != alt) {
+            self.hub.emit(events::Event {
+                kind: events::ALT_SPEED,
+                state: if alt { "on" } else { "off" }.to_owned(),
+                ..events::Event::default()
+            });
+        }
+        self.last_alt = Some(alt);
     }
 }
 
@@ -807,6 +935,8 @@ impl ClientRole {
             wake: Mutex::new(None),
             tick,
             pubs: Mutex::new(Vec::new()),
+            events: events::Hub::new(),
+            meters: Mutex::new(metrics::Meters::default()),
         });
         publish_handler::register(tracker_key(&host.engine), &shared);
         ClientRole {
@@ -834,6 +964,8 @@ impl ClientRole {
             watch: watch::Watch::default(),
             alt: limits::Alt::default(),
             publish: publish::Publisher::default(),
+            hub: Arc::clone(&self.shared.events),
+            last_alt: None,
         };
         run.alt.open(cfg, &mut run.other)?;
         let seed = run.seed();
@@ -849,7 +981,9 @@ impl ClientRole {
         Ok(run)
     }
 
-    fn close(run: &mut Run) {
+    fn close(shared: &Shared, run: &mut Run) {
+        // What the torrents counted, kept across clients for the metrics.
+        run.account(&mut lock(&shared.meters));
         run.publish.stop();
         let _ = run.save();
         run.client.close();
@@ -898,7 +1032,7 @@ impl Role for ClientRole {
                 }
             };
             if let Some(o) = old.as_mut() {
-                ClientRole::close(o);
+                ClientRole::close(&self.shared, o);
             }
             match self.open(cfg, doc) {
                 Ok(run) => *g = Some(run),
@@ -952,9 +1086,11 @@ impl Role for ClientRole {
         }
         self.shared.look(true);
         if let Some(mut run) = lock(&self.shared.run).take() {
-            ClientRole::close(&mut run);
+            ClientRole::close(&self.shared, &mut run);
         }
         lock(&self.shared.pubs).clear();
+        self.shared.events.close();
+        metrics::stopped(&self.shared);
         publish_handler::unregister(tracker_key(&self.host.engine), &self.shared);
     }
 
@@ -965,6 +1101,15 @@ impl Role for ClientRole {
     fn module(&self) -> Option<akit_roles::pages::ModuleRef> {
         Some(Arc::clone(&self.pages) as akit_roles::pages::ModuleRef)
     }
+
+    fn metrics(&self) -> Option<akit_roles::host::MetricsFn> {
+        let shared = Arc::downgrade(&self.shared);
+        Some(Arc::new(move |out: &mut Vec<u8>| {
+            if let Some(s) = shared.upgrade() {
+                metrics::write(&s, out);
+            }
+        }))
+    }
 }
 
 impl Drop for ClientRole {
@@ -973,7 +1118,7 @@ impl Drop for ClientRole {
     }
 }
 
-fn hex(b: &[u8]) -> String {
+pub(crate) fn hex(b: &[u8]) -> String {
     use std::fmt::Write;
     b.iter().fold(String::new(), |mut s, x| {
         let _ = write!(s, "{x:02x}");
@@ -1006,7 +1151,13 @@ impl ClientApi {
     fn with<R>(&self, f: impl FnOnce(&mut Run) -> Result<R, ApiError>) -> Result<R, ApiError> {
         let mut g = lock(&self.0.run);
         match g.as_mut() {
-            Some(run) => f(run),
+            Some(run) => {
+                let r = f(run);
+                // What the call changed goes out as events at once (fit's API notes the states
+                // as it changes them).
+                run.note_states();
+                r
+            }
             None => Err(ApiError::NotRunning),
         }
     }
@@ -1070,10 +1221,17 @@ impl ClientApi {
     pub fn remove(&self, id: &str, delete: bool) -> Result<(), ApiError> {
         self.with(|run| {
             let i = run.find(id).ok_or(ApiError::NotFound)?;
+            if let Some(r) = run.recs.get_mut(i) {
+                // What it counted, kept for the metrics past it.
+                metrics::account_one(r, &mut lock(&self.0.meters));
+            }
             let r = run.recs.remove(i);
             if let Some(t) = &r.torrent {
                 run.client.remove(&t.info_hash());
             }
+            let mut ev = r.event(events::REMOVED);
+            ev.data_deleted = delete;
+            run.hub.emit(ev);
             let _ = std::fs::remove_file(state::torrent_path(&run.data_dir, &r.entry.id));
             let _ = std::fs::remove_file(state::resume_path(&run.data_dir, &r.entry.id));
             run.schedule();
@@ -1146,4 +1304,4 @@ impl ClientApi {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

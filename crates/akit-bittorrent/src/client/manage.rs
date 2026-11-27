@@ -232,6 +232,9 @@ impl Shared {
         if changed {
             let _ = run.save();
         }
+        // The events of what changed, and the metrics' look (I157).
+        run.note_states();
+        run.account(&mut lock(&self.meters));
     }
 }
 

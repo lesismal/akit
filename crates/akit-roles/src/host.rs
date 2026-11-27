@@ -90,6 +90,19 @@ pub fn write_meters(meters: &Meters, out: &mut Vec<u8>) {
 /// A role's handle for its pages ([`Role::api`]).
 pub type Api = Arc<dyn std::any::Any + Send + Sync>;
 
+/// The running roles' handles ([`Role::api`]) by ID, shared with the Admin API's endpoints of
+/// the roles (I157), which read them on their own threads; kept up to date by every apply.
+pub type Apis = Arc<Mutex<BTreeMap<&'static str, Api>>>;
+
+/// The handle of the running role `id` in `apis`.
+#[must_use]
+pub fn api_in(apis: &Apis, id: &str) -> Option<Api> {
+    apis.lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get(id)
+        .cloned()
+}
+
 /// A role akit can run.
 #[derive(Clone, Copy)]
 pub struct Info {
@@ -295,6 +308,7 @@ pub struct Manager {
     modules: Modules,
     consoles: Option<Box<dyn Consoles>>,
     meters: Meters,
+    apis: Apis,
 }
 
 impl fmt::Debug for Manager {
@@ -321,6 +335,7 @@ impl Manager {
             modules: Modules::default(),
             consoles: None,
             meters: Arc::new(Mutex::new(Vec::new())),
+            apis: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
 
@@ -449,6 +464,14 @@ impl Manager {
         let mut m = self.meters.lock().unwrap_or_else(PoisonError::into_inner);
         m.clear();
         m.extend(self.running.values().filter_map(|r| r.metrics()));
+        drop(m);
+        let mut a = self.apis.lock().unwrap_or_else(PoisonError::into_inner);
+        a.clear();
+        for (id, r) in &self.running {
+            if let Some(api) = r.api() {
+                a.insert(id, api);
+            }
+        }
     }
 
     /// The IDs of the roles running, sorted.
@@ -474,6 +497,12 @@ impl Manager {
     #[must_use]
     pub fn meters(&self) -> Meters {
         Arc::clone(&self.meters)
+    }
+
+    /// The running roles' handles, for the Admin API's endpoints of the roles (I157).
+    #[must_use]
+    pub fn apis(&self) -> Apis {
+        Arc::clone(&self.apis)
     }
 
     /// The running roles' token registries, for the Admin API.

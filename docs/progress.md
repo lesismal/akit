@@ -278,6 +278,42 @@ done and where the work differs from the plan.
   uplink is still the proxy's. After the fix: 250 of 250 runs alone on epoll, 50 of 50 on io_uring
   (`AKIO_DEFAULT_BACKEND=uring`).
 
+### 2026-11-28: I157, the Admin API's `/bittorrent/...`, events, `akit bt`, metrics
+
+- As fit's I203 and I210 (`akit_bittorrent::admin`, `client::{events,inspect,metrics}`): the
+  Admin API serves the BitTorrent roles below `/bittorrent/` through a new extension point of
+  akit-admin's, `Options::endpoints` (a prefix and a function, past the API's guard and the
+  console's sessions, bodies streamed in), reading the running roles from
+  `akit_roles::host::Manager::apis`: the torrents listed (filtered by state, category and name,
+  paged), added (JSON, a .torrent file, a form), read with their files, paused, resumed,
+  rechecked, changed (`paused`, `category`, `limits`, `queue_position`) and removed; their files,
+  peers and trackers; the alternative rates; the publish entries; the tracker's statistics. The
+  client's calls run on akio's logical pool, never the API's I/O thread. fit's bounds (a .torrent
+  file 32 MiB, a page 10,000 torrents) and answers (`{"error"}`, 404 for a role that does not run,
+  409, 429, 503 with `Retry-After`).
+- The event stream, `GET /bittorrent/events`: torrents added and removed, state changes,
+  completions, storage errors, seed limits, the alternative rates switching, numbered and the
+  last 1,024 kept; `Last-Event-ID` replays what a stream missed, `reset` when some are gone;
+  32 streams at most; a stream whose connection has 256 KiB waiting is told `lagged` and ended; a
+  comment every 15 s; `end` when the role stops. Published from the API's calls (at once) and
+  the manager's looks (each event, and its second), never waiting.
+- `GET /metrics`: the client's `akit_bittorrent_*` (bytes, rates, peers, seeders, hash failures
+  and torrents in each state by category, kept across removals and new clients; the client
+  running; the alternative rates; the streams and those dropped; the published torrents) and the
+  tracker's `akit_bittorrent_tracker_*`, from snapshots a scrape reads without the roles' locks.
+  A torrent's status has its rates now, its v2 hash, its own and effective limits.
+- `akit bt` (`ls`, `add`, `info`, `pause`, `resume`, `rm`, `limit`, `alt`) as fit's `fit bt`,
+  through the Admin API as `akit token` reaches it; flags and arguments mixed as fit's.
+- Until akio gives them: a sequential download and file priorities are refused 501 naming A287,
+  a torrent's `max_conns` and `upload_slots` naming A284; a torrent's trackers and web seeds are
+  listed with their state unknown and a recheck adds the torrent again without its resume data
+  (A288); a file's bytes had are given where the torrent's tell them (A287). fit's `fit bt rss`
+  comes with I159.
+- Tests: `client::tests::the_admin_api` (fit's `admin/bittorrent_test.go`), `admin::tests::
+  admin_surface_is_frozen` (the endpoints against tests/compat/v1, which akit-admin's own test
+  leaves to it), `akit/tests/bittorrent.rs`'s `akit_bt_through_the_admin_api` (fit's
+  `cli/bt_test.go`), `bt::tests`.
+
 ### 2026-11-28: I156, publishing directories
 
 - As fit's I202 (`akit_bittorrent::client::publish`, `client::publish_handler`):

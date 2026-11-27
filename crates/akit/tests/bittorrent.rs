@@ -338,3 +338,117 @@ fn fit_clients_through_akits_tracker() {
         "{text}"
     );
 }
+
+/// `akit bt <args>` against the config at `cfg`: its exit code, standard output and error.
+fn akit_bt(cfg: &Path, args: &[&str]) -> (i32, String, String) {
+    let out = Command::new(env!("CARGO_BIN_EXE_akit"))
+        .arg("bt")
+        .args(args)
+        .arg("-c")
+        .arg(cfg)
+        .output()
+        .unwrap();
+    (
+        out.status.code().unwrap_or(-1),
+        String::from_utf8_lossy(&out.stdout).into_owned(),
+        String::from_utf8_lossy(&out.stderr).into_owned(),
+    )
+}
+
+/// fit's `cli/bt_test.go` (I157): `akit bt` adds a .torrent file through the Admin API of an
+/// `akit run` whose client role runs, lists it, shows it by its name, pauses it by the start of
+/// its ID, sets its limits, shows the alternative rates and removes it with its files; a torrent
+/// it does not know and a bad command line are refused.
+#[test]
+fn akit_bt_through_the_admin_api() {
+    let dir = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("bittorrent-akit-bt");
+    let _ = std::fs::remove_dir_all(&dir);
+    let downloads = dir.join("data").join("downloads");
+    std::fs::create_dir_all(&downloads).unwrap();
+    let payload = data(200_000, 91);
+    std::fs::write(downloads.join("t.bin"), &payload).unwrap();
+    let mi = akio_bittorrent::metainfo::Builder::new("t.bin")
+        .piece_length(64 * 1024)
+        .build_bytes(&payload)
+        .unwrap();
+    let id: String = mi.info_hash.0.iter().map(|b| format!("{b:02x}")).collect();
+    let torrent = dir.join("t.torrent");
+    std::fs::write(&torrent, mi.to_bytes()).unwrap();
+    let (web, admin, peer) = (free(), free(), free());
+    let path = dir.join("akit.json");
+    std::fs::write(
+        &path,
+        format!(
+            r#"{{"listeners": [{{"name": "web", "address": "{web}"}}],
+                "admin": {{"address": "{admin}"}},
+                "bittorrent": {{"client": {{"listen": "{peer}", "data_dir": {:?}, "dht": false}}}}}}"#,
+            dir.join("data").to_str().unwrap()
+        ),
+    )
+    .unwrap();
+    let _akit = run(&path, "akit: admin API on");
+
+    let (code, out, err) = akit_bt(&path, &["add", torrent.to_str().unwrap()]);
+    assert_eq!(code, 0, "{err}");
+    assert!(out.starts_with(&format!("{id} t.bin: added, ")), "{out}");
+    wait_for("seeding", 20, || {
+        akit_bt(&path, &["ls", "-state", "seeding"])
+            .1
+            .contains("t.bin")
+    });
+    let (code, out, _) = akit_bt(&path, &["ls"]);
+    assert_eq!(code, 0);
+    assert!(out.starts_with("ID  "), "{out}");
+    assert!(out.contains(&id[..12]) && out.contains("100.0%"), "{out}");
+    let (code, out, _) = akit_bt(&path, &["ls", "-json"]);
+    assert!(
+        code == 0 && out.starts_with(r#"{"torrents":[{"id":"#),
+        "{out}"
+    );
+
+    let (code, out, err) = akit_bt(&path, &["info", "t.bin"]);
+    assert_eq!(code, 0, "{err}");
+    assert!(
+        out.starts_with(&format!(
+            "id         {id}\nname       t.bin\nstate      seeding\n"
+        )),
+        "{out}"
+    );
+    assert!(out.contains("FILE  SIZE") && out.contains("t.bin"), "{out}");
+
+    let (code, out, err) = akit_bt(&path, &["pause", &id[..8]]);
+    assert_eq!((code, out), (0, format!("{id} t.bin: paused\n")), "{err}");
+    let (code, out, err) = akit_bt(
+        &path,
+        &["limit", "-up", "512K", "-seed-time", "2h", "t.bin"],
+    );
+    assert_eq!(code, 0, "{err}");
+    assert!(out.starts_with(&id), "{out}");
+    let (_, out, _) = akit_bt(&path, &["info", "t.bin"]);
+    assert!(
+        out.contains("limits     up 512.0 KiB/s, down unlimited, ratio 0, seed time 2h0m0s"),
+        "{out}"
+    );
+    let (code, out, _) = akit_bt(&path, &["alt"]);
+    assert_eq!(code, 0);
+    assert!(
+        out.starts_with("mode    auto\n") && out.contains("never hold"),
+        "{out}"
+    );
+
+    let (code, out, err) = akit_bt(&path, &["rm", "-delete-data", "t.bin"]);
+    assert_eq!((code, out), (0, format!("{id} removed\n")), "{err}");
+    assert!(!downloads.join("t.bin").exists());
+
+    let (code, _, err) = akit_bt(&path, &["info", "nothing"]);
+    assert_eq!(code, 1);
+    assert!(err.contains("no torrent is \"nothing\""), "{err}");
+    let (code, _, err) = akit_bt(&path, &["ls", "extra"]);
+    assert_eq!(code, 2);
+    assert!(err.contains("takes no arguments"), "{err}");
+    let (code, _, err) = akit_bt(&path, &["alt", "fast"]);
+    assert_eq!(code, 2, "{err}");
+    let (code, _, err) = akit_bt(&path, &["add", "magnet:?xt=urn:btih:zz"]);
+    assert_eq!(code, 1);
+    assert!(err.contains("the Admin API answered 400"), "{err}");
+}

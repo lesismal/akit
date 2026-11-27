@@ -26,7 +26,7 @@ pub(crate) struct Alt {
     /// `on`, `off` or `""` (auto).
     mode: String,
     /// Whether they hold now.
-    active: bool,
+    pub(crate) active: bool,
 }
 
 impl Alt {

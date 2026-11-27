@@ -95,6 +95,11 @@ pub struct Options {
     pub modules: Option<akit_roles::pages::Modules>,
     /// The roles' endpoints, by prefix (I141); none without them.
     pub endpoints: Vec<(&'static str, Endpoint)>,
+    /// The prefixes of [`endpoints`](Self::endpoints) whose requests with a body (any method but
+    /// GET and HEAD) have it streamed in, for the endpoint to read with [`Context::on_body`]
+    /// within bounds of its own (I157: the BitTorrent roles' `.torrent` uploads); the others'
+    /// bodies are buffered, as the API's own.
+    pub streamed: Vec<&'static str>,
     /// How long after it was accepted a console connection without a valid session is closed
     /// (fit's `UnauthIdleTimeout`, [`crate::console::UNAUTH_TIMEOUT`]); tests shorten it.
     pub console_unauth_timeout: Duration,
@@ -134,6 +139,7 @@ impl fmt::Debug for Options {
                 "endpoints",
                 &self.endpoints.iter().map(|(p, _)| *p).collect::<Vec<_>>(),
             )
+            .field("streamed", &self.streamed)
             .field("console_unauth_timeout", &self.console_unauth_timeout)
             .field("console_idle_timeout", &self.console_idle_timeout)
             .field("console_grace", &self.console_grace)
@@ -158,6 +164,7 @@ impl Default for Options {
             tokens: None,
             modules: None,
             endpoints: Vec::new(),
+            streamed: Vec::new(),
             console_unauth_timeout: crate::console::UNAUTH_TIMEOUT,
             console_idle_timeout: crate::console::IDLE_TIMEOUT,
             console_grace: None,
@@ -581,6 +588,7 @@ impl Server {
             tokens: opts.tokens.clone(),
             node: opts.node.clone(),
             endpoints: opts.endpoints.clone(),
+            streamed: opts.streamed.clone(),
             dashboard: !settings.disable_dashboard,
             token,
             deriving: Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -825,6 +833,8 @@ pub(crate) struct Shared {
     node: Option<crate::node::NodeView>,
     /// The roles' endpoints (I141).
     endpoints: Vec<(&'static str, Endpoint)>,
+    /// The prefixes of the endpoints whose bodies stream in (I157).
+    streamed: Vec<&'static str>,
     /// Whether the dashboard is served (I63): unless `disable_dashboard`.
     dashboard: bool,
     /// The token every request must carry, from `token_file`; none asked for without it.
@@ -839,6 +849,15 @@ pub(crate) struct Shared {
 }
 
 struct Api(Arc<Shared>);
+
+impl Shared {
+    /// Whether a request of `method` to `path` goes to a role's endpoint that reads its body
+    /// itself, streamed in (I157).
+    pub(crate) fn endpoint_streams(&self, method: &Method, path: &str) -> bool {
+        !matches!(method, Method::Get | Method::Head)
+            && self.streamed.iter().any(|prefix| under(path, prefix))
+    }
+}
 
 /// Whether `req` sends a config or a value of one, or a purge: its body is streamed in, within
 /// `max_config_bytes`.
@@ -923,7 +942,8 @@ impl akio_http::Service for Api {
     }
 
     fn body_mode(&self, req: &Request) -> BodyMode {
-        if takes_config(&req.method, req.path()) {
+        if takes_config(&req.method, req.path()) || self.0.endpoint_streams(&req.method, req.path())
+        {
             BodyMode::Stream
         } else {
             BodyMode::Buffered

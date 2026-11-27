@@ -1711,7 +1711,16 @@ fn members(prefix: &str, v: &Value, out: &mut BTreeSet<String>) {
 /// compatible addition is marked in additions.txt; anything else waits for a v2.
 #[test]
 fn v1_surface_is_frozen() {
-    let frozen = frozen_v1();
+    // The endpoints other crates serve through `Options::endpoints` (I157) are held to the file
+    // by those crates' own tests: akit-bittorrent's `admin_surface_is_frozen` for
+    // `/bittorrent/`.
+    let frozen: BTreeSet<Vec<String>> = frozen_v1()
+        .into_iter()
+        .filter(|i| {
+            !(matches!(i[0].as_str(), "endpoint" | "uncovered")
+                && i.get(2).is_some_and(|p| p.starts_with("/bittorrent/")))
+        })
+        .collect();
     let mut seen: BTreeSet<Vec<String>> = BTreeSet::new();
     let item = |parts: &[&str]| parts.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
 

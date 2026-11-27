@@ -4,6 +4,9 @@
 
 use std::time::Duration;
 
+/// The flags given, in order, as (name, value).
+pub(crate) type Flags = Vec<(&'static str, String)>;
+
 /// A flag a command takes.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Spec {
@@ -26,14 +29,45 @@ pub(crate) fn parse(
     args: &[String],
     specs: &[Spec],
 ) -> Result<Vec<(&'static str, String)>, Usage> {
+    let (out, rest) = parse_mixed(cmd, args, specs, false)?;
+    if let Some(a) = rest.first() {
+        return Err(Usage(format!("akit {cmd}: unexpected argument {a:?}")));
+    }
+    Ok(out)
+}
+
+/// The flags and the arguments `args` give, flags and arguments mixed, as fit's `parseArgs`
+/// (`fit bt`) reads them: each argument taken, and the flags after it read on; `--` ends the
+/// flags, what follows it all arguments.
+pub(crate) fn parse_args(
+    cmd: &str,
+    args: &[String],
+    specs: &[Spec],
+) -> Result<(Flags, Vec<String>), Usage> {
+    parse_mixed(cmd, args, specs, true)
+}
+
+fn parse_mixed(
+    cmd: &str,
+    args: &[String],
+    specs: &[Spec],
+    mixed: bool,
+) -> Result<(Flags, Vec<String>), Usage> {
     let mut out = Vec::new();
+    let mut rest = Vec::new();
     let mut it = args.iter();
     while let Some(a) = it.next() {
         if a == "--" {
             break;
         }
-        let Some(body) = a.strip_prefix("--").or_else(|| a.strip_prefix('-')) else {
-            return Err(Usage(format!("akit {cmd}: unexpected argument {a:?}")));
+        let flag = a.strip_prefix("--").or_else(|| a.strip_prefix('-'));
+        let Some(body) = flag.filter(|_| a != "-") else {
+            if !mixed {
+                rest.push(a.clone());
+                break;
+            }
+            rest.push(a.clone());
+            continue;
         };
         if body.is_empty() || body.starts_with('-') || body.starts_with('=') {
             return Err(Usage(format!("akit {cmd}: bad flag syntax: {a}")));
@@ -76,10 +110,8 @@ pub(crate) fn parse(
         };
         out.push((spec.name, value));
     }
-    if let Some(a) = it.next() {
-        return Err(Usage(format!("akit {cmd}: unexpected argument {a:?}")));
-    }
-    Ok(out)
+    rest.extend(it.cloned());
+    Ok((out, rest))
 }
 
 /// The usage of `cmd`'s flags.

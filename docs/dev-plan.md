@@ -272,7 +272,7 @@ Tunnel and LLM track; I110–I114 are the WebRTC track, and I115–I119 are rese
 | I154b | BitTorrent V b: the client's `access`, its connection limits, a torrent's `max_conns` and `upload_slots`, on akio's A284 | I154 | todo |
 | I155 | BitTorrent VI: `bt_stream`, a file played while it downloads | I152 | todo |
 | I156 | BitTorrent VII: publishing a directory as torrents, `bt_publish` | I152 | done |
-| I157 | BitTorrent VIII: the Admin API's `/bittorrent/...`, events, `akit bt`, metrics | I153 | todo |
+| I157 | BitTorrent VIII: the Admin API's `/bittorrent/...`, events, `akit bt`, metrics | I153 | done |
 | I158 | BitTorrent IX: the client's and the tracker's pages | I157, I109 | todo |
 | I159 | BitTorrent X: RSS auto-download, the tracker store instances share, private trackers' passkeys | I153, I151 | todo |
 | **After 1.0: cluster management** | | | |
@@ -2441,6 +2441,8 @@ waits for the Cluster management track.
   static files, following the disk.
 - **Touches**: `akit-bittorrent`, `akit-config`.
 - **fit**: `bittorrent/{publish,publish_walk}.go`, `handler/btpublish`; I202, I209.
+- **Status**: done (2026-11-28). See the progress log. `whole_dir` publishes a directory with
+  nothing left out, and a build runs to its end, until akio's A288.
 
 ### I157 BitTorrent VIII: the Admin API, events, `akit bt`, metrics
 
@@ -2450,6 +2452,9 @@ waits for the Cluster management track.
 - **Touches**: `akit-bittorrent`, `akit-admin`, `akit`, `akit-observe`.
 - **fit**: `admin/bittorrent.go`, `admin/btevents.go`, `cli/bt.go`, `bittorrent/{events,inspect,
   metrics}.go`; I203, I210.
+- **Status**: done (2026-11-28). See the progress log. A torrent's trackers' state and a recheck in
+  place wait for akio's A288 (stopgaps in decision 042), a sequential download and file
+  priorities for A287; `akit bt rss` comes with I159.
 
 ### I158 BitTorrent IX: the pages
 

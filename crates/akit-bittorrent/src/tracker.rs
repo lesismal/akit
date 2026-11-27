@@ -22,7 +22,7 @@
 mod handler;
 pub(crate) use handler::new as new_handler;
 pub use handler::service;
-mod pages;
+pub(crate) mod pages;
 mod serve;
 
 use std::cell::RefCell;
@@ -529,6 +529,69 @@ impl Role for Tracker {
     fn api(&self) -> Option<akit_roles::host::Api> {
         Some(Arc::clone(&self.pages) as akit_roles::host::Api)
     }
+
+    fn metrics(&self) -> Option<akit_roles::host::MetricsFn> {
+        let key = self.key;
+        Some(Arc::new(move |out: &mut Vec<u8>| write_metrics(key, out)))
+    }
+}
+
+/// The tracker's metrics (I157, fit's `tracker/metrics.go`): the torrents its store keeps and
+/// their bound, the announces and scrapes served, the requests refused by reason, and the
+/// allow-list's size; its peers and their bound once akio's store counts them (A285). Read from
+/// its counters and snapshot, never a lock a request waits for; nothing while it does not run.
+fn write_metrics(key: usize, out: &mut Vec<u8>) {
+    let Some(st) = stats_of(key) else { return };
+    let n = |v: usize| u64::try_from(v).unwrap_or(u64::MAX);
+    let mut w = akit_observe::metrics::TextWriter::new(std::mem::take(out));
+    for (name, help, v) in [
+        (
+            "akit_bittorrent_tracker_torrents",
+            "Torrents the tracker's store keeps, with the peers it has not looked at since they expired.",
+            n(st.torrents),
+        ),
+        (
+            "akit_bittorrent_tracker_max_torrents",
+            "The tracker's max_torrents.",
+            n(st.max_torrents),
+        ),
+        (
+            "akit_bittorrent_tracker_allowed",
+            "Info hashes the tracker's allow-list holds; 0 without one.",
+            n(st.allowed),
+        ),
+    ] {
+        w.family(name, "gauge", help);
+        w.sample_u64(name, v, &[]);
+    }
+    for (name, help, v) in [
+        (
+            "akit_bittorrent_tracker_announces_total",
+            "Announces the tracker served since the role started, over HTTP and UDP.",
+            st.announces,
+        ),
+        (
+            "akit_bittorrent_tracker_scrapes_total",
+            "Scrapes the tracker served since the role started, over HTTP and UDP.",
+            st.scrapes,
+        ),
+    ] {
+        w.family(name, "counter", help);
+        w.sample_u64(name, v, &[]);
+    }
+    w.family(
+        "akit_bittorrent_tracker_refused_total",
+        "counter",
+        "Requests the tracker refused since the role started, by reason: unregistered (an info hash the allow-list lacks, counted per hash), passkey and access.",
+    );
+    for (reason, v) in &st.refused {
+        w.sample_u64(
+            "akit_bittorrent_tracker_refused_total",
+            *v,
+            &[("reason", reason)],
+        );
+    }
+    *out = w.out;
 }
 
 impl Drop for Tracker {

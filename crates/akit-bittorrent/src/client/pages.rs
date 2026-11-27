@@ -6,9 +6,11 @@
 use std::fmt::Write as _;
 
 use akio_http::Context;
+use akit_config::bittorrent::BitTorrentTorrentLimits;
 use akit_config::value::write_string;
 use akit_roles::pages::{Module, fail, json, no_endpoint};
 
+use super::inspect::FileStatus;
 use super::{ApiError, ClientApi, Status};
 
 /// The role's module of the pages.
@@ -60,8 +62,26 @@ impl Pages {
     }
 }
 
-/// A status as fit's JSON writes it.
+/// A torrent's limits as fit's JSON writes them: `seed_time` in nanoseconds.
+pub(crate) fn limits_json(b: &mut String, l: &BitTorrentTorrentLimits) {
+    let _ = write!(
+        b,
+        "{{\"upload_rate\":{},\"download_rate\":{},\"max_conns\":0,\"upload_slots\":0,\"seed_ratio\":{},\"seed_time\":{}}}",
+        l.upload_rate,
+        l.download_rate,
+        l.seed_ratio,
+        l.seed_time.as_nanos()
+    );
+}
+
+/// A status as fit's JSON writes it, with `files` when given (I157: `GET
+/// /bittorrent/torrents/<id>`).
 pub(crate) fn status_json(b: &mut String, s: &Status) {
+    status_json_with(b, s, None);
+}
+
+/// [`status_json`], with the torrent's files.
+pub(crate) fn status_json_with(b: &mut String, s: &Status, files: Option<&[FileStatus]>) {
     let str_field = |b: &mut String, k: &str, v: &str| {
         b.push('"');
         b.push_str(k);
@@ -73,6 +93,9 @@ pub(crate) fn status_json(b: &mut String, s: &Status) {
     str_field(b, "id", &s.id);
     str_field(b, "name", &s.name);
     str_field(b, "info_hash", &s.id);
+    if !s.info_hash_v2.is_empty() {
+        str_field(b, "info_hash_v2", &s.info_hash_v2);
+    }
     if !s.magnet.is_empty() {
         str_field(b, "magnet", &s.magnet);
     }
@@ -81,19 +104,30 @@ pub(crate) fn status_json(b: &mut String, s: &Status) {
     if !s.error.is_empty() {
         str_field(b, "error", &s.error);
     }
+    let _ = write!(b, "\"paused\":{},\"sequential\":false,", s.paused);
     str_field(b, "added", &s.added);
     if !s.category.is_empty() {
         str_field(b, "category", &s.category);
     }
+    if let Some(l) = &s.limits {
+        b.push_str("\"limits\":");
+        limits_json(b, l);
+        b.push(',');
+    }
+    if let Some(l) = &s.effective_limits {
+        b.push_str("\"effective_limits\":");
+        limits_json(b, l);
+        b.push(',');
+    }
+    let _ = write!(b, "\"queue_position\":{},", s.queue_position);
     if !s.held.is_empty() {
         str_field(b, "held", &s.held);
     }
-    let _ = write!(b, "\"queue_position\":{},", s.queue_position);
     let _ = write!(
         b,
-        "\"paused\":{},\"complete\":{},\"size\":{},\"completed\":{},\"progress\":{},\"pieces\":{},\"pieces_have\":{},\"downloaded\":{},\"uploaded\":{},\"peers\":{},\"seeders\":{}}}",
-        s.paused,
+        "\"complete\":{},\"size\":{},\"wanted\":{},\"completed\":{},\"progress\":{},\"pieces\":{},\"pieces_have\":{},\"downloaded\":{},\"uploaded\":{},\"download_rate\":{},\"upload_rate\":{},\"peers\":{},\"seeders\":{}",
         s.complete,
+        s.size,
         s.size,
         s.completed,
         s.progress,
@@ -101,9 +135,34 @@ pub(crate) fn status_json(b: &mut String, s: &Status) {
         s.pieces_have,
         s.downloaded,
         s.uploaded,
+        s.download_rate,
+        s.upload_rate,
         s.peers,
         s.seeders
     );
+    if let Some(fs) = files.filter(|f| !f.is_empty()) {
+        b.push_str(",\"files\":");
+        files_json(b, fs);
+    }
+    b.push('}');
+}
+
+/// A torrent's files as fit's JSON writes them.
+pub(crate) fn files_json(b: &mut String, fs: &[FileStatus]) {
+    b.push('[');
+    for (i, f) in fs.iter().enumerate() {
+        if i > 0 {
+            b.push(',');
+        }
+        let _ = write!(b, "{{\"index\":{},\"path\":", f.index);
+        write_string(b, &f.path);
+        let _ = write!(b, ",\"length\":{}", f.length);
+        if let Some(c) = f.completed {
+            let _ = write!(b, ",\"completed\":{c}");
+        }
+        let _ = write!(b, ",\"priority\":{}}}", f.priority);
+    }
+    b.push(']');
 }
 
 impl Module for Pages {

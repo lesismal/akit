@@ -118,6 +118,7 @@ API 的下一个版本中才会去掉，并在其改动清单中写明。
 | `POST /config/render`、`POST /config/parse`、`PUT /config/text`、`POST /config/export`、`POST /config/import` | 配置或其部分顶层成员（`?members=`）的 `.conf`、YAML 或 JSON 文本（`?format=`），以及应用一段文本或一个文件，即 fit 控制台的原文编辑器和导入导出页面所调用的（冻结之后新增，I91；fit 的 `store` 格式，即用自己的密码或正在运行的 store 的密钥密封的 `fitstore` 文件，自 I93b 起） |
 | `GET`、`HEAD` `/tokens` 和 `/tokens/{成员}`、`POST /tokens/{成员}`、`PATCH` 和 `DELETE /tokens/{成员}/{id}` | 隧道 hub 和 LLM 角色的链路 token：签发、列出、修改过期时间和撤销，同 fit 的 `admin/tokens.go`；akit 的作用于运行中配置所设置的成员，无论其角色是否已在运行（冻结之后新增，I100） |
 | `GET`、`HEAD` `/media/library`、`/media/library/{name}`、`/media/library/{name}/items/{id...}`、`POST /media/library/{name}/rescan` | 媒体库：其扫描的状态、分页和筛选的媒体库条目、完整的单个条目，以及立即请求一次扫描，同 fit 的 `admin/medialib.go`（冻结之后新增，I141） |
+| `/bittorrent/torrents`、`/bittorrent/torrents/{id}` 及其 `files`、`peers`、`trackers`、`/bittorrent/alt_speed`、`/bittorrent/publish/...`、`/bittorrent/events`、`/bittorrent/tracker/...` | BitTorrent 角色的种子、修改、事件和统计，同 fit 的 `admin/bittorrent.go` 和 `admin/btevents.go`；akio 尚不能做的事按名称以 501 应答（冻结之后新增，I157） |
 | `GET /dashboard/` | 仪表盘，给人看（不覆盖） |
 
 配置中的路径是 JSON pointer 的各个 token。变更的应答给出所应用的版本，在内容中（`version`）和 `Akit-Config-Version` 中，并给出配置的

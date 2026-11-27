@@ -53,6 +53,14 @@ BitTorrent crate，akio-bittorrent：bencode、v1/v2/混合种子、磁力链接
    目录（原因写在状态中，而不是建立一个包含 `exclude` 本想排除的内容的种子）；构建不能停止，因此重载或停止时让正在进行的构建运行到
    结束并丢弃（fit 的 I209 通过 context 停止构建）。
 
+8. **I157，同 fit 的 I203 和 I210**：`/bittorrent/` 下的端点属于 akit-bittorrent，通过 akit-admin 的 `Options::endpoints`
+   提供，使 akit-admin 不依赖这些角色；akit-admin 的 v1 测试把它们留给 akit-bittorrent 的测试，由后者对照 tests/compat/v1。
+   客户端的调用（会写状态文件）在 akio 的逻辑池上运行；事件流不等待地写入 akio 的 `BodyStream`，落后 256 KiB 的流被丢弃，
+   对应 fit 落后 256 个事件；其心跳是关于时间本身的定时器。指标是管理线程的查看保存的快照，速率按两次查看间隔一秒或更久计算，
+   因为 akio-bittorrent 不提供速率。在 akio 的 A288 之前：种子的 tracker 和 web seed 按其 .torrent 文件和磁力链接列出，状态未知
+   （这是 fit 对其客户端未运行的种子的应答），重新校验则不带 resume 数据重新添加种子，会校验每个分片但重新连接 peer。顺序下载和
+   文件优先级以 A287 为名拒绝，种子的 `max_conns` 和 `upload_slots` 以 A284 为名拒绝。
+
 ## 后果
 
 - fit 能运行而设置了 akio 尚不能提供的字段的配置，会按名称被拒绝，而不是缺少它照样运行。

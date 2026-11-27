@@ -870,3 +870,37 @@ config	added	supported	bittorrent.client.publish[].web_seed
 config	added	supported	routes[].handler<bt_publish>
 config	added	supported	routes[].handler<bt_publish>.params
 config	added	supported	routes[].handler<bt_publish>.params.publish
+# I157: the BitTorrent roles' endpoints (fit's admin/bittorrent.go and admin/btevents.go).
+admin	added	endpoint	GET	/bittorrent/torrents
+admin	added	endpoint	HEAD	/bittorrent/torrents
+admin	added	endpoint	POST	/bittorrent/torrents
+admin	added	endpoint	GET	/bittorrent/torrents/{id}
+admin	added	endpoint	HEAD	/bittorrent/torrents/{id}
+admin	added	endpoint	POST	/bittorrent/torrents/{id}
+admin	added	endpoint	PATCH	/bittorrent/torrents/{id}
+admin	added	endpoint	DELETE	/bittorrent/torrents/{id}
+admin	added	endpoint	GET	/bittorrent/torrents/{id}/files
+admin	added	endpoint	HEAD	/bittorrent/torrents/{id}/files
+admin	added	endpoint	GET	/bittorrent/torrents/{id}/peers
+admin	added	endpoint	HEAD	/bittorrent/torrents/{id}/peers
+admin	added	endpoint	GET	/bittorrent/torrents/{id}/trackers
+admin	added	endpoint	HEAD	/bittorrent/torrents/{id}/trackers
+admin	added	endpoint	GET	/bittorrent/alt_speed
+admin	added	endpoint	HEAD	/bittorrent/alt_speed
+admin	added	endpoint	PUT	/bittorrent/alt_speed
+admin	added	endpoint	GET	/bittorrent/publish
+admin	added	endpoint	HEAD	/bittorrent/publish
+admin	added	endpoint	GET	/bittorrent/publish/{name}
+admin	added	endpoint	HEAD	/bittorrent/publish/{name}
+admin	added	endpoint	GET	/bittorrent/publish/{name}/torrents/{id}
+admin	added	endpoint	HEAD	/bittorrent/publish/{name}/torrents/{id}
+admin	added	endpoint	GET	/bittorrent/events
+admin	added	endpoint	HEAD	/bittorrent/events
+admin	added	endpoint	GET	/bittorrent/tracker/stats
+admin	added	endpoint	HEAD	/bittorrent/tracker/stats
+admin	added	endpoint	GET	/bittorrent/tracker/torrents
+admin	added	endpoint	HEAD	/bittorrent/tracker/torrents
+admin	added	endpoint	GET	/bittorrent/tracker/torrents/{hash}
+admin	added	endpoint	HEAD	/bittorrent/tracker/torrents/{hash}
+admin	added	endpoint	GET	/bittorrent/tracker/passkey
+admin	added	endpoint	HEAD	/bittorrent/tracker/passkey

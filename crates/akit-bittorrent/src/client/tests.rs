@@ -1059,3 +1059,470 @@ fn publishing() {
     assert!(!dir.join("data/publish/rel").exists());
     assert!(src.join("a.bin").exists());
 }
+
+/// The Admin API's backend, as `AKIO_TEST_BACKEND` names it (epoll by default, `uring`).
+fn admin_backend() -> akio::Backend {
+    match std::env::var("AKIO_TEST_BACKEND").as_deref() {
+        Ok("uring") => akio::Backend::IoUring({
+            let mut v = akio::UringConfig::default();
+            v.strict = true;
+            v
+        }),
+        _ => akio::Backend::Epoll,
+    }
+}
+
+/// An Admin API serving the BitTorrent endpoints of `roles`' roles.
+pub(crate) fn admin_server(roles: &Manager) -> akit_admin::Server {
+    let settings = akit_config::Admin {
+        address: "127.0.0.1:0".into(),
+        ..akit_config::Admin::default()
+    };
+    let configs = akit_admin::Configs::new("{}".into(), akit_admin::SOURCE_FILE, settings.history);
+    let mut opts = akit_admin::Options::default();
+    opts.backend = Some(admin_backend());
+    opts.endpoints.push(crate::admin::endpoint(roles.apis()));
+    opts.streamed.push(crate::admin::PREFIX);
+    akit_admin::Server::start(&settings, configs, Box::new(|_| Ok(())), &opts).unwrap()
+}
+
+/// A request to `addr`: its status, head and body.
+pub(crate) fn http_req(
+    addr: std::net::SocketAddr,
+    method: &str,
+    target: &str,
+    headers: &[(&str, &str)],
+    body: &[u8],
+) -> (u16, String, Vec<u8>) {
+    use std::io::{Read, Write};
+    let mut s = std::net::TcpStream::connect(addr).unwrap();
+    s.set_read_timeout(Some(Duration::from_secs(30))).unwrap();
+    let mut head = format!(
+        "{method} {target} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\nContent-Length: {}\r\n",
+        body.len()
+    );
+    for (k, v) in headers {
+        head.push_str(&format!("{k}: {v}\r\n"));
+    }
+    head.push_str("\r\n");
+    s.write_all(head.as_bytes()).unwrap();
+    s.write_all(body).unwrap();
+    let mut out = Vec::new();
+    s.read_to_end(&mut out).unwrap();
+    let status = String::from_utf8_lossy(&out[9..12]).parse().unwrap();
+    let at = out.windows(4).position(|w| w == b"\r\n\r\n").unwrap() + 4;
+    let head = String::from_utf8_lossy(&out[..at]).into_owned();
+    let mut body = out[at..].to_vec();
+    if head
+        .to_ascii_lowercase()
+        .contains("transfer-encoding: chunked")
+    {
+        body = dechunk(&body);
+    }
+    (status, head, body)
+}
+
+fn dechunk(mut b: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
+    loop {
+        let Some(nl) = b.windows(2).position(|w| w == b"\r\n") else {
+            return out;
+        };
+        let n = usize::from_str_radix(String::from_utf8_lossy(&b[..nl]).trim(), 16).unwrap_or(0);
+        if n == 0 {
+            return out;
+        }
+        out.extend_from_slice(&b[nl + 2..nl + 2 + n]);
+        b = &b[nl + 2 + n + 2..];
+    }
+}
+
+/// A server-sent event stream of the Admin API, read as it comes.
+struct Sse {
+    s: std::net::TcpStream,
+    seen: String,
+}
+
+impl Sse {
+    fn open(addr: std::net::SocketAddr, last: Option<&str>) -> (u16, Sse) {
+        use std::io::Write;
+        let mut s = std::net::TcpStream::connect(addr).unwrap();
+        s.set_read_timeout(Some(Duration::from_millis(200)))
+            .unwrap();
+        let mut head =
+            "GET /bittorrent/events HTTP/1.1\r\nHost: 127.0.0.1\r\nAccept: text/event-stream\r\n"
+                .to_owned();
+        if let Some(l) = last {
+            head.push_str(&format!("Last-Event-ID: {l}\r\n"));
+        }
+        head.push_str("\r\n");
+        s.write_all(head.as_bytes()).unwrap();
+        let mut sse = Sse {
+            s,
+            seen: String::new(),
+        };
+        sse.until("\r\n\r\n", 10);
+        let status = sse.seen[9..12].parse().unwrap();
+        (status, sse)
+    }
+
+    /// Reads until `what` has come, `secs` at most.
+    fn until(&mut self, what: &str, secs: u64) -> bool {
+        use std::io::Read;
+        let deadline = Instant::now() + Duration::from_secs(secs);
+        let mut buf = [0u8; 4096];
+        while !self.seen.contains(what) {
+            if Instant::now() > deadline {
+                return false;
+            }
+            match self.s.read(&mut buf) {
+                Ok(0) => return self.seen.contains(what),
+                Ok(n) => self.seen.push_str(&String::from_utf8_lossy(&buf[..n])),
+                Err(_) => {}
+            }
+        }
+        true
+    }
+}
+
+/// fit's `admin/bittorrent_test.go` (I157): the torrents listed, filtered and paged; added as a
+/// .torrent file, as JSON and as a form; one read with its files; paused, resumed, rechecked,
+/// its limits, category and place changed; its peers and trackers; the alternative rates; the
+/// publish entries; removed with its files; the event stream with its replay and its reset; the
+/// metrics; what akio cannot do yet refused by name; the methods and paths refused; the roles
+/// that do not run.
+#[test]
+fn the_admin_api() {
+    let dir = tmp("admin");
+    let pubdir = dir.join("pub");
+    std::fs::create_dir_all(&pubdir).unwrap();
+    std::fs::write(pubdir.join("p.bin"), data(70_000, 81)).unwrap();
+    let extra = format!(
+        r#", "categories": [{{"name": "tv"}}], "alt_speed": {{"upload_rate": 1000}}, "publish": [{{"name": "share", "dir": {:?}, "check_interval": "100ms"}}]"#,
+        pubdir.to_str().unwrap()
+    );
+    let env = Env::start(&dir, free_port(), &extra);
+    let payload = data(300_000, 71);
+    std::fs::create_dir_all(env.downloads().join("tv")).unwrap();
+    std::fs::write(env.downloads().join("tv").join("t.bin"), &payload).unwrap();
+    let mi = torrent(&payload);
+    let api_server = admin_server(&env.roles);
+    let a = api_server.addr();
+    let get = |t: &str| {
+        let (s, _, b) = http_req(a, "GET", t, &[], b"");
+        (s, String::from_utf8_lossy(&b).into_owned())
+    };
+    let send = |m: &str, t: &str, ty: &str, body: &[u8]| {
+        let (s, h, b) = http_req(a, m, t, &[("Content-Type", ty)], body);
+        (s, h, String::from_utf8_lossy(&b).into_owned())
+    };
+    let json = "application/json";
+
+    let (s, b) = get("/bittorrent/torrents");
+    assert_eq!(
+        (s, compact(&b)),
+        (200, r#"{"torrents":[],"total":0,"offset":0}"#.into())
+    );
+
+    // The event stream, before anything happens.
+    let (s, mut sse) = Sse::open(a, None);
+    assert_eq!(s, 200, "{}", sse.seen);
+    assert!(sse.seen.contains("text/event-stream"), "{}", sse.seen);
+
+    // A .torrent file, its options in the query.
+    let (s, h, b) = send(
+        "POST",
+        "/bittorrent/torrents?category=tv&paused=0",
+        "application/x-bittorrent",
+        &mi.to_bytes(),
+    );
+    assert_eq!(s, 201, "{b}");
+    let id = super::hex(&mi.info_hash.0);
+    assert!(h.contains(&format!("/bittorrent/torrents/{id}")), "{h}");
+    assert!(b.contains(r#""category":"tv""#), "{b}");
+    assert!(sse.until("event: added", 10), "{}", sse.seen);
+    assert!(
+        sse.seen.contains(&format!(r#""torrent":"{id}""#)),
+        "{}",
+        sse.seen
+    );
+    let api = env.api();
+    wait_for("the check", 20, || {
+        api.get(&id).is_ok_and(|s| s.state == "seeding")
+    });
+
+    // Listed, filtered, paged.
+    let (_, b) = get("/bittorrent/torrents?state=seeding,paused&q=T.B&category=tv");
+    assert!(b.contains(r#""total":1"#), "{b}");
+    let (_, b) = get("/bittorrent/torrents?category=");
+    assert!(b.contains(r#""total":0"#), "{b}");
+    let (_, b) = get("/bittorrent/torrents?offset=1");
+    assert!(b.contains(r#""torrents":[],"total":1,"offset":1"#), "{b}");
+    assert_eq!(get("/bittorrent/torrents?state=done").0, 400);
+    assert_eq!(get("/bittorrent/torrents?limit=0").0, 400);
+
+    // One, with its files; by its v1 hash, or 64 hex digits of a v2 one.
+    let (s, b) = get(&format!("/bittorrent/torrents/{id}"));
+    assert_eq!(s, 200, "{b}");
+    assert!(
+        compact(&b).contains(r#""files":[{"index":0,"path":"t.bin","length":300000,"completed":300000,"priority":4}]"#),
+        "{b}"
+    );
+    assert!(
+        b.contains(r#""state":"seeding""#) && b.contains(r#""wanted":300000"#),
+        "{b}"
+    );
+    assert_eq!(
+        get(&format!("/bittorrent/torrents/{id}{}", "0".repeat(24))).0,
+        200
+    );
+    assert_eq!(get("/bittorrent/torrents/xyz").0, 404);
+    assert_eq!(
+        get(&format!("/bittorrent/torrents/{}", "1".repeat(40))).0,
+        404
+    );
+    let (_, b) = get(&format!("/bittorrent/torrents/{id}/files"));
+    assert!(b.starts_with(r#"{"files":[{"index":0"#), "{b}");
+    let (s, b) = get(&format!("/bittorrent/torrents/{id}/peers"));
+    assert_eq!((s, compact(&b)), (200, r#"{"peers":[]}"#.into()));
+    let (s, b) = get(&format!("/bittorrent/torrents/{id}/trackers"));
+    assert_eq!(
+        (s, compact(&b)),
+        (200, r#"{"trackers":[],"sources":[],"web_seeds":[]}"#.into())
+    );
+
+    // Paused and resumed, each an event.
+    let path = format!("/bittorrent/torrents/{id}");
+    let (s, _, b) = send("POST", &path, json, br#"{"action": "pause"}"#);
+    assert_eq!(s, 200, "{b}");
+    assert!(b.contains(r#""state":"paused""#), "{b}");
+    assert!(
+        sse.until(r#""state":"paused","previous":"seeding""#, 10),
+        "{}",
+        sse.seen
+    );
+    let (s, _, b) = send("POST", &path, json, br#"{"action": "resume"}"#);
+    assert_eq!(s, 200, "{b}");
+    assert_eq!(send("POST", &path, json, br#"{"action": "stop"}"#).0, 400);
+    assert_eq!(send("POST", &path, "text/plain", b"pause").0, 415);
+
+    // Changed: its limits (a bad one changes nothing), category and place.
+    let (s, _, b) = send(
+        "PATCH",
+        &path,
+        json,
+        br#"{"limits": {"upload_rate": 2048, "seed_time": "12h"}, "category": "", "queue_position": 0}"#,
+    );
+    assert_eq!(s, 200, "{b}");
+    assert!(b.contains(r#""limits":{"upload_rate":2048,"download_rate":0,"max_conns":0,"upload_slots":0,"seed_ratio":0,"seed_time":43200000000000}"#), "{b}");
+    assert!(!b.contains(r#""category""#), "{b}");
+    let (s, _, b) = send("PATCH", &path, json, br#"{"limits": {"max_conns": 3}}"#);
+    assert_eq!(s, 501, "{b}");
+    assert!(b.contains("A284"), "{b}");
+    let (s, _, b) = send("PATCH", &path, json, br#"{"sequential": true}"#);
+    assert_eq!(s, 501, "{b}");
+    assert!(b.contains("A287"), "{b}");
+    assert_eq!(
+        send(
+            "PATCH",
+            &path,
+            json,
+            br#"{"priorities": [{"index": 0, "priority": 0}]}"#
+        )
+        .0,
+        501
+    );
+    assert_eq!(
+        send("PATCH", &path, json, br#"{"category": "films"}"#).0,
+        400
+    );
+    assert_eq!(
+        send(
+            "PATCH",
+            &path,
+            json,
+            br#"{"limits": {"seed_time": "soon"}}"#
+        )
+        .0,
+        400
+    );
+    let (_, _, b) = send("PATCH", &path, json, br#"{"limits": null}"#);
+    assert!(!b.contains(r#""limits""#), "{b}");
+
+    // A recheck reads every piece again.
+    let (s, _, b) = send("POST", &path, json, br#"{"action": "recheck"}"#);
+    assert_eq!(s, 200, "{b}");
+    wait_for("the recheck", 20, || {
+        api.get(&id)
+            .is_ok_and(|s| s.state == "seeding" && s.pieces_checked == s.pieces as u64)
+    });
+
+    // The alternative rates.
+    let (s, b) = get("/bittorrent/alt_speed");
+    assert_eq!(
+        (s, compact(&b)),
+        (
+            200,
+            r#"{"mode":"auto","configured":true,"active":false,"upload_rate":1000,"download_rate":0}"#
+                .into()
+        )
+    );
+    let (s, _, b) = send("PUT", "/bittorrent/alt_speed", json, br#"{"mode": "on"}"#);
+    assert_eq!(s, 200, "{b}");
+    assert!(
+        b.contains(r#""mode":"on","configured":true,"active":true"#),
+        "{b}"
+    );
+    assert!(
+        sse.until(r#""type":"alt_speed","state":"on""#, 10),
+        "{}",
+        sse.seen
+    );
+    assert_eq!(
+        send("PUT", "/bittorrent/alt_speed", json, br#"{"mode": "fast"}"#).0,
+        400
+    );
+
+    // The publish entries.
+    wait_for("the published file", 20, || {
+        api.publishing()
+            .first()
+            .is_some_and(|e| e.torrents.len() == 1)
+    });
+    let (s, b) = get("/bittorrent/publish");
+    assert_eq!(s, 200, "{b}");
+    assert!(
+        b.starts_with(r#"{"entries":[{"name":"share""#) && !b.contains("torrent_url"),
+        "{b}"
+    );
+    let (s, b) = get("/bittorrent/publish/share");
+    assert!(s == 200 && b.contains(r#""path":"p.bin""#), "{b}");
+    assert_eq!(get("/bittorrent/publish/other").0, 404);
+    let pid = api.publishing()[0].torrents[0].id.clone();
+    let (s, h, raw) = http_req(
+        a,
+        "GET",
+        &format!("/bittorrent/publish/share/torrents/{pid}"),
+        &[],
+        b"",
+    );
+    assert_eq!(s, 200);
+    assert!(
+        h.contains("application/x-bittorrent") && h.contains("p.bin.torrent"),
+        "{h}"
+    );
+    assert_eq!(super::hex(&MetaInfo::parse(&raw).unwrap().info_hash.0), pid);
+
+    // Added as JSON and as a form; what is refused.
+    let other = torrent(&data(100_000, 72));
+    let mut body = String::from(r#"{"paused": true, "torrent": ""#);
+    body.push_str(&akio_crypto::base64::STANDARD.encode(other.to_bytes()));
+    body.push_str(r#"", "peers": ["127.0.0.1:1"], "limits": {"download_rate": 100}}"#);
+    let (s, _, b) = send("POST", "/bittorrent/torrents", json, body.as_bytes());
+    assert_eq!(s, 201, "{b}");
+    assert!(
+        b.contains(r#""paused":true"#) && b.contains(r#""download_rate":100"#),
+        "{b}"
+    );
+    let (s, _, b) = send("POST", "/bittorrent/torrents", json, body.as_bytes());
+    assert_eq!(s, 409, "{b}");
+    let (s, _, b) = send(
+        "POST",
+        "/bittorrent/torrents",
+        json,
+        br#"{"magnet": "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567", "sequential": true}"#,
+    );
+    assert_eq!(s, 501, "{b}");
+    let (s, _, b) = send(
+        "POST",
+        "/bittorrent/torrents",
+        json,
+        br#"{"magnet": "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567", "url": "http://127.0.0.1:1/x.torrent"}"#,
+    );
+    assert_eq!(s, 400, "{b}");
+    assert_eq!(
+        send("POST", "/bittorrent/torrents", "text/plain", b"x").0,
+        415
+    );
+    let third = torrent(&data(50_000, 73));
+    let mut form = Vec::new();
+    form.extend_from_slice(
+        b"--XyZ\r\nContent-Disposition: form-data; name=\"category\"\r\n\r\ntv\r\n",
+    );
+    form.extend_from_slice(
+        b"--XyZ\r\nContent-Disposition: form-data; name=\"paused\"\r\n\r\n1\r\n",
+    );
+    form.extend_from_slice(
+        b"--XyZ\r\nContent-Disposition: form-data; name=\"torrent\"; filename=\"t.torrent\"\r\nContent-Type: application/x-bittorrent\r\n\r\n",
+    );
+    form.extend_from_slice(&third.to_bytes());
+    form.extend_from_slice(b"\r\n--XyZ--\r\n");
+    let (s, _, b) = send(
+        "POST",
+        "/bittorrent/torrents",
+        "multipart/form-data; boundary=XyZ",
+        &form,
+    );
+    assert_eq!(s, 201, "{b}");
+    assert!(
+        b.contains(r#""category":"tv""#) && b.contains(r#""paused":true"#),
+        "{b}"
+    );
+
+    // The metrics.
+    api.save_now();
+    let mut out = Vec::new();
+    akit_roles::host::write_meters(&env.roles.meters(), &mut out);
+    let m = String::from_utf8(out).unwrap();
+    for want in [
+        "akit_bittorrent_client_running 1",
+        r#"akit_bittorrent_torrents{category="",state="seeding"} 1"#,
+        r#"akit_bittorrent_torrents{category="",state="paused"} 1"#,
+        r#"akit_bittorrent_torrents{category="tv",state="paused"} 1"#,
+        "akit_bittorrent_alt_speed_active 1",
+        "akit_bittorrent_event_subscribers 1",
+        r#"akit_bittorrent_published_torrents{entry="share"} 1"#,
+    ] {
+        assert!(m.contains(want), "{want} in\n{m}");
+    }
+
+    // Removed with its files.
+    let (s, _, b) = send("DELETE", &format!("{path}?delete_data=1"), json, b"");
+    assert_eq!(s, 200, "{b}");
+    assert_eq!(
+        compact(&b),
+        format!(r#"{{"removed":"{id}","data_deleted":true}}"#)
+    );
+    assert!(!env.downloads().join("tv").join("t.bin").exists());
+    assert!(sse.until(r#""type":"removed""#, 10), "{}", sse.seen);
+    assert_eq!(get(&path).0, 404);
+
+    // A stream that comes back after the event 2 gets those after it; one past the last
+    // (akit started again) a reset.
+    let (_, mut again) = Sse::open(a, Some("2"));
+    assert!(again.until("id: 3\n", 10), "{}", again.seen);
+    assert!(!again.seen.contains("event: reset"), "{}", again.seen);
+    let (_, mut past) = Sse::open(a, Some("100000"));
+    assert!(past.until("event: reset", 10), "{}", past.seen);
+
+    // Paths and methods refused; the tracker, which does not run.
+    assert_eq!(get("/bittorrent/nothing").0, 404);
+    let (s, h, _) = http_req(a, "PUT", "/bittorrent/torrents", &[], b"");
+    assert_eq!(s, 405);
+    assert!(h.contains("Allow: GET, HEAD, POST"), "{h}");
+    let (s, b) = get("/bittorrent/tracker/stats");
+    assert!(
+        s == 404 && b.contains("bittorrent.tracker role does not run"),
+        "{b}"
+    );
+
+    // The role stopped: the streams end; the endpoints say it does not run.
+    drop(env);
+    assert!(sse.until("event: end", 10), "{}", sse.seen);
+    let (s, b) = get("/bittorrent/torrents");
+    assert!(
+        s == 404 && b.contains("bittorrent.client role does not run"),
+        "{b}"
+    );
+    api_server.shutdown();
+}

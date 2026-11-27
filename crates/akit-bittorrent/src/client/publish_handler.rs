@@ -50,7 +50,9 @@ fn answer(status: u16, ty: &str, body: Vec<u8>) -> Response {
     r
 }
 
-fn entry_json(b: &mut String, e: &EntryStatus) {
+/// An entry as fit's JSON writes it, with its torrents' URLs relative to `bt_publish`'s index
+/// when `urls`.
+pub(crate) fn entry_json(b: &mut String, e: &EntryStatus, urls: bool) {
     let s = |b: &mut String, k: &str, v: &str| {
         let _ = write!(b, "\"{k}\":");
         write_string(b, v);
@@ -90,10 +92,12 @@ fn entry_json(b: &mut String, e: &EntryStatus) {
             b.push(',');
             s(b, "error", &t.error);
         }
-        b.push(',');
-        s(b, "torrent_url", &format!("{}.torrent", t.id));
-        b.push(',');
-        s(b, "magnet_url", &format!("{}.magnet", t.id));
+        if urls {
+            b.push(',');
+            s(b, "torrent_url", &format!("{}.torrent", t.id));
+            b.push(',');
+            s(b, "magnet_url", &format!("{}.magnet", t.id));
+        }
         b.push('}');
     }
     let _ = write!(b, "],\"pending\":{}", e.pending);
@@ -174,7 +178,7 @@ impl BtPublish {
                 if i > 0 {
                     b.push(',');
                 }
-                entry_json(&mut b, e);
+                entry_json(&mut b, e, true);
             }
             b.push_str("]}\n");
             return answer(200, "application/json", b.into_bytes());

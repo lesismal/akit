@@ -260,7 +260,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I154b | BitTorrent V b：客户端的 `access`、其连接限制、种子的 `max_conns` 和 `upload_slots`，基于 akio 的 A284 | I154 | todo |
 | I155 | BitTorrent VI：`bt_stream`，边下载边播放文件 | I152 | todo |
 | I156 | BitTorrent VII：把目录发布为种子，`bt_publish` | I152 | done |
-| I157 | BitTorrent VIII：Admin API 的 `/bittorrent/...`、事件、`akit bt`、指标 | I153 | todo |
+| I157 | BitTorrent VIII：Admin API 的 `/bittorrent/...`、事件、`akit bt`、指标 | I153 | done |
 | I158 | BitTorrent IX：客户端和 tracker 的页面 | I157, I109 | todo |
 | I159 | BitTorrent X：RSS 自动下载、实例共享的 tracker 存储、私有 tracker 的 passkey | I153, I151 | todo |
 | **1.0 之后：集群管理** | | | |
@@ -2036,6 +2036,7 @@ fit 的 I196–I210（其 [BitTorrent 指南](https://github.com/lesismal/fit/bl
   池上构建为混合种子，原地做种，web seed 指向 akit 的静态文件，跟随磁盘变化。
 - **涉及**：`akit-bittorrent`、`akit-config`。
 - **fit**：`bittorrent/{publish,publish_walk}.go`、`handler/btpublish`；I202、I209。
+- **状态**：done（2026-11-28）。见进度日志。在 akio 的 A288 之前，`whole_dir` 只发布没有被排除内容的目录，构建运行到结束。
 
 ### I157 BitTorrent VIII：Admin API、事件、`akit bt`、指标
 
@@ -2044,6 +2045,7 @@ fit 的 I196–I210（其 [BitTorrent 指南](https://github.com/lesismal/fit/bl
 - **涉及**：`akit-bittorrent`、`akit-admin`、`akit`、`akit-observe`。
 - **fit**：`admin/bittorrent.go`、`admin/btevents.go`、`cli/bt.go`、`bittorrent/{events,inspect,
   metrics}.go`；I203、I210。
+- **状态**：done（2026-11-28）。见进度日志。种子的 tracker 状态和原地重新校验等待 akio 的 A288（权宜做法见决策 042），顺序下载和文件优先级等待 A287；`akit bt rss` 随 I159 提供。
 
 ### I158 BitTorrent IX：页面
 

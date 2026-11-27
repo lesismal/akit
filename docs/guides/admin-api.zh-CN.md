@@ -64,6 +64,7 @@ API 默认监听 127.0.0.1:2019，也可以监听 Unix 套接字（`unix//run/ak
 | `POST /config/export`、`POST /config/import?format=&members=` | 配置（不含 `admin`，秘密被遮蔽）或其部分成员导出为文件；以及应用一个文件，保留 `admin` |
 | `GET /dashboard/` | 状态和配置的只读仪表盘 |
 | `GET /tokens`、`GET` 和 `POST /tokens/{成员}`、`PATCH` 和 `DELETE /tokens/{成员}/{id}` | 隧道 hub 和 LLM 角色的监听方签发的链路 token（`tunnel.hub`、`llm.hub`、`llm.node`、`llm.proxy`）：列出（带过期时间、最后使用、成员和链路）；签发（`{name, note, ttl \| expires_at}`，token 只显示一次，形如 `akitt1.<id>.<secret>`）；修改过期时间；撤销。每个修改都是对成员的一次编辑，记录到 `admin` 日志器；`akit token` 调用它们 |
+| `/bittorrent/...` | BitTorrent 角色的种子、事件和统计（[见下](#bittorrent)）；`akit bt` 调用它们 |
 
 带 `If-Match: <etag>` 的修改，若配置在读取之后已被改变，则以 412 拒绝，这样两个客户端不会互相覆盖。带 `?dry_run=1` 时，修改
 走完应用的完整流程，像真正应用一样应答，但不应用任何东西。
@@ -119,6 +120,40 @@ akit token revoke -c akit.json -role tunnel.hub -id fdd44d906b8e6ce2
 
 fit 签发的 token 换上 akit 的前缀就是同一个 token：`fitt1.<id>.<secret>` 写作 `akitt1.<id>.<secret>`。与 fit 不同，无论其
 角色是否已在运行，这些端点都作用于运行中配置所设置的成员；运行中的角色会补上每个 token 的最后使用和链路。
+
+## BitTorrent
+
+`bittorrent.client` 运行时，API 在 `/bittorrent/` 下提供它的种子（fit 的 `/bittorrent/...`，
+[决策 042](../decisions/042-bittorrent.zh-CN.md)）；`bittorrent.tracker` 运行时提供 tracker 的统计。未运行的角色的端点以 404
+说明这一点。
+
+| 端点 | 作用 |
+| --- | --- |
+| `GET /bittorrent/torrents` | 按队列顺序列出种子，`{torrents, total, offset}`；`state`（逗号分隔的状态）、`category`、`q`（名称中包含）、`offset`、`limit`（默认 1,000，至多 10,000） |
+| `POST /bittorrent/torrents` | 添加一个：JSON `{magnet \| url \| torrent（base64）, category, paused, peers, limits}`；以 `application/x-bittorrent` 发送 .torrent 文件，`category` 和 `paused` 放在查询中；或表单 `multipart/form-data`，文件在 `torrent` 部分。返回 201 和 `Location` |
+| `GET`、`POST`、`PATCH`、`DELETE /bittorrent/torrents/{id}` | 一个种子及其文件；`{"action": "pause" \| "resume" \| "recheck"}`；修改 `paused`、`category`、`limits`（`null` 清除）、`queue_position`；删除，`?delete_data=1` 连同文件 |
+| `GET /bittorrent/torrents/{id}/files`、`/peers`、`/trackers` | 它的文件、peer、tracker 和 web seed |
+| `GET`、`PUT /bittorrent/alt_speed` | 备用速率；`{"mode": "auto" \| "on" \| "off"}` |
+| `GET /bittorrent/publish`、`/publish/{name}`、`/publish/{name}/torrents/{id}` | 发布条目、其中一个，以及它发布的一个 .torrent 文件 |
+| `GET /bittorrent/events` | 客户端的事件，以 server-sent events 推送（`added`、`removed`、`state`、`completed`、`error`、`seed_limit`、`alt_speed`）；`Last-Event-ID`（或 `?after=`）重放最近 1,024 个中错过的事件，有些已不在时先发 `reset`；每 15 秒一条注释；至多 32 个流 |
+| `GET /bittorrent/tracker/stats`、`/tracker/torrents`、`/tracker/torrents/{hash}` | tracker 的总数、允许列表中的 swarm、一个 swarm |
+
+种子的 `{id}` 是其 v1 info hash 的十六进制，或其 v2 hash（64 个十六进制数字）。`GET /metrics` 包含客户端的
+`akit_bittorrent_*` 指标族（按分类的字节数、速率、peer 和各状态的种子数，备用速率，事件流，已发布的种子）以及 tracker 的
+`akit_bittorrent_tracker_*`。`akit bt` 调用这些端点，就像 `akit token` 调用它自己的端点：
+
+```sh
+akit bt add -c akit.json -category tv ubuntu.torrent 'magnet:?xt=urn:btih:...'
+akit bt ls -c akit.json -state downloading,seeding
+akit bt info -c akit.json ubuntu        # 按名称、ID，或 ID 的至少 4 个十六进制数字开头
+akit bt limit -c akit.json -up 512K -seed-time 12h ubuntu
+akit bt alt -c akit.json on
+akit bt rm -c akit.json -delete-data ubuntu
+```
+
+akio 尚不能做的事按名称以 501 拒绝：顺序下载和文件优先级（akio 的 A287）、种子的 `max_conns` 和 `upload_slots`（A284）。在
+akio 的 A288 之前，种子的 tracker 以未知状态列出，重新校验则不带 resume 数据重新添加种子：它校验每个分片，并重新连接其 peer。
+fit 的 `fit bt rss` 随 RSS 一起提供。
 
 ## 指标和追踪
 

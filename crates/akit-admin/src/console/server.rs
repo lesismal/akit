@@ -485,6 +485,10 @@ impl akio_http::Service for Service {
         // A config's body streams in within max_config_bytes, as the Admin API's does.
         match admin_path(req.path()) {
             Some(p) if takes_config(&req.method, p) => BodyMode::Stream,
+            // Another crate's endpoints read their bodies themselves (I157).
+            Some(p) if matches!(&self.0.kind, Kind::Admin(sh, ..) if sh.endpoint_streams(&req.method, p)) => {
+                BodyMode::Stream
+            }
             _ => BodyMode::Buffered,
         }
     }

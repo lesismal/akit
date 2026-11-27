@@ -71,6 +71,7 @@ What it serves:
 | `POST /config/export`, `POST /config/import?format=&members=` | the config (`admin` left out, secrets redacted), or some members, as a file; and a file applied, `admin` kept |
 | `GET /dashboard/` | a read-only dashboard of the status and the config |
 | `GET /tokens`, `GET` and `POST /tokens/{member}`, `PATCH` and `DELETE /tokens/{member}/{id}` | the link tokens the tunnel's hub and the LLM roles' listeners issue (`tunnel.hub`, `llm.hub`, `llm.node`, `llm.proxy`): listed with their expiry, last use, members and links; issued (`{name, note, ttl \| expires_at}`, the token shown once, `akitt1.<id>.<secret>`); their expiry changed; revoked. Each change is an edit of the member, logged to the `admin` logger; `akit token` calls them |
+| `/bittorrent/...` | the BitTorrent roles' torrents, events and statistics ([below](#bittorrent)); `akit bt` calls them |
 
 A change sent with `If-Match: <etag>` is refused with 412 if the config changed since it was read,
 so that two clients cannot overwrite each other. With `?dry_run=1` it is checked through the whole
@@ -137,6 +138,42 @@ akit token revoke -c akit.json -role tunnel.hub -id fdd44d906b8e6ce2
 A token fit issued is the same token with akit's prefix: `fitt1.<id>.<secret>` is written
 `akitt1.<id>.<secret>`. Unlike fit's, the endpoints work on the member the running config sets
 whether or not its role runs yet; the running role adds each token's last use and links.
+
+## BitTorrent
+
+With `bittorrent.client` running, the API serves its torrents below `/bittorrent/` (fit's
+`/bittorrent/...`, [decision 042](../decisions/042-bittorrent.md)); with `bittorrent.tracker`, the
+tracker's statistics. An endpoint of a role that does not run answers 404 saying so.
+
+| Endpoint | What it does |
+| --- | --- |
+| `GET /bittorrent/torrents` | the torrents in queue order, `{torrents, total, offset}`; `state` (states with commas), `category`, `q` (in the name), `offset`, `limit` (1,000 by default, 10,000 at most) |
+| `POST /bittorrent/torrents` | add one: JSON `{magnet \| url \| torrent (base64), category, paused, peers, limits}`; a .torrent file as `application/x-bittorrent`, `category` and `paused` in the query; or a form, `multipart/form-data`, the file in the part `torrent`. 201 with `Location` |
+| `GET`, `POST`, `PATCH`, `DELETE /bittorrent/torrents/{id}` | one with its files; `{"action": "pause" \| "resume" \| "recheck"}`; a change of `paused`, `category`, `limits` (`null` clears them), `queue_position`; removed, `?delete_data=1` with its files |
+| `GET /bittorrent/torrents/{id}/files`, `/peers`, `/trackers` | its files, its peers, its trackers and web seeds |
+| `GET`, `PUT /bittorrent/alt_speed` | the alternative rates; `{"mode": "auto" \| "on" \| "off"}` |
+| `GET /bittorrent/publish`, `/publish/{name}`, `/publish/{name}/torrents/{id}` | the publish entries, one, and a .torrent file one publishes |
+| `GET /bittorrent/events` | the client's events as server-sent events (`added`, `removed`, `state`, `completed`, `error`, `seed_limit`, `alt_speed`); `Last-Event-ID` (or `?after=`) replays those missed of the last 1,024, `reset` when some are gone; a comment every 15 s; 32 streams at most |
+| `GET /bittorrent/tracker/stats`, `/tracker/torrents`, `/tracker/torrents/{hash}` | the tracker's totals, the allow-list's swarms, one swarm |
+
+A torrent's `{id}` is its v1 info hash in hex, or its v2 hash (64 hex digits). `GET /metrics`
+carries the client's `akit_bittorrent_*` families (bytes, rates, peers and torrents in each state
+by category, the alternative rates, the event streams, the published torrents) and the tracker's
+`akit_bittorrent_tracker_*`. `akit bt` calls these endpoints, as `akit token` does its own:
+
+```sh
+akit bt add -c akit.json -category tv ubuntu.torrent 'magnet:?xt=urn:btih:...'
+akit bt ls -c akit.json -state downloading,seeding
+akit bt info -c akit.json ubuntu        # by name, ID, or 4 hex digits or more of it
+akit bt limit -c akit.json -up 512K -seed-time 12h ubuntu
+akit bt alt -c akit.json on
+akit bt rm -c akit.json -delete-data ubuntu
+```
+
+What akio cannot do yet is refused by name, 501: a sequential download and file priorities
+(akio's A287), a torrent's `max_conns` and `upload_slots` (A284). Until akio's A288 a torrent's
+trackers are listed with their state unknown, and a recheck adds the torrent again without its
+resume data: it checks every piece, and dials its peers again. fit's `fit bt rss` comes with RSS.
 
 ## Metrics and tracing
 

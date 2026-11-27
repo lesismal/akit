@@ -42,6 +42,7 @@
 
 mod adapt;
 mod boot;
+mod bt;
 mod build_cli;
 pub(crate) mod flags;
 mod hash_password;
@@ -88,6 +89,8 @@ Commands:
              or player of the streaming role
   token      issue, list, change and revoke the link tokens of a running akit's
              tunnel hub and LLM roles, through its Admin API
+  bt         see and steer a running akit's BitTorrent client, through its
+             Admin API
   store      print the config the encrypted store holds, or seal a config as
              the store (fit's fitstore files)
   version    print akit's version and the akio commit it is built on
@@ -1548,6 +1551,11 @@ fn run(args: &[String]) -> ExitCode {
             }));
             // The running roles' modules, which the console serves beside the config's (I109).
             api_opts.modules = Some(roles.modules());
+            // The BitTorrent roles' endpoints, /bittorrent/... (I157).
+            api_opts
+                .endpoints
+                .push(akit_bittorrent::admin::endpoint(roles.apis()));
+            api_opts.streamed.push(akit_bittorrent::admin::PREFIX);
             // What GET /node reads of the running akit (I131): the roles running, and whether
             // the running config counts requests.
             let (modules, graph) = (roles.modules(), cell.clone());
@@ -1929,6 +1937,7 @@ pub fn main(akit_version: &str, modules: &[&'static [Info<HandlerParams>]]) -> E
         "hash-password" => hash_password::hash_password(rest),
         "media-token" => media_token::media_token(rest),
         "token" => token::token(rest),
+        "bt" => bt::bt(rest),
         "store" => store_cli::store(rest),
         "version" | "-V" | "--version" => {
             if let Err(u) = flags::parse("version", rest, &[]) {

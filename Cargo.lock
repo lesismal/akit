@@ -426,6 +426,7 @@ dependencies = [
  "akio-http",
  "akio-sys",
  "akit-access",
+ "akit-admin",
  "akit-config",
  "akit-observe",
  "akit-roles",
