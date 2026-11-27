@@ -21,7 +21,7 @@ use akit_runtime::{HandlerParams, Info};
 pub static MODULES: &[Info<HandlerParams>] = &[Info::handler(
     "http.handlers.bt_tracker",
     "Serves the bittorrent.tracker role's HTTP announces and scrapes (BEP 3, 23, 7 and 48): a request whose path ends in announce is an announce, and one ending in scrape a scrape, whatever comes before. Refusals are answered 200 with a failure reason; 503 while the role does not run.",
-    tracker::handler::new,
+    tracker::new_handler,
 )];
 
 /// The `bittorrent.client` role.

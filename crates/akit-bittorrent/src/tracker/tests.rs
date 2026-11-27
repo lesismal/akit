@@ -23,7 +23,7 @@ use akio_bittorrent::tracker::{AnnounceRequest, Event, TrackerClient, TrackerErr
 use akit_roles::host::Manager;
 use akit_runtime::upstream::EngineSlot;
 
-use super::handler::tests_handler;
+use super::service as tests_handler;
 use super::{TRACKER, key_of, stats};
 
 fn free_port() -> u16 {

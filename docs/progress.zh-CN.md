@@ -36,7 +36,9 @@
 - 测试：`client::tests`（fit 的角色测试：两个角色之间下载、重启时不再读取任何分片、磁力链接的 .torrent 被保存并从中恢复、原地和以新
   客户端重载、端口被占用、损坏的状态文件、读取并写回 fit 的状态文件、损坏的种子仍被列出、API 的拒绝、暂停、继续、连同数据删除、控制台
   路由）；`tests/fit_interop.rs` 使用 fit 的二进制：akit 的客户端经由 fit 的 tracker 从 fit 的下载，fit 的也从 akit 的下载；
-  `tests/aria2c_interop.rs`（`AKIT_ARIA2C`）：aria2c 经由 akit 的 UDP tracker 从 akit 的客户端下载。
+  `tests/aria2c_interop.rs`（`AKIT_ARIA2C`）：aria2c 1.37 经由 akit 的 HTTP tracker 从 akit 的客户端下载（aria2c 只在开启 DHT 时才
+  以 UDP 访问 tracker），在基准主机上的 epoll 和 io_uring 下均通过。`akit_bittorrent::tracker::service` 在配置的路由之外的监听器上
+  提供 `bt_tracker`。
 - 待审查的决定：第 75 行。
 
 ### 2026-11-27：I113，WHIP 和 WHEP：媒体服务器

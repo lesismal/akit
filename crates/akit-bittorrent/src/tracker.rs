@@ -19,7 +19,9 @@
 //! leaves the one before. The UDP connection IDs are keyed by a secret the role keeps across
 //! reloads, not restarts.
 
-pub(crate) mod handler;
+mod handler;
+pub(crate) use handler::new as new_handler;
+pub use handler::service;
 mod pages;
 mod serve;
 

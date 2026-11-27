@@ -1,7 +1,9 @@
 //! Interop with aria2c where it is installed (I151, I152; `AKIT_ARIA2C` names it, the test is
 //! skipped without): akit's tracker and client roles in this process, akit's client seeding a
 //! file; aria2c, given the torrent whose tracker is akit's over UDP, finds akit's client only
-//! through it and downloads the file whole. Loopback only; aria2c's DHT, LPD and PEX off.
+//! through it and downloads the file whole. The tracker is reached over HTTP (`bt_tracker` on a
+//! listener of the engine): aria2c speaks UDP to trackers only with its DHT on. Loopback only;
+//! aria2c's DHT, LPD and PEX off.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -43,9 +45,24 @@ fn aria2c_downloads_from_akit_through_akits_tracker() {
     let udp = UdpSocket::bind("127.0.0.1:0").unwrap();
     let udp_addr = udp.local_addr().unwrap();
     drop(udp);
-    let engine = akio::Engine::builder().build().unwrap();
+    // UDP threads for the tracker's binding, as the listeners' engine has under `akit run`.
+    let engine = akio::Engine::builder()
+        .udp_client_threads(1)
+        .build()
+        .unwrap();
     engine.start().unwrap();
     let engine = Arc::new(engine);
+    let http = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap();
+    engine
+        .add_listener(akio::Listener::tcp(http).serve(akio_http::serve(
+            akit_bittorrent::tracker::service(akit_runtime::upstream::EngineSlot::with(
+                Arc::clone(&engine),
+            )),
+        )))
+        .unwrap();
     let mut roles = Manager::new(
         &[akit_bittorrent::TRACKER, akit_bittorrent::CLIENT],
         Arc::clone(&engine),
@@ -63,7 +80,7 @@ fn aria2c_downloads_from_akit_through_akits_tracker() {
     std::fs::write(data_dir.join("downloads/aria.bin"), &payload).unwrap();
     let mi = Builder::new("aria.bin")
         .piece_length(256 * 1024)
-        .tracker(format!("udp://{udp_addr}/announce"))
+        .tracker(format!("http://{http}/announce"))
         .build_bytes(&payload)
         .unwrap();
     let mi = MetaInfo::parse(&mi.to_bytes()).unwrap();
@@ -87,14 +104,36 @@ fn aria2c_downloads_from_akit_through_akits_tracker() {
             "--seed-time=0",
             "--bt-stop-timeout=60",
             "--quiet=true",
-            "--listen-port=0",
         ])
+        // aria2c takes no port 0: one free now.
+        .arg(format!(
+            "--listen-port={}",
+            std::net::TcpListener::bind("127.0.0.1:0")
+                .unwrap()
+                .local_addr()
+                .unwrap()
+                .port()
+        ))
         .arg(format!("--dir={}", out.to_str().unwrap()))
+        .arg(format!(
+            "--log={}",
+            dir.join("aria2c.log").to_str().unwrap()
+        ))
+        .arg("--log-level=info")
         .arg(&tf)
         .stdout(Stdio::null())
         .status()
         .unwrap();
-    assert!(status.success(), "aria2c: {status}");
+    if !status.success() {
+        let log = std::fs::read_to_string(dir.join("aria2c.log")).unwrap_or_default();
+        let tail: Vec<&str> = log.lines().rev().take(60).collect();
+        let tail: Vec<&str> = tail.into_iter().rev().collect();
+        panic!(
+            "aria2c: {status}; akit's torrent: {:?}\n{}",
+            api.get(&s.id),
+            tail.join("\n")
+        );
+    }
     assert!(std::fs::read(out.join("aria.bin")).unwrap() == payload);
     roles.stop(Duration::ZERO);
     engine.shutdown();

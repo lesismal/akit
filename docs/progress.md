@@ -46,8 +46,10 @@ done and where the work differs from the plan.
   port taken, bad state files, fit's state file read and written back, a broken torrent kept
   listed, the API's refusals, pause, resume, removal with the data, the console's routes);
   `tests/fit_interop.rs` with fit's binary: akit's client downloads from fit's through fit's
-  tracker and fit's from akit's; `tests/aria2c_interop.rs` (`AKIT_ARIA2C`): aria2c downloads from
-  akit's client through akit's UDP tracker.
+  tracker and fit's from akit's; `tests/aria2c_interop.rs` (`AKIT_ARIA2C`): aria2c 1.37 downloads from
+  akit's client through akit's tracker over HTTP (aria2c speaks UDP to trackers only with its DHT
+  on), on epoll and io_uring on the benchmark host. `akit_bittorrent::tracker::service` serves
+  `bt_tracker` on a listener outside a config's routes.
 - Decisions waiting for review: row 75.
 
 ### 2026-11-27: I113, WHIP and WHEP: the media server

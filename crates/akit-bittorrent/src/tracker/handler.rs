@@ -60,8 +60,9 @@ pub(crate) fn new(
     }) as Arc<dyn Handler>))
 }
 
-/// The handler on `engine`, as an akio-http service, for the tests' listener.
-#[cfg(test)]
-pub(crate) fn tests_handler(engine: EngineSlot) -> akit_runtime::HandlerService {
+/// `bt_tracker` serving the tracker of the engine `engine` holds, as an akio-http service, for a
+/// listener outside a config's routes (the tests', an embedding).
+#[must_use]
+pub fn service(engine: EngineSlot) -> akit_runtime::HandlerService {
     akit_runtime::HandlerService(Arc::new(BtTracker { engine }))
 }
