@@ -14,7 +14,7 @@ akit 配置的每个字段：配置的每一部分是做什么的、一个示例
 akit 与 fit 不同之处，在表格中以 **akit：** 标出。
 
 <!-- BEGIN GENERATED: summary -->
-fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **1174** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 180 个对象，下文各有一张表。
+fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **1175** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 180 个对象，下文各有一张表。
 <!-- END GENERATED -->
 
 字段说明来自 fit 代码中的 `doc` 标签，是英文的，所以每个字段的完整说明在[英文版](config.md)的同一张表中；本页的表格给出每个字段的
@@ -2601,7 +2601,7 @@ llm {
 服务器（`webrtc.media`），所有 PeerConnection 共享一个 UDP 端口；以及 [`webrtc_proxy`](#webrtc_proxy) 处理器的中继
 （`webrtc.proxy`），akit 后面的媒体服务器的 peer 经由这一个 UDP 端口到达它们。akit 像 fit 一样读取并检查它们（I110，
 [决定 039](../decisions/039-webrtc.zh-CN.md)）；`akit run` 基于 akio-turn 运行 TURN 服务器（I111、I112），基于 akio-webrtc
-运行 `whip` 和 `whep` 的媒体服务器（I113），并运行 `webrtc_proxy` 的中继（I114）。处理器的 `auth`（一个 `media_auth` 策略）尚不支持。
+运行 `whip` 和 `whep` 的媒体服务器（I113），并运行 `webrtc_proxy` 的中继（I114）。处理器的 `auth`（一个 `media_auth` 策略）由 akit-media 的守卫检查（I126）。
 
 ```fit
 webrtc {
@@ -3564,7 +3564,7 @@ route {
 ### `webrtc_proxy`
 
 把 WHIP 和 WHEP 交给某个 upstream 的媒体服务器，并经 `webrtc.proxy` 的单个 UDP 端口中继其 peer 的媒体。`akit run` 提供它
-（I114）。
+（I114）；offer 在媒体服务器看到之前由 `auth` 和 `action` 检查（I126）。
 
 <!-- BEGIN GENERATED: routes[].handler<webrtc_proxy>.params -->
 <a id="cfg-routes-handler-webrtc-proxy-params"></a>
@@ -3575,7 +3575,7 @@ route {
 | --- | --- | --- | --- |
 | `upstream` | 字符串 | 必填 |  |
 | `action` | 字符串：`publish`、`play` |  |  |
-| `auth` | 字符串 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `auth` | 字符串 |  |  |
 | `max_sdp_bytes` | 整数，≥ 0 | `32768` |  |
 | `media_addrs` | 值为字符串的映射 |  |  |
 | `timeout` | 时长 | `"10s"` |  |

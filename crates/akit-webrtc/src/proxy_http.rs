@@ -1,5 +1,8 @@
 //! The `webrtc_proxy` handler (I114, fit's `webrtc/media/proxyhttp.go`): WHIP and WHEP passed to
-//! the media servers of an upstream, their peers' media through `webrtc.proxy`'s one UDP port.
+//! the media servers of an upstream, their peers' media through `webrtc.proxy`'s one UDP port. An
+//! offer is checked by `auth` and `action` (I126: akit-media's guard, on the stream named by the
+//! POST's last segment, which must then be a stream's name) before a media server sees it; a
+//! session's requests go on without credentials.
 //!
 //! An endpoint's POST (an offer, its candidates taken out: the media server's peers reach it
 //! through akit alone) goes to a media server the upstream picks; a 201 is answered with the
@@ -22,6 +25,8 @@ use akio_http::{Context, Headers, Method, Response};
 use akit_runtime::{Handler, HandlerParams, Provision, ProvisionError, Provisioned};
 use akit_upstream::{EngineSlot, Pool};
 
+use akit_media::http::HandlerAuth;
+
 use crate::proxy::Cred;
 
 /// The `webrtc_proxy` handler.
@@ -32,6 +37,10 @@ struct ProxyHandler {
     media: Vec<(String, SocketAddr)>,
     timeout: Duration,
     limit: usize,
+    /// `auth` and `action`: the `media_auth` policy an offer must satisfy, and what it asks of it
+    /// (I126).
+    auth: HandlerAuth,
+    action: akit_config::media::MediaAction,
 }
 
 fn session_id(s: &str) -> bool {
@@ -351,7 +360,27 @@ impl akio_http::Service for Shared {
         match ctx.method().clone() {
             Method::Post => {
                 let endpoint = path.trim_end_matches('/').to_owned();
-                h.offer(ctx, &p, endpoint);
+                if !h.auth.named() {
+                    return h.offer(ctx, &p, endpoint);
+                }
+                // A name no media server of fit's takes, nor a policy names but by a wildcard:
+                // refused before it is checked, so that a name that reads one way here and
+                // another there is not (fit's).
+                let last = endpoint.rsplit('/').next().unwrap_or("");
+                let Some(stream) =
+                    path_unescape(last).filter(|s| akit_config::webrtc::stream_name(s))
+                else {
+                    return respond(
+                        ctx,
+                        400,
+                        "the stream's name is 1 to 128 letters, digits, '.', '_', '~' and '-'",
+                        &[],
+                    );
+                };
+                let (h2, p2) = (Arc::clone(h), Arc::clone(&p));
+                h.auth.guard(ctx, h.action, &stream, "", move |ctx, _| {
+                    h2.offer(ctx, &p2, endpoint);
+                });
             }
             Method::Options => {
                 let backend = h.pool.pick();
@@ -371,6 +400,26 @@ impl akio_http::Service for Shared {
 }
 
 impl Handler for Shared {}
+
+/// A path segment with its `%XX` escapes decoded, as Go's `url.PathUnescape`; `None` for a bad
+/// escape or what is not UTF-8.
+fn path_unescape(s: &str) -> Option<String> {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0usize;
+    while let Some(&c) = b.get(i) {
+        if c == b'%' {
+            let hex = |j: usize| b.get(j).and_then(|h| char::from(*h).to_digit(16));
+            let (hi, lo) = (hex(i.saturating_add(1))?, hex(i.saturating_add(2))?);
+            out.push(u8::try_from(hi.saturating_mul(16).saturating_add(lo)).ok()?);
+            i = i.saturating_add(3);
+        } else {
+            out.push(c);
+            i = i.saturating_add(1);
+        }
+    }
+    String::from_utf8(out).ok()
+}
 
 /// The session whose URL `path` is or is below, with the URL and what follows it: a segment of
 /// the path's last four that is a session's ID.
@@ -649,6 +698,13 @@ pub(crate) fn webrtc_proxy(
         media: params.media_addrs.clone(),
         timeout: params.timeout(),
         limit: params.sdp_bytes(),
+        auth: HandlerAuth::new(p.env().engine(), &params.auth, params.policy.as_ref()),
+        action: match params.action {
+            Some(akit_config::webrtc::MediaAction::Publish) => {
+                akit_config::media::MediaAction::Publish
+            }
+            _ => akit_config::media::MediaAction::Play,
+        },
     });
     Ok(Provisioned::new(Arc::new(Shared(h)) as Arc<dyn Handler>))
 }

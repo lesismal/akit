@@ -1,7 +1,8 @@
-//! `auth` on `whip` and `whep` (I126): fit's `webrtc/media/auth_test.go` `TestHandlerAuth`,
-//! ported. A POST is let on by the `media_auth` policy its handler names (akit-media's guard), on
-//! an akit listener with the roles `media_auth` and `webrtc.media` on the same engine, akio-webrtc
-//! `Endpoint`s as the peers over loopback: 401 with a Bearer challenge without credentials or with
+//! `auth` on `whip`, `whep` and `webrtc_proxy` (I126): fit's `webrtc/media/auth_test.go`
+//! `TestHandlerAuth` and `TestProxyAuth`, ported. A POST is let on by the `media_auth` policy its
+//! handler names (akit-media's guard), on an akit listener with the roles `media_auth` and
+//! `webrtc.media` (or `webrtc.proxy`) on the same engine, akio-webrtc `Endpoint`s as the peers over
+//! loopback: 401 with a Bearer challenge without credentials or with
 //! bad ones, 403 for what they do not allow, 201 for what they do, by token, signed token, query
 //! token, Basic and a bcrypt password; OPTIONS and a session's DELETE need no credentials; a reload
 //! changes the policy in place, and `public` opens an action to all; a reload without `auth` opens
@@ -72,6 +73,10 @@ fn live_policy(hash: &str, extra: &str) -> String {
 
 impl Akit {
     fn start(json: &str) -> Akit {
+        Akit::start_with(json, &[akit_media::role::MEDIA_AUTH, akit_webrtc::MEDIA])
+    }
+
+    fn start_with(json: &str, roles: &[akit_roles::host::Info]) -> Akit {
         let config = akit_config::from_json(json, None).unwrap_or_else(|e| panic!("{json}: {e}"));
         let registry: Registry<HandlerParams> = Registry::new(&[akit_webrtc::MODULES]).unwrap();
         let slot = EngineSlot::new();
@@ -81,11 +86,7 @@ impl Akit {
         engine.start().unwrap();
         assert!(slot.set(engine.clone()));
         let addr = *engine.local_addrs().first().unwrap();
-        let mut roles = Manager::new(
-            &[akit_media::role::MEDIA_AUTH, akit_webrtc::MEDIA],
-            Arc::clone(&engine),
-            None,
-        );
+        let mut roles = Manager::new(roles, Arc::clone(&engine), None);
         let errs = roles.apply(&config);
         assert!(errs.is_empty(), "{errs:?}");
         Akit {
@@ -162,7 +163,7 @@ enum Cred<'a> {
 
 /// POSTs a fresh offer of `ep` to `path`; the peer is closed unless it was taken.
 fn post(a: &Akit, ep: &Endpoint, path: &str, c: Cred<'_>) -> Resp {
-    let dir = if path.starts_with("/whip/") {
+    let dir = if path.contains("/whip/") {
         Direction::SendOnly
     } else {
         Direction::RecvOnly
@@ -275,6 +276,67 @@ fn handler_auth() {
     a.reload(&doc(None));
     assert!(akit_media::auth::registry::lookup(key, "live").is_none());
     assert_eq!(post(&a, &ep, "/whip/open1", Cred::None).status, 201);
+    ep.close();
+    clients.shutdown();
+}
+
+/// fit's `TestProxyAuth`: `webrtc_proxy` checks an offer by its `auth` and `action` before a media
+/// server sees it, and passes a session's requests on without credentials.
+#[test]
+fn proxy_auth() {
+    let hash = bcrypt::hash(b"bob-pw", bcrypt::MIN_COST).unwrap();
+    let backend = Akit::start(&doc(None));
+    let front = Akit::start_with(
+        &format!(
+            r#"{{"listeners": [{{"name": "web", "address": "127.0.0.1:0"}}],
+                "media_auth": [{}],
+                "upstreams": [{{"name": "media", "addresses": ["{}"]}}],
+                "routes": [
+                  {{"match": {{"path": ["/whip/*"]}}, "handler": {{"module": "webrtc_proxy", "params": {{"upstream": "media", "timeout": "1s", "auth": "live", "action": "publish"}}}}}},
+                  {{"match": {{"path": ["/whep/*"]}}, "handler": {{"module": "webrtc_proxy", "params": {{"upstream": "media", "timeout": "1s", "auth": "live", "action": "play"}}}}}}],
+                "webrtc": {{"proxy": {{"listen": "127.0.0.1:0"}}}}}}"#,
+            live_policy(&hash, ""),
+            backend.addr
+        ),
+        &[akit_media::role::MEDIA_AUTH, akit_webrtc::PROXY],
+    );
+    let clients = akio::Engine::builder()
+        .udp_client_threads(1)
+        .build()
+        .unwrap();
+    clients.start().unwrap();
+    let ep = Endpoint::bind(&clients, "127.0.0.1:0".parse().unwrap()).unwrap();
+    assert_eq!(post(&front, &ep, "/whip/cam1", Cred::None).status, 401);
+    assert_eq!(
+        post(&front, &ep, "/whip/bob", Cred::Bearer(PUB_TOKEN)).status,
+        403
+    );
+    // A name that is not a stream's: 400 before it is checked.
+    assert_eq!(
+        post(&front, &ep, "/whip/a%2Fb", Cred::Bearer(PUB_TOKEN)).status,
+        400
+    );
+    let mut m = Vec::new();
+    akit_roles::host::write_meters(&backend.roles.meters(), &mut m);
+    let m = String::from_utf8(m).unwrap();
+    assert!(
+        m.contains("akit_webrtc_media_streams 0"),
+        "a refused offer reached the media server:\n{m}"
+    );
+    let r = post(&front, &ep, "/whip/cam1", Cred::Bearer(PUB_TOKEN));
+    assert_eq!(r.status, 201);
+    let location = r.header("location").unwrap().to_owned();
+    // bob's bcrypt password, through the pool, for publish.
+    assert_eq!(
+        post(&front, &ep, "/whip/bob", Cred::Basic("bob", "bob-pw")).status,
+        201
+    );
+    assert_eq!(
+        post(&front, &ep, "/whep/cam1", Cred::Basic("alice", "alice-pw")).status,
+        201
+    );
+    // The session's DELETE needs no credentials.
+    assert_eq!(http(front.addr, "DELETE", &location, &[], "").status, 200);
     ep.close();
     clients.shutdown();
 }

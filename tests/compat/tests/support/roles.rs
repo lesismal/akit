@@ -1032,6 +1032,17 @@ fn webrtc(out: &mut Vec<(String, String, Read)>) {
             f("action", q("publish"), q("play")),
         ],
     );
+    // I126: `auth`, a media_auth policy, with its action.
+    let pa = |a: &str| {
+        format!(
+            r#"{{"listeners": [{{"name": "web", "address": ":8080"}}], "upstreams": [{{"name": "m", "addresses": ["10.0.0.2:8080"]}}], "media_auth": [{{"name": "p", "public": ["play"]}}, {{"name": "q", "public": ["publish"]}}], "routes": [{{"handler": {{"module": "webrtc_proxy", "params": {{"upstream": "m", "action": "publish", "auth": "{a}"}}}}}}]}}"#
+        )
+    };
+    out.push((
+        "routes[].handler<webrtc_proxy>.params.auth".into(),
+        pa("p"),
+        Read::Differs(pa("q")),
+    ));
 }
 
 /// I150: `bittorrent`'s client and tracker.

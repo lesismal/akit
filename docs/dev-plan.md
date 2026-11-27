@@ -250,7 +250,7 @@ Tunnel and LLM track; I110–I114 are the WebRTC track, and I115–I119 are rese
 | I123 | Streaming II: `httpflv` and `hls` | I122 | done |
 | I124 | Streaming III: `streaming.webrtc`, `stream_whip` and `stream_whep` | I123 | done |
 | I125 | The media pages: `media_pages`, its login and room API | I121, the WebRTC track's `whip` and `whep` | done |
-| I126 | Media auth on `whip`, `whep` and `webrtc_proxy` | I121, the WebRTC track's handlers | done (`whip`, `whep`); `webrtc_proxy`'s with I114 |
+| I126 | Media auth on `whip`, `whep` and `webrtc_proxy` | I121, the WebRTC track's handlers | done |
 | I126 | Media auth on `whip`, `whep` and `webrtc_proxy` | I121, the WebRTC track's handlers | todo |
 | I114 | WebRTC V: WHIP and WHEP proxied: `webrtc_proxy` and `webrtc.proxy` | I113, I14 | done |
 | I150 | BitTorrent I: `bittorrent.client` and `bittorrent.tracker` in the config, fit's fields, checks and clashes; what later iterations run refused as not supported yet | I98 | todo |
@@ -2144,10 +2144,8 @@ the Media library and channels track's, refused as not supported yet until then.
 - **Done when**: fit's tests of `auth` on those handlers pass ported.
 - **Touches**: the WebRTC track's handlers, `akit-config`.
 - **fit**: `webrtc/media`; I115.
-- **Status**: done for `whip` and `whep` (2026-11-27); `webrtc_proxy`'s `auth` (and its `action`)
-  stays refused as not supported yet until the role `webrtc.proxy` runs (I114), whose handler
-  takes it with `akit_media::http::HandlerAuth`. See the progress log.
-### BitTorrent
+- **Status**: done (2026-11-27 for `whip` and `whep`, 2026-11-28 for `webrtc_proxy` once I114
+  landed). See the progress log.
 
 fit's I196–I210 (its [BitTorrent guide](https://github.com/lesismal/fit/blob/main/docs/bittorrent.md),
 its decision 037, its packages `bittorrent`, `bittorrent/tracker`, `handler/btstream`,

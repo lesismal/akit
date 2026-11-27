@@ -1446,3 +1446,5 @@ routes[].handler<media_pages>.params.stall_timeout
 routes[].handler<media_pages>.params.title
 routes[].handler<media_pages>.params.whep
 routes[].handler<media_pages>.params.whip
+# I126: webrtc_proxy's auth, a media_auth policy (akit-media's guard).
+routes[].handler<webrtc_proxy>.params.auth

@@ -556,6 +556,11 @@ pub struct WebRtcProxyHandler {
     pub max_sdp_bytes: usize,
     /// `action`: what an offer asks of `auth`.
     pub action: Option<MediaAction>,
+    /// `auth`: the `media_auth` policy an offer must satisfy (I126); empty for none.
+    pub auth: String,
+    /// The policy `auth` names, from the config, for the handler to compile when the role
+    /// `media_auth` has not applied it yet.
+    pub policy: Option<crate::media::MediaAuth>,
 }
 
 impl WebRtcProxyHandler {
@@ -671,15 +676,16 @@ const WEBRTC_PROXY_ROLE_FIELDS: &[&str] = &[
 /// The params of `whip` and `whep` akit reads (`auth` since I126).
 pub(crate) const WHIP_FIELDS: &[&str] = &["stream", "auth"];
 pub(crate) const WHIP_FIT_ONLY: &[&str] = &[];
-/// The params of `webrtc_proxy` akit reads; `auth` waits for the role `webrtc.proxy` (I114).
+/// The params of `webrtc_proxy` akit reads (`auth` since I126).
 pub(crate) const WEBRTC_PROXY_FIELDS: &[&str] = &[
     "upstream",
     "media_addrs",
     "timeout",
     "max_sdp_bytes",
     "action",
+    "auth",
 ];
-pub(crate) const WEBRTC_PROXY_FIT_ONLY: &[&str] = &["auth"];
+pub(crate) const WEBRTC_PROXY_FIT_ONLY: &[&str] = &[];
 
 // ---------------------------------------------------------------------------------------------
 // The decoders.
@@ -1156,21 +1162,6 @@ fn proxy(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<WebRtcProxy> {
     Some(p)
 }
 
-/// `webrtc_proxy`'s `auth`, the name of a `media_auth` policy, which akit does not read until the
-/// role `webrtc.proxy` runs (I114): refused as not supported yet, naming the module, so that the
-/// gate finds the field.
-fn auth(d: &mut Decoder<'_>, o: &mut Obj<'_>, module: &str) {
-    if let Some(v) = o.take("auth") {
-        d.not_yet(
-            v.off,
-            &o.at("auth"),
-            &format!(
-                "the {module:?} handler's auth: a media_auth policy, which akit does not read yet"
-            ),
-        );
-    }
-}
-
 /// The params of a `whip` or `whep` handler.
 pub(crate) fn whip_whep(
     d: &mut Decoder<'_>,
@@ -1216,8 +1207,9 @@ pub(crate) fn webrtc_proxy(
         return None;
     };
     let mut o = d.object(n, path)?;
-    auth(d, &mut o, "webrtc_proxy");
     let mut h = WebRtcProxyHandler::default();
+    let auth_off = o.key_off("auth");
+    h.auth = text(d, &mut o, "auth");
     if let Some(v) = o.require(d, "upstream") {
         h.upstream = d.string(v, &o.at("upstream")).unwrap_or_default();
     }
@@ -1256,6 +1248,13 @@ pub(crate) fn webrtc_proxy(
             ),
             None => {}
         }
+    }
+    if !h.auth.is_empty() && h.action.is_none() {
+        d.error(
+            auth_off.unwrap_or(n.off),
+            &o.at("action"),
+            "auth needs action: publish for a WHIP endpoint, play for a WHEP one",
+        );
     }
     o.finish(d, WEBRTC_PROXY_FIELDS, WEBRTC_PROXY_FIT_ONLY);
     Some(h)

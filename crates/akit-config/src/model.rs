@@ -3098,6 +3098,7 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
             Handler::StreamWhip(h) | Handler::StreamWhep(h) => Some((&h.auth, &mut h.policy)),
             // I126: the WebRTC track's whip and whep.
             Handler::Whip(h) | Handler::Whep(h) => Some((&h.auth, &mut h.policy)),
+            Handler::WebRtcProxy(h) => Some((&h.auth, &mut h.policy)),
             Handler::MediaPages(h) => Some((&h.auth, &mut h.policy)),
             _ => None,
         };

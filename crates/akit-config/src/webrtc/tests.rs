@@ -328,7 +328,7 @@ fn handler(doc: &str) -> Handler {
 
 /// The handlers' params: `whip` and `whep` take a stream's name, `webrtc_proxy` an upstream and
 /// its media addresses; `whip`'s and `whep`'s `auth` names a policy of the config (I126),
-/// `webrtc_proxy`'s is not supported yet (I114).
+/// and `webrtc_proxy`'s with its `action`.
 #[test]
 fn handlers() {
     let route = |module: &str, params: &str| {
@@ -392,7 +392,14 @@ fn handlers() {
                 "webrtc_proxy",
                 r#", "params": {"upstream": "m", "auth": "cams", "action": "publish"}"#,
             ),
-            "routes[0].handler.params.auth: not supported yet",
+            r#"routes[0].handler.params.auth: there is no media_auth policy named "cams""#,
+        ),
+        (
+            route(
+                "webrtc_proxy",
+                r#", "params": {"upstream": "m", "auth": "cams"}"#,
+            ),
+            "auth needs action",
         ),
         (
             route("webrtc_proxy", ""),

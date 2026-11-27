@@ -324,7 +324,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 1174 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 1175 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -351,7 +351,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`http.handlers/stream_whip`](#fields-http-handlers-stream-whip) | 5 | 5 | 0 |
 | [`http.handlers/sync_ingest`](#fields-http-handlers-sync-ingest) | 6 | 0 | 6 |
 | [`http.handlers/vod`](#fields-http-handlers-vod) | 13 | 0 | 13 |
-| [`http.handlers/webrtc_proxy`](#fields-http-handlers-webrtc-proxy) | 8 | 7 | 1 |
+| [`http.handlers/webrtc_proxy`](#fields-http-handlers-webrtc-proxy) | 8 | 8 | 0 |
 | [`http.handlers/websockify`](#fields-http-handlers-websockify) | 12 | 0 | 12 |
 | [`http.handlers/whep`](#fields-http-handlers-whep) | 4 | 4 | 0 |
 | [`http.handlers/whip`](#fields-http-handlers-whip) | 4 | 4 | 0 |
@@ -449,7 +449,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 161 | 3 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 76 | 0 |
-| **合计** | 3821 | 1174 | 2647 |
+| **合计** | 3821 | 1175 | 2646 |
 
 <a id="fields-access"></a>
 
@@ -1137,7 +1137,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `routes[].handler<webrtc_proxy>` | `module` | 已支持 |
 | `routes[].handler<webrtc_proxy>.params` | `object` | 已支持 |
 | `routes[].handler<webrtc_proxy>.params.action` | `enum(publish\|play)` | 已支持 |
-| `routes[].handler<webrtc_proxy>.params.auth` | `string` | 尚不支持（not supported yet） |
+| `routes[].handler<webrtc_proxy>.params.auth` | `string` | 已支持 |
 | `routes[].handler<webrtc_proxy>.params.max_sdp_bytes` | `integer` | 已支持 |
 | `routes[].handler<webrtc_proxy>.params.media_addrs` | `map<string>` | 已支持 |
 | `routes[].handler<webrtc_proxy>.params.timeout` | `duration` | 已支持 |

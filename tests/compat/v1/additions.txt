@@ -790,3 +790,4 @@ config	added	supported	routes[].handler<media_pages>.params.stall_timeout
 config	added	supported	routes[].handler<media_pages>.params.title
 config	added	supported	routes[].handler<media_pages>.params.whep
 config	added	supported	routes[].handler<media_pages>.params.whip
+config	added	supported	routes[].handler<webrtc_proxy>.params.auth

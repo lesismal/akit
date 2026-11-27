@@ -17,7 +17,7 @@ so in a note marked **akit:**; nine defaults that name the gateway are akit's, `
 say `fit` ([decision 037](../decisions/037-akit-names.md)).
 
 <!-- BEGIN GENERATED: summary -->
-akit reads **1174** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 180 objects akit reads, each has its table below.
+akit reads **1175** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 180 objects akit reads, each has its table below.
 <!-- END GENERATED -->
 
 How to read the tables:
@@ -2484,7 +2484,8 @@ PeerConnection shares; and the relay of the [`webrtc_proxy`](#webrtc_proxy) hand
 one UDP port through which the peers of the media servers behind akit reach them. akit reads and
 checks them as fit's (I110, [decision 039](../decisions/039-webrtc.md)); `akit run` runs the TURN
 server (I111, I112) on akio-turn, the media server of `whip` and `whep` (I113) on akio-webrtc, and
-the relay of `webrtc_proxy` (I114). The handlers' `auth`, a `media_auth` policy, is not supported yet.
+the relay of `webrtc_proxy` (I114). The handlers' `auth`, a `media_auth` policy, is checked by
+akit-media's guard (I126).
 
 ```fit
 webrtc {
@@ -3386,7 +3387,8 @@ checks play (I126).
 ### `webrtc_proxy`
 
 Passes WHIP and WHEP to the media servers of an upstream, and relays their peers' media through
-`webrtc.proxy`'s one UDP port. `akit run` serves it (I114).
+`webrtc.proxy`'s one UDP port. `akit run` serves it (I114); an offer is checked by `auth` and
+`action` before a media server sees it (I126).
 
 <!-- BEGIN GENERATED: routes[].handler<webrtc_proxy>.params -->
 <a id="cfg-routes-handler-webrtc-proxy-params"></a>
@@ -3395,7 +3397,7 @@ Passes WHIP and WHEP to the media servers of an upstream, and relays their peers
 | --- | --- | --- | --- |
 | `upstream` | string | required | The upstream of the media servers, picked by its load balancing for each offer: akit's own whip and whep, or any WHIP or WHEP server. Its health checks and timeouts apply. |
 | `action` | string: `publish`, `play` |  | What an offer asks of auth: publish for a WHIP endpoint, play for a WHEP one. Required with auth. |
-| `auth` | string |  | **Not supported yet**: refused by name. The media_auth policy an offer must satisfy before it is sent to a media server: its credentials need action on the stream, the last segment of the POST's path, which must then be 1 to 128 letters, digits, '.', '_', '~' and '-', decoded, or the offer is answered 400. Missing or bad credentials are answered 401 with a Bearer challenge, others 403. A session's URL is passed on without credentials, its ID being the capability; the request's Authorization goes on to the media server as it came. Everyone may when left out, as the route's middleware allow. |
+| `auth` | string |  | The media_auth policy an offer must satisfy before it is sent to a media server: its credentials need action on the stream, the last segment of the POST's path, which must then be 1 to 128 letters, digits, '.', '_', '~' and '-', decoded, or the offer is answered 400. Missing or bad credentials are answered 401 with a Bearer challenge, others 403. A session's URL is passed on without credentials, its ID being the capability; the request's Authorization goes on to the media server as it came. Everyone may when left out, as the route's middleware allow. |
 | `max_sdp_bytes` | integer, 0 or more | `32768` | The largest request and answer passed on, an offer and an answer among them; a larger request is answered 413, and a larger answer 502. 32 KiB when left out or 0. |
 | `media_addrs` | map of string |  | The address akit relays a media server's peers to, by the media server's address in the upstream, as {"10.0.0.2:8080": "10.0.0.2:8189"}, or an IP alone, which takes the port of its answer's candidate. When left out, the answer's first host candidate, or server-reflexive one, IPv4 first. |
 | `timeout` | duration | `"10s"` | The most a request may take, from its last byte to the media server's answer read whole; past it, it is answered 504. 10s when left out. |
