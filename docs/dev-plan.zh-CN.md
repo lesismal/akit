@@ -236,7 +236,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I121 | 媒体认证 II：策略、HTTP 请求的检查、`akit media-token` | I120 | done |
 | I122 | 流媒体 I：角色的媒体中心及其 RTMP、RTSP 和 SRT 监听器 | I121, I100 | done |
 | I123 | 流媒体 II：`httpflv` 和 `hls` | I122 | done |
-| I124 | 流媒体 III：`streaming.webrtc`、`stream_whip` 和 `stream_whep` | I123 | todo |
+| I124 | 流媒体 III：`streaming.webrtc`、`stream_whip` 和 `stream_whep` | I123 | done |
 | I125 | 媒体页面：`media_pages`、其登录和房间 API | I121、WebRTC 路线的 `whip` 和 `whep` | todo |
 | I126 | `whip`、`whep` 和 `webrtc_proxy` 上的媒体认证 | I121、WebRTC 路线的处理器 | todo |
 | I114 | WebRTC V：代理的 WHIP 和 WHEP：`webrtc_proxy` 和 `webrtc.proxy` | I113, I14 | done |
@@ -1771,7 +1771,7 @@ fit 的 I115–I117（其[流媒体指南](https://github.com/lesismal/fit/blob/
   播放；fit-examples 的 `streaming` 有效。
 - **涉及**：`akit-media`、`akit-config`、`tests/compat`、`docs/reference`。
 - **fit**：`streaming/handlers.go`、`listeners.go`（`applyWebRTC`）；I116。
-- **状态**：todo。
+- **状态**：已完成（2026-11-27），`play_wait` 和端口 0 采用临时做法（akio A267、A268）。见进度日志。
 
 ### I125 媒体页面
 

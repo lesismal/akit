@@ -51,7 +51,7 @@ akit 的注册表；可执行文件启动时，注册表拒绝重复的 ID 或�
 - 对客户端或配置发来的内容**不 panic**（规则 15）：错误是值，与 akit 一样。akit 在自己的 crate
   中禁止 `unsafe`；模块也应如此。
 
-模块不能使用 fit 有而 akit 尚未支持的名字（`hls`、`wasm` 等）：akit 的配置模型把它们作为
+模块不能使用 fit 有而 akit 尚未支持的名字（`vod`、`media_pages` 等）：akit 的配置模型把它们作为
 "not supported yet" 拒绝。akit 可执行文件中没有对应模块的名字，会在编译配置时报告，与 fit 的报告
 相同：`routes[0].handler.module: there is no module "nope" in http.handlers (it has "fastcgi", …)`。
 
@@ -69,6 +69,7 @@ akit build -with akit-hello=crates/akit/tests/testdata/hello-module -o akit-hell
 | --- | --- |
 | `-o file` | 要写出的可执行文件；省略时为 `akit` |
 | `-with crate` | 要构建进去的 crate，每个重复一次：`name`、`name@version`（crates.io）、源码在 `dir` 中的 `name=dir`，或在 git 仓库中的 `name=git+url#reference`（提交、标签 `v…` 或分支；没有 `#` 时为默认分支） |
+| `-without crate` | 去掉 akit 自带的一个模块 crate，每个重复一次：`akit-handler`（`respond`、`static`、`fastcgi`、`forward_proxy`）、`akit-middleware`（除 `cache` 外的所有中间件）、`akit-cache`（`cache`）、`akit-proxy`（`proxy`）、`akit-webrtc`（`whip`、`whep`、`webrtc_proxy`）或 `akit-media`（`httpflv`、`hls`、`stream_whip`、`stream_whep`） |
 | `-without crate` | 去掉 akit 自带的一个模块 crate，每个重复一次：`akit-handler`（`respond`、`static`、`fastcgi`、`forward_proxy`）、`akit-middleware`（除 `cache` 外的所有中间件）、`akit-cache`（`cache`）、`akit-proxy`（`proxy`）、`akit-webrtc`（`whip`、`whep`、`webrtc_proxy`）或 `akit-media`（`httpflv`、`hls`） |
 | `-without crate` | 去掉 akit 自带的一个模块 crate，每个重复一次：`akit-handler`（`respond`、`static`、`fastcgi`、`forward_proxy`）、`akit-middleware`（除 `cache` 外的所有中间件）、`akit-cache`（`cache`）、`akit-proxy`（`proxy`）、`akit-webrtc`（`whip`、`whep`、`webrtc_proxy`）或 `akit-bittorrent`（`bt_tracker`） |
 | `-akit v` | 构建所基于的 akit：`github.com/lesismal/akit` 的一个修订（提交，或标签 `v…`）、它的另一个仓库 `git+url#reference`，或存放其源码的目录（检出的根目录或其 `crates/akit`）；省略时为构建本 akit 所用的源码 |

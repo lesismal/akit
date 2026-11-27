@@ -59,7 +59,7 @@ complete module, the one `akit build`'s test builds in. Its parts:
 - **No panics** on what a client or a config sends (rule 15): an error is a value, as in akit.
   akit forbids `unsafe` in its own crates; a module should too.
 
-A module may not take a name fit has and akit does not support yet (`hls`, `wasm` and the rest):
+A module may not take a name fit has and akit does not support yet (`vod`, `media_pages` and the rest):
 akit's config model refuses those as "not supported yet". A name akit's binary has no module for
 is reported when the config is compiled, as fit reports it: `routes[0].handler.module: there is no
 module "nope" in http.handlers (it has "fastcgi", …)`.
@@ -79,6 +79,7 @@ akit's own; `akit version` says the version it was built as.
 | --- | --- |
 | `-o file` | the binary to write; `akit` when left out |
 | `-with crate` | a crate to build in, repeated for each: `name`, `name@version` (crates.io), `name=dir` for one whose source is in `dir`, or `name=git+url#reference` for one in a git repository (a commit, a tag `v…` or a branch; its default branch without `#`) |
+| `-without crate` | leave out one of akit's own module crates, repeated for each: `akit-handler` (`respond`, `static`, `fastcgi`, `forward_proxy`), `akit-middleware` (every middleware but `cache`), `akit-cache` (`cache`), `akit-proxy` (`proxy`), `akit-webrtc` (`whip`, `whep`, `webrtc_proxy`) or `akit-media` (`httpflv`, `hls`, `stream_whip`, `stream_whep`) |
 | `-without crate` | leave out one of akit's own module crates, repeated for each: `akit-handler` (`respond`, `static`, `fastcgi`, `forward_proxy`), `akit-middleware` (every middleware but `cache`), `akit-cache` (`cache`), `akit-proxy` (`proxy`), `akit-webrtc` (`whip`, `whep`, `webrtc_proxy`) or `akit-media` (`httpflv`, `hls`) |
 | `-without crate` | leave out one of akit's own module crates, repeated for each: `akit-handler` (`respond`, `static`, `fastcgi`, `forward_proxy`), `akit-middleware` (every middleware but `cache`), `akit-cache` (`cache`), `akit-proxy` (`proxy`), `akit-webrtc` (`whip`, `whep`, `webrtc_proxy`) or `akit-bittorrent` (`bt_tracker`) |
 | `-akit v` | the akit to build on: a revision of `github.com/lesismal/akit` (a commit, or a tag `v…`), `git+url#reference` for another repository of it, or a directory holding its source (a checkout's root or its `crates/akit`); the source this akit was built from when left out |

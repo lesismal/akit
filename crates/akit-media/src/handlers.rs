@@ -43,23 +43,19 @@ pub static MODULES: &[Info<HandlerParams>] = &[
         "Plays the streaming role's streams over HLS, fMP4 or MPEG-TS segments, Low-Latency HLS optional: /live/cam/index.m3u8 plays live/cam.",
         new_hls,
     ),
+    Info::handler(
+        "http.handlers.stream_whip",
+        "Takes WebRTC streams published with WHIP (RFC 9725) into the streaming role's hub, which plays them over every protocol.",
+        crate::rtc::new_whip,
+    ),
+    Info::handler(
+        "http.handlers.stream_whep",
+        "Plays the streaming role's streams to WebRTC viewers with WHEP, whatever they were published over.",
+        crate::rtc::new_whep,
+    ),
 ];
 
-/// Whether `p` is a stream's path: segments of letters, digits, '.', '_', '~' and '-', joined by
-/// '/', none of them `.` or `..`, at most 256 bytes (fit's `validStream`).
-#[must_use]
-pub fn valid_stream(p: &str) -> bool {
-    p.len() <= 256
-        && !p.is_empty()
-        && p.split('/').all(|seg| {
-            !seg.is_empty()
-                && seg != "."
-                && seg != ".."
-                && seg
-                    .bytes()
-                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'~' | b'-'))
-        })
-}
+pub use akit_config::media::valid_stream;
 
 /// Answers with a line of text, the request's tokens written `REDACTED` first, as every answer.
 fn text(ctx: &mut Context, status: u16, msg: &str) {

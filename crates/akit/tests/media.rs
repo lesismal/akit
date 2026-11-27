@@ -1,5 +1,6 @@
 //! fit's media auth and streaming role through akit's command line (I121–I124): `akit
-//! media-token` signs a token the policy takes, and refuses what fit's refuses.
+//! media-token` signs a token the policy takes, and refuses what fit's refuses; the role against
+//! ffmpeg (RTMP, RTSP, SRT, HTTP-FLV, HLS and WHIP) and fit's binary.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -358,6 +359,112 @@ fn ffmpeg_publishes_and_plays() {
             let _ = good.kill();
             let _ = good.wait();
         }
+        let _ = std::fs::remove_dir_all(&d);
+    }
+}
+
+/// Whether ffmpeg has the muxer `name`.
+fn have_muxer(name: &str) -> bool {
+    Command::new("ffmpeg")
+        .args(["-hide_banner", "-muxers"])
+        .output()
+        .is_ok_and(|out| {
+            String::from_utf8_lossy(&out.stdout)
+                .lines()
+                .any(|l| l.split_whitespace().nth(1) == Some(name))
+        })
+}
+
+/// ffmpeg's WHIP muxer publishing to `stream_whip` on the role's WebRTC port (I124): refused
+/// without the token, published with it (H.264 without B-frames, and Opus), and played back over
+/// RTMP and HLS. The same against fit's binary when `AKIT_FIT_BIN` names it. Skipped without an
+/// ffmpeg that has the WHIP muxer.
+#[test]
+fn ffmpeg_publishes_over_whip() {
+    if !have_muxer("whip") || !have("ffprobe", "") {
+        eprintln!("ffmpeg's WHIP muxer or ffprobe not found: skipped");
+        return;
+    }
+    let mut servers = vec![("akit".to_owned(), env!("CARGO_BIN_EXE_akit").to_owned())];
+    if let Ok(fit) = std::env::var("AKIT_FIT_BIN") {
+        servers.push(("fit".to_owned(), fit));
+    }
+    let t = "0123456789abcdef-publish";
+    let whip = |url: &str, token: Option<&str>, secs: u32| {
+        let mut c = Command::new("ffmpeg");
+        c.args(["-hide_banner", "-loglevel", "error", "-re"])
+            .args(["-f", "lavfi", "-i", "testsrc=size=320x240:rate=25"])
+            .args(["-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000"])
+            .args(["-t", &secs.to_string()])
+            .args([
+                "-c:v",
+                "libx264",
+                "-preset",
+                "ultrafast",
+                "-tune",
+                "zerolatency",
+            ])
+            .args([
+                "-profile:v",
+                "baseline",
+                "-bf",
+                "0",
+                "-g",
+                "25",
+                "-pix_fmt",
+                "yuv420p",
+            ])
+            .args(["-c:a", "libopus", "-ar", "48000", "-ac", "2"]);
+        if let Some(t) = token {
+            c.args(["-authorization", t]);
+        }
+        c.args(["-f", "whip", url])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap()
+    };
+    for (name, bin) in servers {
+        let d = dir(&format!("whip-{name}"));
+        let (rtmp, rtc, web) = (free_tcp(), free_udp(), free_tcp());
+        let cfg = d.join("akit.json");
+        std::fs::write(
+            &cfg,
+            format!(
+                r#"{{"listeners": [{{"name": "web", "address": "127.0.0.1:{web}"}}],
+                  "routes": [{{"match": {{"path": ["/whip/*"]}}, "handler": {{"module": "stream_whip", "params": {{"auth": "live"}}}}}},
+                             {{"match": {{"path": ["/hls/*"]}}, "handler": {{"module": "hls", "params": {{"prefix": "/hls/", "auth": "live", "target_duration": "1s"}}}}}}],
+                  "media_auth": [{{"name": "live", "public": ["play"],
+                  "tokens": [{{"name": "studio", "token": "{t}", "publish": ["live/*"]}}]}}],
+                  "streaming": {{"rtmp": {{"listen": "127.0.0.1:{rtmp}", "auth": "live"}},
+                                 "webrtc": {{"listen": "127.0.0.1:{rtc}"}}}}}}"#
+            ),
+        )
+        .unwrap();
+        let _server = serve(&bin, &cfg, rtmp);
+        eprintln!("{name}: ffmpeg's WHIP muxer against {bin}");
+        let url = format!("http://127.0.0.1:{web}/whip/live/w");
+        let mut bad = whip(&url, None, 2);
+        assert!(
+            !exits_ok(&mut bad, Duration::from_secs(30)),
+            "{name}: whip without a token"
+        );
+        let mut good = whip(&url, Some(t), 10);
+        assert!(
+            plays(
+                &format!("rtmp://127.0.0.1:{rtmp}/live/w"),
+                &[],
+                Duration::from_secs(20)
+            ),
+            "{name}: rtmp play of a whip stream"
+        );
+        let hls = format!("http://127.0.0.1:{web}/hls/live/w/index.m3u8");
+        assert!(
+            plays(&hls, &[], Duration::from_secs(20)),
+            "{name}: hls play of a whip stream"
+        );
+        let _ = good.kill();
+        let _ = good.wait();
         let _ = std::fs::remove_dir_all(&d);
     }
 }

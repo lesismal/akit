@@ -176,6 +176,7 @@ dependencies = [
  "akio-crypto",
  "akio-http",
  "akio-rtp",
+ "akio-webrtc",
 ]
 
 [[package]]
@@ -549,6 +550,8 @@ dependencies = [
  "akio-crypto",
  "akio-http",
  "akio-media",
+ "akio-sys",
+ "akio-webrtc",
  "akit-access",
  "akit-config",
  "akit-listener",

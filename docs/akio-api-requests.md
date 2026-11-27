@@ -121,6 +121,8 @@ first; its status here records the branch, then the akio commit akit pins.
 | A264 | akio-media's RTSP server: a hook on each request (its method, URL, `Authorization` and the connection's session) that may answer it; DESCRIBE asked of the hub's play hook; a URL's query kept for the tracks (`Content-Base`) and taken before a track's control (`.../cam?token=T/streamid=0`); an idle deadline for a connection without a session | requested by I120 | 4, 19 | I122 |
 | A265 | akio-media's SRT server: the query of an access control stream ID's resource (`#!::r=live/cam?token=T,m=publish`) split from the stream's path, as of a plain one | requested by I122 | 19 | I122 |
 | A266 | akio-media's `HttpFlv` and `Hls` under a path prefix, the request's path left as it came; one `Hls` serving both segment formats (`?format=`) | requested by I123 | 13, 19 | I123 |
+| A267 | akio-media's WHEP: an offer for a stream with no publisher held until one comes, within a wait (and a bound on those held), and a viewer whose publisher leaves kept for the next one within a wait | requested by I124 | 10, 11, 19 | I124 |
+| A268 | An `RtcServer` on a UDP listener bound to port 0: its host candidates taking the port the listener bound | requested by I124 | 19 | I124 |
 | A264 | akio-media's RTSP server: a hook on each request (its method, URL, `Authorization` and the connection's session) that may answer it; DESCRIBE asked of the hub's play hook; an idle deadline for a connection without a session | requested by I120 | 4, 19 | I122 |
 | A283 | The BitTorrent client on the caller's engine (fit's fib A79) | requested; stopgap: the client on an engine of its own | 16 | I152 |
 | A284 | The BitTorrent client's peers refused by address, its connections and dials bounded, its limits changed at run time (fib's A77, A78) | requested; until then the client's `access`, `max_conns`, `max_half_open` and `disk_queue_bytes` are refused as not supported yet | 11 | I152, I154 |
@@ -2821,6 +2823,56 @@ for a playlist and by the extension for a segment), as fib's `HandlerConfig.Pref
 
 **How akit would use it.** `akit_media::handlers` hands the prefix and both formats to one service
 each and stops rewriting the request's path.
+
+## A267 akio-media's WHEP: waiting for a publisher
+
+**Status.** Requested by I124 (2026-11-27). Nothing waits for it: akit's `stream_whep` answers an
+offer for a stream with no publisher 404 at once, whatever `streaming.webrtc.play_wait` says
+(`akit run` logs a warning when it is set), and a viewer whose publisher leaves is ended at once (a
+stopgap recorded in [progress](progress.md)).
+
+**Problem.** fit's `streaming.webrtc.play_wait` lets a WHEP offer wait for a stream that has no
+publisher yet, its request held, answered once one arrives or 404 when none does in time, at most
+1,024 offers waiting; and fit's viewer whose publisher leaves waits 10 seconds for the next one (a
+republish, an encoder's reconnect). akio-media's `WhipServer` answers such an offer 404 at once, and
+`RtcMedia`'s viewer is closed when its stream ends. akit cannot hold the request itself without a
+subscription of its own whose sink, run under the stream's mutex, would have to hand the request
+back to the server on another thread.
+
+**Evidence.** At akio `d8d51f61`, `akio-media/src/whip.rs`: `offer` answers
+`HubError::NotFound` when `stream_info(&path)` is not publishing; `webrtc.rs`: `Player` subscribes
+with `SubscribeOptions` without `wait` or `start_wait`. fib's `media/rtc` `Config.PlayWait`,
+`MaxPlayWaiters` (1,024) and `RepublishWait` (10 s).
+
+**Suggested API.** `WhipConfig::play_wait` and `max_play_waiters` (the offer held, its answer sent
+once the stream has tracks, 404 past the wait, 503 past the bound), and
+`RtcMediaConfig::republish_wait` (the viewer's subscription waits for the next publisher).
+
+**How akit would use it.** `streaming.webrtc.play_wait` set on the role's `WhipServer`, the
+warning dropped, and a republish wait of 10 seconds, as fit's.
+
+## A268 An `RtcServer` on a listener bound to port 0
+
+**Status.** Requested by I124 (2026-11-27). Nothing waits for it: akit finds a free port with a
+socket of its own, closes it and binds the role's WebRTC listener to that port, as akio-media's
+own tests do; another process may take the port between the two (a stopgap recorded in
+[progress](progress.md)).
+
+**Problem.** An answer's host candidates name the port peers reach the server at, so
+`RtcServer::new` takes them before the listener it serves is bound; a listener on port 0, as fit's
+tests and a config of `"listen": "127.0.0.1:0"` have it, binds a port only `Engine::add_listener`
+tells. fib's `Mux` reads the binding's address once bound.
+
+**Evidence.** At akio `d8d51f61`, `akio-webrtc/src/lib.rs`: `RtcServer::new(addrs)`, the
+candidates fixed at construction (`host_candidates(&addrs)`); `akio-media/tests/webrtc_media.rs`:
+`setup` binds a probe socket to find the port.
+
+**Suggested API.** `RtcServer::set_host_candidates` (or candidates given with port 0 taking the
+port of the listener the server is served on once it is bound), or `Listener::udp_from_std` for a
+socket bound by the caller.
+
+**How akit would use it.** The role's WebRTC listener bound as configured and the candidates taken
+from the port it got, without the probe.
 ## A283 The BitTorrent client on the caller's engine
 
 **Status.** Requested by I150 (2026-11-27) for I152. Stopgap: the client role runs

@@ -120,6 +120,8 @@
 | A264 | akio-media 的 RTSP 服务器：每个请求（其方法、URL、`Authorization` 和连接的会话）上的钩子，可以答复该请求；DESCRIBE 经过 hub 的播放钩子；为各轨道保留 URL 的查询参数（`Content-Base`），并接受写在轨道控制之前的查询参数（`.../cam?token=T/streamid=0`）；无会话连接的空闲期限 | 由 I120 提出 | 4, 19 | I122 |
 | A265 | akio-media 的 SRT 服务器：把访问控制语法的 stream ID 中资源的查询参数（`#!::r=live/cam?token=T,m=publish`）与流的路径分开，与普通 stream ID 相同 | 由 I122 提出 | 19 | I122 |
 | A266 | akio-media 的 `HttpFlv` 和 `Hls` 在路径前缀下工作，请求路径保持原样；一个 `Hls` 同时提供两种分片格式（`?format=`） | 由 I123 提出 | 13, 19 | I123 |
+| A267 | akio-media 的 WHEP：对没有推流者的流的 offer 保持到推流者出现（在等待期限内，且对保持的数量设上限），推流者离开时观众在等待期限内等下一个推流者 | 由 I124 提出 | 10, 11, 19 | I124 |
+| A268 | 绑定在端口 0 的 UDP 监听器上的 `RtcServer`：其 host 候选取监听器实际绑定的端口 | 由 I124 提出 | 19 | I124 |
 | A264 | akio-media 的 RTSP 服务器：每个请求（其方法、URL、`Authorization` 和连接的会话）上的钩子，可以答复该请求；DESCRIBE 经过 hub 的播放钩子；无会话连接的空闲期限 | 由 I120 提出 | 4, 19 | I122 |
 | A283 | 运行在调用者引擎上的 BitTorrent 客户端（fit 向 fib 提出的 A79） | 已提出；临时做法：客户端使用它自己的引擎 | 16 | I152 |
 | A284 | BitTorrent 客户端按地址拒绝 peer、限制其连接数和同时拨号数、在运行时修改其限制（fib 的 A77、A78） | 已提出；在此之前客户端的 `access`、`max_conns`、`max_half_open` 和 `disk_queue_bytes` 以"尚不支持"拒绝 | 11 | I152, I154 |
@@ -2261,6 +2263,43 @@ URL 的查询参数，因此客户端随后发送的 SETUP 和 PLAY 不带凭据
 提供的更多格式，播放列表按 `?format=` 选择，分片按扩展名选择），与 fib 的 `HandlerConfig.Prefix` 和 `Formats` 相同。
 
 **akit 如何使用。** `akit_media::handlers` 把前缀和两种格式交给各自的一个服务，不再改写请求路径。
+
+## A267 akio-media 的 WHEP：等待推流者
+
+**状态。** 由 I124 提出（2026-11-27）。没有工作等它：akit 的 `stream_whep` 对没有推流者的流的 offer 立即答复 404，不管
+`streaming.webrtc.play_wait` 怎么设（设置它时 `akit run` 记录一条警告），推流者离开时观众立即结束（临时做法记录在
+[进度](progress.zh-CN.md)中）。
+
+**问题。** fit 的 `streaming.webrtc.play_wait` 让 WHEP offer 等待一个还没有推流者的流，请求保持住，推流者到来时答复，超时未到
+则答复 404，最多 1024 个 offer 同时等待；fit 的观众在推流者离开时会等下一个推流者 10 秒（重新推流、编码器重连）。akio-media
+的 `WhipServer` 对这样的 offer 立即答复 404，`RtcMedia` 的观众在流结束时被关闭。akit 自己无法保持请求，除非自己订阅，而订阅的
+sink 在流的互斥锁下运行，必须在另一个线程上把请求交回服务器。
+
+**证据。** 在 akio `d8d51f61` 中，`akio-media/src/whip.rs`：`stream_info(&path)` 不在推流时 `offer` 答复
+`HubError::NotFound`；`webrtc.rs`：`Player` 订阅时 `SubscribeOptions` 不带 `wait` 或 `start_wait`。fib 的 `media/rtc`：
+`Config.PlayWait`、`MaxPlayWaiters`（1024）和 `RepublishWait`（10 秒）。
+
+**建议的 API。** `WhipConfig::play_wait` 和 `max_play_waiters`（保持 offer，流有轨道后发出答复，超过等待期限答复 404，超过上限
+答复 503），以及 `RtcMediaConfig::republish_wait`（观众的订阅等待下一个推流者）。
+
+**akit 如何使用。** 把 `streaming.webrtc.play_wait` 设到角色的 `WhipServer` 上，去掉警告，重新推流的等待与 fit 一样为 10 秒。
+
+## A268 绑定在端口 0 的监听器上的 `RtcServer`
+
+**状态。** 由 I124 提出（2026-11-27）。没有工作等它：akit 用自己的一个套接字找到空闲端口，关闭它，再把角色的 WebRTC 监听器绑定
+到该端口，与 akio-media 自己的测试做法相同；在这两步之间端口可能被别的进程占用（临时做法记录在[进度](progress.zh-CN.md)中）。
+
+**问题。** 答复的 host 候选要写明对端到达服务器的端口，所以 `RtcServer::new` 在它所服务的监听器绑定之前就要拿到候选；端口为 0
+的监听器（fit 的测试和 `"listen": "127.0.0.1:0"` 的配置都这样用）绑定到哪个端口只有 `Engine::add_listener` 才知道。fib 的
+`Mux` 在绑定之后读取绑定的地址。
+
+**证据。** 在 akio `d8d51f61` 中，`akio-webrtc/src/lib.rs`：`RtcServer::new(addrs)`，候选在构造时固定
+（`host_candidates(&addrs)`）；`akio-media/tests/webrtc_media.rs`：`setup` 绑定一个探测套接字来找端口。
+
+**建议的 API。** `RtcServer::set_host_candidates`（或端口为 0 的候选在服务器所服务的监听器绑定后取其端口），或由调用方绑定套接字的
+`Listener::udp_from_std`。
+
+**akit 如何使用。** 按配置绑定角色的 WebRTC 监听器，从它得到的端口取候选，不再探测。
 ## A283 运行在调用者引擎上的 BitTorrent 客户端
 
 **状态。** 由 I150 为 I152 提出（2026-11-27）。临时做法：客户端角色在 `Client::new` 为它建立的引擎上运行

@@ -14,7 +14,7 @@ akit 配置的每个字段：配置的每一部分是做什么的、一个示例
 akit 与 fit 不同之处，在表格中以 **akit：** 标出。
 
 <!-- BEGIN GENERATED: summary -->
-fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **1136** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 175 个对象，下文各有一张表。
+fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **1146** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 177 个对象，下文各有一张表。
 <!-- END GENERATED -->
 
 字段说明来自 fit 代码中的 `doc` 标签，是英文的，所以每个字段的完整说明在[英文版](config.md)的同一张表中；本页的表格给出每个字段的
@@ -57,6 +57,7 @@ fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../co
 - [WebRTC](#webrtc)：[`webrtc.turn`](#cfg-webrtc-turn)、[`webrtc.media`](#cfg-webrtc-media)、[`webrtc.proxy`](#cfg-webrtc-proxy)
 - [媒体鉴权](#媒体鉴权)：[`media_auth[]`](#cfg-media-auth)
 - [流媒体](#流媒体)：[`streaming`](#cfg-streaming)、[`rtmp`](#cfg-streaming-rtmp)、[`rtsp`](#cfg-streaming-rtsp)、[`srt`](#cfg-streaming-srt)、[`webrtc`](#cfg-streaming-webrtc)
+- [处理器](#处理器)：[`respond`](#respond)、[`static`](#static)、[`proxy`](#proxy)、[`fastcgi`](#fastcgi)、[`forward_proxy`](#forward_proxy)、[`whip`](#whip)、[`whep`](#whep)、[`webrtc_proxy`](#webrtc_proxy)、[`httpflv`](#httpflv)、[`hls`](#hls)、[`stream_whip`](#stream_whip)、[`stream_whep`](#stream_whep)
 - [处理器](#处理器)：[`respond`](#respond)、[`static`](#static)、[`proxy`](#proxy)、[`fastcgi`](#fastcgi)、[`forward_proxy`](#forward_proxy)、[`whip`](#whip)、[`whep`](#whep)、[`webrtc_proxy`](#webrtc_proxy)、[`httpflv`](#httpflv)、[`hls`](#hls)
 - [BitTorrent](#bittorrent)：[`bittorrent.client`](#cfg-bittorrent-client)、[`bittorrent.tracker`](#cfg-bittorrent-tracker)
 - [处理器](#处理器)：[`respond`](#respond)、[`static`](#static)、[`proxy`](#proxy)、[`bt_tracker`](#bt_tracker)、[`fastcgi`](#fastcgi)、[`forward_proxy`](#forward_proxy)、[`whip`](#whip)、[`whep`](#whep)、[`webrtc_proxy`](#webrtc_proxy)
@@ -139,7 +140,7 @@ routes:
 | `routes` | [对象](#cfg-routes)的列表 |  |  |
 | `schema_version` | 整数，1 到 1 | `1` |  |
 | `services` | [对象](#cfg-services)的列表 |  |  |
-| `streaming` | [对象](#cfg-streaming) |  | **akit：**由 `akit run` 基于 akio-media 的 hub 运行（I122），其监听器在监听器的引擎上；其 `webrtc` 端口从 I124 起运行，在此之前 `akit run` 拒绝它（`akit validate` 会检查它）。指标为 `akit_streaming_*`。 |
+| `streaming` | [对象](#cfg-streaming) |  | **akit：**由 `akit run` 基于 akio-media 的 hub 运行（I122、I124），其监听器在监听器的引擎上，其 `webrtc` 端口是承载 akio-media 的 WHIP 和 WHEP 会话的 ICE lite akio-webrtc 服务器。指标为 `akit_streaming_*`。 |
 | `sync` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
 | `telemetry` | [对象](#cfg-telemetry) |  |  |
 | `tunnel` | [对象](#cfg-tunnel) |  | **akit：**像 fit 一样读取并检查（I98）；`akit run` 在监听器的引擎上运行这三个角色（I101），其链路与 fit 的协议逐字节相同，使 akit 的 hub、node 和 proxy 能与 fit 的互连（决定 038）。链路走 `tcp`、`tls`（I102）、`quic`（I102b），以及 `ws` 和 `wss`（I102c，基于 akio-ws）。hub 的 `console_socket` 和 proxy 的 `web_proxies` 使用 fit 的密封 WebSocket（I103b）。 |
@@ -2981,12 +2982,12 @@ streaming {
 
 | 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `listen` | 字符串 | 必填 |  |
+| `listen` | 字符串 | 必填 | **akit：**端口为 0 时，在监听器绑定前先选好端口，因为答复中必须写明它（akio A268）。 |
 | `connect_timeout` | 时长 | `"15s"` |  |
 | `ice_servers` | [对象](#cfg-streaming-webrtc-ice-servers)的列表 |  |  |
 | `max_offer_bytes` | 整数，0 到 65536 | `32768` |  |
 | `max_sessions` | 整数，≥ 0 | `256` |  |
-| `play_wait` | 时长 |  |  |
+| `play_wait` | 时长 |  | **akit：**在 akio A267 之前不起作用：对没有推流者的流的 WHEP offer 立即以 404 答复，设置它时 `akit run` 记录一条警告。推流者离开时 WHEP 观众立即结束，而 fit 的会等下一个推流者 10 秒。 |
 | `public_ips` | 字符串的列表 |  |  |
 <!-- END GENERATED -->
 
@@ -3269,8 +3270,8 @@ bittorrent {
 | `proxy` | 已支持：[参数](#cfg-routes-handler-proxy-params) |
 | `respond` | 已支持：[参数](#cfg-routes-handler-respond-params) |
 | `static` | 已支持：[参数](#cfg-routes-handler-static-params) |
-| `stream_whep` | **尚不支持**：按名称拒绝 |
-| `stream_whip` | **尚不支持**：按名称拒绝 |
+| `stream_whep` | 已支持：[参数](#cfg-routes-handler-stream-whep-params) |
+| `stream_whip` | 已支持：[参数](#cfg-routes-handler-stream-whip-params) |
 | `sync_ingest` | **尚不支持**：按名称拒绝 |
 | `vod` | **尚不支持**：按名称拒绝 |
 | `webrtc_proxy` | 已支持：[参数](#cfg-routes-handler-webrtc-proxy-params) |
@@ -3633,6 +3634,58 @@ route hls { match { path /hls/* }; handler hls { prefix /hls/; auth live } }
 | `playlist_size` | 整数，0 到 100 | `6` |  |
 | `prefix` | 字符串 |  | **akit：**akio-media 的服务从请求路径中读取流：前缀不是 `/` 时，akit 把去掉前缀的路径交给它，访问日志随后写的也是这个路径（akio A266）。 |
 | `target_duration` | 时长 | `"2s"` |  |
+<!-- END GENERATED -->
+
+### `stream_whip`
+
+把以 WHIP（RFC 9725）推送的 WebRTC 流收进流媒体角色的 hub，再经各协议播放：向 `/whip/live/cam` POST 一个 offer
+即推流 `live/cam`，其凭据由 `auth` 检查（publish）。答复的 `Location` 是 POST 的路径加上会话 ID，该地址无需凭据即可接受
+PATCH（trickle ICE）和 DELETE；路由也必须匹配它。需要 `streaming.webrtc`，没有时答复 503（I124）。
+
+```fit
+listener web :8080
+media_auth live { public play; tokens studio { token 0123456789abcdef-studio; publish live/* } }
+streaming { webrtc { listen :8188 } }
+
+route whip { match { path /whip/* }; handler stream_whip { auth live } }
+```
+
+<!-- BEGIN GENERATED: routes[].handler<stream_whip>.params -->
+<a id="cfg-routes-handler-stream-whip-params"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-routes-handler-stream-whip-params)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `auth` | 字符串 |  |  |
+| `prefix` | 字符串 |  |  |
+| `stream` | 字符串 |  |  |
+<!-- END GENERATED -->
+
+### `stream_whep`
+
+以 WHEP 把流媒体角色的流播放给 WebRTC 观众，无论它们经哪种协议推送：向 `/whep/live/cam` POST 一个 offer 即播放
+`live/cam`（H.264、H.265、VP8、VP9、AV1、Opus 和 G.711；不发送 AAC），其凭据由 `auth` 检查（play），与
+`stream_whip` 相同（I124）。
+
+```fit
+listener web :8080
+media_auth live { public play }
+streaming { webrtc { listen :8188 } }
+
+route whep { match { path /whep/* }; handler stream_whep { auth live } }
+```
+
+<!-- BEGIN GENERATED: routes[].handler<stream_whep>.params -->
+<a id="cfg-routes-handler-stream-whep-params"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-routes-handler-stream-whep-params)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `auth` | 字符串 |  |  |
+| `prefix` | 字符串 |  |  |
+| `stream` | 字符串 |  |  |
 <!-- END GENERATED -->
 
 ## 中间件

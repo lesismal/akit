@@ -324,7 +324,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 1136 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 1146 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -347,8 +347,8 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`http.handlers/proxy`](#fields-http-handlers-proxy) | 20 | 19 | 1 |
 | [`http.handlers/respond`](#fields-http-handlers-respond) | 5 | 5 | 0 |
 | [`http.handlers/static`](#fields-http-handlers-static) | 16 | 16 | 0 |
-| [`http.handlers/stream_whep`](#fields-http-handlers-stream-whep) | 5 | 0 | 5 |
-| [`http.handlers/stream_whip`](#fields-http-handlers-stream-whip) | 5 | 0 | 5 |
+| [`http.handlers/stream_whep`](#fields-http-handlers-stream-whep) | 5 | 5 | 0 |
+| [`http.handlers/stream_whip`](#fields-http-handlers-stream-whip) | 5 | 5 | 0 |
 | [`http.handlers/sync_ingest`](#fields-http-handlers-sync-ingest) | 6 | 0 | 6 |
 | [`http.handlers/vod`](#fields-http-handlers-vod) | 13 | 0 | 13 |
 | [`http.handlers/webrtc_proxy`](#fields-http-handlers-webrtc-proxy) | 8 | 7 | 1 |
@@ -449,7 +449,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 161 | 3 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 76 | 0 |
-| **合计** | 3821 | 1136 | 2685 |
+| **合计** | 3821 | 1146 | 2675 |
 
 <a id="fields-access"></a>
 
@@ -1077,11 +1077,11 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
-| `routes[].handler<stream_whep>` | `module` | 尚不支持（not supported yet） |
-| `routes[].handler<stream_whep>.params` | `object` | 尚不支持（not supported yet） |
-| `routes[].handler<stream_whep>.params.auth` | `string` | 尚不支持（not supported yet） |
-| `routes[].handler<stream_whep>.params.prefix` | `string` | 尚不支持（not supported yet） |
-| `routes[].handler<stream_whep>.params.stream` | `string` | 尚不支持（not supported yet） |
+| `routes[].handler<stream_whep>` | `module` | 已支持 |
+| `routes[].handler<stream_whep>.params` | `object` | 已支持 |
+| `routes[].handler<stream_whep>.params.auth` | `string` | 已支持 |
+| `routes[].handler<stream_whep>.params.prefix` | `string` | 已支持 |
+| `routes[].handler<stream_whep>.params.stream` | `string` | 已支持 |
 
 <a id="fields-http-handlers-stream-whip"></a>
 
@@ -1089,11 +1089,11 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
-| `routes[].handler<stream_whip>` | `module` | 尚不支持（not supported yet） |
-| `routes[].handler<stream_whip>.params` | `object` | 尚不支持（not supported yet） |
-| `routes[].handler<stream_whip>.params.auth` | `string` | 尚不支持（not supported yet） |
-| `routes[].handler<stream_whip>.params.prefix` | `string` | 尚不支持（not supported yet） |
-| `routes[].handler<stream_whip>.params.stream` | `string` | 尚不支持（not supported yet） |
+| `routes[].handler<stream_whip>` | `module` | 已支持 |
+| `routes[].handler<stream_whip>.params` | `object` | 已支持 |
+| `routes[].handler<stream_whip>.params.auth` | `string` | 已支持 |
+| `routes[].handler<stream_whip>.params.prefix` | `string` | 已支持 |
+| `routes[].handler<stream_whip>.params.stream` | `string` | 已支持 |
 
 <a id="fields-http-handlers-sync-ingest"></a>
 

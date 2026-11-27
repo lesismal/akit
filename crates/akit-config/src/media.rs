@@ -1121,3 +1121,79 @@ pub(crate) fn hls(d: &mut Decoder<'_>, params: Option<&Node>, path: &str) -> Opt
 
 #[cfg(test)]
 mod tests;
+
+/// The `stream_whip` and `stream_whep` handlers' params, as fit's `streaming.StreamWHIP` and
+/// `StreamWHEP` (I124): WHIP publishes into the role's hub, WHEP plays from it, on the role's
+/// WebRTC port.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct StreamRtc {
+    /// `stream`: the stream's path; when empty, the path after `prefix` a POST is sent to.
+    pub stream: String,
+    /// `prefix`: the part of the path before the stream's; `/whip/` or `/whep/` when left out.
+    pub prefix: String,
+    /// `auth`: the `media_auth` policy a POST must satisfy; empty for none.
+    pub auth: String,
+    /// The policy `auth` names, from the config ([`HttpFlv::policy`]).
+    pub policy: Option<MediaAuth>,
+}
+
+const STREAM_RTC_FIELDS: &[&str] = &["stream", "prefix", "auth"];
+
+/// Whether `p` is a stream's path (fit's `validStream`): segments of letters, digits, '.', '_',
+/// '~' and '-', joined by '/', none of them `.` or `..`, at most 256 bytes.
+#[must_use]
+pub fn valid_stream(p: &str) -> bool {
+    p.len() <= 256
+        && !p.is_empty()
+        && p.split('/').all(|seg| {
+            !seg.is_empty()
+                && seg != "."
+                && seg != ".."
+                && seg
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'~' | b'-'))
+        })
+}
+
+/// Decodes the `stream_whip` (`def` `/whip/`) or `stream_whep` (`/whep/`) handler's params; none
+/// is every default.
+pub(crate) fn stream_rtc(
+    d: &mut Decoder<'_>,
+    params: Option<&Node>,
+    path: &str,
+    def: &str,
+) -> Option<StreamRtc> {
+    let Some(n) = params else {
+        return Some(StreamRtc {
+            prefix: def.into(),
+            ..StreamRtc::default()
+        });
+    };
+    let mut o = d.object(n, path)?;
+    let mut h = StreamRtc::default();
+    if let Some((s, off)) = text_at(d, &mut o, "stream") {
+        if !s.is_empty() && !valid_stream(&s) {
+            d.error(
+                off,
+                &o.at("stream"),
+                format!(
+                    "{s:?} is not a stream's path: segments of letters, digits, '.', '_', '~' and '-' joined by /"
+                ),
+            );
+        }
+        h.stream = s;
+    }
+    // An empty prefix is the default, as fit's.
+    h.prefix = match text_at(d, &mut o, "prefix") {
+        Some((p, off)) if !p.is_empty() => {
+            if !p.starts_with('/') {
+                d.error(off, &o.at("prefix"), format!("{p:?} does not start with /"));
+            }
+            if p.ends_with('/') { p } else { format!("{p}/") }
+        }
+        _ => def.to_owned(),
+    };
+    h.auth = text(d, &mut o, "auth");
+    o.finish(d, STREAM_RTC_FIELDS, &[]);
+    Some(h)
+}

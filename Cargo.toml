@@ -57,7 +57,8 @@ akio-quic = { git = "https://github.com/lesismal/akio", rev = "d8d51f61679cf8a28
 akio-bittorrent = { git = "https://github.com/lesismal/akio", rev = "d8d51f61679cf8a285eeb6a7c8cd10711a0b5ce4" }
 # WebSockets: the LLM mesh's links (akit-llm, I104).
 akio-ws = { git = "https://github.com/lesismal/akio", rev = "d8d51f61679cf8a285eeb6a7c8cd10711a0b5ce4" }
-# WebRTC (akit-webrtc, I111-I114): the TURN server, and WHIP and WHEP's PeerConnections.
+# WebRTC (akit-webrtc, I111-I114): the TURN server, and WHIP and WHEP's PeerConnections; the
+# streaming role's WHIP and WHEP (akit-media, I124).
 akio-turn = { git = "https://github.com/lesismal/akio", rev = "d8d51f61679cf8a285eeb6a7c8cd10711a0b5ce4" }
 akio-webrtc = { git = "https://github.com/lesismal/akio", rev = "d8d51f61679cf8a285eeb6a7c8cd10711a0b5ce4" }
 # Route path regexps (akit-router) and the redirect middleware's (akit-middleware), decision 001:

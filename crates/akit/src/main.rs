@@ -322,22 +322,6 @@ fn roles_not_running(config: &Config) -> Result<(), Failure> {
             msg: "akit run does not run this yet (I139b); akit validate checks it".to_owned(),
         });
     }
-    // The streaming role's WebRTC port, which I124 runs.
-    if config
-        .streaming
-        .as_ref()
-        .is_some_and(|s| s.webrtc.is_some())
-    {
-        errs.push(Error {
-            file: None,
-            path: "streaming.webrtc".to_owned(),
-            line: 0,
-            col: 0,
-            msg: "akit run does not run the streaming role's WebRTC port yet (I124); akit \
-                  validate checks it"
-                .to_owned(),
-        });
-    }
     if errs.is_empty() {
         Ok(())
     } else {

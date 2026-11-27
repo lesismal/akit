@@ -1411,6 +1411,10 @@ pub enum Handler {
     HttpFlv(crate::media::HttpFlv),
     /// The `hls` handler: the streaming role's streams over HLS (I123).
     Hls(crate::media::Hls),
+    /// The `stream_whip` handler: WHIP publishes into the streaming role's hub (I124).
+    StreamWhip(crate::media::StreamRtc),
+    /// The `stream_whep` handler: WHEP plays the streaming role's streams (I124).
+    StreamWhep(crate::media::StreamRtc),
     /// A module akit's config model does not know: one built in with `akit build` (I70), its
     /// params kept as written for the module to decode. Whether the binary has it is the
     /// registry's to say, when the config is compiled, as fit's `module.Load` says.
@@ -1441,6 +1445,8 @@ impl Handler {
             Handler::FastCgi(_) => "fastcgi",
             Handler::HttpFlv(_) => "httpflv",
             Handler::Hls(_) => "hls",
+            Handler::StreamWhip(_) => "stream_whip",
+            Handler::StreamWhep(_) => "stream_whep",
             Handler::ForwardProxy(_) => "forward_proxy",
             Handler::Whip(_) => "whip",
             Handler::Whep(_) => "whep",
@@ -2466,8 +2472,6 @@ const FIT_HANDLERS: &[&str] = &[
     "bt_stream",
     "media_pages",
     "media_tokens",
-    "stream_whep",
-    "stream_whip",
     "sync_ingest",
     "vod",
     "websockify",
@@ -3089,6 +3093,7 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
         let auth = match &mut r.v.handler {
             Handler::HttpFlv(h) => Some((&h.auth, &mut h.policy)),
             Handler::Hls(h) => Some((&h.auth, &mut h.policy)),
+            Handler::StreamWhip(h) | Handler::StreamWhep(h) => Some((&h.auth, &mut h.policy)),
             _ => None,
         };
         let Some((name, policy)) = auth.filter(|(n, _)| !n.is_empty()) else {
@@ -4730,6 +4735,13 @@ fn handler(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Handler> {
         // I123: the streaming role's HTTP egress.
         "httpflv" => crate::media::httpflv(d, params, &params_path).map(Handler::HttpFlv),
         "hls" => crate::media::hls(d, params, &params_path).map(Handler::Hls),
+        // I124: WHIP and WHEP on the streaming role's WebRTC port.
+        "stream_whip" => {
+            crate::media::stream_rtc(d, params, &params_path, "/whip/").map(Handler::StreamWhip)
+        }
+        "stream_whep" => {
+            crate::media::stream_rtc(d, params, &params_path, "/whep/").map(Handler::StreamWhep)
+        }
         "forward_proxy" => {
             let Some(n) = params else {
                 d.error(

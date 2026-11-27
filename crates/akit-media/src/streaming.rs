@@ -1,7 +1,14 @@
 //! The streaming role (I122), as fit's package `streaming`: akio-media's hub, where each stream
 //! is published once and played over every protocol, with listeners of the role's own on the
-//! listeners' engine for RTMP, RTSP (interleaved RTP) and SRT. Its handlers (I123, I124) serve the
-//! hub on routes, finding it by the engine ([`lookup`]).
+//! listeners' engine for RTMP, RTSP (interleaved RTP) and SRT, and a UDP port for WebRTC (I124).
+//! Its handlers (I123, I124) serve the hub on routes, finding it by the engine ([`lookup`]).
+//!
+//! The WebRTC port (`streaming.webrtc`) is akio-webrtc's ICE-lite `RtcServer`, every peer on the
+//! one port, carrying akio-media's WHIP and WHEP sessions (`RtcMedia`, `WhipServer`), which
+//! `stream_whip` and `stream_whep` hand their POSTs to once checked ([`Rtc`]). Its host
+//! candidates are `public_ips` at the port, or, for a wildcard address, every interface's address
+//! that is up (not loopback, link-local or multicast), as fib's `hostAddrs`; a port of 0 is
+//! chosen before the listener binds it (akio A268).
 //!
 //! Every listener may name a `media_auth` policy with `auth`, checked by the stream's path in the
 //! hub's hooks, on the I/O thread the request arrived on: RTMP's publish and play with the
@@ -31,8 +38,13 @@ use akio_media::hub::{Hub, HubConfig, PeerInfo};
 use akio_media::rtmp::{RtmpConfig, RtmpServer};
 use akio_media::rtsp::{RtspConfig, RtspServer};
 use akio_media::srt::{Mode, RejectReason, Request, SrtConfig, SrtServer, StreamId};
+use akio_media::webrtc::{RtcMedia, RtcMediaConfig};
+use akio_media::whip::{WhipConfig, WhipServer};
+use akio_webrtc::RtcServer;
 use akit_config::Config;
-use akit_config::media::{MediaAction as Action, StreamRtmp, StreamRtsp, StreamSrt, Streaming};
+use akit_config::media::{
+    IceServer, MediaAction as Action, StreamRtmp, StreamRtsp, StreamSrt, StreamWebRtc, Streaming,
+};
 use akit_roles::host::{Host, Info, MetricsFn, Role};
 
 use crate::auth::{Credentials, Policy, Refusal, registry};
@@ -147,6 +159,47 @@ impl Shared {
     }
 }
 
+/// The paths of akio-media's WHIP and WHEP server ([`Rtc::router`]), which `stream_whip` and
+/// `stream_whep` map their routes' paths to (fit's `rtcWHIP`, `rtcWHEP` and `rtcResource`).
+pub const RTC_WHIP: &str = "/whip/";
+/// See [`RTC_WHIP`].
+pub const RTC_WHEP: &str = "/whep/";
+/// The path of a session's URL, followed by its ID. See [`RTC_WHIP`].
+pub const RTC_RESOURCE: &str = "/rtc/session/";
+
+/// The role's WebRTC port (I124): what `stream_whip` and `stream_whep` serve.
+pub struct Rtc {
+    /// akio-media's WHIP and WHEP endpoints, at [`RTC_WHIP`], [`RTC_WHEP`] and [`RTC_RESOURCE`].
+    pub router: akio_http::Router,
+    /// `max_offer_bytes`: the largest offer, or PATCH body, taken.
+    pub max_offer_bytes: usize,
+    whip: WhipServer,
+    server: RtcServer,
+}
+
+impl std::fmt::Debug for Rtc {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Rtc")
+            .field("whip", &self.whip)
+            .field("max_offer_bytes", &self.max_offer_bytes)
+            .finish_non_exhaustive()
+    }
+}
+
+impl Rtc {
+    /// The WHIP and WHEP sessions live.
+    #[must_use]
+    pub fn sessions(&self) -> usize {
+        self.whip.sessions()
+    }
+
+    /// Ends every session and closes every peer.
+    fn close(&self) {
+        self.whip.close_all();
+        self.server.close_all();
+    }
+}
+
 /// What the role's handlers serve from (I123, I124): the hub, while the role runs.
 #[derive(Debug, Clone)]
 pub struct Current {
@@ -155,6 +208,8 @@ pub struct Current {
     /// Which hub it is: another number for each hub the role makes, so that what a handler made
     /// for one hub is made again for the next.
     pub hub_no: u64,
+    /// The WebRTC port, while `streaming.webrtc` is set.
+    pub rtc: Option<Arc<Rtc>>,
 }
 
 /// The numbers of the hubs ([`Current::hub_no`]).
@@ -246,6 +301,8 @@ struct Bound<C> {
     /// The address it is bound to.
     addr: Option<SocketAddr>,
     cfg: C,
+    /// The WebRTC port's server, for the WebRTC listener.
+    rtc: Option<Arc<Rtc>>,
 }
 
 /// A local address to listen on, as the tunnel's: `:port` every address, `localhost` the
@@ -303,6 +360,7 @@ pub struct Server {
     rtmp: Option<Bound<StreamRtmp>>,
     rtsp: Option<Bound<StreamRtsp>>,
     srt: Option<Bound<StreamSrt>>,
+    webrtc: Option<Bound<StreamWebRtc>>,
 }
 
 impl std::fmt::Debug for Server {
@@ -362,6 +420,94 @@ fn srt_key(c: &StreamSrt) -> String {
     )
 }
 
+fn rtc_key(c: &StreamWebRtc) -> String {
+    format!(
+        "{:?} {:?} {:?} {} {:?} {:?} {}",
+        c.listen,
+        c.public_ips,
+        c.ice_servers,
+        c.sessions(),
+        c.connect(),
+        c.play_wait,
+        c.offer_bytes()
+    )
+}
+
+/// The `Link` header values that tell WHIP and WHEP clients of `servers` (RFC 9725 section 4.6),
+/// as fib's `linkHeaders`.
+fn ice_links(servers: &[IceServer]) -> Vec<String> {
+    let mut out = Vec::new();
+    for s in servers {
+        for u in &s.urls {
+            let mut v = format!("<{u}>; rel=\"ice-server\"");
+            if !s.username.is_empty() || !s.credential.is_empty() {
+                v.push_str(&format!(
+                    "; username={:?}; credential={:?}; credential-type=\"password\"",
+                    s.username, s.credential
+                ));
+            }
+            out.push(v);
+        }
+    }
+    out
+}
+
+/// Whether `ip` may be a host candidate: not loopback, link-local, multicast or unspecified
+/// (fib's `hostAddr`).
+fn host_candidate(ip: std::net::IpAddr) -> bool {
+    use std::net::IpAddr;
+    let ip = match ip {
+        IpAddr::V6(v6) => v6.to_ipv4_mapped().map_or(IpAddr::V6(v6), IpAddr::V4),
+        v4 => v4,
+    };
+    let link_local = match ip {
+        IpAddr::V4(a) => a.is_link_local(),
+        IpAddr::V6(a) => a.segments().first().is_some_and(|s| s & 0xffc0 == 0xfe80),
+    };
+    !(ip.is_loopback() || link_local || ip.is_multicast() || ip.is_unspecified())
+}
+
+/// The host candidates of a WebRTC port bound at `bound` (fib's `hostAddrs`): `public` at its
+/// port; for a wildcard address every interface's address that is up and may be one (IPv4 only
+/// for `0.0.0.0`); else the address itself.
+fn host_addrs(bound: SocketAddr, public: &[String]) -> Result<Vec<SocketAddr>, String> {
+    let mut out: Vec<SocketAddr> = Vec::new();
+    let mut add = |a: SocketAddr| {
+        if !out.contains(&a) {
+            out.push(a);
+        }
+    };
+    if !public.is_empty() {
+        for p in public {
+            let ip: std::net::IpAddr = p
+                .parse()
+                .map_err(|_| format!("public_ips: {p:?} is not an IP address"))?;
+            add(SocketAddr::new(ip.to_canonical(), bound.port()));
+        }
+    } else if bound.ip().is_unspecified() {
+        let ifaces = akio_sys::interfaces().map_err(|e| format!("the interfaces: {e}"))?;
+        for i in ifaces
+            .iter()
+            .filter(|i| i.flags.is_up() && !i.flags.is_loopback())
+        {
+            for a in &i.addrs {
+                if bound.is_ipv4() && !a.ip.is_ipv4() {
+                    continue;
+                }
+                if host_candidate(a.ip) {
+                    add(SocketAddr::new(a.ip, bound.port()));
+                }
+            }
+        }
+    } else {
+        add(bound);
+    }
+    if out.is_empty() {
+        return Err("no address to advertise: set public_ips".to_owned());
+    }
+    Ok(out)
+}
+
 fn wait(d: Duration) -> Option<Duration> {
     (!d.is_zero()).then_some(d)
 }
@@ -406,10 +552,12 @@ impl Server {
             rtmp: None,
             rtsp: None,
             srt: None,
+            webrtc: None,
         }
     }
 
-    /// The address a listener of the role is bound to, by its protocol (`rtmp`, `rtsp`, `srt`),
+    /// The address a listener of the role is bound to, by its protocol (`rtmp`, `rtsp`, `srt`,
+    /// `webrtc`),
     /// or `None` while it does not run: for tests and logs.
     #[must_use]
     pub fn addr(&self, proto: &str) -> Option<SocketAddr> {
@@ -417,6 +565,7 @@ impl Server {
             "rtmp" => self.rtmp.as_ref().and_then(|b| b.addr),
             "rtsp" => self.rtsp.as_ref().and_then(|b| b.addr),
             "srt" => self.srt.as_ref().and_then(|b| b.addr),
+            "webrtc" => self.webrtc.as_ref().and_then(|b| b.addr),
             _ => None,
         }
     }
@@ -499,6 +648,9 @@ impl Server {
 
     fn close<C>(&self, b: &Bound<C>) {
         let _ = self.engine.shutdown_listener(b.id, Duration::ZERO);
+        if let Some(r) = &b.rtc {
+            r.close();
+        }
     }
 
     fn start_rtmp(&self, hub: &Hub, c: &StreamRtmp) -> Result<Bound<StreamRtmp>, String> {
@@ -518,6 +670,7 @@ impl Server {
             key: rtmp_key(c),
             addr,
             cfg: c.clone(),
+            rtc: None,
         })
     }
 
@@ -537,6 +690,7 @@ impl Server {
             key: rtsp_key(c),
             addr,
             cfg: c.clone(),
+            rtc: None,
         })
     }
 
@@ -574,6 +728,67 @@ impl Server {
             key: srt_key(c),
             addr,
             cfg: c.clone(),
+            rtc: None,
+        })
+    }
+
+    /// The WebRTC port (I124): an ICE-lite `RtcServer` on a UDP listener, and the WHIP and WHEP
+    /// server of its sessions in front of the hub.
+    fn start_webrtc(&self, hub: &Hub, c: &StreamWebRtc) -> Result<Bound<StreamWebRtc>, String> {
+        let mut addr = listen_addr(&c.listen)
+            .ok_or_else(|| format!("{}: not an address to listen on", c.listen))?;
+        if addr.port() == 0 {
+            // The answers name the port before the listener binds it: a free one is found first,
+            // as akio-media's own tests do (akio A268).
+            let probe = std::net::UdpSocket::bind(addr)
+                .map_err(|e| format!("listen on {}: {e}", c.listen))?;
+            let port = probe
+                .local_addr()
+                .map_err(|e| format!("listen on {}: {e}", c.listen))?
+                .port();
+            drop(probe);
+            addr.set_port(port);
+        }
+        let hosts = host_addrs(addr, &c.public_ips)?;
+        let server = RtcMedia::rtc_server(hosts)
+            .connect_timeout(Some(c.connect()))
+            .max_peers(c.sessions());
+        let media = RtcMedia::new(server.clone(), RtcMediaConfig::default());
+        let mut wc = WhipConfig::default();
+        wc.whip_prefix = RTC_WHIP.trim_end_matches('/').to_owned();
+        wc.whep_prefix = RTC_WHEP.trim_end_matches('/').to_owned();
+        wc.resource_prefix = RTC_RESOURCE.trim_end_matches('/').to_owned();
+        wc.max_sessions = c.sessions();
+        wc.cors_origin = None;
+        wc.ice_links = ice_links(&c.ice_servers);
+        let whip = WhipServer::new(hub.clone(), Arc::new(media), wc);
+        let router = whip.routes(akio_http::Router::new());
+        let rtc = Arc::new(Rtc {
+            router,
+            max_offer_bytes: c.offer_bytes(),
+            whip,
+            server: server.clone(),
+        });
+        let (id, bound) = match self.bind(&addr.to_string(), true, |l| l.serve(server)) {
+            Ok(b) => b,
+            Err(e) => {
+                rtc.close();
+                return Err(e);
+            }
+        };
+        if !c.play_wait.is_zero() {
+            akit_observe::warn!(
+                Webrtc,
+                "streaming.webrtc.play_wait: a WHEP offer for a stream with no publisher is answered 404 at once (akio A267)"
+            );
+        }
+        akit_observe::info!(Webrtc, "streaming: webrtc on {}", show(bound, &c.listen));
+        Ok(Bound {
+            id,
+            key: rtc_key(c),
+            addr: bound,
+            cfg: c.clone(),
+            rtc: Some(rtc),
         })
     }
 
@@ -641,6 +856,9 @@ impl Server {
         if let Some(b) = self.srt.take() {
             self.close(&b);
         }
+        if let Some(b) = self.webrtc.take() {
+            self.close(&b);
+        }
         if let Some(h) = self.hub.take() {
             h.close();
         }
@@ -683,6 +901,7 @@ impl Role for Server {
             self.rtmp.as_ref().map(|b| b.id),
             self.rtsp.as_ref().map(|b| b.id),
             self.srt.as_ref().map(|b| b.id),
+            self.webrtc.as_ref().map(|b| b.id),
         ];
         for id in ids.into_iter().flatten() {
             let _ = match self.filter() {
@@ -721,9 +940,20 @@ impl Role for Server {
         );
         self.srt = srt;
         errs.extend(e.map(|e| format!("srt: {e}")));
+        let old = self.webrtc.take();
+        let (webrtc, e) = self.restart(
+            old,
+            cfg.webrtc.as_ref(),
+            rtc_key,
+            |c| c.listen.clone(),
+            |s, c| s.start_webrtc(&hub, c),
+        );
+        self.webrtc = webrtc;
+        errs.extend(e.map(|e| format!("webrtc: {e}")));
         self.slot.cur.set(Some(Arc::new(Current {
             hub,
             hub_no: self.hub_no,
+            rtc: self.webrtc.as_ref().and_then(|b| b.rtc.clone()),
         })));
         if errs.is_empty() {
             Ok(())

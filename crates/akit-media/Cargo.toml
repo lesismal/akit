@@ -15,8 +15,13 @@ akio = { workspace = true }
 akio-crypto = { workspace = true }
 # The handlers' requests, suspended while a password is checked.
 akio-http = { workspace = true }
-# The hub, its RTMP, RTSP and SRT servers, and HTTP-FLV and HLS (I122, I123).
-akio-media = { workspace = true }
+# The hub, its RTMP, RTSP and SRT servers, HTTP-FLV and HLS (I122, I123), and WHIP and WHEP on
+# WebRTC (I124).
+akio-media = { workspace = true, features = ["webrtc"] }
+# The WebRTC port's ICE-lite server (I124).
+akio-webrtc = { workspace = true }
+# The interfaces' addresses a wildcard WebRTC port advertises (I124).
+akio-sys = { workspace = true }
 akit-access = { workspace = true }
 akit-config = { workspace = true }
 akit-observe = { workspace = true }

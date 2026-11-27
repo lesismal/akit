@@ -1288,7 +1288,7 @@ fn media(out: &mut Vec<(String, String, Read)>) {
     );
 }
 
-/// The `httpflv` and `hls` handlers' params (I123).
+/// The `httpflv` and `hls` handlers' params (I123), `stream_whip` and `stream_whep`'s (I124).
 fn media_handlers(out: &mut Vec<(String, String, Read)>) {
     const P: &str = r#"{"name": "p", "public": ["play"]}"#;
     for (module, fields) in [
@@ -1314,6 +1314,23 @@ fn media_handlers(out: &mut Vec<(String, String, Read)>) {
                 f("play_wait", q("1s"), q("2s")),
                 f("idle_timeout", q("1s"), q("2s")),
                 f("cors", q("*"), q("https://a")),
+            ],
+        ),
+        // I124.
+        (
+            "stream_whip",
+            vec![
+                f("stream", q("live/a"), q("live/b")),
+                f("prefix", q("/a/"), q("/b/")),
+                f("auth", q("p"), q("")),
+            ],
+        ),
+        (
+            "stream_whep",
+            vec![
+                f("stream", q("live/a"), q("live/b")),
+                f("prefix", q("/a/"), q("/b/")),
+                f("auth", q("p"), q("")),
             ],
         ),
     ] {

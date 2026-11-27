@@ -1404,3 +1404,14 @@ routes[].handler<httpflv>.params.auth
 routes[].handler<httpflv>.params.cors
 routes[].handler<httpflv>.params.prefix
 routes[].handler<httpflv>.params.wait
+# I124: the streaming role's stream_whip and stream_whep handlers (WHIP and WHEP on its WebRTC port).
+routes[].handler<stream_whep>
+routes[].handler<stream_whep>.params
+routes[].handler<stream_whep>.params.auth
+routes[].handler<stream_whep>.params.prefix
+routes[].handler<stream_whep>.params.stream
+routes[].handler<stream_whip>
+routes[].handler<stream_whip>.params
+routes[].handler<stream_whip>.params.auth
+routes[].handler<stream_whip>.params.prefix
+routes[].handler<stream_whip>.params.stream

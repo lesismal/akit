@@ -3348,7 +3348,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 173] = [
+    let objects: [(&str, &str, Option<&str>); 175] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         (
             "providers[].kubernetes",
@@ -3721,6 +3721,17 @@ fn akit_config_lists_match_the_inventory() {
         // I123: the streaming role's handlers.
         ("routes[].handler<httpflv>.params", "HTTPFLV_FIELDS", None),
         ("routes[].handler<hls>.params", "HLS_FIELDS", None),
+        // I124: WHIP and WHEP on the role's WebRTC port.
+        (
+            "routes[].handler<stream_whip>.params",
+            "STREAM_RTC_FIELDS",
+            None,
+        ),
+        (
+            "routes[].handler<stream_whep>.params",
+            "STREAM_RTC_FIELDS",
+            None,
+        ),
     ];
     let mapped: BTreeSet<&str> = objects
         .iter()
@@ -3811,6 +3822,8 @@ fn akit_config_lists_match_the_inventory() {
         "bt_tracker",
         "httpflv",
         "hls",
+        "stream_whip",
+        "stream_whep",
     ] {
         assert!(handlers.insert(h.to_owned()), "FIT_HANDLERS lists {h}");
     }
@@ -3833,8 +3846,16 @@ fn akit_config_lists_match_the_inventory() {
     read.insert("routes[].handler<fastcgi>.params".to_owned());
     read.insert("routes[].handler<forward_proxy>".to_owned());
     read.insert("routes[].handler<forward_proxy>.params".to_owned());
-    // I110: the WebRTC handlers; I123: the streaming role's.
-    for h in ["whip", "whep", "webrtc_proxy", "httpflv", "hls"] {
+    // I110: the WebRTC handlers; I123, I124: the streaming role's.
+    for h in [
+        "whip",
+        "whep",
+        "webrtc_proxy",
+        "httpflv",
+        "hls",
+        "stream_whip",
+        "stream_whep",
+    ] {
         read.insert(format!("routes[].handler<{h}>"));
         read.insert(format!("routes[].handler<{h}>.params"));
     }

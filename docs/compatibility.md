@@ -394,7 +394,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 1136 supported.
+3821 fields in 121 sections, at fit `7daee573`; 1146 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -417,8 +417,8 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`http.handlers/proxy`](#fields-http-handlers-proxy) | 20 | 19 | 1 |
 | [`http.handlers/respond`](#fields-http-handlers-respond) | 5 | 5 | 0 |
 | [`http.handlers/static`](#fields-http-handlers-static) | 16 | 16 | 0 |
-| [`http.handlers/stream_whep`](#fields-http-handlers-stream-whep) | 5 | 0 | 5 |
-| [`http.handlers/stream_whip`](#fields-http-handlers-stream-whip) | 5 | 0 | 5 |
+| [`http.handlers/stream_whep`](#fields-http-handlers-stream-whep) | 5 | 5 | 0 |
+| [`http.handlers/stream_whip`](#fields-http-handlers-stream-whip) | 5 | 5 | 0 |
 | [`http.handlers/sync_ingest`](#fields-http-handlers-sync-ingest) | 6 | 0 | 6 |
 | [`http.handlers/vod`](#fields-http-handlers-vod) | 13 | 0 | 13 |
 | [`http.handlers/webrtc_proxy`](#fields-http-handlers-webrtc-proxy) | 8 | 7 | 1 |
@@ -519,7 +519,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 161 | 3 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 76 | 0 |
-| **Total** | 3821 | 1136 | 2685 |
+| **Total** | 3821 | 1146 | 2675 |
 
 <a id="fields-access"></a>
 
@@ -1147,11 +1147,11 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `routes[].handler<stream_whep>` | `module` | not supported yet |
-| `routes[].handler<stream_whep>.params` | `object` | not supported yet |
-| `routes[].handler<stream_whep>.params.auth` | `string` | not supported yet |
-| `routes[].handler<stream_whep>.params.prefix` | `string` | not supported yet |
-| `routes[].handler<stream_whep>.params.stream` | `string` | not supported yet |
+| `routes[].handler<stream_whep>` | `module` | supported |
+| `routes[].handler<stream_whep>.params` | `object` | supported |
+| `routes[].handler<stream_whep>.params.auth` | `string` | supported |
+| `routes[].handler<stream_whep>.params.prefix` | `string` | supported |
+| `routes[].handler<stream_whep>.params.stream` | `string` | supported |
 
 <a id="fields-http-handlers-stream-whip"></a>
 
@@ -1159,11 +1159,11 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `routes[].handler<stream_whip>` | `module` | not supported yet |
-| `routes[].handler<stream_whip>.params` | `object` | not supported yet |
-| `routes[].handler<stream_whip>.params.auth` | `string` | not supported yet |
-| `routes[].handler<stream_whip>.params.prefix` | `string` | not supported yet |
-| `routes[].handler<stream_whip>.params.stream` | `string` | not supported yet |
+| `routes[].handler<stream_whip>` | `module` | supported |
+| `routes[].handler<stream_whip>.params` | `object` | supported |
+| `routes[].handler<stream_whip>.params.auth` | `string` | supported |
+| `routes[].handler<stream_whip>.params.prefix` | `string` | supported |
+| `routes[].handler<stream_whip>.params.stream` | `string` | supported |
 
 <a id="fields-http-handlers-sync-ingest"></a>
 

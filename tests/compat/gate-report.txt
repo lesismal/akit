@@ -3,6 +3,7 @@
 # fit 7daee573, fit-examples 9659d7e4.
 # 80 fixtures: 59 valid, 20 refused only as not supported yet (fields refused: 23), 0 in a format not supported yet, 1 skipped, 0 failed.
 # 80 fixtures: 59 valid, 20 refused only as not supported yet (fields refused: 15), 0 in a format not supported yet, 1 skipped, 0 failed.
+# 80 fixtures: 60 valid, 19 refused only as not supported yet (fields refused: 13), 0 in a format not supported yet, 1 skipped, 0 failed.
 examples/acme-on-demand: valid
 examples/acme-shared-storage: valid
 examples/admin: valid
@@ -64,8 +65,7 @@ examples/rewrite: valid
 examples/routing: valid
 examples/socks: valid
 examples/static: valid
-examples/streaming: not supported yet: routes[].handler<stream_whep>
-examples/streaming: not supported yet: routes[].handler<stream_whip>
+examples/streaming: valid
 examples/sync-files-to-elasticsearch: not supported yet: sync
 examples/sync-files-to-loki: not supported yet: sync
 examples/sync-mqtt-to-influxdb: not supported yet: sync

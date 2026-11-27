@@ -17,7 +17,7 @@ so in a note marked **akit:**; nine defaults that name the gateway are akit's, `
 say `fit` ([decision 037](../decisions/037-akit-names.md)).
 
 <!-- BEGIN GENERATED: summary -->
-akit reads **1136** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 175 objects akit reads, each has its table below.
+akit reads **1146** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 177 objects akit reads, each has its table below.
 <!-- END GENERATED -->
 
 How to read the tables:
@@ -63,6 +63,7 @@ is not there, a plugin that does not compile are errors.
 - [WebRTC](#webrtc): [`webrtc.turn`](#cfg-webrtc-turn), [`webrtc.media`](#cfg-webrtc-media), [`webrtc.proxy`](#cfg-webrtc-proxy)
 - [Media auth](#media-auth): [`media_auth[]`](#cfg-media-auth)
 - [Streaming](#streaming): [`streaming`](#cfg-streaming), [`rtmp`](#cfg-streaming-rtmp), [`rtsp`](#cfg-streaming-rtsp), [`srt`](#cfg-streaming-srt), [`webrtc`](#cfg-streaming-webrtc)
+- [Handlers](#handlers): [`respond`](#respond), [`static`](#static), [`proxy`](#proxy), [`fastcgi`](#fastcgi), [`forward_proxy`](#forward_proxy), [`whip`](#whip), [`whep`](#whep), [`webrtc_proxy`](#webrtc_proxy), [`httpflv`](#httpflv), [`hls`](#hls), [`stream_whip`](#stream_whip), [`stream_whep`](#stream_whep)
 - [Handlers](#handlers): [`respond`](#respond), [`static`](#static), [`proxy`](#proxy), [`fastcgi`](#fastcgi), [`forward_proxy`](#forward_proxy), [`whip`](#whip), [`whep`](#whep), [`webrtc_proxy`](#webrtc_proxy), [`httpflv`](#httpflv), [`hls`](#hls)
 - [BitTorrent](#bittorrent): [`bittorrent.client`](#cfg-bittorrent-client), [`bittorrent.tracker`](#cfg-bittorrent-tracker)
 - [Handlers](#handlers): [`respond`](#respond), [`static`](#static), [`proxy`](#proxy), [`bt_tracker`](#bt_tracker), [`fastcgi`](#fastcgi), [`forward_proxy`](#forward_proxy), [`whip`](#whip), [`whep`](#whep), [`webrtc_proxy`](#webrtc_proxy)
@@ -146,7 +147,7 @@ name every file on the command line (`-c` may be given again, or name a director
 | `routes` | list of [object](#cfg-routes) |  | How requests are matched, and what handles them. |
 | `schema_version` | integer, 1 to 1 | `1` | The version of akit's config this one is written for, 1; akit refuses a config written for a version it does not read, rather than read it wrongly. Optional: a config that leaves it out is read as version 1. |
 | `services` | list of [object](#cfg-services) |  | Layer 4 services: the upstreams the connections of tcp listeners are proxied to, byte for byte, and the datagrams of udp listeners, one for one. |
-| `streaming` | [object](#cfg-streaming) |  | akit's streaming role, beside the gateway on its engine: one media hub where a stream is published once, over RTMP, RTSP, SRT or WHIP, and played over any of them, HTTP-FLV and HLS too, each listener and handler with its media_auth policy. None when left out. **akit:** Run by `akit run` (I122) on akio-media's hub, its listeners on the listeners' engine; its `webrtc` port from I124, until when `akit run` refuses it (`akit validate` checks it). The metrics are `akit_streaming_*`. |
+| `streaming` | [object](#cfg-streaming) |  | akit's streaming role, beside the gateway on its engine: one media hub where a stream is published once, over RTMP, RTSP, SRT or WHIP, and played over any of them, HTTP-FLV and HLS too, each listener and handler with its media_auth policy. None when left out. **akit:** Run by `akit run` (I122, I124) on akio-media's hub, its listeners on the listeners' engine, its `webrtc` port an ICE-lite akio-webrtc server carrying akio-media's WHIP and WHEP sessions. The metrics are `akit_streaming_*`. |
 | `sync` | object |  | **Not supported yet**: refused by name. fit's sync role: pipelines that read records from a source (a database's changes, files, a queue) and write them to sinks, each with a checkpoint saved only once every sink has acknowledged the records it covers, kept in state_dir. None when left out: no connections out and no state on disk. |
 | `telemetry` | [object](#cfg-telemetry) |  | OpenTelemetry: traces of requests, with W3C trace context sent on to upstreams, and metrics, exported over OTLP/HTTP to a collector. Neither when left out. Read when akit starts: a change takes effect when akit restarts. |
 | `tunnel` | [object](#cfg-tunnel) |  | The tunnel's roles to run beside the gateway, on its engine: a hub, a node and a proxy, which reach services behind NAT through the hub. None when left out. What their web pages change is written back here. **akit:** Read and checked as fit's (I98); `akit run` runs the three roles (I101) on the listeners' engine, their links speaking fit's protocol byte for byte, so that akit's hub, nodes and proxies link with fit's (decision 038). Links go over `tcp`, `tls` (I102), `quic` (I102b), and `ws` and `wss` (I102c, on akio-ws). A hub's `console_socket` and a proxy's `web_proxies` speak fit's sealed WebSocket (I103b). |
@@ -2831,12 +2832,12 @@ streaming {
 
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
-| `listen` | string | required | The UDP address every peer's media reaches akit at, one port all the role's PeerConnections share, as in ":8188"; not webrtc.media's. A wildcard host advertises every interface's address that is up, unless public_ips is set. A change of any field starts it again, ending its sessions. |
+| `listen` | string | required | The UDP address every peer's media reaches akit at, one port all the role's PeerConnections share, as in ":8188"; not webrtc.media's. A wildcard host advertises every interface's address that is up, unless public_ips is set. A change of any field starts it again, ending its sessions. **akit:** A port of 0 is chosen before the listener binds it, the answers having to name it (akio A268). |
 | `connect_timeout` | duration | `"15s"` | How long a session may take from its answer to a connected PeerConnection before it is ended; once connected, ICE consent bounds it. 15s when left out. |
 | `ice_servers` | list of [object](#cfg-streaming-webrtc-ice-servers) |  | STUN and TURN servers the peers are told of in Link headers (RFC 9725), for their side of ICE; akit's is an ICE lite agent on its own address. |
 | `max_offer_bytes` | integer, 0 to 65536 | `32768` | The largest offer taken; a larger one is answered 400. At most 64 KiB. 32 KiB when left out or 0. |
 | `max_sessions` | integer, 0 or more | `256` | The most WHIP and WHEP sessions at once; one more offer is answered 503. 256 when left out or 0. |
-| `play_wait` | duration |  | How long a WHEP offer may wait for a stream with no publisher yet, its request held, before it is answered 404. Answered 404 at once when left out. |
+| `play_wait` | duration |  | How long a WHEP offer may wait for a stream with no publisher yet, its request held, before it is answered 404. Answered 404 at once when left out. **akit:** Not acted on until akio A267: a WHEP offer for a stream with no publisher is answered 404 at once, and `akit run` logs a warning when it is set. A WHEP viewer whose publisher leaves is ended at once, where fit's waits 10 seconds for the next one. |
 | `public_ips` | list of string |  | The addresses peers are told to reach the port at instead of the interfaces' own, as behind a 1:1 NAT. |
 <!-- END GENERATED -->
 
@@ -3095,8 +3096,8 @@ the same way, its params checked by the module.
 | `proxy` | supported: [params](#cfg-routes-handler-proxy-params) |
 | `respond` | supported: [params](#cfg-routes-handler-respond-params) |
 | `static` | supported: [params](#cfg-routes-handler-static-params) |
-| `stream_whep` | **not supported yet**: refused by name |
-| `stream_whip` | **not supported yet**: refused by name |
+| `stream_whep` | supported: [params](#cfg-routes-handler-stream-whep-params) |
+| `stream_whip` | supported: [params](#cfg-routes-handler-stream-whip-params) |
 | `sync_ingest` | **not supported yet**: refused by name |
 | `vod` | **not supported yet**: refused by name |
 | `webrtc_proxy` | supported: [params](#cfg-routes-handler-webrtc-proxy-params) |
@@ -3449,6 +3450,56 @@ route hls { match { path /hls/* }; handler hls { prefix /hls/; auth live } }
 | `playlist_size` | integer, 0 to 100 | `6` | How many segments a playlist lists. 6 when left out or 0. |
 | `prefix` | string |  | The part of the path before the stream's: with /hls/, /hls/live/cam/index.m3u8 is the playlist of live/cam. / when left out. **akit:** akio-media's service reads the stream from the request's path: with a prefix other than `/`, akit hands it the path without the prefix, which the access log then writes (akio A266). |
 | `target_duration` | duration | `"2s"` | How long segments are: a stream with video is cut at the first key frame after it. Set it to the key frame interval. 2s when left out. |
+<!-- END GENERATED -->
+
+### `stream_whip`
+
+Takes WebRTC streams published with WHIP (RFC 9725) into the streaming role's hub, which plays them
+over every protocol: a POST of an offer to `/whip/live/cam` publishes `live/cam`, its credentials
+checked by `auth` (publish). The answer's `Location` is the POST's path followed by the session's
+ID, which takes PATCH (trickle ICE) and DELETE without credentials; the route must match it too.
+It needs `streaming.webrtc`, without which it answers 503 (I124).
+
+```fit
+listener web :8080
+media_auth live { public play; tokens studio { token 0123456789abcdef-studio; publish live/* } }
+streaming { webrtc { listen :8188 } }
+
+route whip { match { path /whip/* }; handler stream_whip { auth live } }
+```
+
+<!-- BEGIN GENERATED: routes[].handler<stream_whip>.params -->
+<a id="cfg-routes-handler-stream-whip-params"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `auth` | string |  | The media_auth policy a POST must satisfy, publish on the stream's path: a bearer token, Basic, the token query parameter or the fit_media_token cookie. 401 with a Bearer challenge without credentials, 403 when they do not allow it. A session's URL takes PATCH and DELETE without credentials, its random ID being the capability (RFC 9725). Everyone may publish when left out, as the route's middleware allow. |
+| `prefix` | string |  | The part of the path before the stream's. /whip/ when left out. |
+| `stream` | string |  | The stream's path. When left out, it is the path after prefix a POST is sent to, as live/cam in /whip/live/cam. A session's URL is the path of its POST followed by its ID, which the route must match too. |
+<!-- END GENERATED -->
+
+### `stream_whep`
+
+Plays the streaming role's streams to WebRTC viewers with WHEP, whatever they were published over:
+a POST of an offer to `/whep/live/cam` plays `live/cam` (H.264, H.265, VP8, VP9, AV1, Opus and
+G.711; AAC is not sent), its credentials checked by `auth` (play), as `stream_whip`'s (I124).
+
+```fit
+listener web :8080
+media_auth live { public play }
+streaming { webrtc { listen :8188 } }
+
+route whep { match { path /whep/* }; handler stream_whep { auth live } }
+```
+
+<!-- BEGIN GENERATED: routes[].handler<stream_whep>.params -->
+<a id="cfg-routes-handler-stream-whep-params"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `auth` | string |  | The media_auth policy a POST must satisfy, play on the stream's path, as stream_whip's. A session's URL takes PATCH and DELETE without credentials. Everyone may play when left out. |
+| `prefix` | string |  | The part of the path before the stream's. /whep/ when left out. |
+| `stream` | string |  | The stream's path. When left out, it is the path after prefix a POST is sent to, as live/cam in /whep/live/cam. A session's URL is the path of its POST followed by its ID, which the route must match too. |
 <!-- END GENERATED -->
 
 ## Middleware

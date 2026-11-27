@@ -211,8 +211,8 @@
       "zh": "引擎上的一个 UDP 监听器（I114）：新 peer 地址的首个数据报必须是已应答会话的 ufrag 的 STUN Binding 请求，并由其 pwd 签名；其中继是引擎上一个自己的 UDP 套接字（`relay_ip`、范围内的端口，跳过已占用的），peer 在 `idle_timeout` 内没有数据报时关闭（akio 对其连接的空闲超时）。`/metrics` 有 fit 的代理指标族，名为 `akit_webrtc_proxy_*`。"
     },
     "streaming": {
-      "en": "Run by `akit run` (I122) on akio-media's hub, its listeners on the listeners' engine; its `webrtc` port from I124, until when `akit run` refuses it (`akit validate` checks it). The metrics are `akit_streaming_*`.",
-      "zh": "由 `akit run` 基于 akio-media 的 hub 运行（I122），其监听器在监听器的引擎上；其 `webrtc` 端口从 I124 起运行，在此之前 `akit run` 拒绝它（`akit validate` 会检查它）。指标为 `akit_streaming_*`。"
+      "en": "Run by `akit run` (I122, I124) on akio-media's hub, its listeners on the listeners' engine, its `webrtc` port an ICE-lite akio-webrtc server carrying akio-media's WHIP and WHEP sessions. The metrics are `akit_streaming_*`.",
+      "zh": "由 `akit run` 基于 akio-media 的 hub 运行（I122、I124），其监听器在监听器的引擎上，其 `webrtc` 端口是承载 akio-media 的 WHIP 和 WHEP 会话的 ICE lite akio-webrtc 服务器。指标为 `akit_streaming_*`。"
     },
     "media_auth": {
       "en": "Applied by `akit run` (I121), each policy changed in place on reload. A token's cookie is `akit_media_token`, a 401's challenge `Bearer realm=\"akit\"` (decision 037); the tokens akit signs are fit's format, taken by fit and akit alike (decision 040).",
@@ -245,6 +245,14 @@
     "routes[].handler<hls>.params.format": {
       "en": "Two akio-media `Hls` services, one a format, share the handler's segments' bounds (akio A266: one `Hls` serving both).",
       "zh": "两个 akio-media `Hls` 服务各管一种格式，共用处理器分片的上限（akio A266：一个 `Hls` 同时提供两种格式）。"
+    },
+    "streaming.webrtc.play_wait": {
+      "en": "Not acted on until akio A267: a WHEP offer for a stream with no publisher is answered 404 at once, and `akit run` logs a warning when it is set. A WHEP viewer whose publisher leaves is ended at once, where fit's waits 10 seconds for the next one.",
+      "zh": "在 akio A267 之前不起作用：对没有推流者的流的 WHEP offer 立即以 404 答复，设置它时 `akit run` 记录一条警告。推流者离开时 WHEP 观众立即结束，而 fit 的会等下一个推流者 10 秒。"
+    },
+    "streaming.webrtc.listen": {
+      "en": "A port of 0 is chosen before the listener binds it, the answers having to name it (akio A268).",
+      "zh": "端口为 0 时，在监听器绑定前先选好端口，因为答复中必须写明它（akio A268）。"
     }
   }
 }

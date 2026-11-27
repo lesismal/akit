@@ -367,6 +367,19 @@ fn cases(w: &World) -> Vec<Case> {
         // with the request suspended, is akit-media's `tests/guard.rs`.
         handler("httpflv", r#"{"module": "httpflv"}"#.into(), 404, true),
         handler("hls", r#"{"module": "hls"}"#.into(), 503, true),
+        // I124: outside their prefix (`/whip/`, `/whep/`), answered at once as fit's.
+        handler(
+            "stream_whip",
+            r#"{"module": "stream_whip"}"#.into(),
+            404,
+            true,
+        ),
+        handler(
+            "stream_whep",
+            r#"{"module": "stream_whep"}"#.into(),
+            404,
+            true,
+        ),
         // A CONNECT to the slow echo: the tunnel opens at once, its bytes come back late.
         handler(
             "forward_proxy",

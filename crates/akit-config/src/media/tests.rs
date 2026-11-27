@@ -341,3 +341,59 @@ fn handlers() {
         refused(&doc(module, params), want);
     }
 }
+
+/// The `stream_whip` and `stream_whep` handlers' params (I124): their default prefixes, fit's
+/// checks of `stream` and `prefix`, and the policy `auth` names.
+#[test]
+fn rtc_handlers() {
+    let doc = |module: &str, params: &str| {
+        format!(
+            r#"{{"listeners": [{{"name": "w", "address": ":8080"}}], "media_auth": [{{"name": "live", "public": ["play"]}}],
+              "routes": [{{"handler": {{"module": "{module}", "params": {params}}}}}]}}"#
+        )
+    };
+    let c = loads(&doc("stream_whip", "{}"));
+    let crate::Handler::StreamWhip(h) = &c.routes[0].handler else {
+        panic!("{:?}", c.routes[0].handler)
+    };
+    assert_eq!((h.prefix.as_str(), h.stream.as_str()), ("/whip/", ""));
+    let c = loads(&doc(
+        "stream_whep",
+        r#"{"prefix": "/play", "stream": "live/cam", "auth": "live"}"#,
+    ));
+    let crate::Handler::StreamWhep(h) = &c.routes[0].handler else {
+        panic!("{:?}", c.routes[0].handler)
+    };
+    assert_eq!(
+        (h.prefix.as_str(), h.stream.as_str()),
+        ("/play/", "live/cam")
+    );
+    assert_eq!(h.policy.as_ref().map(|p| p.name.as_str()), Some("live"));
+    let c = loads(&doc("stream_whep", r#"{"prefix": ""}"#));
+    let crate::Handler::StreamWhep(h) = &c.routes[0].handler else {
+        panic!()
+    };
+    assert_eq!(h.prefix, "/whep/");
+    for (module, params, want) in [
+        (
+            "stream_whip",
+            r#"{"stream": "live/../cam"}"#,
+            r#""live/../cam" is not a stream's path"#,
+        ),
+        (
+            "stream_whep",
+            r#"{"prefix": "/whep/", "auth": "no"}"#,
+            r#"no media_auth policy named "no""#,
+        ),
+        (
+            "stream_whip",
+            r#"{"prefix": "whip"}"#,
+            "does not start with /",
+        ),
+        ("stream_whep", r#"{"max_sessions": 3}"#, "unknown field"),
+    ] {
+        refused(&doc(module, params), want);
+    }
+    assert!(valid_stream("live/cam-1.x_y~z") && !valid_stream("live//cam"));
+    assert!(!valid_stream("") && !valid_stream("a/./b") && !valid_stream(&"a".repeat(257)));
+}
