@@ -230,6 +230,16 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I112 | WebRTC III：基于 akio 钩子的 TURN 服务器：端口范围、带宽、事件、就地修改的限制、排空 | I111, akio A256–A258 | done |
 | I113 | WebRTC IV：WHIP 和 WHEP，基于 akio-webrtc `RtcServer` 的 SFU | I110 | done |
 | I114 | WebRTC V：代理的 WHIP 和 WHEP：`webrtc_proxy` 和 `webrtc.proxy` | I113, I14 | todo |
+| I150 | BitTorrent I：配置中的 `bittorrent.client` 和 `bittorrent.tracker`，fit 的字段、检查和冲突；后续迭代才运行的内容以"尚不支持"拒绝 | I98 | todo |
+| I151 | BitTorrent II：基于 akio-bittorrent 的 `TrackerServer` 的 tracker 角色和 `bt_tracker`：HTTP 和 UDP、允许列表、访问控制、上限、统计、其控制台 | I150, I100 | todo |
+| I152 | BitTorrent III：基于 akio-bittorrent 的 `Client` 的客户端角色：`data_dir` 中的状态、不经校验恢复、原地或以新客户端重载、其 API 和控制台 | I150, I151 | todo |
+| I153 | BitTorrent IV：通过 URL 和 `watch_dir` 添加、分类、队列、磁盘检查 | I152 | todo |
+| I154 | BitTorrent V：`alt_speed` 时间表、单个种子的限制、客户端的 `access` 和连接限制（akio A284） | I152 | todo |
+| I155 | BitTorrent VI：`bt_stream`，边下载边播放文件 | I152 | todo |
+| I156 | BitTorrent VII：把目录发布为种子，`bt_publish` | I152 | todo |
+| I157 | BitTorrent VIII：Admin API 的 `/bittorrent/...`、事件、`akit bt`、指标 | I153 | todo |
+| I158 | BitTorrent IX：客户端和 tracker 的页面 | I157, I109 | todo |
+| I159 | BitTorrent X：RSS 自动下载、实例共享的 tracker 存储、私有 tracker 的 passkey | I153, I151 | todo |
 
 ## 基准与优化状态
 
@@ -288,6 +298,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | 访问控制列表 | I85–I87 | 否 | 否（已实现，未测量） | 同 fit 的 `BenchmarkAllows`：一个策略的查找（一个含 10、10,000 和 1,000,000 个前缀、从文件读入的列表，以及串联的三个列表），IPv4 和 IPv6 地址，1 和 16 个线程，不分配内存。与不带 `access` 的同一配置做同一轮 A/B、交替轮次：带大型拒绝列表时，监听器在 accept 时拒绝或接受的每秒连接数（akio 的过滤器，A3：每次 accept 一次 `Arc` 读取加一次查找）；路由带自己的列表（逐请求检查：一次图读取加一次查找）与不带时，fixed 和 proxy 场景在 HTTP/1.1、h2c 和 h3 上的表现；由 akit-l4 的入口决定的 `tcp` 服务每秒连接数；被拒绝的 `udp` 数据报洪泛（在 akio 的过滤器处丢弃，A220）对正常会话延迟的影响。 |
 | 控制台与加密的 store | I89–I93c | 否 | 否（控制面） | 控制台属于控制面（规则 24：自身无需基准），但与数据面共用主机。同一轮 A/B、交替轮次：fixed 和 proxy 场景在控制台遭受大量失败登录（成本 10 的 bcrypt 在其单线程登录池上，16 个等待，其余 503）时和没有时，并有一个已登录客户端每秒轮询 `GET /api/m/admin/status`：数据面的每秒请求数和 p99 不应变化。控制台自身的数字仅作记录：成本 10 和 12 时每秒登录数；工作台首次加载（其 2.5 MB 文件，从内存提供）在 HTTP/1.1 和 TLS 上的耗时。I93：启动时 store 的密钥派生（fit 的 Argon2id 参数 3、64 MiB、4 线程：耗时和峰值内存），以及 4 MiB 配置一次写入（密封、同步、重命名）的延迟。 |
 | akio 请求替换掉的权宜实现（A12、A79、A45、A117、A30、A54、A29、A75、A78、A22、A170、A24、A49、A35、A148） | —（akio 请求） | 否 | 否（已实现，未测量） | 对照这些提交之前的 main，同一轮 A/B 测 fixed 和 proxy 场景，HTTP/1.1、h2c 和 h3：访问日志和指标走监听器的响应观察者（`set_observed`，不分配）对比装箱的过滤器，以及每个请求都调用 `limit_body`；代理在 HTTP/1.1 上按长度成帧的下载对比 chunked；第 4 层转发由 akio 的每连接空闲超时关闭对比 akit 的扫描（大量空闲连接）；sockmap 转发经 `akio::ebpf::Tunnel`（以 root 测 TCP 吞吐，同 I51b 一行）；健康检查探测负载走 `akio::timer::after_send` 对比 akit 原来的定时线程。 |
+| BitTorrent：客户端和 tracker | I151, I152 | no | no（尚未构建） | 对照 fit 的角色（fit 对 fit、akit 对 akit 以及混合），在回环地址上和两台主机之间：从一个做种者和从多个做种者下载一个种子的 MiB/s（TCP 和 uTP，加密和明文）、慢磁盘下磁盘池的队列、有和没有 resume 数据时重启到做种的时间、每个种子和每个 peer 的内存；tracker 在 100,000 个种子和 500,000 个 peer 下 HTTP 和 UDP 每秒的 announce 数及其内存；如 fit 的 I205 那样以 fit 的 `bench/bt.sh` 对照 anacrolix 和 libtorrent。 |
 
 ## M0 基础
 
@@ -1058,7 +1069,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | 7 | 媒体库与频道 | I131–I139 | MP4 读取器（akio 需求）；点播；频道；签名 URL |
 | 8 | 集群管理 | I140–I150, I153 | 成员、概览、带健康门槛的发布 |
 | 9 | AI 助手 | I124–I130, I152–I154 | 对话面板、工具、MCP 服务器 |
-| 10 | BitTorrent | I196–I210 | 基于 `akio-bittorrent` 的客户端和 tracker 角色 |
+| 10 | BitTorrent | I196–I210 | [I150–I159](#bittorrent)：配置中的角色、基于 `akio-bittorrent` 的 tracker 和客户端、添加种子、时间表和访问控制、`bt_stream`、发布、Admin API 和事件、页面、RSS |
 | 11 | 数据同步 | I163–I194, I211–I222 | 先做流水线核心和检查点，再按 fit 的顺序做连接器 |
 | 12 | Prefork 与 NUMA | fit 中已规划 | 取消（2026-11-25）：akit 不使用 prefork，akio 已删除 `akio-prefork`。不再计划。 |
 | 13 | P2P 与 VPN | I84–I103 | 待 fit 的这条路线完成后 |
@@ -1656,3 +1667,127 @@ ICE ufrag 路由。它们对外显示的是 akit 的名字（决定 037：`SOFTW
 - **涉及**：`akit-webrtc`（`proxy`）、`akit-upstream`、`akit`。
 - **fit**：`webrtc/media/{proxy,proxyhttp,relay}.go`；I110、I111。
 - **状态**：todo。
+### BitTorrent
+
+fit 的 I196–I210（其 [BitTorrent 指南](https://github.com/lesismal/fit/blob/main/docs/bittorrent.md)、
+其决定 037、其包 `bittorrent`、`bittorrent/tracker`、`handler/btstream`、`handler/btpublish`、
+`config/bittorrent*.go`），分为十个迭代。配置中的两个角色：`bittorrent.client` 下载并做种，种子保存在
+其 `data_dir` 中跨重启保留；`bittorrent.tracker` 应答 announce 和 scrape，HTTP 经由路由的
+`bt_tracker` 处理器，UDP 在其自己的 `listen` 上。它们运行在 akio-bittorrent 的 `Client` 和
+`TrackerServer` 上，与网关并列，由 `akit run`（I100 的宿主）运行。fit 为它们向 fib 提出的需求
+（fib 的 A75–A79、A85–A88），akio-bittorrent 缺少的部分 akit 向 akio 提出（A283–A288）：客户端运行在
+监听器的引擎上、按地址拒绝 peer 并在运行时修改限制、tracker 存储的上限原地修改。角色的文件与 fit
+相同（`torrents.json`、`torrents/<id>.torrent`），使数据目录可在 fit 与 akit 之间迁移；resume 数据
+是 akio 自己的格式，fit 的会被拒绝并重新校验数据（决定第 75 行）。没有任何东西阻塞 I/O 线程：存储
+和哈希在 akio-bittorrent 的磁盘池上运行，状态文件在角色自己的线程上写，tracker 的 announce 只是一次
+查找加一个分片锁。fit 的 I205（互通、故障测试）放在每个角色自己的迭代中：akit 的 tracker 对 fit 的
+客户端和 aria2c，akit 的客户端对 fit 的 tracker 和做种者，只在回环地址上。fit 的 I206（集群查看
+成员的种子）等待集群管理路线。
+
+### I150 BitTorrent I：配置中的 `bittorrent`
+
+- **做什么**：`bittorrent.client` 和 `bittorrent.tracker` 与其余部分一样严格读取，字段、默认值、
+  上限和检查与 fit 相同（`config/bittorrent.go`、`config/bittorrent_tracker.go`）：客户端的
+  `listen` 和 `data_dir`（必填）、`download_dir`、`encryption`、`dht`、`pex`、`utp`、`lsd`、
+  `disk_workers`、`disk_queue_bytes`、`save_interval`、`limits` 和 `console`；tracker 的 `listen`、
+  `interval`、`min_interval`、`peer_ttl`、其存储的上限、`max_numwant`、`max_scrape`、`allow`、
+  `allow_files`、`access` 和 `console`。客户端的端口以 TCP 和 UDP 进入"一个地址一个服务器"的检查，
+  tracker 的以 UDP 进入（fit 的 `bindings.go`）；`bittorrent` 日志器。后续迭代才运行的内容以"尚不
+  支持"拒绝并指明字段：`categories`、`watch_dir` 及其上限、`url_timeout`、`alt_speed`、客户端的
+  `access`、akio 尚不能设置的限制（`max_conns`、`max_half_open`、`max_active_*`、`min_free_bytes`）、
+  `publish`、`rss`、tracker 的 `auth`（media_auth）和 `store`。在角色的迭代运行它之前，`akit run`
+  拒绝含有该角色的配置。
+- **完成标准**：移植后的 fit `config/bittorrent_test.go` 和 `bittorrent_tracker_test.go` 用例通过；
+  fit-examples 的 `bittorrent-*` 通过兼容性闸门，或只以"尚不支持"失败；参考手册列出每个字段；v1
+  冻结把它们标为新增。
+- **涉及**：`akit-config`（`bittorrent`）、`akit`、`tests/compat`、`docs/reference`。
+- **fit**：`config/bittorrent.go`、`config/bittorrent_tracker.go`、`config/bindings.go`；I197、I201。
+
+### I151 BitTorrent II：tracker 角色
+
+- **做什么**：基于 akio-bittorrent 的 `TrackerServer` 的 `bittorrent.tracker`，在新 crate
+  `akit-bittorrent` 中：HTTP 的 announce 和 scrape 经由 `bt_tracker` 处理器（fit 的
+  `bittorrent/tracker/handler.go`：按路径最后一段区分、拒绝以 failure reason 应答、角色未运行时
+  503），UDP 在 `listen` 上加入监听器的引擎，角色的访问控制在 akio 的过滤器处执行，BEP 15 的连接 ID
+  以跨重载保留的密钥生成；fit 的应答（`unregistered torrent`、`min interval`、默认 50 个 peer、至多
+  `max_numwant`、UDP 应答不超过 1,400 字节、`max_scrape`）；允许列表可内联也可在文件中，文件变化时
+  重新读取；HTTP 的访问控制在处理器中检查；统计（announce、scrape、按原因计的拒绝）；控制台的只读
+  路由（`/api/stats`、`/api/torrents`、`/api/torrents/<hash>`）。只有允许列表、访问控制或应答变化的
+  重载保留 swarm；存储上限的变化在 akio 的 A285 之前会建立新存储。
+- **完成标准**：移植后的 fit tracker 测试通过（HTTP 和 UDP 的 announce 与 scrape、允许列表及其文件、
+  访问控制、上限、重载、逐字节发送的客户端、垃圾数据报）；fit 的客户端和 aria2c（若已安装）向
+  akit 的 tracker announce，两个 fit 客户端经由它互相找到。
+- **涉及**：`akit-bittorrent`（新）、`akit-config`、`akit`。
+- **fit**：`bittorrent/tracker`；I201、I209。
+
+### I152 BitTorrent III：客户端角色
+
+- **做什么**：基于 akio-bittorrent 的 `Client` 的 `bittorrent.client`（在 akio 的 A283 之前使用
+  它自己的引擎）：状态以 fit 的格式保存在 `data_dir` 中（`torrents.json`、`torrents/<id>.torrent`，
+  resume 数据在 `resume/` 中），先写临时文件、同步再改名，由角色自己的线程至多每 `save_interval`
+  写一次，种子列表变化时立即写，停止时也写；启动时恢复而不重新校验；重载原地修改速率和做种限制，
+  当 `listen`、`encryption`、`dht`、`pex`、`utp`、`lsd`、`disk_workers` 或 `disk_queue_bytes`
+  变化时建立新客户端（种子转移过去，不经校验继续），新的 `data_dir` 从该目录的状态开始；端口被占用时
+  恢复旧客户端。角色的 API（以磁力链接或 .torrent 文件添加、删除时保留或删除数据、暂停、继续、列出、
+  状态）和控制台的只读路由（`/api/torrents`、`/api/torrents/<id>`）。
+- **完成标准**：移植后的 fit 角色测试通过（两个角色在回环地址上下载、重启后不读数据即继续、磁力链接的
+  .torrent 被保存并从中恢复、重载限制时保留 peer、`listen` 变化时保留种子、损坏和过大的状态文件、
+  损坏的种子仍被列出、API 的拒绝）；akit 的客户端从经由 fit 的 tracker 找到的 fit 做种客户端下载，
+  fit 的客户端也从 akit 的下载。
+- **涉及**：`akit-bittorrent`、`akit`。
+- **fit**：`bittorrent/{role,state,api}.go`；I197。
+
+### I153 BitTorrent IV：添加种子、分类、队列
+
+- **做什么**：同 fit 的 I198：基于 akio HTTP 客户端的 .torrent URL（32 MiB、5 次重定向、`url_timeout`、
+  同时 4 个）、`watch_dir`（.torrent 和 .magnet 文件，`.done` 和 `.failed`）、分类（目录、限制、在该
+  路线落地后对 `media_library` 重新扫描）、队列（`max_active_downloads`、`max_active_seeds`）、磁盘
+  检查（`min_free_bytes`，akio 的 A249）。种子自己的下载目录需要 akio-bittorrent 为磁力链接提供的存储
+  （A286）。
+- **涉及**：`akit-bittorrent`、`akit-config`。
+- **fit**：`bittorrent/{manage,fetch,watch}.go`；I198。
+
+### I154 BitTorrent V：时间表、单个种子的限制、客户端的访问控制
+
+- **做什么**：同 fit 的 I199：带每周时间表和时区的 `alt_speed`、分类和单个种子的限制、客户端的
+  `access`（akio 的 A284：按地址拒绝 peer，重载拒绝它们时关闭连接），以及 akio 在运行时设置的连接
+  限制（`max_conns`、`max_half_open`、`upload_slots`，A284）。
+- **涉及**：`akit-bittorrent`、`akit-config`。
+- **fit**：`bittorrent/manage.go`；I199。
+
+### I155 BitTorrent VI：`bt_stream`
+
+- **做什么**：同 fit 的 I200：种子下载期间按范围提供其文件，被请求的范围先读（akio-bittorrent 的一个
+  等待分片的读取器，A287）、`max_streams`、超时、从磁力链接添加的临时种子（`auth` 在 media_auth
+  路线之后）。
+- **涉及**：`akit-bittorrent`。
+- **fit**：`handler/btstream`；I200。
+
+### I156 BitTorrent VII：发布
+
+- **做什么**：同 fit 的 I202 和 I209：`bittorrent.client.publish` 和 `bt_publish` 处理器，目录在有界
+  池上构建为混合种子，原地做种，web seed 指向 akit 的静态文件，跟随磁盘变化。
+- **涉及**：`akit-bittorrent`、`akit-config`。
+- **fit**：`bittorrent/{publish,publish_walk}.go`、`handler/btpublish`；I202、I209。
+
+### I157 BitTorrent VIII：Admin API、事件、`akit bt`、指标
+
+- **做什么**：同 fit 的 I203 和 I210：Admin API 上的 `/bittorrent/...`、事件流、`akit bt`、按分类和
+  状态的指标；每个 tracker 的 announce 和 web seed 的状态（A288）、原地重新校验。
+- **涉及**：`akit-bittorrent`、`akit-admin`、`akit`、`akit-observe`。
+- **fit**：`admin/bittorrent.go`、`admin/btevents.go`、`cli/bt.go`、`bittorrent/{events,inspect,
+  metrics}.go`；I203、I210。
+
+### I158 BitTorrent IX：页面
+
+- **做什么**：同 fit 的 I204：客户端和 tracker 的页面，基于控制台机制（`akit_roles::pages`）和 I157
+  的 API。
+- **涉及**：`akit-bittorrent`、`akit-admin`。
+- **fit**：workbench 的 BitTorrent 页面；I204。
+
+### I159 BitTorrent X：RSS 与实例共享的 tracker 存储
+
+- **做什么**：同 fit 的 I207 和 I208：RSS 自动下载（`rss`），以及 tracker 在 Redis 中的 `store`；
+  在读取 `media_auth` 之后（流媒体与媒体鉴权路线）支持私有 tracker 的 passkey。
+- **涉及**：`akit-bittorrent`、`akit-config`。
+- **fit**：`bittorrent/rss*.go`、`bittorrent/tracker/sharedstore`；I207、I208。

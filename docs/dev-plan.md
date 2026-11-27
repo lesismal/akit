@@ -240,6 +240,16 @@ Tunnel and LLM track; I110–I114 are the WebRTC track, and I115–I119 are rese
 | I112 | WebRTC III: the TURN server on akio's hooks: port range, bandwidth, events, limits in place, drain | I111, akio A256–A258 | done |
 | I113 | WebRTC IV: WHIP and WHEP, an SFU on akio-webrtc's `RtcServer` | I110 | done |
 | I114 | WebRTC V: WHIP and WHEP proxied: `webrtc_proxy` and `webrtc.proxy` | I113, I14 | todo |
+| I150 | BitTorrent I: `bittorrent.client` and `bittorrent.tracker` in the config, fit's fields, checks and clashes; what later iterations run refused as not supported yet | I98 | todo |
+| I151 | BitTorrent II: the tracker role and `bt_tracker` on akio-bittorrent's `TrackerServer`: HTTP and UDP, the allow-list, access, bounds, statistics, its console | I150, I100 | todo |
+| I152 | BitTorrent III: the client role on akio-bittorrent's `Client`: the state in `data_dir`, restore without a check, reloads in place or by a new client, its API and console | I150, I151 | todo |
+| I153 | BitTorrent IV: adding by URL and `watch_dir`, categories, the queue, disk checks | I152 | todo |
+| I154 | BitTorrent V: `alt_speed` schedules, per-torrent limits, the client's `access` and connection limits (akio A284) | I152 | todo |
+| I155 | BitTorrent VI: `bt_stream`, a file played while it downloads | I152 | todo |
+| I156 | BitTorrent VII: publishing a directory as torrents, `bt_publish` | I152 | todo |
+| I157 | BitTorrent VIII: the Admin API's `/bittorrent/...`, events, `akit bt`, metrics | I153 | todo |
+| I158 | BitTorrent IX: the client's and the tracker's pages | I157, I109 | todo |
+| I159 | BitTorrent X: RSS auto-download, the tracker store instances share, private trackers' passkeys | I153, I151 | todo |
 
 ## Benchmark and optimization status
 
@@ -301,6 +311,7 @@ commit and result.
 | Access lists | I85–I87 | no | no (built, not measured) | As fit's `BenchmarkAllows`: a policy's lookup (one list of 10, 10,000 and 1,000,000 prefixes from a file, and three lists chained) for IPv4 and IPv6 addresses, 1 and 16 threads, no allocation. Same-run A/B, alternating rounds, against the same config without `access`: connections a second through a listener refused or served at accept (akio's filter, A3: an `Arc` read and the lookup per accept) with a large deny list; the fixed and proxy scenarios over HTTP/1.1, h2c and h3 with a route's own access (checked per request: a graph read and the lookup) and without; a `tcp` service's connections a second decided by akit-l4's entry; a flood of refused `udp` datagrams (dropped at akio's filter, A220) against the served sessions' latency. |
 | Console and encrypted store | I89–I93c | no | no (control plane) | The console is control plane (rule 24: no benchmark of its own), but it shares the host with the data plane. Same-run A/B, alternating rounds, of the fixed and proxy scenarios with and without a console being flooded with failed logins (bcrypt at cost 10 on its one-thread login pool, 16 waiting, the rest 503) and with a logged-in client polling `GET /api/m/admin/status` every second: the data plane's requests a second and p99 should not move. The console's own numbers, for the record: logins a second at costs 10 and 12; the workbench's first load (its 2.5 MB of files, from memory) over HTTP/1.1 and TLS. For I93: the store's key derivation at start (Argon2id at fit's 3, 64 MiB, 4 threads: time and peak memory), and a write's latency with a 4 MiB config (sealed, synced, renamed). |
 | akio requests moved off their stopgaps (A12, A79, A45, A117, A30, A54, A29, A75, A78, A22, A170, A24, A49, A35, A148) | — (akio requests) | no | no (built, not measured) | Same-run A/B of the fixed and proxy scenarios, HTTP/1.1, h2c and h3, against main before these commits: the access log and metrics through the listener's response observer (`set_observed`, no allocation) against the boxed filter, and `limit_body` called on every request; the proxy's downloads framed by their length on HTTP/1.1 against chunked; layer 4 relays timed out by akio's per-connection idle timeout against akit's sweep (many idle connections); the sockmap relay through `akio::ebpf::Tunnel` (TCP throughput as root, as I51b's row); a health-check probe load on `akio::timer::after_send` against akit's old timer thread. |
+| BitTorrent: client and tracker | I151, I152 | no | no (not built yet) | Against fit's roles (fit with fit, akit with akit, and mixed), on loopback and between two hosts: one torrent's download in MiB a second from one seeder and from several (TCP and uTP, encrypted and plain), the disk pool's queue under a slow disk, a restart's time to seeding with resume data and without, memory per torrent and per peer; the tracker's announces a second over HTTP and UDP with 100,000 torrents and 500,000 peers, and its memory; fit's `bench/bt.sh` against anacrolix and libtorrent as fit's I205 ran it. |
 
 ## M0, foundations
 
@@ -1185,7 +1196,7 @@ below is the planned order; tracks with no dependency between them may run in pa
 | 7 | Media library and channels | I131–I139 | an MP4 reader (akio request); VOD; channels; signed URLs |
 | 8 | Cluster management | I140–I150, I153 | members, overview, rollouts with health gates |
 | 9 | AI assistant | I124–I130, I152–I154 | the chat panel, tools, MCP server |
-| 10 | BitTorrent | I196–I210 | the client and tracker roles on `akio-bittorrent` |
+| 10 | BitTorrent | I196–I210 | [I150–I159](#bittorrent): the roles in the config, the tracker and the client on `akio-bittorrent`, adding torrents, schedules and access, `bt_stream`, publishing, the Admin API and events, the pages, RSS |
 | 11 | Sync | I163–I194, I211–I222 | the pipeline core and checkpoints, then connectors by fit's order |
 | 12 | Prefork and NUMA | planned in fit | dropped (2026-11-25): akit does not use prefork, and akio removed `akio-prefork`. Not planned. |
 | 13 | P2P and VPN | I84–I103 | after fit's track is done |
@@ -1979,3 +1990,141 @@ Streaming and media auth track's: it is refused as not supported yet until that 
 - **Touches**: `akit-webrtc` (`proxy`), `akit-upstream`, `akit`.
 - **fit**: `webrtc/media/{proxy,proxyhttp,relay}.go`; I110, I111.
 - **Status**: todo.
+### BitTorrent
+
+fit's I196–I210 (its [BitTorrent guide](https://github.com/lesismal/fit/blob/main/docs/bittorrent.md),
+its decision 037, its packages `bittorrent`, `bittorrent/tracker`, `handler/btstream`,
+`handler/btpublish`, `config/bittorrent*.go`), in ten iterations. Two roles of the config:
+`bittorrent.client` downloads and seeds torrents kept in its `data_dir` across restarts, and
+`bittorrent.tracker` answers announces and scrapes, over HTTP through the routes' `bt_tracker`
+handler and over UDP on its own `listen`. They run on akio-bittorrent's `Client` and
+`TrackerServer`, beside the gateway, by `akit run` (I100's host). What fit asked of fib for them
+(fib's A75–A79, A85–A88) akit asks of akio where akio-bittorrent lacks it (A283–A288): the client
+on the listeners' engine, peers refused by address and limits changed at run time, the tracker
+store's bounds in place. The roles' files are fit's (`torrents.json`, `torrents/<id>.torrent`) so
+that a data directory moves between fit and akit; resume data is akio's own format, and fit's is
+refused and the data checked again (decision row 75). Nothing blocks an I/O thread: storage and
+hashing run on akio-bittorrent's disk pool, the state files on the role's own thread, and the
+tracker's announces are a lookup and a shard lock. fit's I205 (interop, failure tests) is in
+each role's iteration: akit's tracker with fit's client and aria2c, akit's client with fit's
+tracker and seeder, on loopback only. fit's I206 (the cluster's view of its members' torrents)
+waits for the Cluster management track.
+
+### I150 BitTorrent I: `bittorrent` in the config
+
+- **Do**: `bittorrent.client` and `bittorrent.tracker` read as strictly as the rest, with fit's
+  fields, defaults, bounds and checks (`config/bittorrent.go`, `config/bittorrent_tracker.go`):
+  the client's `listen` and `data_dir` (required), `download_dir`, `encryption`, `dht`, `pex`,
+  `utp`, `lsd`, `disk_workers`, `disk_queue_bytes`, `save_interval`, `limits` and `console`; the
+  tracker's `listen`, `interval`, `min_interval`, `peer_ttl`, its store's bounds, `max_numwant`,
+  `max_scrape`, `allow`, `allow_files`, `access` and `console`. The client's port in the one
+  address check for TCP and UDP, the tracker's for UDP (fit's `bindings.go`); the `bittorrent`
+  logger. What a later iteration runs is refused as not supported yet, naming its field:
+  `categories`, `watch_dir` and its bounds, `url_timeout`, `alt_speed`, the client's `access`, the
+  limits akio cannot set yet (`max_conns`, `max_half_open`, `max_active_*`, `min_free_bytes`),
+  `publish`, `rss`, the tracker's `auth` (media_auth) and `store`. `akit run` refuses a config
+  with a role until the role's iteration runs it.
+- **Done when**: fit's `config/bittorrent_test.go` and `bittorrent_tracker_test.go` cases pass
+  ported; fit-examples' `bittorrent-*` pass the gate or fail only as not supported yet; the
+  reference lists every field; the v1 freeze marks them as additions.
+- **Touches**: `akit-config` (`bittorrent`), `akit`, `tests/compat`, `docs/reference`.
+- **fit**: `config/bittorrent.go`, `config/bittorrent_tracker.go`, `config/bindings.go`; I197,
+  I201.
+
+### I151 BitTorrent II: the tracker role
+
+- **Do**: `bittorrent.tracker` on akio-bittorrent's `TrackerServer`, in a new crate
+  `akit-bittorrent`: HTTP announces and scrapes through the `bt_tracker` handler (fit's
+  `bittorrent/tracker/handler.go`: the path's last segment, refusals as failure reasons, 503
+  while the role does not run), UDP on `listen` added to the listeners' engine with the role's
+  access at akio's filter, BEP 15 connection IDs keyed by a secret kept across reloads; fit's
+  answers (`unregistered torrent`, `min interval`, 50 peers by default and `max_numwant` at most,
+  a UDP answer within 1,400 bytes, `max_scrape`); the allow-list inline and in files, read again
+  when one changes; access for HTTP in the handler; statistics (announces, scrapes, refusals by
+  reason); the console's read-only routes (`/api/stats`, `/api/torrents`, `/api/torrents/<hash>`).
+  A reload keeps the swarms when only the allow-list, access or answers change; a change of the
+  store's bounds makes a new store until akio's A285.
+- **Done when**: fit's tracker tests pass ported (announces and scrapes over HTTP and UDP, the
+  allow-list and its files, access, bounds, reloads, a byte-at-a-time client, garbage datagrams);
+  fit's client and aria2c (where installed) announce to akit's tracker and two fit clients find
+  each other through it.
+- **Touches**: `akit-bittorrent` (new), `akit-config`, `akit`.
+- **fit**: `bittorrent/tracker`; I201, I209.
+
+### I152 BitTorrent III: the client role
+
+- **Do**: `bittorrent.client` on akio-bittorrent's `Client` (its own engine until akio's A283):
+  the state in `data_dir` as fit's (`torrents.json`, `torrents/<id>.torrent`, resume data in
+  `resume/`), written to a temporary file, synced and renamed, by the role's own thread at most
+  every `save_interval`, at once for a change of the list, and at stop; restored at start without
+  a check; a reload changes the rates and seed limits in place and makes a new client (the
+  torrents carried over, resuming without a check) when `listen`, `encryption`, `dht`, `pex`,
+  `utp`, `lsd`, `disk_workers` or `disk_queue_bytes` change, a new `data_dir` starting from that
+  directory's state; a port taken brings the old client back. The role's API (add by magnet link
+  or .torrent file, remove with or without the data, pause, resume, list, status) and the
+  console's read-only routes (`/api/torrents`, `/api/torrents/<id>`).
+- **Done when**: fit's role tests pass ported (a download between two roles on loopback, a restart
+  resuming without reading the data, a magnet link's .torrent saved and restored from, a reload of
+  limits keeping the peer, a `listen` change keeping the torrents, bad and oversized state files,
+  broken torrents kept listed, the API's refusals); akit's client downloads from fit's seeding
+  client found through fit's tracker, and fit's client from akit's.
+- **Touches**: `akit-bittorrent`, `akit`.
+- **fit**: `bittorrent/{role,state,api}.go`; I197.
+
+### I153 BitTorrent IV: adding torrents, categories, the queue
+
+- **Do**: as fit's I198: .torrent URLs on akio's HTTP client (32 MiB, 5 redirects,
+  `url_timeout`, 4 at once), `watch_dir` (.torrent and .magnet files, `.done` and `.failed`),
+  categories (directories, limits, a `media_library` rescan once that track lands), the queue
+  (`max_active_downloads`, `max_active_seeds`), the disk checked (`min_free_bytes`, akio's A249).
+  A torrent's own download directory needs akio-bittorrent's storage for a magnet link (A286).
+- **Touches**: `akit-bittorrent`, `akit-config`.
+- **fit**: `bittorrent/{manage,fetch,watch}.go`; I198.
+
+### I154 BitTorrent V: schedules, per-torrent limits, the client's access
+
+- **Do**: as fit's I199: `alt_speed` with weekly schedules and a time zone, per-category and
+  per-torrent limits, the client's `access` (akio's A284: peers refused by address, closed when a
+  reload refuses them), and the connection limits akio sets at run time (`max_conns`,
+  `max_half_open`, `upload_slots`, A284).
+- **Touches**: `akit-bittorrent`, `akit-config`.
+- **fit**: `bittorrent/manage.go`; I199.
+
+### I155 BitTorrent VI: `bt_stream`
+
+- **Do**: as fit's I200: a torrent's file served by ranges while it downloads, the ranges asked
+  read first (a reader of akio-bittorrent's that waits for pieces, A287), `max_streams`, timeouts,
+  temporary torrents added from a magnet link (after media_auth's track for `auth`).
+- **Touches**: `akit-bittorrent`.
+- **fit**: `handler/btstream`; I200.
+
+### I156 BitTorrent VII: publishing
+
+- **Do**: as fit's I202 and I209: `bittorrent.client.publish` and the `bt_publish` handler, a
+  directory built into hybrid torrents on a bounded pool, seeded in place, web seeds at akit's
+  static files, following the disk.
+- **Touches**: `akit-bittorrent`, `akit-config`.
+- **fit**: `bittorrent/{publish,publish_walk}.go`, `handler/btpublish`; I202, I209.
+
+### I157 BitTorrent VIII: the Admin API, events, `akit bt`, metrics
+
+- **Do**: as fit's I203 and I210: `/bittorrent/...` on the Admin API, the event stream, `akit bt`,
+  metrics by category and state; each tracker's announces and the web seeds' state (A288), a
+  recheck in place.
+- **Touches**: `akit-bittorrent`, `akit-admin`, `akit`, `akit-observe`.
+- **fit**: `admin/bittorrent.go`, `admin/btevents.go`, `cli/bt.go`, `bittorrent/{events,inspect,
+  metrics}.go`; I203, I210.
+
+### I158 BitTorrent IX: the pages
+
+- **Do**: as fit's I204: the client's and the tracker's pages on the console machinery
+  (`akit_roles::pages`), on I157's API.
+- **Touches**: `akit-bittorrent`, `akit-admin`.
+- **fit**: the workbench's BitTorrent pages; I204.
+
+### I159 BitTorrent X: RSS and the tracker store instances share
+
+- **Do**: as fit's I207 and I208: RSS auto-download (`rss`), and the tracker's `store` in Redis;
+  a private tracker's passkeys once `media_auth` is read (the Streaming and media auth track).
+- **Touches**: `akit-bittorrent`, `akit-config`.
+- **fit**: `bittorrent/rss*.go`, `bittorrent/tracker/sharedstore`; I207, I208.

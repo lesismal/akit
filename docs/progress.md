@@ -169,6 +169,15 @@ done and where the work differs from the plan.
   server on the hooks akio-turn lacks (A256–A258); I113, WHIP and WHEP, an SFU on akio-webrtc's
   `RtcServer`; I114, WHIP and WHEP proxied. I115–I119 are reserved for the track. Its benchmark
   row names what to measure.
+### 2026-11-27: the BitTorrent track planned (I150–I159)
+
+- The tenth track after 1.0 broken into iterations from fit's I196–I210
+  ([the plan](dev-plan.md#bittorrent)): the roles in the config (I150), the tracker (I151) and the
+  client (I152) on akio-bittorrent, adding torrents (I153), schedules and access (I154),
+  `bt_stream` (I155), publishing (I156), the Admin API and events (I157), the pages (I158), RSS
+  and the shared tracker store (I159). fit's I205 (interop and failure tests) goes into each
+  role's iteration; fit's I206 (the cluster's view) waits for the Cluster management track. A row
+  in the benchmark table names what to measure.
 
 ### 2026-11-27: I109b, the tunnel's node's and proxy's pages; the roles' consoles' certificates read again
 

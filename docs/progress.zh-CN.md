@@ -128,6 +128,13 @@
   处理器 `whip`、`whep` 和 `webrtc_proxy`）；I111，基于 akio-turn、经 UDP、TCP 和 TLS 的 TURN 服务器；I112，基于
   akio-turn 所缺钩子（A256–A258）的 TURN 服务器；I113，WHIP 和 WHEP，基于 akio-webrtc `RtcServer` 的 SFU；I114，
   代理的 WHIP 和 WHEP。I115–I119 为该路线预留。其基准测试行写明要测量的内容。
+### 2026-11-27：规划 BitTorrent 路线（I150–I159）
+
+- 1.0 之后的第十条路线按 fit 的 I196–I210 拆分为迭代（[计划](dev-plan.zh-CN.md#bittorrent)）：
+  配置中的角色（I150）、基于 akio-bittorrent 的 tracker（I151）和客户端（I152）、添加种子（I153）、
+  时间表和访问控制（I154）、`bt_stream`（I155）、发布（I156）、Admin API 和事件（I157）、页面
+  （I158）、RSS 和共享的 tracker 存储（I159）。fit 的 I205（互通和故障测试）放入每个角色自己的迭代；
+  fit 的 I206（集群视图）等待集群管理路线。基准表中有一行说明要测量什么。
 
 ### 2026-11-27：I109b，隧道 node 和 proxy 的页面；角色控制台的证书重新读取
 
