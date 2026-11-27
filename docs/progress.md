@@ -162,7 +162,8 @@ done and where the work differs from the plan.
   settled by its `GET /node`'s ETag (applied, skipped as changed since the plan, or unsure). The
   gate, after `wait_ms` or the 5xx window: the member reachable and running the new ETag; no more
   drift than before, where it lists `config.check`; its share of 5xx over the window from
-  `/status`'s `requests`, judged from `min_requests` (members that count no requests fail the
+  `/status`'s `requests`, judged from `min_requests`, the window starting once the requests
+  counted so far are read, when the batch says `gating` (members that count no requests fail the
   batch before anything is applied). A rollback is `POST /rollback/{n}` with `If-Match` the new
   ETag; the members of a batch that passed are told what the manager owns.
 - Steering: pause (after the batch under way), resume, go, abort, rollback (once paused, waiting

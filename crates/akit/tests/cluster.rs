@@ -1633,7 +1633,7 @@ fn rollouts_with_gates() {
     // /boom answers 500s in the window, it fails, and c is rolled back.
     let (st, _, v) = b.call("PUT", "/api/m/cluster/templates/base", &tpl("v3"));
     assert_eq!(st, 200, "{v}");
-    let gate = r#"{"strategy": {"mode": "all", "gate": {"wait_ms": 100, "max_5xx_ratio": 0.5, "window_ms": 2000, "min_requests": 5}}}"#;
+    let gate = r#"{"strategy": {"mode": "all", "gate": {"wait_ms": 100, "max_5xx_ratio": 0.5, "window_ms": 5000, "min_requests": 5}}}"#;
     let (id, _) = plan(
         &b,
         r#"{"kind": "template", "template": "base", "nodes": ["a"]}"#,
@@ -1652,10 +1652,13 @@ fn rollouts_with_gates() {
     );
     let (st, v) = steer(&b, &id, "start", gate);
     assert_eq!(st, 200, "{v}");
+    // Gating once c's requests counted so far were read: the 500s from now on are in its window.
     wait_rollout(&b, &id, "c's gate", |r| {
-        str_member(r, "state") == "running" && rstatus(r, "c") == "applied"
+        let Some(akit_config::value::Value::Array(bs)) = r.get("batches") else {
+            return false;
+        };
+        rstatus(r, "c") == "applied" && bs.iter().any(|x| str_member(x, "state") == "gating")
     });
-    std::thread::sleep(Duration::from_millis(300));
     for _ in 0..20 {
         let (st, _, _) = http(c_web, "GET", "/boom", &[], "");
         assert_eq!(st, 500);

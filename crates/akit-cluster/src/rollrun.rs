@@ -898,14 +898,8 @@ impl Manager {
             wait = s.gate.window_ms;
         }
         let wait = Duration::from_millis(u64::try_from(wait).unwrap_or(0));
-        if let Some(bt) = lock(&self.0.ro)
-            .get_mut(id)
-            .and_then(|r| r.batches.get_mut(b))
-        {
-            B_GATING.clone_into(&mut bt.state);
-            bt.gate_at = SystemTime::now().checked_add(wait);
-        }
-        self.save_rollouts(Vec::new());
+        // The requests counted so far, read before the batch is said to be gating: its window
+        // starts once they are, so that what the members answer from then on is in it.
         let base = Mutex::new(HashMap::new());
         if gated {
             self.each(gate.clone(), |x| {
@@ -918,6 +912,14 @@ impl Manager {
                 }
             });
         }
+        if let Some(bt) = lock(&self.0.ro)
+            .get_mut(id)
+            .and_then(|r| r.batches.get_mut(b))
+        {
+            B_GATING.clone_into(&mut bt.state);
+            bt.gate_at = SystemTime::now().checked_add(wait);
+        }
+        self.save_rollouts(Vec::new());
         if !wait.is_zero() {
             match self.wait_for(id, run_no, wait, false) {
                 Wait::Stopped => return BatchResult::stopped(),
