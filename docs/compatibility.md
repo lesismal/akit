@@ -394,14 +394,14 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 1044 supported.
+3821 fields in 121 sections, at fit `7daee573`; 1059 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
 | [`access`](#fields-access) | 5 | 5 | 0 |
 | [`access_log`](#fields-access-log) | 14 | 14 | 0 |
 | [`acme`](#fields-acme) | 43 | 43 | 0 |
-| [`admin`](#fields-admin) | 105 | 36 | 69 |
+| [`admin`](#fields-admin) | 105 | 51 | 54 |
 | [`auto_https`](#fields-auto-https) | 5 | 5 | 0 |
 | [`bittorrent`](#fields-bittorrent) | 160 | 68 | 92 |
 | [`engine`](#fields-engine) | 11 | 8 | 3 |
@@ -519,7 +519,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 161 | 3 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 76 | 0 |
-| **Total** | 3821 | 1044 | 2777 |
+| **Total** | 3821 | 1059 | 2762 |
 
 <a id="fields-access"></a>
 
@@ -671,20 +671,20 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `admin.assistant.users[].username` | `string, required` | not supported yet |
 | `admin.cert_file` | `string` | supported |
 | `admin.client_ca_file` | `string` | supported |
-| `admin.cluster` | `object` | not supported yet |
-| `admin.cluster.admins` | `array<string>` | not supported yet |
-| `admin.cluster.link_address` | `string` | not supported yet |
-| `admin.cluster.link_url` | `string` | not supported yet |
-| `admin.cluster.max_concurrency` | `integer` | not supported yet |
-| `admin.cluster.max_nodes` | `integer` | not supported yet |
-| `admin.cluster.max_response_bytes` | `integer` | not supported yet |
-| `admin.cluster.poll_interval` | `duration` | not supported yet |
-| `admin.cluster.timeout` | `duration` | not supported yet |
-| `admin.cluster_member` | `object` | not supported yet |
-| `admin.cluster_member.fingerprint` | `string, required` | not supported yet |
-| `admin.cluster_member.manager` | `string, required` | not supported yet |
-| `admin.cluster_member.token` | `string` | not supported yet |
-| `admin.cluster_member.token_file` | `string` | not supported yet |
+| `admin.cluster` | `object` | supported |
+| `admin.cluster.admins` | `array<string>` | supported |
+| `admin.cluster.link_address` | `string` | supported |
+| `admin.cluster.link_url` | `string` | supported |
+| `admin.cluster.max_concurrency` | `integer` | supported |
+| `admin.cluster.max_nodes` | `integer` | supported |
+| `admin.cluster.max_response_bytes` | `integer` | supported |
+| `admin.cluster.poll_interval` | `duration` | supported |
+| `admin.cluster.timeout` | `duration` | supported |
+| `admin.cluster_member` | `object` | supported |
+| `admin.cluster_member.fingerprint` | `string, required` | supported |
+| `admin.cluster_member.manager` | `string, required` | supported |
+| `admin.cluster_member.token` | `string` | supported |
+| `admin.cluster_member.token_file` | `string` | supported |
 | `admin.console` | `object` | supported |
 | `admin.console.access` | `object` | supported |
 | `admin.console.access.allow` | `array<string>` | supported |
@@ -708,7 +708,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `admin.max_config_bytes` | `integer` | supported |
 | `admin.max_conns` | `integer` | supported |
 | `admin.mptcp` | `boolean` | not supported yet |
-| `admin.node_id` | `string` | not supported yet |
+| `admin.node_id` | `string` | supported |
 | `admin.store` | `object` | supported |
 | `admin.store.password` | `string` | supported |
 | `admin.store.password_env` | `string` | supported |

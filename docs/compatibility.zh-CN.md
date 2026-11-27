@@ -324,14 +324,14 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 1044 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 1059 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
 | [`access`](#fields-access) | 5 | 5 | 0 |
 | [`access_log`](#fields-access-log) | 14 | 14 | 0 |
 | [`acme`](#fields-acme) | 43 | 43 | 0 |
-| [`admin`](#fields-admin) | 105 | 36 | 69 |
+| [`admin`](#fields-admin) | 105 | 51 | 54 |
 | [`auto_https`](#fields-auto-https) | 5 | 5 | 0 |
 | [`bittorrent`](#fields-bittorrent) | 160 | 68 | 92 |
 | [`engine`](#fields-engine) | 11 | 8 | 3 |
@@ -449,7 +449,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 161 | 3 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 76 | 0 |
-| **合计** | 3821 | 1044 | 2777 |
+| **合计** | 3821 | 1059 | 2762 |
 
 <a id="fields-access"></a>
 
@@ -601,20 +601,20 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `admin.assistant.users[].username` | `string, required` | 尚不支持（not supported yet） |
 | `admin.cert_file` | `string` | 已支持 |
 | `admin.client_ca_file` | `string` | 已支持 |
-| `admin.cluster` | `object` | 尚不支持（not supported yet） |
-| `admin.cluster.admins` | `array<string>` | 尚不支持（not supported yet） |
-| `admin.cluster.link_address` | `string` | 尚不支持（not supported yet） |
-| `admin.cluster.link_url` | `string` | 尚不支持（not supported yet） |
-| `admin.cluster.max_concurrency` | `integer` | 尚不支持（not supported yet） |
-| `admin.cluster.max_nodes` | `integer` | 尚不支持（not supported yet） |
-| `admin.cluster.max_response_bytes` | `integer` | 尚不支持（not supported yet） |
-| `admin.cluster.poll_interval` | `duration` | 尚不支持（not supported yet） |
-| `admin.cluster.timeout` | `duration` | 尚不支持（not supported yet） |
-| `admin.cluster_member` | `object` | 尚不支持（not supported yet） |
-| `admin.cluster_member.fingerprint` | `string, required` | 尚不支持（not supported yet） |
-| `admin.cluster_member.manager` | `string, required` | 尚不支持（not supported yet） |
-| `admin.cluster_member.token` | `string` | 尚不支持（not supported yet） |
-| `admin.cluster_member.token_file` | `string` | 尚不支持（not supported yet） |
+| `admin.cluster` | `object` | 已支持 |
+| `admin.cluster.admins` | `array<string>` | 已支持 |
+| `admin.cluster.link_address` | `string` | 已支持 |
+| `admin.cluster.link_url` | `string` | 已支持 |
+| `admin.cluster.max_concurrency` | `integer` | 已支持 |
+| `admin.cluster.max_nodes` | `integer` | 已支持 |
+| `admin.cluster.max_response_bytes` | `integer` | 已支持 |
+| `admin.cluster.poll_interval` | `duration` | 已支持 |
+| `admin.cluster.timeout` | `duration` | 已支持 |
+| `admin.cluster_member` | `object` | 已支持 |
+| `admin.cluster_member.fingerprint` | `string, required` | 已支持 |
+| `admin.cluster_member.manager` | `string, required` | 已支持 |
+| `admin.cluster_member.token` | `string` | 已支持 |
+| `admin.cluster_member.token_file` | `string` | 已支持 |
 | `admin.console` | `object` | 已支持 |
 | `admin.console.access` | `object` | 已支持 |
 | `admin.console.access.allow` | `array<string>` | 已支持 |
@@ -638,7 +638,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `admin.max_config_bytes` | `integer` | 已支持 |
 | `admin.max_conns` | `integer` | 已支持 |
 | `admin.mptcp` | `boolean` | 尚不支持（not supported yet） |
-| `admin.node_id` | `string` | 尚不支持（not supported yet） |
+| `admin.node_id` | `string` | 已支持 |
 | `admin.store` | `object` | 已支持 |
 | `admin.store.password` | `string` | 已支持 |
 | `admin.store.password_env` | `string` | 已支持 |

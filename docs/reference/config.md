@@ -17,7 +17,7 @@ so in a note marked **akit:**; nine defaults that name the gateway are akit's, `
 say `fit` ([decision 037](../decisions/037-akit-names.md)).
 
 <!-- BEGIN GENERATED: summary -->
-akit reads **1044** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 161 objects akit reads, each has its table below.
+akit reads **1059** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 163 objects akit reads, each has its table below.
 <!-- END GENERATED -->
 
 How to read the tables:
@@ -1028,8 +1028,8 @@ route { match { host example.com }; handler respond { body hello } }
 | `assistant` | object |  | **Not supported yet**: refused by name. The workbench's assistant, a chat beside the console's pages that reads what fit does and drafts changes for a person to submit, calling the model APIs set here; off when left out, and then nothing is sent anywhere. Needs console. With a store, these settings are the first ones only: once the Settings page saves, the store's are used, keys included. |
 | `cert_file` | string |  | A PEM file with the Admin API's certificate, followed by any intermediates; with key_file, the API is served over TLS, 1.2 or later. The files are read again when they change, so that a renewed certificate is served without a restart. Not for a Unix socket. **akit:** The files are looked at on the control thread every `-watch-interval` with `-watch-certs` (on by default), not at a handshake as fit's, and loaded once they have stayed as they are for 500ms; SIGHUP reads them again too (I94). New connections get the new certificate; files that do not load are logged in the `admin` logger and the running certificate stays. |
 | `client_ca_file` | string |  | A PEM file with the CAs that clients' certificates must chain to: with it, every client must present a valid certificate, besides the token, before it is heard. Needs cert_file and key_file; read again when it changes, as they are. **akit:** Read again with `cert_file` (I94): new connections are checked against the new CAs. |
-| `cluster` | object |  | **Not supported yet**: refused by name. Manage other fits from this one, the manager: their addresses and credentials, added on the workbench's Cluster pages, are kept in the store, and each one's state is read every poll_interval. Off when left out, and then nothing is called. Needs store and console. See decision 033. |
-| `cluster_member` | object |  | **Not supported yet**: refused by name. Link this fit out to a manager of many fits, which then manages it through the link as it manages others over HTTP: for a fit behind NAT, or with no port open to the manager. The manager's Add by enrollment gives the line to paste here. Off when left out, and then nothing is dialed. Read when fit starts. See decision 033. |
+| `cluster` | [object](#cfg-admin-cluster) |  | Manage other fits from this one, the manager: their addresses and credentials, added on the workbench's Cluster pages, are kept in the store, and each one's state is read every poll_interval. Off when left out, and then nothing is called. Needs store and console. See decision 033. **akit:** Read and checked as fit's (I130); `akit run` refuses it until I132 runs the manager. The manager keeps its members in the store's `cluster` section, fit's document (decision 041). |
+| `cluster_member` | [object](#cfg-admin-cluster-member) |  | Link this akit out to a manager of many fits, which then manages it through the link as it manages others over HTTP: for a akit behind NAT, or with no port open to the manager. The manager's Add by enrollment gives the line to paste here. Off when left out, and then nothing is dialed. Read when akit starts. See decision 033. **akit:** Read and checked as fit's (I130); `akit run` refuses it until I139b links out. |
 | `console` | [object](#cfg-admin-console) |  | Serve the console, web pages behind a user name and password from which the whole config, admin aside, is read and changed; off when left out. |
 | `disable_dashboard` | boolean |  | Do not serve the dashboard, the read-only web pages at /dashboard/ that show the routes, services, upstreams and their health, certificates and config versions from the Admin API's GET endpoints; served when left out or false. |
 | `history` | integer, 0 or more | `10` | How many of the configs applied, the running one included, are kept to be read back. 10 when left out or 0. |
@@ -1037,7 +1037,7 @@ route { match { host example.com }; handler respond { body hello } }
 | `max_config_bytes` | integer, 0 or more | `4194304` | The largest config the Admin API takes; a larger one gets 413. 4 MiB when left out or 0. |
 | `max_conns` | integer, 0 or more | `16` | The most connections the Admin API keeps open at once, a quarter of them kept for those that have made a request with the token (any request, without token_file). When they are taken, a new connection closes the oldest of those that have not, of the client holding the most, and is closed as it is accepted only when every one has; one past a client's share, a quarter of them, is closed too, but for loopback clients. A connection that has not is closed 5s after it is accepted, whatever it is doing. 16 when left out or 0. |
 | `mptcp` | boolean |  | **Not supported yet**: refused by name. Listen the Admin API with Multipath TCP where the kernel offers it (Linux 5.6+, net.mptcp.enabled), falling back to plain TCP where it does not. Off by default; a Unix socket has no paths. |
-| `node_id` | string |  | **Not supported yet**: refused by name. This fit's node ID, which the Admin API's GET /node answers and a manager of many fits knows it by: 1 to 64 letters, digits, '.', '_' and '-', starting with a letter or digit. Left out, fit makes one, a random UUID, once, and keeps it in the store, or without one in a file beside the config, as fit.node-id beside fit.json; set it where neither lasts, as in a container whose config is read-only. |
+| `node_id` | string |  | This akit's node ID, which the Admin API's GET /node answers and a manager of many fits knows it by: 1 to 64 letters, digits, '.', '_' and '-', starting with a letter or digit. Left out, akit makes one, a random UUID, once, and keeps it in the store, or without one in a file beside the config, as akit.node-id beside akit.json; set it where neither lasts, as in a container whose config is read-only. **akit:** Read from I130; `GET /node` answers it from I131. Without it, the file beside the config is `akit.node-id` (fit's `fit.node-id`). |
 | `store` | [object](#cfg-admin-store) |  | Keep the config encrypted in a file of its own, the store, which is the base config akit runs from then on: every config applied is written to it, and what this file sets beside admin is only the store's first content, used when the store does not exist yet. Left out, the config lives in this file. **akit:** The file is fit's `fitstore` format, byte for byte (its magic stays `FITSTORE`): fit opens akit's stores and akit fit's, and they run in turn from one. `akit run` keeps the config in it (I93b), merged onto the config files at each start; `akit store export` and `import` read and write it. Without `admin.store`, `akit run -admin` keeps one beside the config file, as fit's (I93c). |
 | `token_file` | string |  | A file holding a token that every request must carry, as "Authorization: Bearer <token>"; no token is asked for when left out. **akit:** Read when akit starts. |
 <!-- END GENERATED -->
@@ -1136,6 +1136,55 @@ admin { store { path /var/lib/akit/akit.store; password_env AKIT_STORE_PASSWORD 
 | `password` | string |  | The password the store is encrypted with. Written here, it protects a store copied away from this file, not one read beside it; password_file or password_env keep it out of the file. |
 | `password_env` | string |  | An environment variable holding the password. |
 | `password_file` | string |  | A file holding the password, its surrounding spaces trimmed. |
+<!-- END GENERATED -->
+
+### `admin.cluster`
+
+Cluster management (I130–I139c, [decision 041](../decisions/041-cluster-management.md)): this akit
+manages others, its members, from the console's Cluster pages, keeping their URLs and credentials
+in its store and reading each one's state every `poll_interval`. It needs `admin.console`, which
+serves the pages, and a store (`admin.store`, or the one `akit run` keeps beside the config), which
+`akit run` checks. A member's API is fit's, so akit and fit members share a manager of either
+kind. `akit run` refuses it until I132 runs the manager.
+
+```fit
+admin {
+	console { users { username ada; password_hash "$2b$10$..." } }
+	cluster { poll_interval 10s; max_concurrency 8 }
+}
+```
+
+<!-- BEGIN GENERATED: admin.cluster -->
+<a id="cfg-admin-cluster"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `admins` | list of string |  | Console users (admin.console.users) who are the cluster's admins whatever roles the Users and audit page gives: the way back in when no admin is left. Once this or a role is set, a console user does on the cluster what its roles let it, and only a cluster-wide admin changes this manager's own config; until then, every console user is a cluster-wide admin. Changed at a restart, as all of admin is. |
+| `link_address` | string |  | Where members that link out to the manager reach it, as ":7444" or "0.0.0.0:7444": a WebSocket listener over TLS, with a self-signed certificate the manager makes once and keeps in the store, which each member pins when it enrolls. Members behind NAT, or with no port open, link here with the config line Add by enrollment gives, and are managed through their link as the others are over HTTP. Off when left out: no member can enroll. |
+| `link_url` | string |  | The URL members reach link_address at, as "wss://manager.example.com:7444/cluster/link", which the config line Add by enrollment gives names; when left out, the host the page was opened at and link_address's port. Only a wss URL. |
+| `max_concurrency` | integer, 0 to 256 | `8` | The most members polled at once; the others wait for their turn. Tests from the pages run beside them, 4 at most. Each operation on many members (reload, rollback, check, purge, test) calls at most this many of them at once too. 8 when left out or 0. |
+| `max_nodes` | integer, 0 to 10000 | `256` | The most members the manager keeps; one more is refused. 256 when left out or 0. |
+| `max_response_bytes` | integer, 0 to 67108864 | `4194304` | The largest answer read from a member; a larger one fails its call, and is reported as too large. 4 MiB when left out or 0; 16 KiB at least. |
+| `poll_interval` | duration | `"10s"` | How often each member's GET /node, /status and /config/check are read. 10s when left out; 1s at least. |
+| `timeout` | duration | `"10s"` | The longest one call to a member may take, from its connect to the last byte of its answer; the connect and the wait for the answer's header are bounded by it too. 10s when left out; 1s at least. |
+<!-- END GENERATED -->
+
+### `admin.cluster_member`
+
+This akit links out to a manager (fit's I149, akit's I139b), for a member behind NAT: the line the
+manager's Add by enrollment gives, its token `akite1.<id>.<secret>` (fit's `fite1.` renamed: a
+token fit's manager made is written with akit's prefix, its ID and secret unchanged). `akit run`
+refuses it until I139b.
+
+<!-- BEGIN GENERATED: admin.cluster_member -->
+<a id="cfg-admin-cluster-member"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `fingerprint` | string | required | The SHA-256 of the manager's link certificate, 64 hex digits, with or without colons, as the page gives it: the only certificate this akit links to. |
+| `manager` | string | required | The manager's link URL, as its Add by enrollment page gives it: wss://host:port/cluster/link. |
+| `token` | string |  | The enrollment token the manager made for this akit, fite1.<ID>.<secret>, used once: this akit proves it to the manager, which answers a credential of this akit's own, kept in the store, or without one in a file beside the config (akit.cluster-member beside akit.json); the token is not used again. Left out once this akit has a credential; a new token enrolls this akit again. **akit:** akit's prefix is `akite1.`, fit's `fite1.` renamed (decision 037): a token fit's manager made is written `akite1.<id>.<secret>`. |
+| `token_file` | string |  | A file holding the enrollment token, in place of token. |
 <!-- END GENERATED -->
 
 ## HTTPS by default

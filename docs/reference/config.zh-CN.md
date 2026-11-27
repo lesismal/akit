@@ -14,7 +14,7 @@ akit 配置的每个字段：配置的每一部分是做什么的、一个示例
 akit 与 fit 不同之处，在表格中以 **akit：** 标出。
 
 <!-- BEGIN GENERATED: summary -->
-fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **1044** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 161 个对象，下文各有一张表。
+fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **1059** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 163 个对象，下文各有一张表。
 <!-- END GENERATED -->
 
 字段说明来自 fit 代码中的 `doc` 标签，是英文的，所以每个字段的完整说明在[英文版](config.md)的同一张表中；本页的表格给出每个字段的
@@ -1018,8 +1018,8 @@ route { match { host example.com }; handler respond { body hello } }
 | `assistant` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
 | `cert_file` | 字符串 |  | **akit：**在控制线程上，带 `-watch-certs`（默认开启）时每个 `-watch-interval` 查看一次这些文件，而不是像 fit 那样在握手时查看；文件保持 500ms 不变后加载；SIGHUP 也会重新读取（I94）。新连接得到新证书；加载失败的文件记录到 `admin` 日志器，正在使用的证书保留。 |
 | `client_ca_file` | 字符串 |  | **akit：**与 `cert_file` 一起重新读取（I94）：新连接按新的 CA 检查。 |
-| `cluster` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
-| `cluster_member` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `cluster` | [对象](#cfg-admin-cluster) |  | **akit：**按 fit 的方式读取和检查（I130）；在 I132 运行管理端之前 `akit run` 拒绝它。管理端把成员保存在存储的 `cluster` 分区，即 fit 的文档（决定 041）。 |
+| `cluster_member` | [对象](#cfg-admin-cluster-member) |  | **akit：**按 fit 的方式读取和检查（I130）；在 I139b 外连之前 `akit run` 拒绝它。 |
 | `console` | [对象](#cfg-admin-console) |  |  |
 | `disable_dashboard` | 布尔值 |  |  |
 | `history` | 整数，≥ 0 | `10` |  |
@@ -1027,7 +1027,7 @@ route { match { host example.com }; handler respond { body hello } }
 | `max_config_bytes` | 整数，≥ 0 | `4194304` |  |
 | `max_conns` | 整数，≥ 0 | `16` |  |
 | `mptcp` | 布尔值 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
-| `node_id` | 字符串 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `node_id` | 字符串 |  | **akit：**从 I130 起读取；从 I131 起由 `GET /node` 回答。没有它时，配置旁的文件为 `akit.node-id`（fit 的 `fit.node-id`）。 |
 | `store` | [对象](#cfg-admin-store) |  | **akit：**文件即 fit 的 `fitstore` 格式，逐字节相同（其魔数仍为 `FITSTORE`）：fit 能打开 akit 的 store，akit 也能打开 fit 的，两者可轮流从同一个 store 运行。`akit run` 把配置保存在其中（I93b），每次启动时合并到配置文件之上；`akit store export` 和 `import` 读写它。没有 `admin.store` 时，`akit run -admin` 同 fit 在配置文件旁边保存一个（I93c）。 |
 | `token_file` | 字符串 |  | **akit：**在 akit 启动时读取。 |
 <!-- END GENERATED -->
@@ -1127,6 +1127,56 @@ admin { store { path /var/lib/akit/akit.store; password_env AKIT_STORE_PASSWORD 
 | `password` | 字符串 |  |  |
 | `password_env` | 字符串 |  |  |
 | `password_file` | 字符串 |  |  |
+<!-- END GENERATED -->
+
+### `admin.cluster`
+
+集群管理（I130–I139c，[决定 041](../decisions/041-cluster-management.zh-CN.md)）：本 akit 在控制台的集群页面中管理其他 akit（即
+成员），把它们的 URL 和凭据保存在自己的存储中，每 `poll_interval` 读取一次每个成员的状态。它需要提供页面的 `admin.console`，以及
+存储（`admin.store`，或 `akit run` 在配置旁保存的存储），由 `akit run` 检查。成员的 API 是 fit 的，因此 akit 和 fit 成员可以
+共用任一种管理端。在 I132 运行管理端之前，`akit run` 拒绝它。
+
+```fit
+admin {
+	console { users { username ada; password_hash "$2b$10$..." } }
+	cluster { poll_interval 10s; max_concurrency 8 }
+}
+```
+
+<!-- BEGIN GENERATED: admin.cluster -->
+<a id="cfg-admin-cluster"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-admin-cluster)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `admins` | 字符串的列表 |  |  |
+| `link_address` | 字符串 |  |  |
+| `link_url` | 字符串 |  |  |
+| `max_concurrency` | 整数，0 到 256 | `8` |  |
+| `max_nodes` | 整数，0 到 10000 | `256` |  |
+| `max_response_bytes` | 整数，0 到 67108864 | `4194304` |  |
+| `poll_interval` | 时长 | `"10s"` |  |
+| `timeout` | 时长 | `"10s"` |  |
+<!-- END GENERATED -->
+
+### `admin.cluster_member`
+
+本 akit 主动外连到管理端（fit 的 I149，akit 的 I139b），用于 NAT 之后的成员：即管理端"通过注册添加"给出的那一行，其 token 为
+`akite1.<id>.<secret>`（fit 的 `fite1.` 改名：fit 管理端生成的 token 改用 akit 的前缀书写，ID 和密钥不变）。在 I139b 之前，
+`akit run` 拒绝它。
+
+<!-- BEGIN GENERATED: admin.cluster_member -->
+<a id="cfg-admin-cluster-member"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-admin-cluster-member)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `fingerprint` | 字符串 | 必填 |  |
+| `manager` | 字符串 | 必填 |  |
+| `token` | 字符串 |  | **akit：**akit 的前缀为 `akite1.`，即 fit 的 `fite1.` 改名（决定 037）：fit 管理端生成的 token 写作 `akite1.<id>.<secret>`。 |
+| `token_file` | 字符串 |  |  |
 <!-- END GENERATED -->
 
 ## 默认 HTTPS
