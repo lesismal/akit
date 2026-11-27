@@ -20,6 +20,22 @@
 
 ## 日志
 
+### 2026-11-28：关闭不再等待空闲的上游连接
+
+- 代理到 h2c 或 h2 上游的 `akit run` 每次停止都要等满 `-shutdown-timeout`，然后以 1 退出（"shutdown took longer than ..."），
+  尽管没有任何请求在进行：上游池在监听器引擎上拨出的空闲 h2 连接在引擎的优雅关闭中保持打开，`Engine::wait` 一直等它到超时。
+  akio 的 HTTP/1 客户端在引擎关闭时关闭其空闲连接（`DialAcceptor::on_shutdown`）；它的 h2 客户端没有 `on_shutdown`，
+  没有流的 `H2Client` 一直开着。fit 没有这个问题：它的池通过自己的引擎拨号，该引擎在监听器的引擎之后关闭。
+- 在 akio 的 h2 客户端于关闭时自行结束连接之前的权宜做法（akio API 请求 A301）：`akit run` 在关闭引擎之前调用
+  `EngineSlot::shutdown`，使通过该引擎拨号的每个池不再保留空闲连接：空闲的 h2 连接立即关闭（先发 `GOAWAY` 再关闭），
+  忙碌的连接在其最后一个流结束后关闭，此后建立的连接也一样。期间请求照常通过。
+- 重载淘汰一个池时：它的 h2 空闲连接在其排空后本已关闭；它的 HTTP/1 客户端的空闲连接却保持到上游的 `idle_timeout`
+  （默认 60s），因为 `Pool::close` 从未调用 `Client::close_idle`（A10，自 `0fc8f3a7` 起已锁定）。现在会调用。
+- 测试：`akit-upstream` 的 `an_idle_connection_does_not_hold_the_engine_shutdown` 和
+  `a_busy_connection_closes_after_its_last_stream_at_shutdown`（h2c），以及 `a_closed_pool_closes_its_idle_connections`
+  （HTTP/1）；`akit` 的 `shutdown`（二进制，SIGTERM，按 `-shutdown-timeout` 计时进程退出，h2c 和 HTTP/1.1 上游）。
+  没有这项修改时每个都失败（关闭等满超时；HTTP/1 连接保持打开）。
+
 ### 2026-11-28：真正跑在 io_uring 上的 io_uring 测试
 
 - akit 的 io_uring 测试只设了 `AKIO_TEST_BACKEND=uring`，只有自己选后端的测试文件读它；

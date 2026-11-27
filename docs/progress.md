@@ -21,6 +21,29 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-28: a shutdown no longer waits for idle upstream connections
+
+- `akit run` proxying to an h2c or h2 upstream waited the whole `-shutdown-timeout` on every
+  stop, then exited 1 ("shutdown took longer than ..."), though nothing was in flight: the
+  upstream pool's idle h2 connection, dialed on the listeners' engine, stayed open through the
+  engine's graceful shutdown, and `Engine::wait` waited for it until the timeout. akio's HTTP/1
+  client closes its idle connections when the engine shuts down (`DialAcceptor::on_shutdown`);
+  its h2 client has no `on_shutdown`, and an `H2Client` with no stream is left open. fit never
+  has this: its pools dial through an engine of their own, closed after the listeners'.
+- Stopgap until akio's h2 client ends its own connection at the shutdown (akio API request A301):
+  `EngineSlot::shutdown`, which `akit run` calls before shutting the engine down, makes every
+  pool dialing through it keep no connection idle: an idle h2 connection is closed now (`GOAWAY`,
+  then closed), a busy one once its last stream is over, and a connection made afterwards
+  likewise. Requests still go through meanwhile.
+- A reload that retires a pool: its h2 idle connections were already closed once it drained; its
+  HTTP/1 client's stayed open for the upstream's `idle_timeout` (60s by default), since
+  `Pool::close` never called `Client::close_idle` (A10, pinned since `0fc8f3a7`). It does now.
+- Tests: `akit-upstream`'s `an_idle_connection_does_not_hold_the_engine_shutdown` and
+  `a_busy_connection_closes_after_its_last_stream_at_shutdown` (h2c), and
+  `a_closed_pool_closes_its_idle_connections` (HTTP/1); `akit`'s `shutdown` (the binary, SIGTERM,
+  the process's exit timed against `-shutdown-timeout`, h2c and HTTP/1.1 upstreams). Each fails
+  without the change (the shutdown waits the whole timeout; the HTTP/1 connection stays open).
+
 ### 2026-11-28: io_uring runs that run on io_uring
 
 - akit's io_uring runs set only `AKIO_TEST_BACKEND=uring`, which the test files that choose a

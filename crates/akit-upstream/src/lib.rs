@@ -90,7 +90,10 @@
 //! A pool belongs to the graph its config compiled into (decision 004): when the graph is
 //! retired, its cleanup [closes](Pool::close) the pool, which **drains**: requests already sent,
 //! and those waiting for a connection, still finish; new ones fail at once with
-//! [`Error::Closed`]; the pool is [closed](Pool::is_closed) once the last is done.
+//! [`Error::Closed`]; the pool is [closed](Pool::is_closed) once the last is done, and its idle
+//! connections with it. When the engine shuts down, [`EngineSlot::shutdown`] keeps the pools
+//! from holding its graceful shutdown open with idle connections: an idle h2 connection is closed
+//! then, as akio's HTTP/1 client closes its own (akio API request A301 moves this to akio).
 //!
 //! Pools are made before the engine they dial through exists (`akit run` builds its engine from
 //! the compiled graph), so they reach it through an [`EngineSlot`] that `akit run` fills once the
@@ -115,7 +118,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
 use std::fmt;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError, Weak};
 use std::time::{Duration, Instant};
 
 use akio::Engine;
@@ -156,6 +159,11 @@ struct Slot {
     /// check made while the slot was empty: as many as the config has, and each holds its pool
     /// weakly.
     waiting: Mutex<Vec<OnSet>>,
+    /// The h2 and h2c pools dialing through the engine, held weakly, to be told when it shuts
+    /// down ([`EngineSlot::shutdown`]); those gone are pruned as pools are added.
+    h2_pools: Mutex<Vec<Weak<Inner>>>,
+    /// The engine is shutting down: the pools keep no connection idle.
+    shutting_down: AtomicBool,
 }
 
 impl EngineSlot {
@@ -219,6 +227,55 @@ impl EngineSlot {
         if let Some(e) = self.0.engine.get() {
             f(e);
         }
+    }
+}
+
+impl EngineSlot {
+    /// The engine is shutting down gracefully: from now on the pools dialing through it keep no
+    /// connection idle, so that none holds the engine's shutdown open until its timeout. Each
+    /// idle h2 or h2c connection is closed now (`GOAWAY`, then closed), and each other once its
+    /// last stream is over; requests still go through them meanwhile. akio's HTTP/1 client
+    /// does as much at the engine's shutdown on its own, its h2 client not yet (akio API request
+    /// A301): until it does, `akit run` calls this before it shuts the engine down. Idempotent;
+    /// never blocks.
+    pub fn shutdown(&self) {
+        if self.0.shutting_down.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let pools: Vec<Arc<Inner>> = self
+            .0
+            .h2_pools
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .iter()
+            .filter_map(Weak::upgrade)
+            .collect();
+        for p in pools {
+            for b in p.backends.iter() {
+                b.h2.close_idle(false);
+            }
+        }
+    }
+
+    /// Whether [`shutdown`](Self::shutdown) was called.
+    #[must_use]
+    pub fn is_shutting_down(&self) -> bool {
+        self.0.shutting_down.load(Ordering::SeqCst)
+    }
+
+    /// Adds an h2 pool to those [`shutdown`](Self::shutdown) tells, at its first dial. One added
+    /// after it keeps no connection idle either: its streams' ends read the flag.
+    fn add_h2_pool(&self, pool: &Arc<Inner>) {
+        if pool.told_at_shutdown.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let mut pools = self
+            .0
+            .h2_pools
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        pools.retain(|p| p.strong_count() > 0);
+        pools.push(Arc::downgrade(pool));
     }
 }
 
@@ -564,6 +621,9 @@ struct Inner {
     closing: AtomicBool,
     closed: AtomicBool,
     on_closed: Mutex<Vec<Box<dyn FnOnce() + Send>>>,
+    /// An h2 pool: it is among those [`EngineSlot::shutdown`] tells, from its first dial on
+    /// (not when it is made: `with_tls` and the like need it unshared until then).
+    told_at_shutdown: AtomicBool,
 }
 
 /// The h2 client's options of upstream `u`: its dial bounded by `connect_timeout`.
@@ -692,6 +752,7 @@ impl Pool {
                 closing: AtomicBool::new(false),
                 closed: AtomicBool::new(false),
                 on_closed: Mutex::new(Vec::new()),
+                told_at_shutdown: AtomicBool::new(false),
             }),
         };
         if pool.inner.health_check.is_some() {
@@ -1078,10 +1139,10 @@ impl Pool {
 
     /// Closes the pool, draining it: requests sent from now on fail at once with
     /// [`Error::Closed`], while those already sent, waiting ones included, finish; once the last
-    /// is done the pool is [closed](Self::is_closed). The connections the pool's client keeps
-    /// idle close after `idle_timeout`, or when the engine shuts down (akio's client cannot be
-    /// told to close them now: akio API request A10). Closing again does nothing more. Never
-    /// blocks: graph cleanup calls it (decision 004).
+    /// is done the pool is [closed](Self::is_closed), and its idle connections are closed then
+    /// (its HTTP/1 client's with akio's `Client::close_idle`, akio API request A10; its h2 ones
+    /// with `GOAWAY`). Closing again does nothing more. Never blocks: graph cleanup calls it
+    /// (decision 004).
     pub fn close(&self) {
         if self.inner.closing.swap(true, Ordering::SeqCst) {
             return;
@@ -1405,8 +1466,13 @@ impl Inner {
         }
         if self.h2.is_some() {
             for b in self.backends.iter() {
-                b.h2.close_idle();
+                b.h2.close_idle(true);
             }
+        }
+        // And the HTTP/1 client's (an `h2` pool's too, for the addresses whose server chose
+        // HTTP/1.1): its idle connections now, the others once their response is in (A10).
+        if let Some(c) = self.client.get() {
+            c.close_idle();
         }
         let callbacks = std::mem::take(
             &mut *self

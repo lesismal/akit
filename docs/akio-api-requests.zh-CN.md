@@ -130,6 +130,7 @@
 | A287 | 等待分片并优先请求它们的种子字节读取器，以及文件优先级 | 已提出 | 1 | I155 |
 | A288 | 种子的 tracker 及其 announce、peer 来源和 web seed 的状态，以及原地重新校验（fib 的 A87、A88） | 已提出 | — | I157 |
 | A277 | 客户端响应所在连接的对端证书链，以及能把被拒绝的证书留给调用方查看的客户端 TLS 校验 | I132 提出；有记录在案的权宜做法（探测成员的证书） | 1, 15 | I132–I139c |
+| A301 | `H2Client` 在引擎优雅关闭时结束其连接（`GOAWAY`；没有打开的流时立即关闭，否则在最后一个流结束后关闭），如同 HTTP/1 客户端关闭其空闲连接 | 已提出；权宜做法：`akit run` 在关闭引擎前调用的 `EngineSlot::shutdown` 关闭池的空闲 h2 连接 | 4, 10 | I18, I18b |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -2423,3 +2424,24 @@ akio 的 HTTP 客户端给出的响应不带其连接握手时看到的证书链
 **akit 如何使用。** `akit_cluster::transport` 为状态的 `tls` 读取每次调用所在连接的证书，并从错误中读取被拒绝的证书，
 得出 `tls_untrusted` 和 `tls_pin_mismatch`；探测（`Transport::probe`：一条不做校验的 TLS 连接，发送不带凭据的请求，读取
 `tls_info` 的证书链，再用 akio-x509 的校验器或 pin 检查）随之去掉。
+
+## A301 引擎优雅关闭时结束 `H2Client`
+
+**状态。** 已提出（2026-11-28）。akit 中的权宜做法：`akit run` 在关闭引擎前调用 `akit_upstream::EngineSlot::shutdown`，
+关闭池的空闲 h2 连接（记录在[进度](progress.zh-CN.md)中）。
+
+**问题。** 代理到 h2c 或 h2 上游的 `akit run` 每次停止都等满 `-shutdown-timeout` 并以 1 退出，尽管没有请求在进行：
+池在监听器引擎上拨出的空闲 `H2Client` 在 `Engine::shutdown` 中保持打开，`Engine::wait` 一直等到 `Config::shutdown_timeout`
+后才强制关闭它。akio 的 HTTP/1 客户端不会这样：它的 `DialAcceptor::on_shutdown` 立即关闭空闲的 keep-alive 连接，
+忙碌的连接在响应到达后关闭。像 akit 的池那样保留连接以供后续请求使用的任何 `H2Client` 用户，都要在引擎关闭时付出整个超时。
+
+**证据。** 在 akio `d8d51f61`（以及 `5297cdd0`），`akio-http/src/h2client.rs`：`impl Acceptor for H2Acceptor` 只有
+`on_open`；`client.rs` 的 `DialAcceptor::on_shutdown`（那里的注释描述了同一症状，已为 HTTP/1 修复）。akit 的
+`akit-upstream/tests/h2.rs` 中 `an_idle_connection_does_not_hold_the_engine_shutdown` 去掉权宜调用后可复现：关闭耗满 20 s 超时。
+
+**建议的 API。** 不需要新 API：`H2Acceptor::on_shutdown` 设置连接的 `goaway` 标志（使 `H2Client::is_open` 为 false，
+不再开始新流），发送 `GOAWAY(NO_ERROR)`，没有打开的流时立即关闭连接，否则在最后一个流结束后关闭（等待流的请求以
+`ClientError::Closed` 失败，如同收到服务器的 `GOAWAY` 之后）。`H2Client::connect` 的 TLS 拨号也一样。
+
+**akit 如何使用。** `EngineSlot::shutdown` 及其在 `akit run` 中的调用连同它遍历的 h2 池列表一起去掉；池已经不再使用不再
+打开的连接（`H2Client::is_open`），并在其最后一个流结束后关闭它。

@@ -1853,6 +1853,10 @@ fn run(args: &[String]) -> ExitCode {
         }
     });
     println!("akit: shutting down");
+    // The upstream pools keep no connection idle from now on, so that none holds the engine's
+    // shutdown open until `grace` (akio's h2 client does not end its own yet: akio API request
+    // A301). Those under way close once their last response is in.
+    slot.shutdown();
     if !akit_listener::shutdown(&engine, grace) {
         eprintln!(
             "akit run: shutdown took longer than {}; connections still open were closed",

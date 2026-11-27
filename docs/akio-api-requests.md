@@ -131,6 +131,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | A287 | A reader of a torrent's bytes that waits for their pieces and asks for them first, and file priorities | requested | 1 | I155 |
 | A288 | A torrent's trackers with their announces, its peer sources and web seeds' state, and a recheck in place (fib's A87, A88) | requested | — | I157 |
 | A277 | A client response's peer certificate chain, and a client TLS verifier that keeps a certificate it refused for the caller to see | requested by I132; a recorded stopgap (a probe of the member's certificate) | 1, 15 | I132–I139c |
+| A301 | `H2Client` ends its connection at the engine's graceful shutdown (`GOAWAY`; closed now with no stream open, else after its last), as the HTTP/1 client closes its idle ones | requested; stopgap: `EngineSlot::shutdown`, which `akit run` calls before the engine's shutdown, closes the pools' idle h2 connections | 4, 10 | I18, I18b |
 
 ## A1 TCP listeners on a running engine
 
@@ -3039,3 +3040,33 @@ connection for the state's `tls`, and a refused one from the error for `tls_untr
 `tls_pin_mismatch`; the probe (`Transport::probe`, a TLS connection that verifies nothing, sends a
 request without credentials, reads `tls_info`'s chain and checks it with akio-x509's verifier or
 the pin) goes.
+
+## A301 `H2Client` ended by the engine's graceful shutdown
+
+**Status.** Requested (2026-11-28). Stopgap in akit: `akit_upstream::EngineSlot::shutdown`, which
+`akit run` calls before it shuts its engine down, closes the pools' idle h2 connections (recorded
+in [progress](progress.md)).
+
+**Problem.** `akit run` proxying to an h2c or h2 upstream waited the whole `-shutdown-timeout` on
+every stop and exited 1, with nothing in flight: the pool's idle `H2Client`, dialed on the
+listeners' engine, stays open through `Engine::shutdown`, and `Engine::wait` waits for it until
+`Config::shutdown_timeout`, then forces it closed. akio's HTTP/1 client does not do this: its
+`DialAcceptor::on_shutdown` closes an idle keep-alive connection at once and a busy one once its
+response is in. Any user of `H2Client` that keeps a connection for later requests, as akit's
+pools do, pays the whole timeout at the engine's shutdown.
+
+**Evidence.** At akio `d8d51f61` (and `5297cdd0`), `akio-http/src/h2client.rs`: `impl Acceptor for
+H2Acceptor` has only `on_open`; `client.rs`'s `DialAcceptor::on_shutdown` (the comment there
+describes the same symptom, fixed for HTTP/1). Reproduced by akit's
+`akit-upstream/tests/h2.rs` `an_idle_connection_does_not_hold_the_engine_shutdown` with the
+stopgap call left out: the shutdown takes the whole 20 s timeout.
+
+**Suggested API.** No new API: `H2Acceptor::on_shutdown` sets the connection's `goaway` flag (so
+`H2Client::is_open` is false and no new stream starts), sends `GOAWAY(NO_ERROR)`, and closes the
+connection at once when no stream is open, else after its last stream is over (requests waiting
+for a stream fail with `ClientError::Closed`, as after the server's `GOAWAY`). The same for
+`H2Client::connect`'s TLS dial.
+
+**How akit would use it.** `EngineSlot::shutdown`, the list of h2 pools it walks and its
+call in `akit run` go; the pools already stop using a connection that is no longer
+open (`H2Client::is_open`) and close it once its last stream is over.

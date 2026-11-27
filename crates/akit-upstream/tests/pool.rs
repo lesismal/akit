@@ -342,6 +342,42 @@ fn an_idle_pool_closes_at_once() {
     assert!(pool.is_closed());
 }
 
+/// A pool a reload retires closes the connection it kept idle once it has drained (akio's
+/// `Client::close_idle`, akio API request A10), rather than leaving it open for `idle_timeout`.
+#[test]
+fn a_closed_pool_closes_its_idle_connections() {
+    let l = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = l.local_addr().unwrap();
+    let (closed_tx, closed_rx) = channel();
+    thread::spawn(move || {
+        let Ok((mut s, _)) = l.accept() else { return };
+        s.set_read_timeout(Some(Duration::from_secs(30))).unwrap();
+        let mut buf = [0u8; 4096];
+        let mut head = Vec::new();
+        while !head.windows(4).any(|w| w == b"\r\n\r\n") {
+            match s.read(&mut buf) {
+                Ok(0) | Err(_) => return,
+                Ok(n) => head.extend_from_slice(&buf[..n]),
+            }
+        }
+        s.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok")
+            .unwrap();
+        // The pool closes the connection it kept: the next read ends.
+        let _ = closed_tx.send(matches!(s.read(&mut buf), Ok(0)));
+    });
+    let pool = Pool::new(
+        &upstream(&[addr.to_string()], r#""idle_timeout": "1h""#),
+        EngineSlot::with(engine()),
+    );
+    let (_, r) = send(&pool, 1).recv_timeout(Duration::from_secs(5)).unwrap();
+    assert!(ok(&r), "{r:?}");
+    pool.close();
+    assert!(
+        closed_rx.recv_timeout(Duration::from_secs(10)).unwrap(),
+        "the idle connection was not closed"
+    );
+}
+
 /// An address on this host where nothing listens.
 /// An address nothing listens on: port 1 (tcpmux) is never served here, where a port taken from a
 /// listener just dropped could be bound again by another test's upstream running in parallel.

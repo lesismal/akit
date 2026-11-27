@@ -492,6 +492,91 @@ fn a_closed_pool_drains_and_closes_its_connections() {
     assert_eq!(up.requests.load(Ordering::SeqCst), 3);
 }
 
+/// An engine with one listener (answering 404) whose graceful shutdown waits up to `timeout`.
+fn engine_timed(timeout: Duration) -> Arc<Engine> {
+    let mut cfg = akio::Config::default();
+    cfg.shutdown_timeout = timeout;
+    let e = Engine::builder()
+        .config(cfg)
+        .listen(
+            Listener::tcp("127.0.0.1:0".parse().unwrap())
+                .backend(backend())
+                .threads(2)
+                .serve(akio_http::serve(|ctx: &mut Context| ctx.text(404, ""))),
+        )
+        .build()
+        .unwrap();
+    e.start().unwrap();
+    Arc::new(e)
+}
+
+/// The engine's graceful shutdown as `akit run` does it: the pools told first
+/// ([`EngineSlot::shutdown`]), then the engine shut down and waited for. How long it took.
+fn shut_down(slot: &EngineSlot, e: &Engine) -> Duration {
+    let start = Instant::now();
+    slot.shutdown();
+    e.shutdown();
+    e.wait();
+    start.elapsed()
+}
+
+/// A graceful shutdown of the engine the pool dials through ends once its own work is done: the
+/// pool's idle h2c connection does not hold it until `shutdown_timeout`, as an HTTP/1 one does
+/// not (fit's upstream connections, on an engine of their own, never hold its listeners').
+#[test]
+fn an_idle_connection_does_not_hold_the_engine_shutdown() {
+    const TIMEOUT: Duration = Duration::from_secs(20);
+    let up = Upstream::start();
+    let e = engine_timed(TIMEOUT);
+    let slot = EngineSlot::with(e.clone());
+    let pool = Pool::new(&upstream(&[up.addr()], ""), slot.clone());
+    let rx = send(&pool, "/a", 0..1);
+    assert_eq!(body(&rx.recv().unwrap().1), "h2 /a/0");
+    // The connection stays for the next request.
+    assert_eq!(up.connections(), 1);
+    let took = shut_down(&slot, &e);
+    assert!(
+        took < TIMEOUT,
+        "the shutdown waited {took:?} for the idle upstream connection"
+    );
+    assert_eq!(e.telemetry().open_connections(), 0);
+}
+
+/// A stream under way when the engine shuts down finishes on its connection, which then closes
+/// rather than going idle: the shutdown ends with the last response, not at its timeout.
+#[test]
+fn a_busy_connection_closes_after_its_last_stream_at_shutdown() {
+    const TIMEOUT: Duration = Duration::from_secs(20);
+    // An upstream that hands each request over, unanswered.
+    let (tx, held) = channel::<Detached>();
+    let tx = Mutex::new(tx);
+    let up = engine_with(move |ctx: &mut Context| {
+        if let Some(d) = ctx.detach() {
+            let _ = tx.lock().unwrap().send(d);
+        }
+    });
+    let e = engine_timed(TIMEOUT);
+    let slot = EngineSlot::with(e.clone());
+    let pool = Pool::new(
+        &upstream(&[up.local_addrs()[0].to_string()], ""),
+        slot.clone(),
+    );
+    let rx = send(&pool, "/hold", 0..1);
+    let d = held.recv_timeout(TIMEOUT).unwrap();
+    let start = Instant::now();
+    slot.shutdown();
+    e.shutdown();
+    // The stream is still under way: its connection stays.
+    assert_eq!(pool.h2_connections(0), Some((1, 1)));
+    d.respond(Response::text(200, "released"));
+    e.wait();
+    let took = start.elapsed();
+    assert_eq!(body(&rx.recv_timeout(TIMEOUT).unwrap().1), "released");
+    assert!(took < TIMEOUT, "the shutdown waited {took:?}");
+    assert_eq!(pool.h2_connections(0), Some((0, 0)));
+    up.shutdown();
+}
+
 /// Active health checks over h2c: a probe goes over HTTP/2, as fit probes over the upstream's
 /// protocol, and an address whose probes fail is taken out, then back once they pass.
 #[test]
