@@ -308,21 +308,18 @@ fn roles_not_running(config: &Config) -> Result<(), Failure> {
     errs.extend(webrtc_handlers_not_served(config));
     // Cluster management (I130): read and checked by akit validate; the manager runs since
     // I132, a member links out from I139b (decision row 74).
-    let admin = config.admin.as_ref();
-    for (set, path, when) in [(
-        admin.is_some_and(|a| a.cluster_member.is_some()),
-        "admin.cluster_member",
-        "I139b",
-    )] {
-        if set {
-            errs.push(Error {
-                file: None,
-                path: path.to_owned(),
-                line: 0,
-                col: 0,
-                msg: format!("akit run does not run this yet ({when}); akit validate checks it"),
-            });
-        }
+    if config
+        .admin
+        .as_ref()
+        .is_some_and(|a| a.cluster_member.is_some())
+    {
+        errs.push(Error {
+            file: None,
+            path: "admin.cluster_member".to_owned(),
+            line: 0,
+            col: 0,
+            msg: "akit run does not run this yet (I139b); akit validate checks it".to_owned(),
+        });
     }
     if errs.is_empty() {
         Ok(())
