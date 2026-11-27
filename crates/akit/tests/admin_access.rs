@@ -12,7 +12,7 @@
 )]
 
 use std::io::{BufRead, BufReader, Read, Write};
-use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::net::{SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc;
@@ -20,12 +20,9 @@ use std::time::{Duration, Instant};
 
 use akio_sys::process::{SIGHUP, kill};
 
-fn free() -> SocketAddr {
-    TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-}
+mod support;
+
+use support::run::{ANY, listener, printed};
 
 /// A directory of the test's own, removed when it ends.
 struct Dir(PathBuf);
@@ -60,6 +57,8 @@ impl Drop for Dir {
 struct Akit {
     child: Child,
     out: mpsc::Receiver<String>,
+    /// Where the Admin API listens, as `akit run` printed it; none on a Unix socket.
+    api: Option<SocketAddr>,
 }
 
 impl Drop for Akit {
@@ -90,13 +89,20 @@ impl Akit {
                 }
             }
         });
-        let a = Akit { child, out };
-        a.until("akit: admin API on");
+        let mut a = Akit {
+            child,
+            out,
+            api: None,
+        };
+        let line = a.until("akit: admin API on");
+        if !line.starts_with("akit: admin API on unix/") {
+            a.api = Some(printed(&line, "akit: admin API on "));
+        }
         a
     }
 
-    /// Waits for a line that starts with `prefix`.
-    fn until(&self, prefix: &str) {
+    /// Waits for a line that starts with `prefix`: the line.
+    fn until(&self, prefix: &str) -> String {
         let mut seen = Vec::new();
         loop {
             let line = self
@@ -104,7 +110,7 @@ impl Akit {
                 .recv_timeout(Duration::from_secs(10))
                 .unwrap_or_else(|e| panic!("waiting for {prefix:?} after {seen:?}: {e}"));
             if line.starts_with(prefix) {
-                return;
+                return line;
             }
             seen.push(line);
         }
@@ -146,7 +152,7 @@ fn load(api: SocketAddr, body: &str) -> u16 {
 
 /// fit's `withAccess`: a config with the Admin API at `api` (or `address`, as written), a
 /// listener and a route, and `members` at its top level.
-fn with_access(api: &str, web: SocketAddr, members: &str, admin: &str) -> String {
+fn with_access(api: &str, web: &str, members: &str, admin: &str) -> String {
     format!(
         r#"{{"admin": {{"address": "{api}"{admin}}},
   "listeners": [{{"name": "web", "address": "{web}"}}],
@@ -166,17 +172,19 @@ fn eventually(what: &str, f: impl Fn() -> bool) {
 #[test]
 fn admin_access_follows_every_config() {
     let d = Dir::new("e2e-admin-access");
-    let (api, web) = (free(), free());
-    let a = api.to_string();
+    // The API and the listener on port 0, and every config after keeps them there.
+    let (a, w) = (ANY, ANY);
     let path = d.0.join("akit.json");
-    std::fs::write(&path, with_access(&a, web, "", "")).unwrap();
+    std::fs::write(&path, with_access(a, w, "", "")).unwrap();
     let akit = Akit::run(&path, &[]);
+    let api = akit.api.unwrap();
+    let web = listener(api, "web", None);
     // No access anywhere: served, as before.
     assert!(reaches(api, "/versions"), "not reached without access");
 
     // admin.access denies the client: the load is answered, its next connections closed, and
     // the API keeps accepting.
-    let deny = with_access(&a, web, "", r#", "access": {"deny": ["127.0.0.1"]}"#);
+    let deny = with_access(a, w, "", r#", "access": {"deny": ["127.0.0.1"]}"#);
     assert_eq!(load(api, &deny), 200);
     for _ in 0..3 {
         assert!(
@@ -192,8 +200,8 @@ fn admin_access_follows_every_config() {
     std::fs::write(
         &path,
         with_access(
-            &a,
-            web,
+            a,
+            w,
             r#", "access": {"allow": ["10.0.0.0/8"]}"#,
             r#", "access": {"allow": ["127.0.0.1", "::1"]}"#,
         ),
@@ -211,7 +219,7 @@ fn admin_access_follows_every_config() {
     );
 
     // The global access alone refuses the API's clients too.
-    let global = with_access(&a, web, r#", "access": {"deny": ["127.0.0.0/8"]}"#, "");
+    let global = with_access(a, w, r#", "access": {"deny": ["127.0.0.0/8"]}"#, "");
     assert_eq!(load(api, &global), 200);
     assert!(
         !reaches(api, "/versions"),
@@ -223,7 +231,6 @@ fn admin_access_follows_every_config() {
 #[test]
 fn admin_access_files_are_watched() {
     let d = Dir::new("e2e-admin-access-file");
-    let (api, web) = (free(), free());
     let list = d.0.join("deny.txt");
     std::fs::write(&list, "# none of ours\n192.0.2.1\n").unwrap();
     let path = d.0.join("akit.json");
@@ -231,8 +238,9 @@ fn admin_access_files_are_watched() {
         r#", "access": {{"deny_files": [{:?}]}}"#,
         list.display().to_string()
     );
-    std::fs::write(&path, with_access(&api.to_string(), web, "", &admin)).unwrap();
+    std::fs::write(&path, with_access(ANY, ANY, "", &admin)).unwrap();
     let akit = Akit::run(&path, &["-watch-interval", "50ms"]);
+    let api = akit.api.unwrap();
     assert!(
         reaches(api, "/versions"),
         "a client the deny file does not hold was refused"
@@ -250,7 +258,7 @@ fn admin_access_files_are_watched() {
 fn admin_access_on_a_unix_socket() {
     let d = Dir::short("akit-aa");
     let sock = d.0.join("a.sock");
-    let web = free();
+    let web = ANY;
     let address = format!("unix/{}", sock.display());
     // admin.access with a Unix socket is an error.
     let bad = d.0.join("bad.json");

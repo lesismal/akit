@@ -279,14 +279,6 @@ fn reload_changes_levels_zone_and_rotation_in_place() {
     assert_eq!(access, 10, "{all:?}");
 }
 
-/// A port nothing listens on now.
-fn free_port() -> SocketAddr {
-    std::net::TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-}
-
 /// Sends a request to the Admin API at `api` and returns the status and the body.
 fn admin(api: SocketAddr, method: &str, path: &str, body: Option<&str>) -> (u16, String) {
     let mut s = TcpStream::connect(api).unwrap();
@@ -313,10 +305,10 @@ fn admin(api: SocketAddr, method: &str, path: &str, body: Option<&str>) -> (u16,
 fn the_admin_api_lists_rotates_and_cleans_up() {
     let dir = Dir::new("log-admin");
     let access = dir.0.join("access.log");
-    let api = free_port();
+    // The Admin API on port 0, as the listener: `akit run` says where it listens.
     let keep = |n: u32| {
         format!(
-            r#""admin": {{"address": "{api}"}},
+            r#""admin": {{"address": "127.0.0.1:0"}},
   "access_log": {{"output": "{}", "flush_interval": "10ms",
                  "rotate": {{"max_bytes": 400, "max_files": {n}, "compress": false}}}}"#,
             access.display()
@@ -324,7 +316,10 @@ fn the_admin_api_lists_rotates_and_cleans_up() {
     };
     let cfg = write_config(&dir.0, &keep(100));
     let (akit, addr) = Akit::start(&cfg);
-    until(&akit.out, |l| l.starts_with("akit: admin API on"));
+    let api: SocketAddr = until(&akit.out, |l| l.starts_with("akit: admin API on"))
+        .trim_start_matches("akit: admin API on ")
+        .parse()
+        .unwrap();
     for i in 0..12 {
         get(addr, &format!("/n{i}"));
         std::thread::sleep(Duration::from_millis(20));

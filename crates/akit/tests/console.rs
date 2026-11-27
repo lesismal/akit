@@ -16,12 +16,9 @@ use std::process::{Child, Command, Stdio};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-fn free() -> SocketAddr {
-    TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-}
+mod support;
+
+use support::run::{ANY, after, listener, printed};
 
 /// A directory of the test's own, removed when it ends.
 struct Dir(PathBuf);
@@ -48,6 +45,13 @@ impl Drop for Dir {
 struct Akit {
     child: Child,
     out: mpsc::Receiver<String>,
+    /// Where the Admin API listens, as `akit run` printed it.
+    api: SocketAddr,
+    /// Where `admin.console` listens, as `akit run` printed it.
+    console: SocketAddr,
+    /// The lines read and not yet waited for: what a role printed as it started may come before
+    /// the line a test waits for first.
+    seen: std::cell::RefCell<Vec<String>>,
 }
 
 impl Drop for Akit {
@@ -78,21 +82,32 @@ impl Akit {
                 }
             }
         });
-        let a = Akit { child, out };
-        a.until("akit: admin API on");
+        let mut a = Akit {
+            child,
+            out,
+            api: ([127, 0, 0, 1], 0).into(),
+            console: ([127, 0, 0, 1], 0).into(),
+            seen: std::cell::RefCell::default(),
+        };
+        a.api = printed(&a.until("akit: admin API on"), "akit: admin API on ");
+        a.console = printed(&a.until("akit: console on"), "akit: console on ");
         a
     }
 
-    /// Waits for a line that holds `prefix` (the log's lines start with their time).
-    fn until(&self, prefix: &str) {
-        let mut seen = Vec::new();
+    /// The first line that holds `prefix` (the log's lines start with their time), waited for
+    /// unless one was read already.
+    fn until(&self, prefix: &str) -> String {
+        let mut seen = self.seen.borrow_mut();
+        if let Some(i) = seen.iter().position(|l| l.contains(prefix)) {
+            return seen.remove(i);
+        }
         loop {
             let line = self
                 .out
                 .recv_timeout(Duration::from_secs(10))
                 .unwrap_or_else(|e| panic!("waiting for {prefix:?} after {seen:?}: {e}"));
             if line.contains(prefix) {
-                return;
+                return line;
             }
             seen.push(line);
         }
@@ -139,18 +154,12 @@ fn call(
     (status, cookie, body.to_owned())
 }
 
-fn config(
-    api: SocketAddr,
-    console: SocketAddr,
-    web: SocketAddr,
-    hash: &str,
-    members: &str,
-    console_extra: &str,
-) -> String {
+/// The Admin API, `admin.console` and listener `web`, each on port 0, with `members`.
+fn config(hash: &str, members: &str, console_extra: &str) -> String {
     format!(
-        r#"{{"admin": {{"address": "{api}", "console": {{"address": "{console}",
+        r#"{{"admin": {{"address": "{ANY}", "console": {{"address": "{ANY}",
       "users": [{{"username": "ada", "password_hash": "{hash}"}}]{console_extra}}}}},
-  "listeners": [{{"name": "web", "address": "{web}"}}],
+  "listeners": [{{"name": "web", "address": "{ANY}"}}],
   "routes": [{{"handler": {{"module": "respond", "params": {{"body": "hi"}}}}}}]{members}}}"#
     )
 }
@@ -158,12 +167,12 @@ fn config(
 #[test]
 fn console_under_akit_run() {
     let d = Dir::new("e2e-console");
-    let (api, console, web) = (free(), free(), free());
     let hash = akio_crypto::bcrypt::hash(b"pw", 4).unwrap();
     let path = d.0.join("akit.json");
-    std::fs::write(&path, config(api, console, web, &hash, "", "")).unwrap();
+    std::fs::write(&path, config(&hash, "", "")).unwrap();
     let akit = Akit::run(&path, &[]);
-    akit.until(&format!("akit: console on http://{console}/"));
+    let (api, console) = (akit.api, akit.console);
+    let web = listener(api, "web", None);
 
     let (status, cookie, body) = call(
         console,
@@ -186,7 +195,7 @@ fn console_under_akit_run() {
     let auth = format!("Cookie: {session}\r\nX-Akit-Csrf: {csrf}\r\n");
 
     // A config changed through the console runs, and says who changed it.
-    let next = config(api, console, web, &hash, "", "").replace("\"hi\"", "\"changed\"");
+    let next = config(&hash, "", "").replace("\"hi\"", "\"changed\"");
     let (status, _, body) = call(console, "POST", "/api/m/admin/load", &auth, &next);
     assert_eq!(status, 200, "{body}");
     akit.until("console: \"ada\": POST /load applied config version 2");
@@ -201,17 +210,10 @@ fn console_under_akit_run() {
 
     // The global access applies to the console, which then closes a refused client at accept;
     // admin.console.access's allow, deciding first, keeps local access.
-    let deny = config(
-        api,
-        console,
-        web,
-        &hash,
-        r#", "access": {"deny": ["127.0.0.0/8"]}"#,
-        "",
-    )
-    .replace(
-        &format!("\"address\": \"{api}\""),
-        &format!("\"address\": \"{api}\", \"access\": {{\"allow\": [\"127.0.0.1\"]}}"),
+    let deny = config(&hash, r#", "access": {"deny": ["127.0.0.0/8"]}"#, "").replacen(
+        &format!("\"admin\": {{\"address\": \"{ANY}\""),
+        &format!("\"admin\": {{\"address\": \"{ANY}\", \"access\": {{\"allow\": [\"127.0.0.1\"]}}"),
+        1,
     );
     let (status, _, body) = call(console, "POST", "/api/m/admin/load", &auth, &deny);
     assert_eq!(status, 200, "{body}");
@@ -238,6 +240,20 @@ fn console_under_akit_run() {
         call(console, "GET", "/api/session", &auth, "").0 == 200
     });
     drop(akit);
+}
+
+/// Where the tunnel hub's listener `i` listens, as its status on `console` says.
+fn hub_listen(console: SocketAddr, admin: &str, i: usize) -> SocketAddr {
+    let (status, _, body) = call(console, "GET", "/api/m/tunnel.hub/status", admin, "");
+    assert_eq!(status, 200, "{body}");
+    let st = akit_config::value::parse(&body).unwrap();
+    let Some(akit_config::value::Value::Array(listen)) = st.get("listen") else {
+        panic!("{body}")
+    };
+    let Some(akit_config::value::Value::String(a)) = listen.get(i) else {
+        panic!("{body}")
+    };
+    a.parse().unwrap()
 }
 
 /// A logged-in session's headers for `console`: its cookie and CSRF token.
@@ -268,22 +284,24 @@ fn session(console: SocketAddr, user: &str) -> String {
 #[test]
 fn role_pages_under_akit_run() {
     let d = Dir::new("e2e-role-pages");
-    let (api, console, web) = (free(), free(), free());
-    let (hub_console, link, sock, extra) = (free(), free(), free(), free());
     let hash = akio_crypto::bcrypt::hash(b"pw", 4).unwrap();
+    // Every listener on port 0; the one added on the hub's page on localhost's, to tell it apart.
+    let extra = "localhost:0";
     let hub = format!(
         r#", "tunnel": {{"hub": {{"name": "hub", "password": "pw",
-      "listeners": [{{"protocol": "tcp", "address": "{link}"}}],
-      "console": {{"address": "{hub_console}", "users": [{{"username": "hal", "password_hash": "{hash}"}}]}},
-      "console_socket": {{"address": "{sock}", "password": "sock"}}}}}}"#
+      "listeners": [{{"protocol": "tcp", "address": "{ANY}"}}],
+      "console": {{"address": "{ANY}", "users": [{{"username": "hal", "password_hash": "{hash}"}}]}},
+      "console_socket": {{"address": "{ANY}", "password": "sock"}}}}}}"#
     );
     let path = d.0.join("akit.json");
-    std::fs::write(&path, config(api, console, web, &hash, &hub, "")).unwrap();
+    std::fs::write(&path, config(&hash, &hub, "")).unwrap();
     let akit = Akit::run(&path, &[]);
-    akit.until(&format!("akit: console on http://{console}/"));
-    eventually("the hub's console to listen", || {
-        TcpStream::connect(hub_console).is_ok()
-    });
+    let console = akit.console;
+    let sock = after(
+        &akit.until("tunnel.hub: the console over an encrypted WebSocket on"),
+        "WebSocket on ws://",
+    );
+    let hub_console = after(&akit.until("tunnel.hub: console on"), "console on ");
 
     // admin.console: the hub's module beside the config's.
     let admin = session(console, "ada");
@@ -312,12 +330,12 @@ fn role_pages_under_akit_run() {
         &format!(r#"{{"protocol": "tcp", "address": "{extra}"}}"#),
     );
     assert_eq!(status, 200, "{body}");
-    eventually("the new listener to listen", || {
-        TcpStream::connect(extra).is_ok()
-    });
+    // The hub's status lists it where it bound it, second.
+    let added = hub_listen(console, &admin, 1);
+    assert!(TcpStream::connect(added).is_ok(), "{added} not listening");
     let (status, _, body) = call(console, "GET", "/api/m/admin/config", &admin, "");
     assert_eq!(status, 200, "{body}");
-    assert!(body.contains(&extra.to_string()), "{body}");
+    assert!(body.contains(extra), "{body}");
     let (status, _, body) = call(console, "GET", "/api/m/admin/versions", &admin, "");
     assert_eq!(status, 200, "{body}");
     assert!(body.contains(r#""current":2"#), "{body}");
@@ -332,26 +350,45 @@ fn role_pages_under_akit_run() {
 #[test]
 fn node_and_proxy_pages_under_akit_run() {
     let d = Dir::new("e2e-peer-pages");
-    let (api, console, web) = (free(), free(), free());
-    let (node_console, proxy_console, link) = (free(), free(), free());
     let hash = akio_crypto::bcrypt::hash(b"pw", 4).unwrap();
+    // The hub first, on port 0; then the node and the proxy, loaded through the Admin API,
+    // linking to the port it bound, their consoles on port 0 too.
+    let hub = format!(
+        r#""hub": {{"name": "hub", "password": "pw", "listeners": [{{"protocol": "tcp", "address": "{ANY}"}}]}}"#
+    );
+    let path = d.0.join("akit.json");
+    std::fs::write(
+        &path,
+        config(&hash, &format!(r#", "tunnel": {{{hub}}}"#), ""),
+    )
+    .unwrap();
+    let akit = Akit::run(&path, &[]);
+    let (api, console) = (akit.api, akit.console);
+    let admin = session(console, "ada");
+    let link = hub_listen(console, &admin, 0);
     let up = format!(
         r#"{{"name": "hub", "endpoints": [{{"address": "{link}"}}], "password": "pw", "retry_interval": "100ms"}}"#
     );
     let members = format!(
-        r#", "tunnel": {{"hub": {{"name": "hub", "password": "pw", "listeners": [{{"protocol": "tcp", "address": "{link}"}}]}},
-      "node": {{"name": "lab", "hubs": [{up}], "console": {{"address": "{node_console}", "users": [{{"username": "nel", "password_hash": "{hash}"}}]}}}},
-      "proxy": {{"name": "me", "hubs": [{up}], "console": {{"address": "{proxy_console}", "users": [{{"username": "pat", "password_hash": "{hash}"}}]}}}}}}"#
+        r#", "tunnel": {{{hub},
+      "node": {{"name": "lab", "hubs": [{up}], "console": {{"address": "{ANY}", "users": [{{"username": "nel", "password_hash": "{hash}"}}]}}}},
+      "proxy": {{"name": "me", "hubs": [{up}], "console": {{"address": "{ANY}", "users": [{{"username": "pat", "password_hash": "{hash}"}}]}}}}}}"#
     );
-    let path = d.0.join("akit.json");
-    std::fs::write(&path, config(api, console, web, &hash, &members, "")).unwrap();
-    let akit = Akit::run(&path, &[]);
-    akit.until(&format!("akit: console on http://{console}/"));
-    eventually("the roles' consoles to listen", || {
-        TcpStream::connect(node_console).is_ok() && TcpStream::connect(proxy_console).is_ok()
-    });
+    let full = config(&hash, &members, "");
+    let mut s = TcpStream::connect(api).unwrap();
+    s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+    write!(
+        s,
+        "POST /load HTTP/1.1\r\nHost: {api}\r\nConnection: close\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{full}",
+        full.len()
+    )
+    .unwrap();
+    let mut raw = String::new();
+    s.read_to_string(&mut raw).unwrap();
+    assert!(raw.starts_with("HTTP/1.1 200"), "{raw}");
+    let node_console = after(&akit.until("tunnel.node: console on"), "console on ");
+    let proxy_console = after(&akit.until("tunnel.proxy: console on"), "console on ");
 
-    let admin = session(console, "ada");
     let (status, _, body) = call(console, "GET", "/api/workbench", &admin, "");
     assert_eq!(status, 200, "{body}");
     assert!(

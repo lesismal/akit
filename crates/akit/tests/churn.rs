@@ -42,8 +42,8 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use m2::target::{Inproc, Proc};
-use m2::traffic::{App, Seen, Traffic, echo, free, get};
+use m2::target::{Inproc, Proc, listener_in};
+use m2::traffic::{App, Seen, Traffic, echo, get};
 
 /// One churn at a time: their timings are not muddled by each other.
 static SERIAL: Mutex<()> = Mutex::new(());
@@ -61,11 +61,10 @@ fn swaps() -> usize {
         .unwrap_or(2000)
 }
 
-/// Where things are: the listeners the configs name, the Admin API, the upstreams.
+/// Where the upstreams are, and whether the configs have an Admin API. The listeners and the API
+/// are on port 0: where they listen is asked once they do.
 struct At {
-    web: SocketAddr,
-    l4: SocketAddr,
-    api: Option<SocketAddr>,
+    api: bool,
     a: SocketAddr,
     b: SocketAddr,
     echo: SocketAddr,
@@ -77,9 +76,9 @@ const APP_EVERY: usize = 20;
 
 /// Swap `i`'s config: `/v` answers `v{i}`; `/up` is proxied to `app`, whose addresses and policy
 /// change every [`APP_EVERY`] swaps; `/stream` and `/ws` to `slow`; the `tcp` listener `l4` to
-/// `echo`; `extra` served too when given. `app` keeps idle connections a second: those of a
+/// `echo`; `extra` served too with `extra`. `app` keeps idle connections a second: those of a
 /// replaced pool stay open until then (akio API request A10).
-fn config(at: &At, i: usize, extra: Option<SocketAddr>) -> String {
+fn config(at: &At, i: usize, extra: bool) -> String {
     let (a, b) = (at.a, at.b);
     let k = i / APP_EVERY;
     let app = match k % 3 {
@@ -88,17 +87,21 @@ fn config(at: &At, i: usize, extra: Option<SocketAddr>) -> String {
         _ => format!(r#""{b}", "{a}""#),
     };
     let policy = ["round_robin", "least_conn", "random", "p2c"][k % 4];
-    let admin = at.api.map_or(String::new(), |api| {
-        format!(r#""admin": {{"address": "{api}", "history": 10}}, "metrics": {{}},"#)
-    });
-    let extra = extra.map_or(String::new(), |e| {
-        format!(r#", {{"name": "extra", "address": "{e}"}}"#)
-    });
+    let admin = if at.api {
+        r#""admin": {"address": "127.0.0.1:0", "history": 10}, "metrics": {},"#
+    } else {
+        ""
+    };
+    let extra = if extra {
+        r#", {"name": "extra", "address": "127.0.0.1:0"}"#
+    } else {
+        ""
+    };
     format!(
         r#"{{{admin}
   "listeners": [
-    {{"name": "web", "address": "{web}", "protocols": ["http/1.1", "h2c"]}},
-    {{"name": "l4", "address": "{l4}", "protocols": ["tcp"]}}{extra}
+    {{"name": "web", "address": "127.0.0.1:0", "protocols": ["http/1.1", "h2c"]}},
+    {{"name": "l4", "address": "127.0.0.1:0", "protocols": ["tcp"]}}{extra}
   ],
   "upstreams": [
     {{"name": "app", "addresses": [{app}], "load_balancing": "{policy}", "idle_timeout": "1s"}},
@@ -112,20 +115,18 @@ fn config(at: &At, i: usize, extra: Option<SocketAddr>) -> String {
   ],
   "services": [{{"name": "svc", "listeners": ["l4"], "upstream": "echo"}}]
 }}"#,
-        web = at.web,
-        l4 = at.l4,
         echo = at.echo,
     )
 }
 
-/// The `extra` listener of swap `i`: added at every 100th swap from the 10th, at a port of its
-/// own, and removed 50 swaps later, so that a churn of whole hundreds ends without it (each
-/// listener added at run time holds a socket and a poller on every I/O thread, which the
+/// Whether swap `i` has the `extra` listener: added at every 100th swap from the 10th, on a port
+/// of its own (port 0), and removed 50 swaps later, so that a churn of whole hundreds ends without
+/// it (each listener added at run time holds a socket and a poller on every I/O thread, which the
 /// descriptor count would see).
-fn extra_at(i: usize, now: Option<SocketAddr>) -> Option<SocketAddr> {
+fn extra_at(i: usize, now: bool) -> bool {
     match i % 100 {
-        10 => Some(free()),
-        60 => None,
+        10 => true,
+        60 => false,
         _ => now,
     }
 }
@@ -166,40 +167,33 @@ fn churn_through_sighup_and_the_admin_api() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     let (a, b) = (App::start("a"), App::start("b"));
     let at = At {
-        web: free(),
-        l4: free(),
-        api: Some(free()),
+        api: true,
         a: a.addr,
         b: b.addr,
         echo: echo(),
     };
     let path = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("churn.json");
-    let akit = Proc::start(
-        &path,
-        &config(&at, 0, None),
-        at.api,
-        "300s",
-        "akit: admin API on",
-    );
+    let akit = Proc::start(&path, &config(&at, 0, false), "300s", "akit: admin API on");
+    let (web, l4) = (akit.listener("web"), akit.listener("l4"));
     // A listener added and removed once first: akio makes some of what runtime listeners need
     // (per-thread pipes) the first time, and keeps it. Counted from here, the descriptors must
     // not grow with the swaps.
-    akit.sighup(&config(&at, 0, Some(free())));
-    akit.sighup(&config(&at, 0, None));
+    akit.sighup(&config(&at, 0, true));
+    akit.sighup(&config(&at, 0, false));
     let (fds, kinds) = (akit.fds(), akit.fd_kinds());
-    let traffic = Traffic::start(at.web, Some(at.l4));
+    let traffic = Traffic::start(web, Some(l4));
     traffic.seen.wait_for("v0");
     traffic.seen.wait_more(50);
 
     let n = swaps();
     let start = Instant::now();
-    let mut extra = None;
+    let mut extra = false;
     for i in 1..=n {
         let swap = Instant::now();
         let was = extra;
         extra = extra_at(i, extra);
         let json = config(&at, i, extra);
-        match i % 10 {
+        let printed = match i % 10 {
             // An edit by pointer: only `/v`'s answer, the rest as the last swap left it.
             5 if extra == was => akit.patch(
                 "/routes/0/handler/params",
@@ -207,8 +201,11 @@ fn churn_through_sighup_and_the_admin_api() {
             ),
             k if k % 2 == 0 => akit.sighup(&json),
             _ => akit.load(&json),
-        }
-        if let Some(e) = extra.filter(|_| was.is_none()) {
+        };
+        if extra && !was {
+            // Where it listens, as the swap printed it.
+            let e = listener_in(&printed, "extra")
+                .unwrap_or_else(|| panic!("swap {i} added no extra: {printed:?}"));
             check_extra(e, i);
         }
         std::thread::sleep(PACE.saturating_sub(swap.elapsed()));
@@ -260,36 +257,35 @@ fn churn_in_process() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     let (a, b) = (App::start("a"), App::start("b"));
     let at = At {
-        web: free(),
-        l4: free(),
-        api: None,
+        api: false,
         a: a.addr,
         b: b.addr,
         echo: echo(),
     };
-    let mut akit = Inproc::start(&config(&at, 0, None), DRAIN);
-    let traffic = Traffic::start(at.web, Some(at.l4));
+    let mut akit = Inproc::start(&config(&at, 0, false), DRAIN);
+    let traffic = Traffic::start(akit.listener("web"), Some(akit.listener("l4")));
     traffic.seen.wait_for("v0");
     traffic.seen.wait_more(50);
 
     let n = swaps();
     let start = Instant::now();
-    let mut extra = None;
+    let mut extra = false;
     for i in 1..=n {
         let swap = Instant::now();
         let was = extra;
         extra = extra_at(i, extra);
         let r = akit.reload(&config(&at, i, extra));
         // The listeners the traffic uses are kept, every swap.
-        let added = usize::from(extra.is_some() && was.is_none());
-        let removed = usize::from(extra.is_none() && was.is_some());
+        let added = usize::from(extra && !was);
+        let removed = usize::from(!extra && was);
         assert_eq!(
             (r.added.len(), r.removed.len()),
             (added, removed),
             "swap {i}"
         );
-        if let Some(e) = extra.filter(|_| was.is_none()) {
-            check_extra(e, i);
+        if extra && !was {
+            // Where it listens, as the swap says it bound it.
+            check_extra(r.added[0].address, i);
         }
         std::thread::sleep(PACE.saturating_sub(swap.elapsed()));
     }
@@ -315,7 +311,7 @@ fn churn_in_process() {
         std::thread::sleep(Duration::from_millis(50));
     }
     let served: Vec<String> = akit.served().into_iter().map(|s| s.name).collect();
-    let want: &[&str] = if extra.is_some() {
+    let want: &[&str] = if extra {
         &["web", "l4", "extra"]
     } else {
         &["web", "l4"]

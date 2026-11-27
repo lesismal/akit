@@ -227,7 +227,9 @@ fn wait_for(seen: &Seen, body: &str) {
 #[test]
 fn reloads_under_traffic_with_no_failed_request() {
     let path = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("reload.json");
-    // web at a port of its own, which every config names: replacing it keeps the address.
+    // web at a port of its own, which every config names: replacing it keeps the address (the
+    // new listener binds it while the old one drains). So it is picked before akit binds it,
+    // the one port here another process could take meanwhile.
     let web = std::net::TcpListener::bind("127.0.0.1:0")
         .unwrap()
         .local_addr()

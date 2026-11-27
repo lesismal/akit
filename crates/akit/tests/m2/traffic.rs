@@ -32,14 +32,6 @@ pub const STREAM_CHUNKS: usize = 20;
 pub const STREAM_CHUNK: usize = 1024;
 pub const STREAM_GAP: Duration = Duration::from_millis(50);
 
-/// A free port on 127.0.0.1, for a listener a config names.
-pub fn free() -> SocketAddr {
-    TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-}
-
 /// A head up to its blank line; `None` at the end of the stream.
 pub fn read_head(r: &mut BufReader<TcpStream>) -> Option<String> {
     let mut head = String::new();

@@ -29,7 +29,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use m2::target::{Inproc, Proc};
-use m2::traffic::{App, WAIT, free, get_on};
+use m2::traffic::{App, WAIT, get_on};
 
 const INTERVAL: Duration = Duration::from_millis(200);
 const TIMEOUT: Duration = Duration::from_millis(100);
@@ -38,13 +38,16 @@ const PASSES: u32 = 2;
 /// Room for a loaded host, as `akit-upstream`'s `health_check_rotation` gives.
 const SLACK: Duration = Duration::from_secs(2);
 
-fn config(web: SocketAddr, api: Option<SocketAddr>, a: SocketAddr, b: SocketAddr) -> String {
-    let admin = api.map_or(String::new(), |api| {
-        format!(r#""admin": {{"address": "{api}"}}, "metrics": {{}},"#)
-    });
+/// Listener `web` and, with `api`, the Admin API, each on port 0: where they listen is asked.
+fn config(api: bool, a: SocketAddr, b: SocketAddr) -> String {
+    let admin = if api {
+        r#""admin": {"address": "127.0.0.1:0"}, "metrics": {},"#
+    } else {
+        ""
+    };
     format!(
         r#"{{{admin}
-  "listeners": [{{"name": "web", "address": "{web}"}}],
+  "listeners": [{{"name": "web", "address": "127.0.0.1:0"}}],
   "upstreams": [{{"name": "app", "addresses": ["{a}", "{b}"], "load_balancing": "round_robin",
     "health_check": {{"path": "/health", "interval": "200ms", "timeout": "100ms", "jitter": "1ms",
       "fails": {FAILS}, "passes": {PASSES}}}}}],
@@ -219,11 +222,13 @@ fn window(web: SocketAddr, a: &App, b: &App, akit: Option<&Proc>, reload: &mut d
 #[test]
 fn health_window_through_akit_run() {
     let (a, b) = (App::start("a"), App::start("b"));
-    let (web, api) = (free(), free());
     let path = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("health-window.json");
-    let json = config(web, Some(api), a.addr, b.addr);
-    let akit = Proc::start(&path, &json, Some(api), "5s", "akit: admin API on");
-    window(web, &a, &b, Some(&akit), &mut || akit.sighup(&json));
+    let json = config(true, a.addr, b.addr);
+    let akit = Proc::start(&path, &json, "5s", "akit: admin API on");
+    let web = akit.listener("web");
+    window(web, &a, &b, Some(&akit), &mut || {
+        akit.sighup(&json);
+    });
     akit.stop();
     let _ = std::fs::remove_file(&path);
 }
@@ -231,9 +236,9 @@ fn health_window_through_akit_run() {
 #[test]
 fn health_window_in_process() {
     let (a, b) = (App::start("a"), App::start("b"));
-    let web = free();
-    let json = config(web, None, a.addr, b.addr);
+    let json = config(false, a.addr, b.addr);
     let mut akit = Inproc::start(&json, Duration::from_secs(5));
+    let web = akit.listener("web");
     window(web, &a, &b, None, &mut || {
         akit.reload(&json);
     });

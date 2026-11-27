@@ -9,7 +9,7 @@
 )]
 
 use std::io::{BufRead, BufReader, Read, Write};
-use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::net::{SocketAddr, TcpStream};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc;
@@ -17,15 +17,13 @@ use std::time::Duration;
 
 use akio_sys::process::{SIGHUP, SIGTERM, kill};
 
-/// A free port on 127.0.0.1, for a listener the configs name.
-fn free() -> SocketAddr {
-    TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-}
+mod support;
 
-fn config(web: SocketAddr, api: SocketAddr, body: &str) -> String {
+use support::run::{ANY, listener, printed};
+
+/// The Admin API and listener `web`, each on port 0: `akit run` says where the API listens, and
+/// the API where `web` does.
+fn config(web: &str, api: &str, body: &str) -> String {
     format!(
         r#"{{
   // The Admin API, on loopback.
@@ -96,8 +94,7 @@ fn request(
 #[test]
 fn loads_through_the_admin_api_and_sighup_share_one_history() {
     let path = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("admin.json");
-    let (web, api) = (free(), free());
-    let first = config(web, api, "v1");
+    let first = config(ANY, ANY, "v1");
     std::fs::write(&path, &first).unwrap();
     let mut child = Command::new(env!("CARGO_BIN_EXE_akit"))
         .args(["run", "-shutdown-timeout", "5s", "-c"])
@@ -118,7 +115,8 @@ fn loads_through_the_admin_api_and_sighup_share_one_history() {
     });
     let akit = Akit { child, out };
     let lines = until(&akit.out, "akit: admin API on");
-    assert_eq!(lines.last().unwrap(), &format!("akit: admin API on {api}"));
+    let api = printed(lines.last().unwrap(), "akit: admin API on ");
+    let web = listener(api, "web", None);
 
     // The config as written, comments blanked out.
     let (status, version, body) = request(api, "GET", "/config", None);
@@ -131,7 +129,7 @@ fn loads_through_the_admin_api_and_sighup_share_one_history() {
     assert_eq!(request(web, "GET", "/", None).2, "v1");
 
     // A load: applied by the control thread, as a reload.
-    let (status, version, body) = request(api, "POST", "/load", Some(&config(web, api, "v2")));
+    let (status, version, body) = request(api, "POST", "/load", Some(&config(ANY, ANY, "v2")));
     assert_eq!((status, version.as_str()), (200, "2"), "{body}");
     assert_eq!(
         until(&akit.out, "akit: loaded"),
@@ -167,8 +165,7 @@ fn loads_through_the_admin_api_and_sighup_share_one_history() {
 #[test]
 fn loads_return_warnings() {
     let path = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("admin-warnings.json");
-    let (web, api) = (free(), free());
-    std::fs::write(&path, config(web, api, "v1")).unwrap();
+    std::fs::write(&path, config(ANY, ANY, "v1")).unwrap();
     let mut child = Command::new(env!("CARGO_BIN_EXE_akit"))
         .args(["run", "-shutdown-timeout", "5s", "-c"])
         .arg(&path)
@@ -187,10 +184,14 @@ fn loads_return_warnings() {
         }
     });
     let akit = Akit { child, out };
-    until(&akit.out, "akit: admin API on");
+    let api = printed(
+        until(&akit.out, "akit: admin API on").last().unwrap(),
+        "akit: admin API on ",
+    );
+    let web = listener(api, "web", None);
     let renamed = format!(
-        r#"{{"admin": {{"address": "{api}", "history": 5}},
-            "listeners": [{{"name": "web", "address": "{web}"}}],
+        r#"{{"admin": {{"address": "{ANY}", "history": 5}},
+            "listeners": [{{"name": "web", "address": "{ANY}"}}],
             "routes": [{{"middleware": [{{"module": "compress", "params": {{"min_length": 10}}}}],
                          "handler": {{"module": "respond", "params": {{"body": "v2"}}}}}}]}}"#
     );
@@ -204,8 +205,8 @@ fn loads_return_warnings() {
     );
     assert_eq!(request(web, "GET", "/", None).2, "v2");
     let restart = format!(
-        r#"{{"admin": {{"address": "{api}", "history": 5}},
-            "listeners": [{{"name": "web", "address": "{web}"}}],
+        r#"{{"admin": {{"address": "{ANY}", "history": 5}},
+            "listeners": [{{"name": "web", "address": "{ANY}"}}],
             "limits": {{"max_conns": 10}}, "engine": {{"event_loops": 1}},
             "routes": [{{"handler": {{"module": "respond", "params": {{"body": "v3"}}}}}}]}}"#
     );
@@ -230,9 +231,8 @@ fn akit_signal(akit: &Akit, sig: i32) {
 #[test]
 fn the_admin_api_serves_the_metrics() {
     let path = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("admin-metrics.json");
-    let (web, api) = (free(), free());
     let doc = |body: &str| {
-        config(web, api, body).replacen("\"listeners\"", "\"metrics\": {},\n  \"listeners\"", 1)
+        config(ANY, ANY, body).replacen("\"listeners\"", "\"metrics\": {},\n  \"listeners\"", 1)
     };
     std::fs::write(&path, doc("v1")).unwrap();
     let mut child = Command::new(env!("CARGO_BIN_EXE_akit"))
@@ -253,7 +253,11 @@ fn the_admin_api_serves_the_metrics() {
         }
     });
     let akit = Akit { child, out };
-    until(&akit.out, "akit: admin API on");
+    let api = printed(
+        until(&akit.out, "akit: admin API on").last().unwrap(),
+        "akit: admin API on ",
+    );
+    let web = listener(api, "web", None);
     assert_eq!(request(web, "GET", "/", None).2, "v1");
     assert_eq!(request(api, "POST", "/load", Some(&doc("v2"))).0, 200);
     until(&akit.out, "akit: loaded");
@@ -330,8 +334,7 @@ fn edits_dry_runs_and_rollbacks_behind_the_token() {
     let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR"));
     let (path, token) = (dir.join("admin-edits.json"), dir.join("admin-edits.token"));
     std::fs::write(&token, "s3cret\n").unwrap();
-    let (web, api, extra) = (free(), free(), free());
-    let first = config(web, api, "v1").replacen(
+    let first = config(ANY, ANY, "v1").replacen(
         "\"history\": 5",
         &format!(
             "\"history\": 5, \"token_file\": {:?}",
@@ -358,9 +361,13 @@ fn edits_dry_runs_and_rollbacks_behind_the_token() {
         }
     });
     let akit = Akit { child, out };
-    until(&akit.out, "akit: admin API on");
+    let api = printed(
+        until(&akit.out, "akit: admin API on").last().unwrap(),
+        "akit: admin API on ",
+    );
     let auth = ("Authorization", "Bearer s3cret");
     let json = ("Content-Type", "application/json");
+    let web = listener(api, "web", Some(auth.1));
 
     assert_eq!(call(api, "GET", "/config", &[], None).0, 401);
     let (status, head, body) = call(
@@ -378,13 +385,14 @@ fn edits_dry_runs_and_rollbacks_behind_the_token() {
     assert_eq!(request(web, "GET", "/", None).2, "v2");
 
     // A dry run: the listener it would add is listed, and not opened.
-    let listener = format!(r#"{{"name": "extra", "address": "{extra}"}}"#);
+    let extra = ANY;
+    let added = format!(r#"{{"name": "extra", "address": "{extra}"}}"#);
     let (status, head, body) = call(
         api,
         "PUT",
         "/config/listeners/-?dry_run=1",
         &[auth, json],
-        Some(&listener),
+        Some(&added),
     );
     assert_eq!(status, 200, "{head}\n{body}");
     assert!(
@@ -397,7 +405,8 @@ fn edits_dry_runs_and_rollbacks_behind_the_token() {
         )),
         "{body}"
     );
-    assert!(TcpStream::connect(extra).is_err());
+    let st = support::run::status(api, Some(auth.1)).to_json();
+    assert!(!st.contains("\"extra\""), "{st}");
 
     let (status, head, body) = call(api, "POST", "/rollback/1", &[auth], None);
     assert_eq!(status, 200, "{head}\n{body}");
@@ -432,9 +441,8 @@ fn edits_dry_runs_and_rollbacks_behind_the_token() {
 #[test]
 fn the_dashboard_and_the_status() {
     let path = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("admin-status.json");
-    let (web, api) = (free(), free());
     let doc = |body: &str| {
-        config(web, api, body).replacen("\"listeners\"", "\"metrics\": {},\n  \"listeners\"", 1)
+        config(ANY, ANY, body).replacen("\"listeners\"", "\"metrics\": {},\n  \"listeners\"", 1)
     };
     std::fs::write(&path, doc("v1")).unwrap();
     let mut child = Command::new(env!("CARGO_BIN_EXE_akit"))
@@ -455,7 +463,11 @@ fn the_dashboard_and_the_status() {
         }
     });
     let akit = Akit { child, out };
-    until(&akit.out, "akit: admin API on");
+    let api = printed(
+        until(&akit.out, "akit: admin API on").last().unwrap(),
+        "akit: admin API on ",
+    );
+    let web = listener(api, "web", None);
 
     let (status, head, body) = call(api, "GET", "/dashboard/", &[], None);
     assert_eq!(status, 200, "{head}");

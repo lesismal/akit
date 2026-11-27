@@ -16,6 +16,13 @@ use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 
+mod support;
+
+use support::run::{ANY, after, listener, printed};
+
+/// A port free now, for a listener of fit's binary, whose config must name it before it starts:
+/// another process may take it before fit binds it. akit's own listeners bind port 0, and the
+/// tests ask where they listen.
 fn free() -> SocketAddr {
     TcpListener::bind("127.0.0.1:0")
         .unwrap()
@@ -32,8 +39,8 @@ impl Drop for Akit {
     }
 }
 
-/// `akit run -c path`, once it prints `ready`.
-fn run(path: &Path, ready: &str) -> Akit {
+/// `akit run -c path`, once it prints `ready`: and the lines it printed until then.
+fn run(path: &Path, ready: &str) -> (Akit, Vec<String>) {
     let mut child = Command::new(env!("CARGO_BIN_EXE_akit"))
         .args(["run", "-shutdown-timeout", "2s", "-c"])
         .arg(path)
@@ -45,16 +52,34 @@ fn run(path: &Path, ready: &str) -> Akit {
     let ready = ready.to_owned();
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
+        let mut seen = Vec::new();
         for line in out.lines() {
             let Ok(line) = line else { break };
-            if line.starts_with(&ready) {
-                let _ = tx.send(());
+            let done = line.starts_with(&ready);
+            seen.push(line);
+            if done {
+                let _ = tx.send(std::mem::take(&mut seen));
             }
         }
     });
-    rx.recv_timeout(Duration::from_secs(20))
+    let seen = rx
+        .recv_timeout(Duration::from_secs(20))
         .expect("akit run did not start");
-    Akit(child)
+    (Akit(child), seen)
+}
+
+/// The Admin API's and the tracker's UDP addresses, as `akit run` printed them in `lines`, and
+/// listener `web`'s, as the Admin API says.
+fn addrs(lines: &[String]) -> (SocketAddr, SocketAddr) {
+    let line = |m: &str| {
+        lines
+            .iter()
+            .find(|l| l.contains(m))
+            .unwrap_or_else(|| panic!("no {m:?} in {lines:?}"))
+    };
+    let api = printed(line("akit: admin API on "), "akit: admin API on ");
+    let udp = after(line("bittorrent.tracker: udp on "), "udp on ");
+    (listener(api, "web", None), udp)
 }
 
 fn pct(b: &[u8]) -> String {
@@ -85,21 +110,19 @@ fn tracker_under_akit_run() {
     let dir = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("bittorrent-tracker");
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    let web = free();
-    let udp = UdpSocket::bind("127.0.0.1:0").unwrap();
-    let udp_addr = udp.local_addr().unwrap();
-    drop(udp);
     let path = dir.join("akit.json");
     std::fs::write(
         &path,
         format!(
-            r#"{{"listeners": [{{"name": "web", "address": "{web}"}}],
+            r#"{{"admin": {{"address": "{ANY}"}},
+                "listeners": [{{"name": "web", "address": "{ANY}"}}],
                 "routes": [{{"listeners": ["web"], "match": {{"path": ["/tracker/*"]}}, "handler": {{"module": "bt_tracker"}}}}],
-                "bittorrent": {{"tracker": {{"listen": "{udp_addr}", "interval": "10m"}}}}}}"#
+                "bittorrent": {{"tracker": {{"listen": "{ANY}", "interval": "10m"}}}}}}"#
         ),
     )
     .unwrap();
-    let _akit = run(&path, "akit: running bittorrent.tracker");
+    let (_akit, lines) = run(&path, "akit: admin API on");
+    let (web, udp_addr) = addrs(&lines);
     let ih = [0x42u8; 20];
     // A seeder over HTTP.
     let body = get(
@@ -254,21 +277,19 @@ fn fit_clients_through_akits_tracker() {
     let dir = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("bittorrent-fit");
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    let web = free();
-    let udp = UdpSocket::bind("127.0.0.1:0").unwrap();
-    let udp_addr = udp.local_addr().unwrap();
-    drop(udp);
     let path = dir.join("akit.json");
     std::fs::write(
         &path,
         format!(
-            r#"{{"listeners": [{{"name": "web", "address": "{web}"}}],
+            r#"{{"admin": {{"address": "{ANY}"}},
+                "listeners": [{{"name": "web", "address": "{ANY}"}}],
                 "routes": [{{"listeners": ["web"], "match": {{"path": ["/tracker/*"]}}, "handler": {{"module": "bt_tracker"}}}}],
-                "bittorrent": {{"tracker": {{"listen": "{udp_addr}"}}}}}}"#
+                "bittorrent": {{"tracker": {{"listen": "{ANY}"}}}}}}"#
         ),
     )
     .unwrap();
-    let _akit = run(&path, "akit: running bittorrent.tracker");
+    let (_akit, lines) = run(&path, "akit: admin API on");
+    let (web, udp_addr) = addrs(&lines);
     let payload = data(3 << 20, 11);
     let seed_dl = dir.join("seed-dl");
     std::fs::create_dir_all(&seed_dl).unwrap();

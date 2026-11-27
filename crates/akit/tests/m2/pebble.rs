@@ -74,7 +74,10 @@ impl Drop for Pebble {
     }
 }
 
-/// A TCP port on 127.0.0.1 nothing listens on, as the system hands it out.
+/// A TCP port on 127.0.0.1 nothing listens on, as the system hands it out: for Pebble, an
+/// external process whose config must name its ports, and for the ports Pebble dials back
+/// (HTTP-01, TLS-ALPN-01), which it must know before akit binds them. Another process may take
+/// it meanwhile; akit's other listeners bind port 0.
 pub fn free_port() -> u16 {
     TcpListener::bind("127.0.0.1:0")
         .unwrap()

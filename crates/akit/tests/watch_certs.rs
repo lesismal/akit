@@ -22,11 +22,14 @@ use std::time::{Duration, Instant};
 
 use support::certs::{Ca, dir};
 use support::https::{client, get_h1, leaf_der};
+use support::run::after;
 
 /// The running binary, killed when dropped, and its stdout and stderr lines.
 struct Akit {
     child: Child,
     out: mpsc::Receiver<String>,
+    /// The lines read as it started, up to its first listener's.
+    early: Vec<String>,
 }
 
 impl Drop for Akit {
@@ -79,8 +82,13 @@ fn start(config: &Path, flags: &[&str]) -> (Akit, SocketAddr) {
             }
         });
     }
-    let akit = Akit { child, out };
-    let line = akit.until("akit: listener").pop().unwrap();
+    let mut akit = Akit {
+        child,
+        out,
+        early: Vec::new(),
+    };
+    akit.early = akit.until("akit: listener");
+    let line = akit.early.last().unwrap();
     let addr = line.split(' ').nth(4).unwrap().parse().unwrap();
     (akit, addr)
 }
@@ -321,16 +329,11 @@ fn a_hub_listeners_certificate_renewed_without_a_restart() {
     let roots = ca.write(&d, "ca.pem");
     let a = ca.leaf(&d, "a", &["a.example"]);
     let hub = ca.leaf(&d, "hub", &["hub.example"]);
-    let port = std::net::TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port();
     let p = config(&d, &a);
     let json = std::fs::read_to_string(&p).unwrap().replacen(
         '{',
         &format!(
-            r#"{{"tunnel": {{"hub": {{"name": "hub", "password": "pw", "listeners": [{{"protocol": "tls", "address": "127.0.0.1:{port}", "cert_file": "{}", "key_file": "{}"}}]}}}},"#,
+            r#"{{"tunnel": {{"hub": {{"name": "hub", "password": "pw", "listeners": [{{"protocol": "tls", "address": "127.0.0.1:0", "cert_file": "{}", "key_file": "{}"}}]}}}},"#,
             s(&hub.0),
             s(&hub.1)
         ),
@@ -338,8 +341,10 @@ fn a_hub_listeners_certificate_renewed_without_a_restart() {
     );
     std::fs::write(&p, json).unwrap();
     let (akit, _) = start(&p, &["-watch-interval", "50ms"]);
-    akit.until("akit: running tunnel.hub");
-    let at: SocketAddr = format!("127.0.0.1:{port}").parse().unwrap();
+    // Where the hub's listener links, as it says (port 0 in its member).
+    let lines = [akit.early.clone(), akit.until("akit: running tunnel.hub")].concat();
+    let marker = "nodes and proxies link on tls://";
+    let at = after(lines.iter().find(|l| l.contains(marker)).unwrap(), marker);
     wait_hub_leaf(at, &roots, &leaf_der(&hub.0));
 
     // Renewed in place: the config applied again, the hub's listener serving the new one.
@@ -398,17 +403,12 @@ fn a_role_consoles_certificate_renewed_without_a_restart() {
     let roots = ca.write(&d, "ca.pem");
     let a = ca.leaf(&d, "a", &["a.example"]);
     let con = ca.leaf(&d, "con", &["con.example"]);
-    let port = std::net::TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port();
     let hash = akio_crypto::bcrypt::hash(b"pw", akio_crypto::bcrypt::MIN_COST).unwrap();
     let p = config(&d, &a);
     let json = std::fs::read_to_string(&p).unwrap().replacen(
         '{',
         &format!(
-            r#"{{"tunnel": {{"node": {{"name": "lab", "console": {{"address": "127.0.0.1:{port}", "cert_file": "{}", "key_file": "{}", "users": [{{"username": "admin", "password_hash": "{hash}"}}]}}}}}},"#,
+            r#"{{"tunnel": {{"node": {{"name": "lab", "console": {{"address": "127.0.0.1:0", "cert_file": "{}", "key_file": "{}", "users": [{{"username": "admin", "password_hash": "{hash}"}}]}}}}}},"#,
             s(&con.0),
             s(&con.1)
         ),
@@ -416,13 +416,10 @@ fn a_role_consoles_certificate_renewed_without_a_restart() {
     );
     std::fs::write(&p, json).unwrap();
     let (akit, _) = start(&p, &["-watch-interval", "50ms"]);
-    akit.until("akit: running tunnel.node");
-    let at: SocketAddr = format!("127.0.0.1:{port}").parse().unwrap();
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while std::net::TcpStream::connect(at).is_err() {
-        assert!(Instant::now() < deadline, "no console at {at}");
-        std::thread::sleep(Duration::from_millis(20));
-    }
+    // Where the console listens, as it says (port 0 in its member): it listens once it says so.
+    let lines = [akit.early.clone(), akit.until("akit: running tunnel.node")].concat();
+    let marker = "tunnel.node: console on https://";
+    let at = after(lines.iter().find(|l| l.contains(marker)).unwrap(), marker);
     wait_console_leaf(at, &roots, &leaf_der(&con.0));
 
     // Renewed in place: served to new connections once the files settle.

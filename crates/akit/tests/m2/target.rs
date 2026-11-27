@@ -46,8 +46,10 @@ pub struct Proc {
     out: mpsc::Receiver<String>,
     err: mpsc::Receiver<String>,
     path: PathBuf,
-    /// The Admin API's address, when the config has one.
+    /// The Admin API's address, as `akit run` printed it, when the config has one.
     pub api: Option<SocketAddr>,
+    /// What `akit run` printed up to the line the start waited for: where its listeners listen.
+    pub started: Vec<String>,
 }
 
 impl Drop for Proc {
@@ -59,14 +61,9 @@ impl Drop for Proc {
 
 impl Proc {
     /// Writes `json` to `path` and runs `akit run` on it, its drain timeout `drain` (a Go
-    /// duration), until it prints a line starting with `ready`.
-    pub fn start(
-        path: &Path,
-        json: &str,
-        api: Option<SocketAddr>,
-        drain: &str,
-        ready: &str,
-    ) -> Proc {
+    /// duration), until it prints a line starting with `ready`. Its listeners and Admin API may
+    /// be on port 0: it prints where they listen ([`listener_in`]).
+    pub fn start(path: &Path, json: &str, drain: &str, ready: &str) -> Proc {
         std::fs::write(path, json).unwrap();
         let mut child = Command::new(env!("CARGO_BIN_EXE_akit"))
             .args(["run", "-shutdown-timeout", drain, "-c"])
@@ -77,15 +74,27 @@ impl Proc {
             .unwrap();
         let out = lines(child.stdout.take().unwrap());
         let err = lines(child.stderr.take().unwrap());
-        let p = Proc {
+        let mut p = Proc {
             child,
             out,
             err,
             path: path.to_owned(),
-            api,
+            api: None,
+            started: Vec::new(),
         };
-        p.until(ready);
+        p.started = p.until(ready);
+        p.api = p
+            .started
+            .iter()
+            .find_map(|l| l.strip_prefix("akit: admin API on "))
+            .map(|a| a.parse().unwrap());
         p
+    }
+
+    /// Where listener `name` listens, as `akit run` printed it as it started.
+    pub fn listener(&self, name: &str) -> SocketAddr {
+        listener_in(&self.started, name)
+            .unwrap_or_else(|| panic!("no listener {name:?} in {:?}", self.started))
     }
 
     /// stdout's lines up to and including the first starting with `last`; what stderr said
@@ -114,25 +123,27 @@ impl Proc {
         self.err.try_iter().collect()
     }
 
-    /// `json` written to the config file and applied by SIGHUP.
-    pub fn sighup(&self, json: &str) {
+    /// `json` written to the config file and applied by SIGHUP: what `akit run` printed of it,
+    /// the listeners it added among it.
+    pub fn sighup(&self, json: &str) -> Vec<String> {
         std::fs::write(&self.path, json).unwrap();
         kill(self.child.id(), SIGHUP).unwrap();
-        self.until("akit: reloaded");
+        self.until("akit: reloaded")
     }
 
-    /// `json` loaded through the Admin API's `POST /load`.
-    pub fn load(&self, json: &str) {
+    /// `json` loaded through the Admin API's `POST /load`: what `akit run` printed of it.
+    pub fn load(&self, json: &str) -> Vec<String> {
         let (status, body) = self.call("POST", "/load", Some(json));
         assert_eq!(status, 200, "POST /load: {body}");
-        self.until("akit: loaded");
+        self.until("akit: loaded")
     }
 
-    /// `json` set at `pointer` through the Admin API's `PATCH /config/{pointer}`.
-    pub fn patch(&self, pointer: &str, json: &str) {
+    /// `json` set at `pointer` through the Admin API's `PATCH /config/{pointer}`: what `akit run`
+    /// printed of it.
+    pub fn patch(&self, pointer: &str, json: &str) -> Vec<String> {
         let (status, body) = self.call("PATCH", &format!("/config{pointer}"), Some(json));
         assert_eq!(status, 200, "PATCH {pointer}: {body}");
-        self.until("akit: loaded");
+        self.until("akit: loaded")
     }
 
     /// A request to the Admin API: the status and the body.
@@ -284,6 +295,17 @@ pub fn options(drain: Duration) -> akit_listener::Options {
     o
 }
 
+/// Where listener `name` listens, from `akit run`'s `akit: listener "name" on 127.0.0.1:1 (...)`
+/// among `lines`: the port it bound when its address said 0.
+pub fn listener_in(lines: &[String], name: &str) -> Option<SocketAddr> {
+    let prefix = format!("akit: listener {name:?} on ");
+    lines.iter().find_map(|l| {
+        let rest = l.strip_prefix(&prefix)?;
+        let end = rest.find(' ').unwrap_or(rest.len());
+        rest[..end].parse().ok()
+    })
+}
+
 /// akit in process, built as `akit run` builds it: the graph with its pools, then the engine,
 /// then the slot the pools dial through filled; akit's own modules.
 pub struct Inproc {
@@ -322,6 +344,15 @@ impl Inproc {
 
     pub fn served(&self) -> Vec<akit_listener::Served> {
         self.listeners.as_ref().unwrap().served()
+    }
+
+    /// Where listener `name` listens: the port it bound when its address said 0.
+    pub fn listener(&self, name: &str) -> SocketAddr {
+        self.served()
+            .into_iter()
+            .find(|l| l.name == name)
+            .unwrap_or_else(|| panic!("no listener {name:?}"))
+            .address
     }
 }
 

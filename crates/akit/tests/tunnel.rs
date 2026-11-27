@@ -17,12 +17,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
-fn free() -> SocketAddr {
-    TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-}
+mod support;
+
+use support::run::{ANY, after};
 
 /// An echo service.
 fn echo() -> SocketAddr {
@@ -53,8 +50,8 @@ impl Drop for Akit {
     }
 }
 
-/// `akit run -c path`, once it prints `ready`.
-fn run(path: &Path, ready: &str) -> Akit {
+/// `akit run -c path`, once it prints `ready`: and the lines it printed until then.
+fn run(path: &Path, ready: &str) -> (Akit, Vec<String>) {
     let mut child = Command::new(env!("CARGO_BIN_EXE_akit"))
         .args(["run", "-shutdown-timeout", "2s", "-c"])
         .arg(path)
@@ -66,16 +63,29 @@ fn run(path: &Path, ready: &str) -> Akit {
     let ready = ready.to_owned();
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
+        let mut seen = Vec::new();
         for line in out.lines() {
             let Ok(line) = line else { break };
-            if line.starts_with(&ready) {
-                let _ = tx.send(());
+            let done = line.starts_with(&ready);
+            seen.push(line);
+            if done {
+                let _ = tx.send(std::mem::take(&mut seen));
             }
         }
     });
-    rx.recv_timeout(Duration::from_secs(20))
+    let seen = rx
+        .recv_timeout(Duration::from_secs(20))
         .expect("akit run did not start");
-    Akit(child)
+    (Akit(child), seen)
+}
+
+/// The address after `marker` in the first of `lines` that holds it.
+fn printed_in(lines: &[String], marker: &str) -> SocketAddr {
+    let line = lines
+        .iter()
+        .find(|l| l.contains(marker))
+        .unwrap_or_else(|| panic!("no {marker:?} in {lines:?}"));
+    after(line, marker)
 }
 
 /// `akit token <args>`: its exit status and standard output.
@@ -118,17 +128,23 @@ fn a_tunnel_through_akit_run_with_tokens_from_akit_token() {
     let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("tunnel-e2e");
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    let (api, hub, fwd, svc) = (free(), free(), free(), echo());
+    let svc = echo();
+    // The Admin API on a Unix socket, where `akit token` reaches it by the config's address
+    // (short: a socket's path is bounded); the hub's listener on port 0, its port as it says.
+    let sock = std::env::temp_dir().join(format!("akit-tun-{}.sock", std::process::id()));
+    let _ = std::fs::remove_file(&sock);
     let hub_path = dir.join("hub.json");
     std::fs::write(
         &hub_path,
         format!(
-            r#"{{"admin": {{"address": "{api}"}},
-  "tunnel": {{"hub": {{"name": "hub", "listeners": [{{"protocol": "tcp", "address": "{hub}"}}]}}}}}}"#
+            r#"{{"admin": {{"address": "unix/{}"}},
+  "tunnel": {{"hub": {{"name": "hub", "listeners": [{{"protocol": "tcp", "address": "{ANY}"}}]}}}}}}"#,
+            sock.display()
         ),
     )
     .unwrap();
-    let _hub = run(&hub_path, "akit: admin API on");
+    let (_hub, lines) = run(&hub_path, "akit: admin API on");
+    let hub = printed_in(&lines, "nodes and proxies link on ");
     let c = hub_path.to_str().unwrap();
     let (ok, node_token) = token(&["create", "-c", c, "-role", "tunnel.hub", "-name", "lab"]);
     assert!(ok && node_token.starts_with("akitt1."), "{node_token}");
@@ -157,13 +173,14 @@ fn a_tunnel_through_akit_run_with_tokens_from_akit_token() {
         format!(
             r#"{{"tunnel": {{
   "node": {{"name": "lab", "hubs": [{}], "services": [{{"name": "echo", "address": "{svc}"}}]}},
-  "proxy": {{"name": "alice", "hubs": [{}], "forwards": [{{"listen": "{fwd}", "node": "lab", "service": "echo"}}]}}}}}}"#,
+  "proxy": {{"name": "alice", "hubs": [{}], "forwards": [{{"listen": "{ANY}", "node": "lab", "service": "echo"}}]}}}}}}"#,
             up(node_token),
             up(proxy_token)
         ),
     )
     .unwrap();
-    let _peers = run(&peers_path, "akit: running tunnel.proxy");
+    let (_peers, lines) = run(&peers_path, "akit: running tunnel.proxy");
+    let fwd = printed_in(&lines, "tunnel.proxy: forwarding ");
     assert!(
         through(fwd, Duration::from_secs(20)),
         "no tunnel through the hub"

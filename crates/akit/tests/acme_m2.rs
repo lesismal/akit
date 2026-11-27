@@ -163,7 +163,7 @@ fn only_a_host_name_from_pebble() {
         &format!(r#" "auto_https": {{"http_port": {http_port}, "https_port": {https_port}}},"#),
         NAME,
     );
-    let akit = Proc::start(&d.join("akit.json"), &json, None, "5s", "akit: listener");
+    let akit = Proc::start(&d.join("akit.json"), &json, "5s", "akit: listener");
 
     // The certificate obtained through HTTP-01 on the `http` listener and kept in the storage.
     let chain = stored(&storage, NAME, Duration::from_secs(60), &akit);
@@ -205,7 +205,7 @@ fn only_a_host_name_from_lets_encrypt_staging() {
         "",
         &name,
     );
-    let akit = Proc::start(&d.join("akit.json"), &json, None, "5s", "akit: listener");
+    let akit = Proc::start(&d.join("akit.json"), &json, "5s", "akit: listener");
     let chain = stored(&storage, &name, Duration::from_secs(300), &akit);
     assert_eq!(dns_names(&chain[0]), std::slice::from_ref(&name));
     let issuer = chain[0].issuer().to_string();
