@@ -80,6 +80,71 @@ pub struct MediaAuth {
     /// `token_ttl`: how long a token akit issues is good for; [`DEFAULT_MEDIA_TOKEN_TTL`] when
     /// left out.
     pub token_ttl: Duration,
+    /// `keys` (I143): a keyring of signing keys in place of `secret` or `secret_file`; a token is
+    /// signed with one and checked against all.
+    pub keys: Vec<MediaKey>,
+}
+
+/// The most keys a policy's keyring may hold (fit's `MaxMediaKeys`).
+pub const MAX_MEDIA_KEYS: usize = 256;
+
+/// One key of a `media_auth` policy's keyring (fit's `config.MediaKey`, I143).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct MediaKey {
+    /// `key`: the key's name, 1 to 64 letters, digits, '_', '.', '~' and '-'.
+    pub key: String,
+    /// `secret`: the key's secret, at least 16 bytes; empty when `secret_file` is set.
+    pub secret: String,
+    /// `secret_file`: a file holding it, read each time the config is applied, which
+    /// `media_tokens` rotates; empty when `secret` is set.
+    pub secret_file: String,
+}
+
+/// Whether `s` is a key's name: 1 to 64 letters, digits, '.', '_', '~' and '-'.
+#[must_use]
+pub fn valid_key_name(s: &str) -> bool {
+    (1..=64).contains(&s.len())
+        && s.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'~' | b'-'))
+}
+
+const MEDIA_KEY_FIELDS: &[&str] = &["key", "secret", "secret_file"];
+
+fn media_key(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<MediaKey> {
+    let mut o = d.object(n, path)?;
+    let mut k = MediaKey::default();
+    let (name, off) = required(d, &mut o, "key");
+    if off != o.off && !valid_key_name(&name) {
+        d.error(
+            off,
+            &o.at("key"),
+            format!("{name:?} is not a key name: 1 to 64 letters, digits, '.', '_', '~' and '-'"),
+        );
+    }
+    k.key = name;
+    let secret = text_at(d, &mut o, "secret");
+    k.secret_file = text(d, &mut o, "secret_file");
+    o.finish(d, MEDIA_KEY_FIELDS, &[]);
+    k.secret = secret.as_ref().map(|(s, _)| s.clone()).unwrap_or_default();
+    if k.secret.is_empty() == k.secret_file.is_empty() {
+        d.error(n.off, path, "set secret or secret_file, one of the two");
+    } else if let Some((s, soff)) = secret.filter(|(s, _)| !s.is_empty()) {
+        if s.len() < MIN_MEDIA_SECRET {
+            d.error(
+                soff,
+                &o_at(path, "secret"),
+                format!(
+                    "the secret is {} bytes: use at least {MIN_MEDIA_SECRET}",
+                    s.len()
+                ),
+            );
+        }
+    }
+    Some(k)
+}
+
+fn o_at(path: &str, key: &str) -> String {
+    join_field(path, key)
 }
 
 impl MediaAuth {
@@ -406,6 +471,8 @@ fn or_count(n: usize, def: usize) -> usize {
 // What akit reads, and what fit reads that akit does not yet, object by object.
 
 const MEDIA_AUTH_FIELDS: &[&str] = &[
+    // I143: the keyring.
+    "keys",
     "name",
     "tokens",
     "users",
@@ -414,8 +481,8 @@ const MEDIA_AUTH_FIELDS: &[&str] = &[
     "public",
     "token_ttl",
 ];
-// keys: fit's I119 (media_tokens' keyring); url_signing: the media library's track.
-const MEDIA_AUTH_FIT_ONLY: &[&str] = &["keys", "url_signing"];
+// url_signing: the media library's track (I144).
+const MEDIA_AUTH_FIT_ONLY: &[&str] = &["url_signing"];
 const MEDIA_TOKEN_FIELDS: &[&str] = &["name", "token", "token_sha256", "publish", "play"];
 const MEDIA_USER_FIELDS: &[&str] = &["name", "password", "password_hash", "publish", "play"];
 const STREAMING_FIELDS: &[&str] = &[
@@ -540,6 +607,29 @@ fn policy(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<MediaAuth> {
     let users = list(d, &mut o, "users", user);
     let secret = text_at(d, &mut o, "secret");
     let secret_file = text_at(d, &mut o, "secret_file");
+    let keys_at = o.take("keys").map(|v| (v.off, o.at("keys"), v));
+    if let Some((koff, kp, v)) = &keys_at {
+        let got = d.array(v, kp, |d, n, p| {
+            media_key(d, n, p).map(|k| (k, n.off, p.to_owned()))
+        });
+        if got.len() > MAX_MEDIA_KEYS {
+            d.error(*koff, kp, format!("at most {MAX_MEDIA_KEYS} keys"));
+        }
+        let mut seen: Vec<String> = Vec::new();
+        for (k, off, p) in &got {
+            if valid_key_name(&k.key) {
+                if seen.contains(&k.key) {
+                    d.error(
+                        *off,
+                        &join_field(p, "key"),
+                        format!("another key is already named {:?}", k.key),
+                    );
+                }
+                seen.push(k.key.clone());
+            }
+        }
+        m.keys = got.into_iter().map(|(k, _, _)| k).collect();
+    }
     if let Some(v) = o.take("public") {
         let p = o.at("public");
         for (i, (off, s)) in d.strings(v, &p).into_iter().enumerate() {
@@ -562,12 +652,22 @@ fn policy(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<MediaAuth> {
         && users.is_empty()
         && secret.as_ref().is_none_or(|(s, _)| s.is_empty())
         && secret_file.as_ref().is_none_or(|(s, _)| s.is_empty())
+        && m.keys.is_empty()
         && m.public.is_empty()
     {
         d.error(
             n.off,
             path,
-            "the policy lets no one in: set tokens, users, secret, secret_file or public",
+            "the policy lets no one in: set tokens, users, secret, secret_file, keys or public",
+        );
+    }
+    let single = secret.as_ref().is_some_and(|(s, _)| !s.is_empty())
+        || secret_file.as_ref().is_some_and(|(s, _)| !s.is_empty());
+    if let (false, true, Some((koff, kp, _))) = (m.keys.is_empty(), single, &keys_at) {
+        d.error(
+            *koff,
+            kp,
+            "set keys, or secret or secret_file, one of the two",
         );
     }
     match (&secret, &secret_file) {
@@ -1119,6 +1219,176 @@ pub(crate) fn hls(d: &mut Decoder<'_>, params: Option<&Node>, path: &str) -> Opt
     h.cors = text(d, &mut o, "cors");
     o.finish(d, HLS_FIELDS, &[]);
     Some(h)
+}
+
+/// fit's `media_tokens` defaults and bounds (`handler/mediatokens`, I143).
+pub const DEFAULT_TOKENS_PREFIX: &str = "/media-tokens";
+/// See [`DEFAULT_TOKENS_PREFIX`].
+pub const DEFAULT_TOKENS_MAX_TTL: Duration = Duration::from_secs(24 * 3600);
+/// See [`DEFAULT_TOKENS_PREFIX`].
+pub const DEFAULT_TOKENS_MAX_TOKENS: usize = 100;
+/// See [`DEFAULT_TOKENS_PREFIX`].
+pub const MAX_TOKENS_MAX_TOKENS: usize = 1000;
+/// See [`DEFAULT_TOKENS_PREFIX`].
+pub const DEFAULT_TOKENS_MAX_BODY_BYTES: usize = 65536;
+/// See [`DEFAULT_TOKENS_PREFIX`].
+pub const MIN_TOKENS_MAX_BODY_BYTES: usize = 256;
+/// See [`DEFAULT_TOKENS_PREFIX`].
+pub const MAX_TOKENS_MAX_BODY_BYTES: usize = 1 << 20;
+/// See [`DEFAULT_TOKENS_PREFIX`].
+pub const DEFAULT_TOKENS_REVOKE_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// The `media_tokens` handler's params, as fit's `mediatokens.Tokens` (I143): a route a site's
+/// backend calls to sign tokens in batches and to revoke a key.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct MediaTokens {
+    /// `prefix`: [`DEFAULT_TOKENS_PREFIX`] when empty.
+    pub prefix: String,
+    /// `auth`: the `media_auth` policy that signs the tokens; required.
+    pub auth: String,
+    /// `prefixes`: the stream-name prefixes the route may sign for; any when empty.
+    pub prefixes: Vec<String>,
+    /// `max_ttl`: [`DEFAULT_TOKENS_MAX_TTL`] when zero.
+    pub max_ttl: Duration,
+    /// `max_tokens`: [`DEFAULT_TOKENS_MAX_TOKENS`] when 0.
+    pub max_tokens: usize,
+    /// `max_body_bytes`: [`DEFAULT_TOKENS_MAX_BODY_BYTES`] when 0.
+    pub max_body_bytes: usize,
+    /// `revoke_timeout`: [`DEFAULT_TOKENS_REVOKE_TIMEOUT`] when zero.
+    pub revoke_timeout: Duration,
+    /// The policy `auth` names, from the config.
+    pub policy: Option<MediaAuth>,
+}
+
+impl MediaTokens {
+    /// `prefix`, or its default.
+    #[must_use]
+    pub fn prefix_or(&self) -> &str {
+        if self.prefix.is_empty() {
+            DEFAULT_TOKENS_PREFIX
+        } else {
+            &self.prefix
+        }
+    }
+
+    /// `max_ttl`, or its default.
+    #[must_use]
+    pub fn ttl_bound(&self) -> Duration {
+        or(self.max_ttl, DEFAULT_TOKENS_MAX_TTL)
+    }
+
+    /// `max_tokens`, or its default.
+    #[must_use]
+    pub fn tokens(&self) -> usize {
+        or_count(self.max_tokens, DEFAULT_TOKENS_MAX_TOKENS)
+    }
+
+    /// `max_body_bytes`, or its default.
+    #[must_use]
+    pub fn body_bytes(&self) -> usize {
+        or_count(self.max_body_bytes, DEFAULT_TOKENS_MAX_BODY_BYTES)
+    }
+
+    /// `revoke_timeout`, or its default.
+    #[must_use]
+    pub fn revoke(&self) -> Duration {
+        or(self.revoke_timeout, DEFAULT_TOKENS_REVOKE_TIMEOUT)
+    }
+}
+
+const MEDIA_TOKENS_FIELDS: &[&str] = &[
+    "prefix",
+    "auth",
+    "prefixes",
+    "max_ttl",
+    "max_tokens",
+    "max_body_bytes",
+    "revoke_timeout",
+];
+// Signed playback URLs (I144).
+const MEDIA_TOKENS_FIT_ONLY: &[&str] = &["url_base", "url_prefixes"];
+
+/// Decodes the `media_tokens` handler's params, with fit's checks (`Tokens.Provision`); its
+/// policy and its route's middleware are checked once every file is read.
+pub(crate) fn media_tokens(
+    d: &mut Decoder<'_>,
+    params: Option<&Node>,
+    off: usize,
+    path: &str,
+) -> Option<MediaTokens> {
+    let Some(n) = params else {
+        d.error(off, &join_field(path, "auth"), "missing required field");
+        return None;
+    };
+    let mut o = d.object(n, path)?;
+    let mut t = MediaTokens::default();
+    if let Some((p, poff)) = text_at(d, &mut o, "prefix") {
+        if !p.is_empty() && !path_prefix(&p) {
+            d.error(
+                poff,
+                &o.at("prefix"),
+                format!(
+                    "{p:?} is not a path of segments of letters, digits, '.', '_', '~' and '-', as /media-tokens"
+                ),
+            );
+        }
+        t.prefix = p;
+    }
+    let (auth, aoff) = required(d, &mut o, "auth");
+    if aoff != o.off && auth.is_empty() {
+        d.error(
+            aoff,
+            &o.at("auth"),
+            "media_tokens needs a media_auth policy with secret_file, or a keyring of secret_files: auth names none",
+        );
+    }
+    t.auth = auth;
+    t.prefixes = patterns(d, &mut o, "prefixes");
+    t.max_ttl = duration(d, &mut o, "max_ttl");
+    if let Some(v) = o.take("max_tokens") {
+        let max = i64::try_from(MAX_TOKENS_MAX_TOKENS).unwrap_or(i64::MAX);
+        if let Some(x) = d.int(v, &o.at("max_tokens"), 0, max) {
+            t.max_tokens = usize::try_from(x).unwrap_or(0);
+        }
+    }
+    if let Some(v) = o.take("max_body_bytes") {
+        let p = o.at("max_body_bytes");
+        if let Some(x) = d.int(v, &p, 0, i64::MAX) {
+            let x = usize::try_from(x).unwrap_or(usize::MAX);
+            if x != 0 && !(MIN_TOKENS_MAX_BODY_BYTES..=MAX_TOKENS_MAX_BODY_BYTES).contains(&x) {
+                d.error(
+                    v.off,
+                    &p,
+                    format!(
+                        "a body is at least {MIN_TOKENS_MAX_BODY_BYTES} and at most {MAX_TOKENS_MAX_BODY_BYTES} bytes"
+                    ),
+                );
+            }
+            t.max_body_bytes = x;
+        }
+    }
+    t.revoke_timeout = duration(d, &mut o, "revoke_timeout");
+    o.finish(d, MEDIA_TOKENS_FIELDS, MEDIA_TOKENS_FIT_ONLY);
+    Some(t)
+}
+
+/// fit's check of a `media_tokens` policy at provisioning: one with `secret_file`, or a keyring
+/// whose every key has one, so that a revoke can rotate a file and outlive a restart.
+pub(crate) fn tokens_policy_problem(p: &MediaAuth) -> Option<String> {
+    if p.keys.is_empty() {
+        return p.secret_file.is_empty().then(|| {
+            format!(
+                "media_tokens needs a media_auth policy with secret_file, or a keyring of secret_files: {:?} has neither",
+                p.name
+            )
+        });
+    }
+    p.keys.iter().find(|k| k.secret_file.is_empty()).map(|k| {
+        format!(
+            "media_tokens needs a secret_file for every key of media_auth {:?}'s keyring: key {:?} has none",
+            p.name, k.key
+        )
+    })
 }
 
 #[cfg(test)]

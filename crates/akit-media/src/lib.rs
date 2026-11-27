@@ -20,6 +20,7 @@ pub mod role;
 mod rtc;
 pub mod streaming;
 mod swap;
+mod tokens;
 pub mod vod;
 
 pub use handlers::MODULES;

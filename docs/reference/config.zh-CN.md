@@ -14,7 +14,7 @@ akit 配置的每个字段：配置的每一部分是做什么的、一个示例
 akit 与 fit 不同之处，在表格中以 **akit：** 标出。
 
 <!-- BEGIN GENERATED: summary -->
-fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **1247** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 188 个对象，下文各有一张表。
+fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **1260** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 190 个对象，下文各有一张表。
 <!-- END GENERATED -->
 
 字段说明来自 fit 代码中的 `doc` 标签，是英文的，所以每个字段的完整说明在[英文版](config.md)的同一张表中；本页的表格给出每个字段的
@@ -2812,7 +2812,7 @@ webrtc {
 `media_auth` 列出 fit 的具名策略，规定谁可以推送和播放哪些流（[fit 的指南](https://github.com/lesismal/fit/blob/main/docs/streaming.zh-CN.md#auth)）：
 静态 token（或其 SHA-256）、带密码或 bcrypt 哈希的用户、为 `akit media-token` 签发的 token 签名的密钥，以及任何人都可执行
 的动作。流媒体角色的监听器和媒体处理器用 `auth` 指定一个策略，按流的路径检查。akit 像 fit 一样读取并检查这些策略（I120），
-`akit run` 应用它们（I121）。策略的 `keys`（fit 的 I119）和 `url_signing`（媒体库那条线）尚不读取。
+`akit run` 应用它们（I121）。策略的 `keys` 自 I143 随 `media_tokens` 读取；`url_signing`（I144）尚不读取。
 
 ```fit
 media_auth live {
@@ -2834,7 +2834,7 @@ media_auth live {
 | 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
 | `name` | 字符串 | 必填 |  |
-| `keys` | 对象的列表 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `keys` | [对象](#cfg-media-auth-keys)的列表 |  |  |
 | `public` | 字符串：`publish`、`play`的列表 |  |  |
 | `secret` | 字符串 |  |  |
 | `secret_file` | 字符串 |  |  |
@@ -2874,6 +2874,20 @@ media_auth live {
 | `password_hash` | 字符串 |  |  |
 | `play` | 字符串的列表 |  |  |
 | `publish` | 字符串的列表 |  |  |
+<!-- END GENERATED -->
+
+### `media_auth[].keys[]`
+
+<!-- BEGIN GENERATED: media_auth[].keys[] -->
+<a id="cfg-media-auth-keys"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-media-auth-keys)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `key` | 字符串 | 必填 |  |
+| `secret` | 字符串 |  |  |
+| `secret_file` | 字符串 |  |  |
 <!-- END GENERATED -->
 
 ## 流媒体
@@ -3400,7 +3414,7 @@ bittorrent {
 | `hls` | 已支持：[参数](#cfg-routes-handler-hls-params) |
 | `httpflv` | 已支持：[参数](#cfg-routes-handler-httpflv-params) |
 | `media_pages` | 已支持：[参数](#cfg-routes-handler-media-pages-params) |
-| `media_tokens` | **尚不支持**：按名称拒绝 |
+| `media_tokens` | 已支持：[参数](#cfg-routes-handler-media-tokens-params) |
 | `proxy` | 已支持：[参数](#cfg-routes-handler-proxy-params) |
 | `respond` | 已支持：[参数](#cfg-routes-handler-respond-params) |
 | `static` | 已支持：[参数](#cfg-routes-handler-static-params) |
@@ -3735,6 +3749,42 @@ route {
 | `max_sdp_bytes` | 整数，≥ 0 | `32768` |  |
 | `media_addrs` | 值为字符串的映射 |  |  |
 | `timeout` | 时长 | `"10s"` |  |
+<!-- END GENERATED -->
+
+### `media_tokens`
+
+网站后端调用的路由，位于对其进行认证的中间件（`jwt`、`basic_auth`、`forward_auth`，或不带 `optional` 的 `client_cert`）之后，
+用于批量签发 `media_auth` token（`POST <prefix>`，`key` 指定策略密钥环中的一个密钥），以及撤销策略的密钥、某一个密钥或全部
+密钥所签发的 token（`POST <prefix>/revoke`），撤销前先把新密钥写入其 `secret_file`（I143）。策略需要 `secret_file`，或每个密钥都
+有 `secret_file` 的密钥环。尚不读取 `url_base` 和 `url_prefixes`（签名 URL，I144）。
+
+```fit
+listener web :8080
+media_auth site { keys { key a; secret_file /etc/akit/media-a }; keys { key b; secret_file /etc/akit/media-b } }
+
+route tokens {
+	match { path /media-tokens /media-tokens/* }
+	middleware basic_auth { users { username api; password_hash "$2y$04$n.ddWQ.hfkNRsx7o3Y1w3eongqIP2oVF8Ka9OEQQwsoVnWY6O.jlW" } }
+	handler media_tokens { auth site; prefixes mtg-; max_ttl 2h }
+}
+```
+
+<!-- BEGIN GENERATED: routes[].handler<media_tokens>.params -->
+<a id="cfg-routes-handler-media-tokens-params"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-routes-handler-media-tokens-params)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `auth` | 字符串 |  |  |
+| `max_body_bytes` | 整数，256 到 1048576 | `65536` |  |
+| `max_tokens` | 整数，1 到 1000 | `100` |  |
+| `max_ttl` | 时长 | `"24h"` |  |
+| `prefix` | 字符串 | `"/media-tokens"` |  |
+| `prefixes` | 字符串的列表 |  |  |
+| `revoke_timeout` | 时长 | `"10s"` |  |
+| `url_base` | 字符串 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `url_prefixes` | 字符串的列表 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
 <!-- END GENERATED -->
 
 ### `vod`

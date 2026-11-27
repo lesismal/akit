@@ -1346,6 +1346,15 @@ media_library[].secret
 media_library[].secret_file
 # I142: the vod handler (akit-media's vod), its params as fit's; encrypt (I147) refused as not
 # supported yet.
+routes[].handler<media_tokens>
+routes[].handler<media_tokens>.params
+routes[].handler<media_tokens>.params.prefix
+routes[].handler<media_tokens>.params.auth
+routes[].handler<media_tokens>.params.prefixes
+routes[].handler<media_tokens>.params.max_ttl
+routes[].handler<media_tokens>.params.max_tokens
+routes[].handler<media_tokens>.params.max_body_bytes
+routes[].handler<media_tokens>.params.revoke_timeout
 routes[].handler<vod>
 routes[].handler<vod>.params
 routes[].handler<vod>.params.library
@@ -1363,6 +1372,10 @@ routes[].handler<vod>.params.timeout
 # refused as not supported yet, as are RTMP's and RTSP's mptcp, RTMP's max_message_bytes (akio A263)
 # and RTSP's auth_methods, realm and idle_timeout (Digest and Basic, a sessionless idle bound: akio A264). akit run runs the role from I122.
 media_auth
+media_auth[].keys
+media_auth[].keys[].key
+media_auth[].keys[].secret
+media_auth[].keys[].secret_file
 media_auth[].name
 media_auth[].public
 media_auth[].secret

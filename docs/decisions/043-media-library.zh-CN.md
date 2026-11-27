@@ -71,3 +71,13 @@ akio-crypto 有带 PKCS #7 填充的 AES-128-CBC。流媒体路线（决定 040�
 - **文件本身和海报经由该条目根目录的 akio-http `Files` 提供**，带范围、条件请求和 `sendfile`。
 - **等待文件池的请求被挂起**（`Context::suspend`），由文件池回答；在 akio 的 A296 之前，超过 `timeout` 时由 akit-media 自己的计时
   线程回答 503。
+
+## I143：媒体 token
+
+- **密钥环和 `media_tokens` 是 fit 的 I119**，由于签名 URL 建立在其上，本路线承担了它。token 用密钥环的第一个密钥或批次指定的
+  密钥签名，并对每个密钥校验；token 中不含密钥名，与 fit 相同。
+- **路由必须认证其调用方**：akit-config 拒绝没有 `jwt`、`basic_auth`、`forward_auth` 或不带 `optional` 的 `client_cert` 的
+  `media_tokens` 路由，与 fit 的 graph 相同；也拒绝缺少撤销所需轮换的密钥文件的策略。
+- **批次的请求体由 akio-http 在监听器的上限内整个读取**，再按 `max_body_bytes` 检查（413），而 fit 以流方式读取；它至多 1 MiB。
+- **撤销**把每个新密钥（32 个随机字节，base64url）写入密钥文件旁的临时文件，权限 0600，同步后重命名覆盖，在处理器自己的一个
+  线程上进行，队列长度为一；请求被挂起并从那里回答，在 akio 的 A296 之前超过 `revoke_timeout` 时由 akit-media 的计时线程回答 504。

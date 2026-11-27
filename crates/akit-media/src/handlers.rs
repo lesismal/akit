@@ -60,6 +60,11 @@ pub static MODULES: &[Info<HandlerParams>] = &[
         crate::vod::new_vod,
     ),
     Info::handler(
+        "http.handlers.media_tokens",
+        "Issues time-limited media_auth tokens in batches, for a route a business backend calls, and revokes the tokens of one key of the policy's keyring, or of all of them, by rotating their secrets.",
+        crate::tokens::new_tokens,
+    ),
+    Info::handler(
         "http.handlers.media_pages",
         "Serves akit's media pages under a prefix: an index with a login, a room call, publish and play pages over WHIP and WHEP, and the room API through which the members of a call announce their microphone and camera and talk in its chat.",
         crate::pages::new_pages,

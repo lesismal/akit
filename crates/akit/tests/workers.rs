@@ -381,6 +381,18 @@ fn cases(w: &World) -> Vec<Case> {
             404,
             true,
         ),
+        // I143: its route's basic_auth answers a request without credentials at once; a batch is
+        // computation, a revoke's file write on its own pool (akit-media's `tests/tokens.rs`).
+        Case {
+            module: "media_tokens",
+            middleware: format!(
+                r#"{{"module": "basic_auth", "params": {{"users": [{{"username": "me", "password_hash": "{HASH}"}}]}}}}"#
+            ),
+            handler: r#"{"module": "media_tokens", "params": {"auth": "tok"}}"#.into(),
+            fields: Vec::new(),
+            status: 401,
+            inline: true,
+        },
         // I142: outside its prefix (`/vod/lib/`), answered at once as fit's; its slow part, a
         // segment built on the library's file pool with the request suspended, is akit-media's
         // `tests/vod.rs`.
@@ -442,6 +454,7 @@ fn config(w: &World, cases: &[Case]) -> String {
         r#"{{"listeners": [{{"name": "web", "address": "127.0.0.1:0", "protocols": ["http/1.1"]}}],
   "upstreams": [{{"name": "app", "addresses": ["{}"]}}, {{"name": "auth", "addresses": ["{}"]}}],
   "media_library": [{{"name": "lib", "roots": ["/nonexistent/akit-workers"]}}],
+  "media_auth": [{{"name": "tok", "secret_file": "/nonexistent/akit-workers-secret"}}],
   "routes": [{}]}}"#,
         w.app,
         w.auth,

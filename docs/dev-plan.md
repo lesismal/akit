@@ -257,7 +257,7 @@ Tunnel and LLM track; I110–I114 are the WebRTC track, and I115–I119 are rese
 | I140 | Media library I: decision 043, `media_library` in the config | I120 | done |
 | I141 | Media library II: the catalog: scans, items, probes on akio-media's `mp4`, the file pool, the parsed movies kept; the role `media_library`; the Admin API's `/media/library` | I140, I100 | done |
 | I142 | Video on demand: `vod`, HLS from the sample tables, the file with ranges | I141, I121 | done |
-| I143 | Media tokens: `media_auth`'s `keys` and `media_tokens` (fit's I119) | I121 | todo |
+| I143 | Media tokens: `media_auth`'s `keys` and `media_tokens` (fit's I119) | I121 | done |
 | I144 | Playback URLs that expire: `url_signing`, sessions, `media_tokens`' `/urls` | I142, I143 | todo |
 | I145 | Channels: library items played as live streams, `streaming.channels` | I141, I123 | todo |
 | I146 | Push targets: `streaming.push` and a channel's `push` | I145 | todo |
@@ -2242,7 +2242,7 @@ is asked as akio A295–A300. Names akit shows are akit's (decision 037), format
   token fit signs with a named key is taken by akit, and the other way.
 - **Touches**: `akit-config` (`media`), `akit-media` (`auth`, `tokens`).
 - **fit**: `handler/mediatokens`, `mediaauth/manage.go`; I119.
-- **Status**: todo.
+- **Status**: done (2026-11-28); `url_base` and `url_prefixes` wait for I144. See the progress log.
 
 ### I144 Playback URLs that expire: `url_signing`
 

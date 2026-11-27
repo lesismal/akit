@@ -74,7 +74,7 @@ examples/tunnel-proxy: valid
 examples/video-site: not supported yet: media_auth[].url_signing
 examples/video-site: not supported yet: routes[].handler<media_pages>.params.channels
 examples/video-site: not supported yet: routes[].handler<media_pages>.params.libraries
-examples/video-site: not supported yet: routes[].handler<media_tokens>
+examples/video-site: not supported yet: routes[].handler<media_tokens>.params.url_prefixes
 examples/video-site: not supported yet: streaming.channels
 examples/virtual-hosts: valid
 examples/wasm: valid

@@ -31,6 +31,8 @@ akit-runtime = { workspace = true }
 [dev-dependencies]
 # The handlers through akit's listener (tests/handlers.rs).
 akit-listener = { workspace = true }
+# basic_auth before media_tokens, whose route must authenticate its callers (tests/tokens.rs).
+akit-middleware = { workspace = true }
 
 [lints]
 workspace = true

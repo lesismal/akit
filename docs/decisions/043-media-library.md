@@ -96,3 +96,18 @@ not supported yet for this track.
   gives them ranges, conditional requests and `sendfile`.
 - **A request waiting for the pool is suspended** (`Context::suspend`) and answered from the pool,
   or 503 past `timeout` by a deadline thread of akit-media's own until akio's A296.
+
+## I143: media tokens
+
+- **The keyring and `media_tokens` are fit's I119**, which this track carries since the signed
+  URLs build on it. A token is signed with the keyring's first key, or the key a batch names, and
+  checked against every key; the key names are not in the token, as fit's.
+- **The route must authenticate its callers**: akit-config refuses a `media_tokens` route without
+  `jwt`, `basic_auth`, `forward_auth` or `client_cert` without `optional`, as fit's graph does,
+  and a policy without the secret files a revoke rotates.
+- **A batch's body is read whole by akio-http within the listener's bounds**, then held to
+  `max_body_bytes` (413), where fit reads it streamed; it is at most 1 MiB.
+- **A revoke** writes each new secret (32 random bytes, base64url) to a temporary file beside
+  the secret file, mode 0600, synced, then renamed over it, on a thread of the handler's own with
+  a queue of one; the request is suspended and answered from there, or 504 past
+  `revoke_timeout` by akit-media's deadline thread until akio's A296.

@@ -532,7 +532,7 @@ fn modules_the_model_does_not_know_are_kept_for_the_registry() {
 
     let l = lines(
         r#"{"listeners": [{"name": "web", "address": ":8080"}],
-            "routes": [{"handler": {"module": "media_tokens"}}, {"handler": {"module": "sync_ingest"}}]}"#,
+            "routes": [{"handler": {"module": "bt_stream"}}, {"handler": {"module": "sync_ingest"}}]}"#,
     );
     assert_eq!(l.len(), 2, "{l:?}");
     assert!(l.iter().all(|e| e.contains("not supported yet")), "{l:?}");

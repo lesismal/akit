@@ -1585,7 +1585,63 @@ pub(crate) fn samples() -> Vec<(String, String, Read)> {
     media_pages(&mut out);
     media_library(&mut out);
     vod(&mut out);
+    media_tokens(&mut out);
     out
+}
+
+/// `media_auth`'s `keys` and the `media_tokens` handler's params (I143).
+fn media_tokens(out: &mut Vec<(String, String, Read)>) {
+    let kw = |m: &str| format!(r#"{{"media_auth": [{{"name": "p", "keys": [{m}]}}]}}"#);
+    out.push((
+        "media_auth[].keys".into(),
+        r#"{"media_auth": [{"name": "p", "keys": [{"key": "a", "secret": "0123456789abcdef"}]}]}"#.into(),
+        Read::Differs(r#"{"media_auth": [{"name": "p", "keys": [{"key": "b", "secret": "0123456789abcdef"}]}]}"#.into()),
+    ));
+    emit(
+        out,
+        "media_auth[].keys[]",
+        &kw,
+        &[("key", q("a")), ("secret", q("0123456789abcdef"))],
+        vec![
+            f("key", q("a"), q("b")),
+            f("secret", q("0123456789abcdef"), q("0123456789abcdeg")),
+            fx("secret_file", q("a"), q("b"), &[("secret", "")]),
+        ],
+    );
+    const P: &str = r#"{"name": "p", "secret_file": "/s"}"#;
+    const MW: &str = r#"[{"module": "basic_auth", "params": {"users": [{"username": "u", "password_hash": "$2y$04$n.ddWQ.hfkNRsx7o3Y1w3eongqIP2oVF8Ka9OEQQwsoVnWY6O.jlW"}]}}]"#;
+    let w = |m: &str| {
+        format!(
+            r#"{{"listeners": [{{"name": "web", "address": ":8080"}}], "media_auth": [{P}, {{"name": "q", "secret_file": "/t"}}], "routes": [{{"middleware": {MW}, "handler": {{"module": "media_tokens", "params": {m}}}}}]}}"#
+        )
+    };
+    out.push((
+        "routes[].handler<media_tokens>".into(),
+        w(r#"{"auth": "p"}"#),
+        Read::Differs(format!(
+            r#"{{"listeners": [{{"name": "web", "address": ":8080"}}], "media_auth": [{P}], "routes": [{{"middleware": {MW}, "handler": {{"module": "respond"}}}}]}}"#
+        )),
+    ));
+    out.push((
+        "routes[].handler<media_tokens>.params".into(),
+        w(r#"{"auth": "p"}"#),
+        Read::Differs(w(r#"{"auth": "p", "prefix": "/x"}"#)),
+    ));
+    emit(
+        out,
+        "routes[].handler<media_tokens>.params",
+        &w,
+        &[("auth", q("p"))],
+        vec![
+            f("prefix", q("/a"), q("/b")),
+            f("auth", q("p"), q("q")),
+            f("prefixes", r#"["a-"]"#, r#"["b-"]"#),
+            f("max_ttl", q("1h"), q("2h")),
+            f("max_tokens", "1", "2"),
+            f("max_body_bytes", "256", "512"),
+            f("revoke_timeout", q("1s"), q("2s")),
+        ],
+    );
 }
 
 /// The `vod` handler's params (I142).

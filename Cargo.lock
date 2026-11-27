@@ -561,6 +561,7 @@ dependencies = [
  "akit-access",
  "akit-config",
  "akit-listener",
+ "akit-middleware",
  "akit-observe",
  "akit-roles",
  "akit-runtime",

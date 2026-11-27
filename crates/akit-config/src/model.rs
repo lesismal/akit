@@ -1422,6 +1422,8 @@ pub enum Handler {
     MediaPages(crate::media::MediaPages),
     /// The `vod` handler: a media library's items as video on demand over HLS (I142).
     Vod(crate::medialib::Vod),
+    /// The `media_tokens` handler: tokens signed in batches, a key revoked (I143).
+    MediaTokens(crate::media::MediaTokens),
     /// A module akit's config model does not know: one built in with `akit build` (I70), its
     /// params kept as written for the module to decode. Whether the binary has it is the
     /// registry's to say, when the config is compiled, as fit's `module.Load` says.
@@ -1456,6 +1458,7 @@ impl Handler {
             Handler::StreamWhep(_) => "stream_whep",
             Handler::MediaPages(_) => "media_pages",
             Handler::Vod(_) => "vod",
+            Handler::MediaTokens(_) => "media_tokens",
             Handler::ForwardProxy(_) => "forward_proxy",
             Handler::Whip(_) => "whip",
             Handler::Whep(_) => "whep",
@@ -2478,7 +2481,7 @@ const MATCH_FIELDS: &[&str] = &[
 const MATCH_FIT_ONLY: &[&str] = &[];
 const MODULE_FIELDS: &[&str] = &["module", "params"];
 /// fit's handler modules (its `http.handlers` namespace) that akit does not have yet.
-const FIT_HANDLERS: &[&str] = &["bt_stream", "media_tokens", "sync_ingest", "websockify"];
+const FIT_HANDLERS: &[&str] = &["bt_stream", "sync_ingest", "websockify"];
 /// fit's middleware modules (its `http.middleware` namespace) that akit does not have yet.
 const FIT_MIDDLEWARE: &[&str] = &[];
 /// The fields of a `wasm` middleware's params (I71), read in `wasm.rs`.
@@ -3121,6 +3124,7 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
             Handler::MediaPages(h) => Some((&h.auth, &mut h.policy)),
             // I142: vod.
             Handler::Vod(h) => Some((&h.auth, &mut h.policy)),
+            Handler::MediaTokens(h) => Some((&h.auth, &mut h.policy)),
             _ => None,
         };
         let Some((name, policy)) = auth.filter(|(n, _)| !n.is_empty()) else {
@@ -3133,6 +3137,37 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
                 if let Some(d) = ds.get_mut(r.file) {
                     d.error(r.off, &format!("{}.handler.params.auth", r.path), msg);
                 }
+            }
+        }
+    }
+    // media_tokens (I143): a policy with files to rotate, and a route that authenticates its
+    // callers, as fit's graph refuses one that does not.
+    for r in &routes {
+        let Handler::MediaTokens(t) = &r.v.handler else {
+            continue;
+        };
+        let mut problems = Vec::new();
+        if let Some(msg) = t
+            .policy
+            .as_ref()
+            .and_then(crate::media::tokens_policy_problem)
+        {
+            problems.push((format!("{}.handler.params.auth", r.path), msg));
+        }
+        let authenticates = r.v.middleware.iter().any(|m| match m {
+            Handler::Jwt(_) | Handler::BasicAuth(_) | Handler::ForwardAuth(_) => true,
+            Handler::ClientCert(c) => !c.optional,
+            _ => false,
+        });
+        if !authenticates {
+            problems.push((
+                format!("{}.handler.module", r.path),
+                "http.handlers.media_tokens serves only callers its route authenticates: the route needs a middleware that does, jwt, basic_auth, forward_auth, or client_cert without optional".to_owned(),
+            ));
+        }
+        if let Some(d) = ds.get_mut(r.file) {
+            for (p, msg) in problems {
+                d.error(r.off, &p, msg);
             }
         }
     }
@@ -4791,6 +4826,10 @@ fn handler(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Handler> {
         }
         // I142: video on demand from a media library.
         "vod" => crate::medialib::vod(d, params, off, &params_path).map(Handler::Vod),
+        // I143: tokens signed in batches.
+        "media_tokens" => {
+            crate::media::media_tokens(d, params, off, &params_path).map(Handler::MediaTokens)
+        }
         // I125: the media pages.
         "media_pages" => {
             crate::media::media_pages(d, params, &params_path).map(Handler::MediaPages)

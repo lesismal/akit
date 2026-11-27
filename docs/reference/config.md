@@ -17,7 +17,7 @@ so in a note marked **akit:**; nine defaults that name the gateway are akit's, `
 say `fit` ([decision 037](../decisions/037-akit-names.md)).
 
 <!-- BEGIN GENERATED: summary -->
-akit reads **1247** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 188 objects akit reads, each has its table below.
+akit reads **1260** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 190 objects akit reads, each has its table below.
 <!-- END GENERATED -->
 
 How to read the tables:
@@ -2676,8 +2676,8 @@ webrtc {
 (or their SHA-256), users with a password or a bcrypt hash, a secret that signs the tokens
 `akit media-token` issues, and the actions anyone may take. The streaming role's listeners and the
 media handlers name a policy with `auth`, checked by the stream's path. akit reads and checks the
-policies as fit does (I120), and `akit run` applies them (I121). A policy's `keys` (fit's I119) and
-`url_signing` (the media library's track) are not read yet.
+policies as fit does (I120), and `akit run` applies them (I121). A policy's `keys` are read since I143,
+when `media_tokens` came; `url_signing` (I144) is not read yet.
 
 ```fit
 media_auth live {
@@ -2697,7 +2697,7 @@ media_auth live {
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
 | `name` | string | required | The policy's name, which the auth param of whip, whep and webrtc_proxy, and the media roles, refer to it by. Letters, digits, '_', '.' and '-'. |
-| `keys` | list of object |  | **Not supported yet**: refused by name. A keyring of signing keys, each a name and its secret or secret_file, in place of secret or secret_file: a token is signed with one key and checked against every key, so rotating one key, as the handler media_tokens does, refuses only the tokens that key signed and the others stay good. One of the two: keys, or secret/secret_file. None when left out. |
+| `keys` | list of [object](#cfg-media-auth-keys) |  | A keyring of signing keys, each a name and its secret or secret_file, in place of secret or secret_file: a token is signed with one key and checked against every key, so rotating one key, as the handler media_tokens does, refuses only the tokens that key signed and the others stay good. One of the two: keys, or secret/secret_file. None when left out. |
 | `public` | list of string: `publish`, `play` |  | The actions anyone may take without credentials, as ["play"] for streams anyone may watch and only some may publish. None when left out: every request needs credentials. |
 | `secret` | string |  | The key, at least 16 bytes, that tokens akit issues are signed with (HMAC-SHA256): akit media-token's and the media pages' logins. Tokens are good for this policy alone, until their expiry. When left out, a random key of the process's signs the pages' logins, which a restart forgets; akit media-token needs it. Or secret_file, one of the two, or keys. |
 | `secret_file` | string |  | A file holding the secret tokens are signed with, read each time the config is applied: the handler media_tokens rotates it, and every token signed before is refused. At least 16 bytes, its line breaks at the end aside. Or secret, one of the two, or keys. None when left out: a random key of the process's signs, which a restart forgets. |
@@ -2733,6 +2733,18 @@ media_auth live {
 | `password_hash` | string |  | Instead of the password, its bcrypt hash, as akit hash-password makes it: Basic and the query's user and pass only, checked off akio's I/O threads. A password once found right is remembered, as a keyed SHA-256, so that the next check is at once. |
 | `play` | list of string |  | The streams the user may play. None when left out. |
 | `publish` | list of string |  | The streams the user may publish, as a token's publish lists them. None when left out. |
+<!-- END GENERATED -->
+
+### `media_auth[].keys[]`
+
+<!-- BEGIN GENERATED: media_auth[].keys[] -->
+<a id="cfg-media-auth-keys"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `key` | string | required | The key's name: 1 to 64 letters, digits, '_', '.', '~' and '-', which a media_tokens request names to sign with it, and a revoke to rotate it. |
+| `secret` | string |  | The key's secret, at least 16 bytes. Or secret_file, one of the two. |
+| `secret_file` | string |  | A file holding the key's secret, read each time the config is applied; the handler media_tokens rotates this file to refuse just the tokens this key signed. At least 16 bytes, its line breaks at the end aside. Or secret, one of the two. |
 <!-- END GENERATED -->
 
 ## Streaming
@@ -3219,7 +3231,7 @@ the same way, its params checked by the module.
 | `hls` | supported: [params](#cfg-routes-handler-hls-params) |
 | `httpflv` | supported: [params](#cfg-routes-handler-httpflv-params) |
 | `media_pages` | supported: [params](#cfg-routes-handler-media-pages-params) |
-| `media_tokens` | **not supported yet**: refused by name |
+| `media_tokens` | supported: [params](#cfg-routes-handler-media-tokens-params) |
 | `proxy` | supported: [params](#cfg-routes-handler-proxy-params) |
 | `respond` | supported: [params](#cfg-routes-handler-respond-params) |
 | `static` | supported: [params](#cfg-routes-handler-static-params) |
@@ -3548,6 +3560,42 @@ Passes WHIP and WHEP to the media servers of an upstream, and relays their peers
 | `max_sdp_bytes` | integer, 0 or more | `32768` | The largest request and answer passed on, an offer and an answer among them; a larger request is answered 413, and a larger answer 502. 32 KiB when left out or 0. |
 | `media_addrs` | map of string |  | The address akit relays a media server's peers to, by the media server's address in the upstream, as {"10.0.0.2:8080": "10.0.0.2:8189"}, or an IP alone, which takes the port of its answer's candidate. When left out, the answer's first host candidate, or server-reflexive one, IPv4 first. |
 | `timeout` | duration | `"10s"` | The most a request may take, from its last byte to the media server's answer read whole; past it, it is answered 504. 10s when left out. |
+<!-- END GENERATED -->
+
+### `media_tokens`
+
+A route a site's backend calls, behind a middleware that authenticates it (`jwt`, `basic_auth`,
+`forward_auth`, or `client_cert` without `optional`), to sign `media_auth` tokens in batches
+(`POST <prefix>`, with `key` naming a key of the policy's keyring) and to revoke the tokens of the
+policy's secret, of one key or of all keys (`POST <prefix>/revoke`), a new secret written to its
+`secret_file` first (I143). The policy needs `secret_file`, or a keyring whose keys each have one.
+`url_base` and `url_prefixes` (signed URLs, I144) are not read yet.
+
+```fit
+listener web :8080
+media_auth site { keys { key a; secret_file /etc/akit/media-a }; keys { key b; secret_file /etc/akit/media-b } }
+
+route tokens {
+	match { path /media-tokens /media-tokens/* }
+	middleware basic_auth { users { username api; password_hash "$2y$04$n.ddWQ.hfkNRsx7o3Y1w3eongqIP2oVF8Ka9OEQQwsoVnWY6O.jlW" } }
+	handler media_tokens { auth site; prefixes mtg-; max_ttl 2h }
+}
+```
+
+<!-- BEGIN GENERATED: routes[].handler<media_tokens>.params -->
+<a id="cfg-routes-handler-media-tokens-params"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `auth` | string |  | The media_auth policy that signs the tokens, as whip's auth names one: it must set secret_file, or a keyring whose keys each set secret_file, so that a revoke can rotate a secret file and outlive a restart. |
+| `max_body_bytes` | integer, 256 to 1048576 | `65536` | The largest request body the route takes; a larger one is answered 413. 64 KiB when left out. |
+| `max_tokens` | integer, 1 to 1000 | `100` | The most tokens one request may ask for; more is answered 400. 100 when left out. |
+| `max_ttl` | duration | `"24h"` | The longest a request may ask a token to be good for; a longer ttl is answered 400. 24h when left out. |
+| `prefix` | string | `"/media-tokens"` | The path the route serves under: the route must match it and what is below it, as /media-tokens and /media-tokens/*; a request outside it gets 404. /media-tokens when left out. |
+| `prefixes` | list of string |  | The stream-name prefixes this route may sign for: every publish and play pattern of a request must start with one of them, so that a token cannot be signed for a stream outside them, as mtg- for mtg-42-*. Any valid pattern when left out. |
+| `revoke_timeout` | duration | `"10s"` | How long a revoke may wait for the secret file's write before it is answered 504; the write, one at a time on a pool of its own, never blocks a worker. 10s when left out. |
+| `url_base` | string |  | **Not supported yet**: refused by name. What the URLs <prefix>/urls answers start with, before their paths: the scheme and host viewers reach fit's vod, hls and httpflv routes at, as https://media.example.com. The paths and their queries alone when left out. |
+| `url_prefixes` | list of string |  | **Not supported yet**: refused by name. The path prefixes <prefix>/urls may sign URLs for: every path of a request must start with one of them, as /vod/films/, so that a URL cannot be signed for a resource outside them. Any path when left out. |
 <!-- END GENERATED -->
 
 ### `vod`

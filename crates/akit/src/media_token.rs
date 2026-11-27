@@ -37,6 +37,11 @@ const FLAGS: &[Spec] = &[
         usage: "how long the token is good for; the policy's token_ttl when left out",
     },
     Spec {
+        name: "key",
+        bool: false,
+        usage: "the key of the policy's keyring to sign with; the first when left out, and an error for a policy with a single secret",
+    },
+    Spec {
         name: "subject",
         bool: false,
         usage: "who the token is for, as logs name it (default \"media-token\")",
@@ -115,17 +120,29 @@ pub(crate) fn media_token(args: &[String]) -> ExitCode {
         eprintln!("akit media-token: {name} has no media_auth policy named {policy:?}");
         return ExitCode::from(1);
     };
-    if cfg.secret.is_empty() && cfg.secret_file.is_empty() {
+    if cfg.secret.is_empty() && cfg.secret_file.is_empty() && cfg.keys.is_empty() {
         eprintln!(
-            "akit media-token: media_auth {policy:?} has neither secret nor secret_file: tokens \
-             it would sign could not be checked by a running akit, which signs with a key of its \
-             own without one"
+            "akit media-token: media_auth {policy:?} has neither secret, secret_file nor keys: \
+             tokens it would sign could not be checked by a running akit, which signs with a key \
+             of its own without one"
         );
         return ExitCode::from(1);
     }
+    let key = last("key").unwrap_or_default();
+    if !key.is_empty() && cfg.keys.is_empty() {
+        eprintln!("akit media-token: media_auth {policy:?} has no keyring, so no key {key:?}");
+        return ExitCode::from(1);
+    }
+    let grant = Grant { publish, play };
     let signed = Policy::from_config(cfg)
         .map_err(|e| format!("media_auth {policy:?}: {e}"))
-        .and_then(|p| p.issue(&subject, &Grant { publish, play }, ttl));
+        .and_then(|p| {
+            if key.is_empty() {
+                p.issue(&subject, &grant, ttl)
+            } else {
+                p.issue_key(&key, &subject, &grant, ttl)
+            }
+        });
     match signed {
         Ok((token, expiry)) => {
             println!("{token}");

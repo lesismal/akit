@@ -18,7 +18,7 @@ done and where the work differs from the plan.
 | Next | the external security review ([scope](security/review-scope.md)), whose findings finish I80b; fit's answer to the fields decision 035 proposes (CRL files, a WASM digest); the tracks after 1.0 ([the plan](dev-plan.md#after-10)): Console and encrypted store done (I89–I94, I93b, I93c); fit's Admin API rules for connections without the token, on the console's slots (akio's A232) (Logging done: I81–I83; Access lists done: I85–I87); the Gateway API's conformance run (tests/conformance, the maintainer's) |
 | akio requests | A1–A24, A29, A30, A32, A33, A35–A38, A45, A48, A49, A51–A54, A57, A58, A63–A66, A75, A78, A79, A90–A94, A105, A108, A109, A111–A113, A117, A132–A135, A148, A165–A172, A180, A200, A214, A215, A220, A230–A238, A245 and A247–A249 on akio's main and pinned; A225 (an external review, L15) requested ([akio API requests](akio-api-requests.md)) |
 | Streaming and media auth | [I120–I126](dev-plan.md#streaming-and-media-auth), fit's I115–I117 (decision 040): I120 (`media_auth` and `streaming` in the config), I121 (the policies, the checks, `akit media-token`), I122 (the role's hub, RTMP, RTSP and SRT), I123 (`httpflv`, `hls`), I124 (the WebRTC port, `stream_whip`, `stream_whep`), I125 (`media_pages`) and I126 (`auth` on `whip`, `whep` and `webrtc_proxy`) done; the media library's `libraries`, `vod` and `channels` wait for its track; akio requests A263–A268 |
-| Media library and channels | [I140–I149](dev-plan.md#media-library-and-channels), fit's I131–I139 and I119 (decision 043): I140 (`media_library` in the config) I141 (the catalog, the role `media_library`, `/media/library`) and I142 (`vod`) done; akio requests A295, A296 |
+| Media library and channels | [I140–I149](dev-plan.md#media-library-and-channels), fit's I131–I139 and I119 (decision 043): I140 (`media_library` in the config) I141 (the catalog, the role `media_library`, `/media/library`) I142 (`vod`) and I143 (`keys`, `media_tokens`) done; akio requests A295, A296 |
 
 ## Log
 
@@ -73,6 +73,30 @@ done and where the work differs from the plan.
   - On io_uring, `Engine::remove_listener` returns once the listener's accepts are cancelled, so a
     listener a reload removes takes no connection after it; `H3Upload::finish` is no longer
     refused by its own response; the pool pressure watcher samples every 500 ms (was 100 ms).
+### 2026-11-28: I143, `media_auth`'s `keys` and `media_tokens`
+
+- **Built**: fit's I119. akit-config reads a policy's `keys` (each `key`, `secret` or
+  `secret_file`, with fit's checks: names, 256 at most, one of the two, `keys` or a single secret)
+  and the handler `media_tokens` (`prefix`, `auth`, `prefixes`, `max_ttl`, `max_tokens`,
+  `max_body_bytes`, `revoke_timeout`; its policy must have secret files, its route an
+  authenticating middleware, as fit's). `akit_media::auth::Policy` keeps the keyring: signs with
+  the first key or a named one (`issue_key`), checks a token against every key, rotates the single
+  secret (`rotate`) or one key (`rotate_key`) in place, refuses two keys with one secret, and lists
+  every secret file for `-watch-certs`. `akit media-token -key`. The handler (`tokens.rs`): batches,
+  all or none, with fit's checks and messages; revokes of the single secret, one key or all keys,
+  each new secret written atomically on the handler's thread, answered from there or 504.
+- **Differs from fit**: the batch body is read whole within the listener's bounds; the revoke's
+  timeout runs on akit-media's deadline thread until akio's A296 (decision 043).
+- **Checked**: fit's `TestKeyring` and `TestSecretFileAndRotate` ported; fit's mediatokens tests
+  ported through akit's listener behind `basic_auth` (`tests/tokens.rs`: batches and their 400s,
+  413, 405, 404, a revoke of the single secret with the file rewritten at mode 0600 and a policy
+  read from it agreeing, a revoke with the directory gone answered 500, keys named and refused,
+  one key and all keys revoked, the route and policy checks); the workers test's case. Interop: a
+  token fit's binary signed with key `b` of a keyring is taken by akit and refused once `b` is
+  rotated, not `a` (`src/auth/fit-token-key.txt`); a token `akit media-token -key b` signs is taken
+  by fit's binary (its `httpflv` answers 404, past the check, where a bad token gets 401); the
+  example `.conf` validated by both.
+- **Next**: I144, `url_signing`.
 
 ### 2026-11-28: I142, `vod`
 

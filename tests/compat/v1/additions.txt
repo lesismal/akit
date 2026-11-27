@@ -905,3 +905,16 @@ admin	added	endpoint	HEAD	/bittorrent/tracker/torrents/{hash}
 admin	added	endpoint	GET	/bittorrent/tracker/passkey
 admin	added	endpoint	HEAD	/bittorrent/tracker/passkey
 config	added	supported	bittorrent.tracker.auth
+config	added	supported	media_auth[].keys
+config	added	supported	media_auth[].keys[].key
+config	added	supported	media_auth[].keys[].secret
+config	added	supported	media_auth[].keys[].secret_file
+config	added	supported	routes[].handler<media_tokens>
+config	added	supported	routes[].handler<media_tokens>.params
+config	added	supported	routes[].handler<media_tokens>.params.auth
+config	added	supported	routes[].handler<media_tokens>.params.max_body_bytes
+config	added	supported	routes[].handler<media_tokens>.params.max_tokens
+config	added	supported	routes[].handler<media_tokens>.params.max_ttl
+config	added	supported	routes[].handler<media_tokens>.params.prefix
+config	added	supported	routes[].handler<media_tokens>.params.prefixes
+config	added	supported	routes[].handler<media_tokens>.params.revoke_timeout

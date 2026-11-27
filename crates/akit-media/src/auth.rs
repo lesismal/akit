@@ -246,12 +246,13 @@ impl Remembered {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Token {
     subject: String,
     grant: Grant,
 }
 
+#[derive(Clone)]
 struct User {
     name: String,
     /// The plaintext password, for RTSP's Digest; empty with a hash.
@@ -266,6 +267,7 @@ struct User {
 }
 
 /// A policy as compiled from one config, swapped whole.
+#[derive(Clone)]
 struct State {
     public: [bool; 2],
     tokens: HashMap<[u8; 32], Token>,
@@ -274,9 +276,24 @@ struct State {
     /// long whether the user exists or not.
     decoy: Option<bcrypt::Hash>,
     sign_key: Vec<u8>,
+    /// The keyring (I143), in config order: a token is signed with one key and checked against
+    /// each until one matches; the first is the default. Empty for a single secret.
+    keys: Vec<RingKey>,
     ttl: Duration,
     /// The users' BitTorrent passkeys (I159), by their SHA-256: the user's name.
     passkeys: HashMap<[u8; 32], String>,
+}
+
+/// The secret files a policy read, with their SHA-256, and its single `secret_file`.
+type ReadFiles = (Vec<(String, [u8; 32])>, String);
+
+/// One key of a policy's keyring.
+#[derive(Clone)]
+struct RingKey {
+    name: String,
+    sign_key: Vec<u8>,
+    /// The `secret_file` it comes from; empty for an inline secret.
+    file: String,
 }
 
 fn action_index(a: Action) -> usize {
@@ -297,8 +314,11 @@ pub struct Policy {
     /// Whether the role has set the state from a config applied, after which a handler's
     /// provisioning leaves it to the role.
     applied: Mutex<bool>,
-    /// The `secret_file` the state was read from, with the SHA-256 of what was read.
-    file: Mutex<Option<(String, [u8; 32])>>,
+    /// The `secret_file`s the state was read from, the keyring's too, with the SHA-256 of what
+    /// was read; the single `secret_file`, or empty.
+    files: Mutex<ReadFiles>,
+    /// Rotations are made one at a time.
+    rotating: Mutex<()>,
 }
 
 impl std::fmt::Debug for Policy {
@@ -339,6 +359,22 @@ pub const PASSKEY_CHARS: usize = 32;
 /// The passkey of user `name` under `key`, the policy's signing key: the first 32 hex digits of
 /// HMAC-SHA256(key, label + name), fit's `passkeyOf`. Without a secret the key is the process's
 /// own, and the passkeys change when akit restarts, as fit's do.
+/// The users' passkeys under every key of `st`, by their SHA-256 (fit's `userPasskeys`).
+fn passkeys_of(st: &State) -> HashMap<[u8; 32], String> {
+    let keys: Vec<&[u8]> = if st.keys.is_empty() {
+        vec![&st.sign_key]
+    } else {
+        st.keys.iter().map(|k| k.sign_key.as_slice()).collect()
+    };
+    let mut out = HashMap::new();
+    for name in st.users.keys() {
+        for k in &keys {
+            out.insert(Sha256::digest(passkey_of(k, name).as_bytes()), name.clone());
+        }
+    }
+    out
+}
+
 fn passkey_of(key: &[u8], name: &str) -> String {
     let mut m = Hmac::<Sha256>::new(key);
     m.update(PASSKEY_LABEL.as_bytes());
@@ -382,7 +418,8 @@ impl Policy {
             mac: random32(),
             st: Swap::default(),
             applied: Mutex::new(false),
-            file: Mutex::new(None),
+            files: Mutex::new((Vec::new(), String::new())),
+            rotating: Mutex::new(()),
         }
     }
 
@@ -408,6 +445,7 @@ impl Policy {
             users: HashMap::new(),
             decoy: None,
             sign_key: Vec::new(),
+            keys: Vec::new(),
             ttl: cfg.ttl(),
             passkeys: HashMap::new(),
         };
@@ -495,30 +533,63 @@ impl Policy {
                 .ok()
                 .and_then(|h| bcrypt::Hash::parse(&h).ok());
         }
-        let mut file = None;
-        let secret = if !cfg.secret_file.is_empty() {
-            if !cfg.secret.is_empty() {
-                return Err("secret_file: set secret or secret_file, one of the two".into());
+        let mut files = Vec::new();
+        let mut single = String::new();
+        if !cfg.keys.is_empty() {
+            if !cfg.secret.is_empty() || !cfg.secret_file.is_empty() {
+                return Err("keys: set keys, or secret or secret_file, one of the two".into());
             }
-            let (s, sum) =
-                secret_file(&cfg.secret_file).map_err(|e| format!("secret_file: {e}"))?;
-            file = Some((cfg.secret_file.clone(), sum));
-            s
+            for k in &cfg.keys {
+                let secret = if k.secret_file.is_empty() {
+                    if k.secret.len() < MIN_MEDIA_SECRET {
+                        return Err(format!(
+                            "keys.{}: the secret is {} bytes: use at least {MIN_MEDIA_SECRET}",
+                            k.key,
+                            k.secret.len()
+                        ));
+                    }
+                    k.secret.clone()
+                } else {
+                    let (s, sum) =
+                        secret_file(&k.secret_file).map_err(|e| format!("keys.{}: {e}", k.key))?;
+                    files.push((k.secret_file.clone(), sum));
+                    s
+                };
+                let sign_key = sign_key_for(&cfg.name, secret.as_bytes());
+                if let Some(o) = st
+                    .keys
+                    .iter()
+                    .find(|o| akio_crypto::ct_eq(&o.sign_key, &sign_key))
+                {
+                    return Err(format!("keys: {:?} and {:?} share a secret", o.name, k.key));
+                }
+                st.keys.push(RingKey {
+                    name: k.key.clone(),
+                    sign_key,
+                    file: k.secret_file.clone(),
+                });
+            }
         } else {
-            cfg.secret.clone()
-        };
-        st.sign_key = if secret.is_empty() {
-            self.key.to_vec()
-        } else {
-            sign_key_for(&cfg.name, secret.as_bytes())
-        };
-        for name in st.users.keys() {
-            st.passkeys.insert(
-                Sha256::digest(passkey_of(&st.sign_key, name).as_bytes()),
-                name.clone(),
-            );
+            let secret = if !cfg.secret_file.is_empty() {
+                if !cfg.secret.is_empty() {
+                    return Err("secret_file: set secret or secret_file, one of the two".into());
+                }
+                let (s, sum) =
+                    secret_file(&cfg.secret_file).map_err(|e| format!("secret_file: {e}"))?;
+                files.push((cfg.secret_file.clone(), sum));
+                single.clone_from(&cfg.secret_file);
+                s
+            } else {
+                cfg.secret.clone()
+            };
+            st.sign_key = if secret.is_empty() {
+                self.key.to_vec()
+            } else {
+                sign_key_for(&cfg.name, secret.as_bytes())
+            };
         }
-        *self.file.lock().unwrap_or_else(PoisonError::into_inner) = file;
+        st.passkeys = passkeys_of(&st);
+        *self.files.lock().unwrap_or_else(PoisonError::into_inner) = (files, single);
         Ok(st)
     }
 
@@ -539,7 +610,9 @@ impl Policy {
                     self.name
                 ));
             }
-            Ok(passkey_of(&st.sign_key, name))
+            // Signed with the default key (fit's `Passkey`).
+            let key = st.keys.first().map_or(&st.sign_key, |k| &k.sign_key);
+            Ok(passkey_of(key, name))
         })
     }
 
@@ -595,14 +668,123 @@ impl Policy {
         &self.name
     }
 
-    /// The `secret_file` the policy read when it was last compiled, with the SHA-256 of what it
-    /// read, for `-watch-certs` to apply the config again when it changes.
+    /// The `secret_file`s the policy read when it was last compiled, its keyring's too, with the
+    /// SHA-256 of what it read, for `-watch-certs` to apply the config again when one changes.
     #[must_use]
-    pub fn file(&self) -> Option<(String, [u8; 32])> {
-        self.file
+    pub fn files(&self) -> Vec<(String, [u8; 32])> {
+        self.files
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
+            .0
             .clone()
+    }
+
+    /// The file the policy's single secret comes from; empty when the config sets `secret`, a
+    /// keyring, or neither.
+    #[must_use]
+    pub fn secret_file(&self) -> String {
+        self.files
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .1
+            .clone()
+    }
+
+    /// The names of the policy's keyring, in config order; empty for a single secret.
+    #[must_use]
+    pub fn keys(&self) -> Vec<String> {
+        self.st.with(|st| {
+            st.map(|st| st.keys.iter().map(|k| k.name.clone()).collect())
+                .unwrap_or_default()
+        })
+    }
+
+    /// The key [`issue`](Self::issue) signs with: the keyring's first; `None` for a single secret.
+    #[must_use]
+    pub fn default_key(&self) -> Option<String> {
+        self.st
+            .with(|st| st.and_then(|st| st.keys.first().map(|k| k.name.clone())))
+    }
+
+    /// The file the named key's secret comes from (empty for an inline secret), and `None` when
+    /// the policy has no such key.
+    #[must_use]
+    pub fn key_file(&self, key: &str) -> Option<String> {
+        self.st.with(|st| {
+            st.and_then(|st| {
+                st.keys
+                    .iter()
+                    .find(|k| k.name == key)
+                    .map(|k| k.file.clone())
+            })
+        })
+    }
+
+    /// Replaces the key tokens are signed and checked with (fit's `Rotate`): every token signed
+    /// before is refused, for every handler and role sharing the policy. The caller writes the
+    /// same secret to the policy's `secret_file` to outlast a restart.
+    ///
+    /// # Errors
+    ///
+    /// A secret under 16 bytes, a policy with a keyring, a policy not loaded.
+    pub fn rotate(&self, secret: &str) -> Result<(), String> {
+        self.rotate_with(None, secret)
+    }
+
+    /// Replaces the secret of the keyring's key `key` (fit's `RotateKey`): the tokens it signed are
+    /// refused, the other keys' stay good.
+    ///
+    /// # Errors
+    ///
+    /// A secret under 16 bytes or shared with another key, no such key, a policy without a
+    /// keyring, a policy not loaded.
+    pub fn rotate_key(&self, key: &str, secret: &str) -> Result<(), String> {
+        self.rotate_with(Some(key), secret)
+    }
+
+    fn rotate_with(&self, key: Option<&str>, secret: &str) -> Result<(), String> {
+        if secret.len() < MIN_MEDIA_SECRET {
+            return Err(format!(
+                "the secret is {} bytes: use at least {MIN_MEDIA_SECRET}",
+                secret.len()
+            ));
+        }
+        let _one = self.rotating.lock().unwrap_or_else(PoisonError::into_inner);
+        let Some(st) = self.st.get() else {
+            return Err(Refusal::Unavailable.to_string());
+        };
+        let sign_key = sign_key_for(&self.name, secret.as_bytes());
+        let mut next = State::clone(&st);
+        match key {
+            None => {
+                if !st.keys.is_empty() {
+                    return Err("the policy has a keyring: rotate one key".into());
+                }
+                next.sign_key = sign_key;
+            }
+            Some(key) => {
+                if st.keys.is_empty() {
+                    return Err("the policy has no keyring".into());
+                }
+                if let Some(o) = st
+                    .keys
+                    .iter()
+                    .find(|o| o.name != key && akio_crypto::ct_eq(&o.sign_key, &sign_key))
+                {
+                    return Err(format!(
+                        "key {key:?} would share a secret with {:?}",
+                        o.name
+                    ));
+                }
+                let Some(k) = next.keys.iter_mut().find(|k| k.name == key) else {
+                    return Err(format!("no key named {key:?}"));
+                };
+                k.sign_key = sign_key;
+            }
+        }
+        next.passkeys = passkeys_of(&next);
+        self.st.set(Some(Arc::new(next)));
+        Ok(())
     }
 
     /// Whether anyone may take `a` without credentials.
@@ -840,10 +1022,53 @@ impl Policy {
     ///
     /// A bad subject or pattern, a grant too long for a token, a policy not loaded.
     pub fn issue(&self, subject: &str, g: &Grant, ttl: Duration) -> Result<(String, i64), String> {
+        self.issue_with(None, subject, g, ttl)
+    }
+
+    /// [`issue`](Self::issue) signed with the keyring's key `key` (fit's `IssueKey`).
+    ///
+    /// # Errors
+    ///
+    /// Those of `issue`, a policy without a keyring, no such key.
+    pub fn issue_key(
+        &self,
+        key: &str,
+        subject: &str,
+        g: &Grant,
+        ttl: Duration,
+    ) -> Result<(String, i64), String> {
+        self.issue_with(Some(key), subject, g, ttl)
+    }
+
+    fn issue_with(
+        &self,
+        key: Option<&str>,
+        subject: &str,
+        g: &Grant,
+        ttl: Duration,
+    ) -> Result<(String, i64), String> {
+        if let Some(name) = key {
+            let r = self.st.with(|st| {
+                st.map(|st| {
+                    if st.keys.is_empty() {
+                        return Err("the policy has no keyring".to_owned());
+                    }
+                    st.keys
+                        .iter()
+                        .find(|k| k.name == name)
+                        .map(|k| (k.sign_key.clone(), if ttl.is_zero() { st.ttl } else { ttl }))
+                        .ok_or_else(|| format!("no key named {name:?}"))
+                })
+            });
+            let (k, ttl) = r.ok_or_else(|| Refusal::Unavailable.to_string())??;
+            return issue(&k, subject, g, ttl, now());
+        }
         let r = self.st.with(|st| {
             st.map(|st| {
                 (
-                    st.sign_key.clone(),
+                    st.keys
+                        .first()
+                        .map_or_else(|| st.sign_key.clone(), |k| k.sign_key.clone()),
                     if ttl.is_zero() { st.ttl } else { ttl },
                 )
             })
@@ -861,7 +1086,15 @@ fn token(st: &State, tok: &str) -> Result<(String, Grant), Refusal> {
         return Err(Refusal::BadCredentials);
     }
     if tok.starts_with(TOKEN_PREFIX) {
-        return verify(&st.sign_key, tok, now());
+        if st.keys.is_empty() {
+            return verify(&st.sign_key, tok, now());
+        }
+        let t = now();
+        return st
+            .keys
+            .iter()
+            .find_map(|k| verify(&k.sign_key, tok, t).ok())
+            .ok_or(Refusal::BadCredentials);
     }
     // Looked up by its SHA-256: how long the lookup takes says nothing of the token.
     st.tokens
@@ -1107,7 +1340,7 @@ pub mod registry {
     pub fn files(key: usize) -> Vec<(String, [u8; 32])> {
         map()
             .get(&key)
-            .map(|m| m.values().filter_map(|p| p.file()).collect())
+            .map(|m| m.values().flat_map(|p| p.files()).collect())
             .unwrap_or_default()
     }
 }

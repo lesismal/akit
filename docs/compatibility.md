@@ -396,7 +396,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 1247 supported.
+3821 fields in 121 sections, at fit `7daee573`; 1260 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -415,7 +415,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`http.handlers/hls`](#fields-http-handlers-hls) | 12 | 12 | 0 |
 | [`http.handlers/httpflv`](#fields-http-handlers-httpflv) | 6 | 6 | 0 |
 | [`http.handlers/media_pages`](#fields-http-handlers-media-pages) | 29 | 26 | 3 |
-| [`http.handlers/media_tokens`](#fields-http-handlers-media-tokens) | 11 | 0 | 11 |
+| [`http.handlers/media_tokens`](#fields-http-handlers-media-tokens) | 11 | 9 | 2 |
 | [`http.handlers/proxy`](#fields-http-handlers-proxy) | 20 | 19 | 1 |
 | [`http.handlers/respond`](#fields-http-handlers-respond) | 5 | 5 | 0 |
 | [`http.handlers/static`](#fields-http-handlers-static) | 16 | 16 | 0 |
@@ -445,7 +445,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`listeners`](#fields-listeners) | 30 | 28 | 2 |
 | [`llm`](#fields-llm) | 218 | 215 | 3 |
 | [`log`](#fields-log) | 24 | 24 | 0 |
-| [`media_auth`](#fields-media-auth) | 34 | 18 | 16 |
+| [`media_auth`](#fields-media-auth) | 34 | 22 | 12 |
 | [`media_library`](#fields-media-library) | 24 | 19 | 5 |
 | [`metrics`](#fields-metrics) | 1 | 1 | 0 |
 | [`pprof`](#fields-pprof) | 4 | 0 | 4 |
@@ -521,7 +521,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 161 | 3 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 76 | 0 |
-| **Total** | 3821 | 1247 | 2574 |
+| **Total** | 3821 | 1260 | 2561 |
 
 <a id="fields-access"></a>
 
@@ -1069,15 +1069,15 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `routes[].handler<media_tokens>` | `module` | not supported yet |
-| `routes[].handler<media_tokens>.params` | `object` | not supported yet |
-| `routes[].handler<media_tokens>.params.auth` | `string` | not supported yet |
-| `routes[].handler<media_tokens>.params.max_body_bytes` | `integer` | not supported yet |
-| `routes[].handler<media_tokens>.params.max_tokens` | `integer` | not supported yet |
-| `routes[].handler<media_tokens>.params.max_ttl` | `duration` | not supported yet |
-| `routes[].handler<media_tokens>.params.prefix` | `string` | not supported yet |
-| `routes[].handler<media_tokens>.params.prefixes` | `array<string>` | not supported yet |
-| `routes[].handler<media_tokens>.params.revoke_timeout` | `duration` | not supported yet |
+| `routes[].handler<media_tokens>` | `module` | supported |
+| `routes[].handler<media_tokens>.params` | `object` | supported |
+| `routes[].handler<media_tokens>.params.auth` | `string` | supported |
+| `routes[].handler<media_tokens>.params.max_body_bytes` | `integer` | supported |
+| `routes[].handler<media_tokens>.params.max_tokens` | `integer` | supported |
+| `routes[].handler<media_tokens>.params.max_ttl` | `duration` | supported |
+| `routes[].handler<media_tokens>.params.prefix` | `string` | supported |
+| `routes[].handler<media_tokens>.params.prefixes` | `array<string>` | supported |
+| `routes[].handler<media_tokens>.params.revoke_timeout` | `duration` | supported |
 | `routes[].handler<media_tokens>.params.url_base` | `string` | not supported yet |
 | `routes[].handler<media_tokens>.params.url_prefixes` | `array<string>` | not supported yet |
 
@@ -1792,10 +1792,10 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | Field | Type | Status |
 | --- | --- | --- |
 | `media_auth` | `array<object>` | supported |
-| `media_auth[].keys` | `array<object>` | not supported yet |
-| `media_auth[].keys[].key` | `string, required` | not supported yet |
-| `media_auth[].keys[].secret` | `string` | not supported yet |
-| `media_auth[].keys[].secret_file` | `string` | not supported yet |
+| `media_auth[].keys` | `array<object>` | supported |
+| `media_auth[].keys[].key` | `string, required` | supported |
+| `media_auth[].keys[].secret` | `string` | supported |
+| `media_auth[].keys[].secret_file` | `string` | supported |
 | `media_auth[].name` | `string, required` | supported |
 | `media_auth[].public` | `array<enum(publish\|play)>` | supported |
 | `media_auth[].secret` | `string` | supported |

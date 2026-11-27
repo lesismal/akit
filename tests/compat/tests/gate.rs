@@ -3366,7 +3366,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 187] = [
+    let objects: [(&str, &str, Option<&str>); 189] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         (
             "providers[].kubernetes",
@@ -3732,6 +3732,12 @@ fn akit_config_lists_match_the_inventory() {
             "MEDIA_AUTH_FIELDS",
             Some("MEDIA_AUTH_FIT_ONLY"),
         ),
+        ("media_auth[].keys[]", "MEDIA_KEY_FIELDS", None),
+        (
+            "routes[].handler<media_tokens>.params",
+            "MEDIA_TOKENS_FIELDS",
+            Some("MEDIA_TOKENS_FIT_ONLY"),
+        ),
         ("media_auth[].tokens[]", "MEDIA_TOKEN_FIELDS", None),
         ("media_auth[].users[]", "MEDIA_USER_FIELDS", None),
         (
@@ -3888,6 +3894,7 @@ fn akit_config_lists_match_the_inventory() {
         "stream_whep",
         "media_pages",
         "vod",
+        "media_tokens",
     ] {
         assert!(handlers.insert(h.to_owned()), "FIT_HANDLERS lists {h}");
     }
@@ -3920,8 +3927,9 @@ fn akit_config_lists_match_the_inventory() {
         "stream_whip",
         "stream_whep",
         "media_pages",
-        // I142.
+        // I142, I143.
         "vod",
+        "media_tokens",
     ] {
         read.insert(format!("routes[].handler<{h}>"));
         read.insert(format!("routes[].handler<{h}>.params"));
@@ -4079,7 +4087,7 @@ fn inventory_paths_for_akit_config_paths() {
 fn findings_from_akit_config_errors() {
     let errs = akit_config::from_json(
         r#"{"listeners": [{"name": "w", "address": ":1", "mptcp": true}],
-            "routes": [{"handler": {"module": "media_tokens"}}], "engine": {"loop_wait": "1ms"}}"#,
+            "routes": [{"handler": {"module": "sync_ingest"}}], "engine": {"loop_wait": "1ms"}}"#,
         None,
     )
     .unwrap_err();
@@ -4090,7 +4098,7 @@ fn findings_from_akit_config_errors() {
         .collect();
     let want: BTreeSet<String> = [
         "listeners[0].mptcp",
-        "routes[0].handler<media_tokens>",
+        "routes[0].handler<sync_ingest>",
         "engine.loop_wait",
     ]
     .iter()

@@ -326,7 +326,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 1247 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 1260 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -345,7 +345,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`http.handlers/hls`](#fields-http-handlers-hls) | 12 | 12 | 0 |
 | [`http.handlers/httpflv`](#fields-http-handlers-httpflv) | 6 | 6 | 0 |
 | [`http.handlers/media_pages`](#fields-http-handlers-media-pages) | 29 | 26 | 3 |
-| [`http.handlers/media_tokens`](#fields-http-handlers-media-tokens) | 11 | 0 | 11 |
+| [`http.handlers/media_tokens`](#fields-http-handlers-media-tokens) | 11 | 9 | 2 |
 | [`http.handlers/proxy`](#fields-http-handlers-proxy) | 20 | 19 | 1 |
 | [`http.handlers/respond`](#fields-http-handlers-respond) | 5 | 5 | 0 |
 | [`http.handlers/static`](#fields-http-handlers-static) | 16 | 16 | 0 |
@@ -375,7 +375,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`listeners`](#fields-listeners) | 30 | 28 | 2 |
 | [`llm`](#fields-llm) | 218 | 215 | 3 |
 | [`log`](#fields-log) | 24 | 24 | 0 |
-| [`media_auth`](#fields-media-auth) | 34 | 18 | 16 |
+| [`media_auth`](#fields-media-auth) | 34 | 22 | 12 |
 | [`media_library`](#fields-media-library) | 24 | 19 | 5 |
 | [`metrics`](#fields-metrics) | 1 | 1 | 0 |
 | [`pprof`](#fields-pprof) | 4 | 0 | 4 |
@@ -451,7 +451,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 161 | 3 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 76 | 0 |
-| **合计** | 3821 | 1247 | 2574 |
+| **合计** | 3821 | 1260 | 2561 |
 
 <a id="fields-access"></a>
 
@@ -999,15 +999,15 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
-| `routes[].handler<media_tokens>` | `module` | 尚不支持（not supported yet） |
-| `routes[].handler<media_tokens>.params` | `object` | 尚不支持（not supported yet） |
-| `routes[].handler<media_tokens>.params.auth` | `string` | 尚不支持（not supported yet） |
-| `routes[].handler<media_tokens>.params.max_body_bytes` | `integer` | 尚不支持（not supported yet） |
-| `routes[].handler<media_tokens>.params.max_tokens` | `integer` | 尚不支持（not supported yet） |
-| `routes[].handler<media_tokens>.params.max_ttl` | `duration` | 尚不支持（not supported yet） |
-| `routes[].handler<media_tokens>.params.prefix` | `string` | 尚不支持（not supported yet） |
-| `routes[].handler<media_tokens>.params.prefixes` | `array<string>` | 尚不支持（not supported yet） |
-| `routes[].handler<media_tokens>.params.revoke_timeout` | `duration` | 尚不支持（not supported yet） |
+| `routes[].handler<media_tokens>` | `module` | 已支持 |
+| `routes[].handler<media_tokens>.params` | `object` | 已支持 |
+| `routes[].handler<media_tokens>.params.auth` | `string` | 已支持 |
+| `routes[].handler<media_tokens>.params.max_body_bytes` | `integer` | 已支持 |
+| `routes[].handler<media_tokens>.params.max_tokens` | `integer` | 已支持 |
+| `routes[].handler<media_tokens>.params.max_ttl` | `duration` | 已支持 |
+| `routes[].handler<media_tokens>.params.prefix` | `string` | 已支持 |
+| `routes[].handler<media_tokens>.params.prefixes` | `array<string>` | 已支持 |
+| `routes[].handler<media_tokens>.params.revoke_timeout` | `duration` | 已支持 |
 | `routes[].handler<media_tokens>.params.url_base` | `string` | 尚不支持（not supported yet） |
 | `routes[].handler<media_tokens>.params.url_prefixes` | `array<string>` | 尚不支持（not supported yet） |
 
@@ -1722,10 +1722,10 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
 | `media_auth` | `array<object>` | 已支持 |
-| `media_auth[].keys` | `array<object>` | 尚不支持（not supported yet） |
-| `media_auth[].keys[].key` | `string, required` | 尚不支持（not supported yet） |
-| `media_auth[].keys[].secret` | `string` | 尚不支持（not supported yet） |
-| `media_auth[].keys[].secret_file` | `string` | 尚不支持（not supported yet） |
+| `media_auth[].keys` | `array<object>` | 已支持 |
+| `media_auth[].keys[].key` | `string, required` | 已支持 |
+| `media_auth[].keys[].secret` | `string` | 已支持 |
+| `media_auth[].keys[].secret_file` | `string` | 已支持 |
 | `media_auth[].name` | `string, required` | 已支持 |
 | `media_auth[].public` | `array<enum(publish\|play)>` | 已支持 |
 | `media_auth[].secret` | `string` | 已支持 |

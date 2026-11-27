@@ -75,7 +75,7 @@ fn media_token() {
         (
             &["-policy", "nosecret", "-play", "*"][..],
             1,
-            "neither secret nor secret_file",
+            "has neither secret, secret_file nor keys",
         ),
         (
             &["-policy", "live", "-play", "a b"][..],

@@ -514,7 +514,7 @@ fn secret_file_read() {
         from_file.allow(Action::Play, "s", &tok(&t)),
         Err(Refusal::Forbidden)
     );
-    let (file, sum) = from_file.file().unwrap();
+    let (file, sum) = from_file.files().pop().unwrap();
     assert_eq!(file, cfg.secret_file);
     assert_eq!(sum, Sha256::digest(b"a-secret-of-sixteen-bytes\r\n"));
     std::fs::write(&path, "short\n").unwrap();
@@ -607,4 +607,195 @@ fn passkeys() {
     })
     .unwrap();
     assert_eq!(public.allow_passkey("bittorrent/aa", ""), Ok(String::new()));
+}
+
+/// A directory of the test's own, removed when it is dropped.
+struct Dir(std::path::PathBuf);
+
+impl Drop for Dir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+fn dir(name: &str) -> Dir {
+    let p = std::env::temp_dir().join(format!("akit-auth-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&p);
+    std::fs::create_dir_all(&p).unwrap();
+    Dir(p)
+}
+
+fn key_file(d: &Dir, name: &str, secret: &str) -> String {
+    let p = d.0.join(name);
+    std::fs::write(&p, secret).unwrap();
+    p.to_string_lossy().into_owned()
+}
+
+/// fit's `TestSecretFileAndRotate` (I143).
+#[test]
+fn secret_file_and_rotate() {
+    let d = dir("rotate");
+    let file = key_file(&d, "secret", "a-secret-file-of-16+\n");
+    let cfg = MediaAuth {
+        name: "live".into(),
+        secret_file: file.clone(),
+        ..MediaAuth::default()
+    };
+    let p = Policy::from_config(&cfg).unwrap();
+    assert_eq!(p.secret_file(), file);
+    let g = Grant {
+        publish: v(&["live/*"]),
+        play: Vec::new(),
+    };
+    let (old, _) = p.issue("old", &g, Duration::from_secs(3600)).unwrap();
+    assert!(p.allow(Action::Publish, "live/a", &tok(&old)).is_ok());
+    let short = key_file(&d, "short", "short");
+    for bad in [
+        MediaAuth {
+            name: "x".into(),
+            secret_file: d.0.join("nope").to_string_lossy().into_owned(),
+            ..MediaAuth::default()
+        },
+        MediaAuth {
+            name: "x".into(),
+            secret_file: short,
+            ..MediaAuth::default()
+        },
+        MediaAuth {
+            name: "x".into(),
+            secret: "0123456789abcdef".into(),
+            secret_file: file.clone(),
+            ..MediaAuth::default()
+        },
+    ] {
+        assert!(Policy::from_config(&bad).is_err(), "{bad:?}");
+    }
+    assert!(p.rotate("short").is_err());
+    let second = "a-second-secret-of-16+";
+    std::fs::write(&file, second).unwrap();
+    p.rotate(second).unwrap();
+    assert!(p.allow(Action::Publish, "live/a", &tok(&old)).is_err());
+    let play = Grant {
+        publish: Vec::new(),
+        play: v(&["live/*"]),
+    };
+    let (fresh, _) = p.issue("new", &play, Duration::from_secs(3600)).unwrap();
+    assert!(p.allow(Action::Play, "live/a", &tok(&fresh)).is_ok());
+    let again = Policy::from_config(&cfg).unwrap();
+    assert!(again.allow(Action::Play, "live/a", &tok(&fresh)).is_ok());
+    assert!(again.allow(Action::Publish, "live/a", &tok(&old)).is_err());
+}
+
+/// fit's `TestKeyring` (I143): a keyring signs with its first key unless one is named, checks a
+/// token against every key, and a key's rotation refuses only its tokens.
+#[test]
+fn keyring() {
+    let d = dir("ring");
+    let k1 = key_file(&d, "k1", "secret-of-k1-16+");
+    let k2 = key_file(&d, "k2", "secret-of-k2-16+");
+    let key = |n: &str, f: &str| akit_config::media::MediaKey {
+        key: n.into(),
+        secret_file: f.into(),
+        ..akit_config::media::MediaKey::default()
+    };
+    let cfg = MediaAuth {
+        name: "live".into(),
+        keys: vec![key("k1", &k1), key("k2", &k2)],
+        ..MediaAuth::default()
+    };
+    let p = Policy::from_config(&cfg).unwrap();
+    assert_eq!(p.keys(), v(&["k1", "k2"]));
+    assert_eq!(p.default_key().as_deref(), Some("k1"));
+    assert_eq!(p.key_file("k2").as_deref(), Some(k2.as_str()));
+    assert_eq!(p.key_file("nope"), None);
+    assert_eq!(p.secret_file(), "");
+    assert_eq!(p.files().len(), 2);
+    let g = Grant {
+        publish: v(&["mtg/*"]),
+        play: Vec::new(),
+    };
+    let h = Duration::from_secs(3600);
+    let (def, _) = p.issue("a", &g, h).unwrap();
+    let (k2tok, _) = p.issue_key("k2", "b", &g, h).unwrap();
+    for t in [&def, &k2tok] {
+        assert!(p.allow(Action::Publish, "mtg/1", &tok(t)).is_ok());
+    }
+    assert!(p.issue_key("nope", "c", &g, h).is_err());
+    assert!(p.rotate("another-secret-16+").is_err());
+    assert!(p.rotate_key("nope", "another-secret-16+").is_err());
+    p.rotate_key("k1", "rotated-secret-of-16+").unwrap();
+    assert_eq!(
+        p.allow(Action::Publish, "mtg/1", &tok(&def)),
+        Err(Refusal::BadCredentials)
+    );
+    assert!(p.allow(Action::Publish, "mtg/1", &tok(&k2tok)).is_ok());
+    let (newer, _) = p.issue_key("k1", "d", &g, h).unwrap();
+    assert!(p.allow(Action::Publish, "mtg/1", &tok(&newer)).is_ok());
+    std::fs::write(&k1, "rotated-secret-of-16+").unwrap();
+    let again = Policy::from_config(&cfg).unwrap();
+    for t in [&newer, &k2tok] {
+        assert!(again.allow(Action::Publish, "mtg/1", &tok(t)).is_ok());
+    }
+    assert_eq!(
+        again.allow(Action::Publish, "mtg/1", &tok(&def)),
+        Err(Refusal::BadCredentials)
+    );
+    let shared = MediaAuth {
+        name: "d".into(),
+        keys: vec![
+            akit_config::media::MediaKey {
+                key: "a".into(),
+                secret: "a-shared-secret-16+".into(),
+                ..akit_config::media::MediaKey::default()
+            },
+            akit_config::media::MediaKey {
+                key: "b".into(),
+                secret: "a-shared-secret-16+".into(),
+                ..akit_config::media::MediaKey::default()
+            },
+        ],
+        ..MediaAuth::default()
+    };
+    assert!(
+        Policy::from_config(&shared)
+            .unwrap_err()
+            .contains("share a secret")
+    );
+    // A single secret has no keyring.
+    let single = Policy::from_config(&policy_config()).unwrap();
+    assert!(single.issue_key("k1", "x", &g, h).is_err());
+    assert!(single.rotate_key("k1", "another-secret-16+").is_err());
+}
+
+/// A token fit's binary signed with the key `b` of a keyring (`fit media-token -policy ring -key
+/// b -subject fit-b -play 'vod/*' -ttl 876000h`, fit `b6c5cebf`): akit takes it, and refuses it
+/// once `b` is rotated, not `a`.
+const FIT_KEY_TOKEN: &str = include_str!("fit-token-key.txt");
+
+#[test]
+fn takes_fit_keyring_tokens() {
+    let key = |n: &str, s: &str| akit_config::media::MediaKey {
+        key: n.into(),
+        secret: s.into(),
+        ..akit_config::media::MediaKey::default()
+    };
+    let cfg = MediaAuth {
+        name: "ring".into(),
+        keys: vec![
+            key("a", "0123456789abcdef-key-a"),
+            key("b", "0123456789abcdef-key-b"),
+        ],
+        ..MediaAuth::default()
+    };
+    let p = Policy::from_config(&cfg).unwrap();
+    let t = FIT_KEY_TOKEN.trim();
+    assert_eq!(p.allow(Action::Play, "vod/x", &tok(t)), Ok("fit-b".into()));
+    assert!(p.allow(Action::Publish, "vod/x", &tok(t)).is_err());
+    p.rotate_key("a", "a-new-secret-of-16+").unwrap();
+    assert_eq!(p.allow(Action::Play, "vod/x", &tok(t)), Ok("fit-b".into()));
+    p.rotate_key("b", "b-new-secret-of-16+").unwrap();
+    assert_eq!(
+        p.allow(Action::Play, "vod/x", &tok(t)),
+        Err(Refusal::BadCredentials)
+    );
 }
