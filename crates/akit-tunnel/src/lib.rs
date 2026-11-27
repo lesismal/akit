@@ -24,6 +24,7 @@ pub mod link;
 pub mod msg;
 pub mod node;
 pub mod pace;
+mod pages;
 pub mod proxy;
 pub mod quic;
 pub mod tls;

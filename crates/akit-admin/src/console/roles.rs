@@ -90,6 +90,28 @@ impl RoleConsoles {
         Console::start_role(cfg, Arc::clone(module), &opts)
     }
 
+    /// Looks at the running consoles' certificate files once (`-watch-certs`, every interval, on
+    /// the control thread, as `admin.console`'s, I94): files that changed and have stayed as they
+    /// are for the watcher's debounce time are loaded and served to new connections, the consoles
+    /// and their sessions kept; files that do not load leave the running certificate, and are not
+    /// tried again until they change. What happened is in the `admin` logger, and returned, each
+    /// named by its role.
+    pub fn watch_certs(&self, now: std::time::Instant) -> Vec<crate::CertReload> {
+        self.running
+            .values()
+            .filter_map(|r| r.console.certs().and_then(|c| c.tick(now)))
+            .collect()
+    }
+
+    /// Reads the running consoles' certificate files now (SIGHUP), and serves those that changed
+    /// and load to new connections; as [`watch_certs`](Self::watch_certs) otherwise.
+    pub fn reload_certs(&self) -> Vec<crate::CertReload> {
+        self.running
+            .values()
+            .filter_map(|r| r.console.certs().and_then(crate::certs::Reloader::reload))
+            .collect()
+    }
+
     /// Stops every console.
     pub fn stop(&mut self) {
         for (_, r) in std::mem::take(&mut self.running) {
@@ -106,6 +128,14 @@ impl Drop for RoleConsoles {
 }
 
 impl Consoles for RoleConsoles {
+    fn watch_certs(&mut self, now: std::time::Instant) {
+        let _ = RoleConsoles::watch_certs(self, now);
+    }
+
+    fn reload_certs(&mut self) {
+        let _ = RoleConsoles::reload_certs(self);
+    }
+
     fn apply(
         &mut self,
         id: &'static str,

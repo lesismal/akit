@@ -309,6 +309,21 @@ impl Manager {
         }
     }
 
+    /// Looks at the roles' consoles' certificate files once (`-watch-certs`, every interval, on
+    /// the control thread; [`Consoles::watch_certs`]).
+    pub fn watch_console_certs(&mut self, now: std::time::Instant) {
+        if let Some(cs) = self.consoles.as_mut() {
+            cs.watch_certs(now);
+        }
+    }
+
+    /// Reads the roles' consoles' certificate files now (SIGHUP; [`Consoles::reload_certs`]).
+    pub fn reload_console_certs(&mut self) {
+        if let Some(cs) = self.consoles.as_mut() {
+            cs.reload_certs();
+        }
+    }
+
     /// Sets how long a role may let what a server it replaced holds run out.
     pub fn set_drain(&mut self, d: Duration) {
         self.drain = d;

@@ -154,6 +154,11 @@ impl Obj {
     pub fn bool(self, k: &str, v: bool) -> Obj {
         self.raw(k, if v { "true" } else { "false" })
     }
+    /// A boolean member, left out when false (Go's `omitempty`).
+    #[must_use]
+    pub fn bool_omit(self, k: &str, v: bool) -> Obj {
+        if v { self.raw(k, "true") } else { self }
+    }
     /// A member already written as JSON.
     #[must_use]
     pub fn raw(mut self, k: &str, json: &str) -> Obj {
@@ -434,16 +439,23 @@ pub struct Stats {
 }
 
 impl Stats {
-    /// As JSON.
+    /// As JSON: the average and the loss rounded to thousandths, as fit's `Meter.Stats`.
     #[must_use]
     pub fn json(&self) -> String {
+        let round = |v: f64| (v * 1000.0).round() / 1000.0;
         Obj::new()
             .float("last", self.last)
-            .float("avg", self.avg)
+            .float("avg", round(self.avg))
             .float("min", self.min)
-            .float("loss", self.loss)
+            .float("loss", round(self.loss))
             .num("samples", self.samples)
             .end()
+    }
+
+    /// Whether a round trip was measured (fit's `Known`).
+    #[must_use]
+    pub fn known(&self) -> bool {
+        self.samples > 0
     }
     /// From JSON.
     #[must_use]

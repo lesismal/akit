@@ -324,3 +324,73 @@ fn role_pages_under_akit_run() {
 
     drop(akit);
 }
+
+/// End to end (I109b): `akit run` serves the tunnel node's and proxy's own consoles, and
+/// `admin.console` shows their modules; a change on the proxy's page is written back into the
+/// config, and one its role cannot apply (a forward on an address in use) is answered 400 with
+/// why, as fit's.
+#[test]
+fn node_and_proxy_pages_under_akit_run() {
+    let d = Dir::new("e2e-peer-pages");
+    let (api, console, web) = (free(), free(), free());
+    let (node_console, proxy_console, link) = (free(), free(), free());
+    let hash = akio_crypto::bcrypt::hash(b"pw", 4).unwrap();
+    let up = format!(
+        r#"{{"name": "hub", "endpoints": [{{"address": "{link}"}}], "password": "pw", "retry_interval": "100ms"}}"#
+    );
+    let members = format!(
+        r#", "tunnel": {{"hub": {{"name": "hub", "password": "pw", "listeners": [{{"protocol": "tcp", "address": "{link}"}}]}},
+      "node": {{"name": "lab", "hubs": [{up}], "console": {{"address": "{node_console}", "users": [{{"username": "nel", "password_hash": "{hash}"}}]}}}},
+      "proxy": {{"name": "me", "hubs": [{up}], "console": {{"address": "{proxy_console}", "users": [{{"username": "pat", "password_hash": "{hash}"}}]}}}}}}"#
+    );
+    let path = d.0.join("akit.json");
+    std::fs::write(&path, config(api, console, web, &hash, &members, "")).unwrap();
+    let akit = Akit::run(&path, &[]);
+    akit.until(&format!("akit: console on http://{console}/"));
+    eventually("the roles' consoles to listen", || {
+        TcpStream::connect(node_console).is_ok() && TcpStream::connect(proxy_console).is_ok()
+    });
+
+    let admin = session(console, "ada");
+    let (status, _, body) = call(console, "GET", "/api/workbench", &admin, "");
+    assert_eq!(status, 200, "{body}");
+    assert!(
+        body.contains(r#""modules":["admin","tunnel.hub","tunnel.node","tunnel.proxy"]"#),
+        "{body}"
+    );
+    eventually("the node to link to the hub", || {
+        let (_, _, body) = call(console, "GET", "/api/m/tunnel.node/status", &admin, "");
+        body.contains(r#""state":"registered""#)
+    });
+
+    let nel = session(node_console, "nel");
+    let (status, _, body) = call(node_console, "GET", "/api/status", &nel, "");
+    assert_eq!(status, 200, "{body}");
+    assert!(body.contains(r#""name":"lab""#), "{body}");
+
+    let pat = session(proxy_console, "pat");
+    let (status, _, body) = call(
+        proxy_console,
+        "POST",
+        "/api/meta",
+        &pat,
+        r#"{"site": "home"}"#,
+    );
+    assert_eq!(status, 200, "{body}");
+    let (status, _, body) = call(console, "GET", "/api/m/admin/config", &admin, "");
+    assert_eq!(status, 200, "{body}");
+    assert!(body.contains("home"), "{body}");
+    let held = TcpListener::bind("127.0.0.1:0").unwrap();
+    let taken = held.local_addr().unwrap();
+    let (status, _, body) = call(
+        proxy_console,
+        "POST",
+        "/api/forwards",
+        &pat,
+        &format!(r#"{{"listen": "{taken}", "node": "lab", "service": "echo"}}"#),
+    );
+    assert_eq!(status, 400, "{body}");
+    assert!(body.contains(&format!("forward {taken}")), "{body}");
+    drop(held);
+    drop(akit);
+}

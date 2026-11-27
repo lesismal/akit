@@ -382,7 +382,13 @@ impl Console {
         // The certificate's files read again when they change (I94).
         let (acceptor, certs) = match tls {
             Some(t) => {
-                let (r, swap) = Reloader::start("console", t, service)
+                // What its messages start with: `console` for admin.console's, the role's ID
+                // for a role's (I109b).
+                let name = match &pages.kind {
+                    Kind::Admin(..) => "console",
+                    Kind::Role(m) => m.id(),
+                };
+                let (r, swap) = Reloader::start(name, t, service)
                     .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
                 (AnyAcceptor::new(swap), Some(r))
             }

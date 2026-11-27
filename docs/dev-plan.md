@@ -230,7 +230,7 @@ Tunnel and LLM track).
 | I107 | LLM IV: the proxy: the agents' API, API keys, routing, errors | I106 | done |
 | I108 | LLM V: the node's management: hardware, GPUs, fixed actions and jobs | I105 | done |
 | I109 | The roles' pages: their consoles and methods, edits written back; the hub's pages (I109b, I109c split) | I103, I107, I91 | done |
-| I109b | The tunnel's node's and proxy's pages: their status, hubs, services, forwards and meta | I109 | todo |
+| I109b | The tunnel's node's and proxy's pages: their status, hubs, services, forwards and meta | I109 | done |
 | I109c | The LLM roles' pages: `/api/me`, their methods (`/api/rpc`) and streams (`/api/stream`, Server-Sent Events) | I109, I106b, I108 | done |
 | I109d | The LLM roles' methods their pages call that they lack: `/mesh/*` (dial, undial, kick, listen, limits, tokens), the proxy's (`/proxy/*`: its API, keys, models, nodes, profile, stats); the identity's `http_url` | I109c | done |
 
@@ -1821,7 +1821,8 @@ link with fit's (decision 038).
   in the history, and refused when it does not load.
 - **Touches**: `akit-tunnel`.
 - **fit**: `tunnel/node/api.go`, `tunnel/proxy/api.go`, `tunnel/internal/common/hubs.go`.
-- **Status**: todo.
+- **Status**: done (2026-11-27). See the progress log. With it, the roles' consoles' certificates
+  read again when their files change (decision rows 45 and 61).
 
 ### I109c The LLM roles' pages
 

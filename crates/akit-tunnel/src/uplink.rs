@@ -41,11 +41,14 @@ pub const STATE_REGISTERED: &str = "registered";
 pub const STATE_FAILED: &str = "failed";
 
 struct UpState {
-    links: HashMap<u64, (Arc<Link>, Option<RegisterRsp>)>,
+    /// The links, by ID: each with the hub's answer once registered, and the address it dialed.
+    links: HashMap<u64, (Arc<Link>, Option<RegisterRsp>, String)>,
     state: &'static str,
     last_err: String,
     hub: String,
     rtt: Stats,
+    /// Milliseconds since 1970 of when a link registered while none was; 0 before.
+    since: i64,
 }
 
 /// A hub a role links to.
@@ -167,6 +170,7 @@ impl Uplink {
                 last_err: String::new(),
                 hub: String::new(),
                 rtt: Stats::default(),
+                since: 0,
             }),
             seq: AtomicU32::new(0),
             stopped: AtomicBool::new(false),
@@ -188,7 +192,7 @@ impl Uplink {
         let links: Vec<Arc<Link>> = lock(&self.st)
             .links
             .values()
-            .map(|(l, _)| Arc::clone(l))
+            .map(|(l, _, _)| Arc::clone(l))
             .collect();
         for l in links {
             l.close();
@@ -203,7 +207,7 @@ impl Uplink {
 
     fn fail(&self, msg: &str) {
         let mut st = lock(&self.st);
-        if !self.stopped() && st.links.values().all(|(_, r)| r.is_none()) {
+        if !self.stopped() && st.links.values().all(|(_, r, _)| r.is_none()) {
             st.state = STATE_FAILED;
             msg.clone_into(&mut st.last_err);
         }
@@ -245,6 +249,8 @@ impl Uplink {
         let router = Arc::clone(&self.router);
         let coder = self.coder.clone();
         let url = addr.clone();
+        let (at_tcp, at_tls, at_quic, at_ws) =
+            (addr.clone(), addr.clone(), addr.clone(), addr.clone());
         let on_error = move |e: std::io::Error| {
             me2.fail(&format!("{addr}: {e}"));
             me2.keep(at.saturating_add(1));
@@ -260,7 +266,7 @@ impl Uplink {
                         Arc::clone(&router),
                         coder.clone(),
                     );
-                    me.dialed(&l);
+                    me.dialed(&l, &at_tcp);
                     LinkHandler(Some(l))
                 }),
                 on_error,
@@ -277,7 +283,7 @@ impl Uplink {
                         Arc::clone(&router),
                         coder.clone(),
                     );
-                    me.dialed(&l);
+                    me.dialed(&l, &at_tls);
                     LinkHandler(Some(l))
                 });
                 match akio::tls::Tls::client(cfg, &ep.host, inner) {
@@ -298,7 +304,7 @@ impl Uplink {
                     router,
                     coder,
                     Box::new(move |r| match r {
-                        Ok(l) => me.dialed(&l),
+                        Ok(l) => me.dialed(&l, &at_quic),
                         Err(e) => on_error(std::io::Error::other(e)),
                     }),
                 );
@@ -319,7 +325,7 @@ impl Uplink {
                         Arc::clone(&router),
                         coder.clone(),
                     );
-                    me.dialed(&l);
+                    me.dialed(&l, &at_ws);
                     Some(l)
                 });
                 akio_http::ws::client::dial(
@@ -345,12 +351,14 @@ impl Uplink {
         });
     }
 
-    fn dialed(self: &Arc<Self>, l: &Arc<Link>) {
+    fn dialed(self: &Arc<Self>, l: &Arc<Link>, addr: &str) {
         if self.stopped() {
             l.close();
             return;
         }
-        lock(&self.st).links.insert(l.id, (Arc::clone(l), None));
+        lock(&self.st)
+            .links
+            .insert(l.id, (Arc::clone(l), None, addr.to_owned()));
         let Some(owner) = self.owner.upgrade() else {
             l.close();
             return;
@@ -478,7 +486,7 @@ impl Uplink {
                 l.close();
                 return;
             }
-            let first = st.links.values().all(|(_, r)| r.is_none());
+            let first = st.links.values().all(|(_, r, _)| r.is_none());
             if let Some(e) = st.links.get_mut(&l.id) {
                 e.1 = Some(rsp.clone());
             }
@@ -487,6 +495,7 @@ impl Uplink {
             rsp.hub.clone_into(&mut st.hub);
             if first {
                 st.rtt = Stats::default();
+                st.since = crate::end::now_ms();
             }
             first
         };
@@ -510,7 +519,8 @@ impl Uplink {
         let was = {
             let mut st = lock(&self.st);
             let was = st.links.remove(&l.id).is_some();
-            if was && st.links.values().all(|(_, r)| r.is_none()) && st.state == STATE_REGISTERED {
+            if was && st.links.values().all(|(_, r, _)| r.is_none()) && st.state == STATE_REGISTERED
+            {
                 st.state = STATE_CONNECTING;
             }
             was
@@ -537,8 +547,100 @@ impl Uplink {
         lock(&self.st)
             .links
             .values()
-            .filter_map(|(l, r)| r.clone().map(|r| (Arc::clone(l), r)))
+            .filter_map(|(l, r, _)| r.clone().map(|r| (Arc::clone(l), r)))
             .collect()
+    }
+
+    /// The uplink as the pages show it (fit's `uplink.Status`), carrying `tunnels`: its
+    /// state, its registered links by their places, its round trip and its settings, the
+    /// passwords only as whether they are set.
+    #[must_use]
+    pub fn status_json(&self, tunnels: usize) -> String {
+        let cfg = &self.cfg;
+        let st = lock(&self.st);
+        let mut links: Vec<(i64, u32, String)> = st
+            .links
+            .values()
+            .filter_map(|(_, r, a)| r.as_ref().map(|r| (r.index, r.peer, a.clone())))
+            .collect();
+        links.sort_by_key(|(place, _, _)| *place);
+        let mut addr = dials(cfg).into_iter().next().unwrap_or_default();
+        let mut peer_id = 0;
+        if let Some((_, peer, a)) = links.first() {
+            peer_id = *peer;
+            addr.clone_from(a);
+        }
+        let scheme = |a: &str| a.split_once("://").map_or("tcp", |(s, _)| s).to_owned();
+        let mut protos: Vec<(String, usize)> = Vec::new();
+        for (_, _, a) in &links {
+            let p = scheme(a);
+            match protos.iter_mut().find(|(q, _)| *q == p) {
+                Some((_, n)) => *n = n.saturating_add(1),
+                None => protos.push((p, 1)),
+            }
+        }
+        protos.sort();
+        let mut protos_obj = msg::Obj::new();
+        for (p, n) in &protos {
+            protos_obj = protos_obj.num(p, n);
+        }
+        let since = if st.since == 0 {
+            // fit's zero time, which its JSON does not leave out.
+            "0001-01-01T00:00:00Z".to_owned()
+        } else {
+            crate::end::rfc3339_ms(st.since)
+        };
+        msg::Obj::new()
+            .str("name", &self.name)
+            .str("addr", &addr)
+            .str("state", st.state)
+            .str_omit("error", &st.last_err)
+            .str_omit("hub", &st.hub)
+            .num_omit("peer_id", i64::from(peer_id))
+            .str("since", &since)
+            .num("tunnels", tunnels)
+            .raw("rtt", &st.rtt.json())
+            .bool("body_encrypted", !cfg.body_password.is_empty())
+            .num("pool_size", cfg.pool())
+            .num("pool", links.len())
+            .raw(
+                "places",
+                &msg::array(&links, |(place, _, _)| place.to_string()),
+            )
+            .raw(
+                "links",
+                &msg::array(&links, |(place, _, a)| {
+                    msg::Obj::new()
+                        .num("place", place)
+                        .str("proto", &scheme(a))
+                        .str("addr", a)
+                        .end()
+                }),
+            )
+            .raw("protos", &protos_obj.end())
+            .raw(
+                "endpoints",
+                &msg::array(&cfg.endpoints, |e| {
+                    msg::Obj::new()
+                        .str("protocol", &scheme(&e.address))
+                        .str("address", &e.address)
+                        .bool("enabled", !e.disabled)
+                        .end()
+                }),
+            )
+            .str_omit("pin", &cfg.pin)
+            .str_omit("ca_file", &cfg.ca_file)
+            .bool_omit("quic_insecure", cfg.quic_insecure)
+            .bool("has_password", !cfg.password.is_empty())
+            .bool("has_body_password", !cfg.body_password.is_empty())
+            .str_omit("token_id", self.token.as_ref().map_or("", Secret::id))
+            .end()
+    }
+
+    /// Whether at least one link is registered.
+    #[must_use]
+    pub fn is_registered(&self) -> bool {
+        lock(&self.st).links.values().any(|(_, r, _)| r.is_some())
     }
 
     /// The next sequence of a tunnel this side opens.

@@ -343,3 +343,85 @@ fn a_hub_listeners_certificate_renewed_without_a_restart() {
     drop(akit);
     std::fs::remove_dir_all(&d).unwrap();
 }
+
+/// The certificate a TLS handshake with a role's console at `addr` gets.
+fn console_leaf(addr: SocketAddr, roots: &Path) -> Vec<u8> {
+    let tcp = std::net::TcpStream::connect(addr).unwrap();
+    tcp.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+    let cfg = client(roots, &["http/1.1"], None);
+    let mut s = akio::tls::stream::Stream::client(&cfg, "con.example", tcp).unwrap();
+    s.handshake().unwrap();
+    s.conn()
+        .peer_certificates()
+        .first()
+        .cloned()
+        .unwrap_or_default()
+}
+
+/// Waits until a handshake with the console gets `want`.
+fn wait_console_leaf(addr: SocketAddr, roots: &Path, want: &[u8]) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while console_leaf(addr, roots) != want {
+        assert!(
+            Instant::now() < deadline,
+            "the role console's certificate was not replaced"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// I109b (decision row 45): a role's console's certificate files are watched as
+/// `admin.console`'s, and a renewed certificate is served to its new connections without a
+/// restart, the console kept; a key not yet written leaves the running one.
+#[test]
+fn a_role_consoles_certificate_renewed_without_a_restart() {
+    let d = dir("e2e-watch-certs-role-console");
+    let ca = Ca::new("akit e2e ca");
+    let roots = ca.write(&d, "ca.pem");
+    let a = ca.leaf(&d, "a", &["a.example"]);
+    let con = ca.leaf(&d, "con", &["con.example"]);
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    let hash = akio_crypto::bcrypt::hash(b"pw", akio_crypto::bcrypt::MIN_COST).unwrap();
+    let p = config(&d, &a);
+    let json = std::fs::read_to_string(&p).unwrap().replacen(
+        '{',
+        &format!(
+            r#"{{"tunnel": {{"node": {{"name": "lab", "console": {{"address": "127.0.0.1:{port}", "cert_file": "{}", "key_file": "{}", "users": [{{"username": "admin", "password_hash": "{hash}"}}]}}}}}},"#,
+            s(&con.0),
+            s(&con.1)
+        ),
+        1,
+    );
+    std::fs::write(&p, json).unwrap();
+    let (akit, _) = start(&p, &["-watch-interval", "50ms"]);
+    akit.until("akit: running tunnel.node");
+    let at: SocketAddr = format!("127.0.0.1:{port}").parse().unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while std::net::TcpStream::connect(at).is_err() {
+        assert!(Instant::now() < deadline, "no console at {at}");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    wait_console_leaf(at, &roots, &leaf_der(&con.0));
+
+    // Renewed in place: served to new connections once the files settle.
+    ca.leaf(&d, "con", &["con.example"]);
+    let renewed = leaf_der(&con.0);
+    wait_console_leaf(at, &roots, &renewed);
+
+    // A certificate whose key is not yet written: the running one stays; once the key is
+    // written, served.
+    let next = d.join("next");
+    std::fs::create_dir_all(&next).unwrap();
+    let (c, k) = ca.leaf(&next, "con", &["con.example"]);
+    std::fs::copy(&c, &con.0).unwrap();
+    std::thread::sleep(Duration::from_millis(1000));
+    assert_eq!(console_leaf(at, &roots), renewed);
+    std::fs::copy(&k, &con.1).unwrap();
+    wait_console_leaf(at, &roots, &leaf_der(&c));
+    drop(akit);
+    std::fs::remove_dir_all(&d).unwrap();
+}

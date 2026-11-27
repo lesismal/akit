@@ -527,6 +527,16 @@ pub trait Consoles: Send {
         config: Option<&akit_config::Config>,
         module: Option<ModuleRef>,
     ) -> Result<(), String>;
+
+    /// Looks at the running consoles' certificate files once (`-watch-certs`, every interval, on
+    /// the control thread): files that changed and settled are served to new connections, the
+    /// consoles and their sessions kept; files that do not load leave the running certificate.
+    /// Nothing by default.
+    fn watch_certs(&mut self, _now: std::time::Instant) {}
+
+    /// Reads the running consoles' certificate files now (SIGHUP), as
+    /// [`watch_certs`](Consoles::watch_certs) otherwise. Nothing by default.
+    fn reload_certs(&mut self) {}
 }
 
 /// Role `id`'s `console` in `c`.

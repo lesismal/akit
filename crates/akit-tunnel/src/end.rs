@@ -19,8 +19,12 @@ use crate::msg::{ACK_EVERY, MAX_CHUNK, MAX_IN_FLIGHT, WINDOW, method};
 /// acknowledging.
 const ACK_LIMIT: usize = 1 << 20;
 
-fn now_ms() -> i64 {
-    akit_roles::linktoken::unix_now().saturating_mul(1000)
+/// Milliseconds since 1970.
+#[must_use]
+pub fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
 }
 
 struct EndState {
@@ -31,6 +35,10 @@ struct EndState {
     unacked: i64,
     ack_waiting: bool,
     closed: bool,
+    /// The address the node connected to, as the node said it.
+    addr: String,
+    /// On a node, how long the connect to the service took, in milliseconds; 0 elsewhere.
+    connect_rtt: f64,
 }
 
 /// One end of a tunnel.
@@ -51,6 +59,8 @@ pub struct End {
     /// Bytes sent onto the link.
     pub bytes_out: AtomicI64,
     active: AtomicI64,
+    /// Milliseconds since 1970 of when it was opened.
+    pub created: i64,
 }
 
 impl std::fmt::Debug for End {
@@ -235,6 +245,63 @@ impl End {
     pub fn active(&self) -> i64 {
         self.active.load(Ordering::Relaxed)
     }
+
+    /// Sets the address the node connected to, and, on a node, how long that took in
+    /// milliseconds.
+    pub fn set_addr(&self, addr: &str, connect_rtt: f64) {
+        let mut st = lock(&self.st);
+        addr.clone_into(&mut st.addr);
+        st.connect_rtt = connect_rtt;
+    }
+
+    /// The end as the pages show it, carried through hub `hub` (fit's `TunnelView`, a
+    /// `tunnel.Snapshot` with its hub).
+    #[must_use]
+    pub fn view(&self, hub: &str) -> String {
+        let (addr, rtt, conn) = {
+            let st = lock(&self.st);
+            (st.addr.clone(), st.connect_rtt, st.conn.clone())
+        };
+        let (local, remote) = conn.map_or_else(
+            || (String::new(), String::new()),
+            |c| (c.local_addr().to_string(), c.peer_addr().to_string()),
+        );
+        let mut o = crate::msg::Obj::new()
+            .str("hub", hub)
+            .str("id", &self.id.to_string())
+            .str("node", &self.node)
+            .str("service", &self.service)
+            .str("addr", &addr)
+            .str("peer", &self.peer)
+            .str("local", &local)
+            .str("remote", &remote)
+            .str("created", &rfc3339_ms(self.created))
+            .num("in", self.bytes_in.load(Ordering::Relaxed))
+            .num("out", self.bytes_out.load(Ordering::Relaxed));
+        if rtt != 0.0 {
+            o = o.float("connect_rtt", rtt);
+        }
+        o.end()
+    }
+}
+
+/// Milliseconds since 1970 as RFC 3339, to the millisecond (fit's `time.Time` in JSON, to the
+/// nanosecond).
+#[must_use]
+pub fn rfc3339_ms(ms: i64) -> String {
+    let s = akit_roles::linktoken::rfc3339(ms.div_euclid(1000));
+    let frac = ms.rem_euclid(1000);
+    if frac == 0 {
+        return s;
+    }
+    let mut f = format!("{frac:03}");
+    while f.ends_with('0') {
+        f.pop();
+    }
+    match s.strip_suffix('Z') {
+        Some(head) => format!("{head}.{f}Z"),
+        None => s,
+    }
 }
 
 /// akio's handler of a tunnel's TCP connection.
@@ -379,10 +446,13 @@ impl Table {
                 unacked: 0,
                 ack_waiting: false,
                 closed: false,
+                addr: String::new(),
+                connect_rtt: 0.0,
             }),
             bytes_in: AtomicI64::new(0),
             bytes_out: AtomicI64::new(0),
             active: AtomicI64::new(now_ms()),
+            created: now_ms(),
         });
         m.insert(id, Arc::clone(&e));
         Ok(e)
@@ -474,6 +544,14 @@ impl Table {
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+
+    /// Every end, oldest first (by when each was opened, then by ID).
+    #[must_use]
+    pub fn list(&self) -> Vec<Arc<End>> {
+        let mut v: Vec<Arc<End>> = self.map().values().cloned().collect();
+        v.sort_by_key(|e| (e.created, e.id));
+        v
     }
 
     /// How many tunnels `link` carries.

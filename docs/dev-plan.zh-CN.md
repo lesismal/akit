@@ -220,7 +220,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I107 | LLM IV：proxy：agent 的 API、API key、路由、错误 | I106 | done |
 | I108 | LLM V：node 的管理：硬件、GPU、固定动作和作业 | I105 | done |
 | I109 | 角色的页面：其控制台和方法，写回的编辑；hub 的页面（拆出 I109b、I109c） | I103, I107, I91 | done |
-| I109b | 隧道 node 和 proxy 的页面：其状态、hub、服务、转发和 meta | I109 | todo |
+| I109b | 隧道 node 和 proxy 的页面：其状态、hub、服务、转发和 meta | I109 | done |
 | I109c | LLM 角色的页面：`/api/me`、其方法（`/api/rpc`）与流（`/api/stream`，Server-Sent Events） | I109, I106b, I108 | done |
 | I109d | LLM 角色的页面调用而角色尚缺的方法：`/mesh/*`（dial、undial、kick、listen、limits、tokens）、proxy 的方法（`/proxy/*`：其 API、key、模型、node、profile、统计）；身份的 `http_url` | I109c | done |
 
@@ -1534,7 +1534,7 @@ fit 的，使 akit 的角色能与 fit 的角色互连（决定 038）。
 - **完成标准**：移植后的 fit node 和 proxy 页面测试通过；页面上的修改被应用、进入历史，不能加载时被拒绝。
 - **涉及**：`akit-tunnel`。
 - **fit**：`tunnel/node/api.go`、`tunnel/proxy/api.go`、`tunnel/internal/common/hubs.go`。
-- **状态**：todo。
+- **状态**：done（2026-11-27）。见进度日志。同时，角色控制台的证书在其文件变化时重新读取（决定第 45 和 61 行）。
 
 ### I109c LLM 角色的页面
 

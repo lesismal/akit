@@ -717,6 +717,75 @@ fn tls_reload() {
     assert_eq!(served_leaf(f.addr), leaf_der(&c));
 }
 
+/// A role's module that answers nothing: for the role consoles' own behaviour.
+struct NoPages;
+
+impl akit_roles::pages::Module for NoPages {
+    fn id(&self) -> &'static str {
+        "tunnel.node"
+    }
+
+    fn serve(&self, ctx: &mut akio_http::Context, _user: &str, _path: &str) {
+        ctx.respond(akit_roles::pages::no_endpoint());
+    }
+}
+
+/// I109b: a role's console's certificate read again when its files change, as
+/// `admin.console`'s (I94), the console kept: a renewed one served to new connections, one that
+/// does not load leaving the running one, each named by its role.
+#[test]
+fn a_role_consoles_tls_reload() {
+    use akit_roles::pages::Consoles;
+    let d = dir("role-tls-reload");
+    let (c, k) = (d.join("c.pem"), d.join("k.pem"));
+    self_signed(&c, &k);
+    let doc = format!(
+        r#"{{"tunnel": {{"node": {{"console": {{"address": "127.0.0.1:0", "cert_file": "{}", "key_file": "{}", "users": [{{"username": "admin", "password_hash": "{}"}}]}}}}}}}}"#,
+        c.display(),
+        k.display(),
+        hash("pw")
+    );
+    let config = akit_config::from_json(&doc, None).unwrap();
+    let mut rc = akit_admin::console::RoleConsoles::new(&Options::default());
+    let module: akit_roles::pages::ModuleRef = Arc::new(NoPages);
+    rc.apply("tunnel.node", Some(&config), Some(module))
+        .unwrap();
+    let addr = rc.addr("tunnel.node").unwrap();
+    let first = served_leaf(addr);
+    assert_eq!(first, leaf_der(&c));
+    assert!(rc.reload_certs().is_empty());
+
+    let (nc, nk) = (d.join("new.pem"), d.join("new.key"));
+    self_signed(&nc, &nk);
+    let renewed = leaf_der(&nc);
+    std::fs::rename(&nc, &c).unwrap();
+    std::fs::rename(&nk, &k).unwrap();
+    let now = Instant::now();
+    assert!(rc.watch_certs(now).is_empty(), "the first look settles");
+    assert_eq!(
+        rc.watch_certs(now + Duration::from_secs(1)),
+        vec![akit_admin::CertReload::Reloaded("tunnel.node")]
+    );
+    assert_eq!(rc.addr("tunnel.node"), Some(addr), "the console was kept");
+    assert_eq!(served_leaf(addr), renewed);
+
+    // The certificate replaced and its key not yet: the renewed one stays.
+    self_signed(&nc, &nk);
+    std::fs::rename(&nc, &c).unwrap();
+    match rc.reload_certs().as_slice() {
+        [akit_admin::CertReload::Failed(e)] => {
+            assert!(e.starts_with("tunnel.node: "), "{e}");
+        }
+        r => panic!("{r:?}"),
+    }
+    assert_eq!(served_leaf(addr), renewed);
+    // Its key written: served, through the trait the roles' manager calls.
+    std::fs::rename(&nk, &k).unwrap();
+    Consoles::reload_certs(&mut rc);
+    assert_eq!(served_leaf(addr), leaf_der(&c));
+    rc.stop();
+}
+
 #[test]
 fn access_at_accept() {
     let list = akit_access::compile(
