@@ -10,28 +10,23 @@ fn rule(s: &str) -> PeerRule {
 
 #[test]
 fn peer_allowed() {
-    let s = Shared {
-        creds: RwLock::new(Arc::new(Creds {
-            realm: String::new(),
-            keys: HashMap::new(),
-            secret: None,
-        })),
-        rules: RwLock::new(Arc::new(Rules {
+    let s = Shared::new();
+    write(
+        &s.rules,
+        Arc::new(Rules {
             allowed: ["10.0.0.0/8", "10.0.0.5:8189", "192.168.1.1:5000"]
                 .map(rule)
                 .to_vec(),
             denied: ["8.8.8.8:53", "9.9.9.0/24"].map(rule).to_vec(),
-        })),
-        own: RwLock::new(Arc::new(vec![
+        }),
+    );
+    write(
+        &s.own,
+        Arc::new(vec![
             "10.0.0.5".parse().unwrap(),
             "203.0.113.5".parse().unwrap(),
-        ])),
-        certs: RwLock::new(None),
-        live: Mutex::new(Vec::new()),
-        next: AtomicU64::new(0),
-        retired: Mutex::new(TurnStats::default()),
-        restarts: AtomicU64::new(0),
-    };
+        ]),
+    );
     for (peer, want) in [
         ("10.0.0.5:0", true),        // a permission on the own address
         ("10.0.0.5:8080", false),    // not a listed port, whatever 10/8 says

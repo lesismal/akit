@@ -20,6 +20,27 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-27: I112, the TURN server on akio's hooks
+
+- On akio's A256-A258 (`d8d51f61`): relays bound in `port_min`..`port_max` (a range used up is
+  answered 508), nonces made with `nonce_secret`, a TCP or TLS client's messages bounded by
+  `max_stream_message`; `user_bandwidth` is fit's limiter (`akit_webrtc::limiter`: a token bucket
+  a username and direction holding a second's worth, 65,536 at most, refilled ones swept every
+  10 s) on akio-turn's `on_relay`; the events (`on_event`) counted and logged at debug; a reload's
+  quotas, caps and lifetimes set on the running server (`set_limits`), so they no longer start a
+  new one; a server a reload replaced drains (`drain`: new allocations refused with 508) until
+  `-shutdown-timeout`, then closes (it does not end early when emptied, as fit's does); the
+  servers' own addresses reached on their relayed ports (`holds_relay`) and on ports
+  `allowed_peers` lists. The warnings of I111's stopgaps go, `mptcp`'s stays.
+- `/metrics`: fit's TURN families, named `akit_turn_*`: allocations, pending allocations,
+  permissions, channels, draining servers, relayed bytes by direction, dropped (bandwidth),
+  unrelayed, allocated, refreshed, freed by reason, refused by code, auth failures, peers refused,
+  restarts (`akit_turn_relayed_datagrams_total` goes, as fit has bytes).
+- Tests: fit's `TestCaps` (508s counted, a cap raised in place), `TestBandwidth`, `TestOwnAddress`
+  (two clients relay to each other's relayed addresses), `TestReload` (quotas in place, 508 from
+  a draining server), a port range (its port taken, 508 when used up, free again after a delete),
+  `TestLimiter`; the fib interop (`tests/fib_turn.rs`) against akit and fit alike, on macOS.
+
 ### 2026-11-27: akio pinned at `d8d51f61`: A256-A261
 
 - akio: `d8d51f61` on akio's main, with A256-A258 in akio-turn (ADR-186: a relay port range, the

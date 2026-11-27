@@ -237,7 +237,7 @@ Tunnel and LLM track; I110–I114 are the WebRTC track, and I115–I119 are rese
 | **After 1.0: WebRTC** | | | |
 | I110 | WebRTC I: `webrtc` in the config: `webrtc.turn`, `webrtc.media`, `webrtc.proxy`; the handlers `whip`, `whep` and `webrtc_proxy` | I79, I100 | done |
 | I111 | WebRTC II: the TURN server on akio-turn, over UDP, TCP and TLS | I110 | done |
-| I112 | WebRTC III: the TURN server on akio's hooks: port range, bandwidth, events, limits in place, drain | I111, akio A256–A258 | todo |
+| I112 | WebRTC III: the TURN server on akio's hooks: port range, bandwidth, events, limits in place, drain | I111, akio A256–A258 | done |
 | I113 | WebRTC IV: WHIP and WHEP, an SFU on akio-webrtc's `RtcServer` | I110 | todo |
 | I114 | WebRTC V: WHIP and WHEP proxied: `webrtc_proxy` and `webrtc.proxy` | I113, I14 | todo |
 
@@ -1939,7 +1939,7 @@ Streaming and media auth track's: it is refused as not supported yet until that 
   events, caps and drain cases, `apply_test.go`).
 - **Touches**: `akit-webrtc`.
 - **fit**: `webrtc/turn`, `webrtc/turn/limiter.go`; I111.
-- **Status**: todo.
+- **Status**: done (2026-11-27). See the progress log.
 
 ### I113 WebRTC IV: WHIP and WHEP
 

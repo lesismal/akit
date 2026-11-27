@@ -2545,8 +2545,7 @@ llm {
 服务器（`webrtc.media`），所有 PeerConnection 共享一个 UDP 端口；以及 [`webrtc_proxy`](#webrtc_proxy) 处理器的中继
 （`webrtc.proxy`），akit 后面的媒体服务器的 peer 经由这一个 UDP 端口到达它们。akit 像 fit 一样读取并检查它们（I110，
 [决定 039](../decisions/039-webrtc.zh-CN.md)）；`akit run` 基于 akio-turn 运行 TURN 服务器（I111），在媒体服务器和中继的
-迭代运行它们之前拒绝它们（I113、I114）。akio-turn 缺少 fit 的钩子之处，akit 在服务器启动时说明，或拒绝该字段
-（`port_min` 和 `port_max`）。处理器的 `auth`（一个 `media_auth` 策略）尚不支持。
+迭代运行它们之前拒绝它们（I113、I114）。处理器的 `auth`（一个 `media_auth` 策略）尚不支持。
 
 ```fit
 webrtc {
@@ -2570,7 +2569,7 @@ webrtc {
 | --- | --- | --- | --- |
 | `media` | [对象](#cfg-webrtc-media) |  |  |
 | `proxy` | [对象](#cfg-webrtc-proxy) |  |  |
-| `turn` | [对象](#cfg-webrtc-turn) |  | **akit：**akio-turn 的服务器（I111）：`SOFTWARE` 为 `akit`；TCP allocation（RFC 6062）以 442 拒绝，同 fit。用户、secret、peer 规则、access 和证书就地修改；配额、上限或生存期的变化与地址的变化一样启动新服务器，直到 akio-turn 能就地修改它们（A258）；被重新加载替换的服务器在 `-shutdown-timeout` 内继续服务。`/metrics` 有 `akit_turn_allocations`、`akit_turn_draining_servers`、`akit_turn_relayed_datagrams_total`、`akit_turn_auth_failures_total` 和 `akit_turn_restarts_total`；fit 的字节数和事件等待 A257。 |
+| `turn` | [对象](#cfg-webrtc-turn) |  | **akit：**akio-turn 的服务器（I111、I112）：`SOFTWARE` 为 `akit`；TCP allocation（RFC 6062）以 442 拒绝，同 fit。用户、secret、peer 规则、access、证书、带宽、配额、上限和生存期就地修改；地址、realm、中继地址、端口范围、nonce secret、流的上限或 `mptcp` 的变化启动新服务器，被替换的服务器排空（新 allocation 以 508 拒绝）`-shutdown-timeout`。`/metrics` 有 fit 的 TURN 指标族，名为 `akit_turn_*`。 |
 <!-- END GENERATED -->
 
 ### `webrtc.turn`
@@ -2586,7 +2585,7 @@ webrtc {
 | `realm` | 字符串 | 必填 |  |
 | `relay_ip` | 字符串 | 必填 |  |
 | `access` | [对象](#cfg-webrtc-turn-access) |  |  |
-| `allowed_peers` | 字符串的列表 |  | **akit：**在 akio-turn 告知其中继地址之前（A257），`relay_ip` 和 `public_ip` 只能在随之列出的端口上访问，不能在服务器的中继端口上访问：同一服务器的两个客户端经由一方的中继地址和另一方的 server-reflexive 地址互相中继。 |
+| `allowed_peers` | 字符串的列表 |  |  |
 | `default_lifetime` | 时长 | `"10m"` |  |
 | `denied_peers` | 字符串的列表 |  |  |
 | `listen_tcp` | 字符串的列表 |  |  |
@@ -2596,17 +2595,17 @@ webrtc {
 | `max_channels` | 整数，≥ 0 | `64` |  |
 | `max_lifetime` | 时长 | `"1h"` |  |
 | `max_permissions` | 整数，≥ 0 | `64` |  |
-| `max_stream_message` | 整数，≥ 0 | `8192` | **akit：**尚不生效，服务器启动时会说明：akio-turn 的分帧接受最大 64 KiB 的消息（A256）。 |
+| `max_stream_message` | 整数，≥ 0 | `8192` |  |
 | `mptcp` | 布尔值 |  | **akit：**`listen_tcp` 和 `listen_tls` 使用普通 TCP，如同 fit 在不支持多路径 TCP 的内核上；服务器启动时会说明。 |
 | `nonce_lifetime` | 时长 | `"10m"` |  |
-| `nonce_secret` | 字符串 |  | **akit：**尚不生效，服务器启动时会说明：akio-turn 自行为每个服务器的 nonce 生成密钥（A256）。 |
-| `port_max` | 整数，0 到 65535 |  | **akit：**读取并检查；在 akio-turn 能在范围内绑定中继套接字之前（A256），`akit run` 拒绝范围。 |
-| `port_min` | 整数，0 到 65535 |  | **akit：**读取并检查；在 akio-turn 能在范围内绑定中继套接字之前（A256），`akit run` 拒绝范围。 |
+| `nonce_secret` | 字符串 |  |  |
+| `port_max` | 整数，0 到 65535 |  |  |
+| `port_min` | 整数，0 到 65535 |  |  |
 | `public_ip` | 字符串 |  |  |
 | `secret` | 字符串 |  |  |
 | `stream_idle_timeout` | 时长 | `"30s"` |  |
 | `tls` | [对象](#cfg-webrtc-turn-tls) |  |  |
-| `user_bandwidth` | 整数，≥ 0 | `2097152` | **akit：**尚不强制执行，服务器启动时会说明：akio-turn 没有按用户名中继字节的钩子（A257）。 |
+| `user_bandwidth` | 整数，≥ 0 | `2097152` |  |
 | `users` | [对象](#cfg-webrtc-turn-users)的列表 |  |  |
 <!-- END GENERATED -->
 

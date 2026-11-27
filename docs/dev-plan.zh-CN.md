@@ -227,7 +227,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | **1.0 之后：WebRTC** | | | |
 | I110 | WebRTC I：配置中的 `webrtc`：`webrtc.turn`、`webrtc.media`、`webrtc.proxy`；处理器 `whip`、`whep` 和 `webrtc_proxy` | I79, I100 | done |
 | I111 | WebRTC II：基于 akio-turn 的 TURN 服务器，经 UDP、TCP 和 TLS | I110 | done |
-| I112 | WebRTC III：基于 akio 钩子的 TURN 服务器：端口范围、带宽、事件、就地修改的限制、排空 | I111, akio A256–A258 | todo |
+| I112 | WebRTC III：基于 akio 钩子的 TURN 服务器：端口范围、带宽、事件、就地修改的限制、排空 | I111, akio A256–A258 | done |
 | I113 | WebRTC IV：WHIP 和 WHEP，基于 akio-webrtc `RtcServer` 的 SFU | I110 | todo |
 | I114 | WebRTC V：代理的 WHIP 和 WHEP：`webrtc_proxy` 和 `webrtc.proxy` | I113, I14 | todo |
 
@@ -1625,7 +1625,7 @@ ICE ufrag 路由。它们对外显示的是 akit 的名字（决定 037：`SOFTW
 - **完成标准**：移植后的 fit I111 的 `webrtc/turn` 测试通过（`turn_test.go` 的带宽、事件、上限和排空用例，`apply_test.go`）。
 - **涉及**：`akit-webrtc`。
 - **fit**：`webrtc/turn`、`webrtc/turn/limiter.go`；I111。
-- **状态**：todo。
+- **状态**：已完成（2026-11-27）。见进度日志。
 
 ### I113 WebRTC IV：WHIP 和 WHEP
 

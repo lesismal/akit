@@ -11,6 +11,7 @@
 //! Part of [akit](https://github.com/lesismal/akit); see `docs/dev-plan.md` (I110-I114).
 
 mod handler;
+mod limiter;
 pub mod turn;
 
 use akit_runtime::{HandlerParams, Info};

@@ -45,6 +45,13 @@ nonce 密钥、流的上限，以及对服务器自身地址的感知端口的�
      其分帧接受最大 64 KiB 的消息。
    - `mptcp`：普通 TCP，如同 fit 在不支持多路径 TCP 的内核上；给出警告。
 
+## 更新（I112）
+
+akio 满足了 A256-A258（akio `d8d51f61`，其 ADR-186），第 5 项的临时方案随之去掉：中继绑定在 `port_min`..`port_max` 内，
+nonce 使用 `nonce_secret`，`max_stream_message` 限制流的消息，`user_bandwidth` 是基于 `on_relay` 的 fit 限速器，事件经
+`on_event` 计数，配额、上限和生存期在运行中的服务器上设置，被替换的服务器排空（新 allocation 以 508 拒绝），服务器自身的
+地址可在其中继端口上访问（`holds_relay`）。只有 `mptcp` 仍为普通 TCP。
+
 ## 后果
 
 - 带 TURN 服务器的 fit 配置在 akit 上运行，除非它设置了端口范围，上述差异会记录在日志中；I112 在 akio 满足

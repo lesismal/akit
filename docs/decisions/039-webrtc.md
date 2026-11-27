@@ -55,6 +55,15 @@ addresses. akio-turn has none of them at `8a9601b9` (nor at `a8171fda`).
      random key of each server, and its framing takes messages up to 64 KiB.
    - `mptcp`: plain TCP, as fit on a kernel without Multipath TCP; a warning.
 
+## Update (I112)
+
+akio served A256-A258 (akio `d8d51f61`, its ADR-186), and the stopgaps of item 5 went: relays
+bind in `port_min`..`port_max`, nonces use `nonce_secret`, `max_stream_message` bounds a stream's
+messages, `user_bandwidth` is fit's limiter on `on_relay`, the events are counted on `on_event`,
+the quotas, caps and lifetimes are set on the running server, a replaced server drains (508 for
+new allocations), and the server's own addresses are reached on its relayed ports
+(`holds_relay`). `mptcp` alone stays plain TCP.
+
 ## Consequences
 
 - A config of fit's with a TURN server runs on akit unless it sets a port range, with the

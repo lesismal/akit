@@ -19,6 +19,22 @@
 
 ## 日志
 
+### 2026-11-27：I112，基于 akio 钩子的 TURN 服务器
+
+- 基于 akio 的 A256-A258（`d8d51f61`）：中继绑定在 `port_min`..`port_max` 内（范围用尽时回答 508），nonce 用
+  `nonce_secret` 生成，TCP 或 TLS 客户端的消息受 `max_stream_message` 限制；`user_bandwidth` 是 fit 的限速器
+  （`akit_webrtc::limiter`：每个用户名和方向一个容量为一秒的令牌桶，至多 65,536 个，已填满的每 10 秒清除）作用于 akio-turn
+  的 `on_relay`；事件（`on_event`）被计数并在 debug 级别记录；重新加载的配额、上限和生存期在运行中的服务器上设置
+  （`set_limits`），不再启动新服务器；被重新加载替换的服务器进入排空（`drain`：新 allocation 以 508 拒绝），直到
+  `-shutdown-timeout` 后关闭（不像 fit 那样在清空时提前结束）；服务器自身的地址可在其中继端口上（`holds_relay`）以及
+  `allowed_peers` 列出的端口上访问。I111 临时方案的警告去掉，`mptcp` 的保留。
+- `/metrics`：fit 的 TURN 指标族，名为 `akit_turn_*`：allocation、待定 allocation、permission、channel、排空中的服务器、按方向
+  的中继字节数、丢弃（带宽）、未中继、分配、刷新、按原因释放、按错误码拒绝、认证失败、被拒绝的 peer、重启
+  （`akit_turn_relayed_datagrams_total` 去掉，因 fit 计字节数）。
+- 测试：fit 的 `TestCaps`（508 被计数，就地提高上限）、`TestBandwidth`、`TestOwnAddress`（两个客户端经对方的中继地址互相
+  中继）、`TestReload`（就地修改配额，排空中的服务器回答 508）、端口范围（取其端口，用尽时 508，删除后再次可用）、
+  `TestLimiter`；fib 互通测试（`tests/fib_turn.rs`）对 akit 和 fit 结果相同，在 macOS 上运行。
+
 ### 2026-11-27：akio 锁定在 `d8d51f61`：A256-A261
 
 - akio：akio main 上的 `d8d51f61`，akio-turn 中有 A256-A258（ADR-186：中继端口范围、nonce secret、流消息上限；`on_relay`、

@@ -12,11 +12,12 @@
 //! `-shutdown-timeout` and then closes (a drain), or, when the two share an address, after the
 //! old one has closed.
 //!
-//! What akio-turn lacks of fit's hooks waits for akio (decision 039, A256-A258): a relay port
-//! range (the role refuses one), a username's bandwidth (not enforced), the events, limits
-//! changed in place (the quotas, caps and lifetimes start a new server here), a drain that
-//! refuses new allocations, the nonce secret, the stream message bound, and the server's own
-//! relayed addresses (its own addresses are reached on the ports `allowed_peers` names alone).
+//! On akio's A256-A258 (I112): the relayed sockets bound in `port_min`..`port_max`, nonces made
+//! with `nonce_secret`, a stream's messages bounded by `max_stream_message`; every relayed datagram
+//! counted against its username's `user_bandwidth` (fit's limiter, [`limiter`]); the server's
+//! events counted and logged; the quotas, caps and lifetimes set on the running server; a server a
+//! reload replaced drained (new allocations refused with 508); the server's own addresses reached
+//! on its relayed ports and on those `allowed_peers` lists.
 
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
@@ -26,7 +27,7 @@ use std::time::Duration;
 
 use akio::tls::{CertAlert, CertDone, CertResolver, ClientHelloInfo};
 use akio::{Listener, ListenerId};
-use akio_turn::{AuthFn, TurnConfig, TurnStats};
+use akio_turn::{AuthFn, FreeReason, TurnConfig, TurnEvent, TurnEventKind, TurnStats};
 use akit_config::webrtc::{PeerRule, TurnServer as Member};
 use akit_config::{Config, Tls, TlsVersion};
 use akit_observe::metrics::TextWriter;
@@ -155,20 +156,70 @@ struct Shared {
     /// What the servers no longer running counted, which the counters carry on from.
     retired: Mutex<TurnStats>,
     restarts: AtomicU64,
+    /// Each username's relayed bytes a second each way, `user_bandwidth`.
+    limiter: crate::limiter::Limiter,
+    /// `user_bandwidth`, read for every relayed datagram.
+    rate: AtomicU64,
+    /// Datagrams dropped past a username's bandwidth.
+    dropped: AtomicU64,
+    /// akio-turn's events, counted.
+    ev: Events,
+}
+
+/// fit's `refusedCodes`: the codes `akit_turn_refused_total` names; any other is `other`.
+const REFUSED_CODES: [u16; 9] = [400, 403, 420, 437, 441, 442, 443, 486, 508];
+
+/// akio-turn's events, counted for `/metrics`.
+#[derive(Default)]
+struct Events {
+    allocated: AtomicU64,
+    refreshed: AtomicU64,
+    auth_failed: AtomicU64,
+    /// By [`FreeReason`]: deleted, expired, closed.
+    freed: [AtomicU64; 3],
+    /// By [`REFUSED_CODES`], then other.
+    refused: [AtomicU64; 10],
 }
 
 impl Shared {
+    fn new() -> Shared {
+        Shared {
+            creds: RwLock::new(Arc::new(Creds {
+                realm: String::new(),
+                keys: HashMap::new(),
+                secret: None,
+            })),
+            rules: RwLock::new(Arc::new(Rules::default())),
+            own: RwLock::new(Arc::new(Vec::new())),
+            certs: RwLock::new(None),
+            live: Mutex::new(Vec::new()),
+            next: AtomicU64::new(0),
+            retired: Mutex::new(TurnStats::default()),
+            restarts: AtomicU64::new(0),
+            limiter: crate::limiter::Limiter::default(),
+            rate: AtomicU64::new(akit_config::webrtc::DEFAULT_TURN_USER_BANDWIDTH),
+            dropped: AtomicU64::new(0),
+            ev: Events::default(),
+        }
+    }
+
     /// fit's `peerAllowed`, port-aware: a permission is asked with port 0, a datagram and a
-    /// channel with the peer's port. The servers' own addresses are reached on the ports
-    /// `allowed_peers` names with them alone (akio-turn does not tell its relayed ports, A257);
-    /// other peers go by `allowed_peers` first, then `denied_peers` and akio-turn's denial of
-    /// internal addresses.
+    /// channel with the peer's port. The servers' own addresses, `relay_ip` and `public_ip`, are
+    /// reached on the ports of the servers' relayed addresses (so two clients relay to each
+    /// other) and on those `allowed_peers` names with them, never on the others, akit's own
+    /// listeners among them; other peers go by `allowed_peers` first, then `denied_peers` and
+    /// akio-turn's denial of internal addresses.
     fn peer_allowed(&self, peer: SocketAddr) -> bool {
         let ip = unmap(peer.ip());
         let port = peer.port();
         let r = read(&self.rules);
         if read(&self.own).contains(&ip) {
-            return port == 0 || r.allowed.iter().any(|a| a.port == port && a.contains(ip));
+            if port == 0 {
+                return true;
+            }
+            let at = SocketAddr::new(ip, port);
+            return lock(&self.live).iter().any(|(_, s)| s.holds_relay(at))
+                || r.allowed.iter().any(|a| a.port == port && a.contains(ip));
         }
         if r.allowed
             .iter()
@@ -210,16 +261,127 @@ impl Shared {
         lock(&self.live).retain(|(i, _)| *i != id);
         let mut r = lock(&self.retired);
         add(&mut r, &st);
-        // Allocations are a gauge: the retired server's are gone.
+        // The gauges: the retired server's are gone.
         r.allocations = 0;
+        r.pending = 0;
+        r.permissions = 0;
+        r.channels = 0;
     }
 }
 
+/// Adds `st`'s counters to `into`'s, saturating (akio-turn's `AddAssign` wraps on overflow).
 fn add(into: &mut TurnStats, st: &TurnStats) {
     into.allocations = into.allocations.saturating_add(st.allocations);
-    into.to_peer = into.to_peer.saturating_add(st.to_peer);
-    into.to_client = into.to_client.saturating_add(st.to_client);
-    into.auth_failures = into.auth_failures.saturating_add(st.auth_failures);
+    into.pending = into.pending.saturating_add(st.pending);
+    into.permissions = into.permissions.saturating_add(st.permissions);
+    into.channels = into.channels.saturating_add(st.channels);
+    into.dropped = into.dropped.saturating_add(st.dropped);
+    into.to_peer_bytes = into.to_peer_bytes.saturating_add(st.to_peer_bytes);
+    into.to_client_bytes = into.to_client_bytes.saturating_add(st.to_client_bytes);
+}
+
+impl Shared {
+    /// `on_relay`: counts a datagram against its username's bandwidth, dropping it past it.
+    fn relay(&self, user: &str, to_peer: bool, n: usize) -> bool {
+        let rate = self.rate.load(Ordering::Relaxed);
+        if self
+            .limiter
+            .allow(user, to_peer, n, rate, std::time::Instant::now())
+        {
+            true
+        } else {
+            self.dropped.fetch_add(1, Ordering::Relaxed);
+            false
+        }
+    }
+
+    /// `on_event`: counts the event, and logs it at debug. It runs after the answer, with no
+    /// lock of akio-turn's held; a line is written only when the `webrtc` logger is at debug.
+    fn event(&self, e: &TurnEvent) {
+        let m = &self.ev;
+        let relay = e.relay.map(|r| r.to_string()).unwrap_or_default();
+        match &e.kind {
+            TurnEventKind::Allocated => {
+                m.allocated.fetch_add(1, Ordering::Relaxed);
+                akit_observe::debug!(
+                    Webrtc,
+                    "webrtc.turn: allocated {relay} for {:?}, from {}, for {:?}",
+                    e.user,
+                    e.client,
+                    e.lifetime
+                );
+            }
+            TurnEventKind::Refreshed => {
+                m.refreshed.fetch_add(1, Ordering::Relaxed);
+                akit_observe::debug!(
+                    Webrtc,
+                    "webrtc.turn: refreshed {relay} for {:?}, for {:?}",
+                    e.user,
+                    e.lifetime
+                );
+            }
+            TurnEventKind::Freed {
+                reason,
+                to_peer,
+                to_client,
+            } => {
+                let i = match reason {
+                    FreeReason::Deleted => 0,
+                    FreeReason::Expired => 1,
+                    _ => 2,
+                };
+                if let Some(c) = m.freed.get(i) {
+                    c.fetch_add(1, Ordering::Relaxed);
+                }
+                akit_observe::debug!(
+                    Webrtc,
+                    "webrtc.turn: freed {relay} of {:?}, {reason}, having relayed {} bytes to \
+                     peers and {} to the client",
+                    e.user,
+                    to_peer.bytes,
+                    to_client.bytes
+                );
+            }
+            TurnEventKind::Refused { method, code } => {
+                let i = REFUSED_CODES
+                    .iter()
+                    .position(|c| c == code)
+                    .unwrap_or(REFUSED_CODES.len());
+                if let Some(c) = m.refused.get(i) {
+                    c.fetch_add(1, Ordering::Relaxed);
+                }
+                akit_observe::debug!(
+                    Webrtc,
+                    "webrtc.turn: refused a {method:?} of {:?} from {} with {code}",
+                    e.user,
+                    e.client
+                );
+            }
+            TurnEventKind::AuthFailed { code, .. } => {
+                m.auth_failed.fetch_add(1, Ordering::Relaxed);
+                akit_observe::debug!(
+                    Webrtc,
+                    "webrtc.turn: credentials of {:?} from {} failed with {code}",
+                    e.user,
+                    e.client
+                );
+            }
+            _ => {}
+        }
+    }
+}
+
+/// The lifetimes, quotas and caps of `m`, which a reload sets on the running server.
+fn limits(server: &akio_turn::TurnServer, m: &Member) -> akio_turn::TurnLimits {
+    let mut l = server.limits();
+    l.default_lifetime = m.lifetime();
+    l.max_lifetime = m.longest_lifetime().max(m.lifetime());
+    l.nonce_lifetime = m.nonce_life();
+    l.max_allocations = m.max_allocs();
+    l.max_allocations_per_user = m.max_allocs_per_user();
+    l.max_permissions = m.max_perms();
+    l.max_channels = m.max_chans();
+    l
 }
 
 /// The certificates of `listen_tls`, chosen per handshake from those the last apply loaded.
@@ -301,11 +463,11 @@ impl Running {
 }
 
 /// What identifies an akio-turn server's settings: two members with the same key are served by
-/// one server, their other settings changed in place. The quotas, caps and lifetimes are in it
-/// until akio-turn changes them in place (A258).
+/// one server, their other settings changed in place (the credentials, peer rules, access,
+/// certificates, bandwidth, quotas, caps and lifetimes).
 fn static_key(m: &Member) -> String {
     format!(
-        "{:?} {:?} {:?} {:?} {:?} {:?} {}-{} {:?} {} {:?} {} | {} {} {} {} {:?} {:?} {:?}",
+        "{:?} {:?} {:?} {:?} {:?} {:?} {}-{} {:?} {} {:?} {}",
         m.listen,
         m.listen_tcp,
         m.listen_tls,
@@ -318,13 +480,6 @@ fn static_key(m: &Member) -> String {
         m.stream_message(),
         m.stream_idle(),
         m.mptcp,
-        m.max_allocs(),
-        m.max_allocs_per_user(),
-        m.max_perms(),
-        m.max_chans(),
-        m.lifetime(),
-        m.longest_lifetime(),
-        m.nonce_life(),
     )
 }
 
@@ -349,20 +504,7 @@ struct Turn {
 fn new(host: Host) -> Result<Box<dyn Role>, String> {
     Ok(Box::new(Turn {
         host,
-        shared: Arc::new(Shared {
-            creds: RwLock::new(Arc::new(Creds {
-                realm: String::new(),
-                keys: HashMap::new(),
-                secret: None,
-            })),
-            rules: RwLock::new(Arc::new(Rules::default())),
-            own: RwLock::new(Arc::new(Vec::new())),
-            certs: RwLock::new(None),
-            live: Mutex::new(Vec::new()),
-            next: AtomicU64::new(0),
-            retired: Mutex::new(TurnStats::default()),
-            restarts: AtomicU64::new(0),
-        }),
+        shared: Arc::new(Shared::new()),
         cur: None,
         draining: Arc::new(Mutex::new(Vec::new())),
         access: None,
@@ -402,6 +544,23 @@ impl Turn {
         }
         let shared = Arc::downgrade(&self.shared);
         tc = tc.peer_allowed(move |peer| shared.upgrade().is_some_and(|s| s.peer_allowed(peer)));
+        if m.port_max != 0 {
+            tc = tc.relay_ports(m.port_min, m.port_max);
+        }
+        if !m.nonce_secret.is_empty() {
+            tc = tc.nonce_secret(m.nonce_secret.as_bytes());
+        }
+        tc = tc.max_stream_message(m.stream_message());
+        let shared = Arc::downgrade(&self.shared);
+        tc = tc.on_relay(move |user, to_peer, n| {
+            shared.upgrade().is_none_or(|s| s.relay(user, to_peer, n))
+        });
+        let shared = Arc::downgrade(&self.shared);
+        tc = tc.on_event(move |e| {
+            if let Some(s) = shared.upgrade() {
+                s.event(e);
+            }
+        });
         tc.software = Some(SOFTWARE.to_owned());
         tc.nonce_lifetime = m.nonce_life();
         tc.max_allocations = m.max_allocs();
@@ -500,7 +659,9 @@ impl Turn {
         let drain = self.host.drain;
         let addrs = r.describe();
         let id = r.id;
-        let allocations = r.server.stats().allocations;
+        let allocations = r.server.allocations();
+        // New allocations refused with 508 while those held run out.
+        r.server.drain();
         lock(&self.draining).push(r);
         let draining = Arc::downgrade(&self.draining);
         let shared = Arc::downgrade(&self.shared);
@@ -565,14 +726,6 @@ impl Role for Turn {
         let Some(m) = config.webrtc.as_ref().and_then(|w| w.turn.clone()) else {
             return Ok(());
         };
-        if m.port_max != 0 {
-            return Err(format!(
-                "port_min and port_max ({}-{}) are not supported yet: akio-turn binds relayed \
-                 sockets on any free port (akio API request A256), and akit does not tell \
-                 clients relayed addresses a firewall that opens the range would block",
-                m.port_min, m.port_max
-            ));
-        }
         let access = policy(m.access.as_ref(), config.access.as_ref())?;
         let certs = if m.listen_tls.is_empty() {
             None
@@ -587,8 +740,10 @@ impl Role for Turn {
         });
         let creds = Arc::new(Creds::of(&m));
         let key = static_key(&m);
+        self.shared.rate.store(m.bandwidth(), Ordering::Relaxed);
         if let Some(cur) = &self.cur {
             if cur.key == key {
+                cur.server.set_limits(limits(&cur.server, &m));
                 write(&self.shared.creds, creds);
                 write(&self.shared.rules, rules);
                 write(&self.shared.certs, certs);
@@ -648,7 +803,7 @@ impl Role for Turn {
                             Webrtc,
                             "webrtc.turn: listens on {}, relaying from {}; the server started \
                              again on the same addresses for a change of its realm, relay \
-                             addresses, limits, nonce secret, Multipath TCP or stream bounds, \
+                             addresses, port range, nonce secret, Multipath TCP or stream bounds, \
                              ending its allocations",
                             next.describe(),
                             relay_from(&m)
@@ -731,87 +886,151 @@ impl Role for Turn {
     }
 }
 
-/// What a member sets that akio-turn cannot do yet, said when its server starts.
+/// What a member sets that akit does not do, said when its server starts.
 fn stopgap_warnings(m: &Member) -> Vec<String> {
-    let mut w = vec![format!(
-        "user_bandwidth ({} bytes a second) is not enforced yet: akio-turn has no hook for a \
-         username's relayed bytes (akio API request A257)",
-        m.bandwidth()
-    )];
-    if !m.nonce_secret.is_empty() {
-        w.push(
-            "nonce_secret is not applied yet: akio-turn makes each server's nonces with a key \
-             of its own (akio API request A256)"
-                .to_owned(),
-        );
-    }
-    if m.max_stream_message != 0 {
-        w.push(format!(
-            "max_stream_message ({}) is not applied yet: akio-turn's framing takes messages up \
-             to 64 KiB (akio API request A256)",
-            m.max_stream_message
-        ));
-    }
     if m.mptcp {
-        w.push("mptcp: listen_tcp and listen_tls take plain TCP".to_owned());
+        vec!["mptcp: listen_tcp and listen_tls take plain TCP".to_owned()]
+    } else {
+        Vec::new()
     }
-    w
 }
 
-#[allow(clippy::cast_precision_loss)]
 fn write_metrics(s: &Shared, out: &mut Vec<u8>) {
     let (st, servers) = s.stats();
+    let n = |v: usize| u64::try_from(v).unwrap_or(u64::MAX);
+    let load = |a: &AtomicU64| a.load(Ordering::Relaxed);
     let mut w = TextWriter::new(std::mem::take(out));
+    for (name, help, v) in [
+        (
+            "akit_turn_allocations",
+            "Allocations the TURN server holds, those of a server draining and expired ones the \
+             next sweep frees included.",
+            st.allocations,
+        ),
+        (
+            "akit_turn_pending_allocations",
+            "Allocations waiting for their relayed address to be bound.",
+            st.pending,
+        ),
+        (
+            "akit_turn_permissions",
+            "Permissions the allocations hold.",
+            st.permissions,
+        ),
+        (
+            "akit_turn_channels",
+            "Channels the allocations have bound.",
+            st.channels,
+        ),
+        (
+            "akit_turn_draining_servers",
+            "TURN servers a reload replaced that drain their allocations.",
+            servers.saturating_sub(1),
+        ),
+    ] {
+        w.family(name, "gauge", help);
+        w.sample_u64(name, n(v), &[]);
+    }
     w.family(
-        "akit_turn_allocations",
-        "gauge",
-        "Allocations the TURN server holds, those of a server draining included.",
-    );
-    w.sample_u64("akit_turn_allocations", st.allocations as u64, &[]);
-    w.family(
-        "akit_turn_draining_servers",
-        "gauge",
-        "TURN servers a reload replaced that drain their allocations.",
-    );
-    w.sample_u64(
-        "akit_turn_draining_servers",
-        servers.saturating_sub(1) as u64,
-        &[],
-    );
-    w.family(
-        "akit_turn_relayed_datagrams_total",
+        "akit_turn_relayed_bytes_total",
         "counter",
-        "Datagrams the TURN server relayed, by direction: to peers, from clients, or from peers, \
-         to clients.",
+        "Bytes the TURN server relayed, by direction: to peers, from clients, or from peers, to \
+         clients.",
     );
     w.sample_u64(
-        "akit_turn_relayed_datagrams_total",
-        st.to_peer,
+        "akit_turn_relayed_bytes_total",
+        st.to_peer_bytes,
         &[("direction", "to_peer")],
     );
     w.sample_u64(
-        "akit_turn_relayed_datagrams_total",
-        st.to_client,
+        "akit_turn_relayed_bytes_total",
+        st.to_client_bytes,
         &[("direction", "from_peer")],
     );
     w.family(
-        "akit_turn_auth_failures_total",
+        "akit_turn_dropped_total",
         "counter",
-        "Requests refused for missing or bad credentials (401, 438), the first challenge of each \
-         client included.",
-    );
-    w.sample_u64("akit_turn_auth_failures_total", st.auth_failures, &[]);
-    w.family(
-        "akit_turn_restarts_total",
-        "counter",
-        "Times a config's change of the TURN server's addresses, realm, relay addresses, limits, \
-         nonce secret, Multipath TCP or stream bounds started a new server.",
+        "Datagrams the TURN server dropped, by reason: a username past its user_bandwidth.",
     );
     w.sample_u64(
-        "akit_turn_restarts_total",
-        s.restarts.load(Ordering::Relaxed),
-        &[],
+        "akit_turn_dropped_total",
+        load(&s.dropped),
+        &[("reason", "bandwidth")],
     );
+    let counters = [
+        (
+            "akit_turn_unrelayed_total",
+            "Datagrams the TURN server did nothing with: malformed, without an allocation, a \
+             permission or a channel, refused by the peer rules, or past user_bandwidth.",
+            st.dropped,
+        ),
+        (
+            "akit_turn_allocated_total",
+            "Allocations made.",
+            load(&s.ev.allocated),
+        ),
+        (
+            "akit_turn_refreshed_total",
+            "Allocations refreshed.",
+            load(&s.ev.refreshed),
+        ),
+    ];
+    for (name, help, v) in counters {
+        w.family(name, "counter", help);
+        w.sample_u64(name, v, &[]);
+    }
+    w.family(
+        "akit_turn_freed_total",
+        "counter",
+        "Allocations ended, by reason: a client's delete, its lifetime run out, or its server or \
+         TCP or TLS connection closed.",
+    );
+    for (i, why) in ["deleted", "expired", "closed"].iter().enumerate() {
+        let v = s.ev.freed.get(i).map_or(0, load);
+        w.sample_u64("akit_turn_freed_total", v, &[("reason", why)]);
+    }
+    w.family(
+        "akit_turn_refused_total",
+        "counter",
+        "Requests refused after their credentials passed, by error code: 403 a peer the rules \
+         refuse, 486 max_allocations_per_user, 508 max_allocations, max_permissions, \
+         max_channels, the relay port range or a drain, and the rest.",
+    );
+    for (i, c) in s.ev.refused.iter().enumerate() {
+        let code = REFUSED_CODES
+            .get(i)
+            .map_or_else(|| "other".to_owned(), ToString::to_string);
+        w.sample_u64("akit_turn_refused_total", load(c), &[("code", &code)]);
+    }
+    let forbidden = REFUSED_CODES
+        .iter()
+        .position(|c| *c == 403)
+        .and_then(|i| s.ev.refused.get(i))
+        .map_or(0, load);
+    for (name, help, v) in [
+        (
+            "akit_turn_auth_failures_total",
+            "Requests whose credentials failed: a wrong user, password or realm, or incomplete \
+             ones.",
+            load(&s.ev.auth_failed),
+        ),
+        (
+            "akit_turn_peers_refused_total",
+            "Permissions and channels refused for a peer the rules refuse: denied_peers, the \
+             default denial of internal addresses, or akit's own address on a port that is not a \
+             relayed one.",
+            forbidden,
+        ),
+        (
+            "akit_turn_restarts_total",
+            "Times a config's change of the TURN server's addresses, realm, relay addresses, \
+             port range, nonce secret, Multipath TCP or stream bounds started a new server.",
+            load(&s.restarts),
+        ),
+    ] {
+        w.family(name, "counter", help);
+        w.sample_u64(name, v, &[]);
+    }
     *out = w.out;
 }
 

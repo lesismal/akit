@@ -460,8 +460,11 @@ fn relay() {
     for want in [
         "akit_turn_restarts_total 0",
         "akit_turn_draining_servers 0",
-        r#"akit_turn_relayed_datagrams_total{direction="to_peer"} 12"#,
-        r#"akit_turn_relayed_datagrams_total{direction="from_peer"} 12"#,
+        "akit_turn_allocated_total 4",
+        r#"akit_turn_freed_total{reason="deleted"} 4"#,
+        "akit_turn_permissions 0",
+        r#"akit_turn_relayed_bytes_total{direction="to_peer"} 4824"#,
+        r#"akit_turn_relayed_bytes_total{direction="from_peer"} 4824"#,
     ] {
         assert!(m.contains(want), "metrics lack {want}:\n{m}");
     }
@@ -521,7 +524,7 @@ fn quotas() {
 /// are refused with 508.
 #[test]
 fn caps() {
-    let env = Env::start(&member(r#", "max_permissions": 2, "max_channels": 1"#));
+    let mut env = Env::start(&member(r#", "max_permissions": 2, "max_channels": 1"#));
     let mut c = Client::udp(env.udp(), "alice", "pw");
     c.allocate().unwrap();
     assert_eq!(c.permit("203.0.113.1:9".parse().unwrap()), None);
@@ -529,6 +532,65 @@ fn caps() {
     assert_eq!(c.permit("203.0.113.3:9".parse().unwrap()), Some(508));
     assert_eq!(c.bind(0x4000, "203.0.113.1:9".parse().unwrap()), None);
     assert_eq!(c.bind(0x4001, "203.0.113.2:9".parse().unwrap()), Some(508));
+    waits("the refusals counted", || {
+        env.metrics()
+            .contains(r#"akit_turn_refused_total{code="508"} 2"#)
+    });
+    // A cap raised in place lets the next request through, the allocation kept (A258).
+    env.apply(&member(r#", "max_permissions": 3, "max_channels": 1"#));
+    assert_eq!(c.permit("203.0.113.3:9".parse().unwrap()), None);
+    let m = env.metrics();
+    assert!(m.contains("akit_turn_restarts_total 0"), "{m}");
+    assert!(m.contains("akit_turn_permissions 3"), "{m}");
+    assert!(m.contains("akit_turn_channels 1"), "{m}");
+}
+
+/// fit's `TestBandwidth`: past a second's burst of `user_bandwidth`, a username's datagrams are
+/// dropped and counted (A257's `on_relay`).
+#[test]
+fn bandwidth() {
+    let p = Peer::new();
+    let env = Env::start(&member(&format!(
+        r#", "user_bandwidth": 4000, "allowed_peers": ["{}"]"#,
+        p.addr()
+    )));
+    let mut c = Client::udp(env.udp(), "alice", "pw");
+    let relayed = c.allocate().unwrap();
+    assert_eq!(c.permit(p.addr()), None);
+    assert_eq!(c.bind(0x4000, p.addr()), None);
+    exchange(&mut c, &p, relayed, b"warm", true);
+    for _ in 0..40 {
+        c.send_channel(0x4000, &[b'y'; 1000]);
+    }
+    p.0.set_read_timeout(Some(Duration::from_millis(300)))
+        .unwrap();
+    let mut got = 0;
+    while let Some((d, _)) = p.recv() {
+        got += d.len();
+    }
+    assert!(got > 0 && got <= 8000, "the peer got {got} bytes");
+    let m = env.metrics();
+    assert!(
+        !m.contains(r#"akit_turn_dropped_total{reason="bandwidth"} 0"#),
+        "{m}"
+    );
+}
+
+/// A relay port range (A256): relayed addresses take its ports alone, and a range used up is
+/// answered 508.
+#[test]
+fn port_range() {
+    let port = free_port();
+    let env = Env::start(&member(&format!(
+        r#", "port_min": {port}, "port_max": {port}"#
+    )));
+    let mut c = Client::udp(env.udp(), "alice", "pw");
+    assert_eq!(c.allocate().unwrap().port(), port);
+    assert_eq!(Client::udp(env.udp(), "alice", "pw").allocate(), Err(508));
+    c.delete();
+    waits("the port free again", || {
+        Client::udp(env.udp(), "alice", "pw").allocate().is_ok()
+    });
 }
 
 /// fit's `TestPrivatePeers`: internal addresses are refused unless `allowed_peers` lists them;
@@ -552,9 +614,10 @@ fn private_peers() {
     assert_eq!(c.bind(0x4001, "8.8.8.8:54".parse().unwrap()), None);
 }
 
-/// fit's `TestOwnAddress`, with akio-turn's stopgap (decision 039): `relay_ip` is relayed to on
-/// the ports `allowed_peers` lists with it alone, never on its other ports, where akit's own
-/// listeners are, whatever the prefixes say.
+/// fit's `TestOwnAddress`: `relay_ip`, though `allowed_peers` covers it, is relayed to on the
+/// server's relayed ports alone (A257's `holds_relay`), which two of its clients use to reach each
+/// other, and on a port `allowed_peers` lists with it; never on its other ports, where akit's own
+/// listeners are.
 #[test]
 fn own_address() {
     let p = Peer::new();
@@ -569,7 +632,7 @@ fn own_address() {
         c.send_indication(p.addr(), b"in");
         assert!(
             p.recv().is_none(),
-            "a port of relay_ip that is not listed got a datagram"
+            "a port of relay_ip that is not a relay got a datagram"
         );
     }
     assert_eq!(c.bind(0x4000, p.addr()), Some(403));
@@ -579,12 +642,20 @@ fn own_address() {
         p.addr()
     )));
     exchange(&mut c, &p, relayed, b"listed", false);
+
+    // Two clients relay to each other's relayed addresses.
+    let mut v = Client::udp(env.udp(), "alice", "pw");
+    let v_relayed = v.allocate().unwrap();
+    assert_eq!(v.permit(relayed), None);
+    assert_eq!(c.permit(v_relayed), None);
+    c.send_indication(v_relayed, b"hello v");
+    assert_eq!(v.relayed().expect("v got nothing"), b"hello v");
 }
 
-/// fit's `TestReload`: users, the secret, the peers and the access change in place, the
-/// allocations kept; a change of the server's settings starts a new one (A258: the quotas among
-/// them), which on the same address ends the old one's allocations, and on another address lets
-/// the old one drain.
+/// fit's `TestReload`: users, the secret, the peers, the access and the quotas change in place,
+/// the allocations kept (A258); a change of the server's settings starts a new one, which on the
+/// same address ends the old one's allocations, and on another address lets the old one drain,
+/// refusing new allocations with 508.
 #[test]
 fn reload() {
     let p = Peer::new();
@@ -598,15 +669,16 @@ fn reload() {
     assert_eq!(c.permit(p.addr()), None);
     exchange(&mut c, &p, relayed, b"before", false);
 
-    // The users and the secret change in place: the allocation and its nonce go on.
+    // The users, the secret and the quotas change in place: the allocation and its nonce go on.
     let users = format!(
         r#"{{"listen": ["127.0.0.1:{port}"], "realm": "{REALM}", "users": [{{"name": "alice", "password": "pw"}}, {{"name": "dave", "password": "pw2"}}],
-            "relay_ip": "127.0.0.1"{allowed}}}"#
+            "relay_ip": "127.0.0.1", "max_allocations_per_user": 1, "default_lifetime": "5m"{allowed}}}"#
     );
     env.apply(&users);
     assert!(env.metrics().contains("akit_turn_restarts_total 0"));
     exchange(&mut c, &p, relayed, b"after", false);
     assert!(Client::udp(addr, "dave", "pw2").allocate().is_ok());
+    assert_eq!(Client::udp(addr, "dave", "pw2").allocate(), Err(486));
     let (u, pw) =
         akio_turn::ephemeral_credentials(SECRET.as_bytes(), "carol", Duration::from_secs(60));
     assert_eq!(Client::udp(addr, &u, &pw).allocate(), Err(401));
@@ -631,6 +703,7 @@ fn reload() {
         env.metrics()
     );
     exchange(&mut c, &p, relayed, b"draining", false);
+    assert_eq!(Client::udp(addr, "alice", "pw").allocate(), Err(508));
     let new = env
         .addrs()
         .into_iter()
@@ -642,16 +715,13 @@ fn reload() {
 }
 
 /// A reload that cannot start the new server keeps the one running (fit's `TestRestartFallsBack`
-/// and `TestReloadRefused`): a port range, which akit refuses until akio A256, and an address in
-/// use.
+/// and `TestReloadRefused`): an address in use.
 #[test]
 fn reload_refused() {
     let mut env = Env::start(&member(""));
     let addr = env.udp();
     let mut c = Client::udp(addr, "alice", "pw");
     c.allocate().unwrap();
-    let errs = env.try_apply(&member(r#", "port_min": 49152, "port_max": 49999"#));
-    assert!(errs.iter().any(|e| e.contains("A256")), "{errs:?}");
     let busy = UdpSocket::bind("127.0.0.1:0").unwrap();
     let errs = env.try_apply(&format!(
         r#"{{"listen": ["{}"], "realm": "{REALM}", "secret": "s", "relay_ip": "127.0.0.1"}}"#,
