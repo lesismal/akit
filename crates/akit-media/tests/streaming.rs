@@ -16,7 +16,7 @@
     clippy::arithmetic_side_effects
 )]
 
-use std::io::Read;
+use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -450,6 +450,16 @@ fn rtmp_max_conns() {
             .collect()
     };
     let kept = open(2);
+    // Each kept one answered (S0 to its C0 and C1) before the third opens: the server took both
+    // first, whichever I/O threads accept them.
+    for mut s in &kept {
+        let mut c = vec![0u8; 1537];
+        c[0] = 3;
+        s.write_all(&c).unwrap();
+        let mut s0 = [0u8; 1];
+        s.read_exact(&mut s0).unwrap();
+        assert_eq!(s0[0], 3);
+    }
     let mut third = open(1).pop().unwrap();
     let mut b = [0u8; 1];
     // Closed by the server: EOF or a reset, not a timeout.
