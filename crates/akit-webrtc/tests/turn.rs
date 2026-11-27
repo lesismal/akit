@@ -231,7 +231,7 @@ struct Client {
 impl Client {
     fn udp(server: SocketAddr, user: &str, pass: &str) -> Client {
         let s = UdpSocket::bind("127.0.0.1:0").unwrap();
-        s.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+        s.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
         Client::over(Wire::Udp(s, server), user, pass)
     }
 
@@ -296,13 +296,26 @@ impl Client {
                     .attr(attr::NONCE, self.nonce.as_bytes())
                     .integrity(&self.key);
             }
-            self.wire.send(&b.fingerprint().build());
-            let got = loop {
-                let got = self.wire.next()?;
-                if Message::parse(&got).unwrap().transaction_id() == tid {
-                    break got;
-                }
+            let req = b.fingerprint().build();
+            // Over UDP a request is sent again when no answer came, as RFC 8489 section 6.2.1
+            // has clients do: a datagram may be lost, as while a server starts again on its
+            // address (akio closes a UDP listener's sockets on its threads' next turn).
+            let sends = if matches!(self.wire, Wire::Udp(..)) {
+                3
+            } else {
+                1
             };
+            let mut got = None;
+            'send: for _ in 0..sends {
+                self.wire.send(&req);
+                while let Some(m) = self.wire.next() {
+                    if Message::parse(&m).unwrap().transaction_id() == tid {
+                        got = Some(m);
+                        break 'send;
+                    }
+                }
+            }
+            let got = got?;
             let resp = Message::parse(&got).unwrap();
             match resp.error_code() {
                 Some((401, _)) if self.nonce.is_empty() => {}
