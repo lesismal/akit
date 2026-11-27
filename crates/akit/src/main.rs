@@ -461,6 +461,9 @@ impl Runner<'_> {
         let mut warnings = self.warnings(config, json, zone, true);
         // The roles after the listeners, as fit's: a role's failure is a warning (I100).
         warnings.extend(self.roles.apply(config));
+        // The files the roles read (their listeners' certificates, I102d), watched with the
+        // listeners' own.
+        self.cert_files.extend(self.roles.files());
         Ok(applied(&r, warnings))
     }
 
@@ -1340,7 +1343,7 @@ fn run(args: &[String]) -> ExitCode {
     let (start_limits, start_engine) = (config.limits, config.engine);
     // The roles take the config once the listeners serve it (I100).
     let start_config = config;
-    let cert_files = graph.cert_files().clone();
+    let mut cert_files = graph.cert_files().clone();
     let acme_names = graph.acme_names().to_vec();
     let configs = Configs::new(
         json,
@@ -1441,6 +1444,9 @@ fn run(args: &[String]) -> ExitCode {
     for w in roles.apply(&start_config) {
         eprintln!("akit run: {w}");
     }
+    // The files the roles read (their listeners' certificates, I102d), watched with the
+    // listeners' own.
+    cert_files.extend(roles.files());
     for id in roles.running() {
         println!("akit: running {id}");
     }

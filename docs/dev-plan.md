@@ -219,7 +219,7 @@ renamed fit's external names; I98–I109, I102b, I102c, I102d and I103b are the 
 | I102 | Tunnel II: TLS links; pins; the hub's certificate kept | I101 | done |
 | I102b | Tunnel II b: QUIC links | I102 | done |
 | I102c | Tunnel II c: WebSocket links | I102b | done |
-| I102d | Tunnel II d: the hub's QUIC handshake bounds; a listener's certificate read again when its files change | I102c | todo |
+| I102d | Tunnel II d: the hub's QUIC handshake bounds; a listener's certificate read again when its files change | I102c | done |
 | I103 | Tunnel III: the hub's calls and status, token expiry | I102c | done |
 | I103b | Tunnel III b: the console socket and web proxies | I103 | done |
 | I104 | LLM I: the mesh: frames, sessions, streams with credit, the handshake, hello, pools | I99, I100 | done |
@@ -1675,7 +1675,10 @@ link with fit's (decision 038).
   without a restart.
 - **Touches**: `akit-tunnel`; akio-quic.
 - **fit**: `tunnel/internal/transport/quic`, `tunnel/hub`; I160.
-- **Status**: todo.
+- **Status**: done (2026-11-27). See the progress log. The hub's QUIC listeners on akio's A245
+  (`handshake_timeout`, `max_handshakes`); the tunnel hub's listeners' certificates read again
+  (`tls`, `wss`, `quic`, and the hub's own kept file). The LLM mesh listener's certificate read
+  again is left to the LLM track, whose roles another change was editing (decision row 44).
 
 ### I103 Tunnel III: the hub's calls and status, token expiry
 

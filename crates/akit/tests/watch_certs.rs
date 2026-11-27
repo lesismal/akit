@@ -266,3 +266,80 @@ fn admin_certificate_renewed_without_a_restart() {
     drop(akit);
     std::fs::remove_dir_all(&d).unwrap();
 }
+
+/// The certificate a TLS handshake with a tunnel hub's `tls` listener at `addr` gets.
+fn hub_leaf(addr: SocketAddr, roots: &Path) -> Vec<u8> {
+    let tcp = std::net::TcpStream::connect(addr).unwrap();
+    tcp.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+    let cfg = client(roots, &["fit-tunnel"], None);
+    let mut s = akio::tls::stream::Stream::client(&cfg, "hub.example", tcp).unwrap();
+    s.handshake().unwrap();
+    s.conn()
+        .peer_certificates()
+        .first()
+        .cloned()
+        .unwrap_or_default()
+}
+
+/// Waits until a handshake with the hub's listener gets `want`.
+fn wait_hub_leaf(addr: SocketAddr, roots: &Path, want: &[u8]) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while hub_leaf(addr, roots) != want {
+        assert!(
+            Instant::now() < deadline,
+            "the hub listener's certificate was not replaced"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// I102d: a tunnel hub's listener's certificate files are watched with the listeners' own, and a
+/// renewed certificate is served to its new links without a restart, the listener kept; a key
+/// not yet written leaves the running one.
+#[test]
+fn a_hub_listeners_certificate_renewed_without_a_restart() {
+    let d = dir("e2e-watch-certs-hub");
+    let ca = Ca::new("akit e2e ca");
+    let roots = ca.write(&d, "ca.pem");
+    let a = ca.leaf(&d, "a", &["a.example"]);
+    let hub = ca.leaf(&d, "hub", &["hub.example"]);
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    let p = config(&d, &a);
+    let json = std::fs::read_to_string(&p).unwrap().replacen(
+        '{',
+        &format!(
+            r#"{{"tunnel": {{"hub": {{"name": "hub", "password": "pw", "listeners": [{{"protocol": "tls", "address": "127.0.0.1:{port}", "cert_file": "{}", "key_file": "{}"}}]}}}},"#,
+            s(&hub.0),
+            s(&hub.1)
+        ),
+        1,
+    );
+    std::fs::write(&p, json).unwrap();
+    let (akit, _) = start(&p, &["-watch-interval", "50ms"]);
+    akit.until("akit: running tunnel.hub");
+    let at: SocketAddr = format!("127.0.0.1:{port}").parse().unwrap();
+    wait_hub_leaf(at, &roots, &leaf_der(&hub.0));
+
+    // Renewed in place: the config applied again, the hub's listener serving the new one.
+    ca.leaf(&d, "hub", &["hub.example"]);
+    let renewed = leaf_der(&hub.0);
+    akit.until("akit: reloaded");
+    wait_hub_leaf(at, &roots, &renewed);
+
+    // A certificate whose key is not yet written: the running one stays; once the key is
+    // written, served.
+    let next = d.join("next");
+    std::fs::create_dir_all(&next).unwrap();
+    let (c, k) = ca.leaf(&next, "hub", &["hub.example"]);
+    std::fs::copy(&c, &hub.0).unwrap();
+    std::thread::sleep(Duration::from_millis(1000));
+    assert_eq!(hub_leaf(at, &roots), renewed);
+    std::fs::copy(&k, &hub.1).unwrap();
+    wait_hub_leaf(at, &roots, &leaf_der(&c));
+    drop(akit);
+    std::fs::remove_dir_all(&d).unwrap();
+}

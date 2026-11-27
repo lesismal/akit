@@ -45,6 +45,14 @@ pub trait Role: Send {
     fn api(&self) -> Option<Api> {
         None
     }
+
+    /// The files the role read when a config was last applied to it, by path, with the SHA-256
+    /// of what it read (zeros for a file it could not read): its listeners' certificates and
+    /// keys. `akit run -watch-certs` applies the running config again once one of them changes,
+    /// as for the listeners' own (fit's `Info.CertFiles`). None by default.
+    fn files(&self) -> Vec<(String, [u8; 32])> {
+        Vec::new()
+    }
 }
 
 /// A role's handle for its pages ([`Role::api`]).
@@ -351,6 +359,13 @@ impl Manager {
     #[must_use]
     pub fn api(&self, id: &str) -> Option<Api> {
         self.running.get(id).and_then(|r| r.api())
+    }
+
+    /// The files the running roles read when the config was last applied ([`Role::files`]), with
+    /// their SHA-256, for `-watch-certs` to apply the config again when one changes.
+    #[must_use]
+    pub fn files(&self) -> Vec<(String, [u8; 32])> {
+        self.running.values().flat_map(|r| r.files()).collect()
     }
 
     /// The running roles' token registries, for the Admin API.

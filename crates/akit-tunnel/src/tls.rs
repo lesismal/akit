@@ -142,16 +142,53 @@ pub fn server_config_alpn(
     key_pem: &str,
     alpn: &str,
 ) -> Result<ServerConfig, String> {
+    server_config_with(cert_pem, key_pem, alpn, None)
+}
+
+/// [`server_config_alpn`] whose certificate `store` can replace while it serves: what
+/// [`akio::tls::CertStore::set_default`] gives it is served to the handshakes from then on, the
+/// certificate given here until then (I102d).
+///
+/// # Errors
+///
+/// A certificate or key that does not load.
+pub fn server_config_store(
+    cert_pem: &str,
+    key_pem: &str,
+    alpn: &str,
+    store: &akio::tls::CertStore,
+) -> Result<ServerConfig, String> {
+    server_config_with(cert_pem, key_pem, alpn, Some(store))
+}
+
+fn server_config_with(
+    cert_pem: &str,
+    key_pem: &str,
+    alpn: &str,
+    store: Option<&akio::tls::CertStore>,
+) -> Result<ServerConfig, String> {
     let chain = Certificate::from_pem(cert_pem.as_bytes()).map_err(|e| e.to_string())?;
     if chain.is_empty() {
         return Err("no certificate".to_owned());
     }
     let key = PrivateKey::from_pem(key_pem.as_bytes()).map_err(|e| e.to_string())?;
-    ServerConfig::builder(chain, key)
+    let mut b = ServerConfig::builder(chain, key)
         .alpn([alpn])
         .tls13_only(true)
-        .session_tickets(false)
-        .build()
+        .session_tickets(false);
+    if let Some(s) = store {
+        b = b.cert_resolver(Arc::new(s.clone()));
+    }
+    b.build().map_err(|e| e.to_string())
+}
+
+/// A certificate and key, for a [`akio::tls::CertStore`] to serve.
+///
+/// # Errors
+///
+/// A certificate or key that does not load, or a key that is not the certificate's.
+pub fn certified_key(cert_pem: &str, key_pem: &str) -> Result<akio::tls::CertifiedKey, String> {
+    akio::tls::CertifiedKey::from_pem(cert_pem.as_bytes(), key_pem.as_bytes())
         .map_err(|e| e.to_string())
 }
 

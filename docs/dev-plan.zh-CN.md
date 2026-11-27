@@ -210,7 +210,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I102 | 隧道 II：TLS 链路；pin；保存 hub 的证书 | I101 | done |
 | I102b | 隧道 II b：QUIC 链路 | I102 | done |
 | I102c | 隧道 II c：WebSocket 链路 | I102b | done |
-| I102d | 隧道 II d：hub 的 QUIC 握手限制；监听器的证书文件变化时重新读取 | I102c | todo |
+| I102d | 隧道 II d：hub 的 QUIC 握手限制；监听器的证书文件变化时重新读取 | I102c | done |
 | I103 | 隧道 III：hub 的调用和状态、token 过期 | I102c | done |
 | I103b | 隧道 III b：控制台套接字和 web 代理 | I103 | done |
 | I104 | LLM I：mesh：帧、会话、带信用的流、握手、hello、连接池 | I99, I100 | done |
@@ -1421,7 +1421,9 @@ fit 的，使 akit 的角色能与 fit 的角色互连（决定 038）。
   无需重启即可生效。
 - **涉及**：`akit-tunnel`；akio-quic。
 - **fit**：`tunnel/internal/transport/quic`、`tunnel/hub`；I160。
-- **状态**：todo。
+- **状态**：done（2026-11-27）。见进度日志。hub 的 QUIC 监听器基于 akio 的 A245（`handshake_timeout`、`max_handshakes`）；隧道
+  hub 监听器的证书重新读取（`tls`、`wss`、`quic`，以及 hub 自己保存的文件）。LLM mesh 监听器证书的重新读取留给 LLM 路线，因为另一
+  改动正在编辑其角色（待审决定第 44 行）。
 
 ### I103 隧道 III：hub 的调用和状态、token 过期
 

@@ -196,6 +196,9 @@ enum Role {
     },
     Hub {
         accept: Accept,
+        /// How long the connection may go without its link's stream once its handshake is
+        /// over (fit's `streamWait`).
+        stream_wait: Duration,
     },
 }
 
@@ -225,11 +228,15 @@ fn finish(slot: &Slot, r: Result<Arc<Link>, String>) -> bool {
 }
 
 impl QuicLink {
-    /// A hub's side of a connection.
+    /// A hub's side of a connection, closed when it has not opened its link's stream within
+    /// `stream_wait` of its handshake.
     #[must_use]
-    pub fn hub(accept: Accept) -> QuicLink {
+    pub fn hub(accept: Accept, stream_wait: Duration) -> QuicLink {
         QuicLink {
-            role: Role::Hub { accept },
+            role: Role::Hub {
+                accept,
+                stream_wait,
+            },
             stream: None,
             version: false,
             wire: None,
@@ -262,8 +269,18 @@ impl QuicLink {
 
 impl akio_quic::QuicHandler for QuicLink {
     fn on_connected(&mut self, c: &Connection) {
-        let Role::Dialer { done, .. } = &self.role else {
-            return;
+        let done = match &self.role {
+            Role::Dialer { done, .. } => done,
+            Role::Hub { stream_wait, .. } => {
+                // A connection that carries no link is closed: kept alive by its pings, it would
+                // hold a place for nothing (fit's `streamWait`). The handler looks, in
+                // `on_notify`.
+                if self.stream.is_none() {
+                    let c = c.clone();
+                    let _ = akio::timer::after_send(*stream_wait, move || c.notify());
+                }
+                return;
+            }
         };
         let done = Arc::clone(done);
         match self.dialer_connected(c) {
@@ -282,7 +299,7 @@ impl akio_quic::QuicHandler for QuicLink {
     fn on_stream_data(&mut self, c: &Connection, id: StreamId, data: akio_quic::Bytes, fin: bool) {
         let mut data: &[u8] = &data;
         if self.stream != Some(id) {
-            let Role::Hub { accept } = &self.role else {
+            let Role::Hub { accept, .. } = &self.role else {
                 return Self::refuse(c, id);
             };
             if self.stream.is_some() || id.dir() != Dir::Bi || id.initiator() != Side::Client {
@@ -344,6 +361,13 @@ impl akio_quic::QuicHandler for QuicLink {
             if let Some(w) = &self.wire {
                 w.writable();
             }
+        }
+    }
+
+    fn on_notify(&mut self, c: &Connection) {
+        // The hub's wait for the link's stream is over.
+        if matches!(self.role, Role::Hub { .. }) && self.stream.is_none() {
+            c.close(0, b"");
         }
     }
 
@@ -435,6 +459,13 @@ pub fn dial(
 /// A hub's QUIC listener's server: `tls` with the transport of `quic`, at most `max` connections,
 /// each link taken by `accept`.
 ///
+/// Handshakes are bounded as fit's (akio's A245): each by `quic.handshake_timeout` (10 s when
+/// left out), a connection whose handshake is not done by then dropped; at most
+/// `quic.max_handshakes` under way (64 when left out), past half of them a client asked to prove
+/// its address with a Retry, past all a new client's Initial dropped, which it sends again. Once
+/// its handshake is over, a connection that has not opened its link's stream within
+/// `handshake_timeout` is closed (fit's `streamWait`).
+///
 /// # Errors
 ///
 /// A TLS configuration akio-quic refuses.
@@ -444,14 +475,18 @@ pub fn server(
     max: usize,
     accept: Accept,
 ) -> Result<akio_quic::QuicServer, String> {
+    use akit_config::roles::TunnelHubQuic;
+    let handshake = TunnelHubQuic::handshake(quic);
     let cfg = akio_quic::server_config_from(tls)
         .map_err(|e| e.to_string())?
         .transport(&transport(
-            akit_config::roles::TunnelHubQuic::idle(quic),
-            akit_config::roles::TunnelHubQuic::ping(quic),
+            TunnelHubQuic::idle(quic),
+            TunnelHubQuic::ping(quic),
         ))
-        .max_connections(max);
+        .max_connections(max)
+        .handshake_timeout(Some(handshake))
+        .max_handshakes(TunnelHubQuic::handshakes(quic));
     Ok(akio_quic::QuicServer::new(cfg, move |_c: &Connection| {
-        QuicLink::hub(Arc::clone(&accept))
+        QuicLink::hub(Arc::clone(&accept), handshake)
     }))
 }

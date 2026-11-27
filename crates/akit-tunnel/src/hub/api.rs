@@ -185,7 +185,12 @@ impl HubApi {
         let tcp: Vec<akio::ListenerInfo> = engine.listeners();
         let mut listen = Vec::new();
         let mut listeners = Vec::new();
-        for (l, b) in lock(&c.listeners).iter() {
+        for super::Open {
+            cfg: l,
+            bound: b,
+            cert,
+        } in lock(&c.listeners).iter()
+        {
             let at = match b {
                 super::Bound::Tcp(id) => tcp.iter().find(|i| i.id == *id).map(|i| i.local_addr),
                 super::Bound::Udp(u) => Some(u.local_addr()),
@@ -204,12 +209,13 @@ impl HubApi {
                     .str("address", &l.address)
                     .str_omit("path", if l.protocol.is_ws() { &l.path } else { "" })
                     .str_omit("url", &url)
+                    // What it serves: its own certificate's, or the hub's (fit's `ListenerView`).
                     .str_omit(
                         "fingerprint",
-                        if l.protocol.takes_tls() && !own {
-                            &fp
-                        } else {
-                            ""
+                        match cert {
+                            Some(s) => &s.fp,
+                            None if l.protocol.takes_tls() && !own => &fp,
+                            None => "",
                         },
                     )
                     .bool("own_cert", own)

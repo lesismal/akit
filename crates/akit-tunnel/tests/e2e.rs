@@ -1060,3 +1060,221 @@ fn a_tokens_expiry_closes_its_links() {
     );
     assert!(api.peer_id("proxy", "alice").is_some());
 }
+
+// I102d: a listener's certificate read again when its files change.
+
+/// fit's `TestListenerCerts`, with akit's in-place replacement: a `tls` and a `quic` listener
+/// with certificate files of their own, and a `wss` one with the hub's, show their certificates'
+/// fingerprints; the files are noted for `-watch-certs`; a renewed certificate, read when the
+/// member is applied again, is served to new links without the listeners reopening, and a link
+/// open meanwhile goes on; a key that is gone leaves the running certificate, and says so.
+#[test]
+fn a_listeners_certificate_is_read_again() {
+    let dir = tmp("certs");
+    let e = quic_engine();
+    let (tls_port, quic_port, wss_port, svc) = (free_port(), free_udp_port(), free_port(), echo());
+    let cert_file = dir.join("c.pem").to_str().unwrap().to_owned();
+    let key_file = dir.join("k.pem").to_str().unwrap().to_owned();
+    let write = || {
+        let (c, k) = akit_tunnel::tls::self_signed(&["127.0.0.1".to_owned()]).unwrap();
+        // Replaced as a renewing tool does: written aside, then renamed.
+        for (path, pem) in [(&cert_file, &c), (&key_file, &k)] {
+            let tmp = format!("{path}.new");
+            std::fs::write(&tmp, pem).unwrap();
+            std::fs::rename(&tmp, path).unwrap();
+        }
+        akit_tunnel::tls::fingerprint(&c)
+    };
+    let fp1 = write();
+    let doc = format!(
+        r#"{{"tunnel": {{"hub": {{"name": "hub", "password": "pw", "listeners": [
+          {{"protocol": "tls", "address": "127.0.0.1:{tls_port}", "cert_file": "{cert_file}", "key_file": "{key_file}"}},
+          {{"protocol": "quic", "address": "127.0.0.1:{quic_port}", "cert_file": "{cert_file}", "key_file": "{key_file}"}},
+          {{"protocol": "wss", "address": "127.0.0.1:{wss_port}"}}]}}}}}}"#
+    );
+    let config = akit_config::from_json(&doc, None).unwrap_or_else(|e| panic!("{doc}\n{e}"));
+    let mut h = Manager::new(&[akit_tunnel::HUB], Arc::clone(&e), None);
+    h.keep_beside(dir.join("akit.json").to_str().unwrap());
+    let errs = h.apply(&config);
+    assert!(errs.is_empty(), "{errs:?}");
+    let kept = dir.join("akit.tunnel.hub.pem").to_str().unwrap().to_owned();
+    let files: Vec<String> = h.files().into_iter().map(|(p, _)| p).collect();
+    for f in [&cert_file, &key_file, &kept] {
+        assert!(files.contains(f), "{f} not watched: {files:?}");
+    }
+    let api = hub_api(&h);
+    let fps = |api: &akit_tunnel::hub::HubApi| -> Vec<(String, String)> {
+        arr(&status(api), "listeners")
+            .iter()
+            .map(|l| {
+                (
+                    akit_tunnel::msg::get_str(l, "fingerprint").to_owned(),
+                    akit_tunnel::msg::get_str(l, "url").to_owned(),
+                )
+            })
+            .collect()
+    };
+    let hub_fp = akit_tunnel::tls::fingerprint(&std::fs::read_to_string(&kept).unwrap());
+    let before = fps(&api);
+    assert_eq!(before[0].0, fp1);
+    assert_eq!(before[1].0, fp1);
+    assert_eq!(before[2].0, hub_fp);
+    // A link over tls, pinning the first certificate, with a tunnel open.
+    let fwd = free_port();
+    let mut p = peers(
+        &e,
+        &format!("tls://127.0.0.1:{tls_port}"),
+        &format!(r#", "pin": "{fp1}""#),
+        svc,
+        fwd,
+    );
+    let mut s = tunnel(fwd);
+    round_trip(&mut s, 64 << 10);
+
+    // Renewed: read when the member is applied again (as -watch-certs or SIGHUP has it).
+    let fp2 = write();
+    assert_ne!(fp1, fp2);
+    let errs = h.apply(&config);
+    assert!(errs.is_empty(), "{errs:?}");
+    let after = fps(&api);
+    assert_eq!(after[0], (fp2.clone(), before[0].1.clone()));
+    assert_eq!(after[1], (fp2.clone(), before[1].1.clone()));
+    assert_eq!(after[2], before[2]);
+    // The link open before goes on.
+    round_trip(&mut s, 64 << 10);
+    p.stop(Duration::ZERO);
+    // New links get the new certificate, over tls and over quic.
+    for at in [
+        format!("tls://127.0.0.1:{tls_port}"),
+        format!("quic://127.0.0.1:{quic_port}"),
+    ] {
+        let fwd = free_port();
+        let mut p = peers(&e, &at, &format!(r#", "pin": "{fp2}""#), svc, fwd);
+        let mut s = tunnel(fwd);
+        round_trip(&mut s, 64 << 10);
+        p.stop(Duration::ZERO);
+    }
+
+    // The key gone: the running certificate stays, and the apply says why.
+    std::fs::remove_file(&key_file).unwrap();
+    let errs = h.apply(&config);
+    assert!(
+        errs.iter().any(|e| e.contains("the certificate")),
+        "{errs:?}"
+    );
+    assert_eq!(fps(&api), after);
+    // Noted as unread, so that -watch-certs applies the config again once it is back.
+    let key_sum = h
+        .files()
+        .into_iter()
+        .find(|(p, _)| *p == key_file)
+        .unwrap()
+        .1;
+    assert_eq!(key_sum, [0u8; 32]);
+    let fwd = free_port();
+    let mut p = peers(
+        &e,
+        &format!("tls://127.0.0.1:{tls_port}"),
+        &format!(r#", "pin": "{fp2}""#),
+        svc,
+        fwd,
+    );
+    let mut s = tunnel(fwd);
+    round_trip(&mut s, 64 << 10);
+    p.stop(Duration::ZERO);
+    h.stop(Duration::ZERO);
+    e.shutdown();
+    e.wait();
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// fit's binary, killed when dropped, and its directory removed.
+struct FitRun(std::process::Child, std::path::PathBuf);
+
+impl Drop for FitRun {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+        let _ = std::fs::remove_dir_all(&self.1);
+    }
+}
+
+fn fit_run(bin: &str, name: &str, doc: &str) -> FitRun {
+    let dir = tmp(&format!("fit-{name}"));
+    let path = dir.join("fit.json");
+    std::fs::write(&path, doc).unwrap();
+    let log = std::fs::File::create(dir.join("fit.log")).unwrap();
+    let child = std::process::Command::new(bin)
+        .args(["run", "-c"])
+        .arg(&path)
+        .current_dir(&dir)
+        .stdout(log.try_clone().unwrap())
+        .stderr(log)
+        .spawn()
+        .unwrap();
+    FitRun(child, dir)
+}
+
+/// Against fit's binary (`AKIT_FIT_BIN`; skipped without it, as in CI), I102d: fit's node and
+/// proxy link to akit's hub over QUIC with the hub's handshake bounds set, pinning its
+/// certificate, and a tunnel carries 8 MiB both ways; the hub's listener certificate renewed
+/// (its own files) while they are linked, new links from fit get the new one.
+#[test]
+fn with_fits_node_and_proxy_over_quic() {
+    let Ok(bin) = std::env::var("AKIT_FIT_BIN") else {
+        eprintln!("AKIT_FIT_BIN not set: skipped");
+        return;
+    };
+    let dir = tmp("fit-quic");
+    let e = quic_engine();
+    let (hub, svc, fwd) = (free_udp_port(), echo(), free_port());
+    let cert_file = dir.join("c.pem").to_str().unwrap().to_owned();
+    let key_file = dir.join("k.pem").to_str().unwrap().to_owned();
+    let write = || {
+        let (c, k) = akit_tunnel::tls::self_signed(&["127.0.0.1".to_owned()]).unwrap();
+        std::fs::write(&cert_file, &c).unwrap();
+        std::fs::write(&key_file, &k).unwrap();
+        akit_tunnel::tls::fingerprint(&c)
+    };
+    let fp = write();
+    let doc = format!(
+        r#"{{"tunnel": {{"hub": {{"name": "hub", "password": "pw",
+            "quic": {{"handshake_timeout": "3s", "max_handshakes": 4}},
+            "listeners": [{{"protocol": "quic", "address": "127.0.0.1:{hub}", "cert_file": "{cert_file}", "key_file": "{key_file}"}}]}}}}}}"#
+    );
+    let config = akit_config::from_json(&doc, None).unwrap_or_else(|e| panic!("{doc}\n{e}"));
+    let mut h = Manager::new(&[akit_tunnel::HUB], Arc::clone(&e), None);
+    let errs = h.apply(&config);
+    assert!(errs.is_empty(), "{errs:?}");
+    // Each run's names its own: the hub holds a killed run's links until their idle timeout.
+    let peers_doc = |fp: &str, fwd: u16, n: u8| {
+        let up = format!(
+            r#"{{"name": "hub", "endpoints": [{{"address": "quic://127.0.0.1:{hub}"}}], "password": "pw", "pin": "{fp}", "retry_interval": "100ms"}}"#
+        );
+        format!(
+            r#"{{"tunnel": {{
+              "node": {{"name": "lab{n}", "hubs": [{up}], "services": [{{"name": "echo", "address": "127.0.0.1:{svc}"}}]}},
+              "proxy": {{"name": "alice{n}", "hubs": [{up}], "forwards": [{{"listen": "127.0.0.1:{fwd}", "node": "lab{n}", "service": "echo"}}]}}}}}}"#
+        )
+    };
+    let fit1 = fit_run(&bin, "quic-1", &peers_doc(&fp, fwd, 1));
+    let mut s = tunnel(fwd);
+    round_trip(&mut s, 8 << 20);
+    eprintln!("fit's node and proxy over QUIC to akit's hub: 8 MiB echoed");
+    // Renewed and read again: fit's links go on, and fit's new ones pin the new certificate.
+    let fp2 = write();
+    let errs = h.apply(&config);
+    assert!(errs.is_empty(), "{errs:?}");
+    round_trip(&mut s, 1 << 20);
+    drop(s);
+    drop(fit1);
+    let fwd2 = free_port();
+    let _fit2 = fit_run(&bin, "quic-2", &peers_doc(&fp2, fwd2, 2));
+    let mut s = tunnel(fwd2);
+    round_trip(&mut s, 1 << 20);
+    eprintln!("fit's node and proxy pinning the renewed certificate: linked");
+    h.stop(Duration::ZERO);
+    e.shutdown();
+    e.wait();
+    let _ = std::fs::remove_dir_all(&dir);
+}

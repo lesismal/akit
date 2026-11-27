@@ -105,7 +105,14 @@ pub(crate) struct HubCore {
     tokens: Registry,
     verifier: Mutex<Option<Verifier>>,
     coder: Mutex<Option<Coder>>,
-    listeners: Mutex<Vec<(TunnelListener, Bound)>>,
+    listeners: Mutex<Vec<Open>>,
+    /// The files the listeners' certificates were read from when the member was last applied,
+    /// with the SHA-256 of what was read (zeros for a file that could not be): what
+    /// `-watch-certs` looks at (I102d).
+    files: Mutex<Vec<(String, [u8; 32])>>,
+    /// The certificate the hub made for itself when there is nowhere to keep it: made once, so
+    /// that it stays the same across applies while akit runs.
+    generated: Mutex<Option<Arc<(String, String)>>>,
     access: Mutex<Option<Arc<akit_access::Policy>>>,
     /// The SHA-256 of the hub's own certificate, which peers pin.
     fingerprint: Mutex<String>,
@@ -138,6 +145,57 @@ impl Bound {
             Bound::Udp(b) => b.close(),
         }
     }
+}
+
+/// A listener of the hub's, open: its config, what it is bound as, and the certificate it serves
+/// when it takes TLS.
+struct Open {
+    cfg: TunnelListener,
+    bound: Bound,
+    cert: Option<Served>,
+}
+
+/// The certificate a `tls`, `wss` or `quic` listener serves, replaced in place, without closing
+/// the listener or a connection, when its files change (I102d).
+struct Served {
+    store: akio::tls::CertStore,
+    /// What is served, to tell a change.
+    pem: Arc<(String, String)>,
+    /// Its SHA-256.
+    fp: String,
+}
+
+impl Served {
+    /// A listener's configuration serving `pem`, which [`Served::replace`] can replace.
+    fn new(
+        pem: Arc<(String, String)>,
+        alpn: &str,
+    ) -> Result<(Served, akio::tls::ServerConfig), String> {
+        let store = akio::tls::CertStore::new();
+        let cfg = crate::tls::server_config_store(&pem.0, &pem.1, alpn, &store)?;
+        let fp = crate::tls::fingerprint(&pem.0);
+        Ok((Served { store, pem, fp }, cfg))
+    }
+
+    /// Serves `pem` to the handshakes from now on; whether it changed. One that does not load
+    /// leaves what is served.
+    fn replace(&mut self, pem: Arc<(String, String)>) -> Result<bool, String> {
+        if pem == self.pem {
+            return Ok(false);
+        }
+        let key = crate::tls::certified_key(&pem.0, &pem.1)?;
+        self.store.set_default(Some(key));
+        self.fp = crate::tls::fingerprint(&pem.0);
+        self.pem = pem;
+        Ok(true)
+    }
+}
+
+/// The SHA-256 of a file read, zeros for one that could not be: for `-watch-certs`.
+fn file_sum(r: &std::io::Result<String>) -> [u8; 32] {
+    r.as_ref()
+        .map(|d| akio_crypto::hash::Sha256::digest(d.as_bytes()))
+        .unwrap_or([0u8; 32])
 }
 
 fn kind_name(info: &Info) -> String {
@@ -1030,6 +1088,8 @@ pub fn new(host: Host) -> Result<Box<dyn Role>, String> {
         verifier: Mutex::new(None),
         coder: Mutex::new(None),
         listeners: Mutex::new(Vec::new()),
+        files: Mutex::new(Vec::new()),
+        generated: Mutex::new(None),
         access: Mutex::new(None),
         fingerprint: Mutex::new(String::new()),
         st: Mutex::new(HubState::default()),
@@ -1073,27 +1133,34 @@ fn arm_sweep(core: &Arc<HubCore>, generation: u64) {
     });
 }
 
-/// A TLS or QUIC listener's TLS: its own certificate, or the hub's. Reads its files when the
-/// member is applied (fit's): the control thread's.
-fn listener_tls(
+/// A TLS, WSS or QUIC listener's certificate: its own, from its files, or the hub's. Reads its
+/// files each time the member is applied (fit's), noting them with what was read in `files`: the
+/// control thread's.
+fn listener_cert(
     l: &TunnelListener,
     own: Option<&Arc<(String, String)>>,
-) -> Result<akio::tls::ServerConfig, String> {
-    let alpn = if l.protocol.is_ws() {
+    files: &mut Vec<(String, [u8; 32])>,
+) -> Result<Arc<(String, String)>, String> {
+    if l.cert_file.is_empty() {
+        return own.cloned().ok_or_else(|| "no certificate".to_owned());
+    }
+    let cert = std::fs::read_to_string(&l.cert_file);
+    let key = std::fs::read_to_string(&l.key_file);
+    files.push((l.cert_file.clone(), file_sum(&cert)));
+    files.push((l.key_file.clone(), file_sum(&key)));
+    let (cert, key) = (
+        cert.map_err(|e| format!("{}: {e}", l.cert_file))?,
+        key.map_err(|e| format!("{}: {e}", l.key_file))?,
+    );
+    Ok(Arc::new((cert, key)))
+}
+
+/// The TLS application protocol of a listener: `http/1.1` for `wss`, `fit-tunnel` otherwise.
+fn listener_alpn(l: &TunnelListener) -> &'static str {
+    if l.protocol.is_ws() {
         crate::ws::ALPN
     } else {
         crate::tls::ALPN
-    };
-    if l.cert_file.is_empty() {
-        match own {
-            Some(cert) => crate::tls::server_config_alpn(&cert.0, &cert.1, alpn),
-            None => Err("no certificate".to_owned()),
-        }
-    } else {
-        std::fs::read_to_string(&l.cert_file)
-            .and_then(|c| std::fs::read_to_string(&l.key_file).map(|k| (c, k)))
-            .map_err(|e| e.to_string())
-            .and_then(|(c, k)| crate::tls::server_config_alpn(&c, &k, alpn))
     }
 }
 
@@ -1107,12 +1174,10 @@ impl Hub {
     /// A QUIC listener: a UDP socket bound on the engine's UDP threads, served by akio-quic.
     fn bind_quic(
         &self,
-        l: &TunnelListener,
-        own: Option<&Arc<(String, String)>>,
+        tls: &akio::tls::ServerConfig,
         addr: SocketAddr,
     ) -> Result<akio::UdpBinding, String> {
         let c = &self.core;
-        let tls = listener_tls(l, own)?;
         let cfg = lock(&c.cfg).clone();
         let me = c.me.clone();
         let accept: crate::quic::Accept =
@@ -1122,7 +1187,7 @@ impl Hub {
             .saturating_add(akit_config::roles::TunnelHubQuic::handshakes(
                 cfg.quic.as_ref(),
             ));
-        let server = crate::quic::server(&tls, cfg.quic.as_ref(), max, accept)?;
+        let server = crate::quic::server(tls, cfg.quic.as_ref(), max, accept)?;
         // The access policy at akio's filter from the first datagram (ADR-178): a refused peer's
         // packets are dropped before a QUIC connection, or any TLS work, is made for it.
         let bound = match lock(&c.access).clone() {
@@ -1135,10 +1200,16 @@ impl Hub {
         bound.map_err(|e| e.to_string())
     }
 
+    /// Opens the listeners `want` adds and closes those it leaves out; the rest stay open. A
+    /// listener with TLS that stays serves its certificate as read now: its files', or the hub's
+    /// own, replaced in place when they changed (I102d); files that do not load leave what it
+    /// serves. The files read, with `files` (the hub's own certificate's), are noted for
+    /// `-watch-certs`. Why each that failed did is returned.
     fn move_listeners(
         &self,
         want: &[TunnelListener],
         own: Option<&Arc<(String, String)>>,
+        mut files: Vec<(String, [u8; 32])>,
     ) -> Vec<String> {
         let c = &self.core;
         let engine = &c.host.engine;
@@ -1146,8 +1217,30 @@ impl Hub {
         let mut have = lock(&c.listeners);
         let mut next = Vec::new();
         for l in want {
-            if let Some(i) = have.iter().position(|(h, _)| h == l) {
-                next.push(have.remove(i));
+            let pem = l
+                .protocol
+                .takes_tls()
+                .then(|| listener_cert(l, own, &mut files));
+            if let Some(i) = have.iter().position(|o| o.cfg == *l) {
+                let mut o = have.remove(i);
+                if let (Some(served), Some(pem)) = (o.cert.as_mut(), pem) {
+                    match pem.and_then(|p| served.replace(p)) {
+                        Ok(false) => {}
+                        Ok(true) => akit_observe::info!(
+                            Tunnel,
+                            "tunnel.hub: listener {} {}: certificate changed; serving the new one, fingerprint {}",
+                            l.protocol.as_str(),
+                            l.address,
+                            served.fp
+                        ),
+                        Err(e) => errs.push(format!(
+                            "listener {} {}: the certificate: {e}; the running one stays",
+                            l.protocol.as_str(),
+                            l.address
+                        )),
+                    }
+                }
+                next.push(o);
                 continue;
             }
             let Some(addr) = crate::proxy::listen_addr(&l.address) else {
@@ -1156,6 +1249,21 @@ impl Hub {
                     l.address
                 ));
                 continue;
+            };
+            // The TLS of one that takes it, with the certificate it serves.
+            let (cert, tls) = match pem {
+                None => (None, None),
+                Some(pem) => match pem.and_then(|p| Served::new(p, listener_alpn(l))) {
+                    Ok((served, cfg)) => (Some(served), Some(cfg)),
+                    Err(e) => {
+                        errs.push(format!(
+                            "listener {} {}: the certificate: {e}",
+                            l.protocol.as_str(),
+                            l.address
+                        ));
+                        continue;
+                    }
+                },
             };
             let me = c.me.clone();
             let acceptor =
@@ -1166,25 +1274,23 @@ impl Hub {
                         LinkHandler(None)
                     }
                 });
-            let mut el = match l.protocol {
-                TunnelProtocol::Tcp => akio::Listener::tcp(addr).threads(1).serve(acceptor),
-                TunnelProtocol::Tls => match listener_tls(l, own) {
-                    Ok(cfg) => akio::Listener::tcp(addr)
-                        .threads(1)
-                        .serve(akio::tls::Tls::server(cfg, acceptor)),
-                    Err(e) => {
-                        errs.push(format!("listener tls {}: {e}", l.address));
-                        continue;
-                    }
-                },
-                TunnelProtocol::Quic => {
-                    match self.bind_quic(l, own, addr) {
-                        Ok(b) => next.push((l.clone(), Bound::Udp(b))),
+            let mut el = match (l.protocol, tls) {
+                (TunnelProtocol::Tcp, _) => akio::Listener::tcp(addr).threads(1).serve(acceptor),
+                (TunnelProtocol::Tls, Some(cfg)) => akio::Listener::tcp(addr)
+                    .threads(1)
+                    .serve(akio::tls::Tls::server(cfg, acceptor)),
+                (TunnelProtocol::Quic, Some(cfg)) => {
+                    match self.bind_quic(&cfg, addr) {
+                        Ok(b) => next.push(Open {
+                            cfg: l.clone(),
+                            bound: Bound::Udp(b),
+                            cert,
+                        }),
                         Err(e) => errs.push(format!("listener quic {}: {e}", l.address)),
                     }
                     continue;
                 }
-                TunnelProtocol::Ws => {
+                (TunnelProtocol::Ws, _) => {
                     akio::Listener::tcp(addr)
                         .threads(1)
                         .serve(akio_http::serve_with(
@@ -1192,8 +1298,8 @@ impl Hub {
                             crate::ws::service(l.ws_path().to_owned(), self.ws_accept()),
                         ))
                 }
-                TunnelProtocol::Wss => match listener_tls(l, own) {
-                    Ok(cfg) => akio::Listener::tcp(addr)
+                (TunnelProtocol::Wss, Some(cfg)) => {
+                    akio::Listener::tcp(addr)
                         .threads(1)
                         .serve(akio::tls::Tls::server(
                             cfg,
@@ -1201,25 +1307,30 @@ impl Hub {
                                 crate::ws::http_config(),
                                 crate::ws::service(l.ws_path().to_owned(), self.ws_accept()),
                             ),
-                        )),
-                    Err(e) => {
-                        errs.push(format!("listener wss {}: {e}", l.address));
-                        continue;
-                    }
-                },
+                        ))
+                }
+                (TunnelProtocol::Tls | TunnelProtocol::Quic | TunnelProtocol::Wss, None) => {
+                    errs.push(format!("listener {}: no certificate", l.address));
+                    continue;
+                }
             };
             if let Some(p) = lock(&c.access).clone() {
                 el = el.filter(move |peer: &SocketAddr| p.allows(peer.ip()));
             }
             match engine.add_listener(el) {
-                Ok(id) => next.push((l.clone(), Bound::Tcp(id))),
+                Ok(id) => next.push(Open {
+                    cfg: l.clone(),
+                    bound: Bound::Tcp(id),
+                    cert,
+                }),
                 Err(e) => errs.push(format!("listener {}: {e}", l.address)),
             }
         }
-        for (_, b) in have.drain(..) {
-            b.remove(engine);
+        for o in have.drain(..) {
+            o.bound.remove(engine);
         }
         *have = next;
+        *lock(&c.files) = files;
         errs
     }
 }
@@ -1233,7 +1344,7 @@ impl Role for Hub {
         let mut errs = Vec::new();
         match crate::proxy::policy(cfg.access.as_ref(), config.access.as_ref()) {
             Ok(p) => {
-                for (_, b) in lock(&c.listeners).iter() {
+                for Open { bound: b, .. } in lock(&c.listeners).iter() {
                     // Peers accepted before are kept; new ones go by the new policy.
                     let filter = p
                         .clone()
@@ -1283,10 +1394,26 @@ impl Role for Hub {
         let needs_own = listeners
             .iter()
             .any(|l| l.protocol.takes_tls() && l.cert_file.is_empty());
+        // The files read for the listeners' certificates, the kept one's too, for -watch-certs.
+        let mut files = Vec::new();
         let own = if needs_own {
             let kept = c.host.kept_file("pem");
-            match crate::tls::hub_cert(&cfg, kept.as_deref()) {
+            let in_config = cfg.quic.as_ref().is_some_and(|q| !q.cert.is_empty());
+            let generated = lock(&c.generated).clone();
+            let r = match (&kept, generated) {
+                // Made when there is nowhere to keep it: the same while akit runs.
+                (None, Some(g)) if !in_config => Ok((g, false)),
+                _ => crate::tls::hub_cert(&cfg, kept.as_deref()),
+            };
+            if let (Some(path), false) = (&kept, in_config) {
+                // Read again by each apply, as the listeners' own files.
+                files.push((path.clone(), file_sum(&std::fs::read_to_string(path))));
+            }
+            match r {
                 Ok((cert, made)) => {
+                    if made && kept.is_none() && !in_config {
+                        *lock(&c.generated) = Some(Arc::clone(&cert));
+                    }
                     let fp = crate::tls::fingerprint(&cert.0);
                     if made {
                         match &kept {
@@ -1314,7 +1441,7 @@ impl Role for Hub {
             None
         };
         *lock(&c.cfg) = cfg.clone();
-        errs.extend(self.move_listeners(&listeners, own.as_ref()));
+        errs.extend(self.move_listeners(&listeners, own.as_ref(), files));
         // The console socket (I103b), which carries the console the config names.
         if let Err(e) = c.apply_socket(&cfg) {
             errs.push(e);
@@ -1338,8 +1465,8 @@ impl Role for Hub {
         // The sweep scheduled ends at its time.
         c.sweep_gen
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        for (_, b) in lock(&c.listeners).drain(..) {
-            b.remove(&c.host.engine);
+        for o in lock(&c.listeners).drain(..) {
+            o.bound.remove(&c.host.engine);
         }
         c.stop_socket();
         let links: Vec<Arc<Link>> = lock(&c.st)
@@ -1354,6 +1481,10 @@ impl Role for Hub {
 
     fn tokens(&self) -> Option<Registry> {
         Some(self.core.tokens.clone())
+    }
+
+    fn files(&self) -> Vec<(String, [u8; 32])> {
+        lock(&self.core.files).clone()
     }
 
     fn api(&self) -> Option<akit_roles::host::Api> {
