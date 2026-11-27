@@ -362,6 +362,11 @@ fn cases(w: &World) -> Vec<Case> {
             503,
             true,
         ),
+        // The streaming role's handlers (I123), without the role: answered at once, as fit's
+        // (no stream in the path, and the role not running). Their slow part, a bcrypt check
+        // with the request suspended, is akit-media's `tests/guard.rs`.
+        handler("httpflv", r#"{"module": "httpflv"}"#.into(), 404, true),
+        handler("hls", r#"{"module": "hls"}"#.into(), 503, true),
         // A CONNECT to the slow echo: the tunnel opens at once, its bytes come back late.
         handler(
             "forward_proxy",
