@@ -26,7 +26,7 @@ impl std::fmt::Debug for HubApi {
 
 /// A peer's info as the pages show it (fit's `InfoView`): its services always a list, with
 /// `address` and `description`.
-fn info_view(i: &Info) -> String {
+pub(crate) fn info_view(i: &Info) -> String {
     let services = msg::array(&i.services, |s| {
         Obj::new()
             .str("name", &s.name)
@@ -333,6 +333,18 @@ impl HubApi {
             .by_name
             .get(&format!("{kind}/{name}"))
             .copied()
+    }
+
+    /// The type of registered peer `id`: `node` or `proxy`.
+    #[must_use]
+    pub fn peer_kind(&self, id: u32) -> Option<String> {
+        lock(&self.0.st).peers.get(&id).map(|p| p.info.kind.clone())
+    }
+
+    /// The name of registered peer `id`.
+    #[must_use]
+    pub fn peer_name(&self, id: u32) -> Option<String> {
+        lock(&self.0.st).peers.get(&id).map(|p| p.info.name.clone())
     }
 
     /// Asks node `id` for its info, and takes it (fit's `POST /api/peers/refresh`).

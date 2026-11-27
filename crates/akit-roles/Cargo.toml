@@ -13,6 +13,8 @@ publish = false
 akio = { workspace = true }
 # HMAC-SHA256, HKDF, SHA-256, base64url and the random secrets of the link tokens.
 akio-crypto = { workspace = true }
+# The roles' pages (I109): the requests a role's module answers on its consoles.
+akio-http = { workspace = true }
 akit-config = { workspace = true }
 
 [lints]

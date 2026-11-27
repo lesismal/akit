@@ -6,14 +6,18 @@
 //!   `admin/console.go` (I90).
 //! - `pages`: the files it serves (I91).
 //! - [`slots`]: its connections counted against `max_conns`, as fit's `login.Slots`.
+//! - [`roles`]: the roles' own consoles, with their modules (I109), as fit's `roleconsole`.
 
 pub mod login;
 pub(crate) mod pages;
+pub mod roles;
 pub(crate) mod server;
 pub mod slots;
 
+pub use roles::RoleConsoles;
 pub use server::{
-    ADMIN_MODULE, COOKIE, CSP, CSRF_HEADER, IDLE_TIMEOUT, MAX_LOGIN_BYTES, UNAUTH_TIMEOUT,
+    ADMIN_MODULE, COOKIE, CSP, CSRF_HEADER, IDLE_TIMEOUT, MAX_LOGIN_BYTES, ROLE_BODY_BYTES,
+    UNAUTH_TIMEOUT,
 };
 
 /// The source of a config the console applied, as `/versions` names it: fit's `SourceConsole`.

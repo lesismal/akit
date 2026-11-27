@@ -16,6 +16,7 @@ use akit_config::Config;
 use akit_config::value::Value;
 
 use crate::linktoken::{Registry, View};
+use crate::pages::{Consoles, Modules};
 
 /// A running role.
 pub trait Role: Send {
@@ -52,6 +53,12 @@ pub trait Role: Send {
     /// as for the listeners' own (fit's `Info.CertFiles`). None by default.
     fn files(&self) -> Vec<(String, [u8; 32])> {
         Vec::new()
+    }
+
+    /// The role's module of the pages (I109, fit's `Paged`): its API, which its own `console`
+    /// and `admin.console` serve. `None` for a role without pages.
+    fn module(&self) -> Option<crate::pages::ModuleRef> {
+        None
     }
 }
 
@@ -213,9 +220,7 @@ impl Host {
             None => (edit.done)(Err("the config cannot be changed here".to_owned())),
             Some(e) => {
                 if let Err(edit) = e(edit) {
-                    (edit.done)(Err(
-                        "too many config changes are waiting; try again".to_owned()
-                    ));
+                    (edit.done)(Err(crate::pages::BUSY.to_owned()));
                 }
             }
         }
@@ -250,6 +255,8 @@ pub struct Manager {
     kept: Option<String>,
     running: BTreeMap<&'static str, Box<dyn Role>>,
     registries: Registries,
+    modules: Modules,
+    consoles: Option<Box<dyn Consoles>>,
 }
 
 impl fmt::Debug for Manager {
@@ -273,6 +280,32 @@ impl Manager {
             kept: None,
             running: BTreeMap::new(),
             registries: Arc::new(Mutex::new(HashMap::new())),
+            modules: Modules::default(),
+            consoles: None,
+        }
+    }
+
+    /// Has `consoles` serve the roles' own consoles (I109): each moved with its role.
+    pub fn set_consoles(&mut self, consoles: Box<dyn Consoles>) {
+        self.consoles = Some(consoles);
+    }
+
+    /// The running roles' modules of the pages (I109), which `admin.console` serves; kept up to
+    /// date by every apply.
+    #[must_use]
+    pub fn modules(&self) -> Modules {
+        self.modules.clone()
+    }
+
+    /// Moves role `id`'s console to `c`; its error, as a role's.
+    fn console(&mut self, id: &'static str, c: Option<&Config>, errs: &mut Vec<String>) {
+        let module = c
+            .and_then(|_| self.running.get(id))
+            .and_then(|r| r.module());
+        if let Some(cs) = self.consoles.as_mut() {
+            if let Err(e) = cs.apply(id, c, module) {
+                errs.push(format!("{id}: console: {e}"));
+            }
         }
     }
 
@@ -305,6 +338,7 @@ impl Manager {
             let set = (info.set)(c);
             if !set {
                 if let Some(mut r) = self.running.remove(info.id) {
+                    self.console(info.id, None, &mut errs);
                     r.stop(Duration::ZERO);
                 }
                 continue;
@@ -314,6 +348,7 @@ impl Manager {
                     if let Err(e) = r.apply(c) {
                         errs.push(format!("{}: {e}; it runs as it did", info.id));
                     }
+                    self.console(info.id, Some(c), &mut errs);
                 }
                 None => {
                     let mut r = match (info.new)(self.host(info.id)) {
@@ -329,6 +364,7 @@ impl Manager {
                         continue;
                     }
                     self.running.insert(info.id, r);
+                    self.console(info.id, Some(c), &mut errs);
                 }
             }
         }
@@ -347,6 +383,9 @@ impl Manager {
                 g.insert(id, reg);
             }
         }
+        drop(g);
+        self.modules
+            .set(self.running.values().filter_map(|r| r.module()).collect());
     }
 
     /// The IDs of the roles running, sorted.
@@ -376,6 +415,10 @@ impl Manager {
 
     /// Stops every role, waiting for each `grace` at most. Stop them before the engine.
     pub fn stop(&mut self, grace: Duration) {
+        let mut errs = Vec::new();
+        for id in self.running() {
+            self.console(id, None, &mut errs);
+        }
         for (_, mut r) in std::mem::take(&mut self.running) {
             r.stop(grace);
         }

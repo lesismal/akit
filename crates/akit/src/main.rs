@@ -312,45 +312,34 @@ fn roles_not_running(config: &Config) -> Result<(), Failure> {
     }
 }
 
-/// Refuses the tunnel roles' `console`, their pages, which `akit run` does not serve until I109:
-/// run, a config that sets one would say more than akit does (decision 002), the hub's
-/// `console_socket`, which carries them (I103b), with it.
+/// Refuses the `console` of the roles whose pages `akit run` does not serve yet: run, a config
+/// that sets one would say more than akit does (decision 002). The hub's pages are served
+/// (I109), so its `console_socket` carries them; the tunnel's node's and proxy's (I109b) and the
+/// LLM roles' (I109c) are to come.
 fn role_pages_not_served(config: &Config) -> Vec<Error> {
-    let Some(t) = config.tunnel.as_ref() else {
-        return Vec::new();
-    };
-    [
-        (
-            "tunnel.hub.console",
-            t.hub.as_ref().is_some_and(|h| h.console.is_some()),
-        ),
-        (
-            "tunnel.node.console",
-            t.node.as_ref().is_some_and(|n| n.console.is_some()),
-        ),
-        (
-            "tunnel.proxy.console",
-            t.proxy.as_ref().is_some_and(|p| p.console.is_some()),
-        ),
-    ]
-    .into_iter()
-    .filter(|(_, set)| *set)
-    .map(|(path, _)| Error {
-        file: None,
-        path: path.to_owned(),
-        line: 0,
-        col: 0,
-        msg: format!(
-            "akit run does not serve the roles' pages yet (I109){}; akit validate checks it",
-            if path == "tunnel.hub.console" {
-                ", nor so the console_socket that carries them"
-            } else {
-                ""
-            }
-        ),
-    })
-    .collect()
+    ROLE_PAGES_TO_COME
+        .iter()
+        .filter(|(id, _)| akit_roles::pages::console_of(config, id).is_some())
+        .map(|(id, iteration)| Error {
+            file: None,
+            path: format!("{id}.console"),
+            line: 0,
+            col: 0,
+            msg: format!(
+                "akit run does not serve this role's pages yet ({iteration}); akit validate checks it"
+            ),
+        })
+        .collect()
 }
+
+/// The roles whose pages `akit run` does not serve yet, with the iteration that serves them.
+const ROLE_PAGES_TO_COME: [(&str, &str); 5] = [
+    ("tunnel.node", "I109b"),
+    ("tunnel.proxy", "I109b"),
+    ("llm.hub", "I109c"),
+    ("llm.node", "I109c"),
+    ("llm.proxy", "I109c"),
+];
 
 /// Opens the access log `c` describes, its times in `zone`, as fit's `NewAccessLogFiles`: a file
 /// output through the sink `files` keeps for its path (I81), rotated as `c.rotate` says; with
@@ -1436,6 +1425,10 @@ fn run(args: &[String]) -> ExitCode {
     };
     let mut roles = akit_roles::host::Manager::new(crate::ROLES, Arc::clone(&engine), Some(editor));
     roles.set_drain(grace);
+    // The roles' own consoles (I109), moved with their roles.
+    roles.set_consoles(Box::new(akit_admin::console::RoleConsoles::new(
+        &akit_admin::Options::default(),
+    )));
     // Without a store, what the roles make and must keep goes beside the config; with one, it
     // goes into the config, which the store keeps.
     if let Some(first) = paths.first().filter(|_| boot.is_none()) {
@@ -1492,6 +1485,8 @@ fn run(args: &[String]) -> ExitCode {
             api_opts.tokens = Some(Arc::new(move |id: &str| {
                 akit_roles::host::token_views(&registries, id)
             }));
+            // The running roles' modules, which the console serves beside the config's (I109).
+            api_opts.modules = Some(roles.modules());
             match akit_admin::Server::start(a, configs.clone(), submit, &api_opts) {
                 Ok(s) => {
                     println!("akit: admin API on {}", s.address());
@@ -1809,6 +1804,32 @@ pub fn main(akit_version: &str, modules: &[&'static [Info<HandlerParams>]]) -> E
 
 #[cfg(test)]
 mod tests {
+    /// The hub's pages are served (I109): its `console` and `console_socket` run; the node's,
+    /// the proxy's and the LLM roles' `console` are refused until their pages are.
+    #[test]
+    fn role_pages_to_come_are_refused() {
+        let hash = "$2a$04$abcdefghijklmnopqrstuuxL0bYQ4i4b4M3cY5pBGl0Q2cG0KkqyW";
+        let console = format!(
+            r#"{{"address": "127.0.0.1:1", "users": [{{"username": "a", "password_hash": "{hash}"}}]}}"#
+        );
+        let hub = format!(
+            r#"{{"tunnel": {{"hub": {{"password": "p", "console": {console}, "console_socket": {{"address": "127.0.0.1:2"}}}}}}}}"#
+        );
+        let c = akit_config::from_json(&hub, None).unwrap_or_else(|e| panic!("{hub}\n{e}"));
+        assert!(super::role_pages_not_served(&c).is_empty());
+        for (id, at) in [
+            ("tunnel.node", r#"{"tunnel": {"node": {"console": C}}}"#),
+            ("tunnel.proxy", r#"{"tunnel": {"proxy": {"console": C}}}"#),
+            ("llm.node", r#"{"llm": {"node": {"console": C}}}"#),
+        ] {
+            let doc = at.replace('C', &console);
+            let c = akit_config::from_json(&doc, None).unwrap_or_else(|e| panic!("{doc}\n{e}"));
+            let errs = super::role_pages_not_served(&c);
+            assert_eq!(errs.len(), 1, "{doc}");
+            assert_eq!(errs[0].path, format!("{id}.console"));
+        }
+    }
+
     #[test]
     fn version_names_akit_akio_and_the_platform() {
         let v = super::version();
@@ -1841,8 +1862,8 @@ mod tests {
         assert!(super::roles_not_running(&c).is_ok());
     }
 
-    /// The tunnel roles' pages are refused by akit run until I109 serves them, the hub's
-    /// console_socket with them; a proxy's web_proxies run (I103b).
+    /// The hub's pages are served by akit run (I109), its console_socket with them; the
+    /// tunnel's node's and proxy's are refused until I109b; a proxy's web_proxies run (I103b).
     #[test]
     fn role_pages_are_refused_until_served() {
         let console = r#"{"address": "127.0.0.1:7100", "users": [{"username": "a", "password_hash": "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy"}]}"#;
@@ -1856,8 +1877,8 @@ mod tests {
             panic!("the roles' pages let through");
         };
         let paths: Vec<&str> = errs.0.iter().map(|e| e.path.as_str()).collect();
-        assert_eq!(paths, ["tunnel.hub.console", "tunnel.proxy.console"]);
-        assert!(errs.0[0].msg.contains("I109") && errs.0[0].msg.contains("console_socket"));
+        assert_eq!(paths, ["tunnel.proxy.console"]);
+        assert!(errs.0[0].msg.contains("I109b"), "{}", errs.0[0].msg);
         let c = akit_config::from_json(
             r#"{"tunnel": {"proxy": {"web_proxies": [{"listen": "127.0.0.1:7103", "url": "ws://127.0.0.1:7101/", "password": "pw"}]}}}"#,
             None,

@@ -9,3 +9,4 @@
 
 pub mod host;
 pub mod linktoken;
+pub mod pages;

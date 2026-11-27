@@ -9,7 +9,8 @@
 //!                                  lockout, with Retry-After and retry_after
 //! POST /api/logout                 ends the session; 204
 //! GET  /api/session                {"user", "csrf"}
-//! GET  /api/workbench              {"user", "modules": ["admin"]}
+//! GET  /api/workbench              {"user", "modules": ["admin", ...]}: the config's own module
+//!                                  and the running roles' (I109)
 //! GET  /api/node                   the Admin API's GET /node
 //! GET  /api/m/admin/users          {"user", "store", "users"}
 //! GET  /api/m/admin/schema         fit's config schema (I91)
@@ -19,8 +20,14 @@
 //! POST /api/m/admin/users/password {"username", "password"}: another user's password set,
 //!                                  kept in the store; 409 without one (I93b)
 //! *    /api/m/admin/<path>         the Admin API's endpoint at /<path>, called in process
+//! *    /api/m/<role>/<path>        a running role's module (I109), as `tunnel.hub`: its pages'
+//!                                  API, at /api/<path>
 //! GET  /<file>                     fit's workbench, its files as fit ships them (I91)
 //! ```
+//!
+//! A role's own `console` (I109, [`super::roles`]) is the same server with the role's module in
+//! place of the Admin API's: at `/api/<path>` and `/api/m/<role>/<path>`, its cookie
+//! `akit_<role>_<port>` (`akit_tunnel_hub_7100`), its bodies 1 MiB at most, as fit's.
 //!
 //! Every request but `POST /api/login` and `/api/logout` needs a session; every one but a read
 //! carries its CSRF token in `X-Akit-Csrf`; one whose `Origin` is not the console's own is
@@ -56,6 +63,7 @@ use akio::{AnyAcceptor, Config as EngineConfig, ConnHandle, Engine, Listener, Po
 use akio_http::{BodyMode, Context, Detached, HttpConfig, Method, Request, Response};
 use akit_config::value::{Value, write_string};
 use akit_observe::logger::{Level, Logger};
+use akit_roles::pages::{ModuleRef, Modules};
 
 use super::login::{self, Logins, Options as LoginOptions, Session};
 use super::slots::Slots;
@@ -78,6 +86,9 @@ pub const MAX_LOGIN_BYTES: usize = 4 << 10;
 
 /// The largest body of a request other than a config: none is held past it.
 const OTHER_BODY_BYTES: usize = 64 << 10;
+
+/// The largest body of a request to a role's console: fit's `MaxBodyBytes`, 1 MiB.
+pub const ROLE_BODY_BYTES: usize = 1 << 20;
 
 /// How long a connection with a valid session may go between requests: fit's `IdleTimeout`.
 pub const IDLE_TIMEOUT: Duration = Duration::from_secs(2 * 60);
@@ -125,11 +136,22 @@ impl std::fmt::Debug for Console {
     }
 }
 
+/// What a console serves beside its logins and files.
+enum Kind {
+    /// `admin.console`: the Admin API's endpoints, its configs applied as the console's, as the
+    /// config's own module (`admin`), and the running roles' modules beside it (I109).
+    Admin(Arc<Shared>, Option<Modules>),
+    /// A role's own console (I109): the role's module, at `/api/` and at `/api/m/<id>/`, as
+    /// fit's role consoles serve it.
+    Role(ModuleRef),
+}
+
 /// What every request of the console reads.
 struct Pages {
-    /// The Admin API's endpoints, its configs applied as the console's.
-    api: Arc<Shared>,
+    kind: Kind,
     logins: Arc<Logins>,
+    /// The cookie's name before its port: [`COOKIE`], or `akit_<role>` (`akit_tunnel_hub`).
+    cookie_prefix: String,
     /// `akit_console_<port>`, once the port is known.
     cookie: OnceLock<String>,
     secure: bool,
@@ -275,6 +297,38 @@ impl Console {
         api: Shared,
         opts: &Options,
     ) -> io::Result<Console> {
+        // A console started while a user's password is temporary asks for it to be changed.
+        let temporary = api.configs.temporary_password();
+        let modules = opts.modules.clone();
+        Console::start_kind(
+            c,
+            Kind::Admin(Arc::new(api), modules),
+            COOKIE.to_owned(),
+            OTHER_BODY_BYTES,
+            temporary,
+            opts,
+        )
+    }
+
+    /// Listens where `c`, a role's `console`, says and serves the role's pages: its `module`
+    /// (I109). On the control plane, as [`Console::start`].
+    pub(crate) fn start_role(
+        c: &akit_config::Console,
+        module: ModuleRef,
+        opts: &Options,
+    ) -> io::Result<Console> {
+        let cookie = format!("akit_{}", module.id().replace('.', "_"));
+        Console::start_kind(c, Kind::Role(module), cookie, ROLE_BODY_BYTES, None, opts)
+    }
+
+    fn start_kind(
+        c: &akit_config::Console,
+        kind: Kind,
+        cookie_prefix: String,
+        max_body: usize,
+        temporary: Option<(String, std::time::SystemTime)>,
+        opts: &Options,
+    ) -> io::Result<Console> {
         let addr = resolve(&c.address)?;
         let secure = c.cert_file.is_some();
         let tls = match (&c.cert_file, &c.key_file) {
@@ -297,13 +351,13 @@ impl Console {
             grace: opts.console_grace.unwrap_or(opts.console_unauth_timeout),
         });
         let logins = Logins::new(&LoginOptions::of(c));
-        // A console started while a user's password is temporary asks for it to be changed.
-        if let Some((user, until)) = api.configs.temporary_password() {
+        if let Some((user, until)) = temporary {
             logins.set_temporary(&user, until);
         }
         let pages = Arc::new(Pages {
-            api: Arc::new(api),
+            kind,
             logins: Arc::new(logins),
+            cookie_prefix,
             cookie: OnceLock::new(),
             secure,
             login_pool: pool(LOGIN_WORKERS, LOGIN_QUEUE),
@@ -313,7 +367,7 @@ impl Console {
         // HTTP/1.1 alone, as the Admin API: one request at a time on each connection max_conns
         // counts.
         http.h2 = None;
-        http.max_body_bytes = OTHER_BODY_BYTES;
+        http.max_body_bytes = max_body;
         http.head_timeout = Some(Duration::from_secs(10));
         http.body_timeout = Some(Duration::from_secs(30));
         // How long a connection is kept between requests; one without a valid session is closed
@@ -358,7 +412,9 @@ impl Console {
             .start()
             .map_err(|e| io::Error::new(e.kind(), format!("console: {}: {e}", c.address)))?;
         let addr = engine.local_addrs().first().copied().unwrap_or(addr);
-        let _ = pages.cookie.set(login::cookie_name(COOKIE, addr.port()));
+        let _ = pages
+            .cookie
+            .set(login::cookie_name(&pages.cookie_prefix, addr.port()));
         Ok(Console {
             engine,
             addr,
@@ -385,6 +441,11 @@ impl Console {
         };
     }
 
+    /// Where the console listens.
+    pub(crate) fn addr(&self) -> SocketAddr {
+        self.addr
+    }
+
     /// Where the console listens, as a URL.
     pub(crate) fn url(&self) -> String {
         let scheme = if self.secure { "https" } else { "http" };
@@ -408,6 +469,9 @@ fn admin_path(path: &str) -> Option<&str> {
 
 impl akio_http::Service for Service {
     fn body_mode(&self, req: &Request) -> BodyMode {
+        if let Kind::Role(_) = self.0.kind {
+            return BodyMode::Buffered;
+        }
         // A config's body streams in within max_config_bytes, as the Admin API's does.
         match admin_path(req.path()) {
             Some(p) if takes_config(&req.method, p) => BodyMode::Stream,
@@ -557,8 +621,40 @@ fn run_on(pool: &Pool, d: Detached, work: impl FnOnce(Detached) + Send + 'static
 }
 
 impl Pages {
+    /// Whether a store keeps the console users: `admin.console`'s, with a store.
+    fn users_stored(&self) -> bool {
+        match &self.kind {
+            Kind::Admin(api, _) => api.configs.users_stored(),
+            Kind::Role(_) => false,
+        }
+    }
+
+    /// The IDs of the modules the console serves, for `GET /api/workbench`.
+    fn module_ids(&self) -> Vec<&'static str> {
+        match &self.kind {
+            Kind::Admin(_, ms) => {
+                let mut ids = vec![ADMIN_MODULE];
+                if let Some(ms) = ms {
+                    ids.extend(ms.ids());
+                }
+                ids
+            }
+            Kind::Role(m) => vec![m.id()],
+        }
+    }
+
+    /// The module `id`, other than `admin`, the console serves.
+    fn module(&self, id: &str) -> Option<ModuleRef> {
+        match &self.kind {
+            Kind::Admin(_, ms) => ms.as_ref().and_then(|ms| ms.get(id)),
+            Kind::Role(m) => (m.id() == id).then(|| Arc::clone(m)),
+        }
+    }
+
     fn cookie(&self) -> &str {
-        self.cookie.get().map_or(COOKIE, String::as_str)
+        self.cookie
+            .get()
+            .map_or(&self.cookie_prefix, String::as_str)
     }
 
     fn origin(&self, ctx: &Context) -> String {
@@ -639,16 +735,37 @@ impl Pages {
             match path.as_str() {
                 "/api/session" => return ctx.respond(json(200, session_body(&s))),
                 "/api/workbench" => {
+                    let ids: Vec<String> = self.module_ids().iter().map(|i| quoted(i)).collect();
                     return ctx.respond(json(
                         200,
                         format!(
-                            "{{\"user\":{},\"modules\":[\"{ADMIN_MODULE}\"]}}\n",
-                            quoted(&s.user)
+                            "{{\"user\":{},\"modules\":[{}]}}\n",
+                            quoted(&s.user),
+                            ids.join(",")
                         ),
                     ));
                 }
                 _ => {}
             }
+        }
+        // A role's module (I109): at /api/m/<id>/, and on its own console at /api/ too.
+        if let Some(rest) = path.strip_prefix("/api/m/") {
+            let (id, sub) = rest.split_once('/').unwrap_or((rest, ""));
+            if id != ADMIN_MODULE {
+                return match self.module(id) {
+                    Some(m) => m.serve(ctx, &s.user, &format!("/api/{sub}")),
+                    None => ctx.respond(error(404, &format!("no module {} runs here", quoted(id)))),
+                };
+            }
+        }
+        if let Kind::Role(m) = &self.kind {
+            if path.starts_with("/api/m/") {
+                return ctx.respond(error(
+                    404,
+                    &format!("no module {} runs here", quoted(ADMIN_MODULE)),
+                ));
+            }
+            return m.serve(ctx, &s.user, &path);
         }
         // GET /api/node: the Admin API's, beside /api/m/admin/node.
         let target = if path == "/api/node" {
@@ -728,7 +845,9 @@ impl Pages {
                 None => sub.to_owned(),
             };
         }
-        dispatch(&self.api, ctx);
+        if let Kind::Admin(api, _) = &self.kind {
+            dispatch(api, ctx);
+        }
     }
 
     /// `GET /api/m/admin/users`: who is logged in, whether a store keeps the passwords, and
@@ -737,7 +856,7 @@ impl Pages {
         let mut b = format!(
             "{{\"user\":{},\"store\":{},\"users\":[",
             quoted(&s.user),
-            self.api.configs.users_stored()
+            self.users_stored()
         );
         for (i, u) in self.logins.users().iter().enumerate() {
             if i > 0 {
@@ -836,7 +955,7 @@ impl Pages {
                 slowed: false,
             }));
         }
-        if !self.api.configs.users_stored() {
+        if !self.users_stored() {
             return Err(error(409, NO_STORE));
         }
         Ok(())
@@ -971,8 +1090,10 @@ impl Pages {
         let hash =
             akio_crypto::bcrypt::hash(password.as_bytes(), akio_crypto::bcrypt::DEFAULT_COST)
                 .map_err(|e| error(500, &format!("hashing the password: {e}")))?;
-        self.api
-            .configs
+        let Kind::Admin(api, _) = &self.kind else {
+            return Err(error(409, NO_STORE));
+        };
+        api.configs
             .set_console_password(user, &hash)
             .map_err(|e| error(500, &format!("saving the password: {e}")))?;
         self.logins.set_password(user, &hash);

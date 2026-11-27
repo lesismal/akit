@@ -86,7 +86,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 
 ## 索引
 
-状态：`todo`、`doing` 或 `done`。下一个可用的迭代编号是 I110（为日志路线和访问控制列表路线预留的 I84 和 I88 未使用；I95 和 I96 为控制台路线预留；I97 改名了 fit 的对外名字；I98–I109、I102b、I102c、I102d 和 I103b 是隧道与 LLM 路线）。
+状态：`todo`、`doing` 或 `done`。下一个可用的迭代编号是 I110（为日志路线和访问控制列表路线预留的 I84 和 I88 未使用；I95 和 I96 为控制台路线预留；I97 改名了 fit 的对外名字；I98–I109、I102b、I102c、I102d、I103b、I109b 和 I109c 是隧道与 LLM 路线）。
 
 | ID | 迭代 | 依赖 | 状态 |
 | --- | --- | --- | --- |
@@ -219,7 +219,9 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I106b | LLM III b：hub 供页面使用的调用（`/hub/nodes`、`/hub/node/call`、`/hub/node/stream`）、node 列表的字节上限、路由计数（`/mesh/status`） | I106 | done |
 | I107 | LLM IV：proxy：agent 的 API、API key、路由、错误 | I106 | done |
 | I108 | LLM V：node 的管理：硬件、GPU、固定动作和作业 | I105 | done |
-| I109 | 角色的页面：其控制台和方法，写回的编辑 | I103, I107, I91 | todo |
+| I109 | 角色的页面：其控制台和方法，写回的编辑；hub 的页面（拆出 I109b、I109c） | I103, I107, I91 | done |
+| I109b | 隧道 node 和 proxy 的页面：其状态、hub、服务、转发和 meta | I109 | todo |
+| I109c | LLM 角色的页面：`/api/me`、其方法（`/api/rpc`）与流（`/api/stream`，Server-Sent Events） | I109, I106b, I108 | todo |
 
 ## 基准与优化状态
 
@@ -1444,8 +1446,8 @@ fit 的，使 akit 的角色能与 fit 的角色互连（决定 038）。
   hub 和 proxy。
 - **涉及**：`akit-tunnel`。
 - **fit**：`tunnel/hub/socket.go`、`tunnel/proxy/webproxy.go`、`tunnel/internal/wscrypt`。套接字承载的控制台是 hub 的页面（I109）。
-- **状态**：done（2026-11-27）。见进度日志。在 I109 提供套接字承载的页面之前，`akit run` 拒绝各角色的 `console`，因而也拒绝
-  hub 的 `console_socket`。
+- **状态**：done（2026-11-27）。见进度日志。在 I109 提供套接字承载的 hub 页面之前，`akit run` 拒绝各角色的 `console`，因而也
+  拒绝 hub 的 `console_socket`。
 
 ### I104 LLM I：网状链路（mesh）
 
@@ -1519,4 +1521,29 @@ fit 的，使 akit 的角色能与 fit 的角色互连（决定 038）。
 - **完成标准**：移植后的 fit 角色页面测试通过；页面的修改被应用、进入历史，不能加载时被拒绝。
 - **涉及**：`akit-admin`、`akit-tunnel`、`akit-llm`、`tools/console-pages.py`。
 - **fit**：`app/roleconsole`、`app/workbench`、`tunnel/*/api.go`、`llm/internal/webui`。
+- **状态**：角色的控制台与 hub 的页面 done（2026-11-27）；隧道 node 和 proxy 的页面拆为 I109b，LLM 角色的页面拆为 I109c
+  （决定第 46 行）。见进度日志。
+
+### I109b 隧道 node 和 proxy 的页面
+
+- **做什么**：node 的模块（fit 的 `tunnel/node/api.go`：其状态，含与各 hub 的链路、各服务的往返时间和隧道；添加、修改、删除 hub；
+  设置服务；关闭隧道）和 proxy 的模块（fit 的 `tunnel/proxy/api.go`：其状态，含每个 hub 的 node 及其按往返时间的份额（fit 的
+  `Weights`）、转发和 web 代理；其 hub；向某 hub 的 node 询问信息或设置服务；其 meta；添加和删除转发；关闭隧道），在 I109
+  的控制台上提供；`akit run` 不再拒绝它们的 `console`。
+- **完成标准**：移植后的 fit node 和 proxy 页面测试通过；页面上的修改被应用、进入历史，不能加载时被拒绝。
+- **涉及**：`akit-tunnel`。
+- **fit**：`tunnel/node/api.go`、`tunnel/proxy/api.go`、`tunnel/internal/common/hubs.go`。
+- **状态**：todo。
+
+### I109c LLM 角色的页面
+
+- **做什么**：在 I109 的控制台上为 LLM 的 hub、node 和 proxy 提供 fit 的 `llm/internal/webui`：`GET /api/me`（用户、角色的身份、
+  proxy 的 API URL），对角色路由器的每个方法提供 `POST /api/rpc<method>`，经 `akit_llm::local::Local`（I106b）以角色自己的
+  页面身份在角色的池上调用，对其流方法提供 `POST /api/stream<method>`，以 Server-Sent Events 返回，同时至多 16 个，每帧只在
+  浏览器取走后才还给流，每次等待至多 30 秒；编辑由方法自己的 `role::Base::edit` 写回；页面调用而角色尚缺的方法：其他
+  `/mesh/*` 方法（peers、dial、listen、limits，属 I106）和 proxy 的方法（创建和删除 key、其 API 设置、其统计，属 I107）；
+  `akit run` 不再拒绝它们的 `console`。
+- **完成标准**：移植后的 fit `webui` 测试（`api_test.go`）在 akit 的 hub、node 和 proxy 上通过。
+- **涉及**：`akit-llm`。
+- **fit**：`llm/internal/webui`、`llm/internal/role`（`applyConsole`）。
 - **状态**：todo。

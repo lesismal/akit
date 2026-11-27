@@ -239,3 +239,88 @@ fn console_under_akit_run() {
     });
     drop(akit);
 }
+
+/// A logged-in session's headers for `console`: its cookie and CSRF token.
+fn session(console: SocketAddr, user: &str) -> String {
+    let (status, cookie, body) = call(
+        console,
+        "POST",
+        "/api/login",
+        "",
+        &format!(r#"{{"username": "{user}", "password": "pw"}}"#),
+    );
+    assert_eq!(status, 200, "{body}");
+    let session = cookie.split(';').next().unwrap().to_owned();
+    let csrf = body
+        .split("\"csrf\":\"")
+        .nth(1)
+        .unwrap()
+        .split('"')
+        .next()
+        .unwrap()
+        .to_owned();
+    format!("Cookie: {session}\r\nX-Akit-Csrf: {csrf}\r\n")
+}
+
+/// End to end (I109): `akit run` serves the hub's own console with its module, and
+/// `admin.console` shows the hub's module beside the config's; a change made on the hub's page is
+/// written back into the config, a version the Admin API lists.
+#[test]
+fn role_pages_under_akit_run() {
+    let d = Dir::new("e2e-role-pages");
+    let (api, console, web) = (free(), free(), free());
+    let (hub_console, link, sock, extra) = (free(), free(), free(), free());
+    let hash = akio_crypto::bcrypt::hash(b"pw", 4).unwrap();
+    let hub = format!(
+        r#", "tunnel": {{"hub": {{"name": "hub", "password": "pw",
+      "listeners": [{{"protocol": "tcp", "address": "{link}"}}],
+      "console": {{"address": "{hub_console}", "users": [{{"username": "hal", "password_hash": "{hash}"}}]}},
+      "console_socket": {{"address": "{sock}", "password": "sock"}}}}}}"#
+    );
+    let path = d.0.join("akit.json");
+    std::fs::write(&path, config(api, console, web, &hash, &hub, "")).unwrap();
+    let akit = Akit::run(&path, &[]);
+    akit.until(&format!("akit: console on http://{console}/"));
+    eventually("the hub's console to listen", || {
+        TcpStream::connect(hub_console).is_ok()
+    });
+
+    // admin.console: the hub's module beside the config's.
+    let admin = session(console, "ada");
+    let (status, _, body) = call(console, "GET", "/api/workbench", &admin, "");
+    assert_eq!(status, 200, "{body}");
+    assert!(
+        body.contains(r#""modules":["admin","tunnel.hub"]"#),
+        "{body}"
+    );
+    let (status, _, body) = call(console, "GET", "/api/m/tunnel.hub/status", &admin, "");
+    assert_eq!(status, 200, "{body}");
+    assert!(body.contains(&format!(r#""socket":"{sock}""#)), "{body}");
+
+    // The hub's console: its own users, its module; a listener added there is written back.
+    let (status, _, _) = call(hub_console, "GET", "/api/status", &admin, "");
+    assert_eq!(status, 401);
+    let hal = session(hub_console, "hal");
+    let (status, _, body) = call(hub_console, "GET", "/api/workbench", &hal, "");
+    assert_eq!(status, 200, "{body}");
+    assert!(body.contains(r#""modules":["tunnel.hub"]"#), "{body}");
+    let (status, _, body) = call(
+        hub_console,
+        "POST",
+        "/api/listeners",
+        &hal,
+        &format!(r#"{{"protocol": "tcp", "address": "{extra}"}}"#),
+    );
+    assert_eq!(status, 200, "{body}");
+    eventually("the new listener to listen", || {
+        TcpStream::connect(extra).is_ok()
+    });
+    let (status, _, body) = call(console, "GET", "/api/m/admin/config", &admin, "");
+    assert_eq!(status, 200, "{body}");
+    assert!(body.contains(&extra.to_string()), "{body}");
+    let (status, _, body) = call(console, "GET", "/api/m/admin/versions", &admin, "");
+    assert_eq!(status, 200, "{body}");
+    assert!(body.contains(r#""current":2"#), "{body}");
+
+    drop(akit);
+}

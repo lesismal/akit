@@ -18,10 +18,11 @@
 use std::sync::Arc;
 
 use akio_http::{Context, Method, Response};
-use akit_config::roles::LinkToken;
 use akit_config::value::{Value, write_string};
 use akit_observe::logger::{Level, Logger};
-use akit_roles::linktoken::{self, ExpiryReq, IssueReq, TokenError, View};
+use akit_roles::linktoken::{
+    self, ExpiryReq, IssueReq, TokenError, View, list_json, record_view, tokens_of, tokens_value,
+};
 
 use crate::configs::{Applied, ApplyError, Configs, Mode, Outcome, Refused};
 use crate::server::{Shared, error, read_body, submit};
@@ -96,91 +97,6 @@ fn member_of_mut<'v>(root: &'v mut Value, member: &str) -> Option<&'v mut Vec<(S
     }
 }
 
-fn int(v: Option<&Value>) -> i64 {
-    match v {
-        Some(Value::Number(n)) => n.parse().unwrap_or(0),
-        _ => 0,
-    }
-}
-
-fn text(v: Option<&Value>) -> String {
-    match v {
-        Some(Value::String(s)) => s.clone(),
-        _ => String::new(),
-    }
-}
-
-/// A member's tokens, as its config has them.
-fn tokens_of(member: &Value) -> Vec<LinkToken> {
-    let Some(Value::Array(items)) = member.get("tokens") else {
-        return Vec::new();
-    };
-    items
-        .iter()
-        .map(|t| LinkToken {
-            id: text(t.get("id")),
-            name: text(t.get("name")),
-            hash: text(t.get("hash")),
-            created_at: int(t.get("created_at")),
-            expires_at: int(t.get("expires_at")),
-            note: text(t.get("note")),
-            members: match t.get("members") {
-                Some(Value::Array(ms)) => ms.iter().map(|m| text(Some(m))).collect(),
-                _ => Vec::new(),
-            },
-        })
-        .collect()
-}
-
-/// `tokens` as the config writes them, fit's fields in fit's order, the empty ones left out.
-fn tokens_value(tokens: &[LinkToken]) -> Value {
-    Value::Array(
-        tokens
-            .iter()
-            .map(|t| {
-                let mut ms = vec![
-                    ("id".to_owned(), Value::String(t.id.clone())),
-                    ("name".to_owned(), Value::String(t.name.clone())),
-                    ("hash".to_owned(), Value::String(t.hash.clone())),
-                ];
-                for (k, v) in [("created_at", t.created_at), ("expires_at", t.expires_at)] {
-                    if v != 0 {
-                        ms.push((k.to_owned(), Value::Number(v.to_string())));
-                    }
-                }
-                if !t.note.is_empty() {
-                    ms.push(("note".to_owned(), Value::String(t.note.clone())));
-                }
-                if !t.members.is_empty() {
-                    ms.push((
-                        "members".to_owned(),
-                        Value::Array(t.members.iter().cloned().map(Value::String).collect()),
-                    ));
-                }
-                Value::Object(ms)
-            })
-            .collect(),
-    )
-}
-
-/// A token's view from its record alone: what the config holds, with no use since akit started.
-fn record_view(t: &LinkToken, now: i64) -> View {
-    View {
-        id: t.id.clone(),
-        name: t.name.clone(),
-        note: t.note.clone(),
-        created_at: t.created_at,
-        expires_at: t.expires_at,
-        expired: t.expired(now),
-        members: {
-            let mut m = t.members.clone();
-            m.sort();
-            m
-        },
-        ..View::default()
-    }
-}
-
 /// A member's views: the running role's, or else from the config.
 fn views(shared: &Shared, root: &Value, member: &str) -> Option<Vec<View>> {
     let m = member_of(root, member)?;
@@ -191,18 +107,6 @@ fn views(shared: &Shared, root: &Value, member: &str) -> Option<Vec<View>> {
     let mut out: Vec<View> = tokens_of(m).iter().map(|t| record_view(t, now)).collect();
     out.sort_by(|a, b| (&a.name, &a.id).cmp(&(&b.name, &b.id)));
     Some(out)
-}
-
-fn list_json(vs: &[View]) -> String {
-    let mut s = String::from("[");
-    for (i, v) in vs.iter().enumerate() {
-        if i > 0 {
-            s.push(',');
-        }
-        s.push_str(&v.to_json());
-    }
-    s.push(']');
-    s
 }
 
 fn json(status: u16, body: String) -> Response {
@@ -476,6 +380,7 @@ pub(crate) fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use akit_config::roles::LinkToken;
 
     #[test]
     fn tokens_round_trip_through_the_config() {

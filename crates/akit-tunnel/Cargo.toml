@@ -26,6 +26,8 @@ akit-roles = { workspace = true }
 
 [dev-dependencies]
 akio-crypto = { workspace = true }
+# The roles' consoles, which serve the hub's pages in the tests (I109).
+akit-admin = { workspace = true }
 akio-x509 = { workspace = true }
 
 [lints]

@@ -37,6 +37,7 @@ use akit_config::roles::{
     LINK_TOKEN_PREFIX, LinkToken, MAX_LINK_TOKEN_MEMBERS, MAX_LINK_TOKENS, check_link_token_string,
     valid_link_token_id,
 };
+use akit_config::value::Value;
 
 /// The size of a token's secret.
 pub const SECRET_SIZE: usize = 32;
@@ -951,6 +952,108 @@ pub fn bind(tokens: &mut [LinkToken], id: &str, member: &str) -> bool {
         }
         _ => false,
     }
+}
+
+fn int_of(v: Option<&Value>) -> i64 {
+    match v {
+        Some(Value::Number(n)) => n.parse().unwrap_or(0),
+        _ => 0,
+    }
+}
+
+fn text_of(v: Option<&Value>) -> String {
+    match v {
+        Some(Value::String(s)) => s.clone(),
+        _ => String::new(),
+    }
+}
+
+/// A member's tokens, as its config has them (`tokens` of the member's object).
+#[must_use]
+pub fn tokens_of(member: &Value) -> Vec<LinkToken> {
+    let Some(Value::Array(items)) = member.get("tokens") else {
+        return Vec::new();
+    };
+    items
+        .iter()
+        .map(|t| LinkToken {
+            id: text_of(t.get("id")),
+            name: text_of(t.get("name")),
+            hash: text_of(t.get("hash")),
+            created_at: int_of(t.get("created_at")),
+            expires_at: int_of(t.get("expires_at")),
+            note: text_of(t.get("note")),
+            members: match t.get("members") {
+                Some(Value::Array(ms)) => ms.iter().map(|m| text_of(Some(m))).collect(),
+                _ => Vec::new(),
+            },
+        })
+        .collect()
+}
+
+/// `tokens` as the config writes them, fit's fields in fit's order, the empty ones left out.
+#[must_use]
+pub fn tokens_value(tokens: &[LinkToken]) -> Value {
+    Value::Array(
+        tokens
+            .iter()
+            .map(|t| {
+                let mut ms = vec![
+                    ("id".to_owned(), Value::String(t.id.clone())),
+                    ("name".to_owned(), Value::String(t.name.clone())),
+                    ("hash".to_owned(), Value::String(t.hash.clone())),
+                ];
+                for (k, v) in [("created_at", t.created_at), ("expires_at", t.expires_at)] {
+                    if v != 0 {
+                        ms.push((k.to_owned(), Value::Number(v.to_string())));
+                    }
+                }
+                if !t.note.is_empty() {
+                    ms.push(("note".to_owned(), Value::String(t.note.clone())));
+                }
+                if !t.members.is_empty() {
+                    ms.push((
+                        "members".to_owned(),
+                        Value::Array(t.members.iter().cloned().map(Value::String).collect()),
+                    ));
+                }
+                Value::Object(ms)
+            })
+            .collect(),
+    )
+}
+
+/// A token's view from its record alone: what the config holds, with no use since akit started.
+#[must_use]
+pub fn record_view(t: &LinkToken, now: i64) -> View {
+    View {
+        id: t.id.clone(),
+        name: t.name.clone(),
+        note: t.note.clone(),
+        created_at: t.created_at,
+        expires_at: t.expires_at,
+        expired: t.expired(now),
+        members: {
+            let mut m = t.members.clone();
+            m.sort();
+            m
+        },
+        ..View::default()
+    }
+}
+
+/// Views as a JSON array.
+#[must_use]
+pub fn list_json(vs: &[View]) -> String {
+    let mut s = String::from("[");
+    for (i, v) in vs.iter().enumerate() {
+        if i > 0 {
+            s.push(',');
+        }
+        s.push_str(&v.to_json());
+    }
+    s.push(']');
+    s
 }
 
 /// How an expiry reads in the `admin` logger.

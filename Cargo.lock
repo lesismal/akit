@@ -498,6 +498,7 @@ version = "0.0.1"
 dependencies = [
  "akio",
  "akio-crypto",
+ "akio-http",
  "akit-config",
 ]
 
@@ -547,6 +548,7 @@ dependencies = [
  "akio-quic",
  "akio-x509",
  "akit-access",
+ "akit-admin",
  "akit-config",
  "akit-observe",
  "akit-roles",

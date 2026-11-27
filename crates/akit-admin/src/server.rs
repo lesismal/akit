@@ -83,6 +83,9 @@ pub struct Options {
     /// The running roles' link tokens, with their last uses and links (I100), which `GET
     /// /tokens` lists; without it, the tokens the running config holds.
     pub tokens: Option<crate::tokens::TokenViews>,
+    /// The running roles' modules of the pages (I109), which the console serves beside the
+    /// config's own; none without it.
+    pub modules: Option<akit_roles::pages::Modules>,
     /// How long after it was accepted a console connection without a valid session is closed
     /// (fit's `UnauthIdleTimeout`, [`crate::console::UNAUTH_TIMEOUT`]); tests shorten it.
     pub console_unauth_timeout: Duration,
@@ -108,6 +111,7 @@ impl fmt::Debug for Options {
             .field("console_access", &self.console_access.is_some())
             .field("logs", &self.logs.is_some())
             .field("tokens", &self.tokens.is_some())
+            .field("modules", &self.modules)
             .field("console_unauth_timeout", &self.console_unauth_timeout)
             .field("console_idle_timeout", &self.console_idle_timeout)
             .field("console_grace", &self.console_grace)
@@ -128,6 +132,7 @@ impl Default for Options {
             console_access: None,
             logs: None,
             tokens: None,
+            modules: None,
             console_unauth_timeout: crate::console::UNAUTH_TIMEOUT,
             console_idle_timeout: crate::console::IDLE_TIMEOUT,
             console_grace: None,

@@ -22,6 +22,7 @@ use crate::msg::{
 };
 
 mod api;
+mod pages;
 pub mod socket;
 pub use api::{HubApi, InfoDone};
 
@@ -1016,6 +1017,8 @@ impl Router for HubRouter {
 /// The hub role.
 pub struct Hub {
     core: Arc<HubCore>,
+    /// Its module of the pages (I109), made once, so that its consoles keep serving it.
+    module: akit_roles::pages::ModuleRef,
 }
 
 impl std::fmt::Debug for Hub {
@@ -1099,7 +1102,8 @@ pub fn new(host: Host) -> Result<Box<dyn Role>, String> {
         socket: Mutex::new(None),
         me: me.clone(),
     });
-    Ok(Box::new(Hub { core }))
+    let module: akit_roles::pages::ModuleRef = Arc::new(pages::HubPages(Arc::downgrade(&core)));
+    Ok(Box::new(Hub { core, module }))
 }
 
 /// Closes the links of tokens that expired, at their expiry (fit's registry's timer): scheduled
@@ -1489,5 +1493,9 @@ impl Role for Hub {
 
     fn api(&self) -> Option<akit_roles::host::Api> {
         Some(Arc::new(HubApi(Arc::clone(&self.core))))
+    }
+
+    fn module(&self) -> Option<akit_roles::pages::ModuleRef> {
+        Some(Arc::clone(&self.module))
     }
 }

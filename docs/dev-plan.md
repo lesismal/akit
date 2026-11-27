@@ -95,7 +95,8 @@ few crates as it can. fit's package of the same role is given for reference.
 
 Status: `todo`, `doing` or `done`. The next free iteration number is I110 (I84 and I88, reserved for the
 Logging and Access lists tracks, are unused; I95 and I96 are reserved for the Console track; I97
-renamed fit's external names; I98–I109, I102b, I102c, I102d and I103b are the Tunnel and LLM track).
+renamed fit's external names; I98–I109, I102b, I102c, I102d, I103b, I109b and I109c are the Tunnel and
+LLM track).
 
 | ID | Iteration | Depends on | Status |
 | --- | --- | --- | --- |
@@ -228,7 +229,9 @@ renamed fit's external names; I98–I109, I102b, I102c, I102d and I103b are the 
 | I106b | LLM III b: the hub's calls for the pages (`/hub/nodes`, `/hub/node/call`, `/hub/node/stream`), the node list's byte bound, the routes' counts (`/mesh/status`) | I106 | done |
 | I107 | LLM IV: the proxy: the agents' API, API keys, routing, errors | I106 | done |
 | I108 | LLM V: the node's management: hardware, GPUs, fixed actions and jobs | I105 | done |
-| I109 | The roles' pages: their consoles and methods, edits written back | I103, I107, I91 | todo |
+| I109 | The roles' pages: their consoles and methods, edits written back; the hub's pages (I109b, I109c split) | I103, I107, I91 | done |
+| I109b | The tunnel's node's and proxy's pages: their status, hubs, services, forwards and meta | I109 | todo |
+| I109c | The LLM roles' pages: `/api/me`, their methods (`/api/rpc`) and streams (`/api/stream`, Server-Sent Events) | I109, I106b, I108 | todo |
 
 ## Benchmark and optimization status
 
@@ -1704,8 +1707,8 @@ link with fit's (decision 038).
 - **Touches**: `akit-tunnel`.
 - **fit**: `tunnel/hub/socket.go`, `tunnel/proxy/webproxy.go`, `tunnel/internal/wscrypt`. The
   console the socket carries is the hub's pages (I109).
-- **Status**: done (2026-11-27). See the progress log. `akit run` refuses the roles' `console`, and
-  so the hub's `console_socket`, until I109 serves the pages the socket carries.
+- **Status**: done (2026-11-27). See the progress log. `akit run` refused the roles' `console`, and
+  so the hub's `console_socket`, until I109 served the hub's pages the socket carries.
 
 ### I104 LLM I: the mesh
 
@@ -1801,4 +1804,37 @@ link with fit's (decision 038).
   refused when it does not load.
 - **Touches**: `akit-admin`, `akit-tunnel`, `akit-llm`, `tools/console-pages.py`.
 - **fit**: `app/roleconsole`, `app/workbench`, `tunnel/*/api.go`, `llm/internal/webui`.
+- **Status**: done (2026-11-27) for the roles' consoles and the hub's pages; the tunnel's node's
+  and proxy's pages split into I109b, the LLM roles' into I109c (decision row 46). See the
+  progress log.
+
+### I109b The tunnel's node's and proxy's pages
+
+- **Do**: the node's module (fit's `tunnel/node/api.go`: its status, with its hubs' links, its
+  services' round trips and its tunnels; its hubs added, changed and removed; its services set;
+  a tunnel closed) and the proxy's (fit's `tunnel/proxy/api.go`: its status, with each hub's nodes
+  and their shares by round trip (fit's `Weights`), its forwards and web proxies; its hubs; a
+  hub's node asked for its info or given services; its meta; its forwards added and removed; a
+  tunnel closed), on I109's consoles; `akit run` stops refusing their `console`.
+- **Done when**: fit's node and proxy page tests pass ported; a change on their pages is applied,
+  in the history, and refused when it does not load.
+- **Touches**: `akit-tunnel`.
+- **fit**: `tunnel/node/api.go`, `tunnel/proxy/api.go`, `tunnel/internal/common/hubs.go`.
+- **Status**: todo.
+
+### I109c The LLM roles' pages
+
+- **Do**: fit's `llm/internal/webui` on I109's consoles, for the LLM hub, node and proxy:
+  `GET /api/me` (the user, the role's identity, a proxy's API URL), `POST /api/rpc<method>` for
+  every method of the role's router, called as its own pages through `akit_llm::local::Local`
+  (I106b) on the role's pool, and `POST /api/stream<method>` for its stream methods as
+  Server-Sent Events, at most 16 at once, each frame released to the stream only as the browser
+  takes it, 30 s at most per wait; edits written back by the methods' own `role::Base::edit`;
+  the methods the pages call that the roles lack yet: the other `/mesh/*` methods (peers, dial,
+  listen, limits, I106's) and the proxy's (keys created and deleted, its API settings, its stats,
+  I107's); `akit run` stops refusing their `console`.
+- **Done when**: fit's `webui` tests (`api_test.go`) pass ported, against akit's hub, node and
+  proxy.
+- **Touches**: `akit-llm`.
+- **fit**: `llm/internal/webui`, `llm/internal/role` (`applyConsole`).
 - **Status**: todo.
