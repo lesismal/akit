@@ -251,6 +251,19 @@ Tunnel and LLM track; I110–I114 are the WebRTC track, and I115–I119 are rese
 | I157 | BitTorrent VIII: the Admin API's `/bittorrent/...`, events, `akit bt`, metrics | I153 | todo |
 | I158 | BitTorrent IX: the client's and the tracker's pages | I157, I109 | todo |
 | I159 | BitTorrent X: RSS auto-download, the tracker store instances share, private trackers' passkeys | I153, I151 | todo |
+| **After 1.0: cluster management** | | | |
+| I130 | Cluster I: `admin.node_id`, `admin.cluster` and `admin.cluster_member` in the config | I93c | todo |
+| I131 | Cluster II: what a member needs: `GET /node`, the node ID kept, `GET /schema` | I130 | todo |
+| I132 | Cluster III: the manager (`akit-cluster`): members and credentials in the store, fit's document; the poller; `/api/m/cluster/nodes`, `/test`, `/state` | I131 | todo |
+| I133 | Cluster IV: the Cluster pages: Overview, Nodes and a node's page; `docs/guides/cluster.md` | I132 | todo |
+| I134 | Cluster V: a member's own pages opened from the manager (`/api/n/<member>/...`) | I133 | todo |
+| I135 | Cluster VI: groups and operations on many | I133 | todo |
+| I136 | Cluster VII: templates; `/node/managed` | I135 | todo |
+| I137 | Cluster VIII: rollouts with health gates | I136 | todo |
+| I138 | Cluster IX: drift and alerts; `/config/check` | I137 | todo |
+| I139 | Cluster X: users, roles and the audit log | I137 | todo |
+| I139b | Cluster XI: members behind NAT, linking out | I132 | todo |
+| I139c | Cluster XII: metrics, logs and certificates across members; `akit cluster` | I138 | todo |
 
 ## Benchmark and optimization status
 
@@ -311,6 +324,7 @@ commit and result.
 | Config churn under traffic | I38 | no | no (tested, not measured) | The fixed and proxy scenarios, HTTP/1.1 and h2c, while the config is swapped every 10 ms through SIGHUP and the Admin API, against the same run with no swaps: requests a second, p99 latency and errors during the churn, and akit's RSS and descriptors after 100k swaps; the M2 report of the full harness (rule 24, a milestone's end). |
 | Access lists | I85–I87 | no | no (built, not measured) | As fit's `BenchmarkAllows`: a policy's lookup (one list of 10, 10,000 and 1,000,000 prefixes from a file, and three lists chained) for IPv4 and IPv6 addresses, 1 and 16 threads, no allocation. Same-run A/B, alternating rounds, against the same config without `access`: connections a second through a listener refused or served at accept (akio's filter, A3: an `Arc` read and the lookup per accept) with a large deny list; the fixed and proxy scenarios over HTTP/1.1, h2c and h3 with a route's own access (checked per request: a graph read and the lookup) and without; a `tcp` service's connections a second decided by akit-l4's entry; a flood of refused `udp` datagrams (dropped at akio's filter, A220) against the served sessions' latency. |
 | Console and encrypted store | I89–I93c | no | no (control plane) | The console is control plane (rule 24: no benchmark of its own), but it shares the host with the data plane. Same-run A/B, alternating rounds, of the fixed and proxy scenarios with and without a console being flooded with failed logins (bcrypt at cost 10 on its one-thread login pool, 16 waiting, the rest 503) and with a logged-in client polling `GET /api/m/admin/status` every second: the data plane's requests a second and p99 should not move. The console's own numbers, for the record: logins a second at costs 10 and 12; the workbench's first load (its 2.5 MB of files, from memory) over HTTP/1.1 and TLS. For I93: the store's key derivation at start (Argon2id at fit's 3, 64 MiB, 4 threads: time and peak memory), and a write's latency with a 4 MiB config (sealed, synced, renamed). |
+| Cluster management: the manager's poller and calls to members | I132–I139c | no | no (control plane) | Control plane (rule 24), sharing the host with the data plane. Same-run A/B, alternating rounds, of the fixed and proxy scenarios on a manager polling 256 stand-in members every second (`max_concurrency` 8, `/node` and `/status` each) against none, and on a member polled every second against one not polled: requests a second and p99 should not move. For the record: a poll round's time for 256 members; a rolling rollout over 50 members in batches of 10 with 5 s gates, end to end; the manager's memory with 256 members and their states. |
 | akio requests moved off their stopgaps (A12, A79, A45, A117, A30, A54, A29, A75, A78, A22, A170, A24, A49, A35, A148) | — (akio requests) | no | no (built, not measured) | Same-run A/B of the fixed and proxy scenarios, HTTP/1.1, h2c and h3, against main before these commits: the access log and metrics through the listener's response observer (`set_observed`, no allocation) against the boxed filter, and `limit_body` called on every request; the proxy's downloads framed by their length on HTTP/1.1 against chunked; layer 4 relays timed out by akio's per-connection idle timeout against akit's sweep (many idle connections); the sockmap relay through `akio::ebpf::Tunnel` (TCP throughput as root, as I51b's row); a health-check probe load on `akio::timer::after_send` against akit's old timer thread. |
 | BitTorrent: client and tracker | I151, I152 | no | no (not built yet) | Against fit's roles (fit with fit, akit with akit, and mixed), on loopback and between two hosts: one torrent's download in MiB a second from one seeder and from several (TCP and uTP, encrypted and plain), the disk pool's queue under a slow disk, a restart's time to seeding with resume data and without, memory per torrent and per peer; the tracker's announces a second over HTTP and UDP with 100,000 torrents and 500,000 peers, and its memory; fit's `bench/bt.sh` against anacrolix and libtorrent as fit's I205 ran it. |
 
@@ -1195,7 +1209,7 @@ below is the planned order; tracks with no dependency between them may run in pa
 | 5 | WebRTC | I87, I108–I111 | [I110–I114](#webrtc): the roles in the config; TURN on `akio-turn`; WHIP and WHEP on `akio-webrtc`; WHIP and WHEP proxied |
 | 6 | Streaming and media auth | I115–I117 | the streaming role on `akio-media`; `media_auth` |
 | 7 | Media library and channels | I131–I139 | an MP4 reader (akio request); VOD; channels; signed URLs |
-| 8 | Cluster management | I140–I150, I153 | members, overview, rollouts with health gates |
+| 8 | Cluster management | I140–I150, I153 | [I130–I139c](#cluster-management): the config, what a member needs, the manager and its members, the pages, groups, templates, rollouts with health gates, drift and alerts, roles, members behind NAT, metrics and the CLI; I153 with the AI assistant track |
 | 9 | AI assistant | I124–I130, I152–I154 | the chat panel, tools, MCP server |
 | 10 | BitTorrent | I196–I210 | [I150–I159](#bittorrent): the roles in the config, the tracker and the client on `akio-bittorrent`, adding torrents, schedules and access, `bt_stream`, publishing, the Admin API and events, the pages, RSS |
 | 11 | Sync | I163–I194, I211–I222 | the pipeline core and checkpoints, then connectors by fit's order |
@@ -2135,3 +2149,155 @@ waits for the Cluster management track.
   a private tracker's passkeys once `media_auth` is read (the Streaming and media auth track).
 - **Touches**: `akit-bittorrent`, `akit-config`.
 - **fit**: `bittorrent/rss*.go`, `bittorrent/tracker/sharedstore`; I207, I208.
+
+### Cluster management
+
+fit's I140–I150 (its [cluster guide](https://github.com/lesismal/fit/blob/main/docs/cluster.md),
+its [decision 033](https://github.com/lesismal/fit/blob/main/docs/decisions/033-cluster-management.md),
+its package `cluster`, `admin/node.go` and `config/cluster.go`), in twelve iterations
+([decision 041](decisions/041-cluster-management.md)); fit's I153, the assistant across a cluster,
+goes with the AI assistant track, which it needs. One akit, with `admin.cluster`, manages others,
+its members: it keeps their URLs and credentials in its store, polls each one's state, and serves
+them in the console's Cluster pages, fit's workbench pages as I91 copied them. A member changes as
+little as possible: the manager speaks the APIs it already has, its console or its Admin API.
+The wire is fit's (decision 041): a member's `GET /node`, `/status` and the console's login answer
+as fit's, and the manager's store section `cluster` is fit's document, so that akit and fit members
+share a manager of either kind, and an akit and a fit manager open each other's stores. Off by
+default: no `admin.cluster`, no Cluster menu, no outgoing calls.
+
+### I130 Cluster I: `admin.node_id`, `admin.cluster` and `admin.cluster_member` in the config
+
+- **Do**: the three read as fit's (`config/cluster.go`, `checkCluster`, `checkClusterMember`, the
+  node ID's pattern): `admin.node_id` (1 to 64 of `[A-Za-z0-9._-]`, a letter or digit first);
+  `admin.cluster` (`poll_interval` 10s and `timeout` 10s, 1s at least; `max_nodes` 256 up to
+  10,000; `max_concurrency` 8 up to 256; `max_response_bytes` 4 MiB, 16 KiB to 64 MiB;
+  `link_address`, `link_url` (wss, with `link_address`); `admins`, console users named once, 64
+  at most), which needs `admin.console`; `admin.cluster_member` (`manager` a wss URL,
+  `fingerprint` 64 hex digits, `token` (`akite1.`, fit's `fite1.` renamed, decision 037) or
+  `token_file`). `akit run` refuses each until the iteration that runs it (I131, I132, I139b),
+  naming it.
+- **Done when**: fit's `config` tests of the three pass ported; the gate's examples are valid;
+  the fields marked with `make v1-bless`; the reference regenerated.
+- **Touches**: `akit-config`, `akit`, `tests/compat`, `docs/reference`.
+- **fit**: `config/cluster.go`, `config/validate.go`; I140, I141, I149.
+
+### I131 Cluster II: what a member needs
+
+- **Do**: fit's I140 on every akit: `GET /node` (and the console's `/api/node`, as I90 routes it):
+  a node ID made once (a random UUIDv4) and kept in the store's section `node` (fit's), or in a
+  file beside the config (`akit.node-id` beside `akit.json`), or `admin.node_id`; the host name,
+  akit's and akio's versions, the start, the running config's version, ETag, time and source, the
+  roles running, the schema's version and digest, and fit's capability names for what akit's API
+  serves; `GET /schema`. The console's login already answers the CSRF token, and I89 slows failed
+  logins as fit's.
+- **Done when**: fit's `admin/node_test.go` passes ported: the same ID across restarts with and
+  without a store, a file's ID taken into a store, `admin.node_id` winning; the capabilities name
+  only what is served; the Account page shows the node.
+- **Touches**: `akit-admin`, `akit` (`run`), `docs`.
+- **fit**: `admin/node.go`; I140.
+
+### I132 Cluster III: the manager, its members and their state
+
+- **Do**: fit's I141 as a new crate, `akit-cluster`: the store's section `cluster`, fit's document
+  (versions 1 to 3 read; what akit does not use yet, groups, templates, rollouts, links, roles,
+  kept as it is), a newer one read-only; members with name, labels, URL and access (`console`,
+  logged in again on 401; `admin_api`, a bearer token), credentials never answered, logged or
+  sent but to their member; TLS by the system's roots, a CA PEM or a pinned SHA-256 (akio-tls's
+  `pin_sha256`); `http` only to loopback. A poller, a thread of its own starting calls on akio's asynchronous HTTP client (rule 1), at most
+  `max_concurrency` members at once, each every `poll_interval`, reading `/node`, `/status` and,
+  where served, `/config/check`, each call within
+  `timeout` and `max_response_bytes`; the login backoff and the rate limits as fit's. The console
+  module `cluster`: `GET/POST/PUT/DELETE /api/m/cluster/nodes[/<name>]`, `POST
+  .../nodes/<name>/test` and `POST /api/test` (the certificate's fingerprint answered for a
+  person to confirm), `GET /api/m/cluster/state`, `/audit` and `/me`; the audit log of adds,
+  changes and removals.
+- **Done when**: fit's `cluster` tests of members, the poller and the API pass ported against
+  stand-in members; a manager with an akit member and a fit member (fit built from source) reads
+  both, by password and by token; a wrong password, a certificate not trusted, a pin that does not
+  match and a member down are told apart; no credential appears in any answer or log; a store
+  written by fit's manager opens in akit's and the reverse.
+- **Touches**: `akit-cluster` (new), `akit-admin` (`console`), `akit` (`run`), `docs`.
+- **fit**: `cluster/{cluster,members,poll,transport,probe,read,call,audit}.go`; I141.
+
+### I133 Cluster IV: the Cluster pages, the overview and a node's page
+
+- **Do**: fit's I142: the console lists the module `cluster`, so the workbench draws its Cluster
+  menu, Overview and Nodes, as I91 copied them; a member's page reads the member through the
+  manager (`GET /api/m/cluster/nodes/<name>/read/{node,status,versions,check}`, 8 at once);
+  `docs/guides/cluster.md` in both languages.
+- **Done when**: in a browser, a member is added, tested, trusted, edited and removed; the
+  overview shows each failure mode of I132 and recovers; both languages.
+- **Touches**: `akit-cluster`, `akit-admin`, `docs/guides`.
+- **fit**: `cluster/read.go`, `app/workbench/web/cluster`; I142.
+
+### I134 Cluster V: a member's own pages, opened from the manager
+
+- **Do**: fit's I143: `/api/n/<member>/...` passed on to the member with the stored session, the
+  member's schema read from it, writes audited, a member of another schema read-only.
+- **Done when**: fit's `passthrough` tests pass ported; every config page reads and saves an akit
+  and a fit member.
+- **Touches**: `akit-cluster`, `akit-admin` (`console`).
+- **fit**: `cluster/passthrough.go`; I143.
+
+### I135 Cluster VI: groups and operations on many
+
+- **Do**: fit's I144: groups by label selector or by name, with variables; operations (reload,
+  rollback, check, purge by key, prefix or tag, test) on a group or a selection, bounded,
+  answered per member; `/api/m/cluster/groups`, `/ops`.
+- **Done when**: fit's `groups` and `ops` tests pass ported.
+- **Touches**: `akit-cluster`, `akit-admin` (`cache`: purge by prefix, fit's `cache.prefix`).
+- **fit**: `cluster/{groups,ops}.go`; I144.
+
+### I136 Cluster VII: templates
+
+- **Do**: fit's I145: templates owning top-level members and named elements, variables, order,
+  each member's sync state, import from a member, compare two; `PUT /node/managed` on members.
+- **Done when**: fit's `templates`, `render` and `sync` tests pass ported.
+- **Touches**: `akit-cluster`, `akit-admin` (`/node/managed`).
+- **fit**: `cluster/{templates,render,sync,text,jsonv}.go`, `admin/managed.go`; I145.
+
+### I137 Cluster VIII: rollouts with health gates
+
+- **Do**: fit's I146: a rollout's plan (each member's diff and dry run, its ETag), all at once,
+  rolling or canary; after each batch a health gate (reachable, reload succeeded, no new drift, a
+  5xx share under a threshold over a window from `/status`'s `requests`); a failed gate rolls the
+  batch back (`/rollback/{n}` with `If-Match`); pause, resume, abort; a member changed since the
+  plan skipped; kept in the store across a restart.
+- **Done when**: fit's `rollouts` tests pass ported, with akit and fit members.
+- **Touches**: `akit-cluster`, `akit-admin` (`/status`'s `requests`).
+- **fit**: `cluster/{rollouts,rollrun,rollsteer,rolldraft,rollapi}.go`; I146.
+
+### I138 Cluster IX: drift and alerts
+
+- **Do**: fit's I147: drift against the templates and the member's consistency check (fit's
+  `GET /config/check`, which akit serves first here); alert rules, webhooks, silences.
+- **Done when**: fit's `alerts`, `alerteval`, `webhooks` and `drift` tests pass ported.
+- **Touches**: `akit-cluster`, `akit-admin` (`/config/check`).
+- **fit**: `cluster/{alerts,alerteval,alertapi,webhooks,drift}.go`, `admin/drift.go`; I147.
+
+### I139 Cluster X: users, roles and the audit log
+
+- **Do**: fit's I148: roles per group (viewer, operator, admin), `admin.cluster.admins`, every
+  endpoint checked; the audit log of every action, filtered, as JSON lines.
+- **Done when**: fit's `roles` and `audit` tests pass ported.
+- **Touches**: `akit-cluster`.
+- **fit**: `cluster/{roles,audit}.go`; I148.
+
+### I139b Cluster XI: members behind NAT, linking out
+
+- **Do**: fit's I149: `admin.cluster_member`; the manager's link listener (`link_address`), the
+  enrollment tokens (`akite1.`, `akitc1.`; fit's labels on the wire, decision 038's rule), the
+  member's Admin API carried over the link.
+- **Done when**: fit's `link` tests pass ported; an akit member links to a fit manager and the
+  reverse.
+- **Touches**: `akit-cluster`, `akit-roles` (`linktoken`), `akit`.
+- **fit**: `cluster/{linkserver,linkmember,linkproto,enroll}.go`, `admin/clusterlink.go`; I149.
+
+### I139c Cluster XII: metrics, logs and certificates across members; `akit cluster`
+
+- **Do**: fit's I150: series from each poll, the members' logs tailed (`GET /logs/recent` on
+  members), the certificate inventory; `akit cluster` in the CLI through the manager's Admin API.
+- **Done when**: fit's `insight`, `logtail` and `adminapi` tests pass ported; the CLI drives a
+  rollout end to end.
+- **Touches**: `akit-cluster`, `akit-admin` (`/logs/recent`), `akit` (`cluster`).
+- **fit**: `cluster/{insight,logtail,adminapi}.go`, `cli/cluster.go`, `admin/logsrecent.go`; I150.

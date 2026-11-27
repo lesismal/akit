@@ -241,6 +241,19 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I157 | BitTorrent VIII：Admin API 的 `/bittorrent/...`、事件、`akit bt`、指标 | I153 | todo |
 | I158 | BitTorrent IX：客户端和 tracker 的页面 | I157, I109 | todo |
 | I159 | BitTorrent X：RSS 自动下载、实例共享的 tracker 存储、私有 tracker 的 passkey | I153, I151 | todo |
+| **1.0 之后：集群管理** | | | |
+| I130 | 集群 I：配置中的 `admin.node_id`、`admin.cluster` 和 `admin.cluster_member` | I93c | todo |
+| I131 | 集群 II：成员需要什么：`GET /node`、保存节点 ID、`GET /schema` | I130 | todo |
+| I132 | 集群 III：管理端（`akit-cluster`）：存储中的成员和凭据，fit 的文档；轮询器；`/api/m/cluster/nodes`、`/test`、`/state` | I131 | todo |
+| I133 | 集群 IV：集群页面：概览、节点和节点页面；`docs/guides/cluster.md` | I132 | todo |
+| I134 | 集群 V：从管理端打开成员自己的页面（`/api/n/<member>/...`） | I133 | todo |
+| I135 | 集群 VI：分组和对多个成员的操作 | I133 | todo |
+| I136 | 集群 VII：模板；`/node/managed` | I135 | todo |
+| I137 | 集群 VIII：带健康门槛的发布 | I136 | todo |
+| I138 | 集群 IX：漂移和告警；`/config/check` | I137 | todo |
+| I139 | 集群 X：用户、角色和审计日志 | I137 | todo |
+| I139b | 集群 XI：NAT 之后主动外连的成员 | I132 | todo |
+| I139c | 集群 XII：跨成员的指标、日志和证书；`akit cluster` | I138 | todo |
 
 ## 基准与优化状态
 
@@ -298,6 +311,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | 有流量时频繁替换配置 | I38 | 否 | 否（已测试，未测量） | fixed 和 proxy 场景，HTTP/1.1 和 h2c，期间每 10 ms 经 SIGHUP 和 Admin API 替换一次配置，对照同一轮中不替换：替换期间的每秒请求数、p99 延迟和错误，以及替换 10 万次后 akit 的 RSS 和描述符数；完整测试套件的 M2 报告（规则 24，里程碑结束）。 |
 | 访问控制列表 | I85–I87 | 否 | 否（已实现，未测量） | 同 fit 的 `BenchmarkAllows`：一个策略的查找（一个含 10、10,000 和 1,000,000 个前缀、从文件读入的列表，以及串联的三个列表），IPv4 和 IPv6 地址，1 和 16 个线程，不分配内存。与不带 `access` 的同一配置做同一轮 A/B、交替轮次：带大型拒绝列表时，监听器在 accept 时拒绝或接受的每秒连接数（akio 的过滤器，A3：每次 accept 一次 `Arc` 读取加一次查找）；路由带自己的列表（逐请求检查：一次图读取加一次查找）与不带时，fixed 和 proxy 场景在 HTTP/1.1、h2c 和 h3 上的表现；由 akit-l4 的入口决定的 `tcp` 服务每秒连接数；被拒绝的 `udp` 数据报洪泛（在 akio 的过滤器处丢弃，A220）对正常会话延迟的影响。 |
 | 控制台与加密的 store | I89–I93c | 否 | 否（控制面） | 控制台属于控制面（规则 24：自身无需基准），但与数据面共用主机。同一轮 A/B、交替轮次：fixed 和 proxy 场景在控制台遭受大量失败登录（成本 10 的 bcrypt 在其单线程登录池上，16 个等待，其余 503）时和没有时，并有一个已登录客户端每秒轮询 `GET /api/m/admin/status`：数据面的每秒请求数和 p99 不应变化。控制台自身的数字仅作记录：成本 10 和 12 时每秒登录数；工作台首次加载（其 2.5 MB 文件，从内存提供）在 HTTP/1.1 和 TLS 上的耗时。I93：启动时 store 的密钥派生（fit 的 Argon2id 参数 3、64 MiB、4 线程：耗时和峰值内存），以及 4 MiB 配置一次写入（密封、同步、重命名）的延迟。 |
+| 集群管理：管理端的轮询器和对成员的调用 | I132–I139c | 否 | 否（控制面） | 控制面（规则 24），但与数据面共用主机。同轮 A/B、交替进行：在每秒轮询 256 个替身成员（`max_concurrency` 8，各读 `/node` 和 `/status`）的管理端上跑 fixed 和 proxy 场景，与不轮询相比；在每秒被轮询的成员上跑，与未被轮询相比：每秒请求数和 p99 不应变化。记录：256 个成员一轮轮询的耗时；50 个成员、每批 10 个、门槛 5 s 的滚动发布从头到尾的耗时；有 256 个成员及其状态时管理端的内存。 |
 | akio 请求替换掉的权宜实现（A12、A79、A45、A117、A30、A54、A29、A75、A78、A22、A170、A24、A49、A35、A148） | —（akio 请求） | 否 | 否（已实现，未测量） | 对照这些提交之前的 main，同一轮 A/B 测 fixed 和 proxy 场景，HTTP/1.1、h2c 和 h3：访问日志和指标走监听器的响应观察者（`set_observed`，不分配）对比装箱的过滤器，以及每个请求都调用 `limit_body`；代理在 HTTP/1.1 上按长度成帧的下载对比 chunked；第 4 层转发由 akio 的每连接空闲超时关闭对比 akit 的扫描（大量空闲连接）；sockmap 转发经 `akio::ebpf::Tunnel`（以 root 测 TCP 吞吐，同 I51b 一行）；健康检查探测负载走 `akio::timer::after_send` 对比 akit 原来的定时线程。 |
 | BitTorrent：客户端和 tracker | I151, I152 | no | no（尚未构建） | 对照 fit 的角色（fit 对 fit、akit 对 akit 以及混合），在回环地址上和两台主机之间：从一个做种者和从多个做种者下载一个种子的 MiB/s（TCP 和 uTP，加密和明文）、慢磁盘下磁盘池的队列、有和没有 resume 数据时重启到做种的时间、每个种子和每个 peer 的内存；tracker 在 100,000 个种子和 500,000 个 peer 下 HTTP 和 UDP 每秒的 announce 数及其内存；如 fit 的 I205 那样以 fit 的 `bench/bt.sh` 对照 anacrolix 和 libtorrent。 |
 
@@ -1068,7 +1082,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | 5 | WebRTC | I87, I108–I111 | [I110–I114](#webrtc)：配置中的角色；基于 `akio-turn` 的 TURN；基于 `akio-webrtc` 的 WHIP 和 WHEP；代理的 WHIP 和 WHEP |
 | 6 | 流媒体与媒体认证 | I115–I117 | 基于 `akio-media` 的流媒体角色；`media_auth` |
 | 7 | 媒体库与频道 | I131–I139 | MP4 读取器（akio 需求）；点播；频道；签名 URL |
-| 8 | 集群管理 | I140–I150, I153 | 成员、概览、带健康门槛的发布 |
+| 8 | 集群管理 | I140–I150, I153 | [I130–I139c](#集群管理)：配置、成员需要什么、管理端及其成员、页面、分组、模板、带健康门槛的发布、漂移和告警、角色、NAT 之后的成员、指标和 CLI；I153 随 AI 助手路线 |
 | 9 | AI 助手 | I124–I130, I152–I154 | 对话面板、工具、MCP 服务器 |
 | 10 | BitTorrent | I196–I210 | [I150–I159](#bittorrent)：配置中的角色、基于 `akio-bittorrent` 的 tracker 和客户端、添加种子、时间表和访问控制、`bt_stream`、发布、Admin API 和事件、页面、RSS |
 | 11 | 数据同步 | I163–I194, I211–I222 | 先做流水线核心和检查点，再按 fit 的顺序做连接器 |
@@ -1796,3 +1810,129 @@ fit 的 I196–I210（其 [BitTorrent 指南](https://github.com/lesismal/fit/bl
   在读取 `media_auth` 之后（流媒体与媒体鉴权路线）支持私有 tracker 的 passkey。
 - **涉及**：`akit-bittorrent`、`akit-config`。
 - **fit**：`bittorrent/rss*.go`、`bittorrent/tracker/sharedstore`；I207、I208。
+
+### 集群管理
+
+fit 的 I140–I150（其[集群指南](https://github.com/lesismal/fit/blob/main/docs/cluster.zh-CN.md)、
+其[决定 033](https://github.com/lesismal/fit/blob/main/docs/decisions/033-cluster-management.zh-CN.md)、
+其包 `cluster`、`admin/node.go` 和 `config/cluster.go`），分十二次迭代（[决定 041](decisions/041-cluster-management.zh-CN.md)）；
+fit 的 I153（跨集群的助手）随 AI 助手路线进行，因为它需要该路线。一个设置了 `admin.cluster` 的 akit 管理其他 akit，即它的
+成员：它把成员的 URL 和凭据保存在自己的存储中，轮询每个成员的状态，并在控制台的集群页面中展示它们，这些页面就是 I91 复制的
+fit 工作台页面。成员尽量少改动：管理端使用成员已有的 API，即它的控制台或 Admin API。线上协议沿用 fit 的（决定 041）：成员的
+`GET /node`、`/status` 和控制台登录的回答与 fit 的相同，管理端存储中的 `cluster` 分区就是 fit 的文档，因此 akit 和 fit
+的成员可以共用任一种管理端，akit 与 fit 的管理端也能打开彼此的存储。默认关闭：没有 `admin.cluster` 就没有集群菜单，也不会
+向外发起调用。
+
+### I130 集群 I：配置中的 `admin.node_id`、`admin.cluster` 和 `admin.cluster_member`
+
+- **做什么**：三者按 fit 的方式读取（`config/cluster.go`、`checkCluster`、`checkClusterMember`、节点 ID 的模式）：
+  `admin.node_id`（1 到 64 个 `[A-Za-z0-9._-]` 字符，以字母或数字开头）；`admin.cluster`（`poll_interval` 10s、`timeout`
+  10s，至少 1s；`max_nodes` 256，最多 10,000；`max_concurrency` 8，最多 256；`max_response_bytes` 4 MiB，16 KiB 到 64 MiB；
+  `link_address`、`link_url`（wss，需与 `link_address` 同设）；`admins`，每个控制台用户只列一次，至多 64 个），需要
+  `admin.console`；`admin.cluster_member`（`manager` 为 wss URL，`fingerprint` 为 64 个十六进制数字，`token`（`akite1.`，即
+  fit 的 `fite1.` 改名，决定 037）或 `token_file`）。在运行它们的迭代（I131、I132、I139b）之前，`akit run` 拒绝每一项并
+  指名。
+- **完成标准**：fit 对这三者的 `config` 测试移植后通过；门禁的示例有效；字段用 `make v1-bless` 标记；参考文档重新生成。
+- **涉及**：`akit-config`、`akit`、`tests/compat`、`docs/reference`。
+- **fit**：`config/cluster.go`、`config/validate.go`；I140、I141、I149。
+
+### I131 集群 II：成员需要什么
+
+- **做什么**：在每个 akit 上实现 fit 的 I140：`GET /node`（以及控制台的 `/api/node`，I90 已转发）：节点 ID 只生成一次（随机
+  UUIDv4），保存在存储的 `node` 分区（fit 的），或配置旁的文件（`akit.json` 旁的 `akit.node-id`），或由 `admin.node_id`
+  给出；主机名、akit 与 akio 的版本、启动时间、运行中配置的版本、ETag、时间和来源、运行中的角色、schema 的版本和摘要，以及
+  以 fit 的能力名列出 akit API 提供的功能；`GET /schema`。控制台登录已经回答 CSRF 令牌，I89 已按 fit 的方式放慢失败的登录。
+- **完成标准**：fit 的 `admin/node_test.go` 移植后通过：有无存储时重启后 ID 不变，文件中的 ID 被并入存储，`admin.node_id`
+  优先；能力只列出实际提供的；账户页面显示节点。
+- **涉及**：`akit-admin`、`akit`（`run`）、`docs`。
+- **fit**：`admin/node.go`；I140。
+
+### I132 集群 III：管理端、它的成员及其状态
+
+- **做什么**：以新 crate `akit-cluster` 实现 fit 的 I141：存储的 `cluster` 分区，即 fit 的文档（读取版本 1 到 3；akit 尚未
+  用到的部分——分组、模板、发布、链接、角色——原样保留），更新版本的文档只读；成员有名字、标签、URL 和访问方式（`console`，
+  遇 401 重新登录；`admin_api`，bearer token），凭据从不出现在回答或日志中，也只发给其成员；TLS 由系统根证书、CA PEM 或
+  固定的 SHA-256（akio-tls 的 `pin_sha256`）校验；`http` 只允许回环地址。轮询器是一个独立线程，在 akio 的异步 HTTP 客户端
+  上发起调用（规则 1），同时最多 `max_concurrency` 个成员，每个成员每 `poll_interval` 一次，读取 `/node`、`/status`，以及
+  成员提供时的 `/config/check`，每次调用受 `timeout` 和 `max_response_bytes` 约束；登录退避和限速按 fit 的方式。控制台模块
+  `cluster`：`GET/POST/PUT/DELETE /api/m/cluster/nodes[/<name>]`、`POST .../nodes/<name>/test` 和 `POST /api/test`（回答
+  证书指纹，供人确认）、`GET /api/m/cluster/state`、`/audit` 和 `/me`；添加、修改和删除的审计日志。
+- **完成标准**：fit 关于成员、轮询器和 API 的 `cluster` 测试针对替身成员移植后通过；一个管理端同时读取一个 akit 成员和一个
+  fit 成员（fit 从源码构建），分别用密码和 token；错误的密码、不受信任的证书、不匹配的固定指纹和下线的成员能被区分；任何回答
+  或日志中都不出现凭据；fit 管理端写的存储能在 akit 中打开，反之亦然。
+- **涉及**：`akit-cluster`（新）、`akit-admin`（`console`）、`akit`（`run`）、`docs`。
+- **fit**：`cluster/{cluster,members,poll,transport,probe,read,call,audit}.go`；I141。
+
+### I133 集群 IV：集群页面、概览和节点页面
+
+- **做什么**：fit 的 I142：控制台列出模块 `cluster`，工作台因而画出 I91 复制的集群菜单、概览和节点页面；成员页面经管理端
+  读取成员（`GET /api/m/cluster/nodes/<name>/read/{node,status,versions,check}`，同时最多 8 个）；双语的
+  `docs/guides/cluster.md`。
+- **完成标准**：在浏览器中添加、测试、信任、编辑和删除一个成员；概览显示 I132 的每种故障并能恢复；两种语言。
+- **涉及**：`akit-cluster`、`akit-admin`、`docs/guides`。
+- **fit**：`cluster/read.go`、`app/workbench/web/cluster`；I142。
+
+### I134 集群 V：从管理端打开成员自己的页面
+
+- **做什么**：fit 的 I143：`/api/n/<member>/...` 带着保存的会话转发给成员，成员的 schema 从成员读取，写操作记入审计，schema
+  不同的成员只读。
+- **完成标准**：fit 的 `passthrough` 测试移植后通过；每个配置页面都能读取并保存 akit 和 fit 成员的配置。
+- **涉及**：`akit-cluster`、`akit-admin`（`console`）。
+- **fit**：`cluster/passthrough.go`；I143。
+
+### I135 集群 VI：分组和对多个成员的操作
+
+- **做什么**：fit 的 I144：按标签选择器或名字分组，带变量；对一个分组或一组选中成员的操作（重载、回滚、检查、按键、前缀或标签
+  清除缓存、测试），有并发上限，按成员给出结果；`/api/m/cluster/groups`、`/ops`。
+- **完成标准**：fit 的 `groups` 和 `ops` 测试移植后通过。
+- **涉及**：`akit-cluster`、`akit-admin`（`cache`：按前缀清除，fit 的 `cache.prefix`）。
+- **fit**：`cluster/{groups,ops}.go`；I144。
+
+### I136 集群 VII：模板
+
+- **做什么**：fit 的 I145：模板拥有顶层成员和具名元素，有变量和顺序，每个成员有同步状态，可从成员导入，可比较两个成员；成员上的
+  `PUT /node/managed`。
+- **完成标准**：fit 的 `templates`、`render` 和 `sync` 测试移植后通过。
+- **涉及**：`akit-cluster`、`akit-admin`（`/node/managed`）。
+- **fit**：`cluster/{templates,render,sync,text,jsonv}.go`、`admin/managed.go`；I145。
+
+### I137 集群 VIII：带健康门槛的发布
+
+- **做什么**：fit 的 I146：发布计划（每个成员的差异和试运行、其 ETag），一次全部、滚动或金丝雀；每批之后有健康门槛（可达、
+  重载成功、没有新的漂移、在一个时间窗内由 `/status` 的 `requests` 计算的 5xx 比例低于阈值）；门槛失败则回滚该批
+  （带 `If-Match` 的 `/rollback/{n}`）；暂停、继续、中止；计划之后被改动的成员跳过；保存在存储中，重启后仍在。
+- **完成标准**：fit 的 `rollouts` 测试移植后通过，成员有 akit 也有 fit。
+- **涉及**：`akit-cluster`、`akit-admin`（`/status` 的 `requests`）。
+- **fit**：`cluster/{rollouts,rollrun,rollsteer,rolldraft,rollapi}.go`；I146。
+
+### I138 集群 IX：漂移和告警
+
+- **做什么**：fit 的 I147：相对模板和成员一致性检查的漂移（fit 的 `GET /config/check`，akit 在这里首次提供）；告警规则、
+  webhook、静默。
+- **完成标准**：fit 的 `alerts`、`alerteval`、`webhooks` 和 `drift` 测试移植后通过。
+- **涉及**：`akit-cluster`、`akit-admin`（`/config/check`）。
+- **fit**：`cluster/{alerts,alerteval,alertapi,webhooks,drift}.go`、`admin/drift.go`；I147。
+
+### I139 集群 X：用户、角色和审计日志
+
+- **做什么**：fit 的 I148：按分组的角色（viewer、operator、admin）、`admin.cluster.admins`，每个端点都检查；每个操作的审计
+  日志，可过滤，可导出为 JSON lines。
+- **完成标准**：fit 的 `roles` 和 `audit` 测试移植后通过。
+- **涉及**：`akit-cluster`。
+- **fit**：`cluster/{roles,audit}.go`；I148。
+
+### I139b 集群 XI：NAT 之后主动外连的成员
+
+- **做什么**：fit 的 I149：`admin.cluster_member`；管理端的链接监听器（`link_address`）、注册 token（`akite1.`、`akitc1.`；
+  线上使用 fit 的标签，按决定 038 的规则）、经链接承载的成员 Admin API。
+- **完成标准**：fit 的 `link` 测试移植后通过；akit 成员能链接到 fit 管理端，反之亦然。
+- **涉及**：`akit-cluster`、`akit-roles`（`linktoken`）、`akit`。
+- **fit**：`cluster/{linkserver,linkmember,linkproto,enroll}.go`、`admin/clusterlink.go`；I149。
+
+### I139c 集群 XII：跨成员的指标、日志和证书；`akit cluster`
+
+- **做什么**：fit 的 I150：每次轮询得到的时间序列、成员日志的跟踪（成员上的 `GET /logs/recent`）、证书清单；CLI 中经管理端
+  Admin API 使用的 `akit cluster`。
+- **完成标准**：fit 的 `insight`、`logtail` 和 `adminapi` 测试移植后通过；CLI 能从头到尾驱动一次发布。
+- **涉及**：`akit-cluster`、`akit-admin`（`/logs/recent`）、`akit`（`cluster`）。
+- **fit**：`cluster/{insight,logtail,adminapi}.go`、`cli/cluster.go`、`admin/logsrecent.go`；I150。

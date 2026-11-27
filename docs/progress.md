@@ -314,6 +314,17 @@ done and where the work differs from the plan.
   role's iteration; fit's I206 (the cluster's view) waits for the Cluster management track. A row
   in the benchmark table names what to measure.
 
+### 2026-11-27: the Cluster management track planned (I130–I139c)
+
+- fit's I140–I150 in twelve iterations ([the plan](dev-plan.md#cluster-management),
+  [decision 041](decisions/041-cluster-management.md)): the config (I130), what a member needs
+  (I131), the manager and its members (I132), the pages (I133), the node switcher (I134), groups and
+  operations (I135), templates (I136), rollouts with health gates (I137), drift and alerts (I138),
+  roles and the audit log (I139), members behind NAT (I139b), metrics, logs and the CLI (I139c).
+  fit's I153 goes with the AI assistant track. A member's API and the store's `cluster` document
+  are fit's, so that akit and fit members share a manager of either kind. Decisions waiting for
+  review: rows 70–74.
+
 ### 2026-11-27: I109b, the tunnel's node's and proxy's pages; the roles' consoles' certificates read again
 
 - The node's module (`akit_tunnel::node`'s pages, fit's `tunnel/node/api.go`) and the proxy's

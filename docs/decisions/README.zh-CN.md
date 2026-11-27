@@ -32,4 +32,5 @@
 | [037](037-akit-names.zh-CN.md) | akit 的名字：对外凡写 "fit" 的名字都改为 "akit"，不保留别名 | 已采纳 |
 | [038](038-tunnel-and-llm.zh-CN.md) | 隧道与 LLM 功能：fit 的角色、akit 的名字、fit 的线上协议 | 待审阅 |
 | [039](039-webrtc.zh-CN.md) | WebRTC：基于 akio-turn 和 akio-webrtc 的 fit 三个角色、akit 的名字、RFC 的线上协议 | 待审阅 |
+| [041](041-cluster-management.zh-CN.md) | 集群管理：fit 的管理端、fit 与成员间的线上协议、akit 的名字 | 待审阅 |
 | [042](042-bittorrent.zh-CN.md) | BitTorrent：基于 akio-bittorrent 的 fit 角色，所缺内容向 akio 提出 | 待审阅 |
