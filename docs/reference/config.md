@@ -3019,6 +3019,8 @@ while the role does not run. It takes no params: the route's match decides where
 lives, and the route's listeners, TLS and middleware apply as to any handler.
 
 ```fit
+listener web :8080
+
 route tracker { match { path /tracker/* }; handler bt_tracker }
 ```
 

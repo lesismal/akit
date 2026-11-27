@@ -3179,6 +3179,8 @@ route {
 没有参数：由路由的匹配决定 tracker 在哪里，路由的监听器、TLS 和中间件与其他处理器一样适用。
 
 ```fit
+listener web :8080
+
 route tracker { match { path /tracker/* }; handler bt_tracker }
 ```
 
