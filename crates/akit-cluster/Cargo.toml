@@ -1,0 +1,28 @@
+[package]
+name = "akit-cluster"
+description = "akit's cluster management (fit's cluster): one akit managing others, its members, from the console's Cluster pages."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+# The engine the calls to members go out on, its pool for the store's writes.
+akio = { workspace = true }
+# SHA-256 of members' certificates, random IDs.
+akio-crypto = { workspace = true }
+# The asynchronous HTTP client the calls to members take (rule 1), and the requests the
+# console module answers.
+akio-http = { workspace = true }
+akit-config = { workspace = true }
+akit-observe = { workspace = true }
+# The console module the manager is served as (akit_roles::pages::Module).
+akit-roles = { workspace = true }
+# A member's certificate read and checked against its CAs (the probe, akio request A277's
+# stopgap).
+akio-x509 = { workspace = true }
+
+[lints]
+workspace = true

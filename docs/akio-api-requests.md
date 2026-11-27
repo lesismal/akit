@@ -123,6 +123,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | A286 | A torrent's own storage directory for a magnet link, once its info arrives (fib's `StorageOpener`) | requested | — | I153 |
 | A287 | A reader of a torrent's bytes that waits for their pieces and asks for them first, and file priorities | requested | 1 | I155 |
 | A288 | A torrent's trackers with their announces, its peer sources and web seeds' state, and a recheck in place (fib's A87, A88) | requested | — | I157 |
+| A277 | A client response's peer certificate chain, and a client TLS verifier that keeps a certificate it refused for the caller to see | requested by I132; a recorded stopgap (a probe of the member's certificate) | 1, 15 | I132–I139c |
 
 ## A1 TCP listeners on a running engine
 
@@ -2829,3 +2830,34 @@ as `TorrentEvent::TrackerError`; no recheck.
 `Torrent::recheck()`.
 
 **How akit would use it.** `/bittorrent/torrents/<id>/trackers` and the recheck action.
+
+## A277 A client response's peer certificate chain, and a refused certificate kept for the caller
+
+**Status.** Requested by I132 (2026-11-27). Nothing waits for it: the cluster manager probes a
+member's certificate on a connection of its own (a stopgap recorded in [progress](progress.md)).
+
+**Problem.** fit's cluster manager (`cluster/transport.go`) checks a member's certificate itself in
+`VerifyConnection`, which every handshake runs, against a pin, the member's CAs or the system's,
+keeping the certificate whatever comes of it: a certificate refused is shown to a person with its
+fingerprint, so that it can be pinned, and the overview shows each member's certificate. akio's
+HTTP client gives a response without the chain its connection's handshake saw
+(`ClientResponse` has no peer certificates), and akio-tls's client fails the handshake on a
+certificate it refuses without letting the caller see it: the request fails with `Io` or `Closed`,
+and nothing tells a certificate refused from a connection refused.
+
+**Evidence.** At akio `a8171fda`, `akio-http/src/client.rs`'s `ClientResponse` has `status`,
+`headers`, `body`, `trailers`, `pushed`, `url`; `akio-tls/src/proto/client.rs`'s
+`peer_certificate` returns a `Fatal` from `verify_chain` or `pinned_leaf_key` and the chain is
+dropped; `tls_info` gives the chain only for a connection the caller holds.
+
+**Suggested API.** `ClientResponse::peer_certificates: Option<Arc<[Vec<u8>]>>` (the chain of the
+connection that answered, leaf first, as `akio_tls::peer_chain` gives a server); and
+`ClientError::Tls { alert, chain: Vec<Vec<u8>> }` for a handshake that failed verifying the
+server's certificate, with the chain it refused (or a `ClientConfigBuilder::on_refused(Fn(&[Vec<u8>]))`
+callback).
+
+**How akit would use it.** `akit_cluster::transport` reads the certificate of every call's
+connection for the state's `tls`, and a refused one from the error for `tls_untrusted` and
+`tls_pin_mismatch`; the probe (`Transport::probe`, a TLS connection that verifies nothing, sends a
+request without credentials, reads `tls_info`'s chain and checks it with akio-x509's verifier or
+the pin) goes.

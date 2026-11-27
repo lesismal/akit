@@ -68,5 +68,5 @@
 | 70 | 2026-11-27 | akit，集群管理路线（决定 041） | fit 的 I140–I150 分十二次迭代（I130–I139c），按 fit 的顺序；fit 的 I153（跨集群的助手）留给需要它的 AI 助手路线；管理端是独立的 crate `akit-cluster`，作为控制台模块 `cluster` 提供 | 更少、更大的迭代；I153 放在本路线，配一个替身助手 |
 | 71 | 2026-11-27 | akit，I130–I132（决定 041 第 2 点） | 成员的 API 是 fit 的协议（路径、JSON 成员、能力名、问题类型、存储的 `node` 和 `cluster` 分区），其中以 fit 自己命名的成员按决定 037 改名，因为页面就是这样读的：`GET /node` 回答 `akit_version`；fit 的 `fib_version` 和 `go_version` 填 `akio <提交>` 和空字符串 | 页面不读的 `akio_version` 和 `rust_version` 成员 |
 | 72 | 2026-11-27 | akit，I132（决定 041 第 3 点） | akit 的管理端把 CSRF 令牌同时放在 `X-Akit-Csrf` 和 `X-Fit-Csrf` 中，并把 fit 成员的版本显示为 `fit <版本>`，因此也能以控制台方式管理 fit 成员；fit 的管理端以 token（`admin_api`）访问 akit 成员，因为 akit 的控制台只读 `X-Akit-Csrf` | akit 的控制台也读 `X-Fit-Csrf`（决定 037 拒绝的别名） |
-| 73 | 2026-11-27 | akit，I132（决定 041 第 4 点） | 存储的 `cluster` 文档是 fit 的；akit 管理端尚未用到的部分（分组、模板、发布、链接、角色）按读到的样子保留并原样写回，使存储能在 akit 与 fit 的管理端之间移动 | 拒绝含 akit 未用部分的文档，只读 |
+| 73 | 2026-11-27 | akit，I132（决定 041 第 4 点） | 存储的 `cluster` 文档是 fit 的；akit 管理端尚未用到的部分（分组、模板、发布、链接、角色）按读到的样子保留并原样写回，使存储能在 akit 与 fit 的管理端之间移动；设置了用户角色的文档在 I139 执行角色之前只读，更新版本的文档亦然 | 拒绝含 akit 未用部分的文档，只读 |
 | 74 | 2026-11-27 | akit，I130 | 在 I132 运行管理端之前，`akit run` 拒绝 `admin.cluster`；在 I139b 外连之前拒绝 `admin.cluster_member`，并指名字段，与 I98 对角色的做法相同；`admin.node_id` 从 I130 起接受，从 I131 起由 `GET /node` 回答 | 先接受并忽略它们 |

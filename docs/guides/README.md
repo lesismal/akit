@@ -17,6 +17,8 @@ by a test that runs `akit validate` on it.
   config, rollbacks, metrics.
 - [The console](console.md): web pages with logins, from which the running config is read and
   changed; `akit hash-password`.
+- [Managing many akits](cluster.md): a manager of akit and fit members, their state and
+  credentials (`admin.cluster`).
 - [Caching](caching.md): the `cache` middleware, its disk tier and purges.
 - [WebAssembly plugins](wasm.md): fit's and Proxy-Wasm plugins, their bounds and cost.
 

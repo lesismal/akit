@@ -355,6 +355,7 @@ dependencies = [
  "akit-admin",
  "akit-bittorrent",
  "akit-cache",
+ "akit-cluster",
  "akit-config",
  "akit-handler",
  "akit-listener",
@@ -427,6 +428,19 @@ dependencies = [
  "akit-middleware",
  "akit-proxy",
  "akit-runtime",
+]
+
+[[package]]
+name = "akit-cluster"
+version = "0.0.1"
+dependencies = [
+ "akio",
+ "akio-crypto",
+ "akio-http",
+ "akio-x509",
+ "akit-config",
+ "akit-observe",
+ "akit-roles",
 ]
 
 [[package]]

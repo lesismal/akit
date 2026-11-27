@@ -99,6 +99,9 @@ pub struct Options {
     /// What `GET /node` reads of the running akit (I131): the roles running and whether the
     /// running config counts requests; none and no without it.
     pub node: Option<crate::node::NodeView>,
+    /// The cluster manager's console module, `cluster` (I132), which `admin.console` serves
+    /// beside the config's own; none without it.
+    pub cluster: Option<akit_roles::pages::ModuleRef>,
 }
 
 impl fmt::Debug for Options {
@@ -119,6 +122,7 @@ impl fmt::Debug for Options {
             .field("console_idle_timeout", &self.console_idle_timeout)
             .field("console_grace", &self.console_grace)
             .field("node", &self.node.is_some())
+            .field("cluster", &self.cluster.is_some())
             .finish()
     }
 }
@@ -141,6 +145,7 @@ impl Default for Options {
             console_idle_timeout: crate::console::IDLE_TIMEOUT,
             console_grace: None,
             node: None,
+            cluster: None,
         }
     }
 }

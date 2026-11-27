@@ -51,6 +51,14 @@ keeps, and which names on it are akit's.
    and `fitc1.`); the manager's `User-Agent` is `akit-cluster-manager`. A token's prefix is
    rewritten when it moves between akit and fit, as decision 038's point 4 says of link tokens.
 
+6. **The manager as I132 builds it**: `akit run` starts it on the listeners' engine and refuses
+   `admin.cluster` without a store; a poller thread of its own waits out the interval and starts
+   asynchronous calls; the store is written on a pool of the manager's own, one write at a time.
+   A member's certificate is read by a probe that verifies nothing and sends no credential, until
+   akio's client gives a response's chain and a refused certificate (A277). Tests are audited, as
+   fit's I148 decided. The console's bodies other than a config grow to 128 KiB, fit's bound of the
+   module.
+
 ## Alternatives
 
 - **akit's names on the wire too** (`akit_version` only, `X-Akit-Csrf` only): a manager of one

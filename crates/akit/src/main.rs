@@ -306,21 +306,14 @@ fn roles_not_running(config: &Config) -> Result<(), Failure> {
         })
         .collect();
     errs.extend(webrtc_handlers_not_served(config));
-    // Cluster management (I130): read and checked by akit validate; the manager runs from I132,
-    // a member links out from I139b (decision row 74).
+    // Cluster management (I130): read and checked by akit validate; the manager runs since
+    // I132, a member links out from I139b (decision row 74).
     let admin = config.admin.as_ref();
-    for (set, path, when) in [
-        (
-            admin.is_some_and(|a| a.cluster.is_some()),
-            "admin.cluster",
-            "I132",
-        ),
-        (
-            admin.is_some_and(|a| a.cluster_member.is_some()),
-            "admin.cluster_member",
-            "I139b",
-        ),
-    ] {
+    for (set, path, when) in [(
+        admin.is_some_and(|a| a.cluster_member.is_some()),
+        "admin.cluster_member",
+        "I139b",
+    )] {
         if set {
             errs.push(Error {
                 file: None,
@@ -363,6 +356,22 @@ fn webrtc_handlers_not_served(config: &Config) -> Vec<Error> {
             })
         })
         .collect()
+}
+
+/// The store, as the cluster manager keeps its members in it (I132): its section `cluster`,
+/// written on the manager's pool.
+struct ClusterStore(boot::Shared);
+
+impl akit_cluster::Store for ClusterStore {
+    fn section(&self, name: &str) -> Option<Vec<u8>> {
+        boot::lock(&self.0).section(name).map(<[u8]>::to_vec)
+    }
+
+    fn set_section(&self, name: &str, data: &[u8]) -> Result<(), String> {
+        boot::lock(&self.0)
+            .set_section(name, data)
+            .map_err(|e| e.to_string())
+    }
 }
 
 /// Opens the access log `c` describes, its times in `zone`, as fit's `NewAccessLogFiles`: a file
@@ -1507,6 +1516,7 @@ fn run(args: &[String]) -> ExitCode {
     }
     drop(start_config);
     acme.manage(&acme_names);
+    let mut cluster: Option<akit_cluster::Manager> = None;
     let api = match &admin {
         None => None,
         Some(a) => {
@@ -1561,6 +1571,41 @@ fn run(args: &[String]) -> ExitCode {
                 roles: modules.ids().iter().map(|s| (*s).to_owned()).collect(),
                 counts_requests: graph.with(|g| g.metrics().is_some()),
             }));
+            // The cluster manager (I132), its members kept in the store, served by the console.
+            if let Some(c) = &a.cluster {
+                let Some(b) = &boot else {
+                    eprintln!(
+                        "akit run: admin.cluster keeps its members in the store: set admin.store, \
+                         or run with -admin"
+                    );
+                    akit_listener::shutdown(&engine, grace);
+                    return ExitCode::FAILURE;
+                };
+                let o = akit_cluster::Options {
+                    engine: Arc::clone(&engine),
+                    settings: c.clone(),
+                    store: Arc::new(ClusterStore(Arc::clone(&b.store))),
+                    log: Arc::new(|msg: String| {
+                        akit_observe::logger::log(
+                            akit_observe::logger::Logger::Admin,
+                            akit_observe::logger::Level::Info,
+                            format_args!("{msg}"),
+                        );
+                    }),
+                    system_roots: None,
+                };
+                match akit_cluster::Manager::new(o) {
+                    Ok(m) => {
+                        api_opts.cluster = Some(m.module());
+                        cluster = Some(m);
+                    }
+                    Err(e) => {
+                        eprintln!("akit run: admin.cluster: {e}");
+                        akit_listener::shutdown(&engine, grace);
+                        return ExitCode::FAILURE;
+                    }
+                }
+            }
             match akit_admin::Server::start(a, configs.clone(), submit, &api_opts) {
                 Ok(s) => {
                     println!("akit: admin API on {}", s.address());
@@ -1774,6 +1819,10 @@ fn run(args: &[String]) -> ExitCode {
     if let Some(api) = &api {
         api.shutdown();
     }
+    // The cluster manager's members logged out, before the engine its calls go out on (I132).
+    if let Some(m) = &cluster {
+        m.close();
+    }
     updates.close();
     for p in &mut providers {
         p.stop();
@@ -1945,10 +1994,10 @@ mod tests {
         assert_eq!(got, [("routes[2].handler", true)]);
     }
 
-    /// Cluster management is checked by akit validate and refused by akit run until its
-    /// iterations run it (I130, decision row 74); the node ID is taken.
+    /// Cluster management is checked by akit validate; akit run runs the manager (I132) and
+    /// refuses a member linking out until I139b (decision row 74); the node ID is taken.
     #[test]
-    fn cluster_is_refused_until_it_runs() {
+    fn cluster_member_is_refused_until_it_runs() {
         let doc = r#"{"admin": {"node_id": "edge-1",
             "console": {"users": [{"username": "a", "password_hash": "$2a$10$x"}]},
             "cluster": {},
@@ -1958,8 +2007,12 @@ mod tests {
             panic!("not refused");
         };
         let paths: Vec<&str> = errs.as_slice().iter().map(|e| e.path.as_str()).collect();
-        assert_eq!(paths, ["admin.cluster", "admin.cluster_member"]);
-        let c = akit_config::from_json(r#"{"admin": {"node_id": "edge-1"}}"#, None).unwrap();
+        assert_eq!(paths, ["admin.cluster_member"]);
+        let c = akit_config::from_json(
+            r#"{"admin": {"node_id": "edge-1", "console": {"users": [{"username": "a", "password_hash": "$2a$10$x"}]}, "cluster": {}}}"#,
+            None,
+        )
+        .unwrap();
         assert!(super::roles_not_running(&c).is_ok());
     }
 

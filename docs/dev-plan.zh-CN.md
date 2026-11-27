@@ -81,6 +81,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | `akit-access` | 访问控制列表：编译成区间的允许和拒绝列表、策略（I85） | `access` |
 | `akit-roles` | 网关之外的角色：链路 token（I99）、运行它们的宿主（I100） | `app`、`internal/linktoken` |
 | `akit-webrtc` | WebRTC 角色：TURN 服务器、WHIP 和 WHEP、媒体代理（I110–I114） | `webrtc` |
+| `akit-cluster` | 集群管理：管理其他 akit 的管理端、其成员及其状态（I132） | `cluster` |
 | `tests/e2e` | 可执行文件的端到端测试 | `test/e2e` |
 | `tests/compat` | fit 配置兼容性门禁：固定夹具、字段清单 | `templates`、fit-examples |
 | `bench` | 基准框架、场景和报告 | `bench` |
@@ -244,8 +245,8 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | **1.0 之后：集群管理** | | | |
 | I130 | 集群 I：配置中的 `admin.node_id`、`admin.cluster` 和 `admin.cluster_member` | I93c | done |
 | I131 | 集群 II：成员需要什么：`GET /node`、保存节点 ID、`GET /schema` | I130 | done |
-| I132 | 集群 III：管理端（`akit-cluster`）：存储中的成员和凭据，fit 的文档；轮询器；`/api/m/cluster/nodes`、`/test`、`/state` | I131 | todo |
-| I133 | 集群 IV：集群页面：概览、节点和节点页面；`docs/guides/cluster.md` | I132 | todo |
+| I132 | 集群 III：管理端（`akit-cluster`）：存储中的成员和凭据，fit 的文档；轮询器；`/api/m/cluster/nodes`、`/test`、`/state` | I131 | done |
+| I133 | 集群 IV：集群页面：概览、节点和节点页面；`docs/guides/cluster.md` | I132 | done |
 | I134 | 集群 V：从管理端打开成员自己的页面（`/api/n/<member>/...`） | I133 | todo |
 | I135 | 集群 VI：分组和对多个成员的操作 | I133 | todo |
 | I136 | 集群 VII：模板；`/node/managed` | I135 | todo |
@@ -1865,6 +1866,8 @@ fit 工作台页面。成员尽量少改动：管理端使用成员已有的 API
   或日志中都不出现凭据；fit 管理端写的存储能在 akit 中打开，反之亦然。
 - **涉及**：`akit-cluster`（新）、`akit-admin`（`console`）、`akit`（`run`）、`docs`。
 - **fit**：`cluster/{cluster,members,poll,transport,probe,read,call,audit}.go`；I141。
+- **状态**：done（2026-11-27）。在 akio 的 A277 之前，成员的证书由一次独立的探测读取；设置了用户角色的文档在 I139 之前
+  只读。见进度日志。
 
 ### I133 集群 IV：集群页面、概览和节点页面
 
@@ -1874,6 +1877,8 @@ fit 工作台页面。成员尽量少改动：管理端使用成员已有的 API
 - **完成标准**：在浏览器中添加、测试、信任、编辑和删除一个成员；概览显示 I132 的每种故障并能恢复；两种语言。
 - **涉及**：`akit-cluster`、`akit-admin`、`docs/guides`。
 - **fit**：`cluster/read.go`、`app/workbench/web/cluster`；I142。
+- **状态**：done（2026-11-27），随 I132 完成：模块的提供、读取、指南；已在浏览器中检查（概览、节点、成员页面）。菜单中
+  后面的项在各自迭代之前回答 "no such endpoint"。见进度日志。
 
 ### I134 集群 V：从管理端打开成员自己的页面
 

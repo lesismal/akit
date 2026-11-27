@@ -84,8 +84,9 @@ pub const CSP: &str = "default-src 'none'; script-src 'self'; style-src 'self'; 
 /// The largest login body, whatever the console's bound: 4 KiB, as fit's.
 pub const MAX_LOGIN_BYTES: usize = 4 << 10;
 
-/// The largest body of a request other than a config: none is held past it.
-const OTHER_BODY_BYTES: usize = 64 << 10;
+/// The largest body of a request other than a config: none is held past it. 128 KiB, the
+/// cluster module's bound (fit's `cluster.MaxBodyBytes`, I132), which checks its own.
+const OTHER_BODY_BYTES: usize = 128 << 10;
 
 /// The largest body of a request to a role's console: fit's `MaxBodyBytes`, 1 MiB.
 pub const ROLE_BODY_BYTES: usize = 1 << 20;
@@ -139,8 +140,9 @@ impl std::fmt::Debug for Console {
 /// What a console serves beside its logins and files.
 enum Kind {
     /// `admin.console`: the Admin API's endpoints, its configs applied as the console's, as the
-    /// config's own module (`admin`), and the running roles' modules beside it (I109).
-    Admin(Arc<Shared>, Option<Modules>),
+    /// config's own module (`admin`), the running roles' modules beside it (I109), and the
+    /// cluster manager's module, `cluster` (I132).
+    Admin(Arc<Shared>, Option<Modules>, Option<ModuleRef>),
     /// A role's own console (I109): the role's module, at `/api/` and at `/api/m/<id>/`, as
     /// fit's role consoles serve it.
     Role(ModuleRef),
@@ -302,7 +304,7 @@ impl Console {
         let modules = opts.modules.clone();
         Console::start_kind(
             c,
-            Kind::Admin(Arc::new(api), modules),
+            Kind::Admin(Arc::new(api), modules, opts.cluster.clone()),
             COOKIE.to_owned(),
             OTHER_BODY_BYTES,
             temporary,
@@ -630,7 +632,7 @@ impl Pages {
     /// Whether a store keeps the console users: `admin.console`'s, with a store.
     fn users_stored(&self) -> bool {
         match &self.kind {
-            Kind::Admin(api, _) => api.configs.users_stored(),
+            Kind::Admin(api, ..) => api.configs.users_stored(),
             Kind::Role(_) => false,
         }
     }
@@ -638,10 +640,13 @@ impl Pages {
     /// The IDs of the modules the console serves, for `GET /api/workbench`.
     fn module_ids(&self) -> Vec<&'static str> {
         match &self.kind {
-            Kind::Admin(_, ms) => {
+            Kind::Admin(_, ms, cluster) => {
                 let mut ids = vec![ADMIN_MODULE];
                 if let Some(ms) = ms {
                     ids.extend(ms.ids());
+                }
+                if let Some(c) = cluster {
+                    ids.push(c.id());
                 }
                 ids
             }
@@ -652,7 +657,10 @@ impl Pages {
     /// The module `id`, other than `admin`, the console serves.
     fn module(&self, id: &str) -> Option<ModuleRef> {
         match &self.kind {
-            Kind::Admin(_, ms) => ms.as_ref().and_then(|ms| ms.get(id)),
+            Kind::Admin(_, ms, cluster) => match cluster.as_ref().filter(|c| c.id() == id) {
+                Some(c) => Some(Arc::clone(c)),
+                None => ms.as_ref().and_then(|ms| ms.get(id)),
+            },
             Kind::Role(m) => (m.id() == id).then(|| Arc::clone(m)),
         }
     }
@@ -851,7 +859,7 @@ impl Pages {
                 None => sub.to_owned(),
             };
         }
-        if let Kind::Admin(api, _) = &self.kind {
+        if let Kind::Admin(api, ..) = &self.kind {
             dispatch(api, ctx);
         }
     }
@@ -1096,7 +1104,7 @@ impl Pages {
         let hash =
             akio_crypto::bcrypt::hash(password.as_bytes(), akio_crypto::bcrypt::DEFAULT_COST)
                 .map_err(|e| error(500, &format!("hashing the password: {e}")))?;
-        let Kind::Admin(api, _) = &self.kind else {
+        let Kind::Admin(api, ..) = &self.kind else {
             return Err(error(409, NO_STORE));
         };
         api.configs

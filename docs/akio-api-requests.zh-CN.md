@@ -122,6 +122,7 @@
 | A286 | 磁力链接的种子在其 info 到达后使用自己的存储目录（fib 的 `StorageOpener`） | 已提出 | — | I153 |
 | A287 | 等待分片并优先请求它们的种子字节读取器，以及文件优先级 | 已提出 | 1 | I155 |
 | A288 | 种子的 tracker 及其 announce、peer 来源和 web seed 的状态，以及原地重新校验（fib 的 A87、A88） | 已提出 | — | I157 |
+| A277 | 客户端响应所在连接的对端证书链，以及能把被拒绝的证书留给调用方查看的客户端 TLS 校验 | I132 提出；有记录在案的权宜做法（探测成员的证书） | 1, 15 | I132–I139c |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -2268,3 +2269,25 @@ hash 和授权请求的钩子（`TrackerConfig::allow_fn`、`authorize`），其
 **建议的 API。** `Torrent::trackers() -> Vec<TrackerState>`、`Torrent::web_seeds()`、`Torrent::recheck()`。
 
 **akit 的用法。** `/bittorrent/torrents/<id>/trackers` 和重新校验操作。
+
+## A277 客户端响应的对端证书链，以及为调用方保留被拒绝的证书
+
+**状态。** I132 提出（2026-11-27）。没有什么等待它：集群管理端在一条自己的连接上探测成员的证书（记录在
+[进度](progress.zh-CN.md)中的权宜做法）。
+
+**问题。** fit 的集群管理端（`cluster/transport.go`）在每次握手都会运行的 `VerifyConnection` 中自己检查成员的证书，
+对照 pin、成员的 CA 或系统的 CA，无论结果如何都保留证书：被拒绝的证书连同指纹展示给人，以便固定；概览显示每个成员的证书。
+akio 的 HTTP 客户端给出的响应不带其连接握手时看到的证书链（`ClientResponse` 没有对端证书），akio-tls 的客户端在拒绝证书时
+使握手失败，却不让调用方看到证书：请求以 `Io` 或 `Closed` 失败，无法区分证书被拒和连接被拒。
+
+**证据。** 在 akio `a8171fda`，`akio-http/src/client.rs` 的 `ClientResponse` 有 `status`、`headers`、`body`、`trailers`、
+`pushed`、`url`；`akio-tls/src/proto/client.rs` 的 `peer_certificate` 从 `verify_chain` 或 `pinned_leaf_key` 返回
+`Fatal`，证书链被丢弃；`tls_info` 只对调用方持有的连接给出证书链。
+
+**建议的 API。** `ClientResponse::peer_certificates: Option<Arc<[Vec<u8>]>>`（作答连接的证书链，叶证书在前，如同
+`akio_tls::peer_chain` 对服务端给出的）；以及校验服务器证书失败的握手的 `ClientError::Tls { alert, chain: Vec<Vec<u8>> }`，
+带上被拒绝的证书链（或回调 `ClientConfigBuilder::on_refused(Fn(&[Vec<u8>]))`）。
+
+**akit 如何使用。** `akit_cluster::transport` 为状态的 `tls` 读取每次调用所在连接的证书，并从错误中读取被拒绝的证书，
+得出 `tls_untrusted` 和 `tls_pin_mismatch`；探测（`Transport::probe`：一条不做校验的 TLS 连接，发送不带凭据的请求，读取
+`tls_info` 的证书链，再用 akio-x509 的校验器或 pin 检查）随之去掉。

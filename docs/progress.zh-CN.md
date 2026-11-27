@@ -232,6 +232,39 @@
   （I158）、RSS 和共享的 tracker 存储（I159）。fit 的 I205（互通和故障测试）放入每个角色自己的迭代；
   fit 的 I206（集群视图）等待集群管理路线。基准表中有一行说明要测量什么。
 
+### 2026-11-27：I132 和 I133，集群管理端、其成员和集群页面
+
+- `akit-cluster`（新，fit 的包 `cluster`，其 I141 和 I142）：由 `admin.cluster` 打开的管理端，`akit run` 在监听器的引擎上启动它，
+  成员保存在存储的 `cluster` 分区（`admin.store` 或 `-admin` 保存的存储；没有存储则拒绝启动），并在引擎之前关闭它，注销成员的
+  控制台会话（最多 2 秒）。存储的文档是 fit 的（`member::Document`）：读取版本 1 到 3，写版本 2，每个列表都在，akit 尚未用到的
+  部分（分组、模板、发布、`link_cert`、成员的 `link`）按读到的样子保留；更新的版本或设置了用户角色的文档只读（决定第 73 行），
+  不是管理端文档的分区原样不动。成员按 fit 的 `Member.check` 检查（名字、Kubernetes 式标签、`https` 或回环 `http`、控制台或
+  Admin API 访问及其凭据、`ca` 或 `fingerprint`），凭据从不出现在回答或日志中。
+- 每个成员的传输（`transport`）：akio 的异步 HTTP 客户端，调用、回答头和连接（最多 10 秒）受 `timeout` 约束，正文受
+  `max_response_bytes` 约束，一条空闲连接，不恢复会话；TLS 由 pin（akio-tls 的 `pin_sha256`）、成员的 CA 或系统 CA（启动时读取
+  一次）校验。轮询器（`node`，独立线程，同时最多 `max_concurrency` 个轮询，按 fit 的方式等待间隔）：`GET /node`，成员列出时再
+  读 `/status` 和 `/config/check`，每次调用由前一次的回答发起；控制台登录，遇 401 重新登录，等待中的调用共用一次登录，被拒绝的
+  密码等待退避（一分钟起加倍到 15 分钟），成员的 429 按其 `Retry-After`，临时密码被报告并注销其会话；fit 的问题类型和消息，
+  其中去掉成员的凭据；状态（up、error、down、unknown）带 fit 的成员字段。fit 成员的版本显示为 `fit <版本>`；CSRF 令牌同时放在
+  `X-Akit-Csrf` 和 `X-Fit-Csrf` 中（决定第 72 行）。
+- **权宜做法（akio 请求 A277）**：akio 的客户端不给出响应的对端证书链，并丢弃它拒绝的证书，因此成员的证书由一次独立的探测
+  读取：一条不做校验的 TLS 连接，发送不带凭据的请求，读取 `tls_info` 的证书链，再用 pin 或 akio-x509 的校验器对照 CA 和 URL 的
+  主机检查。它在成员第一次轮询、每次测试以及经 TLS 的调用失败后运行，把后者区分为带证书的 `tls_untrusted` 或
+  `tls_pin_mismatch`。
+- 控制台模块 `cluster`（`api`）：`GET`/`POST /api/nodes`、`GET`/`PUT`/`DELETE /api/nodes/<name>`（If-Match 成员的 ETag，写入在
+  管理端的池上进行，一次一个，16 个等待）、`POST /api/nodes/<name>/test` 和 `/api/test`（同时 4 个）、`GET
+  /api/nodes/<name>/read/{node,status,versions,check}`（同时 8 个，成员未列出的能力回答 502）、`/api/state`、`/api/audit`
+  （用户、节点、操作或其前缀；JSON lines）、`/api/me`（I139 之前每个控制台用户都是集群范围的管理员）。审计日志记录添加、修改
+  （字段名）、删除和测试，1,000 条、约 2 MiB，带文档的修订号。`admin.console` 提供该模块（`Options::cluster`），工作台因而画出
+  集群菜单；控制台中配置以外的请求体上限由 64 KiB 提高到 128 KiB（fit 集群模块的上限）。
+- I133：在浏览器中针对一个有一个 akit 成员在线、一个下线的管理端检查了概览、节点和成员页面；`docs/guides/cluster.md`。菜单中
+  后面的项（分组、模板、发布、漂移和告警、用户和审计、指标）在 I134–I139c 之前回答 "no such endpoint"。
+- 测试：`akit-cluster` 的单元测试（按 fit 检查成员、文档的保留与上限、cookie、`fill`、fit 的版本）；akit 的
+  `tests/cluster.rs`：`manager_reads_akit_members`（通过控制台和 token、错误的密码、下线的成员、读取、草稿和修改的测试、编辑和
+  删除、任何回答和日志中都没有凭据、管理端重启后成员仍在、停掉的成员显示为下线）、`members_over_tls`（不受信任时带指纹、由其
+  CA 信任、由其 pin 信任、不匹配的 pin），以及设置 `AKIT_FIT_BIN` 时的 `mixed_clusters_with_fit`（akit 管理端通过控制台和
+  token 管理 fit 成员、fit 管理端通过 token 管理 akit 成员、akit 管理端写的存储由 fit 管理端读取）。
+
 ### 2026-11-27：I131，成员需要什么
 
 - Admin API 的 `GET /node`，因而也有控制台的 `/api/node` 和 `/api/m/admin/node`（`akit_admin::node`，fit 的 `admin/node.go`）：

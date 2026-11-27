@@ -314,6 +314,58 @@ done and where the work differs from the plan.
   role's iteration; fit's I206 (the cluster's view) waits for the Cluster management track. A row
   in the benchmark table names what to measure.
 
+### 2026-11-27: I132 and I133, the cluster manager, its members and the Cluster pages
+
+- `akit-cluster` (new, fit's package `cluster`, its I141 and I142): the manager `admin.cluster`
+  turns on, which `akit run` starts on the listeners' engine with its members in the store's
+  section `cluster` (`admin.store` or the store `-admin` keeps; none refuses to start) and closes
+  before the engine, logging the members' consoles out (2 s at most). The store's document is
+  fit's (`member::Document`): versions 1 to 3 read, version 2 written, every list present, the
+  parts akit does not use yet (groups, templates, rollouts, `link_cert`, a member's `link`) kept as
+  they were read; a newer version, or one that sets users' roles, is read-only (decision row 73),
+  and one that is not the manager's document is left alone. Members checked as fit's
+  `Member.check` (names, labels as Kubernetes', `https` or loopback `http`, console or Admin API
+  access and their credentials, `ca` or `fingerprint`), credentials never answered or logged.
+- Each member's transport (`transport`): akio's asynchronous HTTP client, `timeout` for the call,
+  the answer's head and its connect (10 s at most), `max_response_bytes` for the body, one idle
+  connection, no session resumption; TLS by a pin (akio-tls's `pin_sha256`), the member's CAs or
+  the system's (read once, at start). The poller (`node`, a thread of its own, at most
+  `max_concurrency` polls at once, waiting on the interval as fit's): `GET /node`, then `/status`
+  and `/config/check` when the member lists them, each call started from the answer before; a
+  console logged in and again on 401, logins shared by the calls waiting on them, a refused
+  password waited out (a minute doubling to 15), a member's 429 by its `Retry-After`, a temporary
+  password reported and its session logged out; fit's problem kinds and messages, the member's
+  credentials taken out of them; the state (up, error, down, unknown) with fit's members. A fit
+  member's version shows as `fit <version>`; the CSRF token goes in both `X-Akit-Csrf` and
+  `X-Fit-Csrf` (decision row 72).
+- **Stopgap (akio request A277)**: akio's client gives no response's peer chain and drops a
+  certificate it refuses, so a member's certificate is read by a probe of its own: a TLS
+  connection that verifies nothing, sends a request without credentials, reads `tls_info`'s chain
+  and checks it with the pin or akio-x509's verifier against the CAs and the URL's host. It runs at
+  a member's first poll, for each test, and after a failed call over TLS, which it tells apart as
+  `tls_untrusted` or `tls_pin_mismatch` with the certificate.
+- The console module `cluster` (`api`): `GET`/`POST /api/nodes`, `GET`/`PUT`/`DELETE
+  /api/nodes/<name>` (If-Match the members' ETag, writes on the manager's pool, one at a time, 16
+  waiting), `POST /api/nodes/<name>/test` and `/api/test` (4 at once), `GET
+  /api/nodes/<name>/read/{node,status,versions,check}` (8 at once, a capability the member does not
+  list answered 502), `/api/state`, `/api/audit` (user, node, action or its prefix; JSON lines),
+  `/api/me` (every console user a cluster-wide admin until I139). The audit log records adds,
+  changes (the fields' names), removals and tests, 1,000 entries and about 2 MiB, with the
+  document's revisions. `admin.console` serves the module (`Options::cluster`), so the workbench
+  draws its Cluster menu; the console's bodies other than a config are 128 KiB at most (fit's
+  cluster bound), up from 64 KiB.
+- I133: Overview, Nodes and a member's page checked in a browser against a manager with an akit
+  member up and one down; `docs/guides/cluster.md`. The menu's later entries (Groups, Templates,
+  Rollouts, Drift and alerts, Users and audit, Metrics) answer "no such endpoint" until I134–I139c.
+- Tests: `akit-cluster`'s unit tests (members checked as fit's, the document kept and bounded,
+  cookies, `fill`, fit's versions); akit's `tests/cluster.rs`: `manager_reads_akit_members` (by
+  console and by token, a wrong password, a member down, reads, tests of a draft and a change,
+  edit and removal, no credential in any answer or the log, the members kept across the manager's
+  restart, a member stopped seen down), `members_over_tls` (untrusted with its fingerprint, trusted
+  by its CA, by its pin, a pin that does not match), and, with `AKIT_FIT_BIN`,
+  `mixed_clusters_with_fit` (fit members under akit's manager by console and by token, an akit
+  member under fit's manager by token, the store akit's manager wrote read by fit's).
+
 ### 2026-11-27: I131, what a member needs
 
 - `GET /node` on the Admin API, and so the console's `/api/node` and `/api/m/admin/node`

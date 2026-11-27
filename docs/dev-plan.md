@@ -88,6 +88,7 @@ few crates as it can. fit's package of the same role is given for reference.
 | `akit-access` | access lists: allow and deny lists compiled into ranges, policies (I85) | `access` |
 | `akit-roles` | the roles beside the gateway: link tokens (I99), the host that runs them (I100) | `app`, `internal/linktoken` |
 | `akit-webrtc` | the WebRTC roles: the TURN server, WHIP and WHEP, the media proxy (I110–I114) | `webrtc` |
+| `akit-cluster` | cluster management: the manager of other akits, its members and their state (I132) | `cluster` |
 | `tests/e2e` | end-to-end tests of the binary | `test/e2e` |
 | `tests/compat` | the fit config compatibility gate: pinned fixtures, field inventory | `templates`, fit-examples |
 | `bench` | the harness, scenarios and reports | `bench` |
@@ -254,8 +255,8 @@ Tunnel and LLM track; I110–I114 are the WebRTC track, and I115–I119 are rese
 | **After 1.0: cluster management** | | | |
 | I130 | Cluster I: `admin.node_id`, `admin.cluster` and `admin.cluster_member` in the config | I93c | done |
 | I131 | Cluster II: what a member needs: `GET /node`, the node ID kept, `GET /schema` | I130 | done |
-| I132 | Cluster III: the manager (`akit-cluster`): members and credentials in the store, fit's document; the poller; `/api/m/cluster/nodes`, `/test`, `/state` | I131 | todo |
-| I133 | Cluster IV: the Cluster pages: Overview, Nodes and a node's page; `docs/guides/cluster.md` | I132 | todo |
+| I132 | Cluster III: the manager (`akit-cluster`): members and credentials in the store, fit's document; the poller; `/api/m/cluster/nodes`, `/test`, `/state` | I131 | done |
+| I133 | Cluster IV: the Cluster pages: Overview, Nodes and a node's page; `docs/guides/cluster.md` | I132 | done |
 | I134 | Cluster V: a member's own pages opened from the manager (`/api/n/<member>/...`) | I133 | todo |
 | I135 | Cluster VI: groups and operations on many | I133 | todo |
 | I136 | Cluster VII: templates; `/node/managed` | I135 | todo |
@@ -2222,6 +2223,8 @@ default: no `admin.cluster`, no Cluster menu, no outgoing calls.
   written by fit's manager opens in akit's and the reverse.
 - **Touches**: `akit-cluster` (new), `akit-admin` (`console`), `akit` (`run`), `docs`.
 - **fit**: `cluster/{cluster,members,poll,transport,probe,read,call,audit}.go`; I141.
+- **Status**: done (2026-11-27). A member's certificate is read by a probe of its own until akio's
+  A277; a document with users' roles is read-only until I139. See the progress log.
 
 ### I133 Cluster IV: the Cluster pages, the overview and a node's page
 
@@ -2233,6 +2236,9 @@ default: no `admin.cluster`, no Cluster menu, no outgoing calls.
   overview shows each failure mode of I132 and recovers; both languages.
 - **Touches**: `akit-cluster`, `akit-admin`, `docs/guides`.
 - **fit**: `cluster/read.go`, `app/workbench/web/cluster`; I142.
+- **Status**: done (2026-11-27), with I132: the module served, the reads, the guide; checked in a
+  browser (Overview, Nodes, a member's page). The menu's later entries answer "no such endpoint"
+  until their iterations. See the progress log.
 
 ### I134 Cluster V: a member's own pages, opened from the manager
 
