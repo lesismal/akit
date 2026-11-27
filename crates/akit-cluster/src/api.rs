@@ -35,6 +35,10 @@ impl akit_roles::pages::Module for Module {
         if path.starts_with(crate::pass::PASS_PREFIX) {
             return crate::pass::pass_on(m, ctx, user);
         }
+        // Groups and operations on many (I135).
+        if crate::groups::serve(m, ctx, user, path) || crate::ops::serve(m, ctx, user, path) {
+            return;
+        }
         match path {
             "/api/nodes" if get => ctx.respond(list(m)),
             "/api/nodes" if method == Method::Post => add(m, ctx, user),
@@ -100,6 +104,10 @@ fn me(m: &Manager, user: &str) -> Response {
     for mem in m.members() {
         nodes = nodes.str(&mem.name, "admin");
     }
+    let mut groups = Obj::new();
+    for g in m.doc().groups {
+        groups = groups.str(&g.name, "admin");
+    }
     answer(
         200,
         Obj::new()
@@ -107,7 +115,7 @@ fn me(m: &Manager, user: &str) -> Response {
             .bool("open", true)
             .str("role", "admin")
             .str("top", "admin")
-            .raw("groups", "{}")
+            .raw("groups", &groups.end())
             .raw("nodes", &nodes.end())
             .bool("manager_read_only", false)
             .str("assistant", "")
@@ -250,7 +258,7 @@ fn decode(ctx: &mut Context) -> Option<Input> {
 
 /// Whether the request's `If-Match`, when it sends one, is the members' ETag; answers 412 when
 /// not.
-fn if_match(m: &Manager, ctx: &mut Context) -> bool {
+pub(crate) fn if_match(m: &Manager, ctx: &mut Context) -> bool {
     let want = ctx.header("If-Match").unwrap_or("").to_owned();
     if want.is_empty() || want == "*" || want == m.etag() {
         return true;
@@ -264,7 +272,11 @@ fn if_match(m: &Manager, ctx: &mut Context) -> bool {
 
 /// Runs `work` on the manager's pool, answering `ctx` with what it returns; 503 when too many
 /// wait.
-fn on_pool(m: &Manager, ctx: &mut Context, work: impl FnOnce() -> Response + Send + 'static) {
+pub(crate) fn on_pool(
+    m: &Manager,
+    ctx: &mut Context,
+    work: impl FnOnce() -> Response + Send + 'static,
+) {
     let Some(d) = ctx.detach() else { return };
     let cell = Arc::new(Mutex::new(Some(d)));
     let taken = Arc::clone(&cell);
@@ -415,8 +427,12 @@ fn update(m: &Manager, ctx: &mut Context, user: &str, name: String) {
                 ));
             }
             let out = (mem.view(), describe(&mem));
+            let new_name = mem.name.clone();
             if let Some(slot) = d.members.get_mut(i) {
                 *slot = mem;
+            }
+            if new_name != name {
+                crate::groups::rename_member(d, &name, &new_name);
             }
             Ok((e, out))
         });
@@ -444,6 +460,7 @@ fn remove(m: &Manager, ctx: &mut Context, user: &str, name: String) {
                 .index(&name)
                 .ok_or_else(|| Refusal::NotFound(not_found(&name)))?;
             d.members.remove(i);
+            crate::groups::rename_member(d, &name, "");
             Ok((entry("node.remove", &name, ""), ()))
         });
         match r {

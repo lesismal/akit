@@ -146,6 +146,37 @@ done and where the work differs from the plan.
   a draining server), a port range (its port taken, 508 when used up, free again after a delete),
   `TestLimiter`; the fib interop (`tests/fib_turn.rs`) against akit and fit alike, on macOS.
 
+### 2026-11-27: I135, groups and operations on many
+
+- Groups (`akit_cluster::groups`, fit's `cluster/groups.go`): a label selector (Kubernetes'
+  equality terms, `key=value`, `key==value`, `key!=value`, `key`, `!key`; written back as fit
+  writes it; 1 KiB and 32 terms at most; the empty selector selects no one), members by name, or
+  both; a description, and variables for I136's templates (64, names of letters, digits and `_`,
+  values of 4 KiB). Membership is computed from the labels as they are, never stored: a label
+  changed moves a member in or out; a name with no member is kept and shown missing; a member
+  renamed or removed is renamed in, or taken out of, the groups naming it; a group renamed or
+  removed is renamed in, or taken out of, the templates fit kept. Groups are typed in the store's
+  document now, what akit does not read of one kept. Endpoints: `GET`/`POST /api/groups`,
+  `GET`/`PUT`/`DELETE /api/groups/<name>` (a group with its members' states), `POST /api/select`
+  (a form's preview); 256 groups. Each member's state lists its groups, and `/api/me` the groups.
+- Operations (`akit_cluster::ops`, fit's `cluster/ops.go`): `POST /api/ops` (202) on a group, a
+  selection, or members of a group: `reload` (`POST /reload`), `rollback` (to the latest version
+  kept whose ETag differs from the running one's, with `If-Match`; `no_earlier_config` without
+  one), `check` (`GET /config/check`), `purge` (by key, prefix, tag or all, checked as fit's: 64
+  absolute URLs or tags a list, 2 KiB an item) and `test` (`GET /node`); each member's capabilities
+  checked first (`unsupported`), its refusal read as fit's `replyProblem` (`refused`, the first of a
+  config's errors); `GET /api/ops` and `/api/ops/<id>` follow them. At most `max_concurrency`
+  members at once, each answer starting the next member's call (no thread of its own), 4
+  operations at once (429), one on a member (409), 32 kept. An operation ended is in the audit log
+  (`op.<name>`, each member's outcome, its config versions before and after, `ok`, `partial` or
+  `failed`) without changing the members' ETag; its members are polled again at once.
+- Tests: `groups::tests` (fit's selectors and checks), `ops::tests` (fit's purge checks,
+  refusals); akit's `groups_and_operations` (a group by selector and by name with a name missing,
+  the preview, a label changed, a reload on a group with a member down, a rollback with none to go
+  to and one done after a change through the switcher, purge, check, test, the bad requests, the
+  audit, a member and a group removed). Checked in a browser: the Groups page, and a member's
+  Overview through the node switcher.
+
 ### 2026-11-27: I134, a member's own pages opened from the manager
 
 - The node switcher's pass-through (`akit_cluster::pass`, fit's `cluster/passthrough.go`): the

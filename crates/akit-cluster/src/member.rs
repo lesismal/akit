@@ -782,7 +782,9 @@ pub struct Document {
     pub audit: Vec<Value>,
     /// Counts the document's changes (fit's I148).
     pub revision: u64,
-    /// The other members of the document, in their order: `groups`, `templates`, `rollouts`,
+    /// The groups (I135).
+    pub groups: Vec<crate::groups::Group>,
+    /// The other members of the document, in their order: `templates`, `rollouts`,
     /// `link_cert`, `access` and what a later fit adds.
     pub rest: Vec<(String, Value)>,
 }
@@ -838,6 +840,11 @@ impl Document {
                         d.audit = a;
                     }
                 }
+                "groups" => {
+                    if let Value::Array(a) = &v {
+                        d.groups = a.iter().map(crate::groups::Group::from_value).collect();
+                    }
+                }
                 "revision" => {
                     d.revision =
                         json::uint_of(&Value::Object(vec![(k.clone(), v.clone())]), "revision");
@@ -881,7 +888,16 @@ impl Document {
         }
         members.push(']');
         b = b.raw("members", &members);
-        for list in ["groups", "templates", "rollouts"] {
+        let mut groups = String::from("[");
+        for (i, g) in self.groups.iter().enumerate() {
+            if i > 0 {
+                groups.push(',');
+            }
+            groups.push_str(&g.to_json());
+        }
+        groups.push(']');
+        b = b.raw("groups", &groups);
+        for list in ["templates", "rollouts"] {
             let v = self
                 .rest
                 .iter()
@@ -1049,7 +1065,7 @@ mod tests {
     fn document_keeps_what_akit_does_not_use() {
         let fit_doc = br#"{"version":2,"members":[{"name":"a","labels":{"r":"eu"},"url":"https://a","access":"admin_api","token":"t","tls":{"fingerprint":"aa"},"created":"2026-11-06T01:02:03.5Z","updated":"2026-11-06T01:02:03.5Z"},
             {"name":"l","url":"","access":"link","link":{"credential_id":"c","credential_hash":"h"},"created":"x","updated":"x"}],
-            "groups":[{"name":"g","selector":"r=eu"}],"templates":[],"rollouts":[],"audit":[{"at":"x","user":"u","action":"node.add"}],
+            "groups":[{"name":"g","selector":"r=eu"}],"templates":[{"name":"t","groups":["g"]}],"rollouts":[],"audit":[{"at":"x","user":"u","action":"node.add"}],
             "link_cert":{"cert":"C","key":"K"},"revision":7}"#;
         let Read::Ok(mut d) = Document::read(Some(fit_doc)) else {
             panic!("not read");
@@ -1060,7 +1076,7 @@ mod tests {
         d.append_audit(json::parse(br#"{"action":"node.update"}"#).unwrap());
         let out = String::from_utf8(d.marshal()).unwrap();
         for part in [
-            r#""groups":[{"name":"g","selector":"r=eu"}]"#,
+            r#""groups":[{"name":"g","selector":"r=eu","#,
             r#""link_cert":{"cert":"C","key":"K"}"#,
             r#""link":{"credential_id":"c","credential_hash":"h"}"#,
             r#""tls":{"fingerprint":"aa"}"#,

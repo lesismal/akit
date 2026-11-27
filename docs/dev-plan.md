@@ -258,7 +258,7 @@ Tunnel and LLM track; I110–I114 are the WebRTC track, and I115–I119 are rese
 | I132 | Cluster III: the manager (`akit-cluster`): members and credentials in the store, fit's document; the poller; `/api/m/cluster/nodes`, `/test`, `/state` | I131 | done |
 | I133 | Cluster IV: the Cluster pages: Overview, Nodes and a node's page; `docs/guides/cluster.md` | I132 | done |
 | I134 | Cluster V: a member's own pages opened from the manager (`/api/n/<member>/...`) | I133 | done |
-| I135 | Cluster VI: groups and operations on many | I133 | todo |
+| I135 | Cluster VI: groups and operations on many | I133 | done |
 | I136 | Cluster VII: templates; `/node/managed` | I135 | todo |
 | I137 | Cluster VIII: rollouts with health gates | I136 | todo |
 | I138 | Cluster IX: drift and alerts; `/config/check` | I137 | todo |
@@ -2259,6 +2259,8 @@ default: no `admin.cluster`, no Cluster menu, no outgoing calls.
 - **Done when**: fit's `groups` and `ops` tests pass ported.
 - **Touches**: `akit-cluster`, `akit-admin` (`cache`: purge by prefix, fit's `cache.prefix`).
 - **fit**: `cluster/{groups,ops}.go`; I144.
+- **Status**: done (2026-11-27). akit's `POST /cache/purge` already took `prefixes`; `check`
+  answers `unsupported` on akit members until I138 serves `/config/check`. See the progress log.
 
 ### I136 Cluster VII: templates
 

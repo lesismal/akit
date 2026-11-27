@@ -43,6 +43,8 @@ pub mod node;
 pub mod transport;
 
 mod api;
+pub mod groups;
+pub mod ops;
 pub mod pass;
 
 use std::collections::HashMap;
@@ -172,6 +174,8 @@ pub(crate) struct Inner {
     pub(crate) reads: AtomicUsize,
     /// The node switcher's calls (I134), and the writes waiting for their audit entries.
     pub(crate) pass: Mutex<pass::Hub>,
+    /// The operations on many members (I135).
+    pub(crate) ops: Mutex<ops::Ops>,
     pub(crate) pass_held: AtomicUsize,
     /// The manager's schema and its digest, `sha256:` and hex.
     pub(crate) schema: &'static [u8],
@@ -253,6 +257,7 @@ impl Manager {
             tests: AtomicUsize::new(0),
             reads: AtomicUsize::new(0),
             pass: Mutex::new(pass::Hub::default()),
+            ops: Mutex::new(ops::Ops::default()),
             pass_held: AtomicUsize::new(0),
             schema: o.schema,
             schema_digest: format!(
@@ -323,6 +328,11 @@ impl Manager {
         ms
     }
 
+    /// A copy of the document.
+    pub(crate) fn doc(&self) -> Document {
+        lock(&self.0.doc).doc.clone()
+    }
+
     /// The members' ETag: the changes made since the manager started.
     #[must_use]
     pub fn etag(&self) -> String {
@@ -352,8 +362,9 @@ impl Manager {
     }
 
     fn state_json(&self, m: &Member, n: Option<&Arc<Node>>) -> String {
+        let groups = groups::groups_of(&lock(&self.0.doc).doc, &m.name, &m.labels);
         if let Some(n) = n {
-            return n.state().json(m, &[]);
+            return n.state().json(m, &groups);
         }
         // A member kept in the store that does not check is never polled.
         let mut st = n_state_unchecked();
@@ -361,7 +372,7 @@ impl Manager {
             transport::KIND_BAD_ANSWER,
             "the member kept in the store is not valid: edit it",
         ));
-        st.json(m, &[])
+        st.json(m, &groups)
     }
 
     /// The node of member `name`.

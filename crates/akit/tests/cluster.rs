@@ -629,7 +629,10 @@ fn mixed_clusters_with_fit() {
     // answered under akit's names, a dry run passed on, a write refused.
     let (st, _, wb) = b.call("GET", "/api/n/fb/workbench", "");
     assert_eq!(st, 200, "{wb}");
-    assert!(wb.contains(r#""read_only":true"#) && wb.contains(r#""reason_kind":"version""#), "{wb}");
+    assert!(
+        wb.contains(r#""read_only":true"#) && wb.contains(r#""reason_kind":"version""#),
+        "{wb}"
+    );
     let (st, _, wb) = b.call("GET", "/api/n/fa/workbench", "");
     assert_eq!(st, 200, "{wb}");
     assert!(wb.contains(r#""read_only":true"#), "{wb}");
@@ -755,7 +758,9 @@ fn header_of(head: &str, name: &str) -> String {
     head.lines()
         .find_map(|l| {
             let (n, v) = l.split_once(':')?;
-            n.trim().eq_ignore_ascii_case(name).then(|| v.trim().to_owned())
+            n.trim()
+                .eq_ignore_ascii_case(name)
+                .then(|| v.trim().to_owned())
         })
         .unwrap_or_default()
 }
@@ -776,15 +781,28 @@ fn node_switcher() {
     let m = Run::start(&["-admin", "-c", s(&manager(&d, &h)), "-watch-certs=false"]);
     let mut b = Browser::new(m.addr("console on http://"));
     assert_eq!(b.login("ada", "pw").0, 200);
-    add(&b, &format!(r#"{{"name": "a", "url": "http://{a_console}", "username": "ada", "password": "pw"}}"#));
-    add(&b, &format!(r#"{{"name": "b", "url": "http://{b_api}", "access": "admin_api", "token": "{token}"}}"#));
+    add(
+        &b,
+        &format!(
+            r#"{{"name": "a", "url": "http://{a_console}", "username": "ada", "password": "pw"}}"#
+        ),
+    );
+    add(
+        &b,
+        &format!(
+            r#"{{"name": "b", "url": "http://{b_api}", "access": "admin_api", "token": "{token}"}}"#
+        ),
+    );
     wait_state(&b, "a", "up", "");
     wait_state(&b, "b", "up", "");
 
     // The member's workbench: writable, the same schema as the manager's.
     let (st, _, wb) = b.call("GET", "/api/n/a/workbench", "");
     assert_eq!(st, 200, "{wb}");
-    assert!(wb.contains(r#""read_only":false"#) && wb.contains(r#""modules":["admin"]"#), "{wb}");
+    assert!(
+        wb.contains(r#""read_only":false"#) && wb.contains(r#""modules":["admin"]"#),
+        "{wb}"
+    );
     let (st, _, wb) = b.call("GET", "/api/n/b/workbench", "");
     assert_eq!(st, 200, "{wb}");
     assert!(wb.contains(r#""read_only":false"#), "{wb}");
@@ -793,17 +811,28 @@ fn node_switcher() {
     let (st, head, cfg) = b.call("GET", "/api/n/a/m/admin/config", "");
     assert_eq!(st, 200, "{cfg}");
     let etag = header_of(&head, "ETag");
-    assert!(!etag.is_empty() && header_of(&head, "Akit-Config-Version") == "1", "{head}");
+    assert!(
+        !etag.is_empty() && header_of(&head, "Akit-Config-Version") == "1",
+        "{head}"
+    );
     assert!(cfg.contains("\"one\""), "{cfg}");
     let two = r#"{"handler": {"module": "respond", "params": {"body": "two"}}}"#;
-    let (st, head, body) =
-        b.call_with("PUT", "/api/n/a/m/admin/config/routes/0", &[("If-Match", &etag)], two);
+    let (st, head, body) = b.call_with(
+        "PUT",
+        "/api/n/a/m/admin/config/routes/0",
+        &[("If-Match", &etag)],
+        two,
+    );
     assert_eq!(st, 200, "{body}");
     assert_eq!(header_of(&head, "Akit-Config-Version"), "2", "{head}");
     assert_eq!(get(a_web, "/"), "two");
     // The old ETag is refused, as the member refuses it.
-    let (st, _, body) =
-        b.call_with("PUT", "/api/n/a/m/admin/config/routes/0", &[("If-Match", &etag)], two);
+    let (st, _, body) = b.call_with(
+        "PUT",
+        "/api/n/a/m/admin/config/routes/0",
+        &[("If-Match", &etag)],
+        two,
+    );
     assert_eq!(st, 412, "{body}");
     // A dry run changes nothing and is not audited.
     let (st, head, body) = b.call("PUT", "/api/n/b/m/admin/config/routes/0?dry_run=1", two);
@@ -825,7 +854,12 @@ fn node_switcher() {
         let (st, _, body) = b.call("GET", path, "");
         assert_eq!(st, want, "{path}: {body}");
     }
-    let (st, _, body) = b.call_with("GET", "/api/n/a/m/admin/config", &[("Accept", "text/event-stream")], "");
+    let (st, _, body) = b.call_with(
+        "GET",
+        "/api/n/a/m/admin/config",
+        &[("Accept", "text/event-stream")],
+        "",
+    );
     assert_eq!(st, 501, "{body}");
 
     // The writes are audited, with the digest of what was sent, never the body.
@@ -833,7 +867,10 @@ fn node_switcher() {
     loop {
         let (_, _, audit) = b.call("GET", "/api/m/cluster/audit?action=node.api", "");
         if audit.matches("node.api").count() >= 3 {
-            assert!(audit.contains("sha256:") && !audit.contains("respond"), "{audit}");
+            assert!(
+                audit.contains("sha256:") && !audit.contains("respond"),
+                "{audit}"
+            );
             assert!(audit.contains("config version 2"), "{audit}");
             assert!(audit.contains("412"), "{audit}");
             break;
@@ -842,4 +879,236 @@ fn node_switcher() {
         std::thread::sleep(Duration::from_millis(100));
     }
     let _ = (m.stop(), a.stop(), bm.stop());
+}
+
+/// Waits for operation `id` to finish: its answer.
+fn wait_op(b: &Browser, id: &str) -> akit_config::value::Value {
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        let (st, _, body) = b.call("GET", &format!("/api/m/cluster/ops/{id}"), "");
+        assert_eq!(st, 200, "{body}");
+        let v = parse(&body);
+        if matches!(
+            v.get("finished"),
+            Some(akit_config::value::Value::Bool(true))
+        ) {
+            return v;
+        }
+        assert!(Instant::now() < deadline, "{body}");
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
+/// Starts an operation: its ID.
+fn start_op(b: &Browser, body: &str) -> String {
+    let (st, _, resp) = b.call("POST", "/api/m/cluster/ops", body);
+    assert_eq!(st, 202, "{body}: {resp}");
+    str_member(&parse(&resp), "id").to_owned()
+}
+
+/// Each member's status and problem kind in an operation's answer.
+fn outcomes(op: &akit_config::value::Value) -> Vec<(String, String, String)> {
+    let Some(akit_config::value::Value::Array(os)) = op.get("outcomes") else {
+        panic!("{op:?}")
+    };
+    os.iter()
+        .map(|o| {
+            (
+                str_member(o, "node").to_owned(),
+                str_member(o, "status").to_owned(),
+                o.get("error")
+                    .map(|e| str_member(e, "kind").to_owned())
+                    .unwrap_or_default(),
+            )
+        })
+        .collect()
+}
+
+/// Groups and operations on many (I135, fit's `groups` and `ops` tests): a group by selector and
+/// by name follows the labels as they are; an operation on a group where one member is down
+/// reports the others done and that one failed; rollback, purge, check and test on akit members;
+/// the operations in the audit log; a member removed leaves the groups naming it.
+#[test]
+fn groups_and_operations() {
+    let d = Dir::new("groups");
+    let h = hash("pw");
+    let a = Run::start(&["-c", s(&console_member(&d, "a", &h)), "-watch-certs=false"]);
+    let a_console = a.addr("console on http://");
+    let token = "a-token-of-members-b-and-c-012345";
+    let bm = Run::start(&["-c", s(&token_member(&d, "b", token)), "-watch-certs=false"]);
+    let b_api = bm.addr("admin API on ");
+    let cm = Run::start(&["-c", s(&token_member(&d, "c", token)), "-watch-certs=false"]);
+    let c_api = cm.addr("admin API on ");
+    let free = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let down = free.local_addr().unwrap();
+    drop(free);
+    let m = Run::start(&["-admin", "-c", s(&manager(&d, &h)), "-watch-certs=false"]);
+    let mut b = Browser::new(m.addr("console on http://"));
+    assert_eq!(b.login("ada", "pw").0, 200);
+    add(
+        &b,
+        &format!(
+            r#"{{"name": "a", "url": "http://{a_console}", "username": "ada", "password": "pw", "labels": {{"region": "eu"}}}}"#
+        ),
+    );
+    add(
+        &b,
+        &format!(
+            r#"{{"name": "b", "url": "http://{b_api}", "access": "admin_api", "token": "{token}", "labels": {{"region": "eu"}}}}"#
+        ),
+    );
+    add(
+        &b,
+        &format!(
+            r#"{{"name": "c", "url": "http://{c_api}", "access": "admin_api", "token": "{token}", "labels": {{"region": "us"}}}}"#
+        ),
+    );
+    add(
+        &b,
+        &format!(
+            r#"{{"name": "d", "url": "http://{down}", "access": "admin_api", "token": "{token}", "labels": {{"region": "eu"}}}}"#
+        ),
+    );
+    for n in ["a", "b", "c"] {
+        wait_state(&b, n, "up", "");
+    }
+    wait_state(&b, "d", "down", "");
+
+    // A group by selector and by name; its preview.
+    let (st, _, g) = b.call(
+        "POST",
+        "/api/m/cluster/groups",
+        r#"{"name": "eu", "selector": "region = eu", "members": ["c", "ghost"], "variables": {"domain": "eu.example"}}"#,
+    );
+    assert_eq!(st, 201, "{g}");
+    assert!(g.contains(r#""selector":"region=eu""#), "{g}");
+    assert!(
+        g.contains(r#""nodes":["a","b","c","d"]"#) && g.contains(r#""missing":["ghost"]"#),
+        "{g}"
+    );
+    let (st, _, sel) = b.call(
+        "POST",
+        "/api/m/cluster/select",
+        r#"{"selector": "region!=eu"}"#,
+    );
+    assert_eq!(st, 200, "{sel}");
+    assert!(sel.contains(r#""nodes":["c"]"#), "{sel}");
+    let (st, _, body) = b.call(
+        "POST",
+        "/api/m/cluster/groups",
+        r#"{"name": "x", "selector": "a in (b)"}"#,
+    );
+    assert_eq!(st, 400, "{body}");
+    assert!(body.contains(r#""field":"selector""#), "{body}");
+    assert!(member(&state_of(&b, "a"), "groups").contains("eu"));
+    // A label changed moves a member out of the group its selector picked it by.
+    let (st, _, body) = b.call(
+        "PUT",
+        "/api/m/cluster/nodes/b",
+        &format!(
+            r#"{{"url": "http://{b_api}", "access": "admin_api", "labels": {{"region": "us"}}}}"#
+        ),
+    );
+    assert_eq!(st, 200, "{body}");
+    let (st, _, g) = b.call("GET", "/api/m/cluster/groups/eu", "");
+    assert_eq!(st, 200, "{g}");
+    assert!(
+        g.contains(r#""nodes":["a","c","d"]"#) && g.contains(r#""states":["#),
+        "{g}"
+    );
+
+    // A reload on the group: three done, the member down failed.
+    let id = start_op(&b, r#"{"op": "reload", "group": "eu"}"#);
+    let op = wait_op(&b, &id);
+    assert_eq!(
+        outcomes(&op),
+        [
+            ("a".to_owned(), "done".to_owned(), String::new()),
+            ("c".to_owned(), "done".to_owned(), String::new()),
+            (
+                "d".to_owned(),
+                "failed".to_owned(),
+                "unreachable".to_owned()
+            ),
+        ]
+    );
+    // No earlier config differs from the running one: nothing to roll back to.
+    let id = start_op(&b, r#"{"op": "rollback", "members": ["a"]}"#);
+    assert_eq!(outcomes(&wait_op(&b, &id))[0].2, "no_earlier_config");
+    // A config changed on b, then rolled back to the one before.
+    let (st, head, _) = b.call("GET", "/api/n/b/m/admin/config", "");
+    assert_eq!(st, 200);
+    let etag = header_of(&head, "ETag");
+    let two = r#"{"handler": {"module": "respond", "params": {"body": "two"}}}"#;
+    let (st, _, body) = b.call_with(
+        "PUT",
+        "/api/n/b/m/admin/config/routes/0",
+        &[("If-Match", &etag)],
+        two,
+    );
+    assert_eq!(st, 200, "{body}");
+    let id = start_op(&b, r#"{"op": "rollback", "members": ["b"]}"#);
+    let op = wait_op(&b, &id);
+    assert_eq!(outcomes(&op)[0].1, "done", "{op:?}");
+    // Purge, check and test.
+    let id = start_op(
+        &b,
+        r#"{"op": "purge", "members": ["a", "b"], "purge": {"prefixes": ["https://a.example/x/"]}}"#,
+    );
+    let op = wait_op(&b, &id);
+    assert!(
+        outcomes(&op)
+            .iter()
+            .all(|o| o.1 == "done" || o.2 == "refused"),
+        "{op:?}"
+    );
+    let id = start_op(&b, r#"{"op": "check", "members": ["a"]}"#);
+    assert_eq!(outcomes(&wait_op(&b, &id))[0].2, "unsupported");
+    let id = start_op(
+        &b,
+        r#"{"op": "test", "group": "eu", "members": ["a", "c"]}"#,
+    );
+    let op = wait_op(&b, &id);
+    assert!(outcomes(&op).iter().all(|o| o.1 == "done"), "{op:?}");
+    for (body, want) in [
+        (r#"{"op": "reboot", "members": ["a"]}"#, 400),
+        (r#"{"op": "reload"}"#, 400),
+        (r#"{"op": "reload", "members": ["nobody"]}"#, 404),
+        (r#"{"op": "reload", "group": "eu", "members": ["b"]}"#, 400),
+        (r#"{"op": "purge", "members": ["a"]}"#, 400),
+        (
+            r#"{"op": "reload", "members": ["a"], "purge": {"all": true}}"#,
+            400,
+        ),
+    ] {
+        let (st, _, resp) = b.call("POST", "/api/m/cluster/ops", body);
+        assert_eq!(st, want, "{body}: {resp}");
+    }
+    let (st, _, list) = b.call("GET", "/api/m/cluster/ops", "");
+    assert_eq!(st, 200);
+    assert!(list.matches("\"id\"").count() >= 6, "{list}");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let (_, _, audit) = b.call("GET", "/api/m/cluster/audit?action=op.", "");
+        if audit.contains("op.reload") && audit.contains("op.test") {
+            assert!(
+                audit.contains(r#""outcome":"partial""#) && audit.contains("\"outcomes\""),
+                "{audit}"
+            );
+            break;
+        }
+        assert!(Instant::now() < deadline, "{audit}");
+        std::thread::sleep(Duration::from_millis(100));
+    }
+
+    // A member removed leaves the group that named it; the group removed.
+    let (st, _, body) = b.call("DELETE", "/api/m/cluster/nodes/c", "");
+    assert_eq!(st, 200, "{body}");
+    let (_, _, g) = b.call("GET", "/api/m/cluster/groups/eu", "");
+    assert!(g.contains(r#""members":["ghost"]"#), "{g}");
+    let (st, _, body) = b.call("DELETE", "/api/m/cluster/groups/eu", "");
+    assert_eq!(st, 200, "{body}");
+    let (_, _, gs) = b.call("GET", "/api/m/cluster/groups", "");
+    assert!(gs.contains(r#""groups":[]"#), "{gs}");
+    let _ = (m.stop(), a.stop(), bm.stop(), cm.stop());
 }

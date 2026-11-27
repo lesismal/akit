@@ -248,7 +248,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I132 | 集群 III：管理端（`akit-cluster`）：存储中的成员和凭据，fit 的文档；轮询器；`/api/m/cluster/nodes`、`/test`、`/state` | I131 | done |
 | I133 | 集群 IV：集群页面：概览、节点和节点页面；`docs/guides/cluster.md` | I132 | done |
 | I134 | 集群 V：从管理端打开成员自己的页面（`/api/n/<member>/...`） | I133 | done |
-| I135 | 集群 VI：分组和对多个成员的操作 | I133 | todo |
+| I135 | 集群 VI：分组和对多个成员的操作 | I133 | done |
 | I136 | 集群 VII：模板；`/node/managed` | I135 | todo |
 | I137 | 集群 VIII：带健康门槛的发布 | I136 | todo |
 | I138 | 集群 IX：漂移和告警；`/config/check` | I137 | todo |
@@ -1897,6 +1897,8 @@ fit 工作台页面。成员尽量少改动：管理端使用成员已有的 API
 - **完成标准**：fit 的 `groups` 和 `ops` 测试移植后通过。
 - **涉及**：`akit-cluster`、`akit-admin`（`cache`：按前缀清除，fit 的 `cache.prefix`）。
 - **fit**：`cluster/{groups,ops}.go`；I144。
+- **状态**：done（2026-11-27）。akit 的 `POST /cache/purge` 本已接受 `prefixes`；在 I138 提供 `/config/check` 之前，`check` 对
+  akit 成员回答 `unsupported`。见进度日志。
 
 ### I136 集群 VII：模板
 

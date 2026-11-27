@@ -106,6 +106,26 @@
   中继）、`TestReload`（就地修改配额，排空中的服务器回答 508）、端口范围（取其端口，用尽时 508，删除后再次可用）、
   `TestLimiter`；fib 互通测试（`tests/fib_turn.rs`）对 akit 和 fit 结果相同，在 macOS 上运行。
 
+### 2026-11-27：I135，分组和对多个成员的操作
+
+- 分组（`akit_cluster::groups`，fit 的 `cluster/groups.go`）：标签选择器（Kubernetes 的等值条件 `key=value`、`key==value`、
+  `key!=value`、`key`、`!key`；按 fit 的写法写回；最多 1 KiB、32 个条件；空选择器不选任何成员）、按名字列出的成员，或两者；
+  描述，以及给 I136 模板用的变量（64 个，名字为字母、数字和 `_`，值最多 4 KiB）。成员关系由当前标签计算，从不保存：标签改变
+  会把成员移入或移出；没有对应成员的名字被保留并显示为缺失；成员改名或删除时，在列出它的分组中改名或移除；分组改名或删除时，
+  在 fit 保存的模板中改名或移除。分组现在在存储的文档中有类型，akit 不读的部分原样保留。端点：`GET`/`POST /api/groups`、
+  `GET`/`PUT`/`DELETE /api/groups/<name>`（分组及其成员的状态）、`POST /api/select`（表单的预览）；最多 256 个分组。每个成员的
+  状态列出其分组，`/api/me` 列出分组。
+- 操作（`akit_cluster::ops`，fit 的 `cluster/ops.go`）：`POST /api/ops`（202）作用于分组、选中的成员或分组中的成员：`reload`
+  （`POST /reload`）、`rollback`（回滚到保存的、ETag 与运行中不同的最新版本，带 `If-Match`；没有则 `no_earlier_config`）、
+  `check`（`GET /config/check`）、`purge`（按键、前缀、标签或全部，按 fit 的方式检查：每个列表最多 64 个绝对 URL 或标签，每项
+  2 KiB）和 `test`（`GET /node`）；先检查每个成员的能力（`unsupported`），其拒绝按 fit 的 `replyProblem` 读取（`refused`，配置
+  错误中的第一个）；`GET /api/ops` 和 `/api/ops/<id>` 跟踪它们。同时最多 `max_concurrency` 个成员，每个回答发起下一个成员的
+  调用（没有独立线程），同时 4 个操作（429），一个成员同时一个（409），保留 32 个。结束的操作记入审计日志（`op.<name>`、每个
+  成员的结果、前后的配置版本、`ok`、`partial` 或 `failed`），不改变成员的 ETag；其成员立即重新轮询。
+- 测试：`groups::tests`（fit 的选择器和检查）、`ops::tests`（fit 的 purge 检查、拒绝）；akit 的 `groups_and_operations`（按
+  选择器和名字的分组及缺失的名字、预览、标签改变、对有成员下线的分组 reload、无可回滚版本的 rollback 以及经切换器修改后成功的
+  rollback、purge、check、test、错误的请求、审计、删除成员和分组）。
+
 ### 2026-11-27：I134，从管理端打开成员自己的页面
 
 - 节点切换器的转发（`akit_cluster::pass`，fit 的 `cluster/passthrough.go`）：控制台经模块 `cluster` 提供
