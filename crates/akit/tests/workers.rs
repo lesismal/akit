@@ -344,6 +344,15 @@ fn cases(w: &World) -> Vec<Case> {
             200,
             true,
         ),
+        // I110: the WebRTC handlers answer 503 at once while their roles do not run.
+        handler("whip", r#"{"module": "whip"}"#.into(), 503, true),
+        handler("whep", r#"{"module": "whep"}"#.into(), 503, true),
+        handler(
+            "webrtc_proxy",
+            r#"{"module": "webrtc_proxy", "params": {"upstream": "app"}}"#.into(),
+            503,
+            true,
+        ),
         // A CONNECT to the slow echo: the tunnel opens at once, its bytes come back late.
         handler(
             "forward_proxy",
