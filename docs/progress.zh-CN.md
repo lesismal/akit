@@ -232,6 +232,24 @@
   （I158）、RSS 和共享的 tracker 存储（I159）。fit 的 I205（互通和故障测试）放入每个角色自己的迭代；
   fit 的 I206（集群视图）等待集群管理路线。基准表中有一行说明要测量什么。
 
+### 2026-11-27：I131，成员需要什么
+
+- Admin API 的 `GET /node`，因而也有控制台的 `/api/node` 和 `/api/m/admin/node`（`akit_admin::node`，fit 的 `admin/node.go`）：
+  节点 ID 及其保存位置、主机名、`akit_version`、fit 的 `fib_version`（为 `akio <提交>`）和空的 `go_version`（决定第 71 行）、
+  操作系统和架构、启动时间和运行时长、运行中配置的版本、ETag、时间和来源、运行中的角色、schema 的版本和摘要（控制台 schema
+  的 `sha256:`），以及用 fit 的能力名列出 akit 提供的功能（`node`、`config.if_match`、`config.dry_run`、`config.text`、
+  `config.effective`、`config.versions`、`config.transfer`、`config.reload`、`status`、`cache`、`cache.prefix`、`logs`、
+  `tokens`、`schema`；有时才列 `metrics`、`store`、`console` 和 `status.requests`）；响应头带 ETag 和
+  `Akit-Config-Version`。akit 提供之前不列：`config.check`、`logs.recent`、`node.managed`、媒体、同步和 BitTorrent。
+  `GET /schema` 即控制台的 schema。
+- 节点 ID（fit 的 `NodeID`）：`admin.node_id`，或只生成一次的随机 UUIDv4，保存在存储的 `node` 分区（fit 的，因此共用存储的
+  fit 和 akit 共用它），没有存储时保存在配置旁的 `akit.node-id`（经一个文件改名覆盖写入）；文件中的 ID 被并入还没有 ID 的存储；
+  两处都无法写入时不保存，并给出消息。`Configs::use_node`、`node`；`akit run` 在提供服务前设置它，带 akit 的版本和 akio 的
+  提交；`Options::node` 读取运行中的角色以及运行中的配置是否统计请求。
+- `GET /node` 和 `/schema` 标记为 Admin API 的 v1 新增。
+- 测试：`node::tests`（fit 的 `TestNodeIDKept`、`TestNewNodeID`、`TestUseNodeKeeps`）；控制台的 `node_and_schema`（fit 的
+  `TestNode`，经 API 和控制台）；akit 的 `node_id_kept_across_restarts`（无存储、并入存储、`admin.node_id`）。
+
 ### 2026-11-27：I130，配置中的集群管理
 
 - `admin.node_id`、`admin.cluster` 和 `admin.cluster_member` 按 fit 的 `config/cluster.go` 读取和检查（`akit_config::cluster`）：

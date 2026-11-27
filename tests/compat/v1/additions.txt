@@ -661,3 +661,8 @@ config	added	supported	admin.cluster_member.manager
 config	added	supported	admin.cluster_member.token
 config	added	supported	admin.cluster_member.token_file
 config	added	supported	admin.node_id
+# I131: who this akit is, for a manager of many, and the config's schema (fit's admin/node.go).
+admin	added	endpoint	GET	/node
+admin	added	endpoint	HEAD	/node
+admin	added	endpoint	GET	/schema
+admin	added	endpoint	HEAD	/schema

@@ -96,6 +96,9 @@ pub struct Options {
     /// request is served on it (fit's grace); `None`: `console_unauth_timeout`, as fit's. Tests
     /// lengthen it.
     pub console_grace: Option<Duration>,
+    /// What `GET /node` reads of the running akit (I131): the roles running and whether the
+    /// running config counts requests; none and no without it.
+    pub node: Option<crate::node::NodeView>,
 }
 
 impl fmt::Debug for Options {
@@ -115,6 +118,7 @@ impl fmt::Debug for Options {
             .field("console_unauth_timeout", &self.console_unauth_timeout)
             .field("console_idle_timeout", &self.console_idle_timeout)
             .field("console_grace", &self.console_grace)
+            .field("node", &self.node.is_some())
             .finish()
     }
 }
@@ -136,6 +140,7 @@ impl Default for Options {
             console_unauth_timeout: crate::console::UNAUTH_TIMEOUT,
             console_idle_timeout: crate::console::IDLE_TIMEOUT,
             console_grace: None,
+            node: None,
         }
     }
 }
@@ -531,6 +536,7 @@ impl Server {
             status: opts.status.clone(),
             logs: opts.logs.clone(),
             tokens: opts.tokens.clone(),
+            node: opts.node.clone(),
             dashboard: !settings.disable_dashboard,
             token,
             deriving: Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -555,6 +561,8 @@ impl Server {
             )?),
             None => None,
         };
+        // `GET /node` lists the console when it runs (I131).
+        shared.configs.set_console_running(console.is_some());
         let api = Api(Arc::new(shared));
         let mut http = HttpConfig::default();
         // HTTP/1.1 alone: one request at a time on each of the connections max_conns counts.
@@ -770,6 +778,8 @@ pub(crate) struct Shared {
     pub(crate) logs: Option<akit_observe::Files>,
     /// The running roles' link tokens (I100).
     pub(crate) tokens: Option<crate::tokens::TokenViews>,
+    /// What `GET /node` reads of the running akit (I131).
+    node: Option<crate::node::NodeView>,
     /// Whether the dashboard is served (I63): unless `disable_dashboard`.
     dashboard: bool,
     /// The token every request must carry, from `token_file`; none asked for without it.
@@ -909,6 +919,15 @@ impl Api {
             "/versions" => not_allowed("GET, HEAD"),
             "/status" if read => crate::status::status(&self.0.configs, self.0.status.as_ref()),
             "/status" => not_allowed("GET, HEAD"),
+            // I131: who this akit is, for a manager of many, and the config's schema.
+            "/node" if read => crate::node::answer(
+                &self.0.configs,
+                self.0.node.as_ref(),
+                self.0.metrics.is_some(),
+            ),
+            "/node" => not_allowed("GET, HEAD"),
+            "/schema" if read => crate::node::schema_answer(),
+            "/schema" => not_allowed("GET, HEAD"),
             "/cache" if read => crate::cache::zones(),
             "/cache" => not_allowed("GET, HEAD"),
             "/cache/purge" if post => return crate::cache::purge(&self.0, ctx),

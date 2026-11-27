@@ -719,3 +719,59 @@ fn fit_and_akit_share_a_store() {
     assert!(String::from_utf8_lossy(&o.stdout).contains("\"akit\""));
     assert!(export(&store, &[]).contains("\"akit\""));
 }
+
+/// The node ID `GET /node` answers (I131, fit's `NodeID` under `fit run`): made once and kept in
+/// a file beside the config without a store, taken into the store once there is one, the same
+/// across restarts; `admin.node_id` wins.
+#[test]
+fn node_id_kept_across_restarts() {
+    let d = Dir::new("node-id");
+    let node = |cfg: &Path| {
+        let r = Run::start(&["-c", s(cfg), "-watch-certs=false"]);
+        let admin = r.addr("akit: admin API on ");
+        let body = get(admin, "/node");
+        assert_eq!(r.stop().0, Some(0));
+        let v = akit_config::value::parse(&body).unwrap();
+        let s = |k: &str| match v.get(k) {
+            Some(akit_config::value::Value::String(s)) => s.clone(),
+            other => panic!("{k}: {other:?} in {body}"),
+        };
+        assert!(s("akit_version").len() > 1, "{body}");
+        assert!(s("fib_version").starts_with("akio "), "{body}");
+        (s("id"), s("id_kept"))
+    };
+    let plain = d.file(
+        "akit.json",
+        &format!(r#"{{"admin": {{"address": "127.0.0.1:0"}}, {ROUTES_ONE}}}"#),
+    );
+    let (id, kept) = node(&plain);
+    assert_eq!(kept, "file");
+    assert_eq!(
+        std::fs::read_to_string(d.0.join("akit.node-id"))
+            .unwrap()
+            .trim(),
+        id
+    );
+    assert_eq!(node(&plain), (id.clone(), "file".to_owned()));
+
+    // Given a store: the file's ID moves into it, and stays there.
+    let path = d.0.join("akit.store");
+    std::fs::write(
+        &plain,
+        format!(
+            r#"{{"admin": {{"address": "127.0.0.1:0", "store": {{"path": {}, "password": "s3cret"}}}}, {ROUTES_ONE}}}"#,
+            js(&path)
+        ),
+    )
+    .unwrap();
+    assert_eq!(node(&plain), (id.clone(), "store".to_owned()));
+    std::fs::remove_file(d.0.join("akit.node-id")).unwrap();
+    assert_eq!(node(&plain), (id.clone(), "store".to_owned()));
+
+    // admin.node_id wins.
+    let named = d.file(
+        "named.json",
+        &format!(r#"{{"admin": {{"address": "127.0.0.1:0", "node_id": "edge-1"}}, {ROUTES_ONE}}}"#),
+    );
+    assert_eq!(node(&named), ("edge-1".to_owned(), "config".to_owned()));
+}

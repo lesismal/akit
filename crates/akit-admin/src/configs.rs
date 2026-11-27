@@ -270,6 +270,10 @@ struct Inner {
     /// The console user whose password is temporary (`akit run -admin`, I93c), and until when:
     /// held for a clone only, on every request of the Admin API.
     temporary: Mutex<Option<(String, SystemTime)>>,
+    /// Who this akit is, for `GET /node` (I131): held for a clone only.
+    node: Mutex<Arc<crate::node::Node>>,
+    /// Whether the console runs, which `GET /node` lists (I131).
+    console: AtomicBool,
 }
 
 impl fmt::Debug for Users {
@@ -406,6 +410,8 @@ impl Configs {
                 stored: AtomicBool::new(false),
                 sealer: Mutex::new(None),
                 temporary: Mutex::new(None),
+                node: Mutex::new(Arc::new(crate::node::Node::new())),
+                console: AtomicBool::new(false),
             }),
         }
     }
@@ -499,6 +505,30 @@ impl Configs {
     /// API exports and imports without a password of their own. fit's `UseSealer`.
     pub fn use_sealer(&self, sealer: Sealer) {
         *lock(&self.inner.sealer) = Some(sealer);
+    }
+
+    /// Says who this akit is, for `GET /node` (I131): what `node` leaves empty keeps what was
+    /// there (an ID kept nowhere, the host's name), as fit's `UseNode`.
+    pub fn use_node(&self, node: crate::node::Node) {
+        let mut n = lock(&self.inner.node);
+        *n = Arc::new(n.merged(node));
+    }
+
+    /// Who this akit is.
+    #[must_use]
+    pub fn node(&self) -> Arc<crate::node::Node> {
+        Arc::clone(&lock(&self.inner.node))
+    }
+
+    /// Says whether the console runs, which `GET /node` lists as the capability `console`.
+    pub fn set_console_running(&self, running: bool) {
+        self.inner.console.store(running, Ordering::Relaxed);
+    }
+
+    /// Whether the console runs.
+    #[must_use]
+    pub fn console_running(&self) -> bool {
+        self.inner.console.load(Ordering::Relaxed)
     }
 
     /// The store's key and password [`use_sealer`](Configs::use_sealer) gave.

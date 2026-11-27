@@ -314,6 +314,30 @@ done and where the work differs from the plan.
   role's iteration; fit's I206 (the cluster's view) waits for the Cluster management track. A row
   in the benchmark table names what to measure.
 
+### 2026-11-27: I131, what a member needs
+
+- `GET /node` on the Admin API, and so the console's `/api/node` and `/api/m/admin/node`
+  (`akit_admin::node`, fit's `admin/node.go`): the node ID and where it is kept, the host name,
+  `akit_version`, fit's `fib_version` as `akio <commit>` and `go_version` empty (decision row 71),
+  the OS and architecture, the start and uptime, the running config's version, ETag, time and
+  source, the roles running, the schema's version and digest (`sha256:` of the console's schema),
+  and fit's capability names for what akit serves (`node`, `config.if_match`, `config.dry_run`,
+  `config.text`, `config.effective`, `config.versions`, `config.transfer`, `config.reload`,
+  `status`, `cache`, `cache.prefix`, `logs`, `tokens`, `schema`; `metrics`, `store`, `console` and
+  `status.requests` when they are); the ETag and `Akit-Config-Version` in its headers. Not listed
+  until akit serves them: `config.check`, `logs.recent`, `node.managed`, media, sync and
+  BitTorrent. `GET /schema`, the console's schema.
+- The node ID (fit's `NodeID`): `admin.node_id`, or a random UUIDv4 made once and kept in the
+  store's section `node` (fit's, so that fit and akit sharing a store share it), or without a store
+  in `akit.node-id` beside the config (written through a file renamed over it); a file's ID taken
+  into a store that has none; kept nowhere, with a message, when neither can be written.
+  `Configs::use_node`, `node`; `akit run` sets it before serving, with akit's version and akio's
+  commit; `Options::node` reads the roles running and whether the running config counts requests.
+- `GET /node` and `/schema` marked as v1 additions of the Admin API.
+- Tests: `node::tests` (fit's `TestNodeIDKept`, `TestNewNodeID`, `TestUseNodeKeeps`); the console's
+  `node_and_schema` (fit's `TestNode`, through the API and the console); akit's
+  `node_id_kept_across_restarts` (without a store, into a store, `admin.node_id`).
+
 ### 2026-11-27: I130, cluster management in the config
 
 - `admin.node_id`, `admin.cluster` and `admin.cluster_member` read and checked as fit's

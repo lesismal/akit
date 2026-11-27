@@ -891,6 +891,121 @@ fn pages_and_schema() {
     assert!(r.body.contains("log"), "{}", r.body);
 }
 
+/// fit's `TestNode` (I131): `GET /node` says who the akit is, what config runs and what the API
+/// offers, with the running config's ETag and version in its headers; through the console too,
+/// where it lists the console, and the store with one. `GET /schema` is the console's schema.
+#[test]
+fn node_and_schema() {
+    use akit_config::value::{Value, parse as parse_json};
+    let mut opts = Options::default();
+    opts.node = Some(Arc::new(|| akit_admin::node::NodeLive {
+        roles: vec!["tunnel.node".into(), "llm.hub".into()],
+        counts_requests: true,
+    }));
+    let f = start(console(|_| {}), opts);
+    let api = f.api.address().parse::<SocketAddr>().unwrap();
+    let get = |path: &str| {
+        let s = TcpStream::connect(api).unwrap();
+        s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+        exchange(s, &api.to_string(), "GET", path, &[], None)
+    };
+    let r = get("/node");
+    assert_eq!(r.status, 200, "{r:?}");
+    let n = parse_json(&r.body).unwrap();
+    let s = |k: &str| match n.get(k) {
+        Some(Value::String(s)) => s.clone(),
+        other => panic!("{k}: {other:?}"),
+    };
+    let cur = f.configs.current();
+    assert_eq!(s("config_etag"), cur.etag);
+    assert_eq!(s("config_source"), SOURCE_FILE);
+    assert_eq!(s("id_kept"), "memory");
+    assert!(!s("id").is_empty() && !s("hostname").is_empty() && !s("os").is_empty());
+    assert!(s("schema_digest").starts_with("sha256:"));
+    assert!(!s("started").is_empty());
+    assert_eq!(n.get("config_version"), Some(&Value::Number("1".into())));
+    assert_eq!(n.get("schema_version"), Some(&Value::Number("1".into())));
+    assert_eq!(r.header("ETag"), Some(cur.etag.as_str()));
+    assert_eq!(r.header("Akit-Config-Version"), Some("1"));
+    let list = |k: &str| match n.get(k) {
+        Some(Value::Array(a)) => a
+            .iter()
+            .map(|v| match v {
+                Value::String(s) => s.clone(),
+                _ => panic!("{v:?}"),
+            })
+            .collect::<Vec<_>>(),
+        other => panic!("{k}: {other:?}"),
+    };
+    assert_eq!(list("roles"), ["llm.hub", "tunnel.node"]);
+    let caps = list("capabilities");
+    for c in [
+        "node",
+        "config.dry_run",
+        "config.if_match",
+        "config.text",
+        "config.versions",
+        "status.requests",
+        "schema",
+        "console",
+    ] {
+        assert!(caps.iter().any(|x| x == c), "{caps:?} lacks {c}");
+    }
+    assert!(!caps.iter().any(|x| x == "store" || x == "config.check"));
+    let mut sorted = caps.clone();
+    sorted.sort();
+    assert_eq!(caps, sorted);
+
+    // Who the akit is, as akit run says; a change shows its version.
+    let started = std::time::UNIX_EPOCH + Duration::from_secs(1_793_581_323);
+    f.configs.use_node(akit_admin::node::Node {
+        id: "node-a".into(),
+        id_kept: akit_admin::node::ID_IN_FILE,
+        hostname: String::new(),
+        version: "9.9.9".into(),
+        engine: "akio 0123456789ab".into(),
+        started,
+    });
+    let mut b = Browser::new(&f);
+    assert_eq!(b.login("ada", "pw"), 200);
+    let r = b.send("PUT", "/api/m/admin/config", &[], Some(&doc("two")));
+    assert_eq!(r.status, 200, "{r:?}");
+    for path in ["/api/node", "/api/m/admin/node"] {
+        let r = b.get(path);
+        assert_eq!(r.status, 200, "{path}: {r:?}");
+        let n = parse_json(&r.body).unwrap();
+        let s = |k: &str| match n.get(k) {
+            Some(Value::String(s)) => s.clone(),
+            other => panic!("{k}: {other:?}"),
+        };
+        assert_eq!(
+            (
+                s("id"),
+                s("id_kept"),
+                s("akit_version"),
+                s("fib_version"),
+                s("started"),
+                s("config_source")
+            ),
+            (
+                "node-a".to_owned(),
+                "file".to_owned(),
+                "9.9.9".to_owned(),
+                "akio 0123456789ab".to_owned(),
+                "2026-11-02T01:02:03.000Z".to_owned(),
+                "console".to_owned()
+            ),
+            "{path}"
+        );
+        assert_eq!(n.get("config_version"), Some(&Value::Number("2".into())));
+    }
+    let r = get("/schema");
+    assert_eq!(r.status, 200);
+    assert_eq!(r.header("Content-Type"), Some("application/schema+json"));
+    assert_eq!(r.body, b.get("/api/m/admin/schema").body);
+    assert_eq!(b.send("POST", "/api/node", &[], Some("{}")).status, 405);
+}
+
 // The console's connections (akio's A232; fit's `app/console/idle_test.go` and
 // `TestLimitHandlerEvicts`).
 

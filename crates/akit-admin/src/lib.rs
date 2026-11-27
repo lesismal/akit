@@ -19,6 +19,9 @@
 //! GET    /metrics             the metrics scrape Options::metrics writes (I37), when set
 //! GET    /status              what akit is doing now: listeners, connections, upstreams and
 //!                             their backends' health, certificates, requests (I63)
+//! GET    /node                who this akit is, for a manager of many: its node ID, versions,
+//!                             running config, roles, schema digest and capabilities (I131)
+//! GET    /schema              the config's JSON Schema, as the console's (I131)
 //! GET    /cache               what each cache zone keeps (I69)
 //! POST   /cache/purge         remove what a cache zone keeps, by URL, URL prefix, tag, or all
 //!                             (I69)
@@ -80,6 +83,7 @@ mod dashboard;
 #[doc(hidden)]
 pub mod fuzzing;
 mod logs;
+pub mod node;
 mod pointer;
 mod redact;
 mod server;

@@ -1407,6 +1407,44 @@ fn run(args: &[String]) -> ExitCode {
             );
         }
     }
+    // Who this akit is, for a manager of many (I131, fit's NodeID): admin.node_id, or the ID
+    // kept in the store, or in the file beside the config, made the first time.
+    let (node_id, id_kept) = match admin.as_ref().and_then(|a| a.node_id.clone()) {
+        Some(id) => (id, akit_admin::node::ID_IN_CONFIG),
+        None => {
+            let prefix = paths
+                .first()
+                .and_then(|p| akit_roles::host::beside_prefix(p));
+            let (id, kept, err) = match &boot {
+                Some(b) => {
+                    akit_admin::node::node_id(Some(&mut boot::lock(&b.store)), prefix.as_deref())
+                }
+                None => akit_admin::node::node_id(None, prefix.as_deref()),
+            };
+            if let Some(e) = err {
+                eprintln!(
+                    "akit run: the node ID is kept nowhere and made again at the next start: {e}"
+                );
+            }
+            (id, kept)
+        }
+    };
+    configs.use_node(akit_admin::node::Node {
+        id: node_id,
+        id_kept,
+        hostname: String::new(),
+        version: BUILD
+            .get()
+            .map_or(crate::VERSION, |(v, _)| v.as_str())
+            .to_owned(),
+        engine: format!(
+            "akio {}",
+            akit_runtime::AKIO_REV
+                .get(..12)
+                .unwrap_or(akit_runtime::AKIO_REV)
+        ),
+        started,
+    });
     // Before the listeners: a signal from then on shuts down gracefully.
     let (tx, control) = mpsc::sync_channel(CONTROL_QUEUE);
     if let Err(e) = signals(tx.clone()) {
@@ -1516,6 +1554,13 @@ fn run(args: &[String]) -> ExitCode {
             }));
             // The running roles' modules, which the console serves beside the config's (I109).
             api_opts.modules = Some(roles.modules());
+            // What GET /node reads of the running akit (I131): the roles running, and whether
+            // the running config counts requests.
+            let (modules, graph) = (roles.modules(), cell.clone());
+            api_opts.node = Some(Arc::new(move || akit_admin::node::NodeLive {
+                roles: modules.ids().iter().map(|s| (*s).to_owned()).collect(),
+                counts_requests: graph.with(|g| g.metrics().is_some()),
+            }));
             match akit_admin::Server::start(a, configs.clone(), submit, &api_opts) {
                 Ok(s) => {
                     println!("akit: admin API on {}", s.address());

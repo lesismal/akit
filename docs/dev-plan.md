@@ -253,7 +253,7 @@ Tunnel and LLM track; I110–I114 are the WebRTC track, and I115–I119 are rese
 | I159 | BitTorrent X: RSS auto-download, the tracker store instances share, private trackers' passkeys | I153, I151 | todo |
 | **After 1.0: cluster management** | | | |
 | I130 | Cluster I: `admin.node_id`, `admin.cluster` and `admin.cluster_member` in the config | I93c | done |
-| I131 | Cluster II: what a member needs: `GET /node`, the node ID kept, `GET /schema` | I130 | todo |
+| I131 | Cluster II: what a member needs: `GET /node`, the node ID kept, `GET /schema` | I130 | done |
 | I132 | Cluster III: the manager (`akit-cluster`): members and credentials in the store, fit's document; the poller; `/api/m/cluster/nodes`, `/test`, `/state` | I131 | todo |
 | I133 | Cluster IV: the Cluster pages: Overview, Nodes and a node's page; `docs/guides/cluster.md` | I132 | todo |
 | I134 | Cluster V: a member's own pages opened from the manager (`/api/n/<member>/...`) | I133 | todo |
@@ -2197,6 +2197,8 @@ default: no `admin.cluster`, no Cluster menu, no outgoing calls.
   only what is served; the Account page shows the node.
 - **Touches**: `akit-admin`, `akit` (`run`), `docs`.
 - **fit**: `admin/node.go`; I140.
+- **Status**: done (2026-11-27). `akit_admin::node`. fit's `go_version` is answered empty (decision
+  row 71). See the progress log.
 
 ### I132 Cluster III: the manager, its members and their state
 
