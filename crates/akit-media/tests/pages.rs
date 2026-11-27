@@ -16,6 +16,7 @@
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, channel};
 use std::time::{Duration, Instant};
 
@@ -702,13 +703,16 @@ fn watcher_cut_and_slow() {
         assert_eq!(code, 200);
         keys.push((n, s(&v, "key")));
     }
+    // The members change state until the slow watcher is cut off, however much the kernel's
+    // buffers take first (Linux's grow to megabytes), then each ends with its microphone off.
     let addr = a.addr;
+    let cut = Arc::new(AtomicBool::new(false));
     let threads: Vec<_> = keys
         .into_iter()
         .map(|(n, k)| {
+            let cut = Arc::clone(&cut);
             std::thread::spawn(move || {
-                for j in 0..20 {
-                    let audio = j % 2 == 0;
+                let update = |audio: bool| {
                     let r = http(
                         addr,
                         "POST",
@@ -717,10 +721,20 @@ fn watcher_cut_and_slow() {
                         format!(r#"{{"key": "{k}", "audio": {audio}}}"#).as_bytes(),
                     );
                     assert_eq!(r.status, 200);
+                };
+                let mut j = 0u32;
+                while !cut.load(Ordering::SeqCst) && j < 5000 {
+                    update(j % 2 == 0);
+                    j += 1;
                 }
+                update(false);
             })
         })
         .collect();
+    wait_for("the slow watcher cut off", || {
+        a.stats().is_some_and(|s| s.watchers == 1)
+    });
+    cut.store(true, Ordering::SeqCst);
     for t in threads {
         t.join().unwrap();
     }
@@ -728,9 +742,7 @@ fn watcher_cut_and_slow() {
         let m = members(&e.data);
         e.name == "room" && m.len() == 100 && m.iter().all(|x| b(x, "audio") == Some(false))
     });
-    wait_for("the slow watcher cut off", || {
-        a.stats().is_some_and(|s| s.watchers == 1)
-    });
+    assert_eq!(a.stats().unwrap().watchers, 1);
     drop(slow);
 }
 
