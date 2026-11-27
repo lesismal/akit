@@ -329,7 +329,11 @@ fn hash_password_from_standard_input() {
             .stderr(Stdio::piped())
             .spawn()
             .unwrap();
-        child.stdin.take().unwrap().write_all(input).unwrap();
+        // The child need not read its input (an argument refused exits before it does): the pipe
+        // broken by its exit is no failure; its exit status and what it printed say what it did.
+        if let Err(e) = child.stdin.take().unwrap().write_all(input) {
+            assert_eq!(e.kind(), std::io::ErrorKind::BrokenPipe, "{args:?}: {e}");
+        }
         child.wait_with_output().unwrap()
     };
     let out = run(&["-cost", "4"], b"correct horse\nnext line\n");
