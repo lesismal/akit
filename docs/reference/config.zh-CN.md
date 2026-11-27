@@ -14,7 +14,7 @@ akit 配置的每个字段：配置的每一部分是做什么的、一个示例
 akit 与 fit 不同之处，在表格中以 **akit：** 标出。
 
 <!-- BEGIN GENERATED: summary -->
-fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **1229** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 186 个对象，下文各有一张表。
+fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **1246** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 188 个对象，下文各有一张表。
 <!-- END GENERATED -->
 
 字段说明来自 fit 代码中的 `doc` 标签，是英文的，所以每个字段的完整说明在[英文版](config.md)的同一张表中；本页的表格给出每个字段的
@@ -57,11 +57,8 @@ fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../co
 - [WebRTC](#webrtc)：[`webrtc.turn`](#cfg-webrtc-turn)、[`webrtc.media`](#cfg-webrtc-media)、[`webrtc.proxy`](#cfg-webrtc-proxy)
 - [媒体鉴权](#媒体鉴权)：[`media_auth[]`](#cfg-media-auth)
 - [流媒体](#流媒体)：[`streaming`](#cfg-streaming)、[`rtmp`](#cfg-streaming-rtmp)、[`rtsp`](#cfg-streaming-rtsp)、[`srt`](#cfg-streaming-srt)、[`webrtc`](#cfg-streaming-webrtc)
-- [处理器](#处理器)：[`respond`](#respond)、[`static`](#static)、[`proxy`](#proxy)、[`fastcgi`](#fastcgi)、[`forward_proxy`](#forward_proxy)、[`whip`](#whip)、[`whep`](#whep)、[`webrtc_proxy`](#webrtc_proxy)、[`httpflv`](#httpflv)、[`hls`](#hls)、[`stream_whip`](#stream_whip)、[`stream_whep`](#stream_whep)、[`media_pages`](#media_pages)
-- [处理器](#处理器)：[`respond`](#respond)、[`static`](#static)、[`proxy`](#proxy)、[`fastcgi`](#fastcgi)、[`forward_proxy`](#forward_proxy)、[`whip`](#whip)、[`whep`](#whep)、[`webrtc_proxy`](#webrtc_proxy)、[`httpflv`](#httpflv)、[`hls`](#hls)、[`stream_whip`](#stream_whip)、[`stream_whep`](#stream_whep)
-- [处理器](#处理器)：[`respond`](#respond)、[`static`](#static)、[`proxy`](#proxy)、[`fastcgi`](#fastcgi)、[`forward_proxy`](#forward_proxy)、[`whip`](#whip)、[`whep`](#whep)、[`webrtc_proxy`](#webrtc_proxy)、[`httpflv`](#httpflv)、[`hls`](#hls)
 - [BitTorrent](#bittorrent)：[`bittorrent.client`](#cfg-bittorrent-client)、[`bittorrent.tracker`](#cfg-bittorrent-tracker)
-- [处理器](#处理器)：[`respond`](#respond)、[`static`](#static)、[`proxy`](#proxy)、[`bt_tracker`](#bt_tracker)、[`fastcgi`](#fastcgi)、[`forward_proxy`](#forward_proxy)、[`whip`](#whip)、[`whep`](#whep)、[`webrtc_proxy`](#webrtc_proxy)
+- [处理器](#处理器)：[`respond`](#respond)、[`static`](#static)、[`proxy`](#proxy)、[`bt_publish`](#bt_publish)、[`bt_tracker`](#bt_tracker)、[`fastcgi`](#fastcgi)、[`forward_proxy`](#forward_proxy)、[`whip`](#whip)、[`whep`](#whep)、[`webrtc_proxy`](#webrtc_proxy)、[`httpflv`](#httpflv)、[`hls`](#hls)、[`stream_whip`](#stream_whip)、[`stream_whep`](#stream_whep)、[`media_pages`](#media_pages)
 - [中间件](#中间件)：[`basic_auth`](#basic_auth)、[`body_limit`](#body_limit)、[`cache`](#cache)、[`circuit_breaker`](#circuit_breaker)、[`client_cert`](#client_cert)、[`compress`](#compress)、[`concurrency_limit`](#concurrency_limit)、[`forward_auth`](#forward_auth)、[`headers`](#headers)、[`jwt`](#jwt)、[`rate_limit`](#rate_limit)、[`redirect`](#redirect)、[`rewrite`](#rewrite)、[`wasm`](#wasm)
 - [akit 的扩展](#akit-的扩展)
 - [akit 尚不读取的部分](#akit-尚不读取的部分)
@@ -3079,7 +3076,7 @@ media_library films {
 HTTP 经由处理器为 `bt_tracker` 的路由，UDP 在其自己的 `listen` 上。akit 像 fit 一样读取并检查这些
 角色（I150）；`akit run` 从 I151 起运行 tracker，从 I152 起运行客户端，从 I153 起支持分类、
 `watch_dir`、.torrent URL、队列和磁盘检查。后续迭代才运行的内容以"尚不支持"拒绝：客户端的
-`access`、`disk_queue_bytes`、`publish`、`rss`、分类的 `media_library` 以及 akio-bittorrent 尚不能
+`access`、`disk_queue_bytes`、`rss`、分类的 `media_library` 以及 akio-bittorrent 尚不能
 设置的限制（`alt_speed` 以及分类的速率和做种限制从 I154 起运行）；tracker 的 `auth`、`max_peers` 和 `store`。
 
 ```fit
@@ -3129,7 +3126,7 @@ bittorrent {
 | `limits` | [对象](#cfg-bittorrent-client-limits) |  |  |
 | `lsd` | 布尔值 |  |  |
 | `pex` | 布尔值 | `true` |  |
-| `publish` | 对象的列表 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `publish` | [对象](#cfg-bittorrent-client-publish)的列表 |  |  |
 | `rss` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
 | `save_interval` | 时长 | `"5s"` |  |
 | `url_timeout` | 时长 | `"30s"` |  |
@@ -3198,6 +3195,30 @@ bittorrent {
 | `from` | 字符串 | 必填 |  |
 | `to` | 字符串 | 必填 |  |
 | `days` | 字符串的列表 |  |  |
+<!-- END GENERATED -->
+
+### `bittorrent.client.publish[]`
+
+<!-- BEGIN GENERATED: bittorrent.client.publish[] -->
+<a id="cfg-bittorrent-client-publish"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-bittorrent-client-publish)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `dir` | 字符串 | 必填 |  |
+| `name` | 字符串 | 必填 |  |
+| `announce` | 字符串的列表 |  |  |
+| `check_interval` | 时长 | `"10s"` |  |
+| `exclude` | 字符串的列表 |  |  |
+| `files` | 字符串的列表 |  |  |
+| `max_files` | 整数，0 到 100000 | `1000` |  |
+| `max_hashing` | 整数，0 到 16 | `1` |  |
+| `max_total_bytes` | 整数，≥ 0 | `1099511627776` |  |
+| `mode` | 字符串：`per_file`、`whole_dir` | `"per_file"` |  |
+| `piece_length` | 整数，0 到 67108864 |  |  |
+| `private` | 布尔值 |  |  |
+| `web_seed` | 字符串 |  |  |
 <!-- END GENERATED -->
 
 ### `bittorrent.client.limits`
@@ -3370,7 +3391,7 @@ bittorrent {
 <!-- BEGIN GENERATED: modules:routes[].handler -->
 | 模块 | 状态 |
 | --- | --- |
-| `bt_publish` | **尚不支持**：按名称拒绝 |
+| `bt_publish` | 已支持：[参数](#cfg-routes-handler-bt-publish-params) |
 | `bt_stream` | **尚不支持**：按名称拒绝 |
 | `bt_tracker` | 已支持：[参数](#cfg-routes-handler-bt-tracker-params) |
 | `fastcgi` | 已支持：[参数](#cfg-routes-handler-fastcgi-params) |
@@ -3545,6 +3566,29 @@ route {
 | `budget_min_per_second` | 数，≥ 0 | `10` |  |
 | `budget_ratio` | 数，0 到 1 | `0.2` |  |
 | `statuses` | 整数的列表 |  |  |
+<!-- END GENERATED -->
+
+### `bt_publish`
+
+[`bittorrent.client`](#cfg-bittorrent-client) 的发布条目：路径最后一段为空或为 `index.json` 的请求得到其 JSON
+索引（每个种子带有相对于索引的 `torrent_url` 和 `magnet_url`），`<id>.torrent` 得到 .torrent 文件，`<id>.magnet`
+得到文本形式的磁力链接；其他路径 404，GET 和 HEAD 之外的方法 405，没有客户端运行时 503。`publish` 指定提供的
+条目名，省略时提供全部条目。
+
+```fit
+listener web :8080
+
+route torrents { match { path /torrents/* }; handler bt_publish { publish releases } }
+```
+
+<!-- BEGIN GENERATED: routes[].handler<bt_publish>.params -->
+<a id="cfg-routes-handler-bt-publish-params"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-routes-handler-bt-publish-params)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `publish` | 字符串的列表 |  |  |
 <!-- END GENERATED -->
 
 ### `bt_tracker`

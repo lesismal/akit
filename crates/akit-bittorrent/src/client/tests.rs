@@ -904,3 +904,158 @@ fn the_queue_moves_on_the_completion_not_the_tick() {
     engine.shutdown();
     engine.wait();
 }
+
+/// A GET (or `method`) of `target` at `addr`: the status and body.
+fn http_get(addr: std::net::SocketAddr, method: &str, target: &str) -> (u16, Vec<u8>) {
+    use std::io::{Read, Write};
+    let mut s = std::net::TcpStream::connect(addr).unwrap();
+    s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+    write!(
+        s,
+        "{method} {target} HTTP/1.1\r\nHost: t\r\nConnection: close\r\n\r\n"
+    )
+    .unwrap();
+    let mut out = Vec::new();
+    s.read_to_end(&mut out).unwrap();
+    let status = String::from_utf8_lossy(&out[9..12]).parse().unwrap();
+    let at = out.windows(4).position(|w| w == b"\r\n\r\n").unwrap() + 4;
+    (status, out[at..].to_vec())
+}
+
+/// fit's `TestPublish` (I156): each file of a directory published as a torrent once settled,
+/// dotfiles and symbolic links left out, downloaded by another role from the publisher alone;
+/// `bt_publish`'s index, .torrent and magnet link; a changed file getting a new torrent and the
+/// old one stopping; a restart building nothing; whole_dir; an entry removed taking its state.
+#[test]
+fn publishing() {
+    let dir = tmp("pub");
+    let src = dir.join("src");
+    std::fs::create_dir_all(src.join("sub")).unwrap();
+    let (a, b) = (data(300_000, 61), data(200_000, 62));
+    std::fs::write(src.join("a.bin"), &a).unwrap();
+    std::fs::write(src.join("sub/b.bin"), &b).unwrap();
+    std::fs::write(src.join(".hidden"), b"x").unwrap();
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(src.join("a.bin"), src.join("link.bin")).unwrap();
+    let entry = |extra: &str| {
+        let ws = if extra.contains("web_seed") {
+            ""
+        } else {
+            r#", "web_seed": "http://127.0.0.1:1/rel/""#
+        };
+        format!(
+            r#", "publish": [{{"name": "rel", "dir": {:?}, "check_interval": "100ms"{ws}{extra}}}]"#,
+            src.to_str().unwrap()
+        )
+    };
+    let port = free_port();
+    let mut env = Env::start(&dir, port, &entry(""));
+    let http: std::net::SocketAddr = format!("127.0.0.1:{}", free_port()).parse().unwrap();
+    env.engine
+        .add_listener(akio::Listener::tcp(http).serve(akio_http::serve(
+            super::publish_handler::service(
+                akit_runtime::upstream::EngineSlot::with(Arc::clone(&env.engine)),
+                Vec::new(),
+            ),
+        )))
+        .unwrap();
+    let index = || {
+        let (code, body) = http_get(http, "GET", "/rel/");
+        assert_eq!(code, 200);
+        String::from_utf8(body).unwrap()
+    };
+    wait_for("both published", 20, || {
+        index().matches("\"state\":\"seeding\"").count() == 2
+    });
+    let idx = index();
+    assert!(
+        idx.contains("\"path\":\"a.bin\"") && idx.contains("\"path\":\"sub/b.bin\""),
+        "{idx}"
+    );
+    assert!(
+        !idx.contains("hidden") && !idx.contains("link.bin"),
+        "{idx}"
+    );
+    assert!(
+        idx.contains("\"web_seed\":\"http://127.0.0.1:1/rel/\""),
+        "{idx}"
+    );
+    let id_of = |idx: &str, path: &str| {
+        let at = idx.find(&format!("\"path\":\"{path}\"")).unwrap();
+        let before = &idx[..at];
+        let k = before.rfind("\"id\":\"").unwrap() + 6;
+        before[k..k + 40].to_owned()
+    };
+    let ida = id_of(&idx, "a.bin");
+    let (code, tb) = http_get(http, "GET", &format!("/rel/{ida}.torrent"));
+    assert_eq!(code, 200);
+    let mi = MetaInfo::parse(&tb).unwrap();
+    assert_eq!(mi.info.name, "a.bin");
+    assert!(mi.info_hash_v2.is_some(), "hybrid");
+    assert_eq!(mi.url_list, vec!["http://127.0.0.1:1/rel/a.bin".to_owned()]);
+    let (code, mag) = http_get(http, "GET", &format!("/rel/{ida}.magnet"));
+    assert!(code == 200 && String::from_utf8_lossy(&mag).starts_with("magnet:?"));
+    assert_eq!(http_get(http, "GET", "/rel/nope.torrent").0, 404);
+    assert_eq!(http_get(http, "POST", "/rel/").0, 405);
+    // Another role downloads a.bin from the publisher alone.
+    let leech = Env::start(&tmp("pub-leech"), free_port(), "");
+    let lapi = leech.api();
+    let req = AddRequest {
+        peers: vec![env.api().listen_addr().unwrap()],
+        ..AddRequest::default()
+    };
+    lapi.add(Source::Torrent(tb.clone()), req).unwrap();
+    wait_for("the download from the publisher", 60, || {
+        lapi.get(&ida).is_ok_and(|s| s.complete)
+    });
+    assert!(std::fs::read(leech.downloads().join("a.bin")).unwrap() == a);
+    // The published torrents are not the role's list.
+    assert!(env.api().list().unwrap().is_empty());
+    // b changed: a new torrent, the old one gone.
+    let idb = id_of(&idx, "sub/b.bin");
+    // Another seed: data() takes `seed | 1`, so 62 and 63 would make the same bytes.
+    std::fs::write(src.join("sub/b.bin"), data(200_000, 65)).unwrap();
+    wait_for("b replaced", 20, || {
+        let i = index();
+        i.contains("\"path\":\"sub/b.bin\"")
+            && !i.contains(&idb)
+            && i.matches("\"state\":\"seeding\"").count() == 2
+    });
+    assert_eq!(http_get(http, "GET", &format!("/rel/{idb}.torrent")).0, 404);
+    // A restart builds nothing: a.bin's torrent kept, its build time the same.
+    let built = |i: &str| {
+        let at = i.find(&format!("\"id\":\"{ida}\"")).unwrap();
+        let k = i[at..].find("\"built\":\"").unwrap() + at + 9;
+        i[k..k + 20].to_owned()
+    };
+    let before = built(&index());
+    env.roles.stop(Duration::ZERO);
+    assert_eq!(http_get(http, "GET", "/rel/").0, 503);
+    env.roles = Manager::new(&[CLIENT], Arc::clone(&env.engine), None);
+    env.apply(port, &entry("")).unwrap();
+    wait_for("restored", 20, || {
+        let i = index();
+        i.contains(&ida) && i.matches("\"state\":\"seeding\"").count() == 2
+    });
+    assert_eq!(built(&index()), before, "a restart built a.bin again");
+    // whole_dir: a directory with files left out is reported, not published.
+    env.apply(
+        port,
+        &entry(r#", "mode": "whole_dir", "web_seed": "http://127.0.0.1:1/x/src""#),
+    )
+    .unwrap();
+    wait_for("reported", 20, || index().contains("files left out"));
+    std::fs::remove_file(src.join(".hidden")).unwrap();
+    #[cfg(unix)]
+    std::fs::remove_file(src.join("link.bin")).unwrap();
+    wait_for("whole_dir published", 20, || {
+        let i = index();
+        i.contains("\"path\":\"\"")
+            && i.contains("\"files\":2")
+            && i.contains("\"state\":\"seeding\"")
+    });
+    // The entry removed: its state gone, its files kept.
+    env.apply(port, "").unwrap();
+    assert!(!dir.join("data/publish/rel").exists());
+    assert!(src.join("a.bin").exists());
+}

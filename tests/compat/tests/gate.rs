@@ -2686,6 +2686,22 @@ fn supported_fields_are_read() {
             format!(r#"{{{L}, "routes": [{{"handler": {{"module": "bt_tracker", "params": {{}}}}}}]}}"#),
             |c| matches!(&c.routes.first().unwrap().handler, Handler::Module(m) if m.params.is_some()),
         ),
+        // I156: bt_publish, its params' publish handed to the module (akit-bittorrent).
+        (
+            "routes[].handler<bt_publish>",
+            format!(r#"{{{L}, "routes": [{{"handler": {{"module": "bt_publish"}}}}]}}"#),
+            |c| matches!(&c.routes.first().unwrap().handler, Handler::Module(m) if m.name == "bt_publish"),
+        ),
+        (
+            "routes[].handler<bt_publish>.params",
+            format!(r#"{{{L}, "routes": [{{"handler": {{"module": "bt_publish", "params": {{}}}}}}]}}"#),
+            |c| matches!(&c.routes.first().unwrap().handler, Handler::Module(m) if m.params.is_some()),
+        ),
+        (
+            "routes[].handler<bt_publish>.params.publish",
+            format!(r#"{{{L}, "routes": [{{"handler": {{"module": "bt_publish", "params": {{"publish": ["a"]}}}}}}]}}"#),
+            |c| matches!(&c.routes.first().unwrap().handler, Handler::Module(m) if m.params.as_ref().and_then(|p| p.get("publish")).is_some()),
+        ),
         ("routes[].handler<forward_proxy>", fproxy(""), |c| {
             fproxy_of(c).ports.is_empty()
         }),
@@ -3350,7 +3366,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 186] = [
+    let objects: [(&str, &str, Option<&str>); 187] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         (
             "providers[].kubernetes",
@@ -3676,6 +3692,7 @@ fn akit_config_lists_match_the_inventory() {
             Some("BT_TORRENT_LIMITS_FIT_ONLY"),
         ),
         ("bittorrent.client.alt_speed", "BT_ALT_SPEED_FIELDS", None),
+        ("bittorrent.client.publish[]", "BT_PUBLISH_FIELDS", None),
         (
             "bittorrent.client.alt_speed.schedules[]",
             "BT_SCHEDULE_FIELDS",
@@ -3864,6 +3881,7 @@ fn akit_config_lists_match_the_inventory() {
         "whep",
         "webrtc_proxy",
         "bt_tracker",
+        "bt_publish",
         "httpflv",
         "hls",
         "stream_whip",
@@ -3910,6 +3928,9 @@ fn akit_config_lists_match_the_inventory() {
     }
     read.insert("routes[].handler<bt_tracker>".to_owned());
     read.insert("routes[].handler<bt_tracker>.params".to_owned());
+    read.insert("routes[].handler<bt_publish>".to_owned());
+    read.insert("routes[].handler<bt_publish>.params".to_owned());
+    read.insert("routes[].handler<bt_publish>.params.publish".to_owned());
     // Middleware modules: rewrite, redirect, headers, the limits and auth, which akit reads, and
     // FIT_MIDDLEWARE, which it refuses.
     let mut middleware: BTreeSet<String> = list("FIT_MIDDLEWARE").iter().cloned().collect();

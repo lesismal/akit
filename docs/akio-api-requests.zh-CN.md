@@ -128,7 +128,7 @@
 | A285 | tracker 服务器的存储：所有 peer 的上限、原地修改上限和 TTL、列出并计数其种子（fib 的 A85） | 已提出；在此之前 `max_peers` 被拒绝，上限的变化会建立新存储 | 11 | I151 |
 | A286 | 磁力链接的种子在其 info 到达后使用自己的存储目录（fib 的 `StorageOpener`） | 已提出 | — | I153 |
 | A287 | 等待分片并优先请求它们的种子字节读取器，以及文件优先级 | 已提出 | 1 | I155 |
-| A288 | 种子的 tracker 及其 announce、peer 来源和 web seed 的状态，以及原地重新校验（fib 的 A87、A88） | 已提出 | — | I157 |
+| A288 | 种子的 tracker 及其 announce、peer 来源和 web seed 的状态，以及原地重新校验（fib 的 A87、A88）；构建选定文件、可停止的构建器 | 已提出 | — | I157, I156 |
 | A277 | 客户端响应所在连接的对端证书链，以及能把被拒绝的证书留给调用方查看的客户端 TLS 校验 | I132 提出；有记录在案的权宜做法（探测成员的证书） | 1, 15 | I132–I139c |
 | A301 | `H2Client` 在引擎优雅关闭时结束其连接（`GOAWAY`；没有打开的流时立即关闭，否则在最后一个流结束后关闭），如同 HTTP/1 客户端关闭其空闲连接 | 已提出；权宜做法：`akit run` 在关闭引擎前调用的 `EngineSlot::shutdown` 关闭池的空闲 h2 连接 | 4, 10 | I18, I18b |
 | A302 | io_uring 上的 `Conn::close` 像 epoll 上一样重置一个收到了未交付数据的 TCP 连接（或提供以重置方式关闭的 `Conn::abort`）：目前进行中的接收在 shutdown 之后取走数据，面对零窗口的对端永远收不到重置 | 已提出；没有权宜做法（其间 fastcgi.rs 的 `cut_connections` 在 io_uring 上会失败） | — | I75 |
@@ -2403,6 +2403,10 @@ hash 和授权请求的钩子（`TrackerConfig::allow_fn`、`authorize`），其
 **建议的 API。** `Torrent::trackers() -> Vec<TrackerState>`、`Torrent::web_seeds()`、`Torrent::recheck()`。
 
 **akit 的用法。** `/bittorrent/torrents/<id>/trackers` 和重新校验操作。
+
+**另外，为 I156（2026-11-28）。** 发布目录（fit 的 I202 和基于 fib A80–A86 的 I209）需要 `metainfo::Builder` 接受根目录下的
+文件列表（使 `whole_dir` 能排除 `exclude`、点文件和符号链接排除的内容；目前 `build_path` 整体读取目录），以及能由标志或令牌中途
+停止的构建。在此之前，akit 只在没有被排除内容时发布 `whole_dir`，并让不再需要的构建运行到结束（决策 042）。
 
 ## A277 客户端响应的对端证书链，以及为调用方保留被拒绝的证书
 

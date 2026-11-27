@@ -129,7 +129,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | A285 | The tracker server's store: a bound of all its peers, bounds and TTL changed in place, its torrents listed and counted (fib's A85) | requested; until then `max_peers` is refused, and a change of the bounds makes a new store | 11 | I151 |
 | A286 | A torrent's own storage directory for a magnet link, once its info arrives (fib's `StorageOpener`) | requested | — | I153 |
 | A287 | A reader of a torrent's bytes that waits for their pieces and asks for them first, and file priorities | requested | 1 | I155 |
-| A288 | A torrent's trackers with their announces, its peer sources and web seeds' state, and a recheck in place (fib's A87, A88) | requested | — | I157 |
+| A288 | A torrent's trackers with their announces, its peer sources and web seeds' state, and a recheck in place (fib's A87, A88); a builder of chosen files that stops | requested | — | I157, I156 |
 | A277 | A client response's peer certificate chain, and a client TLS verifier that keeps a certificate it refused for the caller to see | requested by I132; a recorded stopgap (a probe of the member's certificate) | 1, 15 | I132–I139c |
 | A301 | `H2Client` ends its connection at the engine's graceful shutdown (`GOAWAY`; closed now with no stream open, else after its last), as the HTTP/1 client closes its idle ones | requested; stopgap: `EngineSlot::shutdown`, which `akit run` calls before the engine's shutdown, closes the pools' idle h2 connections | 4, 10 | I18, I18b |
 | A302 | `Conn::close` on io_uring resets a TCP connection whose received data it did not deliver, as on epoll (or a `Conn::abort` that closes with a reset): today a receive in flight takes the data after the shutdown, so the peer, facing a zero window, is never reset | requested; no stopgap (fastcgi.rs `cut_connections` fails on io_uring meanwhile) | — | I75 |
@@ -3010,6 +3010,12 @@ as `TorrentEvent::TrackerError`; no recheck.
 `Torrent::recheck()`.
 
 **How akit would use it.** `/bittorrent/torrents/<id>/trackers` and the recheck action.
+
+**Also, for I156 (2026-11-28).** Publishing a directory (fit's I202 and I209 on fib's A80–A86)
+needs `metainfo::Builder` to take a list of files below a root (so that `whole_dir` leaves out
+what `exclude`, dotfiles and symbolic links leave out; `build_path` takes the directory whole
+today) and a build that a flag or token stops part way. Until then akit publishes `whole_dir`
+only when nothing is left out, and lets a build it no longer wants end (decision 042).
 
 ## A277 A client response's peer certificate chain, and a refused certificate kept for the caller
 

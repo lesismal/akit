@@ -325,7 +325,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 1229 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 1246 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -334,9 +334,9 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`acme`](#fields-acme) | 43 | 43 | 0 |
 | [`admin`](#fields-admin) | 105 | 51 | 54 |
 | [`auto_https`](#fields-auto-https) | 5 | 5 | 0 |
-| [`bittorrent`](#fields-bittorrent) | 160 | 91 | 69 |
+| [`bittorrent`](#fields-bittorrent) | 160 | 105 | 55 |
 | [`engine`](#fields-engine) | 11 | 8 | 3 |
-| [`http.handlers/bt_publish`](#fields-http-handlers-bt-publish) | 3 | 0 | 3 |
+| [`http.handlers/bt_publish`](#fields-http-handlers-bt-publish) | 3 | 3 | 0 |
 | [`http.handlers/bt_stream`](#fields-http-handlers-bt-stream) | 14 | 0 | 14 |
 | [`http.handlers/bt_tracker`](#fields-http-handlers-bt-tracker) | 2 | 2 | 0 |
 | [`http.handlers/fastcgi`](#fields-http-handlers-fastcgi) | 18 | 18 | 0 |
@@ -450,7 +450,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 161 | 3 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 76 | 0 |
-| **合计** | 3821 | 1229 | 2592 |
+| **合计** | 3821 | 1246 | 2575 |
 
 <a id="fields-access"></a>
 
@@ -730,20 +730,20 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `bittorrent.client.listen` | `string, required` | 已支持 |
 | `bittorrent.client.lsd` | `boolean` | 已支持 |
 | `bittorrent.client.pex` | `boolean` | 已支持 |
-| `bittorrent.client.publish` | `array<object>` | 尚不支持（not supported yet） |
-| `bittorrent.client.publish[].announce` | `array<string>` | 尚不支持（not supported yet） |
-| `bittorrent.client.publish[].check_interval` | `duration` | 尚不支持（not supported yet） |
-| `bittorrent.client.publish[].dir` | `string, required` | 尚不支持（not supported yet） |
-| `bittorrent.client.publish[].exclude` | `array<string>` | 尚不支持（not supported yet） |
-| `bittorrent.client.publish[].files` | `array<string>` | 尚不支持（not supported yet） |
-| `bittorrent.client.publish[].max_files` | `integer` | 尚不支持（not supported yet） |
-| `bittorrent.client.publish[].max_hashing` | `integer` | 尚不支持（not supported yet） |
-| `bittorrent.client.publish[].max_total_bytes` | `integer` | 尚不支持（not supported yet） |
-| `bittorrent.client.publish[].mode` | `enum(per_file\|whole_dir)` | 尚不支持（not supported yet） |
-| `bittorrent.client.publish[].name` | `string, required` | 尚不支持（not supported yet） |
-| `bittorrent.client.publish[].piece_length` | `integer` | 尚不支持（not supported yet） |
-| `bittorrent.client.publish[].private` | `boolean` | 尚不支持（not supported yet） |
-| `bittorrent.client.publish[].web_seed` | `string` | 尚不支持（not supported yet） |
+| `bittorrent.client.publish` | `array<object>` | 已支持 |
+| `bittorrent.client.publish[].announce` | `array<string>` | 已支持 |
+| `bittorrent.client.publish[].check_interval` | `duration` | 已支持 |
+| `bittorrent.client.publish[].dir` | `string, required` | 已支持 |
+| `bittorrent.client.publish[].exclude` | `array<string>` | 已支持 |
+| `bittorrent.client.publish[].files` | `array<string>` | 已支持 |
+| `bittorrent.client.publish[].max_files` | `integer` | 已支持 |
+| `bittorrent.client.publish[].max_hashing` | `integer` | 已支持 |
+| `bittorrent.client.publish[].max_total_bytes` | `integer` | 已支持 |
+| `bittorrent.client.publish[].mode` | `enum(per_file\|whole_dir)` | 已支持 |
+| `bittorrent.client.publish[].name` | `string, required` | 已支持 |
+| `bittorrent.client.publish[].piece_length` | `integer` | 已支持 |
+| `bittorrent.client.publish[].private` | `boolean` | 已支持 |
+| `bittorrent.client.publish[].web_seed` | `string` | 已支持 |
 | `bittorrent.client.rss` | `object` | 尚不支持（not supported yet） |
 | `bittorrent.client.rss.feeds` | `array<object>` | 尚不支持（not supported yet） |
 | `bittorrent.client.rss.feeds[].enabled` | `boolean` | 尚不支持（not supported yet） |
@@ -850,9 +850,9 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
-| `routes[].handler<bt_publish>` | `module` | 尚不支持（not supported yet） |
-| `routes[].handler<bt_publish>.params` | `object` | 尚不支持（not supported yet） |
-| `routes[].handler<bt_publish>.params.publish` | `array<string>` | 尚不支持（not supported yet） |
+| `routes[].handler<bt_publish>` | `module` | 已支持 |
+| `routes[].handler<bt_publish>.params` | `object` | 已支持 |
+| `routes[].handler<bt_publish>.params.publish` | `array<string>` | 已支持 |
 
 <a id="fields-http-handlers-bt-stream"></a>
 

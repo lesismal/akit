@@ -17,7 +17,7 @@ so in a note marked **akit:**; nine defaults that name the gateway are akit's, `
 say `fit` ([decision 037](../decisions/037-akit-names.md)).
 
 <!-- BEGIN GENERATED: summary -->
-akit reads **1229** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 186 objects akit reads, each has its table below.
+akit reads **1246** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 188 objects akit reads, each has its table below.
 <!-- END GENERATED -->
 
 How to read the tables:
@@ -63,11 +63,8 @@ is not there, a plugin that does not compile are errors.
 - [WebRTC](#webrtc): [`webrtc.turn`](#cfg-webrtc-turn), [`webrtc.media`](#cfg-webrtc-media), [`webrtc.proxy`](#cfg-webrtc-proxy)
 - [Media auth](#media-auth): [`media_auth[]`](#cfg-media-auth)
 - [Streaming](#streaming): [`streaming`](#cfg-streaming), [`rtmp`](#cfg-streaming-rtmp), [`rtsp`](#cfg-streaming-rtsp), [`srt`](#cfg-streaming-srt), [`webrtc`](#cfg-streaming-webrtc)
-- [Handlers](#handlers): [`respond`](#respond), [`static`](#static), [`proxy`](#proxy), [`fastcgi`](#fastcgi), [`forward_proxy`](#forward_proxy), [`whip`](#whip), [`whep`](#whep), [`webrtc_proxy`](#webrtc_proxy), [`httpflv`](#httpflv), [`hls`](#hls), [`stream_whip`](#stream_whip), [`stream_whep`](#stream_whep), [`media_pages`](#media_pages)
-- [Handlers](#handlers): [`respond`](#respond), [`static`](#static), [`proxy`](#proxy), [`fastcgi`](#fastcgi), [`forward_proxy`](#forward_proxy), [`whip`](#whip), [`whep`](#whep), [`webrtc_proxy`](#webrtc_proxy), [`httpflv`](#httpflv), [`hls`](#hls), [`stream_whip`](#stream_whip), [`stream_whep`](#stream_whep)
-- [Handlers](#handlers): [`respond`](#respond), [`static`](#static), [`proxy`](#proxy), [`fastcgi`](#fastcgi), [`forward_proxy`](#forward_proxy), [`whip`](#whip), [`whep`](#whep), [`webrtc_proxy`](#webrtc_proxy), [`httpflv`](#httpflv), [`hls`](#hls)
 - [BitTorrent](#bittorrent): [`bittorrent.client`](#cfg-bittorrent-client), [`bittorrent.tracker`](#cfg-bittorrent-tracker)
-- [Handlers](#handlers): [`respond`](#respond), [`static`](#static), [`proxy`](#proxy), [`bt_tracker`](#bt_tracker), [`fastcgi`](#fastcgi), [`forward_proxy`](#forward_proxy), [`whip`](#whip), [`whep`](#whep), [`webrtc_proxy`](#webrtc_proxy)
+- [Handlers](#handlers): [`respond`](#respond), [`static`](#static), [`proxy`](#proxy), [`bt_publish`](#bt_publish), [`bt_tracker`](#bt_tracker), [`fastcgi`](#fastcgi), [`forward_proxy`](#forward_proxy), [`whip`](#whip), [`whep`](#whep), [`webrtc_proxy`](#webrtc_proxy), [`httpflv`](#httpflv), [`hls`](#hls), [`stream_whip`](#stream_whip), [`stream_whep`](#stream_whep), [`media_pages`](#media_pages)
 - [Middleware](#middleware): [`basic_auth`](#basic_auth), [`body_limit`](#body_limit), [`cache`](#cache), [`circuit_breaker`](#circuit_breaker), [`client_cert`](#client_cert), [`compress`](#compress), [`concurrency_limit`](#concurrency_limit), [`forward_auth`](#forward_auth), [`headers`](#headers), [`jwt`](#jwt), [`rate_limit`](#rate_limit), [`redirect`](#redirect), [`rewrite`](#rewrite), [`wasm`](#wasm)
 - [akit's extensions](#akits-extensions)
 - [What akit does not read yet](#what-akit-does-not-read-yet)
@@ -2927,7 +2924,7 @@ a client (`bittorrent.client`) that downloads and seeds torrents on one port for
 is `bt_tracker`, and over UDP on its own `listen`. akit reads and checks the roles as fit does
 (I150); `akit run` runs the tracker from I151 and the client from I152, with categories,
 `watch_dir`, .torrent URLs, the queue and the disk check from I153. What later iterations run is
-refused as not supported yet: the client's `access`, `disk_queue_bytes`, `publish`, `rss`, a
+refused as not supported yet: the client's `access`, `disk_queue_bytes`, `rss`, a
 category's `media_library`, and the limits akio-bittorrent does not set yet (`alt_speed` and a
 category's rates and seed limits run from I154); the tracker's `auth`, `max_peers` and `store`.
 
@@ -2974,7 +2971,7 @@ bittorrent {
 | `limits` | [object](#cfg-bittorrent-client-limits) |  | The client's rates and connection, seeding, queueing, disk and torrent limits. A change applies in place, keeping the peers connected, but those over a lowered connection limit. The defaults when left out. |
 | `lsd` | boolean |  | Find peers on the local network by local service discovery (BEP 14, IPv4 multicast). Off by default. A change makes a new client. |
 | `pex` | boolean | `true` | Exchange peers with connected peers (BEP 11). On when left out. A change makes a new client. |
-| `publish` | list of object |  | **Not supported yet**: refused by name. Directories the client publishes: each built into hybrid torrents, a torrent of each file or one of the whole directory, on goroutines of its own, and seeded where the files are, the .torrent files and magnet links served by the bt_publish handler. Each follows the disk: a file added gets a torrent, and one changed or removed stops its torrent, a changed one getting a new torrent. The torrents are kept in data_dir/publish/<name>/, so that a restart neither builds nor checks a file that did not change. None when left out. |
+| `publish` | list of [object](#cfg-bittorrent-client-publish) |  | Directories the client publishes: each built into hybrid torrents, a torrent of each file or one of the whole directory, on threads of its own, and seeded where the files are, the .torrent files and magnet links served by the bt_publish handler. Each follows the disk: a file added gets a torrent, and one changed or removed stops its torrent, a changed one getting a new torrent. The torrents are kept in data_dir/publish/<name>/, so that a restart neither builds nor checks a file that did not change. None when left out. |
 | `rss` | object |  | **Not supported yet**: refused by name. RSS auto-download: feeds polled on their intervals, and rules adding the torrents of the items they pick (magnet links, .torrent enclosures or links) in a category, with size bounds and each episode once. What was seen is kept in data_dir/rss.json. A change applies in place. None when left out. |
 | `save_interval` | duration | `"5s"` | How often, at most, the state is saved when something changed: a piece verified, a torrent added, removed, paused or its metadata received. It is saved when the role stops too, and changes to the list of torrents are saved at once. 5s when left out. |
 | `url_timeout` | duration | `"30s"` | How long the download of a .torrent file by its URL may take in all, connecting, redirects (at most 5) and the body (at most 32 MiB) included; at most 4 run at once. 30s when left out. |
@@ -3035,6 +3032,28 @@ bittorrent {
 | `from` | string | required | The time the range begins at, HH:MM, 00:00 to 23:59. |
 | `to` | string | required | The time the range ends at, HH:MM, 00:01 to 24:00, not included: one earlier than from runs past midnight, as 22:00 to 06:00. It may not equal from. |
 | `days` | list of string |  | The days the range begins on: mon, tue, wed, thu, fri, sat, sun, weekdays (mon to fri) and weekend (sat and sun). A range that runs past midnight holds into the next day. Every day when left out. |
+<!-- END GENERATED -->
+
+### `bittorrent.client.publish[]`
+
+<!-- BEGIN GENERATED: bittorrent.client.publish[] -->
+<a id="cfg-bittorrent-client-publish"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `dir` | string | required | The directory published. Its files are seeded where they are, never written to, moved or deleted: a torrent whose file changes is replaced by a new one. Files and directories whose names start with '.' and symbolic links are left out. |
+| `name` | string | required | The entry's name, which the bt_publish handler and the state in data_dir know it by. Letters, digits, '_', '.' and '-'. |
+| `announce` | list of string |  | Tracker URLs, http, https or udp, put in every torrent, each a tier of its own, tried in order: as akit's own bt_tracker route. None when left out: peers find the torrents by the DHT, unless private. |
+| `check_interval` | duration | `"10s"` | How often dir is walked again for files added, changed or removed, as static files follow the disk. A file is told by its size, modification and status change times and inode; one new or changed is built into a torrent once it has not changed for a check_interval, so that a file still being copied is not hashed; a file removed or changed stops its torrent at once. 10s when left out or 0. |
+| `exclude` | list of string |  | Files and directories left out, by pattern, as files writes them, as *.part or **/tmp/**; a directory left out is not walked. None when left out. |
+| `files` | list of string |  | The files published, by pattern: a pattern without '/' matches a file's name, as *.iso, and one with '/' its path under dir, as releases/**/*.tar.gz, where * matches within a name and ** any run of directories. Every file when left out. |
+| `max_files` | integer, 0 to 100000 | `1000` | The most files published: in mode per_file the first by path are, the rest are left out and reported; in mode whole_dir a directory with more is not published, and is reported. 1000 when left out or 0. |
+| `max_hashing` | integer, 0 to 16 | `1` | How many torrents are built at once, each reading and hashing its files on a thread of the entry's own, never on a akio worker. 1 when left out or 0. |
+| `max_total_bytes` | integer, 0 or more | `1099511627776` | The most bytes published, the files' sizes together: past it, in mode per_file, the files after are left out, and in mode whole_dir the directory is not published; either is reported. 1 TiB when left out or 0. |
+| `mode` | string: `per_file`, `whole_dir` | `"per_file"` | per_file makes a single-file torrent of each file below dir; whole_dir makes one torrent of the whole directory, named as its last element, which any change of a file below it replaces. per_file when left out. |
+| `piece_length` | integer, 0 to 67108864 |  | The torrents' piece length, a power of two from 16 KiB to 64 MiB. Picked for each torrent's size when left out or 0: the smallest of at least 16 KiB that makes fewer than 2048 pieces, up to 16 MiB. A change makes new torrents. |
+| `private` | boolean |  | Mark the torrents private (BEP 27): clients find peers only through the trackers of announce, not the DHT or peer exchange. A change makes new torrents, of other info hashes. |
+| `web_seed` | string |  | The http or https URL at which dir is served, as by a static route whose root is dir, put in every torrent as its web seed (BEP 19): a file's own URL in mode per_file, and in mode whole_dir the URL's parent, so the URL's last element must be dir's last element then. None when left out. |
 <!-- END GENERATED -->
 
 ### `bittorrent.client.limits`
@@ -3190,7 +3209,7 @@ the same way, its params checked by the module.
 <!-- BEGIN GENERATED: modules:routes[].handler -->
 | Module | Status |
 | --- | --- |
-| `bt_publish` | **not supported yet**: refused by name |
+| `bt_publish` | supported: [params](#cfg-routes-handler-bt-publish-params) |
 | `bt_stream` | **not supported yet**: refused by name |
 | `bt_tracker` | supported: [params](#cfg-routes-handler-bt-tracker-params) |
 | `fastcgi` | supported: [params](#cfg-routes-handler-fastcgi-params) |
@@ -3361,6 +3380,28 @@ route {
 | `budget_min_per_second` | number, 0 or more | `10` | Retries allowed each second beyond budget_ratio, so that a proxy taking few requests may still retry; 10 when left out. |
 | `budget_ratio` | number, 0 to 1 | `0.2` | Retries may add at most this share of the requests the proxy takes, so that retries cannot multiply the load on an upstream already failing; 0.2 when left out. |
 | `statuses` | list of integer |  | Statuses of the upstream's, 5xx ones, that have a request of an idempotent method sent again, as 502, 503 and 504; none when left out, so that only requests that got no response are. |
+<!-- END GENERATED -->
+
+### `bt_publish`
+
+The [`bittorrent.client`](#cfg-bittorrent-client)'s publish entries: a request whose path's last
+segment is empty or `index.json` gets their index in JSON (each torrent with its `torrent_url`
+and `magnet_url`, relative to the index), `<id>.torrent` a .torrent file, `<id>.magnet` a magnet
+link as text; another 404, a method but GET and HEAD 405, and 503 while no client runs. `publish`
+names the entries served, every entry when left out.
+
+```fit
+listener web :8080
+
+route torrents { match { path /torrents/* }; handler bt_publish { publish releases } }
+```
+
+<!-- BEGIN GENERATED: routes[].handler<bt_publish>.params -->
+<a id="cfg-routes-handler-bt-publish-params"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `publish` | list of string |  | The publish entries of the bittorrent.client served, by name; a name the client has not is listed in the index with its error. Every entry when left out. |
 <!-- END GENERATED -->
 
 ### `bt_tracker`

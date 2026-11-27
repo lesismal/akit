@@ -129,7 +129,6 @@ fn not_supported_yet() {
             r#""disk_queue_bytes": 1"#,
             "bittorrent.client.disk_queue_bytes",
         ),
-        (r#""publish": []"#, "bittorrent.client.publish"),
         (r#""rss": {}"#, "bittorrent.client.rss"),
         (
             r#""categories": [{"name": "a", "limits": {"max_conns": 1}}]"#,
@@ -383,4 +382,115 @@ fn alt_speed_and_limits() {
     assert_eq!((eff.upload_rate, eff.download_rate), (-1, 9));
     assert!((eff.seed_ratio - 2.5).abs() < f64::EPSILON && !eff.is_zero());
     assert!(BitTorrentTorrentLimits::default().is_zero());
+}
+
+/// fit's `TestBitTorrentPublish` (I156), and the path patterns.
+#[test]
+fn publish_entries() {
+    let head =
+        r#"{"bittorrent": {"client": {"listen": ":6881", "data_dir": "/var/lib/bt", "publish": "#;
+    let c = loads(&format!(
+        "{head}{}}}}}}}",
+        r#"[{"name": "isos", "dir": "/srv/isos", "web_seed": "https://example.com/isos/", "announce": ["https://example.com/announce", "udp://example.com:6969"], "private": true, "piece_length": 262144, "files": ["*.iso"], "exclude": ["**/tmp/**"], "check_interval": "1m", "max_files": 10, "max_total_bytes": 1000, "max_hashing": 2}, {"name": "all", "dir": "/srv/all", "mode": "whole_dir", "web_seed": "http://example.com/x/all"}]"#
+    ));
+    let p = c.bittorrent.and_then(|b| b.client).unwrap().publish;
+    assert_eq!(p.len(), 2);
+    assert!(!p[0].whole_dir && p[1].whole_dir && p[0].private);
+    assert_eq!(
+        (
+            p[0].interval(),
+            p[0].files_max(),
+            p[0].total_bytes(),
+            p[0].hashing()
+        ),
+        (Duration::from_secs(60), 10, 1000, 2)
+    );
+    let d = BitTorrentPublish::default();
+    assert_eq!(
+        (d.interval(), d.files_max(), d.total_bytes(), d.hashing()),
+        (Duration::from_secs(10), 1000, 1 << 40, 1)
+    );
+    for (doc, want) in [
+        (r#"[{"name": "-x", "dir": "/a"}]"#, "not a valid name"),
+        (
+            r#"[{"name": "a", "dir": "/a"}, {"name": "a", "dir": "/b"}]"#,
+            r#"another publish entry is already named "a""#,
+        ),
+        (r#"[{"name": "a", "dir": " "}]"#, "dir may not be empty"),
+        (r#"[{"name": "a", "dir": "/"}]"#, "root of a file system"),
+        (r#"[{"name": "a"}]"#, "dir"),
+        (r#"[{"name": "a", "dir": "/a", "mode": "each"}]"#, "mode"),
+        (
+            r#"[{"name": "a", "dir": "/a", "web_seed": "ftp://x/a/"}]"#,
+            "not an http or https URL",
+        ),
+        (
+            r#"[{"name": "a", "dir": "/a", "web_seed": "http://x/a/?k=v"}]"#,
+            "query or a fragment",
+        ),
+        (
+            r#"[{"name": "a", "dir": "/a", "mode": "whole_dir", "web_seed": "http://x/b/"}]"#,
+            r#"last element must be the directory's, "a""#,
+        ),
+        (
+            r#"[{"name": "a", "dir": "/a", "announce": ["ws://x/announce"]}]"#,
+            "not an http, https or udp tracker URL",
+        ),
+        (
+            r#"[{"name": "a", "dir": "/a", "piece_length": 30000}]"#,
+            "not a power of two",
+        ),
+        (
+            r#"[{"name": "a", "dir": "/a", "piece_length": 8192}]"#,
+            "not a power of two",
+        ),
+        (
+            r#"[{"name": "a", "dir": "/a", "piece_length": 134217728}]"#,
+            "piece_length",
+        ),
+        (
+            r#"[{"name": "a", "dir": "/a", "files": ["["]}]"#,
+            "is not a pattern",
+        ),
+        (
+            r#"[{"name": "a", "dir": "/a", "exclude": ["/abs"]}]"#,
+            "is not a pattern",
+        ),
+        (
+            r#"[{"name": "a", "dir": "/a", "check_interval": "-1s"}]"#,
+            "is negative",
+        ),
+        (
+            r#"[{"name": "a", "dir": "/a", "max_files": 200000}]"#,
+            "max_files",
+        ),
+        (
+            r#"[{"name": "a", "dir": "/a", "max_hashing": 17}]"#,
+            "max_hashing",
+        ),
+    ] {
+        refused(&format!("{head}{doc}}}}}}}"), want);
+    }
+    let many: Vec<String> = (0..=MAX_BT_PUBLISH)
+        .map(|i| format!(r#"{{"name": "e{i}", "dir": "/a"}}"#))
+        .collect();
+    refused(
+        &format!("{head}[{}]}}}}}}", many.join(",")),
+        "publish entries, more than",
+    );
+    for (pat, path, want) in [
+        ("*.iso", "a/b/x.iso", true),
+        ("*.iso", "x.isa", false),
+        ("releases/**/*.tar.gz", "releases/x.tar.gz", true),
+        ("releases/**/*.tar.gz", "releases/a/b/x.tar.gz", true),
+        ("releases/**/*.tar.gz", "other/x.tar.gz", false),
+        ("**/tmp/**", "a/tmp/b", true),
+        ("**/tmp/**", "tmp/x", true),
+        ("x?.[a-c]", "x1.b", true),
+        ("x?.[^a-c]", "x1.b", false),
+    ] {
+        assert_eq!(path_pattern_matches(pat, path), want, "{pat} {path}");
+    }
+    assert!(!valid_path_pattern("[") && !valid_path_pattern("/a") && !valid_path_pattern("a//b"));
+    assert!(valid_path_pattern("a/**/b*") && valid_path_pattern("[a-z]?"));
 }

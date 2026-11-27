@@ -2479,7 +2479,6 @@ const MATCH_FIT_ONLY: &[&str] = &[];
 const MODULE_FIELDS: &[&str] = &["module", "params"];
 /// fit's handler modules (its `http.handlers` namespace) that akit does not have yet.
 const FIT_HANDLERS: &[&str] = &[
-    "bt_publish",
     "bt_stream",
     "media_tokens",
     "sync_ingest",

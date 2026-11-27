@@ -203,6 +203,24 @@
   `setNodes` 持有它自己的锁），因此为新 uplink 收下的列表总在其后；断开链路的 hub 也在同一把锁下忘掉其节点，且仅当其
   uplink 仍属于该 proxy。修复后：epoll 上单独运行 250 次、io_uring（`AKIO_DEFAULT_BACKEND=uring`）上 50 次，全部通过。
 
+### 2026-11-28：I156，发布目录
+
+- 同 fit 的 I202（`akit_bittorrent::client::publish`、`client::publish_handler`）：
+  `bittorrent.client.publish`（`name`、`dir`、`mode` 为 `per_file` 或 `whole_dir`、`web_seed`、`announce`、`private`、
+  `piece_length`、`files` 和 `exclude` 模式、`check_interval`、`max_files`、`max_total_bytes`、`max_hashing`）按 fit 的规则
+  读取和检查。每个条目在自己的线程上跟随其目录：每个 `check_interval` 遍历一次（跳过点文件、符号链接和 `exclude`），文件在两次遍历的
+  大小、时间、inode 和设备一致后才发布；每次至多 `max_hashing` 个地构建混合（v1 和 v2）种子，带 announce 列表的分层、web seed
+  （`per_file`：基础 URL 加文件转义后的路径；`whole_dir`：目录的上级）、未设置时 fit 选择的分片大小；立即以做种模式通过只读存储
+  （写入被拒绝）做种，没有做种限制；与客户端自己的种子分开列出。文件变化或删除时其种子立即停止，变化的文件重新构建；构建失败的文件在
+  变化之前不再重试。索引（`data_dir/publish/<name>/index.json` 和 `<id>.torrent`）让重启后未变化的内容不经重新哈希即做种；从配置
+  中删除的条目会删除其目录。
+- `bt_publish`（`publish`：路由提供的条目，默认全部）：`index.json`（列表，附每个种子的 `.torrent` 和 `.magnet` URL）、
+  `<id>.torrent`、`<id>.magnet`；只接受 GET 和 HEAD，客户端未运行时返回 503 和 `Retry-After`。
+- `whole_dir` 只在目录中没有被排除的内容时发布：akio-bittorrent 的构建器整体读取目录，因此其下的点文件、符号链接或 `exclude`
+  匹配会使它不被发布，原因写在其状态中（决策 042）。构建不能中途停止，因此重载或停止时正在进行的构建会运行到结束并丢弃结果。
+- 测试：`client::tests::publishing`（per_file 和 whole_dir、路由、下载者下载已发布的文件、文件变化后种子被替换、重启时不构建、
+  删除条目），`bittorrent::tests::publish_entries`（fit 的 `TestBitTorrentPublish`、模式）。
+
 ### 2026-11-27：I154，时间表和限制；拆出 I154b
 
 - 同 fit 的 I199（`akit_bittorrent::client::limits`）：`alt_speed`（`upload_rate`、`download_rate`、带 `days`、`from` 和 `to` 的

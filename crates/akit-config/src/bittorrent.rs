@@ -50,6 +50,20 @@ pub const DEFAULT_BT_MIN_FREE_BYTES: u64 = 1 << 30;
 pub const MAX_BT_CATEGORIES: usize = 1000;
 /// fit's `MaxBTSchedules`: the most `alt_speed` schedules.
 pub const MAX_BT_SCHEDULES: usize = 100;
+/// fit's `MaxBTPublish`: the most publish entries.
+pub const MAX_BT_PUBLISH: usize = 64;
+/// fit's `DefaultBTPublishMaxFiles` and `MaxBTPublishFiles`.
+pub const DEFAULT_BT_PUBLISH_MAX_FILES: usize = 1000;
+/// The most `max_files` may be.
+pub const MAX_BT_PUBLISH_FILES: usize = 100_000;
+/// fit's `DefaultBTPublishMaxTotalBytes`: 1 TiB.
+pub const DEFAULT_BT_PUBLISH_MAX_TOTAL_BYTES: u64 = 1 << 40;
+/// fit's `DefaultBTPublishMaxHashing` and `MaxBTPublishHashing`.
+pub const DEFAULT_BT_PUBLISH_MAX_HASHING: usize = 1;
+/// The most `max_hashing` may be.
+pub const MAX_BT_PUBLISH_HASHING: usize = 16;
+/// fit's `DefaultBTPublishCheckInterval`.
+pub const DEFAULT_BT_PUBLISH_CHECK_INTERVAL: Duration = Duration::from_secs(10);
 
 /// fit's `DefaultBTTrackerInterval`: how often clients are told to announce.
 pub const DEFAULT_BT_TRACKER_INTERVAL: Duration = Duration::from_secs(30 * 60);
@@ -152,6 +166,194 @@ pub struct BitTorrentClient {
     pub url_timeout: Duration,
     /// `alt_speed` (I154): the alternative rates; none when left out.
     pub alt_speed: Option<BitTorrentAltSpeed>,
+    /// `publish` (I156): directories published as torrents.
+    pub publish: Vec<BitTorrentPublish>,
+}
+
+/// `bittorrent.client.publish[]` (I156): a directory published as torrents.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct BitTorrentPublish {
+    /// `name`: letters, digits, `_`, `.` and `-`. Required.
+    pub name: String,
+    /// `dir`: the directory published. Required.
+    pub dir: String,
+    /// `mode`: `whole_dir` when true, `per_file` (the default) when false.
+    pub whole_dir: bool,
+    /// `web_seed`: the http or https URL `dir` is served at; none when left out.
+    pub web_seed: String,
+    /// `announce`: tracker URLs, each a tier of its own.
+    pub announce: Vec<String>,
+    /// `private`: the torrents private (BEP 27).
+    pub private: bool,
+    /// `piece_length`: a power of two from 16 KiB to 64 MiB; 0 picks one by size.
+    pub piece_length: u64,
+    /// `files`: the files published, by pattern; every file when empty.
+    pub files: Vec<String>,
+    /// `exclude`: files and directories left out, by pattern.
+    pub exclude: Vec<String>,
+    /// `check_interval`: [`DEFAULT_BT_PUBLISH_CHECK_INTERVAL`] when left out or 0.
+    pub check_interval: Duration,
+    /// `max_files`: [`DEFAULT_BT_PUBLISH_MAX_FILES`] when left out or 0.
+    pub max_files: usize,
+    /// `max_total_bytes`: [`DEFAULT_BT_PUBLISH_MAX_TOTAL_BYTES`] when left out or 0.
+    pub max_total_bytes: u64,
+    /// `max_hashing`: [`DEFAULT_BT_PUBLISH_MAX_HASHING`] when left out or 0.
+    pub max_hashing: usize,
+}
+
+impl BitTorrentPublish {
+    /// `check_interval`, or its default.
+    #[must_use]
+    pub fn interval(&self) -> Duration {
+        dur_or(self.check_interval, DEFAULT_BT_PUBLISH_CHECK_INTERVAL)
+    }
+
+    /// `max_files`, or its default.
+    #[must_use]
+    pub fn files_max(&self) -> usize {
+        or(self.max_files, DEFAULT_BT_PUBLISH_MAX_FILES)
+    }
+
+    /// `max_total_bytes`, or its default.
+    #[must_use]
+    pub fn total_bytes(&self) -> u64 {
+        if self.max_total_bytes == 0 {
+            DEFAULT_BT_PUBLISH_MAX_TOTAL_BYTES
+        } else {
+            self.max_total_bytes
+        }
+    }
+
+    /// `max_hashing`, or its default.
+    #[must_use]
+    pub fn hashing(&self) -> usize {
+        or(self.max_hashing, DEFAULT_BT_PUBLISH_MAX_HASHING)
+    }
+}
+
+/// Whether `p` is a path pattern fit's `ValidMediaPathPattern` takes: names and `*`, `?` and
+/// `[...]` as Go's `path.Match` takes them, and `**` for any run of directories, split at `/`,
+/// not starting with one.
+#[must_use]
+pub fn valid_path_pattern(p: &str) -> bool {
+    !p.is_empty()
+        && !p.starts_with('/')
+        && p.split('/')
+            .all(|seg| !seg.is_empty() && (seg == "**" || glob_segment(seg, "").is_some()))
+}
+
+/// Whether `pat` matches `path` (a path under the directory, `/`-separated): a pattern
+/// without `/` matches the path's last name, one with `/` the whole path, `**` any run of
+/// directories (none included).
+#[must_use]
+pub fn path_pattern_matches(pat: &str, path: &str) -> bool {
+    if !pat.contains('/') {
+        let name = path.rsplit('/').next().unwrap_or(path);
+        return glob_segment(pat, name) == Some(true);
+    }
+    let p: Vec<&str> = pat.split('/').collect();
+    let s: Vec<&str> = path.split('/').collect();
+    match_segments(&p, &s)
+}
+
+fn match_segments(p: &[&str], s: &[&str]) -> bool {
+    match p.split_first() {
+        None => s.is_empty(),
+        Some((&"**", rest)) => {
+            (0..=s.len()).any(|i| match_segments(rest, s.get(i..).unwrap_or(&[])))
+        }
+        Some((first, rest)) => match s.split_first() {
+            Some((name, srest)) => {
+                glob_segment(first, name) == Some(true) && match_segments(rest, srest)
+            }
+            None => false,
+        },
+    }
+}
+
+/// Go's `path.Match` on one name: `Some(matches)`, `None` for a malformed pattern.
+fn glob_segment(pat: &str, name: &str) -> Option<bool> {
+    let p: Vec<char> = pat.chars().collect();
+    let n: Vec<char> = name.chars().collect();
+    // Checks the pattern's syntax first, as Go reports ErrBadPattern whatever the name.
+    let mut i = 0usize;
+    while let Some(&c) = p.get(i) {
+        match c {
+            '[' => {
+                let mut j = i.saturating_add(1);
+                if p.get(j) == Some(&'^') {
+                    j = j.saturating_add(1);
+                }
+                let mut any = false;
+                loop {
+                    match p.get(j)? {
+                        ']' if any => break,
+                        '\\' => j = j.saturating_add(1),
+                        _ => {}
+                    }
+                    any = true;
+                    j = j.saturating_add(1);
+                }
+                i = j.saturating_add(1);
+            }
+            '\\' => {
+                p.get(i.saturating_add(1))?;
+                i = i.saturating_add(2);
+            }
+            _ => i = i.saturating_add(1),
+        }
+    }
+    Some(glob(&p, &n))
+}
+
+fn glob(p: &[char], n: &[char]) -> bool {
+    match p.split_first() {
+        None => n.is_empty(),
+        Some(('*', rest)) => (0..=n.len())
+            .take_while(|i| n.get(..*i).is_some_and(|h| !h.contains(&'/')))
+            .any(|i| glob(rest, n.get(i..).unwrap_or(&[]))),
+        Some(('?', rest)) => n.split_first().is_some_and(|(_, nr)| glob(rest, nr)),
+        Some(('[', _)) => {
+            let Some((&c, nr)) = n.split_first() else {
+                return false;
+            };
+            let mut j = 1usize;
+            let neg = p.get(1) == Some(&'^');
+            if neg {
+                j = 2;
+            }
+            let mut hit = false;
+            let mut first = true;
+            while let Some(&x) = p.get(j) {
+                if x == ']' && !first {
+                    break;
+                }
+                first = false;
+                let (lo, step) = if x == '\\' {
+                    (p.get(j.saturating_add(1)).copied().unwrap_or(x), 2)
+                } else {
+                    (x, 1)
+                };
+                j = j.saturating_add(step);
+                let mut hi = lo;
+                if p.get(j) == Some(&'-') && p.get(j.saturating_add(1)).is_some_and(|y| *y != ']') {
+                    hi = p.get(j.saturating_add(1)).copied().unwrap_or(lo);
+                    j = j.saturating_add(2);
+                }
+                if lo <= c && c <= hi {
+                    hit = true;
+                }
+            }
+            hit != neg && glob(p.get(j.saturating_add(1)..).unwrap_or(&[]), nr)
+        }
+        Some(('\\', rest)) => match (rest.split_first(), n.split_first()) {
+            (Some((pc, pr)), Some((nc, nrr))) => pc == nc && glob(pr, nrr),
+            _ => false,
+        },
+        Some((c, rest)) => n
+            .split_first()
+            .is_some_and(|(nc, nr)| nc == c && glob(rest, nr)),
+    }
 }
 
 /// A torrent's own limits, or a category's (I154): fit's `BitTorrentTorrentLimits` but for
@@ -578,11 +780,13 @@ const BT_CLIENT_FIELDS: &[&str] = &[
     "url_timeout",
     // I154.
     "alt_speed",
+    // I156.
+    "publish",
 ];
 // I153: categories, watch_dir and its bounds, url_timeout; I154: alt_speed and access (akio's
 // A284); disk_queue_bytes, akio-bittorrent's bound of the blocks waiting for the disk (A284);
 // I156: publish; I159: rss.
-const BT_CLIENT_FIT_ONLY: &[&str] = &["disk_queue_bytes", "access", "rss", "publish"];
+const BT_CLIENT_FIT_ONLY: &[&str] = &["disk_queue_bytes", "access", "rss"];
 const BT_LIMITS_FIELDS: &[&str] = &[
     "upload_rate",
     "download_rate",
@@ -613,6 +817,21 @@ const BT_TORRENT_LIMITS_FIELDS: &[&str] = &[
 const BT_TORRENT_LIMITS_FIT_ONLY: &[&str] = &["max_conns", "upload_slots"];
 const BT_ALT_SPEED_FIELDS: &[&str] = &["upload_rate", "download_rate", "schedules", "time_zone"];
 const BT_SCHEDULE_FIELDS: &[&str] = &["days", "from", "to"];
+const BT_PUBLISH_FIELDS: &[&str] = &[
+    "name",
+    "dir",
+    "mode",
+    "web_seed",
+    "announce",
+    "private",
+    "piece_length",
+    "files",
+    "exclude",
+    "check_interval",
+    "max_files",
+    "max_total_bytes",
+    "max_hashing",
+];
 const BT_TRACKER_FIELDS: &[&str] = &[
     "listen",
     "interval",
@@ -719,6 +938,24 @@ fn client(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<BitTorrentClient>
     c.alt_speed = o
         .take("alt_speed")
         .and_then(|v| alt_speed(d, v, &o.at("alt_speed")));
+    let pubs = list(d, &mut o, "publish", publish);
+    if pubs.len() > MAX_BT_PUBLISH {
+        d.error(
+            o.key_off("publish").unwrap_or(o.off),
+            &o.at("publish"),
+            format!("{} publish entries, more than {MAX_BT_PUBLISH}", pubs.len()),
+        );
+    }
+    for (i, (e, off, p)) in pubs.iter().enumerate() {
+        if pubs.iter().take(i).any(|(o, _, _)| o.name == e.name) {
+            d.error(
+                *off,
+                &join_field(p, "name"),
+                format!("another publish entry is already named {:?}", e.name),
+            );
+        }
+    }
+    c.publish = pubs.into_iter().map(|(e, _, _)| e).collect();
     o.finish(d, BT_CLIENT_FIELDS, BT_CLIENT_FIT_ONLY);
     Some(c)
 }
@@ -788,6 +1025,145 @@ fn category(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<BitTorrentCateg
     }
     o.finish(d, BT_CATEGORY_FIELDS, BT_CATEGORY_FIT_ONLY);
     Some(c)
+}
+
+/// Whether `u` is an absolute URL of one of `schemes` with a host; its path, query and fragment.
+fn url_parts<'u>(u: &'u str, schemes: &[&str]) -> Option<(&'u str, bool)> {
+    let (scheme, rest) = u.split_once("://")?;
+    if !schemes.contains(&scheme) {
+        return None;
+    }
+    let host_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    if host_end == 0 {
+        return None;
+    }
+    let tail = rest.get(host_end..).unwrap_or("");
+    let path = tail.split(['?', '#']).next().unwrap_or("");
+    Some((path, tail.contains(['?', '#'])))
+}
+
+fn publish(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<BitTorrentPublish> {
+    let mut o = d.object(n, path)?;
+    let mut e = BitTorrentPublish::default();
+    if let Some(v) = o.require(d, "name") {
+        if let Some(s) = d.string(v, &o.at("name")) {
+            if !crate::model::valid_name(&s) {
+                d.error(v.off, &o.at("name"), crate::model::bad_name(&s));
+            }
+            e.name = s;
+        }
+    }
+    let mut dir_base = None;
+    if let Some(v) = o.require(d, "dir") {
+        if let Some(s) = d.string(v, &o.at("dir")) {
+            let t = s.trim();
+            if t.is_empty() {
+                d.error(v.off, &o.at("dir"), "dir may not be empty");
+            } else {
+                let abs = std::path::absolute(t).unwrap_or_else(|_| t.into());
+                if abs.parent().is_none() {
+                    d.error(
+                        v.off,
+                        &o.at("dir"),
+                        format!("{s:?} is the root of a file system, which is not published"),
+                    );
+                }
+                dir_base = abs.file_name().map(|n| n.to_string_lossy().into_owned());
+            }
+            e.dir = s;
+        }
+    }
+    if let Some((m, off)) = text_at(d, &mut o, "mode") {
+        match m.as_str() {
+            "" | "per_file" => {}
+            "whole_dir" => e.whole_dir = true,
+            _ => d.error(
+                off,
+                &o.at("mode"),
+                format!("{m:?} is not one of per_file, whole_dir"),
+            ),
+        }
+    }
+    if let Some((w, off)) = text_at(d, &mut o, "web_seed") {
+        if !w.is_empty() {
+            match url_parts(&w, &["http", "https"]) {
+                None => d.error(off, &o.at("web_seed"), format!("{w:?} is not an http or https URL")),
+                Some((_, true)) => d.error(
+                    off,
+                    &o.at("web_seed"),
+                    format!(
+                        "{w:?} has a query or a fragment, which a web seed's URL may not: the paths of the files are appended to it"
+                    ),
+                ),
+                Some((p, false)) => {
+                    let last = p.trim_end_matches('/').rsplit('/').next().unwrap_or("");
+                    if e.whole_dir && dir_base.as_deref().is_some_and(|b| b != last) {
+                        d.error(
+                            off,
+                            &o.at("web_seed"),
+                            format!(
+                                "in mode whole_dir the URL's last element must be the directory's, {:?}: clients ask the URL's parent for <name>/<path>, the torrent being named as the directory",
+                                dir_base.unwrap_or_default()
+                            ),
+                        );
+                    }
+                }
+            }
+        }
+        e.web_seed = w;
+    }
+    e.announce = list(d, &mut o, "announce", |d, n, p| {
+        let s = d.string(n, p)?;
+        if url_parts(&s, &["http", "https", "udp"]).is_none() {
+            d.error(
+                n.off,
+                p,
+                format!("{s:?} is not an http, https or udp tracker URL"),
+            );
+        }
+        Some(s)
+    })
+    .into_iter()
+    .map(|(s, _, _)| s)
+    .collect();
+    e.private = boolean(d, &mut o, "private");
+    if let Some(v) = o.take("piece_length") {
+        if let Some(l) = d.int(v, &o.at("piece_length"), 0, 64 << 20) {
+            let l = u64::try_from(l).unwrap_or(0);
+            if l != 0 && (l < 16 << 10 || !l.is_power_of_two()) {
+                d.error(
+                    v.off,
+                    &o.at("piece_length"),
+                    format!("{l} is not a power of two from 16 KiB to 64 MiB"),
+                );
+            }
+            e.piece_length = l;
+        }
+    }
+    for (key, into) in [("files", &mut e.files), ("exclude", &mut e.exclude)] {
+        *into = list(d, &mut o, key, |d, n, p| {
+            let s = d.string(n, p)?;
+            if !valid_path_pattern(&s) {
+                d.error(
+                    n.off,
+                    p,
+                    format!(
+                        "{s:?} is not a pattern: names and *, ? and [...] as path.Match takes them, and ** for any run of directories, split at '/', not starting with one"
+                    ),
+                );
+            }
+            Some(s)
+        })
+        .into_iter()
+        .map(|(s, _, _)| s)
+        .collect();
+    }
+    e.check_interval = duration(d, &mut o, "check_interval");
+    e.max_files = count(d, &mut o, "max_files", MAX_BT_PUBLISH_FILES as i64);
+    e.max_total_bytes = bytes(d, &mut o, "max_total_bytes");
+    e.max_hashing = count(d, &mut o, "max_hashing", MAX_BT_PUBLISH_HASHING as i64);
+    o.finish(d, BT_PUBLISH_FIELDS, &[]);
+    Some(e)
 }
 
 fn signed(d: &mut Decoder<'_>, o: &mut Obj<'_>, key: &str) -> i64 {

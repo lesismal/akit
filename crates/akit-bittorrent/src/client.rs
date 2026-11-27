@@ -21,6 +21,8 @@ mod fetch;
 mod limits;
 mod manage;
 mod pages;
+pub mod publish;
+pub mod publish_handler;
 pub(crate) mod state;
 mod watch;
 
@@ -73,6 +75,10 @@ pub(crate) const CLIENT_NO_TICK: Info = Info {
     set: is_set,
     new: |h| Ok(Box::new(ClientRole::new(h, Duration::from_secs(3600)))),
 };
+
+fn tracker_key(e: &Arc<akio::Engine>) -> usize {
+    crate::tracker::key_of(e)
+}
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(PoisonError::into_inner)
@@ -270,6 +276,8 @@ struct Run {
     watch: watch::Watch,
     /// The alternative rates' zone and the API's choice (I154).
     alt: limits::Alt,
+    /// The publish entries (I156).
+    publish: publish::Publisher,
 }
 
 /// What a client's event noted for the saver.
@@ -299,6 +307,8 @@ struct Shared {
     /// How often the manager looks with no event: what has none (the disk's free space,
     /// `watch_dir`, the schedules of `alt_speed`).
     tick: Duration,
+    /// The publish entries' states, for `bt_publish` (I156).
+    pubs: Mutex<Vec<Arc<Mutex<publish::EntryStatus>>>>,
 }
 
 impl fmt::Debug for Shared {
@@ -796,7 +806,9 @@ impl ClientRole {
             overflow: AtomicBool::new(false),
             wake: Mutex::new(None),
             tick,
+            pubs: Mutex::new(Vec::new()),
         });
+        publish_handler::register(tracker_key(&host.engine), &shared);
         ClientRole {
             pages: Arc::new(pages::Pages::new(ClientApi(Arc::clone(&shared)))),
             host,
@@ -821,6 +833,7 @@ impl ClientRole {
             data_dir,
             watch: watch::Watch::default(),
             alt: limits::Alt::default(),
+            publish: publish::Publisher::default(),
         };
         run.alt.open(cfg, &mut run.other)?;
         let seed = run.seed();
@@ -831,10 +844,13 @@ impl ClientRole {
         }
         run.apply_limits();
         run.schedule();
+        run.publish.apply(&cfg.publish, &run.client, &run.data_dir);
+        *lock(&self.shared.pubs) = run.publish.statuses();
         Ok(run)
     }
 
     fn close(run: &mut Run) {
+        run.publish.stop();
         let _ = run.save();
         run.client.close();
     }
@@ -863,6 +879,8 @@ impl Role for ClientRole {
                 run.cfg = cfg.clone();
                 run.apply_limits();
                 run.schedule();
+                run.publish.apply(&cfg.publish, &run.client, &run.data_dir);
+                *lock(&self.shared.pubs) = run.publish.statuses();
             }
         } else {
             // The new directory's state first: one that does not read leaves all as it was.
@@ -936,6 +954,8 @@ impl Role for ClientRole {
         if let Some(mut run) = lock(&self.shared.run).take() {
             ClientRole::close(&mut run);
         }
+        lock(&self.shared.pubs).clear();
+        publish_handler::unregister(tracker_key(&self.host.engine), &self.shared);
     }
 
     fn api(&self) -> Option<akit_roles::host::Api> {

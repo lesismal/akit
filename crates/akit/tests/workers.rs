@@ -362,6 +362,13 @@ fn cases(w: &World) -> Vec<Case> {
             503,
             true,
         ),
+        // I156: bt_publish answers 503 at once while no client runs.
+        handler(
+            "bt_publish",
+            r#"{"module": "bt_publish"}"#.into(),
+            503,
+            true,
+        ),
         // The streaming role's handlers (I123), without the role: answered at once, as fit's
         // (no stream in the path, and the role not running). Their slow part, a bcrypt check
         // with the request suspended, is akit-media's `tests/guard.rs`.

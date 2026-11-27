@@ -395,7 +395,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 1229 supported.
+3821 fields in 121 sections, at fit `7daee573`; 1246 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -404,9 +404,9 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`acme`](#fields-acme) | 43 | 43 | 0 |
 | [`admin`](#fields-admin) | 105 | 51 | 54 |
 | [`auto_https`](#fields-auto-https) | 5 | 5 | 0 |
-| [`bittorrent`](#fields-bittorrent) | 160 | 91 | 69 |
+| [`bittorrent`](#fields-bittorrent) | 160 | 105 | 55 |
 | [`engine`](#fields-engine) | 11 | 8 | 3 |
-| [`http.handlers/bt_publish`](#fields-http-handlers-bt-publish) | 3 | 0 | 3 |
+| [`http.handlers/bt_publish`](#fields-http-handlers-bt-publish) | 3 | 3 | 0 |
 | [`http.handlers/bt_stream`](#fields-http-handlers-bt-stream) | 14 | 0 | 14 |
 | [`http.handlers/bt_tracker`](#fields-http-handlers-bt-tracker) | 2 | 2 | 0 |
 | [`http.handlers/fastcgi`](#fields-http-handlers-fastcgi) | 18 | 18 | 0 |
@@ -520,7 +520,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 161 | 3 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 76 | 0 |
-| **Total** | 3821 | 1229 | 2592 |
+| **Total** | 3821 | 1246 | 2575 |
 
 <a id="fields-access"></a>
 
@@ -800,20 +800,20 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `bittorrent.client.listen` | `string, required` | supported |
 | `bittorrent.client.lsd` | `boolean` | supported |
 | `bittorrent.client.pex` | `boolean` | supported |
-| `bittorrent.client.publish` | `array<object>` | not supported yet |
-| `bittorrent.client.publish[].announce` | `array<string>` | not supported yet |
-| `bittorrent.client.publish[].check_interval` | `duration` | not supported yet |
-| `bittorrent.client.publish[].dir` | `string, required` | not supported yet |
-| `bittorrent.client.publish[].exclude` | `array<string>` | not supported yet |
-| `bittorrent.client.publish[].files` | `array<string>` | not supported yet |
-| `bittorrent.client.publish[].max_files` | `integer` | not supported yet |
-| `bittorrent.client.publish[].max_hashing` | `integer` | not supported yet |
-| `bittorrent.client.publish[].max_total_bytes` | `integer` | not supported yet |
-| `bittorrent.client.publish[].mode` | `enum(per_file\|whole_dir)` | not supported yet |
-| `bittorrent.client.publish[].name` | `string, required` | not supported yet |
-| `bittorrent.client.publish[].piece_length` | `integer` | not supported yet |
-| `bittorrent.client.publish[].private` | `boolean` | not supported yet |
-| `bittorrent.client.publish[].web_seed` | `string` | not supported yet |
+| `bittorrent.client.publish` | `array<object>` | supported |
+| `bittorrent.client.publish[].announce` | `array<string>` | supported |
+| `bittorrent.client.publish[].check_interval` | `duration` | supported |
+| `bittorrent.client.publish[].dir` | `string, required` | supported |
+| `bittorrent.client.publish[].exclude` | `array<string>` | supported |
+| `bittorrent.client.publish[].files` | `array<string>` | supported |
+| `bittorrent.client.publish[].max_files` | `integer` | supported |
+| `bittorrent.client.publish[].max_hashing` | `integer` | supported |
+| `bittorrent.client.publish[].max_total_bytes` | `integer` | supported |
+| `bittorrent.client.publish[].mode` | `enum(per_file\|whole_dir)` | supported |
+| `bittorrent.client.publish[].name` | `string, required` | supported |
+| `bittorrent.client.publish[].piece_length` | `integer` | supported |
+| `bittorrent.client.publish[].private` | `boolean` | supported |
+| `bittorrent.client.publish[].web_seed` | `string` | supported |
 | `bittorrent.client.rss` | `object` | not supported yet |
 | `bittorrent.client.rss.feeds` | `array<object>` | not supported yet |
 | `bittorrent.client.rss.feeds[].enabled` | `boolean` | not supported yet |
@@ -920,9 +920,9 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `routes[].handler<bt_publish>` | `module` | not supported yet |
-| `routes[].handler<bt_publish>.params` | `object` | not supported yet |
-| `routes[].handler<bt_publish>.params.publish` | `array<string>` | not supported yet |
+| `routes[].handler<bt_publish>` | `module` | supported |
+| `routes[].handler<bt_publish>.params` | `object` | supported |
+| `routes[].handler<bt_publish>.params.publish` | `array<string>` | supported |
 
 <a id="fields-http-handlers-bt-stream"></a>
 

@@ -278,6 +278,33 @@ done and where the work differs from the plan.
   uplink is still the proxy's. After the fix: 250 of 250 runs alone on epoll, 50 of 50 on io_uring
   (`AKIO_DEFAULT_BACKEND=uring`).
 
+### 2026-11-28: I156, publishing directories
+
+- As fit's I202 (`akit_bittorrent::client::publish`, `client::publish_handler`):
+  `bittorrent.client.publish` (`name`, `dir`, `mode` `per_file` or `whole_dir`, `web_seed`,
+  `announce`, `private`, `piece_length`, `files` and `exclude` patterns, `check_interval`,
+  `max_files`, `max_total_bytes`, `max_hashing`) read and checked as fit's. Each entry follows its
+  directory on a thread of its own: a walk every `check_interval` (dotfiles, symbolic links and
+  `exclude` left out), a file published once two walks agree on its size, times, inode and device;
+  hybrid (v1 and v2) torrents built `max_hashing` at a time, with the announce list's tiers, a web
+  seed (`per_file`: the base URL and the file's escaped path; `whole_dir`: the directory's
+  parent), the piece length fit picks when none is set; seeded at once in seed mode through
+  read-only storage (a write refused), with no seed limits; listed apart from the client's own
+  torrents. A changed or removed file's torrent stops at once and a changed one is built again; a
+  failed build is not tried again until the file changes. The index
+  (`data_dir/publish/<name>/index.json` and `<id>.torrent`) lets a restart seed what has not
+  changed without hashing it again; an entry removed from the config removes its directory.
+- `bt_publish` (`publish`: the entries a route serves, all by default): `index.json` (the list
+  with each torrent's `.torrent` and `.magnet` URLs), `<id>.torrent`, `<id>.magnet`; GET and HEAD
+  only, 503 with `Retry-After` while no client runs.
+- `whole_dir` publishes a directory only when nothing in it is left out: akio-bittorrent's
+  builder takes a directory whole, so a dotfile, a symbolic link or an `exclude` match below it
+  keeps it unpublished, with the reason in its status (decision 042). A build cannot be stopped
+  part way, so a reload or stop leaves a running build to end and drops its result.
+- Tests: `client::tests::publishing` (per_file and whole_dir, the routes, a leecher downloading a
+  published file, a file changed and its torrent replaced, a restart that builds nothing, an entry
+  removed), `bittorrent::tests::publish_entries` (fit's `TestBitTorrentPublish`, the patterns).
+
 ### 2026-11-27: I154, schedules and limits; I154b split
 
 - As fit's I199 (`akit_bittorrent::client::limits`): `alt_speed` (`upload_rate`,

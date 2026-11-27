@@ -1083,6 +1083,33 @@ fn bittorrent(out: &mut Vec<(String, String, Read)>) {
             f("watch_max_files", "1", "2"),
             f("url_timeout", q("1s"), q("2s")),
             f("alt_speed", "{}", r#"{"upload_rate": 1}"#),
+            f("publish", "[]", r#"[{"name": "a", "dir": "/srv/a"}]"#),
+        ],
+    );
+    let pw = |m: &str| {
+        client(&format!(
+            r#"{{"listen": "127.0.0.1:6881", "data_dir": "d", "publish": [{m}]}}"#
+        ))
+    };
+    emit(
+        out,
+        "bittorrent.client.publish[]",
+        &pw,
+        &[("name", q("a")), ("dir", q("/srv/a"))],
+        vec![
+            f("name", q("a"), q("b")),
+            f("dir", q("/srv/a"), q("/srv/b")),
+            f("mode", q("per_file"), q("whole_dir")),
+            f("web_seed", q("http://x/a/"), q("http://y/a/")),
+            f("announce", r#"["http://x/announce"]"#, r#"["udp://x:1"]"#),
+            f("private", "true", "false"),
+            f("piece_length", "16384", "32768"),
+            f("files", r#"["*.iso"]"#, r#"["*.img"]"#),
+            f("exclude", r#"["*.part"]"#, r#"["*.tmp"]"#),
+            f("check_interval", q("1s"), q("2s")),
+            f("max_files", "1", "2"),
+            f("max_total_bytes", "1", "2"),
+            f("max_hashing", "1", "2"),
         ],
     );
     let aw = |m: &str| {

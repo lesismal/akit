@@ -1511,3 +1511,21 @@ bittorrent.client.categories[].limits.upload_rate
 bittorrent.client.categories[].limits.download_rate
 bittorrent.client.categories[].limits.seed_ratio
 bittorrent.client.categories[].limits.seed_time
+# I156: publishing directories as torrents, and the bt_publish handler.
+bittorrent.client.publish
+bittorrent.client.publish[].name
+bittorrent.client.publish[].dir
+bittorrent.client.publish[].mode
+bittorrent.client.publish[].web_seed
+bittorrent.client.publish[].announce
+bittorrent.client.publish[].private
+bittorrent.client.publish[].piece_length
+bittorrent.client.publish[].files
+bittorrent.client.publish[].exclude
+bittorrent.client.publish[].check_interval
+bittorrent.client.publish[].max_files
+bittorrent.client.publish[].max_total_bytes
+bittorrent.client.publish[].max_hashing
+routes[].handler<bt_publish>
+routes[].handler<bt_publish>.params
+routes[].handler<bt_publish>.params.publish

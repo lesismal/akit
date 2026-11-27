@@ -8,7 +8,6 @@ examples/admin: valid
 examples/auto-https: valid
 examples/basic-auth: valid
 examples/bittorrent: not supported yet: bittorrent.client.categories[].media_library
-examples/bittorrent: not supported yet: bittorrent.client.publish
 examples/bittorrent: not supported yet: bittorrent.tracker.auth
 examples/bittorrent: not supported yet: routes[].handler<bt_publish>
 examples/bittorrent: not supported yet: routes[].handler<bt_stream>

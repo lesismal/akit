@@ -259,7 +259,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I154 | BitTorrent V：`alt_speed` 时间表、单个种子的限制、客户端的 `access` 和连接限制（akio A284） | I152 | done |
 | I154b | BitTorrent V b：客户端的 `access`、其连接限制、种子的 `max_conns` 和 `upload_slots`，基于 akio 的 A284 | I154 | todo |
 | I155 | BitTorrent VI：`bt_stream`，边下载边播放文件 | I152 | todo |
-| I156 | BitTorrent VII：把目录发布为种子，`bt_publish` | I152 | todo |
+| I156 | BitTorrent VII：把目录发布为种子，`bt_publish` | I152 | done |
 | I157 | BitTorrent VIII：Admin API 的 `/bittorrent/...`、事件、`akit bt`、指标 | I153 | todo |
 | I158 | BitTorrent IX：客户端和 tracker 的页面 | I157, I109 | todo |
 | I159 | BitTorrent X：RSS 自动下载、实例共享的 tracker 存储、私有 tracker 的 passkey | I153, I151 | todo |

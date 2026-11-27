@@ -18,11 +18,18 @@ pub mod tracker;
 use akit_runtime::{HandlerParams, Info};
 
 /// The handler modules of this crate, for [`akit_runtime::Registry::new`]: `bt_tracker` (I151).
-pub static MODULES: &[Info<HandlerParams>] = &[Info::handler(
-    "http.handlers.bt_tracker",
-    "Serves the bittorrent.tracker role's HTTP announces and scrapes (BEP 3, 23, 7 and 48): a request whose path ends in announce is an announce, and one ending in scrape a scrape, whatever comes before. Refusals are answered 200 with a failure reason; 503 while the role does not run.",
-    tracker::new_handler,
-)];
+pub static MODULES: &[Info<HandlerParams>] = &[
+    Info::handler(
+        "http.handlers.bt_tracker",
+        "Serves the bittorrent.tracker role's HTTP announces and scrapes (BEP 3, 23, 7 and 48): a request whose path ends in announce is an announce, and one ending in scrape a scrape, whatever comes before. Refusals are answered 200 with a failure reason; 503 while the role does not run.",
+        tracker::new_handler,
+    ),
+    Info::handler(
+        "http.handlers.bt_publish",
+        "Serves the bittorrent.client role's publish entries: / or index.json their index in JSON, <id>.torrent a .torrent file, <id>.magnet a magnet link; 503 while no client runs. publish names the entries served, every entry when left out.",
+        client::publish_handler::new,
+    ),
+];
 
 /// The `bittorrent.client` role.
 pub use client::CLIENT;

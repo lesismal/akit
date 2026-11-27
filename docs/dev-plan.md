@@ -271,7 +271,7 @@ Tunnel and LLM track; I110–I114 are the WebRTC track, and I115–I119 are rese
 | I154 | BitTorrent V: `alt_speed` schedules, per-torrent limits, the client's `access` and connection limits (akio A284) | I152 | done |
 | I154b | BitTorrent V b: the client's `access`, its connection limits, a torrent's `max_conns` and `upload_slots`, on akio's A284 | I154 | todo |
 | I155 | BitTorrent VI: `bt_stream`, a file played while it downloads | I152 | todo |
-| I156 | BitTorrent VII: publishing a directory as torrents, `bt_publish` | I152 | todo |
+| I156 | BitTorrent VII: publishing a directory as torrents, `bt_publish` | I152 | done |
 | I157 | BitTorrent VIII: the Admin API's `/bittorrent/...`, events, `akit bt`, metrics | I153 | todo |
 | I158 | BitTorrent IX: the client's and the tracker's pages | I157, I109 | todo |
 | I159 | BitTorrent X: RSS auto-download, the tracker store instances share, private trackers' passkeys | I153, I151 | todo |

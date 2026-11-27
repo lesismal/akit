@@ -61,6 +61,18 @@ and a client with fast resume, wire compatible with libtorrent and aria2.
    `alt_speed`); the zone is loaded when the role applies, a name that does not load refusing the
    apply, as a log's `time_zone` is checked when the log opens.
 
+7. **I156, as fit's I202**: a published directory is followed by walking it every
+   `check_interval`, as fit's is (a directory watch would miss what a network file system or
+   another host changes); a file is taken once two walks agree. Its torrents are hybrid, seeded in
+   seed mode through read-only storage, with no seed limits, and kept apart from the client's
+   list. The index under `data_dir/publish/<name>/` keeps each torrent with the files' size,
+   times, inode and device, so a restart seeds without hashing what has not changed. Two gaps in
+   akio-bittorrent, added to A288: its `Builder::build_path` takes a directory whole, so
+   `whole_dir` publishes only a directory with nothing left out (the reason in its status,
+   rather than a torrent that holds what `exclude` meant to keep out); and a build cannot be
+   stopped, so a reload or stop lets a running one end and drops it (fit's I209 stops builds on a
+   context).
+
 ## Consequences
 
 - A config fit runs that sets a field akio cannot give yet is refused by name, not run without it.
