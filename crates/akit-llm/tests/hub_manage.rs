@@ -268,3 +268,31 @@ fn settings_and_profile_written_back() {
     let r = call(&hub, "/hub/profile/set", r#"{"name":"ok"}"#);
     assert!(r.unwrap_err().to_string().contains("read-only"));
 }
+
+/// The mesh listener's certificate files reported to `akit run -watch-certs` (`Role::files`).
+#[test]
+fn listener_files_reported() {
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR"))
+        .join(format!("akit-llm-hub-files-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let (c, k) = akit_llm::tls::self_signed(&["localhost".to_owned()]).unwrap();
+    let (cf, kf) = (dir.join("c.pem"), dir.join("k.pem"));
+    std::fs::write(&cf, &c).unwrap();
+    std::fs::write(&kf, &k).unwrap();
+    let port = free_port();
+    let roles = Roles::start(&format!(
+        r#"{{"llm": {{"hub": {{"id": "hub-0000000000000003",
+          "listen": {{"address": "127.0.0.1:{port}", "node_password": "np",
+            "cert_file": "{}", "key_file": "{}"}}}}}}}}"#,
+        cf.display(),
+        kf.display()
+    ));
+    let files = roles.roles.lock().unwrap().files();
+    let paths: Vec<&str> = files.iter().map(|(p, _)| p.as_str()).collect();
+    assert!(
+        paths.contains(&cf.to_str().unwrap()) && paths.contains(&kf.to_str().unwrap()),
+        "{paths:?}"
+    );
+    drop(roles);
+    let _ = std::fs::remove_dir_all(&dir);
+}

@@ -324,18 +324,34 @@ fn cancel_idle_and_close() {
     std::thread::sleep(Duration::from_millis(50));
     st.cancel();
     assert_eq!(rx.recv_timeout(WAIT).unwrap(), Some(Error::Canceled));
-    // Idle: both ends end.
+    // Idle: both ends end. Both time the stream out after the same `stream_idle`, and
+    // whichever fires first decides what the other hears (fit's `TestStreamIdleTimeout`): the
+    // responder its own idle timeout or the opener's cancel, the opener its own idle timeout
+    // or the responder's, carried by its error end.
+    let responder_idle = |e: Option<Error>| {
+        assert!(
+            matches!(e, Some(Error::StreamIdle | Error::Canceled)),
+            "the responder's end: {e:?}"
+        );
+    };
+    let opener_idle = |r: Result<(), Error>| match r {
+        Err(Error::StreamIdle) => {}
+        Err(Error::Remote { msg, .. }) if msg == Error::StreamIdle.to_string() => {}
+        r => panic!("the opener's end: {r:?}"),
+    };
     let st = d.open_stream("/hold", b"").unwrap();
     let r = read_all(&st);
-    assert_eq!(rx.recv_timeout(WAIT).unwrap(), Some(Error::StreamIdle));
-    assert!(r.recv_timeout(WAIT).unwrap().1.is_err());
+    responder_idle(rx.recv_timeout(WAIT).unwrap());
+    opener_idle(r.recv_timeout(WAIT).unwrap().1);
     // A keep-alive holds it open past the idle timeout.
     let st = d.open_stream("/hold", b"").unwrap();
+    let r = read_all(&st);
     let stop = st.keep_alive(Duration::from_millis(80));
     std::thread::sleep(Duration::from_millis(700));
     assert!(!st.is_finished());
     stop.store(true, Ordering::Release);
-    assert_eq!(rx.recv_timeout(WAIT).unwrap(), Some(Error::StreamIdle));
+    responder_idle(rx.recv_timeout(WAIT).unwrap());
+    opener_idle(r.recv_timeout(WAIT).unwrap().1);
     // Close fails what is pending.
     let st = d.open_stream("/hold", b"").unwrap();
     let r = read_all(&st);

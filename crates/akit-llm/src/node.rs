@@ -269,6 +269,10 @@ impl Role for Node {
         Some(self.0.base.mesh.tokens())
     }
 
+    fn files(&self) -> Vec<(String, [u8; 32])> {
+        self.0.base.mesh.files()
+    }
+
     fn api(&self) -> Option<Api> {
         Some(Arc::new(self.0.base.local.clone()))
     }

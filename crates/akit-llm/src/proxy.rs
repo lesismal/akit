@@ -278,6 +278,10 @@ impl Role for Proxy {
         Some(self.0.base.mesh.tokens())
     }
 
+    fn files(&self) -> Vec<(String, [u8; 32])> {
+        self.0.base.mesh.files()
+    }
+
     fn api(&self) -> Option<akit_roles::host::Api> {
         Some(Arc::new(self.0.base.local.clone()))
     }

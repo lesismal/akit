@@ -1722,8 +1722,8 @@ link with fit's (decision 038).
 - **Touches**: `akit-llm` (new).
 - **fit**: `llm/internal/wire`, `llm/internal/mesh`, `llm/internal/role`; I107, I159, I160.
 - **Status**: done (2026-11-27). See the progress log. Left to the roles' iterations: a listener's
-  certificate read again when its files change, and `self_signed` (the role makes it, I105–I107);
-  `/mesh/*` methods for the pages (I109).
+  certificate read again when its files change (done with I108, decision 44), and `self_signed`
+  (the role makes it, I105–I107); `/mesh/*` methods for the pages (I109).
 
 ### I105 LLM II: the node
 

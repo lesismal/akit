@@ -20,6 +20,23 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-27: the LLM mesh listener's certificate read again; a session test's race
+
+- Decision 44's part left to the LLM track: a mesh listener's `cert_file` and `key_file` are read
+  again at each apply (as `akit run -watch-certs` applies the config once a role's files change),
+  and a certificate that changed is served from then on through akio-tls's `CertStore`, in place:
+  the listener and its links stay, new links see the new fingerprint. Files that do not load
+  (a certificate written, its key not yet) leave the running certificate, logged. The hub, node
+  and proxy report the files through `Role::files` (I102d's), so `-watch-certs` watches them.
+  Tested: `mesh::tests::cert_files_read_again`, `tests/hub_manage.rs`'s `listener_files_reported`.
+- `wire::session::tests::cancel_idle_and_close` failed on gpu51 (10 of 13 runs on io_uring, 1 of
+  3 on epoll, on akio `6151f5c5` as on `8a9601b9`): both ends of a stream time it out after the
+  same `stream_idle`, and the opener's timeout cancels the stream (a stream-cancel frame), so the
+  responder hears `Canceled` when the opener's timer runs first, as in fit, whose
+  `TestStreamIdleTimeout` takes either. The session is right; the test expected the responder's
+  own timeout only. It now takes either end's, as fit's tests do, and checks the opener's side
+  too (its own timeout, or the responder's carried by its error end).
+
 ### 2026-11-27: I108, the LLM node's management: hardware, GPUs, fixed actions and jobs
 
 - The hardware (`akit_llm::hw`, fit's `hwinfo_*.go`): read at the node's start and every

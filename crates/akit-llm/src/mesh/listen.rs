@@ -22,6 +22,13 @@ pub(crate) struct Lst {
     listener: Option<wire::Listener>,
     addr: String,
     fp: String,
+    /// The certificate served, replaced in place when its files change.
+    store: Option<akio::tls::CertStore>,
+    /// What is served (certificate, key), to tell a change.
+    pem: Option<(String, String)>,
+    /// The certificate's and key's files as last read, with their SHA-256 (zeros for one that
+    /// could not be read): for `akit run -watch-certs`.
+    files: Vec<(String, [u8; 32])>,
 }
 
 /// The listener as the pages show it: no password, no key.
@@ -104,15 +111,46 @@ pub fn fingerprint(cert_pem: &str) -> String {
         .unwrap_or_default()
 }
 
-/// The TLS a listener of `cfg` takes links with, and its certificate's fingerprint; `None`
-/// without TLS. Reads the certificate's files: the control thread's.
-fn server_tls(cfg: &ListenConfig) -> Result<Option<(akio::tls::ServerConfig, String)>, Error> {
+/// The SHA-256 of a file read, zeros for one that could not be.
+fn file_sum(r: &std::io::Result<String>) -> [u8; 32] {
+    r.as_ref()
+        .map(|d| akio_crypto::hash::Sha256::digest(d.as_bytes()))
+        .unwrap_or([0u8; 32])
+}
+
+/// Reads `cfg`'s certificate and key files, and records them in `files`.
+fn read_files(
+    cfg: &ListenConfig,
+    files: &mut Vec<(String, [u8; 32])>,
+) -> Result<(String, String), Error> {
+    let c = std::fs::read_to_string(&cfg.cert_file);
+    let k = std::fs::read_to_string(&cfg.key_file);
+    *files = vec![
+        (cfg.cert_file.clone(), file_sum(&c)),
+        (cfg.key_file.clone(), file_sum(&k)),
+    ];
+    let bad = |e: std::io::Error| bad_request(format!("the listener's certificate: {e}"));
+    Ok((c.map_err(bad)?, k.map_err(bad)?))
+}
+
+/// A listener's TLS: its configuration, the store it serves its certificate from, what it
+/// serves, and its fingerprint.
+type ServerTls = (
+    akio::tls::ServerConfig,
+    akio::tls::CertStore,
+    (String, String),
+    String,
+);
+
+/// The TLS a listener of `cfg` takes links with; `None` without TLS. Reads the certificate's
+/// files, recorded in `files`: the control thread's.
+fn server_tls(
+    cfg: &ListenConfig,
+    files: &mut Vec<(String, [u8; 32])>,
+) -> Result<Option<ServerTls>, Error> {
+    files.clear();
     let (cert, key) = if !cfg.cert_file.is_empty() {
-        let c = std::fs::read_to_string(&cfg.cert_file)
-            .map_err(|e| bad_request(format!("the listener's certificate: {e}")))?;
-        let k = std::fs::read_to_string(&cfg.key_file)
-            .map_err(|e| bad_request(format!("the listener's certificate: {e}")))?;
-        (c, k)
+        read_files(cfg, files)?
     } else if !cfg.cert.is_empty() {
         (cfg.cert.clone(), cfg.key.clone())
     } else if cfg.self_signed {
@@ -127,12 +165,15 @@ fn server_tls(cfg: &ListenConfig) -> Result<Option<(akio::tls::ServerConfig, Str
         return Err(bad("no certificate".to_owned()));
     }
     let k = akio::tls::PrivateKey::from_pem(key.as_bytes()).map_err(|e| bad(e.to_string()))?;
+    let store = akio::tls::CertStore::new();
     let sc = akio::tls::ServerConfig::builder(chain, k)
         .tls13_only(true)
         .session_tickets(false)
+        .cert_resolver(Arc::new(store.clone()))
         .build()
         .map_err(|e| bad(e.to_string()))?;
-    Ok(Some((sc, fingerprint(&cert))))
+    let fp = fingerprint(&cert);
+    Ok(Some((sc, store, (cert, key), fp)))
 }
 
 impl Mesh {
@@ -170,6 +211,9 @@ impl Mesh {
             && running == !cfg.addr.is_empty()
             && (!running || l.limits == Some(limits))
         {
+            if running && !cfg.cert_file.is_empty() {
+                reread(&mut l, &cfg);
+            }
             return Ok(());
         }
         inner.stop_listener_locked(&mut l);
@@ -177,6 +221,9 @@ impl Mesh {
         l.err.clear();
         l.limits = Some(limits);
         l.fp.clear();
+        l.store = None;
+        l.pem = None;
+        l.files.clear();
         if cfg.addr.is_empty() {
             akit_observe::info!(Llm, "mesh: not listening");
             return Ok(());
@@ -185,7 +232,10 @@ impl Mesh {
             l.err = e.to_string();
             Err(e)
         };
-        let tls = match server_tls(&cfg) {
+        let mut files = Vec::new();
+        let tls = server_tls(&cfg, &mut files);
+        l.files = files;
+        let tls = match tls {
             Ok(t) => t,
             Err(e) => return fail(&mut l, e),
         };
@@ -199,7 +249,11 @@ impl Mesh {
             Err(e) => return fail(&mut l, e),
         };
         let (tls_cfg, fp) = match tls {
-            Some((c, fp)) => (Some(c), fp),
+            Some((c, store, pem, fp)) => {
+                l.store = Some(store);
+                l.pem = Some(pem);
+                (Some(c), fp)
+            }
             None => (None, String::new()),
         };
         let al = listener.serve(addr, tls_cfg, inner.peer_addr_filter());
@@ -252,6 +306,13 @@ impl Mesh {
         Ok(())
     }
 
+    /// The listener's certificate and key files as last read, with their SHA-256 (zeros for one
+    /// that could not be read): `Role::files`, which `akit run -watch-certs` watches.
+    #[must_use]
+    pub fn files(&self) -> Vec<(String, [u8; 32])> {
+        lock(&self.0.lst).files.clone()
+    }
+
     /// Where the listener listens, its port chosen when the configuration's was 0; empty when
     /// it does not.
     #[must_use]
@@ -279,6 +340,45 @@ impl Mesh {
             fingerprint: l.fp.clone(),
             error: l.err.clone(),
         }
+    }
+}
+
+/// Reads a running listener's certificate files again (fit's listener reads them at each
+/// handshake once they changed): a certificate that changed is served to the handshakes from
+/// now on, in place, the listener and its links left alone; one that does not load leaves the
+/// running one, and is logged.
+fn reread(l: &mut Lst, cfg: &ListenConfig) {
+    let mut files = Vec::new();
+    let read = read_files(cfg, &mut files);
+    l.files = files;
+    let keep = |why: String| {
+        akit_observe::warn!(
+            Llm,
+            "mesh: the listener's certificate: {why}; the running certificate stays: addr={}",
+            cfg.addr
+        );
+    };
+    let pem = match read {
+        Ok(p) => p,
+        Err(e) => return keep(e.to_string()),
+    };
+    if l.pem.as_ref() == Some(&pem) {
+        return;
+    }
+    let Some(store) = &l.store else { return };
+    match akio::tls::CertifiedKey::from_pem(pem.0.as_bytes(), pem.1.as_bytes()) {
+        Ok(key) => {
+            store.set_default(Some(key));
+            l.fp = fingerprint(&pem.0);
+            l.pem = Some(pem);
+            akit_observe::info!(
+                Llm,
+                "mesh: the listener's certificate read again; peers pin it by this fingerprint: addr={} fingerprint={}",
+                l.addr,
+                l.fp
+            );
+        }
+        Err(e) => keep(e.to_string()),
     }
 }
 

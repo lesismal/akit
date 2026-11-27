@@ -19,6 +19,17 @@
 
 ## 日志
 
+### 2026-11-27：LLM mesh 监听器的证书重新读取；一个会话测试中的竞争
+
+- 决定 44 留给 LLM 轨道的部分：mesh 监听器的 `cert_file` 和 `key_file` 在每次应用配置时重新读取（角色的文件变化后
+  `akit run -watch-certs` 会重新应用配置），变化的证书此后经 akio-tls 的 `CertStore` 就地提供：监听器及其链路不变，新链路看到新的指纹。
+  无法加载的文件（证书已写入、密钥尚未写入）保留正在使用的证书，并记录日志。hub、node 和 proxy 经 `Role::files`（I102d 新增）报告这些
+  文件，由 `-watch-certs` 监视。测试：`mesh::tests::cert_files_read_again`、`tests/hub_manage.rs` 的 `listener_files_reported`。
+- `wire::session::tests::cancel_idle_and_close` 在 gpu51 上失败（io_uring 13 次中 10 次，epoll 3 次中 1 次，akio `6151f5c5` 与
+  `8a9601b9` 上都是）：流的两端在相同的 `stream_idle` 之后让流超时，打开方的超时会取消流（发送 stream-cancel 帧），因此打开方的计时器先触发时
+  响应方得到 `Canceled`，与 fit 相同，fit 的 `TestStreamIdleTimeout` 接受两者之一。会话没有问题；测试只期望响应方自己的超时。现在与 fit 的
+  测试一样接受任一端的超时，并且也检查打开方（它自己的超时，或经响应方的错误结束帧带来的超时）。
+
 ### 2026-11-27：I108，LLM node 的管理：硬件、GPU、固定动作和作业
 
 - 硬件（`akit_llm::hw`，fit 的 `hwinfo_*.go`）：node 启动时及每隔 `refresh_interval` 在 node 的池（2 个运行、16 个等待）上读取，

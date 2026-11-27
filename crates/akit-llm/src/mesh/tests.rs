@@ -494,6 +494,92 @@ fn tls_with_a_pin() {
     e.shutdown();
 }
 
+/// fit's `TestListenerCerts` for the mesh: a listener's `cert_file` read again at the next
+/// configuration when its files changed, served in place (its links stay), reported for
+/// `-watch-certs`; files that do not load leave the running certificate.
+#[test]
+fn cert_files_read_again() {
+    let e = engine();
+    let dir = std::env::temp_dir().join(format!(
+        "akit-llm-mesh-certs-{}-{}",
+        std::process::id(),
+        akit_roles::linktoken::unix_now()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    let (cf, kf) = (dir.join("c.pem"), dir.join("k.pem"));
+    let (c1, k1) = cert();
+    std::fs::write(&cf, &c1).unwrap();
+    std::fs::write(&kf, &k1).unwrap();
+    let hub = mesh(&e, ROLE_HUB, "hub-1");
+    let l = ListenConfig {
+        addr: "127.0.0.1:0".to_owned(),
+        password: "pw".to_owned(),
+        cert_file: cf.to_string_lossy().into_owned(),
+        key_file: kf.to_string_lossy().into_owned(),
+        ..ListenConfig::default()
+    };
+    hub.configure(&l, &[]).unwrap();
+    let addr = hub.listen_addr();
+    let l = ListenConfig {
+        addr: addr.clone(),
+        ..l
+    };
+    hub.configure(&l, &[]).unwrap(); // the address bound, as the config gives it
+    let fp1 = hub.listen_state().fingerprint;
+    assert_eq!(fp1, fingerprint(&c1));
+    let files = hub.files();
+    assert_eq!(files.len(), 2);
+    assert_eq!(files[0].1, akio_crypto::hash::Sha256::digest(c1.as_bytes()));
+    let n1 = mesh(&e, ROLE_NODE, "node-1");
+    n1.dial(&DialReq {
+        pin: fp1.clone(),
+        ..peer(&addr, ROLE_HUB, "pw")
+    })
+    .unwrap();
+    until("the first link", || hub.online("node-1"));
+    let before = hub.peers()[0].conn_id;
+    // A key not yet written: the running certificate stays.
+    let (c2, k2) = cert();
+    std::fs::write(&cf, &c2).unwrap();
+    hub.configure(&l, &[]).unwrap();
+    assert_eq!(hub.listen_state().fingerprint, fp1);
+    assert_eq!(
+        hub.files()[0].1,
+        akio_crypto::hash::Sha256::digest(c2.as_bytes())
+    );
+    // Both written: served from now on, in place.
+    std::fs::write(&kf, &k2).unwrap();
+    hub.configure(&l, &[]).unwrap();
+    let fp2 = hub.listen_state().fingerprint;
+    assert_eq!(fp2, fingerprint(&c2));
+    assert_eq!(hub.peers()[0].conn_id, before, "the link stayed");
+    let n2 = mesh(&e, ROLE_NODE, "node-2");
+    n2.dial(&DialReq {
+        pin: fp2,
+        ..peer(&addr, ROLE_HUB, "pw")
+    })
+    .unwrap();
+    until("a link to the new certificate", || hub.online("node-2"));
+    // The old pin no longer matches a new link.
+    let n3 = mesh(&e, ROLE_NODE, "node-3");
+    n3.dial(&DialReq {
+        pin: fp1,
+        ..peer(&addr, ROLE_HUB, "pw")
+    })
+    .unwrap();
+    until("the old pin refused", || !n3.targets()[0].error.is_empty());
+    assert!(!hub.online("node-3"));
+    // Files gone: reported as zeros, the certificate kept.
+    std::fs::remove_dir_all(&dir).unwrap();
+    hub.configure(&l, &[]).unwrap();
+    assert_eq!(hub.files()[0].1, [0u8; 32]);
+    assert!(hub.online("node-1") && hub.online("node-2"));
+    for m in [&hub, &n1, &n2, &n3] {
+        m.stop();
+    }
+    e.shutdown();
+}
+
 #[test]
 fn configure_moves_listener_and_targets() {
     let e = engine();
