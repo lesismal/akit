@@ -23,15 +23,17 @@
 
 ### 2026-11-28：测试的监听器绑定端口 0；四个只在负载下出现的失败
 
-- 一些测试在负载下以 "Address already in use" 失败（akit-llm 的 `a_dead_upstream_and_a_direct_node` 和
-  `mesh_methods`，akit 的 `edits_dry_runs_and_rollbacks_behind_the_token`）：它们先绑定端口 0 再释放来挑选端口，然后让
-  akit 去绑定。现在整个工作区测试中 akit 自己的监听器都绑定端口 0，测试再询问它们监听的位置：LLM 角色的 identity 和 API
-  （`Roles::start_with` 依次启动 hub、node 和 proxy）、`akit run` 打印的行（`akit: admin API on`、`akit: console on`、
-  `akit: listener "web" on`）及其 Admin API 的 `GET /status`、m2 的 `Proc` 和 `Inproc`、隧道 hub 的状态、控制台
-  （`Manager::console_addr`）、BitTorrent tracker 和客户端的地址、引擎的监听器。akit 现在像 fit 一样说出隧道 hub 的监听器、
-  proxy 的 forward 和 tracker 在哪里监听（"nodes and proxies link on"、"forwarding … to node"、"udp on"）。无人监听的地址用
-  端口 1。必须在绑定前写明端口的保留挑选的端口，并说明原因：fit、fib 和 Pebble 的进程以及 Pebble 回拨的端口、relay 端口范围、
-  `auto_https` 的端口、测试要读取其 identity `http_url` 的控制台、通过页面添加的 forward，以及在同一地址上替换或重启的监听器。
+- 一些测试在负载下以 "Address already in use" 失败（akit-llm 的 `a_dead_upstream_and_a_direct_node` 和 `mesh_methods`，
+  akit 的 `edits_dry_runs_and_rollbacks_behind_the_token`）：它们先绑定端口 0 再释放来挑选端口，
+  然后让 akit 去绑定。现在整个工作区测试中 akit 自己的监听器都绑定端口 0，测试再询问它们监听的位置：LLM 角色的 identity 和 API（`Roles::start_with` 依次启动 hub、
+  node 和 proxy）、`akit run` 打印的行（`akit: admin API on`、`akit: console on`、
+  `akit: listener "web" on`）及其 Admin API 的 `GET /status`、m2 的 `Proc` 和 `Inproc`、
+  隧道 hub 的状态、控制台（`Manager::console_addr`）、BitTorrent tracker 和客户端的地址、
+  引擎的监听器，以及 streaming 角色的地址（新增其句柄 `StreamingApi`）。akit 现在像 fit 一样说出隧道 hub 的监听器、
+  proxy 的 forward 和 tracker 在哪里监听（"nodes and proxies link on"、
+  "forwarding … to node"、"udp on"）。无人监听的地址用端口 1。必须在绑定前写明端口的保留挑选的端口，
+  并说明原因：fit、fib 和 Pebble 的进程以及 Pebble 回拨的端口、relay 端口范围、`auto_https` 的端口、
+  测试要读取其 identity `http_url` 的控制台、通过页面添加的 forward，以及在同一地址上替换或重启的监听器。
   端口 0 上的 WebRTC 媒体服务器仍通过探测找到端口；akio 的 A304 请求在绑定之后再设置其 candidate。
 - 四个只在负载下出现的失败：`h1_a_bad_chunk_size` 偶尔被应答 502（竞态，已修复：客户端已离开的 relay 不再应答失败）；
   `tcp_one_way_is_not_idle`、`connections_answered_past_their_time` 和 `http_probe_status_host_and_body` 因其测试内容
