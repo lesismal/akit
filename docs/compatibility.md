@@ -394,7 +394,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 1185 supported.
+3821 fields in 121 sections, at fit `7daee573`; 1198 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -403,7 +403,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`acme`](#fields-acme) | 43 | 43 | 0 |
 | [`admin`](#fields-admin) | 105 | 51 | 54 |
 | [`auto_https`](#fields-auto-https) | 5 | 5 | 0 |
-| [`bittorrent`](#fields-bittorrent) | 160 | 78 | 82 |
+| [`bittorrent`](#fields-bittorrent) | 160 | 91 | 69 |
 | [`engine`](#fields-engine) | 11 | 8 | 3 |
 | [`http.handlers/bt_publish`](#fields-http-handlers-bt-publish) | 3 | 0 | 3 |
 | [`http.handlers/bt_stream`](#fields-http-handlers-bt-stream) | 14 | 0 | 14 |
@@ -519,7 +519,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 161 | 3 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 76 | 0 |
-| **Total** | 3821 | 1185 | 2636 |
+| **Total** | 3821 | 1198 | 2623 |
 
 <a id="fields-access"></a>
 
@@ -741,22 +741,22 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `bittorrent.client.access.allow_files` | `array<string>` | not supported yet |
 | `bittorrent.client.access.deny` | `array<string>` | not supported yet |
 | `bittorrent.client.access.deny_files` | `array<string>` | not supported yet |
-| `bittorrent.client.alt_speed` | `object` | not supported yet |
-| `bittorrent.client.alt_speed.download_rate` | `integer` | not supported yet |
-| `bittorrent.client.alt_speed.schedules` | `array<object>` | not supported yet |
-| `bittorrent.client.alt_speed.schedules[].days` | `array<string>` | not supported yet |
-| `bittorrent.client.alt_speed.schedules[].from` | `string, required` | not supported yet |
-| `bittorrent.client.alt_speed.schedules[].to` | `string, required` | not supported yet |
-| `bittorrent.client.alt_speed.time_zone` | `string` | not supported yet |
-| `bittorrent.client.alt_speed.upload_rate` | `integer` | not supported yet |
+| `bittorrent.client.alt_speed` | `object` | supported |
+| `bittorrent.client.alt_speed.download_rate` | `integer` | supported |
+| `bittorrent.client.alt_speed.schedules` | `array<object>` | supported |
+| `bittorrent.client.alt_speed.schedules[].days` | `array<string>` | supported |
+| `bittorrent.client.alt_speed.schedules[].from` | `string, required` | supported |
+| `bittorrent.client.alt_speed.schedules[].to` | `string, required` | supported |
+| `bittorrent.client.alt_speed.time_zone` | `string` | supported |
+| `bittorrent.client.alt_speed.upload_rate` | `integer` | supported |
 | `bittorrent.client.categories` | `array<object>` | supported |
 | `bittorrent.client.categories[].dir` | `string` | supported |
-| `bittorrent.client.categories[].limits` | `object` | not supported yet |
-| `bittorrent.client.categories[].limits.download_rate` | `integer` | not supported yet |
+| `bittorrent.client.categories[].limits` | `object` | supported |
+| `bittorrent.client.categories[].limits.download_rate` | `integer` | supported |
 | `bittorrent.client.categories[].limits.max_conns` | `integer` | not supported yet |
-| `bittorrent.client.categories[].limits.seed_ratio` | `number` | not supported yet |
-| `bittorrent.client.categories[].limits.seed_time` | `duration` | not supported yet |
-| `bittorrent.client.categories[].limits.upload_rate` | `integer` | not supported yet |
+| `bittorrent.client.categories[].limits.seed_ratio` | `number` | supported |
+| `bittorrent.client.categories[].limits.seed_time` | `duration` | supported |
+| `bittorrent.client.categories[].limits.upload_rate` | `integer` | supported |
 | `bittorrent.client.categories[].limits.upload_slots` | `integer` | not supported yet |
 | `bittorrent.client.categories[].media_library` | `string` | not supported yet |
 | `bittorrent.client.categories[].name` | `string, required` | supported |

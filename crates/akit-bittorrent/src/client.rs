@@ -18,6 +18,7 @@
 //! `data_dir`, resuming without a check. A new client that cannot be made brings the old one back.
 
 mod fetch;
+mod limits;
 mod manage;
 mod pages;
 pub(crate) mod state;
@@ -39,9 +40,10 @@ use akio_bittorrent::magnet::Magnet;
 use akio_bittorrent::metainfo::{InfoHash, MetaInfo};
 use akio_bittorrent::mse::Policy;
 use akit_config::Config;
-use akit_config::bittorrent::{BitTorrentClient, BtEncryption};
+use akit_config::bittorrent::{BitTorrentClient, BitTorrentTorrentLimits, BtEncryption};
 use akit_roles::host::{Host, Info, Role};
 
+pub use limits::{ALT_AUTO, ALT_OFF, ALT_ON};
 use state::{Doc, Entry};
 
 /// The role's ID, and its member's path in the config.
@@ -138,6 +140,8 @@ pub struct AddRequest {
     pub peers: Vec<SocketAddr>,
     /// Its category (I153), `""` for none: its directory below.
     pub category: String,
+    /// Its own limits (I154), over its category's.
+    pub limits: BitTorrentTorrentLimits,
 }
 
 /// A torrent as the API reports it, fit's `bittorrent.Status` but for what later iterations add
@@ -255,6 +259,8 @@ struct Run {
     other: Vec<(String, akit_config::value::Value)>,
     /// `watch_dir`'s looks.
     watch: watch::Watch,
+    /// The alternative rates' zone and the API's choice (I154).
+    alt: limits::Alt,
 }
 
 /// What a client's event noted for the saver.
@@ -599,6 +605,8 @@ impl Run {
                         .map(ToString::to_string)
                         .collect(),
                     category: req.category.clone(),
+                    limits: req.limits.clone(),
+                    limits_other: Vec::new(),
                     other: Vec::new(),
                 },
                 mi,
@@ -620,6 +628,7 @@ impl Run {
             rec.entry.id = hex(&t.info_hash().0);
             let id = rec.entry.id.clone();
             run.recs.push(rec);
+            run.apply_limits();
             run.schedule();
             if let Err(e) = run.save() {
                 // Not kept: the client lets it go again.
@@ -795,13 +804,16 @@ impl ClientRole {
             other: doc.other,
             data_dir,
             watch: watch::Watch::default(),
+            alt: limits::Alt::default(),
         };
+        run.alt.open(cfg, &mut run.other)?;
         let seed = run.seed();
         for r in &mut run.recs {
             if r.err.is_empty() {
                 start(&run.client, r, seed);
             }
         }
+        run.apply_limits();
         run.schedule();
         Ok(run)
     }
@@ -830,8 +842,10 @@ impl Role for ClientRole {
                 for t in run.recs.iter().filter_map(|r| r.torrent.as_ref()) {
                     t.set_seed_limits(seed);
                 }
+                run.alt.open(cfg, &mut run.other)?;
                 run.downloads = absolute(&cfg.downloads());
                 run.cfg = cfg.clone();
+                run.apply_limits();
                 run.schedule();
             }
         } else {

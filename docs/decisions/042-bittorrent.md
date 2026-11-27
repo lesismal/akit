@@ -49,6 +49,15 @@ and a client with fast resume, wire compatible with libtorrent and aria2.
    `watch_dir` looks at most 100,000 entries of a directory a look. A category's `limits` and
    `media_library` are refused until I154 and the media library's track.
 
+6. **I154, as fit's I199**: a category's limits and a torrent's own are its rates and seed
+   limits through akio-bittorrent's per-torrent ones, own over category field by field; their
+   `max_conns` and `upload_slots` are refused until akio's A284, as are the client's `access`
+   and its connection limits (I154b). The alternative rates follow fit's rules (a range that
+   runs past midnight holds into the next day, `24:00` and an ending `00:00` are midnight at the
+   end, the API's `on` and `off` override the schedules until `auto`, saved in `torrents.json`'s
+   `alt_speed`); the zone is loaded when the role applies, a name that does not load refusing the
+   apply, as a log's `time_zone` is checked when the log opens.
+
 ## Consequences
 
 - A config fit runs that sets a field akio cannot give yet is refused by name, not run without it.

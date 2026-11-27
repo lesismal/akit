@@ -17,7 +17,7 @@ so in a note marked **akit:**; nine defaults that name the gateway are akit's, `
 say `fit` ([decision 037](../decisions/037-akit-names.md)).
 
 <!-- BEGIN GENERATED: summary -->
-akit reads **1185** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 181 objects akit reads, each has its table below.
+akit reads **1198** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 184 objects akit reads, each has its table below.
 <!-- END GENERATED -->
 
 How to read the tables:
@@ -2877,9 +2877,9 @@ a client (`bittorrent.client`) that downloads and seeds torrents on one port for
 is `bt_tracker`, and over UDP on its own `listen`. akit reads and checks the roles as fit does
 (I150); `akit run` runs the tracker from I151 and the client from I152, with categories,
 `watch_dir`, .torrent URLs, the queue and the disk check from I153. What later iterations run is
-refused as not supported yet: the client's `alt_speed`, `access`, `disk_queue_bytes`, `publish`,
-`rss`, a category's `limits` and `media_library`, and the limits akio-bittorrent does not set
-yet; the tracker's `auth`, `max_peers` and `store`.
+refused as not supported yet: the client's `access`, `disk_queue_bytes`, `publish`, `rss`, a
+category's `media_library`, and the limits akio-bittorrent does not set yet (`alt_speed` and a
+category's rates and seed limits run from I154); the tracker's `auth`, `max_peers` and `store`.
 
 ```fit
 bittorrent {
@@ -2913,7 +2913,7 @@ bittorrent {
 | `data_dir` | string | required | The directory the client's state is kept in: torrents.json, the list of torrents with their sources, directories, file priorities and whether they are paused; torrents/, their .torrent files; and resume/, their resume data, so that a restart resumes without hashing what is on disk again. Each file is written to a temporary file, synced and renamed into place. Made when missing. A state file that does not read, or is larger than its bound, keeps the role from starting, rather than being overwritten. A change makes a new client, which starts from the state in the new directory, as a restart would; the old directory is left as it was saved. |
 | `listen` | string | required | The host and port peers reach the client at, the same port for TCP and UDP (uTP, the DHT and UDP trackers share it), as in ":6881". Port 0 picks one free for both. A change makes a new client: the torrents are saved, the client closed, and the torrents added to the new one, resuming without a check. |
 | `access` | object |  | **Not supported yet**: refused by name. The peer addresses the client deals with, deciding before the global access: a peer it refuses is closed as soon as it connects over TCP, has its uTP connection ignored, is never dialed, and as a DHT node gets no answers. Trackers and web seeds are URLs, not peers, and are not asked about. A change applies at once, closing the connected peers it now refuses. Every address when left out, unless the global access says otherwise. |
-| `alt_speed` | object |  | **Not supported yet**: refused by name. Alternative rates, in place of limits' upload_rate and download_rate while one of their schedules holds, or while the API turns them on. None when left out. |
+| `alt_speed` | [object](#cfg-bittorrent-client-alt-speed) |  | Alternative rates, in place of limits' upload_rate and download_rate while one of their schedules holds, or while the API turns them on. None when left out. |
 | `categories` | list of [object](#cfg-bittorrent-client-categories) |  | The categories a torrent may be added in: each downloads into a directory of its own, gives its torrents its own limits, and may name a media_library that is scanned again when a torrent of it completes. A torrent added with no category downloads into download_dir. A change applies in place: limits to the torrents of the category at once, a new directory to the torrents added from then on. A torrent whose category is removed keeps its directory and loses the category's limits. At most 1000. |
 | `console` | [object](#cfg-bittorrent-client-console) |  | The client's web pages; none when left out. |
 | `dht` | boolean | `true` | Find peers through the mainline DHT (BEP 5), bootstrapping from the public routers. On when left out. A change makes a new client. |
@@ -2943,8 +2943,48 @@ bittorrent {
 | --- | --- | --- | --- |
 | `name` | string | required | The category's name, which the API and watch_dir's subdirectories name it by. Letters, digits, '_', '.' and '-'. |
 | `dir` | string |  | The directory the category's torrents download into: a relative path is below download_dir, and may not lead out of it. A torrent keeps the directory it was added with when this changes. <download_dir>/<name> when left out. |
-| `limits` | object |  | **Not supported yet**: refused by name. The limits of each torrent of the category, under the client's; a torrent's own limits take the place of those they set. The client's alone when left out. |
+| `limits` | [object](#cfg-bittorrent-client-categories-limits) |  | The limits of each torrent of the category, under the client's; a torrent's own limits take the place of those they set. The client's alone when left out. |
 | `media_library` | string |  | **Not supported yet**: refused by name. A media_library to scan again when a torrent of the category completes, so that what it downloaded into the library's roots appears in its catalog. None when left out. |
+<!-- END GENERATED -->
+
+### `bittorrent.client.categories[].limits`
+
+<!-- BEGIN GENERATED: bittorrent.client.categories[].limits -->
+<a id="cfg-bittorrent-client-categories-limits"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `download_rate` | integer |  | The most bytes per second the torrent downloads, under the client's rate. The client's rate alone when left out, 0 or negative. |
+| `max_conns` | integer |  | **Not supported yet**: refused by name. The most peer connections of the torrent, in place of max_conns_per_torrent, above or below it; negative is the client's max_conns alone. max_conns_per_torrent when left out or 0. |
+| `seed_ratio` | number |  | Pause the torrent once it has uploaded this many times its size, in place of the client's; negative seeds for ever. The client's when left out or 0. |
+| `seed_time` | duration |  | Pause the torrent once it has seeded this long, in place of the client's; negative seeds for ever. The client's when left out or 0. |
+| `upload_rate` | integer |  | The most bytes per second the torrent uploads, under the client's rate. The client's rate alone when left out, 0 or negative. |
+| `upload_slots` | integer |  | **Not supported yet**: refused by name. How many peers the torrent uploads to at once, beside one optimistic unchoke, in place of the client's; negative unchokes every interested peer. The client's when left out or 0. |
+<!-- END GENERATED -->
+
+### `bittorrent.client.alt_speed`
+
+<!-- BEGIN GENERATED: bittorrent.client.alt_speed -->
+<a id="cfg-bittorrent-client-alt-speed"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `download_rate` | integer, 0 or more |  | The most bytes per second downloaded while the alternative rates hold, all torrents together. Unlimited when left out or 0. |
+| `schedules` | list of [object](#cfg-bittorrent-client-alt-speed-schedules) |  | When the alternative rates hold: while any of these does. Only while the API turns them on when left out. At most 100. |
+| `time_zone` | string |  | The zone the schedules' times are in: local (the default), utc, or an IANA zone name such as Asia/Shanghai. |
+| `upload_rate` | integer, 0 or more |  | The most bytes per second uploaded while the alternative rates hold, all torrents together. Unlimited when left out or 0. |
+<!-- END GENERATED -->
+
+### `bittorrent.client.alt_speed.schedules[]`
+
+<!-- BEGIN GENERATED: bittorrent.client.alt_speed.schedules[] -->
+<a id="cfg-bittorrent-client-alt-speed-schedules"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `from` | string | required | The time the range begins at, HH:MM, 00:00 to 23:59. |
+| `to` | string | required | The time the range ends at, HH:MM, 00:01 to 24:00, not included: one earlier than from runs past midnight, as 22:00 to 06:00. It may not equal from. |
+| `days` | list of string |  | The days the range begins on: mon, tue, wed, thu, fri, sat, sun, weekdays (mon to fri) and weekend (sat and sun). A range that runs past midnight holds into the next day. Every day when left out. |
 <!-- END GENERATED -->
 
 ### `bittorrent.client.limits`

@@ -1082,6 +1082,57 @@ fn bittorrent(out: &mut Vec<(String, String, Read)>) {
             f("watch_interval", q("1s"), q("2s")),
             f("watch_max_files", "1", "2"),
             f("url_timeout", q("1s"), q("2s")),
+            f("alt_speed", "{}", r#"{"upload_rate": 1}"#),
+        ],
+    );
+    let aw = |m: &str| {
+        client(&format!(
+            r#"{{"listen": "127.0.0.1:6881", "data_dir": "d", "alt_speed": {m}}}"#
+        ))
+    };
+    emit(
+        out,
+        "bittorrent.client.alt_speed",
+        &aw,
+        &[],
+        vec![
+            f("upload_rate", "1", "2"),
+            f("download_rate", "1", "2"),
+            f("schedules", "[]", r#"[{"from": "01:00", "to": "02:00"}]"#),
+            f("time_zone", q("utc"), q("local")),
+        ],
+    );
+    let sw = |m: &str| {
+        client(&format!(
+            r#"{{"listen": "127.0.0.1:6881", "data_dir": "d", "alt_speed": {{"schedules": [{m}]}}}}"#
+        ))
+    };
+    emit(
+        out,
+        "bittorrent.client.alt_speed.schedules[]",
+        &sw,
+        &[("from", q("01:00")), ("to", q("02:00"))],
+        vec![
+            f("days", r#"["mon"]"#, r#"["tue"]"#),
+            f("from", q("01:00"), q("01:30")),
+            f("to", q("02:00"), q("03:00")),
+        ],
+    );
+    let clw = |m: &str| {
+        client(&format!(
+            r#"{{"listen": "127.0.0.1:6881", "data_dir": "d", "categories": [{{"name": "a", "limits": {m}}}]}}"#
+        ))
+    };
+    emit(
+        out,
+        "bittorrent.client.categories[].limits",
+        &clw,
+        &[],
+        vec![
+            f("upload_rate", "1", "2"),
+            f("download_rate", "1", "2"),
+            f("seed_ratio", "1", "2"),
+            f("seed_time", q("1h"), q("2h")),
         ],
     );
     let catw = |m: &str| {
@@ -1094,7 +1145,11 @@ fn bittorrent(out: &mut Vec<(String, String, Read)>) {
         "bittorrent.client.categories[]",
         &catw,
         &[("name", q("a"))],
-        vec![f("name", q("a"), q("b")), f("dir", q("a"), q("b"))],
+        vec![
+            f("name", q("a"), q("b")),
+            f("dir", q("a"), q("b")),
+            f("limits", "{}", r#"{"upload_rate": 1}"#),
+        ],
     );
     let lw = |m: &str| {
         client(&format!(

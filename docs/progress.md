@@ -143,6 +143,23 @@ done and where the work differs from the plan.
   uplink is still the proxy's. After the fix: 250 of 250 runs alone on epoll, 50 of 50 on io_uring
   (`AKIO_DEFAULT_BACKEND=uring`).
 
+### 2026-11-27: I154, schedules and limits; I154b split
+
+- As fit's I199 (`akit_bittorrent::client::limits`): `alt_speed` (`upload_rate`,
+  `download_rate`, weekly `schedules` with `days`, `from` and `to`, `time_zone`) read and checked
+  as fit's, switching the client's rates while a schedule holds in its zone or while the API's
+  `set_alt_speed("on")` says, until `auto`; the choice kept in `torrents.json` (`alt_speed`);
+  without `alt_speed` the rates never switch. A category's `limits` and a torrent's own
+  (`set_torrent_limits`, kept in `torrents.json` as fit keeps them, members akit does not read
+  written back) set each torrent's rates and seed limits through akio-bittorrent's, own over
+  category, zero the client's, negative none.
+- The client's `access`, its connection limits and a category's `max_conns` and `upload_slots`
+  wait for akio's A284 (I154b): still refused as not supported yet.
+- Tests: `client::tests::limits_and_alt_speed` (fit's `TestTorrentLimits` and `TestAltSpeed`:
+  the schedule, `on`, `off`, the choice and the limits across a restart, a reload without
+  `alt_speed`, a zone that does not load), `bittorrent::tests::alt_speed_and_limits` (fit's
+  schedule checks and windows: overnight ranges, weekends to 24:00, an ending 00:00).
+
 ### 2026-11-27: I153, adding torrents, categories, the queue and the disk
 
 - As fit's I198 (`akit_bittorrent::client::{manage,watch,fetch}`): `categories` (`name`, `dir`:

@@ -1460,3 +1460,18 @@ bittorrent.client.url_timeout
 bittorrent.client.limits.max_active_downloads
 bittorrent.client.limits.max_active_seeds
 bittorrent.client.limits.min_free_bytes
+# I154: alt_speed and its schedules, a category's limits (but max_conns and upload_slots, akio's
+# A284).
+bittorrent.client.alt_speed
+bittorrent.client.alt_speed.upload_rate
+bittorrent.client.alt_speed.download_rate
+bittorrent.client.alt_speed.schedules
+bittorrent.client.alt_speed.schedules[].days
+bittorrent.client.alt_speed.schedules[].from
+bittorrent.client.alt_speed.schedules[].to
+bittorrent.client.alt_speed.time_zone
+bittorrent.client.categories[].limits
+bittorrent.client.categories[].limits.upload_rate
+bittorrent.client.categories[].limits.download_rate
+bittorrent.client.categories[].limits.seed_ratio
+bittorrent.client.categories[].limits.seed_time

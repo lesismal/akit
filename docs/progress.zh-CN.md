@@ -108,6 +108,18 @@
   `setNodes` 持有它自己的锁），因此为新 uplink 收下的列表总在其后；断开链路的 hub 也在同一把锁下忘掉其节点，且仅当其
   uplink 仍属于该 proxy。修复后：epoll 上单独运行 250 次、io_uring（`AKIO_DEFAULT_BACKEND=uring`）上 50 次，全部通过。
 
+### 2026-11-27：I154，时间表和限制；拆出 I154b
+
+- 同 fit 的 I199（`akit_bittorrent::client::limits`）：`alt_speed`（`upload_rate`、`download_rate`、带 `days`、`from` 和 `to` 的
+  每周 `schedules`、`time_zone`）按 fit 的方式读取和检查，在某个时间表于其时区内成立时，或在 API 的 `set_alt_speed("on")` 要求时
+  （直到 `auto`），切换客户端的速率；选择保存在 `torrents.json`（`alt_speed`）中；没有 `alt_speed` 时速率从不切换。分类的
+  `limits` 和种子自己的限制（`set_torrent_limits`，像 fit 一样保存在 `torrents.json` 中，akit 不读取的成员原样写回）通过
+  akio-bittorrent 的设置决定每个种子的速率和做种限制，种子自己的覆盖分类的，零取客户端的，负数表示无限制。
+- 客户端的 `access`、其连接限制以及分类的 `max_conns` 和 `upload_slots` 等待 akio 的 A284（I154b）：仍以"尚不支持"拒绝。
+- 测试：`client::tests::limits_and_alt_speed`（fit 的 `TestTorrentLimits` 和 `TestAltSpeed`：时间表、`on`、`off`、选择和限制跨重启
+  保留、不含 `alt_speed` 的重载、加载不了的时区），`bittorrent::tests::alt_speed_and_limits`（fit 的时间表检查和时间窗：跨夜的
+  时间段、到 24:00 的周末、作为结束的 00:00）。
+
 ### 2026-11-27：I153，添加种子、分类、队列和磁盘
 
 - 同 fit 的 I198（`akit_bittorrent::client::{manage,watch,fetch}`）：`categories`（`name`、`dir`：相对路径在 `download_dir`

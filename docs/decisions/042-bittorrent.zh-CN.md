@@ -39,6 +39,12 @@ BitTorrent crate，akio-bittorrent：bencode、v1/v2/混合种子、磁力链接
    .torrent URL 在监听器引擎上用 akio 的 HTTP 客户端获取，重定向由角色跟随，以便重定向到磁力链接时添加该链接。
    `watch_dir` 每次查看一个目录至多 100,000 个条目。分类的 `limits` 和 `media_library` 在 I154 和媒体库路线之前被拒绝。
 
+6. **I154，同 fit 的 I199**：分类的限制和种子自己的限制通过 akio-bittorrent 的单个种子速率和做种限制实现，逐字段以种子
+   自己的覆盖分类的；它们的 `max_conns` 和 `upload_slots`，以及客户端的 `access` 和连接限制（I154b），在 akio 的 A284 之前
+   被拒绝。备用速率遵循 fit 的规则（跨过午夜的时间段持续到次日，`24:00` 以及作为结束的 `00:00` 表示当天结束时的午夜，API 的
+   `on` 和 `off` 在 `auto` 之前覆盖时间表，保存在 `torrents.json` 的 `alt_speed` 中）；时区在角色应用配置时加载，加载不了的
+   名字使该次应用被拒绝，如同日志的 `time_zone` 在打开日志时检查。
+
 ## 后果
 
 - fit 能运行而设置了 akio 尚不能提供的字段的配置，会按名称被拒绝，而不是缺少它照样运行。

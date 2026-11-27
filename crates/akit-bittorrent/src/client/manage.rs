@@ -216,7 +216,11 @@ impl Shared {
         let mut g = lock(&self.run);
         let Some(run) = g.as_mut() else { return };
         let mut changed = run.take_notes(notes, all || force);
-        changed |= run.place_magnets();
+        if run.place_magnets() {
+            changed = true;
+            run.apply_limits();
+        }
+        run.apply_alt();
         run.schedule();
         let now = Instant::now();
         if force || now >= run.watch.next {

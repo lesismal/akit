@@ -324,7 +324,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 1185 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 1198 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -333,7 +333,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`acme`](#fields-acme) | 43 | 43 | 0 |
 | [`admin`](#fields-admin) | 105 | 51 | 54 |
 | [`auto_https`](#fields-auto-https) | 5 | 5 | 0 |
-| [`bittorrent`](#fields-bittorrent) | 160 | 78 | 82 |
+| [`bittorrent`](#fields-bittorrent) | 160 | 91 | 69 |
 | [`engine`](#fields-engine) | 11 | 8 | 3 |
 | [`http.handlers/bt_publish`](#fields-http-handlers-bt-publish) | 3 | 0 | 3 |
 | [`http.handlers/bt_stream`](#fields-http-handlers-bt-stream) | 14 | 0 | 14 |
@@ -449,7 +449,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 161 | 3 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 76 | 0 |
-| **合计** | 3821 | 1185 | 2636 |
+| **合计** | 3821 | 1198 | 2623 |
 
 <a id="fields-access"></a>
 
@@ -671,22 +671,22 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `bittorrent.client.access.allow_files` | `array<string>` | 尚不支持（not supported yet） |
 | `bittorrent.client.access.deny` | `array<string>` | 尚不支持（not supported yet） |
 | `bittorrent.client.access.deny_files` | `array<string>` | 尚不支持（not supported yet） |
-| `bittorrent.client.alt_speed` | `object` | 尚不支持（not supported yet） |
-| `bittorrent.client.alt_speed.download_rate` | `integer` | 尚不支持（not supported yet） |
-| `bittorrent.client.alt_speed.schedules` | `array<object>` | 尚不支持（not supported yet） |
-| `bittorrent.client.alt_speed.schedules[].days` | `array<string>` | 尚不支持（not supported yet） |
-| `bittorrent.client.alt_speed.schedules[].from` | `string, required` | 尚不支持（not supported yet） |
-| `bittorrent.client.alt_speed.schedules[].to` | `string, required` | 尚不支持（not supported yet） |
-| `bittorrent.client.alt_speed.time_zone` | `string` | 尚不支持（not supported yet） |
-| `bittorrent.client.alt_speed.upload_rate` | `integer` | 尚不支持（not supported yet） |
+| `bittorrent.client.alt_speed` | `object` | 已支持 |
+| `bittorrent.client.alt_speed.download_rate` | `integer` | 已支持 |
+| `bittorrent.client.alt_speed.schedules` | `array<object>` | 已支持 |
+| `bittorrent.client.alt_speed.schedules[].days` | `array<string>` | 已支持 |
+| `bittorrent.client.alt_speed.schedules[].from` | `string, required` | 已支持 |
+| `bittorrent.client.alt_speed.schedules[].to` | `string, required` | 已支持 |
+| `bittorrent.client.alt_speed.time_zone` | `string` | 已支持 |
+| `bittorrent.client.alt_speed.upload_rate` | `integer` | 已支持 |
 | `bittorrent.client.categories` | `array<object>` | 已支持 |
 | `bittorrent.client.categories[].dir` | `string` | 已支持 |
-| `bittorrent.client.categories[].limits` | `object` | 尚不支持（not supported yet） |
-| `bittorrent.client.categories[].limits.download_rate` | `integer` | 尚不支持（not supported yet） |
+| `bittorrent.client.categories[].limits` | `object` | 已支持 |
+| `bittorrent.client.categories[].limits.download_rate` | `integer` | 已支持 |
 | `bittorrent.client.categories[].limits.max_conns` | `integer` | 尚不支持（not supported yet） |
-| `bittorrent.client.categories[].limits.seed_ratio` | `number` | 尚不支持（not supported yet） |
-| `bittorrent.client.categories[].limits.seed_time` | `duration` | 尚不支持（not supported yet） |
-| `bittorrent.client.categories[].limits.upload_rate` | `integer` | 尚不支持（not supported yet） |
+| `bittorrent.client.categories[].limits.seed_ratio` | `number` | 已支持 |
+| `bittorrent.client.categories[].limits.seed_time` | `duration` | 已支持 |
+| `bittorrent.client.categories[].limits.upload_rate` | `integer` | 已支持 |
 | `bittorrent.client.categories[].limits.upload_slots` | `integer` | 尚不支持（not supported yet） |
 | `bittorrent.client.categories[].media_library` | `string` | 尚不支持（not supported yet） |
 | `bittorrent.client.categories[].name` | `string, required` | 已支持 |

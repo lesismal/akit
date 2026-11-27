@@ -774,3 +774,68 @@ fn add_by_url() {
         }
     }
 }
+
+/// fit's `TestTorrentLimits` and `TestAltSpeed` (I154): a category's limits on its torrents, a
+/// torrent's own over them, kept across a restart; the alternative rates turned on and off by
+/// the API, following a schedule that holds all day, the choice kept across a restart, and a
+/// reload without `alt_speed` going back to the client's rates.
+#[test]
+fn limits_and_alt_speed() {
+    use akit_config::bittorrent::BitTorrentTorrentLimits;
+    let dir = tmp("limits");
+    let port = free_port();
+    let cfg = r#", "limits": {"upload_rate": 1000, "download_rate": 2000}, "categories": [{"name": "c", "limits": {"upload_rate": 300, "download_rate": -1}}], "alt_speed": {"upload_rate": 10, "download_rate": 20, "schedules": [{"from": "00:00", "to": "24:00"}], "time_zone": "utc"}"#;
+    let mut env = Env::start(&dir, port, cfg);
+    let api = env.api();
+    // The schedule holds all day: the alternative rates hold.
+    assert_eq!(api.alt_speed().unwrap(), ("auto".to_owned(), true));
+    assert_eq!(api.client_rates(), Some((Some(10), Some(20))));
+    assert_eq!(api.set_alt_speed("off").unwrap(), ("off".to_owned(), false));
+    assert_eq!(api.client_rates(), Some((Some(1000), Some(2000))));
+    assert!(matches!(
+        api.set_alt_speed("nope"),
+        Err(ApiError::BadRequest(_))
+    ));
+    let s = api
+        .add(
+            Source::Torrent(named("l.bin", &data(50_000, 11)).to_bytes()),
+            AddRequest {
+                category: "c".into(),
+                ..AddRequest::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(api.torrent_rates(&s.id), Some((Some(300), None)));
+    let own = BitTorrentTorrentLimits {
+        download_rate: 77,
+        ..BitTorrentTorrentLimits::default()
+    };
+    api.set_torrent_limits(&s.id, own).unwrap();
+    assert_eq!(api.torrent_rates(&s.id), Some((Some(300), Some(77))));
+    drop(env);
+    env = Env::start(&dir, port, cfg);
+    let api = env.api();
+    assert_eq!(
+        api.alt_speed().unwrap(),
+        ("off".to_owned(), false),
+        "the choice kept"
+    );
+    assert_eq!(
+        api.torrent_rates(&s.id),
+        Some((Some(300), Some(77))),
+        "the limits kept"
+    );
+    assert_eq!(api.get(&s.id).unwrap().category, "c");
+    api.set_alt_speed("on").unwrap();
+    assert_eq!(api.client_rates(), Some((Some(10), Some(20))));
+    // A reload without alt_speed: the client's rates, whatever the choice.
+    env.apply(port, r#", "limits": {"upload_rate": 1000, "download_rate": 2000}, "categories": [{"name": "c"}]"#)
+        .unwrap();
+    assert_eq!(api.client_rates(), Some((Some(1000), Some(2000))));
+    assert_eq!(api.torrent_rates(&s.id), Some((None, Some(77))));
+    // A zone that does not load refuses the reload.
+    let e = env
+        .apply(port, r#", "alt_speed": {"time_zone": "Nowhere/Nothing"}"#)
+        .unwrap_err();
+    assert!(e.contains("time_zone"), "{e}");
+}

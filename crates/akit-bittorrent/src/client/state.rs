@@ -11,7 +11,7 @@
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
-use akit_config::bittorrent::MAX_BT_TORRENTS;
+use akit_config::bittorrent::{BitTorrentTorrentLimits, MAX_BT_TORRENTS};
 use akit_config::value::{self, Value};
 
 /// fit's `StateVersion`.
@@ -44,6 +44,10 @@ pub(crate) struct Entry {
     pub(crate) peers: Vec<String>,
     /// Its category (I153), `""` for none.
     pub(crate) category: String,
+    /// Its own limits (I154), and the members of them akit does not read (`max_conns`,
+    /// `upload_slots`), kept as read.
+    pub(crate) limits: BitTorrentTorrentLimits,
+    pub(crate) limits_other: Vec<(String, Value)>,
     /// The members akit does not read, kept as read.
     pub(crate) other: Vec<(String, Value)>,
 }
@@ -86,7 +90,7 @@ fn boolean(v: Option<&Value>) -> bool {
     matches!(v, Some(Value::Bool(true)))
 }
 
-const KNOWN: [&str; 9] = [
+const KNOWN: [&str; 10] = [
     "id",
     "name",
     "magnet",
@@ -96,7 +100,83 @@ const KNOWN: [&str; 9] = [
     "completed",
     "peers",
     "category",
+    "limits",
 ];
+
+fn number_i64(v: Option<&Value>) -> i64 {
+    match v {
+        // fit writes integers; one that is not reads as no limit.
+        Some(Value::Number(n)) => n.parse::<i64>().unwrap_or(0),
+        _ => 0,
+    }
+}
+
+/// A torrent's own limits as fit writes them: rates and a ratio as numbers, the seed time as
+/// a duration (`"1h0m0s"`) or nanoseconds.
+fn limits_of(v: Option<&Value>) -> (BitTorrentTorrentLimits, Vec<(String, Value)>) {
+    let Some(Value::Object(m)) = v else {
+        return (BitTorrentTorrentLimits::default(), Vec::new());
+    };
+    let get = |k: &str| m.iter().find(|(x, _)| x == k).map(|(_, v)| v);
+    let seed_time = match get("seed_time") {
+        Some(Value::String(t)) => akit_config::duration::parse(t)
+            .and_then(Result::ok)
+            .unwrap_or_default(),
+        Some(Value::Number(n)) => n
+            .parse::<u64>()
+            .map(std::time::Duration::from_nanos)
+            .unwrap_or_default(),
+        _ => std::time::Duration::ZERO,
+    };
+    let l = BitTorrentTorrentLimits {
+        upload_rate: number_i64(get("upload_rate")),
+        download_rate: number_i64(get("download_rate")),
+        seed_ratio: match get("seed_ratio") {
+            Some(Value::Number(n)) => n.parse().unwrap_or(0.0),
+            _ => 0.0,
+        },
+        seed_time,
+    };
+    let other = m
+        .iter()
+        .filter(|(k, _)| {
+            !["upload_rate", "download_rate", "seed_ratio", "seed_time"].contains(&k.as_str())
+        })
+        .cloned()
+        .collect();
+    (l, other)
+}
+
+/// A torrent's own limits, as fit writes them; `None` when it sets none.
+fn limits_value(l: &BitTorrentTorrentLimits, other: &[(String, Value)]) -> Option<Value> {
+    let mut m = Vec::new();
+    if l.upload_rate != 0 {
+        m.push((
+            "upload_rate".to_owned(),
+            Value::Number(l.upload_rate.to_string()),
+        ));
+    }
+    if l.download_rate != 0 {
+        m.push((
+            "download_rate".to_owned(),
+            Value::Number(l.download_rate.to_string()),
+        ));
+    }
+    if l.seed_ratio != 0.0 {
+        m.push((
+            "seed_ratio".to_owned(),
+            Value::Number(l.seed_ratio.to_string()),
+        ));
+    }
+    if !l.seed_time.is_zero() {
+        m.push((
+            "seed_time".to_owned(),
+            Value::String(akit_config::duration::format(l.seed_time)),
+        ));
+    }
+    m.extend(other.iter().cloned());
+    (!m.is_empty()).then_some(Value::Object(m))
+}
 
 /// Reads `<dir>/torrents.json`, fit's `loadState`: none when it is not there; an error, which
 /// keeps the role from starting rather than have it overwrite the file, when it does not read.
@@ -213,6 +293,8 @@ pub(crate) fn load(dir: &Path) -> Result<Doc, String> {
             added: string(get("added")),
             completed: boolean(get("completed")),
             category: string(get("category")),
+            limits: limits_of(get("limits")).0,
+            limits_other: limits_of(get("limits")).1,
             peers,
             other: members
                 .iter()
@@ -255,6 +337,9 @@ pub(crate) fn encode(doc: &Doc, saved: &str) -> String {
             m.push(("added".to_owned(), s(&e.added)));
             if !e.category.is_empty() {
                 m.push(("category".to_owned(), s(&e.category)));
+            }
+            if let Some(l) = limits_value(&e.limits, &e.limits_other) {
+                m.push(("limits".to_owned(), l));
             }
             if e.completed {
                 m.push(("completed".to_owned(), Value::Bool(true)));

@@ -48,6 +48,8 @@ pub const DEFAULT_BT_URL_TIMEOUT: Duration = Duration::from_secs(30);
 pub const DEFAULT_BT_MIN_FREE_BYTES: u64 = 1 << 30;
 /// fit's `MaxBTCategories`: the most categories.
 pub const MAX_BT_CATEGORIES: usize = 1000;
+/// fit's `MaxBTSchedules`: the most `alt_speed` schedules.
+pub const MAX_BT_SCHEDULES: usize = 100;
 
 /// fit's `DefaultBTTrackerInterval`: how often clients are told to announce.
 pub const DEFAULT_BT_TRACKER_INTERVAL: Duration = Duration::from_secs(30 * 60);
@@ -148,6 +150,115 @@ pub struct BitTorrentClient {
     pub watch_max_files: usize,
     /// `url_timeout`: [`DEFAULT_BT_URL_TIMEOUT`] when left out or 0.
     pub url_timeout: Duration,
+    /// `alt_speed` (I154): the alternative rates; none when left out.
+    pub alt_speed: Option<BitTorrentAltSpeed>,
+}
+
+/// A torrent's own limits, or a category's (I154): fit's `BitTorrentTorrentLimits` but for
+/// `max_conns` and `upload_slots` (akio's A284). Zero takes the client's; a negative rate or seed
+/// ratio is no limit for the torrent.
+#[derive(Debug, Clone, Default)]
+pub struct BitTorrentTorrentLimits {
+    /// `upload_rate`: bytes a second, under the client's.
+    pub upload_rate: i64,
+    /// `download_rate`: bytes a second, under the client's.
+    pub download_rate: i64,
+    /// `seed_ratio`: in place of the client's; negative seeds for ever.
+    pub seed_ratio: f64,
+    /// `seed_time`: in place of the client's.
+    pub seed_time: Duration,
+}
+
+impl PartialEq for BitTorrentTorrentLimits {
+    fn eq(&self, o: &Self) -> bool {
+        self.upload_rate == o.upload_rate
+            && self.download_rate == o.download_rate
+            && self.seed_ratio.to_bits() == o.seed_ratio.to_bits()
+            && self.seed_time == o.seed_time
+    }
+}
+
+impl Eq for BitTorrentTorrentLimits {}
+
+impl BitTorrentTorrentLimits {
+    /// `self` with the limits `o` sets in place of its own, field by field: what a torrent's
+    /// own limits `o` make of its category's `self` (fit's `Over`).
+    #[must_use]
+    pub fn over(&self, o: &BitTorrentTorrentLimits) -> BitTorrentTorrentLimits {
+        let mut l = self.clone();
+        if o.upload_rate != 0 {
+            l.upload_rate = o.upload_rate;
+        }
+        if o.download_rate != 0 {
+            l.download_rate = o.download_rate;
+        }
+        if o.seed_ratio != 0.0 {
+            l.seed_ratio = o.seed_ratio;
+        }
+        if !o.seed_time.is_zero() {
+            l.seed_time = o.seed_time;
+        }
+        l
+    }
+
+    /// Whether it sets no limit.
+    #[must_use]
+    pub fn is_zero(&self) -> bool {
+        *self == BitTorrentTorrentLimits::default()
+    }
+}
+
+/// `bittorrent.client.alt_speed` (I154): the alternative rates.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct BitTorrentAltSpeed {
+    /// `upload_rate`: bytes a second while they hold; 0, unlimited.
+    pub upload_rate: u64,
+    /// `download_rate`: bytes a second while they hold; 0, unlimited.
+    pub download_rate: u64,
+    /// `schedules`: when they hold; only while the API turns them on when none.
+    pub schedules: Vec<BitTorrentSchedule>,
+    /// `time_zone`: `local` (the default), `utc` or an IANA name, checked when the role applies.
+    pub time_zone: String,
+}
+
+/// A weekly time range of `alt_speed`, read: the days it begins on, by weekday from Sunday (0),
+/// and its times as minutes from midnight, `to` 1,440 for `24:00` or `00:00`.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct BitTorrentSchedule {
+    /// The days it begins on, Sunday first.
+    pub days: [bool; 7],
+    /// `from`, in minutes.
+    pub from: u32,
+    /// `to`, in minutes.
+    pub to: u32,
+}
+
+impl BitTorrentSchedule {
+    /// Whether the range holds at `minute` of a day whose weekday is `day` (Sunday 0): one whose
+    /// `to` is earlier than its `from` runs into the next day.
+    #[must_use]
+    pub fn holds(&self, day: usize, minute: u32) -> bool {
+        let on = |d: usize| self.days.get(d % 7).copied().unwrap_or(false);
+        if self.from < self.to {
+            on(day) && self.from <= minute && minute < self.to
+        } else {
+            (on(day) && minute >= self.from) || (on(day.wrapping_add(6)) && minute < self.to)
+        }
+    }
+}
+
+/// `HH:MM` in minutes, as fit's `parseClock`: `24:00` only for an end.
+fn parse_clock(s: &str, end: bool) -> Option<u32> {
+    let (h, m) = s.trim().split_once(':')?;
+    if h.is_empty() || h.len() > 2 || m.len() != 2 {
+        return None;
+    }
+    let hh: u32 = h.parse().ok()?;
+    let mm: u32 = m.parse().ok()?;
+    if mm > 59 || hh > 24 || (hh == 24 && (mm != 0 || !end)) {
+        return None;
+    }
+    hh.checked_mul(60)?.checked_add(mm)
 }
 
 /// `bittorrent.client.categories[]` (I153): a category of torrents.
@@ -158,6 +269,8 @@ pub struct BitTorrentCategory {
     /// `dir`: where its torrents download into, a relative one below `download_dir`;
     /// `<download_dir>/<name>` when left out.
     pub dir: String,
+    /// `limits` (I154): each of its torrents' limits; the client's alone when left out.
+    pub limits: BitTorrentTorrentLimits,
 }
 
 impl BitTorrentClient {
@@ -463,11 +576,13 @@ const BT_CLIENT_FIELDS: &[&str] = &[
     "watch_interval",
     "watch_max_files",
     "url_timeout",
+    // I154.
+    "alt_speed",
 ];
 // I153: categories, watch_dir and its bounds, url_timeout; I154: alt_speed and access (akio's
 // A284); disk_queue_bytes, akio-bittorrent's bound of the blocks waiting for the disk (A284);
 // I156: publish; I159: rss.
-const BT_CLIENT_FIT_ONLY: &[&str] = &["disk_queue_bytes", "alt_speed", "access", "rss", "publish"];
+const BT_CLIENT_FIT_ONLY: &[&str] = &["disk_queue_bytes", "access", "rss", "publish"];
 const BT_LIMITS_FIELDS: &[&str] = &[
     "upload_rate",
     "download_rate",
@@ -484,9 +599,20 @@ const BT_LIMITS_FIELDS: &[&str] = &[
 // The client's connections in all and dials at once (akio's A284); the queue and the disk's free
 // space (I153).
 const BT_LIMITS_FIT_ONLY: &[&str] = &["max_conns", "max_half_open"];
-const BT_CATEGORY_FIELDS: &[&str] = &["name", "dir"];
+const BT_CATEGORY_FIELDS: &[&str] = &["name", "dir", "limits"];
 // I154: a category's limits; a media library's rescan, once akit reads `media_library`.
-const BT_CATEGORY_FIT_ONLY: &[&str] = &["limits", "media_library"];
+const BT_CATEGORY_FIT_ONLY: &[&str] = &["media_library"];
+const BT_TORRENT_LIMITS_FIELDS: &[&str] = &[
+    // Bytes a second, under the client's.
+    "upload_rate",
+    "download_rate",
+    "seed_ratio",
+    "seed_time",
+];
+// A torrent's connections and upload slots (akio's A284).
+const BT_TORRENT_LIMITS_FIT_ONLY: &[&str] = &["max_conns", "upload_slots"];
+const BT_ALT_SPEED_FIELDS: &[&str] = &["upload_rate", "download_rate", "schedules", "time_zone"];
+const BT_SCHEDULE_FIELDS: &[&str] = &["days", "from", "to"];
 const BT_TRACKER_FIELDS: &[&str] = &[
     "listen",
     "interval",
@@ -590,6 +716,9 @@ fn client(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<BitTorrentClient>
     c.watch_interval = duration(d, &mut o, "watch_interval");
     c.watch_max_files = count(d, &mut o, "watch_max_files", MAX_BT_WATCH_MAX_FILES as i64);
     c.url_timeout = duration(d, &mut o, "url_timeout");
+    c.alt_speed = o
+        .take("alt_speed")
+        .and_then(|v| alt_speed(d, v, &o.at("alt_speed")));
     o.finish(d, BT_CLIENT_FIELDS, BT_CLIENT_FIT_ONLY);
     Some(c)
 }
@@ -652,8 +781,129 @@ fn category(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<BitTorrentCateg
         }
         c.dir = dir;
     }
+    if let Some(v) = o.take("limits") {
+        if let Some(l) = torrent_limits(d, v, &o.at("limits")) {
+            c.limits = l;
+        }
+    }
     o.finish(d, BT_CATEGORY_FIELDS, BT_CATEGORY_FIT_ONLY);
     Some(c)
+}
+
+fn signed(d: &mut Decoder<'_>, o: &mut Obj<'_>, key: &str) -> i64 {
+    o.take(key)
+        .and_then(|v| d.int(v, &o.at(key), i64::MIN, i64::MAX))
+        .unwrap_or(0)
+}
+
+/// A torrent's own limits, or a category's.
+pub(crate) fn torrent_limits(
+    d: &mut Decoder<'_>,
+    n: &Node,
+    path: &str,
+) -> Option<BitTorrentTorrentLimits> {
+    let mut o = d.object(n, path)?;
+    let l = BitTorrentTorrentLimits {
+        upload_rate: signed(d, &mut o, "upload_rate"),
+        download_rate: signed(d, &mut o, "download_rate"),
+        seed_ratio: o
+            .take("seed_ratio")
+            .and_then(|v| d.number(v, &o.at("seed_ratio")))
+            .unwrap_or(0.0),
+        seed_time: duration(d, &mut o, "seed_time"),
+    };
+    o.finish(d, BT_TORRENT_LIMITS_FIELDS, BT_TORRENT_LIMITS_FIT_ONLY);
+    Some(l)
+}
+
+fn alt_speed(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<BitTorrentAltSpeed> {
+    let mut o = d.object(n, path)?;
+    let mut a = BitTorrentAltSpeed {
+        upload_rate: bytes(d, &mut o, "upload_rate"),
+        download_rate: bytes(d, &mut o, "download_rate"),
+        time_zone: text(d, &mut o, "time_zone"),
+        ..BitTorrentAltSpeed::default()
+    };
+    let scheds = list(d, &mut o, "schedules", schedule);
+    if scheds.len() > MAX_BT_SCHEDULES {
+        d.error(
+            o.key_off("schedules").unwrap_or(o.off),
+            &o.at("schedules"),
+            format!("at most {MAX_BT_SCHEDULES} schedules"),
+        );
+    }
+    a.schedules = scheds.into_iter().map(|(s, _, _)| s).collect();
+    o.finish(d, BT_ALT_SPEED_FIELDS, &[]);
+    Some(a)
+}
+
+fn schedule(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<BitTorrentSchedule> {
+    let mut o = d.object(n, path)?;
+    let mut s = BitTorrentSchedule::default();
+    match o.take("days") {
+        Some(v) => {
+            for (off, day) in d.strings(v, &o.at("days")) {
+                let set: &[usize] = match day.trim().to_ascii_lowercase().as_str() {
+                    "sun" => &[0],
+                    "mon" => &[1],
+                    "tue" => &[2],
+                    "wed" => &[3],
+                    "thu" => &[4],
+                    "fri" => &[5],
+                    "sat" => &[6],
+                    "weekdays" => &[1, 2, 3, 4, 5],
+                    "weekend" => &[6, 0],
+                    _ => {
+                        d.error(
+                            off,
+                            &o.at("days"),
+                            format!(
+                                "{day:?} is not a day: mon, tue, wed, thu, fri, sat, sun, weekdays or weekend"
+                            ),
+                        );
+                        &[]
+                    }
+                };
+                for i in set {
+                    if let Some(x) = s.days.get_mut(*i) {
+                        *x = true;
+                    }
+                }
+            }
+        }
+        None => s.days = [true; 7],
+    }
+    let from = o
+        .require(d, "from")
+        .map(|v| (d.string(v, &o.at("from")), v.off));
+    let to = o
+        .require(d, "to")
+        .map(|v| (d.string(v, &o.at("to")), v.off));
+    let bad = |t: &str| format!("{t:?} is not a time of day, HH:MM");
+    if let Some((Some(t), off)) = &from {
+        match parse_clock(t, false) {
+            Some(m) => s.from = m,
+            None => d.error(*off, &o.at("from"), bad(t)),
+        }
+    }
+    if let Some((Some(t), off)) = &to {
+        match parse_clock(t, true) {
+            Some(0) => s.to = 24 * 60,
+            Some(m) => s.to = m,
+            None => d.error(*off, &o.at("to"), bad(t)),
+        }
+        if let Some((Some(f), _)) = &from {
+            if parse_clock(f, false).is_some() && s.from == s.to {
+                d.error(
+                    *off,
+                    &o.at("to"),
+                    format!("from and to are both {f}: the range is empty"),
+                );
+            }
+        }
+    }
+    o.finish(d, BT_SCHEDULE_FIELDS, &[]);
+    Some(s)
 }
 
 fn tracker(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<BitTorrentTracker> {

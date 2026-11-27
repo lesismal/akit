@@ -124,7 +124,6 @@ fn not_supported_yet() {
         format!(r#"{{"bittorrent": {{"client": {{"listen": ":6881", "data_dir": "d", {m}}}}}}}"#)
     };
     for (m, field) in [
-        (r#""alt_speed": {}"#, "bittorrent.client.alt_speed"),
         (r#""access": {}"#, "bittorrent.client.access"),
         (
             r#""disk_queue_bytes": 1"#,
@@ -133,8 +132,12 @@ fn not_supported_yet() {
         (r#""publish": []"#, "bittorrent.client.publish"),
         (r#""rss": {}"#, "bittorrent.client.rss"),
         (
-            r#""categories": [{"name": "a", "limits": {}}]"#,
-            "bittorrent.client.categories[0].limits",
+            r#""categories": [{"name": "a", "limits": {"max_conns": 1}}]"#,
+            "bittorrent.client.categories[0].limits.max_conns",
+        ),
+        (
+            r#""categories": [{"name": "a", "limits": {"upload_slots": 1}}]"#,
+            "bittorrent.client.categories[0].limits.upload_slots",
         ),
         (
             r#""categories": [{"name": "a", "media_library": "m"}]"#,
@@ -298,4 +301,86 @@ fn categories_and_watch() {
         (3, 5, 7)
     );
     assert_eq!(BitTorrentLimits::default().free_bytes(), 1 << 30);
+}
+
+/// fit's schedule checks and `Window` (I154), and a category's limits over a torrent's.
+#[test]
+fn alt_speed_and_limits() {
+    let alt = |m: &str| {
+        format!(
+            r#"{{"bittorrent": {{"client": {{"listen": ":6881", "data_dir": "/d", "alt_speed": {m}}}}}}}"#
+        )
+    };
+    for (m, want) in [
+        (
+            r#"{"schedules": [{"days": ["mon", "nope"], "from": "08:00", "to": "18:00"}]}"#,
+            "is not a day",
+        ),
+        (
+            r#"{"schedules": [{"from": "8", "to": "18:00"}]}"#,
+            "is not a time of day",
+        ),
+        (
+            r#"{"schedules": [{"from": "24:00", "to": "18:00"}]}"#,
+            "is not a time of day",
+        ),
+        (
+            r#"{"schedules": [{"from": "08:60", "to": "18:00"}]}"#,
+            "is not a time of day",
+        ),
+        (
+            r#"{"schedules": [{"from": "08:00", "to": "08:00"}]}"#,
+            "the range is empty",
+        ),
+        (
+            r#"{"schedules": [{"from": "08:00"}]}"#,
+            "missing required field",
+        ),
+        (r#"{"upload_rate": -1}"#, "upload_rate"),
+    ] {
+        refused(&alt(m), want);
+    }
+    let c = loads(&alt(
+        r#"{"upload_rate": 5, "schedules": [{"days": ["weekdays"], "from": "22:00", "to": "06:00"}, {"days": ["weekend"], "from": "10:00", "to": "24:00"}, {"from": "12:00", "to": "00:00"}], "time_zone": "utc"}"#,
+    ));
+    let a = c
+        .bittorrent
+        .and_then(|b| b.client)
+        .and_then(|c| c.alt_speed)
+        .unwrap();
+    assert_eq!((a.upload_rate, a.time_zone.as_str()), (5, "utc"));
+    let (night, weekend, noon) = (&a.schedules[0], &a.schedules[1], &a.schedules[2]);
+    // Friday 23:00 and Saturday 05:00 (begun on Friday); not Saturday 23:00 nor Monday 05:00.
+    assert!(night.holds(5, 23 * 60) && night.holds(6, 5 * 60));
+    assert!(!night.holds(6, 23 * 60) && !night.holds(1, 5 * 60) && !night.holds(2, 6 * 60));
+    // Saturday to midnight, Sunday too; not Monday.
+    assert!(
+        weekend.holds(6, 23 * 60 + 59) && weekend.holds(0, 10 * 60) && !weekend.holds(1, 11 * 60)
+    );
+    assert!(!weekend.holds(6, 9 * 60 + 59));
+    // 00:00 as the end is midnight at the end, every day.
+    assert_eq!(noon.to, 24 * 60);
+    assert!(noon.holds(3, 23 * 60) && !noon.holds(3, 11 * 60));
+    let c = loads(
+        r#"{"bittorrent": {"client": {"listen": ":6881", "data_dir": "/d", "categories": [{"name": "a", "limits": {"upload_rate": -1, "download_rate": 7, "seed_ratio": 2.5, "seed_time": "1h"}}]}}}"#,
+    );
+    let cat = c
+        .bittorrent
+        .and_then(|b| b.client)
+        .unwrap()
+        .categories
+        .remove(0)
+        .limits;
+    assert_eq!(
+        (cat.upload_rate, cat.download_rate, cat.seed_time),
+        (-1, 7, Duration::from_secs(3600))
+    );
+    let own = BitTorrentTorrentLimits {
+        download_rate: 9,
+        ..BitTorrentTorrentLimits::default()
+    };
+    let eff = cat.over(&own);
+    assert_eq!((eff.upload_rate, eff.download_rate), (-1, 9));
+    assert!((eff.seed_ratio - 2.5).abs() < f64::EPSILON && !eff.is_zero());
+    assert!(BitTorrentTorrentLimits::default().is_zero());
 }

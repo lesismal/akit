@@ -21,6 +21,8 @@ akio-http = { workspace = true }
 akio-sys = { workspace = true }
 akit-access = { workspace = true }
 akit-config = { workspace = true }
+# The alternative rates' time zone (I154).
+akit-observe = { workspace = true }
 akit-roles = { workspace = true }
 akit-runtime = { workspace = true }
 

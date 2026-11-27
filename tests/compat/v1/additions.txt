@@ -801,3 +801,16 @@ config	added	supported	bittorrent.client.url_timeout
 config	added	supported	bittorrent.client.watch_dir
 config	added	supported	bittorrent.client.watch_interval
 config	added	supported	bittorrent.client.watch_max_files
+config	added	supported	bittorrent.client.alt_speed
+config	added	supported	bittorrent.client.alt_speed.download_rate
+config	added	supported	bittorrent.client.alt_speed.schedules
+config	added	supported	bittorrent.client.alt_speed.schedules[].days
+config	added	supported	bittorrent.client.alt_speed.schedules[].from
+config	added	supported	bittorrent.client.alt_speed.schedules[].to
+config	added	supported	bittorrent.client.alt_speed.time_zone
+config	added	supported	bittorrent.client.alt_speed.upload_rate
+config	added	supported	bittorrent.client.categories[].limits
+config	added	supported	bittorrent.client.categories[].limits.download_rate
+config	added	supported	bittorrent.client.categories[].limits.seed_ratio
+config	added	supported	bittorrent.client.categories[].limits.seed_time
+config	added	supported	bittorrent.client.categories[].limits.upload_rate
