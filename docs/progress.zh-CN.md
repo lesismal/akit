@@ -19,6 +19,15 @@
 
 ## 日志
 
+### 2026-11-27：WebRTC 路线在 I111 之后暂停；I113 的 akio 请求
+
+- 本次工作中该路线在 I111 之后暂停：I112 等待 akio 的 A256-A258；I113（WHIP 和 WHEP，基于 akio-webrtc `RtcServer` 的
+  SFU）和 I114（代理）尚未开始。为 I113 阅读 akio-webrtc `8a9601b9` 时发现三处缺口，已写成带有计划临时方案的 akio 请求，
+  使 I113 不被阻塞：A259，`RtcServer` 上每个 peer 自己的配置（会话应答使用的编解码器；临时方案：配置闭包读取调用线程上
+  设置的会话编解码器）；A260，供 SFU 使用的 RTP 转发（临时方案：转发帧，`on_media_data` 到 `write_media`）；A261，向发布者
+  发送 REMB 以及按 peer 设置的 ICE consent 超时（临时方案：以丢弃强制执行 `max_bitrate`，不告知；使用 akio 的 consent
+  超时）。决定第 53 行。
+
 ### 2026-11-27：I111，TURN 服务器
 
 - `akit_webrtc::turn`，`akit run` 运行的角色 `webrtc.turn`（`akit::ROLES`）：akio-turn 的 `TurnServer`，`SOFTWARE` 为

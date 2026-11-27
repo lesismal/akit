@@ -1953,6 +1953,9 @@ Streaming and media auth track's: it is refused as not supported yet until that 
   the limits (PeerConnections, streams, viewers a stream, the offer's size), `connect_timeout`
   and `ice_timeout`; sessions kept by a reload that keeps `listen` and `public_ips`, ended by one
   that does not; `/metrics`.
+- **Waits on**: nothing that stops it: akio requests A259 (a peer's own configuration), A260 (RTP
+  forwarding) and A261 (REMB sent, ICE timeouts) have planned stopgaps, frames forwarded in place of
+  packets among them.
 - **Done when**: fit's `webrtc/media` tests of the media server pass ported with akio-webrtc's
   `Endpoint` as publisher and viewers, and fib's PeerConnection (a Go program) publishes and plays
   through akit: a publisher gone ends its viewers; slow and cut viewers do not hold the publisher;

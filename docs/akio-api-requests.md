@@ -114,6 +114,9 @@ first; its status here records the branch, then the akio commit akit pins.
 | A256 | akio-turn's static settings fit's TURN role sets: the relayed sockets bound in a port range, the nonces' key from a secret servers share, and a stream client's largest message | requested (I111): `port_min`/`port_max` refused at run time, `nonce_secret` and `max_stream_message` not applied (decision 039) | 4, 11 | I111, I112 |
 | A257 | akio-turn's hooks for an embedding server: each relayed datagram's username, direction and size, with a say in whether it goes (a username's bandwidth); the server's events (allocated, refreshed, freed, refused, credentials failed); whether an address is one of its relayed ones; its permissions, channels and pending allocations counted | requested (I111): `user_bandwidth` not enforced, the server's own addresses reached on listed ports alone, events and bytes not counted (decision 039) | 1, 11 | I111, I112 |
 | A258 | akio-turn's settings changed on a running server (credentials, quotas, caps, lifetimes) and a drain: no new allocation while those held run out | requested (I111): a change of the quotas, caps or lifetimes starts a new server; the server a reload replaced keeps serving for the drain (decision 039) | 10, 11 | I111, I112 |
+| A259 | A peer's own configuration on an `RtcServer` (`accept_offer_with`): the codecs of one session, as an SFU answers a publisher with the codec it picked of each kind and its viewers with the same | requested (I111, for I113); stopgap planned: the server's configuration closure reading the session's codecs set beside the call | 12 | I113 |
+| A260 | RTP forwarding in akio-webrtc for an SFU: a received packet written on another peer's sending line, its SSRC, payload type, sequence and timestamp rewritten, its header extensions mapped | requested (I111, for I113); stopgap planned: frames forwarded (`on_media_data` to `write_media`), depacketized and packetized again | 13 | I113 |
+| A261 | A receiver's bitrate cap told to the remote sender as REMB, and the ICE consent timeout set per peer | requested (I111, for I113); stopgap planned: `max_bitrate` enforced by dropping past two seconds' burst, not told; akio's consent timeout | 10, 11 | I113 |
 
 ## A1 TCP listeners on a running engine
 
@@ -2604,3 +2607,76 @@ out.
 **How akit would use it.** `akit_webrtc::turn` takes the quotas, caps and lifetimes out of its
 static key and sets them in place; a server a reload replaced drains, refusing new allocations
 (I112).
+
+## A259 A peer's own configuration on an `RtcServer`
+
+**Status.** Requested by I111 (2026-11-27), for I113. Nothing runs on it yet; I113's planned
+stopgap: the server's configuration closure reads the codecs of the session being answered, set on
+the calling thread beside `accept_offer` (which builds the peer's configuration synchronously).
+
+**Problem.** fit's media server (`webrtc.media`) answers a publisher with one codec of each kind,
+the first of its offer's codecs that `codecs` lists, and answers that stream's viewers with the same
+codecs, so that what the publisher sends is what each viewer decodes. Every PeerConnection shares
+one UDP port (fib's `webrtc.Mux`), each with its own `Configuration`. akio-webrtc's `RtcServer`
+builds every peer's `RtcConfig` with one closure set before the server is cloned, called with no
+argument.
+
+**Evidence.** At akio `8a9601b9`: `akio-webrtc/src/lib.rs`'s `RtcServer::config(self, f: impl Fn()
+-> RtcConfig)` and `Hub::accept_offer(&self, offer, handler)`, which calls `new_rtc()`. fit:
+`webrtc/media/session.go`'s `pickCodecs` and `peerConfig`.
+
+**Suggested API.** `RtcServer::accept_offer_with<H: PeerHandler>(&self, config: RtcConfig, offer:
+&str, handler: H) -> Result<(Peer, String), Error>`, the crypto provider and ICE mode set over
+`config` as for the closure's.
+
+**How akit would use it.** `akit_webrtc::media` answers a publisher with a configuration of its
+picked codecs, and its viewers with the same, without the closure's thread-local.
+
+## A260 RTP forwarding in akio-webrtc for an SFU
+
+**Status.** Requested by I111 (2026-11-27), for I113. I113's planned stopgap: each publisher's
+frames (`on_media_data`) written to each viewer with `write_media`, depacketized once and packetized
+again per viewer.
+
+**Problem.** fit's media server forwards a publisher's RTP packets to each viewer as they arrive
+(fib's `TrackLocal.WriteRTP`: the SSRC, payload type and sequence numbers of the viewer's sending
+track, the header extensions kept), on the I/O thread that received them, so that a viewer gets
+each packet one hop later, without waiting for a whole frame, and the server's work per viewer is a
+header rewrite and an SRTP seal. akio-webrtc delivers received RTP (`set_rtp_mode`, `on_rtp`) but
+sends media only as samples (`write_media`, `write_simulcast`), packetized by the peer.
+
+**Evidence.** At akio `8a9601b9`: `akio-webrtc/src/lib.rs`'s `Peer` has `write_media`,
+`write_simulcast`, `request_keyframe`, `payload_type`; no method takes an RTP packet. fit:
+`webrtc/media/session.go`'s `forward` and `onTrack`.
+
+**Suggested API.** `Peer::write_rtp(&self, mid: Mid, packet: &RtpPacket) -> Result<(), Error>`:
+the packet sent on `mid` with the peer's SSRC and the payload type it negotiated for the packet's
+codec, sequence numbers and timestamps continuous across the sources written to it (a publisher
+replaced), header extensions mapped by URI; NACK and RTX answered from what it sent.
+
+**How akit would use it.** `akit_webrtc::media` runs publishers in RTP mode and writes each packet
+to the viewers of its stream, in place of the frames.
+
+## A261 A receiver's bitrate cap told as REMB, and the ICE consent timeout per peer
+
+**Status.** Requested by I111 (2026-11-27), for I113. I113's planned stopgap: `max_bitrate` enforced
+by dropping a publisher's media past two seconds' burst, without telling the publisher; peers left
+on akio's consent timeout whatever `ice_timeout` says.
+
+**Problem.** fit tells each publisher `max_bitrate` once a second as REMB
+(draft-alvestrand-rmcat-remb), which browsers keep under, and drops what passes it with two seconds
+of burst; and ends a session whose peer is silent for `ice_timeout` (30 s by default), through fib's
+`ICEDisconnectedTimeout` and `ICEFailedTimeout`. akio-webrtc reads REMB from remote receivers but
+sends none, and its consent freshness timeout is fixed.
+
+**Evidence.** At akio `8a9601b9`: `akio-webrtc/src/rtc.rs` parses `Rtcp::Remb` (line 3667) and
+advertises `goog-remb`; `Peer::request_max_bitrate` sends TMMBR, which browsers do not honour; no
+setting of `RtcConfig` names the consent or disconnected timeout. fit: `webrtc/media/session.go`'s
+`sendREMB` and `peerConfig`.
+
+**Suggested API.** `Peer::set_receive_bitrate_cap(&self, bps: Option<u64>)` (REMB with the cap, or
+the estimate when lower, once a second for every remote SSRC), and
+`RtcConfig::set_ice_timeouts(disconnected: Duration, failed: Duration)`.
+
+**How akit would use it.** `akit_webrtc::media` caps each publisher at `max_bitrate` and sets
+`ice_timeout` on each session's configuration (with A259).

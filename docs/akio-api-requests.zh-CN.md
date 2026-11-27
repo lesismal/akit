@@ -113,6 +113,9 @@
 | A256 | fit 的 TURN 角色设置的 akio-turn 静态设置：中继套接字绑定在端口范围内、nonce 的密钥来自服务器之间共享的 secret、流客户端的最大消息 | 已提出（I111）：运行时拒绝 `port_min`/`port_max`，`nonce_secret` 和 `max_stream_message` 不生效（决定 039） | 4, 11 | I111, I112 |
 | A257 | akio-turn 供嵌入它的服务器使用的钩子：每个中继数据报的用户名、方向和大小，并能决定是否放行（用户名的带宽）；服务器的事件（分配、刷新、释放、拒绝、凭据失败）；某地址是否为其中继地址之一；其 permission、channel 和待定 allocation 的计数 | 已提出（I111）：`user_bandwidth` 不强制执行，服务器自身地址只能在列出的端口上访问，事件和字节数不计数（决定 039） | 1, 11 | I111, I112 |
 | A258 | 在运行中的 akio-turn 服务器上修改设置（凭据、配额、上限、生存期），以及排空：在已有 allocation 自然结束期间不再接受新的 allocation | 已提出（I111）：配额、上限或生存期的变化启动新服务器；被重新加载替换的服务器在排空期间继续服务（决定 039） | 10, 11 | I111, I112 |
+| A259 | `RtcServer` 上每个 peer 自己的配置（`accept_offer_with`）：一个会话的编解码器，如同 SFU 以其为每类媒体选定的编解码器应答发布者，并以同样的编解码器应答其观看者 | 已提出（I111，为 I113）；计划的临时方案：服务器的配置闭包读取调用前设置的会话编解码器 | 12 | I113 |
+| A260 | akio-webrtc 中供 SFU 使用的 RTP 转发：收到的包写到另一个 peer 的发送媒体行上，改写其 SSRC、负载类型、序号和时间戳，映射其头部扩展 | 已提出（I111，为 I113）；计划的临时方案：转发帧（`on_media_data` 到 `write_media`），解包后重新打包 | 13 | I113 |
+| A261 | 接收方的码率上限以 REMB 告知远端发送方，以及按 peer 设置的 ICE consent 超时 | 已提出（I111，为 I113）；计划的临时方案：`max_bitrate` 以超出两秒突发量即丢弃的方式强制执行，但不告知；使用 akio 的 consent 超时 | 10, 11 | I113 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -2089,3 +2092,61 @@ peer、字节数；返回 false 则丢弃）、`on_event(Arc<dyn Fn(&TurnEvent) 
 
 **akit 如何使用。** `akit_webrtc::turn` 把配额、上限和生存期移出其静态键并就地设置；被重新加载替换的服务器进入排空，
 拒绝新 allocation（I112）。
+
+## A259 `RtcServer` 上每个 peer 自己的配置
+
+**状态。** 由 I111 提出（2026-11-27），供 I113 使用。尚无代码依赖它；I113 计划的临时方案：服务器的配置闭包读取正在
+应答的会话的编解码器，该值在 `accept_offer` 之前于调用线程上设置（`accept_offer` 同步构建 peer 的配置）。
+
+**问题。** fit 的媒体服务器（`webrtc.media`）以每类媒体一个编解码器应答发布者，即其 offer 中第一个列于 `codecs` 的
+编解码器，并以同样的编解码器应答该流的观看者，使发布者发送的正是每个观看者解码的。所有 PeerConnection 共享一个 UDP
+端口（fib 的 `webrtc.Mux`），各有自己的 `Configuration`。akio-webrtc 的 `RtcServer` 用一个在克隆服务器之前设置、不带
+参数调用的闭包构建每个 peer 的 `RtcConfig`。
+
+**证据。** 在 akio `8a9601b9` 中：`akio-webrtc/src/lib.rs` 的 `RtcServer::config(self, f: impl Fn() -> RtcConfig)` 和
+`Hub::accept_offer(&self, offer, handler)`，后者调用 `new_rtc()`。fit：`webrtc/media/session.go` 的 `pickCodecs` 和
+`peerConfig`。
+
+**建议的 API。** `RtcServer::accept_offer_with<H: PeerHandler>(&self, config: RtcConfig, offer: &str, handler: H) ->
+Result<(Peer, String), Error>`，像闭包的配置一样在 `config` 之上设置加密提供者和 ICE 模式。
+
+**akit 如何使用。** `akit_webrtc::media` 以其选定编解码器的配置应答发布者，并以同样的配置应答其观看者，不再借助闭包
+的线程局部变量。
+
+## A260 akio-webrtc 中供 SFU 使用的 RTP 转发
+
+**状态。** 由 I111 提出（2026-11-27），供 I113 使用。I113 计划的临时方案：把每个发布者的帧（`on_media_data`）用
+`write_media` 写给每个观看者，解包一次，为每个观看者重新打包。
+
+**问题。** fit 的媒体服务器把发布者的 RTP 包在到达时转发给每个观看者（fib 的 `TrackLocal.WriteRTP`：使用观看者发送轨道
+的 SSRC、负载类型和序号，保留头部扩展），在接收它的 I/O 线程上进行，因此观看者在一跳之后就收到每个包，无需等待整帧，
+服务器对每个观看者的工作是改写包头和一次 SRTP 加密。akio-webrtc 能交付收到的 RTP（`set_rtp_mode`、`on_rtp`），但只以
+样本形式发送媒体（`write_media`、`write_simulcast`），由 peer 打包。
+
+**证据。** 在 akio `8a9601b9` 中：`akio-webrtc/src/lib.rs` 的 `Peer` 有 `write_media`、`write_simulcast`、
+`request_keyframe`、`payload_type`；没有接受 RTP 包的方法。fit：`webrtc/media/session.go` 的 `forward` 和 `onTrack`。
+
+**建议的 API。** `Peer::write_rtp(&self, mid: Mid, packet: &RtpPacket) -> Result<(), Error>`：在 `mid` 上以该 peer 的 SSRC
+和为该包编解码器协商的负载类型发送，写给它的各个来源之间序号和时间戳连续（发布者被替换时），头部扩展按 URI 映射；
+根据它发送过的内容应答 NACK 和 RTX。
+
+**akit 如何使用。** `akit_webrtc::media` 以 RTP 模式运行发布者，把每个包写给其流的观看者，取代帧。
+
+## A261 接收方的码率上限以 REMB 告知，以及按 peer 设置的 ICE consent 超时
+
+**状态。** 由 I111 提出（2026-11-27），供 I113 使用。I113 计划的临时方案：`max_bitrate` 以丢弃发布者超出两秒突发量
+的媒体来强制执行，但不告知发布者；无论 `ice_timeout` 如何，peer 都使用 akio 的 consent 超时。
+
+**问题。** fit 每秒以 REMB（draft-alvestrand-rmcat-remb）告知每个发布者 `max_bitrate`，浏览器会保持在其之下，并以两秒
+突发量丢弃超出的部分；并经由 fib 的 `ICEDisconnectedTimeout` 和 `ICEFailedTimeout`，结束 peer 静默 `ice_timeout`（默认
+30 秒）的会话。akio-webrtc 读取远端接收方的 REMB，但不发送；其 consent freshness 超时是固定的。
+
+**证据。** 在 akio `8a9601b9` 中：`akio-webrtc/src/rtc.rs` 解析 `Rtcp::Remb`（第 3667 行）并通告 `goog-remb`；
+`Peer::request_max_bitrate` 发送 TMMBR，浏览器不予理会；`RtcConfig` 没有设置 consent 或 disconnected 超时的项。fit：
+`webrtc/media/session.go` 的 `sendREMB` 和 `peerConfig`。
+
+**建议的 API。** `Peer::set_receive_bitrate_cap(&self, bps: Option<u64>)`（以上限或更低的估计值，每秒为每个远端 SSRC
+发送 REMB），以及 `RtcConfig::set_ice_timeouts(disconnected: Duration, failed: Duration)`。
+
+**akit 如何使用。** `akit_webrtc::media` 把每个发布者限制在 `max_bitrate`，并在每个会话的配置上设置 `ice_timeout`
+（借助 A259）。

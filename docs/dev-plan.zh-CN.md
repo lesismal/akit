@@ -1636,6 +1636,8 @@ ICE ufrag 路由。它们对外显示的是 akit 的名字（决定 037：`SOFTW
   ICE 服务器和带有由 `webrtc.turn` 的 secret 生成凭据的 `turn_urls`；各项限制（PeerConnection、流、每个流的观看者、
   offer 的大小）、`connect_timeout` 和 `ice_timeout`；保持 `listen` 和 `public_ips` 不变的重新加载保留会话，否则结束会话；
   `/metrics`。
+- **等待**：没有阻塞它的：akio 请求 A259（每个 peer 自己的配置）、A260（RTP 转发）和 A261（发送 REMB、ICE 超时）都有
+  计划的临时方案，其中包括以转发帧代替转发包。
 - **完成标准**：移植后的 fit `webrtc/media` 媒体服务器测试通过，以 akio-webrtc 的 `Endpoint` 作为发布者和观看者，fib 的
   PeerConnection（Go 程序）经 akit 发布和播放：发布者离开时其观看者结束；慢的和断开的观看者不拖住发布者；限制生效。
 - **涉及**：`akit-webrtc`（`media`）、`akit-handler` 或 `akit`、`akit-roles`。

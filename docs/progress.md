@@ -20,6 +20,17 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-27: the WebRTC track stops after I111; I113's akio requests
+
+- The track stops after I111 in this run: I112 waits on akio's A256-A258; I113 (WHIP and WHEP, the
+  SFU on akio-webrtc's `RtcServer`) and I114 (the proxy) are not started. Reading akio-webrtc at
+  `8a9601b9` for I113 found three gaps, written as akio requests with planned stopgaps, so that
+  I113 is not blocked: A259, a peer's own configuration on an `RtcServer` (the codecs a session is
+  answered with; stopgap: the configuration closure reading the session's codecs set on the
+  calling thread); A260, RTP forwarding for an SFU (stopgap: frames forwarded, `on_media_data` to
+  `write_media`); A261, REMB sent to a publisher and the ICE consent timeout per peer (stopgap:
+  `max_bitrate` enforced by dropping, not told; akio's consent timeout). Decision row 53.
+
 ### 2026-11-27: I111, the TURN server
 
 - `akit_webrtc::turn`, the role `webrtc.turn` that `akit run` runs (`akit::ROLES`): akio-turn's
