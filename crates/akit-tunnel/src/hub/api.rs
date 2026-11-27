@@ -52,7 +52,7 @@ pub(crate) fn info_view(i: &Info) -> String {
 }
 
 /// A listener's URL as peers dial it, an unspecified host the loopback (fit's `Dialable`).
-fn listener_url(
+pub(super) fn listener_url(
     protocol: akit_config::roles::TunnelProtocol,
     at: std::net::SocketAddr,
     path: &str,

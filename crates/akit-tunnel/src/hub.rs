@@ -1289,11 +1289,14 @@ impl Hub {
                 }
                 (TunnelProtocol::Quic, Some(cfg)) => {
                     match self.bind_quic(&cfg, addr) {
-                        Ok(b) => next.push(Open {
-                            cfg: l.clone(),
-                            bound: Bound::Udp(b),
-                            cert,
-                        }),
+                        Ok(b) => {
+                            link_on(l, b.local_addr());
+                            next.push(Open {
+                                cfg: l.clone(),
+                                bound: Bound::Udp(b),
+                                cert,
+                            });
+                        }
                         Err(e) => errs.push(format!("listener quic {}: {e}", l.address)),
                     }
                     continue;
@@ -1324,11 +1327,16 @@ impl Hub {
                 el = el.filter(move |peer: &SocketAddr| p.allows(peer.ip()));
             }
             match engine.add_listener(el) {
-                Ok(id) => next.push(Open {
-                    cfg: l.clone(),
-                    bound: Bound::Tcp(id),
-                    cert,
-                }),
+                Ok(id) => {
+                    if let Some(at) = engine.listeners().iter().find(|i| i.id == id) {
+                        link_on(l, at.local_addr);
+                    }
+                    next.push(Open {
+                        cfg: l.clone(),
+                        bound: Bound::Tcp(id),
+                        cert,
+                    });
+                }
                 Err(e) => errs.push(format!("listener {}: {e}", l.address)),
             }
         }
@@ -1339,6 +1347,17 @@ impl Hub {
         *lock(&c.files) = files;
         errs
     }
+}
+
+/// Says where listener `l` takes links, at `at`, the port it bound when its address said 0
+/// (fit's "nodes and proxies link on").
+fn link_on(l: &TunnelListener, at: SocketAddr) {
+    let path = if l.protocol.is_ws() { l.ws_path() } else { "" };
+    akit_observe::info!(
+        Tunnel,
+        "tunnel.hub: nodes and proxies link on {}",
+        api::listener_url(l.protocol, at, path)
+    );
 }
 
 impl Role for Hub {

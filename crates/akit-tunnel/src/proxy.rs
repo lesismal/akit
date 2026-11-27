@@ -741,6 +741,14 @@ impl Proxy {
                         .find(|i| i.id == id)
                         .map(|i| i.local_addr.to_string())
                         .unwrap_or_default();
+                    // fit's: where it listens, the port it bound when `listen` said 0.
+                    akit_observe::info!(
+                        Tunnel,
+                        "tunnel.proxy: forwarding {} to node {:?} service {:?}",
+                        fw.addr,
+                        f.node,
+                        f.service
+                    );
                 }
                 Err(e) => {
                     fw.err = e.to_string();

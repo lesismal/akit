@@ -451,6 +451,7 @@ impl Tracker {
             old.binding.close();
             match self.bind(addr, policy) {
                 Ok(b) => {
+                    udp_on(b.local_addr());
                     self.udp = Some(Udp {
                         listen: listen.to_owned(),
                         addr: b.local_addr(),
@@ -476,6 +477,7 @@ impl Tracker {
             if let Some(old) = self.udp.take() {
                 old.binding.close();
             }
+            udp_on(b.local_addr());
             self.udp = Some(Udp {
                 listen: listen.to_owned(),
                 addr: b.local_addr(),
@@ -484,6 +486,11 @@ impl Tracker {
             Ok(())
         }
     }
+}
+
+/// Says where the tracker answers UDP, the port bound when `listen`'s was 0 (fit's "udp on").
+fn udp_on(addr: SocketAddr) {
+    akit_observe::info!(Bittorrent, "bittorrent.tracker: udp on {addr}");
 }
 
 impl Role for Tracker {
