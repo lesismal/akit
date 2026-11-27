@@ -287,7 +287,7 @@ fn compile_config(
 /// runs, applying it would be a config that says more than akit does.
 fn roles_not_running(config: &Config) -> Result<(), Failure> {
     let unknown = akit_roles::host::unknown(config, crate::ROLES);
-    let errs: Vec<Error> = unknown
+    let mut errs: Vec<Error> = unknown
         .into_iter()
         .map(|path| Error {
             file: None,
