@@ -10,6 +10,7 @@
 //! decision 040.
 
 pub mod auth;
+mod deadline;
 pub mod handlers;
 pub mod http;
 pub mod library;
@@ -19,5 +20,6 @@ pub mod role;
 mod rtc;
 pub mod streaming;
 mod swap;
+pub mod vod;
 
 pub use handlers::MODULES;

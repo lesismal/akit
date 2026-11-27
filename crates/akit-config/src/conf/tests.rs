@@ -484,13 +484,13 @@ fn positions() {
         c.listeners[0].protocols,
         [crate::Protocol::Http11, crate::Protocol::H2]
     );
-    let e = crate::from_conf("route {\n\thandler vod { root /srv }\n}\n", None)
+    let e = crate::from_conf("route {\n\thandler media_tokens { prefix /t }\n}\n", None)
         .unwrap_err()
         .0[0]
         .to_string();
     assert_eq!(
         e,
-        "2:10: routes[0].handler.module: not supported yet: the \"vod\" handler"
+        "2:10: routes[0].handler.module: not supported yet: the \"media_tokens\" handler"
     );
 }
 

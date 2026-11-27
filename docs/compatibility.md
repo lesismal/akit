@@ -395,7 +395,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 1198 supported.
+3821 fields in 121 sections, at fit `7daee573`; 1229 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -421,7 +421,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`http.handlers/stream_whep`](#fields-http-handlers-stream-whep) | 5 | 5 | 0 |
 | [`http.handlers/stream_whip`](#fields-http-handlers-stream-whip) | 5 | 5 | 0 |
 | [`http.handlers/sync_ingest`](#fields-http-handlers-sync-ingest) | 6 | 0 | 6 |
-| [`http.handlers/vod`](#fields-http-handlers-vod) | 13 | 0 | 13 |
+| [`http.handlers/vod`](#fields-http-handlers-vod) | 13 | 12 | 1 |
 | [`http.handlers/webrtc_proxy`](#fields-http-handlers-webrtc-proxy) | 8 | 8 | 0 |
 | [`http.handlers/websockify`](#fields-http-handlers-websockify) | 12 | 0 | 12 |
 | [`http.handlers/whep`](#fields-http-handlers-whep) | 4 | 4 | 0 |
@@ -520,7 +520,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 161 | 3 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 76 | 0 |
-| **Total** | 3821 | 1198 | 2623 |
+| **Total** | 3821 | 1229 | 2592 |
 
 <a id="fields-access"></a>
 
@@ -1185,19 +1185,19 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `routes[].handler<vod>` | `module` | not supported yet |
-| `routes[].handler<vod>.params` | `object` | not supported yet |
-| `routes[].handler<vod>.params.auth` | `string` | not supported yet |
-| `routes[].handler<vod>.params.cache_control` | `string` | not supported yet |
-| `routes[].handler<vod>.params.container` | `enum(fmp4\|ts)` | not supported yet |
-| `routes[].handler<vod>.params.cors` | `string` | not supported yet |
+| `routes[].handler<vod>` | `module` | supported |
+| `routes[].handler<vod>.params` | `object` | supported |
+| `routes[].handler<vod>.params.auth` | `string` | supported |
+| `routes[].handler<vod>.params.cache_control` | `string` | supported |
+| `routes[].handler<vod>.params.container` | `enum(fmp4\|ts)` | supported |
+| `routes[].handler<vod>.params.cors` | `string` | supported |
 | `routes[].handler<vod>.params.encrypt` | `boolean` | not supported yet |
-| `routes[].handler<vod>.params.library` | `string, required` | not supported yet |
-| `routes[].handler<vod>.params.max_cache_bytes` | `integer` | not supported yet |
-| `routes[].handler<vod>.params.max_segment_bytes` | `integer` | not supported yet |
-| `routes[].handler<vod>.params.prefix` | `string` | not supported yet |
-| `routes[].handler<vod>.params.segment_duration` | `duration` | not supported yet |
-| `routes[].handler<vod>.params.timeout` | `duration` | not supported yet |
+| `routes[].handler<vod>.params.library` | `string, required` | supported |
+| `routes[].handler<vod>.params.max_cache_bytes` | `integer` | supported |
+| `routes[].handler<vod>.params.max_segment_bytes` | `integer` | supported |
+| `routes[].handler<vod>.params.prefix` | `string` | supported |
+| `routes[].handler<vod>.params.segment_duration` | `duration` | supported |
+| `routes[].handler<vod>.params.timeout` | `duration` | supported |
 
 <a id="fields-http-handlers-webrtc-proxy"></a>
 

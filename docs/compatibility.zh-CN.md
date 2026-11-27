@@ -325,7 +325,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 1198 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 1229 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -351,7 +351,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`http.handlers/stream_whep`](#fields-http-handlers-stream-whep) | 5 | 5 | 0 |
 | [`http.handlers/stream_whip`](#fields-http-handlers-stream-whip) | 5 | 5 | 0 |
 | [`http.handlers/sync_ingest`](#fields-http-handlers-sync-ingest) | 6 | 0 | 6 |
-| [`http.handlers/vod`](#fields-http-handlers-vod) | 13 | 0 | 13 |
+| [`http.handlers/vod`](#fields-http-handlers-vod) | 13 | 12 | 1 |
 | [`http.handlers/webrtc_proxy`](#fields-http-handlers-webrtc-proxy) | 8 | 8 | 0 |
 | [`http.handlers/websockify`](#fields-http-handlers-websockify) | 12 | 0 | 12 |
 | [`http.handlers/whep`](#fields-http-handlers-whep) | 4 | 4 | 0 |
@@ -450,7 +450,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 161 | 3 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 76 | 0 |
-| **合计** | 3821 | 1198 | 2623 |
+| **合计** | 3821 | 1229 | 2592 |
 
 <a id="fields-access"></a>
 
@@ -1115,19 +1115,19 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
-| `routes[].handler<vod>` | `module` | 尚不支持（not supported yet） |
-| `routes[].handler<vod>.params` | `object` | 尚不支持（not supported yet） |
-| `routes[].handler<vod>.params.auth` | `string` | 尚不支持（not supported yet） |
-| `routes[].handler<vod>.params.cache_control` | `string` | 尚不支持（not supported yet） |
-| `routes[].handler<vod>.params.container` | `enum(fmp4\|ts)` | 尚不支持（not supported yet） |
-| `routes[].handler<vod>.params.cors` | `string` | 尚不支持（not supported yet） |
+| `routes[].handler<vod>` | `module` | 已支持 |
+| `routes[].handler<vod>.params` | `object` | 已支持 |
+| `routes[].handler<vod>.params.auth` | `string` | 已支持 |
+| `routes[].handler<vod>.params.cache_control` | `string` | 已支持 |
+| `routes[].handler<vod>.params.container` | `enum(fmp4\|ts)` | 已支持 |
+| `routes[].handler<vod>.params.cors` | `string` | 已支持 |
 | `routes[].handler<vod>.params.encrypt` | `boolean` | 尚不支持（not supported yet） |
-| `routes[].handler<vod>.params.library` | `string, required` | 尚不支持（not supported yet） |
-| `routes[].handler<vod>.params.max_cache_bytes` | `integer` | 尚不支持（not supported yet） |
-| `routes[].handler<vod>.params.max_segment_bytes` | `integer` | 尚不支持（not supported yet） |
-| `routes[].handler<vod>.params.prefix` | `string` | 尚不支持（not supported yet） |
-| `routes[].handler<vod>.params.segment_duration` | `duration` | 尚不支持（not supported yet） |
-| `routes[].handler<vod>.params.timeout` | `duration` | 尚不支持（not supported yet） |
+| `routes[].handler<vod>.params.library` | `string, required` | 已支持 |
+| `routes[].handler<vod>.params.max_cache_bytes` | `integer` | 已支持 |
+| `routes[].handler<vod>.params.max_segment_bytes` | `integer` | 已支持 |
+| `routes[].handler<vod>.params.prefix` | `string` | 已支持 |
+| `routes[].handler<vod>.params.segment_duration` | `duration` | 已支持 |
+| `routes[].handler<vod>.params.timeout` | `duration` | 已支持 |
 
 <a id="fields-http-handlers-webrtc-proxy"></a>
 

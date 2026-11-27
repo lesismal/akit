@@ -17,7 +17,7 @@ so in a note marked **akit:**; nine defaults that name the gateway are akit's, `
 say `fit` ([decision 037](../decisions/037-akit-names.md)).
 
 <!-- BEGIN GENERATED: summary -->
-akit reads **1198** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 184 objects akit reads, each has its table below.
+akit reads **1229** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 186 objects akit reads, each has its table below.
 <!-- END GENERATED -->
 
 How to read the tables:
@@ -3205,7 +3205,7 @@ the same way, its params checked by the module.
 | `stream_whep` | supported: [params](#cfg-routes-handler-stream-whep-params) |
 | `stream_whip` | supported: [params](#cfg-routes-handler-stream-whip-params) |
 | `sync_ingest` | **not supported yet**: refused by name |
-| `vod` | **not supported yet**: refused by name |
+| `vod` | supported: [params](#cfg-routes-handler-vod-params) |
 | `webrtc_proxy` | supported: [params](#cfg-routes-handler-webrtc-proxy-params) |
 | `websockify` | **not supported yet**: refused by name |
 | `whep` | supported: [params](#cfg-routes-handler-whep-params) |
@@ -3505,6 +3505,39 @@ Passes WHIP and WHEP to the media servers of an upstream, and relays their peers
 | `max_sdp_bytes` | integer, 0 or more | `32768` | The largest request and answer passed on, an offer and an answer among them; a larger request is answered 413, and a larger answer 502. 32 KiB when left out or 0. |
 | `media_addrs` | map of string |  | The address akit relays a media server's peers to, by the media server's address in the upstream, as {"10.0.0.2:8080": "10.0.0.2:8189"}, or an IP alone, which takes the port of its answer's candidate. When left out, the answer's first host candidate, or server-reflexive one, IPv4 first. |
 | `timeout` | duration | `"10s"` | The most a request may take, from its last byte to the media server's answer read whole; past it, it is answered 504. 10s when left out. |
+<!-- END GENERATED -->
+
+### `vod`
+
+Serves a media library's items as video on demand over HLS (I142):
+`/vod/films/films/bbb/index.m3u8` is the multivariant playlist of the item `films/bbb` of the
+library `films`; its renditions' media playlists of fMP4 or MPEG-TS segments, cut at keyframes by
+akio-media's planner near `segment_duration`, their initialization sections, its subtitles as
+WebVTT, its poster and the files themselves with ranges. `encrypt` is not read yet (I147).
+
+```fit
+listener web :8080
+media_library films { roots /srv/media/films }
+
+route vod { match { path /vod/* }; handler vod { library films } }
+```
+
+<!-- BEGIN GENERATED: routes[].handler<vod>.params -->
+<a id="cfg-routes-handler-vod-params"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `library` | string | required | The media_library whose items are served. |
+| `auth` | string |  | The media_auth policy every request, playlist, segment, subtitle and file, must satisfy, play on the stream vod/<library>/<id>: a bearer token, Basic, the token query parameter or the fit_media_token cookie. A playlist fetched with a token in its query names its playlists, segments and subtitles with the token too, so that a player that sends no header (Safari, ffmpeg) plays on. With the policy's url_signing, a signed URL of the item plays too, and its playlists hand what they name a grant of their own. Everyone may play when left out. |
+| `cache_control` | string |  | Sent as Cache-Control with every playlist, segment, subtitle and file, so that a CDN keeps them, as "public, max-age=86400": they change only when their file does, which their ETag and Last-Modified say. None when left out. |
+| `container` | string: `fmp4`, `ts` | `"fmp4"` | The segments of index.m3u8: fmp4, fragmented MP4 for H.264, H.265, AV1, AAC and Opus, or ts, MPEG-TS for H.264, H.265, AAC and Opus, for older players. Either is played by its own name too, index.fmp4.m3u8 and index.ts.m3u8. fmp4 when left out. |
+| `cors` | string |  | Sent as Access-Control-Allow-Origin, as "*", for players on other origins. None when left out. |
+| `encrypt` | boolean |  | **Not supported yet**: refused by name. Encrypts the segments with AES-128 (METHOD=AES-128), fMP4 and MPEG-TS alike, each item under a key of its own derived from the library's secret, which the media playlists name as aes.key in the item's directory and the handler serves only to a request auth lets play that item: segments copied, as a CDN keeps them, do not play without it. The files themselves are then not served; initialization sections, subtitles and posters stay clear. Needs auth and the library's secret or secret_file. Off when left out. |
+| `max_cache_bytes` | integer, 0 or more | `268435456` | The most memory the handler keeps of what it builds from the files, for the next request: how each is cut into segments, its playlists, its segments and subtitles, the least recently used dropped; and of what it is building. 256 MiB when left out or 0. **akit:** What is being built holds none of it: builds are bounded by the library's file pool and `max_segment_bytes`, and what is built is admitted when done (decision row 90). |
+| `max_segment_bytes` | integer, 0 or more | `33554432` | The largest segment: one that would be larger is cut at an earlier keyframe, or without one when there is none. 64 KiB to 1 GiB, and at most a quarter of max_cache_bytes. 32 MiB when left out or 0. **akit:** A segment whose samples pass it is answered 500 rather than cut at an earlier keyframe, as akio-media's planner cuts by time alone (decision row 90). |
+| `prefix` | string |  | The part of the path before an item's ID: with /vod/films/, /vod/films/films/bbb/index.m3u8 is the playlist of the item films/bbb. /vod/<library>/ when left out. |
+| `segment_duration` | duration | `"4s"` | About how long segments are: a file with video is cut at the keyframe nearest this after a segment's start, so set it to the keyframe interval the files were made with, or a multiple of it. 1s to 60s. 4s when left out. **akit:** akit cuts with akio-media's planner: a segment starts at the first keyframe at least this long after the one before (ffmpeg's `-hls_time`), where fit cuts at the keyframe nearest it; the last segment ends with the file's latest track (decision row 90). |
+| `timeout` | duration | `"30s"` | How long a request may wait for what it needs to be read and built on the library's file pool; past it the answer is 503. 30s when left out. **akit:** Timed by a thread of akit-media's own until akio gives handlers a timer (akio A296). |
 <!-- END GENERATED -->
 
 ### `httpflv`

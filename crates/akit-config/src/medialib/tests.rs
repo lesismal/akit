@@ -208,3 +208,89 @@ fn go_path_match() {
     bad("a/b[", "x");
     ok("*x", "xxx", true);
 }
+
+/// fit's `vod` checks (`VOD.Provision`, `handler/vod/edges_test.go`).
+#[test]
+fn vod_params() {
+    let doc = |params: &str| {
+        format!(
+            r#"{{"listeners": [{{"name": "web", "address": ":8080"}}], "media_auth": [{{"name": "p", "public": ["play"]}}],
+            "media_library": [{{"name": "films", "roots": ["/srv/films"]}}],
+            "routes": [{{"handler": {{"module": "vod", "params": {params}}}}}]}}"#
+        )
+    };
+    let c = from_json(
+        &doc(r#"{"library": "films", "auth": "p", "container": "ts", "segment_duration": "6s", "cache_control": "public", "cors": "*"}"#),
+        None,
+    )
+    .unwrap();
+    let crate::Handler::Vod(v) = &c.routes[0].handler else {
+        panic!("not vod");
+    };
+    assert_eq!(v.prefix_or(), "/vod/films/");
+    assert_eq!(v.container, Container::Ts);
+    assert_eq!(v.segment(), Duration::from_secs(6));
+    assert_eq!(v.cache_bytes(), DEFAULT_MAX_CACHE_BYTES);
+    assert_eq!(v.segment_bytes(), DEFAULT_MAX_SEGMENT_BYTES);
+    assert_eq!(v.wait(), DEFAULT_VOD_TIMEOUT);
+    assert_eq!(v.policy.as_ref().unwrap().name, "p");
+    let v = Vod {
+        prefix: "/v".into(),
+        max_cache_bytes: 1 << 20,
+        ..Vod::default()
+    };
+    assert_eq!(
+        (v.prefix_or().as_str(), v.segment_bytes()),
+        ("/v/", 1 << 18)
+    );
+    for (params, want) in [
+        (r#"{}"#, "library: missing required field"),
+        (
+            r#"{"library": "none"}"#,
+            r#"there is no media_library named "none""#,
+        ),
+        (r#"{"library": "a b"}"#, "is not a library's name"),
+        (
+            r#"{"library": "films", "prefix": "vod/"}"#,
+            "does not start with /",
+        ),
+        (
+            r#"{"library": "films", "auth": "q"}"#,
+            "no media_auth policy named",
+        ),
+        (
+            r#"{"library": "films", "container": "mkv"}"#,
+            "is not one of",
+        ),
+        (
+            r#"{"library": "films", "segment_duration": "500ms"}"#,
+            "is not between 1s and 1m0s",
+        ),
+        (
+            r#"{"library": "films", "segment_duration": "61s"}"#,
+            "is not between",
+        ),
+        (
+            r#"{"library": "films", "max_segment_bytes": 1000}"#,
+            "is not between 64 KiB",
+        ),
+        (
+            r#"{"library": "films", "max_cache_bytes": 1048576, "max_segment_bytes": 1048576}"#,
+            "a quarter of max_cache_bytes",
+        ),
+        (
+            r#"{"library": "films", "cors": "a\nb"}"#,
+            "may not hold a line break",
+        ),
+        (
+            r#"{"library": "films", "encrypt": true}"#,
+            "not supported yet",
+        ),
+        (r#"{"library": "films", "nope": 1}"#, "unknown field"),
+    ] {
+        match from_json(&doc(params), None) {
+            Ok(_) => panic!("{params}: loaded, want {want:?}"),
+            Err(e) => assert!(e.to_string().contains(want), "{params}: {e}, want {want:?}"),
+        }
+    }
+}

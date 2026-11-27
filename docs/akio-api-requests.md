@@ -3067,6 +3067,28 @@ durations without their indexes; and `SampleIndex::estimate_bytes(counts)` (or
 **How akit would use it.** The library's scans probe with it, reading kilobytes a file; its movie
 cache admits a movie by the estimate before reading it, as fit's table cache does.
 
+## A296 A timer a handler can set on its engine
+
+**Status.** Requested by I142 (2026-11-28). Nothing waits for it: akit's `vod` times the requests it
+suspends with a thread of akit-media's own (`deadline.rs`), a stopgap recorded in
+[progress](progress.md).
+
+**Problem.** A handler that suspends a request while work runs elsewhere (the media library's file
+pool) must answer it 503 past its `timeout` (fit's `vod` uses `time.AfterFunc`). akio-http's timers
+and akio-media's `timer::after` are internal; a handler has no public way to run a callback after a
+delay on its engine.
+
+**Evidence.** At akio `d8d51f61`, `akio-media/src/timer.rs`: `pub(crate) fn after`; akio-http's
+`timer.rs` and `deadline.rs` serve its own timeouts; `Context`, `Suspended` and `Detached` have no
+timer.
+
+**Suggested API.** `Suspended::deadline(d, f)` (or `Context::after(d, f) -> TimerHandle` with
+`cancel`): `f` runs on the connection's I/O thread after `d` unless the request was resumed or the
+timer cancelled first.
+
+**How akit would use it.** `vod` sets the timeout on the suspended request and drops its own
+deadline thread.
+
 
 ## A301 `H2Client` ended by the engine's graceful shutdown
 

@@ -298,7 +298,7 @@ fn catalog() {
     assert_eq!(bbb.renditions[1].name, "");
     assert_eq!(bbb.renditions[1].file.path, "films/bbb.mp4");
     // fit's says avc1.64000b of its own copy; the fixture's level is the file's.
-    let codecs = bbb.renditions[0].codecs.to_ascii_lowercase();
+    let codecs = bbb.renditions[0].codecs.clone();
     assert!(
         codecs.starts_with("avc1.6400") && codecs.ends_with(",mp4a.40.2"),
         "{codecs}"

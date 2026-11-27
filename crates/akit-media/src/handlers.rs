@@ -55,6 +55,11 @@ pub static MODULES: &[Info<HandlerParams>] = &[
         crate::rtc::new_whep,
     ),
     Info::handler(
+        "http.handlers.vod",
+        "Serves a media library's items as video on demand over HLS, fMP4 or MPEG-TS segments cut from the files as they are stored, and the files themselves with Range.",
+        crate::vod::new_vod,
+    ),
+    Info::handler(
         "http.handlers.media_pages",
         "Serves akit's media pages under a prefix: an index with a login, a room call, publish and play pages over WHIP and WHEP, and the room API through which the members of a call announce their microphone and camera and talk in its chat.",
         crate::pages::new_pages,
@@ -386,7 +391,7 @@ pub fn with_query(playlist: &str, query: &str) -> String {
 }
 
 /// `s` escaped as a query value, as Go's `url.QueryEscape`.
-fn query_escape(s: &str) -> String {
+pub(crate) fn query_escape(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for b in s.bytes() {
         match b {

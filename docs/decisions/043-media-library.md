@@ -81,3 +81,18 @@ not supported yet for this track.
   endpoint of the Admin API (`akit_admin::Options::endpoints`), so that akit-admin does not depend
   on the media crate.
 - **Where akio reads a file otherwise than fib**, the catalog follows akio (decision row 89).
+
+## I142: video on demand
+
+- **Segments are cut by akio-media's `mp4::Plan`** and muxed by its fMP4 and MPEG-TS muxers, from
+  the movie the library keeps; a playlist carries a file's first video and first audio track of a
+  codec served (fit's choice), the others given to the muxers as unknown tracks so that they leave
+  them out. Where `Plan` cuts otherwise than fit's planner, akit follows `Plan` (decision row 90).
+- **One clock, fit's**: every packet's time is moved so that the file's time 0 is at 1.4 s in both
+  containers, so that one `X-TIMESTAMP-MAP` places the subtitles, as fit's.
+- **The names, the multivariant playlist and the subtitles are fit's**, written as fit writes them;
+  an H.264 codec string is written in fib's lower-case hex.
+- **The files themselves and the poster go through akio-http's `Files`** of the item's root, which
+  gives them ranges, conditional requests and `sendfile`.
+- **A request waiting for the pool is suspended** (`Context::suspend`) and answered from the pool,
+  or 503 past `timeout` by a deadline thread of akit-media's own until akio's A296.

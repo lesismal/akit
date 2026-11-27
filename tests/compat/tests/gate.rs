@@ -3350,7 +3350,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 185] = [
+    let objects: [(&str, &str, Option<&str>); 186] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         (
             "providers[].kubernetes",
@@ -3722,6 +3722,11 @@ fn akit_config_lists_match_the_inventory() {
             "MEDIA_LIBRARY_FIELDS",
             Some("MEDIA_LIBRARY_FIT_ONLY"),
         ),
+        (
+            "routes[].handler<vod>.params",
+            "VOD_FIELDS",
+            Some("VOD_FIT_ONLY"),
+        ),
         ("streaming", "STREAMING_FIELDS", Some("STREAMING_FIT_ONLY")),
         (
             "streaming.rtmp",
@@ -3864,6 +3869,7 @@ fn akit_config_lists_match_the_inventory() {
         "stream_whip",
         "stream_whep",
         "media_pages",
+        "vod",
     ] {
         assert!(handlers.insert(h.to_owned()), "FIT_HANDLERS lists {h}");
     }
@@ -3896,6 +3902,8 @@ fn akit_config_lists_match_the_inventory() {
         "stream_whip",
         "stream_whep",
         "media_pages",
+        // I142.
+        "vod",
     ] {
         read.insert(format!("routes[].handler<{h}>"));
         read.insert(format!("routes[].handler<{h}>.params"));
@@ -4050,7 +4058,7 @@ fn inventory_paths_for_akit_config_paths() {
 fn findings_from_akit_config_errors() {
     let errs = akit_config::from_json(
         r#"{"listeners": [{"name": "w", "address": ":1", "mptcp": true}],
-            "routes": [{"handler": {"module": "vod"}}], "engine": {"loop_wait": "1ms"}}"#,
+            "routes": [{"handler": {"module": "media_tokens"}}], "engine": {"loop_wait": "1ms"}}"#,
         None,
     )
     .unwrap_err();
@@ -4061,7 +4069,7 @@ fn findings_from_akit_config_errors() {
         .collect();
     let want: BTreeSet<String> = [
         "listeners[0].mptcp",
-        "routes[0].handler<vod>",
+        "routes[0].handler<media_tokens>",
         "engine.loop_wait",
     ]
     .iter()

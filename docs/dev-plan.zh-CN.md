@@ -244,7 +244,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | **1.0 之后：媒体库与频道** | | | |
 | I140 | 媒体库 I：决定 043，配置中的 `media_library` | I120 | done |
 | I141 | 媒体库 II：目录：扫描、条目、基于 akio-media 的 `mp4` 的探测、文件池、保留的解析后影片；角色 `media_library`；Admin API 的 `/media/library` | I140, I100 | done |
-| I142 | 点播：`vod`，由样本表生成的 HLS，按范围提供的文件 | I141, I121 | todo |
+| I142 | 点播：`vod`，由样本表生成的 HLS，按范围提供的文件 | I141, I121 | done |
 | I143 | 媒体 token：`media_auth` 的 `keys` 和 `media_tokens`（fit 的 I119） | I121 | todo |
 | I144 | 会过期的播放 URL：`url_signing`、会话、`media_tokens` 的 `/urls` | I142, I143 | todo |
 | I145 | 频道：作为直播流播放的媒体库条目，`streaming.channels` | I141, I123 | todo |
@@ -1855,7 +1855,7 @@ SAMPLE-AES（fib 的 A69）；它缺少的部分作为 akio A295–A300 请求�
   列表播放条目；播放中被改变的文件回答 404，其缓存项被丢弃；fit 的程序和 akit 对同一媒体库提供相同的变体。
 - **涉及**：`akit-media`（`vod`）、`akit-config`、`tests/compat`、`docs/reference`。
 - **fit**：`handler/vod`；I133。
-- **状态**：todo。
+- **状态**：已完成（2026-11-28），`encrypt` 在 I147 之前作为“尚不支持”拒绝，`timeout` 采用临时做法（akio A296）。见进度日志。
 
 ### I143 媒体 token：`media_auth` 的 `keys` 和 `media_tokens`
 

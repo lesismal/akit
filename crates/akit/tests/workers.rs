@@ -374,6 +374,15 @@ fn cases(w: &World) -> Vec<Case> {
             404,
             true,
         ),
+        // I142: outside its prefix (`/vod/lib/`), answered at once as fit's; its slow part, a
+        // segment built on the library's file pool with the request suspended, is akit-media's
+        // `tests/vod.rs`.
+        handler(
+            "vod",
+            r#"{"module": "vod", "params": {"library": "lib"}}"#.into(),
+            404,
+            true,
+        ),
         // I124: outside their prefix (`/whip/`, `/whep/`), answered at once as fit's.
         handler(
             "stream_whip",
@@ -425,6 +434,7 @@ fn config(w: &World, cases: &[Case]) -> String {
     format!(
         r#"{{"listeners": [{{"name": "web", "address": "127.0.0.1:0", "protocols": ["http/1.1"]}}],
   "upstreams": [{{"name": "app", "addresses": ["{}"]}}, {{"name": "auth", "addresses": ["{}"]}}],
+  "media_library": [{{"name": "lib", "roots": ["/nonexistent/akit-workers"]}}],
   "routes": [{}]}}"#,
         w.app,
         w.auth,

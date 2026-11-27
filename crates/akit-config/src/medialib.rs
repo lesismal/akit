@@ -601,5 +601,224 @@ pub fn within(dir: &Path, p: &Path) -> bool {
     p != dir && p.starts_with(dir)
 }
 
+/// fit's `vod` defaults and bounds (`handler/vod`).
+pub const DEFAULT_SEGMENT_DURATION: Duration = Duration::from_secs(4);
+/// See [`DEFAULT_SEGMENT_DURATION`].
+pub const MIN_SEGMENT_DURATION: Duration = Duration::from_secs(1);
+/// See [`DEFAULT_SEGMENT_DURATION`].
+pub const MAX_SEGMENT_DURATION: Duration = Duration::from_secs(60);
+/// See [`DEFAULT_SEGMENT_DURATION`].
+pub const DEFAULT_MAX_CACHE_BYTES: u64 = 256 << 20;
+/// See [`DEFAULT_SEGMENT_DURATION`].
+pub const DEFAULT_MAX_SEGMENT_BYTES: u64 = 32 << 20;
+/// See [`DEFAULT_SEGMENT_DURATION`].
+pub const MIN_MAX_SEGMENT_BYTES: u64 = 64 << 10;
+/// See [`DEFAULT_SEGMENT_DURATION`].
+pub const MAX_MAX_SEGMENT_BYTES: u64 = 1 << 30;
+/// See [`DEFAULT_SEGMENT_DURATION`].
+pub const DEFAULT_VOD_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// The `vod` handler's segments: fMP4 or MPEG-TS.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Container {
+    /// `fmp4`, the default.
+    #[default]
+    Fmp4,
+    /// `ts`.
+    Ts,
+}
+
+/// The `vod` handler's params, as fit's `vod.VOD` (I142): a media library's items as video on
+/// demand over HLS, and the files themselves with ranges.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Vod {
+    /// `library`: the `media_library` whose items are served.
+    pub library: String,
+    /// `prefix`: the part of the path before an item's ID, ending in '/'; `/vod/<library>/` when
+    /// left out.
+    pub prefix: String,
+    /// `auth`: the `media_auth` policy every request must satisfy, action `play` on the stream
+    /// `vod/<library>/<id>`; empty for none.
+    pub auth: String,
+    /// `container`: what `index.m3u8` lists.
+    pub container: Container,
+    /// `segment_duration`: [`DEFAULT_SEGMENT_DURATION`] when zero.
+    pub segment_duration: Duration,
+    /// `max_cache_bytes`: [`DEFAULT_MAX_CACHE_BYTES`] when 0.
+    pub max_cache_bytes: u64,
+    /// `max_segment_bytes`: the smaller of [`DEFAULT_MAX_SEGMENT_BYTES`] and a quarter of the
+    /// cache when 0.
+    pub max_segment_bytes: u64,
+    /// `cache_control`: sent as `Cache-Control`; none when empty.
+    pub cache_control: String,
+    /// `cors`: sent as `Access-Control-Allow-Origin`; none when empty.
+    pub cors: String,
+    /// `timeout`: [`DEFAULT_VOD_TIMEOUT`] when zero.
+    pub timeout: Duration,
+    /// The policy `auth` names, from the config.
+    pub policy: Option<crate::media::MediaAuth>,
+}
+
+impl Vod {
+    /// `segment_duration`, or its default.
+    #[must_use]
+    pub fn segment(&self) -> Duration {
+        or(self.segment_duration, DEFAULT_SEGMENT_DURATION)
+    }
+
+    /// `max_cache_bytes`, or its default.
+    #[must_use]
+    pub fn cache_bytes(&self) -> u64 {
+        or(self.max_cache_bytes, DEFAULT_MAX_CACHE_BYTES)
+    }
+
+    /// `max_segment_bytes`, or its default.
+    #[must_use]
+    pub fn segment_bytes(&self) -> u64 {
+        or(
+            self.max_segment_bytes,
+            DEFAULT_MAX_SEGMENT_BYTES.min(self.cache_bytes() / 4),
+        )
+    }
+
+    /// `timeout`, or its default.
+    #[must_use]
+    pub fn wait(&self) -> Duration {
+        or(self.timeout, DEFAULT_VOD_TIMEOUT)
+    }
+
+    /// `prefix`, or its default.
+    #[must_use]
+    pub fn prefix_or(&self) -> String {
+        if self.prefix.is_empty() {
+            format!("/vod/{}/", self.library)
+        } else if self.prefix.ends_with('/') {
+            self.prefix.clone()
+        } else {
+            format!("{}/", self.prefix)
+        }
+    }
+}
+
+const VOD_FIELDS: &[&str] = &[
+    "library",
+    "prefix",
+    "auth",
+    "container",
+    "segment_duration",
+    "max_cache_bytes",
+    "max_segment_bytes",
+    "cache_control",
+    "cors",
+    "timeout",
+];
+// Encrypted segments (I147).
+const VOD_FIT_ONLY: &[&str] = &["encrypt"];
+
+/// Decodes the `vod` handler's params, with fit's checks (`VOD.Provision`); the library it names
+/// is checked once every file is read.
+pub(crate) fn vod(
+    d: &mut Decoder<'_>,
+    params: Option<&Node>,
+    off: usize,
+    path: &str,
+) -> Option<Vod> {
+    let Some(n) = params else {
+        d.error(off, &join_field(path, "library"), "missing required field");
+        return None;
+    };
+    let mut o = d.object(n, path)?;
+    let mut v = Vod::default();
+    if let Some(x) = o.require(d, "library") {
+        v.library = d.string(x, &o.at("library")).unwrap_or_default();
+        if !crate::model::valid_name(&v.library) {
+            d.error(
+                x.off,
+                &o.at("library"),
+                format!("{:?} is not a library's name", v.library),
+            );
+        }
+    }
+    if let Some((p, poff)) = text_at(d, &mut o, "prefix") {
+        if !p.is_empty() && !p.starts_with('/') {
+            d.error(
+                poff,
+                &o.at("prefix"),
+                format!("{p:?} does not start with /"),
+            );
+        }
+        v.prefix = p;
+    }
+    if let Some((a, _)) = text_at(d, &mut o, "auth") {
+        v.auth = a;
+    }
+    if let Some((c, coff)) = text_at(d, &mut o, "container") {
+        match c.as_str() {
+            "" | "fmp4" => {}
+            "ts" => v.container = Container::Ts,
+            _ => d.error(
+                coff,
+                &o.at("container"),
+                format!("{c:?} is not one of \"fmp4\", \"ts\""),
+            ),
+        }
+    }
+    if let Some(x) = o.take("segment_duration") {
+        let p = o.at("segment_duration");
+        if let Some(t) = d.duration(x, &p) {
+            if !t.is_zero() && !(MIN_SEGMENT_DURATION..=MAX_SEGMENT_DURATION).contains(&t) {
+                d.error(
+                    x.off,
+                    &p,
+                    format!(
+                        "{} is not between {} and {}",
+                        crate::duration::format(t),
+                        crate::duration::format(MIN_SEGMENT_DURATION),
+                        crate::duration::format(MAX_SEGMENT_DURATION)
+                    ),
+                );
+            }
+            v.segment_duration = t;
+        }
+    }
+    v.max_cache_bytes = bytes(d, &mut o, "max_cache_bytes");
+    let seg_at = o.take("max_segment_bytes").map(|x| {
+        v.max_segment_bytes = d
+            .int(x, &o.at("max_segment_bytes"), 0, i64::MAX)
+            .and_then(|n| u64::try_from(n).ok())
+            .unwrap_or(0);
+        x.off
+    });
+    let seg = v.segment_bytes();
+    let quarter = v.cache_bytes() / 4;
+    if !(MIN_MAX_SEGMENT_BYTES..=MAX_MAX_SEGMENT_BYTES).contains(&seg) || seg > quarter {
+        d.error(
+            seg_at.unwrap_or(o.off),
+            &o.at("max_segment_bytes"),
+            format!(
+                "{seg} is not between 64 KiB and the smaller of 1 GiB and a quarter of max_cache_bytes ({quarter})"
+            ),
+        );
+    }
+    for (key, slot) in [
+        ("cache_control", &mut v.cache_control),
+        ("cors", &mut v.cors),
+    ] {
+        if let Some((s, soff)) = text_at(d, &mut o, key) {
+            if s.contains(['\r', '\n']) {
+                d.error(
+                    soff,
+                    &o.at(key),
+                    "cache_control and cors may not hold a line break",
+                );
+            }
+            *slot = s;
+        }
+    }
+    v.timeout = duration(d, &mut o, "timeout");
+    o.finish(d, VOD_FIELDS, VOD_FIT_ONLY);
+    Some(v)
+}
+
 #[cfg(test)]
 mod tests;

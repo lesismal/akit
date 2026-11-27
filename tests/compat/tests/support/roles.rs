@@ -1544,7 +1544,49 @@ pub(crate) fn samples() -> Vec<(String, String, Read)> {
     media_handlers(&mut out);
     media_pages(&mut out);
     media_library(&mut out);
+    vod(&mut out);
     out
+}
+
+/// The `vod` handler's params (I142).
+fn vod(out: &mut Vec<(String, String, Read)>) {
+    const P: &str = r#"{"name": "p", "public": ["play"]}"#;
+    const L: &str = r#"[{"name": "l", "roots": ["/srv/a"]}, {"name": "m", "roots": ["/srv/b"]}]"#;
+    let w = |m: &str| {
+        format!(
+            r#"{{"listeners": [{{"name": "web", "address": ":8080"}}], "media_auth": [{P}], "media_library": {L}, "routes": [{{"handler": {{"module": "vod", "params": {m}}}}}]}}"#
+        )
+    };
+    out.push((
+        "routes[].handler<vod>".into(),
+        w(r#"{"library": "l"}"#),
+        Read::Differs(format!(
+            r#"{{"listeners": [{{"name": "web", "address": ":8080"}}], "media_auth": [{P}], "media_library": {L}, "routes": [{{"handler": {{"module": "respond"}}}}]}}"#
+        )),
+    ));
+    out.push((
+        "routes[].handler<vod>.params".into(),
+        w(r#"{"library": "l"}"#),
+        Read::Differs(w(r#"{"library": "l", "prefix": "/x/"}"#)),
+    ));
+    emit(
+        out,
+        "routes[].handler<vod>.params",
+        &w,
+        &[("library", q("l"))],
+        vec![
+            f("library", q("l"), q("m")),
+            f("prefix", q("/a/"), q("/b/")),
+            f("auth", q("p"), q("")),
+            f("container", q("ts"), q("fmp4")),
+            f("segment_duration", q("2s"), q("3s")),
+            f("max_cache_bytes", "1048576", "2097152"),
+            f("max_segment_bytes", "65536", "131072"),
+            f("cache_control", q("public"), q("private")),
+            f("cors", q("*"), q("https://a")),
+            f("timeout", q("1s"), q("2s")),
+        ],
+    );
 }
 
 /// `media_library` (I140).

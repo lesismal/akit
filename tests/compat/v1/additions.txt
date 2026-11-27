@@ -841,3 +841,15 @@ admin	added	endpoint	HEAD	/media/library/{name}
 admin	added	endpoint	GET	/media/library/{name}/items/{id...}
 admin	added	endpoint	HEAD	/media/library/{name}/items/{id...}
 admin	added	endpoint	POST	/media/library/{name}/rescan
+config	added	supported	routes[].handler<vod>
+config	added	supported	routes[].handler<vod>.params
+config	added	supported	routes[].handler<vod>.params.auth
+config	added	supported	routes[].handler<vod>.params.cache_control
+config	added	supported	routes[].handler<vod>.params.container
+config	added	supported	routes[].handler<vod>.params.cors
+config	added	supported	routes[].handler<vod>.params.library
+config	added	supported	routes[].handler<vod>.params.max_cache_bytes
+config	added	supported	routes[].handler<vod>.params.max_segment_bytes
+config	added	supported	routes[].handler<vod>.params.prefix
+config	added	supported	routes[].handler<vod>.params.segment_duration
+config	added	supported	routes[].handler<vod>.params.timeout

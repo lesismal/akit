@@ -281,6 +281,22 @@
     "media_library[].file_workers": {
       "en": "The pool's threads are started as work comes, up to this bound, and stay while the library runs.",
       "zh": "文件池的线程随工作到来而启动，至多这么多个，并在媒体库运行期间保留。"
+    },
+    "routes[].handler<vod>.params.segment_duration": {
+      "en": "akit cuts with akio-media's planner: a segment starts at the first keyframe at least this long after the one before (ffmpeg's `-hls_time`), where fit cuts at the keyframe nearest it; the last segment ends with the file's latest track (decision row 90).",
+      "zh": "akit 用 akio-media 的规划器切分：分片从距上一分片起点至少这么久的第一个关键帧开始（ffmpeg 的 `-hls_time`），而 fit 在最接近的关键帧处切分；最后一个分片随文件中最晚结束的轨道结束（待审决定第 90 行）。"
+    },
+    "routes[].handler<vod>.params.max_segment_bytes": {
+      "en": "A segment whose samples pass it is answered 500 rather than cut at an earlier keyframe, as akio-media's planner cuts by time alone (decision row 90).",
+      "zh": "样本超过它的分片回答 500，而不是在更早的关键帧处切分，因为 akio-media 的规划器只按时间切分（待审决定第 90 行）。"
+    },
+    "routes[].handler<vod>.params.max_cache_bytes": {
+      "en": "What is being built holds none of it: builds are bounded by the library's file pool and `max_segment_bytes`, and what is built is admitted when done (decision row 90).",
+      "zh": "正在构建的内容不占用它：构建受媒体库文件池和 `max_segment_bytes` 限制，构建完成后才接纳（待审决定第 90 行）。"
+    },
+    "routes[].handler<vod>.params.timeout": {
+      "en": "Timed by a thread of akit-media's own until akio gives handlers a timer (akio A296).",
+      "zh": "在 akio 为处理器提供定时器（akio A296）之前，由 akit-media 自己的一个线程计时。"
     }
   }
 }

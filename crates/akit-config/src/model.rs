@@ -1420,6 +1420,8 @@ pub enum Handler {
     StreamWhep(crate::media::StreamRtc),
     /// The `media_pages` handler: akit's media pages, their login and room API (I125).
     MediaPages(crate::media::MediaPages),
+    /// The `vod` handler: a media library's items as video on demand over HLS (I142).
+    Vod(crate::medialib::Vod),
     /// A module akit's config model does not know: one built in with `akit build` (I70), its
     /// params kept as written for the module to decode. Whether the binary has it is the
     /// registry's to say, when the config is compiled, as fit's `module.Load` says.
@@ -1453,6 +1455,7 @@ impl Handler {
             Handler::StreamWhip(_) => "stream_whip",
             Handler::StreamWhep(_) => "stream_whep",
             Handler::MediaPages(_) => "media_pages",
+            Handler::Vod(_) => "vod",
             Handler::ForwardProxy(_) => "forward_proxy",
             Handler::Whip(_) => "whip",
             Handler::Whep(_) => "whep",
@@ -2480,7 +2483,6 @@ const FIT_HANDLERS: &[&str] = &[
     "bt_stream",
     "media_tokens",
     "sync_ingest",
-    "vod",
     "websockify",
 ];
 /// fit's middleware modules (its `http.middleware` namespace) that akit does not have yet.
@@ -3115,6 +3117,8 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
             Handler::Whip(h) | Handler::Whep(h) => Some((&h.auth, &mut h.policy)),
             Handler::WebRtcProxy(h) => Some((&h.auth, &mut h.policy)),
             Handler::MediaPages(h) => Some((&h.auth, &mut h.policy)),
+            // I142: vod.
+            Handler::Vod(h) => Some((&h.auth, &mut h.policy)),
             _ => None,
         };
         let Some((name, policy)) = auth.filter(|(n, _)| !n.is_empty()) else {
@@ -3126,6 +3130,18 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
                 let msg = format!("there is no media_auth policy named {name:?}");
                 if let Some(d) = ds.get_mut(r.file) {
                     d.error(r.off, &format!("{}.handler.params.auth", r.path), msg);
+                }
+            }
+        }
+    }
+    // The library each vod handler names (I142), once every file is read.
+    let media_library = media_library.map(|(m, _)| m).unwrap_or_default();
+    for r in &routes {
+        if let Handler::Vod(v) = &r.v.handler {
+            if !v.library.is_empty() && !media_library.iter().any(|l| l.name == v.library) {
+                let msg = format!("there is no media_library named {:?}", v.library);
+                if let Some(d) = ds.get_mut(r.file) {
+                    d.error(r.off, &format!("{}.handler.params.library", r.path), msg);
                 }
             }
         }
@@ -3168,7 +3184,7 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
         bittorrent: bittorrent.map(|(b, _)| b),
         media_auth,
         streaming,
-        media_library: media_library.map(|(m, _)| m).unwrap_or_default(),
+        media_library,
         warnings: crate::error::Warnings::default(),
     }
 }
@@ -4764,6 +4780,8 @@ fn handler(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Handler> {
         "stream_whep" => {
             crate::media::stream_rtc(d, params, &params_path, "/whep/").map(Handler::StreamWhep)
         }
+        // I142: video on demand from a media library.
+        "vod" => crate::medialib::vod(d, params, off, &params_path).map(Handler::Vod),
         // I125: the media pages.
         "media_pages" => {
             crate::media::media_pages(d, params, &params_path).map(Handler::MediaPages)

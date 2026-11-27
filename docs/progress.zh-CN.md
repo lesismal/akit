@@ -17,9 +17,33 @@
 | 下一步 | 外部安全审查（[范围](security/review-scope.zh-CN.md)），其发现完成 I80b；fit 对决定 035 所提议字段（CRL 文件、WASM 摘要）的答复；1.0 之后的各条线（[开发计划](dev-plan.zh-CN.md#10-之后)）：控制台与加密的 store 已完成（I89–I94、I93b、I93c）；fit 的 Admin API 对没有令牌的连接的规则，基于控制台的 slots（akio 的 A232）（日志已完成：I81–I83；访问控制列表已完成：I85–I87）；Gateway API 一致性测试的运行（tests/conformance，由维护者运行） |
 | akio 需求 | A1–A24、A29、A30、A32、A33、A35–A38、A45、A48、A49、A51–A54、A57、A58、A63–A66、A75、A78、A79、A90–A94、A105、A108、A109、A111–A113、A117、A132–A135、A148、A165–A172、A180、A200、A214、A215、A220、A230–A238、A245 和 A247–A249 已进入 akio 的 main 并锁定；A225（外部审查，L15）已提出（[akio API 请求](akio-api-requests.zh-CN.md)） |
 | 流媒体与媒体认证 | [I120–I126](dev-plan.zh-CN.md#流媒体与媒体认证)，fit 的 I115–I117（决定 040）：I120（配置中的 `media_auth` 和 `streaming`）、I121（策略、检查、`akit media-token`）I122（角色的媒体中心、RTMP、RTSP 和 SRT）、I123（`httpflv`、`hls`）、I124（WebRTC 端口、`stream_whip`、`stream_whep`）、I125（`media_pages`）和 I126（`whip`、`whep` 和 `webrtc_proxy` 上的 `auth`）已完成；媒体库的 `libraries`、`vod` 和 `channels` 等待其那条线；akio 请求 A263–A268 |
-| 媒体库与频道 | [I140–I149](dev-plan.zh-CN.md#媒体库与频道)，fit 的 I131–I139 和 I119（决定 043）：I140（配置中的 `media_library`）和 I141（目录、角色 `media_library`、`/media/library`）已完成；akio 需求 A295 |
+| 媒体库与频道 | [I140–I149](dev-plan.zh-CN.md#媒体库与频道)，fit 的 I131–I139 和 I119（决定 043）：I140（配置中的 `media_library`）、I141（目录、角色 `media_library`、`/media/library`）和 I142（`vod`）已完成；akio 需求 A295、A296 |
 
 ## 日志
+
+### 2026-11-28：I142，`vod`
+
+- **完成内容**：`akit_media::vod`，即 fit 的 `handler/vod`，及其在 akit-config 中的参数（`medialib::Vod`：`library`、`prefix`、
+  `auth`、`container`、`segment_duration`、`max_cache_bytes`、`max_segment_bytes`、`cache_control`、`cors`、`timeout`，检查与
+  fit 相同；所指的媒体库和策略跨配置文件检查）。条目的命名与 fit 相同（`index.m3u8`、`index.{fmp4,ts}.m3u8`、`v0.fmp4.m3u8`、
+  `v0.init.mp4`、`v0.12.m4s`、`v0.12.ts`、`s0.m3u8`、`s0.vtt`、`v0.mp4`、`poster.jpg`）；多码率播放列表只由目录生成（各版本作为
+  带 `BANDWIDTH`、`CODECS`、`RESOLUTION` 的变体；音频组及按 fit 方式选出的默认项；字幕）；媒体播放列表由媒体库保留的影片经
+  akio-media 的 `mp4::Plan` 生成；初始化段和分片在媒体库的文件池上由 akio-media 的 fMP4 和 MPEG-TS 复用器复用，只含文件的第一条
+  视频轨和音频轨，所有时间移动到使文件的时间 0 位于 1.4 秒，与 fit 相同；WebVTT 带 fit 的 `X-TIMESTAMP-MAP`；文件和海报经由
+  akio-http 的 `Files` 提供（范围、条件请求）。构建结果保存在受 `max_cache_bytes` 限制、由相同参数的处理器共享的缓存中，对所有
+  等待的请求只构建一次（至多 1,024 个）；新目录丢弃不再列出的内容；扫描后改变的文件回答 404 并被丢弃。`auth` 对
+  `vod/<library>/<id>` 检查播放，带 `?token=` 获取的播放列表把 token 交给其列出的内容（`private, no-store`）。媒体库未加载或未扫描
+  时以及超过 `timeout` 时回答带 `Retry-After` 的 503。
+- **临时做法**：在 akio 的 A296 为处理器提供定时器之前，`timeout` 由 akit-media 自己的计时线程（`deadline.rs`）实现。
+- **与 fit 的差异**：切分用 akio 的（最后一个分片的 `EXTINF` 随最长的轨道结束：测试素材上为 1.021 秒，fit 为 1.000 秒）；超过
+  `max_segment_bytes` 的分片回答 500；缓存在构建期间不预留；文件按 `Files` 的方式提供；`encrypt` 在 I147 之前作为“尚不支持”拒绝
+  （待审决定第 90 行）。目录中的 H.264 编解码器字符串现在按 fib 的小写十六进制写出。
+- **验证**：`tests/vod.rs` 通过 akit 的监听器在 fit 的测试素材上测试（每个命名、两种容器、`ETag` 和 304、范围、海报、不存在的内容、
+  MPEG-TS 中拒绝 AV1、缓存命中、用 bearer token 和 `?token=` 的 `auth`、扫描后改变的文件、未加载的媒体库）；fit 的 `vod` 参数检查
+  （`medialib::tests::vod_params`）；命名和播放列表的单元测试。互通：fit 的程序和 akit 的程序提供同一份测试素材副本，32 个播放列表
+  和 WebVTT 文件中除 7 个媒体播放列表的最后一个 `EXTINF` 外完全相同；ffmpeg 从 akit 解码每个条目的每个变体（fMP4 和 MPEG-TS）各
+  25 帧，没有错误；ffprobe 在两种容器中读到视频从 1.4 秒开始，与 fit 相同；关卡、参考文档和 v1 新增项覆盖了这些参数。
+- **下一步**：I143，`media_auth` 的 `keys` 和 `media_tokens`。
 
 ### 2026-11-27：I141，媒体库的目录
 
@@ -37,7 +61,7 @@
 - **临时做法**：探测整个读取并解析文件的 `moov`（`Movie::parse`），保留其描述；提供文件时再次解析影片。akio 需求 A295 请求一种
   像 fib 那样跳过样本表的探测。
 - **与 fit 的差异**：在扫描自己的线程上而不是文件池上探测；每个文件保留一个影片而不是每条轨道一个表（待审决定第 88 行）；VP8 和
-  VP9 被命名并提供，数据块超出文件末尾的文件在扫描时被拒绝，`CODECS` 用大写十六进制，边车文件由 akit 的 JSON 读取器读取（待审决定
+  VP9 被命名并提供，数据块超出文件末尾的文件在扫描时被拒绝，边车文件由 akit 的 JSON 读取器读取（待审决定
   第 89 行）。
 - **验证**：在 fit 的测试素材（`tests/data/medialib`）上移植 fit 的 `medialib` 测试：`TestCatalog`（每条轨道的编解码器、起点、
   时长、尺寸和采样率与 ffprobe 的 `lib.probe` 对比）、`TestPathID`、`TestPatterns`、`TestRescan`、`TestPathsOut`、`TestBounds`、

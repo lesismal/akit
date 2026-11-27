@@ -2443,6 +2443,22 @@ akio 的 HTTP 客户端给出的响应不带其连接握手时看到的证书链
 
 **akit 如何使用。** 媒体库的扫描用它探测，每个文件只读几 KB；影片缓存在读取之前按估计值接纳影片，与 fit 的表缓存相同。
 
+## A296 处理器可在其引擎上设置的定时器
+
+**状态。** 由 I142 提出（2026-11-28）。没有工作等它：akit 的 `vod` 用 akit-media 自己的一个线程（`deadline.rs`）为它挂起的请求
+计时，临时做法记录在[进度](progress.zh-CN.md)中。
+
+**问题。** 在别处（媒体库的文件池）运行工作期间挂起请求的处理器，必须在超过其 `timeout` 时回答 503（fit 的 `vod` 用
+`time.AfterFunc`）。akio-http 的定时器和 akio-media 的 `timer::after` 都是内部的；处理器没有公开的方法在其引擎上延时运行回调。
+
+**证据。** 在 akio `d8d51f61` 中，`akio-media/src/timer.rs`：`pub(crate) fn after`；akio-http 的 `timer.rs` 和 `deadline.rs`
+服务于其自身的超时；`Context`、`Suspended` 和 `Detached` 都没有定时器。
+
+**建议的 API。** `Suspended::deadline(d, f)`（或 `Context::after(d, f) -> TimerHandle`，带 `cancel`）：除非请求先被恢复或定时器
+被取消，`f` 在 `d` 之后于连接的 I/O 线程上运行。
+
+**akit 如何使用。** `vod` 在挂起的请求上设置超时，去掉自己的计时线程。
+
 
 ## A301 引擎优雅关闭时结束 `H2Client`
 

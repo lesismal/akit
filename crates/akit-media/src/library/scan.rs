@@ -1089,7 +1089,18 @@ fn describe(r: &mut Rendition, m: &Movie) {
             id: t.id,
             kind,
             codec: codec_name(t.track.codec),
-            codec_string: t.track.codec_string().unwrap_or_default(),
+            // fit's (fib's) spelling: an H.264 profile and level in lower-case hex.
+            codec_string: t
+                .track
+                .codec_string()
+                .map(|c| {
+                    if c.starts_with("avc1.") {
+                        c.to_ascii_lowercase()
+                    } else {
+                        c
+                    }
+                })
+                .unwrap_or_default(),
             language: t.language.clone(),
             width: 0,
             height: 0,

@@ -59,3 +59,15 @@ akio-crypto 有带 PKCS #7 填充的 AES-128-CBC。流媒体路线（决定 040�
 - **Admin API 的 `/media/library`** 由 `akit-media` 提供，由程序注册为 Admin API 的端点（`akit_admin::Options::endpoints`），使
   akit-admin 不依赖媒体 crate。
 - **akio 读取文件与 fib 不同之处**，目录随 akio（待审决定第 89 行）。
+
+## I142：点播
+
+- **分片由 akio-media 的 `mp4::Plan` 切分**，由其 fMP4 和 MPEG-TS 复用器复用，来源是媒体库保留的影片；播放列表承载文件中第一条
+  所服务编解码器的视频轨和第一条音频轨（与 fit 的选择相同），其他轨道以未知轨道交给复用器，使其略过。`Plan` 与 fit 的规划器
+  切分不同之处，akit 随 `Plan`（待审决定第 90 行）。
+- **一个时钟，与 fit 相同**：移动每个包的时间，使文件的时间 0 在两种容器中都位于 1.4 秒，从而用一个 `X-TIMESTAMP-MAP` 定位字幕，
+  与 fit 相同。
+- **命名、多码率播放列表和字幕与 fit 相同**，按 fit 的写法写出；H.264 编解码器字符串用 fib 的小写十六进制。
+- **文件本身和海报经由该条目根目录的 akio-http `Files` 提供**，带范围、条件请求和 `sendfile`。
+- **等待文件池的请求被挂起**（`Context::suspend`），由文件池回答；在 akio 的 A296 之前，超过 `timeout` 时由 akit-media 自己的计时
+  线程回答 503。

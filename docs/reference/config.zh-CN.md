@@ -14,7 +14,7 @@ akit 配置的每个字段：配置的每一部分是做什么的、一个示例
 akit 与 fit 不同之处，在表格中以 **akit：** 标出。
 
 <!-- BEGIN GENERATED: summary -->
-fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **1198** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 184 个对象，下文各有一张表。
+fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **1229** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 186 个对象，下文各有一张表。
 <!-- END GENERATED -->
 
 字段说明来自 fit 代码中的 `doc` 标签，是英文的，所以每个字段的完整说明在[英文版](config.md)的同一张表中；本页的表格给出每个字段的
@@ -3385,7 +3385,7 @@ bittorrent {
 | `stream_whep` | 已支持：[参数](#cfg-routes-handler-stream-whep-params) |
 | `stream_whip` | 已支持：[参数](#cfg-routes-handler-stream-whip-params) |
 | `sync_ingest` | **尚不支持**：按名称拒绝 |
-| `vod` | **尚不支持**：按名称拒绝 |
+| `vod` | 已支持：[参数](#cfg-routes-handler-vod-params) |
 | `webrtc_proxy` | 已支持：[参数](#cfg-routes-handler-webrtc-proxy-params) |
 | `websockify` | **尚不支持**：按名称拒绝 |
 | `whep` | 已支持：[参数](#cfg-routes-handler-whep-params) |
@@ -3690,6 +3690,39 @@ route {
 | `max_sdp_bytes` | 整数，≥ 0 | `32768` |  |
 | `media_addrs` | 值为字符串的映射 |  |  |
 | `timeout` | 时长 | `"10s"` |  |
+<!-- END GENERATED -->
+
+### `vod`
+
+以 HLS 点播媒体库的条目（I142）：`/vod/films/films/bbb/index.m3u8` 是媒体库 `films` 中条目 `films/bbb` 的多码率播放列表；
+其各版本的 fMP4 或 MPEG-TS 分片的媒体播放列表（由 akio-media 的规划器在 `segment_duration` 附近的关键帧处切分）、初始化段、
+WebVTT 字幕、海报，以及按范围提供的文件本身。尚未读取 `encrypt`（I147）。
+
+```fit
+listener web :8080
+media_library films { roots /srv/media/films }
+
+route vod { match { path /vod/* }; handler vod { library films } }
+```
+
+<!-- BEGIN GENERATED: routes[].handler<vod>.params -->
+<a id="cfg-routes-handler-vod-params"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-routes-handler-vod-params)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `library` | 字符串 | 必填 |  |
+| `auth` | 字符串 |  |  |
+| `cache_control` | 字符串 |  |  |
+| `container` | 字符串：`fmp4`、`ts` | `"fmp4"` |  |
+| `cors` | 字符串 |  |  |
+| `encrypt` | 布尔值 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `max_cache_bytes` | 整数，≥ 0 | `268435456` | **akit：**正在构建的内容不占用它：构建受媒体库文件池和 `max_segment_bytes` 限制，构建完成后才接纳（待审决定第 90 行）。 |
+| `max_segment_bytes` | 整数，≥ 0 | `33554432` | **akit：**样本超过它的分片回答 500，而不是在更早的关键帧处切分，因为 akio-media 的规划器只按时间切分（待审决定第 90 行）。 |
+| `prefix` | 字符串 |  |  |
+| `segment_duration` | 时长 | `"4s"` | **akit：**akit 用 akio-media 的规划器切分：分片从距上一分片起点至少这么久的第一个关键帧开始（ffmpeg 的 `-hls_time`），而 fit 在最接近的关键帧处切分；最后一个分片随文件中最晚结束的轨道结束（待审决定第 90 行）。 |
+| `timeout` | 时长 | `"30s"` | **akit：**在 akio 为处理器提供定时器（akio A296）之前，由 akit-media 自己的一个线程计时。 |
 <!-- END GENERATED -->
 
 ### `httpflv`
