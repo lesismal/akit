@@ -14,7 +14,7 @@ akit 配置的每个字段：配置的每一部分是做什么的、一个示例
 akit 与 fit 不同之处，在表格中以 **akit：** 标出。
 
 <!-- BEGIN GENERATED: summary -->
-fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **1146** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 177 个对象，下文各有一张表。
+fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **1148** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 177 个对象，下文各有一张表。
 <!-- END GENERATED -->
 
 字段说明来自 fit 代码中的 `doc` 标签，是英文的，所以每个字段的完整说明在[英文版](config.md)的同一张表中；本页的表格给出每个字段的
@@ -3532,7 +3532,7 @@ route {
 ### `whip`
 
 按名称把以 WHIP（RFC 9725）发布的 WebRTC 流接入 akit 的媒体服务器 `webrtc.media`：名称为 `stream`，或 POST 路径的
-最后一段。`akit run` 提供它（I113）。
+最后一段。`akit run` 提供它（I113），POST 的凭据由 `media_auth` 策略 `auth` 检查（publish，I126）。
 
 <!-- BEGIN GENERATED: routes[].handler<whip>.params -->
 <a id="cfg-routes-handler-whip-params"></a>
@@ -3541,13 +3541,13 @@ route {
 
 | 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `auth` | 字符串 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `auth` | 字符串 |  |  |
 | `stream` | 字符串 |  |  |
 <!-- END GENERATED -->
 
 ### `whep`
 
-按名称以 WHEP 把 `webrtc.media` 的流播放给观看者，名称同 `whip`。
+按名称以 WHEP 把 `webrtc.media` 的流播放给观看者，名称同 `whip`；`auth` 检查 play（I126）。
 
 <!-- BEGIN GENERATED: routes[].handler<whep>.params -->
 <a id="cfg-routes-handler-whep-params"></a>
@@ -3556,7 +3556,7 @@ route {
 
 | 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `auth` | 字符串 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `auth` | 字符串 |  |  |
 | `stream` | 字符串 |  |  |
 <!-- END GENERATED -->
 

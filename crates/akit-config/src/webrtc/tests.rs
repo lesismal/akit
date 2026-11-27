@@ -327,7 +327,8 @@ fn handler(doc: &str) -> Handler {
 }
 
 /// The handlers' params: `whip` and `whep` take a stream's name, `webrtc_proxy` an upstream and
-/// its media addresses; `auth`, a `media_auth` policy's name, is not supported yet.
+/// its media addresses; `whip`'s and `whep`'s `auth` names a policy of the config (I126),
+/// `webrtc_proxy`'s is not supported yet (I114).
 #[test]
 fn handlers() {
     let route = |module: &str, params: &str| {
@@ -342,7 +343,8 @@ fn handlers() {
     assert_eq!(
         handler(&route("whep", r#", "params": {"stream": "cam-1.a_b~"}"#)),
         Handler::Whep(WhipWhep {
-            stream: "cam-1.a_b~".into()
+            stream: "cam-1.a_b~".into(),
+            ..WhipWhep::default()
         })
     );
     let Handler::WebRtcProxy(p) = handler(&route(
@@ -383,7 +385,7 @@ fn handlers() {
         ),
         (
             route("whip", r#", "params": {"auth": "cams"}"#),
-            "routes[0].handler.params.auth: not supported yet",
+            r#"routes[0].handler.params.auth: there is no media_auth policy named "cams""#,
         ),
         (
             route(

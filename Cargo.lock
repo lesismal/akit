@@ -727,6 +727,7 @@ dependencies = [
  "akit-access",
  "akit-config",
  "akit-listener",
+ "akit-media",
  "akit-observe",
  "akit-roles",
  "akit-runtime",

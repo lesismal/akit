@@ -5,7 +5,8 @@
 //! A handler finds the role and its policy by the engine once the engine is there
 //! ([`akit_upstream::EngineSlot::when_set`]), and reads them per request without a lock: the
 //! policy through its per-thread cache, the hub through the role's slot. It answers 503 while the
-//! role does not run. Every request is checked by `auth` ([`crate::http::guard`]), its tokens
+//! role does not run. Every request is checked by `auth` ([`crate::http::HandlerAuth`], refused as
+//! unavailable while the policy is not there, never let on unchecked), its tokens
 //! written `REDACTED` in the target for the access log. A playlist fetched with `?token=` names
 //! what it lists with the token too, so that a player that sends no header (Safari, ffmpeg) plays
 //! on.
@@ -26,8 +27,8 @@ use akit_runtime::{
     Handler, HandlerParams, Info, Provision, ProvisionError, Provisioned, set_request_path,
 };
 
-use crate::auth::{Policy, registry};
-use crate::http::{Access, guard, redact};
+use crate::auth::registry;
+use crate::http::{Access, HandlerAuth, redact};
 use crate::streaming::{Slot, lookup};
 use crate::swap::Swap;
 
@@ -69,7 +70,6 @@ fn text(ctx: &mut Context, status: u16, msg: &str) {
 
 /// What a handler finds once the engine is there.
 struct Found {
-    policy: Option<Arc<Policy>>,
     role: Arc<Slot>,
     hls: Option<Arc<HlsShared>>,
 }
@@ -78,6 +78,7 @@ struct Found {
 struct Base {
     prefix: String,
     cors: String,
+    auth: HandlerAuth,
     found: Arc<OnceLock<Found>>,
 }
 
@@ -88,7 +89,7 @@ impl Base {
         p: &Provision<'_, HandlerParams>,
         prefix: &str,
         cors: &str,
-        policy: Option<&akit_config::media::MediaAuth>,
+        auth: (&str, Option<&akit_config::media::MediaAuth>),
         hls: Option<(String, HlsConfig, SegmentFormat)>,
     ) -> Result<Base, ProvisionError> {
         if !prefix.starts_with('/') {
@@ -96,17 +97,13 @@ impl Base {
                 "prefix: {prefix:?} does not start with /"
             )));
         }
+        let auth = HandlerAuth::new(p.env().engine(), auth.0, auth.1);
         let found = Arc::new(OnceLock::new());
         let f = Arc::clone(&found);
-        let policy = policy.cloned();
         p.env().engine().when_set(move |engine| {
             let key = registry::key(engine);
-            // A policy that does not compile here is refused at once: the role media_auth
-            // reports why.
-            let policy = policy.and_then(|cfg| registry::provision(key, &cfg).ok());
             let hls = hls.map(|(params, cfg, def)| shared(key, params, cfg, def));
             let _ = f.set(Found {
-                policy,
                 role: lookup(key),
                 hls,
             });
@@ -114,6 +111,7 @@ impl Base {
         Ok(Base {
             prefix: prefix.to_owned(),
             cors: cors.to_owned(),
+            auth,
             found,
         })
     }
@@ -143,7 +141,7 @@ fn new_flv(p: &Provision<'_, HandlerParams>) -> Result<Provisioned<dyn Handler>,
     let mut cfg = HttpFlvConfig::default();
     cfg.play_wait = (!h.wait.is_zero()).then_some(h.wait);
     cfg.cors_origin = (!h.cors.is_empty()).then(|| h.cors.clone());
-    let base = Base::new(p, &h.prefix, &h.cors, h.policy.as_ref(), None)?;
+    let base = Base::new(p, &h.prefix, &h.cors, (&h.auth, h.policy.as_ref()), None)?;
     Ok(Provisioned::new(Arc::new(Flv {
         base,
         cfg,
@@ -190,8 +188,7 @@ impl Service for Flv {
         let flv = self.service(hub_no, &hub);
         let unprefixed = self.base.prefix != "/";
         let checked = stream.clone();
-        guard(
-            found.policy.as_ref(),
+        self.base.auth.guard(
             ctx,
             Action::Play,
             &checked,
@@ -327,7 +324,7 @@ fn new_hls(p: &Provision<'_, HandlerParams>) -> Result<Provisioned<dyn Handler>,
         p,
         &h.prefix,
         &h.cors,
-        h.policy.as_ref(),
+        (&h.auth, h.policy.as_ref()),
         Some((params, cfg, def)),
     )?;
     let found = Arc::clone(&base.found);
@@ -419,8 +416,7 @@ impl Service for HlsHandler {
         };
         let unprefixed = self.base.prefix != "/";
         let checked = stream.clone();
-        guard(
-            found.policy.as_ref(),
+        self.base.auth.guard(
             ctx,
             Action::Play,
             &checked,

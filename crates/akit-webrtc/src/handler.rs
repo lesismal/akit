@@ -4,15 +4,20 @@
 //! A POST of an offer (`application/sdp`, at most `max_sdp_bytes`, read whole) publishes or plays the stream
 //! named by `stream` or by the last segment of its path, answered `201` with the answer, the
 //! session's URL in `Location` (the POST's path followed by the session's ID) and the ICE servers
-//! in `Link` headers. The session's URL takes DELETE, without credentials: its ID, 128 random
-//! bits, is the capability. PATCH (trickle ICE, ICE restarts) is answered 405, as fit's: akit is
-//! an ICE lite agent whose answer holds all of its candidates.
+//! in `Link` headers, once `auth` lets it on (I126: akit-media's guard, publish for `whip`, play
+//! for `whep`, the stream's name checked; 401 with a Bearer challenge, 403). The session's URL
+//! takes DELETE, without credentials: its ID, 128 random bits, is the capability. PATCH (trickle
+//! ICE, ICE restarts) is answered 405, as fit's: akit is an ICE lite agent whose answer holds all
+//! of its candidates.
 
 use std::sync::Arc;
 
 use akio_http::{Context, Method, Response};
 use akit_runtime::{Handler, HandlerParams, Provision, ProvisionError, Provisioned};
 use akit_upstream::EngineSlot;
+
+use akit_config::media::MediaAction;
+use akit_media::http::HandlerAuth;
 
 use crate::media::{Kind, Refusal};
 
@@ -21,6 +26,8 @@ struct WhipWhep {
     kind: Kind,
     stream: String,
     engine: EngineSlot,
+    /// `auth`: the `media_auth` policy a POST must satisfy (I126).
+    auth: HandlerAuth,
 }
 
 /// Whether `s` is a session's ID: 32 lowercase hex digits.
@@ -94,51 +101,67 @@ impl akio_http::Service for WhipWhep {
         if !akit_config::webrtc::stream_name(&name) {
             return respond(ctx, 404, "no stream name in the path", &[]);
         }
-        let sdp_type = ctx.header("Content-Type").is_some_and(|t| {
-            t.split(';')
-                .next()
-                .is_some_and(|m| m.trim().eq_ignore_ascii_case("application/sdp"))
+        // The offer is taken only once its credentials are checked; a session's URL, above,
+        // needs none (its ID is the capability).
+        let action = match self.kind {
+            Kind::Publisher => MediaAction::Publish,
+            Kind::Viewer => MediaAction::Play,
+        };
+        let (kind, engine, checked) = (self.kind, self.engine.clone(), name.clone());
+        self.auth.guard(ctx, action, &checked, "", move |ctx, _| {
+            post(ctx, kind, &engine, &name, &path);
         });
-        if !sdp_type {
-            return respond(
-                ctx,
-                415,
-                "the offer must be application/sdp",
-                &[ACCEPT_POST],
-            );
-        }
-        let Some(srv) = srv else {
-            return respond(ctx, 503, "webrtc.media is not running", &[]);
-        };
-        let limit = srv.sdp_bytes();
-        let declared = ctx
-            .header("Content-Length")
-            .and_then(|l| l.trim().parse::<u64>().ok());
-        if declared.is_some_and(|n| n > u64::try_from(limit).unwrap_or(u64::MAX)) {
-            return respond(ctx, 413, "the offer is too large", &[]);
-        }
-        // The offer is read whole (the route's buffered body, within the listener's bounds),
-        // and refused past max_sdp_bytes.
-        if ctx.req().body.len() > limit {
-            return respond(ctx, 413, "the offer is too large", &[]);
-        }
-        let offer = String::from_utf8_lossy(&ctx.req().body).into_owned();
-        let r = match self.kind {
-            Kind::Publisher => srv.publish(&name, &offer),
-            Kind::Viewer => srv.view(&name, &offer),
-        };
-        match r {
-            Err(e) => refused(ctx, &e),
-            Ok(a) => {
-                let mut resp = Response::new(201);
-                resp.headers.set("Content-Type", "application/sdp");
-                resp.headers.set("Location", format!("{path}/{}", a.id));
-                for l in srv.links(&a.id) {
-                    resp.headers.append("Link", &l);
-                }
-                resp.body = a.sdp.into_bytes();
-                ctx.respond(resp);
+    }
+}
+
+/// An endpoint's POST once its credentials are checked: on the I/O thread, or on akit-media's
+/// pool after a bcrypt check.
+fn post(ctx: &mut Context, kind: Kind, engine: &EngineSlot, name: &str, path: &str) {
+    let srv = engine.get().and_then(crate::media::lookup);
+    let sdp_type = ctx.header("Content-Type").is_some_and(|t| {
+        t.split(';')
+            .next()
+            .is_some_and(|m| m.trim().eq_ignore_ascii_case("application/sdp"))
+    });
+    if !sdp_type {
+        return respond(
+            ctx,
+            415,
+            "the offer must be application/sdp",
+            &[ACCEPT_POST],
+        );
+    }
+    let Some(srv) = srv else {
+        return respond(ctx, 503, "webrtc.media is not running", &[]);
+    };
+    let limit = srv.sdp_bytes();
+    let declared = ctx
+        .header("Content-Length")
+        .and_then(|l| l.trim().parse::<u64>().ok());
+    if declared.is_some_and(|n| n > u64::try_from(limit).unwrap_or(u64::MAX)) {
+        return respond(ctx, 413, "the offer is too large", &[]);
+    }
+    // The offer is read whole (the route's buffered body, within the listener's bounds),
+    // and refused past max_sdp_bytes.
+    if ctx.req().body.len() > limit {
+        return respond(ctx, 413, "the offer is too large", &[]);
+    }
+    let offer = String::from_utf8_lossy(&ctx.req().body).into_owned();
+    let r = match kind {
+        Kind::Publisher => srv.publish(name, &offer),
+        Kind::Viewer => srv.view(name, &offer),
+    };
+    match r {
+        Err(e) => refused(ctx, &e),
+        Ok(a) => {
+            let mut resp = Response::new(201);
+            resp.headers.set("Content-Type", "application/sdp");
+            resp.headers.set("Location", format!("{path}/{}", a.id));
+            for l in srv.links(&a.id) {
+                resp.headers.append("Link", &l);
             }
+            resp.body = a.sdp.into_bytes();
+            ctx.respond(resp);
         }
     }
 }
@@ -161,6 +184,7 @@ pub(crate) fn whip(
         kind: Kind::Publisher,
         stream: params.stream.clone(),
         engine: p.env().engine().clone(),
+        auth: HandlerAuth::new(p.env().engine(), &params.auth, params.policy.as_ref()),
     }) as Arc<dyn Handler>))
 }
 
@@ -176,5 +200,6 @@ pub(crate) fn whep(
         kind: Kind::Viewer,
         stream: params.stream.clone(),
         engine: p.env().engine().clone(),
+        auth: HandlerAuth::new(p.env().engine(), &params.auth, params.policy.as_ref()),
     }) as Arc<dyn Handler>))
 }

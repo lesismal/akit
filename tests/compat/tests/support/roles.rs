@@ -992,6 +992,17 @@ fn webrtc(out: &mut Vec<(String, String, Read)>) {
             route(h, r#", "params": {"stream": "a"}"#),
             Read::Differs(route(h, r#", "params": {"stream": "b"}"#)),
         ));
+        // I126: a media_auth policy.
+        let auth = |a: &str| {
+            format!(
+                r#"{{"listeners": [{{"name": "web", "address": ":8080"}}], "media_auth": [{{"name": "p", "public": ["play"]}}, {{"name": "q", "public": ["publish"]}}], "routes": [{{"handler": {{"module": "{h}", "params": {{"auth": "{a}"}}}}}}]}}"#
+            )
+        };
+        out.push((
+            format!("routes[].handler<{h}>.params.auth"),
+            auth("p"),
+            Read::Differs(auth("q")),
+        ));
     }
     let wp = |m: &str| route("webrtc_proxy", &format!(r#", "params": {m}"#));
     out.push((

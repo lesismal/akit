@@ -240,6 +240,63 @@ pub fn guard(
     });
 }
 
+/// A handler's `auth`: the policy it names, found once the engine is there
+/// ([`akit_runtime::upstream::EngineSlot::when_set`]) and read per request without a lock (I123,
+/// I124, I126). A handler without `auth` lets every request on; one whose policy is not there (the
+/// engine not set yet, or the policy's config not compiling, which the role `media_auth` reports)
+/// refuses every request as unavailable, never letting it on unchecked.
+#[derive(Debug, Clone)]
+pub struct HandlerAuth {
+    named: bool,
+    found: Arc<std::sync::OnceLock<Option<Arc<Policy>>>>,
+}
+
+impl HandlerAuth {
+    /// The `auth` of a handler: `name`, whose config is `cfg` (handed to the handler by
+    /// akit-config), on the engine `slot` will hold.
+    #[must_use]
+    pub fn new(
+        slot: &akit_runtime::upstream::EngineSlot,
+        name: &str,
+        cfg: Option<&akit_config::media::MediaAuth>,
+    ) -> HandlerAuth {
+        let found = Arc::new(std::sync::OnceLock::new());
+        let f = Arc::clone(&found);
+        let cfg = cfg.cloned();
+        slot.when_set(move |engine| {
+            let key = crate::auth::registry::key(engine);
+            let policy = cfg.and_then(|c| crate::auth::registry::provision(key, &c).ok());
+            let _ = f.set(policy);
+        });
+        HandlerAuth {
+            named: !name.is_empty(),
+            found,
+        }
+    }
+
+    /// [`guard`] with the policy: `next` called when the request may go on, else the request
+    /// answered (refused as unavailable while the policy is not there).
+    pub fn guard(
+        &self,
+        ctx: &mut Context,
+        a: Action,
+        stream: &str,
+        cors: &str,
+        next: impl FnOnce(&mut Context, Access) + Send + 'static,
+    ) {
+        if !self.named {
+            return guard(None, ctx, a, stream, cors, next);
+        }
+        match self.found.get() {
+            Some(Some(p)) => guard(Some(p), ctx, a, stream, cors, next),
+            _ => {
+                redact(ctx);
+                refuse(ctx, Refusal::Unavailable, cors);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

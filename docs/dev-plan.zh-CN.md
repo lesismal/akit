@@ -238,6 +238,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I123 | 流媒体 II：`httpflv` 和 `hls` | I122 | done |
 | I124 | 流媒体 III：`streaming.webrtc`、`stream_whip` 和 `stream_whep` | I123 | done |
 | I125 | 媒体页面：`media_pages`、其登录和房间 API | I121、WebRTC 路线的 `whip` 和 `whep` | todo |
+| I126 | `whip`、`whep` 和 `webrtc_proxy` 上的媒体认证 | I121、WebRTC 路线的处理器 | done（`whip`、`whep`）；`webrtc_proxy` 的随 I114 |
 | I126 | `whip`、`whep` 和 `webrtc_proxy` 上的媒体认证 | I121、WebRTC 路线的处理器 | todo |
 | I114 | WebRTC V：代理的 WHIP 和 WHEP：`webrtc_proxy` 和 `webrtc.proxy` | I113, I14 | done |
 | I150 | BitTorrent I：配置中的 `bittorrent.client` 和 `bittorrent.tracker`，fit 的字段、检查和冲突；后续迭代才运行的内容以"尚不支持"拒绝 | I98 | todo |
@@ -1789,7 +1790,8 @@ fit 的 I115–I117（其[流媒体指南](https://github.com/lesismal/fit/blob/
 - **完成标准**：移植后的 fit 中这些处理器上 `auth` 的测试通过。
 - **涉及**：WebRTC 路线的处理器、`akit-config`。
 - **fit**：`webrtc/media`；I115。
-- **状态**：todo；需要 WebRTC 路线的处理器。
+- **状态**：`whip` 和 `whep` 已完成（2026-11-27）；`webrtc_proxy` 的 `auth`（及其 `action`）在角色 `webrtc.proxy` 运行（I114）
+  之前仍作为尚未支持拒绝，届时其处理器用 `akit_media::http::HandlerAuth` 接入。见进度日志。
 ### BitTorrent
 
 fit 的 I196–I210（其 [BitTorrent 指南](https://github.com/lesismal/fit/blob/main/docs/bittorrent.md)、

@@ -3094,6 +3094,8 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
             Handler::HttpFlv(h) => Some((&h.auth, &mut h.policy)),
             Handler::Hls(h) => Some((&h.auth, &mut h.policy)),
             Handler::StreamWhip(h) | Handler::StreamWhep(h) => Some((&h.auth, &mut h.policy)),
+            // I126: the WebRTC track's whip and whep.
+            Handler::Whip(h) | Handler::Whep(h) => Some((&h.auth, &mut h.policy)),
             _ => None,
         };
         let Some((name, policy)) = auth.filter(|(n, _)| !n.is_empty()) else {
@@ -4753,8 +4755,8 @@ fn handler(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Handler> {
             };
             forward_proxy(d, n, &params_path).map(Handler::ForwardProxy)
         }
-        "whip" => crate::webrtc::whip_whep(d, params, &params_path, "whip").map(Handler::Whip),
-        "whep" => crate::webrtc::whip_whep(d, params, &params_path, "whep").map(Handler::Whep),
+        "whip" => crate::webrtc::whip_whep(d, params, &params_path).map(Handler::Whip),
+        "whep" => crate::webrtc::whip_whep(d, params, &params_path).map(Handler::Whep),
         "webrtc_proxy" => {
             crate::webrtc::webrtc_proxy(d, params, &params_path, off).map(Handler::WebRtcProxy)
         }

@@ -20,14 +20,13 @@ use akit_runtime::{
     Handler, HandlerParams, Provision, ProvisionError, Provisioned, set_request_path,
 };
 
-use crate::auth::{Policy, registry};
+use crate::auth::registry;
 use crate::handlers::valid_stream;
-use crate::http::{Access, guard, redact};
+use crate::http::{Access, HandlerAuth, redact};
 use crate::streaming::{RTC_RESOURCE, RTC_WHEP, RTC_WHIP, Slot, lookup};
 
 /// What a handler finds once the engine is there.
 struct Found {
-    policy: Option<Arc<Policy>>,
     role: Arc<Slot>,
 }
 
@@ -38,6 +37,7 @@ struct RtcHandler {
     action: Action,
     /// The server's path the POSTs go to: `/whip/` or `/whep/`.
     endpoint: &'static str,
+    auth: HandlerAuth,
     found: Arc<OnceLock<Found>>,
 }
 
@@ -102,13 +102,10 @@ impl RtcHandler {
         }
         let found = Arc::new(OnceLock::new());
         let f = Arc::clone(&found);
-        let policy = h.policy.clone();
+        let auth = HandlerAuth::new(p.env().engine(), &h.auth, h.policy.as_ref());
         p.env().engine().when_set(move |engine| {
-            let key = registry::key(engine);
-            let policy = policy.and_then(|cfg| registry::provision(key, &cfg).ok());
             let _ = f.set(Found {
-                policy,
-                role: lookup(key),
+                role: lookup(registry::key(engine)),
             });
         });
         Ok(Provisioned::new(Arc::new(RtcHandler {
@@ -116,6 +113,7 @@ impl RtcHandler {
             stream: h.stream.clone(),
             action,
             endpoint,
+            auth,
             found,
         }) as Arc<dyn Handler>))
     }
@@ -164,14 +162,8 @@ impl Service for RtcHandler {
             return rtc.router.call(ctx);
         }
         let base = p.trim_end_matches('/').to_owned();
-        let policy = found.policy.as_ref();
-        guard(
-            policy,
-            ctx,
-            self.action,
-            &stream,
-            "",
-            move |ctx, _: Access| {
+        self.auth
+            .guard(ctx, self.action, &stream, "", move |ctx, _: Access| {
                 let sdp = ctx
                     .header("content-type")
                     .is_some_and(|t| t.to_ascii_lowercase().starts_with("application/sdp"));
@@ -191,8 +183,7 @@ impl Service for RtcHandler {
                 });
                 set_request_path(ctx, &target);
                 rtc.router.call(ctx);
-            },
-        );
+            });
     }
 }
 

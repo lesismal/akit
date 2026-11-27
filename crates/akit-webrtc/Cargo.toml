@@ -21,6 +21,8 @@ akio-sys = { workspace = true }
 akio-crypto = { workspace = true }
 akit-access = { workspace = true }
 akit-config = { workspace = true }
+# media_auth's guard on whip's and whep's offers (I126).
+akit-media = { workspace = true }
 akit-observe = { workspace = true }
 akit-roles = { workspace = true }
 akit-runtime = { workspace = true }

@@ -4,6 +4,7 @@
 # 80 fixtures: 59 valid, 20 refused only as not supported yet (fields refused: 23), 0 in a format not supported yet, 1 skipped, 0 failed.
 # 80 fixtures: 59 valid, 20 refused only as not supported yet (fields refused: 15), 0 in a format not supported yet, 1 skipped, 0 failed.
 # 80 fixtures: 60 valid, 19 refused only as not supported yet (fields refused: 13), 0 in a format not supported yet, 1 skipped, 0 failed.
+# 80 fixtures: 60 valid, 19 refused only as not supported yet (fields refused: 11), 0 in a format not supported yet, 1 skipped, 0 failed.
 examples/acme-on-demand: valid
 examples/acme-shared-storage: valid
 examples/admin: valid
@@ -48,8 +49,6 @@ examples/llm-proxy: valid
 examples/load-balancing: valid
 examples/logging: valid
 examples/media-pages: not supported yet: routes[].handler<media_pages>
-examples/media-pages: not supported yet: routes[].handler<whep>.params.auth
-examples/media-pages: not supported yet: routes[].handler<whip>.params.auth
 examples/metrics: valid
 examples/mtls: valid
 examples/provider-consul: valid

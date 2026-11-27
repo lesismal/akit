@@ -324,7 +324,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 1146 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 1148 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -353,8 +353,8 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`http.handlers/vod`](#fields-http-handlers-vod) | 13 | 0 | 13 |
 | [`http.handlers/webrtc_proxy`](#fields-http-handlers-webrtc-proxy) | 8 | 7 | 1 |
 | [`http.handlers/websockify`](#fields-http-handlers-websockify) | 12 | 0 | 12 |
-| [`http.handlers/whep`](#fields-http-handlers-whep) | 4 | 3 | 1 |
-| [`http.handlers/whip`](#fields-http-handlers-whip) | 4 | 3 | 1 |
+| [`http.handlers/whep`](#fields-http-handlers-whep) | 4 | 4 | 0 |
+| [`http.handlers/whip`](#fields-http-handlers-whip) | 4 | 4 | 0 |
 | [`http.middleware/basic_auth`](#fields-http-middleware-basic-auth) | 8 | 8 | 0 |
 | [`http.middleware/body_limit`](#fields-http-middleware-body-limit) | 3 | 3 | 0 |
 | [`http.middleware/cache`](#fields-http-middleware-cache) | 17 | 17 | 0 |
@@ -449,7 +449,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 161 | 3 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 76 | 0 |
-| **合计** | 3821 | 1146 | 2675 |
+| **合计** | 3821 | 1148 | 2673 |
 
 <a id="fields-access"></a>
 
@@ -1170,7 +1170,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | --- | --- | --- |
 | `routes[].handler<whep>` | `module` | 已支持 |
 | `routes[].handler<whep>.params` | `object` | 已支持 |
-| `routes[].handler<whep>.params.auth` | `string` | 尚不支持（not supported yet） |
+| `routes[].handler<whep>.params.auth` | `string` | 已支持 |
 | `routes[].handler<whep>.params.stream` | `string` | 已支持 |
 
 <a id="fields-http-handlers-whip"></a>
@@ -1181,7 +1181,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | --- | --- | --- |
 | `routes[].handler<whip>` | `module` | 已支持 |
 | `routes[].handler<whip>.params` | `object` | 已支持 |
-| `routes[].handler<whip>.params.auth` | `string` | 尚不支持（not supported yet） |
+| `routes[].handler<whip>.params.auth` | `string` | 已支持 |
 | `routes[].handler<whip>.params.stream` | `string` | 已支持 |
 
 <a id="fields-http-middleware-basic-auth"></a>

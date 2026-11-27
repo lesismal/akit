@@ -762,3 +762,5 @@ config	added	supported	routes[].handler<stream_whip>.params
 config	added	supported	routes[].handler<stream_whip>.params.auth
 config	added	supported	routes[].handler<stream_whip>.params.prefix
 config	added	supported	routes[].handler<stream_whip>.params.stream
+config	added	supported	routes[].handler<whep>.params.auth
+config	added	supported	routes[].handler<whip>.params.auth

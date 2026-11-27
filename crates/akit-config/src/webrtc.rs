@@ -526,6 +526,11 @@ impl WebRtcProxy {
 pub struct WhipWhep {
     /// `stream`: the stream's name; empty for the last segment of the POST's path.
     pub stream: String,
+    /// `auth`: the `media_auth` policy a POST must satisfy (I126); empty for none.
+    pub auth: String,
+    /// The policy `auth` names, from the config, for the handler to compile when the role
+    /// `media_auth` has not applied it yet.
+    pub policy: Option<crate::media::MediaAuth>,
 }
 
 /// What a `webrtc_proxy` handler's offers ask of its `auth`.
@@ -663,10 +668,10 @@ const WEBRTC_PROXY_ROLE_FIELDS: &[&str] = &[
     "port_min",
     "port_max",
 ];
-/// The params of `whip` and `whep` akit reads; `auth` waits for `media_auth`.
-pub(crate) const WHIP_FIELDS: &[&str] = &["stream"];
-pub(crate) const WHIP_FIT_ONLY: &[&str] = &["auth"];
-/// The params of `webrtc_proxy` akit reads; `auth` waits for `media_auth`.
+/// The params of `whip` and `whep` akit reads (`auth` since I126).
+pub(crate) const WHIP_FIELDS: &[&str] = &["stream", "auth"];
+pub(crate) const WHIP_FIT_ONLY: &[&str] = &[];
+/// The params of `webrtc_proxy` akit reads; `auth` waits for the role `webrtc.proxy` (I114).
 pub(crate) const WEBRTC_PROXY_FIELDS: &[&str] = &[
     "upstream",
     "media_addrs",
@@ -1151,8 +1156,9 @@ fn proxy(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<WebRtcProxy> {
     Some(p)
 }
 
-/// `auth`, the name of a `media_auth` policy, which akit does not read yet (decision 039): refused
-/// as not supported yet, naming the module, so that the gate finds the field.
+/// `webrtc_proxy`'s `auth`, the name of a `media_auth` policy, which akit does not read until the
+/// role `webrtc.proxy` runs (I114): refused as not supported yet, naming the module, so that the
+/// gate finds the field.
 fn auth(d: &mut Decoder<'_>, o: &mut Obj<'_>, module: &str) {
     if let Some(v) = o.take("auth") {
         d.not_yet(
@@ -1165,19 +1171,20 @@ fn auth(d: &mut Decoder<'_>, o: &mut Obj<'_>, module: &str) {
     }
 }
 
-/// The params of a `whip` or `whep` handler; `module` is its name, for its messages.
+/// The params of a `whip` or `whep` handler.
 pub(crate) fn whip_whep(
     d: &mut Decoder<'_>,
     params: Option<&Node>,
     path: &str,
-    module: &str,
 ) -> Option<WhipWhep> {
     let Some(n) = params else {
         return Some(WhipWhep::default());
     };
     let mut o = d.object(n, path)?;
-    auth(d, &mut o, module);
     let mut w = WhipWhep::default();
+    if let Some(v) = o.take("auth") {
+        w.auth = d.string(v, &o.at("auth")).unwrap_or_default();
+    }
     if let Some(v) = o.take("stream") {
         let p = o.at("stream");
         if let Some(s) = d.string(v, &p) {

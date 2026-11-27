@@ -1415,3 +1415,6 @@ routes[].handler<stream_whip>.params
 routes[].handler<stream_whip>.params.auth
 routes[].handler<stream_whip>.params.prefix
 routes[].handler<stream_whip>.params.stream
+# I126: whip's and whep's auth, a media_auth policy (akit-media's guard).
+routes[].handler<whep>.params.auth
+routes[].handler<whip>.params.auth

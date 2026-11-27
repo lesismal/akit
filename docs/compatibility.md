@@ -394,7 +394,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 1146 supported.
+3821 fields in 121 sections, at fit `7daee573`; 1148 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -423,8 +423,8 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`http.handlers/vod`](#fields-http-handlers-vod) | 13 | 0 | 13 |
 | [`http.handlers/webrtc_proxy`](#fields-http-handlers-webrtc-proxy) | 8 | 7 | 1 |
 | [`http.handlers/websockify`](#fields-http-handlers-websockify) | 12 | 0 | 12 |
-| [`http.handlers/whep`](#fields-http-handlers-whep) | 4 | 3 | 1 |
-| [`http.handlers/whip`](#fields-http-handlers-whip) | 4 | 3 | 1 |
+| [`http.handlers/whep`](#fields-http-handlers-whep) | 4 | 4 | 0 |
+| [`http.handlers/whip`](#fields-http-handlers-whip) | 4 | 4 | 0 |
 | [`http.middleware/basic_auth`](#fields-http-middleware-basic-auth) | 8 | 8 | 0 |
 | [`http.middleware/body_limit`](#fields-http-middleware-body-limit) | 3 | 3 | 0 |
 | [`http.middleware/cache`](#fields-http-middleware-cache) | 17 | 17 | 0 |
@@ -519,7 +519,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 161 | 3 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 76 | 0 |
-| **Total** | 3821 | 1146 | 2675 |
+| **Total** | 3821 | 1148 | 2673 |
 
 <a id="fields-access"></a>
 
@@ -1240,7 +1240,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | --- | --- | --- |
 | `routes[].handler<whep>` | `module` | supported |
 | `routes[].handler<whep>.params` | `object` | supported |
-| `routes[].handler<whep>.params.auth` | `string` | not supported yet |
+| `routes[].handler<whep>.params.auth` | `string` | supported |
 | `routes[].handler<whep>.params.stream` | `string` | supported |
 
 <a id="fields-http-handlers-whip"></a>
@@ -1251,7 +1251,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | --- | --- | --- |
 | `routes[].handler<whip>` | `module` | supported |
 | `routes[].handler<whip>.params` | `object` | supported |
-| `routes[].handler<whip>.params.auth` | `string` | not supported yet |
+| `routes[].handler<whip>.params.auth` | `string` | supported |
 | `routes[].handler<whip>.params.stream` | `string` | supported |
 
 <a id="fields-http-middleware-basic-auth"></a>

@@ -17,7 +17,7 @@ so in a note marked **akit:**; nine defaults that name the gateway are akit's, `
 say `fit` ([decision 037](../decisions/037-akit-names.md)).
 
 <!-- BEGIN GENERATED: summary -->
-akit reads **1146** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 177 objects akit reads, each has its table below.
+akit reads **1148** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 177 objects akit reads, each has its table below.
 <!-- END GENERATED -->
 
 How to read the tables:
@@ -3356,27 +3356,29 @@ route {
 ### `whip`
 
 Takes WebRTC streams published with WHIP (RFC 9725) into akit's media server, `webrtc.media`, by
-name: the stream's `stream`, or the last segment of the POST's path. `akit run` serves it (I113).
+name: the stream's `stream`, or the last segment of the POST's path. `akit run` serves it (I113),
+a POST's credentials checked by `auth` (publish), a `media_auth` policy (I126).
 
 <!-- BEGIN GENERATED: routes[].handler<whip>.params -->
 <a id="cfg-routes-handler-whip-params"></a>
 
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
-| `auth` | string |  | **Not supported yet**: refused by name. The media_auth policy a POST must satisfy to publish the stream: its credentials, a bearer token or a user and password, need publish on the stream's name, or the policy makes publish public. Missing or bad credentials are answered 401 with a Bearer challenge, others 403. A session's URL takes its DELETE without credentials: its ID, 128 random bits, is the capability. Everyone may publish when left out, as the route's middleware allow. |
+| `auth` | string |  | The media_auth policy a POST must satisfy to publish the stream: its credentials, a bearer token or a user and password, need publish on the stream's name, or the policy makes publish public. Missing or bad credentials are answered 401 with a Bearer challenge, others 403. A session's URL takes its DELETE without credentials: its ID, 128 random bits, is the capability. Everyone may publish when left out, as the route's middleware allow. |
 | `stream` | string |  | The stream's name. When left out, the name is the last segment of the path a POST is sent to, as cam1 in /whip/cam1 on a route of /whip/*: one route takes every stream. A session's URL is the path of its POST followed by its ID, which the route must match too, as /live/* beside /live. |
 <!-- END GENERATED -->
 
 ### `whep`
 
-Plays the streams of `webrtc.media` to viewers with WHEP, by name, as `whip` takes them.
+Plays the streams of `webrtc.media` to viewers with WHEP, by name, as `whip` takes them; `auth`
+checks play (I126).
 
 <!-- BEGIN GENERATED: routes[].handler<whep>.params -->
 <a id="cfg-routes-handler-whep-params"></a>
 
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
-| `auth` | string |  | **Not supported yet**: refused by name. The media_auth policy a POST must satisfy to play the stream: its credentials need play on the stream's name, or the policy makes play public. Missing or bad credentials are answered 401 with a Bearer challenge, others 403. A session's URL takes its DELETE without credentials, as whip's. Everyone may play when left out, as the route's middleware allow. |
+| `auth` | string |  | The media_auth policy a POST must satisfy to play the stream: its credentials need play on the stream's name, or the policy makes play public. Missing or bad credentials are answered 401 with a Bearer challenge, others 403. A session's URL takes its DELETE without credentials, as whip's. Everyone may play when left out, as the route's middleware allow. |
 | `stream` | string |  | The stream's name. When left out, the name is the last segment of the path a POST is sent to, as cam1 in /whep/cam1 on a route of /whep/*: one route plays every stream. A session's URL is the path of its POST followed by its ID, which the route must match too, as /watch/* beside /watch. |
 <!-- END GENERATED -->
 
