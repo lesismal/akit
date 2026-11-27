@@ -93,10 +93,10 @@ few crates as it can. fit's package of the same role is given for reference.
 
 ## Index
 
-Status: `todo`, `doing` or `done`. The next free iteration number is I110 (I84 and I88, reserved for the
+Status: `todo`, `doing` or `done`. The next free iteration number is I120 (I84 and I88, reserved for the
 Logging and Access lists tracks, are unused; I95 and I96 are reserved for the Console track; I97
 renamed fit's external names; I98–I109, I102b, I102c, I102d, I103b, I109b, I109c and I109d are the
-Tunnel and LLM track).
+Tunnel and LLM track; I110–I114 are the WebRTC track, and I115–I119 are reserved for it).
 
 | ID | Iteration | Depends on | Status |
 | --- | --- | --- | --- |
@@ -233,6 +233,12 @@ Tunnel and LLM track).
 | I109b | The tunnel's node's and proxy's pages: their status, hubs, services, forwards and meta | I109 | done |
 | I109c | The LLM roles' pages: `/api/me`, their methods (`/api/rpc`) and streams (`/api/stream`, Server-Sent Events) | I109, I106b, I108 | done |
 | I109d | The LLM roles' methods their pages call that they lack: `/mesh/*` (dial, undial, kick, listen, limits, tokens), the proxy's (`/proxy/*`: its API, keys, models, nodes, profile, stats); the identity's `http_url` | I109c | done |
+| **After 1.0: WebRTC** | | | |
+| I110 | WebRTC I: `webrtc` in the config: `webrtc.turn`, `webrtc.media`, `webrtc.proxy`; the handlers `whip`, `whep` and `webrtc_proxy` | I79, I100 | todo |
+| I111 | WebRTC II: the TURN server on akio-turn, over UDP, TCP and TLS | I110 | todo |
+| I112 | WebRTC III: the TURN server on akio's hooks: port range, bandwidth, events, limits in place, drain | I111, akio A256–A258 | todo |
+| I113 | WebRTC IV: WHIP and WHEP, an SFU on akio-webrtc's `RtcServer` | I110 | todo |
+| I114 | WebRTC V: WHIP and WHEP proxied: `webrtc_proxy` and `webrtc.proxy` | I113, I14 | todo |
 
 ## Benchmark and optimization status
 
@@ -284,6 +290,7 @@ commit and result.
 | LLM roles: hub, node, proxy | I105–I107 | no | no (built, not measured) | Against fit's roles (fit with fit, akit with akit, and mixed), an OpenAI-compatible stub upstream: calls a second through proxy → hub → node → upstream, small and with 3 MiB bodies (streamed past 1 MiB); a streamed answer's first byte and its events' latency; 256 calls at once; the hub's CPU per call relayed; memory per call in flight on each role; a slow agent holding its own call only. |
 | LLM mesh | I104 | no | no (built, not measured) | Against fit's mesh (fit with fit, akit with akit, and mixed): calls a second over one link and over a pool of links; a stream's bytes a second through one link at 256 KiB windows, and 64 streams at once; a slow reader holding its own stream only while the link's others go on (the window and the link's 64 KiB high water with its held reads); gzip's CPU per frame of 1 KiB and more; memory per idle link and per stream. |
 | Tunnel: hub, node, proxy | I101–I103 (I102b, I102c, I103b) | no | no (built, not measured) | Against fit's tunnel (fit's hub with fit's node and proxy, the same three in akit, and mixed): bytes a second through one tunnel and through 64 at once over one link, plain, sealed with `body_password` and over TLS (I102), QUIC (I102b: the stream's send buffer and the wire's overflow queue, `LINK_QUEUE` together) and WebSocket (I102c); tunnels opened a second (a proxy's accept, `tunnel/open` through the hub, the node's dial); the hub's CPU per gigabyte passed; memory per idle tunnel and per link; a slow service holding one tunnel while the link's others go on (the windows alone pace a link, its queue bounded at fit's `LinkQueue`, A234); I103b: bytes a second through a web proxy and the hub's console socket (sealed both ways, 64 KiB a message), against fit's, and the hub's CPU per gigabyte of it. |
+| WebRTC: TURN, WHIP and WHEP, the proxy | I111–I114 | no | no (not built yet) | Against fit's roles (fit's TURN server and media server against akit's, the same clients): the TURN relay's datagrams and bytes a second through one allocation and 1,000 at once, by channel and by indication, over UDP, TCP and TLS, coturn alongside; allocations made a second (the credentials checked, a relay bound); the CPU per gigabyte relayed and memory per idle allocation. WHIP and WHEP: one publisher's 4 Mb/s video forwarded to 1, 100 and 256 viewers (the CPU per viewer, the forwarding's latency, packets dropped), PeerConnections answered a second, memory per session; a slow viewer holding none of the others. The proxy: datagrams a second relayed through its port, sessions answered a second, memory per relay. |
 | Forward proxy: SOCKS and HTTP CONNECT | I55 | no | no (built, not measured) | Against fit (and nginx's `stream` for raw throughput): bytes a second through a SOCKS5 tunnel and an HTTP/1.1 CONNECT tunnel (256 KB echoed at a time, as fit's `BenchmarkTCPProxy`), tunnels opened a second (the handshake, the rules' checks, a name resolved on the pool and the `connected` check), memory per idle tunnel; the cost of SOCKS on a shared port (akio-mux's greeting rule beside HTTP and TLS) against HTTP alone; akio-socks's watchdog thread (the connect timeout added to it, ADR-119) with 10,000 tunnels. |
 | Response cache | I67, I68, I69 | partial (2026-11-25, I76, `346ad8b`: the harness's `cache-hot` and `cache-zipf` against nginx and fit, and a stampede of 1,000 clients, in the [M5 report](../bench/results/m5-report-2026-11-25.md)) | no | Measured in I76: hits from memory through the harness (4 KiB; akit first, 1.5 times nginx over HTTP/1.1 and 6.2 times over h2c, 1.75 times for 100,000 paths, 12% to 23% ahead of fit) and one fetch for 1,000 clients on a cold key. Left, against fit, as I67 built it: hits from memory (a 4 KiB and a 1 MiB body, HTTP/1.1 and h2), misses kept through the proxy (a streamed body copied by the tap) against the proxy alone, the cost on requests the cache passes through (POST, `no-store` responses) against no middleware, the shards' locks under many keys and one hot key. I68: hits read back from disk (64 KiB and 1 MiB, the disk pool's threads and queue under many at once), writes to disk under a miss rate that fills `MAX_PENDING_WRITES`, a stampede of many clients on one key with the lock and with `disable_lock` (the waiters' suspend and resume, the timer per fetch), and stale-while-revalidate's background fetches. akio's ADR-116 tap: a tapped stream against an untapped one. I69: storing tagged responses (none and 32 tags) against untagged ones, and purges of a large zone by prefix and by tag while it serves (the shards' and the disk index's lock hold times). |
 | FastCGI | I75 | no | no (built, not measured) | Against fit and nginx's `fastcgi_pass`, PHP-FPM (or a FastCGI application that answers at once) over TCP and a Unix-domain socket: requests a second and latency for a small page, HTTP/1.1 and h2; a 1 MiB upload and a 16 MiB download (memory per request in flight, the 64 KiB watermarks both ways); keep-alive reuse against a connection a request; the pool's queue under more clients than `max_conns`; the cost of `try_files` (a `stat` on akio's logical pool a candidate) against a route without it; the handler's sweep every 100 ms on akit's timer thread (A45's stopgap) over its exchanges at many requests a second. |
@@ -1172,7 +1179,7 @@ below is the planned order; tracks with no dependency between them may run in pa
 | 2 | Access lists | I195 | [I85–I87](#access-lists): the lists, listeners and routes; services and SOCKS; the Admin API |
 | 3 | Console and encrypted store | I104, I157's page | [I89–I93c](#console-and-encrypted-store): the console's logins, server and pages (the Logs page on I83's `/logs` among them), the Admin API over TLS, the encrypted store |
 | 4 | Tunnel and LLM | I105–I107, I159–I162 | [I98–I109](#tunnel-and-llm): the roles in the config, link tokens, the roles in `akit run`; the tunnel's links over TCP, TLS, WebSocket and QUIC; the LLM mesh on `akio-ws`, its node, hub and proxy; the roles' pages |
-| 5 | WebRTC | I87, I108–I111 | TURN on `akio-turn`; WHIP and WHEP on `akio-webrtc` |
+| 5 | WebRTC | I87, I108–I111 | [I110–I114](#webrtc): the roles in the config; TURN on `akio-turn`; WHIP and WHEP on `akio-webrtc`; WHIP and WHEP proxied |
 | 6 | Streaming and media auth | I115–I117 | the streaming role on `akio-media`; `media_auth` |
 | 7 | Media library and channels | I131–I139 | an MP4 reader (akio request); VOD; channels; signed URLs |
 | 8 | Cluster management | I140–I150, I153 | members, overview, rollouts with health gates |
@@ -1854,3 +1861,115 @@ link with fit's (decision 038).
 - **Status**: done (2026-11-27). See the progress log. The console's URL is the one its console
   server tells the role (`akit_roles::pages::Module::console_url`, decision row 64), a port chosen
   when the console starts too.
+
+### WebRTC
+
+fit's I87 and I108–I111 (its [WebRTC guide](https://github.com/lesismal/fit/blob/main/docs/webrtc.md),
+its decision 029, and its packages `webrtc/turn`, `webrtc/media` and `config/webrtc.go`), in five
+iterations ([decision 039](decisions/039-webrtc.md)). Three roles of the config, run by I100's host
+on the listeners' akio engine: `webrtc.turn`, a TURN server (RFC 8656) on `akio-turn`;
+`webrtc.media`, the UDP port the `whip` and `whep` handlers' PeerConnections share, an SFU on
+`akio-webrtc`'s ICE lite `RtcServer`; `webrtc.proxy`, the UDP port through which the peers of the
+media servers behind the `webrtc_proxy` handler are relayed, each new peer routed by the ICE ufrag
+of its first STUN request. What they show outside is akit's (decision 037: `SOFTWARE` `akit`, the
+metrics `akit_turn_*` and `akit_webrtc_*`); the wire is the RFCs', so that fit's and akio's
+clients, browsers and pion reach them alike. The handlers' `auth` names a `media_auth` policy, the
+Streaming and media auth track's: it is refused as not supported yet until that track reads
+`media_auth`.
+
+### I110 WebRTC I: `webrtc` in the config
+
+- **Do**: `webrtc.turn`, `webrtc.media` and `webrtc.proxy` read as strictly as the rest, with
+  fit's fields, defaults, bounds and checks (`config/webrtc.go`): the TURN server's `listen`,
+  `listen_tcp`, `listen_tls` with `tls.certificates`, `realm`, `users` (a password or the key it
+  derives), `secret`, `relay_ip` and `public_ip` of one family, the port range, quotas, caps,
+  lifetimes, `allowed_peers` and `denied_peers` (a prefix, an address, or an address and a port);
+  the media server's `listen`, `public_ips`, `ice_servers` (`stun:`, `stuns:`, `turn:`, `turns:`,
+  safe in a `Link` header), `turn_urls` (needing `webrtc.turn`'s `secret`), `codecs` and limits;
+  the proxy's `listen`, `public_ips`, limits, `relay_ip` and port range; each one's `access`. Their
+  addresses join the one-address-one-server check (fit's `config/bindings.go`). The handlers
+  `whip`, `whep` (`stream`, a name of 1 to 128 of `[A-Za-z0-9._~-]`) and `webrtc_proxy`
+  (`upstream`, `media_addrs`, `timeout`, `max_sdp_bytes`, `action`), their `auth` refused as not
+  supported yet. `akit run` refuses the roles and handlers until their iterations run them.
+- **Done when**: fit's `config/webrtc_test.go` and the WebRTC cases of `bindings_test.go` and
+  `more_test.go` pass ported; fit-examples' `webrtc-turn`, `whip-whep` and `webrtc-proxy` pass the
+  gate; the reference lists every field; the v1 freeze marks them as additions.
+- **Touches**: `akit-config` (`webrtc`), `akit`, `tests/compat`, `docs/reference`.
+- **fit**: `config/webrtc.go`, `config/bindings.go`, `webrtc/media/handler.go`,
+  `webrtc/media/proxyhttp.go`; I87, I109, I110.
+- **Status**: todo.
+
+### I111 WebRTC II: the TURN server
+
+- **Do**: `webrtc.turn` on `akio-turn`'s `TurnServer`, run by `akit run`: UDP on `listen` (one
+  binding per address, `access` filtering a new client's datagrams), TCP on `listen_tcp` and TLS on
+  `listen_tls` (`TurnServer::stream`, akio-tls with the certificates from files); the users' keys
+  and the coturn-style `secret` (time-limited credentials), the realm, `relay_ip` and `public_ip`;
+  `max_allocations` (508), `max_allocations_per_user` (486), `max_permissions`, `max_channels`
+  and the lifetimes; the peer rules over akio-turn's denial of internal addresses, port-aware,
+  with akit's own addresses reached on no port that `allowed_peers` does not name; a reload that
+  changes the users, secret, peer rules and access in place and starts a new server for the rest,
+  draining the old one for `-shutdown-timeout`; the `webrtc` logger; the server's counters in
+  `/metrics`. Where akio-turn lacks fit's hooks (a relay port range, a username's bandwidth, the
+  events, limits changed in place, a drain, the nonce secret, the stream bounds), an akio request
+  and a recorded stopgap.
+- **Done when**: fit's `webrtc/turn` tests pass ported where akio-turn serves them, with
+  `akio-turn`'s client and fib's (a Go program built from fit's module tree): an allocation relays
+  both ways to a peer by indication and channel, over UDP, TCP and TLS; a wrong password and an
+  expired time-limited credential are refused; the quotas refuse with 486 and 508; a private peer
+  is refused unless allowed; a reload of the users keeps the allocation, one of the address moves
+  the server.
+- **Touches**: `akit-webrtc` (new, `turn`), `akit`, `akit-roles`.
+- **fit**: `webrtc/turn`; I87, I111.
+- **Status**: todo.
+
+### I112 WebRTC III: the TURN server on akio's hooks
+
+- **Do**: the stopgaps of I111 replaced once akio serves its requests: relays from `port_min` to
+  `port_max`, `user_bandwidth` (a token bucket a username and direction, the datagrams past it
+  dropped and counted), the events counted and logged (allocated, refreshed, freed by reason,
+  refused by code, credentials failed), the quotas, caps and lifetimes changed in place, a drain
+  that refuses new allocations while the held ones run out, `nonce_secret`, `max_stream_message`
+  and `stream_idle_timeout`, the server's own relayed addresses reached by its clients.
+- **Waits on**: akio API requests A256, A257 and A258.
+- **Done when**: fit's `webrtc/turn` tests of I111 pass ported (`turn_test.go`'s bandwidth,
+  events, caps and drain cases, `apply_test.go`).
+- **Touches**: `akit-webrtc`.
+- **fit**: `webrtc/turn`, `webrtc/turn/limiter.go`; I111.
+- **Status**: todo.
+
+### I113 WebRTC IV: WHIP and WHEP
+
+- **Do**: `webrtc.media` on `akio-webrtc`'s `RtcServer` (ICE lite, every PeerConnection on one UDP
+  port, `access` filtering a new address's datagrams), and the handlers `whip` and `whep`: a
+  publisher's offer answered with the first of its codecs of each kind that `codecs` lists, its
+  media forwarded to each viewer of its stream, the viewers' key frame requests passed to it at
+  most once a `key_frame_interval`; `max_bitrate` told as REMB and enforced with two seconds of
+  burst; DELETE and OPTIONS per RFC 9725 and the WHEP draft (PATCH answered 405, as fit); ICE
+  servers and `turn_urls` with credentials made from `webrtc.turn`'s secret in `Link` headers;
+  the limits (PeerConnections, streams, viewers a stream, the offer's size), `connect_timeout`
+  and `ice_timeout`; sessions kept by a reload that keeps `listen` and `public_ips`, ended by one
+  that does not; `/metrics`.
+- **Done when**: fit's `webrtc/media` tests of the media server pass ported with akio-webrtc's
+  `Endpoint` as publisher and viewers, and fib's PeerConnection (a Go program) publishes and plays
+  through akit: a publisher gone ends its viewers; slow and cut viewers do not hold the publisher;
+  the limits refuse.
+- **Touches**: `akit-webrtc` (`media`), `akit-handler` or `akit`, `akit-roles`.
+- **fit**: `webrtc/media/{media,session,handler}.go`; I109.
+- **Status**: todo.
+
+### I114 WebRTC V: WHIP and WHEP proxied
+
+- **Do**: the handler `webrtc_proxy` and the role `webrtc.proxy`: an offer sent to a media server
+  of the route's upstream (its pick, health and timeouts), the answer's candidates replaced by the
+  proxy's port and its ufrag remembered against the media server's address (`media_addrs`, or the
+  answer's first host or server-reflexive candidate), the session's URL rewritten to akit's; the
+  UDP port routing a new peer address by the USERNAME of its first STUN Binding request, then
+  relaying its 5-tuple through a socket of its own toward the media server (`relay_ip`, the port
+  range), with `max_sessions`, `max_relays` (8 a session), `session_timeout` and `idle_timeout`.
+- **Done when**: fit's `proxy_test.go`, `proxy_edges_test.go` and `proxy_ports_test.go` pass
+  ported: two media servers behind one akit port each get their own peers; a peer's datagrams
+  before its Binding request are dropped; a media server gone frees its routes.
+- **Touches**: `akit-webrtc` (`proxy`), `akit-upstream`, `akit`.
+- **fit**: `webrtc/media/{proxy,proxyhttp,relay}.go`; I110, I111.
+- **Status**: todo.

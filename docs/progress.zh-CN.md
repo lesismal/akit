@@ -19,6 +19,14 @@
 
 ## 日志
 
+### 2026-11-27：WebRTC 路线规划为 I110–I114
+
+- WebRTC 路线（1.0 之后，第 5 条）按 fit 的 I87 和 I108–I111 拆为五次迭代（[计划](dev-plan.zh-CN.md#webrtc)、
+  [决定 039](decisions/039-webrtc.zh-CN.md)）：I110，配置中的 `webrtc`（`webrtc.turn`、`webrtc.media`、`webrtc.proxy`，
+  处理器 `whip`、`whep` 和 `webrtc_proxy`）；I111，基于 akio-turn、经 UDP、TCP 和 TLS 的 TURN 服务器；I112，基于
+  akio-turn 所缺钩子（A256–A258）的 TURN 服务器；I113，WHIP 和 WHEP，基于 akio-webrtc `RtcServer` 的 SFU；I114，
+  代理的 WHIP 和 WHEP。I115–I119 为该路线预留。其基准测试行写明要测量的内容。
+
 ### 2026-11-27：I109b，隧道 node 和 proxy 的页面；角色控制台的证书重新读取
 
 - node 的模块（`akit_tunnel::node` 的页面，fit 的 `tunnel/node/api.go`）和 proxy 的模块（`akit_tunnel::proxy` 的，fit 的

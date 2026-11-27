@@ -20,6 +20,16 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-27: the WebRTC track planned as I110–I114
+
+- The WebRTC track (after 1.0, order 5) broken into five iterations from fit's I87 and I108–I111
+  ([the plan](dev-plan.md#webrtc), [decision 039](decisions/039-webrtc.md)): I110, `webrtc` in the
+  config (`webrtc.turn`, `webrtc.media`, `webrtc.proxy`, the handlers `whip`, `whep` and
+  `webrtc_proxy`); I111, the TURN server on akio-turn over UDP, TCP and TLS; I112, the TURN
+  server on the hooks akio-turn lacks (A256–A258); I113, WHIP and WHEP, an SFU on akio-webrtc's
+  `RtcServer`; I114, WHIP and WHEP proxied. I115–I119 are reserved for the track. Its benchmark
+  row names what to measure.
+
 ### 2026-11-27: I109b, the tunnel's node's and proxy's pages; the roles' consoles' certificates read again
 
 - The node's module (`akit_tunnel::node`'s pages, fit's `tunnel/node/api.go`) and the proxy's

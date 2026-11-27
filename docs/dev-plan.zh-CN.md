@@ -86,7 +86,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 
 ## 索引
 
-状态：`todo`、`doing` 或 `done`。下一个可用的迭代编号是 I110（为日志路线和访问控制列表路线预留的 I84 和 I88 未使用；I95 和 I96 为控制台路线预留；I97 改名了 fit 的对外名字；I98–I109、I102b、I102c、I102d、I103b、I109b、I109c 和 I109d 是隧道与 LLM 路线）。
+状态：`todo`、`doing` 或 `done`。下一个可用的迭代编号是 I120（为日志路线和访问控制列表路线预留的 I84 和 I88 未使用；I95 和 I96 为控制台路线预留；I97 改名了 fit 的对外名字；I98–I109、I102b、I102c、I102d、I103b、I109b、I109c 和 I109d 是隧道与 LLM 路线；I110–I114 是 WebRTC 路线，I115–I119 为它预留）。
 
 | ID | 迭代 | 依赖 | 状态 |
 | --- | --- | --- | --- |
@@ -223,6 +223,12 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I109b | 隧道 node 和 proxy 的页面：其状态、hub、服务、转发和 meta | I109 | done |
 | I109c | LLM 角色的页面：`/api/me`、其方法（`/api/rpc`）与流（`/api/stream`，Server-Sent Events） | I109, I106b, I108 | done |
 | I109d | LLM 角色的页面调用而角色尚缺的方法：`/mesh/*`（dial、undial、kick、listen、limits、tokens）、proxy 的方法（`/proxy/*`：其 API、key、模型、node、profile、统计）；身份的 `http_url` | I109c | done |
+| **1.0 之后：WebRTC** | | | |
+| I110 | WebRTC I：配置中的 `webrtc`：`webrtc.turn`、`webrtc.media`、`webrtc.proxy`；处理器 `whip`、`whep` 和 `webrtc_proxy` | I79, I100 | todo |
+| I111 | WebRTC II：基于 akio-turn 的 TURN 服务器，经 UDP、TCP 和 TLS | I110 | todo |
+| I112 | WebRTC III：基于 akio 钩子的 TURN 服务器：端口范围、带宽、事件、就地修改的限制、排空 | I111, akio A256–A258 | todo |
+| I113 | WebRTC IV：WHIP 和 WHEP，基于 akio-webrtc `RtcServer` 的 SFU | I110 | todo |
+| I114 | WebRTC V：代理的 WHIP 和 WHEP：`webrtc_proxy` 和 `webrtc.proxy` | I113, I14 | todo |
 
 ## 基准与优化状态
 
@@ -272,6 +278,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | LLM 角色：hub、node、proxy | I105–I107 | 否 | 否（已实现，未测） | 对比 fit 的角色（fit 对 fit、akit 对 akit、以及混合），以 OpenAI 兼容的桩作上游：经 proxy → hub → node → 上游每秒的调用数，小正文和 3 MiB 正文（超过 1 MiB 时流式传输）；流式回答的首字节与各事件的延迟；256 个调用同时进行；hub 每转发一个调用的 CPU；每个角色上每个进行中调用的内存；一个慢 agent 只压住自己的调用。 |
 | LLM mesh | I104 | 否 | 否（已实现，未测） | 对比 fit 的 mesh（fit 对 fit、akit 对 akit、以及混合）：一条链路上和一组链路上每秒的调用数；一条链路上 256 KiB 窗口下单个流每秒的字节数，以及 64 个流同时；一个慢读者只压住自己的流而链路上其他流照常进行（窗口，以及链路的 64 KiB 高水位及其暂停的读取）；1 KiB 以上帧的 gzip 每帧 CPU；每条空闲链路和每个流的内存。 |
 | 隧道：hub、node、proxy | I101–I103（I102b、I102c、I103b） | 否 | 否（已实现，未测） | 对比 fit 的隧道（fit 的 hub 配 fit 的 node 和 proxy、akit 的三者、以及混合）：一条隧道、以及一条链路上 64 条隧道同时的每秒字节数，明文、`body_password` 密封以及经 TLS（I102）、QUIC（I102b：流的发送缓冲和 wire 的溢出队列，合起来是 `LINK_QUEUE`）和 WebSocket（I102c）；每秒打开的隧道数（proxy 的 accept、经 hub 的 `tunnel/open`、node 的拨号）；hub 转发每 GB 的 CPU；每条空闲隧道和每条链路的内存；一个慢服务压住一条隧道而链路上其他隧道照常进行（只由窗口调节链路，其队列上限为 fit 的 `LinkQueue`，A234）；I103b：经 web 代理和 hub 控制台套接字的每秒字节数（双向密封，每条消息 64 KiB），对比 fit，以及 hub 每 GB 的 CPU。 |
+| WebRTC：TURN、WHIP 和 WHEP、代理 | I111–I114 | 否 | 否（尚未实现） | 与 fit 的角色对比（fit 的 TURN 服务器和媒体服务器对比 akit 的，使用相同的客户端）：经一个 allocation 和同时 1,000 个 allocation 中继的 TURN 数据报数和每秒字节数，经 channel 和经 indication，基于 UDP、TCP 和 TLS，并列 coturn；每秒建立的 allocation（校验凭据、绑定中继）；每 GB 中继的 CPU 和每个空闲 allocation 的内存。WHIP 和 WHEP：一个发布者 4 Mb/s 的视频转发给 1、100 和 256 个观看者（每个观看者的 CPU、转发延迟、丢弃的包），每秒应答的 PeerConnection，每个会话的内存；一个慢观看者不拖住其他人。代理：经其端口每秒中继的数据报，每秒应答的会话，每个中继的内存。 |
 | 正向代理：SOCKS 与 HTTP CONNECT | I55 | 否 | 否（已实现，未测） | 对比 fit（原始吞吐另对比 nginx 的 `stream`）：经 SOCKS5 隧道和 HTTP/1.1 CONNECT 隧道的每秒字节数（每次回显 256 KB，同 fit 的 `BenchmarkTCPProxy`），每秒建立的隧道数（握手、规则检查、在线程池上解析名字以及 `connected` 检查），每个空闲隧道的内存；共享端口上 SOCKS 的开销（akio-mux 的问候规则与 HTTP、TLS 并列）对比只有 HTTP；10,000 条隧道时 akio-socks 看门狗线程的开销（ADR-119 在其上增加了连接超时）。 |
 | 响应缓存 | I67、I68、I69 | 部分（2026-11-25，I76，`346ad8b`：基准框架的 `cache-hot` 和 `cache-zipf` 对照 nginx 和 fit，以及 1,000 个客户端的击穿，见 [M5 报告](../bench/results/m5-report-2026-11-25.zh-CN.md)） | 否 | I76 已测：经基准框架的内存命中（4 KiB；akit 第一，HTTP/1.1 上是 nginx 的 1.5 倍、h2c 上 6.2 倍，100,000 个路径时 1.75 倍，领先 fit 12% 到 23%），以及 1,000 个客户端请求一个冷键时只取一次源站。剩下的，对比 fit，按 I67 的实现：内存命中（4 KiB 与 1 MiB 消息体，HTTP/1.1 与 h2），经代理保存的未命中（旁路复制的流式消息体）对比仅代理，缓存直接放行的请求（POST、`no-store` 响应）对比无中间件的开销，大量键与单个热点键下分片锁的表现。I68：从磁盘读回的命中（64 KiB 与 1 MiB，大量并发下磁盘线程池的线程与队列），未命中率高到填满 `MAX_PENDING_WRITES` 时的磁盘写入，大量客户端对同一个键的惊群，开启锁与 `disable_lock` 两种情况（等待者的挂起与恢复、每次获取一个定时器），以及 stale-while-revalidate 的后台获取。akio ADR-116 的旁路：有旁路的流对比无旁路的流。I69：带标签响应（0 与 32 个标签）对比无标签响应的保存开销，以及服务期间对大 zone 按前缀和按标签清除（分片锁与磁盘索引锁的持有时间）。 |
 | FastCGI | I75 | 否 | 否（已实现，未测量） | 对比 fit 和 nginx 的 `fastcgi_pass`，经 TCP 和 Unix 域套接字连接 PHP-FPM（或立即应答的 FastCGI 应用）：小页面的每秒请求数与延迟，HTTP/1.1 与 h2；1 MiB 上传与 16 MiB 下载（每个进行中请求的内存，双向 64 KiB 水位线）；连接复用对比每个请求一个连接；客户端多于 `max_conns` 时连接池的队列；`try_files` 的开销（每个候选在 akio 逻辑线程池上一次 `stat`）对比不带它的路由；每秒大量请求时，handler 每 100 ms 在 akit 定时器线程（A45 的临时方案）上对其交换的巡检。 |
@@ -1045,7 +1052,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | 2 | 访问控制列表 | I195 | [I85–I87](#访问控制列表)：列表、监听器和路由；服务与 SOCKS；Admin API |
 | 3 | 控制台与加密的 store | I104、I157 的页面 | [I89–I93c](#控制台与加密的-store)：控制台的登录、服务器和页面（包括基于 I83 的 `/logs` 的“日志”页面）、带 TLS 的 Admin API、加密的 store |
 | 4 | 隧道与 LLM | I105–I107, I159–I162 | [I98–I109](#隧道与-llm)：配置中的角色、链路 token、`akit run` 中的角色；基于 TCP、TLS、WebSocket 和 QUIC 的隧道链路；基于 `akio-ws` 的 LLM mesh 及其 node、hub 和 proxy；角色的页面 |
-| 5 | WebRTC | I87, I108–I111 | 基于 `akio-turn` 的 TURN；基于 `akio-webrtc` 的 WHIP 和 WHEP |
+| 5 | WebRTC | I87, I108–I111 | [I110–I114](#webrtc)：配置中的角色；基于 `akio-turn` 的 TURN；基于 `akio-webrtc` 的 WHIP 和 WHEP；代理的 WHIP 和 WHEP |
 | 6 | 流媒体与媒体认证 | I115–I117 | 基于 `akio-media` 的流媒体角色；`media_auth` |
 | 7 | 媒体库与频道 | I131–I139 | MP4 读取器（akio 需求）；点播；频道；签名 URL |
 | 8 | 集群管理 | I140–I150, I153 | 成员、概览、带健康门槛的发布 |
@@ -1559,3 +1566,89 @@ fit 的，使 akit 的角色能与 fit 的角色互连（决定 038）。
 - **fit**：`llm/internal/role/{role,settings,tokens}.go`、`llm/proxy/{keys,nodes,stats,role}.go`。
 - **状态**：done（2026-11-27）。见进度日志。控制台的 URL 是其控制台服务器告诉角色的那个
   （`akit_roles::pages::Module::console_url`，决定第 64 行），控制台启动时才选定的端口也一样。
+
+### WebRTC
+
+fit 的 I87 和 I108–I111（其 [WebRTC 指南](https://github.com/lesismal/fit/blob/main/docs/webrtc.zh-CN.md)、其决定 029，
+以及其包 `webrtc/turn`、`webrtc/media` 和 `config/webrtc.go`），分五次迭代（[决定 039](decisions/039-webrtc.zh-CN.md)）。
+配置中的三个角色，由 I100 的宿主在监听器的 akio 引擎上运行：`webrtc.turn`，基于 `akio-turn` 的 TURN 服务器（RFC 8656）；
+`webrtc.media`，`whip` 和 `whep` 处理器的 PeerConnection 共享的 UDP 端口，基于 `akio-webrtc` ICE lite `RtcServer` 的 SFU；
+`webrtc.proxy`，`webrtc_proxy` 处理器后面的媒体服务器的 peer 经由其中继的 UDP 端口，每个新 peer 按其首个 STUN 请求的
+ICE ufrag 路由。它们对外显示的是 akit 的名字（决定 037：`SOFTWARE` 为 `akit`，指标 `akit_turn_*` 和 `akit_webrtc_*`）；
+线上协议是 RFC 的，因此 fit 和 akio 的客户端、浏览器和 pion 都能同样访问它们。处理器的 `auth` 引用一个 `media_auth`
+策略，属于流媒体与媒体鉴权路线：在该路线读取 `media_auth` 之前，它作为尚不支持被拒绝。
+
+### I110 WebRTC I：配置中的 `webrtc`
+
+- **做什么**：`webrtc.turn`、`webrtc.media` 和 `webrtc.proxy` 与其余配置一样严格读取，字段、默认值、范围和检查与 fit 的
+  相同（`config/webrtc.go`）：TURN 服务器的 `listen`、`listen_tcp`、带 `tls.certificates` 的 `listen_tls`、`realm`、`users`
+  （密码或由其派生的密钥）、`secret`、同一地址族的 `relay_ip` 和 `public_ip`、端口范围、配额、上限、生存期、
+  `allowed_peers` 和 `denied_peers`（前缀、地址，或地址加端口）；媒体服务器的 `listen`、`public_ips`、`ice_servers`
+  （`stun:`、`stuns:`、`turn:`、`turns:`，可安全放入 `Link` 头）、`turn_urls`（需要 `webrtc.turn` 的 `secret`）、`codecs`
+  和各项限制；代理的 `listen`、`public_ips`、各项限制、`relay_ip` 和端口范围；各自的 `access`。它们的地址加入"一个地址
+  一个服务器"的检查（fit 的 `config/bindings.go`）。处理器 `whip`、`whep`（`stream`，由 1 到 128 个 `[A-Za-z0-9._~-]`
+  组成的名字）和 `webrtc_proxy`（`upstream`、`media_addrs`、`timeout`、`max_sdp_bytes`、`action`），其 `auth` 作为尚不
+  支持被拒绝。在角色和处理器由其迭代运行之前，`akit run` 拒绝它们。
+- **完成标准**：移植后的 fit `config/webrtc_test.go` 以及 `bindings_test.go` 和 `more_test.go` 的 WebRTC 用例通过；
+  fit-examples 的 `webrtc-turn`、`whip-whep` 和 `webrtc-proxy` 通过门禁；配置参考列出每个字段；v1 冻结把它们标为新增。
+- **涉及**：`akit-config`（`webrtc`）、`akit`、`tests/compat`、`docs/reference`。
+- **fit**：`config/webrtc.go`、`config/bindings.go`、`webrtc/media/handler.go`、`webrtc/media/proxyhttp.go`；I87、I109、I110。
+- **状态**：todo。
+
+### I111 WebRTC II：TURN 服务器
+
+- **做什么**：基于 `akio-turn` 的 `TurnServer` 的 `webrtc.turn`，由 `akit run` 运行：`listen` 上的 UDP（每个地址一个绑定，
+  `access` 过滤新客户端的数据报）、`listen_tcp` 上的 TCP 和 `listen_tls` 上的 TLS（`TurnServer::stream`，akio-tls 使用来自
+  文件的证书）；用户的密钥和 coturn 风格的 `secret`（限时凭据）、realm、`relay_ip` 和 `public_ip`；`max_allocations`（508）、
+  `max_allocations_per_user`（486）、`max_permissions`、`max_channels` 和各生存期；在 akio-turn 对内部地址的拒绝之上的
+  peer 规则，感知端口，akit 自己的地址只能在 `allowed_peers` 指明的端口上访问；重新加载时就地修改用户、secret、peer 规则
+  和 access，其余变化启动新服务器，旧服务器在 `-shutdown-timeout` 内排空；`webrtc` 日志器；服务器的计数器进入 `/metrics`。
+  akio-turn 缺少 fit 的钩子之处（中继端口范围、用户名的带宽、事件、就地修改的限制、排空、nonce 密钥、流的上限），提交
+  akio 请求并记录临时方案。
+- **完成标准**：在 akio-turn 能支持之处，移植后的 fit `webrtc/turn` 测试通过，使用 `akio-turn` 的客户端和 fib 的客户端
+  （从 fit 的模块树构建的 Go 程序）：allocation 经 indication 和 channel 与 peer 双向中继，基于 UDP、TCP 和 TLS；错误的
+  密码和过期的限时凭据被拒绝；配额以 486 和 508 拒绝；私有 peer 除非被允许否则被拒绝；重新加载用户保留 allocation，
+  重新加载地址则迁移服务器。
+- **涉及**：`akit-webrtc`（新，`turn`）、`akit`、`akit-roles`。
+- **fit**：`webrtc/turn`；I87、I111。
+- **状态**：todo。
+
+### I112 WebRTC III：基于 akio 钩子的 TURN 服务器
+
+- **做什么**：akio 满足其请求后替换 I111 的临时方案：从 `port_min` 到 `port_max` 的中继、`user_bandwidth`（每个用户名
+  和方向一个令牌桶，超出的数据报被丢弃并计数）、计数并记录的事件（分配、刷新、按原因释放、按错误码拒绝、凭据失败）、
+  就地修改的配额、上限和生存期、拒绝新 allocation 而让已有 allocation 自然结束的排空、`nonce_secret`、
+  `max_stream_message` 和 `stream_idle_timeout`、服务器的客户端可访问服务器自己的中继地址。
+- **等待**：akio API 请求 A256、A257 和 A258。
+- **完成标准**：移植后的 fit I111 的 `webrtc/turn` 测试通过（`turn_test.go` 的带宽、事件、上限和排空用例，`apply_test.go`）。
+- **涉及**：`akit-webrtc`。
+- **fit**：`webrtc/turn`、`webrtc/turn/limiter.go`；I111。
+- **状态**：todo。
+
+### I113 WebRTC IV：WHIP 和 WHEP
+
+- **做什么**：基于 `akio-webrtc` `RtcServer` 的 `webrtc.media`（ICE lite，所有 PeerConnection 共用一个 UDP 端口，`access`
+  过滤新地址的数据报），以及处理器 `whip` 和 `whep`：用发布者各类媒体中第一个列于 `codecs` 的编解码器应答其 offer，
+  其媒体转发给其流的每个观看者，观看者的关键帧请求最多每 `key_frame_interval` 转给它一次；`max_bitrate` 以 REMB 告知，
+  并以两秒的突发量强制执行；按 RFC 9725 和 WHEP 草案处理 DELETE 和 OPTIONS（PATCH 回答 405，同 fit）；`Link` 头中的
+  ICE 服务器和带有由 `webrtc.turn` 的 secret 生成凭据的 `turn_urls`；各项限制（PeerConnection、流、每个流的观看者、
+  offer 的大小）、`connect_timeout` 和 `ice_timeout`；保持 `listen` 和 `public_ips` 不变的重新加载保留会话，否则结束会话；
+  `/metrics`。
+- **完成标准**：移植后的 fit `webrtc/media` 媒体服务器测试通过，以 akio-webrtc 的 `Endpoint` 作为发布者和观看者，fib 的
+  PeerConnection（Go 程序）经 akit 发布和播放：发布者离开时其观看者结束；慢的和断开的观看者不拖住发布者；限制生效。
+- **涉及**：`akit-webrtc`（`media`）、`akit-handler` 或 `akit`、`akit-roles`。
+- **fit**：`webrtc/media/{media,session,handler}.go`；I109。
+- **状态**：todo。
+
+### I114 WebRTC V：代理的 WHIP 和 WHEP
+
+- **做什么**：处理器 `webrtc_proxy` 和角色 `webrtc.proxy`：offer 发给路由 upstream 中的一个媒体服务器（其选择、健康检查和
+  超时），应答中的 candidate 换成代理的端口，其 ufrag 与媒体服务器的地址对应记下（`media_addrs`，或应答中的第一个 host
+  或 server-reflexive candidate），会话的 URL 改写为 akit 的；UDP 端口按新 peer 地址首个 STUN Binding 请求的 USERNAME
+  路由，此后经其自己的一个朝向媒体服务器的套接字（`relay_ip`、端口范围）中继其五元组，带 `max_sessions`、`max_relays`
+  （每个会话 8 个）、`session_timeout` 和 `idle_timeout`。
+- **完成标准**：移植后的 fit `proxy_test.go`、`proxy_edges_test.go` 和 `proxy_ports_test.go` 通过：一个 akit 端口后的两个
+  媒体服务器各自得到自己的 peer；peer 在其 Binding 请求之前的数据报被丢弃；离开的媒体服务器释放其路由。
+- **涉及**：`akit-webrtc`（`proxy`）、`akit-upstream`、`akit`。
+- **fit**：`webrtc/media/{proxy,proxyhttp,relay}.go`；I110、I111。
+- **状态**：todo。
