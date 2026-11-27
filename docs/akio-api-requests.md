@@ -2872,7 +2872,8 @@ port of the listener the server is served on once it is bound), or `Listener::ud
 socket bound by the caller.
 
 **How akit would use it.** The role's WebRTC listener bound as configured and the candidates taken
-from the port it got, without the probe.
+from the port it got, without the probe; `webrtc.media`'s (I113), which finds its port the same way,
+too.
 ## A283 The BitTorrent client on the caller's engine
 
 **Status.** Requested by I150 (2026-11-27) for I152. Stopgap: the client role runs
