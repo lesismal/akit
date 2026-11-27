@@ -241,6 +241,17 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I126 | `whip`、`whep` 和 `webrtc_proxy` 上的媒体认证 | I121、WebRTC 路线的处理器 | done |
 | I126 | `whip`、`whep` 和 `webrtc_proxy` 上的媒体认证 | I121、WebRTC 路线的处理器 | todo |
 | I114 | WebRTC V：代理的 WHIP 和 WHEP：`webrtc_proxy` 和 `webrtc.proxy` | I113, I14 | done |
+| **1.0 之后：媒体库与频道** | | | |
+| I140 | 媒体库 I：决定 043，配置中的 `media_library` | I120 | todo |
+| I141 | 媒体库 II：目录：扫描、条目、基于 akio-media 的 `mp4` 的探测、文件池、保留的解析后影片；角色 `media_library`；Admin API 的 `/media/library` | I140, I100 | todo |
+| I142 | 点播：`vod`，由样本表生成的 HLS，按范围提供的文件 | I141, I121 | todo |
+| I143 | 媒体 token：`media_auth` 的 `keys` 和 `media_tokens`（fit 的 I119） | I121 | todo |
+| I144 | 会过期的播放 URL：`url_signing`、会话、`media_tokens` 的 `/urls` | I142, I143 | todo |
+| I145 | 频道：作为直播流播放的媒体库条目，`streaming.channels` | I141, I123 | todo |
+| I146 | 推送目标：`streaming.push` 和频道的 `push` | I145 | todo |
+| I147 | 加密分片：`vod` 和频道 HLS 上的 `encrypt` | I144, I145 | todo |
+| I148 | 视频网站：`media_pages` 的 `libraries`、`vod` 和 `channels`，示例，指南 | I144, I145 | todo |
+| I149 | 控制台的媒体库页面及其文件管理（fit 的 I138、I139） | I148 | todo |
 | I150 | BitTorrent I：配置中的 `bittorrent.client` 和 `bittorrent.tracker`，fit 的字段、检查和冲突；后续迭代才运行的内容以"尚不支持"拒绝 | I98 | done |
 | I151 | BitTorrent II：基于 akio-bittorrent 的 `TrackerServer` 的 tracker 角色和 `bt_tracker`：HTTP 和 UDP、允许列表、访问控制、上限、统计、其控制台 | I150, I100 | done |
 | I152 | BitTorrent III：基于 akio-bittorrent 的 `Client` 的客户端角色：`data_dir` 中的状态、不经校验恢复、原地或以新客户端重载、其 API 和控制台 | I150, I151 | done |
@@ -317,6 +328,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | 隧道：hub、node、proxy | I101–I103（I102b、I102c、I103b） | 否 | 否（已实现，未测） | 对比 fit 的隧道（fit 的 hub 配 fit 的 node 和 proxy、akit 的三者、以及混合）：一条隧道、以及一条链路上 64 条隧道同时的每秒字节数，明文、`body_password` 密封以及经 TLS（I102）、QUIC（I102b：流的发送缓冲和 wire 的溢出队列，合起来是 `LINK_QUEUE`）和 WebSocket（I102c）；每秒打开的隧道数（proxy 的 accept、经 hub 的 `tunnel/open`、node 的拨号）；hub 转发每 GB 的 CPU；每条空闲隧道和每条链路的内存；一个慢服务压住一条隧道而链路上其他隧道照常进行（只由窗口调节链路，其队列上限为 fit 的 `LinkQueue`，A234）；I103b：经 web 代理和 hub 控制台套接字的每秒字节数（双向密封，每条消息 64 KiB），对比 fit，以及 hub 每 GB 的 CPU。 |
 | WebRTC：TURN、WHIP 和 WHEP、代理 | I111–I114 | 否 | 否（尚未实现） | 与 fit 的角色对比（fit 的 TURN 服务器和媒体服务器对比 akit 的，使用相同的客户端）：经一个 allocation 和同时 1,000 个 allocation 中继的 TURN 数据报数和每秒字节数，经 channel 和经 indication，基于 UDP、TCP 和 TLS，并列 coturn；每秒建立的 allocation（校验凭据、绑定中继）；每 GB 中继的 CPU 和每个空闲 allocation 的内存。WHIP 和 WHEP：一个发布者 4 Mb/s 的视频转发给 1、100 和 256 个观看者（每个观看者的 CPU、转发延迟、丢弃的包），每秒应答的 PeerConnection，每个会话的内存；一个慢观看者不拖住其他人。代理：经其端口每秒中继的数据报，每秒应答的会话，每个中继的内存。 |
 | 流媒体角色与媒体认证 | I121–I124 | 否 | 否（已实现，未测） | 对比 fit 的角色以及 SRS 或 MediaMTX：一路通过 RTMP 推送的流（ffmpeg `-re`，H.264 和 AAC，4 Mbit/s）由 1、100 和 1,000 个播放器通过 RTMP、HTTP-FLV、HLS（fMP4 和 MPEG-TS）、RTSP 和 SRT 播放：CPU、每个播放器的内存、出口吞吐、为慢播放器丢弃的包、首帧时间；每秒推流和播放数（握手和认证检查）；每次推流和每个 HLS 分片的一次 `media_auth` 检查，分别用静态 token、签名 token 和已记住的 bcrypt 用户。 |
+| 媒体库：点播与频道 | I141、I142、I145、I147 | 否 | 否（尚未实现） | 对比 fit 的 `vod` 和提供预先切好的相同分片的 nginx（fit 的 I133：各占 CPU 0–3，wrk 在 8–15，合成的媒体库）：fMP4 和 MPEG-TS 每秒分片数和 RSS，分别来自缓存和由解析后的影片构建；无缓存时条目首个分片的时间（读取并解析 `moov`、规划、构建分片）；扫描 10,000 个文件的时间和内存；每小时影片的解析后影片内存；开启 `url_signing` 时每个请求一次检查；开启 `encrypt` 时每个分片的 AES-128 开销；频道：每个频道和每个观看者的 CPU。 |
 | 正向代理：SOCKS 与 HTTP CONNECT | I55 | 否 | 否（已实现，未测） | 对比 fit（原始吞吐另对比 nginx 的 `stream`）：经 SOCKS5 隧道和 HTTP/1.1 CONNECT 隧道的每秒字节数（每次回显 256 KB，同 fit 的 `BenchmarkTCPProxy`），每秒建立的隧道数（握手、规则检查、在线程池上解析名字以及 `connected` 检查），每个空闲隧道的内存；共享端口上 SOCKS 的开销（akio-mux 的问候规则与 HTTP、TLS 并列）对比只有 HTTP；10,000 条隧道时 akio-socks 看门狗线程的开销（ADR-119 在其上增加了连接超时）。 |
 | 响应缓存 | I67、I68、I69 | 部分（2026-11-25，I76，`346ad8b`：基准框架的 `cache-hot` 和 `cache-zipf` 对照 nginx 和 fit，以及 1,000 个客户端的击穿，见 [M5 报告](../bench/results/m5-report-2026-11-25.zh-CN.md)） | 否 | I76 已测：经基准框架的内存命中（4 KiB；akit 第一，HTTP/1.1 上是 nginx 的 1.5 倍、h2c 上 6.2 倍，100,000 个路径时 1.75 倍，领先 fit 12% 到 23%），以及 1,000 个客户端请求一个冷键时只取一次源站。剩下的，对比 fit，按 I67 的实现：内存命中（4 KiB 与 1 MiB 消息体，HTTP/1.1 与 h2），经代理保存的未命中（旁路复制的流式消息体）对比仅代理，缓存直接放行的请求（POST、`no-store` 响应）对比无中间件的开销，大量键与单个热点键下分片锁的表现。I68：从磁盘读回的命中（64 KiB 与 1 MiB，大量并发下磁盘线程池的线程与队列），未命中率高到填满 `MAX_PENDING_WRITES` 时的磁盘写入，大量客户端对同一个键的惊群，开启锁与 `disable_lock` 两种情况（等待者的挂起与恢复、每次获取一个定时器），以及 stale-while-revalidate 的后台获取。akio ADR-116 的旁路：有旁路的流对比无旁路的流。I69：带标签响应（0 与 32 个标签）对比无标签响应的保存开销，以及服务期间对大 zone 按前缀和按标签清除（分片锁与磁盘索引锁的持有时间）。 |
 | FastCGI | I75 | 否 | 否（已实现，未测量） | 对比 fit 和 nginx 的 `fastcgi_pass`，经 TCP 和 Unix 域套接字连接 PHP-FPM（或立即应答的 FastCGI 应用）：小页面的每秒请求数与延迟，HTTP/1.1 与 h2；1 MiB 上传与 16 MiB 下载（每个进行中请求的内存，双向 64 KiB 水位线）；连接复用对比每个请求一个连接；客户端多于 `max_conns` 时连接池的队列；`try_files` 的开销（每个候选在 akio 逻辑线程池上一次 `stat`）对比不带它的路由；每秒大量请求时，handler 每 100 ms 在 akit 定时器线程（A45 的临时方案）上对其交换的巡检。 |
@@ -1095,7 +1107,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | 5 | WebRTC | I87, I108–I111 | [I110–I114](#webrtc)：配置中的角色；基于 `akio-turn` 的 TURN；基于 `akio-webrtc` 的 WHIP 和 WHEP；代理的 WHIP 和 WHEP |
 | 6 | 流媒体与媒体认证 | I115–I117 | [I120–I126](#流媒体与媒体认证)：配置中的 `media_auth` 和 `streaming`、策略与 `akit media-token`、基于 `akio-media` 的流媒体角色（其媒体中心、RTMP、RTSP 和 SRT 监听器、`httpflv`、`hls`、`stream_whip` 和 `stream_whep`）、媒体页面 |
 | 6 | 流媒体与媒体认证 | I115–I117 | 基于 `akio-media` 的流媒体角色；`media_auth` |
-| 7 | 媒体库与频道 | I131–I139 | MP4 读取器（akio 需求）；点播；频道；签名 URL |
+| 7 | 媒体库与频道 | I119、I131–I139 | [I140–I149](#媒体库与频道)：`media_library` 及其基于 akio-media 的 MP4 读取器的目录、`vod`、媒体 token 的密钥、签名播放 URL、频道和推送目标、加密分片、视频网站页面、控制台页面 |
 | 8 | 集群管理 | I140–I150, I153 | [I130–I139c](#集群管理)：配置、成员需要什么、管理端及其成员、页面、分组、模板、带健康门槛的发布、漂移和告警、角色、NAT 之后的成员、指标和 CLI；I153 随 AI 助手路线 |
 | 9 | AI 助手 | I124–I130, I152–I154 | 对话面板、工具、MCP 服务器 |
 | 10 | BitTorrent | I196–I210 | [I150–I159](#bittorrent)：配置中的角色、基于 `akio-bittorrent` 的 tracker 和客户端、添加种子、时间表和访问控制、`bt_stream`、发布、Admin API 和事件、页面、RSS |
@@ -1791,6 +1803,133 @@ fit 的 I115–I117（其[流媒体指南](https://github.com/lesismal/fit/blob/
 - **涉及**：WebRTC 路线的处理器、`akit-config`。
 - **fit**：`webrtc/media`；I115。
 - **状态**：已完成（`whip` 和 `whep` 于 2026-11-27，`webrtc_proxy` 于 I114 落地后的 2026-11-28）。见进度日志。
+
+### 媒体库与频道
+
+fit 的 I131–I139（其[媒体库指南](https://github.com/lesismal/fit/blob/main/docs/media-library.zh-CN.md)、其决定 032，以及其包
+`medialib`、`handler/vod`、`streaming/channels`、`mediaauth` 的 `urlsign.go` 和 `sessions.go`、`handler/mediatokens` 和
+`handler/mediapages` 的媒体库与播放器页面），加上签名 URL 所依赖的 fit 的 I119（`media_auth` 的 `keys` 和 `media_tokens`），分十次
+迭代（[决定 043](decisions/043-media-library.zh-CN.md)）。媒体库是扫描成目录的若干 MP4 文件目录；`vod` 把条目以 HLS 提供：不转码，
+按样本表在关键帧处切出 fMP4 或 MPEG-TS 分片，并支持按范围下载文件本身；频道把条目作为直播流播放进流媒体角色的媒体中心，推送
+目标再把它转发给外部服务器；`url_signing` 生成会过期的播放 URL，绑定到一个资源，并可按需绑定观看者的地址和会话；`encrypt` 提供
+AES-128 分片，只有该资源的授权才能取到其密钥。fit 为本路线向 fib 请求的，akio-media 都已具备：非分片 MP4 文件的读取器和把它切成
+分片的规划器（`akio_media::mp4`，akio ADR-097：fit 的 I131、fib 的 A64）、fMP4 和 MPEG-TS 复用器，以及其直播 HLS 中的 AES-128 和
+SAMPLE-AES（fib 的 A69）；它缺少的部分作为 akio A295–A300 请求。akit 对外显示的名字是 akit 的（决定 037），格式是 fit 的（决定 043）。
+
+### I140 媒体库 I：决定 043，配置中的 `media_library`
+
+- **做什么**：决定 043；按 fit 的 `config/medialibrary.go` 读取顶层的 `media_library`：命名的媒体库，带 `roots`、`files` 和 `exclude`
+  模式、`follow_symlinks`、`scan_interval`、目录和文件池的上限、`secret` 或 `secret_file`，以及上传的 `upload_dir`、
+  `max_upload_bytes`、`max_uploads`、`min_free_bytes` 和 `upload_expiry`，默认值和检查与 fit 相同（名字唯一、根目录互不包含、
+  模式、`upload_dir` 位于某个根目录内）；在 I141 运行它之前 `akit run` 拒绝该成员。fit 的 I131（MP4 读取器）对 akit 没有要求：
+  akio-media 的 `mp4` 就是它。
+- **完成标准**：移植后的 fit 的 `config/medialibrary_test.go` 用例通过；参考文档列出每个字段；v1 冻结把它们标为新增。
+- **涉及**：`akit-config`（`medialib`）、`akit-roles`（`members`）、`tests/compat`、`docs/reference`。
+- **fit**：`config/medialibrary.go`；I131、I132。
+- **状态**：todo。
+
+### I141 媒体库 II：目录
+
+- **做什么**：在 `akit-media` 中实现 fit 的 `medialib`：角色 `media_library` 按名字保存每个引擎的媒体库，重载时原地修改；媒体库在
+  自己的线程上扫描：创建时、每个 `scan_interval`、重载改变了扫描内容时以及被请求时；遍历根目录，受 `max_files` 和 fit 的深度
+  限制，除非 `follow_symlinks`，否则拒绝指向根目录之外的符号链接；按边车文件（`<name>.json`）或按名字（版本标签、字幕、海报）把
+  文件归组为条目，ID 来自路径或边车文件；用 akio-media 的 `mp4` 探测媒体文件（同时至多 `max_probes` 个），未变化的文件不再探测，
+  列出问题，目录受 `max_items` 和 `max_catalog_bytes` 限制；服务时读取文件所用的文件池；解析后的影片（其样本表）在
+  `max_table_bytes` 内保留，对所有等待的请求只读取一次；字幕转为 WebVTT；Admin API 的 `GET /media/library`、
+  `GET /media/library/<name>`、`GET /media/library/<name>/items/<id>` 和 `POST /media/library/<name>/rescan`；指标
+  `akit_media_library_*`。
+- **完成标准**：移植后的 fit 的 `medialib` 中关于目录、扫描、样本表和文件池的测试在 fit 的测试素材上通过（条目、ID、版本和问题与
+  fit 列出的相同），以媒体库的状态而非时间同步；fit 的程序和 akit 对同一媒体库列出相同的内容。
+- **涉及**：`akit-media`（`library`）、`akit`（`ROLES`）、`akit-admin`。
+- **fit**：`medialib`、`admin/medialib.go`；I132。
+- **状态**：todo。
+
+### I142 点播：`vod`
+
+- **做什么**：在媒体库上实现 fit 的 `handler/vod`：每个条目一个多码率播放列表（各版本作为变体，带 `BANDWIDTH`、`RESOLUTION` 和
+  `CODECS`；音频组和字幕组）、由 akio-media 的 `mp4::Plan` 在 `segment_duration` 附近切出的 fMP4 或 MPEG-TS 分片的媒体播放列表、
+  初始化段、WebVTT、海报，以及带 `Range` 的文件本身；fit 的 URL 命名；在媒体库的文件池上由解析后的影片构建，保存在受 `max_bytes`
+  和 `max_segment_bytes` 限制、由相同参数的处理器共享的缓存中；`ETag`、`Last-Modified` 和 `cache_control`；`auth` 对
+  `vod/<library>/<id>` 检查动作 `play`；媒体库首次扫描之前回答 503。
+- **完成标准**：移植后的 fit 的 `handler/vod` 测试通过；ffprobe 能读取 fit 测试素材的每个播放列表和分片；ffmpeg 能通过 akit 的播放
+  列表播放条目；播放中被改变的文件回答 404，其缓存项被丢弃；fit 的程序和 akit 对同一媒体库提供相同的变体。
+- **涉及**：`akit-media`（`vod`）、`akit-config`、`tests/compat`、`docs/reference`。
+- **fit**：`handler/vod`；I133。
+- **状态**：todo。
+
+### I143 媒体 token：`media_auth` 的 `keys` 和 `media_tokens`
+
+- **做什么**：fit 的 I119：策略的 `keys` 密钥环取代 `secret` 或 `secret_file`（token 用一个密钥签名，对所有密钥校验），以及处理器
+  `media_tokens`，网站后端调用它批量签发 token 和撤销密钥（在有界池上原子地向其文件写入 32 个随机字节）。
+- **完成标准**：移植后的 fit 的 `handler/mediatokens` 测试和 `mediaauth` 的密钥环测试通过；fit 用命名密钥签发的 token 被 akit 接受，
+  反之亦然。
+- **涉及**：`akit-config`（`media`）、`akit-media`（`auth`、`tokens`）。
+- **fit**：`handler/mediatokens`、`mediaauth/manage.go`；I119。
+- **状态**：todo。
+
+### I144 会过期的播放 URL：`url_signing`
+
+- **做什么**：fit 的 I135：`media_auth` 的 `url_signing`（`ttl`、`play_grace`、观看者的地址或其 /24 或 /64、会话、`cookie`、带
+  `on_limit` 的 `max_sessions`、`referers`、`origins`）；对资源的路径前缀签名的 URL，由 `vod`、`hls` 和 `httpflv` 在 I/O 线程上
+  不经回调地检查；播放列表把子授权交给其分片、密钥和字幕；按主体跟踪并限制会话；`media_tokens` 的 `POST <prefix>/urls`；token
+  和签名写为 `REDACTED`。
+- **完成标准**：移植后的 fit 的 `mediaauth/urlsign_test.go` 和 `handler/mediatokens/urls_test.go` 用例通过；对相同的密钥和资源，fit
+  签发的 URL 能在 akit 上播放，akit 签发的能在 fit 上播放。
+- **涉及**：`akit-config`、`akit-media`。
+- **fit**：`mediaauth/urlsign.go`、`sessions.go`、`viewer.go`、`handler/mediatokens/urls.go`；I135。
+- **状态**：todo。
+
+### I145 频道：作为直播流播放的文件
+
+- **做什么**：fit 的 I134 的频道：`streaming.channels`，媒体库条目按顺序、随机、循环或按某时区的时间表播放，以频道的流名发布进媒体
+  中心，按样本时间在 akio 的定时器上定速，条目之间时间戳连续，由每种出口提供；重载在下一个条目生效；Admin API 列出频道，并能
+  启动、停止和跳过。
+- **完成标准**：移植后的 fit 的 `streaming/channels` 测试通过，以媒体中心的状态而非时间同步；ffmpeg 通过 HLS 和 RTMP 连续播放两个
+  条目，没有间隙或跳变。
+- **涉及**：`akit-config`（`media`）、`akit-media`（`channels`）、`akit-admin`。
+- **fit**：`streaming/channels`；I134。
+- **状态**：todo。
+
+### I146 推送目标
+
+- **做什么**：fit 的 I134 的 `push`：`streaming.push` 和频道的 `push`，把媒体中心的流转发给外部 RTMP 或 SRT 服务器，带退避重连，
+  在保持其流、URL 和 `connect_timeout` 不变的重载中保留连接；其状态在 Admin API 中。
+- **完成标准**：移植后的 fit 的推送测试通过；目标（akit 自身和 fit 的角色）收到流，并在其重启后重新收到。
+- **涉及**：`akit-config`、`akit-media`（`channels`）。
+- **fit**：`streaming/channels/push.go`；I134。
+- **状态**：todo。
+
+### I147 加密分片
+
+- **做什么**：fit 的 I136：`vod` 上的 `encrypt`（每个分片 AES-128，每个条目一个由媒体库密钥派生的密钥，IV 为分片序号）和频道 HLS
+  上的 `encrypt`（akio-media 的 `HlsEncryption`，每个频道一个密钥，每 `key_rotation` 个分片轮换）；密钥只提供给持有该资源授权
+  的请求。
+- **完成标准**：移植后的 fit 的加密测试通过；ffmpeg 能播放加密的条目和频道；没有授权、或持有其他资源授权的密钥请求被拒绝；对相同
+  的密钥、媒体库和条目，fit 派生的密钥与 akit 的相同。
+- **涉及**：`akit-media`（`library`、`vod`、`channels`）、`akit-config`。
+- **fit**：`medialib/keys.go`、`handler/vod`、`streaming`；I136。
+- **状态**：todo。
+
+### I148 视频网站：媒体页面的媒体库页面和播放器页面
+
+- **做什么**：fit 的 I137：`media_pages` 的 `libraries`、`vod` 和 `channels`，其在策略登录之后的媒体库页面和播放器页面，通过
+  `url_signing` 签名，按 fit 的方式内置 hls.js；fit-examples 的 `video-site` 纳入兼容性关卡；`docs/media-library.md` 及其中文版。
+- **完成标准**：移植后的 fit 的 `handler/mediapages` 媒体库和播放器测试通过；fit-examples 的 `video-site` 通过关卡。
+- **涉及**：`akit-media`（`pages`）、`akit-config`、`tests/compat`、`docs`。
+- **fit**：`handler/mediapages`；I137。
+- **状态**：todo。
+
+### I149 控制台的媒体库页面，及其文件管理
+
+- **做什么**：fit 的 I138 和 I139：控制台中媒体库、带预览的条目、频道、URL 签名和会话的页面；从这些页面管理媒体库的文件：可续传的
+  上传到 `upload_dir`（`POST`、`PATCH`、`HEAD`）、重命名、移动和删除、边车文件编辑，使用中的除非强制均被拒绝；其背后的 Admin
+  API 端点。
+- **完成标准**：移植后的 fit 的 `medialib` 上传和管理测试通过；页面在浏览器中对运行中的 akit 正常工作。
+- **涉及**：`akit-media`（`library`）、`akit-admin`。
+- **fit**：`medialib/upload.go`、`medialib/manage.go`、工作台的 `gw.medialib`；I138、I139。
+- **状态**：todo。
+
+### BitTorrent
 
 fit 的 I196–I210（其 [BitTorrent 指南](https://github.com/lesismal/fit/blob/main/docs/bittorrent.md)、
 其决定 037、其包 `bittorrent`、`bittorrent/tracker`、`handler/btstream`、`handler/btpublish`、

@@ -18,8 +18,21 @@ done and where the work differs from the plan.
 | Next | the external security review ([scope](security/review-scope.md)), whose findings finish I80b; fit's answer to the fields decision 035 proposes (CRL files, a WASM digest); the tracks after 1.0 ([the plan](dev-plan.md#after-10)): Console and encrypted store done (I89–I94, I93b, I93c); fit's Admin API rules for connections without the token, on the console's slots (akio's A232) (Logging done: I81–I83; Access lists done: I85–I87); the Gateway API's conformance run (tests/conformance, the maintainer's) |
 | akio requests | A1–A24, A29, A30, A32, A33, A35–A38, A45, A48, A49, A51–A54, A57, A58, A63–A66, A75, A78, A79, A90–A94, A105, A108, A109, A111–A113, A117, A132–A135, A148, A165–A172, A180, A200, A214, A215, A220, A230–A238, A245 and A247–A249 on akio's main and pinned; A225 (an external review, L15) requested ([akio API requests](akio-api-requests.md)) |
 | Streaming and media auth | [I120–I126](dev-plan.md#streaming-and-media-auth), fit's I115–I117 (decision 040): I120 (`media_auth` and `streaming` in the config), I121 (the policies, the checks, `akit media-token`), I122 (the role's hub, RTMP, RTSP and SRT), I123 (`httpflv`, `hls`), I124 (the WebRTC port, `stream_whip`, `stream_whep`), I125 (`media_pages`) and I126 (`auth` on `whip`, `whep` and `webrtc_proxy`) done; the media library's `libraries`, `vod` and `channels` wait for its track; akio requests A263–A268 |
+| Media library and channels | [I140–I149](dev-plan.md#media-library-and-channels), fit's I131–I139 and I119 (decision 043): planned |
 
 ## Log
+
+### 2026-11-27: the Media library and channels track planned (I140–I149)
+
+- The seventh track after 1.0 broken into iterations from fit's I131–I139 and I119
+  ([the plan](dev-plan.md#media-library-and-channels), [decision 043](decisions/043-media-library.md)):
+  `media_library` in the config (I140), the catalog (I141), `vod` (I142), media tokens' keys and
+  `media_tokens` (I143, fit's I119), signed playback URLs (I144), channels (I145), push targets
+  (I146), encrypted segments (I147), the video site's pages (I148) and the console's pages with the
+  files managed (I149). fit's I131, the MP4 reader fit asked fib for, is akio-media's `mp4` (akio
+  ADR-097), and fit's fib request for encryption in live HLS (A69) is akio-media's `HlsEncryption`:
+  what akio lacks is asked as A295–A300 when an iteration meets it. A row in the benchmark table
+  names what to measure. Built on the Streaming and media auth track (`claude/streaming`).
 
 ### 2026-11-28: a shutdown no longer waits for idle upstream connections
 

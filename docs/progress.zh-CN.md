@@ -17,8 +17,18 @@
 | 下一步 | 外部安全审查（[范围](security/review-scope.zh-CN.md)），其发现完成 I80b；fit 对决定 035 所提议字段（CRL 文件、WASM 摘要）的答复；1.0 之后的各条线（[开发计划](dev-plan.zh-CN.md#10-之后)）：控制台与加密的 store 已完成（I89–I94、I93b、I93c）；fit 的 Admin API 对没有令牌的连接的规则，基于控制台的 slots（akio 的 A232）（日志已完成：I81–I83；访问控制列表已完成：I85–I87）；Gateway API 一致性测试的运行（tests/conformance，由维护者运行） |
 | akio 需求 | A1–A24、A29、A30、A32、A33、A35–A38、A45、A48、A49、A51–A54、A57、A58、A63–A66、A75、A78、A79、A90–A94、A105、A108、A109、A111–A113、A117、A132–A135、A148、A165–A172、A180、A200、A214、A215、A220、A230–A238、A245 和 A247–A249 已进入 akio 的 main 并锁定；A225（外部审查，L15）已提出（[akio API 请求](akio-api-requests.zh-CN.md)） |
 | 流媒体与媒体认证 | [I120–I126](dev-plan.zh-CN.md#流媒体与媒体认证)，fit 的 I115–I117（决定 040）：I120（配置中的 `media_auth` 和 `streaming`）、I121（策略、检查、`akit media-token`）I122（角色的媒体中心、RTMP、RTSP 和 SRT）、I123（`httpflv`、`hls`）、I124（WebRTC 端口、`stream_whip`、`stream_whep`）、I125（`media_pages`）和 I126（`whip`、`whep` 和 `webrtc_proxy` 上的 `auth`）已完成；媒体库的 `libraries`、`vod` 和 `channels` 等待其那条线；akio 请求 A263–A268 |
+| 媒体库与频道 | [I140–I149](dev-plan.zh-CN.md#媒体库与频道)，fit 的 I131–I139 和 I119（决定 043）：已规划 |
 
 ## 日志
+
+### 2026-11-27：媒体库与频道路线规划为 I140–I149
+
+- 1.0 之后的第七条路线按 fit 的 I131–I139 和 I119 拆分为迭代（[计划](dev-plan.zh-CN.md#媒体库与频道)、
+  [决定 043](decisions/043-media-library.zh-CN.md)）：配置中的 `media_library`（I140）、目录（I141）、`vod`（I142）、媒体 token
+  的密钥和 `media_tokens`（I143，fit 的 I119）、签名播放 URL（I144）、频道（I145）、推送目标（I146）、加密分片（I147）、视频网站
+  页面（I148）以及控制台页面与文件管理（I149）。fit 向 fib 请求的 MP4 读取器（fit 的 I131）就是 akio-media 的 `mp4`（akio
+  ADR-097），fit 对直播 HLS 加密的 fib 请求（A69）就是 akio-media 的 `HlsEncryption`：akio 所缺的部分在迭代遇到时作为 A295–A300
+  提出。基准表中的一行说明要测什么。建立在流媒体与媒体认证路线（`claude/streaming`）之上。
 
 ### 2026-11-28：关闭不再等待空闲的上游连接
 

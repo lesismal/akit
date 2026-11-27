@@ -39,3 +39,4 @@ says whether akit follows it.
 | [039](039-streaming-and-media-auth.md) | Streaming and media auth: fit's members, akio-media's hub, fit's tokens | waiting for review |
 | [041](041-cluster-management.md) | Cluster management: fit's manager, fit's wire to members, akit's names | waiting for review |
 | [042](042-bittorrent.md) | BitTorrent: fit's roles on akio-bittorrent, what it lacks asked of akio | waiting for review |
+| [043](043-media-library.md) | The media library: fit's members, akio-media's MP4 reader and HLS, fit's formats | waiting for review |

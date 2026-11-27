@@ -36,3 +36,4 @@
 | [039](039-streaming-and-media-auth.zh-CN.md) | 流媒体与媒体认证：fit 的成员、akio-media 的媒体中心、fit 的 token | 待审阅 |
 | [041](041-cluster-management.zh-CN.md) | 集群管理：fit 的管理端、fit 与成员间的线上协议、akit 的名字 | 待审阅 |
 | [042](042-bittorrent.zh-CN.md) | BitTorrent：基于 akio-bittorrent 的 fit 角色，所缺内容向 akio 提出 | 待审阅 |
+| [043](043-media-library.zh-CN.md) | 媒体库：fit 的成员、akio-media 的 MP4 读取器和 HLS、fit 的格式 | 待审阅 |

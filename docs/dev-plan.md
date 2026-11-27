@@ -253,6 +253,17 @@ Tunnel and LLM track; I110–I114 are the WebRTC track, and I115–I119 are rese
 | I126 | Media auth on `whip`, `whep` and `webrtc_proxy` | I121, the WebRTC track's handlers | done |
 | I126 | Media auth on `whip`, `whep` and `webrtc_proxy` | I121, the WebRTC track's handlers | todo |
 | I114 | WebRTC V: WHIP and WHEP proxied: `webrtc_proxy` and `webrtc.proxy` | I113, I14 | done |
+| **After 1.0: media library and channels** | | | |
+| I140 | Media library I: decision 043, `media_library` in the config | I120 | todo |
+| I141 | Media library II: the catalog: scans, items, probes on akio-media's `mp4`, the file pool, the parsed movies kept; the role `media_library`; the Admin API's `/media/library` | I140, I100 | todo |
+| I142 | Video on demand: `vod`, HLS from the sample tables, the file with ranges | I141, I121 | todo |
+| I143 | Media tokens: `media_auth`'s `keys` and `media_tokens` (fit's I119) | I121 | todo |
+| I144 | Playback URLs that expire: `url_signing`, sessions, `media_tokens`' `/urls` | I142, I143 | todo |
+| I145 | Channels: library items played as live streams, `streaming.channels` | I141, I123 | todo |
+| I146 | Push targets: `streaming.push` and a channel's `push` | I145 | todo |
+| I147 | Encrypted segments: `encrypt` on `vod` and on channels' HLS | I144, I145 | todo |
+| I148 | A video site: `media_pages`' `libraries`, `vod` and `channels`, the example, the guide | I144, I145 | todo |
+| I149 | The console's media library pages, and its files managed (fit's I138, I139) | I148 | todo |
 | I150 | BitTorrent I: `bittorrent.client` and `bittorrent.tracker` in the config, fit's fields, checks and clashes; what later iterations run refused as not supported yet | I98 | done |
 | I151 | BitTorrent II: the tracker role and `bt_tracker` on akio-bittorrent's `TrackerServer`: HTTP and UDP, the allow-list, access, bounds, statistics, its console | I150, I100 | done |
 | I152 | BitTorrent III: the client role on akio-bittorrent's `Client`: the state in `data_dir`, restore without a check, reloads in place or by a new client, its API and console | I150, I151 | done |
@@ -331,6 +342,7 @@ commit and result.
 | Tunnel: hub, node, proxy | I101–I103 (I102b, I102c, I103b) | no | no (built, not measured) | Against fit's tunnel (fit's hub with fit's node and proxy, the same three in akit, and mixed): bytes a second through one tunnel and through 64 at once over one link, plain, sealed with `body_password` and over TLS (I102), QUIC (I102b: the stream's send buffer and the wire's overflow queue, `LINK_QUEUE` together) and WebSocket (I102c); tunnels opened a second (a proxy's accept, `tunnel/open` through the hub, the node's dial); the hub's CPU per gigabyte passed; memory per idle tunnel and per link; a slow service holding one tunnel while the link's others go on (the windows alone pace a link, its queue bounded at fit's `LinkQueue`, A234); I103b: bytes a second through a web proxy and the hub's console socket (sealed both ways, 64 KiB a message), against fit's, and the hub's CPU per gigabyte of it. |
 | WebRTC: TURN, WHIP and WHEP, the proxy | I111–I114 | no | no (not built yet) | Against fit's roles (fit's TURN server and media server against akit's, the same clients): the TURN relay's datagrams and bytes a second through one allocation and 1,000 at once, by channel and by indication, over UDP, TCP and TLS, coturn alongside; allocations made a second (the credentials checked, a relay bound); the CPU per gigabyte relayed and memory per idle allocation. WHIP and WHEP: one publisher's 4 Mb/s video forwarded to 1, 100 and 256 viewers (the CPU per viewer, the forwarding's latency, packets dropped), PeerConnections answered a second, memory per session; a slow viewer holding none of the others. The proxy: datagrams a second relayed through its port, sessions answered a second, memory per relay. |
 | Streaming role and media auth | I121–I124 | no | no (built, not measured) | Against fit's role, and SRS or MediaMTX: one stream published over RTMP (ffmpeg `-re`, H.264 and AAC at 4 Mbit/s) played by 1, 100 and 1,000 players over RTMP, HTTP-FLV, HLS (fMP4 and MPEG-TS), RTSP and SRT: CPU, memory a player, egress throughput, packets dropped for slow players, time to the first frame; publishes and plays a second (the handshake and the auth check); a `media_auth` check per publish and per HLS segment with a static token, a signed token and a remembered bcrypt user. |
+| Media library: VOD and channels | I141, I142, I145, I147 | no | no (not built yet) | Against fit's `vod` and nginx serving the same segments cut beforehand (fit's I133: each on CPUs 0–3, wrk on 8–15, a synthetic library): segments a second and RSS for fMP4 and MPEG-TS, from the cache and built from the parsed movie; the time to an item's first segment when nothing is cached (the `moov` read and parsed, the plan, the segment built); a scan's time and memory for 10,000 files; the parsed movies' memory an hour of film; with `url_signing`, a check a request; with `encrypt`, AES-128's cost a segment; channels: CPU a channel and a viewer. |
 | Forward proxy: SOCKS and HTTP CONNECT | I55 | no | no (built, not measured) | Against fit (and nginx's `stream` for raw throughput): bytes a second through a SOCKS5 tunnel and an HTTP/1.1 CONNECT tunnel (256 KB echoed at a time, as fit's `BenchmarkTCPProxy`), tunnels opened a second (the handshake, the rules' checks, a name resolved on the pool and the `connected` check), memory per idle tunnel; the cost of SOCKS on a shared port (akio-mux's greeting rule beside HTTP and TLS) against HTTP alone; akio-socks's watchdog thread (the connect timeout added to it, ADR-119) with 10,000 tunnels. |
 | Response cache | I67, I68, I69 | partial (2026-11-25, I76, `346ad8b`: the harness's `cache-hot` and `cache-zipf` against nginx and fit, and a stampede of 1,000 clients, in the [M5 report](../bench/results/m5-report-2026-11-25.md)) | no | Measured in I76: hits from memory through the harness (4 KiB; akit first, 1.5 times nginx over HTTP/1.1 and 6.2 times over h2c, 1.75 times for 100,000 paths, 12% to 23% ahead of fit) and one fetch for 1,000 clients on a cold key. Left, against fit, as I67 built it: hits from memory (a 4 KiB and a 1 MiB body, HTTP/1.1 and h2), misses kept through the proxy (a streamed body copied by the tap) against the proxy alone, the cost on requests the cache passes through (POST, `no-store` responses) against no middleware, the shards' locks under many keys and one hot key. I68: hits read back from disk (64 KiB and 1 MiB, the disk pool's threads and queue under many at once), writes to disk under a miss rate that fills `MAX_PENDING_WRITES`, a stampede of many clients on one key with the lock and with `disable_lock` (the waiters' suspend and resume, the timer per fetch), and stale-while-revalidate's background fetches. akio's ADR-116 tap: a tapped stream against an untapped one. I69: storing tagged responses (none and 32 tags) against untagged ones, and purges of a large zone by prefix and by tag while it serves (the shards' and the disk index's lock hold times). |
 | FastCGI | I75 | no | no (built, not measured) | Against fit and nginx's `fastcgi_pass`, PHP-FPM (or a FastCGI application that answers at once) over TCP and a Unix-domain socket: requests a second and latency for a small page, HTTP/1.1 and h2; a 1 MiB upload and a 16 MiB download (memory per request in flight, the 64 KiB watermarks both ways); keep-alive reuse against a connection a request; the pool's queue under more clients than `max_conns`; the cost of `try_files` (a `stat` on akio's logical pool a candidate) against a route without it; the handler's sweep every 100 ms on akit's timer thread (A45's stopgap) over its exchanges at many requests a second. |
@@ -1224,7 +1236,7 @@ below is the planned order; tracks with no dependency between them may run in pa
 | 5 | WebRTC | I87, I108–I111 | [I110–I114](#webrtc): the roles in the config; TURN on `akio-turn`; WHIP and WHEP on `akio-webrtc`; WHIP and WHEP proxied |
 | 6 | Streaming and media auth | I115–I117 | [I120–I126](#streaming-and-media-auth): `media_auth` and `streaming` in the config, the policies and `akit media-token`, the streaming role on `akio-media` (its hub, RTMP, RTSP and SRT listeners, `httpflv`, `hls`, `stream_whip` and `stream_whep`), the media pages |
 | 6 | Streaming and media auth | I115–I117 | the streaming role on `akio-media`; `media_auth` |
-| 7 | Media library and channels | I131–I139 | an MP4 reader (akio request); VOD; channels; signed URLs |
+| 7 | Media library and channels | I119, I131–I139 | [I140–I149](#media-library-and-channels): `media_library` and its catalog on akio-media's MP4 reader, `vod`, media tokens' keys, signed playback URLs, channels and push targets, encrypted segments, the video site's pages, the console's pages |
 | 8 | Cluster management | I140–I150, I153 | [I130–I139c](#cluster-management): the config, what a member needs, the manager and its members, the pages, groups, templates, rollouts with health gates, drift and alerts, roles, members behind NAT, metrics and the CLI; I153 with the AI assistant track |
 | 9 | AI assistant | I124–I130, I152–I154 | the chat panel, tools, MCP server |
 | 10 | BitTorrent | I196–I210 | [I150–I159](#bittorrent): the roles in the config, the tracker and the client on `akio-bittorrent`, adding torrents, schedules and access, `bt_stream`, publishing, the Admin API and events, the pages, RSS |
@@ -2146,6 +2158,163 @@ the Media library and channels track's, refused as not supported yet until then.
 - **fit**: `webrtc/media`; I115.
 - **Status**: done (2026-11-27 for `whip` and `whep`, 2026-11-28 for `webrtc_proxy` once I114
   landed). See the progress log.
+
+### Media library and channels
+
+fit's I131–I139 (its [media library guide](https://github.com/lesismal/fit/blob/main/docs/media-library.md),
+its decision 032, and its packages `medialib`, `handler/vod`, `streaming/channels`, `mediaauth`'s
+`urlsign.go` and `sessions.go`, `handler/mediatokens` and `handler/mediapages`' library and player
+pages), with fit's I119 (`media_auth`'s `keys` and `media_tokens`), on which the signed URLs build, in
+ten iterations ([decision 043](decisions/043-media-library.md)). A library is directories of MP4
+files scanned into a catalog; `vod` serves an item as HLS, fMP4 or MPEG-TS segments cut at keyframes
+from its sample tables without transcoding, and the file itself with ranges; channels play items into
+the streaming role's hub as live streams, which push targets relay to outside servers; `url_signing`
+makes playback URLs that expire, bound to one resource and, if asked, to the viewer's address and
+session; `encrypt` serves AES-128 segments whose keys only a grant for the resource fetches.
+akio-media has what fit asked of fib for this track: the reader of MP4 files that are not fragmented
+and the planner that cuts them into segments (`akio_media::mp4`, akio ADR-097: fit's I131, fib's
+A64), fMP4 and MPEG-TS muxers, and AES-128 and SAMPLE-AES in its live HLS (fib's A69); what it lacks
+is asked as akio A295–A300. Names akit shows are akit's (decision 037), formats fit's (decision 043).
+
+### I140 Media library I: decision 043, `media_library` in the config
+
+- **Do**: decision 043; the top-level `media_library` read as fit's `config/medialibrary.go`: named
+  libraries with `roots`, the `files` and `exclude` patterns, `follow_symlinks`, `scan_interval`, the
+  catalog's and the file pool's bounds, `secret` or `secret_file`, and the uploads' `upload_dir`,
+  `max_upload_bytes`, `max_uploads`, `min_free_bytes` and `upload_expiry`, with fit's defaults and
+  checks (names unique, roots not inside one another, the patterns, `upload_dir` inside a root);
+  `akit run` refuses the member until I141 runs it. fit's I131 (the MP4 reader) asks nothing of akit:
+  akio-media's `mp4` is it.
+- **Done when**: fit's `config/medialibrary_test.go` cases pass ported; the reference lists every
+  field; the v1 freeze marks them as additions.
+- **Touches**: `akit-config` (`medialib`), `akit-roles` (`members`), `tests/compat`, `docs/reference`.
+- **fit**: `config/medialibrary.go`; I131, I132.
+- **Status**: todo.
+
+### I141 Media library II: the catalog
+
+- **Do**: fit's `medialib` in `akit-media`: the role `media_library` keeping each engine's libraries
+  by name, changed in place on reload; a library scanning on a thread of its own when made, every
+  `scan_interval`, when a reload changes what it scans, and when asked: roots walked against
+  `max_files` and fit's depth, symbolic links out of a root refused unless `follow_symlinks`, files
+  grouped into items by sidecar (`<name>.json`) or by name (rendition labels, subtitles, posters),
+  IDs from the path or the sidecar, media files probed with akio-media's `mp4` (at most `max_probes`
+  at once), unchanged files not probed again, problems listed, the catalog bounded by `max_items`
+  and `max_catalog_bytes`; the file pool on which serving reads files; the parsed movies (their
+  sample tables) kept under `max_table_bytes`, read once for every request that waits; subtitles as
+  WebVTT; the Admin API's `GET /media/library`, `GET /media/library/<name>`,
+  `GET /media/library/<name>/items/<id>` and `POST /media/library/<name>/rescan`; the metrics
+  `akit_media_library_*`.
+- **Done when**: fit's `medialib` tests of the catalog, the scan, the tables and the pool pass ported
+  on fit's fixtures (the same items, IDs, renditions and problems fit lists), synchronized on the
+  library's status rather than on time; fit's binary and akit list the same library alike.
+- **Touches**: `akit-media` (`library`), `akit` (`ROLES`), `akit-admin`.
+- **fit**: `medialib`, `admin/medialib.go`; I132.
+- **Status**: todo.
+
+### I142 Video on demand: `vod`
+
+- **Do**: fit's `handler/vod` on a library: per item a multivariant playlist (renditions as variants
+  with `BANDWIDTH`, `RESOLUTION` and `CODECS`; audio and subtitle groups), media playlists of fMP4
+  or MPEG-TS segments cut by akio-media's `mp4::Plan` near `segment_duration`, init sections, WebVTT,
+  the poster, and the file itself with `Range`; fit's URL names; built on the library's file pool
+  from its parsed movies, kept in a cache bounded by `max_bytes` and `max_segment_bytes` and shared
+  by handlers of the same params; `ETag`, `Last-Modified` and `cache_control`; `auth` with the action
+  `play` on `vod/<library>/<id>`; 503 before the library's first scan.
+- **Done when**: fit's `handler/vod` tests pass ported; ffprobe reads every playlist and segment of
+  fit's fixtures; ffmpeg plays an item through akit's playlist; a file changed while it plays is
+  answered 404 and its cache entries dropped; fit's binary and akit serve the same library with the
+  same variants.
+- **Touches**: `akit-media` (`vod`), `akit-config`, `tests/compat`, `docs/reference`.
+- **fit**: `handler/vod`; I133.
+- **Status**: todo.
+
+### I143 Media tokens: `media_auth`'s `keys` and `media_tokens`
+
+- **Do**: fit's I119: a policy's `keys` ring in place of `secret` or `secret_file` (a token signed
+  with one key and checked against all), and the handler `media_tokens`, which a site's backend calls
+  to sign tokens in batches and to revoke a key (32 random bytes written to its file, atomically, on
+  a bounded pool).
+- **Done when**: fit's `handler/mediatokens` tests and `mediaauth`'s keyring tests pass ported; a
+  token fit signs with a named key is taken by akit, and the other way.
+- **Touches**: `akit-config` (`media`), `akit-media` (`auth`, `tokens`).
+- **fit**: `handler/mediatokens`, `mediaauth/manage.go`; I119.
+- **Status**: todo.
+
+### I144 Playback URLs that expire: `url_signing`
+
+- **Do**: fit's I135: `media_auth`'s `url_signing` (`ttl`, `play_grace`, the viewer's address or its
+  /24 or /64, a session, `cookie`, `max_sessions` with `on_limit`, `referers`, `origins`); URLs signed
+  for a resource's path prefix, checked by `vod`, `hls` and `httpflv` on the I/O thread without a
+  callback; playlists handing their segments, keys and subtitles a child grant; sessions per subject
+  tracked and bounded; `media_tokens`' `POST <prefix>/urls`; tokens and signatures written
+  `REDACTED`.
+- **Done when**: fit's `mediaauth/urlsign_test.go` and `handler/mediatokens/urls_test.go` cases pass
+  ported; a URL fit signs plays on akit and one akit signs on fit, for the same key and resource.
+- **Touches**: `akit-config`, `akit-media`.
+- **fit**: `mediaauth/urlsign.go`, `sessions.go`, `viewer.go`, `handler/mediatokens/urls.go`; I135.
+- **Status**: todo.
+
+### I145 Channels: files played as live streams
+
+- **Do**: fit's I134's channels: `streaming.channels`, library items played in order, shuffled,
+  looped or on a schedule in a time zone, published into the hub under the channel's stream, paced by
+  the samples' times on akio's timers, timestamps continuous from item to item, served by every
+  egress; a reload taking effect at the next item; the Admin API listing channels and starting,
+  stopping and skipping.
+- **Done when**: fit's `streaming/channels` tests pass ported, on the hub's state rather than on
+  time; ffmpeg plays two items back to back over HLS and RTMP without a gap or a jump.
+- **Touches**: `akit-config` (`media`), `akit-media` (`channels`), `akit-admin`.
+- **fit**: `streaming/channels`; I134.
+- **Status**: todo.
+
+### I146 Push targets
+
+- **Do**: fit's I134's `push`: `streaming.push` and a channel's `push`, relaying a stream of the hub
+  to an outside RTMP or SRT server, reconnecting with backoff, kept across a reload that keeps its
+  stream, URL and `connect_timeout`; their state in the Admin API.
+- **Done when**: fit's push tests pass ported; a target (akit itself and fit's role) receives the
+  stream and gets it back after it restarts.
+- **Touches**: `akit-config`, `akit-media` (`channels`).
+- **fit**: `streaming/channels/push.go`; I134.
+- **Status**: todo.
+
+### I147 Encrypted segments
+
+- **Do**: fit's I136: `encrypt` on `vod` (AES-128 a segment, a key an item derived from the library's
+  secret, the IV the segment's number) and on a channel's HLS (akio-media's `HlsEncryption`, a key a
+  channel rotated every `key_rotation` segments); keys served only to a grant for their resource.
+- **Done when**: fit's encryption tests pass ported; ffmpeg plays encrypted items and channels; a key
+  asked without a grant, or with one for another resource, is refused; the key fit derives for an
+  item is akit's for the same secret, library and item.
+- **Touches**: `akit-media` (`library`, `vod`, `channels`), `akit-config`.
+- **fit**: `medialib/keys.go`, `handler/vod`, `streaming`; I136.
+- **Status**: todo.
+
+### I148 A video site: the media pages' library and player pages
+
+- **Do**: fit's I137: `media_pages`' `libraries`, `vod` and `channels`, its library and player pages
+  behind the policy's login, signing through `url_signing`, hls.js vendored as fit vendors it;
+  fit-examples' `video-site` in the gate; `docs/media-library.md` and its Chinese twin.
+- **Done when**: fit's `handler/mediapages` library and player tests pass ported; fit-examples'
+  `video-site` passes the gate.
+- **Touches**: `akit-media` (`pages`), `akit-config`, `tests/compat`, `docs`.
+- **fit**: `handler/mediapages`; I137.
+- **Status**: todo.
+
+### I149 The console's media library pages, and its files managed
+
+- **Do**: fit's I138 and I139: the console's pages for libraries, items with a preview, channels,
+  URL signing and sessions; a library's files managed from them: resumable uploads into
+  `upload_dir` (`POST`, `PATCH`, `HEAD`), rename, move and delete, sidecar edits, each refused while
+  in use unless forced; the Admin API's endpoints behind them.
+- **Done when**: fit's `medialib` upload and manage tests pass ported; the pages work in a browser
+  against a running akit.
+- **Touches**: `akit-media` (`library`), `akit-admin`.
+- **fit**: `medialib/upload.go`, `medialib/manage.go`, the workbench's `gw.medialib`; I138, I139.
+- **Status**: todo.
+
+### BitTorrent
 
 fit's I196–I210 (its [BitTorrent guide](https://github.com/lesismal/fit/blob/main/docs/bittorrent.md),
 its decision 037, its packages `bittorrent`, `bittorrent/tracker`, `handler/btstream`,
