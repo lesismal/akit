@@ -880,9 +880,23 @@ fn the_queue_moves_on_the_completion_not_the_tick() {
         peers: vec![peer],
         ..AddRequest::default()
     };
-    api.add(Source::Torrent(mi1.to_bytes()), req()).unwrap();
+    // The first paced (128 KiB a second for 512 KiB), so that it is still downloading when the
+    // second is added and queued behind it.
+    let paced = AddRequest {
+        limits: akit_config::bittorrent::BitTorrentTorrentLimits {
+            download_rate: 128 << 10,
+            ..Default::default()
+        },
+        ..req()
+    };
+    api.add(Source::Torrent(mi1.to_bytes()), paced).unwrap();
     api.add(Source::Torrent(mi2.to_bytes()), req()).unwrap();
-    assert_eq!(api.get(&id2).unwrap().held, "queued");
+    let held = api.get(&id2).unwrap();
+    assert!(
+        !api.get(&id1).unwrap().complete,
+        "the first completed before the second came"
+    );
+    assert_eq!(held.held, "queued", "{held:?}");
     wait_for("the first, then the second on its completion", 60, || {
         api.get(&id1).is_ok_and(|s| s.complete) && api.get(&id2).is_ok_and(|s| s.complete)
     });
