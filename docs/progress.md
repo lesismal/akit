@@ -22,6 +22,32 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-28: the tests' listeners bind port 0; four load-only failures
+
+- Tests failed under load with "Address already in use" (akit-llm's
+  `a_dead_upstream_and_a_direct_node` and `mesh_methods`, akit's
+  `edits_dry_runs_and_rollbacks_behind_the_token`): they picked ports by binding port 0 and
+  letting go, then had akit bind them. Across the workspace akit's own listeners in tests now
+  bind port 0, and the tests ask where they listen: the LLM roles' identity and API
+  (`Roles::start_with` starts the hub, the node and the proxy one after the other), `akit run`'s
+  lines (`akit: admin API on`, `akit: console on`, `akit: listener "web" on`) and its Admin API's
+  `GET /status`, m2's `Proc` and `Inproc`, the tunnel hub's status, the consoles
+  (`Manager::console_addr`), the BitTorrent tracker's and client's addresses, the engine's
+  listeners. akit now says where its tunnel hub's listeners and proxy's forwards and its tracker
+  listen, as fit does ("nodes and proxies link on", "forwarding … to node", "udp on"). An address
+  nothing listens on is port 1. What must name its port before it binds keeps a picked one, and
+  says why: fit's, fib's and Pebble's processes and the ports Pebble dials back, a relay port
+  range, `auto_https`'s ports, a console whose identity's `http_url` a test reads, a forward
+  added through the pages, and listeners replaced or restarted at the same address. The WebRTC
+  media server on port 0 still finds its port by a probe; akio's A304 asks for its candidates set
+  after it binds.
+- Four failures seen only under load: `h1_a_bad_chunk_size` was answered 502 now and then (a
+  race, fixed: a relay whose client went answers no failure); `tcp_one_way_is_not_idle`,
+  `connections_answered_past_their_time` and `http_probe_status_host_and_body` depend on timing
+  by what they test (idle timeouts, a deadline and its grace, probe timeouts), and their margins
+  now outlast a loaded host's stalls: an idle timeout of twenty intervals, a check's cost taken
+  from the quickest of three, probes given their whole interval and two failures.
+
 ### 2026-11-28: a sealed console WebSocket ends on a refused send (akio's A305)
 
 - akit-tunnel's `tests/console.rs` `large_transfers_both_ways` failed now and then on gpu51
