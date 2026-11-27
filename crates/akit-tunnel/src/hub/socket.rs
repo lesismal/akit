@@ -11,8 +11,9 @@
 //! WebSocket's reads held, at most [`MAX_PENDING`] bytes of it. Each side's reads wait while the
 //! other's backlog is past [`crate::pace::WATERMARK`] (rules 8 and 9).
 //!
-//! A WebSocket refused or failed is closed with a close frame behind what is queued, where fit
-//! aborts it (akio API request A238, `WsSender::abort`; decision row 20).
+//! A WebSocket refused or failed is ended at once, what is queued dropped, as fit aborts it
+//! (`WsSender::abort`, akio's A238); one whose console connection closed gets a close frame behind
+//! what is queued, as fit's.
 
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
@@ -225,7 +226,7 @@ impl SocketState {
 
 impl SockConn {
     fn abort(&self) {
-        self.ws.close(1000, "");
+        self.ws.abort();
     }
 
     /// The proxy's hello, and then what the browser sends, sealed.
@@ -404,7 +405,7 @@ impl WsHandler for SockWs {
     fn on_open(&mut self, ws: &WsSender) {
         match self.state.open(ws) {
             Some(c) => self.conn = Some(c),
-            None => ws.close(1000, ""),
+            None => ws.abort(),
         }
     }
 

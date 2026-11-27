@@ -106,7 +106,8 @@ first; its status here records the branch, then the akio commit akit pins.
 | A235 | A client TLS configuration that checks the server's certificate by its SHA-256 (a pin) in the handshake, in place of the chain and name | on akio's main and pinned (since `6151f5c5`, akio's ADR-182), used by the tunnel's TLS and QUIC links | 1, 15 | I102, I104 |
 | A236 | A WebSocket's reads held and resumed, its drain heard, and its peer's address, on `WsSender` (both akio-ws's client and akio-http's upgrade) | on akio's main and pinned (since `6151f5c5`, akio's ADR-183), used by I102c | 8, 9 | I102c, I104 |
 | A237 | `Engine::wait` (and `Pool::is_current`) safe in a thread-local destructor | on akio's main and pinned (since `6151f5c5`) | 1, 15 | — |
-| A238 | A WebSocket ended at once, what is queued for it dropped, without the close handshake (`WsSender::abort`) | requested (I102c): a WebSocket link closes with a close frame behind what is queued meanwhile | 8, 10 | I102c, I104 |
+| A238 | A WebSocket ended at once, what is queued for it dropped, without the close handshake (`WsSender::abort`) | on akio's main and pinned (since `8a9601b9`, akio's ADR-184) | 8, 10 | I102c, I103b, I104 |
+| A245 | The QUIC server's handshake bounds: a handshake timeout, and the handshakes under way bounded with a Retry past half (`ServerConfig::handshake_timeout`, `max_handshakes`) | on akio's main and pinned (since `8a9601b9`, akio's ADR-185) | 10, 11 | I102d |
 
 ## A1 TCP listeners on a running engine
 
@@ -2387,6 +2388,8 @@ thread.
 
 ## A238 A WebSocket ended at once, what is queued dropped
 
+**Done.** On akio's main (`8a9601b9`, akio's ADR-184) and pinned: `WsSender::abort(&self)` ends the WebSocket at once, without a close frame: what is queued is dropped, later sends fail `Closed`, no message reaches the handler after it, and both ends' `on_close` get `Some(1006)` once; over TCP or TLS the connection closes (no `close_notify`), over HTTP/2 the stream is reset with `CANCEL`, over HTTP/3 with `RESET_STREAM` and `STOP_SENDING` (`H3_REQUEST_CANCELLED`); callable from any thread and from the handler's callbacks, after `close` too. akit's stopgaps went: `akit_tunnel::ws::WsWire::close` (a failed link, a kick, a revoked token, a role stopped) and a refused link's WebSocket abort, as fit's `Abort`; the hub's console socket and the proxy's web proxies abort the WebSockets they refuse or that fail; the LLM mesh dialer's force close (a dead or too slow peer) aborts, and its 1 s close timeout is gone.
+
 **Status.** Requested by I102c (2026-11-27). Nothing waits for it: a WebSocket link closes with
 `WsSender::close` meanwhile (a stopgap recorded in [progress](progress.md)).
 
@@ -2410,3 +2413,31 @@ had queued, and a client's waits for its peer, where a TCP, TLS or QUIC link clo
 **How akit would use it.** `akit_tunnel::ws::WsWire::close` (a failed link, a kick, a revoked token,
 a role stopped) aborts, as `ConnWire::close` closes a TCP link; the LLM mesh's links (I104) the
 same.
+
+## A245 The QUIC server's handshake bounds
+
+**Done.** On akio's main (`8a9601b9`, akio's ADR-185) and pinned: `ServerConfig::handshake_timeout(Option<Duration>)` (default 10 s; a server connection whose handshake is not done in time is dropped without a word, its handler's `on_close` told `ConnectionError::TimedOut`) and `ServerConfig::max_handshakes(usize)` (default 8192; from half of them in progress, a client without a valid Retry or NEW_TOKEN token is answered with a Retry; at the limit, a new client's Initial is dropped unanswered, counted in `QuicServer::refused_connections`). fit lets an invalid Retry token through to an `INVALID_TOKEN` answer; akio drops it. The hub's `quic` listeners (I102d) take `tunnel.hub.quic`'s `handshake_timeout` and `max_handshakes` (fit's 10 s and 64 when left out).
+
+**Status.** Requested by I102d (2026-11-27).
+
+**Problem.** fit's QUIC listener bounds what handshakes may hold: `handshake_timeout` (10 s) drops a
+connection whose handshake is not done in time; `max_handshakes` (64) bounds those under way: past
+half, a client whose Initial has no valid token gets a Retry, so that Initials from forged addresses
+hold at most half; past all, a new client's Initial is dropped (it sends it again and gets in once a
+handshake is over). akio-quic's server had `max_connections` and a Retry from a fixed 4096
+handshakes in progress, and nothing bounding a handshake's time but the idle timeout, which every
+client packet renews.
+
+**Evidence.** At akio `6151f5c5`: `akio-quic/src/types.rs`'s `ServerConfig` had no handshake
+bound; `proto/endpoint.rs` answered with a Retry from `RETRY_THRESHOLD` (4096). fit:
+`tunnel/internal/transport/quic/listen.go`'s `admit` (dropped at `max`, a Retry from `max/2`) and
+`conn.go`'s `fq.Config.HandshakeTimeout`.
+
+**Suggested API.** On `akio_quic::ServerConfig`: `handshake_timeout(Option<Duration>)` and
+`max_handshakes(usize)`.
+
+**How akit would use it.** `akit_tunnel::quic`'s hub listener builds its `ServerConfig` with
+`.handshake_timeout(Some(TunnelHubQuic::handshake(q)))` and
+`.max_handshakes(TunnelHubQuic::handshakes(q))` (fit's 10 s and 64 when left out). The time a
+connection may go without its link's stream after the handshake stays the hub's own timer, as fit's
+`streamWait`.

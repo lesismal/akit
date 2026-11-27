@@ -109,13 +109,14 @@ pub(crate) fn wait_for(what: &str, cond: impl Fn() -> bool) {
 pub(crate) struct WsClient {
     sender: Arc<Mutex<Option<WsSender>>>,
     msgs: Receiver<Vec<u8>>,
-    closed: Receiver<()>,
+    /// The close code its `on_close` got; `None` for a dial that failed too.
+    closed: Receiver<Option<u16>>,
 }
 
 struct ClientHandler {
     sender: Arc<Mutex<Option<WsSender>>>,
     msgs: Sender<Vec<u8>>,
-    closed: Sender<()>,
+    closed: Sender<Option<u16>>,
 }
 
 impl WsHandler for ClientHandler {
@@ -125,8 +126,8 @@ impl WsHandler for ClientHandler {
     fn on_message_ref(&mut self, _ws: &WsSender, msg: MessageRef<'_>) {
         let _ = self.msgs.send(msg.as_bytes().to_vec());
     }
-    fn on_close(&mut self, _code: Option<u16>, _reason: &str) {
-        let _ = self.closed.send(());
+    fn on_close(&mut self, code: Option<u16>, _reason: &str) {
+        let _ = self.closed.send(code);
     }
 }
 
@@ -147,7 +148,7 @@ impl WsClient {
                 closed: ct,
             },
             move |_| {
-                let _ = ct2.send(());
+                let _ = ct2.send(None);
             },
         );
         WsClient {
@@ -175,10 +176,12 @@ impl WsClient {
         }
     }
 
-    pub(crate) fn wait_closed(&self) {
+    /// Waits for the WebSocket to close: the close code its `on_close` got (1006 for one ended
+    /// without a close frame).
+    pub(crate) fn wait_closed(&self) -> Option<u16> {
         self.closed
             .recv_timeout(Duration::from_secs(10))
-            .expect("the WebSocket did not close");
+            .expect("the WebSocket did not close")
     }
 
     pub(crate) fn is_closed(&self) -> bool {

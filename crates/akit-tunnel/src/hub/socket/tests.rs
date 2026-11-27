@@ -165,8 +165,8 @@ fn unauthenticated() {
     assert!(plain.starts_with(b"HTTP/1.1 200"), "{plain:?}");
 }
 
-/// fit's `TestSocketAborts`: a message that does not open closes its WebSocket, and so does the
-/// socket's removal every WebSocket it has.
+/// fit's `TestSocketAborts`: a message that does not open aborts its WebSocket, and so does the
+/// socket's removal every WebSocket it has: ended without a close frame (1006, akio's A238).
 #[test]
 fn aborts() {
     let con = page_console();
@@ -176,14 +176,14 @@ fn aborts() {
     let w = WsClient::dial(&env.engine, &url(&c));
     w.session("s");
     w.send(&[1u8; 32]);
-    w.wait_closed();
+    assert_eq!(w.wait_closed(), Some(1006));
 
     let w = WsClient::dial(&env.engine, &url(&c));
     w.session("s");
     let st = state(&c);
     wait_for("the WebSocket", || st.conns() == 1);
     env.apply(&hub_doc(con, ""));
-    w.wait_closed();
+    assert_eq!(w.wait_closed(), Some(1006));
     assert!(c.socket_addr().is_none(), "the socket still listens");
     // Its address shows in the status while it listens, not after.
     assert!(!HubApi(Arc::clone(&c)).status().contains("\"socket\":"));

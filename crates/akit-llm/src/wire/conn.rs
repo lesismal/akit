@@ -310,13 +310,12 @@ impl Conn {
     }
 
     /// Closes a link whose peer is dead or too slow at once: what waits for the peer is dropped
-    /// rather than sent before a close frame. On the dialer's side akio-ws has no abort, so the
-    /// close frame queues and the link ends at the client's close timeout (1 s) at most.
+    /// rather than sent before a close frame (fit's `forceClose`, `Abort`; akio's A238).
     fn force_close(&self, err: Error) {
         self.session.close(err);
         match &self.handle {
             Some(h) => h.close(),
-            None => self.ws.close(CLOSE_GOING_AWAY, ""),
+            None => self.ws.abort(),
         }
     }
 
@@ -1007,7 +1006,6 @@ pub fn dial(
     opts.tls = cfg.tls.clone();
     opts.server_name = cfg.server_name.clone();
     opts.handshake_timeout = cfg.timeout;
-    opts.close_timeout = Duration::from_secs(1);
     let remote = url
         .split_once("://")
         .map_or(url, |(_, r)| r)

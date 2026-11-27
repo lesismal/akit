@@ -686,6 +686,93 @@ fn wss_links_check_the_hubs_certificate_by_its_pin() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// Opens a WebSocket to `path` on `port` by hand: the response's head read, the rest of what
+/// came with it returned.
+fn ws_handshake(port: u16, path: &str) -> (TcpStream, Vec<u8>) {
+    let mut c = TcpStream::connect(("127.0.0.1", port)).unwrap();
+    c.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+    write!(c, "GET {path} HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n").unwrap();
+    let mut got = Vec::new();
+    let mut b = [0u8; 4096];
+    let end = loop {
+        let n = c.read(&mut b).unwrap();
+        assert!(n > 0, "closed in the handshake");
+        got.extend_from_slice(&b[..n]);
+        if let Some(i) = got.windows(4).position(|w| w == b"\r\n\r\n") {
+            break i + 4;
+        }
+    };
+    assert!(
+        got.starts_with(b"HTTP/1.1 101"),
+        "{}",
+        String::from_utf8_lossy(&got)
+    );
+    let rest = got.split_off(end);
+    (c, rest)
+}
+
+/// The opcodes of the server's frames in `b`, which holds whole frames and maybe the start of one.
+fn ws_opcodes(b: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut at = 0;
+    while at + 2 <= b.len() {
+        let op = b[at] & 0x0f;
+        let (len, head) = match b[at + 1] & 0x7f {
+            126 if at + 4 <= b.len() => {
+                (usize::from(u16::from_be_bytes([b[at + 2], b[at + 3]])), 4)
+            }
+            127 if at + 10 <= b.len() => (
+                usize::try_from(u64::from_be_bytes(b[at + 2..at + 10].try_into().unwrap()))
+                    .unwrap(),
+                10,
+            ),
+            126 | 127 => break,
+            n => (usize::from(n), 2),
+        };
+        out.push(op);
+        at += head + len;
+    }
+    out
+}
+
+/// A WebSocket link that fails (a frame shorter than a header) is ended at once, without a close
+/// frame and without what was queued, as fit's `Abort` (akio's A238).
+#[test]
+fn ws_links_that_fail_end_at_once() {
+    let dir = tmp("ws-abort");
+    let e = engine();
+    let hub = free_port();
+    let mut h = hub_alone(
+        &e,
+        &dir,
+        &format!(r#"{{"protocol": "ws", "address": "127.0.0.1:{hub}"}}"#),
+    );
+    let (mut c, mut got) = ws_handshake(hub, "/tunnel");
+    // A binary message, masked with a zero key: a link frame whose length is 0.
+    c.write_all(&[0x82, 0x84, 0, 0, 0, 0, 0, 0, 0, 0]).unwrap();
+    let t = Instant::now();
+    let mut b = [0u8; 4096];
+    loop {
+        match c.read(&mut b) {
+            Ok(0) | Err(_) => break,
+            Ok(n) => got.extend_from_slice(&b[..n]),
+        }
+    }
+    assert!(
+        t.elapsed() < Duration::from_secs(3),
+        "the failed link lasted {:?}",
+        t.elapsed()
+    );
+    assert!(
+        !ws_opcodes(&got).contains(&8),
+        "a close frame came: {got:?}"
+    );
+    h.stop(Duration::ZERO);
+    e.shutdown();
+    e.wait();
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// A service that writes `n` bytes to each connection, then closes it.
 fn source(n: usize) -> u16 {
     let l = TcpListener::bind("127.0.0.1:0").unwrap();

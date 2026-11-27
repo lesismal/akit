@@ -105,7 +105,8 @@
 | A235 | 在握手中按 SHA-256（pin）检查服务器证书、代替证书链和名称检查的客户端 TLS 配置 | 已进入 akio 的 main 并锁定（自 `6151f5c5` 起，akio 的 ADR-182），隧道的 TLS 和 QUIC 链路使用 | 1, 15 | I102, I104 |
 | A236 | 在 `WsSender` 上压住和恢复 WebSocket 的读取、得知其发送队列排空、取得对端地址（akio-ws 的客户端和 akio-http 的升级都要） | 已进入 akio 的 main 并锁定（自 `6151f5c5` 起，akio 的 ADR-183），I102c 使用 | 8, 9 | I102c, I104 |
 | A237 | 在线程局部变量的析构中调用 `Engine::wait`（以及 `Pool::is_current`）也安全 | 已进入 akio 的 main 并锁定（自 `6151f5c5` 起） | 1, 15 | — |
-| A238 | 立即结束 WebSocket、丢弃为它排队的数据、不做关闭握手（`WsSender::abort`） | 已提出（I102c）：在此之前 WebSocket 链路以排在已排队数据之后的关闭帧关闭 | 8, 10 | I102c, I104 |
+| A238 | 立即结束 WebSocket、丢弃为它排队的数据、不做关闭握手（`WsSender::abort`） | 已进入 akio 的 main 并锁定（自 `8a9601b9` 起，akio 的 ADR-184） | 8, 10 | I102c, I103b, I104 |
+| A245 | QUIC 服务器的握手上限：握手超时，以及进行中的握手数上限、过半后要求 Retry（`ServerConfig::handshake_timeout`、`max_handshakes`） | 已进入 akio 的 main 并锁定（自 `8a9601b9` 起，akio 的 ADR-185） | 10, 11 | I102d |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -1919,6 +1920,8 @@ Go 的 `VerifyPeerCertificate` 配合 `InsecureSkipVerify`）：不匹配的证�
 
 ## A238 立即结束 WebSocket、丢弃已排队的数据
 
+**完成。** 已进入 akio 的 main（`8a9601b9`，akio 的 ADR-184）并锁定：`WsSender::abort(&self)` 立即结束 WebSocket，不发关闭帧：丢弃已排队的数据，之后的发送以 `Closed` 失败，之后不再有消息到达处理器，两端的 `on_close` 都只收到一次 `Some(1006)`；TCP 或 TLS 上关闭连接（不发 `close_notify`），HTTP/2 上以 `CANCEL` 重置流，HTTP/3 上发 `RESET_STREAM` 和 `STOP_SENDING`（`H3_REQUEST_CANCELLED`）；可在任意线程、处理器的回调中调用，`close` 之后也可调用。akit 的临时方案已删除：`akit_tunnel::ws::WsWire::close`（失败的链路、踢掉、吊销的令牌、停止的角色）和被拒绝链路的 WebSocket 调用 abort，同 fit 的 `Abort`；hub 的控制台 socket 和 proxy 的 web 代理对拒绝的或失败的 WebSocket 调用 abort；LLM mesh 拨号方的强制关闭（对端失联或太慢）调用 abort，其 1 秒的关闭超时已删除。
+
 **状态。** 由 I102c 提出（2026-11-27）。没有工作在等待它：在此之前 WebSocket 链路用 `WsSender::close` 关闭（记录在
 [进度](progress.zh-CN.md)中的临时做法）。
 
@@ -1937,3 +1940,24 @@ fit 的 WebSocket 传输调用 `Abort`。akio-ws 的 `WsSender` 只有 `close(co
 
 **akit 如何使用。** `akit_tunnel::ws::WsWire::close`（失败的链路、踢掉、吊销的令牌、停止的角色）调用 abort，同 `ConnWire::close`
 关闭 TCP 链路；LLM mesh 的链路（I104）同样。
+
+## A245 QUIC 服务器的握手上限
+
+**完成。** 已进入 akio 的 main（`8a9601b9`，akio 的 ADR-185）并锁定：`ServerConfig::handshake_timeout(Option<Duration>)`（默认 10 秒；握手未按时完成的服务端连接被悄悄丢弃，其处理器的 `on_close` 收到 `ConnectionError::TimedOut`）和 `ServerConfig::max_handshakes(usize)`（默认 8192；进行中的握手达到一半起，Initial 中没有有效 Retry 或 NEW_TOKEN 令牌的客户端收到 Retry；达到上限时，新客户端的 Initial 不作应答地丢弃，计入 `QuicServer::refused_connections`）。fit 让无效的 Retry 令牌进来，再以 `INVALID_TOKEN` 应答；akio 直接丢弃。hub 的 `quic` 监听器（I102d）采用 `tunnel.hub.quic` 的 `handshake_timeout` 和 `max_handshakes`（省略时为 fit 的 10 秒和 64）。
+
+**状态。** 由 I102d 提出（2026-11-27）。
+
+**问题。** fit 的 QUIC 监听器限制握手能占用的资源：`handshake_timeout`（10 秒）丢弃握手未按时完成的连接；`max_handshakes`
+（64）限制进行中的握手：过半后，Initial 中没有有效令牌的客户端收到 Retry，使伪造地址发来的 Initial 至多占一半；全部占满后，新
+客户端的 Initial 被丢弃（客户端会重发，等某个握手结束后进入）。akio-quic 的服务器只有 `max_connections` 和从固定的 4096 个进行中
+握手起的 Retry，握手的时长除了空闲超时之外没有限制，而客户端的每个包都会刷新空闲超时。
+
+**证据。** 在 akio `6151f5c5` 中：`akio-quic/src/types.rs` 的 `ServerConfig` 没有握手上限；`proto/endpoint.rs` 从
+`RETRY_THRESHOLD`（4096）起以 Retry 应答。fit：`tunnel/internal/transport/quic/listen.go` 的 `admit`（达到 `max` 时丢弃，从
+`max/2` 起 Retry）和 `conn.go` 的 `fq.Config.HandshakeTimeout`。
+
+**建议的 API。** 在 `akio_quic::ServerConfig` 上：`handshake_timeout(Option<Duration>)` 和 `max_handshakes(usize)`。
+
+**akit 如何使用。** `akit_tunnel::quic` 的 hub 监听器以
+`.handshake_timeout(Some(TunnelHubQuic::handshake(q)))` 和 `.max_handshakes(TunnelHubQuic::handshakes(q))`（省略时为 fit 的
+10 秒和 64）构建其 `ServerConfig`。握手之后连接等待链路的流的时间仍由 hub 自己的计时器限制，同 fit 的 `streamWait`。

@@ -6,7 +6,9 @@
 //! The local connection is not read until the session is up; each side's reads then wait while
 //! the other's backlog is past [`crate::pace::WATERMARK`] (rules 8 and 9). At most `max_conns`
 //! connections at once per web proxy; the WebSocket's dial and handshake within
-//! [`DIAL_TIMEOUT`].
+//! [`DIAL_TIMEOUT`]. A WebSocket that fails (a hello or a message that does not open) is ended at
+//! once, what is queued dropped (`WsSender::abort`, akio's A238), as fit aborts it; one whose local
+//! connection closed gets a close frame behind what is queued, as fit's.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -304,7 +306,7 @@ impl ProxyConn {
             st.closed
         };
         if closed {
-            ws.close(1000, "");
+            ws.abort();
         }
     }
 
@@ -320,7 +322,7 @@ impl ProxyConn {
                 Ok(s) => s,
                 Err(_) => {
                     drop(st);
-                    ws.close(1000, "");
+                    ws.abort();
                     return;
                 }
             };
@@ -344,7 +346,7 @@ impl ProxyConn {
         match plain {
             Ok(p) => {
                 if self.local.send(&p).is_err() {
-                    ws.close(1000, "");
+                    ws.abort();
                     return;
                 }
                 if let Some(g) = gate {
@@ -357,7 +359,7 @@ impl ProxyConn {
                     "tunnel.proxy: web proxy {}: a message failed to decrypt; is the password right?",
                     self.listen
                 );
-                ws.close(1000, "");
+                ws.abort();
             }
         }
     }

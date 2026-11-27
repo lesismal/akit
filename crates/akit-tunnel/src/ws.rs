@@ -80,10 +80,8 @@ impl Wire for WsWire {
         b.chunks(MAX_FRAME).all(|m| self.ws.send_binary(m).is_ok())
     }
     fn close(&self) {
-        // akio-ws has no close without the handshake (akio API request A238, `WsSender::abort`):
-        // a close frame behind what is queued, the connection closed once it is written (a
-        // server's), or once the peer answers it or `close_timeout` passes (a client's).
-        self.ws.close(1000, "");
+        // At once, what is queued dropped, no close frame (fit's `Abort`; akio's A238).
+        self.ws.abort();
     }
     fn close_after_send(&self) {
         self.ws.close(1000, "");
@@ -148,7 +146,8 @@ impl WsHandler for WsLink {
         if let Some(open) = self.open.take() {
             match open(ws) {
                 Some(l) => self.link = Some(l),
-                None => ws.close(1000, ""),
+                // Refused: ended at once, as fit's `opened`.
+                None => ws.abort(),
             }
         }
     }
