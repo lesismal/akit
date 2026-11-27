@@ -105,6 +105,37 @@
   在单独的 target 目录中单独运行时通过；gpu51 上 clippy `-D warnings` 以及 release 模式的整个工作区在 epoll 和
   `AKIO_TEST_BACKEND=uring` 下都通过（epoll 那次运行早于两个按 `store` 格式的消息更新的 akit-admin 测试，io_uring 那次包含了它们）。不做基准（控制面，
   规则 30）；基准表中控制台的一行保持不变。
+### 2026-11-27：I103b，控制台套接字和 web 代理
+
+- `akit_tunnel::wscrypt`：逐字节等同 fit 的 `tunnel/internal/wscrypt`：密码的 PBKDF2（`fit-tunnel-ws`，10,000 轮，SHA-256），
+  双方各 16 个随机字节，每个方向一个由 HKDF-SHA256 在两者之下派生的密钥，AES-256-GCM，以消息序号为 nonce；不能作为下一条打开的
+  消息结束会话。测试核对一组由 fit 自己的 `wscrypt.go` 密封的向量。
+- hub 的 `console_socket`（`akit_tunnel::hub::socket`，fit 的 `tunnel/hub/socket.go`）：一个 akio-http 升级的监听器，任意路径，
+  握手限制同 `ws` 链路，hub 的访问策略在 akio 的过滤器上。每个 WebSocket 先收到 hub 的 hello，再收 proxy 的；其第一条能打开的
+  消息证明密码；同时至多 `max_conns` 个，其中来自同一地址的未证明者至多四分之一，未证明者 10 秒后关闭。其第一批字节触发拨向 hub 的
+  `console.address`（未指定的主机即回环地址），5 秒内；期间到达的数据等待（至多 1 MiB），WebSocket 的读取被暂停。控制台的字节
+  密封发送，每条消息 64 KiB。socket 的密码是它自己的或 hub 的；新地址重新监听并关闭已有 WebSocket，新密码或新上限作用于此后打开的
+  WebSocket；hub 的状态加入 fit 的 `socket`。
+- proxy 的 `web_proxies`（`akit_tunnel::proxy::web`，fit 的 `tunnel/proxy/webproxy.go`）：每个一个本地监听器，由 proxy 的访问策略
+  过滤；每条连接（读取先暂停）拥有自己的一个到 hub 套接字的 WebSocket（akio-ws 的客户端，`User-Agent: akit`，拨号和握手 10 秒内）；
+  收到 hub 的 hello 后，发出 proxy 的 hello 和一条空的密封消息（证明），然后是浏览器已发的数据。同时至多 `max_conns` 条；按 `listen`
+  在多次应用间保留的 web 代理，对此后接受的连接采用新的密码、URL 和上限；被移除的关闭其连接。`ProxyApi::web_proxies`（proxy 的
+  `Role::api`，fit 的 `WebProxies`）。
+- 背压（规则 8 和 9）：两个中继都按另一侧的队列调节每一侧（`akit_tunnel::pace::Gate`，fit 的 `common.Gate`，水位线是 fit 的
+  256 KiB `Watermark`），基于 akio 的 `hold_reads` 和 `on_drain` 以及 akio-ws 的 A236（`hold_reads`、`on_drain`、`set_relayed`）；
+  两侧都标为中继。**临时方案（akio 请求 A238）**：被拒绝或失败的 WebSocket 在已排队数据之后以关闭帧关闭，而 fit 直接中止（决定第
+  20 行）。
+- `akit run` 在 I109 提供角色页面之前拒绝 tunnel 各角色的 `console`（此前读取后忽略）；需要 `console` 的 hub 的 `console_socket`
+  随之被拒绝。proxy 的 `web_proxies` 可运行。待审阅的决定：第 35–37 行。
+- 测试：移植了 fit 的 `socket_test.go`（`hub::socket::tests`：控制台连上之前分多条消息发送的请求、超出 `max_conns` 的 WebSocket、
+  错误的 hello、没有控制台；未证明的 WebSocket 超时关闭且按地址受限、证明被保留且不转发；不能打开的消息、socket 被移除；hub 的密码、
+  新密码、新地址）和 `webproxy_test.go`（`proxy::web::tests`：经代理取页面、错误密码、`max_conns`、代理被移除、无处可连的 socket、
+  错误 URL；对照测试自己的 WebSocket 服务端逐步检查会话：证明在先、早到的字节按序、不能打开的消息、会话建立前已离开的本地连接、
+  错误的 hello）。端到端（`tests/console.rs`）：双向回显 24 MiB 以及八条同时进行，停止读取的读者压住控制台（macOS 上 96 MiB 中约写出
+  3 MiB），任一侧切断连接。对照 fit 的二进制（`b6c5cebf`，`AKIT_FIT_BIN`，CI 中跳过）：经 akit 的 web 代理取 fit 的 hub 的控制台
+  （页面和 `workbench.js`），以及经 fit 的 web 代理和 akit 的 hub 套接字回显 8 MiB。
+- 下一步：I102d；I109 提供套接字承载的页面。
+
 ### 2026-11-27：I105–I107，LLM 的 node、hub 和 proxy；拆分出 I106b
 
 - 角色（`akit_llm::{node,hub,proxy}`）已注册到 `akit run`（`akit::ROLES`）：它们共有的部分是 `akit_llm::role::Base`：成员的 `id`
