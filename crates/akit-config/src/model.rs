@@ -7382,7 +7382,7 @@ pub(crate) fn valid_name(s: &str) -> bool {
         && b.all(|c| c.is_ascii_alphanumeric() || matches!(c, b'_' | b'.' | b'-'))
 }
 
-fn bad_name(s: &str) -> String {
+pub(crate) fn bad_name(s: &str) -> String {
     format!(
         "{s:?} is not a valid name: use letters, digits, '_', '.' and '-', starting with a letter or digit"
     )

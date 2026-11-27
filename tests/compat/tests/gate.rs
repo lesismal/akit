@@ -3348,7 +3348,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 180] = [
+    let objects: [(&str, &str, Option<&str>); 181] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         (
             "providers[].kubernetes",
@@ -3662,6 +3662,11 @@ fn akit_config_lists_match_the_inventory() {
             "bittorrent.client.limits",
             "BT_LIMITS_FIELDS",
             Some("BT_LIMITS_FIT_ONLY"),
+        ),
+        (
+            "bittorrent.client.categories[]",
+            "BT_CATEGORY_FIELDS",
+            Some("BT_CATEGORY_FIT_ONLY"),
         ),
         (
             "bittorrent.client.console",

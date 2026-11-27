@@ -143,6 +143,31 @@ done and where the work differs from the plan.
   uplink is still the proxy's. After the fix: 250 of 250 runs alone on epoll, 50 of 50 on io_uring
   (`AKIO_DEFAULT_BACKEND=uring`).
 
+### 2026-11-27: I153, adding torrents, categories, the queue and the disk
+
+- As fit's I198 (`akit_bittorrent::client::{manage,watch,fetch}`): `categories` (`name`, `dir`:
+  a relative one below `download_dir`, `<download_dir>/<name>` by default), a torrent added in
+  one downloading into its directory and keeping it across restarts; `ClientApi::add_url` (http
+  and https on akio's HTTP client on the listeners' engine, 32 MiB, 5 redirects followed by the
+  role, one to a magnet link adding it, `url_timeout` in all, 4 at once, a fifth refused busy);
+  `watch_dir` (`watch_interval`, `watch_max_files`): .torrent and .magnet files taken once their
+  size and time held across two looks, a category's subdirectory, `.done`, `.failed` with a
+  `.error`, ones that may be added later left; the queue (`max_active_downloads`,
+  `max_active_seeds`, the list's order, `set_queue_position`, the state `queued`); the disk
+  (`min_free_bytes`, 1 GiB by default, akio's `fs::space`: a download started only with what it
+  still has to download and `min_free_bytes` free, one running held, `disk`, below it, started
+  again once there is room).
+- The role's manager thread looks every second, as fit's, and at once when a magnet link's
+  metadata comes; API calls apply the queue and the disk at once. A magnet link added in a
+  category is placed into its directory once its metadata comes (the stopgap for akio's A286,
+  decision 042): removed from the client and added again from its .torrent, what it wrote below
+  the client's directory removed; it dials its peers again (some 30 s in the test).
+- Status: `category`, `held`, `queue_position`; the console's JSON with them.
+- Tests: `client::tests` (fit's `TestCategories`, `TestQueue`, `TestDiskFree`, `TestWatchDir`,
+  `TestAddURL`: redirects, a magnet link, a bad scheme, 404, a loop, a server that never
+  answers, a body past the bound), `bittorrent::tests::categories_and_watch` (fit's category
+  checks).
+
 ### 2026-11-27: I152, the BitTorrent client
 
 - `bittorrent.client` (`akit_bittorrent::client`) run by `akit run` on akio-bittorrent's

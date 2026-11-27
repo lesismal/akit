@@ -17,7 +17,7 @@ so in a note marked **akit:**; nine defaults that name the gateway are akit's, `
 say `fit` ([decision 037](../decisions/037-akit-names.md)).
 
 <!-- BEGIN GENERATED: summary -->
-akit reads **1175** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 180 objects akit reads, each has its table below.
+akit reads **1185** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 181 objects akit reads, each has its table below.
 <!-- END GENERATED -->
 
 How to read the tables:
@@ -2875,10 +2875,11 @@ a client (`bittorrent.client`) that downloads and seeds torrents on one port for
 (uTP, the DHT and UDP trackers), its torrents kept in `data_dir` across restarts, and a tracker
 (`bittorrent.tracker`) that answers announces and scrapes over HTTP, through routes whose handler
 is `bt_tracker`, and over UDP on its own `listen`. akit reads and checks the roles as fit does
-(I150); `akit run` runs the tracker from I151 and the client from I152. What later iterations
-run is refused as not supported yet: the client's categories, `watch_dir`, `url_timeout`,
-`alt_speed`, `access`, `disk_queue_bytes`, `publish`, `rss` and the limits akio-bittorrent does
-not set yet; the tracker's `auth`, `max_peers` and `store`.
+(I150); `akit run` runs the tracker from I151 and the client from I152, with categories,
+`watch_dir`, .torrent URLs, the queue and the disk check from I153. What later iterations run is
+refused as not supported yet: the client's `alt_speed`, `access`, `disk_queue_bytes`, `publish`,
+`rss`, a category's `limits` and `media_library`, and the limits akio-bittorrent does not set
+yet; the tracker's `auth`, `max_peers` and `store`.
 
 ```fit
 bittorrent {
@@ -2913,7 +2914,7 @@ bittorrent {
 | `listen` | string | required | The host and port peers reach the client at, the same port for TCP and UDP (uTP, the DHT and UDP trackers share it), as in ":6881". Port 0 picks one free for both. A change makes a new client: the torrents are saved, the client closed, and the torrents added to the new one, resuming without a check. |
 | `access` | object |  | **Not supported yet**: refused by name. The peer addresses the client deals with, deciding before the global access: a peer it refuses is closed as soon as it connects over TCP, has its uTP connection ignored, is never dialed, and as a DHT node gets no answers. Trackers and web seeds are URLs, not peers, and are not asked about. A change applies at once, closing the connected peers it now refuses. Every address when left out, unless the global access says otherwise. |
 | `alt_speed` | object |  | **Not supported yet**: refused by name. Alternative rates, in place of limits' upload_rate and download_rate while one of their schedules holds, or while the API turns them on. None when left out. |
-| `categories` | list of object |  | **Not supported yet**: refused by name. The categories a torrent may be added in: each downloads into a directory of its own, gives its torrents its own limits, and may name a media_library that is scanned again when a torrent of it completes. A torrent added with no category downloads into download_dir. A change applies in place: limits to the torrents of the category at once, a new directory to the torrents added from then on. A torrent whose category is removed keeps its directory and loses the category's limits. At most 1000. |
+| `categories` | list of [object](#cfg-bittorrent-client-categories) |  | The categories a torrent may be added in: each downloads into a directory of its own, gives its torrents its own limits, and may name a media_library that is scanned again when a torrent of it completes. A torrent added with no category downloads into download_dir. A change applies in place: limits to the torrents of the category at once, a new directory to the torrents added from then on. A torrent whose category is removed keeps its directory and loses the category's limits. At most 1000. |
 | `console` | [object](#cfg-bittorrent-client-console) |  | The client's web pages; none when left out. |
 | `dht` | boolean | `true` | Find peers through the mainline DHT (BEP 5), bootstrapping from the public routers. On when left out. A change makes a new client. |
 | `disk_queue_bytes` | integer, 0 or more | `67108864` | **Not supported yet**: refused by name. The most bytes of received blocks waiting to be written: past it the client stops reading from the peers that sent them until half has been written, so that a slow disk slows the peers rather than growing memory. 64 MiB when left out or 0. A change makes a new client. |
@@ -2926,11 +2927,24 @@ bittorrent {
 | `publish` | list of object |  | **Not supported yet**: refused by name. Directories the client publishes: each built into hybrid torrents, a torrent of each file or one of the whole directory, on goroutines of its own, and seeded where the files are, the .torrent files and magnet links served by the bt_publish handler. Each follows the disk: a file added gets a torrent, and one changed or removed stops its torrent, a changed one getting a new torrent. The torrents are kept in data_dir/publish/<name>/, so that a restart neither builds nor checks a file that did not change. None when left out. |
 | `rss` | object |  | **Not supported yet**: refused by name. RSS auto-download: feeds polled on their intervals, and rules adding the torrents of the items they pick (magnet links, .torrent enclosures or links) in a category, with size bounds and each episode once. What was seen is kept in data_dir/rss.json. A change applies in place. None when left out. |
 | `save_interval` | duration | `"5s"` | How often, at most, the state is saved when something changed: a piece verified, a torrent added, removed, paused or its metadata received. It is saved when the role stops too, and changes to the list of torrents are saved at once. 5s when left out. |
-| `url_timeout` | duration | `"30s"` | **Not supported yet**: refused by name. How long the download of a .torrent file by its URL may take in all, connecting, redirects (at most 5) and the body (at most 32 MiB) included; at most 4 run at once. 30s when left out. |
+| `url_timeout` | duration | `"30s"` | How long the download of a .torrent file by its URL may take in all, connecting, redirects (at most 5) and the body (at most 32 MiB) included; at most 4 run at once. 30s when left out. |
 | `utp` | boolean | `true` | Speak uTP (BEP 29) beside TCP: peers are dialed over uTP first, then TCP. On when left out. A change makes a new client. |
-| `watch_dir` | string |  | **Not supported yet**: refused by name. A directory looked at every watch_interval for .torrent files and .magnet files (a magnet link on the first line that is not blank), each added once it has kept its size and modification time across two looks, so that one being written is not taken half way: those directly in it with no category, those in a subdirectory named after a category in that category. A file added, or whose torrent is already held, is moved into its .done subdirectory; one that cannot be added, being too large, not a torrent or not a link, into .failed, beside a .error file saying why; one that may be added later (max_torrents reached, the state not written) is left to be tried again. None when left out. |
-| `watch_interval` | duration | `"10s"` | **Not supported yet**: refused by name. How often watch_dir is looked at. 10s when left out. |
-| `watch_max_files` | integer, 0 to 10000 | `100` | **Not supported yet**: refused by name. The most files of watch_dir and its category subdirectories taken in one look, the rest left for the next. 100 when left out or 0. |
+| `watch_dir` | string |  | A directory looked at every watch_interval for .torrent files and .magnet files (a magnet link on the first line that is not blank), each added once it has kept its size and modification time across two looks, so that one being written is not taken half way: those directly in it with no category, those in a subdirectory named after a category in that category. A file added, or whose torrent is already held, is moved into its .done subdirectory; one that cannot be added, being too large, not a torrent or not a link, into .failed, beside a .error file saying why; one that may be added later (max_torrents reached, the state not written) is left to be tried again. None when left out. |
+| `watch_interval` | duration | `"10s"` | How often watch_dir is looked at. 10s when left out. |
+| `watch_max_files` | integer, 0 to 10000 | `100` | The most files of watch_dir and its category subdirectories taken in one look, the rest left for the next. 100 when left out or 0. |
+<!-- END GENERATED -->
+
+### `bittorrent.client.categories[]`
+
+<!-- BEGIN GENERATED: bittorrent.client.categories[] -->
+<a id="cfg-bittorrent-client-categories"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `name` | string | required | The category's name, which the API and watch_dir's subdirectories name it by. Letters, digits, '_', '.' and '-'. |
+| `dir` | string |  | The directory the category's torrents download into: a relative path is below download_dir, and may not lead out of it. A torrent keeps the directory it was added with when this changes. <download_dir>/<name> when left out. |
+| `limits` | object |  | **Not supported yet**: refused by name. The limits of each torrent of the category, under the client's; a torrent's own limits take the place of those they set. The client's alone when left out. |
+| `media_library` | string |  | **Not supported yet**: refused by name. A media_library to scan again when a torrent of the category completes, so that what it downloaded into the library's roots appears in its catalog. None when left out. |
 <!-- END GENERATED -->
 
 ### `bittorrent.client.limits`
@@ -2941,13 +2955,13 @@ bittorrent {
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
 | `download_rate` | integer, 0 or more |  | The most bytes per second downloaded, payload of all torrents together. Unlimited when left out or 0. |
-| `max_active_downloads` | integer, 0 or more |  | **Not supported yet**: refused by name. The most torrents downloading at once: past it, torrents queue, paused by the client, in the order of the list (which the API's queue position changes), and the first of them starts when one finishes, is paused or removed. A torrent fetching a magnet link's metadata counts as downloading. No queue when left out or 0. |
-| `max_active_seeds` | integer, 0 or more |  | **Not supported yet**: refused by name. The most torrents seeding at once, queued as max_active_downloads queues downloads. No queue when left out or 0. |
+| `max_active_downloads` | integer, 0 or more |  | The most torrents downloading at once: past it, torrents queue, paused by the client, in the order of the list (which the API's queue position changes), and the first of them starts when one finishes, is paused or removed. A torrent fetching a magnet link's metadata counts as downloading. No queue when left out or 0. |
+| `max_active_seeds` | integer, 0 or more |  | The most torrents seeding at once, queued as max_active_downloads queues downloads. No queue when left out or 0. |
 | `max_conns` | integer, 0 or more | `200` | **Not supported yet**: refused by name. The most peer connections of the client at once. 200 when left out or 0. |
 | `max_conns_per_torrent` | integer, 0 or more | `50` | The most peer connections of one torrent at once. 50 when left out or 0. |
 | `max_half_open` | integer, 0 or more | `32` | **Not supported yet**: refused by name. The most dials to peers in flight at once. 32 when left out or 0. |
 | `max_torrents` | integer, 0 to 100000 | `1000` | The most torrents the client holds, running or paused; one more is refused. Lowering it removes none. 1000 when left out or 0. |
-| `min_free_bytes` | integer, 0 or more | `1073741824` | **Not supported yet**: refused by name. The disk space a download leaves free: a torrent starts downloading only when its directory's disk has what it still has to download and this much more free, and one downloading pauses, with an error saying so, when less than this is left; it starts again by itself once the space is there. Where the free space cannot be told, it is not checked. 1 GiB when left out or 0. |
+| `min_free_bytes` | integer, 0 or more | `1073741824` | The disk space a download leaves free: a torrent starts downloading only when its directory's disk has what it still has to download and this much more free, and one downloading pauses, with an error saying so, when less than this is left; it starts again by itself once the space is there. Where the free space cannot be told, it is not checked. 1 GiB when left out or 0. |
 | `seed_ratio` | number, 0 or more |  | Pause a torrent once it has uploaded this many times its size since it was added or akit started. Seeds for ever when left out or 0. |
 | `seed_time` | duration |  | Pause a torrent once it has seeded this long since it was added or akit started. Seeds for ever when left out. |
 | `upload_rate` | integer, 0 or more |  | The most bytes per second uploaded, payload of all torrents together. Unlimited when left out or 0. |

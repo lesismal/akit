@@ -394,7 +394,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 1175 supported.
+3821 fields in 121 sections, at fit `7daee573`; 1185 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -403,7 +403,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`acme`](#fields-acme) | 43 | 43 | 0 |
 | [`admin`](#fields-admin) | 105 | 51 | 54 |
 | [`auto_https`](#fields-auto-https) | 5 | 5 | 0 |
-| [`bittorrent`](#fields-bittorrent) | 160 | 68 | 92 |
+| [`bittorrent`](#fields-bittorrent) | 160 | 78 | 82 |
 | [`engine`](#fields-engine) | 11 | 8 | 3 |
 | [`http.handlers/bt_publish`](#fields-http-handlers-bt-publish) | 3 | 0 | 3 |
 | [`http.handlers/bt_stream`](#fields-http-handlers-bt-stream) | 14 | 0 | 14 |
@@ -519,7 +519,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 161 | 3 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 76 | 0 |
-| **Total** | 3821 | 1175 | 2646 |
+| **Total** | 3821 | 1185 | 2636 |
 
 <a id="fields-access"></a>
 
@@ -749,8 +749,8 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `bittorrent.client.alt_speed.schedules[].to` | `string, required` | not supported yet |
 | `bittorrent.client.alt_speed.time_zone` | `string` | not supported yet |
 | `bittorrent.client.alt_speed.upload_rate` | `integer` | not supported yet |
-| `bittorrent.client.categories` | `array<object>` | not supported yet |
-| `bittorrent.client.categories[].dir` | `string` | not supported yet |
+| `bittorrent.client.categories` | `array<object>` | supported |
+| `bittorrent.client.categories[].dir` | `string` | supported |
 | `bittorrent.client.categories[].limits` | `object` | not supported yet |
 | `bittorrent.client.categories[].limits.download_rate` | `integer` | not supported yet |
 | `bittorrent.client.categories[].limits.max_conns` | `integer` | not supported yet |
@@ -759,7 +759,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `bittorrent.client.categories[].limits.upload_rate` | `integer` | not supported yet |
 | `bittorrent.client.categories[].limits.upload_slots` | `integer` | not supported yet |
 | `bittorrent.client.categories[].media_library` | `string` | not supported yet |
-| `bittorrent.client.categories[].name` | `string, required` | not supported yet |
+| `bittorrent.client.categories[].name` | `string, required` | supported |
 | `bittorrent.client.console` | `object` | supported |
 | `bittorrent.client.console.access` | `object` | supported |
 | `bittorrent.client.console.access.allow` | `array<string>` | supported |
@@ -785,13 +785,13 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `bittorrent.client.encryption` | `enum(allow\|prefer\|require)` | supported |
 | `bittorrent.client.limits` | `object` | supported |
 | `bittorrent.client.limits.download_rate` | `integer` | supported |
-| `bittorrent.client.limits.max_active_downloads` | `integer` | not supported yet |
-| `bittorrent.client.limits.max_active_seeds` | `integer` | not supported yet |
+| `bittorrent.client.limits.max_active_downloads` | `integer` | supported |
+| `bittorrent.client.limits.max_active_seeds` | `integer` | supported |
 | `bittorrent.client.limits.max_conns` | `integer` | not supported yet |
 | `bittorrent.client.limits.max_conns_per_torrent` | `integer` | supported |
 | `bittorrent.client.limits.max_half_open` | `integer` | not supported yet |
 | `bittorrent.client.limits.max_torrents` | `integer` | supported |
-| `bittorrent.client.limits.min_free_bytes` | `integer` | not supported yet |
+| `bittorrent.client.limits.min_free_bytes` | `integer` | supported |
 | `bittorrent.client.limits.seed_ratio` | `number` | supported |
 | `bittorrent.client.limits.seed_time` | `duration` | supported |
 | `bittorrent.client.limits.upload_rate` | `integer` | supported |
@@ -838,11 +838,11 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `bittorrent.client.rss.rules[].paused` | `boolean` | not supported yet |
 | `bittorrent.client.rss.timeout` | `duration` | not supported yet |
 | `bittorrent.client.save_interval` | `duration` | supported |
-| `bittorrent.client.url_timeout` | `duration` | not supported yet |
+| `bittorrent.client.url_timeout` | `duration` | supported |
 | `bittorrent.client.utp` | `boolean` | supported |
-| `bittorrent.client.watch_dir` | `string` | not supported yet |
-| `bittorrent.client.watch_interval` | `duration` | not supported yet |
-| `bittorrent.client.watch_max_files` | `integer` | not supported yet |
+| `bittorrent.client.watch_dir` | `string` | supported |
+| `bittorrent.client.watch_interval` | `duration` | supported |
+| `bittorrent.client.watch_max_files` | `integer` | supported |
 | `bittorrent.tracker` | `object` | supported |
 | `bittorrent.tracker.access` | `object` | supported |
 | `bittorrent.tracker.access.allow` | `array<string>` | supported |

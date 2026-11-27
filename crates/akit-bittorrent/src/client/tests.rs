@@ -76,7 +76,8 @@ fn member(dir: &Path, port: u16, extra: &str) -> String {
 
 impl Env {
     fn start(dir: &Path, port: u16, extra: &str) -> Env {
-        let engine = akio::Engine::builder().build().unwrap();
+        // Client threads for .torrent URLs.
+        let engine = akio::Engine::builder().client_threads(1).build().unwrap();
         engine.start().unwrap();
         let engine = Arc::new(engine);
         let mut env = Env {
@@ -426,4 +427,350 @@ fn the_apis_refusals_and_removal() {
             .join(format!("{}.torrent", s.id))
             .exists()
     );
+}
+
+fn named(name: &str, payload: &[u8]) -> MetaInfo {
+    let mi = Builder::new(name)
+        .piece_length(64 * 1024)
+        .build_bytes(payload)
+        .unwrap();
+    MetaInfo::parse(&mi.to_bytes()).unwrap()
+}
+
+/// fit's `TestCategories` (I153): a torrent added in a category downloads into its directory,
+/// a magnet link's too once its metadata came (the stopgap for akio's A286); an unknown one is
+/// refused; the category is kept across a restart.
+#[test]
+fn categories_and_a_magnet_links_directory() {
+    let payload = data(1 << 20, 41);
+    let (seed, mi, id) = seeder("cat-seed", &payload);
+    let peer = seed.api().listen_addr().unwrap();
+    let dir = tmp("cat-leech");
+    let port = free_port();
+    let cats = r#", "categories": [{"name": "films", "dir": "f"}, {"name": "iso"}]"#;
+    let leech = Env::start(&dir, port, cats);
+    let api = leech.api();
+    assert!(matches!(
+        api.add(
+            Source::Torrent(mi.to_bytes()),
+            AddRequest {
+                category: "nope".into(),
+                ..AddRequest::default()
+            }
+        ),
+        Err(ApiError::BadRequest(_))
+    ));
+    let s = api
+        .add(
+            Source::Magnet(mi.magnet().to_string()),
+            AddRequest {
+                peers: vec![peer],
+                category: "films".into(),
+                ..AddRequest::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(s.category, "films");
+    assert!(s.dir.ends_with("downloads/f"), "{}", s.dir);
+    wait_for("the magnet's download", 60, || {
+        api.get(&id).is_ok_and(|s| s.complete)
+    });
+    let f = leech.downloads().join("f/t.bin");
+    assert!(std::fs::read(&f).unwrap() == payload);
+    assert!(
+        !leech.downloads().join("t.bin").exists(),
+        "left in download_dir"
+    );
+    // A .torrent in the other category.
+    let p2 = data(256 << 10, 42);
+    let mi2 = named("two.bin", &p2);
+    std::fs::create_dir_all(leech.downloads().join("iso")).unwrap();
+    std::fs::write(leech.downloads().join("iso/two.bin"), &p2).unwrap();
+    let s2 = api
+        .add(
+            Source::Torrent(mi2.to_bytes()),
+            AddRequest {
+                category: "iso".into(),
+                ..AddRequest::default()
+            },
+        )
+        .unwrap();
+    wait_for("the second's check", 20, || {
+        api.get(&s2.id).is_ok_and(|s| s.state == "seeding")
+    });
+    drop(leech);
+    let leech = Env::start(&dir, port, cats);
+    assert_eq!(leech.api().get(&id).unwrap().category, "films");
+    assert_eq!(leech.api().get(&s2.id).unwrap().category, "iso");
+}
+
+/// fit's `TestQueue` (I153): past max_active_downloads a torrent is queued, and starts when
+/// the one ahead is removed; a queue position moves one ahead; past max_active_seeds a seed is
+/// queued, and starts when the one ahead is paused.
+#[test]
+fn the_queue() {
+    let dir = tmp("queue");
+    let env = Env::start(
+        &dir,
+        free_port(),
+        r#", "limits": {"max_active_downloads": 1, "max_active_seeds": 1}"#,
+    );
+    let api = env.api();
+    // Two downloads with no peer: they download for ever.
+    let a = api
+        .add(
+            Source::Torrent(named("a.bin", &data(100_000, 1)).to_bytes()),
+            AddRequest::default(),
+        )
+        .unwrap();
+    let b = api
+        .add(
+            Source::Torrent(named("b.bin", &data(100_000, 2)).to_bytes()),
+            AddRequest::default(),
+        )
+        .unwrap();
+    wait_for("a downloading", 10, || {
+        api.get(&a.id).is_ok_and(|s| s.state == "downloading")
+    });
+    let st = api.get(&b.id).unwrap();
+    assert_eq!(
+        (st.state.as_str(), st.held.as_str(), st.queue_position),
+        ("queued", "queued", 1)
+    );
+    // b moved ahead: a is queued.
+    api.set_queue_position(&b.id, 0).unwrap();
+    wait_for("b downloading", 10, || {
+        api.get(&b.id).is_ok_and(|s| s.state == "downloading")
+    });
+    assert_eq!(api.get(&a.id).unwrap().held, "queued");
+    // b removed: a starts.
+    api.remove(&b.id, false).unwrap();
+    wait_for("a downloading again", 10, || {
+        api.get(&a.id).is_ok_and(|s| s.state == "downloading")
+    });
+    // Seeds: two complete torrents, one seeding at once.
+    for (n, seed) in [("s1.bin", 3), ("s2.bin", 4)] {
+        std::fs::write(env.downloads().join(n), data(80_000, seed)).unwrap();
+    }
+    let s1 = api
+        .add(
+            Source::Torrent(named("s1.bin", &data(80_000, 3)).to_bytes()),
+            AddRequest::default(),
+        )
+        .unwrap();
+    let s2 = api
+        .add(
+            Source::Torrent(named("s2.bin", &data(80_000, 4)).to_bytes()),
+            AddRequest::default(),
+        )
+        .unwrap();
+    // A seed first checks its data, paused or not: then the queue holds the second.
+    wait_for("s1 seeding", 20, || {
+        api.get(&s1.id).is_ok_and(|s| s.state == "seeding")
+    });
+    wait_for("s2 queued", 20, || {
+        api.get(&s2.id)
+            .is_ok_and(|s| s.state == "queued" && s.complete)
+    });
+    api.set_paused(&s1.id, true).unwrap();
+    wait_for("s2 seeding", 20, || {
+        api.get(&s2.id).is_ok_and(|s| s.state == "seeding")
+    });
+}
+
+/// fit's `TestDiskFree` (I153): a download is not started short of min_free_bytes, and starts
+/// once a reload asks for less; one running is held when a reload asks for more than is free.
+#[test]
+fn the_disk_check() {
+    let dir = tmp("disk");
+    let port = free_port();
+    let huge = r#", "limits": {"min_free_bytes": 9000000000000000000}"#;
+    let mut env = Env::start(&dir, port, huge);
+    let api = env.api();
+    let s = api
+        .add(
+            Source::Torrent(named("d.bin", &data(100_000, 5)).to_bytes()),
+            AddRequest::default(),
+        )
+        .unwrap();
+    let st = api.get(&s.id).unwrap();
+    assert_eq!(st.held, "disk", "{st:?}");
+    assert!(st.error.contains("min_free_bytes"), "{}", st.error);
+    env.apply(port, r#", "limits": {"min_free_bytes": 1}"#)
+        .unwrap();
+    wait_for("started", 10, || {
+        api.get(&s.id).is_ok_and(|s| s.state == "downloading")
+    });
+    env.apply(port, huge).unwrap();
+    wait_for("held for the disk", 10, || {
+        api.get(&s.id)
+            .is_ok_and(|s| s.held == "disk" && s.state == "paused")
+    });
+}
+
+/// fit's `TestWatchDir` (I153): .torrent and .magnet files taken once settled, a category's
+/// subdirectory, bad and empty files set aside with why, hidden and other files left alone, one
+/// already held counted as done.
+#[test]
+fn watch_dir() {
+    let dir = tmp("watch");
+    let w = dir.join("w");
+    std::fs::create_dir_all(w.join("films")).unwrap();
+    let env = Env::start(
+        &dir,
+        free_port(),
+        &format!(
+            r#", "watch_dir": {:?}, "watch_interval": "100ms", "categories": [{{"name": "films"}}]"#,
+            w.to_str().unwrap()
+        ),
+    );
+    let api = env.api();
+    let one = named("one.bin", &data(50_000, 6));
+    let two = named("two.bin", &data(50_000, 7));
+    std::fs::write(w.join("one.torrent"), one.to_bytes()).unwrap();
+    std::fs::write(
+        w.join("films/two.magnet"),
+        format!("\n  {}\n", two.magnet()),
+    )
+    .unwrap();
+    std::fs::write(w.join("bad.torrent"), b"nope").unwrap();
+    std::fs::write(w.join("empty.magnet"), b"\n\n").unwrap();
+    std::fs::write(w.join(".hidden.torrent"), one.to_bytes()).unwrap();
+    std::fs::write(w.join("other.txt"), b"x").unwrap();
+    wait_for("both added", 20, || api.list().is_ok_and(|l| l.len() == 2));
+    let l = api.list().unwrap();
+    assert!(
+        l.iter()
+            .any(|s| s.name == "one.bin" && s.category.is_empty())
+    );
+    assert!(
+        l.iter()
+            .any(|s| s.id == two.info_hash.to_hex() && s.category == "films")
+    );
+    wait_for("set aside", 10, || {
+        w.join(".failed/bad.torrent").exists() && w.join(".failed/empty.magnet").exists()
+    });
+    assert!(w.join(".done/one.torrent").exists() && w.join("films/.done/two.magnet").exists());
+    assert!(
+        std::fs::read_to_string(w.join(".failed/bad.torrent.error"))
+            .unwrap()
+            .contains("bad request")
+            || std::fs::read_to_string(w.join(".failed/bad.torrent.error"))
+                .unwrap()
+                .len()
+                > 1
+    );
+    assert!(w.join(".hidden.torrent").exists() && w.join("other.txt").exists());
+    // One already held: done.
+    std::fs::write(w.join("again.torrent"), one.to_bytes()).unwrap();
+    wait_for("the duplicate done", 10, || {
+        w.join(".done/again.torrent").exists()
+    });
+    assert_eq!(api.list().unwrap().len(), 2);
+}
+
+/// A server of the test's own: each request's path answered by `routes`, the connection closed.
+fn http_server(routes: Vec<(&'static str, Vec<u8>)>) -> std::net::SocketAddr {
+    use std::io::{Read, Write};
+    let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = l.local_addr().unwrap();
+    std::thread::spawn(move || {
+        for s in l.incoming() {
+            let Ok(mut s) = s else { break };
+            let routes = routes.clone();
+            std::thread::spawn(move || {
+                let mut head = Vec::new();
+                let mut b = [0u8; 1024];
+                while !head.windows(4).any(|w| w == b"\r\n\r\n") {
+                    match s.read(&mut b) {
+                        Ok(0) | Err(_) => return,
+                        Ok(n) => head.extend_from_slice(&b[..n]),
+                    }
+                }
+                let text = String::from_utf8_lossy(&head);
+                let path = text.split(' ').nth(1).unwrap_or("").to_owned();
+                if let Some((_, resp)) = routes.iter().find(|(p, _)| *p == path) {
+                    if resp.is_empty() {
+                        // Never answers.
+                        std::thread::sleep(Duration::from_secs(5));
+                        return;
+                    }
+                    let _ = s.write_all(resp);
+                } else {
+                    let _ = s.write_all(
+                        b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                    );
+                }
+            });
+        }
+    });
+    addr
+}
+
+/// fit's `TestAddURL` (I153): a .torrent by URL, through a redirect, a redirect to a magnet
+/// link; a bad scheme, a 404, a redirect loop, a server that never answers within url_timeout,
+/// a body past the bound.
+#[test]
+fn add_by_url() {
+    let dir = tmp("url");
+    let env = Env::start(&dir, free_port(), r#", "url_timeout": "500ms""#);
+    let api = env.api();
+    let a = named("a.bin", &data(50_000, 8));
+    let b = named("b.bin", &data(50_000, 9));
+    let ok = |body: &[u8]| {
+        let mut r = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/x-bittorrent\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            body.len()
+        )
+        .into_bytes();
+        r.extend_from_slice(body);
+        r
+    };
+    let redirect = |to: &str| {
+        format!(
+            "HTTP/1.1 302 Found\r\nLocation: {to}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+        )
+        .into_bytes()
+    };
+    let big =
+        b"HTTP/1.1 200 OK\r\nContent-Length: 40000000\r\nConnection: close\r\n\r\nxxxx".to_vec();
+    let addr = http_server(vec![
+        ("/a.torrent", ok(&a.to_bytes())),
+        ("/go", redirect("/a.torrent")),
+        ("/mag", redirect(&b.magnet().to_string())),
+        ("/loop", redirect("/loop")),
+        ("/slow", Vec::new()),
+        ("/big", big),
+    ]);
+    let url = |p: &str| format!("http://{addr}{p}");
+    let s = api
+        .add_url(&url("/a.torrent"), AddRequest::default())
+        .unwrap();
+    assert_eq!(s.name, "a.bin");
+    api.remove(&s.id, false).unwrap();
+    assert_eq!(
+        api.add_url(&url("/go"), AddRequest::default())
+            .unwrap()
+            .name,
+        "a.bin"
+    );
+    assert_eq!(
+        api.add_url(&url("/mag"), AddRequest::default()).unwrap().id,
+        b.info_hash.to_hex()
+    );
+    assert!(matches!(
+        api.add_url("ftp://x/y", AddRequest::default()),
+        Err(ApiError::BadRequest(_))
+    ));
+    for (p, want) in [
+        ("/nope", "HTTP 404"),
+        ("/loop", "redirects"),
+        ("/slow", "timed out"),
+        ("/big", ""),
+    ] {
+        match api.add_url(&url(p), AddRequest::default()) {
+            Err(ApiError::Fetch(why)) => assert!(why.contains(want), "{p}: {why}"),
+            r => panic!("{p}: {r:?}"),
+        }
+    }
 }

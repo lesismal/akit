@@ -108,6 +108,22 @@
   `setNodes` 持有它自己的锁），因此为新 uplink 收下的列表总在其后；断开链路的 hub 也在同一把锁下忘掉其节点，且仅当其
   uplink 仍属于该 proxy。修复后：epoll 上单独运行 250 次、io_uring（`AKIO_DEFAULT_BACKEND=uring`）上 50 次，全部通过。
 
+### 2026-11-27：I153，添加种子、分类、队列和磁盘
+
+- 同 fit 的 I198（`akit_bittorrent::client::{manage,watch,fetch}`）：`categories`（`name`、`dir`：相对路径在 `download_dir`
+  之下，默认 `<download_dir>/<name>`），以某分类添加的种子下载到其目录并跨重启保留；`ClientApi::add_url`（http 和 https，
+  使用监听器引擎上 akio 的 HTTP 客户端，32 MiB，由角色跟随 5 次重定向，重定向到磁力链接时添加该链接，整体受 `url_timeout`
+  限制，同时 4 个，第五个以忙碌拒绝）；`watch_dir`（`watch_interval`、`watch_max_files`）：.torrent 和 .magnet 文件在两次查看
+  之间大小和时间不变后才被采用，分类的子目录，`.done`、带 `.error` 的 `.failed`，以后可能添加的留下；队列（`max_active_downloads`、
+  `max_active_seeds`、列表顺序、`set_queue_position`、状态 `queued`）；磁盘（`min_free_bytes`，默认 1 GiB，akio 的 `fs::space`：
+  只有剩余待下载量加 `min_free_bytes` 可用时才开始下载，运行中的下载低于它时被挂起（`disk`），有空间后自行重新开始）。
+- 角色的管理线程像 fit 一样每秒查看一次，磁力链接的元数据到达时立即查看；API 调用立即执行队列和磁盘检查。以某分类添加的磁力
+  链接在元数据到达后被放入其目录（akio 的 A286 的临时做法，决定 042）：从客户端移除后以其 .torrent 重新添加，删除其在客户端目录
+  下写下的内容；它会重新拨号其 peer（测试中约 30 秒）。
+- 状态：`category`、`held`、`queue_position`；控制台的 JSON 包含它们。
+- 测试：`client::tests`（fit 的 `TestCategories`、`TestQueue`、`TestDiskFree`、`TestWatchDir`、`TestAddURL`：重定向、磁力链接、
+  错误的协议、404、重定向循环、从不应答的服务器、超过上限的响应体），`bittorrent::tests::categories_and_watch`（fit 的分类检查）。
+
 ### 2026-11-27：I152，BitTorrent 客户端
 
 - `bittorrent.client`（`akit_bittorrent::client`）由 `akit run` 运行在 akio-bittorrent 的 `Client` 上，在 akio 的 A283 之前使用自己的

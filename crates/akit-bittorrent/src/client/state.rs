@@ -42,6 +42,8 @@ pub(crate) struct Entry {
     pub(crate) added: String,
     pub(crate) completed: bool,
     pub(crate) peers: Vec<String>,
+    /// Its category (I153), `""` for none.
+    pub(crate) category: String,
     /// The members akit does not read, kept as read.
     pub(crate) other: Vec<(String, Value)>,
 }
@@ -84,7 +86,7 @@ fn boolean(v: Option<&Value>) -> bool {
     matches!(v, Some(Value::Bool(true)))
 }
 
-const KNOWN: [&str; 8] = [
+const KNOWN: [&str; 9] = [
     "id",
     "name",
     "magnet",
@@ -93,6 +95,7 @@ const KNOWN: [&str; 8] = [
     "added",
     "completed",
     "peers",
+    "category",
 ];
 
 /// Reads `<dir>/torrents.json`, fit's `loadState`: none when it is not there; an error, which
@@ -209,6 +212,7 @@ pub(crate) fn load(dir: &Path) -> Result<Doc, String> {
             paused: boolean(get("paused")),
             added: string(get("added")),
             completed: boolean(get("completed")),
+            category: string(get("category")),
             peers,
             other: members
                 .iter()
@@ -249,6 +253,9 @@ pub(crate) fn encode(doc: &Doc, saved: &str) -> String {
                 m.push(("paused".to_owned(), Value::Bool(true)));
             }
             m.push(("added".to_owned(), s(&e.added)));
+            if !e.category.is_empty() {
+                m.push(("category".to_owned(), s(&e.category)));
+            }
             if e.completed {
                 m.push(("completed".to_owned(), Value::Bool(true)));
             }

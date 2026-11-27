@@ -1448,3 +1448,15 @@ routes[].handler<media_pages>.params.whep
 routes[].handler<media_pages>.params.whip
 # I126: webrtc_proxy's auth, a media_auth policy (akit-media's guard).
 routes[].handler<webrtc_proxy>.params.auth
+# I153: adding by URL and watch_dir, categories (name, dir), the queue and the disk check;
+# categories[].limits (I154) and media_library (the media library's track) refused.
+bittorrent.client.categories
+bittorrent.client.categories[].name
+bittorrent.client.categories[].dir
+bittorrent.client.watch_dir
+bittorrent.client.watch_interval
+bittorrent.client.watch_max_files
+bittorrent.client.url_timeout
+bittorrent.client.limits.max_active_downloads
+bittorrent.client.limits.max_active_seeds
+bittorrent.client.limits.min_free_bytes

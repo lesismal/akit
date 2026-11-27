@@ -17,6 +17,8 @@ akio-bittorrent = { workspace = true }
 akio-crypto = { workspace = true }
 # The bt_tracker handler and the roles' pages.
 akio-http = { workspace = true }
+# The disk's free space for min_free_bytes (I153).
+akio-sys = { workspace = true }
 akit-access = { workspace = true }
 akit-config = { workspace = true }
 akit-roles = { workspace = true }

@@ -791,3 +791,13 @@ config	added	supported	routes[].handler<media_pages>.params.title
 config	added	supported	routes[].handler<media_pages>.params.whep
 config	added	supported	routes[].handler<media_pages>.params.whip
 config	added	supported	routes[].handler<webrtc_proxy>.params.auth
+config	added	supported	bittorrent.client.categories
+config	added	supported	bittorrent.client.categories[].dir
+config	added	supported	bittorrent.client.categories[].name
+config	added	supported	bittorrent.client.limits.max_active_downloads
+config	added	supported	bittorrent.client.limits.max_active_seeds
+config	added	supported	bittorrent.client.limits.min_free_bytes
+config	added	supported	bittorrent.client.url_timeout
+config	added	supported	bittorrent.client.watch_dir
+config	added	supported	bittorrent.client.watch_interval
+config	added	supported	bittorrent.client.watch_max_files

@@ -33,6 +33,12 @@ BitTorrent crate，akio-bittorrent：bencode、v1/v2/混合种子、磁力链接
 4. **测试只在回环地址上**：两个 akio-bittorrent 客户端、fit 自己的二进制（`AKIT_FIT_BIN`）、已安装时的
    aria2c；DHT 和 LSD 关闭；从不访问公共 tracker 或 DHT 路由节点。
 
+5. **I153，同 fit 的 I198**：管理线程是角色自己的线程，像 fit 的一样每秒查看一次，磁力链接的元数据到达时立即查看；
+   改变列表的每次 API 调用也会执行队列和磁盘检查。每个种子都以暂停状态添加，由调度启动。`min_free_bytes` 读取 akio 的
+   `fs::space`（`available`，非 root 进程可用的空间），针对种子的目录或其最近的存在的上级目录；无法得知时不检查。
+   .torrent URL 在监听器引擎上用 akio 的 HTTP 客户端获取，重定向由角色跟随，以便重定向到磁力链接时添加该链接。
+   `watch_dir` 每次查看一个目录至多 100,000 个条目。分类的 `limits` 和 `media_library` 在 I154 和媒体库路线之前被拒绝。
+
 ## 后果
 
 - fit 能运行而设置了 akio 尚不能提供的字段的配置，会按名称被拒绝，而不是缺少它照样运行。

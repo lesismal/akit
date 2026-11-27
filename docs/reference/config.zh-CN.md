@@ -14,7 +14,7 @@ akit 配置的每个字段：配置的每一部分是做什么的、一个示例
 akit 与 fit 不同之处，在表格中以 **akit：** 标出。
 
 <!-- BEGIN GENERATED: summary -->
-fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **1175** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 180 个对象，下文各有一张表。
+fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **1185** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 181 个对象，下文各有一张表。
 <!-- END GENERATED -->
 
 字段说明来自 fit 代码中的 `doc` 标签，是英文的，所以每个字段的完整说明在[英文版](config.md)的同一张表中；本页的表格给出每个字段的
@@ -3027,10 +3027,10 @@ streaming {
 客户端（`bittorrent.client`）在同一个端口上以 TCP 和 UDP（uTP、DHT 和 UDP tracker）下载和做种，
 其种子保存在 `data_dir` 中跨重启保留；tracker（`bittorrent.tracker`）应答 announce 和 scrape，
 HTTP 经由处理器为 `bt_tracker` 的路由，UDP 在其自己的 `listen` 上。akit 像 fit 一样读取并检查这些
-角色（I150）；`akit run` 从 I151 起运行 tracker，从 I152 起运行客户端。后续迭代才运行的内容以
-"尚不支持"拒绝：客户端的分类、`watch_dir`、`url_timeout`、`alt_speed`、`access`、
-`disk_queue_bytes`、`publish`、`rss` 以及 akio-bittorrent 尚不能设置的限制；tracker 的 `auth`、
-`max_peers` 和 `store`。
+角色（I150）；`akit run` 从 I151 起运行 tracker，从 I152 起运行客户端，从 I153 起支持分类、
+`watch_dir`、.torrent URL、队列和磁盘检查。后续迭代才运行的内容以"尚不支持"拒绝：客户端的
+`alt_speed`、`access`、`disk_queue_bytes`、`publish`、`rss`、分类的 `limits` 和 `media_library`
+以及 akio-bittorrent 尚不能设置的限制；tracker 的 `auth`、`max_peers` 和 `store`。
 
 ```fit
 bittorrent {
@@ -3069,7 +3069,7 @@ bittorrent {
 | `listen` | 字符串 | 必填 |  |
 | `access` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
 | `alt_speed` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
-| `categories` | 对象的列表 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `categories` | [对象](#cfg-bittorrent-client-categories)的列表 |  |  |
 | `console` | [对象](#cfg-bittorrent-client-console) |  |  |
 | `dht` | 布尔值 | `true` |  |
 | `disk_queue_bytes` | 整数，≥ 0 | `67108864` | **尚不支持**（not supported yet）：按名称拒绝。 |
@@ -3082,11 +3082,26 @@ bittorrent {
 | `publish` | 对象的列表 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
 | `rss` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
 | `save_interval` | 时长 | `"5s"` |  |
-| `url_timeout` | 时长 | `"30s"` | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `url_timeout` | 时长 | `"30s"` |  |
 | `utp` | 布尔值 | `true` |  |
-| `watch_dir` | 字符串 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
-| `watch_interval` | 时长 | `"10s"` | **尚不支持**（not supported yet）：按名称拒绝。 |
-| `watch_max_files` | 整数，0 到 10000 | `100` | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `watch_dir` | 字符串 |  |  |
+| `watch_interval` | 时长 | `"10s"` |  |
+| `watch_max_files` | 整数，0 到 10000 | `100` |  |
+<!-- END GENERATED -->
+
+### `bittorrent.client.categories[]`
+
+<!-- BEGIN GENERATED: bittorrent.client.categories[] -->
+<a id="cfg-bittorrent-client-categories"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-bittorrent-client-categories)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `name` | 字符串 | 必填 |  |
+| `dir` | 字符串 |  |  |
+| `limits` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `media_library` | 字符串 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
 <!-- END GENERATED -->
 
 ### `bittorrent.client.limits`
@@ -3099,13 +3114,13 @@ bittorrent {
 | 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
 | `download_rate` | 整数，≥ 0 |  |  |
-| `max_active_downloads` | 整数，≥ 0 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
-| `max_active_seeds` | 整数，≥ 0 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `max_active_downloads` | 整数，≥ 0 |  |  |
+| `max_active_seeds` | 整数，≥ 0 |  |  |
 | `max_conns` | 整数，≥ 0 | `200` | **尚不支持**（not supported yet）：按名称拒绝。 |
 | `max_conns_per_torrent` | 整数，≥ 0 | `50` |  |
 | `max_half_open` | 整数，≥ 0 | `32` | **尚不支持**（not supported yet）：按名称拒绝。 |
 | `max_torrents` | 整数，0 到 100000 | `1000` |  |
-| `min_free_bytes` | 整数，≥ 0 | `1073741824` | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `min_free_bytes` | 整数，≥ 0 | `1073741824` |  |
 | `seed_ratio` | 数，≥ 0 |  |  |
 | `seed_time` | 时长 |  |  |
 | `upload_rate` | 整数，≥ 0 |  |  |

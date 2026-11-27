@@ -2361,7 +2361,9 @@ hash 和授权请求的钩子（`TrackerConfig::allow_fn`、`authorize`），其
 
 ## A286 磁力链接的种子使用自己的存储目录
 
-**状态。** 由 I150 为 I153 提出（2026-11-27）。
+**状态。** 由 I150 为 I153 提出（2026-11-27）。临时做法（I153，记录在[进度](progress.zh-CN.md)中）：以某个分类添加的磁力
+链接在其元数据到达之前下载到建立客户端时的目录；客户端的事件唤醒角色的管理线程，它把种子从客户端中移除、删除其在那里写下的内容，
+再以其 .torrent 把它添加到分类的目录中，重新拨号其 peer。
 
 **问题。** fit 把种子下载到其分类的目录中，磁力链接的种子也一样（fib 的 `StorageOpener`，在 info 到达时调用）。akio-bittorrent 的
 `AddOptions::storage` 接受由种子的 `Info` 建立的存储（`FileStorage::new(dir, &info)`），而磁力链接此时还没有 info；不设置时文件放在

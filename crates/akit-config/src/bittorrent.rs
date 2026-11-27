@@ -36,6 +36,18 @@ pub const MAX_BT_TORRENTS: usize = 100_000;
 pub const MAX_BT_DISK_WORKERS: usize = 64;
 /// fit's `DefaultBTSaveInterval`: how often, at most, the client's state is saved.
 pub const DEFAULT_BT_SAVE_INTERVAL: Duration = Duration::from_secs(5);
+/// fit's `DefaultBTWatchInterval`: how often `watch_dir` is looked at.
+pub const DEFAULT_BT_WATCH_INTERVAL: Duration = Duration::from_secs(10);
+/// fit's `DefaultBTWatchMaxFiles`: the files of `watch_dir` taken in one look.
+pub const DEFAULT_BT_WATCH_MAX_FILES: usize = 100;
+/// fit's `MaxBTWatchMaxFiles`: the most `watch_max_files` may be.
+pub const MAX_BT_WATCH_MAX_FILES: usize = 10_000;
+/// fit's `DefaultBTURLTimeout`: how long the download of a .torrent file by URL may take.
+pub const DEFAULT_BT_URL_TIMEOUT: Duration = Duration::from_secs(30);
+/// fit's `DefaultBTMinFreeBytes`: the disk space a download leaves free.
+pub const DEFAULT_BT_MIN_FREE_BYTES: u64 = 1 << 30;
+/// fit's `MaxBTCategories`: the most categories.
+pub const MAX_BT_CATEGORIES: usize = 1000;
 
 /// fit's `DefaultBTTrackerInterval`: how often clients are told to announce.
 pub const DEFAULT_BT_TRACKER_INTERVAL: Duration = Duration::from_secs(30 * 60);
@@ -125,9 +137,67 @@ pub struct BitTorrentClient {
     pub limits: Option<BitTorrentLimits>,
     /// `console`: the client's pages; none when left out.
     pub console: Option<Console>,
+    /// `categories` (I153): the categories a torrent may be added in.
+    pub categories: Vec<BitTorrentCategory>,
+    /// `watch_dir` (I153): a directory looked at for .torrent and .magnet files; none when left
+    /// out.
+    pub watch_dir: String,
+    /// `watch_interval`: [`DEFAULT_BT_WATCH_INTERVAL`] when left out or 0.
+    pub watch_interval: Duration,
+    /// `watch_max_files`: [`DEFAULT_BT_WATCH_MAX_FILES`] when left out or 0.
+    pub watch_max_files: usize,
+    /// `url_timeout`: [`DEFAULT_BT_URL_TIMEOUT`] when left out or 0.
+    pub url_timeout: Duration,
+}
+
+/// `bittorrent.client.categories[]` (I153): a category of torrents.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct BitTorrentCategory {
+    /// `name`: letters, digits, `_`, `.` and `-`. Required.
+    pub name: String,
+    /// `dir`: where its torrents download into, a relative one below `download_dir`;
+    /// `<download_dir>/<name>` when left out.
+    pub dir: String,
 }
 
 impl BitTorrentClient {
+    /// The category named `name`.
+    #[must_use]
+    pub fn category(&self, name: &str) -> Option<&BitTorrentCategory> {
+        self.categories.iter().find(|c| c.name == name)
+    }
+
+    /// The directory the torrents of `c` download into, fit's `CategoryDir`.
+    #[must_use]
+    pub fn category_dir(&self, c: &BitTorrentCategory) -> std::path::PathBuf {
+        let d = c.dir.trim();
+        if d.is_empty() {
+            self.downloads().join(&c.name)
+        } else if std::path::Path::new(d).is_absolute() {
+            std::path::PathBuf::from(d)
+        } else {
+            self.downloads().join(d)
+        }
+    }
+
+    /// `watch_interval`, or its default.
+    #[must_use]
+    pub fn watch(&self) -> Duration {
+        dur_or(self.watch_interval, DEFAULT_BT_WATCH_INTERVAL)
+    }
+
+    /// `watch_max_files`, or its default.
+    #[must_use]
+    pub fn watch_files(&self) -> usize {
+        or(self.watch_max_files, DEFAULT_BT_WATCH_MAX_FILES)
+    }
+
+    /// `url_timeout`, or its default.
+    #[must_use]
+    pub fn url_fetch_timeout(&self) -> Duration {
+        dur_or(self.url_timeout, DEFAULT_BT_URL_TIMEOUT)
+    }
+
     /// `download_dir`, or `<data_dir>/downloads`.
     #[must_use]
     pub fn downloads(&self) -> std::path::PathBuf {
@@ -205,6 +275,12 @@ pub struct BitTorrentLimits {
     pub seed_time: Duration,
     /// `max_torrents`: [`DEFAULT_BT_MAX_TORRENTS`] when left out or 0.
     pub max_torrents: usize,
+    /// `max_active_downloads` (I153): the most torrents downloading at once; 0, no queue.
+    pub max_active_downloads: usize,
+    /// `max_active_seeds` (I153): the most torrents seeding at once; 0, no queue.
+    pub max_active_seeds: usize,
+    /// `min_free_bytes` (I153): [`DEFAULT_BT_MIN_FREE_BYTES`] when left out or 0.
+    pub min_free_bytes: u64,
 }
 
 impl PartialEq for BitTorrentLimits {
@@ -216,6 +292,9 @@ impl PartialEq for BitTorrentLimits {
             && self.seed_ratio.to_bits() == o.seed_ratio.to_bits()
             && self.seed_time == o.seed_time
             && self.max_torrents == o.max_torrents
+            && self.max_active_downloads == o.max_active_downloads
+            && self.max_active_seeds == o.max_active_seeds
+            && self.min_free_bytes == o.min_free_bytes
     }
 }
 
@@ -238,6 +317,16 @@ impl BitTorrentLimits {
     #[must_use]
     pub fn torrents(&self) -> usize {
         or(self.max_torrents, DEFAULT_BT_MAX_TORRENTS)
+    }
+
+    /// `min_free_bytes`, or its default.
+    #[must_use]
+    pub fn free_bytes(&self) -> u64 {
+        if self.min_free_bytes == 0 {
+            DEFAULT_BT_MIN_FREE_BYTES
+        } else {
+            self.min_free_bytes
+        }
     }
 }
 
@@ -368,22 +457,17 @@ const BT_CLIENT_FIELDS: &[&str] = &[
     "save_interval",
     "limits",
     "console",
-];
-// I153: categories, watch_dir and its bounds, url_timeout; I154: alt_speed and access (akio's
-// A284); disk_queue_bytes, akio-bittorrent's bound of the blocks waiting for the disk (A284);
-// I156: publish; I159: rss.
-const BT_CLIENT_FIT_ONLY: &[&str] = &[
-    "disk_queue_bytes",
+    // I153.
     "categories",
     "watch_dir",
     "watch_interval",
     "watch_max_files",
     "url_timeout",
-    "alt_speed",
-    "access",
-    "rss",
-    "publish",
 ];
+// I153: categories, watch_dir and its bounds, url_timeout; I154: alt_speed and access (akio's
+// A284); disk_queue_bytes, akio-bittorrent's bound of the blocks waiting for the disk (A284);
+// I156: publish; I159: rss.
+const BT_CLIENT_FIT_ONLY: &[&str] = &["disk_queue_bytes", "alt_speed", "access", "rss", "publish"];
 const BT_LIMITS_FIELDS: &[&str] = &[
     "upload_rate",
     "download_rate",
@@ -392,16 +476,17 @@ const BT_LIMITS_FIELDS: &[&str] = &[
     "seed_ratio",
     "seed_time",
     "max_torrents",
-];
-// The client's connections in all and dials at once (akio's A284); the queue and the disk's free
-// space (I153).
-const BT_LIMITS_FIT_ONLY: &[&str] = &[
-    "max_conns",
-    "max_half_open",
+    // I153.
     "max_active_downloads",
     "max_active_seeds",
     "min_free_bytes",
 ];
+// The client's connections in all and dials at once (akio's A284); the queue and the disk's free
+// space (I153).
+const BT_LIMITS_FIT_ONLY: &[&str] = &["max_conns", "max_half_open"];
+const BT_CATEGORY_FIELDS: &[&str] = &["name", "dir"];
+// I154: a category's limits; a media library's rescan, once akit reads `media_library`.
+const BT_CATEGORY_FIT_ONLY: &[&str] = &["limits", "media_library"];
 const BT_TRACKER_FIELDS: &[&str] = &[
     "listen",
     "interval",
@@ -483,6 +568,28 @@ fn client(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<BitTorrentClient>
     c.save_interval = duration(d, &mut o, "save_interval");
     c.limits = o.take("limits").and_then(|v| limits(d, v, &o.at("limits")));
     c.console = role_console(d, &mut o);
+    let cats = list(d, &mut o, "categories", category);
+    if cats.len() > MAX_BT_CATEGORIES {
+        d.error(
+            o.key_off("categories").unwrap_or(o.off),
+            &o.at("categories"),
+            format!("at most {MAX_BT_CATEGORIES} categories"),
+        );
+    }
+    for (i, (cat, off, p)) in cats.iter().enumerate() {
+        if cats.iter().take(i).any(|(o, _, _)| o.name == cat.name) {
+            d.error(
+                *off,
+                &join_field(p, "name"),
+                format!("another category is already named {:?}", cat.name),
+            );
+        }
+    }
+    c.categories = cats.into_iter().map(|(c, _, _)| c).collect();
+    c.watch_dir = text(d, &mut o, "watch_dir");
+    c.watch_interval = duration(d, &mut o, "watch_interval");
+    c.watch_max_files = count(d, &mut o, "watch_max_files", MAX_BT_WATCH_MAX_FILES as i64);
+    c.url_timeout = duration(d, &mut o, "url_timeout");
     o.finish(d, BT_CLIENT_FIELDS, BT_CLIENT_FIT_ONLY);
     Some(c)
 }
@@ -508,9 +615,45 @@ fn limits(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<BitTorrentLimits>
             .unwrap_or(0.0),
         seed_time: duration(d, &mut o, "seed_time"),
         max_torrents: count(d, &mut o, "max_torrents", MAX_BT_TORRENTS as i64),
+        max_active_downloads: count(d, &mut o, "max_active_downloads", i64::from(i32::MAX)),
+        max_active_seeds: count(d, &mut o, "max_active_seeds", i64::from(i32::MAX)),
+        min_free_bytes: bytes(d, &mut o, "min_free_bytes"),
     };
     o.finish(d, BT_LIMITS_FIELDS, BT_LIMITS_FIT_ONLY);
     Some(l)
+}
+
+fn category(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<BitTorrentCategory> {
+    let mut o = d.object(n, path)?;
+    let mut c = BitTorrentCategory::default();
+    if let Some(v) = o.require(d, "name") {
+        if let Some(s) = d.string(v, &o.at("name")) {
+            if !crate::model::valid_name(&s) {
+                d.error(v.off, &o.at("name"), crate::model::bad_name(&s));
+            }
+            c.name = s;
+        }
+    }
+    if let Some((dir, off)) = text_at(d, &mut o, "dir") {
+        let t = dir.trim();
+        let p = std::path::Path::new(t);
+        let local = p.components().all(|c| {
+            matches!(
+                c,
+                std::path::Component::Normal(_) | std::path::Component::CurDir
+            )
+        });
+        if !t.is_empty() && !p.is_absolute() && !local {
+            d.error(
+                off,
+                &o.at("dir"),
+                format!("{dir:?} leads out of download_dir: a relative dir stays below it"),
+            );
+        }
+        c.dir = dir;
+    }
+    o.finish(d, BT_CATEGORY_FIELDS, BT_CATEGORY_FIT_ONLY);
+    Some(c)
 }
 
 fn tracker(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<BitTorrentTracker> {

@@ -1077,7 +1077,24 @@ fn bittorrent(out: &mut Vec<(String, String, Read)>) {
             f("save_interval", q("1s"), q("2s")),
             f("limits", "{}", r#"{"upload_rate": 1}"#),
             f("console", console(7080), console(7081)),
+            f("categories", "[]", r#"[{"name": "a"}]"#),
+            f("watch_dir", q("a"), q("b")),
+            f("watch_interval", q("1s"), q("2s")),
+            f("watch_max_files", "1", "2"),
+            f("url_timeout", q("1s"), q("2s")),
         ],
+    );
+    let catw = |m: &str| {
+        client(&format!(
+            r#"{{"listen": "127.0.0.1:6881", "data_dir": "d", "categories": [{m}]}}"#
+        ))
+    };
+    emit(
+        out,
+        "bittorrent.client.categories[]",
+        &catw,
+        &[("name", q("a"))],
+        vec![f("name", q("a"), q("b")), f("dir", q("a"), q("b"))],
     );
     let lw = |m: &str| {
         client(&format!(
@@ -1097,6 +1114,9 @@ fn bittorrent(out: &mut Vec<(String, String, Read)>) {
             f("seed_ratio", "1", "1.5"),
             f("seed_time", q("1h"), q("2h")),
             f("max_torrents", "1", "2"),
+            f("max_active_downloads", "1", "2"),
+            f("max_active_seeds", "1", "2"),
+            f("min_free_bytes", "1", "2"),
         ],
     );
     let cw = |m: &str| {

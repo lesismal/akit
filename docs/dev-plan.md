@@ -257,7 +257,7 @@ Tunnel and LLM track; I110–I114 are the WebRTC track, and I115–I119 are rese
 | I150 | BitTorrent I: `bittorrent.client` and `bittorrent.tracker` in the config, fit's fields, checks and clashes; what later iterations run refused as not supported yet | I98 | done |
 | I151 | BitTorrent II: the tracker role and `bt_tracker` on akio-bittorrent's `TrackerServer`: HTTP and UDP, the allow-list, access, bounds, statistics, its console | I150, I100 | done |
 | I152 | BitTorrent III: the client role on akio-bittorrent's `Client`: the state in `data_dir`, restore without a check, reloads in place or by a new client, its API and console | I150, I151 | done |
-| I153 | BitTorrent IV: adding by URL and `watch_dir`, categories, the queue, disk checks | I152 | todo |
+| I153 | BitTorrent IV: adding by URL and `watch_dir`, categories, the queue, disk checks | I152 | done |
 | I154 | BitTorrent V: `alt_speed` schedules, per-torrent limits, the client's `access` and connection limits (akio A284) | I152 | todo |
 | I155 | BitTorrent VI: `bt_stream`, a file played while it downloads | I152 | todo |
 | I156 | BitTorrent VII: publishing a directory as torrents, `bt_publish` | I152 | todo |
@@ -2240,6 +2240,8 @@ waits for the Cluster management track.
   A torrent's own download directory needs akio-bittorrent's storage for a magnet link (A286).
 - **Touches**: `akit-bittorrent`, `akit-config`.
 - **fit**: `bittorrent/{manage,fetch,watch}.go`; I198.
+- **Status**: done (2026-11-27). See the progress log. A category's `limits` are I154's, its
+  `media_library` the media library track's; a magnet link is placed by the stopgap for A286.
 
 ### I154 BitTorrent V: schedules, per-torrent limits, the client's access
 

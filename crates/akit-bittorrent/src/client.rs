@@ -17,14 +17,17 @@
 //! closed (akio saves each torrent's resume data), and the new one starts from the state of its
 //! `data_dir`, resuming without a check. A new client that cannot be made brings the old one back.
 
+mod fetch;
+mod manage;
 mod pages;
 pub(crate) mod state;
+mod watch;
 
 use std::fmt;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
+use std::sync::mpsc::{SyncSender, sync_channel};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
@@ -91,6 +94,10 @@ pub enum ApiError {
     BadRequest(String),
     /// The state could not be written: why.
     Io(String),
+    /// As many .torrent files are being downloaded by URL as may be at once (fit's `ErrBusy`).
+    Busy,
+    /// A .torrent file's URL could not be fetched: why.
+    Fetch(String),
 }
 
 impl fmt::Display for ApiError {
@@ -102,6 +109,10 @@ impl fmt::Display for ApiError {
             ApiError::TooMany => f.write_str("bittorrent: max_torrents torrents are held already"),
             ApiError::BadRequest(why) => write!(f, "bittorrent: bad request: {why}"),
             ApiError::Io(why) => write!(f, "bittorrent: {why}"),
+            ApiError::Busy => f.write_str(
+                "bittorrent: as many .torrent files are being downloaded by URL as may be at once",
+            ),
+            ApiError::Fetch(why) => write!(f, "bittorrent: {why}"),
         }
     }
 }
@@ -125,6 +136,8 @@ pub struct AddRequest {
     pub paused: bool,
     /// Peers to dial, kept with it (at most 128).
     pub peers: Vec<SocketAddr>,
+    /// Its category (I153), `""` for none: its directory below.
+    pub category: String,
 }
 
 /// A torrent as the API reports it, fit's `bittorrent.Status` but for what later iterations add
@@ -169,6 +182,13 @@ pub struct Status {
     pub seeders: usize,
     /// Pieces read back and checked when it started: 0 when it resumed without a check.
     pub pieces_checked: u64,
+    /// Its category, `""` for none.
+    pub category: String,
+    /// Why the role holds it paused: `queued` (past `max_active_downloads` or
+    /// `max_active_seeds`), `disk` (short of disk space, `error` saying how), or `""`.
+    pub held: String,
+    /// Its place in the list, which the queue goes by, from 0.
+    pub queue_position: usize,
 }
 
 /// A torrent the role holds.
@@ -180,6 +200,13 @@ struct Rec {
     mi_saved: bool,
     torrent: Option<Torrent>,
     err: String,
+    /// Why the role holds it paused.
+    held: manage::Hold,
+    /// What the disk check said.
+    hold_msg: String,
+    /// A magnet link's torrent was added again into its own directory once its metadata came
+    /// (the stopgap for akio's A286), or did not need to be.
+    placed: bool,
 }
 
 /// What makes a new client when it changes.
@@ -226,6 +253,8 @@ struct Run {
     client_dir: PathBuf,
     recs: Vec<Rec>,
     other: Vec<(String, akit_config::value::Value)>,
+    /// `watch_dir`'s looks.
+    watch: watch::Watch,
 }
 
 /// What a client's event noted for the saver.
@@ -239,12 +268,18 @@ enum Note {
 /// The most events noted between two saves; past it, the saver looks at every torrent.
 const MAX_NOTES: usize = 4096;
 
-/// What the role, its API and its saver share.
+/// What the role, its API and its manager share.
 struct Shared {
     run: Mutex<Option<Run>>,
+    /// The listeners' engine, which .torrent URLs are fetched on.
+    engine: Arc<akio::Engine>,
+    /// The fetches of .torrent URLs under way.
+    fetches: std::sync::atomic::AtomicUsize,
     notes: Mutex<Vec<(InfoHash, Note)>>,
     /// Notes were dropped past [`MAX_NOTES`]: every torrent is looked at.
     overflow: AtomicBool,
+    /// The manager's channel, which an event that cannot wait for the next look wakes.
+    wake: Mutex<Option<SyncSender<SaverMsg>>>,
 }
 
 impl fmt::Debug for Shared {
@@ -259,7 +294,8 @@ impl fmt::Debug for Shared {
 pub struct ClientApi(Arc<Shared>);
 
 enum SaverMsg {
-    Interval(Duration),
+    /// Look now: a magnet link's metadata came.
+    Wake,
     Stop,
 }
 
@@ -267,7 +303,7 @@ enum SaverMsg {
 pub struct ClientRole {
     host: Host,
     shared: Arc<Shared>,
-    saver: Option<(Sender<SaverMsg>, std::thread::JoinHandle<()>)>,
+    saver: Option<(SyncSender<SaverMsg>, std::thread::JoinHandle<()>)>,
     pages: Arc<pages::Pages>,
     stopped: bool,
 }
@@ -379,6 +415,14 @@ fn make_client(cfg: &BitTorrentClient, shared: &Arc<Shared>) -> Result<Client, S
             } else {
                 s.overflow.store(true, Ordering::Relaxed);
             }
+            drop(n);
+            if note == Note::Metadata {
+                // A magnet link's torrent is placed into its own directory before it writes
+                // much below the client's (akio's A286): the manager looks now, not in a second.
+                if let Some(tx) = lock(&s.wake).as_ref() {
+                    let _ = tx.try_send(SaverMsg::Wake);
+                }
+            }
         }
     }));
     let client = Client::new(c).map_err(|e| format!("listen on {}: {e}", cfg.listen))?;
@@ -405,7 +449,9 @@ fn make_client(cfg: &BitTorrentClient, shared: &Arc<Shared>) -> Result<Client, S
 /// into the client's (akio's A286).
 fn start(client: &Client, rec: &mut Rec, seed: SeedLimits) {
     let mut o = AddOptions::default();
-    o.paused = rec.entry.paused;
+    // Every torrent is added paused: the manager's schedule starts it, so that the queue and
+    // the disk check are one place (fit's decision 8 of I198).
+    o.paused = true;
     o.peers = rec
         .entry
         .peers
@@ -449,10 +495,13 @@ fn records(doc: &Doc, data_dir: &Path) -> Vec<Rec> {
             };
             Rec {
                 mi_saved: mi.is_some(),
+                placed: mi.is_some(),
                 mi,
                 entry: e.clone(),
                 torrent: None,
                 err,
+                held: manage::Hold::None,
+                hold_msg: String::new(),
             }
         })
         .collect()
@@ -494,6 +543,105 @@ impl Run {
             .map_err(|e| format!("{}: {e}", path.display()))
     }
 
+    fn add(&mut self, src: Source, req: AddRequest) -> Result<Status, ApiError> {
+        let run = self;
+        let (mi, magnet) = match src {
+            Source::Torrent(b) => {
+                if u64::try_from(b.len()).map_or(true, |n| n > state::MAX_TORRENT_BYTES) {
+                    return Err(ApiError::BadRequest(format!(
+                        "a .torrent file larger than {} bytes",
+                        state::MAX_TORRENT_BYTES
+                    )));
+                }
+                let mi = MetaInfo::parse(&b).map_err(|e| ApiError::BadRequest(e.to_string()))?;
+                (Some(mi), String::new())
+            }
+            Source::Magnet(m) => {
+                if m.len() > state::MAX_MAGNET_BYTES {
+                    return Err(ApiError::BadRequest(format!(
+                        "a magnet link longer than {} bytes",
+                        state::MAX_MAGNET_BYTES
+                    )));
+                }
+                Magnet::parse(&m).map_err(|e| ApiError::BadRequest(e.to_string()))?;
+                (None, m)
+            }
+        };
+        {
+            if run.recs.len() >= run.cfg.torrents() {
+                return Err(ApiError::TooMany);
+            }
+            let dir = if req.category.is_empty() {
+                run.downloads.clone()
+            } else {
+                let c = run.cfg.category(&req.category).ok_or_else(|| {
+                    ApiError::BadRequest(format!("no category is named {:?}", req.category))
+                })?;
+                absolute(&run.cfg.category_dir(c))
+            };
+            // A magnet link downloads where the client was made to until its metadata comes,
+            // then into its own directory (the stopgap for akio's A286).
+            let placed = mi.is_some() || dir == run.client_dir;
+            let dir = dir.to_string_lossy().into_owned();
+            let mut rec = Rec {
+                entry: Entry {
+                    id: String::new(),
+                    name: mi.as_ref().map(|m| m.info.name.clone()).unwrap_or_default(),
+                    magnet,
+                    dir,
+                    paused: req.paused,
+                    added: now_rfc3339(),
+                    completed: false,
+                    peers: req
+                        .peers
+                        .iter()
+                        .take(128)
+                        .map(ToString::to_string)
+                        .collect(),
+                    category: req.category.clone(),
+                    other: Vec::new(),
+                },
+                mi,
+                mi_saved: false,
+                torrent: None,
+                err: String::new(),
+                held: manage::Hold::None,
+                hold_msg: String::new(),
+                placed,
+            };
+            let seed = run.seed();
+            start(&run.client, &mut rec, seed);
+            let Some(t) = rec.torrent.clone() else {
+                return Err(match &rec.err {
+                    e if e.contains("already added") => ApiError::Exists(String::new()),
+                    e => ApiError::BadRequest(e.clone()),
+                });
+            };
+            rec.entry.id = hex(&t.info_hash().0);
+            let id = rec.entry.id.clone();
+            run.recs.push(rec);
+            run.schedule();
+            if let Err(e) = run.save() {
+                // Not kept: the client lets it go again.
+                if let Some(r) = run.recs.pop() {
+                    if let Some(t) = &r.torrent {
+                        run.client.remove(&t.info_hash());
+                    }
+                }
+                return Err(ApiError::Io(e));
+            }
+            let i = run.find(&id).ok_or(ApiError::NotFound)?;
+            run.recs
+                .get(i)
+                .map(|r| run.status(r))
+                .ok_or(ApiError::NotFound)
+        }
+        .map_err(|e| match e {
+            ApiError::Exists(id) if id.is_empty() => ApiError::Exists("of this info hash".into()),
+            e => e,
+        })
+    }
+
     fn find(&self, id: &str) -> Option<usize> {
         let id = id.to_ascii_lowercase();
         self.recs.iter().position(|r| r.entry.id == id)
@@ -521,6 +669,13 @@ impl Run {
             peers: 0,
             seeders: 0,
             pieces_checked: 0,
+            category: e.category.clone(),
+            held: r.held.name().to_owned(),
+            queue_position: self
+                .recs
+                .iter()
+                .position(|o| o.entry.id == e.id)
+                .unwrap_or(0),
         };
         if let Some(mi) = &r.mi {
             if s.magnet.is_empty() {
@@ -564,6 +719,12 @@ impl Run {
         s.peers = st.peers;
         s.seeders = st.seeders;
         s.pieces_checked = st.pieces_checked;
+        if r.held == manage::Hold::Queue {
+            s.state = "queued".into();
+        }
+        if r.held == manage::Hold::Disk && s.error.is_empty() {
+            s.error.clone_from(&r.hold_msg);
+        }
         s
     }
 
@@ -601,39 +762,15 @@ impl Run {
     }
 }
 
-impl Shared {
-    /// The saver's look: what the events noted, saved.
-    fn save_noted(&self) {
-        let notes = std::mem::take(&mut *lock(&self.notes));
-        let all = self.overflow.swap(false, Ordering::Relaxed);
-        if notes.is_empty() && !all {
-            return;
-        }
-        let mut g = lock(&self.run);
-        if let Some(run) = g.as_mut() {
-            if run.take_notes(notes, all) {
-                let _ = run.save();
-            }
-        }
-    }
-}
-
-fn saver(shared: &Arc<Shared>, rx: &Receiver<SaverMsg>, mut every: Duration) {
-    loop {
-        match rx.recv_timeout(every) {
-            Ok(SaverMsg::Interval(d)) => every = d,
-            Ok(SaverMsg::Stop) | Err(RecvTimeoutError::Disconnected) => return,
-            Err(RecvTimeoutError::Timeout) => shared.save_noted(),
-        }
-    }
-}
-
 impl ClientRole {
     fn new(host: Host) -> ClientRole {
         let shared = Arc::new(Shared {
             run: Mutex::new(None),
+            engine: Arc::clone(&host.engine),
+            fetches: std::sync::atomic::AtomicUsize::new(0),
             notes: Mutex::new(Vec::new()),
             overflow: AtomicBool::new(false),
+            wake: Mutex::new(None),
         });
         ClientRole {
             pages: Arc::new(pages::Pages::new(ClientApi(Arc::clone(&shared)))),
@@ -657,6 +794,7 @@ impl ClientRole {
             recs: records(&doc, &data_dir),
             other: doc.other,
             data_dir,
+            watch: watch::Watch::default(),
         };
         let seed = run.seed();
         for r in &mut run.recs {
@@ -664,6 +802,7 @@ impl ClientRole {
                 start(&run.client, r, seed);
             }
         }
+        run.schedule();
         Ok(run)
     }
 
@@ -693,6 +832,7 @@ impl Role for ClientRole {
                 }
                 run.downloads = absolute(&cfg.downloads());
                 run.cfg = cfg.clone();
+                run.schedule();
             }
         } else {
             // The new directory's state first: one that does not read leaves all as it was.
@@ -737,17 +877,15 @@ impl Role for ClientRole {
         }
         drop(g);
         match &self.saver {
-            Some((tx, _)) => {
-                let _ = tx.send(SaverMsg::Interval(cfg.save()));
-            }
+            Some(_) => {}
             None => {
-                let (tx, rx) = channel();
+                let (tx, rx) = sync_channel(8);
+                *lock(&self.shared.wake) = Some(tx.clone());
                 let shared = Arc::clone(&self.shared);
-                let every = cfg.save();
                 let h = std::thread::Builder::new()
-                    .name("akit-bt-saver".into())
-                    .spawn(move || saver(&shared, &rx, every))
-                    .map_err(|e| format!("the saver thread: {e}"))?;
+                    .name("akit-bt-manager".into())
+                    .spawn(move || manage::manager(&shared, &rx))
+                    .map_err(|e| format!("the manager thread: {e}"))?;
                 self.saver = Some((tx, h));
             }
         }
@@ -760,10 +898,11 @@ impl Role for ClientRole {
         }
         self.stopped = true;
         if let Some((tx, h)) = self.saver.take() {
+            *lock(&self.shared.wake) = None;
             let _ = tx.send(SaverMsg::Stop);
             let _ = h.join();
         }
-        self.shared.save_noted();
+        self.shared.look(true);
         if let Some(mut run) = lock(&self.shared.run).take() {
             ClientRole::close(&mut run);
         }
@@ -834,90 +973,42 @@ impl ClientApi {
     ///
     /// Not running, bad input, held already, `max_torrents` reached, the state not written.
     pub fn add(&self, src: Source, req: AddRequest) -> Result<Status, ApiError> {
-        let (mi, magnet) = match src {
-            Source::Torrent(b) => {
-                if u64::try_from(b.len()).map_or(true, |n| n > state::MAX_TORRENT_BYTES) {
-                    return Err(ApiError::BadRequest(format!(
-                        "a .torrent file larger than {} bytes",
-                        state::MAX_TORRENT_BYTES
-                    )));
-                }
-                let mi = MetaInfo::parse(&b).map_err(|e| ApiError::BadRequest(e.to_string()))?;
-                (Some(mi), String::new())
-            }
-            Source::Magnet(m) => {
-                if m.len() > state::MAX_MAGNET_BYTES {
-                    return Err(ApiError::BadRequest(format!(
-                        "a magnet link longer than {} bytes",
-                        state::MAX_MAGNET_BYTES
-                    )));
-                }
-                Magnet::parse(&m).map_err(|e| ApiError::BadRequest(e.to_string()))?;
-                (None, m)
-            }
-        };
+        self.with(|run| run.add(src, req))
+    }
+
+    /// Adds the .torrent file at `url` (http or https; a redirect to a magnet link adds that),
+    /// as fit's `AddURL`: at most 32 MiB, 5 redirects and `url_timeout` in all, 4 at once. It
+    /// waits for the download on the caller's thread, never an I/O thread's.
+    ///
+    /// # Errors
+    ///
+    /// As [`add`](Self::add), and [`ApiError::Busy`], [`ApiError::Fetch`].
+    pub fn add_url(&self, url: &str, req: AddRequest) -> Result<Status, ApiError> {
+        let timeout = lock(&self.0.run)
+            .as_ref()
+            .map(|r| r.cfg.url_fetch_timeout())
+            .ok_or(ApiError::NotRunning)?;
+        let src = fetch::fetch(&self.0, url, timeout)?;
+        self.add(src, req)
+    }
+
+    /// Moves torrent `id` to place `pos` of the list, which the queue goes by.
+    ///
+    /// # Errors
+    ///
+    /// Not running, no such torrent, the state not written.
+    pub fn set_queue_position(&self, id: &str, pos: usize) -> Result<Status, ApiError> {
         self.with(|run| {
-            if run.recs.len() >= run.cfg.torrents() {
-                return Err(ApiError::TooMany);
-            }
-            // A magnet link downloads where the client was made to (akio's A286).
-            let dir = if mi.is_some() {
-                &run.downloads
-            } else {
-                &run.client_dir
-            };
-            let dir = dir.to_string_lossy().into_owned();
-            let mut rec = Rec {
-                entry: Entry {
-                    id: String::new(),
-                    name: mi.as_ref().map(|m| m.info.name.clone()).unwrap_or_default(),
-                    magnet,
-                    dir,
-                    paused: req.paused,
-                    added: now_rfc3339(),
-                    completed: false,
-                    peers: req
-                        .peers
-                        .iter()
-                        .take(128)
-                        .map(ToString::to_string)
-                        .collect(),
-                    other: Vec::new(),
-                },
-                mi,
-                mi_saved: false,
-                torrent: None,
-                err: String::new(),
-            };
-            let seed = run.seed();
-            start(&run.client, &mut rec, seed);
-            let Some(t) = rec.torrent.clone() else {
-                return Err(match &rec.err {
-                    e if e.contains("already added") => ApiError::Exists(String::new()),
-                    e => ApiError::BadRequest(e.clone()),
-                });
-            };
-            rec.entry.id = hex(&t.info_hash().0);
-            let id = rec.entry.id.clone();
-            run.recs.push(rec);
-            if let Err(e) = run.save() {
-                // Not kept: the client lets it go again.
-                if let Some(r) = run.recs.pop() {
-                    if let Some(t) = &r.torrent {
-                        run.client.remove(&t.info_hash());
-                    }
-                }
-                return Err(ApiError::Io(e));
-            }
-            let i = run.find(&id).ok_or(ApiError::NotFound)?;
+            let i = run.find(id).ok_or(ApiError::NotFound)?;
+            let r = run.recs.remove(i);
+            let pos = pos.min(run.recs.len());
+            run.recs.insert(pos, r);
+            run.schedule();
+            run.save().map_err(ApiError::Io)?;
             run.recs
-                .get(i)
+                .get(pos)
                 .map(|r| run.status(r))
                 .ok_or(ApiError::NotFound)
-        })
-        .map_err(|e| match e {
-            ApiError::Exists(id) if id.is_empty() => ApiError::Exists("of this info hash".into()),
-            e => e,
         })
     }
 
@@ -935,6 +1026,7 @@ impl ClientApi {
             }
             let _ = std::fs::remove_file(state::torrent_path(&run.data_dir, &r.entry.id));
             let _ = std::fs::remove_file(state::resume_path(&run.data_dir, &r.entry.id));
+            run.schedule();
             if delete {
                 if let Some(mi) =
                     r.mi.as_ref()
@@ -960,10 +1052,10 @@ impl ClientApi {
             if let Some(t) = &r.torrent {
                 if paused {
                     t.pause();
-                } else {
-                    t.resume();
                 }
             }
+            // Resumed by the schedule, which may hold it.
+            run.schedule();
             run.save().map_err(ApiError::Io)?;
             run.recs
                 .get(i)
@@ -999,7 +1091,7 @@ impl ClientApi {
     /// Saves what the client's events noted now, as the saver does every `save_interval`.
     pub fn save_now(&self) {
         self.0.overflow.store(true, Ordering::Relaxed);
-        self.0.save_noted();
+        self.0.look(true);
     }
 }
 

@@ -124,17 +124,6 @@ fn not_supported_yet() {
         format!(r#"{{"bittorrent": {{"client": {{"listen": ":6881", "data_dir": "d", {m}}}}}}}"#)
     };
     for (m, field) in [
-        (r#""categories": []"#, "bittorrent.client.categories"),
-        (r#""watch_dir": "w""#, "bittorrent.client.watch_dir"),
-        (
-            r#""watch_interval": "1s""#,
-            "bittorrent.client.watch_interval",
-        ),
-        (
-            r#""watch_max_files": 1"#,
-            "bittorrent.client.watch_max_files",
-        ),
-        (r#""url_timeout": "1s""#, "bittorrent.client.url_timeout"),
         (r#""alt_speed": {}"#, "bittorrent.client.alt_speed"),
         (r#""access": {}"#, "bittorrent.client.access"),
         (
@@ -144,24 +133,20 @@ fn not_supported_yet() {
         (r#""publish": []"#, "bittorrent.client.publish"),
         (r#""rss": {}"#, "bittorrent.client.rss"),
         (
+            r#""categories": [{"name": "a", "limits": {}}]"#,
+            "bittorrent.client.categories[0].limits",
+        ),
+        (
+            r#""categories": [{"name": "a", "media_library": "m"}]"#,
+            "bittorrent.client.categories[0].media_library",
+        ),
+        (
             r#""limits": {"max_conns": 1}"#,
             "bittorrent.client.limits.max_conns",
         ),
         (
             r#""limits": {"max_half_open": 1}"#,
             "bittorrent.client.limits.max_half_open",
-        ),
-        (
-            r#""limits": {"max_active_downloads": 1}"#,
-            "bittorrent.client.limits.max_active_downloads",
-        ),
-        (
-            r#""limits": {"max_active_seeds": 1}"#,
-            "bittorrent.client.limits.max_active_seeds",
-        ),
-        (
-            r#""limits": {"min_free_bytes": 1}"#,
-            "bittorrent.client.limits.min_free_bytes",
         ),
     ] {
         refused(&client(m), &format!("{field}: not supported yet"));
@@ -264,4 +249,53 @@ fn tracker_binds() {
         r#"{"bittorrent": {"client": {"listen": ":6881", "data_dir": "d"}, "tracker": {"listen": ":6881"}}}"#,
         "listens on UDP",
     );
+}
+
+/// fit's category checks and the I153 fields' defaults.
+#[test]
+fn categories_and_watch() {
+    let client = |m: &str| {
+        format!(r#"{{"bittorrent": {{"client": {{"listen": ":6881", "data_dir": "/d", {m}}}}}}}"#)
+    };
+    for (m, want) in [
+        (r#""categories": [{"name": "-x"}]"#, "is not a valid name"),
+        (
+            r#""categories": [{"name": "a"}, {"name": "a"}]"#,
+            "another category is already named",
+        ),
+        (
+            r#""categories": [{"name": "a", "dir": "../x"}]"#,
+            "leads out of download_dir",
+        ),
+        (r#""categories": [{"dir": "x"}]"#, "missing required field"),
+        (r#""watch_max_files": 10001"#, "watch_max_files"),
+        (r#""watch_interval": "-1s""#, "is negative"),
+        (r#""url_timeout": "-1s""#, "is negative"),
+    ] {
+        refused(&client(m), want);
+    }
+    let c = loads(&client(
+        r#""categories": [{"name": "films", "dir": "f"}, {"name": "iso"}, {"name": "abs", "dir": "/x"}], "watch_dir": "/w", "limits": {"max_active_downloads": 3, "max_active_seeds": 5, "min_free_bytes": 7}"#,
+    ));
+    let b = c.bittorrent.and_then(|b| b.client).unwrap();
+    let cat = |n: &str| b.category(n).unwrap();
+    assert_eq!(
+        b.category_dir(cat("films")),
+        std::path::Path::new("/d/downloads/f")
+    );
+    assert_eq!(
+        b.category_dir(cat("iso")),
+        std::path::Path::new("/d/downloads/iso")
+    );
+    assert_eq!(b.category_dir(cat("abs")), std::path::Path::new("/x"));
+    assert_eq!(
+        (b.watch(), b.watch_files(), b.url_fetch_timeout()),
+        (Duration::from_secs(10), 100, Duration::from_secs(30))
+    );
+    let l = b.limits.unwrap();
+    assert_eq!(
+        (l.max_active_downloads, l.max_active_seeds, l.free_bytes()),
+        (3, 5, 7)
+    );
+    assert_eq!(BitTorrentLimits::default().free_bytes(), 1 << 30);
 }

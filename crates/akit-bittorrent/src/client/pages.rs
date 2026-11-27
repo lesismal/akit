@@ -82,6 +82,13 @@ pub(crate) fn status_json(b: &mut String, s: &Status) {
         str_field(b, "error", &s.error);
     }
     str_field(b, "added", &s.added);
+    if !s.category.is_empty() {
+        str_field(b, "category", &s.category);
+    }
+    if !s.held.is_empty() {
+        str_field(b, "held", &s.held);
+    }
+    let _ = write!(b, "\"queue_position\":{},", s.queue_position);
     let _ = write!(
         b,
         "\"paused\":{},\"complete\":{},\"size\":{},\"completed\":{},\"progress\":{},\"pieces\":{},\"pieces_have\":{},\"downloaded\":{},\"uploaded\":{},\"peers\":{},\"seeders\":{}}}",

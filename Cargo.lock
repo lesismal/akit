@@ -423,6 +423,7 @@ dependencies = [
  "akio-bittorrent",
  "akio-crypto",
  "akio-http",
+ "akio-sys",
  "akit-access",
  "akit-config",
  "akit-roles",

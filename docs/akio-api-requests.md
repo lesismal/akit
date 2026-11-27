@@ -2957,7 +2957,11 @@ hooks for an info hash allowed and a request authorized (`TrackerConfig::allow_f
 
 ## A286 A torrent's own storage directory for a magnet link
 
-**Status.** Requested by I150 (2026-11-27) for I153.
+**Status.** Requested by I150 (2026-11-27) for I153. Stopgap (I153, recorded in
+[progress](progress.md)): a magnet link added in a category downloads where the client was made
+to until its metadata comes; the client's event wakes the role's manager, which removes the
+torrent from the client, removes what it wrote there, and adds it again from its .torrent into
+its category's directory, where it dials its peers again.
 
 **Problem.** fit downloads a torrent into its category's directory, a magnet link's too
 (fib's `StorageOpener`, called when the info arrives). akio-bittorrent's `AddOptions::storage`
