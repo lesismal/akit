@@ -9,7 +9,7 @@
 )]
 
 use std::io::{Read, Write};
-use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::net::{SocketAddr, TcpStream};
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicUsize};
 use std::sync::mpsc;
 use std::time::Instant;
@@ -20,14 +20,6 @@ use super::*;
 use crate::mesh::{self, Mesh, Router};
 use crate::model::{CODE_INTERNAL, Identity, ROLE_HUB};
 use crate::wire::Error;
-
-fn free_port() -> u16 {
-    TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port()
-}
 
 /// A role's pages over `router`, served by a console on loopback.
 struct Ui {
@@ -64,10 +56,9 @@ fn start_ui(router: Router) -> Ui {
     let local = Local::new(m.downgrade());
     let pages = Arc::new(LlmPages::new("hub", local, m.downgrade()));
     pages.set_me(Arc::new(|| vec![("role", "\"test\"".to_owned())]));
-    let port = free_port();
     let hash = akio_crypto::bcrypt::hash(b"secret", akio_crypto::bcrypt::MIN_COST).unwrap();
     let doc = format!(
-        r#"{{"llm": {{"hub": {{"console": {{"address": "127.0.0.1:{port}", "max_conns": 64, "users": [{{"username": "admin", "password_hash": "{hash}"}}]}}}}}}}}"#
+        r#"{{"llm": {{"hub": {{"console": {{"address": "127.0.0.1:0", "max_conns": 64, "users": [{{"username": "admin", "password_hash": "{hash}"}}]}}}}}}}}"#
     );
     let config = akit_config::from_json(&doc, None).unwrap();
     let mut consoles = akit_admin::console::RoleConsoles::new(&akit_admin::Options::default());
@@ -75,7 +66,7 @@ fn start_ui(router: Router) -> Ui {
         .apply("llm.hub", Some(&config), Some(pages))
         .unwrap();
     Ui {
-        addr: SocketAddr::from(([127, 0, 0, 1], port)),
+        addr: consoles.addr("llm.hub").expect("the console's address"),
         _consoles: consoles,
         _mesh: m,
         engine,
@@ -536,17 +527,16 @@ fn a_stalled_browser_cancels_its_stream() {
         LlmPages::new("node", Local::new(m.downgrade()), m.downgrade())
             .with_stall(Duration::from_millis(300)),
     );
-    let port = free_port();
     let hash = akio_crypto::bcrypt::hash(b"secret", akio_crypto::bcrypt::MIN_COST).unwrap();
     let doc = format!(
-        r#"{{"llm": {{"node": {{"console": {{"address": "127.0.0.1:{port}", "users": [{{"username": "admin", "password_hash": "{hash}"}}]}}}}}}}}"#
+        r#"{{"llm": {{"node": {{"console": {{"address": "127.0.0.1:0", "users": [{{"username": "admin", "password_hash": "{hash}"}}]}}}}}}}}"#
     );
     let config = akit_config::from_json(&doc, None).unwrap();
     let mut consoles = akit_admin::console::RoleConsoles::new(&akit_admin::Options::default());
     consoles
         .apply("llm.node", Some(&config), Some(pages))
         .unwrap();
-    let b = login(SocketAddr::from(([127, 0, 0, 1], port)));
+    let b = login(consoles.addr("llm.node").expect("the console's address"));
     // Never read: the stream is held back, then canceled at the stall timeout.
     let s = b.open("POST", "/api/stream/s/big", "");
     let deadline = Instant::now() + Duration::from_secs(20);

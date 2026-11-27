@@ -11,25 +11,28 @@
 
 mod support;
 
-use support::{Roles, Upstream, agent, call, free_port, key_hash, until};
+use support::{Ports, Roles, Upstream, agent, call, key_hash, until};
 
 const KEY: &str = "ah-test-key-0123456789";
 
-fn config(hub: u16, api: u16, upstream: u16, direct: Option<u16>) -> String {
-    let node_listen = if let Some(n) = direct {
-        format!(r#", "listen": {{"address": "127.0.0.1:{n}", "password": "np"}}"#)
+/// The three roles, their listeners on port 0, linked by the ports `p` says they bound; with
+/// `direct`, the node listens too and the proxy links to it besides the hub.
+fn config(p: &Ports, upstream: u16, direct: bool) -> String {
+    let (hub, node) = (p.hub, p.node);
+    let node_listen = if direct {
+        r#", "listen": {"address": "127.0.0.1:0", "password": "np"}"#
     } else {
-        String::new()
+        ""
     };
-    let direct_peer = if let Some(n) = direct {
-        format!(r#", {{"address": "127.0.0.1:{n}", "password": "np", "role": "node"}}"#)
+    let direct_peer = if direct {
+        format!(r#", {{"address": "127.0.0.1:{node}", "password": "np", "role": "node"}}"#)
     } else {
         String::new()
     };
     format!(
         r#"{{"llm": {{
           "hub": {{"id": "hub-0000000000000001", "name": "hub",
-            "listen": {{"address": "127.0.0.1:{hub}", "node_password": "np", "proxy_password": "pp"}},
+            "listen": {{"address": "127.0.0.1:0", "node_password": "np", "proxy_password": "pp"}},
             "limits": {{"retry_interval": "200ms"}}}},
           "node": {{"id": "node-0000000000000001", "name": "gpu"{node_listen},
             "peers": [{{"address": "127.0.0.1:{hub}", "password": "np", "role": "hub"}}],
@@ -42,7 +45,7 @@ fn config(hub: u16, api: u16, upstream: u16, direct: Option<u16>) -> String {
           "proxy": {{"id": "proxy-0000000000000001", "name": "agents",
             "peers": [{{"address": "127.0.0.1:{hub}", "password": "pp", "role": "hub"}}{direct_peer}],
             "limits": {{"retry_interval": "200ms"}},
-            "api": {{"address": "127.0.0.1:{api}"}},
+            "api": {{"address": "127.0.0.1:0"}},
             "api_keys": [{{"id": "0123456789abcdef", "name": "test", "prefix": "ah-test", "hash": "{}"}}]}}
         }}}}"#,
         key_hash(KEY)
@@ -57,8 +60,8 @@ fn models_listed(api: u16) -> bool {
 #[test]
 fn agent_proxy_hub_node_upstream() {
     let up = Upstream::start();
-    let (hub, api) = (free_port(), free_port());
-    let roles = Roles::start(&config(hub, api, up.port, None));
+    let (roles, p) = Roles::start_with(|p| config(p, up.port, false));
+    let api = p.api;
     until("the proxy to list the node's models", || models_listed(api));
     let list = agent(api, "GET", "/v1/models", KEY, b"").text();
     assert!(
@@ -186,8 +189,8 @@ fn agent_proxy_hub_node_upstream() {
 fn a_dead_upstream_and_a_direct_node() {
     // The node is linked to the proxy directly too: the direct route comes first.
     let up = Upstream::start();
-    let (hub, api, node) = (free_port(), free_port(), free_port());
-    let _roles = Roles::start(&config(hub, api, up.port, Some(node)));
+    let (_roles, p) = Roles::start_with(|p| config(p, up.port, true));
+    let api = p.api;
     until("the proxy to list the node's models", || models_listed(api));
     let a = agent(
         api,
@@ -199,11 +202,11 @@ fn a_dead_upstream_and_a_direct_node() {
     assert_eq!(a.status, 200, "{}", a.text());
     assert_eq!(a.header("x-akit-node"), Some("node-0000000000000001"));
 
-    // An upstream nobody answers on: unavailable, in the agent's shape.
-    let dead = free_port();
-    let doc = config(hub, api, dead, Some(node));
+    // An upstream nobody answers on (port 1): unavailable, in the agent's shape. The roles
+    // started anew bind ports of their own.
     drop(_roles);
-    let _roles = Roles::start(&doc);
+    let (_roles, p) = Roles::start_with(|p| config(p, 1, true));
+    let api = p.api;
     until("the proxy to list the node's models", || models_listed(api));
     let a = agent(
         api,
@@ -222,21 +225,22 @@ fn an_expired_token_closes_its_links() {
     // The hub issues a token expiring in 2 s; the node links with it, and is cut when it
     // expires (the hub's sweep, armed on every apply).
     let sec = akit_roles::linktoken::Secret::new().unwrap();
-    let hub = free_port();
     let expires = akit_roles::linktoken::unix_now() + 2;
-    let doc = format!(
-        r#"{{"llm": {{
+    let (roles, _) = Roles::start_with(|p| {
+        format!(
+            r#"{{"llm": {{
           "hub": {{"id": "hub-0000000000000009",
-            "listen": {{"address": "127.0.0.1:{hub}"}},
+            "listen": {{"address": "127.0.0.1:0"}},
             "tokens": [{{"id": "{}", "name": "n", "hash": "{}", "expires_at": {expires}}}]}},
           "node": {{"id": "node-0000000000000009",
-            "peers": [{{"address": "127.0.0.1:{hub}", "token": "{}", "role": "hub"}}],
+            "peers": [{{"address": "127.0.0.1:{}", "token": "{}", "role": "hub"}}],
             "limits": {{"retry_interval": "200ms"}}}}}}}}"#,
-        sec.id(),
-        sec.hash(),
-        sec.token()
-    );
-    let roles = Roles::start(&doc);
+            sec.id(),
+            sec.hash(),
+            p.hub,
+            sec.token()
+        )
+    });
     let reg = roles.roles.lock().unwrap().registries();
     let links = || {
         akit_roles::host::token_views(&reg, "llm.hub")

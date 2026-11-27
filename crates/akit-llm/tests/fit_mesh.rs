@@ -26,6 +26,8 @@ fn fit_bin() -> String {
     std::env::var("AKIT_FIT_BIN").expect("AKIT_FIT_BIN: the path of fit's binary")
 }
 
+/// A port free now, for a listener of fit's binary, whose config must name it before it starts:
+/// another process may take it before fit binds it.
 fn free_port() -> u16 {
     TcpListener::bind("127.0.0.1:0")
         .unwrap()

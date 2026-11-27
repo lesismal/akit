@@ -56,19 +56,20 @@ fn fit(tag: &str, config: &str) -> Fit {
 #[ignore = "needs fit's binary in AKIT_FIT_BIN"]
 fn akit_pages_with_fit_roles() {
     let up = Upstream::start();
-    let (ahub, fhub, api) = (free_port(), free_port(), free_port());
+    // akit's listeners on port 0; fit's hub's port named before it starts.
     let roles = Roles::start(&format!(
         r#"{{"llm": {{
           "hub": {{"id": "hub-akit000000000061", "name": "ahub",
-            "listen": {{"address": "127.0.0.1:{ahub}"}}}},
+            "listen": {{"address": "127.0.0.1:0"}}}},
           "proxy": {{"id": "proxy-akit00000000061", "name": "aproxy",
             "limits": {{"retry_interval": "200ms"}},
-            "api": {{"address": "127.0.0.1:{api}"}},
+            "api": {{"address": "127.0.0.1:0"}},
             "api_keys": [{{"id": "0123456789abcdef", "name": "t", "prefix": "ah-pages", "hash": "{}"}}]}}}}}}"#,
         key_hash(KEY)
     ));
     let hub = roles.local("llm.hub");
     let proxy = roles.local("llm.proxy");
+    let (ahub, fhub, api) = (roles.mesh_port("llm.hub"), free_port(), roles.api_port());
 
     // A token akit's hub issues from its pages takes fit's node.
     let is = call(&hub, "/mesh/tokens/create", r#"{"name": "fit node"}"#).unwrap();

@@ -82,11 +82,11 @@ fn json(s: &str) -> akit_config::value::Value {
 #[ignore = "needs fit's binary in AKIT_FIT_BIN"]
 fn akit_hub_manages_fit_node() {
     let _ = stand_ins();
-    let hub_port = free_port();
-    let roles = Roles::start(&format!(
-        r#"{{"llm": {{"hub": {{"id": "hub-akit000000000011",
-          "listen": {{"address": "127.0.0.1:{hub_port}", "node_password": "np"}}}}}}}}"#
-    ));
+    let roles = Roles::start(
+        r#"{"llm": {"hub": {"id": "hub-akit000000000011",
+          "listen": {"address": "127.0.0.1:0", "node_password": "np"}}}}"#,
+    );
+    let hub_port = roles.mesh_port("llm.hub");
     let node = fit(
         "node",
         &format!(
@@ -213,6 +213,7 @@ fn console(port: u16, path: &str, cookie: &str, csrf: &str, body: &str) -> (u16,
 fn fit_hub_manages_akit_node() {
     // The stand-in `ollama` on akit's lookups, so the job runs no real tool.
     akit_llm::exec::tools_in(Some(stand_ins().clone()));
+    // fit's hub's ports are named before it starts.
     let (hub_port, console_port) = (free_port(), free_port());
     // The bcrypt hash of "secret".
     let hash = "$2b$10$VF3oqQjY3UmazI3yLOspje5eihWk5sQc05lgEHVxOZSbpOgdQqDPa";

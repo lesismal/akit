@@ -29,11 +29,13 @@ fn console(port: u16) -> String {
 #[test]
 #[allow(clippy::too_many_lines)]
 fn mesh_methods() {
-    let (hub, con) = (free_port(), free_port());
+    // The console's port is named before it binds: the identity's `http_url` is the console's
+    // address as its member writes it (fit's), none for port 0.
+    let con = free_port();
     let roles = Roles::start(&format!(
         r#"{{"llm": {{
           "hub": {{"id": "hub-0000000000000041", "name": "hub",
-                   "listen": {{"address": "127.0.0.1:{hub}", "node_password": "npw"}}}},
+                   "listen": {{"address": "127.0.0.1:0", "node_password": "npw"}}}},
           "node": {{"id": "node-0000000000000042", "name": "box", "console": {},
                     "limits": {{"retry_interval": "200ms"}}}}}}}}"#,
         console(con)
@@ -92,8 +94,9 @@ fn mesh_methods() {
     assert_eq!(code(&r), CODE_NOT_FOUND, "{r:?}");
     assert!(!roles.member("llm.node").contains("peers"));
 
-    // A dial: written, answered without its password, linked.
-    let target = format!("127.0.0.1:{hub}");
+    // A dial: written, answered without its password, linked. To where the hub listens now: an
+    // edit of its member listens anew, on whatever port 0 gives then.
+    let target = format!("127.0.0.1:{}", roles.mesh_port("llm.hub"));
     let out = call(
         &node,
         "/mesh/dial",
@@ -120,8 +123,9 @@ fn mesh_methods() {
             .contains("node-0000000000000042")
     });
 
-    // Listen: an empty password keeps the current one, each role's apart; cleared at once.
-    let (l1, l2) = (free_port(), free_port());
+    // Listen: an empty password keeps the current one, each role's apart; cleared at once. On
+    // port 0 each time: the passwords are what changes.
+    let (l1, l2) = (0, 0);
     call(
         &node,
         "/mesh/listen",
@@ -269,11 +273,12 @@ const KEY: &str = "ah-test-key-0123456789";
 #[allow(clippy::too_many_lines)]
 fn proxy_methods() {
     let up = Upstream::start();
-    let (hub, api) = (free_port(), free_port());
-    let roles = Roles::start(&format!(
-        r#"{{"llm": {{
+    let (roles, ports) = Roles::start_with(|p| {
+        let hub = p.hub;
+        format!(
+            r#"{{"llm": {{
           "hub": {{"id": "hub-0000000000000051", "name": "hub",
-            "listen": {{"address": "127.0.0.1:{hub}", "node_password": "np", "proxy_password": "pp"}},
+            "listen": {{"address": "127.0.0.1:0", "node_password": "np", "proxy_password": "pp"}},
             "limits": {{"retry_interval": "200ms"}}}},
           "node": {{"id": "node-0000000000000051", "name": "gpu",
             "peers": [{{"address": "127.0.0.1:{hub}", "password": "np", "role": "hub"}}],
@@ -282,12 +287,14 @@ fn proxy_methods() {
           "proxy": {{"id": "proxy-0000000000000051", "name": "agents",
             "peers": [{{"address": "127.0.0.1:{hub}", "password": "pp", "role": "hub"}}],
             "limits": {{"retry_interval": "200ms"}},
-            "api": {{"address": "127.0.0.1:{api}"}},
+            "api": {{"address": "127.0.0.1:0"}},
             "api_keys": [{{"id": "0123456789abcdef", "name": "test", "prefix": "ah-test", "hash": "{}"}}]}}
         }}}}"#,
-        up.port,
-        key_hash(KEY)
-    ));
+            up.port,
+            key_hash(KEY)
+        )
+    });
+    let api = ports.api;
     let p = roles.local("llm.proxy");
     until("the proxy to list the model", || {
         call(&p, "/proxy/models", "")
@@ -366,23 +373,27 @@ fn proxy_methods() {
     assert_eq!(
         got,
         format!(
-            r#"{{"address":"127.0.0.1:{api}","cert_file":"","key_file":"","max_body_bytes":33554432,"max_conns":256,"max_inflight":256,"first_byte_timeout":"5m0s","timeout":"30m0s","url":"http://127.0.0.1:{api}"}}"#
+            r#"{{"address":"127.0.0.1:0","cert_file":"","key_file":"","max_body_bytes":33554432,"max_conns":256,"max_inflight":256,"first_byte_timeout":"5m0s","timeout":"30m0s","url":"http://127.0.0.1:{api}"}}"#
         )
     );
-    let api2 = free_port();
+    // Moved to another address, on port 0 too: served where it bound it.
     let got = call(
         &p,
         "/proxy/api/set",
-        &format!(r#"{{"address": "127.0.0.1:{api2}", "max_inflight": 8, "timeout": "30m"}}"#),
+        r#"{"address": "localhost:0", "max_inflight": 8, "timeout": "30m"}"#,
     )
     .unwrap();
+    let api2 = roles.api_port();
+    assert_ne!(api2, 0);
     assert!(
-        got.contains(r#""max_inflight":8"#) && got.contains(&format!("http://127.0.0.1:{api2}")),
+        got.contains(r#""max_inflight":8"#) && got.contains(&format!(":{api2}\"")),
         "{got}"
     );
-    assert!(roles.member("llm.proxy").contains(&format!(
-        r#""api":{{"address":"127.0.0.1:{api2}","max_inflight":8}}"#
-    )));
+    assert!(
+        roles
+            .member("llm.proxy")
+            .contains(r#""api":{"address":"localhost:0","max_inflight":8}"#)
+    );
     for req in [
         r#"{"address": "10.1.1.1:9"}"#,
         r#"{"address": "127.0.0.1:9", "cert_file": "/nonexistent"}"#,

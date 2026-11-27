@@ -21,7 +21,7 @@ use akit_llm::model::{
     ROLE_HUB, ROLE_NODE, ROLE_PROXY,
 };
 use akit_llm::wire::Error;
-use support::{Roles, call, code, free_port, read_stream, until};
+use support::{Roles, call, code, read_stream, until};
 
 /// A node of `id` that allows management (or not): its info, its model list and a job's
 /// follow (`"one "`, `"two "`, then the job done).
@@ -96,12 +96,9 @@ fn fake_node(e: &Arc<akio::Engine>, id: &str, manage: bool) -> Mesh {
     m
 }
 
-fn hub_doc(port: u16) -> String {
-    format!(
-        r#"{{"llm": {{"hub": {{"id": "hub-0000000000000001", "name": "h",
-          "listen": {{"address": "127.0.0.1:{port}", "node_password": "np", "proxy_password": "pp"}}}}}}}}"#
-    )
-}
+/// A hub, its listener on port 0.
+const HUB_DOC: &str = r#"{"llm": {"hub": {"id": "hub-0000000000000001", "name": "h",
+          "listen": {"address": "127.0.0.1:0", "node_password": "np", "proxy_password": "pp"}}}}"#;
 
 fn link(m: &Mesh, port: u16) {
     m.dial(&DialReq {
@@ -116,8 +113,8 @@ fn link(m: &Mesh, port: u16) {
 /// fit's `TestNodeCallForwarding` and `TestNodeStreamForwarding`.
 #[test]
 fn node_calls_and_streams_relayed() {
-    let port = free_port();
-    let roles = Roles::start(&hub_doc(port));
+    let roles = Roles::start(HUB_DOC);
+    let port = roles.mesh_port("llm.hub");
     let hub = roles.local("llm.hub");
     // fit's `TestNodeListSeqAndPace`: the list's sequence changes only when it changed.
     let seq =
@@ -232,8 +229,7 @@ fn node_calls_and_streams_relayed() {
 /// answered with its reason.
 #[test]
 fn settings_and_profile_written_back() {
-    let port = free_port();
-    let roles = Roles::start(&hub_doc(port));
+    let roles = Roles::start(HUB_DOC);
     let hub = roles.local("llm.hub");
     assert_eq!(
         call(&hub, "/hub/settings/get", "").unwrap(),
@@ -279,10 +275,9 @@ fn listener_files_reported() {
     let (cf, kf) = (dir.join("c.pem"), dir.join("k.pem"));
     std::fs::write(&cf, &c).unwrap();
     std::fs::write(&kf, &k).unwrap();
-    let port = free_port();
     let roles = Roles::start(&format!(
         r#"{{"llm": {{"hub": {{"id": "hub-0000000000000003",
-          "listen": {{"address": "127.0.0.1:{port}", "node_password": "np",
+          "listen": {{"address": "127.0.0.1:0", "node_password": "np",
             "cert_file": "{}", "key_file": "{}"}}}}}}}}"#,
         cf.display(),
         kf.display()

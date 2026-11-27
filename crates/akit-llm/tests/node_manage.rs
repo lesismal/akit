@@ -25,7 +25,7 @@ use akit_llm::model::{
     CODE_BAD_REQUEST, CODE_FORBIDDEN, CODE_NOT_FOUND, CODE_RATE_LIMITED, DialReq, Identity,
     ROLE_NODE, ROLE_PROXY,
 };
-use support::{Roles, call, code, free_port, read_stream, until};
+use support::{Roles, call, code, read_stream, until};
 
 /// The stand-ins, for every thread of this test binary, set before any node starts: `ollama`
 /// (`ps` sleeps), `nvidia-smi` answering the GPU queries (the hardware's counted in `calls`) and
@@ -108,15 +108,17 @@ fn field(j: &str, k: &str) -> String {
 #[test]
 fn manage_access() {
     let _ = tools();
-    let (hub, node) = (free_port(), free_port());
-    let roles = Roles::start(&format!(
-        r#"{{"llm": {{"hub": {{"id": "hub-0000000000000011",
-            "listen": {{"address": "127.0.0.1:{hub}", "node_password": "np"}}}},
+    let (roles, ports) = Roles::start_with(|p| {
+        format!(
+            r#"{{"llm": {{"hub": {{"id": "hub-0000000000000011",
+            "listen": {{"address": "127.0.0.1:0", "node_password": "np"}}}},
           "node": {{"id": "node-0000000000000011", "name": "box",
-            "listen": {{"address": "127.0.0.1:{node}", "proxy_password": "pp"}},
-            "peers": [{{"address": "127.0.0.1:{hub}", "password": "np", "role": "hub"}}],
-            "limits": {{"retry_interval": "200ms"}}, "settings": {{"gpu_sudo": false}}}}}}}}"#
-    ));
+            "listen": {{"address": "127.0.0.1:0", "proxy_password": "pp"}},
+            "peers": [{{"address": "127.0.0.1:{}", "password": "np", "role": "hub"}}],
+            "limits": {{"retry_interval": "200ms"}}, "settings": {{"gpu_sudo": false}}}}}}}}"#,
+            p.hub
+        )
+    });
     let _ = tools();
     let (h, n) = (roles.local("llm.hub"), roles.local("llm.node"));
     until("the node to link", || {
@@ -157,7 +159,7 @@ fn manage_access() {
         akit_llm::mesh::Router::new(),
     );
     p.dial(&DialReq {
-        addr: format!("127.0.0.1:{node}"),
+        addr: format!("127.0.0.1:{}", ports.node),
         password: "pp".to_owned(),
         role: ROLE_NODE.to_owned(),
         ..DialReq::default()

@@ -117,7 +117,8 @@ fn calls(api: u16, node: &str) {
 #[ignore = "needs fit's binary in AKIT_FIT_BIN"]
 fn fit_hub_between_akit_node_and_akit_proxy() {
     let up = Upstream::start();
-    let (hub, api) = (free_port(), free_port());
+    // fit's hub's port is named before it starts.
+    let hub = free_port();
     let _fit = fit(
         "hub",
         &format!(
@@ -133,22 +134,23 @@ fn fit_hub_between_akit_node_and_akit_proxy() {
           "proxy": {{"id": "proxy-akit00000000001",
             "peers": [{{"address": "127.0.0.1:{hub}", "password": "pp", "role": "hub"}}],
             "limits": {{"retry_interval": "200ms"}},
-            "api": {{"address": "127.0.0.1:{api}"}}, "api_keys": {}}}}}}}"#,
+            "api": {{"address": "127.0.0.1:0"}}, "api_keys": {}}}}}}}"#,
         models(up.port),
         keys()
     ));
-    calls(api, "node-akit000000000001");
+    calls(_akit.api_port(), "node-akit000000000001");
 }
 
 #[test]
 #[ignore = "needs fit's binary in AKIT_FIT_BIN"]
 fn akit_hub_between_fit_node_and_fit_proxy() {
     let up = Upstream::start();
-    let (hub, api) = (free_port(), free_port());
-    let _akit = Roles::start(&format!(
-        r#"{{"llm": {{"hub": {{"id": "hub-akit000000000001",
-          "listen": {{"address": "127.0.0.1:{hub}", "node_password": "np", "proxy_password": "pp"}}}}}}}}"#
-    ));
+    // akit's hub on port 0; fit's proxy's API named before it starts.
+    let _akit = Roles::start(
+        r#"{"llm": {"hub": {"id": "hub-akit000000000001",
+          "listen": {"address": "127.0.0.1:0", "node_password": "np", "proxy_password": "pp"}}}}"#,
+    );
+    let (hub, api) = (_akit.mesh_port("llm.hub"), free_port());
     let _node = fit(
         "node",
         &format!(
@@ -174,7 +176,8 @@ fn akit_hub_between_fit_node_and_fit_proxy() {
 #[ignore = "needs fit's binary in AKIT_FIT_BIN"]
 fn akit_proxy_to_fit_node_directly() {
     let up = Upstream::start();
-    let (node, api) = (free_port(), free_port());
+    // fit's node's port is named before it starts.
+    let node = free_port();
     let _node = fit(
         "direct",
         &format!(
@@ -188,8 +191,8 @@ fn akit_proxy_to_fit_node_directly() {
         r#"{{"llm": {{"proxy": {{"id": "proxy-akit00000000002",
           "peers": [{{"address": "127.0.0.1:{node}", "password": "pp", "role": "node"}}],
           "limits": {{"retry_interval": "200ms"}},
-          "api": {{"address": "127.0.0.1:{api}"}}, "api_keys": {}}}}}}}"#,
+          "api": {{"address": "127.0.0.1:0"}}, "api_keys": {}}}}}}}"#,
         keys()
     ));
-    calls(api, "node-fit0000000000002");
+    calls(_akit.api_port(), "node-fit0000000000002");
 }

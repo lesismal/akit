@@ -104,6 +104,8 @@ fn login(addr: SocketAddr) -> String {
 /// Server-Sent Events.
 #[test]
 fn a_nodes_pages() {
+    // The console's port is named before it binds: the identity's `http_url` is the console's
+    // address as its member writes it (fit's), none for port 0.
     let port = free_port();
     let roles = Roles::start(&format!(
         r#"{{"llm": {{"node": {{"id": "node-0000000000000021", "name": "box", "console": {}}}}}}}"#,
@@ -198,17 +200,19 @@ fn a_nodes_pages() {
 /// A hub's pages reach its node: `/hub/nodes` lists it, `/hub/node/call` calls its method.
 #[test]
 fn a_hubs_pages_reach_its_node() {
-    let (port, mesh) = (free_port(), free_port());
-    let roles = Roles::start(&format!(
-        r#"{{"llm": {{
+    let (roles, _) = Roles::start_with(|p| {
+        format!(
+            r#"{{"llm": {{
           "hub": {{"id": "hub-0000000000000031", "name": "hub", "console": {},
-                   "listen": {{"address": "127.0.0.1:{mesh}", "node_password": "pw"}}}},
+                   "listen": {{"address": "127.0.0.1:0", "node_password": "pw"}}}},
           "node": {{"id": "node-0000000000000032", "name": "box",
                     "settings": {{"allow_hub_manage": true, "gpu_sudo": false}},
-                    "peers": [{{"address": "127.0.0.1:{mesh}", "password": "pw", "role": "hub"}}]}}}}}}"#,
-        console(port)
-    ));
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+                    "peers": [{{"address": "127.0.0.1:{}", "password": "pw", "role": "hub"}}]}}}}}}"#,
+            console(0),
+            p.hub
+        )
+    });
+    let addr = SocketAddr::from(([127, 0, 0, 1], roles.console_port("llm.hub")));
     let auth = login(addr);
     until("the node in the hub's list", || {
         let (_, _, body) = exchange(addr, "POST", "/api/rpc/hub/nodes", &auth, "");

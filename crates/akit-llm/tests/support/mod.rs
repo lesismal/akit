@@ -15,6 +15,9 @@ use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+/// A port free now, for what must name its port before it binds: a listener of fit's binary.
+/// Another process may take it meanwhile. akit's own listeners bind port 0 and are asked where
+/// they listen ([`Roles::start_with`]).
 pub fn free_port() -> u16 {
     TcpListener::bind("127.0.0.1:0")
         .unwrap()
@@ -349,6 +352,82 @@ impl Roles {
         }
     }
 
+    /// The roles `doc` writes, each listener on port 0, started one after the other (the hub,
+    /// the node, then the proxy) so that each is written with the ports those before it bound:
+    /// `doc` is called with what is known so far, 0 for the rest. No member may name the port of
+    /// one after it.
+    pub fn start_with(doc: impl Fn(&Ports) -> String) -> (Roles, Ports) {
+        let mut ports = Ports::default();
+        let full = akit_config::value::parse(&doc(&ports)).unwrap();
+        let mut ids: Vec<&str> = Vec::new();
+        for id in ["hub", "node", "proxy"] {
+            if full.get("llm").and_then(|l| l.get(id)).is_some() {
+                ids.push(id);
+            }
+        }
+        let mut roles: Option<Roles> = None;
+        for (i, id) in ids.iter().enumerate() {
+            let staged = only(&doc(&ports), &ids[..=i]);
+            match &roles {
+                None => roles = Some(Roles::start(&staged)),
+                Some(r) => r.apply(&staged),
+            }
+            let r = roles.as_ref().unwrap();
+            let port = r.mesh_port(&format!("llm.{id}"));
+            match *id {
+                "hub" => ports.hub = port,
+                "node" => ports.node = port,
+                _ => ports.proxy = port,
+            }
+        }
+        let roles = roles.expect("a role");
+        roles.apply(&doc(&ports));
+        ports.api = roles.api_port();
+        (roles, ports)
+    }
+
+    /// Applies `doc`, which the roles must take, as the config they change from now on.
+    pub fn apply(&self, doc: &str) {
+        let config = akit_config::from_json(doc, None).unwrap_or_else(|e| panic!("{doc}\n{e}"));
+        let errs = self.roles.lock().unwrap().apply(&config);
+        assert!(errs.is_empty(), "{errs:?}");
+        *self.doc.lock().unwrap() = akit_config::value::parse(doc).unwrap();
+    }
+
+    /// The port role `id`'s mesh listener bound, 0 when it does not listen.
+    pub fn mesh_port(&self, id: &str) -> u16 {
+        let peers = call(&self.local(id), "/mesh/peers", "").unwrap();
+        let v = akit_config::value::parse(&peers).unwrap();
+        // The identity's address: the listener's, as it bound it.
+        match v.get("self").and_then(|l| l.get("rpc_addr")) {
+            Some(akit_config::value::Value::String(a)) if !a.is_empty() => port_of(a),
+            _ => 0,
+        }
+    }
+
+    /// The port the proxy's agents' API bound, 0 when it does not serve one.
+    pub fn api_port(&self) -> u16 {
+        if self.roles.lock().unwrap().api("llm.proxy").is_none() {
+            return 0;
+        }
+        let api = call(&self.local("llm.proxy"), "/proxy/api/get", "").unwrap();
+        let v = akit_config::value::parse(&api).unwrap();
+        match v.get("url") {
+            Some(akit_config::value::Value::String(u)) => port_of(u),
+            _ => 0,
+        }
+    }
+
+    /// The port role `id`'s console bound.
+    pub fn console_port(&self, id: &str) -> u16 {
+        self.roles
+            .lock()
+            .unwrap()
+            .console_addr(id)
+            .expect("the console's address")
+            .port()
+    }
+
     /// Role `id`'s methods, as its own pages call them.
     pub fn local(&self, id: &str) -> akit_llm::local::Local {
         let api = self.roles.lock().unwrap().api(id).unwrap();
@@ -366,6 +445,39 @@ impl Roles {
         }
         akit_llm::json::write(cur)
     }
+}
+
+/// Where the roles of [`Roles::start_with`] listen: their mesh listeners and the proxy's API.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Ports {
+    pub hub: u16,
+    pub node: u16,
+    pub proxy: u16,
+    pub api: u16,
+}
+
+/// The port of `addr` (`127.0.0.1:1`, `http://127.0.0.1:1`).
+pub fn port_of(addr: &str) -> u16 {
+    let rest = addr.split_once("://").map_or(addr, |(_, r)| r);
+    let host = rest.split('/').next().unwrap_or_default();
+    host.rsplit_once(':')
+        .and_then(|(_, p)| p.parse().ok())
+        .unwrap_or_else(|| panic!("no port in {addr:?}"))
+}
+
+/// `doc` with only the LLM members `ids`.
+fn only(doc: &str, ids: &[&str]) -> String {
+    let mut v = akit_config::value::parse(doc).unwrap();
+    if let akit_config::value::Value::Object(top) = &mut v {
+        for (k, m) in top.iter_mut() {
+            if k == "llm" {
+                if let akit_config::value::Value::Object(ms) = m {
+                    ms.retain(|(id, _)| ids.contains(&id.as_str()));
+                }
+            }
+        }
+    }
+    v.to_json()
 }
 
 impl Drop for Roles {
