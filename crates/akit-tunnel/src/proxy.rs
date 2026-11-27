@@ -319,15 +319,28 @@ impl ProxyCore {
     }
 
     /// Takes `list`, hub `u`'s nodes, unless `u` is no longer the proxy's or `list` is older than
-    /// the one kept (fit's `setNodes`).
+    /// the one kept (fit's `setNodes`). The uplinks stay locked until it is taken, as fit's
+    /// `setNodes` holds its lock: an apply that replaces or drops `u` meanwhile, and forgets the
+    /// nodes of its hub, does so before or after, never between the check and the take.
     fn set_nodes(&self, u: &Arc<Uplink>, list: NodeList) {
-        let current = lock(&self.uplinks).iter().any(|x| Arc::ptr_eq(x, u));
-        if !current {
+        let ups = lock(&self.uplinks);
+        if !ups.iter().any(|x| Arc::ptr_eq(x, u)) {
             return;
         }
         let mut nodes = lock(&self.nodes);
         if !list.older(nodes.get(&u.name)) {
             nodes.insert(u.name.clone(), list);
+        }
+    }
+
+    /// Forgets hub `u`'s nodes once none of its links is registered, unless `u` is no longer the
+    /// proxy's (its hub's nodes are then a newer uplink's). Under the uplinks' lock, as
+    /// [`ProxyCore::set_nodes`]: a link of `u` that registers after the check takes the nodes
+    /// after they are forgotten.
+    fn forget_nodes(&self, u: &Arc<Uplink>) {
+        let ups = lock(&self.uplinks);
+        if ups.iter().any(|x| Arc::ptr_eq(x, u)) && u.registered_links().is_empty() {
+            lock(&self.nodes).remove(&u.name);
         }
     }
 
@@ -553,9 +566,7 @@ impl Router for ProxyRouter {
         let ups = lock(&p.uplinks).clone();
         for u in ups {
             if u.lost(l) {
-                if u.registered_links().is_empty() {
-                    lock(&p.nodes).remove(&u.name);
-                }
+                p.forget_nodes(&u);
                 break;
             }
         }
@@ -792,14 +803,16 @@ impl Role for Proxy {
                 owner,
                 &c.proven,
             ));
+            // The nodes of a hub stopped or linked anew go with it (fit's), while the uplinks
+            // are still locked: a new uplink dials as it starts, and may register and be sent
+            // its hub's nodes at once; `set_nodes` waits for the lock to take them, so they come
+            // after the old ones go, never before.
+            lock(&c.nodes).retain(|name, _| {
+                ups.iter()
+                    .any(|u| &u.name == name && before.iter().any(|b| Arc::ptr_eq(b, u)))
+            });
             (before, ups.clone())
         };
-        // The nodes of a hub stopped or linked anew go with it (fit's).
-        lock(&c.nodes).retain(|name, _| {
-            after
-                .iter()
-                .any(|u| &u.name == name && before.iter().any(|b| Arc::ptr_eq(b, u)))
-        });
         // The hubs kept are told of the new meta (fit's).
         if meta_changed {
             let body = Owner::info(&**c).json();

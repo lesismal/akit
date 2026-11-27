@@ -20,6 +20,21 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-27: the tunnel proxy's nodes no longer lost to its own apply
+
+- `tunnels_with_tokens_plain_and_sealed` failed now and then on gpu51 (5 in 60 runs alone with
+  `AKIO_TEST_BACKEND=uring`, always in its second, sealed round; the tunnel's tests do not read
+  that variable, so their engines ran on epoll): "no tunnel opened", the proxy refusing every
+  connection with no hub having node `lab`, though both had registered. The proxy's apply started
+  a new hub's uplink, let go of the uplinks' lock, and only then forgot the nodes of the hubs
+  stopped or linked anew. A fast hub let the new uplink register, and the hub's node list arrive,
+  in between: the list just taken was forgotten, and the hub sends no other while its nodes stay
+  as they are. The nodes are now forgotten before the lock is let go, and `set_nodes` holds it
+  until it has taken a list (as fit's `setNodes` holds its own), so a list taken for a new uplink
+  always comes after; a lost link's hub forgets its nodes under the same lock, only while its
+  uplink is still the proxy's. After the fix: 250 of 250 runs alone on epoll, 50 of 50 on io_uring
+  (`AKIO_DEFAULT_BACKEND=uring`).
+
 ### 2026-11-27: I152, the BitTorrent client
 
 - `bittorrent.client` (`akit_bittorrent::client`) run by `akit run` on akio-bittorrent's

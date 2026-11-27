@@ -19,6 +19,16 @@
 
 ## 日志
 
+### 2026-11-27：隧道 proxy 的节点不再被自身的 apply 丢掉
+
+- `tunnels_with_tokens_plain_and_sealed` 在 gpu51 上偶尔失败（以 `AKIO_TEST_BACKEND=uring` 单独运行 60 次失败 5 次，都在
+  第二轮、即加密的那一轮；隧道的测试不读这个变量，其引擎实际跑在 epoll 上）："no tunnel opened"，proxy 以没有任何 hub
+  有节点 `lab` 为由拒绝每个连接，而两者都已注册。proxy 的 apply 先启动新 hub 的 uplink、释放 uplinks 的锁，之后才忘掉被
+  停止或重新连接的 hub 的节点。hub 足够快时，新 uplink 在这之间就已注册，hub 的节点列表也已送到：刚收下的列表随即被忘掉，
+  而只要节点不变，hub 不会再发别的列表。现在节点在释放锁之前就被忘掉，`set_nodes` 持有该锁直到收下列表（如同 fit 的
+  `setNodes` 持有它自己的锁），因此为新 uplink 收下的列表总在其后；断开链路的 hub 也在同一把锁下忘掉其节点，且仅当其
+  uplink 仍属于该 proxy。修复后：epoll 上单独运行 250 次、io_uring（`AKIO_DEFAULT_BACKEND=uring`）上 50 次，全部通过。
+
 ### 2026-11-27：I152，BitTorrent 客户端
 
 - `bittorrent.client`（`akit_bittorrent::client`）由 `akit run` 运行在 akio-bittorrent 的 `Client` 上，在 akio 的 A283 之前使用自己的
