@@ -1,0 +1,26 @@
+fit's media pages (handler/mediapages/web) at fit 7daee573b102d87837cc10f033e4cc5894769210,
+as akit's media_pages handler serves them: copied by tools/media-pages.py, which changed
+them as follows (akit's decision 037). fit's licence is LICENSE, beside this file.
+
+Each text file under web/ had these renames applied, in order (tools/console-pages.py's,
+the console's); each file they changed starts with a notice saying so. Nothing else was
+changed.
+
+  (?<![A-Za-z0-9])FIT(?=_)  ->  AKIT
+      environment variables: FIT_LLM_API_KEY, FIT_STORE_PASSWORD
+  (?<![A-Za-z0-9])Fit(?=[A-Z-])  ->  Akit
+      header fields and the pages' globals: X-Fit-Csrf, Fit-Config-Version, Fit-Store-Password, X-Fit-Signature, window.FitAI, FitConfig, FitCluster, FitSchemaZh, ...
+  (?<![A-Za-z0-9])fit(?=[te]1\.)  ->  akit
+      token prefixes: fitt1., fite1.
+  (?<![A-Za-z0-9])([Aa]) fit(?![a-z0-9])  ->  \1n akit
+      English's article: a fit -> an akit
+  (?:(?<=other )|(?<=many )|(?<=the )|(?<=several ))fits(?![a-z0-9])  ->  akits
+      the plural, of the gateway (other fits, many fits, several fits, the fits this one manages), not of the verb
+  (?<![A-Za-z0-9])fit(?![a-z0-9])  ->  akit
+      the name everywhere else: the brand, titles and text in both languages, fit_* and fit-* names (cookies, storage keys, CSS classes, JSON members, the WASM ABI's names), fit.json, fit run
+
+These stay as fit wrote them:
+
+  auto-fit: CSS grid's repeat(auto-fit, ...)
+  see fit: English: "as you see fit"
+  fitstore: fit's store format, which akit's store is to read and write (decision 036)

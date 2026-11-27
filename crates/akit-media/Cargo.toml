@@ -1,6 +1,6 @@
 [package]
 name = "akit-media"
-description = "fit's media auth and streaming role on akio-media: media_auth's policies, the hub with its RTMP, RTSP and SRT listeners, and the handlers that play it."
+description = "fit's media auth and streaming role on akio-media: media_auth's policies, the hub with its RTMP, RTSP, SRT and WebRTC listeners, the handlers that play it, and the media pages."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

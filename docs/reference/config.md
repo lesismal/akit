@@ -17,7 +17,7 @@ so in a note marked **akit:**; nine defaults that name the gateway are akit's, `
 say `fit` ([decision 037](../decisions/037-akit-names.md)).
 
 <!-- BEGIN GENERATED: summary -->
-akit reads **1148** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 177 objects akit reads, each has its table below.
+akit reads **1174** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 180 objects akit reads, each has its table below.
 <!-- END GENERATED -->
 
 How to read the tables:
@@ -63,6 +63,7 @@ is not there, a plugin that does not compile are errors.
 - [WebRTC](#webrtc): [`webrtc.turn`](#cfg-webrtc-turn), [`webrtc.media`](#cfg-webrtc-media), [`webrtc.proxy`](#cfg-webrtc-proxy)
 - [Media auth](#media-auth): [`media_auth[]`](#cfg-media-auth)
 - [Streaming](#streaming): [`streaming`](#cfg-streaming), [`rtmp`](#cfg-streaming-rtmp), [`rtsp`](#cfg-streaming-rtsp), [`srt`](#cfg-streaming-srt), [`webrtc`](#cfg-streaming-webrtc)
+- [Handlers](#handlers): [`respond`](#respond), [`static`](#static), [`proxy`](#proxy), [`fastcgi`](#fastcgi), [`forward_proxy`](#forward_proxy), [`whip`](#whip), [`whep`](#whep), [`webrtc_proxy`](#webrtc_proxy), [`httpflv`](#httpflv), [`hls`](#hls), [`stream_whip`](#stream_whip), [`stream_whep`](#stream_whep), [`media_pages`](#media_pages)
 - [Handlers](#handlers): [`respond`](#respond), [`static`](#static), [`proxy`](#proxy), [`fastcgi`](#fastcgi), [`forward_proxy`](#forward_proxy), [`whip`](#whip), [`whep`](#whep), [`webrtc_proxy`](#webrtc_proxy), [`httpflv`](#httpflv), [`hls`](#hls), [`stream_whip`](#stream_whip), [`stream_whep`](#stream_whep)
 - [Handlers](#handlers): [`respond`](#respond), [`static`](#static), [`proxy`](#proxy), [`fastcgi`](#fastcgi), [`forward_proxy`](#forward_proxy), [`whip`](#whip), [`whep`](#whep), [`webrtc_proxy`](#webrtc_proxy), [`httpflv`](#httpflv), [`hls`](#hls)
 - [BitTorrent](#bittorrent): [`bittorrent.client`](#cfg-bittorrent-client), [`bittorrent.tracker`](#cfg-bittorrent-tracker)
@@ -3091,7 +3092,7 @@ the same way, its params checked by the module.
 | `forward_proxy` | supported: [params](#cfg-routes-handler-forward-proxy-params) |
 | `hls` | supported: [params](#cfg-routes-handler-hls-params) |
 | `httpflv` | supported: [params](#cfg-routes-handler-httpflv-params) |
-| `media_pages` | **not supported yet**: refused by name |
+| `media_pages` | supported: [params](#cfg-routes-handler-media-pages-params) |
 | `media_tokens` | **not supported yet**: refused by name |
 | `proxy` | supported: [params](#cfg-routes-handler-proxy-params) |
 | `respond` | supported: [params](#cfg-routes-handler-respond-params) |
@@ -3502,6 +3503,71 @@ route whep { match { path /whep/* }; handler stream_whep { auth live } }
 | `auth` | string |  | The media_auth policy a POST must satisfy, play on the stream's path, as stream_whip's. A session's URL takes PATCH and DELETE without credentials. Everyone may play when left out. |
 | `prefix` | string |  | The part of the path before the stream's. /whep/ when left out. |
 | `stream` | string |  | The stream's path. When left out, it is the path after prefix a POST is sent to, as live/cam in /whep/live/cam. A session's URL is the path of its POST followed by its ID, which the route must match too. |
+<!-- END GENERATED -->
+
+### `media_pages`
+
+akit's media pages under `prefix` (I125): an index with a login, a room call, and publish and play
+pages over WHIP and WHEP (`whip` and `whep`, the WebRTC track's or the streaming role's), built into
+the binary, fit's renamed (decision 037). Behind them, a login against the `auth` policy's users,
+which answers a token the policy signs, set as the HttpOnly cookie `akit_media_token` too, and a
+room API through which the members of a call announce their microphone and camera, follow the
+room with Server-Sent Events and talk in its chat. fit's `libraries`, `vod` and `channels` wait for
+the media library's track.
+
+```fit
+listener web :8080
+media_auth live { users ann { password ann-password; publish room1-*; play room1-* } }
+
+route media { match { path /media /media/* }; handler media_pages { auth live; login true } }
+```
+
+<!-- BEGIN GENERATED: routes[].handler<media_pages>.params -->
+<a id="cfg-routes-handler-media-pages-params"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `auth` | string |  | The media_auth policy the room API checks, and the pages' login and tokens belong to: joining a room and following it needs play on <room>-*, announcing that one publishes publish on <room>-<name>, as the WHIP and WHEP endpoints the pages use check with their own auth, which should name the same policy. Everyone may use the room API when left out, as the route's middleware allow. |
+| `cam_default` | boolean |  | Whether a member's camera is on when it joins a call in the pages: off when left out, for the member to switch on, and a publisher sends a frame with its name while it is off, so a switch never renegotiates. The URL's cam=0 or cam=1 overrides it. |
+| `channels` | boolean |  | **Not supported yet**: refused by name. List the streaming role's channels on the library page too, those the viewer may play, with what each plays now and next, played from hls, which must be set, through a playback URL signed for the viewer as an item's is. Off when left out. |
+| `chat` | boolean | `true` | Whether a room call has a chat: the pages show it, and the room API carries the members' text messages and small files between them. False answers the chat's API 404 and shows no chat window. True when left out. |
+| `hls` | string |  | The URL of a stream's HLS playlist, {stream} standing for its name, as /hls/{stream}/index.m3u8 for the streaming role's hls handler: the play page plays it where the browser plays HLS itself, with the page's token. None when left out. |
+| `ice_servers` | list of [object](#cfg-routes-handler-media-pages-params-ice-servers) |  | STUN and TURN servers the pages' PeerConnections use, as a browser's iceServers. None when left out: akit's media server is an ICE lite agent that browsers reach directly, and tells them of its own ICE servers in its answers' Link headers. |
+| `libraries` | list of string |  | **Not supported yet**: refused by name. The media_library names whose items the library page lists, at most 16: those the viewer may play, play on vod/<library>/<id> under auth, that can be served, with their posters, searched and paged; the player page plays one with hls.js, vendored in the binary. With the auth policy's url_signing, and playing not public, the player plays through a playback URL the pages sign for the viewer, its address and a session of its own, good for url_signing's ttl, whose playlists hand the player its grant; otherwise through the plain URL, which the login's cookie lets in. None when left out: no library page. |
+| `links` | list of [object](#cfg-routes-handler-media-pages-params-links) |  | Further URLs the publish and play pages show for a stream, for tools outside the browser, as the streaming role's RTMP, RTSP, SRT and HTTP-FLV ones: {stream} stands for the stream's name, {token} for the page's token, {host} for the host the page was loaded from. |
+| `login` | boolean |  | Show a login form for the users of the auth policy: a right password is answered with a token the policy signs, for its token_ttl, set as the HttpOnly cookie fit_media_token (SameSite=Strict, Secure over TLS), which the WHIP, WHEP and HLS requests of the pages carry, and handed to the page too. Without it the pages ask for a token instead, as akit media-token prints, when auth needs one. **akit:** The cookie is `akit_media_token` (decision 037); the pages send their chat's member in `X-Akit-Member` and `X-Akit-Room-Key`. |
+| `max_file_bytes` | integer, 1024 to 33554432 | `5242880` | The largest file a member may send in a room's chat, in bytes; a larger one is answered 413, and the page refuses it before sending. 5 MiB (5242880) when left out. **akit:** A file's body is read whole by the listener, within its `max_body_bytes`, before its member is checked, where fit checks the member and reserves the bytes before it reads the body: a file past the listener's `max_body_bytes` is answered 413 by the listener. |
+| `max_members` | integer, 1 to 256 | `16` | How many members a room may have; a join past it is answered 503. A room may have twice as many watchers, its members' event streams among them. 16 when left out. |
+| `max_message_bytes` | integer, 256 to 65536 | `1024` | The largest body a request of the room API or the login may have, in bytes; a larger one is answered 413. 1024 when left out. |
+| `max_rooms` | integer, 1 or more | `64` | How many rooms may have members or watchers at once; a join or a watch past it is answered 503. 64 when left out. |
+| `member_ttl` | duration | `"30s"` | How long a member stays in its room without a heartbeat: the pages send one every third of it. 30s when left out. |
+| `mic_default` | boolean |  | Whether a member's microphone is on when it joins a call in the pages: off when left out, for the member to switch on, and a publisher sends a silent track while it is off, so a switch never renegotiates. The URL's mic=0 or mic=1 overrides it. |
+| `pages` | boolean | `true` | Serve the pages: the index, the call, the publish and the play pages, and their script and style. False serves none of them: their paths answer 404, for a deployment whose page is its own; the login and the room API stay, for that page. True when left out. |
+| `prefix` | string | `"/media"` | The path the pages are served under, which the route must match with what is below it, as /media/* beside /media; a request outside it gets 404. /media when left out. |
+| `stall_timeout` | duration | `"30s"` | How long a room's event stream may wait for its browser to take what it was sent before it is cut off. 30s when left out. **akit:** A reload keeps the rooms and their event streams, which go on under the new config: akit does not drain them as fit does. |
+| `title` | string |  | The pages' title; akit media when left out. **akit:** `akit media` when left out (decision 037). |
+| `vod` | string | `"/vod/{library}/{id}/index.m3u8"` | **Not supported yet**: refused by name. The URL of an item's multivariant playlist, as a vod handler serves it, {library} standing for its library's name and {id} for its ID: a path on this server or an http or https URL, ending in {id}/ and the playlist's name. The item's poster is beside it, poster and its extension. /vod/{library}/{id}/index.m3u8 when left out, the vod handler's own prefix. |
+| `whep` | string | `"/whep/{stream}"` | The URL streams are played from with WHEP, {stream} standing for the stream's name. /whep/{stream} when left out. |
+| `whip` | string | `"/whip/{stream}"` | The URL streams are published to with WHIP, {stream} standing for the stream's name: a whip handler's, or stream_whip's for the streaming role, on this server or another. /whip/{stream} when left out. |
+<!-- END GENERATED -->
+
+<!-- BEGIN GENERATED: routes[].handler<media_pages>.params.links[] -->
+<a id="cfg-routes-handler-media-pages-params-links"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `name` | string | required | What the URL is, as RTMP or SRT. |
+| `url` | string | required | The URL, with {stream}, {token} and {host} filled in by the page. |
+<!-- END GENERATED -->
+
+<!-- BEGIN GENERATED: routes[].handler<media_pages>.params.ice_servers[] -->
+<a id="cfg-routes-handler-media-pages-params-ice-servers"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `urls` | list of string | required | The server's stun:, stuns:, turn: or turns: URLs. |
+| `credential` | string |  | A TURN server's password. |
+| `username` | string |  | A TURN server's username. |
 <!-- END GENERATED -->
 
 ## Middleware

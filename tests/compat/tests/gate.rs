@@ -3348,7 +3348,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 175] = [
+    let objects: [(&str, &str, Option<&str>); 178] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         (
             "providers[].kubernetes",
@@ -3732,6 +3732,22 @@ fn akit_config_lists_match_the_inventory() {
             "STREAM_RTC_FIELDS",
             None,
         ),
+        // I125: the media pages.
+        (
+            "routes[].handler<media_pages>.params",
+            "MEDIA_PAGES_FIELDS",
+            Some("MEDIA_PAGES_FIT_ONLY"),
+        ),
+        (
+            "routes[].handler<media_pages>.params.links[]",
+            "PAGE_LINK_FIELDS",
+            None,
+        ),
+        (
+            "routes[].handler<media_pages>.params.ice_servers[]",
+            "STREAM_ICE_SERVER_FIELDS",
+            None,
+        ),
     ];
     let mapped: BTreeSet<&str> = objects
         .iter()
@@ -3824,6 +3840,7 @@ fn akit_config_lists_match_the_inventory() {
         "hls",
         "stream_whip",
         "stream_whep",
+        "media_pages",
     ] {
         assert!(handlers.insert(h.to_owned()), "FIT_HANDLERS lists {h}");
     }
@@ -3855,6 +3872,7 @@ fn akit_config_lists_match_the_inventory() {
         "hls",
         "stream_whip",
         "stream_whep",
+        "media_pages",
     ] {
         read.insert(format!("routes[].handler<{h}>"));
         read.insert(format!("routes[].handler<{h}>.params"));

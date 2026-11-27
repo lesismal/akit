@@ -394,7 +394,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 1148 supported.
+3821 fields in 121 sections, at fit `7daee573`; 1174 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -412,7 +412,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`http.handlers/forward_proxy`](#fields-http-handlers-forward-proxy) | 8 | 8 | 0 |
 | [`http.handlers/hls`](#fields-http-handlers-hls) | 12 | 12 | 0 |
 | [`http.handlers/httpflv`](#fields-http-handlers-httpflv) | 6 | 6 | 0 |
-| [`http.handlers/media_pages`](#fields-http-handlers-media-pages) | 29 | 0 | 29 |
+| [`http.handlers/media_pages`](#fields-http-handlers-media-pages) | 29 | 26 | 3 |
 | [`http.handlers/media_tokens`](#fields-http-handlers-media-tokens) | 11 | 0 | 11 |
 | [`http.handlers/proxy`](#fields-http-handlers-proxy) | 20 | 19 | 1 |
 | [`http.handlers/respond`](#fields-http-handlers-respond) | 5 | 5 | 0 |
@@ -519,7 +519,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 161 | 3 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 76 | 0 |
-| **Total** | 3821 | 1148 | 2673 |
+| **Total** | 3821 | 1174 | 2647 |
 
 <a id="fields-access"></a>
 
@@ -1031,35 +1031,35 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `routes[].handler<media_pages>` | `module` | not supported yet |
-| `routes[].handler<media_pages>.params` | `object` | not supported yet |
-| `routes[].handler<media_pages>.params.auth` | `string` | not supported yet |
-| `routes[].handler<media_pages>.params.cam_default` | `boolean` | not supported yet |
+| `routes[].handler<media_pages>` | `module` | supported |
+| `routes[].handler<media_pages>.params` | `object` | supported |
+| `routes[].handler<media_pages>.params.auth` | `string` | supported |
+| `routes[].handler<media_pages>.params.cam_default` | `boolean` | supported |
 | `routes[].handler<media_pages>.params.channels` | `boolean` | not supported yet |
-| `routes[].handler<media_pages>.params.chat` | `boolean` | not supported yet |
-| `routes[].handler<media_pages>.params.hls` | `string` | not supported yet |
-| `routes[].handler<media_pages>.params.ice_servers` | `array<object>` | not supported yet |
-| `routes[].handler<media_pages>.params.ice_servers[].credential` | `string` | not supported yet |
-| `routes[].handler<media_pages>.params.ice_servers[].urls` | `array<string>, required` | not supported yet |
-| `routes[].handler<media_pages>.params.ice_servers[].username` | `string` | not supported yet |
+| `routes[].handler<media_pages>.params.chat` | `boolean` | supported |
+| `routes[].handler<media_pages>.params.hls` | `string` | supported |
+| `routes[].handler<media_pages>.params.ice_servers` | `array<object>` | supported |
+| `routes[].handler<media_pages>.params.ice_servers[].credential` | `string` | supported |
+| `routes[].handler<media_pages>.params.ice_servers[].urls` | `array<string>, required` | supported |
+| `routes[].handler<media_pages>.params.ice_servers[].username` | `string` | supported |
 | `routes[].handler<media_pages>.params.libraries` | `array<string>` | not supported yet |
-| `routes[].handler<media_pages>.params.links` | `array<object>` | not supported yet |
-| `routes[].handler<media_pages>.params.links[].name` | `string, required` | not supported yet |
-| `routes[].handler<media_pages>.params.links[].url` | `string, required` | not supported yet |
-| `routes[].handler<media_pages>.params.login` | `boolean` | not supported yet |
-| `routes[].handler<media_pages>.params.max_file_bytes` | `integer` | not supported yet |
-| `routes[].handler<media_pages>.params.max_members` | `integer` | not supported yet |
-| `routes[].handler<media_pages>.params.max_message_bytes` | `integer` | not supported yet |
-| `routes[].handler<media_pages>.params.max_rooms` | `integer` | not supported yet |
-| `routes[].handler<media_pages>.params.member_ttl` | `duration` | not supported yet |
-| `routes[].handler<media_pages>.params.mic_default` | `boolean` | not supported yet |
-| `routes[].handler<media_pages>.params.pages` | `boolean` | not supported yet |
-| `routes[].handler<media_pages>.params.prefix` | `string` | not supported yet |
-| `routes[].handler<media_pages>.params.stall_timeout` | `duration` | not supported yet |
-| `routes[].handler<media_pages>.params.title` | `string` | not supported yet |
+| `routes[].handler<media_pages>.params.links` | `array<object>` | supported |
+| `routes[].handler<media_pages>.params.links[].name` | `string, required` | supported |
+| `routes[].handler<media_pages>.params.links[].url` | `string, required` | supported |
+| `routes[].handler<media_pages>.params.login` | `boolean` | supported |
+| `routes[].handler<media_pages>.params.max_file_bytes` | `integer` | supported |
+| `routes[].handler<media_pages>.params.max_members` | `integer` | supported |
+| `routes[].handler<media_pages>.params.max_message_bytes` | `integer` | supported |
+| `routes[].handler<media_pages>.params.max_rooms` | `integer` | supported |
+| `routes[].handler<media_pages>.params.member_ttl` | `duration` | supported |
+| `routes[].handler<media_pages>.params.mic_default` | `boolean` | supported |
+| `routes[].handler<media_pages>.params.pages` | `boolean` | supported |
+| `routes[].handler<media_pages>.params.prefix` | `string` | supported |
+| `routes[].handler<media_pages>.params.stall_timeout` | `duration` | supported |
+| `routes[].handler<media_pages>.params.title` | `string` | supported |
 | `routes[].handler<media_pages>.params.vod` | `string` | not supported yet |
-| `routes[].handler<media_pages>.params.whep` | `string` | not supported yet |
-| `routes[].handler<media_pages>.params.whip` | `string` | not supported yet |
+| `routes[].handler<media_pages>.params.whep` | `string` | supported |
+| `routes[].handler<media_pages>.params.whip` | `string` | supported |
 
 <a id="fields-http-handlers-media-tokens"></a>
 

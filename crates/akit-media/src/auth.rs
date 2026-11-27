@@ -645,10 +645,68 @@ impl Policy {
     /// Checks `c`'s password against its user's bcrypt hash (or the decoy), remembering it when
     /// right. Runs on the pool.
     fn slow(&self, a: Action, stream: &str, c: &Credentials) -> Result<String, Refusal> {
+        let hashed = self.st.with(|st| {
+            st.and_then(|st| st.users.get(&c.user))
+                .is_none_or(|u| u.hash.is_some())
+        });
+        if !hashed {
+            // A user whose password is no longer hashed after a reload: checked as it is now.
+            return self.allow(a, stream, c);
+        }
+        let (name, grant) = self.slow_user(&c.user, &c.password)?;
+        if grant.allows(a, stream) {
+            Ok(name)
+        } else {
+            Err(Refusal::Forbidden)
+        }
+    }
+
+    /// Checks a user's password for the media pages' login (fit's `Login`): `done` is called once
+    /// with the user's name and grant, before `login` returns when no bcrypt check is needed, or
+    /// later on the crate's pool. A check the pool has no room or time for is [`Refusal::Busy`].
+    pub fn login(
+        self: &Arc<Self>,
+        user: &str,
+        password: &str,
+        done: impl FnOnce(Result<(String, Grant), Refusal>) + Send + 'static,
+    ) {
+        match self.login_now(user, password) {
+            Err(Refusal::Pending) => {}
+            r => return done(r),
+        }
+        let p = Arc::clone(self);
+        let (user, password) = (user.to_owned(), password.to_owned());
+        crate::pool::submit(Box::new(move |late| {
+            if late {
+                return done(Err(Refusal::Busy));
+            }
+            done(p.slow_user(&user, &password));
+        }));
+    }
+
+    /// [`Policy::login`] without waiting: [`Refusal::Pending`] for a password a bcrypt hash must
+    /// check that has not been found right before.
+    ///
+    /// # Errors
+    ///
+    /// The refusal.
+    pub fn login_now(&self, user: &str, password: &str) -> Result<(String, Grant), Refusal> {
+        self.st.with(|st| {
+            let Some(st) = st else {
+                return Err(Refusal::Unavailable);
+            };
+            self.password_check(st, user, password)
+                .map(|u| (u.name.clone(), u.grant.clone()))
+        })
+    }
+
+    /// A user's password checked against its bcrypt hash (or the decoy), remembered when right:
+    /// its name and grant. Runs on the pool.
+    fn slow_user(&self, user: &str, password: &str) -> Result<(String, Grant), Refusal> {
         let (hash, good, grant, name) = {
             let r = self.st.with(|st| {
                 let st = st.ok_or(Refusal::Unavailable)?;
-                match st.users.get(&c.user) {
+                match st.users.get(user) {
                     Some(u) => Ok((
                         u.hash.clone(),
                         Some(Arc::clone(&u.good)),
@@ -662,20 +720,20 @@ impl Policy {
         };
         let Some(hash) = hash else {
             // A user whose password is no longer hashed after a reload: checked as it is now.
-            return self.allow(a, stream, c);
+            return self.st.with(|st| {
+                let st = st.ok_or(Refusal::Unavailable)?;
+                self.password_check(st, user, password)
+                    .map(|u| (u.name.clone(), u.grant.clone()))
+            });
         };
-        if !hash.verify(c.password.as_bytes()) {
+        if !hash.verify(password.as_bytes()) {
             return Err(Refusal::BadCredentials);
         }
         let (Some(good), Some(grant)) = (good, grant) else {
             return Err(Refusal::BadCredentials);
         };
-        good.store(self.remembered(&c.password));
-        if grant.allows(a, stream) {
-            Ok(name)
-        } else {
-            Err(Refusal::Forbidden)
-        }
+        good.store(self.remembered(password));
+        Ok((name, grant))
     }
 
     /// Signs a token good for `subject` to take `g`'s actions on `g`'s streams until now and

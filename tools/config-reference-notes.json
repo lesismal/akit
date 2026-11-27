@@ -253,6 +253,22 @@
     "streaming.webrtc.listen": {
       "en": "A port of 0 is chosen before the listener binds it, the answers having to name it (akio A268).",
       "zh": "端口为 0 时，在监听器绑定前先选好端口，因为答复中必须写明它（akio A268）。"
+    },
+    "routes[].handler<media_pages>.params.title": {
+      "en": "`akit media` when left out (decision 037).",
+      "zh": "未设置时为 `akit media`（决定 037）。"
+    },
+    "routes[].handler<media_pages>.params.login": {
+      "en": "The cookie is `akit_media_token` (decision 037); the pages send their chat's member in `X-Akit-Member` and `X-Akit-Room-Key`.",
+      "zh": "cookie 为 `akit_media_token`（决定 037）；页面在 `X-Akit-Member` 和 `X-Akit-Room-Key` 中发送其聊天成员。"
+    },
+    "routes[].handler<media_pages>.params.max_file_bytes": {
+      "en": "A file's body is read whole by the listener, within its `max_body_bytes`, before its member is checked, where fit checks the member and reserves the bytes before it reads the body: a file past the listener's `max_body_bytes` is answered 413 by the listener.",
+      "zh": "文件的请求体由监听器在其 `max_body_bytes` 之内整体读入后才检查成员，而 fit 在读取请求体之前就检查成员并预留字节：超过监听器 `max_body_bytes` 的文件由监听器答复 413。"
+    },
+    "routes[].handler<media_pages>.params.stall_timeout": {
+      "en": "A reload keeps the rooms and their event streams, which go on under the new config: akit does not drain them as fit does.",
+      "zh": "重载保留房间及其事件流，它们在新配置下继续：akit 不像 fit 那样排空它们。"
     }
   }
 }

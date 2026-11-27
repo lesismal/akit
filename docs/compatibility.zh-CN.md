@@ -324,7 +324,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 1148 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 1174 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -342,7 +342,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`http.handlers/forward_proxy`](#fields-http-handlers-forward-proxy) | 8 | 8 | 0 |
 | [`http.handlers/hls`](#fields-http-handlers-hls) | 12 | 12 | 0 |
 | [`http.handlers/httpflv`](#fields-http-handlers-httpflv) | 6 | 6 | 0 |
-| [`http.handlers/media_pages`](#fields-http-handlers-media-pages) | 29 | 0 | 29 |
+| [`http.handlers/media_pages`](#fields-http-handlers-media-pages) | 29 | 26 | 3 |
 | [`http.handlers/media_tokens`](#fields-http-handlers-media-tokens) | 11 | 0 | 11 |
 | [`http.handlers/proxy`](#fields-http-handlers-proxy) | 20 | 19 | 1 |
 | [`http.handlers/respond`](#fields-http-handlers-respond) | 5 | 5 | 0 |
@@ -449,7 +449,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 161 | 3 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 76 | 0 |
-| **合计** | 3821 | 1148 | 2673 |
+| **合计** | 3821 | 1174 | 2647 |
 
 <a id="fields-access"></a>
 
@@ -961,35 +961,35 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
-| `routes[].handler<media_pages>` | `module` | 尚不支持（not supported yet） |
-| `routes[].handler<media_pages>.params` | `object` | 尚不支持（not supported yet） |
-| `routes[].handler<media_pages>.params.auth` | `string` | 尚不支持（not supported yet） |
-| `routes[].handler<media_pages>.params.cam_default` | `boolean` | 尚不支持（not supported yet） |
+| `routes[].handler<media_pages>` | `module` | 已支持 |
+| `routes[].handler<media_pages>.params` | `object` | 已支持 |
+| `routes[].handler<media_pages>.params.auth` | `string` | 已支持 |
+| `routes[].handler<media_pages>.params.cam_default` | `boolean` | 已支持 |
 | `routes[].handler<media_pages>.params.channels` | `boolean` | 尚不支持（not supported yet） |
-| `routes[].handler<media_pages>.params.chat` | `boolean` | 尚不支持（not supported yet） |
-| `routes[].handler<media_pages>.params.hls` | `string` | 尚不支持（not supported yet） |
-| `routes[].handler<media_pages>.params.ice_servers` | `array<object>` | 尚不支持（not supported yet） |
-| `routes[].handler<media_pages>.params.ice_servers[].credential` | `string` | 尚不支持（not supported yet） |
-| `routes[].handler<media_pages>.params.ice_servers[].urls` | `array<string>, required` | 尚不支持（not supported yet） |
-| `routes[].handler<media_pages>.params.ice_servers[].username` | `string` | 尚不支持（not supported yet） |
+| `routes[].handler<media_pages>.params.chat` | `boolean` | 已支持 |
+| `routes[].handler<media_pages>.params.hls` | `string` | 已支持 |
+| `routes[].handler<media_pages>.params.ice_servers` | `array<object>` | 已支持 |
+| `routes[].handler<media_pages>.params.ice_servers[].credential` | `string` | 已支持 |
+| `routes[].handler<media_pages>.params.ice_servers[].urls` | `array<string>, required` | 已支持 |
+| `routes[].handler<media_pages>.params.ice_servers[].username` | `string` | 已支持 |
 | `routes[].handler<media_pages>.params.libraries` | `array<string>` | 尚不支持（not supported yet） |
-| `routes[].handler<media_pages>.params.links` | `array<object>` | 尚不支持（not supported yet） |
-| `routes[].handler<media_pages>.params.links[].name` | `string, required` | 尚不支持（not supported yet） |
-| `routes[].handler<media_pages>.params.links[].url` | `string, required` | 尚不支持（not supported yet） |
-| `routes[].handler<media_pages>.params.login` | `boolean` | 尚不支持（not supported yet） |
-| `routes[].handler<media_pages>.params.max_file_bytes` | `integer` | 尚不支持（not supported yet） |
-| `routes[].handler<media_pages>.params.max_members` | `integer` | 尚不支持（not supported yet） |
-| `routes[].handler<media_pages>.params.max_message_bytes` | `integer` | 尚不支持（not supported yet） |
-| `routes[].handler<media_pages>.params.max_rooms` | `integer` | 尚不支持（not supported yet） |
-| `routes[].handler<media_pages>.params.member_ttl` | `duration` | 尚不支持（not supported yet） |
-| `routes[].handler<media_pages>.params.mic_default` | `boolean` | 尚不支持（not supported yet） |
-| `routes[].handler<media_pages>.params.pages` | `boolean` | 尚不支持（not supported yet） |
-| `routes[].handler<media_pages>.params.prefix` | `string` | 尚不支持（not supported yet） |
-| `routes[].handler<media_pages>.params.stall_timeout` | `duration` | 尚不支持（not supported yet） |
-| `routes[].handler<media_pages>.params.title` | `string` | 尚不支持（not supported yet） |
+| `routes[].handler<media_pages>.params.links` | `array<object>` | 已支持 |
+| `routes[].handler<media_pages>.params.links[].name` | `string, required` | 已支持 |
+| `routes[].handler<media_pages>.params.links[].url` | `string, required` | 已支持 |
+| `routes[].handler<media_pages>.params.login` | `boolean` | 已支持 |
+| `routes[].handler<media_pages>.params.max_file_bytes` | `integer` | 已支持 |
+| `routes[].handler<media_pages>.params.max_members` | `integer` | 已支持 |
+| `routes[].handler<media_pages>.params.max_message_bytes` | `integer` | 已支持 |
+| `routes[].handler<media_pages>.params.max_rooms` | `integer` | 已支持 |
+| `routes[].handler<media_pages>.params.member_ttl` | `duration` | 已支持 |
+| `routes[].handler<media_pages>.params.mic_default` | `boolean` | 已支持 |
+| `routes[].handler<media_pages>.params.pages` | `boolean` | 已支持 |
+| `routes[].handler<media_pages>.params.prefix` | `string` | 已支持 |
+| `routes[].handler<media_pages>.params.stall_timeout` | `duration` | 已支持 |
+| `routes[].handler<media_pages>.params.title` | `string` | 已支持 |
 | `routes[].handler<media_pages>.params.vod` | `string` | 尚不支持（not supported yet） |
-| `routes[].handler<media_pages>.params.whep` | `string` | 尚不支持（not supported yet） |
-| `routes[].handler<media_pages>.params.whip` | `string` | 尚不支持（not supported yet） |
+| `routes[].handler<media_pages>.params.whep` | `string` | 已支持 |
+| `routes[].handler<media_pages>.params.whip` | `string` | 已支持 |
 
 <a id="fields-http-handlers-media-tokens"></a>
 

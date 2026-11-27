@@ -367,6 +367,13 @@ fn cases(w: &World) -> Vec<Case> {
         // with the request suspended, is akit-media's `tests/guard.rs`.
         handler("httpflv", r#"{"module": "httpflv"}"#.into(), 404, true),
         handler("hls", r#"{"module": "hls"}"#.into(), 503, true),
+        // I125: outside its prefix (`/media`), answered at once as fit's.
+        handler(
+            "media_pages",
+            r#"{"module": "media_pages"}"#.into(),
+            404,
+            true,
+        ),
         // I124: outside their prefix (`/whip/`, `/whep/`), answered at once as fit's.
         handler(
             "stream_whip",

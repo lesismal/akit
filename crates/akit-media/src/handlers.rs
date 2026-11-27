@@ -54,6 +54,11 @@ pub static MODULES: &[Info<HandlerParams>] = &[
         "Plays the streaming role's streams to WebRTC viewers with WHEP, whatever they were published over.",
         crate::rtc::new_whep,
     ),
+    Info::handler(
+        "http.handlers.media_pages",
+        "Serves akit's media pages under a prefix: an index with a login, a room call, publish and play pages over WHIP and WHEP, and the room API through which the members of a call announce their microphone and camera and talk in its chat.",
+        crate::pages::new_pages,
+    ),
 ];
 
 pub use akit_config::media::valid_stream;

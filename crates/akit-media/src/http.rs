@@ -274,6 +274,18 @@ impl HandlerAuth {
         }
     }
 
+    /// Whether the handler names a policy.
+    #[must_use]
+    pub fn named(&self) -> bool {
+        self.named
+    }
+
+    /// The policy, once found; `None` without one, or while it is not there.
+    #[must_use]
+    pub fn policy(&self) -> Option<&Arc<Policy>> {
+        self.found.get().and_then(Option::as_ref)
+    }
+
     /// [`guard`] with the policy: `next` called when the request may go on, else the request
     /// answered (refused as unavailable while the policy is not there).
     pub fn guard(

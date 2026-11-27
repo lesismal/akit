@@ -249,7 +249,7 @@ Tunnel and LLM track; I110–I114 are the WebRTC track, and I115–I119 are rese
 | I122 | Streaming I: the role's hub and its RTMP, RTSP and SRT listeners | I121, I100 | done |
 | I123 | Streaming II: `httpflv` and `hls` | I122 | done |
 | I124 | Streaming III: `streaming.webrtc`, `stream_whip` and `stream_whep` | I123 | done |
-| I125 | The media pages: `media_pages`, its login and room API | I121, the WebRTC track's `whip` and `whep` | todo |
+| I125 | The media pages: `media_pages`, its login and room API | I121, the WebRTC track's `whip` and `whep` | done |
 | I126 | Media auth on `whip`, `whep` and `webrtc_proxy` | I121, the WebRTC track's handlers | done (`whip`, `whep`); `webrtc_proxy`'s with I114 |
 | I126 | Media auth on `whip`, `whep` and `webrtc_proxy` | I121, the WebRTC track's handlers | todo |
 | I114 | WebRTC V: WHIP and WHEP proxied: `webrtc_proxy` and `webrtc.proxy` | I113, I14 | done |
@@ -2134,7 +2134,8 @@ the Media library and channels track's, refused as not supported yet until then.
 - **Done when**: fit's `handler/mediapages` tests pass ported; fit-examples' `media-pages` valid.
 - **Touches**: `akit-media` (`pages`), `akit-config`, `tests/compat`, `docs/reference`.
 - **fit**: `handler/mediapages`; I117, I118.
-- **Status**: todo; it needs the WebRTC track's `whip` and `whep`.
+- **Status**: done (2026-11-27) with the chat (fit's I118); `libraries`, `vod` and `channels` wait
+  for the media library's track. See the progress log.
 
 ### I126 Media auth on the WebRTC track's handlers
 

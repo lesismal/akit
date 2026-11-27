@@ -1375,6 +1375,78 @@ fn media_handlers(out: &mut Vec<(String, String, Read)>) {
     }
 }
 
+/// The `media_pages` handler's params (I125).
+fn media_pages(out: &mut Vec<(String, String, Read)>) {
+    const P: &str = r#"{"name": "p", "public": ["play"]}"#;
+    let w = |m: &str| {
+        format!(
+            r#"{{"listeners": [{{"name": "web", "address": ":8080"}}], "media_auth": [{P}], "routes": [{{"handler": {{"module": "media_pages", "params": {m}}}}}]}}"#
+        )
+    };
+    let wm = |m: &str| {
+        format!(
+            r#"{{"listeners": [{{"name": "web", "address": ":8080"}}], "routes": [{{"handler": {m}}}]}}"#
+        )
+    };
+    out.push((
+        "routes[].handler<media_pages>".into(),
+        wm(r#"{"module": "media_pages"}"#),
+        Read::Differs(wm(r#"{"module": "respond"}"#)),
+    ));
+    out.push((
+        "routes[].handler<media_pages>.params".into(),
+        w("{}"),
+        Read::Differs(w(r#"{"prefix": "/x"}"#)),
+    ));
+    emit(
+        out,
+        "routes[].handler<media_pages>.params",
+        &w,
+        &[],
+        vec![
+            f("prefix", q("/a"), q("/b")),
+            f("title", q("a"), q("b")),
+            f("auth", q("p"), q("")),
+            f("login", "true", "false"),
+            f("pages", "false", "true"),
+            f("whip", q("/a/{stream}"), q("/b/{stream}")),
+            f("whep", q("/a/{stream}"), q("/b/{stream}")),
+            f("hls", q("/a/{stream}"), q("/b/{stream}")),
+            f("links", "[]", r#"[{"name": "a", "url": "b"}]"#),
+            f("ice_servers", "[]", r#"[{"urls": ["stun:a"]}]"#),
+            f("max_rooms", "1", "2"),
+            f("max_members", "1", "2"),
+            f("max_message_bytes", "300", "400"),
+            f("mic_default", "true", "false"),
+            f("cam_default", "true", "false"),
+            f("chat", "false", "true"),
+            f("max_file_bytes", "2048", "4096"),
+            f("member_ttl", q("3s"), q("4s")),
+            f("stall_timeout", q("1s"), q("2s")),
+        ],
+    );
+    let lw = |m: &str| w(&format!(r#"{{"links": [{m}]}}"#));
+    emit(
+        out,
+        "routes[].handler<media_pages>.params.links[]",
+        &lw,
+        &[("name", q("a")), ("url", q("b"))],
+        vec![f("name", q("a"), q("c")), f("url", q("b"), q("d"))],
+    );
+    let iw = |m: &str| w(&format!(r#"{{"ice_servers": [{m}]}}"#));
+    emit(
+        out,
+        "routes[].handler<media_pages>.params.ice_servers[]",
+        &iw,
+        &[("urls", r#"["stun:a"]"#.into())],
+        vec![
+            f("urls", r#"["stun:a"]"#, r#"["stun:b"]"#),
+            f("username", q("a"), q("b")),
+            f("credential", q("a"), q("b")),
+        ],
+    );
+}
+
 /// Every sample of the roles' fields.
 pub(crate) fn samples() -> Vec<(String, String, Read)> {
     let mut out = Vec::new();
@@ -1384,5 +1456,6 @@ pub(crate) fn samples() -> Vec<(String, String, Read)> {
     bittorrent(&mut out);
     media(&mut out);
     media_handlers(&mut out);
+    media_pages(&mut out);
     out
 }

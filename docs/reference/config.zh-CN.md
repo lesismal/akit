@@ -14,7 +14,7 @@ akit 配置的每个字段：配置的每一部分是做什么的、一个示例
 akit 与 fit 不同之处，在表格中以 **akit：** 标出。
 
 <!-- BEGIN GENERATED: summary -->
-fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **1148** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 177 个对象，下文各有一张表。
+fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **1174** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 180 个对象，下文各有一张表。
 <!-- END GENERATED -->
 
 字段说明来自 fit 代码中的 `doc` 标签，是英文的，所以每个字段的完整说明在[英文版](config.md)的同一张表中；本页的表格给出每个字段的
@@ -57,6 +57,7 @@ fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../co
 - [WebRTC](#webrtc)：[`webrtc.turn`](#cfg-webrtc-turn)、[`webrtc.media`](#cfg-webrtc-media)、[`webrtc.proxy`](#cfg-webrtc-proxy)
 - [媒体鉴权](#媒体鉴权)：[`media_auth[]`](#cfg-media-auth)
 - [流媒体](#流媒体)：[`streaming`](#cfg-streaming)、[`rtmp`](#cfg-streaming-rtmp)、[`rtsp`](#cfg-streaming-rtsp)、[`srt`](#cfg-streaming-srt)、[`webrtc`](#cfg-streaming-webrtc)
+- [处理器](#处理器)：[`respond`](#respond)、[`static`](#static)、[`proxy`](#proxy)、[`fastcgi`](#fastcgi)、[`forward_proxy`](#forward_proxy)、[`whip`](#whip)、[`whep`](#whep)、[`webrtc_proxy`](#webrtc_proxy)、[`httpflv`](#httpflv)、[`hls`](#hls)、[`stream_whip`](#stream_whip)、[`stream_whep`](#stream_whep)、[`media_pages`](#media_pages)
 - [处理器](#处理器)：[`respond`](#respond)、[`static`](#static)、[`proxy`](#proxy)、[`fastcgi`](#fastcgi)、[`forward_proxy`](#forward_proxy)、[`whip`](#whip)、[`whep`](#whep)、[`webrtc_proxy`](#webrtc_proxy)、[`httpflv`](#httpflv)、[`hls`](#hls)、[`stream_whip`](#stream_whip)、[`stream_whep`](#stream_whep)
 - [处理器](#处理器)：[`respond`](#respond)、[`static`](#static)、[`proxy`](#proxy)、[`fastcgi`](#fastcgi)、[`forward_proxy`](#forward_proxy)、[`whip`](#whip)、[`whep`](#whep)、[`webrtc_proxy`](#webrtc_proxy)、[`httpflv`](#httpflv)、[`hls`](#hls)
 - [BitTorrent](#bittorrent)：[`bittorrent.client`](#cfg-bittorrent-client)、[`bittorrent.tracker`](#cfg-bittorrent-tracker)
@@ -3265,7 +3266,7 @@ bittorrent {
 | `forward_proxy` | 已支持：[参数](#cfg-routes-handler-forward-proxy-params) |
 | `hls` | 已支持：[参数](#cfg-routes-handler-hls-params) |
 | `httpflv` | 已支持：[参数](#cfg-routes-handler-httpflv-params) |
-| `media_pages` | **尚不支持**：按名称拒绝 |
+| `media_pages` | 已支持：[参数](#cfg-routes-handler-media-pages-params) |
 | `media_tokens` | **尚不支持**：按名称拒绝 |
 | `proxy` | 已支持：[参数](#cfg-routes-handler-proxy-params) |
 | `respond` | 已支持：[参数](#cfg-routes-handler-respond-params) |
@@ -3686,6 +3687,74 @@ route whep { match { path /whep/* }; handler stream_whep { auth live } }
 | `auth` | 字符串 |  |  |
 | `prefix` | 字符串 |  |  |
 | `stream` | 字符串 |  |  |
+<!-- END GENERATED -->
+
+### `media_pages`
+
+位于 `prefix` 之下的 akit 媒体页面（I125）：带登录的首页、房间通话，以及基于 WHIP 和 WHEP 的推流和播放页面（`whip` 和
+`whep`，WebRTC 线的或流媒体角色的），内置于二进制中，为改名后的 fit 页面（决定 037）。其后是基于 `auth` 策略用户的登录，答复
+策略签名的 token，并同时设为 HttpOnly cookie `akit_media_token`；以及房间 API，通话成员通过它告知麦克风和摄像头的开关、以
+Server-Sent Events 跟随房间并在其聊天中交流。fit 的 `libraries`、`vod` 和 `channels` 等待媒体库那条线。
+
+```fit
+listener web :8080
+media_auth live { users ann { password ann-password; publish room1-*; play room1-* } }
+
+route media { match { path /media /media/* }; handler media_pages { auth live; login true } }
+```
+
+<!-- BEGIN GENERATED: routes[].handler<media_pages>.params -->
+<a id="cfg-routes-handler-media-pages-params"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-routes-handler-media-pages-params)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `auth` | 字符串 |  |  |
+| `cam_default` | 布尔值 |  |  |
+| `channels` | 布尔值 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `chat` | 布尔值 | `true` |  |
+| `hls` | 字符串 |  |  |
+| `ice_servers` | [对象](#cfg-routes-handler-media-pages-params-ice-servers)的列表 |  |  |
+| `libraries` | 字符串的列表 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `links` | [对象](#cfg-routes-handler-media-pages-params-links)的列表 |  |  |
+| `login` | 布尔值 |  | **akit：**cookie 为 `akit_media_token`（决定 037）；页面在 `X-Akit-Member` 和 `X-Akit-Room-Key` 中发送其聊天成员。 |
+| `max_file_bytes` | 整数，1024 到 33554432 | `5242880` | **akit：**文件的请求体由监听器在其 `max_body_bytes` 之内整体读入后才检查成员，而 fit 在读取请求体之前就检查成员并预留字节：超过监听器 `max_body_bytes` 的文件由监听器答复 413。 |
+| `max_members` | 整数，1 到 256 | `16` |  |
+| `max_message_bytes` | 整数，256 到 65536 | `1024` |  |
+| `max_rooms` | 整数，≥ 1 | `64` |  |
+| `member_ttl` | 时长 | `"30s"` |  |
+| `mic_default` | 布尔值 |  |  |
+| `pages` | 布尔值 | `true` |  |
+| `prefix` | 字符串 | `"/media"` |  |
+| `stall_timeout` | 时长 | `"30s"` | **akit：**重载保留房间及其事件流，它们在新配置下继续：akit 不像 fit 那样排空它们。 |
+| `title` | 字符串 |  | **akit：**未设置时为 `akit media`（决定 037）。 |
+| `vod` | 字符串 | `"/vod/{library}/{id}/index.m3u8"` | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `whep` | 字符串 | `"/whep/{stream}"` |  |
+| `whip` | 字符串 | `"/whip/{stream}"` |  |
+<!-- END GENERATED -->
+
+<!-- BEGIN GENERATED: routes[].handler<media_pages>.params.links[] -->
+<a id="cfg-routes-handler-media-pages-params-links"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-routes-handler-media-pages-params-links)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `name` | 字符串 | 必填 |  |
+| `url` | 字符串 | 必填 |  |
+<!-- END GENERATED -->
+
+<!-- BEGIN GENERATED: routes[].handler<media_pages>.params.ice_servers[] -->
+<a id="cfg-routes-handler-media-pages-params-ice-servers"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-routes-handler-media-pages-params-ice-servers)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `urls` | 字符串的列表 | 必填 |  |
+| `credential` | 字符串 |  |  |
+| `username` | 字符串 |  |  |
 <!-- END GENERATED -->
 
 ## 中间件

@@ -1415,6 +1415,8 @@ pub enum Handler {
     StreamWhip(crate::media::StreamRtc),
     /// The `stream_whep` handler: WHEP plays the streaming role's streams (I124).
     StreamWhep(crate::media::StreamRtc),
+    /// The `media_pages` handler: akit's media pages, their login and room API (I125).
+    MediaPages(crate::media::MediaPages),
     /// A module akit's config model does not know: one built in with `akit build` (I70), its
     /// params kept as written for the module to decode. Whether the binary has it is the
     /// registry's to say, when the config is compiled, as fit's `module.Load` says.
@@ -1447,6 +1449,7 @@ impl Handler {
             Handler::Hls(_) => "hls",
             Handler::StreamWhip(_) => "stream_whip",
             Handler::StreamWhep(_) => "stream_whep",
+            Handler::MediaPages(_) => "media_pages",
             Handler::ForwardProxy(_) => "forward_proxy",
             Handler::Whip(_) => "whip",
             Handler::Whep(_) => "whep",
@@ -2470,7 +2473,6 @@ const MODULE_FIELDS: &[&str] = &["module", "params"];
 const FIT_HANDLERS: &[&str] = &[
     "bt_publish",
     "bt_stream",
-    "media_pages",
     "media_tokens",
     "sync_ingest",
     "vod",
@@ -3096,6 +3098,7 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
             Handler::StreamWhip(h) | Handler::StreamWhep(h) => Some((&h.auth, &mut h.policy)),
             // I126: the WebRTC track's whip and whep.
             Handler::Whip(h) | Handler::Whep(h) => Some((&h.auth, &mut h.policy)),
+            Handler::MediaPages(h) => Some((&h.auth, &mut h.policy)),
             _ => None,
         };
         let Some((name, policy)) = auth.filter(|(n, _)| !n.is_empty()) else {
@@ -4743,6 +4746,10 @@ fn handler(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Handler> {
         }
         "stream_whep" => {
             crate::media::stream_rtc(d, params, &params_path, "/whep/").map(Handler::StreamWhep)
+        }
+        // I125: the media pages.
+        "media_pages" => {
+            crate::media::media_pages(d, params, &params_path).map(Handler::MediaPages)
         }
         "forward_proxy" => {
             let Some(n) = params else {

@@ -16,7 +16,9 @@ use crate::decode::{Decoder, Obj};
 use crate::error::{join_field, join_index};
 use crate::json::{Kind, Node};
 use crate::model::Access;
-use crate::roles::{access_of, check_listen, count, duration, list, required, text, text_at};
+use crate::roles::{
+    access_of, bool_opt, boolean, check_listen, count, duration, list, required, text, text_at,
+};
 
 /// fit's `DefaultMediaTokenTTL`: how long a token akit signs is good for.
 pub const DEFAULT_MEDIA_TOKEN_TTL: Duration = Duration::from_secs(12 * 3600);
@@ -1196,4 +1198,331 @@ pub(crate) fn stream_rtc(
     h.auth = text(d, &mut o, "auth");
     o.finish(d, STREAM_RTC_FIELDS, &[]);
     Some(h)
+}
+
+/// fit's `media_pages` defaults (`handler/mediapages`).
+pub const DEFAULT_PAGES_PREFIX: &str = "/media";
+/// See [`DEFAULT_PAGES_PREFIX`].
+pub const DEFAULT_PAGES_WHIP: &str = "/whip/{stream}";
+/// See [`DEFAULT_PAGES_PREFIX`].
+pub const DEFAULT_PAGES_WHEP: &str = "/whep/{stream}";
+/// See [`DEFAULT_PAGES_PREFIX`].
+pub const DEFAULT_PAGES_MAX_ROOMS: usize = 64;
+/// See [`DEFAULT_PAGES_PREFIX`].
+pub const DEFAULT_PAGES_MAX_MEMBERS: usize = 16;
+/// See [`DEFAULT_PAGES_PREFIX`].
+pub const DEFAULT_PAGES_MAX_MESSAGE_BYTES: usize = 1024;
+/// See [`DEFAULT_PAGES_PREFIX`].
+pub const DEFAULT_PAGES_MAX_FILE_BYTES: u64 = 5 << 20;
+/// See [`DEFAULT_PAGES_PREFIX`].
+pub const DEFAULT_PAGES_MEMBER_TTL: Duration = Duration::from_secs(30);
+/// See [`DEFAULT_PAGES_PREFIX`].
+pub const DEFAULT_PAGES_STALL_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// A URL the media pages show for a stream (`links[]`).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct PageLink {
+    /// `name`: what the URL is, as RTMP.
+    pub name: String,
+    /// `url`: with `{stream}`, `{token}` and `{host}` for the page to fill in.
+    pub url: String,
+}
+
+/// The `media_pages` handler's params, as fit's `mediapages.Pages` (I125): akit's media pages
+/// under a prefix, their login and their room API.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct MediaPages {
+    /// `prefix`: [`DEFAULT_PAGES_PREFIX`] when empty.
+    pub prefix: String,
+    /// `title`: `akit media` when empty.
+    pub title: String,
+    /// `auth`: the `media_auth` policy of the room API, the login and the tokens; empty for none.
+    pub auth: String,
+    /// `login`: a login form for the policy's users.
+    pub login: bool,
+    /// `pages`: serve the pages (true when left out).
+    pub pages: bool,
+    /// `whip`: [`DEFAULT_PAGES_WHIP`] when empty.
+    pub whip: String,
+    /// `whep`: [`DEFAULT_PAGES_WHEP`] when empty.
+    pub whep: String,
+    /// `hls`: a stream's HLS playlist; none when empty.
+    pub hls: String,
+    /// `links`.
+    pub links: Vec<PageLink>,
+    /// `ice_servers`: the pages' PeerConnections' iceServers.
+    pub ice_servers: Vec<IceServer>,
+    /// `max_rooms`: [`DEFAULT_PAGES_MAX_ROOMS`] when 0.
+    pub max_rooms: usize,
+    /// `max_members`: [`DEFAULT_PAGES_MAX_MEMBERS`] when 0.
+    pub max_members: usize,
+    /// `max_message_bytes`: [`DEFAULT_PAGES_MAX_MESSAGE_BYTES`] when 0.
+    pub max_message_bytes: usize,
+    /// `mic_default`.
+    pub mic_default: bool,
+    /// `cam_default`.
+    pub cam_default: bool,
+    /// `chat` (true when left out).
+    pub chat: bool,
+    /// `max_file_bytes`: [`DEFAULT_PAGES_MAX_FILE_BYTES`] when 0.
+    pub max_file_bytes: u64,
+    /// `member_ttl`: [`DEFAULT_PAGES_MEMBER_TTL`] when 0.
+    pub member_ttl: Duration,
+    /// `stall_timeout`: [`DEFAULT_PAGES_STALL_TIMEOUT`] when 0.
+    pub stall_timeout: Duration,
+    /// The policy `auth` names, from the config ([`HttpFlv::policy`]).
+    pub policy: Option<MediaAuth>,
+}
+
+impl MediaPages {
+    /// `prefix`, or its default.
+    #[must_use]
+    pub fn prefix_or(&self) -> &str {
+        if self.prefix.is_empty() {
+            DEFAULT_PAGES_PREFIX
+        } else {
+            &self.prefix
+        }
+    }
+
+    /// `max_rooms`, or its default.
+    #[must_use]
+    pub fn rooms(&self) -> usize {
+        or_count(self.max_rooms, DEFAULT_PAGES_MAX_ROOMS)
+    }
+
+    /// `max_members`, or its default.
+    #[must_use]
+    pub fn members(&self) -> usize {
+        or_count(self.max_members, DEFAULT_PAGES_MAX_MEMBERS)
+    }
+
+    /// `max_message_bytes`, or its default.
+    #[must_use]
+    pub fn message_bytes(&self) -> usize {
+        or_count(self.max_message_bytes, DEFAULT_PAGES_MAX_MESSAGE_BYTES)
+    }
+
+    /// `max_file_bytes`, or its default.
+    #[must_use]
+    pub fn file_bytes(&self) -> u64 {
+        if self.max_file_bytes == 0 {
+            DEFAULT_PAGES_MAX_FILE_BYTES
+        } else {
+            self.max_file_bytes
+        }
+    }
+
+    /// `member_ttl`, or its default.
+    #[must_use]
+    pub fn ttl(&self) -> Duration {
+        or(self.member_ttl, DEFAULT_PAGES_MEMBER_TTL)
+    }
+
+    /// `stall_timeout`, or its default.
+    #[must_use]
+    pub fn stall(&self) -> Duration {
+        or(self.stall_timeout, DEFAULT_PAGES_STALL_TIMEOUT)
+    }
+}
+
+const MEDIA_PAGES_FIELDS: &[&str] = &[
+    "prefix",
+    "title",
+    "auth",
+    "login",
+    "pages",
+    "whip",
+    "whep",
+    "hls",
+    "links",
+    "ice_servers",
+    "max_rooms",
+    "max_members",
+    "max_message_bytes",
+    "mic_default",
+    "cam_default",
+    "chat",
+    "max_file_bytes",
+    "member_ttl",
+    "stall_timeout",
+];
+const MEDIA_PAGES_FIT_ONLY: &[&str] = &["libraries", "vod", "channels"];
+const PAGE_LINK_FIELDS: &[&str] = &["name", "url"];
+
+/// Whether `p` is a path of plain segments, as `/media` (fit's `pathPrefix`).
+fn path_prefix(p: &str) -> bool {
+    p.starts_with('/')
+        && p.split('/').skip(1).all(|seg| {
+            !seg.is_empty()
+                && seg
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'~' | b'-'))
+        })
+}
+
+/// Checks an endpoint's URL template (fit's `endpoint`): its origin when it is on another
+/// server, `None` for a path of this one.
+///
+/// # Errors
+///
+/// What the template is not.
+pub fn page_endpoint(v: &str) -> Result<Option<String>, String> {
+    if v.len() > 512
+        || !v.contains("{stream}")
+        || v.contains([' ', '\t', '\r', '\n', '\0', '<', '>', '"', '\''])
+    {
+        return Err(format!(
+            "{v:?} is not a URL of at most 512 characters with {{stream}} in it"
+        ));
+    }
+    if v.starts_with('/') && !v.starts_with("//") {
+        return Ok(None);
+    }
+    let u = v.replace("{stream}", "s");
+    let bad = || format!("{v:?} is neither a path nor an http or https URL");
+    let (scheme, rest) = u.split_once("://").ok_or_else(bad)?;
+    if !scheme.eq_ignore_ascii_case("http") && !scheme.eq_ignore_ascii_case("https") {
+        return Err(bad());
+    }
+    let host = rest.split(['/', '?', '#']).next().unwrap_or("");
+    if host.is_empty() {
+        return Err(bad());
+    }
+    Ok(Some(format!("{}://{host}", scheme.to_ascii_lowercase())))
+}
+
+/// Decodes the `media_pages` handler's params; none is every default.
+pub(crate) fn media_pages(
+    d: &mut Decoder<'_>,
+    params: Option<&Node>,
+    path: &str,
+) -> Option<MediaPages> {
+    let Some(n) = params else {
+        return Some(MediaPages {
+            pages: true,
+            chat: true,
+            ..MediaPages::default()
+        });
+    };
+    let mut o = d.object(n, path)?;
+    let mut p = MediaPages::default();
+    if let Some((v, off)) = text_at(d, &mut o, "prefix") {
+        if !v.is_empty() && !path_prefix(&v) {
+            d.error(
+                off,
+                &o.at("prefix"),
+                format!(
+                    "{v:?} is not a path of segments of letters, digits, '.', '_', '~' and '-', as /media"
+                ),
+            );
+        }
+        p.prefix = v;
+    }
+    if let Some((v, off)) = text_at(d, &mut o, "title") {
+        if v.chars().count() > 80 || v.contains(['<', '>', '&', '"', '\'', '\r', '\n']) {
+            d.error(
+                off,
+                &o.at("title"),
+                "a title is at most 80 characters, without <, >, &, quotes or line breaks",
+            );
+        }
+        p.title = v;
+    }
+    p.auth = text(d, &mut o, "auth");
+    p.login = boolean(d, &mut o, "login");
+    p.pages = bool_opt(d, &mut o, "pages").unwrap_or(true);
+    for (key, slot) in [
+        ("whip", &mut p.whip),
+        ("whep", &mut p.whep),
+        ("hls", &mut p.hls),
+    ] {
+        if let Some((v, off)) = text_at(d, &mut o, key) {
+            if !v.is_empty() {
+                if let Err(e) = page_endpoint(&v) {
+                    d.error(off, &o.at(key), e);
+                }
+            }
+            *slot = v;
+        }
+    }
+    p.links = list(d, &mut o, "links", page_link)
+        .into_iter()
+        .map(|(l, _, _)| l)
+        .collect();
+    p.ice_servers = list(d, &mut o, "ice_servers", ice_server)
+        .into_iter()
+        .map(|(s, _, _)| s)
+        .collect();
+    p.max_rooms = count(d, &mut o, "max_rooms", i64::MAX);
+    p.max_members = count(d, &mut o, "max_members", 256);
+    if let Some(v) = o.take("max_message_bytes") {
+        if let Some(n) = d.int(v, &o.at("max_message_bytes"), 0, 65536) {
+            if n != 0 && n < 256 {
+                d.error(
+                    v.off,
+                    &o.at("max_message_bytes"),
+                    format!("{n} is less than 256"),
+                );
+            }
+            p.max_message_bytes = usize::try_from(n).unwrap_or(0);
+        }
+    }
+    p.mic_default = boolean(d, &mut o, "mic_default");
+    p.cam_default = boolean(d, &mut o, "cam_default");
+    p.chat = bool_opt(d, &mut o, "chat").unwrap_or(true);
+    if let Some(v) = o.take("max_file_bytes") {
+        if let Some(n) = d.int(v, &o.at("max_file_bytes"), 0, i64::MAX) {
+            if n != 0 && !(1024..=32 << 20).contains(&n) {
+                d.error(
+                    v.off,
+                    &o.at("max_file_bytes"),
+                    "a file is at least 1024 and at most 33554432 bytes",
+                );
+            }
+            p.max_file_bytes = u64::try_from(n).unwrap_or(0);
+        }
+    }
+    if let Some(v) = o.take("member_ttl") {
+        if let Some(t) = d.duration(v, &o.at("member_ttl")) {
+            if !t.is_zero() && t < Duration::from_secs(3) {
+                d.error(
+                    v.off,
+                    &o.at("member_ttl"),
+                    format!("{} is shorter than 3s", crate::duration::format(t)),
+                );
+            }
+            p.member_ttl = t;
+        }
+    }
+    p.stall_timeout = duration(d, &mut o, "stall_timeout");
+    o.finish(d, MEDIA_PAGES_FIELDS, MEDIA_PAGES_FIT_ONLY);
+    Some(p)
+}
+
+fn page_link(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<PageLink> {
+    let mut o = d.object(n, path)?;
+    let mut l = PageLink::default();
+    if let Some(v) = o.require(d, "name") {
+        l.name = d.string(v, &o.at("name")).unwrap_or_default();
+    }
+    if let Some(v) = o.require(d, "url") {
+        l.url = d.string(v, &o.at("url")).unwrap_or_default();
+    }
+    o.finish(d, PAGE_LINK_FIELDS, &[]);
+    let bad = |s: &str| s.contains(['\r', '\n', '\0', '<', '>', '"']);
+    if l.name.is_empty()
+        || l.name.chars().count() > 40
+        || l.url.is_empty()
+        || l.url.chars().count() > 512
+        || bad(&l.name)
+        || bad(&l.url)
+    {
+        d.error(
+            n.off,
+            path,
+            "a link has a name of at most 40 characters and a URL of at most 512, without line breaks, <, > or quotes",
+        );
+    }
+    Some(l)
 }
