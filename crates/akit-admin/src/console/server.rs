@@ -412,8 +412,7 @@ impl Console {
         let engine = Engine::builder()
             .config(cfg)
             .listen(
-                listener
-                    .backend(opts.backend.clone())
+                crate::server::with_backend(listener, opts.backend.as_ref())
                     .threads(1)
                     .serve_any(acceptor),
             )

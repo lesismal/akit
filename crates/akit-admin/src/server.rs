@@ -56,8 +56,10 @@ pub const METRICS_CONTENT_TYPE: &str = "text/plain; version=0.0.4; charset=utf-8
 #[derive(Clone)]
 #[non_exhaustive]
 pub struct Options {
-    /// The akio backend of the API's listener.
-    pub backend: Backend,
+    /// The akio backend of the API's and the consoles' listeners; `None` (the default) leaves it
+    /// to akio: epoll (kqueue on macOS), or io_uring with akio's `AKIO_DEFAULT_BACKEND=uring` on
+    /// Linux.
+    pub backend: Option<Backend>,
     /// How long a request's head may take to arrive: 10 s, as fit's.
     pub head_timeout: Duration,
     /// How long a request's body may go without a byte: 60 s, as fit's read timeout.
@@ -133,7 +135,7 @@ impl fmt::Debug for Options {
 impl Default for Options {
     fn default() -> Options {
         Options {
-            backend: Backend::default(),
+            backend: None,
             head_timeout: Duration::from_secs(10),
             body_timeout: Duration::from_secs(60),
             idle_timeout: Duration::from_secs(60),
@@ -494,6 +496,15 @@ impl fmt::Debug for Server {
 }
 
 /// `address`, a loopback host and port as the config checked it: `localhost` is 127.0.0.1.
+/// `l` on `backend` when one is chosen; otherwise akio's default, which follows its
+/// `AKIO_DEFAULT_BACKEND` (ADR-029) as a backend named never does.
+pub(crate) fn with_backend(l: Listener, backend: Option<&Backend>) -> Listener {
+    match backend {
+        Some(b) => l.backend(b.clone()),
+        None => l,
+    }
+}
+
 fn resolve(address: &str) -> io::Result<SocketAddr> {
     let invalid = || {
         io::Error::new(
@@ -619,8 +630,7 @@ impl Server {
         let engine = Engine::builder()
             .config(cfg)
             .listen(
-                listener
-                    .backend(opts.backend.clone())
+                with_backend(listener, opts.backend.as_ref())
                     .threads(1)
                     .serve_any(acceptor),
             )

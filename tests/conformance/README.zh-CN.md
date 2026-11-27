@@ -23,10 +23,9 @@ Gateway、HTTPRoute 和 ReferenceGrant，同样的 33 个测试）。套件的�
 profile，因 fit 和 akit 都未声明而被跳过；某个特性在其测试通过后，以 `run.sh` 中的一个参数声明
 （fit 的决策 012）。
 
-- akit 在集群外以 akio 的 epoll 后端运行：`akit run` 没有切换到 io_uring 的开关（akio 的 `Backend`
-  在代码中按监听器选择，只有 akit 的测试通过 `AKIO_TEST_BACKEND` 设置它；akio 的
-  `AKIO_DEFAULT_BACKEND` 也影响不到它，因为 akit-listener 显式指定了 epoll），因此无法让套件针对
-  io_uring 上的 akit 运行。provider 和监听器自己的测试在两种后端上都运行。
+- akit 在集群外以 akio 的默认后端 epoll 运行：`akit run` 没有选择 io_uring 的配置字段。它的监听器、Admin API
+  和控制台都不指定后端，因此 akio 的 `AKIO_DEFAULT_BACKEND=uring`（ADR-029，测试和诊断用的开关）会让它们的 TCP
+  一侧运行在 io_uring 上；套件尚未以这种方式运行过。provider 和监听器自己的测试在两种后端上都运行。
 - 扩展特性尚未针对 akit 运行过；原因和下一步见
   [M4 报告](../../bench/results/m4-report-2026-11-25.zh-CN.md)。
 

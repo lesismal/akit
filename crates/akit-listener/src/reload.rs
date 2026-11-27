@@ -463,7 +463,7 @@ impl Listeners {
                 &self.cell,
                 l,
                 tls,
-                crate::tcp_engine_listener(addr, &self.opts.backend, self.event_loops),
+                crate::tcp_engine_listener(addr, self.opts.backend.as_ref(), self.event_loops),
                 h3_port,
                 accept,
             )

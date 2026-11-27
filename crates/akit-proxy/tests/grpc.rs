@@ -105,7 +105,7 @@ impl Akit {
                 akit_runtime::compile(&config, &registry(), &Env::new(slot.clone())).unwrap();
             let cell = GraphCell::new(graph);
             let mut o = akit_listener::Options::default();
-            o.backend = backend();
+            o.backend = Some(backend());
             o.shutdown_timeout = Duration::from_secs(1);
             let engine = Arc::new(akit_listener::engine(&cell, &o).unwrap());
             engine.start().unwrap();

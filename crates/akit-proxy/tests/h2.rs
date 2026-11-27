@@ -55,7 +55,7 @@ fn backend() -> Backend {
 
 fn options() -> akit_listener::Options {
     let mut o = akit_listener::Options::default();
-    o.backend = backend();
+    o.backend = Some(backend());
     o.shutdown_timeout = Duration::from_secs(5);
     o
 }

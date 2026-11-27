@@ -66,7 +66,7 @@ fn start(f: impl FnOnce(&mut akit_config::Admin), opts: Options) -> Fixture {
         settings.history,
     );
     let mut opts = opts;
-    opts.backend = backend();
+    opts.backend = Some(backend());
     let api = Server::start(&settings, configs.clone(), Box::new(Err), &opts).unwrap();
     Fixture { api, configs }
 }

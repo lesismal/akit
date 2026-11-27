@@ -41,14 +41,14 @@ fn alone() -> RwLockWriteGuard<'static, ()> {
 
 fn options(drain: Duration) -> akit_listener::Options {
     let mut o = akit_listener::Options::default();
-    o.backend = match std::env::var("AKIO_TEST_BACKEND").as_deref() {
+    o.backend = Some(match std::env::var("AKIO_TEST_BACKEND").as_deref() {
         Ok("uring") => Backend::IoUring({
             let mut v = UringConfig::default();
             v.strict = true;
             v
         }),
         _ => Backend::Epoll,
-    };
+    });
     o.shutdown_timeout = drain;
     o
 }

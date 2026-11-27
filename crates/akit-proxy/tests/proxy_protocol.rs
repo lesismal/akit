@@ -16,14 +16,14 @@ use akit_runtime::{Env, GraphCell, HandlerParams, Registry, compile};
 
 fn options() -> akit_listener::Options {
     let mut o = akit_listener::Options::default();
-    o.backend = match std::env::var("AKIO_TEST_BACKEND").as_deref() {
+    o.backend = Some(match std::env::var("AKIO_TEST_BACKEND").as_deref() {
         Ok("uring") => Backend::IoUring({
             let mut v = UringConfig::default();
             v.strict = true;
             v
         }),
         _ => Backend::Epoll,
-    };
+    });
     o.shutdown_timeout = Duration::from_secs(2);
     o
 }

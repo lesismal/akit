@@ -101,7 +101,7 @@ fn cache_purge() {
         Registry::new(&[akit_handler::MODULES, akit_cache::MODULES]).unwrap();
     let cell = GraphCell::new(compile(&config, &registry, &Env::default()).unwrap());
     let mut lo = akit_listener::Options::default();
-    lo.backend = backend();
+    lo.backend = Some(backend());
     lo.shutdown_timeout = Duration::from_secs(5);
     let engine = Arc::new(akit_listener::engine(&cell, &lo).unwrap());
     engine.start().unwrap();
@@ -117,7 +117,7 @@ fn cache_purge() {
         settings.history,
     );
     let mut opts = Options::default();
-    opts.backend = backend();
+    opts.backend = Some(backend());
     let server = Server::start(&settings, configs, Box::new(|_| Ok(())), &opts).unwrap();
     let api = server.addr();
 
@@ -224,7 +224,7 @@ fn cache_purge_guarded() {
         Registry::new(&[akit_handler::MODULES, akit_cache::MODULES]).unwrap();
     let cell = GraphCell::new(compile(&config, &registry, &Env::default()).unwrap());
     let mut lo = akit_listener::Options::default();
-    lo.backend = backend();
+    lo.backend = Some(backend());
     lo.shutdown_timeout = Duration::from_secs(5);
     let engine = Arc::new(akit_listener::engine(&cell, &lo).unwrap());
     engine.start().unwrap();
@@ -243,7 +243,7 @@ fn cache_purge_guarded() {
         settings.history,
     );
     let mut opts = Options::default();
-    opts.backend = backend();
+    opts.backend = Some(backend());
     let server = Server::start(&settings, configs, Box::new(|_| Ok(())), &opts).unwrap();
     let api = server.addr();
     let token = "Bearer purge-s3cret";

@@ -83,8 +83,9 @@ GatewayClasses or cookies.
 
 - **ACME's storage** defaults to `~/.local/share/akit`, not fit's directory. To keep fit's accounts
   and certificates, point `acme.storage` at fit's directory, or `shared_storage` at fit's store.
-- **Platforms**: Linux, where akio uses io_uring (5.19 and later) or epoll, and macOS for
-  development. Windows is not supported.
+- **Platforms**: Linux, where akit runs on akio's epoll backend, or on io_uring (5.19 and later)
+  with akio's `AKIO_DEFAULT_BACKEND=uring` in its environment (a test and diagnostic switch, not a
+  config field), and macOS for development. Windows is not supported.
 - **WebAssembly plugins** of fit's ABI are built again for akit's names (above); Proxy-Wasm filters
   run unchanged. They run on akio-wasm's interpreter rather than wazero's compiler: a plugin's call
   costs more ([WebAssembly](wasm.md)).

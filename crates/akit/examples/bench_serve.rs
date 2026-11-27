@@ -50,7 +50,7 @@ fn main() -> ExitCode {
     };
     let cell = GraphCell::new(graph);
     let mut opts = akit_listener::Options::default();
-    opts.backend = match backend {
+    opts.backend = Some(match backend {
         None | Some("epoll") => Backend::Epoll,
         Some("uring") => Backend::IoUring({
             let mut u = UringConfig::default();
@@ -61,7 +61,7 @@ fn main() -> ExitCode {
             eprintln!("bench_serve: unknown backend {b}");
             return ExitCode::from(2);
         }
-    };
+    });
     let engine = match akit_listener::engine(&cell, &opts) {
         Ok(e) => Arc::new(e),
         Err(e) => {

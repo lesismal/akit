@@ -73,7 +73,8 @@ fit 的用户要改这些：
 
 - **ACME 的存储**默认是 `~/.local/share/akit`，而不是 fit 的目录。要沿用 fit 的账户和证书，把 `acme.storage` 指向 fit 的目录，或把
   `shared_storage` 指向 fit 的存储。
-- **平台**：Linux（akio 使用 io_uring，5.19 及以上，或 epoll），以及用于开发的 macOS。不支持 Windows。
+- **平台**：Linux（akit 运行在 akio 的 epoll 后端上；环境中设置 akio 的 `AKIO_DEFAULT_BACKEND=uring` 时运行在
+  io_uring 上，5.19 及以上，这是测试和诊断用的开关，不是配置字段），以及用于开发的 macOS。不支持 Windows。
 - **fit ABI 的 WebAssembly 插件**要按 akit 的名字重新构建（见上文）；Proxy-Wasm 过滤器无需修改即可运行。它们运行在 akio-wasm 的
   解释器上，而不是 wazero 的编译器上：每次调用开销更大（[WebAssembly](wasm.zh-CN.md)）。
 

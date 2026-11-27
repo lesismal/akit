@@ -110,7 +110,7 @@ fn start_with(doc: &str, settings: akit_config::Admin, mut opts: Options) -> Fix
     let registry: Registry<HandlerParams> = Registry::new(&[akit_handler::MODULES]).unwrap();
     let cell = GraphCell::new(compile(&config, &registry, &Env::default()).unwrap());
     let mut lo = akit_listener::Options::default();
-    lo.backend = backend();
+    lo.backend = Some(backend());
     lo.shutdown_timeout = Duration::from_secs(5);
     let engine = Arc::new(akit_listener::engine(&cell, &lo).unwrap());
     engine.start().unwrap();
@@ -131,7 +131,7 @@ fn start_with(doc: &str, settings: akit_config::Admin, mut opts: Options) -> Fix
         }
         Err(_) => Ok(()),
     });
-    opts.backend = backend();
+    opts.backend = Some(backend());
     let api = Server::start(&settings, configs.clone(), submit, &opts).unwrap();
     let cs = configs.clone();
     let first = config.admin.clone();
@@ -2448,7 +2448,7 @@ fn tls_start_errors() {
         let configs = Configs::new(doc("v1"), SOURCE_FILE, 2);
         let submit: akit_admin::Submit = Box::new(|_| Ok(()));
         let mut opts = Options::default();
-        opts.backend = backend();
+        opts.backend = Some(backend());
         let e = Server::start(&settings, configs, submit, &opts).unwrap_err();
         assert!(e.to_string().starts_with("admin: "), "{c} {k}: {e}");
     }

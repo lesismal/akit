@@ -124,7 +124,7 @@ fn start(doc: &str, watch: Option<PathBuf>) -> Fixture {
     let registry: Registry<HandlerParams> = Registry::new(&[akit_handler::MODULES]).unwrap();
     let cell = GraphCell::new(compile(&config, &registry, &Env::default()).unwrap());
     let mut lo = akit_listener::Options::default();
-    lo.backend = backend();
+    lo.backend = Some(backend());
     lo.shutdown_timeout = Duration::from_secs(5);
     let engine = Arc::new(akit_listener::engine(&cell, &lo).unwrap());
     engine.start().unwrap();
@@ -150,7 +150,7 @@ fn start(doc: &str, watch: Option<PathBuf>) -> Fixture {
         let _ = t.try_send(Msg::Provide);
     });
     let mut opts = Options::default();
-    opts.backend = backend();
+    opts.backend = Some(backend());
     let settings = akit_config::Admin {
         address: "127.0.0.1:0".into(),
         ..akit_config::Admin::default()

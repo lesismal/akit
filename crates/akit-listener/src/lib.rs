@@ -923,10 +923,20 @@ fn pending_budget(m: akit_config::Memory) -> u64 {
     m.bytes(sysmem::total(), akit_config::FALLBACK_MAX_PENDING_BYTES)
 }
 
-/// An akio TCP listener at `addr` on `backend`, served by `event_loops` I/O threads (the config's
-/// `engine.event_loops`, I79); akio's one a core when 0.
-fn tcp_engine_listener(addr: SocketAddr, backend: &Backend, event_loops: usize) -> EngineListener {
-    let l = EngineListener::tcp(addr).backend(backend.clone());
+/// An akio TCP listener at `addr` on `backend` (akio's default without one), served by
+/// `event_loops` I/O threads (the config's `engine.event_loops`, I79); akio's one a core when 0.
+fn tcp_engine_listener(
+    addr: SocketAddr,
+    backend: Option<&Backend>,
+    event_loops: usize,
+) -> EngineListener {
+    let l = EngineListener::tcp(addr);
+    // Named only when chosen: a backend named is final, while akio's default follows its
+    // `AKIO_DEFAULT_BACKEND` (ADR-029), which is how `akit run` gets onto io_uring.
+    let l = match backend {
+        Some(b) => l.backend(b.clone()),
+        None => l,
+    };
     if event_loops > 0 {
         l.threads(event_loops)
     } else {
@@ -938,8 +948,9 @@ fn tcp_engine_listener(addr: SocketAddr, backend: &Backend, event_loops: usize) 
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct Options {
-    /// The akio backend of every listener (epoll, kqueue on macOS, by default).
-    pub backend: Backend,
+    /// The akio backend of every TCP listener; `None` (the default) leaves it to akio: epoll
+    /// (kqueue on macOS), or io_uring with akio's `AKIO_DEFAULT_BACKEND=uring` on Linux.
+    pub backend: Option<Backend>,
     /// How long [`shutdown`] waits for requests in flight before closing their connections:
     /// fit's `-shutdown-timeout`, 30 s by default.
     pub shutdown_timeout: Duration,
@@ -948,7 +959,7 @@ pub struct Options {
 impl Default for Options {
     fn default() -> Options {
         Options {
-            backend: Backend::default(),
+            backend: None,
             shutdown_timeout: Duration::from_secs(30),
         }
     }
@@ -1170,7 +1181,7 @@ fn build(cell: &GraphCell, opts: &Options) -> Result<Engine, (Error, bool)> {
             addr.set_port(port);
         }
         if tcp {
-            let listener = tcp_engine_listener(addr, &opts.backend, event_loops);
+            let listener = tcp_engine_listener(addr, opts.backend.as_ref(), event_loops);
             b = b.listen(
                 tcp_listener(
                     cell,

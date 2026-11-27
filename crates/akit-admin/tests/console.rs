@@ -130,7 +130,7 @@ fn start_with(c: akit_config::Console, opts: Options, prep: impl FnOnce(&Configs
     let registry: Registry<HandlerParams> = Registry::new(&[akit_handler::MODULES]).unwrap();
     let cell = GraphCell::new(compile(&config, &registry, &Env::default()).unwrap());
     let mut lo = akit_listener::Options::default();
-    lo.backend = backend();
+    lo.backend = Some(backend());
     lo.shutdown_timeout = Duration::from_secs(5);
     let engine = Arc::new(akit_listener::engine(&cell, &lo).unwrap());
     engine.start().unwrap();
@@ -156,7 +156,7 @@ fn start_with(c: akit_config::Console, opts: Options, prep: impl FnOnce(&Configs
         ..akit_config::Admin::default()
     };
     let mut opts = opts;
-    opts.backend = backend();
+    opts.backend = Some(backend());
     prep(&configs);
     let api = Server::start(&settings, configs.clone(), submit, &opts).unwrap();
     let url = api.console_url().unwrap();
