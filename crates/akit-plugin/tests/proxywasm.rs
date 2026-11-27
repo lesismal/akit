@@ -204,7 +204,12 @@ struct Akit {
 
 impl Akit {
     fn start(json: &str) -> Akit {
-        let config = akit_config::from_json(json, None).unwrap_or_else(|e| panic!("{json}: {e}"));
+        let mut config =
+            akit_config::from_json(json, None).unwrap_or_else(|e| panic!("{json}: {e}"));
+        // Two I/O threads, not one a core: the tests run at once, and with an epoll or io_uring
+        // and an eventfd a thread, one a core on a 16-core host went past the 1024 descriptors a
+        // process may have open by default (`EMFILE`).
+        config.engine.event_loops = 2;
         let slot = EngineSlot::new();
         let cell = GraphCell::new(compile(&config, &registry(), &Env::new(slot.clone())).unwrap());
         let engine = Arc::new(akit_listener::engine(&cell, &options()).unwrap());

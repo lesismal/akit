@@ -616,12 +616,17 @@ impl App {
     /// Waits until a connection whose last request ran `script` is closed.
     fn wait_closed(&self, script: &str) {
         let deadline = Instant::now() + Duration::from_secs(10);
+        let mut others = Vec::new();
         loop {
             let left = deadline.saturating_duration_since(Instant::now());
             match self.closed.recv_timeout(left) {
                 Ok(s) if s == script => return,
-                Ok(_) => {}
-                Err(_) => panic!("the connection of {script} stayed open"),
+                Ok(s) => others.push(s),
+                Err(_) => panic!(
+                    "the connection of {script} stayed open ({} accepted; closed meanwhile, by \
+                     their last scripts: {others:?})",
+                    self.accepted.load(Ordering::SeqCst)
+                ),
             }
         }
     }
@@ -668,7 +673,8 @@ fn serve_top(top: &str, params: &str) -> Akit {
         r#"{{"listeners": [{{"name": "web", "address": "127.0.0.1:0", "protocols": ["http/1.1", "h2c"]}}], {top}
             "routes": [{{"handler": {{"module": "fastcgi", "params": {params}}}}}]}}"#
     );
-    let config = akit_config::from_json(&json, None).unwrap_or_else(|e| panic!("{json}: {e}"));
+    let mut config = akit_config::from_json(&json, None).unwrap_or_else(|e| panic!("{json}: {e}"));
+    small(&mut config);
     let slot = EngineSlot::new();
     let registry = Registry::new(&[akit_handler::MODULES]).unwrap();
     let cell = GraphCell::new(compile(&config, &registry, &Env::new(slot.clone())).unwrap());
@@ -681,6 +687,13 @@ fn serve_top(top: &str, params: &str) -> Akit {
         addr,
         _cell: cell,
     }
+}
+
+/// Two I/O threads serve an akit here, not one a core: the tests run at once, a few akits each,
+/// and with an epoll or io_uring and an eventfd a thread, one a core on a 16-core host came close
+/// to the 1024 descriptors a process may have open by default (`EMFILE` at times).
+fn small(config: &mut akit_config::Config) {
+    config.engine.event_loops = 2;
 }
 
 fn serve(params: &str) -> Akit {
@@ -1490,6 +1503,10 @@ fn overall_timeout() {
         r#"{{"address": "{}", "root": "/srv", "timeout": "300ms"}}"#,
         a.addr()
     ));
+    // A connection idle first, which the request takes at once: the timeout counts from the
+    // request's arrival, and a dial under load could take it all, the request never sent and the
+    // connection kept idle.
+    assert_eq!(h1_get(s.addr, "/env.php").status, 200);
     assert_eq!(h1_get(s.addr, "/hang.php").status, 504);
     a.wait_closed("/hang.php");
 }
