@@ -360,6 +360,7 @@ dependencies = [
  "akit-handler",
  "akit-listener",
  "akit-llm",
+ "akit-media",
  "akit-middleware",
  "akit-observe",
  "akit-plugin",
@@ -526,6 +527,18 @@ dependencies = [
  "akit-config",
  "akit-observe",
  "akit-roles",
+]
+
+[[package]]
+name = "akit-media"
+version = "0.0.1"
+dependencies = [
+ "akio",
+ "akio-crypto",
+ "akio-http",
+ "akit-config",
+ "akit-roles",
+ "akit-runtime",
 ]
 
 [[package]]

@@ -26,6 +26,7 @@ members = [
     "crates/akit-webrtc",
     "crates/akit-bittorrent",
     "crates/akit-cluster",
+    "crates/akit-media",
     "tests/compat",
 ]
 
@@ -101,6 +102,7 @@ akit-tunnel = { path = "crates/akit-tunnel" }
 akit-llm = { path = "crates/akit-llm" }
 akit-webrtc = { path = "crates/akit-webrtc" }
 akit-bittorrent = { path = "crates/akit-bittorrent" }
+akit-media = { path = "crates/akit-media" }
 
 akit-cluster = { path = "crates/akit-cluster" }
 

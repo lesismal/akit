@@ -245,7 +245,7 @@ Tunnel and LLM track; I110–I114 are the WebRTC track, and I115–I119 are rese
 | I109d | The LLM roles' methods their pages call that they lack: `/mesh/*` (dial, undial, kick, listen, limits, tokens), the proxy's (`/proxy/*`: its API, keys, models, nodes, profile, stats); the identity's `http_url` | I109c | todo |
 | **After 1.0: streaming and media auth** | | | |
 | I120 | Streaming and media auth I: `media_auth` and `streaming` in the config | I79 | done |
-| I121 | Media auth II: the policies, the checks of HTTP requests, `akit media-token` | I120 | todo |
+| I121 | Media auth II: the policies, the checks of HTTP requests, `akit media-token` | I120 | done |
 | I122 | Streaming I: the role's hub and its RTMP, RTSP and SRT listeners | I121, I100 | todo |
 | I123 | Streaming II: `httpflv` and `hls` | I122 | todo |
 | I124 | Streaming III: `streaming.webrtc`, `stream_whip` and `stream_whep` | I123 | todo |
@@ -2075,7 +2075,7 @@ the Media library and channels track's, refused as not supported yet until then.
 - **Touches**: `akit-media` (new: `auth`, `http`, `role`), `akit` (`media-token`, `ROLES`).
 - **fit**: `mediaauth/mediaauth.go`, `http.go`, `registry.go`, `pool.go`, `cli/mediatoken.go`;
   I115.
-- **Status**: todo.
+- **Status**: done (2026-11-27). See the progress log.
 
 ### I122 Streaming I: the role's hub and its RTMP, RTSP and SRT listeners
 

@@ -233,7 +233,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I109d | LLM 角色的页面调用而角色尚缺的方法：`/mesh/*`（dial、undial、kick、listen、limits、tokens）、proxy 的方法（`/proxy/*`：其 API、key、模型、node、profile、统计）；身份的 `http_url` | I109c | todo |
 | **1.0 之后：流媒体与媒体认证** | | | |
 | I120 | 流媒体与媒体认证 I：配置中的 `media_auth` 和 `streaming` | I79 | done |
-| I121 | 媒体认证 II：策略、HTTP 请求的检查、`akit media-token` | I120 | todo |
+| I121 | 媒体认证 II：策略、HTTP 请求的检查、`akit media-token` | I120 | done |
 | I122 | 流媒体 I：角色的媒体中心及其 RTMP、RTSP 和 SRT 监听器 | I121, I100 | todo |
 | I123 | 流媒体 II：`httpflv` 和 `hls` | I122 | todo |
 | I124 | 流媒体 III：`streaming.webrtc`、`stream_whip` 和 `stream_whep` | I123 | todo |
@@ -1735,7 +1735,7 @@ fit 的 I115–I117（其[流媒体指南](https://github.com/lesismal/fit/blob/
   token，并像 fit 一样拒绝错误用法。
 - **涉及**：`akit-media`（新增：`auth`、`http`、`role`）、`akit`（`media-token`、`ROLES`）。
 - **fit**：`mediaauth/mediaauth.go`、`http.go`、`registry.go`、`pool.go`、`cli/mediatoken.go`；I115。
-- **状态**：todo。
+- **状态**：已完成（2026-11-27）。见进度日志。
 
 ### I122 流媒体 I：角色的媒体中心及其 RTMP、RTSP 和 SRT 监听器
 

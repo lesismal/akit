@@ -45,6 +45,7 @@ mod boot;
 mod build_cli;
 pub(crate) mod flags;
 mod hash_password;
+mod media_token;
 mod store_cli;
 mod token;
 
@@ -82,6 +83,9 @@ Commands:
   hash-password
              print the bcrypt hash of a password read from standard input, for
              admin.console's users and basic_auth
+  media-token
+             print a token a media_auth policy's secret signs, for a publisher
+             or player of the streaming role
   token      issue, list, change and revoke the link tokens of a running akit's
              tunnel hub and LLM roles, through its Admin API
   store      print the config the encrypted store holds, or seal a config as
@@ -298,7 +302,7 @@ fn roles_not_running(config: &Config) -> Result<(), Failure> {
                 "akit run does not run this role yet ({}); akit validate checks it",
                 match path {
                     p if p.starts_with("tunnel.") => "I101-I103",
-                    "media_auth" | "streaming" => "I121-I124",
+                    "streaming" => "I122-I124",
                     _ => "I104-I109",
                 }
             ),
@@ -1912,6 +1916,7 @@ pub fn main(akit_version: &str, modules: &[&'static [Info<HandlerParams>]]) -> E
         "fmt" => adapt::fmt(rest),
         "build" => build_cli::build(rest),
         "hash-password" => hash_password::hash_password(rest),
+        "media-token" => media_token::media_token(rest),
         "token" => token::token(rest),
         "store" => store_cli::store(rest),
         "version" | "-V" | "--version" => {

@@ -1,0 +1,23 @@
+[package]
+name = "akit-media"
+description = "fit's media auth and streaming role on akio-media: media_auth's policies, the hub with its RTMP, RTSP and SRT listeners, and the handlers that play it."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+# The engine the role binds its listeners on, and its timers.
+akio = { workspace = true }
+# SHA-256, HMAC-SHA256, bcrypt, base64url and the random keys of the policies (fit's mediaauth).
+akio-crypto = { workspace = true }
+# The handlers' requests, suspended while a password is checked.
+akio-http = { workspace = true }
+akit-config = { workspace = true }
+akit-roles = { workspace = true }
+akit-runtime = { workspace = true }
+
+[lints]
+workspace = true

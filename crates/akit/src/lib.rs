@@ -57,6 +57,8 @@ pub const STANDARD: &[&[Info<HandlerParams>]] = &[
 /// roles join it with their iterations, I101-I109). A config that sets another role's member is
 /// refused by `run`, which `validate` still checks.
 pub const ROLES: &[akit_roles::host::Info] = &[
+    // I121: media_auth's policies, before the roles that name them.
+    akit_media::role::MEDIA_AUTH,
     // I101: the tunnel's roles.
     akit_tunnel::HUB,
     akit_tunnel::NODE,

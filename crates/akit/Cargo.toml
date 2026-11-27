@@ -46,6 +46,8 @@ akit-llm = { workspace = true }
 akit-webrtc = { workspace = true }
 # fit's BitTorrent roles and the bt_tracker handler (I151).
 akit-bittorrent = { workspace = true }
+# media_auth's policies and the streaming role (I121-I124), and akit media-token.
+akit-media = { workspace = true }
 akit-tls = { workspace = true }
 
 [dev-dependencies]
