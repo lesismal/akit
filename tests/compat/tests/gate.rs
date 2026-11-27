@@ -750,6 +750,56 @@ fn supported_fields_are_read() {
                     == Some("P")
             },
         ),
+        // I130: cluster management.
+        (
+            "admin.node_id",
+            r#"{"admin": {"node_id": "edge-1"}}"#.into(),
+            |c| c.admin.as_ref().unwrap().node_id.as_deref() == Some("edge-1"),
+        ),
+        ("admin.cluster", cluster_sample(""), |c| cluster_of(c).is_some()),
+        ("admin.cluster.poll_interval", cluster_sample(r#""poll_interval": "5s""#), |c| {
+            cluster_of(c).unwrap().poll_interval == std::time::Duration::from_secs(5)
+        }),
+        ("admin.cluster.timeout", cluster_sample(r#""timeout": "3s""#), |c| {
+            cluster_of(c).unwrap().timeout == std::time::Duration::from_secs(3)
+        }),
+        ("admin.cluster.max_nodes", cluster_sample(r#""max_nodes": 5"#), |c| {
+            cluster_of(c).unwrap().max_nodes == 5
+        }),
+        ("admin.cluster.max_concurrency", cluster_sample(r#""max_concurrency": 2"#), |c| {
+            cluster_of(c).unwrap().max_concurrency == 2
+        }),
+        ("admin.cluster.max_response_bytes", cluster_sample(r#""max_response_bytes": 65536"#), |c| {
+            cluster_of(c).unwrap().max_response_bytes == 65536
+        }),
+        ("admin.cluster.link_address", cluster_sample(r#""link_address": ":7444""#), |c| {
+            cluster_of(c).unwrap().link_address == ":7444"
+        }),
+        (
+            "admin.cluster.link_url",
+            cluster_sample(r#""link_address": ":7444", "link_url": "wss://m:7444/cluster/link""#),
+            |c| cluster_of(c).unwrap().link_url == "wss://m:7444/cluster/link",
+        ),
+        ("admin.cluster.admins", cluster_sample(r#""admins": ["a"]"#), |c| {
+            cluster_of(c).unwrap().admins == ["a"]
+        }),
+        ("admin.cluster_member", member_sample(r#""token_file": "/t""#), |c| {
+            member_of(c).is_some()
+        }),
+        ("admin.cluster_member.manager", member_sample(r#""token_file": "/t""#), |c| {
+            member_of(c).unwrap().manager == "wss://m:7444/cluster/link"
+        }),
+        ("admin.cluster_member.fingerprint", member_sample(r#""token_file": "/t""#), |c| {
+            member_of(c).unwrap().fingerprint.len() == 64
+        }),
+        ("admin.cluster_member.token_file", member_sample(r#""token_file": "/t""#), |c| {
+            member_of(c).unwrap().token_file == "/t"
+        }),
+        (
+            "admin.cluster_member.token",
+            member_sample(&format!(r#""token": "akite1.0123456789abcdef.{}""#, "A".repeat(43))),
+            |c| member_of(c).unwrap().token.starts_with("akite1."),
+        ),
         ("admin.console", console_sample(""), |c| console_of(c).users.len() == 1),
         ("admin.console.users", console_sample(""), |c| console_of(c).users.len() == 1),
         ("admin.console.users[].username", console_sample(""), |c| {
@@ -3279,6 +3329,8 @@ fn akit_config_lists_match_the_inventory() {
         "webrtc.rs",
         // I150: the BitTorrent roles.
         "bittorrent.rs",
+        // I130: cluster management.
+        "cluster.rs",
     ]
     .iter()
     .map(|f| fs::read_to_string(compat_dir().join("../../crates/akit-config/src").join(f)).unwrap())
@@ -3294,7 +3346,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 161] = [
+    let objects: [(&str, &str, Option<&str>); 163] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         (
             "providers[].kubernetes",
@@ -3311,6 +3363,8 @@ fn akit_config_lists_match_the_inventory() {
         ("admin.console.users[]", "CONSOLE_USER_FIELDS", None),
         ("admin.console.access", "ACCESS_FIELDS", None),
         ("admin.store", "STORE_FIELDS", None),
+        ("admin.cluster", "CLUSTER_FIELDS", None),
+        ("admin.cluster_member", "CLUSTER_MEMBER_FIELDS", None),
         ("acme", "ACME_FIELDS", Some("ACME_FIT_ONLY")),
         ("acme.on_demand", "ON_DEMAND_FIELDS", None),
         ("acme.shared_storage", "SHARED_STORAGE_FIELDS", None),
@@ -4181,6 +4235,31 @@ fn console_sample(extra: &str) -> String {
     format!(
         r#"{{"admin": {{"console": {{"users": [{{"username": "a", "password_hash": "$2b$04$x"}}]{extra}}}}}}}"#
     )
+}
+
+/// A config with `admin.console` and `admin.cluster` with `extra` members (I130).
+fn cluster_sample(extra: &str) -> String {
+    format!(
+        r#"{{"admin": {{"console": {{"users": [{{"username": "a", "password_hash": "$2b$04$x"}}]}}, "cluster": {{{extra}}}}}}}"#
+    )
+}
+
+/// The `admin.cluster` of `c`.
+fn cluster_of(c: &Config) -> Option<&akit_config::cluster::Cluster> {
+    c.admin.as_ref().unwrap().cluster.as_ref()
+}
+
+/// A config with `admin.cluster_member`, its manager and pin, and `extra` members (I130).
+fn member_sample(extra: &str) -> String {
+    format!(
+        r#"{{"admin": {{"cluster_member": {{"manager": "wss://m:7444/cluster/link", "fingerprint": "{}", {extra}}}}}}}"#,
+        "0a".repeat(32)
+    )
+}
+
+/// The `admin.cluster_member` of `c`.
+fn member_of(c: &Config) -> Option<&akit_config::cluster::ClusterMember> {
+    c.admin.as_ref().unwrap().cluster_member.as_ref()
 }
 
 /// The `admin.console` of `c`.
