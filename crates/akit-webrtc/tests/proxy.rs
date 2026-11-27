@@ -233,6 +233,8 @@ fn not_running() {
 /// `session_timeout` (fit's `proxy_ports_test.go`, `TestSessionTimeout`).
 #[test]
 fn port_range_and_expiry() {
+    // Named before akit binds it: the relays' port range is the config's. Another process may
+    // take it meanwhile.
     let port = UdpSocket::bind("127.0.0.1:0")
         .unwrap()
         .local_addr()

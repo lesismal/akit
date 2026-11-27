@@ -407,10 +407,8 @@ fn manager_reads_akit_members() {
     let token = "a-token-of-member-b-0123456789";
     let bm = Run::start(&["-c", s(&token_member(&d, "b", token)), "-watch-certs=false"]);
     let b_api = bm.addr("admin API on ");
-    // A port nothing listens on: a member down.
-    let free = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let down_addr = free.local_addr().unwrap();
-    drop(free);
+    // A port nothing listens on: a member down. Port 1: nothing serves it, and no test binds it.
+    let down_addr = SocketAddr::from(([127, 0, 0, 1], 1));
 
     let mcfg = manager(&d, &h);
     let m = Run::start(&["-admin", "-c", s(&mcfg), "-watch-certs=false"]);
@@ -990,9 +988,8 @@ fn groups_and_operations() {
     let b_api = bm.addr("admin API on ");
     let cm = Run::start(&["-c", s(&token_member(&d, "c", token)), "-watch-certs=false"]);
     let c_api = cm.addr("admin API on ");
-    let free = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let down = free.local_addr().unwrap();
-    drop(free);
+    // A member down: port 1, which nothing serves and no test binds.
+    let down = SocketAddr::from(([127, 0, 0, 1], 1));
     let m = Run::start(&["-admin", "-c", s(&manager(&d, &h)), "-watch-certs=false"]);
     let mut b = Browser::new(m.addr("console on http://"));
     assert_eq!(b.login("ada", "pw").0, 200);
