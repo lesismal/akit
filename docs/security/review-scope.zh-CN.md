@@ -172,7 +172,7 @@ akio-http 的 HTTP/1 和 HTTP/2 解析器，再然后是 akio-wasm。akit 已作
 
 ## 在 akit 上工作
 
-- 构建和测试：`cargo build --release -p akit`；`cargo test --workspace`（在 Linux 上设置 `AKIO_TEST_BACKEND=uring` 测试 io_uring）；
+- 构建和测试：`cargo build --release -p akit`；`cargo test --workspace`（在 Linux 上设置 `AKIO_TEST_BACKEND=uring` 和 `AKIO_DEFAULT_BACKEND=uring` 测试 io_uring）；
   `cargo clippy --workspace --all-targets -- -D warnings`；`cargo deny check`；`cargo audit -D warnings`；`python3 -I tools/release-deps.py`。
 - 运行：`akit run -c <config>`；`akit validate -c <config>`；设置 `admin` 时 Admin API 在 `127.0.0.1:2019`
   （[Admin API 指南](../guides/admin-api.zh-CN.md)）。

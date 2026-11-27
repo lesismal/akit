@@ -115,8 +115,10 @@ for the Go gateway and for the engine underneath akit.
 
 25. **Tests by reach.** While working, test the crates a change touches and those that depend on
     them; the whole workspace (macOS, Linux epoll, Linux io_uring) runs once before a push. At most
-    two sessions run the whole suite at once. Benchmarks run in the background and are read before
-    the change they measure is pushed.
+    two sessions run the whole suite at once. The io_uring run sets both `AKIO_TEST_BACKEND=uring`
+    (the tests that choose their listeners' backend) and akio's `AKIO_DEFAULT_BACKEND=uring` (the
+    listeners that choose none, as akit-tunnel's): with the first alone, those stay on epoll.
+    Benchmarks run in the background and are read before the change they measure is pushed.
 
 ## 11. Docs
 

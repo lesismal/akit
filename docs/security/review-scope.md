@@ -232,8 +232,9 @@ as [A225](../akio-api-requests.md#a225-an-external-security-review-of-akios-cryp
 ## Working on akit
 
 - Build and test: `cargo build --release -p akit`; `cargo test --workspace` (on Linux, set
-  `AKIO_TEST_BACKEND=uring` for io_uring); `cargo clippy --workspace --all-targets -- -D warnings`;
-  `cargo deny check`; `cargo audit -D warnings`; `python3 -I tools/release-deps.py`.
+  `AKIO_TEST_BACKEND=uring` and `AKIO_DEFAULT_BACKEND=uring` for io_uring);
+  `cargo clippy --workspace --all-targets -- -D warnings`; `cargo deny check`;
+  `cargo audit -D warnings`; `python3 -I tools/release-deps.py`.
 - Run: `akit run -c <config>`; `akit validate -c <config>`; the Admin API on `127.0.0.1:2019` when
   `admin` is set ([the Admin API guide](../guides/admin-api.md)).
 - Architecture: [architecture](../architecture.md), [modules](../modules.md), the

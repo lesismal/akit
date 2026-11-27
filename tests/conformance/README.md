@@ -27,7 +27,8 @@ them; a feature is claimed with a flag in `run.sh` once its tests pass (fit's de
 
 - akit runs outside the cluster on akio's epoll backend: `akit run` has no switch for io_uring
   (akio's `Backend` is chosen per listener in code, and only akit's tests set it, through
-  `AKIO_TEST_BACKEND`), so the suite cannot run against akit on io_uring. The provider's and the
+  `AKIO_TEST_BACKEND`; akio's `AKIO_DEFAULT_BACKEND` does not reach it either, since akit-listener
+  names epoll explicitly), so the suite cannot run against akit on io_uring. The provider's and the
   listeners' own tests run on both.
 - The extended features have not been run against akit yet; the
   [M4 report](../../bench/results/m4-report-2026-11-25.md) says why and what is next.

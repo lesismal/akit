@@ -48,8 +48,12 @@ jobs:
             backend: uring
           - os: macos-latest
             backend: kqueue
+    # io_uring takes both variables: akit's tests that choose their listeners' backend read
+    # AKIO_TEST_BACKEND; akio's own AKIO_DEFAULT_BACKEND (ADR-029) moves the listeners that
+    # choose none (akit-tunnel's, akit-llm's, akit-bittorrent's, akit-webrtc's TCP ones).
     env:
       AKIO_TEST_BACKEND: ${{ matrix.backend == 'uring' && 'uring' || '' }}
+      AKIO_DEFAULT_BACKEND: ${{ matrix.backend == 'uring' && 'uring' || '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
