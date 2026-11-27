@@ -29,6 +29,8 @@ akit-tls = { workspace = true }
 akio-x509 = { workspace = true }
 akit-handler = { workspace = true }
 akit-listener = { workspace = true }
+# The media libraries' endpoints, as akit run registers them (I141).
+akit-media = { workspace = true }
 akit-runtime = { workspace = true }
 
 [lints]

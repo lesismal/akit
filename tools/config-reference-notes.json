@@ -269,6 +269,18 @@
     "routes[].handler<media_pages>.params.stall_timeout": {
       "en": "A reload keeps the rooms and their event streams, which go on under the new config: akit does not drain them as fit does.",
       "zh": "重载保留房间及其事件流，它们在新配置下继续：akit 不像 fit 那样排空它们。"
+    },
+    "media_library[].max_probes": {
+      "en": "akit probes on threads of the scan's own, at most this many at once, rather than on the file pool, which is left to the files served (decision 043); a probe reads the file's `moov` whole until akio's A295.",
+      "zh": "akit 在扫描自己的线程上探测，同时至多这么多个，而不是在文件池上，文件池留给正在提供的文件（决定 043）；在 akio 的 A295 之前，探测会整个读取文件的 `moov`。"
+    },
+    "media_library[].max_table_bytes": {
+      "en": "akit keeps a file's parsed `moov` whole (akio-media's `Movie`, every track's sample index) rather than a table a track, under the same bound (decision 043).",
+      "zh": "akit 整个保留文件解析后的 `moov`（akio-media 的 `Movie`，含每条轨道的样本索引），而不是每条轨道一个表，上限相同（决定 043）。"
+    },
+    "media_library[].file_workers": {
+      "en": "The pool's threads are started as work comes, up to this bound, and stay while the library runs.",
+      "zh": "文件池的线程随工作到来而启动，至多这么多个，并在媒体库运行期间保留。"
     }
   }
 }

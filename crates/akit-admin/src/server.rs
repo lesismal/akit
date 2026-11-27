@@ -44,6 +44,11 @@ pub type Submit = Box<dyn Fn(Job) -> Result<(), Job> + Send + Sync>;
 /// on the API's I/O thread: it must not block.
 pub type Metrics = Arc<dyn Fn(&mut Vec<u8>) + Send + Sync>;
 
+/// Endpoints of the roles the binary runs (I141: the media libraries' `/media/library`): each
+/// answers the requests whose path is its prefix or below it, and returns false for a path that
+/// is not its own. They answer on the API's thread and must not block.
+pub type Endpoint = Arc<dyn Fn(&mut Context) -> bool + Send + Sync>;
+
 /// What writes what akit is doing now, as the members of `GET /status`'s object after the running
 /// config's version, applied time and source (I63's `Scrape::write_status`): comma-separated, with
 /// no comma before the first or after the last. Called on the API's I/O thread: it must not block.
@@ -88,6 +93,8 @@ pub struct Options {
     /// The running roles' modules of the pages (I109), which the console serves beside the
     /// config's own; none without it.
     pub modules: Option<akit_roles::pages::Modules>,
+    /// The roles' endpoints, by prefix (I141); none without them.
+    pub endpoints: Vec<(&'static str, Endpoint)>,
     /// How long after it was accepted a console connection without a valid session is closed
     /// (fit's `UnauthIdleTimeout`, [`crate::console::UNAUTH_TIMEOUT`]); tests shorten it.
     pub console_unauth_timeout: Duration,
@@ -123,6 +130,10 @@ impl fmt::Debug for Options {
             .field("logs", &self.logs.is_some())
             .field("tokens", &self.tokens.is_some())
             .field("modules", &self.modules)
+            .field(
+                "endpoints",
+                &self.endpoints.iter().map(|(p, _)| *p).collect::<Vec<_>>(),
+            )
             .field("console_unauth_timeout", &self.console_unauth_timeout)
             .field("console_idle_timeout", &self.console_idle_timeout)
             .field("console_grace", &self.console_grace)
@@ -146,6 +157,7 @@ impl Default for Options {
             logs: None,
             tokens: None,
             modules: None,
+            endpoints: Vec::new(),
             console_unauth_timeout: crate::console::UNAUTH_TIMEOUT,
             console_idle_timeout: crate::console::IDLE_TIMEOUT,
             console_grace: None,
@@ -568,6 +580,7 @@ impl Server {
             logs: opts.logs.clone(),
             tokens: opts.tokens.clone(),
             node: opts.node.clone(),
+            endpoints: opts.endpoints.clone(),
             dashboard: !settings.disable_dashboard,
             token,
             deriving: Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -810,6 +823,8 @@ pub(crate) struct Shared {
     pub(crate) tokens: Option<crate::tokens::TokenViews>,
     /// What `GET /node` reads of the running akit (I131).
     node: Option<crate::node::NodeView>,
+    /// The roles' endpoints (I141).
+    endpoints: Vec<(&'static str, Endpoint)>,
     /// Whether the dashboard is served (I63): unless `disable_dashboard`.
     dashboard: bool,
     /// The token every request must carry, from `token_file`; none asked for without it.
@@ -974,6 +989,15 @@ impl Api {
             p if p == "/tokens" || p.starts_with("/tokens/") => {
                 return crate::tokens::serve(&self.0, ctx, p);
             }
+            // I141: the roles' own endpoints, as the media libraries'.
+            p if self.0.endpoints.iter().any(|(prefix, _)| under(p, prefix)) => {
+                for (prefix, serve) in &self.0.endpoints {
+                    if under(p, prefix) && serve(ctx) {
+                        return;
+                    }
+                }
+                error(404, "there is no such endpoint")
+            }
             // Its other methods edit the member `effective`, as fit's `PUT /config/{path...}`.
             p if self.0.dashboard && dashboard::is_dashboard(p) => {
                 if read {
@@ -1039,6 +1063,12 @@ impl Api {
         };
         ctx.respond(resp);
     }
+}
+
+/// Whether `path` is `prefix` or below it.
+fn under(path: &str, prefix: &str) -> bool {
+    path.strip_prefix(prefix)
+        .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
 }
 
 /// Hands `op` to the control thread, the request detached to be answered there; 503 when it

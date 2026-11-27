@@ -12,6 +12,7 @@
 pub mod auth;
 pub mod handlers;
 pub mod http;
+pub mod library;
 pub mod pages;
 mod pool;
 pub mod role;

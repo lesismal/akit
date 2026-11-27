@@ -255,7 +255,7 @@ Tunnel and LLM track; I110–I114 are the WebRTC track, and I115–I119 are rese
 | I114 | WebRTC V: WHIP and WHEP proxied: `webrtc_proxy` and `webrtc.proxy` | I113, I14 | done |
 | **After 1.0: media library and channels** | | | |
 | I140 | Media library I: decision 043, `media_library` in the config | I120 | done |
-| I141 | Media library II: the catalog: scans, items, probes on akio-media's `mp4`, the file pool, the parsed movies kept; the role `media_library`; the Admin API's `/media/library` | I140, I100 | todo |
+| I141 | Media library II: the catalog: scans, items, probes on akio-media's `mp4`, the file pool, the parsed movies kept; the role `media_library`; the Admin API's `/media/library` | I140, I100 | done |
 | I142 | Video on demand: `vod`, HLS from the sample tables, the file with ranges | I141, I121 | todo |
 | I143 | Media tokens: `media_auth`'s `keys` and `media_tokens` (fit's I119) | I121 | todo |
 | I144 | Playback URLs that expire: `url_signing`, sessions, `media_tokens`' `/urls` | I142, I143 | todo |
@@ -2211,7 +2211,8 @@ is asked as akio A295–A300. Names akit shows are akit's (decision 037), format
   library's status rather than on time; fit's binary and akit list the same library alike.
 - **Touches**: `akit-media` (`library`), `akit` (`ROLES`), `akit-admin`.
 - **fit**: `medialib`, `admin/medialib.go`; I132.
-- **Status**: todo.
+- **Status**: done (2026-11-27), a probe reading the `moov` whole until akio's A295. See the
+  progress log.
 
 ### I142 Video on demand: `vod`
 

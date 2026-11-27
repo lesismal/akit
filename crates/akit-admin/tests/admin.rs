@@ -1659,9 +1659,9 @@ fn path_matches(pattern: &str, path: &str) -> bool {
     loop {
         match (p.next(), c.next()) {
             (None, None) => return true,
-            (Some("{path...}"), Some(seg)) => return !seg.is_empty(),
+            (Some("{path...}" | "{id...}"), Some(seg)) => return !seg.is_empty(),
             // I100's /tokens/{member}/{id}: one segment each.
-            (Some("{member}" | "{id}"), Some(seg)) => {
+            (Some("{member}" | "{id}" | "{name}"), Some(seg)) => {
                 if seg.is_empty() {
                     return false;
                 }
@@ -1715,6 +1715,12 @@ fn v1_surface_is_frozen() {
     opts.metrics = Some(Arc::new(|out: &mut Vec<u8>| {
         out.extend_from_slice(b"akit_config_version 1\n");
     }));
+    // I141: the media libraries' endpoints, as akit run registers them (on an engine without
+    // libraries).
+    opts.endpoints.push((
+        akit_media::library::admin::PREFIX,
+        Arc::new(|ctx: &mut akio_http::Context| akit_media::library::admin::serve(usize::MAX, ctx)),
+    ));
     let f = start_with(&doc("v1"), admin(|_| {}), opts);
 
     // Endpoints: every method on every path frozen, each path's numbers and pointers filled in.
@@ -1728,7 +1734,9 @@ fn v1_surface_is_frozen() {
             .replace("{path...}", "listeners/0/name")
             .replace("{n}", "1")
             .replace("{member}", "tunnel.hub")
-            .replace("{id}", "0123456789abcdef");
+            .replace("{id}", "0123456789abcdef")
+            .replace("{name}", "films")
+            .replace("{id...}", "films/bbb");
         let mut get_served = false;
         for method in ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"] {
             let r = request(f.api.addr(), method, &path, &[], None);

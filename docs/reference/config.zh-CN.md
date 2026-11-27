@@ -3025,8 +3025,8 @@ streaming {
 
 `media_library` 列出 fit 的命名媒体库（[fit 的指南](https://github.com/lesismal/fit/blob/main/docs/media-library.zh-CN.md)）：
 扫描成条目目录的若干 MP4 文件（`.mp4`、`.m4v`、`.m4a`、`.mov`）所在目录，每个条目是一个标题及其版本、音频、字幕和海报，由
-`vod` 点播、由频道直播。akit 按 fit 的方式读取并检查媒体库（I140），并用 akio-media 的 MP4 读取器读取文件；`akit run` 从
-I141 起运行它们。尚未读取：上传的 `upload_dir`、`max_upload_bytes`、`max_uploads`、`min_free_bytes` 和 `upload_expiry`
+`vod` 点播、由频道直播。akit 按 fit 的方式读取并检查媒体库（I140），并用 akio-media 的 MP4 读取器读取文件；`akit run` 扫描
+它们（I141），Admin API 在 `/media/library` 列出它们。尚未读取：上传的 `upload_dir`、`max_upload_bytes`、`max_uploads`、`min_free_bytes` 和 `upload_expiry`
 （I149）。
 
 ```fit
@@ -3051,16 +3051,16 @@ media_library films {
 | `exclude` | 字符串的列表 |  |  |
 | `file_queue` | 整数，≥ 0 | `4096` |  |
 | `file_timeout` | 时长 | `"10s"` |  |
-| `file_workers` | 整数，≥ 0 |  |  |
+| `file_workers` | 整数，≥ 0 |  | **akit：**文件池的线程随工作到来而启动，至多这么多个，并在媒体库运行期间保留。 |
 | `files` | 字符串的列表 |  |  |
 | `follow_symlinks` | 布尔值 |  |  |
 | `max_catalog_bytes` | 整数，≥ 0 | `67108864` |  |
 | `max_files` | 整数，≥ 0 | `200000` |  |
 | `max_items` | 整数，≥ 0 | `20000` |  |
-| `max_probes` | 整数，≥ 0 | `4` |  |
+| `max_probes` | 整数，≥ 0 | `4` | **akit：**akit 在扫描自己的线程上探测，同时至多这么多个，而不是在文件池上，文件池留给正在提供的文件（决定 043）；在 akio 的 A295 之前，探测会整个读取文件的 `moov`。 |
 | `max_sidecar_bytes` | 整数，0 到 1048576 | `65536` |  |
 | `max_subtitle_bytes` | 整数，≥ 0 | `2097152` |  |
-| `max_table_bytes` | 整数，≥ 0 | `134217728` |  |
+| `max_table_bytes` | 整数，≥ 0 | `134217728` | **akit：**akit 整个保留文件解析后的 `moov`（akio-media 的 `Movie`，含每条轨道的样本索引），而不是每条轨道一个表，上限相同（决定 043）。 |
 | `max_upload_bytes` | 整数，≥ 0 | `34359738368` | **尚不支持**（not supported yet）：按名称拒绝。 |
 | `max_uploads` | 整数，0 到 1024 | `4` | **尚不支持**（not supported yet）：按名称拒绝。 |
 | `min_free_bytes` | 整数，≥ 0 | `1073741824` | **尚不支持**（not supported yet）：按名称拒绝。 |

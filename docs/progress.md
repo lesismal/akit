@@ -18,9 +18,49 @@ done and where the work differs from the plan.
 | Next | the external security review ([scope](security/review-scope.md)), whose findings finish I80b; fit's answer to the fields decision 035 proposes (CRL files, a WASM digest); the tracks after 1.0 ([the plan](dev-plan.md#after-10)): Console and encrypted store done (I89–I94, I93b, I93c); fit's Admin API rules for connections without the token, on the console's slots (akio's A232) (Logging done: I81–I83; Access lists done: I85–I87); the Gateway API's conformance run (tests/conformance, the maintainer's) |
 | akio requests | A1–A24, A29, A30, A32, A33, A35–A38, A45, A48, A49, A51–A54, A57, A58, A63–A66, A75, A78, A79, A90–A94, A105, A108, A109, A111–A113, A117, A132–A135, A148, A165–A172, A180, A200, A214, A215, A220, A230–A238, A245 and A247–A249 on akio's main and pinned; A225 (an external review, L15) requested ([akio API requests](akio-api-requests.md)) |
 | Streaming and media auth | [I120–I126](dev-plan.md#streaming-and-media-auth), fit's I115–I117 (decision 040): I120 (`media_auth` and `streaming` in the config), I121 (the policies, the checks, `akit media-token`), I122 (the role's hub, RTMP, RTSP and SRT), I123 (`httpflv`, `hls`), I124 (the WebRTC port, `stream_whip`, `stream_whep`), I125 (`media_pages`) and I126 (`auth` on `whip`, `whep` and `webrtc_proxy`) done; the media library's `libraries`, `vod` and `channels` wait for its track; akio requests A263–A268 |
-| Media library and channels | [I140–I149](dev-plan.md#media-library-and-channels), fit's I131–I139 and I119 (decision 043): I140 (`media_library` in the config) done |
+| Media library and channels | [I140–I149](dev-plan.md#media-library-and-channels), fit's I131–I139 and I119 (decision 043): I140 (`media_library` in the config) and I141 (the catalog, the role `media_library`, `/media/library`) done; akio request A295 |
 
 ## Log
+
+### 2026-11-27: I141, the media library's catalog
+
+- **Built**: `akit_media::library`, fit's `medialib`: the role `media_library` (`MEDIA_LIBRARY`,
+  registered by `akit run` after the streaming role) keeps each engine's libraries by name, changed
+  in place on reload (a new pool when its bounds change, a rescan when what it scans changes, a new
+  interval at once), and removes those a reload leaves out, whose methods then answer
+  `Error::Removed`. A library scans on a thread of its own: roots walked in name order against
+  `max_files` and fit's depth of 32, symbolic links out of a root refused unless `follow_symlinks`,
+  loops walked once, `files` and `exclude` matched as fit matches them; files grouped into items by
+  sidecar, then by name (rendition labels `720p`, `4k`, `800kbps`, `audio-fr`; subtitles and posters
+  named after an item's base); IDs fit's (`path_id`, the same hash); media files probed with
+  akio-media's `mp4` on at most `max_probes` threads, unchanged files not probed again, a file that
+  changes while probed probed once more; problems listed (256, the rest counted); the catalog bounded
+  by `max_items` and `max_catalog_bytes`. The file pool (`file_workers`, `file_queue`,
+  `file_timeout`) runs what serving reads; the parsed movies are kept under `max_table_bytes`, read
+  once for every caller that waits (1,024 at most), dropped when their file changes or leaves the
+  catalog; subtitles are read as WebVTT, SRT turned into it as fit does. The Admin API serves
+  `GET /media/library`, `GET /media/library/{name}` (paged, searched and filtered as fit's),
+  `GET /media/library/{name}/items/{id...}` and `POST /media/library/{name}/rescan`, through a new
+  `akit_admin::Options::endpoints`; the metrics `akit_media_library_*` join `/metrics`.
+- **Stopgap**: a probe reads and parses a file's `moov` whole (`Movie::parse`) and keeps what it
+  describes; the movie is parsed again when served. akio request A295 asks for a probe that skips
+  the sample tables, as fib's reads a file.
+- **Differs from fit**: probes on the scan's own threads, not the file pool; a movie a file kept,
+  not a table a track (decision row 88); VP8 and VP9 named and served, a file whose chunks run past
+  its end refused at the scan, `CODECS` in upper-case hex, sidecars read by akit's JSON reader
+  (decision row 89).
+- **Checked**: fit's `medialib` tests ported on fit's fixtures (`tests/data/medialib`):
+  `TestCatalog` (every track's codec, start, duration, size and sample rate against ffprobe's
+  `lib.probe`), `TestPathID`, `TestPatterns`, `TestRescan`, `TestPathsOut`, `TestBounds`,
+  `TestRoots`, `TestDeepAndOdd`, `TestChangingFile` (a probe hook in place of fit's pool hook),
+  `TestTable` and `TestTableBusy` (as movies), `TestSubtitles`, `TestPool`, `TestReload`, the
+  metrics of `TestRole`, `TestOddFiles`, `TestOpenFile`, `TestInterval`, and the Admin API's
+  endpoints; every wait on the library's status (a condition variable) or a callback, with a
+  deadline. Interop: fit's binary (built from source) and akit's, each scanning the same copy of the
+  fixtures, list the same five items, IDs (the hashed one too), titles, renditions, audio,
+  subtitles, posters, sidecars, tracks, sample counts, durations and sizes through
+  `/media/library/lib` and `/items/{id}`; the v1 freeze marks the endpoints as additions.
+- **Next**: I142, `vod`.
 
 ### 2026-11-27: I140, `media_library` in the config
 

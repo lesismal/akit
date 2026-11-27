@@ -62,3 +62,22 @@ not supported yet for this track.
 - Where akio-media's reader or planner answers otherwise than fib's (where a segment is cut, what a
   probe reads), akit answers as akio does; each such difference is recorded in the iteration that
   meets it, and asked of akio where fit's behaviour matters.
+
+## I141: the catalog
+
+- **Scans on threads of the library's own.** A library scans on a thread of its own, woken when
+  asked, when a reload changes what it scans, and every `scan_interval` (a condition variable's
+  timed wait: the logic is about time). Its probes run on at most `max_probes` scoped threads of the
+  scan, not on the file pool as fit's do, so that a scan never sleeps to retry a job the pool
+  refused and the pool's workers are left to the files served (decision row 88).
+- **A probe parses the `moov` whole** with `Movie::parse` and keeps only what it describes; the
+  movie is parsed again when its file is served. fib reads a `moov` but for its sample tables;
+  akio's request A295 asks for that (decision row 88).
+- **A movie a file is kept**, not a table a track: `Movie::parse` builds every track's index at
+  once. The cache is bounded by `max_table_bytes` as fit's is, admitting a movie by the bytes its
+  probe's parse found its indexes take.
+- **The file pool's threads start as work comes**, up to `file_workers`, rather than all at once.
+- **The Admin API's `/media/library`** is served by `akit-media`, which the binary registers as an
+  endpoint of the Admin API (`akit_admin::Options::endpoints`), so that akit-admin does not depend
+  on the media crate.
+- **Where akio reads a file otherwise than fib**, the catalog follows akio (decision row 89).

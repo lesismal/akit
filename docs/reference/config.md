@@ -2875,7 +2875,7 @@ streaming {
 MP4 files (`.mp4`, `.m4v`, `.m4a`, `.mov`) scanned into a catalog of items, each a title with its
 renditions, audio, subtitles and poster, which `vod` serves on demand and channels play live. akit
 reads and checks the libraries as fit does (I140) and reads the files with akio-media's MP4 reader;
-`akit run` runs them from I141. Not read yet: the uploads' `upload_dir`, `max_upload_bytes`,
+`akit run` scans them (I141), and the Admin API lists them at `/media/library`. Not read yet: the uploads' `upload_dir`, `max_upload_bytes`,
 `max_uploads`, `min_free_bytes` and `upload_expiry` (I149).
 
 ```fit
@@ -2898,16 +2898,16 @@ media_library films {
 | `exclude` | list of string |  | Files and directories left out, by pattern, as files writes them, as trailers or **/extras/**; a directory left out is not walked. None when left out. |
 | `file_queue` | integer, 0 or more | `4096` | The most jobs that wait for the file pool; one more is refused, as a request answered 503. 4096 when left out or 0. |
 | `file_timeout` | duration | `"10s"` | How long a job may wait for the file pool before it is given up, as a request answered 503. 10s when left out. |
-| `file_workers` | integer, 0 or more |  | The threads of the library's file pool, which probe, read sample tables and read the files' bytes, so that no akio worker waits on the disk: all the disk is asked to do at once. 4 a CPU, and at least 16, when left out or 0. |
+| `file_workers` | integer, 0 or more |  | The threads of the library's file pool, which probe, read sample tables and read the files' bytes, so that no akio worker waits on the disk: all the disk is asked to do at once. 4 a CPU, and at least 16, when left out or 0. **akit:** The pool's threads are started as work comes, up to this bound, and stay while the library runs. |
 | `files` | list of string |  | The files looked at, by pattern: a pattern without '/' matches a file's name, as *.mp4, and one with '/' its path under the root, as films/**/*.mp4, where * matches within a name and ** any run of directories. Every file when left out; names starting with '.' are never looked at. |
 | `follow_symlinks` | boolean |  | Follow symbolic links that lead out of the library's roots. A link that stays within its root is followed either way; one that leads out is refused, and reported, when left out or false. |
 | `max_catalog_bytes` | integer, 0 or more | `67108864` | The most memory the catalog takes, as reckoned from its items' paths, titles, tracks and codec configurations; past it the rest of the items are left out, and the scan says so. 64 MiB when left out or 0. |
 | `max_files` | integer, 0 or more | `200000` | The most files and directories a scan looks at, across the roots; past it the scan stops there, and says so. 200000 when left out or 0. |
 | `max_items` | integer, 0 or more | `20000` | The most items the catalog holds; past it the rest are left out, and the scan says so. 20000 when left out or 0. |
-| `max_probes` | integer, 0 or more | `4` | The most files probed at once on the library's file pool, so that a scan leaves the pool's other workers to the files being served. 4 when left out or 0. |
+| `max_probes` | integer, 0 or more | `4` | The most files probed at once on the library's file pool, so that a scan leaves the pool's other workers to the files being served. 4 when left out or 0. **akit:** akit probes on threads of the scan's own, at most this many at once, rather than on the file pool, which is left to the files served (decision 043); a probe reads the file's `moov` whole until akio's A295. |
 | `max_sidecar_bytes` | integer, 0 to 1048576 | `65536` | The largest sidecar, <name>.json, read; a larger one is reported and left out. At most 1 MiB. 64 KiB when left out or 0. |
 | `max_subtitle_bytes` | integer, 0 or more | `2097152` | The largest subtitle file served, .vtt or .srt turned into WebVTT; a larger one is listed with its error and not served. 2 MiB when left out or 0. |
-| `max_table_bytes` | integer, 0 or more | `134217728` | The most memory the sample tables read from the files take, kept for the files being served; past it the least recently used are dropped, and a table larger than all of it is refused. 128 MiB when left out or 0. |
+| `max_table_bytes` | integer, 0 or more | `134217728` | The most memory the sample tables read from the files take, kept for the files being served; past it the least recently used are dropped, and a table larger than all of it is refused. 128 MiB when left out or 0. **akit:** akit keeps a file's parsed `moov` whole (akio-media's `Movie`, every track's sample index) rather than a table a track, under the same bound (decision 043). |
 | `max_upload_bytes` | integer, 0 or more | `34359738368` | **Not supported yet**: refused by name. The largest file uploaded; a larger one is refused 413 before any of it is written. 32 GiB when left out or 0. |
 | `max_uploads` | integer, 0 to 1024 | `4` | **Not supported yet**: refused by name. The most uploads under way at once, begun and not yet whole; one more is refused 429 until one ends, or is cancelled, or expires. 4 when left out or 0. |
 | `min_free_bytes` | integer, 0 or more | `1073741824` | **Not supported yet**: refused by name. The disk space left free beside the uploads under way: an upload whose bytes, with those of the others still to come, would leave less free on upload_dir's disk is refused 507 before any of it is written. 1 GiB when left out or 0. |

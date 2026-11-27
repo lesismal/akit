@@ -137,6 +137,9 @@ fn media_library() {
     assert!(!within(a, a) && !within(a, ab) && within(a, a_b) && !within(a_b, a));
     assert_eq!(clean(Path::new("/b/x/../up/./")), Path::new("/b/up"));
     assert_eq!(clean(Path::new("/../a")), Path::new("/a"));
+    assert_eq!(clean(Path::new("../../a")), Path::new("../../a"));
+    assert_eq!(clean(Path::new("a/../../b")), Path::new("../b"));
+    assert_eq!(clean(Path::new("a/..")), Path::new("."));
 }
 
 /// Go's `path.Match`, as Go's own tests have it (`path/match_test.go`).

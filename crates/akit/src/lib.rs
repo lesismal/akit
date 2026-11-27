@@ -64,6 +64,8 @@ pub const ROLES: &[akit_roles::host::Info] = &[
     akit_media::role::MEDIA_AUTH,
     // I122: the streaming role.
     akit_media::streaming::STREAMING,
+    // I141: the media libraries, before the handlers that serve them.
+    akit_media::library::MEDIA_LIBRARY,
     // I101: the tunnel's roles.
     akit_tunnel::HUB,
     akit_tunnel::NODE,

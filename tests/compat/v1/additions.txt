@@ -833,3 +833,11 @@ config	added	supported	media_library[].roots
 config	added	supported	media_library[].scan_interval
 config	added	supported	media_library[].secret
 config	added	supported	media_library[].secret_file
+# I141: the media libraries (fit's admin/medialib.go).
+admin	added	endpoint	GET	/media/library
+admin	added	endpoint	HEAD	/media/library
+admin	added	endpoint	GET	/media/library/{name}
+admin	added	endpoint	HEAD	/media/library/{name}
+admin	added	endpoint	GET	/media/library/{name}/items/{id...}
+admin	added	endpoint	HEAD	/media/library/{name}/items/{id...}
+admin	added	endpoint	POST	/media/library/{name}/rescan

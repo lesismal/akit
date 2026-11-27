@@ -408,6 +408,7 @@ dependencies = [
  "akit-config",
  "akit-handler",
  "akit-listener",
+ "akit-media",
  "akit-observe",
  "akit-provider",
  "akit-roles",

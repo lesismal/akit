@@ -302,7 +302,6 @@ fn roles_not_running(config: &Config) -> Result<(), Failure> {
                 "akit run does not run this role yet ({}); akit validate checks it",
                 match path {
                     p if p.starts_with("tunnel.") => "I101-I103",
-                    "media_library" => "I141",
                     _ => "I104-I109",
                 }
             ),
@@ -1614,6 +1613,14 @@ fn run(args: &[String]) -> ExitCode {
                     }
                 }
             }
+            // The media libraries' endpoints, at /media/library (I141).
+            let key = akit_media::library::key(&engine);
+            api_opts.endpoints.push((
+                akit_media::library::admin::PREFIX,
+                Arc::new(move |ctx: &mut akio_http::Context| {
+                    akit_media::library::admin::serve(key, ctx)
+                }),
+            ));
             match akit_admin::Server::start(a, configs.clone(), submit, &api_opts) {
                 Ok(s) => {
                     println!("akit: admin API on {}", s.address());
@@ -1982,16 +1989,13 @@ mod tests {
         assert!(super::roles_not_running(&c).is_ok());
         let c = akit_config::from_json(r#"{"bittorrent": {}}"#, None).unwrap();
         assert!(super::roles_not_running(&c).is_ok());
-        // The media libraries (I140): read and checked, run from I141.
+        // The media libraries (I140): read and checked, run since I141.
         let c = akit_config::from_json(
             r#"{"media_library": [{"name": "films", "roots": ["/srv/films"]}]}"#,
             None,
         )
         .unwrap();
-        let Err(super::Failure::Config(errs)) = super::roles_not_running(&c) else {
-            panic!("media_library runs");
-        };
-        assert!(errs.to_string().contains("I141"), "{errs}");
+        assert!(super::roles_not_running(&c).is_ok());
     }
 
     /// Every WebRTC role and handler runs (I111-I114): nothing of `webrtc` is refused.

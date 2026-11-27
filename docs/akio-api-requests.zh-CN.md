@@ -2424,6 +2424,25 @@ akio 的 HTTP 客户端给出的响应不带其连接握手时看到的证书链
 **akit 如何使用。** `akit_cluster::transport` 为状态的 `tls` 读取每次调用所在连接的证书，并从错误中读取被拒绝的证书，
 得出 `tls_untrusted` 和 `tls_pin_mismatch`；探测（`Transport::probe`：一条不做校验的 TLS 连接，发送不带凭据的请求，读取
 `tls_info` 的证书链，再用 akio-x509 的校验器或 pin 检查）随之去掉。
+## A295 akio-media 的 MP4 读取器：跳过样本表的探测，以及构建之前就知道表的大小
+
+**状态。** 由 I141 提出（2026-11-27）。没有工作等它：akit 的媒体库探测文件时整个读取其 `moov` 并用 `Movie::parse` 解析，只保留
+所描述的内容，提供文件时再解析一次（临时做法记录在[进度](progress.zh-CN.md)中）。
+
+**问题。** fit 的探测（fib 的 `mp4.Open`）读取到 `moov` 为止的盒子头部，以及除样本表之外的 `moov`，样本表只取其条目数：无论文件
+多长都只读几 KB；`Track.TableBytes` 在读取之前就由这些条目数给出表的大小，使媒体库的缓存按大小接纳或淘汰它。akio-media 的
+`Movie::parse` 整个接受 `moov` 并构建每条轨道的索引：探测一部两小时的影片要读取并解析约 10 MB，同时至多 `max_probes`（4）个，
+受 `Limits::max_moov_bytes`（64 MiB）限制；影片的大小要构建之后才知道。
+
+**证据。** 在 akio `d8d51f61` 中，`akio-media/src/mp4/mod.rs`：`Movie::parse(moov: &[u8], ..)` 整个接受该盒子，`Locator` 停在其
+头部；`mp4/parse.rs` 为每个 `trak` 构建 `SampleIndex`。
+
+**建议的 API。** 一个与 `Locator` 一样 sans-io 的 `Prober`，请求 `moov` 的各个盒子，但跳过 `stbl` 中各表（`stts`、`ctts`、`stss`、
+`stsc`、`stsz`/`stz2`、`stco`/`co64`）的内容，保留其条目数，给出一个各轨道带有编解码器、编辑列表和时长而没有索引的 `Movie`；以及
+`SampleIndex::estimate_bytes(counts)`（或 `Mp4Track::index_bytes_estimate`），由条目数给出索引将占用的字节数。
+
+**akit 如何使用。** 媒体库的扫描用它探测，每个文件只读几 KB；影片缓存在读取之前按估计值接纳影片，与 fit 的表缓存相同。
+
 
 ## A301 引擎优雅关闭时结束 `H2Client`
 

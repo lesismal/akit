@@ -3040,6 +3040,33 @@ connection for the state's `tls`, and a refused one from the error for `tls_untr
 `tls_pin_mismatch`; the probe (`Transport::probe`, a TLS connection that verifies nothing, sends a
 request without credentials, reads `tls_info`'s chain and checks it with akio-x509's verifier or
 the pin) goes.
+## A295 akio-media's MP4 reader: a probe that skips the sample tables, and a table's size before it is built
+
+**Status.** Requested by I141 (2026-11-27). Nothing waits for it: akit's media library reads a
+file's `moov` whole and parses it with `Movie::parse` to probe it, keeping only what it describes,
+and parses it again when the file is served (a stopgap recorded in [progress](progress.md)).
+
+**Problem.** fit's probe (fib's `mp4.Open`) reads the box headers to the `moov`, and the `moov` but
+for its sample tables, of which it takes the entry counts: some kilobytes, whatever a file's
+length; and `Track.TableBytes` gives a table's size from those counts before it is read, so that
+the library's cache admits or evicts it by its size. akio-media's `Movie::parse` takes the `moov`
+whole and builds every track's index: probing a two-hour film reads and parses some 10 MB, up to
+`max_probes` (4) at once within `Limits::max_moov_bytes` (64 MiB), and a movie's size is known only
+once it is built.
+
+**Evidence.** At akio `d8d51f61`, `akio-media/src/mp4/mod.rs`: `Movie::parse(moov: &[u8], ..)`
+takes the box whole, and `Locator` stops at its header; `mp4/parse.rs` builds a `SampleIndex` for
+every `trak`.
+
+**Suggested API.** A sans-io `Prober`, as `Locator` is, that asks for the `moov`'s boxes but skips
+the bodies of `stbl`'s tables (`stts`, `ctts`, `stss`, `stsc`, `stsz`/`stz2`, `stco`/`co64`),
+keeping their entry counts, and gives a `Movie` whose tracks have their codecs, edit lists and
+durations without their indexes; and `SampleIndex::estimate_bytes(counts)` (or
+`Mp4Track::index_bytes_estimate`), the bytes the index will take, from the counts.
+
+**How akit would use it.** The library's scans probe with it, reading kilobytes a file; its movie
+cache admits a movie by the estimate before reading it, as fit's table cache does.
+
 
 ## A301 `H2Client` ended by the engine's graceful shutdown
 

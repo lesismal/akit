@@ -17,9 +17,36 @@
 | 下一步 | 外部安全审查（[范围](security/review-scope.zh-CN.md)），其发现完成 I80b；fit 对决定 035 所提议字段（CRL 文件、WASM 摘要）的答复；1.0 之后的各条线（[开发计划](dev-plan.zh-CN.md#10-之后)）：控制台与加密的 store 已完成（I89–I94、I93b、I93c）；fit 的 Admin API 对没有令牌的连接的规则，基于控制台的 slots（akio 的 A232）（日志已完成：I81–I83；访问控制列表已完成：I85–I87）；Gateway API 一致性测试的运行（tests/conformance，由维护者运行） |
 | akio 需求 | A1–A24、A29、A30、A32、A33、A35–A38、A45、A48、A49、A51–A54、A57、A58、A63–A66、A75、A78、A79、A90–A94、A105、A108、A109、A111–A113、A117、A132–A135、A148、A165–A172、A180、A200、A214、A215、A220、A230–A238、A245 和 A247–A249 已进入 akio 的 main 并锁定；A225（外部审查，L15）已提出（[akio API 请求](akio-api-requests.zh-CN.md)） |
 | 流媒体与媒体认证 | [I120–I126](dev-plan.zh-CN.md#流媒体与媒体认证)，fit 的 I115–I117（决定 040）：I120（配置中的 `media_auth` 和 `streaming`）、I121（策略、检查、`akit media-token`）I122（角色的媒体中心、RTMP、RTSP 和 SRT）、I123（`httpflv`、`hls`）、I124（WebRTC 端口、`stream_whip`、`stream_whep`）、I125（`media_pages`）和 I126（`whip`、`whep` 和 `webrtc_proxy` 上的 `auth`）已完成；媒体库的 `libraries`、`vod` 和 `channels` 等待其那条线；akio 请求 A263–A268 |
-| 媒体库与频道 | [I140–I149](dev-plan.zh-CN.md#媒体库与频道)，fit 的 I131–I139 和 I119（决定 043）：I140（配置中的 `media_library`）已完成 |
+| 媒体库与频道 | [I140–I149](dev-plan.zh-CN.md#媒体库与频道)，fit 的 I131–I139 和 I119（决定 043）：I140（配置中的 `media_library`）和 I141（目录、角色 `media_library`、`/media/library`）已完成；akio 需求 A295 |
 
 ## 日志
+
+### 2026-11-27：I141，媒体库的目录
+
+- **完成内容**：`akit_media::library`，即 fit 的 `medialib`：角色 `media_library`（`MEDIA_LIBRARY`，由 `akit run` 在流媒体角色之后
+  注册）按名字保存每个引擎的媒体库，重载时原地修改（上限改变时换一个新文件池，扫描内容改变时重新扫描，新的间隔立即生效），并删除
+  重载中去掉的媒体库，此后其方法回答 `Error::Removed`。媒体库在自己的线程上扫描：按名字顺序遍历根目录，受 `max_files` 和 fit 的
+  32 层深度限制，除非 `follow_symlinks` 否则拒绝指向根目录之外的符号链接，循环只走一次，`files` 和 `exclude` 按 fit 的方式匹配；
+  先按边车文件、再按名字（版本标签 `720p`、`4k`、`800kbps`、`audio-fr`；以条目基名命名的字幕和海报）把文件归组为条目；ID 与
+  fit 相同（`path_id`，相同的哈希）；用 akio-media 的 `mp4` 在至多 `max_probes` 个线程上探测媒体文件，未变化的文件不再探测，
+  探测中变化的文件再探测一次；列出问题（256 个，其余计数）；目录受 `max_items` 和 `max_catalog_bytes` 限制。文件池（`file_workers`、
+  `file_queue`、`file_timeout`）运行提供文件时的读取；解析后的影片在 `max_table_bytes` 内保留，对所有等待者只读取一次（至多
+  1,024 个），文件改变或离开目录时丢弃；字幕按 WebVTT 读取，SRT 按 fit 的方式转换。Admin API 通过新的
+  `akit_admin::Options::endpoints` 提供 `GET /media/library`、`GET /media/library/{name}`（与 fit 一样分页、搜索和筛选）、
+  `GET /media/library/{name}/items/{id...}` 和 `POST /media/library/{name}/rescan`；指标 `akit_media_library_*` 加入 `/metrics`。
+- **临时做法**：探测整个读取并解析文件的 `moov`（`Movie::parse`），保留其描述；提供文件时再次解析影片。akio 需求 A295 请求一种
+  像 fib 那样跳过样本表的探测。
+- **与 fit 的差异**：在扫描自己的线程上而不是文件池上探测；每个文件保留一个影片而不是每条轨道一个表（待审决定第 88 行）；VP8 和
+  VP9 被命名并提供，数据块超出文件末尾的文件在扫描时被拒绝，`CODECS` 用大写十六进制，边车文件由 akit 的 JSON 读取器读取（待审决定
+  第 89 行）。
+- **验证**：在 fit 的测试素材（`tests/data/medialib`）上移植 fit 的 `medialib` 测试：`TestCatalog`（每条轨道的编解码器、起点、
+  时长、尺寸和采样率与 ffprobe 的 `lib.probe` 对比）、`TestPathID`、`TestPatterns`、`TestRescan`、`TestPathsOut`、`TestBounds`、
+  `TestRoots`、`TestDeepAndOdd`、`TestChangingFile`（用探测钩子代替 fit 的文件池钩子）、`TestTable` 和 `TestTableBusy`（改为影片）、
+  `TestSubtitles`、`TestPool`、`TestReload`、`TestRole` 的指标、`TestOddFiles`、`TestOpenFile`、`TestInterval`，以及 Admin API 的
+  端点；每次等待都基于媒体库的状态（条件变量）或回调，并有期限。互通：从源码构建的 fit 程序和 akit 的程序各自扫描测试素材的同一
+  副本，通过 `/media/library/lib` 和 `/items/{id}` 列出相同的五个条目、ID（包括带哈希的那个）、标题、版本、音频、字幕、海报、
+  边车文件、轨道、样本数、时长和大小；v1 冻结把这些端点标为新增。
+- **下一步**：I142，`vod`。
 
 ### 2026-11-27：I140，配置中的 `media_library`
 

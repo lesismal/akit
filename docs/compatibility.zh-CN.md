@@ -117,6 +117,7 @@ API 的下一个版本中才会去掉，并在其改动清单中写明。
 | `GET`、`HEAD` `/logs`、`POST /logs/rotate`、`POST /logs/cleanup` | 日志文件，立即切割其中一个，以及执行或列出其保留策略（冻结之后新增，I83） |
 | `POST /config/render`、`POST /config/parse`、`PUT /config/text`、`POST /config/export`、`POST /config/import` | 配置或其部分顶层成员（`?members=`）的 `.conf`、YAML 或 JSON 文本（`?format=`），以及应用一段文本或一个文件，即 fit 控制台的原文编辑器和导入导出页面所调用的（冻结之后新增，I91；fit 的 `store` 格式，即用自己的密码或正在运行的 store 的密钥密封的 `fitstore` 文件，自 I93b 起） |
 | `GET`、`HEAD` `/tokens` 和 `/tokens/{成员}`、`POST /tokens/{成员}`、`PATCH` 和 `DELETE /tokens/{成员}/{id}` | 隧道 hub 和 LLM 角色的链路 token：签发、列出、修改过期时间和撤销，同 fit 的 `admin/tokens.go`；akit 的作用于运行中配置所设置的成员，无论其角色是否已在运行（冻结之后新增，I100） |
+| `GET`、`HEAD` `/media/library`、`/media/library/{name}`、`/media/library/{name}/items/{id...}`、`POST /media/library/{name}/rescan` | 媒体库：其扫描的状态、分页和筛选的媒体库条目、完整的单个条目，以及立即请求一次扫描，同 fit 的 `admin/medialib.go`（冻结之后新增，I141） |
 | `GET /dashboard/` | 仪表盘，给人看（不覆盖） |
 
 配置中的路径是 JSON pointer 的各个 token。变更的应答给出所应用的版本，在内容中（`version`）和 `Akit-Config-Version` 中，并给出配置的
@@ -130,7 +131,7 @@ API 的下一个版本中才会去掉，并在其改动清单中写明。
 `[redacted]` 保留原位置的秘密（[决定 035](decisions/035-admin-api-redacts-secrets.zh-CN.md)）。fit 自己的 Admin API
 按写入时的样子返回配置；这一改动关闭威胁模型的 L2，属于 1.x 版本为修补安全漏洞可以做的改动。
 
-fit 的 v1 还有更多端点，用于 akit 尚未运行的部分：tunnel 和 LLM 角色的链接令牌（`/tokens`）、媒体库和工作台的媒体页面
+fit 的 v1 还有更多端点，用于 akit 尚未运行的部分：tunnel 和 LLM 角色的链接令牌（`/tokens`）、媒体库和工作台的媒体页面的其余部分
 （`/media/...`），以及流媒体角色（`/streaming/...`）。akit 在运行这些部分之前对它们答 404，届时按 fit 的样子加入，属于兼容的增加。
 
 自 I90 起，控制台（`admin.console`）在 `/api/m/admin/` 下提供同样的端点，用它的登录代替令牌，另有 fit 控制台自己的端点（`/api/login`、`/api/logout`、`/api/session`、`/api/workbench`），cookie 和 CSRF 请求头用 akit 的名字 `akit_console_<端口>` 和 `X-Akit-Csrf`（fit 的 `fit_console_<端口>` 和 `X-Fit-Csrf`，决定 037；[控制台指南](guides/console.zh-CN.md)）。

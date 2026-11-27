@@ -243,7 +243,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I114 | WebRTC V：代理的 WHIP 和 WHEP：`webrtc_proxy` 和 `webrtc.proxy` | I113, I14 | done |
 | **1.0 之后：媒体库与频道** | | | |
 | I140 | 媒体库 I：决定 043，配置中的 `media_library` | I120 | done |
-| I141 | 媒体库 II：目录：扫描、条目、基于 akio-media 的 `mp4` 的探测、文件池、保留的解析后影片；角色 `media_library`；Admin API 的 `/media/library` | I140, I100 | todo |
+| I141 | 媒体库 II：目录：扫描、条目、基于 akio-media 的 `mp4` 的探测、文件池、保留的解析后影片；角色 `media_library`；Admin API 的 `/media/library` | I140, I100 | done |
 | I142 | 点播：`vod`，由样本表生成的 HLS，按范围提供的文件 | I141, I121 | todo |
 | I143 | 媒体 token：`media_auth` 的 `keys` 和 `media_tokens`（fit 的 I119） | I121 | todo |
 | I144 | 会过期的播放 URL：`url_signing`、会话、`media_tokens` 的 `/urls` | I142, I143 | todo |
@@ -1842,7 +1842,7 @@ SAMPLE-AES（fib 的 A69）；它缺少的部分作为 akio A295–A300 请求�
   fit 列出的相同），以媒体库的状态而非时间同步；fit 的程序和 akit 对同一媒体库列出相同的内容。
 - **涉及**：`akit-media`（`library`）、`akit`（`ROLES`）、`akit-admin`。
 - **fit**：`medialib`、`admin/medialib.go`；I132。
-- **状态**：todo。
+- **状态**：已完成（2026-11-27），在 akio 的 A295 之前探测会整个读取 `moov`。见进度日志。
 
 ### I142 点播：`vod`
 

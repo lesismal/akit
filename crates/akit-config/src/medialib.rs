@@ -577,8 +577,12 @@ pub fn clean(p: &Path) -> PathBuf {
         match c {
             Component::CurDir => {}
             Component::ParentDir => {
-                if !out.pop() && !out.has_root() {
+                let up = matches!(out.components().next_back(), Some(Component::ParentDir));
+                if up || (out.as_os_str().is_empty() && !out.has_root()) {
                     out.push("..");
+                } else {
+                    // At the root, `..` is the root.
+                    out.pop();
                 }
             }
             other => out.push(other),

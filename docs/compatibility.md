@@ -134,6 +134,7 @@ version of the schema or the API, which says so in its list of changes.
 | `GET`, `HEAD` `/logs`, `POST /logs/rotate`, `POST /logs/cleanup` | The log files, one rotated now, and its retention applied or listed (added after the freeze, I83) |
 | `POST /config/render`, `POST /config/parse`, `PUT /config/text`, `POST /config/export`, `POST /config/import` | The config, or some of its top-level members (`?members=`), as `.conf`, YAML or JSON text (`?format=`), and a text or file applied, as fit's console's raw editors and transfer page call them (added after the freeze, I91; fit's `store` format, a `fitstore` file sealed with a password of its own or the running store's key, since I93b) |
 | `GET`, `HEAD` `/tokens` and `/tokens/{member}`, `POST /tokens/{member}`, `PATCH` and `DELETE /tokens/{member}/{id}` | The link tokens of the tunnel's hub and the LLM roles, issued, listed, their expiry changed and revoked, as fit's `admin/tokens.go`; akit's work on the member the running config sets, whether or not its role runs yet (added after the freeze, I100) |
+| `GET`, `HEAD` `/media/library`, `/media/library/{name}`, `/media/library/{name}/items/{id...}`, `POST /media/library/{name}/rescan` | The media libraries: their scans' status, a library's items paged and filtered, an item whole, and a scan asked for now, as fit's `admin/medialib.go` (added after the freeze, I141) |
 | `GET /dashboard/` | The dashboard, for people (not covered) |
 
 A path in the config is a JSON pointer's tokens. A change answers with the version applied, in the
@@ -154,7 +155,7 @@ config as written; the change closes the threat model's L2, as a 1.x release may
 security hole.
 
 fit's v1 has more endpoints, for the parts akit does not run yet: the link tokens of the tunnel's
-and the LLM roles (`/tokens`), the media libraries and the workbench's media pages (`/media/...`)
+and the LLM roles (`/tokens`), the rest of the media libraries' and the workbench's media pages (`/media/...`)
 and the streaming role (`/streaming/...`). akit answers them 404 until it runs those parts, and adds
 them then, as fit has them, a compatible addition.
 
