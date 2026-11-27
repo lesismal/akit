@@ -146,6 +146,48 @@ done and where the work differs from the plan.
   a draining server), a port range (its port taken, 508 when used up, free again after a delete),
   `TestLimiter`; the fib interop (`tests/fib_turn.rs`) against akit and fit alike, on macOS.
 
+### 2026-11-27: I136, templates and what a member knows the manager owns
+
+- Templates (`akit_cluster::templates`, fit's `cluster/templates.go`): a fragment of the config,
+  its top-level members owned whole (but `admin` and `schema_version`) and the elements of
+  `listeners`, `routes`, `services` and `upstreams` owned by name (named, each once, names without
+  variables); variables `${node.name}`, `${node.id}`, `${node.hostname}`, `${node.labels.<key>}`
+  and a group's, `$${` a `${` as written; attached to groups (32), an order (−1,000 to 1,000), 64
+  KiB and 256 parts at most, 128 templates. Secrets (fit's rule) answered as `[secret]` and kept
+  when sent back so; paths to files warned of. Typed in the store's document, as fit writes them;
+  a group renamed or removed is followed. Endpoints: `GET`/`POST /api/templates` (with `from`, made
+  from parts of a member's config read now), `GET`/`PUT`/`DELETE /api/templates/<name>`.
+- Each member against its templates (`akit_cluster::sync`, fit's `render.go` and `sync.go`): the
+  parts its templates render, a later template winning a part (`overrides`); the desired config,
+  its own with those parts in their places, a new element at the end; each part in sync, out of
+  sync (`missing`, `template_changed`) or a conflict (`own_value`, `changed_here`,
+  `removed_here`), against the hash the member keeps of the part as last seen in sync; parts no
+  template owns now released. `POST /api/sync` (`nodes`, `template`, or every member; 4 at once;
+  those not read in 30 s pending), `GET /api/sync` (summaries, no values), `GET
+  /api/desired/<name>`, `POST /api/import` (a member's parts, for a template), `POST
+  /api/compare` (two members part by part), `POST /api/text/render` and `/parse` (a template's
+  config as `.conf`, YAML or JSON, through `akit_config::adapt`). Members are read
+  `max_concurrency` at once, each answer starting the next read.
+- Members told what the manager owns there (`PUT /node/managed`, `If-Match`, once more after a
+  412), after every change of members, groups or templates, one refresh at a time, a change
+  meanwhile running another after it (fit's delay of half a second is not taken: no timer that is
+  not about time); with a sync from the pages too.
+- On every akit (`akit_admin::managed`, fit's `admin/managed.go`): `GET`, `PUT` and `DELETE
+  /node/managed`, the capability `node.managed`; the record (the manager's node ID and host, each
+  part with its template and hash) checked as fit's, kept in the store's section `managed` (fit's)
+  or in memory without a store; each part said present and changed or not against the config as the
+  API answers it. Marked as v1 additions.
+- Mixed clusters: hashes are fit's (`managed.Hash`: canonical JSON, keys sorted, numbers as
+  written, Go's escaping), checked against Go's own output; an akit member answers its secrets
+  redacted (decision 035), so a part is compared and its hash kept redacted on both sides for an
+  akit member (decision 041, 8), whole for a fit member.
+- Tests: `templates::tests` (variables, configs, secrets, checks), `sync::tests` (rendering by order
+  with variables, every sync state, the record, the desired config, redacted secrets, fragments),
+  `jv::tests` (Go's hashes), `managed::tests`; akit's `templates_and_sync` (a route by template on
+  two members, told, brought in sync, changed into a conflict and marked changed on the member,
+  `from`, import, compare, the text tabs, secrets, a group renamed, a template removed and the
+  members owning nothing) and `mixed_clusters_with_fit` (fit members compared and told).
+
 ### 2026-11-27: I135, groups and operations on many
 
 - Groups (`akit_cluster::groups`, fit's `cluster/groups.go`): a label selector (Kubernetes'

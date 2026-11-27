@@ -249,7 +249,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I133 | 集群 IV：集群页面：概览、节点和节点页面；`docs/guides/cluster.md` | I132 | done |
 | I134 | 集群 V：从管理端打开成员自己的页面（`/api/n/<member>/...`） | I133 | done |
 | I135 | 集群 VI：分组和对多个成员的操作 | I133 | done |
-| I136 | 集群 VII：模板；`/node/managed` | I135 | todo |
+| I136 | 集群 VII：模板；`/node/managed` | I135 | done |
 | I137 | 集群 VIII：带健康门槛的发布 | I136 | todo |
 | I138 | 集群 IX：漂移和告警；`/config/check` | I137 | todo |
 | I139 | 集群 X：用户、角色和审计日志 | I137 | todo |
@@ -1907,6 +1907,8 @@ fit 工作台页面。成员尽量少改动：管理端使用成员已有的 API
 - **完成标准**：fit 的 `templates`、`render` 和 `sync` 测试移植后通过。
 - **涉及**：`akit-cluster`、`akit-admin`（`/node/managed`）。
 - **fit**：`cluster/{templates,render,sync,text,jsonv}.go`、`admin/managed.go`；I145。
+- **状态**：done（2026-11-27）。akit 成员的密钥按其 API 回答的样子（已脱敏）比较（决定 041 第 8 点）；修改之后立即告知成员，
+  一次一个刷新，没有 fit 的延迟。见进度日志。
 
 ### I137 集群 VIII：带健康门槛的发布
 

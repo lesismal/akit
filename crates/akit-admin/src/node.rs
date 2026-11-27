@@ -323,6 +323,7 @@ fn capabilities(configs: &Configs, live: &NodeLive, metrics: bool) -> Vec<&'stat
         CAP_LOGS,
         CAP_TOKENS,
         CAP_SCHEMA,
+        crate::managed::CAP_MANAGED,
     ];
     if metrics {
         caps.push(CAP_METRICS);

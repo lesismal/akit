@@ -259,7 +259,7 @@ Tunnel and LLM track; I110–I114 are the WebRTC track, and I115–I119 are rese
 | I133 | Cluster IV: the Cluster pages: Overview, Nodes and a node's page; `docs/guides/cluster.md` | I132 | done |
 | I134 | Cluster V: a member's own pages opened from the manager (`/api/n/<member>/...`) | I133 | done |
 | I135 | Cluster VI: groups and operations on many | I133 | done |
-| I136 | Cluster VII: templates; `/node/managed` | I135 | todo |
+| I136 | Cluster VII: templates; `/node/managed` | I135 | done |
 | I137 | Cluster VIII: rollouts with health gates | I136 | todo |
 | I138 | Cluster IX: drift and alerts; `/config/check` | I137 | todo |
 | I139 | Cluster X: users, roles and the audit log | I137 | todo |
@@ -2269,6 +2269,9 @@ default: no `admin.cluster`, no Cluster menu, no outgoing calls.
 - **Done when**: fit's `templates`, `render` and `sync` tests pass ported.
 - **Touches**: `akit-cluster`, `akit-admin` (`/node/managed`).
 - **fit**: `cluster/{templates,render,sync,text,jsonv}.go`, `admin/managed.go`; I145.
+- **Status**: done (2026-11-27). An akit member's secrets are compared redacted, as its API answers
+  them (decision 041, 8); members are told after a change at once, one refresh at a time, without
+  fit's delay. See the progress log.
 
 ### I137 Cluster VIII: rollouts with health gates
 

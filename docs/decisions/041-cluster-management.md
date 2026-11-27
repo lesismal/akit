@@ -65,6 +65,13 @@ keeps, and which names on it are akit's.
    member; a fit member's schema is fit's, so its pages open read-only, as fit's I143 decides for any
    schema the manager does not know.
 
+8. **Templates on akit members (I136)**: an akit member answers its config with its secrets
+   redacted (decision 035), so the manager compares a part, and keeps its hash, with the secrets
+   redacted on both sides for an akit member (one whose `GET /node` answers `akit_version`), and
+   whole for a fit member; an akit member's `GET /node/managed` hashes its config as its API answers
+   it, so the two agree. A secret changed in a template alone does not show an akit member out of
+   sync.
+
 ## Alternatives
 
 - **akit's names on the wire too** (`akit_version` only, `X-Akit-Csrf` only): a manager of one

@@ -391,7 +391,7 @@ impl Manager {
     /// Sends a request to member `name`'s Admin API as the manager reaches it (through its
     /// console's `/api/m/admin` or with its token), and calls `done` with its 2xx answer, or why
     /// not: fit's `Manager.call`.
-    fn call_member(
+    pub(crate) fn call_member(
         &self,
         name: &str,
         method: &str,

@@ -11,8 +11,8 @@ token). The members may be fits too: what they answer is fit's protocol
 manager down costs management and nothing else.
 
 This guide covers what akit runs now (I130–I135): members, their state, the Overview and Nodes
-pages, a member's page, the node switcher, groups and operations on many. Templates, rollouts with health gates, drift and alerts, roles,
-members behind NAT and the `akit cluster` command follow in I136–I139c
+pages, a member's page, the node switcher, groups and operations on many, templates. Rollouts with health gates, drift and alerts, roles,
+members behind NAT and the `akit cluster` command follow in I137–I139c
 ([the plan](../dev-plan.md#cluster-management)); their menu entries are drawn already and answer
 "no such endpoint" until then.
 
@@ -79,6 +79,17 @@ group's members and their states, and runs an operation on a group or a selectio
 URL prefix, tag or all) and **test**, at most `max_concurrency` members at once, each answered
 apart. A member down fails alone; every operation is in the audit log with each member's outcome.
 
+## Templates
+
+A template owns parts of its members' configs: top-level members whole (`log`, `tls`), and the
+elements of `listeners`, `routes`, `services` and `upstreams` by name. Its strings may use
+`${node.name}`, `${node.id}`, `${node.hostname}`, `${node.labels.<key>}` and its groups'
+variables. **Cluster → Templates** shows each member's sync state (in sync, out of sync, or a
+conflict where the member changed an owned part), its desired config, and makes a template from a
+member's config. Each member is told what the manager owns there and marks those fields on its own
+pages. A secret in a template is shown as `[secret]`; an akit member's secrets are compared as its
+API answers them, redacted.
+
 ## Mixed clusters
 
 - An akit manager manages akit and fit members alike, by console or by token; a fit member's
@@ -87,7 +98,7 @@ apart. A member down fails alone; every operation is in the audit log with each 
   token in `X-Akit-Csrf` only (decision 037), so a fit manager logged in to an akit console can
   read it but not write.
 - akit's and fit's managers share a store: the members, and what akit's manager does not use yet
-  (templates, rollouts), are kept as they were. A store whose document sets users' roles
+  (rollouts), are kept as they were. A store whose document sets users' roles
   is shown read-only by akit's manager until I139.
 
 ## Limits

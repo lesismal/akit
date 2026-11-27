@@ -22,6 +22,8 @@
 //! GET    /node                who this akit is, for a manager of many: its node ID, versions,
 //!                             running config, roles, schema digest and capabilities (I131)
 //! GET    /schema              the config's JSON Schema, as the console's (I131)
+//! GET    /node/managed        what a manager of many owns here, each part present or changed
+//! PUT    /node/managed        a manager's record of what it owns; DELETE: none (I136)
 //! GET    /cache               what each cache zone keeps (I69)
 //! POST   /cache/purge         remove what a cache zone keeps, by URL, URL prefix, tag, or all
 //!                             (I69)
@@ -83,6 +85,7 @@ mod dashboard;
 #[doc(hidden)]
 pub mod fuzzing;
 mod logs;
+pub mod managed;
 pub mod node;
 mod pointer;
 mod redact;

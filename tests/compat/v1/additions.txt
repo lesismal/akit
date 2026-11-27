@@ -666,3 +666,8 @@ admin	added	endpoint	GET	/node
 admin	added	endpoint	HEAD	/node
 admin	added	endpoint	GET	/schema
 admin	added	endpoint	HEAD	/schema
+# I136: what a manager of many owns on this akit (fit's admin/managed.go).
+admin	added	endpoint	GET	/node/managed
+admin	added	endpoint	HEAD	/node/managed
+admin	added	endpoint	PUT	/node/managed
+admin	added	endpoint	DELETE	/node/managed

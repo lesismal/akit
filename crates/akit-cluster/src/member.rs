@@ -784,6 +784,8 @@ pub struct Document {
     pub revision: u64,
     /// The groups (I135).
     pub groups: Vec<crate::groups::Group>,
+    /// The templates (I136).
+    pub templates: Vec<crate::templates::Template>,
     /// The other members of the document, in their order: `templates`, `rollouts`,
     /// `link_cert`, `access` and what a later fit adds.
     pub rest: Vec<(String, Value)>,
@@ -845,6 +847,14 @@ impl Document {
                         d.groups = a.iter().map(crate::groups::Group::from_value).collect();
                     }
                 }
+                "templates" => {
+                    if let Value::Array(a) = &v {
+                        d.templates = a
+                            .iter()
+                            .map(crate::templates::Template::from_value)
+                            .collect();
+                    }
+                }
                 "revision" => {
                     d.revision =
                         json::uint_of(&Value::Object(vec![(k.clone(), v.clone())]), "revision");
@@ -897,15 +907,23 @@ impl Document {
         }
         groups.push(']');
         b = b.raw("groups", &groups);
-        for list in ["templates", "rollouts"] {
-            let v = self
-                .rest
-                .iter()
-                .find(|(k, _)| k == list)
-                .map(|(_, v)| v)
-                .filter(|v| **v != Value::Null);
-            b = b.raw(list, &v.map_or_else(|| "[]".to_owned(), json::compact));
-        }
+        let templates = self
+            .templates
+            .iter()
+            .map(crate::templates::Template::to_json)
+            .collect::<Vec<_>>()
+            .join(",");
+        b = b.raw("templates", &format!("[{templates}]"));
+        let rollouts = self
+            .rest
+            .iter()
+            .find(|(k, _)| k == "rollouts")
+            .map(|(_, v)| v)
+            .filter(|v| **v != Value::Null);
+        b = b.raw(
+            "rollouts",
+            &rollouts.map_or_else(|| "[]".to_owned(), json::compact),
+        );
         let audit = Value::Array(self.audit.clone());
         b = b.raw("audit", &json::compact(&audit));
         for (k, v) in &self.rest {

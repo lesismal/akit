@@ -45,6 +45,10 @@ fit 的 I140–I150 让设置了 `admin.cluster` 的 fit 成为其他 fit（其�
    `Akit-Dry-Run`），并把存储密码同时放在 `Akit-Store-Password` 和 `Fit-Store-Password` 中，使 akit 的页面能读取 fit 成员；fit 成员
    的 schema 是 fit 的，所以其页面只读打开，正如 fit 的 I143 对管理端不认识的任何 schema 的处理。
 
+8. **akit 成员上的模板（I136）**：akit 成员回答的配置中密钥已脱敏（决定 035），所以对 akit 成员（其 `GET /node` 回答
+   `akit_version`），管理端在两边都脱敏后比较部分并保存其哈希，对 fit 成员则整体比较；akit 成员的 `GET /node/managed` 按其 API
+   回答的配置计算哈希，因此两边一致。只在模板中修改密钥，不会让 akit 成员显示为未同步。
+
 ## 备选方案
 
 - **线上也用 akit 的名字**（只用 `akit_version`、只用 `X-Akit-Csrf`）：一种管理端就无法管理另一种成员。管理端一侧拒绝；

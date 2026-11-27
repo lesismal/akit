@@ -38,6 +38,7 @@
 //! ```
 
 pub mod json;
+pub mod jv;
 pub mod member;
 pub mod node;
 pub mod transport;
@@ -46,6 +47,8 @@ mod api;
 pub mod groups;
 pub mod ops;
 pub mod pass;
+pub mod sync;
+pub mod templates;
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -105,6 +108,8 @@ pub struct Options {
     /// The manager's own config schema, as its console serves it: a member whose `GET /node`
     /// gives another digest opens read-only through the node switcher (I134).
     pub schema: &'static [u8],
+    /// The manager's node ID, which the members it tells what it owns there are told (I136).
+    pub node_id: String,
 }
 
 impl std::fmt::Debug for Options {
@@ -176,6 +181,8 @@ pub(crate) struct Inner {
     pub(crate) pass: Mutex<pass::Hub>,
     /// The operations on many members (I135).
     pub(crate) ops: Mutex<ops::Ops>,
+    /// The members' sync states against the templates (I136).
+    pub(crate) tpl: Mutex<sync::Tpl>,
     pub(crate) pass_held: AtomicUsize,
     /// The manager's schema and its digest, `sha256:` and hex.
     pub(crate) schema: &'static [u8],
@@ -258,6 +265,7 @@ impl Manager {
             reads: AtomicUsize::new(0),
             pass: Mutex::new(pass::Hub::default()),
             ops: Mutex::new(ops::Ops::default()),
+            tpl: Mutex::new(sync::Tpl::default()),
             pass_held: AtomicUsize::new(0),
             schema: o.schema,
             schema_digest: format!(
@@ -489,6 +497,8 @@ impl Manager {
             g.rev = g.rev.saturating_add(1);
         }
         self.sync();
+        // What the members own may have changed: they are told (I136).
+        self.kick_managed();
         Ok(out)
     }
 

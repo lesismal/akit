@@ -274,6 +274,8 @@ struct Inner {
     node: Mutex<Arc<crate::node::Node>>,
     /// Whether the console runs, which `GET /node` lists (I131).
     console: AtomicBool,
+    /// What a manager of many owns here (I136).
+    managed: Mutex<crate::managed::State>,
 }
 
 impl fmt::Debug for Users {
@@ -412,6 +414,7 @@ impl Configs {
                 temporary: Mutex::new(None),
                 node: Mutex::new(Arc::new(crate::node::Node::new())),
                 console: AtomicBool::new(false),
+                managed: Mutex::new(crate::managed::State::default()),
             }),
         }
     }
@@ -523,6 +526,11 @@ impl Configs {
     /// Says whether the console runs, which `GET /node` lists as the capability `console`.
     pub fn set_console_running(&self, running: bool) {
         self.inner.console.store(running, Ordering::Relaxed);
+    }
+
+    /// What a manager of many owns here, and its writer (I136).
+    pub(crate) fn managed_state(&self) -> &Mutex<crate::managed::State> {
+        &self.inner.managed
     }
 
     /// Whether the console runs.

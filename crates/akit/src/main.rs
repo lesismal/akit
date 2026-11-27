@@ -1398,6 +1398,19 @@ fn run(args: &[String]) -> ExitCode {
         if let Some(s) = boot::lock(&b.store).sealer() {
             configs.use_sealer(s);
         }
+        // What a manager of many owns here, in the store's section `managed` (I136).
+        let section = boot::lock(&b.store)
+            .section(akit_config::cluster::MANAGED_SECTION)
+            .map(<[u8]>::to_vec);
+        let st = Arc::clone(&b.store);
+        configs.use_managed(
+            section.as_deref(),
+            Box::new(move |data: &[u8]| {
+                boot::lock(&st)
+                    .set_section(akit_config::cluster::MANAGED_SECTION, data)
+                    .map_err(|e| e.to_string())
+            }),
+        );
         // The default user's password is temporary until it is changed, which keeps the changed
         // hash in the store (I93c).
         if let Some(user) = temp_user
@@ -1591,6 +1604,7 @@ fn run(args: &[String]) -> ExitCode {
                     }),
                     system_roots: None,
                     schema: akit_admin::node::schema(),
+                    node_id: configs.node().id.clone(),
                 };
                 match akit_cluster::Manager::new(o) {
                     Ok(m) => {

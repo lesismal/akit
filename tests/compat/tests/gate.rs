@@ -3696,8 +3696,11 @@ fn akit_config_lists_match_the_inventory() {
         .flatten()
         // fit's logger names (config.Loggers), not fields: the keys log.levels and log.loggers take;
         // and the APIs an LLM model's `api` takes (I98), values too.
-        // The codecs `webrtc.media.codecs` takes (I110), values too.
+        // The codecs `webrtc.media.codecs` takes (I110), values too. The members a cluster's
+        // templates own by element and those no manager owns (I136), config members, not fields.
         .chain([
+            "MANAGED_LISTS",
+            "UNOWNABLE",
             "FIT_HANDLERS",
             "FIT_MIDDLEWARE",
             "LOGGERS",

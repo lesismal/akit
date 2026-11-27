@@ -515,30 +515,6 @@ pub fn rename_member(d: &mut Document, old: &str, new: &str) {
     }
 }
 
-/// Has the templates kept as fit wrote them (I136's) that name group `old` name `new` instead,
-/// or none of it when `new` is empty: fit's `renameGroupInTemplates`.
-fn rename_group_in_templates(d: &mut Document, old: &str, new: &str) {
-    for (k, v) in &mut d.rest {
-        let (true, Value::Array(ts)) = (k == "templates", v) else {
-            continue;
-        };
-        for t in ts {
-            let Value::Object(ms) = t else { continue };
-            for (tk, tv) in ms {
-                let (true, Value::Array(gs)) = (tk == "groups", tv) else {
-                    continue;
-                };
-                gs.retain(|g| !matches!(g, Value::String(s) if s == old && new.is_empty()));
-                for g in gs.iter_mut() {
-                    if matches!(g, Value::String(s) if s == old) {
-                        *g = Value::String(new.to_owned());
-                    }
-                }
-            }
-        }
-    }
-}
-
 fn describe(g: &Group) -> String {
     let mut parts = Vec::new();
     if !g.selector.is_empty() {
@@ -798,7 +774,7 @@ fn update(m: &Manager, ctx: &mut Context, user: &str, name: String) {
                 *slot = g.clone();
             }
             if new_name != name {
-                rename_group_in_templates(d, &name, &new_name);
+                crate::templates::rename_group(d, &name, &new_name);
             }
             let nodes = nodes_of(d, &g);
             Ok((entry("group.update", &name, &detail, &nodes), view(d, &g)))
@@ -827,7 +803,7 @@ fn remove(m: &Manager, ctx: &mut Context, user: &str, name: String) {
                 .ok_or_else(|| Refusal::NotFound(no_group(&name)))?;
             let g = d.groups.remove(i);
             let nodes = nodes_of(d, &g);
-            rename_group_in_templates(d, &name, "");
+            crate::templates::rename_group(d, &name, "");
             Ok((entry("group.remove", &name, "", &nodes), ()))
         });
         match r {

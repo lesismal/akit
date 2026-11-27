@@ -106,6 +106,33 @@
   中继）、`TestReload`（就地修改配额，排空中的服务器回答 508）、端口范围（取其端口，用尽时 508，删除后再次可用）、
   `TestLimiter`；fib 互通测试（`tests/fib_turn.rs`）对 akit 和 fit 结果相同，在 macOS 上运行。
 
+### 2026-11-27：I136，模板，以及成员知道管理端拥有什么
+
+- 模板（`akit_cluster::templates`，fit 的 `cluster/templates.go`）：配置的一个片段，其顶层成员整体拥有（`admin` 和
+  `schema_version` 除外），`listeners`、`routes`、`services` 和 `upstreams` 的元素按名字拥有（有名字、各一次、名字不含变量）；变量
+  `${node.name}`、`${node.id}`、`${node.hostname}`、`${node.labels.<key>}` 和分组的变量，`$${` 即原样的 `${`；挂到分组（32 个）、
+  有顺序（−1,000 到 1,000），最多 64 KiB 和 256 个部分，最多 128 个模板。密钥（fit 的规则）回答为 `[secret]`，原样发回时保留；
+  文件路径给出警告。在存储的文档中有类型，按 fit 的写法；分组改名或删除时跟随。端点：`GET`/`POST /api/templates`（带 `from`
+  时，由立即读取的成员配置中的部分生成）、`GET`/`PUT`/`DELETE /api/templates/<name>`。
+- 每个成员与其模板对照（`akit_cluster::sync`，fit 的 `render.go` 和 `sync.go`）：其模板渲染出的部分，后面的模板胜出
+  （`overrides`）；期望配置，即成员自己的配置，把这些部分放到各自位置，新元素放在末尾；每个部分为已同步、未同步（`missing`、
+  `template_changed`）或冲突（`own_value`、`changed_here`、`removed_here`），对照成员保存的该部分上次同步时的哈希；不再被任何模板
+  拥有的部分被释放。`POST /api/sync`（`nodes`、`template` 或全部成员；同时 4 个；30 秒内未读到的为 pending）、`GET /api/sync`
+  （摘要，不含值）、`GET /api/desired/<name>`、`POST /api/import`（成员的部分，供模板使用）、`POST /api/compare`（两个成员逐部分
+  比较）、`POST /api/text/render` 和 `/parse`（模板配置与 `.conf`、YAML 或 JSON 互转，经 `akit_config::adapt`）。成员按
+  `max_concurrency` 同时读取，每个回答发起下一次读取。
+- 告知成员管理端在其上拥有什么（`PUT /node/managed`，`If-Match`，412 后再试一次）：在成员、分组或模板的每次修改之后，一次一个
+  刷新，期间的修改在其后再运行一次（不采用 fit 半秒的延迟：不用与时间无关的定时器）；页面发起的同步也会告知。
+- 每个 akit 上（`akit_admin::managed`，fit 的 `admin/managed.go`）：`GET`、`PUT` 和 `DELETE /node/managed`，能力
+  `node.managed`；记录（管理端的节点 ID 和主机、每个部分及其模板和哈希）按 fit 的方式检查，保存在存储的 `managed` 分区（fit 的），
+  没有存储时保存在内存；对照 API 回答的配置说明每个部分是否存在、是否已修改。标记为 v1 新增。
+- 混合集群：哈希是 fit 的（`managed.Hash`：规范 JSON，键排序，数字按原样，Go 的转义），已与 Go 自己的输出核对；akit 成员回答的
+  密钥是脱敏的（决定 035），所以对 akit 成员，部分在两边都脱敏后比较并保存哈希（决定 041 第 8 点），对 fit 成员则整体比较。
+- 测试：`templates::tests`（变量、配置、密钥、检查）、`sync::tests`（按顺序和变量渲染、每种同步状态、记录、期望配置、脱敏的密钥、
+  片段）、`jv::tests`（Go 的哈希）、`managed::tests`；akit 的 `templates_and_sync`（模板在两个成员上的路由：告知、同步、修改为冲突
+  并在成员上标记已修改、`from`、导入、比较、文本标签、密钥、分组改名、删除模板后成员不再拥有任何东西）和
+  `mixed_clusters_with_fit`（fit 成员被比较并被告知）。
+
 ### 2026-11-27：I135，分组和对多个成员的操作
 
 - 分组（`akit_cluster::groups`，fit 的 `cluster/groups.go`）：标签选择器（Kubernetes 的等值条件 `key=value`、`key==value`、

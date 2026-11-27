@@ -36,7 +36,11 @@ impl akit_roles::pages::Module for Module {
             return crate::pass::pass_on(m, ctx, user);
         }
         // Groups and operations on many (I135).
-        if crate::groups::serve(m, ctx, user, path) || crate::ops::serve(m, ctx, user, path) {
+        if crate::groups::serve(m, ctx, user, path)
+            || crate::ops::serve(m, ctx, user, path)
+            || crate::templates::serve(m, ctx, user, path)
+            || crate::sync::serve(m, ctx, path)
+        {
             return;
         }
         match path {

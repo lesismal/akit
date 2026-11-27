@@ -445,6 +445,144 @@ pub(crate) fn cluster_member(d: &mut Decoder<'_>, n: &Node, path: &str) -> Optio
     Some(m)
 }
 
+/// The lists whose elements a manager owns one by one, by name: fit's `managed.Lists`.
+pub const MANAGED_LISTS: &[&str] = &["listeners", "routes", "services", "upstreams"];
+/// What no manager owns: the member's own (fit's `managed.Unownable`).
+pub const UNOWNABLE: &[&str] = &["admin", "schema_version"];
+/// The longest element name a managed part names.
+pub const MAX_MANAGED_NAME: usize = 256;
+/// The store's section a member keeps what a manager owns there in: fit's.
+pub const MANAGED_SECTION: &str = "managed";
+
+/// Whether `member` is a list whose elements are owned by name.
+#[must_use]
+pub fn is_managed_list(member: &str) -> bool {
+    MANAGED_LISTS.contains(&member)
+}
+
+/// A part as the pages write it: `log`, or `routes[api]`.
+#[must_use]
+pub fn managed_display(member: &str, name: &str) -> String {
+    if name.is_empty() {
+        member.to_owned()
+    } else {
+        format!("{member}[{name}]")
+    }
+}
+
+/// Why `member` (and `name`) is no part a manager may own, or `None`: fit's `managed.CheckPart`.
+#[must_use]
+pub fn check_managed_part(member: &str, name: &str) -> Option<String> {
+    let member_ok = member
+        .as_bytes()
+        .first()
+        .is_some_and(u8::is_ascii_lowercase)
+        && member.len() <= 64
+        && member
+            .bytes()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'_');
+    if !member_ok {
+        return Some(format!(
+            "{member:?} is not a top-level member of the config"
+        ));
+    }
+    if UNOWNABLE.contains(&member) {
+        return Some(format!("{member} is the member's own: no manager owns it"));
+    }
+    if is_managed_list(member) && name.is_empty() {
+        return Some(format!(
+            "an element of {member} is owned by its name, which it has none of"
+        ));
+    }
+    if !is_managed_list(member) && !name.is_empty() {
+        return Some(format!("{member} is owned whole, not by element"));
+    }
+    if name.len() > MAX_MANAGED_NAME {
+        return Some(format!(
+            "the name of an element of {member} is at most {MAX_MANAGED_NAME} bytes of UTF-8"
+        ));
+    }
+    None
+}
+
+fn canonical_into(b: &mut String, v: &crate::value::Value) {
+    use crate::value::{Value, write_string};
+    match v {
+        Value::Null => b.push_str("null"),
+        Value::Bool(x) => b.push_str(if *x { "true" } else { "false" }),
+        Value::Number(n) => b.push_str(n),
+        Value::String(s) => write_string(b, s),
+        Value::Object(ms) => {
+            let mut sorted: Vec<&(String, Value)> = ms.iter().collect();
+            sorted.sort_by(|a, b| a.0.cmp(&b.0));
+            b.push('{');
+            for (i, (k, x)) in sorted.into_iter().enumerate() {
+                if i > 0 {
+                    b.push(',');
+                }
+                write_string(b, k);
+                b.push(':');
+                canonical_into(b, x);
+            }
+            b.push('}');
+        }
+        Value::Array(items) => {
+            b.push('[');
+            for (i, x) in items.iter().enumerate() {
+                if i > 0 {
+                    b.push(',');
+                }
+                canonical_into(b, x);
+            }
+            b.push(']');
+        }
+    }
+}
+
+/// `v` in its canonical form, fit's `managed.Canonical`: object members sorted, numbers as
+/// written, compact, strings escaped as Go's `encoding/json` with HTML escaping off.
+#[must_use]
+pub fn canonical_json(v: &crate::value::Value) -> String {
+    let mut b = String::new();
+    canonical_into(&mut b, v);
+    b
+}
+
+/// The lower-case hex SHA-256 of `v`'s canonical form: fit's `managed.Hash`, the same in akit and
+/// fit for the same value.
+#[must_use]
+pub fn managed_hash(v: &crate::value::Value) -> String {
+    use std::fmt::Write as _;
+    let sum = akio_crypto::hash::Sha256::digest(canonical_json(v).as_bytes());
+    let mut out = String::with_capacity(64);
+    for byte in sum {
+        let _ = write!(out, "{byte:02x}");
+    }
+    out
+}
+
+/// The part `member` (`name`) of `cfg`: a top-level member, or the element of a named list
+/// whose `name` it is.
+#[must_use]
+pub fn managed_lookup<'v>(
+    cfg: &'v crate::value::Value,
+    member: &str,
+    name: &str,
+) -> Option<&'v crate::value::Value> {
+    use crate::value::Value;
+    let v = cfg.get(member)?;
+    if name.is_empty() {
+        return Some(v);
+    }
+    match v {
+        Value::Array(items) => items.iter().find(|it| {
+            matches!(it, Value::Object(_))
+                && matches!(it.get("name"), Some(Value::String(s)) if s == name)
+        }),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

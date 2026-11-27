@@ -644,6 +644,26 @@ fn mixed_clusters_with_fit() {
     assert_eq!(header_of(&head, "Akit-Dry-Run"), "1", "{head}");
     let (st, _, body) = b.call("PUT", "/api/n/fb/m/admin/config", &cfg);
     assert_eq!(st, 409, "{body}");
+    // A template on fit members: compared, and fit told what akit's manager owns there.
+    let (st, _, g) = b.call(
+        "POST",
+        "/api/m/cluster/groups",
+        r#"{"name": "fits", "members": ["fa", "fb"]}"#,
+    );
+    assert_eq!(st, 201, "{g}");
+    let (st, _, v) = b.call(
+        "POST",
+        "/api/m/cluster/templates",
+        r#"{"name": "t", "groups": ["fits"], "config": {"routes": [{"name": "x", "match": {"path": ["/x"]}, "handler": {"module": "respond", "params": {"body": "${node.name}"}}}]}}"#,
+    );
+    assert_eq!(st, 201, "{v}");
+    let (st, _, sync) = b.call("POST", "/api/m/cluster/sync", r#"{"nodes": ["fa", "fb"]}"#);
+    assert_eq!(st, 200, "{sync}");
+    assert!(
+        sync.contains(r#""reason":"missing""#) && !sync.contains("\"managed\":\"failed"),
+        "{sync}"
+    );
+    wait_admin(fb_api, token, "/node/managed", |b| b.contains("routes[x]"));
     let (code, _, err) = m.stop();
     assert_eq!(code, Some(0), "{err}");
 
@@ -1111,4 +1131,230 @@ fn groups_and_operations() {
     let (_, _, gs) = b.call("GET", "/api/m/cluster/groups", "");
     assert!(gs.contains(r#""groups":[]"#), "{gs}");
     let _ = (m.stop(), a.stop(), bm.stop(), cm.stop());
+}
+
+/// `GET path` on an Admin API with its bearer token: the status and body.
+fn admin_get(addr: SocketAddr, token: &str, path: &str) -> (u16, String) {
+    let auth = format!("Bearer {token}");
+    let (st, _, body) = http(addr, "GET", path, &[("Authorization", &auth)], "");
+    (st, body)
+}
+
+/// Waits for `cond` on `GET path` of an Admin API: the body that met it.
+fn wait_admin(addr: SocketAddr, token: &str, path: &str, cond: impl Fn(&str) -> bool) -> String {
+    let deadline = Instant::now() + Duration::from_secs(20);
+    loop {
+        let (st, body) = admin_get(addr, token, path);
+        if st == 200 && cond(&body) {
+            return body;
+        }
+        assert!(Instant::now() < deadline, "{path}: {st} {body}");
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
+/// Templates and each member's sync state (I136, fit's `templates`, `render` and `sync` tests):
+/// a template of a route attached to a group renders per member with its variables; members told
+/// what the manager owns (`/node/managed`) and their pages marking it; a member brought in sync, a
+/// part changed on it a conflict; a template made from a member's config; import, compare and the
+/// text tabs; secrets masked and kept; a group renamed followed; a template removed, the members
+/// told they own nothing.
+#[test]
+fn templates_and_sync() {
+    let d = Dir::new("templates");
+    let h = hash("pw");
+    let a = Run::start(&["-c", s(&console_member(&d, "a", &h)), "-watch-certs=false"]);
+    let a_console = a.addr("console on http://");
+    let token = "a-token-of-member-b-0123456789";
+    let bm = Run::start(&["-c", s(&token_member(&d, "b", token)), "-watch-certs=false"]);
+    let b_api = bm.addr("admin API on ");
+    let b_web = bm.addr("listener \"web\" on ");
+    let m = Run::start(&["-admin", "-c", s(&manager(&d, &h)), "-watch-certs=false"]);
+    let mut b = Browser::new(m.addr("console on http://"));
+    assert_eq!(b.login("ada", "pw").0, 200);
+    add(
+        &b,
+        &format!(
+            r#"{{"name": "a", "url": "http://{a_console}", "username": "ada", "password": "pw", "labels": {{"region": "eu"}}}}"#
+        ),
+    );
+    add(
+        &b,
+        &format!(
+            r#"{{"name": "b", "url": "http://{b_api}", "access": "admin_api", "token": "{token}", "labels": {{"region": "eu"}}}}"#
+        ),
+    );
+    wait_state(&b, "a", "up", "");
+    wait_state(&b, "b", "up", "");
+    let (st, _, g) = b.call(
+        "POST",
+        "/api/m/cluster/groups",
+        r#"{"name": "eu", "selector": "region=eu", "variables": {"domain": "eu.example"}}"#,
+    );
+    assert_eq!(st, 201, "{g}");
+
+    // A template of a route, its variables and members.
+    let tpl = r#"{"name": "base", "groups": ["eu"], "config": {"routes": [{"name": "tpl", "match": {"path": ["/tpl"]},
+        "handler": {"module": "respond", "params": {"body": "${node.name} in ${domain}"}}}]}}"#;
+    let (st, _, v) = b.call("POST", "/api/m/cluster/templates", tpl);
+    assert_eq!(st, 201, "{v}");
+    for want in [
+        r#""parts":[{"path":"routes[tpl]","member":"routes","name":"tpl"}]"#,
+        r#""variables":["domain","node.name"]"#,
+        r#""nodes":["a","b"]"#,
+    ] {
+        assert!(v.contains(want), "{want}: {v}");
+    }
+    let (st, _, bad) = b.call(
+        "POST",
+        "/api/m/cluster/templates",
+        r#"{"name": "x", "config": {"routes": [{"match": {}}]}}"#,
+    );
+    assert_eq!(st, 400, "{bad}");
+    assert!(bad.contains("has no name"), "{bad}");
+
+    // Read now: missing on both, which are told what the manager owns.
+    let (st, _, sync) = b.call("POST", "/api/m/cluster/sync", "{}");
+    assert_eq!(st, 200, "{sync}");
+    assert!(
+        sync.contains(r#""state":"out_of_sync""#) && sync.contains(r#""reason":"missing""#),
+        "{sync}"
+    );
+    // Told when the template was added, or now.
+    assert!(
+        sync.contains(r#""managed":"told""#) || sync.contains(r#""managed":"kept""#),
+        "{sync}"
+    );
+    let rec = wait_admin(b_api, token, "/node/managed", |b| b.contains("routes[tpl]"));
+    assert!(
+        rec.contains(r#""template":"base""#) && rec.contains(r#""present":false"#),
+        "{rec}"
+    );
+    let (st, _, desired) = b.call("GET", "/api/m/cluster/desired/a", "");
+    assert_eq!(st, 200, "{desired}");
+    assert!(desired.contains("a in eu.example"), "{desired}");
+
+    // Brought in sync on b (as a rollout will): in sync, its hash kept, not changed.
+    let (st, _, desired) = b.call("GET", "/api/m/cluster/desired/b", "");
+    assert_eq!(st, 200);
+    let dv = parse(&desired);
+    let routes = dv.get("desired").and_then(|d| d.get("routes")).unwrap();
+    let routes_json = format!("{routes:?}");
+    assert!(routes_json.contains("b in eu.example"), "{routes_json}");
+    let (st, head, _) = b.call("GET", "/api/n/b/m/admin/config", "");
+    assert_eq!(st, 200);
+    let etag = header_of(&head, "ETag");
+    let body = akit_config::value::Value::to_json(routes);
+    let (st, _, resp) = b.call_with(
+        "PUT",
+        "/api/n/b/m/admin/config/routes",
+        &[("If-Match", &etag)],
+        &body,
+    );
+    assert_eq!(st, 200, "{resp}");
+    assert_eq!(get(b_web, "/tpl"), "b in eu.example");
+    let (_, _, sync) = b.call("POST", "/api/m/cluster/sync", r#"{"nodes": ["b"]}"#);
+    assert!(sync.contains(r#""state":"in_sync""#), "{sync}");
+    let rec = wait_admin(b_api, token, "/node/managed", |b| b.contains(r#""hash":""#));
+    assert!(
+        rec.contains(r#""changed":false"#) && rec.contains(r#""present":true"#),
+        "{rec}"
+    );
+
+    // Changed on b: a conflict, and b's record marks it changed.
+    let (st, head, _) = b.call("GET", "/api/n/b/m/admin/config", "");
+    assert_eq!(st, 200);
+    let etag = header_of(&head, "ETag");
+    let (st, _, resp) = b.call_with(
+        "PUT",
+        "/api/n/b/m/admin/config/routes/1/handler/params/body",
+        &[("If-Match", &etag)],
+        r#""edited""#,
+    );
+    assert_eq!(st, 200, "{resp}");
+    let (_, _, sync) = b.call("POST", "/api/m/cluster/sync", r#"{"nodes": ["b"]}"#);
+    assert!(
+        sync.contains(r#""reason":"changed_here""#) && sync.contains(r#""state":"conflict""#),
+        "{sync}"
+    );
+    wait_admin(b_api, token, "/node/managed", |b| {
+        b.contains(r#""changed":true"#)
+    });
+    let (_, _, states) = b.call("GET", "/api/m/cluster/sync", "");
+    assert!(
+        states.contains(r#""node":"a""#) && states.contains(r#""node":"b""#),
+        "{states}"
+    );
+    assert!(!states.contains("\"have\""), "{states}");
+
+    // A template made from a member's config; import, compare and the text tabs.
+    let (st, _, v) = b.call(
+        "POST",
+        "/api/m/cluster/templates",
+        r#"{"name": "copy", "from": {"node": "b", "paths": ["routes[tpl]"]}}"#,
+    );
+    assert_eq!(st, 201, "{v}");
+    assert!(v.contains("edited") && v.contains(r#""nodes":[]"#), "{v}");
+    let (st, _, imp) = b.call("POST", "/api/m/cluster/import", r#"{"node": "a"}"#);
+    assert_eq!(st, 200, "{imp}");
+    assert!(
+        imp.contains(r#""path":"routes[#0]""#) && imp.contains(r#""ownable":false"#),
+        "{imp}"
+    );
+    let (st, _, cmp) = b.call("POST", "/api/m/cluster/compare", r#"{"a": "a", "b": "b"}"#);
+    assert_eq!(st, 200, "{cmp}");
+    assert!(
+        cmp.contains(r#""path":"routes[tpl]","state":"only_b""#),
+        "{cmp}"
+    );
+    let (st, _, conf) = b.call(
+        "POST",
+        "/api/m/cluster/text/render?format=conf",
+        r#"{"log": {"level": "debug"}}"#,
+    );
+    assert_eq!(st, 200, "{conf}");
+    let (st, _, back) = b.call_with(
+        "POST",
+        "/api/m/cluster/text/parse?format=conf",
+        &[("Content-Type", "text/plain")],
+        &conf,
+    );
+    assert_eq!(st, 200, "{back}");
+    assert!(back.contains("debug"), "{back}");
+
+    // Secrets masked in what the API answers, kept when sent back masked.
+    let secret_tpl = r#"{"name": "auth", "config": {"telemetry": {"endpoint": "http://127.0.0.1:4318", "headers": {"api_key": "k3y"}}}}"#;
+    let (st, _, v) = b.call("POST", "/api/m/cluster/templates", secret_tpl);
+    assert_eq!(st, 201, "{v}");
+    assert!(!v.contains("k3y") && v.contains("[secret]"), "{v}");
+    let (st, _, v) = b.call("PUT", "/api/m/cluster/templates/auth", r#"{"description": "kept", "config": {"telemetry": {"endpoint": "http://127.0.0.1:4318", "headers": {"api_key": "[secret]"}}}}"#);
+    assert_eq!(st, 200, "{v}");
+    let (st, _, v) = b.call(
+        "PUT",
+        "/api/m/cluster/templates/auth",
+        r#"{"config": {"log": {"x": "[secret]"}}}"#,
+    );
+    assert_eq!(st, 400, "{v}");
+
+    // A group renamed is followed by its templates; a template removed leaves its members owning
+    // nothing.
+    let (st, _, g) = b.call(
+        "PUT",
+        "/api/m/cluster/groups/eu",
+        r#"{"name": "europe", "selector": "region=eu", "variables": {"domain": "eu.example"}}"#,
+    );
+    assert_eq!(st, 200, "{g}");
+    let (_, _, v) = b.call("GET", "/api/m/cluster/templates/base", "");
+    assert!(v.contains(r#""groups":["europe"]"#), "{v}");
+    let (st, _, v) = b.call("DELETE", "/api/m/cluster/templates/base", "");
+    assert_eq!(st, 200, "{v}");
+    wait_admin(b_api, token, "/node/managed", |b| {
+        b.contains(r#""paths":[]"#)
+    });
+    let (_, _, audit) = b.call("GET", "/api/m/cluster/audit?action=template.", "");
+    assert!(
+        audit.contains("template.add") && audit.contains("template.remove"),
+        "{audit}"
+    );
+    let _ = (m.stop(), a.stop(), bm.stop());
 }

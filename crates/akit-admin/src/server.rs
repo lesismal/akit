@@ -935,6 +935,7 @@ impl Api {
                 self.0.metrics.is_some(),
             ),
             "/node" => not_allowed("GET, HEAD"),
+            "/node/managed" => return crate::managed::serve(&self.0.configs, ctx),
             "/schema" if read => crate::node::schema_answer(),
             "/schema" => not_allowed("GET, HEAD"),
             "/cache" if read => crate::cache::zones(),
