@@ -38,7 +38,8 @@
 //! ```
 //!
 //! Groups and operations ([`groups`], [`ops`]), templates and sync ([`templates`], [`sync`]) and
-//! rollouts ([`rollouts`]) say their own endpoints.
+//! rollouts ([`rollouts`]), alerts, webhooks and drift ([`alerts`], [`webhooks`]) say their own
+//! endpoints.
 
 pub mod json;
 pub mod jv;
@@ -46,6 +47,8 @@ pub mod member;
 pub mod node;
 pub mod transport;
 
+mod alerteval;
+pub mod alerts;
 mod api;
 pub mod groups;
 pub mod ops;
@@ -54,6 +57,7 @@ pub mod rollouts;
 mod rollrun;
 pub mod sync;
 pub mod templates;
+pub mod webhooks;
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -194,6 +198,11 @@ pub(crate) struct Inner {
     /// The rollouts (I137), and their threads waiting for a pause, a gate's window or a person.
     pub(crate) ro: Mutex<rollouts::Ro>,
     pub(crate) ro_cv: Condvar,
+    /// The alerts (I138), their writes one at a time, and their thread.
+    pub(crate) al: Mutex<alerts::Al>,
+    pub(crate) al_write: Mutex<()>,
+    pub(crate) al_wake: Mutex<Option<SyncSender<()>>>,
+    pub(crate) al_thread: Mutex<Option<JoinHandle<()>>>,
     pub(crate) pass_held: AtomicUsize,
     /// The manager's schema and its digest, `sha256:` and hex.
     pub(crate) schema: &'static [u8],
@@ -279,6 +288,10 @@ impl Manager {
             tpl: Mutex::new(sync::Tpl::default()),
             ro: Mutex::new(rollouts::Ro::default()),
             ro_cv: Condvar::new(),
+            al: Mutex::new(alerts::Al::default()),
+            al_write: Mutex::new(()),
+            al_wake: Mutex::new(None),
+            al_thread: Mutex::new(None),
             pass_held: AtomicUsize::new(0),
             schema: o.schema,
             schema_digest: format!(
@@ -289,6 +302,8 @@ impl Manager {
         });
         let m = Manager(inner);
         m.load_rollouts();
+        m.load_alerts();
+        m.sync_senders();
         m.sync();
         let (tx, rx) = mpsc::sync_channel(1);
         *lock(&m.0.wake) = Some(tx);
@@ -297,6 +312,7 @@ impl Manager {
             .name("akit-cluster-poller".to_owned())
             .spawn(move || run(&me, &rx))?;
         *lock(&m.0.poller) = Some(h);
+        m.start_alerts()?;
         Ok(m)
     }
 
@@ -317,6 +333,8 @@ impl Manager {
         if let Some(h) = lock(&self.0.poller).take() {
             let _ = h.join();
         }
+        // The alerts are evaluated no more, and saved; their webhooks' senders closed.
+        self.stop_alerts();
         // The rollouts waiting stop waiting; those calling members stop once answered.
         drop(lock(&self.0.ro));
         self.0.ro_cv.notify_all();
@@ -657,6 +675,8 @@ impl Manager {
                 if me.now_ms() >= node.next.load(Ordering::Acquire) {
                     me.poke();
                 }
+                // What the poll found is what the alerts' rules read.
+                me.poke_alerts();
             }));
         }
         Some(wait)

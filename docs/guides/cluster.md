@@ -104,6 +104,17 @@ member checks its config), and, when set, its share of 5xx over a window from it
 applied. A rollout is paused, resumed, aborted or rolled back by a person; it is kept in the
 store, and one under way when the manager stops is found paused, to be resumed.
 
+## Drift and alerts
+
+Each akit checks itself: **Gateway → Consistency** (`GET /config/check`) shows what runs that
+differs from its config, a setting that takes a restart, a listener not bound, a certificate not
+served, and offers fixes, applied together. **Cluster → Drift** shows each member's drift against
+its templates and its own check, and fixes a template's drift by a sync rollout. **Cluster →
+Alerts** has rules (a member down, drift, a rollout failed, a certificate near its expiry,
+backends down, reloads failing), each firing once its condition has held for its time, sent to
+webhooks (JSON signed in `X-Akit-Signature`, Slack, Discord, Feishu, DingTalk, WeCom, or a
+template of one's own) and silenced by rule or member for a while.
+
 ## Mixed clusters
 
 - An akit manager manages akit and fit members alike, by console or by token; a fit member's

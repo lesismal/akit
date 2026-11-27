@@ -146,6 +146,46 @@ done and where the work differs from the plan.
   a draining server), a port range (its port taken, 508 when used up, free again after a delete),
   `TestLimiter`; the fib interop (`tests/fib_turn.rs`) against akit and fit alike, on macOS.
 
+### 2026-11-27: I138, drift and alerts; the consistency check on akit
+
+- The consistency check on every akit (`akit_admin::check`, fit's `admin/drift.go`): `GET
+  /config/check` answers the differences between what runs and the config it runs from, each a
+  drift with its fixes or an info: the settings that take a restart (those a config's warnings
+  name, against version 1, kept beside the history), listeners bound or not and dynamic ports,
+  the certificates asked for and served, upstreams running or not and with every backend down,
+  roles set and running, cache zones used and kept, what providers provided and left out. What
+  runs is read from `GET /status`'s and `GET /node`'s writers; values are answered redacted.
+  `POST /config/reconcile` takes `If-Match` the check's ETag (428 without), checks again and
+  applies the fixes named (the deletes last, from the end of their arrays) as a new version. The
+  capability `config.check`, so a manager's polls read the drift and a rollout's drift gate
+  applies to akit members; the console's Consistency page works. v1 additions.
+- Alerts (`akit_cluster::alerts`, `alerteval`, fit's `cluster/alerts.go`, `alerteval.go` and
+  `alertapi.go`): fit's six default rules (a member down, drift by templates or by the check, a
+  rollout failed, a certificate near its expiry, backends down, reloads failing), a group's or
+  every member's, each pending for its time, then firing, sent again after its repeat, resolved
+  (and sent so, to webhooks that ask) once its condition is gone; silences by rule, member or
+  both; 64 rules, 16 webhooks, 256 silences, 2,048 alerts followed and 500 resolved kept. Kept in
+  the store's section `cluster.alerts`, fit's document. The rules are evaluated on a thread of
+  the manager's when a poll ends, a rule, webhook or silence changes, a member's templates were
+  read or a rollout ended, and at the earliest of their own times; members a template manages are
+  read against their templates when their running config changed, once a poll.
+- Webhooks (`akit_cluster::webhooks`, fit's `webhooks.go`): JSON, Slack, Discord, Feishu,
+  DingTalk, WeCom and custom templates; https, or http to loopback; signed with the secret
+  (`X-Akit-Signature`, `X-Akit-Timestamp`; Feishu's and DingTalk's own); one sender each on akio's
+  client, 64 notifications waiting, each within its timeout; the URL's path and query and the
+  secret never answered or logged; a test answered with how it went.
+- Drift (`GET /api/drift`, `POST /api/drift/fix`, fit's `drift.go`): each member's templates'
+  and check's drift; a fix plans a sync rollout of the members named.
+- Endpoints: `/api/alerts`, `/summary`, `/config` (with its ETag; `If-Match` on the changes),
+  `/rules`, `/webhooks` (and `/<name>/test`), `/silences`; the changes on the manager's pool, in
+  the audit log (`alert.*`).
+- Tests: `check::tests`, `alerts::tests`, `alerteval::tests` (the life of an alert, its time,
+  each kind's finding), `webhooks::tests` (checks, rendering, signatures, chat services' refusals);
+  akit's `consistency_check` (a drift, its fix reconciled, 428, a fix not offered) and
+  `alerts_and_drift` (the default rules, a webhook tested and its signature checked, a member down
+  firing and sent, silenced and the silence ended, a template's drift fixed by a rollout, a check's
+  drift firing a rule, the alerts kept across a restart).
+
 ### 2026-11-27: I137, rollouts with health gates
 
 - Rollouts (`akit_cluster::rollouts` and `rollrun`, fit's `cluster/rollouts.go`, `rollrun.go`,

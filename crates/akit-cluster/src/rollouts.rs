@@ -356,7 +356,7 @@ fn list_of(v: &Value, key: &str) -> Vec<Value> {
 }
 
 /// A whole number of member `key`, or 0 when it is absent.
-fn whole(v: &Value, key: &str, name: &str) -> Result<i64, Refusal> {
+pub(crate) fn whole(v: &Value, key: &str, name: &str) -> Result<i64, Refusal> {
     match v.get(key) {
         None | Some(Value::Null) => Ok(0),
         Some(Value::Number(n)) => n
@@ -1663,6 +1663,11 @@ fn rollout_config(d: &Document, req: &Request) -> Result<(Option<Value>, String)
     Ok((Some(root), jv::hash(&t.config)))
 }
 
+/// What rollout `r` does, in words.
+pub(crate) fn describe(r: &Rollout) -> String {
+    describe_rollout(r, r.members.len())
+}
+
 fn describe_rollout(r: &Rollout, members: usize) -> String {
     let s = match r.kind.as_str() {
         KIND_TEMPLATE if r.config.is_some() => format!(
@@ -2489,6 +2494,8 @@ impl Manager {
             r.counted(M_ROLLED_BACK)
         );
         ro.expire();
+        // A rollout failed is what a rule reads.
+        self.poke_alerts();
         Some((e, line))
     }
 }

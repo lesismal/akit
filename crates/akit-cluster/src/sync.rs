@@ -435,7 +435,7 @@ fn compare(
 #[derive(Default)]
 pub(crate) struct Tpl {
     /// Each member's last sync state, a summary without values, as JSON.
-    last: BTreeMap<String, String>,
+    pub(crate) last: BTreeMap<String, String>,
     /// The members the manager told it owns something there.
     owned: BTreeSet<String>,
     syncs: usize,

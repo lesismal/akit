@@ -78,8 +78,18 @@ keeps, and which names on it are akit's.
    I/O thread (rule 1). A copy from an akit member, whose config answers its secrets as
    `[redacted]`, masks them as a template's `[secret]`, so that each member it is copied to keeps
    its own and a fit member is never written the word `[redacted]`. And the drift gate applies
-   where a member lists `config.check`, as fit's does: fit members now, akit members once I138
-   serves it.
+   where a member lists `config.check`, as fit's does: fit members, and akit members from I138.
+
+10. **Drift and alerts (I138)** are fit's: the consistency check's differences and fixes (`GET
+    /config/check`, `POST /config/reconcile`), the rules, silences and webhooks, and the store's
+    section `cluster.alerts`, which either manager reads. akit's check reads what runs from `GET
+    /status`'s and `GET /node`'s writers, and the settings that take a restart are those a config's
+    warnings name; its values are answered with their secrets redacted (decision 035). A webhook's
+    notification says `akit-cluster` and "akit cluster", signed in `X-Akit-Signature` and
+    `X-Akit-Timestamp` (decision 037: an external name). The rules are evaluated when a poll ends,
+    something changes, or the earliest of their times comes, not on fit's one-second tick (`tick_ms`
+    answers 0); a managed member is read against its templates when its running config changed,
+    not again every ten minutes as fit's.
 
 ## Alternatives
 

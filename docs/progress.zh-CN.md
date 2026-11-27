@@ -106,6 +106,30 @@
   中继）、`TestReload`（就地修改配额，排空中的服务器回答 508）、端口范围（取其端口，用尽时 508，删除后再次可用）、
   `TestLimiter`；fib 互通测试（`tests/fib_turn.rs`）对 akit 和 fit 结果相同，在 macOS 上运行。
 
+### 2026-11-27：I138，漂移和告警；akit 上的一致性检查
+
+- 每个 akit 上的一致性检查（`akit_admin::check`，fit 的 `admin/drift.go`）：`GET /config/check` 回答运行中的状态与其所依据配置之间的
+  差异，每一项是带修复的漂移或说明：需要重启才生效的设置（配置警告中列出的那些，对照与历史一起保留的版本 1）、监听是否绑定以及动态
+  端口、所需与所提供的证书、上游是否运行以及是否所有后端都已下线、角色的设置与运行、缓存区的使用与保留、提供者提供和略去的内容。
+  运行中的状态从 `GET /status` 和 `GET /node` 的写出函数读取；值回答时已脱敏。`POST /config/reconcile` 以检查的 ETag 作
+  `If-Match`（没有则 428），重新检查并把所列修复（删除放最后，从数组末尾开始）作为新版本应用。能力 `config.check`，于是管理端的轮询会
+  读取漂移，发布的漂移门槛也适用于 akit 成员；控制台的一致性页面可用。v1 新增。
+- 告警（`akit_cluster::alerts`、`alerteval`，fit 的 `cluster/alerts.go`、`alerteval.go` 和 `alertapi.go`）：fit 的六条默认规则（成员
+  下线、按模板或按检查的漂移、发布失败、证书临近过期、后端下线、重载失败），针对某个分组或全部成员，各自先待定满其时间，然后触发，按
+  重复间隔再次发送，条件消失后解除（并发送给要求的 webhook）；按规则、成员或两者静默；64 条规则、16 个 webhook、256 个静默、跟踪 2,048
+  个告警并保留 500 个已解除的。保存在存储的 `cluster.alerts` 分区，即 fit 的文档。规则在管理端自己的线程上评估：一次轮询结束、规则、
+  webhook 或静默改变、成员的模板被读取或发布结束时，以及其自身最早的时间到来时；受模板管理的成员在运行配置改变时与模板对照读取，每次
+  轮询一次。
+- Webhook（`akit_cluster::webhooks`，fit 的 `webhooks.go`）：JSON、Slack、Discord、飞书、钉钉、企业微信和自定义模板；https，或到回环
+  地址的 http；用密钥签名（`X-Akit-Signature`、`X-Akit-Timestamp`；飞书和钉钉用各自的签名）；每个一个发送者，在 akio 的客户端上，最多
+  64 条通知等待，每条在其超时之内；URL 的路径和查询以及密钥从不回答或记录；测试回答其结果。
+- 漂移（`GET /api/drift`、`POST /api/drift/fix`，fit 的 `drift.go`）：每个成员的模板漂移和检查漂移；修复会为所列成员计划一次同步发布。
+- 端点：`/api/alerts`、`/summary`、`/config`（带 ETag；修改时用 `If-Match`）、`/rules`、`/webhooks`（以及 `/<name>/test`）、
+  `/silences`；修改在管理端的线程池上进行，记入审计日志（`alert.*`）。
+- 测试：`check::tests`、`alerts::tests`、`alerteval::tests`（告警的生命周期、其时间、每种规则的发现）、`webhooks::tests`（检查、渲染、
+  签名、聊天服务的拒绝）；akit 的 `consistency_check`（一处漂移、其修复的 reconcile、428、未提供的修复）和 `alerts_and_drift`（默认规则、
+  测试 webhook 并核对签名、成员下线触发并发送、静默及结束静默、模板漂移由发布修复、检查发现的漂移触发规则、告警在重启后保留）。
+
 ### 2026-11-27：I137，带健康门槛的发布
 
 - 发布（`akit_cluster::rollouts` 和 `rollrun`，fit 的 `cluster/rollouts.go`、`rollrun.go`、`rollsteer.go`、`rolldraft.go` 和

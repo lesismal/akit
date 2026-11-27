@@ -251,7 +251,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I135 | 集群 VI：分组和对多个成员的操作 | I133 | done |
 | I136 | 集群 VII：模板；`/node/managed` | I135 | done |
 | I137 | 集群 VIII：带健康门槛的发布 | I136 | done |
-| I138 | 集群 IX：漂移和告警；`/config/check` | I137 | todo |
+| I138 | 集群 IX：漂移和告警；`/config/check` | I137 | done |
 | I139 | 集群 X：用户、角色和审计日志 | I137 | todo |
 | I139b | 集群 XI：NAT 之后主动外连的成员 | I132 | todo |
 | I139c | 集群 XII：跨成员的指标、日志和证书；`akit cluster` | I138 | todo |
@@ -1928,6 +1928,8 @@ fit 工作台页面。成员尽量少改动：管理端使用成员已有的 API
 - **完成标准**：fit 的 `alerts`、`alerteval`、`webhooks` 和 `drift` 测试移植后通过。
 - **涉及**：`akit-cluster`、`akit-admin`（`/config/check`）。
 - **fit**：`cluster/{alerts,alerteval,alertapi,webhooks,drift}.go`、`admin/drift.go`；I147。
+- **状态**：done（2026-11-27）。akit 的检查从 `/status` 和 `/node` 的写出函数读取运行中的状态；规则按事件和自身的时间评估，而不是
+  fit 的定时；webhook 签名在 `X-Akit-Signature` 中（决定 041 第 10 点）。见进度日志。
 
 ### I139 集群 X：用户、角色和审计日志
 

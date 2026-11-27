@@ -1842,3 +1842,284 @@ fn consistency_check() {
     );
     let _ = r.stop();
 }
+
+/// A webhook's receiver on loopback: each request's head and body, answered 200.
+struct Receiver {
+    addr: SocketAddr,
+    got: Arc<Mutex<Vec<(String, String)>>>,
+}
+
+impl Receiver {
+    fn start() -> Receiver {
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = l.local_addr().unwrap();
+        let got: Arc<Mutex<Vec<(String, String)>>> = Arc::default();
+        let into = Arc::clone(&got);
+        std::thread::spawn(move || {
+            for s in l.incoming() {
+                let Ok(mut s) = s else { return };
+                let mut r = BufReader::new(s.try_clone().unwrap());
+                let mut head = String::new();
+                loop {
+                    let mut line = String::new();
+                    if r.read_line(&mut line).unwrap_or(0) == 0 || line == "\r\n" {
+                        break;
+                    }
+                    head.push_str(&line);
+                }
+                let len = head
+                    .lines()
+                    .find_map(|l| {
+                        l.to_ascii_lowercase()
+                            .strip_prefix("content-length: ")
+                            .map(|v| v.trim().parse::<usize>().unwrap_or(0))
+                    })
+                    .unwrap_or(0);
+                let mut body = vec![0; len];
+                let _ = r.read_exact(&mut body);
+                into.lock()
+                    .unwrap()
+                    .push((head, String::from_utf8_lossy(&body).into_owned()));
+                let _ = s.write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok",
+                );
+            }
+        });
+        Receiver { addr, got }
+    }
+
+    /// Waits for a request whose body holds `want`: its head and body.
+    fn wait(&self, want: &str) -> (String, String) {
+        let deadline = Instant::now() + Duration::from_secs(30);
+        loop {
+            if let Some(x) = self
+                .got
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|(_, b)| b.contains(want))
+            {
+                return x.clone();
+            }
+            assert!(
+                Instant::now() < deadline,
+                "no {want:?} in {:?}",
+                self.got.lock().unwrap()
+            );
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
+}
+
+/// Waits for `GET path` on the manager to meet `cond`: its body.
+fn wait_get(b: &Browser, path: &str, what: &str, cond: impl Fn(&str) -> bool) -> String {
+    let deadline = Instant::now() + Duration::from_secs(40);
+    loop {
+        let (st, _, body) = b.call("GET", path, "");
+        if st == 200 && cond(&body) {
+            return body;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "{path}: waiting for {what}: {st} {body}"
+        );
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
+/// Alerts, webhooks and drift (I138, fit's `alerts`, `alerteval`, `webhooks` and `drift`
+/// tests): the default rules; a webhook tested, signed; a member down firing a rule, sent to the
+/// webhook, silenced and the silence ended; the drift against the templates fixed by a sync
+/// rollout; a member's consistency check finding a drift; the alerts kept across the manager's
+/// restart.
+#[test]
+fn alerts_and_drift() {
+    let d = Dir::new("alerts");
+    let h = hash("pw");
+    let ta = "a-token-of-member-a-0123456789";
+    let am = Run::start(&["-c", s(&token_member(&d, "a", ta)), "-watch-certs=false"]);
+    let a_api = am.addr("admin API on ");
+    let a_web = am.addr("listener \"web\" on ");
+    let tb = "a-token-of-member-b-0123456789";
+    let bm = Run::start(&["-c", s(&token_member(&d, "b", tb)), "-watch-certs=false"]);
+    let b_api = bm.addr("admin API on ");
+    let rx = Receiver::start();
+    let mcfg = manager(&d, &h);
+    let m = Run::start(&["-admin", "-c", s(&mcfg), "-watch-certs=false"]);
+    let mut b = Browser::new(m.addr("console on http://"));
+    assert_eq!(b.login("ada", "pw").0, 200);
+    for (n, api, t) in [("a", a_api, ta), ("b", b_api, tb)] {
+        add(
+            &b,
+            &format!(
+                r#"{{"name": "{n}", "url": "http://{api}", "access": "admin_api", "token": "{t}", "labels": {{"region": "eu"}}}}"#
+            ),
+        );
+        wait_state(&b, n, "up", "");
+    }
+    let (st, head, cfg) = b.call("GET", "/api/m/cluster/alerts/config", "");
+    assert_eq!(st, 200, "{cfg}");
+    for r in [
+        "member-down",
+        "drift",
+        "rollout-failed",
+        "certificate-expiry",
+        "backends-down",
+        "reloads-failing",
+    ] {
+        assert!(cfg.contains(&format!(r#""name":"{r}""#)), "{r}: {cfg}");
+    }
+    let etag = header_of(&head, "ETag");
+
+    // A webhook, tested: signed with its secret, its URL's path never answered.
+    let hook = format!(
+        r#"{{"name": "hook", "url": "http://{}/h/T0K3N", "secret": "s3cret", "template": "x"}}"#,
+        rx.addr
+    );
+    let (st, _, v) = b.call_with(
+        "POST",
+        "/api/m/cluster/alerts/webhooks",
+        &[("If-Match", "\"a999\"")],
+        &hook,
+    );
+    assert_eq!(st, 412, "{v}");
+    let (st, _, v) = b.call_with(
+        "POST",
+        "/api/m/cluster/alerts/webhooks",
+        &[("If-Match", &etag)],
+        &hook,
+    );
+    assert_eq!(st, 201, "{v}");
+    assert!(
+        !v.contains("T0K3N") && !v.contains("s3cret") && v.contains(r#""secret_set":true"#),
+        "{v}"
+    );
+    let (st, _, v) = b.call("POST", "/api/m/cluster/alerts/webhooks/hook/test", "");
+    assert_eq!(st, 200, "{v}");
+    assert!(v.contains(r#""ok":true"#), "{v}");
+    let (head, body) = rx.wait("[TEST] akit cluster");
+    assert!(head.starts_with("POST /h/T0K3N "), "{head}");
+    let ts = header_of(&head, "X-Akit-Timestamp");
+    let mut mac = akio_crypto::mac::Hmac::<akio_crypto::hash::Sha256>::new(b"s3cret");
+    mac.update(format!("{ts}.").as_bytes());
+    mac.update(body.as_bytes());
+    let sig = format!(
+        "sha256={}",
+        akit_roles::linktoken::hex(mac.finalize().as_ref())
+    );
+    assert_eq!(header_of(&head, "X-Akit-Signature"), sig);
+
+    // A rule of no time on a member down: firing, sent, silenced, the silence ended.
+    let (st, _, v) = b.call(
+        "POST",
+        "/api/m/cluster/alerts/rules",
+        r#"{"name": "down-now", "kind": "member_down", "webhooks": ["hook"], "repeat_ms": 0}"#,
+    );
+    assert_eq!(st, 201, "{v}");
+    let (st, _, v) = b.call(
+        "POST",
+        "/api/m/cluster/alerts/rules",
+        r#"{"name": "x", "kind": "nope"}"#,
+    );
+    assert_eq!(st, 400, "{v}");
+    let _ = bm.stop();
+    let alerts = wait_get(&b, "/api/m/cluster/alerts", "b down firing", |v| {
+        v.contains(r#""rule":"down-now""#) && v.contains(r#""state":"firing""#)
+    });
+    assert!(alerts.contains(r#""node":"b""#), "{alerts}");
+    rx.wait("down-now · b");
+    let (st, _, v) = b.call(
+        "POST",
+        "/api/m/cluster/alerts/silences",
+        r#"{"rule": "down-now", "node": "b", "duration_ms": 600000, "comment": "maintenance"}"#,
+    );
+    assert_eq!(st, 201, "{v}");
+    let sid = str_member(&parse(&v), "id").to_owned();
+    let (_, _, v) = b.call("GET", "/api/m/cluster/alerts", "");
+    assert!(
+        v.contains(&format!(r#""silenced_by":"{sid}""#)) && v.contains(r#""silenced":1"#),
+        "{v}"
+    );
+    let (st, _, v) = b.call(
+        "DELETE",
+        &format!("/api/m/cluster/alerts/silences/{sid}"),
+        "",
+    );
+    assert_eq!(st, 200, "{v}");
+    let (st, _, v) = b.call("DELETE", "/api/m/cluster/alerts/webhooks/hook", "");
+    assert_eq!(st, 409, "{v}");
+
+    // Drift against a template, fixed by a sync rollout.
+    let (st, _, g) = b.call(
+        "POST",
+        "/api/m/cluster/groups",
+        r#"{"name": "eu", "members": ["a"]}"#,
+    );
+    assert_eq!(st, 201, "{g}");
+    let tpl = r#"{"name": "base", "groups": ["eu"], "config": {"routes": [{"name": "tpl", "match": {"path": ["/tpl"]},
+        "handler": {"module": "respond", "params": {"body": "templated"}}}]}}"#;
+    let (st, _, v) = b.call("POST", "/api/m/cluster/templates", tpl);
+    assert_eq!(st, 201, "{v}");
+    let drift = wait_get(&b, "/api/m/cluster/drift", "a out of sync", |v| {
+        v.contains(r#""node":"a""#) && v.contains(r#""fixable":true"#)
+    });
+    assert!(drift.contains(r#""managed":true"#), "{drift}");
+    let (st, _, v) = b.call("POST", "/api/m/cluster/drift/fix", r#"{"nodes": ["a"]}"#);
+    assert_eq!(st, 202, "{v}");
+    let id = str_member(&parse(&v), "id").to_owned();
+    wait_rollout(&b, &id, "its plan", state_is("planned"));
+    let (st, v) = steer(&b, &id, "start", r#"{"strategy": {"mode": "all"}}"#);
+    assert_eq!(st, 200, "{v}");
+    wait_rollout(&b, &id, "done", state_is("done"));
+    assert_eq!(get(a_web, "/tpl"), "templated");
+    wait_get(&b, "/api/m/cluster/drift", "a in sync", |v| {
+        v.contains(r#""fixable":false"#) && !v.contains(r#""drifted":true"#)
+    });
+
+    // A member's consistency check finding a drift fires a drift rule.
+    let (st, _, v) = b.call(
+        "POST",
+        "/api/m/cluster/alerts/rules",
+        r#"{"name": "drift-now", "kind": "drift", "source": "consistency"}"#,
+    );
+    assert_eq!(st, 201, "{v}");
+    let (st, head, _) = b.call("GET", "/api/n/a/m/admin/config", "");
+    assert_eq!(st, 200);
+    let etag = header_of(&head, "ETag");
+    let (st, _, v) = b.call_with(
+        "PUT",
+        "/api/n/a/m/admin/config/limits",
+        &[("If-Match", &etag)],
+        r#"{"max_conns": 77}"#,
+    );
+    assert_eq!(st, 200, "{v}");
+    wait_get(&b, "/api/m/cluster/alerts", "a's drift firing", |v| {
+        v.contains(r#""rule":"drift-now""#)
+            && v.contains("its consistency check finds 1 differences")
+    });
+
+    // Kept across a restart.
+    let (code, _, err) = m.stop();
+    assert_eq!(code, Some(0), "{err}");
+    let m = Run::start(&["-admin", "-c", s(&mcfg), "-watch-certs=false"]);
+    let mut b = Browser::new(m.addr("console on http://"));
+    assert_eq!(b.login("ada", "pw").0, 200);
+    let (_, _, cfg) = b.call("GET", "/api/m/cluster/alerts/config", "");
+    assert!(
+        cfg.contains(r#""name":"down-now""#) && cfg.contains(r#""name":"hook""#),
+        "{cfg}"
+    );
+    let (_, _, v) = b.call("GET", "/api/m/cluster/alerts", "");
+    assert!(v.contains(r#""rule":"down-now""#), "{v}");
+    let (_, _, audit) = b.call("GET", "/api/m/cluster/audit?action=alert.", "");
+    for a in [
+        "alert.webhook.add",
+        "alert.webhook.test",
+        "alert.rule.add",
+        "alert.silence.add",
+        "alert.silence.expire",
+    ] {
+        assert!(audit.contains(a), "{a}: {audit}");
+    }
+    let _ = (m.stop(), am.stop());
+}

@@ -41,6 +41,7 @@ impl akit_roles::pages::Module for Module {
             || crate::templates::serve(m, ctx, user, path)
             || crate::sync::serve(m, ctx, path)
             || crate::rollouts::serve(m, ctx, user, path)
+            || crate::alerts::serve(m, ctx, user, path)
         {
             return;
         }

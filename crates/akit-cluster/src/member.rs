@@ -442,7 +442,7 @@ fn field(f: &str, msg: impl Into<String>) -> FieldError {
     }
 }
 
-fn name_ok(s: &str) -> bool {
+pub(crate) fn name_ok(s: &str) -> bool {
     let b = s.as_bytes();
     b.first().is_some_and(u8::is_ascii_alphanumeric)
         && b.iter()

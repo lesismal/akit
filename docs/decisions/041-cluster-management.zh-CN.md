@@ -52,7 +52,13 @@ fit 的 I140–I150 让设置了 `admin.cluster` 的 fit 成为其他 fit（其�
 9. **发布（I137）** 采用 fit 的：计划、策略、门槛、操控，以及文档的 `rollouts`，两种管理端都能读取。有三点是 akit 自己的。
    发布的计划和执行各占一个自己的线程，在那里等待成员的回答，从不在 I/O 线程上（规则 1）。从 akit 成员复制时，其配置把密钥回答为
    `[redacted]`，复制会把它们掩码为模板的 `[secret]`，于是每个目标成员保留自己的密钥，fit 成员也不会被写入 `[redacted]` 这个词。
-   漂移门槛只用于列出 `config.check` 的成员，与 fit 相同：现在是 fit 成员，akit 成员在 I138 提供它之后也适用。
+   漂移门槛只用于列出 `config.check` 的成员，与 fit 相同：fit 成员，以及从 I138 起的 akit 成员。
+
+10. **漂移和告警（I138）** 采用 fit 的：一致性检查的差异和修复（`GET /config/check`、`POST /config/reconcile`）、规则、静默和 webhook，
+    以及存储的 `cluster.alerts` 分区，两种管理端都能读取。akit 的检查从 `GET /status` 和 `GET /node` 的写出函数读取运行中的状态，
+    需要重启才生效的设置即配置警告中列出的那些；其值回答时密钥已脱敏（决定 035）。webhook 的通知写 `akit-cluster` 和 “akit cluster”，
+    签名在 `X-Akit-Signature` 和 `X-Akit-Timestamp` 中（决定 037：对外名字）。规则在一次轮询结束、有东西改变或最早的时间到来时评估，
+    而不是 fit 每秒一次的定时（`tick_ms` 回答 0）；受管成员在其运行配置改变时与模板对照读取，不像 fit 那样每十分钟再读一次。
 
 ## 备选方案
 
