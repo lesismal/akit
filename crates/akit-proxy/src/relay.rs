@@ -514,12 +514,19 @@ impl Relay {
     }
 
     /// Answers the client with fit's status for `e`, unless it was answered already; a gRPC
-    /// call with its gRPC status, a past deadline being `DEADLINE_EXCEEDED`.
+    /// call with its gRPC status, a past deadline being `DEADLINE_EXCEEDED`. A client that went
+    /// (its connection closed, its stream reset, its body broken off, as a malformed chunk size
+    /// breaks it) is not answered: the upstream request failed because it was given up for the
+    /// client, and a 502 racing the close of the client's connection could still reach it.
     fn fail(&self, e: &Error) {
-        let (answer, grpc) = {
+        let (answer, grpc, gone) = {
             let mut s = lock(&self.shared);
-            (s.answer.take(), s.grpc.clone())
+            (s.answer.take(), s.grpc.clone(), s.gone)
         };
+        if gone {
+            // Dropped unanswered: the request ends as gone.
+            return;
+        }
         if let Some(answer) = answer {
             let status = if grpc.is_some() && self.timed_out() {
                 504
