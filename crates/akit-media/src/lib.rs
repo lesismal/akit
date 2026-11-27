@@ -11,4 +11,5 @@ pub mod auth;
 pub mod http;
 mod pool;
 pub mod role;
+pub mod streaming;
 mod swap;

@@ -246,7 +246,7 @@ Tunnel and LLM track; I110–I114 are the WebRTC track, and I115–I119 are rese
 | **After 1.0: streaming and media auth** | | | |
 | I120 | Streaming and media auth I: `media_auth` and `streaming` in the config | I79 | done |
 | I121 | Media auth II: the policies, the checks of HTTP requests, `akit media-token` | I120 | done |
-| I122 | Streaming I: the role's hub and its RTMP, RTSP and SRT listeners | I121, I100 | todo |
+| I122 | Streaming I: the role's hub and its RTMP, RTSP and SRT listeners | I121, I100 | done |
 | I123 | Streaming II: `httpflv` and `hls` | I122 | todo |
 | I124 | Streaming III: `streaming.webrtc`, `stream_whip` and `stream_whep` | I123 | todo |
 | I125 | The media pages: `media_pages`, its login and room API | I121, the WebRTC track's `whip` and `whep` | todo |
@@ -2093,7 +2093,8 @@ the Media library and channels track's, refused as not supported yet until then.
   hold.
 - **Touches**: `akit-media` (`streaming`), `akit` (`ROLES`), `docs/reference`.
 - **fit**: `streaming/streaming.go`, `listeners.go`, `rtspauth.go`; I116.
-- **Status**: todo.
+- **Status**: done (2026-11-27), RTSP's credentials and SRT's resource query on stopgaps
+  (akio A264, A265). See the progress log.
 
 ### I123 Streaming II: `httpflv` and `hls`
 

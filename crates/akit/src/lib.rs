@@ -59,6 +59,8 @@ pub const STANDARD: &[&[Info<HandlerParams>]] = &[
 pub const ROLES: &[akit_roles::host::Info] = &[
     // I121: media_auth's policies, before the roles that name them.
     akit_media::role::MEDIA_AUTH,
+    // I122: the streaming role.
+    akit_media::streaming::STREAMING,
     // I101: the tunnel's roles.
     akit_tunnel::HUB,
     akit_tunnel::NODE,

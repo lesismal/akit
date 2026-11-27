@@ -50,6 +50,15 @@ WHIP and WHEP. Some of what fit's role asks of fib is not in akio-media's API ye
    would need refused until then: RTMP's `max_message_bytes` (A263), RTSP's Digest and Basic,
    `auth_methods`, `realm` and the sessionless `idle_timeout` (A264). Until A264, RTSP takes
    credentials in the URL's query (a token, or a user and password), checked in the hub's hooks.
+8. **The role runs on the listeners' engine as the tunnel's roles do** (I122): its RTMP and RTSP
+   listeners are akio-media's servers behind an acceptor of the role's own that bounds
+   `max_conns` (a connection past it closed as it opens, counted down when its peer goes), its SRT
+   listener a UDP listener; the role's `access`, then the global one, on akio's accept filter, set
+   again by every apply. Its metrics join `/metrics` through `Role::metrics`, with akit's
+   names. More stopgaps showed under ffmpeg (A264 extended, A265): RTSP's play and ffmpeg's
+   publish cannot carry a query token through akio-media's DESCRIBE and SETUP, and SRT's
+   `r=...?token=` is refused with 1400. Each fails closed: a client fit would let in may be
+   refused, none fit would refuse is let in.
 
 ## Alternatives
 

@@ -117,6 +117,8 @@
 | A260 | akio-webrtc 中供 SFU 使用的 RTP 转发：收到的包写到另一个 peer 的发送媒体行上，改写其 SSRC、负载类型、序号和时间戳，映射其头部扩展 | 已进入 akio 的 main 并锁定（自 `d8d51f61` 起，akio 的 ADR-187）：`Peer::write_rtp` | 13 | I113 |
 | A261 | 接收方的码率上限以 REMB 告知远端发送方，以及按 peer 设置的 ICE consent 超时 | 已进入 akio 的 main 并锁定（自 `d8d51f61` 起，akio 的 ADR-187）：`Peer::set_receive_bitrate_cap`、`RtcConfig::set_ice_timeouts` | 10, 11 | I113 |
 | A263 | akio-media 的 RTMP 服务器：按服务器设置的消息上限，按 fit 的方式告知拒绝（`NetStream.Publish.Unauthorized`、`NetStream.Play.Failed`、重试），订阅成功之后才发播放的状态，从接受连接到推流或播放的期限 | 由 I120 提出 | 4, 11, 19 | I122 |
+| A264 | akio-media 的 RTSP 服务器：每个请求（其方法、URL、`Authorization` 和连接的会话）上的钩子，可以答复该请求；DESCRIBE 经过 hub 的播放钩子；为各轨道保留 URL 的查询参数（`Content-Base`），并接受写在轨道控制之前的查询参数（`.../cam?token=T/streamid=0`）；无会话连接的空闲期限 | 由 I120 提出 | 4, 19 | I122 |
+| A265 | akio-media 的 SRT 服务器：把访问控制语法的 stream ID 中资源的查询参数（`#!::r=live/cam?token=T,m=publish`）与流的路径分开，与普通 stream ID 相同 | 由 I122 提出 | 19 | I122 |
 | A264 | akio-media 的 RTSP 服务器：每个请求（其方法、URL、`Authorization` 和连接的会话）上的钩子，可以答复该请求；DESCRIBE 经过 hub 的播放钩子；无会话连接的空闲期限 | 由 I120 提出 | 4, 19 | I122 |
 | A283 | 运行在调用者引擎上的 BitTorrent 客户端（fit 向 fib 提出的 A79） | 已提出；临时做法：客户端使用它自己的引擎 | 16 | I152 |
 | A284 | BitTorrent 客户端按地址拒绝 peer、限制其连接数和同时拨号数、在运行时修改其限制（fib 的 A77、A78） | 已提出；在此之前客户端的 `access`、`max_conns`、`max_half_open` 和 `disk_queue_bytes` 以"尚不支持"拒绝 | 11 | I152, I154 |
@@ -2206,19 +2208,41 @@ Result<(Peer, String), Error>`，像闭包的配置一样在 `config` 之上设�
 流检查播放，ANNOUNCE 检查推流，PLAY 和 RECORD 按连接会话的流检查播放和推流，凭据取自 `Authorization` 字段（Digest，带它自己的
 无状态 nonce 和 realm，或在提供时用 Basic）或 URL 的查询参数；拒绝时答复带质询的 401、403，或在密码检查中时答复带 `Retry-After`
 的 503。akio-media 的服务器有 `RtspConfig::credentials`，它要求每个请求都认证，且不告诉钩子用户是谁；以及 hub 的钩子，只在
-ANNOUNCE、SETUP 和 PLAY 的订阅时被询问，且只带 URL 的查询参数；DESCRIBE 不经询问就答复流的 SDP。无会话的连接受
+ANNOUNCE、SETUP 和 PLAY 的订阅时被询问，且只带 URL 的查询参数；DESCRIBE 不经询问就答复流的 SDP，其 `Content-Base` 省去了
+URL 的查询参数，因此客户端随后发送的 SETUP 和 PLAY 不带凭据。录制的 SETUP 若其 URL 把查询参数写在轨道控制之前（ffmpeg 在带
+查询参数的 ANNOUNCE 之后就这样写，`rtsp://h/live/cam?token=T/streamid=0`），会得到 404：控制是在路径中查找的。无会话的连接受
 `session_timeout` 约束，而 fit 为它单设 `idle_timeout`。
 
 **证据。** 在 akio `8a9601b9` 的 `akio-media/src/rtsp/mod.rs` 中：`RtspSession::handle` 对除 OPTIONS 外的每个请求检查
-`cfg.credentials`，答复带两种质询的 401；`describe` 直接读取 `hub.stream_info`；`PeerInfo` 带有协议、对端和查询参数；
-`on_open` 的期限为 `request_timeout` 和 `session_timeout`。
+`cfg.credentials`，答复带两种质询的 401；`describe` 直接读取 `hub.stream_info`，写出的 `Content-Base` 不带查询参数；`setup`
+以 `?` 之前的 URL 按控制匹配录制的媒体；`PeerInfo` 带有协议、对端和查询参数；`on_open` 的期限为 `request_timeout` 和
+`session_timeout`。akit 的 `crates/akit/tests/media.rs` 显示 ffmpeg 带 `?token=` 的 RTSP 推流在 akit 得到 404，在 fit 被接受。
 
 **建议的 API。** `RtspConfig::on_request: Option<Arc<dyn Fn(&RequestInfo<'_>) -> Option<Response> + Send + Sync>>`，在处理
 请求之前、在其连接的线程上调用，带方法、URL、头字段、连接的会话路径（如有）以及是否在录制；返回的 `Response` 代替原处理答复
-该请求。DESCRIBE 经过 hub 的 `on_subscribe`。以及用于无会话连接的 `RtspConfig::idle_timeout`。
+该请求。DESCRIBE 经过 hub 的 `on_subscribe`，其 `Content-Base` 保留查询参数；轨道的控制写在查询参数之后也接受（fit 的
+`rtspPath`）。以及用于无会话连接的 `RtspConfig::idle_timeout`。
 
 **akit 如何使用。** 把 fit 的 `streaming/rtspauth.go` 移植到该钩子上（带 fit 的 nonce 的 Digest、Basic、查询参数；401、403、
 503）；读取 `streaming.rtsp` 的 `auth_methods`、`realm`（akit 的默认值为 `akit`，决定 037）和 `idle_timeout`。
+
+## A265 akio-media 的 SRT 服务器：访问控制语法中资源的查询参数
+
+**状态。** 由 I122 提出（2026-11-27）。没有工作等它：akit 以 1400（错误请求）拒绝这样的 stream ID，而不是在带查询参数的路径下
+推流或播放（临时做法记录在[进度](progress.zh-CN.md)中）；token 放在 `s=` 中，或放在普通 stream ID 的查询参数中。
+
+**问题。** fit 从访问控制语法的资源的查询参数中取凭据，`#!::r=live/cam?token=T,m=publish`，与普通 stream ID `live/cam?token=T`
+相同（fit 的 `parseStreamID`）。akio-media 的 `StreamId::parse` 只拆分普通 stream ID 的查询参数：访问控制语法的 `r=` 整个作为
+资源，于是 hub 路径会是 `live/cam?token=T`。
+
+**证据。** 在 akio `8a9601b9` 的 `akio-media/src/srt/listener.rs` 中：`StreamId::parse` 对不带 `#!::` 的 stream ID 设置
+`query`，否则原样取 `r=`；服务器以 `id.resource` 推流和播放。
+
+**建议的 API。** `StreamId::parse` 把 `r=` 的查询参数拆到 `query` 中（只有查询参数的 `r=` 被拒绝），与 fit 相同；或在 `SrtConfig`
+中提供解析钩子。
+
+**akit 如何使用。** `akit_media::streaming` 的 SRT 连接钩子像读取普通 stream ID 那样读取查询参数中的 token 或用户和密码，并不再
+拒绝这样的 stream ID。
 ## A283 运行在调用者引擎上的 BitTorrent 客户端
 
 **状态。** 由 I150 为 I152 提出（2026-11-27）。临时做法：客户端角色在 `Client::new` 为它建立的引擎上运行

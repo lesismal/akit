@@ -234,7 +234,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | **1.0 之后：流媒体与媒体认证** | | | |
 | I120 | 流媒体与媒体认证 I：配置中的 `media_auth` 和 `streaming` | I79 | done |
 | I121 | 媒体认证 II：策略、HTTP 请求的检查、`akit media-token` | I120 | done |
-| I122 | 流媒体 I：角色的媒体中心及其 RTMP、RTSP 和 SRT 监听器 | I121, I100 | todo |
+| I122 | 流媒体 I：角色的媒体中心及其 RTMP、RTSP 和 SRT 监听器 | I121, I100 | done |
 | I123 | 流媒体 II：`httpflv` 和 `hls` | I122 | todo |
 | I124 | 流媒体 III：`streaming.webrtc`、`stream_whip` 和 `stream_whep` | I123 | todo |
 | I125 | 媒体页面：`media_pages`、其登录和房间 API | I121、WebRTC 路线的 `whip` 和 `whep` | todo |
@@ -1749,7 +1749,7 @@ fit 的 I115–I117（其[流媒体指南](https://github.com/lesismal/fit/blob/
   也通过；上限和重载都成立。
 - **涉及**：`akit-media`（`streaming`）、`akit`（`ROLES`）、`docs/reference`。
 - **fit**：`streaming/streaming.go`、`listeners.go`、`rtspauth.go`；I116。
-- **状态**：todo。
+- **状态**：已完成（2026-11-27），RTSP 的凭据和 SRT 资源的查询参数采用临时做法（akio A264、A265）。见进度日志。
 
 ### I123 流媒体 II：`httpflv` 和 `hls`
 

@@ -35,6 +35,11 @@ fit 的 I115–I117 为其配置增加了两个成员（[fit 的决定 030](http
 7. **akio-media 不足之处的临时做法**，各有一个 akio 请求（规则 21），在此之前拒绝它所需要的字段：RTMP 的 `max_message_bytes`
    （A263）、RTSP 的 Digest 和 Basic、`auth_methods`、`realm` 以及无会话连接的 `idle_timeout`（A264）。在 A264 之前，RTSP 从
    URL 的查询参数中取凭据（token，或用户和密码），在 hub 的钩子中检查。
+8. **角色像隧道的角色一样运行在监听器的引擎上**（I122）：其 RTMP 和 RTSP 监听器是 akio-media 的服务器，外面包着角色自己的接受器
+   以限制 `max_conns`（超出时连接一打开就关闭，对端离开时计数减一），其 SRT 监听器是 UDP 监听器；角色的 `access` 和全局
+   `access` 依次作用于 akio 的接入过滤器，每次应用时重新设置。其指标经由 `Role::metrics`加入 `/metrics`，使用 akit 的名字。在 ffmpeg
+   下暴露出更多临时做法（扩充 A264、新增 A265）：由于 akio-media 的 DESCRIBE 和 SETUP，RTSP 的播放和 ffmpeg 的推流无法携带查询
+   token；SRT 的 `r=...?token=` 以 1400 拒绝。每一项都是失败即关闭：fit 会放行的客户端可能被拒绝，fit 会拒绝的客户端绝不会被放行。
 
 ## 其他选择
 

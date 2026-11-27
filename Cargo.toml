@@ -81,6 +81,9 @@ akio-mux = { git = "https://github.com/lesismal/akio", rev = "d8d51f61679cf8a285
 # akit-handler: I55).
 akio-socks = { git = "https://github.com/lesismal/akio", rev = "d8d51f61679cf8a285eeb6a7c8cd10711a0b5ce4" }
 
+# The streaming role (akit-media, I122): the hub, RTMP, RTSP, SRT, HTTP-FLV and HLS.
+akio-media = { git = "https://github.com/lesismal/akio", rev = "d8d51f61679cf8a285eeb6a7c8cd10711a0b5ce4" }
+
 akit-config = { path = "crates/akit-config" }
 akit-runtime = { path = "crates/akit-runtime" }
 akit-listener = { path = "crates/akit-listener" }

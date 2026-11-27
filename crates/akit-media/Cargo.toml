@@ -15,7 +15,11 @@ akio = { workspace = true }
 akio-crypto = { workspace = true }
 # The handlers' requests, suspended while a password is checked.
 akio-http = { workspace = true }
+# The hub, its RTMP, RTSP and SRT servers, and HTTP-FLV and HLS (I122, I123).
+akio-media = { workspace = true }
+akit-access = { workspace = true }
 akit-config = { workspace = true }
+akit-observe = { workspace = true }
 akit-roles = { workspace = true }
 akit-runtime = { workspace = true }
 

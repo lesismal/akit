@@ -118,6 +118,8 @@ first; its status here records the branch, then the akio commit akit pins.
 | A260 | RTP forwarding in akio-webrtc for an SFU: a received packet written on another peer's sending line, its SSRC, payload type, sequence and timestamp rewritten, its header extensions mapped | on akio's main and pinned (since `d8d51f61`, akio's ADR-187): `Peer::write_rtp` | 13 | I113 |
 | A261 | A receiver's bitrate cap told to the remote sender as REMB, and the ICE consent timeout set per peer | on akio's main and pinned (since `d8d51f61`, akio's ADR-187): `Peer::set_receive_bitrate_cap`, `RtcConfig::set_ice_timeouts` | 10, 11 | I113 |
 | A263 | akio-media's RTMP server: a message bound set per server, a refusal told as fit's (`NetStream.Publish.Unauthorized`, `NetStream.Play.Failed`, a retry), the play's statuses after its subscription, a deadline from accept to publish or play | requested by I120 | 4, 11, 19 | I122 |
+| A264 | akio-media's RTSP server: a hook on each request (its method, URL, `Authorization` and the connection's session) that may answer it; DESCRIBE asked of the hub's play hook; a URL's query kept for the tracks (`Content-Base`) and taken before a track's control (`.../cam?token=T/streamid=0`); an idle deadline for a connection without a session | requested by I120 | 4, 19 | I122 |
+| A265 | akio-media's SRT server: the query of an access control stream ID's resource (`#!::r=live/cam?token=T,m=publish`) split from the stream's path, as of a plain one | requested by I122 | 19 | I122 |
 | A264 | akio-media's RTSP server: a hook on each request (its method, URL, `Authorization` and the connection's session) that may answer it; DESCRIBE asked of the hub's play hook; an idle deadline for a connection without a session | requested by I120 | 4, 19 | I122 |
 | A283 | The BitTorrent client on the caller's engine (fit's fib A79) | requested; stopgap: the client on an engine of its own | 16 | I152 |
 | A284 | The BitTorrent client's peers refused by address, its connections and dials bounded, its limits changed at run time (fib's A77, A78) | requested; until then the client's `access`, `max_conns`, `max_half_open` and `disk_queue_bytes` are refused as not supported yet | 11 | I152, I154 |
@@ -2749,23 +2751,52 @@ the URL's query; a refusal is 401 with the challenges, 403, or 503 with `Retry-A
 being checked. akio-media's server has `RtspConfig::credentials`, which makes every request
 authenticate and does not tell the hooks who the user is, and the hub's hooks, asked on ANNOUNCE
 and on SETUP and PLAY's subscription with the URL's query only; DESCRIBE answers a stream's SDP
-without asking them. A connection without a session is held to `session_timeout`, where fit has
-`idle_timeout` for it.
+without asking them, and its `Content-Base` leaves the URL's query out, so the SETUP and PLAY a
+client sends after it carry no credentials. A recording's SETUP whose URL has the query before the
+track's control, as ffmpeg writes it after an ANNOUNCE with a query
+(`rtsp://h/live/cam?token=T/streamid=0`), is answered 404: the control is looked for in the path.
+A connection without a session is held to `session_timeout`, where fit has `idle_timeout` for it.
 
 **Evidence.** At akio `8a9601b9`, `akio-media/src/rtsp/mod.rs`: `RtspSession::handle` checks
 `cfg.credentials` for every request but OPTIONS and answers 401 with both challenges;
-`describe` reads `hub.stream_info` directly; `PeerInfo` carries the protocol, the peer and the
-query; `on_open`'s deadlines are `request_timeout` and `session_timeout`.
+`describe` reads `hub.stream_info` directly and writes `Content-Base` without the query; `setup`
+matches a recording's media by its control against the URL up to the `?`; `PeerInfo` carries the
+protocol, the peer and the query; `on_open`'s deadlines are `request_timeout` and
+`session_timeout`. akit's `crates/akit/tests/media.rs` shows ffmpeg's RTSP publish with
+`?token=` answered 404 by akit and taken by fit.
 
 **Suggested API.** `RtspConfig::on_request: Option<Arc<dyn Fn(&RequestInfo<'_>) -> Option<Response>
 + Send + Sync>>`, called before a request is handled, on its connection's thread, with the method,
 the URL, the header fields, the connection's session path (if any) and whether it records; a
-`Response` returned answers the request instead. DESCRIBE asked of the hub's `on_subscribe`. And
-`RtspConfig::idle_timeout` for a connection without a session.
+`Response` returned answers the request instead. DESCRIBE asked of the hub's `on_subscribe`, its
+`Content-Base` keeping the query; a track's control taken after the query too (fit's `rtspPath`).
+And `RtspConfig::idle_timeout` for a connection without a session.
 
 **How akit would use it.** fit's `streaming/rtspauth.go` ported onto the hook (Digest with fit's
 nonces, Basic, the query; 401, 403, 503); `streaming.rtsp`'s `auth_methods`, `realm` (akit's
 default `akit`, decision 037) and `idle_timeout` read.
+
+## A265 akio-media's SRT server: a resource's query in the access control syntax
+
+**Status.** Requested by I122 (2026-11-27). Nothing waits for it: akit refuses such a stream ID
+with 1400 (a bad request) rather than publish or play it under a path holding the query (a stopgap
+recorded in [progress](progress.md)); a token goes as `s=`, or in a plain stream ID's query.
+
+**Problem.** fit takes credentials in the query of the access control syntax's resource,
+`#!::r=live/cam?token=T,m=publish`, as of a plain stream ID, `live/cam?token=T` (fit's
+`parseStreamID`). akio-media's `StreamId::parse` splits the query of a plain stream ID only: the
+access control syntax's `r=` is the resource whole, so the hub path would be `live/cam?token=T`.
+
+**Evidence.** At akio `8a9601b9`, `akio-media/src/srt/listener.rs`: `StreamId::parse` sets
+`query` for a stream ID without `#!::` and takes `r=` as it is otherwise; the server publishes and
+plays `id.resource`.
+
+**Suggested API.** `StreamId::parse` splitting `r=`'s query into `query` (an `r=` that is only a
+query refused), as fit's; or a parse hook in `SrtConfig`.
+
+**How akit would use it.** `akit_media::streaming`'s SRT connect hook reads the query's token, or
+user and pass, as it does a plain stream ID's, and stops refusing such stream IDs.
+
 ## A283 The BitTorrent client on the caller's engine
 
 **Status.** Requested by I150 (2026-11-27) for I152. Stopgap: the client role runs

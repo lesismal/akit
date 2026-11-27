@@ -167,6 +167,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "akio-media"
+version = "1.0.0-rc.1"
+source = "git+https://github.com/lesismal/akio?rev=d8d51f61679cf8a285eeb6a7c8cd10711a0b5ce4#d8d51f61679cf8a285eeb6a7c8cd10711a0b5ce4"
+dependencies = [
+ "akio",
+ "akio-core",
+ "akio-crypto",
+ "akio-http",
+ "akio-rtp",
+]
+
+[[package]]
 name = "akio-mux"
 version = "1.0.0-rc.1"
 source = "git+https://github.com/lesismal/akio?rev=d8d51f61679cf8a285eeb6a7c8cd10711a0b5ce4#d8d51f61679cf8a285eeb6a7c8cd10711a0b5ce4"
@@ -536,7 +548,10 @@ dependencies = [
  "akio",
  "akio-crypto",
  "akio-http",
+ "akio-media",
+ "akit-access",
  "akit-config",
+ "akit-observe",
  "akit-roles",
  "akit-runtime",
 ]

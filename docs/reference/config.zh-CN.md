@@ -130,7 +130,7 @@ routes:
 | `listeners` | [对象](#cfg-listeners)的列表 |  |  |
 | `llm` | [对象](#cfg-llm) |  | **akit：**像 fit 一样读取并检查（I98）。在 LLM 的迭代运行这些角色之前（I104–I109），`akit run` 拒绝设置了角色的配置。 |
 | `log` | [对象](#cfg-log) |  |  |
-| `media_auth` | [对象](#cfg-media-auth)的列表 |  | **akit：**`akit run` 从 I121 起应用这些策略；在此之前它拒绝设置了策略的配置，`akit validate` 会检查它们。token 的 cookie 名为 `akit_media_token`（决定 037）。 |
+| `media_auth` | [对象](#cfg-media-auth)的列表 |  | **akit：**由 `akit run` 应用（I121），每个策略在重载时就地修改。token 的 cookie 为 `akit_media_token`，401 的质询为 `Bearer realm="akit"`（决定 037）；akit 签发的 token 采用 fit 的格式，fit 和 akit 都接受（决定 039）。 |
 | `media_library` | 对象的列表 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
 | `metrics` | 对象 |  |  |
 | `pprof` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
@@ -138,7 +138,7 @@ routes:
 | `routes` | [对象](#cfg-routes)的列表 |  |  |
 | `schema_version` | 整数，1 到 1 | `1` |  |
 | `services` | [对象](#cfg-services)的列表 |  |  |
-| `streaming` | [对象](#cfg-streaming) |  | **akit：**`akit run` 从 I122 起运行该角色（I124 起运行其 `webrtc` 端口）；在此之前它拒绝设置了该角色的配置，`akit validate` 会检查它。 |
+| `streaming` | [对象](#cfg-streaming) |  | **akit：**由 `akit run` 基于 akio-media 的 hub 运行（I122），其监听器在监听器的引擎上；其 `webrtc` 端口从 I124 起运行，在此之前 `akit run` 拒绝它（`akit validate` 会检查它）。指标为 `akit_streaming_*`。 |
 | `sync` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
 | `telemetry` | [对象](#cfg-telemetry) |  |  |
 | `tunnel` | [对象](#cfg-tunnel) |  | **akit：**像 fit 一样读取并检查（I98）；`akit run` 在监听器的引擎上运行这三个角色（I101），其链路与 fit 的协议逐字节相同，使 akit 的 hub、node 和 proxy 能与 fit 的互连（决定 038）。链路走 `tcp`、`tls`（I102）、`quic`（I102b），以及 `ws` 和 `wss`（I102c，基于 akio-ws）。hub 的 `console_socket` 和 proxy 的 `web_proxies` 使用 fit 的密封 WebSocket（I103b）。 |
@@ -2811,8 +2811,8 @@ webrtc {
 
 `media_auth` 列出 fit 的具名策略，规定谁可以推送和播放哪些流（[fit 的指南](https://github.com/lesismal/fit/blob/main/docs/streaming.zh-CN.md#auth)）：
 静态 token（或其 SHA-256）、带密码或 bcrypt 哈希的用户、为 `akit media-token` 签发的 token 签名的密钥，以及任何人都可执行
-的动作。流媒体角色的监听器和媒体处理器用 `auth` 指定一个策略，按流的路径检查。akit 像 fit 一样读取并检查这些策略（I120）；
-检查从 I121 起生效。策略的 `keys`（fit 的 I119）和 `url_signing`（媒体库那条线）尚不读取。
+的动作。流媒体角色的监听器和媒体处理器用 `auth` 指定一个策略，按流的路径检查。akit 像 fit 一样读取并检查这些策略（I120），
+`akit run` 应用它们（I121）。策略的 `keys`（fit 的 I119）和 `url_signing`（媒体库那条线）尚不读取。
 
 ```fit
 media_auth live {
@@ -2880,7 +2880,7 @@ media_auth live {
 
 `streaming` 是 fit 的流媒体角色（[fit 的指南](https://github.com/lesismal/fit/blob/main/docs/streaming.zh-CN.md)）：
 一个基于 akio-media 的媒体中心，一路流按其路径通过 RTMP、RTSP、SRT 或 WHIP 推送一次，即可通过其中任一协议以及 HTTP-FLV、
-HLS 和 WHEP 播放。akit 像 fit 一样读取并检查该角色（I120），`akit run` 从 I122 起运行它。尚不读取：`channels` 和 `push`
+HLS 和 WHEP 播放。akit 像 fit 一样读取并检查该角色（I120），`akit run` 运行它（I122；其 `webrtc` 端口从 I124 起）。尚不读取：`channels` 和 `push`
 （媒体库那条线）、Multipath TCP、RTMP 的 `max_message_bytes`（akio API 请求 A263），以及 RTSP 的 `auth_methods` 和
 `realm`（即 Digest 和 Basic）及其 `idle_timeout`（A264）：在此之前 RTSP 从 URL 的查询参数中取凭据。
 
@@ -2922,8 +2922,8 @@ streaming {
 | 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
 | `listen` | 字符串 | 必填 |  |
-| `auth` | 字符串 |  |  |
-| `handshake_timeout` | 时长 | `"10s"` |  |
+| `auth` | 字符串 |  | **akit：**在 akio A263 之前，拒绝时以 akio-media 的状态关闭连接：推流为 `NetStream.Publish.Denied`（密码仍在检查时其描述会说明：再试一次），播放为 `NetStream.Play.StreamNotFound`。 |
+| `handshake_timeout` | 时长 | `"10s"` | **akit：**akio-media 的期限在 RTMP 握手（C2）结束时结束；此后由 `idle_timeout` 约束既不推流也不播放的客户端（akio A263）。 |
 | `idle_timeout` | 时长 | `"30s"` |  |
 | `max_conns` | 整数，≥ 0 | `1024` |  |
 | `max_message_bytes` | 整数，≥ 0 | `8388608` | **尚不支持**（not supported yet）：按名称拒绝。 |
@@ -2941,7 +2941,7 @@ streaming {
 | 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
 | `listen` | 字符串 | 必填 |  |
-| `auth` | 字符串 |  |  |
+| `auth` | 字符串 |  | **akit：**在 akio A264 之前，凭据只能放在 URL 的查询参数中（没有 Digest 或 Basic），拒绝时答复不带质询的 403：把轨道写在查询参数之前的客户端（akio 的）推流时可以带凭据，ffmpeg 把轨道写在其后（`.../cam?token=T/streamid=0`），会得到 404；播放需要策略的公开播放，因为 akio-media 的 DESCRIBE 在 `Content-Base` 中省去了查询参数。 |
 | `auth_methods` | 字符串：`digest`、`basic`的列表 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
 | `idle_timeout` | 时长 | `"60s"` | **尚不支持**（not supported yet）：按名称拒绝。 |
 | `max_conns` | 整数，≥ 0 | `1024` |  |
@@ -2961,7 +2961,7 @@ streaming {
 | 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
 | `listen` | 字符串 | 必填 |  |
-| `auth` | 字符串 |  |  |
+| `auth` | 字符串 |  | **akit：**在 akio A265 之前，放在访问控制语法资源中的 token（`#!::r=live/cam?token=T,m=publish`）以 1400 拒绝：请放在 `s=` 中，或放在普通 stream ID 的查询参数中（`live/cam?token=T`）。 |
 | `latency` | 时长 | `"120ms"` |  |
 | `max_conns` | 整数，≥ 0 | `1024` |  |
 | `passphrase` | 字符串 |  |  |
