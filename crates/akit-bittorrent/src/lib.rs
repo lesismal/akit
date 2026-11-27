@@ -3,7 +3,8 @@
 //! fit's BitTorrent roles on akio-bittorrent (the BitTorrent track, I150–I159, decision 042):
 //! `bittorrent.tracker` ([`tracker`], I151), answering announces and scrapes over HTTP through the
 //! routes' `bt_tracker` handler and over UDP on its own `listen`, on akio-bittorrent's
-//! `TrackerServer`.
+//! `TrackerServer`; and `bittorrent.client` ([`client`], I152), downloading and seeding the
+//! torrents kept in its `data_dir` on akio-bittorrent's `Client`.
 //!
 //! [`MODULES`] lists the handlers for akit's registry; the roles are [`akit_roles::host::Info`]s
 //! the binary registers.
@@ -11,6 +12,7 @@
 //! Part of [akit](https://github.com/lesismal/akit); see `docs/dev-plan.md` for the iterations that
 //! fill this crate in.
 
+pub mod client;
 pub mod tracker;
 
 use akit_runtime::{HandlerParams, Info};
@@ -22,5 +24,7 @@ pub static MODULES: &[Info<HandlerParams>] = &[Info::handler(
     tracker::handler::new,
 )];
 
+/// The `bittorrent.client` role.
+pub use client::CLIENT;
 /// The `bittorrent.tracker` role.
 pub use tracker::TRACKER;

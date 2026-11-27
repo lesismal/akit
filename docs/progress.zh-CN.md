@@ -19,6 +19,26 @@
 
 ## 日志
 
+### 2026-11-27：I152，BitTorrent 客户端
+
+- `bittorrent.client`（`akit_bittorrent::client`）由 `akit run` 运行在 akio-bittorrent 的 `Client` 上，在 akio 的 A283 之前使用自己的
+  引擎：其种子像 fit 一样保存在 `data_dir` 中（`torrents.json` 和 `torrents/<id>.torrent`，先写临时文件、同步再改名，akit 不读取的
+  成员原样写回），akio 的 resume 数据在 `resume/` 中；启动时恢复且不重新校验；读不出的状态文件（不是 JSON、更高的版本、超过
+  100,000 个种子、重复或格式错误的 ID、相对目录、超过 64 MiB）使角色不启动，而不是被覆盖；自身文件读不出的种子带着错误继续列出。
+  重载原地修改速率和做种限制；`listen`、`encryption`、`dht`、`pex`、`utp`、`lsd`、`disk_workers`、`data_dir`、
+  `max_conns_per_torrent` 或 `upload_slots` 的变化从保存的状态建立新客户端，无法建立时（端口被占用）恢复旧客户端。DHT 只在 `dht`
+  开启时从 fit 的公共路由节点引导，其名字在自己的线程上解析。
+- 其 API（`ClientApi`，供 I157 的 Admin API 使用）：以 .torrent 文件或磁力链接添加（分别至多 128 MiB 和 64 KiB，受 `max_torrents`
+  限制）、删除时保留或删除数据、暂停、继续、列出、读取；列表的每次变化立即保存。客户端的事件（元数据、完成、做种限制）只记下发生了
+  什么；保存线程每 `save_interval` 写入（磁力链接的 .torrent、`completed`、被做种限制暂停的种子保存为暂停）。控制台的
+  `/api/torrents` 和 `/api/torrents/<id>`，在 akio 的池上应答。
+- peer ID 为 `-AK0001-`（决定第 75 行）。
+- 测试：`client::tests`（fit 的角色测试：两个角色之间下载、重启时不再读取任何分片、磁力链接的 .torrent 被保存并从中恢复、原地和以新
+  客户端重载、端口被占用、损坏的状态文件、读取并写回 fit 的状态文件、损坏的种子仍被列出、API 的拒绝、暂停、继续、连同数据删除、控制台
+  路由）；`tests/fit_interop.rs` 使用 fit 的二进制：akit 的客户端经由 fit 的 tracker 从 fit 的下载，fit 的也从 akit 的下载；
+  `tests/aria2c_interop.rs`（`AKIT_ARIA2C`）：aria2c 经由 akit 的 UDP tracker 从 akit 的客户端下载。
+- 待审查的决定：第 75 行。
+
 ### 2026-11-27：I113，WHIP 和 WHEP：媒体服务器
 
 - `akit_webrtc::media`，`akit run` 运行的角色 `webrtc.media`：akio-webrtc 的 ICE lite `RtcServer` 位于引擎的一个 UDP 监听器上

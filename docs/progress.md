@@ -20,6 +20,36 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-27: I152, the BitTorrent client
+
+- `bittorrent.client` (`akit_bittorrent::client`) run by `akit run` on akio-bittorrent's
+  `Client`, on an engine of its own until akio's A283: its torrents kept in `data_dir` as fit keeps
+  them (`torrents.json` and `torrents/<id>.torrent`, each written to a temporary file, synced and
+  renamed, members akit does not read written back as read) with akio's resume data in `resume/`;
+  restored at start resuming without a check; a state file that does not read (not JSON, a later
+  version, more than 100,000 torrents, an ID twice or malformed, a relative directory, past 64 MiB)
+  keeps the role from starting rather than be overwritten; a torrent whose own files do not read
+  stays listed with its error. A reload changes the rates and seed limits in place; a change of
+  `listen`, `encryption`, `dht`, `pex`, `utp`, `lsd`, `disk_workers`, `data_dir`,
+  `max_conns_per_torrent` or `upload_slots` makes a new client from the saved state, and one that
+  cannot be made (its port taken) brings the old one back. The DHT bootstraps from fit's public
+  routers, resolved on a thread of its own, only when `dht` is on.
+- Its API (`ClientApi`, for I157's Admin API): add by .torrent file or magnet link (128 MiB and
+  64 KiB at most, `max_torrents`), remove with or without the data, pause, resume, list, get; each
+  change of the list saved at once. The client's events (metadata, completion, a seed limit) only
+  note what happened; a saver thread writes it every `save_interval` (a magnet link's .torrent,
+  `completed`, a torrent its seed limit paused saved paused). The console's `/api/torrents` and
+  `/api/torrents/<id>`, answered on akio's pool.
+- Peer ID `-AK0001-` (decision row 75).
+- Tests: `client::tests` (fit's role tests: a download between two roles, a restart with no piece
+  read again, a magnet link's .torrent saved and restored, reloads in place and by a new client, a
+  port taken, bad state files, fit's state file read and written back, a broken torrent kept
+  listed, the API's refusals, pause, resume, removal with the data, the console's routes);
+  `tests/fit_interop.rs` with fit's binary: akit's client downloads from fit's through fit's
+  tracker and fit's from akit's; `tests/aria2c_interop.rs` (`AKIT_ARIA2C`): aria2c downloads from
+  akit's client through akit's UDP tracker.
+- Decisions waiting for review: row 75.
+
 ### 2026-11-27: I113, WHIP and WHEP: the media server
 
 - `akit_webrtc::media`, the role `webrtc.media` that `akit run` runs: akio-webrtc's ICE lite
