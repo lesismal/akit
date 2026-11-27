@@ -344,9 +344,10 @@ fn cases(w: &World) -> Vec<Case> {
             200,
             true,
         ),
-        // I110: the WebRTC handlers answer 503 at once while their roles do not run.
-        handler("whip", r#"{"module": "whip"}"#.into(), 503, true),
-        handler("whep", r#"{"module": "whep"}"#.into(), 503, true),
+        // I113: whip and whep answer a request that is not an offer at once (405); webrtc_proxy
+        // answers 503 while its role does not run (I110).
+        handler("whip", r#"{"module": "whip"}"#.into(), 405, true),
+        handler("whep", r#"{"module": "whep"}"#.into(), 405, true),
         handler(
             "webrtc_proxy",
             r#"{"module": "webrtc_proxy", "params": {"upstream": "app"}}"#.into(),

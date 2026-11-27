@@ -19,6 +19,27 @@
 
 ## 日志
 
+### 2026-11-27：I113，WHIP 和 WHEP：媒体服务器
+
+- `akit_webrtc::media`，`akit run` 运行的角色 `webrtc.media`：akio-webrtc 的 ICE lite `RtcServer` 位于引擎的一个 UDP 监听器上
+  （其 candidate 为 `public_ips`、监听地址，或通配地址时每个启用接口的地址；端口 0 先解析为一个空闲端口），成员的 access 作为
+  其接受过滤器。会话同 fit：以发布者发送段中第一个列于 `codecs` 的编解码器为每类媒体应答（fit 的 `pickCodecs`，akio 的
+  `accept_offer_with`，A259），其观看者使用相同的编解码器；发布者处于 RTP 模式，每个包到达时转发到每个观看者同类的媒体行
+  （`Peer::write_rtp`，A260），受 `max_bitrate` 限制、两秒突发量（超出即丢弃并计数），并以 REMB 告知
+  （`set_receive_bitrate_cap`，A261）；观看者的关键帧请求以及每个新连接，至多每个 `key_frame_interval` 以 PLI 交给发布者一次；
+  `ice_timeout` 作为 peer 的 consent 超时（`set_ice_timeouts(min(8 秒, ice_timeout), ice_timeout)`，A261）；`connect_timeout` 是
+  会话自己的定时器。各项限制（PeerConnection、流、每个流的观看者、offer 大小）同 fit 拒绝（503 带 `Retry-After: 5`、409、
+  404、413、415、422）。发布者离开时结束其观看者。保持 `listen` 和 `public_ips` 的重新加载保留会话，改变它们的则结束会话。
+  `/metrics`：fit 的媒体指标族，`akit_webrtc_media_*`。
+- 处理器 `whip` 和 `whep`（`akit_webrtc::handler`，fit 的 `handler.go`）：端点的 POST 和 OPTIONS，会话 URL 的 DELETE 和 OPTIONS
+  （PATCH 为 405，同 fit），`Location` 为 POST 的路径加会话 ID，`Link` 头带 `ice_servers` 以及带 `webrtc.turn` secret 生成的限时
+  凭据的 `turn_urls`（用户名 `<expiry>:akit-<id>`）。offer 是路由缓冲的请求体，按 `max_sdp_bytes` 检查；处理器内联应答。它们
+  按所服务的引擎找到媒体服务器。`akit run` 提供它们（`webrtc_proxy` 等待 I114）。
+- 测试（`tests/media.rs`，akio-webrtc 的 `Endpoint` 经 akit 监听器发布和播放）：发布者的音视频到达两个观看者；DELETE 一个观看者，
+  然后 DELETE 发布者并结束其观看者；各项限制；HTTP 边界；保留会话的重新加载和重启；中途断开的观看者不拖住别人；
+  `connect_timeout`；`max_bitrate`。SDP 读取、所选编解码器、`Link` 头和码率桶的单元测试。fit 的真实 WHIP/WHEP 客户端：fit 的
+  媒体测试使用 Go 写的 fib PeerConnection，此处未运行（决定第 54 行）。
+
 ### 2026-11-27：I112，基于 akio 钩子的 TURN 服务器
 
 - 基于 akio 的 A256-A258（`d8d51f61`）：中继绑定在 `port_min`..`port_max` 内（范围用尽时回答 508），nonce 用

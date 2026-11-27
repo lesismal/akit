@@ -313,8 +313,7 @@ fn roles_not_running(config: &Config) -> Result<(), Failure> {
     }
 }
 
-/// Refuses the routes whose handler is `whip`, `whep` or `webrtc_proxy` until their roles run
-/// (I113, I114): `akit validate` checks them, and they answer 503 as fit's do without their role,
+/// Refuses the routes whose handler is `webrtc_proxy` until its role runs (I114): `akit validate` checks them, and they answer 503 as fit's do without their role,
 /// but a config that sets them would say more than akit does.
 fn webrtc_handlers_not_served(config: &Config) -> Vec<Error> {
     config
@@ -323,7 +322,6 @@ fn webrtc_handlers_not_served(config: &Config) -> Vec<Error> {
         .enumerate()
         .filter_map(|(i, r)| {
             let iteration = match &r.handler {
-                akit_config::Handler::Whip(_) | akit_config::Handler::Whep(_) => "I113",
                 akit_config::Handler::WebRtcProxy(_) => "I114",
                 _ => return None,
             };
@@ -1846,7 +1844,7 @@ mod tests {
     }
 
     /// The WebRTC roles and handlers are refused by akit run until their iterations run them
-    /// (I110); the TURN server runs (I111).
+    /// (I110): the TURN server runs (I111), the media server and whip and whep (I113).
     #[test]
     fn webrtc_is_refused_until_it_runs() {
         let c = akit_config::from_json(
@@ -1865,14 +1863,7 @@ mod tests {
             .iter()
             .map(|e| (e.path.as_str(), e.msg.contains("I11")))
             .collect();
-        assert_eq!(
-            got,
-            [
-                ("webrtc.media", true),
-                ("routes[1].handler", true),
-                ("routes[2].handler", true)
-            ]
-        );
+        assert_eq!(got, [("routes[2].handler", true)]);
     }
 
     /// Every role's pages are served by akit run: the hub's (I109, its console_socket with

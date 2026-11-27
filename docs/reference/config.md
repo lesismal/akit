@@ -147,7 +147,7 @@ name every file on the command line (`-c` may be given again, or name a director
 | `telemetry` | [object](#cfg-telemetry) |  | OpenTelemetry: traces of requests, with W3C trace context sent on to upstreams, and metrics, exported over OTLP/HTTP to a collector. Neither when left out. Read when akit starts: a change takes effect when akit restarts. |
 | `tunnel` | [object](#cfg-tunnel) |  | The tunnel's roles to run beside the gateway, on its engine: a hub, a node and a proxy, which reach services behind NAT through the hub. None when left out. What their web pages change is written back here. **akit:** Read and checked as fit's (I98); `akit run` runs the three roles (I101) on the listeners' engine, their links speaking fit's protocol byte for byte, so that akit's hub, nodes and proxies link with fit's (decision 038). Links go over `tcp`, `tls` (I102), `quic` (I102b), and `ws` and `wss` (I102c, on akio-ws). A hub's `console_socket` and a proxy's `web_proxies` speak fit's sealed WebSocket (I103b). |
 | `upstreams` | list of [object](#cfg-upstreams) |  | The servers requests can be proxied to, by name. |
-| `webrtc` | [object](#cfg-webrtc) |  | What akit runs for WebRTC beside the gateway, on its engine: a TURN server, the media port of the whip and whep handlers, and the relay of the webrtc_proxy handler. None when left out. **akit:** Read and checked as fit's (I110, decision 039); `akit run` runs `turn` (I111) on the listeners' engine, and refuses `media` (I113) and `proxy` (I114) until their iterations run them. |
+| `webrtc` | [object](#cfg-webrtc) |  | What akit runs for WebRTC beside the gateway, on its engine: a TURN server, the media port of the whip and whep handlers, and the relay of the webrtc_proxy handler. None when left out. **akit:** Read and checked as fit's (I110, decision 039); `akit run` runs `turn` (I111, I112) and `media` (I113) on the listeners' engine, and refuses `proxy` until I114 runs it. |
 <!-- END GENERATED -->
 
 ## Listeners
@@ -2428,8 +2428,8 @@ server of the [`whip`](#whip) and [`whep`](#whep) handlers (`webrtc.media`), one
 PeerConnection shares; and the relay of the [`webrtc_proxy`](#webrtc_proxy) handler (`webrtc.proxy`),
 one UDP port through which the peers of the media servers behind akit reach them. akit reads and
 checks them as fit's (I110, [decision 039](../decisions/039-webrtc.md)); `akit run` runs the TURN
-server (I111, I112) on akio-turn, and refuses the media server and the relay until their iterations
-run them (I113, I114). The handlers' `auth`, a `media_auth` policy, is not supported yet.
+server (I111, I112) on akio-turn and the media server of `whip` and `whep` (I113) on akio-webrtc,
+and refuses the relay until I114 runs it. The handlers' `auth`, a `media_auth` policy, is not supported yet.
 
 ```fit
 webrtc {
@@ -2449,7 +2449,7 @@ webrtc {
 
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
-| `media` | [object](#cfg-webrtc-media) |  | Run akit as a WebRTC media server: the UDP port the PeerConnections of the whip and whep handlers share, the ICE servers told to their peers, and their limits. Routes with whip or whep handlers answer 503 without it. None when left out. |
+| `media` | [object](#cfg-webrtc-media) |  | Run akit as a WebRTC media server: the UDP port the PeerConnections of the whip and whep handlers share, the ICE servers told to their peers, and their limits. Routes with whip or whep handlers answer 503 without it. None when left out. **akit:** akio-webrtc's ICE lite `RtcServer` (I113): a publisher answered with the first of its codecs of each kind `codecs` lists, its RTP forwarded to each viewer as it arrives (`Peer::write_rtp`), `max_bitrate` told as REMB and enforced with two seconds' burst, `ice_timeout` as the peers' consent timeouts. With port 0 in `listen`, a free port is found when the server starts, as the answers name it. `/metrics` has fit's media families named `akit_webrtc_media_*`. |
 | `proxy` | [object](#cfg-webrtc-proxy) |  | Put media servers behind akit: the UDP port the webrtc_proxy handler's answers name, which relays each peer to the media server that answered it, found by the ICE ufrag of the peer's first STUN request. Routes with webrtc_proxy handlers answer 503 without it. None when left out. |
 | `turn` | [object](#cfg-webrtc-turn) |  | Run a TURN server (RFC 8656), which relays UDP for WebRTC peers and other ICE agents that cannot reach each other directly. None when left out. **akit:** akio-turn's server (I111, I112): `SOFTWARE` is `akit`; TCP allocations (RFC 6062) are refused with 442, as fit's. The users, secret, peer rules, access, certificates, bandwidth, quotas, caps and lifetimes change in place; a change of the addresses, realm, relay addresses, port range, nonce secret, stream bounds or `mptcp` starts a new server, the one it replaced drained (new allocations refused with 508) for `-shutdown-timeout`. `/metrics` has fit's TURN families named `akit_turn_*`. |
 <!-- END GENERATED -->
@@ -2879,7 +2879,7 @@ route {
 ### `whip`
 
 Takes WebRTC streams published with WHIP (RFC 9725) into akit's media server, `webrtc.media`, by
-name: the stream's `stream`, or the last segment of the POST's path. `akit run` serves it from I113.
+name: the stream's `stream`, or the last segment of the POST's path. `akit run` serves it (I113).
 
 <!-- BEGIN GENERATED: routes[].handler<whip>.params -->
 <a id="cfg-routes-handler-whip-params"></a>

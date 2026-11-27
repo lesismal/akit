@@ -137,6 +137,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "akio-ice"
+version = "1.0.0-rc.1"
+source = "git+https://github.com/lesismal/akio?rev=d8d51f61679cf8a285eeb6a7c8cd10711a0b5ce4#d8d51f61679cf8a285eeb6a7c8cd10711a0b5ce4"
+dependencies = [
+ "akio-crypto",
+ "akio-turn",
+]
+
+[[package]]
 name = "akio-log"
 version = "1.0.0-rc.1"
 source = "git+https://github.com/lesismal/akio?rev=d8d51f61679cf8a285eeb6a7c8cd10711a0b5ce4#d8d51f61679cf8a285eeb6a7c8cd10711a0b5ce4"
@@ -183,6 +192,19 @@ version = "1.0.0-rc.1"
 source = "git+https://github.com/lesismal/akio?rev=d8d51f61679cf8a285eeb6a7c8cd10711a0b5ce4#d8d51f61679cf8a285eeb6a7c8cd10711a0b5ce4"
 
 [[package]]
+name = "akio-rtp"
+version = "1.0.0-rc.1"
+source = "git+https://github.com/lesismal/akio?rev=d8d51f61679cf8a285eeb6a7c8cd10711a0b5ce4#d8d51f61679cf8a285eeb6a7c8cd10711a0b5ce4"
+
+[[package]]
+name = "akio-sctp"
+version = "1.0.0-rc.1"
+source = "git+https://github.com/lesismal/akio?rev=d8d51f61679cf8a285eeb6a7c8cd10711a0b5ce4#d8d51f61679cf8a285eeb6a7c8cd10711a0b5ce4"
+dependencies = [
+ "akio-crypto",
+]
+
+[[package]]
 name = "akio-socks"
 version = "1.0.0-rc.1"
 source = "git+https://github.com/lesismal/akio?rev=d8d51f61679cf8a285eeb6a7c8cd10711a0b5ce4#d8d51f61679cf8a285eeb6a7c8cd10711a0b5ce4"
@@ -192,6 +214,14 @@ dependencies = [
  "akio-http",
  "akio-mux",
  "akio-ws",
+]
+
+[[package]]
+name = "akio-srtp"
+version = "1.0.0-rc.1"
+source = "git+https://github.com/lesismal/akio?rev=d8d51f61679cf8a285eeb6a7c8cd10711a0b5ce4#d8d51f61679cf8a285eeb6a7c8cd10711a0b5ce4"
+dependencies = [
+ "akio-crypto",
 ]
 
 [[package]]
@@ -251,6 +281,24 @@ version = "1.0.0-rc.1"
 source = "git+https://github.com/lesismal/akio?rev=d8d51f61679cf8a285eeb6a7c8cd10711a0b5ce4#d8d51f61679cf8a285eeb6a7c8cd10711a0b5ce4"
 dependencies = [
  "akio-crypto",
+]
+
+[[package]]
+name = "akio-webrtc"
+version = "1.0.0-rc.1"
+source = "git+https://github.com/lesismal/akio?rev=d8d51f61679cf8a285eeb6a7c8cd10711a0b5ce4#d8d51f61679cf8a285eeb6a7c8cd10711a0b5ce4"
+dependencies = [
+ "akio",
+ "akio-crypto",
+ "akio-dtls",
+ "akio-ice",
+ "akio-log",
+ "akio-rtp",
+ "akio-sctp",
+ "akio-srtp",
+ "akio-sys",
+ "akio-turn",
+ "akio-x509",
 ]
 
 [[package]]
@@ -597,14 +645,18 @@ dependencies = [
  "akio",
  "akio-crypto",
  "akio-http",
+ "akio-sys",
  "akio-turn",
+ "akio-webrtc",
  "akio-x509",
  "akit-access",
  "akit-config",
+ "akit-listener",
  "akit-observe",
  "akit-roles",
  "akit-runtime",
  "akit-tls",
+ "akit-upstream",
 ]
 
 [[package]]

@@ -20,6 +20,37 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-27: I113, WHIP and WHEP: the media server
+
+- `akit_webrtc::media`, the role `webrtc.media` that `akit run` runs: akio-webrtc's ICE lite
+  `RtcServer` on a UDP listener of the engine (its candidates `public_ips`, the listen address, or
+  for a wildcard every interface's address that is up; a port 0 resolved to a free one first),
+  the member's access its accept filter. Sessions as fit's: a publisher's offer answered with one
+  codec of each kind, the first of its sending sections' that `codecs` lists (fit's `pickCodecs`,
+  akio's `accept_offer_with`, A259), its viewers with the same; the publisher in RTP mode, each
+  packet forwarded to every viewer's line of its kind as it arrives (`Peer::write_rtp`, A260),
+  within `max_bitrate` with two seconds' burst (dropped and counted past it) and told as REMB
+  (`set_receive_bitrate_cap`, A261); viewers' key frame requests, and each new connection, passed
+  to the publisher as a PLI at most once a `key_frame_interval`; `ice_timeout` as the peers'
+  consent timeouts (`set_ice_timeouts(min(8 s, ice_timeout), ice_timeout)`, A261);
+  `connect_timeout` a timer of the session's own. The limits (PeerConnections, streams, viewers a
+  stream, the offer's size) refuse as fit's (503 with `Retry-After: 5`, 409, 404, 413, 415, 422).
+  A publisher gone ends its viewers. A reload that keeps `listen` and `public_ips` keeps the
+  sessions; one that changes them ends them. `/metrics`: fit's media families, `akit_webrtc_media_*`.
+- The handlers `whip` and `whep` (`akit_webrtc::handler`, fit's `handler.go`): the endpoint's
+  POST and OPTIONS, the session's URL's DELETE and OPTIONS (PATCH 405, as fit's), `Location` the
+  POST's path and the session's ID, `Link` headers with `ice_servers` and `turn_urls` with
+  time-limited credentials of `webrtc.turn`'s secret (username `<expiry>:akit-<id>`). The offer is
+  the route's buffered body, checked against `max_sdp_bytes`; the handler answers inline. They find
+  the media server by the engine they serve on. `akit run` serves them (`webrtc_proxy` waits for
+  I114).
+- Tests (`tests/media.rs`, akio-webrtc `Endpoint`s publishing and playing through an akit
+  listener): audio and video from a publisher reach two viewers; DELETE of a viewer, then of the
+  publisher, ending its viewers; the limits; the HTTP edges; a reload kept and a restart; a viewer
+  cut midway holding no one; `connect_timeout`; `max_bitrate`. Unit tests of the SDP read, the
+  codecs picked, the `Link` headers and the bitrate bucket. A real WHIP/WHEP client of fit's: fit's
+  media tests use fib's PeerConnection in Go, not run here (decision row 54).
+
 ### 2026-11-27: I112, the TURN server on akio's hooks
 
 - On akio's A256-A258 (`d8d51f61`): relays bound in `port_min`..`port_max` (a range used up is

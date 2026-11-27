@@ -12,8 +12,13 @@ publish = false
 # The roles' listeners and timers on the listeners' engine, akio-tls for listen_tls.
 akio = { workspace = true }
 akio-http = { workspace = true }
-# The TURN server (I111).
+# The TURN server (I111); the TURN credentials the media server's Link headers carry (I113).
 akio-turn = { workspace = true }
+# WHIP and WHEP's PeerConnections (I113).
+akio-webrtc = { workspace = true }
+# The interfaces' addresses a wildcard media port advertises, and the sessions' IDs.
+akio-sys = { workspace = true }
+akio-crypto = { workspace = true }
 akit-access = { workspace = true }
 akit-config = { workspace = true }
 akit-observe = { workspace = true }
@@ -21,10 +26,13 @@ akit-roles = { workspace = true }
 akit-runtime = { workspace = true }
 # listen_tls's certificates from files, chosen per handshake.
 akit-tls = { workspace = true }
+# The engine slot the handlers find the media server by.
+akit-upstream = { workspace = true }
 
 [dev-dependencies]
-# The tests' HMAC, base64 and self-signed certificate.
-akio-crypto = { workspace = true }
+# The media tests serve whip and whep on an akit listener.
+akit-listener = { workspace = true }
+# The tests' self-signed certificate.
 akio-x509 = { workspace = true }
 
 [lints]

@@ -12,10 +12,12 @@
 
 mod handler;
 mod limiter;
+pub mod media;
 pub mod turn;
 
 use akit_runtime::{HandlerParams, Info};
 
+pub use media::MEDIA;
 pub use turn::TURN;
 
 /// The handler modules of this crate, for [`akit_runtime::Registry::new`].

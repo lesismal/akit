@@ -54,6 +54,7 @@ akio-quic = { git = "https://github.com/lesismal/akio", rev = "d8d51f61679cf8a28
 akio-ws = { git = "https://github.com/lesismal/akio", rev = "d8d51f61679cf8a285eeb6a7c8cd10711a0b5ce4" }
 # WebRTC (akit-webrtc, I111-I114): the TURN server, and WHIP and WHEP's PeerConnections.
 akio-turn = { git = "https://github.com/lesismal/akio", rev = "d8d51f61679cf8a285eeb6a7c8cd10711a0b5ce4" }
+akio-webrtc = { git = "https://github.com/lesismal/akio", rev = "d8d51f61679cf8a285eeb6a7c8cd10711a0b5ce4" }
 # Route path regexps (akit-router) and the redirect middleware's (akit-middleware), decision 001:
 # linear-time matching, no dependencies.
 akio-regex = { git = "https://github.com/lesismal/akio", rev = "d8d51f61679cf8a285eeb6a7c8cd10711a0b5ce4" }
