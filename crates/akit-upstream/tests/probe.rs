@@ -323,7 +323,10 @@ fn http_probe_status_host_and_body() {
     let v = Upstream::start("v");
     u.status.store(503, Ordering::SeqCst);
     v.status.store(503, Ordering::SeqCst);
-    let fast = r#""interval": "50ms", "timeout": "40ms", "jitter": "1ms", "fails": 1, "passes": 1"#;
+    // Each probe may take its whole interval, 250 ms, and two must fail to take an address out:
+    // a probe a loaded host slows is no failure (40 ms with one failure were).
+    let fast =
+        r#""interval": "250ms", "timeout": "250ms", "jitter": "1ms", "fails": 2, "passes": 1"#;
     let any = pool(
         EngineSlot::with(e.clone()),
         &[&u.addr],
@@ -336,14 +339,14 @@ fn http_probe_status_host_and_body() {
     );
     until(
         "503 fails the default check",
-        Duration::from_secs(5),
+        Duration::from_secs(10),
         || any.is_probed_down(0),
     );
     assert_eq!(
         *u.seen.lock().unwrap(),
         ("app.internal".to_owned(), USER_AGENT.to_owned())
     );
-    until("probes of the other", Duration::from_secs(5), || {
+    until("probes of the other", Duration::from_secs(10), || {
         v.probes.load(Ordering::SeqCst) >= 4
     });
     assert!(!listed.is_probed_down(0), "503 is expected there");
@@ -354,20 +357,20 @@ fn http_probe_status_host_and_body() {
     );
     // 200 to 399 pass without expect_status.
     u.status.store(399, Ordering::SeqCst);
-    until("399 passes", Duration::from_secs(5), || {
+    until("399 passes", Duration::from_secs(10), || {
         !any.is_probed_down(0)
     });
     v.status.store(200, Ordering::SeqCst);
     until(
         "200 fails expect_status [503]",
-        Duration::from_secs(5),
+        Duration::from_secs(10),
         || listed.is_probed_down(0),
     );
     // A huge body is not read: the status counts, and the connection is closed.
     u.set(Probe::Huge);
     until(
         "the probe closed the connection",
-        Duration::from_secs(5),
+        Duration::from_secs(10),
         || u.closed.load(Ordering::SeqCst) >= 2,
     );
     assert!(!any.is_probed_down(0));

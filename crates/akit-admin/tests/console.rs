@@ -1216,16 +1216,24 @@ fn connections_bound_from_open() {
 /// here, so that how long a check takes on a loaded host does not decide the outcome.
 #[test]
 fn connections_answered_past_their_time() {
-    // A cost whose check takes twice the short timeout here, or more.
+    // A cost whose check takes four times the short timeout here, or more, from the quickest of
+    // three checks at cost 8 (each cost more doubles the time): a check measured on a loaded
+    // host, and run on a quiet one, must still outlast the timeout and its grace (twice the
+    // timeout, measured once, did not).
     let (unauth, idle) = (Duration::from_millis(300), Duration::from_secs(10));
+    let quickest = (0..3)
+        .map(|_| {
+            let t = Instant::now();
+            akio_crypto::bcrypt::hash(b"pw", 8).unwrap();
+            t.elapsed()
+        })
+        .min()
+        .unwrap();
     let mut cost = 8;
-    loop {
-        let t = Instant::now();
-        akio_crypto::bcrypt::hash(b"pw", cost).unwrap();
-        if t.elapsed() >= 2 * unauth || cost >= 16 {
-            break;
-        }
+    let mut takes = quickest;
+    while takes < 4 * unauth && cost < 16 {
         cost += 1;
+        takes *= 2;
     }
     let slow = akio_crypto::bcrypt::hash(b"pw", cost).unwrap();
     let users = |c: &mut akit_config::Console| c.users[0].password_hash = slow.clone();
