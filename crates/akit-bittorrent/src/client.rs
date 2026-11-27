@@ -826,7 +826,10 @@ impl Run {
         }
         s.pieces = st.pieces_total;
         s.pieces_have = st.pieces_have;
-        s.complete = s.complete || (st.pieces_total > 0 && st.pieces_have == st.pieces_total);
+        // A magnet link's torrent not yet placed into its own directory (akio's A286) downloads
+        // anew once it is: what it has below the client's directory is not complete.
+        s.complete =
+            r.placed && (s.complete || (st.pieces_total > 0 && st.pieces_have == st.pieces_total));
         s.downloaded = st.total_downloaded;
         s.uploaded = st.total_uploaded;
         s.peers = st.peers;
@@ -854,7 +857,9 @@ impl Run {
                 .filter(|(h, _)| *h == ih)
                 .map(|(_, n)| n.clone())
                 .collect();
-            let complete = t.is_complete();
+            // A magnet link's torrent not yet placed into its own directory (akio's A286) is
+            // added again there, to download anew: it is not complete before.
+            let complete = r.placed && t.is_complete();
             if (all || noted.contains(&Note::Completed)) && complete && !r.entry.completed {
                 r.entry.completed = true;
                 changed = true;
