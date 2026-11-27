@@ -70,6 +70,9 @@ done and where the work differs from the plan.
   `webrtc/turn`), over UDP, TCP and TLS with a password, a key and the secret, by indication and
   channel, and refused credentials; with `AKIT_FIT_BIN`, fit's own server answers the same
   scenarios alike (run on macOS against fit built from `b6c5cebf`).
+- A restart on the same address may lose a datagram sent while akio closes the old UDP listener's
+  sockets (on its threads' next turn; seen once on io_uring, gpu51): clients retransmit (RFC 8489),
+  and the tests' client does too.
 
 ### 2026-11-27: I110, `webrtc` in the config
 

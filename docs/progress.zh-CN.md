@@ -55,6 +55,8 @@
   的，来自 `tests/interop/fib-turn`（基于 fib `webrtc/turn` 的 Go 程序），经 UDP、TCP 和 TLS，以密码、密钥和 secret，经
   indication 和 channel，以及被拒绝的凭据；设置 `AKIT_FIT_BIN` 时，fit 自己的服务器对同样的场景给出相同的回答（在 macOS
   上对照从 `b6c5cebf` 构建的 fit 运行）。
+- 同一地址上的重启可能丢失 akio 关闭旧 UDP 监听器套接字期间（在其线程的下一轮）发来的数据报（在 gpu51 的 io_uring 上
+  出现过一次）：客户端会重传（RFC 8489），测试的客户端也会重传。
 
 ### 2026-11-27：I110，配置中的 `webrtc`
 
