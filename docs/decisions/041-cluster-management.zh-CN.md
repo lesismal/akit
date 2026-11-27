@@ -41,6 +41,10 @@ fit 的 I140–I150 让设置了 `admin.cluster` 的 fit 成为其他 fit（其�
    一次不做校验、不发送凭据的探测读取。测试记入审计，同 fit 的 I148 的决定。控制台中配置以外的请求体上限增至 128 KiB，即 fit
    该模块的上限。
 
+7. **节点切换器（I134）**把 fit 的头以 akit 的名字返回（`Fit-Config-Version` 作为 `Akit-Config-Version`，`Fit-Dry-Run` 作为
+   `Akit-Dry-Run`），并把存储密码同时放在 `Akit-Store-Password` 和 `Fit-Store-Password` 中，使 akit 的页面能读取 fit 成员；fit 成员
+   的 schema 是 fit 的，所以其页面只读打开，正如 fit 的 I143 对管理端不认识的任何 schema 的处理。
+
 ## 备选方案
 
 - **线上也用 akit 的名字**（只用 `akit_version`、只用 `X-Akit-Csrf`）：一种管理端就无法管理另一种成员。管理端一侧拒绝；

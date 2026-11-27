@@ -43,6 +43,7 @@ pub mod node;
 pub mod transport;
 
 mod api;
+pub mod pass;
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -99,6 +100,9 @@ pub struct Options {
     /// The system's CAs, read once; `None` reads them now (on the caller's thread, which must
     /// not be an I/O thread).
     pub system_roots: Option<RootCerts>,
+    /// The manager's own config schema, as its console serves it: a member whose `GET /node`
+    /// gives another digest opens read-only through the node switcher (I134).
+    pub schema: &'static [u8],
 }
 
 impl std::fmt::Debug for Options {
@@ -166,6 +170,12 @@ pub(crate) struct Inner {
     closed: AtomicBool,
     pub(crate) tests: AtomicUsize,
     pub(crate) reads: AtomicUsize,
+    /// The node switcher's calls (I134), and the writes waiting for their audit entries.
+    pub(crate) pass: Mutex<pass::Hub>,
+    pub(crate) pass_held: AtomicUsize,
+    /// The manager's schema and its digest, `sha256:` and hex.
+    pub(crate) schema: &'static [u8],
+    pub(crate) schema_digest: String,
 }
 
 /// The manager of an akit's members. Cheap to clone.
@@ -242,6 +252,13 @@ impl Manager {
             closed: AtomicBool::new(false),
             tests: AtomicUsize::new(0),
             reads: AtomicUsize::new(0),
+            pass: Mutex::new(pass::Hub::default()),
+            pass_held: AtomicUsize::new(0),
+            schema: o.schema,
+            schema_digest: format!(
+                "sha256:{}",
+                akit_roles::linktoken::hex(&akio_crypto::hash::Sha256::digest(o.schema))
+            ),
             o,
         });
         let m = Manager(inner);
@@ -412,7 +429,7 @@ impl Manager {
     }
 
     /// Has the poller look for members due now.
-    fn poke(&self) {
+    pub(crate) fn poke(&self) {
         if let Some(tx) = lock(&self.0.wake).as_ref() {
             let _ = tx.try_send(());
         }
@@ -467,13 +484,31 @@ impl Manager {
     /// Appends `entry` to the audit log without changing the members' ETag, on the pool: a
     /// test's (fit's `record`). A failed write is logged.
     pub(crate) fn record(&self, user: &str, entry: Vec<(String, Value)>) {
+        self.record_then(user, entry, Box::new(|| {}));
+    }
+
+    /// [`record`](Manager::record), calling `done` once the entry is written, or lost.
+    pub(crate) fn record_then(
+        &self,
+        user: &str,
+        entry: Vec<(String, Value)>,
+        done: Box<dyn FnOnce() + Send>,
+    ) {
         let me = self.clone();
         let user = user.to_owned();
+        let done = Arc::new(Mutex::new(Some(done)));
+        let done2 = Arc::clone(&done);
         let job = Box::new(move || {
+            let finish = || {
+                if let Some(f) = lock(&done2).take() {
+                    f();
+                }
+            };
             let mut d = {
                 let g = lock(&me.0.doc);
                 if !g.read_only.is_empty() {
-                    return;
+                    drop(g);
+                    return finish();
                 }
                 g.doc.clone()
             };
@@ -487,11 +522,15 @@ impl Manager {
                 Ok(()) => lock(&me.0.doc).doc.audit = d.audit,
                 Err(e) => (me.0.o.log)(format!("cluster: the audit log: {e}")),
             }
+            finish();
         });
         if self.0.pool.try_execute(job).is_err() {
             (self.0.o.log)(
                 "cluster: the audit log: too many writes waiting; an entry is lost".to_owned(),
             );
+            if let Some(f) = lock(&done).take() {
+                f();
+            }
         }
     }
 

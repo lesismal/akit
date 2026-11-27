@@ -252,6 +252,16 @@ impl Browser {
     }
 
     fn call(&self, method: &str, path: &str, body: &str) -> (u16, String, String) {
+        self.call_with(method, path, &[], body)
+    }
+
+    fn call_with(
+        &self,
+        method: &str,
+        path: &str,
+        extra: &[(&str, &str)],
+        body: &str,
+    ) -> (u16, String, String) {
         let cookie = format!("{}_console_{}={}", self.name, self.addr.port(), self.cookie);
         let csrf = if self.name == "fit" {
             "X-Fit-Csrf"
@@ -265,6 +275,7 @@ impl Browser {
         if !self.csrf.is_empty() {
             h.push((csrf, &self.csrf));
         }
+        h.extend_from_slice(extra);
         http(self.addr, method, path, &h, body)
     }
 
@@ -614,6 +625,22 @@ fn mixed_clusters_with_fit() {
     }
     let (st, _, body) = b.call("GET", "/api/m/cluster/nodes/fa/read/check", "");
     assert_eq!(st, 200, "{body}");
+    // fit members through the node switcher: read-only (another schema), fit's header fields
+    // answered under akit's names, a dry run passed on, a write refused.
+    let (st, _, wb) = b.call("GET", "/api/n/fb/workbench", "");
+    assert_eq!(st, 200, "{wb}");
+    assert!(wb.contains(r#""read_only":true"#) && wb.contains(r#""reason_kind":"version""#), "{wb}");
+    let (st, _, wb) = b.call("GET", "/api/n/fa/workbench", "");
+    assert_eq!(st, 200, "{wb}");
+    assert!(wb.contains(r#""read_only":true"#), "{wb}");
+    let (st, head, cfg) = b.call("GET", "/api/n/fb/m/admin/config", "");
+    assert_eq!(st, 200, "{cfg}");
+    assert_eq!(header_of(&head, "Akit-Config-Version"), "1", "{head}");
+    let (st, head, body) = b.call("PUT", "/api/n/fa/m/admin/config?dry_run=1", &cfg);
+    assert_eq!(st, 200, "{body}");
+    assert_eq!(header_of(&head, "Akit-Dry-Run"), "1", "{head}");
+    let (st, _, body) = b.call("PUT", "/api/n/fb/m/admin/config", &cfg);
+    assert_eq!(st, 409, "{body}");
     let (code, _, err) = m.stop();
     assert_eq!(code, Some(0), "{err}");
 
@@ -721,4 +748,98 @@ fn members_over_tls() {
     assert_eq!(code, 200, "{body}");
     wait_state(&b, "t", "error", "tls_pin_mismatch");
     let _ = (m.stop(), mem.stop());
+}
+
+/// The value of header `name` in `head`, a response's head.
+fn header_of(head: &str, name: &str) -> String {
+    head.lines()
+        .find_map(|l| {
+            let (n, v) = l.split_once(':')?;
+            n.trim().eq_ignore_ascii_case(name).then(|| v.trim().to_owned())
+        })
+        .unwrap_or_default()
+}
+
+/// The node switcher (I134, fit's `passthrough` tests): a member's own pages read and written
+/// through the manager, by console and by token; writes audited with the body's digest, a stale
+/// ETag refused as the member refuses it, a dry run passed on, what is not passed on refused.
+#[test]
+fn node_switcher() {
+    let d = Dir::new("switcher");
+    let h = hash("pw");
+    let a = Run::start(&["-c", s(&console_member(&d, "a", &h)), "-watch-certs=false"]);
+    let a_console = a.addr("console on http://");
+    let a_web = a.addr("listener \"web\" on ");
+    let token = "a-token-of-member-b-0123456789";
+    let bm = Run::start(&["-c", s(&token_member(&d, "b", token)), "-watch-certs=false"]);
+    let b_api = bm.addr("admin API on ");
+    let m = Run::start(&["-admin", "-c", s(&manager(&d, &h)), "-watch-certs=false"]);
+    let mut b = Browser::new(m.addr("console on http://"));
+    assert_eq!(b.login("ada", "pw").0, 200);
+    add(&b, &format!(r#"{{"name": "a", "url": "http://{a_console}", "username": "ada", "password": "pw"}}"#));
+    add(&b, &format!(r#"{{"name": "b", "url": "http://{b_api}", "access": "admin_api", "token": "{token}"}}"#));
+    wait_state(&b, "a", "up", "");
+    wait_state(&b, "b", "up", "");
+
+    // The member's workbench: writable, the same schema as the manager's.
+    let (st, _, wb) = b.call("GET", "/api/n/a/workbench", "");
+    assert_eq!(st, 200, "{wb}");
+    assert!(wb.contains(r#""read_only":false"#) && wb.contains(r#""modules":["admin"]"#), "{wb}");
+    let (st, _, wb) = b.call("GET", "/api/n/b/workbench", "");
+    assert_eq!(st, 200, "{wb}");
+    assert!(wb.contains(r#""read_only":false"#), "{wb}");
+
+    // A member's config read and changed through the manager, its ETag kept.
+    let (st, head, cfg) = b.call("GET", "/api/n/a/m/admin/config", "");
+    assert_eq!(st, 200, "{cfg}");
+    let etag = header_of(&head, "ETag");
+    assert!(!etag.is_empty() && header_of(&head, "Akit-Config-Version") == "1", "{head}");
+    assert!(cfg.contains("\"one\""), "{cfg}");
+    let two = r#"{"handler": {"module": "respond", "params": {"body": "two"}}}"#;
+    let (st, head, body) =
+        b.call_with("PUT", "/api/n/a/m/admin/config/routes/0", &[("If-Match", &etag)], two);
+    assert_eq!(st, 200, "{body}");
+    assert_eq!(header_of(&head, "Akit-Config-Version"), "2", "{head}");
+    assert_eq!(get(a_web, "/"), "two");
+    // The old ETag is refused, as the member refuses it.
+    let (st, _, body) =
+        b.call_with("PUT", "/api/n/a/m/admin/config/routes/0", &[("If-Match", &etag)], two);
+    assert_eq!(st, 412, "{body}");
+    // A dry run changes nothing and is not audited.
+    let (st, head, body) = b.call("PUT", "/api/n/b/m/admin/config/routes/0?dry_run=1", two);
+    assert_eq!(st, 200, "{body}");
+    assert_eq!(header_of(&head, "Akit-Dry-Run"), "1", "{head}");
+    let (st, _, body) = b.call("GET", "/api/n/b/node", "");
+    assert_eq!(st, 200, "{body}");
+    assert!(body.contains("\"capabilities\""), "{body}");
+
+    // What is not passed on.
+    for (path, want) in [
+        ("/api/n/a/m/admin/users", 403),
+        ("/api/n/a/m/cluster/api/nodes", 403),
+        ("/api/n/a/m/admin/../x", 404),
+        ("/api/n/nobody/m/admin/config", 404),
+        ("/api/n/b/m/tunnel.hub/api/status", 404),
+        ("/api/m/cluster/n/a/node", 404),
+    ] {
+        let (st, _, body) = b.call("GET", path, "");
+        assert_eq!(st, want, "{path}: {body}");
+    }
+    let (st, _, body) = b.call_with("GET", "/api/n/a/m/admin/config", &[("Accept", "text/event-stream")], "");
+    assert_eq!(st, 501, "{body}");
+
+    // The writes are audited, with the digest of what was sent, never the body.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let (_, _, audit) = b.call("GET", "/api/m/cluster/audit?action=node.api", "");
+        if audit.matches("node.api").count() >= 3 {
+            assert!(audit.contains("sha256:") && !audit.contains("respond"), "{audit}");
+            assert!(audit.contains("config version 2"), "{audit}");
+            assert!(audit.contains("412"), "{audit}");
+            break;
+        }
+        assert!(Instant::now() < deadline, "{audit}");
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    let _ = (m.stop(), a.stop(), bm.stop());
 }

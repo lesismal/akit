@@ -302,11 +302,14 @@ impl Console {
         // A console started while a user's password is temporary asks for it to be changed.
         let temporary = api.configs.temporary_password();
         let modules = opts.modules.clone();
+        // What the node switcher passes on to a member is bounded by the manager's
+        // max_response_bytes, which the module checks (I134).
+        let max_body = OTHER_BODY_BYTES.max(opts.cluster_max_body);
         Console::start_kind(
             c,
             Kind::Admin(Arc::new(api), modules, opts.cluster.clone()),
             COOKIE.to_owned(),
-            OTHER_BODY_BYTES,
+            max_body,
             temporary,
             opts,
         )
@@ -761,6 +764,14 @@ impl Pages {
                 }
                 _ => {}
             }
+        }
+        // The cluster manager's node switcher (I134): /api/n/<member>/..., passed on to the
+        // member by the module `cluster`, which tells it from its own /api/m/cluster/n/.
+        if path.starts_with("/api/n/") {
+            return match (&self.kind, self.module("cluster")) {
+                (Kind::Admin(..), Some(m)) => m.serve(ctx, &s.user, &path),
+                _ => ctx.respond(error(404, "no such endpoint")),
+            };
         }
         // A role's module (I109): at /api/m/<id>/, and on its own console at /api/ too.
         if let Some(rest) = path.strip_prefix("/api/m/") {

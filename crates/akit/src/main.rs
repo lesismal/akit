@@ -1593,10 +1593,13 @@ fn run(args: &[String]) -> ExitCode {
                         );
                     }),
                     system_roots: None,
+                    schema: akit_admin::node::schema(),
                 };
                 match akit_cluster::Manager::new(o) {
                     Ok(m) => {
                         api_opts.cluster = Some(m.module());
+                        api_opts.cluster_max_body =
+                            usize::try_from(c.response_bytes()).unwrap_or(usize::MAX);
                         cluster = Some(m);
                     }
                     Err(e) => {

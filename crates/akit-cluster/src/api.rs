@@ -31,6 +31,10 @@ impl akit_roles::pages::Module for Module {
         let m = &self.0;
         let method = ctx.method().clone();
         let get = matches!(method, Method::Get | Method::Head);
+        // The node switcher (I134): the console's /api/n/, never the module's /api/m/cluster/n/.
+        if path.starts_with(crate::pass::PASS_PREFIX) {
+            return crate::pass::pass_on(m, ctx, user);
+        }
         match path {
             "/api/nodes" if get => ctx.respond(list(m)),
             "/api/nodes" if method == Method::Post => add(m, ctx, user),
@@ -188,7 +192,7 @@ fn audit(m: &Manager, query: &str) -> Response {
     )
 }
 
-fn percent_decode(s: &str) -> String {
+pub(crate) fn percent_decode(s: &str) -> String {
     let b = s.as_bytes();
     let mut out = Vec::with_capacity(b.len());
     let mut i = 0usize;
@@ -608,7 +612,7 @@ fn test(
     }
 }
 
-fn clip(s: &str, max: usize) -> String {
+pub(crate) fn clip(s: &str, max: usize) -> String {
     if s.len() <= max {
         return s.to_owned();
     }

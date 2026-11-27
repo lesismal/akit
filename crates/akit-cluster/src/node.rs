@@ -132,6 +132,11 @@ pub struct State {
     pub drift: Option<String>,
     /// The certificate the member presented at the latest probe.
     pub tls: Option<CertInfo>,
+    /// The member's config schema digest and running config's version, as the last poll that
+    /// read it found them (I134).
+    pub digest: String,
+    /// See [`digest`](State::digest).
+    pub config_version: u64,
 }
 
 impl Default for State {
@@ -163,6 +168,8 @@ impl State {
             certificates: None,
             drift: None,
             tls: None,
+            digest: String::new(),
+            config_version: 0,
         }
     }
 
@@ -973,6 +980,8 @@ fn cookie_header(r: &Reply) -> String {
 fn fill(st: &mut State, node: &[u8], took: Duration, status: Option<&[u8]>, check: Option<&[u8]>) {
     let n = json::parse(node).unwrap_or(Value::Null);
     st.caps = json::strings_of(&n, "capabilities");
+    st.digest = json::str_of(&n, "schema_digest").to_owned();
+    st.config_version = json::uint_of(&n, "config_version");
     st.node = Some(node_info_json(&n));
     st.config = Some(
         Obj::new()

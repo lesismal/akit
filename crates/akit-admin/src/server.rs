@@ -102,6 +102,9 @@ pub struct Options {
     /// The cluster manager's console module, `cluster` (I132), which `admin.console` serves
     /// beside the config's own; none without it.
     pub cluster: Option<akit_roles::pages::ModuleRef>,
+    /// The largest body the console takes for the cluster module's node switcher (I134): the
+    /// manager's `max_response_bytes`; 0 without a manager.
+    pub cluster_max_body: usize,
 }
 
 impl fmt::Debug for Options {
@@ -146,6 +149,7 @@ impl Default for Options {
             console_grace: None,
             node: None,
             cluster: None,
+            cluster_max_body: 0,
         }
     }
 }

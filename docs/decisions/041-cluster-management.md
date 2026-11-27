@@ -59,6 +59,12 @@ keeps, and which names on it are akit's.
    fit's I148 decided. The console's bodies other than a config grow to 128 KiB, fit's bound of the
    module.
 
+7. **The node switcher (I134)** passes fit's header fields back under akit's names
+   (`Fit-Config-Version` as `Akit-Config-Version`, `Fit-Dry-Run` as `Akit-Dry-Run`) and sends a store
+   password in both `Akit-Store-Password` and `Fit-Store-Password`, so that akit's pages read a fit
+   member; a fit member's schema is fit's, so its pages open read-only, as fit's I143 decides for any
+   schema the manager does not know.
+
 ## Alternatives
 
 - **akit's names on the wire too** (`akit_version` only, `X-Akit-Csrf` only): a manager of one

@@ -106,6 +106,27 @@
   中继）、`TestReload`（就地修改配额，排空中的服务器回答 508）、端口范围（取其端口，用尽时 508，删除后再次可用）、
   `TestLimiter`；fib 互通测试（`tests/fib_turn.rs`）对 akit 和 fit 结果相同，在 macOS 上运行。
 
+### 2026-11-27：I134，从管理端打开成员自己的页面
+
+- 节点切换器的转发（`akit_cluster::pass`，fit 的 `cluster/passthrough.go`）：控制台经模块 `cluster` 提供
+  `/api/n/<member>/workbench`、`/node` 和 `/m/<module>/<path>`（模块自己的 `/api/m/cluster/n/...` 回答 404），经成员的控制台
+  （带管理端的会话）或其 Admin API（带 token）转发给成员。不转发：成员的用户和账户（403）、debug 和 dashboard（404）、模块
+  `cluster`、`ai` 和 `llm.*`（403）、以 token 访问的成员的角色模块（404）、流（501）、为 `.`、`..`、空或含 `\`、NUL 的路径段
+  （404）。上限同 fit：每个成员 3 个调用、16 个等待（超过调用超时回答 503），总共 64 个（429），请求体在 `max_response_bytes`
+  之内（由控制台接收：`Options::cluster_max_body`）。
+- 转发的请求头：`Content-Type`、`If-Match`、`If-None-Match`、`Upload-Offset`、`Upload-Length`、`Akit-Store-Password`（同时作为
+  fit 的 `Fit-Store-Password`）；返回的响应头：`ETag`、`Akit-Config-Version` 和 `Akit-Dry-Run`（fit 成员的 `Fit-Config-Version` 和
+  `Fit-Dry-Run` 以 akit 的名字返回，决定 041）、`Retry-After`、`Allow`、`Upload-Offset`、`Upload-Length`、附件的
+  `Content-Disposition`；浏览器会渲染的内容类型改为 `application/octet-stream`。成员的 401 和要求修改密码的 403 变成带问题的 502。
+- 写操作（GET、HEAD、文本转换和试运行之外的一切）在成员的 schema 摘要（按最近一次轮询）与管理端的（`Options::schema`，即
+  控制台的）不同，或管理端的成员只读时被拒绝（409）；否则记入审计（`node.api`、结果、前后的配置版本、请求体的 SHA-256，从不
+  记录请求体），最多 64 个等待（429）。`/workbench` 立即读取成员的 `/node`，schema 变化时重新轮询，回答带 `read_only` 及原因
+  （`not_read`、`version`、`manager`）的成员，以及控制台成员中可转发的模块。没有 `GET /schema` 的成员用管理端的 schema 绘制
+  （`Akit-Schema-From: manager`）。fit 成员只读打开：它们的 schema 是 fit 的。
+- 测试：`pass::tests`（fit 的路由和写判断、fit 的头以 akit 的名字返回）；akit 的 `node_switcher`（经控制台和 token：带 `If-Match`
+  修改路由、过期 ETag 412、试运行、不转发的内容、审计）和 `mixed_clusters_with_fit`（fit 成员只读、`Fit-Config-Version` 和
+  `Fit-Dry-Run` 被转换、写被拒绝）。
+
 ### 2026-11-27：akio 锁定在 `d8d51f61`：A256-A261
 
 - akio：akio main 上的 `d8d51f61`，akio-turn 中有 A256-A258（ADR-186：中继端口范围、nonce secret、流消息上限；`on_relay`、

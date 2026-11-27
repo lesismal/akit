@@ -146,6 +146,37 @@ done and where the work differs from the plan.
   a draining server), a port range (its port taken, 508 when used up, free again after a delete),
   `TestLimiter`; the fib interop (`tests/fib_turn.rs`) against akit and fit alike, on macOS.
 
+### 2026-11-27: I134, a member's own pages opened from the manager
+
+- The node switcher's pass-through (`akit_cluster::pass`, fit's `cluster/passthrough.go`): the
+  console serves `/api/n/<member>/workbench`, `/node` and `/m/<module>/<path>` through the module
+  `cluster` (the module's own `/api/m/cluster/n/...` answers 404), passed on to the member through
+  its console with the manager's session or its Admin API with its token. Not passed on: the
+  member's users and account (403), its debug and dashboard (404), the modules `cluster`, `ai` and
+  `llm.*` (403), a role's module of a member reached by token (404), streams (501), path segments
+  `.`, `..`, empty or with `\` or NUL (404). Bounds as fit's: 3 calls a member and 16 waiting (503
+  past the call timeout), 64 in all (429), a body within `max_response_bytes` (the console takes
+  it: `Options::cluster_max_body`).
+- Request headers passed on: `Content-Type`, `If-Match`, `If-None-Match`, `Upload-Offset`,
+  `Upload-Length`, `Akit-Store-Password` (also as fit's `Fit-Store-Password`); answer headers
+  passed back: `ETag`, `Akit-Config-Version` and `Akit-Dry-Run` (a fit member's `Fit-Config-Version`
+  and `Fit-Dry-Run` under akit's names, decision 041), `Retry-After`, `Allow`, `Upload-Offset`,
+  `Upload-Length`, an attachment's `Content-Disposition`; a content type a browser would render
+  becomes `application/octet-stream`. A member's 401 and its 403 asking for a new password become
+  502 with the problem.
+- Writes (all but GET, HEAD, the text conversions and dry runs) are refused while the member's
+  schema digest, as last polled, is not the manager's (`Options::schema`, the console's) or the
+  manager's members are read-only (409); otherwise audited (`node.api`, the outcome, the config
+  versions before and after, the SHA-256 of the body, never the body), 64 waiting at most (429).
+  `/workbench` reads the member's `/node` now, polls it again when its schema changed, and answers
+  the member with `read_only` and why (`not_read`, `version`, `manager`), and, for a console member,
+  its modules but those not passed on. A member with no `GET /schema` is drawn with the manager's
+  (`Akit-Schema-From: manager`). fit members open read-only: their schema is fit's.
+- Tests: `pass::tests` (fit's routes and writes, fit's headers under akit's names); akit's
+  `node_switcher` (by console and by token: a route changed with `If-Match`, the stale ETag 412, a
+  dry run, what is not passed on, the audit), and `mixed_clusters_with_fit` (fit members read-only,
+  `Fit-Config-Version` and `Fit-Dry-Run` translated, a write refused).
+
 ### 2026-11-27: akio pinned at `d8d51f61`: A256-A261
 
 - akio: `d8d51f61` on akio's main, with A256-A258 in akio-turn (ADR-186: a relay port range, the

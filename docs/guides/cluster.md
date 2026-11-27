@@ -10,8 +10,8 @@ token). The members may be fits too: what they answer is fit's protocol
 ([decision 041](../decisions/041-cluster-management.md)). The manager is not in the data path: a
 manager down costs management and nothing else.
 
-This guide covers what akit runs now (I130–I133): members, their state, the Overview and Nodes
-pages and a member's page. Groups, templates, rollouts with health gates, drift and alerts, roles,
+This guide covers what akit runs now (I130–I134): members, their state, the Overview and Nodes
+pages, a member's page and the node switcher. Groups, templates, rollouts with health gates, drift and alerts, roles,
 members behind NAT and the `akit cluster` command follow in I134–I139c
 ([the plan](../dev-plan.md#cluster-management)); their menu entries are drawn already and answer
 "no such endpoint" until then.
@@ -60,6 +60,15 @@ its credentials or its answers failed, each told apart), **down** (not reached i
 **unknown** (not read yet), with its version, config version, connections, upstream backends
 down, nearest certificate expiry and latency. A member's page reads its node, status, versions and
 consistency through the manager.
+
+## A member's own pages
+
+The node switcher in the header opens any member's own pages (config with its text tabs, versions,
+Engine, the role pages) against that member: the manager passes each call on with the session or
+token it keeps, and the browser never holds the member's credentials. A member whose config schema
+is not the manager's (another akit version, or a fit) opens read-only; every write through the
+switcher is in the audit log with its user, the config versions before and after, and the digest of
+what was sent.
 
 ## Mixed clusters
 

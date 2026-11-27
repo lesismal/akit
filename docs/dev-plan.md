@@ -257,7 +257,7 @@ Tunnel and LLM track; I110–I114 are the WebRTC track, and I115–I119 are rese
 | I131 | Cluster II: what a member needs: `GET /node`, the node ID kept, `GET /schema` | I130 | done |
 | I132 | Cluster III: the manager (`akit-cluster`): members and credentials in the store, fit's document; the poller; `/api/m/cluster/nodes`, `/test`, `/state` | I131 | done |
 | I133 | Cluster IV: the Cluster pages: Overview, Nodes and a node's page; `docs/guides/cluster.md` | I132 | done |
-| I134 | Cluster V: a member's own pages opened from the manager (`/api/n/<member>/...`) | I133 | todo |
+| I134 | Cluster V: a member's own pages opened from the manager (`/api/n/<member>/...`) | I133 | done |
 | I135 | Cluster VI: groups and operations on many | I133 | todo |
 | I136 | Cluster VII: templates; `/node/managed` | I135 | todo |
 | I137 | Cluster VIII: rollouts with health gates | I136 | todo |
@@ -2248,6 +2248,8 @@ default: no `admin.cluster`, no Cluster menu, no outgoing calls.
   and a fit member.
 - **Touches**: `akit-cluster`, `akit-admin` (`console`).
 - **fit**: `cluster/passthrough.go`; I143.
+- **Status**: done (2026-11-27). fit members' `Fit-Config-Version` and `Fit-Dry-Run` come back as
+  akit's names; they open read-only (another schema). See the progress log.
 
 ### I135 Cluster VI: groups and operations on many
 

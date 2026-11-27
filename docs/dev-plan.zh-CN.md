@@ -247,7 +247,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I131 | 集群 II：成员需要什么：`GET /node`、保存节点 ID、`GET /schema` | I130 | done |
 | I132 | 集群 III：管理端（`akit-cluster`）：存储中的成员和凭据，fit 的文档；轮询器；`/api/m/cluster/nodes`、`/test`、`/state` | I131 | done |
 | I133 | 集群 IV：集群页面：概览、节点和节点页面；`docs/guides/cluster.md` | I132 | done |
-| I134 | 集群 V：从管理端打开成员自己的页面（`/api/n/<member>/...`） | I133 | todo |
+| I134 | 集群 V：从管理端打开成员自己的页面（`/api/n/<member>/...`） | I133 | done |
 | I135 | 集群 VI：分组和对多个成员的操作 | I133 | todo |
 | I136 | 集群 VII：模板；`/node/managed` | I135 | todo |
 | I137 | 集群 VIII：带健康门槛的发布 | I136 | todo |
@@ -1887,6 +1887,8 @@ fit 工作台页面。成员尽量少改动：管理端使用成员已有的 API
 - **完成标准**：fit 的 `passthrough` 测试移植后通过；每个配置页面都能读取并保存 akit 和 fit 成员的配置。
 - **涉及**：`akit-cluster`、`akit-admin`（`console`）。
 - **fit**：`cluster/passthrough.go`；I143。
+- **状态**：done（2026-11-27）。fit 成员的 `Fit-Config-Version` 和 `Fit-Dry-Run` 以 akit 的名字返回；它们只读打开
+  （schema 不同）。见进度日志。
 
 ### I135 集群 VI：分组和对多个成员的操作
 
