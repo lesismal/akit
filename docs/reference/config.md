@@ -2746,6 +2746,8 @@ and RTSP's `auth_methods` and `realm`, Digest and Basic, and its `idle_timeout` 
 URL's query until then.
 
 ```fit
+media_auth live { public play; tokens studio { token 0123456789abcdef-studio; publish live/* } }
+
 streaming {
 	rtmp { listen :1935; auth live }
 	srt { listen :8890; auth live }
@@ -3402,6 +3404,9 @@ Plays the streaming role's streams as HTTP-FLV, and as WebSocket-FLV to a WebSoc
 `akit_media_token` cookie) are checked by `auth`; without the role running, 503 (I123).
 
 ```fit
+listener web :8080
+media_auth live { public play }
+
 route flv { match { path /live/* }; handler httpflv { auth live; cors * } }
 ```
 
@@ -3423,6 +3428,9 @@ fMP4 segments or MPEG-TS ones (`format`, the other with `?format=`), Low-Latency
 `part_duration`. A playlist fetched with `?token=` names what it lists with the token too (I123).
 
 ```fit
+listener web :8080
+media_auth live { public play }
+
 route hls { match { path /hls/* }; handler hls { prefix /hls/; auth live } }
 ```
 

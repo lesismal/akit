@@ -2886,6 +2886,8 @@ HLS 和 WHEP 播放。akit 像 fit 一样读取并检查该角色（I120），`a
 `realm`（即 Digest 和 Basic）及其 `idle_timeout`（A264）：在此之前 RTSP 从 URL 的查询参数中取凭据。
 
 ```fit
+media_auth live { public play; tokens studio { token 0123456789abcdef-studio; publish live/* } }
+
 streaming {
 	rtmp { listen :1935; auth live }
 	srt { listen :8890; auth live }
@@ -3583,6 +3585,9 @@ route {
 （bearer token、Basic、`?token=` 或 cookie `akit_media_token`）由 `auth` 检查；角色未运行时答复 503（I123）。
 
 ```fit
+listener web :8080
+media_auth live { public play }
+
 route flv { match { path /live/* }; handler httpflv { auth live; cors * } }
 ```
 
@@ -3605,6 +3610,9 @@ route flv { match { path /live/* }; handler httpflv { auth live; cors * } }
 `?format=`），配合 `part_duration` 为低延迟 HLS。带 `?token=` 获取的播放列表也会给其中列出的每一项带上 token（I123）。
 
 ```fit
+listener web :8080
+media_auth live { public play }
+
 route hls { match { path /hls/* }; handler hls { prefix /hls/; auth live } }
 ```
 
