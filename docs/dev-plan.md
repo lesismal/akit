@@ -227,7 +227,7 @@ renamed fit's external names; I98–I109, I102b, I102c, I102d and I103b are the 
 | I106 | LLM III: the hub: node table, models, picking and relaying | I105 | done |
 | I106b | LLM III b: the hub's calls for the pages (`/hub/nodes`, `/hub/node/call`, `/hub/node/stream`), the node list's byte bound, the routes' counts (`/mesh/status`) | I106 | done |
 | I107 | LLM IV: the proxy: the agents' API, API keys, routing, errors | I106 | done |
-| I108 | LLM V: the node's management: hardware, GPUs, fixed actions and jobs | I105 | todo |
+| I108 | LLM V: the node's management: hardware, GPUs, fixed actions and jobs | I105 | done |
 | I109 | The roles' pages: their consoles and methods, edits written back | I103, I107, I91 | todo |
 
 ## Benchmark and optimization status
@@ -1787,7 +1787,8 @@ link with fit's (decision 038).
 - **Done when**: fit's `llm/node` action, job and GPU tests pass ported on Linux and macOS.
 - **Touches**: `akit-llm`.
 - **fit**: `llm/node/{actions,jobs,exec,gpu,hwinfo_*}.go`, `llm/internal/gpu`.
-- **Status**: todo.
+- **Status**: done (2026-11-27). See the progress log. Stopgaps until akio's A247 (the effective
+  user), A248 (a process group's signal) and A249 (a file system's space).
 
 ### I109 The roles' pages
 

@@ -12,9 +12,13 @@
 //!
 //! Part of [akit](https://github.com/lesismal/akit); see `docs/dev-plan.md` (I104-I109).
 
+pub mod actions;
+pub mod exec;
 pub mod form;
+pub mod gpu;
 pub mod hub;
 pub mod hw;
+pub mod jobs;
 pub mod json;
 pub mod local;
 pub mod mesh;

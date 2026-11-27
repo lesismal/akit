@@ -21,6 +21,10 @@ akio-crypto = { workspace = true }
 akio-deflate = { workspace = true }
 # The listener's self-signed certificate.
 akio-x509 = { workspace = true }
+# The node's fixed actions' parameters, checked against their anchored patterns (I108).
+akio-regex = { workspace = true }
+# A node's job killed (`kill(2)`), I108.
+akio-sys = { workspace = true }
 akit-access = { workspace = true }
 akit-config = { workspace = true }
 akit-observe = { workspace = true }

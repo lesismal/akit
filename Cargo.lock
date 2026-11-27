@@ -403,6 +403,8 @@ dependencies = [
  "akio-crypto",
  "akio-deflate",
  "akio-http",
+ "akio-regex",
+ "akio-sys",
  "akio-ws",
  "akio-x509",
  "akit-access",

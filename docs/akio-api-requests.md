@@ -2414,6 +2414,57 @@ had queued, and a client's waits for its peer, where a TCP, TLS or QUIC link clo
 a role stopped) aborts, as `ConnWire::close` closes a TCP link; the LLM mesh's links (I104) the
 same.
 
+## A247 The process's effective user
+
+**Status.** Requested by I108 (2026-11-27). Nothing waits for it: an LLM node reads it once when
+it starts, on the control thread, from `/proc/self`'s owner on Linux and `id -u` elsewhere (a
+stopgap recorded in [progress](progress.md)).
+
+**Problem.** fit's node prefixes its root commands and GPU settings with `sudo -n` only when it
+does not run as root (`os.Geteuid() != 0`), and its GPU status says whether it is root. Rust's
+standard library has no `geteuid`, and akit has no `unsafe`.
+
+**Evidence.** At akio `6151f5c5`, `akio-sys`'s `process` module has `allowed_cpus`,
+`pin_current_thread`, `signal_pipe` and `kill`; nothing gives the process's user.
+
+**Suggested API.** `akio_sys::process::euid() -> u32` (`geteuid(2)`, which cannot fail).
+
+**How akit would use it.** `akit_llm::exec::is_root` calls it, and `init_euid` goes.
+
+## A248 A signal to a process group
+
+**Status.** Requested by I108 (2026-11-27). Nothing waits for it: a job's leader gets SIGKILL
+from `akio_sys::process::kill`, the rest of its group from `kill -KILL -- -<pgid>` run on the
+node's pool (a stopgap recorded in [progress](progress.md)).
+
+**Problem.** fit's node runs each job in a process group of its own and kills the whole group when
+the job is canceled or runs past its timeout (`syscall.Kill(-pid, SIGKILL)`), so that a script's
+children go too. `akio_sys::process::kill` refuses a pid that is not positive, by design.
+
+**Evidence.** At akio `6151f5c5`, `akio-sys/src/process.rs`'s `kill(pid, sig)` documents that
+"process groups and every process are refused".
+
+**Suggested API.** `akio_sys::process::kill_group(pgid: u32, sig: i32) -> io::Result<()>`
+(`killpg(2)`), refusing 0 and 1.
+
+**How akit would use it.** `akit_llm::exec::Killer::kill` signals the group at once, from any
+thread, instead of running `kill(1)` on a pool.
+
+## A249 A file system's size and space free
+
+**Status.** Requested by I108 (2026-11-27). Nothing waits for it: an LLM node reads its disks from
+`df -k -P` on its pool (a stopgap recorded in [progress](progress.md)).
+
+**Problem.** fit's node reports each mounted file system's size and space free, read with
+`syscall.Statfs` on Linux. Rust's standard library has no `statvfs`.
+
+**Evidence.** At akio `6151f5c5`, `akio-sys` binds no `statfs` or `statvfs`.
+
+**Suggested API.** `akio_sys::fs::space(path: &Path) -> io::Result<Space>` with `total`,
+`free` and `available` in bytes (`statvfs(3)`).
+
+**How akit would use it.** `akit_llm::hw`'s disks on Linux: `/proc/mounts`' file systems, each
+read with it, as fit reads them, without running `df`.
 ## A245 The QUIC server's handshake bounds
 
 **Done.** On akio's main (`8a9601b9`, akio's ADR-185) and pinned: `ServerConfig::handshake_timeout(Option<Duration>)` (default 10 s; a server connection whose handshake is not done in time is dropped without a word, its handler's `on_close` told `ConnectionError::TimedOut`) and `ServerConfig::max_handshakes(usize)` (default 8192; from half of them in progress, a client without a valid Retry or NEW_TOKEN token is answered with a Retry; at the limit, a new client's Initial is dropped unanswered, counted in `QuicServer::refused_connections`). fit lets an invalid Retry token through to an `INVALID_TOKEN` answer; akio drops it. The hub's `quic` listeners (I102d) take `tunnel.hub.quic`'s `handshake_timeout` and `max_handshakes` (fit's 10 s and 64 when left out).

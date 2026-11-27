@@ -1941,6 +1941,48 @@ fit 的 WebSocket 传输调用 `Abort`。akio-ws 的 `WsSender` 只有 `close(co
 **akit 如何使用。** `akit_tunnel::ws::WsWire::close`（失败的链路、踢掉、吊销的令牌、停止的角色）调用 abort，同 `ConnWire::close`
 关闭 TCP 链路；LLM mesh 的链路（I104）同样。
 
+## A247 进程的有效用户
+
+**状态。** 由 I108 提出（2026-11-27）。没有工作在等待它：LLM node 启动时在控制线程上读取一次，Linux 上取 `/proc/self` 的属主，
+其他系统上运行 `id -u`（记录在[进度](progress.zh-CN.md)中的临时做法）。
+
+**问题。** fit 的 node 只在不以 root 运行时（`os.Geteuid() != 0`）给需要 root 的命令和 GPU 设置加 `sudo -n` 前缀，其 GPU 状态也
+说明是否为 root。Rust 标准库没有 `geteuid`，而 akit 不用 `unsafe`。
+
+**证据。** 在 akio `6151f5c5` 上，`akio-sys` 的 `process` 模块有 `allowed_cpus`、`pin_current_thread`、`signal_pipe` 和 `kill`，
+没有给出进程用户的函数。
+
+**建议的 API。** `akio_sys::process::euid() -> u32`（`geteuid(2)`，不会失败）。
+
+**akit 如何使用。** `akit_llm::exec::is_root` 调用它，`init_euid` 随之去掉。
+
+## A248 向进程组发送信号
+
+**状态。** 由 I108 提出（2026-11-27）。没有工作在等待它：作业的组长由 `akio_sys::process::kill` 发送 SIGKILL，组内其余进程由在
+node 的池上运行的 `kill -KILL -- -<pgid>` 处理（记录在[进度](progress.zh-CN.md)中的临时做法）。
+
+**问题。** fit 的 node 让每个作业在自己的进程组中运行，作业被取消或超时时杀掉整个进程组（`syscall.Kill(-pid, SIGKILL)`），
+脚本的子进程也一并结束。`akio_sys::process::kill` 按设计拒绝非正的 pid。
+
+**证据。** 在 akio `6151f5c5` 上，`akio-sys/src/process.rs` 的 `kill(pid, sig)` 写明拒绝进程组和“所有进程”。
+
+**建议的 API。** `akio_sys::process::kill_group(pgid: u32, sig: i32) -> io::Result<()>`（`killpg(2)`），拒绝 0 和 1。
+
+**akit 如何使用。** `akit_llm::exec::Killer::kill` 从任意线程立即向进程组发信号，不再在池上运行 `kill(1)`。
+
+## A249 文件系统的大小与可用空间
+
+**状态。** 由 I108 提出（2026-11-27）。没有工作在等待它：LLM node 在其池上用 `df -k -P` 读取磁盘（记录在
+[进度](progress.zh-CN.md)中的临时做法）。
+
+**问题。** fit 的 node 报告每个已挂载文件系统的大小与可用空间，Linux 上用 `syscall.Statfs` 读取。Rust 标准库没有 `statvfs`。
+
+**证据。** 在 akio `6151f5c5` 上，`akio-sys` 没有绑定 `statfs` 或 `statvfs`。
+
+**建议的 API。** `akio_sys::fs::space(path: &Path) -> io::Result<Space>`，带以字节计的 `total`、`free` 和 `available`
+（`statvfs(3)`）。
+
+**akit 如何使用。** `akit_llm::hw` 在 Linux 上的磁盘：`/proc/mounts` 中的文件系统逐个用它读取，与 fit 相同，不再运行 `df`。
 ## A245 QUIC 服务器的握手上限
 
 **完成。** 已进入 akio 的 main（`8a9601b9`，akio 的 ADR-185）并锁定：`ServerConfig::handshake_timeout(Option<Duration>)`（默认 10 秒；握手未按时完成的服务端连接被悄悄丢弃，其处理器的 `on_close` 收到 `ConnectionError::TimedOut`）和 `ServerConfig::max_handshakes(usize)`（默认 8192；进行中的握手达到一半起，Initial 中没有有效 Retry 或 NEW_TOKEN 令牌的客户端收到 Retry；达到上限时，新客户端的 Initial 不作应答地丢弃，计入 `QuicServer::refused_connections`）。fit 让无效的 Retry 令牌进来，再以 `INVALID_TOKEN` 应答；akio 直接丢弃。hub 的 `quic` 监听器（I102d）采用 `tunnel.hub.quic` 的 `handshake_timeout` 和 `max_handshakes`（省略时为 fit 的 10 秒和 64）。

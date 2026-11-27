@@ -19,6 +19,31 @@
 
 ## 日志
 
+### 2026-11-27：I108，LLM node 的管理：硬件、GPU、固定动作和作业
+
+- 硬件（`akit_llm::hw`，fit 的 `hwinfo_*.go`）：node 启动时及每隔 `refresh_interval` 在 node 的池（2 个运行、16 个等待）上读取，
+  无需 root，macOS 和 Linux 皆可：Linux 上读 procfs（内核、发行版、CPU、负载、运行时间、内存），macOS 上用 `sysctl`、`sw_vers`、
+  `vm_stat` 和 `system_profiler`（只读一次），`nvidia-smi` 的 GPU，磁盘（来自 `df -k -P`，akio 的 A249 之前的临时做法；Linux 上取
+  `/proc/mounts` 中 fit 所列类型的文件系统），地址来自 akio-sys 的网络接口；读不到的部分略去。node 的信息携带它，变化时（包括硬件）
+  推送，与 fit 相同。
+- GPU（`akit_llm::gpu`，fit 的 `llm/internal/gpu`）：七个厂商的目录（工具、作为常量的安装脚本、作为 argv 模板的设置；脚本的变量为
+  `AKIT_LLM_GPU_DATA_DIR`，决定 038），Linux 上读 PCI 总线找出厂商，查询并解析每个已安装的工具（nvidia-smi 的 CSV、rocm-smi 的 JSON、
+  xpu-smi、system_profiler），或保留原始输出，状态缓存 5 秒、在池上一次只读一个；设置的值经检查（有界整数、选项）后放入单个参数，
+  配置且非 root 时加 `sudo -n`。
+- 命令和作业（`akit_llm::exec`、`akit_llm::jobs`、`akit_llm::actions`）：fit 的十一个固定动作，参数按整体匹配的模式检查（akio-regex），
+  从不经 shell，只有常量脚本例外；命令在自己的进程组中运行，其输出（两个流按顺序，经 socket pair）存入保留最后 1 MiB、偏移为绝对值的
+  缓冲；作业在自己的池上运行，最多 8 个（再多被拒绝，限流），保留 200 个，`job_timeout` 和取消会杀掉进程组（组长立即，组内其余由池上的
+  `kill(1)`，A248 之前的临时做法；是否 root 来自 A247 的临时做法）；`/node/job/follow` 在输出写入时发送新的输出，至少间隔 100 毫秒，
+  没有输出时每 30 秒发送状态，受流的信用约束。
+- 方法（`node::manage`）：模型列表（key 打码）、保存（空的或打码的 key 保留原有的；最多 256 个）、删除（同名多 API 时需给出 API）和
+  检查，名称，GPU 的状态、目录、安装和设置（index 为 -1 时作用于该厂商的每块 GPU），动作和作业，供 node 的页面以及设置了
+  `allow_hub_manage` 时的 hub 调用（每次调用时检查）；设置和上游上限仅供其页面，写入成员时略去默认值。
+- 测试：fit 的动作、命令、输出缓冲、作业、GPU 和目录测试（`node_test.go`、`gpu_test.go`、`fake_test.go`），使用替身工具，从不运行真实
+  工具（`exec::tools_in`，如同 fit 的测试设置 `PATH`）；`tests/node_manage.rs`：fit 的 `manage_test.go` 和 node 的 GPU 方法（访问控制、
+  经方法运行的作业、名称、设置、上游上限、模型编辑及上限、检查、GPU 状态、设置和安装、硬件重新读取）；akit 的 hub 管理 akit 的 node。
+  对 fit 的二进制（`tests/fit_manage.rs`）：fit 的 hub 经其控制台（`/api/rpc/hub/node/call`）管理 akit 的 node（模型、一个作业、目录、
+  保存一个模型到 akit 的成员）。
+
 ### 2026-11-27：I106b，hub 供页面使用的调用、node 列表的上限、路由计数
 
 - 每个角色的方法经 `akit_llm::local::Local`（`Role::api`，即 fit 以调用方 `local` 进行的 `Router.Invoke` 和 `OpenLocal`）到达

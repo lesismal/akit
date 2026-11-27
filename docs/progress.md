@@ -20,6 +20,43 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-27: I108, the LLM node's management: hardware, GPUs, fixed actions and jobs
+
+- The hardware (`akit_llm::hw`, fit's `hwinfo_*.go`): read at the node's start and every
+  `refresh_interval` on the node's pool (2 running, 16 waiting), without root and on macOS and
+  Linux alike: procfs on Linux (kernel, distribution, CPU, load, uptime, memory), `sysctl`,
+  `sw_vers`, `vm_stat` and `system_profiler` (once) on macOS, `nvidia-smi`'s GPUs, the disks
+  (from `df -k -P`, a stopgap until akio's A249; on Linux those of `/proc/mounts` of fit's kinds),
+  the addresses from akio-sys's interfaces; what cannot be read is left out. The node's info
+  carries it and is pushed when it changed, the hardware included, as fit's.
+- The GPUs (`akit_llm::gpu`, fit's `llm/internal/gpu`): the catalog of seven vendors (their
+  tools, install scripts as constants, settings as argv templates; the scripts' variable is
+  `AKIT_LLM_GPU_DATA_DIR`, decision 038), the PCI bus read for vendors on Linux, each installed
+  tool queried and parsed (nvidia-smi's CSV, rocm-smi's JSON, xpu-smi, system_profiler) or kept
+  raw, a status cached 5 s and read one at a time on the pool; settings' values checked
+  (integers in bounds, options) inside one argument, `sudo -n` when set and not root.
+- Commands and jobs (`akit_llm::exec`, `akit_llm::jobs`, `akit_llm::actions`): fit's eleven fixed
+  actions, their parameters checked against anchored patterns (akio-regex), never a shell but a
+  constant script; a command in a process group of its own, its output (both streams, in order,
+  through a socket pair) in a buffer of the last 1 MiB with absolute offsets; jobs on a pool of
+  their own, 8 running (one more refused, rate limited), 200 kept, `job_timeout` and cancel
+  killing the group (the leader at once, the group by `kill(1)` on the pool, a stopgap until
+  A248; root known from A247's stopgap); `/node/job/follow` sending the new output as it is
+  written, 100 ms apart at least, the state every 30 s without any, under the stream's credit.
+- The methods (`node::manage`): the model list (keys masked), save (an empty or masked key keeps
+  the stored one; 256 at most), delete (ambiguous without its API) and check, the profile, the
+  GPUs' status, catalog, install and settings (every GPU of a vendor with index -1), the actions
+  and jobs, for the node's pages and a hub where `allow_hub_manage` is set (checked at each
+  call); the settings and the upstream bounds for its pages alone, written into the member with
+  the defaults left out.
+- Tests: fit's action, command, output buffer, job, GPU and catalog tests (`node_test.go`,
+  `gpu_test.go`, `fake_test.go`) on stand-in tools, never a real one (`exec::tools_in`, as fit's
+  tests set `PATH`); `tests/node_manage.rs`: fit's `manage_test.go` and the node's GPU methods
+  (access, jobs through the methods, profile, settings, upstream bounds, model edits and bound,
+  checks, GPU status, set and install, hardware read again); akit's hub managing akit's node.
+  Against fit's binary (`tests/fit_manage.rs`): fit's hub manages akit's node through its console
+  (`/api/rpc/hub/node/call`: the models, a job, the catalog, a model saved into akit's member).
+
 ### 2026-11-27: I106b, the hub's calls for its pages, the node list's bounds, the routes' counts
 
 - Every role's methods reach its own pages through `akit_llm::local::Local` (`Role::api`, fit's

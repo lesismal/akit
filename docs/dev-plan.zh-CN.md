@@ -218,7 +218,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I106 | LLM III：hub：node 表、模型、选择和转发 | I105 | done |
 | I106b | LLM III b：hub 供页面使用的调用（`/hub/nodes`、`/hub/node/call`、`/hub/node/stream`）、node 列表的字节上限、路由计数（`/mesh/status`） | I106 | done |
 | I107 | LLM IV：proxy：agent 的 API、API key、路由、错误 | I106 | done |
-| I108 | LLM V：node 的管理：硬件、GPU、固定动作和作业 | I105 | todo |
+| I108 | LLM V：node 的管理：硬件、GPU、固定动作和作业 | I105 | done |
 | I109 | 角色的页面：其控制台和方法，写回的编辑 | I103, I107, I91 | todo |
 
 ## 基准与优化状态
@@ -1509,7 +1509,7 @@ fit 的，使 akit 的角色能与 fit 的角色互连（决定 038）。
 - **完成标准**：移植后的 fit `llm/node` 动作、作业和 GPU 测试在 Linux 和 macOS 上通过。
 - **涉及**：`akit-llm`。
 - **fit**：`llm/node/{actions,jobs,exec,gpu,hwinfo_*}.go`、`llm/internal/gpu`。
-- **状态**：todo。
+- **状态**：done（2026-11-27）。见进度日志。在 akio 的 A247（有效用户）、A248（向进程组发信号）和 A249（文件系统的空间）之前使用临时做法。
 
 ### I109 角色的页面
 

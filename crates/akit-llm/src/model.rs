@@ -405,6 +405,9 @@ pub const METHOD_NODE_UPSTREAM_GET: &str = "/node/upstream/get";
 /// The bounds set, its pages only.
 pub const METHOD_NODE_UPSTREAM_SET: &str = "/node/upstream/set";
 
+/// The output a job keeps (the oldest part dropped).
+pub const MAX_JOB_OUTPUT: usize = 1 << 20;
+
 /// The management methods a hub may call on a node that allows it (stream methods included).
 pub const NODE_MANAGE_METHODS: &[&str] = &[
     METHOD_NODE_MODEL_LIST,

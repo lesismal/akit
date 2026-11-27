@@ -5,8 +5,14 @@
 //! asynchronous HTTP client, the request body and the response streamed both ways under the
 //! stream's credit.
 //!
-//! The node's management (its pages' and a hub's model edits, hardware, GPUs, actions and jobs)
-//! is I108's and I109's.
+//! Its management ([`manage`], I108): its hardware read every `refresh_interval` on a small
+//! pool (2 running, 16 waiting), its GPUs, fixed actions and jobs, its models, name, settings
+//! and upstream bounds written back into its member, for its pages and, with
+//! `allow_hub_manage`, a hub.
+
+mod manage;
+
+pub use manage::mask_key;
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -25,6 +31,7 @@ use akit_roles::host::{Api, Host, Info, Role};
 use akit_roles::linktoken::Registry;
 
 use crate::form;
+use crate::jobs::Jobs;
 use crate::json::Obj;
 use crate::mesh::{Answer, RouteCall, Router, bad_request};
 use crate::model::{
@@ -35,6 +42,7 @@ use crate::model::{
 };
 use crate::role::Base;
 use crate::wire::{Error, Event, Stream};
+use manage::{GpuCache, Settings};
 
 /// `llm.node`.
 pub const NODE: Info = Info {
@@ -115,8 +123,10 @@ struct St {
     rt: HashMap<String, Rt>,
     total: i64,
     lim: Lim,
+    /// The member's `proxy`, as written.
+    proxy: Option<LlmNodeProxy>,
     description: String,
-    hub_manage: bool,
+    set: Settings,
     started: bool,
 }
 
@@ -133,6 +143,14 @@ struct Core {
     push: Mutex<Push>,
     client: Client,
     probe: Client,
+    /// The hardware's and GPUs' reads, the jobs' process groups' signals.
+    work: Arc<akio::Pool>,
+    jobs: Jobs,
+    /// The hardware last read, as JSON.
+    hw: Mutex<String>,
+    gpu: Mutex<GpuCache>,
+    /// Held by the GPUs' read, one at a time.
+    gpu_read: Mutex<()>,
     stopped: AtomicBool,
 }
 
@@ -164,6 +182,7 @@ pub fn new(host: Host) -> Result<Box<dyn Role>, String> {
                 None => ans.err(Error::Closed),
             },
         );
+        manage::register(&mut r, me);
         r.handle_stream(
             METHOD_NODE_PROXY,
             &[ROLE_HUB, ROLE_PROXY],
@@ -172,6 +191,7 @@ pub fn new(host: Host) -> Result<Box<dyn Role>, String> {
                 None => st.end(Err(Error::Closed)),
             },
         );
+        let work = crate::jobs::pool("akit-llm-node", 2, 16);
         let mut po = ClientOptions::default();
         po.max_body_bytes = 64 << 10;
         po.max_idle_per_host = 2;
@@ -183,8 +203,9 @@ pub fn new(host: Host) -> Result<Box<dyn Role>, String> {
                 rt: HashMap::new(),
                 total: 0,
                 lim: Lim::of(None),
+                proxy: None,
                 description: String::new(),
-                hub_manage: false,
+                set: Settings::of(None),
                 started: false,
             }),
             push: Mutex::new(Push {
@@ -196,9 +217,23 @@ pub fn new(host: Host) -> Result<Box<dyn Role>, String> {
             probe: Client::new(Arc::clone(&engine))
                 .with_options(po)
                 .with_timeout(CHECK_TIMEOUT),
+            jobs: Jobs::new(Arc::clone(&work)),
+            work,
+            hw: Mutex::new(hw()),
+            gpu: Mutex::new(GpuCache { status: None }),
+            gpu_read: Mutex::new(()),
             stopped: AtomicBool::new(false),
         }
     });
+    // A job started or ended: the GPUs' status is read again, the info changed.
+    let w = Arc::downgrade(&core);
+    core.jobs.on_change(move || {
+        if let Some(c) = w.upgrade() {
+            lock(&c.gpu).status = None;
+            c.changed();
+        }
+    });
+    crate::exec::init_euid();
     let w = Arc::downgrade(&core);
     core.base.mesh.on_peer_up(move |p: &PeerConn| {
         let Some(c) = w.upgrade() else { return };
@@ -226,6 +261,7 @@ impl Role for Node {
         if let Some(t) = lock(&c.push).timer.take() {
             t.cancel();
         }
+        c.jobs.cancel_all();
         c.base.stop(grace.min(Duration::from_secs(10)));
     }
 
@@ -238,7 +274,7 @@ impl Role for Node {
     }
 }
 
-/// The hardware part of a node's info (I108 reads the rest): the host, its system and its CPUs.
+/// The hardware a node's info carries until it was read: the host, its system and its CPUs.
 fn hw() -> String {
     let os = match std::env::consts::OS {
         "macos" => "darwin",
@@ -317,8 +353,17 @@ impl Core {
             st.rt.retain(|k, r| r.inflight > 0 || keep.contains(k));
             st.models.clone_from(&m.models);
             st.lim = Lim::of(m.proxy.as_ref());
+            st.proxy.clone_from(&m.proxy);
             st.description.clone_from(&m.description);
-            st.hub_manage = m.settings.as_ref().is_some_and(|s| s.allow_hub_manage);
+            let set = Settings::of(m.settings.as_ref());
+            if set.allow_hub_manage != st.set.allow_hub_manage {
+                akit_observe::info!(
+                    Llm,
+                    "llm.node: hub management is now {}",
+                    set.allow_hub_manage
+                );
+            }
+            st.set = set;
         }
         let r = self.base.apply(&m.role, config);
         let start = {
@@ -327,6 +372,7 @@ impl Core {
         };
         if start {
             self.check_tick();
+            self.refresh_hw();
         }
         self.changed();
         r
@@ -335,20 +381,22 @@ impl Core {
     /// The info without its sequence.
     fn snapshot(&self) -> NodeInfo {
         let id = self.base.mesh.identity();
+        let hw = lock(&self.hw).clone();
+        let jobs = i64::try_from(self.jobs.running()).unwrap_or(0);
         let st = lock(&self.st);
         NodeInfo {
             id: id.id,
             name: id.name,
             description: st.description.clone(),
-            hw: hw(),
+            hw,
             models: st
                 .models
                 .iter()
                 .map(|m| view(m, st.rt.get(&key(&m.name, &m.api))))
                 .collect(),
             inflight: st.total,
-            jobs: 0,
-            hub_manage: st.hub_manage,
+            jobs,
+            hub_manage: st.set.allow_hub_manage,
             seq: 0,
             updated_at: 0,
         }
@@ -385,10 +433,7 @@ impl Core {
 
     fn flush(&self) {
         let mut info = self.snapshot();
-        // The hardware's time of collection aside, which changes every time.
-        let mut cmp = info.clone();
-        cmp.hw.clear();
-        let text = cmp.to_json();
+        let text = info.to_json();
         {
             let mut p = lock(&self.push);
             if p.last == text {
@@ -406,6 +451,40 @@ impl Core {
                 let _ = m.push(&id.id, METHOD_NODE_UPDATE, &body);
             }
         }
+    }
+
+    // ---- Hardware ----
+
+    /// Reads the hardware on the node's pool, then again every `refresh_interval`.
+    fn refresh_hw(&self) {
+        if self.stopped.load(Ordering::Acquire) {
+            return;
+        }
+        let me = self.me.clone();
+        let read = move || {
+            let Some(c) = me.upgrade() else { return };
+            let h = crate::hw::collect(&c.work);
+            *lock(&c.hw) = h.to_json();
+            c.changed();
+            c.next_hw();
+        };
+        if self.work.try_execute(Box::new(read)).is_err() {
+            // The pool is busy with GPU reads: the next one goes on at its time.
+            self.next_hw();
+        }
+    }
+
+    fn next_hw(&self) {
+        if self.stopped.load(Ordering::Acquire) {
+            return;
+        }
+        let every = lock(&self.st).set.refresh;
+        let me = self.me.clone();
+        let _ = after_send(every, move || {
+            if let Some(c) = me.upgrade() {
+                c.refresh_hw();
+            }
+        });
     }
 
     // ---- Checks ----
