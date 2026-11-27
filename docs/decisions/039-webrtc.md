@@ -3,7 +3,7 @@
 [English](039-webrtc.md) | [简体中文](039-webrtc.zh-CN.md)
 
 Status: accepted in I110 (2026-11-27), waiting for review ([decisions waiting for
-review](../decisions-pending.md), rows 50–54); extended by the iterations of the WebRTC track
+review](../decisions-pending.md), rows 50–53); extended by the iterations of the WebRTC track
 (I110–I114) as they land.
 
 ## Context

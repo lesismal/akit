@@ -2,7 +2,7 @@
 
 [English](039-webrtc.md) | [简体中文](039-webrtc.zh-CN.md)
 
-状态：在 I110 中采纳（2026-11-27），待审阅（[待审阅的决定](../decisions-pending.zh-CN.md)，第 50–54 行）；随 WebRTC
+状态：在 I110 中采纳（2026-11-27），待审阅（[待审阅的决定](../decisions-pending.zh-CN.md)，第 50–53 行）；随 WebRTC
 路线的迭代（I110–I114）落地而扩展。
 
 ## 背景
