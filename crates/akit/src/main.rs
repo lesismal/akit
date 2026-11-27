@@ -1605,6 +1605,25 @@ fn run(args: &[String]) -> ExitCode {
                     system_roots: None,
                     schema: akit_admin::node::schema(),
                     node_id: configs.node().id.clone(),
+                    // The console's users, for the roles page (I139): admin.console's and
+                    // those the store keeps.
+                    console_users: Some({
+                        let (cs, written) = (configs.clone(), a.console.clone());
+                        Arc::new(move || {
+                            let mut names: Vec<String> = cs
+                                .console_users()
+                                .0
+                                .into_iter()
+                                .map(|u| u.username)
+                                .collect();
+                            if let Some(c) = &written {
+                                names.extend(c.users.iter().map(|u| u.username.clone()));
+                            }
+                            names.sort();
+                            names.dedup();
+                            names
+                        })
+                    }),
                 };
                 match akit_cluster::Manager::new(o) {
                     Ok(m) => {

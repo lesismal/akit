@@ -60,6 +60,10 @@ fit 的 I140–I150 让设置了 `admin.cluster` 的 fit 成为其他 fit（其�
     签名在 `X-Akit-Signature` 和 `X-Akit-Timestamp` 中（决定 037：对外名字）。规则在一次轮询结束、有东西改变或最早的时间到来时评估，
     而不是 fit 每秒一次的定时（`tick_ms` 回答 0）；受管成员在其运行配置改变时与模板对照读取，不像 fit 那样每十分钟再读一次。
 
+11. **角色（I139）** 采用 fit 的：viewer、operator 和 admin，集群范围或在分组上，文档的 `access`（按版本 3 写出），每个端点都像 fit 那样
+    检查，拒绝时以 403 回答所需的角色。管理端自身的控制台经集群模块把关（`akit_roles::pages::Module::console_gate`，即 fit 的
+    `ConsoleGate`）。fit 的角色对其助手的限制回答为空（`assistant`），因为 akit 的管理端没有助手；审计日志的条目不带所改内容的逐行差异。
+
 ## 备选方案
 
 - **线上也用 akit 的名字**（只用 `akit_version`、只用 `X-Akit-Csrf`）：一种管理端就无法管理另一种成员。管理端一侧拒绝；

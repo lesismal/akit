@@ -10,11 +10,11 @@ token). The members may be fits too: what they answer is fit's protocol
 ([decision 041](../decisions/041-cluster-management.md)). The manager is not in the data path: a
 manager down costs management and nothing else.
 
-This guide covers what akit runs now (I130–I135): members, their state, the Overview and Nodes
-pages, a member's page, the node switcher, groups and operations on many, templates. Rollouts with health gates, drift and alerts, roles,
-members behind NAT and the `akit cluster` command follow in I137–I139c
-([the plan](../dev-plan.md#cluster-management)); their menu entries are drawn already and answer
-"no such endpoint" until then.
+This guide covers what akit runs now (I130–I139): members, their state, the Overview and Nodes
+pages, a member's page, the node switcher, groups and operations on many, templates, rollouts
+with health gates, drift and alerts, users' roles and the audit log. Members behind NAT and the
+`akit cluster` command follow in I139b and I139c ([the plan](../dev-plan.md#cluster-management));
+their menu entries are drawn already and answer "no such endpoint" until then.
 
 ## A manager
 
@@ -115,6 +115,17 @@ backends down, reloads failing), each firing once its condition has held for its
 webhooks (JSON signed in `X-Akit-Signature`, Slack, Discord, Feishu, DingTalk, WeCom, or a
 template of one's own) and silenced by rule or member for a while.
 
+## Users, roles and the audit log
+
+Until roles are set (and with no `admin.cluster.admins`), every console user is an admin of the
+cluster. **Cluster → Users and audit** gives each console user a role, viewer, operator or admin,
+cluster-wide or on groups; a member's role is the highest of the cluster's and its groups'; users
+not named get the default role, and `admin.cluster.admins` are admins whatever the roles say. A
+viewer reads, an operator runs operations, syncs, rollouts of templates and silences on its
+members, an admin changes them; the manager's own config, users and services are changed by a
+cluster-wide admin only. A refusal says the role it needs, and where. Every change is in the audit
+log, filtered by user, member and action, and exported as JSON lines.
+
 ## Mixed clusters
 
 - An akit manager manages akit and fit members alike, by console or by token; a fit member's
@@ -122,9 +133,8 @@ template of one's own) and silenced by rule or member for a while.
 - A fit manager manages an akit member by its Admin API's token. akit's console takes its CSRF
   token in `X-Akit-Csrf` only (decision 037), so a fit manager logged in to an akit console can
   read it but not write.
-- akit's and fit's managers share a store: each reads the members, groups, templates and rollouts
-  the other wrote, and keeps what it does not use as it was. A store whose document sets users'
-  roles is shown read-only by akit's manager until I139.
+- akit's and fit's managers share a store: each reads the members, groups, templates, rollouts,
+  roles and alerts the other wrote, and keeps what it does not use as it was.
 
 ## Limits
 

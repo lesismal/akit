@@ -782,6 +782,28 @@ impl Al {
     }
 }
 
+/// What a silence needs of its user's roles: an operator of its member, or of its rule's group,
+/// or cluster-wide. fit's `silenceNeed`.
+fn silence_need(s: &Silence, c: &Config) -> crate::roles::Need {
+    use crate::roles::{Need, OPERATOR};
+    if !s.node.is_empty() {
+        return Need::on(OPERATOR, vec![s.node.clone()]);
+    }
+    if let Some(g) = c
+        .rules
+        .iter()
+        .find(|r| r.name == s.rule && !r.group.is_empty())
+        .map(|r| r.group.clone())
+    {
+        return Need {
+            role: OPERATOR,
+            groups: vec![g],
+            ..Need::default()
+        };
+    }
+    Need::cluster(OPERATOR)
+}
+
 fn prune(list: &mut Vec<Silence>, now: SystemTime) {
     list.retain(|s| {
         s.ends
@@ -1098,6 +1120,7 @@ impl Manager {
     fn add_silence(&self, user: &str, v: &Value) -> Result<String, Refusal> {
         self.change_alerts(user, |c, now| {
             let s = silence_of(v, user, now)?;
+            self.allow(user, &silence_need(&s, c))?;
             prune(&mut c.silences, now);
             if c.silences.len() >= MAX_SILENCES {
                 let Some(i) = c

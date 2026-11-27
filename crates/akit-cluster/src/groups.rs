@@ -775,6 +775,7 @@ fn update(m: &Manager, ctx: &mut Context, user: &str, name: String) {
             }
             if new_name != name {
                 crate::templates::rename_group(d, &name, &new_name);
+                crate::roles::rename_group(d, &name, &new_name);
             }
             let nodes = nodes_of(d, &g);
             Ok((entry("group.update", &name, &detail, &nodes), view(d, &g)))
@@ -804,6 +805,7 @@ fn remove(m: &Manager, ctx: &mut Context, user: &str, name: String) {
             let g = d.groups.remove(i);
             let nodes = nodes_of(d, &g);
             crate::templates::rename_group(d, &name, "");
+            crate::roles::rename_group(d, &name, "");
             Ok((entry("group.remove", &name, "", &nodes), ()))
         });
         match r {

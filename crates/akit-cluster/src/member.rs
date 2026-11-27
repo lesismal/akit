@@ -786,6 +786,8 @@ pub struct Document {
     pub groups: Vec<crate::groups::Group>,
     /// The templates (I136).
     pub templates: Vec<crate::templates::Template>,
+    /// The users' roles (I139), or none set.
+    pub access: Option<crate::roles::Access>,
     /// The rollouts (I137), as JSON: what the manager's rollouts were when it last wrote the
     /// document, or when it read it; empty for none.
     pub rollouts: String,
@@ -808,8 +810,8 @@ pub enum Read {
 
 impl Document {
     /// Reads the store's section, or an empty document for none: fit's `readDocument`. A
-    /// document of a later version, or one that sets the users' roles, which akit does not
-    /// enforce before I139, is read-only (decision row 73).
+    /// document of a later version is read-only; one with users' roles is read and enforced
+    /// (I139).
     #[must_use]
     pub fn read(data: Option<&[u8]>) -> Read {
         let Some(data) = data.filter(|d| !d.is_empty()) else {
@@ -858,6 +860,11 @@ impl Document {
                             .collect();
                     }
                 }
+                "access" => {
+                    if let Value::Object(_) = &v {
+                        d.access = Some(crate::roles::Access::from_value(&v));
+                    }
+                }
                 "rollouts" => {
                     if let Value::Array(_) = &v {
                         d.rollouts = json::compact(&v);
@@ -878,25 +885,14 @@ impl Document {
             );
             return Read::ReadOnly(d, why);
         }
-        if d.rest
-            .iter()
-            .any(|(k, v)| k == "access" && *v != Value::Null)
-        {
-            return Read::ReadOnly(
-                d,
-                "the store's document sets the users' roles, which akit enforces from I139: the \
-                 members are shown, and changed only by a manager that enforces them"
-                    .to_owned(),
-            );
-        }
         Read::Ok(d)
     }
 
-    /// The document as the store keeps it, fit's `marshal`: version 2 (akit never writes
-    /// roles before I139), every list present, the parts akit does not use as they were read.
+    /// The document as the store keeps it, fit's `marshal`: version 3, every list present, the
+    /// roles when set, the parts akit does not use as they were read.
     #[must_use]
     pub fn marshal(&self) -> Vec<u8> {
-        let mut b = Obj::new().num("version", DOC_VERSION_NO_ROLES);
+        let mut b = Obj::new().num("version", DOC_VERSION);
         let mut members = String::from("[");
         for (i, m) in self.members.iter().enumerate() {
             if i > 0 {
@@ -922,6 +918,9 @@ impl Document {
             .collect::<Vec<_>>()
             .join(",");
         b = b.raw("templates", &format!("[{templates}]"));
+        if let Some(a) = &self.access {
+            b = b.raw("access", &a.json());
+        }
         b = b.raw(
             "rollouts",
             if self.rollouts.is_empty() {
@@ -1105,7 +1104,7 @@ mod tests {
             r#""link":{"credential_id":"c","credential_hash":"h"}"#,
             r#""tls":{"fingerprint":"aa"}"#,
             r#""revision":7"#,
-            r#""version":2"#,
+            r#""version":3"#,
             r#"{"action":"node.update"}"#,
         ] {
             assert!(out.contains(part), "{out} lacks {part}");
@@ -1113,12 +1112,23 @@ mod tests {
         let Read::Ok(again) = Document::read(Some(out.as_bytes())) else {
             panic!("not read again");
         };
+        // Written as version 3, fit's with roles; the rest as it was.
+        d.version = DOC_VERSION;
         assert_eq!(again, d);
-        // Roles, or a newer version, leave it read-only; what is not a document is refused.
-        assert!(matches!(
-            Document::read(Some(br#"{"version":3,"members":[],"access":{"users":[]}}"#)),
-            Read::ReadOnly(..)
-        ));
+        // Roles are read (I139); a newer version leaves it read-only; what is not a document is
+        // refused.
+        let Read::Ok(r) = Document::read(Some(
+            br#"{"version":3,"members":[],"access":{"users":[{"user":"ada","role":"admin"}],"default_role":"viewer"}}"#,
+        )) else {
+            panic!("roles not read");
+        };
+        let out = String::from_utf8(r.marshal()).unwrap();
+        assert!(
+            out.contains(
+                r#""access":{"users":[{"user":"ada","role":"admin"}],"default_role":"viewer"}"#
+            ),
+            "{out}"
+        );
         assert!(matches!(
             Document::read(Some(br#"{"version":4,"members":[]}"#)),
             Read::ReadOnly(..)

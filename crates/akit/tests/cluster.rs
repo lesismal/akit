@@ -2123,3 +2123,176 @@ fn alerts_and_drift() {
     }
     let _ = (m.stop(), am.stop());
 }
+
+/// Users' roles and the audit log (I139, fit's `roles` and `audit` tests): open until roles are
+/// set; roles cluster-wide and on a group; reads, operations, members' pages, the switcher,
+/// silences and the manager's own console checked by them, a refusal answered 403 with what it
+/// needs; a group renamed followed; the roles kept across a restart; the audit log as JSON lines.
+#[test]
+fn roles_and_audit() {
+    let d = Dir::new("roles");
+    let h = hash("pw");
+    let ta = "a-token-of-member-a-0123456789";
+    let am = Run::start(&["-c", s(&token_member(&d, "a", ta)), "-watch-certs=false"]);
+    let a_api = am.addr("admin API on ");
+    let tb = "a-token-of-member-b-0123456789";
+    let bm = Run::start(&["-c", s(&token_member(&d, "b", tb)), "-watch-certs=false"]);
+    let b_api = bm.addr("admin API on ");
+    let mcfg = d.file(
+        "manager.json",
+        &format!(
+            r#"{{"admin": {{"address": "127.0.0.1:0", "console": {{"address": "127.0.0.1:0",
+                "users": [{{"username": "ada", "password_hash": "{h}"}}, {{"username": "bob", "password_hash": "{h}"}}]}},
+                "cluster": {{"poll_interval": "1s", "timeout": "3s"}}}}, {WEB}}}"#
+        ),
+    );
+    let m = Run::start(&["-admin", "-c", s(&mcfg), "-watch-certs=false"]);
+    let console = m.addr("console on http://");
+    let mut ada = Browser::new(console);
+    assert_eq!(ada.login("ada", "pw").0, 200);
+    let mut bob = Browser::new(console);
+    assert_eq!(bob.login("bob", "pw").0, 200);
+    for (n, api, t, region) in [("a", a_api, ta, "eu"), ("b", b_api, tb, "us")] {
+        add(
+            &ada,
+            &format!(
+                r#"{{"name": "{n}", "url": "http://{api}", "access": "admin_api", "token": "{t}", "labels": {{"region": "{region}"}}}}"#
+            ),
+        );
+        wait_state(&ada, n, "up", "");
+    }
+    let (st, _, g) = ada.call(
+        "POST",
+        "/api/m/cluster/groups",
+        r#"{"name": "eu", "selector": "region=eu"}"#,
+    );
+    assert_eq!(st, 201, "{g}");
+    // Open: everyone is an admin.
+    let (_, _, me) = bob.call("GET", "/api/m/cluster/me", "");
+    assert!(
+        me.contains(r#""open":true"#) && me.contains(r#""role":"admin""#),
+        "{me}"
+    );
+
+    // Roles set: at least one admin; bob a viewer, an operator on eu.
+    let (st, head, acc) = ada.call("GET", "/api/m/cluster/access", "");
+    assert_eq!(st, 200, "{acc}");
+    assert!(
+        acc.contains(r#""user":"bob""#) && acc.contains(r#""console":true"#),
+        "{acc}"
+    );
+    let etag = header_of(&head, "ETag");
+    let (st, _, v) = ada.call_with(
+        "PUT",
+        "/api/m/cluster/access",
+        &[("If-Match", &etag)],
+        r#"{"users": [{"user": "bob", "role": "viewer"}]}"#,
+    );
+    assert_eq!(st, 400, "{v}");
+    assert!(v.contains("no one would be an admin"), "{v}");
+    let (st, _, v) = ada.call_with(
+        "PUT",
+        "/api/m/cluster/access",
+        &[("If-Match", &etag)],
+        r#"{"users": [{"user": "ada", "role": "admin"}, {"user": "bob", "role": "viewer", "groups": {"eu": "operator"}}]}"#,
+    );
+    assert_eq!(st, 200, "{v}");
+    let (_, _, me) = bob.call("GET", "/api/m/cluster/me", "");
+    for want in [
+        r#""open":false"#,
+        r#""role":"viewer""#,
+        r#""top":"operator""#,
+        r#""nodes":{"a":"operator","b":"viewer"}"#,
+        r#""manager_read_only":true"#,
+    ] {
+        assert!(me.contains(want), "{want}: {me}");
+    }
+
+    // What bob may and may not do.
+    let (st, _, v) = bob.call(
+        "POST",
+        "/api/m/cluster/groups",
+        r#"{"name": "x", "members": ["a"]}"#,
+    );
+    assert_eq!(st, 403, "{v}");
+    assert!(
+        v.contains(r#""kind":"forbidden""#)
+            && v.contains(r#""role":"admin""#)
+            && v.contains(r#""cluster":true"#),
+        "{v}"
+    );
+    let (st, _, v) = bob.call(
+        "POST",
+        "/api/m/cluster/ops",
+        r#"{"op": "test", "members": ["b"]}"#,
+    );
+    assert_eq!(st, 403, "{v}");
+    assert!(v.contains(r#""nodes":["b"]"#), "{v}");
+    let op = start_op(&bob, r#"{"op": "test", "members": ["a"]}"#);
+    wait_op(&bob, &op);
+    let (st, _, v) = bob.call("GET", "/api/m/cluster/nodes/b/read/status", "");
+    assert_eq!(st, 200, "{v}");
+    let (st, _, v) = bob.call("GET", "/api/n/b/m/admin/config", "");
+    assert_eq!(st, 200, "{v}");
+    let (st, _, v) = bob.call(
+        "PUT",
+        "/api/n/b/m/admin/config/log",
+        r#"{"level": "debug"}"#,
+    );
+    assert_eq!(st, 403, "{v}");
+    let (st, _, v) = bob.call(
+        "POST",
+        "/api/m/cluster/nodes",
+        r#"{"name": "c", "url": "http://127.0.0.1:1", "access": "admin_api", "token": "t-0123456789abcdef"}"#,
+    );
+    assert_eq!(st, 403, "{v}");
+    let (st, _, v) = bob.call(
+        "POST",
+        "/api/m/cluster/alerts/silences",
+        r#"{"node": "a", "duration_ms": 60000}"#,
+    );
+    assert_eq!(st, 201, "{v}");
+    let (st, _, v) = bob.call(
+        "POST",
+        "/api/m/cluster/alerts/silences",
+        r#"{"node": "b", "duration_ms": 60000}"#,
+    );
+    assert_eq!(st, 403, "{v}");
+    // The manager's own console: read, not changed, by bob.
+    let (st, _, v) = bob.call("GET", "/api/m/admin/config", "");
+    assert_eq!(st, 200, "{v}");
+    let (st, _, v) = bob.call("POST", "/api/m/admin/reload", "");
+    assert_eq!(st, 403, "{v}");
+    assert!(v.contains("may not change this manager"), "{v}");
+    let (st, _, v) = ada.call("POST", "/api/m/admin/reload", "");
+    assert_eq!(st, 200, "{v}");
+
+    // A group renamed is followed by the roles; kept across a restart.
+    let (st, _, v) = ada.call(
+        "PUT",
+        "/api/m/cluster/groups/eu",
+        r#"{"name": "europe", "selector": "region=eu"}"#,
+    );
+    assert_eq!(st, 200, "{v}");
+    let (_, _, acc) = ada.call("GET", "/api/m/cluster/access", "");
+    assert!(acc.contains(r#""groups":{"europe":"operator"}"#), "{acc}");
+    let (code, _, err) = m.stop();
+    assert_eq!(code, Some(0), "{err}");
+    let m = Run::start(&["-admin", "-c", s(&mcfg), "-watch-certs=false"]);
+    let mut bob = Browser::new(m.addr("console on http://"));
+    assert_eq!(bob.login("bob", "pw").0, 200);
+    let (_, _, me) = bob.call("GET", "/api/m/cluster/me", "");
+    assert!(me.contains(r#""top":"operator""#), "{me}");
+    let (st, head, lines) = bob.call(
+        "GET",
+        "/api/m/cluster/audit?format=jsonl&action=access.",
+        "",
+    );
+    assert_eq!(st, 200, "{lines}");
+    assert!(head.contains("application/jsonl"), "{head}");
+    assert!(
+        lines.lines().count() == 1 && lines.contains(r#""action":"access.update""#),
+        "{lines}"
+    );
+    let _ = (m.stop(), am.stop(), bm.stop());
+}

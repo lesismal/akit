@@ -547,6 +547,11 @@ impl Manager {
         }
         let group = json::str_of(v, "group").to_owned();
         let names = self.targets(&group, &json::strings_of(v, "members"))?;
+        // An operator of each member (I139).
+        self.allow(
+            user,
+            &crate::roles::Need::on(crate::roles::OPERATOR, names.clone()),
+        )?;
         let op = {
             let mut ops = lock(&self.0.ops);
             let taken: Vec<String> = names

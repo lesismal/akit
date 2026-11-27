@@ -765,6 +765,14 @@ impl Pages {
                 _ => {}
             }
         }
+        // A manager of many bounds by its users' roles what each changes of the manager itself
+        // (I139, fit's ConsoleGate).
+        if let Kind::Admin(_, _, Some(c)) = &self.kind {
+            let query = ctx.req().query().unwrap_or("").to_owned();
+            if let Some(why) = c.console_gate(&s.user, &method, &path, &query) {
+                return ctx.respond(error(403, &why));
+            }
+        }
         // The cluster manager's node switcher (I134): /api/n/<member>/..., passed on to the
         // member by the module `cluster`, which tells it from its own /api/m/cluster/n/.
         if path.starts_with("/api/n/") {

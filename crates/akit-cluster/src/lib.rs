@@ -34,7 +34,7 @@
 //! POST   /api/test                     a member not added yet tested
 //! GET    /api/state                    every member's state
 //! GET    /api/audit                    the audit log, filtered by user, node and action
-//! GET    /api/me                       the user's roles: before I139, a cluster-wide admin
+//! GET    /api/me                       the user's roles ([`roles`], with `/api/access`)
 //! ```
 //!
 //! Groups and operations ([`groups`], [`ops`]), templates and sync ([`templates`], [`sync`]) and
@@ -53,6 +53,7 @@ mod api;
 pub mod groups;
 pub mod ops;
 pub mod pass;
+pub mod roles;
 pub mod rollouts;
 mod rollrun;
 pub mod sync;
@@ -119,6 +120,8 @@ pub struct Options {
     pub schema: &'static [u8],
     /// The manager's node ID, which the members it tells what it owns there are told (I136).
     pub node_id: String,
+    /// The console's users, by name, whom the roles page lists (I139).
+    pub console_users: Option<Arc<dyn Fn() -> Vec<String> + Send + Sync>>,
 }
 
 impl std::fmt::Debug for Options {
@@ -144,6 +147,8 @@ pub enum Refusal {
     Failed(String),
     /// The manager is shutting down: 503.
     Unavailable(String),
+    /// The user's roles do not allow it: 403 (I139).
+    Forbidden(Box<roles::Forbidden>),
 }
 
 impl Refusal {
@@ -158,6 +163,7 @@ impl Refusal {
             Refusal::Busy(m) => fail(429, m),
             Refusal::Failed(m) => fail(500, m),
             Refusal::Unavailable(m) => fail(503, m),
+            Refusal::Forbidden(f) => f.response(),
         }
     }
 }

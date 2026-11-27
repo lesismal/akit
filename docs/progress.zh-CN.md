@@ -106,6 +106,23 @@
   中继）、`TestReload`（就地修改配额，排空中的服务器回答 508）、端口范围（取其端口，用尽时 508，删除后再次可用）、
   `TestLimiter`；fib 互通测试（`tests/fib_turn.rs`）对 akit 和 fit 结果相同，在 macOS 上运行。
 
+### 2026-11-27：I139，用户、角色和审计日志
+
+- 角色（`akit_cluster::roles`，fit 的 `cluster/roles.go`）：viewer、operator 和 admin，集群范围或在分组上（每个用户 64 个，256 个用户），
+  成员上的角色是集群角色与其所在分组角色中最高的，未列出的控制台用户有默认角色，`admin.cluster.admins` 中的用户无论角色如何都是集群范围的
+  admin；在设置角色之前是开放的（每个用户都是 admin）。保存为文档的 `access`，即 fit 的，文档不再因此只读（文档按版本 3 写出）；分组改名
+  或删除时跟随。
+- 每个端点都像 fit 那样检查：读取需要在某处有角色，修改需要集群范围的 admin，自行检查所涉对象的端点除外：成员的添加、修改、删除或草稿测试
+  （其 admin）、按保存状态测试（operator）、读取（viewer）；节点切换器（viewer，修改需 admin）；操作（每个成员的 operator）；同步、期望配置、
+  导入和比较（viewer）；发布（模板或同步发布需成员的 operator，复制和补丁需 admin，复制来源需 viewer；模板草稿需集群范围的 admin）；静默
+  （其成员或其规则分组的 operator）。拒绝以 403 回答所需的角色及范围（fit 的 `ErrForbidden`）。控制台用户名 `Admin API` 被拒绝。
+- 有角色的管理端自身的控制台：读取、集群模块的端点、节点切换器、修改密码、文本工具和试运行对任何人开放；其余需要集群范围的 admin，经由
+  `akit-admin` 控制台向集群模块询问的 `Module::console_gate`（fit 的 `ConsoleGate`）。
+- `GET /api/me`（用户在集群、每个分组和每个成员上的角色）、`GET`/`PUT /api/access`（每个控制台用户、管理员、分组；`If-Match`；至少保留
+  一个集群范围的 admin），记入审计日志为 `access.update`。审计日志的筛选和 JSON 行自 I132 起已有。
+- 测试：`roles::tests`（角色的解析、检查、保存、改名、拒绝说明）；akit 的 `roles_and_audit`（开放，然后设置角色、没有 admin 时拒绝；viewer
+  和分组的 operator：分组、操作、读取、节点切换器、成员、静默以及管理端自身控制台的允许或拒绝；分组改名；重启后保留；审计日志的 JSON 行）。
+
 ### 2026-11-27：I138，漂移和告警；akit 上的一致性检查
 
 - 每个 akit 上的一致性检查（`akit_admin::check`，fit 的 `admin/drift.go`）：`GET /config/check` 回答运行中的状态与其所依据配置之间的

@@ -1066,9 +1066,16 @@ fn take_read(m: &Manager, ctx: &mut Context) -> bool {
 fn read_configs(
     m: &Manager,
     ctx: &mut Context,
+    user: &str,
     names: Vec<String>,
     answer_of: Box<dyn FnOnce(&[(Value, String)]) -> String + Send>,
 ) {
+    if let Err(e) = m.allow(
+        user,
+        &crate::roles::Need::on(crate::roles::VIEWER, names.clone()),
+    ) {
+        return ctx.respond(e.response());
+    }
     for n in &names {
         if m.node(n).is_none() {
             return ctx.respond(fail(
@@ -1140,7 +1147,7 @@ fn read_configs(
 /// POST /api/text/render     ?format=conf|yaml|json: a template's config as text
 /// POST /api/text/parse      ?format=...: the text as a template's config
 /// ```
-pub(crate) fn serve(m: &Manager, ctx: &mut Context, path: &str) -> bool {
+pub(crate) fn serve(m: &Manager, ctx: &mut Context, user: &str, path: &str) -> bool {
     let method = ctx.method().clone();
     let get = matches!(method, Method::Get | Method::Head);
     match path {
@@ -1155,9 +1162,14 @@ pub(crate) fn serve(m: &Manager, ctx: &mut Context, path: &str) -> bool {
             drop(t);
             ctx.respond(answer(200, format!("{{\"nodes\":[{list}]}}")));
         }
-        "/api/sync" if method == Method::Post => sync_route(m, ctx),
+        "/api/sync" if method == Method::Post => sync_route(m, ctx, user),
         p if p.starts_with("/api/desired/") && get => {
             let name = crate::api::percent_decode(p.trim_start_matches("/api/desired/"));
+            let need = crate::roles::Need::on(crate::roles::VIEWER, vec![name.clone()]);
+            if let Err(e) = m.allow(user, &need) {
+                ctx.respond(e.response());
+                return true;
+            }
             if m.node(&name).is_none() {
                 ctx.respond(fail(
                     404,
@@ -1198,6 +1210,7 @@ pub(crate) fn serve(m: &Manager, ctx: &mut Context, path: &str) -> bool {
             read_configs(
                 m,
                 ctx,
+                user,
                 vec![node],
                 Box::new(move |got| {
                     let (cfg, etag) = got.first().cloned().unwrap_or((Value::Null, String::new()));
@@ -1235,6 +1248,7 @@ pub(crate) fn serve(m: &Manager, ctx: &mut Context, path: &str) -> bool {
             read_configs(
                 m,
                 ctx,
+                user,
                 vec![a, b],
                 Box::new(move |got| {
                     let empty = (Value::Null, String::new());
@@ -1302,7 +1316,7 @@ pub(crate) fn serve(m: &Manager, ctx: &mut Context, path: &str) -> bool {
     true
 }
 
-fn sync_route(m: &Manager, ctx: &mut Context) {
+fn sync_route(m: &Manager, ctx: &mut Context, user: &str) {
     let Some(v) = decode(ctx) else { return };
     let nodes = json::strings_of(&v, "nodes");
     let template = json::str_of(&v, "template").to_owned();
@@ -1361,6 +1375,12 @@ fn sync_route(m: &Manager, ctx: &mut Context) {
     #[allow(clippy::type_complexity)]
     let shared: Arc<Mutex<(BTreeMap<String, String>, Option<akio_http::Detached>)>> =
         Arc::new(Mutex::new((BTreeMap::new(), Some(det))));
+    if let Err(e) = m.allow(
+        user,
+        &crate::roles::Need::on(crate::roles::VIEWER, names.clone()),
+    ) {
+        return ctx.respond(e.response());
+    }
     let names = Arc::new(names);
     let (me, names2) = (m.clone(), Arc::clone(&names));
     let finish = Arc::new(

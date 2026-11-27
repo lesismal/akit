@@ -91,6 +91,13 @@ keeps, and which names on it are akit's.
     answers 0); a managed member is read against its templates when its running config changed,
     not again every ten minutes as fit's.
 
+11. **Roles (I139)** are fit's: viewer, operator and admin, cluster-wide or on groups, the
+    document's `access` (written as version 3), every endpoint checked as fit's, a refusal
+    answered 403 with the role needed. The manager's own console is gated through the cluster
+    module (`akit_roles::pages::Module::console_gate`, fit's `ConsoleGate`). What fit's roles cap
+    of its assistant is answered empty (`assistant`), akit's manager having none; the audit
+    log's entries carry no line diffs of what changed.
+
 ## Alternatives
 
 - **akit's names on the wire too** (`akit_version` only, `X-Akit-Csrf` only): a manager of one

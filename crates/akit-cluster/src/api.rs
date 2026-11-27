@@ -16,6 +16,7 @@ use crate::member::{
     describe,
 };
 use crate::node::Node;
+use crate::roles::{Need, OPERATOR, VIEWER};
 use crate::transport::{KIND_PASSWORD_CHANGE, KIND_UNSUPPORTED, Problem};
 use crate::{MAX_READS, MAX_TESTS, Manager, Refusal};
 
@@ -27,10 +28,22 @@ impl akit_roles::pages::Module for Module {
         crate::MODULE_ID
     }
 
+    fn console_gate(&self, user: &str, method: &Method, path: &str, query: &str) -> Option<String> {
+        self.0.console_gate(user, method, path, query)
+    }
+
     fn serve(&self, ctx: &mut Context, user: &str, path: &str) {
         let m = &self.0;
         let method = ctx.method().clone();
         let get = matches!(method, Method::Get | Method::Head);
+        // Every endpoint but /api/me is gated by the user's roles (I139).
+        if path == "/api/me" {
+            crate::roles::serve(m, ctx, user, path);
+            return;
+        }
+        if let Some(refused) = m.gate(user, &method, checked(&method, path)) {
+            return ctx.respond(refused);
+        }
         // The node switcher (I134): the console's /api/n/, never the module's /api/m/cluster/n/.
         if path.starts_with(crate::pass::PASS_PREFIX) {
             return crate::pass::pass_on(m, ctx, user);
@@ -39,9 +52,10 @@ impl akit_roles::pages::Module for Module {
         if crate::groups::serve(m, ctx, user, path)
             || crate::ops::serve(m, ctx, user, path)
             || crate::templates::serve(m, ctx, user, path)
-            || crate::sync::serve(m, ctx, path)
+            || crate::sync::serve(m, ctx, user, path)
             || crate::rollouts::serve(m, ctx, user, path)
             || crate::alerts::serve(m, ctx, user, path)
+            || crate::roles::serve(m, ctx, user, path)
         {
             return;
         }
@@ -53,8 +67,7 @@ impl akit_roles::pages::Module for Module {
             "/api/test" => ctx.respond(not_allowed("POST")),
             "/api/state" if get => ctx.respond(state(m)),
             "/api/audit" if get => ctx.respond(audit(m, ctx.req().query().unwrap_or(""))),
-            "/api/me" if get => ctx.respond(me(m, user)),
-            "/api/state" | "/api/audit" | "/api/me" => ctx.respond(not_allowed("GET")),
+            "/api/state" | "/api/audit" => ctx.respond(not_allowed("GET")),
             p if p.starts_with("/api/nodes/") => node_route(m, ctx, user, p),
             _ => ctx.respond(no_endpoint()),
         }
@@ -103,30 +116,31 @@ fn state(m: &Manager) -> Response {
     )
 }
 
-/// `GET /api/me`: the user's roles. Before I139 every console user is a cluster-wide admin, as
-/// fit's before any role is set.
-fn me(m: &Manager, user: &str) -> Response {
-    let mut nodes = Obj::new();
-    for mem in m.members() {
-        nodes = nodes.str(&mem.name, "admin");
-    }
-    let mut groups = Obj::new();
-    for g in m.doc().groups {
-        groups = groups.str(&g.name, "admin");
-    }
-    answer(
-        200,
-        Obj::new()
-            .str("user", user)
-            .bool("open", true)
-            .str("role", "admin")
-            .str("top", "admin")
-            .raw("groups", &groups.end())
-            .raw("nodes", &nodes.end())
-            .bool("manager_read_only", false)
-            .str("assistant", "")
-            .end(),
-    )
+/// Whether an endpoint checks what it touches itself, rather than its change being a
+/// cluster-wide admin's (fit's `Checked` routes).
+fn checked(method: &Method, path: &str) -> bool {
+    let post = *method == Method::Post;
+    path.starts_with("/api/nodes/")
+        || path.starts_with("/api/rollouts/")
+        || path.starts_with("/api/alerts/silences/")
+        || path.starts_with("/api/desired/")
+        || path.starts_with(crate::pass::PASS_PREFIX)
+        || (post
+            && matches!(
+                path,
+                "/api/nodes"
+                    | "/api/test"
+                    | "/api/select"
+                    | "/api/ops"
+                    | "/api/sync"
+                    | "/api/compare"
+                    | "/api/import"
+                    | "/api/text/render"
+                    | "/api/text/parse"
+                    | "/api/rollouts"
+                    | "/api/alerts/silences"
+                    | "/api/drift/fix"
+            ))
 }
 
 /// `GET /api/audit`: the entries the query picks (`user`, `node`, `action`, a prefix ending with
@@ -341,7 +355,9 @@ fn add(m: &Manager, ctx: &mut Context, user: &str) {
             }
             let e = entry("node.add", &mem.name, &describe(&mem));
             let out = (mem.view(), describe(&mem), mem.name.clone());
-            d.members.push(mem);
+            // An admin of the member, in the groups its labels put it in (I139).
+            d.members.push(mem.clone());
+            me.allow_in(d, &user, crate::roles::ADMIN, &[&mem])?;
             Ok((e, out))
         });
         match r {
@@ -369,8 +385,16 @@ fn node_route(m: &Manager, ctx: &mut Context, user: &str, path: &str) {
             501,
             "members that link out to the manager are enrolled from I139b",
         )),
-        (s, _) if s.starts_with("read/") => read(m, ctx, &name, s.trim_start_matches("read/")),
+        (s, _) if s.starts_with("read/") => {
+            if let Err(e) = m.allow(user, &Need::on(VIEWER, vec![name.clone()])) {
+                return ctx.respond(e.response());
+            }
+            read(m, ctx, &name, s.trim_start_matches("read/"));
+        }
         ("", Method::Get | Method::Head) => {
+            if let Err(e) = m.allow(user, &Need::on(VIEWER, vec![name.clone()])) {
+                return ctx.respond(e.response());
+            }
             let mem = m.members().into_iter().find(|x| x.name == name);
             match mem {
                 None => ctx.respond(fail(404, &not_found(&name))),
@@ -419,6 +443,8 @@ fn update(m: &Manager, ctx: &mut Context, user: &str, name: String) {
             let mem = input
                 .member(Some(&old), &crate::now_text())
                 .map_err(Refusal::Field)?;
+            // An admin of the member as it is and as it would be (I139).
+            me.allow_in(d, &user, crate::roles::ADMIN, &[&old])?;
             if mem.name != name && d.index(&mem.name).is_some() {
                 return Err(Refusal::Conflict(format!(
                     "a member is already named {}",
@@ -439,6 +465,9 @@ fn update(m: &Manager, ctx: &mut Context, user: &str, name: String) {
             }
             if new_name != name {
                 crate::groups::rename_member(d, &name, &new_name);
+            }
+            if let Some(now) = d.members.get(i).cloned() {
+                me.allow_in(d, &user, crate::roles::ADMIN, &[&now])?;
             }
             Ok((e, out))
         });
@@ -465,6 +494,9 @@ fn remove(m: &Manager, ctx: &mut Context, user: &str, name: String) {
             let i = d
                 .index(&name)
                 .ok_or_else(|| Refusal::NotFound(not_found(&name)))?;
+            if let Some(old) = d.members.get(i).cloned() {
+                me.allow_in(d, &user, crate::roles::ADMIN, &[&old])?;
+            }
             d.members.remove(i);
             crate::groups::rename_member(d, &name, "");
             Ok((entry("node.remove", &name, ""), ()))
@@ -504,7 +536,13 @@ fn test_result(
 fn test_draft(m: &Manager, ctx: &mut Context, user: &str) {
     let Some(input) = decode(ctx) else { return };
     match input.member(None, &crate::now_text()) {
-        Ok(mem) => test(m, ctx, user, mem, true, None),
+        Ok(mem) => {
+            // A draft is an admin's of the member it would be (I139).
+            if let Err(e) = m.allow_in(&m.doc(), user, crate::roles::ADMIN, &[&mem]) {
+                return ctx.respond(e.response());
+            }
+            test(m, ctx, user, mem, true, None);
+        }
         Err(e) => ctx.respond(Refusal::Field(e).response()),
     }
 }
@@ -523,6 +561,11 @@ fn test_saved(m: &Manager, ctx: &mut Context, user: &str, name: &str) {
     let Some(saved) = m.members().into_iter().find(|x| x.name == name) else {
         return ctx.respond(fail(404, &not_found(name)));
     };
+    // A test of the member as kept is an operator's; of a draft, an admin's (I139).
+    let role = if draft { crate::roles::ADMIN } else { OPERATOR };
+    if let Err(e) = m.allow(user, &Need::on(role, vec![name.to_owned()])) {
+        return ctx.respond(e.response());
+    }
     let mem = match input {
         Some(mut i) => {
             if i.name.is_empty() {

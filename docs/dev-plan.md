@@ -262,7 +262,7 @@ Tunnel and LLM track; I110–I114 are the WebRTC track, and I115–I119 are rese
 | I136 | Cluster VII: templates; `/node/managed` | I135 | done |
 | I137 | Cluster VIII: rollouts with health gates | I136 | done |
 | I138 | Cluster IX: drift and alerts; `/config/check` | I137 | done |
-| I139 | Cluster X: users, roles and the audit log | I137 | todo |
+| I139 | Cluster X: users, roles and the audit log | I137 | done |
 | I139b | Cluster XI: members behind NAT, linking out | I132 | todo |
 | I139c | Cluster XII: metrics, logs and certificates across members; `akit cluster` | I138 | todo |
 
@@ -2305,6 +2305,8 @@ default: no `admin.cluster`, no Cluster menu, no outgoing calls.
 - **Done when**: fit's `roles` and `audit` tests pass ported.
 - **Touches**: `akit-cluster`.
 - **fit**: `cluster/{roles,audit}.go`; I148.
+- **Status**: done (2026-11-27). The manager's own console gated through the cluster module; no
+  line diffs in the audit log (decision 041, 11). See the progress log.
 
 ### I139b Cluster XI: members behind NAT, linking out
 

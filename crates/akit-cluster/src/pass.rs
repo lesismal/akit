@@ -545,6 +545,15 @@ pub(crate) fn pass_on(m: &Manager, ctx: &mut Context, user: &str) {
             &format!("no member is named {}", json::quoted(&name)),
         ));
     };
+    // A member's pages are read by a viewer of it, and changed by an admin of it (I139).
+    let role = if writes(&method, &rt, ctx.req().query().unwrap_or("")) {
+        crate::roles::ADMIN
+    } else {
+        crate::roles::VIEWER
+    };
+    if let Err(e) = m.allow(user, &crate::roles::Need::on(role, vec![name.clone()])) {
+        return ctx.respond(e.response());
+    }
     if rt.what == "module" && n.spec.access != ACCESS_CONSOLE {
         return ctx.respond(fail(
             404,

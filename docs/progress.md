@@ -146,6 +146,35 @@ done and where the work differs from the plan.
   a draining server), a port range (its port taken, 508 when used up, free again after a delete),
   `TestLimiter`; the fib interop (`tests/fib_turn.rs`) against akit and fit alike, on macOS.
 
+### 2026-11-27: I139, users, roles and the audit log
+
+- Roles (`akit_cluster::roles`, fit's `cluster/roles.go`): viewer, operator and admin,
+  cluster-wide or on groups (64 a user, 256 users), a member's role the highest of the cluster's
+  and its groups', a default role for console users not named, `admin.cluster.admins`
+  cluster-wide admins whatever they say; open (every user an admin) until roles are set. Kept as
+  the document's `access`, fit's, which no longer leaves the document read-only (the document is
+  written as version 3); a group renamed or removed followed.
+- Every endpoint checked as fit's: a read needs a role somewhere, a change a cluster-wide admin,
+  but for those that check what they touch: a member added, changed, removed or tested as a draft
+  (an admin of it), tested as kept (an operator), read (a viewer); the switcher (a viewer, an
+  admin to change); operations (an operator of each member); syncs, desired configs, imports and
+  comparisons (a viewer); rollouts (an operator of a template's or a sync's members, an admin of a
+  copy's and a patch's, a viewer of what a copy copies; a template's draft a cluster-wide admin's);
+  silences (an operator of their member or their rule's group). A refusal is 403 with the role it
+  needs and where (fit's `ErrForbidden`). The name `Admin API` is refused as a console user.
+- The manager's own console, on a manager with roles: reads, the cluster module's endpoints, the
+  switcher, password changes, the text tools and dry runs for anyone; the rest a cluster-wide
+  admin's, through `Module::console_gate`, which `akit-admin`'s console asks of the cluster module
+  (fit's `ConsoleGate`).
+- `GET /api/me` (the user's roles on the cluster, each group and each member), `GET`/`PUT
+  /api/access` (every console user, the admins, the groups; `If-Match`; at least one cluster-wide
+  admin left), in the audit log as `access.update`. The audit log's filters and JSON lines were
+  there since I132.
+- Tests: `roles::tests` (roles resolved, checked, kept, renamed, refusals described); akit's
+  `roles_and_audit` (open, then roles set, refused without an admin; a viewer and a group's
+  operator: groups, operations, reads, the switcher, members, silences and the manager's own
+  console allowed or refused; a group renamed; kept across a restart; the audit log as JSON lines).
+
 ### 2026-11-27: I138, drift and alerts; the consistency check on akit
 
 - The consistency check on every akit (`akit_admin::check`, fit's `admin/drift.go`): `GET

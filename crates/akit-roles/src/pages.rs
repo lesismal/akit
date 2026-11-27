@@ -38,6 +38,19 @@ pub trait Module: Send + Sync {
     /// it started, and `None` once it stopped (fit's `Console.URL`): told by the console server,
     /// which knows a port chosen when it starts. Nothing by default.
     fn console_url(&self, _url: Option<&str>) {}
+
+    /// Whether a request of `user` to the console it is served by, past its session's check,
+    /// may go on: `None`, or why not, answered 403. The cluster manager's module bounds by it what
+    /// each user changes of the manager itself (I139, fit's `ConsoleGate`). Nothing by default.
+    fn console_gate(
+        &self,
+        _user: &str,
+        _method: &Method,
+        _path: &str,
+        _query: &str,
+    ) -> Option<String> {
+        None
+    }
 }
 
 /// A module, shared.

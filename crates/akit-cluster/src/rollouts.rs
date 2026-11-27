@@ -1987,6 +1987,27 @@ impl Manager {
         Ok(())
     }
 
+    /// Whether `user` may roll out `kind` on `names` (from `from`): an operator of a template's or
+    /// a sync's members; an admin of a copy's and a patch's, and a viewer of what a copy copies.
+    /// fit's `allowRolloutLocked`.
+    fn allow_rollout(
+        &self,
+        user: &str,
+        kind: &str,
+        from: &str,
+        names: &[String],
+    ) -> Result<(), Refusal> {
+        use crate::roles::{ADMIN, Need, OPERATOR, VIEWER};
+        if kind != KIND_COPY && kind != KIND_PATCH {
+            return self.allow(user, &Need::on(OPERATOR, names.to_vec()));
+        }
+        self.allow(user, &Need::on(ADMIN, names.to_vec()))?;
+        if kind == KIND_PATCH {
+            return Ok(());
+        }
+        self.allow(user, &Need::on(VIEWER, vec![from.to_owned()]))
+    }
+
     /// Plans a rollout: its members read, each one's diff and dry run, on a thread of its own;
     /// answered at once, planning. fit's `PlanRollout`.
     pub(crate) fn plan_rollout(&self, user: &str, mut req: Request) -> Result<String, Refusal> {
@@ -2010,6 +2031,11 @@ impl Manager {
         }
         let d = self.doc();
         let names = targets(&d, &req)?;
+        self.allow_rollout(user, &req.kind, &req.from, &names)?;
+        if req.kind == KIND_TEMPLATE && req.config.is_some() {
+            // A template's draft is the template's change: a cluster-wide admin's.
+            self.allow_cluster(&d, user)?;
+        }
         let (config, base) = rollout_config(&d, &req)?;
         let mut ro = lock(&self.0.ro);
         ro.expire();
@@ -2081,6 +2107,12 @@ impl Manager {
         strategy: Strategy,
         exclude: &[String],
     ) -> Result<String, Refusal> {
+        if let Some((kind, from, nodes)) = lock(&self.0.ro)
+            .get(id)
+            .map(|r| (r.kind.clone(), r.from.clone(), r.nodes()))
+        {
+            self.allow_rollout(user, &kind, &from, &nodes)?;
+        }
         self.save_draft(user, id, &strategy, exclude)?;
         self.steerable()?;
         let mut ro = lock(&self.0.ro);
@@ -2247,6 +2279,7 @@ impl Manager {
             return Ok(());
         }
         self.change(user, |d| {
+            self.allow_cluster(d, user)?;
             let Some(i) = d.templates.iter().position(|t| t.name == tpl) else {
                 return Err(Refusal::Conflict(format!(
                     "the template {} was removed since the rollout was planned: plan it again",
@@ -2303,6 +2336,12 @@ impl Manager {
         what: &str,
     ) -> Result<String, Refusal> {
         self.steerable()?;
+        if let Some((kind, from, nodes)) = lock(&self.0.ro)
+            .get(id)
+            .map(|r| (r.kind.clone(), r.from.clone(), r.nodes()))
+        {
+            self.allow_rollout(user, &kind, &from, &nodes)?;
+        }
         let mut ro = lock(&self.0.ro);
         if ro.get(id).is_none() {
             return Err(no_rollout(id));
