@@ -381,7 +381,12 @@ struct Akit {
 
 impl Akit {
     fn start(json: &str) -> Akit {
-        let config = akit_config::from_json(json, None).unwrap_or_else(|e| panic!("{json}: {e}"));
+        let mut config =
+            akit_config::from_json(json, None).unwrap_or_else(|e| panic!("{json}: {e}"));
+        // Two I/O threads, not one a core: the tests run at once, each thread holds an epoll or
+        // io_uring and an eventfd, and one a core on a 16-core host came close to the 1024
+        // descriptors a process may open by default.
+        config.engine.event_loops = 2;
         let slot = EngineSlot::new();
         let registry = Registry::new(&[
             origin::MODULES,

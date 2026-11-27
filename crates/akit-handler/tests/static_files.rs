@@ -60,7 +60,11 @@ fn serve_routes(routes: &str) -> Server {
     let json = format!(
         r#"{{"listeners": [{{"name": "web", "address": "127.0.0.1:0"}}], "routes": {routes}}}"#
     );
-    let config = akit_config::from_json(&json, None).unwrap_or_else(|e| panic!("{json}: {e}"));
+    let mut config = akit_config::from_json(&json, None).unwrap_or_else(|e| panic!("{json}: {e}"));
+    // Two I/O threads, not one a core: the tests run at once, each thread holds an epoll or
+    // io_uring and an eventfd, and one a core on a 16-core host came close to the 1024
+    // descriptors a process may open by default.
+    config.engine.event_loops = 2;
     let cell = GraphCell::new(compile(&config, &registry(), &Env::default()).unwrap());
     let engine = akit_listener::engine(&cell, &options()).unwrap();
     engine.start().unwrap();
