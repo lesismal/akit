@@ -102,6 +102,20 @@ impl Akit {
         }
     }
 
+    /// Its output lines until, for each of `wants`, one has started with it, in any order: stdout
+    /// and stderr are read apart, so lines from the two can swap (as `watch.rs`'s).
+    fn until_all(&self, wants: &[&str]) -> Vec<String> {
+        let mut v: Vec<String> = Vec::new();
+        while !wants.iter().all(|w| v.iter().any(|l| l.starts_with(w))) {
+            let line = self
+                .out
+                .recv_timeout(Duration::from_secs(10))
+                .unwrap_or_else(|e| panic!("waiting for {wants:?} after {v:?}: {e}"));
+            v.push(line);
+        }
+        v
+    }
+
     /// Nothing said for `d`.
     fn quiet(&self, d: Duration) {
         if let Ok(line) = self.out.recv_timeout(d) {
@@ -167,14 +181,18 @@ fn renewed_files_are_served_without_a_restart() {
     std::fs::create_dir_all(&next).unwrap();
     let (c, k) = ca.leaf(&next, "a", &["a.example"]);
     std::fs::copy(&c, &a.0).unwrap();
-    let lines = akit.until("akit: reload failed");
-    assert_eq!(
-        lines[0], "akit: certificate files changed; reloading",
-        "{lines:?}"
-    );
-    // Why, for the running config applied again.
-    let why = akit.until("the running config: ").pop().unwrap();
-    assert!(why.contains("does not match"), "{why}");
+    // "changed" comes on stdout, the failure and why (for the running config applied again) on
+    // stderr: either may come first.
+    let lines = akit.until_all(&[
+        "akit: certificate files changed; reloading",
+        "akit: reload failed",
+        "the running config: ",
+    ]);
+    let why = lines
+        .iter()
+        .find(|l| l.starts_with("the running config: "))
+        .unwrap();
+    assert!(why.contains("does not match"), "{lines:?}");
     assert_eq!(leaf(addr, &roots), served);
     akit.quiet(Duration::from_millis(1000));
     std::fs::copy(&k, &a.1).unwrap();
