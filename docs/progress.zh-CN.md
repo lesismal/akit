@@ -106,6 +106,35 @@
   中继）、`TestReload`（就地修改配额，排空中的服务器回答 508）、端口范围（取其端口，用尽时 508，删除后再次可用）、
   `TestLimiter`；fib 互通测试（`tests/fib_turn.rs`）对 akit 和 fit 结果相同，在 macOS 上运行。
 
+### 2026-11-27：I137，带健康门槛的发布
+
+- 发布（`akit_cluster::rollouts` 和 `rollrun`，fit 的 `cluster/rollouts.go`、`rollrun.go`、`rollsteer.go`、`rolldraft.go` 和
+  `rollapi.go`）：模板的发布，或模板草稿的发布（发布开始时保存为模板，如果计划之后模板已改动则拒绝）；与模板同步；把一个成员配置的部分
+  复制到其他成员；部分补丁（不含变量）。计划读取每个成员：被占用的成员，以及没有列出 `config.if_match`、`config.dry_run` 和
+  `config.versions` 的成员，不就绪；其期望配置、发生变化的部分及其同步状态，以及以读到的 ETag 作 `If-Match` 的试运行，决定它是
+  就绪、未变化还是出错。每个发布最多 8 MiB 的配置和差异；计划一小时后过期。
+- 策略：一次全部、滚动（按数量或百分比），或金丝雀，之后等待人工继续；批次之间的暂停（最多 24 小时）；门槛失败时回滚该批，或回滚所有已
+  应用的成员。每个成员以计划时的 ETag 作 `If-Match` 应用；412 或丢失的回答由其 `GET /node` 的 ETag 判定（已应用、因计划后被改动而
+  跳过，或不确定）。门槛在 `wait_ms` 或 5xx 时间窗之后检查：成员可达且运行新的 ETag；在列出 `config.check` 的成员上漂移不多于之前；
+  时间窗内由 `/status` 的 `requests` 计算的 5xx 比例，从 `min_requests` 起判断（不统计请求的成员在应用任何东西之前就让该批失败）。
+  回滚为以新 ETag 作 `If-Match` 的 `POST /rollback/{n}`；通过门槛的批次的成员会被告知管理端在其上拥有什么。
+- 操控：暂停（当前批次之后）、继续、继续金丝雀之后（go）、中止、回滚（暂停、等待或结束之后）和丢弃（计划）；每一项都记入审计日志
+  （`rollout.plan`、`rollout.start`、`rollout.<action>`、带每个成员结果的 `rollout.end`）。发布占用其成员，排斥操作和其他发布。
+- 按 fit 的写法有类型地保存在存储文档的 `rollouts` 中（成员的配置为 base64，与 Go 写 `[]byte` 一样），随文档的每次写入一起写，一次
+  只排队一个写入。启动时，执行中的发布在停下处暂停，计划中的过期，回滚中的失败。上限：同时 4 个计划中或进行中，保留 50 个，每个成员
+  20 个错误。
+- 线程：计划和执行各占一个自己的线程，在 akio 的客户端上调用成员并等待回答，用 scoped 线程同时 `max_concurrency` 个；批次之间的
+  暂停和门槛的时间窗在条件变量上等待，由暂停、中止和管理端关闭唤醒（关闭时最多等待 2 秒）。端点：`GET`/`POST /api/rollouts`、
+  `GET`/`DELETE /api/rollouts/<id>`、`POST /api/rollouts/<id>/{start,pause,resume,go,abort,rollback}`；会写入的端点在管理端的
+  线程池上运行。
+- 混合集群：从 akit 成员复制时，其 `[redacted]` 密钥被掩码，每个目标保留自己的（决定 041 第 9 点）；fit 的管理端能读取 akit 管理端
+  写下的发布。
+- 测试：`rollouts::tests`（策略，即 fit 的 `TestStrategies`；按 Go 写法的时间和数字；保存形式读回；重启时的状态转换；过期和
+  裁剪；部分和密钥）和 `rollrun::tests`（变化、请求体、请求计数、密钥）；akit 的 `rollouts_with_gates`（滚动批次；未变化的计划，
+  然后丢弃；金丝雀、go、暂停和继续；计划后被改动的成员被跳过；回滚；无法判断的 5xx 门槛和失败并回滚的 5xx 门槛；重启时进行中的发布
+  处于暂停并仍占用成员，然后中止；草稿保存为模板；补丁）和 `mixed_clusters_with_fit`（模板在 fit 成员上发布、从 fit 复制到 akit、
+  fit 的管理端读取这些发布）。
+
 ### 2026-11-27：I136，模板，以及成员知道管理端拥有什么
 
 - 模板（`akit_cluster::templates`，fit 的 `cluster/templates.go`）：配置的一个片段，其顶层成员整体拥有（`admin` 和

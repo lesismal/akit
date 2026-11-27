@@ -7,8 +7,8 @@
 //!
 //! The members are kept in the store's section `cluster` ([`member::SECTION`]), fit's document,
 //! with their passwords and tokens, encrypted with the rest of the store and never answered,
-//! logged or written anywhere else; what akit does not use of the document yet (groups,
-//! templates, rollouts, links, roles) is kept as it was read. A member is reached through its
+//! logged or written anywhere else; what akit does not use of the document yet (links, roles)
+//! is kept as it was read. A member is reached through its
 //! console, logged in with a user name and a password, or its Admin API, with its token; its
 //! certificate is verified by the system's CAs, a CA PEM of its own, or a pinned fingerprint.
 //! Members may be akits or fits: what they answer is fit's protocol.
@@ -36,6 +36,9 @@
 //! GET    /api/audit                    the audit log, filtered by user, node and action
 //! GET    /api/me                       the user's roles: before I139, a cluster-wide admin
 //! ```
+//!
+//! Groups and operations ([`groups`], [`ops`]), templates and sync ([`templates`], [`sync`]) and
+//! rollouts ([`rollouts`]) say their own endpoints.
 
 pub mod json;
 pub mod jv;
@@ -47,6 +50,8 @@ mod api;
 pub mod groups;
 pub mod ops;
 pub mod pass;
+pub mod rollouts;
+mod rollrun;
 pub mod sync;
 pub mod templates;
 
@@ -133,6 +138,8 @@ pub enum Refusal {
     Busy(String),
     /// It failed: 500.
     Failed(String),
+    /// The manager is shutting down: 503.
+    Unavailable(String),
 }
 
 impl Refusal {
@@ -146,6 +153,7 @@ impl Refusal {
             Refusal::Conflict(m) => fail(409, m),
             Refusal::Busy(m) => fail(429, m),
             Refusal::Failed(m) => fail(500, m),
+            Refusal::Unavailable(m) => fail(503, m),
         }
     }
 }
@@ -164,7 +172,7 @@ pub(crate) struct Inner {
     interval: Duration,
     lim: Limits,
     max_nodes: usize,
-    concurrency: usize,
+    pub(crate) concurrency: usize,
     system: RootCerts,
     epoch: Instant,
     doc: Mutex<Doc>,
@@ -183,6 +191,9 @@ pub(crate) struct Inner {
     pub(crate) ops: Mutex<ops::Ops>,
     /// The members' sync states against the templates (I136).
     pub(crate) tpl: Mutex<sync::Tpl>,
+    /// The rollouts (I137), and their threads waiting for a pause, a gate's window or a person.
+    pub(crate) ro: Mutex<rollouts::Ro>,
+    pub(crate) ro_cv: Condvar,
     pub(crate) pass_held: AtomicUsize,
     /// The manager's schema and its digest, `sha256:` and hex.
     pub(crate) schema: &'static [u8],
@@ -206,7 +217,7 @@ fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 }
 
 /// Now, as fit writes a member's times: RFC 3339 with nanoseconds, in UTC, unquoted.
-fn now_text() -> String {
+pub(crate) fn now_text() -> String {
     json::time(SystemTime::now()).trim_matches('"').to_owned()
 }
 
@@ -266,6 +277,8 @@ impl Manager {
             pass: Mutex::new(pass::Hub::default()),
             ops: Mutex::new(ops::Ops::default()),
             tpl: Mutex::new(sync::Tpl::default()),
+            ro: Mutex::new(rollouts::Ro::default()),
+            ro_cv: Condvar::new(),
             pass_held: AtomicUsize::new(0),
             schema: o.schema,
             schema_digest: format!(
@@ -275,6 +288,7 @@ impl Manager {
             o,
         });
         let m = Manager(inner);
+        m.load_rollouts();
         m.sync();
         let (tx, rx) = mpsc::sync_channel(1);
         *lock(&m.0.wake) = Some(tx);
@@ -303,6 +317,9 @@ impl Manager {
         if let Some(h) = lock(&self.0.poller).take() {
             let _ = h.join();
         }
+        // The rollouts waiting stop waiting; those calling members stop once answered.
+        drop(lock(&self.0.ro));
+        self.0.ro_cv.notify_all();
         let nodes: Vec<Arc<Node>> = lock(&self.0.nodes).drain().map(|(_, n)| n).collect();
         let (tx, rx) = mpsc::channel::<()>();
         for n in &nodes {
@@ -326,6 +343,7 @@ impl Manager {
                 t.close();
             }
         }
+        self.wait_rollouts(CLOSE_WAIT);
     }
 
     /// The members, as the store keeps them, by name.
@@ -486,10 +504,7 @@ impl Manager {
             Value::String(format!("r{}", d.revision)),
         ));
         d.append_audit(Value::Object(e));
-        self.0
-            .o
-            .store
-            .set_section(SECTION, &d.marshal())
+        self.write_doc(&mut d)
             .map_err(|e| Refusal::Failed(format!("saving the members: {e}")))?;
         {
             let mut g = lock(&self.0.doc);
@@ -539,8 +554,12 @@ impl Manager {
             ];
             e.extend(entry);
             d.append_audit(Value::Object(e));
-            match me.0.o.store.set_section(SECTION, &d.marshal()) {
-                Ok(()) => lock(&me.0.doc).doc.audit = d.audit,
+            match me.write_doc(&mut d) {
+                Ok(()) => {
+                    let mut g = lock(&me.0.doc);
+                    g.doc.audit = d.audit;
+                    g.doc.rollouts = d.rollouts;
+                }
                 Err(e) => (me.0.o.log)(format!("cluster: the audit log: {e}")),
             }
             finish();
@@ -553,6 +572,13 @@ impl Manager {
                 f();
             }
         }
+    }
+
+    /// Writes `d` to the store with the rollouts as they are now: every write of the document
+    /// carries them (fit's `storedRolloutsLocked`). On the manager's pool.
+    pub(crate) fn write_doc(&self, d: &mut Document) -> Result<(), String> {
+        d.rollouts = self.rollouts_json();
+        self.0.o.store.set_section(SECTION, &d.marshal())
     }
 
     /// Runs `job` on the manager's pool: `false` when too many wait.

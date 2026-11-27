@@ -260,7 +260,7 @@ Tunnel and LLM track; I110–I114 are the WebRTC track, and I115–I119 are rese
 | I134 | Cluster V: a member's own pages opened from the manager (`/api/n/<member>/...`) | I133 | done |
 | I135 | Cluster VI: groups and operations on many | I133 | done |
 | I136 | Cluster VII: templates; `/node/managed` | I135 | done |
-| I137 | Cluster VIII: rollouts with health gates | I136 | todo |
+| I137 | Cluster VIII: rollouts with health gates | I136 | done |
 | I138 | Cluster IX: drift and alerts; `/config/check` | I137 | todo |
 | I139 | Cluster X: users, roles and the audit log | I137 | todo |
 | I139b | Cluster XI: members behind NAT, linking out | I132 | todo |
@@ -2283,6 +2283,9 @@ default: no `admin.cluster`, no Cluster menu, no outgoing calls.
 - **Done when**: fit's `rollouts` tests pass ported, with akit and fit members.
 - **Touches**: `akit-cluster`, `akit-admin` (`/status`'s `requests`).
 - **fit**: `cluster/{rollouts,rollrun,rollsteer,rolldraft,rollapi}.go`; I146.
+- **Status**: done (2026-11-27). The drift gate applies where a member lists `config.check` (fit
+  members; akit members from I138); a copy from an akit member keeps each target's own secrets; a
+  plan and a run each on a thread of their own (decision 041, 9). See the progress log.
 
 ### I138 Cluster IX: drift and alerts
 

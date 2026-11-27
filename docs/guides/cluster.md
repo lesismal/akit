@@ -90,6 +90,20 @@ member's config. Each member is told what the manager owns there and marks those
 pages. A secret in a template is shown as `[secret]`; an akit member's secrets are compared as its
 API answers them, redacted.
 
+## Rollouts
+
+**Cluster → Rollouts** changes many members' configs at once: a template (or a draft of it, saved
+as the template when the rollout starts), a sync with the templates, parts of one member's config
+copied to others, or a patch of parts. A rollout is planned first: each member's changes and a dry
+run, with the ETag of the config read. Started, it applies all at once, in rolling batches, or a
+canary first, which then waits for a person to go on; each member is applied with `If-Match` that
+ETag, so a member changed since the plan is skipped, never overwritten. After each batch a gate
+checks each member: reachable and running the config applied, no more drift than before (where the
+member checks its config), and, when set, its share of 5xx over a window from its `GET /status`
+(its config must count requests: `metrics`). A failed gate rolls back its batch, or every member
+applied. A rollout is paused, resumed, aborted or rolled back by a person; it is kept in the
+store, and one under way when the manager stops is found paused, to be resumed.
+
 ## Mixed clusters
 
 - An akit manager manages akit and fit members alike, by console or by token; a fit member's
@@ -97,12 +111,13 @@ API answers them, redacted.
 - A fit manager manages an akit member by its Admin API's token. akit's console takes its CSRF
   token in `X-Akit-Csrf` only (decision 037), so a fit manager logged in to an akit console can
   read it but not write.
-- akit's and fit's managers share a store: the members, and what akit's manager does not use yet
-  (rollouts), are kept as they were. A store whose document sets users' roles
-  is shown read-only by akit's manager until I139.
+- akit's and fit's managers share a store: each reads the members, groups, templates and rollouts
+  the other wrote, and keeps what it does not use as it was. A store whose document sets users'
+  roles is shown read-only by akit's manager until I139.
 
 ## Limits
 
 `max_nodes` members (256); `max_concurrency` members polled at once (8), each call within
 `timeout` and its answer within `max_response_bytes` (4 MiB); 4 tests and 8 reads of members at
-once; the audit log keeps the last 1,000 changes (about 2 MiB).
+once; the audit log keeps the last 1,000 changes (about 2 MiB); 4 rollouts planned or under way
+and 50 kept, 8 MiB of configs and diffs a rollout, a plan started within an hour.

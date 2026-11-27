@@ -250,7 +250,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I134 | 集群 V：从管理端打开成员自己的页面（`/api/n/<member>/...`） | I133 | done |
 | I135 | 集群 VI：分组和对多个成员的操作 | I133 | done |
 | I136 | 集群 VII：模板；`/node/managed` | I135 | done |
-| I137 | 集群 VIII：带健康门槛的发布 | I136 | todo |
+| I137 | 集群 VIII：带健康门槛的发布 | I136 | done |
 | I138 | 集群 IX：漂移和告警；`/config/check` | I137 | todo |
 | I139 | 集群 X：用户、角色和审计日志 | I137 | todo |
 | I139b | 集群 XI：NAT 之后主动外连的成员 | I132 | todo |
@@ -1918,6 +1918,8 @@ fit 工作台页面。成员尽量少改动：管理端使用成员已有的 API
 - **完成标准**：fit 的 `rollouts` 测试移植后通过，成员有 akit 也有 fit。
 - **涉及**：`akit-cluster`、`akit-admin`（`/status` 的 `requests`）。
 - **fit**：`cluster/{rollouts,rollrun,rollsteer,rolldraft,rollapi}.go`；I146。
+- **状态**：done（2026-11-27）。漂移门槛只用于列出 `config.check` 的成员（fit 成员；akit 成员从 I138 起）；从 akit 成员复制时
+  每个目标保留自己的密钥；计划和执行各在自己的线程上（决定 041 第 9 点）。见进度日志。
 
 ### I138 集群 IX：漂移和告警
 

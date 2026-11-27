@@ -40,16 +40,16 @@ const REDACTED: &str = "[redacted]";
 
 /// A part a member's templates render, from the template that wins it.
 #[derive(Debug, Clone)]
-struct Rendered {
-    member: String,
-    name: String,
-    template: String,
-    overrides: Vec<String>,
-    value: Value,
+pub(crate) struct Rendered {
+    pub(crate) member: String,
+    pub(crate) name: String,
+    pub(crate) template: String,
+    pub(crate) overrides: Vec<String>,
+    pub(crate) value: Value,
 }
 
 impl Rendered {
-    fn display(&self) -> String {
+    pub(crate) fn display(&self) -> String {
         jv::display(&self.member, &self.name)
     }
 }
@@ -163,7 +163,7 @@ impl Input {
 
 /// `cfg` with the parts taken from the templates: fit's `desired`. A new element goes at the end
 /// of its list.
-fn desired(cfg: &Value, parts: &[Rendered]) -> Value {
+pub(crate) fn desired(cfg: &Value, parts: &[Rendered]) -> Value {
     let mut root = cfg.clone();
     for p in parts {
         if p.name.is_empty() {
@@ -190,38 +190,38 @@ fn desired(cfg: &Value, parts: &[Rendered]) -> Value {
 
 /// A part's sync state, fit's `PartSync`.
 #[derive(Debug, Clone)]
-struct PartSync {
-    path: String,
-    member: String,
-    name: String,
-    template: String,
-    overrides: Vec<String>,
-    state: &'static str,
-    reason: &'static str,
-    have: Option<String>,
-    want: Option<String>,
+pub(crate) struct PartSync {
+    pub(crate) path: String,
+    pub(crate) member: String,
+    pub(crate) name: String,
+    pub(crate) template: String,
+    pub(crate) overrides: Vec<String>,
+    pub(crate) state: &'static str,
+    pub(crate) reason: &'static str,
+    pub(crate) have: Option<String>,
+    pub(crate) want: Option<String>,
 }
 
 /// A member's sync state, fit's `MemberSync`.
 #[derive(Debug, Clone)]
 pub(crate) struct MemberSync {
-    node: String,
-    state: &'static str,
-    error: Option<Problem>,
-    errors: Vec<String>,
-    checked: SystemTime,
-    config_etag: String,
-    templates: Vec<String>,
-    parts: Vec<PartSync>,
-    counts: [usize; 3],
-    note: String,
-    released: Vec<String>,
-    managed: String,
-    managed_error: String,
+    pub(crate) node: String,
+    pub(crate) state: &'static str,
+    pub(crate) error: Option<Problem>,
+    pub(crate) errors: Vec<String>,
+    pub(crate) checked: SystemTime,
+    pub(crate) config_etag: String,
+    pub(crate) templates: Vec<String>,
+    pub(crate) parts: Vec<PartSync>,
+    pub(crate) counts: [usize; 3],
+    pub(crate) note: String,
+    pub(crate) released: Vec<String>,
+    pub(crate) managed: String,
+    pub(crate) managed_error: String,
 }
 
 impl MemberSync {
-    fn failed(node: &str, p: Problem) -> MemberSync {
+    pub(crate) fn failed(node: &str, p: Problem) -> MemberSync {
         MemberSync {
             node: node.to_owned(),
             state: "error",
@@ -449,9 +449,9 @@ fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 
 /// A member read and compared.
 pub(crate) struct Out {
-    sync: MemberSync,
-    config: Option<Value>,
-    desired: Option<Value>,
+    pub(crate) sync: MemberSync,
+    pub(crate) config: Option<Value>,
+    pub(crate) desired: Option<Value>,
 }
 
 type OutDone = Box<dyn FnOnce(Out) + Send>;
@@ -528,14 +528,30 @@ impl Manager {
     /// Reads member `name` and compares it with its templates; with `push`, tells it what the
     /// manager owns there. fit's `syncMember`.
     pub(crate) fn sync_member(&self, name: &str, push: bool, done: OutDone) {
+        self.sync_draft(name, push, None, done);
+    }
+
+    /// [`sync_member`](Manager::sync_member), with template `draft.0`'s config `draft.1` in
+    /// place of the one kept: a rollout's draft (fit's `draftMember`), whose sync state is
+    /// neither kept nor told.
+    pub(crate) fn sync_draft(
+        &self,
+        name: &str,
+        push: bool,
+        draft: Option<(String, Value)>,
+        done: OutDone,
+    ) {
         let (me, name2) = (self.clone(), name.to_owned());
+        let drafting = draft.is_some();
         let fail = move |me: &Manager, name: &str, p: Problem, done: OutDone| {
             let out = Out {
                 sync: MemberSync::failed(name, p),
                 config: None,
                 desired: None,
             };
-            me.keep_sync(&out, false, false);
+            if !drafting {
+                me.keep_sync(&out, false, false);
+            }
             done(out);
         };
         self.call_member(
@@ -560,8 +576,9 @@ impl Manager {
                         };
                         let caps = json::strings_of(&info, "capabilities");
                         if !caps.iter().any(|c| c == CAP_MANAGED) {
-                            return me2
-                                .finish_sync(&name2, &info, &cfg, &etag, None, "", push, done);
+                            return me2.finish_sync(
+                                &name2, &info, &cfg, &etag, None, "", push, draft, done,
+                            );
                         }
                         let me3 = me2.clone();
                         me2.call_member(
@@ -585,6 +602,7 @@ impl Manager {
                                         Some(rec),
                                         &tag,
                                         push,
+                                        draft,
                                         done,
                                     );
                                 }
@@ -606,6 +624,7 @@ impl Manager {
         old: Option<Record>,
         old_tag: &str,
         push: bool,
+        draft: Option<(String, Value)>,
         done: OutDone,
     ) {
         let Some(mut input) = self.input_of(name) else {
@@ -618,6 +637,14 @@ impl Manager {
         };
         input.id = json::str_of(info, "id").to_owned();
         input.hostname = json::str_of(info, "hostname").to_owned();
+        let drafting = draft.is_some();
+        if let Some((tpl, cfg)) = draft {
+            for t in &mut input.templates {
+                if t.name == tpl {
+                    t.config.clone_from(&cfg);
+                }
+            }
+        }
         let redacts = info.get("akit_version").is_some();
         let base = old.clone().unwrap_or_default();
         let (mut sync, rec, want) = compare(&input, cfg, &base, &self.self_record(), redacts);
@@ -633,6 +660,9 @@ impl Manager {
             config: Some(cfg.clone()),
             desired: Some(want.clone()),
         };
+        if drafting {
+            return done(out(sync));
+        }
         match old {
             None => {
                 if owns {
@@ -880,7 +910,7 @@ impl Manager {
 }
 
 /// The parts of a member's config, as a template could own them: fit's `ConfigPart`.
-fn parts_of(cfg: &Value) -> Vec<(String, String, String, bool, String, Value)> {
+pub(crate) fn parts_of(cfg: &Value) -> Vec<(String, String, String, bool, String, Value)> {
     let mut out = Vec::new();
     let Value::Object(ms) = cfg else { return out };
     for (k, v) in ms {

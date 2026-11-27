@@ -595,6 +595,7 @@ fn mixed_clusters_with_fit() {
         "-watch-certs=false",
     ]);
     let ak_api = ak.addr("admin API on ");
+    let ak_web = ak.addr("listener \"web\" on ");
 
     let mcfg = manager(&d, &h);
     let m = Run::start(&["-admin", "-c", s(&mcfg), "-watch-certs=false"]);
@@ -664,6 +665,29 @@ fn mixed_clusters_with_fit() {
         "{sync}"
     );
     wait_admin(fb_api, token, "/node/managed", |b| b.contains("routes[x]"));
+    // Rollouts on fit members (I137): the template, a batch at a time, gated by fit's GET /node;
+    // then its route copied from fit's fb to akit's ak.
+    let (tid, r) = plan(&b, r#"{"kind": "template", "template": "t"}"#);
+    assert_eq!(rstatus(&r, "fa"), "ready", "{r:?}");
+    assert_eq!(rstatus(&r, "fb"), "ready", "{r:?}");
+    let (st, v) = steer(
+        &b,
+        &tid,
+        "start",
+        r#"{"strategy": {"mode": "rolling", "batch_size": 1, "gate": {"wait_ms": 100}}}"#,
+    );
+    assert_eq!(st, 200, "{v}");
+    let r = wait_rollout(&b, &tid, "done", state_is("done"));
+    assert_eq!(rstatus(&r, "fb"), "done", "{r:?}");
+    let (cid, r) = plan(
+        &b,
+        r#"{"kind": "copy", "from": "fb", "paths": ["routes[x]"], "nodes": ["ak"]}"#,
+    );
+    assert_eq!(rstatus(&r, "ak"), "ready", "{r:?}");
+    let (st, v) = steer(&b, &cid, "start", r#"{"strategy": {"mode": "all"}}"#);
+    assert_eq!(st, 200, "{v}");
+    wait_rollout(&b, &cid, "done", state_is("done"));
+    assert_eq!(get(ak_web, "/x"), "fb");
     let (code, _, err) = m.stop();
     assert_eq!(code, Some(0), "{err}");
 
@@ -679,6 +703,13 @@ fn mixed_clusters_with_fit() {
     for n in ["fa", "fb", "ak"] {
         wait_state(&fb_browser, n, "up", "");
     }
+    // And the rollouts akit's manager kept, ended.
+    let (st, _, list) = fb_browser.call("GET", "/api/m/cluster/rollouts", "");
+    assert_eq!(st, 200, "{list}");
+    for id in [&tid, &cid] {
+        assert!(list.contains(&format!(r#""id":"{id}""#)), "{id}: {list}");
+    }
+    assert!(!list.contains(r#""state":"running""#), "{list}");
     let _ = fm.stop();
     let _ = (fa.stop(), fb.stop(), ak.stop());
 }
@@ -1357,4 +1388,374 @@ fn templates_and_sync() {
         "{audit}"
     );
     let _ = (m.stop(), a.stop(), bm.stop());
+}
+
+/// Waits for rollout `id` to meet `cond`: the rollout as `GET /api/m/cluster/rollouts/<id>`
+/// answers it.
+fn wait_rollout(
+    b: &Browser,
+    id: &str,
+    what: &str,
+    cond: impl Fn(&akit_config::value::Value) -> bool,
+) -> akit_config::value::Value {
+    let deadline = Instant::now() + Duration::from_secs(40);
+    loop {
+        let (st, _, body) = b.call("GET", &format!("/api/m/cluster/rollouts/{id}"), "");
+        assert_eq!(st, 200, "{body}");
+        let v = parse(&body);
+        if cond(&v) {
+            return v;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "rollout {id}: waiting for {what}: {body}"
+        );
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
+fn state_is(state: &'static str) -> impl Fn(&akit_config::value::Value) -> bool {
+    move |r| str_member(r, "state") == state
+}
+
+/// The status of member `node` in rollout `r`.
+fn rstatus(r: &akit_config::value::Value, node: &str) -> String {
+    let Some(akit_config::value::Value::Array(ms)) = r.get("members") else {
+        return String::new();
+    };
+    ms.iter()
+        .find(|m| str_member(m, "node") == node)
+        .map(|m| str_member(m, "status").to_owned())
+        .unwrap_or_default()
+}
+
+/// Plans a rollout: its ID, once planned.
+fn plan(b: &Browser, body: &str) -> (String, akit_config::value::Value) {
+    let (st, _, v) = b.call("POST", "/api/m/cluster/rollouts", body);
+    assert_eq!(st, 202, "{body}: {v}");
+    assert!(v.contains(r#""state":"planning""#), "{v}");
+    let id = str_member(&parse(&v), "id").to_owned();
+    let r = wait_rollout(b, &id, "its plan", state_is("planned"));
+    (id, r)
+}
+
+fn steer(b: &Browser, id: &str, action: &str, body: &str) -> (u16, String) {
+    let (st, _, v) = b.call(
+        "POST",
+        &format!("/api/m/cluster/rollouts/{id}/{action}"),
+        body,
+    );
+    (st, v)
+}
+
+/// Rollouts with health gates (I137, fit's `rollouts` tests): a template rolled out in rolling
+/// batches; a plan in sync unchanged, and discarded; a canary that waits, a person's go, pause and
+/// resume; a member changed since the plan skipped, not overwritten; a person's rollback; a gate
+/// on the share of 5xx that fails and rolls its batch back, and one that cannot be judged where
+/// requests are not counted; a manager restarted with a rollout under way finds it paused, its
+/// members held, and an abort ends it.
+#[test]
+fn rollouts_with_gates() {
+    let d = Dir::new("rollouts");
+    let h = hash("pw");
+    let a = Run::start(&["-c", s(&console_member(&d, "a", &h)), "-watch-certs=false"]);
+    let a_console = a.addr("console on http://");
+    let a_web = a.addr("listener \"web\" on ");
+    let tb = "a-token-of-member-b-0123456789";
+    let bm = Run::start(&["-c", s(&token_member(&d, "b", tb)), "-watch-certs=false"]);
+    let b_api = bm.addr("admin API on ");
+    let b_web = bm.addr("listener \"web\" on ");
+    // c counts its requests, and answers /boom with a 500.
+    let tc = "a-token-of-member-c-0123456789";
+    let tcf = d.file("c.token", tc);
+    let ccfg = d.file(
+        "c.json",
+        &format!(
+            r#"{{"admin": {{"address": "127.0.0.1:0", "token_file": {}}}, "metrics": {{}},
+                "listeners": [{{"name": "web", "address": "127.0.0.1:0"}}],
+                "routes": [{{"name": "boom", "match": {{"path": ["/boom"]}}, "handler": {{"module": "respond", "params": {{"status": 500, "body": "boom"}}}}}},
+                           {{"handler": {{"module": "respond", "params": {{"body": "one"}}}}}}]}}"#,
+            js(&tcf)
+        ),
+    );
+    let cm = Run::start(&["-c", s(&ccfg), "-watch-certs=false"]);
+    let c_api = cm.addr("admin API on ");
+    let c_web = cm.addr("listener \"web\" on ");
+    let mcfg = manager(&d, &h);
+    let m = Run::start(&["-admin", "-c", s(&mcfg), "-watch-certs=false"]);
+    let mut b = Browser::new(m.addr("console on http://"));
+    assert_eq!(b.login("ada", "pw").0, 200);
+    add(
+        &b,
+        &format!(
+            r#"{{"name": "a", "url": "http://{a_console}", "username": "ada", "password": "pw", "labels": {{"region": "eu"}}}}"#
+        ),
+    );
+    for (n, api, t) in [("b", b_api, tb), ("c", c_api, tc)] {
+        add(
+            &b,
+            &format!(
+                r#"{{"name": "{n}", "url": "http://{api}", "access": "admin_api", "token": "{t}", "labels": {{"region": "eu"}}}}"#
+            ),
+        );
+    }
+    for n in ["a", "b", "c"] {
+        wait_state(&b, n, "up", "");
+    }
+    let (st, _, g) = b.call(
+        "POST",
+        "/api/m/cluster/groups",
+        r#"{"name": "eu", "selector": "region=eu"}"#,
+    );
+    assert_eq!(st, 201, "{g}");
+    let tpl = |v: &str| {
+        format!(
+            r#"{{"name": "base", "groups": ["eu"], "config": {{"routes": [{{"name": "tpl", "match": {{"path": ["/tpl"]}},
+            "handler": {{"module": "respond", "params": {{"body": "${{node.name}} {v}"}}}}}}]}}}}"#
+        )
+    };
+    let (st, _, v) = b.call("POST", "/api/m/cluster/templates", &tpl("v1"));
+    assert_eq!(st, 201, "{v}");
+
+    // The template, planned: each member's change and dry run; then rolled out two at a time.
+    let (st, _, bad) = b.call("POST", "/api/m/cluster/rollouts", r#"{"kind": "nope"}"#);
+    assert_eq!(st, 400, "{bad}");
+    let (id, r) = plan(
+        &b,
+        r#"{"kind": "template", "template": "base", "description": "v1"}"#,
+    );
+    for n in ["a", "b", "c"] {
+        assert_eq!(rstatus(&r, n), "ready", "{r:?}");
+    }
+    let (_, _, one) = b.call("GET", &format!("/api/m/cluster/rollouts/{id}"), "");
+    assert!(
+        one.contains(r#""path":"routes[tpl]","state":"added""#),
+        "{one}"
+    );
+    let (_, _, list) = b.call("GET", "/api/m/cluster/rollouts", "");
+    assert!(
+        list.contains(r#""max_active":4"#) && !list.contains("\"changes\""),
+        "{list}"
+    );
+    let (st, v) = steer(
+        &b,
+        &id,
+        "start",
+        r#"{"strategy": {"mode": "rolling", "batch_size": 4}}"#,
+    );
+    assert_eq!(st, 400, "{v}");
+    let (st, v) = steer(
+        &b,
+        &id,
+        "start",
+        r#"{"strategy": {"mode": "rolling", "batch_size": 2, "gate": {"wait_ms": 100}}}"#,
+    );
+    assert_eq!(st, 200, "{v}");
+    let r = wait_rollout(&b, &id, "done", state_is("done"));
+    assert!(
+        member(&r, "counts").contains("done") && rstatus(&r, "c") == "done",
+        "{r:?}"
+    );
+    assert_eq!(get(a_web, "/tpl"), "a v1");
+    assert_eq!(get(b_web, "/tpl"), "b v1");
+    assert_eq!(get(c_web, "/tpl"), "c v1");
+
+    // Planned again: in sync, nothing to start; the plan discarded.
+    let (id, r) = plan(&b, r#"{"kind": "template", "template": "base"}"#);
+    assert_eq!(rstatus(&r, "a"), "unchanged", "{r:?}");
+    let (st, v) = steer(&b, &id, "start", r#"{"strategy": {"mode": "all"}}"#);
+    assert_eq!(st, 409, "{v}");
+    let (st, _, v) = b.call("DELETE", &format!("/api/m/cluster/rollouts/{id}"), "");
+    assert_eq!(st, 200, "{v}");
+    assert!(v.contains(&format!(r#""discarded":"{id}""#)), "{v}");
+    let (st, _, _) = b.call("GET", &format!("/api/m/cluster/rollouts/{id}"), "");
+    assert_eq!(st, 404);
+
+    // v2 by a sync, a canary first; c changed since the plan is skipped.
+    let (st, _, v) = b.call("PUT", "/api/m/cluster/templates/base", &tpl("v2"));
+    assert_eq!(st, 200, "{v}");
+    let (id, r) = plan(&b, r#"{"kind": "sync", "group": "eu"}"#);
+    assert_eq!(rstatus(&r, "c"), "ready", "{r:?}");
+    let (st, head, _) = b.call("GET", "/api/n/c/m/admin/config", "");
+    assert_eq!(st, 200);
+    let etag = header_of(&head, "ETag");
+    let (st, _, resp) = b.call_with(
+        "PUT",
+        "/api/n/c/m/admin/config/routes/0/handler/params/body",
+        &[("If-Match", &etag)],
+        r#""boom!""#,
+    );
+    assert_eq!(st, 200, "{resp}");
+    let (st, v) = steer(
+        &b,
+        &id,
+        "start",
+        r#"{"strategy": {"mode": "canary", "canary": 1, "batch_size": 1, "pause_ms": 60000, "gate": {"wait_ms": 100}}}"#,
+    );
+    assert_eq!(st, 200, "{v}");
+    let r = wait_rollout(&b, &id, "its canary", state_is("waiting"));
+    assert_eq!(rstatus(&r, "a"), "done", "{r:?}");
+    assert_eq!(get(a_web, "/tpl"), "a v2");
+    assert_eq!(get(b_web, "/tpl"), "b v1");
+    let (st, v) = steer(&b, &id, "pause", "");
+    assert_eq!(st, 409, "{v}");
+    let (st, v) = steer(&b, &id, "go", "");
+    assert_eq!(st, 200, "{v}");
+    // b's batch passes; the pause before c's is cut short by a person's pause.
+    wait_rollout(&b, &id, "the pause after b", |r| {
+        rstatus(r, "b") == "done" && r.get("next_at").is_some()
+    });
+    let (st, v) = steer(&b, &id, "pause", "");
+    assert_eq!(st, 200, "{v}");
+    let r = wait_rollout(&b, &id, "paused", state_is("paused"));
+    assert!(
+        str_member(&r, "reason").contains("paused by a person"),
+        "{r:?}"
+    );
+    assert_eq!(rstatus(&r, "c"), "pending", "{r:?}");
+    let (st, v) = steer(&b, &id, "resume", "");
+    assert_eq!(st, 200, "{v}");
+    let r = wait_rollout(&b, &id, "done", state_is("done"));
+    assert_eq!(rstatus(&r, "c"), "skipped", "{r:?}");
+    let (_, _, one) = b.call("GET", &format!("/api/m/cluster/rollouts/{id}"), "");
+    assert!(one.contains("it was not overwritten"), "{one}");
+    assert_eq!(get(c_web, "/tpl"), "c v1");
+    assert_eq!(get(c_web, "/boom"), "boom!");
+    // A person's rollback: a and b run v1 again.
+    let (st, v) = steer(&b, &id, "rollback", "");
+    assert_eq!(st, 200, "{v}");
+    let r = wait_rollout(&b, &id, "rolled back", state_is("rolled_back"));
+    assert_eq!(rstatus(&r, "a"), "rolled_back", "{r:?}");
+    assert_eq!(get(a_web, "/tpl"), "a v1");
+    assert_eq!(get(b_web, "/tpl"), "b v1");
+
+    // v3: a gate on the share of 5xx where a counts no requests cannot be judged; on c, whose
+    // /boom answers 500s in the window, it fails, and c is rolled back.
+    let (st, _, v) = b.call("PUT", "/api/m/cluster/templates/base", &tpl("v3"));
+    assert_eq!(st, 200, "{v}");
+    let gate = r#"{"strategy": {"mode": "all", "gate": {"wait_ms": 100, "max_5xx_ratio": 0.5, "window_ms": 2000, "min_requests": 5}}}"#;
+    let (id, _) = plan(
+        &b,
+        r#"{"kind": "template", "template": "base", "nodes": ["a"]}"#,
+    );
+    let (st, v) = steer(&b, &id, "start", gate);
+    assert_eq!(st, 200, "{v}");
+    let r = wait_rollout(&b, &id, "failed", state_is("failed"));
+    assert!(
+        str_member(&r, "reason").contains("cannot be gated on a"),
+        "{r:?}"
+    );
+    assert_eq!(get(a_web, "/tpl"), "a v1");
+    let (id, _) = plan(
+        &b,
+        r#"{"kind": "template", "template": "base", "nodes": ["c"]}"#,
+    );
+    let (st, v) = steer(&b, &id, "start", gate);
+    assert_eq!(st, 200, "{v}");
+    wait_rollout(&b, &id, "c's gate", |r| {
+        str_member(r, "state") == "running" && rstatus(r, "c") == "applied"
+    });
+    std::thread::sleep(Duration::from_millis(300));
+    for _ in 0..20 {
+        let (st, _, _) = http(c_web, "GET", "/boom", &[], "");
+        assert_eq!(st, 500);
+    }
+    let r = wait_rollout(&b, &id, "failed", state_is("failed"));
+    let reason = str_member(&r, "reason").to_owned();
+    assert!(
+        reason.contains("the gate of batch 1 failed") && reason.contains("its batch rolled back"),
+        "{r:?}"
+    );
+    assert_eq!(rstatus(&r, "c"), "rolled_back", "{r:?}");
+    assert_eq!(get(c_web, "/tpl"), "c v1");
+
+    // A rollout under way when the manager stops is paused where it stopped, and still holds its
+    // members; aborted, it lets them go.
+    let (id, _) = plan(&b, r#"{"kind": "sync", "nodes": ["a", "b"]}"#);
+    let (st, v) = steer(
+        &b,
+        &id,
+        "start",
+        r#"{"strategy": {"mode": "rolling", "batch_size": 1, "pause_ms": 600000, "gate": {"wait_ms": 0}}}"#,
+    );
+    assert_eq!(st, 200, "{v}");
+    wait_rollout(&b, &id, "the pause after a", |r| {
+        rstatus(r, "a") == "done" && r.get("next_at").is_some()
+    });
+    let (code, _, err) = m.stop();
+    assert_eq!(code, Some(0), "{err}");
+    let m = Run::start(&["-admin", "-c", s(&mcfg), "-watch-certs=false"]);
+    let mut b = Browser::new(m.addr("console on http://"));
+    assert_eq!(b.login("ada", "pw").0, 200);
+    let r = wait_rollout(&b, &id, "paused", state_is("paused"));
+    assert!(
+        str_member(&r, "reason").contains("paused where it stopped"),
+        "{r:?}"
+    );
+    assert_eq!(get(a_web, "/tpl"), "a v3");
+    assert_eq!(get(b_web, "/tpl"), "b v1");
+    wait_state(&b, "b", "up", "");
+    let (st, _, v) = b.call(
+        "POST",
+        "/api/m/cluster/ops",
+        r#"{"op": "test", "members": ["b"]}"#,
+    );
+    assert_eq!(st, 409, "{v}");
+    assert!(v.contains(&format!("rollout {id}")), "{v}");
+    let (st, v) = steer(&b, &id, "abort", "");
+    assert_eq!(st, 200, "{v}");
+    let r = wait_rollout(&b, &id, "aborted", state_is("aborted"));
+    assert_eq!(rstatus(&r, "b"), "pending", "{r:?}");
+    let op = start_op(&b, r#"{"op": "test", "members": ["b"]}"#);
+    wait_op(&b, &op);
+
+    // A draft of the template, saved as the template when it starts; a patch, which takes no
+    // variables.
+    let draft = r#"{"kind": "template", "template": "base", "nodes": ["b"], "config": {"routes": [{"name": "tpl", "match": {"path": ["/tpl"]},
+        "handler": {"module": "respond", "params": {"body": "${node.name} v4"}}}]}}"#;
+    let (id, _) = plan(&b, draft);
+    let (_, _, t) = b.call("GET", "/api/m/cluster/templates/base", "");
+    assert!(t.contains("v3") && !t.contains("v4"), "{t}");
+    let (st, v) = steer(&b, &id, "start", r#"{"strategy": {"mode": "all"}}"#);
+    assert_eq!(st, 200, "{v}");
+    wait_rollout(&b, &id, "done", state_is("done"));
+    assert_eq!(get(b_web, "/tpl"), "b v4");
+    let (_, _, t) = b.call("GET", "/api/m/cluster/templates/base", "");
+    assert!(t.contains("v4"), "{t}");
+    let patch = |body: &str| {
+        format!(
+            r#"{{"kind": "patch", "nodes": ["a"], "config": {{"routes": [{{"name": "p", "match": {{"path": ["/p"]}},
+            "handler": {{"module": "respond", "params": {{"body": "{body}"}}}}}}]}}}}"#
+        )
+    };
+    let (st, _, v) = b.call("POST", "/api/m/cluster/rollouts", &patch("${node.name}"));
+    assert_eq!(st, 400, "{v}");
+    assert!(v.contains("a patch takes no variables"), "{v}");
+    let (id, _) = plan(&b, &patch("patched"));
+    let (st, v) = steer(&b, &id, "start", r#"{"strategy": {"mode": "all"}}"#);
+    assert_eq!(st, 200, "{v}");
+    wait_rollout(&b, &id, "done", state_is("done"));
+    assert_eq!(get(a_web, "/p"), "patched");
+    // The audit log, once the store has been written.
+    let want = [
+        "rollout.plan",
+        "rollout.start",
+        "rollout.go",
+        "rollout.pause",
+        "rollout.rollback",
+        "rollout.abort",
+        "rollout.end",
+    ];
+    let deadline = Instant::now() + Duration::from_secs(20);
+    loop {
+        let (_, _, audit) = b.call("GET", "/api/m/cluster/audit?action=rollout.", "");
+        if want.iter().all(|a| audit.contains(a)) {
+            break;
+        }
+        assert!(Instant::now() < deadline, "{audit}");
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    let (code, _, err) = m.stop();
+    assert_eq!(code, Some(0), "{err}");
+    let _ = (a.stop(), bm.stop(), cm.stop());
 }

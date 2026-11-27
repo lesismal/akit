@@ -337,7 +337,9 @@ impl Op {
 #[derive(Default)]
 pub(crate) struct Ops {
     list: VecDeque<Arc<Mutex<Op>>>,
-    busy: HashMap<String, String>,
+    /// The members an operation or a rollout holds, and which: an operation's ID, or
+    /// `rollout <id>`.
+    pub(crate) busy: HashMap<String, String>,
     running: usize,
 }
 
@@ -345,7 +347,7 @@ fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-fn new_id() -> String {
+pub(crate) fn new_id() -> String {
     let mut b = [0u8; 6];
     let _ = akio_crypto::rand::fill_random(&mut b);
     akit_roles::linktoken::hex(&b)
@@ -353,7 +355,7 @@ fn new_id() -> String {
 
 /// What a member's answer that is not 2xx means: its error, and the first of its errors in a
 /// config refused. fit's `replyProblem`.
-fn reply_problem(r: &Reply, what: &str) -> Problem {
+pub(crate) fn reply_problem(r: &Reply, what: &str) -> Problem {
     let b = json::parse(&r.body).unwrap_or(Value::Null);
     let mut msg = json::str_of(&b, "error").to_owned();
     if msg.is_empty() {
@@ -400,6 +402,40 @@ impl Manager {
         body: Option<Vec<u8>>,
         done: Box<dyn FnOnce(Result<Reply, Problem>) + Send>,
     ) {
+        let what = format!("{method} {path}");
+        let n = self.node(name);
+        self.call_member_raw(
+            name,
+            method,
+            path,
+            headers,
+            body,
+            Box::new(move |r| {
+                done(r.and_then(|rep| {
+                    if (200..300).contains(&rep.status) {
+                        return Ok(rep);
+                    }
+                    let mut p = reply_problem(&rep, &what);
+                    if let Some(n) = &n {
+                        p.message = n.redact(&p.message);
+                    }
+                    Err(p)
+                }));
+            }),
+        );
+    }
+
+    /// [`call_member`](Manager::call_member), with every answer the member gives, whatever its
+    /// status: fit's `Manager.Call`.
+    pub(crate) fn call_member_raw(
+        &self,
+        name: &str,
+        method: &str,
+        path: &str,
+        headers: Vec<(String, String)>,
+        body: Option<Vec<u8>>,
+        done: Box<dyn FnOnce(Result<Reply, Problem>) + Send>,
+    ) {
         let Some(n) = self.node(name) else {
             return done(Err(Problem::new(
                 KIND_UNREACHABLE,
@@ -411,7 +447,6 @@ impl Manager {
         } else {
             path.to_owned()
         };
-        let what = format!("{method} {path}");
         let n2 = Arc::clone(&n);
         n.call(
             method,
@@ -424,19 +459,12 @@ impl Manager {
                         p.message = n2.redact(&p.message);
                         Err(p)
                     }
-                    Ok((rep, _)) if (200..300).contains(&rep.status) => Ok(rep),
-                    Ok((rep, _)) => {
-                        let mut p = reply_problem(&rep, &what);
-                        p.message = n2.redact(&p.message);
-                        Err(p)
-                    }
+                    Ok((rep, _)) => Ok(rep),
                 });
             }),
         );
     }
 
-    /// The names of the members an operation runs on, sorted: the group's, the members named
-    /// (in the group when it is given too), or both. fit's `targetsLocked`.
     fn targets(&self, group: &str, members: &[String]) -> Result<Vec<String>, Refusal> {
         let d = self.doc();
         let in_group = if group.is_empty() {

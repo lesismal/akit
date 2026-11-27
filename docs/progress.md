@@ -146,6 +146,50 @@ done and where the work differs from the plan.
   a draining server), a port range (its port taken, 508 when used up, free again after a delete),
   `TestLimiter`; the fib interop (`tests/fib_turn.rs`) against akit and fit alike, on macOS.
 
+### 2026-11-27: I137, rollouts with health gates
+
+- Rollouts (`akit_cluster::rollouts` and `rollrun`, fit's `cluster/rollouts.go`, `rollrun.go`,
+  `rollsteer.go`, `rolldraft.go` and `rollapi.go`): of a template, or of a draft of it (saved as
+  the template when the rollout starts, refused if the template changed since the plan); a sync
+  with the templates; a copy of parts of one member's config to others; a patch of parts (no
+  variables). The plan reads each member: held ones, and those that do not list
+  `config.if_match`, `config.dry_run` and `config.versions`, are not ready; its desired config, the
+  parts that change with their sync states, and its dry run with `If-Match` the ETag read make it
+  ready, unchanged or an error. 8 MiB of configs and diffs a rollout; a plan expires after an hour.
+- Strategies: all at once, rolling (by size or percentage), or a canary that then waits for a
+  person's go; a pause between batches (24 h at most); a failed gate rolls back its batch, or every
+  member applied. Each member is applied with `If-Match` the ETag planned; a 412 or a lost answer is
+  settled by its `GET /node`'s ETag (applied, skipped as changed since the plan, or unsure). The
+  gate, after `wait_ms` or the 5xx window: the member reachable and running the new ETag; no more
+  drift than before, where it lists `config.check`; its share of 5xx over the window from
+  `/status`'s `requests`, judged from `min_requests` (members that count no requests fail the
+  batch before anything is applied). A rollback is `POST /rollback/{n}` with `If-Match` the new
+  ETag; the members of a batch that passed are told what the manager owns.
+- Steering: pause (after the batch under way), resume, go, abort, rollback (once paused, waiting
+  or ended) and discard (a plan); each in the audit log (`rollout.plan`, `rollout.start`,
+  `rollout.<action>`, `rollout.end` with every member's outcome). A rollout holds its members
+  against operations and other rollouts.
+- Kept typed in the store's document, `rollouts`, as fit writes them (a member's config in base64,
+  as Go writes `[]byte`), with every write of the document, one write queued at a time. At a start,
+  a rollout that ran is paused where it stopped, one being planned expired, one rolling back
+  failed. Bounds: 4 planned or under way, 50 kept, 20 errors a member.
+- Threads: a plan and a run each take a thread of their own, which calls members on akio's client
+  and waits for their answers, `max_concurrency` at once on scoped threads; the pause between
+  batches and a gate's window are waited for on a condition variable that a pause, an abort and
+  the manager's close wake (the close waits 2 s for them). Endpoints: `GET`/`POST /api/rollouts`,
+  `GET`/`DELETE /api/rollouts/<id>`, `POST /api/rollouts/<id>/{start,pause,resume,go,abort,
+  rollback}`; those that write, on the manager's pool.
+- Mixed clusters: a copy from an akit member masks its `[redacted]` secrets so that each target
+  keeps its own (decision 041, 9); fit's manager reads the rollouts akit's wrote.
+- Tests: `rollouts::tests` (strategies, fit's `TestStrategies`; times and numbers as Go writes
+  them; the stored form read back; a restart's transitions; expiry and trimming; parts and
+  secrets) and `rollrun::tests` (changes, bodies, requests, secrets); akit's `rollouts_with_gates`
+  (rolling batches; a plan unchanged, then discarded; a canary, go, pause and resume; a member
+  changed since the plan skipped; a rollback; a 5xx gate that cannot be judged and one that fails
+  and rolls back; a rollout under way at a restart found paused and holding its members, then
+  aborted; a draft saved as the template; a patch) and `mixed_clusters_with_fit` (a template rolled
+  out on fit members, a copy from fit to akit, the rollouts read by fit's manager).
+
 ### 2026-11-27: I136, templates and what a member knows the manager owns
 
 - Templates (`akit_cluster::templates`, fit's `cluster/templates.go`): a fragment of the config,

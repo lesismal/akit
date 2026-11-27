@@ -72,6 +72,15 @@ keeps, and which names on it are akit's.
    it, so the two agree. A secret changed in a template alone does not show an akit member out of
    sync.
 
+9. **Rollouts (I137)** are fit's: the plan, the strategies, the gates, the steering, and the
+   document's `rollouts`, which either manager reads. Three things are akit's. A rollout's plan and
+   its run each take a thread of their own and wait for the members' answers there, never on an
+   I/O thread (rule 1). A copy from an akit member, whose config answers its secrets as
+   `[redacted]`, masks them as a template's `[secret]`, so that each member it is copied to keeps
+   its own and a fit member is never written the word `[redacted]`. And the drift gate applies
+   where a member lists `config.check`, as fit's does: fit members now, akit members once I138
+   serves it.
+
 ## Alternatives
 
 - **akit's names on the wire too** (`akit_version` only, `X-Akit-Csrf` only): a manager of one

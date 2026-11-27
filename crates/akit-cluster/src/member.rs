@@ -786,8 +786,11 @@ pub struct Document {
     pub groups: Vec<crate::groups::Group>,
     /// The templates (I136).
     pub templates: Vec<crate::templates::Template>,
-    /// The other members of the document, in their order: `templates`, `rollouts`,
-    /// `link_cert`, `access` and what a later fit adds.
+    /// The rollouts (I137), as JSON: what the manager's rollouts were when it last wrote the
+    /// document, or when it read it; empty for none.
+    pub rollouts: String,
+    /// The other members of the document, in their order: `link_cert`, `access` and what a
+    /// later fit adds.
     pub rest: Vec<(String, Value)>,
 }
 
@@ -855,6 +858,11 @@ impl Document {
                             .collect();
                     }
                 }
+                "rollouts" => {
+                    if let Value::Array(_) = &v {
+                        d.rollouts = json::compact(&v);
+                    }
+                }
                 "revision" => {
                     d.revision =
                         json::uint_of(&Value::Object(vec![(k.clone(), v.clone())]), "revision");
@@ -914,15 +922,13 @@ impl Document {
             .collect::<Vec<_>>()
             .join(",");
         b = b.raw("templates", &format!("[{templates}]"));
-        let rollouts = self
-            .rest
-            .iter()
-            .find(|(k, _)| k == "rollouts")
-            .map(|(_, v)| v)
-            .filter(|v| **v != Value::Null);
         b = b.raw(
             "rollouts",
-            &rollouts.map_or_else(|| "[]".to_owned(), json::compact),
+            if self.rollouts.is_empty() {
+                "[]"
+            } else {
+                &self.rollouts
+            },
         );
         let audit = Value::Array(self.audit.clone());
         b = b.raw("audit", &json::compact(&audit));
