@@ -122,6 +122,7 @@ fn plain(port: u16, method: &str, host: Option<&str>, target: &str) -> (String, 
 /// method; the routes are served on `https` alone.
 #[test]
 fn http_redirects_to_https() {
+    // Named before akit binds them: the redirect names the HTTPS port as the config gives it.
     let (http_port, https_port) = (free_port(), free_port());
     let s = Served::start(
         &format!(
@@ -182,6 +183,7 @@ fn http_redirects_to_https() {
 /// names of the routes it serves, and a listener in the clear written out serves its routes.
 #[test]
 fn no_redirects_and_written_listeners() {
+    // Named before akit binds it: `auto_https` writes its listener on the port the config gives.
     let https_port = free_port();
     let s = Served::start(
         &format!(

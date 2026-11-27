@@ -363,5 +363,3 @@ fn h3_peers_are_filtered() {
     stop(&e, l);
     let _ = std::fs::remove_dir_all(&d);
 }
-
-

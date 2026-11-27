@@ -21,6 +21,8 @@ use akio_bittorrent::metainfo::{Builder, MetaInfo};
 use akit_bittorrent::client::{AddRequest, ClientApi, Source};
 use akit_roles::host::Manager;
 
+/// A port free now, for a listener of fit's binary, whose config must name it before it starts:
+/// another process may take it meanwhile.
 fn free() -> SocketAddr {
     TcpListener::bind("127.0.0.1:0")
         .unwrap()

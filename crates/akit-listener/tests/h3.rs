@@ -367,7 +367,6 @@ fn reload_knows_h3_listeners() {
     e.wait();
 }
 
-
 /// Waits for HTTP/3 at `udp` to answer no more, within 15 seconds: a removed listener's UDP
 /// sockets close once its last peer is gone, or at its drain's end.
 fn wait_h3_gone(udp: std::net::SocketAddr, ca: &Path) {
