@@ -20,6 +20,18 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-27: a proxied body framed by its length, read whole by a client that went, is finished
+
+- `proxy`: an HTTP/1.1 client that has read every byte a streamed response's `Content-Length`
+  declares may close before the upstream's end reaches akit, and its going gave the upstream
+  request up first: the body was dropped unfinished, so a body tap heard it cut, and the `cache`
+  did not keep a response its client got whole. Now a stream framed by its length whose every
+  byte was written is finished when the exchange ends early (the client gone, or any other
+  error); one short of its length is still cut. This was `akit-cache`'s
+  `bodies_through_the_proxy` failing on io_uring (10 of 30 runs alone on gpu51, the `/large`
+  over HTTP/1.1 kept as cut); `a_framed_body_read_whole_before_its_end_is_kept` makes the order
+  certain with an h2c upstream that ends the body only once let go.
+
 ### 2026-11-27: a node's and a proxy's tunnels listed in the order they opened
 
 - `the_proxys_pages` failed now and then under load: it compared two tunnels' `created` as

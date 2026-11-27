@@ -112,6 +112,8 @@ mod origin {
     pub(crate) static GONE: AtomicU64 = AtomicU64::new(0);
     /// `/sie` and `/sie-param` answer 500 while it is set.
     pub(crate) static FAILING: AtomicBool = AtomicBool::new(false);
+    /// The length of `/held`, past the proxy's 64 KiB whole-response threshold.
+    pub(crate) const HELD_LEN: usize = 128 << 10;
 
     pub(crate) fn reset() {
         *HITS.lock().unwrap() = Some(HashMap::new());
@@ -258,6 +260,26 @@ mod origin {
                                 return;
                             }
                         }
+                        s.finish();
+                    });
+                    return;
+                }
+                "/held" => {
+                    // Framed by its length, all of it written at once, and ended only once let
+                    // go (or once the next test starts, which drops the sender).
+                    let mut sh = Headers::new();
+                    sh.append("Cache-Control", "max-age=60");
+                    sh.append("Content-Type", "text/plain");
+                    sh.append("Content-Length", HELD_LEN.to_string());
+                    let Some(s) = ctx.stream_response(200, sh) else {
+                        return;
+                    };
+                    let release = released();
+                    thread::spawn(move || {
+                        if s.write(&super::long().as_bytes()[..HELD_LEN]).is_err() {
+                            return;
+                        }
+                        let _ = release.lock().unwrap().recv();
                         s.finish();
                     });
                     return;
@@ -1060,6 +1082,44 @@ fn bodies_through_the_proxy() {
             assert_eq!(origin::hits(path), 1, "{proto:?} {path}");
         }
     }
+}
+
+/// A proxied body framed by its length is kept once every byte of it went, though its HTTP/1.1
+/// client, having read them all, closes before the upstream ends it: the proxy finishes the body
+/// when it hears the client go, rather than cut it. The race `bodies_through_the_proxy` lost now
+/// and then on io_uring, made certain: the h2c upstream ends the body only once let go.
+#[test]
+fn a_framed_body_read_whole_before_its_end_is_kept() {
+    let _s = serial();
+    let origin = Akit::serve("[]");
+    let a = Akit::route(
+        r#"[{"module": "cache", "params": {"zone": "test", "max_entry_bytes": 2097152}}]"#,
+        r#"{"module": "proxy", "params": {"upstream": "app"}}"#,
+        &format!(
+            r#""upstreams": [{{"name": "app", "addresses": ["{}"], "protocol": "h2c"}}],"#,
+            origin.addr
+        ),
+    );
+    let want = &long().as_bytes()[..origin::HELD_LEN];
+    let first = get(Proto::H1, a.addr, "GET", "/held", &[]);
+    assert!(
+        first.body == want && first.complete,
+        "{} bytes",
+        first.body.len()
+    );
+    assert_eq!(first.cache_status(), "akit; fwd=uri-miss; stored");
+    // It waits for the first one's fetch, which ends once the proxy heard that client go.
+    let second = get(Proto::H1, a.addr, "GET", "/held", &[]);
+    assert!(
+        second.body == want && second.hit(),
+        "{:?}",
+        second.cache_status()
+    );
+    assert_eq!(origin::hits("/held"), 1);
+    origin::let_go();
+    // The origin first: it closes the proxy's h2c connection to it, which the proxy's shutdown
+    // would otherwise wait out.
+    drop(origin);
 }
 
 /// An upstream of std sockets that answers every request with `max-age=60` and a body cut short

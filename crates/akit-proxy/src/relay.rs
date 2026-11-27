@@ -23,7 +23,8 @@
 //! [`BROKEN_TRAILER`].
 //!
 //! I17b hears the client go at any point ([`start`] registers `Context::on_gone`): the upstream
-//! request's [`CancelToken`] is cancelled, and the exchange says it gave up.
+//! request's [`CancelToken`] is cancelled, and the exchange says it gave up. A response framed by
+//! its length whose every byte was written is finished all the same: its client has it whole.
 //!
 //! I45 sends a request again ([`crate::retry`]) from [`Exchange::on_error`] before its response
 //! began, or from [`Exchange::on_head`] for a status the proxy's `retry` lists: the next
@@ -379,11 +380,12 @@ enum Out {
         names: Vec<String>,
         bodyless: bool,
     },
-    /// Sent as it arrives; `framed` says by a declared length.
+    /// Sent as it arrives; `left` is, for one framed by a declared length, how much of that is
+    /// still to be written.
     Stream {
         stream: BodyStream,
         up: Download,
-        framed: bool,
+        left: Option<u64>,
     },
     /// Over, or given up.
     Done,
@@ -627,7 +629,7 @@ impl Exchange for Relay {
                 self.out = Out::Stream {
                     stream,
                     up,
-                    framed: keep_length,
+                    left: length.filter(|_| keep_length),
                 }
             }
             None => {
@@ -645,12 +647,15 @@ impl Exchange for Relay {
                     body.extend_from_slice(chunk);
                 }
             }
-            Out::Stream { stream, up, .. } => {
+            Out::Stream { stream, up, left } => {
                 if stream.write(chunk).is_err() {
                     // The client went: the response is not wanted.
                     up.cancel();
                     self.out = Out::Done;
                     return;
+                }
+                if let Some(l) = left {
+                    *l = l.saturating_sub(chunk.len() as u64);
                 }
                 if stream.queued_bytes() > DOWNLOAD_PENDING {
                     up.hold_reads(true);
@@ -723,8 +728,16 @@ impl Exchange for Relay {
                     || matches!(e, Error::Client(akio_http::client::ClientError::Timeout));
                 stream.finish_with_trailers(crate::grpc::broken(timed_out));
             }
-            Out::Stream { stream, framed, .. } => {
-                if !framed && matches!(self.version, Version::Http2 | Version::Http3) {
+            // Every byte its length declares was written: the body is whole, and finished as
+            // such (a cache's tap keeps it). An HTTP/1 client that read them all may close before
+            // the upstream's end comes, and its going gives the upstream request up first.
+            Out::Stream {
+                stream,
+                left: Some(0),
+                ..
+            } => stream.finish(),
+            Out::Stream { stream, left, .. } => {
+                if left.is_none() && matches!(self.version, Version::Http2 | Version::Http3) {
                     let mut t = Headers::new();
                     t.append(BROKEN_TRAILER.0, BROKEN_TRAILER.1);
                     stream.finish_with_trailers(t);
