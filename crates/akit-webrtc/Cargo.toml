@@ -1,0 +1,17 @@
+[package]
+name = "akit-webrtc"
+description = "fit's WebRTC roles on akio: a TURN server, a WHIP and WHEP media server, and the relay that puts media servers behind akit."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+akio-http = { workspace = true }
+akit-config = { workspace = true }
+akit-runtime = { workspace = true }
+
+[lints]
+workspace = true

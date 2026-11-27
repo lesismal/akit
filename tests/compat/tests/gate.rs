@@ -309,7 +309,8 @@ fn validate_with_akit_config(path: &Path) -> Result<(), Vec<Finding>> {
 /// path; a handler or middleware module akit does not have is refused at `<handler>.module` as
 /// `the "<module>" handler` (or `middleware`), which the inventory writes `<handler><<module>>`;
 /// a field of a module's params that another module akit reads also has is refused as
-/// `the "<module>" middleware's <field>: ...`, at the field of `<ref><<module>>.params`; any other
+/// `the "<module>" middleware's <field>: ...` (or `handler's`, I110), at the field of
+/// `<ref><<module>>.params`; any other
 /// "not supported yet: <what>" is a value of the field at the path (a protocol), or what its
 /// absence asks for, reported with `what`.
 fn finding(e: &akit_config::Error) -> Finding {
@@ -325,7 +326,10 @@ fn finding(e: &akit_config::Error) -> Finding {
             .or_else(|| r.strip_suffix("\" middleware"))
     });
     // A field of a module's params: the path with the module's tag.
-    if let Some((m, _)) = quoted.and_then(|r| r.split_once("\" middleware's ")) {
+    if let Some((m, _)) = quoted.and_then(|r| {
+        r.split_once("\" middleware's ")
+            .or_else(|| r.split_once("\" handler's "))
+    }) {
         if let Some((at, field)) = e.path.split_once(".params.") {
             return Finding::Unsupported(format!("{at}<{m}>.params.{field}"));
         }
@@ -3260,6 +3264,8 @@ fn akit_config_lists_match_the_inventory() {
         "log.rs",
         // I98: the tunnel's and the LLM feature's roles.
         "roles.rs",
+        // I110: the WebRTC roles and handlers.
+        "webrtc.rs",
     ]
     .iter()
     .map(|f| fs::read_to_string(compat_dir().join("../../crates/akit-config/src").join(f)).unwrap())
@@ -3275,7 +3281,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 136] = [
+    let objects: [(&str, &str, Option<&str>); 150] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         (
             "providers[].kubernetes",
@@ -3549,6 +3555,33 @@ fn akit_config_lists_match_the_inventory() {
         ("llm.node.proxy", "LLM_NODE_PROXY_FIELDS", None),
         ("llm.proxy.api", "LLM_API_FIELDS", None),
         ("llm.proxy.api_keys[]", "LLM_KEY_FIELDS", None),
+        // I110: the WebRTC roles (crate::webrtc) and handlers.
+        ("webrtc", "WEBRTC_FIELDS", None),
+        ("webrtc.turn", "TURN_FIELDS", None),
+        ("webrtc.turn.tls", "TURN_TLS_FIELDS", None),
+        ("webrtc.turn.tls.certificates[]", "CERTIFICATE_FIELDS", None),
+        ("webrtc.turn.users[]", "TURN_USER_FIELDS", None),
+        ("webrtc.turn.access", "ACCESS_FIELDS", None),
+        ("webrtc.media", "MEDIA_FIELDS", None),
+        ("webrtc.media.access", "ACCESS_FIELDS", None),
+        ("webrtc.media.ice_servers[]", "ICE_SERVER_FIELDS", None),
+        ("webrtc.proxy", "WEBRTC_PROXY_ROLE_FIELDS", None),
+        ("webrtc.proxy.access", "ACCESS_FIELDS", None),
+        (
+            "routes[].handler<whip>.params",
+            "WHIP_FIELDS",
+            Some("WHIP_FIT_ONLY"),
+        ),
+        (
+            "routes[].handler<whep>.params",
+            "WHIP_FIELDS",
+            Some("WHIP_FIT_ONLY"),
+        ),
+        (
+            "routes[].handler<webrtc_proxy>.params",
+            "WEBRTC_PROXY_FIELDS",
+            Some("WEBRTC_PROXY_FIT_ONLY"),
+        ),
     ];
     let mapped: BTreeSet<&str> = objects
         .iter()
@@ -3556,7 +3589,14 @@ fn akit_config_lists_match_the_inventory() {
         .flatten()
         // fit's logger names (config.Loggers), not fields: the keys log.levels and log.loggers take;
         // and the APIs an LLM model's `api` takes (I98), values too.
-        .chain(["FIT_HANDLERS", "FIT_MIDDLEWARE", "LOGGERS", "LLM_APIS"])
+        // The codecs `webrtc.media.codecs` takes (I110), values too.
+        .chain([
+            "FIT_HANDLERS",
+            "FIT_MIDDLEWARE",
+            "LOGGERS",
+            "LLM_APIS",
+            "MEDIA_CODECS",
+        ])
         .chain(AKIT_ONLY.iter().map(|(_, l)| *l))
         .collect();
     for name in lists.keys() {
@@ -3616,7 +3656,16 @@ fn akit_config_lists_match_the_inventory() {
             "model.rs FIT_HANDLERS: {h:?} is not a handler fit has"
         );
     }
-    for h in ["respond", "static", "proxy", "fastcgi", "forward_proxy"] {
+    for h in [
+        "respond",
+        "static",
+        "proxy",
+        "fastcgi",
+        "forward_proxy",
+        "whip",
+        "whep",
+        "webrtc_proxy",
+    ] {
         assert!(handlers.insert(h.to_owned()), "FIT_HANDLERS lists {h}");
     }
     let fit_handlers: BTreeSet<String> = inventory
@@ -3638,6 +3687,11 @@ fn akit_config_lists_match_the_inventory() {
     read.insert("routes[].handler<fastcgi>.params".to_owned());
     read.insert("routes[].handler<forward_proxy>".to_owned());
     read.insert("routes[].handler<forward_proxy>.params".to_owned());
+    // I110: the WebRTC handlers.
+    for h in ["whip", "whep", "webrtc_proxy"] {
+        read.insert(format!("routes[].handler<{h}>"));
+        read.insert(format!("routes[].handler<{h}>.params"));
+    }
     // Middleware modules: rewrite, redirect, headers, the limits and auth, which akit reads, and
     // FIT_MIDDLEWARE, which it refuses.
     let mut middleware: BTreeSet<String> = list("FIT_MIDDLEWARE").iter().cloned().collect();

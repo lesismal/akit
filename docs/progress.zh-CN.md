@@ -19,6 +19,25 @@
 
 ## 日志
 
+### 2026-11-27：I110，配置中的 `webrtc`
+
+- `akit-config` 的 `webrtc` 模块：`webrtc.turn`、`webrtc.media` 和 `webrtc.proxy`，字段、默认值、范围和检查与 fit 相同
+  （`config/webrtc.go`）：监听列表被检查并加入"一个地址一个服务器"的检查（`listen`、`webrtc.media` 和 `webrtc.proxy` 为
+  UDP，`listen_tcp` 和 `listen_tls` 为 TCP），`tls` 只与 `listen_tls` 一起，用户带密码或 32 位十六进制的密钥，`relay_ip`
+  和 `public_ip`（不能是通配地址，同一地址族），端口范围、配额和生存期（`max_lifetime` 不低于 `default_lifetime`），
+  `max_stream_message` 至少 2048，peer 规则同 fit 的 `ParsePeerRule`（前缀、地址、地址加端口），可安全放入 `Link` 头的
+  ICE 服务器和 `turn_urls`（`turn_urls` 需要 `webrtc.turn` 的 secret），`codecs` 属于 fit 的五种之一。处理器 `whip`、
+  `whep`（`stream`，1 到 128 个 `[A-Za-z0-9._~-]`）和 `webrtc_proxy`（`upstream`、地址或 IP 形式的 `media_addrs`、
+  `timeout`、`max_sdp_bytes`、`action`）是 `Handler` 的变体；它们的 `auth`（一个 `media_auth` 策略）作为尚不支持被拒绝，
+  并指明模块（决定 039，第 50 行）。
+- 新 crate `akit-webrtc`，属于标准模块 crate（`akit build -without` 接受它）：三个处理器像 fit 一样预备（`webrtc_proxy`
+  查找其 upstream），在其角色未运行时像 fit 一样回答 503。`akit run` 拒绝这三个成员以及使用这些处理器的路由，并指明运行
+  它们的迭代；`akit validate` 检查它们。
+- 门禁：`webrtc-turn`、`whip-whep` 和 `webrtc-proxy` 有效；`media-pages` 只因其 `auth` 和 `media_auth` 被拒绝（80 个中
+  59 个有效）；89 个字段标为支持并标为 v1 新增；配置参考的 WebRTC 章节和三个处理器的表。测试：移植的 fit
+  `config/webrtc_test.go`（成员、媒体、代理）、`bindings_test.go` 和 `more_test.go` 的 WebRTC 用例，以及处理器的参数，位于
+  `webrtc/tests.rs`；`binds.rs` 的各类冲突测试加入 WebRTC 各类；`akit run` 的拒绝。
+
 ### 2026-11-27：WebRTC 路线规划为 I110–I114
 
 - WebRTC 路线（1.0 之后，第 5 条）按 fit 的 I87 和 I108–I111 拆为五次迭代（[计划](dev-plan.zh-CN.md#webrtc)、

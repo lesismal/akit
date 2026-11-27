@@ -14,7 +14,7 @@ akit 配置的每个字段：配置的每一部分是做什么的、一个示例
 akit 与 fit 不同之处，在表格中以 **akit：** 标出。
 
 <!-- BEGIN GENERATED: summary -->
-fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **885** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 136 个对象，下文各有一张表。
+fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **974** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 150 个对象，下文各有一张表。
 <!-- END GENERATED -->
 
 字段说明来自 fit 代码中的 `doc` 标签，是英文的，所以每个字段的完整说明在[英文版](config.md)的同一张表中；本页的表格给出每个字段的
@@ -54,7 +54,8 @@ fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../co
 - [Provider](#provider)：[`docker`](#cfg-providers-docker)、[`consul`](#cfg-providers-consul)、[`consul_kv`](#cfg-providers-consul-kv)、[`etcd`](#cfg-providers-etcd)、[`kubernetes`](#cfg-providers-kubernetes)
 - [隧道](#隧道)：[`tunnel.hub`](#cfg-tunnel-hub)、[`tunnel.node`](#cfg-tunnel-node)、[`tunnel.proxy`](#cfg-tunnel-proxy)
 - [LLM](#llm)：[`llm.hub`](#cfg-llm-hub)、[`llm.node`](#cfg-llm-node)、[`llm.proxy`](#cfg-llm-proxy)
-- [处理器](#处理器)：[`respond`](#respond)、[`static`](#static)、[`proxy`](#proxy)、[`fastcgi`](#fastcgi)、[`forward_proxy`](#forward_proxy)
+- [WebRTC](#webrtc)：[`webrtc.turn`](#cfg-webrtc-turn)、[`webrtc.media`](#cfg-webrtc-media)、[`webrtc.proxy`](#cfg-webrtc-proxy)
+- [处理器](#处理器)：[`respond`](#respond)、[`static`](#static)、[`proxy`](#proxy)、[`fastcgi`](#fastcgi)、[`forward_proxy`](#forward_proxy)、[`whip`](#whip)、[`whep`](#whep)、[`webrtc_proxy`](#webrtc_proxy)
 - [中间件](#中间件)：[`basic_auth`](#basic_auth)、[`body_limit`](#body_limit)、[`cache`](#cache)、[`circuit_breaker`](#circuit_breaker)、[`client_cert`](#client_cert)、[`compress`](#compress)、[`concurrency_limit`](#concurrency_limit)、[`forward_auth`](#forward_auth)、[`headers`](#headers)、[`jwt`](#jwt)、[`rate_limit`](#rate_limit)、[`redirect`](#redirect)、[`rewrite`](#rewrite)、[`wasm`](#wasm)
 - [akit 的扩展](#akit-的扩展)
 - [akit 尚不读取的部分](#akit-尚不读取的部分)
@@ -139,7 +140,7 @@ routes:
 | `telemetry` | [对象](#cfg-telemetry) |  |  |
 | `tunnel` | [对象](#cfg-tunnel) |  | **akit：**像 fit 一样读取并检查（I98）；`akit run` 在监听器的引擎上运行这三个角色（I101），其链路与 fit 的协议逐字节相同，使 akit 的 hub、node 和 proxy 能与 fit 的互连（决定 038）。链路走 `tcp`、`tls`（I102）、`quic`（I102b），以及 `ws` 和 `wss`（I102c，基于 akio-ws）。hub 的 `console_socket` 和 proxy 的 `web_proxies` 使用 fit 的密封 WebSocket（I103b）。 |
 | `upstreams` | [对象](#cfg-upstreams)的列表 |  |  |
-| `webrtc` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `webrtc` | [对象](#cfg-webrtc) |  | **akit：**像 fit 一样读取并检查（I110，决定 039）；在各角色的迭代运行它之前，`akit run` 拒绝它：`turn`（I111）、`media`（I113）、`proxy`（I114）。 |
 <!-- END GENERATED -->
 
 ## 监听器
@@ -2537,6 +2538,222 @@ llm {
 | `prefix` | 字符串 |  |  |
 <!-- END GENERATED -->
 
+## WebRTC
+
+`webrtc` 包含 fit 的 WebRTC 角色（[fit 的指南](https://github.com/lesismal/fit/blob/main/docs/webrtc.zh-CN.md)）：
+供无法直接互通的 peer 使用的 TURN 服务器（`webrtc.turn`，RFC 8656）；[`whip`](#whip) 和 [`whep`](#whep) 处理器的媒体
+服务器（`webrtc.media`），所有 PeerConnection 共享一个 UDP 端口；以及 [`webrtc_proxy`](#webrtc_proxy) 处理器的中继
+（`webrtc.proxy`），akit 后面的媒体服务器的 peer 经由这一个 UDP 端口到达它们。akit 像 fit 一样读取并检查它们（I110，
+[决定 039](../decisions/039-webrtc.zh-CN.md)）；在各自的迭代运行之前，`akit run` 拒绝它们：TURN 服务器 I111，媒体服务器
+I113，中继 I114。处理器的 `auth`（一个 `media_auth` 策略）尚不支持。
+
+```fit
+webrtc {
+	turn {
+		listen :3478
+		realm example.com
+		users alice { password a-password }
+		relay_ip 10.0.0.5
+	}
+}
+```
+
+### `webrtc`
+
+<!-- BEGIN GENERATED: webrtc -->
+<a id="cfg-webrtc"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-webrtc)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `media` | [对象](#cfg-webrtc-media) |  |  |
+| `proxy` | [对象](#cfg-webrtc-proxy) |  |  |
+| `turn` | [对象](#cfg-webrtc-turn) |  |  |
+<!-- END GENERATED -->
+
+### `webrtc.turn`
+
+<!-- BEGIN GENERATED: webrtc.turn -->
+<a id="cfg-webrtc-turn"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-webrtc-turn)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `listen` | 字符串的列表 | 必填 |  |
+| `realm` | 字符串 | 必填 |  |
+| `relay_ip` | 字符串 | 必填 |  |
+| `access` | [对象](#cfg-webrtc-turn-access) |  |  |
+| `allowed_peers` | 字符串的列表 |  |  |
+| `default_lifetime` | 时长 | `"10m"` |  |
+| `denied_peers` | 字符串的列表 |  |  |
+| `listen_tcp` | 字符串的列表 |  |  |
+| `listen_tls` | 字符串的列表 |  |  |
+| `max_allocations` | 整数，≥ 0 | `1024` |  |
+| `max_allocations_per_user` | 整数，≥ 0 | `16` |  |
+| `max_channels` | 整数，≥ 0 | `64` |  |
+| `max_lifetime` | 时长 | `"1h"` |  |
+| `max_permissions` | 整数，≥ 0 | `64` |  |
+| `max_stream_message` | 整数，≥ 0 | `8192` |  |
+| `mptcp` | 布尔值 |  |  |
+| `nonce_lifetime` | 时长 | `"10m"` |  |
+| `nonce_secret` | 字符串 |  |  |
+| `port_max` | 整数，0 到 65535 |  |  |
+| `port_min` | 整数，0 到 65535 |  |  |
+| `public_ip` | 字符串 |  |  |
+| `secret` | 字符串 |  |  |
+| `stream_idle_timeout` | 时长 | `"30s"` |  |
+| `tls` | [对象](#cfg-webrtc-turn-tls) |  |  |
+| `user_bandwidth` | 整数，≥ 0 | `2097152` |  |
+| `users` | [对象](#cfg-webrtc-turn-users)的列表 |  |  |
+<!-- END GENERATED -->
+
+### `webrtc.turn.tls`
+
+<!-- BEGIN GENERATED: webrtc.turn.tls -->
+<a id="cfg-webrtc-turn-tls"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-webrtc-turn-tls)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `certificates` | [对象](#cfg-webrtc-turn-tls-certificates)的列表 | 必填 |  |
+<!-- END GENERATED -->
+
+### `webrtc.turn.tls.certificates[]`
+
+<!-- BEGIN GENERATED: webrtc.turn.tls.certificates[] -->
+<a id="cfg-webrtc-turn-tls-certificates"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-webrtc-turn-tls-certificates)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `cert_file` | 字符串 | 必填 |  |
+| `key_file` | 字符串 | 必填 |  |
+<!-- END GENERATED -->
+
+### `webrtc.turn.users[]`
+
+<!-- BEGIN GENERATED: webrtc.turn.users[] -->
+<a id="cfg-webrtc-turn-users"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-webrtc-turn-users)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `name` | 字符串 | 必填 |  |
+| `key` | 字符串 |  |  |
+| `password` | 字符串 |  |  |
+<!-- END GENERATED -->
+
+### `webrtc.turn.access`
+
+<!-- BEGIN GENERATED: webrtc.turn.access -->
+<a id="cfg-webrtc-turn-access"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-webrtc-turn-access)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `allow` | 字符串的列表 |  |  |
+| `allow_files` | 字符串的列表 |  |  |
+| `deny` | 字符串的列表 |  |  |
+| `deny_files` | 字符串的列表 |  |  |
+<!-- END GENERATED -->
+
+### `webrtc.media`
+
+<!-- BEGIN GENERATED: webrtc.media -->
+<a id="cfg-webrtc-media"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-webrtc-media)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `listen` | 字符串 | 必填 |  |
+| `access` | [对象](#cfg-webrtc-media-access) |  |  |
+| `codecs` | 字符串的列表 | `["opus", "VP8", "VP9", "H264", "AV1"]` |  |
+| `connect_timeout` | 时长 | `"30s"` |  |
+| `ice_servers` | [对象](#cfg-webrtc-media-ice-servers)的列表 |  |  |
+| `ice_timeout` | 时长 | `"30s"` |  |
+| `key_frame_interval` | 时长 | `"500ms"` |  |
+| `max_bitrate` | 整数，≥ 0 | `8000000` |  |
+| `max_peer_connections` | 整数，≥ 0 | `1024` |  |
+| `max_sdp_bytes` | 整数，≥ 0 | `32768` |  |
+| `max_streams` | 整数，≥ 0 | `64` |  |
+| `max_viewers` | 整数，≥ 0 | `256` |  |
+| `public_ips` | 字符串的列表 |  |  |
+| `turn_credential_ttl` | 时长 | `"1h"` |  |
+| `turn_urls` | 字符串的列表 |  |  |
+<!-- END GENERATED -->
+
+### `webrtc.media.access`
+
+<!-- BEGIN GENERATED: webrtc.media.access -->
+<a id="cfg-webrtc-media-access"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-webrtc-media-access)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `allow` | 字符串的列表 |  |  |
+| `allow_files` | 字符串的列表 |  |  |
+| `deny` | 字符串的列表 |  |  |
+| `deny_files` | 字符串的列表 |  |  |
+<!-- END GENERATED -->
+
+### `webrtc.media.ice_servers[]`
+
+<!-- BEGIN GENERATED: webrtc.media.ice_servers[] -->
+<a id="cfg-webrtc-media-ice-servers"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-webrtc-media-ice-servers)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `urls` | 字符串的列表 | 必填 |  |
+| `credential` | 字符串 |  |  |
+| `username` | 字符串 |  |  |
+<!-- END GENERATED -->
+
+### `webrtc.proxy`
+
+<!-- BEGIN GENERATED: webrtc.proxy -->
+<a id="cfg-webrtc-proxy"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-webrtc-proxy)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `listen` | 字符串 | 必填 |  |
+| `access` | [对象](#cfg-webrtc-proxy-access) |  |  |
+| `idle_timeout` | 时长 | `"30s"` |  |
+| `max_relays` | 整数，≥ 0 | `4096` |  |
+| `max_sessions` | 整数，≥ 0 | `4096` |  |
+| `port_max` | 整数，0 到 65535 |  |  |
+| `port_min` | 整数，0 到 65535 |  |  |
+| `public_ips` | 字符串的列表 |  |  |
+| `relay_ip` | 字符串 |  |  |
+| `session_timeout` | 时长 | `"30s"` |  |
+<!-- END GENERATED -->
+
+### `webrtc.proxy.access`
+
+<!-- BEGIN GENERATED: webrtc.proxy.access -->
+<a id="cfg-webrtc-proxy-access"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-webrtc-proxy-access)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `allow` | 字符串的列表 |  |  |
+| `allow_files` | 字符串的列表 |  |  |
+| `deny` | 字符串的列表 |  |  |
+| `deny_files` | 字符串的列表 |  |  |
+<!-- END GENERATED -->
+
 ## 处理器
 
 路由的 `handler` 应答其请求：下列之一，由 `module` 指定，带有其 `params`。以 `akit build` 编入 akit 的其他 crate 的模块
@@ -2561,10 +2778,10 @@ llm {
 | `stream_whip` | **尚不支持**：按名称拒绝 |
 | `sync_ingest` | **尚不支持**：按名称拒绝 |
 | `vod` | **尚不支持**：按名称拒绝 |
-| `webrtc_proxy` | **尚不支持**：按名称拒绝 |
+| `webrtc_proxy` | 已支持：[参数](#cfg-routes-handler-webrtc-proxy-params) |
 | `websockify` | **尚不支持**：按名称拒绝 |
-| `whep` | **尚不支持**：按名称拒绝 |
-| `whip` | **尚不支持**：按名称拒绝 |
+| `whep` | 已支持：[参数](#cfg-routes-handler-whep-params) |
+| `whip` | 已支持：[参数](#cfg-routes-handler-whip-params) |
 <!-- END GENERATED -->
 
 ### `respond`
@@ -2798,6 +3015,57 @@ route {
 | `deny` | 字符串的列表 |  |  |
 | `idle_timeout` | 时长 | `"5m"` |  |
 | `ports` | 整数的列表 |  |  |
+<!-- END GENERATED -->
+
+### `whip`
+
+按名称把以 WHIP（RFC 9725）发布的 WebRTC 流接入 akit 的媒体服务器 `webrtc.media`：名称为 `stream`，或 POST 路径的
+最后一段。`akit run` 从 I113 起提供它。
+
+<!-- BEGIN GENERATED: routes[].handler<whip>.params -->
+<a id="cfg-routes-handler-whip-params"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-routes-handler-whip-params)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `auth` | 字符串 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `stream` | 字符串 |  |  |
+<!-- END GENERATED -->
+
+### `whep`
+
+按名称以 WHEP 把 `webrtc.media` 的流播放给观看者，名称同 `whip`。
+
+<!-- BEGIN GENERATED: routes[].handler<whep>.params -->
+<a id="cfg-routes-handler-whep-params"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-routes-handler-whep-params)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `auth` | 字符串 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `stream` | 字符串 |  |  |
+<!-- END GENERATED -->
+
+### `webrtc_proxy`
+
+把 WHIP 和 WHEP 交给某个 upstream 的媒体服务器，并经 `webrtc.proxy` 的单个 UDP 端口中继其 peer 的媒体。`akit run` 从
+I114 起提供它。
+
+<!-- BEGIN GENERATED: routes[].handler<webrtc_proxy>.params -->
+<a id="cfg-routes-handler-webrtc-proxy-params"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-routes-handler-webrtc-proxy-params)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `upstream` | 字符串 | 必填 |  |
+| `action` | 字符串：`publish`、`play` |  |  |
+| `auth` | 字符串 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `max_sdp_bytes` | 整数，≥ 0 | `32768` |  |
+| `media_addrs` | 值为字符串的映射 |  |  |
+| `timeout` | 时长 | `"10s"` |  |
 <!-- END GENERATED -->
 
 ## 中间件

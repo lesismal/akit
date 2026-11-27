@@ -20,6 +20,31 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-27: I110, `webrtc` in the config
+
+- `akit-config`'s `webrtc` module: `webrtc.turn`, `webrtc.media` and `webrtc.proxy` with fit's
+  fields, defaults, bounds and checks (`config/webrtc.go`): listen lists checked and joined to the
+  one-address-one-server check (UDP for `listen`, `webrtc.media` and `webrtc.proxy`, TCP for
+  `listen_tcp` and `listen_tls`), `tls` only with `listen_tls`, users with a password or a key of
+  32 hex digits, `relay_ip` and `public_ip` (no wildcard, one family), port ranges, quotas and
+  lifetimes (`max_lifetime` not below `default_lifetime`), `max_stream_message` at least 2048,
+  peer rules as fit's `ParsePeerRule` (a prefix, an address, an address and a port), ICE servers
+  and `turn_urls` safe in a `Link` header (`turn_urls` needing `webrtc.turn`'s secret), `codecs`
+  among fit's five. The handlers `whip`, `whep` (`stream`, 1 to 128 of `[A-Za-z0-9._~-]`) and
+  `webrtc_proxy` (`upstream`, `media_addrs` as an address or an IP, `timeout`, `max_sdp_bytes`,
+  `action`) are `Handler` variants; their `auth`, a `media_auth` policy, is refused as not
+  supported yet, naming the module (decision 039, row 50).
+- A new crate, `akit-webrtc`, one of the standard module crates (`akit build -without` takes it):
+  the three handlers, provisioned as fit's (`webrtc_proxy`'s upstream looked up), answering 503 as
+  fit's do while their role does not run. `akit run` refuses the three members and the routes with
+  those handlers, naming the iteration that runs each; `akit validate` checks them.
+- The gate: `webrtc-turn`, `whip-whep` and `webrtc-proxy` valid; `media-pages` refused only for its
+  `auth` and `media_auth` (59 valid of 80); 89 fields marked supported and as v1 additions; the
+  reference's WebRTC chapter and the three handlers' tables. Tests: fit's `config/webrtc_test.go`
+  (members, media, proxy), the WebRTC cases of `bindings_test.go` and `more_test.go`, and the
+  handlers' params, in `webrtc/tests.rs`; `binds.rs`'s every-kind clash test with the WebRTC kinds;
+  `akit run`'s refusals.
+
 ### 2026-11-27: the WebRTC track planned as I110–I114
 
 - The WebRTC track (after 1.0, order 5) broken into five iterations from fit's I87 and I108–I111

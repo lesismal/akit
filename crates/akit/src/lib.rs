@@ -30,6 +30,7 @@ pub use akit_middleware;
 pub use akit_plugin;
 pub use akit_proxy;
 pub use akit_runtime;
+pub use akit_webrtc;
 
 /// akit's version: `AKIT_VERSION` when the build set it (scripts/dist.sh and the Dockerfile set the
 /// release's tag, as fit's `-X main.version`), the crate's version otherwise.
@@ -46,6 +47,7 @@ pub const STANDARD: &[&[Info<HandlerParams>]] = &[
     akit_cache::MODULES,
     akit_plugin::MODULES,
     akit_proxy::MODULES,
+    akit_webrtc::MODULES,
 ];
 
 /// The roles of fit's config that akit runs (I100: the host; the tunnel's and the LLM feature's

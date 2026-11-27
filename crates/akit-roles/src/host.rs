@@ -87,6 +87,7 @@ impl fmt::Debug for Info {
 pub fn members(c: &Config) -> Vec<(&'static str, bool)> {
     let t = c.tunnel.as_ref();
     let l = c.llm.as_ref();
+    let w = c.webrtc.as_ref();
     vec![
         ("llm.hub", l.is_some_and(|l| l.hub.is_some())),
         ("llm.node", l.is_some_and(|l| l.node.is_some())),
@@ -94,6 +95,9 @@ pub fn members(c: &Config) -> Vec<(&'static str, bool)> {
         ("tunnel.hub", t.is_some_and(|t| t.hub.is_some())),
         ("tunnel.node", t.is_some_and(|t| t.node.is_some())),
         ("tunnel.proxy", t.is_some_and(|t| t.proxy.is_some())),
+        ("webrtc.media", w.is_some_and(|w| w.media.is_some())),
+        ("webrtc.proxy", w.is_some_and(|w| w.proxy.is_some())),
+        ("webrtc.turn", w.is_some_and(|w| w.turn.is_some())),
     ]
 }
 

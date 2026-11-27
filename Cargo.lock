@@ -283,6 +283,7 @@ dependencies = [
  "akit-runtime",
  "akit-tls",
  "akit-tunnel",
+ "akit-webrtc",
 ]
 
 [[package]]
@@ -565,6 +566,15 @@ dependencies = [
  "akit-config",
  "akit-observe",
  "stats_alloc",
+]
+
+[[package]]
+name = "akit-webrtc"
+version = "0.0.1"
+dependencies = [
+ "akio-http",
+ "akit-config",
+ "akit-runtime",
 ]
 
 [[package]]

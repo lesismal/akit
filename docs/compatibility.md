@@ -394,7 +394,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 885 supported.
+3821 fields in 121 sections, at fit `7daee573`; 974 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -421,10 +421,10 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`http.handlers/stream_whip`](#fields-http-handlers-stream-whip) | 5 | 0 | 5 |
 | [`http.handlers/sync_ingest`](#fields-http-handlers-sync-ingest) | 6 | 0 | 6 |
 | [`http.handlers/vod`](#fields-http-handlers-vod) | 13 | 0 | 13 |
-| [`http.handlers/webrtc_proxy`](#fields-http-handlers-webrtc-proxy) | 8 | 0 | 8 |
+| [`http.handlers/webrtc_proxy`](#fields-http-handlers-webrtc-proxy) | 8 | 7 | 1 |
 | [`http.handlers/websockify`](#fields-http-handlers-websockify) | 12 | 0 | 12 |
-| [`http.handlers/whep`](#fields-http-handlers-whep) | 4 | 0 | 4 |
-| [`http.handlers/whip`](#fields-http-handlers-whip) | 4 | 0 | 4 |
+| [`http.handlers/whep`](#fields-http-handlers-whep) | 4 | 3 | 1 |
+| [`http.handlers/whip`](#fields-http-handlers-whip) | 4 | 3 | 1 |
 | [`http.middleware/basic_auth`](#fields-http-middleware-basic-auth) | 8 | 8 | 0 |
 | [`http.middleware/body_limit`](#fields-http-middleware-body-limit) | 3 | 3 | 0 |
 | [`http.middleware/cache`](#fields-http-middleware-cache) | 17 | 17 | 0 |
@@ -518,8 +518,8 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`telemetry`](#fields-telemetry) | 14 | 14 | 0 |
 | [`tunnel`](#fields-tunnel) | 164 | 161 | 3 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
-| [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **Total** | 3821 | 885 | 2936 |
+| [`webrtc`](#fields-webrtc) | 76 | 76 | 0 |
+| **Total** | 3821 | 974 | 2847 |
 
 <a id="fields-access"></a>
 
@@ -1204,14 +1204,14 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `routes[].handler<webrtc_proxy>` | `module` | not supported yet |
-| `routes[].handler<webrtc_proxy>.params` | `object` | not supported yet |
-| `routes[].handler<webrtc_proxy>.params.action` | `enum(publish\|play)` | not supported yet |
+| `routes[].handler<webrtc_proxy>` | `module` | supported |
+| `routes[].handler<webrtc_proxy>.params` | `object` | supported |
+| `routes[].handler<webrtc_proxy>.params.action` | `enum(publish\|play)` | supported |
 | `routes[].handler<webrtc_proxy>.params.auth` | `string` | not supported yet |
-| `routes[].handler<webrtc_proxy>.params.max_sdp_bytes` | `integer` | not supported yet |
-| `routes[].handler<webrtc_proxy>.params.media_addrs` | `map<string>` | not supported yet |
-| `routes[].handler<webrtc_proxy>.params.timeout` | `duration` | not supported yet |
-| `routes[].handler<webrtc_proxy>.params.upstream` | `string, required` | not supported yet |
+| `routes[].handler<webrtc_proxy>.params.max_sdp_bytes` | `integer` | supported |
+| `routes[].handler<webrtc_proxy>.params.media_addrs` | `map<string>` | supported |
+| `routes[].handler<webrtc_proxy>.params.timeout` | `duration` | supported |
+| `routes[].handler<webrtc_proxy>.params.upstream` | `string, required` | supported |
 
 <a id="fields-http-handlers-websockify"></a>
 
@@ -1238,10 +1238,10 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `routes[].handler<whep>` | `module` | not supported yet |
-| `routes[].handler<whep>.params` | `object` | not supported yet |
+| `routes[].handler<whep>` | `module` | supported |
+| `routes[].handler<whep>.params` | `object` | supported |
 | `routes[].handler<whep>.params.auth` | `string` | not supported yet |
-| `routes[].handler<whep>.params.stream` | `string` | not supported yet |
+| `routes[].handler<whep>.params.stream` | `string` | supported |
 
 <a id="fields-http-handlers-whip"></a>
 
@@ -1249,10 +1249,10 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `routes[].handler<whip>` | `module` | not supported yet |
-| `routes[].handler<whip>.params` | `object` | not supported yet |
+| `routes[].handler<whip>` | `module` | supported |
+| `routes[].handler<whip>.params` | `object` | supported |
 | `routes[].handler<whip>.params.auth` | `string` | not supported yet |
-| `routes[].handler<whip>.params.stream` | `string` | not supported yet |
+| `routes[].handler<whip>.params.stream` | `string` | supported |
 
 <a id="fields-http-middleware-basic-auth"></a>
 
@@ -5112,81 +5112,81 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `webrtc` | `object` | not supported yet |
-| `webrtc.media` | `object` | not supported yet |
-| `webrtc.media.access` | `object` | not supported yet |
-| `webrtc.media.access.allow` | `array<string>` | not supported yet |
-| `webrtc.media.access.allow_files` | `array<string>` | not supported yet |
-| `webrtc.media.access.deny` | `array<string>` | not supported yet |
-| `webrtc.media.access.deny_files` | `array<string>` | not supported yet |
-| `webrtc.media.codecs` | `array<string>` | not supported yet |
-| `webrtc.media.connect_timeout` | `duration` | not supported yet |
-| `webrtc.media.ice_servers` | `array<object>` | not supported yet |
-| `webrtc.media.ice_servers[].credential` | `string` | not supported yet |
-| `webrtc.media.ice_servers[].urls` | `array<string>, required` | not supported yet |
-| `webrtc.media.ice_servers[].username` | `string` | not supported yet |
-| `webrtc.media.ice_timeout` | `duration` | not supported yet |
-| `webrtc.media.key_frame_interval` | `duration` | not supported yet |
-| `webrtc.media.listen` | `string, required` | not supported yet |
-| `webrtc.media.max_bitrate` | `integer` | not supported yet |
-| `webrtc.media.max_peer_connections` | `integer` | not supported yet |
-| `webrtc.media.max_sdp_bytes` | `integer` | not supported yet |
-| `webrtc.media.max_streams` | `integer` | not supported yet |
-| `webrtc.media.max_viewers` | `integer` | not supported yet |
-| `webrtc.media.public_ips` | `array<string>` | not supported yet |
-| `webrtc.media.turn_credential_ttl` | `duration` | not supported yet |
-| `webrtc.media.turn_urls` | `array<string>` | not supported yet |
-| `webrtc.proxy` | `object` | not supported yet |
-| `webrtc.proxy.access` | `object` | not supported yet |
-| `webrtc.proxy.access.allow` | `array<string>` | not supported yet |
-| `webrtc.proxy.access.allow_files` | `array<string>` | not supported yet |
-| `webrtc.proxy.access.deny` | `array<string>` | not supported yet |
-| `webrtc.proxy.access.deny_files` | `array<string>` | not supported yet |
-| `webrtc.proxy.idle_timeout` | `duration` | not supported yet |
-| `webrtc.proxy.listen` | `string, required` | not supported yet |
-| `webrtc.proxy.max_relays` | `integer` | not supported yet |
-| `webrtc.proxy.max_sessions` | `integer` | not supported yet |
-| `webrtc.proxy.port_max` | `integer` | not supported yet |
-| `webrtc.proxy.port_min` | `integer` | not supported yet |
-| `webrtc.proxy.public_ips` | `array<string>` | not supported yet |
-| `webrtc.proxy.relay_ip` | `string` | not supported yet |
-| `webrtc.proxy.session_timeout` | `duration` | not supported yet |
-| `webrtc.turn` | `object` | not supported yet |
-| `webrtc.turn.access` | `object` | not supported yet |
-| `webrtc.turn.access.allow` | `array<string>` | not supported yet |
-| `webrtc.turn.access.allow_files` | `array<string>` | not supported yet |
-| `webrtc.turn.access.deny` | `array<string>` | not supported yet |
-| `webrtc.turn.access.deny_files` | `array<string>` | not supported yet |
-| `webrtc.turn.allowed_peers` | `array<string>` | not supported yet |
-| `webrtc.turn.default_lifetime` | `duration` | not supported yet |
-| `webrtc.turn.denied_peers` | `array<string>` | not supported yet |
-| `webrtc.turn.listen` | `array<string>, required` | not supported yet |
-| `webrtc.turn.listen_tcp` | `array<string>` | not supported yet |
-| `webrtc.turn.listen_tls` | `array<string>` | not supported yet |
-| `webrtc.turn.max_allocations` | `integer` | not supported yet |
-| `webrtc.turn.max_allocations_per_user` | `integer` | not supported yet |
-| `webrtc.turn.max_channels` | `integer` | not supported yet |
-| `webrtc.turn.max_lifetime` | `duration` | not supported yet |
-| `webrtc.turn.max_permissions` | `integer` | not supported yet |
-| `webrtc.turn.max_stream_message` | `integer` | not supported yet |
-| `webrtc.turn.mptcp` | `boolean` | not supported yet |
-| `webrtc.turn.nonce_lifetime` | `duration` | not supported yet |
-| `webrtc.turn.nonce_secret` | `string` | not supported yet |
-| `webrtc.turn.port_max` | `integer` | not supported yet |
-| `webrtc.turn.port_min` | `integer` | not supported yet |
-| `webrtc.turn.public_ip` | `string` | not supported yet |
-| `webrtc.turn.realm` | `string, required` | not supported yet |
-| `webrtc.turn.relay_ip` | `string, required` | not supported yet |
-| `webrtc.turn.secret` | `string` | not supported yet |
-| `webrtc.turn.stream_idle_timeout` | `duration` | not supported yet |
-| `webrtc.turn.tls` | `object` | not supported yet |
-| `webrtc.turn.tls.certificates` | `array<object>, required` | not supported yet |
-| `webrtc.turn.tls.certificates[].cert_file` | `string, required` | not supported yet |
-| `webrtc.turn.tls.certificates[].key_file` | `string, required` | not supported yet |
-| `webrtc.turn.user_bandwidth` | `integer` | not supported yet |
-| `webrtc.turn.users` | `array<object>` | not supported yet |
-| `webrtc.turn.users[].key` | `string` | not supported yet |
-| `webrtc.turn.users[].name` | `string, required` | not supported yet |
-| `webrtc.turn.users[].password` | `string` | not supported yet |
+| `webrtc` | `object` | supported |
+| `webrtc.media` | `object` | supported |
+| `webrtc.media.access` | `object` | supported |
+| `webrtc.media.access.allow` | `array<string>` | supported |
+| `webrtc.media.access.allow_files` | `array<string>` | supported |
+| `webrtc.media.access.deny` | `array<string>` | supported |
+| `webrtc.media.access.deny_files` | `array<string>` | supported |
+| `webrtc.media.codecs` | `array<string>` | supported |
+| `webrtc.media.connect_timeout` | `duration` | supported |
+| `webrtc.media.ice_servers` | `array<object>` | supported |
+| `webrtc.media.ice_servers[].credential` | `string` | supported |
+| `webrtc.media.ice_servers[].urls` | `array<string>, required` | supported |
+| `webrtc.media.ice_servers[].username` | `string` | supported |
+| `webrtc.media.ice_timeout` | `duration` | supported |
+| `webrtc.media.key_frame_interval` | `duration` | supported |
+| `webrtc.media.listen` | `string, required` | supported |
+| `webrtc.media.max_bitrate` | `integer` | supported |
+| `webrtc.media.max_peer_connections` | `integer` | supported |
+| `webrtc.media.max_sdp_bytes` | `integer` | supported |
+| `webrtc.media.max_streams` | `integer` | supported |
+| `webrtc.media.max_viewers` | `integer` | supported |
+| `webrtc.media.public_ips` | `array<string>` | supported |
+| `webrtc.media.turn_credential_ttl` | `duration` | supported |
+| `webrtc.media.turn_urls` | `array<string>` | supported |
+| `webrtc.proxy` | `object` | supported |
+| `webrtc.proxy.access` | `object` | supported |
+| `webrtc.proxy.access.allow` | `array<string>` | supported |
+| `webrtc.proxy.access.allow_files` | `array<string>` | supported |
+| `webrtc.proxy.access.deny` | `array<string>` | supported |
+| `webrtc.proxy.access.deny_files` | `array<string>` | supported |
+| `webrtc.proxy.idle_timeout` | `duration` | supported |
+| `webrtc.proxy.listen` | `string, required` | supported |
+| `webrtc.proxy.max_relays` | `integer` | supported |
+| `webrtc.proxy.max_sessions` | `integer` | supported |
+| `webrtc.proxy.port_max` | `integer` | supported |
+| `webrtc.proxy.port_min` | `integer` | supported |
+| `webrtc.proxy.public_ips` | `array<string>` | supported |
+| `webrtc.proxy.relay_ip` | `string` | supported |
+| `webrtc.proxy.session_timeout` | `duration` | supported |
+| `webrtc.turn` | `object` | supported |
+| `webrtc.turn.access` | `object` | supported |
+| `webrtc.turn.access.allow` | `array<string>` | supported |
+| `webrtc.turn.access.allow_files` | `array<string>` | supported |
+| `webrtc.turn.access.deny` | `array<string>` | supported |
+| `webrtc.turn.access.deny_files` | `array<string>` | supported |
+| `webrtc.turn.allowed_peers` | `array<string>` | supported |
+| `webrtc.turn.default_lifetime` | `duration` | supported |
+| `webrtc.turn.denied_peers` | `array<string>` | supported |
+| `webrtc.turn.listen` | `array<string>, required` | supported |
+| `webrtc.turn.listen_tcp` | `array<string>` | supported |
+| `webrtc.turn.listen_tls` | `array<string>` | supported |
+| `webrtc.turn.max_allocations` | `integer` | supported |
+| `webrtc.turn.max_allocations_per_user` | `integer` | supported |
+| `webrtc.turn.max_channels` | `integer` | supported |
+| `webrtc.turn.max_lifetime` | `duration` | supported |
+| `webrtc.turn.max_permissions` | `integer` | supported |
+| `webrtc.turn.max_stream_message` | `integer` | supported |
+| `webrtc.turn.mptcp` | `boolean` | supported |
+| `webrtc.turn.nonce_lifetime` | `duration` | supported |
+| `webrtc.turn.nonce_secret` | `string` | supported |
+| `webrtc.turn.port_max` | `integer` | supported |
+| `webrtc.turn.port_min` | `integer` | supported |
+| `webrtc.turn.public_ip` | `string` | supported |
+| `webrtc.turn.realm` | `string, required` | supported |
+| `webrtc.turn.relay_ip` | `string, required` | supported |
+| `webrtc.turn.secret` | `string` | supported |
+| `webrtc.turn.stream_idle_timeout` | `duration` | supported |
+| `webrtc.turn.tls` | `object` | supported |
+| `webrtc.turn.tls.certificates` | `array<object>, required` | supported |
+| `webrtc.turn.tls.certificates[].cert_file` | `string, required` | supported |
+| `webrtc.turn.tls.certificates[].key_file` | `string, required` | supported |
+| `webrtc.turn.user_bandwidth` | `integer` | supported |
+| `webrtc.turn.users` | `array<object>` | supported |
+| `webrtc.turn.users[].key` | `string` | supported |
+| `webrtc.turn.users[].name` | `string, required` | supported |
+| `webrtc.turn.users[].password` | `string` | supported |
 
 <!-- END GENERATED -->

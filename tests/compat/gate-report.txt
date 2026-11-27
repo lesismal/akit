@@ -1,7 +1,7 @@
 # The compatibility gate's report (docs/compatibility.md), written by make compat-bless;
 # do not edit. The gate fails when a run's outcomes differ from these lines.
 # fit 7daee573, fit-examples 9659d7e4.
-# 80 fixtures: 56 valid, 23 refused only as not supported yet (fields refused: 19), 0 in a format not supported yet, 1 skipped, 0 failed.
+# 80 fixtures: 59 valid, 20 refused only as not supported yet (fields refused: 17), 0 in a format not supported yet, 1 skipped, 0 failed.
 examples/acme-on-demand: valid
 examples/acme-shared-storage: valid
 examples/admin: valid
@@ -40,9 +40,8 @@ examples/load-balancing: valid
 examples/logging: valid
 examples/media-pages: not supported yet: media_auth
 examples/media-pages: not supported yet: routes[].handler<media_pages>
-examples/media-pages: not supported yet: routes[].handler<whep>
-examples/media-pages: not supported yet: routes[].handler<whip>
-examples/media-pages: not supported yet: webrtc
+examples/media-pages: not supported yet: routes[].handler<whep>.params.auth
+examples/media-pages: not supported yet: routes[].handler<whip>.params.auth
 examples/metrics: valid
 examples/mtls: valid
 examples/provider-consul: valid
@@ -93,12 +92,9 @@ examples/video-site: not supported yet: routes[].handler<vod>
 examples/video-site: not supported yet: streaming
 examples/virtual-hosts: valid
 examples/wasm: valid
-examples/webrtc-proxy: not supported yet: routes[].handler<webrtc_proxy>
-examples/webrtc-proxy: not supported yet: webrtc
-examples/webrtc-turn: not supported yet: webrtc
-examples/whip-whep: not supported yet: routes[].handler<whep>
-examples/whip-whep: not supported yet: routes[].handler<whip>
-examples/whip-whep: not supported yet: webrtc
+examples/webrtc-proxy: valid
+examples/webrtc-turn: valid
+examples/whip-whep: valid
 templates/conf/conf.d: valid
 templates/conf/fit.conf: valid
 templates/json/conf.d: valid

@@ -40,6 +40,8 @@ akit-roles = { workspace = true }
 # The tunnel's roles (I101).
 akit-tunnel = { workspace = true }
 akit-llm = { workspace = true }
+# fit's WebRTC: the TURN server, WHIP and WHEP, the media proxy (I110-I114).
+akit-webrtc = { workspace = true }
 akit-tls = { workspace = true }
 
 [dev-dependencies]

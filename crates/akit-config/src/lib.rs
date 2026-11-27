@@ -43,6 +43,7 @@ pub mod roles;
 mod shared_storage;
 pub mod value;
 mod wasm;
+pub mod webrtc;
 mod yaml;
 
 use std::path::{Path, PathBuf};

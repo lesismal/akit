@@ -296,19 +296,51 @@ fn roles_not_running(config: &Config) -> Result<(), Failure> {
             col: 0,
             msg: format!(
                 "akit run does not run this role yet ({}); akit validate checks it",
-                if path.starts_with("tunnel.") {
-                    "I101-I103"
-                } else {
-                    "I104-I109"
+                match path {
+                    p if p.starts_with("tunnel.") => "I101-I103",
+                    "webrtc.turn" => "I111",
+                    "webrtc.media" => "I113",
+                    "webrtc.proxy" => "I114",
+                    _ => "I104-I109",
                 }
             ),
         })
         .collect();
+    errs.extend(webrtc_handlers_not_served(config));
     if errs.is_empty() {
         Ok(())
     } else {
         Err(Failure::Config(Errors(errs)))
     }
+}
+
+/// Refuses the routes whose handler is `whip`, `whep` or `webrtc_proxy` until their roles run
+/// (I113, I114): `akit validate` checks them, and they answer 503 as fit's do without their role,
+/// but a config that sets them would say more than akit does.
+fn webrtc_handlers_not_served(config: &Config) -> Vec<Error> {
+    config
+        .routes
+        .iter()
+        .enumerate()
+        .filter_map(|(i, r)| {
+            let iteration = match &r.handler {
+                akit_config::Handler::Whip(_) | akit_config::Handler::Whep(_) => "I113",
+                akit_config::Handler::WebRtcProxy(_) => "I114",
+                _ => return None,
+            };
+            Some(Error {
+                file: None,
+                path: format!("routes[{i}].handler"),
+                line: 0,
+                col: 0,
+                msg: format!(
+                    "akit run does not serve the {} handler yet ({iteration}); akit validate \
+                     checks it",
+                    r.handler.module()
+                ),
+            })
+        })
+        .collect()
 }
 
 /// Opens the access log `c` describes, its times in `zone`, as fit's `NewAccessLogFiles`: a file
@@ -1807,6 +1839,37 @@ mod tests {
         assert!(super::roles_not_running(&c).is_ok());
         let c = akit_config::from_json(r#"{"tunnel": {}, "llm": {}}"#, None).unwrap();
         assert!(super::roles_not_running(&c).is_ok());
+    }
+
+    /// The WebRTC roles and handlers are refused by akit run until their iterations run them
+    /// (I110).
+    #[test]
+    fn webrtc_is_refused_until_it_runs() {
+        let c = akit_config::from_json(
+            r#"{"listeners": [{"name": "web", "address": "127.0.0.1:0"}],
+                "upstreams": [{"name": "m", "addresses": ["127.0.0.1:9"]}],
+                "routes": [{"handler": {"module": "respond"}}, {"handler": {"module": "whip"}}, {"handler": {"module": "webrtc_proxy", "params": {"upstream": "m"}}}],
+                "webrtc": {"turn": {"listen": ["127.0.0.1:0"], "realm": "r", "secret": "s", "relay_ip": "127.0.0.1"}, "media": {"listen": "127.0.0.1:0"}}}"#,
+            None,
+        )
+        .unwrap();
+        let Err(super::Failure::Config(errs)) = super::roles_not_running(&c) else {
+            panic!("webrtc let through");
+        };
+        let got: Vec<(&str, bool)> = errs
+            .0
+            .iter()
+            .map(|e| (e.path.as_str(), e.msg.contains("I11")))
+            .collect();
+        assert_eq!(
+            got,
+            [
+                ("webrtc.media", true),
+                ("webrtc.turn", true),
+                ("routes[1].handler", true),
+                ("routes[2].handler", true)
+            ]
+        );
     }
 
     /// Every role's pages are served by akit run: the hub's (I109, its console_socket with

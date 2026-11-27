@@ -173,6 +173,10 @@
     "tunnel.proxy.web_proxies": {
       "en": "Run by `akit run` (I103b), sealed as fit's: they serve the consoles of fit's hubs as of akit's. Their WebSockets say `User-Agent: akit`.",
       "zh": "由 `akit run` 运行（I103b），密封方式同 fit：既可提供 fit 的 hub 的控制台，也可提供 akit 的。其 WebSocket 发送 `User-Agent: akit`。"
+    },
+    "webrtc": {
+      "en": "Read and checked as fit's (I110, decision 039); `akit run` refuses each role until its iteration runs it: `turn` (I111), `media` (I113), `proxy` (I114).",
+      "zh": "像 fit 一样读取并检查（I110，决定 039）；在各角色的迭代运行它之前，`akit run` 拒绝它：`turn`（I111）、`media`（I113）、`proxy`（I114）。"
     }
   }
 }

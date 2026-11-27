@@ -324,7 +324,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 885 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 974 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -351,10 +351,10 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`http.handlers/stream_whip`](#fields-http-handlers-stream-whip) | 5 | 0 | 5 |
 | [`http.handlers/sync_ingest`](#fields-http-handlers-sync-ingest) | 6 | 0 | 6 |
 | [`http.handlers/vod`](#fields-http-handlers-vod) | 13 | 0 | 13 |
-| [`http.handlers/webrtc_proxy`](#fields-http-handlers-webrtc-proxy) | 8 | 0 | 8 |
+| [`http.handlers/webrtc_proxy`](#fields-http-handlers-webrtc-proxy) | 8 | 7 | 1 |
 | [`http.handlers/websockify`](#fields-http-handlers-websockify) | 12 | 0 | 12 |
-| [`http.handlers/whep`](#fields-http-handlers-whep) | 4 | 0 | 4 |
-| [`http.handlers/whip`](#fields-http-handlers-whip) | 4 | 0 | 4 |
+| [`http.handlers/whep`](#fields-http-handlers-whep) | 4 | 3 | 1 |
+| [`http.handlers/whip`](#fields-http-handlers-whip) | 4 | 3 | 1 |
 | [`http.middleware/basic_auth`](#fields-http-middleware-basic-auth) | 8 | 8 | 0 |
 | [`http.middleware/body_limit`](#fields-http-middleware-body-limit) | 3 | 3 | 0 |
 | [`http.middleware/cache`](#fields-http-middleware-cache) | 17 | 17 | 0 |
@@ -448,8 +448,8 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`telemetry`](#fields-telemetry) | 14 | 14 | 0 |
 | [`tunnel`](#fields-tunnel) | 164 | 161 | 3 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
-| [`webrtc`](#fields-webrtc) | 76 | 0 | 76 |
-| **合计** | 3821 | 885 | 2936 |
+| [`webrtc`](#fields-webrtc) | 76 | 76 | 0 |
+| **合计** | 3821 | 974 | 2847 |
 
 <a id="fields-access"></a>
 
@@ -1134,14 +1134,14 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
-| `routes[].handler<webrtc_proxy>` | `module` | 尚不支持（not supported yet） |
-| `routes[].handler<webrtc_proxy>.params` | `object` | 尚不支持（not supported yet） |
-| `routes[].handler<webrtc_proxy>.params.action` | `enum(publish\|play)` | 尚不支持（not supported yet） |
+| `routes[].handler<webrtc_proxy>` | `module` | 已支持 |
+| `routes[].handler<webrtc_proxy>.params` | `object` | 已支持 |
+| `routes[].handler<webrtc_proxy>.params.action` | `enum(publish\|play)` | 已支持 |
 | `routes[].handler<webrtc_proxy>.params.auth` | `string` | 尚不支持（not supported yet） |
-| `routes[].handler<webrtc_proxy>.params.max_sdp_bytes` | `integer` | 尚不支持（not supported yet） |
-| `routes[].handler<webrtc_proxy>.params.media_addrs` | `map<string>` | 尚不支持（not supported yet） |
-| `routes[].handler<webrtc_proxy>.params.timeout` | `duration` | 尚不支持（not supported yet） |
-| `routes[].handler<webrtc_proxy>.params.upstream` | `string, required` | 尚不支持（not supported yet） |
+| `routes[].handler<webrtc_proxy>.params.max_sdp_bytes` | `integer` | 已支持 |
+| `routes[].handler<webrtc_proxy>.params.media_addrs` | `map<string>` | 已支持 |
+| `routes[].handler<webrtc_proxy>.params.timeout` | `duration` | 已支持 |
+| `routes[].handler<webrtc_proxy>.params.upstream` | `string, required` | 已支持 |
 
 <a id="fields-http-handlers-websockify"></a>
 
@@ -1168,10 +1168,10 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
-| `routes[].handler<whep>` | `module` | 尚不支持（not supported yet） |
-| `routes[].handler<whep>.params` | `object` | 尚不支持（not supported yet） |
+| `routes[].handler<whep>` | `module` | 已支持 |
+| `routes[].handler<whep>.params` | `object` | 已支持 |
 | `routes[].handler<whep>.params.auth` | `string` | 尚不支持（not supported yet） |
-| `routes[].handler<whep>.params.stream` | `string` | 尚不支持（not supported yet） |
+| `routes[].handler<whep>.params.stream` | `string` | 已支持 |
 
 <a id="fields-http-handlers-whip"></a>
 
@@ -1179,10 +1179,10 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
-| `routes[].handler<whip>` | `module` | 尚不支持（not supported yet） |
-| `routes[].handler<whip>.params` | `object` | 尚不支持（not supported yet） |
+| `routes[].handler<whip>` | `module` | 已支持 |
+| `routes[].handler<whip>.params` | `object` | 已支持 |
 | `routes[].handler<whip>.params.auth` | `string` | 尚不支持（not supported yet） |
-| `routes[].handler<whip>.params.stream` | `string` | 尚不支持（not supported yet） |
+| `routes[].handler<whip>.params.stream` | `string` | 已支持 |
 
 <a id="fields-http-middleware-basic-auth"></a>
 
@@ -5042,81 +5042,81 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
-| `webrtc` | `object` | 尚不支持（not supported yet） |
-| `webrtc.media` | `object` | 尚不支持（not supported yet） |
-| `webrtc.media.access` | `object` | 尚不支持（not supported yet） |
-| `webrtc.media.access.allow` | `array<string>` | 尚不支持（not supported yet） |
-| `webrtc.media.access.allow_files` | `array<string>` | 尚不支持（not supported yet） |
-| `webrtc.media.access.deny` | `array<string>` | 尚不支持（not supported yet） |
-| `webrtc.media.access.deny_files` | `array<string>` | 尚不支持（not supported yet） |
-| `webrtc.media.codecs` | `array<string>` | 尚不支持（not supported yet） |
-| `webrtc.media.connect_timeout` | `duration` | 尚不支持（not supported yet） |
-| `webrtc.media.ice_servers` | `array<object>` | 尚不支持（not supported yet） |
-| `webrtc.media.ice_servers[].credential` | `string` | 尚不支持（not supported yet） |
-| `webrtc.media.ice_servers[].urls` | `array<string>, required` | 尚不支持（not supported yet） |
-| `webrtc.media.ice_servers[].username` | `string` | 尚不支持（not supported yet） |
-| `webrtc.media.ice_timeout` | `duration` | 尚不支持（not supported yet） |
-| `webrtc.media.key_frame_interval` | `duration` | 尚不支持（not supported yet） |
-| `webrtc.media.listen` | `string, required` | 尚不支持（not supported yet） |
-| `webrtc.media.max_bitrate` | `integer` | 尚不支持（not supported yet） |
-| `webrtc.media.max_peer_connections` | `integer` | 尚不支持（not supported yet） |
-| `webrtc.media.max_sdp_bytes` | `integer` | 尚不支持（not supported yet） |
-| `webrtc.media.max_streams` | `integer` | 尚不支持（not supported yet） |
-| `webrtc.media.max_viewers` | `integer` | 尚不支持（not supported yet） |
-| `webrtc.media.public_ips` | `array<string>` | 尚不支持（not supported yet） |
-| `webrtc.media.turn_credential_ttl` | `duration` | 尚不支持（not supported yet） |
-| `webrtc.media.turn_urls` | `array<string>` | 尚不支持（not supported yet） |
-| `webrtc.proxy` | `object` | 尚不支持（not supported yet） |
-| `webrtc.proxy.access` | `object` | 尚不支持（not supported yet） |
-| `webrtc.proxy.access.allow` | `array<string>` | 尚不支持（not supported yet） |
-| `webrtc.proxy.access.allow_files` | `array<string>` | 尚不支持（not supported yet） |
-| `webrtc.proxy.access.deny` | `array<string>` | 尚不支持（not supported yet） |
-| `webrtc.proxy.access.deny_files` | `array<string>` | 尚不支持（not supported yet） |
-| `webrtc.proxy.idle_timeout` | `duration` | 尚不支持（not supported yet） |
-| `webrtc.proxy.listen` | `string, required` | 尚不支持（not supported yet） |
-| `webrtc.proxy.max_relays` | `integer` | 尚不支持（not supported yet） |
-| `webrtc.proxy.max_sessions` | `integer` | 尚不支持（not supported yet） |
-| `webrtc.proxy.port_max` | `integer` | 尚不支持（not supported yet） |
-| `webrtc.proxy.port_min` | `integer` | 尚不支持（not supported yet） |
-| `webrtc.proxy.public_ips` | `array<string>` | 尚不支持（not supported yet） |
-| `webrtc.proxy.relay_ip` | `string` | 尚不支持（not supported yet） |
-| `webrtc.proxy.session_timeout` | `duration` | 尚不支持（not supported yet） |
-| `webrtc.turn` | `object` | 尚不支持（not supported yet） |
-| `webrtc.turn.access` | `object` | 尚不支持（not supported yet） |
-| `webrtc.turn.access.allow` | `array<string>` | 尚不支持（not supported yet） |
-| `webrtc.turn.access.allow_files` | `array<string>` | 尚不支持（not supported yet） |
-| `webrtc.turn.access.deny` | `array<string>` | 尚不支持（not supported yet） |
-| `webrtc.turn.access.deny_files` | `array<string>` | 尚不支持（not supported yet） |
-| `webrtc.turn.allowed_peers` | `array<string>` | 尚不支持（not supported yet） |
-| `webrtc.turn.default_lifetime` | `duration` | 尚不支持（not supported yet） |
-| `webrtc.turn.denied_peers` | `array<string>` | 尚不支持（not supported yet） |
-| `webrtc.turn.listen` | `array<string>, required` | 尚不支持（not supported yet） |
-| `webrtc.turn.listen_tcp` | `array<string>` | 尚不支持（not supported yet） |
-| `webrtc.turn.listen_tls` | `array<string>` | 尚不支持（not supported yet） |
-| `webrtc.turn.max_allocations` | `integer` | 尚不支持（not supported yet） |
-| `webrtc.turn.max_allocations_per_user` | `integer` | 尚不支持（not supported yet） |
-| `webrtc.turn.max_channels` | `integer` | 尚不支持（not supported yet） |
-| `webrtc.turn.max_lifetime` | `duration` | 尚不支持（not supported yet） |
-| `webrtc.turn.max_permissions` | `integer` | 尚不支持（not supported yet） |
-| `webrtc.turn.max_stream_message` | `integer` | 尚不支持（not supported yet） |
-| `webrtc.turn.mptcp` | `boolean` | 尚不支持（not supported yet） |
-| `webrtc.turn.nonce_lifetime` | `duration` | 尚不支持（not supported yet） |
-| `webrtc.turn.nonce_secret` | `string` | 尚不支持（not supported yet） |
-| `webrtc.turn.port_max` | `integer` | 尚不支持（not supported yet） |
-| `webrtc.turn.port_min` | `integer` | 尚不支持（not supported yet） |
-| `webrtc.turn.public_ip` | `string` | 尚不支持（not supported yet） |
-| `webrtc.turn.realm` | `string, required` | 尚不支持（not supported yet） |
-| `webrtc.turn.relay_ip` | `string, required` | 尚不支持（not supported yet） |
-| `webrtc.turn.secret` | `string` | 尚不支持（not supported yet） |
-| `webrtc.turn.stream_idle_timeout` | `duration` | 尚不支持（not supported yet） |
-| `webrtc.turn.tls` | `object` | 尚不支持（not supported yet） |
-| `webrtc.turn.tls.certificates` | `array<object>, required` | 尚不支持（not supported yet） |
-| `webrtc.turn.tls.certificates[].cert_file` | `string, required` | 尚不支持（not supported yet） |
-| `webrtc.turn.tls.certificates[].key_file` | `string, required` | 尚不支持（not supported yet） |
-| `webrtc.turn.user_bandwidth` | `integer` | 尚不支持（not supported yet） |
-| `webrtc.turn.users` | `array<object>` | 尚不支持（not supported yet） |
-| `webrtc.turn.users[].key` | `string` | 尚不支持（not supported yet） |
-| `webrtc.turn.users[].name` | `string, required` | 尚不支持（not supported yet） |
-| `webrtc.turn.users[].password` | `string` | 尚不支持（not supported yet） |
+| `webrtc` | `object` | 已支持 |
+| `webrtc.media` | `object` | 已支持 |
+| `webrtc.media.access` | `object` | 已支持 |
+| `webrtc.media.access.allow` | `array<string>` | 已支持 |
+| `webrtc.media.access.allow_files` | `array<string>` | 已支持 |
+| `webrtc.media.access.deny` | `array<string>` | 已支持 |
+| `webrtc.media.access.deny_files` | `array<string>` | 已支持 |
+| `webrtc.media.codecs` | `array<string>` | 已支持 |
+| `webrtc.media.connect_timeout` | `duration` | 已支持 |
+| `webrtc.media.ice_servers` | `array<object>` | 已支持 |
+| `webrtc.media.ice_servers[].credential` | `string` | 已支持 |
+| `webrtc.media.ice_servers[].urls` | `array<string>, required` | 已支持 |
+| `webrtc.media.ice_servers[].username` | `string` | 已支持 |
+| `webrtc.media.ice_timeout` | `duration` | 已支持 |
+| `webrtc.media.key_frame_interval` | `duration` | 已支持 |
+| `webrtc.media.listen` | `string, required` | 已支持 |
+| `webrtc.media.max_bitrate` | `integer` | 已支持 |
+| `webrtc.media.max_peer_connections` | `integer` | 已支持 |
+| `webrtc.media.max_sdp_bytes` | `integer` | 已支持 |
+| `webrtc.media.max_streams` | `integer` | 已支持 |
+| `webrtc.media.max_viewers` | `integer` | 已支持 |
+| `webrtc.media.public_ips` | `array<string>` | 已支持 |
+| `webrtc.media.turn_credential_ttl` | `duration` | 已支持 |
+| `webrtc.media.turn_urls` | `array<string>` | 已支持 |
+| `webrtc.proxy` | `object` | 已支持 |
+| `webrtc.proxy.access` | `object` | 已支持 |
+| `webrtc.proxy.access.allow` | `array<string>` | 已支持 |
+| `webrtc.proxy.access.allow_files` | `array<string>` | 已支持 |
+| `webrtc.proxy.access.deny` | `array<string>` | 已支持 |
+| `webrtc.proxy.access.deny_files` | `array<string>` | 已支持 |
+| `webrtc.proxy.idle_timeout` | `duration` | 已支持 |
+| `webrtc.proxy.listen` | `string, required` | 已支持 |
+| `webrtc.proxy.max_relays` | `integer` | 已支持 |
+| `webrtc.proxy.max_sessions` | `integer` | 已支持 |
+| `webrtc.proxy.port_max` | `integer` | 已支持 |
+| `webrtc.proxy.port_min` | `integer` | 已支持 |
+| `webrtc.proxy.public_ips` | `array<string>` | 已支持 |
+| `webrtc.proxy.relay_ip` | `string` | 已支持 |
+| `webrtc.proxy.session_timeout` | `duration` | 已支持 |
+| `webrtc.turn` | `object` | 已支持 |
+| `webrtc.turn.access` | `object` | 已支持 |
+| `webrtc.turn.access.allow` | `array<string>` | 已支持 |
+| `webrtc.turn.access.allow_files` | `array<string>` | 已支持 |
+| `webrtc.turn.access.deny` | `array<string>` | 已支持 |
+| `webrtc.turn.access.deny_files` | `array<string>` | 已支持 |
+| `webrtc.turn.allowed_peers` | `array<string>` | 已支持 |
+| `webrtc.turn.default_lifetime` | `duration` | 已支持 |
+| `webrtc.turn.denied_peers` | `array<string>` | 已支持 |
+| `webrtc.turn.listen` | `array<string>, required` | 已支持 |
+| `webrtc.turn.listen_tcp` | `array<string>` | 已支持 |
+| `webrtc.turn.listen_tls` | `array<string>` | 已支持 |
+| `webrtc.turn.max_allocations` | `integer` | 已支持 |
+| `webrtc.turn.max_allocations_per_user` | `integer` | 已支持 |
+| `webrtc.turn.max_channels` | `integer` | 已支持 |
+| `webrtc.turn.max_lifetime` | `duration` | 已支持 |
+| `webrtc.turn.max_permissions` | `integer` | 已支持 |
+| `webrtc.turn.max_stream_message` | `integer` | 已支持 |
+| `webrtc.turn.mptcp` | `boolean` | 已支持 |
+| `webrtc.turn.nonce_lifetime` | `duration` | 已支持 |
+| `webrtc.turn.nonce_secret` | `string` | 已支持 |
+| `webrtc.turn.port_max` | `integer` | 已支持 |
+| `webrtc.turn.port_min` | `integer` | 已支持 |
+| `webrtc.turn.public_ip` | `string` | 已支持 |
+| `webrtc.turn.realm` | `string, required` | 已支持 |
+| `webrtc.turn.relay_ip` | `string, required` | 已支持 |
+| `webrtc.turn.secret` | `string` | 已支持 |
+| `webrtc.turn.stream_idle_timeout` | `duration` | 已支持 |
+| `webrtc.turn.tls` | `object` | 已支持 |
+| `webrtc.turn.tls.certificates` | `array<object>, required` | 已支持 |
+| `webrtc.turn.tls.certificates[].cert_file` | `string, required` | 已支持 |
+| `webrtc.turn.tls.certificates[].key_file` | `string, required` | 已支持 |
+| `webrtc.turn.user_bandwidth` | `integer` | 已支持 |
+| `webrtc.turn.users` | `array<object>` | 已支持 |
+| `webrtc.turn.users[].key` | `string` | 已支持 |
+| `webrtc.turn.users[].name` | `string, required` | 已支持 |
+| `webrtc.turn.users[].password` | `string` | 已支持 |
 
 <!-- END GENERATED -->

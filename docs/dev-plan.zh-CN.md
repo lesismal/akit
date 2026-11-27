@@ -80,6 +80,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | `akit-plugin` | WASM 插件 | `plugin` |
 | `akit-access` | 访问控制列表：编译成区间的允许和拒绝列表、策略（I85） | `access` |
 | `akit-roles` | 网关之外的角色：链路 token（I99）、运行它们的宿主（I100） | `app`、`internal/linktoken` |
+| `akit-webrtc` | WebRTC 角色：TURN 服务器、WHIP 和 WHEP、媒体代理（I110–I114） | `webrtc` |
 | `tests/e2e` | 可执行文件的端到端测试 | `test/e2e` |
 | `tests/compat` | fit 配置兼容性门禁：固定夹具、字段清单 | `templates`、fit-examples |
 | `bench` | 基准框架、场景和报告 | `bench` |
@@ -224,7 +225,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I109c | LLM 角色的页面：`/api/me`、其方法（`/api/rpc`）与流（`/api/stream`，Server-Sent Events） | I109, I106b, I108 | done |
 | I109d | LLM 角色的页面调用而角色尚缺的方法：`/mesh/*`（dial、undial、kick、listen、limits、tokens）、proxy 的方法（`/proxy/*`：其 API、key、模型、node、profile、统计）；身份的 `http_url` | I109c | done |
 | **1.0 之后：WebRTC** | | | |
-| I110 | WebRTC I：配置中的 `webrtc`：`webrtc.turn`、`webrtc.media`、`webrtc.proxy`；处理器 `whip`、`whep` 和 `webrtc_proxy` | I79, I100 | todo |
+| I110 | WebRTC I：配置中的 `webrtc`：`webrtc.turn`、`webrtc.media`、`webrtc.proxy`；处理器 `whip`、`whep` 和 `webrtc_proxy` | I79, I100 | done |
 | I111 | WebRTC II：基于 akio-turn 的 TURN 服务器，经 UDP、TCP 和 TLS | I110 | todo |
 | I112 | WebRTC III：基于 akio 钩子的 TURN 服务器：端口范围、带宽、事件、就地修改的限制、排空 | I111, akio A256–A258 | todo |
 | I113 | WebRTC IV：WHIP 和 WHEP，基于 akio-webrtc `RtcServer` 的 SFU | I110 | todo |
@@ -1593,7 +1594,7 @@ ICE ufrag 路由。它们对外显示的是 akit 的名字（决定 037：`SOFTW
   fit-examples 的 `webrtc-turn`、`whip-whep` 和 `webrtc-proxy` 通过门禁；配置参考列出每个字段；v1 冻结把它们标为新增。
 - **涉及**：`akit-config`（`webrtc`）、`akit`、`tests/compat`、`docs/reference`。
 - **fit**：`config/webrtc.go`、`config/bindings.go`、`webrtc/media/handler.go`、`webrtc/media/proxyhttp.go`；I87、I109、I110。
-- **状态**：todo。
+- **状态**：已完成（2026-11-27）。见进度日志。处理器在其角色运行之前回答 503（同 fit），`akit run` 拒绝它们。
 
 ### I111 WebRTC II：TURN 服务器
 

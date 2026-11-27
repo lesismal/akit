@@ -12,6 +12,7 @@ use std::net::IpAddr;
 use crate::decode::Decoder;
 use crate::model::{Admin, Listener, Protocol};
 use crate::roles::{Llm, Tunnel, TunnelProtocol};
+use crate::webrtc::WebRtc;
 
 /// An address the config has akit listen on.
 struct Bind {
@@ -42,6 +43,7 @@ fn binds(
     admin: Option<&Admin>,
     tunnel: Option<&Tunnel>,
     llm: Option<&Llm>,
+    webrtc: Option<&WebRtc>,
 ) -> Vec<Bind> {
     let mut out = Vec::new();
     let mut add = |name: String, path: String, network: &'static str, address: &str| {
@@ -163,6 +165,50 @@ fn binds(
             }
         }
     }
+    if let Some(w) = webrtc {
+        if let Some(t) = &w.turn {
+            for (i, a) in t.listen.iter().enumerate() {
+                add(
+                    format!("webrtc.turn.listen[{i}]"),
+                    format!("webrtc.turn.listen[{i}]"),
+                    "udp",
+                    a,
+                );
+            }
+            for (i, a) in t.listen_tcp.iter().enumerate() {
+                add(
+                    format!("webrtc.turn.listen_tcp[{i}]"),
+                    format!("webrtc.turn.listen_tcp[{i}]"),
+                    "tcp",
+                    a,
+                );
+            }
+            for (i, a) in t.listen_tls.iter().enumerate() {
+                add(
+                    format!("webrtc.turn.listen_tls[{i}]"),
+                    format!("webrtc.turn.listen_tls[{i}]"),
+                    "tcp",
+                    a,
+                );
+            }
+        }
+        if let Some(m) = &w.media {
+            add(
+                "webrtc.media".into(),
+                "webrtc.media.listen".into(),
+                "udp",
+                &m.listen,
+            );
+        }
+        if let Some(p) = &w.proxy {
+            add(
+                "webrtc.proxy".into(),
+                "webrtc.proxy.listen".into(),
+                "udp",
+                &p.listen,
+            );
+        }
+    }
     out
 }
 
@@ -225,10 +271,11 @@ pub(crate) fn clashes(
     admin: Option<&Admin>,
     tunnel: Option<&Tunnel>,
     llm: Option<&Llm>,
+    webrtc: Option<&WebRtc>,
 ) -> Vec<(String, String)> {
     let mut kept: Vec<(Bind, String, u16)> = Vec::new();
     let mut out = Vec::new();
-    for b in binds(listeners, admin, tunnel, llm) {
+    for b in binds(listeners, admin, tunnel, llm, webrtc) {
         // Port 0 picks a free port, so two of them do not clash.
         let Some((host, port)) = bind_key(&b.address).filter(|(_, p)| *p != 0) else {
             continue;
@@ -325,6 +372,27 @@ mod tests {
                 "tunnel.proxy.forwards[0]",
                 "tcp",
                 r#""tunnel": {"proxy": {"forwards": [{"listen": "{a}", "node": "n", "service": "s"}]}}"#,
+            ),
+            // I110: fit's bindings_test.go's WebRTC kinds.
+            (
+                "webrtc.turn.listen[0]",
+                "udp",
+                r#""webrtc": {"turn": {"listen": ["{a}"], "realm": "r", "secret": "s", "relay_ip": "10.0.0.5"}}"#,
+            ),
+            (
+                "webrtc.turn.listen_tcp[0]",
+                "tcp",
+                r#""webrtc": {"turn": {"listen": ["127.0.0.1:0"], "listen_tcp": ["{a}"], "realm": "r", "secret": "s", "relay_ip": "10.0.0.5"}}"#,
+            ),
+            (
+                "webrtc.media",
+                "udp",
+                r#""webrtc": {"media": {"listen": "{a}"}}"#,
+            ),
+            (
+                "webrtc.proxy",
+                "udp",
+                r#""webrtc": {"proxy": {"listen": "{a}"}}"#,
             ),
         ]
     }

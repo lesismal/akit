@@ -39,6 +39,7 @@ pub const STANDARD: &[&str] = &[
     "akit-cache",
     "akit-plugin",
     "akit-proxy",
+    "akit-webrtc",
 ];
 
 /// The name of the package a build generates, and of its binary.
@@ -668,6 +669,7 @@ mod tests {
                 "akit-middleware",
                 "akit-plugin",
                 "akit-proxy",
+                "akit-webrtc",
                 "akit-a"
             ]
         );
@@ -777,6 +779,7 @@ not json "executable":"akit-build"
             akit_cache::MODULES,
             akit_plugin::MODULES,
             akit_proxy::MODULES,
+            akit_webrtc::MODULES,
         ];
         assert_eq!(crate::STANDARD.len(), STANDARD.len());
         for (got, want) in crate::STANDARD.iter().zip(lists) {

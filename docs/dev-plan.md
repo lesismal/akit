@@ -87,6 +87,7 @@ few crates as it can. fit's package of the same role is given for reference.
 | `akit-plugin` | WASM plugins | `plugin` |
 | `akit-access` | access lists: allow and deny lists compiled into ranges, policies (I85) | `access` |
 | `akit-roles` | the roles beside the gateway: link tokens (I99), the host that runs them (I100) | `app`, `internal/linktoken` |
+| `akit-webrtc` | the WebRTC roles: the TURN server, WHIP and WHEP, the media proxy (I110–I114) | `webrtc` |
 | `tests/e2e` | end-to-end tests of the binary | `test/e2e` |
 | `tests/compat` | the fit config compatibility gate: pinned fixtures, field inventory | `templates`, fit-examples |
 | `bench` | the harness, scenarios and reports | `bench` |
@@ -234,7 +235,7 @@ Tunnel and LLM track; I110–I114 are the WebRTC track, and I115–I119 are rese
 | I109c | The LLM roles' pages: `/api/me`, their methods (`/api/rpc`) and streams (`/api/stream`, Server-Sent Events) | I109, I106b, I108 | done |
 | I109d | The LLM roles' methods their pages call that they lack: `/mesh/*` (dial, undial, kick, listen, limits, tokens), the proxy's (`/proxy/*`: its API, keys, models, nodes, profile, stats); the identity's `http_url` | I109c | done |
 | **After 1.0: WebRTC** | | | |
-| I110 | WebRTC I: `webrtc` in the config: `webrtc.turn`, `webrtc.media`, `webrtc.proxy`; the handlers `whip`, `whep` and `webrtc_proxy` | I79, I100 | todo |
+| I110 | WebRTC I: `webrtc` in the config: `webrtc.turn`, `webrtc.media`, `webrtc.proxy`; the handlers `whip`, `whep` and `webrtc_proxy` | I79, I100 | done |
 | I111 | WebRTC II: the TURN server on akio-turn, over UDP, TCP and TLS | I110 | todo |
 | I112 | WebRTC III: the TURN server on akio's hooks: port range, bandwidth, events, limits in place, drain | I111, akio A256–A258 | todo |
 | I113 | WebRTC IV: WHIP and WHEP, an SFU on akio-webrtc's `RtcServer` | I110 | todo |
@@ -1897,7 +1898,8 @@ Streaming and media auth track's: it is refused as not supported yet until that 
 - **Touches**: `akit-config` (`webrtc`), `akit`, `tests/compat`, `docs/reference`.
 - **fit**: `config/webrtc.go`, `config/bindings.go`, `webrtc/media/handler.go`,
   `webrtc/media/proxyhttp.go`; I87, I109, I110.
-- **Status**: todo.
+- **Status**: done (2026-11-27). See the progress log. The handlers answer 503 until their roles run,
+  as fit's do, and `akit run` refuses them.
 
 ### I111 WebRTC II: the TURN server
 

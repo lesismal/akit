@@ -61,6 +61,9 @@ pub struct Config {
     pub tunnel: Option<crate::roles::Tunnel>,
     /// `llm` (I98): the LLM feature's roles, a hub, a node and a proxy; none when left out.
     pub llm: Option<crate::roles::Llm>,
+    /// `webrtc` (I110): the TURN server, the media server of `whip` and `whep`, and the relay of
+    /// `webrtc_proxy`; none when left out.
+    pub webrtc: Option<crate::webrtc::WebRtc>,
     /// What the config was read with that is said rather than refused (I79): the old names of
     /// fields renamed in schema version 1, each at its file, line, column and path. Not part of
     /// what the config means: configs equal but for these are equal.
@@ -1348,6 +1351,13 @@ pub enum Handler {
     FastCgi(crate::fastcgi::FastCgi),
     /// `forward_proxy`: HTTP CONNECT tunnels to where its rules allow (I55).
     ForwardProxy(ForwardProxy),
+    /// `whip`: WebRTC streams published with WHIP (RFC 9725) into `webrtc.media` (I110).
+    Whip(crate::webrtc::WhipWhep),
+    /// `whep`: the streams of `webrtc.media` played with WHEP (I110).
+    Whep(crate::webrtc::WhipWhep),
+    /// `webrtc_proxy`: WHIP and WHEP passed to the media servers of an upstream, their peers'
+    /// media through `webrtc.proxy` (I110).
+    WebRtcProxy(crate::webrtc::WebRtcProxyHandler),
     /// The `rewrite` middleware: the request's path changed before the handler sees it (I40).
     Rewrite(Rewrite),
     /// The `redirect` middleware: requests answered with a redirect (I40).
@@ -1407,6 +1417,9 @@ impl Handler {
             Handler::Proxy(_) => "proxy",
             Handler::FastCgi(_) => "fastcgi",
             Handler::ForwardProxy(_) => "forward_proxy",
+            Handler::Whip(_) => "whip",
+            Handler::Whep(_) => "whep",
+            Handler::WebRtcProxy(_) => "webrtc_proxy",
             Handler::Rewrite(_) => "rewrite",
             Handler::Redirect(_) => "redirect",
             Handler::Headers(_) => "headers",
@@ -2238,10 +2251,11 @@ const CONFIG_FIELDS: &[&str] = &[
     // I98: fit's roles of the tunnel and the LLM feature (crate::roles).
     "tunnel",
     "llm",
+    // I110: fit's WebRTC roles (crate::webrtc).
+    "webrtc",
 ];
 const CONFIG_FIT_ONLY: &[&str] = &[
     "pprof",
-    "webrtc",
     "media_auth",
     "streaming",
     "media_library",
@@ -2433,10 +2447,7 @@ const FIT_HANDLERS: &[&str] = &[
     "stream_whip",
     "sync_ingest",
     "vod",
-    "webrtc_proxy",
     "websockify",
-    "whep",
-    "whip",
 ];
 /// fit's middleware modules (its `http.middleware` namespace) that akit does not have yet.
 const FIT_MIDDLEWARE: &[&str] = &[];
@@ -2660,6 +2671,8 @@ pub(crate) struct Part {
     /// `tunnel` and `llm` (I98), with the positions of their keys, when the file gives them.
     tunnel: Option<(crate::roles::Tunnel, usize)>,
     llm: Option<(crate::roles::Llm, usize)>,
+    /// `webrtc` (I110), with the position of its key, when the file gives it.
+    webrtc: Option<(crate::webrtc::WebRtc, usize)>,
     providers: Vec<At<crate::providers::Provider>>,
     /// The position of the file's top object.
     doc_off: usize,
@@ -2747,6 +2760,9 @@ pub(crate) fn part(d: &mut Decoder<'_>, n: &Node, file: usize) -> Option<Part> {
     let llm = o
         .take("llm")
         .and_then(|v| crate::roles::llm(d, v, "llm").map(|l| (l, v.off)));
+    let webrtc = o
+        .take("webrtc")
+        .and_then(|v| crate::webrtc::webrtc(d, v, "webrtc").map(|w| (w, v.off)));
     let providers = o
         .take("providers")
         .map(|v| {
@@ -2775,6 +2791,7 @@ pub(crate) fn part(d: &mut Decoder<'_>, n: &Node, file: usize) -> Option<Part> {
         access,
         tunnel,
         llm,
+        webrtc,
         providers,
         doc_off,
     })
@@ -2808,6 +2825,7 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
     let mut access: Option<(Access, usize)> = None;
     let mut tunnel: Option<(crate::roles::Tunnel, usize)> = None;
     let mut llm: Option<(crate::roles::Llm, usize)> = None;
+    let mut webrtc: Option<(crate::webrtc::WebRtc, usize)> = None;
     let mut providers = Vec::new();
     for (file, p) in parts.into_iter().enumerate() {
         first_doc.get_or_insert((file, p.doc_off));
@@ -2946,6 +2964,9 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
         if let Some((l, off)) = p.llm {
             once(ds, &mut llm, l, file, off, "llm");
         }
+        if let Some((w, off)) = p.webrtc {
+            once(ds, &mut webrtc, w, file, off, "webrtc");
+        }
         listeners.extend(p.listeners);
         routes.extend(p.routes);
         upstreams.extend(p.upstreams);
@@ -3002,6 +3023,7 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
         admin.as_ref().map(|(a, _)| a),
         tunnel.as_ref().map(|(t, _)| t),
         llm.as_ref().map(|(l, _)| l),
+        webrtc.as_ref().map(|(w, _)| w),
     );
     crate::binds::report(ds, clashes);
     let limits = limits.map(|(l, _)| l).unwrap_or_default();
@@ -3031,6 +3053,7 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
         access: access.map(|(a, _)| a),
         tunnel: tunnel.map(|(t, _)| t),
         llm: llm.map(|(l, _)| l),
+        webrtc: webrtc.map(|(w, _)| w),
         warnings: crate::error::Warnings::default(),
     }
 }
@@ -4288,7 +4311,7 @@ fn tls(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Tls> {
     })
 }
 
-fn certificate(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Certificate> {
+pub(crate) fn certificate(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Certificate> {
     let mut o = d.object(n, path)?;
     let cert_file = o
         .require(d, "cert_file")
@@ -4599,6 +4622,11 @@ fn handler(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Handler> {
                 return None;
             };
             forward_proxy(d, n, &params_path).map(Handler::ForwardProxy)
+        }
+        "whip" => crate::webrtc::whip_whep(d, params, &params_path, "whip").map(Handler::Whip),
+        "whep" => crate::webrtc::whip_whep(d, params, &params_path, "whep").map(Handler::Whep),
+        "webrtc_proxy" => {
+            crate::webrtc::webrtc_proxy(d, params, &params_path, off).map(Handler::WebRtcProxy)
         }
         m if FIT_HANDLERS.contains(&m) => {
             d.not_yet(off, &module_path, &format!("the {m:?} handler"));

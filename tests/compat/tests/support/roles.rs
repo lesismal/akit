@@ -764,10 +764,270 @@ fn llm(out: &mut Vec<(String, String, Read)>) {
     }
 }
 
+/// The WebRTC roles' fields (I110), and the `whip`, `whep` and `webrtc_proxy` handlers' params.
+fn webrtc(out: &mut Vec<(String, String, Read)>) {
+    let turn_need = [
+        ("listen", r#"["127.0.0.1:3478"]"#.to_owned()),
+        ("realm", q("r")),
+        ("relay_ip", q("10.0.0.5")),
+        ("secret", q("s")),
+    ];
+    let turn_min =
+        r#"{"listen": ["127.0.0.1:3478"], "realm": "r", "relay_ip": "10.0.0.5", "secret": "s"}"#;
+    let w = |m: &str| format!(r#"{{"webrtc": {m}}}"#);
+    out.push((
+        "webrtc".into(),
+        w("{}"),
+        Read::Differs(w(r#"{"media": {"listen": "127.0.0.1:8189"}}"#)),
+    ));
+    emit(
+        out,
+        "webrtc",
+        &w,
+        &[],
+        vec![
+            f("turn", turn_min, turn_min.replace("\"r\"", "\"q\"")),
+            f(
+                "media",
+                r#"{"listen": "127.0.0.1:8189"}"#,
+                r#"{"listen": "127.0.0.1:8188"}"#,
+            ),
+            f(
+                "proxy",
+                r#"{"listen": "127.0.0.1:8190"}"#,
+                r#"{"listen": "127.0.0.1:8191"}"#,
+            ),
+        ],
+    );
+    // The TURN server.
+    let tw = |m: &str| w(&format!(r#"{{"turn": {m}}}"#));
+    let tls = |cert: &str| {
+        format!(r#"{{"certificates": [{{"cert_file": "{cert}", "key_file": "k.pem"}}]}}"#)
+    };
+    emit(
+        out,
+        "webrtc.turn",
+        &tw,
+        &turn_need,
+        vec![
+            f("listen", r#"["127.0.0.1:3478"]"#, r#"["127.0.0.1:3479"]"#),
+            f("listen_tcp", "[]", r#"["127.0.0.1:3478"]"#),
+            fx(
+                "listen_tls",
+                r#"["127.0.0.1:5349"]"#,
+                r#"["127.0.0.1:5350"]"#,
+                &[("tls", &tls("c.pem"))],
+            ),
+            f("mptcp", "true", "false"),
+            fx(
+                "tls",
+                tls("a.pem"),
+                tls("b.pem"),
+                &[("listen_tls", r#"["127.0.0.1:5349"]"#)],
+            ),
+            f("access", "{}", r#"{"allow": ["10.0.0.0/8"]}"#),
+            f("realm", q("r"), q("q")),
+            f(
+                "users",
+                r#"[{"name": "a", "password": "p"}]"#,
+                r#"[{"name": "b", "password": "p"}]"#,
+            ),
+            f("secret", q("s"), q("t")),
+            f("relay_ip", q("10.0.0.5"), q("10.0.0.6")),
+            f("public_ip", q("203.0.113.5"), q("203.0.113.6")),
+            fx("port_min", "1000", "1001", &[("port_max", "2000")]),
+            fx("port_max", "2000", "2001", &[("port_min", "1000")]),
+            f("max_allocations", "1", "2"),
+            f("max_allocations_per_user", "1", "2"),
+            f("max_permissions", "1", "2"),
+            f("max_channels", "1", "2"),
+            f("max_stream_message", "4096", "4097"),
+            f("stream_idle_timeout", q("1s"), q("2s")),
+            f("user_bandwidth", "1", "2"),
+            f("default_lifetime", q("1m"), q("2m")),
+            f("max_lifetime", q("1h"), q("2h")),
+            f("nonce_lifetime", q("1m"), q("2m")),
+            f("nonce_secret", q("a"), q("b")),
+            f("allowed_peers", r#"["10.0.0.0/8"]"#, r#"["10.0.0.0/9"]"#),
+            f("denied_peers", r#"["10.0.0.0/8"]"#, r#"["10.0.0.0/9"]"#),
+        ],
+    );
+    let base =
+        r#""listen": ["127.0.0.1:3478"], "realm": "r", "relay_ip": "10.0.0.5", "secret": "s""#;
+    let tlsw = |m: &str| {
+        tw(&format!(
+            r#"{{{base}, "listen_tls": ["127.0.0.1:5349"], "tls": {m}}}"#
+        ))
+    };
+    emit(
+        out,
+        "webrtc.turn.tls",
+        &tlsw,
+        &[],
+        vec![f(
+            "certificates",
+            r#"[{"cert_file": "a.pem", "key_file": "k.pem"}]"#,
+            r#"[{"cert_file": "b.pem", "key_file": "k.pem"}]"#,
+        )],
+    );
+    let cw = |m: &str| tlsw(&format!(r#"{{"certificates": [{m}]}}"#));
+    emit(
+        out,
+        "webrtc.turn.tls.certificates[]",
+        &cw,
+        &[("cert_file", q("c.pem")), ("key_file", q("k.pem"))],
+        vec![
+            f("cert_file", q("a.pem"), q("b.pem")),
+            f("key_file", q("a.pem"), q("b.pem")),
+        ],
+    );
+    let uw = |m: &str| tw(&format!(r#"{{{base}, "users": [{m}]}}"#));
+    emit(
+        out,
+        "webrtc.turn.users[]",
+        &uw,
+        &[("name", q("a")), ("password", q("p"))],
+        vec![
+            f("name", q("a"), q("b")),
+            f("password", q("p"), q("q")),
+            fx(
+                "key",
+                q("0123456789abcdef0123456789abcdef"),
+                q("0123456789abcdef0123456789abcdee"),
+                &[("password", "")],
+            ),
+        ],
+    );
+    let aw = |m: &str| tw(&format!(r#"{{{base}, "access": {m}}}"#));
+    emit(out, "webrtc.turn.access", &aw, &[], access_fields());
+    // The media server; webrtc.turn beside it, whose secret turn_urls needs.
+    let mw = |m: &str| w(&format!(r#"{{"turn": {turn_min}, "media": {m}}}"#));
+    emit(
+        out,
+        "webrtc.media",
+        &mw,
+        &[("listen", q("127.0.0.1:8189"))],
+        vec![
+            f("listen", q("127.0.0.1:8189"), q("127.0.0.1:8188")),
+            f("public_ips", r#"["203.0.113.5"]"#, r#"["203.0.113.6"]"#),
+            f("access", "{}", r#"{"allow": ["10.0.0.0/8"]}"#),
+            f(
+                "ice_servers",
+                r#"[{"urls": ["stun:a"]}]"#,
+                r#"[{"urls": ["stun:b"]}]"#,
+            ),
+            f("turn_urls", r#"["turn:a"]"#, r#"["turn:b"]"#),
+            f("turn_credential_ttl", q("1m"), q("2m")),
+            f("codecs", r#"["opus"]"#, r#"["VP8"]"#),
+            f("max_peer_connections", "1", "2"),
+            f("max_streams", "1", "2"),
+            f("max_viewers", "1", "2"),
+            f("max_bitrate", "1", "2"),
+            f("max_sdp_bytes", "1", "2"),
+            f("connect_timeout", q("1s"), q("2s")),
+            f("ice_timeout", q("1s"), q("2s")),
+            f("key_frame_interval", q("1s"), q("2s")),
+        ],
+    );
+    let maw = |m: &str| mw(&format!(r#"{{"listen": "127.0.0.1:8189", "access": {m}}}"#));
+    emit(out, "webrtc.media.access", &maw, &[], access_fields());
+    let iw = |m: &str| {
+        mw(&format!(
+            r#"{{"listen": "127.0.0.1:8189", "ice_servers": [{m}]}}"#
+        ))
+    };
+    emit(
+        out,
+        "webrtc.media.ice_servers[]",
+        &iw,
+        &[("urls", r#"["stun:a"]"#.to_owned())],
+        vec![
+            f("urls", r#"["stun:a"]"#, r#"["stun:b"]"#),
+            f("username", q("a"), q("b")),
+            f("credential", q("a"), q("b")),
+        ],
+    );
+    // The proxy.
+    let pw = |m: &str| w(&format!(r#"{{"proxy": {m}}}"#));
+    emit(
+        out,
+        "webrtc.proxy",
+        &pw,
+        &[("listen", q("127.0.0.1:8190"))],
+        vec![
+            f("listen", q("127.0.0.1:8190"), q("127.0.0.1:8191")),
+            f("public_ips", r#"["203.0.113.5"]"#, r#"["203.0.113.6"]"#),
+            f("access", "{}", r#"{"allow": ["10.0.0.0/8"]}"#),
+            f("max_sessions", "1", "2"),
+            f("max_relays", "1", "2"),
+            f("session_timeout", q("1s"), q("2s")),
+            f("idle_timeout", q("1s"), q("2s")),
+            f("relay_ip", q("10.0.0.5"), q("10.0.0.6")),
+            fx("port_min", "1000", "1001", &[("port_max", "2000")]),
+            fx("port_max", "2000", "2001", &[("port_min", "1000")]),
+        ],
+    );
+    let paw = |m: &str| pw(&format!(r#"{{"listen": "127.0.0.1:8190", "access": {m}}}"#));
+    emit(out, "webrtc.proxy.access", &paw, &[], access_fields());
+    // The handlers.
+    let route = |module: &str, params: &str| {
+        format!(
+            r#"{{"listeners": [{{"name": "web", "address": ":8080"}}], "routes": [{{"handler": {{"module": "{module}"{params}}}}}]}}"#
+        )
+    };
+    for h in ["whip", "whep"] {
+        let other = if h == "whip" { "whep" } else { "whip" };
+        out.push((
+            format!("routes[].handler<{h}>"),
+            route(h, ""),
+            Read::Differs(route(other, "")),
+        ));
+        out.push((
+            format!("routes[].handler<{h}>.params"),
+            route(h, ""),
+            Read::Differs(route(h, r#", "params": {"stream": "a"}"#)),
+        ));
+        out.push((
+            format!("routes[].handler<{h}>.params.stream"),
+            route(h, r#", "params": {"stream": "a"}"#),
+            Read::Differs(route(h, r#", "params": {"stream": "b"}"#)),
+        ));
+    }
+    let wp = |m: &str| route("webrtc_proxy", &format!(r#", "params": {m}"#));
+    out.push((
+        "routes[].handler<webrtc_proxy>".into(),
+        wp(r#"{"upstream": "m"}"#),
+        Read::Differs(route("whip", "")),
+    ));
+    out.push((
+        "routes[].handler<webrtc_proxy>.params".into(),
+        wp(r#"{"upstream": "m"}"#),
+        Read::Differs(wp(r#"{"upstream": "m", "timeout": "1s"}"#)),
+    ));
+    emit(
+        out,
+        "routes[].handler<webrtc_proxy>.params",
+        &wp,
+        &[("upstream", q("m"))],
+        vec![
+            f("upstream", q("m"), q("n")),
+            f(
+                "media_addrs",
+                r#"{"10.0.0.2:8080": "10.0.0.2"}"#,
+                r#"{"10.0.0.2:8080": "10.0.0.3"}"#,
+            ),
+            f("timeout", q("1s"), q("2s")),
+            f("max_sdp_bytes", "1", "2"),
+            f("action", q("publish"), q("play")),
+        ],
+    );
+}
+
 /// Every sample of the roles' fields.
 pub(crate) fn samples() -> Vec<(String, String, Read)> {
     let mut out = Vec::new();
     tunnel(&mut out);
     llm(&mut out);
+    webrtc(&mut out);
     out
 }
