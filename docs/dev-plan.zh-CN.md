@@ -226,7 +226,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I109d | LLM 角色的页面调用而角色尚缺的方法：`/mesh/*`（dial、undial、kick、listen、limits、tokens）、proxy 的方法（`/proxy/*`：其 API、key、模型、node、profile、统计）；身份的 `http_url` | I109c | done |
 | **1.0 之后：WebRTC** | | | |
 | I110 | WebRTC I：配置中的 `webrtc`：`webrtc.turn`、`webrtc.media`、`webrtc.proxy`；处理器 `whip`、`whep` 和 `webrtc_proxy` | I79, I100 | done |
-| I111 | WebRTC II：基于 akio-turn 的 TURN 服务器，经 UDP、TCP 和 TLS | I110 | todo |
+| I111 | WebRTC II：基于 akio-turn 的 TURN 服务器，经 UDP、TCP 和 TLS | I110 | done |
 | I112 | WebRTC III：基于 akio 钩子的 TURN 服务器：端口范围、带宽、事件、就地修改的限制、排空 | I111, akio A256–A258 | todo |
 | I113 | WebRTC IV：WHIP 和 WHEP，基于 akio-webrtc `RtcServer` 的 SFU | I110 | todo |
 | I114 | WebRTC V：代理的 WHIP 和 WHEP：`webrtc_proxy` 和 `webrtc.proxy` | I113, I14 | todo |
@@ -1612,7 +1612,8 @@ ICE ufrag 路由。它们对外显示的是 akit 的名字（决定 037：`SOFTW
   重新加载地址则迁移服务器。
 - **涉及**：`akit-webrtc`（新，`turn`）、`akit`、`akit-roles`。
 - **fit**：`webrtc/turn`；I87、I111。
-- **状态**：todo。
+- **状态**：已完成（2026-11-27）。见进度日志。在 akio 的 A256-A258 之前的临时方案（决定 039）：运行时拒绝端口范围；带宽、
+  nonce secret 和流的上限不生效。
 
 ### I112 WebRTC III：基于 akio 钩子的 TURN 服务器
 

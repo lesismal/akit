@@ -60,6 +60,31 @@ pub trait Role: Send {
     fn module(&self) -> Option<crate::pages::ModuleRef> {
         None
     }
+
+    /// What the role counts, for `/metrics` (fit's `app.Metered`): a writer the Admin API's
+    /// thread calls on every scrape, appending the role's families in Prometheus's text format.
+    /// It must not block. `None` for a role without metrics.
+    fn metrics(&self) -> Option<MetricsFn> {
+        None
+    }
+}
+
+/// A role's metrics ([`Role::metrics`]): appends its families to the scrape, in Prometheus's
+/// text format.
+pub type MetricsFn = Arc<dyn Fn(&mut Vec<u8>) + Send + Sync>;
+
+/// The running roles' metrics, shared with the Admin API's `/metrics`.
+pub type Meters = Arc<Mutex<Vec<MetricsFn>>>;
+
+/// Appends the metrics of every running role to `out`.
+pub fn write_meters(meters: &Meters, out: &mut Vec<u8>) {
+    let all = meters
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clone();
+    for m in all {
+        m(out);
+    }
 }
 
 /// A role's handle for its pages ([`Role::api`]).
@@ -261,6 +286,7 @@ pub struct Manager {
     registries: Registries,
     modules: Modules,
     consoles: Option<Box<dyn Consoles>>,
+    meters: Meters,
 }
 
 impl fmt::Debug for Manager {
@@ -286,6 +312,7 @@ impl Manager {
             registries: Arc::new(Mutex::new(HashMap::new())),
             modules: Modules::default(),
             consoles: None,
+            meters: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -405,6 +432,9 @@ impl Manager {
         drop(g);
         self.modules
             .set(self.running.values().filter_map(|r| r.module()).collect());
+        let mut m = self.meters.lock().unwrap_or_else(PoisonError::into_inner);
+        m.clear();
+        m.extend(self.running.values().filter_map(|r| r.metrics()));
     }
 
     /// The IDs of the roles running, sorted.
@@ -424,6 +454,12 @@ impl Manager {
     #[must_use]
     pub fn files(&self) -> Vec<(String, [u8; 32])> {
         self.running.values().flat_map(|r| r.files()).collect()
+    }
+
+    /// The running roles' metrics, for the Admin API's `/metrics`.
+    #[must_use]
+    pub fn meters(&self) -> Meters {
+        Arc::clone(&self.meters)
     }
 
     /// The running roles' token registries, for the Admin API.

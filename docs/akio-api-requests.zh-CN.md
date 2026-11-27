@@ -110,6 +110,9 @@
 | A247 | 进程的有效用户（`akio_sys::process::euid`） | 已进入 akio 的 main 并锁定（自 `a8171fda` 起），LLM node 使用 | 14 | I108 |
 | A248 | 向进程组发送信号（`akio_sys::process::kill_group`） | 已进入 akio 的 main 并锁定（自 `a8171fda` 起），LLM node 的作业使用 | 1, 14 | I108 |
 | A249 | 文件系统的大小与可用空间（`akio_sys::fs::space`） | 已进入 akio 的 main 并锁定（自 `a8171fda` 起），LLM node 的磁盘信息使用 | 1, 14 | I108 |
+| A256 | fit 的 TURN 角色设置的 akio-turn 静态设置：中继套接字绑定在端口范围内、nonce 的密钥来自服务器之间共享的 secret、流客户端的最大消息 | 已提出（I111）：运行时拒绝 `port_min`/`port_max`，`nonce_secret` 和 `max_stream_message` 不生效（决定 039） | 4, 11 | I111, I112 |
+| A257 | akio-turn 供嵌入它的服务器使用的钩子：每个中继数据报的用户名、方向和大小，并能决定是否放行（用户名的带宽）；服务器的事件（分配、刷新、释放、拒绝、凭据失败）；某地址是否为其中继地址之一；其 permission、channel 和待定 allocation 的计数 | 已提出（I111）：`user_bandwidth` 不强制执行，服务器自身地址只能在列出的端口上访问，事件和字节数不计数（决定 039） | 1, 11 | I111, I112 |
+| A258 | 在运行中的 akio-turn 服务器上修改设置（凭据、配额、上限、生存期），以及排空：在已有 allocation 自然结束期间不再接受新的 allocation | 已提出（I111）：配额、上限或生存期的变化启动新服务器；被重新加载替换的服务器在排空期间继续服务（决定 039） | 10, 11 | I111, I112 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -2020,3 +2023,69 @@ node 的池上运行的 `kill -KILL -- -<pgid>` 处理（记录在[进度](progr
 **akit 如何使用。** `akit_tunnel::quic` 的 hub 监听器以
 `.handshake_timeout(Some(TunnelHubQuic::handshake(q)))` 和 `.max_handshakes(TunnelHubQuic::handshakes(q))`（省略时为 fit 的
 10 秒和 64）构建其 `ServerConfig`。握手之后连接等待链路的流的时间仍由 hub 自己的计时器限制，同 fit 的 `streamWait`。
+
+## A256 akio-turn 的静态设置：中继端口范围、共享的 nonce 密钥、流的最大消息
+
+**状态。** 由 I111 提出（2026-11-27）。TURN 角色在运行时拒绝 `port_min` 和 `port_max`（`akit validate` 接受它们），
+并在服务器启动时说明 `nonce_secret` 和 `max_stream_message` 不生效（决定 039）。
+
+**问题。** fit 的 `webrtc.turn` 把中继套接字绑定在 `port_min`..`port_max` 内，即服务器前面的防火墙放行的范围
+（fit-examples 的 `webrtc-turn` 设为 49152-49999）；用 `nonce_secret` 生成 nonce，使同一负载均衡器后面的服务器能互相接受；
+并用 `max_stream_message`（默认 8 KiB，至少 2048）限制 TCP 或 TLS 客户端的连接为尚不完整的消息缓冲多少。akio-turn 的
+`TurnServer` 把每个中继绑定在 `relay_ip` 的端口 0 上，用自己的随机字节作 nonce 密钥，并按最大 64 KiB 为流消息分帧。
+
+**证据。** 在 akio `8a9601b9`（以及 `a8171fda`）中：`akio-turn/src/core.rs` 的 `TurnConfig` 没有端口范围，`Shared::new`
+用 `fill_random` 填充 `nonce_key`，`framing.rs` 的 `MAX_FRAME` 为 `HEADER_LEN + 0xfffc`；环境的 `open_relay` 被要求
+`relay_ip:0`。fit：`webrtc/turn/turn.go`（`turnserver.Config.PortMin`、`PortMax`、`NonceSecret`、`MaxStreamMessage`），fib 的
+A55 和 A57。
+
+**建议的 API。** 在 `TurnConfig` 上：`relay_ports(min: u16, max: u16)`（跳过已占用的端口，范围耗尽时回答 508）、
+`nonce_secret(&[u8])`（由它派生 nonce 密钥）、`max_stream_message(usize)`（下一条消息声称更大时关闭该流）。
+
+**akit 如何使用。** `akit_webrtc::turn` 按成员设置这三项，并去掉其拒绝和警告（I112）。
+
+## A257 akio-turn 供嵌入它的服务器使用的钩子：按用户名的中继字节、事件、其中继地址
+
+**状态。** 由 I111 提出（2026-11-27）。`user_bandwidth` 不强制执行（服务器启动时给出警告）；服务器自身的地址
+（`relay_ip`、`public_ip`）只能在 `allowed_peers` 随之列出的端口上访问，因此同一服务器的两个客户端不会经由对方的中继
+地址互相中继；`/metrics` 计数数据报而非字节，也不计数事件（决定 039）。
+
+**问题。** fit 的 TURN 角色经由 fib 的 `OnRelay(user, toPeer, n) bool` 限制每个用户名每个方向每秒中继的字节数
+（`user_bandwidth`，每个用户名和方向一个令牌桶，超出的数据报被丢弃）；对 fib 的 `OnEvent`（分配、刷新、带原因的释放、带
+错误码的拒绝、凭据失败）计数并记录日志；并经由 fib 的 `HoldsRelay` 让位于自身地址的 peer 只能在其中继端口上访问，
+使两个客户端能互相中继，而没有人能经由中继到达 fit 的其他监听器。其 gauge 计数 permission、channel 和待定的 allocation。
+akio-turn 的 `PeerFilter` 只看到 peer；其 `TurnStats` 计数 allocation 和数据报。
+
+**证据。** 在 akio `8a9601b9` 中：`akio-turn/src/core.rs` 的 `TurnConfig::peer_allowed` 为 `Fn(SocketAddr) -> bool`；
+`TurnStats` 包含 `allocations`、`to_peer`、`to_client`、`auth_failures`、`tcp_connections`、`icmp`、`ttl_expired`；没有按
+中继数据报或按事件运行的回调。fit：`webrtc/turn/turn.go` 的 `onRelay`、`onEvent`、`peerAllowed`、`WriteMetrics`；`limiter.go`。
+
+**建议的 API。** 在 `TurnConfig` 上：`on_relay(Arc<dyn Fn(&str, bool, usize) -> bool + Send + Sync>)`（用户名、是否朝向
+peer、字节数；返回 false 则丢弃）、`on_event(Arc<dyn Fn(&TurnEvent) + Send + Sync>)`（`Allocated`、`Refreshed`、
+`Freed { reason }`、`Refused { method, code }`、`AuthFailed`，带用户名、客户端和中继地址），在应答发出之后调用，且从不
+持有 I/O 路径需要的锁；在 `TurnServer` 上：`holds_relay(SocketAddr) -> bool`；`TurnStats` 增加 `permissions`、
+`channels`、`pending` 和 `dropped`。
+
+**akit 如何使用。** `akit_webrtc::turn` 保留 fit 的限速器（每个用户名和方向一个桶，至多 65,536 个），把事件计入
+`akit_turn_*` 并在 debug 级别写入 `webrtc` 日志器，并在其中继端口上访问自身地址（I112）。
+
+## A258 在运行中的 akio-turn 服务器上修改设置，以及排空
+
+**状态。** 由 I111 提出（2026-11-27）。用户、secret 和 peer 规则已经就地修改（akit 的 `AuthFn` 和 peer 过滤器读取
+它们）；配额、上限或生存期的变化启动新服务器，两者共享地址时结束旧服务器的 allocation；被重新加载替换的服务器在
+`-shutdown-timeout` 内继续服务（包括新客户端），然后关闭（决定 039）。
+
+**问题。** fit 的重新加载就地修改运行中服务器的配额（`max_allocations`、`max_allocations_per_user`）、上限
+（`max_permissions`、`max_channels`）和生存期（fib 的 `SetLimits`、`SetAuth`），保留 allocation；地址变化时启动新服务器并
+排空旧服务器（fib 的 `Shutdown(ctx)`：新 allocation 以 508 拒绝，已有的继续刷新，直到它们结束或排空时间用完）。akio-turn
+的 `TurnConfig` 在创建服务器时固定，`close_all` 立即结束所有 allocation。
+
+**证据。** 在 akio `8a9601b9` 中：`TurnServer::new(cfg)` 把 `cfg` 保存在 `Shared` 中，无锁读取；没有再设置它的途径；
+`close_all` 是唯一的关闭方式。fit：`webrtc/turn/turn.go` 的 `Apply`（`SetLimits`、`SetAuth`、`drainRunning`），fib 的 A58。
+
+**建议的 API。** 在 `TurnServer` 上：`set_limits(TurnLimits)`（配额、上限和生存期，作用于下一个请求）、
+`set_auth(AuthFn)`，以及 `drain()`（新 allocation 以 508 拒绝，已有 allocation 的刷新、permission 和 channel 照常服务），
+并以 `allocations()` 观察它们结束。
+
+**akit 如何使用。** `akit_webrtc::turn` 把配额、上限和生存期移出其静态键并就地设置；被重新加载替换的服务器进入排空，
+拒绝新 allocation（I112）。

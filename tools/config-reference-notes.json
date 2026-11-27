@@ -175,8 +175,40 @@
       "zh": "由 `akit run` 运行（I103b），密封方式同 fit：既可提供 fit 的 hub 的控制台，也可提供 akit 的。其 WebSocket 发送 `User-Agent: akit`。"
     },
     "webrtc": {
-      "en": "Read and checked as fit's (I110, decision 039); `akit run` refuses each role until its iteration runs it: `turn` (I111), `media` (I113), `proxy` (I114).",
-      "zh": "像 fit 一样读取并检查（I110，决定 039）；在各角色的迭代运行它之前，`akit run` 拒绝它：`turn`（I111）、`media`（I113）、`proxy`（I114）。"
+      "en": "Read and checked as fit's (I110, decision 039); `akit run` runs `turn` (I111) on the listeners' engine, and refuses `media` (I113) and `proxy` (I114) until their iterations run them.",
+      "zh": "像 fit 一样读取并检查（I110，决定 039）；`akit run` 在监听器的引擎上运行 `turn`（I111），在 `media`（I113）和 `proxy`（I114）的迭代运行它们之前拒绝它们。"
+    },
+    "webrtc.turn": {
+      "en": "akio-turn's server (I111): `SOFTWARE` is `akit`; TCP allocations (RFC 6062) are refused with 442, as fit's. The users, secret, peer rules, access and certificates change in place; a change of the quotas, caps or lifetimes starts a new server, as one of the addresses does, until akio-turn changes them in place (A258); the server a reload replaced keeps serving for `-shutdown-timeout`. `/metrics` has `akit_turn_allocations`, `akit_turn_draining_servers`, `akit_turn_relayed_datagrams_total`, `akit_turn_auth_failures_total` and `akit_turn_restarts_total`; fit's bytes and events wait for A257.",
+      "zh": "akio-turn 的服务器（I111）：`SOFTWARE` 为 `akit`；TCP allocation（RFC 6062）以 442 拒绝，同 fit。用户、secret、peer 规则、access 和证书就地修改；配额、上限或生存期的变化与地址的变化一样启动新服务器，直到 akio-turn 能就地修改它们（A258）；被重新加载替换的服务器在 `-shutdown-timeout` 内继续服务。`/metrics` 有 `akit_turn_allocations`、`akit_turn_draining_servers`、`akit_turn_relayed_datagrams_total`、`akit_turn_auth_failures_total` 和 `akit_turn_restarts_total`；fit 的字节数和事件等待 A257。"
+    },
+    "webrtc.turn.port_min": {
+      "en": "Read and checked; `akit run` refuses a range until akio-turn binds relayed sockets in one (A256).",
+      "zh": "读取并检查；在 akio-turn 能在范围内绑定中继套接字之前（A256），`akit run` 拒绝范围。"
+    },
+    "webrtc.turn.port_max": {
+      "en": "Read and checked; `akit run` refuses a range until akio-turn binds relayed sockets in one (A256).",
+      "zh": "读取并检查；在 akio-turn 能在范围内绑定中继套接字之前（A256），`akit run` 拒绝范围。"
+    },
+    "webrtc.turn.user_bandwidth": {
+      "en": "Not enforced yet, said when the server starts: akio-turn has no hook for a username's relayed bytes (A257).",
+      "zh": "尚不强制执行，服务器启动时会说明：akio-turn 没有按用户名中继字节的钩子（A257）。"
+    },
+    "webrtc.turn.nonce_secret": {
+      "en": "Not applied yet, said when the server starts: akio-turn keys each server's nonces itself (A256).",
+      "zh": "尚不生效，服务器启动时会说明：akio-turn 自行为每个服务器的 nonce 生成密钥（A256）。"
+    },
+    "webrtc.turn.max_stream_message": {
+      "en": "Not applied yet, said when the server starts: akio-turn's framing takes messages up to 64 KiB (A256).",
+      "zh": "尚不生效，服务器启动时会说明：akio-turn 的分帧接受最大 64 KiB 的消息（A256）。"
+    },
+    "webrtc.turn.mptcp": {
+      "en": "`listen_tcp` and `listen_tls` take plain TCP, as fit on a kernel without Multipath TCP; said when the server starts.",
+      "zh": "`listen_tcp` 和 `listen_tls` 使用普通 TCP，如同 fit 在不支持多路径 TCP 的内核上；服务器启动时会说明。"
+    },
+    "webrtc.turn.allowed_peers": {
+      "en": "`relay_ip` and `public_ip` are reached on the ports listed with them alone, never on the server's relayed ports, until akio-turn tells its relayed addresses (A257): two clients of one server relay to each other through one relayed address and the other's server-reflexive one.",
+      "zh": "在 akio-turn 告知其中继地址之前（A257），`relay_ip` 和 `public_ip` 只能在随之列出的端口上访问，不能在服务器的中继端口上访问：同一服务器的两个客户端经由一方的中继地址和另一方的 server-reflexive 地址互相中继。"
     }
   }
 }

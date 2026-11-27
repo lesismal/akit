@@ -20,6 +20,46 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-27: I111, the TURN server
+
+- `akit_webrtc::turn`, the role `webrtc.turn` that `akit run` runs (`akit::ROLES`): akio-turn's
+  `TurnServer` with `SOFTWARE` `akit`, a UDP listener of the engine for each `listen` address, a
+  TCP one for each of `listen_tcp` and a TLS one for each of `listen_tls` (akio-turn's `stream()`
+  under akio-tls; the certificates loaded by akit-tls and chosen per handshake from the last
+  apply's, reported through `Role::files` for `-watch-certs`); TCP allocations refused with 442, as
+  fit's. The users' keys (a password, or a key in hex) and the secret's time-limited credentials
+  (akio-turn's `ephemeral_auth`) are read through akit's `AuthFn` in the realm; the peer rules
+  through its peer filter, port-aware as fit's `peerAllowed`: `allowed_peers` first, then
+  `denied_peers` and akio-turn's denial of internal addresses. Every listener's accept filter is
+  the member's access, then the global one, set again by every apply.
+- A reload changes the users, secret, peer rules, access and certificates in place; any other
+  change (addresses, realm, relay addresses, quotas, caps, lifetimes, nonce secret, stream bounds,
+  Multipath TCP) starts a new server: on the same address after closing the old one (started
+  again when the new one cannot start), elsewhere beside the old one, which keeps serving for
+  `-shutdown-timeout` and is then closed by a timer.
+- Stopgaps until akio's A256-A258 (decision 039, row 51): `port_min` and `port_max` refused at run
+  time; `user_bandwidth`, `nonce_secret`, `max_stream_message` and `mptcp` said when the server
+  starts and not applied; the server's own addresses reached on the ports `allowed_peers` names
+  alone; the quotas, caps and lifetimes start a new server; the replaced server takes new clients
+  while it drains. akio-turn's relayed sockets are bound on the engine's UDP client threads: one,
+  when the config has no UDP listener (a benchmark task should measure it, the benchmark table's
+  row).
+- `/metrics` gains the running roles' metrics (`Role::metrics`, the host's `Meters`, written after
+  the rest): `akit_turn_allocations`, `akit_turn_draining_servers`,
+  `akit_turn_relayed_datagrams_total{direction}`, `akit_turn_auth_failures_total` and
+  `akit_turn_restarts_total`. The OTLP export does not carry the roles' metrics yet.
+- Tests (`crates/akit-webrtc/tests/turn.rs`, fit's `turn_test.go` ported, a client on
+  akio-turn's codec over UDP, TCP and TLS): relay by indication and channel with a password, a
+  key and the secret's credentials; refused credentials (wrong password, unknown user, expired,
+  another secret); quotas 486 and 508; caps 508; private peers and the rules changed in place;
+  the own address; reload in place, restart on the same address, drain on another; a refused
+  reload keeping the server (a port range, an address in use); TCP and TLS; access; akio-turn's
+  own client (`client::Client`) by indication and by channel. `tests/fib_turn.rs` (ignored without
+  `AKIT_FIB_TURN`): fib's TURN client, fit's, from `tests/interop/fib-turn` (a Go program on fib's
+  `webrtc/turn`), over UDP, TCP and TLS with a password, a key and the secret, by indication and
+  channel, and refused credentials; with `AKIT_FIT_BIN`, fit's own server answers the same
+  scenarios alike (run on macOS against fit built from `b6c5cebf`).
+
 ### 2026-11-27: I110, `webrtc` in the config
 
 - `akit-config`'s `webrtc` module: `webrtc.turn`, `webrtc.media` and `webrtc.proxy` with fit's

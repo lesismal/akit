@@ -66,6 +66,15 @@ version = "1.0.0-rc.1"
 source = "git+https://github.com/lesismal/akio?rev=a8171fda50470eae841c691981b43eeabe9303b1#a8171fda50470eae841c691981b43eeabe9303b1"
 
 [[package]]
+name = "akio-dtls"
+version = "1.0.0-rc.1"
+source = "git+https://github.com/lesismal/akio?rev=8a9601b9ffc83cdcc8bf53352b0986a14d5e26b2#8a9601b9ffc83cdcc8bf53352b0986a14d5e26b2"
+dependencies = [
+ "akio-crypto",
+ "akio-x509",
+]
+
+[[package]]
 name = "akio-ebpf"
 version = "1.0.0-rc.1"
 source = "git+https://github.com/lesismal/akio?rev=a8171fda50470eae841c691981b43eeabe9303b1#a8171fda50470eae841c691981b43eeabe9303b1"
@@ -210,6 +219,19 @@ dependencies = [
  "akio-log",
  "akio-x509",
  "akio-zstd",
+]
+
+[[package]]
+name = "akio-turn"
+version = "1.0.0-rc.1"
+source = "git+https://github.com/lesismal/akio?rev=8a9601b9ffc83cdcc8bf53352b0986a14d5e26b2#8a9601b9ffc83cdcc8bf53352b0986a14d5e26b2"
+dependencies = [
+ "akio",
+ "akio-core",
+ "akio-crypto",
+ "akio-dtls",
+ "akio-sys",
+ "akio-x509",
 ]
 
 [[package]]
@@ -572,9 +594,17 @@ dependencies = [
 name = "akit-webrtc"
 version = "0.0.1"
 dependencies = [
+ "akio",
+ "akio-crypto",
  "akio-http",
+ "akio-turn",
+ "akio-x509",
+ "akit-access",
  "akit-config",
+ "akit-observe",
+ "akit-roles",
  "akit-runtime",
+ "akit-tls",
 ]
 
 [[package]]

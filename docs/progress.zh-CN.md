@@ -19,6 +19,34 @@
 
 ## 日志
 
+### 2026-11-27：I111，TURN 服务器
+
+- `akit_webrtc::turn`，`akit run` 运行的角色 `webrtc.turn`（`akit::ROLES`）：akio-turn 的 `TurnServer`，`SOFTWARE` 为
+  `akit`，引擎上为 `listen` 的每个地址一个 UDP 监听器、`listen_tcp` 的每个地址一个 TCP 监听器、`listen_tls` 的每个地址一个
+  TLS 监听器（akio-turn 的 `stream()` 置于 akio-tls 之下；证书由 akit-tls 加载，每次握手从最近一次应用的证书中选择，并经
+  `Role::files` 报告给 `-watch-certs`）；TCP allocation 以 442 拒绝，同 fit。用户的密钥（密码，或十六进制的密钥）和 secret 的
+  限时凭据（akio-turn 的 `ephemeral_auth`）在 realm 内经 akit 的 `AuthFn` 读取；peer 规则经其 peer 过滤器读取，与 fit 的
+  `peerAllowed` 一样感知端口：先 `allowed_peers`，然后 `denied_peers` 和 akio-turn 对内部地址的拒绝。每个监听器的接受过滤器
+  是成员的 access，然后是全局的，每次应用时重新设置。
+- 重新加载就地修改用户、secret、peer 规则、access 和证书；其他任何变化（地址、realm、中继地址、配额、上限、生存期、
+  nonce secret、流的上限、多路径 TCP）启动新服务器：同一地址上先关闭旧服务器（新服务器无法启动时重新启动旧的），其他
+  地址上与旧服务器并存，旧服务器在 `-shutdown-timeout` 内继续服务，然后由定时器关闭。
+- 在 akio 的 A256-A258 之前的临时方案（决定 039，第 51 行）：运行时拒绝 `port_min` 和 `port_max`；`user_bandwidth`、
+  `nonce_secret`、`max_stream_message` 和 `mptcp` 在服务器启动时说明且不生效；服务器自身的地址只能在 `allowed_peers` 列出的
+  端口上访问；配额、上限和生存期启动新服务器；被替换的服务器在排空期间接受新客户端。akio-turn 的中继套接字绑定在引擎的
+  UDP 客户端线程上：配置没有 UDP 监听器时只有一个（应由基准测试任务测量，见基准测试表中的行）。
+- `/metrics` 加入运行中角色的指标（`Role::metrics`、宿主的 `Meters`，写在其余指标之后）：`akit_turn_allocations`、
+  `akit_turn_draining_servers`、`akit_turn_relayed_datagrams_total{direction}`、`akit_turn_auth_failures_total` 和
+  `akit_turn_restarts_total`。OTLP 导出尚不包含角色的指标。
+- 测试（`crates/akit-webrtc/tests/turn.rs`，移植 fit 的 `turn_test.go`，客户端基于 akio-turn 的编解码器，经 UDP、TCP 和
+  TLS）：以密码、密钥和 secret 的凭据经 indication 和 channel 中继；被拒绝的凭据（错误密码、未知用户、过期、另一个
+  secret）；配额 486 和 508；上限 508；私有 peer 以及就地修改的规则；自身地址；就地重新加载、同一地址上重启、其他地址上
+  排空；被拒绝的重新加载保留服务器（端口范围、已被占用的地址）；TCP 和 TLS；access；akio-turn 自己的客户端
+  （`client::Client`）经 indication 和 channel。`tests/fib_turn.rs`（没有 `AKIT_FIB_TURN` 时忽略）：fib 的 TURN 客户端，即 fit
+  的，来自 `tests/interop/fib-turn`（基于 fib `webrtc/turn` 的 Go 程序），经 UDP、TCP 和 TLS，以密码、密钥和 secret，经
+  indication 和 channel，以及被拒绝的凭据；设置 `AKIT_FIT_BIN` 时，fit 自己的服务器对同样的场景给出相同的回答（在 macOS
+  上对照从 `b6c5cebf` 构建的 fit 运行）。
+
 ### 2026-11-27：I110，配置中的 `webrtc`
 
 - `akit-config` 的 `webrtc` 模块：`webrtc.turn`、`webrtc.media` 和 `webrtc.proxy`，字段、默认值、范围和检查与 fit 相同

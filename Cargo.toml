@@ -52,6 +52,8 @@ akio-h3 = { git = "https://github.com/lesismal/akio", rev = "a8171fda50470eae841
 akio-quic = { git = "https://github.com/lesismal/akio", rev = "a8171fda50470eae841c691981b43eeabe9303b1" }
 # WebSockets: the LLM mesh's links (akit-llm, I104).
 akio-ws = { git = "https://github.com/lesismal/akio", rev = "a8171fda50470eae841c691981b43eeabe9303b1" }
+# WebRTC (akit-webrtc, I111-I114): the TURN server, and WHIP and WHEP's PeerConnections.
+akio-turn = { git = "https://github.com/lesismal/akio", rev = "a8171fda50470eae841c691981b43eeabe9303b1" }
 # Route path regexps (akit-router) and the redirect middleware's (akit-middleware), decision 001:
 # linear-time matching, no dependencies.
 akio-regex = { git = "https://github.com/lesismal/akio", rev = "a8171fda50470eae841c691981b43eeabe9303b1" }

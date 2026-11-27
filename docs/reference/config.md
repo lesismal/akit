@@ -147,7 +147,7 @@ name every file on the command line (`-c` may be given again, or name a director
 | `telemetry` | [object](#cfg-telemetry) |  | OpenTelemetry: traces of requests, with W3C trace context sent on to upstreams, and metrics, exported over OTLP/HTTP to a collector. Neither when left out. Read when akit starts: a change takes effect when akit restarts. |
 | `tunnel` | [object](#cfg-tunnel) |  | The tunnel's roles to run beside the gateway, on its engine: a hub, a node and a proxy, which reach services behind NAT through the hub. None when left out. What their web pages change is written back here. **akit:** Read and checked as fit's (I98); `akit run` runs the three roles (I101) on the listeners' engine, their links speaking fit's protocol byte for byte, so that akit's hub, nodes and proxies link with fit's (decision 038). Links go over `tcp`, `tls` (I102), `quic` (I102b), and `ws` and `wss` (I102c, on akio-ws). A hub's `console_socket` and a proxy's `web_proxies` speak fit's sealed WebSocket (I103b). |
 | `upstreams` | list of [object](#cfg-upstreams) |  | The servers requests can be proxied to, by name. |
-| `webrtc` | [object](#cfg-webrtc) |  | What akit runs for WebRTC beside the gateway, on its engine: a TURN server, the media port of the whip and whep handlers, and the relay of the webrtc_proxy handler. None when left out. **akit:** Read and checked as fit's (I110, decision 039); `akit run` refuses each role until its iteration runs it: `turn` (I111), `media` (I113), `proxy` (I114). |
+| `webrtc` | [object](#cfg-webrtc) |  | What akit runs for WebRTC beside the gateway, on its engine: a TURN server, the media port of the whip and whep handlers, and the relay of the webrtc_proxy handler. None when left out. **akit:** Read and checked as fit's (I110, decision 039); `akit run` runs `turn` (I111) on the listeners' engine, and refuses `media` (I113) and `proxy` (I114) until their iterations run them. |
 <!-- END GENERATED -->
 
 ## Listeners
@@ -2427,9 +2427,11 @@ a TURN server (`webrtc.turn`, RFC 8656) for peers that cannot reach each other d
 server of the [`whip`](#whip) and [`whep`](#whep) handlers (`webrtc.media`), one UDP port that every
 PeerConnection shares; and the relay of the [`webrtc_proxy`](#webrtc_proxy) handler (`webrtc.proxy`),
 one UDP port through which the peers of the media servers behind akit reach them. akit reads and
-checks them as fit's (I110, [decision 039](../decisions/039-webrtc.md)); `akit run` refuses each
-until its iteration runs it: the TURN server I111, the media server I113, the relay I114. The
-handlers' `auth`, a `media_auth` policy, is not supported yet.
+checks them as fit's (I110, [decision 039](../decisions/039-webrtc.md)); `akit run` runs the TURN
+server (I111) on akio-turn, and refuses the media server and the relay until their iterations run
+them (I113, I114). Where akio-turn lacks fit's hooks, akit says so when the server starts, or
+refuses the field (`port_min` and `port_max`). The handlers' `auth`, a `media_auth` policy, is not
+supported yet.
 
 ```fit
 webrtc {
@@ -2451,7 +2453,7 @@ webrtc {
 | --- | --- | --- | --- |
 | `media` | [object](#cfg-webrtc-media) |  | Run akit as a WebRTC media server: the UDP port the PeerConnections of the whip and whep handlers share, the ICE servers told to their peers, and their limits. Routes with whip or whep handlers answer 503 without it. None when left out. |
 | `proxy` | [object](#cfg-webrtc-proxy) |  | Put media servers behind akit: the UDP port the webrtc_proxy handler's answers name, which relays each peer to the media server that answered it, found by the ICE ufrag of the peer's first STUN request. Routes with webrtc_proxy handlers answer 503 without it. None when left out. |
-| `turn` | [object](#cfg-webrtc-turn) |  | Run a TURN server (RFC 8656), which relays UDP for WebRTC peers and other ICE agents that cannot reach each other directly. None when left out. |
+| `turn` | [object](#cfg-webrtc-turn) |  | Run a TURN server (RFC 8656), which relays UDP for WebRTC peers and other ICE agents that cannot reach each other directly. None when left out. **akit:** akio-turn's server (I111): `SOFTWARE` is `akit`; TCP allocations (RFC 6062) are refused with 442, as fit's. The users, secret, peer rules, access and certificates change in place; a change of the quotas, caps or lifetimes starts a new server, as one of the addresses does, until akio-turn changes them in place (A258); the server a reload replaced keeps serving for `-shutdown-timeout`. `/metrics` has `akit_turn_allocations`, `akit_turn_draining_servers`, `akit_turn_relayed_datagrams_total`, `akit_turn_auth_failures_total` and `akit_turn_restarts_total`; fit's bytes and events wait for A257. |
 <!-- END GENERATED -->
 
 ### `webrtc.turn`
@@ -2465,7 +2467,7 @@ webrtc {
 | `realm` | string | required | The realm of the credentials, sent in every challenge: clients derive their key from their name, the realm and their password. A change starts a new server, ending the allocations of the old one when they share an address and draining it otherwise. |
 | `relay_ip` | string | required | The address the relayed sockets bind to, one of the host's, not a wildcard; clients are told it, unless public_ip is set. Its family is every allocation's. Peers on it, and on public_ip, are relayed to on the ports of the server's own relayed addresses alone, and on those allowed_peers lists with their port. A change starts a new server. |
 | `access` | [object](#cfg-webrtc-turn-access) |  | The client addresses the server serves on listen, listen_tcp and listen_tls, deciding before the global access: a connection it refuses is closed as soon as it is accepted, and the datagrams of a UDP client it refuses are dropped. Peers are not clients: allowed_peers and denied_peers decide those. A change applies to the next client, without starting a new server; the allocations held are kept. |
-| `allowed_peers` | list of string |  | The addresses and prefixes, as in "10.1.0.0/16", peers may be at even when denied_peers or the default denial cover them: loopback, private, link-local and other internal ranges are denied unless listed here, so that the relay cannot reach into the network it runs in. An address with a port, as in "10.0.0.5:8189", allows that port alone, which is how a peer on relay_ip itself, such as webrtc.media, is reached. |
+| `allowed_peers` | list of string |  | The addresses and prefixes, as in "10.1.0.0/16", peers may be at even when denied_peers or the default denial cover them: loopback, private, link-local and other internal ranges are denied unless listed here, so that the relay cannot reach into the network it runs in. An address with a port, as in "10.0.0.5:8189", allows that port alone, which is how a peer on relay_ip itself, such as webrtc.media, is reached. **akit:** `relay_ip` and `public_ip` are reached on the ports listed with them alone, never on the server's relayed ports, until akio-turn tells its relayed addresses (A257): two clients of one server relay to each other through one relayed address and the other's server-reflexive one. |
 | `default_lifetime` | duration | `"10m"` | The lifetime of an allocation whose client asks for less, or for none; clients refresh it before it ends. 10m when left out. Applies to the next allocation or refresh. |
 | `denied_peers` | list of string |  | Addresses and prefixes peers may not be at, beyond the internal ranges denied by default; an address with a port denies that port alone. |
 | `listen_tcp` | list of string |  | TCP addresses clients reach the server at, as in ":3478", for clients on networks that block UDP: turn:host:3478?transport=tcp. Their allocations relay UDP, and end when their connection closes. |
@@ -2475,17 +2477,17 @@ webrtc {
 | `max_channels` | integer, 0 or more | `64` | The most channels one allocation binds; one more is refused with 508. 64 when left out or 0. Applies to the next request. |
 | `max_lifetime` | duration | `"1h"` | The longest lifetime a client may ask for. 1h when left out. Applies to the next allocation or refresh. |
 | `max_permissions` | integer, 0 or more | `64` | The most permissions, peer addresses, one allocation holds; one more is refused with 508. A channel's peer counts. 64 when left out or 0. Applies to the next request. |
-| `max_stream_message` | integer, 0 or more | `8192` | The largest message a TCP or TLS client may send, and so what its connection buffers of one not yet whole; a connection whose next message claims more is closed. At least 2048. 8 KiB when left out or 0. A change starts a new server. |
-| `mptcp` | boolean |  | Listen listen_tcp and listen_tls with Multipath TCP where the kernel offers it (Linux 5.6+, net.mptcp.enabled), falling back to plain TCP where it does not. Off by default; listen's UDP sockets have none. A change of it starts a new server and drains the old one. |
+| `max_stream_message` | integer, 0 or more | `8192` | The largest message a TCP or TLS client may send, and so what its connection buffers of one not yet whole; a connection whose next message claims more is closed. At least 2048. 8 KiB when left out or 0. A change starts a new server. **akit:** Not applied yet, said when the server starts: akio-turn's framing takes messages up to 64 KiB (A256). |
+| `mptcp` | boolean |  | Listen listen_tcp and listen_tls with Multipath TCP where the kernel offers it (Linux 5.6+, net.mptcp.enabled), falling back to plain TCP where it does not. Off by default; listen's UDP sockets have none. A change of it starts a new server and drains the old one. **akit:** `listen_tcp` and `listen_tls` take plain TCP, as fit on a kernel without Multipath TCP; said when the server starts. |
 | `nonce_lifetime` | duration | `"10m"` | How long a nonce is good for; a request with an older one is answered 438 with a fresh one. 10m when left out. Applies to the next nonce. |
-| `nonce_secret` | string |  | The key nonces are made with; a random one when left out. Servers behind one load balancer, which may each see a client's requests, share one. A change starts a new server. |
-| `port_max` | integer, 0 to 65535 |  | The highest port of the relayed sockets; with port_min. |
-| `port_min` | integer, 0 to 65535 |  | The lowest port of the relayed sockets, as a firewall that opens a range expects; with port_max. Ports the kernel picks when both are left out. A change starts a new server. |
+| `nonce_secret` | string |  | The key nonces are made with; a random one when left out. Servers behind one load balancer, which may each see a client's requests, share one. A change starts a new server. **akit:** Not applied yet, said when the server starts: akio-turn keys each server's nonces itself (A256). |
+| `port_max` | integer, 0 to 65535 |  | The highest port of the relayed sockets; with port_min. **akit:** Read and checked; `akit run` refuses a range until akio-turn binds relayed sockets in one (A256). |
+| `port_min` | integer, 0 to 65535 |  | The lowest port of the relayed sockets, as a firewall that opens a range expects; with port_max. Ports the kernel picks when both are left out. A change starts a new server. **akit:** Read and checked; `akit run` refuses a range until akio-turn binds relayed sockets in one (A256). |
 | `public_ip` | string |  | The address clients are told for their relayed sockets instead of relay_ip, for a server behind a 1:1 NAT that maps it to relay_ip. Of relay_ip's family. A change starts a new server. |
 | `secret` | string |  | The shared secret of time-limited credentials, as coturn's static-auth-secret (use-auth-secret) has it: a username "<expiry in Unix seconds>:<anything>" whose password is the base64 of HMAC-SHA1(secret, username), valid until the expiry. A web service that knows the secret hands them out. |
 | `stream_idle_timeout` | duration | `"30s"` | How long a TCP or TLS client's connection may stay open without an allocation, before its first Allocate or after its allocation ended, before it is closed. 30s when left out. A change starts a new server. |
 | `tls` | [object](#cfg-webrtc-turn-tls) |  | The certificates of listen_tls, from files, as a listener's tls.certificates has them, and watched as theirs are: a change applies to the next handshake. |
-| `user_bandwidth` | integer, 0 or more | `2097152` | The most bytes a second relayed for one username each way, to peers and from them, with a second's worth of burst; datagrams past it are dropped. 2 MiB when left out or 0. |
+| `user_bandwidth` | integer, 0 or more | `2097152` | The most bytes a second relayed for one username each way, to peers and from them, with a second's worth of burst; datagrams past it are dropped. 2 MiB when left out or 0. **akit:** Not enforced yet, said when the server starts: akio-turn has no hook for a username's relayed bytes (A257). |
 | `users` | list of [object](#cfg-webrtc-turn-users) |  | The users with fixed credentials. With secret, or alone; at least one of the two. |
 <!-- END GENERATED -->
 

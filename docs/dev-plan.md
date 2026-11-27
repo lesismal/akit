@@ -236,7 +236,7 @@ Tunnel and LLM track; I110–I114 are the WebRTC track, and I115–I119 are rese
 | I109d | The LLM roles' methods their pages call that they lack: `/mesh/*` (dial, undial, kick, listen, limits, tokens), the proxy's (`/proxy/*`: its API, keys, models, nodes, profile, stats); the identity's `http_url` | I109c | done |
 | **After 1.0: WebRTC** | | | |
 | I110 | WebRTC I: `webrtc` in the config: `webrtc.turn`, `webrtc.media`, `webrtc.proxy`; the handlers `whip`, `whep` and `webrtc_proxy` | I79, I100 | done |
-| I111 | WebRTC II: the TURN server on akio-turn, over UDP, TCP and TLS | I110 | todo |
+| I111 | WebRTC II: the TURN server on akio-turn, over UDP, TCP and TLS | I110 | done |
 | I112 | WebRTC III: the TURN server on akio's hooks: port range, bandwidth, events, limits in place, drain | I111, akio A256–A258 | todo |
 | I113 | WebRTC IV: WHIP and WHEP, an SFU on akio-webrtc's `RtcServer` | I110 | todo |
 | I114 | WebRTC V: WHIP and WHEP proxied: `webrtc_proxy` and `webrtc.proxy` | I113, I14 | todo |
@@ -1923,7 +1923,8 @@ Streaming and media auth track's: it is refused as not supported yet until that 
   the server.
 - **Touches**: `akit-webrtc` (new, `turn`), `akit`, `akit-roles`.
 - **fit**: `webrtc/turn`; I87, I111.
-- **Status**: todo.
+- **Status**: done (2026-11-27). See the progress log. Stopgaps until akio's A256-A258 (decision 039):
+  a port range refused at run time; bandwidth, nonce secret and stream bound not applied.
 
 ### I112 WebRTC III: the TURN server on akio's hooks
 

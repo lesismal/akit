@@ -9,9 +9,23 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
+# The roles' listeners and timers on the listeners' engine, akio-tls for listen_tls.
+akio = { workspace = true }
 akio-http = { workspace = true }
+# The TURN server (I111).
+akio-turn = { workspace = true }
+akit-access = { workspace = true }
 akit-config = { workspace = true }
+akit-observe = { workspace = true }
+akit-roles = { workspace = true }
 akit-runtime = { workspace = true }
+# listen_tls's certificates from files, chosen per handshake.
+akit-tls = { workspace = true }
+
+[dev-dependencies]
+# The tests' HMAC, base64 and self-signed certificate.
+akio-crypto = { workspace = true }
+akio-x509 = { workspace = true }
 
 [lints]
 workspace = true

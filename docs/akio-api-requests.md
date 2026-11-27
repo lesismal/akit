@@ -111,6 +111,9 @@ first; its status here records the branch, then the akio commit akit pins.
 | A247 | The process's effective user (`akio_sys::process::euid`) | on akio's main and pinned (since `a8171fda`), used by the LLM node | 14 | I108 |
 | A248 | A signal to a process group (`akio_sys::process::kill_group`) | on akio's main and pinned (since `a8171fda`), used by the LLM node's jobs | 1, 14 | I108 |
 | A249 | A file system's size and space free (`akio_sys::fs::space`) | on akio's main and pinned (since `a8171fda`), used by the LLM node's disks | 1, 14 | I108 |
+| A256 | akio-turn's static settings fit's TURN role sets: the relayed sockets bound in a port range, the nonces' key from a secret servers share, and a stream client's largest message | requested (I111): `port_min`/`port_max` refused at run time, `nonce_secret` and `max_stream_message` not applied (decision 039) | 4, 11 | I111, I112 |
+| A257 | akio-turn's hooks for an embedding server: each relayed datagram's username, direction and size, with a say in whether it goes (a username's bandwidth); the server's events (allocated, refreshed, freed, refused, credentials failed); whether an address is one of its relayed ones; its permissions, channels and pending allocations counted | requested (I111): `user_bandwidth` not enforced, the server's own addresses reached on listed ports alone, events and bytes not counted (decision 039) | 1, 11 | I111, I112 |
+| A258 | akio-turn's settings changed on a running server (credentials, quotas, caps, lifetimes) and a drain: no new allocation while those held run out | requested (I111): a change of the quotas, caps or lifetimes starts a new server; the server a reload replaced keeps serving for the drain (decision 039) | 10, 11 | I111, I112 |
 
 ## A1 TCP listeners on a running engine
 
@@ -2513,3 +2516,91 @@ bound; `proto/endpoint.rs` answered with a Retry from `RETRY_THRESHOLD` (4096). 
 `.max_handshakes(TunnelHubQuic::handshakes(q))` (fit's 10 s and 64 when left out). The time a
 connection may go without its link's stream after the handshake stays the hub's own timer, as fit's
 `streamWait`.
+
+## A256 akio-turn's static settings: a relay port range, a shared nonce key, a stream's largest message
+
+**Status.** Requested by I111 (2026-11-27). The TURN role refuses `port_min` and `port_max` at run
+time (`akit validate` takes them), and says when its server starts that `nonce_secret` and
+`max_stream_message` are not applied (decision 039).
+
+**Problem.** fit's `webrtc.turn` binds its relayed sockets in `port_min`..`port_max`, the range a
+firewall in front of the server opens (fit-examples' `webrtc-turn` sets 49152-49999); makes its
+nonces with `nonce_secret`, so that servers behind one load balancer take each other's; and bounds
+what a TCP or TLS client's connection buffers of a message not yet whole with
+`max_stream_message` (8 KiB by default, at least 2048). akio-turn's `TurnServer` binds each relay
+on `relay_ip` port 0, keys its nonces with random bytes of its own, and frames stream messages up
+to 64 KiB.
+
+**Evidence.** At akio `8a9601b9` (and `a8171fda`): `akio-turn/src/core.rs`'s `TurnConfig` has no
+port range, `Shared::new` fills `nonce_key` from `fill_random`, and `framing.rs`'s `MAX_FRAME` is
+`HEADER_LEN + 0xfffc`; the environment's `open_relay` is asked for `relay_ip:0`. fit:
+`webrtc/turn/turn.go` (`turnserver.Config.PortMin`, `PortMax`, `NonceSecret`,
+`MaxStreamMessage`), fib's A55 and A57.
+
+**Suggested API.** On `TurnConfig`: `relay_ports(min: u16, max: u16)` (a port in use skipped, an
+exhausted range answered 508), `nonce_secret(&[u8])` (the nonce key derived from it),
+`max_stream_message(usize)` (a stream whose next message claims more is closed).
+
+**How akit would use it.** `akit_webrtc::turn` sets the three from the member, and drops its
+refusal and warnings (I112).
+
+## A257 akio-turn's hooks for an embedding server: relayed bytes by username, events, its relayed addresses
+
+**Status.** Requested by I111 (2026-11-27). `user_bandwidth` is not enforced (a warning when the
+server starts); the server's own addresses (`relay_ip`, `public_ip`) are reached on the ports
+`allowed_peers` names with them alone, so two clients of one server do not relay to each other's
+relayed addresses; `/metrics` counts datagrams, not bytes, and no events (decision 039).
+
+**Problem.** fit's TURN role limits each username's relayed bytes a second each way
+(`user_bandwidth`, a token bucket per username and direction, the datagrams past it dropped) through
+fib's `OnRelay(user, toPeer, n) bool`; counts and logs fib's `OnEvent` (allocated, refreshed, freed
+with a reason, refused with a code, credentials failed); and lets peers on its own addresses be
+reached on its relayed ports alone through fib's `HoldsRelay`, so that two clients relay to each
+other but nobody reaches fit's other listeners through the relay. Its gauges count permissions,
+channels and allocations pending. akio-turn's `PeerFilter` sees the peer alone; its `TurnStats`
+counts allocations and datagrams.
+
+**Evidence.** At akio `8a9601b9`: `akio-turn/src/core.rs`'s `TurnConfig::peer_allowed` is
+`Fn(SocketAddr) -> bool`; `TurnStats` holds `allocations`, `to_peer`, `to_client`,
+`auth_failures`, `tcp_connections`, `icmp`, `ttl_expired`; no callback runs per relayed datagram or
+per event. fit: `webrtc/turn/turn.go`'s `onRelay`, `onEvent`, `peerAllowed`, `WriteMetrics`;
+`limiter.go`.
+
+**Suggested API.** On `TurnConfig`: `on_relay(Arc<dyn Fn(&str, bool, usize) -> bool + Send +
+Sync>)` (username, toward the peer, bytes; false drops it), `on_event(Arc<dyn Fn(&TurnEvent) + Send
++ Sync>)` (`Allocated`, `Refreshed`, `Freed { reason }`, `Refused { method, code }`,
+`AuthFailed`, with the username, client and relayed address), called after the answer is sent and
+never under a lock the I/O path needs; on `TurnServer`: `holds_relay(SocketAddr) -> bool`;
+`TurnStats` with `permissions`, `channels`, `pending` and `dropped`.
+
+**How akit would use it.** `akit_webrtc::turn` keeps fit's limiter (a bucket per username and
+direction, 65,536 at most), counts the events into `akit_turn_*` and the `webrtc` logger at debug,
+and reaches its own addresses on its relayed ports (I112).
+
+## A258 akio-turn's settings changed on a running server, and a drain
+
+**Status.** Requested by I111 (2026-11-27). The users, secret and peer rules change in place
+already (akit's `AuthFn` and peer filter read them); a change of the quotas, caps or lifetimes
+starts a new server, ending the old one's allocations when the two share an address; the server a
+reload replaced keeps serving, new clients included, for `-shutdown-timeout`, then closes
+(decision 039).
+
+**Problem.** fit's reload changes a running server's quotas (`max_allocations`,
+`max_allocations_per_user`), caps (`max_permissions`, `max_channels`) and lifetimes in place
+(fib's `SetLimits`, `SetAuth`), the allocations kept; and when its addresses change it starts a new
+server and drains the old one (fib's `Shutdown(ctx)`: new allocations refused with 508, those held
+refreshed until they end or the drain's time runs out). akio-turn's `TurnConfig` is fixed when the
+server is made, and `close_all` ends every allocation at once.
+
+**Evidence.** At akio `8a9601b9`: `TurnServer::new(cfg)` keeps `cfg` in `Shared`, read without a
+lock; nothing sets it again; `close_all` is the only way down. fit: `webrtc/turn/turn.go`'s `Apply`
+(`SetLimits`, `SetAuth`, `drainRunning`), fib's A58.
+
+**Suggested API.** On `TurnServer`: `set_limits(TurnLimits)` (the quotas, caps and lifetimes,
+applied to the next request), `set_auth(AuthFn)`, and `drain()` (new allocations refused with 508,
+refreshes, permissions and channels of those held served) with `allocations()` to watch them run
+out.
+
+**How akit would use it.** `akit_webrtc::turn` takes the quotas, caps and lifetimes out of its
+static key and sets them in place; a server a reload replaced drains, refusing new allocations
+(I112).

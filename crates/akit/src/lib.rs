@@ -62,4 +62,6 @@ pub const ROLES: &[akit_roles::host::Info] = &[
     akit_llm::hub::HUB,
     akit_llm::node::NODE,
     akit_llm::proxy::PROXY,
+    // I111: the TURN server.
+    akit_webrtc::TURN,
 ];

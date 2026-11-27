@@ -298,7 +298,6 @@ fn roles_not_running(config: &Config) -> Result<(), Failure> {
                 "akit run does not run this role yet ({}); akit validate checks it",
                 match path {
                     p if p.starts_with("tunnel.") => "I101-I103",
-                    "webrtc.turn" => "I111",
                     "webrtc.media" => "I113",
                     "webrtc.proxy" => "I114",
                     _ => "I104-I109",
@@ -1479,7 +1478,12 @@ fn run(args: &[String]) -> ExitCode {
             // What akit is doing now, at GET /status, which the dashboard reads (I63).
             let status = scrape.clone();
             api_opts.status = Some(Arc::new(move |out: &mut String| status.write_status(out)));
-            api_opts.metrics = Some(Arc::new(move |out: &mut Vec<u8>| scrape.write(out)));
+            // The running roles' metrics after the rest (I111: the TURN server's).
+            let meters = roles.meters();
+            api_opts.metrics = Some(Arc::new(move |out: &mut Vec<u8>| {
+                scrape.write(out);
+                akit_roles::host::write_meters(&meters, out);
+            }));
             // The log files, at GET /logs and POST /logs/rotate and /logs/cleanup (I83).
             api_opts.logs = Some(log_files.clone());
             // The running roles' link tokens, at GET /tokens (I100).
@@ -1842,7 +1846,7 @@ mod tests {
     }
 
     /// The WebRTC roles and handlers are refused by akit run until their iterations run them
-    /// (I110).
+    /// (I110); the TURN server runs (I111).
     #[test]
     fn webrtc_is_refused_until_it_runs() {
         let c = akit_config::from_json(
@@ -1865,7 +1869,6 @@ mod tests {
             got,
             [
                 ("webrtc.media", true),
-                ("webrtc.turn", true),
                 ("routes[1].handler", true),
                 ("routes[2].handler", true)
             ]
