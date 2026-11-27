@@ -19,6 +19,29 @@
 
 ## 日志
 
+### 2026-11-27：I114，代理的 WHIP 和 WHEP
+
+- `akit_webrtc::proxy`，角色 `webrtc.proxy`（fit 的 `proxy.go`、`relay.go`）：引擎上的一个 UDP 监听器（成员的 access 作为其过滤器）；
+  会话及其 ufrag（每个会话至多 4 个）和其 peer 被中继到的地址；新 peer 地址的首个数据报必须是 USERNAME 以某会话 ufrag 开头、
+  MESSAGE-INTEGRITY 由其 pwd 签名的 STUN Binding 请求（否则丢弃并计数：非 STUN、未知 ufrag、完整性）；其中继是引擎上自己的
+  UDP 套接字（`Engine::bind_udp`，来自 `relay_ip`，从随机端口起尝试 `port_min`..`port_max` 中的端口，跳过已占用的，范围用尽时以
+  `no_port` 丢弃），双向中继该五元组，至多 `max_relays` 个、每个会话 8 个；静默 `idle_timeout` 的 peer 由 akio 对其连接的空闲
+  超时关闭；没有任何中继的会话在 `session_timeout` 后被遗忘（最后一个中继结束时重新设定定时器）；DELETE 遗忘会话，其中继
+  在一秒后关闭。`/metrics`：fit 的代理指标族，`akit_webrtc_proxy_*`。
+- 处理器 `webrtc_proxy`（fit 的 `proxyhttp.go`）：offer 去掉 candidate 后发给 upstream 选出的媒体服务器（akit-upstream 的池、akio
+  的客户端、`timeout`），受 `max_sessions`（503，`Retry-After: 1`）和 `max_sdp_bytes`（413；应答超出时 502）限制；201 的应答中
+  candidate 换成代理端口的（以及其 `c=` 行），其 ufrag 和 pwd 与 `media_addrs` 或其最佳 host 或 server-reflexive candidate（IPv4
+  优先）对应记下，`Location` 为端点路径加会话 ID，媒体服务器会话 URL 之下的 `Link` 头移到 akit 的之下；会话 URL 及其下的路径
+  交给同一个媒体服务器（DELETE 遗忘会话；带 ICE 重启 offer 的 PATCH 记下其凭据，trickle 的 candidate 回答 204）；akit 无法采用的
+  应答回答 502，并在媒体服务器上挂断该会话。`akit run` 运行该角色并提供该处理器：`webrtc` 不再有任何部分被拒绝。
+- `webrtc.proxy`、`webrtc.media` 和 `webrtc.turn` 的 UDP 端口与 HTTP 监听器一样使用配置的 `engine.event_loops` 个 I/O 线程（为 0 时
+  每核一个）：在 16 核主机上，一个测试进程中的三个 akit 在默认设置下用尽了文件描述符。
+- 测试（`tests/proxy.rs`，回环上的三个 akit）：一个 akit 代理端口之后的两个 akit 媒体服务器，各有一个发布者和一个观看者，媒体经
+  中继流动，经 akit 的 DELETE；应答只写出代理的端口；非 Binding 请求的数据报以及未知 ufrag 的 Binding 请求被丢弃；
+  `max_sessions`；媒体服务器的 404 被传回；只有一个端口的范围中继一个地址并丢弃下一个；`session_timeout`；代理未运行。SDP
+  改写（fit 的 `TestRewriteSDP`）、去掉的 candidate、路径和 `Link` 头以及请求 ufrag 的单元测试。媒体测试的辅助代码移到
+  `tests/support`。
+
 ### 2026-11-27：按长度分帧、客户端已读完整后离开的代理响应体按完成结束
 
 - `proxy`：HTTP/1.1 客户端读完流式响应 `Content-Length` 声明的全部字节后，可能在上游的结束到达 akit

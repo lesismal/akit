@@ -499,6 +499,8 @@ struct Turn {
     /// The servers a reload replaced, draining until their timer closes them.
     draining: Arc<Mutex<Vec<Running>>>,
     access: Option<Arc<akit_access::Policy>>,
+    /// The config's `engine.event_loops`, for the UDP ports' I/O threads.
+    event_loops: usize,
 }
 
 fn new(host: Host) -> Result<Box<dyn Role>, String> {
@@ -508,6 +510,7 @@ fn new(host: Host) -> Result<Box<dyn Role>, String> {
         cur: None,
         draining: Arc::new(Mutex::new(Vec::new())),
         access: None,
+        event_loops: 0,
     }))
 }
 
@@ -606,7 +609,7 @@ impl Turn {
                     return Err(format!("{a:?} is not an address to listen on"));
                 };
                 let mut l = match (kind, &tls) {
-                    (0, _) => Listener::udp(addr).serve(server.clone()),
+                    (0, _) => crate::udp_listener(addr, self.event_loops).serve(server.clone()),
                     (1, _) => Listener::tcp(addr).serve(server.stream()),
                     (_, Some(t)) => Listener::tcp(addr)
                         .serve(akio::tls::Tls::server(t.clone(), server.stream())),
@@ -723,6 +726,7 @@ fn tls_of(m: &Member) -> Tls {
 
 impl Role for Turn {
     fn apply(&mut self, config: &Config) -> Result<(), String> {
+        self.event_loops = config.engine.event_loops;
         let Some(m) = config.webrtc.as_ref().and_then(|w| w.turn.clone()) else {
             return Ok(());
         };

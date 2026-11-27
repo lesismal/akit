@@ -71,8 +71,8 @@
       "zh": "即 akio 对监听器引擎上所有排队字节的预算（akio 的 ADR-172）：超过后，每个连接（包括到上游的连接）在当前这次读之后停止读，排队字节回落到预算的四分之三以下时全部恢复。akio 大约每毫秒汇总一次各 I/O 线程的队列，所以期间入队的数据可能略微超过预算。内存份额在 Linux 上从 `/proc/meminfo` 和 cgroup 的上限读取；其他系统（macOS）上 akit 读不到内存，份额按 256 MiB 计。"
     },
     "engine.event_loops": {
-      "en": "Each listener's akio I/O threads, which run its connections' callbacks too (fib's loops only wait); one a core when left out or 0, where fib has 1 on up to 4 CPUs.",
-      "zh": "每个监听器的 akio I/O 线程数，这些线程也运行连接的回调（fib 的事件循环只负责等待）；省略或为 0 时每个核一个，而 fib 在至多 4 个 CPU 上为 1。"
+      "en": "Each listener's akio I/O threads, which run its connections' callbacks too (fib's loops only wait), and those of the `webrtc` roles' UDP ports; one a core when left out or 0, where fib has 1 on up to 4 CPUs.",
+      "zh": "每个监听器的 akio I/O 线程数，这些线程也运行连接的回调（fib 的事件循环只负责等待），`webrtc` 各角色的 UDP 端口也按此设置；省略或为 0 时每个核一个，而 fib 在至多 4 个 CPU 上为 1。"
     },
     "engine.workers": {
       "en": "The most threads of akio's logical pool, which runs only the work that may block (files, plugins, the disk cache), not connections' callbacks; akio's default (8 a core, at least 8) when left out or 0.",
@@ -191,8 +191,8 @@
       "zh": "由 `akit run` 运行（I103b），密封方式同 fit：既可提供 fit 的 hub 的控制台，也可提供 akit 的。其 WebSocket 发送 `User-Agent: akit`。"
     },
     "webrtc": {
-      "en": "Read and checked as fit's (I110, decision 039); `akit run` runs `turn` (I111, I112) and `media` (I113) on the listeners' engine, and refuses `proxy` until I114 runs it.",
-      "zh": "像 fit 一样读取并检查（I110，决定 039）；`akit run` 在监听器的引擎上运行 `turn`（I111、I112）和 `media`（I113），在 I114 运行 `proxy` 之前拒绝它。"
+      "en": "Read and checked as fit's (I110, decision 039); `akit run` runs `turn` (I111, I112), `media` (I113) and `proxy` (I114) on the listeners' engine.",
+      "zh": "像 fit 一样读取并检查（I110，决定 039）；`akit run` 在监听器的引擎上运行 `turn`（I111、I112）、`media`（I113）和 `proxy`（I114）。"
     },
     "webrtc.turn": {
       "en": "akio-turn's server (I111, I112): `SOFTWARE` is `akit`; TCP allocations (RFC 6062) are refused with 442, as fit's. The users, secret, peer rules, access, certificates, bandwidth, quotas, caps and lifetimes change in place; a change of the addresses, realm, relay addresses, port range, nonce secret, stream bounds or `mptcp` starts a new server, the one it replaced drained (new allocations refused with 508) for `-shutdown-timeout`. `/metrics` has fit's TURN families named `akit_turn_*`.",
@@ -205,6 +205,10 @@
     "webrtc.media": {
       "en": "akio-webrtc's ICE lite `RtcServer` (I113): a publisher answered with the first of its codecs of each kind `codecs` lists, its RTP forwarded to each viewer as it arrives (`Peer::write_rtp`), `max_bitrate` told as REMB and enforced with two seconds' burst, `ice_timeout` as the peers' consent timeouts. With port 0 in `listen`, a free port is found when the server starts, as the answers name it. `/metrics` has fit's media families named `akit_webrtc_media_*`.",
       "zh": "akio-webrtc 的 ICE lite `RtcServer`（I113）：以发布者各类媒体中第一个列于 `codecs` 的编解码器应答，其 RTP 到达时即转发给每个观看者（`Peer::write_rtp`），`max_bitrate` 以 REMB 告知并以两秒突发量强制执行，`ice_timeout` 作为 peer 的 consent 超时。`listen` 端口为 0 时，服务器启动时先找一个空闲端口，因为应答要写出它。`/metrics` 有 fit 的媒体指标族，名为 `akit_webrtc_media_*`。"
+    },
+    "webrtc.proxy": {
+      "en": "A UDP listener of the engine (I114): a new peer address's first datagram must be a STUN Binding request of an answered session's ufrag, signed with its pwd; its relay is a UDP socket of its own on the engine (`relay_ip`, a port of the range, one in use skipped), closed after `idle_timeout` without a datagram from the peer (akio's idle timeout of its connection). `/metrics` has fit's proxy families named `akit_webrtc_proxy_*`.",
+      "zh": "引擎上的一个 UDP 监听器（I114）：新 peer 地址的首个数据报必须是已应答会话的 ufrag 的 STUN Binding 请求，并由其 pwd 签名；其中继是引擎上一个自己的 UDP 套接字（`relay_ip`、范围内的端口，跳过已占用的），peer 在 `idle_timeout` 内没有数据报时关闭（akio 对其连接的空闲超时）。`/metrics` 有 fit 的代理指标族，名为 `akit_webrtc_proxy_*`。"
     }
   }
 }

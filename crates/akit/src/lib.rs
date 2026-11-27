@@ -68,6 +68,8 @@ pub const ROLES: &[akit_roles::host::Info] = &[
     // I111: the TURN server; I113: the media server of whip and whep.
     akit_webrtc::TURN,
     akit_webrtc::MEDIA,
+    // I114: the media proxy of webrtc_proxy.
+    akit_webrtc::PROXY,
     // I151, I152: the BitTorrent tracker and client.
     akit_bittorrent::TRACKER,
     akit_bittorrent::CLIENT,

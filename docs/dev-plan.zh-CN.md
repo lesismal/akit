@@ -230,7 +230,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I111 | WebRTC II：基于 akio-turn 的 TURN 服务器，经 UDP、TCP 和 TLS | I110 | done |
 | I112 | WebRTC III：基于 akio 钩子的 TURN 服务器：端口范围、带宽、事件、就地修改的限制、排空 | I111, akio A256–A258 | done |
 | I113 | WebRTC IV：WHIP 和 WHEP，基于 akio-webrtc `RtcServer` 的 SFU | I110 | done |
-| I114 | WebRTC V：代理的 WHIP 和 WHEP：`webrtc_proxy` 和 `webrtc.proxy` | I113, I14 | todo |
+| I114 | WebRTC V：代理的 WHIP 和 WHEP：`webrtc_proxy` 和 `webrtc.proxy` | I113, I14 | done |
 | I150 | BitTorrent I：配置中的 `bittorrent.client` 和 `bittorrent.tracker`，fit 的字段、检查和冲突；后续迭代才运行的内容以"尚不支持"拒绝 | I98 | todo |
 | I150 | BitTorrent I：配置中的 `bittorrent.client` 和 `bittorrent.tracker`，fit 的字段、检查和冲突；后续迭代才运行的内容以"尚不支持"拒绝 | I98 | done |
 | I151 | BitTorrent II：基于 akio-bittorrent 的 `TrackerServer` 的 tracker 角色和 `bt_tracker`：HTTP 和 UDP、允许列表、访问控制、上限、统计、其控制台 | I150, I100 | done |
@@ -1682,7 +1682,7 @@ ICE ufrag 路由。它们对外显示的是 akit 的名字（决定 037：`SOFTW
   媒体服务器各自得到自己的 peer；peer 在其 Binding 请求之前的数据报被丢弃；离开的媒体服务器释放其路由。
 - **涉及**：`akit-webrtc`（`proxy`）、`akit-upstream`、`akit`。
 - **fit**：`webrtc/media/{proxy,proxyhttp,relay}.go`；I110、I111。
-- **状态**：todo。
+- **状态**：已完成（2026-11-27）。见进度日志。
 
 ### BitTorrent
 

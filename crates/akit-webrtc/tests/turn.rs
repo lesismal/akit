@@ -53,7 +53,7 @@ impl Env {
     }
 
     fn try_apply(&mut self, member: &str) -> Vec<String> {
-        let doc = format!(r#"{{"webrtc": {{"turn": {member}}}}}"#);
+        let doc = format!(r#"{{"engine": {{"event_loops": 2}}, "webrtc": {{"turn": {member}}}}}"#);
         let config = akit_config::from_json(&doc, None).unwrap_or_else(|e| panic!("{doc}\n{e}"));
         self.roles.apply(&config)
     }

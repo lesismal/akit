@@ -26,7 +26,7 @@ use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError, RwLock, Weak};
 use std::time::{Duration, Instant};
 
-use akio::{Listener, ListenerId};
+use akio::ListenerId;
 use akio_webrtc::{
     Codec, Direction, IceConnectionState, KeyframeRequest, KeyframeRequestKind, MediaAdded,
     MediaKind, Mid, Peer, PeerHandler, RtcConfig, RtcServer, RtpPacket,
@@ -433,7 +433,7 @@ fn count(c: &AtomicU64) {
     c.fetch_add(1, Ordering::Relaxed);
 }
 
-fn hex_id() -> String {
+pub(crate) fn hex_id() -> String {
     let mut b = [0u8; 16];
     if akio_crypto::rand::fill_random(&mut b).is_err() {
         // No OS randomness: the time's bits (never expected).
@@ -1008,6 +1008,8 @@ impl PeerHandler for Handler {
 struct Media {
     host: Host,
     core: Arc<Core>,
+    /// The config's `engine.event_loops`, for the port's I/O threads.
+    event_loops: usize,
 }
 
 fn new(host: Host) -> Result<Box<dyn Role>, String> {
@@ -1022,7 +1024,11 @@ fn new(host: Host) -> Result<Box<dyn Role>, String> {
         m: Meters::default(),
         me: me.clone(),
     });
-    Ok(Box::new(Media { host, core }))
+    Ok(Box::new(Media {
+        host,
+        core,
+        event_loops: 0,
+    }))
 }
 
 fn static_key(m: &WebRtcMedia) -> String {
@@ -1031,7 +1037,7 @@ fn static_key(m: &WebRtcMedia) -> String {
 
 /// The addresses the port advertises: `public_ips` with its port, the listen address, or for a
 /// wildcard every interface's address that is up.
-fn advertised(listen: SocketAddr, public: &[IpAddr]) -> Vec<SocketAddr> {
+pub(crate) fn advertised(listen: SocketAddr, public: &[IpAddr]) -> Vec<SocketAddr> {
     if !public.is_empty() {
         return public
             .iter()
@@ -1078,7 +1084,7 @@ impl Media {
         let server = RtcServer::new(addrs.clone())
             .connect_timeout(None)
             .max_peers(0);
-        let mut l = Listener::udp(addr).serve(server.clone());
+        let mut l = crate::udp_listener(addr, self.event_loops).serve(server.clone());
         if let Some(p) = lock(&self.core.access).clone() {
             l = l.filter(move |peer: &SocketAddr| p.allows(peer.ip()));
         }
@@ -1108,6 +1114,7 @@ impl Media {
 
 impl Role for Media {
     fn apply(&mut self, config: &Config) -> Result<(), String> {
+        self.event_loops = config.engine.event_loops;
         let Some(w) = config.webrtc.as_ref() else {
             return Ok(());
         };

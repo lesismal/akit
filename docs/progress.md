@@ -20,6 +20,42 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-27: I114, WHIP and WHEP proxied
+
+- `akit_webrtc::proxy`, the role `webrtc.proxy` (fit's `proxy.go`, `relay.go`): a UDP listener of
+  the engine (the member's access its filter); sessions with their ufrags (at most 4 a session)
+  and the address their peers are relayed to; a new peer address's first datagram must be a STUN
+  Binding request whose USERNAME begins with a session's ufrag and whose MESSAGE-INTEGRITY its pwd
+  signs (dropped and counted otherwise: not STUN, unknown ufrag, integrity); its relay a UDP socket
+  of its own on the engine (`Engine::bind_udp` from `relay_ip`, a port of `port_min`..`port_max`
+  tried from a random one, one in use skipped, a full range dropped as `no_port`), relaying the
+  5-tuple both ways, at most `max_relays` and 8 a session; a peer silent for `idle_timeout` closed
+  by akio's idle timeout of its connection; a session nothing is relayed for forgotten after
+  `session_timeout` (a timer re-armed when its last relay ends); a DELETE forgetting it, its relays
+  closed a second later. `/metrics`: fit's proxy families, `akit_webrtc_proxy_*`.
+- The handler `webrtc_proxy` (fit's `proxyhttp.go`): an offer, its candidates taken out, sent to a
+  media server the upstream picks (akit-upstream's pool, akio's client, `timeout`), within
+  `max_sessions` (503, `Retry-After: 1`) and `max_sdp_bytes` (413; 502 for an answer past it); a
+  201 answered with the answer's candidates replaced by the proxy port's (and its `c=` lines),
+  its ufrags and pwds recorded against `media_addrs` or its best host or server-reflexive
+  candidate (IPv4 first), `Location` the endpoint's path and the session's ID, the media server's
+  `Link` headers below its session's URL moved below akit's; a session's URL and the paths below
+  it passed to the same media server (DELETE forgetting the session; PATCH with an ICE restart's
+  offer recording its credentials, a trickled candidate answered 204); an answer akit cannot
+  take answered 502 and the session hung up at the media server. `akit run` runs the role and
+  serves the handler: nothing of `webrtc` is refused any more.
+- The UDP ports of `webrtc.proxy`, `webrtc.media` and `webrtc.turn` on the config's
+  `engine.event_loops` I/O threads, as the HTTP listeners (one a core when 0): on a 16-core host
+  three akits in one test process ran out of descriptors under the default.
+- Tests (`tests/proxy.rs`, three akits on loopback): two akit media servers behind one akit
+  proxy port, a publisher and a viewer on each, media flowing through the relays, a DELETE
+  through akit; the answers naming the proxy's port alone; datagrams that are not a Binding
+  request, and a Binding request of an unknown ufrag, dropped; `max_sessions`; a media server's
+  404 passed on; a one-port range relaying one address and dropping the next; `session_timeout`;
+  the proxy not running. Unit tests of the SDP rewrite (fit's `TestRewriteSDP`), the candidates
+  stripped, the paths and `Link` headers, and the request's ufrag. The media tests' helpers moved
+  to `tests/support`.
+
 ### 2026-11-27: a proxied body framed by its length, read whole by a client that went, is finished
 
 - `proxy`: an HTTP/1.1 client that has read every byte a streamed response's `Content-Length`

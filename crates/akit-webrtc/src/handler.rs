@@ -1,6 +1,5 @@
 //! The handlers `whip` and `whep` (I113, fit's `webrtc/media/handler.go`), on the media server
-//! of the process's engine (`webrtc.media`); and `webrtc_proxy`, which answers 503 while its role
-//! does not run (I114).
+//! of the process's engine (`webrtc.media`).
 //!
 //! A POST of an offer (`application/sdp`, at most `max_sdp_bytes`, read whole) publishes or plays the stream
 //! named by `stream` or by the last segment of its path, answered `201` with the answer, the
@@ -178,39 +177,4 @@ pub(crate) fn whep(
         stream: params.stream.clone(),
         engine: p.env().engine().clone(),
     }) as Arc<dyn Handler>))
-}
-
-/// A handler whose role does not run: every request answered 503 with why.
-struct NotRunning(&'static str);
-
-impl akio_http::Service for NotRunning {
-    fn call(&self, ctx: &mut Context) {
-        let msg = format!("{} is not running", self.0);
-        respond(ctx, 503, &msg, &[]);
-    }
-}
-
-impl Handler for NotRunning {
-    fn inline(&self) -> bool {
-        true
-    }
-}
-
-pub(crate) fn webrtc_proxy(
-    p: &Provision<'_, HandlerParams>,
-) -> Result<Provisioned<dyn Handler>, ProvisionError> {
-    let HandlerParams::WebRtcProxy(params) = p.params() else {
-        return Err(ProvisionError::new(
-            "the webrtc_proxy handler was given another's params",
-        ));
-    };
-    if p.env().upstream(&params.upstream).is_none() {
-        return Err(ProvisionError::field(
-            "upstream",
-            format!("there is no upstream named {:?}", params.upstream),
-        ));
-    }
-    Ok(Provisioned::new(
-        Arc::new(NotRunning("webrtc.proxy")) as Arc<dyn Handler>
-    ))
 }

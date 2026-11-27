@@ -240,7 +240,7 @@ Tunnel and LLM track; I110–I114 are the WebRTC track, and I115–I119 are rese
 | I111 | WebRTC II: the TURN server on akio-turn, over UDP, TCP and TLS | I110 | done |
 | I112 | WebRTC III: the TURN server on akio's hooks: port range, bandwidth, events, limits in place, drain | I111, akio A256–A258 | done |
 | I113 | WebRTC IV: WHIP and WHEP, an SFU on akio-webrtc's `RtcServer` | I110 | done |
-| I114 | WebRTC V: WHIP and WHEP proxied: `webrtc_proxy` and `webrtc.proxy` | I113, I14 | todo |
+| I114 | WebRTC V: WHIP and WHEP proxied: `webrtc_proxy` and `webrtc.proxy` | I113, I14 | done |
 | I150 | BitTorrent I: `bittorrent.client` and `bittorrent.tracker` in the config, fit's fields, checks and clashes; what later iterations run refused as not supported yet | I98 | todo |
 | I150 | BitTorrent I: `bittorrent.client` and `bittorrent.tracker` in the config, fit's fields, checks and clashes; what later iterations run refused as not supported yet | I98 | done |
 | I151 | BitTorrent II: the tracker role and `bt_tracker` on akio-bittorrent's `TrackerServer`: HTTP and UDP, the allow-list, access, bounds, statistics, its console | I150, I100 | done |
@@ -2005,7 +2005,7 @@ Streaming and media auth track's: it is refused as not supported yet until that 
   before its Binding request are dropped; a media server gone frees its routes.
 - **Touches**: `akit-webrtc` (`proxy`), `akit-upstream`, `akit`.
 - **fit**: `webrtc/media/{proxy,proxyhttp,relay}.go`; I110, I111.
-- **Status**: todo.
+- **Status**: done (2026-11-27). See the progress log.
 
 ### BitTorrent
 

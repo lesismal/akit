@@ -141,7 +141,7 @@ routes:
 | `telemetry` | [对象](#cfg-telemetry) |  |  |
 | `tunnel` | [对象](#cfg-tunnel) |  | **akit：**像 fit 一样读取并检查（I98）；`akit run` 在监听器的引擎上运行这三个角色（I101），其链路与 fit 的协议逐字节相同，使 akit 的 hub、node 和 proxy 能与 fit 的互连（决定 038）。链路走 `tcp`、`tls`（I102）、`quic`（I102b），以及 `ws` 和 `wss`（I102c，基于 akio-ws）。hub 的 `console_socket` 和 proxy 的 `web_proxies` 使用 fit 的密封 WebSocket（I103b）。 |
 | `upstreams` | [对象](#cfg-upstreams)的列表 |  |  |
-| `webrtc` | [对象](#cfg-webrtc) |  | **akit：**像 fit 一样读取并检查（I110，决定 039）；`akit run` 在监听器的引擎上运行 `turn`（I111、I112）和 `media`（I113），在 I114 运行 `proxy` 之前拒绝它。 |
+| `webrtc` | [对象](#cfg-webrtc) |  | **akit：**像 fit 一样读取并检查（I110，决定 039）；`akit run` 在监听器的引擎上运行 `turn`（I111、I112）、`media`（I113）和 `proxy`（I114）。 |
 <!-- END GENERATED -->
 
 ## 监听器
@@ -971,7 +971,7 @@ engine {
 | 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
 | `backlog` | 整数，≥ 0 |  | **akit：**省略或为 0 时为 akio 的 1024，而不是系统的值。 |
-| `event_loops` | 整数，0 到 1024 |  | **akit：**每个监听器的 akio I/O 线程数，这些线程也运行连接的回调（fib 的事件循环只负责等待）；省略或为 0 时每个核一个，而 fib 在至多 4 个 CPU 上为 1。 |
+| `event_loops` | 整数，0 到 1024 |  | **akit：**每个监听器的 akio I/O 线程数，这些线程也运行连接的回调（fib 的事件循环只负责等待），`webrtc` 各角色的 UDP 端口也按此设置；省略或为 0 时每个核一个，而 fib 在至多 4 个 CPU 上为 1。 |
 | `kernel_tls_offload` | 布尔值 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
 | `loop_wait` | 字符串：`park`、`block` | `"park"` | **尚不支持**（not supported yet）：按名称拒绝。 |
 | `min_workers` | 整数，≥ 0 |  | **akit：**逻辑池空闲时保留的线程数（akio 的 `min_threads`）。 |
@@ -2596,7 +2596,7 @@ llm {
 服务器（`webrtc.media`），所有 PeerConnection 共享一个 UDP 端口；以及 [`webrtc_proxy`](#webrtc_proxy) 处理器的中继
 （`webrtc.proxy`），akit 后面的媒体服务器的 peer 经由这一个 UDP 端口到达它们。akit 像 fit 一样读取并检查它们（I110，
 [决定 039](../decisions/039-webrtc.zh-CN.md)）；`akit run` 基于 akio-turn 运行 TURN 服务器（I111、I112），基于 akio-webrtc
-运行 `whip` 和 `whep` 的媒体服务器（I113），在 I114 运行中继之前拒绝它。处理器的 `auth`（一个 `media_auth` 策略）尚不支持。
+运行 `whip` 和 `whep` 的媒体服务器（I113），并运行 `webrtc_proxy` 的中继（I114）。处理器的 `auth`（一个 `media_auth` 策略）尚不支持。
 
 ```fit
 webrtc {
@@ -2619,7 +2619,7 @@ webrtc {
 | 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
 | `media` | [对象](#cfg-webrtc-media) |  | **akit：**akio-webrtc 的 ICE lite `RtcServer`（I113）：以发布者各类媒体中第一个列于 `codecs` 的编解码器应答，其 RTP 到达时即转发给每个观看者（`Peer::write_rtp`），`max_bitrate` 以 REMB 告知并以两秒突发量强制执行，`ice_timeout` 作为 peer 的 consent 超时。`listen` 端口为 0 时，服务器启动时先找一个空闲端口，因为应答要写出它。`/metrics` 有 fit 的媒体指标族，名为 `akit_webrtc_media_*`。 |
-| `proxy` | [对象](#cfg-webrtc-proxy) |  |  |
+| `proxy` | [对象](#cfg-webrtc-proxy) |  | **akit：**引擎上的一个 UDP 监听器（I114）：新 peer 地址的首个数据报必须是已应答会话的 ufrag 的 STUN Binding 请求，并由其 pwd 签名；其中继是引擎上一个自己的 UDP 套接字（`relay_ip`、范围内的端口，跳过已占用的），peer 在 `idle_timeout` 内没有数据报时关闭（akio 对其连接的空闲超时）。`/metrics` 有 fit 的代理指标族，名为 `akit_webrtc_proxy_*`。 |
 | `turn` | [对象](#cfg-webrtc-turn) |  | **akit：**akio-turn 的服务器（I111、I112）：`SOFTWARE` 为 `akit`；TCP allocation（RFC 6062）以 442 拒绝，同 fit。用户、secret、peer 规则、access、证书、带宽、配额、上限和生存期就地修改；地址、realm、中继地址、端口范围、nonce secret、流的上限或 `mptcp` 的变化启动新服务器，被替换的服务器排空（新 allocation 以 508 拒绝）`-shutdown-timeout`。`/metrics` 有 fit 的 TURN 指标族，名为 `akit_turn_*`。 |
 <!-- END GENERATED -->
 
@@ -3347,8 +3347,8 @@ route {
 
 ### `webrtc_proxy`
 
-把 WHIP 和 WHEP 交给某个 upstream 的媒体服务器，并经 `webrtc.proxy` 的单个 UDP 端口中继其 peer 的媒体。`akit run` 从
-I114 起提供它。
+把 WHIP 和 WHEP 交给某个 upstream 的媒体服务器，并经 `webrtc.proxy` 的单个 UDP 端口中继其 peer 的媒体。`akit run` 提供它
+（I114）。
 
 <!-- BEGIN GENERATED: routes[].handler<webrtc_proxy>.params -->
 <a id="cfg-routes-handler-webrtc-proxy-params"></a>

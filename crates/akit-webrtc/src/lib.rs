@@ -13,12 +13,26 @@
 mod handler;
 mod limiter;
 pub mod media;
+pub mod proxy;
+mod proxy_http;
 pub mod turn;
 
 use akit_runtime::{HandlerParams, Info};
 
 pub use media::MEDIA;
+pub use proxy::PROXY;
 pub use turn::TURN;
+
+/// A UDP listener of the roles at `addr`, served by `event_loops` I/O threads of its own (the
+/// config's `engine.event_loops`, as akit's HTTP listeners are); akio's one a core when 0.
+fn udp_listener(addr: std::net::SocketAddr, event_loops: usize) -> akio::Listener {
+    let l = akio::Listener::udp(addr);
+    if event_loops > 0 {
+        l.threads(event_loops)
+    } else {
+        l
+    }
+}
 
 /// The handler modules of this crate, for [`akit_runtime::Registry::new`].
 pub static MODULES: &[Info<HandlerParams>] = &[
@@ -35,6 +49,6 @@ pub static MODULES: &[Info<HandlerParams>] = &[
     Info::handler(
         "http.handlers.webrtc_proxy",
         "Proxies WHIP and WHEP to the media servers of an upstream, and their peers' media through webrtc.proxy's one UDP port.",
-        handler::webrtc_proxy,
+        proxy_http::webrtc_proxy,
     ),
 ];
