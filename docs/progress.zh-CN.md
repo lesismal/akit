@@ -17,9 +17,27 @@
 | 下一步 | 外部安全审查（[范围](security/review-scope.zh-CN.md)），其发现完成 I80b；fit 对决定 035 所提议字段（CRL 文件、WASM 摘要）的答复；1.0 之后的各条线（[开发计划](dev-plan.zh-CN.md#10-之后)）：控制台与加密的 store 已完成（I89–I94、I93b、I93c）；fit 的 Admin API 对没有令牌的连接的规则，基于控制台的 slots（akio 的 A232）（日志已完成：I81–I83；访问控制列表已完成：I85–I87）；Gateway API 一致性测试的运行（tests/conformance，由维护者运行） |
 | akio 需求 | A1–A24、A29、A30、A32、A33、A35–A38、A45、A48、A49、A51–A54、A57、A58、A63–A66、A75、A78、A79、A90–A94、A105、A108、A109、A111–A113、A117、A132–A135、A148、A165–A172、A180、A200、A214、A215、A220、A230–A238、A245 和 A247–A249 已进入 akio 的 main 并锁定；A225（外部审查，L15）已提出（[akio API 请求](akio-api-requests.zh-CN.md)） |
 | 流媒体与媒体认证 | [I120–I126](dev-plan.zh-CN.md#流媒体与媒体认证)，fit 的 I115–I117（决定 040）：I120（配置中的 `media_auth` 和 `streaming`）、I121（策略、检查、`akit media-token`）I122（角色的媒体中心、RTMP、RTSP 和 SRT）、I123（`httpflv`、`hls`）、I124（WebRTC 端口、`stream_whip`、`stream_whep`）、I125（`media_pages`）和 I126（`whip`、`whep` 和 `webrtc_proxy` 上的 `auth`）已完成；媒体库的 `libraries`、`vod` 和 `channels` 等待其那条线；akio 请求 A263–A268 |
-| 媒体库与频道 | [I140–I149](dev-plan.zh-CN.md#媒体库与频道)，fit 的 I131–I139 和 I119（决定 043）：已规划 |
+| 媒体库与频道 | [I140–I149](dev-plan.zh-CN.md#媒体库与频道)，fit 的 I131–I139 和 I119（决定 043）：I140（配置中的 `media_library`）已完成 |
 
 ## 日志
+
+### 2026-11-27：I140，配置中的 `media_library`
+
+- **完成内容**：akit-config 的 `medialib` 模块读取 fit 的 `media_library`（`config/medialibrary.go`）：命名的媒体库，带 `roots`、
+  `files` 和 `exclude`、`follow_symlinks`、`scan_interval`、目录的上限（`max_items`、`max_files`、`max_catalog_bytes`、
+  `max_probes`、至多 1 MiB 的 `max_sidecar_bytes`、`max_subtitle_bytes`、`max_table_bytes`）、文件池的上限（`file_workers`、
+  `file_queue`、`file_timeout`）以及 `secret` 或 `secret_file`，默认值（`MediaLibrary::interval`、`items` 等）和检查与 fit 相同：
+  名字唯一，根目录不为空、不重复、互不包含（按 Go 的 `filepath.Abs` 转为绝对路径并清理），模式按 fit 的
+  `ValidMediaPathPattern`，`scan_interval` 至少 10s，密钥的长度以及二选一。模式由 Go 的 `path.Match` 的移植
+  （`medialib::path_match`）检查，I141 的扫描也用它匹配，使 fit 接受的模式匹配相同的名字。在 I141 运行之前 `akit run` 拒绝该成员。
+- **与计划的差异**：上传的字段（`upload_dir`、`max_upload_bytes`、`max_uploads`、`min_free_bytes`、`upload_expiry`）在 I149 之前
+  作为“尚不支持”拒绝（待审决定第 87 行）。fit 的 I131（其 MP4 读取器）在 akit 中无需任何工作：由 akio-media 的 `mp4` 读取文件
+  （决定 043）。
+- **验证**：移植 fit 的 `TestMediaLibrary`（`medialib::tests::media_library`，上传相关用例作为“尚不支持”拒绝）、Go 自己的
+  `path.Match` 用例（`go_path_match`）；关卡的字段清单、样例和参考文档（`supported.txt`、`support/roles.rs`、参考文档的媒体库
+  章节），v1 冻结的新增项；fit-examples 的 `bittorrent` 和 `video-site` 不再因 `media_library` 被拒绝；`akit validate` 验证了一个
+  `.conf` 和一个 YAML 媒体库。
+- **下一步**：I141，目录。
 
 ### 2026-11-27：媒体库与频道路线规划为 I140–I149
 

@@ -18,9 +18,32 @@ done and where the work differs from the plan.
 | Next | the external security review ([scope](security/review-scope.md)), whose findings finish I80b; fit's answer to the fields decision 035 proposes (CRL files, a WASM digest); the tracks after 1.0 ([the plan](dev-plan.md#after-10)): Console and encrypted store done (I89–I94, I93b, I93c); fit's Admin API rules for connections without the token, on the console's slots (akio's A232) (Logging done: I81–I83; Access lists done: I85–I87); the Gateway API's conformance run (tests/conformance, the maintainer's) |
 | akio requests | A1–A24, A29, A30, A32, A33, A35–A38, A45, A48, A49, A51–A54, A57, A58, A63–A66, A75, A78, A79, A90–A94, A105, A108, A109, A111–A113, A117, A132–A135, A148, A165–A172, A180, A200, A214, A215, A220, A230–A238, A245 and A247–A249 on akio's main and pinned; A225 (an external review, L15) requested ([akio API requests](akio-api-requests.md)) |
 | Streaming and media auth | [I120–I126](dev-plan.md#streaming-and-media-auth), fit's I115–I117 (decision 040): I120 (`media_auth` and `streaming` in the config), I121 (the policies, the checks, `akit media-token`), I122 (the role's hub, RTMP, RTSP and SRT), I123 (`httpflv`, `hls`), I124 (the WebRTC port, `stream_whip`, `stream_whep`), I125 (`media_pages`) and I126 (`auth` on `whip`, `whep` and `webrtc_proxy`) done; the media library's `libraries`, `vod` and `channels` wait for its track; akio requests A263–A268 |
-| Media library and channels | [I140–I149](dev-plan.md#media-library-and-channels), fit's I131–I139 and I119 (decision 043): planned |
+| Media library and channels | [I140–I149](dev-plan.md#media-library-and-channels), fit's I131–I139 and I119 (decision 043): I140 (`media_library` in the config) done |
 
 ## Log
+
+### 2026-11-27: I140, `media_library` in the config
+
+- **Built**: akit-config's `medialib` module reads fit's `media_library` (`config/medialibrary.go`):
+  named libraries with `roots`, `files` and `exclude`, `follow_symlinks`, `scan_interval`, the
+  catalog's bounds (`max_items`, `max_files`, `max_catalog_bytes`, `max_probes`,
+  `max_sidecar_bytes` up to 1 MiB, `max_subtitle_bytes`, `max_table_bytes`), the file pool's
+  (`file_workers`, `file_queue`, `file_timeout`) and `secret` or `secret_file`, with fit's defaults
+  (`MediaLibrary::interval`, `items` and the rest) and checks: names unique, roots neither empty,
+  listed twice nor one inside another (made absolute and cleaned as Go's `filepath.Abs`), patterns
+  as fit's `ValidMediaPathPattern`, `scan_interval` at least 10s, the secret's length and one of the
+  two. The patterns are checked by a port of Go's `path.Match` (`medialib::path_match`), which I141's
+  scans match with, so that a pattern fit takes matches the same names. `akit run` refuses the member
+  until I141 runs it.
+- **Differs from the plan**: the uploads' fields (`upload_dir`, `max_upload_bytes`, `max_uploads`,
+  `min_free_bytes`, `upload_expiry`) are refused as not supported yet until I149 (decision row 87).
+  fit's I131, its MP4 reader, needs nothing in akit: akio-media's `mp4` reads the files (decision 043).
+- **Checked**: fit's `TestMediaLibrary` ported (`medialib::tests::media_library`, the uploads'
+  cases refused as not supported yet), Go's own `path.Match` cases (`go_path_match`); the gate's
+  inventory, samples and reference (`supported.txt`, `support/roles.rs`, the reference's Media library
+  chapter), the v1 freeze's additions; fit-examples' `bittorrent` and `video-site` no longer refused
+  for `media_library`; a `.conf` and a YAML library validated by `akit validate`.
+- **Next**: I141, the catalog.
 
 ### 2026-11-27: the Media library and channels track planned (I140–I149)
 

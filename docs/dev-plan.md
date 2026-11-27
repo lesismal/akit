@@ -254,7 +254,7 @@ Tunnel and LLM track; I110–I114 are the WebRTC track, and I115–I119 are rese
 | I126 | Media auth on `whip`, `whep` and `webrtc_proxy` | I121, the WebRTC track's handlers | todo |
 | I114 | WebRTC V: WHIP and WHEP proxied: `webrtc_proxy` and `webrtc.proxy` | I113, I14 | done |
 | **After 1.0: media library and channels** | | | |
-| I140 | Media library I: decision 043, `media_library` in the config | I120 | todo |
+| I140 | Media library I: decision 043, `media_library` in the config | I120 | done |
 | I141 | Media library II: the catalog: scans, items, probes on akio-media's `mp4`, the file pool, the parsed movies kept; the role `media_library`; the Admin API's `/media/library` | I140, I100 | todo |
 | I142 | Video on demand: `vod`, HLS from the sample tables, the file with ranges | I141, I121 | todo |
 | I143 | Media tokens: `media_auth`'s `keys` and `media_tokens` (fit's I119) | I121 | todo |
@@ -2189,7 +2189,8 @@ is asked as akio A295–A300. Names akit shows are akit's (decision 037), format
   field; the v1 freeze marks them as additions.
 - **Touches**: `akit-config` (`medialib`), `akit-roles` (`members`), `tests/compat`, `docs/reference`.
 - **fit**: `config/medialibrary.go`; I131, I132.
-- **Status**: todo.
+- **Status**: done (2026-11-27); the uploads' fields refused as not supported yet until I149. See the
+  progress log.
 
 ### I141 Media library II: the catalog
 

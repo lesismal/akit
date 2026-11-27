@@ -73,6 +73,9 @@ pub struct Config {
     /// `streaming` (I120): the streaming role, its hub and its RTMP, RTSP, SRT and WebRTC
     /// listeners; none when left out.
     pub streaming: Option<crate::media::Streaming>,
+    /// `media_library` (I140): the named media libraries, directories scanned into catalogs of
+    /// items that the media handlers serve; none when left out.
+    pub media_library: Vec<crate::medialib::MediaLibrary>,
     /// What the config was read with that is said rather than refused (I79): the old names of
     /// fields renamed in schema version 1, each at its file, line, column and path. Not part of
     /// what the config means: configs equal but for these are equal.
@@ -2292,8 +2295,10 @@ const CONFIG_FIELDS: &[&str] = &[
     // I120: fit's media auth and streaming role (crate::media).
     "media_auth",
     "streaming",
+    // I140: fit's media libraries (crate::medialib).
+    "media_library",
 ];
-const CONFIG_FIT_ONLY: &[&str] = &["pprof", "media_library", "sync"];
+const CONFIG_FIT_ONLY: &[&str] = &["pprof", "sync"];
 // I26: the Admin API's address, history and limits; I27: its token; I63: its dashboard; I87: its
 // access lists; I89: its console; I92: its TLS.
 const ADMIN_FIELDS: &[&str] = &[
@@ -2708,6 +2713,8 @@ pub(crate) struct Part {
     /// gives them; `streaming` with the policies its listeners name.
     media_auth: Option<(Vec<crate::media::MediaAuth>, usize)>,
     streaming: Option<((crate::media::Streaming, Vec<crate::media::AuthRef>), usize)>,
+    /// `media_library` (I140), with the position of its key, when the file gives it.
+    media_library: Option<(Vec<crate::medialib::MediaLibrary>, usize)>,
     providers: Vec<At<crate::providers::Provider>>,
     /// The position of the file's top object.
     doc_off: usize,
@@ -2807,6 +2814,9 @@ pub(crate) fn part(d: &mut Decoder<'_>, n: &Node, file: usize) -> Option<Part> {
     let streaming = o
         .take("streaming")
         .and_then(|v| crate::media::streaming(d, v, "streaming").map(|s| (s, v.off)));
+    let media_library = o
+        .take("media_library")
+        .map(|v| (crate::medialib::media_library(d, v, "media_library"), v.off));
     let providers = o
         .take("providers")
         .map(|v| {
@@ -2839,6 +2849,7 @@ pub(crate) fn part(d: &mut Decoder<'_>, n: &Node, file: usize) -> Option<Part> {
         bittorrent,
         media_auth,
         streaming,
+        media_library,
         providers,
         doc_off,
     })
@@ -2878,6 +2889,7 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
     #[allow(clippy::type_complexity)]
     let mut streaming: Option<((crate::media::Streaming, Vec<crate::media::AuthRef>), usize)> =
         None;
+    let mut media_library: Option<(Vec<crate::medialib::MediaLibrary>, usize)> = None;
     let mut providers = Vec::new();
     for (file, p) in parts.into_iter().enumerate() {
         first_doc.get_or_insert((file, p.doc_off));
@@ -3028,6 +3040,9 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
         if let Some((s, off)) = p.streaming {
             once(ds, &mut streaming, s, file, off, "streaming");
         }
+        if let Some((m, off)) = p.media_library {
+            once(ds, &mut media_library, m, file, off, "media_library");
+        }
         listeners.extend(p.listeners);
         routes.extend(p.routes);
         upstreams.extend(p.upstreams);
@@ -3153,6 +3168,7 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
         bittorrent: bittorrent.map(|(b, _)| b),
         media_auth,
         streaming,
+        media_library: media_library.map(|(m, _)| m).unwrap_or_default(),
         warnings: crate::error::Warnings::default(),
     }
 }

@@ -134,7 +134,7 @@ routes:
 | `llm` | [对象](#cfg-llm) |  | **akit：**像 fit 一样读取并检查（I98）。在 LLM 的迭代运行这些角色之前（I104–I109），`akit run` 拒绝设置了角色的配置。 |
 | `log` | [对象](#cfg-log) |  |  |
 | `media_auth` | [对象](#cfg-media-auth)的列表 |  | **akit：**由 `akit run` 应用（I121），每个策略在重载时就地修改。token 的 cookie 为 `akit_media_token`，401 的质询为 `Bearer realm="akit"`（决定 037）；akit 签发的 token 采用 fit 的格式，fit 和 akit 都接受（决定 040）。 |
-| `media_library` | 对象的列表 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `media_library` | [对象](#cfg-media-library)的列表 |  |  |
 | `metrics` | 对象 |  |  |
 | `pprof` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
 | `providers` | [对象](#cfg-providers)的列表 |  |  |
@@ -3019,6 +3019,56 @@ streaming {
 | `allow_files` | 字符串的列表 |  |  |
 | `deny` | 字符串的列表 |  |  |
 | `deny_files` | 字符串的列表 |  |  |
+<!-- END GENERATED -->
+
+## 媒体库
+
+`media_library` 列出 fit 的命名媒体库（[fit 的指南](https://github.com/lesismal/fit/blob/main/docs/media-library.zh-CN.md)）：
+扫描成条目目录的若干 MP4 文件（`.mp4`、`.m4v`、`.m4a`、`.mov`）所在目录，每个条目是一个标题及其版本、音频、字幕和海报，由
+`vod` 点播、由频道直播。akit 按 fit 的方式读取并检查媒体库（I140），并用 akio-media 的 MP4 读取器读取文件；`akit run` 从
+I141 起运行它们。尚未读取：上传的 `upload_dir`、`max_upload_bytes`、`max_uploads`、`min_free_bytes` 和 `upload_expiry`
+（I149）。
+
+```fit
+media_library films {
+	roots /srv/media/films /srv/media/shows
+	exclude **/extras/**
+	scan_interval 30m
+}
+```
+
+### `media_library[]`
+
+<!-- BEGIN GENERATED: media_library[] -->
+<a id="cfg-media-library"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-media-library)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `name` | 字符串 | 必填 |  |
+| `roots` | 字符串的列表 | 必填 |  |
+| `exclude` | 字符串的列表 |  |  |
+| `file_queue` | 整数，≥ 0 | `4096` |  |
+| `file_timeout` | 时长 | `"10s"` |  |
+| `file_workers` | 整数，≥ 0 |  |  |
+| `files` | 字符串的列表 |  |  |
+| `follow_symlinks` | 布尔值 |  |  |
+| `max_catalog_bytes` | 整数，≥ 0 | `67108864` |  |
+| `max_files` | 整数，≥ 0 | `200000` |  |
+| `max_items` | 整数，≥ 0 | `20000` |  |
+| `max_probes` | 整数，≥ 0 | `4` |  |
+| `max_sidecar_bytes` | 整数，0 到 1048576 | `65536` |  |
+| `max_subtitle_bytes` | 整数，≥ 0 | `2097152` |  |
+| `max_table_bytes` | 整数，≥ 0 | `134217728` |  |
+| `max_upload_bytes` | 整数，≥ 0 | `34359738368` | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `max_uploads` | 整数，0 到 1024 | `4` | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `min_free_bytes` | 整数，≥ 0 | `1073741824` | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `scan_interval` | 时长 | `"10m"` |  |
+| `secret` | 字符串 |  |  |
+| `secret_file` | 字符串 |  |  |
+| `upload_dir` | 字符串 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `upload_expiry` | 时长 | `"24h"` | **尚不支持**（not supported yet）：按名称拒绝。 |
 <!-- END GENERATED -->
 
 ## BitTorrent

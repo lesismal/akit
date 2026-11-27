@@ -1,7 +1,7 @@
 # The compatibility gate's report (docs/compatibility.md), written by make compat-bless;
 # do not edit. The gate fails when a run's outcomes differ from these lines.
 # fit 7daee573, fit-examples 9659d7e4.
-# 80 fixtures: 61 valid, 18 refused only as not supported yet (fields refused: 13), 0 in a format not supported yet, 1 skipped, 0 failed.
+# 80 fixtures: 61 valid, 18 refused only as not supported yet (fields refused: 12), 0 in a format not supported yet, 1 skipped, 0 failed.
 examples/acme-on-demand: valid
 examples/acme-shared-storage: valid
 examples/admin: valid
@@ -10,7 +10,6 @@ examples/basic-auth: valid
 examples/bittorrent: not supported yet: bittorrent.client.categories[].media_library
 examples/bittorrent: not supported yet: bittorrent.client.publish
 examples/bittorrent: not supported yet: bittorrent.tracker.auth
-examples/bittorrent: not supported yet: media_library
 examples/bittorrent: not supported yet: routes[].handler<bt_publish>
 examples/bittorrent: not supported yet: routes[].handler<bt_stream>
 examples/body-limit: valid
@@ -76,7 +75,6 @@ examples/tunnel-hub: valid
 examples/tunnel-node: valid
 examples/tunnel-proxy: valid
 examples/video-site: not supported yet: media_auth[].url_signing
-examples/video-site: not supported yet: media_library
 examples/video-site: not supported yet: routes[].handler<media_pages>.params.channels
 examples/video-site: not supported yet: routes[].handler<media_pages>.params.libraries
 examples/video-site: not supported yet: routes[].handler<media_tokens>

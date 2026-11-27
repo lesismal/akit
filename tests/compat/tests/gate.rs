@@ -3333,6 +3333,8 @@ fn akit_config_lists_match_the_inventory() {
         "cluster.rs",
         // I120: media auth and the streaming role.
         "media.rs",
+        // I140: the media libraries.
+        "medialib.rs",
     ]
     .iter()
     .map(|f| fs::read_to_string(compat_dir().join("../../crates/akit-config/src").join(f)).unwrap())
@@ -3348,7 +3350,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 184] = [
+    let objects: [(&str, &str, Option<&str>); 185] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         (
             "providers[].kubernetes",
@@ -3715,6 +3717,11 @@ fn akit_config_lists_match_the_inventory() {
         ),
         ("media_auth[].tokens[]", "MEDIA_TOKEN_FIELDS", None),
         ("media_auth[].users[]", "MEDIA_USER_FIELDS", None),
+        (
+            "media_library[]",
+            "MEDIA_LIBRARY_FIELDS",
+            Some("MEDIA_LIBRARY_FIT_ONLY"),
+        ),
         ("streaming", "STREAMING_FIELDS", Some("STREAMING_FIT_ONLY")),
         (
             "streaming.rtmp",

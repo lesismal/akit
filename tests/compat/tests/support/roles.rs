@@ -1543,5 +1543,43 @@ pub(crate) fn samples() -> Vec<(String, String, Read)> {
     media(&mut out);
     media_handlers(&mut out);
     media_pages(&mut out);
+    media_library(&mut out);
     out
+}
+
+/// `media_library` (I140).
+fn media_library(out: &mut Vec<(String, String, Read)>) {
+    const L: &str = r#"{"name": "l", "roots": ["/srv/a"]}"#;
+    out.push((
+        "media_library".into(),
+        r#"{"media_library": []}"#.into(),
+        Read::Differs(format!(r#"{{"media_library": [{L}]}}"#)),
+    ));
+    let lw = |m: &str| format!(r#"{{"media_library": [{m}]}}"#);
+    emit(
+        out,
+        "media_library[]",
+        &lw,
+        &[("name", q("l")), ("roots", r#"["/srv/a"]"#.into())],
+        vec![
+            f("name", q("a"), q("b")),
+            f("roots", r#"["/srv/a"]"#, r#"["/srv/b"]"#),
+            f("files", r#"["*.mp4"]"#, r#"["*.m4v"]"#),
+            f("exclude", r#"["a"]"#, r#"["b"]"#),
+            f("follow_symlinks", "false", "true"),
+            f("scan_interval", q("1m"), q("2m")),
+            f("max_items", "1", "2"),
+            f("max_files", "1", "2"),
+            f("max_catalog_bytes", "1", "2"),
+            f("max_probes", "1", "2"),
+            f("max_sidecar_bytes", "1", "2"),
+            f("max_subtitle_bytes", "1", "2"),
+            f("max_table_bytes", "1", "2"),
+            f("file_workers", "1", "2"),
+            f("file_queue", "1", "2"),
+            f("file_timeout", q("1s"), q("2s")),
+            f("secret", q("0123456789abcdef"), q("0123456789abcdeg")),
+            f("secret_file", q("a"), q("b")),
+        ],
+    );
 }

@@ -242,7 +242,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I126 | `whip`、`whep` 和 `webrtc_proxy` 上的媒体认证 | I121、WebRTC 路线的处理器 | todo |
 | I114 | WebRTC V：代理的 WHIP 和 WHEP：`webrtc_proxy` 和 `webrtc.proxy` | I113, I14 | done |
 | **1.0 之后：媒体库与频道** | | | |
-| I140 | 媒体库 I：决定 043，配置中的 `media_library` | I120 | todo |
+| I140 | 媒体库 I：决定 043，配置中的 `media_library` | I120 | done |
 | I141 | 媒体库 II：目录：扫描、条目、基于 akio-media 的 `mp4` 的探测、文件池、保留的解析后影片；角色 `media_library`；Admin API 的 `/media/library` | I140, I100 | todo |
 | I142 | 点播：`vod`，由样本表生成的 HLS，按范围提供的文件 | I141, I121 | todo |
 | I143 | 媒体 token：`media_auth` 的 `keys` 和 `media_tokens`（fit 的 I119） | I121 | todo |
@@ -1826,7 +1826,7 @@ SAMPLE-AES（fib 的 A69）；它缺少的部分作为 akio A295–A300 请求�
 - **完成标准**：移植后的 fit 的 `config/medialibrary_test.go` 用例通过；参考文档列出每个字段；v1 冻结把它们标为新增。
 - **涉及**：`akit-config`（`medialib`）、`akit-roles`（`members`）、`tests/compat`、`docs/reference`。
 - **fit**：`config/medialibrary.go`；I131、I132。
-- **状态**：todo。
+- **状态**：已完成（2026-11-27）；上传的字段在 I149 之前作为“尚不支持”拒绝。见进度日志。
 
 ### I141 媒体库 II：目录
 

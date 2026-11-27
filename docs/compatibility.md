@@ -444,7 +444,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`llm`](#fields-llm) | 218 | 215 | 3 |
 | [`log`](#fields-log) | 24 | 24 | 0 |
 | [`media_auth`](#fields-media-auth) | 34 | 18 | 16 |
-| [`media_library`](#fields-media-library) | 24 | 0 | 24 |
+| [`media_library`](#fields-media-library) | 24 | 19 | 5 |
 | [`metrics`](#fields-metrics) | 1 | 1 | 0 |
 | [`pprof`](#fields-pprof) | 4 | 0 | 4 |
 | [`providers`](#fields-providers) | 60 | 59 | 1 |
@@ -1830,28 +1830,28 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `media_library` | `array<object>` | not supported yet |
-| `media_library[].exclude` | `array<string>` | not supported yet |
-| `media_library[].file_queue` | `integer` | not supported yet |
-| `media_library[].file_timeout` | `duration` | not supported yet |
-| `media_library[].file_workers` | `integer` | not supported yet |
-| `media_library[].files` | `array<string>` | not supported yet |
-| `media_library[].follow_symlinks` | `boolean` | not supported yet |
-| `media_library[].max_catalog_bytes` | `integer` | not supported yet |
-| `media_library[].max_files` | `integer` | not supported yet |
-| `media_library[].max_items` | `integer` | not supported yet |
-| `media_library[].max_probes` | `integer` | not supported yet |
-| `media_library[].max_sidecar_bytes` | `integer` | not supported yet |
-| `media_library[].max_subtitle_bytes` | `integer` | not supported yet |
-| `media_library[].max_table_bytes` | `integer` | not supported yet |
+| `media_library` | `array<object>` | supported |
+| `media_library[].exclude` | `array<string>` | supported |
+| `media_library[].file_queue` | `integer` | supported |
+| `media_library[].file_timeout` | `duration` | supported |
+| `media_library[].file_workers` | `integer` | supported |
+| `media_library[].files` | `array<string>` | supported |
+| `media_library[].follow_symlinks` | `boolean` | supported |
+| `media_library[].max_catalog_bytes` | `integer` | supported |
+| `media_library[].max_files` | `integer` | supported |
+| `media_library[].max_items` | `integer` | supported |
+| `media_library[].max_probes` | `integer` | supported |
+| `media_library[].max_sidecar_bytes` | `integer` | supported |
+| `media_library[].max_subtitle_bytes` | `integer` | supported |
+| `media_library[].max_table_bytes` | `integer` | supported |
 | `media_library[].max_upload_bytes` | `integer` | not supported yet |
 | `media_library[].max_uploads` | `integer` | not supported yet |
 | `media_library[].min_free_bytes` | `integer` | not supported yet |
-| `media_library[].name` | `string, required` | not supported yet |
-| `media_library[].roots` | `array<string>, required` | not supported yet |
-| `media_library[].scan_interval` | `duration` | not supported yet |
-| `media_library[].secret` | `string` | not supported yet |
-| `media_library[].secret_file` | `string` | not supported yet |
+| `media_library[].name` | `string, required` | supported |
+| `media_library[].roots` | `array<string>, required` | supported |
+| `media_library[].scan_interval` | `duration` | supported |
+| `media_library[].secret` | `string` | supported |
+| `media_library[].secret_file` | `string` | supported |
 | `media_library[].upload_dir` | `string` | not supported yet |
 | `media_library[].upload_expiry` | `duration` | not supported yet |
 

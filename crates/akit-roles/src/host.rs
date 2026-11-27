@@ -129,6 +129,8 @@ pub fn members(c: &Config) -> Vec<(&'static str, bool)> {
         // I120: fit's media auth policies and its streaming role.
         ("media_auth", !c.media_auth.is_empty()),
         ("streaming", c.streaming.is_some()),
+        // I140: fit's media libraries.
+        ("media_library", !c.media_library.is_empty()),
     ]
 }
 

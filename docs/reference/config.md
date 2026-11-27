@@ -141,7 +141,7 @@ name every file on the command line (`-c` may be given again, or name a director
 | `llm` | [object](#cfg-llm) |  | The LLM feature's roles to run beside the gateway, on its engine: a hub, a node and a proxy, which share AI models among machines and serve them to agents. None when left out. What their web pages change is written back here. **akit:** Read and checked as fit's (I98). `akit run` refuses a config that sets a role until the LLM iterations run it (I104–I109). |
 | `log` | [object](#cfg-log) |  | akit's own log: what it says about starting, reloading, certificates, providers and the engine, by logger, each with the least level written, and the format and output it writes in, as akio writes its own. Messages at info and debug to stdout and the rest to stderr, at info and above, as lines, when left out. |
 | `media_auth` | list of [object](#cfg-media-auth) |  | Named policies of who may publish and play which streams, with tokens, users and keys for tokens akit signs: the handlers and roles that take media (whip, whep, webrtc_proxy) refer to one with their auth param. A handler without auth lets everyone in, as the route's middleware allow. **akit:** Applied by `akit run` (I121), each policy changed in place on reload. A token's cookie is `akit_media_token`, a 401's challenge `Bearer realm="akit"` (decision 037); the tokens akit signs are fit's format, taken by fit and akit alike (decision 040). |
-| `media_library` | list of object |  | **Not supported yet**: refused by name. Named libraries of media files: directories scanned into a catalog of items, each a title with its renditions, audio, subtitles and poster, probed off fib's workers on a bounded file pool of the library's own, and read by the Admin API's /media/library. None when left out: no files are scanned or served. |
+| `media_library` | list of [object](#cfg-media-library) |  | Named libraries of media files: directories scanned into a catalog of items, each a title with its renditions, audio, subtitles and poster, probed off akio's I/O threads on a bounded file pool of the library's own, and read by the Admin API's /media/library. None when left out: no files are scanned or served. |
 | `metrics` | object |  | Count and time requests by listener and route, for the Admin API's /metrics, which serves the rest of akit's metrics without it; off when left out, since it costs every request a little. Needs admin. |
 | `pprof` | object |  | **Not supported yet**: refused by name. Serve Go's runtime profiles, as net/http/pprof does, at the Admin API's /debug/pprof/: CPU, heap, allocations, goroutines, blocking, mutexes and execution traces, for go tool pprof and go tool trace. Off when left out: the endpoints answer 404, and blocking and mutexes are not sampled. Follows every config applied, with no restart. Needs admin; served on the Admin API's own address, behind its token, and not through the console. |
 | `providers` | list of [object](#cfg-providers) |  | Sources of routes, upstreams, services and listeners other than this file and the Admin API, merged into the config: what this config writes wins over every provider, and a provider over those listed after it; a provider's element named as one before it is left out. The Admin API's /config/effective shows the result and where each part came from. Read when akit starts: a change takes effect when akit restarts. |
@@ -2866,6 +2866,56 @@ streaming {
 | `allow_files` | list of string |  | Files of more allow entries, one on each line, each line told apart by its content: an address or prefix, with what follows # or ; left out, as the lists published for firewalls are written; a range, first-last; an eMule ipfilter.dat line, first - last , level , name, where a level above 127 is not listed; or a PeerGuardian .p2p line, name:first-last. IPv4 addresses of ranges may have leading zeros. Blank lines and lines that begin with #, ; or // are left out; any other line is an error. Read when the config is applied, and applied again when one changes; each at most 64 MiB. |
 | `deny` | list of string |  | IP addresses and CIDR prefixes refused, whatever allow holds. |
 | `deny_files` | list of string |  | Files of more deny entries, written as allow_files. |
+<!-- END GENERATED -->
+
+## Media library
+
+`media_library` lists fit's named media libraries
+([fit's guide](https://github.com/lesismal/fit/blob/main/docs/media-library.md)): directories of
+MP4 files (`.mp4`, `.m4v`, `.m4a`, `.mov`) scanned into a catalog of items, each a title with its
+renditions, audio, subtitles and poster, which `vod` serves on demand and channels play live. akit
+reads and checks the libraries as fit does (I140) and reads the files with akio-media's MP4 reader;
+`akit run` runs them from I141. Not read yet: the uploads' `upload_dir`, `max_upload_bytes`,
+`max_uploads`, `min_free_bytes` and `upload_expiry` (I149).
+
+```fit
+media_library films {
+	roots /srv/media/films /srv/media/shows
+	exclude **/extras/**
+	scan_interval 30m
+}
+```
+
+### `media_library[]`
+
+<!-- BEGIN GENERATED: media_library[] -->
+<a id="cfg-media-library"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `name` | string | required | The library's name, which handlers and the Admin API's /media/library/<name> refer to it by. Letters, digits, '_', '.' and '-'. |
+| `roots` | list of string | required | The directories whose files the library holds, scanned with their subdirectories; an item's id is its path under its root. A root may not lie inside another. A root missing when scanned is reported, and the others are scanned. |
+| `exclude` | list of string |  | Files and directories left out, by pattern, as files writes them, as trailers or **/extras/**; a directory left out is not walked. None when left out. |
+| `file_queue` | integer, 0 or more | `4096` | The most jobs that wait for the file pool; one more is refused, as a request answered 503. 4096 when left out or 0. |
+| `file_timeout` | duration | `"10s"` | How long a job may wait for the file pool before it is given up, as a request answered 503. 10s when left out. |
+| `file_workers` | integer, 0 or more |  | The threads of the library's file pool, which probe, read sample tables and read the files' bytes, so that no akio worker waits on the disk: all the disk is asked to do at once. 4 a CPU, and at least 16, when left out or 0. |
+| `files` | list of string |  | The files looked at, by pattern: a pattern without '/' matches a file's name, as *.mp4, and one with '/' its path under the root, as films/**/*.mp4, where * matches within a name and ** any run of directories. Every file when left out; names starting with '.' are never looked at. |
+| `follow_symlinks` | boolean |  | Follow symbolic links that lead out of the library's roots. A link that stays within its root is followed either way; one that leads out is refused, and reported, when left out or false. |
+| `max_catalog_bytes` | integer, 0 or more | `67108864` | The most memory the catalog takes, as reckoned from its items' paths, titles, tracks and codec configurations; past it the rest of the items are left out, and the scan says so. 64 MiB when left out or 0. |
+| `max_files` | integer, 0 or more | `200000` | The most files and directories a scan looks at, across the roots; past it the scan stops there, and says so. 200000 when left out or 0. |
+| `max_items` | integer, 0 or more | `20000` | The most items the catalog holds; past it the rest are left out, and the scan says so. 20000 when left out or 0. |
+| `max_probes` | integer, 0 or more | `4` | The most files probed at once on the library's file pool, so that a scan leaves the pool's other workers to the files being served. 4 when left out or 0. |
+| `max_sidecar_bytes` | integer, 0 to 1048576 | `65536` | The largest sidecar, <name>.json, read; a larger one is reported and left out. At most 1 MiB. 64 KiB when left out or 0. |
+| `max_subtitle_bytes` | integer, 0 or more | `2097152` | The largest subtitle file served, .vtt or .srt turned into WebVTT; a larger one is listed with its error and not served. 2 MiB when left out or 0. |
+| `max_table_bytes` | integer, 0 or more | `134217728` | The most memory the sample tables read from the files take, kept for the files being served; past it the least recently used are dropped, and a table larger than all of it is refused. 128 MiB when left out or 0. |
+| `max_upload_bytes` | integer, 0 or more | `34359738368` | **Not supported yet**: refused by name. The largest file uploaded; a larger one is refused 413 before any of it is written. 32 GiB when left out or 0. |
+| `max_uploads` | integer, 0 to 1024 | `4` | **Not supported yet**: refused by name. The most uploads under way at once, begun and not yet whole; one more is refused 429 until one ends, or is cancelled, or expires. 4 when left out or 0. |
+| `min_free_bytes` | integer, 0 or more | `1073741824` | **Not supported yet**: refused by name. The disk space left free beside the uploads under way: an upload whose bytes, with those of the others still to come, would leave less free on upload_dir's disk is refused 507 before any of it is written. 1 GiB when left out or 0. |
+| `scan_interval` | duration | `"10m"` | How often the roots are scanned again, at least 10s; a scan also runs when the library is made, when the config changes its roots, patterns or bounds, and on the Admin API's POST /media/library/<name>/rescan. A file whose size and time are unchanged is not probed again. 10m when left out. |
+| `secret` | string |  | The secret, at least 16 bytes, the AES-128 keys of encrypted HLS are derived from: a key for each item of vod with encrypt, and for each channel with encrypt, rotated every key_rotation segments. Changing it changes every key, so that segments encrypted before, kept by a CDN, no longer play: purge them. Or secret_file, one of the two. None when left out: nothing of the library can be encrypted. |
+| `secret_file` | string |  | A file holding the secret the AES-128 keys of encrypted HLS are derived from, read each time the config is applied. At least 16 bytes, its line breaks at the end aside. Or secret, one of the two. None when left out. |
+| `upload_dir` | string |  | **Not supported yet**: refused by name. A directory inside one of the roots, or a root itself, that files uploaded from the workbench, or the Admin API's /media/library/<name>/uploads, are written into: in pieces, resumable after a cut connection, to a temporary file named .fit-upload-*, renamed into place once whole and probed by the scan that follows. Made when missing. None when left out: no uploads; the files of the library are still renamed, moved and deleted from the workbench. |
+| `upload_expiry` | duration | `"24h"` | **Not supported yet**: refused by name. How long an upload not written to is kept before it is given up and its temporary file removed, at the next scan; at least 1m. An upload is kept across restarts until then. 24h when left out. |
 <!-- END GENERATED -->
 
 ## BitTorrent

@@ -1322,6 +1322,28 @@ bittorrent.tracker.access.deny_files
 # I151: the bt_tracker handler (akit-bittorrent's module), which takes no params.
 routes[].handler<bt_tracker>
 routes[].handler<bt_tracker>.params
+# I140: fit's media libraries (akit-config's medialib module). The uploads' fields (upload_dir,
+# max_upload_bytes, max_uploads, min_free_bytes, upload_expiry) wait for the media files managed
+# (I149) and are refused as not supported yet. akit run runs the libraries from I141.
+media_library
+media_library[].name
+media_library[].roots
+media_library[].files
+media_library[].exclude
+media_library[].follow_symlinks
+media_library[].scan_interval
+media_library[].max_items
+media_library[].max_files
+media_library[].max_catalog_bytes
+media_library[].max_probes
+media_library[].max_sidecar_bytes
+media_library[].max_subtitle_bytes
+media_library[].max_table_bytes
+media_library[].file_workers
+media_library[].file_queue
+media_library[].file_timeout
+media_library[].secret
+media_library[].secret_file
 # I120: fit's media auth policies and streaming role (akit-config's media module). A policy's keys
 # (fit's I119) and url_signing, and the role's channels and push (the media library's track), are
 # refused as not supported yet, as are RTMP's and RTSP's mptcp, RTMP's max_message_bytes (akio A263)

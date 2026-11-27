@@ -39,6 +39,7 @@ pub mod hardening;
 mod json;
 mod log;
 pub mod media;
+pub mod medialib;
 mod model;
 mod providers;
 mod providers_kv;

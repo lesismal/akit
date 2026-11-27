@@ -302,6 +302,7 @@ fn roles_not_running(config: &Config) -> Result<(), Failure> {
                 "akit run does not run this role yet ({}); akit validate checks it",
                 match path {
                     p if p.starts_with("tunnel.") => "I101-I103",
+                    "media_library" => "I141",
                     _ => "I104-I109",
                 }
             ),
@@ -1981,6 +1982,16 @@ mod tests {
         assert!(super::roles_not_running(&c).is_ok());
         let c = akit_config::from_json(r#"{"bittorrent": {}}"#, None).unwrap();
         assert!(super::roles_not_running(&c).is_ok());
+        // The media libraries (I140): read and checked, run from I141.
+        let c = akit_config::from_json(
+            r#"{"media_library": [{"name": "films", "roots": ["/srv/films"]}]}"#,
+            None,
+        )
+        .unwrap();
+        let Err(super::Failure::Config(errs)) = super::roles_not_running(&c) else {
+            panic!("media_library runs");
+        };
+        assert!(errs.to_string().contains("I141"), "{errs}");
     }
 
     /// Every WebRTC role and handler runs (I111-I114): nothing of `webrtc` is refused.
